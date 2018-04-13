@@ -1,6 +1,9 @@
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE DataKinds      #-}
+{-# LANGUAGE DeriveFunctor  #-}
 {-# LANGUAGE KindSignatures #-}
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE LambdaCase     #-}
+{-# LANGUAGE TypeFamilies   #-}
 -- |
 -- Simple API for cryptographic operations. Crypto algorithms are
 -- selected by type and all necessary types are implemented as data
@@ -25,21 +28,25 @@ module Thundermint.Crypto (
 import Control.Monad
 -- import qualified Data.ByteString as BS
 import           Data.ByteString   (ByteString)
+import qualified Data.Map        as Map
+import           Data.Map          (Map)
+import qualified Data.Set        as Set
+import           Data.Set          (Set)
 
 ----------------------------------------------------------------
 -- Basic crypto API
 ----------------------------------------------------------------
 
--- | Private key 
+-- | Private key
 data family PrivKey   alg
 
 -- | Public key
 data family PublicKey alg
 
--- | Signature 
+-- | Signature
 data family Signature alg
 
--- | 
+-- |
 data family Address   alg
 
 -- |
@@ -65,7 +72,7 @@ class Serializable a where
 data SignedState = Verified
                  | Unverified
 
--- | Opaque data type holding 
+-- | Opaque data type holding
 data Signed (sign :: SignedState) alg a
   = Signed (Address alg) (Signature alg) a
 
@@ -96,3 +103,60 @@ verifySignature lookupKey (Signed addr signature a) = do
   pubK <- lookupKey addr
   guard $ verifyBlobSignature pubK (serialize a) signature
   return $ Signed addr signature a
+
+
+
+----------------------------------------------------------------
+-- Collection of signed values
+----------------------------------------------------------------
+
+-- | Collection of signed values which is intended for holding votes
+--   by validators. We maintain following invariant.
+--
+--   * Each key could be used to sign only one value
+--
+--   Lookup both by 'Address' and by values are supported.
+data VoteSet ty alg a = VoteSet
+  { vsetAddrMap :: Map (Address alg) (Signed ty alg a)
+  , vsetValMap  :: Map a (Set (Address alg))
+  }
+
+-- | Result of insertion into 'VoteSet'
+data InsertRes b a
+  = InsertOK       a            -- ^ Insert is successful
+  | InsertDup                   -- ^ Duplicate value. No change
+  | InsertConflict b            -- ^ Conflict during insertion
+  deriving (Show,Functor)
+
+instance Applicative (InsertRes b) where
+  pure  = return
+  (<*>) = ap
+
+instance Monad (InsertRes b) where
+  return = pure
+  InsertOK a       >>= f = f a
+  InsertDup        >>= _ = InsertDup
+  InsertConflict b >>= _ = InsertConflict b
+
+-- | Insert value into set of votes
+insertVoteSet
+  :: (Crypto alg, Ord (Address alg), Ord a)
+  => Signed ty alg a
+  -> VoteSet ty alg a
+  -> InsertRes (Signed ty alg a) (VoteSet ty alg a)
+insertVoteSet sval (VoteSet mAddr mVal) =
+  case addr `Map.lookup` mAddr of
+    Just v
+      | signedValue v == val -> InsertDup
+      | otherwise            -> InsertConflict sval
+    Nothing                  -> InsertOK VoteSet
+      { vsetAddrMap = Map.insert addr sval mAddr
+      , vsetValMap  = Map.alter
+          (Just . \case
+              Nothing        -> Set.singleton addr
+              Just addresses -> addr `Set.insert` addresses
+          ) val mVal
+      }
+  where
+    addr = signedAddr  sval
+    val  = signedValue sval
