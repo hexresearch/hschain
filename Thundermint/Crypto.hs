@@ -1,3 +1,4 @@
+{-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE DataKinds      #-}
 {-# LANGUAGE DeriveFunctor  #-}
@@ -14,6 +15,7 @@ module Thundermint.Crypto (
   , PublicKey
   , Signature
   , Address
+  , Hash(..)
   , Crypto(..)
     -- * Serialization and signatures
   , Serializable(..)
@@ -23,17 +25,16 @@ module Thundermint.Crypto (
   , signedAddr
   , signValue
   , verifySignature
-  --   -- * Hash trees
+    -- * Hash trees
+  , Hashed(..)
+  , BlockHash(..)
   -- , HashTree(..)
   ) where
 
 import Control.Monad
 -- import qualified Data.ByteString as BS
+import           Data.Word
 import           Data.ByteString   (ByteString)
-import qualified Data.Map        as Map
-import           Data.Map          (Map)
-import qualified Data.Set        as Set
-import           Data.Set          (Set)
 
 ----------------------------------------------------------------
 -- Basic crypto API
@@ -51,8 +52,9 @@ data family Signature alg
 -- |
 data family Address   alg
 
--- | 
+-- |
 newtype Hash alg = Hash ByteString
+  deriving (Show,Eq)
 
 -- | Type-indexed set of crypto algorithms. It's not very principled
 --   by to keep signatures sane everything was thrown into same type
@@ -64,7 +66,7 @@ class Crypto alg where
   address             :: PublicKey alg -> Address alg
   hashValue           :: ByteString -> Hash alg
 
-  
+
 ----------------------------------------------------------------
 -- Signing and verification of values
 ----------------------------------------------------------------
@@ -84,6 +86,8 @@ data SignedState = Verified
 -- | Opaque data type holding
 data Signed (sign :: SignedState) alg a
   = Signed (Address alg) (Signature alg) a
+
+deriving instance (Show a, Show (Address alg), Show (Signature alg)) => Show (Signed sign alg a)
 
 signedValue :: Signed sign alg a -> a
 signedValue (Signed _ _ a) = a
@@ -116,9 +120,11 @@ verifySignature lookupKey (Signed addr signature a) = do
 
 
 ----------------------------------------------------------------
--- Merkle trees
+-- Hashed data
 ----------------------------------------------------------------
 
--- data HashTree a = HashTree
+newtype Hashed alg a = Hashed (Hash alg)
+  deriving (Show,Eq)
 
-
+data BlockHash alg a = BlockHash Word32 (Hash alg) [Hash alg]
+  deriving (Show,Eq)
