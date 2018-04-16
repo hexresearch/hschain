@@ -70,7 +70,7 @@ emptySignedSet = SignedSet Map.empty Map.empty
 
 -- | Insert value into set of votes
 insertSigned
-  :: (Crypto alg, Ord (Address alg), Ord a)
+  :: (Crypto alg, Ord a)
   => Signed ty alg a
   -> SignedSet ty alg a
   -> InsertResult (Signed ty alg a) (SignedSet ty alg a)
@@ -112,7 +112,7 @@ majority23 SignedSet{..} =
 
 -- | We have +2\/3 of votes which are distributed in any manner
 any23
-  :: (Crypto alg, Ord (Address a))
+  :: (Crypto alg)
   => SignedSet ty alg a
   -> Bool
 any23 SignedSet{..}
@@ -143,7 +143,7 @@ emptySignedSetMap
 emptySignedSetMap = SignedSetMap Map.empty
 
 addSignedValue
-  :: (Ord r, Crypto alg, Ord (Address alg), Ord a)
+  :: (Ord r, Crypto alg, Ord a)
   => r
   -> Signed ty alg a
   -> SignedSetMap r ty alg a
@@ -163,7 +163,7 @@ majority23at r SignedSetMap{..}
   = majority23 =<< Map.lookup r vmapSubmaps
 
 any23at
-  :: (Ord r, Crypto alg, Ord (Address a))
+  :: (Ord r, Crypto alg)
   => r
   -> SignedSetMap r ty alg a
   -> Bool

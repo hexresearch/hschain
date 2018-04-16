@@ -47,14 +47,16 @@ data family PrivKey   alg
 data family PublicKey alg
 
 -- | Signature
-data family Signature alg
+newtype Signature alg = Signature ByteString
+  deriving (Show,Eq,Ord)
 
 -- |
-data family Address   alg
+newtype Address alg = Address ByteString
+  deriving (Show,Eq,Ord)
 
 -- |
 newtype Hash alg = Hash ByteString
-  deriving (Show,Eq)
+  deriving (Show,Eq,Ord)
 
 -- | Type-indexed set of crypto algorithms. It's not very principled
 --   by to keep signatures sane everything was thrown into same type
@@ -124,7 +126,7 @@ verifySignature lookupKey (Signed addr signature a) = do
 ----------------------------------------------------------------
 
 newtype Hashed alg a = Hashed (Hash alg)
-  deriving (Show,Eq)
+  deriving (Show,Eq,Ord)
 
 data BlockHash alg a = BlockHash Word32 (Hash alg) [Hash alg]
-  deriving (Show,Eq)
+  deriving (Show,Eq,Ord)
