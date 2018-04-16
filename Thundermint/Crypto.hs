@@ -23,6 +23,15 @@ module Thundermint.Crypto (
   , signedAddr
   , signValue
   , verifySignature
+    -- * Hash trees
+  , HashTree(..)
+    -- * Set of signed values
+  , VoteSet
+  , InsertRes(..)
+  , emptyVoteSet
+  , insertVoteSet
+  -- , valueByAddress
+  -- , addresses
   ) where
 
 import Control.Monad
@@ -48,6 +57,8 @@ data family Signature alg
 
 -- |
 data family Address   alg
+
+
 
 -- |
 class Crypto alg where
@@ -107,6 +118,13 @@ verifySignature lookupKey (Signed addr signature a) = do
 
 
 ----------------------------------------------------------------
+-- Merkle trees
+----------------------------------------------------------------
+
+data HashTree a = HashTree
+
+
+----------------------------------------------------------------
 -- Collection of signed values
 ----------------------------------------------------------------
 
@@ -137,6 +155,9 @@ instance Monad (InsertRes b) where
   InsertOK a       >>= f = f a
   InsertDup        >>= _ = InsertDup
   InsertConflict b >>= _ = InsertConflict b
+
+emptyVoteSet :: VoteSet ty alg a
+emptyVoteSet = VoteSet Map.empty Map.empty
 
 -- | Insert value into set of votes
 insertVoteSet
