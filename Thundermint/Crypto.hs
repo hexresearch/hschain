@@ -23,15 +23,8 @@ module Thundermint.Crypto (
   , signedAddr
   , signValue
   , verifySignature
-    -- * Hash trees
-  , HashTree(..)
-    -- * Set of signed values
-  , VoteSet
-  , InsertRes(..)
-  , emptyVoteSet
-  , insertVoteSet
-  -- , valueByAddress
-  -- , addresses
+  --   -- * Hash trees
+  -- , HashTree(..)
   ) where
 
 import Control.Monad
@@ -58,15 +51,20 @@ data family Signature alg
 -- |
 data family Address   alg
 
+-- | 
+newtype Hash alg = Hash ByteString
 
-
--- |
+-- | Type-indexed set of crypto algorithms. It's not very principled
+--   by to keep signatures sane everything was thrown into same type
+--   class.
 class Crypto alg where
-  signBlob        :: PrivKey alg -> ByteString -> Signature alg
+  signBlob            :: PrivKey   alg -> ByteString -> Signature alg
   verifyBlobSignature :: PublicKey alg -> ByteString -> Signature alg -> Bool
-  publicKey       :: PrivKey alg -> PublicKey alg
-  address         :: PublicKey alg -> Address alg
+  publicKey           :: PrivKey   alg -> PublicKey alg
+  address             :: PublicKey alg -> Address alg
+  hashValue           :: ByteString -> Hash alg
 
+  
 ----------------------------------------------------------------
 -- Signing and verification of values
 ----------------------------------------------------------------
@@ -121,63 +119,6 @@ verifySignature lookupKey (Signed addr signature a) = do
 -- Merkle trees
 ----------------------------------------------------------------
 
-data HashTree a = HashTree
+-- data HashTree a = HashTree
 
 
-----------------------------------------------------------------
--- Collection of signed values
-----------------------------------------------------------------
-
--- | Collection of signed values which is intended for holding votes
---   by validators. We maintain following invariant.
---
---   * Each key could be used to sign only one value
---
---   Lookup both by 'Address' and by values are supported.
-data VoteSet ty alg a = VoteSet
-  { vsetAddrMap :: Map (Address alg) (Signed ty alg a)
-  , vsetValMap  :: Map a (Set (Address alg))
-  }
-
--- | Result of insertion into 'VoteSet'
-data InsertRes b a
-  = InsertOK       a            -- ^ Insert is successful
-  | InsertDup                   -- ^ Duplicate value. No change
-  | InsertConflict b            -- ^ Conflict during insertion
-  deriving (Show,Functor)
-
-instance Applicative (InsertRes b) where
-  pure  = return
-  (<*>) = ap
-
-instance Monad (InsertRes b) where
-  return = pure
-  InsertOK a       >>= f = f a
-  InsertDup        >>= _ = InsertDup
-  InsertConflict b >>= _ = InsertConflict b
-
-emptyVoteSet :: VoteSet ty alg a
-emptyVoteSet = VoteSet Map.empty Map.empty
-
--- | Insert value into set of votes
-insertVoteSet
-  :: (Crypto alg, Ord (Address alg), Ord a)
-  => Signed ty alg a
-  -> VoteSet ty alg a
-  -> InsertRes (Signed ty alg a) (VoteSet ty alg a)
-insertVoteSet sval (VoteSet mAddr mVal) =
-  case addr `Map.lookup` mAddr of
-    Just v
-      | signedValue v == val -> InsertDup
-      | otherwise            -> InsertConflict sval
-    Nothing                  -> InsertOK VoteSet
-      { vsetAddrMap = Map.insert addr sval mAddr
-      , vsetValMap  = Map.alter
-          (Just . \case
-              Nothing        -> Set.singleton addr
-              Just addresses -> addr `Set.insert` addresses
-          ) val mVal
-      }
-  where
-    addr = signedAddr  sval
-    val  = signedValue sval
