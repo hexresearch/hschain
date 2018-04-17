@@ -10,9 +10,10 @@
 -- of library
 module Thundermint.Consensus.Algorithm where
 
-import Data.Int
-import Data.List
-import Data.Maybe
+import Control.Monad
+import           Data.Int
+import           Data.List
+import           Data.Maybe
 import           Data.Map   (Map)
 import qualified Data.Map as Map
 
@@ -100,6 +101,7 @@ class Monad m => ConsensusMonad m where
   castPrecommit :: (Time -> Vote 'PreCommit alg a) -> m ()
   commitBlock   :: BlockID alg a -> TMState alg a -> m x
 
+  proposeBlock  :: Proposal alg a -> m ()
 
 data Message alg a
   = ProposalMsg  (Proposal alg a)
@@ -245,14 +247,15 @@ enterPropose
 enterPropose par@HeightParameres{..} r sm@TMState{..} = do
   -- We are proposer. Broadcast proposal otherwise do nothing
   scheduleTimeout $ Timeout currentH r StepProposal
-  makeP <- areWeProposers
-  when makeP $ case () of
+  makeP <- areWeProposers smRound
+  when makeP $ case smLockedBlock of
     -- FIXME: take care of POL fields of proposal
-     -- If we're locked on block we MUST propose it
-    _| Just (lockR,bid) -> proposeBlock round bid
-      -- Otherwise we need to create new block from mempool
-     | Nothing          -> do p <- makeProposal
-                              proposeBlock round p
+    -- If we're locked on block we MUST propose it
+    Just (lockR,bid,_) -> do proposeBlock undefined
+    -- Otherwise we need to create new block from mempool
+    Nothing          -> do p <- makeProposal
+                           proposeBlock undefined
+  undefined -- FIXME: fix logic for proposals
 
 -- Enter PREVOTE step. Upon entering it we:
 --
