@@ -15,3 +15,13 @@ data Blockchain alg a
   -- ^ Genesis block of blockchain
   | Cons (Block alg a) (Blockchain alg a)
   -- ^ Cons cell of chain
+
+data Validator alg = Validator
+  { validatorPubKey      :: PublicKey alg
+  , validatorVotingPower :: Int64
+  }
+
+data PrivValidator alg a = PrivValidator
+  { validatorPrivKey  :: PrivKey alg
+  , validateBlockData :: a -> Bool
+  }
