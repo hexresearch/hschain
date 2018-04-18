@@ -19,9 +19,11 @@ Library
   Build-Depends:       base       >=4.9 && <5
                      , bytestring >=0.10
                      , containers >=0.5.7
+                     , stm        >=2.4
   Exposed-modules:
                   Thundermint.Blockchain.Types
                   Thundermint.Consensus.Algorithm
                   Thundermint.Consensus.Types
                   Thundermint.Crypto
                   Thundermint.Crypto.Containers
+                  Thundermint.P2P

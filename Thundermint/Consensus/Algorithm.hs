@@ -25,16 +25,6 @@ import Thundermint.Consensus.Types
 --
 ----------------------------------------------------------------
 
-data Timeout = Timeout Height Round Step
-  deriving (Show,Eq,Ord)
-
--- | Step of the algorithm
-data Step
-  = StepProposal
-  | StepPrevote
-  | StepPrecommit
-  deriving (Show,Eq,Ord)
-
 data ProposalState alg a
   = InvalidProposal (BlockID alg a)
   | GoodProposal    (BlockID alg a)
