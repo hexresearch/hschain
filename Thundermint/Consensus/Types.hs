@@ -78,6 +78,17 @@ data Commit alg a = Commit
   }
   deriving (Show)
 
+
+-- | Step of the algorithm
+data Step
+  = StepProposal
+  | StepPrevote
+  | StepPrecommit
+  deriving (Show,Eq,Ord)
+
+data Timeout = Timeout Height Round Step
+  deriving (Show,Eq,Ord)
+
 ----------------------------------------------------------------
 -- Votes
 ----------------------------------------------------------------
