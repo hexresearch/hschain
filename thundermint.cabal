@@ -27,3 +27,14 @@ Library
                   Thundermint.Crypto
                   Thundermint.Crypto.Containers
                   Thundermint.P2P
+
+Executable thundermint-simple
+  Ghc-options:         -Wall
+  Default-Language:    Haskell2010
+  Build-Depends:       base       >=4.9 && <5
+                     , thundermint
+                     , bytestring >=0.10
+                     , containers >=0.5.7
+                     , stm        >=2.4
+  hs-source-dirs:      exe
+  Main-is:             simple.hs
