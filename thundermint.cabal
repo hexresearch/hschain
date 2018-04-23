@@ -22,6 +22,7 @@ Library
                      , stm        >=2.4
   Exposed-modules:
                   Thundermint.Blockchain.Types
+                  Thundermint.Blockchain.App
                   Thundermint.Consensus.Algorithm
                   Thundermint.Consensus.Types
                   Thundermint.Crypto

@@ -48,7 +48,9 @@ type BlockID alg a = BlockHash alg (Block alg a)
 data Block alg a = Block
   { blockHeader     :: Header alg a
   , blockData       :: a
-  , blockLastCommit :: Commit alg a   -- ^ Commit information for previous block
+  , blockLastCommit :: Maybe (Commit alg a)
+    -- ^ Commit information for previous block. Nothing iff block
+    --   is a genesis block
   }
 deriving instance ( Show (Address alg)
                   , Show (Signature alg)
@@ -60,7 +62,8 @@ data Header alg a = Header
   { headerChainID     :: ByteString -- ^ Identifier of chain we're working on
   , headerHeight      :: Height     -- ^ Height of block
   , headerTime        :: Time       -- ^ Time of block creation
-  , headerLastBlockID :: BlockID alg a
+  , headerLastBlockID :: Maybe (BlockID alg a)
+    -- ^ Nothing iff block is a genesis block
 
   -- FIXME: Add various hashes
   -- , headerDataHash       :: Hash
@@ -105,8 +108,11 @@ data Proposal alg a = Proposal
   , propPOL       :: Maybe (Round, BlockID alg a)
     -- ^ Proof of Lock for proposal [FIXME: why it's needed?]
   , propBlockID   :: BlockID alg a
+  , propBlock     :: Block   alg a
   }
   deriving (Show)
+
+instance Serializable a => Serializable (Proposal alg a) where
 
 -- | Type of vote. Used for type-tagging of votes
 data VoteType = PreVote
@@ -122,6 +128,9 @@ data Vote (ty :: VoteType) alg a= Vote
   , voteBlockID    :: Maybe (BlockID alg a)
   }
   deriving (Show,Eq,Ord)
+
+instance Serializable a => Serializable (Vote ty alg a) where
+  
 
 type VoteSet ty alg a = SignedSet 'Verified (Vote ty alg a)
 

@@ -13,8 +13,8 @@ module Thundermint.Crypto (
     -- * Crypto API
     PrivKey
   , PublicKey
-  , Signature
-  , Address
+  , Signature(..) -- FIXME: expose constructoion only
+  , Address(..)   -- FIXME: same
   , Hash(..)
   , Crypto(..)
     -- * Serialization and signatures
@@ -25,6 +25,7 @@ module Thundermint.Crypto (
   , signedAddr
   , signValue
   , verifySignature
+  , unverifySignature
     -- * Hash trees
   , Hashed(..)
   , BlockHash(..)
@@ -119,7 +120,8 @@ verifySignature lookupKey (Signed addr signature a) = do
   guard $ verifyBlobSignature pubK (serialize a) signature
   return $ Signed addr signature a
 
-
+unverifySignature :: Signed ty alg a -> Signed 'Unverified alg a
+unverifySignature (Signed addr sig a) = Signed addr sig a
 
 ----------------------------------------------------------------
 -- Hashed data

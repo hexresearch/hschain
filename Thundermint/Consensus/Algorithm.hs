@@ -1,7 +1,7 @@
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE DataKinds        #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE KindSignatures   #-}
+{-# LANGUAGE RankNTypes       #-}
 {-# LANGUAGE RecordWildCards  #-}
 {-# LANGUAGE ViewPatterns     #-}
 -- |
@@ -71,7 +71,7 @@ data HeightParameres (m :: * -> *) alg a = HeightParameres
     -- ^ Create proposal block
   , areWeProposers      :: Round -> Bool
     -- ^ Check whether we're proposers for this round
-  , proposeBlock        :: BlockID alg a -> m ()
+  , proposeBlock        :: Round -> BlockID alg a -> m ()
   , commitBlock         :: forall x. TMState alg a -> BlockID alg a -> m x
   }
 
@@ -232,10 +232,10 @@ enterPropose HeightParameres{..} r sm@TMState{..} = do
     -- FIXME: take care of POL fields of proposal
     --
     -- If we're locked on block we MUST propose it
-    Just (_,bid) -> do proposeBlock bid
+    Just (_,bid) -> do proposeBlock smRound bid
     -- Otherwise we need to create new block from mempool
     Nothing      -> do p <- makeProposal
-                       proposeBlock p
+                       proposeBlock smRound p
   return sm { smRound = r
             , smStep  = StepProposal
             }

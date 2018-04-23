@@ -19,6 +19,15 @@ data AppState alg a = AppState
   { appBlockchain    :: TVar (Blockchain alg a)
     -- ^ We store blockchain in TVar as crude approximation of
     --   in-memory database
+  , appBlockStore    :: TVar (Map (BlockID alg a) (Block alg a))
+    -- ^ Storage for all known blocks
+    --
+    --   FIXME: really??? We do need to store all blocks at current
+    --          height but not all blocks
+  , appLastCommit    :: TVar (Maybe (Commit alg a))
+    -- ^ FIXME: should we keep last commit in memory? It feels dirty
+  , appProposalMaker :: STM (Proposal alg a)
+    -- ^ FIXME: STM? Proposer must not block for long time
   , appValidator     :: PrivValidator alg a
     -- ^ Validator set is assumed to be 
   , appValidatorsSet :: Map (Address alg) (Validator alg)
@@ -53,11 +62,15 @@ data PrivValidator alg a = PrivValidator
   , validateBlockData :: a -> Bool
   }
 
+----------------------------------------------------------------
+-- Messages
+----------------------------------------------------------------
+
 -- | Message received by main application
 data MessageRx alg a
-  = RxPreVote   (Signed 'Verified alg (Vote 'PreVote   alg a))
-  | RxPreCommit (Signed 'Verified alg (Vote 'PreCommit alg a))
-  | RxProposal  (Signed 'Verified alg (Proposal alg a))
+  = RxPreVote   (Signed 'Unverified alg (Vote 'PreVote   alg a))
+  | RxPreCommit (Signed 'Unverified alg (Vote 'PreCommit alg a))
+  | RxProposal  (Signed 'Unverified alg (Proposal alg a))
   | RxTimeout   Timeout
   deriving (Show)
 
@@ -68,3 +81,14 @@ data MessageTx alg a
   | TxProposal  (Signed 'Verified alg (Proposal alg a))
   deriving (Show)
   
+-- | Application connection to outer world
+data AppChans alg a = AppChans
+  { appChanRx          :: TChan (MessageRx alg a)
+    -- ^ TChan for sending messages to the main application
+  , appChanTx          :: TChan (MessageTx alg a)
+    -- ^ TChan for broadcasting messages to the peers
+  }
+
+newAppChans :: IO (AppChans alg a)
+newAppChans =
+  AppChans <$> newTChanIO <*> newBroadcastTChanIO
