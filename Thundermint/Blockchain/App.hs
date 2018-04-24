@@ -6,27 +6,26 @@
 -- Full blockchain application
 module Thundermint.Blockchain.App where
 
+import Codec.Serialise (Serialise)
 import Control.Monad
 import Control.Monad.IO.Class
 import Control.Concurrent
 import Control.Concurrent.STM
-import           Data.Foldable
+-- import           Data.Foldable
 import           Data.Function
 import qualified Data.Map        as Map
-import           Data.Map          (Map)
+-- import           Data.Map          (Map)
 
 import Thundermint.Blockchain.Types
 import Thundermint.Crypto
 import Thundermint.Crypto.Containers
 import Thundermint.Consensus.Algorithm
 import Thundermint.Consensus.Types
-import Thundermint.P2P
+-- import Thundermint.P2P
 
 
 ----------------------------------------------------------------
-
-
-
+--
 ----------------------------------------------------------------
 
 
@@ -35,7 +34,7 @@ import Thundermint.P2P
 --
 --   * INVARIANT: Only this function can write to blockchain
 runApplication
-  :: (Crypto alg, Serializable a)
+  :: (Crypto alg, Serialise a)
   => AppState alg a
      -- ^ Get initial state of the application
   -> AppChans alg a
@@ -46,15 +45,15 @@ runApplication as ac
   --       thread it explicitly.
   -- FIXME: at the moment we start from genesis block but we need to
   --        pass valid last commit
-  = forever $ heightLoop as ac Nothing
+  = flip fix Nothing $ \loop cm -> loop . Just =<< heightLoop as ac cm
 
 -- Loop where we decide which block we need to commit at given height
 heightLoop
-  :: (Crypto alg, Serializable a)
+  :: (Crypto alg, Serialise a)
   => AppState alg a
   -> AppChans alg a
   -> Maybe (Commit alg a)
-  -> IO ()
+  -> IO (Commit alg a)
 heightLoop appSt@AppState{..} appCh@AppChans{..} lastCommt = do
   hParam <- makeHeightParametes appSt appCh
   let totalPower       = sum $ fmap validatorVotingPower appValidatorsSet
@@ -86,10 +85,12 @@ heightLoop appSt@AppState{..} appCh@AppChans{..} lastCommt = do
               Success tm'    -> loop hParams tm'
               Tranquility    -> loop hParams tm
               Misdeed        -> loop hParams tm
-              DoCommit tm' b -> do
-                -- 1. Write block to blockchain
-                -- 2. return commit for current block 
-                undefined
+              DoCommit cmt b -> do
+                blockStore <- readTVarIO appBlockStore
+                case Map.lookup b blockStore of
+                  Just blk -> atomically $ modifyTVar appBlockchain (Cons blk) 
+                  Nothing  -> error "Panic: no block to commit!"
+                return cmt
       case msg of
         RxPreVote   v -> verify v (recur . PreVoteMsg)
         RxPreCommit v -> verify v (recur . PreCommitMsg)
@@ -114,7 +115,7 @@ data ConsensusResult alg a b
   = Success b
   | Tranquility
   | Misdeed
-  | DoCommit  (TMState alg a) (BlockID alg a)
+  | DoCommit  (Commit alg a) (BlockID alg a)
   deriving (Functor)
 
 instance Applicative (ConsensusM alg a) where
@@ -138,7 +139,7 @@ instance ConsensusMonad (ConsensusM alg a) where
   panic       = error
 
 makeHeightParametes
-  :: (Crypto alg, Serializable a)
+  :: (Crypto alg, Serialise a)
   => AppState alg a
   -> AppChans alg a
   -> IO (HeightParameres (ConsensusM alg a) alg a)
@@ -188,8 +189,12 @@ makeHeightParametes AppState{..} AppChans{..} = do
                             }
             sprop  = signValue pk prop
         atomically $ writeTChan appChanTx (TxProposal sprop)
-    --
-    , makeProposal    = undefined
+      -- FIXME: What are doing here???
+    , makeProposal    = \r cm -> liftIO $ atomically $ do
+        p <- appProposalMaker r cm
+        modifyTVar appBlockStore $ Map.insert (propBlockID p) (propBlock p)
+        return $ propBlockID p
+
       -- FIXME: this is some random algorithms that should probably
       --        work (for some definition of work)
     , areWeProposers  = \(Round r) ->

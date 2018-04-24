@@ -77,13 +77,13 @@ data HeightParameres (m :: * -> *) alg a = HeightParameres
     -- ^ Broadcast prevote for particular block ID in some round.
   , castPrecommit       :: Round -> Maybe (BlockID alg a) -> m ()
     -- ^ Broadcast precommit
-  , makeProposal        :: m (BlockID alg a)
+  , makeProposal        :: Round -> Maybe (Commit alg a) -> m (BlockID alg a)
     -- ^ Create proposal block
   , areWeProposers      :: Round -> Bool
     -- ^ Check whether we're proposers for this round
   , proposeBlock        :: Round -> BlockID alg a -> m ()
     -- ^ Broadcast proposal
-  , commitBlock         :: forall x. TMState alg a -> BlockID alg a -> m x
+  , commitBlock         :: forall x. Commit alg a -> BlockID alg a -> m x
     -- ^ We're done for this height.
   }
 
@@ -220,7 +220,9 @@ checkTransitionPrecommit par@HeightParameres{..} r sm@(TMState{..})
   --        later moment they'll get
   | Just Vote{..} <- majority23at r smPrecommitsSet
   , Just bid      <- voteBlockID
-    = commitBlock sm bid
+    = commitBlock Commit{ commitBlockID    = bid
+                        , commitPrecommits = valuesAtR r smPrecommitsSet
+                        } bid
   --  * We have +2/3 precommits for nil at current round
   --  * We are at Precommit step [FIXME?]
   --  => goto Propose(H,R+1)
@@ -254,7 +256,7 @@ enterPropose HeightParameres{..} r sm@TMState{..} = do
     -- If we're locked on block we MUST propose it
     Just (_,bid) -> do proposeBlock smRound bid
     -- Otherwise we need to create new block from mempool
-    Nothing      -> do p <- makeProposal
+    Nothing      -> do p <- makeProposal r smLastCommit
                        proposeBlock smRound p
   return sm { smRound = r
             , smStep  = StepProposal

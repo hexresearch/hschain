@@ -1,13 +1,18 @@
-{-# LANGUAGE DataKinds          #-}
-{-# LANGUAGE FlexibleContexts   #-}
-{-# LANGUAGE KindSignatures     #-}
-{-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE DataKinds                  #-}
+{-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE FlexibleContexts           #-}
+{-# LANGUAGE FlexibleInstances          #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE KindSignatures             #-}
+{-# LANGUAGE StandaloneDeriving         #-}
 -- |
 -- Data types for implementation of consensus algorithm
 module Thundermint.Consensus.Types where
 
+import           Codec.Serialise
 import           Data.ByteString   (ByteString)
 import           Data.Int
+import GHC.Generics (Generic)
 
 import Thundermint.Crypto
 import Thundermint.Crypto.Containers
@@ -17,13 +22,13 @@ import Thundermint.Crypto.Containers
 ----------------------------------------------------------------
 
 newtype Height = Height Int64
-  deriving (Show, Eq, Ord)
+  deriving (Show, Eq, Ord, Serialise)
 
 newtype Round = Round Int64
-  deriving (Show, Eq, Ord)
+  deriving (Show, Eq, Ord, Serialise)
 
 newtype Time = Time Int64
-  deriving (Show, Eq, Ord)
+  deriving (Show, Eq, Ord, Serialise)
 
 class Sequence a where
   next :: a -> a
@@ -52,10 +57,12 @@ data Block alg a = Block
     -- ^ Commit information for previous block. Nothing iff block
     --   is a genesis block
   }
+  deriving (Generic)
 deriving instance ( Show (Address alg)
                   , Show (Signature alg)
                   , Show a
                   ) => Show (Block alg a)
+instance Serialise a => Serialise (Block alg a)
 
 -- | Block header
 data Header alg a = Header
@@ -70,17 +77,18 @@ data Header alg a = Header
   -- , headerValidatorsHash :: Hash
   -- , headerConsensusHash  :: Hash
   }
-  deriving (Show)
+  deriving (Show,Generic)
+instance Serialise (Header alg a)
 
 -- | Data justifying commit
 data Commit alg a = Commit
   { commitBlockID    :: BlockID alg a
     -- ^ Block for which commit is done
-  , commitPrecommits :: [Signed 'Verified alg (Vote 'PreVote alg a)]
+  , commitPrecommits :: [Signed 'Verified alg (Vote 'PreCommit alg a)]
     -- ^ List of precommits which justify commit
   }
-  deriving (Show)
-
+  deriving (Show,Generic)
+instance Serialise (Commit alg a)
 
 -- | Step of the algorithm
 data Step
@@ -110,9 +118,9 @@ data Proposal alg a = Proposal
   , propBlockID   :: BlockID alg a
   , propBlock     :: Block   alg a
   }
-  deriving (Show)
+  deriving (Show,Generic)
 
-instance Serializable a => Serializable (Proposal alg a) where
+instance Serialise a => Serialise (Proposal alg a) where
 
 -- | Type of vote. Used for type-tagging of votes
 data VoteType = PreVote
@@ -127,10 +135,19 @@ data Vote (ty :: VoteType) alg a= Vote
   , voteTime       :: Time
   , voteBlockID    :: Maybe (BlockID alg a)
   }
-  deriving (Show,Eq,Ord)
+  deriving (Show,Eq,Ord,Generic)
 
-instance Serializable a => Serializable (Vote ty alg a) where
-  
+
+-- FIXME: We need to embed type tag into encoded data to disallow
+--        spoofing prevote as precommit and vice-versa
+--
+instance Serialise (Vote ty alg a) where
+-- instance Serialise (Vote 'PreVote   alg a) where
+--   encode (Vote h r t bid) = encode (h,r,t,bid,
+--   decode = undefined
+-- instance Serialise (Vote 'PreCommit alg a) where
+--   encode = undefined
+--   decode = undefined
 
 type VoteSet ty alg a = SignedSet 'Verified (Vote ty alg a)
 
