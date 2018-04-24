@@ -34,8 +34,10 @@ data AppState alg a = AppState
     --   FIXME: at the moment it's assumed to be immutable but we will
     --          need to add support of changing set as result of
     --          commited block.
+  , appLogger        :: String -> IO ()
+  , appMaxHeight     :: Maybe Height
   }
-
+  
 -- | Blockchain where each block stores value of type. At the moment
 --   we keep whole blockchain in the memory and thing will become much
 --   more complicated once we add persistence.

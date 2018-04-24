@@ -21,6 +21,8 @@ Library
                      , containers >=0.5.7
                      , stm        >=2.4
                      , serialise  >=0.2
+                     --
+                     , groom
   Exposed-modules:
                   Thundermint.Blockchain.Types
                   Thundermint.Blockchain.App
@@ -38,5 +40,6 @@ Executable thundermint-simple
                      , bytestring >=0.10
                      , containers >=0.5.7
                      , stm        >=2.4
+                     , async      >=2.2
   hs-source-dirs:      exe
   Main-is:             simple.hs
