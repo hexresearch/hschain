@@ -15,6 +15,7 @@ import Control.Concurrent.STM
 import           Data.Function
 import qualified Data.Map        as Map
 -- import           Data.Map          (Map)
+import Text.Groom
 
 import Thundermint.Blockchain.Types
 import Thundermint.Crypto
@@ -34,22 +35,29 @@ import Thundermint.Consensus.Types
 --
 --   * INVARIANT: Only this function can write to blockchain
 runApplication
-  :: (Crypto alg, Serialise a)
+  :: (Crypto alg, Serialise a, Show a)
   => AppState alg a
      -- ^ Get initial state of the application
   -> AppChans alg a
      -- ^ Channels for communication with peers
-  -> IO x
-runApplication as ac
+  -> IO ()
+runApplication as@AppState{..} ac
   -- NOTE: blockchain state is stored in TVar so there's no need to
   --       thread it explicitly.
   -- FIXME: at the moment we start from genesis block but we need to
   --        pass valid last commit
-  = flip fix Nothing $ \loop cm -> loop . Just =<< heightLoop as ac cm
+  = flip fix Nothing $ \loop cm -> do
+      cm' <- heightLoop as ac cm
+      h   <- readTVarIO appBlockchain >>= \case
+        Cons    b _ -> return $ headerHeight $ blockHeader b
+        Genesis b   -> return $ headerHeight $ blockHeader b
+      case appMaxHeight of
+        Just h' | h' > h -> return ()
+        _                -> loop (Just cm')
 
 -- Loop where we decide which block we need to commit at given height
 heightLoop
-  :: (Crypto alg, Serialise a)
+  :: (Crypto alg, Serialise a, Show a)
   => AppState alg a
   -> AppChans alg a
   -> Maybe (Commit alg a)
@@ -75,7 +83,11 @@ heightLoop appSt@AppState{..} appCh@AppChans{..} lastCommt = do
     _          -> error "FIXME: what to do? We cannot fail here!"
   where
     loop hParams tm = do
+      appLogger "### Next transition"
+      appLogger (groom tm)
       msg <- atomically $ readTChan appChanRx
+      appLogger "### Received message"
+      appLogger (groom msg)
       let pkLookup a = validatorPubKey <$> Map.lookup a appValidatorsSet
           verify x cont = case verifySignature pkLookup x of
             Just x' -> cont x'
@@ -151,7 +163,7 @@ makeHeightParametes AppState{..} AppChans{..} = do
     { currentH        = h
     --
     , scheduleTimeout = \t -> liftIO $ void $ forkIO $ do
-        threadDelay (4*1000*1000)
+        threadDelay (1*1000*1000)
         atomically $ writeTChan appChanRx $ RxTimeout t
     --
     , castPrevote     = \r b -> liftIO $ do

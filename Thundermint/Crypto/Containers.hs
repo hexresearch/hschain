@@ -50,6 +50,9 @@ data SignedSet ty alg a = SignedSet
     -- Total voting power
   }
 
+instance (Show a) => Show (SignedSet ty alg a) where
+  showsPrec n = showsPrec n . vsetAddrMap
+
 -- | Result of insertion into 'SignedSet'
 data InsertResult b a
   = InsertOK       a            -- ^ Insert is successful
@@ -137,6 +140,9 @@ data SignedSetMap r ty alg a = SignedSetMap
   , vmapPower    :: Address alg -> Integer
   , vmapTotPower :: Integer
   }
+
+instance (Show a, Show r) => Show (SignedSetMap r ty alg a) where
+  showsPrec n = showsPrec n . vmapSubmaps
 
 emptySignedSetMap
   :: (Address alg -> Integer)

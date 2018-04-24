@@ -4,12 +4,14 @@
 -- import Codec.Serialise (Serialise)
 import Control.Monad
 import Control.Concurrent
+import Control.Concurrent.Async
 import Control.Concurrent.STM
 import Data.Int
 import Data.Word
 import qualified Data.Map             as Map
 import qualified Data.ByteString.Lazy as BS
 import           Data.Map (Map)
+import System.IO
 
 import Thundermint.Blockchain.App
 import Thundermint.Blockchain.Types
@@ -24,11 +26,11 @@ newtype instance PrivKey   Swear = SwearPrivK Word8
 newtype instance PublicKey Swear = SwearPubK Word8
 -- newtype instance Signature Swear = SwearSig ()
 
--- | We assume that there's 
-instance Crypto Swear where  
+-- | We assume that there's
+instance Crypto Swear where
   signBlob            _ _   = Signature ""
   verifyBlobSignature _ _ _ = True
-  publicKey (SwearPrivK w)  = SwearPubK w 
+  publicKey (SwearPrivK w)  = SwearPubK w
   address   (SwearPubK  w)  = Address $ BS.pack [w]
   hashBlob                  = Hash
 
@@ -37,16 +39,21 @@ instance Crypto Swear where
 ----------------------------------------------------------------
 
 startNode
-  :: (Crypto alg)
-  => Blockchain alg Int64
-  -> Map (Address alg) (Validator alg)
-  -> PrivValidator alg Int64
-  -> IO (AppChans alg Int64)
+  :: ()
+  => Blockchain Swear Int64
+  -> Map (Address Swear) (Validator Swear)
+  -> PrivValidator Swear Int64
+  -> IO (AppChans Swear Int64, Async ())
 startNode blockchain vals privValidator = do
   appCh     <- newAppChans
   blockchTV <- newTVarIO blockchain
   store     <- newTVarIO Map.empty
   -- Thread with main application
+  file <- openFile ("logs/" ++ let SwearPrivK nm = validatorPrivKey privValidator
+                               in show nm
+                   ) WriteMode
+  let logger s = do hPutStrLn file s
+                    hFlush file
   let appState = AppState { appBlockchain    = blockchTV
                           , appBlockStore    = store
                           , appProposalMaker = \r commit -> do
@@ -74,11 +81,13 @@ startNode blockchain vals privValidator = do
                                                 }
                           , appValidator     = privValidator
                           , appValidatorsSet = vals
+                          , appLogger        = logger
+                          , appMaxHeight     = Just (Height 3)
                           }
-  _ <- forkIO $ runApplication appState appCh
+  hnd <- async $ runApplication appState appCh
   --
-  return appCh
-  
+  return (appCh, hnd)
+
 
 ----------------------------------------------------------------
 --
@@ -128,18 +137,24 @@ main = do
   appChans <- mapM (startNode genesisBlock validatorSet) validators
   -- Connect each application to each other
   let pairs = [ (ach1, ach2)
-              | (i,ach1) <- zip [1::Int ..] appChans
-              , (j,ach2) <- zip [1::Int ..] appChans
+              | (i,(ach1,_)) <- zip [1::Int ..] appChans
+              , (j,(ach2,_)) <- zip [1::Int ..] appChans
               , i > j
               ]
   forM_ pairs $ \(chA, chB) -> do
     chA2B <- newTChanIO
-    chB2A <- newTChanIO    
-    startPeer chA Connection { sendEnd = atomically . writeTChan chA2B
-                             , recvEnd = readTChan chB2A
-                             }
-    startPeer chB Connection { sendEnd = atomically . writeTChan chB2A
-                             , recvEnd = readTChan chA2B
-                             }
+    chB2A <- newTChanIO
+    txA   <- atomically $ dupTChan $ appChanTx chA
+    txB   <- atomically $ dupTChan $ appChanTx chB
+    startPeer
+      chA { appChanTx = txA }
+      Connection { sendEnd = atomically . writeTChan chA2B
+                 , recvEnd = readTChan chB2A
+                 }
+    startPeer
+      chB { appChanTx = txB }
+      Connection { sendEnd = atomically . writeTChan chB2A
+                 , recvEnd = readTChan chA2B
+                 }
   -- Wait until done.
-  return ()
+  forM_ appChans $ \(_,a) -> wait a

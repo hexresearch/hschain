@@ -65,6 +65,7 @@ data TMState alg a = TMState
     -- ^ Commit for previous block. Nothing if previous block is
     --   genesis block.
   }
+  deriving (Show)
 
 -- | Set of parameters for consensus algorithm for given height. These
 --   parameters are constant for the duration of data
