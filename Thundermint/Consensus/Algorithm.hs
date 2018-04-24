@@ -251,14 +251,14 @@ enterPropose HeightParameres{..} r sm@TMState{..} = do
   scheduleTimeout $ Timeout currentH r StepProposal
   -- If we're proposers we need to broadcast proposal. Otherwise we do
   -- nothing
-  when (areWeProposers smRound) $ case smLockedBlock of
+  when (areWeProposers r) $ case smLockedBlock of
     -- FIXME: take care of POL fields of proposal
     --
     -- If we're locked on block we MUST propose it
-    Just (_,bid) -> do proposeBlock smRound bid
+    Just (_,bid) -> do proposeBlock r bid
     -- Otherwise we need to create new block from mempool
     Nothing      -> do p <- makeProposal r smLastCommit
-                       proposeBlock smRound p
+                       proposeBlock r p
   return sm { smRound = r
             , smStep  = StepProposal
             }

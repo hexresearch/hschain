@@ -77,26 +77,29 @@ heightLoop appSt@AppState{..} appCh@AppChans{..} lastCommt = do
         , smLockedBlock   = Nothing
         , smLastCommit    = lastCommt
         }
+  appLogger $ "=== NEW HEIGHT: " ++ show (currentH hParam)
   mtm <- runConsesusM (newHeight hParam tmState0)
   case mtm of
     Success tm -> loop hParam tm
     _          -> error "FIXME: what to do? We cannot fail here!"
   where
     loop hParams tm = do
-      appLogger "### Next transition"
-      appLogger (groom tm)
+      appLogger $ unlines [ "### Next transition"
+                          , groom tm
+                          ]
       msg <- atomically $ readTChan appChanRx
-      appLogger "### Received message"
-      appLogger (groom msg)
+      appLogger $ unlines [ "### Received message"
+                          , groom msg
+                          ]
       let pkLookup a = validatorPubKey <$> Map.lookup a appValidatorsSet
           verify x cont = case verifySignature pkLookup x of
             Just x' -> cont x'
             Nothing -> loop hParams tm
       let recur m =
             runConsesusM (tendermintTransition hParams m tm) >>= \case
-              Success tm'    -> loop hParams tm'
-              Tranquility    -> loop hParams tm
-              Misdeed        -> loop hParams tm
+              Success tm'    -> appLogger ">>> Success"     >> loop hParams tm'
+              Tranquility    -> appLogger ">>> Tranquility" >> loop hParams tm
+              Misdeed        -> appLogger ">>> Misdeed"     >> loop hParams tm
               DoCommit cmt b -> do
                 blockStore <- readTVarIO appBlockStore
                 case Map.lookup b blockStore of
@@ -151,14 +154,14 @@ instance ConsensusMonad (ConsensusM alg a) where
   panic       = error
 
 makeHeightParametes
-  :: (Crypto alg, Serialise a)
+  :: (Crypto alg, Serialise a, Show a)
   => AppState alg a
   -> AppChans alg a
   -> IO (HeightParameres (ConsensusM alg a) alg a)
 makeHeightParametes AppState{..} AppChans{..} = do
   h <- readTVarIO appBlockchain >>= \case
-    Cons    b _ -> return $ headerHeight $ blockHeader b
-    Genesis b   -> return $ headerHeight $ blockHeader b
+    Cons    b _ -> return $ next $ headerHeight $ blockHeader b
+    Genesis b   -> return $ next $ headerHeight $ blockHeader b
   return HeightParameres
     { currentH        = h
     --
@@ -174,7 +177,12 @@ makeHeightParametes AppState{..} AppChans{..} = do
                         , voteBlockID = b
                         }
             svote  = signValue pk vote
-        atomically $ writeTChan appChanTx (TxPreVote svote)
+        appLogger $ unlines [ ">>> SENDING PREVOTE"
+                            , groom svote
+                            ]
+        atomically $ do
+          writeTChan appChanTx (TxPreVote svote)
+          writeTChan appChanRx (RxPreVote $ unverifySignature svote)
     --
     , castPrecommit   = \r b -> liftIO $ do
         let pk   = validatorPrivKey appValidator
@@ -184,7 +192,12 @@ makeHeightParametes AppState{..} AppChans{..} = do
                         , voteBlockID = b
                         }
             svote  = signValue pk vote
-        atomically $ writeTChan appChanTx (TxPreCommit svote)
+        appLogger $ unlines [ ">>> SENDING PRECOMMIT"
+                            , groom svote
+                            ]
+        atomically $ do
+          writeTChan appChanTx (TxPreCommit svote)
+          writeTChan appChanRx (RxPreCommit $ unverifySignature svote)
     --
     , proposeBlock    = \r b -> liftIO $ do
         blockStore <- readTVarIO appBlockStore
@@ -200,7 +213,12 @@ makeHeightParametes AppState{..} AppChans{..} = do
                             , propBlock     = blck
                             }
             sprop  = signValue pk prop
-        atomically $ writeTChan appChanTx (TxProposal sprop)
+        appLogger $ unlines [ ">>> SENDING PROPOSAL"
+                            , groom sprop
+                            ]
+        atomically $ do
+          writeTChan appChanTx (TxProposal sprop)
+          writeTChan appChanRx (RxProposal $ unverifySignature sprop)
       -- FIXME: What are doing here???
     , makeProposal    = \r cm -> liftIO $ atomically $ do
         p <- appProposalMaker r cm

@@ -41,5 +41,6 @@ Executable thundermint-simple
                      , containers >=0.5.7
                      , stm        >=2.4
                      , async      >=2.2
+                     , time
   hs-source-dirs:      exe
   Main-is:             simple.hs
