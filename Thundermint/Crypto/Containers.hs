@@ -18,9 +18,11 @@ module Thundermint.Crypto.Containers (
   , addSignedValue
   , majority23at
   , any23at
+  , valuesAtR
   ) where
 
 import Control.Monad
+import           Data.Foldable
 import           Data.Monoid       (Sum(..))
 import qualified Data.Map        as Map
 import           Data.Map          (Map)
@@ -169,3 +171,13 @@ any23at
   -> Bool
 any23at r SignedSetMap{..}
   = maybe False any23 $ Map.lookup r vmapSubmaps
+
+valuesAtR
+  :: (Ord r)
+  => r
+  -> SignedSetMap r ty alg a
+  -> [Signed ty alg a]
+valuesAtR r SignedSetMap{..} =
+  case Map.lookup r vmapSubmaps of
+    Nothing            -> []
+    Just SignedSet{..} -> toList vsetAddrMap

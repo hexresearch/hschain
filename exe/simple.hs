@@ -1,12 +1,14 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeFamilies #-}
 
+-- import Codec.Serialise (Serialise)
 import Control.Monad
 import Control.Concurrent
 import Control.Concurrent.STM
+import Data.Int
 import Data.Word
-import qualified Data.Map        as Map
-import qualified Data.ByteString as BS
+import qualified Data.Map             as Map
+import qualified Data.ByteString.Lazy as BS
 import           Data.Map (Map)
 
 import Thundermint.Blockchain.App
@@ -28,28 +30,52 @@ instance Crypto Swear where
   verifyBlobSignature _ _ _ = True
   publicKey (SwearPrivK w)  = SwearPubK w 
   address   (SwearPubK  w)  = Address $ BS.pack [w]
-  hashValue = error "hashValue:Swear"
+  hashBlob                  = Hash
 
 ----------------------------------------------------------------
 --
 ----------------------------------------------------------------
 
 startNode
-  :: Blockchain alg a
+  :: (Crypto alg)
+  => Blockchain alg Int64
   -> Map (Address alg) (Validator alg)
-  -> PrivValidator alg a
-  -> IO (AppChans alg a)
-startNode blockchain validators privValidator = do
+  -> PrivValidator alg Int64
+  -> IO (AppChans alg Int64)
+startNode blockchain vals privValidator = do
   appCh     <- newAppChans
   blockchTV <- newTVarIO blockchain
-  commitTV  <- newTVarIO Nothing
+  store     <- newTVarIO Map.empty
   -- Thread with main application
   let appState = AppState { appBlockchain    = blockchTV
-                          , appLastCommit    = commitTV
-                          -- , appProposalMaker = 
+                          , appBlockStore    = store
+                          , appProposalMaker = \r commit -> do
+                              bch <- readTVar blockchTV
+                              let lastBlock = case bch of
+                                    Cons    b _ -> b
+                                    Genesis b   -> b
+                              let Height h = headerHeight $ blockHeader lastBlock
+                                  block = Block
+                                    { blockHeader     = Header
+                                        { headerChainID     = "TEST"
+                                        , headerHeight      = Height (h + 1)
+                                        , headerTime        = Time 0
+                                        , headerLastBlockID = Just (blockHash lastBlock)
+                                        }
+                                    , blockData       = h * 100
+                                    , blockLastCommit = commit
+                                    }
+                              return $ Proposal { propHeight  = Height (h + 1)
+                                                , propRound   = r
+                                                , propTimestamp = Time 0
+                                                , propPOL     = Nothing
+                                                , propBlockID = blockHash block
+                                                , propBlock   = block
+                                                }
                           , appValidator     = privValidator
-                          , appValidatorsSet = validators
+                          , appValidatorsSet = vals
                           }
+  _ <- forkIO $ runApplication appState appCh
   --
   return appCh
   
@@ -58,18 +84,18 @@ startNode blockchain validators privValidator = do
 --
 ----------------------------------------------------------------
 
-validators :: [PrivValidator Swear Int]
+validators :: [PrivValidator Swear Int64]
 validators =
-  [ PrivValidator { validatorPrivKey = SwearPrivK 1
+  [ PrivValidator { validatorPrivKey  = SwearPrivK 1
                   , validateBlockData = undefined
                   }
-  , PrivValidator { validatorPrivKey = SwearPrivK 2
+  , PrivValidator { validatorPrivKey  = SwearPrivK 2
                   , validateBlockData = undefined
                   }
-  , PrivValidator { validatorPrivKey = SwearPrivK 3
+  , PrivValidator { validatorPrivKey  = SwearPrivK 3
                   , validateBlockData = undefined
                   }
-  , PrivValidator { validatorPrivKey = SwearPrivK 4
+  , PrivValidator { validatorPrivKey  = SwearPrivK 4
                   , validateBlockData = undefined
                   }
   ]
@@ -84,7 +110,7 @@ validatorSet = Map.fromList
   | v <- validators
   ]
 
-genesisBlock :: Blockchain Swear Int
+genesisBlock :: Blockchain Swear Int64
 genesisBlock = Genesis Block
   { blockHeader = Header
       { headerChainID     = "TEST"
@@ -102,8 +128,8 @@ main = do
   appChans <- mapM (startNode genesisBlock validatorSet) validators
   -- Connect each application to each other
   let pairs = [ (ach1, ach2)
-              | (i,ach1) <- zip [1..] appChans
-              , (j,ach2) <- zip [1..] appChans
+              | (i,ach1) <- zip [1::Int ..] appChans
+              , (j,ach2) <- zip [1::Int ..] appChans
               , i > j
               ]
   forM_ pairs $ \(chA, chB) -> do

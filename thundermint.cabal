@@ -20,6 +20,7 @@ Library
                      , bytestring >=0.10
                      , containers >=0.5.7
                      , stm        >=2.4
+                     , serialise  >=0.2
   Exposed-modules:
                   Thundermint.Blockchain.Types
                   Thundermint.Blockchain.App

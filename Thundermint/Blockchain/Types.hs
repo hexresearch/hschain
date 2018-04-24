@@ -24,9 +24,7 @@ data AppState alg a = AppState
     --
     --   FIXME: really??? We do need to store all blocks at current
     --          height but not all blocks
-  , appLastCommit    :: TVar (Maybe (Commit alg a))
-    -- ^ FIXME: should we keep last commit in memory? It feels dirty
-  , appProposalMaker :: STM (Proposal alg a)
+  , appProposalMaker :: Round -> Maybe (Commit alg a) -> STM (Proposal alg a)
     -- ^ FIXME: STM? Proposer must not block for long time
   , appValidator     :: PrivValidator alg a
     -- ^ Validator set is assumed to be 

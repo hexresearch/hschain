@@ -8,11 +8,11 @@ module Thundermint.P2P where
 import Control.Monad
 import Control.Concurrent
 import Control.Concurrent.STM
-import           Data.Function
-import qualified Data.Map        as Map
-import           Data.Map          (Map)
-import qualified Data.Set        as Set
-import           Data.Set          (Set)
+-- import           Data.Function
+-- import qualified Data.Map        as Map
+-- import           Data.Map          (Map)
+-- import qualified Data.Set        as Set
+-- import           Data.Set          (Set)
 
 import Thundermint.Crypto
 import Thundermint.Consensus.Types
