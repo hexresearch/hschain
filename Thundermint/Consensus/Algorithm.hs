@@ -10,7 +10,17 @@
 -- assumes that everything sent to it is already validated! In
 -- particular dealing with block content is delegated to other parts
 -- of library
-module Thundermint.Consensus.Algorithm where
+module Thundermint.Consensus.Algorithm (
+    -- * Data types
+    ProposalState(..)
+  , Message(..)
+  , TMState(..)
+  , HeightParameres(..)
+    -- * State transitions
+  , ConsensusMonad(..)
+  , newHeight
+  , tendermintTransition
+  ) where
 
 import Control.Monad
 import qualified Data.Map        as Map
@@ -72,9 +82,10 @@ data HeightParameres (m :: * -> *) alg a = HeightParameres
   , areWeProposers      :: Round -> Bool
     -- ^ Check whether we're proposers for this round
   , proposeBlock        :: Round -> BlockID alg a -> m ()
+    -- ^ Broadcast proposal
   , commitBlock         :: forall x. TMState alg a -> BlockID alg a -> m x
+    -- ^ We're done for this height.
   }
-
 
 
 
@@ -96,10 +107,19 @@ class Monad m => ConsensusMonad m where
   --   thing we can do is to die with honor
   panic :: String -> m a
 
+newHeight
+  :: (Crypto alg, ConsensusMonad m)
+  => HeightParameres m alg a
+  -> TMState alg a
+  -> m (TMState alg a)
+newHeight par = enterPropose par (Round 0)
 
 -- | Transition rule for tendermint state machine. State is passed
 --   explicitly and we track effects like sending message and
 --   committing in the monad.
+--
+--   Note that when state machine sends vote or proposal it does not
+--   update state and thus message should be send back to it
 tendermintTransition
   :: (Crypto alg, ConsensusMonad m)
   => HeightParameres m alg a  -- ^ Parameters for current height
