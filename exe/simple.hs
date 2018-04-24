@@ -1,9 +1,9 @@
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeFamilies #-}
 
 -- import Codec.Serialise (Serialise)
 import Control.Monad
-import Control.Concurrent
 import Control.Concurrent.Async
 import Control.Concurrent.STM
 import Data.Int
@@ -12,12 +12,14 @@ import qualified Data.Map             as Map
 import qualified Data.ByteString.Lazy as BS
 import           Data.Map (Map)
 import System.IO
+import Data.Time.Clock (getCurrentTime)
 
 import Thundermint.Blockchain.App
 import Thundermint.Blockchain.Types
 import Thundermint.Consensus.Types
 import Thundermint.P2P
 import Thundermint.Crypto
+import Thundermint.Crypto.Containers
 
 -- Mock crypto which works as long as no one tries to break it.
 data Swear
@@ -52,7 +54,9 @@ startNode blockchain vals privValidator = do
   file <- openFile ("logs/" ++ let SwearPrivK nm = validatorPrivKey privValidator
                                in show nm
                    ) WriteMode
-  let logger s = do hPutStrLn file s
+  let logger s = do t <- getCurrentTime
+                    hPrint    file t
+                    hPutStrLn file s
                     hFlush file
   let appState = AppState { appBlockchain    = blockchTV
                           , appBlockStore    = store

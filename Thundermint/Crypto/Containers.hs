@@ -61,11 +61,11 @@ data InsertResult b a
   deriving (Show,Functor)
 
 instance Applicative (InsertResult b) where
-  pure  = return
+  pure  = InsertOK
   (<*>) = ap
 
 instance Monad (InsertResult b) where
-  return = pure
+  return = InsertOK
   InsertOK a       >>= f = f a
   InsertDup        >>= _ = InsertDup
   InsertConflict b >>= _ = InsertConflict b
@@ -157,10 +157,11 @@ addSignedValue
   -> SignedSetMap r ty alg a
   -> InsertResult (Signed ty alg a) (SignedSetMap r ty alg a)
 addSignedValue r a sm@SignedSetMap{..} = do
-  m' <- case Map.lookup r vmapSubmaps of
-    Nothing -> insertSigned a $ emptySignedSet vmapPower vmapTotPower
-    Just m  -> return m
-  return sm { vmapSubmaps = Map.insert r m' vmapSubmaps }
+  let m' = case Map.lookup r vmapSubmaps of
+             Nothing -> emptySignedSet vmapPower vmapTotPower
+             Just m  ->  m
+  m'' <- insertSigned a m'
+  return sm { vmapSubmaps = Map.insert r m'' vmapSubmaps }
 
 majority23at
   :: (Ord r, Crypto alg, Ord a)
