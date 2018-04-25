@@ -39,7 +39,9 @@ import Codec.Serialise (Serialise,serialise)
 import Control.Monad
 -- import qualified Data.ByteString as BS
 import           Data.Word
-import           Data.ByteString.Lazy   (ByteString)
+import           Data.ByteString.Lazy     (ByteString)
+import qualified Data.ByteString        as BS
+import qualified Data.ByteString.Base16 as Base16
 import GHC.Generics (Generic)
 
 
@@ -54,16 +56,31 @@ data family PrivKey   alg
 data family PublicKey alg
 
 -- | Signature
-newtype Signature alg = Signature ByteString
-  deriving (Show,Eq,Ord, Serialise)
+newtype Signature alg = Signature BS.ByteString
+  deriving (Eq,Ord, Serialise)
+
+instance Show (Signature alg) where
+  showsPrec n (Signature bs)
+    = showParen (n > 10)
+    $ showString "Signature " . shows (Base16.encode bs)
 
 -- |
-newtype Address alg = Address ByteString
-  deriving (Show,Eq,Ord, Serialise)
+newtype Address alg = Address BS.ByteString
+  deriving (Eq,Ord, Serialise)
+
+instance Show (Address alg) where
+  showsPrec n (Address bs)
+    = showParen (n > 10)
+    $ showString "Address " . shows (Base16.encode bs)
 
 -- |
-newtype Hash alg = Hash ByteString
-  deriving (Show,Eq,Ord, Serialise)
+newtype Hash alg = Hash BS.ByteString
+  deriving (Eq,Ord, Serialise)
+
+instance Show (Hash alg) where
+  showsPrec n (Hash bs)
+    = showParen (n > 10)
+    $ showString "Hash " . shows (Base16.encode bs)
 
 -- | Type-indexed set of crypto algorithms. It's not very principled
 --   by to keep signatures sane everything was thrown into same type
