@@ -13,7 +13,8 @@ import qualified Data.Map             as Map
 import qualified Data.ByteString      as BS
 import           Data.Map (Map)
 import System.IO
-import Data.Time.Clock (getCurrentTime)
+import Data.Time.Clock (getCurrentTime,diffUTCTime,UTCTime)
+import Text.Printf
 
 import Thundermint.Blockchain.App
 import Thundermint.Blockchain.Types
@@ -42,11 +43,12 @@ instance Crypto Swear where
 
 startNode
   :: ()
-  => Blockchain Swear Int64
+  => UTCTime
+  -> Blockchain Swear Int64
   -> Map (Address Swear) (Validator Swear)
   -> PrivValidator Swear Int64
   -> IO (AppChans Swear Int64, Async ())
-startNode blockchain vals privValidator = do
+startNode t0 blockchain vals privValidator = do
   appCh     <- newAppChans
   blockchTV <- newTVarIO blockchain
   store     <- newTVarIO Map.empty
@@ -55,9 +57,10 @@ startNode blockchain vals privValidator = do
                                in show nm
                    ) WriteMode
   let logger s = do t <- getCurrentTime
-                    hPrint    file t
+                    hPutStr   file
+                      (printf "%10.3f: " (realToFrac (diffUTCTime t t0) :: Double))
                     hPutStrLn file s
-                    hFlush file
+                    hFlush    file
   let appState = AppState { appBlockchain    = blockchTV
                           , appBlockStore    = store
                           , appProposalMaker = \r commit -> do
@@ -138,7 +141,8 @@ genesisBlock = Genesis Block
 main :: IO ()
 main = do
   -- Start application for all validators
-  appChans <- mapM (startNode genesisBlock validatorSet) validators
+  t0 <- getCurrentTime
+  appChans <- mapM (startNode t0 genesisBlock validatorSet) validators
   -- Connect each application to each other
   let pairs = [ (ach1, ach2)
               | (i,(ach1,_)) <- zip [1::Int ..] appChans
