@@ -86,6 +86,7 @@ data HeightParameres (m :: * -> *) alg a = HeightParameres
     -- ^ Broadcast proposal
   , commitBlock         :: forall x. Commit alg a -> BlockID alg a -> m x
     -- ^ We're done for this height.
+  , logger              :: String -> m ()
   }
 
 
@@ -221,9 +222,10 @@ checkTransitionPrecommit par@HeightParameres{..} r sm@(TMState{..})
   --        later moment they'll get
   | Just Vote{..} <- majority23at r smPrecommitsSet
   , Just bid      <- voteBlockID
-    = commitBlock Commit{ commitBlockID    = bid
-                        , commitPrecommits = valuesAtR r smPrecommitsSet
-                        } bid
+    = do logger $ "COMMMITING: " ++ show bid
+         commitBlock Commit{ commitBlockID    = bid
+                           , commitPrecommits = valuesAtR r smPrecommitsSet
+                           } bid
   --  * We have +2/3 precommits for nil at current round
   --  * We are at Precommit step [FIXME?]
   --  => goto Propose(H,R+1)
@@ -248,6 +250,7 @@ enterPropose
   -> TMState alg a
   -> m (TMState alg a)
 enterPropose HeightParameres{..} r sm@TMState{..} = do
+  logger "ENTER PROPOSE"
   scheduleTimeout $ Timeout currentH r StepProposal
   -- If we're proposers we need to broadcast proposal. Otherwise we do
   -- nothing
@@ -275,6 +278,7 @@ enterPrevote
   -> TMState alg a
   -> m (TMState alg a)
 enterPrevote par@HeightParameres{..} r (unlockOnPrevote -> sm@TMState{..}) = do
+  logger "ENTER PREVOTE"
   castPrevote smRound prevoteBlock
   scheduleTimeout $ Timeout currentH r StepPrevote
   checkTransitionPrevote par r sm
@@ -321,6 +325,7 @@ enterPrecommit
   -> TMState alg a
   -> m (TMState alg a)
 enterPrecommit par@HeightParameres{..} r sm@TMState{..} = do
+  logger "ENTER PRECOMMIT"
   castPrecommit r precommitBlock
   scheduleTimeout $ Timeout currentH r StepPrecommit
   checkTransitionPrecommit par r sm
@@ -331,7 +336,7 @@ enterPrecommit par@HeightParameres{..} r sm@TMState{..} = do
   where
     (precommitBlock,lock)
       -- We have polka at round R
-      | Just v <- majority23at r smPrecommitsSet
+      | Just v <- majority23at r smPrevotesSet
         = case voteBlockID v of
             -- Polca for NIL. Unlock and precommit NIL
             Nothing  -> ( Nothing

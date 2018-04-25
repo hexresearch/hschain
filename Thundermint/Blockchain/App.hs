@@ -109,10 +109,11 @@ heightLoop appSt@AppState{..} appCh@AppChans{..} lastCommt = do
       case msg of
         RxPreVote   v -> verify v (recur . PreVoteMsg)
         RxPreCommit v -> verify v (recur . PreCommitMsg)
-        RxProposal  p -> verify p $ \sp ->
+        RxProposal  p -> verify p $ \sp -> do
           -- FIXME: we need to separate wheat (GoodProposal) from chaff (InvalidProposal)
           let Proposal{..} = signedValue sp
-          in recur $ ProposalMsg propHeight propRound (GoodProposal propBlockID)
+          atomically $ modifyTVar appBlockStore $ Map.insert propBlockID propBlock
+          recur $ ProposalMsg propHeight propRound (GoodProposal propBlockID)
         RxTimeout t -> recur (TimeoutMsg t)
 
 
@@ -234,4 +235,5 @@ makeHeightParametes AppState{..} AppChans{..} = do
             addr      = Map.keys appValidatorsSet !! fromIntegral i
         in addr == address (publicKey (validatorPrivKey appValidator))
     , commitBlock     = \tm b -> ConsensusM $ return $ DoCommit tm b
+    , logger = liftIO . appLogger
     }
