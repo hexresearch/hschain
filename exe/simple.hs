@@ -6,10 +6,11 @@
 import Control.Monad
 import Control.Concurrent.Async
 import Control.Concurrent.STM
+import qualified Crypto.Hash.MD5 as MD5
 import Data.Int
 import Data.Word
 import qualified Data.Map             as Map
-import qualified Data.ByteString.Lazy as BS
+import qualified Data.ByteString      as BS
 import           Data.Map (Map)
 import System.IO
 import Data.Time.Clock (getCurrentTime)
@@ -19,7 +20,6 @@ import Thundermint.Blockchain.Types
 import Thundermint.Consensus.Types
 import Thundermint.P2P
 import Thundermint.Crypto
-import Thundermint.Crypto.Containers
 
 -- Mock crypto which works as long as no one tries to break it.
 data Swear
@@ -34,7 +34,7 @@ instance Crypto Swear where
   verifyBlobSignature _ _ _ = True
   publicKey (SwearPrivK w)  = SwearPubK w
   address   (SwearPubK  w)  = Address $ BS.pack [w]
-  hashBlob                  = Hash
+  hashBlob                  = Hash . MD5.hashlazy
 
 ----------------------------------------------------------------
 --
