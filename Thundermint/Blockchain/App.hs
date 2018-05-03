@@ -276,11 +276,10 @@ makeHeightParametes AppState{..} AppChans{..} = do
           writeTChan appChanTx (TxPreCommit svote)
           writeTChan appChanRx (RxPreCommit $ unverifySignature svote)
 
-    --   -- FIXME: What are doing here???
-    -- , makeProposal    = \r cm -> liftIO $ atomically $ do
-    --     p <- appProposalMaker r cm
-    --     modifyTVar appBlockStore $ Map.insert (propBlockID p) (propBlock p)
-    --     return $ propBlockID p
+    , createProposal    = \r cm -> liftIO $ do
+        b <- appBlockGenerator cm
+        storePropBlock appStorage h b
+        return $ blockHash b
 
     , commitBlock     = \cm -> ConsensusM $ return $ DoCommit cm
 

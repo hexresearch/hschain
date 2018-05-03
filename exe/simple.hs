@@ -2,16 +2,16 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeFamilies #-}
 
--- import Codec.Serialise (Serialise)
+import Codec.Serialise (Serialise)
 import Control.Monad
 import Control.Concurrent.Async
 import Control.Concurrent.STM
 import qualified Crypto.Hash.MD5 as MD5
 import Data.Int
 import Data.Word
-import qualified Data.Map             as Map
 import qualified Data.ByteString      as BS
-import           Data.Map (Map)
+import           Data.Map               (Map)
+import qualified Data.Map             as Map
 import System.IO
 import Data.Time.Clock (getCurrentTime,diffUTCTime,UTCTime)
 import Text.Printf
@@ -21,6 +21,7 @@ import Thundermint.Blockchain.Types
 import Thundermint.Consensus.Types
 import Thundermint.P2P
 import Thundermint.Crypto
+import Thundermint.Store
 
 -- Mock crypto which works as long as no one tries to break it.
 data Swear
@@ -41,17 +42,55 @@ instance Crypto Swear where
 --
 ----------------------------------------------------------------
 
+newSTMBlockStorage
+  :: (Crypto alg, Serialise a)
+  => Block alg a
+  -> IO (BlockStorage 'RW IO alg a)
+newSTMBlockStorage gBlock = do
+  -- FIXME: we MUST require correct genesis block
+  varBlocks <- newTVarIO $ Map.singleton (Height 0) gBlock
+  varPBlk   <- newTVarIO $ Map.empty
+  varLCmt   <- newTVarIO Nothing
+  let currentHeight = do
+        Just (h,_) <- Map.lookupMax <$> readTVar varBlocks
+        return h
+  return BlockStorage
+    { blockchainHeight = atomically currentHeight
+    , retrieveBlock    = \h -> do m <- readTVarIO varBlocks
+                                  return $ Map.lookup h m
+    , retrieveLastCommit = readTVarIO varLCmt
+    , storeCommit = \cmt blk -> atomically $ do
+        h <- currentHeight
+        modifyTVar' varBlocks $ Map.insert (next h) blk
+        writeTVar   varLCmt (Just cmt)
+        writeTVar   varPBlk Map.empty
+
+    , retrievePropBlocks = \height -> atomically $ do
+        h <- currentHeight
+        if h == height then readTVar varPBlk
+                       else return Map.empty
+    , storePropBlock = \height blk -> atomically $ do
+        h <- currentHeight
+        when (height == h) $ do
+          let bid = blockHash blk
+          modifyTVar varPBlk $ Map.insert bid blk
+    }
+
+
+----------------------------------------------------------------
+--
+----------------------------------------------------------------
+
 startNode
   :: ()
   => UTCTime
-  -> Blockchain Swear Int64
+  -- -> Blockchain Swear Int64
   -> Map (Address Swear) (Validator Swear)
   -> PrivValidator Swear Int64
   -> IO (AppChans Swear Int64, Async ())
-startNode t0 blockchain vals privValidator = do
+startNode t0 vals privValidator = do
   appCh     <- newAppChans
-  blockchTV <- newTVarIO blockchain
-  store     <- newTVarIO Map.empty
+  appSt     <- newSTMBlockStorage genesisBlock
   -- Thread with main application
   file <- openFile ("logs/" ++ let SwearPrivK nm = validatorPrivKey privValidator
                                in show nm
@@ -61,13 +100,10 @@ startNode t0 blockchain vals privValidator = do
                       (printf "%10.3f: " (realToFrac (diffUTCTime t t0) :: Double))
                     hPutStrLn file s
                     hFlush    file
-  let appState = AppState { appBlockchain    = blockchTV
-                          , appBlockStore    = store
-                          , appProposalMaker = \r commit -> do
-                              bch <- readTVar blockchTV
-                              let lastBlock = case bch of
-                                    Cons    b _ -> b
-                                    Genesis b   -> b
+  let appState = AppState { appStorage = appSt
+                          , appBlockGenerator = \commit -> do
+                              -- FIXME: We need to fetch last block
+                              Just lastBlock <- retrieveBlock appSt =<< blockchainHeight appSt
                               let Height h = headerHeight $ blockHeader lastBlock
                                   block = Block
                                     { blockHeader     = Header
@@ -79,13 +115,7 @@ startNode t0 blockchain vals privValidator = do
                                     , blockData       = h * 100
                                     , blockLastCommit = commit
                                     }
-                              return $ Proposal { propHeight  = Height (h + 1)
-                                                , propRound   = r
-                                                , propTimestamp = Time 0
-                                                , propPOL     = Nothing
-                                                , propBlockID = blockHash block
-                                                , propBlock   = block
-                                                }
+                              return block
                           , appValidator     = privValidator
                           , appValidatorsSet = vals
                           , appLogger        = logger
@@ -126,8 +156,8 @@ validatorSet = Map.fromList
   | v <- validators
   ]
 
-genesisBlock :: Blockchain Swear Int64
-genesisBlock = Genesis Block
+genesisBlock :: Block Swear Int64
+genesisBlock = Block
   { blockHeader = Header
       { headerChainID     = "TEST"
       , headerHeight      = Height 0
@@ -142,7 +172,7 @@ main :: IO ()
 main = do
   -- Start application for all validators
   t0 <- getCurrentTime
-  appChans <- mapM (startNode t0 genesisBlock validatorSet) validators
+  appChans <- mapM (startNode t0 validatorSet) validators
   -- Connect each application to each other
   let pairs = [ (ach1, ach2)
               | (i,(ach1,_)) <- zip [1::Int ..] appChans
