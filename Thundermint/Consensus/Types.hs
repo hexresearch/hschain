@@ -4,13 +4,36 @@
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE KindSignatures             #-}
-{-# LANGUAGE StandaloneDeriving         #-}
 -- |
 -- Data types for implementation of consensus algorithm
-module Thundermint.Consensus.Types where
+module Thundermint.Consensus.Types (
+    -- * Newtype wrappers
+    Height(..)
+  , Round(..)
+  , Time(..)
+  , Sequence(..)
+    -- * Basic data types for blockchain
+  , BlockID
+  , Block(..)
+  , Header(..)
+  , Commit(..)
+    -- * Data types for establishing consensus
+  , Step(..)
+  , Timeout(..)
+  , Proposal(..)
+    -- ** Votes
+  , VoteType(..)
+  , Vote(..)
+  , VoteSet
+  , HeightVoteSet
+    -- * State of tendermint consensus
+  , ProposalState(..)
+  , TMState(..)
+  ) where
 
 import           Codec.Serialise
 import           Data.ByteString   (ByteString)
+import           Data.Map          (Map)
 import           Data.Int
 import GHC.Generics (Generic)
 
@@ -55,13 +78,9 @@ data Block alg a = Block
   , blockData       :: a
   , blockLastCommit :: Maybe (Commit alg a)
     -- ^ Commit information for previous block. Nothing iff block
-    --   is a genesis block
+    --   is a genesis block or block at height 1.
   }
-  deriving (Generic)
-deriving instance ( Show (Address alg)
-                  , Show (Signature alg)
-                  , Show a
-                  ) => Show (Block alg a)
+  deriving (Show, Generic)
 instance Serialise a => Serialise (Block alg a)
 
 -- | Block header
@@ -90,6 +109,12 @@ data Commit alg a = Commit
   deriving (Show,Generic)
 instance Serialise (Commit alg a)
 
+
+
+----------------------------------------------------------------
+-- Data types for establishing consensus
+----------------------------------------------------------------
+
 -- | Step of the algorithm
 data Step
   = StepProposal
@@ -100,13 +125,9 @@ data Step
 data Timeout = Timeout Height Round Step
   deriving (Show,Eq,Ord)
 
-----------------------------------------------------------------
--- Votes
-----------------------------------------------------------------
-
--- | Proposal which could be made by 
+-- | Proposal for new block. Proposal include only hash of block and
+--   block itself is gossiped separately.
 data Proposal alg a = Proposal
-  -- FIXME: we need to carry actual proposal data as well!
   { propHeight    :: Height
     -- ^ Proposal height
   , propRound     :: Round
@@ -114,9 +135,11 @@ data Proposal alg a = Proposal
   , propTimestamp :: Time
     -- ^ Time of proposal
   , propPOL       :: Maybe (Round, BlockID alg a)
-    -- ^ Proof of Lock for proposal [FIXME: why it's needed?]
+    -- ^ Proof of Lock for proposal
+    --
+    -- FIXME: why it's needed? How should it be used?
   , propBlockID   :: BlockID alg a
-  , propBlock     :: Block   alg a
+    -- ^ Hash of proposed block
   }
   deriving (Show,Generic)
 
@@ -153,3 +176,37 @@ type VoteSet ty alg a = SignedSet 'Verified (Vote ty alg a)
 
 type HeightVoteSet ty alg a = SignedSetMap Round 'Verified alg (Vote ty alg a)
 
+
+----------------------------------------------------------------
+-- State for of tendermint state machine
+----------------------------------------------------------------
+
+-- | Proposal state as seen by consensus algorithm
+data ProposalState
+  = GoodProposal
+    -- ^ Proposal is valid and we could vote for it
+  | InvalidProposal
+    -- ^ Proposal is invalid for some reason
+  | UnseenProposal
+    -- ^ We don't have complete block data for particular block ID yet
+  deriving (Show, Eq)
+
+-- | State for tendermint consensus at some particular height.
+data TMState alg a = TMState
+  { smRound            :: Round
+    -- ^ Current round
+  , smStep             :: Step
+    -- ^ Current step in the round
+  , smProposals        :: Map Round (Proposal alg a)
+    -- ^ Proposal for current round
+  , smPrevotesSet      :: HeightVoteSet 'PreVote alg a
+    -- ^ Set of all received valid prevotes
+  , smPrecommitsSet    :: HeightVoteSet 'PreCommit alg a
+    -- ^ Set of all received valid precommits
+  , smLockedBlock      :: Maybe (Round, BlockID alg a)
+    -- ^ Round and block we're locked on
+  , smLastCommit       :: Maybe (Commit alg a)
+    -- ^ Commit for previous block. Nothing if previous block is
+    --   genesis block.
+  }
+  deriving (Show)

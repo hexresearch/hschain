@@ -1,11 +1,14 @@
 {-# LANGUAGE DataKinds        #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE KindSignatures   #-}
+{-# LANGUAGE LambdaCase       #-}
 {-# LANGUAGE RankNTypes       #-}
 {-# LANGUAGE RecordWildCards  #-}
 {-# LANGUAGE ViewPatterns     #-}
 -- |
--- Implementation of tendermint consensus protocol. Note that this
+-- Implementation of tendermint consensus protocol.
+--
+-- Note that this
 -- module provides only implementation of consensus state machine and
 -- assumes that everything sent to it is already validated! In
 -- particular dealing with block content is delegated to other parts
@@ -35,57 +38,42 @@ import Thundermint.Consensus.Types
 --
 ----------------------------------------------------------------
 
-data ProposalState alg a
-  = InvalidProposal (BlockID alg a)
-  | GoodProposal    (BlockID alg a)
-  deriving (Show)
-
+-- | Messages being sent to consensus engine
 data Message alg a
-  = ProposalMsg    Height Round (ProposalState alg a)
+  = ProposalMsg    (Proposal alg a)
+    -- ^ Incoming proposal
   | PreVoteMsg     (Signed 'Verified alg (Vote 'PreVote   alg a))
+    -- ^ Incoming prevote
   | PreCommitMsg   (Signed 'Verified alg (Vote 'PreCommit alg a))
+    -- ^ Incoming precommit
   | TimeoutMsg     Timeout
+    -- ^ Timeout
   deriving Show
-
--- | State for tendermint consensus at some particular height.
-data TMState alg a = TMState
-  { smRound            :: Round
-    -- ^ Current round
-  , smStep             :: Step
-    -- ^ Current step in the round
-  , smPrevotesSet      :: HeightVoteSet 'PreVote alg a
-    -- ^ Set of all received valid prevotes
-  , smPrecommitsSet    :: HeightVoteSet 'PreCommit alg a
-    -- ^ Set of all received valid precommits
-  , smProposals        :: Map Round (ProposalState alg a)
-    -- ^ Proposal for current round
-  , smLockedBlock      :: Maybe (Round, BlockID alg a)
-    -- ^ Round and block we're locked on
-  , smLastCommit       :: Maybe (Commit alg a)
-    -- ^ Commit for previous block. Nothing if previous block is
-    --   genesis block.
-  }
-  deriving (Show)
 
 -- | Set of parameters for consensus algorithm for given height. These
 --   parameters are constant for the duration of data
 data HeightParameres (m :: * -> *) alg a = HeightParameres
   { currentH            :: Height
-    -- ^ Height we're on
+    -- ^ Height we're on.
+  , areWeProposers      :: Round -> Bool
+    -- ^ Find address of proposer for given round.
+  , validateBlock       :: BlockID alg a -> m ProposalState
+    -- ^ Request validation of particular block
+
   , scheduleTimeout     :: Timeout -> m ()
-    -- ^ Schedule timeout
+    -- ^ Schedule timeout.
+  , broadcastProposal   :: Round -> BlockID alg a -> m ()
+    -- ^ Broadcast proposal for given round and block.
   , castPrevote         :: Round -> Maybe (BlockID alg a) -> m ()
     -- ^ Broadcast prevote for particular block ID in some round.
   , castPrecommit       :: Round -> Maybe (BlockID alg a) -> m ()
-    -- ^ Broadcast precommit
-  , makeProposal        :: Round -> Maybe (Commit alg a) -> m (BlockID alg a)
-    -- ^ Create proposal block
-  , areWeProposers      :: Round -> Bool
-    -- ^ Check whether we're proposers for this round
-  , proposeBlock        :: Round -> BlockID alg a -> m ()
-    -- ^ Broadcast proposal
-  , commitBlock         :: forall x. Commit alg a -> BlockID alg a -> m x
-    -- ^ We're done for this height.
+    -- ^ Broadcast precommit for particular block ID in some round.
+  , createProposal      :: Round -> Maybe (Commit alg a) -> m (BlockID alg a)
+    -- ^ Create new proposal block. Block itself should be stored
+    --   elsewhere.
+  , commitBlock         :: forall x. Commit alg a -> m x
+    -- ^ We're done for this height. Commit block to blockchain
+
   , logger              :: String -> m ()
   }
 
@@ -132,16 +120,18 @@ tendermintTransition par@HeightParameres{..} msg sm@TMState{..} =
   case msg of
     -- Receiving proposal by itself does not entail state transition.
     -- We leave PROPOSE only after timeout
-    ProposalMsg h r p
+    ProposalMsg p@Proposal{..}
       -- Ignore proposal from wrong height
-      | h /= currentH -> tranquility
-      -- We already have proposal ignore this
+      | propHeight /= currentH
+        -> tranquility
+      -- We have proposal already
       --
-      -- FIXME: should we track double proposals?
-      --        tendermint implementation have same question
-      | Just _ <- Map.lookup r smProposals -> tranquility
+      -- FIXME: should we track double proposals? Tendermint
+      --        implementation have same question
+      | Just _ <- Map.lookup propRound smProposals
+        -> tranquility
       -- Add it to map of proposals
-      | otherwise -> return sm { smProposals = Map.insert r p smProposals }
+      | otherwise -> return sm { smProposals = Map.insert propRound p smProposals }
     ----------------------------------------------------------------
     PreVoteMsg v@(signedValue -> Vote{..})
       -- Only accept votes with current height
@@ -225,7 +215,7 @@ checkTransitionPrecommit par@HeightParameres{..} r sm@(TMState{..})
     = do logger $ "COMMMITING: " ++ show bid
          commitBlock Commit{ commitBlockID    = bid
                            , commitPrecommits = valuesAtR r smPrecommitsSet
-                           } bid
+                           }
   --  * We have +2/3 precommits for nil at current round
   --  * We are at Precommit step [FIXME?]
   --  => goto Propose(H,R+1)
@@ -258,10 +248,10 @@ enterPropose HeightParameres{..} r sm@TMState{..} = do
     -- FIXME: take care of POL fields of proposal
     --
     -- If we're locked on block we MUST propose it
-    Just (_,bid) -> do proposeBlock r bid
+    Just (_,bid) -> do broadcastProposal r bid
     -- Otherwise we need to create new block from mempool
-    Nothing      -> do p <- makeProposal r smLastCommit
-                       proposeBlock r p
+    Nothing      -> do bid <- createProposal r smLastCommit
+                       broadcastProposal r bid
   return sm { smRound = r
             , smStep  = StepProposal
             }
@@ -278,8 +268,10 @@ enterPrevote
   -> TMState alg a
   -> m (TMState alg a)
 enterPrevote par@HeightParameres{..} r (unlockOnPrevote -> sm@TMState{..}) = do
+  --
   logger "ENTER PREVOTE"
-  castPrevote smRound prevoteBlock
+  castPrevote smRound =<< prevoteBlock
+  --
   scheduleTimeout $ Timeout currentH r StepPrevote
   checkTransitionPrevote par r sm
     { smRound = r
@@ -288,11 +280,17 @@ enterPrevote par@HeightParameres{..} r (unlockOnPrevote -> sm@TMState{..}) = do
   where
     prevoteBlock
       -- We're locked on block so we prevote it
-      | Just (_,bid) <- smLockedBlock                       = Just bid
-      -- Proposal from current round is good. Prevote it
-      | Just (GoodProposal bid) <- Map.lookup r smProposals = Just bid
+      | Just (_,bid) <- smLockedBlock      = return (Just bid)
+      -- We have proposal. Prevote it if it's good
+      | Just p <- Map.lookup r smProposals =
+          validateBlock (propBlockID p) >>= \case
+            GoodProposal    -> return (Just (propBlockID p))
+            InvalidProposal -> return Nothing
+            -- FIXME: tendermint allows prevote for blocks not yet
+            --        seen but let be conservative
+            UnseenProposal  -> return Nothing
       -- Proposal invalid or absent. Prevote NIL
-      | otherwise                                           = Nothing
+      | otherwise                          = return Nothing
 
 -- Unlock upon entering prevote which happens if:
 --   * We're already locked
