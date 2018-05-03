@@ -19,7 +19,8 @@ Library
   Build-Depends:       base              >=4.9 && <5
                      , bytestring        >=0.10
                      , base16-bytestring >=0.1
-                     , containers        >=0.5.7
+                     , transformers      >=0.5
+                     , containers        >=0.5.9
                      , stm               >=2.4
                      , serialise         >=0.2
                      --
@@ -32,6 +33,7 @@ Library
                   Thundermint.Crypto
                   Thundermint.Crypto.Containers
                   Thundermint.P2P
+                  Thundermint.Store
 
 Executable thundermint-simple
   Ghc-options:         -Wall

@@ -87,6 +87,6 @@ data AppChans alg a = AppChans
     --   read-only manner for gossip with peers.
   }
 
--- newAppChans :: IO (AppChans alg a)
--- newAppChans =
---   AppChans <$> newTChanIO <*> newBroadcastTChanIO
+newAppChans :: IO (AppChans alg a)
+newAppChans =
+  AppChans <$> newTChanIO <*> newBroadcastTChanIO <*> newTVarIO Nothing
