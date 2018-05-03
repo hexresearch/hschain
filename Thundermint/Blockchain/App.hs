@@ -1,20 +1,29 @@
+{-# LANGUAGE DataKinds        #-}
+{-# LANGUAGE DeriveFunctor    #-}
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE DeriveFunctor   #-}
-{-# LANGUAGE LambdaCase      #-}
-{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE LambdaCase       #-}
+{-# LANGUAGE RecordWildCards  #-}
+{-# LANGUAGE TupleSections    #-}
 -- |
--- Full blockchain application
-module Thundermint.Blockchain.App where
+-- Core of blockchain application. This module provides function which
+-- continuously updates blockchain using consensus algorithm and
+-- communicates with outside world using STM channels.
+module Thundermint.Blockchain.App (
+    runApplication
+  ) where
 
 import Codec.Serialise (Serialise)
+import Control.Applicative
 import Control.Monad
 import Control.Monad.IO.Class
+import Control.Monad.Trans.Class
+import Control.Monad.Trans.Maybe
 import Control.Concurrent
 import Control.Concurrent.STM
 -- import           Data.Foldable
 import           Data.Function
 import qualified Data.Map        as Map
--- import           Data.Map          (Map)
+import           Data.Map          (Map)
 import Text.Groom
 
 import Thundermint.Blockchain.Types
@@ -22,6 +31,7 @@ import Thundermint.Crypto
 import Thundermint.Crypto.Containers
 import Thundermint.Consensus.Algorithm
 import Thundermint.Consensus.Types
+import Thundermint.Store
 -- import Thundermint.P2P
 
 
@@ -41,28 +51,33 @@ runApplication
   -> AppChans alg a
      -- ^ Channels for communication with peers
   -> IO ()
-runApplication as@AppState{..} ac
-  -- NOTE: blockchain state is stored in TVar so there's no need to
-  --       thread it explicitly.
-  -- FIXME: at the moment we start from genesis block but we need to
-  --        pass valid last commit
-  = flip fix Nothing $ \loop cm -> do
-      cm' <- heightLoop as ac cm
-      h   <- readTVarIO appBlockchain >>= \case
-        Cons    b _ -> return $ headerHeight $ blockHeader b
-        Genesis b   -> return $ headerHeight $ blockHeader b
-      case appMaxHeight of
-        Just h' | h' > h -> return ()
-        _                -> loop (Just cm')
+runApplication appSt@AppState{..} appCh =
+  fix (\loop commit -> do
+          cm <- decideNewBlock appSt appCh commit
+          -- ASSERT: We successfully commited next block
+          --
+          -- FIXME: do we need to communicate with peers about our
+          --        commit? (Do we need +2/3 commits to proceed
+          --        further)
+          h  <- blockchainHeight appStorage
+          case appMaxHeight of
+            Just h' | h > h' -> return ()
+            _                -> loop (Just cm)
+      ) =<< retrieveLastCommit appStorage
 
--- Loop where we decide which block we need to commit at given height
-heightLoop
+-- This function uses consensus algorithm to decide which block we're
+-- going to commit at current height, then stores it in database and
+-- returns commit.
+--
+-- FIXME: we should write block and last commit in transaction!
+decideNewBlock
   :: (Crypto alg, Serialise a, Show a)
   => AppState alg a
   -> AppChans alg a
   -> Maybe (Commit alg a)
   -> IO (Commit alg a)
-heightLoop appSt@AppState{..} appCh@AppChans{..} lastCommt = do
+decideNewBlock appSt@AppState{..} appCh@AppChans{..} lastCommt = do
+  -- Create initial state for consensus state machine
   hParam <- makeHeightParametes appSt appCh
   let totalPower       = sum $ fmap validatorVotingPower appValidatorsSet
       votingPower addr = case Map.lookup addr appValidatorsSet of
@@ -77,44 +92,81 @@ heightLoop appSt@AppState{..} appCh@AppChans{..} lastCommt = do
         , smLockedBlock   = Nothing
         , smLastCommit    = lastCommt
         }
-  appLogger $ "=== NEW HEIGHT: " ++ show (currentH hParam)
-  mtm <- runConsesusM (newHeight hParam tmState0)
-  case mtm of
-    Success tm -> loop hParam tm
-    _          -> error "FIXME: what to do? We cannot fail here!"
+  -- Enter PREVOTE of round 0
+  --
+  -- FIXME: encode that we cannot fail here!
+  appLogger $ "NEW HEIGHT: " ++ show (currentH hParam)
+  Success tm0 <- runConsesusM $ newHeight hParam tmState0
+  -- Handle incoming messages until we decide on next block.
+  flip fix (tm0, Map.empty) $ \loop (tm, blocks) -> do
+    -- Make current state of consensus available for gossip
+    appLogger $ unlines [ "### Next transition"
+                        , groom tm
+                        ]
+    atomically $ writeTVar appTMState $ Just ( currentH hParam
+                                             , tm
+                                             , blocks
+                                             )
+    -- Receive message
+    msg <- atomically $ readTChan appChanRx
+    appLogger $ unlines [ "### Received message"
+                        , groom msg
+                        ]
+    -- Handle message
+    res <- runMaybeT
+        $ lift . handleVerifiedMessage hParam (tm,blocks)
+      =<< verifyMessageSignature appSt msg
+    case res of
+      Nothing             -> loop (tm, blocks)
+      Just (Success r)    -> loop r
+      Just Tranquility    -> loop (tm, blocks)
+      Just Misdeed        -> loop (tm, blocks)
+      Just (DoCommit cmt) -> do
+        storeCommit appStorage cmt (undefined "lookup actual block by block ID")
+        return cmt
+
+
+-- Handle message and perform state transitions for both
+handleVerifiedMessage
+  :: (Crypto alg)
+  => HeightParameres (ConsensusM alg a) alg a
+  -> (TMState alg a, BlockMap alg a)
+  -> MessageRx 'Verified alg a
+  -> IO (ConsensusResult alg a (TMState alg a, BlockMap alg a))
+handleVerifiedMessage hParam (tm, blocks) = \case
+  -- FIXME: check that proposal comes from correct proposer
+  RxProposal  p -> do tm' <- runConsesusM $ tendermintTransition hParam (ProposalMsg (signedValue p)) tm
+                      return $ (, blocks) <$> tm'
+  RxPreVote   v -> do tm' <- runConsesusM $ tendermintTransition hParam (PreVoteMsg v) tm
+                      return $ (, blocks) <$> tm'
+  RxPreCommit v -> do tm' <- runConsesusM $ tendermintTransition hParam (PreCommitMsg v) tm
+                      return $ (, blocks) <$> tm'
+  RxTimeout   t -> do tm' <- runConsesusM $ tendermintTransition hParam (TimeoutMsg t) tm
+                      return $ (, blocks) <$> tm'
+  -- We update block storage
+
+
+-- Verify signature of message. If signature is not correct message is
+-- simply discarded
+--
+-- NOTE: set of validators may change so we may lack public key of
+--       some validators from height different from current. But since
+--       we ignore messages from wrong height anyway it doesn't matter
+verifyMessageSignature
+  :: (Crypto alg, Serialise a)
+  => AppState alg a
+  -> MessageRx 'Unverified alg a
+  -> MaybeT IO (MessageRx 'Verified alg a)
+verifyMessageSignature AppState{..} = \case
+  RxPreVote   sv -> verify RxPreVote   sv
+  RxPreCommit sv -> verify RxPreCommit sv
+  RxProposal  sp -> verify RxProposal  sp
+  RxTimeout   t  -> return $ RxTimeout t
   where
-    loop hParams tm = do
-      appLogger $ unlines [ "### Next transition"
-                          , groom tm
-                          ]
-      msg <- atomically $ readTChan appChanRx
-      appLogger $ unlines [ "### Received message"
-                          , groom msg
-                          ]
-      let pkLookup a = validatorPubKey <$> Map.lookup a appValidatorsSet
-          verify x cont = case verifySignature pkLookup x of
-            Just x' -> cont x'
-            Nothing -> loop hParams tm
-      let recur m =
-            runConsesusM (tendermintTransition hParams m tm) >>= \case
-              Success tm'    -> appLogger ">>> Success"     >> loop hParams tm'
-              Tranquility    -> appLogger ">>> Tranquility" >> loop hParams tm
-              Misdeed        -> appLogger ">>> Misdeed"     >> loop hParams tm
-              DoCommit cmt b -> do
-                blockStore <- readTVarIO appBlockStore
-                case Map.lookup b blockStore of
-                  Just blk -> atomically $ modifyTVar appBlockchain (Cons blk) 
-                  Nothing  -> error "Panic: no block to commit!"
-                return cmt
-      case msg of
-        RxPreVote   v -> verify v (recur . PreVoteMsg)
-        RxPreCommit v -> verify v (recur . PreCommitMsg)
-        RxProposal  p -> verify p $ \sp -> do
-          -- FIXME: we need to separate wheat (GoodProposal) from chaff (InvalidProposal)
-          let Proposal{..} = signedValue sp
-          atomically $ modifyTVar appBlockStore $ Map.insert propBlockID propBlock
-          recur $ ProposalMsg propHeight propRound (GoodProposal propBlockID)
-        RxTimeout t -> recur (TimeoutMsg t)
+    verify con sx = case verifySignature pkLookup sx of
+      Just sx' -> return $ con sx'
+      Nothing  -> empty
+    pkLookup a = validatorPubKey <$> Map.lookup a appValidatorsSet
 
 
 
@@ -131,7 +183,7 @@ data ConsensusResult alg a b
   = Success b
   | Tranquility
   | Misdeed
-  | DoCommit  (Commit alg a) (BlockID alg a)
+  | DoCommit  (Commit alg a)
   deriving (Functor)
 
 instance Applicative (ConsensusM alg a) where
@@ -141,10 +193,10 @@ instance Applicative (ConsensusM alg a) where
 instance Monad (ConsensusM alg a) where
   return = ConsensusM . return . Success
   ConsensusM m >>= f = ConsensusM $ m >>= \case
-    Success a     -> runConsesusM (f a)
-    Tranquility   -> return Tranquility
-    Misdeed       -> return Misdeed
-    DoCommit tm b -> return $ DoCommit tm b
+    Success a   -> runConsesusM (f a)
+    Tranquility -> return Tranquility
+    Misdeed     -> return Misdeed
+    DoCommit cm -> return $ DoCommit cm
 
 instance MonadIO (ConsensusM alg a) where
   liftIO = ConsensusM . fmap Success
@@ -160,16 +212,40 @@ makeHeightParametes
   -> AppChans alg a
   -> IO (HeightParameres (ConsensusM alg a) alg a)
 makeHeightParametes AppState{..} AppChans{..} = do
-  h <- readTVarIO appBlockchain >>= \case
-    Cons    b _ -> return $ next $ headerHeight $ blockHeader b
-    Genesis b   -> return $ next $ headerHeight $ blockHeader b
+  h <- blockchainHeight appStorage
   return HeightParameres
     { currentH        = h
+      -- FIXME: this is some random algorithms that should probably
+      --        work (for some definition of work)
+    , areWeProposers  = \(Round r) ->
+        let Height h' = h
+            n         = Map.size appValidatorsSet
+            i         = (h' + r) `mod` fromIntegral n
+            addr      = Map.keys appValidatorsSet !! fromIntegral i
+        in addr == address (publicKey (validatorPrivKey appValidator))
+    , validateBlock = \_ -> return UnseenProposal
+
+    --
+    , broadcastProposal = \r bid -> liftIO $ do
+        let pk   = validatorPrivKey appValidator
+            prop = Proposal { propHeight    = h
+                            , propRound     = r
+                            , propTimestamp = Time 0
+                            , propPOL       = Nothing
+                            , propBlockID   = bid
+                            }
+            sprop  = signValue pk prop
+        appLogger $ unlines [ ">>> SENDING PROPOSAL"
+                            , groom sprop
+                            ]
+        atomically $ do
+          writeTChan appChanTx (TxProposal sprop)
+          writeTChan appChanRx (RxProposal $ unverifySignature sprop)
     --
     , scheduleTimeout = \t -> liftIO $ void $ forkIO $ do
         threadDelay (1*1000*1000)
         atomically $ writeTChan appChanRx $ RxTimeout t
-    --
+    -- FIXME: Do we need to store cast votes to WAL as well?
     , castPrevote     = \r b -> liftIO $ do
         let pk   = validatorPrivKey appValidator
             vote = Vote { voteHeight  = h
@@ -199,41 +275,14 @@ makeHeightParametes AppState{..} AppChans{..} = do
         atomically $ do
           writeTChan appChanTx (TxPreCommit svote)
           writeTChan appChanRx (RxPreCommit $ unverifySignature svote)
-    --
-    , proposeBlock    = \r b -> liftIO $ do
-        blockStore <- readTVarIO appBlockStore
-        blck       <- case b `Map.lookup` blockStore of
-          Just x  -> return x
-          Nothing -> error "FIXME: internal error: missing block"
-        let pk   = validatorPrivKey appValidator
-            prop = Proposal { propHeight    = h
-                            , propRound     = r
-                            , propTimestamp = Time 0
-                            , propPOL       = Nothing
-                            , propBlockID   = b
-                            , propBlock     = blck
-                            }
-            sprop  = signValue pk prop
-        appLogger $ unlines [ ">>> SENDING PROPOSAL"
-                            , groom sprop
-                            ]
-        atomically $ do
-          writeTChan appChanTx (TxProposal sprop)
-          writeTChan appChanRx (RxProposal $ unverifySignature sprop)
-      -- FIXME: What are doing here???
-    , makeProposal    = \r cm -> liftIO $ atomically $ do
-        p <- appProposalMaker r cm
-        modifyTVar appBlockStore $ Map.insert (propBlockID p) (propBlock p)
-        return $ propBlockID p
 
-      -- FIXME: this is some random algorithms that should probably
-      --        work (for some definition of work)
-    , areWeProposers  = \(Round r) ->
-        let Height h' = h
-            n         = Map.size appValidatorsSet
-            i         = (h' + r) `mod` fromIntegral n
-            addr      = Map.keys appValidatorsSet !! fromIntegral i
-        in addr == address (publicKey (validatorPrivKey appValidator))
-    , commitBlock     = \tm b -> ConsensusM $ return $ DoCommit tm b
+    --   -- FIXME: What are doing here???
+    -- , makeProposal    = \r cm -> liftIO $ atomically $ do
+    --     p <- appProposalMaker r cm
+    --     modifyTVar appBlockStore $ Map.insert (propBlockID p) (propBlock p)
+    --     return $ propBlockID p
+
+    , commitBlock     = \cm -> ConsensusM $ return $ DoCommit cm
+
     , logger = liftIO . appLogger
     }
