@@ -81,7 +81,7 @@ data AppChans alg a = AppChans
     -- ^ TChan for sending messages to the main application
   , appChanTx   :: TChan (MessageTx alg a)
     -- ^ TChan for broadcasting messages to the peers
-  , appTMState  :: TVar  (Maybe (Height, TMState alg a, BlockMap alg a))
+  , appTMState  :: TVar  (Maybe (Height, TMState alg a))
     -- ^ Current state of consensus. It includes current height, state
     --   machine status and known blocks which should be exposed in
     --   read-only manner for gossip with peers.

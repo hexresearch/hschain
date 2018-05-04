@@ -98,15 +98,12 @@ decideNewBlock appSt@AppState{..} appCh@AppChans{..} lastCommt = do
   appLogger $ "NEW HEIGHT: " ++ show (currentH hParam)
   Success tm0 <- runConsesusM $ newHeight hParam tmState0
   -- Handle incoming messages until we decide on next block.
-  flip fix (tm0, Map.empty) $ \loop (tm, blocks) -> do
+  flip fix tm0 $ \loop tm -> do
     -- Make current state of consensus available for gossip
     appLogger $ unlines [ "### Next transition"
                         , groom tm
                         ]
-    atomically $ writeTVar appTMState $ Just ( currentH hParam
-                                             , tm
-                                             , blocks
-                                             )
+    atomically $ writeTVar appTMState $ Just (currentH hParam , tm)
     -- Receive message
     msg <- atomically $ readTChan appChanRx
     appLogger $ unlines [ "### Received message"
@@ -114,13 +111,13 @@ decideNewBlock appSt@AppState{..} appCh@AppChans{..} lastCommt = do
                         ]
     -- Handle message
     res <- runMaybeT
-        $ lift . handleVerifiedMessage hParam (tm,blocks)
+        $ lift . handleVerifiedMessage hParam tm
       =<< verifyMessageSignature appSt msg
     case res of
-      Nothing             -> loop (tm, blocks)
+      Nothing             -> loop tm
       Just (Success r)    -> loop r
-      Just Tranquility    -> loop (tm, blocks)
-      Just Misdeed        -> loop (tm, blocks)
+      Just Tranquility    -> loop tm
+      Just Misdeed        -> loop tm
       Just (DoCommit cmt) -> do
         storeCommit appStorage cmt (undefined "lookup actual block by block ID")
         return cmt
@@ -130,19 +127,15 @@ decideNewBlock appSt@AppState{..} appCh@AppChans{..} lastCommt = do
 handleVerifiedMessage
   :: (Crypto alg)
   => HeightParameres (ConsensusM alg a) alg a
-  -> (TMState alg a, BlockMap alg a)
+  -> TMState alg a
   -> MessageRx 'Verified alg a
-  -> IO (ConsensusResult alg a (TMState alg a, BlockMap alg a))
-handleVerifiedMessage hParam (tm, blocks) = \case
+  -> IO (ConsensusResult alg a (TMState alg a))
+handleVerifiedMessage hParam tm = \case
   -- FIXME: check that proposal comes from correct proposer
-  RxProposal  p -> do tm' <- runConsesusM $ tendermintTransition hParam (ProposalMsg (signedValue p)) tm
-                      return $ (, blocks) <$> tm'
-  RxPreVote   v -> do tm' <- runConsesusM $ tendermintTransition hParam (PreVoteMsg v) tm
-                      return $ (, blocks) <$> tm'
-  RxPreCommit v -> do tm' <- runConsesusM $ tendermintTransition hParam (PreCommitMsg v) tm
-                      return $ (, blocks) <$> tm'
-  RxTimeout   t -> do tm' <- runConsesusM $ tendermintTransition hParam (TimeoutMsg t) tm
-                      return $ (, blocks) <$> tm'
+  RxProposal  p -> runConsesusM $ tendermintTransition hParam (ProposalMsg (signedValue p)) tm
+  RxPreVote   v -> runConsesusM $ tendermintTransition hParam (PreVoteMsg v) tm
+  RxPreCommit v -> runConsesusM $ tendermintTransition hParam (PreCommitMsg v) tm
+  RxTimeout   t -> runConsesusM $ tendermintTransition hParam (TimeoutMsg t) tm
   -- We update block storage
 
 
