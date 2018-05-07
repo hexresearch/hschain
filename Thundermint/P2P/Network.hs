@@ -15,9 +15,9 @@ import Control.Exception
 import Control.Concurrent.STM
 import qualified Data.Map        as Map
 import           Data.Map          (Map)
-import qualified Data.ByteString            as BS
+import qualified Data.ByteString.Lazy       as BS
 import qualified Network.Socket             as Net
-import qualified Network.Socket.ByteString  as NetBS
+import qualified Network.Socket.ByteString.Lazy as NetBS
 
 ----------------------------------------------------------------
 --
@@ -38,6 +38,7 @@ data NetworkAPI sock addr = NetworkAPI
     -- ^ Receive data from socket
     --
     -- FIXME: Do we even need size parameter?
+  , close    :: sock -> IO ()
   }
 
 
@@ -72,8 +73,9 @@ realNetwork = NetworkAPI
     --
   , sendBS = NetBS.sendAll
   , recvBS = \sock n -> do
-      bs <- NetBS.recv sock n
+      bs <- NetBS.recv sock (fromIntegral n)
       return $ if BS.null bs then Nothing else Just bs
+  , close  = Net.close
   }
 
 
@@ -123,7 +125,8 @@ createMockNode MockNet{..} addr = NetworkAPI
               Just (x:xs) -> do writeTVar mnetIncoming $ Map.insert key xs mList
                                 return x
       return (close, accept)
-  , connect  = \loc -> atomically $ do
+    --
+  , connect = \loc -> atomically $ do
       s  <- do n <- readTVar mnetSockCounter
                writeTVar mnetSockCounter $! n + 1
                return (MockSocket n)
@@ -137,15 +140,18 @@ createMockNode MockNet{..} addr = NetworkAPI
         Just xs -> writeTVar mnetIncoming $ Map.insert loc (xs ++ [(s,loc)]) cmap
       return s
     --
-  , sendBS   = \s bs -> atomically $ do
+  , sendBS = \s bs -> atomically $ do
       cmap <- readTVar mnetConnections
       case s `Map.lookup` cmap of
         Nothing -> error "MockNet: Sending to closed socket!"
         Just ch -> writeTChan ch bs
     --
-  , recvBS   = \s _n -> atomically $ do
+  , recvBS = \s _n -> atomically $ do
       cmap <- readTVar mnetConnections
       case s `Map.lookup` cmap of
         Nothing -> return Nothing
         Just ch -> Just <$> readTChan ch
+    --
+  , close = \s -> atomically $ do
+      modifyTVar' mnetConnections $ Map.delete s
   }
