@@ -3,6 +3,9 @@
 -- Abstract API for network which support
 module Thundermint.P2P.Network (
     NetworkAPI(..)
+  , SendRecv(..)
+  , applySocket
+    -- * Real network
   , realNetwork
     -- * Mock in-memory network
   , MockSocket
@@ -41,6 +44,16 @@ data NetworkAPI sock addr = NetworkAPI
   , close    :: sock -> IO ()
   }
 
+data SendRecv = SendRecv
+  { send :: BS.ByteString -> IO ()
+  , recv :: Int -> IO (Maybe BS.ByteString)
+  }
+
+applySocket :: NetworkAPI s a -> s -> SendRecv
+applySocket NetworkAPI{..} s = SendRecv
+  { send = sendBS s
+  , recv = recvBS s
+  }
 
 ----------------------------------------------------------------
 --
