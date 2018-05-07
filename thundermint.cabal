@@ -24,6 +24,8 @@ Library
                      , stm               >=2.4
                      , serialise         >=0.2
                      --
+                     , network           >=2.7
+                     --
                      , groom
   Exposed-modules:
                   Thundermint.Blockchain.Types
@@ -33,6 +35,7 @@ Library
                   Thundermint.Crypto
                   Thundermint.Crypto.Containers
                   Thundermint.P2P
+                  Thundermint.P2P.Network
                   Thundermint.Store
 
 Executable thundermint-simple
@@ -44,6 +47,7 @@ Executable thundermint-simple
                      , containers >=0.5.7
                      , stm        >=2.4
                      , async      >=2.2
+                     , serialise  >=0.2
                      , time
                      , cryptohash-md5 >= 0.11.100
   hs-source-dirs:      exe
