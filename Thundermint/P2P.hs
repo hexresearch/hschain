@@ -1,213 +1,335 @@
-{-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE NumDecimals #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DataKinds           #-}
+{-# LANGUAGE LambdaCase          #-}
+{-# LANGUAGE RecordWildCards     #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 -- |
 -- Mock P2P
-module Thundermint.P2P where
+module Thundermint.P2P (
+    startPeerDispatcher
+  ) where
 
+import Control.Applicative
 import Control.Monad
+import Control.Exception
 import Control.Concurrent
 import Control.Concurrent.STM
--- import           Data.Function
--- import qualified Data.Map        as Map
--- import           Data.Map          (Map)
--- import qualified Data.Set        as Set
--- import           Data.Set          (Set)
+import Codec.Serialise
+import           Data.Foldable
+import           Data.Function
+import qualified Data.Map        as Map
+import           Data.Map          (Map)
+import qualified Data.Set        as Set
+import           Data.Set          (Set)
+import GHC.Generics (Generic)
 
 import Thundermint.Crypto
 import Thundermint.Consensus.Types
 import Thundermint.Blockchain.Types
+import Thundermint.P2P.Network
+import Thundermint.Store
+
 
 ----------------------------------------------------------------
 -- Data types
 ----------------------------------------------------------------
 
 -- | Messages which peers exchange with each other
-data PeerMsg alg a
-  = PMsgHasVote   Height Round VoteType (Address alg)
-  -- ^ We have following votes
-  | PMsgPreVote   (Signed 'Unverified alg (Vote 'PreVote   alg a))
-  -- ^ Prevote
-  | PMsgPreCommit (Signed 'Unverified alg (Vote 'PreCommit alg a))
-  -- ^ Precommit
-  | PMsgProposal  (Signed 'Unverified alg (Proposal alg a))
-  -- ^ Send proposal
-  --
-  --   FIXME: in the future we will want to split proposal and send it
-  --          in chunks
-  deriving (Show)
+--
+--   FIXME: We don't have good way to prevent DoS by spamming too much
+--          data
+data GossipMsg alg a
+  = GossipPreVote   (Signed 'Unverified alg (Vote 'PreVote   alg a))
+  | GossipPreCommit (Signed 'Unverified alg (Vote 'PreCommit alg a))
+  | GossipProposal  (Signed 'Unverified alg (Proposal alg a))
+  | GossipBlock     Height (Block alg a)
 
-data Connection alg a = Connection
-  { sendEnd :: PeerMsg alg a -> IO ()
-  , recvEnd :: STM (PeerMsg alg a)
+  -- Communication about status of peer
+
+  | GossipStatus    Height Round
+    -- ^ Gossip current status of consensus state machine
+  | GossipHasProposals   Height (Set Round)
+    -- ^ Gossip which proposals we have
+    --
+    --   FIXME: not space efficient. We could use bit array to
+    --          represent proposals we have
+  | GossipHasPrevotes    Height (Map Round (Set (Address alg)))
+    -- ^ Gossip about prevotes that we have
+  | GossipHasPrecommits  Height (Map Round (Set (Address alg)))
+    -- ^ Gossip about precommits that we have
+  | GossipHasPropBlocks  Height (Set (BlockID alg a))
+    -- ^ Gossip which blocks do we have as proposals for current
+    --   height
+
+  -- Peer exchange
+
+  | GossipHello
+  | GossipRequestPeers
+  | GossipPeers
+  deriving (Show, Generic)
+instance Serialise a => Serialise (GossipMsg alg a)
+
+-- | Description of our knowledge of peer. It's need to keep track
+--   what should we gossip to peer.
+data PeerState alg a = PeerState
+  { peerHeight     :: Height
+    -- ^ Height peer at
+  , peerPrevotes   :: Map Round (Set (Address alg))
+    -- ^ Set of prevotes for current height that peer has
+  , peerPrecommits :: Map Round (Set (Address alg))
+    -- ^ Set of precommits for current height that peer has
+  , peerProposals  :: Set Round
+    -- ^ Set of proposals peer has
+  , peerBlocks     :: Set (BlockID alg a)
   }
 
+
+-- | Connection handed to process controlling communication with peer
+data PeerChans addr alg a = PeerChans
+  { peerChanTx :: STM (MessageTx alg a)
+    -- ^ STM action for getting message to send to peer
+  , peerChanRx :: MessageRx 'Unverified alg a -> STM ()
+    -- ^ STM action for sending message to main application
+  , retreivePeerSet :: STM (Set addr)
+    -- ^ Obtain set of all peers
+  , sendPeerSet     :: Set addr -> STM ()
+    -- ^ Send set of peers to dispatcher
+  , peerStoreProposal :: Height -> Block alg a -> IO ()
+  }
+
+
 ----------------------------------------------------------------
--- Simple peers
+-- Dispatcher
+----------------------------------------------------------------
+
+startPeerDispatcher
+  :: (Serialise a, Ord addr)
+  => NetworkAPI sock addr
+  -> AppChans alg a
+  -> BlockStorage 'RW IO alg a
+  -> IO x
+startPeerDispatcher net@NetworkAPI{..} AppChans{..} BlockStorage{..} = do
+  peers        <- newPeerRegistry
+  peerExchange <- newTChanIO
+  let peerCh = PeerChans { peerChanTx = readTChan appChanTx
+                         , peerChanRx = writeTChan appChanRx
+                         , retreivePeerSet = do let PeerRegistry v = peers
+                                                m <- readTVar v
+                                                return $ Set.fromList $ toList m
+                         , sendPeerSet     = writeTChan peerExchange
+                         , peerStoreProposal = storePropBlock
+                         }
+  -- Start listening on socket
+  registry <- newPeerRegistry
+  flip finally (reapPeers registry)
+    $ forkLinked (acceptLoop net peerCh registry)
+    $ forever $ do
+        threadDelay 100000
+
+
+-- Initiate connection to remote host
+connectPeerTo
+  :: (Serialise a)
+  => NetworkAPI sock addr
+  -> addr
+  -> PeerChans addr alg a
+  -> PeerRegistry addr
+  -> IO ()
+connectPeerTo net@NetworkAPI{..} addr peerCh registry =
+  mask $ \restore -> void $ forkIO $ do
+    tid <- myThreadId
+    registerPeer registry tid addr
+    flip finally (unregisterPeer registry tid) $ do
+      sock <- connect addr
+      restore (startPeer peerCh (applySocket net sock))
+        `finally` close sock
+
+-- Initiate connection to remote host
+acceptPeer
+  :: (Serialise a)
+  => NetworkAPI sock addr
+  -> (sock,addr)
+  -> PeerChans addr alg a
+  -> PeerRegistry addr
+  -> IO ()
+acceptPeer net@NetworkAPI{..} (sock,addr) peerCh registry =
+  mask $ \restore -> void $ forkIO $ do
+    tid <- myThreadId
+    registerPeer registry tid addr
+    flip finally (unregisterPeer registry tid) $ do
+      restore (startPeer peerCh (applySocket net sock))
+        `finally` close sock
+
+acceptLoop
+  :: (Serialise a)
+  => NetworkAPI sock addr
+  -> PeerChans addr alg a
+  -> PeerRegistry addr
+  -> IO ()
+acceptLoop net@NetworkAPI{..} peerCh registry =
+  bracket (listenOn "50000") fst $ \(_,accept) -> forever $ do
+    mask $ \restore -> do
+      (sock, addr) <- accept
+      void $ forkIO $ do
+        tid <- myThreadId
+        registerPeer registry tid addr
+        flip finally (unregisterPeer registry tid) $ do
+          restore (startPeer peerCh (applySocket net sock))
+            `finally` close sock
+
+
+
+newtype PeerRegistry a = PeerRegistry (TVar (Map ThreadId a))
+
+newPeerRegistry :: IO (PeerRegistry a)
+newPeerRegistry = PeerRegistry <$> newTVarIO Map.empty
+
+registerPeer :: PeerRegistry a -> ThreadId -> a -> IO ()
+registerPeer (PeerRegistry v) tid
+  = atomically . modifyTVar' v . Map.insert tid
+
+unregisterPeer :: PeerRegistry a -> ThreadId -> IO ()
+unregisterPeer (PeerRegistry v)
+  = atomically . modifyTVar' v . Map.delete
+
+reapPeers :: PeerRegistry a -> IO ()
+reapPeers (PeerRegistry v)
+  = mapM_ killThread . Map.keys =<< readTVarIO v
+
+
+----------------------------------------------------------------
+-- Peer
 ----------------------------------------------------------------
 
 startPeer
-  :: ()
-  => AppChans alg a
-     -- ^ Communication channels to the main application
-  -> Connection alg a
-     -- ^ Connection to peer. Currently it's some peer
+  :: (Serialise a)
+  => PeerChans addr alg a  -- ^ Communication with main application
+                           --   and peer dispatcher
+  -> SendRecv              -- ^ Functions for interaction with network
   -> IO ()
-startPeer AppChans{..} Connection{..} = do
-  -- Receive loop
-  _ <- forkIO $ forever $ 
-    atomically recvEnd >>= \case
-      PMsgHasVote{}   -> return ()
-      PMsgPreVote   v -> atomically $ writeTChan appChanRx (RxPreVote   v)
-      PMsgPreCommit v -> atomically $ writeTChan appChanRx (RxPreCommit v)
-      PMsgProposal  p -> atomically $ writeTChan appChanRx (RxProposal  p)
-  -- Send loop
-  _ <- forkIO $ forever $
-    atomically (readTChan appChanTx) >>= \case
-      TxPreVote   v -> sendEnd $ PMsgPreVote   $ unverifySignature v
-      TxPreCommit v -> sendEnd $ PMsgPreCommit $ unverifySignature v
-      TxProposal  p -> sendEnd $ PMsgProposal  $ unverifySignature p
-  -- FIXME: we need to return some descriptor for peer
-  return ()
+startPeer peerCh@PeerChans{..} net@SendRecv{..} = do
+  gossipCh <- newTChanIO
+  peerVar  <- newTVarIO PeerState { peerHeight     = Height 0
+                                  , peerPrevotes   = Map.empty
+                                  , peerPrecommits = Map.empty
+                                  , peerProposals  = Set.empty
+                                  , peerBlocks     = Set.empty
+                                  }
+     -- Start gossip routines.
+  id $ forkLinked (peerGossipBlocks peerCh gossipCh peerVar)
+     $ forkLinked (peerGossipVotes  peerCh gossipCh peerVar)
+     -- Start send thread.
+     $ forkLinked (peerSendGossip gossipCh peerChanTx net)
+     -- Receive data from socket.
+     --
+     -- FIXME: Implement framing for messages. At the moment we rely
+     --        on implementation of MockNet where message won't be
+     --        split or merged.
+     $ fix $ \loop -> recv 4096 >>= \case
+         Nothing -> return ()
+         Just bs -> case deserialiseOrFail bs of
+           -- FIXME: do something meaningful with decoding error.
+           Left  _   -> return ()
+           Right msg -> case msg of
+             -- Forward to application
+             GossipPreVote   v -> atomically $ peerChanRx $ RxPreVote   v
+             GossipPreCommit v -> atomically $ peerChanRx $ RxPreCommit v
+             GossipProposal  p -> atomically $ peerChanRx $ RxProposal  p
+             -- Store block in block storage
+             GossipBlock   h b -> peerStoreProposal h b
+             -- Update peer state
+             GossipStatus         h _          ->
+               atomically $ modifyTVar' peerVar $ \p ->
+                 if peerHeight p == h then p
+                                      else PeerState { peerHeight     = h
+                                                     , peerPrevotes   = Map.empty
+                                                     , peerPrecommits = Map.empty
+                                                     , peerProposals  = Set.empty
+                                                     , peerBlocks     = Set.empty
+                                                     }
+
+             GossipHasProposals   h props      ->
+               atomically $ modifyTVar' peerVar $ \p ->
+                 if peerHeight p == h then p
+                                      else p { peerProposals = props }
+             GossipHasPrevotes    h prevotes   ->
+               atomically $ modifyTVar' peerVar $ \p ->
+                 if peerHeight p == h then p
+                                      else p { peerPrevotes = prevotes }
+             GossipHasPrecommits  h precommtis ->
+               atomically $ modifyTVar' peerVar $ \p ->
+                 if peerHeight p == h then p
+                                      else p { peerPrecommits = precommtis }
+             GossipHasPropBlocks  h bids       ->
+               atomically $ modifyTVar' peerVar $ \p ->
+                 if peerHeight p == h then p
+                                      else p { peerBlocks = bids }
+             --
 
 
 
 
+-- | Gossip blocks to peer
+peerGossipBlocks
+  :: ()
+  => PeerChans addr alg a
+  -> TChan (GossipMsg alg a)
+  -> TVar (PeerState alg a)
+  -> IO x
+peerGossipBlocks PeerChans{..} chan peerVar = forever $ do
+  -- 1. Check that we have more blocks that peer
+  -- 2. Send random block that we have and peer don't
+  -- 3. Sleep
+  undefined
+  threadDelay 100e3
+
+-- | Gossip votes with given peer
+peerGossipVotes
+  :: ()
+  => PeerChans addr alg a
+  -> TChan (GossipMsg alg a)
+  -> TVar (PeerState alg a)
+  -> IO x
+peerGossipVotes PeerChans{..} chan peerVar = forever $ do
+  -- 1. Check that we have more votes that peer
+  -- 2. Send random block that we have and peer don't
+  -- 3. Sleep
+  undefined
+  threadDelay 100e3
 
 
+peerSendGossip
+  :: (Serialise a)
+  => TChan (GossipMsg alg a)
+  -> STM (MessageTx alg a)
+  -> SendRecv
+  -> IO x
+peerSendGossip gossipCh readTx SendRecv{..} = forever $ do
+  msg <- atomically $ fromApp <|> readTChan gossipCh
+  send $ serialise msg
+  where
+    fromApp = readTx >>= return . \case
+      TxPreVote   v -> GossipPreVote   $ unverifySignature v
+      TxPreCommit v -> GossipPreCommit $ unverifySignature v
+      TxProposal  p -> GossipProposal  $ unverifySignature p
 
 
+----------------------------------------------------------------
+--
+----------------------------------------------------------------
 
--- -- | Data structure used to track peer's state.
--- -- 
--- -- FIXME: VERY inefficient! Go implementation uses bitmasks
--- --        to track votes and proposals
--- data PeerState alg a = PeerState
---   { peerHeight     :: Height
---     -- ^ Height peer at
---   , peerPrevotes   :: Map Round (Set (Address alg))                             
---     -- ^ Set of prevotes for current height that peer has
---   , peerPrecommits :: Map Round (Set (Address alg))
---     -- ^ Set of precommits for current height that peer has
---   , peerProposals  :: Set Round
---     -- ^ Set of proposals peer has
---   }
-
--- -- | All connections for peer
--- data Connection alg a = Connection
---   { peerConnRx :: TChan (PeerMsg alg a)
---     --
---   , peerConnTx ::
---     --
---   , peerConnTx :: TChan (PeerMsg alg a)
---     --
---   }
-
-
--- -- | Start peer
--- startPeer
---   :: (PeerMsg alg a -> IO ())
---      -- ^ Send message to peer
---   -> STM (PeerMsg alg a)
---      -- ^ Receive message from peer
---      --
---      --   FIXME: in real setting we'll have another thread to read message
---   -> IO ()
--- startPeer = undefined
-
--- ----------------------------------------------------------------
-
--- -- Gossips data from peer
--- --
--- --  * Periodically check whether we have data which peer doesn't have
--- peerGossipRoutine
---   :: TVar (PeerState alg a)
---   -> IO x
--- -- FIXME: We need to pass round state here!
--- --        Should we use TVar (TMState alg a)?
--- peerGossipRoutine = undefined
-
--- -- Receive data from peer
--- --
--- --  * Check signature validity if needed. We want to check signatures
--- --    here since we will want to punish peer sending incorrect messages
--- --
--- --  * Forward to application as RxMessage
--- peerRecvRoutine
---   :: AppState alg a         -- We need application state to check signatures.
---   -> TVar (PeerState alg a) -- State of peer
---   -> IO x
--- peerRecvRoutine = undefined
-
--- -- Send data to peer
--- peerSendRoutine
---   :: TChan (MessageTx alg a) -- Read end for broadcast messages
---   -> IO x
--- peerSendRoutine = undefined
-
--- -- | Local state. Everything is stored in TVars
--- --
--- --   FIXME: obviously we'll need to persists this data
--- data LocalState alg a = LocalState
---   { locSHeight       :: TVar Height
---   , locSBlockchain   :: TVar (Blockchain alg a)
---   , locSPrevoteSet   :: TVar (HeightVoteSet 'PreVote alg a)
---   , locSPrecommitSet :: TVar (HeightVoteSet 'PreCommit alg a)
---   }
-  
-
-
--- -- peerSendRoutine ::
-
-
--- -- | Here we update state of peer
--- peerRecvRoutine
---   :: TVar  (PeerState alg a)    -- ^ Current state of peer
---   -> TChan (MessageRX alg a)    -- ^ Channel to send messages
---   -> TChan (PeerMsg   alg a)    -- ^ Channel to read messages from
---   -> IO x
--- peerRecvRoutine tvPeer chanRx chanNet = do
---   forever $ do
---     m <- atomically $ readTChan chanNet
---     case m of
---       -- Update peer state
---       --
---       -- FIXME: we need to check that address is valid. Or not???
---       PMsgHasVote h r ty addr -> atomically $ do undefined
---       --
---       PMsgPreVote   vote -> atomically $ writeTChan chanRx $ RxPreVote   vote
---       PMsgPreCommit vote -> atomically $ writeTChan chanRx $ RxPreCommit vote
---       PMsgProposal  p    -> atomically $ writeTChan chanRx $ RxProposal  p
-
-
--- peerSendRoutine
---   :: TVar  (PeerState alg a)
---      -- FIXME: do we update state of peer on sending message?
---   -> TChan (MessageTX alg a)
---   -> TChan (PeerMsg   alg a)
---   -> IO x
--- peerSendRoutine tvPeer chanTx chanNet = undefined
-
-
--- -- peerNe
--- -- data Bus alg a = Bus
--- --   { busRx :: TChan (MessageRX alg a)
--- --   , busTx :: TChan (MessageTX alg a)
--- --   }
-
--- -- -- We have 3 thread per peer
--- -- --  1. For sending outgoing messages
--- -- --  2. For receiving data
--- -- --  3. For gossipin
-
-  
--- -- peerGossipRoutine
--- --   :: ()
--- --   => PeerState alg a            -- ^ Initial state of a peer
--- --   -> TChan 
-
-
-
-
-
--- -- runPeerExchange :: ???
+-- | Fork thread. Any exception except `AsyncException` in forked
+--   thread is forwarded to original thread.
+forkLinked :: IO a              -- ^ Action to execute in forked thread
+           -> IO b              -- ^ What to do while thread executes
+           -> IO b
+forkLinked action io = do
+  tid <- myThreadId
+  let fini (Right _) = return ()
+      fini (Left  e) = case fromException e of
+        Just (_ :: AsyncException) -> return ()
+        _                          -> throwTo tid e
+  bracket (forkFinally action fini)
+          killThread
+          (const io)

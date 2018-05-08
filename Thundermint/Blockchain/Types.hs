@@ -67,14 +67,6 @@ data MessageTx alg a
   | TxProposal  (Signed 'Verified alg (Proposal alg a))
   deriving (Show)
 
--- | Connection handed to process controlling communication with peer
-data PeerChans alg a = PeerChans
-  { peerChanTx :: STM (MessageTx alg a)
-    -- ^ STM action for getting message to send to peer
-  , peerChanRx :: MessageRx 'Unverified alg a -> STM ()
-    -- ^ STM action for sending message to main application
-  }
-
 -- | Application connection to outer world
 data AppChans alg a = AppChans
   { appChanRx   :: TChan (MessageRx 'Unverified alg a)
