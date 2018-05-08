@@ -77,6 +77,7 @@ realNetwork = NetworkAPI
     --
   , connect  = \addr -> do
       -- FIXME: we need to support both IP4 & IP6
+      -- FIXME: exception safety
       sock <- case addr of
         Net.SockAddrInet port _ -> Net.socket Net.AF_INET Net.Stream (fromIntegral port)
         _                       -> error "Unsupported address"
