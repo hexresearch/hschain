@@ -155,6 +155,7 @@ verifyMessageSignature AppState{..} = \case
   RxPreCommit sv -> verify RxPreCommit sv
   RxProposal  sp -> verify RxProposal  sp
   RxTimeout   t  -> return $ RxTimeout t
+  RxBlock     b  -> return $ RxBlock   b
   where
     verify con sx = case verifySignature pkLookup sx of
       Just sx' -> return $ con sx'
