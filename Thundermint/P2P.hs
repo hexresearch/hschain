@@ -91,10 +91,11 @@ data PeerChans addr alg a = PeerChans
     -- ^ STM action for getting message to send to peer
   , peerChanRx :: MessageRx 'Unverified alg a -> STM ()
     -- ^ STM action for sending message to main application
-  , retreivePeerSet :: STM (Set addr)
+  , retrievePeerSet :: STM (Set addr)
     -- ^ Obtain set of all peers
   , sendPeerSet     :: Set addr -> STM ()
     -- ^ Send set of peers to dispatcher
+  , blockStorage    :: BlockStorage 'RO IO alg a
   }
 
 
@@ -106,16 +107,18 @@ startPeerDispatcher
   :: (Serialise a, Ord addr)
   => NetworkAPI sock addr
   -> AppChans alg a
+  -> BlockStorage 'RO IO alg a
   -> IO x
-startPeerDispatcher net@NetworkAPI{..} AppChans{..} = do
+startPeerDispatcher net@NetworkAPI{..} AppChans{..} storage = do
   peers        <- newPeerRegistry
   peerExchange <- newTChanIO
   let peerCh = PeerChans { peerChanTx = readTChan appChanTx
                          , peerChanRx = writeTChan appChanRx
-                         , retreivePeerSet = do let PeerRegistry v = peers
+                         , retrievePeerSet = do let PeerRegistry v = peers
                                                 m <- readTVar v
                                                 return $ Set.fromList $ toList m
                          , sendPeerSet     = writeTChan peerExchange
+                         , blockStorage    = storage
                          }
   -- Start listening on socket
   registry <- newPeerRegistry
@@ -274,10 +277,21 @@ peerGossipBlocks
   -> TVar (PeerState alg a)
   -> IO x
 peerGossipBlocks PeerChans{..} chan peerVar = forever $ do
-  -- 1. Check that we have more blocks that peer
-  -- 2. Send random block that we have and peer don't
-  -- 3. Sleep
-  undefined
+  st <- readTVarIO peerVar
+  h  <- blockchainHeight blockStorage
+  case h `compare` peerHeight st of
+    -- We lag
+    LT -> return ()
+    -- We at the same height
+    EQ -> do blocks <- retrievePropBlocks blockStorage h
+             case Map.lookupMin $ Map.difference blocks $ Map.fromSet (const ()) $ peerBlocks st of
+               Nothing    -> return ()
+               Just (_,b) -> atomically $ writeTChan chan $ GossipBlock b
+    -- Peer is lagging
+    GT -> do Just bid <- retrieveBlockID blockStorage (peerHeight st)
+             unless (bid `Set.member` peerBlocks st) $ do
+               Just b <- retrieveBlock blockStorage (peerHeight st)
+               atomically $ writeTChan chan $ GossipBlock b
   threadDelay 100e3
 
 -- | Gossip votes with given peer
@@ -288,10 +302,15 @@ peerGossipVotes
   -> TVar (PeerState alg a)
   -> IO x
 peerGossipVotes PeerChans{..} chan peerVar = forever $ do
-  -- 1. Check that we have more votes that peer
-  -- 2. Send random block that we have and peer don't
-  -- 3. Sleep
-  undefined
+  st <- readTVarIO peerVar
+  h  <- blockchainHeight blockStorage
+  case h `compare` peerHeight st of
+    -- We're lagging
+    LT -> return ()
+    -- We at the same height. Send prevote & precommit
+    EQ -> return ()
+    -- Peer is lagging. Send precommit
+    GT -> return ()
   threadDelay 100e3
 
 
