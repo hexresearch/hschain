@@ -43,7 +43,7 @@ data GossipMsg alg a
   = GossipPreVote   (Signed 'Unverified alg (Vote 'PreVote   alg a))
   | GossipPreCommit (Signed 'Unverified alg (Vote 'PreCommit alg a))
   | GossipProposal  (Signed 'Unverified alg (Proposal alg a))
-  | GossipBlock     Height (Block alg a)
+  | GossipBlock     (Block alg a)
 
   -- Communication about status of peer
 
@@ -95,7 +95,6 @@ data PeerChans addr alg a = PeerChans
     -- ^ Obtain set of all peers
   , sendPeerSet     :: Set addr -> STM ()
     -- ^ Send set of peers to dispatcher
-  , peerStoreProposal :: Height -> Block alg a -> IO ()
   }
 
 
@@ -107,9 +106,8 @@ startPeerDispatcher
   :: (Serialise a, Ord addr)
   => NetworkAPI sock addr
   -> AppChans alg a
-  -> BlockStorage 'RW IO alg a
   -> IO x
-startPeerDispatcher net@NetworkAPI{..} AppChans{..} BlockStorage{..} = do
+startPeerDispatcher net@NetworkAPI{..} AppChans{..} = do
   peers        <- newPeerRegistry
   peerExchange <- newTChanIO
   let peerCh = PeerChans { peerChanTx = readTChan appChanTx
@@ -118,7 +116,6 @@ startPeerDispatcher net@NetworkAPI{..} AppChans{..} BlockStorage{..} = do
                                                 m <- readTVar v
                                                 return $ Set.fromList $ toList m
                          , sendPeerSet     = writeTChan peerExchange
-                         , peerStoreProposal = storePropBlock
                          }
   -- Start listening on socket
   registry <- newPeerRegistry
@@ -236,8 +233,7 @@ startPeer peerCh@PeerChans{..} net@SendRecv{..} = do
              GossipPreVote   v -> atomically $ peerChanRx $ RxPreVote   v
              GossipPreCommit v -> atomically $ peerChanRx $ RxPreCommit v
              GossipProposal  p -> atomically $ peerChanRx $ RxProposal  p
-             -- Store block in block storage
-             GossipBlock   h b -> peerStoreProposal h b
+             GossipBlock     b -> atomically $ peerChanRx $ RxBlock     b
              -- Update peer state
              GossipStatus         h _          ->
                atomically $ modifyTVar' peerVar $ \p ->
