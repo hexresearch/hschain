@@ -145,22 +145,6 @@ connectPeerTo net@NetworkAPI{..} addr peerCh registry =
       restore (startPeer peerCh (applySocket net sock))
         `finally` close sock
 
--- Initiate connection to remote host
-acceptPeer
-  :: (Serialise a)
-  => NetworkAPI sock addr
-  -> (sock,addr)
-  -> PeerChans addr alg a
-  -> PeerRegistry addr
-  -> IO ()
-acceptPeer net@NetworkAPI{..} (sock,addr) peerCh registry =
-  mask $ \restore -> void $ forkIO $ do
-    tid <- myThreadId
-    registerPeer registry tid addr
-    flip finally (unregisterPeer registry tid) $ do
-      restore (startPeer peerCh (applySocket net sock))
-        `finally` close sock
-
 acceptLoop
   :: (Serialise a)
   => NetworkAPI sock addr
