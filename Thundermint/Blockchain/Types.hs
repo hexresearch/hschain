@@ -16,8 +16,8 @@ import Thundermint.Store
 ----------------------------------------------------------------
 
 -- | Full state of application.
-data AppState alg a = AppState
-  { appStorage        :: BlockStorage 'RW IO alg a
+data AppState m alg a = AppState
+  { appStorage        :: BlockStorage 'RW m alg a
     -- ^ Persistent storage for blockchain and related data
     --
     -- FIXME: Is IO good enough or do we need some other guarantees?
@@ -32,7 +32,7 @@ data AppState alg a = AppState
     --   FIXME: at the moment it's assumed to be immutable but we will
     --          need to add support of changing set as result of
     --          commited block.
-  , appLogger         :: String -> IO ()
+  , appLogger         :: String -> m ()
   , appMaxHeight      :: Maybe Height
   }
 
