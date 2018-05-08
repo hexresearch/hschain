@@ -45,12 +45,12 @@ import Thundermint.Store
 --
 --   * INVARIANT: Only this function can write to blockchain
 runApplication
-  :: (Crypto alg, Serialise a, Show a)
+  :: (MonadIO m, Crypto alg, Serialise a, Show a)
   => AppState alg a
      -- ^ Get initial state of the application
   -> AppChans alg a
      -- ^ Channels for communication with peers
-  -> IO ()
+  -> m ()
 runApplication appSt@AppState{..} appCh =
   fix (\loop commit -> do
           cm <- decideNewBlock appSt appCh commit
@@ -59,11 +59,11 @@ runApplication appSt@AppState{..} appCh =
           -- FIXME: do we need to communicate with peers about our
           --        commit? (Do we need +2/3 commits to proceed
           --        further)
-          h  <- blockchainHeight appStorage
+          h  <- liftIO $ blockchainHeight appStorage
           case appMaxHeight of
             Just h' | h > h' -> return ()
             _                -> loop (Just cm)
-      ) =<< retrieveLastCommit appStorage
+      ) =<< liftIO (retrieveLastCommit appStorage)
 
 -- This function uses consensus algorithm to decide which block we're
 -- going to commit at current height, then stores it in database and
@@ -71,11 +71,11 @@ runApplication appSt@AppState{..} appCh =
 --
 -- FIXME: we should write block and last commit in transaction!
 decideNewBlock
-  :: (Crypto alg, Serialise a, Show a)
+  :: (MonadIO m, Crypto alg, Serialise a, Show a)
   => AppState alg a
   -> AppChans alg a
   -> Maybe (Commit alg a)
-  -> IO (Commit alg a)
+  -> m (Commit alg a)
 decideNewBlock appSt@AppState{..} appCh@AppChans{..} lastCommt = do
   -- Create initial state for consensus state machine
   hParam <- makeHeightParametes appSt appCh
@@ -95,20 +95,20 @@ decideNewBlock appSt@AppState{..} appCh@AppChans{..} lastCommt = do
   -- Enter PREVOTE of round 0
   --
   -- FIXME: encode that we cannot fail here!
-  appLogger $ "NEW HEIGHT: " ++ show (currentH hParam)
+  liftIO $ appLogger $ "NEW HEIGHT: " ++ show (currentH hParam)
   Success tm0 <- runConsesusM $ newHeight hParam tmState0
   -- Handle incoming messages until we decide on next block.
   flip fix tm0 $ \loop tm -> do
     -- Make current state of consensus available for gossip
-    appLogger $ unlines [ "### Next transition"
-                        , groom tm
-                        ]
-    atomically $ writeTVar appTMState $ Just (currentH hParam , tm)
+    liftIO $ appLogger $ unlines [ "### Next transition"
+                                 , groom tm
+                                 ]
+    liftIO $ atomically $ writeTVar appTMState $ Just (currentH hParam , tm)
     -- Receive message
-    msg <- atomically $ readTChan appChanRx
-    appLogger $ unlines [ "### Received message"
-                        , groom msg
-                        ]
+    msg <- liftIO $ atomically $ readTChan appChanRx
+    liftIO $appLogger $ unlines [ "### Received message"
+                                , groom msg
+                                ]
     -- Handle message
     res <- runMaybeT
         $ lift . handleVerifiedMessage hParam tm
@@ -119,17 +119,17 @@ decideNewBlock appSt@AppState{..} appCh@AppChans{..} lastCommt = do
       Just Tranquility    -> loop tm
       Just Misdeed        -> loop tm
       Just (DoCommit cmt) -> do
-        storeCommit appStorage cmt (undefined "lookup actual block by block ID")
+        liftIO $ storeCommit appStorage cmt (undefined "lookup actual block by block ID")
         return cmt
 
 
 -- Handle message and perform state transitions for both
 handleVerifiedMessage
-  :: (Crypto alg)
-  => HeightParameres (ConsensusM alg a) alg a
+  :: (Monad m, Crypto alg)
+  => HeightParameres (ConsensusM m alg a) alg a
   -> TMState alg a
   -> MessageRx 'Verified alg a
-  -> IO (ConsensusResult alg a (TMState alg a))
+  -> m (ConsensusResult alg a (TMState alg a))
 handleVerifiedMessage hParam tm = \case
   -- FIXME: check that proposal comes from correct proposer
   RxProposal  p -> runConsesusM $ tendermintTransition hParam (ProposalMsg (signedValue p)) tm
@@ -146,10 +146,10 @@ handleVerifiedMessage hParam tm = \case
 --       some validators from height different from current. But since
 --       we ignore messages from wrong height anyway it doesn't matter
 verifyMessageSignature
-  :: (Crypto alg, Serialise a)
+  :: (Monad m, Crypto alg, Serialise a)
   => AppState alg a
   -> MessageRx 'Unverified alg a
-  -> MaybeT IO (MessageRx 'Verified alg a)
+  -> MaybeT m (MessageRx 'Verified alg a)
 verifyMessageSignature AppState{..} = \case
   RxPreVote   sv -> verify RxPreVote   sv
   RxPreCommit sv -> verify RxPreCommit sv
@@ -169,8 +169,8 @@ verifyMessageSignature AppState{..} = \case
 ----------------------------------------------------------------
 
 -- | Analog of @ExceptT Err IO@
-newtype ConsensusM alg a b = ConsensusM
-  { runConsesusM :: IO (ConsensusResult alg a b) }
+newtype ConsensusM m alg a b = ConsensusM
+  { runConsesusM :: m (ConsensusResult alg a b) }
   deriving (Functor)
 
 data ConsensusResult alg a b
@@ -180,11 +180,11 @@ data ConsensusResult alg a b
   | DoCommit  (Commit alg a)
   deriving (Functor)
 
-instance Applicative (ConsensusM alg a) where
+instance Monad m => Applicative (ConsensusM m alg a) where
   pure  = return
   (<*>) = ap
 
-instance Monad (ConsensusM alg a) where
+instance Monad m => Monad (ConsensusM m alg a) where
   return = ConsensusM . return . Success
   ConsensusM m >>= f = ConsensusM $ m >>= \case
     Success a   -> runConsesusM (f a)
@@ -192,21 +192,21 @@ instance Monad (ConsensusM alg a) where
     Misdeed     -> return Misdeed
     DoCommit cm -> return $ DoCommit cm
 
-instance MonadIO (ConsensusM alg a) where
-  liftIO = ConsensusM . fmap Success
+instance MonadIO m => MonadIO (ConsensusM m alg a) where
+  liftIO = ConsensusM . fmap Success . liftIO
 
-instance ConsensusMonad (ConsensusM alg a) where
+instance Monad m => ConsensusMonad (ConsensusM m alg a) where
   tranquility = ConsensusM $ return Tranquility
   misdeed     = ConsensusM $ return Misdeed
   panic       = error
 
 makeHeightParametes
-  :: (Crypto alg, Serialise a, Show a)
+  :: (MonadIO m, Crypto alg, Serialise a, Show a)
   => AppState alg a
   -> AppChans alg a
-  -> IO (HeightParameres (ConsensusM alg a) alg a)
+  -> m (HeightParameres (ConsensusM m alg a) alg a)
 makeHeightParametes AppState{..} AppChans{..} = do
-  h <- blockchainHeight appStorage
+  h <- liftIO $ blockchainHeight appStorage
   return HeightParameres
     { currentH        = h
       -- FIXME: this is some random algorithms that should probably
