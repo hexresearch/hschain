@@ -22,7 +22,7 @@ data AppState m alg a = AppState
     --
     -- FIXME: Is IO good enough or do we need some other guarantees?
   , appBlockGenerator :: Maybe (Commit alg a)
-                      -> IO (Block alg a)
+                      -> m (Block alg a)
     -- ^ Generate fresh block for proposa
   , appValidator      :: PrivValidator alg a
     -- ^ Private validator for node

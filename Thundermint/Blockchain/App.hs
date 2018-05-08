@@ -46,7 +46,7 @@ import Thundermint.Store
 --   * INVARIANT: Only this function can write to blockchain
 runApplication
   :: (MonadIO m, Crypto alg, Serialise a, Show a)
-  => AppState IO alg a
+  => AppState m alg a
      -- ^ Get initial state of the application
   -> AppChans alg a
      -- ^ Channels for communication with peers
@@ -59,11 +59,11 @@ runApplication appSt@AppState{..} appCh =
           -- FIXME: do we need to communicate with peers about our
           --        commit? (Do we need +2/3 commits to proceed
           --        further)
-          h  <- liftIO $ blockchainHeight appStorage
+          h  <- blockchainHeight appStorage
           case appMaxHeight of
             Just h' | h > h' -> return ()
             _                -> loop (Just cm)
-      ) =<< liftIO (retrieveLastCommit appStorage)
+      ) =<< retrieveLastCommit appStorage
 
 -- This function uses consensus algorithm to decide which block we're
 -- going to commit at current height, then stores it in database and
@@ -72,7 +72,7 @@ runApplication appSt@AppState{..} appCh =
 -- FIXME: we should write block and last commit in transaction!
 decideNewBlock
   :: (MonadIO m, Crypto alg, Serialise a, Show a)
-  => AppState IO alg a
+  => AppState m alg a
   -> AppChans alg a
   -> Maybe (Commit alg a)
   -> m (Commit alg a)
@@ -95,18 +95,18 @@ decideNewBlock appSt@AppState{..} appCh@AppChans{..} lastCommt = do
   -- Enter PREVOTE of round 0
   --
   -- FIXME: encode that we cannot fail here!
-  liftIO $ appLogger $ "NEW HEIGHT: " ++ show (currentH hParam)
+  appLogger $ "NEW HEIGHT: " ++ show (currentH hParam)
   Success tm0 <- runConsesusM $ newHeight hParam tmState0
   -- Handle incoming messages until we decide on next block.
   flip fix tm0 $ \loop tm -> do
     -- Make current state of consensus available for gossip
-    liftIO $ appLogger $ unlines [ "### Next transition"
+    appLogger $ unlines [ "### Next transition"
                                  , groom tm
                                  ]
     liftIO $ atomically $ writeTVar appTMState $ Just (currentH hParam , tm)
     -- Receive message
     msg <- liftIO $ atomically $ readTChan appChanRx
-    liftIO $appLogger $ unlines [ "### Received message"
+    appLogger $ unlines [ "### Received message"
                                 , groom msg
                                 ]
     -- Handle message
@@ -119,14 +119,14 @@ decideNewBlock appSt@AppState{..} appCh@AppChans{..} lastCommt = do
       Just Tranquility    -> loop tm
       Just Misdeed        -> loop tm
       Just (DoCommit cmt) -> do
-        liftIO $ storeCommit appStorage cmt (undefined "lookup actual block by block ID")
+        storeCommit appStorage cmt (undefined "lookup actual block by block ID")
         return cmt
 
 
 -- Handle message and perform state transitions for both
 handleVerifiedMessage
   :: (Monad m, Crypto alg)
-  => HeightParameres (ConsensusM m alg a) alg a
+  => HeightParameres (ConsensusM alg a m) alg a
   -> TMState alg a
   -> MessageRx 'Verified alg a
   -> m (ConsensusResult alg a (TMState alg a))
@@ -147,7 +147,7 @@ handleVerifiedMessage hParam tm = \case
 --       we ignore messages from wrong height anyway it doesn't matter
 verifyMessageSignature
   :: (Monad m, Crypto alg, Serialise a)
-  => AppState IO alg a
+  => AppState m alg a
   -> MessageRx 'Unverified alg a
   -> MaybeT m (MessageRx 'Verified alg a)
 verifyMessageSignature AppState{..} = \case
@@ -169,7 +169,7 @@ verifyMessageSignature AppState{..} = \case
 ----------------------------------------------------------------
 
 -- | Analog of @ExceptT Err IO@
-newtype ConsensusM m alg a b = ConsensusM
+newtype ConsensusM alg a m b = ConsensusM
   { runConsesusM :: m (ConsensusResult alg a b) }
   deriving (Functor)
 
@@ -180,11 +180,11 @@ data ConsensusResult alg a b
   | DoCommit  (Commit alg a)
   deriving (Functor)
 
-instance Monad m => Applicative (ConsensusM m alg a) where
+instance Monad m => Applicative (ConsensusM alg a m) where
   pure  = return
   (<*>) = ap
 
-instance Monad m => Monad (ConsensusM m alg a) where
+instance Monad m => Monad (ConsensusM alg a m) where
   return = ConsensusM . return . Success
   ConsensusM m >>= f = ConsensusM $ m >>= \case
     Success a   -> runConsesusM (f a)
@@ -192,21 +192,24 @@ instance Monad m => Monad (ConsensusM m alg a) where
     Misdeed     -> return Misdeed
     DoCommit cm -> return $ DoCommit cm
 
-instance MonadIO m => MonadIO (ConsensusM m alg a) where
+instance MonadIO m => MonadIO (ConsensusM alg a m) where
   liftIO = ConsensusM . fmap Success . liftIO
 
-instance Monad m => ConsensusMonad (ConsensusM m alg a) where
+instance Monad m => ConsensusMonad (ConsensusM alg a m) where
   tranquility = ConsensusM $ return Tranquility
   misdeed     = ConsensusM $ return Misdeed
   panic       = error
 
+instance MonadTrans (ConsensusM alg a) where
+  lift = ConsensusM . fmap Success
+
 makeHeightParametes
   :: (MonadIO m, Crypto alg, Serialise a, Show a)
-  => AppState IO alg a
+  => AppState m alg a
   -> AppChans alg a
-  -> m (HeightParameres (ConsensusM m alg a) alg a)
+  -> m (HeightParameres (ConsensusM alg a m) alg a)
 makeHeightParametes AppState{..} AppChans{..} = do
-  h <- liftIO $ blockchainHeight appStorage
+  h <- blockchainHeight appStorage
   return HeightParameres
     { currentH        = h
       -- FIXME: this is some random algorithms that should probably
@@ -220,7 +223,7 @@ makeHeightParametes AppState{..} AppChans{..} = do
     , validateBlock = \_ -> return UnseenProposal
 
     --
-    , broadcastProposal = \r bid -> liftIO $ do
+    , broadcastProposal = \r bid -> do
         let pk   = validatorPrivKey appValidator
             prop = Proposal { propHeight    = h
                             , propRound     = r
@@ -229,10 +232,10 @@ makeHeightParametes AppState{..} AppChans{..} = do
                             , propBlockID   = bid
                             }
             sprop  = signValue pk prop
-        appLogger $ unlines [ ">>> SENDING PROPOSAL"
-                            , groom sprop
-                            ]
-        atomically $ do
+        lift $ appLogger $ unlines [ ">>> SENDING PROPOSAL"
+                                   , groom sprop
+                                   ]
+        liftIO $ atomically $ do
           writeTChan appChanTx (TxProposal sprop)
           writeTChan appChanRx (RxProposal $ unverifySignature sprop)
     --
@@ -240,7 +243,7 @@ makeHeightParametes AppState{..} AppChans{..} = do
         threadDelay (1*1000*1000)
         atomically $ writeTChan appChanRx $ RxTimeout t
     -- FIXME: Do we need to store cast votes to WAL as well?
-    , castPrevote     = \r b -> liftIO $ do
+    , castPrevote     = \r b -> do
         let pk   = validatorPrivKey appValidator
             vote = Vote { voteHeight  = h
                         , voteRound   = r
@@ -248,14 +251,14 @@ makeHeightParametes AppState{..} AppChans{..} = do
                         , voteBlockID = b
                         }
             svote  = signValue pk vote
-        appLogger $ unlines [ ">>> SENDING PREVOTE"
-                            , groom svote
-                            ]
-        atomically $ do
+        lift $ appLogger $ unlines [ ">>> SENDING PREVOTE"
+                                   , groom svote
+                                   ]
+        liftIO $ atomically $ do
           writeTChan appChanTx (TxPreVote svote)
           writeTChan appChanRx (RxPreVote $ unverifySignature svote)
     --
-    , castPrecommit   = \r b -> liftIO $ do
+    , castPrecommit   = \r b -> do
         let pk   = validatorPrivKey appValidator
             vote = Vote { voteHeight  = h
                         , voteRound   = r
@@ -263,19 +266,19 @@ makeHeightParametes AppState{..} AppChans{..} = do
                         , voteBlockID = b
                         }
             svote  = signValue pk vote
-        appLogger $ unlines [ ">>> SENDING PRECOMMIT"
-                            , groom svote
-                            ]
-        atomically $ do
+        lift $ appLogger $ unlines [ ">>> SENDING PRECOMMIT"
+                                   , groom svote
+                                   ]
+        liftIO $ atomically $ do
           writeTChan appChanTx (TxPreCommit svote)
           writeTChan appChanRx (RxPreCommit $ unverifySignature svote)
 
-    , createProposal    = \r cm -> liftIO $ do
+    , createProposal    = \r cm -> lift $ do
         b <- appBlockGenerator cm
         storePropBlock appStorage h b
         return $ blockHash b
 
     , commitBlock     = \cm -> ConsensusM $ return $ DoCommit cm
 
-    , logger = liftIO . appLogger
+    , logger = lift . appLogger
     }
