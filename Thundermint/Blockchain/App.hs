@@ -46,7 +46,7 @@ import Thundermint.Store
 --   * INVARIANT: Only this function can write to blockchain
 runApplication
   :: (MonadIO m, Crypto alg, Serialise a, Show a)
-  => AppState alg a
+  => AppState IO alg a
      -- ^ Get initial state of the application
   -> AppChans alg a
      -- ^ Channels for communication with peers
@@ -72,7 +72,7 @@ runApplication appSt@AppState{..} appCh =
 -- FIXME: we should write block and last commit in transaction!
 decideNewBlock
   :: (MonadIO m, Crypto alg, Serialise a, Show a)
-  => AppState alg a
+  => AppState IO alg a
   -> AppChans alg a
   -> Maybe (Commit alg a)
   -> m (Commit alg a)
@@ -147,7 +147,7 @@ handleVerifiedMessage hParam tm = \case
 --       we ignore messages from wrong height anyway it doesn't matter
 verifyMessageSignature
   :: (Monad m, Crypto alg, Serialise a)
-  => AppState alg a
+  => AppState IO alg a
   -> MessageRx 'Unverified alg a
   -> MaybeT m (MessageRx 'Verified alg a)
 verifyMessageSignature AppState{..} = \case
@@ -202,7 +202,7 @@ instance Monad m => ConsensusMonad (ConsensusM m alg a) where
 
 makeHeightParametes
   :: (MonadIO m, Crypto alg, Serialise a, Show a)
-  => AppState alg a
+  => AppState IO alg a
   -> AppChans alg a
   -> m (HeightParameres (ConsensusM m alg a) alg a)
 makeHeightParametes AppState{..} AppChans{..} = do
