@@ -32,6 +32,7 @@ Library
   Exposed-modules:
                   Thundermint.Blockchain.Types
                   Thundermint.Blockchain.App
+                  Thundermint.Control
                   Thundermint.Consensus.Algorithm
                   Thundermint.Consensus.Types
                   Thundermint.Crypto
@@ -46,6 +47,7 @@ Executable thundermint-simple
   Build-Depends:       base       >=4.9 && <5
                      , thundermint
                      , bytestring >=0.10
+                     , base16-bytestring
                      , containers >=0.5.7
                      , stm        >=2.4
                      , async      >=2.2
