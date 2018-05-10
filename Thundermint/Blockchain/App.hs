@@ -1,9 +1,10 @@
-{-# LANGUAGE DataKinds        #-}
-{-# LANGUAGE DeriveFunctor    #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE LambdaCase       #-}
-{-# LANGUAGE RecordWildCards  #-}
-{-# LANGUAGE TupleSections    #-}
+{-# LANGUAGE DataKinds         #-}
+{-# LANGUAGE DeriveFunctor     #-}
+{-# LANGUAGE FlexibleContexts  #-}
+{-# LANGUAGE LambdaCase        #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards   #-}
+{-# LANGUAGE TupleSections     #-}
 -- |
 -- Core of blockchain application. This module provides function which
 -- continuously updates blockchain using consensus algorithm and
@@ -34,6 +35,7 @@ import Thundermint.Consensus.Types
 import Thundermint.Store
 -- import Thundermint.P2P
 
+import Katip (Severity(..), Namespace, LogStr, LogItem)
 
 ----------------------------------------------------------------
 --
@@ -95,20 +97,14 @@ decideNewBlock appSt@AppState{..} appCh@AppChans{..} lastCommt = do
   -- Enter PREVOTE of round 0
   --
   -- FIXME: encode that we cannot fail here!
-  appLogger $ "NEW HEIGHT: " ++ show (currentH hParam)
+  appLogger "consensus" InfoS "New height" ()
   Success tm0 <- runConsesusM $ newHeight hParam tmState0
   -- Handle incoming messages until we decide on next block.
   flip fix tm0 $ \loop tm -> do
     -- Make current state of consensus available for gossip
-    appLogger $ unlines [ "### Next transition"
-                                 , groom tm
-                                 ]
     liftIO $ atomically $ writeTVar appTMState $ Just (currentH hParam , tm)
     -- Receive message
     msg <- liftIO $ atomically $ readTChan appChanRx
-    appLogger $ unlines [ "### Received message"
-                                , groom msg
-                                ]
     -- Handle message
     res <- runMaybeT
         $ lift . handleVerifiedMessage hParam tm
@@ -232,9 +228,7 @@ makeHeightParametes AppState{..} AppChans{..} = do
                             , propBlockID   = bid
                             }
             sprop  = signValue pk prop
-        lift $ appLogger $ unlines [ ">>> SENDING PROPOSAL"
-                                   , groom sprop
-                                   ]
+        lift $ appLogger "consensus" InfoS "Sending proposal" ()
         liftIO $ atomically $ do
           writeTChan appChanTx (TxProposal sprop)
           writeTChan appChanRx (RxProposal $ unverifySignature sprop)
@@ -251,9 +245,7 @@ makeHeightParametes AppState{..} AppChans{..} = do
                         , voteBlockID = b
                         }
             svote  = signValue pk vote
-        lift $ appLogger $ unlines [ ">>> SENDING PREVOTE"
-                                   , groom svote
-                                   ]
+        lift $ appLogger "consensus" InfoS "Sending prevote" ()
         liftIO $ atomically $ do
           writeTChan appChanTx (TxPreVote svote)
           writeTChan appChanRx (RxPreVote $ unverifySignature svote)
@@ -266,9 +258,7 @@ makeHeightParametes AppState{..} AppChans{..} = do
                         , voteBlockID = b
                         }
             svote  = signValue pk vote
-        lift $ appLogger $ unlines [ ">>> SENDING PRECOMMIT"
-                                   , groom svote
-                                   ]
+        lift $ appLogger "consensus" InfoS "Sending precommit" ()
         liftIO $ atomically $ do
           writeTChan appChanTx (TxPreCommit svote)
           writeTChan appChanRx (RxPreCommit $ unverifySignature svote)
@@ -280,5 +270,5 @@ makeHeightParametes AppState{..} AppChans{..} = do
 
     , commitBlock     = \cm -> ConsensusM $ return $ DoCommit cm
 
-    , logger = lift . appLogger
+    , logger = \a b c -> lift . appLogger a b c
     }

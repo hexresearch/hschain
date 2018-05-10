@@ -1,10 +1,11 @@
-{-# LANGUAGE DataKinds        #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE KindSignatures   #-}
-{-# LANGUAGE LambdaCase       #-}
-{-# LANGUAGE RankNTypes       #-}
-{-# LANGUAGE RecordWildCards  #-}
-{-# LANGUAGE ViewPatterns     #-}
+{-# LANGUAGE DataKinds         #-}
+{-# LANGUAGE FlexibleContexts  #-}
+{-# LANGUAGE KindSignatures    #-}
+{-# LANGUAGE LambdaCase        #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RankNTypes        #-}
+{-# LANGUAGE RecordWildCards   #-}
+{-# LANGUAGE ViewPatterns      #-}
 -- |
 -- Implementation of tendermint consensus protocol.
 --
@@ -33,6 +34,8 @@ import           Data.Map          (Map)
 import Thundermint.Crypto
 import Thundermint.Crypto.Containers
 import Thundermint.Consensus.Types
+
+import Katip (Severity(..), Namespace, LogStr, LogItem)
 
 
 ----------------------------------------------------------------
@@ -75,7 +78,8 @@ data HeightParameres (m :: * -> *) alg a = HeightParameres
   , commitBlock         :: forall x. Commit alg a -> m x
     -- ^ We're done for this height. Commit block to blockchain
 
-  , logger              :: String -> m ()
+  , logger              :: forall li. LogItem li
+                        => Namespace -> Severity -> LogStr -> li -> m ()
   }
 
 
@@ -213,7 +217,7 @@ checkTransitionPrecommit par@HeightParameres{..} r sm@(TMState{..})
   --        later moment they'll get
   | Just Vote{..} <- majority23at r smPrecommitsSet
   , Just bid      <- voteBlockID
-    = do logger $ "COMMMITING: " ++ show bid
+    = do logger "tendermint" InfoS "Commmiting" ()
          commitBlock Commit{ commitBlockID    = bid
                            , commitPrecommits = valuesAtR r smPrecommitsSet
                            }
@@ -241,7 +245,7 @@ enterPropose
   -> TMState alg a
   -> m (TMState alg a)
 enterPropose HeightParameres{..} r sm@TMState{..} = do
-  logger "ENTER PROPOSE"
+  logger "tendermint" InfoS "Entering propose" ()
   scheduleTimeout $ Timeout currentH r StepProposal
   -- If we're proposers we need to broadcast proposal. Otherwise we do
   -- nothing
@@ -270,7 +274,7 @@ enterPrevote
   -> m (TMState alg a)
 enterPrevote par@HeightParameres{..} r (unlockOnPrevote -> sm@TMState{..}) = do
   --
-  logger "ENTER PREVOTE"
+  logger "tendermint" InfoS "Entering prevote" ()
   castPrevote smRound =<< prevoteBlock
   --
   scheduleTimeout $ Timeout currentH r StepPrevote
@@ -324,7 +328,7 @@ enterPrecommit
   -> TMState alg a
   -> m (TMState alg a)
 enterPrecommit par@HeightParameres{..} r sm@TMState{..} = do
-  logger "ENTER PRECOMMIT"
+  logger "tendermint" InfoS "Entering precommit" ()
   castPrecommit r precommitBlock
   scheduleTimeout $ Timeout currentH r StepPrecommit
   checkTransitionPrecommit par r sm

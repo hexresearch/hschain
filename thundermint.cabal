@@ -25,6 +25,7 @@ Library
                      , serialise         >=0.2
                      --
                      , network           >=2.7
+                     , katip             >=0.5.4
                      --
                      , groom
   Exposed-modules:
@@ -50,5 +51,6 @@ Executable thundermint-simple
                      , serialise  >=0.2
                      , time
                      , cryptohash-md5 >= 0.11.100
+                     , katip          >=0.5.4
   hs-source-dirs:      exe
   Main-is:             simple.hs
