@@ -23,6 +23,7 @@ Library
                      , containers        >=0.5.9
                      , stm               >=2.4
                      , serialise         >=0.2
+                     , exceptions        >=0.10
                      --
                      , network           >=2.7
                      , katip             >=0.5.4

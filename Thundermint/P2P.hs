@@ -12,9 +12,11 @@ module Thundermint.P2P (
 
 import Control.Applicative
 import Control.Monad
-import Control.Exception
+import Control.Monad.IO.Class
+import Control.Monad.Catch
 import Control.Concurrent
 import Control.Concurrent.STM
+import Control.Exception  (AsyncException(..))
 import Codec.Serialise
 import           Data.Foldable
 import           Data.Function
@@ -104,14 +106,14 @@ data PeerChans addr alg a = PeerChans
 ----------------------------------------------------------------
 
 startPeerDispatcher
-  :: (Serialise a, Ord addr)
+  :: (Serialise a, Ord addr, MonadIO m, MonadMask m)
   => NetworkAPI sock addr
   -> AppChans alg a
   -> BlockStorage 'RO IO alg a
-  -> IO x
+  -> m x
 startPeerDispatcher net@NetworkAPI{..} AppChans{..} storage = do
   peers        <- newPeerRegistry
-  peerExchange <- newTChanIO
+  peerExchange <- liftIO newTChanIO
   let peerCh = PeerChans { peerChanTx = readTChan appChanTx
                          , peerChanRx = writeTChan appChanRx
                          , retrievePeerSet = do let PeerRegistry v = peers
@@ -125,7 +127,7 @@ startPeerDispatcher net@NetworkAPI{..} AppChans{..} storage = do
   flip finally (reapPeers registry)
     $ forkLinked (acceptLoop net peerCh registry)
     $ forever $ do
-        threadDelay 100000
+        liftIO $ threadDelay 100000
 
 
 -- Initiate connection to remote host
@@ -166,20 +168,20 @@ acceptLoop net@NetworkAPI{..} peerCh registry =
 
 newtype PeerRegistry a = PeerRegistry (TVar (Map ThreadId a))
 
-newPeerRegistry :: IO (PeerRegistry a)
-newPeerRegistry = PeerRegistry <$> newTVarIO Map.empty
+newPeerRegistry :: MonadIO m => m (PeerRegistry a)
+newPeerRegistry = PeerRegistry <$> liftIO (newTVarIO Map.empty)
 
-registerPeer :: PeerRegistry a -> ThreadId -> a -> IO ()
+registerPeer :: MonadIO m => PeerRegistry a -> ThreadId -> a -> m ()
 registerPeer (PeerRegistry v) tid
-  = atomically . modifyTVar' v . Map.insert tid
+  = liftIO . atomically . modifyTVar' v . Map.insert tid
 
-unregisterPeer :: PeerRegistry a -> ThreadId -> IO ()
+unregisterPeer :: MonadIO m => PeerRegistry a -> ThreadId -> m ()
 unregisterPeer (PeerRegistry v)
-  = atomically . modifyTVar' v . Map.delete
+  = liftIO . atomically . modifyTVar' v . Map.delete
 
-reapPeers :: PeerRegistry a -> IO ()
+reapPeers :: MonadIO m => PeerRegistry a -> m ()
 reapPeers (PeerRegistry v)
-  = mapM_ killThread . Map.keys =<< readTVarIO v
+  = liftIO $ mapM_ killThread . Map.keys =<< readTVarIO v
 
 
 ----------------------------------------------------------------
@@ -320,15 +322,16 @@ peerSendGossip gossipCh readTx SendRecv{..} = forever $ do
 
 -- | Fork thread. Any exception except `AsyncException` in forked
 --   thread is forwarded to original thread.
-forkLinked :: IO a              -- ^ Action to execute in forked thread
-           -> IO b              -- ^ What to do while thread executes
-           -> IO b
+forkLinked :: (MonadIO m, MonadMask m)
+           => IO a              -- ^ Action to execute in forked thread
+           -> m b              -- ^ What to do while thread executes
+           -> m b
 forkLinked action io = do
-  tid <- myThreadId
+  tid <- liftIO myThreadId
   let fini (Right _) = return ()
       fini (Left  e) = case fromException e of
         Just (_ :: AsyncException) -> return ()
         _                          -> throwTo tid e
-  bracket (forkFinally action fini)
-          killThread
+  bracket (liftIO $ forkFinally action fini)
+          (liftIO . killThread)
           (const io)
