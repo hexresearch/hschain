@@ -37,6 +37,7 @@ Library
                   Thundermint.Consensus.Types
                   Thundermint.Crypto
                   Thundermint.Crypto.Containers
+                  Thundermint.Logger
                   Thundermint.P2P
                   Thundermint.P2P.Network
                   Thundermint.Store
