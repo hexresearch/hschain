@@ -108,7 +108,7 @@ data PeerChans addr alg a = PeerChans
 ----------------------------------------------------------------
 
 startPeerDispatcher
-  :: (Serialise a, Ord addr, MonadMask m, MonadFork m, MonadIO m)
+  :: (Serialise a, Ord addr, MonadMask m, MonadFork m, MonadIO m, MonadLogger m)
   => NetworkAPI sock addr
   -> AppChans alg a
   -> BlockStorage 'RO IO alg a
@@ -134,7 +134,7 @@ startPeerDispatcher net@NetworkAPI{..} AppChans{..} storage = do
 
 -- Initiate connection to remote host
 connectPeerTo
-  :: (Serialise a, MonadIO m, MonadFork m, MonadMask m)
+  :: (Serialise a, MonadIO m, MonadFork m, MonadMask m, MonadLogger m)
   => NetworkAPI sock addr
   -> addr
   -> PeerChans addr alg a
@@ -150,7 +150,7 @@ connectPeerTo net@NetworkAPI{..} addr peerCh registry =
         `finally` liftIO (close sock)
 
 acceptLoop
-  :: (Serialise a, MonadIO m, MonadFork m, MonadMask m)
+  :: (Serialise a, MonadIO m, MonadFork m, MonadMask m, MonadLogger m)
   => NetworkAPI sock addr
   -> PeerChans addr alg a
   -> PeerRegistry addr
@@ -190,7 +190,7 @@ reapPeers (PeerRegistry v)
 ----------------------------------------------------------------
 
 startPeer
-  :: (Serialise a, MonadIO m, MonadFork m, MonadMask m)
+  :: (Serialise a, MonadFork m, MonadMask m, MonadLogger m)
   => PeerChans addr alg a  -- ^ Communication with main application
                            --   and peer dispatcher
   -> SendRecv              -- ^ Functions for interaction with network
@@ -205,7 +205,8 @@ startPeer peerCh@PeerChans{..} net@SendRecv{..} = do
     , peerBlocks     = Set.empty
     }
   -- Start gossip routines.
-  id $ forkLinked (peerGossipBlocks peerCh gossipCh peerVar)
+  id
+     $ forkLinked (peerGossipBlocks peerCh gossipCh peerVar)
      $ forkLinked (peerGossipVotes  peerCh gossipCh peerVar)
      -- Start send thread.
      $ forkLinked (peerSendGossip gossipCh peerChanTx net)
@@ -259,15 +260,15 @@ startPeer peerCh@PeerChans{..} net@SendRecv{..} = do
 
 -- | Gossip blocks to peer
 peerGossipBlocks
-  :: ()
+  :: (MonadFork m, MonadLogger m)
   => PeerChans addr alg a
   -> TChan (GossipMsg alg a)
   -> TVar (PeerState alg a)
-  -> IO x
+  -> m x
 peerGossipBlocks PeerChans{..} chan peerVar = forever $ do
-  st <- readTVarIO peerVar
-  h  <- blockchainHeight blockStorage
-  case h `compare` peerHeight st of
+  st <- liftIO $ readTVarIO peerVar
+  h  <- liftIO $ blockchainHeight blockStorage
+  liftIO $ case h `compare` peerHeight st of
     -- We lag
     LT -> return ()
     -- We at the same height
