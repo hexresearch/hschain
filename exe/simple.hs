@@ -42,88 +42,88 @@ instance Crypto Swear where
 --
 ----------------------------------------------------------------
 
-newSTMBlockStorage
-  :: (Crypto alg, Serialise a)
-  => Block alg a
-  -> IO (BlockStorage 'RW IO alg a)
-newSTMBlockStorage gBlock = do
-  -- FIXME: we MUST require correct genesis block
-  varBlocks <- newTVarIO $ Map.singleton (Height 0) gBlock
-  varPBlk   <- newTVarIO $ Map.empty
-  varLCmt   <- newTVarIO Nothing
-  let currentHeight = do
-        Just (h,_) <- Map.lookupMax <$> readTVar varBlocks
-        return h
-  return BlockStorage
-    { blockchainHeight = atomically currentHeight
-    , retrieveBlock    = \h -> do m <- readTVarIO varBlocks
-                                  return $ Map.lookup h m
-    , retrieveLastCommit = readTVarIO varLCmt
-    , storeCommit = \cmt blk -> atomically $ do
-        h <- currentHeight
-        modifyTVar' varBlocks $ Map.insert (next h) blk
-        writeTVar   varLCmt (Just cmt)
-        writeTVar   varPBlk Map.empty
+-- newSTMBlockStorage
+--   :: (Crypto alg, Serialise a)
+--   => Block alg a
+--   -> IO (BlockStorage 'RW IO alg a)
+-- newSTMBlockStorage gBlock = do
+--   -- FIXME: we MUST require correct genesis block
+--   varBlocks <- newTVarIO $ Map.singleton (Height 0) gBlock
+--   varPBlk   <- newTVarIO $ Map.empty
+--   varLCmt   <- newTVarIO Nothing
+--   let currentHeight = do
+--         Just (h,_) <- Map.lookupMax <$> readTVar varBlocks
+--         return h
+--   return BlockStorage
+--     { blockchainHeight = atomically currentHeight
+--     , retrieveBlock    = \h -> do m <- readTVarIO varBlocks
+--                                   return $ Map.lookup h m
+--     , retrieveLastCommit = readTVarIO varLCmt
+--     , storeCommit = \cmt blk -> atomically $ do
+--         h <- currentHeight
+--         modifyTVar' varBlocks $ Map.insert (next h) blk
+--         writeTVar   varLCmt (Just cmt)
+--         writeTVar   varPBlk Map.empty
 
-    , retrievePropBlocks = \height -> atomically $ do
-        h <- currentHeight
-        if h == height then readTVar varPBlk
-                       else return Map.empty
-    , storePropBlock = \height blk -> atomically $ do
-        h <- currentHeight
-        when (height == h) $ do
-          let bid = blockHash blk
-          modifyTVar varPBlk $ Map.insert bid blk
-    }
+--     , retrievePropBlocks = \height -> atomically $ do
+--         h <- currentHeight
+--         if h == height then readTVar varPBlk
+--                        else return Map.empty
+--     , storePropBlock = \height blk -> atomically $ do
+--         h <- currentHeight
+--         when (height == h) $ do
+--           let bid = blockHash blk
+--           modifyTVar varPBlk $ Map.insert bid blk
+--     }
 
 
-----------------------------------------------------------------
---
-----------------------------------------------------------------
+-- ----------------------------------------------------------------
+-- --
+-- ----------------------------------------------------------------
 
-startNode
-  :: ()
-  => UTCTime
-  -- -> Blockchain Swear Int64
-  -> Map (Address Swear) (Validator Swear)
-  -> PrivValidator Swear Int64
-  -> IO (AppChans Swear Int64, Async ())
-startNode t0 vals privValidator = do
-  appCh     <- newAppChans
-  appSt     <- newSTMBlockStorage genesisBlock
-  -- Thread with main application
-  file <- openFile ("logs/" ++ let SwearPrivK nm = validatorPrivKey privValidator
-                               in show nm
-                   ) WriteMode
-  let logger s = do t <- getCurrentTime
-                    hPutStr   file
-                      (printf "%10.3f: " (realToFrac (diffUTCTime t t0) :: Double))
-                    hPutStrLn file s
-                    hFlush    file
-  let appState = AppState { appStorage = appSt
-                          , appBlockGenerator = \commit -> do
-                              -- FIXME: We need to fetch last block
-                              Just lastBlock <- retrieveBlock appSt =<< blockchainHeight appSt
-                              let Height h = headerHeight $ blockHeader lastBlock
-                                  block = Block
-                                    { blockHeader     = Header
-                                        { headerChainID     = "TEST"
-                                        , headerHeight      = Height (h + 1)
-                                        , headerTime        = Time 0
-                                        , headerLastBlockID = Just (blockHash lastBlock)
-                                        }
-                                    , blockData       = h * 100
-                                    , blockLastCommit = commit
-                                    }
-                              return block
-                          , appValidator     = privValidator
-                          , appValidatorsSet = vals
-                          , appLogger        = logger
-                          , appMaxHeight     = Just (Height 3)
-                          }
-  hnd <- async $ runApplication appState appCh
-  --
-  return (appCh, hnd)
+-- startNode
+--   :: ()
+--   => UTCTime
+--   -- -> Blockchain Swear Int64
+--   -> Map (Address Swear) (Validator Swear)
+--   -> PrivValidator Swear Int64
+--   -> IO (AppChans Swear Int64, Async ())
+-- startNode t0 vals privValidator = do
+--   appCh     <- newAppChans
+--   appSt     <- newSTMBlockStorage genesisBlock
+--   -- Thread with main application
+--   file <- openFile ("logs/" ++ let SwearPrivK nm = validatorPrivKey privValidator
+--                                in show nm
+--                    ) WriteMode
+--   let logger s = do t <- getCurrentTime
+--                     hPutStr   file
+--                       (printf "%10.3f: " (realToFrac (diffUTCTime t t0) :: Double))
+--                     hPutStrLn file s
+--                     hFlush    file
+--   let appState = AppState { appStorage = appSt
+--                           , appBlockGenerator = \commit -> do
+--                               -- FIXME: We need to fetch last block
+--                               Just lastBlock <- retrieveBlock appSt =<< blockchainHeight appSt
+--                               let Height h = headerHeight $ blockHeader lastBlock
+--                                   block = Block
+--                                     { blockHeader     = Header
+--                                         { headerChainID     = "TEST"
+--                                         , headerHeight      = Height (h + 1)
+--                                         , headerTime        = Time 0
+--                                         , headerLastBlockID = Just (blockHash lastBlock)
+--                                         }
+--                                     , blockData       = h * 100
+--                                     , blockLastCommit = commit
+--                                     }
+--                               return block
+--                           , appValidator     = privValidator
+--                           , appValidatorsSet = vals
+--                           , appLogger        = logger
+--                           , appMaxHeight     = Just (Height 3)
+--                           }
+--   hnd <- async $ runApplication appState appCh
+--   --
+--   return (appCh, hnd)
 
 
 ----------------------------------------------------------------
@@ -170,29 +170,30 @@ genesisBlock = Block
 
 main :: IO ()
 main = do
-  -- Start application for all validators
-  t0 <- getCurrentTime
-  appChans <- mapM (startNode t0 validatorSet) validators
-  -- Connect each application to each other
-  let pairs = [ (ach1, ach2)
-              | (i,(ach1,_)) <- zip [1::Int ..] appChans
-              , (j,(ach2,_)) <- zip [1::Int ..] appChans
-              , i > j
-              ]
-  forM_ pairs $ \(chA, chB) -> do
-    chA2B <- newTChanIO
-    chB2A <- newTChanIO
-    txA   <- atomically $ dupTChan $ appChanTx chA
-    txB   <- atomically $ dupTChan $ appChanTx chB
-    startPeer
-      chA { appChanTx = txA }
-      Connection { sendEnd = atomically . writeTChan chA2B
-                 , recvEnd = readTChan chB2A
-                 }
-    startPeer
-      chB { appChanTx = txB }
-      Connection { sendEnd = atomically . writeTChan chB2A
-                 , recvEnd = readTChan chA2B
-                 }
-  -- Wait until done.
-  forM_ appChans $ \(_,a) -> wait a
+  -- -- Start application for all validators
+  -- t0 <- getCurrentTime
+  -- appChans <- mapM (startNode t0 validatorSet) validators
+  -- -- Connect each application to each other
+  -- let pairs = [ (ach1, ach2)
+  --             | (i,(ach1,_)) <- zip [1::Int ..] appChans
+  --             , (j,(ach2,_)) <- zip [1::Int ..] appChans
+  --             , i > j
+  --             ]
+  -- forM_ pairs $ \(chA, chB) -> do
+  --   chA2B <- newTChanIO
+  --   chB2A <- newTChanIO
+  --   txA   <- atomically $ dupTChan $ appChanTx chA
+  --   txB   <- atomically $ dupTChan $ appChanTx chB
+  --   startPeer
+  --     chA { appChanTx = txA }
+  --     Connection { sendEnd = atomically . writeTChan chA2B
+  --                , recvEnd = readTChan chB2A
+  --                }
+  --   startPeer
+  --     chB { appChanTx = txB }
+  --     Connection { sendEnd = atomically . writeTChan chB2A
+  --                , recvEnd = readTChan chA2B
+  --                }
+  -- -- Wait until done.
+  -- forM_ appChans $ \(_,a) -> wait a
+  return ()
