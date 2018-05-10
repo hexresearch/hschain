@@ -28,6 +28,7 @@ import Thundermint.P2P
 import Thundermint.P2P.Network
 import Thundermint.Crypto
 import Thundermint.Store
+import Thundermint.Logger
 
 
 ----------------------------------------------------------------
@@ -212,7 +213,9 @@ startNode net val valSet genesis = do
                           }
 
   -- Start P2P
-  withAsync (startPeerDispatcher net appCh (makeReadOnly storage)) $ \_ -> do
+  let netRoutine = runLoggerT "net" logenv
+                 $ startPeerDispatcher net appCh (makeReadOnly storage)
+  withAsync netRoutine $ \_ -> do
     Katip.runKatipT logenv $ runApplication appState appCh
 
 

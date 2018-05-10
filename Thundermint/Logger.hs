@@ -15,6 +15,8 @@ import Control.Monad.Trans.Class
 import Control.Monad.Trans.Reader
 import Katip
 
+import Thundermint.Control
+
 ----------------------------------------------------------------
 --
 ----------------------------------------------------------------
@@ -28,7 +30,7 @@ class MonadIO m => MonadLogger m where
 -- | Concrete implementation of logger monad
 newtype LoggerT m a = LoggerT (ReaderT (Namespace, LogEnv) m a)
   deriving ( Functor, Applicative, Monad
-           , MonadIO, MonadThrow, MonadCatch, MonadMask, MonadTrans)
+           , MonadIO, MonadThrow, MonadCatch, MonadMask, MonadTrans, MonadFork)
 
 runLoggerT :: Namespace -> LogEnv -> LoggerT m a -> m a
 runLoggerT nm le (LoggerT m) = runReaderT m (nm,le)

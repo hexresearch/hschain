@@ -36,7 +36,7 @@ instance MonadFork m => MonadFork (ReaderT r m) where
 --   thread is forwarded to original thread. When parent thread dies
 --   child thread is killed too
 forkLinked :: (MonadIO m, MonadMask m, MonadFork m)
-           => IO a              -- ^ Action to execute in forked thread
+           => m a              -- ^ Action to execute in forked thread
            -> m b              -- ^ What to do while thread executes
            -> m b
 forkLinked action io = do
@@ -44,7 +44,7 @@ forkLinked action io = do
   let fini (Right _) = return ()
       fini (Left  e) = case fromException e of
         Just (_ :: AsyncException) -> return ()
-        _                          -> throwTo tid e
-  bracket (liftIO $ forkFinally action fini)
+        _                          -> liftIO $ throwTo tid e
+  bracket (forkFinally action fini)
           (liftIO . killThread)
           (const io)
