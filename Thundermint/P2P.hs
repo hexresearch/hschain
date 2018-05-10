@@ -31,7 +31,7 @@ import Thundermint.Consensus.Types
 import Thundermint.Blockchain.Types
 import Thundermint.P2P.Network
 import Thundermint.Store
-
+import Thundermint.Control
 
 ----------------------------------------------------------------
 -- Data types
@@ -106,7 +106,7 @@ data PeerChans addr alg a = PeerChans
 ----------------------------------------------------------------
 
 startPeerDispatcher
-  :: (Serialise a, Ord addr, MonadIO m, MonadMask m)
+  :: (Serialise a, Ord addr, MonadIO m, MonadMask m, MonadFork m)
   => NetworkAPI sock addr
   -> AppChans alg a
   -> BlockStorage 'RO IO alg a
@@ -314,24 +314,3 @@ peerSendGossip gossipCh readTx SendRecv{..} = forever $ do
       TxPreVote   v -> GossipPreVote   $ unverifySignature v
       TxPreCommit v -> GossipPreCommit $ unverifySignature v
       TxProposal  p -> GossipProposal  $ unverifySignature p
-
-
-----------------------------------------------------------------
---
-----------------------------------------------------------------
-
--- | Fork thread. Any exception except `AsyncException` in forked
---   thread is forwarded to original thread.
-forkLinked :: (MonadIO m, MonadMask m)
-           => IO a              -- ^ Action to execute in forked thread
-           -> m b              -- ^ What to do while thread executes
-           -> m b
-forkLinked action io = do
-  tid <- liftIO myThreadId
-  let fini (Right _) = return ()
-      fini (Left  e) = case fromException e of
-        Just (_ :: AsyncException) -> return ()
-        _                          -> throwTo tid e
-  bracket (liftIO $ forkFinally action fini)
-          (liftIO . killThread)
-          (const io)
