@@ -1,3 +1,4 @@
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE RecordWildCards #-}
 -- |
 -- Abstract API for network which support
@@ -98,24 +99,27 @@ realNetwork = NetworkAPI
 ----------------------------------------------------------------
 
 -- | Sockets for mock network
-newtype MockSocket = MockSocket Int
-  deriving (Show,Eq,Ord)
+data MockSocket = MockSocket
+  { msckActive :: TVar Bool
+  , msckSend   :: TChan BS.ByteString
+  , msckRecv   :: TChan BS.ByteString
+  }
+  deriving (Eq)
 
 -- | Mock network which uses STM to deliver messages
-data MockNet addr = MockNet
-  { mnetSockCounter :: TVar Int
-    -- ^ Counter for sockets. We use unique numbers for numbering
-    --   sockets
-  , mnetConnections :: TVar (Map MockSocket (TChan BS.ByteString))
-    -- ^ Channels for transmitting messages between nodes.
-  , mnetIncoming    :: TVar (Map (addr,Net.ServiceName)
-                                [(MockSocket, (addr,Net.ServiceName))])
+newtype MockNet addr = MockNet
+  { mnetIncoming    :: TVar (Map (addr,Net.ServiceName)
+                                 [(MockSocket, (addr,Net.ServiceName))])
     -- ^ Incoming connections for node.
   }
 
 
+
 newMockNet :: IO (MockNet addr)
-newMockNet = MockNet <$> newTVarIO 0 <*> newTVarIO Map.empty <*> newTVarIO Map.empty
+newMockNet = MockNet <$> newTVarIO Map.empty
+
+closeMockSocket :: MockSocket -> STM ()
+closeMockSocket MockSocket{..} = writeTVar msckActive False
 
 createMockNode
   :: Ord addr
@@ -125,47 +129,62 @@ createMockNode
 createMockNode MockNet{..} addr = NetworkAPI
   { listenOn = \port -> atomically $ do
       let key = (addr, port)
-      mListen <- readTVar mnetIncoming
-      case key `Map.lookup` mListen of
-        Just  _ -> error "MockNet: already listening on port"
-        Nothing -> writeTVar mnetIncoming $ Map.insert key [] mListen
-      -- Close & accept
-      let close  = atomically $ modifyTVar' mnetIncoming $ Map.delete key
-          accept = atomically $ do
+      -- Start listening on port
+      do mListen <- readTVar mnetIncoming
+         case key `Map.lookup` mListen of
+           Just  _ -> error "MockNet: already listening on port"
+           Nothing -> writeTVar mnetIncoming $ Map.insert key [] mListen
+      -- Stop listening and close all accepted sockets
+      let stopListening = atomically $ do
+            mListen <- readTVar mnetIncoming
+            case key `Map.lookup` mListen of
+              Nothing -> return ()
+              Just ss -> mapM_ (closeMockSocket . fst) ss
+      -- Accept connection
+      let accept = atomically $ do
             mList <- readTVar mnetIncoming
             case key `Map.lookup` mList of
               Nothing     -> error "MockNet: cannot accept on closed socket"
               Just []     -> retry
               Just (x:xs) -> do writeTVar mnetIncoming $ Map.insert key xs mList
                                 return x
-      return (close, accept)
+      return (stopListening, accept)
     --
   , connect = \loc -> atomically $ do
-      s  <- do n <- readTVar mnetSockCounter
-               writeTVar mnetSockCounter $! n + 1
-               return (MockSocket n)
-      -- Create connection
-      ch   <- newTChan
-      modifyTVar' mnetConnections $ Map.insert s ch
-      -- Queue connection
+      -- let newSocket = do n <- readTVar mnetSockCounter
+      --                    writeTVar mnetSockCounter $! n + 1
+      --                    return (MockSocket n)
+      -- -- Names are relative to server
+      -- sockTo   <- newSocket
+      -- sockFrom <- newSocket
+      chA <- newTChan
+      chB <- newTChan
+      v   <- newTVar True
+      let sockTo   = MockSocket { msckActive = v
+                                , msckRecv   = chA
+                                , msckSend   = chB
+                                }
+      let sockFrom = MockSocket { msckActive = v
+                                , msckRecv   = chB
+                                , msckSend   = chA
+                                }
+      -- Queue connection on server
       cmap <- readTVar mnetIncoming
       case loc `Map.lookup` cmap of
         Nothing -> error "MockNet: Cannot connect to closed socket"
-        Just xs -> writeTVar mnetIncoming $ Map.insert loc (xs ++ [(s,loc)]) cmap
-      return s
+        Just xs -> writeTVar mnetIncoming $ Map.insert loc (xs ++ [(sockFrom,loc)]) cmap
+      return sockTo
     --
-  , sendBS = \s bs -> atomically $ do
-      cmap <- readTVar mnetConnections
-      case s `Map.lookup` cmap of
-        Nothing -> error "MockNet: Sending to closed socket!"
-        Just ch -> writeTChan ch bs
+  , sendBS = \MockSocket{..} bs -> atomically $
+      readTVar msckActive >>= \case
+        False -> error "MockNet: Cannot write to closed socket"
+        True  -> writeTChan msckSend bs
     --
-  , recvBS = \s _n -> atomically $ do
-      cmap <- readTVar mnetConnections
-      case s `Map.lookup` cmap of
-        Nothing -> return Nothing
-        Just ch -> Just <$> readTChan ch
+  , recvBS = \MockSocket{..} _n -> atomically $ do
+      readTVar msckActive >>= \case
+        False -> tryReadTChan msckRecv
+        True  -> Just <$> readTChan msckRecv
     --
-  , close = \s -> atomically $ do
-      modifyTVar' mnetConnections $ Map.delete s
+  , close = atomically . closeMockSocket
+
   }
