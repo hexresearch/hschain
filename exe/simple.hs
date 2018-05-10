@@ -1,27 +1,38 @@
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE DataKinds         #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeFamilies      #-}
 
 import Codec.Serialise (Serialise)
 import Control.Monad
+import Control.Monad.IO.Class
 import Control.Concurrent.Async
 import Control.Concurrent.STM
 import qualified Crypto.Hash.MD5 as MD5
 import Data.Int
 import Data.Word
-import qualified Data.ByteString      as BS
+import qualified Data.ByteString.Base16 as Base16
+import qualified Data.ByteString.Char8  as BC8
+import qualified Data.ByteString        as BS
 import           Data.Map               (Map)
 import qualified Data.Map             as Map
 import System.IO
 import Data.Time.Clock (getCurrentTime,diffUTCTime,UTCTime)
 import Text.Printf
+import qualified Katip
 
 import Thundermint.Blockchain.App
 import Thundermint.Blockchain.Types
 import Thundermint.Consensus.Types
 import Thundermint.P2P
+import Thundermint.P2P.Network
 import Thundermint.Crypto
 import Thundermint.Store
+
+
+----------------------------------------------------------------
+--
+----------------------------------------------------------------
 
 -- Mock crypto which works as long as no one tries to break it.
 data Swear
@@ -42,39 +53,46 @@ instance Crypto Swear where
 --
 ----------------------------------------------------------------
 
--- newSTMBlockStorage
---   :: (Crypto alg, Serialise a)
---   => Block alg a
---   -> IO (BlockStorage 'RW IO alg a)
--- newSTMBlockStorage gBlock = do
---   -- FIXME: we MUST require correct genesis block
---   varBlocks <- newTVarIO $ Map.singleton (Height 0) gBlock
---   varPBlk   <- newTVarIO $ Map.empty
---   varLCmt   <- newTVarIO Nothing
---   let currentHeight = do
---         Just (h,_) <- Map.lookupMax <$> readTVar varBlocks
---         return h
---   return BlockStorage
---     { blockchainHeight = atomically currentHeight
---     , retrieveBlock    = \h -> do m <- readTVarIO varBlocks
---                                   return $ Map.lookup h m
---     , retrieveLastCommit = readTVarIO varLCmt
---     , storeCommit = \cmt blk -> atomically $ do
---         h <- currentHeight
---         modifyTVar' varBlocks $ Map.insert (next h) blk
---         writeTVar   varLCmt (Just cmt)
---         writeTVar   varPBlk Map.empty
-
---     , retrievePropBlocks = \height -> atomically $ do
---         h <- currentHeight
---         if h == height then readTVar varPBlk
---                        else return Map.empty
---     , storePropBlock = \height blk -> atomically $ do
---         h <- currentHeight
---         when (height == h) $ do
---           let bid = blockHash blk
---           modifyTVar varPBlk $ Map.insert bid blk
---     }
+newSTMBlockStorage
+  :: (Crypto alg, Serialise a)
+  => Block alg a
+  -> IO (BlockStorage 'RW IO alg a)
+newSTMBlockStorage gBlock = do
+  -- FIXME: we MUST require correct genesis block
+  varBlocks <- newTVarIO $ Map.singleton (Height 0) gBlock
+  varPBlk   <- newTVarIO $ Map.empty
+  varLCmt   <- newTVarIO Nothing
+  let currentHeight = do
+        Just (h,_) <- Map.lookupMax <$> readTVar varBlocks
+        return h
+  let bs = BlockStorage
+        { blockchainHeight = atomically currentHeight
+        , retrieveBlock    = \h -> do m <- readTVarIO varBlocks
+                                      return $ Map.lookup h m
+        , retrieveBlockID  = (fmap . fmap) blockHash . retrieveBlock bs
+        , retrieveCommit   = error "No implementation for retrieveCommit"
+        , retrieveLastCommit = readTVarIO varLCmt
+        , storeCommit = \cmt blk -> atomically $ do
+            h <- currentHeight
+            modifyTVar' varBlocks $ Map.insert (next h) blk
+            writeTVar   varLCmt (Just cmt)
+            writeTVar   varPBlk Map.empty
+        --
+        , retrievePropBlocks = \height -> atomically $ do
+            h <- currentHeight
+            if h == height then readTVar varPBlk
+                           else return Map.empty
+        , retrieveStoredProps = atomically $ do
+            h  <- currentHeight
+            bs <- readTVar varPBlk
+            return (h, Map.keysSet bs)
+        , storePropBlock = \height blk -> atomically $ do
+            h <- currentHeight
+            when (height == h) $ do
+              let bid = blockHash blk
+              modifyTVar varPBlk $ Map.insert bid blk
+        }
+  return bs
 
 
 -- ----------------------------------------------------------------
@@ -100,27 +118,6 @@ instance Crypto Swear where
 --                       (printf "%10.3f: " (realToFrac (diffUTCTime t t0) :: Double))
 --                     hPutStrLn file s
 --                     hFlush    file
---   let appState = AppState { appStorage = appSt
---                           , appBlockGenerator = \commit -> do
---                               -- FIXME: We need to fetch last block
---                               Just lastBlock <- retrieveBlock appSt =<< blockchainHeight appSt
---                               let Height h = headerHeight $ blockHeader lastBlock
---                                   block = Block
---                                     { blockHeader     = Header
---                                         { headerChainID     = "TEST"
---                                         , headerHeight      = Height (h + 1)
---                                         , headerTime        = Time 0
---                                         , headerLastBlockID = Just (blockHash lastBlock)
---                                         }
---                                     , blockData       = h * 100
---                                     , blockLastCommit = commit
---                                     }
---                               return block
---                           , appValidator     = privValidator
---                           , appValidatorsSet = vals
---                           , appLogger        = logger
---                           , appMaxHeight     = Just (Height 3)
---                           }
 --   hnd <- async $ runApplication appState appCh
 --   --
 --   return (appCh, hnd)
@@ -168,32 +165,69 @@ genesisBlock = Block
   , blockLastCommit = Nothing
   }
 
+----------------------------------------------------------------
+--
+----------------------------------------------------------------
+
+-- Start node which will now run consensus algorithm
+startNode
+  :: (Ord addr, Crypto alg, Serialise a, a ~ Int64)
+  => NetworkAPI sock addr
+  -> PrivValidator alg a
+  -> Map (Address alg) (Validator alg)
+  -> Block alg a
+  -> IO ()
+startNode net val valSet genesis = do
+  -- Initialize logging
+  scribe <- Katip.mkFileScribe
+    ("logs/" ++ let Address nm = address $ publicKey $ validatorPrivKey val
+                in BC8.unpack (Base16.encode nm)
+    ) Katip.DebugS Katip.V2
+  logenv <- Katip.registerScribe "log" scribe Katip.defaultScribeSettings
+        =<< Katip.initLogEnv "TM" "DEV"
+  -- Initialize block storage
+  storage <- newSTMBlockStorage genesis
+  appCh   <- newAppChans
+  --
+  let appState = AppState { appStorage        = hoistBlockStorageRW liftIO storage
+                          , appBlockGenerator = \commit -> liftIO $ do
+                              -- FIXME: We need to fetch last block
+                              Just lastBlock <- retrieveBlock storage =<< blockchainHeight storage
+                              let Height h = headerHeight $ blockHeader lastBlock
+                                  block = Block
+                                    { blockHeader     = Header
+                                        { headerChainID     = "TEST"
+                                        , headerHeight      = Height (h + 1)
+                                        , headerTime        = Time 0
+                                        , headerLastBlockID = Just (blockHash lastBlock)
+                                        }
+                                    , blockData       = h * 100
+                                    , blockLastCommit = commit
+                                    }
+                              return block
+                          , appValidator     = val
+                          , appValidatorsSet = valSet
+                          , appLogger        = \ns sev str a -> Katip.logF a ns sev str
+                          , appMaxHeight     = Just (Height 3)
+                          }
+
+  -- Start P2P
+  -- withAsync (startPeerDispatcher net appCh (makeReadOnly storage)) $ \_ -> do
+  Katip.runKatipT logenv $ runApplication appState appCh
+
+
+withAsyncs :: [IO a] -> ([Async a] -> IO b) -> IO b
+withAsyncs ios function
+  = recur ([],ios)
+  where
+    recur (as,[])   = function (reverse as)
+    recur (as,i:is) = withAsync i $ \a -> recur (a:as, is)
+
 main :: IO ()
 main = do
-  -- -- Start application for all validators
-  -- t0 <- getCurrentTime
-  -- appChans <- mapM (startNode t0 validatorSet) validators
-  -- -- Connect each application to each other
-  -- let pairs = [ (ach1, ach2)
-  --             | (i,(ach1,_)) <- zip [1::Int ..] appChans
-  --             , (j,(ach2,_)) <- zip [1::Int ..] appChans
-  --             , i > j
-  --             ]
-  -- forM_ pairs $ \(chA, chB) -> do
-  --   chA2B <- newTChanIO
-  --   chB2A <- newTChanIO
-  --   txA   <- atomically $ dupTChan $ appChanTx chA
-  --   txB   <- atomically $ dupTChan $ appChanTx chB
-  --   startPeer
-  --     chA { appChanTx = txA }
-  --     Connection { sendEnd = atomically . writeTChan chA2B
-  --                , recvEnd = readTChan chB2A
-  --                }
-  --   startPeer
-  --     chB { appChanTx = txB }
-  --     Connection { sendEnd = atomically . writeTChan chB2A
-  --                , recvEnd = readTChan chA2B
-  --                }
-  -- -- Wait until done.
-  -- forM_ appChans $ \(_,a) -> wait a
-  return ()
+  net <- newMockNet
+  let actions = [ do let node = createMockNode net addr
+                     startNode node val validatorSet genesisBlock
+                | (addr, val) <- [1::Int ..] `zip` validators
+                ]
+  withAsyncs actions $ mapM_ wait
