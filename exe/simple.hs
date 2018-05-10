@@ -212,8 +212,8 @@ startNode net val valSet genesis = do
                           }
 
   -- Start P2P
-  -- withAsync (startPeerDispatcher net appCh (makeReadOnly storage)) $ \_ -> do
-  Katip.runKatipT logenv $ runApplication appState appCh
+  withAsync (startPeerDispatcher net appCh (makeReadOnly storage)) $ \_ -> do
+    Katip.runKatipT logenv $ runApplication appState appCh
 
 
 withAsyncs :: [IO a] -> ([Async a] -> IO b) -> IO b
