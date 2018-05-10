@@ -32,6 +32,8 @@ import Thundermint.Blockchain.Types
 import Thundermint.P2P.Network
 import Thundermint.Store
 import Thundermint.Control
+import Thundermint.Logger
+
 
 ----------------------------------------------------------------
 -- Data types
@@ -106,7 +108,7 @@ data PeerChans addr alg a = PeerChans
 ----------------------------------------------------------------
 
 startPeerDispatcher
-  :: (Serialise a, Ord addr, MonadIO m, MonadMask m, MonadFork m)
+  :: (Serialise a, Ord addr, MonadMask m, MonadFork m, MonadIO m)
   => NetworkAPI sock addr
   -> AppChans alg a
   -> BlockStorage 'RO IO alg a
@@ -132,37 +134,36 @@ startPeerDispatcher net@NetworkAPI{..} AppChans{..} storage = do
 
 -- Initiate connection to remote host
 connectPeerTo
-  :: (Serialise a)
+  :: (Serialise a, MonadIO m, MonadFork m, MonadMask m)
   => NetworkAPI sock addr
   -> addr
   -> PeerChans addr alg a
   -> PeerRegistry addr
-  -> IO ()
+  -> m ()
 connectPeerTo net@NetworkAPI{..} addr peerCh registry =
-  mask $ \restore -> void $ forkIO $ do
-    tid <- myThreadId
+  mask $ \restore -> void $ fork $ do
+    tid <- liftIO myThreadId
     registerPeer registry tid addr
     flip finally (unregisterPeer registry tid) $ do
-      sock <- connect addr
+      sock <- liftIO $ connect addr
       restore (startPeer peerCh (applySocket net sock))
-        `finally` close sock
+        `finally` liftIO (close sock)
 
 acceptLoop
-  :: (Serialise a)
+  :: (Serialise a, MonadIO m, MonadFork m, MonadMask m)
   => NetworkAPI sock addr
   -> PeerChans addr alg a
   -> PeerRegistry addr
-  -> IO ()
+  -> m ()
 acceptLoop net@NetworkAPI{..} peerCh registry =
-  bracket (listenOn "50000") fst $ \(_,accept) -> forever $ do
+  bracket (liftIO $ listenOn "50000") (liftIO . fst) $ \(_,accept) -> forever $ do
     mask $ \restore -> do
-      (sock, addr) <- accept
-      void $ forkIO $ do
-        tid <- myThreadId
+      (sock, addr) <- liftIO accept
+      void $ fork $ do
+        tid <- liftIO myThreadId
         registerPeer registry tid addr
-        flip finally (unregisterPeer registry tid) $ do
-          restore (startPeer peerCh (applySocket net sock))
-            `finally` close sock
+        flip finally (unregisterPeer registry tid) $
+          restore (startPeer peerCh (applySocket net sock)) `finally` liftIO (close sock)
 
 
 
@@ -189,20 +190,21 @@ reapPeers (PeerRegistry v)
 ----------------------------------------------------------------
 
 startPeer
-  :: (Serialise a)
+  :: (Serialise a, MonadIO m, MonadFork m, MonadMask m)
   => PeerChans addr alg a  -- ^ Communication with main application
                            --   and peer dispatcher
   -> SendRecv              -- ^ Functions for interaction with network
-  -> IO ()
+  -> m ()
 startPeer peerCh@PeerChans{..} net@SendRecv{..} = do
-  gossipCh <- newTChanIO
-  peerVar  <- newTVarIO PeerState { peerHeight     = Height 0
-                                  , peerPrevotes   = Map.empty
-                                  , peerPrecommits = Map.empty
-                                  , peerProposals  = Set.empty
-                                  , peerBlocks     = Set.empty
-                                  }
-     -- Start gossip routines.
+  gossipCh <- liftIO $ newTChanIO
+  peerVar  <- liftIO $ newTVarIO PeerState
+    { peerHeight     = Height 0
+    , peerPrevotes   = Map.empty
+    , peerPrecommits = Map.empty
+    , peerProposals  = Set.empty
+    , peerBlocks     = Set.empty
+    }
+  -- Start gossip routines.
   id $ forkLinked (peerGossipBlocks peerCh gossipCh peerVar)
      $ forkLinked (peerGossipVotes  peerCh gossipCh peerVar)
      -- Start send thread.
@@ -212,20 +214,20 @@ startPeer peerCh@PeerChans{..} net@SendRecv{..} = do
      -- FIXME: Implement framing for messages. At the moment we rely
      --        on implementation of MockNet where message won't be
      --        split or merged.
-     $ fix $ \loop -> recv 4096 >>= \case
+     $ fix $ \loop -> liftIO (recv 4096) >>= \case
          Nothing -> return ()
          Just bs -> case deserialiseOrFail bs of
            -- FIXME: do something meaningful with decoding error.
            Left  _   -> return ()
            Right msg -> case msg of
              -- Forward to application
-             GossipPreVote   v -> atomically $ peerChanRx $ RxPreVote   v
-             GossipPreCommit v -> atomically $ peerChanRx $ RxPreCommit v
-             GossipProposal  p -> atomically $ peerChanRx $ RxProposal  p
-             GossipBlock     b -> atomically $ peerChanRx $ RxBlock     b
+             GossipPreVote   v -> liftIO $ atomically $ peerChanRx $ RxPreVote   v
+             GossipPreCommit v -> liftIO $ atomically $ peerChanRx $ RxPreCommit v
+             GossipProposal  p -> liftIO $ atomically $ peerChanRx $ RxProposal  p
+             GossipBlock     b -> liftIO $ atomically $ peerChanRx $ RxBlock     b
              -- Update peer state
              GossipStatus         h _          ->
-               atomically $ modifyTVar' peerVar $ \p ->
+               liftIO $ atomically $ modifyTVar' peerVar $ \p ->
                  if peerHeight p == h then p
                                       else PeerState { peerHeight     = h
                                                      , peerPrevotes   = Map.empty
@@ -235,19 +237,19 @@ startPeer peerCh@PeerChans{..} net@SendRecv{..} = do
                                                      }
 
              GossipHasProposals   h props      ->
-               atomically $ modifyTVar' peerVar $ \p ->
+               liftIO $ atomically $ modifyTVar' peerVar $ \p ->
                  if peerHeight p == h then p
                                       else p { peerProposals = props }
              GossipHasPrevotes    h prevotes   ->
-               atomically $ modifyTVar' peerVar $ \p ->
+               liftIO $ atomically $ modifyTVar' peerVar $ \p ->
                  if peerHeight p == h then p
                                       else p { peerPrevotes = prevotes }
              GossipHasPrecommits  h precommtis ->
-               atomically $ modifyTVar' peerVar $ \p ->
+               liftIO $ atomically $ modifyTVar' peerVar $ \p ->
                  if peerHeight p == h then p
                                       else p { peerPrecommits = precommtis }
              GossipHasPropBlocks  h bids       ->
-               atomically $ modifyTVar' peerVar $ \p ->
+               liftIO $ atomically $ modifyTVar' peerVar $ \p ->
                  if peerHeight p == h then p
                                       else p { peerBlocks = bids }
              --
@@ -278,18 +280,18 @@ peerGossipBlocks PeerChans{..} chan peerVar = forever $ do
              unless (bid `Set.member` peerBlocks st) $ do
                Just b <- retrieveBlock blockStorage (peerHeight st)
                atomically $ writeTChan chan $ GossipBlock b
-  threadDelay 100e3
+  liftIO $ threadDelay 100e3
 
 -- | Gossip votes with given peer
 peerGossipVotes
-  :: ()
+  :: (MonadIO m, MonadFork m, MonadMask m)
   => PeerChans addr alg a
   -> TChan (GossipMsg alg a)
   -> TVar (PeerState alg a)
-  -> IO x
+  -> m x
 peerGossipVotes PeerChans{..} chan peerVar = forever $ do
-  st <- readTVarIO peerVar
-  h  <- blockchainHeight blockStorage
+  st <- liftIO $ readTVarIO peerVar
+  h  <- liftIO $ blockchainHeight blockStorage
   case h `compare` peerHeight st of
     -- We're lagging
     LT -> return ()
@@ -297,18 +299,18 @@ peerGossipVotes PeerChans{..} chan peerVar = forever $ do
     EQ -> return ()
     -- Peer is lagging. Send precommit
     GT -> return ()
-  threadDelay 100e3
+  liftIO $ threadDelay 100e3
 
 
 peerSendGossip
-  :: (Serialise a)
+  :: (Serialise a, MonadIO m, MonadFork m, MonadMask m)
   => TChan (GossipMsg alg a)
   -> STM (MessageTx alg a)
   -> SendRecv
-  -> IO x
+  -> m x
 peerSendGossip gossipCh readTx SendRecv{..} = forever $ do
-  msg <- atomically $ fromApp <|> readTChan gossipCh
-  send $ serialise msg
+  msg <- liftIO $ atomically $ fromApp <|> readTChan gossipCh
+  liftIO $ send $ serialise msg
   where
     fromApp = readTx >>= return . \case
       TxPreVote   v -> GossipPreVote   $ unverifySignature v
