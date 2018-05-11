@@ -23,6 +23,7 @@ import Control.Concurrent
 import Control.Concurrent.STM
 -- import           Data.Foldable
 import           Data.Function
+import           Data.Monoid       ((<>))
 import qualified Data.Map        as Map
 import           Data.Map          (Map)
 import Text.Groom
@@ -35,7 +36,7 @@ import Thundermint.Consensus.Types
 import Thundermint.Store
 import Thundermint.Logger
 
-import Katip (Severity(..), Namespace, LogStr, LogItem)
+import Katip (Severity(..), Namespace, LogStr, LogItem, showLS)
 
 ----------------------------------------------------------------
 --
@@ -97,7 +98,7 @@ decideNewBlock appSt@AppState{..} appCh@AppChans{..} lastCommt = do
   -- Enter PREVOTE of round 0
   --
   -- FIXME: encode that we cannot fail here!
-  logger InfoS "New height" ()
+  logger InfoS ("New height: " <> showLS (currentH hParam)) ()
   Success tm0 <- runConsesusM $ newHeight hParam tmState0
   -- Handle incoming messages until we decide on next block.
   flip fix tm0 $ \loop tm -> do
@@ -232,7 +233,7 @@ makeHeightParametes AppState{..} AppChans{..} = do
                             , propBlockID   = bid
                             }
             sprop  = signValue pk prop
-        logger InfoS "Sending proposal" ()
+        logger InfoS ("Sending proposal for " <> showLS r) ()
         liftIO $ atomically $ do
           writeTChan appChanTx (TxProposal sprop)
           writeTChan appChanRx (RxProposal $ unverifySignature sprop)
@@ -249,7 +250,7 @@ makeHeightParametes AppState{..} AppChans{..} = do
                         , voteBlockID = b
                         }
             svote  = signValue pk vote
-        logger InfoS "Sending prevote" ()
+        logger InfoS ("Sending prevote for " <> showLS r) ()
         liftIO $ atomically $ do
           writeTChan appChanTx (TxPreVote svote)
           writeTChan appChanRx (RxPreVote $ unverifySignature svote)
@@ -262,7 +263,7 @@ makeHeightParametes AppState{..} AppChans{..} = do
                         , voteBlockID = b
                         }
             svote  = signValue pk vote
-        logger InfoS "Sending precommit" ()
+        logger InfoS ("Sending precommit for " <> showLS r) ()
         liftIO $ atomically $ do
           writeTChan appChanTx (TxPreCommit svote)
           writeTChan appChanRx (RxPreCommit $ unverifySignature svote)
