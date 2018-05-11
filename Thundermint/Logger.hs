@@ -30,7 +30,7 @@ import Thundermint.Control
 
 -- | Monad which supports logging. Unlike 'Katip' it ties namespace to
 --   the monad.
-class MonadIO m => MonadLogger m where
+class Monad m => MonadLogger m where
   -- | Log value
   logger :: LogItem a => Severity -> LogStr -> a -> m ()
   -- | Change current namespace

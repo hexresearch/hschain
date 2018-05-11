@@ -264,7 +264,7 @@ startPeer peerCh@PeerChans{..} net@SendRecv{..} = logOnException $ do
 
 -- | Gossip blocks to peer
 peerGossipBlocks
-  :: (MonadFork m, MonadCatch m, MonadLogger m)
+  :: (MonadIO m, MonadFork m, MonadCatch m, MonadLogger m)
   => PeerChans addr alg a
   -> TChan (GossipMsg alg a)
   -> TVar (PeerState alg a)

@@ -17,7 +17,7 @@ import qualified Control.Concurrent as Conc
 ----------------------------------------------------------------
 
 -- | Type class for monads which could be forked
-class MonadFork m where
+class MonadIO m => MonadFork m where
   fork :: m () -> m ThreadId
   forkFinally :: m a -> (Either SomeException a -> m ()) -> m ThreadId
 

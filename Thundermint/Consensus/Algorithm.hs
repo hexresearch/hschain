@@ -30,12 +30,13 @@ import Control.Monad
 
 import qualified Data.Map        as Map
 import           Data.Map          (Map)
+import Katip (Severity(..), Namespace, LogStr, LogItem)
 
 import Thundermint.Crypto
 import Thundermint.Crypto.Containers
 import Thundermint.Consensus.Types
+import Thundermint.Logger
 
-import Katip (Severity(..), Namespace, LogStr, LogItem)
 
 
 ----------------------------------------------------------------
@@ -77,11 +78,7 @@ data HeightParameres (m :: * -> *) alg a = HeightParameres
     --   elsewhere.
   , commitBlock         :: forall x. Commit alg a -> m x
     -- ^ We're done for this height. Commit block to blockchain
-
-  , logger              :: forall li. LogItem li
-                        => Namespace -> Severity -> LogStr -> li -> m ()
   }
-
 
 
 ----------------------------------------------------------------
@@ -103,7 +100,7 @@ class Monad m => ConsensusMonad m where
   panic :: String -> m a
 
 newHeight
-  :: (Crypto alg, ConsensusMonad m)
+  :: (Crypto alg, ConsensusMonad m, MonadLogger m)
   => HeightParameres m alg a
   -> TMState alg a
   -> m (TMState alg a)
@@ -116,7 +113,7 @@ newHeight par = enterPropose par (Round 0)
 --   Note that when state machine sends vote or proposal it does not
 --   update state and thus message should be send back to it
 tendermintTransition
-  :: (Crypto alg, ConsensusMonad m)
+  :: (Crypto alg, ConsensusMonad m, MonadLogger m)
   => HeightParameres m alg a  -- ^ Parameters for current height
   -> Message alg a          -- ^ Message which causes state transition
   -> TMState alg a          -- ^ Initial state of state machine
@@ -174,7 +171,7 @@ tendermintTransition par@HeightParameres{..} msg sm@TMState{..} =
 -- Check whether we need to perform any state transition after we
 -- received prevote
 checkTransitionPrevote
-  :: (Crypto alg, ConsensusMonad m)
+  :: (ConsensusMonad m, MonadLogger m, Crypto alg)
   => HeightParameres m alg a
   -> Round
   -> TMState alg a
@@ -198,7 +195,7 @@ checkTransitionPrevote par@HeightParameres{..} r sm@(TMState{..})
 -- Check whether we need to perform any state transition after we
 -- received precommit
 checkTransitionPrecommit
-  :: (Crypto alg, ConsensusMonad m)
+  :: (ConsensusMonad m, MonadLogger m, Crypto alg)
   => HeightParameres m alg a
   -> Round
   -> TMState alg a
@@ -217,7 +214,7 @@ checkTransitionPrecommit par@HeightParameres{..} r sm@(TMState{..})
   --        later moment they'll get
   | Just Vote{..} <- majority23at r smPrecommitsSet
   , Just bid      <- voteBlockID
-    = do logger "tendermint" InfoS "Commmiting" ()
+    = do logger InfoS "Commmiting" ()
          commitBlock Commit{ commitBlockID    = bid
                            , commitPrecommits = valuesAtR r smPrecommitsSet
                            }
@@ -239,13 +236,13 @@ checkTransitionPrecommit par@HeightParameres{..} r sm@(TMState{..})
 
 -- Enter Propose stage and send required messages
 enterPropose
-  :: (Crypto alg, ConsensusMonad m)
+  :: (Crypto alg, ConsensusMonad m, MonadLogger m)
   => HeightParameres m alg a
   -> Round
   -> TMState alg a
   -> m (TMState alg a)
 enterPropose HeightParameres{..} r sm@TMState{..} = do
-  logger "tendermint" InfoS "Entering propose" ()
+  logger InfoS "Entering propose" ()
   scheduleTimeout $ Timeout currentH r StepProposal
   -- If we're proposers we need to broadcast proposal. Otherwise we do
   -- nothing
@@ -267,14 +264,14 @@ enterPropose HeightParameres{..} r sm@TMState{..} = do
 --   2. Call checkTransitionPrevote to check whether we need to go to
 --      PRECOMMIT
 enterPrevote
-  :: (ConsensusMonad m, Crypto alg)
+  :: (Crypto alg, ConsensusMonad m, MonadLogger m)
   => HeightParameres m alg a
   -> Round
   -> TMState alg a
   -> m (TMState alg a)
 enterPrevote par@HeightParameres{..} r (unlockOnPrevote -> sm@TMState{..}) = do
   --
-  logger "tendermint" InfoS "Entering prevote" ()
+  logger InfoS "Entering prevote" ()
   castPrevote smRound =<< prevoteBlock
   --
   scheduleTimeout $ Timeout currentH r StepPrevote
@@ -322,13 +319,13 @@ unlockOnPrevote sm@TMState{..}
 --   2. Broadcast precommit vote
 --   3. Check whether we need to make further state transitions.
 enterPrecommit
-  :: (ConsensusMonad m, Crypto alg)
+  :: (Crypto alg, ConsensusMonad m, MonadLogger m)
   => HeightParameres m alg a
   -> Round
   -> TMState alg a
   -> m (TMState alg a)
 enterPrecommit par@HeightParameres{..} r sm@TMState{..} = do
-  logger "tendermint" InfoS "Entering precommit" ()
+  logger InfoS "Entering precommit" ()
   castPrecommit r precommitBlock
   scheduleTimeout $ Timeout currentH r StepPrecommit
   checkTransitionPrecommit par r sm
