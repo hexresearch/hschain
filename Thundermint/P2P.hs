@@ -1,7 +1,8 @@
-{-# LANGUAGE NumDecimals #-}
-{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DataKinds           #-}
+{-# LANGUAGE DeriveGeneric       #-}
 {-# LANGUAGE LambdaCase          #-}
+{-# LANGUAGE NumDecimals         #-}
+{-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 -- |
@@ -113,7 +114,8 @@ startPeerDispatcher
   -> AppChans alg a
   -> BlockStorage 'RO IO alg a
   -> m x
-startPeerDispatcher net@NetworkAPI{..} AppChans{..} storage = do
+startPeerDispatcher net@NetworkAPI{..} AppChans{..} storage = logOnException $ do
+  logger InfoS "Starting peer dispatcher" ()
   peers        <- newPeerRegistry
   peerExchange <- liftIO newTChanIO
   let peerCh = PeerChans { peerChanTx = readTChan appChanTx
@@ -155,7 +157,8 @@ acceptLoop
   -> PeerChans addr alg a
   -> PeerRegistry addr
   -> m ()
-acceptLoop net@NetworkAPI{..} peerCh registry =
+acceptLoop net@NetworkAPI{..} peerCh registry = logOnException $ do
+  logger InfoS "Starting accept loop" ()
   bracket (liftIO $ listenOn "50000") (liftIO . fst) $ \(_,accept) -> forever $ do
     mask $ \restore -> do
       (sock, addr) <- liftIO accept
@@ -195,7 +198,8 @@ startPeer
                            --   and peer dispatcher
   -> SendRecv              -- ^ Functions for interaction with network
   -> m ()
-startPeer peerCh@PeerChans{..} net@SendRecv{..} = do
+startPeer peerCh@PeerChans{..} net@SendRecv{..} = logOnException $ do
+  logger InfoS "Starting peer" ()
   gossipCh <- liftIO $ newTChanIO
   peerVar  <- liftIO $ newTVarIO PeerState
     { peerHeight     = Height 0
@@ -260,60 +264,66 @@ startPeer peerCh@PeerChans{..} net@SendRecv{..} = do
 
 -- | Gossip blocks to peer
 peerGossipBlocks
-  :: (MonadFork m, MonadLogger m)
+  :: (MonadFork m, MonadCatch m, MonadLogger m)
   => PeerChans addr alg a
   -> TChan (GossipMsg alg a)
   -> TVar (PeerState alg a)
   -> m x
-peerGossipBlocks PeerChans{..} chan peerVar = forever $ do
-  st <- liftIO $ readTVarIO peerVar
-  h  <- liftIO $ blockchainHeight blockStorage
-  liftIO $ case h `compare` peerHeight st of
-    -- We lag
-    LT -> return ()
-    -- We at the same height
-    EQ -> do blocks <- retrievePropBlocks blockStorage h
-             case Map.lookupMin $ Map.difference blocks $ Map.fromSet (const ()) $ peerBlocks st of
-               Nothing    -> return ()
-               Just (_,b) -> atomically $ writeTChan chan $ GossipBlock b
-    -- Peer is lagging
-    GT -> do Just bid <- retrieveBlockID blockStorage (peerHeight st)
-             unless (bid `Set.member` peerBlocks st) $ do
-               Just b <- retrieveBlock blockStorage (peerHeight st)
-               atomically $ writeTChan chan $ GossipBlock b
-  liftIO $ threadDelay 100e3
+peerGossipBlocks PeerChans{..} chan peerVar = logOnException $ do
+  logger InfoS "Starting routine for gossiping blocks" ()
+  forever $ do
+    st <- liftIO $ readTVarIO peerVar
+    h  <- liftIO $ blockchainHeight blockStorage
+    liftIO $ case h `compare` peerHeight st of
+      -- We lag
+      LT -> return ()
+      -- We at the same height
+      EQ -> do blocks <- retrievePropBlocks blockStorage h
+               case Map.lookupMin $ Map.difference blocks $ Map.fromSet (const ()) $ peerBlocks st of
+                 Nothing    -> return ()
+                 Just (_,b) -> atomically $ writeTChan chan $ GossipBlock b
+      -- Peer is lagging
+      GT -> do Just bid <- retrieveBlockID blockStorage (peerHeight st)
+               unless (bid `Set.member` peerBlocks st) $ do
+                 Just b <- retrieveBlock blockStorage (peerHeight st)
+                 atomically $ writeTChan chan $ GossipBlock b
+    liftIO $ threadDelay 100e3
 
 -- | Gossip votes with given peer
 peerGossipVotes
-  :: (MonadIO m, MonadFork m, MonadMask m)
+  :: (MonadIO m, MonadFork m, MonadMask m, MonadLogger m)
   => PeerChans addr alg a
   -> TChan (GossipMsg alg a)
   -> TVar (PeerState alg a)
   -> m x
-peerGossipVotes PeerChans{..} chan peerVar = forever $ do
-  st <- liftIO $ readTVarIO peerVar
-  h  <- liftIO $ blockchainHeight blockStorage
-  case h `compare` peerHeight st of
-    -- We're lagging
-    LT -> return ()
-    -- We at the same height. Send prevote & precommit
-    EQ -> return ()
-    -- Peer is lagging. Send precommit
-    GT -> return ()
-  liftIO $ threadDelay 100e3
+peerGossipVotes PeerChans{..} chan peerVar = logOnException $ do
+  logger InfoS "Starting routine for gossiping votes" ()
+  forever $ do
+    st <- liftIO $ readTVarIO peerVar
+    h  <- liftIO $ blockchainHeight blockStorage
+    case h `compare` peerHeight st of
+      -- We're lagging
+      LT -> return ()
+      -- We at the same height. Send prevote & precommit
+      EQ -> return ()
+      -- Peer is lagging. Send precommit
+      GT -> return ()
+    liftIO $ threadDelay 100e3
 
 
 peerSendGossip
-  :: (Serialise a, MonadIO m, MonadFork m, MonadMask m)
+  :: (Serialise a, MonadIO m, MonadFork m, MonadMask m, MonadLogger m)
   => TChan (GossipMsg alg a)
   -> STM (MessageTx alg a)
   -> SendRecv
   -> m x
-peerSendGossip gossipCh readTx SendRecv{..} = forever $ do
-  msg <- liftIO $ atomically $ fromApp <|> readTChan gossipCh
-  liftIO $ send $ serialise msg
-  where
-    fromApp = readTx >>= return . \case
-      TxPreVote   v -> GossipPreVote   $ unverifySignature v
-      TxPreCommit v -> GossipPreCommit $ unverifySignature v
-      TxProposal  p -> GossipProposal  $ unverifySignature p
+peerSendGossip gossipCh readTx SendRecv{..} = logOnException $ do
+  logger InfoS "Starting routing for sending data" ()
+  forever $ do
+    msg <- liftIO $ atomically $ fromApp <|> readTChan gossipCh
+    liftIO $ send $ serialise msg
+    where
+      fromApp = readTx >>= return . \case
+        TxPreVote   v -> GossipPreVote   $ unverifySignature v
+        TxPreCommit v -> GossipPreCommit $ unverifySignature v
+        TxProposal  p -> GossipProposal  $ unverifySignature p
