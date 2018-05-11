@@ -28,9 +28,10 @@ module Thundermint.Consensus.Algorithm (
 
 import Control.Monad
 
+import           Data.Monoid       ((<>))
 import qualified Data.Map        as Map
 import           Data.Map          (Map)
-import Katip (Severity(..), Namespace, LogStr, LogItem)
+import Katip (Severity(..), Namespace, LogStr, LogItem, showLS)
 
 import Thundermint.Crypto
 import Thundermint.Crypto.Containers
@@ -241,8 +242,8 @@ enterPropose
   -> Round
   -> TMState alg a
   -> m (TMState alg a)
-enterPropose HeightParameres{..} r sm@TMState{..} = do
-  logger InfoS "Entering propose" ()
+enterPropose par@HeightParameres{..} r sm@TMState{..} = do
+  logger InfoS ("Entering propose " <> shortLogSt par sm) ()
   scheduleTimeout $ Timeout currentH r StepProposal
   -- If we're proposers we need to broadcast proposal. Otherwise we do
   -- nothing
@@ -271,7 +272,7 @@ enterPrevote
   -> m (TMState alg a)
 enterPrevote par@HeightParameres{..} r (unlockOnPrevote -> sm@TMState{..}) = do
   --
-  logger InfoS "Entering prevote" ()
+  logger InfoS ("Entering prevote" <> shortLogSt par sm) ()
   castPrevote smRound =<< prevoteBlock
   --
   scheduleTimeout $ Timeout currentH r StepPrevote
@@ -325,7 +326,7 @@ enterPrecommit
   -> TMState alg a
   -> m (TMState alg a)
 enterPrecommit par@HeightParameres{..} r sm@TMState{..} = do
-  logger InfoS "Entering precommit" ()
+  logger InfoS ("Entering precommit " <> shortLogSt par sm) ()
   castPrecommit r precommitBlock
   scheduleTimeout $ Timeout currentH r StepPrecommit
   checkTransitionPrecommit par r sm
@@ -370,3 +371,14 @@ addPrecommit v sm@TMState{..} =
     InsertOK votes   -> return sm{ smPrecommitsSet = votes }
     InsertDup        -> tranquility
     InsertConflict _ -> misdeed
+
+
+shortLogSt :: HeightParameres m alg a -> TMState alg a -> LogStr
+shortLogSt HeightParameres{..} TMState{..}
+  =  "("
+  <> let Height h = currentH in showLS h
+  <> "/"
+  <> let Round r = smRound in showLS r
+  <> "/"
+  <> showLS smStep
+  <> ")"
