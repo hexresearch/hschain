@@ -208,7 +208,6 @@ startNode net val valSet genesis = do
                               return block
                           , appValidator     = val
                           , appValidatorsSet = valSet
-                          , appLogger        = \ns sev str a -> Katip.logF a ns sev str
                           , appMaxHeight     = Just (Height 3)
                           }
 
@@ -216,7 +215,7 @@ startNode net val valSet genesis = do
   let netRoutine = runLoggerT "net" logenv
                  $ startPeerDispatcher net appCh (makeReadOnly storage)
   withAsync netRoutine $ \_ -> do
-    Katip.runKatipT logenv $ runApplication appState appCh
+    runLoggerT "consensus" logenv $ runApplication appState appCh
 
 
 withAsyncs :: [IO a] -> ([Async a] -> IO b) -> IO b

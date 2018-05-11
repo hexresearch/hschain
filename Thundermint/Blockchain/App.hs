@@ -33,7 +33,7 @@ import Thundermint.Crypto.Containers
 import Thundermint.Consensus.Algorithm
 import Thundermint.Consensus.Types
 import Thundermint.Store
--- import Thundermint.P2P
+import Thundermint.Logger
 
 import Katip (Severity(..), Namespace, LogStr, LogItem)
 
@@ -47,7 +47,7 @@ import Katip (Severity(..), Namespace, LogStr, LogItem)
 --
 --   * INVARIANT: Only this function can write to blockchain
 runApplication
-  :: (MonadIO m, Crypto alg, Serialise a, Show a)
+  :: (MonadIO m, MonadLogger m, Crypto alg, Serialise a, Show a)
   => AppState m alg a
      -- ^ Get initial state of the application
   -> AppChans alg a
@@ -73,7 +73,7 @@ runApplication appSt@AppState{..} appCh =
 --
 -- FIXME: we should write block and last commit in transaction!
 decideNewBlock
-  :: (MonadIO m, Crypto alg, Serialise a, Show a)
+  :: (MonadIO m, MonadLogger m, Crypto alg, Serialise a, Show a)
   => AppState m alg a
   -> AppChans alg a
   -> Maybe (Commit alg a)
@@ -97,7 +97,7 @@ decideNewBlock appSt@AppState{..} appCh@AppChans{..} lastCommt = do
   -- Enter PREVOTE of round 0
   --
   -- FIXME: encode that we cannot fail here!
-  appLogger "consensus" InfoS "New height" ()
+  logger InfoS "New height" ()
   Success tm0 <- runConsesusM $ newHeight hParam tmState0
   -- Handle incoming messages until we decide on next block.
   flip fix tm0 $ \loop tm -> do
@@ -121,7 +121,7 @@ decideNewBlock appSt@AppState{..} appCh@AppChans{..} lastCommt = do
 
 -- Handle message and perform state transitions for both
 handleVerifiedMessage
-  :: (Monad m, Crypto alg)
+  :: (MonadLogger m, Crypto alg)
   => HeightParameres (ConsensusM alg a m) alg a
   -> TMState alg a
   -> MessageRx 'Verified alg a
@@ -196,11 +196,15 @@ instance Monad m => ConsensusMonad (ConsensusM alg a m) where
   misdeed     = ConsensusM $ return Misdeed
   panic       = error
 
+instance MonadLogger m => MonadLogger (ConsensusM alg a m) where
+  logger s l a = lift $ logger s l a
+  localNamespace f (ConsensusM action) = ConsensusM $ localNamespace f action
+
 instance MonadTrans (ConsensusM alg a) where
   lift = ConsensusM . fmap Success
 
 makeHeightParametes
-  :: (MonadIO m, Crypto alg, Serialise a, Show a)
+  :: (MonadIO m, MonadLogger m, Crypto alg, Serialise a, Show a)
   => AppState m alg a
   -> AppChans alg a
   -> m (HeightParameres (ConsensusM alg a m) alg a)
@@ -228,7 +232,7 @@ makeHeightParametes AppState{..} AppChans{..} = do
                             , propBlockID   = bid
                             }
             sprop  = signValue pk prop
-        lift $ appLogger "consensus" InfoS "Sending proposal" ()
+        logger InfoS "Sending proposal" ()
         liftIO $ atomically $ do
           writeTChan appChanTx (TxProposal sprop)
           writeTChan appChanRx (RxProposal $ unverifySignature sprop)
@@ -245,7 +249,7 @@ makeHeightParametes AppState{..} AppChans{..} = do
                         , voteBlockID = b
                         }
             svote  = signValue pk vote
-        lift $ appLogger "consensus" InfoS "Sending prevote" ()
+        logger InfoS "Sending prevote" ()
         liftIO $ atomically $ do
           writeTChan appChanTx (TxPreVote svote)
           writeTChan appChanRx (RxPreVote $ unverifySignature svote)
@@ -258,7 +262,7 @@ makeHeightParametes AppState{..} AppChans{..} = do
                         , voteBlockID = b
                         }
             svote  = signValue pk vote
-        lift $ appLogger "consensus" InfoS "Sending precommit" ()
+        logger InfoS "Sending precommit" ()
         liftIO $ atomically $ do
           writeTChan appChanTx (TxPreCommit svote)
           writeTChan appChanRx (RxPreCommit $ unverifySignature svote)
@@ -269,6 +273,4 @@ makeHeightParametes AppState{..} AppChans{..} = do
         return $ blockHash b
 
     , commitBlock     = \cm -> ConsensusM $ return $ DoCommit cm
-
-    , logger = \a b c -> lift . appLogger a b c
     }

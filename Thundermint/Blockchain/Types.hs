@@ -35,8 +35,6 @@ data AppState m alg a = AppState
     --   FIXME: at the moment it's assumed to be immutable but we will
     --          need to add support of changing set as result of
     --          commited block.
-  , appLogger         :: forall li. LogItem li
-                      => Namespace -> Severity -> LogStr -> li -> m ()
   , appMaxHeight      :: Maybe Height
   }
 
