@@ -16,6 +16,7 @@ module Thundermint.Blockchain.App (
 import Codec.Serialise (Serialise)
 import Control.Applicative
 import Control.Monad
+import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Maybe
@@ -48,25 +49,26 @@ import Katip (Severity(..), Namespace, LogStr, LogItem, showLS)
 --
 --   * INVARIANT: Only this function can write to blockchain
 runApplication
-  :: (MonadIO m, MonadLogger m, Crypto alg, Serialise a, Show a)
+  :: (MonadIO m, MonadCatch m, MonadLogger m, Crypto alg, Serialise a, Show a)
   => AppState m alg a
      -- ^ Get initial state of the application
   -> AppChans alg a
      -- ^ Channels for communication with peers
   -> m ()
-runApplication appSt@AppState{..} appCh =
-  fix (\loop commit -> do
-          cm <- decideNewBlock appSt appCh commit
-          -- ASSERT: We successfully commited next block
-          --
-          -- FIXME: do we need to communicate with peers about our
-          --        commit? (Do we need +2/3 commits to proceed
-          --        further)
-          h  <- blockchainHeight appStorage
-          case appMaxHeight of
-            Just h' | h > h' -> return ()
-            _                -> loop (Just cm)
-      ) =<< retrieveLastCommit appStorage
+runApplication appSt@AppState{..} appCh
+  = logOnException
+  $ fix (\loop commit -> do
+            cm <- decideNewBlock appSt appCh commit
+            -- ASSERT: We successfully commited next block
+            --
+            -- FIXME: do we need to communicate with peers about our
+            --        commit? (Do we need +2/3 commits to proceed
+            --        further)
+            h  <- blockchainHeight appStorage
+            case appMaxHeight of
+              Just h' | h > h' -> return ()
+              _                -> loop (Just cm)
+        ) =<< retrieveLastCommit appStorage
 
 -- This function uses consensus algorithm to decide which block we're
 -- going to commit at current height, then stores it in database and
