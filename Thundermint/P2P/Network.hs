@@ -151,12 +151,6 @@ createMockNode MockNet{..} addr = NetworkAPI
       return (stopListening, accept)
     --
   , connect = \loc -> atomically $ do
-      -- let newSocket = do n <- readTVar mnetSockCounter
-      --                    writeTVar mnetSockCounter $! n + 1
-      --                    return (MockSocket n)
-      -- -- Names are relative to server
-      -- sockTo   <- newSocket
-      -- sockFrom <- newSocket
       chA <- newTChan
       chB <- newTChan
       v   <- newTVar True
@@ -172,7 +166,7 @@ createMockNode MockNet{..} addr = NetworkAPI
       cmap <- readTVar mnetIncoming
       case loc `Map.lookup` cmap of
         Nothing -> error "MockNet: Cannot connect to closed socket"
-        Just xs -> writeTVar mnetIncoming $ Map.insert loc (xs ++ [(sockFrom,loc)]) cmap
+        Just xs -> writeTVar mnetIncoming $ Map.insert loc (xs ++ [(sockFrom,(addr,"X"))]) cmap
       return sockTo
     --
   , sendBS = \MockSocket{..} bs -> atomically $
