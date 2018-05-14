@@ -1,0 +1,43 @@
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards   #-}
+-- |
+module TM.MockNet (tests) where
+
+import Control.Exception
+import Control.Concurrent.Async
+import Data.Monoid ((<>))
+import Test.Tasty
+import Test.Tasty.HUnit
+import Thundermint.P2P.Network
+
+
+----------------------------------------------------------------
+
+tests :: TestTree
+tests = testGroup "mock network"
+  [ testCase "ping-pong"     pingPong
+  -- , testCase "delayed write" delayedWrite
+  ]
+
+-- | Simple test to ensure that mock network works at all
+pingPong :: IO ()
+pingPong = do
+  network <- newMockNet
+  let serverAddr = 1 :: Int
+      clientAddr = 2 :: Int
+      server     = createMockNode network serverAddr
+      client     = createMockNode network clientAddr
+  --
+  let runServer NetworkAPI{..} = do
+        bracket (listenOn "3000") fst $ \(_,accept) ->
+          bracket accept (close . fst) $ \(s,_) -> do
+            Just bs <- recvBS s 4096
+            sendBS s ("PONG_" <> bs)
+  let runClient NetworkAPI{..} = do
+        bracket (connect (serverAddr,"3000")) close $ \s -> do
+          sendBS s "PING"
+          bs <- recvBS s 4096
+          assertEqual "Ping-pong" (Just "PONG_PING") bs
+  ((),()) <- concurrently (runServer server) (runClient client)
+  return ()
+      
