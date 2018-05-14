@@ -30,8 +30,8 @@ import Control.Monad
 
 import           Data.Monoid       ((<>))
 import qualified Data.Map        as Map
-import           Data.Map          (Map)
-import Katip (Severity(..), Namespace, LogStr, LogItem, showLS)
+-- import           Data.Map          (Map)
+import Katip (Severity(..), LogStr, showLS)
 
 import Thundermint.Crypto
 import Thundermint.Crypto.Containers

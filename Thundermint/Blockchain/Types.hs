@@ -11,7 +11,6 @@ import Thundermint.Crypto
 import Thundermint.Consensus.Types
 import Thundermint.Store
 
-import Katip (Severity(..), Namespace, LogStr, LogItem)
 
 
 ----------------------------------------------------------------
