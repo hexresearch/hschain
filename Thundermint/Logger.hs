@@ -17,7 +17,7 @@ import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Reader
-import Control.Exception          (Exception,SomeException(..),AsyncException(..))
+import Control.Exception          (SomeException(..),AsyncException(..))
 import Data.Typeable
 import Data.Monoid     ((<>))
 import Katip

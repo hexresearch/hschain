@@ -8,6 +8,7 @@ import Control.Monad
 import Control.Monad.IO.Class
 import Control.Concurrent.Async
 import Control.Concurrent.STM
+import Control.Exception
 import qualified Crypto.Hash.MD5 as MD5
 import Data.Int
 import Data.Word
@@ -172,13 +173,14 @@ genesisBlock = Block
 
 -- Start node which will now run consensus algorithm
 startNode
-  :: (Ord addr, Crypto alg, Serialise a, a ~ Int64)
+  :: (Ord addr, Show addr, Crypto alg, Serialise a, a ~ Int64)
   => NetworkAPI sock addr
+  -> [addr]
   -> PrivValidator alg a
   -> Map (Address alg) (Validator alg)
   -> Block alg a
   -> IO ()
-startNode net val valSet genesis = do
+startNode net addrs val valSet genesis = do
   -- Initialize logging
   scribe <- Katip.mkFileScribe
     ("logs/" ++ let Address nm = address $ publicKey $ validatorPrivKey val
@@ -186,36 +188,36 @@ startNode net val valSet genesis = do
     ) Katip.DebugS Katip.V2
   logenv <- Katip.registerScribe "log" scribe Katip.defaultScribeSettings
         =<< Katip.initLogEnv "TM" "DEV"
-  -- Initialize block storage
-  storage <- newSTMBlockStorage genesis
-  appCh   <- newAppChans
-  --
-  let appState = AppState { appStorage        = hoistBlockStorageRW liftIO storage
-                          , appBlockGenerator = \commit -> liftIO $ do
-                              -- FIXME: We need to fetch last block
-                              Just lastBlock <- retrieveBlock storage =<< blockchainHeight storage
-                              let Height h = headerHeight $ blockHeader lastBlock
-                                  block = Block
-                                    { blockHeader     = Header
-                                        { headerChainID     = "TEST"
-                                        , headerHeight      = Height (h + 1)
-                                        , headerTime        = Time 0
-                                        , headerLastBlockID = Just (blockHash lastBlock)
-                                        }
-                                    , blockData       = h * 100
-                                    , blockLastCommit = commit
-                                    }
-                              return block
-                          , appValidator     = val
-                          , appValidatorsSet = valSet
-                          , appMaxHeight     = Just (Height 3)
-                          }
-
-  -- Start P2P
-  let netRoutine = runLoggerT "net" logenv
-                 $ startPeerDispatcher net appCh (makeReadOnly storage)
-  withAsync netRoutine $ \_ -> do
-    runLoggerT "consensus" logenv $ runApplication appState appCh
+  flip finally (Katip.closeScribes logenv) $ do
+    -- Initialize block storage
+    storage <- newSTMBlockStorage genesis
+    appCh   <- newAppChans
+    --
+    let appState = AppState { appStorage        = hoistBlockStorageRW liftIO storage
+                            , appBlockGenerator = \commit -> liftIO $ do
+                                -- FIXME: We need to fetch last block
+                                Just lastBlock <- retrieveBlock storage =<< blockchainHeight storage
+                                let Height h = headerHeight $ blockHeader lastBlock
+                                    block = Block
+                                      { blockHeader     = Header
+                                          { headerChainID     = "TEST"
+                                          , headerHeight      = Height (h + 1)
+                                          , headerTime        = Time 0
+                                          , headerLastBlockID = Just (blockHash lastBlock)
+                                          }
+                                      , blockData       = h * 100
+                                      , blockLastCommit = commit
+                                      }
+                                return block
+                            , appValidator     = val
+                            , appValidatorsSet = valSet
+                            , appMaxHeight     = Just (Height 3)
+                            }
+    -- Start P2P
+    let netRoutine = runLoggerT "net" logenv
+                   $ startPeerDispatcher net addrs appCh (makeReadOnly storage)
+    withAsync netRoutine $ \_ -> do
+      runLoggerT "consensus" logenv $ runApplication appState appCh
 
 
 withAsyncs :: [IO a] -> ([Async a] -> IO b) -> IO b
@@ -228,8 +230,11 @@ withAsyncs ios function
 main :: IO ()
 main = do
   net <- newMockNet
-  let actions = [ do let node = createMockNode net addr
-                     startNode node val validatorSet genesisBlock
+  let actions = [ do let node  = createMockNode net addr
+                         addrs = [ (a,"50000") | (a, _) <- [1::Int ..] `zip` validators
+                                               , a < addr
+                                               ]
+                     startNode node addrs val validatorSet genesisBlock
                 | (addr, val) <- [1::Int ..] `zip` validators
                 ]
   withAsyncs actions $ mapM_ wait
