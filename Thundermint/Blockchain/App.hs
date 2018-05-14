@@ -26,7 +26,7 @@ import Control.Concurrent.STM
 import           Data.Function
 import           Data.Monoid       ((<>))
 import qualified Data.Map        as Map
-import           Data.Map          (Map)
+-- import           Data.Map          (Map)
 import Text.Groom
 
 import Thundermint.Blockchain.Types
@@ -37,7 +37,7 @@ import Thundermint.Consensus.Types
 import Thundermint.Store
 import Thundermint.Logger
 
-import Katip (Severity(..), Namespace, LogStr, LogItem, showLS)
+import Katip (Severity(..), showLS, logStr)
 
 ----------------------------------------------------------------
 --
@@ -104,13 +104,15 @@ decideNewBlock appSt@AppState{..} appCh@AppChans{..} lastCommt = do
   Success tm0 <- runConsesusM $ newHeight hParam tmState0
   -- Handle incoming messages until we decide on next block.
   flip fix tm0 $ \loop tm -> do
+    logger DebugS ("TM =\n" <> logStr (groom tm)) ()
     -- Make current state of consensus available for gossip
     liftIO $ atomically $ writeTVar appTMState $ Just (currentH hParam , tm)
     -- Receive message
     msg <- liftIO $ atomically $ readTChan appChanRx
+    logger DebugS ("Recv: " <> showLS msg) ()
     -- Handle message
     res <- runMaybeT
-        $ lift . handleVerifiedMessage hParam tm
+        $ lift . handleVerifiedMessage appStorage hParam tm
       =<< verifyMessageSignature appSt msg
     case res of
       Nothing             -> loop tm
@@ -118,25 +120,30 @@ decideNewBlock appSt@AppState{..} appCh@AppChans{..} lastCommt = do
       Just Tranquility    -> loop tm
       Just Misdeed        -> loop tm
       Just (DoCommit cmt) -> do
-        storeCommit appStorage cmt (undefined "lookup actual block by block ID")
+        blocks <- retrievePropBlocks appStorage (currentH hParam)
+        -- FIXME: handle partiality
+        let Just b = commitBlockID cmt `Map.lookup` blocks
+        storeCommit appStorage cmt b
         return cmt
 
 
 -- Handle message and perform state transitions for both
 handleVerifiedMessage
   :: (MonadLogger m, Crypto alg)
-  => HeightParameres (ConsensusM alg a m) alg a
+  => BlockStorage 'RW m alg a
+  -> HeightParameres (ConsensusM alg a m) alg a
   -> TMState alg a
   -> MessageRx 'Verified alg a
   -> m (ConsensusResult alg a (TMState alg a))
-handleVerifiedMessage hParam tm = \case
+handleVerifiedMessage BlockStorage{..} hParam tm = \case
   -- FIXME: check that proposal comes from correct proposer
   RxProposal  p -> runConsesusM $ tendermintTransition hParam (ProposalMsg (signedValue p)) tm
   RxPreVote   v -> runConsesusM $ tendermintTransition hParam (PreVoteMsg v) tm
   RxPreCommit v -> runConsesusM $ tendermintTransition hParam (PreCommitMsg v) tm
   RxTimeout   t -> runConsesusM $ tendermintTransition hParam (TimeoutMsg t) tm
   -- We update block storage
-
+  RxBlock     b -> do storePropBlock (currentH hParam) b
+                      return (Success tm)
 
 -- Verify signature of message. If signature is not correct message is
 -- simply discarded
@@ -223,8 +230,11 @@ makeHeightParametes AppState{..} AppChans{..} = do
             i         = (h' + r) `mod` fromIntegral n
             addr      = Map.keys appValidatorsSet !! fromIntegral i
         in addr == address (publicKey (validatorPrivKey appValidator))
-    , validateBlock = \_ -> return UnseenProposal
-
+    , validateBlock = \bid -> do
+        blocks <- lift $ retrievePropBlocks appStorage h
+        case bid `Map.lookup` blocks of
+          Nothing -> return UnseenProposal
+          Just _  -> return GoodProposal -- FIXME: actually verify
     --
     , broadcastProposal = \r bid -> do
         let pk   = validatorPrivKey appValidator
