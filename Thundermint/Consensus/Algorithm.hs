@@ -251,9 +251,11 @@ enterPropose par@HeightParameres{..} r sm@TMState{..} = do
     -- FIXME: take care of POL fields of proposal
     --
     -- If we're locked on block we MUST propose it
-    Just (_,bid) -> do broadcastProposal r bid
+    Just (_,bid) -> do logger InfoS ("Making proposal: " <> showLS bid) ()
+                       broadcastProposal r bid
     -- Otherwise we need to create new block from mempool
     Nothing      -> do bid <- createProposal r smLastCommit
+                       logger InfoS ("Making proposal: " <> showLS bid) ()
                        broadcastProposal r bid
   return sm { smRound = r
             , smStep  = StepProposal
