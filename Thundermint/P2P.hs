@@ -136,7 +136,7 @@ startPeerDispatcher net addrs AppChans{..} storage = logOnException $ do
                          }
   -- Accepting connection is managed by separate linked thread and
   -- this thread manages initiating connections
-  id $ flip finally (reapPeers peers)
+  id $ flip finally (uninterruptibleMask_ $ reapPeers peers)
      $ forkLinked (acceptLoop net peerCh peers)
      -- FIXME: we should manage requests for peers and connecting to
      --        new peers here
@@ -160,13 +160,11 @@ acceptLoop net@NetworkAPI{..} peerCh registry = logOnException $ do
     -- connection immediately
     mask $ \restore -> do
       (sock, addr) <- liftIO accept
-      void $ flip forkFinally (const $ liftIO $ close sock) $ do
-        tid <- liftIO myThreadId
-        ok  <- registerPeer registry tid addr
-        when ok $ flip finally (unregisterPeer registry tid)
-                $ restore
-                $ do logger InfoS ("Accepted connection from " <> showLS addr) ()
-                     startPeer peerCh (applySocket net sock)
+      void $ flip forkFinally (const $ liftIO $ close sock)
+           $ withPeer registry addr
+           $ restore
+           $ do logger InfoS ("Accepted connection from " <> showLS addr) ()
+                startPeer peerCh (applySocket net sock)
 
 
 -- Initiate connection to remote host and register peer
@@ -181,14 +179,10 @@ connectPeerTo
   -> m ()
 connectPeerTo net@NetworkAPI{..} addr peerCh registry = do
   logger InfoS ("Connecting to " <> showLS addr) ()
-  void $ fork $ mask $ \restore -> do
-    tid <- liftIO myThreadId
-    ok  <- registerPeer registry tid addr
-    when ok $
-      flip finally (unregisterPeer registry tid) $ do
-        sock <- liftIO $ connect addr
-        restore (startPeer peerCh (applySocket net sock))
-          `finally` liftIO (close sock)
+  void $ fork
+       $ bracket (liftIO $ connect addr) (liftIO . close)
+       $ \sock -> withPeer registry addr
+                $ startPeer peerCh (applySocket net sock)
 
 
 -- Set of currently running peers.
@@ -204,11 +198,22 @@ newPeerRegistry = PeerRegistry
                <*> liftIO (newTVarIO Set.empty)
                <*> liftIO (newTVarIO True)
 
--- Add peer to the registry
-registerPeer :: (MonadIO m, Ord a) => PeerRegistry a -> ThreadId -> a -> m Bool
-registerPeer (PeerRegistry tidMap addrSet vActive) tid addr =
-  liftIO $ atomically $
-    readTVar vActive >>= \case
+-- Register peer using current thread ID. If we already have
+-- registered peer with given address do nothing
+withPeer :: (MonadMask m, MonadIO m, Ord addr)
+         => PeerRegistry addr -> addr -> m () -> m ()
+-- NOTE: we need to track activity of registry to avoid possibility of
+--       successful registration after call to reapPeers
+withPeer (PeerRegistry tidMap addrSet vActive) addr action = do
+  tid <- liftIO myThreadId
+  -- NOTE: we need uninterruptibleMask since we STM operation are
+  --       blocking and they must not be interrupted
+  uninterruptibleMask $ \restore -> do
+    ok <- liftIO $ atomically $ registerPeer tid
+    when ok $ restore action `finally` liftIO (atomically (unregisterPeer tid))
+  where
+    -- Add peer to registry and return whether it was success
+    registerPeer tid = readTVar vActive >>= \case
       False -> return False
       True  -> do
         addrs <- readTVar addrSet
@@ -217,12 +222,8 @@ registerPeer (PeerRegistry tidMap addrSet vActive) tid addr =
           False -> do modifyTVar' tidMap  $ Map.insert tid addr
                       modifyTVar' addrSet $ Set.insert addr
                       return True
-
--- Remove peer from registry
-unregisterPeer :: (MonadIO m, Ord a) => PeerRegistry a -> ThreadId -> m ()
-unregisterPeer (PeerRegistry tidMap addrSet vActive) tid =
-  liftIO $ atomically $
-    readTVar vActive >>= \case
+    -- Remove peer from registry
+    unregisterPeer tid = readTVar vActive >>= \case
       False -> return ()
       True  -> do tids <- readTVar tidMap
                   case tid `Map.lookup` tids of
