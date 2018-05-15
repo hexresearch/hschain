@@ -121,8 +121,12 @@ decideNewBlock appSt@AppState{..} appCh@AppChans{..} lastCommt = do
       Just Misdeed        -> loop tm
       Just (DoCommit cmt) -> do
         blocks <- retrievePropBlocks appStorage (currentH hParam)
+        logger DebugS ("COMMIT: \n" <> logStr (groom cmt)) ()
+        logger DebugS ("BLOCKMAP: \n" <> logStr (groom blocks)) ()
         -- FIXME: handle partiality
-        let Just b = commitBlockID cmt `Map.lookup` blocks
+        let b = case commitBlockID cmt `Map.lookup` blocks of
+                  Just x  -> x
+                  Nothing -> error $ "Cannot commit: " ++ show cmt
         storeCommit appStorage cmt b
         return cmt
 
@@ -245,10 +249,15 @@ makeHeightParametes AppState{..} AppChans{..} = do
                             , propBlockID   = bid
                             }
             sprop  = signValue pk prop
-        logger InfoS ("Sending proposal for " <> showLS r) ()
+        blockMap <- lift $ retrievePropBlocks appStorage h
+        logger InfoS ("Sending proposal for " <> showLS r <> " " <> showLS bid) ()
         liftIO $ atomically $ do
           writeTChan appChanTx (TxProposal sprop)
           writeTChan appChanRx (RxProposal $ unverifySignature sprop)
+          case bid `Map.lookup` blockMap of
+            Nothing -> return ()
+            Just b  -> do writeTChan appChanTx (TxBlock b)
+                          writeTChan appChanRx (RxBlock b)
     --
     , scheduleTimeout = \t -> liftIO $ void $ forkIO $ do
         threadDelay (1*1000*1000)

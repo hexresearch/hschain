@@ -17,10 +17,9 @@ import Control.Monad.IO.Class
 import Control.Monad.Catch
 import Control.Concurrent   (ThreadId, myThreadId, threadDelay, killThread)
 import Control.Concurrent.STM
-import Control.Exception  (AsyncException(..))
 import Codec.Serialise
 import           Data.Monoid       ((<>))
-import           Data.Foldable
+-- import           Data.Foldable
 import           Data.Function
 import qualified Data.Map        as Map
 import           Data.Map          (Map)
@@ -260,8 +259,8 @@ startPeer peerCh@PeerChans{..} net@SendRecv{..} = logOnException $ do
      --        on implementation of MockNet where message won't be
      --        split or merged.
      $ fix $ \loop -> do
-         msg <- liftIO (recv 4096)
-         case msg of
+         message <- liftIO (recv 4096)
+         case message of
            Nothing -> logger InfoS "Peer stopping since socket is closed" ()
            Just bs -> case deserialiseOrFail bs of
              -- FIXME: do something meaningful with decoding error.
@@ -320,24 +319,24 @@ peerGossipBlocks
   -> TChan (GossipMsg alg a)
   -> TVar (PeerState alg a)
   -> m x
-peerGossipBlocks PeerChans{..} chan peerVar = logOnException $ do
+peerGossipBlocks PeerChans{..} _chan _peerVar = logOnException $ do
   logger InfoS "Starting routine for gossiping blocks" ()
   forever $ do
-    st <- liftIO $ readTVarIO peerVar
-    h  <- liftIO $ blockchainHeight blockStorage
-    liftIO $ case h `compare` peerHeight st of
-      -- We lag
-      LT -> return ()
-      -- We at the same height
-      EQ -> do blocks <- retrievePropBlocks blockStorage h
-               case Map.lookupMin $ Map.difference blocks $ Map.fromSet (const ()) $ peerBlocks st of
-                 Nothing    -> return ()
-                 Just (_,b) -> atomically $ writeTChan chan $ GossipBlock b
-      -- Peer is lagging
-      GT -> do Just bid <- retrieveBlockID blockStorage (peerHeight st)
-               unless (bid `Set.member` peerBlocks st) $ do
-                 Just b <- retrieveBlock blockStorage (peerHeight st)
-                 atomically $ writeTChan chan $ GossipBlock b
+    -- st <- liftIO $ readTVarIO peerVar
+    -- h  <- liftIO $ blockchainHeight blockStorage
+    -- liftIO $ case h `compare` peerHeight st of
+    --   -- We lag
+    --   LT -> return ()
+    --   -- We at the same height
+    --   EQ -> do blocks <- retrievePropBlocks blockStorage h
+    --            case Map.lookupMin $ Map.difference blocks $ Map.fromSet (const ()) $ peerBlocks st of
+    --              Nothing    -> return ()
+    --              Just (_,b) -> atomically $ writeTChan chan $ GossipBlock b
+    --   -- Peer is lagging
+    --   GT -> do Just bid <- retrieveBlockID blockStorage (peerHeight st)
+    --            unless (bid `Set.member` peerBlocks st) $ do
+    --              Just b <- retrieveBlock blockStorage (peerHeight st)
+    --              atomically $ writeTChan chan $ GossipBlock b
     liftIO $ threadDelay 500e3
 
 -- | Gossip votes with given peer
@@ -347,18 +346,18 @@ peerGossipVotes
   -> TChan (GossipMsg alg a)
   -> TVar (PeerState alg a)
   -> m x
-peerGossipVotes PeerChans{..} chan peerVar = logOnException $ do
+peerGossipVotes PeerChans{..} _chan _peerVar = logOnException $ do
   logger InfoS "Starting routine for gossiping votes" ()
   forever $ do
-    st <- liftIO $ readTVarIO peerVar
-    h  <- liftIO $ blockchainHeight blockStorage
-    case h `compare` peerHeight st of
-      -- We're lagging
-      LT -> return ()
-      -- We at the same height. Send prevote & precommit
-      EQ -> return ()
-      -- Peer is lagging. Send precommit
-      GT -> return ()
+    -- st <- liftIO $ readTVarIO peerVar
+    -- h  <- liftIO $ blockchainHeight blockStorage
+    -- case h `compare` peerHeight st of
+    --   -- We're lagging
+    --   LT -> return ()
+    --   -- We at the same height. Send prevote & precommit
+    --   EQ -> return ()
+    --   -- Peer is lagging. Send precommit
+    --   GT -> return ()
     liftIO $ threadDelay 100e3
 
 
@@ -381,3 +380,4 @@ peerSendGossip gossipCh chanTx SendRecv{..} = logOnException $ do
         TxPreVote   v -> GossipPreVote   $ unverifySignature v
         TxPreCommit v -> GossipPreCommit $ unverifySignature v
         TxProposal  p -> GossipProposal  $ unverifySignature p
+        TxBlock     b -> GossipBlock       b

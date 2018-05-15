@@ -67,6 +67,7 @@ data MessageTx alg a
   = TxPreVote   (Signed 'Verified alg (Vote 'PreVote   alg a))
   | TxPreCommit (Signed 'Verified alg (Vote 'PreCommit alg a))
   | TxProposal  (Signed 'Verified alg (Proposal alg a))
+  | TxBlock     (Block alg a)
   deriving (Show)
 
 -- | Application connection to outer world
