@@ -256,8 +256,7 @@ makeHeightParametes AppState{..} AppChans{..} = do
           writeTChan appChanRx (RxProposal $ unverifySignature sprop)
           case bid `Map.lookup` blockMap of
             Nothing -> return ()
-            Just b  -> do writeTChan appChanTx (TxBlock b)
-                          writeTChan appChanRx (RxBlock b)
+            Just b  -> writeTChan appChanRx (RxBlock b)
     --
     , scheduleTimeout = \t -> liftIO $ void $ forkIO $ do
         threadDelay (1*1000*1000)

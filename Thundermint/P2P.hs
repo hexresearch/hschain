@@ -374,25 +374,29 @@ peerGossipBlocks
   -> TChan (GossipMsg alg a)
   -> TVar (PeerState alg a)
   -> m x
-peerGossipBlocks PeerChans{..} _chan _peerVar = logOnException $ do
+peerGossipBlocks PeerChans{..} chan peerVar = logOnException $ do
   logger InfoS "Starting routine for gossiping blocks" ()
   forever $ do
-    -- st <- liftIO $ readTVarIO peerVar
-    -- h  <- liftIO $ blockchainHeight blockStorage
-    -- liftIO $ case h `compare` peerHeight st of
-    --   -- We lag
-    --   LT -> return ()
-    --   -- We at the same height
-    --   EQ -> do blocks <- retrievePropBlocks blockStorage h
-    --            case Map.lookupMin $ Map.difference blocks $ Map.fromSet (const ()) $ peerBlocks st of
-    --              Nothing    -> return ()
-    --              Just (_,b) -> atomically $ writeTChan chan $ GossipBlock b
-    --   -- Peer is lagging
-    --   GT -> do Just bid <- retrieveBlockID blockStorage (peerHeight st)
-    --            unless (bid `Set.member` peerBlocks st) $ do
-    --              Just b <- retrieveBlock blockStorage (peerHeight st)
-    --              atomically $ writeTChan chan $ GossipBlock b
-    liftIO $ threadDelay 500e3
+    logger DebugS "Gossiping blocks" ()
+    st <- liftIO $ readTVarIO peerVar
+    h  <- liftIO $ blockchainHeight blockStorage
+    case h `compare` peerHeight st of
+      -- We lag
+      LT -> return ()
+      -- We at the same height
+      EQ -> do blocks <- liftIO $ retrievePropBlocks blockStorage h
+               case Map.lookupMin $ Map.difference blocks $ Map.fromSet (const ()) $ peerBlocks st of
+                 Nothing    -> return ()
+                 Just (bid,b) -> do
+                   logger DebugS ("Gossip: " <> showLS bid) ()
+                   liftIO $ atomically $ writeTChan chan $ GossipBlock b
+      -- Peer is lagging
+      GT -> do Just bid <- liftIO $ retrieveBlockID blockStorage (peerHeight st)
+               unless (bid `Set.member` peerBlocks st) $ do
+                 Just b <- liftIO $ retrieveBlock blockStorage (peerHeight st)
+                 logger DebugS ("Gossip: " <> showLS bid) ()
+                 liftIO $ atomically $ writeTChan chan $ GossipBlock b
+    liftIO $ threadDelay 100e3
 
 -- | Gossip votes with given peer
 peerGossipVotes
@@ -449,4 +453,3 @@ peerSendGossip gossipCh chanTx peerVar SendRecv{..} = logOnException $ do
         TxPreVote   v -> GossipPreVote   $ unverifySignature v
         TxPreCommit v -> GossipPreCommit $ unverifySignature v
         TxProposal  p -> GossipProposal  $ unverifySignature p
-        TxBlock     b -> GossipBlock       b
