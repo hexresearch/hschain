@@ -302,6 +302,7 @@ startPeer peerCh@PeerChans{..} net@SendRecv{..} = logOnException $ do
                  liftIO $ atomically $ modifyTVar' peerVar $ \p ->
                    if peerHeight p == h then p
                                         else p { peerPrecommits = precommtis }
+                 loop
                GossipHasPropBlocks  h bids       -> do
                  liftIO $ atomically $ modifyTVar' peerVar $ \p ->
                    if peerHeight p == h then p
