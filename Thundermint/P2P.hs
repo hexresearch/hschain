@@ -19,6 +19,7 @@ import Control.Concurrent   (ThreadId, myThreadId, threadDelay, killThread)
 import Control.Concurrent.STM
 import Codec.Serialise
 import           Data.Monoid       ((<>))
+import           Data.Maybe        (fromMaybe)
 -- import           Data.Foldable
 import           Data.Function
 import qualified Data.Map        as Map
@@ -30,6 +31,7 @@ import GHC.Generics (Generic)
 
 
 import Thundermint.Crypto
+import Thundermint.Crypto.Containers (toPlainMap)
 import Thundermint.Consensus.Types
 import Thundermint.Blockchain.Types
 import Thundermint.P2P.Network
@@ -84,12 +86,13 @@ data PeerChans addr alg a = PeerChans
     -- ^ Broadcast channel for outgoing messages
   , peerChanRx      :: MessageRx 'Unverified alg a -> STM ()
     -- ^ STM action for sending message to main application
+  , blockStorage    :: BlockStorage 'RO IO alg a
+    -- ^ Read only access to storage of blocks
+  , consensusState  :: STM (Maybe (Height, TMState alg a))
   , retrievePeerSet :: STM (Set addr)
     -- ^ Obtain set of all peers
   , sendPeerSet     :: Set addr -> STM ()
     -- ^ Send set of peers to dispatcher
-  , blockStorage    :: BlockStorage 'RO IO alg a
-    -- ^ Read only access to storage of blocks
   }
 
 
@@ -114,9 +117,10 @@ startPeerDispatcher net addrs AppChans{..} storage = logOnException $ do
   peerExchange <- liftIO newTChanIO
   let peerCh = PeerChans { peerChanTx      = appChanTx
                          , peerChanRx      = writeTChan appChanRx
+                         , blockStorage    = storage
+                         , consensusState  = readTVar appTMState
                          , retrievePeerSet = registiryAddressSet peers
                          , sendPeerSet     = writeTChan peerExchange
-                         , blockStorage    = storage
                          }
   -- Accepting connection is managed by separate linked thread and
   -- this thread manages initiating connections
@@ -405,18 +409,47 @@ peerGossipVotes
   -> TChan (GossipMsg alg a)
   -> TVar (PeerState alg a)
   -> m x
-peerGossipVotes PeerChans{..} _chan _peerVar = logOnException $ do
+peerGossipVotes PeerChans{..} chan peerVar = logOnException $ do
   logger InfoS "Starting routine for gossiping votes" ()
   forever $ do
-    -- st <- liftIO $ readTVarIO peerVar
-    -- h  <- liftIO $ blockchainHeight blockStorage
-    -- case h `compare` peerHeight st of
-    --   -- We're lagging
-    --   LT -> return ()
-    --   -- We at the same height. Send prevote & precommit
-    --   EQ -> return ()
-    --   -- Peer is lagging. Send precommit
-    --   GT -> return ()
+    st <- liftIO $ readTVarIO peerVar
+    h  <- liftIO $ blockchainHeight blockStorage
+    case h `compare` peerHeight st of
+      -- We're lagging
+      LT -> return ()
+      -- We at the same height. Send prevote & precommit
+      EQ -> liftIO (atomically consensusState) >>= \case
+        Nothing               -> return ()
+        Just (h',_) | h' /= h -> return ()
+        Just (_,tm)           -> do
+          let knownPV = toPlainMap $ smPrevotesSet   tm
+              knownPC = toPlainMap $ smPrecommitsSet tm
+              remove votes addrs
+                | Map.null d = Nothing
+                | otherwise  = Just d
+                where d = Map.difference votes (Map.fromSet (const ()) addrs)
+              unknownPV = Map.differenceWith remove knownPV (peerPrevotes   st)
+              unknownPC = Map.differenceWith remove knownPC (peerPrecommits st)
+          -- Send prevotes
+          case Map.lookupMin . snd =<< Map.lookupMin unknownPV of
+            Nothing    -> return ()
+            Just (_,v) -> liftIO $ atomically $ writeTChan chan $ GossipPreVote $ unverifySignature v
+          -- Send precommits
+          case Map.lookupMin . snd =<< Map.lookupMin unknownPC of
+            Nothing    -> return ()
+            Just (_,v) -> liftIO $ atomically $ writeTChan chan $ GossipPreCommit $ unverifySignature v
+      -- Peer is lagging. Send precommits from commit for that round
+      GT -> do Just cmt <- liftIO $ retrieveCommit blockStorage (peerHeight st)
+               let r         = voteRound $ signedValue $ head $ commitPrecommits cmt
+                   cmtVotes  = Map.fromList [ (signedAddr v, unverifySignature v)
+                                            | v <- commitPrecommits cmt ]
+                   peerVotes = Map.fromSet (const ())
+                             $ fromMaybe Set.empty
+                             $ r `Map.lookup` peerPrecommits st
+               case Map.lookupMin $ Map.difference cmtVotes peerVotes of
+               -- case Set.minView $ Set.difference peerVotes cmtVotes of
+                 Just (_,v) -> liftIO $ atomically $ writeTChan chan $ GossipPreCommit v
+                 Nothing    -> return ()
     liftIO $ threadDelay 100e3
 
 
