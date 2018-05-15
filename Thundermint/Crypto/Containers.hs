@@ -19,6 +19,7 @@ module Thundermint.Crypto.Containers (
   , majority23at
   , any23at
   , valuesAtR
+  , toPlainMap
   ) where
 
 import Control.Monad
@@ -149,6 +150,12 @@ emptySignedSetMap
   -> Integer
   -> SignedSetMap r ty alg a
 emptySignedSetMap = SignedSetMap Map.empty
+
+-- | Convert collection of signed values to plain map
+toPlainMap
+  :: SignedSetMap r ty alg a
+  -> Map r (Map (Address alg) (Signed ty alg a))
+toPlainMap = fmap vsetAddrMap . vmapSubmaps
 
 addSignedValue
   :: (Ord r, Crypto alg, Ord a)
