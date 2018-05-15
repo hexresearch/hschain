@@ -78,27 +78,11 @@ data GossipMsg alg a
 instance Serialise a => Serialise (GossipMsg alg a)
 
 
--- | Description of our knowledge of peer. It's need to keep track
---   what should we gossip to peer.
-data PeerState alg a = PeerState
-  { peerHeight     :: Height
-    -- ^ Height peer at
-  , peerPrevotes   :: Map Round (Set (Address alg))
-    -- ^ Set of prevotes for current height that peer has
-  , peerPrecommits :: Map Round (Set (Address alg))
-    -- ^ Set of precommits for current height that peer has
-  , peerProposals  :: Set Round
-    -- ^ Set of proposals peer has
-  , peerBlocks     :: Set (BlockID alg a)
-    -- ^ Set of blocks known to peer
-  }
-
-
 -- | Connection handed to process controlling communication with peer
 data PeerChans addr alg a = PeerChans
-  { peerChanTx :: TChan (MessageTx alg a)
+  { peerChanTx      :: TChan (MessageTx alg a)
     -- ^ Broadcast channel for outgoing messages
-  , peerChanRx :: MessageRx 'Unverified alg a -> STM ()
+  , peerChanRx      :: MessageRx 'Unverified alg a -> STM ()
     -- ^ STM action for sending message to main application
   , retrievePeerSet :: STM (Set addr)
     -- ^ Obtain set of all peers
@@ -118,7 +102,7 @@ data PeerChans addr alg a = PeerChans
 --   of nodes and gossip.
 startPeerDispatcher
   :: ( MonadMask m, MonadFork m, MonadLogger m
-     , Serialise a, Ord addr, Show addr, Show a)
+     , Serialise a, Ord addr, Show addr, Show a, Crypto alg)
   => NetworkAPI sock addr       -- ^ API for networking
   -> [addr]                     -- ^ Set of initial addresses to connect
   -> AppChans alg a             -- ^ Channels for communication with main application
@@ -147,7 +131,7 @@ startPeerDispatcher net addrs AppChans{..} storage = logOnException $ do
 -- Thread which accepts connections from remote nodes
 acceptLoop
   :: ( MonadFork m, MonadMask m, MonadLogger m
-     , Serialise a, Ord addr, Show addr, Show a)
+     , Serialise a, Ord addr, Show addr, Show a, Crypto alg)
   => NetworkAPI sock addr
   -> PeerChans addr alg a
   -> PeerRegistry addr
@@ -170,7 +154,7 @@ acceptLoop net@NetworkAPI{..} peerCh registry = logOnException $ do
 -- Initiate connection to remote host and register peer
 connectPeerTo
   :: ( MonadFork m, MonadMask m, MonadLogger m
-     , Ord addr, Serialise a, Show addr, Show a
+     , Ord addr, Serialise a, Show addr, Show a, Crypto alg
      )
   => NetworkAPI sock addr
   -> addr
@@ -247,8 +231,68 @@ registiryAddressSet (PeerRegistry _ addrSet _)
 -- Peer
 ----------------------------------------------------------------
 
+-- | Description of our knowledge of peer. It's need to keep track
+--   what should we gossip to peer.
+data PeerState alg a = PeerState
+  { peerHeight     :: Height
+    -- ^ Height peer at
+  , peerPrevotes   :: Map Round (Set (Address alg))
+    -- ^ Set of prevotes for current height that peer has
+  , peerPrecommits :: Map Round (Set (Address alg))
+    -- ^ Set of precommits for current height that peer has
+  , peerProposals  :: Set Round
+    -- ^ Set of proposals peer has
+  , peerBlocks     :: Set (BlockID alg a)
+    -- ^ Set of blocks known to peer
+  }
+
+peerStateAtH :: Height -> PeerState alg a
+peerStateAtH h = PeerState { peerHeight     = h
+                           , peerPrevotes   = Map.empty
+                           , peerPrecommits = Map.empty
+                           , peerProposals  = Set.empty
+                           , peerBlocks     = Set.empty
+                           }
+
+addProposal :: Signed ty alg (Proposal alg a)
+            -> PeerState alg a -> PeerState alg a
+addProposal svote ps
+  | peerHeight ps < h = addProposal svote $ peerStateAtH h
+  | otherwise         = ps { peerProposals = Set.insert r (peerProposals ps) }
+  where
+    h = propHeight (signedValue svote)
+    r = propRound  (signedValue svote)
+
+addPrevote :: Signed ty alg (Vote 'PreVote alg a)
+           -> PeerState alg a -> PeerState alg a
+addPrevote svote ps
+  | peerHeight ps < h = addPrevote svote $ peerStateAtH h
+  | otherwise         = ps { peerPrevotes = Map.alter add r (peerPrevotes ps) }
+  where
+    h = voteHeight (signedValue svote)
+    r = voteRound  (signedValue svote)
+    add Nothing  = Just $ Set.singleton $ signedAddr svote
+    add (Just s) = Just $ Set.insert (signedAddr svote) s
+
+addPrecommit :: Signed ty alg (Vote 'PreCommit alg a)
+             -> PeerState alg a -> PeerState alg a
+addPrecommit svote ps
+  | peerHeight ps < h = addPrecommit svote $ peerStateAtH h
+  | otherwise         = ps { peerPrecommits = Map.alter add r (peerPrecommits ps) }
+  where
+    h = voteHeight (signedValue svote)
+    r = voteRound  (signedValue svote)
+    add Nothing  = Just $ Set.singleton $ signedAddr svote
+    add (Just s) = Just $ Set.insert (signedAddr svote) s
+
+addBlock :: (Crypto alg, Serialise a) => Block alg a -> PeerState alg a -> PeerState alg a
+addBlock b ps = ps { peerBlocks = Set.insert (blockHash b) (peerBlocks ps) }
+
+
+-- | Start interactions with peer. At this point connection is already
+--   established and peer is registered.
 startPeer
-  :: (Serialise a, MonadFork m, MonadMask m, MonadLogger m, Show a)
+  :: (Serialise a, MonadFork m, MonadMask m, MonadLogger m, Show a, Crypto alg)
   => PeerChans addr alg a  -- ^ Communication with main application
                            --   and peer dispatcher
   -> SendRecv              -- ^ Functions for interaction with network
@@ -256,13 +300,7 @@ startPeer
 startPeer peerCh@PeerChans{..} net@SendRecv{..} = logOnException $ do
   logger InfoS "Starting peer" ()
   gossipCh <- liftIO $ newTChanIO
-  peerVar  <- liftIO $ newTVarIO PeerState
-    { peerHeight     = Height 0
-    , peerPrevotes   = Map.empty
-    , peerPrecommits = Map.empty
-    , peerProposals  = Set.empty
-    , peerBlocks     = Set.empty
-    }
+  peerVar  <- liftIO $ newTVarIO $ peerStateAtH (Height 0)
   -- Start gossip routines.
   id $ forkLinked (peerGossipBlocks peerCh gossipCh peerVar)
      $ forkLinked (peerGossipVotes  peerCh gossipCh peerVar)
@@ -285,24 +323,22 @@ startPeer peerCh@PeerChans{..} net@SendRecv{..} = logOnException $ do
               case msg of
                -- Forward to application and record that peer has
                -- given vote/proposal/block
-               GossipPreVote   v -> do liftIO $ atomically $ peerChanRx $ RxPreVote   v
+               GossipPreVote   v -> do liftIO $ atomically $ peerChanRx $ RxPreVote v
+                                       liftIO $ atomically $ modifyTVar' peerVar $ addPrevote v
                                        loop
                GossipPreCommit v -> do liftIO $ atomically $ peerChanRx $ RxPreCommit v
+                                       liftIO $ atomically $ modifyTVar' peerVar $ addPrecommit v
                                        loop
-               GossipProposal  p -> do liftIO $ atomically $ peerChanRx $ RxProposal  p
+               GossipProposal  p -> do liftIO $ atomically $ peerChanRx $ RxProposal p
+                                       liftIO $ atomically $ modifyTVar' peerVar $ addProposal p
                                        loop
-               GossipBlock     b -> do liftIO $ atomically $ peerChanRx $ RxBlock     b
+               GossipBlock     b -> do liftIO $ atomically $ peerChanRx $ RxBlock b
+                                       liftIO $ atomically $ modifyTVar peerVar $ addBlock b
                                        loop
                -- Update peer state
                GossipStatus         h _          -> do
                  liftIO $ atomically $ modifyTVar' peerVar $ \p ->
-                   if peerHeight p == h then p
-                                        else PeerState { peerHeight     = h
-                                                       , peerPrevotes   = Map.empty
-                                                       , peerPrecommits = Map.empty
-                                                       , peerProposals  = Set.empty
-                                                       , peerBlocks     = Set.empty
-                                                       }
+                   if peerHeight p == h then p else peerStateAtH h
                  loop
                GossipHasProposals   h props      -> do
                  liftIO $ atomically $ modifyTVar' peerVar $ \p ->
