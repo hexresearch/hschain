@@ -77,6 +77,7 @@ data GossipMsg alg a
   deriving (Show, Generic)
 instance Serialise a => Serialise (GossipMsg alg a)
 
+
 -- | Description of our knowledge of peer. It's need to keep track
 --   what should we gossip to peer.
 data PeerState alg a = PeerState
@@ -89,13 +90,14 @@ data PeerState alg a = PeerState
   , peerProposals  :: Set Round
     -- ^ Set of proposals peer has
   , peerBlocks     :: Set (BlockID alg a)
+    -- ^ Set of blocks known to peer
   }
 
 
 -- | Connection handed to process controlling communication with peer
 data PeerChans addr alg a = PeerChans
   { peerChanTx :: TChan (MessageTx alg a)
-    -- ^ STM action for getting message to send to peer
+    -- ^ Broadcast channel for outgoing messages
   , peerChanRx :: MessageRx 'Unverified alg a -> STM ()
     -- ^ STM action for sending message to main application
   , retrievePeerSet :: STM (Set addr)
@@ -103,6 +105,7 @@ data PeerChans addr alg a = PeerChans
   , sendPeerSet     :: Set addr -> STM ()
     -- ^ Send set of peers to dispatcher
   , blockStorage    :: BlockStorage 'RO IO alg a
+    -- ^ Read only access to storage of blocks
   }
 
 
@@ -110,13 +113,16 @@ data PeerChans addr alg a = PeerChans
 -- Dispatcher
 ----------------------------------------------------------------
 
+-- | Main process for networking. It manages accepting connections
+--   from remote nodes, initiating connections to them, tracking state
+--   of nodes and gossip.
 startPeerDispatcher
   :: ( MonadMask m, MonadFork m, MonadLogger m
      , Serialise a, Ord addr, Show addr, Show a)
-  => NetworkAPI sock addr
-  -> [addr]
-  -> AppChans alg a
-  -> BlockStorage 'RO IO alg a
+  => NetworkAPI sock addr       -- ^ API for networking
+  -> [addr]                     -- ^ Set of initial addresses to connect
+  -> AppChans alg a             -- ^ Channels for communication with main application
+  -> BlockStorage 'RO IO alg a  -- ^ Read only access to block storage
   -> m x
 startPeerDispatcher net addrs AppChans{..} storage = logOnException $ do
   logger InfoS "Starting peer dispatcher" ()
@@ -128,16 +134,20 @@ startPeerDispatcher net addrs AppChans{..} storage = logOnException $ do
                          , sendPeerSet     = writeTChan peerExchange
                          , blockStorage    = storage
                          }
-  -- We accept incoming connections from separate thread and
-  flip finally (reapPeers peers)
-    $ forkLinked (acceptLoop net peerCh peers)
-    $ do liftIO $ threadDelay 100e3
-         forM_ addrs $ \a -> connectPeerTo net a peerCh peers
-         forever $ liftIO $ threadDelay 100000
+  -- Accepting connection is managed by separate linked thread and
+  -- this thread manages initiating connections
+  id $ flip finally (reapPeers peers)
+     $ forkLinked (acceptLoop net peerCh peers)
+     -- FIXME: we should manage requests for peers and connecting to
+     --        new peers here
+     $ do liftIO $ threadDelay 100e3
+          forM_ addrs $ \a -> connectPeerTo net a peerCh peers
+          forever $ liftIO $ threadDelay 100000
 
---
+-- Thread which accepts connections from remote nodes
 acceptLoop
-  :: (MonadFork m, MonadMask m, MonadLogger m, Serialise a, Ord addr, Show addr, Show a)
+  :: ( MonadFork m, MonadMask m, MonadLogger m
+     , Serialise a, Ord addr, Show addr, Show a)
   => NetworkAPI sock addr
   -> PeerChans addr alg a
   -> PeerRegistry addr
@@ -145,18 +155,21 @@ acceptLoop
 acceptLoop net@NetworkAPI{..} peerCh registry = logOnException $ do
   logger InfoS "Starting accept loop" ()
   bracket (liftIO $ listenOn "50000") (liftIO . fst) $ \(_,accept) -> forever $
+    -- We accept connection, create new thread and put it into
+    -- registry. If we already have connection from that peer we close
+    -- connection immediately
     mask $ \restore -> do
       (sock, addr) <- liftIO accept
       void $ flip forkFinally (const $ liftIO $ close sock) $ do
         tid <- liftIO myThreadId
         ok  <- registerPeer registry tid addr
-        when ok $ do
-          logger InfoS ("Accepted connection from " <> showLS addr) ()
-          flip finally (unregisterPeer registry tid)
-            $ restore (startPeer peerCh (applySocket net sock))
+        when ok $ flip finally (unregisterPeer registry tid)
+                $ restore
+                $ do logger InfoS ("Accepted connection from " <> showLS addr) ()
+                     startPeer peerCh (applySocket net sock)
 
 
--- Initiate connection to remote host
+-- Initiate connection to remote host and register peer
 connectPeerTo
   :: ( MonadFork m, MonadMask m, MonadLogger m
      , Ord addr, Serialise a, Show addr, Show a
@@ -168,7 +181,7 @@ connectPeerTo
   -> m ()
 connectPeerTo net@NetworkAPI{..} addr peerCh registry = do
   logger InfoS ("Connecting to " <> showLS addr) ()
-  mask $ \restore -> void $ fork $ do
+  void $ fork $ mask $ \restore -> do
     tid <- liftIO myThreadId
     ok  <- registerPeer registry tid addr
     when ok $
@@ -178,11 +191,13 @@ connectPeerTo net@NetworkAPI{..} addr peerCh registry = do
           `finally` liftIO (close sock)
 
 
+-- Set of currently running peers.
 data PeerRegistry a = PeerRegistry
                       (TVar (Map ThreadId a))
                       (TVar (Set a))
                       (TVar Bool)
 
+-- Create new empty and active registry
 newPeerRegistry :: MonadIO m => m (PeerRegistry a)
 newPeerRegistry = PeerRegistry
                <$> liftIO (newTVarIO Map.empty)
@@ -248,8 +263,7 @@ startPeer peerCh@PeerChans{..} net@SendRecv{..} = logOnException $ do
     , peerBlocks     = Set.empty
     }
   -- Start gossip routines.
-  id
-     $ forkLinked (peerGossipBlocks peerCh gossipCh peerVar)
+  id $ forkLinked (peerGossipBlocks peerCh gossipCh peerVar)
      $ forkLinked (peerGossipVotes  peerCh gossipCh peerVar)
      -- Start send thread.
      $ forkLinked (peerSendGossip gossipCh peerChanTx net)
@@ -268,7 +282,8 @@ startPeer peerCh@PeerChans{..} net@SendRecv{..} = logOnException $ do
              Right msg -> do
               logger DebugS (showLS msg) ()
               case msg of
-               -- Forward to application
+               -- Forward to application and record that peer has
+               -- given vote/proposal/block
                GossipPreVote   v -> do liftIO $ atomically $ peerChanRx $ RxPreVote   v
                                        loop
                GossipPreCommit v -> do liftIO $ atomically $ peerChanRx $ RxPreCommit v
@@ -309,7 +324,9 @@ startPeer peerCh@PeerChans{..} net@SendRecv{..} = logOnException $ do
                                         else p { peerBlocks = bids }
                  loop
                --
-
+               GossipHello        -> loop
+               GossipRequestPeers -> loop
+               GossipPeers        -> loop
 
 
 
