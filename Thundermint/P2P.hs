@@ -305,7 +305,7 @@ startPeer peerCh@PeerChans{..} net@SendRecv{..} = logOnException $ do
   id $ forkLinked (peerGossipBlocks peerCh gossipCh peerVar)
      $ forkLinked (peerGossipVotes  peerCh gossipCh peerVar)
      -- Start send thread.
-     $ forkLinked (peerSendGossip gossipCh peerChanTx net)
+     $ forkLinked (peerSendGossip gossipCh peerChanTx peerVar net)
      -- Receive data from socket.
      --
      -- FIXME: Implement framing for messages. At the moment we rely
@@ -417,18 +417,32 @@ peerGossipVotes PeerChans{..} _chan _peerVar = logOnException $ do
 
 
 peerSendGossip
-  :: (Serialise a, MonadIO m, MonadFork m, MonadMask m, MonadLogger m, Show a)
+  :: (Serialise a, MonadIO m, MonadFork m, MonadMask m, MonadLogger m, Show a, Crypto alg)
   => TChan (GossipMsg alg a)
   -> TChan (MessageTx alg a)
+  -> TVar  (PeerState alg a)
   -> SendRecv
   -> m x
-peerSendGossip gossipCh chanTx SendRecv{..} = logOnException $ do
+peerSendGossip gossipCh chanTx peerVar SendRecv{..} = logOnException $ do
   ch <- liftIO $ atomically $ dupTChan chanTx
   logger InfoS "Starting routing for sending data" ()
   forever $ do
     logger DebugS "GSP: lock" ()
     msg <- liftIO $ atomically $ fromApp ch <|> readTChan gossipCh
     logger DebugS ("Sending[GSP] " <> showLS msg) ()
+    case msg of
+      GossipPreVote   v     -> liftIO $ atomically $ modifyTVar' peerVar $ addPrevote   v
+      GossipPreCommit v     -> liftIO $ atomically $ modifyTVar' peerVar $ addPrecommit v
+      GossipProposal  p     -> liftIO $ atomically $ modifyTVar' peerVar $ addProposal  p
+      GossipBlock     b     -> liftIO $ atomically $ modifyTVar' peerVar $ addBlock     b
+      GossipStatus{}        -> return ()
+      GossipHasProposals{}  -> return ()
+      GossipHasPrevotes{}   -> return ()
+      GossipHasPrecommits{} -> return ()
+      GossipHasPropBlocks{} -> return ()
+      GossipHello{}         -> return ()
+      GossipRequestPeers{}  -> return ()
+      GossipPeers{}         -> return ()
     liftIO $ send $ serialise msg
     where
       fromApp ch = readTChan ch >>= return . \case
