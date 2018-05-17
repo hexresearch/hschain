@@ -72,7 +72,11 @@ newSTMBlockStorage gBlock = do
         , retrieveBlock    = \h -> do m <- readTVarIO varBlocks
                                       return $ Map.lookup h m
         , retrieveBlockID  = (fmap . fmap) blockHash . retrieveBlock bs
-        , retrieveCommit   = error "No implementation for retrieveCommit"
+        , retrieveCommit   = \h -> atomically $ do
+            hMax <- currentHeight
+            if h == hMax then readTVar varLCmt
+                         else do bmap <- readTVar varBlocks
+                                 return $ blockLastCommit =<< Map.lookup (next h) bmap
         , retrieveLastCommit = readTVarIO varLCmt
         , storeCommit = \cmt blk -> atomically $ do
             h <- currentHeight
