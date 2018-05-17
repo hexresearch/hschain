@@ -439,17 +439,20 @@ peerGossipVotes PeerChans{..} chan peerVar = logOnException $ do
             Nothing    -> return ()
             Just (_,v) -> liftIO $ atomically $ writeTChan chan $ GossipPreCommit $ unverifySignature v
       -- Peer is lagging. Send precommits from commit for that round
-      GT -> do Just cmt <- liftIO $ retrieveCommit blockStorage (peerHeight st)
-               let r         = voteRound $ signedValue $ head $ commitPrecommits cmt
-                   cmtVotes  = Map.fromList [ (signedAddr v, unverifySignature v)
-                                            | v <- commitPrecommits cmt ]
-                   peerVotes = Map.fromSet (const ())
-                             $ fromMaybe Set.empty
-                             $ r `Map.lookup` peerPrecommits st
-               case Map.lookupMin $ Map.difference cmtVotes peerVotes of
-               -- case Set.minView $ Set.difference peerVotes cmtVotes of
-                 Just (_,v) -> liftIO $ atomically $ writeTChan chan $ GossipPreCommit v
-                 Nothing    -> return ()
+      GT -> do mcmt <- liftIO $ retrieveCommit blockStorage (peerHeight st)
+               case mcmt of
+                 Nothing  -> return ()
+                 Just cmt -> do
+                   let r         = voteRound $ signedValue $ head $ commitPrecommits cmt
+                       cmtVotes  = Map.fromList [ (signedAddr v, unverifySignature v)
+                                                | v <- commitPrecommits cmt ]
+                       peerVotes = Map.fromSet (const ())
+                                 $ fromMaybe Set.empty
+                                 $ r `Map.lookup` peerPrecommits st
+                   case Map.lookupMin $ Map.difference cmtVotes peerVotes of
+                   -- case Set.minView $ Set.difference peerVotes cmtVotes of
+                     Just (_,v) -> liftIO $ atomically $ writeTChan chan $ GossipPreCommit v
+                     Nothing    -> return ()
     liftIO $ threadDelay 100e3
 
 
