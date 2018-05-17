@@ -197,7 +197,7 @@ data TMState alg a = TMState
     -- ^ Current round
   , smStep             :: Step
     -- ^ Current step in the round
-  , smProposals        :: Map Round (Proposal alg a)
+  , smProposals        :: Map Round (Signed 'Verified alg (Proposal alg a))
     -- ^ Proposal for current round
   , smPrevotesSet      :: HeightVoteSet 'PreVote alg a
     -- ^ Set of all received valid prevotes

@@ -46,7 +46,7 @@ import Thundermint.Logger
 
 -- | Messages being sent to consensus engine
 data Message alg a
-  = ProposalMsg    (Proposal alg a)
+  = ProposalMsg    (Signed 'Verified alg (Proposal alg a))
     -- ^ Incoming proposal
   | PreVoteMsg     (Signed 'Verified alg (Vote 'PreVote   alg a))
     -- ^ Incoming prevote
@@ -123,7 +123,7 @@ tendermintTransition par@HeightParameres{..} msg sm@TMState{..} =
   case msg of
     -- Receiving proposal by itself does not entail state transition.
     -- We leave PROPOSE only after timeout
-    ProposalMsg p@Proposal{..}
+    ProposalMsg p@(signedValue -> Proposal{..})
       -- Ignore proposal from wrong height
       | propHeight /= currentH
         -> tranquility
@@ -288,8 +288,8 @@ enterPrevote par@HeightParameres{..} r (unlockOnPrevote -> sm@TMState{..}) = do
       | Just (_,bid) <- smLockedBlock      = return (Just bid)
       -- We have proposal. Prevote it if it's good
       | Just p <- Map.lookup r smProposals =
-          validateBlock (propBlockID p) >>= \case
-            GoodProposal    -> return (Just (propBlockID p))
+          validateBlock (propBlockID (signedValue p)) >>= \case
+            GoodProposal    -> return (Just (propBlockID (signedValue p)))
             InvalidProposal -> return Nothing
             -- FIXME: tendermint allows prevote for blocks not yet
             --        seen but let be conservative

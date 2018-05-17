@@ -422,14 +422,21 @@ peerGossipVotes PeerChans{..} chan peerVar = logOnException $ do
         Nothing               -> return ()
         Just (h',_) | h' /= h -> return ()
         Just (_,tm)           -> do
-          let knownPV = toPlainMap $ smPrevotesSet   tm
+          let knownPR = smProposals tm
+              knownPV = toPlainMap $ smPrevotesSet   tm
               knownPC = toPlainMap $ smPrecommitsSet tm
               remove votes addrs
                 | Map.null d = Nothing
                 | otherwise  = Just d
                 where d = Map.difference votes (Map.fromSet (const ()) addrs)
+              --
+              unknownPR = Map.difference knownPR (Map.fromSet (const ()) (peerProposals st))
               unknownPV = Map.differenceWith remove knownPV (peerPrevotes   st)
               unknownPC = Map.differenceWith remove knownPC (peerPrecommits st)
+          -- Send proposals
+          case Map.lookupMin unknownPR of
+            Nothing    -> return ()
+            Just (_,p) -> liftIO $ atomically $ writeTChan chan $ GossipProposal $ unverifySignature p
           -- Send prevotes
           case Map.lookupMin . snd =<< Map.lookupMin unknownPV of
             Nothing    -> return ()
