@@ -381,7 +381,6 @@ peerGossipBlocks
 peerGossipBlocks PeerChans{..} chan peerVar = logOnException $ do
   logger InfoS "Starting routine for gossiping blocks" ()
   forever $ do
-    logger DebugS "Gossiping blocks" ()
     st <- liftIO $ readTVarIO peerVar
     h  <- liftIO $ blockchainHeight blockStorage
     case h `compare` peerHeight st of
@@ -400,7 +399,7 @@ peerGossipBlocks PeerChans{..} chan peerVar = logOnException $ do
                  Just b <- liftIO $ retrieveBlock blockStorage (peerHeight st)
                  logger DebugS ("Gossip: " <> showLS bid) ()
                  liftIO $ atomically $ writeTChan chan $ GossipBlock b
-    liftIO $ threadDelay 100e3
+    liftIO $ threadDelay 25e3
 
 -- | Gossip votes with given peer
 peerGossipVotes
@@ -446,21 +445,18 @@ peerGossipVotes PeerChans{..} chan peerVar = logOnException $ do
             Nothing    -> return ()
             Just (_,v) -> liftIO $ atomically $ writeTChan chan $ GossipPreCommit $ unverifySignature v
       -- Peer is lagging. Send precommits from commit for that round
-      GT -> do mcmt <- liftIO $ retrieveCommit blockStorage (peerHeight st)
-               case mcmt of
-                 Nothing  -> return ()
-                 Just cmt -> do
-                   let r         = voteRound $ signedValue $ head $ commitPrecommits cmt
-                       cmtVotes  = Map.fromList [ (signedAddr v, unverifySignature v)
-                                                | v <- commitPrecommits cmt ]
-                       peerVotes = Map.fromSet (const ())
-                                 $ fromMaybe Set.empty
-                                 $ r `Map.lookup` peerPrecommits st
-                   case Map.lookupMin $ Map.difference cmtVotes peerVotes of
-                   -- case Set.minView $ Set.difference peerVotes cmtVotes of
-                     Just (_,v) -> liftIO $ atomically $ writeTChan chan $ GossipPreCommit v
-                     Nothing    -> return ()
-    liftIO $ threadDelay 100e3
+      GT -> do Just cmt <- liftIO $ retrieveCommit blockStorage (next $ peerHeight st)
+               let r         = voteRound $ signedValue $ head $ commitPrecommits cmt
+                   cmtVotes  = Map.fromList [ (signedAddr v, unverifySignature v)
+                                            | v <- commitPrecommits cmt ]
+                   peerVotes = Map.fromSet (const ())
+                             $ fromMaybe Set.empty
+                             $ r `Map.lookup` peerPrecommits st
+               case Map.lookupMin $ Map.difference cmtVotes peerVotes of
+               -- case Set.minView $ Set.difference peerVotes cmtVotes of
+                 Just (_,v) -> liftIO $ atomically $ writeTChan chan $ GossipPreCommit v
+                 Nothing    -> return ()
+    liftIO $ threadDelay 25e3
 
 
 peerSendGossip
@@ -474,7 +470,6 @@ peerSendGossip gossipCh chanTx peerVar SendRecv{..} = logOnException $ do
   ch <- liftIO $ atomically $ dupTChan chanTx
   logger InfoS "Starting routing for sending data" ()
   forever $ do
-    logger DebugS "GSP: lock" ()
     msg <- liftIO $ atomically $ fromApp ch <|> readTChan gossipCh
     logger DebugS ("Sending[GSP] " <> showLS msg) ()
     case msg of
