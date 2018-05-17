@@ -1,8 +1,8 @@
+{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE DataKinds         #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeFamilies      #-}
-
 import Codec.Serialise (Serialise)
 import Control.Monad
 import Control.Monad.IO.Class
@@ -12,6 +12,7 @@ import Control.Exception
 import qualified Crypto.Hash.MD5 as MD5
 import Data.Int
 import Data.Word
+import Data.Foldable
 import qualified Data.ByteString.Base16 as Base16
 import qualified Data.ByteString.Char8  as BC8
 import qualified Data.ByteString        as BS
@@ -133,31 +134,14 @@ newSTMBlockStorage gBlock = do
 --
 ----------------------------------------------------------------
 
-validators :: [PrivValidator Swear Int64]
-validators =
-  [ PrivValidator { validatorPrivKey  = SwearPrivK 1
-                  , validateBlockData = undefined
-                  }
-  , PrivValidator { validatorPrivKey  = SwearPrivK 2
-                  , validateBlockData = undefined
-                  }
-  , PrivValidator { validatorPrivKey  = SwearPrivK 3
-                  , validateBlockData = undefined
-                  }
-  , PrivValidator { validatorPrivKey  = SwearPrivK 4
-                  , validateBlockData = undefined
-                  }
+validators :: Map Int64 (PrivValidator Swear Int64)
+validators = Map.fromList
+  [ n .= PrivValidator { validatorPrivKey  = SwearPrivK (fromIntegral n)
+                       , validateBlockData = undefined
+                       }
+  | n <- [0 .. 6]
   ]
-
-validatorSet :: Map (Address Swear) (Validator Swear)
-validatorSet = Map.fromList
-  [ ( address (publicKey (validatorPrivKey v))
-    , Validator { validatorPubKey      = publicKey (validatorPrivKey v)
-                , validatorVotingPower = 1
-                }
-    )
-  | v <- validators
-  ]
+  where (.=) = (,)
 
 genesisBlock :: Block Swear Int64
 genesisBlock = Block
@@ -170,6 +154,40 @@ genesisBlock = Block
   , blockData       = 0
   , blockLastCommit = Nothing
   }
+
+----------------------------------------------------------------
+--
+----------------------------------------------------------------
+
+makeValidatorSet
+  :: (Foldable f, Crypto alg)
+  => f (PrivValidator alg a) -> Map (Address alg) (Validator alg)
+makeValidatorSet vals = Map.fromList
+  [ ( address (publicKey (validatorPrivKey v))
+    , Validator { validatorPubKey      = publicKey (validatorPrivKey v)
+                , validatorVotingPower = 1
+                }
+    )
+  | v <- toList vals
+  ]
+
+connectAll2All :: Ord addr => Map addr a -> addr -> [addr]
+connectAll2All vals addr =
+  [ a
+  | a <- Map.keys vals
+  , a < addr
+  ]
+
+connectRing :: Ord addr => Map addr a -> addr -> [addr]
+connectRing vals addr =
+  case Map.splitLookup addr vals of
+    (_ , Nothing, _ ) -> []
+    (va, Just _ , vb) -> case Map.lookupMin vb of
+      Just (a,_) -> [a]
+      Nothing    -> case Map.lookupMin va of
+        Just (a,_) -> [a]
+        Nothing    -> []
+
 
 ----------------------------------------------------------------
 --
@@ -234,11 +252,10 @@ withAsyncs ios function
 main :: IO ()
 main = do
   net <- newMockNet
-  let actions = [ do let node  = createMockNode net addr
-                         addrs = [ (a,"50000") | (a, _) <- [1::Int ..] `zip` validators
-                                               , a < addr
-                                               ]
+  let validatorSet = makeValidatorSet validators
+      actions = [ do let node  = createMockNode net addr
+                         addrs = map (,"50000") $ connectRing validators addr
                      startNode node addrs val validatorSet genesisBlock
-                | (addr, val) <- [1::Int ..] `zip` validators
+                | (addr, val) <- Map.toList validators
                 ]
   withAsyncs actions $ mapM_ wait
