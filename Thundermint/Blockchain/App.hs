@@ -141,10 +141,10 @@ handleVerifiedMessage
   -> m (ConsensusResult alg a (TMState alg a))
 handleVerifiedMessage BlockStorage{..} hParam tm = \case
   -- FIXME: check that proposal comes from correct proposer
-  RxProposal  p -> runConsesusM $ tendermintTransition hParam (ProposalMsg (signedValue p)) tm
-  RxPreVote   v -> runConsesusM $ tendermintTransition hParam (PreVoteMsg v) tm
+  RxProposal  p -> runConsesusM $ tendermintTransition hParam (ProposalMsg  p) tm
+  RxPreVote   v -> runConsesusM $ tendermintTransition hParam (PreVoteMsg   v) tm
   RxPreCommit v -> runConsesusM $ tendermintTransition hParam (PreCommitMsg v) tm
-  RxTimeout   t -> runConsesusM $ tendermintTransition hParam (TimeoutMsg t) tm
+  RxTimeout   t -> runConsesusM $ tendermintTransition hParam (TimeoutMsg   t) tm
   -- We update block storage
   RxBlock     b -> do storePropBlock (currentH hParam) b
                       return (Success tm)
