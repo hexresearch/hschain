@@ -224,16 +224,20 @@ makeHeightParametes
   -> m (HeightParameres (ConsensusM alg a m) alg a)
 makeHeightParametes AppState{..} AppChans{..} = do
   h <- blockchainHeight appStorage
+  let proposerChoice (Round r) =
+        let Height h' = h
+            n         = Map.size appValidatorsSet
+            i         = (h' + r) `mod` fromIntegral n
+        in  Map.keys appValidatorsSet !! fromIntegral i
+  --
   return HeightParameres
     { currentH        = h
       -- FIXME: this is some random algorithms that should probably
       --        work (for some definition of work)
-    , areWeProposers  = \(Round r) ->
-        let Height h' = h
-            n         = Map.size appValidatorsSet
-            i         = (h' + r) `mod` fromIntegral n
-            addr      = Map.keys appValidatorsSet !! fromIntegral i
-        in addr == address (publicKey (validatorPrivKey appValidator))
+    , areWeProposers  = \r ->
+        proposerChoice r == address (publicKey (validatorPrivKey appValidator))
+    , proposerForRound = proposerChoice
+    --
     , validateBlock = \bid -> do
         blocks <- lift $ retrievePropBlocks appStorage h
         case bid `Map.lookup` blocks of

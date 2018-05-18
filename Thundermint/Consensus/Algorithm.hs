@@ -63,6 +63,8 @@ data HeightParameres (m :: * -> *) alg a = HeightParameres
     -- ^ Height we're on.
   , areWeProposers      :: Round -> Bool
     -- ^ Find address of proposer for given round.
+  , proposerForRound    :: Round -> Address alg
+    -- ^ Proposer for given round
   , validateBlock       :: BlockID alg a -> m ProposalState
     -- ^ Request validation of particular block
 
@@ -133,8 +135,12 @@ tendermintTransition par@HeightParameres{..} msg sm@TMState{..} =
       --        implementation have same question
       | Just _ <- Map.lookup propRound smProposals
         -> tranquility
+      -- Node sending message out of order is clearly byzantine
+      | signedAddr p /= proposerForRound propRound
+        -> misdeed
       -- Add it to map of proposals
-      | otherwise -> return sm { smProposals = Map.insert propRound p smProposals }
+      | otherwise
+        -> return sm { smProposals = Map.insert propRound p smProposals }
     ----------------------------------------------------------------
     PreVoteMsg v@(signedValue -> Vote{..})
       -- Only accept votes with current height
