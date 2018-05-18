@@ -248,12 +248,12 @@ makeHeightParametes AppState{..} AppChans{..} = do
             | otherwise
               -> return InvalidProposal
     --
-    , broadcastProposal = \r bid -> do
+    , broadcastProposal = \r bid lockInfo -> do
         let pk   = validatorPrivKey appValidator
             prop = Proposal { propHeight    = h
                             , propRound     = r
                             , propTimestamp = Time 0
-                            , propPOL       = Nothing
+                            , propPOL       = lockInfo
                             , propBlockID   = bid
                             }
             sprop  = signValue pk prop
