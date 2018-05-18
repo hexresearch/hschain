@@ -242,7 +242,11 @@ makeHeightParametes AppState{..} AppChans{..} = do
         blocks <- lift $ retrievePropBlocks appStorage h
         case bid `Map.lookup` blocks of
           Nothing -> return UnseenProposal
-          Just _  -> return GoodProposal -- FIXME: actually verify
+          Just b
+            | validateBlockData appValidator (blockData b)
+              -> return GoodProposal
+            | otherwise
+              -> return InvalidProposal
     --
     , broadcastProposal = \r bid -> do
         let pk   = validatorPrivKey appValidator

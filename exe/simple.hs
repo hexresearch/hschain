@@ -137,7 +137,7 @@ newSTMBlockStorage gBlock = do
 validators :: Map Int64 (PrivValidator Swear Int64)
 validators = Map.fromList
   [ n .= PrivValidator { validatorPrivKey  = SwearPrivK (fromIntegral n)
-                       , validateBlockData = undefined
+                       , validateBlockData = const True
                        }
   | n <- [0 .. 6]
   ]
