@@ -70,7 +70,7 @@ data HeightParameres (m :: * -> *) alg a = HeightParameres
 
   , scheduleTimeout     :: Timeout -> m ()
     -- ^ Schedule timeout.
-  , broadcastProposal   :: Round -> BlockID alg a -> m ()
+  , broadcastProposal   :: Round -> BlockID alg a -> Maybe (Round, BlockID alg a) -> m ()
     -- ^ Broadcast proposal for given round and block.
   , castPrevote         :: Round -> Maybe (BlockID alg a) -> m ()
     -- ^ Broadcast prevote for particular block ID in some round.
@@ -257,12 +257,12 @@ enterPropose par@HeightParameres{..} r sm@TMState{..} = do
     -- FIXME: take care of POL fields of proposal
     --
     -- If we're locked on block we MUST propose it
-    Just (_,bid) -> do logger InfoS ("Making proposal: " <> showLS bid) ()
-                       broadcastProposal r bid
+    Just (br,bid) -> do logger InfoS ("Making proposal: " <> showLS bid) ()
+                        broadcastProposal r bid (Just (br,bid))
     -- Otherwise we need to create new block from mempool
     Nothing      -> do bid <- createProposal r smLastCommit
                        logger InfoS ("Making proposal: " <> showLS bid) ()
-                       broadcastProposal r bid
+                       broadcastProposal r bid Nothing
   return sm { smRound = r
             , smStep  = StepProposal
             }
