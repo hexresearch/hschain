@@ -2,6 +2,7 @@
 {-# LANGUAGE DeriveFunctor     #-}
 {-# LANGUAGE FlexibleContexts  #-}
 {-# LANGUAGE LambdaCase        #-}
+{-# LANGUAGE NumDecimals       #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 {-# LANGUAGE TupleSections     #-}
@@ -266,8 +267,10 @@ makeHeightParametes AppState{..} AppChans{..} = do
             Nothing -> return ()
             Just b  -> writeTChan appChanRx (RxBlock b)
     --
-    , scheduleTimeout = \t -> liftIO $ void $ forkIO $ do
-        threadDelay (1*1000*1000)
+    , scheduleTimeout = \t@(Timeout _ (Round r) _) -> liftIO $ void $ forkIO $ do
+        let baseT = 500e3
+            delta = 250e3
+        threadDelay $ baseT + delta * fromIntegral r
         atomically $ writeTChan appChanRx $ RxTimeout t
     -- FIXME: Do we need to store cast votes to WAL as well?
     , castPrevote     = \r b -> do
