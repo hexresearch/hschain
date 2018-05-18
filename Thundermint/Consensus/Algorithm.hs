@@ -287,15 +287,23 @@ enterPrevote par@HeightParameres{..} r (unlockOnPrevote -> sm@TMState{..}) = do
       -- We're locked on block so we prevote it
       | Just (_,bid) <- smLockedBlock      = return (Just bid)
       -- We have proposal. Prevote it if it's good
-      | Just p <- Map.lookup r smProposals =
-          validateBlock (propBlockID (signedValue p)) >>= \case
-            GoodProposal    -> return (Just (propBlockID (signedValue p)))
-            InvalidProposal -> return Nothing
-            -- FIXME: tendermint allows prevote for blocks not yet
-            --        seen but let be conservative
-            UnseenProposal  -> return Nothing
+      | Just (signedValue -> Proposal{..}) <- Map.lookup r smProposals =
+          -- If proposal have proof of lock we must have proof
+          -- of lock for same round and some block
+          case propPOL of
+            Just (lockR, lockB) ->
+              case majority23at lockR smPrevotesSet of
+                Just v | voteBlockID v == Just lockB -> checkPrevoteBlock propBlockID
+                       | otherwise                   -> return Nothing --  FIXME: Byzantine!
+                Nothing                              -> return Nothing
+            Nothing                                  -> checkPrevoteBlock propBlockID
       -- Proposal invalid or absent. Prevote NIL
       | otherwise                          = return Nothing
+    --
+    checkPrevoteBlock bid = validateBlock bid >>= \case
+      GoodProposal    -> return (Just bid)
+      InvalidProposal -> return Nothing
+      UnseenProposal  -> return Nothing
 
 -- Unlock upon entering prevote which happens if:
 --   * We're already locked
