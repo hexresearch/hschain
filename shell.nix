@@ -1,4 +1,4 @@
-with import ./default.nix;
+with import ./release.nix;
   let
     nixpkgs = import <nixpkgs> {};
   in pkgs.stdenv.mkDerivation {
