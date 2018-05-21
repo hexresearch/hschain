@@ -7,16 +7,15 @@ module Thundermint.Crypto.Ed25519 where
 import Thundermint.Crypto
 
 import Crypto.Error        (throwCryptoError)
-import Crypto.Hash         (Digest, SHA512, hashlazy)
+import Crypto.Hash         (Digest, SHA512, hash)
 import Crypto.Random.Types (MonadRandom)
 import Data.ByteArray      (ByteArrayAccess, convert)
+import Data.ByteString     (ByteString)
 
 import qualified Crypto.PubKey.Ed25519 as Ed
-import qualified Data.ByteString       as BS
-import qualified Data.ByteString.Lazy  as LBS
 
-sha512 :: LBS.ByteString -> BS.ByteString
-sha512 = convert . asSHA512 . hashlazy
+sha512 :: ByteString -> ByteString
+sha512 = convert . asSHA512 . hash
  where
   asSHA512 :: Digest SHA512 -> Digest SHA512
   asSHA512 = id
@@ -29,10 +28,10 @@ newtype instance PublicKey Ed25519_SHA512 = PublicKey Ed.PublicKey
 
 -- | We assume that there's
 instance Crypto Ed25519_SHA512 where
-  signBlob (PrivKey k)  = Signature . convert . Ed.sign k pubKey . LBS.toStrict
+  signBlob (PrivKey k)  = Signature . convert . Ed.sign k pubKey
    where pubKey = Ed.toPublic k
 
-  verifyBlobSignature (PublicKey pubKey) blob (Signature s) = Ed.verify pubKey (LBS.toStrict blob) (throwCryptoError $ Ed.signature s)
+  verifyBlobSignature (PublicKey pubKey) blob (Signature s) = Ed.verify pubKey blob (throwCryptoError $ Ed.signature s)
   publicKey (PrivKey k)  = PublicKey $ Ed.toPublic k
   address   (PublicKey  k)  = Address $ convert k
   hashBlob                  = Hash . sha512
