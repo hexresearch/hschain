@@ -117,7 +117,8 @@ instance Serialise (Commit alg a)
 
 -- | Step of the algorithm
 data Step
-  = StepProposal
+  = StepNewHeight
+  | StepProposal
   | StepPrevote
   | StepPrecommit
   deriving (Show,Eq,Ord)

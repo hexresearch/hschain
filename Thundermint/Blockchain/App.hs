@@ -32,7 +32,6 @@ import Text.Groom
 
 import Thundermint.Blockchain.Types
 import Thundermint.Crypto
-import Thundermint.Crypto.Containers
 import Thundermint.Consensus.Algorithm
 import Thundermint.Consensus.Types
 import Thundermint.Store
@@ -83,26 +82,17 @@ decideNewBlock
   -> Maybe (Commit alg a)
   -> m (Commit alg a)
 decideNewBlock appSt@AppState{..} appCh@AppChans{..} lastCommt = do
-  -- Create initial state for consensus state machine
+  -- Enter NEW HEIGHT and create initial state for consensus state
+  -- machine
   hParam <- makeHeightParametes appSt appCh
   let totalPower       = sum $ fmap validatorVotingPower appValidatorsSet
       votingPower addr = case Map.lookup addr appValidatorsSet of
         Just i  -> validatorVotingPower i
         Nothing -> 0
-      tmState0 = TMState
-        { smRound         = Round 0
-        , smStep          = StepProposal
-        , smPrevotesSet   = emptySignedSetMap votingPower totalPower
-        , smPrecommitsSet = emptySignedSetMap votingPower totalPower
-        , smProposals     = Map.empty
-        , smLockedBlock   = Nothing
-        , smLastCommit    = lastCommt
-        }
-  -- Enter PREVOTE of round 0
   --
   -- FIXME: encode that we cannot fail here!
   logger InfoS ("New height: " <> showLS (currentH hParam)) ()
-  Success tm0 <- runConsesusM $ newHeight hParam tmState0
+  Success tm0 <- runConsesusM $ newHeight hParam lastCommt votingPower totalPower
   -- Handle incoming messages until we decide on next block.
   flip fix tm0 $ \loop tm -> do
     logger DebugS ("TM =\n" <> logStr (groom tm)) ()
@@ -267,11 +257,13 @@ makeHeightParametes AppState{..} AppChans{..} = do
             Nothing -> return ()
             Just b  -> writeTChan appChanRx (RxBlock b)
     --
-    , scheduleTimeout = \t@(Timeout _ (Round r) _) -> liftIO $ void $ forkIO $ do
-        let baseT = 500e3
-            delta = 250e3
-        threadDelay $ baseT + delta * fromIntegral r
-        atomically $ writeTChan appChanRx $ RxTimeout t
+    , scheduleTimeout = \t@(Timeout _ (Round r) _) -> do
+        logger InfoS ("Scheduling timeout: " <> showLS t) ()
+        liftIO $ void $ forkIO $ do
+          let baseT = 500e3
+              delta = 250e3
+          threadDelay $ baseT + delta * fromIntegral r
+          atomically $ writeTChan appChanRx $ RxTimeout t
     -- FIXME: Do we need to store cast votes to WAL as well?
     , castPrevote     = \r b -> do
         let pk   = validatorPrivKey appValidator
