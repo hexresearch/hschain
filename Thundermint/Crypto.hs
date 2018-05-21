@@ -35,14 +35,15 @@ module Thundermint.Crypto (
   -- , HashTree(..)
   ) where
 
-import Codec.Serialise (Serialise,serialise)
+import Codec.Serialise (Serialise, serialise)
 import Control.Monad
--- import qualified Data.ByteString as BS
-import           Data.Word
-import           Data.ByteString.Lazy     (ByteString)
+
+import Data.ByteString.Lazy (toStrict)
+import Data.Word
+import GHC.Generics         (Generic)
+
 import qualified Data.ByteString        as BS
 import qualified Data.ByteString.Base16 as Base16
-import GHC.Generics (Generic)
 
 
 ----------------------------------------------------------------
@@ -86,11 +87,11 @@ instance Show (Hash alg) where
 --   by to keep signatures sane everything was thrown into same type
 --   class.
 class Crypto alg where
-  signBlob            :: PrivKey   alg -> ByteString -> Signature alg
-  verifyBlobSignature :: PublicKey alg -> ByteString -> Signature alg -> Bool
+  signBlob            :: PrivKey   alg -> BS.ByteString -> Signature alg
+  verifyBlobSignature :: PublicKey alg -> BS.ByteString -> Signature alg -> Bool
   publicKey           :: PrivKey   alg -> PublicKey alg
   address             :: PublicKey alg -> Address alg
-  hashBlob            :: ByteString -> Hash alg
+  hashBlob            :: BS.ByteString -> Hash alg
 
 
 ----------------------------------------------------------------
@@ -128,7 +129,7 @@ signValue
   -> Signed 'Verified alg a
 signValue privK a
   = Signed (address $ publicKey privK)
-           (signBlob privK $ serialise a)
+           (signBlob privK $ toStrict $ serialise a)
            a
 
 verifySignature
@@ -138,7 +139,7 @@ verifySignature
   -> Maybe  (Signed 'Verified alg a)
 verifySignature lookupKey (Signed addr signature a) = do
   pubK <- lookupKey addr
-  guard $ verifyBlobSignature pubK (serialise a) signature
+  guard $ verifyBlobSignature pubK (toStrict $ serialise a) signature
   return $ Signed addr signature a
 
 unverifySignature :: Signed ty alg a -> Signed 'Unverified alg a
@@ -158,6 +159,6 @@ blockHash
   :: (Crypto alg, Serialise a)
   => a
   -> BlockHash alg a
-blockHash a = BlockHash 0xFFFFFFFF (hashBlob (serialise a)) []
+blockHash a = BlockHash 0xFFFFFFFF (hashBlob (toStrict $ serialise a)) []
 
 instance Serialise (BlockHash alg a)
