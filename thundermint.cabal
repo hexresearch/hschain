@@ -45,6 +45,7 @@ Library
                   Thundermint.P2P
                   Thundermint.P2P.Network
                   Thundermint.Store
+                  Thundermint.Store.STM
 
 Executable thundermint-simple
   Ghc-options:         -Wall -threaded
