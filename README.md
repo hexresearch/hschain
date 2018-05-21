@@ -6,9 +6,11 @@ Thundermint is a haskell implementation of tendermint bysantine consesus algorit
 
 ## Build with `nix`
 
+Just use following command 
 ```
 nix-build -A thundermint release.nix
 ```
+Note that if project directory contains `.ghc.environment.*` files created by new-style cabal commands build will fail. 
 
 ## Run dev environment with `nix`
 
