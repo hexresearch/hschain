@@ -102,12 +102,26 @@ class Monad m => ConsensusMonad m where
   --   thing we can do is to die with honor
   panic :: String -> m a
 
+-- | Enter new height and create new state for state machine
 newHeight
   :: (Crypto alg, ConsensusMonad m, MonadLogger m)
   => HeightParameres m alg a
-  -> TMState alg a
+  -> Maybe (Commit alg a)
+  -> (Address alg -> Integer)
+  -> Integer
   -> m (TMState alg a)
-newHeight par = enterPropose par (Round 0)
+newHeight HeightParameres{..} lastCommit votingPower totalPower = do
+  scheduleTimeout $ Timeout currentH (Round 0) StepNewHeight
+  return TMState
+    { smRound         = Round 0
+    , smStep          = StepNewHeight
+    , smPrevotesSet   = emptySignedSetMap votingPower totalPower
+    , smPrecommitsSet = emptySignedSetMap votingPower totalPower
+    , smProposals     = Map.empty
+    , smLockedBlock   = Nothing
+    , smLastCommit    = lastCommit
+    }
+
 
 -- | Transition rule for tendermint state machine. State is passed
 --   explicitly and we track effects like sending message and
@@ -149,8 +163,14 @@ tendermintTransition par@HeightParameres{..} msg sm@TMState{..} =
                               =<< addPrevote v sm
     ----------------------------------------------------------------
     PreCommitMsg v@(signedValue -> Vote{..})
-      -- FIXME: store precommits from previous height if they validate commit
-      --
+      -- Collect stragglers precommits for inclusion of
+      | next voteHeight == currentH
+      , smStep == StepNewHeight
+      , Just cmt <- smLastCommit
+        -> case Just (commitBlockID cmt) /= voteBlockID of
+             False -> misdeed
+             True  -> return sm
+               { smLastCommit = Just cmt { commitPrecommits = v : commitPrecommits cmt } }
       -- Only accept votes with current height
       | voteHeight /= currentH -> tranquility
       | otherwise              -> checkTransitionPrecommit par voteRound
@@ -168,6 +188,7 @@ tendermintTransition par@HeightParameres{..} msg sm@TMState{..} =
         -- FIXME: specification is unclear about this point but go
         --        implementation advances unconditionally
         EQ -> case smStep of
+          StepNewHeight -> enterPropose   par smRound        sm
           StepProposal  -> enterPrevote   par smRound        sm
           StepPrevote   -> enterPrecommit par smRound        sm
           StepPrecommit -> enterPropose   par (next smRound) sm
