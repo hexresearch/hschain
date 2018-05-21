@@ -290,7 +290,7 @@ makeHeightParametes AppState{..} AppChans{..} = do
           writeTChan appChanTx (TxPreCommit svote)
           writeTChan appChanRx (RxPreCommit $ unverifySignature svote)
 
-    , createProposal    = \r cm -> lift $ do
+    , createProposal    = \cm -> lift $ do
         b <- appBlockGenerator cm
         storePropBlock appStorage h b
         return $ blockHash b
