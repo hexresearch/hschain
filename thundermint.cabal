@@ -19,14 +19,16 @@ Library
   Build-Depends:       base              >=4.9 && <5
                      , bytestring        >=0.10
                      , base16-bytestring >=0.1
-                     , transformers      >=0.5
                      , containers        >=0.5.9
+                     , exceptions        >=0.10.0
+                     , memory            >=0.14.14
                      , stm               >=2.4
                      , serialise         >=0.2
-                     , exceptions        >=0.10.0
+                     , transformers      >=0.5
                      --
                      , network           >=2.7.0.0
                      , katip             >=0.5.4.0
+                     , cryptonite        >=0.25
                      --
                      , groom
   Exposed-modules:
@@ -37,6 +39,8 @@ Library
                   Thundermint.Consensus.Types
                   Thundermint.Crypto
                   Thundermint.Crypto.Containers
+                  Thundermint.Crypto.Ed25519
+                  Thundermint.Crypto.Swear
                   Thundermint.Logger
                   Thundermint.P2P
                   Thundermint.P2P.Network
@@ -54,7 +58,6 @@ Executable thundermint-simple
                      , async      >=2.2.1
                      , serialise  >=0.2
                      , time
-                     , cryptohash-md5 >= 0.11.100
                      , katip          >= 0.5.4.0
   hs-source-dirs:      exe
   Main-is:             simple.hs

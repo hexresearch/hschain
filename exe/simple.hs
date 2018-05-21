@@ -1,56 +1,34 @@
-{-# LANGUAGE TupleSections #-}
-{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE DataKinds         #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TupleSections     #-}
 {-# LANGUAGE TypeFamilies      #-}
-import Codec.Serialise (Serialise)
-import Control.Monad
-import Control.Monad.IO.Class
+
+import Codec.Serialise          (Serialise)
 import Control.Concurrent.Async
 import Control.Concurrent.STM
 import Control.Exception
-import qualified Crypto.Hash.MD5 as MD5
-import Data.Int
-import Data.Word
+import Control.Monad
+import Control.Monad.IO.Class
 import Data.Foldable
+import Data.Int
+import Data.Map                 (Map)
+
+import qualified Data.ByteString        as BS
 import qualified Data.ByteString.Base16 as Base16
 import qualified Data.ByteString.Char8  as BC8
-import qualified Data.ByteString        as BS
-import           Data.Map               (Map)
-import qualified Data.Map             as Map
-import System.IO
-import Data.Time.Clock (getCurrentTime,diffUTCTime,UTCTime)
-import Text.Printf
+import qualified Data.Map               as Map
 import qualified Katip
 
 import Thundermint.Blockchain.App
 import Thundermint.Blockchain.Types
 import Thundermint.Consensus.Types
+import Thundermint.Crypto
+import Thundermint.Crypto.Ed25519   (Ed25519_SHA512, privateKey)
+import Thundermint.Logger
 import Thundermint.P2P
 import Thundermint.P2P.Network
-import Thundermint.Crypto
 import Thundermint.Store
-import Thundermint.Logger
 
-
-----------------------------------------------------------------
---
-----------------------------------------------------------------
-
--- Mock crypto which works as long as no one tries to break it.
-data Swear
-
-newtype instance PrivKey   Swear = SwearPrivK Word8
-newtype instance PublicKey Swear = SwearPubK Word8
--- newtype instance Signature Swear = SwearSig ()
-
--- | We assume that there's
-instance Crypto Swear where
-  signBlob            _ _   = Signature ""
-  verifyBlobSignature _ _ _ = True
-  publicKey (SwearPrivK w)  = SwearPubK w
-  address   (SwearPubK  w)  = Address $ BS.pack [w]
-  hashBlob                  = Hash . MD5.hashlazy
 
 ----------------------------------------------------------------
 --
@@ -91,8 +69,8 @@ newSTMBlockStorage gBlock = do
                            else return Map.empty
         , retrieveStoredProps = atomically $ do
             h  <- currentHeight
-            bs <- readTVar varPBlk
-            return (h, Map.keysSet bs)
+            blk <- readTVar varPBlk
+            return (h, Map.keysSet blk)
         , storePropBlock = \height blk -> atomically $ do
             h <- currentHeight
             when (height == h) $ do
@@ -134,16 +112,32 @@ newSTMBlockStorage gBlock = do
 --
 ----------------------------------------------------------------
 
-validators :: Map Int64 (PrivValidator Swear Int64)
+{-
+-}
+-- FIXME: replace base16 with base58
+
+fromBase16 :: BS.ByteString -> BS.ByteString
+fromBase16 = fst . Base16.decode
+
+-- FIXME: keys show be stored somewhere
+
+validators :: Map BS.ByteString  (PrivValidator Ed25519_SHA512 Int64)
 validators = Map.fromList
-  [ n .= PrivValidator { validatorPrivKey  = SwearPrivK (fromIntegral n)
+  [ n .= PrivValidator { validatorPrivKey  = privateKey $ fromBase16 n
                        , validateBlockData = const True
                        }
-  | n <- [0 .. 6]
+  | n <- [ "137f97f2a73e576b8b8d52b3728088ac6c25383065853b5d049da74100f6a2db"
+         , "32111ba438148948ab3119f4f2132530ec844de1bf2521fa840555a9afcf15dd"
+         , "217d248f6623d335692d6198a6121ae24e6dac97c1e70ea60e0ce4ee2099d7b5"
+         , "b2b9b660e40438ed7a4e3d05b108eec78c4915f91982bb480d6a06109a01f7de"
+         , "4f1c6d2b0a704e2ac8803cb53bb6b03b08a48557ee705f20027b861636353075"
+         , "5e00991c969498a3948c67e614041f5e47591fac761e10ba84bde69b1189badb"
+         , "66650c20d918afaa0a353b32613ffa63d56da2f6ad67757df32d7dec58b143dd"
+         ]
   ]
   where (.=) = (,)
 
-genesisBlock :: Block Swear Int64
+genesisBlock :: Block Ed25519_SHA512 Int64
 genesisBlock = Block
   { blockHeader = Header
       { headerChainID     = "TEST"
