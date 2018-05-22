@@ -4,14 +4,13 @@
 import Data.Int
 import Data.Map                 (Map)
 import Data.Maybe               (fromMaybe)
-
-import qualified Data.ByteString        as BS
 import qualified Data.Map               as Map
 
 import Thundermint.Blockchain.Types
 import Thundermint.Consensus.Types
 
-import Thundermint.Crypto.Ed25519   (Ed25519_SHA512, privateKey)
+import Thundermint.Crypto
+import Thundermint.Crypto.Ed25519   (Ed25519_SHA512)
 import Thundermint.P2P.Network
 import Thundermint.Store
 import Thundermint.Store.STM
@@ -22,30 +21,17 @@ import Thundermint.Mock
 --
 ----------------------------------------------------------------
 
-data Base58DecodingError = Base58DecodingError
-    deriving Show
-
-instance Exception Base58DecodingError
-
-fromBase58 :: BS.ByteString -> BS.ByteString
-fromBase58 = fromMaybe (throw Base58DecodingError) . decodeBase58
-
--- FIXME: keys show be stored somewhere
-
-validators :: Map BS.ByteString (PrivValidator Ed25519_SHA512)
-validators = Map.fromList
-  [ n .= PrivValidator { validatorPrivKey  = privateKey $ fromBase58 n
-                       }
-  | n <- [ "2K7bFuJXxKf5LqogvVRQjms2W26ZrjpvUjo5LdvPFa5Y"
-         , "4NSWtMsEPgfTK25tCPWqNzVVze1dgMwcUFwS5WkSpjJL"
-         , "3Fj8bZjKc53F2a87sQaFkrDas2d9gjzK57FmQwnNnSHS"
-         , "D2fpHM1JA8trshiUW8XPvspsapUvPqVzSofaK1MGRySd"
-         , "6KpMDioUKSSCat18sdmjX7gvCNMGKBxf7wN8ZFAKBvvp"
-         , "7KwrSxsYYgJ1ZcLSmZ9neR8GiZBCZp1C1XBuC41MdiXk"
-         , "7thxDUPcx7AxDcz4eSehLezXGmRFkfwjeNUz9VUK6uyN"
-         ]
+validators :: Map (Address Ed25519_SHA512) (PrivValidator Ed25519_SHA512)
+validators = makePrivateValidators
+  [ "2K7bFuJXxKf5LqogvVRQjms2W26ZrjpvUjo5LdvPFa5Y"
+  , "4NSWtMsEPgfTK25tCPWqNzVVze1dgMwcUFwS5WkSpjJL"
+  , "3Fj8bZjKc53F2a87sQaFkrDas2d9gjzK57FmQwnNnSHS"
+  , "D2fpHM1JA8trshiUW8XPvspsapUvPqVzSofaK1MGRySd"
+  , "6KpMDioUKSSCat18sdmjX7gvCNMGKBxf7wN8ZFAKBvvp"
+  , "7KwrSxsYYgJ1ZcLSmZ9neR8GiZBCZp1C1XBuC41MdiXk"
+  , "7thxDUPcx7AxDcz4eSehLezXGmRFkfwjeNUz9VUK6uyN"
   ]
-  where (.=) = (,)
+
 
 genesisBlock :: Block Ed25519_SHA512 Int64
 genesisBlock = Block

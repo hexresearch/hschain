@@ -5,15 +5,14 @@
 import Control.Monad
 import Data.Map                 (Map)
 import Data.List
-import qualified Data.ByteString        as BS
-import qualified Data.ByteString.Base16 as Base16
 import qualified Data.Map               as Map
 import qualified Data.Set               as Set
 import Text.Groom
 
 import Thundermint.Blockchain.Types
 import Thundermint.Consensus.Types
-import Thundermint.Crypto.Ed25519   (Ed25519_SHA512, privateKey)
+import Thundermint.Crypto
+import Thundermint.Crypto.Ed25519   (Ed25519_SHA512)
 import Thundermint.P2P.Network
 import Thundermint.Store
 import Thundermint.Store.STM
@@ -24,26 +23,13 @@ import Thundermint.Mock
 --
 ----------------------------------------------------------------
 
-{-
--}
--- FIXME: replace base16 with base58
-
-fromBase16 :: BS.ByteString -> BS.ByteString
-fromBase16 = fst . Base16.decode
-
--- FIXME: keys show be stored somewhere
-
-validators :: Map BS.ByteString (PrivValidator Ed25519_SHA512)
-validators = Map.fromList
-  [ n .= PrivValidator { validatorPrivKey  = privateKey $ fromBase16 n
-                       }
-  | n <- [ "137f97f2a73e576b8b8d52b3728088ac6c25383065853b5d049da74100f6a2db"
-         , "32111ba438148948ab3119f4f2132530ec844de1bf2521fa840555a9afcf15dd"
-         , "217d248f6623d335692d6198a6121ae24e6dac97c1e70ea60e0ce4ee2099d7b5"
-         , "b2b9b660e40438ed7a4e3d05b108eec78c4915f91982bb480d6a06109a01f7de"
-         ]
+validators :: Map (Address Ed25519_SHA512) (PrivValidator Ed25519_SHA512)
+validators = makePrivateValidators
+  [ "2K7bFuJXxKf5LqogvVRQjms2W26ZrjpvUjo5LdvPFa5Y"
+  , "4NSWtMsEPgfTK25tCPWqNzVVze1dgMwcUFwS5WkSpjJL"
+  , "3Fj8bZjKc53F2a87sQaFkrDas2d9gjzK57FmQwnNnSHS"
+  , "D2fpHM1JA8trshiUW8XPvspsapUvPqVzSofaK1MGRySd"
   ]
-  where (.=) = (,)
 
 genesisBlock :: Block Ed25519_SHA512 [(String,Int)]
 genesisBlock = Block
