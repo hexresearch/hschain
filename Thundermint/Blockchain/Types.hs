@@ -1,5 +1,6 @@
-{-# LANGUAGE DataKinds  #-}
-{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE DataKinds       #-}
+{-# LANGUAGE RankNTypes      #-}
+{-# LANGUAGE RecordWildCards #-}
 -- |
 -- Data types for storage of blockchain
 module Thundermint.Blockchain.Types where
@@ -27,7 +28,7 @@ data AppState m alg a = AppState
   , appChainID        :: ByteString
     -- ^ Chain ID of application. It will be included into every
     --   block.
-  , appBlockGenerator :: BlockStorage 'RW m alg a -> m a
+  , appBlockGenerator :: m a
     -- ^ Generate fresh block for proposal.
   , appValidator      :: PrivValidator alg a
     -- ^ Private validator for node
@@ -38,6 +39,13 @@ data AppState m alg a = AppState
     --          need to add support of changing set as result of
     --          commited block.
   , appMaxHeight      :: Maybe Height
+  }
+
+hoistAppState :: (forall x. m x -> n x) -> AppState m alg a -> AppState n alg a
+hoistAppState fun AppState{..} = AppState
+  { appStorage        = hoistBlockStorageRW fun appStorage
+  , appBlockGenerator = fun appBlockGenerator
+  , ..
   }
 
 -- | Information about remote validator
