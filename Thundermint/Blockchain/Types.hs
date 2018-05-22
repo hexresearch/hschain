@@ -1,11 +1,12 @@
 {-# LANGUAGE DataKinds  #-}
 {-# LANGUAGE RankNTypes #-}
 -- |
--- Data types for storage of blockchain 
+-- Data types for storage of blockchain
 module Thundermint.Blockchain.Types where
 
 import Control.Concurrent.STM
-import           Data.Map (Map)
+import           Data.ByteString (ByteString)
+import           Data.Map        (Map)
 
 import Thundermint.Crypto
 import Thundermint.Consensus.Types
@@ -23,9 +24,11 @@ data AppState m alg a = AppState
     -- ^ Persistent storage for blockchain and related data
     --
     -- FIXME: Is IO good enough or do we need some other guarantees?
-  , appBlockGenerator :: Maybe (Commit alg a)
-                      -> m (Block alg a)
-    -- ^ Generate fresh block for proposa
+  , appChainID        :: ByteString
+    -- ^ Chain ID of application. It will be included into every
+    --   block.
+  , appBlockGenerator :: BlockStorage 'RW m alg a -> m a
+    -- ^ Generate fresh block for proposal.
   , appValidator      :: PrivValidator alg a
     -- ^ Private validator for node
   , appValidatorsSet  :: Map (Address alg) (Validator alg)

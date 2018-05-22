@@ -290,10 +290,22 @@ makeHeightParametes AppState{..} AppChans{..} = do
           writeTChan appChanTx (TxPreCommit svote)
           writeTChan appChanRx (RxPreCommit $ unverifySignature svote)
 
-    , createProposal    = \cm -> lift $ do
-        b <- appBlockGenerator cm
-        storePropBlock appStorage h b
-        return $ blockHash b
+    , createProposal = \commit -> lift $ do
+        bData          <- appBlockGenerator appStorage
+        Just lastBlock <- retrieveBlock appStorage
+                      =<< blockchainHeight appStorage
+        let block = Block
+              { blockHeader     = Header
+                  { headerChainID     = appChainID
+                  , headerHeight      = next h
+                  , headerTime        = Time 0
+                  , headerLastBlockID = Just (blockHash lastBlock)
+                  }
+              , blockData       = bData
+              , blockLastCommit = commit
+              }
+        storePropBlock appStorage h block
+        return $ blockHash block
 
     , commitBlock     = \cm -> ConsensusM $ return $ DoCommit cm
     }

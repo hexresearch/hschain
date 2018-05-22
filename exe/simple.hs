@@ -134,21 +134,10 @@ startNode net addrs val valSet genesis = do
     appCh   <- newAppChans
     --
     let appState = AppState { appStorage        = hoistBlockStorageRW liftIO storage
-                            , appBlockGenerator = \commit -> liftIO $ do
-                                -- FIXME: We need to fetch last block
-                                Just lastBlock <- retrieveBlock storage =<< blockchainHeight storage
-                                let Height h = headerHeight $ blockHeader lastBlock
-                                    block = Block
-                                      { blockHeader     = Header
-                                          { headerChainID     = "TEST"
-                                          , headerHeight      = Height (h + 1)
-                                          , headerTime        = Time 0
-                                          , headerLastBlockID = Just (blockHash lastBlock)
-                                          }
-                                      , blockData       = h * 100
-                                      , blockLastCommit = commit
-                                      }
-                                return block
+                            , appChainID        = "TEST"
+                            , appBlockGenerator = \st -> do
+                                Height h <- blockchainHeight st
+                                return $ h * 100
                             , appValidator     = val
                             , appValidatorsSet = valSet
                             , appMaxHeight     = Just (Height 3)
