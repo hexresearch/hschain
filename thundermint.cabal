@@ -47,7 +47,7 @@ Library
                   Thundermint.Store
 
 Executable thundermint-simple
-  Ghc-options:         -Wall
+  Ghc-options:         -Wall -threaded
   Default-Language:    Haskell2010
   Build-Depends:       base       >=4.9 && <5
                      , thundermint
