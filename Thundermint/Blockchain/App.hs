@@ -91,7 +91,6 @@ decideNewBlock appSt@AppState{..} appCh@AppChans{..} lastCommt = do
         Nothing -> 0
   --
   -- FIXME: encode that we cannot fail here!
-  logger InfoS ("New height: " <> showLS (currentH hParam)) ()
   Success tm0 <- runConsesusM $ newHeight hParam lastCommt votingPower totalPower
   -- Handle incoming messages until we decide on next block.
   flip fix tm0 $ \loop tm -> do
@@ -261,7 +260,7 @@ makeHeightParametes AppState{..} AppChans{..} = do
         logger InfoS ("Scheduling timeout: " <> showLS t) ()
         liftIO $ void $ forkIO $ do
           let baseT = 500e3
-              delta = 250e3
+              delta = 500e3
           threadDelay $ baseT + delta * fromIntegral r
           atomically $ writeTChan appChanRx $ RxTimeout t
     -- FIXME: Do we need to store cast votes to WAL as well?
@@ -273,7 +272,7 @@ makeHeightParametes AppState{..} AppChans{..} = do
                         , voteBlockID = b
                         }
             svote  = signValue pk vote
-        logger InfoS ("Sending prevote for " <> showLS r) ()
+        logger InfoS ("Sending prevote for " <> showLS r <> " (" <> showLS b <> ")") ()
         liftIO $ atomically $ do
           writeTChan appChanTx (TxPreVote svote)
           writeTChan appChanRx (RxPreVote $ unverifySignature svote)
@@ -286,7 +285,7 @@ makeHeightParametes AppState{..} AppChans{..} = do
                         , voteBlockID = b
                         }
             svote  = signValue pk vote
-        logger InfoS ("Sending precommit for " <> showLS r) ()
+        logger InfoS ("Sending precommit for " <> showLS r <> " (" <> showLS b <> ")") ()
         liftIO $ atomically $ do
           writeTChan appChanTx (TxPreCommit svote)
           writeTChan appChanRx (RxPreCommit $ unverifySignature svote)
