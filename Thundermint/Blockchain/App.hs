@@ -113,10 +113,9 @@ decideNewBlock appSt@AppState{..} appCh@AppChans{..} lastCommt = do
         blocks <- retrievePropBlocks appStorage (currentH hParam)
         logger DebugS ("COMMIT: \n" <> logStr (groom cmt)) ()
         logger DebugS ("BLOCKMAP: \n" <> logStr (groom blocks)) ()
-        -- FIXME: handle partiality
-        let b = case commitBlockID cmt `Map.lookup` blocks of
-                  Just x  -> x
-                  Nothing -> error $ "Cannot commit: " ++ show cmt
+        b <- case commitBlockID cmt `Map.lookup` blocks of
+               Just x  -> return x
+               Nothing -> error $ "Cannot commit: " ++ show cmt
         storeCommit appStorage cmt b
         return cmt
 
@@ -232,11 +231,9 @@ makeHeightParametes AppState{..} AppChans{..} = do
         blocks <- lift $ retrievePropBlocks appStorage h
         case bid `Map.lookup` blocks of
           Nothing -> return UnseenProposal
-          Just b
-            | validateBlockData appValidator (blockData b)
-              -> return GoodProposal
-            | otherwise
-              -> return InvalidProposal
+          Just b  -> lift (appValidationFun (blockData b)) >>= \case
+            True  -> return GoodProposal
+            False -> return InvalidProposal
     --
     , broadcastProposal = \r bid lockInfo -> do
         let pk   = validatorPrivKey appValidator
@@ -294,9 +291,10 @@ makeHeightParametes AppState{..} AppChans{..} = do
         bData          <- appBlockGenerator
         Just lastBlock <- retrieveBlock appStorage
                       =<< blockchainHeight appStorage
+        Just genesis   <- retrieveBlock appStorage (Height 0)
         let block = Block
               { blockHeader     = Header
-                  { headerChainID     = appChainID
+                  { headerChainID     = headerChainID $ blockHeader genesis
                   , headerHeight      = next h
                   , headerTime        = Time 0
                   , headerLastBlockID = Just (blockHash lastBlock)

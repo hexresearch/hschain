@@ -38,7 +38,7 @@ import Thundermint.Store
 
 makeValidatorSet
   :: (Foldable f, Crypto alg)
-  => f (PrivValidator alg a) -> Map (Address alg) (Validator alg)
+  => f (PrivValidator alg) -> Map (Address alg) (Validator alg)
 makeValidatorSet vals = Map.fromList
   [ ( address (publicKey (validatorPrivKey v))
     , Validator { validatorPubKey      = publicKey (validatorPrivKey v)
