@@ -12,9 +12,9 @@ import Control.Monad.IO.Class
 import Data.Foldable
 import Data.Int
 import Data.Map                 (Map)
+import Data.Maybe               (fromMaybe)
 
 import qualified Data.ByteString        as BS
-import qualified Data.ByteString.Base16 as Base16
 import qualified Data.ByteString.Char8  as BC8
 import qualified Data.Map               as Map
 import qualified Katip
@@ -112,27 +112,28 @@ newSTMBlockStorage gBlock = do
 --
 ----------------------------------------------------------------
 
-{-
--}
--- FIXME: replace base16 with base58
+data Base58DecodingError = Base58DecodingError
+    deriving Show
 
-fromBase16 :: BS.ByteString -> BS.ByteString
-fromBase16 = fst . Base16.decode
+instance Exception Base58DecodingError
+
+fromBase58 :: BS.ByteString -> BS.ByteString
+fromBase58 = fromMaybe (throw Base58DecodingError) . decodeBase58
 
 -- FIXME: keys show be stored somewhere
 
 validators :: Map BS.ByteString  (PrivValidator Ed25519_SHA512 Int64)
 validators = Map.fromList
-  [ n .= PrivValidator { validatorPrivKey  = privateKey $ fromBase16 n
+  [ n .= PrivValidator { validatorPrivKey  = privateKey $ fromBase58 n
                        , validateBlockData = const True
                        }
-  | n <- [ "137f97f2a73e576b8b8d52b3728088ac6c25383065853b5d049da74100f6a2db"
-         , "32111ba438148948ab3119f4f2132530ec844de1bf2521fa840555a9afcf15dd"
-         , "217d248f6623d335692d6198a6121ae24e6dac97c1e70ea60e0ce4ee2099d7b5"
-         , "b2b9b660e40438ed7a4e3d05b108eec78c4915f91982bb480d6a06109a01f7de"
-         , "4f1c6d2b0a704e2ac8803cb53bb6b03b08a48557ee705f20027b861636353075"
-         , "5e00991c969498a3948c67e614041f5e47591fac761e10ba84bde69b1189badb"
-         , "66650c20d918afaa0a353b32613ffa63d56da2f6ad67757df32d7dec58b143dd"
+  | n <- [ "2K7bFuJXxKf5LqogvVRQjms2W26ZrjpvUjo5LdvPFa5Y"
+         , "4NSWtMsEPgfTK25tCPWqNzVVze1dgMwcUFwS5WkSpjJL"
+         , "3Fj8bZjKc53F2a87sQaFkrDas2d9gjzK57FmQwnNnSHS"
+         , "D2fpHM1JA8trshiUW8XPvspsapUvPqVzSofaK1MGRySd"
+         , "6KpMDioUKSSCat18sdmjX7gvCNMGKBxf7wN8ZFAKBvvp"
+         , "7KwrSxsYYgJ1ZcLSmZ9neR8GiZBCZp1C1XBuC41MdiXk"
+         , "7thxDUPcx7AxDcz4eSehLezXGmRFkfwjeNUz9VUK6uyN"
          ]
   ]
   where (.=) = (,)
@@ -200,7 +201,7 @@ startNode net addrs val valSet genesis = do
   -- Initialize logging
   scribe <- Katip.mkFileScribe
     ("logs/" ++ let Address nm = address $ publicKey $ validatorPrivKey val
-                in BC8.unpack (Base16.encode nm)
+                in BC8.unpack (encodeBase58 nm)
     ) Katip.DebugS Katip.V2
   logenv <- Katip.registerScribe "log" scribe Katip.defaultScribeSettings
         =<< Katip.initLogEnv "TM" "DEV"
