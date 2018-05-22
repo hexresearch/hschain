@@ -1,5 +1,5 @@
-{ mkDerivation, async, base, base16-bytestring, bytestring
-, containers, cryptonite, exceptions, groom, katip, network
+{ mkDerivation, async, base, base16-bytestring, base58-bytestring
+, bytestring , containers, cryptonite, exceptions, groom, katip, network
 , serialise, stdenv, stm, tasty, tasty-hunit, time, transformers
 }:
 mkDerivation {
@@ -9,12 +9,12 @@ mkDerivation {
   isLibrary = true;
   isExecutable = true;
   libraryHaskellDepends = [
-    base base16-bytestring bytestring containers exceptions groom katip
-    network serialise stm transformers
+    base base16-bytestring base58-bytestring bytestring containers
+    exceptions groom katip network serialise stm transformers
   ];
   executableHaskellDepends = [
-    async base base16-bytestring bytestring containers cryptonite
-    katip serialise stm time
+    async base base16-bytestring base58-bytestring bytestring
+    containers cryptonite katip serialise stm time
   ];
   testHaskellDepends = [
     async base bytestring stm tasty tasty-hunit

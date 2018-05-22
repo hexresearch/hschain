@@ -43,7 +43,7 @@ import Data.Word
 import GHC.Generics         (Generic)
 
 import qualified Data.ByteString        as BS
-import qualified Data.ByteString.Base16 as Base16
+import qualified Data.ByteString.Base58 as Base58
 
 
 ----------------------------------------------------------------
@@ -63,7 +63,7 @@ newtype Signature alg = Signature BS.ByteString
 instance Show (Signature alg) where
   showsPrec n (Signature bs)
     = showParen (n > 10)
-    $ showString "Signature " . shows (Base16.encode bs)
+    $ showString "Signature " . shows (Base58.encodeBase58 Base58.bitcoinAlphabet bs)
 
 -- |
 newtype Address alg = Address BS.ByteString
@@ -72,7 +72,7 @@ newtype Address alg = Address BS.ByteString
 instance Show (Address alg) where
   showsPrec n (Address bs)
     = showParen (n > 10)
-    $ showString "Address " . shows (Base16.encode bs)
+    $ showString "Address " . shows (Base58.encodeBase58 Base58.bitcoinAlphabet bs)
 
 -- |
 newtype Hash alg = Hash BS.ByteString
@@ -81,7 +81,7 @@ newtype Hash alg = Hash BS.ByteString
 instance Show (Hash alg) where
   showsPrec n (Hash bs)
     = showParen (n > 10)
-    $ showString "Hash " . shows (Base16.encode bs)
+    $ showString "Hash " . shows (Base58.encodeBase58 Base58.bitcoinAlphabet bs)
 
 -- | Type-indexed set of crypto algorithms. It's not very principled
 --   by to keep signatures sane everything was thrown into same type

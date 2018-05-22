@@ -19,6 +19,7 @@ Library
   Build-Depends:       base              >=4.9 && <5
                      , bytestring        >=0.10
                      , base16-bytestring >=0.1
+                     , base58-bytestring >=0.1
                      , containers        >=0.5.9
                      , exceptions        >=0.10.0
                      , memory            >=0.14.14
