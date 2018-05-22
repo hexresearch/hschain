@@ -1,5 +1,6 @@
 {-# LANGUAGE DataKinds         #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards   #-}
 {-# LANGUAGE TupleSections     #-}
 {-# LANGUAGE TypeFamilies      #-}
 
@@ -89,6 +90,8 @@ makeValidatorSet vals = Map.fromList
   | v <- toList vals
   ]
 
+-- | Calculate set of addresses for node to connect to
+--   assuming all nodes are connected to each other.
 connectAll2All :: Ord addr => Map addr a -> addr -> [addr]
 connectAll2All vals addr =
   [ a
@@ -96,6 +99,7 @@ connectAll2All vals addr =
   , a < addr
   ]
 
+-- | Connect nodes in ring topology
 connectRing :: Ord addr => Map addr a -> addr -> [addr]
 connectRing vals addr =
   case Map.splitLookup addr vals of
@@ -116,37 +120,23 @@ startNode
   :: (Ord addr, Show addr, Crypto alg, Serialise a, a ~ Int64)
   => NetworkAPI sock addr
   -> [addr]
-  -> PrivValidator alg a
-  -> Map (Address alg) (Validator alg)
-  -> Block alg a
+  -> AppState IO alg a
   -> IO ()
-startNode net addrs val valSet genesis = do
+startNode net addrs appState@AppState{..} = do
   -- Initialize logging
   scribe <- Katip.mkFileScribe
-    ("logs/" ++ let Address nm = address $ publicKey $ validatorPrivKey val
+    ("logs/" ++ let Address nm = address $ publicKey $ validatorPrivKey appValidator
                 in BC8.unpack (encodeBase58 nm)
     ) Katip.DebugS Katip.V2
   logenv <- Katip.registerScribe "log" scribe Katip.defaultScribeSettings
         =<< Katip.initLogEnv "TM" "DEV"
   flip finally (Katip.closeScribes logenv) $ do
-    -- Initialize block storage
-    storage <- newSTMBlockStorage genesis
     appCh   <- newAppChans
-    --
-    let appState = AppState { appStorage        = hoistBlockStorageRW liftIO storage
-                            , appChainID        = "TEST"
-                            , appBlockGenerator = \st -> do
-                                Height h <- blockchainHeight st
-                                return $ h * 100
-                            , appValidator     = val
-                            , appValidatorsSet = valSet
-                            , appMaxHeight     = Just (Height 3)
-                            }
-    -- Start P2P
     let netRoutine = runLoggerT "net" logenv
-                   $ startPeerDispatcher net addrs appCh (makeReadOnly storage)
-    withAsync netRoutine $ \_ -> do
-      runLoggerT "consensus" logenv $ runApplication appState appCh
+                   $ startPeerDispatcher net addrs appCh (makeReadOnly appStorage)
+    withAsync netRoutine $ \_ ->
+      runLoggerT "consensus" logenv
+        $ runApplication (hoistAppState liftIO appState) appCh
 
 
 withAsyncs :: [IO a] -> ([Async a] -> IO b) -> IO b
@@ -162,7 +152,20 @@ main = do
   let validatorSet = makeValidatorSet validators
       actions = [ do let node  = createMockNode net addr
                          addrs = map (,"50000") $ connectRing validators addr
-                     startNode node addrs val validatorSet genesisBlock
+                     -- Create app state
+                     storage <- newSTMBlockStorage genesisBlock
+                     let appState = AppState
+                           { appStorage        = storage
+                           , appChainID        = "TEST"
+                           , appBlockGenerator = do
+                               Height h <- blockchainHeight storage
+                               return $ h * 100
+                           , appValidator     = val
+                           , appValidatorsSet = validatorSet
+                           , appMaxHeight     = Just (Height 3)
+                           }
+                     --
+                     startNode node addrs appState
                 | (addr, val) <- Map.toList validators
                 ]
   withAsyncs actions $ mapM_ wait

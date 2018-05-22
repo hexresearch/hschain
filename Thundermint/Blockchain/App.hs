@@ -291,7 +291,7 @@ makeHeightParametes AppState{..} AppChans{..} = do
           writeTChan appChanRx (RxPreCommit $ unverifySignature svote)
 
     , createProposal = \commit -> lift $ do
-        bData          <- appBlockGenerator appStorage
+        bData          <- appBlockGenerator
         Just lastBlock <- retrieveBlock appStorage
                       =<< blockchainHeight appStorage
         let block = Block
