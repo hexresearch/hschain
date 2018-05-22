@@ -25,13 +25,12 @@ data AppState m alg a = AppState
     -- ^ Persistent storage for blockchain and related data
     --
     -- FIXME: Is IO good enough or do we need some other guarantees?
-  , appChainID        :: ByteString
-    -- ^ Chain ID of application. It will be included into every
-    --   block.
   , appBlockGenerator :: m a
     -- ^ Generate fresh block for proposal.
-  , appValidator      :: PrivValidator alg a
+  , appValidator      :: PrivValidator alg
     -- ^ Private validator for node
+  , appValidationFun  :: a -> m Bool
+    -- ^ Function for validation of proposed block data
   , appValidatorsSet  :: Map (Address alg) (Validator alg)
     -- ^ Set of all validators including our own
     --
@@ -45,6 +44,7 @@ hoistAppState :: (forall x. m x -> n x) -> AppState m alg a -> AppState n alg a
 hoistAppState fun AppState{..} = AppState
   { appStorage        = hoistBlockStorageRW fun appStorage
   , appBlockGenerator = fun appBlockGenerator
+  , appValidationFun  = fun . appValidationFun
   , ..
   }
 
@@ -55,9 +55,8 @@ data Validator alg = Validator
   }
 
 -- | Our own validator
-data PrivValidator alg a = PrivValidator
+data PrivValidator alg = PrivValidator
   { validatorPrivKey  :: PrivKey alg
-  , validateBlockData :: a -> Bool
   }
 
 ----------------------------------------------------------------

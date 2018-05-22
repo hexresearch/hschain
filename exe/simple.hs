@@ -10,6 +10,7 @@ import qualified Data.Map               as Map
 
 import Thundermint.Blockchain.Types
 import Thundermint.Consensus.Types
+
 import Thundermint.Crypto.Ed25519   (Ed25519_SHA512, privateKey)
 import Thundermint.P2P.Network
 import Thundermint.Store
@@ -31,10 +32,9 @@ fromBase58 = fromMaybe (throw Base58DecodingError) . decodeBase58
 
 -- FIXME: keys show be stored somewhere
 
-validators :: Map BS.ByteString  (PrivValidator Ed25519_SHA512 Int64)
+validators :: Map BS.ByteString (PrivValidator Ed25519_SHA512)
 validators = Map.fromList
   [ n .= PrivValidator { validatorPrivKey  = privateKey $ fromBase58 n
-                       , validateBlockData = const True
                        }
   | n <- [ "2K7bFuJXxKf5LqogvVRQjms2W26ZrjpvUjo5LdvPFa5Y"
          , "4NSWtMsEPgfTK25tCPWqNzVVze1dgMwcUFwS5WkSpjJL"
@@ -70,7 +70,7 @@ main = do
                 , map (,"50000") $ connectRing validators addr
                 , AppState
                     { appStorage        = storage
-                    , appChainID        = "TEST"
+                    , appValidationFun  = const (return True)
                     , appBlockGenerator = do
                         Height h <- blockchainHeight storage
                         return $ h * 100
