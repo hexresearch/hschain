@@ -111,6 +111,7 @@ newHeight
   -> Integer
   -> m (TMState alg a)
 newHeight HeightParameres{..} lastCommit votingPower totalPower = do
+  logger InfoS ("Entering new height: " <> showLS currentH) ()
   scheduleTimeout $ Timeout currentH (Round 0) StepNewHeight
   return TMState
     { smRound         = Round 0
@@ -270,7 +271,7 @@ enterPropose
   -> TMState alg a
   -> m (TMState alg a)
 enterPropose par@HeightParameres{..} r sm@TMState{..} = do
-  logger InfoS ("Entering propose " <> shortLogSt par sm) ()
+  logger InfoS ("Entering propose at " <> showLS r <> " from " <> shortLogSt par sm) ()
   scheduleTimeout $ Timeout currentH r StepProposal
   -- If we're proposers we need to broadcast proposal. Otherwise we do
   -- nothing
@@ -301,7 +302,7 @@ enterPrevote
   -> m (TMState alg a)
 enterPrevote par@HeightParameres{..} r (unlockOnPrevote -> sm@TMState{..}) = do
   --
-  logger InfoS ("Entering prevote" <> shortLogSt par sm) ()
+  logger InfoS ("Entering prevote at " <> showLS r <> " from " <> shortLogSt par sm) ()
   castPrevote smRound =<< prevoteBlock
   --
   scheduleTimeout $ Timeout currentH r StepPrevote
@@ -363,7 +364,7 @@ enterPrecommit
   -> TMState alg a
   -> m (TMState alg a)
 enterPrecommit par@HeightParameres{..} r sm@TMState{..} = do
-  logger InfoS ("Entering precommit " <> shortLogSt par sm) ()
+  logger InfoS ("Entering precommit at " <> showLS r <> " from " <> shortLogSt par sm) ()
   castPrecommit r precommitBlock
   scheduleTimeout $ Timeout currentH r StepPrecommit
   checkTransitionPrecommit par r sm
