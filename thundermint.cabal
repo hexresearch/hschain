@@ -18,7 +18,6 @@ Library
   Default-Language:    Haskell2010
   Build-Depends:       base              >=4.9 && <5
                      , bytestring        >=0.10
-                     , base16-bytestring >=0.1
                      , base58-bytestring >=0.1
                      , containers        >=0.5.9
                      , exceptions        >=0.10.0
@@ -53,7 +52,6 @@ Executable thundermint-simple
   Build-Depends:       base       >=4.9 && <5
                      , thundermint
                      , bytestring >=0.10
-                     , base16-bytestring
                      , containers >=0.5.7
                      , stm        >=2.4
                      , async      >=2.2.1

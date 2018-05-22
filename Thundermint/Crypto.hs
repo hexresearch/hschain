@@ -33,6 +33,9 @@ module Thundermint.Crypto (
   , BlockHash(..)
   , blockHash
   -- , HashTree(..)
+    -- * base58 encoding
+  , encodeBase58
+  , decodeBase58
   ) where
 
 import Codec.Serialise (Serialise, serialise)
@@ -63,7 +66,7 @@ newtype Signature alg = Signature BS.ByteString
 instance Show (Signature alg) where
   showsPrec n (Signature bs)
     = showParen (n > 10)
-    $ showString "Signature " . shows (Base58.encodeBase58 Base58.bitcoinAlphabet bs)
+    $ showString "Signature " . shows (encodeBase58 bs)
 
 -- |
 newtype Address alg = Address BS.ByteString
@@ -72,7 +75,7 @@ newtype Address alg = Address BS.ByteString
 instance Show (Address alg) where
   showsPrec n (Address bs)
     = showParen (n > 10)
-    $ showString "Address " . shows (Base58.encodeBase58 Base58.bitcoinAlphabet bs)
+    $ showString "Address " . shows (encodeBase58 bs)
 
 -- |
 newtype Hash alg = Hash BS.ByteString
@@ -81,7 +84,7 @@ newtype Hash alg = Hash BS.ByteString
 instance Show (Hash alg) where
   showsPrec n (Hash bs)
     = showParen (n > 10)
-    $ showString "Hash " . shows (Base58.encodeBase58 Base58.bitcoinAlphabet bs)
+    $ showString "Hash " . shows (encodeBase58 bs)
 
 -- | Type-indexed set of crypto algorithms. It's not very principled
 --   by to keep signatures sane everything was thrown into same type
@@ -162,3 +165,13 @@ blockHash
 blockHash a = BlockHash 0xFFFFFFFF (hashBlob (toStrict $ serialise a)) []
 
 instance Serialise (BlockHash alg a)
+
+----------------------------------------------------------------
+-- Base58 encoding helpers
+----------------------------------------------------------------
+
+encodeBase58 :: BS.ByteString -> BS.ByteString
+encodeBase58 = Base58.encodeBase58 Base58.bitcoinAlphabet
+
+decodeBase58 :: BS.ByteString -> Maybe BS.ByteString
+decodeBase58 = Base58.decodeBase58 Base58.bitcoinAlphabet

@@ -9,11 +9,11 @@ mkDerivation {
   isLibrary = true;
   isExecutable = true;
   libraryHaskellDepends = [
-    base base16-bytestring base58-bytestring bytestring containers
+    base base58-bytestring bytestring containers
     exceptions groom katip network serialise stm transformers
   ];
   executableHaskellDepends = [
-    async base base16-bytestring base58-bytestring bytestring
+    async base base58-bytestring bytestring
     containers cryptonite katip serialise stm time
   ];
   testHaskellDepends = [
