@@ -20,7 +20,7 @@ let
           concurrent-output = haskellPackagesOld.callPackage ./deps/concurrent-output.nix {};
           hedgehog = haskellPackagesOld.callPackage ./deps/hedgehog.nix {};
           memory = haskellPackagesOld.callPackage ./deps/memory.nix {};
-          cryptonite = haskellPackagesOld.callPackage ./deps/cryptonite.nix {};
+          cryptonite = lib.dontCheck( haskellPackagesOld.callPackage ./deps/cryptonite.nix {} );
           basement = haskellPackagesOld.callPackage ./deps/basement.nix {};
           foundation = haskellPackagesOld.callPackage ./deps/foundation.nix {};
         };
