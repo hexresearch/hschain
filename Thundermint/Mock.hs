@@ -4,8 +4,10 @@
 -- |
 -- Helper function for running mock network of thundermint nodes
 module Thundermint.Mock (
+    -- * Validators
+    makePrivateValidators
+  , makeValidatorSet
     -- * Network connectivity
-    makeValidatorSet
   , connectAll2All
   , connectRing
     -- * Running nodes
@@ -19,12 +21,14 @@ import Control.Exception
 import Control.Monad.IO.Class
 import Data.Foldable
 import Data.Map                 (Map)
-import qualified Data.ByteString.Base16 as Base16
+import qualified Data.ByteString        as BS
+import qualified Data.ByteString.Base58 as Base58
 import qualified Data.ByteString.Char8  as BC8
 import qualified Data.Map               as Map
 import qualified Katip
 
 import Thundermint.Crypto
+import Thundermint.Crypto.Ed25519   (Ed25519_SHA512, privateKey)
 import Thundermint.Blockchain.App
 import Thundermint.Blockchain.Types
 import Thundermint.Logger
@@ -36,6 +40,20 @@ import Thundermint.Store
 --
 ----------------------------------------------------------------
 
+-- | Generate list of private validators
+makePrivateValidators
+  :: [BS.ByteString]
+  -> Map (Address Ed25519_SHA512) (PrivValidator Ed25519_SHA512)
+makePrivateValidators keys = Map.fromList
+  [ (address (publicKey pk) , PrivValidator pk)
+  | bs <- keys
+  , let pk = case Base58.decodeBase58 Base58.bitcoinAlphabet bs of
+          Just x  -> privateKey x
+          Nothing -> error "Incorrect Base58 encoding for bs"
+  ]
+
+-- | Create set of all known public validators from set of private
+--   validators
 makeValidatorSet
   :: (Foldable f, Crypto alg)
   => f (PrivValidator alg) -> Map (Address alg) (Validator alg)
@@ -47,6 +65,13 @@ makeValidatorSet vals = Map.fromList
     )
   | v <- toList vals
   ]
+
+
+
+
+----------------------------------------------------------------
+--
+----------------------------------------------------------------
 
 -- | Calculate set of addresses for node to connect to
 --   assuming all nodes are connected to each other.
@@ -84,7 +109,7 @@ startNode net addrs appState@AppState{..} = do
   -- Initialize logging
   scribe <- Katip.mkFileScribe
     ("logs/" ++ let Address nm = address $ publicKey $ validatorPrivKey appValidator
-                in BC8.unpack (Base16.encode nm)
+                in BC8.unpack (Base58.encodeBase58 Base58.bitcoinAlphabet nm)
     ) Katip.DebugS Katip.V2
   logenv <- Katip.registerScribe "log" scribe Katip.defaultScribeSettings
         =<< Katip.initLogEnv "TM" "DEV"

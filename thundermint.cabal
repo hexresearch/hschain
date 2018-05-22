@@ -57,8 +57,6 @@ Executable thundermint-simple
                      , thundermint
                      , bytestring >=0.10
                      , containers >=0.5.7
-                     , time
-                     , katip          >= 0.5.4.0
   hs-source-dirs:      exe
   Main-is:             simple.hs
 
@@ -68,9 +66,7 @@ Executable thundermint-keyval
   Build-Depends:       base       >=4.9 && <5
                      , thundermint
                      , bytestring >=0.10
-                     , base16-bytestring
                      , containers >=0.5.7
-                     , time
                      , groom
   hs-source-dirs:      exe
   Main-is:             key-val.hs

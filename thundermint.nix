@@ -13,8 +13,7 @@ mkDerivation {
     exceptions groom katip network serialise stm transformers
   ];
   executableHaskellDepends = [
-    base base16-bytestring base58-bytestring bytestring
-    containers cryptonite
+    base bytestring containers cryptonite
   ];
   testHaskellDepends = [
     async base bytestring stm tasty tasty-hunit
