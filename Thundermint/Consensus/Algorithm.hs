@@ -328,10 +328,13 @@ enterPrevote par@HeightParameres{..} r (unlockOnPrevote -> sm@TMState{..}) = do
       -- Proposal invalid or absent. Prevote NIL
       | otherwise                          = return Nothing
     --
-    checkPrevoteBlock bid = validateBlock bid >>= \case
-      GoodProposal    -> return (Just bid)
-      InvalidProposal -> return Nothing
-      UnseenProposal  -> return Nothing
+    checkPrevoteBlock bid = do
+      valR <- validateBlock bid
+      logger DebugS ("Block validation for prevote: " <> showLS valR) ()
+      case valR of
+        GoodProposal    -> return (Just bid)
+        InvalidProposal -> return Nothing
+        UnseenProposal  -> return Nothing
 
 -- Unlock upon entering prevote which happens if:
 --   * We're already locked

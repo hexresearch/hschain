@@ -55,20 +55,20 @@ runApplication
   -> AppChans alg a
      -- ^ Channels for communication with peers
   -> m ()
-runApplication appSt@AppState{..} appCh
-  = logOnException
-  $ fix (\loop commit -> do
-            cm <- decideNewBlock appSt appCh commit
-            -- ASSERT: We successfully commited next block
-            --
-            -- FIXME: do we need to communicate with peers about our
-            --        commit? (Do we need +2/3 commits to proceed
-            --        further)
-            h  <- blockchainHeight appStorage
-            case appMaxHeight of
-              Just h' | h > h' -> return ()
-              _                -> loop (Just cm)
-        ) =<< retrieveLastCommit appStorage
+runApplication appSt@AppState{..} appCh = logOnException $ do
+  lastCm <- retrieveLastCommit appStorage
+  advanceToHeight appPropStorage =<< blockchainHeight appStorage
+  flip fix lastCm $ \loop commit -> do
+    cm <- decideNewBlock appSt appCh commit
+    -- ASSERT: We successfully commited next block
+    --
+    -- FIXME: do we need to communicate with peers about our
+    --        commit? (Do we need +2/3 commits to proceed
+    --        further)
+    h  <- blockchainHeight appStorage
+    case appMaxHeight of
+      Just h' | h > h' -> return ()
+      _                -> loop (Just cm)
 
 -- This function uses consensus algorithm to decide which block we're
 -- going to commit at current height, then stores it in database and
@@ -102,7 +102,7 @@ decideNewBlock appSt@AppState{..} appCh@AppChans{..} lastCommt = do
     logger DebugS ("Recv: " <> showLS msg) ()
     -- Handle message
     res <- runMaybeT
-        $ lift . handleVerifiedMessage appStorage hParam tm
+        $ lift . handleVerifiedMessage appPropStorage hParam tm
       =<< verifyMessageSignature appSt msg
     case res of
       Nothing             -> loop tm
@@ -110,32 +110,33 @@ decideNewBlock appSt@AppState{..} appCh@AppChans{..} lastCommt = do
       Just Tranquility    -> loop tm
       Just Misdeed        -> loop tm
       Just (DoCommit cmt) -> do
-        blocks <- retrievePropBlocks appStorage (currentH hParam)
+        blocks <- retrievePropBlocks appPropStorage (currentH hParam)
         logger DebugS ("COMMIT: \n" <> logStr (groom cmt)) ()
         logger DebugS ("BLOCKMAP: \n" <> logStr (groom blocks)) ()
         b <- case commitBlockID cmt `Map.lookup` blocks of
                Just x  -> return x
                Nothing -> error $ "Cannot commit: " ++ show cmt
         storeCommit appStorage cmt b
+        advanceToHeight appPropStorage =<< blockchainHeight appStorage
         return cmt
 
 
 -- Handle message and perform state transitions for both
 handleVerifiedMessage
   :: (MonadLogger m, Crypto alg)
-  => BlockStorage 'RW m alg a
+  => ProposalStorage 'RW m alg a
   -> HeightParameres (ConsensusM alg a m) alg a
   -> TMState alg a
   -> MessageRx 'Verified alg a
   -> m (ConsensusResult alg a (TMState alg a))
-handleVerifiedMessage BlockStorage{..} hParam tm = \case
+handleVerifiedMessage ProposalStorage{..} hParam tm = \case
   -- FIXME: check that proposal comes from correct proposer
   RxProposal  p -> runConsesusM $ tendermintTransition hParam (ProposalMsg  p) tm
   RxPreVote   v -> runConsesusM $ tendermintTransition hParam (PreVoteMsg   v) tm
   RxPreCommit v -> runConsesusM $ tendermintTransition hParam (PreCommitMsg v) tm
   RxTimeout   t -> runConsesusM $ tendermintTransition hParam (TimeoutMsg   t) tm
   -- We update block storage
-  RxBlock     b -> do storePropBlock (currentH hParam) b
+  RxBlock     b -> do storePropBlock b
                       return (Success tm)
 
 -- Verify signature of message. If signature is not correct message is
@@ -228,7 +229,7 @@ makeHeightParametes AppState{..} AppChans{..} = do
     , proposerForRound = proposerChoice
     --
     , validateBlock = \bid -> do
-        blocks <- lift $ retrievePropBlocks appStorage h
+        blocks <- lift $ retrievePropBlocks appPropStorage h
         case bid `Map.lookup` blocks of
           Nothing -> return UnseenProposal
           Just b  -> lift (appValidationFun (blockData b)) >>= \case
@@ -244,7 +245,7 @@ makeHeightParametes AppState{..} AppChans{..} = do
                             , propBlockID   = bid
                             }
             sprop  = signValue pk prop
-        blockMap <- lift $ retrievePropBlocks appStorage h
+        blockMap <- lift $ retrievePropBlocks appPropStorage h
         logger InfoS ("Sending proposal for " <> showLS r <> " " <> showLS bid) ()
         liftIO $ atomically $ do
           writeTChan appChanTx (TxProposal sprop)
@@ -302,7 +303,7 @@ makeHeightParametes AppState{..} AppChans{..} = do
               , blockData       = bData
               , blockLastCommit = commit
               }
-        storePropBlock appStorage h block
+        storePropBlock appPropStorage block
         return $ blockHash block
 
     , commitBlock     = \cm -> ConsensusM $ return $ DoCommit cm

@@ -6,8 +6,7 @@
 module Thundermint.Blockchain.Types where
 
 import Control.Concurrent.STM
-import           Data.ByteString (ByteString)
-import           Data.Map        (Map)
+import Data.Map        (Map)
 
 import Thundermint.Crypto
 import Thundermint.Consensus.Types
@@ -25,6 +24,8 @@ data AppState m alg a = AppState
     -- ^ Persistent storage for blockchain and related data
     --
     -- FIXME: Is IO good enough or do we need some other guarantees?
+  , appPropStorage    :: ProposalStorage 'RW m alg a
+    --
   , appBlockGenerator :: m a
     -- ^ Generate fresh block for proposal.
   , appValidator      :: PrivValidator alg
@@ -43,6 +44,7 @@ data AppState m alg a = AppState
 hoistAppState :: (forall x. m x -> n x) -> AppState m alg a -> AppState n alg a
 hoistAppState fun AppState{..} = AppState
   { appStorage        = hoistBlockStorageRW fun appStorage
+  , appPropStorage    = hoistPropStorageRM  fun appPropStorage
   , appBlockGenerator = fun appBlockGenerator
   , appValidationFun  = fun . appValidationFun
   , ..
