@@ -20,20 +20,15 @@ module Thundermint.Store (
   , hoistBlockStorageRW
   , makeReadOnly
     -- * In memory store for proposals
-  , BlockMap
-  -- ,
-  --   -- * Write ahead log
-  --   , 
-    -- * In-memory storage for information about current height
-  -- , HeightStorage(..)
+  , ProposalStorage(..)
+  , hoistPropStorageRM
+  , makeReadOnlyPS
   ) where
 
--- import qualified Data.Map        as Map
 import           Data.Map          (Map)
-import           Data.Set          (Set)
 
 import Thundermint.Consensus.Types
--- import Thundermint.Crypto
+
 
 ----------------------------------------------------------------
 -- Abstract API for storing data
@@ -70,10 +65,6 @@ data BlockStorage rw m alg a = BlockStorage
     --
     --   FIXME: we really should track validity of blocks and
     --          commits. It's VERY easy to mess up accidentally
-
-  , retrievePropBlocks  :: Height -> m (Map (BlockID alg a) (Block alg a))
-  , retrieveStoredProps :: m (Height, Set (BlockID alg a))
-  , storePropBlock      :: Writable rw (Height -> Block alg a -> m ())
   }
 
 
@@ -81,7 +72,6 @@ data BlockStorage rw m alg a = BlockStorage
 makeReadOnly :: BlockStorage rw m alg a -> BlockStorage 'RO m alg a
 makeReadOnly BlockStorage{..} =
   BlockStorage{ storeCommit    = ()
-              , storePropBlock = ()
               , ..
               }
 
@@ -96,77 +86,41 @@ hoistBlockStorageRW fun BlockStorage{..} =
                , retrieveCommit      = fun . retrieveCommit
                , retrieveLastCommit  = fun retrieveLastCommit
                , storeCommit         = \c b -> fun (storeCommit c b)
-               , retrievePropBlocks  = fun . retrievePropBlocks
-               , retrieveStoredProps = fun retrieveStoredProps
-               , storePropBlock      = \h b -> fun (storePropBlock h b)
                }
 
 
 ----------------------------------------------------------------
--- In memory proposed block storage
+-- Storage for consensus
 ----------------------------------------------------------------
 
-type BlockMap alg a = Map (BlockID alg a) (Block alg a)
+-- | Storage for intermediate data used for
+data ProposalStorage rw m alg a = ProposalStorage
+  { currentHeight       :: m Height
+    -- ^ Get current height of storage
+  , advanceToHeight     :: Writable rw (Height -> m ())
+    -- ^ Advance to given height. If height is different from current
+    --   all stored data is discarded
+  , retrievePropBlocks  :: Height -> m (Map (BlockID alg a) (Block alg a))
+    -- ^ Retrieve blocks
+  , storePropBlock      :: Writable rw (Block alg a -> m ())
+    -- ^ Store block proposed at given height. If height is different
+    --   from height we are at block is ignored.
+  }
 
-----------------------------------------------------------------
---
-----------------------------------------------------------------
+makeReadOnlyPS :: ProposalStorage rw m alg a -> ProposalStorage 'RO m alg a
+makeReadOnlyPS ProposalStorage{..} =
+  ProposalStorage { advanceToHeight = ()
+                  , storePropBlock  = ()
+                  , ..
+                  }
 
--- data WALMessage alg a
---   = 
--- -- | Write ahead log. Here we store all incoming messages for given
--- --   height. It should be used for
--- data WAL alg a = WAL
---   { 
---   }
-  
-  
---   , retrieveProposals  :: m (Map Round (Proposal alg a))
---     -- ^ All proposals
---   , storeProposal    :: Writable rw ( Proposal alg a
---                                    -> m (Map Round (Proposal alg a))
---                                     )
---     -- ^ Store proposal and return map of all proposals for current
---     --   height. Throws error if height does not match current height
-
---   , retrievePreVotes   :: m (HeightVoteSet 'PreVote      alg a)
---     -- ^ All prevotes for current height
---   , storePreVote     :: Writable rw ( Signed 'Verified alg (Vote 'PreVote alg a)
---                                    -> m (HeightVoteSet 'PreVote alg a)
---                                     )
-
---   , retrievePreCommits :: m (HeightVoteSet 'PreCommit alg a)
---     -- ^ All precommits for current height
---   , storePreCommit   :: Writable rw ( Signed 'Verified alg (Vote 'PreCommit alg a)
---                                    -> m (HeightVoteSet 'PreCommit alg a)
---                                     )
---   }
-
-
--- -- | Change underlying monad 
--- hoistStorageRW :: (forall a. m a -> n a)
---                -> BlockStorage 'RW m alg a
---                -> BlockStorage 'RW n alg a
--- hoistStorageRW f BlockStorage{..} = BlockStorage
---   { blockchainHeight   = f blockchainHeight
---   , blockAtHeight      = f . blockAtHeight
---   , retrieveLastCommit = f retrieveLastCommit
---   , storeLastCommit    = f . storeLastCommit
---   , retrieveProposals  = f retrieveProposals
---   , storeProposal      = f . storeProposal
---   , retrievePreVotes   = f retrievePreVotes
---   , storePreVote       = f . storePreVote
---   , retrievePreCommits = f retrievePreCommits
---   , storePreCommit     = f . storePreCommit
---   }
-
-
-
--- ----------------------------------------------------------------
--- -- Storage for used for deciding on next block
--- ----------------------------------------------------------------
-
--- -- | Storage of 
--- data HeightStorage rw m alg a = HeightStorage
---   {
---   } 
+hoistPropStorageRM
+  :: (forall x. m x -> n x)
+  -> ProposalStorage 'RW m alg a
+  -> ProposalStorage 'RW n alg a
+hoistPropStorageRM fun ProposalStorage{..} =
+  ProposalStorage { currentHeight      = fun currentHeight
+                  , advanceToHeight    = fun . advanceToHeight
+                  , retrievePropBlocks = fun . retrievePropBlocks
+                  , storePropBlock     = fun . storePropBlock
+                  }

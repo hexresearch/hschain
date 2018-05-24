@@ -88,7 +88,10 @@ data PeerChans addr alg a = PeerChans
     -- ^ STM action for sending message to main application
   , blockStorage    :: BlockStorage 'RO IO alg a
     -- ^ Read only access to storage of blocks
+  , proposalStorage :: ProposalStorage 'RO IO alg a
+    -- ^ Read only access to storage of proposals
   , consensusState  :: STM (Maybe (Height, TMState alg a))
+    -- ^ Read only access to current state of consensus state machine
   , retrievePeerSet :: STM (Set addr)
     -- ^ Obtain set of all peers
   , sendPeerSet     :: Set addr -> STM ()
@@ -110,14 +113,16 @@ startPeerDispatcher
   -> [addr]                     -- ^ Set of initial addresses to connect
   -> AppChans alg a             -- ^ Channels for communication with main application
   -> BlockStorage 'RO IO alg a  -- ^ Read only access to block storage
+  -> ProposalStorage 'RO IO alg a
   -> m x
-startPeerDispatcher net addrs AppChans{..} storage = logOnException $ do
+startPeerDispatcher net addrs AppChans{..} storage propSt = logOnException $ do
   logger InfoS "Starting peer dispatcher" ()
   peers        <- newPeerRegistry
   peerExchange <- liftIO newTChanIO
   let peerCh = PeerChans { peerChanTx      = appChanTx
                          , peerChanRx      = writeTChan appChanRx
                          , blockStorage    = storage
+                         , proposalStorage = propSt
                          , consensusState  = readTVar appTMState
                          , retrievePeerSet = registiryAddressSet peers
                          , sendPeerSet     = writeTChan peerExchange
@@ -382,23 +387,25 @@ peerGossipBlocks PeerChans{..} chan peerVar = logOnException $ do
   logger InfoS "Starting routine for gossiping blocks" ()
   forever $ do
     st <- liftIO $ readTVarIO peerVar
-    h  <- liftIO $ blockchainHeight blockStorage
+    h  <- liftIO $ currentHeight proposalStorage
     case h `compare` peerHeight st of
       -- We lag
       LT -> return ()
       -- We at the same height
-      EQ -> do blocks <- liftIO $ retrievePropBlocks blockStorage h
+      EQ -> do blocks <- liftIO $ retrievePropBlocks proposalStorage h
                case Map.lookupMin $ Map.difference blocks $ Map.fromSet (const ()) $ peerBlocks st of
                  Nothing    -> return ()
                  Just (bid,b) -> do
                    logger DebugS ("Gossip: " <> showLS bid) ()
                    liftIO $ atomically $ writeTChan chan $ GossipBlock b
       -- Peer is lagging
-      GT -> do Just bid <- liftIO $ retrieveBlockID blockStorage (peerHeight st)
-               unless (bid `Set.member` peerBlocks st) $ do
-                 Just b <- liftIO $ retrieveBlock blockStorage (peerHeight st)
-                 logger DebugS ("Gossip: " <> showLS bid) ()
-                 liftIO $ atomically $ writeTChan chan $ GossipBlock b
+      GT -> do mbid <- liftIO $ retrieveBlockID blockStorage (peerHeight st)
+               case mbid of
+                 Just bid | bid `Set.notMember` peerBlocks st -> do
+                              Just b <- liftIO $ retrieveBlock blockStorage (peerHeight st)
+                              logger DebugS ("Gossip: " <> showLS bid) ()
+                              liftIO $ atomically $ writeTChan chan $ GossipBlock b
+                 _ -> return ()
     liftIO $ threadDelay 25e3
 
 -- | Gossip votes with given peer

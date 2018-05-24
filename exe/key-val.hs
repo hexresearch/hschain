@@ -64,12 +64,14 @@ main = do
   let validatorSet = makeValidatorSet validators
   net   <- newMockNet
   nodes <- sequence
-    [ do storage <- newSTMBlockStorage genesisBlock
+    [ do storage     <- newSTMBlockStorage genesisBlock
+         propStorage <- newSTMPropStorage
          let loadAllKeys = Set.fromList . map fst . concatMap blockData <$> loadAllBlocks storage
          return ( createMockNode net addr
                 , map (,"50000") $ connectRing validators addr
                 , AppState
                     { appStorage        = storage
+                    , appPropStorage    = propStorage
                     --
                     , appValidationFun  = \case
                         [(k,_)] -> do existingKeys <- loadAllKeys

@@ -3,7 +3,6 @@
 {-# LANGUAGE TypeFamilies      #-}
 import Data.Int
 import Data.Map                 (Map)
-import Data.Maybe               (fromMaybe)
 import qualified Data.Map               as Map
 
 import Thundermint.Blockchain.Types
@@ -51,11 +50,13 @@ main = do
   let validatorSet = makeValidatorSet validators
   net   <- newMockNet
   nodes <- sequence
-    [ do storage <- newSTMBlockStorage genesisBlock
+    [ do storage     <- newSTMBlockStorage genesisBlock
+         propStorage <- newSTMPropStorage
          return ( createMockNode net addr
                 , map (,"50000") $ connectRing validators addr
                 , AppState
                     { appStorage        = storage
+                    , appPropStorage    = propStorage
                     , appValidationFun  = const (return True)
                     , appBlockGenerator = do
                         Height h <- blockchainHeight storage

@@ -116,7 +116,9 @@ startNode net addrs appState@AppState{..} = do
   flip finally (Katip.closeScribes logenv) $ do
     appCh   <- newAppChans
     let netRoutine = runLoggerT "net" logenv
-                   $ startPeerDispatcher net addrs appCh (makeReadOnly appStorage)
+                   $ startPeerDispatcher net addrs appCh
+                       (makeReadOnly   appStorage)
+                       (makeReadOnlyPS appPropStorage)
     withAsync netRoutine $ \_ ->
       runLoggerT "consensus" logenv
         $ runApplication (hoistAppState liftIO appState) appCh
