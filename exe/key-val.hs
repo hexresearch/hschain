@@ -91,8 +91,8 @@ main = do
                     , appMaxHeight     = Just (Height 9)
                     }
                 )
-         | (i, (addr, val)) <- [0::Int ..] `zip` Map.toList validators
-         ]
+    | (i, (addr, val)) <- [0::Int ..] `zip` Map.toList validators
+    ]
   st <- runNodeSet nodes
   forM_ st $ \s -> do
     putStrLn "==== BLOCKCHAIN ================================================"

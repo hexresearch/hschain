@@ -25,6 +25,7 @@ Library
                      , memory            >=0.14.14
                      , stm               >=2.4
                      , serialise         >=0.2
+                     , sqlite-simple
                      , transformers      >=0.5
                      --
                      , network           >=2.7.0.0
@@ -48,6 +49,7 @@ Library
                   Thundermint.P2P.Network
                   Thundermint.Store
                   Thundermint.Store.STM
+                  Thundermint.Store.SQLite
 
 -- Example programs
 Executable thundermint-simple
