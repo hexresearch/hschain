@@ -75,18 +75,21 @@ main = do
                         [(k,_)] -> do existingKeys <- loadAllKeys
                                       return $ k `Set.notMember` existingKeys
                         _       -> return False
-                    , appBlockGenerator = do
-                        existingKeys <- loadAllKeys
-                        let keys   = ["K_" ++ show (n :: Int) | n <- [1 ..]]
-                            Just k = find (`Set.notMember` existingKeys) keys
-                        return [(k,1)]
+                    , appBlockGenerator =
+                        case i of
+                          -- Byzantine!
+                          0 -> return [("XXX", 0)]
+                          _ -> do existingKeys <- loadAllKeys
+                                  let Just k = find (`Set.notMember` existingKeys)
+                                               ["K_" ++ show (n :: Int) | n <- [1 ..]] 
+                                  return [(k,i)]
                     --
                     , appValidator     = val
                     , appValidatorsSet = validatorSet
-                    , appMaxHeight     = Just (Height 3)
+                    , appMaxHeight     = Just (Height 9)
                     }
                 )
-         | (addr, val) <- Map.toList validators
+         | (i, (addr, val)) <- [0::Int ..] `zip` Map.toList validators
          ]
   st <- runNodeSet nodes
   forM_ st $ \s -> do
