@@ -56,13 +56,15 @@ data BlockStorage rw m alg a = BlockStorage
   { blockchainHeight   :: m Height
     -- ^ Current height of blockchain
   , retrieveBlock      :: Height -> m (Maybe (Block alg a))
+    -- ^ Retrieve block at given height
   , retrieveBlockID    :: Height -> m (Maybe (BlockID alg a))
+    -- ^ Retrieve ID block at given height
   , retrieveCommit     :: Height -> m (Maybe (Commit alg a))
-    -- ^ Get block at given height
+    -- ^ Retrieve commit for block at the given height.
   , retrieveLastCommit :: m (Maybe (Commit alg a))
-    -- ^ Commit justifying last lock in blockchain. Note that we need
-    --   to store it separately from blockchain sine it will be part
-    --   of next block.
+    -- ^ Commit justifying last lock in blockchain. Note that it's
+    --   stored separately and will be added to next block when it's
+    --   commited
   , storeCommit        :: Writable rw (Commit alg a -> Block alg a -> m ())
     -- ^ Write block into storage
     --
