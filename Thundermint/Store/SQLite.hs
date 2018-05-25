@@ -54,36 +54,16 @@ newSQLiteBlockStorage dbFile gBlock = do
           _        -> error "Impossible"
     --
     , retrieveBlock = \(Height h) -> withMutex mutex $
-        SQL.query conn "SELECT block FROM blockchain WHERE height = ?" (Only h) >>= \case
-          [] -> return Nothing
-          [Only bs] -> case deserialiseOrFail bs of
-            Right b -> return (Just b)
-            Left  e -> error (show e)
-          _         -> error "Impossible"
+        singleQ conn "SELECT block FROM blockchain WHERE height = ?" (Only h)
     --
     , retrieveBlockID = \(Height h) -> withMutex mutex $
-        SQL.query conn "SELECT bid FROM blockchain WHERE height = ?" (Only h) >>= \case
-          [] -> return Nothing
-          [Only bs] -> case deserialiseOrFail bs of
-            Right b -> return (Just b)
-            Left  e -> error (show e)
-          _         -> error "Impossible"
+        singleQ conn "SELECT bid FROM blockchain WHERE height = ?" (Only h)
     --
     , retrieveCommit = \(Height h) -> withMutex mutex $
-        SQL.query conn "SELECT cmt FROM commits WHERE height = ?" (Only h) >>= \case
-          [] -> return Nothing
-          [Only bs] -> case deserialiseOrFail bs of
-            Right c -> return (Just c)
-            Left  e -> error (show e)
-          _         -> error "Impossible"
+        singleQ conn "SELECT cmt FROM commits WHERE height = ?" (Only h)
     --
     , retrieveLastCommit = withMutex mutex $
-        SQL.query_ conn "SELECT cmt FROM commits ORDER BY height DESC LIMIT 1" >>= \case
-          [] -> return Nothing
-          [Only bs] -> case deserialiseOrFail bs of
-            Right c -> return (Just c)
-            Left  e -> error (show e)
-          _         -> error "Impossible"
+        singleQ conn "SELECT cmt FROM commits ORDER BY height DESC LIMIT 1" ()
     --
     , storeCommit = \cmt blk -> withMutex mutex $ do
         let Height h = headerHeight $ blockHeader blk
@@ -96,6 +76,17 @@ newSQLiteBlockStorage dbFile gBlock = do
           )
         SQL.execute_ conn "COMMIT"
     }
+
+-- Query that returns 0 or 1 result which is CBOR-encoded value
+singleQ :: (SQL.ToRow p, Serialise a)
+        => SQL.Connection -> SQL.Query -> p -> IO (Maybe a)
+singleQ conn query p =
+  SQL.query conn query p >>= \case
+    []        -> return Nothing
+    [Only bs] -> case deserialiseOrFail bs of
+      Right a -> return (Just a)
+      Left  e -> error ("CBOR encoding error: " ++ show e)
+    _         -> error "Impossible"
 
 
 newtype Mutex = Mutex (MVar ())
