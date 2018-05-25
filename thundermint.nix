@@ -1,6 +1,6 @@
 { mkDerivation, async, base, base16-bytestring, base58-bytestring
 , bytestring , containers, cryptonite, exceptions, groom, katip, network
-, serialise, stdenv, stm, tasty, tasty-hunit, time, transformers
+, serialise, stdenv, stm, sqlite-simple, tasty, tasty-hunit, time, transformers
 }:
 mkDerivation {
   pname = "thundermint";
@@ -10,13 +10,13 @@ mkDerivation {
   isExecutable = true;
   libraryHaskellDepends = [
     base base58-bytestring bytestring containers
-    exceptions groom katip network serialise stm transformers
+    exceptions groom katip network serialise stm sqlite-simple transformers
   ];
   executableHaskellDepends = [
     base bytestring containers cryptonite
   ];
   testHaskellDepends = [
-    async base bytestring stm tasty tasty-hunit
+    async base base58-bytestring bytestring stm tasty tasty-hunit
   ];
   homepage = "https://github.com/hexresearch/thundermint";
   description = "Haskell reimplementation of tendermint protocol";

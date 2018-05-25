@@ -73,6 +73,18 @@ Executable thundermint-keyval
   hs-source-dirs:      exe
   Main-is:             key-val.hs
 
+Executable thundermint-keyval-sql
+  Ghc-options:         -Wall
+  Default-Language:    Haskell2010
+  Build-Depends:       base       >=4.9 && <5
+                     , thundermint
+                     , bytestring        >=0.10
+                     , base58-bytestring >=0.1
+                     , containers        >=0.5.7
+                     , groom
+  hs-source-dirs:      exe
+  Main-is:             key-val-sql.hs
+
 -- Test suite
 Test-suite thundermint-tests
   Type:                exitcode-stdio-1.0
