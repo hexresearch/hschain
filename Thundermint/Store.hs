@@ -65,13 +65,17 @@ data BlockStorage rw m alg a = BlockStorage
     --
     --   FIXME: we really should track validity of blocks and
     --          commits. It's VERY easy to mess up accidentally
+  , closeBlockStorage  :: Writable rw (m ())
+    -- ^ Close all handles etc. Functions in the dictionary should not
+    --   be called after that
   }
 
 
 -- | Strip write rights if storage API had any
 makeReadOnly :: BlockStorage rw m alg a -> BlockStorage 'RO m alg a
 makeReadOnly BlockStorage{..} =
-  BlockStorage{ storeCommit    = ()
+  BlockStorage{ storeCommit       = ()
+              , closeBlockStorage = ()
               , ..
               }
 
@@ -86,6 +90,7 @@ hoistBlockStorageRW fun BlockStorage{..} =
                , retrieveCommit      = fun . retrieveCommit
                , retrieveLastCommit  = fun retrieveLastCommit
                , storeCommit         = \c b -> fun (storeCommit c b)
+               , closeBlockStorage   = fun closeBlockStorage
                }
 
 

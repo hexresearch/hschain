@@ -5,7 +5,9 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 -- |
 module Thundermint.Store.SQLite (
-  newSQLiteBlockStorage
+    newSQLiteBlockStorage
+  , newSQLiteBlockStorageConn
+  , withSQLiteBlockStorage
   ) where
 
 import Codec.Serialise (Serialise,serialise,deserialiseOrFail)
@@ -20,14 +22,35 @@ import Thundermint.Store
 
 
 
+-- | Create new block storage using specified file as database
 newSQLiteBlockStorage
-  :: forall alg a. (Crypto alg, Serialise a)
+  :: (Crypto alg, Serialise a)
   => FilePath
   -> Block alg a
   -> IO (BlockStorage 'RW IO alg a)
 newSQLiteBlockStorage dbFile gBlock = do
+  conn <- SQL.open dbFile
+  newSQLiteBlockStorageConn conn gBlock
+
+-- | Create new block storage using specified file as database
+withSQLiteBlockStorage
+  :: (Crypto alg, Serialise a)
+  => FilePath
+  -> Block alg a
+  -> (BlockStorage 'RW IO alg a -> IO b)
+  -> IO b
+withSQLiteBlockStorage dbFile gBlock action
+  = SQL.withConnection dbFile $ \conn ->
+      action =<< newSQLiteBlockStorageConn conn gBlock
+
+-- | Create new block storage from connection to SQLite database
+newSQLiteBlockStorageConn
+  :: forall alg a. (Crypto alg, Serialise a)
+  => SQL.Connection
+  -> Block alg a
+  -> IO (BlockStorage 'RW IO alg a)
+newSQLiteBlockStorageConn conn gBlock = do
   mutex <- newMutex
-  conn  <- SQL.open dbFile
   -- Initialize tables
   SQL.execute_ conn
     "CREATE TABLE IF NOT EXISTS blockchain \
@@ -75,6 +98,8 @@ newSQLiteBlockStorage dbFile gBlock = do
           , serialise blk
           )
         SQL.execute_ conn "COMMIT"
+    --
+    , closeBlockStorage = SQL.close conn
     }
 
 -- Query that returns 0 or 1 result which is CBOR-encoded value
