@@ -83,7 +83,7 @@ Executable thundermint-keyval-sql
                      , containers        >=0.5.7
                      , groom
   hs-source-dirs:      exe
-  Main-is:             key-val-sql.hs
+  Main-is:             key-val.hs
 
 -- Test suite
 Test-suite thundermint-tests
