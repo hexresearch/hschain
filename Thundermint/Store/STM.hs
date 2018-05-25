@@ -43,6 +43,7 @@ newSTMBlockStorage gBlock = do
         h <- currentH
         modifyTVar' varBlocks $ Map.insert (next h) blk
         writeTVar   varLCmt (Just cmt)
+    , closeBlockStorage = return ()
     }
 
 
