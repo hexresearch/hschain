@@ -147,7 +147,7 @@ acceptLoop
   -> m ()
 acceptLoop net@NetworkAPI{..} peerCh registry = logOnException $ do
   logger InfoS "Starting accept loop" ()
-  bracket (liftIO $ listenOn "50000") (liftIO . fst) $ \(_,accept) -> forever $
+  bracket (liftIO $ listenOn) (liftIO . fst) $ \(_,accept) -> forever $
     -- We accept connection, create new thread and put it into
     -- registry. If we already have connection from that peer we close
     -- connection immediately

@@ -27,11 +27,11 @@ pingPong = do
   network <- newMockNet
   let serverAddr = 1 :: Int
       clientAddr = 2 :: Int
-      server     = createMockNode network serverAddr
-      client     = createMockNode network clientAddr
+      server     = createMockNode network "3000" serverAddr
+      client     = createMockNode network "3000" clientAddr
   --
   let runServer NetworkAPI{..} = do
-        bracket (listenOn "3000") fst $ \(_,accept) ->
+        bracket listenOn fst $ \(_,accept) ->
           bracket accept (close . fst) $ \(s,_) -> do
             Just bs <- recvBS s 4096
             sendBS s ("PONG_" <> bs)
@@ -52,11 +52,11 @@ delayedWrite = do
   network <- newMockNet
   let serverAddr = 1 :: Int
       clientAddr = 2 :: Int
-      server     = createMockNode network serverAddr
-      client     = createMockNode network clientAddr
+      server     = createMockNode network "3000" serverAddr
+      client     = createMockNode network "3000" clientAddr
   --
   let runServer NetworkAPI{..} = do
-        bracket (listenOn "3000") fst $ \(_,accept) ->
+        bracket listenOn fst $ \(_,accept) ->
           bracket accept (close . fst) $ \(s,_) -> do
             Just "A1" <- recvBS s 4096
             Just "A2" <- recvBS s 4096

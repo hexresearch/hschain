@@ -31,7 +31,7 @@ import qualified Network.Socket.ByteString.Lazy as NetBS
 --   to provide two implementations of networking. One is real network
 --   and another is mock in-process network for testing.
 data NetworkAPI sock addr = NetworkAPI
-  { listenOn :: Net.ServiceName -> IO (IO (), IO (sock, addr))
+  { listenOn :: IO (IO (), IO (sock, addr))
     -- ^ Start listening on given port. Returns action to close socket
     --   and function for accepting new connections
   , connect  :: addr -> IO sock
@@ -61,27 +61,31 @@ applySocket NetworkAPI{..} s = SendRecv
 ----------------------------------------------------------------
 
 -- | API implementation for real network
-realNetwork :: NetworkAPI Net.Socket Net.SockAddr
-realNetwork = NetworkAPI
-  { listenOn = \port -> do
+realNetwork :: Net.ServiceName -> NetworkAPI Net.Socket Net.SockAddr
+realNetwork listenPort = NetworkAPI
+  { listenOn = do
       let hints = Net.defaultHints
             { Net.addrFlags      = [Net.AI_PASSIVE]
             , Net.addrSocketType = Net.Stream
             }
-      addr:_ <- Net.getAddrInfo (Just hints) Nothing (Just port)
+      addr:_ <- Net.getAddrInfo (Just hints) Nothing (Just listenPort)
       sock   <- Net.socket (Net.addrFamily     addr)
                            (Net.addrSocketType addr)
                            (Net.addrProtocol   addr)
       flip onException (Net.close sock) $ do
         Net.bind sock (Net.addrAddress addr)
+        Net.listen sock 5
         return (Net.close sock, Net.accept sock)
     --
   , connect  = \addr -> do
-      -- FIXME: we need to support both IP4 & IP6
-      -- FIXME: exception safety
-      sock <- case addr of
-        Net.SockAddrInet port _ -> Net.socket Net.AF_INET Net.Stream (fromIntegral port)
-        _                       -> error "Unsupported address"
+      let hints = Just Net.defaultHints
+            { Net.addrSocketType = Net.Stream
+            }
+      (hostName, serviceName) <- Net.getNameInfo [] True True addr
+      addrInfo:_ <- Net.getAddrInfo hints hostName serviceName
+      sock <- Net.socket (Net.addrFamily     addrInfo)
+                         (Net.addrSocketType addrInfo)
+                         (Net.addrProtocol   addrInfo)
       flip onException (Net.close sock) $ do
         Net.connect sock addr
         return sock
@@ -124,10 +128,11 @@ closeMockSocket MockSocket{..} = writeTVar msckActive False
 createMockNode
   :: Ord addr
   => MockNet addr
+  -> Net.ServiceName
   -> addr
   -> NetworkAPI MockSocket (addr, Net.ServiceName)
-createMockNode MockNet{..} addr = NetworkAPI
-  { listenOn = \port -> atomically $ do
+createMockNode MockNet{..} port addr = NetworkAPI
+  { listenOn = atomically $ do
       let key = (addr, port)
       -- Start listening on port
       do mListen <- readTVar mnetIncoming
@@ -174,7 +179,7 @@ createMockNode MockNet{..} addr = NetworkAPI
         False -> error "MockNet: Cannot write to closed socket"
         True  -> writeTChan msckSend bs
     --
-  , recvBS = \MockSocket{..} _n -> atomically $ do
+  , recvBS = \MockSocket{..} _n -> atomically $ 
       readTVar msckActive >>= \case
         False -> tryReadTChan msckRecv
         True  -> Just <$> readTChan msckRecv

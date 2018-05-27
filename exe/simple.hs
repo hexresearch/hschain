@@ -52,7 +52,7 @@ main = do
   nodes <- sequence
     [ do storage     <- newSTMBlockStorage genesisBlock
          propStorage <- newSTMPropStorage
-         return ( createMockNode net addr
+         return ( createMockNode net "50000" addr
                 , map (,"50000") $ connectRing validators addr
                 , AppState
                     { appStorage        = storage

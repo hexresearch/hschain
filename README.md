@@ -15,8 +15,23 @@ Note that if project directory contains `.ghc.environment.*` files created by ne
 ## Run dev environment with `nix`
 
 ```
-nix-shell
+nix-shell -A thundermint.env release.nix
 ```
+
+You can use `cabal build` inside opened shell.
+
+To install needed programs just use:
+
+```
+nix-env -i cabal-install
+```
+
+or
+
+```
+nix-env -i hlit
+```
+
 
 Then you can use `cabal` to build thundermit inside this shell or run `thundermint-simple` binary.
 
