@@ -54,6 +54,9 @@ data GossipMsg alg a
   | GossipProposal  (Signed 'Unverified alg (Proposal alg a))
   | GossipBlock     (Block alg a)
 
+  | GossipHasVote !Height !Round !VoteType !(Address alg)
+  -- ^ Announce that we have given vote already.
+
   -- Communication about status of peer
 
   | GossipStatus    Height Round
@@ -274,14 +277,18 @@ addProposal svote ps
 
 addPrevote :: Signed ty alg (Vote 'PreVote alg a)
            -> PeerState alg a -> PeerState alg a
-addPrevote svote ps
-  | peerHeight ps < h = addPrevote svote $ peerStateAtH h
+addPrevote svote = addPrevote'
+  (voteHeight (signedValue svote))
+  (voteRound  (signedValue svote))
+  (signedAddr svote)
+
+addPrevote' :: Height -> Round -> Address alg -> PeerState alg a -> PeerState alg a
+addPrevote' h r addr ps
+  | peerHeight ps < h = addPrevote' h r addr $ peerStateAtH h
   | otherwise         = ps { peerPrevotes = Map.alter add r (peerPrevotes ps) }
   where
-    h = voteHeight (signedValue svote)
-    r = voteRound  (signedValue svote)
-    add Nothing  = Just $ Set.singleton $ signedAddr svote
-    add (Just s) = Just $ Set.insert (signedAddr svote) s
+    add Nothing  = Just $ Set.singleton addr
+    add (Just s) = Just $ Set.insert addr s
 
 addPrecommit :: Signed ty alg (Vote 'PreCommit alg a)
              -> PeerState alg a -> PeerState alg a
@@ -293,6 +300,14 @@ addPrecommit svote ps
     r = voteRound  (signedValue svote)
     add Nothing  = Just $ Set.singleton $ signedAddr svote
     add (Just s) = Just $ Set.insert (signedAddr svote) s
+
+addPrecommit' :: Height -> Round -> Address alg -> PeerState alg a -> PeerState alg a
+addPrecommit' h r addr ps
+  | peerHeight ps < h = addPrevote' h r addr $ peerStateAtH h
+  | otherwise         = ps { peerPrecommits = Map.alter add r (peerPrecommits ps) }
+  where
+    add Nothing  = Just $ Set.singleton addr
+    add (Just s) = Just $ Set.insert addr s
 
 addBlock :: (Crypto alg, Serialise a) => Block alg a -> PeerState alg a -> PeerState alg a
 addBlock b ps = ps { peerBlocks = Set.insert (blockHash b) (peerBlocks ps) }
@@ -349,6 +364,14 @@ startPeer peerCh@PeerChans{..} net@SendRecv{..} = logOnException $ do
                  liftIO $ atomically $ modifyTVar' peerVar $ \p ->
                    if peerHeight p == h then p else peerStateAtH h
                  loop
+               GossipHasVote h r PreVote a -> do
+                 liftIO $ atomically $ modifyTVar' peerVar $ addPrevote' h r a
+                 loop
+               GossipHasVote h r PreCommit a -> do
+                 liftIO $ atomically $ modifyTVar' peerVar $ addPrecommit' h r a
+                 loop
+
+               -- VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
                GossipHasProposals   h props      -> do
                  liftIO $ atomically $ modifyTVar' peerVar $ \p ->
                    if peerHeight p == h then p
@@ -484,6 +507,7 @@ peerSendGossip gossipCh chanTx peerVar SendRecv{..} = logOnException $ do
       GossipPreCommit v     -> liftIO $ atomically $ modifyTVar' peerVar $ addPrecommit v
       GossipProposal  p     -> liftIO $ atomically $ modifyTVar' peerVar $ addProposal  p
       GossipBlock     b     -> liftIO $ atomically $ modifyTVar' peerVar $ addBlock     b
+      GossipHasVote{}       -> return ()
       GossipStatus{}        -> return ()
       GossipHasProposals{}  -> return ()
       GossipHasPrevotes{}   -> return ()
@@ -495,6 +519,7 @@ peerSendGossip gossipCh chanTx peerVar SendRecv{..} = logOnException $ do
     liftIO $ send $ serialise msg
     where
       fromApp ch = readTChan ch >>= return . \case
-        TxPreVote   v -> GossipPreVote   $ unverifySignature v
-        TxPreCommit v -> GossipPreCommit $ unverifySignature v
-        TxProposal  p -> GossipProposal  $ unverifySignature p
+        TxPreVote    v       -> GossipPreVote   $ unverifySignature v
+        TxPreCommit  v       -> GossipPreCommit $ unverifySignature v
+        TxProposal   p       -> GossipProposal  $ unverifySignature p
+        TxAnnHasVote h r s a -> GossipHasVote h r s a

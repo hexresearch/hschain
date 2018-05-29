@@ -288,8 +288,15 @@ makeHeightParametes AppState{..} AppChans{..} = do
           writeTChan appChanTx (TxPreCommit svote)
           writeTChan appChanRx (RxPreCommit $ unverifySignature svote)
     --
-    , announceHasPreVote   = \_ -> return ()
-    , announceHasPreCommit = \_ -> return ()
+    , announceHasPreVote   = \sv -> do
+        let Vote{..} = signedValue sv
+        liftIO $ atomically $ writeTChan appChanTx $
+          TxAnnHasVote voteHeight voteRound PreVote (signedAddr sv)
+    --
+    , announceHasPreCommit = \sv -> do
+        let Vote{..} = signedValue sv
+        liftIO $ atomically $ writeTChan appChanTx $
+          TxAnnHasVote voteHeight voteRound PreCommit (signedAddr sv)
     --
     , createProposal = \commit -> lift $ do
         bData          <- appBlockGenerator
