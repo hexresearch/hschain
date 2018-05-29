@@ -56,30 +56,38 @@ data Message alg a
     -- ^ Timeout
   deriving Show
 
--- | Set of parameters for consensus algorithm for given height. These
---   parameters are constant for the duration of data
+-- | Set of parameters and callbacks for consensus algorithm for given
+--   height. These parameters are constant while we're deciding on
+--   next block.
 data HeightParameres (m :: * -> *) alg a = HeightParameres
   { currentH            :: Height
     -- ^ Height we're on.
-  , areWeProposers      :: Round -> Bool
+  , areWeProposers       :: Round -> Bool
     -- ^ Find address of proposer for given round.
-  , proposerForRound    :: Round -> Address alg
+  , proposerForRound     :: Round -> Address alg
     -- ^ Proposer for given round
-  , validateBlock       :: BlockID alg a -> m ProposalState
+  , validateBlock        :: BlockID alg a -> m ProposalState
     -- ^ Request validation of particular block
 
-  , scheduleTimeout     :: Timeout -> m ()
-    -- ^ Schedule timeout.
-  , broadcastProposal   :: Round -> BlockID alg a -> Maybe (Round, BlockID alg a) -> m ()
+  , scheduleTimeout      :: Timeout -> m ()
+    -- ^ Schedule timeout. It's called whenever we enter new step so
+    --   it could be overloaded to announce to peers change of state
+  , broadcastProposal    :: Round -> BlockID alg a -> Maybe (Round, BlockID alg a) -> m ()
     -- ^ Broadcast proposal for given round and block.
-  , castPrevote         :: Round -> Maybe (BlockID alg a) -> m ()
+  , castPrevote          :: Round -> Maybe (BlockID alg a) -> m ()
     -- ^ Broadcast prevote for particular block ID in some round.
-  , castPrecommit       :: Round -> Maybe (BlockID alg a) -> m ()
+  , castPrecommit        :: Round -> Maybe (BlockID alg a) -> m ()
     -- ^ Broadcast precommit for particular block ID in some round.
-  , createProposal      :: Maybe (Commit alg a) -> m (BlockID alg a)
+
+  , announceHasPreVote   :: Signed 'Verified alg (Vote 'PreVote alg a)   -> m ()
+    -- ^ Broadcast to peers announcement that we have given prevote
+  , announceHasPreCommit :: Signed 'Verified alg (Vote 'PreCommit alg a) -> m ()
+    -- ^ Broadcast to peers announcement that we have given precommit
+
+  , createProposal       :: Maybe (Commit alg a) -> m (BlockID alg a)
     -- ^ Create new proposal block. Block itself should be stored
     --   elsewhere.
-  , commitBlock         :: forall x. Commit alg a -> m x
+  , commitBlock          :: forall x. Commit alg a -> m x
     -- ^ We're done for this height. Commit block to blockchain
   }
 
@@ -161,7 +169,7 @@ tendermintTransition par@HeightParameres{..} msg sm@TMState{..} =
       -- Only accept votes with current height
       | voteHeight /= currentH -> tranquility
       | otherwise              -> checkTransitionPrevote par voteRound
-                              =<< addPrevote v sm
+                              =<< addPrevote par v sm
     ----------------------------------------------------------------
     PreCommitMsg v@(signedValue -> Vote{..})
       -- Collect stragglers precommits for inclusion of
@@ -175,7 +183,7 @@ tendermintTransition par@HeightParameres{..} msg sm@TMState{..} =
       -- Only accept votes with current height
       | voteHeight /= currentH -> tranquility
       | otherwise              -> checkTransitionPrecommit par voteRound
-                              =<< addPrecommit v sm
+                              =<< addPrecommit par v sm
     ----------------------------------------------------------------
     TimeoutMsg t ->
       case compare t t0 of
@@ -393,10 +401,12 @@ enterPrecommit par@HeightParameres{..} r sm@TMState{..} = do
 
 addPrevote
   :: (ConsensusMonad m, Crypto alg)
-  => Signed 'Verified alg (Vote 'PreVote alg a)
+  => HeightParameres m alg a
+  -> Signed 'Verified alg (Vote 'PreVote alg a)
   -> TMState alg a
   -> m (TMState alg a)
-addPrevote v sm@TMState{..} =
+addPrevote HeightParameres{..} v sm@TMState{..} = do
+  announceHasPreVote v
   case addSignedValue (voteRound $ signedValue v) v smPrevotesSet of
     InsertOK votes   -> return sm{ smPrevotesSet = votes }
     InsertDup        -> tranquility
@@ -404,10 +414,12 @@ addPrevote v sm@TMState{..} =
 
 addPrecommit
   :: (ConsensusMonad m, Crypto alg)
-  => Signed 'Verified alg (Vote 'PreCommit alg a)
+  => HeightParameres m alg a
+  -> Signed 'Verified alg (Vote 'PreCommit alg a)
   -> TMState alg a
   -> m (TMState alg a)
-addPrecommit v sm@TMState{..} =
+addPrecommit HeightParameres{..} v sm@TMState{..} = do
+  announceHasPreCommit v
   case addSignedValue (voteRound $ signedValue v) v smPrecommitsSet of
     InsertOK votes   -> return sm{ smPrecommitsSet = votes }
     InsertDup        -> tranquility
