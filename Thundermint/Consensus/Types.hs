@@ -149,7 +149,9 @@ instance Serialise a => Serialise (Proposal alg a) where
 -- | Type of vote. Used for type-tagging of votes
 data VoteType = PreVote
               | PreCommit
-              deriving (Show,Eq)
+              deriving (Show,Eq,Generic)
+
+instance Serialise VoteType
 
 -- | Single vote cast validator. Type of vote is determined by its
 --   type tag
