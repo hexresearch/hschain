@@ -287,7 +287,10 @@ makeHeightParametes AppState{..} AppChans{..} = do
         liftIO $ atomically $ do
           writeTChan appChanTx (TxPreCommit svote)
           writeTChan appChanRx (RxPreCommit $ unverifySignature svote)
-
+    --
+    , announceHasPreVote   = \_ -> return ()
+    , announceHasPreCommit = \_ -> return ()
+    --
     , createProposal = \commit -> lift $ do
         bData          <- appBlockGenerator
         Just lastBlock <- retrieveBlock appStorage
