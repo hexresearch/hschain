@@ -4,6 +4,7 @@
 -- Abstract API for network which support
 module Thundermint.P2P.Network (
     NetworkAPI(..)
+  , NetworkException(..)
   , SendRecv(..)
   , applySocket
     -- * Real network
@@ -26,6 +27,17 @@ import qualified Network.Socket.ByteString.Lazy as NetBS
 ----------------------------------------------------------------
 --
 ----------------------------------------------------------------
+
+-- | Exception thrown by implementation of NetworkAPI
+data NetworkException
+  = NetError        SomeException
+    -- ^ Exception which occured when doing network operations
+  | NetErrorConn    SomeException
+    -- ^ Exception which occured when connecting to remote host. It's
+    --   made separate exception to simplify reconnection logic.
+  deriving (Show)
+instance Exception NetworkException
+
 
 -- | Dictionary with API for network programming. We use it to be able
 --   to provide two implementations of networking. One is real network
