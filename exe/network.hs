@@ -69,7 +69,7 @@ getServiceName addr = getPortOrError <$> getNameInfo [] False True addr
 
 main :: IO ()
 main = do
-  let validatorSet = makeValidatorSet validators
+  let validatorSet = makeValidatorSetFromPriv validators
   nodes <- sequence
     [ do storage     <- newSTMBlockStorage genesisBlock
          propStorage <- newSTMPropStorage

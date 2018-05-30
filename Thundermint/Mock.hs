@@ -6,7 +6,7 @@
 module Thundermint.Mock (
     -- * Validators
     makePrivateValidators
-  , makeValidatorSet
+  , makeValidatorSetFromPriv
     -- * Network connectivity
   , connectAll2All
   , connectRing
@@ -28,6 +28,7 @@ import qualified Data.Map               as Map
 import qualified Katip
 
 import Thundermint.Crypto
+import Thundermint.Crypto.Containers
 import Thundermint.Crypto.Ed25519   (Ed25519_SHA512, privateKey)
 import Thundermint.Blockchain.App
 import Thundermint.Blockchain.Types
@@ -54,17 +55,20 @@ makePrivateValidators keys = Map.fromList
 
 -- | Create set of all known public validators from set of private
 --   validators
-makeValidatorSet
+makeValidatorSetFromPriv
   :: (Foldable f, Crypto alg)
-  => f (PrivValidator alg) -> Map (Address alg) (Validator alg)
-makeValidatorSet vals = Map.fromList
-  [ ( address (publicKey (validatorPrivKey v))
-    , Validator { validatorPubKey      = publicKey (validatorPrivKey v)
-                , validatorVotingPower = 1
-                }
-    )
-  | v <- toList vals
-  ]
+  => f (PrivValidator alg) -> ValidatorSet alg
+makeValidatorSetFromPriv vals =
+  case r of
+    Right x -> x
+    Left  e -> error $ "Dublicate public key in validator: " ++ show e
+  where
+    r = makeValidatorSet
+      [ Validator { validatorPubKey      = publicKey (validatorPrivKey v)
+                  , validatorVotingPower = 1
+                  }
+      | v <- toList vals
+      ]
 
 
 
