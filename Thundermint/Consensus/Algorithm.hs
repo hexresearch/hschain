@@ -115,17 +115,16 @@ newHeight
   :: (Crypto alg, ConsensusMonad m, MonadLogger m)
   => HeightParameres m alg a
   -> Maybe (Commit alg a)
-  -> (Address alg -> Integer)
-  -> Integer
+  -> ValidatorSet alg
   -> m (TMState alg a)
-newHeight HeightParameres{..} lastCommit votingPower totalPower = do
+newHeight HeightParameres{..} lastCommit vset = do
   logger InfoS ("Entering new height: " <> showLS currentH) ()
   scheduleTimeout $ Timeout currentH (Round 0) StepNewHeight
   return TMState
     { smRound         = Round 0
     , smStep          = StepNewHeight
-    , smPrevotesSet   = emptySignedSetMap votingPower totalPower
-    , smPrecommitsSet = emptySignedSetMap votingPower totalPower
+    , smPrevotesSet   = emptySignedSetMap vset
+    , smPrecommitsSet = emptySignedSetMap vset
     , smProposals     = Map.empty
     , smLockedBlock   = Nothing
     , smLastCommit    = lastCommit

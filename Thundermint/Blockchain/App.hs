@@ -32,6 +32,7 @@ import Text.Groom
 
 import Thundermint.Blockchain.Types
 import Thundermint.Crypto
+import Thundermint.Crypto.Containers
 import Thundermint.Consensus.Algorithm
 import Thundermint.Consensus.Types
 import Thundermint.Store
@@ -86,13 +87,9 @@ decideNewBlock appSt@AppState{..} appCh@AppChans{..} lastCommt = do
   -- Enter NEW HEIGHT and create initial state for consensus state
   -- machine
   hParam <- makeHeightParametes appSt appCh
-  let totalPower       = sum $ fmap validatorVotingPower appValidatorsSet
-      votingPower addr = case Map.lookup addr appValidatorsSet of
-        Just i  -> validatorVotingPower i
-        Nothing -> 0
   --
   -- FIXME: encode that we cannot fail here!
-  Success tm0 <- runConsesusM $ newHeight hParam lastCommt votingPower totalPower
+  Success tm0 <- runConsesusM $ newHeight hParam lastCommt appValidatorsSet
   -- Handle incoming messages until we decide on next block.
   flip fix tm0 $ \loop tm -> do
     logger DebugS ("TM =\n" <> logStr (groom tm)) ()
@@ -161,7 +158,7 @@ verifyMessageSignature AppState{..} = \case
     verify con sx = case verifySignature pkLookup sx of
       Just sx' -> return $ con sx'
       Nothing  -> empty
-    pkLookup a = validatorPubKey <$> Map.lookup a appValidatorsSet
+    pkLookup a = validatorPubKey <$> validatorByAddr appValidatorsSet a
 
 
 
@@ -217,9 +214,10 @@ makeHeightParametes AppState{..} AppChans{..} = do
   h <- blockchainHeight appStorage
   let proposerChoice (Round r) =
         let Height h' = h
-            n         = Map.size appValidatorsSet
+            n         = validatorSetSize appValidatorsSet
             i         = (h' + r) `mod` fromIntegral n
-        in  Map.keys appValidatorsSet !! fromIntegral i
+            Just v    = validatorByIndex appValidatorsSet (ValidatorIdx (fromIntegral i))
+        in  address (validatorPubKey v)
   --
   return HeightParameres
     { currentH        = h

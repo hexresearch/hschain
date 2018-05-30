@@ -17,8 +17,8 @@ module Thundermint.Blockchain.Types (
   ) where
 
 import Control.Concurrent.STM
-import Data.Map        (Map)
 import Thundermint.Crypto
+import Thundermint.Crypto.Containers
 import Thundermint.Consensus.Types
 import Thundermint.Store
 
@@ -42,7 +42,7 @@ data AppState m alg a = AppState
     -- ^ Private validator for node
   , appValidationFun  :: a -> m Bool
     -- ^ Function for validation of proposed block data
-  , appValidatorsSet  :: Map (Address alg) (Validator alg)
+  , appValidatorsSet  :: ValidatorSet alg
     -- ^ Set of all validators including our own
     --
     --   FIXME: at the moment it's assumed to be immutable but we will
@@ -58,12 +58,6 @@ hoistAppState fun AppState{..} = AppState
   , appBlockGenerator = fun appBlockGenerator
   , appValidationFun  = fun . appValidationFun
   , ..
-  }
-
--- | Information about remote validator
-data Validator alg = Validator
-  { validatorPubKey      :: PublicKey alg
-  , validatorVotingPower :: Integer
   }
 
 -- | Our own validator

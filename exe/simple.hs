@@ -47,7 +47,7 @@ genesisBlock = Block
 
 main :: IO ()
 main = do
-  let validatorSet = makeValidatorSet validators
+  let validatorSet = makeValidatorSetFromPriv validators
   net   <- newMockNet
   nodes <- sequence
     [ do storage     <- newSTMBlockStorage genesisBlock

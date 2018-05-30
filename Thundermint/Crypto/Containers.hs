@@ -3,10 +3,24 @@
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE LambdaCase #-}
 -- |
--- Data types for 
+-- Data types for
 module Thundermint.Crypto.Containers (
+    -- * Validators
+    Validator(..)
+    -- ** Validator sets
+  , ValidatorSet
+  , makeValidatorSet
+  , totalVotingPower
+  , validatorSetSize
+  , validatorByAddr
+  , validatorByIndex
+    -- ** Indexed validator sets
+  , ValidatorIdx(..)
+  , ValidatorISet
+  , emptyValidatorISet
+  , dupEmptyValidatorISet
     -- * Sets of signed values
-    SignedSet
+  , SignedSet
   , InsertResult(..)
   , emptySignedSet
   , insertSigned
@@ -24,14 +38,94 @@ module Thundermint.Crypto.Containers (
 
 import Control.Monad
 import           Data.Foldable
+import           Data.Maybe        (fromMaybe)
 import           Data.Monoid       (Sum(..))
 import qualified Data.Map        as Map
 import           Data.Map          (Map)
 import qualified Data.Set        as Set
 import           Data.Set          (Set)
+import qualified Data.IntSet as ISet
+import           Data.IntSet   (IntSet)
 
 
 import Thundermint.Crypto
+
+
+----------------------------------------------------------------
+-- Validators sets
+----------------------------------------------------------------
+
+-- | Information about remote validator
+data Validator alg = Validator
+  { validatorPubKey      :: PublicKey alg
+  , validatorVotingPower :: Integer
+  }
+
+-- | Set of all known validators for given height
+data ValidatorSet alg = ValidatorSet
+  { vsValidators :: !(Map (Address alg) (Validator alg))
+    --
+  , vsTotPower   :: !Integer
+    --
+  }
+
+-- | Create set of validators. Return @Left addr@ if list contains
+--   multiple validators with same public keys
+makeValidatorSet
+  :: (Crypto alg, Foldable f)
+  => f (Validator alg)
+  -> Either (Address alg) (ValidatorSet alg)
+makeValidatorSet vals = do
+  vmap <- sequence
+        $ Map.fromListWithKey (\k _ _ -> Left k)
+          [ ( address (validatorPubKey v), Right v) | v <- toList vals ]
+  return ValidatorSet
+    { vsValidators = vmap
+    , vsTotPower   = sum $ map validatorVotingPower $ toList vals
+    }
+
+-- | Return total voting power of all validators
+totalVotingPower :: ValidatorSet alg -> Integer
+totalVotingPower = vsTotPower
+
+-- | Get validator by its address
+validatorByAddr :: ValidatorSet alg -> Address alg -> Maybe (Validator alg)
+validatorByAddr vs addr = addr `Map.lookup` vsValidators vs
+
+-- | Get validator by its address
+validatorByIndex :: ValidatorSet alg -> ValidatorIdx alg -> Maybe (Validator alg)
+validatorByIndex vs (ValidatorIdx i)
+  | i < 0                    = Nothing
+  | i >= validatorSetSize vs = Nothing
+  | otherwise                = Just (toList (vsValidators vs) !! i)
+
+-- | Number of validators in set
+validatorSetSize :: ValidatorSet alg -> Int
+validatorSetSize = Map.size  . vsValidators
+
+
+
+
+-- | Since all nodes agree on set of validators for given height they
+--   could be identified simply by number where validators public keys
+--   are lexicographically sorted.
+--
+--   This for example allows to represent validators as bit arrays.
+newtype ValidatorIdx alg = ValidatorIdx Int
+
+
+-- | Set of validators where they are represented by their index.
+data ValidatorISet = ValidatorISet !Int !IntSet
+
+-- | Create empty validator set of given size
+emptyValidatorISet :: Int -> ValidatorISet
+emptyValidatorISet n
+  | n < 0     = error "Negative size"
+  | otherwise = ValidatorISet n ISet.empty
+
+-- | Create empty validator set of same size as argument.
+dupEmptyValidatorISet :: ValidatorISet -> ValidatorISet
+dupEmptyValidatorISet (ValidatorISet n _) = ValidatorISet n ISet.empty
 
 
 
@@ -43,12 +137,9 @@ import Thundermint.Crypto
 --   one value per signature is allowed. Lookup is supported both by
 --   values and by signer's address.
 data SignedSet ty alg a = SignedSet
-  { vsetAddrMap  :: Map (Address alg) (Signed ty alg a)
-  , vsetValMap   :: Map a (Set (Address alg))
-  , vsetPower    :: Address alg -> Integer
-    -- Voting power for given address
-  , vsetTotPower :: Integer
-    -- Total voting power
+  { vsetAddrMap    :: Map (Address alg) (Signed ty alg a)
+  , vsetValMap     :: Map a (Set (Address alg))
+  , vsetValidators :: ValidatorSet alg
   }
 
 instance (Show a) => Show (SignedSet ty alg a) where
@@ -71,7 +162,7 @@ instance Monad (InsertResult b) where
   InsertDup        >>= _ = InsertDup
   InsertConflict b >>= _ = InsertConflict b
 
-emptySignedSet :: (Address alg -> Integer) -> Integer -> SignedSet ty alg a
+emptySignedSet :: ValidatorSet alg -> SignedSet ty alg a
 emptySignedSet = SignedSet Map.empty Map.empty
 
 -- | Insert value into set of votes
@@ -80,7 +171,7 @@ insertSigned
   => Signed ty alg a
   -> SignedSet ty alg a
   -> InsertResult (Signed ty alg a) (SignedSet ty alg a)
-insertSigned sval (SignedSet mAddr mVal power tot) =
+insertSigned sval (SignedSet mAddr mVal valSet) =
   case addr `Map.lookup` mAddr of
     Just v
       | signedValue v == val -> InsertDup
@@ -92,14 +183,13 @@ insertSigned sval (SignedSet mAddr mVal power tot) =
               Nothing        -> Set.singleton addr
               Just addresses -> addr `Set.insert` addresses
           ) val mVal
-      , vsetPower    = power
-      , vsetTotPower = tot
+      , vsetValidators = valSet
       }
   where
     addr = signedAddr  sval
     val  = signedValue sval
 
--- | We have +2\/3 majority of votes return vote for 
+-- | We have +2\/3 majority of votes return vote for
 majority23
   :: (Crypto alg, Ord a)
   => SignedSet ty alg a
@@ -109,12 +199,14 @@ majority23 SignedSet{..} =
     []  -> Nothing
     a:_ -> Just a
   where
+    power  = maybe 0 validatorVotingPower
+           . validatorByAddr vsetValidators
     values = [ a
              | (a, addrs) <- Map.toList vsetValMap
-             , let Sum p = foldMap (Sum . vsetPower) addrs
+             , let Sum p = foldMap (Sum . power) addrs
              , p >= quorum
              ]
-    quorum = 2 * vsetTotPower `div` 3 + 1
+    quorum = 2 * totalVotingPower vsetValidators `div` 3 + 1
 
 -- | We have +2\/3 of votes which are distributed in any manner
 any23
@@ -124,30 +216,30 @@ any23
 any23 SignedSet{..}
   = tot >= quorum
   where
-    tot    = sum [ vsetPower a | a <- Map.keys vsetAddrMap ]
-    quorum = 2 * vsetTotPower `div` 3 + 1
+    power  = maybe 0 validatorVotingPower
+           . validatorByAddr vsetValidators
+    tot    = sum [ power a | a <- Map.keys vsetAddrMap ]
+    quorum = 2 * totalVotingPower vsetValidators `div` 3 + 1
 
 
 
 ----------------------------------------------------------------
--- 
+--
 ----------------------------------------------------------------
 
 
 -- | Map from @r@ to @SignedSet ty alg a@. It maintains invariant that
 --   all submaps have same distribution of voting power
 data SignedSetMap r ty alg a = SignedSetMap
-  { vmapSubmaps  :: Map r (SignedSet ty alg a)
-  , vmapPower    :: Address alg -> Integer
-  , vmapTotPower :: Integer
+  { vmapSubmaps    :: Map r (SignedSet ty alg a)
+  , vmapValidators :: ValidatorSet alg
   }
 
 instance (Show a, Show r) => Show (SignedSetMap r ty alg a) where
   showsPrec n = showsPrec n . vmapSubmaps
 
 emptySignedSetMap
-  :: (Address alg -> Integer)
-  -> Integer
+  :: ValidatorSet alg
   -> SignedSetMap r ty alg a
 emptySignedSetMap = SignedSetMap Map.empty
 
@@ -164,11 +256,10 @@ addSignedValue
   -> SignedSetMap r ty alg a
   -> InsertResult (Signed ty alg a) (SignedSetMap r ty alg a)
 addSignedValue r a sm@SignedSetMap{..} = do
-  let m' = case Map.lookup r vmapSubmaps of
-             Nothing -> emptySignedSet vmapPower vmapTotPower
-             Just m  ->  m
-  m'' <- insertSigned a m'
-  return sm { vmapSubmaps = Map.insert r m'' vmapSubmaps }
+  m <- insertSigned a
+     $ fromMaybe (emptySignedSet vmapValidators)
+     $ Map.lookup r vmapSubmaps
+  return sm { vmapSubmaps = Map.insert r m vmapSubmaps }
 
 majority23at
   :: (Ord r, Crypto alg, Ord a)

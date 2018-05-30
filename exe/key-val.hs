@@ -61,7 +61,7 @@ loadAllBlocks storage = go (Height 0)
 --  * Reuse of key is not possible.
 main :: IO ()
 main = do
-  let validatorSet = makeValidatorSet validators
+  let validatorSet = makeValidatorSetFromPriv validators
   net   <- newMockNet
   nodes <- sequence
     [ do storage     <- newSTMBlockStorage genesisBlock
