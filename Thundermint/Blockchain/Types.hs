@@ -3,11 +3,21 @@
 {-# LANGUAGE RecordWildCards #-}
 -- |
 -- Data types for storage of blockchain
-module Thundermint.Blockchain.Types where
+module Thundermint.Blockchain.Types (
+    -- * Application state
+    AppState(..)
+  , hoistAppState
+  , Validator(..)
+  , PrivValidator(..)
+    -- * Messages and channels
+  , MessageRx(..)
+  , MessageTx(..)
+  , AppChans(..)
+  , newAppChans
+  ) where
 
 import Control.Concurrent.STM
 import Data.Map        (Map)
-
 import Thundermint.Crypto
 import Thundermint.Consensus.Types
 import Thundermint.Store
