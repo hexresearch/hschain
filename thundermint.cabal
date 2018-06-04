@@ -85,6 +85,18 @@ Executable thundermint-keyval-sql
   hs-source-dirs:      exe
   Main-is:             key-val-sql.hs
 
+Executable thundermint-simple-network
+  Ghc-options:         -Wall -threaded
+  Default-Language:    Haskell2010
+  Build-Depends:       base       >=4.9 && <5
+                     , thundermint
+                     , bytestring >=0.10
+                     , base58-bytestring >=0.1
+                     , containers >=0.5.7
+                     , network    >=2.7.0.0
+  hs-source-dirs:      exe
+  Main-is:             network.hs
+
 -- Test suite
 Test-suite thundermint-tests
   Type:                exitcode-stdio-1.0
