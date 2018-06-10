@@ -174,7 +174,8 @@ connectPeerTo net@NetworkAPI{..} addr peerCh registry = do
   logger InfoS ("Connecting to " <> showLS addr) ()
   void $ fork
        $ bracket (liftIO $ connect addr) (liftIO . close)
-       $ \sock -> withPeer registry addr
+       $ \sock -> reconnectLoop
+                $ withPeer registry addr
                 $ startPeer peerCh (applySocket net sock)
 
 
@@ -297,6 +298,24 @@ addPrecommit svote ps
 addBlock :: (Crypto alg, Serialise a) => Block alg a -> PeerState alg a -> PeerState alg a
 addBlock b ps = ps { peerBlocks = Set.insert (blockHash b) (peerBlocks ps) }
 
+
+reconnectLoop :: (MonadIO m, MonadMask m) => m () -> m ()
+reconnectLoop action = loop timeouts
+  where
+    loop times  = do
+      try action >>= \case
+        Right ()               -> return ()
+        -- We failed to connect/reconnect let retry connection unless
+        -- we run out of retry attempts
+        Left (NetErrorConn _e) -> case times of
+          []   -> return ()
+          t:ts -> do liftIO (threadDelay t)
+                     loop ts
+        -- Network error after connection. We've been connected
+        -- already so let start retry loop
+        Left (NetError _e)     -> loop timeouts
+    -- List of delays between attempts to reconnect with peer.
+    timeouts = [100e3, 100e3, 100e3, 100e3]
 
 -- | Start interactions with peer. At this point connection is already
 --   established and peer is registered.
