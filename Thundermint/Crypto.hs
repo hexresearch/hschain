@@ -61,7 +61,7 @@ data family PublicKey alg
 
 -- | Signature
 newtype Signature alg = Signature BS.ByteString
-  deriving (Eq,Ord, Serialise)
+  deriving (Eq, Ord, Serialise)
 
 instance Show (Signature alg) where
   showsPrec n (Signature bs)
