@@ -35,7 +35,8 @@ data AppState m alg a = AppState
     --
     -- FIXME: Is IO good enough or do we need some other guarantees?
   , appPropStorage    :: ProposalStorage 'RW m alg a
-    --
+    -- ^ Storage for proposed blocks
+
   , appBlockGenerator :: m a
     -- ^ Generate fresh block for proposal.
   , appValidator      :: PrivValidator alg
@@ -44,10 +45,6 @@ data AppState m alg a = AppState
     -- ^ Function for validation of proposed block data
   , appValidatorsSet  :: ValidatorSet alg
     -- ^ Set of all validators including our own
-    --
-    --   FIXME: at the moment it's assumed to be immutable but we will
-    --          need to add support of changing set as result of
-    --          commited block.
   , appMaxHeight      :: Maybe Height
   }
 
