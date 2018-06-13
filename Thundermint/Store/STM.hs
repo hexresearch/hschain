@@ -38,7 +38,9 @@ newSTMBlockStorage gBlock = do
         if h == hMax then readTVar varLCmt
                      else do bmap <- readTVar varBlocks
                              return $ blockLastCommit =<< Map.lookup (next h) bmap
-    , retrieveLastCommit = readTVarIO varLCmt
+    , retrieveLocalCommit = \h -> atomically $ do
+        ourH <- currentH
+        if h == ourH then readTVar varLCmt else return Nothing
     , storeCommit = \cmt blk -> atomically $ do
         h <- currentH
         modifyTVar' varBlocks $ Map.insert (next h) blk

@@ -56,7 +56,8 @@ runApplication
      -- ^ Channels for communication with peers
   -> m ()
 runApplication appSt@AppState{..} appCh = logOnException $ do
-  lastCm <- retrieveLastCommit appStorage
+  h      <- blockchainHeight appStorage
+  lastCm <- retrieveLocalCommit appStorage h
   advanceToHeight appPropStorage =<< blockchainHeight appStorage
   flip fix lastCm $ \loop commit -> do
     cm <- decideNewBlock appSt appCh commit

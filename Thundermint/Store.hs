@@ -43,28 +43,40 @@ type family Writable (rw :: Access) a where
   Writable 'RO a = ()
   Writable 'RW a = a
 
--- | API fort persistent storage of blockchain and related
---   information. We store blocks that are already commited and
---   information that will be commited in next block (commit for last
---   block).
+-- | API for persistent storage of blockchain and related
+--   information.
 data BlockStorage rw m alg a = BlockStorage
   { blockchainHeight   :: m Height
-    -- ^ Current height of blockchain
+    -- ^ Current height of blockchain (height of last commited block).
+
   , retrieveBlock      :: Height -> m (Maybe (Block alg a))
-    -- ^ Retrieve block at given height
-  , retrieveBlockID    :: Height -> m (Maybe (BlockID alg a))
-    -- ^ Retrieve ID block at given height
-  , retrieveCommit     :: Height -> m (Maybe (Commit alg a))
-    -- ^ Retrieve commit for block at the given height.
-  , retrieveLastCommit :: m (Maybe (Commit alg a))
-    -- ^ Commit justifying last lock in blockchain. Note that it's
-    --   stored separately and will be added to next block when it's
-    --   commited
-  , storeCommit        :: Writable rw (Commit alg a -> Block alg a -> m ())
-    -- ^ Write block into storage
+    -- ^ Retrieve block at given height.
     --
-    --   FIXME: we really should track validity of blocks and
-    --          commits. It's VERY easy to mess up accidentally
+    --   Must return block for every height @0 <= h <= blockchainHeight@
+  , retrieveBlockID    :: Height -> m (Maybe (BlockID alg a))
+    -- ^ Retrieve ID of block at given height. Must return same result
+    --   as @fmap blockHash . retrieveBlock@ but implementation could
+    --   do that more efficiently.
+  , retrieveCommit     :: Height -> m (Maybe (Commit alg a))
+    -- ^ Retrieve commit justifying commit of block at height
+    --   @h@. Must return same result as @fmap blockLastCommit . retrieveBlock . next@
+    --   but do it more efficiently.
+    --
+    --   Note that this method returns @Nothing@ for last block since
+    --   its commit is not persisted in blockchain yet and there's no
+    --   commit for genesis block (h=0)
+  , storeCommit        :: Writable rw (Commit alg a -> Block alg a -> m ())
+    -- ^ Write block and commit justifying it into persistent storage.
+
+  , retrieveLocalCommit :: Height -> m (Maybe (Commit alg a))
+    -- ^ Retrieve local commit justifying commit of block at height
+    --   @h@ as seen by this node. Note that it may differ from
+    --   @retrieveCommit@ since commit stored in blockchain is commit
+    --   as seen by proposer of block.
+    --
+    --   Implementation MUST store commit for last block in blockchain
+    --   and MAY store commits for earlier blocks
+
   , closeBlockStorage  :: Writable rw (m ())
     -- ^ Close all handles etc. Functions in the dictionary should not
     --   be called after that
@@ -88,7 +100,7 @@ hoistBlockStorageRW fun BlockStorage{..} =
                , retrieveBlock       = fun . retrieveBlock
                , retrieveBlockID     = fun . retrieveBlockID
                , retrieveCommit      = fun . retrieveCommit
-               , retrieveLastCommit  = fun retrieveLastCommit
+               , retrieveLocalCommit = fun . retrieveLocalCommit
                , storeCommit         = \c b -> fun (storeCommit c b)
                , closeBlockStorage   = fun closeBlockStorage
                }

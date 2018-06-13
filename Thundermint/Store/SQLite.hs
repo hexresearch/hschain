@@ -82,11 +82,12 @@ newSQLiteBlockStorageConn conn gBlock = do
     , retrieveBlockID = \(Height h) -> withMutex mutex $
         singleQ conn "SELECT bid FROM blockchain WHERE height = ?" (Only h)
     --
-    , retrieveCommit = \(Height h) -> withMutex mutex $
-        singleQ conn "SELECT cmt FROM commits WHERE height = ?" (Only h)
+    , retrieveCommit = \(Height h) -> withMutex mutex $ do
+        mb <- singleQ conn "SELECT block FROM blockchain WHERE height = ?" (Only h)
+        return $ blockLastCommit =<< mb
     --
-    , retrieveLastCommit = withMutex mutex $
-        singleQ conn "SELECT cmt FROM commits ORDER BY height DESC LIMIT 1" ()
+    , retrieveLocalCommit = \(Height h) -> withMutex mutex $
+        singleQ conn "SELECT cmt FROM commits WHERE height = ?" (Only h)
     --
     , storeCommit = \cmt blk -> withMutex mutex $ do
         let Height h = headerHeight $ blockHeader blk
