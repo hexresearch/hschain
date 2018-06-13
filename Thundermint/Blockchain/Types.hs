@@ -38,11 +38,12 @@ data AppState m alg a = AppState
     -- ^ Storage for proposed blocks
 
   , appBlockGenerator :: m a
-    -- ^ Generate fresh block for proposal.
+    -- ^ Generate fresh block for proposal. It's called each time we
+    --   need to create new block for proposal
   , appValidator      :: PrivValidator alg
     -- ^ Private validator for node
   , appValidationFun  :: a -> m Bool
-    -- ^ Function for validation of proposed block data
+    -- ^ Function for validation of proposed block data.
   , appValidatorsSet  :: ValidatorSet alg
     -- ^ Set of all validators including our own
   , appMaxHeight      :: Maybe Height

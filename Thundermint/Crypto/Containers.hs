@@ -1,7 +1,9 @@
-{-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE DeriveFunctor #-}
-{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE DeriveFunctor        #-}
+{-# LANGUAGE DeriveGeneric        #-}
+{-# LANGUAGE FlexibleContexts     #-}
+{-# LANGUAGE LambdaCase           #-}
+{-# LANGUAGE RecordWildCards      #-}
+{-# LANGUAGE UndecidableInstances #-}
 -- |
 -- Data types for
 module Thundermint.Crypto.Containers (
@@ -36,6 +38,7 @@ module Thundermint.Crypto.Containers (
   , toPlainMap
   ) where
 
+import qualified Codec.Serialise as CBOR
 import Control.Monad
 import           Data.Foldable
 import           Data.Maybe        (fromMaybe)
@@ -46,7 +49,7 @@ import qualified Data.Set        as Set
 import           Data.Set          (Set)
 import qualified Data.IntSet as ISet
 import           Data.IntSet   (IntSet)
-
+import           GHC.Generics  (Generic)
 
 import Thundermint.Crypto
 
@@ -60,6 +63,8 @@ data Validator alg = Validator
   { validatorPubKey      :: PublicKey alg
   , validatorVotingPower :: Integer
   }
+  deriving (Generic)
+instance CBOR.Serialise (PublicKey alg) => CBOR.Serialise (Validator alg)
 
 -- | Set of all known validators for given height
 data ValidatorSet alg = ValidatorSet
@@ -68,6 +73,16 @@ data ValidatorSet alg = ValidatorSet
   , vsTotPower   :: !Integer
     --
   }
+  deriving (Generic)
+
+instance (Crypto alg, CBOR.Serialise (PublicKey alg)) => CBOR.Serialise (ValidatorSet alg) where
+  encode = CBOR.encode . toList . vsValidators
+  decode = fmap (makeValidatorSet . asList) CBOR.decode >>= \case
+    Left  e -> fail (show e)
+    Right a -> return a
+    where
+      asList :: [a] -> [a]
+      asList = id
 
 -- | Create set of validators. Return @Left addr@ if list contains
 --   multiple validators with same public keys
