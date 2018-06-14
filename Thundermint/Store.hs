@@ -65,18 +65,21 @@ data BlockStorage rw m alg a = BlockStorage
     --   Note that this method returns @Nothing@ for last block since
     --   its commit is not persisted in blockchain yet and there's no
     --   commit for genesis block (h=0)
-  , storeCommit        :: Writable rw (Commit alg a -> Block alg a -> m ())
+  , storeCommit :: Writable rw (Commit alg a -> Block alg a -> m ())
     -- ^ Write block and commit justifying it into persistent storage.
 
   , retrieveLocalCommit :: Height -> m (Maybe (Commit alg a))
-    -- ^ Retrieve local commit justifying commit of block at height
-    --   @h@ as seen by this node. Note that it may differ from
-    --   @retrieveCommit@ since commit stored in blockchain is commit
-    --   as seen by proposer of block.
+    -- ^ Retrieve local commit justifying commit of block as known by
+    --   node at moment of the commit. Implementation only MUST store
+    --   commit for the last block but may choose to store earlier
+    --   commits as well.
     --
-    --   Implementation MUST store commit for last block in blockchain
-    --   and MAY store commits for earlier blocks
-
+    --   Note that commits returned by this functions may to differ
+    --   from ones returned by @retrieveCommit@ by set of votes since
+    --   1) @retrieveCommit@ retrieve commit as seen by proposer not
+    --   local node 2) each node collect straggler precommits for some
+    --   time interval after commit.
+  
   , closeBlockStorage  :: Writable rw (m ())
     -- ^ Close all handles etc. Functions in the dictionary should not
     --   be called after that
