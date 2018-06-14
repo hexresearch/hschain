@@ -71,7 +71,7 @@ main :: IO ()
 main = do
   let validatorSet = makeValidatorSetFromPriv validators
   nodes <- sequence
-    [ do storage     <- newSTMBlockStorage genesisBlock
+    [ do storage     <- newSTMBlockStorage genesisBlock validatorSet
          propStorage <- newSTMPropStorage
          serviceName <- getServiceName addr
          return ( realNetwork serviceName

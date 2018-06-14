@@ -114,7 +114,7 @@ decideNewBlock appSt@AppState{..} appCh@AppChans{..} lastCommt = do
         b <- case commitBlockID cmt `Map.lookup` blocks of
                Just x  -> return x
                Nothing -> error $ "Cannot commit: " ++ show cmt
-        storeCommit appStorage cmt b
+        storeCommit appStorage appValidatorsSet cmt b
         advanceToHeight appPropStorage =<< blockchainHeight appStorage
         return cmt
 

@@ -69,7 +69,7 @@ main = do
   nodes <- sequence
     [ do let Address nm = address $ publicKey $ validatorPrivKey val
              dbName     = BC8.unpack (Base58.encodeBase58 Base58.bitcoinAlphabet nm)
-         storage     <- newSQLiteBlockStorage ("db/" ++ dbName) genesisBlock
+         storage     <- newSQLiteBlockStorage ("db/" ++ dbName) genesisBlock validatorSet
          propStorage <- newSTMPropStorage
          let loadAllKeys = Set.fromList . map fst . concatMap blockData <$> loadAllBlocks storage
          return ( createMockNode net "50000" addr

@@ -64,7 +64,7 @@ main = do
   let validatorSet = makeValidatorSetFromPriv validators
   net   <- newMockNet
   nodes <- sequence
-    [ do storage     <- newSTMBlockStorage genesisBlock
+    [ do storage     <- newSTMBlockStorage genesisBlock validatorSet
          propStorage <- newSTMPropStorage
          let loadAllKeys = Set.fromList . map fst . concatMap blockData <$> loadAllBlocks storage
          return ( createMockNode net "50000" addr
