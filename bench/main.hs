@@ -1,5 +1,4 @@
 {-# LANGUAGE BangPatterns       #-}
-{-# LANGUAGE DeriveGeneric      #-}
 {-# LANGUAGE StandaloneDeriving #-}
 module Main where
 
@@ -8,17 +7,10 @@ import Prelude
 
 import Control.DeepSeq
 import Control.Exception (evaluate)
-import GHC.Generics      (Generic, Generic1)
 
 import Crypto.Random              (getRandomBytes)
 import Thundermint.Crypto
 import Thundermint.Crypto.Ed25519
-
-deriving instance Generic (Signature a)
-deriving instance Generic1 Signature
-
-instance NFData (Signature a)
-instance NFData1 Signature
 
 kB :: Int
 kB = 1024

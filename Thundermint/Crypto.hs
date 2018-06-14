@@ -1,5 +1,4 @@
 {-# LANGUAGE DataKinds                  #-}
-{-# LANGUAGE DeriveFunctor              #-}
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE FlexibleInstances          #-}
@@ -16,8 +15,8 @@ module Thundermint.Crypto (
     -- * Crypto API
     PrivKey
   , PublicKey
-  , Signature(..) -- FIXME: expose constructoion only
-  , Address(..)   -- FIXME: same
+  , Signature(..)
+  , Address(..)
   , Hash(..)
   , Crypto(..)
     -- * Serialization and signatures
@@ -39,11 +38,12 @@ module Thundermint.Crypto (
   ) where
 
 import Codec.Serialise (Serialise, serialise)
+import Control.DeepSeq
 import Control.Monad
 
 import Data.ByteString.Lazy (toStrict)
 import Data.Word
-import GHC.Generics         (Generic)
+import GHC.Generics         (Generic,Generic1)
 
 import qualified Data.ByteString        as BS
 import qualified Data.ByteString.Base58 as Base58
@@ -61,12 +61,15 @@ data family PublicKey alg
 
 -- | Signature
 newtype Signature alg = Signature BS.ByteString
-  deriving (Eq, Ord, Serialise)
+  deriving (Eq, Ord, Generic, Generic1, Serialise)
 
 instance Show (Signature alg) where
   showsPrec n (Signature bs)
     = showParen (n > 10)
     $ showString "Signature " . shows (encodeBase58 bs)
+
+instance NFData (Signature a)
+instance NFData1 Signature
 
 -- |
 newtype Address alg = Address BS.ByteString
