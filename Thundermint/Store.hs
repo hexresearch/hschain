@@ -27,6 +27,7 @@ module Thundermint.Store (
 
 import           Data.Map          (Map)
 
+import Thundermint.Crypto.Containers
 import Thundermint.Consensus.Types
 
 
@@ -65,7 +66,8 @@ data BlockStorage rw m alg a = BlockStorage
     --   Note that this method returns @Nothing@ for last block since
     --   its commit is not persisted in blockchain yet and there's no
     --   commit for genesis block (h=0)
-  , storeCommit :: Writable rw (Commit alg a -> Block alg a -> m ())
+  , storeCommit :: Writable rw
+      (ValidatorSet alg -> Commit alg a -> Block alg a -> m ())
     -- ^ Write block and commit justifying it into persistent storage.
 
   , retrieveLocalCommit :: Height -> m (Maybe (Commit alg a))
@@ -79,6 +81,14 @@ data BlockStorage rw m alg a = BlockStorage
     --   1) @retrieveCommit@ retrieve commit as seen by proposer not
     --   local node 2) each node collect straggler precommits for some
     --   time interval after commit.
+
+  , retrieveValidatorSet :: Height -> m (Maybe (ValidatorSet alg))
+    -- ^ Retrieve set of validators for given round.
+    --
+    --   Must return validator set for every @0 < h <= blockchainHeight + 1@
+
+  , retrieveNValidators  :: Height -> m (Maybe Int)
+    -- ^ Retrieve number of validators for given round
   
   , closeBlockStorage  :: Writable rw (m ())
     -- ^ Close all handles etc. Functions in the dictionary should not
@@ -99,13 +109,15 @@ hoistBlockStorageRW
   -> BlockStorage 'RW m alg a
   -> BlockStorage 'RW n alg a
 hoistBlockStorageRW fun BlockStorage{..} =
-  BlockStorage { blockchainHeight    = fun blockchainHeight
-               , retrieveBlock       = fun . retrieveBlock
-               , retrieveBlockID     = fun . retrieveBlockID
-               , retrieveCommit      = fun . retrieveCommit
-               , retrieveLocalCommit = fun . retrieveLocalCommit
-               , storeCommit         = \c b -> fun (storeCommit c b)
-               , closeBlockStorage   = fun closeBlockStorage
+  BlockStorage { blockchainHeight     = fun blockchainHeight
+               , retrieveBlock        = fun . retrieveBlock
+               , retrieveBlockID      = fun . retrieveBlockID
+               , retrieveCommit       = fun . retrieveCommit
+               , retrieveLocalCommit  = fun . retrieveLocalCommit
+               , retrieveValidatorSet = fun . retrieveValidatorSet
+               , retrieveNValidators  = fun . retrieveNValidators
+               , storeCommit          = \v c b -> fun (storeCommit v c b)
+               , closeBlockStorage    = fun closeBlockStorage
                }
 
 

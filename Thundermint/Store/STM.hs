@@ -12,18 +12,21 @@ import qualified Data.Map             as Map
 
 import Thundermint.Consensus.Types
 import Thundermint.Crypto
+import Thundermint.Crypto.Containers
 import Thundermint.Store
 
 
--- | 
+-- |
 newSTMBlockStorage
   :: (Crypto alg, Serialise a)
   => Block alg a
+  -> ValidatorSet alg
   -> IO (BlockStorage 'RW IO alg a)
-newSTMBlockStorage gBlock = do
+newSTMBlockStorage gBlock initalVals = do
   -- FIXME: we MUST require correct genesis block
   varBlocks <- newTVarIO $ Map.singleton (Height 0) gBlock
   varLCmt   <- newTVarIO Nothing
+  varVals   <- newTVarIO $ Map.empty
   let currentH = do
         Just (h,_) <- Map.lookupMax <$> readTVar varBlocks
         return h
@@ -41,10 +44,15 @@ newSTMBlockStorage gBlock = do
     , retrieveLocalCommit = \h -> atomically $ do
         ourH <- currentH
         if h == ourH then readTVar varLCmt else return Nothing
-    , storeCommit = \cmt blk -> atomically $ do
+    , storeCommit = \vals cmt blk -> atomically $ do
         h <- currentH
         modifyTVar' varBlocks $ Map.insert (next h) blk
+        modifyTVar' varVals   $ Map.insert (next (next h)) vals
         writeTVar   varLCmt (Just cmt)
+    , retrieveValidatorSet = \h -> do vals <- readTVarIO varVals
+                                      return $ Map.lookup h vals
+    , retrieveNValidators  = \h -> do vals <- readTVarIO varVals
+                                      return $ fmap validatorSetSize $ Map.lookup h vals
     , closeBlockStorage = return ()
     }
 

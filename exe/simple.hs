@@ -50,7 +50,7 @@ main = do
   let validatorSet = makeValidatorSetFromPriv validators
   net   <- newMockNet
   nodes <- sequence
-    [ do storage     <- newSTMBlockStorage genesisBlock
+    [ do storage     <- newSTMBlockStorage genesisBlock validatorSet
          propStorage <- newSTMPropStorage
          return ( createMockNode net "50000" addr
                 , map (,"50000") $ connectRing validators addr
