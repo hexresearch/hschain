@@ -1,9 +1,10 @@
-{-# LANGUAGE DeriveFunctor        #-}
-{-# LANGUAGE DeriveGeneric        #-}
-{-# LANGUAGE FlexibleContexts     #-}
-{-# LANGUAGE LambdaCase           #-}
-{-# LANGUAGE RecordWildCards      #-}
-{-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE DeriveFunctor              #-}
+{-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE FlexibleContexts           #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE LambdaCase                 #-}
+{-# LANGUAGE RecordWildCards            #-}
+{-# LANGUAGE UndecidableInstances       #-}
 -- |
 -- Data types for
 module Thundermint.Crypto.Containers (
@@ -16,6 +17,7 @@ module Thundermint.Crypto.Containers (
   , validatorSetSize
   , validatorByAddr
   , validatorByIndex
+  , indexByValidator
     -- ** Indexed validator sets
   , ValidatorIdx(..)
   , ValidatorISet
@@ -68,10 +70,9 @@ instance CBOR.Serialise (PublicKey alg) => CBOR.Serialise (Validator alg)
 
 -- | Set of all known validators for given height
 data ValidatorSet alg = ValidatorSet
-  { vsValidators :: !(Map (Address alg) (Validator alg))
-    --
+  { vsValidators :: !(Map (Address alg) (Validator    alg))
+  , vsIndexes    :: !(Map (Address alg) (ValidatorIdx alg))
   , vsTotPower   :: !Integer
-    --
   }
   deriving (Generic)
 
@@ -96,6 +97,7 @@ makeValidatorSet vals = do
           [ ( address (validatorPubKey v), Right v) | v <- toList vals ]
   return ValidatorSet
     { vsValidators = vmap
+    , vsIndexes    = Map.fromList $ Map.keys vmap `zip` map ValidatorIdx [0..]
     , vsTotPower   = sum $ map validatorVotingPower $ toList vals
     }
 
@@ -114,6 +116,10 @@ validatorByIndex vs (ValidatorIdx i)
   | i >= validatorSetSize vs = Nothing
   | otherwise                = Just (toList (vsValidators vs) !! i)
 
+-- | Get index of validator in set of validators
+indexByValidator :: ValidatorSet alg -> Address alg -> Maybe (ValidatorIdx alg)
+indexByValidator vs addr = addr `Map.lookup` vsIndexes vs
+
 -- | Number of validators in set
 validatorSetSize :: ValidatorSet alg -> Int
 validatorSetSize = Map.size  . vsValidators
@@ -127,7 +133,7 @@ validatorSetSize = Map.size  . vsValidators
 --
 --   This for example allows to represent validators as bit arrays.
 newtype ValidatorIdx alg = ValidatorIdx Int
-
+  deriving (Show, CBOR.Serialise)
 
 -- | Set of validators where they are represented by their index.
 data ValidatorISet = ValidatorISet !Int !IntSet
