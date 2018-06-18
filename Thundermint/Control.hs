@@ -3,8 +3,10 @@
 module Thundermint.Control (
     MonadFork(..)
   , forkLinked
+  , runConcurrently
   ) where
 
+import Control.Monad
 import Control.Monad.Trans.Reader
 import Control.Monad.Catch            (bracket,MonadMask)
 import Control.Monad.IO.Class
@@ -48,3 +50,18 @@ forkLinked action io = do
   bracket (forkFinally action fini)
           (liftIO . killThread)
           (const io)
+
+
+-- | Run computations concurrently. Any exception will propagate to
+--   the top level and if any of them terminates normally function
+--   will return and all other threads will be killed
+runConcurrently
+  :: (MonadIO m, MonadMask m, MonadFork m)
+  => [m ()]              -- ^ Functions to run
+  -> m ()
+runConcurrently []      = return ()
+runConcurrently actions = do
+  lock <- liftIO Conc.newEmptyMVar
+  foldr (\f -> forkLinked $ f >> void (liftIO (Conc.tryPutMVar lock ())))
+        (liftIO $ Conc.takeMVar lock)
+        actions
