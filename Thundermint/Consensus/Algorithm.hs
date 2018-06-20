@@ -83,6 +83,7 @@ data HeightParameres (m :: * -> *) alg a = HeightParameres
     -- ^ Broadcast to peers announcement that we have given prevote
   , announceHasPreCommit :: Signed 'Verified alg (Vote 'PreCommit alg a) -> m ()
     -- ^ Broadcast to peers announcement that we have given precommit
+  , announceStep         :: FullStep -> m ()
 
   , createProposal       :: Maybe (Commit alg a) -> m (BlockID alg a)
     -- ^ Create new proposal block. Block itself should be stored
@@ -119,7 +120,8 @@ newHeight
   -> m (TMState alg a)
 newHeight HeightParameres{..} lastCommit vset = do
   logger InfoS ("Entering new height: " <> showLS currentH) ()
-  scheduleTimeout $ Timeout currentH (Round 0) StepNewHeight
+  scheduleTimeout $ Timeout  currentH (Round 0) StepNewHeight
+  announceStep    $ FullStep currentH (Round 0) StepNewHeight
   return TMState
     { smRound         = Round 0
     , smStep          = StepNewHeight
@@ -280,6 +282,7 @@ enterPropose
 enterPropose par@HeightParameres{..} r sm@TMState{..} = do
   logger InfoS ("Entering propose at " <> showLS r <> " from " <> shortLogSt par sm) ()
   scheduleTimeout $ Timeout currentH r StepProposal
+  announceStep    $ FullStep currentH r StepProposal
   -- If we're proposers we need to broadcast proposal. Otherwise we do
   -- nothing
   when (areWeProposers r) $ case smLockedBlock of

@@ -19,7 +19,7 @@ import Control.Concurrent   (ThreadId, myThreadId, threadDelay, killThread)
 import Control.Concurrent.STM
 import Codec.Serialise
 import           Data.Monoid       ((<>))
-import           Data.Maybe        (fromMaybe)
+import           Data.Maybe        (fromMaybe,catMaybes)
 -- import           Data.Foldable
 import           Data.Function
 import qualified Data.Map        as Map
@@ -31,10 +31,11 @@ import GHC.Generics (Generic)
 
 
 import Thundermint.Crypto
-import Thundermint.Crypto.Containers (toPlainMap)
+import Thundermint.Crypto.Containers
 import Thundermint.Consensus.Types
 import Thundermint.Blockchain.Types
 import Thundermint.P2P.Network
+import Thundermint.P2P.PeerState
 import Thundermint.Store
 import Thundermint.Control
 import Thundermint.Logger
@@ -53,39 +54,14 @@ data GossipMsg alg a
   | GossipPreCommit (Signed 'Unverified alg (Vote 'PreCommit alg a))
   | GossipProposal  (Signed 'Unverified alg (Proposal alg a))
   | GossipBlock     (Block alg a)
-
-  | GossipHasVote !Height !Round !VoteType !(Address alg)
-  -- ^ Announce that we have given vote already.
-
-  -- Communication about status of peer
-
-  | GossipStatus    Height Round
-    -- ^ Gossip current status of consensus state machine
-  | GossipHasProposals   Height (Set Round)
-    -- ^ Gossip which proposals we have
-    --
-    --   FIXME: not space efficient. We could use bit array to
-    --          represent proposals we have
-  | GossipHasPrevotes    Height (Map Round (Set (Address alg)))
-    -- ^ Gossip about prevotes that we have
-  | GossipHasPrecommits  Height (Map Round (Set (Address alg)))
-    -- ^ Gossip about precommits that we have
-  | GossipHasPropBlocks  Height (Set (BlockID alg a))
-    -- ^ Gossip which blocks do we have as proposals for current
-    --   height
-
-  -- Peer exchange
-
-  | GossipHello
-  | GossipRequestPeers
-  | GossipPeers
+  | GossipAnn       (Announcement alg)
   deriving (Show, Generic)
 instance Serialise a => Serialise (GossipMsg alg a)
 
 
 -- | Connection handed to process controlling communication with peer
 data PeerChans addr alg a = PeerChans
-  { peerChanTx      :: TChan (MessageTx alg a)
+  { peerChanTx      :: TChan (Announcement alg)
     -- ^ Broadcast channel for outgoing messages
   , peerChanRx      :: MessageRx 'Unverified alg a -> STM ()
     -- ^ STM action for sending message to main application
@@ -95,10 +71,6 @@ data PeerChans addr alg a = PeerChans
     -- ^ Read only access to storage of proposals
   , consensusState  :: STM (Maybe (Height, TMState alg a))
     -- ^ Read only access to current state of consensus state machine
-  , retrievePeerSet :: STM (Set addr)
-    -- ^ Obtain set of all peers
-  , sendPeerSet     :: Set addr -> STM ()
-    -- ^ Send set of peers to dispatcher
   }
 
 
@@ -127,8 +99,6 @@ startPeerDispatcher net addrs AppChans{..} storage propSt = logOnException $ do
                          , blockStorage    = storage
                          , proposalStorage = propSt
                          , consensusState  = readTVar appTMState
-                         , retrievePeerSet = registiryAddressSet peers
-                         , sendPeerSet     = writeTChan peerExchange
                          }
   -- Accepting connection is managed by separate linked thread and
   -- this thread manages initiating connections
@@ -243,6 +213,7 @@ registiryAddressSet (PeerRegistry _ addrSet _)
 -- Peer
 ----------------------------------------------------------------
 
+{-
 -- | Description of our knowledge of peer. It's need to keep track
 --   what should we gossip to peer.
 data PeerState alg a = PeerState
@@ -311,7 +282,11 @@ addPrecommit' h r addr ps
 
 addBlock :: (Crypto alg, Serialise a) => Block alg a -> PeerState alg a -> PeerState alg a
 addBlock b ps = ps { peerBlocks = Set.insert (blockHash b) (peerBlocks ps) }
+-}
 
+----------------------------------------------------------------
+-- Peer's status
+----------------------------------------------------------------
 
 -- | Start interactions with peer. At this point connection is already
 --   established and peer is registered.
@@ -323,9 +298,207 @@ startPeer
   -> m ()
 startPeer peerCh@PeerChans{..} net@SendRecv{..} = logOnException $ do
   logger InfoS "Starting peer" ()
+  peerSt   <- newPeerStateObj $ hoistBlockStorageRO liftIO blockStorage
+  gossipCh <- liftIO newTChanIO
+  runConcurrently
+    [ peerGossipVotes   peerSt peerCh gossipCh
+    , peerGossipBlocks  peerSt peerCh gossipCh
+    , peerSend          peerSt peerCh gossipCh net
+    , peerReceive       peerSt peerCh net
+    ]
+  logger InfoS "Stopping peer" ()
+
+
+-- | Gossip votes with given peer
+peerGossipVotes
+  :: (MonadIO m, MonadFork m, MonadMask m, MonadLogger m, Crypto alg)
+  => PeerStateObj m alg a         -- ^ Current state of peer
+  -> PeerChans addr alg a       -- ^ Read-only access to
+  -> TChan (GossipMsg alg a)
+  -> m x
+peerGossipVotes peerObj PeerChans{..} gossipCh = logOnException $ do
+  logger InfoS "Starting routine for gossiping votes" ()
+  forever $ do
+    h    <- liftIO $ blockchainHeight blockStorage
+    peer <- getPeerState peerObj
+    case peer of
+      Lagging p -> logger DebugS ("LAGGING: " <> showLS (lagPeerStep p)) ()
+      Current p -> logger DebugS ("CURRENT: " <> showLS (peerStep p)) ()
+      Ahead   s -> logger DebugS ("AHEAD: " <> showLS s) ()
+      Unknown   -> logger DebugS "UNKNOWN" ()
+    case peer of
+      --
+      Lagging p -> do
+        mcmt <- case lagPeerStep p of
+          FullStep (Height 0) _ _
+            -> return Nothing -- FIXME: Possible???
+          FullStep peerH _ _
+            | next peerH == h
+              -> liftIO $ retrieveLocalCommit blockStorage peerH
+            | otherwise
+              -> liftIO $ retrieveCommit blockStorage peerH
+        --
+        case mcmt of
+         Just cmt -> do
+           let r         = voteRound $ signedValue $ head $ commitPrecommits cmt
+               cmtVotes  = Map.fromList [ (signedAddr v, unverifySignature v)
+                                        | v <- commitPrecommits cmt ]
+               -- FIXME: inefficient
+           let toSet = Set.fromList
+                     . map (address . validatorPubKey)
+                     . catMaybes
+                     . map (validatorByIndex (lagPeerValidators p))
+                     . getValidatorIntSet
+           let peerVotes = Map.fromSet (const ())
+                         $ toSet (lagPeerPrecommits p)
+           case Map.lookupMin $ Map.difference cmtVotes peerVotes of
+             Just (_,v) -> liftIO $ atomically $ writeTChan gossipCh $ GossipPreCommit v
+             Nothing    -> return ()
+           undefined
+         Nothing -> return ()
+
+      --
+      Current p -> liftIO (atomically consensusState) >>= \case
+        Nothing               -> return ()
+        Just (h',_) | h' /= h -> return ()
+        Just (_,tm)           -> do
+          let knownPR = smProposals tm
+              knownPV = toPlainMap $ smPrevotesSet   tm
+              knownPC = toPlainMap $ smPrecommitsSet tm
+              remove votes addrs
+                | Map.null d = Nothing
+                | otherwise  = Just d
+                where d = Map.difference votes (Map.fromSet (const ()) addrs)
+              --
+              unknownPR = Map.difference knownPR (Map.fromSet (const ()) (peerProposals p))
+              -- FIXME: inefficient
+              toSet = Set.fromList
+                    . map (address . validatorPubKey)
+                    . catMaybes
+                    . map (validatorByIndex (peerValidators p))
+                    . getValidatorIntSet
+
+              unknownPV = Map.differenceWith remove knownPV (toSet <$> peerPrevotes   p)
+              unknownPC = Map.differenceWith remove knownPC (toSet <$> peerPrecommits p)
+          -- Send proposals
+          case Map.lookupMin unknownPR of
+            Nothing    -> return ()
+            Just (_,p) -> liftIO $ atomically $ writeTChan gossipCh $ GossipProposal $ unverifySignature p
+          -- Send prevotes
+          case Map.lookupMin . snd =<< Map.lookupMin unknownPV of
+            Nothing    -> return ()
+            Just (_,v) -> liftIO $ atomically $ writeTChan gossipCh $ GossipPreVote $ unverifySignature v
+          -- Send precommits
+          case Map.lookupMin . snd =<< Map.lookupMin unknownPC of
+            Nothing    -> return ()
+            Just (_,v) -> liftIO $ atomically $ writeTChan gossipCh $ GossipPreCommit $ unverifySignature v
+      Ahead   _ -> return ()
+      Unknown   -> return ()
+    liftIO $ threadDelay 25e3
+
+-- | Gossip blocks with given peer
+peerGossipBlocks
+  :: (MonadIO m, MonadFork m, MonadMask m, MonadLogger m)
+  => PeerStateObj m alg a       -- ^ Current state of peer
+  -> PeerChans addr alg a       -- ^ Read-only access to
+  -> TChan (GossipMsg alg a)    -- ^ Network API
+  -> m x
+peerGossipBlocks peerObj PeerChans{..} gossipCh = logOnException $ do
+  logger InfoS "Starting routine for gossiping votes" ()
+  forever $ do
+    peer <- getPeerState peerObj
+    case peer of
+      --
+      Lagging p -> do
+        let FullStep h _ _ = lagPeerStep p
+        mbid <- liftIO $ retrieveBlockID blockStorage h
+        case mbid of
+          Just bid | bid `Set.notMember` lagPeerBlocks p -> do
+                       Just b <- liftIO $ retrieveBlock blockStorage h
+                       logger DebugS ("Gossip: " <> showLS bid) ()
+                       liftIO $ atomically $ writeTChan gossipCh $ GossipBlock b
+          _ -> return ()
+      --
+      Current p -> do
+        h      <- liftIO $ blockchainHeight blockStorage
+        blocks <- liftIO $ retrievePropBlocks proposalStorage h
+        case Map.lookupMin $ Map.difference blocks $ Map.fromSet (const ()) $ peerBlocks p of
+          Nothing    -> return ()
+          Just (bid,b) -> do
+            logger DebugS ("Gossip: " <> showLS bid) ()
+            liftIO $ atomically $ writeTChan gossipCh $ GossipBlock b
+      -- Nothing to do
+      Ahead _ -> return ()
+      Unknown -> return ()
+    liftIO $ threadDelay 25e3
+
+-- | Routine for receiving messages from peer
+peerReceive
+  :: (MonadIO m, MonadFork m, MonadMask m, MonadLogger m, Crypto alg, Serialise a)
+  => PeerStateObj m alg a
+  -> PeerChans addr alg a
+  -> SendRecv
+  -> m ()
+peerReceive peerSt PeerChans{..} SendRecv{..} = logOnException $ do
+  logger InfoS "Starting routing for receiving messages" ()
+  fix $ \loop -> liftIO (recv 4096) >>= \case
+    Nothing  -> logger InfoS "Peer stopping since socket is closed" ()
+    Just bs  -> case deserialiseOrFail bs of
+      Left  e   -> logger ErrorS ("Deserialization error: " <> showLS e) ()
+      Right msg -> do
+        case msg of
+          -- Forward to application and record that peer has
+          -- given vote/proposal/block
+          GossipPreVote   v -> do liftIO $ atomically $ peerChanRx $ RxPreVote v
+                                  addPrevote peerSt v
+          GossipPreCommit v -> do liftIO $ atomically $ peerChanRx $ RxPreCommit v
+                                  addPrecommit peerSt v
+          GossipProposal  p -> do liftIO $ atomically $ peerChanRx $ RxProposal p
+                                  addProposal peerSt p
+          GossipBlock     b -> do liftIO $ atomically $ peerChanRx $ RxBlock b
+                                  addBlock peerSt b
+          --
+          GossipAnn ann -> case ann of
+            AnnStep         s     -> advancePeer   peerSt s
+            AnnHasPreVote   h r i -> addPrevoteI   peerSt h r i
+            AnnHasPreCommit h r i -> addPrecommitI peerSt h r i
+        loop
+
+-- | Routine for actually sending data to peers
+peerSend
+  :: (MonadIO m, MonadFork m, MonadMask m, MonadLogger m, Crypto alg, Serialise a)
+  => PeerStateObj m alg a
+  -> PeerChans addr alg a
+  -> TChan (GossipMsg alg a)
+  -> SendRecv
+  -> m x
+peerSend peerSt PeerChans{..} gossipCh SendRecv{..} = logOnException $ do
+  logger InfoS "Starting routing for sending data" ()
+  ch <- liftIO $ atomically $ dupTChan peerChanTx
+  forever $ do
+    msg <- liftIO $ atomically $  readTChan gossipCh
+                              <|> fmap GossipAnn (readTChan ch)
+    liftIO $ send $ serialise msg
+    -- Update state of peer when we advance to next height
+    case msg of
+      GossipBlock b                        -> addBlock peerSt b
+      GossipAnn (AnnStep (FullStep h _ _)) -> advanceOurHeight peerSt h
+      _                                    -> return ()
+
+
+{-
+
+
+----------------------------------------------------------------
+
   gossipCh <- liftIO $ newTChanIO
   peerVar  <- liftIO $ newTVarIO $ peerStateAtH (Height 0)
   -- Start gossip routines.
+
+
+
+
+
   id $ forkLinked (peerGossipBlocks peerCh gossipCh peerVar)
      $ forkLinked (peerGossipVotes  peerCh gossipCh peerVar)
      -- Start send thread.
@@ -526,3 +699,4 @@ peerSendGossip gossipCh chanTx peerVar SendRecv{..} = logOnException $ do
         TxPreCommit  v       -> GossipPreCommit $ unverifySignature v
         TxProposal   p       -> GossipProposal  $ unverifySignature p
         TxAnnHasVote h r s a -> GossipHasVote h r s a
+-}

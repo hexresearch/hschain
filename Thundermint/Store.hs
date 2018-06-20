@@ -18,6 +18,7 @@ module Thundermint.Store (
   , Writable
   , BlockStorage(..)
   , hoistBlockStorageRW
+  , hoistBlockStorageRO
   , makeReadOnly
     -- * In memory store for proposals
   , ProposalStorage(..)
@@ -66,6 +67,9 @@ data BlockStorage rw m alg a = BlockStorage
     --   Note that this method returns @Nothing@ for last block since
     --   its commit is not persisted in blockchain yet and there's no
     --   commit for genesis block (h=0)
+  , retrieveCommitRound :: Height -> m (Maybe Round)
+
+    
   , storeCommit :: Writable rw
       (ValidatorSet alg -> Commit alg a -> Block alg a -> m ())
     -- ^ Write block and commit justifying it into persistent storage.
@@ -112,12 +116,29 @@ hoistBlockStorageRW fun BlockStorage{..} =
   BlockStorage { blockchainHeight     = fun blockchainHeight
                , retrieveBlock        = fun . retrieveBlock
                , retrieveBlockID      = fun . retrieveBlockID
+               , retrieveCommitRound  = fun . retrieveCommitRound
                , retrieveCommit       = fun . retrieveCommit
                , retrieveLocalCommit  = fun . retrieveLocalCommit
                , retrieveValidatorSet = fun . retrieveValidatorSet
                , retrieveNValidators  = fun . retrieveNValidators
                , storeCommit          = \v c b -> fun (storeCommit v c b)
                , closeBlockStorage    = fun closeBlockStorage
+               }
+
+hoistBlockStorageRO
+  :: (forall x. m x -> n x)
+  -> BlockStorage 'RO m alg a
+  -> BlockStorage 'RO n alg a
+hoistBlockStorageRO fun BlockStorage{..} =
+  BlockStorage { blockchainHeight     = fun blockchainHeight
+               , retrieveBlock        = fun . retrieveBlock
+               , retrieveBlockID      = fun . retrieveBlockID
+               , retrieveCommitRound  = fun . retrieveCommitRound
+               , retrieveCommit       = fun . retrieveCommit
+               , retrieveLocalCommit  = fun . retrieveLocalCommit
+               , retrieveValidatorSet = fun . retrieveValidatorSet
+               , retrieveNValidators  = fun . retrieveNValidators
+               , ..
                }
 
 
