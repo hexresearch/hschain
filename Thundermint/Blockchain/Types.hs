@@ -1,4 +1,5 @@
 {-# LANGUAGE DataKinds       #-}
+{-# LANGUAGE DeriveGeneric   #-}
 {-# LANGUAGE RankNTypes      #-}
 {-# LANGUAGE RecordWildCards #-}
 -- |
@@ -11,12 +12,15 @@ module Thundermint.Blockchain.Types (
   , PrivValidator(..)
     -- * Messages and channels
   , MessageRx(..)
-  , MessageTx(..)
+  , Announcement(..)
   , AppChans(..)
   , newAppChans
   ) where
 
+import Codec.Serialise        (Serialise)
 import Control.Concurrent.STM
+import GHC.Generics           (Generic)
+
 import Thundermint.Crypto
 import Thundermint.Crypto.Containers
 import Thundermint.Consensus.Types
@@ -69,26 +73,30 @@ data PrivValidator alg = PrivValidator
 
 -- | Message received by main application
 data MessageRx ty alg a
-  = RxPreVote   (Signed ty alg (Vote 'PreVote   alg a))
-  | RxPreCommit (Signed ty alg (Vote 'PreCommit alg a))
-  | RxProposal  (Signed ty alg (Proposal alg a))
-  | RxTimeout   Timeout
-  | RxBlock     (Block alg a)
+  = RxPreVote   !(Signed ty alg (Vote 'PreVote   alg a))
+  | RxPreCommit !(Signed ty alg (Vote 'PreCommit alg a))
+  | RxProposal  !(Signed ty alg (Proposal alg a))
+  | RxTimeout   !Timeout
+  | RxBlock     !(Block alg a)
   deriving (Show)
 
--- | Message sent by main application
-data MessageTx alg a
-  = TxPreVote   (Signed 'Verified alg (Vote 'PreVote   alg a))
-  | TxPreCommit (Signed 'Verified alg (Vote 'PreCommit alg a))
-  | TxProposal  (Signed 'Verified alg (Proposal alg a))
-  | TxAnnHasVote Height Round VoteType (Address alg)
-  deriving (Show)
+-- | Messages which should be delivered to peers immediately. Those
+--   are control messages in gossip protocol. Actual proposals, votes
+--   and blocks are delivered pure via gossip.
+data Announcement alg
+  = AnnStep         !FullStep
+  | AnnHasPreVote   !Height !Round !(ValidatorIdx alg)
+  | AnnHasPreCommit !Height !Round !(ValidatorIdx alg)
+  deriving (Show,Generic)
+instance Serialise (Announcement alg)
 
 -- | Application connection to outer world
 data AppChans alg a = AppChans
   { appChanRx   :: TChan (MessageRx 'Unverified alg a)
-    -- ^ TChan for sending messages to the main application
-  , appChanTx   :: TChan (MessageTx alg a)
+    -- ^ TChan for receiving messages related to consensus protocol
+    --   from peers (our own votes are also passed on same channel for
+    --   uniformity)
+  , appChanTx   :: TChan (Announcement alg)
     -- ^ TChan for broadcasting messages to the peers
   , appTMState  :: TVar  (Maybe (Height, TMState alg a))
     -- ^ Current state of consensus. It includes current height, state

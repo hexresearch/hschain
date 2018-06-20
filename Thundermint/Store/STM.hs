@@ -26,21 +26,29 @@ newSTMBlockStorage gBlock initalVals = do
   -- FIXME: we MUST require correct genesis block
   varBlocks <- newTVarIO $ Map.singleton (Height 0) gBlock
   varLCmt   <- newTVarIO Nothing
-  varVals   <- newTVarIO $ Map.empty
+  varVals   <- newTVarIO $ Map.fromList [ (Height 0, initalVals)
+                                        , (Height 1, initalVals)
+                                        ]
   let currentH = do
         Just (h,_) <- Map.lookupMax <$> readTVar varBlocks
         return h
   let retrieveBlk h = do m <- readTVarIO varBlocks
                          return $ Map.lookup h m
-  return BlockStorage
-    { blockchainHeight = atomically currentH
-    , retrieveBlock    = retrieveBlk
-    , retrieveBlockID  = (fmap . fmap) blockHash . retrieveBlk
-    , retrieveCommit   = \h -> atomically $ do
+  let retrieveCmt h = do
         hMax <- currentH
         if h == hMax then readTVar varLCmt
                      else do bmap <- readTVar varBlocks
                              return $ blockLastCommit =<< Map.lookup (next h) bmap
+  --
+  return BlockStorage
+    { blockchainHeight = atomically currentH
+    , retrieveBlock    = retrieveBlk
+    , retrieveBlockID  = (fmap . fmap) blockHash . retrieveBlk
+    , retrieveCommitRound = \h -> atomically $ do
+        mcmt <- retrieveCmt h
+        return $ do Commit _ (v:_) <- mcmt
+                    return $ voteRound $ signedValue v
+    , retrieveCommit      = atomically . retrieveCmt
     , retrieveLocalCommit = \h -> atomically $ do
         ourH <- currentH
         if h == ourH then readTVar varLCmt else return Nothing

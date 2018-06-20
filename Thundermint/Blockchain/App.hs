@@ -92,7 +92,7 @@ decideNewBlock appSt@AppState{..} appCh@AppChans{..} lastCommt = do
   Success tm0 <- runConsesusM $ newHeight hParam lastCommt appValidatorsSet
   -- Handle incoming messages until we decide on next block.
   flip fix tm0 $ \loop tm -> do
-    logger DebugS ("TM =\n" <> logStr (groom tm)) ()
+    -- logger DebugS ("TM =\n" <> logStr (groom tm)) ()
     -- Make current state of consensus available for gossip
     liftIO $ atomically $ writeTVar appTMState $ Just (currentH hParam , tm)
     -- Receive message
@@ -109,8 +109,8 @@ decideNewBlock appSt@AppState{..} appCh@AppChans{..} lastCommt = do
       Just Misdeed        -> loop tm
       Just (DoCommit cmt) -> do
         blocks <- retrievePropBlocks appPropStorage (currentH hParam)
-        logger DebugS ("COMMIT: \n" <> logStr (groom cmt)) ()
-        logger DebugS ("BLOCKMAP: \n" <> logStr (groom blocks)) ()
+        -- logger DebugS ("COMMIT: \n" <> logStr (groom cmt)) ()
+        -- logger DebugS ("BLOCKMAP: \n" <> logStr (groom blocks)) ()
         b <- case commitBlockID cmt `Map.lookup` blocks of
                Just x  -> return x
                Nothing -> error $ "Cannot commit: " ++ show cmt
@@ -211,7 +211,8 @@ makeHeightParametes
   -> AppChans alg a
   -> m (HeightParameres (ConsensusM alg a m) alg a)
 makeHeightParametes AppState{..} AppChans{..} = do
-  h <- blockchainHeight appStorage
+  h           <- blockchainHeight appStorage
+  Just valSet <- retrieveValidatorSet appStorage h
   let proposerChoice (Round r) =
         let Height h' = h
             n         = validatorSetSize appValidatorsSet
@@ -247,7 +248,6 @@ makeHeightParametes AppState{..} AppChans{..} = do
         blockMap <- lift $ retrievePropBlocks appPropStorage h
         logger InfoS ("Sending proposal for " <> showLS r <> " " <> showLS bid) ()
         liftIO $ atomically $ do
-          writeTChan appChanTx (TxProposal sprop)
           writeTChan appChanRx (RxProposal $ unverifySignature sprop)
           case bid `Map.lookup` blockMap of
             Nothing -> return ()
@@ -260,7 +260,7 @@ makeHeightParametes AppState{..} AppChans{..} = do
               delta = 500e3
           threadDelay $ baseT + delta * fromIntegral r
           atomically $ writeTChan appChanRx $ RxTimeout t
-    -- FIXME: Do we need to store cast votes to WAL as well?
+    --
     , castPrevote     = \r b -> do
         let pk   = validatorPrivKey appValidator
             vote = Vote { voteHeight  = h
@@ -270,8 +270,7 @@ makeHeightParametes AppState{..} AppChans{..} = do
                         }
             svote  = signValue pk vote
         logger InfoS ("Sending prevote for " <> showLS r <> " (" <> showLS b <> ")") ()
-        liftIO $ atomically $ do
-          writeTChan appChanTx (TxPreVote svote)
+        liftIO $ atomically $
           writeTChan appChanRx (RxPreVote $ unverifySignature svote)
     --
     , castPrecommit   = \r b -> do
@@ -283,19 +282,19 @@ makeHeightParametes AppState{..} AppChans{..} = do
                         }
             svote  = signValue pk vote
         logger InfoS ("Sending precommit for " <> showLS r <> " (" <> showLS b <> ")") ()
-        liftIO $ atomically $ do
-          writeTChan appChanTx (TxPreCommit svote)
-          writeTChan appChanRx (RxPreCommit $ unverifySignature svote)
+        liftIO $ atomically $ writeTChan appChanRx $ RxPreCommit $ unverifySignature svote
     --
     , announceHasPreVote   = \sv -> do
         let Vote{..} = signedValue sv
-        liftIO $ atomically $ writeTChan appChanTx $
-          TxAnnHasVote voteHeight voteRound PreVote (signedAddr sv)
+        forM_ (indexByValidator valSet (signedAddr sv)) $ \v ->
+          liftIO $ atomically $ writeTChan appChanTx $ AnnHasPreVote voteHeight voteRound v
     --
     , announceHasPreCommit = \sv -> do
         let Vote{..} = signedValue sv
-        liftIO $ atomically $ writeTChan appChanTx $
-          TxAnnHasVote voteHeight voteRound PreCommit (signedAddr sv)
+        forM_ (indexByValidator valSet (signedAddr sv)) $ \v ->
+          liftIO $ atomically $ writeTChan appChanTx $ AnnHasPreCommit voteHeight voteRound v
+    --
+    , announceStep = liftIO . atomically . writeTChan appChanTx . AnnStep
     --
     , createProposal = \commit -> lift $ do
         bData          <- appBlockGenerator

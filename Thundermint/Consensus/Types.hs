@@ -19,6 +19,7 @@ module Thundermint.Consensus.Types (
   , Commit(..)
     -- * Data types for establishing consensus
   , Step(..)
+  , FullStep(..)
   , Timeout(..)
   , Proposal(..)
     -- ** Votes
@@ -121,7 +122,12 @@ data Step
   | StepProposal
   | StepPrevote
   | StepPrecommit
-  deriving (Show,Eq,Ord)
+  deriving (Show,Eq,Ord,Generic)
+instance Serialise Step
+
+data FullStep = FullStep !Height !Round !Step
+  deriving (Show,Eq,Ord,Generic)
+instance Serialise FullStep
 
 data Timeout = Timeout Height Round Step
   deriving (Show,Eq,Ord)

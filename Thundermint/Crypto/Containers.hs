@@ -21,8 +21,9 @@ module Thundermint.Crypto.Containers (
     -- ** Indexed validator sets
   , ValidatorIdx(..)
   , ValidatorISet
+  , getValidatorIntSet
+  , insertValidatorIdx
   , emptyValidatorISet
-  , dupEmptyValidatorISet
     -- * Sets of signed values
   , SignedSet
   , InsertResult(..)
@@ -138,15 +139,21 @@ newtype ValidatorIdx alg = ValidatorIdx Int
 -- | Set of validators where they are represented by their index.
 data ValidatorISet = ValidatorISet !Int !IntSet
 
+getValidatorIntSet :: ValidatorISet -> [ValidatorIdx alg]
+getValidatorIntSet (ValidatorISet _ iset)
+  = [ValidatorIdx i | i <- ISet.toList iset]
+
+insertValidatorIdx :: ValidatorIdx alg -> ValidatorISet -> ValidatorISet
+insertValidatorIdx (ValidatorIdx i) vset@(ValidatorISet n iset)
+  | i < 0     = vset
+  | i >= n    = vset
+  | otherwise = ValidatorISet n (ISet.insert i iset)
+
 -- | Create empty validator set of given size
 emptyValidatorISet :: Int -> ValidatorISet
 emptyValidatorISet n
   | n < 0     = error "Negative size"
   | otherwise = ValidatorISet n ISet.empty
-
--- | Create empty validator set of same size as argument.
-dupEmptyValidatorISet :: ValidatorISet -> ValidatorISet
-dupEmptyValidatorISet (ValidatorISet n _) = ValidatorISet n ISet.empty
 
 
 
