@@ -12,7 +12,9 @@ module Thundermint.Store.SQLite (
   ) where
 
 import Codec.Serialise (Serialise,serialise,deserialiseOrFail)
+import Control.Applicative
 import Control.Concurrent.MVar
+import Control.Monad.Trans.Maybe
 import Data.Int
 import qualified Database.SQLite.Simple.FromField as SQL
 import qualified Database.SQLite.Simple           as SQL
@@ -70,7 +72,6 @@ newSQLiteBlockStorageConn conn gBlock initalVals = do
   SQL.execute_ conn
     "CREATE TABLE IF NOT EXISTS validators \
     \  ( height INT  NOT NULL UNIQUE \
-    \  , nvals  INT  NOT NULL \
     \  , valset BLOB NOT NULL)"
   -- Insert genesis block if needed
   SQL.query_ conn "SELECT MAX(height) FROM blockchain" >>= \case
@@ -79,12 +80,17 @@ newSQLiteBlockStorageConn conn gBlock initalVals = do
         ( 0 :: Int64
         , serialise (blockHash gBlock :: BlockID alg a)
         , serialise gBlock)
-      SQL.execute conn "INSERT INTO validators VALUES (?,?,?)"
+      SQL.execute conn "INSERT INTO validators VALUES (?,?)"
         ( 1 :: Int64
-        , validatorSetSize initalVals
         , serialise initalVals
         )
     (_::[Only (Maybe Int64)]) -> return ()
+  --
+  let fetchCommit :: Height -> IO (Maybe (Commit alg a))
+      fetchCommit (Height h) = do
+        mb <- singleQ conn "SELECT block FROM blockchain WHERE height = ?" (Only (h+1))
+        return $ blockLastCommit =<< mb
+
   -- Make dictionary
   return BlockStorage
     { blockchainHeight = withMutex mutex $
@@ -99,17 +105,20 @@ newSQLiteBlockStorageConn conn gBlock initalVals = do
     , retrieveBlockID = \(Height h) -> withMutex mutex $
         singleQ conn "SELECT bid FROM blockchain WHERE height = ?" (Only h)
     --
-    , retrieveCommit = \(Height h) -> withMutex mutex $ do
-        mb <- singleQ conn "SELECT block FROM blockchain WHERE height = ?" (Only h)
-        return $ blockLastCommit =<< mb
+    , retrieveCommitRound = \(Height h) -> withMutex mutex $ runMaybeT $ do
+        c <-  MaybeT (fetchCommit (Height h))
+          <|> MaybeT (singleQ conn "SELECT cmt FROM commits WHERE height = ?" (Only h))
+        let getRound (Commit _ (v:_)) = voteRound (signedValue v)
+            getRound _                = error "Impossible"
+        return $ getRound c
+    --
+    , retrieveCommit = withMutex mutex . fetchCommit
     --
     , retrieveLocalCommit = \(Height h) -> withMutex mutex $
         singleQ conn "SELECT cmt FROM commits WHERE height = ?" (Only h)
     --
     , retrieveValidatorSet = \(Height h) -> withMutex mutex $
-        singleQ conn "SELECT valset FROM validators WHERE h = ?" (Only h)
-    , retrieveNValidators  = \(Height h) -> withMutex mutex $
-        singleFld conn "SELECT nvals FROM validators WHERE h = ?" (Only h)
+        singleQ conn "SELECT valset FROM validators WHERE height = ?" (Only h)
     --
     , storeCommit = \vals cmt blk -> withMutex mutex $ do
         let Height h = headerHeight $ blockHeader blk
@@ -120,8 +129,8 @@ newSQLiteBlockStorageConn conn gBlock initalVals = do
           , serialise (blockHash blk :: BlockID alg a)
           , serialise blk
           )
-        SQL.execute  conn "INSERT INTO validators VALUES (?,?,?)"
-          (h+1, validatorSetSize vals, serialise vals)
+        SQL.execute  conn "INSERT INTO validators VALUES (?,?)"
+          (h+1, serialise vals)
         SQL.execute_ conn "COMMIT"
     --
     , closeBlockStorage = SQL.close conn

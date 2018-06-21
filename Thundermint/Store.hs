@@ -46,7 +46,8 @@ type family Writable (rw :: Access) a where
   Writable 'RW a = a
 
 -- | API for persistent storage of blockchain and related
---   information.
+--   information. All assertion about behavior obviously hold only if
+--   database backing store is not corrupted.
 data BlockStorage rw m alg a = BlockStorage
   { blockchainHeight   :: m Height
     -- ^ Current height of blockchain (height of last commited block).
@@ -68,8 +69,8 @@ data BlockStorage rw m alg a = BlockStorage
     --   its commit is not persisted in blockchain yet and there's no
     --   commit for genesis block (h=0)
   , retrieveCommitRound :: Height -> m (Maybe Round)
+    -- ^ Retrieve round when commit was made.
 
-    
   , storeCommit :: Writable rw
       (ValidatorSet alg -> Commit alg a -> Block alg a -> m ())
     -- ^ Write block and commit justifying it into persistent storage.
@@ -91,9 +92,6 @@ data BlockStorage rw m alg a = BlockStorage
     --
     --   Must return validator set for every @0 < h <= blockchainHeight + 1@
 
-  , retrieveNValidators  :: Height -> m (Maybe Int)
-    -- ^ Retrieve number of validators for given round
-  
   , closeBlockStorage  :: Writable rw (m ())
     -- ^ Close all handles etc. Functions in the dictionary should not
     --   be called after that
@@ -120,7 +118,6 @@ hoistBlockStorageRW fun BlockStorage{..} =
                , retrieveCommit       = fun . retrieveCommit
                , retrieveLocalCommit  = fun . retrieveLocalCommit
                , retrieveValidatorSet = fun . retrieveValidatorSet
-               , retrieveNValidators  = fun . retrieveNValidators
                , storeCommit          = \v c b -> fun (storeCommit v c b)
                , closeBlockStorage    = fun closeBlockStorage
                }
@@ -137,7 +134,6 @@ hoistBlockStorageRO fun BlockStorage{..} =
                , retrieveCommit       = fun . retrieveCommit
                , retrieveLocalCommit  = fun . retrieveLocalCommit
                , retrieveValidatorSet = fun . retrieveValidatorSet
-               , retrieveNValidators  = fun . retrieveNValidators
                , ..
                }
 
