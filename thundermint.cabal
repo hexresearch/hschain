@@ -48,6 +48,7 @@ Library
                   Thundermint.Mock
                   Thundermint.P2P
                   Thundermint.P2P.Network
+                  Thundermint.P2P.PeerState
                   Thundermint.Store
                   Thundermint.Store.STM
                   Thundermint.Store.SQLite

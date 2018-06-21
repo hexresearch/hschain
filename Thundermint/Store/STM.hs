@@ -6,7 +6,9 @@ module Thundermint.Store.STM (
   ) where
 
 import Codec.Serialise (Serialise)
+import Control.Applicative
 import Control.Monad
+import Control.Monad.Trans.Maybe
 import Control.Concurrent.STM
 import qualified Data.Map             as Map
 
@@ -34,20 +36,23 @@ newSTMBlockStorage gBlock initalVals = do
         return h
   let retrieveBlk h = do m <- readTVarIO varBlocks
                          return $ Map.lookup h m
-  let retrieveCmt h = do
-        hMax <- currentH
-        if h == hMax then readTVar varLCmt
-                     else do bmap <- readTVar varBlocks
-                             return $ blockLastCommit =<< Map.lookup (next h) bmap
+  let retrieveCmt h = do bmap <- readTVar varBlocks
+                         return $ blockLastCommit =<< Map.lookup (next h) bmap
   --
   return BlockStorage
     { blockchainHeight = atomically currentH
     , retrieveBlock    = retrieveBlk
     , retrieveBlockID  = (fmap . fmap) blockHash . retrieveBlk
-    , retrieveCommitRound = \h -> atomically $ do
-        mcmt <- retrieveCmt h
-        return $ do Commit _ (v:_) <- mcmt
-                    return $ voteRound $ signedValue v
+    , retrieveCommitRound = \h -> do
+        let getRound (Commit _ (v:_)) = voteRound (signedValue v)
+            getRound _                = error "Impossible"
+        mc <- atomically $ runMaybeT
+            $  MaybeT (retrieveCmt h)
+           <|> MaybeT (do hBC <- currentH
+                          guard (hBC == h)
+                          readTVar varLCmt
+                      )
+        return $ fmap getRound mc
     , retrieveCommit      = atomically . retrieveCmt
     , retrieveLocalCommit = \h -> atomically $ do
         ourH <- currentH
@@ -59,8 +64,6 @@ newSTMBlockStorage gBlock initalVals = do
         writeTVar   varLCmt (Just cmt)
     , retrieveValidatorSet = \h -> do vals <- readTVarIO varVals
                                       return $ Map.lookup h vals
-    , retrieveNValidators  = \h -> do vals <- readTVarIO varVals
-                                      return $ fmap validatorSetSize $ Map.lookup h vals
     , closeBlockStorage = return ()
     }
 

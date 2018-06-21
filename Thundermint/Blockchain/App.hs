@@ -211,7 +211,7 @@ makeHeightParametes
   -> m (HeightParameres (ConsensusM alg a m) alg a)
 makeHeightParametes AppState{..} AppChans{..} = do
   h           <- blockchainHeight appStorage
-  Just valSet <- retrieveValidatorSet appStorage h
+  Just valSet <- retrieveValidatorSet appStorage (next h)
   let proposerChoice (Round r) =
         let Height h' = h
             n         = validatorSetSize appValidatorsSet
