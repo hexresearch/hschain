@@ -328,7 +328,7 @@ peerGossipVotes peerObj PeerChans{..} gossipCh = logOnException $ do
           FullStep (Height 0) _ _
             -> return Nothing -- FIXME: Possible???
           FullStep peerH _ _
-            | next peerH == h
+            | peerH == h
               -> liftIO $ retrieveLocalCommit blockStorage peerH
             | otherwise
               -> liftIO $ retrieveCommit blockStorage peerH
