@@ -86,7 +86,7 @@ newSTMPropStorage = do
     --
     , storePropBlock = \blk -> atomically $ do
         h <- readTVar varH
-        when (headerHeight (blockHeader blk) == next h) $ do
+        when (headerHeight (blockHeader blk) == h) $ do
           let bid = blockHash blk
           modifyTVar' varPBlk $ Map.insert bid blk
     }

@@ -45,6 +45,15 @@ import Thundermint.Crypto.Containers
 -- Primitives
 ----------------------------------------------------------------
 
+-- | Height of block in blockchain. It's used in several contexts with
+--   subtle differences. Namely:
+--
+--   * Height of blockchain is height of topmost block
+--
+--   * Height of proposal or vote is height of block we're voting for
+--
+--   * Current height in consensus algorithm is height of block we're
+--     deciding on.
 newtype Height = Height Int64
   deriving (Show, Eq, Ord, Serialise)
 

@@ -322,11 +322,6 @@ peerGossipVotes peerObj PeerChans{..} gossipCh = logOnException $ do
     h    <- liftIO $ blockchainHeight blockStorage
     peer <- getPeerState peerObj
     case peer of
-      Lagging p -> logger DebugS ("LAGGING: " <> showLS (lagPeerStep p)) ()
-      Current p -> logger DebugS ("CURRENT: " <> showLS (peerStep p)) ()
-      Ahead   s -> logger DebugS ("AHEAD: " <> showLS s) ()
-      Unknown   -> logger DebugS "UNKNOWN" ()
-    case peer of
       --
       Lagging p -> do
         mcmt <- case lagPeerStep p of
@@ -354,13 +349,12 @@ peerGossipVotes peerObj PeerChans{..} gossipCh = logOnException $ do
            case Map.lookupMin $ Map.difference cmtVotes peerVotes of
              Just (_,v) -> liftIO $ atomically $ writeTChan gossipCh $ GossipPreCommit v
              Nothing    -> return ()
-           undefined
          Nothing -> return ()
 
       --
       Current p -> liftIO (atomically consensusState) >>= \case
         Nothing               -> return ()
-        Just (h',_) | h' /= h -> return ()
+        Just (h',_) | h' /= next h -> return ()
         Just (_,tm)           -> do
           let knownPR = smProposals tm
               knownPV = toPlainMap $ smPrevotesSet   tm
@@ -421,7 +415,7 @@ peerGossipBlocks peerObj PeerChans{..} gossipCh = logOnException $ do
       --
       Current p -> do
         h      <- liftIO $ blockchainHeight blockStorage
-        blocks <- liftIO $ retrievePropBlocks proposalStorage h
+        blocks <- liftIO $ retrievePropBlocks proposalStorage $ next h
         case Map.lookupMin $ Map.difference blocks $ Map.fromSet (const ()) $ peerBlocks p of
           Nothing    -> return ()
           Just (bid,b) -> do
