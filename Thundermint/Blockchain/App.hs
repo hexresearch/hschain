@@ -59,7 +59,7 @@ runApplication
 runApplication appSt@AppState{..} appCh = logOnException $ do
   height <- blockchainHeight appStorage
   lastCm <- retrieveLocalCommit appStorage height
-  advanceToHeight appPropStorage =<< blockchainHeight appStorage
+  advanceToHeight appPropStorage $ next height
   flip fix lastCm $ \loop commit -> do
     cm <- decideNewBlock appSt appCh commit
     -- ASSERT: We successfully commited next block
@@ -71,6 +71,7 @@ runApplication appSt@AppState{..} appCh = logOnException $ do
     case appMaxHeight of
       Just h' | h > h' -> return ()
       _                -> loop (Just cm)
+  logger InfoS "Finished execution of blockchain" ()
 
 -- This function uses consensus algorithm to decide which block we're
 -- going to commit at current height, then stores it in database and
@@ -97,7 +98,7 @@ decideNewBlock appSt@AppState{..} appCh@AppChans{..} lastCommt = do
     liftIO $ atomically $ writeTVar appTMState $ Just (currentH hParam , tm)
     -- Receive message
     msg <- liftIO $ atomically $ readTChan appChanRx
-    logger DebugS ("Recv: " <> showLS msg) ()
+    -- logger DebugS ("Recv: " <> showLS msg) ()
     -- Handle message
     res <- runMaybeT
         $ lift . handleVerifiedMessage appPropStorage hParam tm
@@ -108,14 +109,12 @@ decideNewBlock appSt@AppState{..} appCh@AppChans{..} lastCommt = do
       Just Tranquility    -> loop tm
       Just Misdeed        -> loop tm
       Just (DoCommit cmt) -> do
-        blocks <- retrievePropBlocks appPropStorage (currentH hParam)
-        -- logger DebugS ("COMMIT: \n" <> logStr (groom cmt)) ()
-        -- logger DebugS ("BLOCKMAP: \n" <> logStr (groom blocks)) ()
+        blocks <- retrievePropBlocks appPropStorage $ currentH hParam
         b <- case commitBlockID cmt `Map.lookup` blocks of
                Just x  -> return x
                Nothing -> error $ "Cannot commit: " ++ show cmt
         storeCommit appStorage appValidatorsSet cmt b
-        advanceToHeight appPropStorage =<< blockchainHeight appStorage
+        advanceToHeight appPropStorage . next =<< blockchainHeight appStorage
         return cmt
 
 
@@ -221,7 +220,7 @@ makeHeightParametes AppState{..} AppChans{..} = do
         in  address (validatorPubKey v)
   --
   return HeightParameres
-    { currentH        = h
+    { currentH        = next h
       -- FIXME: this is some random algorithms that should probably
       --        work (for some definition of work)
     , areWeProposers  = \r ->
@@ -229,16 +228,22 @@ makeHeightParametes AppState{..} AppChans{..} = do
     , proposerForRound = proposerChoice
     --
     , validateBlock = \bid -> do
-        blocks <- lift $ retrievePropBlocks appPropStorage h
+        blocks <- lift $ retrievePropBlocks appPropStorage (next h)
         case bid `Map.lookup` blocks of
           Nothing -> return UnseenProposal
-          Just b  -> lift (appValidationFun (blockData b)) >>= \case
-            True  -> return GoodProposal
-            False -> return InvalidProposal
+          Just b
+            -- Check that height is correct
+            | next h /= headerHeight (blockHeader b)
+              -> return InvalidProposal
+            -- Validate block data
+            | otherwise
+              -> lift (appValidationFun (blockData b)) >>= \case
+                   True  -> return GoodProposal
+                   False -> return InvalidProposal
     --
     , broadcastProposal = \r bid lockInfo -> do
         let pk   = validatorPrivKey appValidator
-            prop = Proposal { propHeight    = h
+            prop = Proposal { propHeight    = next h
                             , propRound     = r
                             , propTimestamp = Time 0
                             , propPOL       = lockInfo
@@ -263,7 +268,7 @@ makeHeightParametes AppState{..} AppChans{..} = do
     --
     , castPrevote     = \r b -> do
         let pk   = validatorPrivKey appValidator
-            vote = Vote { voteHeight  = h
+            vote = Vote { voteHeight  = next h
                         , voteRound   = r
                         , voteTime    = Time 0
                         , voteBlockID = b
@@ -275,7 +280,7 @@ makeHeightParametes AppState{..} AppChans{..} = do
     --
     , castPrecommit   = \r b -> do
         let pk   = validatorPrivKey appValidator
-            vote = Vote { voteHeight  = h
+            vote = Vote { voteHeight  = next h
                         , voteRound   = r
                         , voteTime    = Time 0
                         , voteBlockID = b
