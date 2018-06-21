@@ -18,6 +18,7 @@ module Thundermint.Mock (
 import Codec.Serialise          (Serialise)
 import Control.Concurrent.Async
 import Control.Exception
+import Control.Monad
 import Control.Monad.IO.Class
 import Data.Foldable
 import Data.Map                 (Map)
@@ -137,7 +138,7 @@ runNodeSet nodes = do
   withAsyncs [ startNode net addrs appSt
              | (net,addrs,appSt) <- nodes
              ]
-    $ mapM_ wait
+    $ void . waitAny
   return [ makeReadOnly $ appStorage a | (_,_,a) <- nodes ]
 
 withAsyncs :: [IO a] -> ([Async a] -> IO b) -> IO b
