@@ -92,4 +92,6 @@ newSTMPropStorage = do
         when (headerHeight (blockHeader blk) == h) $ do
           let bid = blockHash blk
           modifyTVar' varPBlk $ Map.insert bid blk
+    --
+    , allowBlockID = \_ -> return ()
     }

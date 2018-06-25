@@ -154,12 +154,15 @@ data ProposalStorage rw m alg a = ProposalStorage
   , storePropBlock      :: Writable rw (Block alg a -> m ())
     -- ^ Store block proposed at given height. If height is different
     --   from height we are at block is ignored.
+  , allowBlockID        :: Writable rw (BlockID alg a -> m ())
+    -- ^ Mark block ID as one that we could accept
   }
 
 makeReadOnlyPS :: ProposalStorage rw m alg a -> ProposalStorage 'RO m alg a
 makeReadOnlyPS ProposalStorage{..} =
   ProposalStorage { advanceToHeight = ()
                   , storePropBlock  = ()
+                  , allowBlockID    = ()
                   , ..
                   }
 
@@ -172,4 +175,5 @@ hoistPropStorageRM fun ProposalStorage{..} =
                   , advanceToHeight    = fun . advanceToHeight
                   , retrievePropBlocks = fun . retrievePropBlocks
                   , storePropBlock     = fun . storePropBlock
+                  , allowBlockID       = fun . allowBlockID
                   }

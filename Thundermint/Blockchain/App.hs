@@ -289,6 +289,8 @@ makeHeightParametes AppState{..} AppChans{..} = do
         logger InfoS ("Sending precommit for " <> showLS r <> " (" <> showLS b <> ")") ()
         liftIO $ atomically $ writeTChan appChanRx $ RxPreCommit $ unverifySignature svote
     --
+    , acceptBlock = \_ _ -> return ()
+    --
     , announceHasPreVote   = \sv -> do
         let Vote{..} = signedValue sv
         forM_ (indexByValidator valSet (signedAddr sv)) $ \v ->
