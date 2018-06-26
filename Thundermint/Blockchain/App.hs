@@ -305,7 +305,7 @@ makeHeightParametes AppState{..} AppChans{..} = do
     --
     , announceStep = liftIO . atomically . writeTChan appChanTx . AnnStep
     --
-    , createProposal = \commit -> lift $ do
+    , createProposal = \r commit -> lift $ do
         bData          <- appBlockGenerator
         Just lastBlock <- retrieveBlock appStorage
                       =<< blockchainHeight appStorage
@@ -320,8 +320,10 @@ makeHeightParametes AppState{..} AppChans{..} = do
               , blockData       = bData
               , blockLastCommit = commit
               }
+            bid   = blockHash block
+        allowBlockID   appPropStorage r bid
         storePropBlock appPropStorage block
-        return $ blockHash block
+        return bid
 
     , commitBlock     = \cm -> ConsensusM $ return $ DoCommit cm
     }
