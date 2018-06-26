@@ -88,7 +88,7 @@ data HeightParameres (m :: * -> *) alg a = HeightParameres
     -- ^ Broadcast to peers announcement that we have given precommit
   , announceStep         :: FullStep -> m ()
 
-  , createProposal       :: Maybe (Commit alg a) -> m (BlockID alg a)
+  , createProposal       :: Round -> Maybe (Commit alg a) -> m (BlockID alg a)
     -- ^ Create new proposal block. Block itself should be stored
     --   elsewhere.
   , commitBlock          :: forall x. Commit alg a -> m x
@@ -297,7 +297,7 @@ enterPropose par@HeightParameres{..} r sm@TMState{..} = do
     Just (br,bid) -> do logger InfoS ("Making proposal: " <> showLS bid) ()
                         broadcastProposal r bid (Just (br,bid))
     -- Otherwise we need to create new block from mempool
-    Nothing      -> do bid <- createProposal smLastCommit
+    Nothing      -> do bid <- createProposal r smLastCommit
                        logger InfoS ("Making proposal: " <> showLS bid) ()
                        broadcastProposal r bid Nothing
   return sm { smRound = r
