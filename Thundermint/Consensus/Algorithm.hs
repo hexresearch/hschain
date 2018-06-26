@@ -79,7 +79,7 @@ data HeightParameres (m :: * -> *) alg a = HeightParameres
   , castPrecommit        :: Round -> Maybe (BlockID alg a) -> m ()
     -- ^ Broadcast precommit for particular block ID in some round.
 
-  , acceptBlock          :: BlockID alg a -> Round ->  m ()
+  , acceptBlock          :: Round -> BlockID alg a -> m ()
     -- ^ Callback to signal that given block from given round should
     --   be accepted
   , announceHasPreVote   :: Signed 'Verified alg (Vote 'PreVote alg a)   -> m ()
@@ -167,7 +167,7 @@ tendermintTransition par@HeightParameres{..} msg sm@TMState{..} =
         -> misdeed
       -- Add it to map of proposals
       | otherwise
-        -> do acceptBlock propBlockID propRound
+        -> do acceptBlock propRound propBlockID
               return sm { smProposals = Map.insert propRound p smProposals }
     ----------------------------------------------------------------
     PreVoteMsg v@(signedValue -> Vote{..})
@@ -257,7 +257,7 @@ checkTransitionPrecommit par@HeightParameres{..} r sm@(TMState{..})
   | Just Vote{..} <- majority23at r smPrecommitsSet
   , Just bid      <- voteBlockID
     = do logger InfoS "Committing" ()
-         acceptBlock bid voteRound
+         acceptBlock voteRound bid
          commitBlock Commit{ commitBlockID    = bid
                            , commitPrecommits = valuesAtR r smPrecommitsSet
                            }
