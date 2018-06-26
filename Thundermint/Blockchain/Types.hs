@@ -56,7 +56,7 @@ data AppState m alg a = AppState
 hoistAppState :: (forall x. m x -> n x) -> AppState m alg a -> AppState n alg a
 hoistAppState fun AppState{..} = AppState
   { appStorage        = hoistBlockStorageRW fun appStorage
-  , appPropStorage    = hoistPropStorageRM  fun appPropStorage
+  , appPropStorage    = hoistPropStorageRW  fun appPropStorage
   , appBlockGenerator = fun appBlockGenerator
   , appValidationFun  = fun . appValidationFun
   , ..
@@ -85,6 +85,8 @@ data MessageRx ty alg a
 --   and blocks are delivered pure via gossip.
 data Announcement alg
   = AnnStep         !FullStep
+  | AnnHasProposal  !Height !Round
+  | AnnHasBlock     !Height !Round
   | AnnHasPreVote   !Height !Round !(ValidatorIdx alg)
   | AnnHasPreCommit !Height !Round !(ValidatorIdx alg)
   deriving (Show,Generic)

@@ -22,7 +22,8 @@ module Thundermint.Store (
   , makeReadOnly
     -- * In memory store for proposals
   , ProposalStorage(..)
-  , hoistPropStorageRM
+  , hoistPropStorageRW
+  , hoistPropStorageRO
   , makeReadOnlyPS
   ) where
 
@@ -154,8 +155,11 @@ data ProposalStorage rw m alg a = ProposalStorage
   , storePropBlock      :: Writable rw (Block alg a -> m ())
     -- ^ Store block proposed at given height. If height is different
     --   from height we are at block is ignored.
-  , allowBlockID        :: Writable rw (BlockID alg a -> m ())
+
+  , allowBlockID        :: Writable rw (Round -> BlockID alg a -> m ())
     -- ^ Mark block ID as one that we could accept
+  , blockAtRound        :: Height -> Round -> m (Maybe (Block alg a, BlockID alg a))
+    -- ^ Get block at given round and height
   }
 
 makeReadOnlyPS :: ProposalStorage rw m alg a -> ProposalStorage 'RO m alg a
@@ -166,14 +170,28 @@ makeReadOnlyPS ProposalStorage{..} =
                   , ..
                   }
 
-hoistPropStorageRM
+hoistPropStorageRW
   :: (forall x. m x -> n x)
   -> ProposalStorage 'RW m alg a
   -> ProposalStorage 'RW n alg a
-hoistPropStorageRM fun ProposalStorage{..} =
+hoistPropStorageRW fun ProposalStorage{..} =
   ProposalStorage { currentHeight      = fun currentHeight
                   , advanceToHeight    = fun . advanceToHeight
                   , retrievePropBlocks = fun . retrievePropBlocks
                   , storePropBlock     = fun . storePropBlock
-                  , allowBlockID       = fun . allowBlockID
+                  , allowBlockID       = \r bid -> fun (allowBlockID r bid)
+                  , blockAtRound       = \h r   -> fun (blockAtRound h r)
+                  }
+
+hoistPropStorageRO
+  :: (forall x. m x -> n x)
+  -> ProposalStorage 'RO m alg a
+  -> ProposalStorage 'RO n alg a
+hoistPropStorageRO fun ProposalStorage{..} =
+  ProposalStorage { currentHeight      = fun currentHeight
+                  , advanceToHeight    = ()
+                  , retrievePropBlocks = fun . retrievePropBlocks
+                  , storePropBlock     = ()
+                  , allowBlockID       = ()
+                  , blockAtRound       = \h r   -> fun (blockAtRound h r)
                   }

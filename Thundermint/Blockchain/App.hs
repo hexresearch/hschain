@@ -289,7 +289,9 @@ makeHeightParametes AppState{..} AppChans{..} = do
         logger InfoS ("Sending precommit for " <> showLS r <> " (" <> showLS b <> ")") ()
         liftIO $ atomically $ writeTChan appChanRx $ RxPreCommit $ unverifySignature svote
     --
-    , acceptBlock = \_ _ -> return ()
+    , acceptBlock = \r bid -> do
+        liftIO $ atomically $ writeTChan appChanTx $ AnnHasProposal (next h) r
+        lift $ allowBlockID appPropStorage r bid 
     --
     , announceHasPreVote   = \sv -> do
         let Vote{..} = signedValue sv

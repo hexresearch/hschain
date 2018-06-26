@@ -19,8 +19,7 @@ import Control.Concurrent   (ThreadId, myThreadId, threadDelay, killThread)
 import Control.Concurrent.STM
 import Codec.Serialise
 import           Data.Monoid       ((<>))
-import           Data.Maybe        (fromMaybe,catMaybes)
--- import           Data.Foldable
+import           Data.Maybe        (mapMaybe)
 import           Data.Function
 import qualified Data.Map        as Map
 import           Data.Map          (Map)
@@ -223,7 +222,9 @@ startPeer
   -> m ()
 startPeer peerCh@PeerChans{..} net@SendRecv{..} = logOnException $ do
   logger InfoS "Starting peer" ()
-  peerSt   <- newPeerStateObj $ hoistBlockStorageRO liftIO blockStorage
+  peerSt   <- newPeerStateObj
+    (hoistBlockStorageRO liftIO blockStorage)
+    (hoistPropStorageRO  liftIO proposalStorage)
   gossipCh <- liftIO newTChanIO
   runConcurrently
     [ peerGossipVotes   peerSt peerCh gossipCh
@@ -250,8 +251,6 @@ peerGossipVotes peerObj PeerChans{..} gossipCh = logOnException $ do
       --
       Lagging p -> do
         mcmt <- case lagPeerStep p of
-          FullStep (Height 0) _ _
-            -> return Nothing -- FIXME: Possible???
           FullStep peerH _ _
             | peerH == h
               -> liftIO $ retrieveLocalCommit blockStorage peerH
@@ -260,14 +259,12 @@ peerGossipVotes peerObj PeerChans{..} gossipCh = logOnException $ do
         --
         case mcmt of
          Just cmt -> do
-           let r         = voteRound $ signedValue $ head $ commitPrecommits cmt
-               cmtVotes  = Map.fromList [ (signedAddr v, unverifySignature v)
+           let cmtVotes  = Map.fromList [ (signedAddr v, unverifySignature v)
                                         | v <- commitPrecommits cmt ]
                -- FIXME: inefficient
            let toSet = Set.fromList
                      . map (address . validatorPubKey)
-                     . catMaybes
-                     . map (validatorByIndex (lagPeerValidators p))
+                     . mapMaybe (validatorByIndex (lagPeerValidators p))
                      . getValidatorIntSet
            let peerVotes = Map.fromSet (const ())
                          $ toSet (lagPeerPrecommits p)
@@ -293,16 +290,15 @@ peerGossipVotes peerObj PeerChans{..} gossipCh = logOnException $ do
               -- FIXME: inefficient
               toSet = Set.fromList
                     . map (address . validatorPubKey)
-                    . catMaybes
-                    . map (validatorByIndex (peerValidators p))
+                    . mapMaybe (validatorByIndex (peerValidators p))
                     . getValidatorIntSet
 
               unknownPV = Map.differenceWith remove knownPV (toSet <$> peerPrevotes   p)
               unknownPC = Map.differenceWith remove knownPC (toSet <$> peerPrecommits p)
           -- Send proposals
           case Map.lookupMin unknownPR of
-            Nothing    -> return ()
-            Just (_,p) -> liftIO $ atomically $ writeTChan gossipCh $ GossipProposal $ unverifySignature p
+            Nothing     -> return ()
+            Just (_,pr) -> liftIO $ atomically $ writeTChan gossipCh $ GossipProposal $ unverifySignature pr
           -- Send prevotes
           case Map.lookupMin . snd =<< Map.lookupMin unknownPV of
             Nothing    -> return ()
@@ -325,27 +321,28 @@ peerGossipBlocks
 peerGossipBlocks peerObj PeerChans{..} gossipCh = logOnException $ do
   logger InfoS "Starting routine for gossiping votes" ()
   forever $ do
-    peer <- getPeerState peerObj
-    case peer of
+    getPeerState peerObj >>= \case
       --
-      Lagging p -> do
-        let FullStep h _ _ = lagPeerStep p
-        mbid <- liftIO $ retrieveBlockID blockStorage h
-        case mbid of
-          Just bid | bid `Set.notMember` lagPeerBlocks p -> do
-                       Just b <- liftIO $ retrieveBlock blockStorage h
-                       logger DebugS ("Gossip: " <> showLS bid) ()
-                       liftIO $ atomically $ writeTChan gossipCh $ GossipBlock b
-          _ -> return ()
+      Lagging p
+        | lagPeerHasProposal p
+        , not (lagPeerHasBlock p)
+          -> do let FullStep h _ _ = lagPeerStep p
+                Just b <- liftIO $ retrieveBlock blockStorage h -- FIXME: Partiality
+                liftIO $ atomically $ writeTChan gossipCh $ GossipBlock b
+        | otherwise -> return ()
       --
       Current p -> do
-        h      <- liftIO $ blockchainHeight blockStorage
-        blocks <- liftIO $ retrievePropBlocks proposalStorage $ next h
-        case Map.lookupMin $ Map.difference blocks $ Map.fromSet (const ()) $ peerBlocks p of
-          Nothing    -> return ()
-          Just (bid,b) -> do
-            logger DebugS ("Gossip: " <> showLS bid) ()
-            liftIO $ atomically $ writeTChan gossipCh $ GossipBlock b
+        let FullStep h r _ = peerStep p
+        mbid <- liftIO $ blockAtRound proposalStorage h r
+        case () of
+           -- Peer has proposal but not block
+          _| Just (b,bid) <- mbid
+           , r `Set.member` peerProposals p
+           , not $ bid `Set.member` peerBlocks p
+             -> do logger DebugS ("Gossip: " <> showLS bid) ()
+                   liftIO $ atomically $ writeTChan gossipCh $ GossipBlock b
+           --
+           | otherwise -> return ()
       -- Nothing to do
       Ahead _ -> return ()
       Unknown -> return ()
@@ -373,14 +370,17 @@ peerReceive peerSt PeerChans{..} SendRecv{..} = logOnException $ do
           GossipPreCommit v -> do liftIO $ atomically $ peerChanRx $ RxPreCommit v
                                   addPrecommit peerSt v
           GossipProposal  p -> do liftIO $ atomically $ peerChanRx $ RxProposal p
-                                  addProposal peerSt p
+                                  addProposal peerSt (propHeight (signedValue p))
+                                                     (propRound  (signedValue p))
           GossipBlock     b -> do liftIO $ atomically $ peerChanRx $ RxBlock b
                                   addBlock peerSt b
           --
           GossipAnn ann -> case ann of
             AnnStep         s     -> advancePeer   peerSt s
+            AnnHasProposal  h r   -> addProposal   peerSt h r
             AnnHasPreVote   h r i -> addPrevoteI   peerSt h r i
             AnnHasPreCommit h r i -> addPrecommitI peerSt h r i
+            AnnHasBlock     h r   -> return ()
         loop
 
 -- | Routine for actually sending data to peers

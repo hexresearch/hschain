@@ -8,9 +8,11 @@ module Thundermint.Store.STM (
 import Codec.Serialise (Serialise)
 import Control.Applicative
 import Control.Monad
+import Control.Monad.Trans.Class
 import Control.Monad.Trans.Maybe
 import Control.Concurrent.STM
 import qualified Data.Map             as Map
+import qualified Data.Set             as Set
 
 import Thundermint.Consensus.Types
 import Thundermint.Crypto
@@ -72,8 +74,10 @@ newSTMPropStorage
   :: (Crypto alg, Serialise a)
   => IO (ProposalStorage 'RW IO alg a)
 newSTMPropStorage = do
-  varH    <- newTVarIO (Height 0)
-  varPBlk <- newTVarIO Map.empty
+  varH    <- newTVarIO (Height 0) -- Current height
+  varPBlk <- newTVarIO Map.empty  -- Proposed blocks
+  varRMap <- newTVarIO Map.empty  -- Map of rounds to block IDs
+  varBids <- newTVarIO Set.empty  -- Allowed block IDs
   return ProposalStorage
     { currentHeight = readTVarIO varH
     --
@@ -81,6 +85,8 @@ newSTMPropStorage = do
         h0 <- readTVar varH
         when (h /= h0) $ do writeTVar varH    h
                             writeTVar varPBlk Map.empty
+                            writeTVar varRMap Map.empty
+                            writeTVar varBids Set.empty
     --
     , retrievePropBlocks = \height -> atomically $ do
         h <- readTVar varH
@@ -91,7 +97,19 @@ newSTMPropStorage = do
         h <- readTVar varH
         when (headerHeight (blockHeader blk) == h) $ do
           let bid = blockHash blk
-          modifyTVar' varPBlk $ Map.insert bid blk
+          bids <- readTVar varBids
+          when (bid `Set.member` bids) $
+            modifyTVar' varPBlk $ Map.insert bid blk
     --
-    , allowBlockID = \_ -> return ()
+    , allowBlockID = \r bid -> atomically $ do
+        modifyTVar' varRMap $ Map.insert r bid
+        modifyTVar' varBids $ Set.insert bid
+    --
+    , blockAtRound = \h r -> atomically $ do
+        h0 <- readTVar varH
+        runMaybeT $ do
+          guard (h == h0)
+          Just bid <- fmap (Map.lookup r)   $ lift $ readTVar varRMap
+          Just b   <- fmap (Map.lookup bid) $ lift $ readTVar varPBlk
+          return (b,bid)
     }

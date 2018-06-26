@@ -22,11 +22,11 @@ module Thundermint.P2P.PeerState (
   , addPrecommit
   , addPrecommitI
   , addBlock
+  , addBlockHR
   ) where
 
 import Codec.Serialise (Serialise)
 import Control.Concurrent hiding (modifyMVar_)
-import Control.Monad
 import Control.Monad.Catch
 import Control.Monad.IO.Class
 
@@ -61,7 +61,8 @@ data LaggingPeer alg a = LaggingPeer
   , lagPeerValidators  :: !(ValidatorSet alg)    -- ^ Set of validators for peer's height
   , lagPeerPrecommits  :: !ValidatorISet         -- ^ Precommits that peer have
   , lagPeerHasProposal :: !Bool                  -- ^ Whether peer have proposal
-  , lagPeerBlocks      :: !(Set (BlockID alg a)) -- ^ Whether peer have block
+  , lagPeerHasBlock    :: !Bool                  -- ^ Whether peer have block
+  , lagPeerBlockID     :: BlockID alg a          -- ^ ID of commited block
   }
 
 -- | Peer which is at the same height as we. Here state is more
@@ -95,46 +96,61 @@ getPeerHeight p = do FullStep h _ _ <- getPeerStep p
 -- | Mutable reference to state of peer.It's safe to mutate
 --   concurrently
 data PeerStateObj m alg a = PeerStateObj
-  (BlockStorage 'RO m alg a)
+  (BlockStorage    'RO m alg a)
+  (ProposalStorage 'RO m alg a)
   (MVar (PeerState alg a))
 
 
 -- | Create new peer state with default state
-newPeerStateObj :: MonadIO m => BlockStorage 'RO m alg a -> m (PeerStateObj m alg a)
-newPeerStateObj storage = do
+newPeerStateObj
+  :: MonadIO m
+  => BlockStorage    'RO m alg a
+  -> ProposalStorage 'RO m alg a
+  -> m (PeerStateObj m alg a)
+newPeerStateObj storage prop = do
   var <- liftIO $ newMVar Unknown
-  return $ PeerStateObj storage var
+  return $ PeerStateObj storage prop var
 
 -- | Obtain current state of peer
 getPeerState :: (MonadMask m, MonadIO m)
              => PeerStateObj m alg a -> m (PeerState alg a)
-getPeerState (PeerStateObj _ var)
+getPeerState (PeerStateObj _ _ var)
   = withMVarM var return
 
 ----------------------------------------------------------------
 
 -- | Local state increased to height H. Update our opinion about
 --   peer's state accordingly
-advanceOurHeight :: (MonadIO m, MonadMask m)
-                 => PeerStateObj m alg a -> Height -> m ()
-advanceOurHeight (PeerStateObj BlockStorage{..} var) ourH =
+advanceOurHeight
+  :: (MonadIO m, MonadMask m)
+  => PeerStateObj m alg a
+  -> Height
+  -> m ()
+advanceOurHeight (PeerStateObj BlockStorage{..} _ var) ourH =
+  -- Since we (possibly) changed our height following may happen:
   modifyMVar_ var $ \peer -> case peer of
+    -- Lagging peer stays lagging
     Lagging _ -> return peer
+    --
     Current p
+      -- Current peer may become lagging if we increase our height
       | FullStep h _ _ <- peerStep p
-      , h /= ourH
+      , h < ourH
         -> do Just vals <- retrieveValidatorSet h
               Just r    <- retrieveCommitRound  h
+              Just bid  <- retrieveBlockID      h
               return $ Lagging LaggingPeer
-                { lagPeerStep        = FullStep h r StepNewHeight
+                { lagPeerStep        = peerStep p
                 , lagPeerCommitR     = r
                 , lagPeerValidators  = vals
                 , lagPeerPrecommits  = emptyValidatorISet $ validatorSetSize vals
-                , lagPeerHasProposal = False
-                , lagPeerBlocks      = Set.empty
+                , lagPeerHasProposal = r   `Set.member` peerProposals p
+                , lagPeerHasBlock    = bid `Set.member` peerBlocks p
+                , lagPeerBlockID     = bid
                 }
-      | otherwise
-        -> return peer
+      -- No change otherwise
+      | otherwise -> return peer
+    -- We may catch up to the peer
     Ahead step@(FullStep h _ _)
       | h == ourH
         -> do Just vals <- retrieveValidatorSet h
@@ -154,69 +170,71 @@ advancePeer :: (MonadIO m, MonadMask m)
             => PeerStateObj m alg a
             -> FullStep
             -> m ()
-advancePeer (PeerStateObj BlockStorage{..} var) (FullStep h r _)
+advancePeer (PeerStateObj BlockStorage{..} _ var) step@(FullStep h _ _)
   = modifyMVar_ var modify
   where
     modify peer
       -- Don't go back.
       | Just s <- getPeerStep peer
-      , FullStep h r StepNewHeight <= s
+      , step <= s
       = return peer
       -- If update don't change height only advance step of peer
       | Just h0 <- getPeerHeight peer
       , h0 == h
       = case peer of
-          Lagging p -> return $ Lagging p { lagPeerStep = FullStep h r StepNewHeight }
-          Current p -> return $ Current p { peerStep    = FullStep h r StepNewHeight }
-          Ahead   _ -> return $ Ahead $ FullStep h r StepNewHeight
+          Lagging p -> return $ Lagging p { lagPeerStep = step }
+          Current p -> return $ Current p { peerStep    = step }
+          Ahead   _ -> return $ Ahead step
           Unknown   -> return Unknown
       -- Otherwise we need to set new state of peer
       | otherwise
-      = do ourH  <- next <$> blockchainHeight
+      = do ourH <- next <$> blockchainHeight
            case compare h ourH of
              -- FIXME: valid storage MUST return valid answer in that
              --        case but we should handle Nothing case properly
+             --        (panic)
              LT -> do Just vals <- retrieveValidatorSet h
-                      Just r    <- if h == Height 0
-                                   then return (Just (Round 0))
-                                   else retrieveCommitRound h
+                      Just cmtR <- retrieveCommitRound  h
+                      Just bid  <- retrieveBlockID      h
                       return $ Lagging LaggingPeer
-                        { lagPeerStep        = FullStep h r StepNewHeight
-                        , lagPeerCommitR     = r
+                        { lagPeerStep        = step
+                        , lagPeerCommitR     = cmtR
                         , lagPeerValidators  = vals
                         , lagPeerPrecommits  = emptyValidatorISet $ validatorSetSize vals
                         , lagPeerHasProposal = False
-                        , lagPeerBlocks      = Set.empty
+                        , lagPeerHasBlock    = False
+                        , lagPeerBlockID     = bid
                         }
              EQ -> do Just vals <- retrieveValidatorSet h
                       return $ Current CurrentPeer
-                        { peerStep       = FullStep h r StepNewHeight
+                        { peerStep       = step
                         , peerValidators = vals
                         , peerPrevotes   = Map.empty
                         , peerPrecommits = Map.empty
                         , peerProposals  = Set.empty
                         , peerBlocks     = Set.empty
                         }
-             GT -> return $ Ahead $ FullStep h r StepNewHeight
+             GT -> return $ Ahead step
 
 -- | Add proposal to tracked state of peer
 addProposal :: (MonadIO m, MonadMask m)
             => PeerStateObj m alg a
-            -> Signed ty alg (Proposal alg a)
+            -> Height
+            -> Round
             -> m ()
-addProposal (PeerStateObj _ var) sp@(signedValue -> Proposal{..}) =
+addProposal (PeerStateObj _ _ var) hProp rProp =
   modifyMVar_ var $ \peer -> case peer of
     Lagging p
       | FullStep h _ _ <- lagPeerStep p
-      , h == propHeight
-      , propRound == lagPeerCommitR p
+      , hProp == h
+      , rProp == lagPeerCommitR p
         -> return $ Lagging p { lagPeerHasProposal = True }
       | otherwise
         -> return peer
     Current p
       | FullStep h _ _ <- peerStep p
-      , h == propHeight
-        -> return $ Current p { peerProposals = Set.insert propRound (peerProposals p) }
+      , hProp == h
+        -> return $ Current p { peerProposals = Set.insert rProp (peerProposals p) }
       | otherwise
         -> return peer
     Ahead{}   -> return peer
@@ -241,9 +259,9 @@ addPrevoteWrk :: (MonadIO m, MonadMask m)
               => PeerStateObj m alg a
               -> Height -> Round -> (ValidatorSet alg -> Maybe (ValidatorIdx alg))
               -> m ()
-addPrevoteWrk (PeerStateObj _ var) h r getI =
+addPrevoteWrk (PeerStateObj _ _ var) h r getI =
   modifyMVar_ var $ \peer -> case peer of
-    -- We only send precommits to lagging peers
+    -- We send only precommits to lagging peers
     Lagging _ -> return peer
     -- Update current peer
     Current p
@@ -286,7 +304,7 @@ addPrecommitWrk :: (MonadIO m, MonadMask m)
                 => PeerStateObj m alg a
                 -> Height -> Round -> (ValidatorSet alg -> Maybe (ValidatorIdx alg))
                 -> m ()
-addPrecommitWrk (PeerStateObj _ var) h r getI =
+addPrecommitWrk (PeerStateObj _ _ var) h r getI =
   modifyMVar_ var $ \peer -> case peer of
     --
     Lagging p
@@ -322,12 +340,40 @@ addBlock :: (MonadIO m, MonadMask m, Crypto alg, Serialise a)
          => PeerStateObj m alg a
          -> Block alg a
          -> m ()
-addBlock  (PeerStateObj _ var) b =
+addBlock (PeerStateObj _ _ var) b =
   modifyMVar_ var $ \peer -> case peer of
-    Lagging p -> return $ Lagging p { lagPeerBlocks = Set.insert (blockHash b) (lagPeerBlocks p) }
-    Current p -> return $ Current p { peerBlocks    = Set.insert (blockHash b) (peerBlocks p) }
+    Lagging p
+      | bid == lagPeerBlockID p -> return $ Lagging p { lagPeerHasBlock = True }
+      | otherwise               -> return peer
+    Current p -> return $ Current p { peerBlocks = Set.insert bid (peerBlocks p) }
     Ahead _   -> return peer
     Unknown   -> return Unknown
+  where
+    bid = blockHash b
+
+addBlockHR :: (MonadIO m, MonadMask m)
+           => PeerStateObj m alg a
+           -> Height
+           -> Round
+           -> m ()
+addBlockHR (PeerStateObj _ ProposalStorage{..} var) h r =
+  modifyMVar_ var $ \peer -> case peer of
+    Lagging p
+      | FullStep hP _ _ <- lagPeerStep p
+      , h == hP
+      , r == lagPeerCommitR p
+        -> return $ Lagging p { lagPeerHasBlock = True }
+      | otherwise
+        -> return peer
+    Current p
+      | FullStep hP _ _ <- peerStep p
+      , h == hP
+        -> blockAtRound h r >>= \case
+             Nothing      -> return peer
+             Just (_,bid) -> return $ Current p { peerBlocks = Set.insert bid (peerBlocks p) }
+      | otherwise -> return peer
+    Ahead _ -> return peer
+    Unknown -> return peer
 
 ----------------------------------------------------------------
 
