@@ -20,13 +20,15 @@ import Control.Concurrent.STM
 import Codec.Serialise
 import           Data.Monoid       ((<>))
 import           Data.Maybe        (mapMaybe)
+import           Data.Foldable
 import           Data.Function
 import qualified Data.Map        as Map
 import           Data.Map          (Map)
 import qualified Data.Set        as Set
 import           Data.Set          (Set)
-import Katip        (showLS)
-import GHC.Generics (Generic)
+import Katip         (showLS)
+import System.Random (randomRIO)
+import GHC.Generics  (Generic)
 
 
 import Thundermint.Crypto
@@ -245,14 +247,14 @@ peerGossipVotes
 peerGossipVotes peerObj PeerChans{..} gossipCh = logOnException $ do
   logger InfoS "Starting routine for gossiping votes" ()
   forever $ do
-    h    <- liftIO $ blockchainHeight blockStorage
+    bchH <- liftIO $ blockchainHeight blockStorage
     peer <- getPeerState peerObj
     case peer of
       --
       Lagging p -> do
         mcmt <- case lagPeerStep p of
           FullStep peerH _ _
-            | peerH == h
+            | peerH == bchH
               -> liftIO $ retrieveLocalCommit blockStorage peerH
             | otherwise
               -> liftIO $ retrieveCommit blockStorage peerH
@@ -275,38 +277,47 @@ peerGossipVotes peerObj PeerChans{..} gossipCh = logOnException $ do
 
       --
       Current p -> liftIO (atomically consensusState) >>= \case
-        Nothing               -> return ()
-        Just (h',_) | h' /= next h -> return ()
-        Just (_,tm)           -> do
-          let knownPR = smProposals tm
-              knownPV = toPlainMap $ smPrevotesSet   tm
-              knownPC = toPlainMap $ smPrecommitsSet tm
-              remove votes addrs
-                | Map.null d = Nothing
-                | otherwise  = Just d
-                where d = Map.difference votes (Map.fromSet (const ()) addrs)
-              --
-              unknownPR = Map.difference knownPR (Map.fromSet (const ()) (peerProposals p))
-              -- FIXME: inefficient
-              toSet = Set.fromList
+        Nothing                       -> return ()
+        Just (h',_) | h' /= next bchH -> return ()
+        Just (_,tm)                   -> do
+          let FullStep _ r _ = peerStep p
+              doGosip        = liftIO . atomically . writeTChan gossipCh
+          -- FIXME: poor performance. Avoid going through map!
+          let toSet = Set.fromList
                     . map (address . validatorPubKey)
                     . mapMaybe (validatorByIndex (peerValidators p))
                     . getValidatorIntSet
 
-              unknownPV = Map.differenceWith remove knownPV (toSet <$> peerPrevotes   p)
-              unknownPC = Map.differenceWith remove knownPC (toSet <$> peerPrecommits p)
           -- Send proposals
-          case Map.lookupMin unknownPR of
-            Nothing     -> return ()
-            Just (_,pr) -> liftIO $ atomically $ writeTChan gossipCh $ GossipProposal $ unverifySignature pr
+          case () of
+            _| not $ r `Set.member` peerProposals p
+             , Just pr <- r `Map.lookup` smProposals tm
+               -> doGosip $ GossipProposal $ unverifySignature pr
+             | otherwise -> return ()
           -- Send prevotes
-          case Map.lookupMin . snd =<< Map.lookupMin unknownPV of
-            Nothing    -> return ()
-            Just (_,v) -> liftIO $ atomically $ writeTChan gossipCh $ GossipPreVote $ unverifySignature v
+          case () of
+            _| Just localPV <- Map.lookup r $ toPlainMap $ smPrevotesSet tm
+             , unknown      <- Map.difference localPV peerPV
+             , not (Map.null unknown)
+               -> do let n = Map.size unknown
+                     i <- liftIO $ randomRIO (0,n-1)
+                     doGosip $ GossipPreVote $ unverifySignature $ toList unknown !! i
+             | otherwise -> return ()
+             where
+               peerPV = maybe Map.empty (Map.fromSet (const ()) . toSet)
+                      $ Map.lookup r $ peerPrevotes p
           -- Send precommits
-          case Map.lookupMin . snd =<< Map.lookupMin unknownPC of
-            Nothing    -> return ()
-            Just (_,v) -> liftIO $ atomically $ writeTChan gossipCh $ GossipPreCommit $ unverifySignature v
+          case () of
+            _| Just localPC <- Map.lookup r $ toPlainMap $ smPrecommitsSet tm
+             , unknown      <- Map.difference localPC peerPC
+             , not (Map.null unknown)
+               -> do let n = Map.size unknown
+                     i <- liftIO $ randomRIO (0,n-1)
+                     doGosip $ GossipPreCommit $ unverifySignature $ toList unknown !! i
+             | otherwise -> return ()
+             where
+               peerPC = maybe Map.empty (Map.fromSet (const ()) . toSet)
+                      $ Map.lookup r $ peerPrecommits p
       Ahead   _ -> return ()
       Unknown   -> return ()
     liftIO $ threadDelay 25e3
@@ -380,7 +391,7 @@ peerReceive peerSt PeerChans{..} SendRecv{..} = logOnException $ do
             AnnHasProposal  h r   -> addProposal   peerSt h r
             AnnHasPreVote   h r i -> addPrevoteI   peerSt h r i
             AnnHasPreCommit h r i -> addPrecommitI peerSt h r i
-            AnnHasBlock     h r   -> return ()
+            AnnHasBlock     h r   -> addBlockHR    peerSt h r
         loop
 
 -- | Routine for actually sending data to peers
