@@ -1,7 +1,7 @@
-{ mkDerivation, async, base, base16-bytestring, base58-bytestring
+{ mkDerivation, aeson, async, base, base16-bytestring, base58-bytestring
 , bytestring , containers, criterion, cryptonite, deepseq, exceptions, groom
-, katip, network , random, serialise, stdenv, stm, sqlite-simple, tasty
-, tasty-hunit , time, transformers
+, katip, network, random, serialise, stdenv, stm, sqlite-simple, tasty
+, tasty-hunit, text, time, transformers
 }:
 mkDerivation {
   pname = "thundermint";
@@ -10,11 +10,11 @@ mkDerivation {
   isLibrary = true;
   isExecutable = true;
   libraryHaskellDepends = [
-    base base58-bytestring bytestring containers
-    exceptions groom katip network random serialise stm sqlite-simple transformers
+    aeson base base58-bytestring bytestring containers exceptions
+    groom katip network random serialise stm sqlite-simple transformers text
   ];
   executableHaskellDepends = [
-    base bytestring containers cryptonite
+    aeson base bytestring containers cryptonite text
   ];
   testHaskellDepends = [
     async base base58-bytestring bytestring stm tasty tasty-hunit

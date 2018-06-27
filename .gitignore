@@ -6,3 +6,7 @@ result
 .stack-work
 .cabal-sandbox
 cabal.sandbox.config
+.terraform
+terraform.tfstate
+terraform.tfstate.backup
+logs
