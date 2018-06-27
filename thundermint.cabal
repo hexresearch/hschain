@@ -18,6 +18,7 @@ Library
   Default-Language:    Haskell2010
   Build-Depends:       base              >=4.9 && <5
                      , async             >=2.2.1
+                     , aeson
                      , bytestring        >=0.10
                      , base58-bytestring >=0.1
                      , containers        >=0.5.9
@@ -28,6 +29,7 @@ Library
                      , stm               >=2.4
                      , serialise         >=0.2
                      , sqlite-simple
+                     , text
                      , transformers      >=0.5
                      --
                      , network           >=2.7.0.0
@@ -99,6 +101,20 @@ Executable thundermint-simple-network
                      , network    >=2.7.0.0
   hs-source-dirs:      exe
   Main-is:             network.hs
+
+Executable thundermint-node
+  Ghc-options:         -Wall -threaded -Wno-orphans
+  Default-Language:    Haskell2010
+  Build-Depends:       base       >=4.9 && <5
+                     , thundermint
+                     , aeson
+                     , bytestring >=0.10
+                     , base58-bytestring >=0.1
+                     , containers >=0.5.7
+                     , network    >=2.7.0.0
+                     , text
+  hs-source-dirs:      exe
+  Main-is:             node.hs
 
 -- Test suite
 Test-suite thundermint-tests

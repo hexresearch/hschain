@@ -1,5 +1,5 @@
-{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE DataKinds         #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeFamilies      #-}
 
@@ -7,14 +7,17 @@ module Thundermint.Crypto.Ed25519 where
 
 import Thundermint.Crypto
 
-import qualified Codec.Serialise as CBOR
-import Crypto.Error        (throwCryptoError,CryptoFailable(..))
-import Crypto.Hash         (Digest, SHA512, hash)
-import Crypto.Random.Types (MonadRandom)
-import Data.ByteArray      (ByteArrayAccess, convert)
-import Data.ByteString     (ByteString)
+import Crypto.Error          (CryptoFailable(..), eitherCryptoError, throwCryptoError)
+import Crypto.Hash           (Digest, SHA512, hash)
+import Crypto.Random.Types   (MonadRandom)
+import Data.Aeson            (FromJSON, ToJSON, Value(..), parseJSON, toJSON)
+import Data.ByteArray        (ByteArrayAccess, convert)
+import Data.ByteString       (ByteString)
+import Data.ByteString.Char8 (unpack)
 
+import qualified Codec.Serialise       as CBOR
 import qualified Crypto.PubKey.Ed25519 as Ed
+import qualified Data.Text.Encoding    as T
 
 sha512 :: ByteString -> ByteString
 sha512 = convert . asSHA512 . hash
@@ -34,6 +37,24 @@ instance CBOR.Serialise (PublicKey Ed25519_SHA512) where
                 CryptoPassed pk -> return (PublicKey pk)
                 CryptoFailed e  -> fail (show e)
 
+instance Show (PrivKey Ed25519_SHA512) where
+  show (PrivKey k) = unpack $ encodeBase58 $ convert k
+
+instance ToJSON (PrivKey Ed25519_SHA512) where
+  toJSON (PrivKey k) = String
+                     $ T.decodeUtf8
+                     $ encodeBase58
+                     $ convert k
+
+instance FromJSON (PrivKey Ed25519_SHA512) where
+  parseJSON (String s) =
+    case decodeBase58 $ T.encodeUtf8 s of
+      Nothing -> fail  "Incorrect Base58 encoding for bs"
+      Just bs -> either (fail.show) (return.PrivKey)
+                 $ eitherCryptoError
+                 $ Ed.secretKey bs
+
+  parseJSON _          = fail "Expect PrivKey"
 
 -- | We assume that there's
 instance Crypto Ed25519_SHA512 where
