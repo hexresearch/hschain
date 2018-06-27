@@ -24,6 +24,7 @@ Library
                      , deepseq           >=1.4
                      , exceptions        >=0.10.0
                      , memory            >=0.14.14
+                     , random
                      , stm               >=2.4
                      , serialise         >=0.2
                      , sqlite-simple
