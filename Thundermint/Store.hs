@@ -152,6 +152,9 @@ data ProposalStorage rw m alg a = ProposalStorage
     --   all stored data is discarded
   , retrievePropBlocks  :: Height -> m (Map (BlockID alg a) (Block alg a))
     -- ^ Retrieve blocks
+  , waitForBlockID      :: BlockID alg a -> m (Block alg a)
+    -- ^ Wait for block with given block ID. Call will block until
+    --   block appears in storage.
   , storePropBlock      :: Writable rw (Block alg a -> m ())
     -- ^ Store block proposed at given height. If height is different
     --   from height we are at block is ignored.
@@ -178,6 +181,7 @@ hoistPropStorageRW fun ProposalStorage{..} =
   ProposalStorage { currentHeight      = fun currentHeight
                   , advanceToHeight    = fun . advanceToHeight
                   , retrievePropBlocks = fun . retrievePropBlocks
+                  , waitForBlockID     = fun . waitForBlockID
                   , storePropBlock     = fun . storePropBlock
                   , allowBlockID       = \r bid -> fun (allowBlockID r bid)
                   , blockAtRound       = \h r   -> fun (blockAtRound h r)
@@ -191,6 +195,7 @@ hoistPropStorageRO fun ProposalStorage{..} =
   ProposalStorage { currentHeight      = fun currentHeight
                   , advanceToHeight    = ()
                   , retrievePropBlocks = fun . retrievePropBlocks
+                  , waitForBlockID     = fun . waitForBlockID
                   , storePropBlock     = ()
                   , allowBlockID       = ()
                   , blockAtRound       = \h r   -> fun (blockAtRound h r)

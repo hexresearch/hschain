@@ -109,10 +109,7 @@ decideNewBlock appSt@AppState{..} appCh@AppChans{..} lastCommt = do
       Just Tranquility    -> loop tm
       Just Misdeed        -> loop tm
       Just (DoCommit cmt) -> do
-        blocks <- retrievePropBlocks appPropStorage $ currentH hParam
-        b <- case commitBlockID cmt `Map.lookup` blocks of
-               Just x  -> return x
-               Nothing -> error $ "Cannot commit: " ++ show cmt
+        b <- waitForBlockID appPropStorage $ commitBlockID cmt
         storeCommit appStorage appValidatorsSet cmt b
         advanceToHeight appPropStorage . next =<< blockchainHeight appStorage
         return cmt

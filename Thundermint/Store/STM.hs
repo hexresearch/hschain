@@ -93,6 +93,12 @@ newSTMPropStorage = do
         if h == height then readTVar varPBlk
                        else return Map.empty
     --
+    , waitForBlockID = \bid -> atomically $ do
+        bmap <- readTVar varPBlk
+        case bid `Map.lookup` bmap of
+          Nothing -> retry
+          Just b  -> return b
+    --
     , storePropBlock = \blk -> atomically $ do
         h <- readTVar varH
         when (headerHeight (blockHeader blk) == h) $ do
