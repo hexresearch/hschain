@@ -91,7 +91,7 @@ main = do
                                                ["K_" ++ show (n :: Int) | n <- [1 ..]] 
                                   return [(k,i)]
                     --
-                    , appValidator     = val
+                    , appValidator     = Just val
                     , appValidatorsSet = validatorSet
                     , appMaxHeight     = Just (Height 9)
                     }

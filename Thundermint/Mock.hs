@@ -22,11 +22,14 @@ import Control.Monad
 import Control.Monad.IO.Class
 import Data.Foldable
 import Data.Map                 (Map)
+import Data.Word                (Word64)
 import qualified Data.ByteString        as BS
 import qualified Data.ByteString.Base58 as Base58
 import qualified Data.ByteString.Char8  as BC8
 import qualified Data.Map               as Map
 import qualified Katip
+import System.Random (randomIO)
+import Text.Printf
 
 import Thundermint.Crypto
 import Thundermint.Crypto.Containers
@@ -112,10 +115,15 @@ startNode
   -> IO ()
 startNode net addrs appState@AppState{..} = do
   -- Initialize logging
-  scribe <- Katip.mkFileScribe
-    ("logs/" ++ let Address nm = address $ publicKey $ validatorPrivKey appValidator
-                in BC8.unpack (Base58.encodeBase58 Base58.bitcoinAlphabet nm)
-    ) Katip.DebugS Katip.V2
+  logfile <- case appValidator of
+    Just (PrivValidator pk) ->
+      let Address nm = address $ publicKey pk
+      in return $ "val-" ++ BC8.unpack (Base58.encodeBase58 Base58.bitcoinAlphabet nm)
+    Nothing -> do
+      w1 <- randomIO
+      w2 <- randomIO
+      return $ printf "node-%016x-%016x" (w1 :: Word64) (w2 :: Word64)
+  scribe <- Katip.mkFileScribe ("logs/" ++ logfile) Katip.DebugS Katip.V2
   logenv <- Katip.registerScribe "log" scribe Katip.defaultScribeSettings
         =<< Katip.initLogEnv "TM" "DEV"
   flip finally (Katip.closeScribes logenv) $ do

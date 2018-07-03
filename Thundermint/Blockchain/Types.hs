@@ -44,8 +44,8 @@ data AppState m alg a = AppState
   , appBlockGenerator :: m a
     -- ^ Generate fresh block for proposal. It's called each time we
     --   need to create new block for proposal
-  , appValidator      :: PrivValidator alg
-    -- ^ Private validator for node
+  , appValidator      :: Maybe (PrivValidator alg)
+    -- ^ Private validator for node. It's @Nothing@ if node is not a validator
   , appValidationFun  :: a -> m Bool
     -- ^ Function for validation of proposed block data.
   , appValidatorsSet  :: ValidatorSet alg

@@ -62,13 +62,16 @@ loadAllBlocks storage = go (Height 0)
 main :: IO ()
 main = do
   let validatorSet = makeValidatorSetFromPriv validators
+      nodeSet      = Map.fromList
+                   $ zip [0::Int ..]
+                   $ foldr (\v xs -> Just v : Nothing : xs) [] validators
   net   <- newMockNet
   nodes <- sequence
     [ do storage     <- newSTMBlockStorage genesisBlock validatorSet
          propStorage <- newSTMPropStorage
          let loadAllKeys = Set.fromList . map fst . concatMap blockData <$> loadAllBlocks storage
          return ( createMockNode net "50000" addr
-                , map (,"50000") $ connectRing validators addr
+                , map (,"50000") $ connectRing nodeSet addr
                 , AppState
                     { appStorage        = storage
                     , appPropStorage    = propStorage
@@ -91,7 +94,7 @@ main = do
                     , appMaxHeight     = Just (Height 9)
                     }
                 )
-    | (i, (addr, val)) <- [0::Int ..] `zip` Map.toList validators
+    | (i, (addr, val)) <- [0::Int ..] `zip` Map.toList nodeSet
     ]
   st <- runNodeSet nodes
   forM_ st $ \s -> do

@@ -223,8 +223,9 @@ makeHeightParametes AppState{..} AppChans{..} = do
     { currentH        = next h
       -- FIXME: this is some random algorithms that should probably
       --        work (for some definition of work)
-    , areWeProposers  = \r ->
-        proposerChoice r == address (publicKey (validatorPrivKey appValidator))
+    , areWeProposers  = \r -> case appValidator of
+        Nothing                 -> False
+        Just (PrivValidator pk) -> proposerChoice r == address (publicKey pk)
     , proposerForRound = proposerChoice
     --
     , validateBlock = \bid -> do
@@ -241,22 +242,22 @@ makeHeightParametes AppState{..} AppChans{..} = do
                    True  -> return GoodProposal
                    False -> return InvalidProposal
     --
-    , broadcastProposal = \r bid lockInfo -> do
-        let pk   = validatorPrivKey appValidator
-            prop = Proposal { propHeight    = next h
-                            , propRound     = r
-                            , propTimestamp = Time 0
-                            , propPOL       = lockInfo
-                            , propBlockID   = bid
-                            }
-            sprop  = signValue pk prop
-        blockMap <- lift $ retrievePropBlocks appPropStorage h
-        logger InfoS ("Sending proposal for " <> showLS r <> " " <> showLS bid) ()
-        liftIO $ atomically $ do
-          writeTChan appChanRx (RxProposal $ unverifySignature sprop)
-          case bid `Map.lookup` blockMap of
-            Nothing -> return ()
-            Just b  -> writeTChan appChanRx (RxBlock b)
+    , broadcastProposal = \r bid lockInfo ->
+        forM_ appValidator $ \(PrivValidator pk) -> do
+          let prop = Proposal { propHeight    = next h
+                              , propRound     = r
+                              , propTimestamp = Time 0
+                              , propPOL       = lockInfo
+                              , propBlockID   = bid
+                              }
+              sprop  = signValue pk prop
+          blockMap <- lift $ retrievePropBlocks appPropStorage h
+          logger InfoS ("Sending proposal for " <> showLS r <> " " <> showLS bid) ()
+          liftIO $ atomically $ do
+            writeTChan appChanRx (RxProposal $ unverifySignature sprop)
+            case bid `Map.lookup` blockMap of
+              Nothing -> return ()
+              Just b  -> writeTChan appChanRx (RxBlock b)
     --
     , scheduleTimeout = \t@(Timeout _ (Round r) _) -> do
         logger InfoS ("Scheduling timeout: " <> showLS t) ()
@@ -266,28 +267,28 @@ makeHeightParametes AppState{..} AppChans{..} = do
           threadDelay $ baseT + delta * fromIntegral r
           atomically $ writeTChan appChanRx $ RxTimeout t
     --
-    , castPrevote     = \r b -> do
-        let pk   = validatorPrivKey appValidator
-            vote = Vote { voteHeight  = next h
-                        , voteRound   = r
-                        , voteTime    = Time 0
-                        , voteBlockID = b
-                        }
-            svote  = signValue pk vote
-        logger InfoS ("Sending prevote for " <> showLS r <> " (" <> showLS b <> ")") ()
-        liftIO $ atomically $
-          writeTChan appChanRx (RxPreVote $ unverifySignature svote)
+    , castPrevote     = \r b ->
+        forM_ appValidator $ \(PrivValidator pk) -> do
+          let vote = Vote { voteHeight  = next h
+                          , voteRound   = r
+                          , voteTime    = Time 0
+                          , voteBlockID = b
+                          }
+              svote  = signValue pk vote
+          logger InfoS ("Sending prevote for " <> showLS r <> " (" <> showLS b <> ")") ()
+          liftIO $ atomically $
+            writeTChan appChanRx (RxPreVote $ unverifySignature svote)
     --
-    , castPrecommit   = \r b -> do
-        let pk   = validatorPrivKey appValidator
-            vote = Vote { voteHeight  = next h
-                        , voteRound   = r
-                        , voteTime    = Time 0
-                        , voteBlockID = b
-                        }
-            svote  = signValue pk vote
-        logger InfoS ("Sending precommit for " <> showLS r <> " (" <> showLS b <> ")") ()
-        liftIO $ atomically $ writeTChan appChanRx $ RxPreCommit $ unverifySignature svote
+    , castPrecommit   = \r b ->
+        forM_ appValidator $ \(PrivValidator pk) -> do
+          let vote = Vote { voteHeight  = next h
+                          , voteRound   = r
+                          , voteTime    = Time 0
+                          , voteBlockID = b
+                          }
+              svote  = signValue pk vote
+          logger InfoS ("Sending precommit for " <> showLS r <> " (" <> showLS b <> ")") ()
+          liftIO $ atomically $ writeTChan appChanRx $ RxPreCommit $ unverifySignature svote
     --
     , acceptBlock = \r bid -> do
         liftIO $ atomically $ writeTChan appChanTx $ AnnHasProposal (next h) r
