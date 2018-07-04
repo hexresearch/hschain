@@ -1,8 +1,10 @@
-{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DataKinds  #-}
+{-# LANGUAGE LambdaCase #-}
 -- |
 module Thundermint.Store.STM (
     newSTMBlockStorage
   , newSTMPropStorage
+  , newMempool
   ) where
 
 import Codec.Serialise (Serialise)
@@ -11,8 +13,10 @@ import Control.Monad
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Maybe
 import Control.Concurrent.STM
+import Data.Foldable
 import qualified Data.Map             as Map
 import qualified Data.Set             as Set
+import qualified Data.Sequence        as Seq
 
 import Thundermint.Consensus.Types
 import Thundermint.Crypto
@@ -118,4 +122,38 @@ newSTMPropStorage = do
           Just bid <- fmap (Map.lookup r)   $ lift $ readTVar varRMap
           Just b   <- fmap (Map.lookup bid) $ lift $ readTVar varPBlk
           return (b,bid)
+    }
+
+newMempool
+  :: ()
+  => (tx -> IO Bool)
+  -> IO (Mempool IO tx)
+newMempool validation = do
+  varFIFO <- newTVarIO Seq.empty
+  varCnt  <- newTVarIO (0 :: Int)
+  return Mempool
+    { takeNTransactiona = \mn -> atomically $ do
+        txs <- readTVar varFIFO
+        let (pick,leave) = case mn of
+              Nothing -> (txs,Seq.empty)
+              Just n  -> Seq.splitAt n txs
+        writeTVar varFIFO leave
+        modifyTVar' varCnt (+ Seq.length pick)
+        return $ toList pick
+    --
+    , getMempoolCursor = atomically $ do
+        varN <- newTVar =<< readTVar varCnt
+        return MempoolCursor
+          { pushTransaction = \tx -> validation tx >>= \case
+              False -> return ()
+              True  -> atomically $ modifyTVar' varFIFO (Seq.|> tx)
+          , advanceCursor = atomically $ do
+              off <- readTVar varCnt
+              i   <- readTVar varN
+              txs <- readTVar varFIFO
+              case (i - off) `Seq.lookup` txs of
+                Nothing -> return Nothing
+                Just tx -> do modifyTVar varN (+1)
+                              return (Just tx)
+          }
     }
