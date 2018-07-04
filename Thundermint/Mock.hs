@@ -108,12 +108,13 @@ connectRing vals addr =
 
 -- | Start node which will now run consensus algorithm
 startNode
-  :: (Ord addr, Show addr, Crypto alg, Serialise a, Show a)
+  :: (Ord addr, Show addr, Crypto alg, Serialise a, Serialise tx, Show a)
   => NetworkAPI sock addr
   -> [addr]
   -> AppState IO alg a
+  -> Mempool IO tx
   -> IO ()
-startNode net addrs appState@AppState{..} = do
+startNode net addrs appState@AppState{..} mp = do
   -- Initialize logging
   logfile <- case appValidator of
     Just (PrivValidator pk) ->
@@ -132,6 +133,7 @@ startNode net addrs appState@AppState{..} = do
                    $ startPeerDispatcher net addrs appCh
                        (makeReadOnly   appStorage)
                        (makeReadOnlyPS appPropStorage)
+                       mp
     withAsync netRoutine $ \_ ->
       runLoggerT "consensus" logenv
         $ runApplication (hoistAppState liftIO appState) appCh
@@ -139,15 +141,15 @@ startNode net addrs appState@AppState{..} = do
 -- | Start set of nodes and return their corresponding storage. Will
 --   return their storage after all nodes finish execution
 runNodeSet
-  :: (Ord addr, Show addr, Crypto alg, Serialise a, Show a)
-  => [( NetworkAPI sock addr, [addr], AppState IO alg a)]
+  :: (Ord addr, Show addr, Crypto alg, Serialise a, Show a, Serialise tx)
+  => [( NetworkAPI sock addr, [addr], AppState IO alg a, Mempool IO tx)]
   -> IO [BlockStorage 'RO IO alg a]
 runNodeSet nodes = do
-  withAsyncs [ startNode net addrs appSt
-             | (net,addrs,appSt) <- nodes
+  withAsyncs [ startNode net addrs appSt mp
+             | (net,addrs,appSt,mp) <- nodes
              ]
     $ void . waitAny
-  return [ makeReadOnly $ appStorage a | (_,_,a) <- nodes ]
+  return [ makeReadOnly $ appStorage a | (_,_,a,_) <- nodes ]
 
 withAsyncs :: [IO a] -> ([Async a] -> IO b) -> IO b
 withAsyncs ios function

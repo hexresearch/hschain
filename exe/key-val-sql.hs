@@ -95,6 +95,7 @@ main = do
                     , appValidatorsSet = validatorSet
                     , appMaxHeight     = Just (Height 9)
                     }
+                , nullMempool
                 )
     | (i, (addr, val)) <- [0::Int ..] `zip` Map.toList validators
     ]

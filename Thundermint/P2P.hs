@@ -50,14 +50,15 @@ import Thundermint.Logger
 --
 --   FIXME: We don't have good way to prevent DoS by spamming too much
 --          data
-data GossipMsg alg a
+data GossipMsg tx alg a
   = GossipPreVote   (Signed 'Unverified alg (Vote 'PreVote   alg a))
   | GossipPreCommit (Signed 'Unverified alg (Vote 'PreCommit alg a))
   | GossipProposal  (Signed 'Unverified alg (Proposal alg a))
   | GossipBlock     (Block alg a)
   | GossipAnn       (Announcement alg)
+  | GossipTx        tx
   deriving (Show, Generic)
-instance Serialise a => Serialise (GossipMsg alg a)
+instance (Serialise tx, Serialise a) => Serialise (GossipMsg tx alg a)
 
 
 -- | Connection handed to process controlling communication with peer
@@ -84,14 +85,15 @@ data PeerChans addr alg a = PeerChans
 --   of nodes and gossip.
 startPeerDispatcher
   :: ( MonadMask m, MonadFork m, MonadLogger m
-     , Serialise a, Ord addr, Show addr, Show a, Crypto alg)
+     , Serialise a, Serialise tx, Ord addr, Show addr, Show a, Crypto alg)
   => NetworkAPI sock addr       -- ^ API for networking
   -> [addr]                     -- ^ Set of initial addresses to connect
   -> AppChans alg a             -- ^ Channels for communication with main application
   -> BlockStorage 'RO IO alg a  -- ^ Read only access to block storage
   -> ProposalStorage 'RO IO alg a
+  -> Mempool IO tx
   -> m x
-startPeerDispatcher net addrs AppChans{..} storage propSt = logOnException $ do
+startPeerDispatcher net addrs AppChans{..} storage propSt mempool = logOnException $ do
   logger InfoS "Starting peer dispatcher" ()
   peers        <- newPeerRegistry
   peerExchange <- liftIO newTChanIO
@@ -104,22 +106,23 @@ startPeerDispatcher net addrs AppChans{..} storage propSt = logOnException $ do
   -- Accepting connection is managed by separate linked thread and
   -- this thread manages initiating connections
   id $ flip finally (uninterruptibleMask_ $ reapPeers peers)
-     $ forkLinked (acceptLoop net peerCh peers)
+     $ forkLinked (acceptLoop net peerCh mempool peers)
      -- FIXME: we should manage requests for peers and connecting to
      --        new peers here
      $ do liftIO $ threadDelay 100e3
-          forM_ addrs $ \a -> connectPeerTo net a peerCh peers
+          forM_ addrs $ \a -> connectPeerTo net a peerCh mempool peers
           forever $ liftIO $ threadDelay 100000
 
 -- Thread which accepts connections from remote nodes
 acceptLoop
   :: ( MonadFork m, MonadMask m, MonadLogger m
-     , Serialise a, Ord addr, Show addr, Show a, Crypto alg)
+     , Serialise a, Serialise tx, Ord addr, Show addr, Show a, Crypto alg)
   => NetworkAPI sock addr
   -> PeerChans addr alg a
+  -> Mempool IO tx
   -> PeerRegistry addr
   -> m ()
-acceptLoop net@NetworkAPI{..} peerCh registry = logOnException $ do
+acceptLoop net@NetworkAPI{..} peerCh mempool registry = logOnException $ do
   logger InfoS "Starting accept loop" ()
   bracket (liftIO listenOn) (liftIO . fst) $ \(_,accept) -> forever $
     -- We accept connection, create new thread and put it into
@@ -131,25 +134,26 @@ acceptLoop net@NetworkAPI{..} peerCh registry = logOnException $ do
            $ withPeer registry addr
            $ restore
            $ do logger InfoS ("Accepted connection from " <> showLS addr) ()
-                startPeer peerCh (applySocket net sock)
+                startPeer peerCh (applySocket net sock) mempool
 
 
 -- Initiate connection to remote host and register peer
 connectPeerTo
   :: ( MonadFork m, MonadMask m, MonadLogger m
-     , Ord addr, Serialise a, Show addr, Show a, Crypto alg
+     , Ord addr, Serialise a, Serialise tx, Show addr, Show a, Crypto alg
      )
   => NetworkAPI sock addr
   -> addr
   -> PeerChans addr alg a
+  -> Mempool IO tx
   -> PeerRegistry addr
   -> m ()
-connectPeerTo net@NetworkAPI{..} addr peerCh registry = do
+connectPeerTo net@NetworkAPI{..} addr peerCh mempool registry = do
   logger InfoS ("Connecting to " <> showLS addr) ()
   void $ fork
        $ bracket (liftIO $ connect addr) (liftIO . close)
        $ \sock -> withPeer registry addr
-                $ startPeer peerCh (applySocket net sock)
+                $ startPeer peerCh (applySocket net sock) mempool
 
 
 -- Set of currently running peers.
@@ -217,22 +221,26 @@ registiryAddressSet (PeerRegistry _ addrSet _)
 -- | Start interactions with peer. At this point connection is already
 --   established and peer is registered.
 startPeer
-  :: (Serialise a, MonadFork m, MonadMask m, MonadLogger m, Show a, Crypto alg)
+  :: ( MonadFork m, MonadMask m, MonadLogger m
+     , Show a, Serialise a, Serialise tx, Crypto alg)
   => PeerChans addr alg a  -- ^ Communication with main application
                            --   and peer dispatcher
   -> SendRecv              -- ^ Functions for interaction with network
+  -> Mempool IO tx
   -> m ()
-startPeer peerCh@PeerChans{..} net@SendRecv{..} = logOnException $ do
+startPeer peerCh@PeerChans{..} net@SendRecv{..} mempool = logOnException $ do
   logger InfoS "Starting peer" ()
   peerSt   <- newPeerStateObj
     (hoistBlockStorageRO liftIO blockStorage)
     (hoistPropStorageRO  liftIO proposalStorage)
   gossipCh <- liftIO newTChanIO
+  cursor   <- liftIO $ getMempoolCursor mempool
   runConcurrently
     [ peerGossipVotes   peerSt peerCh gossipCh
     , peerGossipBlocks  peerSt peerCh gossipCh
+    , peerGossipMempool peerSt gossipCh cursor
     , peerSend          peerSt peerCh gossipCh net
-    , peerReceive       peerSt peerCh net
+    , peerReceive       peerSt peerCh net cursor
     ]
   logger InfoS "Stopping peer" ()
 
@@ -242,7 +250,7 @@ peerGossipVotes
   :: (MonadIO m, MonadFork m, MonadMask m, MonadLogger m, Crypto alg)
   => PeerStateObj m alg a         -- ^ Current state of peer
   -> PeerChans addr alg a       -- ^ Read-only access to
-  -> TChan (GossipMsg alg a)
+  -> TChan (GossipMsg tx alg a)
   -> m x
 peerGossipVotes peerObj PeerChans{..} gossipCh = logOnException $ do
   logger InfoS "Starting routine for gossiping votes" ()
@@ -322,12 +330,31 @@ peerGossipVotes peerObj PeerChans{..} gossipCh = logOnException $ do
       Unknown   -> return ()
     liftIO $ threadDelay 25e3
 
+peerGossipMempool
+  :: ( MonadIO m, MonadFork m, MonadMask m, MonadLogger m
+     )
+  => PeerStateObj m alg a
+  -> TChan (GossipMsg tx alg a)
+  -> MempoolCursor IO tx
+  -> m x
+peerGossipMempool peerObj gossipCh MempoolCursor{..} = logOnException $ do
+  logger InfoS "Starting routine for gossiping transactions" ()
+  forever $ do
+    getPeerState peerObj >>= \case
+      Current _ -> liftIO advanceCursor >>= \case
+        Just tx -> liftIO $ atomically $ writeTChan gossipCh $ GossipTx tx
+        Nothing -> return ()
+      _         -> return ()
+    liftIO $ threadDelay 25e3
+      
+      
+
 -- | Gossip blocks with given peer
 peerGossipBlocks
   :: (MonadIO m, MonadFork m, MonadMask m, MonadLogger m)
   => PeerStateObj m alg a       -- ^ Current state of peer
   -> PeerChans addr alg a       -- ^ Read-only access to
-  -> TChan (GossipMsg alg a)    -- ^ Network API
+  -> TChan (GossipMsg tx alg a)    -- ^ Network API
   -> m x
 peerGossipBlocks peerObj PeerChans{..} gossipCh = logOnException $ do
   logger InfoS "Starting routine for gossiping votes" ()
@@ -361,12 +388,14 @@ peerGossipBlocks peerObj PeerChans{..} gossipCh = logOnException $ do
 
 -- | Routine for receiving messages from peer
 peerReceive
-  :: (MonadIO m, MonadFork m, MonadMask m, MonadLogger m, Crypto alg, Serialise a)
+  :: ( MonadIO m, MonadFork m, MonadMask m, MonadLogger m
+     , Crypto alg, Serialise a, Serialise tx)
   => PeerStateObj m alg a
   -> PeerChans addr alg a
   -> SendRecv
+  -> MempoolCursor IO tx
   -> m ()
-peerReceive peerSt PeerChans{..} SendRecv{..} = logOnException $ do
+peerReceive peerSt PeerChans{..} SendRecv{..} MempoolCursor{..} = logOnException $ do
   logger InfoS "Starting routing for receiving messages" ()
   fix $ \loop -> liftIO (recv 4096) >>= \case
     Nothing  -> logger InfoS "Peer stopping since socket is closed" ()
@@ -385,6 +414,7 @@ peerReceive peerSt PeerChans{..} SendRecv{..} = logOnException $ do
                                                      (propRound  (signedValue p))
           GossipBlock     b -> do liftIO $ atomically $ peerChanRx $ RxBlock b
                                   addBlock peerSt b
+          GossipTx tx       -> do liftIO $ pushTransaction tx
           --
           GossipAnn ann -> case ann of
             AnnStep         s     -> advancePeer   peerSt s
@@ -396,10 +426,11 @@ peerReceive peerSt PeerChans{..} SendRecv{..} = logOnException $ do
 
 -- | Routine for actually sending data to peers
 peerSend
-  :: (MonadIO m, MonadFork m, MonadMask m, MonadLogger m, Crypto alg, Serialise a)
+  :: ( MonadIO m, MonadFork m, MonadMask m, MonadLogger m
+     , Crypto alg, Serialise a, Serialise tx)
   => PeerStateObj m alg a
   -> PeerChans addr alg a
-  -> TChan (GossipMsg alg a)
+  -> TChan (GossipMsg tx alg a)
   -> SendRecv
   -> m x
 peerSend peerSt PeerChans{..} gossipCh SendRecv{..} = logOnException $ do

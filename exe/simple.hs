@@ -65,6 +65,7 @@ main = do
                     , appValidatorsSet = validatorSet
                     , appMaxHeight     = Just (Height 3)
                     }
+                , nullMempool
                 )
          | (addr, val) <- Map.toList validators
          ]

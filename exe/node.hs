@@ -149,4 +149,5 @@ main = do
              , appValidatorsSet = validatorSet
              , appMaxHeight     = Just (Height 3)
              }
+             nullMempool
   return ()
