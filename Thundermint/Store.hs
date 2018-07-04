@@ -25,6 +25,10 @@ module Thundermint.Store (
   , hoistPropStorageRW
   , hoistPropStorageRO
   , makeReadOnlyPS
+    -- * Mempool
+  , MempoolCursor(..)
+  , Mempool(..)
+  , nullMempool
   ) where
 
 import           Data.Map          (Map)
@@ -200,3 +204,35 @@ hoistPropStorageRO fun ProposalStorage{..} =
                   , allowBlockID       = ()
                   , blockAtRound       = \h r   -> fun (blockAtRound h r)
                   }
+
+----------------------------------------------------------------
+--
+----------------------------------------------------------------
+
+-- | Cursor into mempool which is used for gossiping data
+data MempoolCursor m tx = MempoolCursor
+  { pushTransaction :: tx -> m ()
+    -- ^ Add transaction to the mempool. It's preliminary checked and
+    --   if check fails it immediately discarded
+  , advanceCursor   :: m (Maybe tx)
+    -- ^ Take transaction from front and advance cursor. If cursor points at the end of qu
+  }
+
+-- | Mempool which is used for storing transactions before they're
+--   added into blockchain. Transactions are stored in FIFO manner
+data Mempool m tx = Mempool
+  { takeNTransactiona :: Maybe Int -> m [tx]
+    -- ^ Take up to N transactions from mempool. If Nothing is passed
+    --   that all transactions will be returned
+  , getMempoolCursor  :: m (MempoolCursor m tx)
+    -- ^ Get cursor pointing to be
+  }
+
+nullMempool :: Monad m => Mempool m ()
+nullMempool = Mempool
+  { takeNTransactiona = const (return [])
+  , getMempoolCursor  = return MempoolCursor
+      { pushTransaction = const (return ())
+      , advanceCursor   = return Nothing
+      }
+  }
