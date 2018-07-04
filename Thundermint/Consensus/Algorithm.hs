@@ -116,7 +116,7 @@ class Monad m => ConsensusMonad m where
 
 -- | Enter new height and create new state for state machine
 newHeight
-  :: (Crypto alg, ConsensusMonad m, MonadLogger m)
+  :: (ConsensusMonad m, MonadLogger m)
   => HeightParameres m alg a
   -> Maybe (Commit alg a)
   -> ValidatorSet alg
@@ -279,7 +279,7 @@ checkTransitionPrecommit par@HeightParameres{..} r sm@(TMState{..})
 
 -- Enter Propose stage and send required messages
 enterPropose
-  :: (Crypto alg, ConsensusMonad m, MonadLogger m)
+  :: (ConsensusMonad m, MonadLogger m)
   => HeightParameres m alg a
   -> Round
   -> TMState alg a
@@ -355,8 +355,7 @@ enterPrevote par@HeightParameres{..} r (unlockOnPrevote -> sm@TMState{..}) = do
 --   * We're already locked
 --   * We have polca for round R: lock.R < R < current.R
 unlockOnPrevote
-  :: (Crypto alg)
-  => TMState alg a
+  :: TMState alg a
   -> TMState alg a
 unlockOnPrevote sm@TMState{..}
   | Just (lockR, _) <- smLockedBlock
@@ -407,7 +406,7 @@ enterPrecommit par@HeightParameres{..} r sm@TMState{..} = do
 
 
 addPrevote
-  :: (ConsensusMonad m, Crypto alg)
+  :: (ConsensusMonad m)
   => HeightParameres m alg a
   -> Signed 'Verified alg (Vote 'PreVote alg a)
   -> TMState alg a
@@ -420,7 +419,7 @@ addPrevote HeightParameres{..} v sm@TMState{..} = do
     InsertConflict _ -> misdeed
 
 addPrecommit
-  :: (ConsensusMonad m, Crypto alg)
+  :: (ConsensusMonad m)
   => HeightParameres m alg a
   -> Signed 'Verified alg (Vote 'PreCommit alg a)
   -> TMState alg a
