@@ -195,7 +195,7 @@ emptySignedSet = SignedSet Map.empty Map.empty
 
 -- | Insert value into set of votes
 insertSigned
-  :: (Crypto alg, Ord a)
+  :: (Ord a)
   => Signed ty alg a
   -> SignedSet ty alg a
   -> InsertResult (Signed ty alg a) (SignedSet ty alg a)
@@ -219,8 +219,7 @@ insertSigned sval (SignedSet mAddr mVal valSet) =
 
 -- | We have +2\/3 majority of votes return vote for
 majority23
-  :: (Crypto alg, Ord a)
-  => SignedSet ty alg a
+  :: SignedSet ty alg a
   -> Maybe a
 majority23 SignedSet{..} =
   case values of
@@ -238,8 +237,7 @@ majority23 SignedSet{..} =
 
 -- | We have +2\/3 of votes which are distributed in any manner
 any23
-  :: (Crypto alg)
-  => SignedSet ty alg a
+  :: SignedSet ty alg a
   -> Bool
 any23 SignedSet{..}
   = tot >= quorum
@@ -278,7 +276,7 @@ toPlainMap
 toPlainMap = fmap vsetAddrMap . vmapSubmaps
 
 addSignedValue
-  :: (Ord r, Crypto alg, Ord a)
+  :: (Ord r, Ord a)
   => r
   -> Signed ty alg a
   -> SignedSetMap r ty alg a
@@ -290,7 +288,7 @@ addSignedValue r a sm@SignedSetMap{..} = do
   return sm { vmapSubmaps = Map.insert r m vmapSubmaps }
 
 majority23at
-  :: (Ord r, Crypto alg, Ord a)
+  :: (Ord r)
   => r
   -> SignedSetMap r ty alg a
   -> Maybe a
@@ -298,7 +296,7 @@ majority23at r SignedSetMap{..}
   = majority23 =<< Map.lookup r vmapSubmaps
 
 any23at
-  :: (Ord r, Crypto alg)
+  :: (Ord r)
   => r
   -> SignedSetMap r ty alg a
   -> Bool
