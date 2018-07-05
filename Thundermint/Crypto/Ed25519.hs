@@ -1,7 +1,8 @@
-{-# LANGUAGE DataKinds         #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TypeFamilies      #-}
+{-# LANGUAGE DataKinds          #-}
+{-# LANGUAGE FlexibleInstances  #-}
+{-# LANGUAGE OverloadedStrings  #-}
+{-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE TypeFamilies       #-}
 
 module Thundermint.Crypto.Ed25519 where
 
@@ -36,6 +37,11 @@ instance CBOR.Serialise (PublicKey Ed25519_SHA512) where
               case Ed.publicKey (bs :: ByteString) of
                 CryptoPassed pk -> return (PublicKey pk)
                 CryptoFailed e  -> fail (show e)
+
+instance Show (PublicKey Ed25519_SHA512) where
+  show (PublicKey k) = unpack $ encodeBase58 $ convert k
+
+deriving instance Eq (PublicKey Ed25519_SHA512)
 
 instance Show (PrivKey Ed25519_SHA512) where
   show (PrivKey k) = unpack $ encodeBase58 $ convert k
