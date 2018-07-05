@@ -221,7 +221,7 @@ data MempoolCursor m tx = MempoolCursor
 -- | Mempool which is used for storing transactions before they're
 --   added into blockchain. Transactions are stored in FIFO manner
 data Mempool m tx = Mempool
-  { takeNTransactiona :: Maybe Int -> m [tx]
+  { takeNTransactions :: Maybe Int -> m [tx]
     -- ^ Take up to N transactions from mempool. If Nothing is passed
     --   that all transactions will be returned
   , getMempoolCursor  :: m (MempoolCursor m tx)
@@ -230,7 +230,7 @@ data Mempool m tx = Mempool
 
 nullMempool :: Monad m => Mempool m ()
 nullMempool = Mempool
-  { takeNTransactiona = const (return [])
+  { takeNTransactions = const (return [])
   , getMempoolCursor  = return MempoolCursor
       { pushTransaction = const (return ())
       , advanceCursor   = return Nothing

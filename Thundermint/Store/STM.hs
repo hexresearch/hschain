@@ -132,7 +132,7 @@ newMempool validation = do
   varFIFO <- newTVarIO Seq.empty
   varCnt  <- newTVarIO (0 :: Int)
   return Mempool
-    { takeNTransactiona = \mn -> atomically $ do
+    { takeNTransactions = \mn -> atomically $ do
         txs <- readTVar varFIFO
         let (pick,leave) = case mn of
               Nothing -> (txs,Seq.empty)
