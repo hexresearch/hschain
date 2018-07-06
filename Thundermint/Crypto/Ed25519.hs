@@ -31,6 +31,8 @@ data Ed25519_SHA512
 newtype instance PrivKey   Ed25519_SHA512 = PrivKey Ed.SecretKey
 newtype instance PublicKey Ed25519_SHA512 = PublicKey Ed.PublicKey
 
+deriving instance Eq (PrivKey Ed25519_SHA512)
+
 instance CBOR.Serialise (PublicKey Ed25519_SHA512) where
   encode (PublicKey pk) = CBOR.encode (convert pk :: ByteString)
   decode = do bs <- CBOR.decode
@@ -39,12 +41,12 @@ instance CBOR.Serialise (PublicKey Ed25519_SHA512) where
                 CryptoFailed e  -> fail (show e)
 
 instance Show (PublicKey Ed25519_SHA512) where
-  show (PublicKey k) = unpack $ encodeBase58 $ convert k
+  show (PublicKey k) = show $ unpack $ encodeBase58 $ convert k
 
 deriving instance Eq (PublicKey Ed25519_SHA512)
 
 instance Show (PrivKey Ed25519_SHA512) where
-  show (PrivKey k) = unpack $ encodeBase58 $ convert k
+  show (PrivKey k) = show $ unpack $ encodeBase58 $ convert k
 
 instance ToJSON (PrivKey Ed25519_SHA512) where
   toJSON (PrivKey k) = String
