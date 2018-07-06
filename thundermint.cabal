@@ -116,6 +116,22 @@ Executable thundermint-node
   hs-source-dirs:      exe
   Main-is:             node.hs
 
+Executable thundermint-coin
+  Ghc-options:         -Wall -threaded -Wno-orphans
+  Default-Language:    Haskell2010
+  Build-Depends:       base       >=4.9 && <5
+                     , thundermint
+                     , bytestring >=0.10
+                     , base58-bytestring >=0.1
+                     , containers >=0.5.7
+                     , stm
+                     , serialise
+                     , random
+                     , groom
+                     , text
+  hs-source-dirs:      exe
+  Main-is:             coin.hs
+  
 -- Test suite
 Test-suite thundermint-tests
   Type:                exitcode-stdio-1.0
