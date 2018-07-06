@@ -12,11 +12,12 @@ import Control.Applicative
 import Control.Monad
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Maybe
+import Control.Concurrent
 import Control.Concurrent.STM
 import Data.Foldable
 import qualified Data.Map             as Map
+import qualified Data.IntMap          as IMap
 import qualified Data.Set             as Set
-import qualified Data.Sequence        as Seq
 
 import Thundermint.Consensus.Types
 import Thundermint.Crypto
@@ -125,35 +126,42 @@ newSTMPropStorage = do
     }
 
 newMempool
-  :: ()
+  :: (Eq tx)
   => (tx -> IO Bool)
   -> IO (Mempool IO tx)
 newMempool validation = do
-  varFIFO <- newTVarIO Seq.empty
-  varCnt  <- newTVarIO (0 :: Int)
+  varFIFO <- newTVarIO  IMap.empty
+  varMaxN <- newTVarIO  0
   return Mempool
-    { takeNTransactions = \mn -> atomically $ do
-        txs <- readTVar varFIFO
-        let (pick,leave) = case mn of
-              Nothing -> (txs,Seq.empty)
-              Just n  -> Seq.splitAt n txs
-        writeTVar varFIFO leave
-        modifyTVar' varCnt (+ Seq.length pick)
-        return $ toList pick
+    { peekNTransactions = \mn -> do
+        fifo <- readTVarIO varFIFO
+        return $ case mn of
+          Nothing -> toList fifo
+          Just n  -> take n $ toList fifo
+    --
+    , filterMempool = do
+        fifo   <- readTVarIO varFIFO
+        goodTx <- filterM validation $ toList fifo
+        print (length goodTx, IMap.size fifo)
+        atomically $ modifyTVar' varFIFO $ IMap.filter (`elem` goodTx)
+    --
+    , mempoolSize = IMap.size <$> readTVarIO varFIFO
     --
     , getMempoolCursor = atomically $ do
-        varN <- newTVar =<< readTVar varCnt
+        varN <- newTVar 0
         return MempoolCursor
           { pushTransaction = \tx -> validation tx >>= \case
               False -> return ()
-              True  -> atomically $ modifyTVar' varFIFO (Seq.|> tx)
+              True  -> atomically $ do
+                n <- succ <$> readTVar varMaxN
+                modifyTVar' varFIFO $ IMap.insert n tx
+                writeTVar   varMaxN n
           , advanceCursor = atomically $ do
-              off <- readTVar varCnt
-              i   <- readTVar varN
-              txs <- readTVar varFIFO
-              case (i - off) `Seq.lookup` txs of
-                Nothing -> return Nothing
-                Just tx -> do modifyTVar varN (+1)
-                              return (Just tx)
+              fifo <- readTVar varFIFO
+              n    <- readTVar varN
+              case n `IMap.lookupGT` fifo of
+                Nothing       -> return Nothing
+                Just (n', tx) -> do writeTVar varN n'
+                                    return (Just tx)
           }
     }
