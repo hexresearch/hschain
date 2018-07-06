@@ -76,11 +76,11 @@ main = do
                     { appStorage        = storage
                     , appPropStorage    = propStorage
                     --
-                    , appValidationFun  = \case
+                    , appValidationFun  = const $ \case
                         [(k,_)] -> do existingKeys <- loadAllKeys
                                       return $ k `Set.notMember` existingKeys
                         _       -> return False
-                    , appBlockGenerator =
+                    , appBlockGenerator = const $ 
                         case i of
                           -- Byzantine!
                           0 -> return [("XXX", 0)]

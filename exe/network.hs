@@ -82,8 +82,8 @@ main = do
                 , AppState
                     { appStorage        = storage
                     , appPropStorage    = propStorage
-                    , appValidationFun  = const (return True)
-                    , appBlockGenerator = do
+                    , appValidationFun  = \_ _ -> return True
+                    , appBlockGenerator = \_ -> do
                         Height h <- blockchainHeight storage
                         return $ h * 100
                     , appValidator     = Just val

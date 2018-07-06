@@ -235,7 +235,7 @@ makeHeightParametes AppState{..} AppChans{..} = do
               -> return InvalidProposal
             -- Validate block data
             | otherwise
-              -> lift (appValidationFun (blockData b)) >>= \case
+              -> lift (appValidationFun (next h) (blockData b)) >>= \case
                    True  -> return GoodProposal
                    False -> return InvalidProposal
     --
@@ -304,7 +304,7 @@ makeHeightParametes AppState{..} AppChans{..} = do
     , announceStep = liftIO . atomically . writeTChan appChanTx . AnnStep
     --
     , createProposal = \r commit -> lift $ do
-        bData          <- appBlockGenerator
+        bData          <- appBlockGenerator (next h)
         Just lastBlock <- retrieveBlock appStorage
                       =<< blockchainHeight appStorage
         Just genesis   <- retrieveBlock appStorage (Height 0)
