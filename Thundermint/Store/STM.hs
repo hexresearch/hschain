@@ -142,7 +142,6 @@ newMempool validation = do
     , filterMempool = do
         fifo   <- readTVarIO varFIFO
         goodTx <- filterM validation $ toList fifo
-        print (length goodTx, IMap.size fifo)
         atomically $ modifyTVar' varFIFO $ IMap.filter (`elem` goodTx)
     --
     , mempoolSize = IMap.size <$> readTVarIO varFIFO

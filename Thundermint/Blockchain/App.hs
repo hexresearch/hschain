@@ -112,6 +112,7 @@ decideNewBlock appSt@AppState{..} appCh@AppChans{..} lastCommt = do
         b <- waitForBlockID appPropStorage $ commitBlockID cmt
         storeCommit appStorage appValidatorsSet cmt b
         advanceToHeight appPropStorage . next =<< blockchainHeight appStorage
+        appCommitCallback
         return cmt
 
 

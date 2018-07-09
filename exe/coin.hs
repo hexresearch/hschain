@@ -1,6 +1,7 @@
-{-# LANGUAGE NumDecimals #-}
+{-# LANGUAGE DataKinds         #-}
 {-# LANGUAGE DeriveGeneric     #-}
 {-# LANGUAGE LambdaCase        #-}
+{-# LANGUAGE NumDecimals       #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 {-# LANGUAGE TupleSections     #-}
@@ -8,16 +9,14 @@
 import Control.Applicative
 import Control.Monad
 import Control.Concurrent
-import Control.Concurrent.STM
-import Control.Concurrent.MVar
+import Control.Concurrent.Async
 import Codec.Serialise (Serialise, serialise)
 import Data.Map                 (Map)
-import Data.Set                 (Set)
 import Data.ByteString.Lazy (toStrict)
 import Data.Foldable
-import Data.List
+import qualified Data.ByteString.Base58 as Base58
+import qualified Data.ByteString.Char8  as BC8
 import qualified Data.Map               as Map
-import qualified Data.Set               as Set
 import System.Random (randomRIO)
 import Text.Groom
 import GHC.Generics (Generic)
@@ -30,6 +29,7 @@ import Thundermint.Crypto.Ed25519   (Ed25519_SHA512)
 import Thundermint.P2P.Network
 import Thundermint.Store
 import Thundermint.Store.STM
+import Thundermint.Store.SQLite
 import Thundermint.Mock
 
 
@@ -105,9 +105,9 @@ processDeposit tx@(Deposit pk nCoin) CoinState{..} =
       txHash = hashBlob $ toStrict $ serialise tx
 
 
-processTx :: Tx -> CoinState -> Maybe CoinState
-processTx Deposit{} _ = Nothing
-processTx transaction@(Send pubK sig txSend@TxSend{..}) CoinState{..} = do
+processTransaction :: Tx -> CoinState -> Maybe CoinState
+processTransaction Deposit{} _ = Nothing
+processTransaction transaction@(Send pubK sig txSend@TxSend{..}) CoinState{..} = do
   -- Signature must be valid
   guard $ verifyBlobSignature pubK (toStrict $ serialise txSend) sig
   -- Inputs and outputs are not null
@@ -133,12 +133,6 @@ processTx transaction@(Send pubK sig txSend@TxSend{..}) CoinState{..} = do
         in add $ spend unspentOutputs
     }
 
-
-
-----------------------------------------------------------------
---
-----------------------------------------------------------------
-
 genesisBlock :: Block Ed25519_SHA512 [Tx]
 genesisBlock = Block
   { blockHeader = Header
@@ -151,57 +145,113 @@ genesisBlock = Block
   , blockLastCommit = Nothing
   }
 
+transitions :: BlockFold CoinState Tx [Tx]
+transitions = BlockFold
+  { processTx           = process
+  , processBlock        = \h txs s0 -> foldM (flip (process h)) s0 txs
+  , transactionsToBlock = id
+  }
+  where
+    process (Height 0) t s = processDeposit t s <|> processTransaction t s
+    process _          t s = processTransaction t s
+
+----------------------------------------------------------------
+-- Tracking of blockchain state
+----------------------------------------------------------------
+
+data BlockFold s tx a = BlockFold
+  { processTx    :: Height -> tx -> s -> Maybe s
+    -- ^ Try to process single transaction. Nothing indicates that
+    --   transaction is invalid
+  , processBlock :: Height -> a  -> s -> Maybe s
+    -- ^ Try to process whole block
+  , transactionsToBlock :: [tx] -> a
+  }
+
+-- | Wrapper for obtaining state of blockchain. It's quite limited
+--   calls must be done with in nondecreasing height.
+data BChState m s = BChState
+  { currentState :: m s
+  , stateAtH :: Height -> m s
+  }
+
+-- | Create block storage backed by MVar
+newBChState
+  :: s                          -- ^ Initial state before genesis block
+  -> BlockFold s tx a           -- ^ Updating function
+  -> BlockStorage 'RO IO alg a  -- ^ Store of blocks
+  -> IO (BChState IO s)
+newBChState s0 BlockFold{..} BlockStorage{..} = do
+  state <- newMVar (Height 0, s0)
+  let ensureHeight hBlk = do
+        (st,flt) <- modifyMVar state $ \st@(h,s) ->
+          case h `compare` hBlk of
+            GT -> error "newBChState: invalid parameter"
+            EQ -> return (st, (s,False))
+            LT -> do Just Block{..} <- retrieveBlock h
+                     case processBlock h blockData s of
+                       Just st' -> return ((next h, st'), (st',True))
+                       Nothing  -> error "OOPS! Blockchain is not valid!!!"
+        case flt of
+          True  -> ensureHeight hBlk
+          False -> return st
+  return BChState
+    { currentState = withMVar state (return . snd)
+    , stateAtH     = ensureHeight
+    }
+
+
+----------------------------------------------------------------
+--
+----------------------------------------------------------------
 
 run :: ValidatorSet Alg
     -> Maybe (PrivValidator Alg) -- Validator key
     -> Maybe (PrivValidator Alg) -- Wallet key
     -> IO ( AppState IO Alg [Tx]
           , Mempool IO Tx
+          , Maybe (Async ())
           )
 run validatorSet mPK mWK = do
-  storage   <- newSTMBlockStorage genesisBlock validatorSet
+  -- Create storage
+  let toAddr = BC8.unpack
+             . Base58.encodeBase58 Base58.bitcoinAlphabet
+             . (\(Address a) -> a)
+             . address . publicKey . validatorPrivKey
+      dbName = case (mPK,mWK) of
+        (Just pk, Just wk) -> "db/"++toAddr pk++"-"++toAddr wk
+        (Just pk, Nothing) -> "db/"++toAddr pk++"-XXX"
+        (Nothing, Just wk) -> "db/XXX-"++toAddr wk
+        (Nothing, Nothing) -> ":memory:"
+  storage <- newSQLiteBlockStorage dbName genesisBlock validatorSet
   -- Initialize application state
-  coinState <- newMVar ( Height 0
-                       , CoinState { unspentOutputs = Map.empty })
+  coinState <- newBChState
+    CoinState { unspentOutputs = Map.empty }
+    transitions
+    (makeReadOnly storage)
+  _ <- stateAtH coinState (Height 1)
   -- Transaction check for mempool
-  let checkTx tx = withMVar coinState $ \(h,coin) -> do
-        case processTx tx coin of
+  let checkTx tx = do
+        coin <- currentState coinState
+        case processTx transitions (Height 1) tx coin of
           Nothing -> return False
           Just _  -> return True
   mempool <- newMempool checkTx
-  -- Ensure that we're prepared to handle block at given height H.
-  let ensureHeight hTgt = do
-        (c,flt) <- modifyMVar coinState $ \st@(h,coin) -> do
-          case h `compare` hTgt of
-            GT -> error "Impossible"
-            EQ -> return (st,(coin,False))
-            LT -> do Just Block{..} <- retrieveBlock storage h
-                     let process c tx
-                           | h == Height 0 = processTx tx c <|> processDeposit tx c
-                           | otherwise     = processTx tx c
-                     print (hTgt,h,fmap validatorPrivKey mPK)
-                     case foldM process coin blockData of
-                       Just coin' -> return ((next h, coin'), (coin',True))
-                       Nothing    -> error "OOPS! Blockchain is not valid!!!"
-        case flt of
-          True  -> filterMempool mempool >> ensureHeight hTgt
-          False -> return c
-  _ <- ensureHeight (Height 1)
   ----------------------------------------------------------------
   -- Generate random transactions and put them into mempool
-  forM_ mWK $ \(PrivValidator wallet) -> do
+  txGen <- forM mWK $ \(PrivValidator wallet) -> do
     let myPubKey     = publicKey wallet
         otherWallets = filter (/= myPubKey)
                        [ publicKey w | PrivValidator w <- toList walletKeys]
         chooseWallet = do i <- randomRIO (0, length otherWallets - 1)
                           return (otherWallets !! i)
     cursor <- getMempoolCursor mempool
-    forkIO $ forever $ do
+    async $ forever $ do
       -- Select destination
       output <- chooseWallet
       toSend <- randomRIO (1,100)
       -- Select sources
-      (_, CoinState{..}) <- withMVar coinState return
+      CoinState{..} <- currentState coinState
       let inputs = findInputs toSend
                    [ (inp, n)
                    | (inp, (pk,n)) <- Map.toList unspentOutputs
@@ -226,25 +276,27 @@ run validatorSet mPK mWK = do
         , appPropStorage    = propStorage
           --
         , appValidationFun  = \hBlock txs -> do
-            coin <- ensureHeight hBlock
-            case foldM (flip processTx) coin txs of
+            coin <- stateAtH coinState hBlock
+            case foldM (flip processTransaction) coin txs of
               Nothing -> return False
               Just _  -> return True
           --
         , appBlockGenerator = \hBlock -> do
-            coin <- ensureHeight hBlock
+            coin <- stateAtH coinState hBlock
             txs  <- peekNTransactions mempool Nothing
             let selectTx _ []     = []
-                selectTx c (t:tx) = case processTx t c of
+                selectTx c (t:tx) = case processTransaction t c of
                                       Nothing -> selectTx c  tx
                                       Just c' -> t : selectTx c' tx
             return $ selectTx coin txs
+        , appCommitCallback = filterMempool mempool
           --
         , appValidator     = mPK
         , appValidatorsSet = validatorSet
         , appMaxHeight     = Just (Height 10)
         }
     , mempool
+    , txGen
     )
 
 main :: IO ()
@@ -253,21 +305,23 @@ main = do
       nodeSet      = Map.fromList
                    $ zip [0::Int ..]
                      [ (Just pk, Just pk) | pk <- toList validatorKeys ]
-                   -- $ weave                    
+                   -- $ weave
                    --   [ (Nothing, Just wk) | wk <- toList walletKeys    ]
   net   <- newMockNet
   nodes <- sequence
-    [ do (appSt,mempool) <- run validatorSet val wallet
-         return ( createMockNode net "50000" addr
-                , map (,"50000") $ connectRing nodeSet addr
-                , appSt
-                , mempool
-                )
+    [ do (appSt,mempool,txGen) <- run validatorSet val wallet
+         return (( createMockNode net "50000" addr
+                 , map (,"50000") $ connectRing nodeSet addr
+                 , appSt
+                 , mempool
+                 )
+                , txGen)
     | (addr,(val,wallet)) <- Map.toList nodeSet
     ]
   --
-  s:_ <- runNodeSet nodes
-  return ()  
+  s:_ <- runNodeSet $ map fst nodes
+  mapM_ (mapM_ cancel . snd) nodes
+  return ()
   -- forM_ st $ \s -> do
   do putStrLn "==== BLOCKCHAIN ================================================"
      bs <- loadAllBlocks s
