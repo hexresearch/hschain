@@ -40,7 +40,6 @@ data AppState m alg a = AppState
     -- FIXME: Is IO good enough or do we need some other guarantees?
   , appPropStorage    :: ProposalStorage 'RW m alg a
     -- ^ Storage for proposed blocks
-
   , appBlockGenerator :: Height -> m a
     -- ^ Generate fresh block for proposal. It's called each time we
     --   need to create new block for proposal
@@ -50,6 +49,7 @@ data AppState m alg a = AppState
     -- ^ Function for validation of proposed block data.
   , appValidatorsSet  :: ValidatorSet alg
     -- ^ Set of all validators including our own
+  , appCommitCallback :: m ()
   , appMaxHeight      :: Maybe Height
   }
 
@@ -59,6 +59,7 @@ hoistAppState fun AppState{..} = AppState
   , appPropStorage    = hoistPropStorageRW  fun appPropStorage
   , appBlockGenerator = fun . appBlockGenerator
   , appValidationFun  = \h a -> fun $ appValidationFun h a
+  , appCommitCallback = fun appCommitCallback
   , ..
   }
 

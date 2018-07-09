@@ -127,6 +127,7 @@ Executable thundermint-coin
                      , stm
                      , serialise
                      , random
+                     , async
                      , groom
                      , text
   hs-source-dirs:      exe
