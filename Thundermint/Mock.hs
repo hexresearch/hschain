@@ -17,8 +17,8 @@ module Thundermint.Mock (
 
 import Codec.Serialise          (Serialise)
 import Control.Concurrent.Async
-import Control.Exception
 import Control.Monad
+import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Data.Foldable
 import Data.Map                 (Map)
@@ -34,12 +34,16 @@ import Text.Printf
 import Thundermint.Crypto
 import Thundermint.Crypto.Containers
 import Thundermint.Crypto.Ed25519   (Ed25519_SHA512, privateKey)
+import Thundermint.Consensus.Types
 import Thundermint.Blockchain.App
+import Thundermint.Blockchain.Interpretation
 import Thundermint.Blockchain.Types
 import Thundermint.Logger
 import Thundermint.P2P
 import Thundermint.P2P.Network
 import Thundermint.Store
+import Thundermint.Store.STM
+
 
 ----------------------------------------------------------------
 --
@@ -100,6 +104,68 @@ connectRing vals addr =
       Nothing    -> case Map.lookupMin va of
         Just (a,_) -> [a]
         Nothing    -> []
+
+
+----------------------------------------------------------------
+--
+----------------------------------------------------------------
+
+
+data NodeDescription sock addr m alg st tx a = NodeDescription
+  { nodeStorage         :: BlockStorage 'RW m alg a
+    -- ^ Storage API for nodes
+  , nodeBlockChainLogic :: BlockFold st tx a
+    -- ^ Storage for blocks
+  , nodeNetworks        :: NetworkAPI sock addr
+    -- ^ Network API
+  , nodeInitialPeers    :: [addr]
+    -- ^ Initial peers
+  , nodeValidationKey   :: Maybe (PrivValidator alg)
+  }
+
+runNode
+  :: (MonadIO m, MonadMask m, Eq tx, Crypto alg, Serialise a)
+  => NodeDescription sock addr m alg st tx a
+  -> m ()
+runNode NodeDescription{nodeBlockChainLogic=logic@BlockFold{..}, ..} = do
+  -- Create proposal storage
+  propSt <- hoistPropStorageRW liftIO <$> liftIO newSTMPropStorage
+  -- Create state of blockchain & Update it to current state of
+  -- blockchain
+  hChain      <- blockchainHeight     nodeStorage
+  Just valSet <- retrieveValidatorSet nodeStorage (next hChain)
+  bchState    <- newBChState logic (makeReadOnly nodeStorage)
+  _           <- stateAtH bchState (next hChain)
+  -- Create mempool
+  let checkTx tx = do
+        st <- currentState bchState
+        case processTx (Height 1) tx st of
+          Nothing -> return False
+          Just _  -> return True
+
+  mempool <- newMempool checkTx
+  -- Build application state of consensus algorithm
+  let appSt = AppState
+        { appStorage     = nodeStorage
+        , appPropStorage = propSt
+        , appValidationFun = \hBlock a -> do
+            st <- stateAtH bchState hBlock
+            case processBlock hBlock a st of
+              Nothing -> return False
+              Just _  -> return True
+        , appBlockGenerator = \hBlock -> do
+            st  <- stateAtH bchState hBlock
+            txs <- peekNTransactions mempool Nothing
+            return $ transactionsToBlock hBlock st txs
+
+        , appCommitCallback = filterMempool mempool
+        , appValidator      = nodeValidationKey
+        , appValidatorsSet  = valSet
+        , appMaxHeight      = Nothing
+        }
+  -- Start consensus
+  undefined
+
 
 
 ----------------------------------------------------------------
