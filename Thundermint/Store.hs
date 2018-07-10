@@ -28,6 +28,8 @@ module Thundermint.Store (
     -- * Mempool
   , MempoolCursor(..)
   , Mempool(..)
+  , hoistMempoolCursor
+  , hoistMempool
   , nullMempool
   ) where
 
@@ -232,6 +234,20 @@ data Mempool m tx = Mempool
     -- ^ Get cursor pointing to be
   , mempoolSize       :: m Int
     -- ^ Number of elements in mempool
+  }
+
+hoistMempoolCursor :: (forall a. m a -> n a) -> MempoolCursor m tx -> MempoolCursor n tx
+hoistMempoolCursor fun MempoolCursor{..} = MempoolCursor
+  { pushTransaction = fun . pushTransaction
+  , advanceCursor   = fun advanceCursor
+  }
+
+hoistMempool :: Functor n => (forall a. m a -> n a) -> Mempool m tx -> Mempool n tx
+hoistMempool fun Mempool{..} = Mempool
+  { peekNTransactions = fun . peekNTransactions
+  , filterMempool     = fun filterMempool
+  , getMempoolCursor  = hoistMempoolCursor fun <$> fun getMempoolCursor
+  , mempoolSize       = fun mempoolSize
   }
 
 nullMempool :: Monad m => Mempool m ()
