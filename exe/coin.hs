@@ -352,3 +352,31 @@ findInputs tgt = go 0
           | otherwise   = (tx,i) : go acc' rest
           where
             acc' = acc + i
+
+
+----------------------------------------------------------------
+-- Additional functions meant to be run from GHCi
+----------------------------------------------------------------
+
+pprCoinState :: CoinState -> IO ()
+pprCoinState (CoinState outs) = do
+  let balances = Map.fromListWith (+)
+        [ (address pk, i)
+        | (pk,i) <- toList outs
+        ]
+  mapM_ print $ Map.toList balances
+  putStrLn $ "Σ = " ++ show (sum balances)
+
+printCoinStateUpdates :: FilePath -> IO ()
+printCoinStateUpdates dbName = do
+  let validatorSet = makeValidatorSetFromPriv validatorKeys
+  storage <- newSQLiteBlockStorage dbName genesisBlock validatorSet
+  let step coin h = do
+        Just Block{..} <- retrieveBlock storage h
+        let Just coin' = processBlock transitions h blockData coin
+        putStrLn ("==== " ++ show h ++ "================")
+        pprCoinState coin'
+        return coin'
+  Height hMax <- blockchainHeight storage
+  _ <- foldM step CoinState{ unspentOutputs = Map.empty} [Height h | h <- [0 .. hMax]]  
+  closeBlockStorage storage
