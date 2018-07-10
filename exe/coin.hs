@@ -22,6 +22,7 @@ import Text.Groom
 import GHC.Generics (Generic)
 
 import Thundermint.Blockchain.Types
+import Thundermint.Blockchain.Interpretation
 import Thundermint.Consensus.Types
 import Thundermint.Crypto
 import Thundermint.Crypto.Containers
@@ -149,57 +150,17 @@ transitions :: BlockFold CoinState Tx [Tx]
 transitions = BlockFold
   { processTx           = process
   , processBlock        = \h txs s0 -> foldM (flip (process h)) s0 txs
-  , transactionsToBlock = id
+  , transactionsToBlock = \_ ->
+      let selectTx _ []     = []
+          selectTx c (t:tx) = case processTransaction t c of
+                                Nothing -> selectTx c  tx
+                                Just c' -> t : selectTx c' tx
+      in selectTx
+  , initialState        = CoinState Map.empty
   }
   where
     process (Height 0) t s = processDeposit t s <|> processTransaction t s
     process _          t s = processTransaction t s
-
-----------------------------------------------------------------
--- Tracking of blockchain state
-----------------------------------------------------------------
-
-data BlockFold s tx a = BlockFold
-  { processTx    :: Height -> tx -> s -> Maybe s
-    -- ^ Try to process single transaction. Nothing indicates that
-    --   transaction is invalid
-  , processBlock :: Height -> a  -> s -> Maybe s
-    -- ^ Try to process whole block
-  , transactionsToBlock :: [tx] -> a
-  }
-
--- | Wrapper for obtaining state of blockchain. It's quite limited
---   calls must be done with in nondecreasing height.
-data BChState m s = BChState
-  { currentState :: m s
-  , stateAtH :: Height -> m s
-  }
-
--- | Create block storage backed by MVar
-newBChState
-  :: s                          -- ^ Initial state before genesis block
-  -> BlockFold s tx a           -- ^ Updating function
-  -> BlockStorage 'RO IO alg a  -- ^ Store of blocks
-  -> IO (BChState IO s)
-newBChState s0 BlockFold{..} BlockStorage{..} = do
-  state <- newMVar (Height 0, s0)
-  let ensureHeight hBlk = do
-        (st,flt) <- modifyMVar state $ \st@(h,s) ->
-          case h `compare` hBlk of
-            GT -> error "newBChState: invalid parameter"
-            EQ -> return (st, (s,False))
-            LT -> do Just Block{..} <- retrieveBlock h
-                     case processBlock h blockData s of
-                       Just st' -> return ((next h, st'), (st',True))
-                       Nothing  -> error "OOPS! Blockchain is not valid!!!"
-        case flt of
-          True  -> ensureHeight hBlk
-          False -> return st
-  return BChState
-    { currentState = withMVar state (return . snd)
-    , stateAtH     = ensureHeight
-    }
-
 
 ----------------------------------------------------------------
 --
@@ -226,7 +187,6 @@ run validatorSet mPK mWK = do
   storage <- newSQLiteBlockStorage dbName genesisBlock validatorSet
   -- Initialize application state
   coinState <- newBChState
-    CoinState { unspentOutputs = Map.empty }
     transitions
     (makeReadOnly storage)
   _ <- stateAtH coinState (Height 1)
@@ -284,11 +244,7 @@ run validatorSet mPK mWK = do
         , appBlockGenerator = \hBlock -> do
             coin <- stateAtH coinState hBlock
             txs  <- peekNTransactions mempool Nothing
-            let selectTx _ []     = []
-                selectTx c (t:tx) = case processTransaction t c of
-                                      Nothing -> selectTx c  tx
-                                      Just c' -> t : selectTx c' tx
-            return $ selectTx coin txs
+            return $ transactionsToBlock transitions hBlock coin txs
         , appCommitCallback = filterMempool mempool
           --
         , appValidator     = mPK
