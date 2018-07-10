@@ -50,6 +50,7 @@ Library
                   Thundermint.Crypto.Swear
                   Thundermint.Logger
                   Thundermint.Mock
+                  Thundermint.Mock.Coin
                   Thundermint.P2P
                   Thundermint.P2P.Network
                   Thundermint.P2P.PeerState
