@@ -197,8 +197,8 @@ startNode net addrs appState@AppState{..} mp = do
     appCh   <- newAppChans
     let netRoutine = runLoggerT "net" logenv
                    $ startPeerDispatcher net addrs appCh
-                       (makeReadOnly   appStorage)
-                       (makeReadOnlyPS appPropStorage)
+                       (hoistBlockStorageRO liftIO $ makeReadOnly   appStorage)
+                       (hoistPropStorageRO  liftIO $ makeReadOnlyPS appPropStorage)
                        mp
     withAsync netRoutine $ \_ ->
       runLoggerT "consensus" logenv
