@@ -35,6 +35,7 @@ import           Data.Map   (Map)
 import qualified Data.Set as Set
 import           Data.Set   (Set)
 
+import Thundermint.Control
 import Thundermint.Consensus.Types
 import Thundermint.Crypto
 import Thundermint.Crypto.Containers
@@ -128,7 +129,7 @@ advanceOurHeight
   -> m ()
 advanceOurHeight (PeerStateObj BlockStorage{..} _ var) ourH =
   -- Since we (possibly) changed our height following may happen:
-  modifyMVar_ var $ \peer -> case peer of
+  modifyMVarM_ var $ \peer -> case peer of
     -- Lagging peer stays lagging
     Lagging _ -> return peer
     --
@@ -171,7 +172,7 @@ advancePeer :: (MonadIO m, MonadMask m)
             -> FullStep
             -> m ()
 advancePeer (PeerStateObj BlockStorage{..} _ var) step@(FullStep h _ _)
-  = modifyMVar_ var modify
+  = modifyMVarM_ var modify
   where
     modify peer
       -- Don't go back.
@@ -223,7 +224,7 @@ addProposal :: (MonadIO m, MonadMask m)
             -> Round
             -> m ()
 addProposal (PeerStateObj _ _ var) hProp rProp =
-  modifyMVar_ var $ \peer -> case peer of
+  modifyMVarM_ var $ \peer -> case peer of
     Lagging p
       | FullStep h _ _ <- lagPeerStep p
       , hProp == h
@@ -260,7 +261,7 @@ addPrevoteWrk :: (MonadIO m, MonadMask m)
               -> Height -> Round -> (ValidatorSet alg -> Maybe (ValidatorIdx alg))
               -> m ()
 addPrevoteWrk (PeerStateObj _ _ var) h r getI =
-  modifyMVar_ var $ \peer -> case peer of
+  modifyMVarM_ var $ \peer -> case peer of
     -- We send only precommits to lagging peers
     Lagging _ -> return peer
     -- Update current peer
@@ -305,7 +306,7 @@ addPrecommitWrk :: (MonadIO m, MonadMask m)
                 -> Height -> Round -> (ValidatorSet alg -> Maybe (ValidatorIdx alg))
                 -> m ()
 addPrecommitWrk (PeerStateObj _ _ var) h r getI =
-  modifyMVar_ var $ \peer -> case peer of
+  modifyMVarM_ var $ \peer -> case peer of
     --
     Lagging p
       | FullStep hPeer rPeer _ <- lagPeerStep p
@@ -341,7 +342,7 @@ addBlock :: (MonadIO m, MonadMask m, Crypto alg, Serialise a)
          -> Block alg a
          -> m ()
 addBlock (PeerStateObj _ _ var) b =
-  modifyMVar_ var $ \peer -> case peer of
+  modifyMVarM_ var $ \peer -> case peer of
     Lagging p
       | bid == lagPeerBlockID p -> return $ Lagging p { lagPeerHasBlock = True }
       | otherwise               -> return peer
@@ -357,7 +358,7 @@ addBlockHR :: (MonadIO m, MonadMask m)
            -> Round
            -> m ()
 addBlockHR (PeerStateObj _ ProposalStorage{..} var) h r =
-  modifyMVar_ var $ \peer -> case peer of
+  modifyMVarM_ var $ \peer -> case peer of
     Lagging p
       | FullStep hP _ _ <- lagPeerStep p
       , h == hP
@@ -374,20 +375,3 @@ addBlockHR (PeerStateObj _ ProposalStorage{..} var) h r =
       | otherwise -> return peer
     Ahead _ -> return peer
     Unknown -> return peer
-
-----------------------------------------------------------------
-
-withMVarM :: (MonadMask m, MonadIO m) => MVar a -> (a -> m b) -> m b
-withMVarM m action =
-  mask $ \restore -> do
-    a <- liftIO $ takeMVar m
-    b <- restore (action a) `onException` liftIO (putMVar m a)
-    liftIO $ putMVar m a
-    return b
-
-modifyMVar_ :: (MonadMask m, MonadIO m) => MVar a -> (a -> m a) -> m ()
-modifyMVar_ m action =
-  mask $ \restore -> do
-    a  <- liftIO $ takeMVar m
-    a' <- restore (action a) `onException` liftIO (putMVar m a)
-    liftIO $ putMVar m a'
