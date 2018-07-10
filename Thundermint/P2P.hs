@@ -91,7 +91,7 @@ startPeerDispatcher
   -> AppChans alg a             -- ^ Channels for communication with main application
   -> BlockStorage 'RO m alg a  -- ^ Read only access to block storage
   -> ProposalStorage 'RO m alg a
-  -> Mempool IO tx
+  -> Mempool m tx
   -> m x
 startPeerDispatcher net addrs AppChans{..} storage propSt mempool = logOnException $ do
   logger InfoS "Starting peer dispatcher" ()
@@ -119,7 +119,7 @@ acceptLoop
      , Serialise a, Serialise tx, Ord addr, Show addr, Show a, Crypto alg)
   => NetworkAPI sock addr
   -> PeerChans m addr alg a
-  -> Mempool IO tx
+  -> Mempool m tx
   -> PeerRegistry addr
   -> m ()
 acceptLoop net@NetworkAPI{..} peerCh mempool registry = logOnException $ do
@@ -145,7 +145,7 @@ connectPeerTo
   => NetworkAPI sock addr
   -> addr
   -> PeerChans m addr alg a
-  -> Mempool IO tx
+  -> Mempool m tx
   -> PeerRegistry addr
   -> m ()
 connectPeerTo net@NetworkAPI{..} addr peerCh mempool registry = do
@@ -226,13 +226,13 @@ startPeer
   => PeerChans m addr alg a  -- ^ Communication with main application
                              --   and peer dispatcher
   -> SendRecv                -- ^ Functions for interaction with network
-  -> Mempool IO tx
+  -> Mempool m tx
   -> m ()
 startPeer peerCh@PeerChans{..} net@SendRecv{..} mempool = logOnException $ do
   logger InfoS "Starting peer" ()
   peerSt   <- newPeerStateObj blockStorage proposalStorage
   gossipCh <- liftIO newTChanIO
-  cursor   <- liftIO $ getMempoolCursor mempool
+  cursor   <- getMempoolCursor mempool
   runConcurrently
     [ peerGossipVotes   peerSt peerCh gossipCh
     , peerGossipBlocks  peerSt peerCh gossipCh
@@ -331,13 +331,13 @@ peerGossipMempool
      )
   => PeerStateObj m alg a
   -> TChan (GossipMsg tx alg a)
-  -> MempoolCursor IO tx
+  -> MempoolCursor m tx
   -> m x
 peerGossipMempool peerObj gossipCh MempoolCursor{..} = logOnException $ do
   logger InfoS "Starting routine for gossiping transactions" ()
   forever $ do
     getPeerState peerObj >>= \case
-      Current _ -> liftIO advanceCursor >>= \case
+      Current _ -> advanceCursor >>= \case
         Just tx -> liftIO $ atomically $ writeTChan gossipCh $ GossipTx tx
         Nothing -> return ()
       _         -> return ()
@@ -389,7 +389,7 @@ peerReceive
   => PeerStateObj m alg a
   -> PeerChans m addr alg a
   -> SendRecv
-  -> MempoolCursor IO tx
+  -> MempoolCursor m tx
   -> m ()
 peerReceive peerSt PeerChans{..} SendRecv{..} MempoolCursor{..} = logOnException $ do
   logger InfoS "Starting routing for receiving messages" ()
@@ -410,7 +410,7 @@ peerReceive peerSt PeerChans{..} SendRecv{..} MempoolCursor{..} = logOnException
                                                      (propRound  (signedValue p))
           GossipBlock     b -> do liftIO $ atomically $ peerChanRx $ RxBlock b
                                   addBlock peerSt b
-          GossipTx tx       -> do liftIO $ pushTransaction tx
+          GossipTx tx       -> do pushTransaction tx
           --
           GossipAnn ann -> case ann of
             AnnStep         s     -> advancePeer   peerSt s

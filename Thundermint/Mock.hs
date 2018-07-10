@@ -31,6 +31,7 @@ import qualified Katip
 import System.Random (randomIO)
 import Text.Printf
 
+import Thundermint.Control (MonadFork)
 import Thundermint.Crypto
 import Thundermint.Crypto.Containers
 import Thundermint.Crypto.Ed25519   (Ed25519_SHA512, privateKey)
@@ -124,7 +125,8 @@ data NodeDescription sock addr m alg st tx a = NodeDescription
   }
 
 runNode
-  :: (MonadIO m, MonadMask m, Eq tx, Crypto alg, Serialise a)
+  :: ( MonadIO m, MonadMask m, MonadFork m, MonadLogger m
+     , Eq tx, Crypto alg, Serialise a)
   => NodeDescription sock addr m alg st tx a
   -> m ()
 runNode NodeDescription{nodeBlockChainLogic=logic@BlockFold{..}, ..} = do
@@ -164,6 +166,12 @@ runNode NodeDescription{nodeBlockChainLogic=logic@BlockFold{..}, ..} = do
         , appMaxHeight      = Nothing
         }
   -- Start consensus
+  appCh <- liftIO newAppChans
+  -- let netRoutine = startPeerDispatcher
+  --                    nodeNetworks nodeInitialPeers appCh
+  --                    (makeReadOnly   nodeStorage)
+  --                    (makeReadOnlyPS propSt)
+  --                    mempool
   undefined
 
 
@@ -180,7 +188,7 @@ startNode
   -> AppState IO alg a
   -> Mempool IO tx
   -> IO ()
-startNode net addrs appState@AppState{..} mp = do
+startNode net addrs appState@AppState{..} mempool = do
   -- Initialize logging
   logfile <- case appValidator of
     Just (PrivValidator pk) ->
@@ -199,7 +207,7 @@ startNode net addrs appState@AppState{..} mp = do
                    $ startPeerDispatcher net addrs appCh
                        (hoistBlockStorageRO liftIO $ makeReadOnly   appStorage)
                        (hoistPropStorageRO  liftIO $ makeReadOnlyPS appPropStorage)
-                       mp
+                       (hoistMempool liftIO mempool)
     withAsync netRoutine $ \_ ->
       runLoggerT "consensus" logenv
         $ runApplication (hoistAppState liftIO appState) appCh
