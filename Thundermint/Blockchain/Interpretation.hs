@@ -9,6 +9,10 @@ module Thundermint.Blockchain.Interpretation (
   ) where
 
 import Control.Concurrent.MVar
+import Control.Monad.Catch
+import Control.Monad.IO.Class
+
+import Thundermint.Control
 import Thundermint.Store
 import Thundermint.Consensus.Types
 
@@ -59,13 +63,14 @@ data BChState m s = BChState
 
 -- | Create block storage backed by MVar
 newBChState
-  :: BlockFold s tx a           -- ^ Updating function
-  -> BlockStorage 'RO IO alg a  -- ^ Store of blocks
-  -> IO (BChState IO s)
+  :: (MonadMask m, MonadIO m)
+  => BlockFold s tx a           -- ^ Updating function
+  -> BlockStorage 'RO m alg a  -- ^ Store of blocks
+  -> m (BChState m s)
 newBChState BlockFold{..} BlockStorage{..} = do
-  state <- newMVar (Height 0, initialState)
+  state <- liftIO $ newMVar (Height 0, initialState)
   let ensureHeight hBlk = do
-        (st,flt) <- modifyMVar state $ \st@(h,s) ->
+        (st,flt) <- modifyMVarM state $ \st@(h,s) ->
           case h `compare` hBlk of
             GT -> error "newBChState: invalid parameter"
             EQ -> return (st, (s,False))
@@ -77,6 +82,6 @@ newBChState BlockFold{..} BlockStorage{..} = do
           True  -> ensureHeight hBlk
           False -> return st
   return BChState
-    { currentState = withMVar state (return . snd)
+    { currentState = withMVarM state (return . snd)
     , stateAtH     = ensureHeight
     }

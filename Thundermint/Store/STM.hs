@@ -10,6 +10,7 @@ module Thundermint.Store.STM (
 import Codec.Serialise (Serialise)
 import Control.Applicative
 import Control.Monad
+import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Maybe
 import Control.Concurrent
@@ -126,36 +127,36 @@ newSTMPropStorage = do
     }
 
 newMempool
-  :: (Eq tx)
-  => (tx -> IO Bool)
-  -> IO (Mempool IO tx)
+  :: (Eq tx, MonadIO m)
+  => (tx -> m Bool)
+  -> m (Mempool m tx)
 newMempool validation = do
-  varFIFO <- newTVarIO  IMap.empty
-  varMaxN <- newTVarIO  0
+  varFIFO <- liftIO $ newTVarIO IMap.empty
+  varMaxN <- liftIO $ newTVarIO 0
   return Mempool
     { peekNTransactions = \mn -> do
-        fifo <- readTVarIO varFIFO
+        fifo <- liftIO (readTVarIO varFIFO)
         return $ case mn of
           Nothing -> toList fifo
           Just n  -> take n $ toList fifo
     --
     , filterMempool = do
-        fifo   <- readTVarIO varFIFO
+        fifo   <- liftIO $ readTVarIO varFIFO
         goodTx <- filterM validation $ toList fifo
-        atomically $ modifyTVar' varFIFO $ IMap.filter (`elem` goodTx)
+        liftIO $ atomically $ modifyTVar' varFIFO $ IMap.filter (`elem` goodTx)
     --
-    , mempoolSize = IMap.size <$> readTVarIO varFIFO
+    , mempoolSize = IMap.size <$> liftIO (readTVarIO varFIFO)
     --
-    , getMempoolCursor = atomically $ do
+    , getMempoolCursor = liftIO $ atomically $ do
         varN <- newTVar 0
         return MempoolCursor
           { pushTransaction = \tx -> validation tx >>= \case
               False -> return ()
-              True  -> atomically $ do
+              True  -> liftIO $ atomically $ do
                 n <- succ <$> readTVar varMaxN
                 modifyTVar' varFIFO $ IMap.insert n tx
                 writeTVar   varMaxN n
-          , advanceCursor = atomically $ do
+          , advanceCursor = liftIO $ atomically $ do
               fifo <- readTVar varFIFO
               n    <- readTVar varN
               case n `IMap.lookupGT` fifo of
