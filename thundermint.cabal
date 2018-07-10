@@ -40,6 +40,7 @@ Library
   Exposed-modules:
                   Thundermint.Blockchain.Types
                   Thundermint.Blockchain.App
+                  Thundermint.Blockchain.Interpretation
                   Thundermint.Control
                   Thundermint.Consensus.Algorithm
                   Thundermint.Consensus.Types
