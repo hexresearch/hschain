@@ -62,14 +62,14 @@ instance (Serialise tx, Serialise a) => Serialise (GossipMsg tx alg a)
 
 
 -- | Connection handed to process controlling communication with peer
-data PeerChans addr alg a = PeerChans
+data PeerChans m addr alg a = PeerChans
   { peerChanTx      :: TChan (Announcement alg)
     -- ^ Broadcast channel for outgoing messages
   , peerChanRx      :: MessageRx 'Unverified alg a -> STM ()
     -- ^ STM action for sending message to main application
-  , blockStorage    :: BlockStorage 'RO IO alg a
+  , blockStorage    :: BlockStorage 'RO m alg a
     -- ^ Read only access to storage of blocks
-  , proposalStorage :: ProposalStorage 'RO IO alg a
+  , proposalStorage :: ProposalStorage 'RO m alg a
     -- ^ Read only access to storage of proposals
   , consensusState  :: STM (Maybe (Height, TMState alg a))
     -- ^ Read only access to current state of consensus state machine
@@ -89,8 +89,8 @@ startPeerDispatcher
   => NetworkAPI sock addr       -- ^ API for networking
   -> [addr]                     -- ^ Set of initial addresses to connect
   -> AppChans alg a             -- ^ Channels for communication with main application
-  -> BlockStorage 'RO IO alg a  -- ^ Read only access to block storage
-  -> ProposalStorage 'RO IO alg a
+  -> BlockStorage 'RO m alg a  -- ^ Read only access to block storage
+  -> ProposalStorage 'RO m alg a
   -> Mempool IO tx
   -> m x
 startPeerDispatcher net addrs AppChans{..} storage propSt mempool = logOnException $ do
@@ -118,7 +118,7 @@ acceptLoop
   :: ( MonadFork m, MonadMask m, MonadLogger m
      , Serialise a, Serialise tx, Ord addr, Show addr, Show a, Crypto alg)
   => NetworkAPI sock addr
-  -> PeerChans addr alg a
+  -> PeerChans m addr alg a
   -> Mempool IO tx
   -> PeerRegistry addr
   -> m ()
@@ -144,7 +144,7 @@ connectPeerTo
      )
   => NetworkAPI sock addr
   -> addr
-  -> PeerChans addr alg a
+  -> PeerChans m addr alg a
   -> Mempool IO tx
   -> PeerRegistry addr
   -> m ()
@@ -223,16 +223,14 @@ registiryAddressSet (PeerRegistry _ addrSet _)
 startPeer
   :: ( MonadFork m, MonadMask m, MonadLogger m
      , Show a, Serialise a, Serialise tx, Crypto alg)
-  => PeerChans addr alg a  -- ^ Communication with main application
-                           --   and peer dispatcher
-  -> SendRecv              -- ^ Functions for interaction with network
+  => PeerChans m addr alg a  -- ^ Communication with main application
+                             --   and peer dispatcher
+  -> SendRecv                -- ^ Functions for interaction with network
   -> Mempool IO tx
   -> m ()
 startPeer peerCh@PeerChans{..} net@SendRecv{..} mempool = logOnException $ do
   logger InfoS "Starting peer" ()
-  peerSt   <- newPeerStateObj
-    (hoistBlockStorageRO liftIO blockStorage)
-    (hoistPropStorageRO  liftIO proposalStorage)
+  peerSt   <- newPeerStateObj blockStorage proposalStorage
   gossipCh <- liftIO newTChanIO
   cursor   <- liftIO $ getMempoolCursor mempool
   runConcurrently
@@ -249,23 +247,21 @@ startPeer peerCh@PeerChans{..} net@SendRecv{..} mempool = logOnException $ do
 peerGossipVotes
   :: (MonadIO m, MonadFork m, MonadMask m, MonadLogger m, Crypto alg)
   => PeerStateObj m alg a         -- ^ Current state of peer
-  -> PeerChans addr alg a       -- ^ Read-only access to
+  -> PeerChans m addr alg a       -- ^ Read-only access to
   -> TChan (GossipMsg tx alg a)
   -> m x
 peerGossipVotes peerObj PeerChans{..} gossipCh = logOnException $ do
   logger InfoS "Starting routine for gossiping votes" ()
   forever $ do
-    bchH <- liftIO $ blockchainHeight blockStorage
+    bchH <- blockchainHeight blockStorage
     peer <- getPeerState peerObj
     case peer of
       --
       Lagging p -> do
         mcmt <- case lagPeerStep p of
           FullStep peerH _ _
-            | peerH == bchH
-              -> liftIO $ retrieveLocalCommit blockStorage peerH
-            | otherwise
-              -> liftIO $ retrieveCommit blockStorage peerH
+            | peerH == bchH -> retrieveLocalCommit blockStorage peerH
+            | otherwise     -> retrieveCommit      blockStorage peerH
         --
         case mcmt of
          Just cmt -> do
@@ -353,8 +349,8 @@ peerGossipMempool peerObj gossipCh MempoolCursor{..} = logOnException $ do
 peerGossipBlocks
   :: (MonadIO m, MonadFork m, MonadMask m, MonadLogger m)
   => PeerStateObj m alg a       -- ^ Current state of peer
-  -> PeerChans addr alg a       -- ^ Read-only access to
-  -> TChan (GossipMsg tx alg a)    -- ^ Network API
+  -> PeerChans m addr alg a     -- ^ Read-only access to
+  -> TChan (GossipMsg tx alg a) -- ^ Network API
   -> m x
 peerGossipBlocks peerObj PeerChans{..} gossipCh = logOnException $ do
   logger InfoS "Starting routine for gossiping votes" ()
@@ -365,13 +361,13 @@ peerGossipBlocks peerObj PeerChans{..} gossipCh = logOnException $ do
         | lagPeerHasProposal p
         , not (lagPeerHasBlock p)
           -> do let FullStep h _ _ = lagPeerStep p
-                Just b <- liftIO $ retrieveBlock blockStorage h -- FIXME: Partiality
+                Just b <- retrieveBlock blockStorage h -- FIXME: Partiality
                 liftIO $ atomically $ writeTChan gossipCh $ GossipBlock b
         | otherwise -> return ()
       --
       Current p -> do
         let FullStep h r _ = peerStep p
-        mbid <- liftIO $ blockAtRound proposalStorage h r
+        mbid <- blockAtRound proposalStorage h r
         case () of
            -- Peer has proposal but not block
           _| Just (b,bid) <- mbid
@@ -391,7 +387,7 @@ peerReceive
   :: ( MonadIO m, MonadFork m, MonadMask m, MonadLogger m
      , Crypto alg, Serialise a, Serialise tx)
   => PeerStateObj m alg a
-  -> PeerChans addr alg a
+  -> PeerChans m addr alg a
   -> SendRecv
   -> MempoolCursor IO tx
   -> m ()
@@ -429,7 +425,7 @@ peerSend
   :: ( MonadIO m, MonadFork m, MonadMask m, MonadLogger m
      , Crypto alg, Serialise a, Serialise tx)
   => PeerStateObj m alg a
-  -> PeerChans addr alg a
+  -> PeerChans m addr alg a
   -> TChan (GossipMsg tx alg a)
   -> SendRecv
   -> m x
