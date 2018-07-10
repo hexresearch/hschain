@@ -4,11 +4,16 @@ module Thundermint.Control (
     MonadFork(..)
   , forkLinked
   , runConcurrently
+    -- * Generalized MVar-code
+  , withMVarM
+  , modifyMVarM
+  , modifyMVarM_
   ) where
 
+import Control.Concurrent.MVar
 import Control.Monad
 import Control.Monad.Trans.Reader
-import Control.Monad.Catch            (bracket,MonadMask)
+import Control.Monad.Catch            (bracket,MonadMask,mask,onException)
 import Control.Monad.IO.Class
 import           Control.Exception    (Exception(..), SomeException, AsyncException)
 import           Control.Concurrent   (ThreadId, killThread, throwTo, myThreadId)
@@ -65,3 +70,31 @@ runConcurrently actions = do
   foldr (\f -> forkLinked $ f >> void (liftIO (Conc.tryPutMVar lock ())))
         (liftIO $ Conc.takeMVar lock)
         actions
+
+
+----------------------------------------------------------------
+-- MVars
+----------------------------------------------------------------
+
+withMVarM :: (MonadMask m, MonadIO m) => MVar a -> (a -> m b) -> m b
+withMVarM m action =
+  mask $ \restore -> do
+    a <- liftIO $ takeMVar m
+    b <- restore (action a) `onException` liftIO (putMVar m a)
+    liftIO $ putMVar m a
+    return b
+
+modifyMVarM_ :: (MonadMask m, MonadIO m) => MVar a -> (a -> m a) -> m ()
+modifyMVarM_ m action =
+  mask $ \restore -> do
+    a  <- liftIO $ takeMVar m
+    a' <- restore (action a) `onException` liftIO (putMVar m a)
+    liftIO $ putMVar m a'
+
+modifyMVarM :: (MonadMask m, MonadIO m) => MVar a -> (a -> m (a,b)) -> m b
+modifyMVarM m action =
+  mask $ \restore -> do
+    a      <- liftIO $ takeMVar m
+    (a',b) <- restore (action a) `onException` liftIO (putMVar m a)
+    liftIO $ putMVar m a'
+    return b
