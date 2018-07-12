@@ -10,16 +10,20 @@ module Thundermint.Mock (
     -- * Network connectivity
   , connectAll2All
   , connectRing
+    -- * New node code
+  , NodeDescription(..)
+  , runNode
     -- * Running nodes
   , startNode
   , runNodeSet
   ) where
 
 import Codec.Serialise          (Serialise)
-import Control.Concurrent.Async
+import Control.Concurrent.Async hiding (runConcurrently)
 import Control.Monad
 import Control.Monad.Catch
 import Control.Monad.IO.Class
+import Control.Monad.Trans.Class
 import Data.Foldable
 import Data.Map                 (Map)
 import Data.Word                (Word64)
@@ -31,7 +35,7 @@ import qualified Katip
 import System.Random (randomIO)
 import Text.Printf
 
-import Thundermint.Control (MonadFork)
+import Thundermint.Control (MonadFork,runConcurrently)
 import Thundermint.Crypto
 import Thundermint.Crypto.Containers
 import Thundermint.Crypto.Ed25519   (Ed25519_SHA512, privateKey)
@@ -111,7 +115,7 @@ connectRing vals addr =
 --
 ----------------------------------------------------------------
 
-
+-- Specification of node
 data NodeDescription sock addr m alg st tx a = NodeDescription
   { nodeStorage         :: BlockStorage 'RW m alg a
     -- ^ Storage API for nodes
@@ -122,11 +126,16 @@ data NodeDescription sock addr m alg st tx a = NodeDescription
   , nodeInitialPeers    :: [addr]
     -- ^ Initial peers
   , nodeValidationKey   :: Maybe (PrivValidator alg)
+  , nodeLogFile         :: Maybe FilePath
+  , nodeAction          :: Maybe ((tx -> m ()) -> st -> m ())
+  , nodeMaxH            :: Maybe Height
   }
 
 runNode
-  :: ( MonadIO m, MonadMask m, MonadFork m, MonadLogger m
-     , Eq tx, Crypto alg, Serialise a)
+  :: ( MonadIO m, MonadMask m, MonadFork m
+     , Eq tx, Serialise tx
+     , Crypto alg, Ord addr, Show addr, Show a
+     , Serialise a)
   => NodeDescription sock addr m alg st tx a
   -> m ()
 runNode NodeDescription{nodeBlockChainLogic=logic@BlockFold{..}, ..} = do
@@ -144,8 +153,8 @@ runNode NodeDescription{nodeBlockChainLogic=logic@BlockFold{..}, ..} = do
         case processTx (Height 1) tx st of
           Nothing -> return False
           Just _  -> return True
-
   mempool <- newMempool checkTx
+  cursor  <- getMempoolCursor mempool
   -- Build application state of consensus algorithm
   let appSt = AppState
         { appStorage     = nodeStorage
@@ -163,16 +172,33 @@ runNode NodeDescription{nodeBlockChainLogic=logic@BlockFold{..}, ..} = do
         , appCommitCallback = filterMempool mempool
         , appValidator      = nodeValidationKey
         , appValidatorsSet  = valSet
-        , appMaxHeight      = Nothing
+        , appMaxHeight      = nodeMaxH
         }
-  -- Start consensus
-  appCh <- liftIO newAppChans
-  -- let netRoutine = startPeerDispatcher
-  --                    nodeNetworks nodeInitialPeers appCh
-  --                    (makeReadOnly   nodeStorage)
-  --                    (makeReadOnlyPS propSt)
-  --                    mempool
-  undefined
+  -- Set up logging
+  bracket (liftIO $ Katip.initLogEnv "TM" "DEV")
+          (liftIO . Katip.closeScribes) $ \logenv -> do
+    --
+    logenv' <- case nodeLogFile of
+      Nothing -> return logenv
+      Just nm -> do scribe <- liftIO $ Katip.mkFileScribe nm Katip.DebugS Katip.V2
+                    liftIO $ Katip.registerScribe "log" scribe Katip.defaultScribeSettings logenv
+    -- Networking
+    appCh <- liftIO newAppChans
+    runConcurrently $
+      case nodeAction of
+          Nothing     -> []
+          Just action -> [forever $ action (pushTransaction cursor)
+                                =<< currentState bchState]
+      ++
+      [ id $ runLoggerT "net" logenv'
+           $ startPeerDispatcher nodeNetworks nodeInitialPeers appCh
+                                 (hoistBlockStorageRO lift $ makeReadOnly   nodeStorage)
+                                 (hoistPropStorageRO  lift $ makeReadOnlyPS propSt)
+                                 (hoistMempool lift mempool)
+      , id $ runLoggerT "consensus" logenv'
+           $ runApplication (hoistAppState lift appSt) appCh
+      ]
+
 
 
 

@@ -126,11 +126,11 @@ Executable thundermint-coin
                      , bytestring >=0.10
                      , base58-bytestring >=0.1
                      , containers >=0.5.7
+                     , aeson
                      , stm
                      , serialise
                      , random
                      , async
-                     , groom
                      , text
   hs-source-dirs:      exe
   Main-is:             coin.hs
