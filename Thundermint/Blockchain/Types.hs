@@ -1,7 +1,9 @@
-{-# LANGUAGE DataKinds       #-}
-{-# LANGUAGE DeriveGeneric   #-}
-{-# LANGUAGE RankNTypes      #-}
-{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE DataKinds            #-}
+{-# LANGUAGE DeriveGeneric        #-}
+{-# LANGUAGE FlexibleContexts     #-}
+{-# LANGUAGE RankNTypes           #-}
+{-# LANGUAGE RecordWildCards      #-}
+{-# LANGUAGE UndecidableInstances #-}
 -- |
 -- Data types for storage of blockchain
 module Thundermint.Blockchain.Types (
@@ -19,6 +21,7 @@ module Thundermint.Blockchain.Types (
 
 import Codec.Serialise        (Serialise)
 import Control.Concurrent.STM
+import qualified Data.Aeson as JSON
 import GHC.Generics           (Generic)
 
 import Thundermint.Crypto
@@ -67,6 +70,14 @@ hoistAppState fun AppState{..} = AppState
 data PrivValidator alg = PrivValidator
   { validatorPrivKey  :: PrivKey alg
   }
+
+instance Show (PrivKey alg) => Show (PrivValidator alg) where
+  show (PrivValidator k) = show k
+
+instance JSON.FromJSON (PrivKey alg) => JSON.FromJSON (PrivValidator alg) where
+  parseJSON = fmap PrivValidator . JSON.parseJSON
+instance JSON.ToJSON   (PrivKey alg) => JSON.ToJSON   (PrivValidator alg) where
+  toJSON = JSON.toJSON . validatorPrivKey
 
 ----------------------------------------------------------------
 -- Messages

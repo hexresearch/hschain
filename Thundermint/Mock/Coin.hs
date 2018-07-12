@@ -13,6 +13,7 @@ module Thundermint.Mock.Coin (
 import Control.Applicative
 import Control.Monad
 import Codec.Serialise      (Serialise,serialise)
+import qualified Data.Aeson as JSON
 import Data.ByteString.Lazy (toStrict)
 import Data.Foldable
 import Data.Map             (Map)
@@ -36,6 +37,8 @@ data TxSend = TxSend
   }
   deriving (Show, Eq, Generic)
 instance Serialise TxSend
+instance JSON.ToJSON   TxSend
+instance JSON.FromJSON TxSend
 
 data Tx
   = Deposit (PublicKey Alg) Integer
@@ -51,7 +54,8 @@ data Tx
     --   2. Sum of inputs must be equal to sum of outputs
   deriving (Show, Eq, Generic)
 instance Serialise Tx
-
+instance JSON.ToJSON   Tx
+instance JSON.FromJSON Tx
 
 -- | State of coins in program-digestible format
 --
