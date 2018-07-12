@@ -31,6 +31,29 @@ data Ed25519_SHA512
 newtype instance PrivKey   Ed25519_SHA512 = PrivKey Ed.SecretKey
 newtype instance PublicKey Ed25519_SHA512 = PublicKey Ed.PublicKey
 
+instance Crypto Ed25519_SHA512 where
+  signBlob (PrivKey k)  = Signature . convert . Ed.sign k pubKey
+   where pubKey = Ed.toPublic k
+
+  verifyBlobSignature (PublicKey pubKey) blob (Signature s)
+    = Ed.verify pubKey blob (throwCryptoError $ Ed.signature s)
+
+  publicKey (PrivKey k)   = PublicKey $ Ed.toPublic k
+  address   (PublicKey k) = Address $ convert k
+  hashBlob                = Hash . sha512
+  
+
+
+generatePrivKey :: MonadRandom m => m (PrivKey Ed25519_SHA512)
+generatePrivKey = fmap PrivKey Ed.generateSecretKey
+
+privateKey :: ByteArrayAccess ba => ba -> PrivKey Ed25519_SHA512
+privateKey = PrivKey . throwCryptoError . Ed.secretKey
+
+----------------------------------------------------------------
+-- Private key instances
+----------------------------------------------------------------
+
 deriving instance Eq (PrivKey Ed25519_SHA512)
 
 instance CBOR.Serialise (PublicKey Ed25519_SHA512) where
@@ -40,10 +63,6 @@ instance CBOR.Serialise (PublicKey Ed25519_SHA512) where
                 CryptoPassed pk -> return (PublicKey pk)
                 CryptoFailed e  -> fail (show e)
 
-instance Show (PublicKey Ed25519_SHA512) where
-  show (PublicKey k) = show $ unpack $ encodeBase58 $ convert k
-
-deriving instance Eq (PublicKey Ed25519_SHA512)
 
 instance Show (PrivKey Ed25519_SHA512) where
   show (PrivKey k) = show $ unpack $ encodeBase58 $ convert k
@@ -64,20 +83,28 @@ instance FromJSON (PrivKey Ed25519_SHA512) where
 
   parseJSON _          = fail "Expect PrivKey"
 
--- | We assume that there's
-instance Crypto Ed25519_SHA512 where
-  signBlob (PrivKey k)  = Signature . convert . Ed.sign k pubKey
-   where pubKey = Ed.toPublic k
 
-  verifyBlobSignature (PublicKey pubKey) blob (Signature s)
-    = Ed.verify pubKey blob (throwCryptoError $ Ed.signature s)
+----------------------------------------------------------------
+-- Public key instances
+----------------------------------------------------------------
 
-  publicKey (PrivKey k)   = PublicKey $ Ed.toPublic k
-  address   (PublicKey k) = Address $ convert k
-  hashBlob                = Hash . sha512
+deriving instance Eq (PublicKey Ed25519_SHA512)
 
-generatePrivKey :: MonadRandom m => m (PrivKey Ed25519_SHA512)
-generatePrivKey = fmap PrivKey Ed.generateSecretKey
+instance Show (PublicKey Ed25519_SHA512) where
+  show (PublicKey k) = show $ unpack $ encodeBase58 $ convert k
 
-privateKey :: ByteArrayAccess ba => ba -> PrivKey Ed25519_SHA512
-privateKey = PrivKey . throwCryptoError . Ed.secretKey
+instance ToJSON (PublicKey Ed25519_SHA512) where
+  toJSON (PublicKey k) = String
+                     $ T.decodeUtf8
+                     $ encodeBase58
+                     $ convert k
+
+instance FromJSON (PublicKey Ed25519_SHA512) where
+  parseJSON (String s) =
+    case decodeBase58 $ T.encodeUtf8 s of
+      Nothing -> fail  "Incorrect Base58 encoding for bs"
+      Just bs -> either (fail . show) (return . PublicKey)
+                 $ eitherCryptoError
+                 $ Ed.publicKey bs
+
+  parseJSON _          = fail "Expect PrivKey"
