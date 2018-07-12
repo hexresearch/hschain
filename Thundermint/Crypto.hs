@@ -41,6 +41,8 @@ import Codec.Serialise (Serialise, serialise)
 import Control.DeepSeq
 import Control.Monad
 
+import qualified Data.Aeson         as JSON
+import qualified Data.Text.Encoding as T
 import Data.ByteString.Lazy (toStrict)
 import Data.Word
 import GHC.Generics         (Generic,Generic1)
@@ -68,6 +70,15 @@ instance Show (Signature alg) where
     = showParen (n > 10)
     $ showString "Signature " . shows (encodeBase58 bs)
 
+instance JSON.ToJSON (Signature alg) where
+  toJSON (Signature s) = JSON.String $ T.decodeUtf8 $ encodeBase58 s
+instance JSON.FromJSON (Signature alg) where
+  parseJSON (JSON.String s) =
+    case decodeBase58 $ T.encodeUtf8 s of
+      Nothing -> fail  "Incorrect Base58 encoding for bs"
+      Just bs -> return $ Signature bs
+  parseJSON _ = fail "Expected string for Signature"
+
 instance NFData (Signature a)
 instance NFData1 Signature
 
@@ -88,6 +99,16 @@ instance Show (Hash alg) where
   showsPrec n (Hash bs)
     = showParen (n > 10)
     $ showString "Hash " . shows (encodeBase58 bs)
+
+instance JSON.ToJSON (Hash alg) where
+  toJSON (Hash s) = JSON.String $ T.decodeUtf8 $ encodeBase58 s
+instance JSON.FromJSON (Hash alg) where
+  parseJSON (JSON.String s) =
+    case decodeBase58 $ T.encodeUtf8 s of
+      Nothing -> fail  "Incorrect Base58 encoding for bs"
+      Just bs -> return $ Hash bs
+  parseJSON _ = fail "Expected string for Hash"
+
 
 -- | Type-indexed set of crypto algorithms. It's not very principled
 --   by to keep signatures sane everything was thrown into same type
