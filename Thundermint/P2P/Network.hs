@@ -4,8 +4,7 @@
 -- Abstract API for network which support
 module Thundermint.P2P.Network (
     NetworkAPI(..)
-  , SendRecv(..)
-  , applySocket
+  , Connection(..)
     -- * Real network
   , realNetwork
     -- * Mock in-memory network
@@ -30,38 +29,29 @@ import qualified Network.Socket.ByteString.Lazy as NetBS
 -- | Dictionary with API for network programming. We use it to be able
 --   to provide two implementations of networking. One is real network
 --   and another is mock in-process network for testing.
-data NetworkAPI sock addr = NetworkAPI
-  { listenOn :: IO (IO (), IO (sock, addr))
-    -- ^ Start listening on given port. Returns action to close socket
+data NetworkAPI addr = NetworkAPI
+  { listenOn :: IO (IO (), IO (Connection , addr))
+    -- ^ Start listening on given port. Returns action to stop listener
     --   and function for accepting new connections
-  , connect  :: addr -> IO sock
+  , connect  :: addr -> IO Connection
     -- ^ Connect to remote address
-  , sendBS   :: sock -> BS.ByteString -> IO ()
-    -- ^ Send data to socket
-  , recvBS   :: sock -> Int -> IO (Maybe BS.ByteString)
-    -- ^ Receive data from socket
-    --
-    -- FIXME: Do we even need size parameter?
-  , close    :: sock -> IO ()
   }
 
-data SendRecv = SendRecv
-  { send :: BS.ByteString -> IO ()
-  , recv :: Int -> IO (Maybe BS.ByteString)
-  }
-
-applySocket :: NetworkAPI s a -> s -> SendRecv
-applySocket NetworkAPI{..} s = SendRecv
-  { send = sendBS s
-  , recv = recvBS s
-  }
+data Connection = Connection
+    { send  :: BS.ByteString -> IO ()
+      -- ^ Send data
+    , recv  :: IO (Maybe BS.ByteString)
+      -- ^ Receive data
+    , close :: IO ()
+      -- ^ Close socket
+    }
 
 ----------------------------------------------------------------
 --
 ----------------------------------------------------------------
 
 -- | API implementation for real network
-realNetwork :: Net.ServiceName -> NetworkAPI Net.Socket Net.SockAddr
+realNetwork :: Net.ServiceName -> NetworkAPI Net.SockAddr
 realNetwork listenPort = NetworkAPI
   { listenOn = do
       let hints = Net.defaultHints
@@ -75,7 +65,7 @@ realNetwork listenPort = NetworkAPI
       flip onException (Net.close sock) $ do
         Net.bind sock (Net.addrAddress addr)
         Net.listen sock 5
-        return (Net.close sock, Net.accept sock)
+        return (Net.close sock, accept sock)
     --
   , connect  = \addr -> do
       let hints = Just Net.defaultHints
@@ -88,14 +78,20 @@ realNetwork listenPort = NetworkAPI
                          (Net.addrProtocol   addrInfo)
       flip onException (Net.close sock) $ do
         Net.connect sock addr
-        return sock
-    --
-  , sendBS = NetBS.sendAll
-  , recvBS = \sock n -> do
-      bs <- NetBS.recv sock (fromIntegral n)
-      return $ if BS.null bs then Nothing else Just bs
-  , close  = Net.close
+        return $ applyConn sock
   }
+ where
+  accept sock = do
+    (conn, addr) <- Net.accept sock
+    return (applyConn conn, addr)
+  applyConn conn = Connection (sendBS conn) (recvBS conn) (Net.close conn)
+  sendBS = NetBS.sendAll
+  recvBS sock = do
+      -- FIXME: packet length should be added before message 2 octets in network order BE
+      bs <- NetBS.recv sock 4096
+      return $ if BS.null bs then Nothing else Just bs
+
+
 
 
 ----------------------------------------------------------------
@@ -130,7 +126,7 @@ createMockNode
   => MockNet addr
   -> Net.ServiceName
   -> addr
-  -> NetworkAPI MockSocket (addr, Net.ServiceName)
+  -> NetworkAPI (addr, Net.ServiceName)
 createMockNode MockNet{..} port addr = NetworkAPI
   { listenOn = atomically $ do
       let key = (addr, port)
@@ -151,8 +147,9 @@ createMockNode MockNet{..} port addr = NetworkAPI
             case key `Map.lookup` mList of
               Nothing     -> error "MockNet: cannot accept on closed socket"
               Just []     -> retry
-              Just (x:xs) -> do writeTVar mnetIncoming $ Map.insert key xs mList
-                                return x
+              Just ((conn,addr'):xs) -> do
+                writeTVar mnetIncoming $ Map.insert key xs mList
+                return (applyConn conn, addr')
       return (stopListening, accept)
     --
   , connect = \loc -> atomically $ do
@@ -172,18 +169,18 @@ createMockNode MockNet{..} port addr = NetworkAPI
       case loc `Map.lookup` cmap of
         Nothing -> error "MockNet: Cannot connect to closed socket"
         Just xs -> writeTVar mnetIncoming $ Map.insert loc (xs ++ [(sockFrom,(addr,snd loc))]) cmap
-      return sockTo
-    --
-  , sendBS = \MockSocket{..} bs -> atomically $
+      return $ applyConn sockTo
+  }
+ where
+  applyConn conn = Connection (sendBS conn) (recvBS conn) (close conn)
+  sendBS MockSocket{..} bs = atomically $
       readTVar msckActive >>= \case
         False -> error "MockNet: Cannot write to closed socket"
         True  -> writeTChan msckSend bs
     --
-  , recvBS = \MockSocket{..} _n -> atomically $ 
+  recvBS MockSocket{..} = atomically $
       readTVar msckActive >>= \case
         False -> tryReadTChan msckRecv
         True  -> Just <$> readTChan msckRecv
     --
-  , close = atomically . closeMockSocket
-
-  }
+  close = atomically . closeMockSocket

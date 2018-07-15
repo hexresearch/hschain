@@ -86,7 +86,7 @@ data PeerChans m addr alg a = PeerChans
 startPeerDispatcher
   :: ( MonadMask m, MonadFork m, MonadLogger m
      , Serialise a, Serialise tx, Ord addr, Show addr, Show a, Crypto alg)
-  => NetworkAPI sock addr       -- ^ API for networking
+  => NetworkAPI addr       -- ^ API for networking
   -> [addr]                     -- ^ Set of initial addresses to connect
   -> AppChans alg a             -- ^ Channels for communication with main application
   -> BlockStorage 'RO m alg a  -- ^ Read only access to block storage
@@ -96,7 +96,7 @@ startPeerDispatcher
 startPeerDispatcher net addrs AppChans{..} storage propSt mempool = logOnException $ do
   logger InfoS "Starting peer dispatcher" ()
   peers        <- newPeerRegistry
-  peerExchange <- liftIO newTChanIO
+  _peerExchange <- liftIO newTChanIO
   let peerCh = PeerChans { peerChanTx      = appChanTx
                          , peerChanRx      = writeTChan appChanRx
                          , blockStorage    = storage
@@ -117,24 +117,24 @@ startPeerDispatcher net addrs AppChans{..} storage propSt mempool = logOnExcepti
 acceptLoop
   :: ( MonadFork m, MonadMask m, MonadLogger m
      , Serialise a, Serialise tx, Ord addr, Show addr, Show a, Crypto alg)
-  => NetworkAPI sock addr
+  => NetworkAPI addr
   -> PeerChans m addr alg a
   -> Mempool m tx
   -> PeerRegistry addr
   -> m ()
-acceptLoop net@NetworkAPI{..} peerCh mempool registry = logOnException $ do
+acceptLoop NetworkAPI{..} peerCh mempool registry = logOnException $ do
   logger InfoS "Starting accept loop" ()
   bracket (liftIO listenOn) (liftIO . fst) $ \(_,accept) -> forever $
     -- We accept connection, create new thread and put it into
     -- registry. If we already have connection from that peer we close
     -- connection immediately
     mask $ \restore -> do
-      (sock, addr) <- liftIO accept
-      void $ flip forkFinally (const $ liftIO $ close sock)
+      (conn, addr) <- liftIO accept
+      void $ flip forkFinally (const $ liftIO $ close conn)
            $ withPeer registry addr
            $ restore
            $ do logger InfoS ("Accepted connection from " <> showLS addr) ()
-                startPeer peerCh (applySocket net sock) mempool
+                startPeer peerCh conn mempool
 
 
 -- Initiate connection to remote host and register peer
@@ -142,18 +142,18 @@ connectPeerTo
   :: ( MonadFork m, MonadMask m, MonadLogger m
      , Ord addr, Serialise a, Serialise tx, Show addr, Show a, Crypto alg
      )
-  => NetworkAPI sock addr
+  => NetworkAPI addr
   -> addr
   -> PeerChans m addr alg a
   -> Mempool m tx
   -> PeerRegistry addr
   -> m ()
-connectPeerTo net@NetworkAPI{..} addr peerCh mempool registry = do
+connectPeerTo NetworkAPI{..} addr peerCh mempool registry = do
   logger InfoS ("Connecting to " <> showLS addr) ()
   void $ fork
        $ bracket (liftIO $ connect addr) (liftIO . close)
-       $ \sock -> withPeer registry addr
-                $ startPeer peerCh (applySocket net sock) mempool
+       $ \conn -> withPeer registry addr
+                $ startPeer peerCh conn mempool
 
 
 -- Set of currently running peers.
@@ -225,10 +225,10 @@ startPeer
      , Show a, Serialise a, Serialise tx, Crypto alg)
   => PeerChans m addr alg a  -- ^ Communication with main application
                              --   and peer dispatcher
-  -> SendRecv                -- ^ Functions for interaction with network
+  -> Connection              -- ^ Functions for interaction with network
   -> Mempool m tx
   -> m ()
-startPeer peerCh@PeerChans{..} net@SendRecv{..} mempool = logOnException $ do
+startPeer peerCh@PeerChans{..} net mempool = logOnException $ do
   logger InfoS "Starting peer" ()
   peerSt   <- newPeerStateObj blockStorage proposalStorage
   gossipCh <- liftIO newTChanIO
@@ -388,12 +388,12 @@ peerReceive
      , Crypto alg, Serialise a, Serialise tx)
   => PeerStateObj m alg a
   -> PeerChans m addr alg a
-  -> SendRecv
+  -> Connection
   -> MempoolCursor m tx
   -> m ()
-peerReceive peerSt PeerChans{..} SendRecv{..} MempoolCursor{..} = logOnException $ do
+peerReceive peerSt PeerChans{..} Connection{..} MempoolCursor{..} = logOnException $ do
   logger InfoS "Starting routing for receiving messages" ()
-  fix $ \loop -> liftIO (recv 4096) >>= \case
+  fix $ \loop -> liftIO recv >>= \case
     Nothing  -> logger InfoS "Peer stopping since socket is closed" ()
     Just bs  -> case deserialiseOrFail bs of
       Left  e   -> logger ErrorS ("Deserialization error: " <> showLS e) ()
@@ -410,7 +410,7 @@ peerReceive peerSt PeerChans{..} SendRecv{..} MempoolCursor{..} = logOnException
                                                      (propRound  (signedValue p))
           GossipBlock     b -> do liftIO $ atomically $ peerChanRx $ RxBlock b
                                   addBlock peerSt b
-          GossipTx tx       -> do pushTransaction tx
+          GossipTx tx       -> pushTransaction tx
           --
           GossipAnn ann -> case ann of
             AnnStep         s     -> advancePeer   peerSt s
@@ -427,9 +427,9 @@ peerSend
   => PeerStateObj m alg a
   -> PeerChans m addr alg a
   -> TChan (GossipMsg tx alg a)
-  -> SendRecv
+  -> Connection
   -> m x
-peerSend peerSt PeerChans{..} gossipCh SendRecv{..} = logOnException $ do
+peerSend peerSt PeerChans{..} gossipCh Connection{..} = logOnException $ do
   logger InfoS "Starting routing for sending data" ()
   ch <- liftIO $ atomically $ dupTChan peerChanTx
   forever $ do

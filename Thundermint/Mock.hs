@@ -121,7 +121,7 @@ data NodeDescription sock addr m alg st tx a = NodeDescription
     -- ^ Storage API for nodes
   , nodeBlockChainLogic :: BlockFold st tx a
     -- ^ Storage for blocks
-  , nodeNetworks        :: NetworkAPI sock addr
+  , nodeNetworks        :: NetworkAPI addr
     -- ^ Network API
   , nodeInitialPeers    :: [addr]
     -- ^ Initial peers
@@ -209,7 +209,7 @@ runNode NodeDescription{nodeBlockChainLogic=logic@BlockFold{..}, ..} = do
 -- | Start node which will now run consensus algorithm
 startNode
   :: (Ord addr, Show addr, Crypto alg, Serialise a, Serialise tx, Show a)
-  => NetworkAPI sock addr
+  => NetworkAPI addr
   -> [addr]
   -> AppState IO alg a
   -> Mempool IO tx
@@ -242,7 +242,7 @@ startNode net addrs appState@AppState{..} mempool = do
 --   return their storage after all nodes finish execution
 runNodeSet
   :: (Ord addr, Show addr, Crypto alg, Serialise a, Show a, Serialise tx)
-  => [( NetworkAPI sock addr, [addr], AppState IO alg a, Mempool IO tx)]
+  => [( NetworkAPI addr, [addr], AppState IO alg a, Mempool IO tx)]
   -> IO [BlockStorage 'RO IO alg a]
 runNodeSet nodes = do
   withAsyncs [ startNode net addrs appSt mp
