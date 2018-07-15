@@ -1,4 +1,4 @@
-{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE LambdaCase      #-}
 {-# LANGUAGE RecordWildCards #-}
 -- |
 -- Abstract API for network which support
@@ -7,6 +7,7 @@ module Thundermint.P2P.Network (
   , Connection(..)
     -- * Real network
   , realNetwork
+  , realNetworkUdp
     -- * Mock in-memory network
   , MockSocket
   , MockNet
@@ -14,13 +15,18 @@ module Thundermint.P2P.Network (
   , createMockNode
   ) where
 
-import Control.Exception
 import Control.Concurrent.STM
-import qualified Data.Map        as Map
-import           Data.Map          (Map)
-import qualified Data.ByteString.Lazy       as BS
-import qualified Network.Socket             as Net
-import qualified Network.Socket.ByteString.Lazy as NetBS
+import Control.Exception
+
+import Control.Concurrent (forkIO, killThread)
+import Control.Monad      (forever, void)
+import Data.Map           (Map)
+
+import qualified Data.ByteString.Lazy           as BS
+import qualified Data.Map                       as Map
+import qualified Network.Socket                 as Net
+import qualified Network.Socket.ByteString      as NetBS
+import qualified Network.Socket.ByteString.Lazy as NetLBS
 
 ----------------------------------------------------------------
 --
@@ -50,7 +56,7 @@ data Connection = Connection
 --
 ----------------------------------------------------------------
 
--- | API implementation for real network
+-- | API implementation for real tcp network
 realNetwork :: Net.ServiceName -> NetworkAPI Net.SockAddr
 realNetwork listenPort = NetworkAPI
   { listenOn = do
@@ -58,6 +64,7 @@ realNetwork listenPort = NetworkAPI
             { Net.addrFlags      = [Net.AI_PASSIVE]
             , Net.addrSocketType = Net.Stream
             }
+      -- FIXME: Add ipv6 listening
       addr:_ <- Net.getAddrInfo (Just hints) Nothing (Just listenPort)
       sock   <- Net.socket (Net.addrFamily     addr)
                            (Net.addrSocketType addr)
@@ -85,11 +92,60 @@ realNetwork listenPort = NetworkAPI
     (conn, addr) <- Net.accept sock
     return (applyConn conn, addr)
   applyConn conn = Connection (sendBS conn) (recvBS conn) (Net.close conn)
-  sendBS = NetBS.sendAll
+  sendBS = NetLBS.sendAll
   recvBS sock = do
       -- FIXME: packet length should be added before message 2 octets in network order BE
-      bs <- NetBS.recv sock 4096
-      return $ if BS.null bs then Nothing else Just bs
+      emptyBs2Maybe <$> NetLBS.recv sock 4096
+
+emptyBs2Maybe :: BS.ByteString -> Maybe BS.ByteString
+emptyBs2Maybe bs
+  | BS.null bs = Nothing
+  | otherwise  = Just bs
+
+-- | API implementation example for real udp network
+realNetworkUdp :: Net.ServiceName -> IO (NetworkAPI Net.SockAddr)
+realNetworkUdp listenPort = do
+  -- FIXME: prolly HostName fits better than SockAddr
+  tChans <- newTVarIO Map.empty
+  acceptChan <- newTChanIO :: IO (TChan (Connection, Net.SockAddr))
+  let hints = Net.defaultHints
+        { Net.addrFlags      = [Net.AI_PASSIVE]
+        , Net.addrSocketType = Net.Datagram
+        }
+  addrInfo:_ <- Net.getAddrInfo (Just hints) Nothing (Just listenPort)
+  sock       <- Net.socket (Net.addrFamily     addrInfo)
+                           (Net.addrSocketType addrInfo)
+                           (Net.addrProtocol   addrInfo)
+  tid <- forkIO $
+    flip onException (Net.close sock) $ do
+      Net.bind sock (Net.addrAddress addrInfo)
+      forever $ do
+        (bs, addr) <- NetBS.recvFrom sock 4096
+        recvChan <- findOrCreateRecvChan tChans addr
+        atomically $ writeTChan acceptChan (applyConn sock addr recvChan, addr)
+        atomically $ writeTChan recvChan $ BS.fromStrict bs
+
+  return NetworkAPI
+    { listenOn =
+        return (killThread tid, atomically $ readTChan acceptChan)
+      --
+    , connect  = \addr -> do
+        peerChan <- findOrCreateRecvChan tChans addr
+        return $ applyConn sock addr peerChan
+    }
+ where
+  findOrCreateRecvChan tChans addr = atomically $ do
+    chans <- readTVar tChans
+    case Map.lookup addr chans of
+      Just chan -> return chan
+      Nothing   -> do
+        recvChan <- newTChan
+        writeTVar tChans $ Map.insert addr recvChan chans
+        return recvChan
+  applyConn sock addr peerChan = Connection
+    (\s -> void $ NetBS.sendAllTo sock (BS.toStrict s) addr)
+    (emptyBs2Maybe <$> atomically (readTChan peerChan))
+    (return ())
 
 
 
