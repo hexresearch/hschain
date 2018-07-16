@@ -262,7 +262,6 @@ makeHeightParametes Configuration{..} AppState{..} AppChans{..} = do
               Just b  -> writeTChan appChanRx (RxBlock b)
     --
     , scheduleTimeout = \t@(Timeout _ (Round r) step) -> do
-        logger InfoS ("Scheduling timeout: " <> showLS t) ()
         liftIO $ void $ forkIO $ do
           let (baseT,delta) = case step of
                 StepNewHeight -> timeoutNewHeight
