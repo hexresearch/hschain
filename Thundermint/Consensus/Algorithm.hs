@@ -122,7 +122,7 @@ newHeight
   -> ValidatorSet alg
   -> m (TMState alg a)
 newHeight HeightParameres{..} lastCommit vset = do
-  logger InfoS ("Entering new height: " <> showLS currentH) ()
+  logger InfoS ("Entering new height: " <> showLS currentH <> " ----------------") ()
   scheduleTimeout $ Timeout  currentH (Round 0) StepNewHeight
   announceStep    $ FullStep currentH (Round 0) StepNewHeight
   return TMState
@@ -167,7 +167,8 @@ tendermintTransition par@HeightParameres{..} msg sm@TMState{..} =
         -> misdeed
       -- Add it to map of proposals
       | otherwise
-        -> do acceptBlock propRound propBlockID
+        -> do logger InfoS ("Got proposal for " <> showLS propRound <> " " <> showLS propBlockID) ()
+              acceptBlock propRound propBlockID
               return sm { smProposals = Map.insert propRound p smProposals }
     ----------------------------------------------------------------
     PreVoteMsg v@(signedValue -> Vote{..})
@@ -201,11 +202,12 @@ tendermintTransition par@HeightParameres{..} msg sm@TMState{..} =
         --
         -- FIXME: specification is unclear about this point but go
         --        implementation advances unconditionally
-        EQ -> case smStep of
-          StepNewHeight -> enterPropose   par smRound        sm
-          StepProposal  -> enterPrevote   par smRound        sm
-          StepPrevote   -> enterPrecommit par smRound        sm
-          StepPrecommit -> enterPropose   par (next smRound) sm
+        EQ -> do
+          case smStep of
+            StepNewHeight -> enterPropose   par smRound        sm "TIMEOUT"
+            StepProposal  -> enterPrevote   par smRound        sm "TIMEOUT"
+            StepPrevote   -> enterPrecommit par smRound        sm "TIMEOUT"
+            StepPrecommit -> enterPropose   par (next smRound) sm "TIMEOUT"
       where
         t0 = Timeout currentH smRound smStep
 
@@ -223,14 +225,14 @@ checkTransitionPrevote par@HeightParameres{..} r sm@(TMState{..})
   --  => goto Prevote(H,R+x)
   | r > smRound
   , any23at r smPrevotesSet
-    = enterPrevote par r sm
+    = enterPrevote par r sm "+2/3 PV for later R"
   --  * We have +2/3 prevotes for some block/nil in current round
   --  * We are in prevote step
   --  => goto Precommit(H,R)
   | r      == smRound
   , smStep == StepPrevote
   , Just _ <- majority23at r smPrevotesSet
-    = enterPrecommit par r sm
+    = enterPrecommit par r sm "+2/3 PV current R"
   | otherwise
     = return sm
 
@@ -256,7 +258,7 @@ checkTransitionPrecommit par@HeightParameres{..} r sm@(TMState{..})
   --        later moment they'll get
   | Just Vote{..} <- majority23at r smPrecommitsSet
   , Just bid      <- voteBlockID
-    = do logger InfoS "Committing" ()
+    = do logger InfoS ("COMMIT at " <> showLS currentH <> ": " <> showLS bid) ()
          acceptBlock voteRound bid
          commitBlock Commit{ commitBlockID    = bid
                            , commitPrecommits = valuesAtR r smPrecommitsSet
@@ -267,12 +269,12 @@ checkTransitionPrecommit par@HeightParameres{..} r sm@(TMState{..})
   | r == smRound
   , Just Vote{..} <- majority23at r smPrecommitsSet
   , Nothing       <- voteBlockID
-    = enterPropose par (next r) sm
+    = enterPropose par (next r) sm "+2/3 PC for NIL"
   --  * We have +2/3 precommits for some round (R+x)
   --  => goto Precommit(H,R+x)
   | r > smRound
   , any23at r smPrecommitsSet
-    = enterPrecommit par r sm
+    = enterPrecommit par r sm "+2/3 PC for later R"
   -- No change
   | otherwise
     = return sm
@@ -283,9 +285,11 @@ enterPropose
   => HeightParameres m alg a
   -> Round
   -> TMState alg a
+  -> LogStr
   -> m (TMState alg a)
-enterPropose par@HeightParameres{..} r sm@TMState{..} = do
-  logger InfoS ("Entering propose at " <> showLS r <> " from " <> shortLogSt par sm) ()
+enterPropose par@HeightParameres{..} r sm@TMState{..} reason = do
+  logger InfoS ("Entering propose at " <> showLS r <> " from " <> shortLogSt par sm
+               <> " : " <> reason) ()
   scheduleTimeout $ Timeout currentH r StepProposal
   announceStep    $ FullStep currentH r StepProposal
   -- If we're proposers we need to broadcast proposal. Otherwise we do
@@ -314,10 +318,12 @@ enterPrevote
   => HeightParameres m alg a
   -> Round
   -> TMState alg a
+  -> LogStr
   -> m (TMState alg a)
-enterPrevote par@HeightParameres{..} r (unlockOnPrevote -> sm@TMState{..}) = do
+enterPrevote par@HeightParameres{..} r (unlockOnPrevote -> sm@TMState{..}) reason = do
   --
-  logger InfoS ("Entering prevote at " <> showLS r <> " from " <> shortLogSt par sm) ()
+  logger InfoS ("Entering prevote at " <> showLS r <> " from " <> shortLogSt par sm
+               <> " : " <> reason) ()
   castPrevote smRound =<< prevoteBlock
   --
   scheduleTimeout $ Timeout currentH r StepPrevote
@@ -345,7 +351,7 @@ enterPrevote par@HeightParameres{..} r (unlockOnPrevote -> sm@TMState{..}) = do
     --
     checkPrevoteBlock bid = do
       valR <- validateBlock bid
-      logger DebugS ("Block validation for prevote: " <> showLS valR) ()
+      logger InfoS ("Block validation for prevote: " <> showLS valR) ()
       case valR of
         GoodProposal    -> return (Just bid)
         InvalidProposal -> return Nothing
@@ -379,9 +385,12 @@ enterPrecommit
   => HeightParameres m alg a
   -> Round
   -> TMState alg a
+  -> LogStr
   -> m (TMState alg a)
-enterPrecommit par@HeightParameres{..} r sm@TMState{..} = do
-  logger InfoS ("Entering precommit at " <> showLS r <> " from " <> shortLogSt par sm) ()
+enterPrecommit par@HeightParameres{..} r sm@TMState{..} reason = do
+  logger InfoS ("Entering precommit at " <> showLS r <> " from " <> shortLogSt par sm
+               <> " : " <> reason
+               ) ()
   castPrecommit r precommitBlock
   scheduleTimeout $ Timeout currentH r StepPrecommit
   checkTransitionPrecommit par r sm
