@@ -129,11 +129,33 @@ Executable thundermint-coin
                      , aeson
                      , stm
                      , serialise
+                     , filepath
+                     , directory
+                     , optparse-applicative >= 0.14
                      , random
                      , async
                      , text
   hs-source-dirs:      exe
   Main-is:             coin.hs
+
+Executable thundermint-coin-db
+  Ghc-options:         -Wall -threaded -Wno-orphans
+  Default-Language:    Haskell2010
+  Build-Depends:       base       >=4.9 && <5
+                     , thundermint
+                     , bytestring >=0.10
+                     , base58-bytestring >=0.1
+                     , containers >=0.5.7
+                     , aeson
+                     , stm
+                     , serialise
+                     , filepath
+                     , directory
+                     , optparse-applicative >= 0.14
+                     , text
+  hs-source-dirs:      exe
+  Main-is:             coin-db.hs
+
   
 -- Test suite
 Test-suite thundermint-tests
