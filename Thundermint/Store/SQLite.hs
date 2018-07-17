@@ -21,6 +21,7 @@ import qualified Database.SQLite.Simple.FromField as SQL
 import qualified Database.SQLite.Simple           as SQL
 import           Database.SQLite.Simple             (Only(..))
 
+import Thundermint.Control
 import Thundermint.Consensus.Types
 import Thundermint.Crypto
 import Thundermint.Crypto.Containers
@@ -188,12 +189,3 @@ singleFld conn query p =
     []       -> return Nothing
     [Only a] -> return (Just a)
     _        -> error "Impossible"
-
-
-newtype Mutex = Mutex (MVar ())
-
-newMutex :: IO Mutex
-newMutex = Mutex <$> newMVar ()
-
-withMutex :: Mutex -> IO a -> IO a
-withMutex (Mutex mvar) = withMVar mvar . const
