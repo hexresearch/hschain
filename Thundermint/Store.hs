@@ -228,8 +228,7 @@ data Mempool m tx = Mempool
     --   that all transactions will be returned. This operation does
     --   not alter mempool state
   , filterMempool     :: m ()
-    -- ^ Run check on every transaction in mempool and remove ones
-    --   that do not pass it.
+    -- ^ Remove transactions that are no longer valid from mempool
   , getMempoolCursor  :: m (MempoolCursor m tx)
     -- ^ Get cursor pointing to be
   , mempoolSize       :: m Int
