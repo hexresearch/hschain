@@ -51,17 +51,19 @@ import Katip (Severity(..), showLS, logStr)
 --   * INVARIANT: Only this function can write to blockchain
 runApplication
   :: (MonadIO m, MonadCatch m, MonadLogger m, Crypto alg, Serialise a, Show a)
-  => AppState m alg a
+  => Configuration
+     -- ^ Configuration
+  -> AppState m alg a
      -- ^ Get initial state of the application
   -> AppChans alg a
      -- ^ Channels for communication with peers
   -> m ()
-runApplication appSt@AppState{..} appCh = logOnException $ do
+runApplication config appSt@AppState{..} appCh = logOnException $ do
   height <- blockchainHeight appStorage
   lastCm <- retrieveLocalCommit appStorage height
   advanceToHeight appPropStorage $ next height
   flip fix lastCm $ \loop commit -> do
-    cm <- decideNewBlock appSt appCh commit
+    cm <- decideNewBlock config appSt appCh commit
     -- ASSERT: We successfully commited next block
     --
     -- FIXME: do we need to communicate with peers about our
@@ -80,14 +82,15 @@ runApplication appSt@AppState{..} appCh = logOnException $ do
 -- FIXME: we should write block and last commit in transaction!
 decideNewBlock
   :: (MonadIO m, MonadLogger m, Crypto alg, Serialise a, Show a)
-  => AppState m alg a
+  => Configuration
+  -> AppState m alg a
   -> AppChans alg a
   -> Maybe (Commit alg a)
   -> m (Commit alg a)
-decideNewBlock appSt@AppState{..} appCh@AppChans{..} lastCommt = do
+decideNewBlock config appSt@AppState{..} appCh@AppChans{..} lastCommt = do
   -- Enter NEW HEIGHT and create initial state for consensus state
   -- machine
-  hParam <- makeHeightParametes appSt appCh
+  hParam <- makeHeightParametes config appSt appCh
   --
   -- FIXME: encode that we cannot fail here!
   Success tm0 <- runConsesusM $ newHeight hParam lastCommt appValidatorsSet
@@ -204,10 +207,11 @@ instance MonadTrans (ConsensusM alg a) where
 
 makeHeightParametes
   :: (MonadIO m, MonadLogger m, Crypto alg, Serialise a, Show a)
-  => AppState m alg a
+  => Configuration
+  -> AppState m alg a
   -> AppChans alg a
   -> m (HeightParameres (ConsensusM alg a m) alg a)
-makeHeightParametes AppState{..} AppChans{..} = do
+makeHeightParametes Configuration{..} AppState{..} AppChans{..} = do
   h           <- blockchainHeight appStorage
   Just valSet <- retrieveValidatorSet appStorage (next h)
   let proposerChoice (Round r) =
@@ -257,12 +261,15 @@ makeHeightParametes AppState{..} AppChans{..} = do
               Nothing -> return ()
               Just b  -> writeTChan appChanRx (RxBlock b)
     --
-    , scheduleTimeout = \t@(Timeout _ (Round r) _) -> do
+    , scheduleTimeout = \t@(Timeout _ (Round r) step) -> do
         logger InfoS ("Scheduling timeout: " <> showLS t) ()
         liftIO $ void $ forkIO $ do
-          let baseT = 500e3
-              delta = 500e3
-          threadDelay $ baseT + delta * fromIntegral r
+          let (baseT,delta) = case step of
+                StepNewHeight -> timeoutNewHeight
+                StepProposal  -> timeoutProposal
+                StepPrevote   -> timeoutPrevote
+                StepPrecommit -> timeoutPrecommit
+          threadDelay $ 1000 * (baseT + delta * fromIntegral r)
           atomically $ writeTChan appChanRx $ RxTimeout t
     --
     , castPrevote     = \r b ->

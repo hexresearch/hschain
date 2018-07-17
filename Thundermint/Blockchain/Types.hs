@@ -7,8 +7,10 @@
 -- |
 -- Data types for storage of blockchain
 module Thundermint.Blockchain.Types (
+    -- * Configuration of blockchain
+    Configuration(..)
     -- * Application state
-    AppState(..)
+  , AppState(..)
   , hoistAppState
   , Validator(..)
   , PrivValidator(..)
@@ -30,6 +32,26 @@ import Thundermint.Consensus.Types
 import Thundermint.Store
 
 
+
+----------------------------------------------------------------
+-- Configuration
+----------------------------------------------------------------
+
+-- | Timeouts are given in pairs where first element is default
+--   timeout and second is increment. Unit of measurements for time is
+--   ms.
+data Configuration = Configuration
+  { timeoutNewHeight :: (Int,Int)
+  , timeoutProposal  :: (Int,Int)
+  , timeoutPrevote   :: (Int,Int)
+  , timeoutPrecommit :: (Int,Int)
+  , gossipDelayVotes :: Int
+  , gossipDelayBlocks :: Int
+  , gossipDelayMempool :: Int
+  }
+  deriving (Show,Generic)
+instance JSON.FromJSON Configuration
+instance JSON.ToJSON   Configuration
 
 ----------------------------------------------------------------
 --

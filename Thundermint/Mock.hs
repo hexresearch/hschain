@@ -115,6 +115,17 @@ connectRing vals addr =
 --
 ----------------------------------------------------------------
 
+defCfg :: Configuration
+defCfg = Configuration
+  { timeoutNewHeight   = (500, 500)
+  , timeoutProposal    = (500, 500)
+  , timeoutPrevote     = (500, 500)
+  , timeoutPrecommit   = (500, 500)
+  , gossipDelayVotes   = 25
+  , gossipDelayBlocks  = 25
+  , gossipDelayMempool = 25
+  }
+ 
 -- Specification of node
 data NodeDescription sock addr m alg st tx a = NodeDescription
   { nodeStorage         :: BlockStorage 'RW m alg a
@@ -191,12 +202,12 @@ runNode NodeDescription{nodeBlockChainLogic=logic@BlockFold{..}, ..} = do
                                 =<< currentState bchState]
       ++
       [ id $ runLoggerT "net" logenv'
-           $ startPeerDispatcher nodeNetworks nodeInitialPeers appCh
+           $ startPeerDispatcher defCfg nodeNetworks nodeInitialPeers appCh
                                  (hoistBlockStorageRO lift $ makeReadOnly   nodeStorage)
                                  (hoistPropStorageRO  lift $ makeReadOnlyPS propSt)
                                  (hoistMempool lift mempool)
       , id $ runLoggerT "consensus" logenv'
-           $ runApplication (hoistAppState lift appSt) appCh
+           $ runApplication defCfg (hoistAppState lift appSt) appCh
       ]
 
 
@@ -230,13 +241,13 @@ startNode net addrs appState@AppState{..} mempool = do
   flip finally (Katip.closeScribes logenv) $ do
     appCh   <- newAppChans
     let netRoutine = runLoggerT "net" logenv
-                   $ startPeerDispatcher net addrs appCh
+                   $ startPeerDispatcher defCfg net addrs appCh
                        (hoistBlockStorageRO liftIO $ makeReadOnly   appStorage)
                        (hoistPropStorageRO  liftIO $ makeReadOnlyPS appPropStorage)
                        (hoistMempool liftIO mempool)
     withAsync netRoutine $ \_ ->
       runLoggerT "consensus" logenv
-        $ runApplication (hoistAppState liftIO appState) appCh
+        $ runApplication defCfg (hoistAppState liftIO appState) appCh
 
 -- | Start set of nodes and return their corresponding storage. Will
 --   return their storage after all nodes finish execution
