@@ -73,6 +73,7 @@ data PeerChans m addr alg a = PeerChans
     -- ^ Read only access to storage of proposals
   , consensusState  :: STM (Maybe (Height, TMState alg a))
     -- ^ Read only access to current state of consensus state machine
+  , p2pConfig       :: Configuration
   }
 
 
@@ -86,14 +87,15 @@ data PeerChans m addr alg a = PeerChans
 startPeerDispatcher
   :: ( MonadMask m, MonadFork m, MonadLogger m
      , Serialise a, Serialise tx, Ord addr, Show addr, Show a, Crypto alg)
-  => NetworkAPI addr       -- ^ API for networking
+  => Configuration
+  -> NetworkAPI addr       -- ^ API for networking
   -> [addr]                     -- ^ Set of initial addresses to connect
   -> AppChans alg a             -- ^ Channels for communication with main application
   -> BlockStorage 'RO m alg a  -- ^ Read only access to block storage
   -> ProposalStorage 'RO m alg a
   -> Mempool m tx
   -> m x
-startPeerDispatcher net addrs AppChans{..} storage propSt mempool = logOnException $ do
+startPeerDispatcher config net addrs AppChans{..} storage propSt mempool = logOnException $ do
   logger InfoS "Starting peer dispatcher" ()
   peers        <- newPeerRegistry
   _peerExchange <- liftIO newTChanIO
@@ -102,6 +104,7 @@ startPeerDispatcher net addrs AppChans{..} storage propSt mempool = logOnExcepti
                          , blockStorage    = storage
                          , proposalStorage = propSt
                          , consensusState  = readTVar appTMState
+                         , p2pConfig       = config
                          }
   -- Accepting connection is managed by separate linked thread and
   -- this thread manages initiating connections
@@ -236,7 +239,7 @@ startPeer peerCh@PeerChans{..} net mempool = logOnException $ do
   runConcurrently
     [ peerGossipVotes   peerSt peerCh gossipCh
     , peerGossipBlocks  peerSt peerCh gossipCh
-    , peerGossipMempool peerSt gossipCh cursor
+    , peerGossipMempool peerSt p2pConfig gossipCh cursor
     , peerSend          peerSt peerCh gossipCh net
     , peerReceive       peerSt peerCh net cursor
     ]
@@ -324,16 +327,17 @@ peerGossipVotes peerObj PeerChans{..} gossipCh = logOnException $ do
                       $ Map.lookup r $ peerPrecommits p
       Ahead   _ -> return ()
       Unknown   -> return ()
-    liftIO $ threadDelay 25e3
+    liftIO $ threadDelay $ 1000 * gossipDelayVotes p2pConfig
 
 peerGossipMempool
   :: ( MonadIO m, MonadFork m, MonadMask m, MonadLogger m
      )
   => PeerStateObj m alg a
+  -> Configuration
   -> TChan (GossipMsg tx alg a)
   -> MempoolCursor m tx
   -> m x
-peerGossipMempool peerObj gossipCh MempoolCursor{..} = logOnException $ do
+peerGossipMempool peerObj config gossipCh MempoolCursor{..} = logOnException $ do
   logger InfoS "Starting routine for gossiping transactions" ()
   forever $ do
     getPeerState peerObj >>= \case
@@ -341,7 +345,7 @@ peerGossipMempool peerObj gossipCh MempoolCursor{..} = logOnException $ do
         Just tx -> liftIO $ atomically $ writeTChan gossipCh $ GossipTx tx
         Nothing -> return ()
       _         -> return ()
-    liftIO $ threadDelay 25e3
+    liftIO $ threadDelay $ 1000 * gossipDelayMempool config
       
       
 
@@ -380,7 +384,7 @@ peerGossipBlocks peerObj PeerChans{..} gossipCh = logOnException $ do
       -- Nothing to do
       Ahead _ -> return ()
       Unknown -> return ()
-    liftIO $ threadDelay 25e3
+    liftIO $ threadDelay $ 1000 * gossipDelayBlocks p2pConfig
 
 -- | Routine for receiving messages from peer
 peerReceive
