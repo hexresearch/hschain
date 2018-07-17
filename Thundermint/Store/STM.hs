@@ -13,7 +13,6 @@ import Control.Monad
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Maybe
-import Control.Concurrent
 import Control.Concurrent.STM
 import Data.Foldable
 import qualified Data.Map             as Map
@@ -139,11 +138,19 @@ newMempool validation = do
         return $ case mn of
           Nothing -> toList fifo
           Just n  -> take n $ toList fifo
-    --
+    -- We remove prefix of transactions which aren't valid
+    -- anymore. Main source of invalidation of formerly valid
+    -- transactions is commits in blocks proposed by other nodes.
     , filterMempool = do
         fifo   <- liftIO $ readTVarIO varFIFO
-        goodTx <- filterM validation $ toList fifo
-        liftIO $ atomically $ modifyTVar' varFIFO $ IMap.filter (`elem` goodTx)
+        let stepCheck []              = return (-1)
+            stepCheck ((k,tx) : txs ) =
+              validation tx >>= \case
+                True  -> return k
+                False -> stepCheck txs
+        firstGood <- stepCheck $ IMap.toList fifo
+        liftIO $ atomically $ modifyTVar' varFIFO $
+          snd . IMap.split (firstGood - 1)
     --
     , mempoolSize = IMap.size <$> liftIO (readTVarIO varFIFO)
     --
