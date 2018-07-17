@@ -1,6 +1,7 @@
 {-# LANGUAGE DeriveFunctor              #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE RecordWildCards            #-}
 -- |
 -- Logger 
 module Thundermint.Logger (
@@ -8,19 +9,26 @@ module Thundermint.Logger (
   , LoggerT(..)
   , runLoggerT
   , logOnException
+    -- * JSON scribe
+  , makeJsonHandleScribe
+  , makeJsonFileScribe
     -- * Reexports
   , Severity(..)
   ) where
 
 import Control.Arrow (first,second)
+import Control.Monad
 import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Reader
 import Control.Exception          (SomeException(..),AsyncException(..))
+import Data.Aeson
 import Data.Typeable
 import Data.Monoid     ((<>))
+import qualified Data.ByteString.Lazy.Char8 as BL
 import Katip
+import System.IO
 
 import Thundermint.Control
 
@@ -65,3 +73,25 @@ logOnException = handle logE
       | SomeException eTy <- e               = do
           logger ErrorS ("Killed by " <> showLS e <> " :: " <> showLS (typeOf eTy)) ()
           throwM e
+
+
+----------------------------------------------------------------
+-- JSON scribe
+----------------------------------------------------------------
+
+makeJsonHandleScribe :: Handle -> Severity -> Verbosity -> IO Scribe
+makeJsonHandleScribe  h sev verb = do
+  hSetBuffering h LineBuffering
+  lock <- newMutex
+  let loggerFun i@Item{..} = when (permitItem sev i) $ withMutex lock $
+        BL.hPutStrLn h $ encode Item
+          { _itemPayload = Object (payloadObject verb _itemPayload)
+          , ..
+          }
+  return $ Scribe loggerFun (hFlush h)
+
+makeJsonFileScribe :: FilePath -> Severity -> Verbosity -> IO Scribe
+makeJsonFileScribe nm sev verb = do  
+  h <- openFile nm AppendMode
+  Scribe loggerFun finalizer <- makeJsonHandleScribe h sev verb
+  return $ Scribe loggerFun (finalizer `finally` hClose h)
