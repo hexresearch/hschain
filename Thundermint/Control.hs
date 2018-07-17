@@ -8,6 +8,10 @@ module Thundermint.Control (
   , withMVarM
   , modifyMVarM
   , modifyMVarM_
+    -- * Mutex
+  , Mutex
+  , newMutex
+  , withMutex
   ) where
 
 import Control.Concurrent.MVar
@@ -98,3 +102,16 @@ modifyMVarM m action =
     (a',b) <- restore (action a) `onException` liftIO (putMVar m a)
     liftIO $ putMVar m a'
     return b
+
+
+----------------------------------------------------------------
+-- Mutex
+----------------------------------------------------------------
+
+newtype Mutex = Mutex (MVar ())
+
+newMutex :: IO Mutex
+newMutex = Mutex <$> newMVar ()
+
+withMutex :: Mutex -> IO a -> IO a
+withMutex (Mutex mvar) = withMVar mvar . const
