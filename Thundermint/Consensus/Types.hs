@@ -4,6 +4,7 @@
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE KindSignatures             #-}
+{-# LANGUAGE OverloadedStrings          #-}
 -- |
 -- Data types for implementation of consensus algorithm
 module Thundermint.Consensus.Types (
@@ -33,9 +34,12 @@ module Thundermint.Consensus.Types (
   ) where
 
 import           Codec.Serialise
+import qualified Data.Aeson         as JSON
 import           Data.ByteString   (ByteString)
 import           Data.Map          (Map)
 import           Data.Int
+import qualified Data.HashMap.Strict as HM
+import qualified Katip
 import GHC.Generics (Generic)
 
 import Thundermint.Crypto
@@ -55,10 +59,10 @@ import Thundermint.Crypto.Containers
 --   * Current height in consensus algorithm is height of block we're
 --     deciding on.
 newtype Height = Height Int64
-  deriving (Show, Eq, Ord, Serialise)
+  deriving (Show, Eq, Ord, Serialise, JSON.ToJSON, JSON.FromJSON)
 
 newtype Round = Round Int64
-  deriving (Show, Eq, Ord, Serialise)
+  deriving (Show, Eq, Ord, Serialise, JSON.ToJSON, JSON.FromJSON)
 
 newtype Time = Time Int64
   deriving (Show, Eq, Ord, Serialise)
@@ -132,7 +136,9 @@ data Step
   | StepPrevote
   | StepPrecommit
   deriving (Show,Eq,Ord,Generic)
-instance Serialise Step
+instance Serialise     Step
+instance JSON.ToJSON   Step
+instance JSON.FromJSON Step
 
 data FullStep = FullStep !Height !Round !Step
   deriving (Show,Eq,Ord,Generic)
@@ -207,7 +213,10 @@ data ProposalState
     -- ^ Proposal is invalid for some reason
   | UnseenProposal
     -- ^ We don't have complete block data for particular block ID yet
-  deriving (Show, Eq)
+  deriving (Show, Eq, Generic)
+instance Serialise     ProposalState
+instance JSON.ToJSON   ProposalState
+instance JSON.FromJSON ProposalState
 
 -- | State for tendermint consensus at some particular height.
 data TMState alg a = TMState
@@ -228,3 +237,33 @@ data TMState alg a = TMState
     --   genesis block.
   }
   deriving (Show)
+
+
+
+----------------------------------------------------------------
+-- Logging instances
+----------------------------------------------------------------
+
+instance Katip.ToObject Round where
+  toObject (Round i) = HM.singleton "R" (JSON.toJSON i)
+instance Katip.LogItem Round where
+  payloadKeys _ _ = Katip.AllKeys
+
+instance Katip.ToObject Height where
+  toObject (Height i) = HM.singleton "H" (JSON.toJSON i)
+instance Katip.LogItem Height where
+  payloadKeys _ _ = Katip.AllKeys
+
+instance Katip.ToObject FullStep where
+  toObject (FullStep (Height h) (Round r) s) = HM.fromList
+    [ ("H", JSON.toJSON h)
+    , ("R", JSON.toJSON r)
+    , ("S", JSON.toJSON s)
+    ]
+instance Katip.LogItem FullStep where
+  payloadKeys _ _ = Katip.AllKeys
+
+instance Katip.ToObject ProposalState where
+  toObject p = HM.singleton "val" (JSON.toJSON p)
+instance Katip.LogItem ProposalState where
+  payloadKeys _ _ = Katip.AllKeys
