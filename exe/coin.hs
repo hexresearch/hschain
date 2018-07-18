@@ -47,7 +47,7 @@ data NodeSpec = NodeSpec
   { nspecPrivKey     :: Maybe (PrivValidator Ed25519_SHA512)
   , nspecIsValidator :: Bool
   , nspecDbName      :: Maybe FilePath
-  , nspecLogFile     :: Maybe FilePath
+  , nspecLogFile     :: NodeLogs
   }
   deriving (Generic,Show)
 
@@ -116,19 +116,21 @@ interpretSpec maxH prefix delay NetSpec{..} = do
   -- Connection map
   forM (Map.toList netAddresses) $ \(addr, NodeSpec{..}) -> do
     -- Allocate storage for node
+    let makedir path = let (dir,_) = splitFileName path
+                       in createDirectoryIfMissing True dir
     storage <- case nspecDbName of
       Nothing -> newSTMBlockStorage       genesisBlock validatorSet
       Just nm -> do
-        let dbName  = prefix </> nm
-            (dir,_) = splitFileName dbName
-        createDirectoryIfMissing True dir
+        let dbName = prefix </> nm
+        makedir dbName
         newSQLiteBlockStorage dbName genesisBlock validatorSet
     -- Create dir for logs
-    logFile <- forM nspecLogFile $ \nm -> do
-      let logName = prefix </> nm
-          (dir,_) = splitFileName logName
-      createDirectoryIfMissing True dir
-      return logName
+    logFiles <- do
+      let txt  = fmap (prefix </>) $ txtLog  nspecLogFile
+          json = fmap (prefix </>) $ jsonLog nspecLogFile
+      forM_ txt  makedir
+      forM_ json makedir
+      return $ NodeLogs txt json
     return
       ( makeReadOnly storage
       , runNode NodeDescription
@@ -137,7 +139,7 @@ interpretSpec maxH prefix delay NetSpec{..} = do
           , nodeNetworks        = createMockNode net "50000" addr
           , nodeInitialPeers    = map (,"50000") $ connections netAddresses addr
           , nodeValidationKey   = guard nspecIsValidator >> nspecPrivKey
-          , nodeLogFile         = logFile
+          , nodeLogFile         = logFiles
           , nodeAction          = do PrivValidator pk <- nspecPrivKey
                                      return $ transferActions delay
                                        [ k | Deposit k _ <- netGenesis ]

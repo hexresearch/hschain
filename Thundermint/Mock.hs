@@ -1,4 +1,5 @@
 {-# LANGUAGE DataKinds         #-}
+{-# LANGUAGE DeriveGeneric     #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 -- |
@@ -11,6 +12,7 @@ module Thundermint.Mock (
   , connectAll2All
   , connectRing
     -- * New node code
+  , NodeLogs(..)
   , NodeDescription(..)
   , runNode
     -- * Running nodes
@@ -27,6 +29,7 @@ import Control.Monad.Trans.Class
 import Data.Foldable
 import Data.Map                 (Map)
 import Data.Word                (Word64)
+import qualified Data.Aeson             as JSON
 import qualified Data.ByteString        as BS
 import qualified Data.ByteString.Base58 as Base58
 import qualified Data.ByteString.Char8  as BC8
@@ -34,6 +37,7 @@ import qualified Data.Map               as Map
 import qualified Katip
 import System.Random (randomIO)
 import Text.Printf
+import GHC.Generics (Generic)
 
 import Thundermint.Control (MonadFork,runConcurrently)
 import Thundermint.Crypto
@@ -125,7 +129,15 @@ defCfg = Configuration
   , gossipDelayBlocks  = 25
   , gossipDelayMempool = 25
   }
- 
+
+data NodeLogs = NodeLogs
+  { txtLog  :: Maybe FilePath
+  , jsonLog :: Maybe FilePath
+  }
+  deriving (Show, Generic)
+instance JSON.FromJSON NodeLogs
+instance JSON.ToJSON   NodeLogs
+
 -- Specification of node
 data NodeDescription sock addr m alg st tx a = NodeDescription
   { nodeStorage         :: BlockStorage 'RW m alg a
@@ -137,7 +149,7 @@ data NodeDescription sock addr m alg st tx a = NodeDescription
   , nodeInitialPeers    :: [addr]
     -- ^ Initial peers
   , nodeValidationKey   :: Maybe (PrivValidator alg)
-  , nodeLogFile         :: Maybe FilePath
+  , nodeLogFile         :: NodeLogs
   , nodeAction          :: Maybe ((tx -> m ()) -> st -> m ())
   , nodeMaxH            :: Maybe Height
   }
@@ -189,10 +201,16 @@ runNode NodeDescription{nodeBlockChainLogic=logic@BlockFold{..}, ..} = do
   bracket (liftIO $ Katip.initLogEnv "TM" "DEV")
           (liftIO . Katip.closeScribes) $ \logenv -> do
     --
-    logenv' <- case nodeLogFile of
-      Nothing -> return logenv
-      Just nm -> do scribe <- liftIO $ Katip.mkFileScribe nm Katip.DebugS Katip.V2
-                    liftIO $ Katip.registerScribe "log" scribe Katip.defaultScribeSettings logenv
+    let registerTxt Nothing   le = return le
+        registerTxt (Just nm) le = liftIO $ do
+          scribe <- Katip.mkFileScribe nm Katip.DebugS Katip.V2
+          Katip.registerScribe "log" scribe Katip.defaultScribeSettings le
+    let registerJson Nothing   le = return le
+        registerJson (Just nm) le = liftIO $ do
+          scribe <- makeJsonFileScribe nm Katip.DebugS Katip.V2
+          Katip.registerScribe "log" scribe Katip.defaultScribeSettings le        
+    logenv' <- registerJson (jsonLog nodeLogFile)
+           =<< registerTxt  (txtLog  nodeLogFile) logenv
     -- Networking
     appCh <- liftIO newAppChans
     runConcurrently $
