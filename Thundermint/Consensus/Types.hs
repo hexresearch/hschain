@@ -94,7 +94,7 @@ data Block alg a = Block
     -- ^ Commit information for previous block. Nothing iff block
     --   is a genesis block or block at height 1.
   }
-  deriving (Show, Generic)
+  deriving (Show, Eq, Generic)
 instance Serialise a => Serialise (Block alg a)
 
 -- | Block header
@@ -110,7 +110,7 @@ data Header alg a = Header
   -- , headerValidatorsHash :: Hash
   -- , headerConsensusHash  :: Hash
   }
-  deriving (Show,Generic)
+  deriving (Show, Eq, Generic)
 instance Serialise (Header alg a)
 
 -- | Data justifying commit
@@ -120,7 +120,7 @@ data Commit alg a = Commit
   , commitPrecommits :: [Signed 'Verified alg (Vote 'PreCommit alg a)]
     -- ^ List of precommits which justify commit
   }
-  deriving (Show,Generic)
+  deriving (Show, Eq, Generic)
 instance Serialise (Commit alg a)
 
 

@@ -4,6 +4,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase                 #-}
 {-# LANGUAGE RecordWildCards            #-}
+{-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE UndecidableInstances       #-}
 -- |
 -- Data types for
@@ -67,6 +68,7 @@ data Validator alg = Validator
   , validatorVotingPower :: Integer
   }
   deriving (Generic)
+deriving instance Eq (PublicKey alg) => Eq (Validator alg)
 instance CBOR.Serialise (PublicKey alg) => CBOR.Serialise (Validator alg)
 
 -- | Set of all known validators for given height
@@ -76,6 +78,7 @@ data ValidatorSet alg = ValidatorSet
   , vsTotPower   :: !Integer
   }
   deriving (Generic)
+deriving instance Eq (PublicKey alg) => Eq (ValidatorSet alg)
 
 instance (Crypto alg, CBOR.Serialise (PublicKey alg)) => CBOR.Serialise (ValidatorSet alg) where
   encode = CBOR.encode . toList . vsValidators
@@ -134,7 +137,7 @@ validatorSetSize = Map.size  . vsValidators
 --
 --   This for example allows to represent validators as bit arrays.
 newtype ValidatorIdx alg = ValidatorIdx Int
-  deriving (Show, CBOR.Serialise)
+  deriving (Show, Eq, CBOR.Serialise)
 
 -- | Set of validators where they are represented by their index.
 data ValidatorISet = ValidatorISet !Int !IntSet
