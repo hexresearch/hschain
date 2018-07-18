@@ -1,10 +1,12 @@
 {-# LANGUAGE DataKinds         #-}
+{-# LANGUAGE DeriveGeneric     #-}
 {-# LANGUAGE FlexibleContexts  #-}
 {-# LANGUAGE KindSignatures    #-}
 {-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes        #-}
 {-# LANGUAGE RecordWildCards   #-}
+{-# LANGUAGE TemplateHaskell   #-}
 {-# LANGUAGE ViewPatterns      #-}
 -- |
 -- Implementation of tendermint consensus protocol.
@@ -24,14 +26,23 @@ module Thundermint.Consensus.Algorithm (
   , ConsensusMonad(..)
   , newHeight
   , tendermintTransition
+    -- * Data types used for logging
+  , LogTransitionReason(..)
+  , LogTransition(..)
+  , LogProposal(..)
+  , LogCommit(..)
   ) where
 
 import Control.Monad
 
-import           Data.Monoid       ((<>))
-import qualified Data.Map        as Map
--- import           Data.Map          (Map)
-import Katip (Severity(..), LogStr, showLS)
+import qualified Data.Aeson          as JSON
+import qualified Data.Aeson.TH       as JSON
+import           Data.Monoid           ((<>))
+import qualified Data.Map            as Map
+import qualified Data.HashMap.Strict as HM
+import           Katip (Severity(..))
+import qualified Katip
+import GHC.Generics
 
 import Thundermint.Crypto
 import Thundermint.Crypto.Containers
@@ -43,6 +54,8 @@ import Thundermint.Logger
 ----------------------------------------------------------------
 --
 ----------------------------------------------------------------
+
+
 
 -- | Messages being sent to consensus engine
 data Message alg a
@@ -97,6 +110,73 @@ data HeightParameres (m :: * -> *) alg a = HeightParameres
 
 
 ----------------------------------------------------------------
+-- Logging types
+----------------------------------------------------------------
+
+data LogTransitionReason
+  = Reason'Timeout
+  -- ^ Transition is due to timeout
+  | Reason'PV_LaterR
+  -- ^ We have seen +2/3 prevotes for some later round
+  | Reason'PV_Maj
+  -- ^ We have seen +2/3 majority of prevotes for some block\/NIL in
+  --   current round
+  | Reason'PC_Nil
+  -- ^ We have +2/3 precommits for NIL
+  | Reason'PC_LaterR
+  -- ^ We have seen +2/3 precommits for some later round
+  deriving (Show,Generic)
+
+JSON.deriveJSON JSON.defaultOptions
+  { JSON.constructorTagModifier = drop 7 } ''LogTransitionReason
+
+-- | Description of state transition of
+data LogTransition = LogTransition
+  { transition'H      :: Height
+  , transition'R      :: Round
+  , transition'S      :: Step
+  , transition'newR   :: Round
+  , transition'reason :: LogTransitionReason
+  }
+JSON.deriveJSON JSON.defaultOptions
+  { JSON.fieldLabelModifier = drop 11 } ''LogTransition
+
+instance Katip.ToObject LogTransition
+instance Katip.LogItem  LogTransition where
+  payloadKeys Katip.V0 _ = Katip.SomeKeys ["H","R","S","newR"]
+  payloadKeys _        _ = Katip.AllKeys
+
+-- | Description of proposal
+data LogProposal alg a = LogProposal
+  { proposal'H   :: Height
+  , proposal'R   :: Round
+  , proposal'bid :: BlockID alg a
+  }
+
+instance Katip.ToObject (LogProposal alg a) where
+  toObject p = HM.fromList [ ("H",   JSON.toJSON (proposal'H p))
+                           , ("R",   JSON.toJSON (proposal'R p))
+                           , ("bid", JSON.toJSON $ let BlockHash _ hash _ = proposal'bid p
+                                                   in hash
+                             )]
+instance Katip.LogItem (LogProposal alg a) where
+  payloadKeys Katip.V0 _ = Katip.SomeKeys ["H","R"]
+  payloadKeys _        _ = Katip.AllKeys
+
+-- | Description of commit
+data LogCommit alg a = LogCommit
+  { commit'H   :: Height
+  , commit'bid :: BlockID alg a
+  }
+instance Katip.ToObject (LogCommit alg a) where
+  toObject p = HM.fromList [ ("H",   JSON.toJSON (commit'H p))
+                           , ("bid", JSON.toJSON $ let BlockHash _ hash _ = commit'bid p
+                                                   in hash
+                             )]
+instance Katip.LogItem (LogCommit alg a) where
+  payloadKeys _ _ = Katip.AllKeys
+
+----------------------------------------------------------------
 -- Consensus
 ----------------------------------------------------------------
 
@@ -122,7 +202,7 @@ newHeight
   -> ValidatorSet alg
   -> m (TMState alg a)
 newHeight HeightParameres{..} lastCommit vset = do
-  logger InfoS ("Entering new height: " <> showLS currentH <> " ----------------") ()
+  logger InfoS "Entering new height ----------------" currentH
   scheduleTimeout $ Timeout  currentH (Round 0) StepNewHeight
   announceStep    $ FullStep currentH (Round 0) StepNewHeight
   return TMState
@@ -167,7 +247,7 @@ tendermintTransition par@HeightParameres{..} msg sm@TMState{..} =
         -> misdeed
       -- Add it to map of proposals
       | otherwise
-        -> do logger InfoS ("Got proposal for " <> showLS propRound <> " " <> showLS propBlockID) ()
+        -> do logger InfoS "Got proposal" $ LogProposal currentH smRound propBlockID
               acceptBlock propRound propBlockID
               return sm { smProposals = Map.insert propRound p smProposals }
     ----------------------------------------------------------------
@@ -204,10 +284,10 @@ tendermintTransition par@HeightParameres{..} msg sm@TMState{..} =
         --        implementation advances unconditionally
         EQ -> do
           case smStep of
-            StepNewHeight -> enterPropose   par smRound        sm "TIMEOUT"
-            StepProposal  -> enterPrevote   par smRound        sm "TIMEOUT"
-            StepPrevote   -> enterPrecommit par smRound        sm "TIMEOUT"
-            StepPrecommit -> enterPropose   par (next smRound) sm "TIMEOUT"
+            StepNewHeight -> enterPropose   par smRound        sm Reason'Timeout
+            StepProposal  -> enterPrevote   par smRound        sm Reason'Timeout
+            StepPrevote   -> enterPrecommit par smRound        sm Reason'Timeout
+            StepPrecommit -> enterPropose   par (next smRound) sm Reason'Timeout
       where
         t0 = Timeout currentH smRound smStep
 
@@ -225,14 +305,14 @@ checkTransitionPrevote par@HeightParameres{..} r sm@(TMState{..})
   --  => goto Prevote(H,R+x)
   | r > smRound
   , any23at r smPrevotesSet
-    = enterPrevote par r sm "+2/3 PV for later R"
+    = enterPrevote par r sm Reason'PV_LaterR
   --  * We have +2/3 prevotes for some block/nil in current round
   --  * We are in prevote step
   --  => goto Precommit(H,R)
   | r      == smRound
   , smStep == StepPrevote
   , Just _ <- majority23at r smPrevotesSet
-    = enterPrecommit par r sm "+2/3 PV current R"
+    = enterPrecommit par r sm Reason'PV_Maj
   | otherwise
     = return sm
 
@@ -258,7 +338,7 @@ checkTransitionPrecommit par@HeightParameres{..} r sm@(TMState{..})
   --        later moment they'll get
   | Just Vote{..} <- majority23at r smPrecommitsSet
   , Just bid      <- voteBlockID
-    = do logger InfoS ("COMMIT at " <> showLS currentH <> ": " <> showLS bid) ()
+    = do logger InfoS "COMMIT" $ LogCommit currentH bid
          acceptBlock voteRound bid
          commitBlock Commit{ commitBlockID    = bid
                            , commitPrecommits = valuesAtR r smPrecommitsSet
@@ -269,12 +349,12 @@ checkTransitionPrecommit par@HeightParameres{..} r sm@(TMState{..})
   | r == smRound
   , Just Vote{..} <- majority23at r smPrecommitsSet
   , Nothing       <- voteBlockID
-    = enterPropose par (next r) sm "+2/3 PC for NIL"
+    = enterPropose par (next r) sm Reason'PC_Nil
   --  * We have +2/3 precommits for some round (R+x)
   --  => goto Precommit(H,R+x)
   | r > smRound
   , any23at r smPrecommitsSet
-    = enterPrecommit par r sm "+2/3 PC for later R"
+    = enterPrecommit par r sm Reason'PV_LaterR
   -- No change
   | otherwise
     = return sm
@@ -285,11 +365,10 @@ enterPropose
   => HeightParameres m alg a
   -> Round
   -> TMState alg a
-  -> LogStr
+  -> LogTransitionReason
   -> m (TMState alg a)
-enterPropose par@HeightParameres{..} r sm@TMState{..} reason = do
-  logger InfoS ("Entering propose at " <> showLS r <> " from " <> shortLogSt par sm
-               <> " : " <> reason) ()
+enterPropose HeightParameres{..} r sm@TMState{..} reason = do
+  logger InfoS "Entering propose" $ LogTransition currentH smRound smStep r reason
   scheduleTimeout $ Timeout currentH r StepProposal
   announceStep    $ FullStep currentH r StepProposal
   -- If we're proposers we need to broadcast proposal. Otherwise we do
@@ -298,11 +377,11 @@ enterPropose par@HeightParameres{..} r sm@TMState{..} reason = do
     -- FIXME: take care of POL fields of proposal
     --
     -- If we're locked on block we MUST propose it
-    Just (br,bid) -> do logger InfoS ("Making proposal: " <> showLS bid) ()
+    Just (br,bid) -> do logger InfoS "Making POL proposal" $ LogProposal currentH smRound bid
                         broadcastProposal r bid (Just (br,bid))
     -- Otherwise we need to create new block from mempool
     Nothing      -> do bid <- createProposal r smLastCommit
-                       logger InfoS ("Making proposal: " <> showLS bid) ()
+                       logger InfoS "Making new proposal" $ LogProposal currentH smRound bid
                        broadcastProposal r bid Nothing
   return sm { smRound = r
             , smStep  = StepProposal
@@ -318,12 +397,11 @@ enterPrevote
   => HeightParameres m alg a
   -> Round
   -> TMState alg a
-  -> LogStr
+  -> LogTransitionReason
   -> m (TMState alg a)
 enterPrevote par@HeightParameres{..} r (unlockOnPrevote -> sm@TMState{..}) reason = do
   --
-  logger InfoS ("Entering prevote at " <> showLS r <> " from " <> shortLogSt par sm
-               <> " : " <> reason) ()
+  logger InfoS "Entering prevote" $ LogTransition currentH smRound smStep r reason
   castPrevote smRound =<< prevoteBlock
   --
   scheduleTimeout $ Timeout currentH r StepPrevote
@@ -351,7 +429,7 @@ enterPrevote par@HeightParameres{..} r (unlockOnPrevote -> sm@TMState{..}) reaso
     --
     checkPrevoteBlock bid = do
       valR <- validateBlock bid
-      logger InfoS ("Block validation for prevote: " <> showLS valR) ()
+      logger InfoS "Block validation for prevote" valR
       case valR of
         GoodProposal    -> return (Just bid)
         InvalidProposal -> return Nothing
@@ -385,12 +463,10 @@ enterPrecommit
   => HeightParameres m alg a
   -> Round
   -> TMState alg a
-  -> LogStr
+  -> LogTransitionReason
   -> m (TMState alg a)
 enterPrecommit par@HeightParameres{..} r sm@TMState{..} reason = do
-  logger InfoS ("Entering precommit at " <> showLS r <> " from " <> shortLogSt par sm
-               <> " : " <> reason
-               ) ()
+  logger InfoS "Entering precommit" $ LogTransition currentH smRound smStep r reason
   castPrecommit r precommitBlock
   scheduleTimeout $ Timeout currentH r StepPrecommit
   checkTransitionPrecommit par r sm
@@ -439,14 +515,3 @@ addPrecommit HeightParameres{..} v sm@TMState{..} = do
     InsertOK votes   -> return sm{ smPrecommitsSet = votes }
     InsertDup        -> tranquility
     InsertConflict _ -> misdeed
-
-
-shortLogSt :: HeightParameres m alg a -> TMState alg a -> LogStr
-shortLogSt HeightParameres{..} TMState{..}
-  =  "("
-  <> let Height h = currentH in showLS h
-  <> "/"
-  <> let Round r = smRound in showLS r
-  <> "/"
-  <> showLS smStep
-  <> ")"
