@@ -132,9 +132,7 @@ data SignedState = Verified
 -- | Opaque data type holding
 data Signed (sign :: SignedState) alg a
   = Signed (Address alg) (Signature alg) a
-  deriving (Generic)
-
-deriving instance (Show a, Show (Address alg), Show (Signature alg)) => Show (Signed sign alg a)
+  deriving (Generic, Eq, Show)
 
 instance Serialise a => Serialise (Signed 'Unverified alg a)
 -- FIXME: we should be able to straight up decode withi\out verifying
