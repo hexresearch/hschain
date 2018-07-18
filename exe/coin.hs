@@ -183,13 +183,38 @@ main
     <> progDesc ""
     )
   where
-    work maxH prefix delay file = do
+    work maxH prefix delay doValidate file = do
       blob <- BC8.readFile file
       spec <- case JSON.eitherDecodeStrict blob of
         Right s -> return s
         Left  e -> error e
-      _ <- executeNodeSpec maxH prefix delay spec
-      return ()
+      storageList <- executeNodeSpec maxH prefix delay spec
+      when doValidate $ do
+        -- If maxH is nothing code is not reachable
+        let Just maximumH = maxH
+            heights = map (Height . fromIntegral) [0 .. maximumH]
+            allEqual []     = error "Empty list impossible!"
+            allEqual (x:xs) = all (x==) xs
+        forM_ heights $ \h -> do
+          -- Check that all blocks match!
+          blocks <- forM storageList $ \s -> do
+            mb <- retrieveBlock s h
+            case mb of
+              Nothing -> error ("Missing block at " <> show h)
+              Just b  -> return b
+          when (not $ allEqual blocks) $
+            error ("Block mismatch!" <> show h <> "\n" <> show blocks)
+          -- Check that validator set match
+          vals <- forM storageList $ \s -> do
+            mv <- retrieveValidatorSet s h
+            case (h,mv) of
+              (Height 0, Nothing) -> return Nothing
+              (_       , Just v ) -> return (Just v)
+              _                   -> error "Invalid validator!"
+          when (not $ allEqual vals) $
+            error ("Validators mismatch!" <> show h)
+          putStrLn $ show h ++ " - OK"
+    ----------------------------------------
     parser :: Parser (IO ())
     parser
       = pure work
@@ -209,17 +234,14 @@ main
            <> metavar "N"
            <> help    "delay between transactions in ms"
            )
+     <*> switch
+           (  long "check-consensus"
+           <> help "validate databases"
+           )
      <*> argument str
          (  help "Specification file"
          <> metavar "JSON"
          )
-
-
-weave :: [a] -> [a] -> [a]
-weave (a:as) (b:bs) = a : b : weave as bs
-weave as []         = as
-weave [] bs         = bs
-
 
 
 ----------------------------------------------------------------
