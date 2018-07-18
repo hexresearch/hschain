@@ -3,22 +3,22 @@
   [
     { "nspecPrivKey"     : "2K7bFuJXxKf5LqogvVRQjms2W26ZrjpvUjo5LdvPFa5Y",
       "nspecDbName"      : "db/node-1",
-      "nspecLogFile"     : "logs/node-1",
+      "nspecLogFile"     : { "jsonLog" : "logs/node-1" },
       "nspecIsValidator" : true
     },
     { "nspecPrivKey"     : "4NSWtMsEPgfTK25tCPWqNzVVze1dgMwcUFwS5WkSpjJL",
       "nspecDbName"      : "db/node-2",
-      "nspecLogFile"     : "logs/node-2",
+      "nspecLogFile"     : { "jsonLog" : "logs/node-2" },
       "nspecIsValidator" : true
     },
     { "nspecPrivKey"     : "3Fj8bZjKc53F2a87sQaFkrDas2d9gjzK57FmQwnNnSHS",
       "nspecDbName"      : "db/node-3",
-      "nspecLogFile"     : "logs/node-3",
+      "nspecLogFile"     : { "jsonLog" : "logs/node-3" },
       "nspecIsValidator" : true
     },
     { "nspecPrivKey"     : "D2fpHM1JA8trshiUW8XPvspsapUvPqVzSofaK1MGRySd",
       "nspecDbName"      : "db/node-4",
-      "nspecLogFile"     : "logs/node-4",
+      "nspecLogFile"     : { "jsonLog" : "logs/node-4" },
       "nspecIsValidator" : true
     }
   ],
