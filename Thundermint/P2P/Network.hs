@@ -15,19 +15,23 @@ module Thundermint.P2P.Network (
   , createMockNode
   ) where
 
-import Control.Concurrent.STM
-import Control.Exception
+import           Control.Concurrent.STM
+import           Control.Exception
 
-import Control.Concurrent (forkIO, killThread)
-import Control.Monad      (forever, void)
-import Data.Map           (Map)
+import           Control.Concurrent (forkIO, killThread)
+import           Control.Monad (forever, void)
+import           Data.Map (Map)
 
-import qualified Data.ByteString.Lazy           as BS
-import qualified Data.Map                       as Map
-import qualified Network.Socket                 as Net
-import qualified Network.Socket.ByteString      as NetBS
+import qualified Data.ByteString.Lazy as LBS
+import qualified Data.Map as Map
+import qualified Network.Socket as Net
+import qualified Network.Socket.ByteString as NetBS
 import qualified Network.Socket.ByteString.Lazy as NetLBS
-
+import qualified Data.Binary as Bin
+import qualified Data.Binary.Get as BG
+import qualified Data.Binary.Put as BP
+import           Data.Int
+import           Data.Monoid ((<>))
 ----------------------------------------------------------------
 --
 ----------------------------------------------------------------
@@ -44,13 +48,29 @@ data NetworkAPI addr = NetworkAPI
   }
 
 data Connection = Connection
-    { send  :: BS.ByteString -> IO ()
+    { send  :: LBS.ByteString -> IO ()
       -- ^ Send data
-    , recv  :: IO (Maybe BS.ByteString)
+    , recv  :: IO (Maybe LBS.ByteString)
       -- ^ Receive data
     , close :: IO ()
       -- ^ Close socket
     }
+
+
+
+-- | convert hex to Big Endian Int16
+data BE = BE Int16
+instance Bin.Binary BE where
+    put (BE be) = do putInt16be be
+    get = do be <- getInt16be
+             return $ BE be
+
+getInt16be :: Bin.Get Int16
+getInt16be = do a <- BG.getWord16be
+                return $ fromIntegral a
+
+putInt16be :: Int16 -> Bin.Put
+putInt16be i = BP.putWord16be ((fromIntegral i) :: Bin.Word16)
 
 ----------------------------------------------------------------
 --
@@ -93,13 +113,48 @@ realNetwork listenPort = NetworkAPI
     return (applyConn conn, addr)
   applyConn conn = Connection (sendBS conn) (recvBS conn) (Net.close conn)
   sendBS = NetLBS.sendAll
-  recvBS sock = do
-      -- FIXME: packet length should be added before message 2 octets in network order BE
-      emptyBs2Maybe <$> NetLBS.recv sock 4096
+  recvBS sock = recvFrame sock -- for ping pong test
+    -- recvAllLoop print sock
+    -- emptyBs2Maybe <$> netlbs.recv sock 4096
 
-emptyBs2Maybe :: BS.ByteString -> Maybe BS.ByteString
+decodeWord16BE ::  LBS.ByteString -> BE
+decodeWord16BE  = Bin.decode
+
+-- | helper function read given lenght of bytes
+recvAll :: Net.Socket -> Int16 -> IO LBS.ByteString
+recvAll sock n = LBS.concat `fmap` loop (fromIntegral n)
+  where
+    loop 0    = return []
+    loop left = do
+      r <- NetLBS.recv sock left
+      if LBS.null r
+      then return []
+      else fmap (r:) (loop (left - LBS.length r))
+
+-- | read message frame, which is  2 byte BE format length of messag + message
+recvFrame :: Net.Socket -> IO (Maybe LBS.ByteString)
+recvFrame sock = do
+  header <- recvAll sock 2
+  if LBS.null header
+    then return Nothing
+    else let (BE len) = decodeWord16BE header
+         in Just <$> recvAll sock len
+
+-- | receive loop which will apply function on each frame
+recvAllLoop :: (LBS.ByteString -> IO ()) -> Net.Socket -> IO (Maybe LBS.ByteString)
+recvAllLoop f sock = loop
+  where
+    loop = do
+      mFrame <- recvFrame sock
+      case mFrame of
+        Nothing -> return Nothing
+        Just frame -> do
+          f frame
+          loop
+
+emptyBs2Maybe :: LBS.ByteString -> Maybe LBS.ByteString
 emptyBs2Maybe bs
-  | BS.null bs = Nothing
+  | LBS.null bs = Nothing
   | otherwise  = Just bs
 
 -- | API implementation example for real udp network
@@ -123,7 +178,7 @@ realNetworkUdp listenPort = do
         (bs, addr) <- NetBS.recvFrom sock 4096
         recvChan <- findOrCreateRecvChan tChans addr
         atomically $ writeTChan acceptChan (applyConn sock addr recvChan, addr)
-        atomically $ writeTChan recvChan $ BS.fromStrict bs
+        atomically $ writeTChan recvChan $ LBS.fromStrict bs
 
   return NetworkAPI
     { listenOn =
@@ -143,7 +198,7 @@ realNetworkUdp listenPort = do
         writeTVar tChans $ Map.insert addr recvChan chans
         return recvChan
   applyConn sock addr peerChan = Connection
-    (\s -> void $ NetBS.sendAllTo sock (BS.toStrict s) addr)
+    (\s -> void $ NetBS.sendAllTo sock (LBS.toStrict s) addr)
     (emptyBs2Maybe <$> atomically (readTChan peerChan))
     (return ())
 
@@ -157,8 +212,8 @@ realNetworkUdp listenPort = do
 -- | Sockets for mock network
 data MockSocket = MockSocket
   { msckActive :: TVar Bool
-  , msckSend   :: TChan BS.ByteString
-  , msckRecv   :: TChan BS.ByteString
+  , msckSend   :: TChan LBS.ByteString
+  , msckRecv   :: TChan LBS.ByteString
   }
   deriving (Eq)
 
