@@ -1,4 +1,4 @@
-# Thundermint 
+# Thundermint
 
 Thundermint is a haskell implementation of tendermint bysantine consesus algorithm
 
@@ -6,11 +6,16 @@ Thundermint is a haskell implementation of tendermint bysantine consesus algorit
 
 ## Build with `nix`
 
-Just use following command 
+Install Nix
+```
+curl https://nixos.org/nix/install | sh
+```
+
+Just use following command
 ```
 nix-build -A thundermint release.nix
 ```
-Note that if project directory contains `.ghc.environment.*` files created by new-style cabal commands build will fail. 
+Note that if project directory contains `.ghc.environment.*` files created by new-style cabal commands build will fail.
 
 ## Run dev environment with `nix`
 
@@ -95,3 +100,13 @@ To list runnig containers use `docker container ls` .
 
 All logs can be found in `logs` volume. Use `docker volume inspect logs` to found directory with
 logs.
+
+
+Docker commands
+
+```
+docker container start registry
+
+docker images
+
+```
