@@ -47,8 +47,8 @@ pingPong = do
 
 
 -- | Simple test to ensure that mock network works at all
-delayedWrite :: NetworkAPI addr -> IO ()
-delayedWrite network = do
+delayedWrite :: IO ()
+delayedWrite = do
   network <- newMockNet
   let serverAddr = 1 :: Int
       clientAddr = 2 :: Int
