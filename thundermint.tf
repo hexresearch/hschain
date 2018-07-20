@@ -38,11 +38,10 @@ resource "null_resource" "configure-nodes-ips" {
   }
 
   provisioner "local-exec" {
-    command = "echo '${jsonencode(docker_container.node.*.ip_address)}' | netcat -v ${element(docker_container.node.*.ip_address, count.index)} 49999"
+    command = "bootstrap -t all2all  -l '${jsonencode(docker_container.node.*.ip_address)}' -n ${element(docker_container.node.*.ip_address, count.index)} -p 49999"
   }
 }
 
 resource "docker_image" "scratch" {
   name = "localhost:5000/thundermint-node"
 }
-
