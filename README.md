@@ -8,7 +8,7 @@ Thundermint is a haskell implementation of tendermint bysantine consesus algorit
 
 Install Nix
 ```
-curl https://nixos.org/nix/install | sh
+https://nixos.wiki/wiki/Nix_Installation_Guide
 ```
 
 Just use following command
@@ -34,7 +34,7 @@ nix-env -i cabal-install
 or
 
 ```
-nix-env -i hlit
+nix-env -i hlint
 ```
 
 
@@ -100,13 +100,3 @@ To list runnig containers use `docker container ls` .
 
 All logs can be found in `logs` volume. Use `docker volume inspect logs` to found directory with
 logs.
-
-
-Docker commands
-
-```
-docker container start registry
-
-docker images
-
-```

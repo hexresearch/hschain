@@ -15,23 +15,22 @@ module Thundermint.P2P.Network (
   , createMockNode
   ) where
 
-import           Control.Concurrent.STM
-import           Control.Exception
+import Control.Concurrent.STM
+import Control.Exception
 
-import           Control.Concurrent (forkIO, killThread)
-import           Control.Monad (forever, void)
-import           Data.Map (Map)
+import Control.Concurrent (forkIO, killThread)
+import Control.Monad      (forever, void)
+import Data.Map           (Map)
+import Data.Monoid        ((<>))
+import Data.Word          (Word16)
 
-import qualified Data.ByteString.Lazy as LBS
-import qualified Data.Map as Map
-import qualified Network.Socket as Net
-import qualified Network.Socket.ByteString as NetBS
+import qualified Data.Binary                    as Bin
+import qualified Data.ByteString.Builder        as BB
+import qualified Data.ByteString.Lazy           as LBS
+import qualified Data.Map                       as Map
+import qualified Network.Socket                 as Net
+import qualified Network.Socket.ByteString      as NetBS
 import qualified Network.Socket.ByteString.Lazy as NetLBS
-import qualified Data.Binary as Bin
-import qualified Data.Binary.Get as BG
-import qualified Data.Binary.Put as BP
-import           Data.Int
-import           Data.Monoid ((<>))
 ----------------------------------------------------------------
 --
 ----------------------------------------------------------------
@@ -56,21 +55,6 @@ data Connection = Connection
       -- ^ Close socket
     }
 
-
-
--- | convert hex to Big Endian Int16
-data BE = BE Int16
-instance Bin.Binary BE where
-    put (BE be) = do putInt16be be
-    get = do be <- getInt16be
-             return $ BE be
-
-getInt16be :: Bin.Get Int16
-getInt16be = do a <- BG.getWord16be
-                return $ fromIntegral a
-
-putInt16be :: Int16 -> Bin.Put
-putInt16be i = BP.putWord16be ((fromIntegral i) :: Bin.Word16)
 
 ----------------------------------------------------------------
 --
@@ -112,16 +96,25 @@ realNetwork listenPort = NetworkAPI
     (conn, addr) <- Net.accept sock
     return (applyConn conn, addr)
   applyConn conn = Connection (sendBS conn) (recvBS conn) (Net.close conn)
-  sendBS = NetLBS.sendAll
-  recvBS sock = recvFrame sock -- for ping pong test
-    -- recvAllLoop print sock
-    -- emptyBs2Maybe <$> netlbs.recv sock 4096
+  sendBS sock =  \s -> NetLBS.sendAll sock (BB.toLazyByteString $ toFrame s)
+                 where
+                   toFrame msg = let len =  fromIntegral (LBS.length msg) :: Word16
+                                     hexLen = BB.word16BE len
+                                 in (hexLen <> BB.lazyByteString  (LBS.take (fromIntegral len) msg))
 
-decodeWord16BE ::  LBS.ByteString -> BE
-decodeWord16BE  = Bin.decode
+  recvBS sock = do
+    header <- recvAll sock 2
+    if LBS.null header
+    then return Nothing
+    else let len = fromIntegral $ decodeWord16BE header
+         in Just <$> recvAll sock len
+
+
+decodeWord16BE :: LBS.ByteString -> Word16
+decodeWord16BE = Bin.decode
 
 -- | helper function read given lenght of bytes
-recvAll :: Net.Socket -> Int16 -> IO LBS.ByteString
+recvAll :: Net.Socket -> Int -> IO LBS.ByteString
 recvAll sock n = LBS.concat `fmap` loop (fromIntegral n)
   where
     loop 0    = return []
@@ -131,26 +124,6 @@ recvAll sock n = LBS.concat `fmap` loop (fromIntegral n)
       then return []
       else fmap (r:) (loop (left - LBS.length r))
 
--- | read message frame, which is  2 byte BE format length of messag + message
-recvFrame :: Net.Socket -> IO (Maybe LBS.ByteString)
-recvFrame sock = do
-  header <- recvAll sock 2
-  if LBS.null header
-    then return Nothing
-    else let (BE len) = decodeWord16BE header
-         in Just <$> recvAll sock len
-
--- | receive loop which will apply function on each frame
-recvAllLoop :: (LBS.ByteString -> IO ()) -> Net.Socket -> IO (Maybe LBS.ByteString)
-recvAllLoop f sock = loop
-  where
-    loop = do
-      mFrame <- recvFrame sock
-      case mFrame of
-        Nothing -> return Nothing
-        Just frame -> do
-          f frame
-          loop
 
 emptyBs2Maybe :: LBS.ByteString -> Maybe LBS.ByteString
 emptyBs2Maybe bs
