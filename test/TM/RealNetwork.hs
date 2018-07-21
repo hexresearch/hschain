@@ -1,23 +1,26 @@
-{-# LANGUAGE NumDecimals #-}
+{-# LANGUAGE NumDecimals       #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 -- |
 module TM.RealNetwork (tests) where
 
-import           Control.Exception
-import           Control.Concurrent (threadDelay)
-import           Control.Concurrent.Async
-import           Data.Monoid ((<>))
-import           Test.Tasty
-import           Test.Tasty.HUnit
-import           Thundermint.P2P.Network
-import qualified Network.Socket as Net
+import Control.Concurrent.Async
+import Control.Exception
+import Data.Binary
+import Data.Int
+import System.Random
+import Test.Tasty
+import Test.Tasty.HUnit
+import Thundermint.P2P.Network
+
+import Control.Concurrent (threadDelay)
+import Data.Monoid        ((<>))
+
+import qualified Data.Binary.Get      as BG
+import qualified Data.Binary.Put      as BP
 import qualified Data.ByteString.Lazy as LBS
-import           System.Random
-import           Data.Binary
-import qualified Data.Binary.Get as BG
-import qualified Data.Binary.Put as BP
-import           Data.Int
+import qualified Network.Socket       as Net
+
 ----------------------------------------------------------------
 
 -- | used run from ghci
@@ -42,7 +45,7 @@ pingPong :: IO ()
 pingPong = do
   -- | there was a delay while socket freeing the port
   -- and when you run test some time you will get "resource busy (Address already in use) exception
-  -- the radnom port resolve this
+  -- the random port resolve this
   n <- randomRIO (0, 100 :: Int)
   let port = "300" ++ show  n
       host = "127.0.0.1"
@@ -55,14 +58,11 @@ pingPong = do
         bracket listenOn fst $ \(_,accept) ->
           bracket (accept) (close . fst) $ \(conn,_) -> do
             Just bs <- recv conn
-            let str = "PONG_" <> bs
-                len = fromIntegral (LBS.length str) :: Int16
-                hexLen = encode len
-            send conn (hexLen <> str)
+            send conn ("PONG_" <> bs)
   let runClient NetworkAPI{..}  = do
         threadDelay 10e3
         bracket (connect sockAddr) close $ \conn -> do
-          send conn "\NUL\EOTPING"
+          send conn "PING"
           bs <- recv conn
           assertEqual "Ping-pong" (Just "PONG_PING") bs
   ((),()) <- concurrently (runServer server) (runClient server)
@@ -103,6 +103,8 @@ framing = do
           assertEqual "Ping-pong" (Just "PONG_PING") (Just bs)
   ((),()) <- concurrently (runServer server) (runClient server)
   return ()
+
+
 
 
 -------------------------------------------------------------------------------
@@ -157,11 +159,13 @@ hexTest =
 
 intToHexStrTest :: IO ()
 intToHexStrTest =
-    let n1 = 5  :: Int16
-        n2 = 10 :: Int16
-        n3 = 1  :: Int16
-        n4 = 4  :: Int16
+    let n1 = 5  :: Word16
+        n2 = 10 :: Word16
+        n3 = 1  :: Word16
+        n4 = 4  :: Word16
+        n5 = 62000  :: Word16
      in assertEqual "5" ("\NUL\ENQ") (encode n1) >>
         assertEqual "10" ("\NUL\n") (encode n2) >>
         assertEqual "1" ("\NUL\SOH") (encode n3) >>
-        assertEqual "4" ("\NUL\EOT") (encode n4)
+        assertEqual "4" ("\NUL\EOT") (encode n4) >>
+        assertEqual "62000" ("\242\&0") (encode n5)
