@@ -32,7 +32,6 @@ Library
                      , text
                      , transformers      >=0.5
                      , unordered-containers >=0.2.5.0
-                     , binary
                      --
                      , network           >=2.7.0.0
                      , katip             >=0.5.4.0

@@ -20,11 +20,11 @@ import Control.Exception
 
 import Control.Concurrent (forkIO, killThread)
 import Control.Monad      (forever, void)
+import Data.Bits          (unsafeShiftL)
 import Data.Map           (Map)
 import Data.Monoid        ((<>))
 import Data.Word          (Word16)
 
-import qualified Data.Binary                    as Bin
 import qualified Data.ByteString.Builder        as BB
 import qualified Data.ByteString.Lazy           as LBS
 import qualified Data.Map                       as Map
@@ -106,12 +106,21 @@ realNetwork listenPort = NetworkAPI
     header <- recvAll sock 2
     if LBS.null header
     then return Nothing
-    else let len = fromIntegral $ decodeWord16BE header
-         in Just <$> recvAll sock len
+    else let len = decodeWord16BE header
+         in case len of
+              Just n  -> Just <$> recvAll sock (fromIntegral n)
+              Nothing -> return Nothing
 
 
-decodeWord16BE :: LBS.ByteString -> Word16
-decodeWord16BE = Bin.decode
+decodeWord16BE :: LBS.ByteString -> Maybe Word16
+decodeWord16BE bs | LBS.length bs < 2 = Nothing
+                  | otherwise =
+                      do
+                        (b1, bs') <- LBS.uncons bs
+                        (b2, _)   <- LBS.uncons bs'
+                        let word16 = (fromIntegral b1 `unsafeShiftL` 8) + fromIntegral b2
+                        Just word16
+
 
 -- | helper function read given lenght of bytes
 recvAll :: Net.Socket -> Int -> IO LBS.ByteString
