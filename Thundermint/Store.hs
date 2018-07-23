@@ -1,7 +1,9 @@
 {-# LANGUAGE DataKinds       #-}
+{-# LANGUAGE DeriveGeneric   #-}
 {-# LANGUAGE KindSignatures  #-}
 {-# LANGUAGE RankNTypes      #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies    #-}
 -- |
 -- Abstract API for storing of blockchain. Storage works as follows:
@@ -28,12 +30,17 @@ module Thundermint.Store (
     -- * Mempool
   , MempoolCursor(..)
   , Mempool(..)
+  , MempoolInfo(..)
   , hoistMempoolCursor
   , hoistMempool
   , nullMempool
   ) where
 
+import qualified Data.Aeson    as JSON
+import qualified Data.Aeson.TH as JSON
 import           Data.Map          (Map)
+import qualified Katip
+import GHC.Generics (Generic)
 
 import Thundermint.Crypto.Containers
 import Thundermint.Consensus.Types
@@ -211,6 +218,26 @@ hoistPropStorageRO fun ProposalStorage{..} =
 --
 ----------------------------------------------------------------
 
+-- | Statistics about mempool
+data MempoolInfo = MempoolInfo
+  { mempool'size       :: Int
+  -- ^ Number of transactions currently in mempool
+  , mempool'added     :: Int
+  -- ^ Number of transactions added to mempool since program start
+  , mempool'discarded :: Int
+  -- ^ Number of transaction discarded immediately since program start
+  , mempool'filtered  :: Int
+  -- ^ Number of transaction removed during filtering
+  }
+  deriving (Show,Generic)
+JSON.deriveJSON JSON.defaultOptions
+  { JSON.fieldLabelModifier = drop 8 } ''MempoolInfo
+
+instance Katip.ToObject MempoolInfo
+instance Katip.LogItem  MempoolInfo where
+  payloadKeys Katip.V0 _ = Katip.SomeKeys []
+  payloadKeys _        _ = Katip.AllKeys
+
 -- | Cursor into mempool which is used for gossiping data
 data MempoolCursor m tx = MempoolCursor
   { pushTransaction :: tx -> m ()
@@ -231,7 +258,7 @@ data Mempool m tx = Mempool
     -- ^ Remove transactions that are no longer valid from mempool
   , getMempoolCursor  :: m (MempoolCursor m tx)
     -- ^ Get cursor pointing to be
-  , mempoolSize       :: m Int
+  , mempoolStats      :: m MempoolInfo
     -- ^ Number of elements in mempool
   }
 
@@ -246,14 +273,14 @@ hoistMempool fun Mempool{..} = Mempool
   { peekNTransactions = fun . peekNTransactions
   , filterMempool     = fun filterMempool
   , getMempoolCursor  = hoistMempoolCursor fun <$> fun getMempoolCursor
-  , mempoolSize       = fun mempoolSize
+  , mempoolStats      = fun mempoolStats
   }
 
 nullMempool :: Monad m => Mempool m ()
 nullMempool = Mempool
   { peekNTransactions = const (return [])
   , filterMempool     = return ()
-  , mempoolSize       = return 0
+  , mempoolStats      = return $ MempoolInfo 0 0 0 0
   , getMempoolCursor  = return MempoolCursor
       { pushTransaction = const (return ())
       , advanceCursor   = return Nothing

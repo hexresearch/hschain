@@ -1,5 +1,6 @@
-{-# LANGUAGE DataKinds  #-}
-{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE DataKinds       #-}
+{-# LANGUAGE LambdaCase      #-}
+{-# LANGUAGE RecordWildCards #-}
 -- |
 module Thundermint.Store.STM (
     newSTMBlockStorage
@@ -132,6 +133,9 @@ newMempool
 newMempool validation = do
   varFIFO <- liftIO $ newTVarIO IMap.empty
   varMaxN <- liftIO $ newTVarIO 0
+  varAdded     <- liftIO $ newTVarIO 0
+  varDiscarded <- liftIO $ newTVarIO 0
+  varFiltered  <- liftIO $ newTVarIO 0
   return Mempool
     { peekNTransactions = \mn -> do
         fifo <- liftIO (readTVarIO varFIFO)
@@ -142,24 +146,35 @@ newMempool validation = do
     -- anymore. Main source of invalidation of formerly valid
     -- transactions is commits in blocks proposed by other nodes.
     , filterMempool = do
-        fifo   <- liftIO $ readTVarIO varFIFO
         let stepCheck []              = return (-1)
             stepCheck ((k,tx) : txs ) =
               validation tx >>= \case
                 True  -> return k
                 False -> stepCheck txs
-        firstGood <- stepCheck $ IMap.toList fifo
-        liftIO $ atomically $ modifyTVar' varFIFO $
-          snd . IMap.split (firstGood - 1)
+        firstGood <- stepCheck . IMap.toList
+                 =<< liftIO (readTVarIO varFIFO)
+        liftIO $ atomically $ do
+          fifo <- readTVar varFIFO
+          let (dropped,point,retained) = IMap.splitLookup (firstGood - 1) fifo
+          modifyTVar' varFiltered (+ (length point + IMap.size dropped))
+          writeTVar varFIFO $! retained
     --
-    , mempoolSize = IMap.size <$> liftIO (readTVarIO varFIFO)
+    , mempoolStats = liftIO $ atomically $ do
+        mempool'size      <- IMap.size <$> readTVar varFIFO
+        mempool'added     <- readTVar varAdded
+        mempool'discarded <- readTVar varDiscarded
+        mempool'filtered  <- readTVar varFiltered
+        return MempoolInfo{..}
     --
     , getMempoolCursor = liftIO $ atomically $ do
         varN <- newTVar 0
         return MempoolCursor
           { pushTransaction = \tx -> validation tx >>= \case
-              False -> return ()
+              False -> liftIO $ atomically $ do
+                modifyTVar varAdded succ
+                modifyTVar varDiscarded succ
               True  -> liftIO $ atomically $ do
+                modifyTVar varAdded     succ
                 n <- succ <$> readTVar varMaxN
                 modifyTVar' varFIFO $ IMap.insert n tx
                 writeTVar   varMaxN n
