@@ -165,10 +165,10 @@ runNode
 runNode NodeDescription{nodeBlockChainLogic=logic@BlockFold{..}, ..} = do
   -- Initialize logging
   let scribes = [ Katip.mkFileScribe nm Katip.DebugS Katip.V2
-                | Just nm <- [jsonLog nodeLogFile]
+                | Just nm <- [txtLog nodeLogFile]
                 ] ++
                 [ makeJsonFileScribe nm Katip.DebugS Katip.V2
-                | Just nm <- [txtLog nodeLogFile]
+                | Just nm <- [jsonLog nodeLogFile]
                 ]
   withLogEnv "TM" "DEV" scribes $ \logenv -> do
     -- Create proposal storage
@@ -203,7 +203,13 @@ runNode NodeDescription{nodeBlockChainLogic=logic@BlockFold{..}, ..} = do
               txs <- peekNTransactions mempool Nothing
               return $ transactionsToBlock hBlock st txs
             --
-          , appCommitCallback = filterMempool mempool
+          , appCommitCallback = do
+              before <- mempoolStats mempool
+              runLoggerT "mempool" logenv $ logger InfoS "Mempool filtered" before
+              filterMempool mempool
+              after  <- mempoolStats mempool
+              runLoggerT "mempool" logenv $ logger InfoS "Mempool filtered" after
+            --
           , appValidator      = nodeValidationKey
           , appValidatorsSet  = valSet
           , appMaxHeight      = nodeMaxH
