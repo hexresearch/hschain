@@ -27,6 +27,7 @@ import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
 import Data.Foldable
+import Data.IORef
 import Data.Map                 (Map)
 import Data.Word                (Word64)
 import qualified Data.Aeson             as JSON
@@ -162,55 +163,51 @@ runNode
   => NodeDescription sock addr m alg st tx a
   -> m ()
 runNode NodeDescription{nodeBlockChainLogic=logic@BlockFold{..}, ..} = do
-  -- Create proposal storage
-  propSt <- hoistPropStorageRW liftIO <$> liftIO newSTMPropStorage
-  -- Create state of blockchain & Update it to current state of
-  -- blockchain
-  hChain      <- blockchainHeight     nodeStorage
-  Just valSet <- retrieveValidatorSet nodeStorage (next hChain)
-  bchState    <- newBChState logic (makeReadOnly nodeStorage)
-  _           <- stateAtH bchState (next hChain)
-  -- Create mempool
-  let checkTx tx = do
-        st <- currentState bchState
-        case processTx (Height 1) tx st of
-          Nothing -> return False
-          Just _  -> return True
-  mempool <- newMempool checkTx
-  cursor  <- getMempoolCursor mempool
-  -- Build application state of consensus algorithm
-  let appSt = AppState
-        { appStorage     = nodeStorage
-        , appPropStorage = propSt
-        , appValidationFun = \hBlock a -> do
-            st <- stateAtH bchState hBlock
-            case processBlock hBlock a st of
-              Nothing -> return False
-              Just _  -> return True
-        , appBlockGenerator = \hBlock -> do
-            st  <- stateAtH bchState hBlock
-            txs <- peekNTransactions mempool Nothing
-            return $ transactionsToBlock hBlock st txs
-
-        , appCommitCallback = filterMempool mempool
-        , appValidator      = nodeValidationKey
-        , appValidatorsSet  = valSet
-        , appMaxHeight      = nodeMaxH
-        }
-  -- Set up logging
-  bracket (liftIO $ Katip.initLogEnv "TM" "DEV")
-          (liftIO . Katip.closeScribes) $ \logenv -> do
-    --
-    let registerTxt Nothing   le = return le
-        registerTxt (Just nm) le = liftIO $ do
-          scribe <- Katip.mkFileScribe nm Katip.DebugS Katip.V2
-          Katip.registerScribe "log" scribe Katip.defaultScribeSettings le
-    let registerJson Nothing   le = return le
-        registerJson (Just nm) le = liftIO $ do
-          scribe <- makeJsonFileScribe nm Katip.DebugS Katip.V2
-          Katip.registerScribe "log" scribe Katip.defaultScribeSettings le        
-    logenv' <- registerJson (jsonLog nodeLogFile)
-           =<< registerTxt  (txtLog  nodeLogFile) logenv
+  -- Initialize logging
+  let scribes = [ Katip.mkFileScribe nm Katip.DebugS Katip.V2
+                | Just nm <- [jsonLog nodeLogFile]
+                ] ++
+                [ makeJsonFileScribe nm Katip.DebugS Katip.V2
+                | Just nm <- [txtLog nodeLogFile]
+                ]
+  withLogEnv "TM" "DEV" scribes $ \logenv -> do
+    -- Create proposal storage
+    propSt <- hoistPropStorageRW liftIO <$> liftIO newSTMPropStorage
+    -- Create state of blockchain & Update it to current state of
+    -- blockchain
+    hChain      <- blockchainHeight     nodeStorage
+    Just valSet <- retrieveValidatorSet nodeStorage (next hChain)
+    bchState    <- newBChState logic (makeReadOnly nodeStorage)
+    _           <- stateAtH bchState (next hChain)
+    -- Create mempool
+    let checkTx tx = do
+          st <- currentState bchState
+          case processTx (Height 1) tx st of
+            Nothing -> return False
+            Just _  -> return True
+    mempool <- newMempool checkTx
+    cursor  <- getMempoolCursor mempool
+    -- Build application state of consensus algorithm
+    let appSt = AppState
+          { appStorage     = nodeStorage
+          , appPropStorage = propSt
+            --
+          , appValidationFun = \hBlock a -> do
+              st <- stateAtH bchState hBlock
+              case processBlock hBlock a st of
+                Nothing -> return False
+                Just _  -> return True
+            --
+          , appBlockGenerator = \hBlock -> do
+              st  <- stateAtH bchState hBlock
+              txs <- peekNTransactions mempool Nothing
+              return $ transactionsToBlock hBlock st txs
+            --
+          , appCommitCallback = filterMempool mempool
+          , appValidator      = nodeValidationKey
+          , appValidatorsSet  = valSet
+          , appMaxHeight      = nodeMaxH
+          }
     -- Networking
     appCh <- liftIO newAppChans
     runConcurrently $
@@ -219,15 +216,36 @@ runNode NodeDescription{nodeBlockChainLogic=logic@BlockFold{..}, ..} = do
           Just action -> [forever $ action (pushTransaction cursor)
                                 =<< currentState bchState]
       ++
-      [ id $ runLoggerT "net" logenv'
+      [ id $ runLoggerT "net" logenv
            $ startPeerDispatcher defCfg nodeNetworks nodeInitialPeers appCh
                                  (hoistBlockStorageRO lift $ makeReadOnly   nodeStorage)
                                  (hoistPropStorageRO  lift $ makeReadOnlyPS propSt)
                                  (hoistMempool lift mempool)
-      , id $ runLoggerT "consensus" logenv'
+      , id $ runLoggerT "consensus" logenv
            $ runApplication defCfg (hoistAppState lift appSt) appCh
       ]
 
+withLogEnv
+  :: (MonadIO m, MonadMask m)
+  => Katip.Namespace
+  -> Katip.Environment
+  -> [IO Katip.Scribe]
+  -> (Katip.LogEnv -> m a)
+  -> m a
+withLogEnv namespace env scribes action
+  = bracket initLE fini $ \leRef -> loop leRef scribes
+  where
+    initLE = liftIO (newIORef =<< Katip.initLogEnv namespace env)
+    fini   = liftIO . (Katip.closeScribes <=< readIORef)
+    --
+    loop leRef []           = action =<< liftIO (readIORef leRef)
+    loop leRef (ios : rest) = mask $ \unmask -> do
+      scribe <- liftIO ios
+      le  <- liftIO (readIORef leRef)
+      le' <- liftIO (Katip.registerScribe "log" scribe Katip.defaultScribeSettings le)
+        `onException` liftIO (Katip.scribeFinalizer scribe)
+      liftIO (writeIORef leRef le')
+      unmask $ loop leRef rest
 
 
 
