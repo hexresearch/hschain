@@ -205,10 +205,10 @@ runNode NodeDescription{nodeBlockChainLogic=logic@BlockFold{..}, ..} = do
             --
           , appCommitCallback = do
               before <- mempoolStats mempool
-              runLoggerT "mempool" logenv $ logger InfoS "Mempool filtered" before
+              runLoggerT "mempool" logenv $ logger InfoS "Mempool before filtering" before
               filterMempool mempool
               after  <- mempoolStats mempool
-              runLoggerT "mempool" logenv $ logger InfoS "Mempool filtered" after
+              runLoggerT "mempool" logenv $ logger InfoS "Mempool after filtering" after
             --
           , appValidator      = nodeValidationKey
           , appValidatorsSet  = valSet
