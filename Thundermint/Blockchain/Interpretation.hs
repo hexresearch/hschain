@@ -41,7 +41,7 @@ data BlockFold s tx a = BlockFold
   , processBlock :: Height -> a  -> s -> Maybe s
     -- ^ Try to process whole block. Here application should perform
     --   complete validation of block
-  , transactionsToBlock :: Height -> s-> [tx] -> a
+  , transactionsToBlock :: Height -> s -> [tx] -> a
     -- ^ Create block at given height from list of transactions. Not
     --   input could contain invalid transaction and they must be
     --   filtered out so that block is valid.
