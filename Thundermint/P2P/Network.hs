@@ -23,7 +23,7 @@ import Control.Monad      (forever, void)
 import Data.Bits          (unsafeShiftL)
 import Data.Map           (Map)
 import Data.Monoid        ((<>))
-import Data.Word          (Word16)
+import Data.Word          (Word32)
 
 import qualified Data.ByteString.Builder        as BB
 import qualified Data.ByteString.Lazy           as LBS
@@ -55,6 +55,10 @@ data Connection = Connection
       -- ^ Close socket
     }
 
+type HeaderSize = Int
+
+headerSize :: HeaderSize
+headerSize = 4
 
 ----------------------------------------------------------------
 --
@@ -98,12 +102,12 @@ realNetwork listenPort = NetworkAPI
   applyConn conn = Connection (sendBS conn) (recvBS conn) (Net.close conn)
   sendBS sock =  \s -> NetLBS.sendAll sock (BB.toLazyByteString $ toFrame s)
                  where
-                   toFrame msg = let len =  fromIntegral (LBS.length msg) :: Word16
-                                     hexLen = BB.word16BE len
-                                 in (hexLen <> BB.lazyByteString  (LBS.take (fromIntegral len) msg))
+                   toFrame msg = let len =  fromIntegral (LBS.length msg) :: Word32
+                                     hexLen = BB.word32BE len
+                                 in (hexLen <> BB.lazyByteString msg)
 
   recvBS sock = do
-    header <- recvAll sock 2
+    header <- recvAll sock headerSize
     if LBS.null header
     then return Nothing
     else let len = decodeWord16BE header
@@ -112,14 +116,17 @@ realNetwork listenPort = NetworkAPI
               Nothing -> return Nothing
 
 
-decodeWord16BE :: LBS.ByteString -> Maybe Word16
-decodeWord16BE bs | LBS.length bs < 2 = Nothing
+decodeWord16BE :: LBS.ByteString -> Maybe Word32
+decodeWord16BE bs | LBS.length bs < (fromIntegral headerSize) = Nothing
                   | otherwise =
                       do
-                        (b1, bs') <- LBS.uncons bs
-                        (b2, _)   <- LBS.uncons bs'
-                        let word16 = (fromIntegral b1 `unsafeShiftL` 8) + fromIntegral b2
-                        Just word16
+                        let w8s = LBS.unpack $ LBS.take (fromIntegral headerSize) bs
+                            word32 = foldr (\b (acc, i) ->
+                                          let shiftBy = i * 8
+                                          in ((fromIntegral b `unsafeShiftL` shiftBy) + acc, i + 1))
+                                     (0,0)
+                                     w8s
+                        (Just $ fst word32)
 
 
 -- | helper function read given lenght of bytes
