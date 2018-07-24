@@ -18,12 +18,17 @@ import Data.Monoid        ((<>))
 
 
 tests :: TestTree
-tests =  testGroup "network tests"
-             [ testCase "mock ping-pong" $ mockNetPair >>= \(server, client) -> pingPong server client
-             , testCase "mock delayed write" $ mockNetPair >>= \(server, client) -> delayedWrite server client
-             , testCase "real ping-pong" $ realNetPair >>= \(server, client) -> pingPong server client
-             , testCase "real delayed write " $ realNetPair >>= \(server, client) -> delayedWrite server client
-             ]
+tests =
+    testGroup "network test"
+                  [ testGroup "mock"
+                    [ testCase "ping-pong" $ mockNetPair >>= \(server, client) -> pingPong server client
+                    , testCase "delayed write" $ mockNetPair >>= \(server, client) -> delayedWrite server client
+                    ]
+                  , testGroup "real"
+                        [ testCase "ping-pong" $ realNetPair >>= \(server, client) -> pingPong server client
+                        , testCase "delayed write" $ realNetPair >>= \(server, client) -> delayedWrite server client
+                        ]
+                  ]
 
 
 
