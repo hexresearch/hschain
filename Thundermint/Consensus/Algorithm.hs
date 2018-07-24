@@ -338,7 +338,7 @@ checkTransitionPrecommit par@HeightParameres{..} r sm@(TMState{..})
   --        later moment they'll get
   | Just Vote{..} <- majority23at r smPrecommitsSet
   , Just bid      <- voteBlockID
-    = do logger InfoS "COMMIT" $ LogCommit currentH bid
+    = do logger InfoS "Decision to commit" $ LogCommit currentH bid
          acceptBlock voteRound bid
          commitBlock Commit{ commitBlockID    = bid
                            , commitPrecommits = valuesAtR r smPrecommitsSet

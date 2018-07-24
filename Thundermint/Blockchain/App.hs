@@ -38,7 +38,7 @@ import Thundermint.Consensus.Types
 import Thundermint.Store
 import Thundermint.Logger
 
-import Katip (Severity(..), showLS, logStr)
+import Katip (Severity(..), showLS)
 
 ----------------------------------------------------------------
 --
@@ -50,7 +50,8 @@ import Katip (Severity(..), showLS, logStr)
 --
 --   * INVARIANT: Only this function can write to blockchain
 runApplication
-  :: (MonadIO m, MonadCatch m, MonadLogger m, Crypto alg, Serialise a, Show a)
+  :: ( MonadIO m, MonadCatch m, MonadLogger m, Crypto alg
+     , Serialise a, Show a, LogBlock a)
   => Configuration
      -- ^ Configuration
   -> AppState m alg a
@@ -81,7 +82,8 @@ runApplication config appSt@AppState{..} appCh = logOnException $ do
 --
 -- FIXME: we should write block and last commit in transaction!
 decideNewBlock
-  :: (MonadIO m, MonadLogger m, Crypto alg, Serialise a, Show a)
+  :: ( MonadIO m, MonadLogger m, Crypto alg
+     , Serialise a, Show a, LogBlock a)
   => Configuration
   -> AppState m alg a
   -> AppChans alg a
@@ -113,6 +115,8 @@ decideNewBlock config appSt@AppState{..} appCh@AppChans{..} lastCommt = do
       Just Misdeed        -> loop tm
       Just (DoCommit cmt) -> do
         b <- waitForBlockID appPropStorage $ commitBlockID cmt
+        logger InfoS "Actual commit"
+          $ LogBlockInfo (currentH hParam) (blockData b)
         storeCommit appStorage appValidatorsSet cmt b
         advanceToHeight appPropStorage . next =<< blockchainHeight appStorage
         appCommitCallback
