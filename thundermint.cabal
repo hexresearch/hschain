@@ -183,6 +183,7 @@ Test-suite thundermint-tests
   Main-is:             Main.hs
   Other-modules:       TM.MockNet
                        TM.RealNetwork
+                       TM.Network
 
 -- Benchmarks
 Benchmark thundermint-bench
