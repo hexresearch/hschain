@@ -2,31 +2,27 @@
   "netNodeList" :
   [
     { "nspecPrivKey"     : "2K7bFuJXxKf5LqogvVRQjms2W26ZrjpvUjo5LdvPFa5Y",
-      "nspecDbName"      : "db/node-1",
       "nspecLogFile"     : { "jsonLog" : "logs/node-1" },
       "nspecIsValidator" : true,
-      "nspecWalletKeys"  : [0,250]
+      "nspecWalletKeys"  : [0,500]
     },
     { "nspecPrivKey"     : "4NSWtMsEPgfTK25tCPWqNzVVze1dgMwcUFwS5WkSpjJL",
-      "nspecDbName"      : "db/node-2",
       "nspecLogFile"     : { "jsonLog" : "logs/node-2" },
       "nspecIsValidator" : true,
-      "nspecWalletKeys"  : [250,250]
+      "nspecWalletKeys"  : [500,500]
     },
     { "nspecPrivKey"     : "3Fj8bZjKc53F2a87sQaFkrDas2d9gjzK57FmQwnNnSHS",
-      "nspecDbName"      : "db/node-3",
       "nspecLogFile"     : { "jsonLog" : "logs/node-3" },
       "nspecIsValidator" : true,
-      "nspecWalletKeys"  : [500,250]
+      "nspecWalletKeys"  : [1000,500]
     },
     { "nspecPrivKey"     : "D2fpHM1JA8trshiUW8XPvspsapUvPqVzSofaK1MGRySd",
-      "nspecDbName"      : "db/node-4",
       "nspecLogFile"     : { "jsonLog" : "logs/node-4" },
       "nspecIsValidator" : true,
-      "nspecWalletKeys"  : [750,250]
+      "nspecWalletKeys"  : [1500,500]
     }
   ],
   "netTopology"       : "All2All",
   "netInitialDeposit" : 1000,
-  "netInitialKeys"    : 1000
+  "netInitialKeys"    : 2000
 }

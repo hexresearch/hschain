@@ -33,6 +33,7 @@ import Thundermint.Store
 import Thundermint.Store.STM
 import Thundermint.Store.SQLite
 import Thundermint.Mock
+import Thundermint.Mock.KeyList
 import Thundermint.Mock.Coin
 
 ----------------------------------------------------------------
@@ -48,14 +49,16 @@ data NodeSpec = NodeSpec
   , nspecIsValidator :: Bool
   , nspecDbName      :: Maybe FilePath
   , nspecLogFile     :: NodeLogs
+  , nspecWalletKeys  :: (Int,Int)
   }
   deriving (Generic,Show)
 
 data NetSpec = NetSpec
-  { netNodeList :: [NodeSpec]
-  , netTopology :: Topology
-  , netGenesis  :: [Tx]
-  , netPrefix   :: Maybe String
+  { netNodeList       :: [NodeSpec]
+  , netTopology       :: Topology
+  , netInitialDeposit :: Integer
+  , netInitialKeys    :: Int
+  , netPrefix         :: Maybe String
   }
   deriving (Generic,Show)
 
@@ -70,9 +73,18 @@ instance JSON.FromJSON NetSpec
 -- Generation of transactions
 ----------------------------------------------------------------
 
-transferActions :: Int -> [PublicKey Alg] -> PrivKey Alg
-                -> (Tx -> IO ()) -> CoinState -> IO ()
-transferActions delay publicKeys privK push CoinState{..} = do
+transferActions
+  :: Int                        -- Delay between transactions
+  -> [PublicKey Alg]            -- List of possible addresses
+  -> [PrivKey Alg]              -- Private key which we own
+  -> (Tx -> IO ())              -- push new transaction
+  -> CoinState                  -- Current state of
+  -> IO ()
+transferActions delay publicKeys privKeys push CoinState{..} = do
+  -- Pick private key
+  privK <- do i <- randomRIO (0, length privKeys - 1)
+              return (privKeys !! i)
+  let pubK = publicKey privK
   -- Pick public key to send data to
   target <- do i <- randomRIO (0, nPK - 1)
                return (publicKeys !! i)
@@ -90,7 +102,6 @@ transferActions delay publicKeys privK push CoinState{..} = do
   push $ Send pubK (signBlob privK $ toStrict $ serialise tx) tx
   threadDelay (delay * 1000)
   where
-    pubK = publicKey privK
     nPK  = length publicKeys
 
 
@@ -140,10 +151,11 @@ interpretSpec maxH prefix delay NetSpec{..} = do
           , nodeInitialPeers    = map (,"50000") $ connections netAddresses addr
           , nodeValidationKey   = guard nspecIsValidator >> nspecPrivKey
           , nodeLogFile         = logFiles
-          , nodeAction          = do PrivValidator pk <- nspecPrivKey
+          , nodeAction          = do let (off,n)  = nspecWalletKeys
+                                         privKeys = take n $ drop off privateKeyList
                                      return $ transferActions delay
-                                       [ k | Deposit k _ <- netGenesis ]
-                                       pk
+                                       (publicKey <$> take netInitialKeys privateKeyList)
+                                       privKeys
           , nodeMaxH            = Height . fromIntegral <$> maxH
           }
       )
@@ -160,7 +172,9 @@ interpretSpec maxH prefix delay NetSpec{..} = do
           , headerTime        = Time 0
           , headerLastBlockID = Nothing
           }
-      , blockData       = netGenesis
+      , blockData       = [ Deposit (publicKey pk) netInitialDeposit
+                          | pk <- take netInitialKeys privateKeyList
+                          ]
       , blockLastCommit = Nothing
       }
 
