@@ -127,12 +127,13 @@ newSTMPropStorage = do
     }
 
 newMempool
-  :: (Eq tx, MonadIO m)
+  :: (Ord tx, MonadIO m)
   => (tx -> m Bool)
   -> m (Mempool m tx)
 newMempool validation = do
-  varFIFO <- liftIO $ newTVarIO IMap.empty
-  varMaxN <- liftIO $ newTVarIO 0
+  varFIFO      <- liftIO $ newTVarIO IMap.empty
+  varRevMap    <- liftIO $ newTVarIO Map.empty
+  varMaxN      <- liftIO $ newTVarIO 0
   varAdded     <- liftIO $ newTVarIO 0
   varDiscarded <- liftIO $ newTVarIO 0
   varFiltered  <- liftIO $ newTVarIO 0
@@ -157,7 +158,8 @@ newMempool validation = do
           fifo <- readTVar varFIFO
           let (dropped,point,retained) = IMap.splitLookup (firstGood - 1) fifo
           modifyTVar' varFiltered (+ (length point + IMap.size dropped))
-          writeTVar varFIFO $! retained
+          modifyTVar' varRevMap $  Map.filter (>= firstGood)
+          writeTVar   varFIFO   $! retained
     --
     , mempoolStats = liftIO $ atomically $ do
         mempool'size      <- IMap.size <$> readTVar varFIFO
@@ -174,10 +176,13 @@ newMempool validation = do
                 modifyTVar varAdded succ
                 modifyTVar varDiscarded succ
               True  -> liftIO $ atomically $ do
-                modifyTVar varAdded     succ
-                n <- succ <$> readTVar varMaxN
-                modifyTVar' varFIFO $ IMap.insert n tx
-                writeTVar   varMaxN n
+                rmap <- readTVar varRevMap
+                when (tx `Map.notMember` rmap) $ do
+                  modifyTVar varAdded     succ
+                  n <- succ <$> readTVar varMaxN
+                  modifyTVar' varFIFO   $ IMap.insert n tx
+                  modifyTVar' varRevMap $ Map.insert tx n
+                  writeTVar   varMaxN n
           , advanceCursor = liftIO $ atomically $ do
               fifo <- readTVar varFIFO
               n    <- readTVar varN

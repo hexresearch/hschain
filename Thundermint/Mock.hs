@@ -157,7 +157,7 @@ data NodeDescription sock addr m alg st tx a = NodeDescription
 
 runNode
   :: ( MonadIO m, MonadMask m, MonadFork m
-     , Eq tx, Serialise tx
+     , Ord tx, Serialise tx
      , Crypto alg, Ord addr, Show addr, Show a, LogBlock a
      , Serialise a)
   => NodeDescription sock addr m alg st tx a

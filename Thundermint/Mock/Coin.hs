@@ -35,7 +35,7 @@ data TxSend = TxSend
   { txInputs  :: [(Hash Alg, Int)]
   , txOutputs :: [(PublicKey Alg, Integer)]
   }
-  deriving (Show, Eq, Generic)
+  deriving (Show, Eq, Ord, Generic)
 instance Serialise TxSend
 instance JSON.ToJSON   TxSend
 instance JSON.FromJSON TxSend
@@ -52,7 +52,7 @@ data Tx
     --   1. All inputs must be owned by transaction issuer
     --   3. Inputs and outputs must be nonempty
     --   2. Sum of inputs must be equal to sum of outputs
-  deriving (Show, Eq, Generic)
+  deriving (Show, Eq, Ord, Generic)
 instance Serialise Tx
 instance JSON.ToJSON   Tx
 instance JSON.FromJSON Tx
