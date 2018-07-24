@@ -5,17 +5,20 @@
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TemplateHaskell     #-}
 -- |
 -- Mock P2P
 module Thundermint.P2P (
     startPeerDispatcher
+  , LogGossip(..)
   ) where
 
 import Control.Applicative
 import Control.Monad
 import Control.Monad.IO.Class
 import Control.Monad.Catch
-import Control.Concurrent   (ThreadId, myThreadId, threadDelay, killThread)
+import Control.Concurrent      ( ThreadId, myThreadId, threadDelay, killThread
+                               , MVar, readMVar, newMVar)
 import Control.Concurrent.STM
 import Codec.Serialise
 import           Data.Monoid       ((<>))
@@ -26,7 +29,10 @@ import qualified Data.Map        as Map
 import           Data.Map          (Map)
 import qualified Data.Set        as Set
 import           Data.Set          (Set)
+import qualified Data.Aeson      as JSON
+import qualified Data.Aeson.TH   as JSON
 import Katip         (showLS)
+import qualified Katip
 import System.Random (randomRIO)
 import GHC.Generics  (Generic)
 
@@ -60,6 +66,25 @@ data GossipMsg tx alg a
   deriving (Show, Generic)
 instance (Serialise tx, Serialise a) => Serialise (GossipMsg tx alg a)
 
+data LogGossip = LogGossip
+  { gossip'TxPV :: !Int
+  , gossip'RxPV :: !Int
+  , gossip'TxPC :: !Int
+  , gossip'RxPC :: !Int
+  , gossip'TxB  :: !Int
+  , gossip'RxB  :: !Int
+  , gossip'TxP  :: !Int
+  , gossip'RxP  :: !Int
+  , gossip'TxTx :: !Int
+  , gossip'RxTx :: !Int
+  }
+  deriving (Show)
+JSON.deriveJSON JSON.defaultOptions
+  { JSON.fieldLabelModifier = drop 7 } ''LogGossip
+instance Katip.ToObject LogGossip
+instance Katip.LogItem  LogGossip where
+  payloadKeys _        _ = Katip.AllKeys
+
 
 -- | Connection handed to process controlling communication with peer
 data PeerChans m addr alg a = PeerChans
@@ -74,7 +99,31 @@ data PeerChans m addr alg a = PeerChans
   , consensusState  :: STM (Maybe (Height, TMState alg a))
     -- ^ Read only access to current state of consensus state machine
   , p2pConfig       :: Configuration
+
+  , cntGossipPrevote   :: Counter
+  , cntGossipPrecommit :: Counter
+  , cntGossipBlocks    :: Counter
+  , cntGossipProposals :: Counter
+  , cntGossipTx        :: Counter
   }
+
+-- | Counter for counting send/receive event
+data Counter = Counter (MVar Int) (MVar Int)
+
+newCounter :: MonadIO m => m Counter
+newCounter = Counter <$> liftIO (newMVar 0) <*>liftIO (newMVar 0)
+
+tickSend :: (MonadMask m, MonadIO m) => Counter -> m ()
+tickSend (Counter s _) = modifyMVarM_ s (return . succ)
+
+tickRecv :: (MonadMask m, MonadIO m) => Counter -> m ()
+tickRecv (Counter _ r) = modifyMVarM_ r (return . succ)
+
+readSend :: MonadIO m => Counter -> m Int
+readSend (Counter s _) = liftIO $ readMVar s
+
+readRecv :: MonadIO m => Counter -> m Int
+readRecv (Counter _ r) = liftIO $ readMVar r
 
 
 ----------------------------------------------------------------
@@ -88,33 +137,43 @@ startPeerDispatcher
   :: ( MonadMask m, MonadFork m, MonadLogger m
      , Serialise a, Serialise tx, Ord addr, Show addr, Show a, Crypto alg)
   => Configuration
-  -> NetworkAPI addr       -- ^ API for networking
-  -> [addr]                     -- ^ Set of initial addresses to connect
-  -> AppChans alg a             -- ^ Channels for communication with main application
-  -> BlockStorage 'RO m alg a  -- ^ Read only access to block storage
+  -> NetworkAPI addr          -- ^ API for networking
+  -> [addr]                   -- ^ Set of initial addresses to connect
+  -> AppChans alg a           -- ^ Channels for communication with main application
+  -> BlockStorage 'RO m alg a -- ^ Read only access to block storage
   -> ProposalStorage 'RO m alg a
   -> Mempool m tx
-  -> m x
-startPeerDispatcher config net addrs AppChans{..} storage propSt mempool = logOnException $ do
+  -> m ()
+startPeerDispatcher p2pConfig net addrs AppChans{..} storage propSt mempool = logOnException $ do
   logger InfoS "Starting peer dispatcher" ()
   peers        <- newPeerRegistry
   _peerExchange <- liftIO newTChanIO
+  cntGossipPrevote   <- newCounter
+  cntGossipPrecommit <- newCounter
+  cntGossipProposals <- newCounter
+  cntGossipBlocks    <- newCounter
+  cntGossipTx        <- newCounter
   let peerCh = PeerChans { peerChanTx      = appChanTx
                          , peerChanRx      = writeTChan appChanRx
                          , blockStorage    = storage
                          , proposalStorage = propSt
                          , consensusState  = readTVar appTMState
-                         , p2pConfig       = config
+                         , ..
                          }
   -- Accepting connection is managed by separate linked thread and
   -- this thread manages initiating connections
-  id $ flip finally (uninterruptibleMask_ $ reapPeers peers)
-     $ forkLinked (acceptLoop net peerCh mempool peers)
+  flip finally (uninterruptibleMask_ $ reapPeers peers) $ runConcurrently
+    [ acceptLoop net peerCh mempool peers
      -- FIXME: we should manage requests for peers and connecting to
      --        new peers here
-     $ do liftIO $ threadDelay 100e3
-          forM_ addrs $ \a -> connectPeerTo net a peerCh mempool peers
-          forever $ liftIO $ threadDelay 100000
+    , do liftIO $ threadDelay 100e3
+         forM_ addrs $ \a -> connectPeerTo net a peerCh mempool peers
+         forever $ liftIO $ threadDelay 100000
+    -- Output gossip statistics to 
+    , forever $ do
+        logGossip peerCh
+        liftIO $ threadDelay 1e6
+    ]
 
 -- Thread which accepts connections from remote nodes
 acceptLoop
@@ -239,7 +298,7 @@ startPeer peerCh@PeerChans{..} net mempool = logOnException $ do
   runConcurrently
     [ peerGossipVotes   peerSt peerCh gossipCh
     , peerGossipBlocks  peerSt peerCh gossipCh
-    , peerGossipMempool peerSt p2pConfig gossipCh cursor
+    , peerGossipMempool peerSt peerCh p2pConfig gossipCh cursor
     , peerSend          peerSt peerCh gossipCh net
     , peerReceive       peerSt peerCh net cursor
     ]
@@ -278,7 +337,8 @@ peerGossipVotes peerObj PeerChans{..} gossipCh = logOnException $ do
            let peerVotes = Map.fromSet (const ())
                          $ toSet (lagPeerPrecommits p)
            case Map.lookupMin $ Map.difference cmtVotes peerVotes of
-             Just (_,v) -> liftIO $ atomically $ writeTChan gossipCh $ GossipPreCommit v
+             Just (_,v) -> do liftIO $ atomically $ writeTChan gossipCh $ GossipPreCommit v
+                              tickSend cntGossipPrevote
              Nothing    -> return ()
          Nothing -> return ()
 
@@ -299,7 +359,8 @@ peerGossipVotes peerObj PeerChans{..} gossipCh = logOnException $ do
           case () of
             _| not $ r `Set.member` peerProposals p
              , Just pr <- r `Map.lookup` smProposals tm
-               -> doGosip $ GossipProposal $ unverifySignature pr
+               -> do doGosip $ GossipProposal $ unverifySignature pr
+                     tickSend cntGossipProposals
              | otherwise -> return ()
           -- Send prevotes
           case () of
@@ -309,6 +370,7 @@ peerGossipVotes peerObj PeerChans{..} gossipCh = logOnException $ do
                -> do let n = Map.size unknown
                      i <- liftIO $ randomRIO (0,n-1)
                      doGosip $ GossipPreVote $ unverifySignature $ toList unknown !! i
+                     tickSend cntGossipPrevote
              | otherwise -> return ()
              where
                peerPV = maybe Map.empty (Map.fromSet (const ()) . toSet)
@@ -321,6 +383,7 @@ peerGossipVotes peerObj PeerChans{..} gossipCh = logOnException $ do
                -> do let n = Map.size unknown
                      i <- liftIO $ randomRIO (0,n-1)
                      doGosip $ GossipPreCommit $ unverifySignature $ toList unknown !! i
+                     tickSend cntGossipPrecommit
              | otherwise -> return ()
              where
                peerPC = maybe Map.empty (Map.fromSet (const ()) . toSet)
@@ -333,16 +396,18 @@ peerGossipMempool
   :: ( MonadIO m, MonadFork m, MonadMask m, MonadLogger m
      )
   => PeerStateObj m alg a
+  -> PeerChans m addr alg a
   -> Configuration
   -> TChan (GossipMsg tx alg a)
   -> MempoolCursor m tx
   -> m x
-peerGossipMempool peerObj config gossipCh MempoolCursor{..} = logOnException $ do
+peerGossipMempool peerObj PeerChans{..} config gossipCh MempoolCursor{..} = logOnException $ do
   logger InfoS "Starting routine for gossiping transactions" ()
   forever $ do
     getPeerState peerObj >>= \case
       Current _ -> advanceCursor >>= \case
-        Just tx -> liftIO $ atomically $ writeTChan gossipCh $ GossipTx tx
+        Just tx -> do liftIO $ atomically $ writeTChan gossipCh $ GossipTx tx
+                      tickSend cntGossipTx
         Nothing -> return ()
       _         -> return ()
     liftIO $ threadDelay $ 1000 * gossipDelayMempool config
@@ -367,6 +432,7 @@ peerGossipBlocks peerObj PeerChans{..} gossipCh = logOnException $ do
           -> do let FullStep h _ _ = lagPeerStep p
                 Just b <- retrieveBlock blockStorage h -- FIXME: Partiality
                 liftIO $ atomically $ writeTChan gossipCh $ GossipBlock b
+                tickSend cntGossipBlocks
         | otherwise -> return ()
       --
       Current p -> do
@@ -379,6 +445,7 @@ peerGossipBlocks peerObj PeerChans{..} gossipCh = logOnException $ do
            , not $ bid `Set.member` peerBlocks p
              -> do logger DebugS ("Gossip: " <> showLS bid) ()
                    liftIO $ atomically $ writeTChan gossipCh $ GossipBlock b
+                   tickSend cntGossipBlocks
            --
            | otherwise -> return ()
       -- Nothing to do
@@ -406,15 +473,20 @@ peerReceive peerSt PeerChans{..} Connection{..} MempoolCursor{..} = logOnExcepti
           -- Forward to application and record that peer has
           -- given vote/proposal/block
           GossipPreVote   v -> do liftIO $ atomically $ peerChanRx $ RxPreVote v
+                                  tickRecv cntGossipPrevote
                                   addPrevote peerSt v
           GossipPreCommit v -> do liftIO $ atomically $ peerChanRx $ RxPreCommit v
+                                  tickRecv cntGossipPrecommit
                                   addPrecommit peerSt v
           GossipProposal  p -> do liftIO $ atomically $ peerChanRx $ RxProposal p
+                                  tickRecv cntGossipProposals
                                   addProposal peerSt (propHeight (signedValue p))
                                                      (propRound  (signedValue p))
           GossipBlock     b -> do liftIO $ atomically $ peerChanRx $ RxBlock b
+                                  tickRecv cntGossipProposals
                                   addBlock peerSt b
-          GossipTx tx       -> pushTransaction tx
+          GossipTx tx       -> do pushTransaction tx
+                                  tickRecv cntGossipTx
           --
           GossipAnn ann -> case ann of
             AnnStep         s     -> advancePeer   peerSt s
@@ -445,3 +517,21 @@ peerSend peerSt PeerChans{..} gossipCh Connection{..} = logOnException $ do
       GossipBlock b                        -> addBlock peerSt b
       GossipAnn (AnnStep (FullStep h _ _)) -> advanceOurHeight peerSt h
       _                                    -> return ()
+
+
+logGossip
+  :: ( MonadIO m, MonadFork m, MonadMask m, MonadLogger m )
+  => PeerChans m addr alg a
+  -> m ()
+logGossip PeerChans{..} = do
+  gossip'TxPV <- readSend cntGossipPrevote
+  gossip'RxPV <- readRecv cntGossipPrevote
+  gossip'TxPC <- readSend cntGossipPrecommit
+  gossip'RxPC <- readRecv cntGossipPrecommit
+  gossip'TxB  <- readSend cntGossipBlocks
+  gossip'RxB  <- readRecv cntGossipBlocks
+  gossip'TxP  <- readSend cntGossipProposals
+  gossip'RxP  <- readRecv cntGossipProposals
+  gossip'TxTx <- readSend cntGossipTx
+  gossip'RxTx <- readRecv cntGossipTx
+  logger InfoS "Gossip stats" LogGossip{..}
