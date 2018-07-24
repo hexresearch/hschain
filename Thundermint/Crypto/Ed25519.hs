@@ -88,7 +88,10 @@ instance FromJSON (PrivKey Ed25519_SHA512) where
 -- Public key instances
 ----------------------------------------------------------------
 
-deriving instance Eq (PublicKey Ed25519_SHA512)
+deriving instance Eq  (PublicKey Ed25519_SHA512)
+instance Ord (PublicKey Ed25519_SHA512) where
+  compare (PublicKey k1) (PublicKey k2) =
+    compare (convert k1 :: ByteString) (convert k2 :: ByteString)
 
 instance Show (PublicKey Ed25519_SHA512) where
   show (PublicKey k) = show $ unpack $ encodeBase58 $ convert k
