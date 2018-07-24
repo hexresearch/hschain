@@ -158,7 +158,7 @@ data NodeDescription sock addr m alg st tx a = NodeDescription
 runNode
   :: ( MonadIO m, MonadMask m, MonadFork m
      , Eq tx, Serialise tx
-     , Crypto alg, Ord addr, Show addr, Show a
+     , Crypto alg, Ord addr, Show addr, Show a, LogBlock a
      , Serialise a)
   => NodeDescription sock addr m alg st tx a
   -> m ()
@@ -261,7 +261,7 @@ withLogEnv namespace env scribes action
 
 -- | Start node which will now run consensus algorithm
 startNode
-  :: (Ord addr, Show addr, Crypto alg, Serialise a, Serialise tx, Show a)
+  :: (Ord addr, Show addr, Crypto alg, Serialise a, Serialise tx, Show a, LogBlock a)
   => NetworkAPI addr
   -> [addr]
   -> AppState IO alg a
@@ -294,7 +294,7 @@ startNode net addrs appState@AppState{..} mempool = do
 -- | Start set of nodes and return their corresponding storage. Will
 --   return their storage after all nodes finish execution
 runNodeSet
-  :: (Ord addr, Show addr, Crypto alg, Serialise a, Show a, Serialise tx)
+  :: (Ord addr, Show addr, Crypto alg, Serialise a, Show a, Serialise tx, LogBlock a)
   => [( NetworkAPI addr, [addr], AppState IO alg a, Mempool IO tx)]
   -> IO [BlockStorage 'RO IO alg a]
 runNodeSet nodes = do
