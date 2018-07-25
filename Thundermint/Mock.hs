@@ -28,6 +28,7 @@ import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
 import Data.Foldable
 import Data.IORef
+import Data.Maybe               (isJust)
 import Data.Map                 (Map)
 import Data.Word                (Word64)
 import qualified Data.Aeson             as JSON
@@ -182,9 +183,7 @@ runNode NodeDescription{nodeBlockChainLogic=logic@BlockFold{..}, ..} = do
     -- Create mempool
     let checkTx tx = do
           st <- currentState bchState
-          case processTx (Height 1) tx st of
-            Nothing -> return False
-            Just _  -> return True
+          return $ isJust $ processTx (Height 1) tx st
     mempool <- newMempool checkTx
     cursor  <- getMempoolCursor mempool
     -- Build application state of consensus algorithm
@@ -194,9 +193,7 @@ runNode NodeDescription{nodeBlockChainLogic=logic@BlockFold{..}, ..} = do
             --
           , appValidationFun = \hBlock a -> do
               st <- stateAtH bchState hBlock
-              case processBlock hBlock a st of
-                Nothing -> return False
-                Just _  -> return True
+              return $ isJust $ processBlock hBlock a st
             --
           , appBlockGenerator = \hBlock -> do
               st  <- stateAtH bchState hBlock
