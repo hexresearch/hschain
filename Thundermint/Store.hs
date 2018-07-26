@@ -34,17 +34,24 @@ module Thundermint.Store (
   , hoistMempoolCursor
   , hoistMempool
   , nullMempool
+  -- * Blockchain invariants checkers
+  , checkBlocks
+  , checkCommits
+  , checkValidators
   ) where
+
+import Control.Monad
+import Data.Int
+
+import Data.Map     (Map)
+import GHC.Generics (Generic)
 
 import qualified Data.Aeson    as JSON
 import qualified Data.Aeson.TH as JSON
-import           Data.Map          (Map)
 import qualified Katip
-import GHC.Generics (Generic)
 
-import Thundermint.Crypto.Containers
 import Thundermint.Consensus.Types
-
+import Thundermint.Crypto.Containers
 
 ----------------------------------------------------------------
 -- Abstract API for storing data
@@ -158,23 +165,23 @@ hoistBlockStorageRO fun BlockStorage{..} =
 
 -- | Storage for intermediate data used for
 data ProposalStorage rw m alg a = ProposalStorage
-  { currentHeight       :: m Height
+  { currentHeight      :: m Height
     -- ^ Get current height of storage
-  , advanceToHeight     :: Writable rw (Height -> m ())
+  , advanceToHeight    :: Writable rw (Height -> m ())
     -- ^ Advance to given height. If height is different from current
     --   all stored data is discarded
-  , retrievePropBlocks  :: Height -> m (Map (BlockID alg a) (Block alg a))
+  , retrievePropBlocks :: Height -> m (Map (BlockID alg a) (Block alg a))
     -- ^ Retrieve blocks
-  , waitForBlockID      :: BlockID alg a -> m (Block alg a)
+  , waitForBlockID     :: BlockID alg a -> m (Block alg a)
     -- ^ Wait for block with given block ID. Call will block until
     --   block appears in storage.
-  , storePropBlock      :: Writable rw (Block alg a -> m ())
+  , storePropBlock     :: Writable rw (Block alg a -> m ())
     -- ^ Store block proposed at given height. If height is different
     --   from height we are at block is ignored.
 
-  , allowBlockID        :: Writable rw (Round -> BlockID alg a -> m ())
+  , allowBlockID       :: Writable rw (Round -> BlockID alg a -> m ())
     -- ^ Mark block ID as one that we could accept
-  , blockAtRound        :: Height -> Round -> m (Maybe (Block alg a, BlockID alg a))
+  , blockAtRound       :: Height -> Round -> m (Maybe (Block alg a, BlockID alg a))
     -- ^ Get block at given round and height
   }
 
@@ -220,7 +227,7 @@ hoistPropStorageRO fun ProposalStorage{..} =
 
 -- | Statistics about mempool
 data MempoolInfo = MempoolInfo
-  { mempool'size       :: Int
+  { mempool'size      :: Int
   -- ^ Number of transactions currently in mempool
   , mempool'added     :: Int
   -- ^ Number of transactions added to mempool since program start
@@ -286,3 +293,43 @@ nullMempool = Mempool
       , advanceCursor   = return Nothing
       }
   }
+
+
+----------------------------------------------------------------
+-- validate blockchain invariants
+----------------------------------------------------------------
+
+-- | all blocks in less that maximum height are present in database
+checkBlocks :: BlockStorage 'RO IO a [b] -> Int64 -> IO Bool
+checkBlocks storage maxH = do
+    let heights = map (Height . fromIntegral) [0 .. maxH]
+    xs <- forM heights $ \h -> do
+        mb <- retrieveBlock storage h
+        return $ case mb of
+                   Nothing -> False
+                   Just _  -> True
+    return $ all (==True) xs
+
+
+-- | all commits in less that maximum height are present in database
+checkCommits :: BlockStorage 'RO IO a [b] -> Int64 -> IO Bool
+checkCommits storage maxH = do
+    let heights = map (Height . fromIntegral) [1 .. maxH]
+    xs <- forM heights $ \h -> do
+        cmt <- retrieveCommit storage h
+        return $ case cmt of
+                   Nothing -> False
+                   Just _  -> True
+    return $ all (==True) xs
+
+
+-- | all validators in less that maximum height are present in database
+checkValidators :: BlockStorage 'RO IO a [b] -> Int64 -> IO Bool
+checkValidators storage maxH = do
+    let heights = map (Height . fromIntegral) [1 .. maxH]
+    xs <- forM heights $ \h -> do
+        cmt <- retrieveCommit storage h
+        return $ case cmt of
+                   Nothing -> False
+                   Just _  -> True
+    return $ all (==True) xs
