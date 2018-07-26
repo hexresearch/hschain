@@ -9,6 +9,7 @@ module Thundermint.Logger (
   , LoggerT(..)
   , runLoggerT
   , logOnException
+  , withLogEnv
     -- * JSON scribe
   , makeJsonHandleScribe
   , makeJsonFileScribe
@@ -28,6 +29,7 @@ import Control.Monad.Trans.Reader
 import Control.Exception          (SomeException(..),AsyncException(..))
 import Data.Aeson
 import Data.Int
+import Data.IORef
 import Data.Typeable
 import Data.Monoid     ((<>))
 import qualified Data.HashMap.Strict        as HM
@@ -80,6 +82,31 @@ logOnException = handle logE
           logger ErrorS ("Killed by " <> showLS e <> " :: " <> showLS (typeOf eTy)) ()
           throwM e
 
+
+-- | Initialize logging environment and add scribes. All scribes will
+--   be closed when function returns.
+withLogEnv
+  :: (MonadIO m, MonadMask m)
+  => Katip.Namespace
+  -> Katip.Environment
+  -> [IO Katip.Scribe]          -- ^ List of scribes to add to environment
+  -> (Katip.LogEnv -> m a)
+  -> m a
+withLogEnv namespace env scribes action
+  = bracket initLE fini $ \leRef -> loop leRef scribes
+  where
+    initLE = liftIO (newIORef =<< Katip.initLogEnv namespace env)
+    -- N.B. We need IORef to pass LogEnv with all scribes to fini
+    fini   = liftIO . (Katip.closeScribes <=< readIORef)
+    --
+    loop leRef []           = action =<< liftIO (readIORef leRef)
+    loop leRef (ios : rest) = mask $ \unmask -> do
+      scribe <- liftIO ios
+      le  <- liftIO (readIORef leRef)
+      le' <- liftIO (Katip.registerScribe "log" scribe Katip.defaultScribeSettings le)
+        `onException` liftIO (Katip.scribeFinalizer scribe)
+      liftIO (writeIORef leRef le')
+      unmask $ loop leRef rest
 
 ----------------------------------------------------------------
 -- JSON scribe

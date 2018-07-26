@@ -27,7 +27,6 @@ import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
 import Data.Foldable
-import Data.IORef
 import Data.Maybe               (isJust)
 import Data.Map                 (Map)
 import Data.Word                (Word64)
@@ -227,28 +226,6 @@ runNode NodeDescription{nodeBlockChainLogic=logic@BlockFold{..}, ..} = do
       , id $ runLoggerT "consensus" logenv
            $ runApplication defCfg (hoistAppState lift appSt) appCh
       ]
-
-withLogEnv
-  :: (MonadIO m, MonadMask m)
-  => Katip.Namespace
-  -> Katip.Environment
-  -> [IO Katip.Scribe]
-  -> (Katip.LogEnv -> m a)
-  -> m a
-withLogEnv namespace env scribes action
-  = bracket initLE fini $ \leRef -> loop leRef scribes
-  where
-    initLE = liftIO (newIORef =<< Katip.initLogEnv namespace env)
-    fini   = liftIO . (Katip.closeScribes <=< readIORef)
-    --
-    loop leRef []           = action =<< liftIO (readIORef leRef)
-    loop leRef (ios : rest) = mask $ \unmask -> do
-      scribe <- liftIO ios
-      le  <- liftIO (readIORef leRef)
-      le' <- liftIO (Katip.registerScribe "log" scribe Katip.defaultScribeSettings le)
-        `onException` liftIO (Katip.scribeFinalizer scribe)
-      liftIO (writeIORef leRef le')
-      unmask $ loop leRef rest
 
 
 
