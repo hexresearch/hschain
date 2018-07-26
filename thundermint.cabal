@@ -57,6 +57,7 @@ Library
                   Thundermint.Mock
                   Thundermint.Mock.Coin
                   Thundermint.Mock.KeyList
+                  Thundermint.Mock.KeyVal
                   Thundermint.P2P
                   Thundermint.P2P.Network
                   Thundermint.P2P.PeerState
