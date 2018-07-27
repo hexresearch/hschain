@@ -1,20 +1,28 @@
 {-# LANGUAGE DeriveFunctor              #-}
+{-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE RecordWildCards            #-}
+{-# LANGUAGE TemplateHaskell            #-}
 -- |
 -- Logger
 module Thundermint.Logger (
     MonadLogger(..)
+  , setNamespace
   , LoggerT(..)
   , runLoggerT
   , logOnException
   , withLogEnv
+    -- ** Scribe construction helpers
+  , ScribeType(..)
+  , ScribeSpec(..)
+  , makeScribe
     -- * JSON scribe
   , makeJsonHandleScribe
   , makeJsonFileScribe
     -- * Reexports
   , Severity(..)
+  , Verbosity(..)
     -- * Structured logging
   , LogBlockInfo(..)
   , LogBlock(..)
@@ -28,6 +36,7 @@ import Control.Monad.Trans.Class
 import Control.Monad.Trans.Reader
 import Control.Exception          (SomeException(..),AsyncException(..))
 import Data.Aeson
+import Data.Aeson.TH
 import Data.Int
 import Data.IORef
 import Data.Typeable
@@ -36,6 +45,7 @@ import qualified Data.HashMap.Strict        as HM
 import qualified Data.ByteString.Lazy.Char8 as BL
 import Katip
 import System.IO
+import GHC.Generics (Generic)
 
 import Thundermint.Control
 import Thundermint.Consensus.Types
@@ -51,6 +61,9 @@ class Monad m => MonadLogger m where
   logger :: LogItem a => Severity -> LogStr -> a -> m ()
   -- | Change current namespace
   localNamespace :: (Namespace -> Namespace) -> m a -> m a
+
+setNamespace :: MonadLogger m => Namespace -> m a -> m a
+setNamespace nm = localNamespace (const nm)
 
 -- | Concrete implementation of logger monad
 newtype LoggerT m a = LoggerT (ReaderT (Namespace, LogEnv) m a)
@@ -107,6 +120,41 @@ withLogEnv namespace env scribes action
         `onException` liftIO (Katip.scribeFinalizer scribe)
       liftIO (writeIORef leRef le')
       unmask $ loop leRef rest
+
+-- | Type of scribe to use
+data ScribeType
+  = ScribeJSON
+  | ScribeTXT
+  deriving (Show,Eq,Ord,Generic)
+instance ToJSON   ScribeType
+instance FromJSON ScribeType
+
+-- | Description of scribe
+data ScribeSpec = ScribeSpec
+  { scribe'type      :: ScribeType
+    -- ^ Type of scribe to use
+  , scribe'path      :: Maybe FilePath
+    -- ^ Log file if not specified will log to stdout
+  , scribe'severity  :: Severity
+  , scribe'verbosity :: Verbosity
+  }
+  deriving (Show,Eq,Ord,Generic)
+deriveJSON defaultOptions
+  { fieldLabelModifier = drop 7 } ''ScribeSpec
+
+makeScribe :: ScribeSpec -> IO Scribe
+makeScribe ScribeSpec{..} =
+  case (scribe'type, scribe'path) of
+    (ScribeTXT,  Nothing) -> mkHandleScribe ColorIfTerminal stdout  sev verb
+    (ScribeTXT,  Just nm) -> mkFileScribe nm sev verb
+    (ScribeJSON, Nothing) -> makeJsonHandleScribe stdout sev verb
+    (ScribeJSON, Just nm) -> makeJsonFileScribe nm sev verb
+  where
+    sev  = scribe'severity
+    verb = scribe'verbosity
+
+instance ToJSON   Verbosity
+instance FromJSON Verbosity
 
 ----------------------------------------------------------------
 -- JSON scribe
