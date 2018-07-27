@@ -172,7 +172,7 @@ runNode NodeDescription{nodeBlockChainLogic=logic@BlockFold{..}, ..} = do
                 ]
   withLogEnv "TM" "DEV" scribes $ \logenv -> do
     -- Create proposal storage
-    propSt <- hoistPropStorageRW liftIO <$> liftIO newSTMPropStorage
+    propSt <- newSTMPropStorage
     -- Create state of blockchain & Update it to current state of
     -- blockchain
     hChain      <- blockchainHeight     nodeStorage
