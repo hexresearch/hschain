@@ -10,6 +10,7 @@ module Thundermint.Logger (
     MonadLogger(..)
   , setNamespace
   , LoggerT(..)
+  , NoLogsT(..)
   , runLoggerT
   , logOnException
   , withLogEnv
@@ -82,6 +83,14 @@ instance MonadIO m => MonadLogger (LoggerT m) where
     (nm,_) <- LoggerT ask
     logF a nm sev s
   localNamespace f (LoggerT m) = LoggerT $ local (first f) m
+
+-- | Mock logging. Useful for cases where constraints require logging
+--   but we don't need any
+newtype NoLogsT m a = NoLogsT { runNoLogsT :: m a }
+  deriving ( Functor, Applicative, Monad
+           , MonadIO, MonadThrow, MonadCatch, MonadMask, MonadFork)
+instance MonadTrans NoLogsT where
+  lift = NoLogsT
 
 -- | Log exceptions at Error severity
 logOnException :: (MonadLogger m, MonadCatch m) => m a -> m a
