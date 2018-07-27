@@ -8,6 +8,7 @@
 {-# LANGUAGE TupleSections       #-}
 {-# LANGUAGE TypeFamilies        #-}
 import Control.Monad
+import Control.Monad.IO.Class
 import Control.Concurrent
 import Codec.Serialise      (serialise)
 import Data.ByteString.Lazy (toStrict)
@@ -75,21 +76,22 @@ instance JSON.FromJSON NetSpec
 ----------------------------------------------------------------
 
 transferActions
-  :: Int                        -- Delay between transactions
+  :: (MonadIO m)
+  => Int                        -- Delay between transactions
   -> [PublicKey Alg]            -- List of possible addresses
   -> [PrivKey Alg]              -- Private key which we own
-  -> (Tx -> IO ())              -- push new transaction
+  -> (Tx -> m ())               -- push new transaction
   -> CoinState                  -- Current state of
-  -> IO ()
+  -> m ()
 transferActions delay publicKeys privKeys push CoinState{..} = do
   -- Pick private key
-  privK <- do i <- randomRIO (0, length privKeys - 1)
+  privK <- do i <- liftIO $ randomRIO (0, length privKeys - 1)
               return (privKeys !! i)
   let pubK = publicKey privK
   -- Pick public key to send data to
-  target <- do i <- randomRIO (0, nPK - 1)
+  target <- do i <- liftIO $ randomRIO (0, nPK - 1)
                return (publicKeys !! i)
-  amount <- randomRIO (0,20)
+  amount <- liftIO $ randomRIO (0,20)
   -- Create transaction
   let inputs = findInputs amount [ (inp, n)
                                  | (inp, (pk,n)) <- Map.toList unspentOutputs
@@ -101,7 +103,7 @@ transferActions delay publicKeys privKeys push CoinState{..} = do
                                     ]
                       }
   push $ Send pubK (signBlob privK $ toStrict $ serialise tx) tx
-  threadDelay (delay * 1000)
+  liftIO $ threadDelay (delay * 1000)
   where
     nPK  = length publicKeys
 
@@ -141,20 +143,21 @@ interpretSpec maxH prefix delay NetSpec{..} = do
     forM_ logSpecs $ \s -> forM_ (scribe'path s) makedir
     return
       ( makeReadOnly storage
-      , runNode NodeDescription
-          { nodeStorage         = storage
-          , nodeBlockChainLogic = transitions
-          , nodeNetworks        = createMockNode net "50000" addr
-          , nodeInitialPeers    = map (,"50000") $ connections netAddresses addr
-          , nodeValidationKey   = guard nspecIsValidator >> nspecPrivKey
-          , nodeLogFiles        = logSpecs
-          , nodeAction          = do let (off,n)  = nspecWalletKeys
-                                         privKeys = take n $ drop off privateKeyList
-                                     return $ transferActions delay
-                                       (publicKey <$> take netInitialKeys privateKeyList)
-                                       privKeys
-          , nodeMaxH            = Height . fromIntegral <$> maxH
-          }
+      , withLogEnv "TM" "DEV" (fmap makeScribe logSpecs) $ \logenv ->
+          runLoggerT "general" logenv $
+            runNode NodeDescription
+              { nodeStorage         = hoistBlockStorageRW liftIO storage
+              , nodeBlockChainLogic = transitions
+              , nodeNetworks        = createMockNode net "50000" addr
+              , nodeInitialPeers    = map (,"50000") $ connections netAddresses addr
+              , nodeValidationKey   = guard nspecIsValidator >> nspecPrivKey
+              , nodeAction          = do let (off,n)  = nspecWalletKeys
+                                             privKeys = take n $ drop off privateKeyList
+                                         return $ transferActions delay
+                                           (publicKey <$> take netInitialKeys privateKeyList)
+                                           privKeys
+              , nodeMaxH            = Height . fromIntegral <$> maxH
+              }
       )
   where
     netAddresses = Map.fromList $ [0::Int ..] `zip` netNodeList

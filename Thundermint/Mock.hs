@@ -138,75 +138,73 @@ data NodeDescription sock addr m alg st tx a = NodeDescription
   , nodeInitialPeers    :: [addr]
     -- ^ Initial peers
   , nodeValidationKey   :: Maybe (PrivValidator alg)
-  , nodeLogFiles        :: [ScribeSpec]
   , nodeAction          :: Maybe ((tx -> m ()) -> st -> m ())
   , nodeMaxH            :: Maybe Height
   }
 
 runNode
-  :: ( MonadIO m, MonadMask m, MonadFork m
+  :: ( MonadIO m, MonadMask m, MonadFork m, MonadLogger m
      , Ord tx, Serialise tx
      , Crypto alg, Ord addr, Show addr, Show a, LogBlock a
      , Serialise a)
   => NodeDescription sock addr m alg st tx a
   -> m ()
-runNode NodeDescription{nodeBlockChainLogic=logic@BlockFold{..}, ..} =
-  withLogEnv "TM" "DEV" (fmap makeScribe nodeLogFiles) $ \logenv -> do
-    -- Create proposal storage
-    propSt <- newSTMPropStorage
-    -- Create state of blockchain & Update it to current state of
-    -- blockchain
-    hChain      <- blockchainHeight     nodeStorage
-    Just valSet <- retrieveValidatorSet nodeStorage (next hChain)
-    bchState    <- newBChState logic (makeReadOnly nodeStorage)
-    _           <- stateAtH bchState (next hChain)
-    -- Create mempool
-    let checkTx tx = do
-          st <- currentState bchState
-          return $ isJust $ processTx (Height 1) tx st
-    mempool <- newMempool checkTx
-    cursor  <- getMempoolCursor mempool
-    -- Build application state of consensus algorithm
-    let appSt = AppState
-          { appStorage     = nodeStorage
-          , appPropStorage = propSt
-            --
-          , appValidationFun = \hBlock a -> do
-              st <- stateAtH bchState hBlock
-              return $ isJust $ processBlock hBlock a st
-            --
-          , appBlockGenerator = \hBlock -> do
-              st  <- stateAtH bchState hBlock
-              txs <- peekNTransactions mempool Nothing
-              return $ transactionsToBlock hBlock st txs
-            --
-          , appCommitCallback = do
-              before <- mempoolStats mempool
-              runLoggerT "mempool" logenv $ logger InfoS "Mempool before filtering" before
-              filterMempool mempool
-              after  <- mempoolStats mempool
-              runLoggerT "mempool" logenv $ logger InfoS "Mempool after filtering" after
-            --
-          , appValidator      = nodeValidationKey
-          , appValidatorsSet  = valSet
-          , appMaxHeight      = nodeMaxH
-          }
-    -- Networking
-    appCh <- liftIO newAppChans
-    runConcurrently $
-      case nodeAction of
-          Nothing     -> []
-          Just action -> [forever $ action (pushTransaction cursor)
-                                =<< currentState bchState]
-      ++
-      [ id $ runLoggerT "net" logenv
-           $ startPeerDispatcher defCfg nodeNetworks nodeInitialPeers appCh
-                                 (hoistBlockStorageRO lift $ makeReadOnly   nodeStorage)
-                                 (hoistPropStorageRO  lift $ makeReadOnlyPS propSt)
-                                 (hoistMempool lift mempool)
-      , id $ runLoggerT "consensus" logenv
-           $ runApplication defCfg (hoistAppState lift appSt) appCh
-      ]
+runNode NodeDescription{nodeBlockChainLogic=logic@BlockFold{..}, ..} = do
+  -- Create proposal storage
+  propSt      <- newSTMPropStorage
+  -- Create state of blockchain & Update it to current state of
+  -- blockchain
+  hChain      <- blockchainHeight     nodeStorage
+  Just valSet <- retrieveValidatorSet nodeStorage (next hChain)
+  bchState    <- newBChState logic (makeReadOnly nodeStorage)
+  _           <- stateAtH bchState (next hChain)
+  -- Create mempool
+  let checkTx tx = do
+        st <- currentState bchState
+        return $ isJust $ processTx (Height 1) tx st
+  mempool <- newMempool checkTx
+  cursor  <- getMempoolCursor mempool
+  -- Build application state of consensus algorithm
+  let appSt = AppState
+        { appStorage     = nodeStorage
+        , appPropStorage = propSt
+          --
+        , appValidationFun = \hBlock a -> do
+            st <- stateAtH bchState hBlock
+            return $ isJust $ processBlock hBlock a st
+          --
+        , appBlockGenerator = \hBlock -> do
+            st  <- stateAtH bchState hBlock
+            txs <- peekNTransactions mempool Nothing
+            return $ transactionsToBlock hBlock st txs
+          --
+        , appCommitCallback = setNamespace "mempool" $ do
+            before <- mempoolStats mempool
+            logger InfoS "Mempool before filtering" before
+            filterMempool mempool
+            after  <- mempoolStats mempool
+            logger InfoS "Mempool after filtering" after
+          --
+        , appValidator      = nodeValidationKey
+        , appValidatorsSet  = valSet
+        , appMaxHeight      = nodeMaxH
+        }
+  -- Networking
+  appCh <- liftIO newAppChans
+  runConcurrently $
+    case nodeAction of
+        Nothing     -> []
+        Just action -> [forever $ action (pushTransaction cursor)
+                              =<< currentState bchState]
+    ++
+    [ id $ setNamespace "net"
+         $ startPeerDispatcher defCfg nodeNetworks nodeInitialPeers appCh
+                               (makeReadOnly   nodeStorage)
+                               (makeReadOnlyPS propSt)
+                               mempool
+    , id $ setNamespace "consensus"
+         $ runApplication defCfg appSt appCh
+    ]
 
 
 
