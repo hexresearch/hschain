@@ -1,5 +1,4 @@
 {-# LANGUAGE DataKinds         #-}
-{-# LANGUAGE DeriveGeneric     #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 -- |
@@ -12,7 +11,6 @@ module Thundermint.Mock (
   , connectAll2All
   , connectRing
     -- * New node code
-  , NodeLogs(..)
   , NodeDescription(..)
   , runNode
     -- * Running nodes
@@ -30,7 +28,6 @@ import Data.Foldable
 import Data.Maybe               (isJust)
 import Data.Map                 (Map)
 import Data.Word                (Word64)
-import qualified Data.Aeson             as JSON
 import qualified Data.ByteString        as BS
 import qualified Data.ByteString.Base58 as Base58
 import qualified Data.ByteString.Char8  as BC8
@@ -38,7 +35,6 @@ import qualified Data.Map               as Map
 import qualified Katip
 import System.Random (randomIO)
 import Text.Printf
-import GHC.Generics (Generic)
 
 import Thundermint.Control (MonadFork,runConcurrently)
 import Thundermint.Crypto
@@ -131,14 +127,6 @@ defCfg = Configuration
   , gossipDelayMempool = 25
   }
 
-data NodeLogs = NodeLogs
-  { txtLog  :: Maybe FilePath
-  , jsonLog :: Maybe FilePath
-  }
-  deriving (Show, Generic)
-instance JSON.FromJSON NodeLogs
-instance JSON.ToJSON   NodeLogs
-
 -- Specification of node
 data NodeDescription sock addr m alg st tx a = NodeDescription
   { nodeStorage         :: BlockStorage 'RW m alg a
@@ -150,7 +138,7 @@ data NodeDescription sock addr m alg st tx a = NodeDescription
   , nodeInitialPeers    :: [addr]
     -- ^ Initial peers
   , nodeValidationKey   :: Maybe (PrivValidator alg)
-  , nodeLogFile         :: NodeLogs
+  , nodeLogFiles        :: [ScribeSpec]
   , nodeAction          :: Maybe ((tx -> m ()) -> st -> m ())
   , nodeMaxH            :: Maybe Height
   }
@@ -162,15 +150,8 @@ runNode
      , Serialise a)
   => NodeDescription sock addr m alg st tx a
   -> m ()
-runNode NodeDescription{nodeBlockChainLogic=logic@BlockFold{..}, ..} = do
-  -- Initialize logging
-  let scribes = [ Katip.mkFileScribe nm Katip.DebugS Katip.V2
-                | Just nm <- [txtLog nodeLogFile]
-                ] ++
-                [ makeJsonFileScribe nm Katip.DebugS Katip.V2
-                | Just nm <- [jsonLog nodeLogFile]
-                ]
-  withLogEnv "TM" "DEV" scribes $ \logenv -> do
+runNode NodeDescription{nodeBlockChainLogic=logic@BlockFold{..}, ..} =
+  withLogEnv "TM" "DEV" (fmap makeScribe nodeLogFiles) $ \logenv -> do
     -- Create proposal storage
     propSt <- newSTMPropStorage
     -- Create state of blockchain & Update it to current state of
