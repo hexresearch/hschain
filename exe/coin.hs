@@ -32,6 +32,7 @@ import Thundermint.P2P.Network
 import Thundermint.Store
 import Thundermint.Store.STM
 import Thundermint.Store.SQLite
+import Thundermint.Logger
 import Thundermint.Mock
 import Thundermint.Mock.KeyList
 import Thundermint.Mock.Coin
@@ -48,7 +49,7 @@ data NodeSpec = NodeSpec
   { nspecPrivKey     :: Maybe (PrivValidator Ed25519_SHA512)
   , nspecIsValidator :: Bool
   , nspecDbName      :: Maybe FilePath
-  , nspecLogFile     :: NodeLogs
+  , nspecLogFile     :: [ScribeSpec]
   , nspecWalletKeys  :: (Int,Int)
   }
   deriving (Generic,Show)
@@ -136,12 +137,8 @@ interpretSpec maxH prefix delay NetSpec{..} = do
         makedir dbName
         newSQLiteBlockStorage dbName genesisBlock validatorSet
     -- Create dir for logs
-    logFiles <- do
-      let txt  = fmap (prefix </>) $ txtLog  nspecLogFile
-          json = fmap (prefix </>) $ jsonLog nspecLogFile
-      forM_ txt  makedir
-      forM_ json makedir
-      return $ NodeLogs txt json
+    let logSpecs = [ s { scribe'path = fmap (prefix </>) (scribe'path s) } | s <- nspecLogFile ]
+    forM_ logSpecs $ \s -> forM_ (scribe'path s) makedir
     return
       ( makeReadOnly storage
       , runNode NodeDescription
@@ -150,7 +147,7 @@ interpretSpec maxH prefix delay NetSpec{..} = do
           , nodeNetworks        = createMockNode net "50000" addr
           , nodeInitialPeers    = map (,"50000") $ connections netAddresses addr
           , nodeValidationKey   = guard nspecIsValidator >> nspecPrivKey
-          , nodeLogFile         = logFiles
+          , nodeLogFiles        = logSpecs
           , nodeAction          = do let (off,n)  = nspecWalletKeys
                                          privKeys = take n $ drop off privateKeyList
                                      return $ transferActions delay
