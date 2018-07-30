@@ -91,7 +91,7 @@ main = do
                                                ["K_" ++ show (n :: Int) | n <- [1 ..]] 
                                   return [(k,i)]
                     --
-                    , appCommitCallback = return ()
+                    , appCommitCallback = const $ return ()
                     , appValidator     = Just val
                     , appValidatorsSet = validatorSet
                     , appMaxHeight     = Just (Height 9)

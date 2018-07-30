@@ -119,7 +119,7 @@ decideNewBlock config appSt@AppState{..} appCh@AppChans{..} lastCommt = do
           $ LogBlockInfo (currentH hParam) (blockData b)
         storeCommit appStorage appValidatorsSet cmt b
         advanceToHeight appPropStorage . next =<< blockchainHeight appStorage
-        appCommitCallback
+        appCommitCallback (currentH hParam)
         return cmt
 
 

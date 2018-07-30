@@ -178,7 +178,7 @@ runNode NodeDescription{nodeBlockChainLogic=logic@BlockFold{..}, ..} = do
             txs <- peekNTransactions mempool Nothing
             return $ transactionsToBlock hBlock st txs
           --
-        , appCommitCallback = setNamespace "mempool" $ do
+        , appCommitCallback = const $ setNamespace "mempool" $ do
             before <- mempoolStats mempool
             logger InfoS "Mempool before filtering" before
             filterMempool mempool
