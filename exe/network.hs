@@ -1,3 +1,4 @@
+{-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeFamilies      #-}
 import Data.Int
@@ -86,10 +87,11 @@ main = do
                     , appBlockGenerator = \_ -> do
                         Height h <- blockchainHeight storage
                         return $ h * 100
-                    , appCommitCallback = const $ return ()
+                    , appCommitCallback = \case
+                        h | h > Height 5 -> error "EJECT EJECT!!!"
+                          | otherwise    -> return ()
                     , appValidator     = Just val
                     , appValidatorsSet = validatorSet
-                    , appMaxHeight     = Just (Height 3)
                     }
                 , nullMempool
                 )

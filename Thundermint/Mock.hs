@@ -155,7 +155,6 @@ data NodeDescription sock addr m alg st tx a = NodeDescription
     -- ^ Initial peers
   , nodeValidationKey   :: Maybe (PrivValidator alg)
   , nodeAction          :: Maybe ((tx -> m ()) -> st -> m ())
-  , nodeMaxH            :: Maybe Height
   }
 
 -- | Create block storage. It will use SQLite if path is specified or
@@ -223,7 +222,6 @@ runNode NodeDescription{nodeBlockChainLogic=logic@BlockFold{..}, ..} = do
           --
         , appValidator      = nodeValidationKey
         , appValidatorsSet  = valSet
-        , appMaxHeight      = nodeMaxH
         }
   -- Networking
   appCh <- liftIO newAppChans
