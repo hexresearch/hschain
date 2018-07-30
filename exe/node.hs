@@ -145,7 +145,7 @@ main = do
              , appBlockGenerator = \_ -> do
                  Height h <- blockchainHeight storage
                  return $ h * 100
-             , appCommitCallback = return ()
+             , appCommitCallback = const $ return ()
              , appValidator     = Just val
              , appValidatorsSet = validatorSet
              , appMaxHeight     = Just (Height 3)
