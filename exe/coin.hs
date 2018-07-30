@@ -18,8 +18,7 @@ import qualified Data.Aeson             as JSON
 import qualified Data.ByteString.Char8  as BC8
 import qualified Data.Map               as Map
 import System.Random    (randomRIO)
-import System.Directory (createDirectoryIfMissing)
-import System.FilePath  ((</>),splitFileName)
+import System.FilePath  ((</>))
 import GHC.Generics (Generic)
 import Options.Applicative
 
@@ -31,7 +30,6 @@ import Thundermint.Crypto.Ed25519   (Ed25519_SHA512)
 import Thundermint.Control
 import Thundermint.P2P.Network
 import Thundermint.Store
-import Thundermint.Store.STM
 import Thundermint.Store.SQLite
 import Thundermint.Logger
 import Thundermint.Mock
@@ -44,7 +42,6 @@ import Thundermint.Mock.Coin
 
 data NodeSpec = NodeSpec
   { nspecPrivKey     :: Maybe (PrivValidator Ed25519_SHA512)
-  , nspecIsValidator :: Bool
   , nspecDbName      :: Maybe FilePath
   , nspecLogFile     :: [ScribeSpec]
   , nspecWalletKeys  :: (Int,Int)
@@ -135,7 +132,7 @@ interpretSpec maxH prefix delay NetSpec{..} = do
             , nodeBlockChainLogic = transitions
             , nodeNetworks        = createMockNode net "50000" addr
             , nodeInitialPeers    = map (,"50000") $ connections netAddresses addr
-            , nodeValidationKey   = guard nspecIsValidator >> nspecPrivKey
+            , nodeValidationKey   = nspecPrivKey
             , nodeAction          = do let (off,n)  = nspecWalletKeys
                                            privKeys = take n $ drop off privateKeyList
                                        return $ transferActions delay

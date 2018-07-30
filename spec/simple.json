@@ -9,7 +9,6 @@
          "severity"  : "Debug",
          "verbosity" : "V2"
       }],
-      "nspecIsValidator" : true,
       "nspecWalletKeys"  : [0,500]
     },
     { "nspecPrivKey"     : "4NSWtMsEPgfTK25tCPWqNzVVze1dgMwcUFwS5WkSpjJL",
@@ -20,7 +19,6 @@
          "severity"  : "Debug",
          "verbosity" : "V2"
       }],
-      "nspecIsValidator" : true,
       "nspecWalletKeys"  : [500,500]
     },
     { "nspecPrivKey"     : "3Fj8bZjKc53F2a87sQaFkrDas2d9gjzK57FmQwnNnSHS",
@@ -31,7 +29,6 @@
          "severity"  : "Debug",
          "verbosity" : "V2"
       }],
-      "nspecIsValidator" : true,
       "nspecWalletKeys"  : [1000,500]
     },
     { "nspecPrivKey"     : "D2fpHM1JA8trshiUW8XPvspsapUvPqVzSofaK1MGRySd",
@@ -42,7 +39,6 @@
          "severity"  : "Debug",
          "verbosity" : "V2"
       }],
-      "nspecIsValidator" : true,
       "nspecWalletKeys"  : [1500,500]
     }
   ],
