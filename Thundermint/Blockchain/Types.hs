@@ -75,7 +75,6 @@ data AppState m alg a = AppState
   , appValidatorsSet  :: ValidatorSet alg
     -- ^ Set of all validators including our own
   , appCommitCallback :: Height -> m ()
-  , appMaxHeight      :: Maybe Height
   }
 
 hoistAppState :: (forall x. m x -> n x) -> AppState m alg a -> AppState n alg a

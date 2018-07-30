@@ -138,7 +138,6 @@ interpretSpec maxH prefix delay NetSpec{..} = do
                                        return $ transferActions delay
                                          (publicKey <$> take netInitialKeys privateKeyList)
                                          privKeys
-            , nodeMaxH            = Height . fromIntegral <$> maxH
             }
       )
   where

@@ -89,10 +89,11 @@ main = do
                                                ["K_" ++ show (n :: Int) | n <- [1 ..]] 
                                   return [(k,i)]
                     --
-                    , appCommitCallback = const $ return ()
+                    , appCommitCallback = \case
+                        h | h > Height 9 -> error "EJECT EJECT!!!"
+                          | otherwise    -> return ()
                     , appValidator     = val
                     , appValidatorsSet = validatorSet
-                    , appMaxHeight     = Just (Height 9)
                     }
                 , nullMempool
                 )
