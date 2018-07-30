@@ -42,10 +42,6 @@ import Thundermint.Mock.Coin
 -- Generating node specification
 ----------------------------------------------------------------
 
-data Topology = All2All
-              | Ring
-              deriving (Generic,Show)
-
 data NodeSpec = NodeSpec
   { nspecPrivKey     :: Maybe (PrivValidator Ed25519_SHA512)
   , nspecIsValidator :: Bool
@@ -64,10 +60,8 @@ data NetSpec = NetSpec
   }
   deriving (Generic,Show)
 
-instance JSON.ToJSON   Topology
 instance JSON.ToJSON   NodeSpec
 instance JSON.ToJSON   NetSpec
-instance JSON.FromJSON Topology
 instance JSON.FromJSON NodeSpec
 instance JSON.FromJSON NetSpec
 
