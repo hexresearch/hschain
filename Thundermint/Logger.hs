@@ -45,6 +45,8 @@ import Data.Monoid     ((<>))
 import qualified Data.HashMap.Strict        as HM
 import qualified Data.ByteString.Lazy.Char8 as BL
 import Katip
+import System.Directory (createDirectoryIfMissing)
+import System.FilePath  (splitFileName)
 import System.IO
 import GHC.Generics (Generic)
 
@@ -152,7 +154,10 @@ deriveJSON defaultOptions
   { fieldLabelModifier = drop 7 } ''ScribeSpec
 
 makeScribe :: ScribeSpec -> IO Scribe
-makeScribe ScribeSpec{..} =
+makeScribe ScribeSpec{..} = do
+  forM_ scribe'path $ \path -> do
+    let (dir,_) = splitFileName path
+    createDirectoryIfMissing True dir
   case (scribe'type, scribe'path) of
     (ScribeTXT,  Nothing) -> mkHandleScribe ColorIfTerminal stdout  sev verb
     (ScribeTXT,  Just nm) -> mkFileScribe nm sev verb
