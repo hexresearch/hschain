@@ -1,4 +1,5 @@
 {-# LANGUAGE DataKinds         #-}
+{-# LANGUAGE FlexibleContexts  #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 -- |
@@ -13,6 +14,7 @@ module Thundermint.Mock (
     -- * New node code
   , NodeDescription(..)
   , runNode
+  , newBlockStorage
     -- * Running nodes
   , startNode
   , runNodeSet
@@ -33,7 +35,9 @@ import qualified Data.ByteString.Base58 as Base58
 import qualified Data.ByteString.Char8  as BC8
 import qualified Data.Map               as Map
 import qualified Katip
-import System.Random (randomIO)
+import System.Directory (createDirectoryIfMissing)
+import System.FilePath  ((</>),splitFileName)
+import System.Random    (randomIO)
 import Text.Printf
 
 import Thundermint.Control (MonadFork,runConcurrently)
@@ -49,6 +53,8 @@ import Thundermint.P2P
 import Thundermint.P2P.Network
 import Thundermint.Store
 import Thundermint.Store.STM
+import Thundermint.Store.SQLite
+
 
 
 ----------------------------------------------------------------
@@ -127,7 +133,7 @@ defCfg = Configuration
   , gossipDelayMempool = 25
   }
 
--- Specification of node
+-- | Specification of node
 data NodeDescription sock addr m alg st tx a = NodeDescription
   { nodeStorage         :: BlockStorage 'RW m alg a
     -- ^ Storage API for nodes
@@ -141,6 +147,26 @@ data NodeDescription sock addr m alg st tx a = NodeDescription
   , nodeAction          :: Maybe ((tx -> m ()) -> st -> m ())
   , nodeMaxH            :: Maybe Height
   }
+
+-- | Create block storage. It will use SQLite if path is specified or
+--   STM otherwise.
+newBlockStorage
+  :: (Crypto alg, Serialise a, Serialise (PublicKey alg))
+  => FilePath                   -- ^ Prefix
+  -> Maybe FilePath             -- ^ Path to database
+  -> Block alg a
+  -> ValidatorSet alg
+  -> IO (BlockStorage 'RW IO alg a)
+newBlockStorage prefix mpath genesis validatorSet = do
+  let makedir path = let (dir,_) = splitFileName path
+                     in createDirectoryIfMissing True dir
+  case mpath of
+      Nothing -> newSTMBlockStorage genesis validatorSet
+      Just nm -> do
+        let dbName = prefix </> nm
+        makedir dbName
+        newSQLiteBlockStorage dbName genesis validatorSet
+
 
 runNode
   :: ( MonadIO m, MonadMask m, MonadFork m, MonadLogger m

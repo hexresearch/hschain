@@ -22,7 +22,9 @@ Library
                      , bytestring        >=0.10
                      , base58-bytestring >=0.1
                      , containers        >=0.5.9
+                     , directory
                      , deepseq           >=1.4
+                     , filepath
                      , exceptions        >=0.10.0
                      , memory            >=0.14.14
                      , random

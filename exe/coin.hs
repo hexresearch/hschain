@@ -132,12 +132,7 @@ interpretSpec maxH prefix delay NetSpec{..} = do
     -- Allocate storage for node
     let makedir path = let (dir,_) = splitFileName path
                        in createDirectoryIfMissing True dir
-    storage <- case nspecDbName of
-      Nothing -> newSTMBlockStorage       genesisBlock validatorSet
-      Just nm -> do
-        let dbName = prefix </> nm
-        makedir dbName
-        newSQLiteBlockStorage dbName genesisBlock validatorSet
+    storage <- newBlockStorage prefix nspecDbName genesisBlock validatorSet
     -- Create dir for logs
     let logSpecs = [ s { scribe'path = fmap (prefix </>) (scribe'path s) } | s <- nspecLogFile ]
     forM_ logSpecs $ \s -> forM_ (scribe'path s) makedir
