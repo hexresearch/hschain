@@ -1,4 +1,5 @@
 {-# LANGUAGE DataKinds         #-}
+{-# LANGUAGE DeriveGeneric     #-}
 {-# LANGUAGE FlexibleContexts  #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
@@ -12,6 +13,7 @@ module Thundermint.Mock (
   , connectAll2All
   , connectRing
     -- * New node code
+  , Topology(..)
   , NodeDescription(..)
   , runNode
   , newBlockStorage
@@ -25,11 +27,11 @@ import Control.Concurrent.Async hiding (runConcurrently)
 import Control.Monad
 import Control.Monad.Catch
 import Control.Monad.IO.Class
-import Control.Monad.Trans.Class
 import Data.Foldable
 import Data.Maybe               (isJust)
 import Data.Map                 (Map)
 import Data.Word                (Word64)
+import qualified Data.Aeson             as JSON
 import qualified Data.ByteString        as BS
 import qualified Data.ByteString.Base58 as Base58
 import qualified Data.ByteString.Char8  as BC8
@@ -39,6 +41,7 @@ import System.Directory (createDirectoryIfMissing)
 import System.FilePath  ((</>),splitFileName)
 import System.Random    (randomIO)
 import Text.Printf
+import GHC.Generics     (Generic)
 
 import Thundermint.Control (MonadFork,runConcurrently)
 import Thundermint.Crypto
@@ -132,6 +135,13 @@ defCfg = Configuration
   , gossipDelayBlocks  = 25
   , gossipDelayMempool = 25
   }
+
+
+data Topology = All2All
+              | Ring
+              deriving (Generic,Show)
+instance JSON.ToJSON   Topology
+instance JSON.FromJSON Topology
 
 -- | Specification of node
 data NodeDescription sock addr m alg st tx a = NodeDescription
