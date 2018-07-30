@@ -130,29 +130,25 @@ interpretSpec maxH prefix delay NetSpec{..} = do
   -- Connection map
   forM (Map.toList netAddresses) $ \(addr, NodeSpec{..}) -> do
     -- Allocate storage for node
-    let makedir path = let (dir,_) = splitFileName path
-                       in createDirectoryIfMissing True dir
     storage <- newBlockStorage prefix nspecDbName genesisBlock validatorSet
-    -- Create dir for logs
-    let logSpecs = [ s { scribe'path = fmap (prefix </>) (scribe'path s) } | s <- nspecLogFile ]
-    forM_ logSpecs $ \s -> forM_ (scribe'path s) makedir
+    let loggers = [ makeScribe s { scribe'path = fmap (prefix </>) (scribe'path s) }
+                  | s <- nspecLogFile ]
     return
       ( makeReadOnly storage
-      , withLogEnv "TM" "DEV" (fmap makeScribe logSpecs) $ \logenv ->
-          runLoggerT "general" logenv $
-            runNode NodeDescription
-              { nodeStorage         = hoistBlockStorageRW liftIO storage
-              , nodeBlockChainLogic = transitions
-              , nodeNetworks        = createMockNode net "50000" addr
-              , nodeInitialPeers    = map (,"50000") $ connections netAddresses addr
-              , nodeValidationKey   = guard nspecIsValidator >> nspecPrivKey
-              , nodeAction          = do let (off,n)  = nspecWalletKeys
-                                             privKeys = take n $ drop off privateKeyList
-                                         return $ transferActions delay
-                                           (publicKey <$> take netInitialKeys privateKeyList)
-                                           privKeys
-              , nodeMaxH            = Height . fromIntegral <$> maxH
-              }
+      , withLogEnv "TM" "DEV" loggers $ \logenv -> runLoggerT "general" logenv $
+          runNode NodeDescription
+            { nodeStorage         = hoistBlockStorageRW liftIO storage
+            , nodeBlockChainLogic = transitions
+            , nodeNetworks        = createMockNode net "50000" addr
+            , nodeInitialPeers    = map (,"50000") $ connections netAddresses addr
+            , nodeValidationKey   = guard nspecIsValidator >> nspecPrivKey
+            , nodeAction          = do let (off,n)  = nspecWalletKeys
+                                           privKeys = take n $ drop off privateKeyList
+                                       return $ transferActions delay
+                                         (publicKey <$> take netInitialKeys privateKeyList)
+                                         privKeys
+            , nodeMaxH            = Height . fromIntegral <$> maxH
+            }
       )
   where
     netAddresses = Map.fromList $ [0::Int ..] `zip` netNodeList
