@@ -208,12 +208,17 @@ main
             heights = map (Height . fromIntegral) [0 .. maximumH]
             allEqual []     = error "Empty list impossible!"
             allEqual (x:xs) = all (x==) xs
-            maximumH' = (fromIntegral maximumH)
 
         forM_ storageList $ \s -> do
-          checkBlocks s maximumH' >>= \r -> putStrLn $ "Blocks Valid: " ++ show r
-          checkCommits s maximumH' >>= \r -> putStrLn $ "Commits Valid: " ++ show r
-          checkValidators s maximumH' >>= \r -> putStrLn $ "Validators Valid: " ++ show r
+                          checkBlocks s >>=
+                                  \rs -> unless (null rs) $
+                                         error ("Blocks missing at heights: " <> show rs)
+                          checkCommits s >>=
+                                  \rs -> unless (null rs) $
+                                         error ("Commits missing at heights: " <> show rs)
+                          checkValidators s >>=
+                                  \rs -> unless (null rs) $
+                                         error ("Validators missing in heights: " <> show rs)
 
         forM_ heights $ \h -> do
           -- Check that all blocks match!

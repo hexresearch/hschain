@@ -170,6 +170,7 @@ Test-suite thundermint-tests
                      , bytestring >=0.10
                      , stm        >=2.4
                      , async      >=2.2.1
+                     , directory
                      --
                      , network           >=2.7.0.0
                      , random
@@ -191,6 +192,7 @@ Test-suite thundermint-tests
                        TM.Network
                        TM.Serialisation
                        TM.Arbitrary.Instances
+                       TM.Store
 
 -- Benchmarks
 Benchmark thundermint-bench

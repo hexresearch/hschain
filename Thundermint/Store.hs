@@ -44,6 +44,7 @@ import Control.Monad
 import Data.Int
 
 import Data.Map     (Map)
+import Data.Maybe   (isJust, isNothing)
 import GHC.Generics (Generic)
 
 import qualified Data.Aeson    as JSON
@@ -299,37 +300,33 @@ nullMempool = Mempool
 -- validate blockchain invariants
 ----------------------------------------------------------------
 
--- | all blocks in less that maximum height are present in database
-checkBlocks :: BlockStorage 'RO IO a [b] -> Int64 -> IO Bool
-checkBlocks storage maxH = do
+-- | check for existance of blockchain parts
+checkBlocks :: Monad m =>
+               BlockStorage rw m alg a1
+            -> m [Int64]
+checkBlocks storage = do
+    Height maxH <- blockchainHeight storage
     let heights = map (Height . fromIntegral) [0 .. maxH]
-    xs <- forM heights $ \h -> do
-        mb <- retrieveBlock storage h
-        return $ case mb of
-                   Nothing -> False
-                   Just _  -> True
-    return $ all (==True) xs
+    xs <- filterM (fmap (not . isJust) . retrieveBlock storage) heights
+    return $ map (\(Height s) -> s) xs
+
+checkCommits :: Monad m =>
+               BlockStorage rw m alg a1
+            -> m [Int64]
+checkCommits storage = do
+    Height maxH <- blockchainHeight storage
+    let heights = map (Height . fromIntegral) [1 .. maxH - 1] -- the commit for last block retrieveLocalCommit
+        maxHeight = Height maxH
+    xs <- filterM (fmap (not . isJust) . retrieveCommit storage) heights
+    localCmt <- retrieveLocalCommit storage maxHeight
+    return $ map (\(Height s) -> s) (if isNothing localCmt then maxHeight:xs else xs)
 
 
--- | all commits in less that maximum height are present in database
-checkCommits :: BlockStorage 'RO IO a [b] -> Int64 -> IO Bool
-checkCommits storage maxH = do
+checkValidators :: Monad m =>
+               BlockStorage rw m alg a1
+            -> m [Int64]
+checkValidators storage = do
+    Height maxH <- blockchainHeight storage
     let heights = map (Height . fromIntegral) [1 .. maxH]
-    xs <- forM heights $ \h -> do
-        cmt <- retrieveCommit storage h
-        return $ case cmt of
-                   Nothing -> False
-                   Just _  -> True
-    return $ all (==True) xs
-
-
--- | all validators in less that maximum height are present in database
-checkValidators :: BlockStorage 'RO IO a [b] -> Int64 -> IO Bool
-checkValidators storage maxH = do
-    let heights = map (Height . fromIntegral) [1 .. maxH]
-    xs <- forM heights $ \h -> do
-        cmt <- retrieveCommit storage h
-        return $ case cmt of
-                   Nothing -> False
-                   Just _  -> True
-    return $ all (==True) xs
+    xs <- filterM (fmap (not . isJust) . retrieveValidatorSet storage) heights
+    return $ map (\(Height s) -> s) xs
