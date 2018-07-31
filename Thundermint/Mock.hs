@@ -144,7 +144,7 @@ instance JSON.ToJSON   Topology
 instance JSON.FromJSON Topology
 
 -- | Specification of node
-data NodeDescription sock addr m alg st tx a = NodeDescription
+data NodeDescription addr m alg st tx a = NodeDescription
   { nodeStorage         :: BlockStorage 'RW m alg a
     -- ^ Storage API for nodes
   , nodeBlockChainLogic :: BlockFold st tx a
@@ -182,7 +182,7 @@ runNode
      , Ord tx, Serialise tx
      , Crypto alg, Ord addr, Show addr, Show a, LogBlock a
      , Serialise a)
-  => NodeDescription sock addr m alg st tx a
+  => NodeDescription addr m alg st tx a
   -> m ()
 runNode NodeDescription{nodeBlockChainLogic=logic@BlockFold{..}, ..} = do
   -- Create proposal storage
