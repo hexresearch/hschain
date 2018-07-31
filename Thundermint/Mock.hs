@@ -13,6 +13,7 @@ module Thundermint.Mock (
   , connectAll2All
   , connectRing
     -- * New node code
+  , Abort(..)
   , Topology(..)
   , NodeDescription(..)
   , runNode
@@ -63,6 +64,10 @@ import Thundermint.Store.SQLite
 ----------------------------------------------------------------
 --
 ----------------------------------------------------------------
+
+data Abort = Abort
+  deriving Show
+instance Exception Abort
 
 -- | Generate list of private validators
 makePrivateValidators
@@ -155,6 +160,7 @@ data NodeDescription addr m alg st tx a = NodeDescription
     -- ^ Initial peers
   , nodeValidationKey   :: Maybe (PrivValidator alg)
   , nodeAction          :: Maybe ((tx -> m ()) -> st -> m ())
+  , nodeCommitCallback  :: Height -> m ()
   }
 
 -- | Create block storage. It will use SQLite if path is specified or
@@ -204,21 +210,22 @@ runNode NodeDescription{nodeBlockChainLogic=logic@BlockFold{..}, ..} = do
         { appStorage     = nodeStorage
         , appPropStorage = propSt
           --
-        , appValidationFun = \hBlock a -> do
-            st <- stateAtH bchState hBlock
-            return $ isJust $ processBlock hBlock a st
+        , appValidationFun = \h a -> do
+            st <- stateAtH bchState h
+            return $ isJust $ processBlock h a st
           --
-        , appBlockGenerator = \hBlock -> do
-            st  <- stateAtH bchState hBlock
+        , appBlockGenerator = \h -> do
+            st  <- stateAtH bchState h
             txs <- peekNTransactions mempool Nothing
-            return $ transactionsToBlock hBlock st txs
+            return $ transactionsToBlock h st txs
           --
-        , appCommitCallback = const $ setNamespace "mempool" $ do
+        , appCommitCallback = \h -> setNamespace "mempool" $ do
             before <- mempoolStats mempool
             logger InfoS "Mempool before filtering" before
             filterMempool mempool
             after  <- mempoolStats mempool
             logger InfoS "Mempool after filtering" after
+            nodeCommitCallback h
           --
         , appValidator      = nodeValidationKey
         , appValidatorsSet  = valSet
