@@ -122,6 +122,7 @@ Executable thundermint-coin
   Default-Language:    Haskell2010
   Build-Depends:       base       >=4.9 && <5
                      , thundermint
+                     , exceptions
                      , bytestring >=0.10
                      , base58-bytestring >=0.1
                      , containers >=0.5.7

@@ -8,12 +8,14 @@
 {-# LANGUAGE TupleSections       #-}
 {-# LANGUAGE TypeFamilies        #-}
 import Control.Monad
+import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Control.Concurrent
 import Codec.Serialise      (serialise)
 import Data.ByteString.Lazy (toStrict)
 import Data.Foldable
 import Data.Monoid
+import Data.Int
 import qualified Data.Aeson             as JSON
 import qualified Data.ByteString.Char8  as BC8
 import qualified Data.Map               as Map
@@ -114,7 +116,7 @@ findInputs tgt = go 0
 ----------------------------------------------------------------
 
 interpretSpec
-   :: Maybe Int -> FilePath -> Int
+   :: Maybe Int64 -> FilePath -> Int
    -> NetSpec -> IO [(BlockStorage 'RO IO Alg [Tx], IO ())]
 interpretSpec maxH prefix delay NetSpec{..} = do
   net   <- newMockNet
@@ -138,6 +140,10 @@ interpretSpec maxH prefix delay NetSpec{..} = do
                                        return $ transferActions delay
                                          (publicKey <$> take netInitialKeys privateKeyList)
                                          privKeys
+            , nodeCommitCallback = \case
+                h | Just hM <- maxH
+                  , h > Height hM -> throwM Abort
+                  | otherwise     -> return ()
             }
       )
   where
@@ -160,11 +166,11 @@ interpretSpec maxH prefix delay NetSpec{..} = do
       }
 
 executeNodeSpec
-  :: Maybe Int -> FilePath -> Int
+  :: Maybe Int64 -> FilePath -> Int
   -> NetSpec -> IO [BlockStorage 'RO IO Alg [Tx]]
 executeNodeSpec maxH prefix delay spec = do
   actions <- interpretSpec maxH prefix delay spec
-  runConcurrently $ snd <$> actions
+  runConcurrently (snd <$> actions) `catch` (\Abort -> return ())
   return $ fst <$> actions
 
 ----------------------------------------------------------------
