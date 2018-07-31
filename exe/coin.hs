@@ -210,15 +210,11 @@ main
             allEqual (x:xs) = all (x==) xs
 
         forM_ storageList $ \s -> do
-                          checkBlocks s >>=
-                                  \rs -> unless (null rs) $
-                                         error ("Blocks missing at heights: " <> show rs)
-                          checkCommits s >>=
-                                  \rs -> unless (null rs) $
-                                         error ("Commits missing at heights: " <> show rs)
-                          checkValidators s >>=
-                                  \rs -> unless (null rs) $
-                                         error ("Validators missing in heights: " <> show rs)
+                          bs <- checkBlocks s
+                          cs <- checkCommits s
+                          vs <- checkValidators s
+                          return $ bs <> cs <> vs
+
 
         forM_ heights $ \h -> do
           -- Check that all blocks match!

@@ -31,7 +31,8 @@ runExistanceCheck dbName = do
 --  assert $ "file " <> dbName <>  " does not exist."
   when b $ do
     withSQLiteBlockStorageRO dbName $ \(storage :: BlockStorage 'RO IO Alg [Tx]) -> do
-                             checkBlocks storage >>=  \rs -> assertEqual "blocks test" [] rs
-                             checkCommits storage >>= \rs -> assertEqual "commit test" [] rs
-                             checkValidators storage  >>= \rs -> assertEqual "validator test" [] rs
+      bs <- checkBlocks storage
+      cs <- checkCommits storage
+      vs <- checkValidators storage
+      assertEqual "failed consistency check" [] $ bs <> cs <> vs
 --

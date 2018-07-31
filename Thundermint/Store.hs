@@ -40,10 +40,10 @@ module Thundermint.Store (
   , checkValidators
   ) where
 
-import Control.Monad
+import Control.Applicative (liftA2)
 
 import Data.Map     (Map)
-import Data.Maybe   (isJust, isNothing)
+import Data.Maybe   (isNothing)
 import GHC.Generics (Generic)
 
 import qualified Data.Aeson    as JSON
@@ -299,32 +299,74 @@ nullMempool = Mempool
 -- validate blockchain invariants
 ----------------------------------------------------------------
 
+-- | Blockchain inconsistency types
+data BlockchainInconsistency = MissingBlock Height
+                             | MissingCommit Height
+                             | MissingLocalCommit Height -- ^ Missing commit for block at maximum Height
+                             | MissingValidator Height
+                             | ChainIdMisMatch Height    -- ^ chainId  differ from genesis block chainId
+                             | HeightMisMatch Height       -- ^ Block at height H has different height in Header
+                               deriving (Eq, Show)
+
+
 -- | check for existance of blockchain parts
 checkBlocks :: Monad m =>
                BlockStorage rw m alg a1
-            -> m [Int]
+            -> m [BlockchainInconsistency]
 checkBlocks storage = do
     maxH <- blockchainHeight storage
+    Just genesis   <- retrieveBlock storage (Height 0)
     let heights = enumFromTo (toEnum 0) maxH
-    xs <- filterM (fmap (not . isJust) . retrieveBlock storage) heights
-    return $ map fromEnum xs
+        genesisChainId = headerChainID $ blockHeader genesis
+    xs <- filterM' (retrieveBlock storage) genesisChainId heights
+    return $ concat xs
+   where
+     filterM' fun genesisChainId =
+         foldr (\h -> liftA2
+                (\b -> case b of
+                         Nothing -> ([MissingBlock h]:)
+                         Just Block{..}  ->
+                             let height  = headerHeight  blockHeader
+                                 chainId = headerChainID blockHeader
+                             in case () of
+                                  _ | height /= h && genesisChainId /= chainId -> ([HeightMisMatch h, ChainIdMisMatch h]:)
+                                    | height  /= h  -> ([HeightMisMatch h]:)
+                                    | genesisChainId /= chainId -> ([ChainIdMisMatch h]: )
+                                    | otherwise   -> id
+                )
+                (fun h)) (pure [])
+
 
 checkCommits :: Monad m =>
                BlockStorage rw m alg a1
-            -> m [Int]
+            -> m [BlockchainInconsistency]
 checkCommits storage = do
     maxH <- blockchainHeight storage
     let heights = enumFromTo (Height 1) (pred maxH)
-    xs <- filterM (fmap (not . isJust) . retrieveCommit storage) heights
+    xs <- filterM'  (retrieveCommit storage) heights
     localCmt <- retrieveLocalCommit storage maxH
-    return $ map fromEnum (if isNothing localCmt then maxH:xs else xs)
+    return (if isNothing localCmt then (MissingLocalCommit maxH:xs) else xs)
+   where
+     filterM' fun = foldr (\h -> liftA2
+                               (\cmt -> case () of
+                                          _ | isNothing cmt -> (MissingCommit h:)
+                                            | otherwise -> id
+                               )
+                              (fun h)) (pure [])
+
 
 
 checkValidators :: Monad m =>
                BlockStorage rw m alg a1
-            -> m [Int]
+            -> m [BlockchainInconsistency]
 checkValidators storage = do
     maxH <- blockchainHeight storage
     let heights = enumFromTo (Height 1)  maxH
-    xs <- filterM (fmap (not . isJust) . retrieveValidatorSet storage) heights
-    return $ map fromEnum xs
+    xs <- filterM' (retrieveValidatorSet storage) heights
+    return xs
+   where
+     filterM' fun = foldr (\h -> liftA2
+                               (\cmt -> if isNothing cmt
+                                      then (MissingValidator h:)
+                                      else id)
+                              (fun h)) (pure [])
