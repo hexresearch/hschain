@@ -41,7 +41,6 @@ module Thundermint.Store (
   ) where
 
 import Control.Monad
-import Data.Int
 
 import Data.Map     (Map)
 import Data.Maybe   (isJust, isNothing)
@@ -303,30 +302,29 @@ nullMempool = Mempool
 -- | check for existance of blockchain parts
 checkBlocks :: Monad m =>
                BlockStorage rw m alg a1
-            -> m [Int64]
+            -> m [Int]
 checkBlocks storage = do
-    Height maxH <- blockchainHeight storage
-    let heights = map (Height . fromIntegral) [0 .. maxH]
+    maxH <- blockchainHeight storage
+    let heights = enumFromTo (toEnum 0) maxH
     xs <- filterM (fmap (not . isJust) . retrieveBlock storage) heights
-    return $ map (\(Height s) -> s) xs
+    return $ map fromEnum xs
 
 checkCommits :: Monad m =>
                BlockStorage rw m alg a1
-            -> m [Int64]
+            -> m [Int]
 checkCommits storage = do
-    Height maxH <- blockchainHeight storage
-    let heights = map (Height . fromIntegral) [1 .. maxH - 1] -- the commit for last block retrieveLocalCommit
-        maxHeight = Height maxH
+    maxH <- blockchainHeight storage
+    let heights = enumFromTo (Height 1) (pred maxH)
     xs <- filterM (fmap (not . isJust) . retrieveCommit storage) heights
-    localCmt <- retrieveLocalCommit storage maxHeight
-    return $ map (\(Height s) -> s) (if isNothing localCmt then maxHeight:xs else xs)
+    localCmt <- retrieveLocalCommit storage maxH
+    return $ map fromEnum (if isNothing localCmt then maxH:xs else xs)
 
 
 checkValidators :: Monad m =>
                BlockStorage rw m alg a1
-            -> m [Int64]
+            -> m [Int]
 checkValidators storage = do
-    Height maxH <- blockchainHeight storage
-    let heights = map (Height . fromIntegral) [1 .. maxH]
+    maxH <- blockchainHeight storage
+    let heights = enumFromTo (Height 1)  maxH
     xs <- filterM (fmap (not . isJust) . retrieveValidatorSet storage) heights
-    return $ map (\(Height s) -> s) xs
+    return $ map fromEnum xs
