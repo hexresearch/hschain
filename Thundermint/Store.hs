@@ -300,7 +300,8 @@ nullMempool = Mempool
 ----------------------------------------------------------------
 
 -- | Blockchain inconsistency types
-data BlockchainInconsistency = MissingBlock Height
+data BlockchainInconsistency = MissingGenesisBlock
+                             | MissingBlock Height
                              | MissingCommit Height
                              | MissingLocalCommit Height -- ^ Missing commit for block at maximum Height
                              | MissingValidator Height
@@ -308,21 +309,32 @@ data BlockchainInconsistency = MissingBlock Height
                              | HeightMisMatch Height       -- ^ Block at height H has different height in Header
                                deriving (Eq, Show)
 
--- | block at height H is present
-blockInvariant01 :: Height -> Maybe (Block alg a) -> [BlockchainInconsistency]
-blockInvariant01 h Nothing = [MissingBlock h]
-blockInvariant01 _ _       = []
+-- | General invariants
+
+-- | block, commit, validator at height H is present
+missingInvariant :: Height -> Maybe a -> [BlockchainInconsistency]
+missingInvariant h Nothing = [MissingBlock h]
+missingInvariant _ _       = []
+
+
+-- | Block entity invarinats
+
+-- | genesis block is missing
+blockInvariant00 :: Height -> Maybe (Block alg a) -> [BlockchainInconsistency]
+blockInvariant00 (Height 0) Nothing = [MissingGenesisBlock]
+blockInvariant00 _ _                = []
+
 
 -- |  Block at height H has H in its header
-blockInvariant02 :: Height -> Maybe (Block alg a) -> [BlockchainInconsistency]
-blockInvariant02 _ Nothing = []
-blockInvariant02 h (Just Block{..}) = if headerHeight  blockHeader /= h
+blockInvariant01 :: Height -> Maybe (Block alg a) -> [BlockchainInconsistency]
+blockInvariant01 _ Nothing = []
+blockInvariant01 h (Just Block{..}) = if headerHeight  blockHeader /= h
                                       then [HeightMisMatch h]
                                       else []
 -- | All blocks must have same headerChainID, i.e. headerChainID of  genesis block
-blockInvariant03 _ _ Nothing = []
-blockInvariant03 chainId h (Just Block{..}) = if headerChainID blockHeader /= chainId
-                                              bthen [ChainIdMisMatch h]
+blockInvariant02 _ _ Nothing = []
+blockInvariant02 chainId h (Just Block{..}) = if headerChainID blockHeader /= chainId
+                                              then [ChainIdMisMatch h]
                                               else []
 
 checkBlocks :: Monad m =>
@@ -334,13 +346,20 @@ checkBlocks storage = do
         genesisChainId = headerChainID $ blockHeader genesis
     xs <- forM heights (\h -> do
                             b <- retrieveBlock storage h
-                            return $ concatMap (\inv -> inv h b) [ blockInvariant01
-                                                                 , blockInvariant02
-                                                                 , blockInvariant03 genesisChainId]
+                            return $ concatMap (\inv -> inv h b) [ missingInvariant
+                                                                 , blockInvariant00
+                                                                 , blockInvariant01
+                                                                 , blockInvariant02 genesisChainId
+                                                                 ]
                        )
     return $ concat xs
 
 
+
+-- | local commit is present
+commitInvariant01 :: Height -> Maybe a -> [BlockchainInconsistency]
+commitInvariant01 h Nothing = [MissingLocalCommit h]
+commitInvariant01 _ _       = []
 
 checkCommits :: Monad m =>
                BlockStorage rw m alg a1
@@ -348,17 +367,12 @@ checkCommits :: Monad m =>
 checkCommits storage = do
     maxH <- blockchainHeight storage
     let heights = enumFromTo (Height 1) (pred maxH)
-    xs <- filterM'  (retrieveCommit storage) heights
     localCmt <- retrieveLocalCommit storage maxH
-    return (if isNothing localCmt then (MissingLocalCommit maxH:xs) else xs)
-   where
-     filterM' fun = foldr (\h -> liftA2
-                               (\cmt -> case () of
-                                          _ | isNothing cmt -> (MissingCommit h:)
-                                            | otherwise -> id
-                               )
-                              (fun h)) (pure [])
-
+    xs <- forM heights (\h -> do
+                          cmt <- retrieveCommit storage h
+                          return $ concatMap (\inv -> inv h cmt) [ missingInvariant ]
+                       )
+    return $ concat (commitInvariant01 maxH localCmt : xs)
 
 
 checkValidators :: Monad m =>
@@ -367,11 +381,8 @@ checkValidators :: Monad m =>
 checkValidators storage = do
     maxH <- blockchainHeight storage
     let heights = enumFromTo (Height 1)  maxH
-    xs <- filterM' (retrieveValidatorSet storage) heights
-    return xs
-   where
-     filterM' fun = foldr (\h -> liftA2
-                               (\cmt -> if isNothing cmt
-                                      then (MissingValidator h:)
-                                      else id)
-                              (fun h)) (pure [])
+    xs <- forM heights (\h -> do
+                          cmt <- retrieveValidatorSet storage h
+                          return $ concatMap (\inv -> inv h cmt) [ missingInvariant ]
+                       )
+    return $ concat xs
