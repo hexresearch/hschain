@@ -41,10 +41,10 @@ module Thundermint.Store (
   ) where
 
 import Control.Applicative (liftA2)
-
-import Data.Map     (Map)
-import Data.Maybe   (isNothing)
-import GHC.Generics (Generic)
+import Data.Map            (Map)
+import Data.Maybe          (isNothing)
+import Data.Traversable    (forM)
+import GHC.Generics        (Generic)
 
 import qualified Data.Aeson    as JSON
 import qualified Data.Aeson.TH as JSON
@@ -308,33 +308,38 @@ data BlockchainInconsistency = MissingBlock Height
                              | HeightMisMatch Height       -- ^ Block at height H has different height in Header
                                deriving (Eq, Show)
 
+-- | block at height H is present
+blockInvariant01 :: Height -> Maybe (Block alg a) -> [BlockchainInconsistency]
+blockInvariant01 h Nothing = [MissingBlock h]
+blockInvariant01 _ _       = []
 
--- | check for existance of blockchain parts
+-- |  Block at height H has H in its header
+blockInvariant02 :: Height -> Maybe (Block alg a) -> [BlockchainInconsistency]
+blockInvariant02 _ Nothing = []
+blockInvariant02 h (Just Block{..}) = if headerHeight  blockHeader /= h
+                                      then [HeightMisMatch h]
+                                      else []
+-- | All blocks must have same headerChainID, i.e. headerChainID of  genesis block
+blockInvariant03 _ _ Nothing = []
+blockInvariant03 chainId h (Just Block{..}) = if headerChainID blockHeader /= chainId
+                                              bthen [ChainIdMisMatch h]
+                                              else []
+
 checkBlocks :: Monad m =>
-               BlockStorage rw m alg a1
-            -> m [BlockchainInconsistency]
+               BlockStorage rw m alg a -> m [BlockchainInconsistency]
 checkBlocks storage = do
     maxH <- blockchainHeight storage
     Just genesis   <- retrieveBlock storage (Height 0)
     let heights = enumFromTo (toEnum 0) maxH
         genesisChainId = headerChainID $ blockHeader genesis
-    xs <- filterM' (retrieveBlock storage) genesisChainId heights
+    xs <- forM heights (\h -> do
+                            b <- retrieveBlock storage h
+                            return $ concatMap (\inv -> inv h b) [ blockInvariant01
+                                                                 , blockInvariant02
+                                                                 , blockInvariant03 genesisChainId]
+                       )
     return $ concat xs
-   where
-     filterM' fun genesisChainId =
-         foldr (\h -> liftA2
-                (\b -> case b of
-                         Nothing -> ([MissingBlock h]:)
-                         Just Block{..}  ->
-                             let height  = headerHeight  blockHeader
-                                 chainId = headerChainID blockHeader
-                             in case () of
-                                  _ | height /= h && genesisChainId /= chainId -> ([HeightMisMatch h, ChainIdMisMatch h]:)
-                                    | height  /= h  -> ([HeightMisMatch h]:)
-                                    | genesisChainId /= chainId -> ([ChainIdMisMatch h]: )
-                                    | otherwise   -> id
-                )
-                (fun h)) (pure [])
+
 
 
 checkCommits :: Monad m =>
