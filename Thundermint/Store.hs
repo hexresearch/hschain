@@ -40,6 +40,9 @@ module Thundermint.Store (
   , checkValidators
   ) where
 
+
+import qualified Katip
+
 import Control.Applicative (liftA2)
 import Data.Map            (Map)
 import Data.Maybe          (isNothing)
@@ -48,11 +51,11 @@ import GHC.Generics        (Generic)
 
 import qualified Data.Aeson    as JSON
 import qualified Data.Aeson.TH as JSON
-import qualified Katip
+import qualified Data.Map      as Map
 
 import Thundermint.Consensus.Types
+import Thundermint.Crypto
 import Thundermint.Crypto.Containers
-
 ----------------------------------------------------------------
 -- Abstract API for storing data
 ----------------------------------------------------------------
@@ -304,17 +307,14 @@ data BlockchainInconsistency = MissingGenesisBlock
                              | MissingBlock Height
                              | MissingCommit Height
                              | MissingLocalCommit Height -- ^ Missing commit for block at maximum Height
-                             | MissingValidator Height
+                             | MissingValidatorSet Height
                              | ChainIdMisMatch Height    -- ^ chainId  differ from genesis block chainId
-                             | HeightMisMatch Height       -- ^ Block at height H has different height in Header
+                             | HeightMisMatch Height     -- ^ Block at height H has different height in Header
+                             | DeficitVotingPower Height
                                deriving (Eq, Show)
 
 -- | General invariants
 
--- | block, commit, validator at height H is present
-missingInvariant :: Height -> Maybe a -> [BlockchainInconsistency]
-missingInvariant h Nothing = [MissingBlock h]
-missingInvariant _ _       = []
 
 
 -- | Block entity invarinats
@@ -324,16 +324,20 @@ blockInvariant00 :: Height -> Maybe (Block alg a) -> [BlockchainInconsistency]
 blockInvariant00 (Height 0) Nothing = [MissingGenesisBlock]
 blockInvariant00 _ _                = []
 
+-- | block, commit, validator at height H is present
+blockInvariant01 :: Height -> Maybe a -> [BlockchainInconsistency]
+blockInvariant01 h Nothing = [MissingBlock h]
+blockInvariant01 _ _       = []
 
 -- |  Block at height H has H in its header
-blockInvariant01 :: Height -> Maybe (Block alg a) -> [BlockchainInconsistency]
-blockInvariant01 _ Nothing = []
-blockInvariant01 h (Just Block{..}) = if headerHeight  blockHeader /= h
+blockInvariant02 :: Height -> Maybe (Block alg a) -> [BlockchainInconsistency]
+blockInvariant02 _ Nothing = []
+blockInvariant02 h (Just Block{..}) = if headerHeight  blockHeader /= h
                                       then [HeightMisMatch h]
                                       else []
 -- | All blocks must have same headerChainID, i.e. headerChainID of  genesis block
-blockInvariant02 _ _ Nothing = []
-blockInvariant02 chainId h (Just Block{..}) = if headerChainID blockHeader /= chainId
+blockInvariant03 _ _ Nothing = []
+blockInvariant03 chainId h (Just Block{..}) = if headerChainID blockHeader /= chainId
                                               then [ChainIdMisMatch h]
                                               else []
 
@@ -346,10 +350,10 @@ checkBlocks storage = do
         genesisChainId = headerChainID $ blockHeader genesis
     xs <- forM heights (\h -> do
                             b <- retrieveBlock storage h
-                            return $ concatMap (\inv -> inv h b) [ missingInvariant
-                                                                 , blockInvariant00
+                            return $ concatMap (\inv -> inv h b) [ blockInvariant00
                                                                  , blockInvariant01
-                                                                 , blockInvariant02 genesisChainId
+                                                                 , blockInvariant02
+                                                                 , blockInvariant03 genesisChainId
                                                                  ]
                        )
     return $ concat xs
@@ -357,9 +361,30 @@ checkBlocks storage = do
 
 
 -- | local commit is present
-commitInvariant01 :: Height -> Maybe a -> [BlockchainInconsistency]
-commitInvariant01 h Nothing = [MissingLocalCommit h]
+localCommitInvariant01 :: Height -> Maybe (Commit alg a) -> [BlockchainInconsistency]
+localCommitInvariant01 h Nothing = [MissingLocalCommit h]
+localCommitInvariant01 _ _       = []
+
+-- | commit is present
+commitInvariant01 :: Height -> Maybe (Commit alg a) -> [BlockchainInconsistency]
+commitInvariant01 h Nothing = [MissingCommit h]
 commitInvariant01 _ _       = []
+
+
+-- | check voting power is enought, i. e. contains at least 2/3 voting power
+commitInvariant02 :: Maybe (ValidatorSet alg)
+                  -> Height -> Maybe (Commit alg a) -> [BlockchainInconsistency]
+commitInvariant02 _ _ Nothing  = []
+commitInvariant02 Nothing  _ _ = []
+commitInvariant02 (Just vs) h (Just Commit{..})
+    | tot >= quorum = []
+    | otherwise = [DeficitVotingPower h]
+  where
+    power  = maybe 0 validatorVotingPower
+           . validatorByAddr vs
+    tot    = sum [ power a | a <- map signedAddr commitPrecommits]
+    quorum = 2 * totalVotingPower vs `div` 3 + 1
+
 
 checkCommits :: Monad m =>
                BlockStorage rw m alg a1
@@ -367,13 +392,24 @@ checkCommits :: Monad m =>
 checkCommits storage = do
     maxH <- blockchainHeight storage
     let heights = enumFromTo (Height 1) (pred maxH)
-    localCmt <- retrieveLocalCommit storage maxH
+    localCmt   <- retrieveLocalCommit storage maxH
+    localCmtVs <- retrieveValidatorSet storage maxH
     xs <- forM heights (\h -> do
                           cmt <- retrieveCommit storage h
-                          return $ concatMap (\inv -> inv h cmt) [ missingInvariant ]
+                          vs <- retrieveValidatorSet storage h
+                          return $ concatMap (\inv -> inv h cmt) [ commitInvariant01
+                                                                 , commitInvariant02 vs]
                        )
-    return $ concat (commitInvariant01 maxH localCmt : xs)
+    let checkLocalCmt = concatMap (\inv -> inv maxH localCmt) [ localCommitInvariant01
+                                                              , commitInvariant02 localCmtVs]
+    return $ concat (checkLocalCmt : xs)
 
+
+
+-- | commit is present
+validatorInvariant01 :: Height -> Maybe (ValidatorSet alg) -> [BlockchainInconsistency]
+validatorInvariant01 h Nothing = [MissingValidatorSet h]
+validatorInvariant01 _ _       = []
 
 checkValidators :: Monad m =>
                BlockStorage rw m alg a1
@@ -383,6 +419,6 @@ checkValidators storage = do
     let heights = enumFromTo (Height 1)  maxH
     xs <- forM heights (\h -> do
                           cmt <- retrieveValidatorSet storage h
-                          return $ concatMap (\inv -> inv h cmt) [ missingInvariant ]
+                          return $ concatMap (\inv -> inv h cmt) [ validatorInvariant01 ]
                        )
     return $ concat xs
