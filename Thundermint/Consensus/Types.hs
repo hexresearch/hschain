@@ -5,6 +5,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE KindSignatures             #-}
 {-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE RecordWildCards            #-}
 -- |
 -- Data types for implementation of consensus algorithm
 module Thundermint.Consensus.Types (
@@ -34,9 +35,12 @@ module Thundermint.Consensus.Types (
   ) where
 
 import           Codec.Serialise
+import           Codec.Serialise.Decoding
+import           Codec.Serialise.Encoding
 import qualified Data.Aeson         as JSON
 import           Data.ByteString   (ByteString)
 import           Data.Map          (Map)
+import           Data.Monoid       ((<>))
 import           Data.Int
 import qualified Data.HashMap.Strict as HM
 import qualified Katip
@@ -184,17 +188,34 @@ data Vote (ty :: VoteType) alg a= Vote
   }
   deriving (Show,Eq,Ord,Generic)
 
+instance Serialise (Vote 'PreVote alg a) where
+    encode = encodeVote 0
+    decode = decodeVote 0
 
--- FIXME: We need to embed type tag into encoded data to disallow
---        spoofing prevote as precommit and vice-versa
---
-instance Serialise (Vote ty alg a) where
--- instance Serialise (Vote 'PreVote   alg a) where
---   encode (Vote h r t bid) = encode (h,r,t,bid,
---   decode = undefined
--- instance Serialise (Vote 'PreCommit alg a) where
---   encode = undefined
---   decode = undefined
+instance Serialise (Vote 'PreCommit alg a) where
+    encode = encodeVote 1
+    decode = decodeVote 1
+
+encodeVote :: Word -> Vote ty alg a -> Encoding
+encodeVote tag Vote{..} =
+    encodeListLen 5 <>
+    encodeWord tag <>
+    encode voteHeight <>
+    encode voteRound <>
+    encode voteTime <>
+    encode voteBlockID
+
+decodeVote :: Word -> Decoder s (Vote ty alg a)
+decodeVote expectedTag = do
+    len <- decodeListLen
+    tag <- decodeWord
+    case len of
+        5 | tag == expectedTag ->
+                Vote <$> decode <*> decode <*> decode <*> decode
+          | otherwise ->
+                fail ("Invalid Vote tag, expected: " ++ show expectedTag
+                      ++ ", actual: " ++ show tag)
+        _ -> fail $ "Invalid Vote encoding"
 
 type VoteSet ty alg a = SignedSet 'Verified (Vote ty alg a)
 
