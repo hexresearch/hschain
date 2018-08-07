@@ -1,0 +1,5 @@
+pipeline:
+  build:
+    image: haskell:8.2.2
+    commands:
+    - stack build
