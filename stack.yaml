@@ -51,6 +51,9 @@ extra-deps:
     - serialise-0.2.0.0
     - cborg-0.2.0.0
     - base58-bytestring-0.1.0
+    - bytestring-arbitrary-0.1.2
+
+allow-newer: true
 
 
 # Override default flag values for local packages and extra-deps
