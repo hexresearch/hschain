@@ -25,7 +25,7 @@ import qualified Data.Map               as Map
 ----------------------------------------------------------------
 
 makePrivateValidators'
-  :: [(SockAddr ,BS.ByteString)]
+  :: [(SockAddr, BS.ByteString)]
   -> Map SockAddr (PrivValidator Ed25519_SHA512)
 makePrivateValidators' keys = Map.fromList
   [ (sockAddr, PrivValidator pk)
@@ -65,7 +65,7 @@ genesisBlock = Block
 getServiceName :: SockAddr -> IO Network.Socket.ServiceName
 getServiceName addr = getPortOrError <$> getNameInfo [] False True addr
  where
-  getPortOrError = fromMaybe (error "Port doesn't spacified") . snd
+  getPortOrError = fromMaybe (error "Port doesn't specified") . snd
 
 main :: IO ()
 main = do
