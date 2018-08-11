@@ -71,8 +71,23 @@ realNetwork listenPort = NetworkAPI
       let hints = Net.defaultHints
             { Net.addrFlags      = [Net.AI_PASSIVE]
             , Net.addrSocketType = Net.Stream
+            , Net.addrFamily     = Net.AF_INET
+            -- FIXME: Add ipv6 listening
+            --
+            -- "localhost" can be bound not only to "127.0.0.1", but to "::1" too.
+            --
+            -- So, when we query addrInfo in `connect`:
+            --
+            --    (hostName, serviceName) <- Net.getNameInfo [] True True addr
+            --    addrInfo:_ <- Net.getAddrInfo hints hostName serviceName
+            --
+            -- `hostName` is "localhost", and `addrInfo` has AF_INET6 family.
+            --
+            -- But in `listen` "addr" has IPv4 address for bounding "0.0.0.0".
+            --
+            -- So `listen` bound to IPv4, but `connect` try to connect to IPv6.
+            --
             }
-      -- FIXME: Add ipv6 listening
       addr:_ <- Net.getAddrInfo (Just hints) Nothing (Just listenPort)
       sock   <- Net.socket (Net.addrFamily     addr)
                            (Net.addrSocketType addr)
@@ -85,6 +100,7 @@ realNetwork listenPort = NetworkAPI
   , connect  = \addr -> do
       let hints = Just Net.defaultHints
             { Net.addrSocketType = Net.Stream
+            , Net.addrFamily     = Net.AF_INET
             }
       (hostName, serviceName) <- Net.getNameInfo [] True True addr
       addrInfo:_ <- Net.getAddrInfo hints hostName serviceName
