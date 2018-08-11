@@ -22,7 +22,9 @@ Library
                      , bytestring        >=0.10
                      , base58-bytestring >=0.1
                      , containers        >=0.5.9
+                     , directory
                      , deepseq           >=1.4
+                     , filepath
                      , exceptions        >=0.10.0
                      , memory            >=0.14.14
                      , random
@@ -57,6 +59,7 @@ Library
                   Thundermint.Mock
                   Thundermint.Mock.Coin
                   Thundermint.Mock.KeyList
+                  Thundermint.Mock.KeyVal
                   Thundermint.P2P
                   Thundermint.P2P.Network
                   Thundermint.P2P.PeerState
@@ -65,16 +68,6 @@ Library
                   Thundermint.Store.SQLite
 
 -- Example programs
-Executable thundermint-simple
-  Ghc-options:         -Wall -threaded
-  Default-Language:    Haskell2010
-  Build-Depends:       base       >=4.9 && <5
-                     , thundermint
-                     , bytestring >=0.10
-                     , containers >=0.5.7
-  hs-source-dirs:      exe
-  Main-is:             simple.hs
-
 Executable thundermint-keyval
   Ghc-options:         -Wall
   Default-Language:    Haskell2010
@@ -129,6 +122,7 @@ Executable thundermint-coin
   Default-Language:    Haskell2010
   Build-Depends:       base       >=4.9 && <5
                      , thundermint
+                     , exceptions
                      , bytestring >=0.10
                      , base58-bytestring >=0.1
                      , containers >=0.5.7

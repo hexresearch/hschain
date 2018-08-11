@@ -1,5 +1,6 @@
 {-# LANGUAGE DataKinds         #-}
 {-# LANGUAGE DeriveGeneric     #-}
+{-# LANGUAGE FlexibleContexts  #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 -- |
@@ -12,9 +13,11 @@ module Thundermint.Mock (
   , connectAll2All
   , connectRing
     -- * New node code
-  , NodeLogs(..)
+  , Abort(..)
+  , Topology(..)
   , NodeDescription(..)
   , runNode
+  , newBlockStorage
     -- * Running nodes
   , startNode
   , runNodeSet
@@ -25,9 +28,7 @@ import Control.Concurrent.Async hiding (runConcurrently)
 import Control.Monad
 import Control.Monad.Catch
 import Control.Monad.IO.Class
-import Control.Monad.Trans.Class
 import Data.Foldable
-import Data.IORef
 import Data.Maybe               (isJust)
 import Data.Map                 (Map)
 import Data.Word                (Word64)
@@ -37,9 +38,11 @@ import qualified Data.ByteString.Base58 as Base58
 import qualified Data.ByteString.Char8  as BC8
 import qualified Data.Map               as Map
 import qualified Katip
-import System.Random (randomIO)
+import System.Directory (createDirectoryIfMissing)
+import System.FilePath  ((</>),splitFileName)
+import System.Random    (randomIO)
 import Text.Printf
-import GHC.Generics (Generic)
+import GHC.Generics     (Generic)
 
 import Thundermint.Control (MonadFork,runConcurrently)
 import Thundermint.Crypto
@@ -54,11 +57,17 @@ import Thundermint.P2P
 import Thundermint.P2P.Network
 import Thundermint.Store
 import Thundermint.Store.STM
+import Thundermint.Store.SQLite
+
 
 
 ----------------------------------------------------------------
 --
 ----------------------------------------------------------------
+
+data Abort = Abort
+  deriving Show
+instance Exception Abort
 
 -- | Generate list of private validators
 makePrivateValidators
@@ -132,16 +141,15 @@ defCfg = Configuration
   , gossipDelayMempool = 25
   }
 
-data NodeLogs = NodeLogs
-  { txtLog  :: Maybe FilePath
-  , jsonLog :: Maybe FilePath
-  }
-  deriving (Show, Generic)
-instance JSON.FromJSON NodeLogs
-instance JSON.ToJSON   NodeLogs
 
--- Specification of node
-data NodeDescription sock addr m alg st tx a = NodeDescription
+data Topology = All2All
+              | Ring
+              deriving (Generic,Show)
+instance JSON.ToJSON   Topology
+instance JSON.FromJSON Topology
+
+-- | Specification of node
+data NodeDescription addr m alg st tx a = NodeDescription
   { nodeStorage         :: BlockStorage 'RW m alg a
     -- ^ Storage API for nodes
   , nodeBlockChainLogic :: BlockFold st tx a
@@ -151,104 +159,93 @@ data NodeDescription sock addr m alg st tx a = NodeDescription
   , nodeInitialPeers    :: [addr]
     -- ^ Initial peers
   , nodeValidationKey   :: Maybe (PrivValidator alg)
-  , nodeLogFile         :: NodeLogs
   , nodeAction          :: Maybe ((tx -> m ()) -> st -> m ())
-  , nodeMaxH            :: Maybe Height
+  , nodeCommitCallback  :: Height -> m ()
   }
 
+-- | Create block storage. It will use SQLite if path is specified or
+--   STM otherwise.
+newBlockStorage
+  :: (Crypto alg, Serialise a, Serialise (PublicKey alg))
+  => FilePath                   -- ^ Prefix
+  -> Maybe FilePath             -- ^ Path to database
+  -> Block alg a
+  -> ValidatorSet alg
+  -> IO (BlockStorage 'RW IO alg a)
+newBlockStorage prefix mpath genesis validatorSet = do
+  let makedir path = let (dir,_) = splitFileName path
+                     in createDirectoryIfMissing True dir
+  case mpath of
+      Nothing -> newSTMBlockStorage genesis validatorSet
+      Just nm -> do
+        let dbName = prefix </> nm
+        makedir dbName
+        newSQLiteBlockStorage dbName genesis validatorSet
+
+
 runNode
-  :: ( MonadIO m, MonadMask m, MonadFork m
+  :: ( MonadIO m, MonadMask m, MonadFork m, MonadLogger m
      , Ord tx, Serialise tx
      , Crypto alg, Ord addr, Show addr, Show a, LogBlock a
      , Serialise a)
-  => NodeDescription sock addr m alg st tx a
+  => NodeDescription addr m alg st tx a
   -> m ()
 runNode NodeDescription{nodeBlockChainLogic=logic@BlockFold{..}, ..} = do
-  -- Initialize logging
-  let scribes = [ Katip.mkFileScribe nm Katip.DebugS Katip.V2
-                | Just nm <- [txtLog nodeLogFile]
-                ] ++
-                [ makeJsonFileScribe nm Katip.DebugS Katip.V2
-                | Just nm <- [jsonLog nodeLogFile]
-                ]
-  withLogEnv "TM" "DEV" scribes $ \logenv -> do
-    -- Create proposal storage
-    propSt <- hoistPropStorageRW liftIO <$> liftIO newSTMPropStorage
-    -- Create state of blockchain & Update it to current state of
-    -- blockchain
-    hChain      <- blockchainHeight     nodeStorage
-    Just valSet <- retrieveValidatorSet nodeStorage (next hChain)
-    bchState    <- newBChState logic (makeReadOnly nodeStorage)
-    _           <- stateAtH bchState (next hChain)
-    -- Create mempool
-    let checkTx tx = do
-          st <- currentState bchState
-          return $ isJust $ processTx (Height 1) tx st
-    mempool <- newMempool checkTx
-    cursor  <- getMempoolCursor mempool
-    -- Build application state of consensus algorithm
-    let appSt = AppState
-          { appStorage     = nodeStorage
-          , appPropStorage = propSt
-            --
-          , appValidationFun = \hBlock a -> do
-              st <- stateAtH bchState hBlock
-              return $ isJust $ processBlock hBlock a st
-            --
-          , appBlockGenerator = \hBlock -> do
-              st  <- stateAtH bchState hBlock
-              txs <- peekNTransactions mempool Nothing
-              return $ transactionsToBlock hBlock st txs
-            --
-          , appCommitCallback = do
-              before <- mempoolStats mempool
-              runLoggerT "mempool" logenv $ logger InfoS "Mempool before filtering" before
-              filterMempool mempool
-              after  <- mempoolStats mempool
-              runLoggerT "mempool" logenv $ logger InfoS "Mempool after filtering" after
-            --
-          , appValidator      = nodeValidationKey
-          , appValidatorsSet  = valSet
-          , appMaxHeight      = nodeMaxH
-          }
-    -- Networking
-    appCh <- liftIO newAppChans
-    runConcurrently $
-      case nodeAction of
-          Nothing     -> []
-          Just action -> [forever $ action (pushTransaction cursor)
-                                =<< currentState bchState]
-      ++
-      [ id $ runLoggerT "net" logenv
-           $ startPeerDispatcher defCfg nodeNetworks nodeInitialPeers appCh
-                                 (hoistBlockStorageRO lift $ makeReadOnly   nodeStorage)
-                                 (hoistPropStorageRO  lift $ makeReadOnlyPS propSt)
-                                 (hoistMempool lift mempool)
-      , id $ runLoggerT "consensus" logenv
-           $ runApplication defCfg (hoistAppState lift appSt) appCh
-      ]
-
-withLogEnv
-  :: (MonadIO m, MonadMask m)
-  => Katip.Namespace
-  -> Katip.Environment
-  -> [IO Katip.Scribe]
-  -> (Katip.LogEnv -> m a)
-  -> m a
-withLogEnv namespace env scribes action
-  = bracket initLE fini $ \leRef -> loop leRef scribes
-  where
-    initLE = liftIO (newIORef =<< Katip.initLogEnv namespace env)
-    fini   = liftIO . (Katip.closeScribes <=< readIORef)
-    --
-    loop leRef []           = action =<< liftIO (readIORef leRef)
-    loop leRef (ios : rest) = mask $ \unmask -> do
-      scribe <- liftIO ios
-      le  <- liftIO (readIORef leRef)
-      le' <- liftIO (Katip.registerScribe "log" scribe Katip.defaultScribeSettings le)
-        `onException` liftIO (Katip.scribeFinalizer scribe)
-      liftIO (writeIORef leRef le')
-      unmask $ loop leRef rest
+  -- Create proposal storage
+  propSt      <- newSTMPropStorage
+  -- Create state of blockchain & Update it to current state of
+  -- blockchain
+  hChain      <- blockchainHeight     nodeStorage
+  Just valSet <- retrieveValidatorSet nodeStorage (next hChain)
+  bchState    <- newBChState logic (makeReadOnly nodeStorage)
+  _           <- stateAtH bchState (next hChain)
+  -- Create mempool
+  let checkTx tx = do
+        st <- currentState bchState
+        return $ isJust $ processTx (Height 1) tx st
+  mempool <- newMempool checkTx
+  cursor  <- getMempoolCursor mempool
+  -- Build application state of consensus algorithm
+  let appSt = AppState
+        { appStorage     = nodeStorage
+        , appPropStorage = propSt
+          --
+        , appValidationFun = \h a -> do
+            st <- stateAtH bchState h
+            return $ isJust $ processBlock h a st
+          --
+        , appBlockGenerator = \h -> do
+            st  <- stateAtH bchState h
+            txs <- peekNTransactions mempool Nothing
+            return $ transactionsToBlock h st txs
+          --
+        , appCommitCallback = \h -> setNamespace "mempool" $ do
+            before <- mempoolStats mempool
+            logger InfoS "Mempool before filtering" before
+            filterMempool mempool
+            after  <- mempoolStats mempool
+            logger InfoS "Mempool after filtering" after
+            nodeCommitCallback h
+          --
+        , appValidator      = nodeValidationKey
+        , appValidatorsSet  = valSet
+        }
+  -- Networking
+  appCh <- liftIO newAppChans
+  runConcurrently $
+    case nodeAction of
+        Nothing     -> []
+        Just action -> [forever $ action (pushTransaction cursor)
+                              =<< currentState bchState]
+    ++
+    [ id $ setNamespace "net"
+         $ startPeerDispatcher defCfg nodeNetworks nodeInitialPeers appCh
+                               (makeReadOnly   nodeStorage)
+                               (makeReadOnlyPS propSt)
+                               mempool
+    , id $ setNamespace "consensus"
+         $ runApplication defCfg appSt appCh
+    ]
 
 
 

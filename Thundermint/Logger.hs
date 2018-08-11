@@ -1,19 +1,29 @@
 {-# LANGUAGE DeriveFunctor              #-}
+{-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE RecordWildCards            #-}
+{-# LANGUAGE TemplateHaskell            #-}
 -- |
 -- Logger
 module Thundermint.Logger (
     MonadLogger(..)
+  , setNamespace
   , LoggerT(..)
+  , NoLogsT(..)
   , runLoggerT
   , logOnException
+  , withLogEnv
+    -- ** Scribe construction helpers
+  , ScribeType(..)
+  , ScribeSpec(..)
+  , makeScribe
     -- * JSON scribe
   , makeJsonHandleScribe
   , makeJsonFileScribe
     -- * Reexports
   , Severity(..)
+  , Verbosity(..)
     -- * Structured logging
   , LogBlockInfo(..)
   , LogBlock(..)
@@ -27,13 +37,18 @@ import Control.Monad.Trans.Class
 import Control.Monad.Trans.Reader
 import Control.Exception          (SomeException(..),AsyncException(..))
 import Data.Aeson
+import Data.Aeson.TH
 import Data.Int
+import Data.IORef
 import Data.Typeable
 import Data.Monoid     ((<>))
 import qualified Data.HashMap.Strict        as HM
 import qualified Data.ByteString.Lazy.Char8 as BL
 import Katip
+import System.Directory (createDirectoryIfMissing)
+import System.FilePath  (splitFileName)
 import System.IO
+import GHC.Generics (Generic)
 
 import Thundermint.Control
 import Thundermint.Consensus.Types
@@ -49,6 +64,9 @@ class Monad m => MonadLogger m where
   logger :: LogItem a => Severity -> LogStr -> a -> m ()
   -- | Change current namespace
   localNamespace :: (Namespace -> Namespace) -> m a -> m a
+
+setNamespace :: MonadLogger m => Namespace -> m a -> m a
+setNamespace nm = localNamespace (const nm)
 
 -- | Concrete implementation of logger monad
 newtype LoggerT m a = LoggerT (ReaderT (Namespace, LogEnv) m a)
@@ -68,6 +86,14 @@ instance MonadIO m => MonadLogger (LoggerT m) where
     logF a nm sev s
   localNamespace f (LoggerT m) = LoggerT $ local (first f) m
 
+-- | Mock logging. Useful for cases where constraints require logging
+--   but we don't need any
+newtype NoLogsT m a = NoLogsT { runNoLogsT :: m a }
+  deriving ( Functor, Applicative, Monad
+           , MonadIO, MonadThrow, MonadCatch, MonadMask, MonadFork)
+instance MonadTrans NoLogsT where
+  lift = NoLogsT
+
 -- | Log exceptions at Error severity
 logOnException :: (MonadLogger m, MonadCatch m) => m a -> m a
 logOnException = handle logE
@@ -80,6 +106,69 @@ logOnException = handle logE
           logger ErrorS ("Killed by " <> showLS e <> " :: " <> showLS (typeOf eTy)) ()
           throwM e
 
+
+-- | Initialize logging environment and add scribes. All scribes will
+--   be closed when function returns.
+withLogEnv
+  :: (MonadIO m, MonadMask m)
+  => Katip.Namespace
+  -> Katip.Environment
+  -> [IO Katip.Scribe]          -- ^ List of scribes to add to environment
+  -> (Katip.LogEnv -> m a)
+  -> m a
+withLogEnv namespace env scribes action
+  = bracket initLE fini $ \leRef -> loop leRef scribes
+  where
+    initLE = liftIO (newIORef =<< Katip.initLogEnv namespace env)
+    -- N.B. We need IORef to pass LogEnv with all scribes to fini
+    fini   = liftIO . (Katip.closeScribes <=< readIORef)
+    --
+    loop leRef []           = action =<< liftIO (readIORef leRef)
+    loop leRef (ios : rest) = mask $ \unmask -> do
+      scribe <- liftIO ios
+      le  <- liftIO (readIORef leRef)
+      le' <- liftIO (Katip.registerScribe "log" scribe Katip.defaultScribeSettings le)
+        `onException` liftIO (Katip.scribeFinalizer scribe)
+      liftIO (writeIORef leRef le')
+      unmask $ loop leRef rest
+
+-- | Type of scribe to use
+data ScribeType
+  = ScribeJSON
+  | ScribeTXT
+  deriving (Show,Eq,Ord,Generic)
+instance ToJSON   ScribeType
+instance FromJSON ScribeType
+
+-- | Description of scribe
+data ScribeSpec = ScribeSpec
+  { scribe'type      :: ScribeType
+    -- ^ Type of scribe to use
+  , scribe'path      :: Maybe FilePath
+    -- ^ Log file if not specified will log to stdout
+  , scribe'severity  :: Severity
+  , scribe'verbosity :: Verbosity
+  }
+  deriving (Show,Eq,Ord,Generic)
+deriveJSON defaultOptions
+  { fieldLabelModifier = drop 7 } ''ScribeSpec
+
+makeScribe :: ScribeSpec -> IO Scribe
+makeScribe ScribeSpec{..} = do
+  forM_ scribe'path $ \path -> do
+    let (dir,_) = splitFileName path
+    createDirectoryIfMissing True dir
+  case (scribe'type, scribe'path) of
+    (ScribeTXT,  Nothing) -> mkHandleScribe ColorIfTerminal stdout  sev verb
+    (ScribeTXT,  Just nm) -> mkFileScribe nm sev verb
+    (ScribeJSON, Nothing) -> makeJsonHandleScribe stdout sev verb
+    (ScribeJSON, Just nm) -> makeJsonFileScribe nm sev verb
+  where
+    sev  = scribe'severity
+    verb = scribe'verbosity
+
+instance ToJSON   Verbosity
+instance FromJSON Verbosity
 
 ----------------------------------------------------------------
 -- JSON scribe

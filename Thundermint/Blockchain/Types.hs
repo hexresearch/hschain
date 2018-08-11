@@ -74,8 +74,7 @@ data AppState m alg a = AppState
     -- ^ Function for validation of proposed block data.
   , appValidatorsSet  :: ValidatorSet alg
     -- ^ Set of all validators including our own
-  , appCommitCallback :: m ()
-  , appMaxHeight      :: Maybe Height
+  , appCommitCallback :: Height -> m ()
   }
 
 hoistAppState :: (forall x. m x -> n x) -> AppState m alg a -> AppState n alg a
@@ -84,7 +83,7 @@ hoistAppState fun AppState{..} = AppState
   , appPropStorage    = hoistPropStorageRW  fun appPropStorage
   , appBlockGenerator = fun . appBlockGenerator
   , appValidationFun  = \h a -> fun $ appValidationFun h a
-  , appCommitCallback = fun appCommitCallback
+  , appCommitCallback = fun . appCommitCallback
   , ..
   }
 

@@ -8,17 +8,19 @@
 {-# LANGUAGE TupleSections       #-}
 {-# LANGUAGE TypeFamilies        #-}
 import Control.Monad
+import Control.Monad.Catch
+import Control.Monad.IO.Class
 import Control.Concurrent
 import Codec.Serialise      (serialise)
 import Data.ByteString.Lazy (toStrict)
 import Data.Foldable
 import Data.Monoid
+import Data.Int
 import qualified Data.Aeson             as JSON
 import qualified Data.ByteString.Char8  as BC8
 import qualified Data.Map               as Map
 import System.Random    (randomRIO)
-import System.Directory (createDirectoryIfMissing)
-import System.FilePath  ((</>),splitFileName)
+import System.FilePath  ((</>))
 import GHC.Generics (Generic)
 import Options.Applicative
 
@@ -30,8 +32,8 @@ import Thundermint.Crypto.Ed25519   (Ed25519_SHA512)
 import Thundermint.Control
 import Thundermint.P2P.Network
 import Thundermint.Store
-import Thundermint.Store.STM
 import Thundermint.Store.SQLite
+import Thundermint.Logger
 import Thundermint.Mock
 import Thundermint.Mock.KeyList
 import Thundermint.Mock.Coin
@@ -40,15 +42,10 @@ import Thundermint.Mock.Coin
 -- Generating node specification
 ----------------------------------------------------------------
 
-data Topology = All2All
-              | Ring
-              deriving (Generic,Show)
-
 data NodeSpec = NodeSpec
   { nspecPrivKey     :: Maybe (PrivValidator Ed25519_SHA512)
-  , nspecIsValidator :: Bool
   , nspecDbName      :: Maybe FilePath
-  , nspecLogFile     :: NodeLogs
+  , nspecLogFile     :: [ScribeSpec]
   , nspecWalletKeys  :: (Int,Int)
   }
   deriving (Generic,Show)
@@ -62,10 +59,8 @@ data NetSpec = NetSpec
   }
   deriving (Generic,Show)
 
-instance JSON.ToJSON   Topology
 instance JSON.ToJSON   NodeSpec
 instance JSON.ToJSON   NetSpec
-instance JSON.FromJSON Topology
 instance JSON.FromJSON NodeSpec
 instance JSON.FromJSON NetSpec
 
@@ -74,21 +69,22 @@ instance JSON.FromJSON NetSpec
 ----------------------------------------------------------------
 
 transferActions
-  :: Int                        -- Delay between transactions
+  :: (MonadIO m)
+  => Int                        -- Delay between transactions
   -> [PublicKey Alg]            -- List of possible addresses
   -> [PrivKey Alg]              -- Private key which we own
-  -> (Tx -> IO ())              -- push new transaction
+  -> (Tx -> m ())               -- push new transaction
   -> CoinState                  -- Current state of
-  -> IO ()
+  -> m ()
 transferActions delay publicKeys privKeys push CoinState{..} = do
   -- Pick private key
-  privK <- do i <- randomRIO (0, length privKeys - 1)
+  privK <- do i <- liftIO $ randomRIO (0, length privKeys - 1)
               return (privKeys !! i)
   let pubK = publicKey privK
   -- Pick public key to send data to
-  target <- do i <- randomRIO (0, nPK - 1)
+  target <- do i <- liftIO $ randomRIO (0, nPK - 1)
                return (publicKeys !! i)
-  amount <- randomRIO (0,20)
+  amount <- liftIO $ randomRIO (0,20)
   -- Create transaction
   let inputs = findInputs amount [ (inp, n)
                                  | (inp, (pk,n)) <- Map.toList unspentOutputs
@@ -100,7 +96,7 @@ transferActions delay publicKeys privKeys push CoinState{..} = do
                                     ]
                       }
   push $ Send pubK (signBlob privK $ toStrict $ serialise tx) tx
-  threadDelay (delay * 1000)
+  liftIO $ threadDelay (delay * 1000)
   where
     nPK  = length publicKeys
 
@@ -120,44 +116,35 @@ findInputs tgt = go 0
 ----------------------------------------------------------------
 
 interpretSpec
-   :: Maybe Int -> FilePath -> Int
+   :: Maybe Int64 -> FilePath -> Int
    -> NetSpec -> IO [(BlockStorage 'RO IO Alg [Tx], IO ())]
 interpretSpec maxH prefix delay NetSpec{..} = do
   net   <- newMockNet
   -- Connection map
   forM (Map.toList netAddresses) $ \(addr, NodeSpec{..}) -> do
     -- Allocate storage for node
-    let makedir path = let (dir,_) = splitFileName path
-                       in createDirectoryIfMissing True dir
-    storage <- case nspecDbName of
-      Nothing -> newSTMBlockStorage       genesisBlock validatorSet
-      Just nm -> do
-        let dbName = prefix </> nm
-        makedir dbName
-        newSQLiteBlockStorage dbName genesisBlock validatorSet
-    -- Create dir for logs
-    logFiles <- do
-      let txt  = fmap (prefix </>) $ txtLog  nspecLogFile
-          json = fmap (prefix </>) $ jsonLog nspecLogFile
-      forM_ txt  makedir
-      forM_ json makedir
-      return $ NodeLogs txt json
+    storage <- newBlockStorage prefix nspecDbName genesisBlock validatorSet
+    let loggers = [ makeScribe s { scribe'path = fmap (prefix </>) (scribe'path s) }
+                  | s <- nspecLogFile ]
     return
       ( makeReadOnly storage
-      , runNode NodeDescription
-          { nodeStorage         = storage
-          , nodeBlockChainLogic = transitions
-          , nodeNetworks        = createMockNode net "50000" addr
-          , nodeInitialPeers    = map (,"50000") $ connections netAddresses addr
-          , nodeValidationKey   = guard nspecIsValidator >> nspecPrivKey
-          , nodeLogFile         = logFiles
-          , nodeAction          = do let (off,n)  = nspecWalletKeys
-                                         privKeys = take n $ drop off privateKeyList
-                                     return $ transferActions delay
-                                       (publicKey <$> take netInitialKeys privateKeyList)
-                                       privKeys
-          , nodeMaxH            = Height . fromIntegral <$> maxH
-          }
+      , withLogEnv "TM" "DEV" loggers $ \logenv -> runLoggerT "general" logenv $
+          runNode NodeDescription
+            { nodeStorage         = hoistBlockStorageRW liftIO storage
+            , nodeBlockChainLogic = transitions
+            , nodeNetworks        = createMockNode net "50000" addr
+            , nodeInitialPeers    = map (,"50000") $ connections netAddresses addr
+            , nodeValidationKey   = nspecPrivKey
+            , nodeAction          = do let (off,n)  = nspecWalletKeys
+                                           privKeys = take n $ drop off privateKeyList
+                                       return $ transferActions delay
+                                         (publicKey <$> take netInitialKeys privateKeyList)
+                                         privKeys
+            , nodeCommitCallback = \case
+                h | Just hM <- maxH
+                  , h > Height hM -> throwM Abort
+                  | otherwise     -> return ()
+            }
       )
   where
     netAddresses = Map.fromList $ [0::Int ..] `zip` netNodeList
@@ -179,11 +166,11 @@ interpretSpec maxH prefix delay NetSpec{..} = do
       }
 
 executeNodeSpec
-  :: Maybe Int -> FilePath -> Int
+  :: Maybe Int64 -> FilePath -> Int
   -> NetSpec -> IO [BlockStorage 'RO IO Alg [Tx]]
 executeNodeSpec maxH prefix delay spec = do
   actions <- interpretSpec maxH prefix delay spec
-  runConcurrently $ snd <$> actions
+  runConcurrently (snd <$> actions) `catch` (\Abort -> return ())
   return $ fst <$> actions
 
 ----------------------------------------------------------------

@@ -77,9 +77,9 @@ newSTMBlockStorage gBlock initalVals = do
 
 
 newSTMPropStorage
-  :: (Crypto alg, Serialise a)
-  => IO (ProposalStorage 'RW IO alg a)
-newSTMPropStorage = do
+  :: (Crypto alg, Serialise a, MonadIO m)
+  => m (ProposalStorage 'RW m alg a)
+newSTMPropStorage = fmap (hoistPropStorageRW liftIO) $ liftIO $ do
   varH    <- newTVarIO (Height 0) -- Current height
   varPBlk <- newTVarIO Map.empty  -- Proposed blocks
   varRMap <- newTVarIO Map.empty  -- Map of rounds to block IDs

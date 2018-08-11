@@ -63,17 +63,14 @@ runApplication config appSt@AppState{..} appCh = logOnException $ do
   height <- blockchainHeight appStorage
   lastCm <- retrieveLocalCommit appStorage height
   advanceToHeight appPropStorage $ next height
-  flip fix lastCm $ \loop commit -> do
+  void $ flip fix lastCm $ \loop commit -> do
     cm <- decideNewBlock config appSt appCh commit
     -- ASSERT: We successfully commited next block
     --
     -- FIXME: do we need to communicate with peers about our
     --        commit? (Do we need +2/3 commits to proceed
     --        further)
-    h  <- blockchainHeight appStorage
-    case appMaxHeight of
-      Just h' | h > h' -> return ()
-      _                -> loop (Just cm)
+    loop (Just cm)
   logger InfoS "Finished execution of blockchain" ()
 
 -- This function uses consensus algorithm to decide which block we're
@@ -119,7 +116,7 @@ decideNewBlock config appSt@AppState{..} appCh@AppChans{..} lastCommt = do
           $ LogBlockInfo (currentH hParam) (blockData b)
         storeCommit appStorage appValidatorsSet cmt b
         advanceToHeight appPropStorage . next =<< blockchainHeight appStorage
-        appCommitCallback
+        appCommitCallback (currentH hParam)
         return cmt
 
 
