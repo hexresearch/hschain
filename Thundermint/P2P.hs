@@ -166,7 +166,7 @@ startPeerDispatcher p2pConfig net addrs AppChans{..} storage propSt mempool = lo
     [ acceptLoop net peerCh mempool peers
      -- FIXME: we should manage requests for peers and connecting to
      --        new peers here
-    , do liftIO $ threadDelay 100e3
+    , do liftIO $ threadDelay 1e5
          forM_ addrs $ \a -> connectPeerTo net a peerCh mempool peers
          forever $ liftIO $ threadDelay 100000
     -- Output gossip statistics to 
@@ -219,13 +219,13 @@ connectPeerTo NetworkAPI{..} addr peerCh mempool registry = do
 
 
 -- Set of currently running peers.
-data PeerRegistry a = PeerRegistry
-                      (TVar (Map ThreadId a))
-                      (TVar (Set a))
-                      (TVar Bool)
+data PeerRegistry addr = PeerRegistry
+                             (TVar (Map ThreadId addr))  -- ^ Threads that process connection to address
+                             (TVar (Set addr))           -- ^ Connected addresses
+                             (TVar Bool)                 -- ^ `False` when close all connections
 
 -- Create new empty and active registry
-newPeerRegistry :: MonadIO m => m (PeerRegistry a)
+newPeerRegistry :: MonadIO m => m (PeerRegistry addr)
 newPeerRegistry = PeerRegistry
                <$> liftIO (newTVarIO Map.empty)
                <*> liftIO (newTVarIO Set.empty)
@@ -265,14 +265,14 @@ withPeer (PeerRegistry tidMap addrSet vActive) addr action = do
                                   modifyTVar' addrSet $ Set.delete a
 
 -- Kill all registered threads
-reapPeers :: MonadIO m => PeerRegistry a -> m ()
+reapPeers :: MonadIO m => PeerRegistry addr -> m ()
 reapPeers (PeerRegistry tidMap _ vActive) = liftIO $ do
   tids <- atomically $ do
     writeTVar vActive False
     readTVar tidMap
   mapM_ killThread $ Map.keys tids
 
-registiryAddressSet :: PeerRegistry a -> STM (Set a)
+registiryAddressSet :: PeerRegistry addr -> STM (Set addr)
 registiryAddressSet (PeerRegistry _ addrSet _)
   = readTVar addrSet
 
@@ -290,7 +290,7 @@ startPeer
   -> Connection              -- ^ Functions for interaction with network
   -> Mempool m tx
   -> m ()
-startPeer peerCh@PeerChans{..} net mempool = logOnException $ do
+startPeer peerCh@PeerChans{..} conn mempool = logOnException $ do
   logger InfoS "Starting peer" ()
   peerSt   <- newPeerStateObj blockStorage proposalStorage
   gossipCh <- liftIO newTChanIO
@@ -299,8 +299,8 @@ startPeer peerCh@PeerChans{..} net mempool = logOnException $ do
     [ peerGossipVotes   peerSt peerCh gossipCh
     , peerGossipBlocks  peerSt peerCh gossipCh
     , peerGossipMempool peerSt peerCh p2pConfig gossipCh cursor
-    , peerSend          peerSt peerCh gossipCh net
-    , peerReceive       peerSt peerCh net cursor
+    , peerSend          peerSt peerCh gossipCh conn
+    , peerReceive       peerSt peerCh conn cursor
     ]
   logger InfoS "Stopping peer" ()
 
@@ -411,8 +411,8 @@ peerGossipMempool peerObj PeerChans{..} config gossipCh MempoolCursor{..} = logO
         Nothing -> return ()
       _         -> return ()
     liftIO $ threadDelay $ 1000 * gossipDelayMempool config
-      
-      
+
+
 
 -- | Gossip blocks with given peer
 peerGossipBlocks
