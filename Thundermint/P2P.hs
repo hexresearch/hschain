@@ -297,7 +297,7 @@ startPeer
   -> Connection              -- ^ Functions for interaction with network
   -> Mempool m tx
   -> m ()
-startPeer peerCh@PeerChans{..} net mempool = do
+startPeer peerCh@PeerChans{..} conn mempool = do
   logger InfoS "Starting peer" ()
   peerSt   <- newPeerStateObj blockStorage proposalStorage
   gossipCh <- liftIO newTChanIO
@@ -306,8 +306,8 @@ startPeer peerCh@PeerChans{..} net mempool = do
     [ peerGossipVotes   peerSt peerCh gossipCh
     , peerGossipBlocks  peerSt peerCh gossipCh
     , peerGossipMempool peerSt peerCh p2pConfig gossipCh cursor
-    , peerSend          peerSt peerCh gossipCh net
-    , peerReceive       peerSt peerCh net cursor
+    , peerSend          peerSt peerCh gossipCh conn
+    , peerReceive       peerSt peerCh conn cursor
     ]
   logger InfoS "Stopping peer" ()
 
@@ -418,7 +418,6 @@ peerGossipMempool peerObj PeerChans{..} config gossipCh MempoolCursor{..} = logO
         Nothing -> return ()
       _         -> return ()
     liftIO $ threadDelay $ 1000 * gossipDelayMempool config
-
 
 
 -- | Gossip blocks with given peer
