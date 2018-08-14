@@ -21,7 +21,7 @@ module Thundermint.Consensus.Algorithm (
     ProposalState(..)
   , Message(..)
   , TMState(..)
-  , HeightParameres(..)
+  , HeightParameters(..)
     -- * State transitions
   , ConsensusMonad(..)
   , newHeight
@@ -72,7 +72,7 @@ data Message alg a
 -- | Set of parameters and callbacks for consensus algorithm for given
 --   height. These parameters are constant while we're deciding on
 --   next block.
-data HeightParameres (m :: * -> *) alg a = HeightParameres
+data HeightParameters (m :: * -> *) alg a = HeightParameters
   { currentH            :: Height
     -- ^ Height we're on.
   , areWeProposers       :: Round -> Bool
@@ -197,11 +197,11 @@ class Monad m => ConsensusMonad m where
 -- | Enter new height and create new state for state machine
 newHeight
   :: (ConsensusMonad m, MonadLogger m)
-  => HeightParameres m alg a
+  => HeightParameters m alg a
   -> Maybe (Commit alg a)
   -> ValidatorSet alg
   -> m (TMState alg a)
-newHeight HeightParameres{..} lastCommit vset = do
+newHeight HeightParameters{..} lastCommit vset = do
   logger InfoS "Entering new height ----------------" currentH
   scheduleTimeout $ Timeout  currentH (Round 0) StepNewHeight
   announceStep    $ FullStep currentH (Round 0) StepNewHeight
@@ -224,11 +224,11 @@ newHeight HeightParameres{..} lastCommit vset = do
 --   update state and thus message should be send back to it
 tendermintTransition
   :: (Crypto alg, ConsensusMonad m, MonadLogger m)
-  => HeightParameres m alg a  -- ^ Parameters for current height
+  => HeightParameters m alg a  -- ^ Parameters for current height
   -> Message alg a          -- ^ Message which causes state transition
   -> TMState alg a          -- ^ Initial state of state machine
   -> m (TMState alg a)
-tendermintTransition par@HeightParameres{..} msg sm@TMState{..} =
+tendermintTransition par@HeightParameters{..} msg sm@TMState{..} =
   case msg of
     -- Receiving proposal by itself does not entail state transition.
     -- We leave PROPOSE only after timeout
@@ -296,11 +296,11 @@ tendermintTransition par@HeightParameres{..} msg sm@TMState{..} =
 -- received prevote
 checkTransitionPrevote
   :: (ConsensusMonad m, MonadLogger m, Crypto alg)
-  => HeightParameres m alg a
+  => HeightParameters m alg a
   -> Round
   -> TMState alg a
   -> m (TMState alg a)
-checkTransitionPrevote par@HeightParameres{..} r sm@(TMState{..})
+checkTransitionPrevote par@HeightParameters{..} r sm@(TMState{..})
   --  * We have +2/3 prevotes for some later round (R+x)
   --  => goto Prevote(H,R+x)
   | r > smRound
@@ -320,11 +320,11 @@ checkTransitionPrevote par@HeightParameres{..} r sm@(TMState{..})
 -- received precommit
 checkTransitionPrecommit
   :: (ConsensusMonad m, MonadLogger m, Crypto alg)
-  => HeightParameres m alg a
+  => HeightParameters m alg a
   -> Round
   -> TMState alg a
   -> m (TMState alg a)
-checkTransitionPrecommit par@HeightParameres{..} r sm@(TMState{..})
+checkTransitionPrecommit par@HeightParameters{..} r sm@(TMState{..})
   --  * We have +2/3 precommits for particular block at some round
   --  => goto Commit(H,R)
   --
@@ -362,12 +362,12 @@ checkTransitionPrecommit par@HeightParameres{..} r sm@(TMState{..})
 -- Enter Propose stage and send required messages
 enterPropose
   :: (ConsensusMonad m, MonadLogger m)
-  => HeightParameres m alg a
+  => HeightParameters m alg a
   -> Round
   -> TMState alg a
   -> LogTransitionReason
   -> m (TMState alg a)
-enterPropose HeightParameres{..} r sm@TMState{..} reason = do
+enterPropose HeightParameters{..} r sm@TMState{..} reason = do
   logger InfoS "Entering propose" $ LogTransition currentH smRound smStep r reason
   scheduleTimeout $ Timeout currentH r StepProposal
   announceStep    $ FullStep currentH r StepProposal
@@ -394,12 +394,12 @@ enterPropose HeightParameres{..} r sm@TMState{..} reason = do
 --      PRECOMMIT
 enterPrevote
   :: (Crypto alg, ConsensusMonad m, MonadLogger m)
-  => HeightParameres m alg a
+  => HeightParameters m alg a
   -> Round
   -> TMState alg a
   -> LogTransitionReason
   -> m (TMState alg a)
-enterPrevote par@HeightParameres{..} r (unlockOnPrevote -> sm@TMState{..}) reason = do
+enterPrevote par@HeightParameters{..} r (unlockOnPrevote -> sm@TMState{..}) reason = do
   --
   logger InfoS "Entering prevote" $ LogTransition currentH smRound smStep r reason
   castPrevote smRound =<< prevoteBlock
@@ -437,18 +437,18 @@ enterPrevote par@HeightParameres{..} r (unlockOnPrevote -> sm@TMState{..}) reaso
 
 -- Unlock upon entering prevote which happens if:
 --   * We're already locked
---   * We have polca for round R: lock.R < R < current.R
+--   * We have polka for round R: lock.R < R < current.R
 unlockOnPrevote
   :: TMState alg a
   -> TMState alg a
 unlockOnPrevote sm@TMState{..}
   | Just (lockR, _) <- smLockedBlock
-  , hasAnyPolca lockR
+  , hasAnyPolka lockR
     = sm { smLockedBlock = Nothing }
   | otherwise
     = sm
   where
-    hasAnyPolca lockR  = not $ null
+    hasAnyPolka lockR  = not $ null
       [ ()
       | r      <- rangeExclusive lockR smRound
       , Just _ <- [majority23at r smPrevotesSet]
@@ -460,12 +460,12 @@ unlockOnPrevote sm@TMState{..}
 --   3. Check whether we need to make further state transitions.
 enterPrecommit
   :: (Crypto alg, ConsensusMonad m, MonadLogger m)
-  => HeightParameres m alg a
+  => HeightParameters m alg a
   -> Round
   -> TMState alg a
   -> LogTransitionReason
   -> m (TMState alg a)
-enterPrecommit par@HeightParameres{..} r sm@TMState{..} reason = do
+enterPrecommit par@HeightParameters{..} r sm@TMState{..} reason = do
   logger InfoS "Entering precommit" $ LogTransition currentH smRound smStep r reason
   castPrecommit r precommitBlock
   scheduleTimeout $ Timeout currentH r StepPrecommit
@@ -479,10 +479,10 @@ enterPrecommit par@HeightParameres{..} r sm@TMState{..} reason = do
       -- We have polka at round R
       | Just v <- majority23at r smPrevotesSet
         = case voteBlockID v of
-            -- Polca for NIL. Unlock and precommit NIL
+            -- Polka for NIL. Unlock and precommit NIL
             Nothing  -> ( Nothing
                         , Nothing)
-            -- Polca for block B. Re-lock to B and precommit it
+            -- Polka for block B. Re-lock to B and precommit it
             Just bid -> ( Just bid
                         , Just (r,bid))
        -- Otherwise keep lock unchanged and precommit NIL
@@ -492,11 +492,11 @@ enterPrecommit par@HeightParameres{..} r sm@TMState{..} reason = do
 
 addPrevote
   :: (ConsensusMonad m)
-  => HeightParameres m alg a
+  => HeightParameters m alg a
   -> Signed 'Verified alg (Vote 'PreVote alg a)
   -> TMState alg a
   -> m (TMState alg a)
-addPrevote HeightParameres{..} v sm@TMState{..} = do
+addPrevote HeightParameters{..} v sm@TMState{..} = do
   announceHasPreVote v
   case addSignedValue (voteRound $ signedValue v) v smPrevotesSet of
     InsertOK votes   -> return sm{ smPrevotesSet = votes }
@@ -505,11 +505,11 @@ addPrevote HeightParameres{..} v sm@TMState{..} = do
 
 addPrecommit
   :: (ConsensusMonad m)
-  => HeightParameres m alg a
+  => HeightParameters m alg a
   -> Signed 'Verified alg (Vote 'PreCommit alg a)
   -> TMState alg a
   -> m (TMState alg a)
-addPrecommit HeightParameres{..} v sm@TMState{..} = do
+addPrecommit HeightParameters{..} v sm@TMState{..} = do
   announceHasPreCommit v
   case addSignedValue (voteRound $ signedValue v) v smPrecommitsSet of
     InsertOK votes   -> return sm{ smPrecommitsSet = votes }

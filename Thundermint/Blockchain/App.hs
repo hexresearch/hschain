@@ -89,7 +89,7 @@ decideNewBlock
 decideNewBlock config appSt@AppState{..} appCh@AppChans{..} lastCommt = do
   -- Enter NEW HEIGHT and create initial state for consensus state
   -- machine
-  hParam <- makeHeightParametes config appSt appCh
+  hParam <- makeHeightParameters config appSt appCh
   --
   -- FIXME: encode that we cannot fail here!
   Success tm0 <- runConsesusM $ newHeight hParam lastCommt appValidatorsSet
@@ -124,7 +124,7 @@ decideNewBlock config appSt@AppState{..} appCh@AppChans{..} lastCommt = do
 handleVerifiedMessage
   :: (MonadLogger m, Crypto alg)
   => ProposalStorage 'RW m alg a
-  -> HeightParameres (ConsensusM alg a m) alg a
+  -> HeightParameters (ConsensusM alg a m) alg a
   -> TMState alg a
   -> MessageRx 'Verified alg a
   -> m (ConsensusResult alg a (TMState alg a))
@@ -206,13 +206,13 @@ instance MonadLogger m => MonadLogger (ConsensusM alg a m) where
 instance MonadTrans (ConsensusM alg a) where
   lift = ConsensusM . fmap Success
 
-makeHeightParametes
+makeHeightParameters
   :: (MonadIO m, MonadLogger m, Crypto alg, Serialise a, Show a)
   => Configuration
   -> AppState m alg a
   -> AppChans alg a
-  -> m (HeightParameres (ConsensusM alg a m) alg a)
-makeHeightParametes Configuration{..} AppState{..} AppChans{..} = do
+  -> m (HeightParameters (ConsensusM alg a m) alg a)
+makeHeightParameters Configuration{..} AppState{..} AppChans{..} = do
   h           <- blockchainHeight appStorage
   Just valSet <- retrieveValidatorSet appStorage (next h)
   let proposerChoice (Round r) =
@@ -222,7 +222,7 @@ makeHeightParametes Configuration{..} AppState{..} AppChans{..} = do
             Just v    = validatorByIndex appValidatorsSet (ValidatorIdx (fromIntegral i))
         in  address (validatorPubKey v)
   --
-  return HeightParameres
+  return HeightParameters
     { currentH        = next h
       -- FIXME: this is some random algorithms that should probably
       --        work (for some definition of work)

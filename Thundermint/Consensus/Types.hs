@@ -180,7 +180,7 @@ instance Serialise VoteType
 
 -- | Single vote cast validator. Type of vote is determined by its
 --   type tag
-data Vote (ty :: VoteType) alg a= Vote
+data Vote (ty :: VoteType) alg a = Vote
   { voteHeight     :: Height
   , voteRound      :: Round
   , voteTime       :: Time
