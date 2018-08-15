@@ -2,4 +2,4 @@ pipeline:
   build:
     image: haskell:8.2.2
     commands:
-    - stack build
+    - stack --stack-root $PWD/.stack --system-ghc build
