@@ -25,7 +25,7 @@ Library
                      , directory
                      , deepseq           >=1.4
                      , filepath
-                     , exceptions        >=0.10.0
+                     , exceptions        >= 0.8.3
                      , memory            >=0.14.14
                      , random
                      , stm               >=2.4
@@ -35,7 +35,7 @@ Library
                      , transformers      >=0.5
                      , unordered-containers >=0.2.5.0
                      --
-                     , network           >=2.7.0.0
+                     , network           >=2.6.0.0
                      , katip             >=0.5.4.0
                      , cryptonite        >=0.25
                      --
@@ -99,7 +99,7 @@ Executable thundermint-simple-network
                      , bytestring >=0.10
                      , base58-bytestring >=0.1
                      , containers >=0.5.7
-                     , network    >=2.7.0.0
+                     , network    >=2.6.0.0
   hs-source-dirs:      exe
   Main-is:             network.hs
 
@@ -112,7 +112,7 @@ Executable thundermint-node
                      , bytestring >=0.10
                      , base58-bytestring >=0.1
                      , containers >=0.5.7
-                     , network    >=2.7.0.0
+                     , network    >=2.6.0.0
                      , text
   hs-source-dirs:      exe
   Main-is:             node.hs
