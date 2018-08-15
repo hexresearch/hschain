@@ -25,7 +25,7 @@ import Network.Socket
     , getAddrInfo
     , getNameInfo
     , listen
-    , setCloseOnExecIfNeeded
+    -- , setCloseOnExecIfNeeded
     , setSocketOption
     , socket
     )
@@ -119,7 +119,9 @@ waitForAddrs = do
         -- If the prefork technique is not used,
         -- set CloseOnExec for the security reasons.
         let fd = fdSocket sock
-        setCloseOnExecIfNeeded fd
+        -- TODO: commented to use network-2.6.*
+        --       fix to provide on-close behavior
+        -- setCloseOnExecIfNeeded fd
         listen sock 10
         return sock
 
