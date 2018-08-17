@@ -19,11 +19,13 @@ import Control.Concurrent.STM
 import Control.Exception
 
 import Control.Concurrent (forkIO, killThread)
-import Control.Monad      (forever, void)
+import Control.Monad      (forever, void, when)
 import Data.Bits          (unsafeShiftL)
 import Data.Map           (Map)
 import Data.Monoid        ((<>))
 import Data.Word          (Word32)
+import Data.List          (find)
+import Data.Maybe (fromMaybe)
 
 import qualified Data.ByteString.Builder        as BB
 import qualified Data.ByteString.Lazy           as LBS
@@ -64,6 +66,11 @@ headerSize = 4
 --
 ----------------------------------------------------------------
 
+newSocket :: Net.AddrInfo -> IO Net.Socket
+newSocket ai = Net.socket (Net.addrFamily     ai)
+                          (Net.addrSocketType ai)
+                          (Net.addrProtocol   ai)
+
 -- | API implementation for real tcp network
 realNetwork :: Net.ServiceName -> NetworkAPI Net.SockAddr
 realNetwork listenPort = NetworkAPI
@@ -71,47 +78,31 @@ realNetwork listenPort = NetworkAPI
       let hints = Net.defaultHints
             { Net.addrFlags      = [Net.AI_PASSIVE]
             , Net.addrSocketType = Net.Stream
-            , Net.addrFamily     = Net.AF_INET
-            -- FIXME: Add ipv6 listening
-            --
-            -- "localhost" can be bound not only to "127.0.0.1", but to "::1" too.
-            --
-            -- So, when we query addrInfo in `connect`:
-            --
-            --    (hostName, serviceName) <- Net.getNameInfo [] True True addr
-            --    addrInfo:_ <- Net.getAddrInfo hints hostName serviceName
-            --
-            -- `hostName` is "localhost", and `addrInfo` has AF_INET6 family.
-            --
-            -- But in `listen` "addr" has IPv4 address for bounding "0.0.0.0".
-            --
-            -- So `listen` bound to IPv4, but `connect` try to connect to IPv6.
-            --
             }
-      addr:_ <- Net.getAddrInfo (Just hints) Nothing (Just listenPort)
-      sock   <- Net.socket (Net.addrFamily     addr)
-                           (Net.addrSocketType addr)
-                           (Net.addrProtocol   addr)
-      flip onException (Net.close sock) $ do
+      addrs <- Net.getAddrInfo (Just hints) Nothing (Just listenPort)
+
+      when (null addrs) $
+        fail "listenOn: No address availible"
+      let addr = fromMaybe (head addrs) $ find isIPv6addr addrs
+
+      bracketOnError (newSocket addr) Net.close $ \sock -> do
+        when (isIPv6addr addr) $
+          Net.setSocketOption sock Net.IPv6Only 0
         Net.bind sock (Net.addrAddress addr)
         Net.listen sock 5
         return (Net.close sock, accept sock)
-    --
   , connect  = \addr -> do
       let hints = Just Net.defaultHints
             { Net.addrSocketType = Net.Stream
-            , Net.addrFamily     = Net.AF_INET
             }
       (hostName, serviceName) <- Net.getNameInfo [] True True addr
       addrInfo:_ <- Net.getAddrInfo hints hostName serviceName
-      sock <- Net.socket (Net.addrFamily     addrInfo)
-                         (Net.addrSocketType addrInfo)
-                         (Net.addrProtocol   addrInfo)
-      flip onException (Net.close sock) $ do
+      bracketOnError (newSocket addrInfo) Net.close $ \ sock -> do
         Net.connect sock addr
         return $ applyConn sock
   }
  where
+  isIPv6addr = (==) Net.AF_INET6 . Net.addrFamily
   accept sock = do
     (conn, addr) <- Net.accept sock
     return (applyConn conn, addr)
@@ -173,9 +164,7 @@ realNetworkUdp listenPort = do
         , Net.addrSocketType = Net.Datagram
         }
   addrInfo:_ <- Net.getAddrInfo (Just hints) Nothing (Just listenPort)
-  sock       <- Net.socket (Net.addrFamily     addrInfo)
-                           (Net.addrSocketType addrInfo)
-                           (Net.addrProtocol   addrInfo)
+  sock       <- newSocket addrInfo
   tid <- forkIO $
     flip onException (Net.close sock) $ do
       Net.bind sock (Net.addrAddress addrInfo)
