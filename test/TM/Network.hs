@@ -25,9 +25,15 @@ tests =
                     , testCase "delayed write" $ mockNetPair >>= \(server, client) -> delayedWrite server client
                     ]
                   , testGroup "real"
-                        [ testCase "ping-pong" $ realNetPair >>= \(server, client) -> pingPong server client
-                        , testCase "delayed write" $ realNetPair >>= \(server, client) -> delayedWrite server client
-                        ]
+                    [ testGroup "IPv4"
+                          [ testCase "ping-pong" $ realNetPair "127.0.0.1" >>= \(server, client) -> pingPong server client
+                          , testCase "delayed write" $ realNetPair "127.0.0.1" >>= \(server, client) -> delayedWrite server client
+                          ]
+                    , testGroup "IPv6"
+                          [ testCase "ping-pong" $ realNetPair "::1" >>= \(server, client) -> pingPong server client
+                          , testCase "delayed write" $ realNetPair "::1" >>= \(server, client) -> delayedWrite server client
+                          ]
+                    ]
                   ]
 
 
@@ -35,7 +41,7 @@ tests =
 -- | used to run from ghci
 run :: IO ()
 run = do
-    (server, client) <- realNetPair
+    (server, client) <- realNetPair "localhost"
     pingPong server client
 
 -- | Simple test to ensure that mock network works at all

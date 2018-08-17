@@ -8,13 +8,13 @@ import qualified Network.Socket as Net
 
 ----------------------------------------------------------------
 
-realNetPair :: IO ((Net.SockAddr, NetworkAPI Net.SockAddr),
+realNetPair :: Net.HostName
+            -> IO ((Net.SockAddr, NetworkAPI Net.SockAddr),
                    (Net.SockAddr, NetworkAPI Net.SockAddr))
-realNetPair = do
+realNetPair host = do
     n <- randomRIO (0, 99 :: Int)
     let port1 = "300" ++ show  n
         port2 = "300" ++ show  (n+1)
-        host = "127.0.0.1"
         server = realNetwork port1
         client = realNetwork port2
         hints = Net.defaultHints  { Net.addrSocketType = Net.Stream }
