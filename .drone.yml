@@ -22,3 +22,9 @@ pipeline:
     - .stack-work
     when:
       event: push
+
+  telegram:
+    image: appleboy/drone-telegram
+    token: $PLUGIN_TOKEN
+    to: $PLUGIN_TO
+    secrets: [ plugin_token, plugin_to ]
