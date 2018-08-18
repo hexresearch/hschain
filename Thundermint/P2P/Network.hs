@@ -17,17 +17,23 @@ module Thundermint.P2P.Network (
   ) where
 
 import Control.Concurrent.STM
-import Control.Exception
 
 import Control.Concurrent     (forkIO, killThread)
+import Control.Exception      (Exception)
 import Control.Monad          (forM_, forever, void, when)
+import Control.Monad.Catch    (MonadMask, MonadThrow, bracketOnError, onException, throwM)
 import Control.Monad.IO.Class (MonadIO, liftIO)
+import Control.Retry          (recoverAll)
 import Data.Bits              (unsafeShiftL)
+import Data.Default.Class     (def)
 import Data.List              (find)
 import Data.Map               (Map)
 import Data.Maybe             (fromMaybe)
 import Data.Monoid            ((<>))
 import Data.Word              (Word32)
+import System.Timeout         (timeout)
+
+import Thundermint.Control
 
 import qualified Data.ByteString.Builder        as BB
 import qualified Data.ByteString.Lazy           as LBS
@@ -43,10 +49,12 @@ import qualified Network.Socket.ByteString.Lazy as NetLBS
 --   to provide two implementations of networking. One is real network
 --   and another is mock in-process network for testing.
 data NetworkAPI addr = NetworkAPI
-  { listenOn :: forall m. (MonadIO m) => m (m (), m (Connection , addr))
+  { listenOn :: forall m. (MonadIO m, MonadThrow m, MonadMask m)
+             => m (m (), m (Connection , addr))
     -- ^ Start listening on given port. Returns action to stop listener
     --   and function for accepting new connections
-  , connect  :: forall m. (MonadIO m) => addr -> m Connection
+  , connect  :: forall m. (MonadIO m, MonadThrow m, MonadMask m)
+             => addr -> m Connection
     -- ^ Connect to remote address
   }
 
@@ -68,39 +76,48 @@ headerSize = 4
 --
 ----------------------------------------------------------------
 
-newSocket :: Net.AddrInfo -> IO Net.Socket
-newSocket ai = Net.socket (Net.addrFamily     ai)
-                          (Net.addrSocketType ai)
-                          (Net.addrProtocol   ai)
+data NetworkError = ConnectionTimedOut
+                  | NoAddressAvailable
+  deriving (Show)
+
+instance Exception NetworkError
+
+newSocket :: MonadIO m => Net.AddrInfo -> m Net.Socket
+newSocket ai = liftIO $ Net.socket (Net.addrFamily     ai)
+                                   (Net.addrSocketType ai)
+                                   (Net.addrProtocol   ai)
 
 -- | API implementation for real tcp network
 realNetwork :: Net.ServiceName -> NetworkAPI Net.SockAddr
 realNetwork listenPort = NetworkAPI
-  { listenOn = liftIO $ do
+  { listenOn = recoverAll def $ const $ do
       let hints = Net.defaultHints
             { Net.addrFlags      = [Net.AI_PASSIVE]
             , Net.addrSocketType = Net.Stream
             }
-      addrs <- Net.getAddrInfo (Just hints) Nothing (Just listenPort)
+      addrs <- liftIO $ Net.getAddrInfo (Just hints) Nothing (Just listenPort)
 
       when (null addrs) $
-        fail "listenOn: No address availible"
+        throwM NoAddressAvailable
       let addr = fromMaybe (head addrs) $ find isIPv6addr addrs
 
-      bracketOnError (newSocket addr) Net.close $ \sock -> do
+      bracketOnError (liftIO $ newSocket addr) (liftIO . Net.close) $ \sock -> liftIO $ do
         when (isIPv6addr addr) $
           Net.setSocketOption sock Net.IPv6Only 0
         Net.bind sock (Net.addrAddress addr)
         Net.listen sock 5
         return (liftIO $ Net.close sock, accept sock)
-  , connect  = \addr -> liftIO $ do
+  , connect  = \addr -> recoverAll def $ const $ do
       let hints = Just Net.defaultHints
             { Net.addrSocketType = Net.Stream
             }
-      (hostName, serviceName) <- Net.getNameInfo [] True True addr
-      addrInfo:_ <- Net.getAddrInfo hints hostName serviceName
-      bracketOnError (newSocket addrInfo) Net.close $ \ sock -> do
-        Net.connect sock addr
+      (hostName, serviceName) <- liftIO $ Net.getNameInfo [] True True addr
+      addrInfo:_ <- liftIO $ Net.getAddrInfo hints hostName serviceName
+      bracketOnError (newSocket addrInfo) (liftIO . Net.close) $ \ sock -> do
+        let tenSec = 10000000
+        liftIO $ throwNothingM ConnectionTimedOut
+               $ timeout tenSec
+               $ Net.connect sock addr
         return $ applyConn sock
   }
  where

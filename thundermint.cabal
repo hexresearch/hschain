@@ -22,12 +22,14 @@ Library
                      , bytestring        >=0.10
                      , base58-bytestring >=0.1
                      , containers        >=0.5.9
+                     , data-default-class
                      , directory
                      , deepseq           >=1.4
                      , filepath
                      , exceptions        >= 0.8.3
                      , memory            >=0.14.14
                      , random
+                     , retry             >= 0.7.6.2
                      , stm               >=2.4
                      , serialise         >=0.2
                      , sqlite-simple
