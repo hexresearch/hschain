@@ -28,3 +28,5 @@ pipeline:
     token: $PLUGIN_TOKEN
     to: $PLUGIN_TO
     secrets: [ plugin_token, plugin_to ]
+    when:
+      status: [ success, failure ]
