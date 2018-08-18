@@ -12,15 +12,22 @@ module Thundermint.Control (
   , Mutex
   , newMutex
   , withMutex
+  -- throwing on Maybe and Either
+  , throwNothing
+  , throwNothingM
+  , throwLeft
+  , throwLeftM
   ) where
 
 import Control.Concurrent.MVar
 import Control.Monad
-import Control.Monad.Trans.Reader
-import Control.Monad.Catch            (bracket,MonadMask,mask,onException)
 import Control.Monad.IO.Class
-import           Control.Exception    (Exception(..), SomeException, AsyncException)
-import           Control.Concurrent   (ThreadId, killThread, throwTo, myThreadId)
+import Control.Monad.Trans.Reader
+
+import Control.Concurrent  (ThreadId, killThread, myThreadId, throwTo)
+import Control.Exception   (AsyncException, Exception(..), SomeException)
+import Control.Monad.Catch (MonadMask, MonadThrow, bracket, mask, onException, throwM)
+
 import qualified Control.Concurrent as Conc
 
 ----------------------------------------------------------------
@@ -115,3 +122,20 @@ newMutex = Mutex <$> newMVar ()
 
 withMutex :: Mutex -> IO a -> IO a
 withMutex (Mutex mvar) = withMVar mvar . const
+
+----------------------------------------------------------------
+--
+----------------------------------------------------------------
+
+throwNothing :: (Exception e, MonadThrow m) => e -> Maybe a -> m a
+throwNothing e = maybe (throwM e) pure
+
+throwNothingM :: (Exception e, MonadThrow m) => e -> m (Maybe a) -> m a
+throwNothingM e m = m >>= throwNothing e
+
+throwLeft :: (Exception e, MonadThrow m) => Either e a -> m a
+throwLeft = either throwM pure
+
+throwLeftM :: (Exception e, MonadThrow m) => m (Either e a) -> m a
+throwLeftM m = m >>= throwLeft
+
