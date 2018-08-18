@@ -281,9 +281,11 @@ startNode net addrs appState@AppState{..} mempool = do
                        (hoistBlockStorageRO liftIO $ makeReadOnly   appStorage)
                        (hoistPropStorageRO  liftIO $ makeReadOnlyPS appPropStorage)
                        (hoistMempool liftIO mempool)
-    withAsync netRoutine $ \_ ->
-      runLoggerT "consensus" logenv
-        $ runApplication defCfg (hoistAppState liftIO appState) appCh
+    runConcurrently
+      [ netRoutine
+      , runLoggerT "consensus" logenv
+          $ runApplication defCfg (hoistAppState liftIO appState) appCh
+      ]
 
 -- | Start set of nodes and return their corresponding storage. Will
 --   return their storage after all nodes finish execution

@@ -13,39 +13,40 @@ module Thundermint.P2P (
   , LogGossip(..)
   ) where
 
-import Control.Applicative
-import Control.Monad
-import Control.Monad.IO.Class
-import Control.Monad.Catch
-import Control.Concurrent      ( ThreadId, myThreadId, threadDelay, killThread
-                               , MVar, readMVar, newMVar)
-import Control.Concurrent.STM
 import Codec.Serialise
-import           Data.Monoid       ((<>))
-import           Data.Maybe        (mapMaybe)
-import           Data.Foldable
-import           Data.Function
-import qualified Data.Map        as Map
-import           Data.Map          (Map)
-import qualified Data.Set        as Set
-import           Data.Set          (Set)
-import qualified Data.Aeson      as JSON
-import qualified Data.Aeson.TH   as JSON
-import Katip         (showLS)
+import Control.Applicative
+import Control.Concurrent.STM
+import Control.Monad
+import Control.Monad.Catch
+import Control.Monad.IO.Class
+import Data.Foldable
+import Data.Function
+
+import Control.Concurrent (MVar, ThreadId, killThread, myThreadId, newMVar, readMVar, threadDelay)
+import Data.Map           (Map)
+import Data.Maybe         (mapMaybe)
+import Data.Monoid        ((<>))
+import Data.Set           (Set)
+import GHC.Generics       (Generic)
+import Katip              (showLS)
+import System.Random      (randomRIO)
+
+import qualified Data.Aeson    as JSON
+import qualified Data.Aeson.TH as JSON
+import qualified Data.Map      as Map
+import qualified Data.Set      as Set
 import qualified Katip
-import System.Random (randomRIO)
-import GHC.Generics  (Generic)
 
 
+import Thundermint.Blockchain.Types
+import Thundermint.Consensus.Types
+import Thundermint.Control
 import Thundermint.Crypto
 import Thundermint.Crypto.Containers
-import Thundermint.Consensus.Types
-import Thundermint.Blockchain.Types
+import Thundermint.Logger
 import Thundermint.P2P.Network
 import Thundermint.P2P.PeerState
 import Thundermint.Store
-import Thundermint.Control
-import Thundermint.Logger
 
 
 ----------------------------------------------------------------
@@ -88,17 +89,17 @@ instance Katip.LogItem  LogGossip where
 
 -- | Connection handed to process controlling communication with peer
 data PeerChans m addr alg a = PeerChans
-  { peerChanTx      :: TChan (Announcement alg)
+  { peerChanTx         :: TChan (Announcement alg)
     -- ^ Broadcast channel for outgoing messages
-  , peerChanRx      :: MessageRx 'Unverified alg a -> STM ()
+  , peerChanRx         :: MessageRx 'Unverified alg a -> STM ()
     -- ^ STM action for sending message to main application
-  , blockStorage    :: BlockStorage 'RO m alg a
+  , blockStorage       :: BlockStorage 'RO m alg a
     -- ^ Read only access to storage of blocks
-  , proposalStorage :: ProposalStorage 'RO m alg a
+  , proposalStorage    :: ProposalStorage 'RO m alg a
     -- ^ Read only access to storage of proposals
-  , consensusState  :: STM (Maybe (Height, TMState alg a))
+  , consensusState     :: STM (Maybe (Height, TMState alg a))
     -- ^ Read only access to current state of consensus state machine
-  , p2pConfig       :: Configuration
+  , p2pConfig          :: Configuration
 
   , cntGossipPrevote   :: Counter
   , cntGossipPrecommit :: Counter
@@ -169,7 +170,7 @@ startPeerDispatcher p2pConfig net addrs AppChans{..} storage propSt mempool = lo
     , do liftIO $ threadDelay 100e3
          forM_ addrs $ \a -> connectPeerTo net a peerCh mempool peers
          forever $ liftIO $ threadDelay 100000
-    -- Output gossip statistics to 
+    -- Output gossip statistics to
     , forever $ do
         logGossip peerCh
         liftIO $ threadDelay 1e6
@@ -186,15 +187,15 @@ acceptLoop
   -> m ()
 acceptLoop NetworkAPI{..} peerCh mempool registry = logOnException $ do
   logger InfoS "Starting accept loop" ()
-  bracket (liftIO listenOn) (liftIO . fst) $ \(_,accept) -> forever $
+  bracket listenOn fst $ \(_,accept) -> forever $
     -- We accept connection, create new thread and put it into
     -- registry. If we already have connection from that peer we close
     -- connection immediately
     mask $ \restore -> do
-      (conn, addr) <- liftIO accept
-      void $ flip forkFinally (const $ liftIO $ close conn)
-           $ withPeer registry addr
+      (conn, addr) <- accept
+      void $ flip forkFinally (const $ close conn)
            $ restore
+           $ withPeer registry addr
            $ do logger InfoS ("Accepted connection from " <> showLS addr) ()
                 startPeer peerCh conn mempool
 
@@ -210,12 +211,13 @@ connectPeerTo
   -> Mempool m tx
   -> PeerRegistry addr
   -> m ()
-connectPeerTo NetworkAPI{..} addr peerCh mempool registry = do
-  logger InfoS ("Connecting to " <> showLS addr) ()
-  void $ fork
-       $ bracket (liftIO $ connect addr) (liftIO . close)
-       $ \conn -> withPeer registry addr
-                $ startPeer peerCh conn mempool
+connectPeerTo NetworkAPI{..} addr peerCh mempool registry =
+  -- Igrnore all exceptions to prevent apparing of error messages in stderr/stdout.
+  void . flip forkFinally (const $ return ()) . logOnException $ do
+    logger InfoS ("Connecting to " <> showLS addr) ()
+    bracket (connect addr) close
+      $ \conn -> withPeer registry addr
+               $ startPeer peerCh conn mempool
 
 
 -- Set of currently running peers.
@@ -290,7 +292,7 @@ startPeer
   -> Connection              -- ^ Functions for interaction with network
   -> Mempool m tx
   -> m ()
-startPeer peerCh@PeerChans{..} net mempool = logOnException $ do
+startPeer peerCh@PeerChans{..} net mempool = do
   logger InfoS "Starting peer" ()
   peerSt   <- newPeerStateObj blockStorage proposalStorage
   gossipCh <- liftIO newTChanIO
@@ -411,8 +413,8 @@ peerGossipMempool peerObj PeerChans{..} config gossipCh MempoolCursor{..} = logO
         Nothing -> return ()
       _         -> return ()
     liftIO $ threadDelay $ 1000 * gossipDelayMempool config
-      
-      
+
+
 
 -- | Gossip blocks with given peer
 peerGossipBlocks
@@ -464,7 +466,7 @@ peerReceive
   -> m ()
 peerReceive peerSt PeerChans{..} Connection{..} MempoolCursor{..} = logOnException $ do
   logger InfoS "Starting routing for receiving messages" ()
-  fix $ \loop -> liftIO recv >>= \case
+  fix $ \loop -> recv >>= \case
     Nothing  -> logger InfoS "Peer stopping since socket is closed" ()
     Just bs  -> case deserialiseOrFail bs of
       Left  e   -> logger ErrorS ("Deserialization error: " <> showLS e) ()
@@ -511,7 +513,7 @@ peerSend peerSt PeerChans{..} gossipCh Connection{..} = logOnException $ do
   forever $ do
     msg <- liftIO $ atomically $  readTChan gossipCh
                               <|> fmap GossipAnn (readTChan ch)
-    liftIO $ send $ serialise msg
+    send $ serialise msg
     -- Update state of peer when we advance to next height
     case msg of
       GossipBlock b                        -> addBlock peerSt b
