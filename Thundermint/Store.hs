@@ -43,7 +43,7 @@ module Thundermint.Store (
 
 import qualified Katip
 
-
+import Codec.Serialise  (Serialise)
 import Data.Map         (Map)
 import Data.Traversable (forM)
 import GHC.Generics     (Generic)
@@ -317,6 +317,7 @@ data BlockchainInconsistency = MissingGenesisBlock
                              | BlockLastCommitHasUnknownValidator Height
                              | BlockHasMisMatchChainId Height -- ^ chainId  differ from genesis block chainId
                              | BlockHasMisMatchHeightInHeader Height
+                             | BlockHasMisMatchHash Height
                              -- * Commit invariants
                              | CommitHasUnknownValidator Height
                              | CommitHasDeficitVotingPower Height
@@ -419,7 +420,14 @@ blockInvariant07 (Just vs) h (Just Block{..}) =
                                Just _  -> []
 
 
-checkBlocks :: Monad m =>
+-- | hash of block and hash from db should match
+blockInvariant08 :: (Crypto alg, Serialise a) =>  Maybe (BlockID alg a) -> Height -> Maybe (Block alg a) -> [BlockchainInconsistency]
+blockInvariant08 blockID h block = if (blockHash <$> block) == blockID
+                            then []
+                            else [BlockHasMisMatchHash h]
+
+
+checkBlocks :: (Monad m, Crypto alg, Serialise a) =>
                BlockStorage rw m alg a -> m [BlockchainInconsistency]
 checkBlocks storage = do
     maxH <- blockchainHeight storage
@@ -427,8 +435,9 @@ checkBlocks storage = do
     let heights = enumFromTo (toEnum 0) maxH
         genesisChainId = headerChainID $ blockHeader genesis
     xs <- forM heights (\h -> do
-                            b <- retrieveBlock storage h
-                            vs <- retrieveValidatorSet storage (pred h) -- we check blockLastCommit validators which refer to H-1 block, hence i get (H-1) validators set
+                            b   <- retrieveBlock storage h
+                            bID <- retrieveBlockID storage h
+                            vs  <- retrieveValidatorSet storage (pred h) -- we check blockLastCommit validators which refer to H-1 block, hence i get (H-1) validators set
                             return $ concatMap (\inv -> inv h b) [ genesisInvariant01
                                                                  , genesisInvariant02
                                                                  , genesisInvariant03
@@ -439,6 +448,7 @@ checkBlocks storage = do
                                                                  , blockInvariant05
                                                                  , blockInvariant06
                                                                  , blockInvariant07 vs
+                                                                 , blockInvariant08 bID
                                                                  ]
                        )
     return $ concat xs
