@@ -23,9 +23,7 @@ import Control.Exception      (Exception)
 import Control.Monad          (forM_, forever, void, when)
 import Control.Monad.Catch    (MonadMask, MonadThrow, bracketOnError, onException, throwM)
 import Control.Monad.IO.Class (MonadIO, liftIO)
-import Control.Retry          (recoverAll)
 import Data.Bits              (unsafeShiftL)
-import Data.Default.Class     (def)
 import Data.List              (find)
 import Data.Map               (Map)
 import Data.Maybe             (fromMaybe)
@@ -90,7 +88,7 @@ newSocket ai = liftIO $ Net.socket (Net.addrFamily     ai)
 -- | API implementation for real tcp network
 realNetwork :: Net.ServiceName -> NetworkAPI Net.SockAddr
 realNetwork listenPort = NetworkAPI
-  { listenOn = recoverAll def $ const $ do
+  { listenOn = do
       let hints = Net.defaultHints
             { Net.addrFlags      = [Net.AI_PASSIVE]
             , Net.addrSocketType = Net.Stream
@@ -107,7 +105,7 @@ realNetwork listenPort = NetworkAPI
         Net.bind sock (Net.addrAddress addr)
         Net.listen sock 5
         return (liftIO $ Net.close sock, accept sock)
-  , connect  = \addr -> recoverAll def $ const $ do
+  , connect  = \addr -> do
       let hints = Just Net.defaultHints
             { Net.addrSocketType = Net.Stream
             }
@@ -115,6 +113,7 @@ realNetwork listenPort = NetworkAPI
       addrInfo:_ <- liftIO $ Net.getAddrInfo hints hostName serviceName
       bracketOnError (newSocket addrInfo) (liftIO . Net.close) $ \ sock -> do
         let tenSec = 10000000
+        -- Waits for connection for 10 sec and throws `ConnectionTimedOut` exception
         liftIO $ throwNothingM ConnectionTimedOut
                $ timeout tenSec
                $ Net.connect sock addr
