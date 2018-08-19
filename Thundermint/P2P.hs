@@ -23,6 +23,8 @@ import Data.Foldable
 import Data.Function
 
 import Control.Concurrent (MVar, ThreadId, killThread, myThreadId, newMVar, readMVar, threadDelay)
+import Control.Retry      (recoverAll)
+import Data.Default.Class (def)
 import Data.Map           (Map)
 import Data.Maybe         (mapMaybe)
 import Data.Monoid        ((<>))
@@ -164,11 +166,14 @@ startPeerDispatcher p2pConfig net addrs AppChans{..} storage propSt mempool = lo
   -- Accepting connection is managed by separate linked thread and
   -- this thread manages initiating connections
   flip finally (uninterruptibleMask_ $ reapPeers peers) $ runConcurrently
-    [ acceptLoop net peerCh mempool peers
+    -- Makes 5 attempts to start acceptLoop wirh 5 msec interval
+    [ recoverAll def $ const $ acceptLoop net peerCh mempool peers
      -- FIXME: we should manage requests for peers and connecting to
      --        new peers here
     , do liftIO $ threadDelay 100e3
-         forM_ addrs $ \a -> connectPeerTo net a peerCh mempool peers
+         forM_ addrs $ \a ->
+           -- Makes 5 attempts to start acceptLoop wirh 5 msec interval
+           recoverAll def $ const $ connectPeerTo net a peerCh mempool peers
          forever $ liftIO $ threadDelay 100000
     -- Output gossip statistics to
     , forever $ do
