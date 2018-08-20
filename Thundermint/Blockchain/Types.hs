@@ -61,8 +61,6 @@ instance JSON.ToJSON   Configuration
 data AppState m alg a = AppState
   { appStorage        :: BlockStorage 'RW m alg a
     -- ^ Persistent storage for blockchain and related data
-    --
-    -- FIXME: Is IO good enough or do we need some other guarantees?
   , appPropStorage    :: ProposalStorage 'RW m alg a
     -- ^ Storage for proposed blocks
   , appBlockGenerator :: Height -> m a
