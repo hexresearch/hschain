@@ -59,29 +59,31 @@ instance JSON.ToJSON   Configuration
 
 -- | Full state of application.
 data AppState m alg a = AppState
-  { appStorage        :: BlockStorage 'RW m alg a
+  { appStorage          :: BlockStorage 'RW m alg a
     -- ^ Persistent storage for blockchain and related data
-  , appPropStorage    :: ProposalStorage 'RW m alg a
+  , appPropStorage      :: ProposalStorage 'RW m alg a
     -- ^ Storage for proposed blocks
-  , appBlockGenerator :: Height -> m a
+  , appBlockGenerator   :: Height -> m a
     -- ^ Generate fresh block for proposal. It's called each time we
     --   need to create new block for proposal
-  , appValidator      :: Maybe (PrivValidator alg)
+  , appValidator        :: Maybe (PrivValidator alg)
     -- ^ Private validator for node. It's @Nothing@ if node is not a validator
-  , appValidationFun  :: Height -> a -> m Bool
+  , appValidationFun    :: Height -> a -> m Bool
     -- ^ Function for validation of proposed block data.
-  , appValidatorsSet  :: ValidatorSet alg
-    -- ^ Set of all validators including our own
-  , appCommitCallback :: Height -> m ()
+  , appNextValidatorSet :: Height -> a -> m (ValidatorSet alg)
+    -- ^ Obtain validator set for next block.
+  , appCommitCallback   :: Height -> m ()
+    -- ^ Function which is called after each commit.
   }
 
 hoistAppState :: (forall x. m x -> n x) -> AppState m alg a -> AppState n alg a
 hoistAppState fun AppState{..} = AppState
-  { appStorage        = hoistBlockStorageRW fun appStorage
-  , appPropStorage    = hoistPropStorageRW  fun appPropStorage
-  , appBlockGenerator = fun . appBlockGenerator
-  , appValidationFun  = \h a -> fun $ appValidationFun h a
-  , appCommitCallback = fun . appCommitCallback
+  { appStorage          = hoistBlockStorageRW fun appStorage
+  , appPropStorage      = hoistPropStorageRW  fun appPropStorage
+  , appBlockGenerator   = fun . appBlockGenerator
+  , appValidationFun    = \h a -> fun $ appValidationFun h a
+  , appCommitCallback   = fun . appCommitCallback
+  , appNextValidatorSet = \h a -> fun $ appNextValidatorSet h a
   , ..
   }
 

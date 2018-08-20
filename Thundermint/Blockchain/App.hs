@@ -92,7 +92,7 @@ decideNewBlock config appSt@AppState{..} appCh@AppChans{..} lastCommt = do
   hParam <- makeHeightParameters config appSt appCh
   --
   -- FIXME: encode that we cannot fail here!
-  Success tm0 <- runConsesusM $ newHeight hParam lastCommt appValidatorsSet
+  Success tm0 <- runConsesusM $ newHeight hParam lastCommt
   -- Handle incoming messages until we decide on next block.
   flip fix tm0 $ \loop tm -> do
     -- logger DebugS ("TM =\n" <> logStr (groom tm)) ()
@@ -104,17 +104,18 @@ decideNewBlock config appSt@AppState{..} appCh@AppChans{..} lastCommt = do
     -- Handle message
     res <- runMaybeT
         $ lift . handleVerifiedMessage appPropStorage hParam tm
-      =<< verifyMessageSignature appSt msg
+      =<< verifyMessageSignature appSt (validatorSet hParam) msg
     case res of
       Nothing             -> loop tm
       Just (Success r)    -> loop r
       Just Tranquility    -> loop tm
       Just Misdeed        -> loop tm
       Just (DoCommit cmt) -> do
-        b <- waitForBlockID appPropStorage $ commitBlockID cmt
+        b    <- waitForBlockID appPropStorage $ commitBlockID cmt
+        vset <- appNextValidatorSet (currentH hParam) (blockData b)
         logger InfoS "Actual commit"
           $ LogBlockInfo (currentH hParam) (blockData b)
-        storeCommit appStorage appValidatorsSet cmt b
+        storeCommit appStorage vset cmt b
         advanceToHeight appPropStorage . next =<< blockchainHeight appStorage
         appCommitCallback (currentH hParam)
         return cmt
@@ -147,9 +148,10 @@ handleVerifiedMessage ProposalStorage{..} hParam tm = \case
 verifyMessageSignature
   :: (Monad m, Crypto alg, Serialise a)
   => AppState m alg a
+  -> ValidatorSet alg
   -> MessageRx 'Unverified alg a
   -> MaybeT m (MessageRx 'Verified alg a)
-verifyMessageSignature AppState{..} = \case
+verifyMessageSignature AppState{..} vset = \case
   RxPreVote   sv -> verify RxPreVote   sv
   RxPreCommit sv -> verify RxPreCommit sv
   RxProposal  sp -> verify RxProposal  sp
@@ -159,7 +161,7 @@ verifyMessageSignature AppState{..} = \case
     verify con sx = case verifySignature pkLookup sx of
       Just sx' -> return $ con sx'
       Nothing  -> empty
-    pkLookup a = validatorPubKey <$> validatorByAddr appValidatorsSet a
+    pkLookup a = validatorPubKey <$> validatorByAddr vset a
 
 
 
@@ -217,13 +219,14 @@ makeHeightParameters Configuration{..} AppState{..} AppChans{..} = do
   Just valSet <- retrieveValidatorSet appStorage (next h)
   let proposerChoice (Round r) =
         let Height h' = h
-            n         = validatorSetSize appValidatorsSet
+            n         = validatorSetSize valSet
             i         = (h' + r) `mod` fromIntegral n
-            Just v    = validatorByIndex appValidatorsSet (ValidatorIdx (fromIntegral i))
+            Just v    = validatorByIndex valSet (ValidatorIdx (fromIntegral i))
         in  address (validatorPubKey v)
   --
   return HeightParameters
     { currentH        = next h
+    , validatorSet    = valSet
       -- FIXME: this is some random algorithms that should probably
       --        work (for some definition of work)
     , areWeProposers  = \r -> case appValidator of
@@ -262,7 +265,7 @@ makeHeightParameters Configuration{..} AppState{..} AppChans{..} = do
               Nothing -> return ()
               Just b  -> writeTChan appChanRx (RxBlock b)
     --
-    , scheduleTimeout = \t@(Timeout _ (Round r) step) -> do
+    , scheduleTimeout = \t@(Timeout _ (Round r) step) ->
         liftIO $ void $ forkIO $ do
           let (baseT,delta) = case step of
                 StepNewHeight -> timeoutNewHeight

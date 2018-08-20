@@ -73,8 +73,9 @@ data Message alg a
 --   height. These parameters are constant while we're deciding on
 --   next block.
 data HeightParameters (m :: * -> *) alg a = HeightParameters
-  { currentH            :: Height
+  { currentH             :: Height
     -- ^ Height we're on.
+  , validatorSet         :: ValidatorSet alg
   , areWeProposers       :: Round -> Bool
     -- ^ Find address of proposer for given round.
   , proposerForRound     :: Round -> Address alg
@@ -199,17 +200,16 @@ newHeight
   :: (ConsensusMonad m, MonadLogger m)
   => HeightParameters m alg a
   -> Maybe (Commit alg a)
-  -> ValidatorSet alg
   -> m (TMState alg a)
-newHeight HeightParameters{..} lastCommit vset = do
+newHeight HeightParameters{..} lastCommit = do
   logger InfoS "Entering new height ----------------" currentH
   scheduleTimeout $ Timeout  currentH (Round 0) StepNewHeight
   announceStep    $ FullStep currentH (Round 0) StepNewHeight
   return TMState
     { smRound         = Round 0
     , smStep          = StepNewHeight
-    , smPrevotesSet   = emptySignedSetMap vset
-    , smPrecommitsSet = emptySignedSetMap vset
+    , smPrevotesSet   = emptySignedSetMap validatorSet
+    , smPrecommitsSet = emptySignedSetMap validatorSet
     , smProposals     = Map.empty
     , smLockedBlock   = Nothing
     , smLastCommit    = lastCommit

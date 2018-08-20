@@ -227,8 +227,8 @@ runNode NodeDescription{nodeBlockChainLogic=logic@BlockFold{..}, ..} = do
             logger InfoS "Mempool after filtering" after
             nodeCommitCallback h
           --
-        , appValidator      = nodeValidationKey
-        , appValidatorsSet  = valSet
+        , appValidator        = nodeValidationKey
+        , appNextValidatorSet = \_ _ -> return valSet
         }
   -- Networking
   appCh <- liftIO newAppChans

@@ -92,8 +92,8 @@ main = do
                     , appCommitCallback = \case
                         h | h > Height 9 -> error "EJECT EJECT!!!"
                           | otherwise    -> return ()
-                    , appValidator     = val
-                    , appValidatorsSet = validatorSet
+                    , appValidator        = val
+                    , appNextValidatorSet = \_ _ -> return validatorSet
                     }
                 , nullMempool
                 )
