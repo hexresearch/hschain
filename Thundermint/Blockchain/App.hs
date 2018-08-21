@@ -11,7 +11,8 @@
 -- continuously updates blockchain using consensus algorithm and
 -- communicates with outside world using STM channels.
 module Thundermint.Blockchain.App (
-    runApplication
+    newAppChans
+  , runApplication
   ) where
 
 import Codec.Serialise (Serialise)
@@ -43,6 +44,12 @@ import Katip (Severity(..), showLS)
 --
 ----------------------------------------------------------------
 
+newAppChans :: MonadIO m => m (AppChans alg a)
+newAppChans = do
+  appChanRx  <- liftIO   newTChanIO
+  appChanTx  <- liftIO   newBroadcastTChanIO
+  appTMState <- liftIO $ newTVarIO Nothing
+  return AppChans{..}
 
 -- | Main loop for application. Here we update state machine and
 --   blockchain in response to incoming messages.

@@ -232,7 +232,7 @@ runNode NodeDescription{nodeBlockChainLogic=logic@BlockFold{..}, ..} = do
         , appNextValidatorSet = \_ _ -> return valSet
         }
   -- Networking
-  appCh <- liftIO newAppChans
+  appCh <- newAppChans
   return
     [ id $ setNamespace "net"
          $ startPeerDispatcher defCfg nodeNetwork nodeAddr nodeInitialPeers appCh

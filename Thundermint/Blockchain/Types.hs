@@ -18,7 +18,6 @@ module Thundermint.Blockchain.Types (
   , MessageRx(..)
   , Announcement(..)
   , AppChans(..)
-  , newAppChans
   ) where
 
 import Codec.Serialise        (Serialise)
@@ -138,7 +137,3 @@ data AppChans alg a = AppChans
     --   machine status and known blocks which should be exposed in
     --   read-only manner for gossip with peers.
   }
-
-newAppChans :: IO (AppChans alg a)
-newAppChans =
-  AppChans <$> newTChanIO <*> newBroadcastTChanIO <*> newTVarIO Nothing
