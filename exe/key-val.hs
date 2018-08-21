@@ -1,119 +1,168 @@
+{-# LANGUAGE DataKinds         #-}
+{-# LANGUAGE DeriveGeneric     #-}
 {-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards   #-}
 {-# LANGUAGE TupleSections     #-}
 {-# LANGUAGE TypeFamilies      #-}
-import           Control.Monad
-import           Data.List
-import           Data.Map      (Map)
-import qualified Data.Map      as Map
-import qualified Data.Set      as Set
-import           Text.Groom
+import Control.Monad
+import Control.Monad.IO.Class
+import Control.Monad.Catch
+import Data.Int
+import Data.Maybe               (isJust)
+import Data.Monoid              ((<>))
+import Data.List
+import qualified Data.Aeson             as JSON
+import qualified Data.ByteString.Char8  as BC8
+import qualified Data.Map               as Map
+import Options.Applicative
+import System.FilePath
 
+import GHC.Generics (Generic)
+
+import Thundermint.Blockchain.App
 import Thundermint.Blockchain.Types
+import Thundermint.Blockchain.Interpretation
+import Thundermint.Control
 import Thundermint.Consensus.Types
-import Thundermint.Crypto
 import Thundermint.Crypto.Ed25519   (Ed25519_SHA512)
-import Thundermint.Mock
+import Thundermint.Logger
+import Thundermint.P2P
 import Thundermint.P2P.Network
 import Thundermint.Store
-import Thundermint.Store.STM
-
+import Thundermint.Mock
+import Thundermint.Mock.KeyVal
 
 ----------------------------------------------------------------
 --
 ----------------------------------------------------------------
 
-validators :: Map (Address Ed25519_SHA512) (PrivValidator Ed25519_SHA512)
-validators = makePrivateValidators
-  [ "2K7bFuJXxKf5LqogvVRQjms2W26ZrjpvUjo5LdvPFa5Y"
-  , "4NSWtMsEPgfTK25tCPWqNzVVze1dgMwcUFwS5WkSpjJL"
-  , "3Fj8bZjKc53F2a87sQaFkrDas2d9gjzK57FmQwnNnSHS"
-  , "D2fpHM1JA8trshiUW8XPvspsapUvPqVzSofaK1MGRySd"
-  ]
-
-genesisBlock :: Block Ed25519_SHA512 [(String,Int)]
-genesisBlock = Block
-  { blockHeader = Header
-      { headerChainID     = "KV"
-      , headerHeight      = Height 0
-      , headerTime        = Time 0
-      , headerLastBlockID = Nothing
-      }
-  , blockData       = []
-  , blockLastCommit = Nothing
+data NodeSpec = NodeSpec
+  { nspecPrivKey     :: Maybe (PrivValidator Ed25519_SHA512)
+  , nspecDbName      :: Maybe FilePath
+  , nspecLogFile     :: [ScribeSpec]
   }
+  deriving (Generic,Show)
+
+data NetSpec = NetSpec
+  { netNodeList     :: [NodeSpec]
+  , netTopology     :: Topology
+  , netPrefix       :: Maybe String
+  }
+  deriving (Generic,Show)
+
+instance JSON.ToJSON   NodeSpec
+instance JSON.ToJSON   NetSpec
+instance JSON.FromJSON NodeSpec
+instance JSON.FromJSON NetSpec
 
 
-loadAllBlocks :: Monad m => BlockStorage ro m alg a -> m [Block alg a]
-loadAllBlocks storage = go (Height 0)
+interpretSpec
+  :: Maybe Int64                -- ^ Maximum height
+  -> FilePath
+  -> NetSpec                    --
+  -> IO [(BlockStorage 'RO IO Ed25519_SHA512 [(String,Int)], IO ())]
+interpretSpec maxH prefix NetSpec{..} = do
+  net <- newMockNet
+  forM (Map.toList netAddresses) $ \(addr, NodeSpec{..}) -> do
+    -- Prepare logging
+    let loggers = [ makeScribe s { scribe'path = fmap (prefix </>) (scribe'path s) }
+                  | s <- nspecLogFile
+                  ]
+    -- Create storage
+    storage  <- newBlockStorage prefix nspecDbName genesisBlock validatorSet
+    hChain   <- blockchainHeight storage
+    --
+    withLogEnv "TM" "DEV" loggers $ \logenv -> runLoggerT "general" logenv $ do
+      -- Blockchain state
+      bchState <- newBChState transitions
+                $ makeReadOnly (hoistBlockStorageRW liftIO storage)
+      _        <- stateAtH bchState (next hChain)
+      let appState = AppState
+            { appStorage        = hoistBlockStorageRW liftIO storage
+            --
+            , appValidationFun  = \h a -> do
+                st <- stateAtH bchState h
+                return $ isJust $ processBlock transitions h a st
+            --
+            , appBlockGenerator = \h -> do
+                st <- stateAtH bchState h
+                let Just k = find (`Map.notMember` st) ["K_" ++ show (n :: Int) | n <- [1 ..]]
+                return [(k, addr)]
+            --
+            , appCommitCallback = \case
+                h | Just h' <- maxH
+                  , h > Height h'   -> throwM Abort
+                  | otherwise       -> return ()
+            , appValidator        = nspecPrivKey
+            , appNextValidatorSet = \_ _ -> return validatorSet
+            }
+      appCh <- newAppChans
+      return ( makeReadOnly storage
+             , runLoggerT "general" logenv $ runConcurrently
+                 [ setNamespace "net"
+                   $ startPeerDispatcher
+                       defCfg
+                       (createMockNode net "50000" addr)
+                       (addr,"50000")
+                       (map (,"50000") $ connections netAddresses addr)
+                       appCh
+                       (hoistBlockStorageRO liftIO $ makeReadOnly storage)
+                       nullMempool
+                 , setNamespace "consensus"
+                   $ runApplication defCfg appState appCh
+                 ]
+             )
   where
-    go h = retrieveBlock storage h >>= \case
-      Nothing -> return []
-      Just b  -> (b :) <$> go (next h)
+    netAddresses = Map.fromList $ [0::Int ..] `zip` netNodeList
+    connections  = case netTopology of
+      Ring    -> connectRing
+      All2All -> connectAll2All
+    validatorSet = makeValidatorSetFromPriv [ pk | Just pk <- nspecPrivKey <$> netNodeList ]
 
 
--- Key-value demo blockchain.
---
--- Blockchain is append only key-value map. Each block contains
--- several key-value pairs. Following constraints apply:
---
---  * Block must contain only one pair
---  * Reuse of key is not possible.
+executeSpec
+  :: Maybe Int64                -- ^ Maximum height
+  -> FilePath
+  -> NetSpec                    --
+  -> IO [BlockStorage 'RO IO Ed25519_SHA512 [(String,Int)]]
+executeSpec maxH prefix spec = do
+  actions <- interpretSpec maxH prefix spec
+  runConcurrently (snd <$> actions) `catch` (\Abort -> return ())
+  return $ fst <$> actions
+
 main :: IO ()
-main = do
-  let validatorSet = makeValidatorSetFromPriv validators
-      nodeSet      = Map.fromList
-                   $ zip [0::Int ..]
-                   $ foldr (\v xs -> Just v : Nothing : xs) [] validators
-  net   <- newMockNet
-  nodes <- sequence
-    [ do storage     <- newSTMBlockStorage genesisBlock validatorSet
-         let loadAllKeys = Set.fromList . map fst . concatMap blockData <$> loadAllBlocks storage
-         return ( createMockNode net "50000" addr
-                , (addr,"50000")
-                , map (,"50000") $ connectRing nodeSet addr
-                , AppState
-                    { appStorage        = storage
-                    --
-                    , appValidationFun  = const $ \case
-                        [(k,_)] -> do existingKeys <- loadAllKeys
-                                      return $ k `Set.notMember` existingKeys
-                        _       -> return False
-                    , appBlockGenerator = const $
-                        case i of
-                          -- Byzantine!
-                          0 -> return [("XXX", 0)]
-                          _ -> do existingKeys <- loadAllKeys
-                                  let Just k = find (`Set.notMember` existingKeys)
-                                               ["K_" ++ show (n :: Int) | n <- [1 ..]]
-                                  return [(k,i)]
-                    --
-                    , appCommitCallback = \case
-                        h | h > Height 9 -> error "EJECT EJECT!!!"
-                          | otherwise    -> return ()
-                    , appValidator        = val
-                    , appNextValidatorSet = \_ _ -> return validatorSet
-                    }
-                , nullMempool
-                )
-    | (i, (addr, val)) <- [0::Int ..] `zip` Map.toList nodeSet
-    ]
-  st <- runNodeSet nodes
-  forM_ st $ \s -> do
-            bs <- checkBlocks s
-            cs <- checkCommits s
-            vs <- checkValidators s
-            cbs <- checkCommitsBlocks s
-            let errs = bs ++ cs ++ vs ++ cbs
-            case errs of
-              [] -> putStrLn "All checks passed succesfully!"
-              _  -> putStrLn $ "Found inconsistency: "  ++ (show errs)
-            return ()
-
-  forM_ st $ \s -> do
-    putStrLn "==== BLOCKCHAIN ================================================"
-    bs <- loadAllBlocks s
-    forM_ bs $ \b -> do
-      putStrLn $ groom $ blockHeader b
-      print $ blockData b
-      putStrLn "----------------"
+main
+  = join . customExecParser (prefs showHelpOnError)
+  $ info (helper <*> parser)
+    (  fullDesc
+    <> header   "Coin test program"
+    <> progDesc ""
+    )
+  where
+    work maxH prefix file = do
+      blob <- BC8.readFile file
+      spec <- case JSON.eitherDecodeStrict blob of
+        Right s -> return s
+        Left  e -> error e
+      _storageList <- executeSpec maxH prefix spec
+      return ()
+    ----------------------------------------
+    parser :: Parser (IO ())
+    parser
+      = pure work
+     <*> optional (option auto
+                    (  long    "max-h"
+                    <> metavar "N"
+                    <> help    "Maximum height"
+                    ))
+     <*> option str
+          (  long    "prefix"
+          <> value   "."
+          <> metavar "PATH"
+          <> help    "prefix for db & logs"
+          )
+     <*> argument str
+         (  help "Specification file"
+         <> metavar "JSON"
+         )

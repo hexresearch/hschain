@@ -138,7 +138,8 @@ interpretSpec maxH prefix delay NetSpec{..} = do
       ( makeReadOnly storage
       , withLogEnv "TM" "DEV" loggers $ \logenv -> runLoggerT "general" logenv $ do
           --
-          bchState <- newBChState transitions (makeReadOnly (hoistBlockStorageRW liftIO storage))
+          bchState <- newBChState transitions
+                    $ makeReadOnly (hoistBlockStorageRW liftIO storage)
           _        <- stateAtH bchState (next hChain)
           -- Create mempool
           let checkTx tx = do
