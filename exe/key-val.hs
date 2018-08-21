@@ -68,14 +68,12 @@ main = do
   net   <- newMockNet
   nodes <- sequence
     [ do storage     <- newSTMBlockStorage genesisBlock validatorSet
-         propStorage <- newSTMPropStorage
          let loadAllKeys = Set.fromList . map fst . concatMap blockData <$> loadAllBlocks storage
          return ( createMockNode net "50000" addr
                 , (addr,"50000")
                 , map (,"50000") $ connectRing nodeSet addr
                 , AppState
                     { appStorage        = storage
-                    , appPropStorage    = propStorage
                     --
                     , appValidationFun  = const $ \case
                         [(k,_)] -> do existingKeys <- loadAllKeys

@@ -36,6 +36,7 @@ import Thundermint.Crypto.Containers
 import Thundermint.Consensus.Algorithm
 import Thundermint.Consensus.Types
 import Thundermint.Store
+import Thundermint.Store.STM
 import Thundermint.Logger
 
 import Katip (Severity(..), showLS)
@@ -44,11 +45,12 @@ import Katip (Severity(..), showLS)
 --
 ----------------------------------------------------------------
 
-newAppChans :: MonadIO m => m (AppChans alg a)
+newAppChans :: (MonadIO m, Crypto alg, Serialise a) => m (AppChans m alg a)
 newAppChans = do
-  appChanRx  <- liftIO   newTChanIO
-  appChanTx  <- liftIO   newBroadcastTChanIO
-  appTMState <- liftIO $ newTVarIO Nothing
+  appChanRx      <- liftIO   newTChanIO
+  appChanTx      <- liftIO   newBroadcastTChanIO
+  appTMState     <- liftIO $ newTVarIO Nothing
+  appPropStorage <- newSTMPropStorage
   return AppChans{..}
 
 -- | Main loop for application. Here we update state machine and
@@ -62,10 +64,10 @@ runApplication
      -- ^ Configuration
   -> AppState m alg a
      -- ^ Get initial state of the application
-  -> AppChans alg a
+  -> AppChans m alg a
      -- ^ Channels for communication with peers
   -> m ()
-runApplication config appSt@AppState{..} appCh = logOnException $ do
+runApplication config appSt@AppState{..} appCh@AppChans{..} = logOnException $ do
   height <- blockchainHeight appStorage
   lastCm <- retrieveLocalCommit appStorage height
   advanceToHeight appPropStorage $ next height
@@ -89,7 +91,7 @@ decideNewBlock
      , Serialise a, Show a, LogBlock a)
   => Configuration
   -> AppState m alg a
-  -> AppChans alg a
+  -> AppChans m alg a
   -> Maybe (Commit alg a)
   -> m (Commit alg a)
 decideNewBlock config appSt@AppState{..} appCh@AppChans{..} lastCommt = do
@@ -220,7 +222,7 @@ makeHeightParameters
   :: (MonadIO m, MonadLogger m, Crypto alg, Serialise a, Show a)
   => Configuration
   -> AppState m alg a
-  -> AppChans alg a
+  -> AppChans m alg a
   -> m (HeightParameters (ConsensusM alg a m) alg a)
 makeHeightParameters Configuration{..} AppState{..} AppChans{..} = do
   h           <- blockchainHeight appStorage

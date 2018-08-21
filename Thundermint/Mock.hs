@@ -200,8 +200,6 @@ runNode
   => NodeDescription addr m alg st tx a
   -> m [m ()]
 runNode NodeDescription{nodeBlockChainLogic=logic@BlockFold{..}, ..} = do
-  -- Create proposal storage
-  propSt      <- newSTMPropStorage
   -- Create state of blockchain & Update it to current state of
   -- blockchain
   hChain      <- blockchainHeight     nodeStorage
@@ -209,7 +207,6 @@ runNode NodeDescription{nodeBlockChainLogic=logic@BlockFold{..}, ..} = do
   -- Build application state of consensus algorithm
   let appSt = AppState
         { appStorage     = nodeStorage
-        , appPropStorage = propSt
           --
         , appValidationFun = \h a -> do
             st <- stateAtH nodeBchState h
@@ -237,7 +234,6 @@ runNode NodeDescription{nodeBlockChainLogic=logic@BlockFold{..}, ..} = do
     [ id $ setNamespace "net"
          $ startPeerDispatcher defCfg nodeNetwork nodeAddr nodeInitialPeers appCh
                                (makeReadOnly   nodeStorage)
-                               (makeReadOnlyPS propSt)
                                nodeMempool
     , id $ setNamespace "consensus"
          $ runApplication defCfg appSt appCh
@@ -271,16 +267,15 @@ startNode net addr addrs appState@AppState{..} mempool = do
   scribe <- Katip.mkFileScribe ("logs/" ++ logfile) Katip.DebugS Katip.V2
   logenv <- Katip.registerScribe "log" scribe Katip.defaultScribeSettings
         =<< Katip.initLogEnv "TM" "DEV"
-  flip finally (Katip.closeScribes logenv) $ do
-    appCh   <- newAppChans
-    let netRoutine = runLoggerT "net" logenv
+  flip finally (Katip.closeScribes logenv) $ runLoggerT "" logenv $ do
+    appCh <- newAppChans
+    let netRoutine = setNamespace "net"
                    $ startPeerDispatcher defCfg net addr addrs appCh
-                       (hoistBlockStorageRO liftIO $ makeReadOnly   appStorage)
-                       (hoistPropStorageRO  liftIO $ makeReadOnlyPS appPropStorage)
+                       (hoistBlockStorageRO liftIO $ makeReadOnly appStorage)
                        (hoistMempool liftIO mempool)
     runConcurrently
       [ netRoutine
-      , runLoggerT "consensus" logenv
+      , setNamespace "consensus"
           $ runApplication defCfg (hoistAppState liftIO appState) appCh
       ]
 

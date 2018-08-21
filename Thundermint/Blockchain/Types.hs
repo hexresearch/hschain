@@ -60,8 +60,6 @@ instance JSON.ToJSON   Configuration
 data AppState m alg a = AppState
   { appStorage          :: BlockStorage 'RW m alg a
     -- ^ Persistent storage for blockchain and related data
-  , appPropStorage      :: ProposalStorage 'RW m alg a
-    -- ^ Storage for proposed blocks
   , appBlockGenerator   :: Height -> m a
     -- ^ Generate fresh block for proposal. It's called each time we
     --   need to create new block for proposal
@@ -78,7 +76,6 @@ data AppState m alg a = AppState
 hoistAppState :: (forall x. m x -> n x) -> AppState m alg a -> AppState n alg a
 hoistAppState fun AppState{..} = AppState
   { appStorage          = hoistBlockStorageRW fun appStorage
-  , appPropStorage      = hoistPropStorageRW  fun appPropStorage
   , appBlockGenerator   = fun . appBlockGenerator
   , appValidationFun    = \h a -> fun $ appValidationFun h a
   , appCommitCallback   = fun . appCommitCallback
@@ -125,15 +122,17 @@ data Announcement alg
 instance Serialise (Announcement alg)
 
 -- | Application connection to outer world
-data AppChans alg a = AppChans
-  { appChanRx   :: TChan (MessageRx 'Unverified alg a)
+data AppChans m alg a = AppChans
+  { appChanRx      :: TChan (MessageRx 'Unverified alg a)
     -- ^ TChan for receiving messages related to consensus protocol
     --   from peers (our own votes are also passed on same channel for
     --   uniformity)
-  , appChanTx   :: TChan (Announcement alg)
+  , appChanTx      :: TChan (Announcement alg)
     -- ^ TChan for broadcasting messages to the peers
-  , appTMState  :: TVar  (Maybe (Height, TMState alg a))
+  , appTMState     :: TVar  (Maybe (Height, TMState alg a))
     -- ^ Current state of consensus. It includes current height, state
     --   machine status and known blocks which should be exposed in
     --   read-only manner for gossip with peers.
+  , appPropStorage :: ProposalStorage 'RW m alg a
+    -- ^ Storage for proposed blocks
   }

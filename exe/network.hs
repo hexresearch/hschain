@@ -76,7 +76,6 @@ main = do
   let validatorSet = makeValidatorSetFromPriv validators
   nodes <- sequence
     [ do storage     <- newSTMBlockStorage genesisBlock validatorSet
-         propStorage <- newSTMPropStorage
          serviceName <- getServiceName addr
          return ( realNetwork serviceName
                 -- TODO: connectRing creates a network with very poor
@@ -86,7 +85,6 @@ main = do
                 , connectAll2All validators addr
                 , AppState
                     { appStorage        = storage
-                    , appPropStorage    = propStorage
                     , appValidationFun  = \_ _ -> return True
                     , appBlockGenerator = \_ -> do
                         Height h <- blockchainHeight storage
