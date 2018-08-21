@@ -35,17 +35,22 @@ module Thundermint.Store (
   , hoistMempool
   , nullMempool
   -- * Blockchain invariants checkers
+  , BlockchainInconsistency
   , checkBlocks
   , checkCommits
   , checkValidators
   ) where
 
+import Control.Monad.Trans.Writer
 
 import qualified Katip
 
 import Codec.Serialise  (Serialise)
+import Control.Monad    (foldM, when)
+import Data.Foldable    (forM_)
 import Data.Map         (Map)
-import Data.Traversable (forM)
+import Data.Maybe       (isJust, maybe)
+import Data.Traversable (forM, mapM)
 import GHC.Generics     (Generic)
 
 import qualified Data.Aeson    as JSON
@@ -325,36 +330,11 @@ data BlockchainInconsistency = MissingGenesisBlock
 
 
 -- | genesis block is missing
-genesisInvariant01 :: Height -> Maybe (Block alg a) -> [BlockchainInconsistency]
-genesisInvariant01 (Height 0) Nothing = [MissingGenesisBlock]
-genesisInvariant01 _ _                = []
-
 -- | genesis block lastCommit, headerLastBlockID should be Nothing
-genesisInvariant02 :: Height -> Maybe (Block alg a) -> [BlockchainInconsistency]
-genesisInvariant02 (Height 0) (Just Block{..}) = case blockLastCommit of
-                                                   Just _  -> [GenesisHasLastCommit]
-                                                   Nothing -> []
-genesisInvariant02 _ _ = []
-
 -- | genesis block headerLastBlockID should be Nothing
-genesisInvariant03 :: Height -> Maybe (Block alg a) -> [BlockchainInconsistency]
-genesisInvariant03 (Height 0) (Just Block{..}) = case headerLastBlockID blockHeader of
-                                                   Just _  -> [GenesisHasHeaderLastBlockID]
-                                                   Nothing -> []
-genesisInvariant03 _ _ = []
-
-
 -- | block, commit, validator at height H is present
-blockInvariant01 :: Height -> Maybe a -> [BlockchainInconsistency]
-blockInvariant01 h Nothing = [MissingBlock h]
-blockInvariant01 _ _       = []
+-- | Block at height H has H in its header
 
--- |  Block at height H has H in its header
-blockInvariant02 :: Height -> Maybe (Block alg a) -> [BlockchainInconsistency]
-blockInvariant02 _ Nothing = []
-blockInvariant02 h (Just Block{..}) = if headerHeight  blockHeader /= h
-                                      then [BlockHasMisMatchHeightInHeader h]
-                                      else []
 -- | All blocks must have same headerChainID, i.e. headerChainID of  genesis block
 blockInvariant03 _ _ Nothing = []
 blockInvariant03 chainId h (Just Block{..}) = if headerChainID blockHeader /= chainId
@@ -362,11 +342,6 @@ blockInvariant03 chainId h (Just Block{..}) = if headerChainID blockHeader /= ch
                                               else []
 
 -- | first block (at height 1) blockLastCommit should be Nothing
-blockInvariant04 :: Height -> Maybe (Block alg a) -> [BlockchainInconsistency]
-blockInvariant04 (Height 1) (Just Block{..}) = case blockLastCommit of
-                                                 Just _  -> [FirstBlockHasLastCommit]
-                                                 Nothing -> []
-blockInvariant04 _ _ = []
 
 -- | block at height H+1 blockLastCommit all votes refer to block at henght H
 blockInvariant05 :: Height -> Maybe (Block alg a) -> [BlockchainInconsistency]
@@ -427,9 +402,9 @@ blockInvariant08 blockID h block = if (blockHash <$> block) == blockID
                             else [BlockHasMisMatchHash h]
 
 
-checkBlocks :: (Monad m, Crypto alg, Serialise a) =>
+checkBlocks1 :: (Monad m, Crypto alg, Serialise a) =>
                BlockStorage rw m alg a -> m [BlockchainInconsistency]
-checkBlocks storage = do
+checkBlocks1 storage = do
     maxH <- blockchainHeight storage
     Just genesis   <- retrieveBlock storage (Height 0)
     let heights = enumFromTo (toEnum 0) maxH
@@ -438,20 +413,24 @@ checkBlocks storage = do
                             b   <- retrieveBlock storage h
                             bID <- retrieveBlockID storage h
                             vs  <- retrieveValidatorSet storage (pred h) -- we check blockLastCommit validators which refer to H-1 block, hence i get (H-1) validators set
-                            return $ concatMap (\inv -> inv h b) [ genesisInvariant01
-                                                                 , genesisInvariant02
-                                                                 , genesisInvariant03
-                                                                 , blockInvariant01
-                                                                 , blockInvariant02
-                                                                 , blockInvariant03 genesisChainId
-                                                                 , blockInvariant04
+                            return $ concatMap (\inv -> inv h b) [ -- genesisInvariant01
+                                                                 -- , genesisInvariant02
+--                                                                 , genesisInvariant03
+  --                                                               , blockInvariant01
+    --                                                             , blockInvariant02
+                                                                  blockInvariant03 genesisChainId
+      --                                                           , blockInvariant04
                                                                  , blockInvariant05
                                                                  , blockInvariant06
                                                                  , blockInvariant07 vs
                                                                  , blockInvariant08 bID
                                                                  ]
                        )
-    return $ concat xs
+    b   <- retrieveBlock storage (toEnum 3)
+    vs  <- retrieveValidatorSet storage (toEnum 3)
+    bID <- retrieveBlockID storage  (toEnum 3)
+    ys <- execWriterT $ blockInvariant vs bID (toEnum 0) b
+    return ys -- $ concat xs
 
 
 
@@ -530,3 +509,81 @@ checkValidators storage = do
                           return $ concatMap (\inv -> inv h cmt) [ validatorInvariant01 ]
                        )
     return $ concat xs
+
+
+
+
+-------------------------------------------------------------------------------
+-- attempt to  check invariants using Writer Monad
+
+
+blockInvariant
+    :: (Monad m, Crypto alg, Serialise a) =>
+       Maybe (ValidatorSet alg)
+    -> Maybe (BlockHash alg (Block alg a))
+    -> Height
+    -> Maybe (Block alg a)
+    -> WriterT [BlockchainInconsistency] m ()
+blockInvariant _ _ h@(Height n) Nothing = do
+  when (n == 0) $
+    tell [MissingGenesisBlock]
+  when (n > 0) $
+    tell [MissingBlock h]
+blockInvariant Nothing _ h@(Height n) _  = do
+  when (n > 1) $
+    tell  [MissingValidatorSet (pred h)]
+blockInvariant (Just vs) blockID h@(Height n) b@(Just Block{..}) = do
+  -- block at height H has H in aits header
+  when (headerHeight  blockHeader /= h)   $
+    tell [BlockHasMisMatchHeightInHeader h]
+  -- block at height H has H in aits header
+  when (blockID /= (blockHash <$> b))   $
+    tell [BlockHasMisMatchHash h]
+  -- blockLastCommit of genesis block should be Nothing
+  when (n == 0 && isJust blockLastCommit) $
+    tell [GenesisHasLastCommit]
+  -- blockLastCommit of block at height 1 should be Nothing
+  when (n == 1 && isJust blockLastCommit) $
+    tell [FirstBlockHasLastCommit]
+  -- headerLastBlockID of genesis block should be Nothing
+  when (n == 0 && isJust (headerLastBlockID blockHeader)) $
+    tell [GenesisHasHeaderLastBlockID]
+  -- block at height H+1 blockLastCommit all votes refer to block at henght H
+  when ( maybe False (any ((/= pred h) . voteHeight . signedValue)) (commitPrecommits <$> blockLastCommit))  $
+    tell [BlockLastCommitHasMisMatchVoteHeight h]
+  --  block's all voteBlockID equals to headerLastBlockID and equals to commitBlockID
+  when ( maybe False (\Commit{..} -> any ((\b -> b /= Just commitBlockID
+                                           || b /= headerLastBlockID blockHeader) <$> voteBlockID <$> signedValue) commitPrecommits) blockLastCommit)  $
+    tell [BlockLastCommitHasMisMatchVoteBlockID h]
+  -- all signatures in Block -> blockLastCommit -> commitPrecommits should be known validators' signatures
+  when ( maybe False
+         (any null . mapM (validatorByAddr vs) . map signedAddr)
+         (commitPrecommits <$> blockLastCommit) )  $
+    tell [BlockLastCommitHasUnknownValidator h]
+  --
+  when (headerHeight  blockHeader /= h)   $
+    tell [BlockHasMisMatchHeightInHeader h]
+
+
+checkBlocks'
+  :: (Monad m, Crypto alg, Serialise a) =>
+     BlockStorage rw (WriterT [BlockchainInconsistency] m) alg a
+     -> WriterT [BlockchainInconsistency] m [()]
+checkBlocks' storage = do
+    maxH <- blockchainHeight storage
+    Just genesis   <- retrieveBlock storage (Height 0)
+    let heights = enumFromTo (toEnum 0) maxH
+        genesisChainId = headerChainID $ blockHeader genesis
+    xs <- mapM  (\h -> do
+                   b   <- retrieveBlock storage h
+                   bID <- retrieveBlockID storage h
+                   vs  <- retrieveValidatorSet storage (pred h) -- we check blockLastCommit validators which refer to H-1 block, hence i get (H-1) validators set
+                   blockInvariant vs bID h b
+                ) heights
+    return xs
+
+checkBlocks
+  :: (Monad m, Serialise a, Crypto alg) =>
+     BlockStorage rw (WriterT [BlockchainInconsistency] m) alg a
+     -> m [BlockchainInconsistency]
+checkBlocks s = do  execWriterT (checkBlocks' s)
