@@ -91,21 +91,13 @@ Executable thundermint-keyval
                      , thundermint
                      , bytestring >=0.10
                      , containers >=0.5.7
+                     , aeson
+                     , exceptions
+                     , filepath
+                     , optparse-applicative
                      , groom
   hs-source-dirs:      exe
   Main-is:             key-val.hs
-
-Executable thundermint-keyval-sql
-  Ghc-options:         -Wall
-  Default-Language:    Haskell2010
-  Build-Depends:       base       >=4.9 && <5
-                     , thundermint
-                     , bytestring        >=0.10
-                     , base58-bytestring >=0.1
-                     , containers        >=0.5.7
-                     , groom
-  hs-source-dirs:      exe
-  Main-is:             key-val-sql.hs
 
 Executable thundermint-simple-network
   Ghc-options:         -Wall -threaded

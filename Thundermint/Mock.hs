@@ -21,6 +21,7 @@ module Thundermint.Mock (
     -- * Running nodes
   , startNode
   , runNodeSet
+  , defCfg
   ) where
 
 import Codec.Serialise          (Serialise)
