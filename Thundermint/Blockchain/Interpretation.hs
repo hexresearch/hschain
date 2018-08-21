@@ -60,7 +60,7 @@ data BlockFold s tx a = BlockFold
 --   calls must be done with in nondecreasing height.
 data BChState m s = BChState
   { currentState :: m s
-  , stateAtH :: Height -> m s
+  , stateAtH     :: Height -> m s
   }
 
 -- | Create block storage backed by MVar

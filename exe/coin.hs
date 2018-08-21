@@ -13,6 +13,7 @@ import Control.Monad
 import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Data.Foldable
+import Data.Maybe           (isJust)
 import Data.Int
 import Data.Monoid
 import Options.Applicative
@@ -34,6 +35,7 @@ import Thundermint.Consensus.Types
 import Thundermint.Control
 import Thundermint.Crypto
 import Thundermint.Crypto.Ed25519            (Ed25519_SHA512)
+import Thundermint.Store.STM
 import Thundermint.Logger
 import Thundermint.Mock
 import Thundermint.Mock.Coin
@@ -127,29 +129,46 @@ interpretSpec maxH prefix delay NetSpec{..} = do
   -- Connection map
   forM (Map.toList netAddresses) $ \(addr, NodeSpec{..}) -> do
     -- Allocate storage for node
-    storage <- newBlockStorage prefix nspecDbName genesisBlock validatorSet
+    storage  <- newBlockStorage prefix nspecDbName genesisBlock validatorSet
+    hChain   <- blockchainHeight storage
+    -- Prepare logging
     let loggers = [ makeScribe s { scribe'path = fmap (prefix </>) (scribe'path s) }
                   | s <- nspecLogFile ]
     return
       ( makeReadOnly storage
-      , withLogEnv "TM" "DEV" loggers $ \logenv -> runLoggerT "general" logenv $
-          runNode NodeDescription
+      , withLogEnv "TM" "DEV" loggers $ \logenv -> runLoggerT "general" logenv $ do
+          --
+          bchState <- newBChState transitions (makeReadOnly (hoistBlockStorageRW liftIO storage))
+          _        <- stateAtH bchState (next hChain)
+          -- Create mempool
+          let checkTx tx = do
+                st <- currentState bchState
+                return $ isJust $ processTx transitions (Height 1) tx st
+          mempool <- newMempool checkTx
+          cursor  <- getMempoolCursor mempool
+          --
+          let generator = forever $ do
+                st <- currentState bchState
+                let (off,n)  = nspecWalletKeys
+                    privKeys = take n $ drop off privateKeyList
+                transferActions delay (publicKey <$> take netInitialKeys privateKeyList) privKeys
+                  (pushTransaction cursor) st
+          --
+          acts <- runNode NodeDescription
             { nodeStorage         = hoistBlockStorageRW liftIO storage
+            , nodeBchState        = bchState
             , nodeBlockChainLogic = transitions
-            , nodeNetworks        = createMockNode net "50000" addr
+            , nodeMempool         = mempool
+            , nodeNetwork         = createMockNode net "50000" addr
             , nodeInitialPeers    = map (,"50000") $ connections netAddresses addr
             , nodeValidationKey   = nspecPrivKey
-            , nodeAction          = do let (off,n)  = nspecWalletKeys
-                                           privKeys = take n $ drop off privateKeyList
-                                       return $ transferActions delay
-                                         (publicKey <$> take netInitialKeys privateKeyList)
-                                         privKeys
             , nodeAddr            = (addr, "50000")
             , nodeCommitCallback = \case
                 h | Just hM <- maxH
                   , h > Height hM -> throwM Abort
                   | otherwise     -> return ()
             }
+          runConcurrently (generator : acts)
       )
   where
     netAddresses = Map.fromList $ [0::Int ..] `zip` netNodeList
@@ -177,6 +196,8 @@ executeNodeSpec maxH prefix delay spec = do
   actions <- interpretSpec maxH prefix delay spec
   runConcurrently (snd <$> actions) `catch` (\Abort -> return ())
   return $ fst <$> actions
+
+
 
 ----------------------------------------------------------------
 --
