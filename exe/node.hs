@@ -100,13 +100,11 @@ main = do
                    $ decodeBase58
                    $ head $ BS8.lines selfPrivKeyStr
   storage     <- newSTMBlockStorage genesisBlock validatorSet
-  propStorage <- newSTMPropStorage
   let net = realNetwork thundermintPort
   !ownAddr <- getLocalAddress
   !addrs <- waitForAddrs
   startNode net ownAddr addrs AppState
              { appStorage        = storage
-             , appPropStorage    = propStorage
              , appValidationFun  = \_ _ -> return True
              , appBlockGenerator = \_ -> do
                  Height h <- blockchainHeight storage

@@ -167,12 +167,11 @@ startPeerDispatcher
   -> NetworkAPI addr          -- ^ API for networking
   -> addr                     -- ^ Current peer address
   -> [addr]                   -- ^ Set of initial addresses to connect
-  -> AppChans alg a           -- ^ Channels for communication with main application
+  -> AppChans m alg a         -- ^ Channels for communication with main application
   -> BlockStorage 'RO m alg a -- ^ Read only access to block storage
-  -> ProposalStorage 'RO m alg a
   -> Mempool m tx
   -> m ()
-startPeerDispatcher p2pConfig net peerAddr addrs AppChans{..} storage propSt mempool = logOnException $ do
+startPeerDispatcher p2pConfig net peerAddr addrs AppChans{..} storage mempool = logOnException $ do
   logger InfoS "Starting peer dispatcher" ()
   trace TeNodeStarted
   peerRegistry       <- newPeerRegistry
@@ -187,7 +186,7 @@ startPeerDispatcher p2pConfig net peerAddr addrs AppChans{..} storage propSt mem
                          , peerChanPex     = peerChanPex
                          , peerChanRx      = writeTChan appChanRx
                          , blockStorage    = storage
-                         , proposalStorage = propSt
+                         , proposalStorage = makeReadOnlyPS appPropStorage
                          , consensusState  = readTVar appTMState
                          , ..
                          }
