@@ -152,19 +152,24 @@ instance JSON.FromJSON Topology
 
 -- | Specification of node
 data NodeDescription addr m alg st tx a = NodeDescription
-  { nodeStorage         :: BlockStorage 'RW m alg a
-    -- ^ Storage API for nodes
-  , nodeBlockChainLogic :: BlockFold st tx a
-    -- ^ Storage for blocks
-  , nodeNetworks        :: NetworkAPI addr
+  { nodeBlockChainLogic :: BlockFold st tx a
+    -- ^ Logic of blockchain
+  , nodeStorage         :: BlockStorage 'RW m alg a
+    -- ^ Storage for commited blocks
+  , nodeBchState        :: BChState m st
+    -- ^ Current state of blockchain
+  , nodeMempool         :: Mempool m tx
+    -- ^ Mempool of node
+  , nodeNetwork         :: NetworkAPI addr
     -- ^ Network API
   , nodeAddr            :: addr
     -- ^ Node address
   , nodeInitialPeers    :: [addr]
     -- ^ Initial peers
   , nodeValidationKey   :: Maybe (PrivValidator alg)
-  , nodeAction          :: Maybe ((tx -> m ()) -> st -> m ())
+    -- ^ Private key of validator
   , nodeCommitCallback  :: Height -> m ()
+    -- ^ Callback which is called on each commit
   }
 
 -- | Create block storage. It will use SQLite if path is specified or
@@ -193,7 +198,7 @@ runNode
      , Crypto alg, Ord addr, Show addr, Serialise addr, Show a, LogBlock a
      , Serialise a)
   => NodeDescription addr m alg st tx a
-  -> m ()
+  -> m [m ()]
 runNode NodeDescription{nodeBlockChainLogic=logic@BlockFold{..}, ..} = do
   -- Create proposal storage
   propSt      <- newSTMPropStorage
@@ -201,33 +206,25 @@ runNode NodeDescription{nodeBlockChainLogic=logic@BlockFold{..}, ..} = do
   -- blockchain
   hChain      <- blockchainHeight     nodeStorage
   Just valSet <- retrieveValidatorSet nodeStorage (next hChain)
-  bchState    <- newBChState logic (makeReadOnly nodeStorage)
-  _           <- stateAtH bchState (next hChain)
-  -- Create mempool
-  let checkTx tx = do
-        st <- currentState bchState
-        return $ isJust $ processTx (Height 1) tx st
-  mempool <- newMempool checkTx
-  cursor  <- getMempoolCursor mempool
   -- Build application state of consensus algorithm
   let appSt = AppState
         { appStorage     = nodeStorage
         , appPropStorage = propSt
           --
         , appValidationFun = \h a -> do
-            st <- stateAtH bchState h
+            st <- stateAtH nodeBchState h
             return $ isJust $ processBlock h a st
           --
         , appBlockGenerator = \h -> do
-            st  <- stateAtH bchState h
-            txs <- peekNTransactions mempool Nothing
+            st  <- stateAtH nodeBchState h
+            txs <- peekNTransactions nodeMempool Nothing
             return $ transactionsToBlock h st txs
           --
         , appCommitCallback = \h -> setNamespace "mempool" $ do
-            before <- mempoolStats mempool
+            before <- mempoolStats nodeMempool
             logger InfoS "Mempool before filtering" before
-            filterMempool mempool
-            after  <- mempoolStats mempool
+            filterMempool nodeMempool
+            after  <- mempoolStats nodeMempool
             logger InfoS "Mempool after filtering" after
             nodeCommitCallback h
           --
@@ -236,17 +233,12 @@ runNode NodeDescription{nodeBlockChainLogic=logic@BlockFold{..}, ..} = do
         }
   -- Networking
   appCh <- liftIO newAppChans
-  runConcurrently $
-    case nodeAction of
-        Nothing     -> []
-        Just action -> [forever $ action (pushTransaction cursor)
-                              =<< currentState bchState]
-    ++
+  return
     [ id $ setNamespace "net"
-         $ startPeerDispatcher defCfg nodeNetworks nodeAddr nodeInitialPeers appCh
+         $ startPeerDispatcher defCfg nodeNetwork nodeAddr nodeInitialPeers appCh
                                (makeReadOnly   nodeStorage)
                                (makeReadOnlyPS propSt)
-                               mempool
+                               nodeMempool
     , id $ setNamespace "consensus"
          $ runApplication defCfg appSt appCh
     ]
