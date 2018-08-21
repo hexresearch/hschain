@@ -210,10 +210,10 @@ main
             allEqual (x:xs) = all (x==) xs
 
         forM_ storageList $ \s -> do
-                        --  bs <- checkBlocks s
+                          bs <- checkBlocks s
                           cs <- checkCommits s
                           vs <- checkValidators s
-                          return $  cs <> vs
+                          return $ bs <> cs <> vs
 
 
         forM_ heights $ \h -> do
