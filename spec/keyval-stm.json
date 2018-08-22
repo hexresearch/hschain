@@ -10,6 +10,7 @@
       }]
     },
     { "nspecPrivKey"     : "4NSWtMsEPgfTK25tCPWqNzVVze1dgMwcUFwS5WkSpjJL",
+      "nspecByzantine"   : "InvalidBlock",
       "nspecLogFile"     :
       [{ "type"      : "ScribeJSON",
          "path"      : "logs/node-2",

@@ -39,6 +39,7 @@ import Thundermint.Mock.KeyVal
 
 data NodeSpec = NodeSpec
   { nspecPrivKey     :: Maybe (PrivValidator Ed25519_SHA512)
+  , nspecByzantine   :: Maybe String
   , nspecDbName      :: Maybe FilePath
   , nspecLogFile     :: [ScribeSpec]
   }
@@ -85,10 +86,13 @@ interpretSpec maxH prefix NetSpec{..} = do
                 st <- stateAtH bchState h
                 return $ isJust $ processBlock transitions h a st
             --
-            , appBlockGenerator = \h -> do
-                st <- stateAtH bchState h
-                let Just k = find (`Map.notMember` st) ["K_" ++ show (n :: Int) | n <- [1 ..]]
-                return [(k, addr)]
+            , appBlockGenerator = \h -> case nspecByzantine of
+                Just "InvalidBlock" -> do
+                  return [("XXX", 123)]
+                _ -> do
+                  st <- stateAtH bchState h
+                  let Just k = find (`Map.notMember` st) ["K_" ++ show (n :: Int) | n <- [1 ..]]
+                  return [(k, addr)]
             --
             , appCommitCallback = \case
                 h | Just h' <- maxH
@@ -141,12 +145,21 @@ main
     )
   where
     work maxH prefix file = do
+      -- Run blockchain
       blob <- BC8.readFile file
       spec <- case JSON.eitherDecodeStrict blob of
         Right s -> return s
         Left  e -> error e
-      _storageList <- executeSpec maxH prefix spec
-      return ()
+      storageList <- executeSpec maxH prefix spec
+      -- Check result
+      let Just mH = maxH
+      forM_ [0 .. mH] $ \h -> do
+        blocks <- forM storageList $ \s -> retrieveBlock s (Height h)
+        --
+        putStrLn ("== " ++ show h ++ " ==")
+        putStrLn " * All blocks are equal"
+        putStrLn ("  " ++ show (blockData <$> head blocks))
+        unless (allEq blocks) $ error "Block mismatch!"
     ----------------------------------------
     parser :: Parser (IO ())
     parser
@@ -166,3 +179,7 @@ main
          (  help "Specification file"
          <> metavar "JSON"
          )
+
+allEq :: Eq a => [a] -> Bool
+allEq []     = True
+allEq (x:xs) = all (x ==) xs
