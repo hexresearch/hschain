@@ -39,6 +39,7 @@ module Thundermint.Store (
   , checkBlocks
   , checkCommits
   , checkValidators
+  , checkCommitsBlocks
   ) where
 
 import Control.Monad.Trans.Writer
@@ -312,6 +313,7 @@ data BlockchainInconsistency = MissingGenesisBlock
                              | MissingCommit Height
                              | MissingLocalCommit Height -- ^ Missing commit for block at maximum Height
                              | MissingValidatorSet Height
+                             | MissingHeaderLastBlockID Height
                              -- * genesis invariants
                              | GenesisHasLastCommit
                              | GenesisHasHeaderLastBlockID
@@ -326,6 +328,8 @@ data BlockchainInconsistency = MissingGenesisBlock
                              -- * Commit invariants
                              | CommitHasUnknownValidator Height
                              | CommitHasDeficitVotingPower Height
+                             -- * Block, Commit couple invariants
+                             | CommitBlockHeaderBlockIDMisMatch Height
                                deriving (Eq, Show)
 
 -- | check all blocks' invarinats
@@ -384,6 +388,23 @@ checkValidators storage = do
                        ) heights
     return $ concat xs
 
+
+-- | check all (commit, block) couple invarinats
+checkCommitsBlocks :: Monad m =>
+               BlockStorage rw m alg a1
+            -> m [BlockchainInconsistency]
+checkCommitsBlocks storage = do
+    maxH <- blockchainHeight storage
+    let heights = enumFromTo (Height 1) (pred maxH)
+
+    xs <- mapM  (\h -> execWriterT $ do
+                          cmt <- lift $ retrieveCommit storage (pred h)
+                          blk  <- lift $ retrieveBlock storage h
+                          commitBlockInvariant h blk cmt
+                       ) heights
+
+    return $ concat xs
+
 -------------------------------------------------------------------------------
 -- validator invariants
 -------------------------------------------------------------------------------
@@ -426,10 +447,28 @@ commitInvariant (Just vs) h@(Height n) cmt@(Just Commit{..}) = do
    quorum = 2 * totalVotingPower vs `div` 3 + 1
 
 
+
+-------------------------------------------------------------------------------
+-- commit, block couple invariants
+-------------------------------------------------------------------------------
+commitBlockInvariant
+    ::  (Monad m) =>
+        Height
+    -> Maybe (Block alg a)
+    -> Maybe (Commit alg a)
+    -> WriterT [BlockchainInconsistency] m ()
+
+commitBlockInvariant h _ Nothing = tell []
+commitBlockInvariant h Nothing _ = tell []
+commitBlockInvariant h@(Height n) (Just Block{..}) (Just Commit{..}) = do
+  when (n > 1 && maybe False (/= commitBlockID) (headerLastBlockID blockHeader)) $
+    tell [CommitBlockHeaderBlockIDMisMatch h]
+
+
+
 -------------------------------------------------------------------------------
 -- block invarinats
 -------------------------------------------------------------------------------
-
 blockInvariant
     :: (Monad m, Crypto alg, Serialise a) =>
        BS.ByteString
@@ -466,6 +505,9 @@ blockInvariant chainID (Just vs) blockID h@(Height n) b@(Just Block{..}) = do
   -- headerLastBlockID of genesis block should be Nothing
   when (n == 0 && isJust (headerLastBlockID blockHeader)) $
     tell [GenesisHasHeaderLastBlockID]
+  -- headerLastBlockID of non genesis blocks should be Just
+  when (n > 0 && (isNothing $ headerLastBlockID blockHeader) ) $
+    tell [MissingHeaderLastBlockID h]
   -- block at height H+1 blockLastCommit all votes refer to block at henght H
   when ( maybe False (any ((/= pred h) . voteHeight . signedValue)) (commitPrecommits <$> blockLastCommit))  $
     tell [BlockLastCommitHasMisMatchVoteHeight h]

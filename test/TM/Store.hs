@@ -34,5 +34,6 @@ checkBlockchainInvariants dbName = do
       bs <- checkBlocks storage
       cs <- checkCommits storage
       vs <- checkValidators storage
-      assertEqual "failed consistency check" [] $ bs <> cs <> vs
+      cbs <- checkCommitsBlocks storage
+      assertEqual "failed consistency check" [] $ bs <> cs <> vs <> cbs
 --

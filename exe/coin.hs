@@ -213,7 +213,8 @@ main
                           bs <- checkBlocks s
                           cs <- checkCommits s
                           vs <- checkValidators s
-                          return $ bs <> cs <> vs
+                          cbs <- checkCommitsBlocks s
+                          return $ bs <> cs <> vs <> cbs
 
 
         forM_ heights $ \h -> do
