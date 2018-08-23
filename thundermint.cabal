@@ -37,9 +37,10 @@ Library
                      , transformers      >=0.5
                      , unordered-containers >=0.2.5.0
                      --
-                     , network           >=2.6.0.0
-                     , katip             >=0.5.4.0
-                     , cryptonite        >=0.25
+                     , network            >=2.6.0.0
+                     , network-simple-tls >=0.3
+                     , katip              >=0.5.4.0
+                     , cryptonite         >=0.25
                      --
                      , groom
                      --
@@ -67,6 +68,8 @@ Library
                   Thundermint.P2P.Consts
                   Thundermint.P2P.Instances
                   Thundermint.P2P.Network
+                  Thundermint.P2P.NetworkTls
+                  Thundermint.P2P.Types
                   Thundermint.P2P.PeerState
                   Thundermint.Store
                   Thundermint.Store.SQLite
