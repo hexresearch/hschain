@@ -43,7 +43,7 @@ let
           retry = haskellPackagesOld.callPackage ./deps/retry.nix {};
           thundermint = pkgs.haskell.lib.overrideCabal
               ( pkgs.haskell.lib.justStaticExecutables
-                  ( haskellPackagesNew.callPackage ./thundermint.nix { })
+                  ( lib.dontCheck(haskellPackagesNew.callPackage ./thundermint.nix { }))
               )( oldDerivation: { }
               );
         };

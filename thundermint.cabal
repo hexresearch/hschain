@@ -54,6 +54,7 @@ Library
                      , tasty-hunit >=0.10
 
   Exposed-modules:
+                  Thundermint.Blockchain.Types
                   Thundermint.Blockchain.App
                   Thundermint.Blockchain.Interpretation
                   Thundermint.Blockchain.Types
@@ -93,10 +94,6 @@ Executable thundermint-keyval
                      , thundermint
                      , bytestring >=0.10
                      , containers >=0.5.7
-                     , aeson
-                     , exceptions
-                     , filepath
-                     , optparse-applicative
                      , groom
   hs-source-dirs:      exe
   Main-is:             key-val.hs
@@ -255,6 +252,7 @@ Test-suite thundermint-tests
                        TM.NetworkTls
                        TM.P2P
                        TM.RealNetwork
+                       TM.Network
                        TM.Serialisation
                        TM.Store
                        TM.Util.Misc
