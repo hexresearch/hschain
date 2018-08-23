@@ -8,7 +8,10 @@
 {-# LANGUAGE TemplateHaskell     #-}
 -- |
 -- Mock P2P
-module Thundermint.P2P where
+module Thundermint.P2P (
+    startPeerDispatcher
+  , LogGossip(..)
+  ) where
 
 import Codec.Serialise
 import Control.Applicative
@@ -154,6 +157,9 @@ readRecv (Counter _ r) = liftIO $ readMVar r
 -- Dispatcher
 ----------------------------------------------------------------
 
+-- | Main process for networking. It manages accepting connections
+--   from remote nodes, initiating connections to them, tracking state
+--   of nodes and gossip.
 startPeerDispatcher
   :: ( MonadMask m, MonadFork m, MonadLogger m, MonadTrace m
      , Serialise a, Serialise tx, Ord addr, Show addr, Serialise addr, Show a, Crypto alg)
@@ -170,7 +176,7 @@ startPeerDispatcher p2pConfig net peerAddr addrs AppChans{..} storage propSt mem
   logger InfoS "Starting peer dispatcher" ()
   trace TeNodeStarted
   peerRegistry       <- newPeerRegistry
-  peerChanPex'       <- liftIO newBroadcastTChanIO
+  peerChanPex       <- liftIO newBroadcastTChanIO
   cntGossipPrevote   <- newCounter
   cntGossipPrecommit <- newCounter
   cntGossipProposals <- newCounter
@@ -178,7 +184,7 @@ startPeerDispatcher p2pConfig net peerAddr addrs AppChans{..} storage propSt mem
   cntGossipTx        <- newCounter
   cntGossipPex       <- newCounter
   let peerCh = PeerChans { peerChanTx      = appChanTx
-                         , peerChanPex     = peerChanPex'
+                         , peerChanPex     = peerChanPex
                          , peerChanRx      = writeTChan appChanRx
                          , blockStorage    = storage
                          , proposalStorage = propSt
