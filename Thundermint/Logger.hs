@@ -52,6 +52,7 @@ import GHC.Generics (Generic)
 
 import Thundermint.Control
 import Thundermint.Consensus.Types
+import Thundermint.Debug.Trace
 
 ----------------------------------------------------------------
 --
@@ -71,7 +72,7 @@ setNamespace nm = localNamespace (const nm)
 -- | Concrete implementation of logger monad
 newtype LoggerT m a = LoggerT (ReaderT (Namespace, LogEnv) m a)
   deriving ( Functor, Applicative, Monad
-           , MonadIO, MonadThrow, MonadCatch, MonadMask, MonadTrans, MonadFork)
+           , MonadIO, MonadThrow, MonadCatch, MonadMask, MonadTrans, MonadFork, MonadTrace )
 
 runLoggerT :: Namespace -> LogEnv -> LoggerT m a -> m a
 runLoggerT nm le (LoggerT m) = runReaderT m (nm,le)
@@ -90,7 +91,7 @@ instance MonadIO m => MonadLogger (LoggerT m) where
 --   but we don't need any
 newtype NoLogsT m a = NoLogsT { runNoLogsT :: m a }
   deriving ( Functor, Applicative, Monad
-           , MonadIO, MonadThrow, MonadCatch, MonadMask, MonadFork)
+           , MonadIO, MonadThrow, MonadCatch, MonadMask, MonadFork, MonadTrace )
 instance MonadTrans NoLogsT where
   lift = NoLogsT
 
