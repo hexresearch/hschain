@@ -94,6 +94,10 @@ newtype NoLogsT m a = NoLogsT { runNoLogsT :: m a }
 instance MonadTrans NoLogsT where
   lift = NoLogsT
 
+instance MonadIO m => MonadLogger (NoLogsT m) where
+  logger _ _ _ = return ()
+  localNamespace _ a = a
+
 -- | Log exceptions at Error severity
 logOnException :: (MonadLogger m, MonadCatch m) => m a -> m a
 logOnException = handle logE
