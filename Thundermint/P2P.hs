@@ -174,7 +174,7 @@ startPeerDispatcher p2pConfig net peerAddr addrs AppChans{..} storage propSt mem
   logger InfoS "Starting peer dispatcher" ()
   trace TeNodeStarted
   peerRegistry       <- newPeerRegistry
-  peerChanPex'       <- liftIO newBroadcastTChanIO
+  peerChanPex       <- liftIO newBroadcastTChanIO
   cntGossipPrevote   <- newCounter
   cntGossipPrecommit <- newCounter
   cntGossipProposals <- newCounter
@@ -182,7 +182,7 @@ startPeerDispatcher p2pConfig net peerAddr addrs AppChans{..} storage propSt mem
   cntGossipTx        <- newCounter
   cntGossipPex       <- newCounter
   let peerCh = PeerChans { peerChanTx      = appChanTx
-                         , peerChanPex     = peerChanPex'
+                         , peerChanPex     = peerChanPex
                          , peerChanRx      = writeTChan appChanRx
                          , blockStorage    = storage
                          , proposalStorage = propSt
