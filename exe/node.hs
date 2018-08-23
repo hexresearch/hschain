@@ -39,6 +39,7 @@ import Thundermint.Consensus.Types
 import Thundermint.Crypto         (decodeBase58)
 import Thundermint.Crypto.Ed25519 (Ed25519_SHA512, privateKey)
 import Thundermint.Mock
+import Thundermint.P2P.Instances ()
 import Thundermint.P2P.Network    (realNetwork)
 import Thundermint.Store
 import Thundermint.Store.STM
@@ -47,6 +48,7 @@ import Thundermint.Store.STM
 import qualified Control.Exception     as E
 import qualified Data.ByteString.Char8 as BS8
 import qualified Data.Text             as T
+import qualified Network.Socket        as Net
 
 ----------------------------------------------------------------
 --
@@ -123,6 +125,16 @@ waitForAddrs = do
         listen sock 10
         return sock
 
+-- TODO get correct `localhost` address
+getOwnAddress :: IO SockAddr
+getOwnAddress = do
+    addr:_ <- getAddrInfo (Just $ Net.defaultHints { Net.addrSocketType = Net.Stream })
+                          (Just "localhost")
+                          Nothing
+    let sockAddr = Net.addrAddress addr
+    return sockAddr
+
+
 main :: IO ()
 main = do
   selfPrivKeyStr <- BS8.pack <$> getEnv "THUNDERMINT_NODE_KEY"
@@ -138,8 +150,9 @@ main = do
   storage     <- newSTMBlockStorage genesisBlock validatorSet
   propStorage <- newSTMPropStorage
   let net = realNetwork thundemintPort
+  !ownAddr <- getOwnAddress
   !addrs <- waitForAddrs
-  startNode net addrs AppState
+  startNode net ownAddr addrs AppState
              { appStorage        = storage
              , appPropStorage    = propStorage
              , appValidationFun  = \_ _ -> return True
