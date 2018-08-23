@@ -5,58 +5,86 @@
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies        #-}
-import Control.Concurrent
-import Control.Monad
 import Control.Monad.Catch
 import Control.Monad.IO.Class
-import Data.Int
-import Data.Monoid
-import Options.Applicative
-
+import Control.Concurrent
 import Codec.Serialise      (serialise)
-import Control.Monad        (forever)
 import Data.ByteString.Lazy (toStrict)
-import Data.Maybe           (isJust)
-import Katip.Core           (LogEnv, showLS)
-import Network.Simple.TCP   (accept, listen, recv)
-import Network.Socket       (SockAddr(..))
-import System.Environment   (getEnv)
-import System.FilePath      ((</>))
-import System.Random        (randomRIO)
+import Data.Monoid
+import Data.Maybe                (fromMaybe)
+import Data.Int
+import qualified Data.Aeson             as JSON
+import qualified Data.Aeson.Types       as JSON
+import qualified Data.ByteString.Char8  as BC8
+import qualified Data.Map               as Map
+import System.Environment        (getEnv)
+import System.Random    (randomRIO)
+import System.FilePath  ((</>))
+import GHC.Generics (Generic)
+import System.IO.Unsafe          (unsafePerformIO)
+import Katip.Core (showLS, LogEnv)
+import Options.Applicative
+import Network.Socket
+    ( AddrInfo(..)
+    , AddrInfoFlag(..)
+    , SockAddr(..)
+    , SocketOption(..)
+    , SocketType(..)
+    , accept
+    , addrAddress
+    , bind
+    , close
+    , defaultHints
+    , fdSocket
+    , getAddrInfo
+    , getNameInfo
+    , listen
+    , setCloseOnExecIfNeeded
+    , setSocketOption
+    , socket
+    )
+import Network.Socket.ByteString (recv)
 
-import Thundermint.Blockchain.Interpretation
 import Thundermint.Blockchain.Types
 import Thundermint.Consensus.Types
-import Thundermint.Control
 import Thundermint.Crypto
 import Thundermint.Crypto.Containers
-import Thundermint.Crypto.Ed25519            (Ed25519_SHA512)
+import Thundermint.Crypto.Ed25519   (Ed25519_SHA512)
+import Thundermint.P2P.Network (realNetwork)
+import Thundermint.Store
 import Thundermint.Logger
 import Thundermint.Mock
-import Thundermint.Mock.Coin
 import Thundermint.Mock.KeyList
-import Thundermint.Mock.Types
-import Thundermint.P2P.Consts
-import Thundermint.P2P.Instances ()
-import Thundermint.P2P.Network               (getLocalAddress, realNetwork)
-import Thundermint.Store
-import Thundermint.Store.STM
+import Thundermint.Mock.Coin
 
 import qualified Control.Exception     as E
-import qualified Data.Aeson            as JSON
-import qualified Data.ByteString.Char8 as BC8
-import qualified Data.Map              as Map
+import qualified Data.Text             as T
+
+thundemintPort :: String
+thundemintPort = "50000"
 
 ----------------------------------------------------------------
--- Cmd line specification
+-- Generating node specification
 ----------------------------------------------------------------
+
+data NodeSpec = NodeSpec
+  { nspecPrivKey     :: Maybe (PrivValidator Ed25519_SHA512)
+  , nspecDbName      :: Maybe FilePath
+  , nspecLogFile     :: [ScribeSpec]
+  , nspecWalletKeys  :: (Int,Int)
+  }
+  deriving (Generic,Show)
+
+instance JSON.ToJSON   NodeSpec
+instance JSON.FromJSON NodeSpec
+
 data Opts = Opts
-  { maxH              :: Maybe Int64
-  , prefix            :: FilePath
-  , delay             :: Int
-  , doValidate        :: Bool
+  { maxH :: Maybe Int64
+  , prefix :: FilePath
+  , delay :: Int
+  , doValidate :: Bool
   , netInitialDeposit :: Integer
-  , netInitialKeys    :: Int
+  , netInitialKeys :: Int
   }
 
 ----------------------------------------------------------------
@@ -116,45 +144,25 @@ interpretSpec
 interpretSpec Opts{..} netAddresses validatorSet logenv NodeSpec{..} = do
   -- Allocate storage for node
   storage <- newBlockStorage prefix nspecDbName genesisBlock validatorSet
-  hChain   <- blockchainHeight storage
-  nodeAddr <- getLocalAddress
   return
     ( makeReadOnly storage
-    , runLoggerT "general" logenv $ do
-        logger InfoS ("net Addresses: " <> showLS netAddresses) ()
-        --
-        bchState <- newBChState transitions
-                  $ makeReadOnly (hoistBlockStorageRW liftIO storage)
-        _        <- stateAtH bchState (next hChain)
-        -- Create mempool
-        let checkTx tx = do
-              st <- currentState bchState
-              return $ isJust $ processTx transitions (Height 1) tx st
-        mempool <- newMempool checkTx
-        cursor  <- getMempoolCursor mempool
-        --
-        let generator = forever $ do
-              st <- currentState bchState
-              let (off,n)  = nspecWalletKeys
-                  privKeys = take n $ drop off privateKeyList
-              transferActions delay (publicKey <$> take netInitialKeys privateKeyList) privKeys
-                (void . pushTransaction cursor) st
-        --
-        acts <- runNode NodeDescription
+    , runLoggerT "general" logenv $
+        runNode NodeDescription
           { nodeStorage         = hoistBlockStorageRW liftIO storage
-          , nodeBchState        = bchState
           , nodeBlockChainLogic = transitions
-          , nodeMempool         = mempool
-          , nodeNetwork         = realNetwork thundermintPort
-          , nodeAddr            = nodeAddr
+          , nodeNetworks        = realNetwork thundemintPort
           , nodeInitialPeers    = netAddresses
           , nodeValidationKey   = nspecPrivKey
+          , nodeAction          = do let (off,n)  = nspecWalletKeys
+                                         privKeys = take n $ drop off privateKeyList
+                                     return $ transferActions delay
+                                       (publicKey <$> take netInitialKeys privateKeyList)
+                                       privKeys
           , nodeCommitCallback = \case
               h | Just hM <- maxH
                 , h > Height hM -> throwM Abort
                 | otherwise     -> return ()
           }
-        runConcurrently (generator : acts)
     )
   where
     genesisBlock = Block
@@ -191,7 +199,7 @@ main = do
       let !validators'' = either error (fmap PrivValidator)
                         $ JSON.eitherDecodeStrict' ipMapPath  :: [PrivValidator Ed25519_SHA512]
           !validatorSet = makeValidatorSetFromPriv validators''
-      runLoggerT "general" logenv $
+      runLoggerT "general" logenv $ 
         logger InfoS "Listening for bootstrap adresses" ()
       netAddresses <- waitForAddrs logenv
       (_,act) <- interpretSpec opts netAddresses validatorSet logenv nodeSpec
@@ -230,7 +238,7 @@ main = do
            <> help "Initial deposit"
            <> metavar "N"
            )
-
+           
 
 ----------------------------------------------------------------
 -- TCP server that listens for boostrap addresses
@@ -238,19 +246,66 @@ main = do
 
 waitForAddrs :: LogEnv -> IO [SockAddr]
 waitForAddrs logenv = E.handle allExc $ do
-  addrs <- listen "*" "49999" $ \ (lsock, _addr) ->
-    accept lsock $ \ (conn, _caddr) -> do
-    mMsg <- recv conn 4096
-    runLoggerT "boostrap" logenv $ do
-      logger InfoS ("accept this: " <> showLS mMsg) ()
-    case mMsg of
-        Nothing  -> fail "Connection closed by peer."
-        Just msg -> either fail return $ JSON.eitherDecodeStrict' msg
+  addr <- resolve "49999"
+  addrs <- E.bracket (open addr) close $ \ sock ->
+    E.bracket (fst <$> accept sock) close $ \ conn -> do
+      msg <- recv conn 4096
+      either fail return $ JSON.eitherDecodeStrict' msg
   runLoggerT "boostrap" logenv $ do
     logger InfoS ("Got " <> showLS addrs <> " boostrap addresses.") ()
-    logger InfoS "Stop listening" ()
+    logger InfoS ("Stop listening") ()
   return addrs
  where
     allExc (e::SomeException) = runLoggerT "boostrap" logenv $ do
       logger ErrorS (showLS e) ()
       E.throw e
+    resolve port = do
+        let hints = defaultHints {
+                addrFlags = [AI_PASSIVE]
+              , addrSocketType = Stream
+              }
+        addr:_ <- getAddrInfo (Just hints) Nothing (Just port)
+        return addr
+    open addr = do
+        sock <- socket (addrFamily addr) (addrSocketType addr) (addrProtocol addr)
+        setSocketOption sock ReuseAddr 1
+        bind sock (addrAddress addr)
+        -- If the prefork technique is not used,
+        -- set CloseOnExec for the security reasons.
+        let fd = fdSocket sock
+        -- TODO: commented to use network-2.6.*
+        --       fix to provide on-close behavior
+        setCloseOnExecIfNeeded fd
+        listen sock 10
+        return sock
+
+sa2Text :: SockAddr -> T.Text
+sa2Text sa = T.pack
+        $ fromMaybe "" mHN <> maybe "" (":"<>) mSN
+     where (mHN, mSN) = unsafePerformIO $ getNameInfo [] True True sa
+
+text2Sa :: T.Text -> SockAddr
+text2Sa s = addrAddress $ head addrInfos
+  where (hN, sN)  = T.breakOn ":" s
+        mHN       = if T.null hN
+                      then Nothing
+                      else Just $ T.unpack hN
+        mSN       = if T.null sN
+                       then Just thundemintPort
+                       else Just $ T.unpack $ T.tail sN
+        addrInfos = unsafePerformIO $ getAddrInfo Nothing mHN mSN
+
+
+instance JSON.ToJSON SockAddr where
+  toJSON = JSON.String . sa2Text
+
+instance JSON.ToJSONKey SockAddr where
+  toJSONKey = JSON.toJSONKeyText sa2Text
+
+instance JSON.FromJSONKey SockAddr where
+  fromJSONKey = JSON.FromJSONKeyText text2Sa
+
+instance JSON.FromJSON SockAddr where
+  parseJSON (JSON.String s) = return $ text2Sa s
+  parseJSON invalid    = JSON.typeMismatch "SockAddr" invalid
+
