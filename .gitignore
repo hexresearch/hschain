@@ -4,6 +4,7 @@ dist-newstyle
 .ghc.environment*
 result
 .stack-work
+.stack
 .cabal-sandbox
 cabal.sandbox.config
 .terraform

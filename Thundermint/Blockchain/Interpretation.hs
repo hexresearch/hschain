@@ -1,11 +1,13 @@
 {-# LANGUAGE DataKinds       #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE RankNTypes      #-}
 -- |
 -- Encoding of application-specific logic for blockchain
 module Thundermint.Blockchain.Interpretation (
     BlockFold(..)
   , BChState(..)
   , newBChState
+  , hoistBChState
   ) where
 
 import Control.Concurrent.MVar
@@ -85,3 +87,8 @@ newBChState BlockFold{..} BlockStorage{..} = do
     { currentState = withMVarM state (return . snd)
     , stateAtH     = ensureHeight
     }
+
+hoistBChState :: (forall a . m a -> n a) -> BChState m s -> BChState n s
+hoistBChState f BChState{..} = BChState
+  { currentState = f currentState
+  , stateAtH     = f . stateAtH }

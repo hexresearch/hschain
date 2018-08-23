@@ -40,6 +40,7 @@ let
           cryptonite = lib.dontCheck( haskellPackagesOld.callPackage ./deps/cryptonite.nix {} );
           basement = haskellPackagesOld.callPackage ./deps/basement.nix {};
           foundation = haskellPackagesOld.callPackage ./deps/foundation.nix {};
+          retry = haskellPackagesOld.callPackage ./deps/retry.nix {};
           thundermint = pkgs.haskell.lib.overrideCabal
               ( pkgs.haskell.lib.justStaticExecutables
                   ( haskellPackagesNew.callPackage ./thundermint.nix { })

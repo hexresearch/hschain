@@ -10,14 +10,16 @@
 -- Mock P2P
 module Thundermint.P2P.Internal where
 
+import Codec.Serialise
 import Control.Applicative
-import Control.Monad
-import Control.Monad.IO.Class
-import Control.Monad.Catch
 import Control.Concurrent      ( ThreadId, myThreadId, threadDelay, killThread
                                , MVar, readMVar, newMVar)
 import Control.Concurrent.STM
-import Codec.Serialise
+import Control.Monad
+import Control.Monad.Catch
+import Control.Monad.IO.Class
+import Control.Retry           (recoverAll)
+import Data.Default.Class      (def)
 import           Data.Monoid       ((<>))
 import           Data.Maybe        (mapMaybe)
 import           Data.Foldable
@@ -186,11 +188,14 @@ startPeerDispatcher p2pConfig net peerAddr addrs AppChans{..} storage propSt mem
   -- Accepting connection is managed by separate linked thread and
   -- this thread manages initiating connections
   flip finally (uninterruptibleMask_ $ reapPeers peerRegistry) $ runConcurrently
-    [ acceptLoop peerAddr net peerCh mempool peerRegistry
+    -- Makes 5 attempts to start acceptLoop wirh 5 msec interval
+    [ recoverAll def $ const $ acceptLoop peerAddr net peerCh mempool peerRegistry
      -- FIXME: we should manage requests for peers and connecting to
      --        new peers here
     , do liftIO $ threadDelay 1e5
-         forM_ addrs $ \a -> connectPeerTo peerAddr net a peerCh mempool peerRegistry
+         forM_ addrs $ \a ->
+             -- Makes 5 attempts to start acceptLoop wirh 5 msec interval
+             recoverAll def $ const $ connectPeerTo peerAddr net a peerCh mempool peerRegistry
          forever $ liftIO $ threadDelay 100000
     -- Peer connection monitor
     , peerPexMonitor peerAddr net peerCh mempool peerRegistry
@@ -213,16 +218,16 @@ acceptLoop
   -> m ()
 acceptLoop peerAddr NetworkAPI{..} peerCh mempool peerRegistry = logOnException $ do
   logger InfoS "Starting accept loop" ()
-  bracket (liftIO listenOn) (liftIO . fst) $ \(_,accept) -> forever $
+  bracket listenOn fst $ \(_,accept) -> forever $
     -- We accept connection, create new thread and put it into
     -- registry. If we already have connection from that peer we close
     -- connection immediately
     mask $ \restore -> do
-      (conn, addr) <- liftIO accept
+      (conn, addr) <- accept
       trace $ TeNodeOtherTryConnect (show addr)
-      void $ flip forkFinally (const $ liftIO $ close conn)
-           $ withPeer peerRegistry addr
+      void $ flip forkFinally (const $ close conn)
            $ restore
+           $ withPeer peerRegistry addr -- XXX what first? `withPeer` or `restore` ??
            $ do logger InfoS ("Accepted connection from " <> showLS addr) ()
                 trace $ TeNodeOtherConnected (show addr)
                 startPeer peerAddr peerCh conn peerRegistry mempool
@@ -240,13 +245,14 @@ connectPeerTo
   -> Mempool m tx
   -> PeerRegistry addr
   -> m ()
-connectPeerTo peerAddr NetworkAPI{..} addr peerCh mempool peerRegistry = do
-  logger InfoS ("Connecting " <> showLS peerAddr <> " to " <> showLS addr) ()
-  trace (TeNodeConnectingTo (show addr))
-  void $ fork
-       $ bracket (liftIO $ connect addr) (liftIO . close)
-       $ \conn -> withPeer peerRegistry addr
-                $ startPeer peerAddr peerCh conn peerRegistry mempool
+connectPeerTo peerAddr NetworkAPI{..} addr peerCh mempool peerRegistry =
+  -- Igrnore all exceptions to prevent apparing of error messages in stderr/stdout.
+  void . flip forkFinally (const $ return ()) . logOnException $ do
+    logger InfoS ("Connecting to " <> showLS addr) ()
+    trace (TeNodeConnectingTo (show addr))
+    bracket (connect addr) close
+      $ \conn -> withPeer peerRegistry addr
+               $ startPeer peerAddr peerCh conn peerRegistry mempool
 
 
 -- Set of currently running peers
@@ -615,7 +621,7 @@ peerReceive
   -> m ()
 peerReceive peerSt PeerChans{..} peerExchangeCh Connection{..} MempoolCursor{..} = logOnException $ do
   logger InfoS "Starting routing for receiving messages" ()
-  fix $ \loop -> liftIO recv >>= \case
+  fix $ \loop -> recv >>= \case
     Nothing  -> logger InfoS "Peer stopping since socket is closed" ()
     Just bs  -> case deserialiseOrFail bs of
       Left  e   -> logger ErrorS ("Deserialization error: " <> showLS e) ()
@@ -666,7 +672,7 @@ peerSend peerSt PeerChans{..} gossipCh Connection{..} = logOnException $ do
     msg <- liftIO $ atomically $  readTChan gossipCh
                               <|> fmap GossipAnn (readTChan ownPeerChanTx)
                               <|> fmap GossipPex (readTChan ownPeerChanPex)
-    liftIO $ send $ serialise msg
+    send $ serialise msg
     -- Update state of peer when we advance to next height
     case msg of
       GossipBlock b                        -> addBlock peerSt b

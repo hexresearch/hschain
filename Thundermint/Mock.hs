@@ -230,8 +230,8 @@ runNode NodeDescription{nodeBlockChainLogic=logic@BlockFold{..}, ..} = do
             logger InfoS "Mempool after filtering" after
             nodeCommitCallback h
           --
-        , appValidator      = nodeValidationKey
-        , appValidatorsSet  = valSet
+        , appValidator        = nodeValidationKey
+        , appNextValidatorSet = \_ _ -> return valSet
         }
   -- Networking
   appCh <- liftIO newAppChans
@@ -285,9 +285,11 @@ startNode net addr addrs appState@AppState{..} mempool = do
                        (hoistBlockStorageRO liftIO $ makeReadOnly   appStorage)
                        (hoistPropStorageRO  liftIO $ makeReadOnlyPS appPropStorage)
                        (hoistMempool liftIO mempool)
-    withAsync netRoutine $ \_ ->
-      runLoggerT "consensus" logenv
-        $ runApplication defCfg (hoistAppState liftIO appState) appCh
+    runConcurrently
+      [ netRoutine
+      , runLoggerT "consensus" logenv
+          $ runApplication defCfg (hoistAppState liftIO appState) appCh
+      ]
 
 -- | Start set of nodes and return their corresponding storage. Will
 --   return their storage after all nodes finish execution

@@ -1,5 +1,32 @@
 pipeline:
+  restore-cache:
+    image: plugins/s3-cache:1
+    pull: true
+    endpoint: http://thunderbuild.hxr.team:9001
+    secrets: [ aws_access_key_id, aws_secret_access_key ]
+    restore: true
+
   build:
     image: haskell:8.2.2
     commands:
-    - stack build
+    - stack --stack-root $PWD/.stack --system-ghc test
+
+  rebuild-cache:
+    image: plugins/s3-cache:1
+    pull: true
+    endpoint: http://thunderbuild.hxr.team:9001
+    secrets: [ aws_access_key_id, aws_secret_access_key ]
+    rebuild: true
+    mount:
+    - .stack
+    - .stack-work
+    when:
+      event: push
+
+  telegram:
+    image: appleboy/drone-telegram
+    token: $PLUGIN_TOKEN
+    to: $PLUGIN_TO
+    secrets: [ plugin_token, plugin_to ]
+    when:
+      status: [ failure ]

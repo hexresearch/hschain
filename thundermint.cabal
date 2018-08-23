@@ -22,12 +22,14 @@ Library
                      , bytestring        >=0.10
                      , base58-bytestring >=0.1
                      , containers        >=0.5.9
+                     , data-default-class
                      , directory
                      , deepseq           >=1.4
                      , filepath
-                     , exceptions        >=0.10.0
+                     , exceptions        >= 0.8.3
                      , memory            >=0.14.14
                      , random
+                     , retry             >= 0.7.6.2
                      , stm               >=2.4
                      , serialise         >=0.2
                      , sqlite-simple
@@ -35,7 +37,7 @@ Library
                      , transformers      >=0.5
                      , unordered-containers >=0.2.5.0
                      --
-                     , network           >=2.7.0.0
+                     , network           >=2.6.0.0
                      , katip             >=0.5.4.0
                      , cryptonite        >=0.25
                      --
@@ -102,7 +104,7 @@ Executable thundermint-simple-network
                      , bytestring >=0.10
                      , base58-bytestring >=0.1
                      , containers >=0.5.7
-                     , network    >=2.7.0.0
+                     , network    >=2.6.0.0
   hs-source-dirs:      exe
   Main-is:             network.hs
 
@@ -115,7 +117,7 @@ Executable thundermint-node
                      , bytestring >=0.10
                      , base58-bytestring >=0.1
                      , containers >=0.5.7
-                     , network    >=2.7.0.0
+                     , network    >=2.6.0.0
                      , text
   hs-source-dirs:      exe
   Main-is:             node.hs
@@ -173,20 +175,29 @@ Test-suite thundermint-tests
                      , exceptions
                      , stm        >=2.4
                      , async      >=2.2.1
-                     , serialise  >=0.2
                      --
                      , network           >=2.7.0.0
                      , random
+                     , serialise         >=0.2
                      , katip
                      --
-                     , tasty       >=0.11
-                     , tasty-hunit >=0.10
+                     , QuickCheck
+                     , bytestring-arbitrary
+                     , generic-arbitrary
+                     , hedgehog
+                     -- NB: ^ troubles with 'allow newer'
+                     , hedgehog-quickcheck
+                     , tasty             >=0.11
+                     , tasty-hedgehog
+                     , tasty-hunit       >=0.10
   hs-source-dirs:      test
   Main-is:             Main.hs
-  Other-modules:       TM.MockNet
+  Other-modules:       TM.Arbitrary.Instances
+                       TM.MockNet
                        TM.Network
                        TM.P2P
                        TM.RealNetwork
+                       TM.Serialisation
                        TM.Util.Misc
                        TM.Util.Network
                        TM.Util.Tests

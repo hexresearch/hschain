@@ -45,12 +45,15 @@ packages:
 # (e.g., acme-missiles-0.3)
 extra-deps:
     - async-2.2.1
-    - exceptions-0.10.0
+    - exceptions-0.8.3
     - katip-0.5.4.0
-    - network-2.7.0.0
+    - network-2.6.3.6
     - serialise-0.2.0.0
     - cborg-0.2.0.0
     - base58-bytestring-0.1.0
+    - bytestring-arbitrary-0.1.2
+
+allow-newer: true
 
 
 # Override default flag values for local packages and extra-deps
