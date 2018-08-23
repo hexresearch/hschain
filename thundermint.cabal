@@ -47,28 +47,30 @@ Library
                      , tasty-hunit >=0.10
 
   Exposed-modules:
-                  Thundermint.Blockchain.Types
                   Thundermint.Blockchain.App
                   Thundermint.Blockchain.Interpretation
-                  Thundermint.Control
+                  Thundermint.Blockchain.Types
                   Thundermint.Consensus.Algorithm
                   Thundermint.Consensus.Types
+                  Thundermint.Control
                   Thundermint.Crypto
                   Thundermint.Crypto.Containers
                   Thundermint.Crypto.Ed25519
                   Thundermint.Crypto.Swear
+                  Thundermint.Debug.Trace
                   Thundermint.Logger
                   Thundermint.Mock
                   Thundermint.Mock.Coin
                   Thundermint.Mock.KeyList
                   Thundermint.Mock.KeyVal
                   Thundermint.P2P
+                  Thundermint.P2P.Instances
                   Thundermint.P2P.Internal
                   Thundermint.P2P.Network
                   Thundermint.P2P.PeerState
                   Thundermint.Store
-                  Thundermint.Store.STM
                   Thundermint.Store.SQLite
+                  Thundermint.Store.STM
 
 -- Example programs
 Executable thundermint-keyval

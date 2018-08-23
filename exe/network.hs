@@ -13,6 +13,7 @@ import Thundermint.Consensus.Types
 import Thundermint.Crypto.Ed25519 (Ed25519_SHA512, privateKey)
 import Thundermint.Mock
 import Thundermint.P2P.Network
+import Thundermint.P2P.Instances ()
 import Thundermint.Store
 import Thundermint.Store.STM
 
@@ -79,6 +80,7 @@ main = do
                 -- TODO: connectRing creates a network with very poor
                 -- connectivity. For real network should be made more than one
                 -- connection and probably peer exchange should be implemented.
+                , addr
                 , connectAll2All validators addr
                 , AppState
                     { appStorage        = storage
