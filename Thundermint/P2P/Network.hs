@@ -1,5 +1,4 @@
 {-# LANGUAGE LambdaCase      #-}
-{-# LANGUAGE RankNTypes      #-}
 {-# LANGUAGE RecordWildCards #-}
 -- |
 -- Abstract API for network which support
@@ -20,19 +19,15 @@ module Thundermint.P2P.Network (
 import Control.Concurrent.STM
 
 import Control.Concurrent     (forkIO, killThread)
-import Control.Exception      (Exception)
 import Control.Monad          (forM_, forever, void, when)
-import Control.Monad.Catch    (MonadMask, MonadThrow, bracketOnError, onException, throwM)
+import Control.Monad.Catch    (bracketOnError, onException, throwM)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Bits              (unsafeShiftL)
 import Data.List              (find)
-import Data.Map               (Map)
 import Data.Maybe             (fromMaybe)
 import Data.Monoid            ((<>))
 import Data.Word              (Word32)
 import System.Timeout         (timeout)
-
-import Thundermint.Control
 
 import qualified Data.ByteString.Builder        as BB
 import qualified Data.ByteString.Lazy           as LBS
@@ -40,33 +35,13 @@ import qualified Data.Map                       as Map
 import qualified Network.Socket                 as Net
 import qualified Network.Socket.ByteString      as NetBS
 import qualified Network.Socket.ByteString.Lazy as NetLBS
+
+import Thundermint.Control
+import Thundermint.P2P.Types
+
 ----------------------------------------------------------------
 --
 ----------------------------------------------------------------
-
--- | Dictionary with API for network programming. We use it to be able
---   to provide two implementations of networking. One is real network
---   and another is mock in-process network for testing.
-data NetworkAPI addr = NetworkAPI
-  { listenOn :: forall m. (MonadIO m, MonadThrow m, MonadMask m)
-             => m (m (), m (Connection , addr))
-    -- ^ Start listening on given port. Returns action to stop listener
-    --   and function for accepting new connections
-  , connect  :: forall m. (MonadIO m, MonadThrow m, MonadMask m)
-             => addr -> m Connection
-    -- ^ Connect to remote address
-  }
-
-data Connection = Connection
-    { send  :: forall m. (MonadIO m) => LBS.ByteString -> m ()
-      -- ^ Send data
-    , recv  :: forall m. (MonadIO m) => m (Maybe LBS.ByteString)
-      -- ^ Receive data
-    , close :: forall m. (MonadIO m) => m ()
-      -- ^ Close socket
-    }
-
-type HeaderSize = Int
 
 headerSize :: HeaderSize
 headerSize = 4
@@ -74,12 +49,6 @@ headerSize = 4
 ----------------------------------------------------------------
 --
 ----------------------------------------------------------------
-
-data NetworkError = ConnectionTimedOut
-                  | NoAddressAvailable
-  deriving (Show)
-
-instance Exception NetworkError
 
 newSocket :: MonadIO m => Net.AddrInfo -> m Net.Socket
 newSocket ai = liftIO $ Net.socket (Net.addrFamily     ai)
@@ -233,25 +202,6 @@ getLocalAddress = do
     let sockAddr = Net.addrAddress addr
     return sockAddr
 
-
-----------------------------------------------------------------
--- Mock network
-----------------------------------------------------------------
-
--- | Sockets for mock network
-data MockSocket = MockSocket
-  { msckActive :: TVar Bool
-  , msckSend   :: TChan LBS.ByteString
-  , msckRecv   :: TChan LBS.ByteString
-  }
-  deriving (Eq)
-
--- | Mock network which uses STM to deliver messages
-newtype MockNet addr = MockNet
-  { mnetIncoming    :: TVar (Map (addr,Net.ServiceName)
-                                 [(MockSocket, (addr,Net.ServiceName))])
-    -- ^ Incoming connections for node.
-  }
 
 
 
