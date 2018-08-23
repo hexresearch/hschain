@@ -184,7 +184,7 @@ newBlockStorage prefix mpath genesis validatorSet = do
 
 
 runNode
-  :: ( MonadIO m, MonadMask m, MonadFork m, MonadLogger m
+  :: ( MonadIO m, MonadMask m, MonadFork m, MonadLogger m, MonadTrace m
      , Ord tx, Serialise tx
      , Crypto alg, Ord addr, Show addr, Show a, LogBlock a
      , Serialise a)
