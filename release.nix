@@ -9,9 +9,8 @@ let
         fromImageName = "scratch";
         contents = [haskellPackages.thundermint pkgs.bashInteractive];
         config = {
-          Entrypoint = ["/bin/thundermint-node" ];
           Volumes = {
-            "/logs" = {};
+            "/thundermint" = {};
           };
           ExposedPorts = {
             "49999" = {};
@@ -25,9 +24,9 @@ let
           async = haskellPackagesNew.async_2_2_1;
           aeson = haskellPackagesNew.aeson_1_3_0_0;
           text = haskellPackagesNew.text_1_2_3_0;
+          tasty-hunit = lib.dontCheck haskellPackagesNew.tasty-hunit_0_10_0_1;
           tasty = lib.dontCheck haskellPackagesOld.tasty;
           serialise = lib.dontCheck haskellPackagesOld.serialise;
-          tasty-hunit = lib.dontCheck (haskellPackagesOld.callPackage ./deps/tasty-hunit.nix {});
           network = haskellPackagesOld.callPackage ./deps/network.nix {};
           exceptions = haskellPackagesOld.callPackage ./deps/exceptions.nix {};
           safe-exceptions = haskellPackagesOld.callPackage ./deps/safe-exceptions.nix {};
@@ -43,7 +42,7 @@ let
           retry = haskellPackagesOld.callPackage ./deps/retry.nix {};
           thundermint = pkgs.haskell.lib.overrideCabal
               ( pkgs.haskell.lib.justStaticExecutables
-                  ( haskellPackagesNew.callPackage ./thundermint.nix { })
+                  ( lib.dontCheck(haskellPackagesNew.callPackage ./thundermint.nix { }))
               )( oldDerivation: { }
               );
         };

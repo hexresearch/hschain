@@ -1,6 +1,6 @@
 { mkDerivation, aeson, async, base, base16-bytestring, base58-bytestring
 , bytestring , containers, criterion, cryptonite, deepseq, directory, data-default-class
-, exceptions , filepath, groom, katip, network, random, retry, serialise, stdenv, stm
+, exceptions , filepath, groom, katip, network, optparse-applicative, random, retry, serialise, stdenv, stm
 , sqlite-simple, tasty , tasty-hunit, text, time, transformers
 }:
 mkDerivation {
@@ -11,8 +11,8 @@ mkDerivation {
   isExecutable = true;
   libraryHaskellDepends = [
     aeson base base58-bytestring bytestring containers exceptions directory
-    data-default-class filepath groom katip network random retry serialise
-    stm sqlite-simple transformers text
+    data-default-class filepath groom katip network optparse-applicative random
+    retry serialise stm sqlite-simple transformers text tasty tasty-hunit
   ];
   executableHaskellDepends = [
     aeson base bytestring containers cryptonite directory filepath text
