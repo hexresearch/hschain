@@ -39,8 +39,13 @@ Library
                      --
                      , network            >=2.6.0.0
                      , network-simple-tls >=0.3
+                     , tls                >=1.4.1
                      , katip              >=0.5.4.0
                      , cryptonite         >=0.25
+                     , cprng-aes
+                     , x509
+                     , x509-store
+
                      --
                      , groom
                      --
@@ -70,6 +75,7 @@ Library
                   Thundermint.P2P.Network
                   Thundermint.P2P.NetworkTls
                   Thundermint.P2P.Types
+                  Thundermint.P2P.Tls
                   Thundermint.P2P.PeerState
                   Thundermint.Store
                   Thundermint.Store.SQLite
@@ -181,6 +187,7 @@ Test-suite thundermint-tests
                      , directory
                      --
                      , network           >=2.7.0.0
+                     , tls               >=1.4.1
                      , random
                      , serialise         >=0.2
                      , katip
@@ -201,6 +208,7 @@ Test-suite thundermint-tests
                        TM.Network
                        TM.P2P
                        TM.RealNetwork
+                       TM.NetworkTls
                        TM.Serialisation
                        TM.Util.Misc
                        TM.Util.Network

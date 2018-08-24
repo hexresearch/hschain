@@ -46,6 +46,8 @@ data Connection = Connection
       -- ^ Close socket
     }
 
+
+
 type HeaderSize = Int
 
 
