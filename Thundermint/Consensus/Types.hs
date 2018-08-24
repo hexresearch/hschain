@@ -160,7 +160,7 @@ data Proposal alg a = Proposal
     -- ^ Propoasl round
   , propTimestamp :: Time
     -- ^ Time of proposal
-  , propPOL       :: Maybe (Round, BlockID alg a)
+  , propPOL       :: Maybe Round
     -- ^ Proof of Lock for proposal
     --
     -- FIXME: why it's needed? How should it be used?

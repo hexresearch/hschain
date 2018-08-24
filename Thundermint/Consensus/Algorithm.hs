@@ -86,7 +86,7 @@ data HeightParameters (m :: * -> *) alg a = HeightParameters
   , scheduleTimeout      :: Timeout -> m ()
     -- ^ Schedule timeout. It's called whenever we enter new step so
     --   it could be overloaded to announce to peers change of state
-  , broadcastProposal    :: Round -> BlockID alg a -> Maybe (Round, BlockID alg a) -> m ()
+  , broadcastProposal    :: Round -> BlockID alg a -> Maybe Round -> m ()
     -- ^ Broadcast proposal for given round and block.
   , castPrevote          :: Round -> Maybe (BlockID alg a) -> m ()
     -- ^ Broadcast prevote for particular block ID in some round.
@@ -378,7 +378,7 @@ enterPropose HeightParameters{..} r sm@TMState{..} reason = do
     --
     -- If we're locked on block we MUST propose it
     Just (br,bid) -> do logger InfoS "Making POL proposal" $ LogProposal currentH smRound bid
-                        broadcastProposal r bid (Just (br,bid))
+                        broadcastProposal r bid (Just br)
     -- Otherwise we need to create new block from mempool
     Nothing      -> do bid <- createProposal r smLastCommit
                        logger InfoS "Making new proposal" $ LogProposal currentH smRound bid
@@ -418,12 +418,14 @@ enterPrevote par@HeightParameters{..} r (unlockOnPrevote -> sm@TMState{..}) reas
           -- If proposal have proof of lock we must have proof
           -- of lock for same round and some block
           case propPOL of
-            Just (lockR, lockB) ->
+            Just lockR ->
               case majority23at lockR smPrevotesSet of
-                Just v | voteBlockID v == Just lockB -> checkPrevoteBlock propBlockID
-                       | otherwise                   -> return Nothing --  FIXME: Byzantine!
-                Nothing                              -> return Nothing
-            Nothing                                  -> checkPrevoteBlock propBlockID
+                Just v
+                  | lockR < propRound
+                  , voteBlockID v == Just propBlockID -> checkPrevoteBlock propBlockID
+                  | otherwise                         -> return Nothing --  FIXME: Byzantine!
+                Nothing                               -> return Nothing
+            Nothing                                   -> checkPrevoteBlock propBlockID
       -- Proposal invalid or absent. Prevote NIL
       | otherwise                          = return Nothing
     --
