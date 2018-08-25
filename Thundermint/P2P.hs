@@ -15,6 +15,8 @@ module Thundermint.P2P (
 
 import Codec.Serialise
 import Control.Applicative
+import Control.Concurrent      ( ThreadId, myThreadId, threadDelay, killThread
+                               , MVar, readMVar, newMVar)
 import Control.Concurrent.STM
 import Control.Monad
 import Control.Monad.Catch
@@ -648,6 +650,8 @@ peerReceive peerSt PeerChans{..} peerExchangeCh Connection{..} MempoolCursor{..}
                                   addBlock peerSt b
           GossipTx tx       -> do pushTransaction tx
                                   tickRecv cntGossipTx
+          GossipPex pexmsg  -> do liftIO $ atomically $ writeTChan peerExchangeCh pexmsg
+                                  tickRecv cntGossipPex
           --
           GossipAnn ann -> case ann of
             AnnStep         s     -> advancePeer   peerSt s

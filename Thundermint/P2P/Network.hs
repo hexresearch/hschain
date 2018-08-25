@@ -120,6 +120,7 @@ realNetwork listenPort = NetworkAPI
         return $ applyConn sock
   }
  where
+  isIPv6addr = (==) Net.AF_INET6 . Net.addrFamily
   accept sock = do
     (conn, addr) <- liftIO $ Net.accept sock
     return (applyConn conn, addr)
