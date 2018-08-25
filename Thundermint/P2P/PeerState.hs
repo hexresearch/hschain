@@ -94,7 +94,7 @@ getPeerHeight p = do FullStep h _ _ <- getPeerStep p
 
 ----------------------------------------------------------------
 
--- | Mutable reference to state of peer.It's safe to mutate
+-- | Mutable reference to state of peer. It's safe to mutate
 --   concurrently
 data PeerStateObj m alg a = PeerStateObj
   (BlockStorage    'RO m alg a)
