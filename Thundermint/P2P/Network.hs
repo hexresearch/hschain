@@ -109,7 +109,11 @@ realNetwork listenPort = NetworkAPI
       let hints = Just Net.defaultHints
             { Net.addrSocketType = Net.Stream
             }
-      (hostName, serviceName) <- liftIO $ Net.getNameInfo [] True True addr
+      (hostName, serviceName) <- liftIO $ Net.getNameInfo
+                                            [Net.NI_NUMERICHOST, Net.NI_NUMERICSERV]
+                                            True
+                                            True
+                                            addr
       addrInfo:_ <- liftIO $ Net.getAddrInfo hints hostName serviceName
       bracketOnError (newSocket addrInfo) (liftIO . Net.close) $ \ sock -> do
         let tenSec = 10000000
