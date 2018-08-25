@@ -13,6 +13,7 @@ import Thundermint.Consensus.Types
 import Thundermint.Crypto.Ed25519 (Ed25519_SHA512, privateKey)
 import Thundermint.Mock
 import Thundermint.P2P.Network
+import Thundermint.P2P.Instances ()
 import Thundermint.Store
 import Thundermint.Store.STM
 
@@ -26,7 +27,7 @@ import qualified Data.Map               as Map
 ----------------------------------------------------------------
 
 makePrivateValidators'
-  :: [(SockAddr ,BS.ByteString)]
+  :: [(SockAddr, BS.ByteString)]
   -> Map SockAddr (PrivValidator Ed25519_SHA512)
 makePrivateValidators' keys = Map.fromList
   [ (sockAddr, PrivValidator pk)
@@ -66,7 +67,7 @@ genesisBlock = Block
 getServiceName :: SockAddr -> IO Network.Socket.ServiceName
 getServiceName addr = getPortOrError <$> getNameInfo [] False True addr
  where
-  getPortOrError = fromMaybe (error "Port doesn't spacified") . snd
+  getPortOrError = fromMaybe (error "Port doesn't specified") . snd
 
 main :: IO ()
 main = do
@@ -79,6 +80,7 @@ main = do
                 -- TODO: connectRing creates a network with very poor
                 -- connectivity. For real network should be made more than one
                 -- connection and probably peer exchange should be implemented.
+                , addr
                 , connectAll2All validators addr
                 , AppState
                     { appStorage        = storage

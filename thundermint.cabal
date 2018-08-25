@@ -47,27 +47,29 @@ Library
                      , tasty-hunit >=0.10
 
   Exposed-modules:
-                  Thundermint.Blockchain.Types
                   Thundermint.Blockchain.App
                   Thundermint.Blockchain.Interpretation
-                  Thundermint.Control
+                  Thundermint.Blockchain.Types
                   Thundermint.Consensus.Algorithm
                   Thundermint.Consensus.Types
+                  Thundermint.Control
                   Thundermint.Crypto
                   Thundermint.Crypto.Containers
                   Thundermint.Crypto.Ed25519
                   Thundermint.Crypto.Swear
+                  Thundermint.Debug.Trace
                   Thundermint.Logger
                   Thundermint.Mock
                   Thundermint.Mock.Coin
                   Thundermint.Mock.KeyList
                   Thundermint.Mock.KeyVal
                   Thundermint.P2P
+                  Thundermint.P2P.Instances
                   Thundermint.P2P.Network
                   Thundermint.P2P.PeerState
                   Thundermint.Store
-                  Thundermint.Store.STM
                   Thundermint.Store.SQLite
+                  Thundermint.Store.STM
 
 -- Example programs
 Executable thundermint-keyval
@@ -163,17 +165,20 @@ Executable thundermint-coin-db
 -- Test suite
 Test-suite thundermint-tests
   Type:                exitcode-stdio-1.0
-  Ghc-options:         -Wall
+  Ghc-options:         -Wall -threaded -rtsopts "-with-rtsopts=-N"
   Default-Language:    Haskell2010
   Build-Depends:       base       >=4.9 && <5
                      , thundermint
                      , bytestring >=0.10
+                     , containers
+                     , exceptions
                      , stm        >=2.4
                      , async      >=2.2.1
                      --
                      , network           >=2.7.0.0
                      , random
                      , serialise         >=0.2
+                     , katip
                      --
                      , QuickCheck
                      , bytestring-arbitrary
@@ -186,11 +191,15 @@ Test-suite thundermint-tests
                      , tasty-hunit       >=0.10
   hs-source-dirs:      test
   Main-is:             Main.hs
-  Other-modules:       TM.MockNet
-                       TM.RealNetwork
+  Other-modules:       TM.Arbitrary.Instances
+                       TM.MockNet
                        TM.Network
+                       TM.P2P
+                       TM.RealNetwork
                        TM.Serialisation
-                       TM.Arbitrary.Instances
+                       TM.Util.Misc
+                       TM.Util.Network
+                       TM.Util.Tests
 
 -- Benchmarks
 Benchmark thundermint-bench
