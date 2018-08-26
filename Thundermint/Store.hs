@@ -488,10 +488,20 @@ blockInvariant _ _ _ h@(Height n) Nothing = do
     tell [MissingGenesisBlock]
   when (n > 0) $
     tell [MissingBlock h]
-blockInvariant _ Nothing _ h@(Height n) _  = do
-  when (n > 1) $
-    tell  [MissingValidatorSet (pred h)]
-blockInvariant chainID (Just vs) blockID h@(Height n) b@(Just Block{..}) = do
+
+blockInvariant chainID validatorS blockID h@(Height n) b@(Just Block{..}) = do
+
+  if isNothing validatorS
+  then
+     when (n > 1) $
+       tell  [MissingValidatorSet (pred h)]
+  else
+  -- all signatures in Block -> blockLastCommit -> commitPrecommits should be known validators' signatures
+      let (Just vs) = validatorS
+      in when ( maybe False (any null . mapM (validatorByAddr vs) . map signedAddr)
+                          (commitPrecommits <$> blockLastCommit) )  $
+           tell [BlockLastCommitHasUnknownValidator h]
+
   -- All blocks must have same headerChainID, i.e. headerChainID of  genesis block
   when (chainID /=  (headerChainID blockHeader)) $
     tell [BlockHasMisMatchChainId h]
@@ -520,8 +530,3 @@ blockInvariant chainID (Just vs) blockID h@(Height n) b@(Just Block{..}) = do
   when ( maybe False (\Commit{..} -> any ((\b -> b /= Just commitBlockID
                                            || b /= headerLastBlockID blockHeader) <$> voteBlockID <$> signedValue) commitPrecommits) blockLastCommit)  $
     tell [BlockLastCommitHasMisMatchVoteBlockID h]
-  -- all signatures in Block -> blockLastCommit -> commitPrecommits should be known validators' signatures
-  when ( maybe False
-         (any null . mapM (validatorByAddr vs) . map signedAddr)
-         (commitPrecommits <$> blockLastCommit) )  $
-    tell [BlockLastCommitHasUnknownValidator h]
