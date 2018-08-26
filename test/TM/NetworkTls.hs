@@ -5,35 +5,30 @@
 -- |
 module TM.NetworkTls (tests) where
 
+import Control.Concurrent         (threadDelay)
 import Control.Concurrent.Async
 import Control.Exception
+import Data.ByteString.Lazy.Char8 as LBC
+import Data.Monoid                ((<>))
 import Test.Tasty
 import Test.Tasty.HUnit
 import Thundermint.P2P.Network
 import TM.MockNet
 import TM.RealNetwork
 
-import Control.Concurrent (threadDelay)
-import Data.Monoid        ((<>))
-
+import qualified Data.ByteString.Lazy as LBS
 
 tests :: TestTree
 tests =
-    testGroup "network test"
-                  [ testGroup "mock"
-                    [ testCase "ping-pong" $ mockNetPair >>= \(server, client) -> pingPong server client
-                    , testCase "delayed write" $ mockNetPair >>= \(server, client) -> delayedWrite server client
-                    ]
-                  , testGroup "real"
-                    [ testGroup "IPv4"
-                          [ testCase "ping-pong" $ realTlsNetPair "127.0.0.1" >>= \(server, client) -> pingPong server client
-                          , testCase "delayed write" $ realTlsNetPair "127.0.0.1" >>= \(server, client) -> delayedWrite server client
+    testGroup "Tls network test"
+                  [ testGroup "IPv4"
+                          [ testCase "tls ping-pong" $ realTlsNetPair "127.0.0.1" >>= \(server, client) -> pingPong server client
+                          , testCase "tls delayed write" $ realTlsNetPair "127.0.0.1" >>= \(server, client) -> delayedWrite server client
                           ]
                     , testGroup "IPv6"
-                          [ testCase "ping-pong" $ realTlsNetPair "::1" >>= \(server, client) -> pingPong server client
-                          , testCase "delayed write" $ realTlsNetPair "::1" >>= \(server, client) -> delayedWrite server client
+                          [ testCase "tls ping-pong" $ realTlsNetPair "::1" >>= \(server, client) -> pingPong server client
+                          , testCase "tls delayed write" $ realTlsNetPair "::1" >>= \(server, client) -> delayedWrite server client
                           ]
-                    ]
                   ]
 
 
@@ -53,7 +48,7 @@ pingPong (serverAddr, server) (_, client) = do
         bracket listenOn fst $ \(_,accept) ->
           bracket accept (close . fst) $ \(conn,_) -> do
             Just bs <- recv conn
-            send conn ("PONG_" <> bs)
+            send conn (LBS.fromStrict $  "PONG_" <> LBC.toStrict bs)
   let runClient NetworkAPI{..} = do
         threadDelay 10e3
         bracket (connect serverAddr) close $ \conn -> do

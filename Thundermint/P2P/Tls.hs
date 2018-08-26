@@ -4,68 +4,114 @@
 -- |
 -- Abstract API for network which support
 module Thundermint.P2P.Tls
-    ( TLSSettings(..)
-    , mkClientSettings
-    , mkServerSettings
+    ( mkClientParams
+    , mkServerParams
     ) where
 
 import Data.Default.Class (def)
 
-import qualified Data.ByteString       as BS
 import qualified Data.ByteString.Char8 as BC8 (pack)
 import qualified Network.Socket        as Net
 import qualified Network.TLS           as TLS
 import qualified Network.TLS.Extra     as TLSExtra
 
-import qualified Data.ByteString.Lazy as LBS
 
--- import Thundermint.P2P.Types
+mkClientParams :: Net.HostName ->  Net.ServiceName -> TLS.Credential -> TLS.ClientParams
+mkClientParams host port credentails =
+    TLS.ClientParams{
+             clientServerIdentification= (host, BC8.pack port)
+           , clientUseMaxFragmentLength = Nothing
+           , clientUseServerNameIndication = False
+           , clientWantSessionResume       = Nothing
+           , clientShared  = clientShared credentails
+           , clientDebug = def
+           , clientHooks = clientHooks credentails
+           , clientSupported = def {
+                                 TLS.supportedVersions = tlsVersions
+                               , TLS.supportedCiphers  = ciphers
+                               }
+             }
 
--- | An action when a plain HTTP comes to HTTP over TLS/SSL port.
-data OnInsecure = DenyInsecure LBS.ByteString
-                | AllowInsecure
 
+
+
+mkServerParams :: TLS.Credential -> TLS.ServerParams
+mkServerParams cred = def {
+                        TLS.serverWantClientCert = False
+                      , TLS.serverSupported = def {
+                                                TLS.supportedVersions = tlsVersions
+                                              , TLS.supportedCiphers  = ciphers
+                                              }
+                      , TLS.serverShared = def {
+                                             TLS.sharedCredentials = TLS.Credentials [cred]
+                                           }
+                      }
+
+
+
+
+-------------------------------------------------------------------------------
+-- Exercise
+
+-- |Insecure mode.
+ignoreCerts :: TLS.Shared
+ignoreCerts  = def
+        {  TLS.sharedValidationCache = TLS.ValidationCache (\_ _ _ -> pure TLS.ValidationCachePass) (\_ _ _ -> pure ())
+        }
+
+clientShared :: TLS.Credential -> TLS.Shared
+clientShared cs = def
+        { TLS.sharedCredentials     = TLS.Credentials [cs]
+        , TLS.sharedValidationCache = def
+        }
+
+clientHooks :: TLS.Credential -> TLS.ClientHooks
+clientHooks cs = def
+        { TLS.onCertificateRequest = const . return . Just $ cs
+        }
+
+
+tlsVersions :: [TLS.Version]
+tlsVersions = [TLS.TLS12,TLS.TLS11,TLS.TLS10]
+
+ciphers :: [TLS.Cipher]
+ciphers =
+    [ TLSExtra.cipher_ECDHE_RSA_AES128GCM_SHA256
+    , TLSExtra.cipher_DHE_RSA_AES128GCM_SHA256
+    , TLSExtra.cipher_DHE_RSA_AES256_SHA256
+    , TLSExtra.cipher_DHE_RSA_AES128_SHA256
+    , TLSExtra.cipher_DHE_RSA_AES256_SHA1
+    , TLSExtra.cipher_DHE_RSA_AES128_SHA1
+    , TLSExtra.cipher_DHE_DSS_AES128_SHA1
+    , TLSExtra.cipher_DHE_DSS_AES256_SHA1
+    , TLSExtra.cipher_DHE_DSS_RC4_SHA1
+    , TLSExtra.cipher_AES128_SHA1
+    , TLSExtra.cipher_AES256_SHA1
+    , TLSExtra.cipher_RC4_128_MD5
+    , TLSExtra.cipher_RC4_128_SHA1
+    ]
+
+
+
+-------------------------------------------------------------------------------
+-- TODO: after review will be desicde how to pass certificates and etc params
+--
+-------------------------------------------------------------------------------
+
+{-
 data TLSSettings = TLSSettings {
-    certFile           :: FilePath
-    -- ^ File containing the certificate.
-  , keyFile            :: FilePath
-  , certMemory         :: Maybe BS.ByteString
-  , keyMemory          :: Maybe BS.ByteString
-    -- ^ File containing the key
-  , onInsecure         :: OnInsecure
-    -- ^ Do we allow insecure connections with this server as well? Default
-    -- is a simple text response stating that a secure connection is required.
---  , tlsLogging         :: TLS.Logging
-    -- ^ The level of logging to turn on.
-    --
-    -- Default: 'TLS.defaultLogging'.
-  , tlsAllowedVersions :: [TLS.Version]
-    -- ^ The TLS versions this server accepts.
-    --
-    -- Default: '[TLS.TLS10,TLS.TLS11,TLS.TLS12]'.
-    --
-    -- Since 1.4.2
-  , tlsCiphers         :: [TLS.Cipher]
-    -- ^ The TLS ciphers this server accepts.
+      tlsClientCertFile  :: FilePath -- ^ File containing the certificate.
+    , tlsPrivKeyFile     :: FilePath -- ^ File containing the key
+    , tlsAllowedVersions :: [TLS.Version]
+    , tlsCiphers         :: [TLS.Cipher]
+    , serverHost         :: String
+    , serverPort         :: Int
   }
-
-tlsSettings :: FilePath -- * Certificate file
-            -> FilePath -- * Key file
-            -> TLSSettings
-tlsSettings cert key = defaultTlsSettings {
-    certFile = cert
-  , keyFile = key
-  }
-
 
 defaultTlsSettings :: TLSSettings
 defaultTlsSettings = TLSSettings {
-    certFile = "certificate.pem"
-  , keyFile = "key.pem"
-  , certMemory = Nothing
-  , keyMemory  = Nothing
-  , onInsecure = DenyInsecure "This socket only accepts secure connections."
-  -- , tlsLogging = def
+    tlsClientCertFile = "certs/certificate.pem"
+  , tlsPrivKeyFile = "certs/key.pem"
   , tlsAllowedVersions = [TLS.TLS12,TLS.TLS11,TLS.TLS10]
   , tlsCiphers = ciphers
   }
@@ -88,13 +134,15 @@ mkServerSettings' TLSSettings{..} cred = def {
 mkClientSettings :: Net.HostName -> Net.ServiceName -> TLS.ClientParams
 mkClientSettings = mkClientSettings' defaultTlsSettings
 
+
+
 mkClientSettings' :: TLSSettings -> Net.HostName -> Net.ServiceName -> TLS.ClientParams
 mkClientSettings' TLSSettings{..} hostname port = TLS.ClientParams{
         TLS.clientUseMaxFragmentLength= Nothing
       , TLS.clientServerIdentification= (hostname, BC8.pack port)
       , TLS.clientUseServerNameIndication = False
       , TLS.clientWantSessionResume = Nothing
-      , TLS.clientShared  = def
+      , TLS.clientShared  = ignoreCerts
       , TLS.clientHooks = def
       , clientDebug = def
       , TLS.clientSupported = def {
@@ -103,20 +151,34 @@ mkClientSettings' TLSSettings{..} hostname port = TLS.ClientParams{
                               }
       }
 
+mkClientSettings'IO :: Net.HostName -> Net.ServiceName -> IO TLS.ClientParams
+mkClientSettings'IO = mkClientSettingsIO defaultTlsSettings
 
-ciphers :: [TLS.Cipher]
-ciphers =
-    [ TLSExtra.cipher_ECDHE_RSA_AES128GCM_SHA256
-    , TLSExtra.cipher_DHE_RSA_AES128GCM_SHA256
-    , TLSExtra.cipher_DHE_RSA_AES256_SHA256
-    , TLSExtra.cipher_DHE_RSA_AES128_SHA256
-    , TLSExtra.cipher_DHE_RSA_AES256_SHA1
-    , TLSExtra.cipher_DHE_RSA_AES128_SHA1
-    , TLSExtra.cipher_DHE_DSS_AES128_SHA1
-    , TLSExtra.cipher_DHE_DSS_AES256_SHA1
-    , TLSExtra.cipher_DHE_DSS_RC4_SHA1
-    , TLSExtra.cipher_AES128_SHA1
-    , TLSExtra.cipher_AES256_SHA1
-    , TLSExtra.cipher_RC4_128_MD5
-    , TLSExtra.cipher_RC4_128_SHA1
-    ]
+mkClientSettingsIO :: TLSSettings -> Net.HostName -> Net.ServiceName -> IO TLS.ClientParams
+mkClientSettingsIO TLSSettings{..} hostname port = do
+  cred <- getCredentials tlsClientCertFile tlsPrivKeyFile
+  return TLS.ClientParams{
+               TLS.clientServerIdentification= (hostname, BC8.pack port)
+             , TLS.clientUseMaxFragmentLength = Nothing
+             , TLS.clientUseServerNameIndication = False
+             , TLS.clientWantSessionResume       = Nothing
+             , TLS.clientShared  = clientShared cred
+             , TLS.clientDebug = def
+             , TLS.clientHooks = clientHooks cred
+             , TLS.clientSupported = def {
+                                       TLS.supportedVersions = tlsAllowedVersions
+                                     , TLS.supportedCiphers  = tlsCiphers
+                                     }
+             }
+
+
+-- mkClientParams :: TLSSettings -> Net.HostName -> Net.ServiceName -> IO TLS.ClientParams
+
+
+getCredentials :: FilePath -> FilePath -> IO TLS.Credential
+getCredentials certFile keyFile = do
+         cred <- TLS.credentialLoadX509 certFile keyFile
+         return $ case cred of
+                    Right c  -> c
+                    Left err -> error err
+-}

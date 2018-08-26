@@ -38,13 +38,14 @@ Library
                      , unordered-containers >=0.2.5.0
                      --
                      , network            >=2.6.0.0
-                     , network-simple-tls >=0.3
                      , tls                >=1.4.1
                      , katip              >=0.5.4.0
                      , cryptonite         >=0.25
                      , cprng-aes
                      , x509
                      , x509-store
+                     , x509-system
+
 
                      --
                      , groom

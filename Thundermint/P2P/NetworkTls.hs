@@ -1,4 +1,3 @@
-{-# LANGUAGE BangPatterns        #-}
 {-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE RecordWildCards     #-}
@@ -10,38 +9,24 @@ module Thundermint.P2P.NetworkTls (
    realNetworkTls
   ) where
 
-import Control.Concurrent.STM
-
-import Control.Concurrent     (forkIO, killThread)
-import Control.Monad          (forM_, forever, void, when)
-import Control.Monad.Catch    (bracket, bracketOnError, onException, throwM)
+import Control.Monad          (when)
+import Control.Monad.Catch    (bracketOnError, throwM)
+import Control.Monad.Catch    (MonadMask)
 import Control.Monad.IO.Class (MonadIO, liftIO)
-import Data.Bits              (unsafeShiftL)
-import Data.Functor           (($>))
 import Data.List              (find)
 import Data.Maybe             (fromJust, fromMaybe)
-import Data.Monoid            ((<>))
-import Data.Word              (Word32)
 import System.Timeout         (timeout)
 
-import qualified Control.Exception          as E
-import qualified Data.ByteString            as BS
-import           Data.X509
-import           Data.X509.CertificateStore
-import           Network.Simple.TCP.TLS
-import qualified Network.TLS                as TLS
-import qualified Network.TLS.Extra          as TLSExtra
--- import qualified Network.TLS.Hooks          as TLSHooks
-import qualified Crypto.Random.AESCtr
-import           Data.Default.Class   (def)
+import           Foreign.C.Error  (Errno(Errno), ePIPE)
+import qualified GHC.IO.Exception as Eg
 
+import qualified Control.Exception  as E
+import qualified Data.ByteString    as BS
+import           Data.Default.Class (def)
+import qualified Network.TLS        as TLS
 
-import qualified Data.ByteString.Builder        as BB
-import qualified Data.ByteString.Lazy           as LBS
-import qualified Data.Map                       as Map
-import qualified Network.Socket                 as Net
-import qualified Network.Socket.ByteString      as NetBS
-import qualified Network.Socket.ByteString.Lazy as NetLBS
+import qualified Data.ByteString.Lazy as LBS
+import qualified Network.Socket       as Net
 
 import Thundermint.Control
 import Thundermint.P2P.Tls
@@ -50,63 +35,6 @@ import Thundermint.P2P.Types
 ----------------------------------------------------------------
 --
 ----------------------------------------------------------------
-headerSize :: HeaderSize
-headerSize = 4
-
-
-
-
-
-----------------------------------------------------------------
---
-----------------------------------------------------------------
-newSocket :: MonadIO m => Net.AddrInfo -> m Net.Socket
-newSocket ai = liftIO $ Net.socket (Net.addrFamily     ai)
-                                   (Net.addrSocketType ai)
-                                   (Net.addrProtocol   ai)
-
-{-sockParams :: T.Credentials -> T.ServerParams
-sockParams creds = def { T.serverWantClientCert = False
-                       , T.serverShared         = shared creds
-                       , T.serverSupported      = supported
-                       }
--}
-
-{-instance HasBackend NetworkAPI{..} where
-    initializeBackend _ = return ()
-    getBackend sock = Backend (return ()) (Network.close sock) (Network.sendAll sock) recvAll
-      where recvAll n = B.concat <$> loop n
-              where loop 0    = return []
-                    loop left = do
-                        r <- safeRecv sock left
-                        if B.null r
-                            then return []
-                            else liftM (r:) (loop (left - B.length r))
--}
--- | API implementation for real tcp network
--- realNetworkTls :: Net.ServiceName -> NetworkAPI Net.SockAddr
--- | Makes an TLS context `T.Backend` from a `Socket`.
-socketBackend :: Socket -> TLS.Backend
-socketBackend sock = do
-    TLS.Backend (return ()) (Net.close sock) (NetBS.sendAll sock) recvAll
-  where
-    recvAll = step BS.empty
-       where step !acc 0 = return acc
-             step !acc n = do
-                bs <- NetBS.recv sock n
-                step (acc `BS.append` bs) (n - BS.length bs)
-
-
-{-- socketBackend' :: NetworkAPI addr -> TLS.Backend
-socketBackend' NetworkAPI{..} = do
-    (c, a) <- listenOn
-    (conn, vv) <- a
-    return $ TLS.Backend (return ())
-           (c)
-           (Thundermint.P2P.Types.send conn) (Thundermint.P2P.Types.recv conn)
--}
-
-
 realNetworkTls :: TLS.Credential -> Net.ServiceName -> NetworkAPI Net.SockAddr
 realNetworkTls creds listenPort = NetworkAPI
   { listenOn = do
@@ -120,27 +48,9 @@ realNetworkTls creds listenPort = NetworkAPI
         throwM NoAddressAvailable
       let addr = fromMaybe (head addrs) $ find isIPv6addr addrs
 
-{-      bracketOnError ( liftIO $ do
-                       sock <- newSocket addr
-                       when (isIPv6addr addr) $
-                            Net.setSocketOption sock Net.IPv6Only 0
-                       Net.bind sock (Net.addrAddress addr)
-                       Net.listen sock 5
-                       ctx <- TLS.contextNew (socketBackend sock) (mkServerSettings creds)
-                       TLS.handshake ctx
-                       pure ctx)
-                       (liftIO .(\ctx -> TLS.bye ctx `E.catch` \(_ :: E.IOException) -> pure ()))
-        (\ctx -> return (TLS.bye ctx , accept ctx))
--}
-      bracketOnError (liftIO $ newSocket addr) (liftIO . Net.close) $ \sock -> liftIO $ do
-        when (isIPv6addr addr) $
-          Net.setSocketOption sock Net.IPv6Only 0
-        Net.bind sock (Net.addrAddress addr)
-        Net.listen sock 5
-        --bracket (do
-        ctx <- TLS.contextNew (socketBackend sock) (mkServerSettings creds)
-        TLS.handshake ctx
-        return (liftIO $ TLS.bye ctx `E.catch` \(_ :: E.IOException) -> pure (), handleAccept sock ctx)
+      bracketOnError (liftIO $ listenerTls addr) (liftIO .  Net.close . fst)
+                     (\(sock, _) -> liftIO $
+                                    return (liftIO $ Net.close sock, acceptTls creds sock))
 
   , connect  = \addr -> do
       let hints = Just Net.defaultHints
@@ -154,23 +64,112 @@ realNetworkTls creds listenPort = NetworkAPI
         liftIO $ throwNothingM ConnectionTimedOut
                $ timeout tenSec
                $ Net.connect sock addr
-        ctx <- TLS.contextNew sock (mkClientSettings (fromJust hostName) (fromJust serviceName))
-        TLS.handshake ctx
-        return $ applyConn ctx
+
+        connectTls creds hostName serviceName sock
   }
- where
-  isIPv6addr = (==) Net.AF_INET6 . Net.addrFamily
 
-handleAccept :: MonadIO m => Net.Socket -> TLS.Context  -> m (Connection, Net.SockAddr)
-handleAccept sock ctx = do -- applyConn' ctx undefined -- do
-    (_, addr) <- liftIO $ Net.accept sock
-    return $ (applyConn ctx, addr)
+newSocket :: MonadIO m => Net.AddrInfo -> m Net.Socket
+newSocket ai = liftIO $ Net.socket (Net.addrFamily     ai)
+                                   (Net.addrSocketType ai)
+                                   (Net.addrProtocol   ai)
 
+
+isIPv6addr :: Net.AddrInfo -> Bool
+isIPv6addr = (==) Net.AF_INET6 . Net.addrFamily
+
+listenerTls :: Net.AddrInfo -> IO (Net.Socket, Net.AddrInfo)
+listenerTls addr = do
+      sock <- newSocket addr
+      when (isIPv6addr addr) $
+        Net.setSocketOption sock Net.IPv6Only 0
+      Net.bind sock (Net.addrAddress addr)
+      Net.listen sock 5
+      return (sock, addr)
+
+connectTls :: MonadIO m =>
+              TLS.Credential
+           -> Maybe Net.HostName
+           -> Maybe Net.ServiceName
+           -> Net.Socket
+           -> m Connection
+connectTls creds host port sock = do
+        ctx <- liftIO $ TLS.contextNew sock (mkClientParams (fromJust  host) ( fromJust port) creds)
+        TLS.handshake ctx
+        liftIO $ TLS.contextHookSetLogging ctx getLogging
+        return $ applyConn ctx
+
+
+acceptTls :: (MonadMask m, MonadIO m) => TLS.Credential -> Net.Socket -> m (Connection, Net.SockAddr)
+acceptTls creds sock = do
+    bracketOnError
+        (liftIO $ Net.accept sock)
+        (\(s,_) -> liftIO $ Net.close s)
+        (\(s, addr) -> do
+           ctx <- TLS.contextNew s (mkServerParams creds)
+           liftIO $ TLS.contextHookSetLogging ctx getLogging
+           TLS.handshake ctx
+           return $ (applyConn ctx, addr)
+
+        )
+
+
+-- | Like 'TLS.bye' from the "Network.TLS" module, except it ignores 'ePIPE'
+-- errors which might happen if the remote peer closes the connection first.
+-- from Network.Simple.TCP.TLS module
+silentBye :: TLS.Context -> IO ()
+silentBye ctx = do
+    E.catch (TLS.bye ctx) $ \e -> case e of
+        Eg.IOError{ Eg.ioe_type  = Eg.ResourceVanished
+                  , Eg.ioe_errno = Just ioe
+                  } | Errno ioe == ePIPE
+          -> return ()
+        _ -> E.throwIO e
 
 applyConn :: TLS.Context -> Connection
-applyConn ctx =
-    Connection ( TLS.sendData ctx)
-                   ( do
-                     bs <- TLS.recvData ctx
-                     return . Just $ LBS.fromStrict bs)
-                   (TLS.bye ctx)
+applyConn context =
+    Connection (send context) (recv context) (liftIO $ tlsClose context)
+
+        where
+
+          tlsClose ctx = (silentBye ctx `E.catch` \(_ :: E.IOException) -> pure ())
+          -- | https://hackage.haskell.org/package/network-simple-tls-0.3/docs/src/Network.Simple.TCP.TLS.html#useTls
+          -- Up to @16384@ decrypted bytes will be received at once.
+          recv :: MonadIO m => TLS.Context -> m (Maybe LBS.ByteString)
+          recv ctx = liftIO $ do
+                       E.handle (\TLS.Error_EOF -> return Nothing)
+                            (do bs <- TLS.recvData ctx
+                                if BS.null bs
+                                then return Nothing -- I think this never happens
+                                else return (Just $ LBS.fromStrict bs))
+
+          send :: MonadIO m => TLS.Context -> LBS.ByteString -> m ()
+          send ctx = \bs -> TLS.sendData ctx  bs
+
+
+-------------------------------------------------------------------------------
+-- debuger hooks
+-------------------------------------------------------------------------------
+
+ioDebug :: Bool
+debug = False
+
+debug :: Bool
+ioDebug = False
+
+getLogging :: TLS.Logging
+getLogging = ioLogging $ packetLogging $ def
+
+packetLogging :: TLS.Logging -> TLS.Logging
+packetLogging logging
+            | debug = logging { TLS.loggingPacketSent = \packet -> putStrLn ("C: PacketSent " ++ show packet)
+                              , TLS.loggingPacketRecv = \packet -> putStrLn ("C: PacketRecv " ++ show packet)
+                              }
+            | otherwise = logging
+
+
+ioLogging :: TLS.Logging -> TLS.Logging
+ioLogging logging
+            | ioDebug = logging { TLS.loggingIOSent = \io -> putStrLn ("C: IOSent " ++ show io)
+                                , TLS.loggingIORecv = \header io -> putStrLn ("C: IORecv header:" ++ show header ++ " io:" ++ show io)
+                                }
+            | otherwise = logging
