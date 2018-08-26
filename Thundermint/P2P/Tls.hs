@@ -19,11 +19,11 @@ import qualified Network.TLS.Extra     as TLSExtra
 mkClientParams :: Net.HostName ->  Net.ServiceName -> TLS.Credential -> TLS.ClientParams
 mkClientParams host port credentails =
     TLS.ClientParams{
-             clientServerIdentification= (host, BC8.pack port)
+             clientServerIdentification= (host, "") -- BC8.pack port)
            , clientUseMaxFragmentLength = Nothing
            , clientUseServerNameIndication = False
            , clientWantSessionResume       = Nothing
-           , clientShared  = clientShared credentails
+           , clientShared = ignoreCerts -- clientShared credentails
            , clientDebug = def
            , clientHooks = clientHooks credentails
            , clientSupported = def {
