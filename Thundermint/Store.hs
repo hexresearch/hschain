@@ -491,16 +491,13 @@ blockInvariant _ _ _ h@(Height n) Nothing = do
 
 blockInvariant chainID validatorS blockID h@(Height n) b@(Just Block{..}) = do
 
-  if isNothing validatorS
-  then
-     when (n > 1) $
-       tell  [MissingValidatorSet (pred h)]
-  else
-  -- all signatures in Block -> blockLastCommit -> commitPrecommits should be known validators' signatures
-      let (Just vs) = validatorS
-      in when ( maybe False (any null . mapM (validatorByAddr vs) . map signedAddr)
-                          (commitPrecommits <$> blockLastCommit) )  $
-           tell [BlockLastCommitHasUnknownValidator h]
+  case validatorS of
+    Nothing -> when (n > 1) $
+                 tell  [MissingValidatorSet (pred h)]
+    Just vs -> -- all signatures in Block -> blockLastCommit -> commitPrecommits should be known validators' signatures
+               when ( maybe False (any isNothing . map (validatorByAddr vs . signedAddr))
+                                (commitPrecommits <$> blockLastCommit) )  $
+                  tell [BlockLastCommitHasUnknownValidator h]
 
   -- All blocks must have same headerChainID, i.e. headerChainID of  genesis block
   when (chainID /=  (headerChainID blockHeader)) $
