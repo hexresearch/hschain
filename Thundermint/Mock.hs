@@ -58,6 +58,7 @@ import Thundermint.P2P.Network
 import Thundermint.Store
 import Thundermint.Store.STM
 import Thundermint.Store.SQLite
+import Thundermint.Debug.Trace
 
 
 
@@ -156,6 +157,8 @@ data NodeDescription addr m alg st tx a = NodeDescription
     -- ^ Storage for blocks
   , nodeNetworks        :: NetworkAPI addr
     -- ^ Network API
+  , nodeAddr            :: addr
+    -- ^ Node address
   , nodeInitialPeers    :: [addr]
     -- ^ Initial peers
   , nodeValidationKey   :: Maybe (PrivValidator alg)
@@ -184,9 +187,9 @@ newBlockStorage prefix mpath genesis validatorSet = do
 
 
 runNode
-  :: ( MonadIO m, MonadMask m, MonadFork m, MonadLogger m
+  :: ( MonadIO m, MonadMask m, MonadFork m, MonadLogger m, MonadTrace m
      , Ord tx, Serialise tx
-     , Crypto alg, Ord addr, Show addr, Show a, LogBlock a
+     , Crypto alg, Ord addr, Show addr, Serialise addr, Show a, LogBlock a
      , Serialise a)
   => NodeDescription addr m alg st tx a
   -> m ()
@@ -239,7 +242,7 @@ runNode NodeDescription{nodeBlockChainLogic=logic@BlockFold{..}, ..} = do
                               =<< currentState bchState]
     ++
     [ id $ setNamespace "net"
-         $ startPeerDispatcher defCfg nodeNetworks nodeInitialPeers appCh
+         $ startPeerDispatcher defCfg nodeNetworks nodeAddr nodeInitialPeers appCh
                                (makeReadOnly   nodeStorage)
                                (makeReadOnlyPS propSt)
                                mempool
@@ -255,13 +258,14 @@ runNode NodeDescription{nodeBlockChainLogic=logic@BlockFold{..}, ..} = do
 
 -- | Start node which will now run consensus algorithm
 startNode
-  :: (Ord addr, Show addr, Crypto alg, Serialise a, Serialise tx, Show a, LogBlock a)
+  :: (Ord addr, Show addr, Serialise addr, Crypto alg, Serialise a, Serialise tx, Show a, LogBlock a)
   => NetworkAPI addr
+  -> addr
   -> [addr]
   -> AppState IO alg a
   -> Mempool IO tx
   -> IO ()
-startNode net addrs appState@AppState{..} mempool = do
+startNode net addr addrs appState@AppState{..} mempool = do
   -- Initialize logging
   logfile <- case appValidator of
     Just (PrivValidator pk) ->
@@ -277,7 +281,7 @@ startNode net addrs appState@AppState{..} mempool = do
   flip finally (Katip.closeScribes logenv) $ do
     appCh   <- newAppChans
     let netRoutine = runLoggerT "net" logenv
-                   $ startPeerDispatcher defCfg net addrs appCh
+                   $ startPeerDispatcher defCfg net addr addrs appCh
                        (hoistBlockStorageRO liftIO $ makeReadOnly   appStorage)
                        (hoistPropStorageRO  liftIO $ makeReadOnlyPS appPropStorage)
                        (hoistMempool liftIO mempool)
@@ -290,15 +294,15 @@ startNode net addrs appState@AppState{..} mempool = do
 -- | Start set of nodes and return their corresponding storage. Will
 --   return their storage after all nodes finish execution
 runNodeSet
-  :: (Ord addr, Show addr, Crypto alg, Serialise a, Show a, Serialise tx, LogBlock a)
-  => [( NetworkAPI addr, [addr], AppState IO alg a, Mempool IO tx)]
+  :: (Ord addr, Show addr, Serialise addr, Crypto alg, Serialise a, Show a, Serialise tx, LogBlock a)
+  => [( NetworkAPI addr, addr, [addr], AppState IO alg a, Mempool IO tx)]
   -> IO [BlockStorage 'RO IO alg a]
 runNodeSet nodes = do
-  withAsyncs [ startNode net addrs appSt mp
-             | (net,addrs,appSt,mp) <- nodes
+  withAsyncs [ startNode net addr addrs appSt mp
+             | (net,addr,addrs,appSt,mp) <- nodes
              ]
     $ void . waitAny
-  return [ makeReadOnly $ appStorage a | (_,_,a,_) <- nodes ]
+  return [ makeReadOnly $ appStorage a | (_,_,_,a,_) <- nodes ]
 
 withAsyncs :: [IO a] -> ([Async a] -> IO b) -> IO b
 withAsyncs ios function

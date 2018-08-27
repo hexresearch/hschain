@@ -73,6 +73,7 @@ main = do
          propStorage <- newSTMPropStorage
          let loadAllKeys = Set.fromList . map fst . concatMap blockData <$> loadAllBlocks storage
          return ( createMockNode net "50000" addr
+                , (addr,"50000")
                 , map (,"50000") $ connectRing validators addr
                 , AppState
                     { appStorage        = storage
