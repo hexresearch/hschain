@@ -34,18 +34,32 @@ module Thundermint.Store (
   , hoistMempoolCursor
   , hoistMempool
   , nullMempool
+  -- * Blockchain invariants checkers
+  , BlockchainInconsistency
+  , checkBlocks
+  , checkCommits
+  , checkValidators
+  , checkCommitsBlocks
   ) where
 
-import qualified Data.Aeson    as JSON
-import qualified Data.Aeson.TH as JSON
-import           Data.Map          (Map)
+import Control.Monad.Trans.Writer
+
 import qualified Katip
-import GHC.Generics (Generic)
 
-import Thundermint.Crypto.Containers
+import           Codec.Serialise           (Serialise)
+import           Control.Monad             (when)
+import           Control.Monad.Trans.Class
+import qualified Data.Aeson                as JSON
+import qualified Data.Aeson.TH             as JSON
+import qualified Data.ByteString           as BS
+import           Data.Foldable             (forM_)
+import           Data.Map                  (Map)
+import           Data.Maybe                (isJust, isNothing, maybe)
+import           GHC.Generics              (Generic)
+
 import Thundermint.Consensus.Types
-
-
+import Thundermint.Crypto
+import Thundermint.Crypto.Containers
 ----------------------------------------------------------------
 -- Abstract API for storing data
 ----------------------------------------------------------------
@@ -158,23 +172,23 @@ hoistBlockStorageRO fun BlockStorage{..} =
 
 -- | Storage for intermediate data used for
 data ProposalStorage rw m alg a = ProposalStorage
-  { currentHeight       :: m Height
+  { currentHeight      :: m Height
     -- ^ Get current height of storage
-  , advanceToHeight     :: Writable rw (Height -> m ())
+  , advanceToHeight    :: Writable rw (Height -> m ())
     -- ^ Advance to given height. If height is different from current
     --   all stored data is discarded
-  , retrievePropBlocks  :: Height -> m (Map (BlockID alg a) (Block alg a))
+  , retrievePropBlocks :: Height -> m (Map (BlockID alg a) (Block alg a))
     -- ^ Retrieve blocks
-  , waitForBlockID      :: BlockID alg a -> m (Block alg a)
+  , waitForBlockID     :: BlockID alg a -> m (Block alg a)
     -- ^ Wait for block with given block ID. Call will block until
     --   block appears in storage.
-  , storePropBlock      :: Writable rw (Block alg a -> m ())
+  , storePropBlock     :: Writable rw (Block alg a -> m ())
     -- ^ Store block proposed at given height. If height is different
     --   from height we are at block is ignored.
 
-  , allowBlockID        :: Writable rw (Round -> BlockID alg a -> m ())
+  , allowBlockID       :: Writable rw (Round -> BlockID alg a -> m ())
     -- ^ Mark block ID as one that we could accept
-  , blockAtRound        :: Height -> Round -> m (Maybe (Block alg a, BlockID alg a))
+  , blockAtRound       :: Height -> Round -> m (Maybe (Block alg a, BlockID alg a))
     -- ^ Get block at given round and height
   }
 
@@ -220,7 +234,7 @@ hoistPropStorageRO fun ProposalStorage{..} =
 
 -- | Statistics about mempool
 data MempoolInfo = MempoolInfo
-  { mempool'size       :: Int
+  { mempool'size      :: Int
   -- ^ Number of transactions currently in mempool
   , mempool'added     :: Int
   -- ^ Number of transactions added to mempool since program start
@@ -286,3 +300,230 @@ nullMempool = Mempool
       , advanceCursor   = return Nothing
       }
   }
+
+
+----------------------------------------------------------------
+-- validate blockchain invariants
+----------------------------------------------------------------
+
+-- | Blockchain inconsistency types
+data BlockchainInconsistency = MissingGenesisBlock
+                             -- ^ Missing genesis block
+                             | MissingBlock Height
+                             -- ^ Missing block at Height
+                             | MissingCommit Height
+                             -- ^ Missing commit at Height
+                             | MissingLocalCommit Height
+                             -- ^ Missing local commit at Height
+                             | MissingValidatorSet Height
+                             -- ^ Missing validator' set at Height
+                             | MissingHeaderLastBlockID Height
+                             -- ^ Missing validator' set at Height
+
+                             -- * genesis invariants
+                             | GenesisHasLastCommit
+                             -- ^ genesis block has last commit
+                             | GenesisHasHeaderLastBlockID
+                             -- ^ genesis block has headerLastBlockID
+                             | FirstBlockHasLastCommit
+                             -- ^ block at height 1 has blockLastCommit
+
+                             -- * Block invariants
+                             | BlockLastCommitHasMisMatchVoteHeight Height
+                             -- ^ at height H+1 (block blockLastCommit)' some vote(s) does not refer to block at H
+                             | BlockLastCommitHasMisMatchVoteBlockID Height
+                             -- ^ lastCommit's preCommits some voteBlockID does not equal to headerLastBlockID or to commitBlockID
+                             | BlockLastCommitHasUnknownValidator Height
+                             -- ^ some signature(s) in block's commitPrecommits does not belongs to known validators' signatures et
+                             | BlockHasMisMatchChainId Height
+                             -- ^ block has different chainId from genesis block
+                             | BlockHasMisMatchHeightInHeader Height
+                             -- ^ block at height H has different H in its header
+                             | BlockHasMisMatchHash Height
+                             -- ^ hash of block and hash from db miss match
+
+                             -- * Commit invariants
+                             | CommitHasUnknownValidator Height
+                             -- ^ there is not enought voting power
+                             | CommitHasDeficitVotingPower Height
+                             -- ^ some signature(s) in commit' commitPrecommits does not belongs to known validators' signatures et
+
+                             -- * Block, Commit couple invariants
+                             | CommitBlockHeaderBlockIDMisMatch Height
+                             -- ^ headerLastBlockID at height H is not equal to BlockID at previous height
+                               deriving (Eq, Show)
+
+-- | check all blocks' invarinats
+checkBlocks
+  :: (Monad m, Crypto alg, Serialise a) =>
+     BlockStorage rw m alg a
+     -> m [BlockchainInconsistency]
+checkBlocks storage = execWriterT $ do
+    maxH <- lift $ blockchainHeight storage
+    Just genesis <- lift $ retrieveBlock storage (Height 0)
+    let genesisChainId = headerChainID $ blockHeader genesis
+    forM_ [Height 0 .. maxH]  $ \h -> do
+                   b   <- lift $ retrieveBlock storage h
+                   bID <- lift $ retrieveBlockID storage h
+                   vs  <- lift $ retrieveValidatorSet storage (pred h)
+                   blockInvariant genesisChainId vs bID h b
+
+-- | check all commits' invarinats
+checkCommits :: Monad m =>
+               BlockStorage rw m alg a1
+            -> m [BlockchainInconsistency]
+checkCommits storage = execWriterT $ do
+    maxH <- lift $ blockchainHeight storage
+    forM_ [Height 1 .. pred maxH]  $ \h -> do
+            cmt <- lift $ retrieveCommit storage h
+            vs  <- lift $ retrieveValidatorSet storage h
+            commitInvariant vs h cmt
+
+            local_cmt <- lift $ retrieveLocalCommit storage h
+            commitInvariant vs h local_cmt
+
+-- | check all validators' invarinats
+checkValidators :: Monad m =>
+               BlockStorage rw m alg a1
+            -> m [BlockchainInconsistency]
+checkValidators storage = execWriterT $ do
+    maxH <- lift $ blockchainHeight storage
+    forM_ [Height 1 .. pred maxH]  $ \h -> do
+            vs  <- lift $ retrieveValidatorSet storage h
+            validatorInvariant h vs
+
+
+-- | check all (commit, block) couple invarinats
+checkCommitsBlocks :: Monad m =>
+               BlockStorage rw m alg a1
+            -> m [BlockchainInconsistency]
+checkCommitsBlocks storage = do
+    maxH <- blockchainHeight storage
+    let heights = enumFromTo (Height 1) (pred maxH)
+
+    xs <- mapM  (\h -> execWriterT $ do
+                          cmt <- lift $ retrieveCommit storage (pred h)
+                          blk  <- lift $ retrieveBlock storage h
+                          commitBlockInvariant h blk cmt
+                       ) heights
+
+    return $ concat xs
+
+-------------------------------------------------------------------------------
+-- validator invariants
+-------------------------------------------------------------------------------
+
+validatorInvariant
+    ::  (Monad m) =>
+       Height
+    -> Maybe (ValidatorSet alg)
+    -> WriterT [BlockchainInconsistency] m ()
+validatorInvariant h vs = do
+  when (isNothing vs) $
+    tell [MissingValidatorSet h]
+
+-------------------------------------------------------------------------------
+-- commit invariants
+-------------------------------------------------------------------------------
+commitInvariant
+    ::  (Monad m) =>
+       Maybe (ValidatorSet alg)
+    -> Height
+    -> Maybe (Commit alg a)
+    -> WriterT [BlockchainInconsistency] m ()
+
+commitInvariant _ h Nothing = do tell [MissingCommit h]
+commitInvariant  Nothing h@(Height n) _ = do
+  when (n > 0) $
+    tell  [MissingValidatorSet h]
+commitInvariant (Just vs) h (Just Commit{..}) = do
+  -- check voting power is enought, i. e. contains at least 2/3 voting power
+  when (tot < quorum) $
+    tell [CommitHasDeficitVotingPower h]
+  -- all signatures in Commit-> commitPrecommits should be known validators' signatures
+  when (any null . mapM (validatorByAddr vs) $  map signedAddr commitPrecommits)  $
+    tell [CommitHasDeficitVotingPower h]
+
+ where
+   power = maybe 0 validatorVotingPower
+           . validatorByAddr vs
+   tot    = sum [ power a | a <- map signedAddr commitPrecommits]
+   quorum = 2 * totalVotingPower vs `div` 3 + 1
+
+
+
+-------------------------------------------------------------------------------
+-- commit, block couple invariants
+-------------------------------------------------------------------------------
+commitBlockInvariant
+    ::  (Monad m) =>
+        Height
+    -> Maybe (Block alg a)
+    -> Maybe (Commit alg a)
+    -> WriterT [BlockchainInconsistency] m ()
+
+commitBlockInvariant _ _ Nothing = tell []
+commitBlockInvariant _ Nothing _ = tell []
+commitBlockInvariant h@(Height n) (Just Block{..}) (Just Commit{..}) = do
+  -- headerLastBlockID at height H must be equal to BlockID at previous height
+  when (n > 1 && maybe False (/= commitBlockID) (headerLastBlockID blockHeader)) $
+    tell [CommitBlockHeaderBlockIDMisMatch h]
+
+
+
+-------------------------------------------------------------------------------
+-- block invarinats
+-------------------------------------------------------------------------------
+blockInvariant
+    :: (Monad m, Crypto alg, Serialise a) =>
+       BS.ByteString
+    -> Maybe (ValidatorSet alg)
+    -> Maybe (BlockHash alg (Block alg a))
+    -> Height
+    -> Maybe (Block alg a)
+    -> WriterT [BlockchainInconsistency] m ()
+blockInvariant _ _ _ h@(Height n) Nothing = do
+  -- genesis block is missing
+  when (n == 0) $
+    tell [MissingGenesisBlock]
+  when (n > 0) $
+    tell [MissingBlock h]
+
+blockInvariant chainID validatorS blockID h@(Height n) b@(Just Block{..}) = do
+
+  case validatorS of
+    Nothing -> when (n > 1) $
+                 tell  [MissingValidatorSet (pred h)]
+    Just vs -> -- all signatures in Block -> blockLastCommit -> commitPrecommits should be known validators' signatures
+               when ( maybe False (any isNothing . map (validatorByAddr vs . signedAddr))
+                                (commitPrecommits <$> blockLastCommit) )  $
+                  tell [BlockLastCommitHasUnknownValidator h]
+
+  -- All blocks must have same headerChainID, i.e. headerChainID of  genesis block
+  when (chainID /=  (headerChainID blockHeader)) $
+    tell [BlockHasMisMatchChainId h]
+  -- block at height H has H in its header
+  when (headerHeight  blockHeader /= h)   $
+    tell [BlockHasMisMatchHeightInHeader h]
+  -- hash of block and hash from db should match
+  when (blockID /= (blockHash <$> b))   $
+    tell [BlockHasMisMatchHash h]
+  -- blockLastCommit of genesis block should be Nothing
+  when (n == 0 && isJust blockLastCommit) $
+    tell [GenesisHasLastCommit]
+  -- blockLastCommit of block at height 1 should be Nothing
+  when (n == 1 && isJust blockLastCommit) $
+    tell [FirstBlockHasLastCommit]
+  -- headerLastBlockID of genesis block should be Nothing
+  when (n == 0 && isJust (headerLastBlockID blockHeader)) $
+    tell [GenesisHasHeaderLastBlockID]
+  -- headerLastBlockID of non genesis blocks should be Just
+  when (n > 0 && (isNothing $ headerLastBlockID blockHeader) ) $
+    tell [MissingHeaderLastBlockID h]
+  -- block at height H+1 blockLastCommit all votes refer to block at H
+  when ( maybe False (any ((/= pred h) . voteHeight . signedValue)) (commitPrecommits <$> blockLastCommit))  $
+    tell [BlockLastCommitHasMisMatchVoteHeight h]
+  --  block's all voteBlockID equals to headerLastBlockID and equals to commitBlockID
+  when ( maybe False (\Commit{..} -> any ((\b -> b /= Just commitBlockID
+                                           || b /= headerLastBlockID blockHeader) <$> voteBlockID <$> signedValue) commitPrecommits) blockLastCommit)  $
+    tell [BlockLastCommitHasMisMatchVoteBlockID h]

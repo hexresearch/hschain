@@ -22,6 +22,7 @@ pipeline:
     - .stack-work
     when:
       event: push
+      status: [ success, failure ]
 
   telegram:
     image: appleboy/drone-telegram

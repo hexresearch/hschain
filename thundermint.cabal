@@ -174,6 +174,7 @@ Test-suite thundermint-tests
                      , exceptions
                      , stm        >=2.4
                      , async      >=2.2.1
+                     , directory
                      --
                      , network           >=2.7.0.0
                      , random
@@ -199,6 +200,7 @@ Test-suite thundermint-tests
                        TM.Serialisation
                        TM.Util.Misc
                        TM.Util.Network
+                       TM.Store
                        TM.Util.Tests
 
 -- Benchmarks

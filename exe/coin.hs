@@ -7,46 +7,55 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections       #-}
 {-# LANGUAGE TypeFamilies        #-}
+
+import Control.Concurrent
 import Control.Monad
 import Control.Monad.Catch
 import Control.Monad.IO.Class
-import Control.Concurrent
-import Codec.Serialise      (serialise)
-import Data.ByteString.Lazy (toStrict)
 import Data.Foldable
-import Data.Monoid
 import Data.Int
-import qualified Data.Aeson             as JSON
-import qualified Data.ByteString.Char8  as BC8
-import qualified Data.Map               as Map
-import System.Random    (randomRIO)
-import System.FilePath  ((</>))
-import GHC.Generics (Generic)
+import Data.Monoid
 import Options.Applicative
 
-import Thundermint.Blockchain.Types
+import Codec.Serialise      (serialise)
+import Data.ByteString.Lazy (toStrict)
+import GHC.Generics         (Generic)
+import System.Directory     (createDirectoryIfMissing)
+import System.FilePath      (splitFileName, (</>))
+import System.Random        (randomRIO)
+
+
+import qualified Data.Aeson            as JSON
+import qualified Data.Aeson            as JSON
+import qualified Data.ByteString.Char8 as BC8
+import qualified Data.ByteString.Char8 as BC8
+import qualified Data.Map              as Map
+import qualified Data.Map              as Map
+
 import Thundermint.Blockchain.Interpretation
+import Thundermint.Blockchain.Types
 import Thundermint.Consensus.Types
-import Thundermint.Crypto
-import Thundermint.Crypto.Ed25519   (Ed25519_SHA512)
 import Thundermint.Control
+import Thundermint.Crypto
+import Thundermint.Crypto.Ed25519            (Ed25519_SHA512)
+import Thundermint.Logger
+import Thundermint.Mock
+import Thundermint.Mock.Coin
+import Thundermint.Mock.KeyList
 import Thundermint.P2P.Network
 import Thundermint.Store
 import Thundermint.Store.SQLite
-import Thundermint.Logger
-import Thundermint.Mock
-import Thundermint.Mock.KeyList
-import Thundermint.Mock.Coin
+import Thundermint.Store.STM
 
 ----------------------------------------------------------------
 -- Generating node specification
 ----------------------------------------------------------------
 
 data NodeSpec = NodeSpec
-  { nspecPrivKey     :: Maybe (PrivValidator Ed25519_SHA512)
-  , nspecDbName      :: Maybe FilePath
-  , nspecLogFile     :: [ScribeSpec]
-  , nspecWalletKeys  :: (Int,Int)
+  { nspecPrivKey    :: Maybe (PrivValidator Ed25519_SHA512)
+  , nspecDbName     :: Maybe FilePath
+  , nspecLogFile    :: [ScribeSpec]
+  , nspecWalletKeys :: (Int,Int)
   }
   deriving (Generic,Show)
 
@@ -192,12 +201,22 @@ main
         Right s -> return s
         Left  e -> error e
       storageList <- executeNodeSpec maxH prefix delay spec
+
       when doValidate $ do
         -- If maxH is nothing code is not reachable
         let Just maximumH = maxH
             heights = map (Height . fromIntegral) [0 .. maximumH]
             allEqual []     = error "Empty list impossible!"
             allEqual (x:xs) = all (x==) xs
+
+        forM_ storageList $ \s -> do
+                          bs <- checkBlocks s
+                          cs <- checkCommits s
+                          vs <- checkValidators s
+                          cbs <- checkCommitsBlocks s
+                          return $ bs <> cs <> vs <> cbs
+
+
         forM_ heights $ \h -> do
           -- Check that all blocks match!
           blocks <- forM storageList $ \s -> do

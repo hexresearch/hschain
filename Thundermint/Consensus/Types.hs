@@ -37,14 +37,14 @@ module Thundermint.Consensus.Types (
 import           Codec.Serialise
 import           Codec.Serialise.Decoding
 import           Codec.Serialise.Encoding
-import qualified Data.Aeson         as JSON
-import           Data.ByteString   (ByteString)
-import           Data.Map          (Map)
-import           Data.Monoid       ((<>))
+import qualified Data.Aeson               as JSON
+import           Data.ByteString          (ByteString)
+import qualified Data.HashMap.Strict      as HM
 import           Data.Int
-import qualified Data.HashMap.Strict as HM
+import           Data.Map                 (Map)
+import           Data.Monoid              ((<>))
+import           GHC.Generics             (Generic)
 import qualified Katip
-import GHC.Generics (Generic)
 
 import Thundermint.Crypto
 import Thundermint.Crypto.Containers
@@ -63,10 +63,10 @@ import Thundermint.Crypto.Containers
 --   * Current height in consensus algorithm is height of block we're
 --     deciding on.
 newtype Height = Height Int64
-  deriving (Show, Eq, Ord, Serialise, JSON.ToJSON, JSON.FromJSON)
+  deriving (Show, Eq, Ord, Serialise, JSON.ToJSON, JSON.FromJSON, Enum)
 
 newtype Round = Round Int64
-  deriving (Show, Eq, Ord, Serialise, JSON.ToJSON, JSON.FromJSON)
+  deriving (Show, Eq, Ord, Serialise, JSON.ToJSON, JSON.FromJSON, Enum)
 
 newtype Time = Time Int64
   deriving (Show, Eq, Ord, Serialise)
@@ -76,11 +76,11 @@ class Sequence a where
   rangeExclusive :: a -> a -> [a]
 
 instance Sequence Height where
-  next (Height n) = Height (succ n)
-  rangeExclusive (Height n) (Height m) = [ Height i | i <- [n+1, m-1]]
+  next h =  succ h
+  rangeExclusive a b = enumFromTo (succ a) (pred b)
 instance Sequence Round where
-  next (Round n) = Round (succ n)
-  rangeExclusive (Round n) (Round m) = [ Round i | i <- [n+1, m-1]]
+  next r  = succ r
+  rangeExclusive a b = enumFromTo (succ a) (pred b)
 
 
 ----------------------------------------------------------------
@@ -180,11 +180,11 @@ instance Serialise VoteType
 
 -- | Single vote cast validator. Type of vote is determined by its
 --   type tag
-data Vote (ty :: VoteType) alg a = Vote
-  { voteHeight     :: Height
-  , voteRound      :: Round
-  , voteTime       :: Time
-  , voteBlockID    :: Maybe (BlockID alg a)
+data Vote (ty :: VoteType) alg a= Vote
+  { voteHeight  :: Height
+  , voteRound   :: Round
+  , voteTime    :: Time
+  , voteBlockID :: Maybe (BlockID alg a)
   }
   deriving (Show,Eq,Ord,Generic)
 
@@ -241,19 +241,19 @@ instance JSON.FromJSON ProposalState
 
 -- | State for tendermint consensus at some particular height.
 data TMState alg a = TMState
-  { smRound            :: Round
+  { smRound         :: Round
     -- ^ Current round
-  , smStep             :: Step
+  , smStep          :: Step
     -- ^ Current step in the round
-  , smProposals        :: Map Round (Signed 'Verified alg (Proposal alg a))
+  , smProposals     :: Map Round (Signed 'Verified alg (Proposal alg a))
     -- ^ Proposal for current round
-  , smPrevotesSet      :: HeightVoteSet 'PreVote alg a
+  , smPrevotesSet   :: HeightVoteSet 'PreVote alg a
     -- ^ Set of all received valid prevotes
-  , smPrecommitsSet    :: HeightVoteSet 'PreCommit alg a
+  , smPrecommitsSet :: HeightVoteSet 'PreCommit alg a
     -- ^ Set of all received valid precommits
-  , smLockedBlock      :: Maybe (Round, BlockID alg a)
+  , smLockedBlock   :: Maybe (Round, BlockID alg a)
     -- ^ Round and block we're locked on
-  , smLastCommit       :: Maybe (Commit alg a)
+  , smLastCommit    :: Maybe (Commit alg a)
     -- ^ Commit for previous block. Nothing if previous block is
     --   genesis block.
   }
