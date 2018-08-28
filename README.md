@@ -1,6 +1,6 @@
 # Thundermint
 
-[![Build Status](https://thunderbuild.hxr.team/api/badges/hexresearch/thundermint/status.svg)](https://thunderbuild.hxr.team/hexresearch/thundermint)
+[![Build Status](https://drone1.hxr.team/api/badges/hexresearch/thundermint/status.svg)](https://drone1.hxr.team/hexresearch/thundermint)
 
 Thundermint is a haskell implementation of tendermint bysantine consesus algorithm
 
