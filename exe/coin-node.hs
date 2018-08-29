@@ -205,7 +205,7 @@ main = do
       let !validators'' = either error (fmap PrivValidator)
                         $ JSON.eitherDecodeStrict' ipMapPath  :: [PrivValidator Ed25519_SHA512]
           !validatorSet = makeValidatorSetFromPriv validators''
-      runLoggerT "general" logenv $ 
+      runLoggerT "general" logenv $
         logger InfoS "Listening for bootstrap adresses" ()
       netAddresses <- waitForAddrs logenv
       (_,act) <- interpretSpec opts netAddresses validatorSet logenv nodeSpec
@@ -262,7 +262,7 @@ waitForAddrs logenv = E.handle allExc $ do
       either fail return $ JSON.eitherDecodeStrict' msg
   runLoggerT "boostrap" logenv $ do
     logger InfoS ("Got " <> showLS addrs <> " boostrap addresses.") ()
-    logger InfoS ("Stop listening") ()
+    logger InfoS "Stop listening" ()
   return addrs
  where
     allExc (e::SomeException) = runLoggerT "boostrap" logenv $ do
