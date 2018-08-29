@@ -50,7 +50,7 @@ import Thundermint.Consensus.Types
 import Thundermint.Crypto
 import Thundermint.Crypto.Containers
 import Thundermint.Crypto.Ed25519   (Ed25519_SHA512)
-import Thundermint.P2P.Network (realNetwork)
+import Thundermint.P2P.Network (realNetwork, getLocalAddress)
 import Thundermint.Store
 import Thundermint.Logger
 import Thundermint.Mock
@@ -144,6 +144,7 @@ interpretSpec
 interpretSpec Opts{..} netAddresses validatorSet logenv NodeSpec{..} = do
   -- Allocate storage for node
   storage <- newBlockStorage prefix nspecDbName genesisBlock validatorSet
+  nodeAddr <- getLocalAddress
   return
     ( makeReadOnly storage
     , runLoggerT "general" logenv $
@@ -151,6 +152,7 @@ interpretSpec Opts{..} netAddresses validatorSet logenv NodeSpec{..} = do
           { nodeStorage         = hoistBlockStorageRW liftIO storage
           , nodeBlockChainLogic = transitions
           , nodeNetworks        = realNetwork thundemintPort
+          , nodeAddr            = nodeAddr
           , nodeInitialPeers    = netAddresses
           , nodeValidationKey   = nspecPrivKey
           , nodeAction          = do let (off,n)  = nspecWalletKeys
