@@ -39,11 +39,14 @@ import Network.Socket
     , getAddrInfo
     , getNameInfo
     , listen
-    , setCloseOnExecIfNeeded
+    -- , setCloseOnExecIfNeeded
     , setSocketOption
     , socket
     )
 import Network.Socket.ByteString (recv)
+
+import qualified System.Posix.Internals
+import Foreign.C.Types
 
 import Thundermint.Blockchain.Types
 import Thundermint.Consensus.Types
@@ -241,11 +244,14 @@ main = do
            <> help "Initial deposit"
            <> metavar "N"
            )
-           
+
 
 ----------------------------------------------------------------
 -- TCP server that listens for boostrap addresses
 ----------------------------------------------------------------
+
+setCloseOnExecIfNeeded :: CInt -> IO ()
+setCloseOnExecIfNeeded = System.Posix.Internals.setCloseOnExec
 
 waitForAddrs :: LogEnv -> IO [SockAddr]
 waitForAddrs logenv = E.handle allExc $ do
