@@ -56,6 +56,7 @@ import Thundermint.Logger
 import Thundermint.Mock
 import Thundermint.Mock.KeyList
 import Thundermint.Mock.Coin
+import Thundermint.P2P.Instances ()
 
 import qualified Control.Exception     as E
 import qualified Data.Text             as T
