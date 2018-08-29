@@ -28,7 +28,6 @@ import           Data.Function
 import           Data.Monoid       ((<>))
 import qualified Data.Map        as Map
 -- import           Data.Map          (Map)
-import Text.Groom
 
 import Thundermint.Blockchain.Types
 import Thundermint.Crypto

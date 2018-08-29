@@ -1,12 +1,12 @@
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE DeriveGeneric       #-}
 {-# LANGUAGE LambdaCase          #-}
-{-# LANGUAGE NumDecimals         #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections       #-}
 {-# LANGUAGE TypeFamilies        #-}
+{-# OPTIONS_GHC -fno-warn-unused-top-binds #-} {- allow useful top functions for GHCi -}
 
 import Control.Concurrent
 import Control.Monad
@@ -20,16 +20,12 @@ import Options.Applicative
 import Codec.Serialise      (serialise)
 import Data.ByteString.Lazy (toStrict)
 import GHC.Generics         (Generic)
-import System.Directory     (createDirectoryIfMissing)
-import System.FilePath      (splitFileName, (</>))
+import System.FilePath      ((</>))
 import System.Random        (randomRIO)
 
 
 import qualified Data.Aeson            as JSON
-import qualified Data.Aeson            as JSON
 import qualified Data.ByteString.Char8 as BC8
-import qualified Data.ByteString.Char8 as BC8
-import qualified Data.Map              as Map
 import qualified Data.Map              as Map
 
 import Thundermint.Blockchain.Interpretation
@@ -45,7 +41,6 @@ import Thundermint.Mock.KeyList
 import Thundermint.P2P.Network
 import Thundermint.Store
 import Thundermint.Store.SQLite
-import Thundermint.Store.STM
 
 ----------------------------------------------------------------
 -- Generating node specification
@@ -149,6 +144,7 @@ interpretSpec maxH prefix delay NetSpec{..} = do
                                        return $ transferActions delay
                                          (publicKey <$> take netInitialKeys privateKeyList)
                                          privKeys
+            , nodeAddr            = (addr, "50000")
             , nodeCommitCallback = \case
                 h | Just hM <- maxH
                   , h > Height hM -> throwM Abort

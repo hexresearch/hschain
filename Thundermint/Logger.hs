@@ -4,6 +4,7 @@
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE RecordWildCards            #-}
 {-# LANGUAGE TemplateHaskell            #-}
+{-# OPTIONS_GHC -fno-warn-orphans       #-}
 -- |
 -- Logger
 module Thundermint.Logger (
