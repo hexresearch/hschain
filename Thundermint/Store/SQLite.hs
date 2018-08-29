@@ -14,10 +14,9 @@ module Thundermint.Store.SQLite (
 
 import Codec.Serialise (Serialise,serialise,deserialiseOrFail)
 import Control.Applicative
-import Control.Concurrent.MVar
 import Control.Monad.Trans.Maybe
 import Data.Int
-import qualified Database.SQLite.Simple.FromField as SQL
+-- import qualified Database.SQLite.Simple.FromField as SQL
 import qualified Database.SQLite.Simple           as SQL
 import           Database.SQLite.Simple             (Only(..))
 
@@ -181,11 +180,11 @@ singleQ conn query p =
       Left  e -> error ("CBOR encoding error: " ++ show e)
     _         -> error "Impossible"
 
--- Query that returns 0 or 1 result which is CBOR-encoded value
-singleFld :: (SQL.ToRow p, SQL.FromField a)
-        => SQL.Connection -> SQL.Query -> p -> IO (Maybe a)
-singleFld conn query p =
-  SQL.query conn query p >>= \case
-    []       -> return Nothing
-    [Only a] -> return (Just a)
-    _        -> error "Impossible"
+---- Query that returns 0 or 1 result which is CBOR-encoded value
+--singleFld :: (SQL.ToRow p, SQL.FromField a)
+--        => SQL.Connection -> SQL.Query -> p -> IO (Maybe a)
+--singleFld conn query p =
+--  SQL.query conn query p >>= \case
+--    []       -> return Nothing
+--    [Only a] -> return (Just a)
+--    _        -> error "Impossible"

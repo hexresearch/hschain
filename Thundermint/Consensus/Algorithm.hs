@@ -37,7 +37,6 @@ import Control.Monad
 
 import qualified Data.Aeson          as JSON
 import qualified Data.Aeson.TH       as JSON
-import           Data.Monoid           ((<>))
 import qualified Data.Map            as Map
 import qualified Data.HashMap.Strict as HM
 import           Katip (Severity(..))

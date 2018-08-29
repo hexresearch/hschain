@@ -9,6 +9,7 @@ module Thundermint.P2P.Network (
     -- * Real network
   , realNetwork
   , realNetworkUdp
+  , getLocalAddress
     -- * Mock in-memory network
   , MockSocket
   , MockNet
@@ -217,6 +218,20 @@ realNetworkUdp listenPort = do
     (return ())
 
 
+----------------------------------------------------------------
+-- Some useful utilities
+----------------------------------------------------------------
+
+-- | Get local node address
+--
+getLocalAddress :: IO Net.SockAddr
+getLocalAddress = do
+    -- TODO get correct `localhost` address
+    addr:_ <- Net.getAddrInfo (Just $ Net.defaultHints { Net.addrSocketType = Net.Stream })
+                              (Just "localhost")
+                              Nothing
+    let sockAddr = Net.addrAddress addr
+    return sockAddr
 
 
 ----------------------------------------------------------------

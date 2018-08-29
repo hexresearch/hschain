@@ -27,7 +27,7 @@ totalNOfBlocks storage@BlockStorage{..} = do
   print $ length $ blockData =<< blocks
 
 printHeight :: BlockStorage 'RO IO Alg [Tx] -> IO ()
-printHeight storage@BlockStorage{..} = do
+printHeight BlockStorage{..} =
   print =<< blockchainHeight
 
 
@@ -51,7 +51,7 @@ main
     <> progDesc ""
     )
   where
-    work command db = withSQLiteBlockStorageRO db command
+    work command' db = withSQLiteBlockStorageRO db command'
     parser :: Parser (IO ())
     parser
       = pure work

@@ -1,6 +1,7 @@
 {-# LANGUAGE NumDecimals       #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
+{-# OPTIONS_GHC -fno-warn-unused-top-binds #-} {- allow useful top functions for GHCi -}
 
 -- |
 module TM.Network (tests) where

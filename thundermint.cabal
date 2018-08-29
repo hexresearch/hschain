@@ -64,6 +64,7 @@ Library
                   Thundermint.Mock.KeyList
                   Thundermint.Mock.KeyVal
                   Thundermint.P2P
+                  Thundermint.P2P.Consts
                   Thundermint.P2P.Instances
                   Thundermint.P2P.Network
                   Thundermint.P2P.PeerState
