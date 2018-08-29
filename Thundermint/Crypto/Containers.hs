@@ -89,15 +89,17 @@ instance (Crypto alg, CBOR.Serialise (PublicKey alg)) => CBOR.Serialise (Validat
       asList :: [a] -> [a]
       asList = id
 
--- | Create set of validators. Return @Left addr@ if list contains
---   multiple validators with same public keys
+-- | Create set of validators. Return @Left (Just addr)@ if list
+--   contains multiple validators with same public keys, or @Left
+--   Nothing@ if list is empty.
 makeValidatorSet
   :: (Crypto alg, Foldable f)
   => f (Validator alg)
-  -> Either (Address alg) (ValidatorSet alg)
+  -> Either (Maybe (Address alg)) (ValidatorSet alg)
 makeValidatorSet vals = do
+  when (null vals) $ Left Nothing
   vmap <- sequence
-        $ Map.fromListWithKey (\k _ _ -> Left k)
+        $ Map.fromListWithKey (\k _ _ -> Left (Just k))
           [ ( address (validatorPubKey v), Right v) | v <- toList vals ]
   return ValidatorSet
     { vsValidators = vmap
