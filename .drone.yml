@@ -15,7 +15,7 @@ pipeline:
   rebuild-cache:
     image: plugins/s3-cache:1
     pull: true
-    endpoint: http://thunderbuild.hxr.team:9001
+    endpoint: https://ams3.digitaloceanspaces.com
     secrets: [ aws_access_key_id, aws_secret_access_key ]
     rebuild: true
     mount:
