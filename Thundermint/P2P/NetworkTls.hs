@@ -28,6 +28,7 @@ import qualified Network.TLS        as TLS
 import qualified Data.ByteString.Lazy as LBS
 import qualified Network.Socket       as Net
 
+import System.X509           (getSystemCertificateStore)
 import Thundermint.Control
 import Thundermint.P2P.Tls
 import Thundermint.P2P.Types
@@ -99,7 +100,8 @@ connectTls :: MonadIO m =>
            -> Net.Socket
            -> m Connection
 connectTls creds host port sock = do
-        ctx <- liftIO $ TLS.contextNew sock (mkClientParams (fromJust  host) ( fromJust port) creds)
+        store <- liftIO $ getSystemCertificateStore
+        ctx <- liftIO $ TLS.contextNew sock (mkClientParams (fromJust  host) ( fromJust port) creds store)
         TLS.handshake ctx
         liftIO $ TLS.contextHookSetLogging ctx getLogging
         return $ applyConn ctx
@@ -111,7 +113,7 @@ acceptTls creds sock = do
         (liftIO $ Net.accept sock)
         (\(s,_) -> liftIO $ Net.close s)
         (\(s, addr) -> do
-           ctx <- TLS.contextNew s (mkServerParams creds)
+           ctx <- TLS.contextNew s (mkServerParams creds )
            liftIO $ TLS.contextHookSetLogging ctx getLogging
            TLS.handshake ctx
            return $ (applyConn ctx, addr)
