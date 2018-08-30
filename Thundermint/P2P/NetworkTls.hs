@@ -113,7 +113,8 @@ acceptTls creds sock = do
         (liftIO $ Net.accept sock)
         (\(s,_) -> liftIO $ Net.close s)
         (\(s, addr) -> do
-           ctx <- TLS.contextNew s (mkServerParams creds )
+           store <- liftIO $ getSystemCertificateStore
+           ctx <- TLS.contextNew s (mkServerParams creds  (Just store))
            liftIO $ TLS.contextHookSetLogging ctx getLogging
            TLS.handshake ctx
            return $ (applyConn ctx, addr)

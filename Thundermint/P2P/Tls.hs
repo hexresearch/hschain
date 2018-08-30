@@ -8,13 +8,10 @@ module Thundermint.P2P.Tls
     , mkServerParams
     ) where
 
-import qualified Data.ByteString            as BS (unpack)
-import qualified Data.ByteString.Char8      as BC8 (empty, pack, unpack)
+import qualified Data.ByteString.Char8      as BC8 (pack, unpack)
 import           Data.Default.Class         (def)
 import           Data.List                  (intersect)
-import           Data.Maybe                 (listToMaybe)
-import           Data.Maybe                 (isJust, listToMaybe)
-import           Data.Monoid                ((<>))
+import           Data.Maybe                 (isJust)
 import qualified Data.X509                  as X
 import qualified Data.X509.CertificateStore as X
 import qualified Data.X509.Validation       as X
@@ -55,6 +52,8 @@ clientHooks  creds = def
 
         }
 
+
+-- the only way to ignore SelfSign validation is filter the error list
 valHooks :: TLS.ValidationHooks
 valHooks = def {
              X.hookFilterReason = filter $ \res ->
@@ -80,9 +79,10 @@ valCache host port =
 -------------------------------------------------------------------------------
 
 mkServerParams
-  :: TLS.Credential ->  TLS.ServerParams
-mkServerParams cred = def {
-                   TLS.serverWantClientCert = False
+  :: TLS.Credential -> Maybe X.CertificateStore -> TLS.ServerParams
+mkServerParams cred store = def {
+                 TLS.serverWantClientCert =  isJust store
+                 -- TLS.serverWantClientCert = False
                  , TLS.serverSupported = def {
                                            TLS.supportedVersions = tlsVersions
                                          , TLS.supportedCiphers  = ciphers
@@ -92,7 +92,24 @@ mkServerParams cred = def {
                                            }
 
                  , TLS.serverHooks = def
+                                      {
+                                        TLS.onClientCertificate = clientCertsCheck
+                                      , TLS.onCipherChoosing = chooseCipher }
                             }
+ where
+    clientCertsCheck :: X.CertificateChain -> IO TLS.CertificateUsage
+    clientCertsCheck certs = case store of
+      Nothing -> return TLS.CertificateUsageAccept
+      Just cs -> do
+        let checks = X.defaultChecks { X.checkFQHN = False, X.checkLeafV3 = False }
+        es <- X.validate X.HashSHA256 valHooks checks cs def ("","") certs
+        case es of
+          [] -> pure TLS.CertificateUsageAccept
+          errs' -> pure (TLS.CertificateUsageReject (TLS.CertificateRejectOther
+                            ("Unacceptable client cert: " ++ show errs')))
+    -- Ciphers prefered by the server take precedence.
+    chooseCipher :: TLS.Version -> [TLS.Cipher] -> TLS.Cipher
+    chooseCipher _ cCiphs = head (intersect TE.ciphersuite_strong cCiphs)
 
 -------------------------------------------------------------------------------
 --
