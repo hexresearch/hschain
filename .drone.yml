@@ -2,7 +2,7 @@ pipeline:
   restore-cache:
     image: plugins/s3-cache:1
     pull: true
-    endpoint: http://drone1.hxr.team:9001
+    endpoint: https://ams3.digitaloceanspaces.com
     secrets: [ aws_access_key_id, aws_secret_access_key ]
     restore: true
 
@@ -14,7 +14,7 @@ pipeline:
   rebuild-cache:
     image: plugins/s3-cache:1
     pull: true
-    endpoint: http://drone1.hxr.team:9001
+    endpoint: http://thunderbuild.hxr.team:9001
     secrets: [ aws_access_key_id, aws_secret_access_key ]
     rebuild: true
     mount:
@@ -22,6 +22,7 @@ pipeline:
     - .stack-work
     when:
       event: push
+      status: [ success, failure ]
 
   telegram:
     image: appleboy/drone-telegram
