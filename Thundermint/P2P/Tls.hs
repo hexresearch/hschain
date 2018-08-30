@@ -8,56 +8,109 @@ module Thundermint.P2P.Tls
     , mkServerParams
     ) where
 
-import Data.Default.Class (def)
+import qualified Data.ByteString            as BS (unpack)
+import qualified Data.ByteString.Char8      as BC8 (empty, pack, unpack)
+import           Data.Default.Class         (def)
+import           Data.List                  (intersect)
+import           Data.Maybe                 (listToMaybe)
+import           Data.Maybe                 (isJust, listToMaybe)
+import           Data.Monoid                ((<>))
+import qualified Data.X509                  as X
+import qualified Data.X509.CertificateStore as X
+import qualified Data.X509.Validation       as X
+import qualified Network.Socket             as Net
+import qualified Network.TLS                as TLS
+import qualified Network.TLS.Extra          as TLSExtra
+import qualified Network.TLS.Extra          as TE
 
-import qualified Data.ByteString.Char8 as BC8 (pack)
-import qualified Network.Socket        as Net
-import qualified Network.TLS           as TLS
-import qualified Network.TLS.Extra     as TLSExtra
-
-
-mkClientParams :: Net.HostName ->  Net.ServiceName -> TLS.Credential -> TLS.ClientParams
-mkClientParams host port credentails =
+mkClientParams
+  :: Net.HostName
+     -> String
+     -> (X.CertificateChain, TLS.PrivKey)
+     -> X.CertificateStore
+     -> TLS.ClientParams
+mkClientParams host port creds cStore =
     TLS.ClientParams{
-             clientServerIdentification= (host, "") -- BC8.pack port)
+             clientServerIdentification= (host, BC8.pack port)
            , clientUseMaxFragmentLength = Nothing
            , clientUseServerNameIndication = False
            , clientWantSessionResume       = Nothing
-           , clientShared = ignoreCerts -- clientShared credentails
+           , clientShared = def {
+                              TLS.sharedCAStore = cStore
+--                            , TLS.sharedValidationCache =  valCache host port  -- ignoreCertsCache
+                            }
            , clientDebug = def
-           , clientHooks = clientHooks credentails
            , clientSupported = def {
                                  TLS.supportedVersions = tlsVersions
                                , TLS.supportedCiphers  = ciphers
                                }
+           , clientHooks = clientHooks creds
              }
 
+clientHooks :: (X.CertificateChain, TLS.PrivKey) -> TLS.ClientHooks
+clientHooks  creds = def
+        {
+          TLS.onServerCertificate  = X.validate X.HashSHA256 valHooks valChecks
+        , TLS.onCertificateRequest = \_ -> return $ Just creds
 
+        }
 
+valHooks :: TLS.ValidationHooks
+valHooks = def {
+             X.hookFilterReason = filter $ \res ->
+                                      case res of
+                                        X.NameMismatch _ -> False
+                                        X.SelfSigned     -> False
+                                        _                -> True
+          }
 
-mkServerParams :: TLS.Credential -> TLS.ServerParams
-mkServerParams cred = def {
-                        TLS.serverWantClientCert = False
-                      , TLS.serverSupported = def {
-                                                TLS.supportedVersions = tlsVersions
-                                              , TLS.supportedCiphers  = ciphers
-                                              }
-                      , TLS.serverShared = def {
-                                             TLS.sharedCredentials = TLS.Credentials [cred]
-                                           }
-                      }
-
-
-
+valChecks :: TLS.ValidationChecks
+valChecks = def { X.checkFQHN = False
+                , X.checkLeafV3 = False
+                }
 
 -------------------------------------------------------------------------------
--- Exercise
+valCache :: Show a => TLS.HostName -> a -> TLS.ValidationCache
+valCache host port =
+    let fpSHA256 = "C6:64:1F:3A:6F:60:E4:1F:FC:6A:EC:D1:01:25:1F:92:B2:1B:EF:1B:D6:E0:41:0C:F8:66:C3:6C:8A:6D:4F:E4"
+        fpSHA1   = "F5:4A:0D:22:30:06:9D:F7:63:AD:7E:78:37:27:42:4A:73:50:87:76"
+        fp = "\198d\US:o`\228\US\252j\236\209\SOH%\US\146\178\ESC\239\ESC\214\224A\f\248f\195l\138mO\228"
+    in TLS.exceptionValidationCache [ ((host, BC8.pack $ show port), X.Fingerprint $ BC8.pack fp) ]
 
+-------------------------------------------------------------------------------
+
+mkServerParams
+  :: TLS.Credential ->  TLS.ServerParams
+mkServerParams cred = def {
+                   TLS.serverWantClientCert = False
+                 , TLS.serverSupported = def {
+                                           TLS.supportedVersions = tlsVersions
+                                         , TLS.supportedCiphers  = ciphers
+                                         }
+                 , TLS.serverShared = def {
+                                             TLS.sharedCredentials = TLS.Credentials [cred]
+                                           }
+
+                 , TLS.serverHooks = def
+                            }
+
+-------------------------------------------------------------------------------
+--
 -- |Insecure mode.
-ignoreCerts :: TLS.Shared
-ignoreCerts  = def
-        {  TLS.sharedValidationCache = TLS.ValidationCache (\_ _ _ -> pure TLS.ValidationCachePass) (\_ _ _ -> pure ())
-        }
+
+ignoreCerts = TLS.ValidationCache
+              (\_ _ _ -> pure TLS.ValidationCachePass)
+              (\_ _ _ -> pure ())
+
+
+-- print debug info
+ignoreCerts' = TLS.ValidationCache
+                      (\serviceID (X.Fingerprint  fingerprin) _ -> do
+                         print serviceID >> (print $ BC8.unpack fingerprin)
+                         pure TLS.ValidationCachePass)
+                      (\_ _ _ -> pure ())
+
+
 
 clientShared :: TLS.Credential -> TLS.Shared
 clientShared cs = def
@@ -65,8 +118,8 @@ clientShared cs = def
         , TLS.sharedValidationCache = def
         }
 
-clientHooks :: TLS.Credential -> TLS.ClientHooks
-clientHooks cs = def
+clientHooks' :: TLS.Credential -> TLS.ClientHooks
+clientHooks' cs = def
         { TLS.onCertificateRequest = const . return . Just $ cs
         }
 
@@ -98,7 +151,7 @@ ciphers =
 --
 -------------------------------------------------------------------------------
 
-{-
+
 data TLSSettings = TLSSettings {
       tlsClientCertFile  :: FilePath -- ^ File containing the certificate.
     , tlsPrivKeyFile     :: FilePath -- ^ File containing the key
@@ -142,7 +195,7 @@ mkClientSettings' TLSSettings{..} hostname port = TLS.ClientParams{
       , TLS.clientServerIdentification= (hostname, BC8.pack port)
       , TLS.clientUseServerNameIndication = False
       , TLS.clientWantSessionResume = Nothing
-      , TLS.clientShared  = ignoreCerts
+      , TLS.clientShared  = def {  TLS.sharedValidationCache = ignoreCerts}
       , TLS.clientHooks = def
       , clientDebug = def
       , TLS.clientSupported = def {
@@ -164,7 +217,7 @@ mkClientSettingsIO TLSSettings{..} hostname port = do
              , TLS.clientWantSessionResume       = Nothing
              , TLS.clientShared  = clientShared cred
              , TLS.clientDebug = def
-             , TLS.clientHooks = clientHooks cred
+             , TLS.clientHooks = clientHooks' cred
              , TLS.clientSupported = def {
                                        TLS.supportedVersions = tlsAllowedVersions
                                      , TLS.supportedCiphers  = tlsCiphers
@@ -181,4 +234,3 @@ getCredentials certFile keyFile = do
          return $ case cred of
                     Right c  -> c
                     Left err -> error err
--}
