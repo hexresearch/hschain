@@ -2,21 +2,21 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TupleSections     #-}
 {-# LANGUAGE TypeFamilies      #-}
-import Control.Monad
-import Data.Map                 (Map)
-import Data.List
-import qualified Data.Map               as Map
-import qualified Data.Set               as Set
-import Text.Groom
+import           Control.Monad
+import           Data.List
+import           Data.Map      (Map)
+import qualified Data.Map      as Map
+import qualified Data.Set      as Set
+import           Text.Groom
 
 import Thundermint.Blockchain.Types
 import Thundermint.Consensus.Types
 import Thundermint.Crypto
 import Thundermint.Crypto.Ed25519   (Ed25519_SHA512)
+import Thundermint.Mock
 import Thundermint.P2P.Network
 import Thundermint.Store
 import Thundermint.Store.STM
-import Thundermint.Mock
 
 
 ----------------------------------------------------------------
@@ -81,13 +81,13 @@ main = do
                         [(k,_)] -> do existingKeys <- loadAllKeys
                                       return $ k `Set.notMember` existingKeys
                         _       -> return False
-                    , appBlockGenerator = const $ 
+                    , appBlockGenerator = const $
                         case i of
                           -- Byzantine!
                           0 -> return [("XXX", 0)]
                           _ -> do existingKeys <- loadAllKeys
                                   let Just k = find (`Set.notMember` existingKeys)
-                                               ["K_" ++ show (n :: Int) | n <- [1 ..]] 
+                                               ["K_" ++ show (n :: Int) | n <- [1 ..]]
                                   return [(k,i)]
                     --
                     , appCommitCallback = \case
@@ -101,6 +101,17 @@ main = do
     | (i, (addr, val)) <- [0::Int ..] `zip` Map.toList nodeSet
     ]
   st <- runNodeSet nodes
+  forM_ st $ \s -> do
+            bs <- checkBlocks s
+            cs <- checkCommits s
+            vs <- checkValidators s
+            cbs <- checkCommitsBlocks s
+            let errs = bs ++ cs ++ vs ++ cbs
+            case errs of
+              [] -> putStrLn "All checks passed succesfully!"
+              _  -> putStrLn $ "Found inconsistency: "  ++ (show errs)
+            return ()
+
   forM_ st $ \s -> do
     putStrLn "==== BLOCKCHAIN ================================================"
     bs <- loadAllBlocks s

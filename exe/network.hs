@@ -1,6 +1,8 @@
 {-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeFamilies      #-}
+
+import Data.Foldable  (forM_)
 import Data.Int
 import Data.Map       (Map)
 import Data.Maybe     (fromMaybe)
@@ -12,8 +14,8 @@ import Thundermint.Consensus.Types
 --import Thundermint.Crypto
 import Thundermint.Crypto.Ed25519 (Ed25519_SHA512, privateKey)
 import Thundermint.Mock
-import Thundermint.P2P.Network
 import Thundermint.P2P.Instances ()
+import Thundermint.P2P.Network
 import Thundermint.Store
 import Thundermint.Store.STM
 
@@ -99,5 +101,16 @@ main = do
                 )
          | (addr, val) <- Map.toList validators
          ]
-  _ <- runNodeSet nodes
+  st <- runNodeSet nodes
+  forM_ st $ \s -> do
+            bs <- checkBlocks s
+            cs <- checkCommits s
+            vs <- checkValidators s
+            cbs <- checkCommitsBlocks s
+            let errs = bs ++ cs ++ vs ++ cbs
+            case errs of
+              [] -> putStrLn "All checks passed succesfully!"
+              _  -> putStrLn $ "Found inconsistency: "  ++ (show errs)
+            return ()
+
   return ()
