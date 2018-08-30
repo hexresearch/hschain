@@ -8,6 +8,7 @@ pipeline:
 
   build:
     image: haskell:8.2.2
+    network_mode: host
     commands:
     - stack --stack-root $PWD/.stack --system-ghc test
 
