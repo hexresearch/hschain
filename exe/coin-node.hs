@@ -5,59 +5,42 @@
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies        #-}
+import Control.Concurrent
 import Control.Monad.Catch
 import Control.Monad.IO.Class
-import Control.Concurrent
+import Data.Int
+import Data.Monoid
+import Options.Applicative
+
 import Codec.Serialise      (serialise)
 import Data.ByteString.Lazy (toStrict)
-import Data.Monoid
-import Data.Maybe                (fromMaybe)
-import Data.Int
-import qualified Data.Aeson             as JSON
-import qualified Data.Aeson.Types       as JSON
-import qualified Data.ByteString.Char8  as BC8
-import qualified Data.Map               as Map
-import System.Environment        (getEnv)
-import System.Random    (randomRIO)
-import System.FilePath  ((</>))
-import GHC.Generics (Generic)
-import System.IO.Unsafe          (unsafePerformIO)
-import Katip.Core (showLS, LogEnv)
-import Options.Applicative
-import Network.Socket
-    ( AddrInfo(..)
-    , AddrInfoFlag(..)
-    , SockAddr(..)
-    , SocketOption(..)
-    , SocketType(..)
-    , accept
-    , addrAddress
-    , bind
-    , close
-    , defaultHints
-    , fdSocket
-    , getAddrInfo
-    , getNameInfo
-    , listen
-    , setCloseOnExecIfNeeded
-    , setSocketOption
-    , socket
-    )
-import Network.Socket.ByteString (recv)
+import Data.Maybe           (fromMaybe)
+import GHC.Generics         (Generic)
+import Katip.Core           (LogEnv, showLS)
+import Network.Simple.TCP   (accept, listen, recv)
+import Network.Socket       (SockAddr(..), addrAddress, getAddrInfo, getNameInfo)
+import System.Environment   (getEnv)
+import System.FilePath      ((</>))
+import System.IO.Unsafe     (unsafePerformIO)
+import System.Random        (randomRIO)
 
 import Thundermint.Blockchain.Types
 import Thundermint.Consensus.Types
 import Thundermint.Crypto
 import Thundermint.Crypto.Containers
-import Thundermint.Crypto.Ed25519   (Ed25519_SHA512)
-import Thundermint.P2P.Network (realNetwork)
-import Thundermint.Store
+import Thundermint.Crypto.Ed25519    (Ed25519_SHA512)
 import Thundermint.Logger
 import Thundermint.Mock
-import Thundermint.Mock.KeyList
 import Thundermint.Mock.Coin
+import Thundermint.Mock.KeyList
+import Thundermint.P2P.Network       (realNetwork)
+import Thundermint.Store
 
 import qualified Control.Exception     as E
+import qualified Data.Aeson            as JSON
+import qualified Data.Aeson.Types      as JSON
+import qualified Data.ByteString.Char8 as BC8
+import qualified Data.Map              as Map
 import qualified Data.Text             as T
 
 thundemintPort :: String
@@ -68,10 +51,10 @@ thundemintPort = "50000"
 ----------------------------------------------------------------
 
 data NodeSpec = NodeSpec
-  { nspecPrivKey     :: Maybe (PrivValidator Ed25519_SHA512)
-  , nspecDbName      :: Maybe FilePath
-  , nspecLogFile     :: [ScribeSpec]
-  , nspecWalletKeys  :: (Int,Int)
+  { nspecPrivKey    :: Maybe (PrivValidator Ed25519_SHA512)
+  , nspecDbName     :: Maybe FilePath
+  , nspecLogFile    :: [ScribeSpec]
+  , nspecWalletKeys :: (Int,Int)
   }
   deriving (Generic,Show)
 
@@ -79,12 +62,12 @@ instance JSON.ToJSON   NodeSpec
 instance JSON.FromJSON NodeSpec
 
 data Opts = Opts
-  { maxH :: Maybe Int64
-  , prefix :: FilePath
-  , delay :: Int
-  , doValidate :: Bool
+  { maxH              :: Maybe Int64
+  , prefix            :: FilePath
+  , delay             :: Int
+  , doValidate        :: Bool
   , netInitialDeposit :: Integer
-  , netInitialKeys :: Int
+  , netInitialKeys    :: Int
   }
 
 ----------------------------------------------------------------
@@ -199,7 +182,7 @@ main = do
       let !validators'' = either error (fmap PrivValidator)
                         $ JSON.eitherDecodeStrict' ipMapPath  :: [PrivValidator Ed25519_SHA512]
           !validatorSet = makeValidatorSetFromPriv validators''
-      runLoggerT "general" logenv $ 
+      runLoggerT "general" logenv $
         logger InfoS "Listening for bootstrap adresses" ()
       netAddresses <- waitForAddrs logenv
       (_,act) <- interpretSpec opts netAddresses validatorSet logenv nodeSpec
@@ -238,7 +221,7 @@ main = do
            <> help "Initial deposit"
            <> metavar "N"
            )
-           
+
 
 ----------------------------------------------------------------
 -- TCP server that listens for boostrap addresses
@@ -246,38 +229,20 @@ main = do
 
 waitForAddrs :: LogEnv -> IO [SockAddr]
 waitForAddrs logenv = E.handle allExc $ do
-  addr <- resolve "49999"
-  addrs <- E.bracket (open addr) close $ \ sock ->
-    E.bracket (fst <$> accept sock) close $ \ conn -> do
-      msg <- recv conn 4096
-      either fail return $ JSON.eitherDecodeStrict' msg
+  addrs <- listen "*" "49999" $ \ (lsock, _addr) ->
+    accept lsock $ \ (conn, _caddr) -> do
+      mMsg <- recv conn 4096
+      case mMsg of
+        Nothing  -> fail "Connection closed by peer."
+        Just msg -> either fail return $ JSON.eitherDecodeStrict' msg
   runLoggerT "boostrap" logenv $ do
     logger InfoS ("Got " <> showLS addrs <> " boostrap addresses.") ()
-    logger InfoS ("Stop listening") ()
+    logger InfoS "Stop listening" ()
   return addrs
  where
     allExc (e::SomeException) = runLoggerT "boostrap" logenv $ do
       logger ErrorS (showLS e) ()
       E.throw e
-    resolve port = do
-        let hints = defaultHints {
-                addrFlags = [AI_PASSIVE]
-              , addrSocketType = Stream
-              }
-        addr:_ <- getAddrInfo (Just hints) Nothing (Just port)
-        return addr
-    open addr = do
-        sock <- socket (addrFamily addr) (addrSocketType addr) (addrProtocol addr)
-        setSocketOption sock ReuseAddr 1
-        bind sock (addrAddress addr)
-        -- If the prefork technique is not used,
-        -- set CloseOnExec for the security reasons.
-        let fd = fdSocket sock
-        -- TODO: commented to use network-2.6.*
-        --       fix to provide on-close behavior
-        setCloseOnExecIfNeeded fd
-        listen sock 10
-        return sock
 
 sa2Text :: SockAddr -> T.Text
 sa2Text sa = T.pack
@@ -307,5 +272,5 @@ instance JSON.FromJSONKey SockAddr where
 
 instance JSON.FromJSON SockAddr where
   parseJSON (JSON.String s) = return $ text2Sa s
-  parseJSON invalid    = JSON.typeMismatch "SockAddr" invalid
+  parseJSON invalid         = JSON.typeMismatch "SockAddr" invalid
 

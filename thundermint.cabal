@@ -16,35 +16,35 @@ Build-Type:     Simple
 Library
   Ghc-options:         -Wall
   Default-Language:    Haskell2010
-  Build-Depends:       base              >=4.9 && <5
-                     , async             >=2.2.1
+  Build-Depends:       base                 >= 4.9 && <5
+                     , async                >= 2.2.1
                      , aeson
-                     , bytestring        >=0.10
-                     , base58-bytestring >=0.1
-                     , containers        >=0.5.9
+                     , bytestring           >= 0.10
+                     , base58-bytestring    >= 0.1
+                     , containers           >= 0.5.9
                      , data-default-class
                      , directory
-                     , deepseq           >=1.4
+                     , deepseq              >= 1.4
                      , filepath
-                     , exceptions        >= 0.8.3
-                     , memory            >=0.14.14
+                     , exceptions           >= 0.8.3
+                     , memory               >= 0.14.14
                      , random
-                     , retry             >= 0.7.6.2
-                     , stm               >=2.4
-                     , serialise         >=0.2
+                     , retry                >= 0.7.6.2
+                     , stm                  >= 2.4
+                     , serialise            >= 0.2
                      , sqlite-simple
                      , text
-                     , transformers      >=0.5
-                     , unordered-containers >=0.2.5.0
+                     , transformers         >= 0.5
+                     , unordered-containers >= 0.2.5.0
                      --
-                     , network           >=2.6.0.0
-                     , katip             >=0.5.4.0
-                     , cryptonite        >=0.25
+                     , network              >= 2.6.0.0
+                     , katip                >= 0.5.4.0
+                     , cryptonite           >= 0.25
                      --
                      , groom
                      --
-                     , tasty       >=0.11
-                     , tasty-hunit >=0.10
+                     , tasty                >= 0.11
+                     , tasty-hunit          >= 0.10
 
   Exposed-modules:
                   Thundermint.Blockchain.Types
@@ -73,10 +73,10 @@ Library
 Executable thundermint-keyval
   Ghc-options:         -Wall
   Default-Language:    Haskell2010
-  Build-Depends:       base       >=4.9 && <5
+  Build-Depends:       base        >= 4.9 && <5
                      , thundermint
-                     , bytestring >=0.10
-                     , containers >=0.5.7
+                     , bytestring  >= 0.10
+                     , containers  >= 0.5.7
                      , groom
   hs-source-dirs:      exe
   Main-is:             key-val.hs
@@ -84,11 +84,11 @@ Executable thundermint-keyval
 Executable thundermint-keyval-sql
   Ghc-options:         -Wall
   Default-Language:    Haskell2010
-  Build-Depends:       base       >=4.9 && <5
+  Build-Depends:       base              >= 4.9 && <5
                      , thundermint
-                     , bytestring        >=0.10
-                     , base58-bytestring >=0.1
-                     , containers        >=0.5.7
+                     , bytestring        >= 0.10
+                     , base58-bytestring >= 0.1
+                     , containers        >= 0.5.7
                      , groom
   hs-source-dirs:      exe
   Main-is:             key-val-sql.hs
@@ -96,25 +96,26 @@ Executable thundermint-keyval-sql
 Executable thundermint-simple-network
   Ghc-options:         -Wall -threaded
   Default-Language:    Haskell2010
-  Build-Depends:       base       >=4.9 && <5
+  Build-Depends:       base              >= 4.9 && <5
                      , thundermint
-                     , bytestring >=0.10
-                     , base58-bytestring >=0.1
-                     , containers >=0.5.7
-                     , network    >=2.6.0.0
+                     , bytestring        >= 0.10
+                     , base58-bytestring >= 0.1
+                     , containers        >= 0.5.7
+                     , network           >= 2.6.0.0
   hs-source-dirs:      exe
   Main-is:             network.hs
 
 Executable thundermint-node
   Ghc-options:         -Wall -threaded -Wno-orphans
   Default-Language:    Haskell2010
-  Build-Depends:       base       >=4.9 && <5
+  Build-Depends:       base              >=4.9 && <5
                      , thundermint
                      , aeson
-                     , bytestring >=0.10
+                     , bytestring        >=0.10
                      , base58-bytestring >=0.1
-                     , containers >=0.5.7
-                     , network    >=2.6.0.0
+                     , containers        >=0.5.7
+                     , network           >=2.6.0.0
+                     , network-simple    >= 0.4.2
                      , text
   hs-source-dirs:      exe
   Main-is:             node.hs
@@ -122,12 +123,12 @@ Executable thundermint-node
 Executable thundermint-coin
   Ghc-options:         -Wall -threaded -Wno-orphans
   Default-Language:    Haskell2010
-  Build-Depends:       base       >=4.9 && <5
+  Build-Depends:       base                 >= 4.9 && <5
                      , thundermint
                      , exceptions
-                     , bytestring >=0.10
-                     , base58-bytestring >=0.1
-                     , containers >=0.5.7
+                     , bytestring           >= 0.10
+                     , base58-bytestring    >= 0.1
+                     , containers           >= 0.5.7
                      , aeson
                      , stm
                      , serialise
@@ -143,14 +144,15 @@ Executable thundermint-coin
 Executable thundermint-coin-node
   Ghc-options:         -Wall -threaded -Wno-orphans
   Default-Language:    Haskell2010
-  Build-Depends:       base       >=4.9 && <5
+  Build-Depends:       base                 >= 4.9 && <5
                      , thundermint
                      , exceptions
-                     , bytestring >=0.10
-                     , base58-bytestring >=0.1
-                     , containers >=0.5.7
-                     , network    >=2.6.0.0
-                     , katip             >=0.5.4.0
+                     , bytestring           >= 0.10
+                     , base58-bytestring    >= 0.1
+                     , containers           >= 0.5.7
+                     , network              >= 2.6.0.0
+                     , network-simple       >= 0.4.2
+                     , katip                >= 0.5.4.0
                      , aeson
                      , stm
                      , serialise
@@ -167,11 +169,11 @@ Executable thundermint-coin-node
 Executable thundermint-coin-db
   Ghc-options:         -Wall -threaded -Wno-orphans
   Default-Language:    Haskell2010
-  Build-Depends:       base       >=4.9 && <5
+  Build-Depends:       base                 >= 4.9 && <5
                      , thundermint
-                     , bytestring >=0.10
-                     , base58-bytestring >=0.1
-                     , containers >=0.5.7
+                     , bytestring           >= 0.10
+                     , base58-bytestring    >= 0.1
+                     , containers           >= 0.5.7
                      , aeson
                      , stm
                      , serialise
@@ -188,15 +190,15 @@ Test-suite thundermint-tests
   Type:                exitcode-stdio-1.0
   Ghc-options:         -Wall
   Default-Language:    Haskell2010
-  Build-Depends:       base       >=4.9 && <5
+  Build-Depends:       base        >= 4.9 && <5
                      , thundermint
-                     , bytestring >=0.10
-                     , stm        >=2.4
-                     , async      >=2.2.1
+                     , bytestring  >= 0.10
+                     , stm         >= 2.4
+                     , async       >= 2.2.1
                      --
-                     , network           >=2.7.0.0
+                     , network     >= 2.7.0.0
                      , random
-                     , serialise         >=0.2
+                     , serialise   >= 0.2
                      --
                      , QuickCheck
                      , bytestring-arbitrary
@@ -204,9 +206,9 @@ Test-suite thundermint-tests
                      , hedgehog
                      -- NB: ^ troubles with 'allow newer'
                      , hedgehog-quickcheck
-                     , tasty             >=0.11
+                     , tasty          >= 0.11
                      , tasty-hedgehog
-                     , tasty-hunit       >=0.10
+                     , tasty-hunit    >= 0.10
   hs-source-dirs:      test
   Main-is:             Main.hs
   Other-modules:       TM.MockNet
@@ -222,8 +224,8 @@ Benchmark thundermint-bench
   hs-source-dirs:      bench
   Default-Language:    Haskell2010
   Main-is:             main.hs
-  Build-Depends:       base  >=4.9 && <5
-                     , bytestring >=0.10
+  Build-Depends:       base       >= 4.9 && <5
+                     , bytestring >= 0.10
                      , criterion
                      , cryptonite
                      , deepseq

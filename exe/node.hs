@@ -8,30 +8,12 @@ import Data.Aeson
 import Data.Aeson.Types
     (FromJSONKey, FromJSONKeyFunction(..), fromJSONKey, toJSONKeyText, typeMismatch)
 import Data.Int
-import Data.Maybe                (fromMaybe)
-import Data.Monoid               ((<>))
-import Network.Socket
-    ( AddrInfo(..)
-    , AddrInfoFlag(..)
-    , SockAddr(..)
-    , SocketOption(..)
-    , SocketType(..)
-    , accept
-    , addrAddress
-    , bind
-    , close
-    , defaultHints
-    , fdSocket
-    , getAddrInfo
-    , getNameInfo
-    , listen
-    -- , setCloseOnExecIfNeeded
-    , setSocketOption
-    , socket
-    )
-import Network.Socket.ByteString (recv)
-import System.Environment        (getEnv)
-import System.IO.Unsafe          (unsafePerformIO)
+import Data.Maybe         (fromMaybe)
+import Data.Monoid        ((<>))
+import Network.Simple.TCP (accept, listen, recv)
+import Network.Socket     (SockAddr(..), addrAddress, getAddrInfo, getNameInfo)
+import System.Environment (getEnv)
+import System.IO.Unsafe   (unsafePerformIO)
 
 import Thundermint.Blockchain.Types
 import Thundermint.Consensus.Types
@@ -44,7 +26,6 @@ import Thundermint.Store
 import Thundermint.Store.STM
 
 
-import qualified Control.Exception     as E
 import qualified Data.ByteString.Char8 as BS8
 import qualified Data.Text             as T
 
@@ -99,31 +80,12 @@ genesisBlock = Block
 
 waitForAddrs :: IO [SockAddr]
 waitForAddrs = do
-  addr <- resolve "49999"
-  E.bracket (open addr) close $ \ sock ->
-    E.bracket (fst <$> accept sock) close $ \ conn -> do
-      msg <- recv conn 4096
-      either error return $ eitherDecodeStrict' msg
- where
-    resolve port = do
-        let hints = defaultHints {
-                addrFlags = [AI_PASSIVE]
-              , addrSocketType = Stream
-              }
-        addr:_ <- getAddrInfo (Just hints) Nothing (Just port)
-        return addr
-    open addr = do
-        sock <- socket (addrFamily addr) (addrSocketType addr) (addrProtocol addr)
-        setSocketOption sock ReuseAddr 1
-        bind sock (addrAddress addr)
-        -- If the prefork technique is not used,
-        -- set CloseOnExec for the security reasons.
-        let fd = fdSocket sock
-        -- TODO: commented to use network-2.6.*
-        --       fix to provide on-close behavior
-        -- setCloseOnExecIfNeeded fd
-        listen sock 10
-        return sock
+  listen "*" "49999" $ \ (lsock, _addr) ->
+    accept lsock $ \ (conn, _caddr) -> do
+      mMsg <- recv conn 4096
+      case mMsg of
+        Nothing  -> fail "Connection closed by peer."
+        Just msg -> either fail return $ eitherDecodeStrict' msg
 
 main :: IO ()
 main = do
