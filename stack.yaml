@@ -48,6 +48,7 @@ extra-deps:
     - exceptions-0.8.3
     - katip-0.5.4.0
     - network-2.6.3.6
+    - network-simple-0.4.2
     - serialise-0.2.0.0
     - cborg-0.2.0.0
     - base58-bytestring-0.1.0

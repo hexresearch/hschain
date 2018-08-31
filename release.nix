@@ -28,6 +28,7 @@ let
           tasty = lib.dontCheck haskellPackagesOld.tasty;
           serialise = lib.dontCheck haskellPackagesOld.serialise;
           network = haskellPackagesOld.callPackage ./deps/network.nix {};
+          network-simple = haskellPackagesOld.callPackage ./deps/network-simple.nix {};
           exceptions = haskellPackagesOld.callPackage ./deps/exceptions.nix {};
           safe-exceptions = haskellPackagesOld.callPackage ./deps/safe-exceptions.nix {};
           katip = haskellPackagesOld.callPackage ./deps/katip.nix {};
