@@ -8,17 +8,19 @@ module Thundermint.P2P.Tls
     , mkServerParams
     ) where
 
+
+import Data.Default.Class (def)
+import Data.List          (intersect)
+import Data.Maybe         (isJust)
+
 import qualified Data.ByteString.Char8      as BC8 (pack, unpack)
-import           Data.Default.Class         (def)
-import           Data.List                  (intersect)
-import           Data.Maybe                 (isJust)
 import qualified Data.X509                  as X
 import qualified Data.X509.CertificateStore as X
 import qualified Data.X509.Validation       as X
 import qualified Network.Socket             as Net
 import qualified Network.TLS                as TLS
 import qualified Network.TLS.Extra          as TLSExtra
-import qualified Network.TLS.Extra          as TE
+
 
 mkClientParams
   :: Net.HostName
@@ -109,18 +111,19 @@ mkServerParams cred store = def {
                             ("Unacceptable client cert: " ++ show errs')))
     -- Ciphers prefered by the server take precedence.
     chooseCipher :: TLS.Version -> [TLS.Cipher] -> TLS.Cipher
-    chooseCipher _ cCiphs = head (intersect TE.ciphersuite_strong cCiphs)
+    chooseCipher _ cCiphs = head (intersect TLSExtra.ciphersuite_strong cCiphs)
 
 -------------------------------------------------------------------------------
 --
 -- |Insecure mode.
-
+ignoreCerts :: TLS.ValidationCache
 ignoreCerts = TLS.ValidationCache
               (\_ _ _ -> pure TLS.ValidationCachePass)
               (\_ _ _ -> pure ())
 
 
 -- print debug info
+ignoreCerts' :: TLS.ValidationCache
 ignoreCerts' = TLS.ValidationCache
                       (\serviceID (X.Fingerprint  fingerprin) _ -> do
                          print serviceID >> (print $ BC8.unpack fingerprin)
