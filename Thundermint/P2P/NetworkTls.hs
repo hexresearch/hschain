@@ -9,30 +9,34 @@ module Thundermint.P2P.NetworkTls (
    realNetworkTls
   ) where
 
-import Control.Monad          (when)
-import Control.Monad.Catch    (bracketOnError, throwM)
-import Control.Monad.Catch    (MonadMask)
-import Control.Monad.IO.Class (MonadIO, liftIO)
-import Data.List              (find)
-import Data.Maybe             (fromJust, fromMaybe)
-import System.Timeout         (timeout)
+import Control.Monad            (when)
+import Control.Monad.Catch      (bracketOnError, throwM)
+import Control.Monad.Catch      (MonadMask)
+import Control.Monad.IO.Class   (MonadIO, liftIO)
+import Data.Bits                (unsafeShiftL)
+import Data.ByteString.Internal (ByteString(..))
+import Data.Default.Class       (def)
+import Data.List                (find)
+import Data.Maybe               (fromJust, fromMaybe)
+import Data.Monoid              ((<>))
+import Data.Word                (Word32)
+import Foreign.C.Error          (Errno(Errno), ePIPE)
+import System.IO.Error          (isEOFError)
+import System.Timeout           (timeout)
+import System.X509              (getSystemCertificateStore)
 
-import           Foreign.C.Error  (Errno(Errno), ePIPE)
-import qualified GHC.IO.Exception as Eg
+import qualified Control.Exception       as E
+import qualified Data.ByteString         as BS
+import qualified Data.ByteString.Builder as BB
+import qualified Data.ByteString.Lazy    as LBS
+import qualified Data.IORef              as I
+import qualified GHC.IO.Exception        as Eg
+import qualified Network.Socket          as Net
+import qualified Network.TLS             as TLS
 
-import qualified Control.Exception  as E
-import qualified Data.ByteString    as BS
-import           Data.Default.Class (def)
-import qualified Network.TLS        as TLS
-
-import qualified Data.ByteString.Lazy as LBS
-import qualified Network.Socket       as Net
-
-import System.X509           (getSystemCertificateStore)
 import Thundermint.Control
 import Thundermint.P2P.Tls
 import Thundermint.P2P.Types
-
 ----------------------------------------------------------------
 --
 ----------------------------------------------------------------
@@ -104,7 +108,8 @@ connectTls creds host port sock = do
         ctx <- liftIO $ TLS.contextNew sock (mkClientParams (fromJust  host) ( fromJust port) creds store)
         TLS.handshake ctx
         liftIO $ TLS.contextHookSetLogging ctx getLogging
-        return $ applyConn ctx
+        conn <- liftIO $ applyConn ctx
+        return $ conn --  applyConn ctx
 
 
 acceptTls :: (MonadMask m, MonadIO m) => TLS.Credential -> Net.Socket -> m (Connection, Net.SockAddr)
@@ -117,10 +122,13 @@ acceptTls creds sock = do
            ctx <- TLS.contextNew s (mkServerParams creds  (Just store))
            liftIO $ TLS.contextHookSetLogging ctx getLogging
            TLS.handshake ctx
-           return $ (applyConn ctx, addr)
+           cnn <- liftIO $ applyConn ctx
+           return $ (cnn, addr)
 
         )
 
+headerSize :: HeaderSize
+headerSize = 4
 
 -- | Like 'TLS.bye' from the "Network.TLS" module, except it ignores 'ePIPE'
 -- errors which might happen if the remote peer closes the connection first.
@@ -134,25 +142,97 @@ silentBye ctx = do
           -> return ()
         _ -> E.throwIO e
 
-applyConn :: TLS.Context -> Connection
-applyConn context =
-    Connection (send context) (recv context) (liftIO $ tlsClose context)
+applyConn :: TLS.Context -> IO Connection
+applyConn context = do
+    ref <- I.newIORef ""
+    return $ Connection (send context) (recv context ref) (liftIO $ tlsClose context)
 
         where
-
           tlsClose ctx = (silentBye ctx `E.catch` \(_ :: E.IOException) -> pure ())
-          -- | https://hackage.haskell.org/package/network-simple-tls-0.3/docs/src/Network.Simple.TCP.TLS.html#useTls
-          -- Up to @16384@ decrypted bytes will be received at once.
-          recv :: MonadIO m => TLS.Context -> m (Maybe LBS.ByteString)
-          recv ctx = liftIO $ do
-                       E.handle (\TLS.Error_EOF -> return Nothing)
-                            (do bs <- TLS.recvData ctx
-                                if BS.null bs
-                                then return Nothing -- I think this never happens
-                                else return (Just $ LBS.fromStrict bs))
 
-          send :: MonadIO m => TLS.Context -> LBS.ByteString -> m ()
-          send ctx = \bs -> TLS.sendData ctx  bs
+          recv ctx ref = liftIO $ do
+            header <- recvBufT' ctx ref headerSize
+            if LBS.null header
+            then return Nothing
+            else let len = decodeWord16BE header
+                 in case len of
+                      Just n  -> Just <$> (recvBufT' ctx ref (fromIntegral n))
+                      Nothing -> return Nothing
+
+          send ctx =  \s -> TLS.sendData ctx (BB.toLazyByteString $ toFrame s)
+                 where
+                   toFrame msg = let len =  fromIntegral (LBS.length msg) :: Word32
+                                     hexLen = BB.word32BE len
+                                 in (hexLen <> BB.lazyByteString msg)
+
+-------------------------------------------------------------------------------
+-- framing for tls
+-------------------------------------------------------------------------------
+decodeWord16BE :: LBS.ByteString -> Maybe Word32
+decodeWord16BE bs | LBS.length bs < fromIntegral headerSize = Nothing
+                  | otherwise =
+                      let w8s = LBS.unpack $ LBS.take (fromIntegral headerSize) bs
+                          shiftBy = (*) 8
+                          word32 = foldr (\b (acc, i) ->
+                                         (fromIntegral b `unsafeShiftL` shiftBy i + acc, i + 1))
+                                   (0,0)
+                                   w8s
+                      in (Just $ fst word32)
+
+recvT :: I.IORef ByteString -> TLS.Context -> IO ByteString
+recvT cref ctx = do
+            cached <- I.readIORef cref
+            if cached /= "" then do
+                I.writeIORef cref ""
+                return cached
+              else
+                recvT' ctx
+
+-- TLS version of recv (decrypting) without a cache.
+recvT' :: TLS.Context -> IO ByteString
+recvT' ctx =  E.handle onEOF go
+    where
+      onEOF e
+              | Just TLS.Error_EOF <- E.fromException e       = return BS.empty
+              | Just ioe <- E.fromException e, isEOFError ioe = return BS.empty
+              | otherwise                                   = E.throwIO e
+      go = do
+                x <- TLS.recvData ctx
+                if BS.null x then
+                    go
+                  else
+                    return x
+
+-- TLS version of recvBuf with a cache for leftover input data.
+recvBufT' :: TLS.Context -> I.IORef ByteString -> Int -> IO LBS.ByteString
+recvBufT' ctx cref siz = do
+            cached <- I.readIORef cref
+            (ret, leftover) <- fill cached siz (recvT cref ctx)
+            I.writeIORef cref leftover
+            return ret
+
+
+
+fill :: BS.ByteString -> Int -> RecvFun -> IO (LBS.ByteString,BS.ByteString)
+fill bs0 siz0 recv
+  | siz0 <= len0 = do
+      let (bs, leftover) = BS.splitAt siz0 bs0
+      return (LBS.fromStrict bs, leftover)
+  | otherwise = do
+    loop bs0 (siz0 - len0)
+  where
+    len0 = BS.length bs0
+    loop b  0   = return (LBS.fromStrict b, "")
+    loop buf siz = do
+      bs <- recv
+      let len = BS.length bs
+      if len == 0 then return ("", "")
+        else if (len <= siz) then do
+          loop (buf `BS.append` bs) (siz - len)
+        else do
+          let (bs1,bs2) = BS.splitAt siz bs
+          return (LBS.fromStrict (buf `BS.append` bs1), bs2)
+
 
 
 -------------------------------------------------------------------------------

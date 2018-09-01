@@ -8,14 +8,16 @@ module Thundermint.P2P.Types (
   , MockSocket(..)
   , MockNet(..)
   , HeaderSize
+  , RecvFun
   ) where
 
 import Control.Concurrent.STM
 
-import Control.Exception      (Exception)
-import Control.Monad.Catch    (MonadMask, MonadThrow)
-import Control.Monad.IO.Class (MonadIO)
-import Data.Map               (Map)
+import Control.Exception        (Exception)
+import Control.Monad.Catch      (MonadMask, MonadThrow)
+import Control.Monad.IO.Class   (MonadIO)
+import Data.ByteString.Internal (ByteString(..))
+import Data.Map                 (Map)
 
 import qualified Data.ByteString.Lazy as LBS
 import qualified Network.Socket       as Net
@@ -77,3 +79,12 @@ newtype MockNet addr = MockNet
                                  [(MockSocket, (addr,Net.ServiceName))])
     -- ^ Incoming connections for node.
   }
+
+
+
+----------------------------------------------------------------
+-- types used in tls
+----------------------------------------------------------------
+
+-- | Type for the action to receive input data
+type RecvFun = IO ByteString
