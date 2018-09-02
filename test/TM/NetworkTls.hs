@@ -24,10 +24,12 @@ tests =
                   [ testGroup "IPv4"
                           [ testCase "tls ping-pong" $ realTlsNetPair "127.0.0.1" >>= \(server, client) -> pingPong server client
                           , testCase "tls delayed write" $ realTlsNetPair "127.0.0.1" >>= \(server, client) -> delayedWrite server client
+                          , testCase "tls framing: send big data" $ realTlsNetPair "127.0.0.1" >>= \(server, client) -> bigDataSend server client
                           ]
                     , testGroup "IPv6"
                           [ testCase "tls ping-pong" $ realTlsNetPair "::1" >>= \(server, client) -> pingPong server client
                           , testCase "tls delayed write" $ realTlsNetPair "::1" >>= \(server, client) -> delayedWrite server client
+                          , testCase "tls framing: send big data" $ realTlsNetPair "::1" >>= \(server, client) -> bigDataSend server client
                           ]
                   ]
 
@@ -39,7 +41,7 @@ run = do
     (server, client) <- realTlsNetPair "localhost"
     pingPong server client
 
--- | Simple test to ensure that mock network works at all
+-- | Simple test to ensure that real network works at all
 pingPong :: (addr, NetworkAPI addr)
          -> (addr, NetworkAPI addr)
          -> IO ()
@@ -58,6 +60,26 @@ pingPong (serverAddr, server) (_, client) = do
   ((),()) <- concurrently (runServer server) (runClient client)
   return ()
 
+
+-- | Simple test to ensure that framing works
+bigDataSend :: (addr, NetworkAPI addr)
+         -> (addr, NetworkAPI addr)
+         -> IO ()
+bigDataSend (serverAddr, server) (_, client) = do
+  let runServer NetworkAPI{..} = do
+        bracket listenOn fst $ \(_,accept) ->
+          bracket accept (close . fst) $ \(conn,_) -> do
+            Just bs <- recv conn
+            send conn (LBS.fromStrict $  "PONG_" <> LBC.toStrict bs)
+  let runClient NetworkAPI{..} = do
+        threadDelay 10e3
+        bracket (connect serverAddr) close $ \conn -> do
+          let sbuf = LBC.take 10000000 $ LBC.repeat 'A'
+          send conn sbuf
+          bs <- recv conn
+          assertEqual "Ping-pong" (Just ("PONG_" <> sbuf)) bs
+  ((),()) <- concurrently (runServer server) (runClient client)
+  return ()
 
 
 -- | Simple test to ensure that mock network works at all

@@ -109,7 +109,7 @@ connectTls creds host port sock = do
         TLS.handshake ctx
         liftIO $ TLS.contextHookSetLogging ctx getLogging
         conn <- liftIO $ applyConn ctx
-        return $ conn --  applyConn ctx
+        return $ conn
 
 
 acceptTls :: (MonadMask m, MonadIO m) => TLS.Credential -> Net.Socket -> m (Connection, Net.SockAddr)
@@ -142,9 +142,9 @@ silentBye ctx = do
           -> return ()
         _ -> E.throwIO e
 
-applyConn :: TLS.Context -> IO Connection
+applyConn :: MonadIO m => TLS.Context -> m Connection
 applyConn context = do
-    ref <- I.newIORef ""
+    ref <- liftIO $ I.newIORef ""
     return $ Connection (send context) (recv context ref) (liftIO $ tlsClose context)
 
         where
