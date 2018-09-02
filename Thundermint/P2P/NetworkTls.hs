@@ -108,7 +108,7 @@ connectTls creds host port sock = do
         ctx <- liftIO $ TLS.contextNew sock (mkClientParams (fromJust  host) ( fromJust port) creds store)
         TLS.handshake ctx
         liftIO $ TLS.contextHookSetLogging ctx getLogging
-        conn <- liftIO $ applyConn ctx
+        conn <- applyConn ctx
         return $ conn
 
 
@@ -122,7 +122,7 @@ acceptTls creds sock = do
            ctx <- TLS.contextNew s (mkServerParams creds  (Just store))
            liftIO $ TLS.contextHookSetLogging ctx getLogging
            TLS.handshake ctx
-           cnn <- liftIO $ applyConn ctx
+           cnn <- applyConn ctx
            return $ (cnn, addr)
 
         )
