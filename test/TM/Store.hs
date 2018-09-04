@@ -18,10 +18,10 @@ tests :: TestTree
 tests =
     testGroup "blockchain validity test"
                   [ testGroup "existence"
-                                  [ testCase "node-1" $ checkBlockchainInvariants "./db/node-1"
-                                  , testCase "node-2" $ checkBlockchainInvariants "./db/node-2"
-                                  , testCase "node-3" $ checkBlockchainInvariants "./db/node-3"
-                                  , testCase "node-4" $ checkBlockchainInvariants "./db/node-4"
+                                  [ testCase "node-1" $ checkBlockchainInvariants "./test-data/valitidy/node-1.sqlite"
+                                  , testCase "node-2" $ checkBlockchainInvariants "./test-data/valitidy/node-2.sqlite"
+                                  , testCase "node-3" $ checkBlockchainInvariants "./test-data/valitidy/node-3.sqlite"
+                                  , testCase "node-4" $ checkBlockchainInvariants "./test-data/valitidy/node-4.sqlite"
                                   ]
                   ]
 checkBlockchainInvariants :: FilePath -> IO ()
