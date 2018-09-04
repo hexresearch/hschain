@@ -145,21 +145,23 @@ handleVerifiedMessage ProposalStorage{..} hParam tm = \case
 --       some validators from height different from current. But since
 --       we ignore messages from wrong height anyway it doesn't matter
 verifyMessageSignature
-  :: (Monad m, Crypto alg, Serialise a)
+  :: (MonadLogger m, Crypto alg, Serialise a)
   => AppState m alg a
   -> ValidatorSet alg
   -> MessageRx 'Unverified alg a
   -> MaybeT m (MessageRx 'Verified alg a)
 verifyMessageSignature AppState{..} vset = \case
-  RxPreVote   sv -> verify RxPreVote   sv
-  RxPreCommit sv -> verify RxPreCommit sv
-  RxProposal  sp -> verify RxProposal  sp
+  RxPreVote   sv -> verify "prevote"   RxPreVote   sv
+  RxPreCommit sv -> verify "precommit" RxPreCommit sv
+  RxProposal  sp -> verify "proposal"  RxProposal  sp
   RxTimeout   t  -> return $ RxTimeout t
   RxBlock     b  -> return $ RxBlock   b
   where
-    verify con sx = case verifySignature pkLookup sx of
+    verify name con sx = case verifySignature pkLookup sx of
       Just sx' -> return $ con sx'
-      Nothing  -> empty
+      Nothing  -> do
+        logger WarningS ("Invalid signature for " <> name <> ": " <> showLS (signedAddr sx)) ()
+        empty
     pkLookup a = validatorPubKey <$> validatorByAddr vset a
 
 
