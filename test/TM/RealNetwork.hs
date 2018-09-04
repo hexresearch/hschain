@@ -53,7 +53,6 @@ realTlsNetPair  host = do
            )
 
 
--------------------------------------------------------------------------------
 -- pem buffers
 
 certificatePem :: BS.ByteString

@@ -262,6 +262,33 @@ getLocalAddress =
     --return sockAddr
 
 -------------------------------------------------------------------------------
+--
+-- | Get local node address
+--
+getLocalAddress :: IO Net.SockAddr
+getLocalAddress = do
+    -- TODO get correct `localhost` address
+    addr:_ <- Net.getAddrInfo (Just $ Net.defaultHints { Net.addrSocketType = Net.Stream })
+                              (Just "localhost")
+                              Nothing
+    let sockAddr = Net.addrAddress addr
+    return sockAddr
+
+getCredential :: FilePath -> FilePath -> IO TLS.Credential
+getCredential certFile keyFile = do
+         cred <- TLS.credentialLoadX509 certFile keyFile
+         return $ case cred of
+                    Right c  -> c
+                    Left err -> error err
+
+
+getCredentialFromBuffer :: ByteString -> ByteString -> TLS.Credential
+getCredentialFromBuffer certPem keyPem  = let cs = TLS.credentialLoadX509FromMemory certPem keyPem
+                                          in case cs of
+                                               Right cred -> cred
+                                               Left err   -> error err
+
+-------------------------------------------------------------------------------
 -- debuger hooks
 -------------------------------------------------------------------------------
 
