@@ -36,6 +36,7 @@ import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Reader
+import Control.Monad.Trans.Maybe  (MaybeT(..))
 import Control.Exception          (SomeException(..),AsyncException(..))
 import Data.Aeson
 import Data.Aeson.TH
@@ -66,6 +67,10 @@ class Monad m => MonadLogger m where
   logger :: LogItem a => Severity -> LogStr -> a -> m ()
   -- | Change current namespace
   localNamespace :: (Namespace -> Namespace) -> m a -> m a
+
+instance MonadLogger m => MonadLogger (MaybeT m) where
+  logger sev str a = lift $ logger sev str a
+  localNamespace fun (MaybeT m) = MaybeT (localNamespace fun m)
 
 setNamespace :: MonadLogger m => Namespace -> m a -> m a
 setNamespace nm = localNamespace (const nm)
