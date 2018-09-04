@@ -33,12 +33,12 @@ import Thundermint.Mock.Coin
 import Thundermint.Mock.KeyList
 import Thundermint.P2P.Consts
 import Thundermint.P2P.Instances ()
-import Thundermint.P2P.NetworkTls    (getCredentialFromBuffer, getLocalAddress, realNetworkTls)
+import Thundermint.P2P.Network       (getLocalAddress, realNetwork)
 import Thundermint.Store
+
 
 import qualified Control.Exception     as E
 import qualified Data.Aeson            as JSON
-import qualified Data.ByteString       as BS
 import qualified Data.ByteString.Char8 as BC8
 import qualified Data.Map              as Map
 
@@ -118,21 +118,19 @@ findInputs tgt = go 0
 ----------------------------------------------------------------
 
 interpretSpec
-   :: Opts -> [SockAddr] -> ValidatorSet Ed25519_SHA512 -> LogEnv -> BS.ByteString -> BS.ByteString
+   :: Opts -> [SockAddr] -> ValidatorSet Ed25519_SHA512 -> LogEnv
    -> NodeSpec -> IO (BlockStorage 'RO IO Alg [Tx], IO ())
-interpretSpec Opts{..} netAddresses validatorSet logenv certPemBuf keyPemBuf NodeSpec{..} = do
+interpretSpec Opts{..} netAddresses validatorSet logenv NodeSpec{..} = do
   -- Allocate storage for node
   storage <- newBlockStorage prefix nspecDbName genesisBlock validatorSet
   nodeAddr <- getLocalAddress
-  let credential =  getCredentialFromBuffer certPemBuf keyPemBuf
   return
     ( makeReadOnly storage
-    , runLoggerT "general" logenv $ do
-        logger InfoS ("net Addresses: " <> showLS netAddresses) ()
+    , runLoggerT "general" logenv $
         runNode NodeDescription
           { nodeStorage         = hoistBlockStorageRW liftIO storage
           , nodeBlockChainLogic = transitions
-          , nodeNetworks        = realNetworkTls credential thundermintPort
+          , nodeNetworks        = realNetwork thundermintPort
           , nodeAddr            = nodeAddr
           , nodeInitialPeers    = netAddresses
           , nodeValidationKey   = nspecPrivKey
@@ -175,9 +173,6 @@ main = do
                     )
     nodeSpecStr <- BC8.pack <$> getEnv "THUNDERMINT_NODE_SPEC"
     ipMapPath   <- BC8.pack <$> getEnv "THUNDERMINT_KEYS"
-    keyPem      <- BC8.pack <$> getEnv "KEY_PEM"
-    certPem     <- BC8.pack <$> getEnv "CERT_PEM"
-
     let nodeSpec@NodeSpec{..}    = either error id $ JSON.eitherDecodeStrict' nodeSpecStr
         loggers = [ makeScribe s { scribe'path = fmap (prefix </>) (scribe'path s) }
                   | s <- nspecLogFile ]
@@ -185,10 +180,10 @@ main = do
       let !validators'' = either error (fmap PrivValidator)
                         $ JSON.eitherDecodeStrict' ipMapPath  :: [PrivValidator Ed25519_SHA512]
           !validatorSet = makeValidatorSetFromPriv validators''
-      runLoggerT "general" logenv $ do
-        logger InfoS "Listening for bootstrap adresses!" ()
+      runLoggerT "general" logenv $
+        logger InfoS "Listening for bootstrap adresses" ()
       netAddresses <- waitForAddrs logenv
-      (_,act) <- interpretSpec opts netAddresses validatorSet logenv certPem keyPem nodeSpec
+      (_,act) <- interpretSpec opts netAddresses validatorSet logenv nodeSpec
       act `catch` (\Abort -> return ())
   where
     parser :: Parser Opts
@@ -234,10 +229,8 @@ waitForAddrs :: LogEnv -> IO [SockAddr]
 waitForAddrs logenv = E.handle allExc $ do
   addrs <- listen "*" "49999" $ \ (lsock, _addr) ->
     accept lsock $ \ (conn, _caddr) -> do
-    mMsg <- recv conn 4096
-    runLoggerT "boostrap" logenv $ do
-      logger InfoS ("accept this: " <> showLS mMsg) ()
-    case mMsg of
+      mMsg <- recv conn 4096
+      case mMsg of
         Nothing  -> fail "Connection closed by peer."
         Just msg -> either fail return $ JSON.eitherDecodeStrict' msg
   runLoggerT "boostrap" logenv $ do
