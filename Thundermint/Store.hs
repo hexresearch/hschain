@@ -34,6 +34,7 @@ module Thundermint.Store (
   , hoistMempoolCursor
   , hoistMempool
   , nullMempool
+  , nullMempoolAny
   -- * Blockchain invariants checkers
   , BlockchainInconsistency
   , checkBlocks
@@ -290,8 +291,9 @@ hoistMempool fun Mempool{..} = Mempool
   , mempoolStats      = fun mempoolStats
   }
 
-nullMempool :: Monad m => Mempool m ()
-nullMempool = Mempool
+
+nullMempoolAny :: Monad m => Mempool m a
+nullMempoolAny = Mempool
   { peekNTransactions = const (return [])
   , filterMempool     = return ()
   , mempoolStats      = return $ MempoolInfo 0 0 0 0
@@ -301,6 +303,8 @@ nullMempool = Mempool
       }
   }
 
+nullMempool :: Monad m => Mempool m ()
+nullMempool = nullMempoolAny
 
 ----------------------------------------------------------------
 -- validate blockchain invariants
