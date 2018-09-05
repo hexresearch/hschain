@@ -1,7 +1,8 @@
 { mkDerivation, aeson, async, base, base16-bytestring, base58-bytestring
-, bytestring , containers, criterion, cryptonite, deepseq, directory, data-default-class
-, exceptions , filepath, groom, katip, network, random, retry, serialise, stdenv, stm
-, sqlite-simple, tasty , tasty-hunit, text, time, transformers
+, bytestring , bytestring-arbitrary, containers, criterion, cryptonite, deepseq
+, directory, data-default-class, exceptions, filepath, generic-arbitrary, groom
+, hedgehog, hedgehog-quickcheck, katip, network, QuickCheck, random, retry, serialise
+, stdenv, stm, sqlite-simple, tasty, tasty-hunit, tasty-hedgehog, text, time, transformers
 }:
 mkDerivation {
   pname = "thundermint";
@@ -18,7 +19,8 @@ mkDerivation {
     aeson base bytestring containers cryptonite directory filepath text
   ];
   testHaskellDepends = [
-    async base base58-bytestring bytestring stm tasty tasty-hunit
+    async base base58-bytestring bytestring bytestring-arbitrary generic-arbitrary hedgehog
+    hedgehog-quickcheck QuickCheck stm tasty tasty-hunit tasty-hedgehog
   ];
   benchmarkHaskellDepends = [ base bytestring criterion cryptonite deepseq ];
   homepage = "https://github.com/hexresearch/thundermint";
