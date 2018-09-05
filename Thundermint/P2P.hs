@@ -202,8 +202,8 @@ startPeerDispatcher p2pConfig net peerAddr addrs AppChans{..} storage mempool = 
              -- Makes 5 attempts to start acceptLoop wirh 5 msec interval
              recoverAll def $ const $ connectPeerTo peerAddr net a peerCh mempool peerRegistry
          forever $ liftIO $ threadDelay 100000
-    -- Peer connection monitor
-    , peerPexMonitor peerAddr net peerCh mempool peerRegistry
+    -- -- Peer connection monitor
+    -- , peerPexMonitor peerAddr net peerCh mempool peerRegistry
     -- Output gossip statistics to
     , forever $ do
         logGossip peerCh
@@ -460,7 +460,7 @@ startPeer peerAddr peerCh@PeerChans{..} conn peerRegistry mempool = logOnExcepti
     [ peerGossipVotes         peerSt peerCh gossipCh
     , peerGossipBlocks        peerSt peerCh gossipCh
     , peerGossipMempool       peerSt peerCh p2pConfig gossipCh cursor
-    , peerGossipPeerExchange  peerAddr peerCh peerRegistry pexCh gossipCh
+    -- , peerGossipPeerExchange  peerAddr peerCh peerRegistry pexCh gossipCh
     , peerSend                peerSt peerCh gossipCh conn
     , peerReceive             peerSt peerCh pexCh conn cursor
     ]
