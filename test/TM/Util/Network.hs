@@ -93,10 +93,11 @@ createTestNetwork desc' = do
         let validatorSet = makeValidatorSetFromPriv testValidators
         blockStorage <- liftIO $ newSTMBlockStorage genesisBlock validatorSet
         hChain       <- liftIO $ blockchainHeight blockStorage
-        bchState     <- newBChState transitions 
-                      $ makeReadOnly (hoistBlockStorageRW liftIO blockStorage)
-        _            <- stateAtH bchState (next hChain)
-        runTracerT ncCallback $ runNoLogsT $ do
+        let run = runTracerT ncCallback . runNoLogsT
+        fmap (map run) $ run $ do
+          bchState     <- newBChState transitions
+                        $ makeReadOnly (hoistBlockStorageRW liftIO blockStorage)
+          _            <- stateAtH bchState (next hChain)
           runNode NodeDescription
             { nodeStorage         = hoistBlockStorageRW liftIO blockStorage
             , nodeBlockChainLogic = transitions
@@ -106,5 +107,5 @@ createTestNetwork desc' = do
             , nodeValidationKey   = Nothing
             , nodeCommitCallback  = \_ -> return ()
             , nodeBchState        = bchState
+            , nodeMempool         = nullMempoolAny
             }
-
