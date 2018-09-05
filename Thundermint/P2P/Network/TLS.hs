@@ -8,7 +8,8 @@ module Thundermint.P2P.Network.TLS (
     -- * Real tls network
    realNetworkTls
  , newSocket
- , getSystemCertificateStore
+ , getCredential
+ , getCredentialFromBuffer
  , getLocalAddress
  , headerSize
   ) where
@@ -259,7 +260,6 @@ getLocalAddress =
     --                          (Just "50000")
     --let sockAddr = Net.addrAddress addr
     --return sockAddr
-
 
 -------------------------------------------------------------------------------
 -- debuger hooks

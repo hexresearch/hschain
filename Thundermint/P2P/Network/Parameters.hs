@@ -6,12 +6,15 @@
 module Thundermint.P2P.Network.Parameters
     ( mkClientParams
     , mkServerParams
+    , getCredential
+    , getCredentialFromBuffer
     ) where
 
 
-import Data.Default.Class (def)
-import Data.List          (intersect)
-import Data.Maybe         (isJust)
+import Data.ByteString.Internal (ByteString(..))
+import Data.Default.Class       (def)
+import Data.List                (intersect)
+import Data.Maybe               (isJust)
 
 import qualified Data.ByteString.Char8      as BC8 (pack, unpack)
 import qualified Data.X509                  as X
@@ -20,7 +23,6 @@ import qualified Data.X509.Validation       as X
 import qualified Network.Socket             as Net
 import qualified Network.TLS                as TLS
 import qualified Network.TLS.Extra          as TLSExtra
-
 
 mkClientParams
   :: Net.HostName
@@ -229,7 +231,7 @@ mkClientSettings'IO = mkClientSettingsIO defaultTlsSettings
 
 mkClientSettingsIO :: TLSSettings -> Net.HostName -> Net.ServiceName -> IO TLS.ClientParams
 mkClientSettingsIO TLSSettings{..} hostname port = do
-  cred <- getCredentials tlsClientCertFile tlsPrivKeyFile
+  cred <- getCredential tlsClientCertFile tlsPrivKeyFile
   return TLS.ClientParams{
                TLS.clientServerIdentification= (hostname, BC8.pack port)
              , TLS.clientUseMaxFragmentLength = Nothing
@@ -245,12 +247,16 @@ mkClientSettingsIO TLSSettings{..} hostname port = do
              }
 
 
--- mkClientParams :: TLSSettings -> Net.HostName -> Net.ServiceName -> IO TLS.ClientParams
-
-
-getCredentials :: FilePath -> FilePath -> IO TLS.Credential
-getCredentials certFile keyFile = do
+getCredential :: FilePath -> FilePath -> IO TLS.Credential
+getCredential certFile keyFile = do
          cred <- TLS.credentialLoadX509 certFile keyFile
          return $ case cred of
                     Right c  -> c
                     Left err -> error err
+
+
+getCredentialFromBuffer :: ByteString -> ByteString -> TLS.Credential
+getCredentialFromBuffer certPem keyPem  = let cs = TLS.credentialLoadX509FromMemory certPem keyPem
+                                          in case cs of
+                                               Right cred -> cred
+                                               Left err   -> error err
