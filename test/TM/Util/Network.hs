@@ -11,6 +11,7 @@ module TM.Util.Network where
 
 
 import Data.List
+import Control.Monad
 import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Thundermint.Crypto.Ed25519
@@ -19,7 +20,9 @@ import Codec.Serialise
 import GHC.Generics (Generic)
 import qualified Data.Set as Set
 
+import Thundermint.Blockchain.Interpretation
 import Thundermint.Blockchain.Types
+import Thundermint.Consensus.Types
 import Thundermint.Control
 import Thundermint.Crypto
 import Thundermint.Debug.Trace
@@ -82,20 +85,26 @@ createTestNetwork :: forall m . (MonadIO m, MonadMask m, MonadFork m) => TestNet
 createTestNetwork desc' = do
     let desc = removeMutualConnections desc' -- omit bug ...
     net <- liftIO newMockNet
-    runConcurrently $ map (mkTestNode net) desc
+    acts <- mapM (mkTestNode net) desc
+    runConcurrently $ join acts
   where
-    mkTestNode :: (MonadIO m, MonadMask m, MonadFork m) => MockNet TestAddr -> TestNetLinkDescription m -> m ()
+    mkTestNode :: (MonadIO m, MonadMask m, MonadFork m) => MockNet TestAddr -> TestNetLinkDescription m -> m [m ()]
     mkTestNode net TestNetLinkDescription{..} = do
         let validatorSet = makeValidatorSetFromPriv testValidators
         blockStorage <- liftIO $ newSTMBlockStorage genesisBlock validatorSet
-        runTracerT ncCallback $ runNoLogsT $ runNode NodeDescription
+        hChain       <- liftIO $ blockchainHeight blockStorage
+        bchState     <- newBChState transitions 
+                      $ makeReadOnly (hoistBlockStorageRW liftIO blockStorage)
+        _            <- stateAtH bchState (next hChain)
+        runTracerT ncCallback $ runNoLogsT $ do
+          runNode NodeDescription
             { nodeStorage         = hoistBlockStorageRW liftIO blockStorage
             , nodeBlockChainLogic = transitions
-            , nodeNetworks        = createMockNode net "tst" (TestAddr ncFrom)
+            , nodeNetwork         = createMockNode net "tst" (TestAddr ncFrom)
             , nodeAddr            = (TestAddr ncFrom, "tst")
             , nodeInitialPeers    = map ((,"tst") . TestAddr) ncTo
             , nodeValidationKey   = Nothing
-            , nodeAction          = Nothing
             , nodeCommitCallback  = \_ -> return ()
+            , nodeBchState        = bchState
             }
 
