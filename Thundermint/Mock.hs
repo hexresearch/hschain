@@ -200,7 +200,7 @@ runNode
      , Serialise a)
   => NodeDescription addr m alg st tx a
   -> m [m ()]
-runNode NodeDescription{nodeBlockChainLogic=logic@BlockFold{..}, ..} = do
+runNode NodeDescription{nodeBlockChainLogic=BlockFold{..}, ..} = do
   -- Create state of blockchain & Update it to current state of
   -- blockchain
   hChain      <- blockchainHeight     nodeStorage
