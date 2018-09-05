@@ -24,7 +24,7 @@ import Control.Concurrent.STM
 import Control.Concurrent     (forkIO, killThread)
 import Control.Monad          (forM_, forever, void, when)
 import Control.Monad.Catch    (bracketOnError, onException, throwM)
-import Control.Monad.IO.Class (MonadIO, liftIO)
+import Control.Monad.IO.Class (liftIO)
 import Data.Bits              (unsafeShiftL)
 import Data.List              (find)
 import Data.Maybe             (fromMaybe)
