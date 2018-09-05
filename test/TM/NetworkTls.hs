@@ -13,7 +13,6 @@ import Data.Monoid                ((<>))
 import Test.Tasty
 import Test.Tasty.HUnit
 import Thundermint.P2P.Network
-import TM.MockNet
 import TM.RealNetwork
 
 import qualified Data.ByteString.Lazy as LBS

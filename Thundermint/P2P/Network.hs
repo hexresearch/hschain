@@ -38,7 +38,6 @@ import qualified Data.ByteString.Builder        as BB
 import qualified Data.ByteString.Lazy           as LBS
 import qualified Data.Map                       as Map
 import qualified Network.Socket                 as Net
-import qualified Network.Socket.Internal        as Net
 import qualified Network.Socket.ByteString      as NetBS
 import qualified Network.Socket.ByteString.Lazy as NetLBS
 

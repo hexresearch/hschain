@@ -13,7 +13,9 @@ import Data.Monoid
 import Options.Applicative
 
 import Codec.Serialise      (serialise)
+import Control.Monad        (forever)
 import Data.ByteString.Lazy (toStrict)
+import Data.Maybe           (isJust)
 import GHC.Generics         (Generic)
 import Katip.Core           (LogEnv, showLS)
 import Network.Simple.TCP   (accept, listen, recv)
@@ -22,8 +24,10 @@ import System.Environment   (getEnv)
 import System.FilePath      ((</>))
 import System.Random        (randomRIO)
 
+import Thundermint.Blockchain.Interpretation
 import Thundermint.Blockchain.Types
 import Thundermint.Consensus.Types
+import Thundermint.Control
 import Thundermint.Crypto
 import Thundermint.Crypto.Containers
 import Thundermint.Crypto.Ed25519    (Ed25519_SHA512)
@@ -35,7 +39,7 @@ import Thundermint.P2P.Consts
 import Thundermint.P2P.Instances ()
 import Thundermint.P2P.Network       (getLocalAddress, realNetwork)
 import Thundermint.Store
-
+import Thundermint.Store.STM
 
 import qualified Control.Exception     as E
 import qualified Data.Aeson            as JSON
@@ -123,27 +127,45 @@ interpretSpec
 interpretSpec Opts{..} netAddresses validatorSet logenv NodeSpec{..} = do
   -- Allocate storage for node
   storage <- newBlockStorage prefix nspecDbName genesisBlock validatorSet
+  hChain   <- blockchainHeight storage
   nodeAddr <- getLocalAddress
   return
     ( makeReadOnly storage
-    , runLoggerT "general" logenv $
-        runNode NodeDescription
+    , runLoggerT "general" logenv $ do
+        logger InfoS ("net Addresses: " <> showLS netAddresses) ()
+        --
+        bchState <- newBChState transitions
+                  $ makeReadOnly (hoistBlockStorageRW liftIO storage)
+        _        <- stateAtH bchState (next hChain)
+        -- Create mempool
+        let checkTx tx = do
+              st <- currentState bchState
+              return $ isJust $ processTx transitions (Height 1) tx st
+        mempool <- newMempool checkTx
+        cursor  <- getMempoolCursor mempool
+        --
+        let generator = forever $ do
+              st <- currentState bchState
+              let (off,n)  = nspecWalletKeys
+                  privKeys = take n $ drop off privateKeyList
+              transferActions delay (publicKey <$> take netInitialKeys privateKeyList) privKeys
+                (pushTransaction cursor) st
+        --
+        acts <- runNode NodeDescription
           { nodeStorage         = hoistBlockStorageRW liftIO storage
+          , nodeBchState        = bchState
           , nodeBlockChainLogic = transitions
-          , nodeNetworks        = realNetwork thundermintPort
+          , nodeMempool         = mempool
+          , nodeNetwork         = realNetwork thundermintPort
           , nodeAddr            = nodeAddr
           , nodeInitialPeers    = netAddresses
           , nodeValidationKey   = nspecPrivKey
-          , nodeAction          = do let (off,n)  = nspecWalletKeys
-                                         privKeys = take n $ drop off privateKeyList
-                                     return $ transferActions delay
-                                       (publicKey <$> take netInitialKeys privateKeyList)
-                                       privKeys
           , nodeCommitCallback = \case
               h | Just hM <- maxH
                 , h > Height hM -> throwM Abort
                 | otherwise     -> return ()
           }
+        runConcurrently (generator : acts)
     )
   where
     genesisBlock = Block
@@ -229,8 +251,10 @@ waitForAddrs :: LogEnv -> IO [SockAddr]
 waitForAddrs logenv = E.handle allExc $ do
   addrs <- listen "*" "49999" $ \ (lsock, _addr) ->
     accept lsock $ \ (conn, _caddr) -> do
-      mMsg <- recv conn 4096
-      case mMsg of
+    mMsg <- recv conn 4096
+    runLoggerT "boostrap" logenv $ do
+      logger InfoS ("accept this: " <> showLS mMsg) ()
+    case mMsg of
         Nothing  -> fail "Connection closed by peer."
         Just msg -> either fail return $ JSON.eitherDecodeStrict' msg
   runLoggerT "boostrap" logenv $ do

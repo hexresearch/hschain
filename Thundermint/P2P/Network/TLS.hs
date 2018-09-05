@@ -14,8 +14,6 @@ module Thundermint.P2P.Network.TLS (
  , headerSize
   ) where
 
-import Thundermint.P2P.Network  (getLocalAddress)
-
 import Control.Monad            (when)
 import Control.Monad.Catch      (bracketOnError, throwM)
 import Control.Monad.Catch      (MonadMask)
@@ -247,19 +245,21 @@ fill bs0 siz0 recv
           return (LBS.fromStrict (buf `BS.append` bs1), bs2)
 
 
-getCredential :: FilePath -> FilePath -> IO TLS.Credential
-getCredential certFile keyFile = do
-         cred <- TLS.credentialLoadX509 certFile keyFile
-         return $ case cred of
-                    Right c  -> c
-                    Left err -> error err
+----------------------------------------------------------------
+-- Some useful utilities
+----------------------------------------------------------------
 
-
-getCredentialFromBuffer :: ByteString -> ByteString -> TLS.Credential
-getCredentialFromBuffer certPem keyPem  = let cs = TLS.credentialLoadX509FromMemory certPem keyPem
-                                          in case cs of
-                                               Right cred -> cred
-                                               Left err   -> error err
+-- | Get local node address
+--
+getLocalAddress :: IO Net.SockAddr
+getLocalAddress =
+    return $ Net.SockAddrInet 0 (Net.tupleToHostAddress (0x7f, 0, 0, 1))
+    -- TODO get correct `localhost` address
+    --addr:_ <- Net.getAddrInfo (Just $ Net.defaultHints { Net.addrSocketType = Net.Stream })
+    --                          (Just "localhost")
+    --                          (Just "50000")
+    --let sockAddr = Net.addrAddress addr
+    --return sockAddr
 
 -------------------------------------------------------------------------------
 -- debuger hooks
