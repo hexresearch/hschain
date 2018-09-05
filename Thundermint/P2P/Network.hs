@@ -12,6 +12,8 @@ module Thundermint.P2P.Network (
     -- * Real tls network
   , realNetworkTls
   , getLocalAddress
+  , getCredential
+  , getCredentialFromBuffer
     -- * Mock in-memory network
   , MockSocket
   , MockNet

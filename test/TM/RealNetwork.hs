@@ -6,10 +6,8 @@ module TM.RealNetwork ( realNetPair
 import System.Random
 import Thundermint.P2P.Network
 
-
 import qualified Data.ByteString as BS
 import qualified Network.Socket  as Net
-import qualified Network.TLS     as TLS
 ----------------------------------------------------------------
 
 realNetPair :: Net.HostName
@@ -38,9 +36,9 @@ realTlsNetPair :: Net.HostName
                       (Net.SockAddr, NetworkAPI Net.SockAddr))
 realTlsNetPair  host = do
     n <- randomRIO (0, 99 :: Int)
-    credential <- getCredential "certs/certificate.pem" "certs/key.pem"
     let port1 = "301" ++ show  n
         port2 = "301" ++ show  (n+1)
+        credential = getCredentialFromBuffer certificatePem keyPem
         server = realNetworkTls credential port1
         client = realNetworkTls credential port2
         hints = Net.defaultHints  { Net.addrSocketType = Net.Stream }
@@ -55,22 +53,10 @@ realTlsNetPair  host = do
            )
 
 
-bufferCredential :: TLS.Credential
-bufferCredential = let cs = TLS.credentialLoadX509FromMemory certificatePem keyPem
-                   in case cs of
-                         Right cred -> cred
-                         Left err   -> error err
-
-getCredential :: FilePath -> FilePath -> IO TLS.Credential
-getCredential certFile keyFile = do
-         cred <- TLS.credentialLoadX509 certFile keyFile
-         return $ case cred of
-                    Right c  -> c
-                    Left err -> error err
-
 -------------------------------------------------------------------------------
 -- pem buffers
 
+certificatePem :: BS.ByteString
 certificatePem = BS.concat
                  [ "-----BEGIN CERTIFICATE-----\n"
                  ,"MIIDEjCCAfoCCQDG1T3JOqXNTjANBgkqhkiG9w0BAQsFADBLMQswCQYDVQQGEwJS\n"
@@ -92,7 +78,7 @@ certificatePem = BS.concat
                  ,"kkIY3ztnVpfq7BgN+AA10sV1Q52sXg==\n"
                  ,"-----END CERTIFICATE-----"]
 
-
+keyPem :: BS.ByteString
 keyPem = BS.concat
          ["-----BEGIN RSA PRIVATE KEY-----\n"
          ,"MIIEpAIBAAKCAQEAuVdGB77eWKNS4ez3RMLAfOynzVkEwIh6pJHCO2fr4RxL6yKp\n"
