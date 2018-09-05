@@ -3,7 +3,7 @@
 {-# LANGUAGE RecordWildCards   #-}
 -- |
 -- Abstract API for network which support
-module Thundermint.P2P.Tls
+module Thundermint.P2P.Network.Parameters
     ( mkClientParams
     , mkServerParams
     ) where

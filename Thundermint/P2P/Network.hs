@@ -1,4 +1,5 @@
 {-# LANGUAGE LambdaCase      #-}
+{-# LANGUAGE RankNTypes      #-}
 {-# LANGUAGE RecordWildCards #-}
 -- |
 -- Abstract API for network which support
@@ -8,6 +9,8 @@ module Thundermint.P2P.Network (
     -- * Real network
   , realNetwork
   , realNetworkUdp
+    -- * Real tls network
+  , realNetworkTls
   , getLocalAddress
     -- * Mock in-memory network
   , MockSocket
@@ -37,23 +40,9 @@ import qualified Network.Socket.ByteString      as NetBS
 import qualified Network.Socket.ByteString.Lazy as NetLBS
 
 import Thundermint.Control
+import Thundermint.P2P.Network.TLS
 import Thundermint.P2P.Types
 
-----------------------------------------------------------------
---
-----------------------------------------------------------------
-
-headerSize :: HeaderSize
-headerSize = 4
-
-----------------------------------------------------------------
---
-----------------------------------------------------------------
-
-newSocket :: MonadIO m => Net.AddrInfo -> m Net.Socket
-newSocket ai = liftIO $ Net.socket (Net.addrFamily     ai)
-                                   (Net.addrSocketType ai)
-                                   (Net.addrProtocol   ai)
 
 -- | API implementation for real tcp network
 realNetwork :: Net.ServiceName -> NetworkAPI Net.SockAddr
@@ -190,18 +179,6 @@ realNetworkUdp listenPort = do
 ----------------------------------------------------------------
 -- Some useful utilities
 ----------------------------------------------------------------
-
--- | Get local node address
---
-getLocalAddress :: IO Net.SockAddr
-getLocalAddress = do
-    -- TODO get correct `localhost` address
-    addr:_ <- Net.getAddrInfo (Just $ Net.defaultHints { Net.addrSocketType = Net.Stream })
-                              (Just "localhost")
-                              Nothing
-    let sockAddr = Net.addrAddress addr
-    return sockAddr
-
 
 
 
