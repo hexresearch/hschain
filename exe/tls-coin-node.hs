@@ -13,7 +13,9 @@ import Data.Monoid
 import Options.Applicative
 
 import Codec.Serialise      (serialise)
+import Control.Monad        (forever)
 import Data.ByteString.Lazy (toStrict)
+import Data.Maybe           (isJust)
 import GHC.Generics         (Generic)
 import Katip.Core           (LogEnv, showLS)
 import Network.Simple.TCP   (accept, listen, recv)
@@ -22,8 +24,10 @@ import System.Environment   (getEnv)
 import System.FilePath      ((</>))
 import System.Random        (randomRIO)
 
+import Thundermint.Blockchain.Interpretation
 import Thundermint.Blockchain.Types
 import Thundermint.Consensus.Types
+import Thundermint.Control
 import Thundermint.Crypto
 import Thundermint.Crypto.Containers
 import Thundermint.Crypto.Ed25519    (Ed25519_SHA512)
@@ -33,8 +37,9 @@ import Thundermint.Mock.Coin
 import Thundermint.Mock.KeyList
 import Thundermint.P2P.Consts
 import Thundermint.P2P.Instances ()
-import Thundermint.P2P.NetworkTls    (getCredentialFromBuffer, getLocalAddress, realNetworkTls)
+import Thundermint.P2P.Network    (getCredentialFromBuffer, getLocalAddress, realNetworkTls)
 import Thundermint.Store
+import Thundermint.Store.STM
 
 import qualified Control.Exception     as E
 import qualified Data.Aeson            as JSON
@@ -123,29 +128,46 @@ interpretSpec
 interpretSpec Opts{..} netAddresses validatorSet logenv certPemBuf keyPemBuf NodeSpec{..} = do
   -- Allocate storage for node
   storage <- newBlockStorage prefix nspecDbName genesisBlock validatorSet
+  hChain   <- blockchainHeight storage
   nodeAddr <- getLocalAddress
   let credential =  getCredentialFromBuffer certPemBuf keyPemBuf
   return
     ( makeReadOnly storage
     , runLoggerT "general" logenv $ do
         logger InfoS ("net Addresses: " <> showLS netAddresses) ()
-        runNode NodeDescription
+        --
+        bchState <- newBChState transitions
+                  $ makeReadOnly (hoistBlockStorageRW liftIO storage)
+        _        <- stateAtH bchState (next hChain)
+        -- Create mempool
+        let checkTx tx = do
+              st <- currentState bchState
+              return $ isJust $ processTx transitions (Height 1) tx st
+        mempool <- newMempool checkTx
+        cursor  <- getMempoolCursor mempool
+        --
+        let generator = forever $ do
+              st <- currentState bchState
+              let (off,n)  = nspecWalletKeys
+                  privKeys = take n $ drop off privateKeyList
+              transferActions delay (publicKey <$> take netInitialKeys privateKeyList) privKeys
+                (pushTransaction cursor) st
+        --
+        acts <- runNode NodeDescription
           { nodeStorage         = hoistBlockStorageRW liftIO storage
+          , nodeBchState        = bchState
           , nodeBlockChainLogic = transitions
-          , nodeNetworks        = realNetworkTls credential thundermintPort
+          , nodeMempool         = mempool
+          , nodeNetwork         = realNetworkTls credential thundermintPort
           , nodeAddr            = nodeAddr
           , nodeInitialPeers    = netAddresses
           , nodeValidationKey   = nspecPrivKey
-          , nodeAction          = do let (off,n)  = nspecWalletKeys
-                                         privKeys = take n $ drop off privateKeyList
-                                     return $ transferActions delay
-                                       (publicKey <$> take netInitialKeys privateKeyList)
-                                       privKeys
           , nodeCommitCallback = \case
               h | Just hM <- maxH
                 , h > Height hM -> throwM Abort
                 | otherwise     -> return ()
           }
+        runConcurrently (generator : acts)
     )
   where
     genesisBlock = Block
@@ -185,8 +207,8 @@ main = do
       let !validators'' = either error (fmap PrivValidator)
                         $ JSON.eitherDecodeStrict' ipMapPath  :: [PrivValidator Ed25519_SHA512]
           !validatorSet = makeValidatorSetFromPriv validators''
-      runLoggerT "general" logenv $ do
-        logger InfoS "Listening for bootstrap adresses!" ()
+      runLoggerT "general" logenv $
+        logger InfoS "Listening for bootstrap adresses" ()
       netAddresses <- waitForAddrs logenv
       (_,act) <- interpretSpec opts netAddresses validatorSet logenv certPem keyPem nodeSpec
       act `catch` (\Abort -> return ())
