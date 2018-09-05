@@ -20,13 +20,12 @@ resource "docker_container" "node" {
   count = "${length(var.private_keys)}"
   image = "${docker_image.scratch.latest}"
   name  = "node-${count.index+1}"
-  env   = [ "THUNDERMINT_NODE_SPEC={ \"nspecPrivKey\":\"${var.private_keys[count.index]}\", \"nspecDbName\": \"db/node-${count.index+1}\", \"nspecLogFile\" : [{ \"type\": \"ScribeJSON\", \"path\" : \"logs/node-${count.index+1}\", \"severity\" : \"Debug\", \"verbosity\" : \"V2\" }], \"nspecWalletKeys\"  : [${count.index*500},500]}"
+  env   = [ "THUNDERMINT_NODE_KEY=${var.private_keys[count.index]}"
           , "THUNDERMINT_KEYS=${jsonencode(values(var.private_keys))}"
           ]
-  command = ["/bin/thundermint-coin-node", "--max-h", "10", "--prefix", "/thundermint", "--delay", "100", "--check-consensus", "--deposit", "1000", "--keys", "2000" ]
   volumes = {
-    volume_name = "thundermint"
-    container_path = "/thundermint"
+    volume_name = "logs"
+    container_path = "/logs"
   }
 }
 
