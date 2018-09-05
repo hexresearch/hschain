@@ -74,13 +74,14 @@ Library
                   Thundermint.P2P.Consts
                   Thundermint.P2P.Instances
                   Thundermint.P2P.Network
-                  Thundermint.P2P.NetworkTls
                   Thundermint.P2P.Types
-                  Thundermint.P2P.Tls
                   Thundermint.P2P.PeerState
                   Thundermint.Store
                   Thundermint.Store.SQLite
                   Thundermint.Store.STM
+  Other-modules:
+                  Thundermint.P2P.Network.Parameters
+                  Thundermint.P2P.Network.TLS
 
 -- Example programs
 Executable thundermint-keyval

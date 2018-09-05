@@ -5,7 +5,7 @@ module TM.RealNetwork ( realNetPair
 
 import System.Random
 import Thundermint.P2P.Network
-import Thundermint.P2P.NetworkTls
+
 
 import qualified Data.ByteString as BS
 import qualified Network.Socket  as Net

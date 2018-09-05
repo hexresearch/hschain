@@ -4,9 +4,13 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 -- |
 -- Abstract API for network which support
-module Thundermint.P2P.NetworkTls (
+module Thundermint.P2P.Network.TLS (
     -- * Real tls network
    realNetworkTls
+ , newSocket
+ , getSystemCertificateStore
+ , getLocalAddress
+ , headerSize
   ) where
 
 import Control.Monad            (when)
@@ -35,11 +39,17 @@ import qualified Network.Socket          as Net
 import qualified Network.TLS             as TLS
 
 import Thundermint.Control
-import Thundermint.P2P.Tls
+import Thundermint.P2P.Network.Parameters
 import Thundermint.P2P.Types
 ----------------------------------------------------------------
 --
 ----------------------------------------------------------------
+
+headerSize :: HeaderSize
+headerSize = 4
+
+
+
 realNetworkTls :: TLS.Credential -> Net.ServiceName -> NetworkAPI Net.SockAddr
 realNetworkTls creds listenPort = NetworkAPI
   { listenOn = do
@@ -78,6 +88,8 @@ realNetworkTls creds listenPort = NetworkAPI
 
         connectTls creds hostName serviceName sock
   }
+
+
 
 newSocket :: MonadIO m => Net.AddrInfo -> m Net.Socket
 newSocket ai = liftIO $ Net.socket (Net.addrFamily     ai)
@@ -127,8 +139,6 @@ acceptTls creds sock = do
 
         )
 
-headerSize :: HeaderSize
-headerSize = 4
 
 -- | Like 'TLS.bye' from the "Network.TLS" module, except it ignores 'ePIPE'
 -- errors which might happen if the remote peer closes the connection first.
@@ -233,6 +243,22 @@ fill bs0 siz0 recv
           let (bs1,bs2) = BS.splitAt siz bs
           return (LBS.fromStrict (buf `BS.append` bs1), bs2)
 
+
+----------------------------------------------------------------
+-- Some useful utilities
+----------------------------------------------------------------
+
+-- | Get local node address
+--
+getLocalAddress :: IO Net.SockAddr
+getLocalAddress =
+    return $ Net.SockAddrInet 0 (Net.tupleToHostAddress (0x7f, 0, 0, 1))
+    -- TODO get correct `localhost` address
+    --addr:_ <- Net.getAddrInfo (Just $ Net.defaultHints { Net.addrSocketType = Net.Stream })
+    --                          (Just "localhost")
+    --                          (Just "50000")
+    --let sockAddr = Net.addrAddress addr
+    --return sockAddr
 
 
 -------------------------------------------------------------------------------
