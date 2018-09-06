@@ -6,6 +6,7 @@
 -- |
 module TM.Network (tests) where
 
+import Control.Concurrent        (threadDelay)
 import Control.Concurrent.Async
 import Control.Exception
 import Data.Default.Class        (def)
@@ -13,11 +14,11 @@ import Data.Monoid               ((<>))
 import qualified Network.Socket  as Net
 
 import Thundermint.P2P.Network
+
 import TM.MockNet
 import TM.RealNetwork
-
-import Control.Concurrent (threadDelay)
-import Data.Monoid        ((<>))
+import Test.Tasty
+import Test.Tasty.HUnit
 
 
 tests :: TestTree
@@ -38,9 +39,18 @@ tests =
                           , testCase "delayed write" $ realNetPair opts "::1" >>= \(server, client) -> delayedWrite server client
                           ]
                     ]
+                  , testGroup "local addresses detection"
+                    [ testCase "all locals must be local" $ getLocalAddresses >>= (fmap and . mapM isLocalAddress) >>= (@? "Must be local")
+                    , testCase "loopback is local" $ (and <$> mapM isLocalAddress [loopbackIpv4, loopbackIpv6]) >>= (@? "Must be local")
+                    -- TODO: Randomly generate addresses and check it is not isLocalAddress
+
+                    ]
                   ]
 
 
+loopbackIpv4, loopbackIpv6 :: Net.SockAddr
+loopbackIpv4 = Net.SockAddrInet  50000 0x100007f
+loopbackIpv6 = Net.SockAddrInet6 50000 0 (0,0,0,1) 0
 
 -- | used to run from ghci
 run :: RealNetworkConnectOptions -> IO ()
