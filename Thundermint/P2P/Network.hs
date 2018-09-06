@@ -7,6 +7,7 @@ module Thundermint.P2P.Network (
     NetworkAPI(..)
   , Connection(..)
     -- * Real network
+  , RealNetworkConnectOptions(..)
   , realNetwork
   , realNetworkUdp
     -- * Real tls network
@@ -47,8 +48,8 @@ import Thundermint.P2P.Types
 
 
 -- | API implementation for real tcp network
-realNetwork :: Net.ServiceName -> NetworkAPI Net.SockAddr
-realNetwork listenPort = NetworkAPI
+realNetwork :: RealNetworkConnectOptions -> Net.ServiceName -> NetworkAPI Net.SockAddr
+realNetwork RealNetworkConnectOptions{..} listenPort = NetworkAPI
   { listenOn = do
       let hints = Net.defaultHints
             { Net.addrFlags      = [Net.AI_PASSIVE]
