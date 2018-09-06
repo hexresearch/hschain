@@ -73,7 +73,10 @@ bigDataSend (serverAddr, server) (_, client) = do
   let runClient NetworkAPI{..} = do
         threadDelay 10e3
         bracket (connect serverAddr) close $ \conn -> do
-          let sbuf = LBC.take 10000000 $ LBC.repeat 'A'
+          let sbuf0 = LBC.take 2100 $ LBC.repeat 'A'
+          let sbuf1 = LBC.take 1000 $ LBC.repeat 'B'
+          let sbuf2 = LBC.take 3000 $ LBC.repeat 'C'
+          let sbuf = (sbuf0 <> sbuf1 <> sbuf2)
           send conn sbuf
           bs <- recv conn
           assertEqual "Ping-pong" (Just ("PONG_" <> sbuf)) bs
