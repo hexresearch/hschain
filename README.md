@@ -4,6 +4,10 @@
 
 Thundermint is a haskell implementation of tendermint bysantine consesus algorithm
 
+## TLS
+
+[certificate generation](./docs/TLS.md)
+
 # Build
 
 ## Build with `nix`
