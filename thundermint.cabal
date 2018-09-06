@@ -106,6 +106,7 @@ Executable thundermint-simple-network
                      , bytestring >=0.10
                      , base58-bytestring >=0.1
                      , containers >=0.5.7
+                     , data-default-class
                      , network    >=2.6.0.0
   hs-source-dirs:      exe
   Main-is:             network.hs
@@ -119,6 +120,7 @@ Executable thundermint-node
                      , bytestring >=0.10
                      , base58-bytestring >=0.1
                      , containers >=0.5.7
+                     , data-default-class
                      , network    >=2.6.0.0
                      , text
   hs-source-dirs:      exe
@@ -222,9 +224,7 @@ Test-suite thundermint-tests
                      , thundermint
                      , bytestring >=0.10
                      , containers
-                     , exceptions
-                     , stm        >=2.4
-                     , async      >=2.2.1
+                     , data-default-class
                      , directory
                      , aeson
                      --

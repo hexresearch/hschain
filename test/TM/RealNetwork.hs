@@ -3,22 +3,25 @@
 module TM.RealNetwork ( realNetPair
                       , realTlsNetPair ) where
 
+import Data.Default.Class (def)
 import System.Random
+
 import Thundermint.P2P.Network
 
 import qualified Data.ByteString as BS
 import qualified Network.Socket  as Net
 ----------------------------------------------------------------
 
-realNetPair :: Net.HostName
+realNetPair :: RealNetworkConnectOptions
+            -> Net.HostName
             -> IO ((Net.SockAddr, NetworkAPI Net.SockAddr),
                    (Net.SockAddr, NetworkAPI Net.SockAddr))
-realNetPair host = do
+realNetPair opts host = do
     n <- randomRIO (0, 99 :: Int)
     let port1 = "300" ++ show  n
         port2 = "300" ++ show  (n+1)
-        server = realNetwork port1
-        client = realNetwork port2
+        server = realNetwork opts port1
+        client = realNetwork opts port2
         hints = Net.defaultHints  { Net.addrSocketType = Net.Stream }
     addr1:_ <- Net.getAddrInfo (Just hints) (Just host) (Just port1)
     addr2:_ <- Net.getAddrInfo (Just hints) (Just host) (Just port2)

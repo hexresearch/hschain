@@ -2,11 +2,12 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeFamilies      #-}
 
-import Data.Foldable  (forM_)
+import Data.Default.Class (def)
+import Data.Foldable      (forM_)
 import Data.Int
-import Data.Map       (Map)
-import Data.Maybe     (fromMaybe)
-import Network.Socket (ServiceName, SockAddr(..), getNameInfo, tupleToHostAddress)
+import Data.Map           (Map)
+import Data.Maybe         (fromMaybe)
+import Network.Socket     (ServiceName, SockAddr(..), getNameInfo, tupleToHostAddress)
 
 import Thundermint.Blockchain.Types
 import Thundermint.Consensus.Types
@@ -14,7 +15,7 @@ import Thundermint.Consensus.Types
 --import Thundermint.Crypto
 import Thundermint.Crypto.Ed25519 (Ed25519_SHA512, privateKey)
 import Thundermint.Mock
-import Thundermint.P2P.Instances ()
+import Thundermint.P2P.Instances  ()
 import Thundermint.P2P.Network
 import Thundermint.Store
 import Thundermint.Store.STM
@@ -77,7 +78,7 @@ main = do
   nodes <- sequence
     [ do storage     <- newSTMBlockStorage genesisBlock validatorSet
          serviceName <- getServiceName addr
-         return ( realNetwork serviceName
+         return ( realNetwork def serviceName
                 -- TODO: connectRing creates a network with very poor
                 -- connectivity. For real network should be made more than one
                 -- connection and probably peer exchange should be implemented.
