@@ -218,6 +218,7 @@ recvT' ctx =  E.handle onEOF go
 recvBufT' :: TLS.Context -> I.IORef ByteString -> Int -> IO LBS.ByteString
 recvBufT' ctx cref siz = do
             cached <- I.readIORef cref
+            when(cached /= "") $ I.writeIORef cref ""
             (ret, leftover) <- fill cached siz (recvT cref ctx)
             I.writeIORef cref leftover
             return ret
