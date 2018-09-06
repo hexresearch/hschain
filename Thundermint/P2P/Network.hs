@@ -57,6 +57,15 @@ import qualified Network.Socket.ByteString.Lazy as NetLBS
 --
 ----------------------------------------------------------------
 
+----------------------------------------------------------------
+--
+----------------------------------------------------------------
+
+data NetworkError = ConnectionTimedOut
+                  | NoAddressAvailable
+  deriving (Show)
+
+instance Exception NetworkError
 
 
 data RealNetworkConnectOptions = RealNetworkConnectOptions
@@ -72,6 +81,7 @@ newSocket :: MonadIO m => Net.AddrInfo -> m Net.Socket
 newSocket ai = liftIO $ Net.socket (Net.addrFamily     ai)
                                    (Net.addrSocketType ai)
                                    (Net.addrProtocol   ai)
+
 
 -- | API implementation for real tcp network
 realNetwork :: RealNetworkConnectOptions -> Net.ServiceName -> NetworkAPI Net.SockAddr
@@ -112,6 +122,10 @@ realNetwork RealNetworkConnectOptions{..} listenPort = NetworkAPI
         return $ applyConn sock
   , filterOutOwnAddresses = -- TODO: make it batch processing for speed!
         \addrs -> (fmap Set.fromList) $ filterM (fmap not . isLocalAddress) $ Set.toList addrs
+  , normalizeNodeAddress = \case
+        Net.SockAddrInet _ ha        -> Net.SockAddrInet  thundermintPort ha
+        Net.SockAddrInet6 _ fi ha si -> Net.SockAddrInet6 thundermintPort fi ha si
+        s -> s
   }
  where
   isIPv6addr = (==) Net.AF_INET6 . Net.addrFamily
@@ -202,6 +216,10 @@ realNetworkUdp listenPort = do
          applyConn sock addr <$> findOrCreateRecvChan tChans addr
     , filterOutOwnAddresses = -- TODO: make it batch processing for speed!
         \addrs -> (fmap Set.fromList) $ filterM (fmap not . isLocalAddress) $ Set.toList addrs
+    , normalizeNodeAddress = \case -- TODO remove duplication
+            Net.SockAddrInet _ ha -> Net.SockAddrInet thundermintPort ha
+            Net.SockAddrInet6 _ fi ha si -> Net.SockAddrInet6 thundermintPort fi ha si
+            s -> s
     }
  where
   findOrCreateRecvChan tChans addr = liftIO.atomically $ do
@@ -292,8 +310,6 @@ showSockAddr s@(Net.SockAddrInet6 pn fi ha si) =
 showSockAddr s = "?? (" <> show s <> ")"
 
 
-
-
 newMockNet :: IO (MockNet addr)
 newMockNet = MockNet <$> newTVarIO Map.empty
 
@@ -349,6 +365,7 @@ createMockNode MockNet{..} port addr = NetworkAPI
         Just xs -> writeTVar mnetIncoming $ Map.insert loc (xs ++ [(sockFrom,(addr,snd loc))]) cmap
       return $ applyConn sockTo
   , filterOutOwnAddresses = return . Set.filter ((addr /=) . fst)
+  , normalizeNodeAddress = id
   }
  where
   applyConn conn = Connection (liftIO . sendBS conn) (liftIO $ recvBS conn) (liftIO $ close conn)

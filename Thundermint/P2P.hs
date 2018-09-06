@@ -358,7 +358,8 @@ peerPexMonitor
   -> PeerRegistry addr
   -> m ()
 peerPexMonitor peerAddr net peerCh mempool peerRegistry@PeerRegistry{..} = do
-    -- liftIO $ putStrLn ("PEX: start monitor for " ++ show peerAddr)
+    locAddrs <- getLocalAddresses
+    logger InfoS ("PEX " <> showLS peerAddr <> ": start PEX monitor, local addresses: " <> showLS locAddrs) ()
     -- v1: Послать всем другим пирам запрос на новые адреса.
     --     Затем подключиться к ним всем.
     -- v2: Подключиться только к N..M пирам.
@@ -372,23 +373,30 @@ peerPexMonitor peerAddr net peerCh mempool peerRegistry@PeerRegistry{..} = do
     --
     --
     -- Now v1 implementation: --
-    liftIO $ threadDelay 1e6 -- wait until all peers connected
+    liftIO $ threadDelay 1e6 -- wait until all initial peers connected
     fix $ \nextLoop -> do
         whenM (liftIO $ atomically $ readTVar prIsActive) $ do
             (conns, knowns') <- liftIO $ atomically $ (,) <$> readTVar prConnected <*> readTVar prKnownAddreses
             notConnectedKnowns <- filterOutOwnAddresses net $ knowns' Set.\\ conns
             if Set.size conns < 10 then do -- TODO get count from config
-                logger InfoS ("PEX " <> showLS peerAddr <> ": Too small (" <> showLS (Set.size conns) <> ") connections") ()
+                logger InfoS ("PEX " <> showLS peerAddr <> ": Too few (" <> showLS (Set.size conns) <> ") connections! (" <> showLS conns <> ")") ()
                 when (Set.null notConnectedKnowns) $ do
                     logger InfoS ("PEX " <> showLS peerAddr <> ": Ask for peers") ()
                     liftIO $ atomically $ writeTChan (peerChanPex peerCh) PexMsgAskForMorePeers
+                connAddrs <- liftIO $ readTVarIO prConnected
                 newAddrs <- waitForNewAddresses
-                logger InfoS ("PEX " <> showLS peerAddr <> ": new peers: " <> showLS newAddrs) ()
+                connAddrs' <- liftIO $ readTVarIO prConnected
+                logger InfoS ("PEX " <> showLS peerAddr <> ": connected peers : " <> showLS connAddrs <> " ~ " <> showLS connAddrs') ()
+                logger InfoS ("PEX " <> showLS peerAddr <> ": new peers       : " <> showLS newAddrs) ()
                 case newAddrs of
                     Just newAddrs' -> do
-                        forM_ newAddrs' $ \addr -> connectPeerTo peerAddr net addr peerCh mempool peerRegistry
+                        logger InfoS ("PEX " <> showLS peerAddr <> " <<<<<<<") ()
+                        forM_ newAddrs' $ \addr -> connectPeerTo peerAddr net addr peerCh mempool peerRegistry -- TODO если адрес не подключился, удалять из perrRegistry
+                        logger InfoS ("PEX " <> showLS peerAddr <> " >>>>>>>") ()
                         liftIO $ threadDelay 1e6 -- wait some time to initialize peers
-                    Nothing -> return ()
+                    Nothing -> do
+                        logger InfoS ("PEX " <> showLS peerAddr <> " RETURN") ()
+                        return ()
             else do
                 liftIO $ threadDelay 1e7 -- wait more time to potential disconnect
             nextLoop
@@ -402,8 +410,10 @@ peerPexMonitor peerAddr net peerCh mempool peerRegistry@PeerRegistry{..} = do
             newAddrs <- liftIO $ atomically $ do
                 ifM (readTVar prIsActive)
                     (do
-                        knowns <- readTVar prKnownAddreses
-                        connected <- readTVar prConnected
+                        knowns' <- readTVar prKnownAddreses
+                        let knowns = Set.map (normalizeNodeAddress net) knowns' -- TODO фильтровать сразу при получении, но тогда надо протягивать объект 'net'. Можно в отдельном потоке
+                        connected' <- readTVar prConnected
+                        let connected = Set.map (normalizeNodeAddress net) connected'
                         let newKnowns = knowns Set.\\ connected -- TODO тут может быть потребоваться ещё отфильтровать через filterOutOwnAddresses
                         check $ not $ Set.null newKnowns
                         return $ Just newKnowns
@@ -413,7 +423,6 @@ peerPexMonitor peerAddr net peerCh mempool peerRegistry@PeerRegistry{..} = do
                 Nothing -> return Nothing
                 Just newAddrs' -> do
                     newAddrs'' <- filterOutOwnAddresses net newAddrs'
-                    -- liftIO $ putStrLn ("BEFORE: " ++ show newAddrs' ++ " ~ AFTER: " ++ show newAddrs'')
                     if Set.null newAddrs'' then do
                         liftIO $ threadDelay 1e4
                         nextLoop
@@ -438,7 +447,8 @@ peerGossipPeerExchange peerAddr _peerCh PeerRegistry{..} pexCh gossipCh = foreve
         PexPong               -> pong
   where
     sendPeers = do
-        logger InfoS ("PEX " <> showLS peerAddr <> ": some peer ask for other peers") ()
+        addrList' <- Set.toList <$> (liftIO $ readTVarIO prConnected)
+        logger InfoS ("PEX " <> showLS peerAddr <> ": peerGossipPeerExchange: some peer asks for other peers: addresses maybe " <> showLS addrList') ()
         liftIO $ atomically $ do
             readTVar prIsActive >>= \case
                 False -> return ()
@@ -447,7 +457,7 @@ peerGossipPeerExchange peerAddr _peerCh PeerRegistry{..} pexCh gossipCh = foreve
                     when (not $ null addrList) $
                         writeTChan gossipCh (GossipPex (PexMsgMorePeers addrList))
     connectToAddrs addrs = do
-        logger InfoS ("PEX " <> showLS peerAddr <> ": some peers received: " <> showLS addrs) ()
+        logger InfoS ("PEX " <> showLS peerAddr <> ": peerGossipPeerExchange: some peers received: " <> showLS addrs) ()
         liftIO $ atomically $ modifyTVar' prKnownAddreses (Set.union (Set.fromList addrs))
     ping = liftIO $ atomically $ writeTChan gossipCh (GossipPex PexPong)
     pong = return ()

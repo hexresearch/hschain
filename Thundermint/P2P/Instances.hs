@@ -67,7 +67,7 @@ text2Sa s = addrAddress $ head addrInfos
                       then Nothing
                       else Just $ T.unpack hN
         mSN       = if T.null sN
-                       then Just thundermintPort
+                       then Just (show thundermintPort)
                        else Just $ T.unpack $ T.tail sN
         addrInfos = unsafePerformIO $ getAddrInfo Nothing mHN mSN
 

@@ -1,4 +1,6 @@
 module Thundermint.P2P.Consts where
 
-thundermintPort :: String
-thundermintPort = "50000"
+import Network.Socket
+
+thundermintPort :: PortNumber
+thundermintPort = 50000
