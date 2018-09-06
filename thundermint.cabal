@@ -28,6 +28,7 @@ Library
                      , filepath
                      , exceptions        >= 0.8.3
                      , memory            >=0.14.14
+                     , network-info
                      , random
                      , retry             >= 0.7.6.2
                      , stm               >=2.4
