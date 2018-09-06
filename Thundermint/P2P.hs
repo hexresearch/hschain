@@ -358,6 +358,7 @@ peerPexMonitor
   -> PeerRegistry addr
   -> m ()
 peerPexMonitor peerAddr net peerCh mempool peerRegistry@PeerRegistry{..} = do
+    -- liftIO $ putStrLn ("PEX: start monitor for " ++ show peerAddr)
     -- v1: Послать всем другим пирам запрос на новые адреса.
     --     Затем подключиться к ним всем.
     -- v2: Подключиться только к N..M пирам.
@@ -372,29 +373,16 @@ peerPexMonitor peerAddr net peerCh mempool peerRegistry@PeerRegistry{..} = do
     --
     -- Now v1 implementation: --
     liftIO $ threadDelay 1e6 -- wait until all peers connected
-    fix $ \loop -> do
+    fix $ \nextLoop -> do
         whenM (liftIO $ atomically $ readTVar prIsActive) $ do
             (conns, knowns') <- liftIO $ atomically $ (,) <$> readTVar prConnected <*> readTVar prKnownAddreses
-            let notConnectedKnowns = peerAddr `Set.delete` (knowns' Set.\\ conns)
+            notConnectedKnowns <- filterOutOwnAddresses net $ knowns' Set.\\ conns
             if Set.size conns < 10 then do -- TODO get count from config
                 logger InfoS ("PEX " <> showLS peerAddr <> ": Too small (" <> showLS (Set.size conns) <> ") connections") ()
                 when (Set.null notConnectedKnowns) $ do
                     logger InfoS ("PEX " <> showLS peerAddr <> ": Ask for peers") ()
                     liftIO $ atomically $ writeTChan (peerChanPex peerCh) PexMsgAskForMorePeers
-                -- TODO: Potentially, during endless wait, other peer can connect to this.
-                --       So we need to send to that peer PexMsgAskForMorePeers for more peers!
-                --       It can be done by adding flag `isNeedPeers` in PeerRegistry and immediately
-                --       send message when new connection occur.
-                newAddrs <- liftIO $ atomically $ do
-                    ifM (readTVar prIsActive)
-                        (do
-                            knowns <- readTVar prKnownAddreses
-                            connected <- readTVar prConnected
-                            let newKnowns = peerAddr `Set.delete` (knowns Set.\\ connected)
-                            check $ not $ Set.null newKnowns
-                            return $ Just newKnowns
-                            )
-                        (return Nothing)
+                newAddrs <- waitForNewAddresses
                 logger InfoS ("PEX " <> showLS peerAddr <> ": new peers: " <> showLS newAddrs) ()
                 case newAddrs of
                     Just newAddrs' -> do
@@ -403,7 +391,34 @@ peerPexMonitor peerAddr net peerCh mempool peerRegistry@PeerRegistry{..} = do
                     Nothing -> return ()
             else do
                 liftIO $ threadDelay 1e7 -- wait more time to potential disconnect
-            loop
+            nextLoop
+  where
+    waitForNewAddresses =
+        -- TODO: Potentially, during endless wait, other peer can connect to this.
+        --       So we need to send to that peer PexMsgAskForMorePeers for more peers!
+        --       It can be done by adding flag `isNeedPeers` in PeerRegistry and immediately
+        --       send message when new connection occur.
+        fix $ \nextLoop -> do
+            newAddrs <- liftIO $ atomically $ do
+                ifM (readTVar prIsActive)
+                    (do
+                        knowns <- readTVar prKnownAddreses
+                        connected <- readTVar prConnected
+                        let newKnowns = knowns Set.\\ connected -- TODO тут может быть потребоваться ещё отфильтровать через filterOutOwnAddresses
+                        check $ not $ Set.null newKnowns
+                        return $ Just newKnowns
+                        )
+                    (return Nothing)
+            case newAddrs of
+                Nothing -> return Nothing
+                Just newAddrs' -> do
+                    newAddrs'' <- filterOutOwnAddresses net newAddrs'
+                    -- liftIO $ putStrLn ("BEFORE: " ++ show newAddrs' ++ " ~ AFTER: " ++ show newAddrs'')
+                    if Set.null newAddrs'' then do
+                        liftIO $ threadDelay 1e4
+                        nextLoop
+                    else
+                        return $ Just newAddrs''
 
 
 peerGossipPeerExchange

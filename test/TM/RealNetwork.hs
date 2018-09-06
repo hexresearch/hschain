@@ -3,7 +3,6 @@
 module TM.RealNetwork ( realNetPair
                       , realTlsNetPair ) where
 
-import Data.Default.Class (def)
 import System.Random
 
 import Thundermint.P2P.Network
