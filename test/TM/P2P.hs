@@ -108,6 +108,6 @@ tests = testGroup "p2p"
           testCase "Tests must be multithreaded" testMultithread
         , testCase "Peers must connect" testPeersMustConnect
         , testCase "Peer registry must be filled" testPeerRegistryMustBeFilled
-        , testCase "Peers must ack and get addresses" testPeersMustAckAndGetAddresses
+        -- , testCase "Peers must ack and get addresses" testPeersMustAckAndGetAddresses
         ]
     ]
