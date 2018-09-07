@@ -194,13 +194,15 @@ startPeerDispatcher p2pConfig net peerAddr addrs AppChans{..} storage mempool = 
   -- this thread manages initiating connections
   flip finally (uninterruptibleMask_ $ reapPeers peerRegistry) $ runConcurrently
     -- Makes 5 attempts to start acceptLoop wirh 5 msec interval
-    [ recoverAll def $ const $ acceptLoop peerAddr net peerCh mempool peerRegistry
+    [ recoverAll def $ const $ logOnException $
+        acceptLoop peerAddr net peerCh mempool peerRegistry
      -- FIXME: we should manage requests for peers and connecting to
      --        new peers here
     , do liftIO $ threadDelay 1e5
          forM_ addrs $ \a ->
              -- Makes 5 attempts to start acceptLoop wirh 5 msec interval
-             recoverAll def $ const $ connectPeerTo peerAddr net a peerCh mempool peerRegistry
+             recoverAll def $ const $ logOnException $
+               connectPeerTo peerAddr net a peerCh mempool peerRegistry
          forever $ liftIO $ threadDelay 100000
     -- -- Peer connection monitor
     -- , peerPexMonitor peerAddr net peerCh mempool peerRegistry
