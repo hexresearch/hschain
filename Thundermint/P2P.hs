@@ -169,7 +169,7 @@ startPeerDispatcher
   -> [addr]                   -- ^ Set of initial addresses to connect
   -> AppChans m alg a         -- ^ Channels for communication with main application
   -> BlockStorage 'RO m alg a -- ^ Read only access to block storage
-  -> Mempool m tx
+  -> Mempool m alg tx
   -> m ()
 startPeerDispatcher p2pConfig net peerAddr addrs AppChans{..} storage mempool = logOnException $ do
   logger InfoS "Starting peer dispatcher" ()
@@ -218,7 +218,7 @@ acceptLoop
   => addr
   -> NetworkAPI addr
   -> PeerChans m addr alg a
-  -> Mempool m tx
+  -> Mempool m alg tx
   -> PeerRegistry addr
   -> m ()
 acceptLoop peerAddr NetworkAPI{..} peerCh mempool peerRegistry = logOnException $ do
@@ -247,7 +247,7 @@ connectPeerTo
   -> NetworkAPI addr
   -> addr
   -> PeerChans m addr alg a
-  -> Mempool m tx
+  -> Mempool m alg tx
   -> PeerRegistry addr
   -> m ()
 connectPeerTo peerAddr NetworkAPI{..} addr peerCh mempool peerRegistry =
@@ -350,7 +350,7 @@ peerPexMonitor
   => addr -- ^ Current peer address for logging purpose
   -> NetworkAPI addr
   -> PeerChans m addr alg a
-  -> Mempool m tx
+  -> Mempool m alg tx
   -> PeerRegistry addr
   -> m ()
 peerPexMonitor peerAddr net peerCh mempool peerRegistry@PeerRegistry{..} = do
@@ -448,7 +448,7 @@ startPeer
                              --   and peer dispatcher
   -> Connection              -- ^ Functions for interaction with network
   -> PeerRegistry addr
-  -> Mempool m tx
+  -> Mempool m alg tx
   -> m ()
 startPeer peerAddr peerCh@PeerChans{..} conn peerRegistry mempool = logOnException $ do
   logger InfoS "Starting peer" ()
@@ -561,7 +561,7 @@ peerGossipMempool
   -> PeerChans m addr alg a
   -> Configuration
   -> TChan (GossipMsg tx addr alg a)
-  -> MempoolCursor m tx
+  -> MempoolCursor m alg tx
   -> m x
 peerGossipMempool peerObj PeerChans{..} config gossipCh MempoolCursor{..} = logOnException $ do
   logger InfoS "Starting routine for gossiping transactions" ()
@@ -622,7 +622,7 @@ peerReceive
   -> PeerChans m addr alg a
   -> TChan (PexMessage addr)
   -> Connection
-  -> MempoolCursor m tx
+  -> MempoolCursor m alg tx
   -> m ()
 peerReceive peerSt PeerChans{..} peerExchangeCh Connection{..} MempoolCursor{..} = logOnException $ do
   logger InfoS "Starting routing for receiving messages" ()

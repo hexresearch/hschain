@@ -153,7 +153,7 @@ interpretSpec maxH prefix delay NetSpec{..} = do
                 let (off,n)  = nspecWalletKeys
                     privKeys = take n $ drop off privateKeyList
                 transferActions delay (publicKey <$> take netInitialKeys privateKeyList) privKeys
-                  (pushTransaction cursor) st
+                  (void . pushTransaction cursor) st
           --
           acts <- runNode NodeDescription
             { nodeStorage         = hoistBlockStorageRW liftIO storage

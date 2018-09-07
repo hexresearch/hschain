@@ -127,9 +127,9 @@ newSTMPropStorage = fmap (hoistPropStorageRW liftIO) $ liftIO $ do
     }
 
 newMempool
-  :: (Ord tx, MonadIO m)
+  :: (Ord tx, Serialise tx, Crypto alg, MonadIO m)
   => (tx -> m Bool)
-  -> m (Mempool m tx)
+  -> m (Mempool m alg tx)
 newMempool validation = do
   varFIFO      <- liftIO $ newTVarIO IMap.empty
   varRevMap    <- liftIO $ newTVarIO Map.empty
@@ -175,14 +175,19 @@ newMempool validation = do
               False -> liftIO $ atomically $ do
                 modifyTVar varAdded succ
                 modifyTVar varDiscarded succ
+                return Nothing
               True  -> liftIO $ atomically $ do
                 rmap <- readTVar varRevMap
-                when (tx `Map.notMember` rmap) $ do
-                  modifyTVar varAdded     succ
-                  n <- succ <$> readTVar varMaxN
-                  modifyTVar' varFIFO   $ IMap.insert n tx
-                  modifyTVar' varRevMap $ Map.insert tx n
-                  writeTVar   varMaxN n
+                case tx `Map.notMember` rmap of
+                  True -> do
+                    modifyTVar varAdded     succ
+                    n <- succ <$> readTVar varMaxN
+                    modifyTVar' varFIFO   $ IMap.insert n tx
+                    modifyTVar' varRevMap $ Map.insert tx n
+                    writeTVar   varMaxN n
+                    return $ Just $ hash tx
+                  False -> return Nothing
+            --
           , advanceCursor = liftIO $ atomically $ do
               fifo <- readTVar varFIFO
               n    <- readTVar varN

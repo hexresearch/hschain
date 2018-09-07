@@ -254,36 +254,38 @@ instance Katip.LogItem  MempoolInfo where
   payloadKeys _        _ = Katip.AllKeys
 
 -- | Cursor into mempool which is used for gossiping data
-data MempoolCursor m tx = MempoolCursor
-  { pushTransaction :: tx -> m ()
+data MempoolCursor m alg tx = MempoolCursor
+  { pushTransaction :: tx -> m (Maybe (Hash alg))
     -- ^ Add transaction to the mempool. It's preliminary checked and
-    --   if check fails it immediately discarded
+    --   if check fails it immediately discarded. If transaction is
+    --   accepted its hash is computed and returned
   , advanceCursor   :: m (Maybe tx)
-    -- ^ Take transaction from front and advance cursor. If cursor points at the end of qu
+    -- ^ Take transaction from front and advance cursor. If cursor
+    -- points at the end of queue nothing happens.
   }
 
 -- | Mempool which is used for storing transactions before they're
 --   added into blockchain. Transactions are stored in FIFO manner
-data Mempool m tx = Mempool
+data Mempool m alg tx = Mempool
   { peekNTransactions :: Maybe Int -> m [tx]
     -- ^ Take up to N transactions from mempool. If Nothing is passed
     --   that all transactions will be returned. This operation does
     --   not alter mempool state
   , filterMempool     :: m ()
     -- ^ Remove transactions that are no longer valid from mempool
-  , getMempoolCursor  :: m (MempoolCursor m tx)
+  , getMempoolCursor  :: m (MempoolCursor m alg tx)
     -- ^ Get cursor pointing to be
   , mempoolStats      :: m MempoolInfo
     -- ^ Number of elements in mempool
   }
 
-hoistMempoolCursor :: (forall a. m a -> n a) -> MempoolCursor m tx -> MempoolCursor n tx
+hoistMempoolCursor :: (forall a. m a -> n a) -> MempoolCursor m alg tx -> MempoolCursor n alg tx
 hoistMempoolCursor fun MempoolCursor{..} = MempoolCursor
   { pushTransaction = fun . pushTransaction
   , advanceCursor   = fun advanceCursor
   }
 
-hoistMempool :: Functor n => (forall a. m a -> n a) -> Mempool m tx -> Mempool n tx
+hoistMempool :: Functor n => (forall a. m a -> n a) -> Mempool m alg tx -> Mempool n alg tx
 hoistMempool fun Mempool{..} = Mempool
   { peekNTransactions = fun . peekNTransactions
   , filterMempool     = fun filterMempool
@@ -292,18 +294,18 @@ hoistMempool fun Mempool{..} = Mempool
   }
 
 
-nullMempoolAny :: Monad m => Mempool m a
+nullMempoolAny :: (Monad m) => Mempool m alg tx
 nullMempoolAny = Mempool
   { peekNTransactions = const (return [])
   , filterMempool     = return ()
   , mempoolStats      = return $ MempoolInfo 0 0 0 0
   , getMempoolCursor  = return MempoolCursor
-      { pushTransaction = const (return ())
+      { pushTransaction = const $ return Nothing
       , advanceCursor   = return Nothing
       }
   }
 
-nullMempool :: Monad m => Mempool m ()
+nullMempool :: (Monad m) => Mempool m alg ()
 nullMempool = nullMempoolAny
 
 ----------------------------------------------------------------

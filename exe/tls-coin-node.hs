@@ -6,6 +6,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies        #-}
 import Control.Concurrent
+import Control.Monad
 import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Data.Int
@@ -151,7 +152,7 @@ interpretSpec Opts{..} netAddresses validatorSet logenv certPemBuf keyPemBuf Nod
               let (off,n)  = nspecWalletKeys
                   privKeys = take n $ drop off privateKeyList
               transferActions delay (publicKey <$> take netInitialKeys privateKeyList) privKeys
-                (pushTransaction cursor) st
+                (void . pushTransaction cursor) st
         --
         acts <- runNode NodeDescription
           { nodeStorage         = hoistBlockStorageRW liftIO storage
