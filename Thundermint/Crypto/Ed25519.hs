@@ -9,7 +9,8 @@ module Thundermint.Crypto.Ed25519 where
 import Thundermint.Crypto
 
 import Crypto.Error          (CryptoFailable(..), eitherCryptoError, throwCryptoError)
-import Crypto.Hash           (Digest, SHA512, hash)
+import Crypto.Hash           (Digest, SHA512)
+import qualified Crypto.Hash as Crypto
 import Crypto.Random.Types   (MonadRandom)
 import Data.Aeson            (FromJSON, ToJSON, Value(..), parseJSON, toJSON)
 import Data.ByteArray        (ByteArrayAccess, convert)
@@ -21,7 +22,7 @@ import qualified Crypto.PubKey.Ed25519 as Ed
 import qualified Data.Text.Encoding    as T
 
 sha512 :: ByteString -> ByteString
-sha512 = convert . asSHA512 . hash
+sha512 = convert . asSHA512 . Crypto.hash
  where
   asSHA512 :: Digest SHA512 -> Digest SHA512
   asSHA512 = id

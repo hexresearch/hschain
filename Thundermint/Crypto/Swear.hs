@@ -6,13 +6,14 @@ module Thundermint.Crypto.Swear where
 
 import Thundermint.Crypto
 
-import Crypto.Hash     (Digest, MD5, hash)
+import Crypto.Hash     (Digest, MD5)
+import qualified Crypto.Hash as Crypto
 import Data.ByteArray  (convert)
 import Data.ByteString (ByteString, pack)
 import Data.Word       (Word8)
 
 md5 :: ByteString -> ByteString
-md5 = convert . asMD5 . hash
+md5 = convert . asMD5 . Crypto.hash
  where
   asMD5 :: Digest MD5 -> Digest MD5
   asMD5 = id

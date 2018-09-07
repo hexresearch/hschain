@@ -159,7 +159,7 @@ data NodeDescription addr m alg st tx a = NodeDescription
     -- ^ Storage for commited blocks
   , nodeBchState        :: BChState m st
     -- ^ Current state of blockchain
-  , nodeMempool         :: Mempool m tx
+  , nodeMempool         :: Mempool m alg tx
     -- ^ Mempool of node
   , nodeNetwork         :: NetworkAPI addr
     -- ^ Network API
@@ -253,7 +253,7 @@ startNode
   -> addr
   -> [addr]
   -> AppState IO alg a
-  -> Mempool IO tx
+  -> Mempool IO alg tx
   -> IO ()
 startNode net addr addrs appState@AppState{..} mempool = do
   -- Initialize logging
@@ -284,7 +284,7 @@ startNode net addr addrs appState@AppState{..} mempool = do
 --   return their storage after all nodes finish execution
 runNodeSet
   :: (Ord addr, Show addr, Serialise addr, Crypto alg, Serialise a, Show a, Serialise tx, LogBlock a)
-  => [( NetworkAPI addr, addr, [addr], AppState IO alg a, Mempool IO tx)]
+  => [( NetworkAPI addr, addr, [addr], AppState IO alg a, Mempool IO alg tx)]
   -> IO [BlockStorage 'RO IO alg a]
 runNodeSet nodes = do
   withAsyncs [ startNode net addr addrs appSt mp
