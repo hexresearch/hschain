@@ -18,6 +18,7 @@ module Thundermint.Crypto (
   , Signature(..)
   , Address(..)
   , Hash(..)
+  , hash
   , Crypto(..)
     -- * Serialization and signatures
   , SignedState(..)
@@ -94,6 +95,11 @@ instance Show (Address alg) where
 -- |
 newtype Hash alg = Hash BS.ByteString
   deriving (Eq,Ord, Serialise)
+
+-- | Compute hash of value. It's first serialized using CBOR and then
+--   hash of encoded data is computed,
+hash :: (Crypto alg, Serialise a) => a -> Hash alg
+hash = hashBlob . toStrict . serialise
 
 instance Show (Hash alg) where
   showsPrec n (Hash bs)
