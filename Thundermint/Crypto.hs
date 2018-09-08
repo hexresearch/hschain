@@ -36,16 +36,22 @@ module Thundermint.Crypto (
     -- * base58 encoding
   , encodeBase58
   , decodeBase58
+  , readPrecBSBase58
   ) where
 
 import Codec.Serialise (Serialise, serialise)
+import Control.Applicative
 import Control.DeepSeq
 import Control.Monad
 
 import qualified Data.Aeson         as JSON
 import qualified Data.Text.Encoding as T
 import Data.ByteString.Lazy (toStrict)
+import qualified Data.ByteString.Char8 as BC8
+import Data.Char  (isAscii)
 import Data.Word
+import Text.Read
+import Text.ParserCombinators.ReadP
 import GHC.Generics         (Generic,Generic1)
 
 import qualified Data.ByteString        as BS
@@ -92,6 +98,10 @@ instance Show (Address alg) where
     = showParen (n > 10)
     $ showString "Address " . shows (encodeBase58 bs)
 
+instance Read (Address alg) where
+  readPrec = do void $ lift $ string "Address" >> some (char ' ')
+                Address <$> readPrecBSBase58
+
 -- |
 newtype Hash alg = Hash BS.ByteString
   deriving (Eq,Ord, Serialise)
@@ -105,6 +115,11 @@ instance Show (Hash alg) where
   showsPrec n (Hash bs)
     = showParen (n > 10)
     $ showString "Hash " . shows (encodeBase58 bs)
+
+instance Read (Hash alg) where
+  readPrec = do void $ lift $ string "Hash" >> some (char ' ')
+                Hash <$> readPrecBSBase58
+
 
 instance JSON.ToJSON (Hash alg) where
   toJSON (Hash s) = JSON.String $ T.decodeUtf8 $ encodeBase58 s
@@ -203,3 +218,11 @@ encodeBase58 = Base58.encodeBase58 Base58.bitcoinAlphabet
 
 decodeBase58 :: BS.ByteString -> Maybe BS.ByteString
 decodeBase58 = Base58.decodeBase58 Base58.bitcoinAlphabet
+
+readPrecBSBase58 :: ReadPrec BS.ByteString
+readPrecBSBase58 = do
+  s <- readPrec
+  guard (all isAscii s)
+  case decodeBase58 $ BC8.pack s of
+    Just bs -> return bs
+    Nothing -> mzero

@@ -8,6 +8,7 @@ module Thundermint.Crypto.Ed25519 where
 
 import Thundermint.Crypto
 
+import Control.Applicative
 import Crypto.Error          (CryptoFailable(..), eitherCryptoError, throwCryptoError)
 import Crypto.Hash           (Digest, SHA512)
 import qualified Crypto.Hash as Crypto
@@ -16,6 +17,7 @@ import Data.Aeson            (FromJSON, ToJSON, Value(..), parseJSON, toJSON)
 import Data.ByteArray        (ByteArrayAccess, convert)
 import Data.ByteString       (ByteString)
 import Data.ByteString.Char8 (unpack)
+import Text.Read             (Read(..))
 
 import qualified Codec.Serialise       as CBOR
 import qualified Crypto.PubKey.Ed25519 as Ed
@@ -68,6 +70,12 @@ instance CBOR.Serialise (PublicKey Ed25519_SHA512) where
 instance Show (PrivKey Ed25519_SHA512) where
   show (PrivKey k) = show $ unpack $ encodeBase58 $ convert k
 
+instance Read (PrivKey Ed25519_SHA512) where
+  readPrec = do bs <- readPrecBSBase58
+                case Ed.secretKey bs of
+                  CryptoPassed k -> return (PrivKey k)
+                  CryptoFailed _ -> empty
+
 instance ToJSON (PrivKey Ed25519_SHA512) where
   toJSON (PrivKey k) = String
                      $ T.decodeUtf8
@@ -96,6 +104,12 @@ instance Ord (PublicKey Ed25519_SHA512) where
 
 instance Show (PublicKey Ed25519_SHA512) where
   show (PublicKey k) = show $ unpack $ encodeBase58 $ convert k
+
+instance Read (PublicKey Ed25519_SHA512) where
+  readPrec = do bs <- readPrecBSBase58
+                case Ed.publicKey bs of
+                  CryptoPassed k -> return (PublicKey k)
+                  CryptoFailed _ -> empty
 
 instance ToJSON (PublicKey Ed25519_SHA512) where
   toJSON (PublicKey k) = String
