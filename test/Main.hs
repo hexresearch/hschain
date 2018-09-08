@@ -5,6 +5,7 @@ import qualified TM.NetworkTls
 import qualified TM.P2P
 import qualified TM.Serialisation
 import qualified TM.Store
+import qualified TM.Crypto
 
 main :: IO ()
 main = defaultMain $ testGroup "test suite"
@@ -13,4 +14,5 @@ main = defaultMain $ testGroup "test suite"
   , TM.NetworkTls.tests
   , TM.Serialisation.tests
   , TM.Store.tests
+  , TM.Crypto.tests
   ]
