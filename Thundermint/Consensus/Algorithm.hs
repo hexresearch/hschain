@@ -246,7 +246,7 @@ tendermintTransition par@HeightParameters{..} msg sm@TMState{..} =
         -> misdeed
       -- Add it to map of proposals
       | otherwise
-        -> do logger InfoS "Got proposal" $ LogProposal currentH smRound propBlockID
+        -> do logger InfoS "Got proposal" $ LogProposal propHeight propRound propBlockID
               acceptBlock propRound propBlockID
               return sm { smProposals = Map.insert propRound p smProposals }
     ----------------------------------------------------------------
