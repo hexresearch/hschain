@@ -17,7 +17,15 @@ tests = testGroup "Crypto"
        privK @=? (read . show) privK
        pubK  @=? (read . show) pubK
        addr  @=? (read . show) addr
-  , testCase "read . show = id @ Address Ed25519_SHA512"
+    --
+  , testCase "read . show = id @ Hash Ed25519_SHA512"
   $ do let x = hashBlob "ABCD" :: Hash Ed25519_SHA512
        x @=? (read . show) x
+    --
+  , testCase "Signature OK"
+  $ do privK <- generatePrivKey
+       let pubK = publicKey privK
+           blob = "ABCD"
+           sign = signBlob privK blob
+       assertBool "Signature check failed" $ verifyBlobSignature pubK blob sign
   ]
