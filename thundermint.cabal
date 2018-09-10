@@ -228,7 +228,7 @@ Test-suite thundermint-tests
                      , async      >=2.2.1
                      , directory
                      --
-                     , network           >=2.7.0.0
+                     , network
                      , tls               >=1.4.1
                      , random
                      , serialise         >=0.2
