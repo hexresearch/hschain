@@ -24,133 +24,41 @@ module Thundermint.Mock (
   , defCfg
   ) where
 
-import Codec.Serialise          (Serialise)
-import Control.Concurrent.Async hiding (runConcurrently)
 import Control.Monad
 import Control.Monad.Catch
 import Control.Monad.IO.Class
-import Data.Foldable
-import Data.Maybe               (isJust)
-import Data.Map                 (Map)
-import Data.Word                (Word64)
-import qualified Data.Aeson             as JSON
-import qualified Data.ByteString        as BS
+import Text.Printf
+
+import Control.Concurrent.Async hiding (runConcurrently)
+
+import Codec.Serialise (Serialise)
+import Data.Maybe      (isJust)
+import Data.Word       (Word64)
+import System.Random   (randomIO)
+
 import qualified Data.ByteString.Base58 as Base58
 import qualified Data.ByteString.Char8  as BC8
-import qualified Data.Map               as Map
 import qualified Katip
-import System.Directory (createDirectoryIfMissing)
-import System.FilePath  ((</>),splitFileName)
-import System.Random    (randomIO)
-import Text.Printf
-import GHC.Generics     (Generic)
 
-import Thundermint.Control (MonadFork,runConcurrently)
-import Thundermint.Crypto
-import Thundermint.Crypto.Containers
-import Thundermint.Crypto.Ed25519   (Ed25519_SHA512, privateKey)
-import Thundermint.Consensus.Types
 import Thundermint.Blockchain.App
 import Thundermint.Blockchain.Interpretation
 import Thundermint.Blockchain.Types
+import Thundermint.Consensus.Types
+import Thundermint.Crypto
+import Thundermint.Debug.Trace
 import Thundermint.Logger
+import Thundermint.Mock.KeyList
+import Thundermint.Mock.Store
+import Thundermint.Mock.Types
 import Thundermint.P2P
 import Thundermint.P2P.Network
 import Thundermint.Store
-import Thundermint.Store.STM
-import Thundermint.Store.SQLite
-import Thundermint.Debug.Trace
 
-
+import Thundermint.Control (MonadFork, runConcurrently)
 
 ----------------------------------------------------------------
 --
 ----------------------------------------------------------------
-
-data Abort = Abort
-  deriving Show
-instance Exception Abort
-
--- | Generate list of private validators
-makePrivateValidators
-  :: [BS.ByteString]
-  -> Map (Address Ed25519_SHA512) (PrivValidator Ed25519_SHA512)
-makePrivateValidators keys = Map.fromList
-  [ (address (publicKey pk) , PrivValidator pk)
-  | bs <- keys
-  , let pk = case Base58.decodeBase58 Base58.bitcoinAlphabet bs of
-          Just x  -> privateKey x
-          Nothing -> error "Incorrect Base58 encoding for bs"
-  ]
-
--- | Create set of all known public validators from set of private
---   validators
-makeValidatorSetFromPriv
-  :: (Foldable f, Crypto alg)
-  => f (PrivValidator alg) -> ValidatorSet alg
-makeValidatorSetFromPriv vals =
-  case r of
-    Right x        -> x
-    Left  Nothing  -> error   "Empty validator set"
-    Left  (Just e) -> error $ "Duplicate public key in validator: " ++ show e
-  where
-    r = makeValidatorSet
-      [ Validator { validatorPubKey      = publicKey (validatorPrivKey v)
-                  , validatorVotingPower = 1
-                  }
-      | v <- toList vals
-      ]
-
-
-
-
-----------------------------------------------------------------
---
-----------------------------------------------------------------
-
--- | Calculate set of addresses for node to connect to
---   assuming all nodes are connected to each other.
-connectAll2All :: Ord addr => Map addr a -> addr -> [addr]
-connectAll2All vals addr =
-  [ a
-  | a <- Map.keys vals
-  , a < addr
-  ]
-
--- | Connect nodes in ring topology
-connectRing :: Ord addr => Map addr a -> addr -> [addr]
-connectRing vals addr =
-  case Map.splitLookup addr vals of
-    (_ , Nothing, _ ) -> []
-    (va, Just _ , vb) -> case Map.lookupMin vb of
-      Just (a,_) -> [a]
-      Nothing    -> case Map.lookupMin va of
-        Just (a,_) -> [a]
-        Nothing    -> []
-
-
-----------------------------------------------------------------
---
-----------------------------------------------------------------
-
-defCfg :: Configuration
-defCfg = Configuration
-  { timeoutNewHeight   = (500, 500)
-  , timeoutProposal    = (500, 500)
-  , timeoutPrevote     = (500, 500)
-  , timeoutPrecommit   = (500, 500)
-  , gossipDelayVotes   = 25
-  , gossipDelayBlocks  = 25
-  , gossipDelayMempool = 25
-  }
-
-
-data Topology = All2All
-              | Ring
-              deriving (Generic,Show)
-instance JSON.ToJSON   Topology
-instance JSON.FromJSON Topology
-
 -- | Specification of node
 data NodeDescription addr m alg st tx a = NodeDescription
   { nodeBlockChainLogic :: BlockFold st tx a
@@ -173,24 +81,6 @@ data NodeDescription addr m alg st tx a = NodeDescription
     -- ^ Callback which is called on each commit
   }
 
--- | Create block storage. It will use SQLite if path is specified or
---   STM otherwise.
-newBlockStorage
-  :: (Crypto alg, Serialise a, Serialise (PublicKey alg))
-  => FilePath                   -- ^ Prefix
-  -> Maybe FilePath             -- ^ Path to database
-  -> Block alg a
-  -> ValidatorSet alg
-  -> IO (BlockStorage 'RW IO alg a)
-newBlockStorage prefix mpath genesis validatorSet = do
-  let makedir path = let (dir,_) = splitFileName path
-                     in createDirectoryIfMissing True dir
-  case mpath of
-      Nothing -> newSTMBlockStorage genesis validatorSet
-      Just nm -> do
-        let dbName = prefix </> nm
-        makedir dbName
-        newSQLiteBlockStorage dbName genesis validatorSet
 
 
 runNode

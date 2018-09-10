@@ -31,14 +31,16 @@ import Thundermint.Consensus.Types
 import Thundermint.Control
 import Thundermint.Crypto
 import Thundermint.Crypto.Containers
-import Thundermint.Crypto.Ed25519    (Ed25519_SHA512)
+import Thundermint.Crypto.Ed25519            (Ed25519_SHA512)
 import Thundermint.Logger
 import Thundermint.Mock
 import Thundermint.Mock.Coin
 import Thundermint.Mock.KeyList
+import Thundermint.Mock.Types
 import Thundermint.P2P.Consts
 import Thundermint.P2P.Instances ()
-import Thundermint.P2P.Network    (getCredentialFromBuffer, getLocalAddress, realNetworkTls)
+import Thundermint.P2P.Network
+    (getCredentialFromBuffer, getLocalAddress, realNetworkTls)
 import Thundermint.Store
 import Thundermint.Store.STM
 
@@ -49,19 +51,8 @@ import qualified Data.ByteString.Char8 as BC8
 import qualified Data.Map              as Map
 
 ----------------------------------------------------------------
--- Generating node specification
+-- Cmd line specification
 ----------------------------------------------------------------
-
-data NodeSpec = NodeSpec
-  { nspecPrivKey    :: Maybe (PrivValidator Ed25519_SHA512)
-  , nspecDbName     :: Maybe FilePath
-  , nspecLogFile    :: [ScribeSpec]
-  , nspecWalletKeys :: (Int,Int)
-  }
-  deriving (Generic,Show)
-
-instance JSON.ToJSON   NodeSpec
-instance JSON.FromJSON NodeSpec
 
 data Opts = Opts
   { maxH              :: Maybe Int64
