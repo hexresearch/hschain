@@ -98,35 +98,40 @@ decideNewBlock config appSt@AppState{..} appCh@AppChans{..} lastCommt = do
   -- Enter NEW HEIGHT and create initial state for consensus state
   -- machine
   hParam <- makeHeightParameters config appSt appCh
+  -- Handle incoming messages until we decide on next block.
+  let checkForCommit Nothing    tm = msgHandlerLoop Nothing tm
+      checkForCommit (Just cmt) tm = do
+        blocks <- retrievePropBlocks appPropStorage (currentH hParam)
+        case commitBlockID cmt `Map.lookup` blocks of
+          Nothing -> msgHandlerLoop (Just cmt) tm
+          Just b  -> do
+            vset <- appNextValidatorSet (currentH hParam) (blockData b)
+            logger InfoS "Actual commit"
+              $ LogBlockInfo (currentH hParam) (blockData b)
+            storeCommit appStorage vset cmt b
+            advanceToHeight appPropStorage . next =<< blockchainHeight appStorage
+            appCommitCallback (currentH hParam)
+            return cmt
+      --
+      msgHandlerLoop mCmt tm = do
+        -- Make current state of consensus available for gossip
+        liftIO $ atomically $ writeTVar appTMState $ Just (currentH hParam , tm)
+        -- Receive message
+        res <- runMaybeT
+            $ lift . handleVerifiedMessage appPropStorage hParam tm
+          =<< verifyMessageSignature appSt (validatorSet hParam)
+          =<< liftIO (atomically $ readTChan appChanRx)
+        -- Handle message
+        case res of
+          Nothing               -> msgHandlerLoop mCmt tm
+          Just Tranquility      -> msgHandlerLoop mCmt tm
+          Just Misdeed          -> msgHandlerLoop mCmt tm
+          Just (Success  r)     -> checkForCommit mCmt       r
+          Just (DoCommit cmt r) -> checkForCommit (Just cmt) r
   --
   -- FIXME: encode that we cannot fail here!
   Success tm0 <- runConsesusM $ newHeight hParam lastCommt
-  -- Handle incoming messages until we decide on next block.
-  flip fix tm0 $ \loop tm -> do
-    -- logger DebugS ("TM =\n" <> logStr (groom tm)) ()
-    -- Make current state of consensus available for gossip
-    liftIO $ atomically $ writeTVar appTMState $ Just (currentH hParam , tm)
-    -- Receive message
-    msg <- liftIO $ atomically $ readTChan appChanRx
-    -- logger DebugS ("Recv: " <> showLS msg) ()
-    -- Handle message
-    res <- runMaybeT
-        $ lift . handleVerifiedMessage appPropStorage hParam tm
-      =<< verifyMessageSignature appSt (validatorSet hParam) msg
-    case res of
-      Nothing             -> loop tm
-      Just (Success r)    -> loop r
-      Just Tranquility    -> loop tm
-      Just Misdeed        -> loop tm
-      Just (DoCommit cmt) -> do
-        b    <- waitForBlockID appPropStorage $ commitBlockID cmt
-        vset <- appNextValidatorSet (currentH hParam) (blockData b)
-        logger InfoS "Actual commit"
-          $ LogBlockInfo (currentH hParam) (blockData b)
-        storeCommit appStorage vset cmt b
-        advanceToHeight appPropStorage . next =<< blockchainHeight appStorage
-        appCommitCallback (currentH hParam)
-        return cmt
+  msgHandlerLoop Nothing tm0
 
 
 -- Handle message and perform state transitions for both
@@ -188,7 +193,7 @@ data ConsensusResult alg a b
   = Success b
   | Tranquility
   | Misdeed
-  | DoCommit  (Commit alg a)
+  | DoCommit  (Commit alg a) (TMState alg a)
   deriving (Functor)
 
 instance Monad m => Applicative (ConsensusM alg a m) where
@@ -198,10 +203,10 @@ instance Monad m => Applicative (ConsensusM alg a m) where
 instance Monad m => Monad (ConsensusM alg a m) where
   return = ConsensusM . return . Success
   ConsensusM m >>= f = ConsensusM $ m >>= \case
-    Success a   -> runConsesusM (f a)
-    Tranquility -> return Tranquility
-    Misdeed     -> return Misdeed
-    DoCommit cm -> return $ DoCommit cm
+    Success a     -> runConsesusM (f a)
+    Tranquility   -> return Tranquility
+    Misdeed       -> return Misdeed
+    DoCommit cm r -> return $ DoCommit cm r
 
 instance MonadIO m => MonadIO (ConsensusM alg a m) where
   liftIO = ConsensusM . fmap Success . liftIO
@@ -282,6 +287,7 @@ makeHeightParameters Configuration{..} AppState{..} AppChans{..} = do
                 StepProposal  -> timeoutProposal
                 StepPrevote   -> timeoutPrevote
                 StepPrecommit -> timeoutPrecommit
+                StepPrecommit -> timeoutPrecommit
           threadDelay $ 1000 * (baseT + delta * fromIntegral r)
           atomically $ writeTChan appChanRx $ RxTimeout t
     --
@@ -310,7 +316,7 @@ makeHeightParameters Configuration{..} AppState{..} AppChans{..} = do
     --
     , acceptBlock = \r bid -> do
         liftIO $ atomically $ writeTChan appChanTx $ AnnHasProposal (next h) r
-        lift $ allowBlockID appPropStorage r bid 
+        lift $ allowBlockID appPropStorage r bid
     --
     , announceHasPreVote   = \sv -> do
         let Vote{..} = signedValue sv
@@ -344,5 +350,5 @@ makeHeightParameters Configuration{..} AppState{..} AppChans{..} = do
         storePropBlock appPropStorage block
         return bid
 
-    , commitBlock     = \cm -> ConsensusM $ return $ DoCommit cm
+    , commitBlock     = \cm r -> ConsensusM $ return $ DoCommit cm r
     }
