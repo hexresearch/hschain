@@ -136,9 +136,16 @@ instance Serialise (Commit alg a)
 -- | Step of the algorithm
 data Step
   = StepNewHeight
+    -- ^ We have just entered new height and waiting for stragglers
+    --   precommits for block
   | StepProposal
   | StepPrevote
   | StepPrecommit
+  | StepAwaitCommit
+    -- ^ We already reached consensus and now waiting for data to
+    --   perform commit. Node could only stay in this state if it
+    --   catching up and got all required precommits before getting
+    --   block.
   deriving (Show,Eq,Ord,Generic)
 instance Serialise     Step
 instance JSON.ToJSON   Step

@@ -43,7 +43,9 @@ import           Katip (Severity(..))
 import qualified Katip
 import GHC.Generics
 
-import Thundermint.Crypto
+import Thundermint.Crypto            ( Crypto,Signed,Address,SignedState(..),BlockHash(..)
+                                     , signedValue, signedAddr
+                                     )
 import Thundermint.Crypto.Containers
 import Thundermint.Consensus.Types
 import Thundermint.Logger
@@ -104,7 +106,7 @@ data HeightParameters (m :: * -> *) alg a = HeightParameters
   , createProposal       :: Round -> Maybe (Commit alg a) -> m (BlockID alg a)
     -- ^ Create new proposal block. Block itself should be stored
     --   elsewhere.
-  , commitBlock          :: forall x. Commit alg a -> m x
+  , commitBlock          :: forall x. Commit alg a -> TMState alg a -> m x
     -- ^ We're done for this height. Commit block to blockchain
   }
 
@@ -252,9 +254,11 @@ tendermintTransition par@HeightParameters{..} msg sm@TMState{..} =
     ----------------------------------------------------------------
     PreVoteMsg v@(signedValue -> Vote{..})
       -- Only accept votes with current height
-      | voteHeight /= currentH -> tranquility
-      | otherwise              -> checkTransitionPrevote par voteRound
-                              =<< addPrevote par v sm
+      | voteHeight /= currentH    -> tranquility
+      -- If we awaiting commit we don't care about prevotes
+      | smStep == StepAwaitCommit -> tranquility
+      | otherwise                 -> checkTransitionPrevote par voteRound
+                                 =<< addPrevote par v sm
     ----------------------------------------------------------------
     PreCommitMsg v@(signedValue -> Vote{..})
       -- Collect stragglers precommits for inclusion of
@@ -283,10 +287,11 @@ tendermintTransition par@HeightParameters{..} msg sm@TMState{..} =
         --        implementation advances unconditionally
         EQ -> do
           case smStep of
-            StepNewHeight -> enterPropose   par smRound        sm Reason'Timeout
-            StepProposal  -> enterPrevote   par smRound        sm Reason'Timeout
-            StepPrevote   -> enterPrecommit par smRound        sm Reason'Timeout
-            StepPrecommit -> enterPropose   par (next smRound) sm Reason'Timeout
+            StepNewHeight   -> enterPropose   par smRound        sm Reason'Timeout
+            StepProposal    -> enterPrevote   par smRound        sm Reason'Timeout
+            StepPrevote     -> enterPrecommit par smRound        sm Reason'Timeout
+            StepPrecommit   -> enterPropose   par (next smRound) sm Reason'Timeout
+            StepAwaitCommit -> tranquility
       where
         t0 = Timeout currentH smRound smStep
 
@@ -341,7 +346,7 @@ checkTransitionPrecommit par@HeightParameters{..} r sm@(TMState{..})
          acceptBlock voteRound bid
          commitBlock Commit{ commitBlockID    = bid
                            , commitPrecommits = valuesAtR r smPrecommitsSet
-                           }
+                           } sm
   --  * We have +2/3 precommits for nil at current round
   --  * We are at Precommit step [FIXME?]
   --  => goto Propose(H,R+1)
