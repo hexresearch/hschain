@@ -77,6 +77,11 @@ instance Show (Signature alg) where
     = showParen (n > 10)
     $ showString "Signature " . shows (encodeBase58 bs)
 
+instance Read (Signature alg) where
+  readPrec = do void $ lift $ string "Signature" >> some (char ' ')
+                Signature <$> readPrecBSBase58
+
+
 instance JSON.ToJSON (Signature alg) where
   toJSON (Signature s) = JSON.String $ T.decodeUtf8 $ encodeBase58 s
 instance JSON.FromJSON (Signature alg) where
