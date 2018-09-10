@@ -2,12 +2,85 @@
 -- |
 module Thundermint.Mock.KeyList (
   privateKeyList
+  , connectAll2All
+  , connectRing
+  , makePrivateValidators
+  , makeValidatorSetFromPriv
   ) where
 
 import Data.Maybe
 
+import qualified Data.ByteString        as BS
+import qualified Data.ByteString.Base58 as Base58
+import           Data.Foldable          (toList)
+import           Data.Map               (Map)
+import qualified Data.Map               as Map
+
+import Thundermint.Blockchain.Types
 import Thundermint.Crypto
+import Thundermint.Crypto.Containers
 import Thundermint.Crypto.Ed25519
+
+----------------------------------------------------------------
+--
+----------------------------------------------------------------
+
+
+-- | Generate list of private validators
+makePrivateValidators
+  :: [BS.ByteString]
+  -> Map (Address Ed25519_SHA512) (PrivValidator Ed25519_SHA512)
+makePrivateValidators keys = Map.fromList
+  [ (address (publicKey pk) , PrivValidator pk)
+  | bs <- keys
+  , let pk = case Base58.decodeBase58 Base58.bitcoinAlphabet bs of
+          Just x  -> privateKey x
+          Nothing -> error "Incorrect Base58 encoding for bs"
+  ]
+
+-- | Create set of all known public validators from set of private
+--   validators
+makeValidatorSetFromPriv
+  :: (Foldable f, Crypto alg)
+  => f (PrivValidator alg) -> ValidatorSet alg
+makeValidatorSetFromPriv vals =
+  case r of
+    Right x        -> x
+    Left  Nothing  -> error   "Empty validator set"
+    Left  (Just e) -> error $ "Duplicate public key in validator: " ++ show e
+  where
+    r = makeValidatorSet
+      [ Validator { validatorPubKey      = publicKey (validatorPrivKey v)
+                  , validatorVotingPower = 1
+                  }
+      | v <- toList vals
+      ]
+
+
+----------------------------------------------------------------
+--
+----------------------------------------------------------------
+
+-- | Calculate set of addresses for node to connect to
+--   assuming all nodes are connected to each other.
+connectAll2All :: Ord addr => Map addr a -> addr -> [addr]
+connectAll2All vals addr =
+  [ a
+  | a <- Map.keys vals
+  , a < addr
+  ]
+
+-- | Connect nodes in ring topology
+connectRing :: Ord addr => Map addr a -> addr -> [addr]
+connectRing vals addr =
+  case Map.splitLookup addr vals of
+    (_ , Nothing, _ ) -> []
+    (va, Just _ , vb) -> case Map.lookupMin vb of
+      Just (a,_) -> [a]
+      Nothing    -> case Map.lookupMin va of
+        Just (a,_) -> [a]
+        Nothing    -> []
+
 
 
 -- | List of private keys which could be used in test programs where
@@ -2017,4 +2090,3 @@ privateKeyList
   , "8YNy1dykYEUUTNXxX2yWQ4mhrKn9gZRr4CDAaoQf2gkj"
   , "Ee4hJC3xStfDR1rsvSUxKubc46KGrh6XYx9aK9PScrYQ"
   ]
-

@@ -70,6 +70,8 @@ Library
                   Thundermint.Mock.Coin
                   Thundermint.Mock.KeyList
                   Thundermint.Mock.KeyVal
+                  Thundermint.Mock.Types
+                  Thundermint.Mock.Store
                   Thundermint.P2P
                   Thundermint.P2P.Consts
                   Thundermint.P2P.Instances
@@ -227,6 +229,7 @@ Test-suite thundermint-tests
                      , stm        >=2.4
                      , async      >=2.2.1
                      , directory
+                     , aeson
                      --
                      , network
                      , tls               >=1.4.1

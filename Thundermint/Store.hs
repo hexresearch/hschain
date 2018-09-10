@@ -37,6 +37,7 @@ module Thundermint.Store (
   , nullMempoolAny
   -- * Blockchain invariants checkers
   , BlockchainInconsistency
+  , checkStorage
   , checkBlocks
   , checkCommits
   , checkValidators
@@ -47,16 +48,19 @@ import Control.Monad.Trans.Writer
 
 import qualified Katip
 
-import           Codec.Serialise           (Serialise)
-import           Control.Monad             (when)
-import           Control.Monad.Trans.Class
-import qualified Data.Aeson                as JSON
-import qualified Data.Aeson.TH             as JSON
-import qualified Data.ByteString           as BS
-import           Data.Foldable             (forM_)
-import           Data.Map                  (Map)
-import           Data.Maybe                (isJust, isNothing, maybe)
-import           GHC.Generics              (Generic)
+import Codec.Serialise           (Serialise)
+import Control.Monad             (when)
+import Control.Monad.Trans.Class
+import Data.Foldable             (forM_)
+import Data.Map                  (Map)
+import Data.Maybe                (isJust, isNothing, maybe)
+import Data.Monoid               ((<>))
+import GHC.Generics              (Generic)
+
+import qualified Data.Aeson      as JSON
+import qualified Data.Aeson.TH   as JSON
+import qualified Data.ByteString as BS
+
 
 import Thundermint.Consensus.Types
 import Thundermint.Crypto
@@ -358,6 +362,18 @@ data BlockchainInconsistency = MissingGenesisBlock
                              | CommitBlockHeaderBlockIDMisMatch Height
                              -- ^ headerLastBlockID at height H is not equal to BlockID at previous height
                                deriving (Eq, Show)
+
+
+-- | check storage against all consistency invariants
+checkStorage
+  :: (Monad m, Crypto alg, Serialise a1) =>
+     BlockStorage rw m alg a1 -> m [BlockchainInconsistency]
+checkStorage storage = do bs <- checkBlocks storage
+                          cs <- checkCommits storage
+                          vs <- checkValidators storage
+                          cbs <- checkCommitsBlocks storage
+                          return $ bs <> cs <> vs <> cbs
+
 
 -- | check all blocks' invarinats
 checkBlocks

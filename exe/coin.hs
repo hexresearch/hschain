@@ -13,16 +13,16 @@ import Control.Monad
 import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Data.Foldable
-import Data.Maybe           (isJust)
 import Data.Int
+import Data.Maybe             (isJust)
 import Data.Monoid
 import Options.Applicative
 
 import Codec.Serialise      (serialise)
 import Data.ByteString.Lazy (toStrict)
-import GHC.Generics         (Generic)
-import System.FilePath      ((</>))
-import System.Random        (randomRIO)
+
+import System.FilePath ((</>))
+import System.Random   (randomRIO)
 
 
 import qualified Data.Aeson            as JSON
@@ -30,45 +30,19 @@ import qualified Data.ByteString.Char8 as BC8
 import qualified Data.Map              as Map
 
 import Thundermint.Blockchain.Interpretation
-import Thundermint.Blockchain.Types
 import Thundermint.Consensus.Types
 import Thundermint.Control
 import Thundermint.Crypto
-import Thundermint.Crypto.Ed25519            (Ed25519_SHA512)
-import Thundermint.Store.STM
 import Thundermint.Logger
 import Thundermint.Mock
 import Thundermint.Mock.Coin
 import Thundermint.Mock.KeyList
+import Thundermint.Mock.Types
 import Thundermint.P2P.Network
 import Thundermint.Store
 import Thundermint.Store.SQLite
+import Thundermint.Store.STM
 
-----------------------------------------------------------------
--- Generating node specification
-----------------------------------------------------------------
-
-data NodeSpec = NodeSpec
-  { nspecPrivKey    :: Maybe (PrivValidator Ed25519_SHA512)
-  , nspecDbName     :: Maybe FilePath
-  , nspecLogFile    :: [ScribeSpec]
-  , nspecWalletKeys :: (Int,Int)
-  }
-  deriving (Generic,Show)
-
-data NetSpec = NetSpec
-  { netNodeList       :: [NodeSpec]
-  , netTopology       :: Topology
-  , netInitialDeposit :: Integer
-  , netInitialKeys    :: Int
-  , netPrefix         :: Maybe String
-  }
-  deriving (Generic,Show)
-
-instance JSON.ToJSON   NodeSpec
-instance JSON.ToJSON   NetSpec
-instance JSON.FromJSON NodeSpec
-instance JSON.FromJSON NetSpec
 
 ----------------------------------------------------------------
 -- Generation of transactions
