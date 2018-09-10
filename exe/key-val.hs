@@ -5,50 +5,52 @@
 {-# LANGUAGE RecordWildCards   #-}
 {-# LANGUAGE TupleSections     #-}
 {-# LANGUAGE TypeFamilies      #-}
+
 import Control.Monad
-import Control.Monad.IO.Class
 import Control.Monad.Catch
+import Control.Monad.IO.Class
 import Data.Int
-import Data.Maybe               (isJust)
-import Data.Monoid              ((<>))
 import Data.List
-import qualified Data.Aeson             as JSON
-import qualified Data.ByteString.Char8  as BC8
-import qualified Data.Map               as Map
 import Options.Applicative
 import System.FilePath
 
+import Data.Maybe   (isJust)
+import Data.Monoid  ((<>))
 import GHC.Generics (Generic)
 
+import qualified Data.Aeson            as JSON
+import qualified Data.ByteString.Char8 as BC8
+import qualified Data.Map              as Map
+
 import Thundermint.Blockchain.App
-import Thundermint.Blockchain.Types
 import Thundermint.Blockchain.Interpretation
-import Thundermint.Control
+import Thundermint.Blockchain.Types
 import Thundermint.Consensus.Types
-import Thundermint.Crypto.Ed25519   (Ed25519_SHA512)
+import Thundermint.Control
+import Thundermint.Crypto.Ed25519            (Ed25519_SHA512)
 import Thundermint.Logger
+import Thundermint.Mock
+import Thundermint.Mock.KeyVal
 import Thundermint.P2P
 import Thundermint.P2P.Network
 import Thundermint.Store
-import Thundermint.Mock
-import Thundermint.Mock.KeyVal
 
 ----------------------------------------------------------------
 --
 ----------------------------------------------------------------
 
 data NodeSpec = NodeSpec
-  { nspecPrivKey     :: Maybe (PrivValidator Ed25519_SHA512)
-  , nspecByzantine   :: Maybe String
-  , nspecDbName      :: Maybe FilePath
-  , nspecLogFile     :: [ScribeSpec]
+  { nspecPrivKey   :: Maybe (PrivValidator Ed25519_SHA512)
+  , nspecByzantine :: Maybe String
+  , nspecDbName    :: Maybe FilePath
+  , nspecLogFile   :: [ScribeSpec]
   }
   deriving (Generic,Show)
 
 data NetSpec = NetSpec
-  { netNodeList     :: [NodeSpec]
-  , netTopology     :: Topology
-  , netPrefix       :: Maybe String
+  { netNodeList :: [NodeSpec]
+  , netTopology :: Topology
+  , netPrefix   :: Maybe String
   }
   deriving (Generic,Show)
 
@@ -152,14 +154,13 @@ main
         Left  e -> error e
       storageList <- executeSpec maxH prefix spec
       -- Check result
-      let Just mH = maxH
-      forM_ [0 .. mH] $ \h -> do
-        blocks <- forM storageList $ \s -> retrieveBlock s (Height h)
-        --
-        putStrLn ("== " ++ show h ++ " ==")
-        putStrLn " * All blocks are equal"
-        putStrLn ("  " ++ show (blockData <$> head blocks))
-        unless (allEq blocks) $ error "Block mismatch!"
+      checks <- forM storageList $ \storage -> do
+                              bs <- checkBlocks storage
+                              cs <- checkCommits storage
+                              vs <- checkValidators storage
+                              cbs <- checkCommitsBlocks storage
+                              return $ bs <> cs <> vs <> cbs
+      unless (null (concat checks)) $ error $ "Consistency error: " ++ (show checks)
     ----------------------------------------
     parser :: Parser (IO ())
     parser
