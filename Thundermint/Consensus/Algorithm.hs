@@ -429,9 +429,18 @@ enterPrevote par@HeightParameters{..} r (unlockOnPrevote -> sm@TMState{..}) reas
                   , voteBlockID v == Just propBlockID -> checkPrevoteBlock propBlockID
                   | otherwise                         -> do
                       --  FIXME: Byzantine!
-                      logger WarningS "BYZANTINE proposal BID does not match votes" ()
+                      logger WarningS "BYZANTINE proposal POL BID does not match votes" ()
                       return Nothing
-                Nothing                               -> return Nothing
+                --
+                -- FIXME: Here we allow block even if we don't have
+                --        POL for the round it's locked on. We need to
+                --        do this because in order to perform that
+                --        check we need to gossip POL votes with
+                --        priority and we don't have support for that
+                --        yet
+                --
+                -- Nothing                               -> return Nothing
+                Nothing                               -> checkPrevoteBlock propBlockID
             Nothing                                   -> checkPrevoteBlock propBlockID
       -- Proposal invalid or absent. Prevote NIL
       | otherwise                          = return Nothing
