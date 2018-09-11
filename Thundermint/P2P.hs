@@ -33,7 +33,8 @@ import qualified Data.Set        as Set
 import           Data.Set          (Set)
 import qualified Data.Aeson      as JSON
 import qualified Data.Aeson.TH   as JSON
-import Katip         (showLS)
+import qualified Data.Text       as T
+import Katip         (showLS,sl)
 import qualified Katip
 import System.Random (randomRIO)
 import GHC.Generics  (Generic)
@@ -235,9 +236,10 @@ acceptLoop peerAddr NetworkAPI{..} peerCh mempool peerRegistry = logOnException 
       void $ flip forkFinally (const $ close conn)
            $ restore
            $ withPeer peerRegistry addr -- XXX what first? `withPeer` or `restore` ??
-           $ do logger InfoS ("Accepted connection from " <> showLS addr) ()
+           $ do logger InfoS "Accepted connection" (sl "addr" (show addr))
                 trace $ TeNodeOtherConnected (show addr)
-                startPeer peerAddr peerCh conn peerRegistry mempool
+                descendNamespace (T.pack (show addr))
+                  $ startPeer peerAddr peerCh conn peerRegistry mempool
 
 
 -- Initiate connection to remote host and register peer
@@ -255,7 +257,7 @@ connectPeerTo
 connectPeerTo peerAddr NetworkAPI{..} addr peerCh mempool peerRegistry =
   -- Igrnore all exceptions to prevent apparing of error messages in stderr/stdout.
   void . flip forkFinally (const $ return ()) . logOnException $ do
-    logger InfoS ("Connecting to " <> showLS addr) ()
+    logger InfoS "Connecting to" (sl "addr" (show addr))
     trace (TeNodeConnectingTo (show addr))
     bracket (connect addr) close
       $ \conn -> withPeer peerRegistry addr
@@ -459,12 +461,12 @@ startPeer peerAddr peerCh@PeerChans{..} conn peerRegistry mempool = logOnExcepti
   pexCh    <- liftIO newTChanIO
   cursor   <- getMempoolCursor mempool
   runConcurrently
-    [ peerGossipVotes         peerSt peerCh gossipCh
-    , peerGossipBlocks        peerSt peerCh gossipCh
-    , peerGossipMempool       peerSt peerCh p2pConfig gossipCh cursor
+    [ descendNamespace "gspV" $ peerGossipVotes         peerSt peerCh gossipCh
+    , descendNamespace "gspB" $ peerGossipBlocks        peerSt peerCh gossipCh
+    , descendNamespace "gspM" $ peerGossipMempool       peerSt peerCh p2pConfig gossipCh cursor
     -- , peerGossipPeerExchange  peerAddr peerCh peerRegistry pexCh gossipCh
-    , peerSend                peerSt peerCh gossipCh conn
-    , peerReceive             peerSt peerCh pexCh conn cursor
+    , descendNamespace "send" $ peerSend                peerSt peerCh gossipCh conn
+    , descendNamespace "recv" $ peerReceive             peerSt peerCh pexCh conn cursor
     ]
   logger InfoS "Stopping peer" ()
 
