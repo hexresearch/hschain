@@ -15,6 +15,11 @@ def read_trace(log,i) :
           'node' : 1000+i,
           'msg'  : "#FF9900",
         })
+    rowsA = pd.DataFrame(
+        { 'at'   : log.cons[log.cons['msg'] == "Actual commit"]['at'],
+          'node' : 1000+i,
+          'msg'  : "#99cc00",
+        })
     # Commit trace
     rowsC = log.cons[log.cons['msg'] == 'Entering new height ----------------'].copy()
     rowsC['msg'] = rowsC['data'].apply(lambda x : str(x['H'] % 2))
@@ -40,7 +45,7 @@ def read_trace(log,i) :
          'node': 1000 + i,
          'msg' : messages,
         })
-    return pd.concat([rowsC,rowsS,rowsD])
+    return pd.concat([rowsC,rowsS,rowsD,rowsA])
 
 def read_traces(logs):
     return pd.concat([read_trace(log,i) for i,log in enumerate(logs)]).sort_values(by='at').reset_index()
