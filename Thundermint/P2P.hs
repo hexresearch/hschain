@@ -647,7 +647,7 @@ peerReceive peerSt PeerChans{..} peerExchangeCh Connection{..} MempoolCursor{..}
                                   addProposal peerSt (propHeight (signedValue p))
                                                      (propRound  (signedValue p))
           GossipBlock     b -> do liftIO $ atomically $ peerChanRx $ RxBlock b
-                                  tickRecv cntGossipProposals
+                                  tickRecv cntGossipBlocks
                                   addBlock peerSt b
           GossipTx tx       -> do pushTransaction tx
                                   tickRecv cntGossipTx
