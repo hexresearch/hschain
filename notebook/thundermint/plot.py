@@ -18,7 +18,7 @@ def plot_commit_time(logs) :
     "Plot commit time and prime average block time"
     # Subtract leading time
     dfs = [d.commit_times() for d in logs]
-    t0  = np.min([df['at'].values[0] for df in dfs])    
+    t0  = np.min([df['at'].values[0] for df in dfs])
     for df in dfs :
         df['at'] = (df['at'] - t0).astype('timedelta64[s]')
     # Fit averaged commit times with straign line
@@ -84,4 +84,26 @@ def plot_mempool_added(dfs):
         plt.plot(d['at'], d['added'], '+', color=colors[i], ms=3)
         plt.plot(d['at'], d['discarded'], 'v', color=colors[i], ms=3)
         plt.plot(d['at'], d['filtered'], 'x', color=colors[i], ms=3)
+    return fig
+
+def plot_gossip(dfs, key):
+    "Plot statistics about gossip"
+    dfs    = [d.gossip() for d in dfs]
+    fig    = plt.figure()
+    colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
+    plt.grid()
+    plt.title("Gossip statistics for: "+key)
+    for i,d in enumerate(dfs):
+        plt.plot(d['at'], d['Rx' + key], '+', color=colors[i])
+        plt.plot(d['at'], d['Tx' + key], 'x', color=colors[i])
+    return fig
+
+def plot_gossip_rxtx_ratio(dfs, key):
+    "Plot statistics about gossip"
+    dfs    = [d.gossip() for d in dfs]
+    fig    = plt.figure()
+    plt.grid()
+    plt.title("Rx/Tx ratio for: "+key)
+    for d in dfs:
+        plt.plot(d['at'], d['Rx' + key]/d['Tx'+key], '+')
     return fig
