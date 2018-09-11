@@ -427,7 +427,10 @@ enterPrevote par@HeightParameters{..} r (unlockOnPrevote -> sm@TMState{..}) reas
                 Just v
                   | lockR < propRound
                   , voteBlockID v == Just propBlockID -> checkPrevoteBlock propBlockID
-                  | otherwise                         -> return Nothing --  FIXME: Byzantine!
+                  | otherwise                         -> do
+                      --  FIXME: Byzantine!
+                      logger WarningS "BYZANTINE proposal BID does not match votes" ()
+                      return Nothing
                 Nothing                               -> return Nothing
             Nothing                                   -> checkPrevoteBlock propBlockID
       -- Proposal invalid or absent. Prevote NIL
