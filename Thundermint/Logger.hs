@@ -10,6 +10,7 @@
 module Thundermint.Logger (
     MonadLogger(..)
   , setNamespace
+  , descendNamespace
   , LoggerT(..)
   , NoLogsT(..)
   , runLoggerT
@@ -42,6 +43,7 @@ import Data.Aeson
 import Data.Aeson.TH
 import Data.Int
 import Data.IORef
+import Data.Text       (Text)
 import Data.Typeable
 import Data.Monoid     ((<>))
 import qualified Data.HashMap.Strict        as HM
@@ -72,8 +74,13 @@ instance MonadLogger m => MonadLogger (MaybeT m) where
   logger sev str a = lift $ logger sev str a
   localNamespace fun (MaybeT m) = MaybeT (localNamespace fun m)
 
+-- | Change logger's namespace
 setNamespace :: MonadLogger m => Namespace -> m a -> m a
 setNamespace nm = localNamespace (const nm)
+
+-- | Append string to namespace
+descendNamespace :: MonadLogger m => Text -> m a -> m a
+descendNamespace nm = localNamespace $ \(Namespace x) -> Namespace (x ++ [nm])
 
 -- | Concrete implementation of logger monad
 newtype LoggerT m a = LoggerT (ReaderT (Namespace, LogEnv) m a)
