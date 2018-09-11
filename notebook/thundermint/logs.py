@@ -12,7 +12,7 @@ import pandas as pd
 
 class Log(object):
     "Log file decoded as data frame"
-    
+
     def __init__(self, fname = None, lines = None) :
         # Dispatch on arguments
         if lines is not None:
@@ -35,7 +35,7 @@ class Log(object):
         self.mempool['filtered']  = self.mempool['data'].apply(lambda x: x['filtered'])
         self.mempool['added']     = self.mempool['data'].apply(lambda x: x['added'])
         self.mempool['discarded'] = self.mempool['data'].apply(lambda x: x['discarded'])
-        
+
     def commit_times(self):
         df      = self.cons[self.cons['msg'] == "Entering new height ----------------"].copy()
         df['H'] = df['data'].apply(lambda x : x['H'])
@@ -46,3 +46,10 @@ class Log(object):
         return pd.DataFrame({'H'  : df['data'].apply(lambda x : x['H']),
                              'Ntx': df['data'].apply(lambda x : x['Ntx']),
                              })
+
+    def gossip(self) :
+        net = self.net.copy()
+        net = net[net['msg'] == 'Gossip stats'].reset_index()
+        df  = pd.DataFrame.from_records(net['data'].values)
+        df['at'] = net['at']
+        return df
