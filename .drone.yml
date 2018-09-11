@@ -13,7 +13,6 @@ pipeline:
     - if git log -1 --pretty=%B |grep -i -q '\[clear cache\]'; then stack --stack-root $PWD/.stack --system-ghc clean; fi
     - stack --stack-root $PWD/.stack --system-ghc test
 
-
   rebuild-cache:
     image: plugins/s3-cache:1
     pull: true
@@ -25,7 +24,6 @@ pipeline:
     - .stack-work
     when:
       event: push
-      status: [ success, failure ]
 
   telegram:
     image: appleboy/drone-telegram
