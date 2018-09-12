@@ -10,18 +10,16 @@ import Control.Monad.IO.Class
 import Control.Concurrent
 import Codec.Serialise      (serialise)
 import Data.ByteString.Lazy (toStrict)
+import Data.Default.Class   (def)
 import Data.Monoid
-import Data.Maybe                (fromMaybe)
 import Data.Int
 import qualified Data.Aeson             as JSON
-import qualified Data.Aeson.Types       as JSON
 import qualified Data.ByteString.Char8  as BC8
 import qualified Data.Map               as Map
 import System.Environment        (getEnv)
 import System.Random    (randomRIO)
 import System.FilePath  ((</>))
 import GHC.Generics (Generic)
-import System.IO.Unsafe          (unsafePerformIO)
 import Katip.Core (showLS, LogEnv)
 import Options.Applicative
 import Network.Socket
@@ -37,7 +35,6 @@ import Network.Socket
     , defaultHints
     , fdSocket
     , getAddrInfo
-    , getNameInfo
     , listen
     , setCloseOnExecIfNeeded
     , setSocketOption
@@ -58,7 +55,6 @@ import Thundermint.Mock.KeyList
 import Thundermint.Mock.Coin
 
 import qualified Control.Exception     as E
-import qualified Data.Text             as T
 
 thundemintPort :: String
 thundemintPort = "50000"
@@ -151,7 +147,7 @@ interpretSpec Opts{..} netAddresses validatorSet logenv NodeSpec{..} = do
         runNode NodeDescription
           { nodeStorage         = hoistBlockStorageRW liftIO storage
           , nodeBlockChainLogic = transitions
-          , nodeNetworks        = realNetwork thundemintPort
+          , nodeNetworks        = realNetwork def thundemintPort
           , nodeAddr            = nodeAddr
           , nodeInitialPeers    = netAddresses
           , nodeValidationKey   = nspecPrivKey
@@ -280,34 +276,3 @@ waitForAddrs logenv = E.handle allExc $ do
         setCloseOnExecIfNeeded fd
         listen sock 10
         return sock
-
-sa2Text :: SockAddr -> T.Text
-sa2Text sa = T.pack
-        $ fromMaybe "" mHN <> maybe "" (":"<>) mSN
-     where (mHN, mSN) = unsafePerformIO $ getNameInfo [] True True sa
-
-text2Sa :: T.Text -> SockAddr
-text2Sa s = addrAddress $ head addrInfos
-  where (hN, sN)  = T.breakOn ":" s
-        mHN       = if T.null hN
-                      then Nothing
-                      else Just $ T.unpack hN
-        mSN       = if T.null sN
-                       then Just thundemintPort
-                       else Just $ T.unpack $ T.tail sN
-        addrInfos = unsafePerformIO $ getAddrInfo Nothing mHN mSN
-
-
-instance JSON.ToJSON SockAddr where
-  toJSON = JSON.String . sa2Text
-
-instance JSON.ToJSONKey SockAddr where
-  toJSONKey = JSON.toJSONKeyText sa2Text
-
-instance JSON.FromJSONKey SockAddr where
-  fromJSONKey = JSON.FromJSONKeyText text2Sa
-
-instance JSON.FromJSON SockAddr where
-  parseJSON (JSON.String s) = return $ text2Sa s
-  parseJSON invalid    = JSON.typeMismatch "SockAddr" invalid
-
