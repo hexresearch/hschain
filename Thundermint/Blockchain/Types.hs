@@ -47,6 +47,10 @@ data Configuration = Configuration
   , gossipDelayVotes :: Int
   , gossipDelayBlocks :: Int
   , gossipDelayMempool :: Int
+  , pexMinConnections :: Int
+  , pexMaxConnections :: Int
+  , pexMinKnownConnections :: Int
+  , pexMaxKnownConnections :: Int
   }
   deriving (Show,Generic)
 instance JSON.FromJSON Configuration
