@@ -47,17 +47,16 @@ def read_trace(log,i) :
         })
     return pd.concat([rowsC,rowsS,rowsD,rowsA])
 
-def read_traces(logs):
-    return pd.concat([read_trace(log,i) for i,log in enumerate(logs)]).sort_values(by='at').reset_index()
-
-def splot(trace, w=1900) :
+def splot(logs, w=1900) :
+    nLogs = len(logs)
+    trace = pd.concat([read_trace(log,i) for i,log in enumerate(logs)]).sort_values(by='at').reset_index()
     with tempfile.NamedTemporaryFile(mode='w', suffix='.trace', delete=False) as f :
-        for i in [0,1,2,3] :
+        for i in range(nLogs) :
             print( "%s <NODE%i XXX" % (trace['at'][0], i), file=f.file)
             print( "%s <NODE%i XXX" % (trace['at'][0], 1000+i), file=f.file)
         for _,q in trace.iterrows() :
             print( "%s >NODE%i %s" % (q['at'], q['node'], q['msg']), file=f.file)
         with tempfile.NamedTemporaryFile(suffix='.png') as out :
-            subprocess.run(["splot", "-w", str(w), "-h", str(4*2*30), "-bh 18", "-if", f.name, "-o", out.name],
+            subprocess.run(["splot", "-w", str(w), "-h", str(nLogs*2*30), "-bh 18", "-if", f.name, "-o", out.name],
                            check=True)
             return IPython.display.Image(out.name, unconfined=True)
