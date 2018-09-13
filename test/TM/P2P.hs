@@ -20,11 +20,13 @@ import qualified Data.Set as Set
 import Test.Tasty
 import Test.Tasty.HUnit
 
+import Thundermint.Blockchain.Types
 import Thundermint.Control
 import Thundermint.Debug.Trace
+import Thundermint.Utils
+import Thundermint.Mock
 
 import TM.Util.Network
-import TM.Util.Misc
 import TM.Util.Tests
 
 
@@ -129,11 +131,15 @@ testPeersMustAckAndGetAddresses = do
 
 testBigNetMustInterconnect :: IO ()
 testBigNetMustInterconnect = do
-    let netSize = 10 -- NB: must not be greater then `pexMinConnections defCfg` (from `Thundermint.Mock`)
+    let netSize = 20
+        ownCfg = defCfg { pexMinConnections = netSize - 1
+                        , pexMaxConnections = netSize
+                        , pexMinKnownConnections = netSize - 1
+                        , pexMaxKnownConnections = netSize - 1 }
     events <- replicateM netSize (newIORef Set.empty)
     ok <- newIORef False
     runConcurrently
-        [ createTestNetwork
+        [ createTestNetworkWithConfig ownCfg
             --
             -- Test network with initial ring topology:
             --
