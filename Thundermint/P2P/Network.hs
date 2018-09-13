@@ -170,7 +170,7 @@ decodeWord16BE bs | LBS.length bs < fromIntegral headerSize = Nothing
                       in (Just $ fst word32)
 
 
--- | helper function read given lenght of bytes
+-- | helper function read given length of bytes
 recvAll :: Net.Socket -> Int -> IO LBS.ByteString
 recvAll sock n = LBS.concat `fmap` loop (fromIntegral n)
   where
