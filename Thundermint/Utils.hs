@@ -7,12 +7,16 @@ module Thundermint.Utils
    , peerIdLength
    , encodePeerId
    , decodePeerId
+     -- * Timings
+   , waitSec
    ) where
 
 
 #include "MachDeps.h"
 
 
+import Control.Concurrent (threadDelay)
+import Control.Monad.IO.Class
 import Data.Word
 import Foreign.ForeignPtr
 import Foreign.Ptr
@@ -53,3 +57,10 @@ decodePeerId bs =
         Left ("Wrong ofs = " ++ show ofs)
 
 #endif
+
+
+
+-- | Wait a few seconds
+--
+waitSec :: (MonadIO m) => Double -> m ()
+waitSec sec = liftIO $ threadDelay $ round $ 1e6 * sec
