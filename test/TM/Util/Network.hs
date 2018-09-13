@@ -11,7 +11,6 @@ module TM.Util.Network where
 
 
 import Data.List
-import Control.Monad
 import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Thundermint.Crypto.Ed25519
@@ -20,9 +19,7 @@ import Codec.Serialise
 import GHC.Generics (Generic)
 import qualified Data.Set as Set
 
-import Thundermint.Blockchain.Interpretation
 import Thundermint.Blockchain.Types
-import Thundermint.Consensus.Types
 import Thundermint.Control
 import Thundermint.Crypto
 import Thundermint.Debug.Trace
@@ -32,6 +29,10 @@ import Thundermint.Mock.KeyVal
 import Thundermint.P2P.Network
 import Thundermint.Store
 import Thundermint.Store.STM
+
+
+testNetworkName :: String
+testNetworkName = "tst"
 
 
 testValidators :: Map.Map (Address Ed25519_SHA512) (PrivValidator Ed25519_SHA512)
@@ -68,22 +69,8 @@ toPair :: TestNetLinkDescription m -> (Int, [Int])
 toPair TestNetLinkDescription{..} = (ncFrom, ncTo)
 
 
-removeMutualConnections :: TestNetDescription m -> TestNetDescription m
-removeMutualConnections =
-    reverse .
-    snd .
-    foldl' (\(pairs, result) td@TestNetLinkDescription{..} ->
-                    let ncTo' = filter (\t -> (ncFrom,t) `Set.notMember` pairs) ncTo
-                    in ( pairs  `Set.union` Set.fromList (map (,ncFrom) ncTo' ++ map (ncFrom,) ncTo')
-                       , td { ncTo = ncTo' } : result
-                       )
-           )
-           (Set.empty, [])
-
-
 createTestNetwork :: forall m . (MonadIO m, MonadMask m, MonadFork m) => TestNetDescription m -> m ()
-createTestNetwork desc' = do
-    let desc = removeMutualConnections desc' -- omit bug ...
+createTestNetwork desc = do
     net <- liftIO newMockNet
     acts <- mapM (mkTestNode net) desc
     runConcurrently $ join acts
@@ -98,14 +85,15 @@ createTestNetwork desc' = do
           bchState     <- newBChState transitions
                         $ makeReadOnly (hoistBlockStorageRW liftIO blockStorage)
           _            <- stateAtH bchState (next hChain)
-          runNode NodeDescription
+        runNode NodeDescription
             { nodeStorage         = hoistBlockStorageRW liftIO blockStorage
             , nodeBlockChainLogic = transitions
-            , nodeNetwork         = createMockNode net "tst" (TestAddr ncFrom)
-            , nodeAddr            = (TestAddr ncFrom, "tst")
-            , nodeInitialPeers    = map ((,"tst") . TestAddr) ncTo
+            , nodeNetwork         = createMockNode net testNetworkName (TestAddr ncFrom)
+            , nodeAddr            = (TestAddr ncFrom, testNetworkName)
+            , nodeInitialPeers    = map ((,testNetworkName) . TestAddr) ncTo
             , nodeValidationKey   = Nothing
             , nodeCommitCallback  = \_ -> return ()
             , nodeBchState        = bchState
             , nodeMempool         = nullMempoolAny
             }
+
