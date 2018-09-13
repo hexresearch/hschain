@@ -6,7 +6,7 @@
 {-# LANGUAGE ScopedTypeVariables            #-}
 {-# LANGUAGE TypeApplications               #-}
 {-# OPTIONS_GHC -Werror=incomplete-patterns #-}
-
+-- {-# LANGUAGE TemplateHaskell #-}
 
 -- | Tests for some serialisation things
 --
@@ -21,10 +21,12 @@ import Hedgehog as H
 import Hedgehog.Internal.Exception as H
 import Test.QuickCheck.Arbitrary
 import Test.Tasty
+-- import Test.Tasty.HUnit
 import Test.Tasty.Hedgehog
 import qualified Hedgehog.Gen.QuickCheck as Gen
 
 import Thundermint.Consensus.Types
+import Thundermint.Utils
 
 import TM.Arbitrary.Instances ()
 
@@ -87,9 +89,30 @@ prop_diff_cant_serialize_to_other  = property $ do
     either (const success) (const failure) $ tryEvaluate votePrecommit
 
 
+prop_peer_id_encode_decode :: Property
+prop_peer_id_encode_decode = property $ do
+    g <- forAll Gen.arbitrary
+    let g' = decodePeerId $ encodePeerId g
+    Right g === g'
+
+
+prop_peer_id_correct_length :: Property
+prop_peer_id_correct_length = property $ do
+    g <- forAll Gen.arbitrary
+    let encg = encodePeerId g
+    BSL.length encg === fromIntegral peerIdLength
+
+
+prop_peer_id_assert_on_bad_length :: Property
+prop_peer_id_assert_on_bad_length = property $ do
+    -- TODO make any string with length /= greetingMsgLength and try to decode; assert must be thrown
+    return ()
+
+
 tests :: TestTree
 tests =
     testGroup "serialisation"
+        -- [ testCase "All tests" $ H.checkSequential $$(discover) >>= assertBool "All tests must be OK" ]
         [ testGroup "Vote"
             [ testProperty "only prevote and precommit"
                            prop_only_prevote_and_precommit
@@ -101,5 +124,13 @@ tests =
                            prop_diff_serialize
             , testProperty "can't serialize to other"
                            prop_diff_cant_serialize_to_other
+            ]
+        , testGroup "PeerId serialisation"
+            [ testProperty "right encode/decode"
+                           prop_peer_id_encode_decode
+            , testProperty "right encode length"
+                           prop_peer_id_correct_length
+            , testProperty "can't decode incorrect length message"
+                           prop_peer_id_assert_on_bad_length
             ]
         ]
