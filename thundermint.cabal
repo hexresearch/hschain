@@ -239,7 +239,6 @@ Test-suite thundermint-tests
                      , bytestring-arbitrary
                      , generic-arbitrary
                      , hedgehog
-                     -- NB: ^ troubles with 'allow newer'
                      , hedgehog-quickcheck
                      , tasty             >=0.11
                      , tasty-hedgehog

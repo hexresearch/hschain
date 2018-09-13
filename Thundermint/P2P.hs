@@ -37,7 +37,7 @@ import qualified Data.Aeson.TH   as JSON
 import qualified Data.Text       as T
 import Katip         (showLS,sl)
 import qualified Katip
-import System.Random (randomRIO)
+import System.Random (randomIO, randomRIO)
 import GHC.Generics  (Generic)
 
 
@@ -176,9 +176,10 @@ startPeerDispatcher
   -> Mempool m alg tx
   -> m ()
 startPeerDispatcher p2pConfig net peerAddr addrs AppChans{..} storage mempool = logOnException $ do
-  logger InfoS ("Starting peer dispatcher: addrs = " <> showLS addrs) ()
+  peerId <- generatePeerId
+  logger InfoS ("Starting peer dispatcher: addrs = " <> showLS addrs <> ", PeerId = " <> showLS peerId) ()
   trace TeNodeStarted
-  peerRegistry       <- newPeerRegistry
+  peerRegistry       <- newPeerRegistry peerId
   peerChanPex        <- liftIO newBroadcastTChanIO
   peerChanPexNewAddresses <- liftIO newTChanIO
   cntGossipPrevote   <- newCounter
@@ -220,6 +221,26 @@ startPeerDispatcher p2pConfig net peerAddr addrs AppChans{..} storage mempool = 
     ]
 
 
+-- | Generate "unique" peer id for current session.
+--
+generatePeerId :: (MonadIO m) => m PeerId
+generatePeerId = liftIO randomIO
+
+
+-- | Exchange peer ids with other connection
+--
+recvPeerId :: (MonadIO m) => Connection -> m (Either String PeerId)
+recvPeerId conn =
+    recv conn >>= \case
+        Nothing   -> return $ Left "Socket closed on handshake"
+        Just spid -> return $ decodePeerId spid
+
+
+data ConnectMode = CmAccept PeerId
+                 | CmConnect
+                 deriving Show
+
+
 -- Thread which accepts connections from remote nodes
 acceptLoop
   :: ( MonadFork m, MonadMask m, MonadLogger m, MonadTrace m
@@ -238,15 +259,24 @@ acceptLoop peerAddr NetworkAPI{..} peerCh mempool peerRegistry = logOnException 
     -- connection immediately
     mask $ \restore -> do
       (conn, addr) <- accept
-      trace $ TeNodeOtherTryConnect (show addr)
-      void $ flip forkFinally (const $ close conn)
-           $ restore
-           $ withPeer peerRegistry addr -- XXX what first? `withPeer` or `restore` ??
-           $ do logger InfoS "Accepted connection" (sl "addr" (show addr))
-                trace $ TeNodeOtherConnected (show addr)
-                liftIO $ atomically $ writeTChan (peerChanPexNewAddresses peerCh) [addr]
-                descendNamespace (T.pack (show addr))
-                  $ startPeer peerAddr peerCh conn peerRegistry mempool
+      recvPeerId conn >>= \case
+        Left err -> do
+          logger ErrorS ("Handshake error: " <> showLS err) ()
+          close conn
+        Right otherPeerId -> do
+          trace $ TeNodeOtherTryConnect (show addr)
+          if otherPeerId == prPeerId peerRegistry then do
+            logger ErrorS "Self connection detected. Close connection" ()
+            close conn
+          else
+              void $ flip forkFinally (const $ close conn)
+                   $ restore
+                   $ withPeer peerRegistry addr (CmAccept otherPeerId) -- XXX what first? `withPeer` or `restore` ??
+                   $ do logger InfoS "Accepted connection" (sl "addr" (show addr))
+                        trace $ TeNodeOtherConnected (show addr)
+                        liftIO $ atomically $ writeTChan (peerChanPexNewAddresses peerCh) [addr]
+                        descendNamespace (T.pack (show addr))
+                          $ startPeer peerAddr addr peerCh conn peerRegistry mempool
 
 
 -- Initiate connection to remote host and register peer
@@ -270,7 +300,8 @@ connectPeerTo peerAddr NetworkAPI{..} addr peerCh mempool peerRegistry =
       $ \conn -> withPeer peerRegistry addr $ do
                      liftIO $ atomically $ writeTChan (peerChanPexNewAddresses peerCh) [addr]
                      logger InfoS ("Successfully connected to " <> showLS addr <> "!") ()
-                     startPeer peerAddr addr peerCh conn peerRegistry mempool
+                     descendNamespace (T.pack (show addr))
+                       $ startPeer peerAddr addr peerCh conn peerRegistry mempool
 
 
 -- Set of currently running peers
@@ -281,26 +312,28 @@ data PeerRegistry addr = PeerRegistry
       -- ^ Connected addresses
     , prKnownAddreses :: TVar (Set addr)
       -- ^ New addresses to connect
+    , prPeerId        :: PeerId
+      -- ^ Unique peer id for controlling simultaneous connections
     , prIsActive      :: TVar Bool
       -- ^ `False` when close all connections
     }
 
 
--- Create new empty and active registry
-newPeerRegistry :: MonadIO m => m (PeerRegistry addr)
-newPeerRegistry = PeerRegistry
+-- | Create new empty and active registry
+newPeerRegistry :: MonadIO m => PeerId -> m (PeerRegistry addr)
+newPeerRegistry pid = PeerRegistry
                <$> liftIO (newTVarIO Map.empty)
                <*> liftIO (newTVarIO Set.empty)
                <*> liftIO (newTVarIO Set.empty)
                <*> liftIO (newTVarIO True)
 
--- Register peer using current thread ID. If we already have
--- registered peer with given address do nothing
+-- | Register peer using current thread ID. If we already have
+--   registered peer with given address do nothing
+--   NOTE: we need to track activity of registry to avoid possibility of
+--         successful registration after call to reapPeers
 withPeer :: (MonadMask m, MonadIO m, MonadTrace m, Ord addr, Show addr)
-         => PeerRegistry addr -> addr -> m () -> m ()
--- NOTE: we need to track activity of registry to avoid possibility of
---       successful registration after call to reapPeers
-withPeer PeerRegistry{..} addr action = do
+         => PeerRegistry addr -> addr -> ConnectMode -> m () -> m ()
+withPeer PeerRegistry{..} addr connMode action = do
   tid <- liftIO myThreadId
   -- NOTE: we need uninterruptibleMask since we STM operation are
   --       blocking and they must not be interrupted
@@ -317,12 +350,25 @@ withPeer PeerRegistry{..} addr action = do
       False -> return (False, Set.empty)
       True  -> do
         addrs <- readTVar prConnected
-        case addr `Set.member` addrs of
-          True  -> return (False, addrs)
-          False -> do modifyTVar' prTidMap    $ Map.insert tid addr
-                      modifyTVar' prConnected $ Set.insert addr
-                      addrs' <- readTVar prConnected
-                      return (True, addrs')
+        if addr `Set.member` addrs then
+          case connMode of
+            CmConnect -> return (False, addrs)
+            CmAccept otherPeerId ->
+              -- Something terrible happened: mutual connection!
+              -- So we compare peerId-s: lesser let greater have connection.
+              if prPeerId > otherPeerId then do
+                -- Wait for closing connection on other side
+                -- and release addr from addrs.
+                retry
+              else
+                -- Deny connection on this size
+                -- (for releasing addr from addrs on other side).
+                return (False, addrs)
+        else do
+          modifyTVar' prTidMap    $ Map.insert tid addr
+          modifyTVar' prConnected $ Set.insert addr
+          addrs' <- readTVar prConnected
+          return (True, addrs')
     -- Remove peer from registry
     unregisterPeer tid = readTVar prIsActive >>= \case
       False -> return Set.empty
@@ -402,6 +448,8 @@ peerPexMonitor
   -> PeerChans m addr alg a
   -> Mempool m alg tx
   -> PeerRegistry addr
+  -> Int
+  -> Int
   -> m ()
 peerPexMonitor peerAddr net peerCh mempool peerRegistry@PeerRegistry{..} minConnections _maxConnections = do
     -- TODO ждать подключения и продолжать
@@ -479,7 +527,7 @@ startPeer
                              --   and peer dispatcher
   -> Connection              -- ^ Functions for interaction with network
   -> PeerRegistry addr
-  -> Mempool m alg tx
+  -> Mempool m tx
   -> m ()
 startPeer peerAddrFrom peerAddrTo peerCh@PeerChans{..} conn peerRegistry mempool = logOnException $ do
   logger InfoS "Starting peer" ()
@@ -492,7 +540,7 @@ startPeer peerAddrFrom peerAddrTo peerCh@PeerChans{..} conn peerRegistry mempool
     , descendNamespace "gspB" $ peerGossipBlocks        peerSt peerCh gossipCh
     , descendNamespace "gspM" $ peerGossipMempool       peerSt peerCh p2pConfig gossipCh cursor
     , descendNamespace "gspP" $ peerGossipPeerExchange  peerAddr peerCh peerRegistry pexCh gossipCh
-    , descendNamespace "send" $ peerSend                peerSt peerCh gossipCh conn
+    , descendNamespace "send" $ peerSend                peerAddrFrom peerAddrTo peerSt peerCh gossipCh conn
     , descendNamespace "recv" $ peerReceive             peerSt peerCh pexCh conn cursor
     ]
   logger InfoS "Stopping peer" ()
