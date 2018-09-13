@@ -502,12 +502,14 @@ peerGossipVotes peerObj PeerChans{..} gossipCh = logOnException $ do
                      . getValidatorIntSet
            let peerVotes = Map.fromSet (const ())
                          $ toSet (lagPeerPrecommits p)
-           case Map.lookupMin $ Map.difference cmtVotes peerVotes of
-             Just (_,v) -> do liftIO $ atomically $ writeTChan gossipCh $ GossipPreCommit v
-                              tickSend cntGossipPrevote
-             Nothing    -> return ()
+               unknown   = Map.difference cmtVotes peerVotes
+           case Map.size unknown of
+             0 -> return ()
+             n -> do i <- liftIO $ randomRIO (0,n-1)
+                     liftIO $ atomically $ writeTChan gossipCh $ GossipPreCommit
+                       $ unverifySignature $ toList unknown !! i
+                     tickSend cntGossipPrecommit
          Nothing -> return ()
-
       --
       Current p -> liftIO (atomically consensusState) >>= \case
         Nothing                       -> return ()
