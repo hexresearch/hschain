@@ -309,9 +309,9 @@ addPrecommitWrk (PeerStateObj _ _ var) h r getI =
   modifyMVarM_ var $ \peer -> case peer of
     --
     Lagging p
-      | FullStep hPeer rPeer _ <- lagPeerStep p
+      | FullStep hPeer _ _ <- lagPeerStep p
       , h == hPeer
-      , r == rPeer
+      , r == lagPeerCommitR p
       , Just i <- getI (lagPeerValidators p)
       -> return $ Lagging p { lagPeerPrecommits = insertValidatorIdx i (lagPeerPrecommits p)
                             }
