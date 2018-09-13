@@ -1,6 +1,7 @@
 -- | Tests for peer exchange
 --
 {-# LANGUAGE DataKinds             #-}
+{-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE OverloadedStrings     #-}
 {-# LANGUAGE RankNTypes            #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
@@ -8,11 +9,13 @@
 module TM.P2P (tests) where
 
 
-import Data.IORef
-import           Data.Set          (Set)
-import qualified Data.Set as Set
 import Control.Monad
+import Control.Monad.Fix
+import Data.IORef
+import Data.List
+import Data.Set (Set)
 import GHC.Conc
+import qualified Data.Set as Set
 
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -73,13 +76,29 @@ testPeerRegistryMustBeFilled = do
     readIORef events3 >>= ([TePeerRegistryChanged (Set.fromList ["(TestAddr 1,\"tst\")","(TestAddr 2,\"tst\")"])] @~<?)
 
 
+mkExpectedRegistry :: [Int] -> Set TraceEvents
+mkExpectedRegistry ids =
+    Set.fromList [TePeerRegistryChanged $ Set.fromList $ map (\nid -> show (TestAddr nid, testNetworkName)) ids]
+
+hasRegistryInEvent :: [Int] -> IORef (Set TraceEvents) -> IO Bool
+hasRegistryInEvent ids events = Set.isSubsetOf (mkExpectedRegistry ids) <$> readIORef events
+
+
+andM :: Monad m => [m Bool] -> m Bool
+andM [] = return True
+andM (p:ps) = p >>= \case
+        True -> andM ps
+        False -> return False
+
+
 testPeersMustAckAndGetAddresses :: IO ()
 testPeersMustAckAndGetAddresses = do
     [events1, events2, events3, events4] <- replicateM 4 (newIORef Set.empty)
+    ok <- newIORef False
     runConcurrently
         [ createTestNetwork
             --
-            -- Test network initial topology:
+            -- Test network with initial topology:
             --
             --          3
             --        / |
@@ -93,13 +112,49 @@ testPeersMustAckAndGetAddresses = do
             --
             , TestNetLinkDescription 1 [2]       (collectEvents events1)
             ]
-        , waitSec 2
+        , fix $ \next ->
+            andM [  hasRegistryInEvent [2,3,4] events1
+                  , hasRegistryInEvent [1,2,4] events3
+                  , hasRegistryInEvent [1,2,3] events4
+                  ] >>= \case
+                  True  -> writeIORef ok True
+                  False -> waitSec 0.1 >> next
+        , waitSec 5
         ]
-    readIORef events1 >>= ([TePeerRegistryChanged (Set.fromList ["(TestAddr 2,\"tst\")","(TestAddr 3,\"tst\")","(TestAddr 4,\"tst\")"])] @~<?)
-    readIORef events3 >>= ([TePeerRegistryChanged (Set.fromList ["(TestAddr 1,\"tst\")","(TestAddr 2,\"tst\")","(TestAddr 4,\"tst\")"])] @~<?)
-    readIORef events4 >>= ([TePeerRegistryChanged (Set.fromList ["(TestAddr 1,\"tst\")","(TestAddr 2,\"tst\")","(TestAddr 3,\"tst\")"])] @~<?)
-    return ()
+    --readIORef events1 >>= (mkExpectedRegistry [2,3,4] @<?)
+    --readIORef events3 >>= (mkExpectedRegistry [1,2,4] @<?)
+    --readIORef events4 >>= (mkExpectedRegistry [1,2,3] @<?)
+    readIORef ok >>= assertBool "All events must occur"
 
+
+testBigNetMustInterconnect :: IO ()
+testBigNetMustInterconnect = do
+    let netSize = 10 -- NB: must not be greater then `pexMinConnections defCfg` (from `Thundermint.Mock`)
+    events <- replicateM netSize (newIORef Set.empty)
+    ok <- newIORef False
+    runConcurrently
+        [ createTestNetwork
+            --
+            -- Test network with initial ring topology:
+            --
+            --          2 -- 3 -- 4 -- ...
+            --        /
+            --       1
+            --        \
+            --          0 -- (n-1) -- (n-2) -- ...
+            --
+            [ TestNetLinkDescription i [(i - 1) `mod` netSize] (collectEvents e)
+            | (i,e) <- zip [0..] events]
+        , fix $ \next ->
+            andM [  hasRegistryInEvent (i `delete` [0..(netSize - 1)]) e
+                 | (i,e) <- zip [0..] events
+                 ]
+                >>= \case
+                  True  -> writeIORef ok True
+                  False -> waitSec 0.1 >> next
+        , waitSec (fromIntegral netSize)
+        ]
+    readIORef ok >>= assertBool "All events must occur"
 
 
 tests :: TestTree
@@ -108,6 +163,7 @@ tests = testGroup "p2p"
           testCase "Tests must be multithreaded" testMultithread
         , testCase "Peers must connect" testPeersMustConnect
         , testCase "Peer registry must be filled" testPeerRegistryMustBeFilled
-        -- , testCase "Peers must ack and get addresses" testPeersMustAckAndGetAddresses
+        , testCase "Peers must ack and get addresses" testPeersMustAckAndGetAddresses
+        , testCase "Peers in big net must interconnects" testBigNetMustInterconnect
         ]
     ]

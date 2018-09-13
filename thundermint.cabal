@@ -257,7 +257,6 @@ Test-suite thundermint-tests
                        TM.Store
                        TM.Util.Misc
                        TM.Util.Network
-                       TM.Store
                        TM.Util.Tests
 
 -- Benchmarks

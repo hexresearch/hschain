@@ -1,11 +1,13 @@
 import Test.Tasty
 
+
 import qualified TM.Network
 import qualified TM.NetworkTls
 import qualified TM.P2P
 import qualified TM.Serialisation
 import qualified TM.Store
 import qualified TM.Crypto
+
 
 main :: IO ()
 main = defaultMain $ testGroup "test suite"
