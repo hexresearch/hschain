@@ -144,7 +144,7 @@ interpretSpec Opts{..} netAddresses validatorSet logenv NodeSpec{..} = do
   return
     ( makeReadOnly storage
     , runLoggerT "general" logenv $
-        runNode NodeDescription
+        runNode defCfg NodeDescription
           { nodeStorage         = hoistBlockStorageRW liftIO storage
           , nodeBlockChainLogic = transitions
           , nodeNetworks        = realNetwork def thundemintPort

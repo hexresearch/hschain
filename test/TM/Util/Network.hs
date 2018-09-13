@@ -70,7 +70,11 @@ toPair TestNetLinkDescription{..} = (ncFrom, ncTo)
 
 
 createTestNetwork :: forall m . (MonadIO m, MonadMask m, MonadFork m) => TestNetDescription m -> m ()
-createTestNetwork desc = do
+createTestNetwork = createTestNetworkWithConfig defCfg
+
+
+createTestNetworkWithConfig :: forall m . (MonadIO m, MonadMask m, MonadFork m) => Configuration -> TestNetDescription m -> m ()
+createTestNetworkWithConfig cfg desc = do
     net <- liftIO newMockNet
     acts <- mapM (mkTestNode net) desc
     runConcurrently $ join acts
@@ -85,7 +89,7 @@ createTestNetwork desc = do
           bchState     <- newBChState transitions
                         $ makeReadOnly (hoistBlockStorageRW liftIO blockStorage)
           _            <- stateAtH bchState (next hChain)
-        runNode NodeDescription
+        runNode cfg NodeDescription
             { nodeStorage         = hoistBlockStorageRW liftIO blockStorage
             , nodeBlockChainLogic = transitions
             , nodeNetwork         = createMockNode net testNetworkName (TestAddr ncFrom)
