@@ -210,11 +210,14 @@ startPeerDispatcher p2pConfig net peerAddr addrs AppChans{..} storage mempool = 
              connectPeerTo peerAddr net a peerCh mempool peerRegistry
          forever $ waitSec 0.1
     -- Peer connection monitor
-    , peerPexMonitor peerAddr net peerCh mempool peerRegistry (pexMinConnections p2pConfig) (pexMaxConnections p2pConfig)
+    , descendNamespace "PEX" $
+      peerPexMonitor peerAddr net peerCh mempool peerRegistry (pexMinConnections p2pConfig) (pexMaxConnections p2pConfig)
     -- Peer new addreses capacity monitor
-    , peerPexKnownCapacityMonitor peerAddr peerCh peerRegistry (pexMinKnownConnections p2pConfig) (pexMaxKnownConnections p2pConfig)
+    , descendNamespace "PEX" $
+      peerPexKnownCapacityMonitor peerAddr peerCh peerRegistry (pexMinKnownConnections p2pConfig) (pexMaxKnownConnections p2pConfig)
     -- Listen for new raw node addresses; normalize it and put into prKnownAddreses
-    , peerPexNewAddressMonitor peerChanPexNewAddresses peerRegistry net
+    , descendNamespace "PEX" $
+      peerPexNewAddressMonitor peerChanPexNewAddresses peerRegistry net
     -- Output gossip statistics to
     , forever $ do
         logGossip peerCh
@@ -279,8 +282,8 @@ acceptLoop peerAddr NetworkAPI{..} peerCh mempool peerRegistry = logOnException 
             else
                 void $ flip forkFinally (const $ close conn)
                      $ restore
-                     $ withPeer peerRegistry addr (CmAccept otherPeerId) -- XXX what first? `withPeer` or `restore` ??
-                     $ do logger InfoS ("Accepted connection from " <> showLS addr) ()
+                     $ withPeer peerRegistry addr (CmAccept otherPeerId)
+                     $ do logger InfoS "Accepted connection" (sl "addr" (show addr))
                           trace $ TeNodeOtherConnected (show addr)
                           descendNamespace (T.pack (show addr))
                             $ startPeer peerAddr addr peerCh conn peerRegistry mempool
@@ -302,18 +305,18 @@ connectPeerTo peerAddr NetworkAPI{..} addr peerCh mempool peerRegistry =
   -- Igrnore all exceptions to prevent apparing of error messages in stderr/stdout.
   void . flip forkFinally (const $ return ()) . logOnException $ do
     recoverAll retryPolicy $ const $ do
-      logger InfoS ("Connecting to " <> showLS addr) ()
+      logger InfoS "Connecting to" (sl "addr" (show addr))
       trace (TeNodeConnectingTo (show addr))
       -- TODO : what first? "connection" or "withPeer" ?
       bracket (connect addr) (\c -> logClose >> close c) $ \conn -> do
         withPeer peerRegistry addr CmConnect $ do
             send conn $ encodePeerId (prPeerId peerRegistry)
-            logger InfoS ("Successfully connected to " <> showLS addr <> "!") ()
+            logger InfoS "Successfully connected to" (sl "addr" (show addr))
             descendNamespace (T.pack (show addr))
               $ startPeer peerAddr addr peerCh conn peerRegistry mempool
         logClose
   where
-    logClose = logger InfoS ("Connection to " <> showLS addr <> " closed") ()
+    logClose = logger InfoS "Connection closed" (sl "addr" (show addr))
 
 
 -- Set of currently running peers
@@ -442,7 +445,7 @@ peerPexKnownCapacityMonitor
   -> Int
   -> Int
   -> m ()
-peerPexKnownCapacityMonitor _peerAddr PeerChans{..} PeerRegistry{..} minKnownConnections _maxKnownConnections = setNamespace "PEX" $ do
+peerPexKnownCapacityMonitor _peerAddr PeerChans{..} PeerRegistry{..} minKnownConnections _maxKnownConnections = do
     logger InfoS "Start PEX known capacity monitor" ()
     liftIO $ atomically $ readTVar prConnected >>= (check . not . Set.null) -- wait until some initial peers connect
     logger DebugS "Some nodes connected" ()
@@ -469,7 +472,7 @@ peerPexMonitor
   -> Int
   -> Int
   -> m ()
-peerPexMonitor peerAddr net peerCh mempool peerRegistry@PeerRegistry{..} minConnections _maxConnections = setNamespace "PEX" $ do
+peerPexMonitor peerAddr net peerCh mempool peerRegistry@PeerRegistry{..} minConnections _maxConnections = do
     logger InfoS "Start PEX monitor" ()
     locAddrs <- getLocalAddresses
     logger DebugS ("Local addresses: " <> showLS locAddrs) ()
@@ -505,7 +508,7 @@ peerGossipPeerExchange
   -> TChan (PexMessage addr)
   -> TChan (GossipMsg tx addr alg a)
   -> m ()
-peerGossipPeerExchange _peerAddr PeerChans{..} PeerRegistry{prConnected,prIsActive} pexCh gossipCh = setNamespace "PEX" $ forever $
+peerGossipPeerExchange _peerAddr PeerChans{..} PeerRegistry{prConnected,prIsActive} pexCh gossipCh = forever $
     liftIO (atomically $ readTChan pexCh) >>= \case
         PexMsgAskForMorePeers -> sendPeers
         PexMsgMorePeers addrs -> connectToAddrs addrs
@@ -557,7 +560,7 @@ startPeer peerAddrFrom peerAddrTo peerCh@PeerChans{..} conn peerRegistry mempool
     [ descendNamespace "gspV" $ peerGossipVotes         peerSt peerCh gossipCh
     , descendNamespace "gspB" $ peerGossipBlocks        peerSt peerCh gossipCh
     , descendNamespace "gspM" $ peerGossipMempool       peerSt peerCh p2pConfig gossipCh cursor
-    , descendNamespace "gspP" $ peerGossipPeerExchange  peerAddrFrom peerCh peerRegistry pexCh gossipCh
+    , descendNamespace "PEX"  $ peerGossipPeerExchange  peerAddrFrom peerCh peerRegistry pexCh gossipCh
     , descendNamespace "send" $ peerSend                peerAddrFrom peerAddrTo peerSt peerCh gossipCh conn
     , descendNamespace "recv" $ peerReceive             peerSt peerCh pexCh conn cursor
     ]
