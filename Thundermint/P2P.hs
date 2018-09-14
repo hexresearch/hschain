@@ -259,7 +259,7 @@ acceptLoop
   -> m ()
 acceptLoop peerAddr NetworkAPI{..} peerCh mempool peerRegistry = logOnException $ do
   logger InfoS "Starting accept loop" ()
-  recoverAll retryPolicy $ const $ do
+  recoverAll retryPolicy $ const $
     bracket listenOn fst $ \(_,accept) -> forever $
       -- We accept connection, create new thread and put it into
       -- registry. If we already have connection from that peer we close
@@ -301,7 +301,7 @@ connectPeerTo
   -> m ()
 connectPeerTo peerAddr NetworkAPI{..} addr peerCh mempool peerRegistry =
   -- Igrnore all exceptions to prevent apparing of error messages in stderr/stdout.
-  void . flip forkFinally (const $ return ()) . logOnException $ do
+  void . flip forkFinally (const $ return ()) . logOnException $
     recoverAll retryPolicy $ const $ do
       logger InfoS "Connecting to" (sl "addr" (show addr))
       trace (TeNodeConnectingTo (show addr))
@@ -372,7 +372,7 @@ withPeer PeerRegistry{..} addr connMode action = do
             CmAccept otherPeerId ->
               -- Something terrible happened: mutual connection!
               -- So we compare peerId-s: lesser let greater have connection.
-              if prPeerId > otherPeerId then do
+              if prPeerId > otherPeerId then
                 -- Wait for closing connection on other side
                 -- and release addr from addrs.
                 retry
@@ -411,7 +411,7 @@ reapPeers PeerRegistry{..} = liftIO $ do
 
 
 ifM :: (Monad m) => m Bool -> m a -> m a -> m a
-ifM predicate thenAct elseAct = do
+ifM predicate thenAct elseAct =
     predicate >>= \case
         True  -> thenAct
         False -> elseAct
@@ -476,7 +476,7 @@ peerPexMonitor peerAddr net peerCh mempool peerRegistry@PeerRegistry{..} minConn
     logger DebugS ("Local addresses: " <> showLS locAddrs) ()
     liftIO $ atomically $ readTVar prConnected >>= (check . not . Set.null) -- wait until some initial peers connect
     logger DebugS "Some nodes connected" ()
-    fix $ \nextLoop -> do
+    fix $ \nextLoop ->
         whenM (liftIO $ readTVarIO prIsActive) $ do
             conns <- liftIO $ readTVarIO prConnected
             if Set.size conns < minConnections then do
@@ -491,7 +491,7 @@ peerPexMonitor peerAddr net peerCh mempool peerRegistry@PeerRegistry{..} minConn
                     logger InfoS ("New peers: " <> showLS knowns) ()
                     forM_ knowns $ \addr -> connectPeerTo peerAddr net addr peerCh mempool peerRegistry
                     waitSec 1.0
-            else do
+            else
                 logger InfoS ("Full of connections (" <> showLS (Set.size conns) <> " : " <>  showLS conns <> ")") ()
 
             nextLoop
