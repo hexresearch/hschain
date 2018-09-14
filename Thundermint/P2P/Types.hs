@@ -7,17 +7,19 @@ module Thundermint.P2P.Types (
   , NetworkError(..)
   , MockSocket(..)
   , MockNet(..)
+  , RealNetworkConnectOptions(..)
   , HeaderSize
   , RecvFun
   ) where
 
 import Control.Concurrent.STM
-
 import Control.Exception        (Exception)
 import Control.Monad.Catch      (MonadMask, MonadThrow)
 import Control.Monad.IO.Class   (MonadIO)
 import Data.ByteString.Internal (ByteString(..))
+import Data.Default.Class       (Default(..))
 import Data.Map                 (Map)
+import Data.Set                 (Set)
 
 import qualified Data.ByteString.Lazy as LBS
 import qualified Network.Socket       as Net
@@ -37,6 +39,11 @@ data NetworkAPI addr = NetworkAPI
   , connect  :: forall m. (MonadIO m, MonadThrow m, MonadMask m)
              => addr -> m Connection
     -- ^ Connect to remote address
+  , filterOutOwnAddresses :: forall m. (MonadIO m, MonadThrow m, MonadMask m)
+             => Set addr -> m (Set addr)
+    -- ^ Filter out local addresses of node. Batch processing for speed.
+  , normalizeNodeAddress :: addr -> addr
+    -- ^ Normalize address, for example, convert '20.15.10.20:24431' to '20.15.10.20:50000'
   }
 
 data Connection = Connection
@@ -59,6 +66,16 @@ data NetworkError = ConnectionTimedOut
 
 instance Exception NetworkError
 
+
+data RealNetworkConnectOptions = RealNetworkConnectOptions
+  { allowConnectFromLocal :: Bool
+  }
+
+
+instance Default RealNetworkConnectOptions where
+    def = RealNetworkConnectOptions
+            { allowConnectFromLocal = False
+            }
 
 
 ----------------------------------------------------------------

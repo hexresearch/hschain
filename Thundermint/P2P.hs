@@ -16,13 +16,13 @@ module Thundermint.P2P (
 
 import Codec.Serialise
 import Control.Applicative
-import Control.Concurrent      ( ThreadId, myThreadId, threadDelay, killThread
+import Control.Concurrent      ( ThreadId, myThreadId, killThread
                                , MVar, readMVar, newMVar)
 import Control.Concurrent.STM
 import Control.Monad
 import Control.Monad.Catch
 import Control.Monad.IO.Class
-import Control.Retry           (recoverAll)
+import Control.Retry           (recoverAll, exponentialBackoff, limitRetries, RetryPolicy)
 import Data.Default.Class      (def)
 import           Data.Monoid       ((<>))
 import           Data.Maybe        (mapMaybe)
@@ -34,7 +34,8 @@ import qualified Data.Set        as Set
 import           Data.Set          (Set)
 import qualified Data.Aeson      as JSON
 import qualified Data.Aeson.TH   as JSON
-import Katip         (showLS)
+import qualified Data.Text       as T
+import Katip         (showLS,sl)
 import qualified Katip
 import System.Random (randomIO, randomRIO)
 import GHC.Generics  (Generic)
@@ -48,6 +49,7 @@ import Thundermint.Crypto.Containers
 import Thundermint.Debug.Trace
 import Thundermint.Logger
 import Thundermint.P2P.Network
+import Thundermint.P2P.Network.Local
 import Thundermint.P2P.PeerState
 import Thundermint.Store
 import Thundermint.Utils
@@ -542,7 +544,7 @@ startPeer
                              --   and peer dispatcher
   -> Connection              -- ^ Functions for interaction with network
   -> PeerRegistry addr
-  -> Mempool m tx
+  -> Mempool m alg tx
   -> m ()
 startPeer peerAddrFrom peerAddrTo peerCh@PeerChans{..} conn peerRegistry mempool = logOnException $ do
   logger InfoS "Starting peer" ()

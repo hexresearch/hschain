@@ -16,6 +16,7 @@ import Options.Applicative
 import Codec.Serialise      (serialise)
 import Control.Monad        (forever)
 import Data.ByteString.Lazy (toStrict)
+import Data.Default.Class   (def)
 import Data.Maybe           (isJust)
 import GHC.Generics         (Generic)
 import Katip.Core           (LogEnv, showLS)
@@ -145,12 +146,12 @@ interpretSpec Opts{..} netAddresses validatorSet logenv certPemBuf keyPemBuf Nod
               transferActions delay (publicKey <$> take netInitialKeys privateKeyList) privKeys
                 (void . pushTransaction cursor) st
         --
-        acts <- runNode NodeDescription
+        acts <- runNode defCfg NodeDescription
           { nodeStorage         = hoistBlockStorageRW liftIO storage
           , nodeBchState        = bchState
           , nodeBlockChainLogic = transitions
           , nodeMempool         = mempool
-          , nodeNetwork         = realNetworkTls credential thundermintPort
+          , nodeNetwork         = realNetworkTls credential (show thundermintPort)
           , nodeAddr            = nodeAddr
           , nodeInitialPeers    = netAddresses
           , nodeValidationKey   = nspecPrivKey
