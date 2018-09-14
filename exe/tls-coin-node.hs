@@ -1,12 +1,10 @@
 {-# LANGUAGE DataKinds           #-}
-{-# LANGUAGE DeriveGeneric       #-}
 {-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies        #-}
 import Control.Concurrent
-import Control.Monad
 import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Data.Int
@@ -14,11 +12,9 @@ import Data.Monoid
 import Options.Applicative
 
 import Codec.Serialise      (serialise)
-import Control.Monad        (forever)
+import Control.Monad        (forever, void)
 import Data.ByteString.Lazy (toStrict)
-import Data.Default.Class   (def)
 import Data.Maybe           (isJust)
-import GHC.Generics         (Generic)
 import Katip.Core           (LogEnv, showLS)
 import Network.Simple.TCP   (accept, listen, recv)
 import Network.Socket       (SockAddr(..))

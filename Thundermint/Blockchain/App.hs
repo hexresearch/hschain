@@ -292,7 +292,7 @@ makeHeightParameters Configuration{..} AppState{..} AppChans{..} = do
                 StepProposal  -> timeoutProposal
                 StepPrevote   -> timeoutPrevote
                 StepPrecommit -> timeoutPrecommit
-                StepPrecommit -> timeoutPrecommit
+                StepAwaitCommit -> (0, 0)
           threadDelay $ 1000 * (baseT + delta * fromIntegral r)
           atomically $ writeTChan appChanRx $ RxTimeout t
     --

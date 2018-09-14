@@ -13,9 +13,8 @@ module Thundermint.P2P.Network.TLS (
  , headerSize
   ) where
 
-import Control.Monad            (when)
-import Control.Monad.Catch      (bracketOnError, throwM)
-import Control.Monad.Catch      (MonadMask)
+import Control.Monad            (filterM, when)
+import Control.Monad.Catch      (bracketOnError, throwM, MonadMask)
 import Control.Monad.IO.Class   (MonadIO, liftIO)
 import Data.Bits                (unsafeShiftL)
 import Data.ByteString.Internal (ByteString(..))
@@ -34,11 +33,14 @@ import qualified Data.ByteString         as BS
 import qualified Data.ByteString.Builder as BB
 import qualified Data.ByteString.Lazy    as LBS
 import qualified Data.IORef              as I
+import qualified Data.Set                as Set
 import qualified GHC.IO.Exception        as Eg
 import qualified Network.Socket          as Net
 import qualified Network.TLS             as TLS
 
 import Thundermint.Control
+import Thundermint.P2P.Consts
+import Thundermint.P2P.Network.Local
 import Thundermint.P2P.Network.Parameters
 import Thundermint.P2P.Types
 ----------------------------------------------------------------
@@ -87,6 +89,12 @@ realNetworkTls creds listenPort = NetworkAPI
                $ Net.connect sock addr
 
         connectTls creds hostName serviceName sock
+  , filterOutOwnAddresses = -- TODO: make it batch processing for speed!
+        fmap Set.fromList . filterM (fmap not . isLocalAddress) . Set.toList
+  , normalizeNodeAddress = \case -- TODO remove duplication with realNetwork
+        Net.SockAddrInet _ ha        -> Net.SockAddrInet  thundermintPort ha
+        Net.SockAddrInet6 _ fi ha si -> Net.SockAddrInet6 thundermintPort fi ha si
+        s -> s
   }
 
 
