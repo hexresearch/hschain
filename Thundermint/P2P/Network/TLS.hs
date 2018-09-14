@@ -40,7 +40,7 @@ import qualified Network.TLS             as TLS
 
 import Thundermint.Control
 import Thundermint.P2P.Consts
-import Thundermint.P2P.Network.Local
+import Thundermint.P2P.Network.IpAddresses
 import Thundermint.P2P.Network.Parameters
 import Thundermint.P2P.Types
 ----------------------------------------------------------------

@@ -84,7 +84,7 @@ Library
   Other-modules:
                   Thundermint.P2P.Network.Parameters
                   Thundermint.P2P.Network.TLS
-                  Thundermint.P2P.Network.Local
+                  Thundermint.P2P.Network.IpAddresses
 
 -- Example programs
 Executable thundermint-keyval

@@ -1,12 +1,12 @@
-{-# LANGUAGE LambdaCase      #-}
+-- | Functions for manipulating IP addresses
+--
 {-# LANGUAGE RankNTypes      #-}
 {-# LANGUAGE RecordWildCards #-}
--- |
--- Abstract API for network which support
-module Thundermint.P2P.Network.Local (
+module Thundermint.P2P.Network.IpAddresses (
     getLocalAddress
-  , isLocalAddress
   , getLocalAddresses
+  , isLocalAddress
+  , normalizeIpAddr
   ) where
 
 
@@ -64,13 +64,20 @@ isLocalAddress sockAddr = do
                 s -> s
         (elem sockAddr') <$> getLocalAddresses
   where
-    isLoopback (Net.SockAddrInet _ 0x100007f) = True
-    isLoopback (Net.SockAddrInet6 p _ (0, 0, 0xFFFF, x) _) = -- IPv4 mapped addreses
-        isLoopback (Net.SockAddrInet p (partOfIpv6ToIpv4 x))
-    isLoopback _ = False
+    isLoopback = isLoopback' . normalizeIpAddr
+    isLoopback' (Net.SockAddrInet _ 0x100007f) = True
+    isLoopback' _ = False
 
 
 partOfIpv6ToIpv4 :: Word32 -> Word32
 partOfIpv6ToIpv4 ipv6part =
     let (i1,i2,i3,i4) = Net.hostAddressToTuple ipv6part
     in Net.tupleToHostAddress (i4,i3,i2,i1)
+
+
+normalizeIpAddr :: Net.SockAddr -> Net.SockAddr
+normalizeIpAddr a@(Net.SockAddrInet _ _) = a
+normalizeIpAddr (Net.SockAddrInet6 p _ (0, 0, 0xFFFF, x) _) = -- IPv4 mapped addreses
+    Net.SockAddrInet p (partOfIpv6ToIpv4 x)
+normalizeIpAddr a = a
+
