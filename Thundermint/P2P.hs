@@ -257,9 +257,9 @@ acceptLoop
   -> Mempool m alg tx
   -> PeerRegistry addr
   -> m ()
-acceptLoop peerAddr NetworkAPI{..} peerCh mempool peerRegistry = logOnException $ do
+acceptLoop peerAddr NetworkAPI{..} peerCh mempool peerRegistry = do
   logger InfoS "Starting accept loop" ()
-  recoverAll retryPolicy $ const $
+  recoverAll retryPolicy $ const $ logOnException $
     bracket listenOn fst $ \(_,accept) -> forever $
       -- We accept connection, create new thread and put it into
       -- registry. If we already have connection from that peer we close
@@ -302,7 +302,7 @@ connectPeerTo
 connectPeerTo peerAddr NetworkAPI{..} addr peerCh mempool peerRegistry =
   -- Igrnore all exceptions to prevent apparing of error messages in stderr/stdout.
   void . flip forkFinally (const $ return ()) . logOnException $
-    recoverAll retryPolicy $ const $ do
+    recoverAll retryPolicy $ const $ logOnException $ do
       logger InfoS "Connecting to" (sl "addr" (show addr))
       trace (TeNodeConnectingTo (show addr))
       -- TODO : what first? "connection" or "withPeer" ?
@@ -491,9 +491,9 @@ peerPexMonitor peerAddr net peerCh mempool peerRegistry@PeerRegistry{..} minConn
                     logger InfoS ("New peers: " <> showLS knowns) ()
                     forM_ knowns $ \addr -> connectPeerTo peerAddr net addr peerCh mempool peerRegistry
                     waitSec 1.0
-            else
+            else do
                 logger InfoS ("Full of connections (" <> showLS (Set.size conns) <> " : " <>  showLS conns <> ")") ()
-
+                waitSec 10.0
             nextLoop
 
 
