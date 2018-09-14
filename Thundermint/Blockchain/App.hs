@@ -15,29 +15,29 @@ module Thundermint.Blockchain.App (
   , runApplication
   ) where
 
-import Codec.Serialise (Serialise)
+import Codec.Serialise           (Serialise)
 import Control.Applicative
+import Control.Concurrent
+import Control.Concurrent.STM
 import Control.Monad
 import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Maybe
-import Control.Concurrent
-import Control.Concurrent.STM
 -- import           Data.Foldable
 import           Data.Function
-import           Data.Monoid       ((<>))
-import qualified Data.Map        as Map
+import qualified Data.Map      as Map
+import           Data.Monoid   ((<>))
 -- import           Data.Map          (Map)
 
 import Thundermint.Blockchain.Types
-import Thundermint.Crypto
-import Thundermint.Crypto.Containers
 import Thundermint.Consensus.Algorithm
 import Thundermint.Consensus.Types
+import Thundermint.Crypto
+import Thundermint.Crypto.Containers
+import Thundermint.Logger
 import Thundermint.Store
 import Thundermint.Store.STM
-import Thundermint.Logger
 
 import Katip (Severity(..), showLS)
 
@@ -230,8 +230,9 @@ makeHeightParameters
   -> AppChans m alg a
   -> m (HeightParameters (ConsensusM alg a m) alg a)
 makeHeightParameters Configuration{..} AppState{..} AppChans{..} = do
-  h           <- blockchainHeight appStorage
-  Just valSet <- retrieveValidatorSet appStorage (next h)
+  h            <- blockchainHeight appStorage
+  Just valSet  <- retrieveValidatorSet appStorage (next h)
+  Just genesis <- retrieveBlock appStorage (Height 0)
   let proposerChoice (Round r) =
         let Height h' = h
             n         = validatorSetSize valSet
@@ -250,18 +251,22 @@ makeHeightParameters Configuration{..} AppState{..} AppChans{..} = do
     , proposerForRound = proposerChoice
     --
     , validateBlock = \bid -> do
-        blocks <- lift $ retrievePropBlocks appPropStorage (next h)
+        let chainID = headerChainID $ blockHeader genesis
+            nH = next h
+        blocks <- lift $ retrievePropBlocks appPropStorage nH
+        cmt      <- lift $ retrieveCommit appStorage h
         case bid `Map.lookup` blocks of
           Nothing -> return UnseenProposal
-          Just b
-            -- Check that height is correct
-            | next h /= headerHeight (blockHeader b)
-              -> return InvalidProposal
-            -- Validate block data
-            | otherwise
-              -> lift (appValidationFun (next h) (blockData b)) >>= \case
-                   True  -> return GoodProposal
-                   False -> return InvalidProposal
+          Just b  -> lift (checkBlock chainID valSet bid nH b) >>=  \xs ->
+                          (checkBlockByCommit h (Just b) cmt)   >>= \ys ->
+                          return (xs <> ys) >>=
+                     \case
+                          [] -> lift (appValidationFun (next h) (blockData b)) >>= \case
+                                True  -> return GoodProposal
+                                False -> return InvalidProposal
+
+                          ps -> do logger ErrorS ("Proposed block at heigh ::" <> showLS nH <> ":: has Inconsistency problem: " <> showLS ps) ()
+                                   return InvalidProposal
     --
     , broadcastProposal = \r bid lockInfo ->
         forM_ appValidator $ \(PrivValidator pk) -> do
@@ -334,7 +339,6 @@ makeHeightParameters Configuration{..} AppState{..} AppChans{..} = do
         bData          <- appBlockGenerator (next h)
         Just lastBlock <- retrieveBlock appStorage
                       =<< blockchainHeight appStorage
-        Just genesis   <- retrieveBlock appStorage (Height 0)
         let block = Block
               { blockHeader     = Header
                   { headerChainID     = headerChainID $ blockHeader genesis
