@@ -760,14 +760,17 @@ peerReceive peerSt PeerChans{..} peerExchangeCh Connection{..} MempoolCursor{..}
             AnnHasBlock     h r   -> addBlockHR    peerSt h r
         loop
 
-myShowMsg :: (Show addr) => GossipMsg tx addr alg a -> Katip.LogStr
-myShowMsg (GossipPreVote _)   = "GossipPreVote ..."
-myShowMsg (GossipPreCommit _) = "GossipPreCommit ..."
-myShowMsg (GossipProposal _)  = "GossipProposal ..."
-myShowMsg (GossipBlock _)     = "GossipBlock ..."
-myShowMsg (GossipAnn _)       = "GossipAnn ..."
-myShowMsg (GossipTx _)        = "GossipTx ..."
-myShowMsg (GossipPex p)       = "GossipPex { " <> showLS p <> " }"
+
+-- | Dump GossipMsg without (Show) constraints
+--
+showlessShowGossipMsg :: (Show addr) => GossipMsg tx addr alg a -> Katip.LogStr
+showlessShowGossipMsg (GossipPreVote _)   = "GossipPreVote ..."
+showlessShowGossipMsg (GossipPreCommit _) = "GossipPreCommit ..."
+showlessShowGossipMsg (GossipProposal _)  = "GossipProposal ..."
+showlessShowGossipMsg (GossipBlock _)     = "GossipBlock ..."
+showlessShowGossipMsg (GossipAnn _)       = "GossipAnn ..."
+showlessShowGossipMsg (GossipTx _)        = "GossipTx ..."
+showlessShowGossipMsg (GossipPex p)       = "GossipPex { " <> showLS p <> " }"
 
 
 -- | Routine for actually sending data to peers
@@ -789,7 +792,7 @@ peerSend _peerAddrFrom peerAddrTo peerSt PeerChans{..} gossipCh Connection{..} =
     msg <- liftIO $ atomically $  readTChan gossipCh
                               <|> fmap GossipAnn (readTChan ownPeerChanTx)
                               <|> fmap GossipPex (readTChan ownPeerChanPex)
-    logger InfoS ("Send to (" <> showLS peerAddrTo <> "): " <> myShowMsg msg) ()
+    logger InfoS ("Send to (" <> showLS peerAddrTo <> "): " <> showlessShowGossipMsg msg) ()
     send $ serialise msg
     -- Update state of peer when we advance to next height
     case msg of
