@@ -49,12 +49,9 @@ decodePeerId bs =
     let (fp', ofs, len) = B.toForeignPtr (BL.toStrict bs)
         fp = plusForeignPtr fp' ofs
     in
-    if ofs == 0 then
         if len == peerIdLength
         then unsafePerformIO $ withForeignPtr fp (fmap Right . peek . castPtr)
         else Left ("Wrong PeerId length (expected = " ++ show peerIdLength ++ ", actual = " ++ show len ++ ")")
-    else
-        Left ("Wrong ofs = " ++ show ofs)
 
 #endif
 
