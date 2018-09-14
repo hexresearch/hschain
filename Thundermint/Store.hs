@@ -39,9 +39,12 @@ module Thundermint.Store (
   , BlockchainInconsistency
   , checkStorage
   , checkBlocks
+  , checkBlock
   , checkCommits
+  , checkCommit
   , checkValidators
   , checkCommitsBlocks
+  , checkBlockByCommit
   ) where
 
 import Control.Monad.Trans.Writer
@@ -364,6 +367,48 @@ data BlockchainInconsistency = MissingGenesisBlock
                                deriving (Eq, Show)
 
 
+-------------------------------------------------------------------------------
+-- to validate the block on the fly before accepting/adding
+-------------------------------------------------------------------------------
+
+-- | Check that commit validates previous block
+checkBlockByCommit :: Monad m =>
+                            Height
+                            -> Maybe (Block alg a)
+                            -> Maybe (Commit alg a)
+                            -> m [BlockchainInconsistency]
+checkBlockByCommit height block commit = execWriterT $ commitBlockInvariant height block commit
+
+
+
+-- | check a block invarinats
+checkBlock
+  :: (Monad m, Crypto alg, Serialise a) =>
+     BS.ByteString
+     -> ValidatorSet alg
+     -> BlockHash alg (Block alg a)
+     -> Height
+     -> Block alg a
+     -> m [BlockchainInconsistency]
+checkBlock chainID valSet blockID h block =
+    execWriterT $ blockInvariant chainID (Just valSet) (Just blockID) h (Just block)
+
+
+checkCommit
+  :: Monad m =>
+     Height
+     -> Maybe (ValidatorSet alg)
+     -> Maybe (Commit alg a1)
+     -> Maybe (Commit alg a2)
+     -> m [BlockchainInconsistency]
+checkCommit h vs cmt localCmt = execWriterT $ do
+                                   commitInvariant vs h cmt
+                                   commitInvariant vs h localCmt
+
+-------------------------------------------------------------------------------
+-- Storage checkers
+-------------------------------------------------------------------------------
+
 -- | check storage against all consistency invariants
 checkStorage
   :: (Monad m, Crypto alg, Serialise a1) =>
@@ -389,6 +434,8 @@ checkBlocks storage = execWriterT $ do
                    bID <- lift $ retrieveBlockID storage h
                    vs  <- lift $ retrieveValidatorSet storage (pred h)
                    blockInvariant genesisChainId vs bID h b
+
+
 
 -- | check all commits' invarinats
 checkCommits :: Monad m =>
@@ -430,6 +477,9 @@ checkCommitsBlocks storage = do
                        ) heights
 
     return $ concat xs
+
+
+
 
 -------------------------------------------------------------------------------
 -- validator invariants
