@@ -1,6 +1,7 @@
 {-# LANGUAGE NumDecimals       #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
+{-# OPTIONS_GHC -fno-warn-unused-top-binds #-} {- allow useful top functions for GHCi -}
 
 -- |
 module TM.NetworkTls (tests) where
@@ -21,14 +22,14 @@ tests :: TestTree
 tests =
     testGroup "Tls network test"
                   [ testGroup "IPv4"
-                          [ testCase "tls ping-pong" $ realTlsNetPair "127.0.0.1" >>= \(server, client) -> pingPong server client
-                          , testCase "tls delayed write" $ realTlsNetPair "127.0.0.1" >>= \(server, client) -> delayedWrite server client
-                          , testCase "tls framing: send big data" $ realTlsNetPair "127.0.0.1" >>= \(server, client) -> bigDataSend server client
+                          [ testCase "tls ping-pong" $ realTlsNetPair "127.0.0.1" >>= uncurry pingPong
+                          , testCase "tls delayed write" $ realTlsNetPair "127.0.0.1" >>= uncurry delayedWrite
+                          , testCase "tls framing: send big data" $ realTlsNetPair "127.0.0.1" >>= uncurry bigDataSend
                           ]
                     , testGroup "IPv6"
-                          [ testCase "tls ping-pong" $ realTlsNetPair "::1" >>= \(server, client) -> pingPong server client
-                          , testCase "tls delayed write" $ realTlsNetPair "::1" >>= \(server, client) -> delayedWrite server client
-                          , testCase "tls framing: send big data" $ realTlsNetPair "::1" >>= \(server, client) -> bigDataSend server client
+                          [ testCase "tls ping-pong" $ realTlsNetPair "::1" >>= uncurry pingPong
+                          , testCase "tls delayed write" $ realTlsNetPair "::1" >>= uncurry delayedWrite
+                          , testCase "tls framing: send big data" $ realTlsNetPair "::1" >>= uncurry bigDataSend
                           ]
                   ]
 
@@ -45,7 +46,7 @@ pingPong :: (addr, NetworkAPI addr)
          -> (addr, NetworkAPI addr)
          -> IO ()
 pingPong (serverAddr, server) (_, client) = do
-  let runServer NetworkAPI{..} = do
+  let runServer NetworkAPI{..} =
         bracket listenOn fst $ \(_,accept) ->
           bracket accept (close . fst) $ \(conn,_) -> do
             Just bs <- recv conn
@@ -65,7 +66,7 @@ bigDataSend :: (addr, NetworkAPI addr)
          -> (addr, NetworkAPI addr)
          -> IO ()
 bigDataSend (serverAddr, server) (_, client) = do
-  let runServer NetworkAPI{..} = do
+  let runServer NetworkAPI{..} =
         bracket listenOn fst $ \(_,accept) ->
           bracket accept (close . fst) $ \(conn,_) -> do
             Just bs <- recv conn
@@ -76,7 +77,7 @@ bigDataSend (serverAddr, server) (_, client) = do
           let sbuf0 = LBC.take 2100 $ LBC.repeat 'A'
           let sbuf1 = LBC.take 1000 $ LBC.repeat 'B'
           let sbuf2 = LBC.take 3000 $ LBC.repeat 'C'
-          let sbuf = (sbuf0 <> sbuf1 <> sbuf2)
+          let sbuf = sbuf0 <> sbuf1 <> sbuf2
           send conn sbuf
           bs <- recv conn
           assertEqual "Ping-pong" (Just ("PONG_" <> sbuf)) bs

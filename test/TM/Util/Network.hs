@@ -10,7 +10,6 @@
 module TM.Util.Network where
 
 
-import Data.List
 import Control.Monad
 import Control.Monad.Catch
 import Control.Monad.IO.Class
@@ -18,7 +17,6 @@ import Thundermint.Crypto.Ed25519
 import qualified Data.Map               as Map
 import Codec.Serialise
 import GHC.Generics (Generic)
-import qualified Data.Set as Set
 
 import Thundermint.Blockchain.Interpretation
 import Thundermint.Blockchain.Types
