@@ -48,7 +48,7 @@ import qualified Network.Socket.ByteString.Lazy as NetLBS
 
 import Thundermint.Control
 import Thundermint.P2P.Consts
-import Thundermint.P2P.Network.Local
+import Thundermint.P2P.Network.IpAddresses
 import Thundermint.P2P.Network.TLS
 import Thundermint.P2P.Types
 
@@ -93,8 +93,8 @@ realNetwork RealNetworkConnectOptions{..} listenPort = NetworkAPI
   , filterOutOwnAddresses = -- TODO: make it batch processing for speed!
         fmap Set.fromList . filterM (fmap not . isLocalAddress) . Set.toList
   , normalizeNodeAddress = \case
-        Net.SockAddrInet _ ha        -> Net.SockAddrInet  thundermintPort ha
-        Net.SockAddrInet6 _ fi ha si -> Net.SockAddrInet6 thundermintPort fi ha si
+        Net.SockAddrInet _ ha        -> normalizeIpAddr $ Net.SockAddrInet  thundermintPort ha
+        Net.SockAddrInet6 _ fi ha si -> normalizeIpAddr $ Net.SockAddrInet6 thundermintPort fi ha si
         s -> s
   }
  where
