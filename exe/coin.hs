@@ -129,7 +129,7 @@ interpretSpec maxH prefix delay NetSpec{..} = do
                 transferActions delay (publicKey <$> take netInitialKeys privateKeyList) privKeys
                   (void . pushTransaction cursor) st
           --
-          acts <- runNode NodeDescription
+          acts <- runNode defCfg NodeDescription
             { nodeStorage         = hoistBlockStorageRW liftIO storage
             , nodeBchState        = bchState
             , nodeBlockChainLogic = transitions

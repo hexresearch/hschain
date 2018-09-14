@@ -82,15 +82,15 @@ data NodeDescription addr m alg st tx a = NodeDescription
   }
 
 
-
 runNode
   :: ( MonadIO m, MonadMask m, MonadFork m, MonadLogger m, MonadTrace m
      , Ord tx, Serialise tx
      , Crypto alg, Ord addr, Show addr, Serialise addr, Show a, LogBlock a
      , Serialise a)
-  => NodeDescription addr m alg st tx a
+  => Configuration
+  -> NodeDescription addr m alg st tx a
   -> m [m ()]
-runNode NodeDescription{nodeBlockChainLogic=BlockFold{..}, ..} = do
+runNode cfg NodeDescription{nodeBlockChainLogic=BlockFold{..}, ..} = do
   -- Create state of blockchain & Update it to current state of
   -- blockchain
   hChain      <- blockchainHeight     nodeStorage
@@ -123,11 +123,11 @@ runNode NodeDescription{nodeBlockChainLogic=BlockFold{..}, ..} = do
   appCh <- newAppChans
   return
     [ id $ setNamespace "net"
-         $ startPeerDispatcher defCfg nodeNetwork nodeAddr nodeInitialPeers appCh
+         $ startPeerDispatcher cfg nodeNetwork nodeAddr nodeInitialPeers appCh
                                (makeReadOnly   nodeStorage)
                                nodeMempool
     , id $ setNamespace "consensus"
-         $ runApplication defCfg appSt appCh
+         $ runApplication cfg appSt appCh
     ]
 
 

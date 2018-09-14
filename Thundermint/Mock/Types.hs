@@ -30,6 +30,10 @@ defCfg = Configuration
   , gossipDelayVotes   = 25
   , gossipDelayBlocks  = 25
   , gossipDelayMempool = 25
+  , pexMinConnections  = 10
+  , pexMaxConnections  = 20
+  , pexMinKnownConnections = 15
+  , pexMaxKnownConnections = 20
   }
 
 
