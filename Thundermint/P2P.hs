@@ -23,7 +23,6 @@ import Control.Monad
 import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Control.Retry           (recoverAll, exponentialBackoff, limitRetries, RetryPolicy)
-import Data.Default.Class      (def)
 import           Data.Monoid       ((<>))
 import           Data.Maybe        (mapMaybe)
 import           Data.Foldable
@@ -49,7 +48,6 @@ import Thundermint.Crypto.Containers
 import Thundermint.Debug.Trace
 import Thundermint.Logger
 import Thundermint.P2P.Network
-import Thundermint.P2P.Network.Local
 import Thundermint.P2P.PeerState
 import Thundermint.Store
 import Thundermint.Utils
@@ -749,7 +747,7 @@ peerReceive peerSt PeerChans{..} peerExchangeCh Connection{..} MempoolCursor{..}
           GossipBlock     b -> do liftIO $ atomically $ peerChanRx $ RxBlock b
                                   tickRecv cntGossipBlocks
                                   addBlock peerSt b
-          GossipTx tx       -> do pushTransaction tx
+          GossipTx tx       -> do void $ pushTransaction tx
                                   tickRecv cntGossipTx
           GossipPex pexmsg  -> do liftIO $ atomically $ writeTChan peerExchangeCh pexmsg
                                   tickRecv cntGossipPex
