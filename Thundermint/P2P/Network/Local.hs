@@ -10,35 +10,12 @@ module Thundermint.P2P.Network.Local (
   ) where
 
 
-import Control.Concurrent.STM
-
-import Control.Concurrent     (forkIO, killThread)
-import Control.Exception      (Exception)
-import Control.Monad          (filterM, forM_, forever, void, when)
-import Control.Monad.Catch    (MonadMask, MonadThrow, bracketOnError, onException, throwM)
 import Control.Monad.IO.Class (MonadIO, liftIO)
-import Data.Bits              (unsafeShiftL)
-import Data.List              (find, intercalate)
-import Data.Map               (Map)
-import Data.Set               (Set)
-import Data.Maybe             (fromMaybe)
-import Data.Monoid            ((<>))
 import Data.Word              (Word32)
-import System.Timeout         (timeout)
 
-import qualified Data.ByteString.Builder        as BB
-import qualified Data.ByteString.Lazy           as LBS
-import qualified Data.Map                       as Map
-import qualified Data.Set                       as Set
 import qualified Network.Info                   as Net
 import qualified Network.Socket                 as Net
-import qualified Network.Socket.ByteString      as NetBS
-import qualified Network.Socket.ByteString.Lazy as NetLBS
 
-import Thundermint.P2P.Consts
-import Thundermint.Control
-import Thundermint.P2P.Network.TLS
-import Thundermint.P2P.Types
 
 
 -- | Get local node address

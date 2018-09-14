@@ -28,14 +28,11 @@ module Thundermint.P2P.Network (
 import Control.Concurrent.STM
 
 import Control.Concurrent     (forkIO, killThread)
-import Control.Exception      (Exception)
 import Control.Monad          (filterM, forM_, forever, void, when)
-import Control.Monad.Catch    (MonadMask, MonadThrow, bracketOnError, onException, throwM)
-import Control.Monad.IO.Class (MonadIO, liftIO)
+import Control.Monad.Catch    (bracketOnError, onException, throwM)
+import Control.Monad.IO.Class (liftIO)
 import Data.Bits              (unsafeShiftL)
-import Data.List              (find, intercalate)
-import Data.Map               (Map)
-import Data.Set               (Set)
+import Data.List              (find)
 import Data.Maybe             (fromMaybe)
 import Data.Monoid            ((<>))
 import Data.Word              (Word32)
@@ -45,7 +42,6 @@ import qualified Data.ByteString.Builder        as BB
 import qualified Data.ByteString.Lazy           as LBS
 import qualified Data.Map                       as Map
 import qualified Data.Set                       as Set
-import qualified Network.Info                   as Net
 import qualified Network.Socket                 as Net
 import qualified Network.Socket.ByteString      as NetBS
 import qualified Network.Socket.ByteString.Lazy as NetLBS
@@ -95,7 +91,7 @@ realNetwork RealNetworkConnectOptions{..} listenPort = NetworkAPI
                $ Net.connect sock addr
         return $ applyConn sock
   , filterOutOwnAddresses = -- TODO: make it batch processing for speed!
-        \addrs -> (fmap Set.fromList) $ filterM (fmap not . isLocalAddress) $ Set.toList addrs
+        fmap Set.fromList . filterM (fmap not . isLocalAddress) . Set.toList
   , normalizeNodeAddress = \case
         Net.SockAddrInet _ ha        -> Net.SockAddrInet  thundermintPort ha
         Net.SockAddrInet6 _ fi ha si -> Net.SockAddrInet6 thundermintPort fi ha si
@@ -214,12 +210,12 @@ realNetworkUdp listenPort = do
 -- Some useful utilities
 ----------------------------------------------------------------
 
-showSockAddr :: Net.SockAddr -> String
-showSockAddr s@(Net.SockAddrInet pn ha) =
-    unwords ["SockAddrInet", show pn, show ha, "(" <> show s <> ")"]
-showSockAddr s@(Net.SockAddrInet6 pn fi ha si) =
-    unwords ["SockAddrInet6 ", show pn, show fi, show ha, show si, "(" <> show s <> ")"]
-showSockAddr s = "?? (" <> show s <> ")"
+--showSockAddr :: Net.SockAddr -> String
+--showSockAddr s@(Net.SockAddrInet pn ha) =
+--    unwords ["SockAddrInet", show pn, show ha, "(" <> show s <> ")"]
+--showSockAddr s@(Net.SockAddrInet6 pn fi ha si) =
+--    unwords ["SockAddrInet6 ", show pn, show fi, show ha, show si, "(" <> show s <> ")"]
+--showSockAddr s = "?? (" <> show s <> ")"
 
 
 newMockNet :: IO (MockNet addr)
