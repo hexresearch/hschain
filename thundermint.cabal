@@ -117,21 +117,6 @@ Executable thundermint-simple-network
   hs-source-dirs:      exe
   Main-is:             network.hs
 
-Executable thundermint-node
-  Ghc-options:         -Wall -threaded -Wno-orphans
-  Default-Language:    Haskell2010
-  Build-Depends:       base       >=4.9 && <5
-                     , thundermint
-                     , aeson
-                     , bytestring >=0.10
-                     , base58-bytestring >=0.1
-                     , containers >=0.5.7
-                     , data-default-class
-                     , network    >=2.6.0.0
-                     , text
-  hs-source-dirs:      exe
-  Main-is:             node.hs
-
 Executable thundermint-coin
   Ghc-options:         -Wall -threaded -Wno-orphans
   Default-Language:    Haskell2010
