@@ -33,8 +33,9 @@ import qualified Data.ByteString.Char8 as BS8
 
 import Thundermint.Blockchain.Types
 import Thundermint.Consensus.Types
-import Thundermint.Crypto         (decodeBase58)
-import Thundermint.Crypto.Ed25519 (Ed25519_SHA512, privateKey)
+import Thundermint.Crypto            (decodeBase58, hash)
+import Thundermint.Crypto.Containers (ValidatorSet)
+import Thundermint.Crypto.Ed25519    (Ed25519_SHA512, privateKey)
 import Thundermint.Mock
 import Thundermint.P2P.Consts
 import Thundermint.P2P.Instances  ()
@@ -48,13 +49,14 @@ import Thundermint.Store.STM
 ----------------------------------------------------------------
 
 
-genesisBlock :: Block Ed25519_SHA512 Int64
-genesisBlock = Block
+genesisBlock :: ValidatorSet Ed25519_SHA512 -> Block Ed25519_SHA512 Int64
+genesisBlock valSet = Block
   { blockHeader = Header
-      { headerChainID     = "TEST"
-      , headerHeight      = Height 0
-      , headerTime        = Time 0
-      , headerLastBlockID = Nothing
+      { headerChainID        = "TEST"
+      , headerHeight         = Height 0
+      , headerTime           = Time 0
+      , headerLastBlockID    = Nothing
+      , headerValidatorsHash = hash valSet
       }
   , blockData       = 0
   , blockLastCommit = Nothing
@@ -100,7 +102,7 @@ main = do
                    $ fromMaybe (error "Invalid base58 encoding")
                    $ decodeBase58
                    $ head $ BS8.lines selfPrivKeyStr
-  storage     <- newSTMBlockStorage genesisBlock validatorSet
+  storage     <- newSTMBlockStorage (genesisBlock validatorSet) validatorSet
   let net = realNetwork (show thundermintPort)
   !ownAddr <- getLocalAddress
   !addrs <- waitForAddrs

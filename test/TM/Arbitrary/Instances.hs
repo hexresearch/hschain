@@ -42,7 +42,7 @@ instance (Arbitrary a) => Arbitrary (Header alg a) where
                      <*> arbitrary
                      <*> arbitrary
                      <*> arbitrary
-
+                     <*> arbitrary
 
 instance (Arbitrary a) => Arbitrary (Signed sign alg a) where
   arbitrary = genericArbitrary

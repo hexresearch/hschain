@@ -157,10 +157,11 @@ interpretSpec Opts{..} netAddresses validatorSet logenv NodeSpec{..} = do
   where
     genesisBlock = Block
       { blockHeader = Header
-          { headerChainID     = "MONIES"
-          , headerHeight      = Height 0
-          , headerTime        = Time 0
-          , headerLastBlockID = Nothing
+          { headerChainID        = "MONIES"
+          , headerHeight         = Height 0
+          , headerTime           = Time 0
+          , headerLastBlockID    = Nothing
+          , headerValidatorsHash = hash validatorSet
           }
       , blockData       = [ Deposit (publicKey pk) netInitialDeposit
                           | pk <- take netInitialKeys privateKeyList

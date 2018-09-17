@@ -32,23 +32,29 @@ import Thundermint.Blockchain.Interpretation
 import Thundermint.Blockchain.Types
 import Thundermint.Consensus.Types
 import Thundermint.Control
+import Thundermint.Crypto            (hash)
+import Thundermint.Crypto.Containers (ValidatorSet)
 import Thundermint.Crypto.Ed25519
 import Thundermint.Logger
 import Thundermint.Mock.KeyList
 import Thundermint.Mock.Types
 import Thundermint.P2P
 import Thundermint.Store
+
+
+
 ----------------------------------------------------------------
 --
 ----------------------------------------------------------------
 
-genesisBlock :: Block Ed25519_SHA512 [(String,Int)]
-genesisBlock = Block
+genesisBlock :: ValidatorSet Ed25519_SHA512 -> Block Ed25519_SHA512 [(String,Int)]
+genesisBlock valSet = Block
   { blockHeader = Header
-      { headerChainID     = "KV"
-      , headerHeight      = Height 0
-      , headerTime        = Time 0
-      , headerLastBlockID = Nothing
+      { headerChainID        = "KV"
+      , headerHeight         = Height 0
+      , headerTime           = Time 0
+      , headerLastBlockID    = Nothing
+      , headerValidatorsHash = hash valSet
       }
   , blockData       = []
   , blockLastCommit = Nothing
@@ -90,7 +96,7 @@ interpretSpec maxH prefix NetSpec{..} = do
                   | s <- nspecLogFile
                   ]
     -- Create storage
-    storage  <- newBlockStorage prefix nspecDbName genesisBlock validatorSet
+    storage  <- newBlockStorage prefix nspecDbName (genesisBlock validatorSet) validatorSet
     hChain   <- blockchainHeight storage
     --
     withLogEnv "TM" "DEV" loggers $ \logenv -> runLoggerT "general" logenv $ do
