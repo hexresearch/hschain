@@ -103,15 +103,20 @@ instance Serialise a => Serialise (Block alg a)
 
 -- | Block header
 data Header alg a = Header
-  { headerChainID     :: ByteString -- ^ Identifier of chain we're working on
-  , headerHeight      :: Height     -- ^ Height of block
-  , headerTime        :: Time       -- ^ Time of block creation
-  , headerLastBlockID :: Maybe (BlockID alg a)
-    -- ^ Nothing iff block is a genesis block
+  { headerChainID        :: ByteString
+    -- ^ Identifier of chain we're working on. It should be same in
+    --   all blocks in blockchain
+  , headerHeight         :: Height
+    -- ^ Height of block
+  , headerTime           :: Time
+    -- ^ Time of block creation
+  , headerLastBlockID    :: Maybe (BlockID alg a)
+    -- ^ Hash of previous block. Nothing iff block is a genesis block
+  , headerValidatorsHash :: Hash alg
+    -- ^ Hash of validators for current block.
 
   -- FIXME: Add various hashes
   -- , headerDataHash       :: Hash
-  -- , headerValidatorsHash :: Hash
   -- , headerConsensusHash  :: Hash
   }
   deriving (Show, Eq, Generic)

@@ -83,8 +83,8 @@ data NodeDescription addr m alg st tx a = NodeDescription
 
 
 runNode
-  :: ( MonadIO m, MonadMask m, MonadFork m, MonadLogger m, MonadTrace m
-     , Ord tx, Serialise tx
+  :: ( MonadMask m, MonadFork m, MonadLogger m, MonadTrace m
+     , Ord tx, Serialise tx, Serialise (PublicKey alg)
      , Crypto alg, Ord addr, Show addr, Serialise addr, Show a, LogBlock a
      , Serialise a)
   => Configuration
@@ -138,7 +138,8 @@ runNode cfg NodeDescription{nodeBlockChainLogic=BlockFold{..}, ..} = do
 
 -- | Start node which will now run consensus algorithm
 startNode
-  :: (Ord addr, Show addr, Serialise addr, Crypto alg, Serialise a, Serialise tx, Show a, LogBlock a)
+  :: ( Ord addr, Show addr, Serialise addr, Crypto alg, Serialise a, Serialise tx
+     , Show a, LogBlock a, Serialise (PublicKey alg))
   => NetworkAPI addr
   -> addr
   -> [addr]
@@ -173,7 +174,8 @@ startNode net addr addrs appState@AppState{..} mempool = do
 -- | Start set of nodes and return their corresponding storage. Will
 --   return their storage after all nodes finish execution
 runNodeSet
-  :: (Ord addr, Show addr, Serialise addr, Crypto alg, Serialise a, Show a, Serialise tx, LogBlock a)
+  :: (Ord addr, Show addr, Serialise addr, Crypto alg, Serialise a, Show a
+     , Serialise tx, LogBlock a, Serialise (PublicKey alg))
   => [( NetworkAPI addr, addr, [addr], AppState IO alg a, Mempool IO alg tx)]
   -> IO [BlockStorage 'RO IO alg a]
 runNodeSet nodes = do

@@ -12,7 +12,9 @@ import Thundermint.Blockchain.Types
 import Thundermint.Consensus.Types
 
 --import Thundermint.Crypto
-import Thundermint.Crypto.Ed25519 (Ed25519_SHA512, privateKey)
+import Thundermint.Crypto            (hash)
+import Thundermint.Crypto.Ed25519    (Ed25519_SHA512, privateKey)
+import Thundermint.Crypto.Containers (ValidatorSet)
 import Thundermint.Mock
 import Thundermint.P2P.Instances  ()
 import Thundermint.P2P.Network
@@ -52,14 +54,17 @@ validators = makePrivateValidators'
  where
   mkLocalHost = flip SockAddrInet (tupleToHostAddress (0x7f, 0, 0, 1))
 
+validatorSet :: ValidatorSet Ed25519_SHA512
+validatorSet = makeValidatorSetFromPriv validators
 
 genesisBlock :: Block Ed25519_SHA512 Int64
 genesisBlock = Block
   { blockHeader = Header
-      { headerChainID     = "TEST"
-      , headerHeight      = Height 0
-      , headerTime        = Time 0
-      , headerLastBlockID = Nothing
+      { headerChainID        = "TEST"
+      , headerHeight         = Height 0
+      , headerTime           = Time 0
+      , headerLastBlockID    = Nothing
+      , headerValidatorsHash = hash validatorSet
       }
   , blockData       = 0
   , blockLastCommit = Nothing
@@ -73,7 +78,6 @@ getServiceName addr = getPortOrError <$> getNameInfo [] False True addr
 
 main :: IO ()
 main = do
-  let validatorSet = makeValidatorSetFromPriv validators
   nodes <- sequence
     [ do storage     <- newSTMBlockStorage genesisBlock validatorSet
          serviceName <- getServiceName addr

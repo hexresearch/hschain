@@ -83,7 +83,7 @@ createTestNetworkWithConfig cfg desc = do
     mkTestNode :: (MonadIO m, MonadMask m, MonadFork m) => MockNet TestAddr -> TestNetLinkDescription m -> m [m ()]
     mkTestNode net TestNetLinkDescription{..} = do
         let validatorSet = makeValidatorSetFromPriv testValidators
-        blockStorage <- liftIO $ newSTMBlockStorage genesisBlock validatorSet
+        blockStorage <- liftIO $ newSTMBlockStorage (genesisBlock validatorSet) validatorSet
         hChain       <- liftIO $ blockchainHeight blockStorage
         let run = runTracerT ncCallback . runNoLogsT
         fmap (map run) $ run $ do
