@@ -10,7 +10,7 @@ pipeline:
     image: haskell:8.2.2
     network_mode: host
     commands:
-    - if git log -1 --pretty=%B |grep -i -q '\[clear cache\]'; then stack --stack-root $PWD/.stack --system-ghc clean; fi
+    - rm -rf .stack-work
     - stack --stack-root $PWD/.stack --system-ghc test
 
   rebuild-cache:
@@ -21,7 +21,6 @@ pipeline:
     rebuild: true
     mount:
     - .stack
-    - .stack-work
     when:
       event: push
 
@@ -30,7 +29,5 @@ pipeline:
     token: $PLUGIN_TOKEN
     to: $PLUGIN_TO
     secrets: [ plugin_token, plugin_to ]
-    when:
-      status: [ failure ]
 
 branches: master
