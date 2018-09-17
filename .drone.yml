@@ -24,10 +24,28 @@ pipeline:
     when:
       event: push
 
+  flush_cache:
+    image: plugins/s3-cache:1
+    pull: true
+    endpoint: https://ams3.digitaloceanspaces.com
+    secrets: [ aws_access_key_id, aws_secret_access_key ]
+    flush: true
+    flush_age: 14
+
   telegram:
     image: appleboy/drone-telegram
     token: $PLUGIN_TOKEN
     to: $PLUGIN_TO
     secrets: [ plugin_token, plugin_to ]
+    message: >
+      {{build.status}}
+
+      {{build.link}}
+
+      branch *{{commit.branch}}* by {{commit.author}}
+
+      {{commit.message}}
+
+      build time is {{buildtime build.started}}
 
 branches: master
