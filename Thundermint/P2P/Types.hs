@@ -10,6 +10,7 @@ module Thundermint.P2P.Types (
   , RealNetworkConnectOptions(..)
   , HeaderSize
   , RecvFun
+  , NetworkServiceName
   ) where
 
 import Control.Concurrent.STM
@@ -28,6 +29,11 @@ import qualified Network.Socket       as Net
 --
 ----------------------------------------------------------------
 
+-- | Network port
+--   NB: 'Net.PortNumber' doesn't have 'Serialise' instance,
+--       so we introduce own type
+type NetworkServiceName addr = Net.ServiceName
+
 -- | Dictionary with API for network programming. We use it to be able
 --   to provide two implementations of networking. One is real network
 --   and another is mock in-process network for testing.
@@ -42,8 +48,9 @@ data NetworkAPI addr = NetworkAPI
   , filterOutOwnAddresses :: forall m. (MonadIO m, MonadThrow m, MonadMask m)
              => Set addr -> m (Set addr)
     -- ^ Filter out local addresses of node. Batch processing for speed.
-  , normalizeNodeAddress :: addr -> addr
+  , normalizeNodeAddress :: addr -> Maybe (NetworkServiceName addr) -> addr
     -- ^ Normalize address, for example, convert '20.15.10.20:24431' to '20.15.10.20:50000'
+  , serviceName :: NetworkServiceName addr
   }
 
 data Connection = Connection
