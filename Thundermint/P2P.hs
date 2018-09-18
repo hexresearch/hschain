@@ -49,6 +49,7 @@ import Thundermint.Debug.Trace
 import Thundermint.Logger
 import Thundermint.P2P.Network
 import Thundermint.P2P.PeerState
+import Thundermint.P2P.Types
 import Thundermint.Store
 import Thundermint.Utils
 
@@ -88,6 +89,15 @@ data PexMessage addr
   deriving (Show, Generic)
 
 instance (Serialise addr) => Serialise (PexMessage addr)
+
+
+data PeerInfo addr = PeerInfo
+    { piPeerId          :: PeerId
+    , piPeerServiceName :: NetworkServiceName addr
+    } deriving (Show, Generic)
+
+
+instance Serialise (PeerInfo addr)
 
 
 data LogGossip = LogGossip
@@ -199,7 +209,6 @@ startPeerDispatcher p2pConfig net peerAddr addrs AppChans{..} storage mempool = 
   -- Accepting connection is managed by separate linked thread and
   -- this thread manages initiating connections
   flip finally (uninterruptibleMask_ $ reapPeers peerRegistry) $ runConcurrently
-    -- Makes 5 attempts to start acceptLoop wirh 5 msec interval
     [ acceptLoop peerAddr net peerCh mempool peerRegistry
      -- FIXME: we should manage requests for peers and connecting to
      --        new peers here
@@ -229,13 +238,17 @@ generatePeerId :: (MonadIO m) => m PeerId
 generatePeerId = liftIO randomIO
 
 
+bimap :: (a -> b) -> (c -> d) -> Either a c -> Either b d
+bimap f _ (Left a) = Left (f a)
+bimap _ g (Right b) = Right (g b)
+
 -- | Exchange peer ids with other connection
 --
-recvPeerId :: (MonadIO m) => Connection -> m (Either String PeerId)
-recvPeerId conn =
+recvPeerInfo :: (MonadIO m) => Connection -> m (Either String (PeerInfo addr))
+recvPeerInfo conn =
     recv conn >>= \case
-        Nothing   -> return $ Left "Socket closed on handshake"
-        Just spid -> return $ decodePeerId spid
+        Nothing     -> return $ Left "Socket closed on handshake"
+        Just spinfo -> return $ bimap show id $ deserialiseOrFail spinfo
 
 
 data ConnectMode = CmAccept PeerId
@@ -266,14 +279,16 @@ acceptLoop peerAddr NetworkAPI{..} peerCh mempool peerRegistry = do
       -- connection immediately
       mask $ \restore -> do
         (conn, addr') <- accept
-        let addr = normalizeNodeAddress addr'
-        recvPeerId conn >>= \case
+        recvPeerInfo conn >>= \case
           Left err -> do
             logger ErrorS ("Handshake error: " <> showLS err) ()
             close conn
-          Right otherPeerId -> do
+          Right peerInfo -> do
+            let otherPeerId = piPeerId peerInfo
+                otherServiceName = piPeerServiceName peerInfo
+                addr = normalizeNodeAddress addr' (Just otherServiceName)
             trace $ TeNodeOtherTryConnect (show addr)
-            logger DebugS ("PreAccepted connection from " <> showLS addr <> ", otherPeerId = " <> showLS otherPeerId) ()
+            logger DebugS ("PreAccepted connection from " <> showLS addr <> ", (was: " <> showLS addr' <> "), otherPeerId = " <> showLS otherPeerId <> ", peerInfo = " <> showLS peerInfo) ()
             if otherPeerId == prPeerId peerRegistry then do
               logger DebugS "Self connection detected. Close connection" ()
               close conn
@@ -308,7 +323,7 @@ connectPeerTo peerAddr NetworkAPI{..} addr peerCh mempool peerRegistry =
       -- TODO : what first? "connection" or "withPeer" ?
       bracket (connect addr) (\c -> logClose >> close c) $ \conn -> do
         withPeer peerRegistry addr CmConnect $ do
-            send conn $ encodePeerId (prPeerId peerRegistry)
+            send conn $ serialise $ PeerInfo { piPeerId = prPeerId peerRegistry, piPeerServiceName = serviceName }
             logger InfoS "Successfully connected to" (sl "addr" (show addr))
             descendNamespace (T.pack (show addr))
               $ startPeer peerAddr addr peerCh conn peerRegistry mempool
@@ -430,7 +445,7 @@ peerPexNewAddressMonitor
   -> m ()
 peerPexNewAddressMonitor peerChanPexNewAddresses PeerRegistry{..} NetworkAPI{..} = forever $ do
   addrs' <- liftIO $ atomically $ readTChan peerChanPexNewAddresses
-  addrs  <- filterOutOwnAddresses $ Set.fromList $ map normalizeNodeAddress addrs'
+  addrs  <- filterOutOwnAddresses $ Set.fromList $ map (`normalizeNodeAddress` Nothing) addrs'
   liftIO $ atomically $ modifyTVar' prKnownAddreses (`Set.union` addrs)
 
 
@@ -482,7 +497,7 @@ peerPexMonitor peerAddr net peerCh mempool peerRegistry@PeerRegistry{..} minConn
             if Set.size conns < minConnections then do
                 logger DebugS ("Too few (" <> showLS (Set.size conns) <> " : " <> showLS conns <> ") connections") ()
                 knowns' <- liftIO $ readTVarIO prKnownAddreses
-                let conns' = Set.map (normalizeNodeAddress net) conns
+                let conns' = Set.map (flip (normalizeNodeAddress net) Nothing) conns -- TODO нужно ли тут normalize?
                 knowns <- filterOutOwnAddresses net $ knowns' Set.\\ conns'
                 if Set.null knowns then do
                     logger WarningS ("Too few (" <> showLS (Set.size conns) <> ") connections and don't know other nodes!") ()

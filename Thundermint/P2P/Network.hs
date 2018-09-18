@@ -92,12 +92,14 @@ realNetwork RealNetworkConnectOptions{..} listenPort = NetworkAPI
         return $ applyConn sock
   , filterOutOwnAddresses = -- TODO: make it batch processing for speed!
         fmap Set.fromList . filterM (fmap not . isLocalAddress) . Set.toList
-  , normalizeNodeAddress = \case
-        Net.SockAddrInet _ ha        -> normalizeIpAddr $ Net.SockAddrInet  thundermintPort ha
-        Net.SockAddrInet6 _ fi ha si -> normalizeIpAddr $ Net.SockAddrInet6 thundermintPort fi ha si
-        s -> s
+  , normalizeNodeAddress = \addr sn -> setPort sn $ normalizeIpAddr addr
+  , serviceName = listenPort
   }
  where
+  setPort Nothing a = a
+  setPort (Just port) (Net.SockAddrInet _ ha)        = Net.SockAddrInet (read port) ha           -- TODO readPort?
+  setPort (Just port) (Net.SockAddrInet6 _ fi ha si) = Net.SockAddrInet6 (read port) fi ha si
+  setPort _ s = s
   isIPv6addr = (==) Net.AF_INET6 . Net.addrFamily
   accept sock = do
     (conn, addr) <- liftIO $ Net.accept sock
@@ -186,10 +188,11 @@ realNetworkUdp listenPort = do
          applyConn sock addr <$> findOrCreateRecvChan tChans addr
     , filterOutOwnAddresses = -- TODO: make it batch processing for speed!
         \addrs -> (fmap Set.fromList) $ filterM (fmap not . isLocalAddress) $ Set.toList addrs
-    , normalizeNodeAddress = \case -- TODO remove duplication
+    , normalizeNodeAddress = \addr _sp -> case addr of -- TODO remove duplication
             Net.SockAddrInet _ ha -> Net.SockAddrInet thundermintPort ha
             Net.SockAddrInet6 _ fi ha si -> Net.SockAddrInet6 thundermintPort fi ha si
             s -> s
+    , serviceName = listenPort
     }
  where
   findOrCreateRecvChan tChans addr = liftIO.atomically $ do
@@ -275,7 +278,8 @@ createMockNode MockNet{..} port addr = NetworkAPI
         Just xs -> writeTVar mnetIncoming $ Map.insert loc (xs ++ [(sockFrom,(addr,snd loc))]) cmap
       return $ applyConn sockTo
   , filterOutOwnAddresses = return . Set.filter ((addr /=) . fst)
-  , normalizeNodeAddress = id
+  , normalizeNodeAddress = const
+  , serviceName = ""
   }
  where
   applyConn conn = Connection (liftIO . sendBS conn) (liftIO $ recvBS conn) (liftIO $ close conn)

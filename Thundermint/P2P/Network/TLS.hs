@@ -91,10 +91,11 @@ realNetworkTls creds listenPort = NetworkAPI
         connectTls creds hostName serviceName sock
   , filterOutOwnAddresses = -- TODO: make it batch processing for speed!
         fmap Set.fromList . filterM (fmap not . isLocalAddress) . Set.toList
-  , normalizeNodeAddress = \case -- TODO remove duplication with realNetwork
+  , normalizeNodeAddress = \addr _sn -> case addr of -- TODO remove duplication with realNetwork
         Net.SockAddrInet _ ha        -> Net.SockAddrInet  thundermintPort ha
         Net.SockAddrInet6 _ fi ha si -> Net.SockAddrInet6 thundermintPort fi ha si
         s -> s
+  , serviceName = listenPort
   }
 
 
