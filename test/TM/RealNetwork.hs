@@ -1,8 +1,14 @@
-{-# LANGUAGE OverloadedStrings #-}
+
+{-# LANGUAGE LambdaCase          #-}
+{-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 -- |
 module TM.RealNetwork ( realNetPair
-                      , realTlsNetPair ) where
+                      , realTlsNetPair
+                      , suppressIOException) where
 
+import Control.Exception
+import Control.Monad.IO.Class
 import System.Random
 
 import Thundermint.P2P.Network
@@ -10,6 +16,12 @@ import Thundermint.P2P.Network
 import qualified Data.ByteString as BS
 import qualified Network.Socket  as Net
 ----------------------------------------------------------------
+
+
+-- | suppress IOException, used to ignore exception due to ipv6 disabled
+suppressIOException :: MonadIO m => IOException -> m ((),())
+suppressIOException = \(_::IOException) -> return ((),())
+
 
 realNetPair :: Net.HostName
             -> IO ((Net.SockAddr, NetworkAPI Net.SockAddr),

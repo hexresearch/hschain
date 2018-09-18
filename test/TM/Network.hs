@@ -6,18 +6,18 @@
 -- |
 module TM.Network (tests) where
 
-import Control.Concurrent        (threadDelay)
-import Control.Concurrent.Async
-import Control.Exception
-import Data.Monoid               ((<>))
-import qualified Network.Socket  as Net
+import           Control.Concurrent       (threadDelay)
+import           Control.Concurrent.Async
+import           Control.Exception
+import           Data.Monoid              ((<>))
+import qualified Network.Socket           as Net
 
 import Thundermint.P2P.Network
 
-import TM.MockNet
-import TM.RealNetwork
 import Test.Tasty
 import Test.Tasty.HUnit
+import TM.MockNet
+import TM.RealNetwork
 
 
 tests :: TestTree
@@ -46,6 +46,7 @@ tests =
                   ]
 
 
+
 loopbackIpv4, loopbackIpv6 :: Net.SockAddr
 loopbackIpv4 = Net.SockAddrInet  50000 0x100007f
 loopbackIpv6 = Net.SockAddrInet6 50000 0 (0,0,0,1) 0
@@ -53,7 +54,7 @@ loopbackIpv6 = Net.SockAddrInet6 50000 0 (0,0,0,1) 0
 -- | used to run from ghci
 run :: IO ()
 run = do
-    (server, client) <- realNetPair "localhost"
+    (server, client) <- realNetPair "::1"
     pingPong server client
 
 -- | Simple test to ensure that mock network works at all
@@ -72,7 +73,7 @@ pingPong (serverAddr, server) (_, client) = do
           send conn "PING"
           bs <- recv conn
           assertEqual "Ping-pong" (Just "PONG_PING") bs
-  ((),()) <- concurrently (runServer server) (runClient client)
+  ((),()) <- catch  (concurrently (runServer server) (runClient client)) suppressIOException
   return ()
 
 
@@ -97,5 +98,5 @@ delayedWrite (serverAddr, server) (_, client) = do
           send conn "A2"
           threadDelay 30e3
           send conn "A3"
-  ((),()) <- concurrently (runServer server) (runClient client)
+  ((),()) <- catch  (concurrently (runServer server) (runClient client)) suppressIOException
   return ()

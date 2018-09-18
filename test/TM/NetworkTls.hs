@@ -6,17 +6,19 @@
 -- |
 module TM.NetworkTls (tests) where
 
-import Control.Concurrent         (threadDelay)
+
 import Control.Concurrent.Async
 import Control.Exception
-import Data.ByteString.Lazy.Char8 as LBC
-import Data.Monoid                ((<>))
 import Test.Tasty
 import Test.Tasty.HUnit
 import Thundermint.P2P.Network
 import TM.RealNetwork
 
-import qualified Data.ByteString.Lazy as LBS
+import Control.Concurrent (threadDelay)
+import Data.Monoid        ((<>))
+
+import qualified Data.ByteString.Lazy       as LBS
+import           Data.ByteString.Lazy.Char8 as LBC
 
 tests :: TestTree
 tests =
@@ -57,7 +59,7 @@ pingPong (serverAddr, server) (_, client) = do
           send conn "PING"
           bs <- recv conn
           assertEqual "Ping-pong" (Just "PONG_PING") bs
-  ((),()) <- concurrently (runServer server) (runClient client)
+  ((),()) <- catch  (concurrently (runServer server) (runClient client))  suppressIOException
   return ()
 
 
@@ -81,7 +83,7 @@ bigDataSend (serverAddr, server) (_, client) = do
           send conn sbuf
           bs <- recv conn
           assertEqual "Ping-pong" (Just ("PONG_" <> sbuf)) bs
-  ((),()) <- concurrently (runServer server) (runClient client)
+  ((),()) <- catch  (concurrently (runServer server) (runClient client)) suppressIOException
   return ()
 
 
@@ -105,5 +107,5 @@ delayedWrite (serverAddr, server) (_, client) = do
           send conn "A2"
           threadDelay 30e3
           send conn "A3"
-  ((),()) <- concurrently (runServer server) (runClient client)
+  ((),()) <- catch  (concurrently (runServer server) (runClient client)) suppressIOException
   return ()
