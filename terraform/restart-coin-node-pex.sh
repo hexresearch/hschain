@@ -12,5 +12,6 @@ docker volume rm thundermint --force || true
 nix-build release.nix -A docker-container --max-jobs 9
 docker load < result
 docker image tag thundermint-node localhost:5000/thundermint-node
-docker push localhost:5000/thundermint-node || true
+docker push localhost:5000/thundermint-node
+terraform init terraform/coin-node-pex/
 yes "yes" | terraform apply terraform/coin-node-pex/
