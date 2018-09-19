@@ -37,7 +37,8 @@ import qualified Data.Aeson.TH   as JSON
 import qualified Data.Text       as T
 import Katip         (showLS,sl)
 import qualified Katip
-import System.Random (randomIO, randomRIO)
+import System.Random (newStdGen, randomIO, randomRIO)
+import System.Random.Shuffle (shuffle')
 import GHC.Generics  (Generic)
 
 
@@ -50,7 +51,6 @@ import Thundermint.Debug.Trace
 import Thundermint.Logger
 import Thundermint.P2P.Network
 import Thundermint.P2P.PeerState
-import Thundermint.P2P.Types
 import Thundermint.Store
 import Thundermint.Utils
 
@@ -487,7 +487,7 @@ peerPexMonitor
   -> Int
   -> Int
   -> m ()
-peerPexMonitor peerAddr net peerCh mempool peerRegistry@PeerRegistry{..} minConnections _maxConnections = do
+peerPexMonitor peerAddr net peerCh mempool peerRegistry@PeerRegistry{..} minConnections maxConnections = do
     logger InfoS "Start PEX monitor" ()
     locAddrs <- getLocalAddresses
     logger DebugS ("Local addresses: " <> showLS locAddrs) ()
@@ -496,7 +496,8 @@ peerPexMonitor peerAddr net peerCh mempool peerRegistry@PeerRegistry{..} minConn
     fix $ \nextLoop ->
         whenM (liftIO $ readTVarIO prIsActive) $ do
             conns <- liftIO $ readTVarIO prConnected
-            if Set.size conns < minConnections then do
+            let sizeConns = Set.size conns
+            if sizeConns < minConnections then do
                 logger DebugS ("Too few (" <> showLS (Set.size conns) <> " : " <> showLS conns <> ") connections") ()
                 knowns' <- liftIO $ readTVarIO prKnownAddreses
                 let conns' = Set.map (flip (normalizeNodeAddress net) Nothing) conns -- TODO нужно ли тут normalize?
@@ -506,8 +507,12 @@ peerPexMonitor peerAddr net peerCh mempool peerRegistry@PeerRegistry{..} minConn
                     logger WarningS ("Too few (" <> showLS (Set.size conns) <> ") connections and don't know other nodes!") ()
                     waitSec 0.1
                 else do
-                    logger InfoS ("New peers: " <> showLS knowns) ()
-                    forM_ knowns $ \addr -> connectPeerTo peerAddr net addr peerCh mempool peerRegistry
+                    logger DebugS ("New peers: " <> showLS knowns) ()
+                    rndGen <- liftIO newStdGen
+                    let randKnowns = take (maxConnections - sizeConns)
+                                   $ shuffle' (Set.toList knowns) (Set.size knowns) rndGen
+                    logger DebugS ("New rand knowns: " <> showLS randKnowns) ()
+                    forM_ randKnowns $ \addr -> connectPeerTo peerAddr net addr peerCh mempool peerRegistry
                     waitSec 1.0
             else do
                 logger InfoS ("Full of connections (" <> showLS (Set.size conns) <> " : " <>  showLS conns <> ")") ()
