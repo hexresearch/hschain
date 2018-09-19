@@ -56,10 +56,9 @@ stack build
 
 First of all you have to install terraform and docker. Dowload `terraform` from [here](https://www.terraform.io/downloads.html), unzip and put in $PATH.
 
-`terraform` runs nodes in separate docker containers. So, you need to build this container and
-push it to a registry (here will be described local registry).
+`terraform` runs nodes in separate docker containers. So, you need to build docker image.
 
-## Build and push docker container
+## Build docker image
 
 ```
 nix-build release.nix -A docker-container
@@ -67,28 +66,12 @@ nix-build release.nix -A docker-container
 
 All info about building docker images by `nix` I found [here](https://github.com/Gabriel439/haskell-nix/blob/master/project3/README.md#minimizing-the-closure).
 
-When that command is finished you will have `result` simlink that refers to the docker container
-with `thundermint`.
+When that command is finished you will have `result` simlink that refers to the docker image in tar archive format.
 
-Then you need to load this container.
+Then you need to load this archive into local docker image.
 
 ```
 docker load < result
-```
-
-After that you need to push this container to a local registry. You can find details [here](https://docs.docker.com/registry/#basic-commands).
-
-Start registry
-
-```
-docker run -d -p 5000:5000 --name registry registry:2
-```
-
-Push the docker container
-
-```
-docker image tag thundermint-node localhost:5000/thundermint-node
-docker push localhost:5000/thundermint-node
 ```
 
 ## Run testing network
