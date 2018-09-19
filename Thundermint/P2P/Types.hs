@@ -10,6 +10,7 @@ module Thundermint.P2P.Types (
   , HeaderSize
   , RecvFun
   , NetworkPort
+  , PeerId
   ) where
 
 import Control.Concurrent.STM
@@ -19,6 +20,7 @@ import Control.Monad.IO.Class   (MonadIO)
 import Data.ByteString.Internal (ByteString(..))
 import Data.Map                 (Map)
 import Data.Set                 (Set)
+import Data.Word
 
 import qualified Data.ByteString.Lazy as LBS
 import qualified Network.Socket       as Net
@@ -26,6 +28,9 @@ import qualified Network.Socket       as Net
 ----------------------------------------------------------------
 --
 ----------------------------------------------------------------
+
+type PeerId = Word64
+
 
 -- | Network port
 type NetworkPort addr = Net.PortNumber
