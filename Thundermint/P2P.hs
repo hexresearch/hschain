@@ -27,6 +27,7 @@ import           Data.Monoid       ((<>))
 import           Data.Maybe        (mapMaybe)
 import           Data.Foldable
 import           Data.Function
+import           Data.Word
 import qualified Data.Map        as Map
 import           Data.Map          (Map)
 import qualified Data.Set        as Set
@@ -92,8 +93,8 @@ instance (Serialise addr) => Serialise (PexMessage addr)
 
 
 data PeerInfo addr = PeerInfo
-    { piPeerId          :: PeerId
-    , piPeerServiceName :: NetworkServiceName addr
+    { piPeerId   :: PeerId
+    , piPeerPort :: Word32
     } deriving (Show, Generic)
 
 
@@ -285,8 +286,8 @@ acceptLoop peerAddr NetworkAPI{..} peerCh mempool peerRegistry = do
             close conn
           Right peerInfo -> do
             let otherPeerId = piPeerId peerInfo
-                otherServiceName = piPeerServiceName peerInfo
-                addr = normalizeNodeAddress addr' (Just otherServiceName)
+                otherPeerPort = piPeerPort peerInfo
+                addr = normalizeNodeAddress addr' (Just $ fromIntegral otherPeerPort)
             trace $ TeNodeOtherTryConnect (show addr)
             logger DebugS ("PreAccepted connection from " <> showLS addr <> ", (was: " <> showLS addr' <> "), otherPeerId = " <> showLS otherPeerId <> ", peerInfo = " <> showLS peerInfo) ()
             if otherPeerId == prPeerId peerRegistry then do
@@ -323,7 +324,8 @@ connectPeerTo peerAddr NetworkAPI{..} addr peerCh mempool peerRegistry =
       -- TODO : what first? "connection" or "withPeer" ?
       bracket (connect addr) (\c -> logClose >> close c) $ \conn -> do
         withPeer peerRegistry addr CmConnect $ do
-            send conn $ serialise $ PeerInfo { piPeerId = prPeerId peerRegistry, piPeerServiceName = serviceName }
+            send conn $ serialise $ PeerInfo { piPeerId = prPeerId peerRegistry
+                                             , piPeerPort = fromIntegral listenPort }
             logger InfoS "Successfully connected to" (sl "addr" (show addr))
             descendNamespace (T.pack (show addr))
               $ startPeer peerAddr addr peerCh conn peerRegistry mempool
@@ -498,7 +500,8 @@ peerPexMonitor peerAddr net peerCh mempool peerRegistry@PeerRegistry{..} minConn
                 logger DebugS ("Too few (" <> showLS (Set.size conns) <> " : " <> showLS conns <> ") connections") ()
                 knowns' <- liftIO $ readTVarIO prKnownAddreses
                 let conns' = Set.map (flip (normalizeNodeAddress net) Nothing) conns -- TODO нужно ли тут normalize?
-                knowns <- filterOutOwnAddresses net $ knowns' Set.\\ conns'
+                    knowns = knowns' Set.\\ conns'
+                logger DebugS ("ZZZ knowns: " <> showLS knowns) ()
                 if Set.null knowns then do
                     logger WarningS ("Too few (" <> showLS (Set.size conns) <> ") connections and don't know other nodes!") ()
                     waitSec 0.1

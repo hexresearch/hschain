@@ -6,7 +6,8 @@
 module Thundermint.P2P.Network (
     NetworkAPI(..)
   , Connection(..)
-  , RealNetworkConnectOptions(..)
+    -- * Real network stub
+  , realNetworkStub
     -- * Real network
   , realNetwork
   , realNetworkUdp
@@ -20,15 +21,15 @@ module Thundermint.P2P.Network (
   , newMockNet
   , createMockNode
     -- * Local address detection
-  , getLocalAddress
-  , isLocalAddress
-  , getLocalAddresses
+  , Ip.getLocalAddress
+  , Ip.isLocalAddress
+  , Ip.getLocalAddresses
   ) where
 
 import Control.Concurrent.STM
 
 import Control.Concurrent     (forkIO, killThread)
-import Control.Monad          (filterM, forM_, forever, void, when)
+import Control.Monad          (forM_, forever, void, when)
 import Control.Monad.Catch    (bracketOnError, onException, throwM)
 import Control.Monad.IO.Class (liftIO)
 import Data.Bits              (unsafeShiftL)
@@ -47,21 +48,21 @@ import qualified Network.Socket.ByteString      as NetBS
 import qualified Network.Socket.ByteString.Lazy as NetLBS
 
 import Thundermint.Control
-import Thundermint.P2P.Consts
-import Thundermint.P2P.Network.IpAddresses
 import Thundermint.P2P.Network.TLS
+import Thundermint.P2P.Network.RealNetworkStub
 import Thundermint.P2P.Types
+import qualified Thundermint.P2P.Network.IpAddresses as Ip
 
 
 -- | API implementation for real tcp network
-realNetwork :: RealNetworkConnectOptions -> Net.ServiceName -> NetworkAPI Net.SockAddr
-realNetwork RealNetworkConnectOptions{..} listenPort = NetworkAPI
+realNetwork :: Net.ServiceName -> NetworkAPI Net.SockAddr
+realNetwork serviceName = (realNetworkStub serviceName)
   { listenOn = do
       let hints = Net.defaultHints
             { Net.addrFlags      = [Net.AI_PASSIVE]
             , Net.addrSocketType = Net.Stream
             }
-      addrs <- liftIO $ Net.getAddrInfo (Just hints) Nothing (Just listenPort)
+      addrs <- liftIO $ Net.getAddrInfo (Just hints) Nothing (Just serviceName)
 
       when (null addrs) $
         throwM NoAddressAvailable
@@ -77,12 +78,12 @@ realNetwork RealNetworkConnectOptions{..} listenPort = NetworkAPI
       let hints = Just Net.defaultHints
             { Net.addrSocketType = Net.Stream
             }
-      (hostName, serviceName) <- liftIO $ Net.getNameInfo
+      (hostName, serviceName') <- liftIO $ Net.getNameInfo
                                             [Net.NI_NUMERICHOST, Net.NI_NUMERICSERV]
                                             True
                                             True
                                             addr
-      addrInfo:_ <- liftIO $ Net.getAddrInfo hints hostName serviceName
+      addrInfo:_ <- liftIO $ Net.getAddrInfo hints hostName serviceName'
       bracketOnError (newSocket addrInfo) (liftIO . Net.close) $ \ sock -> do
         let tenSec = 10000000
         -- Waits for connection for 10 sec and throws `ConnectionTimedOut` exception
@@ -90,36 +91,18 @@ realNetwork RealNetworkConnectOptions{..} listenPort = NetworkAPI
                $ timeout tenSec
                $ Net.connect sock addr
         return $ applyConn sock
-  , filterOutOwnAddresses = -- TODO: make it batch processing for speed!
-        fmap Set.fromList . filterM (fmap not . isLocalAddress) . Set.toList
-  , normalizeNodeAddress = \addr sn -> setPort sn $ normalizeIpAddr addr
-  , serviceName = listenPort
   }
  where
-  setPort Nothing a = a
-  setPort (Just port) (Net.SockAddrInet _ ha)        = Net.SockAddrInet (read port) ha           -- TODO readPort?
-  setPort (Just port) (Net.SockAddrInet6 _ fi ha si) = Net.SockAddrInet6 (read port) fi ha si
-  setPort _ s = s
   isIPv6addr = (==) Net.AF_INET6 . Net.addrFamily
   accept sock = do
     (conn, addr) <- liftIO $ Net.accept sock
-    if allowConnectFromLocal then
-        return (applyConn conn, addr)
-    else do
-        isLocal <- isLocalAddress addr
-        -- liftIO $ putStrLn $ showSockAddr addr <> "  -> " <> show isLocal
-        if isLocal then do
-            liftIO $ Net.close conn
-            accept sock
-        else do
-            return (applyConn conn, addr)
+    return (applyConn conn, addr)
   applyConn conn = Connection (liftIO . sendBS conn) (liftIO $ recvBS conn) (liftIO $ Net.close conn)
   sendBS sock =  \s -> NetLBS.sendAll sock (BB.toLazyByteString $ toFrame s)
                  where
                    toFrame msg = let len =  fromIntegral (LBS.length msg) :: Word32
                                      hexLen = BB.word32BE len
                                  in (hexLen <> BB.lazyByteString msg)
-
   recvBS sock = do
     header <- recvAll sock headerSize
     if LBS.null header
@@ -161,7 +144,7 @@ emptyBs2Maybe bs
 
 -- | API implementation example for real udp network
 realNetworkUdp :: Net.ServiceName -> IO (NetworkAPI Net.SockAddr)
-realNetworkUdp listenPort = do
+realNetworkUdp serviceName = do
   -- FIXME: prolly HostName fits better than SockAddr
   tChans <- newTVarIO Map.empty
   acceptChan <- newTChanIO :: IO (TChan (Connection, Net.SockAddr))
@@ -169,7 +152,7 @@ realNetworkUdp listenPort = do
         { Net.addrFlags      = [Net.AI_PASSIVE]
         , Net.addrSocketType = Net.Datagram
         }
-  addrInfo:_ <- Net.getAddrInfo (Just hints) Nothing (Just listenPort)
+  addrInfo:_ <- Net.getAddrInfo (Just hints) Nothing (Just serviceName)
   sock       <- newSocket addrInfo
   tid <- forkIO $
     flip onException (Net.close sock) $ do
@@ -180,19 +163,12 @@ realNetworkUdp listenPort = do
         atomically $ writeTChan acceptChan (applyConn sock addr recvChan, addr)
         atomically $ writeTChan recvChan $ LBS.fromStrict bs
 
-  return NetworkAPI
+  return $ (realNetworkStub serviceName)
     { listenOn =
         return (liftIO $ killThread tid, liftIO.atomically $ readTChan acceptChan)
       --
     , connect  = \addr ->
          applyConn sock addr <$> findOrCreateRecvChan tChans addr
-    , filterOutOwnAddresses = -- TODO: make it batch processing for speed!
-        \addrs -> (fmap Set.fromList) $ filterM (fmap not . isLocalAddress) $ Set.toList addrs
-    , normalizeNodeAddress = \addr _sp -> case addr of -- TODO remove duplication
-            Net.SockAddrInet _ ha -> Net.SockAddrInet thundermintPort ha
-            Net.SockAddrInet6 _ fi ha si -> Net.SockAddrInet6 thundermintPort fi ha si
-            s -> s
-    , serviceName = listenPort
     }
  where
   findOrCreateRecvChan tChans addr = liftIO.atomically $ do
@@ -279,7 +255,7 @@ createMockNode MockNet{..} port addr = NetworkAPI
       return $ applyConn sockTo
   , filterOutOwnAddresses = return . Set.filter ((addr /=) . fst)
   , normalizeNodeAddress = const
-  , serviceName = ""
+  , listenPort = 0
   }
  where
   applyConn conn = Connection (liftIO . sendBS conn) (liftIO $ recvBS conn) (liftIO $ close conn)

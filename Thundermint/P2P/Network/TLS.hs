@@ -1,6 +1,4 @@
-{-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE OverloadedStrings   #-}
-{-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 -- |
 -- Abstract API for network which support
@@ -13,7 +11,7 @@ module Thundermint.P2P.Network.TLS (
  , headerSize
   ) where
 
-import Control.Monad            (filterM, when)
+import Control.Monad            (when)
 import Control.Monad.Catch      (bracketOnError, throwM, MonadMask)
 import Control.Monad.IO.Class   (MonadIO, liftIO)
 import Data.Bits                (unsafeShiftL)
@@ -33,15 +31,13 @@ import qualified Data.ByteString         as BS
 import qualified Data.ByteString.Builder as BB
 import qualified Data.ByteString.Lazy    as LBS
 import qualified Data.IORef              as I
-import qualified Data.Set                as Set
 import qualified GHC.IO.Exception        as Eg
 import qualified Network.Socket          as Net
 import qualified Network.TLS             as TLS
 
 import Thundermint.Control
-import Thundermint.P2P.Consts
-import Thundermint.P2P.Network.IpAddresses
 import Thundermint.P2P.Network.Parameters
+import Thundermint.P2P.Network.RealNetworkStub
 import Thundermint.P2P.Types
 ----------------------------------------------------------------
 --
@@ -53,13 +49,13 @@ headerSize = 4
 
 
 realNetworkTls :: TLS.Credential -> Net.ServiceName -> NetworkAPI Net.SockAddr
-realNetworkTls creds listenPort = NetworkAPI
+realNetworkTls creds serviceName = (realNetworkStub serviceName)
   { listenOn = do
       let hints = Net.defaultHints
             { Net.addrFlags      = [Net.AI_PASSIVE]
             , Net.addrSocketType = Net.Stream
             }
-      addrs <- liftIO $ Net.getAddrInfo (Just hints) Nothing (Just listenPort)
+      addrs <- liftIO $ Net.getAddrInfo (Just hints) Nothing (Just serviceName)
 
       when (null addrs) $
         throwM NoAddressAvailable
@@ -73,31 +69,20 @@ realNetworkTls creds listenPort = NetworkAPI
       let hints = Just Net.defaultHints
             { Net.addrSocketType = Net.Stream
             }
-      (hostName, serviceName) <- liftIO $ Net.getNameInfo
+      (hostName, serviceName') <- liftIO $ Net.getNameInfo
                                             [Net.NI_NUMERICHOST, Net.NI_NUMERICSERV]
                                             True
                                             True
                                             addr
-
-
-      addrInfo:_ <- liftIO $ Net.getAddrInfo hints hostName serviceName
+      addrInfo:_ <- liftIO $ Net.getAddrInfo hints hostName serviceName'
       bracketOnError (newSocket addrInfo) (liftIO . Net.close) $ \ sock -> do
         let tenSec = 10000000
         -- Waits for connection for 10 sec and throws `ConnectionTimedOut` exception
         liftIO $ throwNothingM ConnectionTimedOut
                $ timeout tenSec
                $ Net.connect sock addr
-
-        connectTls creds hostName serviceName sock
-  , filterOutOwnAddresses = -- TODO: make it batch processing for speed!
-        fmap Set.fromList . filterM (fmap not . isLocalAddress) . Set.toList
-  , normalizeNodeAddress = \addr _sn -> case addr of -- TODO remove duplication with realNetwork
-        Net.SockAddrInet _ ha        -> Net.SockAddrInet  thundermintPort ha
-        Net.SockAddrInet6 _ fi ha si -> Net.SockAddrInet6 thundermintPort fi ha si
-        s -> s
-  , serviceName = listenPort
+        connectTls creds hostName serviceName' sock
   }
-
 
 
 newSocket :: MonadIO m => Net.AddrInfo -> m Net.Socket
@@ -164,12 +149,12 @@ silentBye ctx = do
 applyConn :: MonadIO m => TLS.Context -> m Connection
 applyConn context = do
     ref <- liftIO $ I.newIORef ""
-    return $ Connection (send context) (recv context ref) (liftIO $ tlsClose context)
+    return $ Connection (tlsSend context) (tlsRecv context ref) (liftIO $ tlsClose context)
 
         where
           tlsClose ctx = (silentBye ctx `E.catch` \(_ :: E.IOException) -> pure ())
 
-          recv ctx ref = liftIO $ do
+          tlsRecv ctx ref = liftIO $ do
             header <- recvBufT' ctx ref headerSize
             if LBS.null header
             then return Nothing
@@ -178,7 +163,7 @@ applyConn context = do
                       Just n  -> Just <$> (recvBufT' ctx ref (fromIntegral n))
                       Nothing -> return Nothing
 
-          send ctx =  \s -> TLS.sendData ctx (BB.toLazyByteString $ toFrame s)
+          tlsSend ctx =  \s -> TLS.sendData ctx (BB.toLazyByteString $ toFrame s)
                  where
                    toFrame msg = let len =  fromIntegral (LBS.length msg) :: Word32
                                      hexLen = BB.word32BE len
@@ -234,7 +219,7 @@ recvBufT' ctx cref siz = do
 
 
 fill :: BS.ByteString -> Int -> RecvFun -> IO (LBS.ByteString,BS.ByteString)
-fill bs0 siz0 recv
+fill bs0 siz0 tlsRecv
   | siz0 <= len0 = do
       let (bs, leftover) = BS.splitAt siz0 bs0
       return (LBS.fromStrict bs, leftover)
@@ -244,7 +229,7 @@ fill bs0 siz0 recv
     len0 = BS.length bs0
     loop b  0   = return (LBS.fromStrict b, "")
     loop buf siz = do
-      bs <- recv
+      bs <- tlsRecv
       let len = BS.length bs
       if len == 0 then return ("", "")
         else if (len <= siz) then do

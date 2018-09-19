@@ -7,10 +7,9 @@ module Thundermint.P2P.Types (
   , NetworkError(..)
   , MockSocket(..)
   , MockNet(..)
-  , RealNetworkConnectOptions(..)
   , HeaderSize
   , RecvFun
-  , NetworkServiceName
+  , NetworkPort
   ) where
 
 import Control.Concurrent.STM
@@ -18,7 +17,6 @@ import Control.Exception        (Exception)
 import Control.Monad.Catch      (MonadMask, MonadThrow)
 import Control.Monad.IO.Class   (MonadIO)
 import Data.ByteString.Internal (ByteString(..))
-import Data.Default.Class       (Default(..))
 import Data.Map                 (Map)
 import Data.Set                 (Set)
 
@@ -30,9 +28,7 @@ import qualified Network.Socket       as Net
 ----------------------------------------------------------------
 
 -- | Network port
---   NB: 'Net.PortNumber' doesn't have 'Serialise' instance,
---       so we introduce own type
-type NetworkServiceName addr = Net.ServiceName
+type NetworkPort addr = Net.PortNumber
 
 -- | Dictionary with API for network programming. We use it to be able
 --   to provide two implementations of networking. One is real network
@@ -48,9 +44,9 @@ data NetworkAPI addr = NetworkAPI
   , filterOutOwnAddresses :: forall m. (MonadIO m, MonadThrow m, MonadMask m)
              => Set addr -> m (Set addr)
     -- ^ Filter out local addresses of node. Batch processing for speed.
-  , normalizeNodeAddress :: addr -> Maybe (NetworkServiceName addr) -> addr
+  , normalizeNodeAddress :: addr -> Maybe (NetworkPort addr) -> addr
     -- ^ Normalize address, for example, convert '20.15.10.20:24431' to '20.15.10.20:50000'
-  , serviceName :: NetworkServiceName addr
+  , listenPort :: NetworkPort addr
   }
 
 data Connection = Connection
@@ -62,8 +58,6 @@ data Connection = Connection
       -- ^ Close socket
     }
 
-
-
 type HeaderSize = Int
 
 
@@ -72,17 +66,6 @@ data NetworkError = ConnectionTimedOut
   deriving (Show)
 
 instance Exception NetworkError
-
-
-data RealNetworkConnectOptions = RealNetworkConnectOptions
-  { allowConnectFromLocal :: Bool
-  }
-
-
-instance Default RealNetworkConnectOptions where
-    def = RealNetworkConnectOptions
-            { allowConnectFromLocal = False
-            }
 
 
 ----------------------------------------------------------------
