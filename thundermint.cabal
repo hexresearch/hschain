@@ -86,6 +86,7 @@ Library
                   Thundermint.P2P.Network.Parameters
                   Thundermint.P2P.Network.TLS
                   Thundermint.P2P.Network.IpAddresses
+                  Thundermint.P2P.Network.RealNetworkStub
 
 -- Example programs
 Executable thundermint-keyval
