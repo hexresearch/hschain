@@ -2,6 +2,7 @@
 {-# LANGUAGE FlexibleInstances  #-}
 {-# LANGUAGE OverloadedStrings  #-}
 {-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE TypeApplications   #-}
 {-# LANGUAGE TypeFamilies       #-}
 
 module Thundermint.Crypto.Ed25519 where
@@ -10,7 +11,7 @@ import Thundermint.Crypto
 
 import Control.Applicative
 import Crypto.Error          (CryptoFailable(..), eitherCryptoError, throwCryptoError)
-import Crypto.Hash           (Digest, SHA512)
+import Crypto.Hash           (Digest, SHA256, SHA512)
 import qualified Crypto.Hash as Crypto
 import Crypto.Random.Types   (MonadRandom)
 import Data.Aeson            (FromJSON, ToJSON, Value(..), parseJSON, toJSON)
@@ -24,10 +25,10 @@ import qualified Crypto.PubKey.Ed25519 as Ed
 import qualified Data.Text.Encoding    as T
 
 sha512 :: ByteString -> ByteString
-sha512 = convert . asSHA512 . Crypto.hash
- where
-  asSHA512 :: Digest SHA512 -> Digest SHA512
-  asSHA512 = id
+sha512 = convert . id @(Digest SHA512) . Crypto.hash
+
+sha256 :: ByteString -> ByteString
+sha256 = convert . id @(Digest SHA256) . Crypto.hash
 
 data Ed25519_SHA512
 
@@ -42,7 +43,7 @@ instance Crypto Ed25519_SHA512 where
     = Ed.verify pubKey blob (throwCryptoError $ Ed.signature s)
 
   publicKey (PrivKey k)   = PublicKey $ Ed.toPublic k
-  address   (PublicKey k) = Address $ convert k
+  address   (PublicKey k) = Address $ sha256 . sha512 $ convert k
   hashBlob                = Hash . sha512
   
 
