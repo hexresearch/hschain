@@ -3,9 +3,9 @@
 , cryptonite, deepseq , directory, data-default-class, exceptions, filepath
 , generic-arbitrary, groom, hedgehog, hedgehog-quickcheck, katip, network
 , network-info, network-simple, optparse-applicative, QuickCheck, random
-, retry, serialise, stdenv, stm, sqlite-simple, tasty, tasty-hunit
-, tasty-hedgehog, text, tls, time, transformers, x509, x509-store
-, x509-system, x509-validation
+, random-shuffle, retry, serialise, stdenv, stm, sqlite-simple, tasty
+, tasty-hunit, tasty-hedgehog, text, tls, time, transformers, x509
+, x509-store, x509-system, x509-validation
 }:
 mkDerivation {
   pname = "thundermint";
@@ -16,7 +16,7 @@ mkDerivation {
   libraryHaskellDepends = [
     aeson base base58-bytestring bytestring containers cprng-aes exceptions
     directory data-default-class filepath groom katip network network-info
-    network-simple optparse-applicative random retry tls serialise stm
+    network-simple optparse-applicative random random-shuffle retry tls serialise stm
     sqlite-simple transformers text x509 x509-store x509-system x509-validation
   ];
   executableHaskellDepends = [
