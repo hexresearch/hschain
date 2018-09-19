@@ -9,7 +9,6 @@ module TM.Network (tests) where
 import Control.Concurrent        (threadDelay)
 import Control.Concurrent.Async
 import Control.Exception
-import Data.Default.Class        (def)
 import Data.Monoid               ((<>))
 import qualified Network.Socket  as Net
 
@@ -23,7 +22,6 @@ import Test.Tasty.HUnit
 
 tests :: TestTree
 tests =
-    let opts = def { allowConnectFromLocal = True } in
     testGroup "network test"
                   [ testGroup "mock"
                     [ testCase "ping-pong" $ mockNetPair >>= \(server, client) -> pingPong server client
@@ -31,12 +29,12 @@ tests =
                     ]
                   , testGroup "real"
                     [ testGroup "IPv4"
-                          [ testCase "ping-pong" $ realNetPair opts "127.0.0.1" >>= \(server, client) -> pingPong server client
-                          , testCase "delayed write" $ realNetPair opts "127.0.0.1" >>= \(server, client) -> delayedWrite server client
+                          [ testCase "ping-pong" $ realNetPair "127.0.0.1" >>= \(server, client) -> pingPong server client
+                          , testCase "delayed write" $ realNetPair "127.0.0.1" >>= \(server, client) -> delayedWrite server client
                           ]
                     , testGroup "IPv6"
-                          [ testCase "ping-pong" $ realNetPair opts "::1" >>= \(server, client) -> pingPong server client
-                          , testCase "delayed write" $ realNetPair opts "::1" >>= \(server, client) -> delayedWrite server client
+                          [ testCase "ping-pong" $ realNetPair "::1" >>= \(server, client) -> pingPong server client
+                          , testCase "delayed write" $ realNetPair "::1" >>= \(server, client) -> delayedWrite server client
                           ]
                     ]
                   , testGroup "local addresses detection"
@@ -53,9 +51,9 @@ loopbackIpv4 = Net.SockAddrInet  50000 0x100007f
 loopbackIpv6 = Net.SockAddrInet6 50000 0 (0,0,0,1) 0
 
 -- | used to run from ghci
-run :: RealNetworkConnectOptions -> IO ()
-run opts = do
-    (server, client) <- realNetPair opts "localhost"
+run :: IO ()
+run = do
+    (server, client) <- realNetPair "localhost"
     pingPong server client
 
 -- | Simple test to ensure that mock network works at all

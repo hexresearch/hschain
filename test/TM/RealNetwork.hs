@@ -11,16 +11,15 @@ import qualified Data.ByteString as BS
 import qualified Network.Socket  as Net
 ----------------------------------------------------------------
 
-realNetPair :: RealNetworkConnectOptions
-            -> Net.HostName
+realNetPair :: Net.HostName
             -> IO ((Net.SockAddr, NetworkAPI Net.SockAddr),
                    (Net.SockAddr, NetworkAPI Net.SockAddr))
-realNetPair opts host = do
+realNetPair host = do
     n <- randomRIO (0, 99 :: Int)
     let port1 = "300" ++ show  n
         port2 = "300" ++ show  (n+1)
-        server = realNetwork opts port1
-        client = realNetwork opts port2
+        server = realNetwork port1
+        client = realNetwork port2
         hints = Net.defaultHints  { Net.addrSocketType = Net.Stream }
     addr1:_ <- Net.getAddrInfo (Just hints) (Just host) (Just port1)
     addr2:_ <- Net.getAddrInfo (Just hints) (Just host) (Just port2)
