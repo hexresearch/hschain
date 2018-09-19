@@ -29,9 +29,9 @@ tests =
                           , testCase "tls framing: send big data" $ realTlsNetPair "127.0.0.1" >>= uncurry bigDataSend
                           ]
                     , testGroup "IPv6"
-                          [ testCase "tls ping-pong" $ realTlsNetPair "::1" >>= uncurry pingPong
-                          , testCase "tls delayed write" $ realTlsNetPair "::1" >>= uncurry delayedWrite
-                          , testCase "tls framing: send big data" $ realTlsNetPair "::1" >>= uncurry bigDataSend
+                          [ testCase "tls ping-pong" $ realTlsNetPair "::1" >>= \(server, client) -> catch  (pingPong server client) suppressIOException
+                          , testCase "tls delayed write" $ realTlsNetPair "::1" >>= \(server, client) -> catch (delayedWrite server client) suppressIOException
+                          , testCase "tls framing: send big data" $ realTlsNetPair "::1" >>= \(server, client) -> catch (bigDataSend server client) suppressIOException
                           ]
                   ]
 
@@ -59,7 +59,7 @@ pingPong (serverAddr, server) (_, client) = do
           send conn "PING"
           bs <- recv conn
           assertEqual "Ping-pong" (Just "PONG_PING") bs
-  ((),()) <- catch  (concurrently (runServer server) (runClient client))  suppressIOException
+  ((),()) <- concurrently (runServer server) (runClient client)
   return ()
 
 
@@ -83,7 +83,7 @@ bigDataSend (serverAddr, server) (_, client) = do
           send conn sbuf
           bs <- recv conn
           assertEqual "Ping-pong" (Just ("PONG_" <> sbuf)) bs
-  ((),()) <- catch  (concurrently (runServer server) (runClient client)) suppressIOException
+  ((),()) <- concurrently (runServer server) (runClient client)
   return ()
 
 
@@ -107,5 +107,5 @@ delayedWrite (serverAddr, server) (_, client) = do
           send conn "A2"
           threadDelay 30e3
           send conn "A3"
-  ((),()) <- catch  (concurrently (runServer server) (runClient client)) suppressIOException
+  ((),()) <- concurrently (runServer server) (runClient client)
   return ()

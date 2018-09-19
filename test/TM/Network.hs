@@ -33,8 +33,8 @@ tests =
                           , testCase "delayed write" $ realNetPair "127.0.0.1" >>= \(server, client) -> delayedWrite server client
                           ]
                     , testGroup "IPv6"
-                          [ testCase "ping-pong" $ realNetPair "::1" >>= \(server, client) -> pingPong server client
-                          , testCase "delayed write" $ realNetPair "::1" >>= \(server, client) -> delayedWrite server client
+                          [ testCase "ping-pong" $ realNetPair "::1" >>= \(server, client) ->  catch  (pingPong server client) suppressIOException
+                          , testCase "delayed write" $ realNetPair "::1" >>= \(server, client) -> catch (delayedWrite server client) suppressIOException
                           ]
                     ]
                   , testGroup "local addresses detection"
@@ -73,7 +73,7 @@ pingPong (serverAddr, server) (_, client) = do
           send conn "PING"
           bs <- recv conn
           assertEqual "Ping-pong" (Just "PONG_PING") bs
-  ((),()) <- catch  (concurrently (runServer server) (runClient client)) suppressIOException
+  ((),()) <- concurrently (runServer server) (runClient client)
   return ()
 
 
@@ -98,5 +98,5 @@ delayedWrite (serverAddr, server) (_, client) = do
           send conn "A2"
           threadDelay 30e3
           send conn "A3"
-  ((),()) <- catch  (concurrently (runServer server) (runClient client)) suppressIOException
+  ((),()) <- concurrently (runServer server) (runClient client)
   return ()

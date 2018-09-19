@@ -19,8 +19,8 @@ import qualified Network.Socket  as Net
 
 
 -- | suppress IOException, used to ignore exception due to ipv6 disabled
-suppressIOException :: MonadIO m => IOException -> m ((),())
-suppressIOException = \(_::IOException) -> return ((),())
+suppressIOException :: MonadIO m => IOException -> m ()
+suppressIOException = \(_::IOException) -> return ()
 
 
 realNetPair :: Net.HostName
