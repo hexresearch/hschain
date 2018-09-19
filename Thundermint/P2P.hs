@@ -51,6 +51,7 @@ import Thundermint.Debug.Trace
 import Thundermint.Logger
 import Thundermint.P2P.Network
 import Thundermint.P2P.PeerState
+import Thundermint.P2P.Types
 import Thundermint.Store
 import Thundermint.Utils
 
