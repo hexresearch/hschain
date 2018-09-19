@@ -26,7 +26,6 @@ import Network.Socket
     , socket
     )
 
-import Data.Default.Class        (def)
 import Network.Socket.ByteString (recv)
 import System.Environment        (getEnv)
 import qualified Control.Exception     as E
@@ -102,7 +101,7 @@ main = do
                    $ decodeBase58
                    $ head $ BS8.lines selfPrivKeyStr
   storage     <- newSTMBlockStorage genesisBlock validatorSet
-  let net = realNetwork def (show thundermintPort)
+  let net = realNetwork (show thundermintPort)
   !ownAddr <- getLocalAddress
   !addrs <- waitForAddrs
   startNode net ownAddr addrs AppState
