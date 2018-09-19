@@ -502,7 +502,6 @@ peerPexMonitor peerAddr net peerCh mempool peerRegistry@PeerRegistry{..} minConn
                 knowns' <- liftIO $ readTVarIO prKnownAddreses
                 let conns' = Set.map (flip (normalizeNodeAddress net) Nothing) conns -- TODO нужно ли тут normalize?
                     knowns = knowns' Set.\\ conns'
-                logger DebugS ("ZZZ knowns: " <> showLS knowns) ()
                 if Set.null knowns then do
                     logger WarningS ("Too few (" <> showLS (Set.size conns) <> ") connections and don't know other nodes!") ()
                     waitSec 0.1
