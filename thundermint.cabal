@@ -98,19 +98,6 @@ Executable thundermint-keyval
   hs-source-dirs:      exe
   Main-is:             key-val.hs
 
-Executable thundermint-simple-network
-  Ghc-options:         -Wall -threaded
-  Default-Language:    Haskell2010
-  Build-Depends:       base       >=4.9 && <5
-                     , thundermint
-                     , bytestring >=0.10
-                     , base58-bytestring >=0.1
-                     , containers >=0.5.7
-                     , data-default-class
-                     , network    >=2.6.0.0
-  hs-source-dirs:      exe
-  Main-is:             network.hs
-
 Executable thundermint-coin
   Ghc-options:         -Wall -threaded -Wno-orphans
   Default-Language:    Haskell2010
