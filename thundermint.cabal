@@ -27,7 +27,6 @@ Library
                      , directory
                      , exceptions        >=0.8.3
                      , filepath
-                     , groom
                      , memory            >=0.14.14
                      , network-info
                      , random
@@ -40,7 +39,6 @@ Library
                      , transformers      >=0.5
                      , unordered-containers >=0.2.5.0
                      --
-                     , cprng-aes
                      , cryptonite         >=0.25
                      , katip              >=0.5.4.0
                      , network            >=2.6.0.0 && <2.8
@@ -49,9 +47,6 @@ Library
                      , x509-store
                      , x509-system
                      , x509-validation
-                     --
-                     -- , tasty       >=0.11
-                     -- , tasty-hunit >=0.10
 
   Exposed-modules:
                   Thundermint.Blockchain.App
@@ -99,7 +94,6 @@ Executable thundermint-keyval
                      , containers >=0.5.7
                      , exceptions
                      , filepath
-                     , groom
                      , optparse-applicative
   hs-source-dirs:      exe
   Main-is:             key-val.hs
