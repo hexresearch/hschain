@@ -41,6 +41,4 @@ tests = testGroup "Crypto"
            blob  = "ABCD"
        sign @=? signBlob privK blob
        assertBool "Signature check failed" $ verifyBlobSignature pubK blob sign
-       print privK
-       return ()
   ]
