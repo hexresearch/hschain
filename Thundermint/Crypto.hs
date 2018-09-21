@@ -28,6 +28,7 @@ module Thundermint.Crypto (
   , signValue
   , verifySignature
   , unverifySignature
+  , verifyCborSignature
     -- * Hash trees
   , Hashed(..)
   , BlockHash(..)
@@ -140,11 +141,27 @@ instance JSON.FromJSON (Hash alg) where
 --   by to keep signatures sane everything was thrown into same type
 --   class.
 class Crypto alg where
+  -- | Sign sequence of bytes
   signBlob            :: PrivKey   alg -> BS.ByteString -> Signature alg
+  -- | Check that signature is correct
   verifyBlobSignature :: PublicKey alg -> BS.ByteString -> Signature alg -> Bool
+  -- | Compute public key from  private key
   publicKey           :: PrivKey   alg -> PublicKey alg
+  -- | Compute address or public key fingerprint
   address             :: PublicKey alg -> Address alg
+  -- | Compute hash of sequence of bytes
   hashBlob            :: BS.ByteString -> Hash alg
+
+-- | Verify signature of value. Signature is verified for CBOR
+--   encoding of object
+verifyCborSignature
+  :: (Serialise a, Crypto alg)
+  => PublicKey alg
+  -> a
+  -> Signature alg
+  -> Bool
+verifyCborSignature pk a
+  = verifyBlobSignature pk (toStrict $ serialise a)
 
 
 ----------------------------------------------------------------
@@ -190,7 +207,7 @@ verifySignature
   -> Maybe  (Signed 'Verified alg a)
 verifySignature lookupKey (Signed addr signature a) = do
   pubK <- lookupKey addr
-  guard $ verifyBlobSignature pubK (toStrict $ serialise a) signature
+  guard $ verifyCborSignature pubK a signature
   return $ Signed addr signature a
 
 unverifySignature :: Signed ty alg a -> Signed 'Unverified alg a
