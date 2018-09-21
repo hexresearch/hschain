@@ -15,7 +15,7 @@ import Crypto.Hash           (Digest, SHA256, SHA512)
 import qualified Crypto.Hash as Crypto
 import Crypto.Random.Types   (MonadRandom)
 import Data.Aeson            (FromJSON, ToJSON, Value(..), parseJSON, toJSON)
-import Data.ByteArray        (ByteArrayAccess, convert)
+import Data.ByteArray        (convert)
 import Data.ByteString       (ByteString)
 import Data.ByteString.Char8 (unpack)
 import Text.Read             (Read(..))
@@ -45,14 +45,17 @@ instance Crypto Ed25519_SHA512 where
   publicKey (PrivKey k)   = PublicKey $ Ed.toPublic k
   address   (PublicKey k) = Address $ sha256 . sha512 $ convert k
   hashBlob                = Hash . sha512
-  
-
+  privKeyFromBS bs = case Ed.secretKey bs of
+    CryptoPassed k -> Just (PrivKey k)
+    CryptoFailed _ -> Nothing
+  pubKeyFromBS  bs = case Ed.publicKey bs of
+    CryptoPassed k -> Just (PublicKey k)
+    CryptoFailed _ -> Nothing
 
 generatePrivKey :: MonadRandom m => m (PrivKey Ed25519_SHA512)
 generatePrivKey = fmap PrivKey Ed.generateSecretKey
 
-privateKey :: ByteArrayAccess ba => ba -> PrivKey Ed25519_SHA512
-privateKey = PrivKey . throwCryptoError . Ed.secretKey
+
 
 ----------------------------------------------------------------
 -- Private key instances

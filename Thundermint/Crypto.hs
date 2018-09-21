@@ -151,6 +151,10 @@ class Crypto alg where
   address             :: PublicKey alg -> Address alg
   -- | Compute hash of sequence of bytes
   hashBlob            :: BS.ByteString -> Hash alg
+  -- | Create private key from bytestring
+  privKeyFromBS       :: BS.ByteString -> Maybe (PrivKey alg)
+  -- | Create public key from bytestring
+  pubKeyFromBS        :: BS.ByteString -> Maybe (PublicKey alg)
 
 -- | Verify signature of value. Signature is verified for CBOR
 --   encoding of object

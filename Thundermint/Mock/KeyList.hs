@@ -32,10 +32,8 @@ makePrivateValidators
   -> Map (Address Ed25519_SHA512) (PrivValidator Ed25519_SHA512)
 makePrivateValidators keys = Map.fromList
   [ (address (publicKey pk) , PrivValidator pk)
-  | bs <- keys
-  , let pk = case Base58.decodeBase58 Base58.bitcoinAlphabet bs of
-          Just x  -> privateKey x
-          Nothing -> error "Incorrect Base58 encoding for bs"
+  | bs58 <- keys
+  , let pk = fromJust $ privKeyFromBS =<< Base58.decodeBase58 Base58.bitcoinAlphabet bs58
   ]
 
 -- | Create set of all known public validators from set of private
@@ -88,7 +86,7 @@ connectRing vals addr =
 --   couldn't be generate on the fly.
 privateKeyList :: [PrivKey Ed25519_SHA512]
 privateKeyList
-  = map (privateKey . fromJust . decodeBase58)
+  = map (fromJust . privKeyFromBS . fromJust . decodeBase58)
   [ "3d6iUCAa2WQw1ePDtdp2qgji22PRmSrZ8zxhCeMRMBqX"
   , "6aNgwvijioMN98GFPbQUrJYNPRvh43mcGTCRi4U5eKCX"
   , "3NDY63fQYrRMHbYsFUZHAnqTGagVNMnWQrRBXbCqgxJ5"
