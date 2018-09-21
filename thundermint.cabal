@@ -58,7 +58,6 @@ Library
                   Thundermint.Crypto
                   Thundermint.Crypto.Containers
                   Thundermint.Crypto.Ed25519
-                  Thundermint.Crypto.Swear
                   Thundermint.Debug.Trace
                   Thundermint.Logger
                   Thundermint.Mock
