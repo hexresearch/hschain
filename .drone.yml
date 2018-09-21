@@ -47,5 +47,7 @@ pipeline:
       {{commit.message}}
 
       build time is {{buildtime build.started}}
+    when:
+      status: [ success, failure ]
 
 branches: master
