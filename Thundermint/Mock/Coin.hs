@@ -72,17 +72,15 @@ processDeposit :: Tx -> CoinState -> Maybe CoinState
 processDeposit Send{}                _             = Nothing
 processDeposit tx@(Deposit pk nCoin) CoinState{..} =
   return CoinState
-    { unspentOutputs = Map.insert (txHash,0) (pk,nCoin) unspentOutputs
+    { unspentOutputs = Map.insert (hash tx,0) (pk,nCoin) unspentOutputs
     }
-    where
-      txHash = hashBlob $ toStrict $ serialise tx
 
 
 processTransaction :: Tx -> CoinState -> Maybe CoinState
 processTransaction Deposit{} _ = Nothing
 processTransaction transaction@(Send pubK sig txSend@TxSend{..}) CoinState{..} = do
   -- Signature must be valid
-  guard $ verifyBlobSignature pubK (toStrict $ serialise txSend) sig
+  guard $ verifyCborSignature pubK txSend sig
   -- Inputs and outputs are not null
   guard $ not $ null txInputs
   guard $ not $ null txOutputs
