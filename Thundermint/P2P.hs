@@ -442,7 +442,8 @@ whenM predicate act = ifM predicate act (return ())
 
 
 peerPexNewAddressMonitor
-  :: ( MonadIO m, MonadMask m, Ord addr)
+  :: ( MonadIO m, MonadThrow m, MonadMask m
+     , Ord addr, Show addr, Serialise addr)
   => TChan [addr]
   -> PeerRegistry addr
   -> NetworkAPI addr
@@ -454,7 +455,8 @@ peerPexNewAddressMonitor peerChanPexNewAddresses PeerRegistry{..} NetworkAPI{..}
 
 
 peerPexKnownCapacityMonitor
-  :: ( MonadIO m, MonadLogger m, Show addr, Show a)
+  :: ( MonadIO m, MonadLogger m
+     , Serialise a, Ord addr, Show addr, Serialise addr, Show a, Crypto alg)
   => addr
   -> PeerChans m addr alg a
   -> PeerRegistry addr
@@ -521,7 +523,8 @@ peerPexMonitor peerAddr net peerCh mempool peerRegistry@PeerRegistry{..} minConn
 
 
 peerGossipPeerExchange
-  :: (MonadIO m, MonadFork m, MonadLogger m, Show a, Show addr)
+  :: ( MonadIO m, MonadFork m, MonadMask m, MonadLogger m
+     , Show a, Serialise a, Serialise addr, Show addr, Ord addr, Crypto alg)
   => addr
   -> PeerChans m addr alg a
   -> PeerRegistry addr
@@ -814,6 +817,7 @@ peerSend _peerAddrFrom peerAddrTo peerSt PeerChans{..} gossipCh Connection{..} =
     msg <- liftIO $ atomically $  readTChan gossipCh
                               <|> fmap GossipAnn (readTChan ownPeerChanTx)
                               <|> fmap GossipPex (readTChan ownPeerChanPex)
+    -- logger InfoS ("Send to (" <> showLS peerAddrTo <> "): " <> showlessShowGossipMsg msg) ()
     send $ serialise msg
     -- Update state of peer when we advance to next height
     case msg of
