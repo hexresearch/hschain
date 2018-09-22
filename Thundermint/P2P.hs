@@ -281,27 +281,29 @@ acceptLoop peerAddr NetworkAPI{..} peerCh mempool peerRegistry = do
       -- connection immediately
       mask $ \restore -> do
         (conn, addr') <- accept
-        recvPeerInfo conn >>= \case
-          Left err -> do
-            logger ErrorS ("Handshake error: " <> showLS err) ()
-            close conn
-          Right peerInfo -> do
-            let otherPeerId = piPeerId peerInfo
-                otherPeerPort = piPeerPort peerInfo
-                addr = normalizeNodeAddress addr' (Just $ fromIntegral otherPeerPort)
-            trace $ TeNodeOtherTryConnect (show addr)
-            logger DebugS ("PreAccepted connection from " <> showLS addr <> ", (was: " <> showLS addr' <> "), otherPeerId = " <> showLS otherPeerId <> ", peerInfo = " <> showLS peerInfo) ()
-            if otherPeerId == prPeerId peerRegistry then do
-              logger DebugS "Self connection detected. Close connection" ()
-              close conn
-            else
-                void $ flip forkFinally (const $ close conn)
-                     $ restore
-                     $ withPeer peerRegistry addr (CmAccept otherPeerId)
-                     $ do logger InfoS "Accepted connection" (sl "addr" (show addr))
-                          trace $ TeNodeOtherConnected (show addr)
-                          descendNamespace (T.pack (show addr))
-                            $ startPeer peerAddr addr peerCh conn peerRegistry mempool
+        void $ flip forkFinally (const $ close conn) $ restore
+          $ recvPeerInfo conn >>= \case
+              Left err -> do
+                logger ErrorS ("Handshake error: " <> showLS err) ()
+                close conn
+              Right peerInfo -> do
+                let otherPeerId = piPeerId peerInfo
+                    otherPeerPort = piPeerPort peerInfo
+                    addr = normalizeNodeAddress addr' (Just $ fromIntegral otherPeerPort)
+                trace $ TeNodeOtherTryConnect (show addr)
+                logger DebugS ("PreAccepted connection from " <> showLS addr
+                               <> ", (was: " <> showLS addr'
+                               <> "), otherPeerId = " <> showLS otherPeerId
+                               <> ", peerInfo = " <> showLS peerInfo) ()
+                if otherPeerId == prPeerId peerRegistry then do
+                  logger DebugS "Self connection detected. Close connection" ()
+                  close conn
+                else
+                  withPeer peerRegistry addr (CmAccept otherPeerId) $ do
+                    logger InfoS "Accepted connection" (sl "addr" (show addr))
+                    trace $ TeNodeOtherConnected (show addr)
+                    descendNamespace (T.pack (show addr))
+                      $ startPeer peerAddr addr peerCh conn peerRegistry mempool
 
 
 -- Initiate connection to remote host and register peer
