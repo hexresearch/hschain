@@ -202,13 +202,7 @@ main
             allEqual []     = error "Empty list impossible!"
             allEqual (x:xs) = all (x==) xs
 
-        forM_ storageList $ \s -> do
-                          bs <- checkBlocks s
-                          cs <- checkCommits s
-                          vs <- checkValidators s
-                          cbs <- checkCommitsBlocks s
-                          return $ bs <> cs <> vs <> cbs
-
+        forM_ storageList checkStorage
 
         forM_ heights $ \h -> do
           -- Check that all blocks match!
