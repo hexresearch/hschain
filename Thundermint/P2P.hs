@@ -259,7 +259,7 @@ data ConnectMode = CmAccept PeerId
 
 
 retryPolicy :: RetryPolicy
-retryPolicy = exponentialBackoff 100000 <> limitRetries 30
+retryPolicy = exponentialBackoff 100000 <> limitRetries 5
 
 
 -- Thread which accepts connections from remote nodes
@@ -281,29 +281,30 @@ acceptLoop peerAddr NetworkAPI{..} peerCh mempool peerRegistry = do
       -- connection immediately
       mask $ \restore -> do
         (conn, addr') <- accept
-        void $ flip forkFinally (const $ close conn) $ restore
-          $ recvPeerInfo conn >>= \case
-              Left err -> do
-                logger ErrorS ("Handshake error: " <> showLS err) ()
+        void $ flip forkFinally (const $ close conn) $ restore $ do
+          logger DebugS ("Accept connection from " <> showLS addr') ()
+          recvPeerInfo conn >>= \case
+            Left err -> do
+              logger ErrorS ("Handshake error: " <> showLS err) ()
+              close conn
+            Right peerInfo -> do
+              let otherPeerId = piPeerId peerInfo
+                  otherPeerPort = piPeerPort peerInfo
+                  addr = normalizeNodeAddress addr' (Just $ fromIntegral otherPeerPort)
+              trace $ TeNodeOtherTryConnect (show addr)
+              logger DebugS ("PreAccepted connection from " <> showLS addr
+                             <> ", (was: " <> showLS addr'
+                             <> "), otherPeerId = " <> showLS otherPeerId
+                             <> ", peerInfo = " <> showLS peerInfo) ()
+              if otherPeerId == prPeerId peerRegistry then do
+                logger DebugS "Self connection detected. Close connection" ()
                 close conn
-              Right peerInfo -> do
-                let otherPeerId = piPeerId peerInfo
-                    otherPeerPort = piPeerPort peerInfo
-                    addr = normalizeNodeAddress addr' (Just $ fromIntegral otherPeerPort)
-                trace $ TeNodeOtherTryConnect (show addr)
-                logger DebugS ("PreAccepted connection from " <> showLS addr
-                               <> ", (was: " <> showLS addr'
-                               <> "), otherPeerId = " <> showLS otherPeerId
-                               <> ", peerInfo = " <> showLS peerInfo) ()
-                if otherPeerId == prPeerId peerRegistry then do
-                  logger DebugS "Self connection detected. Close connection" ()
-                  close conn
-                else
-                  withPeer peerRegistry addr (CmAccept otherPeerId) $ do
-                    logger InfoS "Accepted connection" (sl "addr" (show addr))
-                    trace $ TeNodeOtherConnected (show addr)
-                    descendNamespace (T.pack (show addr))
-                      $ startPeer peerAddr addr peerCh conn peerRegistry mempool
+              else
+                withPeer peerRegistry addr (CmAccept otherPeerId) $ do
+                  logger InfoS "Accepted connection" (sl "addr" (show addr))
+                  trace $ TeNodeOtherConnected (show addr)
+                  descendNamespace (T.pack (show addr))
+                    $ startPeer peerAddr addr peerCh conn peerRegistry mempool
 
 
 -- Initiate connection to remote host and register peer
@@ -320,7 +321,7 @@ connectPeerTo
   -> m ()
 connectPeerTo peerAddr NetworkAPI{..} addr peerCh mempool peerRegistry =
   -- Igrnore all exceptions to prevent apparing of error messages in stderr/stdout.
-  void . flip forkFinally (const $ return ()) . logOnException $
+  void . flip forkFinally (const $ return ()) $
     recoverAll retryPolicy $ const $ logOnException $ do
       logger InfoS "Connecting to" (sl "addr" (show addr))
       trace (TeNodeConnectingTo (show addr))
@@ -464,7 +465,7 @@ peerPexKnownCapacityMonitor
   -> Int
   -> m ()
 peerPexKnownCapacityMonitor _peerAddr PeerChans{..} PeerRegistry{..} minKnownConnections _maxKnownConnections = do
-    logger InfoS "Start PEX known capacity monitor ZZZ" ()
+    logger InfoS "Start PEX known capacity monitor" ()
     liftIO $ atomically $ readTVar prConnected >>= (check . not . Set.null) -- wait until some initial peers connect
     logger DebugS "Some nodes connected" ()
     forever $ do
