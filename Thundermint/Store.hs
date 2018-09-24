@@ -468,16 +468,10 @@ checkCommitsBlocks :: Monad m =>
             -> m [BlockchainInconsistency]
 checkCommitsBlocks storage = do
     maxH <- blockchainHeight storage
-    let heights = enumFromTo (Height 1) (pred maxH)
-
-    xs <- mapM  (\h -> execWriterT $ do
-                          cmt <- lift $ retrieveCommit storage (pred h)
-                          blk  <- lift $ retrieveBlock storage h
-                          commitBlockInvariant h blk cmt
-                       ) heights
-
-    return $ concat xs
-
+    execWriterT $ forM_ [Height 1 .. pred maxH] $ \h -> do
+      cmt <- lift $ retrieveCommit storage (pred h)
+      blk <- lift $ retrieveBlock storage h
+      commitBlockInvariant h blk cmt
 
 
 
