@@ -464,7 +464,7 @@ peerPexKnownCapacityMonitor
   -> Int
   -> m ()
 peerPexKnownCapacityMonitor _peerAddr PeerChans{..} PeerRegistry{..} minKnownConnections _maxKnownConnections = do
-    logger InfoS "Start PEX known capacity monitor" ()
+    logger InfoS "Start PEX known capacity monitor ZZZ" ()
     liftIO $ atomically $ readTVar prConnected >>= (check . not . Set.null) -- wait until some initial peers connect
     logger DebugS "Some nodes connected" ()
     forever $ do
