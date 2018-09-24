@@ -595,7 +595,7 @@ blockInvariant chainID validatorS blockID h@(Height n) b@(Just Block{..}) = do
   -- block at height H+1 blockLastCommit all votes refer to block at H
   when ( maybe False (any ((/= pred h) . voteHeight . signedValue)) (commitPrecommits <$> blockLastCommit))  $
     tell [BlockLastCommitHasMisMatchVoteHeight h]
-  --  block's all voteBlockID equals to headerLastBlockID and equals to commitBlockID
-  when ( maybe False (\Commit{..} -> any ((\b' -> b' /= Just commitBlockID
-                                           || b' /= headerLastBlockID blockHeader) <$> voteBlockID <$> signedValue) commitPrecommits) blockLastCommit)  $
-    tell [BlockLastCommitHasMisMatchVoteBlockID h]
+  -- --  block's all voteBlockID equals to headerLastBlockID and equals to commitBlockID
+  -- when ( maybe False (\Commit{..} -> any ((\b' -> b' /= Just commitBlockID
+  --                                          || b' /= headerLastBlockID blockHeader) <$> voteBlockID <$> signedValue) commitPrecommits) blockLastCommit)  $
+  --   tell [BlockLastCommitHasMisMatchVoteBlockID h]
