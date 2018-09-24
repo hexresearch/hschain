@@ -462,7 +462,7 @@ blockInvariant chainID h prevBID (mprevValSet, valSet) Block{blockHeader=Header{
     (_, Nothing       ) -> tell [BlockMissingLastCommit h]
     (_, Just commit   )
       | Just prevValSet <- mprevValSet
-        -> commitInvariant (InvalidCommit h) h prevBID prevValSet commit
+        -> commitInvariant (InvalidCommit h) (pred h) prevBID prevValSet commit
       | otherwise
         -> tell [InvalidCommit h "Cannot validate commit"]
 
@@ -481,10 +481,10 @@ commitInvariant mkErr h bid valSet Commit{..} = do
   -- All votes should be for previous height
   do let invalid = [ svote
                    | svote <- commitPrecommits
-                   , pred h == voteHeight (signedValue svote)
+                   , h /= voteHeight (signedValue svote)
                    ]
      null invalid
-       `orElse` mkErr "Commit contains votes not for previous height"
+       `orElse` mkErr "Commit contains votes for invalid height"
   -- All votes must be in same round
   do let rounds = voteRound . signedValue <$> commitPrecommits
      case rounds of
