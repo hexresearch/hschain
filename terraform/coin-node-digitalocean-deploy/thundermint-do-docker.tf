@@ -35,7 +35,7 @@ resource "digitalocean_droplet" "node" {
 
     inline = [
       "docker volume create thundermint",
-      "docker run -v thundermint:/thundermint -p 49999-50000:49999-50000 --name node-${count.index+1} -d -e THUNDERMINT_KEYS='${jsonencode(values(var.private_keys))}' -e THUNDERMINT_NODE_SPEC='{ \"nspecPrivKey\":\"${var.private_keys[count.index]}\", \"nspecDbName\": \"db/node-${count.index+1}\", \"nspecLogFile\" : [{ \"type\": \"ScribeJSON\", \"path\" : \"logs/node-${count.index+1}\", \"severity\" : \"Debug\", \"verbosity\" : \"V2\" }], \"nspecWalletKeys\"  : [${count.index*500},500]}' romcheck/thundermint-node /bin/thundermint-coin-node --prefix /thundermint --delay 100 --check-consensus --deposit 1000 --keys 2000"
+      "docker run -v thundermint:/thundermint -p 49999-50000:49999-50000 --name node-${count.index+1} -d -e THUNDERMINT_KEYS='${jsonencode(values(var.private_keys))}' -e THUNDERMINT_NODE_SPEC='{ \"nspecPrivKey\":\"${var.private_keys[count.index]}\", \"nspecDbName\": \"db/node-${count.index+1}\", \"nspecLogFile\" : [{ \"type\": \"ScribeJSON\", \"path\" : \"logs/node-${count.index+1}\", \"severity\" : \"Debug\", \"verbosity\" : \"V2\" }], \"nspecWalletKeys\"  : [${count.index*500},500]}' dmalkr/thundermint-node /bin/thundermint-coin-node --prefix /thundermint --delay 100 --check-consensus --deposit 1000 --keys 2000"
     ]
 
   }
