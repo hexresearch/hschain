@@ -251,22 +251,15 @@ makeHeightParameters Configuration{..} AppState{..} AppChans{..} = do
     , proposerForRound = proposerChoice
     --
     , validateBlock = \bid -> do
-        let chainID = headerChainID $ blockHeader genesis
-            nH = next h
+        let nH = next h
         blocks <- lift $ retrievePropBlocks appPropStorage nH
-        cmt      <- lift $ retrieveCommit appStorage h
         case bid `Map.lookup` blocks of
           Nothing -> return UnseenProposal
           Just b  -> do
-            inconsistencies <- liftA2 (<>)
-              (checkBlock chainID valSet bid nH b)
-              (checkBlockByCommit h (Just b) cmt)
+            inconsistencies <- lift $ checkProposedBlock appStorage nH b
             case () of
               _| not (null inconsistencies) -> do
                    logger ErrorS ("Proposed block at height ::" <> showLS nH <> ":: has Inconsistency problem: " <> showLS inconsistencies) ()
-                   return InvalidProposal
-               | hash valSet /= headerValidatorsHash (blockHeader b) -> do
-                   logger ErrorS ("Proposed block at height ::" <> showLS nH <> ":: has invalid validator hash") ()
                    return InvalidProposal
                | otherwise                  -> return GoodProposal
     --
