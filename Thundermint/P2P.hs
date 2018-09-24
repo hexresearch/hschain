@@ -541,17 +541,23 @@ peerGossipPeerExchange _peerAddr PeerChans{..} PeerRegistry{prConnected,prIsActi
     sendPeers = do
         addrList' <- Set.toList <$> liftIO (readTVarIO prConnected)
         logger DebugS ("peerGossipPeerExchange: someone asks for other peers: we answer " <> showLS addrList') ()
-        liftIO $ atomically $
+        isSomethingSent <- liftIO $ atomically $
             readTVar prIsActive >>= \case
-                False -> return ()
+                False -> return False
                 True -> do
                     addrList <- Set.toList <$> readTVar prConnected
-                    unless (null addrList) $
+                    if null addrList then
+                        return False
+                    else do
                         writeTChan gossipCh (GossipPex (PexMsgMorePeers addrList)) -- TODO send only for requesting node!!!
+                        return True
+        when isSomethingSent $ tickSend cntGossipPex
     connectToAddrs addrs = do
         logger DebugS ("peerGossipPeerExchange: some address received: " <> showLS addrs) ()
         liftIO $ atomically $ writeTChan peerChanPexNewAddresses addrs
-    ping = liftIO $ atomically $ writeTChan gossipCh (GossipPex PexPong)
+    ping = do
+        liftIO $ atomically $ writeTChan gossipCh (GossipPex PexPong)
+        tickSend cntGossipPex
     pong = return ()
 
 
