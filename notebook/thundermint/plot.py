@@ -27,7 +27,7 @@ def plot_commit_time(logs) :
     ts = np.average( [df['at'][0:n] for df in dfs], axis=0 )
     r  = sm.OLS(ts, sm.add_constant(hs), missing='drop').fit()
     # Do plot
-    fig = plt.figure()
+    figA = plt.figure()
     plt.grid()
     plt.title('Commit time')
     plt.xlabel('Time (s)')
@@ -36,7 +36,15 @@ def plot_commit_time(logs) :
     for df in dfs :
         plt.plot(df['at'] , df['H'], '+')
     print("Time for commit of singe block %.3f s" % float(r.params[1]))
-    return fig
+    #
+    figB = plt.figure()
+    plt.grid()
+    plt.title('Commit time residuals')
+    plt.xlabel('Time (s)')
+    plt.ylabel('Delta H')
+    for df in dfs :
+        plt.plot(df['at'] , df['H'] - (df['at'] - r.params[0]) / r.params[1])
+    return [figA,figB]
 
 
 def plot_n_tx_in_block(logs):
