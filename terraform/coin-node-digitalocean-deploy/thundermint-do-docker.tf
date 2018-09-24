@@ -31,6 +31,8 @@ resource "digitalocean_droplet" "node" {
     connection {
       type = "ssh"
       timeout = "1m"
+      private_key = "${file("/home/dima/.ssh/id_rsa")}"
+      agent = false
     }
 
     inline = [
