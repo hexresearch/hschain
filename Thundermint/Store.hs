@@ -38,12 +38,7 @@ module Thundermint.Store (
   -- * Blockchain invariants checkers
   , BlockchainInconsistency
   , checkStorage
-  , checkBlocks
   , checkBlock
-  , checkCommits
-  , checkCommit
-  , checkValidators
-  , checkCommitsBlocks
   , checkBlockByCommit
   ) where
 
