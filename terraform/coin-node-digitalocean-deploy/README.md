@@ -38,5 +38,8 @@
 1. Terraform обычно удаляет и запускает ноды снова. Поэтому они каждый раз имеют разные IP.
     1. Хотя Рома говорит, можно и переделать скрипт, чтобы ноды были такими же TODO: уточнить.
 1. Чтобы посмотреть текущие ip-адреса надо выполнить в директории `terraform/coin-node-digitalocean-deploy`:
-   `terraform show |grep ipv4_address| awk '{print $3}'`.
+   `terraform show | grep ipv4_address | awk '{print $3}'`.
 1. Чтобы ноды работали не через NAT, можно `-p 49999-50000:49999-50000` заменить на `--network host` в tf-файле.
+1. Сейчас ноды запускаются без поддержки IPv4. Можно включить поддержку IPv6 следующим образом:
+   https://www.terraform.io/docs/providers/do/r/droplet.html#ipv6 :
+   1. На одном уровне с image, size добавить `ipv6=true`.
