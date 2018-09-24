@@ -24,7 +24,7 @@ resource "digitalocean_droplet" "node" {
   size  = "1gb"
   region = "${element(var.regions, count.index)}"
   name  = "node-${count.index+1}"
-  ssh_keys = [22607679]
+  ssh_keys = ["22607679", "22838852"]
 
   provisioner "remote-exec" {
 
