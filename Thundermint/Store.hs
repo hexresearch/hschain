@@ -356,7 +356,7 @@ data BlockchainInconsistency
 
 -- | check storage against all consistency invariants
 checkStorage
-  :: (Monad m, Crypto alg, Serialise a, Serialise (PublicKey alg))
+  :: (Monad m, Crypto alg, Serialise a)
   => BlockStorage rw m alg a
   -> m [BlockchainInconsistency]
 checkStorage storage = execWriterT $ do
@@ -387,7 +387,7 @@ checkStorage storage = execWriterT $ do
 -- | Check that block proposed at given height is correct in sense all
 --   blockchain invariants hold
 checkProposedBlock
-  :: (Monad m, Crypto alg, Serialise a, Serialise (PublicKey alg))
+  :: (Monad m, Crypto alg, Serialise a)
   => BlockStorage rw m alg a
   -> Height
   -> Block alg a
@@ -423,7 +423,7 @@ genesisBlockInvariant Block{blockHeader = Header{..}, ..} = do
 
 -- | Check invariant for block at height > 0
 blockInvariant
-  :: (Monad m, Crypto alg, Serialise a, Serialise (PublicKey alg))
+  :: (Monad m, Crypto alg, Serialise a)
   => BS.ByteString
   -- ^ Blockchain ID
   -> Height

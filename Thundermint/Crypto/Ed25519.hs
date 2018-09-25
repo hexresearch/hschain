@@ -20,7 +20,6 @@ import Data.ByteString       (ByteString)
 import Data.ByteString.Char8 (unpack)
 import Text.Read             (Read(..))
 
-import qualified Codec.Serialise       as CBOR
 import qualified Crypto.PubKey.Ed25519 as Ed
 import qualified Data.Text.Encoding    as T
 
@@ -51,6 +50,8 @@ instance Crypto Ed25519_SHA512 where
   pubKeyFromBS  bs = case Ed.publicKey bs of
     CryptoPassed k -> Just (PublicKey k)
     CryptoFailed _ -> Nothing
+  privKeyToBS (PrivKey   k) = convert k
+  pubKeyToBS  (PublicKey k) = convert k
 
 generatePrivKey :: MonadRandom m => m (PrivKey Ed25519_SHA512)
 generatePrivKey = fmap PrivKey Ed.generateSecretKey
@@ -62,14 +63,6 @@ generatePrivKey = fmap PrivKey Ed.generateSecretKey
 ----------------------------------------------------------------
 
 deriving instance Eq (PrivKey Ed25519_SHA512)
-
-instance CBOR.Serialise (PublicKey Ed25519_SHA512) where
-  encode (PublicKey pk) = CBOR.encode (convert pk :: ByteString)
-  decode = do bs <- CBOR.decode
-              case Ed.publicKey (bs :: ByteString) of
-                CryptoPassed pk -> return (PublicKey pk)
-                CryptoFailed e  -> fail (show e)
-
 
 instance Show (PrivKey Ed25519_SHA512) where
   show (PrivKey k) = show $ unpack $ encodeBase58 $ convert k

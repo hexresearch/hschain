@@ -58,7 +58,7 @@ newAppChans = do
 --
 --   * INVARIANT: Only this function can write to blockchain
 runApplication
-  :: ( MonadIO m, MonadCatch m, MonadLogger m, Crypto alg, Serialise (PublicKey alg)
+  :: ( MonadIO m, MonadCatch m, MonadLogger m, Crypto alg
      , Serialise a, Show a, LogBlock a)
   => Configuration
      -- ^ Configuration
@@ -87,7 +87,7 @@ runApplication config appSt@AppState{..} appCh@AppChans{..} = logOnException $ d
 --
 -- FIXME: we should write block and last commit in transaction!
 decideNewBlock
-  :: ( MonadIO m, MonadLogger m, Crypto alg, Serialise (PublicKey alg)
+  :: ( MonadIO m, MonadLogger m, Crypto alg
      , Serialise a, Show a, LogBlock a)
   => Configuration
   -> AppState m alg a
@@ -224,7 +224,7 @@ instance MonadTrans (ConsensusM alg a) where
   lift = ConsensusM . fmap Success
 
 makeHeightParameters
-  :: (MonadIO m, MonadLogger m, Crypto alg, Serialise a, Show a, Serialise (PublicKey alg))
+  :: (MonadIO m, MonadLogger m, Crypto alg, Serialise a, Show a)
   => Configuration
   -> AppState m alg a
   -> AppChans m alg a

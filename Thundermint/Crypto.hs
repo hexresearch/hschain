@@ -41,6 +41,7 @@ module Thundermint.Crypto (
   ) where
 
 import Codec.Serialise (Serialise, serialise)
+import qualified Codec.Serialise as CBOR
 import Control.Applicative
 import Control.DeepSeq
 import Control.Monad
@@ -155,6 +156,10 @@ class Crypto alg where
   privKeyFromBS       :: BS.ByteString -> Maybe (PrivKey alg)
   -- | Create public key from bytestring
   pubKeyFromBS        :: BS.ByteString -> Maybe (PublicKey alg)
+  -- | Convert private key to bytestring
+  privKeyToBS         :: PrivKey alg -> BS.ByteString
+  -- | Convert public key to bytestring
+  pubKeyToBS          :: PublicKey alg -> BS.ByteString
 
 -- | Verify signature of value. Signature is verified for CBOR
 --   encoding of object
@@ -166,6 +171,20 @@ verifyCborSignature
   -> Bool
 verifyCborSignature pk a
   = verifyBlobSignature pk (toStrict $ serialise a)
+
+instance Crypto alg => Serialise (PrivKey alg) where
+  encode = CBOR.encode . privKeyToBS
+  decode = do bs <- CBOR.decode
+              case privKeyFromBS bs of
+                Nothing -> fail "Cannot decode private key"
+                Just k  -> return k
+
+instance Crypto alg => Serialise (PublicKey alg) where
+  encode = CBOR.encode . pubKeyToBS
+  decode = do bs <- CBOR.decode
+              case pubKeyFromBS bs of
+                Nothing -> fail "Cannot decode private key"
+                Just k  -> return k
 
 
 ----------------------------------------------------------------
