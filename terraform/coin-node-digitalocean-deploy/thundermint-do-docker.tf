@@ -21,7 +21,7 @@ resource "digitalocean_droplet" "node" {
 
   count = "${length(var.private_keys)}"
   image = "docker-18-04"
-  size  = "1gb"
+  size  = "4gb"
   region = "${element(var.regions, count.index)}"
   name  = "node-${count.index+1}"
   ssh_keys = ["22607679", "22838852"]
