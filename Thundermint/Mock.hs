@@ -84,7 +84,7 @@ data NodeDescription addr m alg st tx a = NodeDescription
 
 runNode
   :: ( MonadMask m, MonadFork m, MonadLogger m, MonadTrace m
-     , Ord tx, Serialise tx
+     , Serialise tx
      , Crypto alg, Ord addr, Show addr, Serialise addr, Show a, LogBlock a
      , Serialise a)
   => Configuration
