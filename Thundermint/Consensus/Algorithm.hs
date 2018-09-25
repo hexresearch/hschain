@@ -520,6 +520,8 @@ addPrevote HeightParameters{..} v sm@TMState{..} = do
     InsertOK votes   -> return sm{ smPrevotesSet = votes }
     InsertDup        -> tranquility
     InsertConflict _ -> misdeed
+    -- NOTE: Couldn't happen since we reject votes signed by unknown keys
+    InsertUnknown  _ -> error "addPrevote: Internal error"
 
 addPrecommit
   :: (ConsensusMonad m)
@@ -533,3 +535,5 @@ addPrecommit HeightParameters{..} v sm@TMState{..} = do
     InsertOK votes   -> return sm{ smPrecommitsSet = votes }
     InsertDup        -> tranquility
     InsertConflict _ -> misdeed
+    -- NOTE: See addPrevote
+    InsertUnknown  _ -> error "addPrecommit: Internal error"

@@ -69,7 +69,7 @@ data Validator alg = Validator
   }
   deriving (Generic)
 deriving instance Eq (PublicKey alg) => Eq (Validator alg)
-instance CBOR.Serialise (PublicKey alg) => CBOR.Serialise (Validator alg)
+instance Crypto alg => CBOR.Serialise (Validator alg)
 
 -- | Set of all known validators for given height
 data ValidatorSet alg = ValidatorSet
@@ -80,7 +80,7 @@ data ValidatorSet alg = ValidatorSet
   deriving (Generic)
 deriving instance Eq (PublicKey alg) => Eq (ValidatorSet alg)
 
-instance (Crypto alg, CBOR.Serialise (PublicKey alg)) => CBOR.Serialise (ValidatorSet alg) where
+instance (Crypto alg) => CBOR.Serialise (ValidatorSet alg) where
   encode = CBOR.encode . toList . vsValidators
   decode = fmap (makeValidatorSet . asList) CBOR.decode >>= \case
     Left  e -> fail (show e)
@@ -183,6 +183,7 @@ data InsertResult b a
   = InsertOK       a            -- ^ Insert is successful
   | InsertDup                   -- ^ Duplicate value. No change
   | InsertConflict b            -- ^ Conflict during insertion
+  | InsertUnknown  b            -- ^ Value is signed by unknown validator
   deriving (Show,Functor)
 
 instance Applicative (InsertResult b) where
@@ -194,6 +195,7 @@ instance Monad (InsertResult b) where
   InsertOK a       >>= f = f a
   InsertDup        >>= _ = InsertDup
   InsertConflict b >>= _ = InsertConflict b
+  InsertUnknown  b >>= _ = InsertUnknown  b
 
 emptySignedSet :: ValidatorSet alg -> SignedSet ty alg a
 emptySignedSet = SignedSet Map.empty Map.empty
@@ -204,20 +206,25 @@ insertSigned
   => Signed ty alg a
   -> SignedSet ty alg a
   -> InsertResult (Signed ty alg a) (SignedSet ty alg a)
-insertSigned sval (SignedSet mAddr mVal valSet) =
-  case addr `Map.lookup` mAddr of
-    Just v
-      | signedValue v == val -> InsertDup
-      | otherwise            -> InsertConflict sval
-    Nothing                  -> InsertOK SignedSet
-      { vsetAddrMap = Map.insert addr sval mAddr
-      , vsetValMap  = Map.alter
-          (Just . \case
-              Nothing        -> Set.singleton addr
-              Just addresses -> addr `Set.insert` addresses
-          ) val mVal
-      , vsetValidators = valSet
-      }
+insertSigned sval SignedSet{..}
+  -- We trying to insert value signed by unknown key
+  | Nothing <- validatorByAddr vsetValidators (signedAddr sval)
+    = InsertUnknown sval
+  -- We already have value signed by that key
+  | Just v <- addr `Map.lookup` vsetAddrMap = case () of
+      _ | signedValue v == val -> InsertDup
+        | otherwise            -> InsertConflict sval
+  -- OK insert value then
+  | otherwise
+    = InsertOK SignedSet
+        { vsetAddrMap = Map.insert addr sval vsetAddrMap
+        , vsetValMap  = Map.alter
+            (Just . \case
+                Nothing        -> Set.singleton addr
+                Just addresses -> addr `Set.insert` addresses
+            ) val vsetValMap
+        , ..
+        }
   where
     addr = signedAddr  sval
     val  = signedValue sval

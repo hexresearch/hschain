@@ -58,7 +58,7 @@ newAppChans = do
 --
 --   * INVARIANT: Only this function can write to blockchain
 runApplication
-  :: ( MonadIO m, MonadCatch m, MonadLogger m, Crypto alg, Serialise (PublicKey alg)
+  :: ( MonadIO m, MonadCatch m, MonadLogger m, Crypto alg
      , Serialise a, Show a, LogBlock a)
   => Configuration
      -- ^ Configuration
@@ -87,7 +87,7 @@ runApplication config appSt@AppState{..} appCh@AppChans{..} = logOnException $ d
 --
 -- FIXME: we should write block and last commit in transaction!
 decideNewBlock
-  :: ( MonadIO m, MonadLogger m, Crypto alg, Serialise (PublicKey alg)
+  :: ( MonadIO m, MonadLogger m, Crypto alg
      , Serialise a, Show a, LogBlock a)
   => Configuration
   -> AppState m alg a
@@ -224,7 +224,7 @@ instance MonadTrans (ConsensusM alg a) where
   lift = ConsensusM . fmap Success
 
 makeHeightParameters
-  :: (MonadIO m, MonadLogger m, Crypto alg, Serialise a, Show a, Serialise (PublicKey alg))
+  :: (MonadIO m, MonadLogger m, Crypto alg, Serialise a, Show a)
   => Configuration
   -> AppState m alg a
   -> AppChans m alg a
@@ -251,24 +251,19 @@ makeHeightParameters Configuration{..} AppState{..} AppChans{..} = do
     , proposerForRound = proposerChoice
     --
     , validateBlock = \bid -> do
-        let chainID = headerChainID $ blockHeader genesis
-            nH = next h
+        let nH = next h
         blocks <- lift $ retrievePropBlocks appPropStorage nH
-        cmt      <- lift $ retrieveCommit appStorage h
         case bid `Map.lookup` blocks of
           Nothing -> return UnseenProposal
           Just b  -> do
-            inconsistencies <- liftA2 (<>)
-              (checkBlock chainID valSet bid nH b)
-              (checkBlockByCommit h (Just b) cmt)
+            inconsistencies <- lift $ checkProposedBlock appStorage nH b
+            blockOK         <- lift $ appValidationFun (next h) (blockData b)
             case () of
               _| not (null inconsistencies) -> do
                    logger ErrorS ("Proposed block at height ::" <> showLS nH <> ":: has Inconsistency problem: " <> showLS inconsistencies) ()
                    return InvalidProposal
-               | hash valSet /= headerValidatorsHash (blockHeader b) -> do
-                   logger ErrorS ("Proposed block at height ::" <> showLS nH <> ":: has invalid validator hash") ()
-                   return InvalidProposal
-               | otherwise                  -> return GoodProposal
+               | blockOK    -> return GoodProposal
+               | otherwise  -> return InvalidProposal
     --
     , broadcastProposal = \r bid lockInfo ->
         forM_ appValidator $ \(PrivValidator pk) -> do

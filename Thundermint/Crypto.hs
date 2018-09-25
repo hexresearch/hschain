@@ -41,6 +41,7 @@ module Thundermint.Crypto (
   ) where
 
 import Codec.Serialise (Serialise, serialise)
+import qualified Codec.Serialise as CBOR
 import Control.Applicative
 import Control.DeepSeq
 import Control.Monad
@@ -155,6 +156,10 @@ class Crypto alg where
   privKeyFromBS       :: BS.ByteString -> Maybe (PrivKey alg)
   -- | Create public key from bytestring
   pubKeyFromBS        :: BS.ByteString -> Maybe (PublicKey alg)
+  -- | Convert private key to bytestring
+  privKeyToBS         :: PrivKey alg -> BS.ByteString
+  -- | Convert public key to bytestring
+  pubKeyToBS          :: PublicKey alg -> BS.ByteString
 
 -- | Verify signature of value. Signature is verified for CBOR
 --   encoding of object
@@ -166,6 +171,64 @@ verifyCborSignature
   -> Bool
 verifyCborSignature pk a
   = verifyBlobSignature pk (toStrict $ serialise a)
+
+instance Crypto alg => Show (PrivKey alg) where
+  show = show . BC8.unpack . encodeBase58 . privKeyToBS
+
+instance Crypto alg => Show (PublicKey alg) where
+  show = show . BC8.unpack . encodeBase58 . pubKeyToBS
+
+instance Crypto alg => Read (PrivKey alg) where
+  readPrec = do bs <- readPrecBSBase58
+                case privKeyFromBS bs of
+                  Just k  -> return k
+                  Nothing -> empty
+
+instance Crypto alg => Read (PublicKey alg) where
+  readPrec = do bs <- readPrecBSBase58
+                case pubKeyFromBS bs of
+                  Just k  -> return k
+                  Nothing -> empty
+
+
+instance Crypto alg => Serialise (PrivKey alg) where
+  encode = CBOR.encode . privKeyToBS
+  decode = do bs <- CBOR.decode
+              case privKeyFromBS bs of
+                Nothing -> fail "Cannot decode private key"
+                Just k  -> return k
+
+instance Crypto alg => Serialise (PublicKey alg) where
+  encode = CBOR.encode . pubKeyToBS
+  decode = do bs <- CBOR.decode
+              case pubKeyFromBS bs of
+                Nothing -> fail "Cannot decode private key"
+                Just k  -> return k
+
+
+instance Crypto alg => JSON.ToJSON (PrivKey alg) where
+  toJSON = JSON.String . T.decodeUtf8 . encodeBase58 . privKeyToBS
+
+instance Crypto alg => JSON.ToJSON (PublicKey alg) where
+  toJSON = JSON.String . T.decodeUtf8 . encodeBase58 . pubKeyToBS
+
+instance Crypto alg => JSON.FromJSON (PrivKey alg) where
+  parseJSON (JSON.String s) =
+    case decodeBase58 $ T.encodeUtf8 s of
+      Nothing -> fail  "Incorrect Base58 encoding for PrivKey"
+      Just bs -> case privKeyFromBS bs of
+        Nothing -> fail "Incorrect bytestring representation of PrivKey"
+        Just k  -> return k
+  parseJSON _          = fail "Expecting PrivKey as string"
+
+instance Crypto alg => JSON.FromJSON (PublicKey alg) where
+  parseJSON (JSON.String s) =
+    case decodeBase58 $ T.encodeUtf8 s of
+      Nothing -> fail  "Incorrect Base58 encoding for PrivKey"
+      Just bs -> case pubKeyFromBS bs of
+        Nothing -> fail "Incorrect bytestring representation of PrivKey"
+        Just k  -> return k
+  parseJSON _          = fail "Expecting PrivKey as string"
 
 
 ----------------------------------------------------------------

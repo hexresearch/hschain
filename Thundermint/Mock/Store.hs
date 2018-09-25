@@ -18,7 +18,7 @@ import Thundermint.Store.STM
 -- | Create block storage. It will use SQLite if path is specified or
 --   STM otherwise.
 newBlockStorage
-  :: (Crypto alg, Serialise a, Serialise (PublicKey alg))
+  :: (Crypto alg, Serialise a)
   => FilePath                   -- ^ Prefix
   -> Maybe FilePath             -- ^ Path to database
   -> Block alg a
