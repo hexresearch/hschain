@@ -69,7 +69,7 @@ data Validator alg = Validator
   }
   deriving (Generic)
 deriving instance Eq (PublicKey alg) => Eq (Validator alg)
-instance CBOR.Serialise (PublicKey alg) => CBOR.Serialise (Validator alg)
+instance Crypto alg => CBOR.Serialise (Validator alg)
 
 -- | Set of all known validators for given height
 data ValidatorSet alg = ValidatorSet
@@ -80,7 +80,7 @@ data ValidatorSet alg = ValidatorSet
   deriving (Generic)
 deriving instance Eq (PublicKey alg) => Eq (ValidatorSet alg)
 
-instance (Crypto alg, CBOR.Serialise (PublicKey alg)) => CBOR.Serialise (ValidatorSet alg) where
+instance (Crypto alg) => CBOR.Serialise (ValidatorSet alg) where
   encode = CBOR.encode . toList . vsValidators
   decode = fmap (makeValidatorSet . asList) CBOR.decode >>= \case
     Left  e -> fail (show e)

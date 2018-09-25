@@ -30,7 +30,7 @@ import Thundermint.Store
 
 -- | Create new block storage using specified file as database
 newSQLiteBlockStorage
-  :: (Crypto alg, Serialise a, Serialise (PublicKey alg))
+  :: (Crypto alg, Serialise a)
   => FilePath
   -> Block alg a
   -> ValidatorSet alg
@@ -42,7 +42,7 @@ newSQLiteBlockStorage dbFile gBlock initalVals = do
 
 -- | Create new block storage using specified file as database
 withSQLiteBlockStorage
-  :: (Crypto alg, Serialise a, Serialise (PublicKey alg))
+  :: (Crypto alg, Serialise a)
   => FilePath
   -> Block alg a
   -> ValidatorSet alg
@@ -55,7 +55,7 @@ withSQLiteBlockStorage dbFile gBlock initalVals action
 
 -- | Create new block storage using specified file as database
 newSQLiteBlockStorageRO
-  :: (Crypto alg, Serialise a, Serialise (PublicKey alg))
+  :: (Crypto alg, Serialise a)
   => FilePath
   -> IO (BlockStorage 'RO IO alg a)
 newSQLiteBlockStorageRO dbFile = do
@@ -64,7 +64,7 @@ newSQLiteBlockStorageRO dbFile = do
 
 -- | Create new block storage using specified file as database
 withSQLiteBlockStorageRO
-  :: (Crypto alg, Serialise a, Serialise (PublicKey alg))
+  :: (Crypto alg, Serialise a)
   => FilePath
   -> (BlockStorage 'RO IO alg a -> IO b)
   -> IO b
@@ -75,7 +75,7 @@ withSQLiteBlockStorageRO dbFile action
 
 -- | Create new block storage from connection to SQLite database
 newSQLiteBlockStorageConn
-  :: forall alg a. (Crypto alg, Serialise a, Serialise (PublicKey alg))
+  :: forall alg a. (Crypto alg, Serialise a)
   => SQL.Connection
   -> IO (BlockStorage 'RW IO alg a)
 newSQLiteBlockStorageConn conn = do
@@ -131,7 +131,7 @@ newSQLiteBlockStorageConn conn = do
     }
 
 initializeDatabase
-  :: forall alg a. (Crypto alg, Serialise a, Serialise (PublicKey alg))
+  :: forall alg a. (Crypto alg, Serialise a)
   => SQL.Connection
   -> Block alg a
   -> ValidatorSet alg
