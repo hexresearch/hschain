@@ -277,6 +277,8 @@ data Mempool m alg tx = Mempool
     -- ^ Remove transactions that are no longer valid from mempool
   , getMempoolCursor  :: m (MempoolCursor m alg tx)
     -- ^ Get cursor pointing to be
+  , txInMempool       :: Hash alg -> m Bool
+    -- ^ Checks whether transaction is mempool
   , mempoolStats      :: m MempoolInfo
     -- ^ Number of elements in mempool
   }
@@ -292,6 +294,7 @@ hoistMempool fun Mempool{..} = Mempool
   { peekNTransactions = fun . peekNTransactions
   , filterMempool     = fun filterMempool
   , getMempoolCursor  = hoistMempoolCursor fun <$> fun getMempoolCursor
+  , txInMempool       = fun . txInMempool
   , mempoolStats      = fun mempoolStats
   }
 
@@ -301,6 +304,7 @@ nullMempoolAny = Mempool
   { peekNTransactions = const (return [])
   , filterMempool     = return ()
   , mempoolStats      = return $ MempoolInfo 0 0 0 0
+  , txInMempool       = const (return False)
   , getMempoolCursor  = return MempoolCursor
       { pushTransaction = const $ return Nothing
       , advanceCursor   = return Nothing

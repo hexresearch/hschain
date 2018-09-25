@@ -133,6 +133,7 @@ newMempool
 newMempool validation = do
   varFIFO      <- liftIO $ newTVarIO IMap.empty
   varRevMap    <- liftIO $ newTVarIO Map.empty
+  varTxSet     <- liftIO $ newTVarIO Set.empty
   varMaxN      <- liftIO $ newTVarIO 0
   varAdded     <- liftIO $ newTVarIO 0
   varDiscarded <- liftIO $ newTVarIO 0
@@ -157,8 +158,10 @@ newMempool validation = do
         liftIO $ atomically $ do
           fifo <- readTVar varFIFO
           let (dropped,point,retained) = IMap.splitLookup (firstGood - 1) fifo
+              droppedHashes            = Set.fromList $ hash <$> toList dropped
           modifyTVar' varFiltered (+ (length point + IMap.size dropped))
           modifyTVar' varRevMap $  Map.filter (>= firstGood)
+          modifyTVar' varTxSet    (`Set.difference` droppedHashes)
           writeTVar   varFIFO   $! retained
     --
     , mempoolStats = liftIO $ atomically $ do
@@ -167,6 +170,10 @@ newMempool validation = do
         mempool'discarded <- readTVar varDiscarded
         mempool'filtered  <- readTVar varFiltered
         return MempoolInfo{..}
+    --
+    , txInMempool = \txHash -> liftIO $ do
+        txSet <- readTVarIO varTxSet
+        return $ txHash `Set.member` txSet
     --
     , getMempoolCursor = liftIO $ atomically $ do
         varN <- newTVar 0
@@ -180,12 +187,14 @@ newMempool validation = do
                 rmap <- readTVar varRevMap
                 case tx `Map.notMember` rmap of
                   True -> do
+                    let txHash = hash tx
                     modifyTVar varAdded     succ
                     n <- succ <$> readTVar varMaxN
                     modifyTVar' varFIFO   $ IMap.insert n tx
                     modifyTVar' varRevMap $ Map.insert tx n
+                    modifyTVar' varTxSet  $ Set.insert txHash
                     writeTVar   varMaxN n
-                    return $ Just $ hash tx
+                    return $ Just txHash
                   False -> return Nothing
             --
           , advanceCursor = liftIO $ atomically $ do
