@@ -92,12 +92,12 @@ data PrivValidator alg = PrivValidator
   { validatorPrivKey  :: PrivKey alg
   }
 
-instance Show (PrivKey alg) => Show (PrivValidator alg) where
+instance Crypto alg => Show (PrivValidator alg) where
   show (PrivValidator k) = show k
 
-instance JSON.FromJSON (PrivKey alg) => JSON.FromJSON (PrivValidator alg) where
+instance Crypto alg => JSON.FromJSON (PrivValidator alg) where
   parseJSON = fmap PrivValidator . JSON.parseJSON
-instance JSON.ToJSON   (PrivKey alg) => JSON.ToJSON   (PrivValidator alg) where
+instance Crypto alg => JSON.ToJSON   (PrivValidator alg) where
   toJSON = JSON.toJSON . validatorPrivKey
 
 ----------------------------------------------------------------

@@ -9,19 +9,20 @@ module Thundermint.Crypto.Ed25519 where
 
 import Thundermint.Crypto
 
-import Control.Applicative
-import Crypto.Error          (CryptoFailable(..), eitherCryptoError, throwCryptoError)
+import Crypto.Error          (CryptoFailable(..), throwCryptoError)
 import Crypto.Hash           (Digest, SHA256, SHA512)
 import qualified Crypto.Hash as Crypto
 import Crypto.Random.Types   (MonadRandom)
-import Data.Aeson            (FromJSON, ToJSON, Value(..), parseJSON, toJSON)
 import Data.ByteArray        (convert)
 import Data.ByteString       (ByteString)
-import Data.ByteString.Char8 (unpack)
-import Text.Read             (Read(..))
+import Data.Ord              (comparing)
 
 import qualified Crypto.PubKey.Ed25519 as Ed
-import qualified Data.Text.Encoding    as T
+
+
+----------------------------------------------------------------
+-- 
+----------------------------------------------------------------
 
 sha512 :: ByteString -> ByteString
 sha512 = convert . id @(Digest SHA512) . Crypto.hash
@@ -57,69 +58,12 @@ generatePrivKey :: MonadRandom m => m (PrivKey Ed25519_SHA512)
 generatePrivKey = fmap PrivKey Ed.generateSecretKey
 
 
-
-----------------------------------------------------------------
--- Private key instances
-----------------------------------------------------------------
-
 deriving instance Eq (PrivKey Ed25519_SHA512)
 
-instance Show (PrivKey Ed25519_SHA512) where
-  show (PrivKey k) = show $ unpack $ encodeBase58 $ convert k
-
-instance Read (PrivKey Ed25519_SHA512) where
-  readPrec = do bs <- readPrecBSBase58
-                case Ed.secretKey bs of
-                  CryptoPassed k -> return (PrivKey k)
-                  CryptoFailed _ -> empty
-
-instance ToJSON (PrivKey Ed25519_SHA512) where
-  toJSON (PrivKey k) = String
-                     $ T.decodeUtf8
-                     $ encodeBase58
-                     $ convert k
-
-instance FromJSON (PrivKey Ed25519_SHA512) where
-  parseJSON (String s) =
-    case decodeBase58 $ T.encodeUtf8 s of
-      Nothing -> fail  "Incorrect Base58 encoding for bs"
-      Just bs -> either (fail.show) (return.PrivKey)
-                 $ eitherCryptoError
-                 $ Ed.secretKey bs
-
-  parseJSON _          = fail "Expect PrivKey"
-
-
-----------------------------------------------------------------
--- Public key instances
-----------------------------------------------------------------
+instance Ord (PrivKey Ed25519_SHA512) where
+  compare = comparing privKeyToBS
 
 deriving instance Eq  (PublicKey Ed25519_SHA512)
+
 instance Ord (PublicKey Ed25519_SHA512) where
-  compare (PublicKey k1) (PublicKey k2) =
-    compare (convert k1 :: ByteString) (convert k2 :: ByteString)
-
-instance Show (PublicKey Ed25519_SHA512) where
-  show (PublicKey k) = show $ unpack $ encodeBase58 $ convert k
-
-instance Read (PublicKey Ed25519_SHA512) where
-  readPrec = do bs <- readPrecBSBase58
-                case Ed.publicKey bs of
-                  CryptoPassed k -> return (PublicKey k)
-                  CryptoFailed _ -> empty
-
-instance ToJSON (PublicKey Ed25519_SHA512) where
-  toJSON (PublicKey k) = String
-                     $ T.decodeUtf8
-                     $ encodeBase58
-                     $ convert k
-
-instance FromJSON (PublicKey Ed25519_SHA512) where
-  parseJSON (String s) =
-    case decodeBase58 $ T.encodeUtf8 s of
-      Nothing -> fail  "Incorrect Base58 encoding for bs"
-      Just bs -> either (fail . show) (return . PublicKey)
-                 $ eitherCryptoError
-                 $ Ed.publicKey bs
-
-  parseJSON _          = fail "Expect PrivKey"
+  compare = comparing pubKeyToBS
