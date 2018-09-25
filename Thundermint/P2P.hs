@@ -440,8 +440,7 @@ whenM predicate act = ifM predicate act (return ())
 
 
 peerPexNewAddressMonitor
-  :: ( MonadIO m, MonadThrow m, MonadMask m
-     , Ord addr, Show addr, Serialise addr)
+  :: ( MonadIO m, MonadMask m, Ord addr)
   => TChan [addr]
   -> PeerRegistry addr
   -> NetworkAPI addr
@@ -453,8 +452,7 @@ peerPexNewAddressMonitor peerChanPexNewAddresses PeerRegistry{..} NetworkAPI{..}
 
 
 peerPexKnownCapacityMonitor
-  :: ( MonadIO m, MonadLogger m
-     , Serialise a, Ord addr, Show addr, Serialise addr, Show a, Crypto alg)
+  :: ( MonadIO m, MonadLogger m, Show addr, Show a)
   => addr
   -> PeerChans m addr alg a
   -> PeerRegistry addr
@@ -521,8 +519,7 @@ peerPexMonitor peerAddr net peerCh mempool peerRegistry@PeerRegistry{..} minConn
 
 
 peerGossipPeerExchange
-  :: ( MonadIO m, MonadFork m, MonadMask m, MonadLogger m
-     , Show a, Serialise a, Serialise addr, Show addr, Ord addr, Crypto alg)
+  :: (MonadIO m, MonadFork m, MonadLogger m, Show a, Show addr)
   => addr
   -> PeerChans m addr alg a
   -> PeerRegistry addr
