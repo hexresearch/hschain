@@ -257,11 +257,13 @@ makeHeightParameters Configuration{..} AppState{..} AppChans{..} = do
           Nothing -> return UnseenProposal
           Just b  -> do
             inconsistencies <- lift $ checkProposedBlock appStorage nH b
+            blockOK         <- lift $ appValidationFun (next h) (blockData b)
             case () of
               _| not (null inconsistencies) -> do
                    logger ErrorS ("Proposed block at height ::" <> showLS nH <> ":: has Inconsistency problem: " <> showLS inconsistencies) ()
                    return InvalidProposal
-               | otherwise                  -> return GoodProposal
+               | blockOK    -> return GoodProposal
+               | otherwise  -> return InvalidProposal
     --
     , broadcastProposal = \r bid lockInfo ->
         forM_ appValidator $ \(PrivValidator pk) -> do
