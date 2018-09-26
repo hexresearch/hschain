@@ -122,7 +122,7 @@ Executable thundermint-coin
   Main-is:             coin.hs
 
 Executable thundermint-coin-node
-  Ghc-options:         -Wall -threaded -Wno-orphans
+  Ghc-options:         -Wall -threaded -Wno-orphans -rtsopts "-with-rtsopts=-N -c"
   Default-Language:    Haskell2010
   Build-Depends:       base                 >=4.9 && <5
                      , thundermint
