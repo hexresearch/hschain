@@ -262,12 +262,16 @@ tendermintTransition par@HeightParameters{..} msg sm@TMState{..} =
     ----------------------------------------------------------------
     PreCommitMsg v@(signedValue -> Vote{..})
       -- Collect stragglers precommits for inclusion of
-      | next voteHeight == currentH
-      , smStep == StepNewHeight
-      , Just cmt <- smLastCommit
-        -> case Just (commitBlockID cmt) /= voteBlockID of
-             False -> misdeed
-             True  -> return sm
+      | smStep == StepNewHeight
+      , Just cmt@(Commit cmtID ((signedValue -> Vote{voteRound=r}):_)) <- smLastCommit
+      , next voteHeight == currentH
+      , voteRound       == r
+        -> case voteBlockID of
+             -- Virtuous node can either vote for same block or for NIL
+             Just bid | bid /= cmtID                  -> misdeed
+             -- Add vote while ignoring duplicates
+             _        | v `elem` commitPrecommits cmt -> tranquility
+                      | otherwise                     -> return sm
                { smLastCommit = Just cmt { commitPrecommits = v : commitPrecommits cmt } }
       -- Only accept votes with current height
       | voteHeight /= currentH -> tranquility
