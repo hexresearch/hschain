@@ -522,7 +522,7 @@ peerPexMonitor peerAddr net peerCh mempool peerRegistry@PeerRegistry{..} minConn
 
 
 peerGossipPeerExchange
-  :: (MonadIO m, MonadFork m, MonadLogger m, Show a, Show addr)
+  :: (MonadIO m, MonadMask m, MonadFork m, MonadLogger m, Show a, Show addr)
   => addr
   -> PeerChans m addr alg a
   -> PeerRegistry addr
