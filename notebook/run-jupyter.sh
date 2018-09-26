@@ -2,4 +2,4 @@
 #
 # Start jupyter notebook server
 set -e
-nix-shell --command 'PYTHONPATH=$(pwd) jupyter notebook' jupyter.nix
+nix-shell --command 'PYTHONPATH=$(pwd) jupyter notebook --no-browser' jupyter.nix
