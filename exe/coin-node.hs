@@ -15,7 +15,7 @@ import Codec.Serialise      (serialise)
 import Control.Monad        (forever, void)
 import Data.ByteString.Lazy (toStrict)
 import Data.Maybe           (isJust)
-import Katip.Core           (LogEnv, showLS)
+import Katip.Core           (LogEnv, showLS, sl)
 import Network.Simple.TCP   (accept, listen, recv)
 import Network.Socket       (SockAddr(..))
 import System.Environment   (getEnv)
@@ -147,10 +147,14 @@ interpretSpec Opts{..} netAddresses validatorSet logenv NodeSpec{..} = do
           , nodeAddr            = nodeAddr
           , nodeInitialPeers    = netAddresses
           , nodeValidationKey   = nspecPrivKey
-          , nodeCommitCallback = \case
-              h | Just hM <- maxH
-                , h > Height hM -> throwM Abort
-                | otherwise     -> return ()
+          , nodeCommitCallback  = \h -> do
+              -- Update state
+              st <- stateAtH bchState (next h)
+              descendNamespace "coin" $ logger InfoS "State size" (sl "utxo" (Map.size (unspentOutputs st)))
+              case maxH of
+                Just hM | h > Height hM -> throwM Abort
+                _                       -> return ()
+
           }
         runConcurrently (generator : acts)
     )
