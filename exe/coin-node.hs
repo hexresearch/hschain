@@ -16,8 +16,8 @@ import Control.Monad        (forever, void)
 import Data.ByteString.Lazy (toStrict)
 import Data.Maybe           (isJust)
 import Katip.Core           (LogEnv, showLS, sl)
-import Network.Simple.TCP   (accept, listen, recv)
-import Network.Socket       (SockAddr(..))
+import Network.Simple.TCP   (accept, listen, recv, closeSock)
+import Network.Socket       (SockAddr(..), PortNumber)
 import System.Environment   (getEnv)
 import System.FilePath      ((</>))
 import System.Random        (randomRIO)
@@ -50,6 +50,7 @@ import qualified Data.Map              as Map
 ----------------------------------------------------------------
 data Opts = Opts
   { maxH              :: Maybe Int64
+  , listenPort        :: PortNumber
   , prefix            :: FilePath
   , delay             :: Int
   , doValidate        :: Bool
@@ -143,7 +144,7 @@ interpretSpec Opts{..} netAddresses validatorSet logenv NodeSpec{..} = do
           , nodeBchState        = bchState
           , nodeBlockChainLogic = transitions
           , nodeMempool         = mempool
-          , nodeNetwork         = realNetwork (show thundermintPort)
+          , nodeNetwork         = realNetwork (show listenPort)
           , nodeAddr            = nodeAddr
           , nodeInitialPeers    = netAddresses
           , nodeValidationKey   = nspecPrivKey
@@ -208,6 +209,12 @@ main = do
                       <> metavar "N"
                       <> help    "Maximum height"
                       ))
+       <*> option auto
+            (  long    "listen-port"
+            <> value thundermintPort
+            <> metavar "PORT"
+            <> help    ("listening port (default " <> show thundermintPort <> ")")
+            )
        <*> option str
             (  long    "prefix"
             <> value   "."
