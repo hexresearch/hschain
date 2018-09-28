@@ -1,4 +1,9 @@
 #!/bin/bash -e
+
+# Build with this command:
+# stack build --library-profiling --executable-profiling --profile
+#
+
 export THUNDERMINT_KEYS="[\"2K7bFuJXxKf5LqogvVRQjms2W26ZrjpvUjo5LdvPFa5Y\",\"4NSWtMsEPgfTK25tCPWqNzVVze1dgMwcUFwS5WkSpjJL\",\"3Fj8bZjKc53F2a87sQaFkrDas2d9gjzK57FmQwnNnSHS\",\"D2fpHM1JA8trshiUW8XPvspsapUvPqVzSofaK1MGRySd\"]"
 
 PREFIX=tmp/thundermint
