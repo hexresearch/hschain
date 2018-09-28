@@ -248,9 +248,10 @@ main = do
 
 waitForAddrs :: LogEnv -> IO [SockAddr]
 waitForAddrs logenv = E.handle allExc $ do
-  addrs <- listen "*" "49999" $ \ (lsock, _addr) ->
+  addrs <- listen "0.0.0.0" "49999" $ \ (lsock, _addr) ->
     accept lsock $ \ (conn, _caddr) -> do
     mMsg <- recv conn 4096
+    closeSock conn
     runLoggerT "boostrap" logenv $ do
       logger InfoS ("accept this: " <> showLS mMsg) ()
     case mMsg of
