@@ -18,9 +18,16 @@
         name: "{{ inventory_hostname }}"
         state: stopped
 
+    - archive:
+        path: "/var/lib/docker/volumes/thundermint/_data/logs/{{ inventory_hostname }}"
+        dest: "/tmp/{{ inventory_hostname }}-{{ timestamp }}.gz"
+
     - file:
-        path: "/var/lib/docker/volumes/thundermint/_data/db"
+        path: "/var/lib/docker/volumes/thundermint/_data/{{ item }}"
         state: absent
+      with_items:
+      - logs
+      - db
 
     - docker_container:
         name: "{{ inventory_hostname }}"
@@ -29,7 +36,7 @@
     - wait_for:
         port: 50000
 
-    - command: "/usr/local/bin/bootstrap -t all2all  -l '{{ ansible_play_hosts | map('extract', hostvars, 'ansible_host') | list | to_json }}' -n {{ ansible_host }} -p 49999"
+    - command: "bootstrap -t all2all  -l '{{ ansible_play_hosts | map('extract', hostvars, 'ansible_host') | list | to_json }}' -n {{ ansible_host }} -p 49999"
       delegate_to: localhost
       register: reply
 
