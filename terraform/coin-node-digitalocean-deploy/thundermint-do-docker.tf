@@ -24,14 +24,14 @@ resource "digitalocean_droplet" "node" {
   size  = "4gb"
   region = "${element(var.regions, count.index)}"
   name  = "node-${count.index+1}"
-  ssh_keys = ["22607679", "22838852"]
+  ssh_keys = ["22607679", "22838852", "22986074"]
 
   provisioner "remote-exec" {
 
     connection {
       type = "ssh"
       timeout = "1m"
-      private_key = "${file("/home/dima/.ssh/id_rsa")}"
+      private_key = "${file("~/.ssh/id_rsa")}"
       agent = false
     }
 
