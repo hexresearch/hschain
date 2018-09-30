@@ -72,7 +72,7 @@ data family PublicKey alg
 
 -- | Signature
 newtype Signature alg = Signature BS.ByteString
-  deriving (Eq, Ord, Generic, Generic1, Serialise)
+  deriving (Eq, Ord, Generic, Generic1, Serialise, NFData)
 
 instance Show (Signature alg) where
   showsPrec n (Signature bs)
@@ -93,7 +93,6 @@ instance JSON.FromJSON (Signature alg) where
       Just bs -> return $ Signature bs
   parseJSON _ = fail "Expected string for Signature"
 
-instance NFData (Signature a)
 instance NFData1 Signature
 
 -- |
@@ -111,7 +110,7 @@ instance Read (Address alg) where
 
 -- |
 newtype Hash alg = Hash BS.ByteString
-  deriving (Eq,Ord, Serialise)
+  deriving (Eq,Ord, Serialise, NFData)
 
 -- | Compute hash of value. It's first serialized using CBOR and then
 --   hash of encoded data is computed,

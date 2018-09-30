@@ -1,14 +1,14 @@
-{-# LANGUAGE DataKinds          #-}
-{-# LANGUAGE FlexibleInstances  #-}
-{-# LANGUAGE OverloadedStrings  #-}
-{-# LANGUAGE StandaloneDeriving #-}
-{-# LANGUAGE TypeApplications   #-}
-{-# LANGUAGE TypeFamilies       #-}
-
+{-# LANGUAGE DataKinds                  #-}
+{-# LANGUAGE FlexibleInstances          #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE StandaloneDeriving         #-}
+{-# LANGUAGE TypeApplications           #-}
+{-# LANGUAGE TypeFamilies               #-}
 module Thundermint.Crypto.Ed25519 where
 
 import Thundermint.Crypto
 
+import Control.DeepSeq       (NFData(..))
 import Crypto.Error          (CryptoFailable(..), throwCryptoError)
 import Crypto.Hash           (Digest, SHA256, SHA512)
 import qualified Crypto.Hash as Crypto
@@ -32,7 +32,7 @@ sha256 = convert . id @(Digest SHA256) . Crypto.hash
 
 data Ed25519_SHA512
 
-newtype instance PrivKey   Ed25519_SHA512 = PrivKey Ed.SecretKey
+newtype instance PrivKey   Ed25519_SHA512 = PrivKey   Ed.SecretKey
 newtype instance PublicKey Ed25519_SHA512 = PublicKey Ed.PublicKey
 
 instance Crypto Ed25519_SHA512 where
@@ -63,7 +63,12 @@ deriving instance Eq (PrivKey Ed25519_SHA512)
 instance Ord (PrivKey Ed25519_SHA512) where
   compare = comparing privKeyToBS
 
+deriving instance NFData (PrivKey Ed25519_SHA512)
+
+
 deriving instance Eq  (PublicKey Ed25519_SHA512)
 
 instance Ord (PublicKey Ed25519_SHA512) where
   compare = comparing pubKeyToBS
+
+deriving instance NFData (PublicKey Ed25519_SHA512)
