@@ -1,5 +1,6 @@
-{-# LANGUAGE DeriveGeneric   #-}
-{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE RecordWildCards            #-}
 -- |
 -- Simple coin for experimenting with blockchain
 module Thundermint.Mock.Coin (
@@ -12,12 +13,13 @@ module Thundermint.Mock.Coin (
 
 import Control.Applicative
 import Control.Monad
+import Control.DeepSeq
 import Codec.Serialise      (Serialise,serialise)
 import qualified Data.Aeson as JSON
 import Data.ByteString.Lazy (toStrict)
 import Data.Foldable
 import Data.Map             (Map)
-import qualified Data.Map               as Map
+import qualified Data.Map.Strict  as Map
 import GHC.Generics    (Generic)
 
 import Thundermint.Consensus.Types
@@ -41,10 +43,10 @@ instance JSON.ToJSON   TxSend
 instance JSON.FromJSON TxSend
 
 data Tx
-  = Deposit (PublicKey Alg) Integer
+  = Deposit !(PublicKey Alg) !Integer
     -- ^ Deposit tokens to given key. Could only appear in genesis
     --   block
-  | Send (PublicKey Alg) (Signature Alg) TxSend
+  | Send !(PublicKey Alg) !(Signature Alg) !TxSend
     -- ^ Send coins to other addresses. Transaction must obey
     --   following invariants:
     --
@@ -60,13 +62,13 @@ instance JSON.FromJSON Tx
 -- | State of coins in program-digestible format
 --
 --   Really we'll need to keep in DB to persist it.
-data CoinState = CoinState
+newtype CoinState = CoinState
   { unspentOutputs :: Map (Hash Alg, Int) (PublicKey Alg, Integer)
     -- ^ Map of unspent outputs of transaction. It maps pair of
     --   transaction hash and output index to amount of coins stored
     --   there.
   }
-  deriving (Show)
+  deriving (Show, NFData, Generic)
 
 processDeposit :: Tx -> CoinState -> Maybe CoinState
 processDeposit Send{}                _             = Nothing
