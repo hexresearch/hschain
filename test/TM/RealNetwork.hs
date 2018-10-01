@@ -7,6 +7,8 @@ import System.Random
 
 import Thundermint.P2P.Network
 
+import Control.Monad.IO.Class (liftIO)
+
 import qualified Data.ByteString as BS
 import qualified Network.Socket  as Net
 ----------------------------------------------------------------
@@ -15,12 +17,14 @@ realNetPair :: Net.HostName
             -> IO ((Net.SockAddr, NetworkAPI Net.SockAddr),
                    (Net.SockAddr, NetworkAPI Net.SockAddr))
 realNetPair host = do
-    n <- randomRIO (0, 99 :: Int)
-    let port1 = "300" ++ show  n
-        port2 = "300" ++ show  (n+1)
+    n <- randomRIO (10, 89 :: Int)
+    m <- randomRIO (1, 9 :: Int)
+    let port1 = concat ["30", show m, show  n]
+        port2 = concat ["31", show m, show (n + m)]
         server = realNetwork port1
         client = realNetwork port2
         hints = Net.defaultHints  { Net.addrSocketType = Net.Stream }
+    liftIO $ print $ concat ["port1: ",  port1, "| port2: ", port2] -- for debug will be remove
     addr1:_ <- Net.getAddrInfo (Just hints) (Just host) (Just port1)
     addr2:_ <- Net.getAddrInfo (Just hints) (Just host) (Just port2)
 
@@ -36,13 +40,15 @@ realTlsNetPair :: Net.HostName
                -> IO ((Net.SockAddr, NetworkAPI Net.SockAddr),
                       (Net.SockAddr, NetworkAPI Net.SockAddr))
 realTlsNetPair  host = do
-    n <- randomRIO (0, 99 :: Int)
-    let port1 = "301" ++ show  n
-        port2 = "301" ++ show  (n+1)
+    n <- randomRIO (10, 99 :: Int)
+    m <- randomRIO (1, 9 :: Int)
+    let port1 = concat ["32", show  m,  show  n]
+        port2 = concat ["33", show  m, show  (n + m)]
         credential = getCredentialFromBuffer certificatePem keyPem
         server = realNetworkTls credential port1
         client = realNetworkTls credential port2
         hints = Net.defaultHints  { Net.addrSocketType = Net.Stream }
+    liftIO $ print $ concat ["port1: ",  port1, "| port2: ", port2] -- for debug will be remove
     addr1:_ <- Net.getAddrInfo (Just hints) (Just host) (Just port1)
     addr2:_ <- Net.getAddrInfo (Just hints) (Just host) (Just port2)
 
