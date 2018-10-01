@@ -1,28 +1,35 @@
-{-# LANGUAGE DeriveGeneric         #-}
-{-# LANGUAGE DataKinds             #-}
-{-# LANGUAGE TupleSections         #-}
-{-# LANGUAGE OverloadedStrings     #-}
-{-# LANGUAGE RecordWildCards       #-}
-{-# LANGUAGE RankNTypes            #-}
-{-# LANGUAGE ScopedTypeVariables   #-}
+{-# LANGUAGE DataKinds           #-}
+{-# LANGUAGE DeriveGeneric       #-}
+{-# LANGUAGE NumDecimals         #-}
+{-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE RankNTypes          #-}
+{-# LANGUAGE RecordWildCards     #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TupleSections       #-}
 
 -- |
 module TM.Util.Network where
 
 
+import Codec.Serialise
 import Control.Monad
 import Control.Monad.Catch
 import Control.Monad.IO.Class
-import Thundermint.Crypto.Ed25519
-import qualified Data.Map               as Map
-import Codec.Serialise
-import GHC.Generics (Generic)
+
+import Control.Concurrent (threadDelay)
+import Control.Retry      (RetryPolicy, constantDelay, limitRetries)
+import Data.Monoid        ((<>))
+import GHC.Generics       (Generic)
+
+import qualified Control.Concurrent.Async as Async
+import qualified Data.Map                 as Map
 
 import Thundermint.Blockchain.Interpretation
 import Thundermint.Blockchain.Types
 import Thundermint.Consensus.Types
 import Thundermint.Control
 import Thundermint.Crypto
+import Thundermint.Crypto.Ed25519
 import Thundermint.Debug.Trace
 import Thundermint.Logger
 import Thundermint.Mock
@@ -36,6 +43,10 @@ testNetworkName :: String
 testNetworkName = "tst"
 
 
+retryPolicy :: RetryPolicy
+retryPolicy = constantDelay 500 <> limitRetries 20
+
+
 testValidators :: Map.Map (Address Ed25519_SHA512) (PrivValidator Ed25519_SHA512)
 testValidators = makePrivateValidators
   [ "2K7bFuJXxKf5LqogvVRQjms2W26ZrjpvUjo5LdvPFa5Y"
@@ -46,8 +57,8 @@ testValidators = makePrivateValidators
 
 
 data TestNetLinkDescription m = TestNetLinkDescription
-    { ncFrom   :: Int
-    , ncTo     :: [Int]
+    { ncFrom     :: Int
+    , ncTo       :: [Int]
     , ncCallback :: TraceEvents -> m ()
     }
 
@@ -102,3 +113,28 @@ createTestNetworkWithConfig cfg desc = do
                 , nodeMempool         = nullMempoolAny
                 }
 
+
+
+
+-- | Simple test to ensure that mock network works at all
+delayedWrite' :: (addr, NetworkAPI addr)
+         -> (addr, NetworkAPI addr)
+         -> IO ()
+delayedWrite' (serverAddr, server) (_, client) = do
+  let runServer NetworkAPI{..} =
+        bracket listenOn fst $ \(_,accept) ->
+          bracket accept (close . fst) $ \(conn,_) -> do
+            Just "A1" <- recv conn
+            Just "A2" <- recv conn
+            Just "A3" <- recv conn
+            return ()
+  let runClient NetworkAPI{..} = do
+        threadDelay 10e3
+        bracket (connect serverAddr) close $ \conn -> do
+          send conn "A1"
+          threadDelay 30e3
+          send conn "A2"
+          threadDelay 30e3
+          send conn "A3"
+  ((),()) <- Async.concurrently (runServer server) (runClient client)
+  return ()

@@ -212,6 +212,7 @@ Test-suite thundermint-tests
                      , serialise         >=0.2
                      , stm               >=2.4
                      , tls               >=1.4.1
+                     , retry             >=0.7.6.2
                      --
                      , QuickCheck
                      , bytestring-arbitrary

@@ -24,7 +24,6 @@ realNetPair host = do
         server = realNetwork port1
         client = realNetwork port2
         hints = Net.defaultHints  { Net.addrSocketType = Net.Stream }
-    liftIO $ print $ concat ["port1: ",  port1, "| port2: ", port2] -- for debug will be remove
     addr1:_ <- Net.getAddrInfo (Just hints) (Just host) (Just port1)
     addr2:_ <- Net.getAddrInfo (Just hints) (Just host) (Just port2)
 
@@ -48,7 +47,6 @@ realTlsNetPair  host = do
         server = realNetworkTls credential port1
         client = realNetworkTls credential port2
         hints = Net.defaultHints  { Net.addrSocketType = Net.Stream }
-    liftIO $ print $ concat ["port1: ",  port1, "| port2: ", port2] -- for debug will be remove
     addr1:_ <- Net.getAddrInfo (Just hints) (Just host) (Just port1)
     addr2:_ <- Net.getAddrInfo (Just hints) (Just host) (Just port2)
 
