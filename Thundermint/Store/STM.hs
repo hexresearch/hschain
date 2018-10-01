@@ -136,6 +136,7 @@ newMempool validation = do
   varRevMap    <- liftIO $ newTVarIO Map.empty
   varTxSet     <- liftIO $ newTVarIO Set.empty
   varMaxN      <- liftIO $ newTVarIO 0
+  -- Counters for tracking number of transactions
   varAdded     <- liftIO $ newTVarIO 0
   varDiscarded <- liftIO $ newTVarIO 0
   varFiltered  <- liftIO $ newTVarIO 0
@@ -145,25 +146,36 @@ newMempool validation = do
         return $ case mn of
           Nothing -> toList fifo
           Just n  -> take n $ toList fifo
-    -- We remove prefix of transactions which aren't valid
-    -- anymore. Main source of invalidation of formerly valid
-    -- transactions is commits in blocks proposed by other nodes.
+    -- Filtering of transactions is tricky! Validation function is
+    -- monadic so we cannot call it inside atomically block. And when
+    -- we call it outside atomically block content of maps could change!
+    --
+    -- In order to overcome this problem we make following assumtions:
+    --
+    --  * All transactions added to mempool were at some point valid
+    --  * If transaction become invalid for whatever reason it stays
+    --    invalid forever
+    --
+    --  So basic algorithm is:
+    --   1) We take all transactions in mempool
+    --   2) Select invalid ones
+    --   3) Remove them in separate atomically block
+    --
+    --  This way any new transactions which were added during checking
+    --  are not affected.
     , filterMempool = do
-        let stepCheck []              = return (-1)
-            stepCheck ((k,tx) : txs ) =
-              validation tx >>= \case
-                True  -> return k
-                False -> stepCheck txs
-        firstGood <- stepCheck . IMap.toList
+        -- Invalid transactions
+        invalidTx <- filterM (\(_,tx) -> not <$> validation tx)
+                   . IMap.toList
                  =<< liftIO (readTVarIO varFIFO)
+        -- Remove invalid transactions
         liftIO $ atomically $ do
-          fifo <- readTVar varFIFO
-          let (dropped,point,retained) = IMap.splitLookup (firstGood - 1) fifo
-              droppedHashes            = Set.fromList $ hash <$> toList dropped
-          modifyTVar' varFiltered (+ (length point + IMap.size dropped))
-          modifyTVar' varRevMap $  Map.filter (>= firstGood)
-          modifyTVar' varTxSet    (`Set.difference` droppedHashes)
-          writeTVar   varFIFO   $! retained
+          modifyTVar' varFIFO   $ \m0 ->
+            foldl' (\m (i,_) -> IMap.delete i m) m0 invalidTx
+          modifyTVar' varRevMap $ \m0 ->
+            foldl' (\m (_,tx) -> Map.delete tx m) m0 invalidTx
+          modifyTVar' varTxSet  $ \s0 ->
+            foldl' (\s(_,tx) -> Set.delete (hash tx) s) s0 invalidTx
     --
     , mempoolStats = liftIO $ atomically $ do
         mempool'size      <- IMap.size <$> readTVar varFIFO
