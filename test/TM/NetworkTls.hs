@@ -1,51 +1,80 @@
-{-# LANGUAGE NumDecimals       #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards   #-}
+{-# LANGUAGE NumDecimals         #-}
+{-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE RecordWildCards     #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# OPTIONS_GHC -fno-warn-unused-top-binds #-} {- allow useful top functions for GHCi -}
 
 -- |
 module TM.NetworkTls (tests) where
 
-import Control.Concurrent         (threadDelay)
 import Control.Concurrent.Async
-import Control.Exception
-import Data.ByteString.Lazy.Char8 as LBC
-import Data.Monoid                ((<>))
 import Test.Tasty
 import Test.Tasty.HUnit
-import Thundermint.P2P.Network
-import TM.RealNetwork
 
-import qualified Data.ByteString.Lazy as LBS
+import Control.Concurrent     (threadDelay)
+import Control.Monad.Catch    (throwM)
+import Control.Monad.IO.Class (liftIO)
+import Control.Retry          (RetryPolicy, RetryStatus(..), recoverAll)
+import Data.Monoid            ((<>))
+
+import           Control.Exception          as E
+import qualified Data.ByteString.Lazy       as LBS
+import           Data.ByteString.Lazy.Char8 as LBC
+import qualified Network.Socket             as Net
+
+import Thundermint.P2P.Network
+
+import TM.RealNetwork
+import TM.Util.Network
+
+
 
 tests :: TestTree
 tests =
     testGroup "Tls network test"
                   [ testGroup "IPv4"
-                          [ testCase "tls ping-pong" $ realTlsNetPair "127.0.0.1" >>= uncurry pingPong
-                          , testCase "tls delayed write" $ realTlsNetPair "127.0.0.1" >>= uncurry delayedWrite
-                          , testCase "tls framing: send big data" $ realTlsNetPair "127.0.0.1" >>= uncurry bigDataSend
+                          [ testCase "tls ping-pong" $ pingPong  "127.0.0.1"
+                          , testCase "tls delayed write" $ delayedWrite "127.0.0.1"
+                          , testCase "tls framing: send big data" $ bigDataSend "127.0.0.1"
                           ]
                     , testGroup "IPv6"
-                          [ testCase "tls ping-pong" $ realTlsNetPair "::1" >>= uncurry pingPong
-                          , testCase "tls delayed write" $ realTlsNetPair "::1" >>= uncurry delayedWrite
-                          , testCase "tls framing: send big data" $ realTlsNetPair "::1" >>= uncurry bigDataSend
+                          [ testCase "tls ping-pong" $ pingPong "::1"
+                          , testCase "tls delayed write" $ delayedWrite  "::1"
+                          , testCase "tls framing: send big data" $ bigDataSend "::1"
                           ]
                   ]
 
 
 
--- | used to run from ghci
-run :: IO ()
-run = do
-    (server, client) <- realTlsNetPair "localhost"
-    pingPong server client
+-- add retry logic  to find free port to listen
+pingPong :: Net.HostName -> IO ()
+pingPong host = do
+  liftIO $ recoverAll retryPolicy $ \RetryStatus{..} -> realNetPair host >>= \(server, client) -> pingPong' server client
+                                                      `E.catch` (\(ex :: E.IOException) -> do
+                                                                   throwM ex
+                                                                )
+-- add retry logic  to find free port to listen
+delayedWrite :: Net.HostName -> IO ()
+delayedWrite host = do
+  liftIO $ recoverAll retryPolicy $ \RetryStatus{..} -> realNetPair host >>= \(server, client) -> delayedWrite' server client
+                                                      `E.catch` (\(ex :: E.IOException) -> do
+                                                                   throwM ex
+                                                                )
+-- add retry logic  to find free port to listen
+bigDataSend :: Net.HostName -> IO ()
+bigDataSend host = do
+  liftIO $ recoverAll retryPolicy $ \RetryStatus{..} -> realNetPair host >>= \(server, client) -> bigDataSend' server client
+                                                      `E.catch` (\(ex :: E.IOException) -> do
+                                                                   throwM ex
+                                                                )
+
+
 
 -- | Simple test to ensure that real network works at all
-pingPong :: (addr, NetworkAPI addr)
+pingPong' :: (addr, NetworkAPI addr)
          -> (addr, NetworkAPI addr)
          -> IO ()
-pingPong (serverAddr, server) (_, client) = do
+pingPong' (serverAddr, server) (_, client) = do
   let runServer NetworkAPI{..} =
         bracket listenOn fst $ \(_,accept) ->
           bracket accept (close . fst) $ \(conn,_) -> do
@@ -62,10 +91,10 @@ pingPong (serverAddr, server) (_, client) = do
 
 
 -- | Simple test to ensure that framing works
-bigDataSend :: (addr, NetworkAPI addr)
+bigDataSend' :: (addr, NetworkAPI addr)
          -> (addr, NetworkAPI addr)
          -> IO ()
-bigDataSend (serverAddr, server) (_, client) = do
+bigDataSend' (serverAddr, server) (_, client) = do
   let runServer NetworkAPI{..} =
         bracket listenOn fst $ \(_,accept) ->
           bracket accept (close . fst) $ \(conn,_) -> do
@@ -81,29 +110,5 @@ bigDataSend (serverAddr, server) (_, client) = do
           send conn sbuf
           bs <- recv conn
           assertEqual "Ping-pong" (Just ("PONG_" <> sbuf)) bs
-  ((),()) <- concurrently (runServer server) (runClient client)
-  return ()
-
-
--- | Simple test to ensure that mock network works at all
-delayedWrite :: (addr, NetworkAPI addr)
-         -> (addr, NetworkAPI addr)
-         -> IO ()
-delayedWrite (serverAddr, server) (_, client) = do
-  let runServer NetworkAPI{..} =
-        bracket listenOn fst $ \(_,accept) ->
-          bracket accept (close . fst) $ \(conn,_) -> do
-            Just "A1" <- recv conn
-            Just "A2" <- recv conn
-            Just "A3" <- recv conn
-            return ()
-  let runClient NetworkAPI{..} = do
-        threadDelay 10e3
-        bracket (connect serverAddr) close $ \conn -> do
-          send conn "A1"
-          threadDelay 30e3
-          send conn "A2"
-          threadDelay 30e3
-          send conn "A3"
   ((),()) <- concurrently (runServer server) (runClient client)
   return ()
