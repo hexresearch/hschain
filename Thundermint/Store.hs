@@ -281,6 +281,9 @@ data Mempool m alg tx = Mempool
     -- ^ Checks whether transaction is mempool
   , mempoolStats      :: m MempoolInfo
     -- ^ Number of elements in mempool
+  , mempoolSelfTest   :: m [String]
+    -- ^ Check mempool for internal consistency. Each returned string
+    --   is internal inconsistency
   }
 
 hoistMempoolCursor :: (forall a. m a -> n a) -> MempoolCursor m alg tx -> MempoolCursor n alg tx
@@ -296,6 +299,7 @@ hoistMempool fun Mempool{..} = Mempool
   , getMempoolCursor  = hoistMempoolCursor fun <$> fun getMempoolCursor
   , txInMempool       = fun . txInMempool
   , mempoolStats      = fun mempoolStats
+  , mempoolSelfTest   = fun mempoolSelfTest
   }
 
 
@@ -309,6 +313,7 @@ nullMempoolAny = Mempool
       { pushTransaction = const $ return Nothing
       , advanceCursor   = return Nothing
       }
+  , mempoolSelfTest   = return []
   }
 
 nullMempool :: (Monad m) => Mempool m alg ()

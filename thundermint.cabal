@@ -223,6 +223,7 @@ Test-suite thundermint-tests
   Main-is:             Main.hs
   Other-modules:       TM.Arbitrary.Instances
                        TM.Crypto
+                       TM.Mempool
                        TM.MockNet
                        TM.Network
                        TM.NetworkTls

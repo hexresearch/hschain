@@ -19,6 +19,7 @@ import Data.Foldable
 import qualified Data.Map             as Map
 import qualified Data.IntMap          as IMap
 import qualified Data.Set             as Set
+import Text.Printf
 
 import Thundermint.Consensus.Types
 import Thundermint.Crypto
@@ -205,4 +206,28 @@ newMempool validation = do
                 Just (n', tx) -> do writeTVar varN $! n'
                                     return (Just tx)
           }
+    --
+    , mempoolSelfTest = liftIO $ atomically $ do
+        fifo <- readTVar varFIFO
+        rev  <- readTVar varRevMap
+        tx   <- readTVar varTxSet
+        let nFIFO = IMap.size fifo
+            nRev  = Map.size rev
+            nTX   = Set.size tx
+        --
+        return $ concat
+          [ [ printf "Mismatch in rev.map. nFIFO=%i nRev=%i" nFIFO nRev
+            | nFIFO /= nRev
+            ]
+          , [ printf "Mismatch in tx.set. nFIFO=%i nTX=%i" nFIFO nTX
+            | nFIFO /= nTX
+            ]
+          , [ unlines [ "True TX / cached set"
+                      , show trueTX
+                      , show tx
+                      ]
+            | let trueTX = Set.fromList (hash <$> toList fifo)
+            , trueTX /= tx
+            ]
+          ]
     }
