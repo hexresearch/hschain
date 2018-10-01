@@ -39,6 +39,7 @@ data TxSend = TxSend
   }
   deriving (Show, Eq, Ord, Generic)
 instance Serialise TxSend
+instance NFData    TxSend
 instance JSON.ToJSON   TxSend
 instance JSON.FromJSON TxSend
 
@@ -56,6 +57,7 @@ data Tx
     --   2. Sum of inputs must be equal to sum of outputs
   deriving (Show, Eq, Ord, Generic)
 instance Serialise Tx
+instance NFData    Tx
 instance JSON.ToJSON   Tx
 instance JSON.FromJSON Tx
 
