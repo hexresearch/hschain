@@ -180,8 +180,8 @@ newMempool validation = do
         return MempoolCursor
           { pushTransaction = \tx -> validation tx >>= \case
               False -> liftIO $ atomically $ do
-                modifyTVar varAdded succ
-                modifyTVar varDiscarded succ
+                modifyTVar' varAdded     succ
+                modifyTVar' varDiscarded succ
                 return Nothing
               True  -> liftIO $ atomically $ do
                 rmap <- readTVar varRevMap
@@ -193,7 +193,7 @@ newMempool validation = do
                     modifyTVar' varFIFO   $ IMap.insert n tx
                     modifyTVar' varRevMap $ Map.insert tx n
                     modifyTVar' varTxSet  $ Set.insert txHash
-                    writeTVar   varMaxN n
+                    writeTVar   varMaxN   $! n
                     return $ Just txHash
                   False -> return Nothing
             --
@@ -202,7 +202,7 @@ newMempool validation = do
               n    <- readTVar varN
               case n `IMap.lookupGT` fifo of
                 Nothing       -> return Nothing
-                Just (n', tx) -> do writeTVar varN n'
+                Just (n', tx) -> do writeTVar varN $! n'
                                     return (Just tx)
           }
     }
