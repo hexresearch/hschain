@@ -12,11 +12,13 @@ module Thundermint.Control (
   , Mutex
   , newMutex
   , withMutex
-  -- throwing on Maybe and Either
+    -- * throwing on Maybe and Either
   , throwNothing
   , throwNothingM
   , throwLeft
   , throwLeftM
+    -- * Generalized bracket
+  , withMany
   ) where
 
 import Control.Concurrent.MVar
@@ -127,6 +129,19 @@ withMutex (Mutex mvar) = withMVar mvar . const
 --
 ----------------------------------------------------------------
 
+-- | Convert some @withResource@ function to work with multiple
+--   resources at once
+withMany
+  :: (r -> (h -> m a) -> m a)
+  -> [r]
+  -> ([h] -> m a)
+  -> m a
+withMany with rs0 action = go [] rs0
+  where
+    go hs []     = action (reverse hs)
+    go hs (r:rs) = with r $ \h -> go (h:hs) rs
+
+
 throwNothing :: (Exception e, MonadThrow m) => e -> Maybe a -> m a
 throwNothing e = maybe (throwM e) pure
 
@@ -138,4 +153,3 @@ throwLeft = either throwM pure
 
 throwLeftM :: (Exception e, MonadThrow m) => m (Either e a) -> m a
 throwLeftM m = m >>= throwLeft
-
