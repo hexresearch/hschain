@@ -29,6 +29,7 @@ import           Data.Function
 import qualified Data.Map      as Map
 import           Data.Monoid   ((<>))
 -- import           Data.Map          (Map)
+import Data.Time.Clock.POSIX (getPOSIXTime)
 
 import Thundermint.Blockchain.Types
 import Thundermint.Consensus.Algorithm
@@ -307,9 +308,10 @@ makeHeightParameters Configuration{..} AppState{..} AppChans{..} = do
     --
     , castPrecommit   = \r b ->
         forM_ appValidator $ \(PrivValidator pk) -> do
+          currentT <- round <$> liftIO getPOSIXTime
           let vote = Vote { voteHeight  = next h
                           , voteRound   = r
-                          , voteTime    = Time 0
+                          , voteTime    = Time currentT
                           , voteBlockID = b
                           }
               svote  = signValue pk vote
@@ -336,11 +338,12 @@ makeHeightParameters Configuration{..} AppState{..} AppChans{..} = do
         bData          <- appBlockGenerator (next h)
         Just lastBlock <- retrieveBlock appStorage
                       =<< blockchainHeight appStorage
+        currentT       <- round <$> liftIO getPOSIXTime
         let block = Block
               { blockHeader     = Header
                   { headerChainID        = headerChainID $ blockHeader genesis
                   , headerHeight         = next h
-                  , headerTime           = Time 0
+                  , headerTime           = Time currentT
                   , headerLastBlockID    = Just (blockHash lastBlock)
                   , headerValidatorsHash = hash valSet
                   }
