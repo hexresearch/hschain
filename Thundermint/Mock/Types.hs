@@ -4,11 +4,14 @@ module Thundermint.Mock.Types (
 , NetSpec(..)
 , Topology(..)
 , Abort(..)
+  , handleNAbort
 , defCfg
   ) where
 
-import Control.Exception
-
+import Control.Exception (Exception)
+import Control.Monad.Catch
+import Data.Foldable
+import Data.Monoid  (Endo(..))
 import GHC.Generics (Generic)
 
 import qualified Data.Aeson as JSON
@@ -40,10 +43,16 @@ defCfg = Configuration
 ----------------------------------------------------------------
 -- Generating node specification
 ----------------------------------------------------------------
+
+-- | Exception for aborting execution of blockchain
 data Abort = Abort
   deriving Show
 instance Exception Abort
 
+-- | Handle up to N @Abort@ exceptions. When we run N blockchains
+--   simultaneously we can get up to N exceptions
+handleNAbort :: MonadCatch m => Int -> m () -> m ()
+handleNAbort n = appEndo $ foldMap Endo $ replicate n $ handle (\Abort -> return ())
 
 
 data Topology = All2All
