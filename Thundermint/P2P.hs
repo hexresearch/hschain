@@ -812,7 +812,6 @@ peerSend _peerAddrFrom peerAddrTo peerSt PeerChans{..} gossipCh Connection{..} =
     msg <- liftIO $ atomically $  readTChan gossipCh
                               <|> fmap GossipAnn (readTChan ownPeerChanTx)
                               <|> fmap GossipPex (readTChan ownPeerChanPex)
-    logger InfoS ("Send to (" <> showLS peerAddrTo <> "): " <> showlessShowGossipMsg msg) ()
     send $ serialise msg
     -- Update state of peer when we advance to next height
     case msg of
