@@ -28,7 +28,7 @@ newBlockStorage prefix mpath genesis validatorSet = do
   let makedir path = let (dir,_) = splitFileName path
                      in createDirectoryIfMissing True dir
   case mpath of
-      Nothing -> newSTMBlockStorage genesis validatorSet
+      Nothing -> newSQLiteBlockStorage ":memory:" genesis validatorSet
       Just nm -> do
         let dbName = prefix </> nm
         makedir dbName
