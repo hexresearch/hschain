@@ -14,7 +14,6 @@ import Test.Tasty.HUnit
 import Control.Concurrent     (threadDelay)
 import Control.Monad.Catch    (throwM)
 import Control.Monad.IO.Class (liftIO)
-import Control.Retry          (RetryPolicy, RetryStatus(..), recoverAll)
 import Data.Monoid            ((<>))
 
 import           Control.Exception          as E
@@ -33,48 +32,23 @@ tests :: TestTree
 tests =
     testGroup "Tls network test"
                   [ testGroup "IPv4"
-                          [ testCase "tls ping-pong" $ pingPong  "127.0.0.1"
-                          , testCase "tls delayed write" $ delayedWrite "127.0.0.1"
-                          , testCase "tls framing: send big data" $ bigDataSend "127.0.0.1"
+                          [ testCase "tls ping-pong" $ withRetry pingPong  "127.0.0.1"
+                          , testCase "tls delayed write" $ withRetry delayedWrite "127.0.0.1"
+                          , testCase "tls framing: send big data" $ withRetry bigDataSend "127.0.0.1"
                           ]
                     , testGroup "IPv6"
-                          [ testCase "tls ping-pong" $ pingPong "::1"
-                          , testCase "tls delayed write" $ delayedWrite  "::1"
-                          , testCase "tls framing: send big data" $ bigDataSend "::1"
+                          [ testCase "tls ping-pong" $ withRetry pingPong "::1"
+                          , testCase "tls delayed write" $ withRetry delayedWrite  "::1"
+                          , testCase "tls framing: send big data" $ withRetry bigDataSend "::1"
                           ]
                   ]
 
 
-
--- add retry logic  to find free port to listen
-pingPong :: Net.HostName -> IO ()
-pingPong host = do
-  liftIO $ recoverAll retryPolicy $ \RetryStatus{..} -> realNetPair host >>= \(server, client) -> pingPong' server client
-                                                      `E.catch` (\(ex :: E.IOException) -> do
-                                                                   throwM ex
-                                                                )
--- add retry logic  to find free port to listen
-delayedWrite :: Net.HostName -> IO ()
-delayedWrite host = do
-  liftIO $ recoverAll retryPolicy $ \RetryStatus{..} -> realNetPair host >>= \(server, client) -> delayedWrite' server client
-                                                      `E.catch` (\(ex :: E.IOException) -> do
-                                                                   throwM ex
-                                                                )
--- add retry logic  to find free port to listen
-bigDataSend :: Net.HostName -> IO ()
-bigDataSend host = do
-  liftIO $ recoverAll retryPolicy $ \RetryStatus{..} -> realNetPair host >>= \(server, client) -> bigDataSend' server client
-                                                      `E.catch` (\(ex :: E.IOException) -> do
-                                                                   throwM ex
-                                                                )
-
-
-
 -- | Simple test to ensure that real network works at all
-pingPong' :: (addr, NetworkAPI addr)
+pingPong :: (addr, NetworkAPI addr)
          -> (addr, NetworkAPI addr)
          -> IO ()
-pingPong' (serverAddr, server) (_, client) = do
+pingPong (serverAddr, server) (_, client) = do
   let runServer NetworkAPI{..} =
         bracket listenOn fst $ \(_,accept) ->
           bracket accept (close . fst) $ \(conn,_) -> do
@@ -91,10 +65,10 @@ pingPong' (serverAddr, server) (_, client) = do
 
 
 -- | Simple test to ensure that framing works
-bigDataSend' :: (addr, NetworkAPI addr)
+bigDataSend :: (addr, NetworkAPI addr)
          -> (addr, NetworkAPI addr)
          -> IO ()
-bigDataSend' (serverAddr, server) (_, client) = do
+bigDataSend (serverAddr, server) (_, client) = do
   let runServer NetworkAPI{..} =
         bracket listenOn fst $ \(_,accept) ->
           bracket accept (close . fst) $ \(conn,_) -> do

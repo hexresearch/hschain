@@ -17,12 +17,14 @@ import Control.Monad.Catch
 import Control.Monad.IO.Class
 
 import Control.Concurrent (threadDelay)
-import Control.Retry      (RetryPolicy, constantDelay, limitRetries)
+import Control.Retry      (RetryPolicy, constantDelay, limitRetries, recovering)
 import Data.Monoid        ((<>))
 import GHC.Generics       (Generic)
 
 import qualified Control.Concurrent.Async as Async
+import qualified Control.Exception        as E
 import qualified Data.Map                 as Map
+import qualified Network.Socket           as Net
 
 import Thundermint.Blockchain.Interpretation
 import Thundermint.Blockchain.Types
@@ -36,15 +38,27 @@ import Thundermint.Mock
 import Thundermint.Mock.KeyVal
 import Thundermint.P2P.Network
 import Thundermint.Store
-import Thundermint.Store.STM
 import Thundermint.Store.SQLite
+import Thundermint.Store.STM
+import TM.RealNetwork
 
 testNetworkName :: String
 testNetworkName = "tst"
 
-
+shouldRetry :: Bool
+shouldRetry = True
 retryPolicy :: RetryPolicy
 retryPolicy = constantDelay 500 <> limitRetries 20
+
+withRetry :: MonadIO m => ( (Net.SockAddr, NetworkAPI Net.SockAddr)
+                        -> (Net.SockAddr, NetworkAPI Net.SockAddr) -> IO a)
+         -> Net.HostName -> m a
+withRetry fun host = do
+  liftIO $ recovering retryPolicy hs (const $ realNetPair host >>= uncurry fun)
+    where
+      -- | exceptions list to trigger the recovery logic
+      hs :: [a -> Handler IO Bool]
+      hs = [const $ Handler (\(_::E.IOException) -> return shouldRetry)]
 
 
 testValidators :: Map.Map (Address Ed25519_SHA512) (PrivValidator Ed25519_SHA512)
@@ -117,10 +131,10 @@ createTestNetworkWithConfig cfg desc = do
 
 
 -- | Simple test to ensure that mock network works at all
-delayedWrite' :: (addr, NetworkAPI addr)
+delayedWrite :: (addr, NetworkAPI addr)
          -> (addr, NetworkAPI addr)
          -> IO ()
-delayedWrite' (serverAddr, server) (_, client) = do
+delayedWrite (serverAddr, server) (_, client) = do
   let runServer NetworkAPI{..} =
         bracket listenOn fst $ \(_,accept) ->
           bracket accept (close . fst) $ \(conn,_) -> do
