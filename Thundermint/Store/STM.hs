@@ -3,8 +3,7 @@
 {-# LANGUAGE RecordWildCards #-}
 -- |
 module Thundermint.Store.STM (
-    newSTMBlockStorage
-  , newSTMPropStorage
+    newSTMPropStorage
   , newMempool
   ) where
 
@@ -25,57 +24,6 @@ import Thundermint.Consensus.Types
 import Thundermint.Crypto
 import Thundermint.Crypto.Containers
 import Thundermint.Store
-
-
--- |
-newSTMBlockStorage
-  :: (Crypto alg, Serialise a)
-  => Block alg a
-  -> ValidatorSet alg
-  -> IO (BlockStorage 'RW IO alg a)
-newSTMBlockStorage gBlock initalVals = do
-  -- FIXME: we MUST require correct genesis block
-  varBlocks <- newTVarIO $ Map.singleton (Height 0) gBlock
-  varLCmt   <- newTVarIO Nothing
-  varVals   <- newTVarIO $ Map.fromList [ (Height 0, initalVals)
-                                        , (Height 1, initalVals)
-                                        ]
-  let currentH = do
-        Just (h,_) <- Map.lookupMax <$> readTVar varBlocks
-        return h
-  let retrieveBlk h = do m <- readTVarIO varBlocks
-                         return $ Map.lookup h m
-  let retrieveCmt h = do bmap <- readTVar varBlocks
-                         return $ blockLastCommit =<< Map.lookup (next h) bmap
-  --
-  return BlockStorage
-    { blockchainHeight = atomically currentH
-    , retrieveBlock    = retrieveBlk
-    , retrieveBlockID  = (fmap . fmap) blockHash . retrieveBlk
-    , retrieveCommitRound = \h -> do
-        let getRound (Commit _ (v:_)) = voteRound (signedValue v)
-            getRound _                = error "Impossible"
-        mc <- atomically $ runMaybeT
-            $  MaybeT (retrieveCmt h)
-           <|> MaybeT (do hBC <- currentH
-                          guard (hBC == h)
-                          readTVar varLCmt
-                      )
-        return $ fmap getRound mc
-    , retrieveCommit      = atomically . retrieveCmt
-    , retrieveLocalCommit = \h -> atomically $ do
-        ourH <- currentH
-        if h == ourH then readTVar varLCmt else return Nothing
-    , storeCommit = \vals cmt blk -> atomically $ do
-        h <- currentH
-        modifyTVar' varBlocks $ Map.insert (next h) blk
-        modifyTVar' varVals   $ Map.insert (next (next h)) vals
-        writeTVar   varLCmt (Just cmt)
-    , retrieveValidatorSet = \h -> do vals <- readTVarIO varVals
-                                      return $ Map.lookup h vals
-    , closeBlockStorage = return ()
-    }
-
 
 newSTMPropStorage
   :: (Crypto alg, Serialise a, MonadIO m)
