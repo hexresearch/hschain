@@ -1,5 +1,6 @@
-{-# LANGUAGE DataKinds     #-}
-{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DataKinds         #-}
+{-# LANGUAGE DeriveGeneric     #-}
+{-# LANGUAGE FlexibleInstances #-}
 -- |
 module Thundermint.Blockchain.Message (
     MessageRx(..)
@@ -27,7 +28,8 @@ data MessageRx ty alg a
   | RxProposal  !(Signed ty alg (Proposal alg a))
   | RxTimeout   !Timeout
   | RxBlock     !(Block alg a)
-  deriving (Show)
+  deriving (Show, Generic)
+instance (Serialise a) => Serialise (MessageRx 'Unverified alg a)
 
 -- | Messages which should be delivered to peers immediately. Those
 --   are control messages in gossip protocol. Actual proposals, votes
