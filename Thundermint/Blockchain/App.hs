@@ -121,6 +121,9 @@ decideNewBlock config appSt@AppState{..} appCh@AppChans{..} lastCommt = do
   --     we want to commit yet.
   --  2. Collect stragglers precommits.
   let msgHandlerLoop mCmt tm = do
+        -- Make current state of consensus available for gossip
+        liftIO $ atomically $ writeTVar appTMState $ Just (currentH hParam , tm)
+        -- Handle message
         res <- lift . handleVerifiedMessage appPropStorage hParam tm =<< await
         case res of
           Tranquility      -> msgHandlerLoop mCmt tm
