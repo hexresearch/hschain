@@ -29,6 +29,7 @@ Library
                      , filepath
                      , memory            >=0.14.14
                      , network-info
+                     , pipes             >=4
                      , random
                      , random-shuffle
                      , retry             >=0.7.6.2

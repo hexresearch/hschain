@@ -17,7 +17,7 @@ module Thundermint.Blockchain.App (
 
 import Codec.Serialise           (Serialise)
 import Control.Applicative
-import Control.Concurrent
+import Control.Concurrent        (forkIO, threadDelay)
 import Control.Concurrent.STM
 import Control.Monad
 import Control.Monad.Catch
@@ -30,6 +30,7 @@ import qualified Data.Map      as Map
 import           Data.Monoid   ((<>))
 -- import           Data.Map          (Map)
 import Data.Time.Clock.POSIX (getPOSIXTime)
+import Pipes                 (Pipe,runEffect,yield,await,(>->))
 
 import Thundermint.Blockchain.Types
 import Thundermint.Consensus.Algorithm
@@ -99,13 +100,40 @@ decideNewBlock config appSt@AppState{..} appCh@AppChans{..} lastCommt = do
   -- Enter NEW HEIGHT and create initial state for consensus state
   -- machine
   hParam <- makeHeightParameters config appSt appCh
-  -- Handle incoming messages until we decide on next block.
-  let checkForCommit Nothing    tm = msgHandlerLoop Nothing tm
+  -- Get rid of messages in WAL that are no longer needed and replay
+  -- all messages stored there.
+  walMessages <- resetWAL appStorage (currentH hParam)
+              *> readWAL appStorage (currentH hParam)
+  -- Producer of messages. First we replay messages from WAL. This is
+  -- very important and failure to do so may violate protocol
+  -- safety and possibly liveness.
+  --
+  -- Without WAL we losing consensus state for current round which
+  -- mean loss of lock on block if we were locked on it.
+  let messageSrc = do
+        forM_ walMessages yield
+        forever $ yield =<< liftIO (atomically $ readTChan appChanRx)
+  -- Main loop of message handler and message consumer. We process
+  -- every message even after we decided to commit block. This is
+  -- needed to
+  --
+  --  1. If we're catching up it's possible that we don't have block
+  --     we want to commit yet.
+  --  2. Collect stragglers precommits.
+  let msgHandlerLoop mCmt tm = do
+        res <- lift . handleVerifiedMessage appPropStorage hParam tm =<< await
+        case res of
+          Tranquility      -> msgHandlerLoop mCmt tm
+          Misdeed          -> msgHandlerLoop mCmt tm
+          Success  tm'     -> checkForCommit mCmt       tm'
+          DoCommit cmt tm' -> checkForCommit (Just cmt) tm'
+      --
+      checkForCommit Nothing    tm = msgHandlerLoop Nothing tm
       checkForCommit (Just cmt) tm = do
-        blocks <- retrievePropBlocks appPropStorage (currentH hParam)
+        blocks <- lift $ retrievePropBlocks appPropStorage (currentH hParam)
         case commitBlockID cmt `Map.lookup` blocks of
           Nothing -> msgHandlerLoop (Just cmt) tm
-          Just b  -> do
+          Just b  -> lift $ do
             vset <- appNextValidatorSet (currentH hParam) (blockData b)
             logger InfoS "Actual commit"
               $ LogBlockInfo (currentH hParam) (blockData b)
@@ -113,26 +141,13 @@ decideNewBlock config appSt@AppState{..} appCh@AppChans{..} lastCommt = do
             advanceToHeight appPropStorage . next =<< blockchainHeight appStorage
             appCommitCallback (currentH hParam)
             return cmt
-      --
-      msgHandlerLoop mCmt tm = do
-        -- Make current state of consensus available for gossip
-        liftIO $ atomically $ writeTVar appTMState $ Just (currentH hParam , tm)
-        -- Receive message
-        res <- runMaybeT
-            $ lift . handleVerifiedMessage appPropStorage hParam tm
-          =<< verifyMessageSignature appSt (validatorSet hParam)
-          =<< liftIO (atomically $ readTChan appChanRx)
-        -- Handle message
-        case res of
-          Nothing               -> msgHandlerLoop mCmt tm
-          Just Tranquility      -> msgHandlerLoop mCmt tm
-          Just Misdeed          -> msgHandlerLoop mCmt tm
-          Just (Success  r)     -> checkForCommit mCmt       r
-          Just (DoCommit cmt r) -> checkForCommit (Just cmt) r
   --
   -- FIXME: encode that we cannot fail here!
   Success tm0 <- runConsesusM $ newHeight hParam lastCommt
-  msgHandlerLoop Nothing tm0
+  runEffect $ messageSrc
+          >-> verifyMessageSignature appSt (validatorSet hParam)
+          >-> msgHandlerLoop Nothing tm0
+
 
 
 -- Handle message and perform state transitions for both
@@ -163,20 +178,18 @@ verifyMessageSignature
   :: (MonadLogger m, Crypto alg, Serialise a)
   => AppState m alg a
   -> ValidatorSet alg
-  -> MessageRx 'Unverified alg a
-  -> MaybeT m (MessageRx 'Verified alg a)
-verifyMessageSignature AppState{..} vset = \case
-  RxPreVote   sv -> verify "prevote"   RxPreVote   sv
-  RxPreCommit sv -> verify "precommit" RxPreCommit sv
-  RxProposal  sp -> verify "proposal"  RxProposal  sp
-  RxTimeout   t  -> return $ RxTimeout t
-  RxBlock     b  -> return $ RxBlock   b
+  -> Pipe (MessageRx 'Unverified alg a) (MessageRx 'Verified alg a) m r
+verifyMessageSignature AppState{..} vset = forever $ do
+  await >>= \case
+    RxPreVote   sv -> verify "prevote"   RxPreVote   sv
+    RxPreCommit sv -> verify "precommit" RxPreCommit sv
+    RxProposal  sp -> verify "proposal"  RxProposal  sp
+    RxTimeout   t  -> yield $ RxTimeout t
+    RxBlock     b  -> yield $ RxBlock   b
   where
     verify name con sx = case verifySignature pkLookup sx of
-      Just sx' -> return $ con sx'
-      Nothing  -> do
-        logger WarningS ("Invalid signature for " <> name <> ": " <> showLS (signedAddr sx)) ()
-        empty
+      Just sx' -> yield $ con sx'
+      Nothing  -> lift $ logger WarningS ("Invalid signature for " <> name <> ": " <> showLS (signedAddr sx)) ()
     pkLookup a = validatorPubKey <$> validatorByAddr vset a
 
 
