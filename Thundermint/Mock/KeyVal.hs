@@ -98,37 +98,36 @@ interpretSpec maxH prefix NetSpec{..} = do
     -- Create storage
     storage  <- newBlockStorage prefix nspecDbName (genesisBlock validatorSet) validatorSet
     hChain   <- blockchainHeight storage
-    --
-    withLogEnv "TM" "DEV" loggers $ \logenv -> runLoggerT "general" logenv $ do
-      -- Blockchain state
-      bchState <- newBChState transitions
-                $ makeReadOnly (hoistBlockStorageRW liftIO storage)
-      _        <- stateAtH bchState (next hChain)
-      let appState = AppState
-            { appStorage        = hoistBlockStorageRW liftIO storage
-            --
-            , appValidationFun  = \h a -> do
-                st <- stateAtH bchState h
-                return $ isJust $ processBlock transitions h a st
-            --
-            , appBlockGenerator = \h -> case nspecByzantine of
-                Just "InvalidBlock" -> do
-                  return [("XXX", 123)]
-                _ -> do
-                  st <- stateAtH bchState h
-                  let Just k = find (`Map.notMember` st) ["K_" ++ show (n :: Int) | n <- [1 ..]]
-                  return [(k, addr)]
-            --
-            , appCommitCallback = \case
-                h | Just h' <- maxH
-                  , h > Height h'   -> throwM Abort
-                  | otherwise       -> return ()
-            , appValidator        = nspecPrivKey
-            , appNextValidatorSet = \_ _ -> return validatorSet
-            }
-      appCh <- newAppChans
-      return ( makeReadOnly storage
-             , runLoggerT "general" logenv $ runConcurrently
+    return ( makeReadOnly storage
+           , withLogEnv "TM" "DEV" loggers $ \logenv -> runLoggerT "general" logenv $ do
+               -- Blockchain state
+               bchState <- newBChState transitions
+                         $ makeReadOnly (hoistBlockStorageRW liftIO storage)
+               _        <- stateAtH bchState (next hChain)
+               let appState = AppState
+                     { appStorage        = hoistBlockStorageRW liftIO storage
+                     --
+                     , appValidationFun  = \h a -> do
+                         st <- stateAtH bchState h
+                         return $ isJust $ processBlock transitions h a st
+                     --
+                     , appBlockGenerator = \h -> case nspecByzantine of
+                         Just "InvalidBlock" -> do
+                           return [("XXX", 123)]
+                         _ -> do
+                           st <- stateAtH bchState h
+                           let Just k = find (`Map.notMember` st) ["K_" ++ show (n :: Int) | n <- [1 ..]]
+                           return [(k, addr)]
+                     --
+                     , appCommitCallback = \case
+                         h | Just h' <- maxH
+                           , h > Height h'   -> throwM Abort
+                           | otherwise       -> return ()
+                     , appValidator        = nspecPrivKey
+                     , appNextValidatorSet = \_ _ -> return validatorSet
+                     }
+               appCh <- newAppChans
+               runConcurrently
                  [ setNamespace "net"
                    $ startPeerDispatcher
                        defCfg
@@ -141,7 +140,7 @@ interpretSpec maxH prefix NetSpec{..} = do
                  , setNamespace "consensus"
                    $ runApplication defCfg appState appCh
                  ]
-             )
+           )
   where
     netAddresses = Map.fromList $ [0::Int ..] `zip` netNodeList
     connections  = case netTopology of
