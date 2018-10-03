@@ -161,7 +161,8 @@ data FullStep = FullStep !Height !Round !Step
 instance Serialise FullStep
 
 data Timeout = Timeout Height Round Step
-  deriving (Show,Eq,Ord)
+  deriving (Show,Eq,Ord,Generic)
+instance Serialise Timeout
 
 -- | Proposal for new block. Proposal include only hash of block and
 --   block itself is gossiped separately.
