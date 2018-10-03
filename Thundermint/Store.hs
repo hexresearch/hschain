@@ -60,9 +60,12 @@ import qualified Data.Aeson.TH   as JSON
 import qualified Data.ByteString as BS
 
 
+import Thundermint.Blockchain.Message
 import Thundermint.Consensus.Types
 import Thundermint.Crypto
 import Thundermint.Crypto.Containers
+
+
 ----------------------------------------------------------------
 -- Abstract API for storing data
 ----------------------------------------------------------------
@@ -126,6 +129,16 @@ data BlockStorage rw m alg a = BlockStorage
   , closeBlockStorage  :: Writable rw (m ())
     -- ^ Close all handles etc. Functions in the dictionary should not
     --   be called after that
+
+  , writeToWAL :: Writable rw (Height -> MessageRx 'Unverified alg a -> m ())
+    -- ^ Add message to Write Ahead Log. Height parameter is height
+    --   for which we're deciding block.
+  , resetWAL   :: Writable rw (Height -> m ())
+    -- ^ Remove all entries from WAL which comes from height less than
+    --   parameter.
+  , readWAL    :: Height -> m [MessageRx 'Unverified alg a]
+    -- ^ Get all parameters from WAL in order in which they were
+    --   written
   }
 
 
@@ -134,6 +147,8 @@ makeReadOnly :: BlockStorage rw m alg a -> BlockStorage 'RO m alg a
 makeReadOnly BlockStorage{..} =
   BlockStorage{ storeCommit       = ()
               , closeBlockStorage = ()
+              , writeToWAL        = ()
+              , resetWAL          = ()
               , ..
               }
 
@@ -151,6 +166,9 @@ hoistBlockStorageRW fun BlockStorage{..} =
                , retrieveValidatorSet = fun . retrieveValidatorSet
                , storeCommit          = \v c b -> fun (storeCommit v c b)
                , closeBlockStorage    = fun closeBlockStorage
+               , writeToWAL           = \h m -> fun (writeToWAL h m)
+               , resetWAL             = fun . resetWAL
+               , readWAL              = fun . readWAL
                }
 
 hoistBlockStorageRO
@@ -165,6 +183,7 @@ hoistBlockStorageRO fun BlockStorage{..} =
                , retrieveCommit       = fun . retrieveCommit
                , retrieveLocalCommit  = fun . retrieveLocalCommit
                , retrieveValidatorSet = fun . retrieveValidatorSet
+               , readWAL              = fun . readWAL
                , ..
                }
 

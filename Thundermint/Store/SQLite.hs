@@ -128,6 +128,20 @@ newSQLiteBlockStorageConn conn = do
         SQL.execute_ conn "COMMIT"
     --
     , closeBlockStorage = SQL.close conn
+    --
+    , writeToWAL = \(Height h) msg -> withMutex mutex $
+        SQL.execute conn "INSERT INTO wal VALUES (NULL,?,?)" (h, serialise msg)
+    --
+    , resetWAL = \(Height h) -> withMutex mutex $
+        SQL.execute conn "DELETE FROM wal WHERE height < ?" (Only h)
+    --
+    , readWAL = \(Height h) -> withMutex mutex $ do
+        rows <- SQL.query conn "SELECT message FROM wal WHERE height = ? ORDER BY id" (Only h)
+        return [ case deserialiseOrFail bs of
+                   Right a -> a
+                   Left  e -> error ("CBOR encoding error: " ++ show e)
+               | Only bs <- rows
+               ]
     }
 
 initializeDatabase
@@ -151,6 +165,14 @@ initializeDatabase conn gBlock initalVals = do
     "CREATE TABLE IF NOT EXISTS validators \
     \  ( height INT  NOT NULL UNIQUE \
     \  , valset BLOB NOT NULL)"
+  -- ID field is used to keep order of messages. Primary key is
+  -- incremented automatically and any new key will be large than any
+  -- existing key
+  SQL.execute_ conn
+    "CREATE TABLE IF NOT EXISTS wal \
+    \  ( id      INTEGER PRIMARY KEY \
+    \  , height  INTEGER NOT NULL \
+    \  , message BLOB NOT NULL)"
   -- Insert genesis block if needed
   SQL.query_ conn "SELECT MAX(height) FROM blockchain" >>= \case
     [Only Nothing] -> do
