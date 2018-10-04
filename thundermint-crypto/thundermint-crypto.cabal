@@ -1,0 +1,32 @@
+Name:           thundermint-crypto
+Version:        0.1
+Synopsis:       Simple cryptography API for thundermint
+Description:
+  Simple cryptography API for thundermint
+
+Cabal-Version:  >= 1.10
+License:        AllRightsReserved
+License-File:   LICENSE
+Author:         Aleksey Khudyakov <alexey.skladnoy@gmail.com>
+Maintainer:     Aleksey Khudyakov <alexey.skladnoy@gmail.com>
+Homepage:       https://github.com/hexresearch/thundermint
+Category:       Data
+Build-Type:     Simple
+
+Library
+  Ghc-options:         -Wall
+  Default-Language:    Haskell2010
+  Build-Depends:       base              >=4.9 && <5
+                     , aeson
+                     , base58-bytestring >=0.1                    
+                     , bytestring        >=0.10
+                     , deepseq           >=1.4
+                     , serialise         >=0.2
+                     , text              >=1
+                     --
+                     , cryptonite        >=0.25
+                     , memory            >=0.14.14
+
+  Exposed-modules:
+                  Thundermint.Crypto
+                  Thundermint.Crypto.Ed25519
