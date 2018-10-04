@@ -11,6 +11,10 @@
 
   - command: "docker inspect --format=\\{\\{.State.Status\\}\\} {{ inventory_hostname }}"
     register: nodestatus
+    tags: status
+
+  - debug: var=nodestatus.stdout
+    tags: status
 
   - block:
 
@@ -34,6 +38,6 @@
       register: reply
 
     - debug:
-      msg: "bootstrap reply {{ reply.stdout }}"
+        msg: "bootstrap reply {{ reply.stdout }}"
 
     when: hostvars['node-1'].nodestatus.stdout != "running" or hostvars['node-2'].nodestatus.stdout != "running" or hostvars['node-3'].nodestatus.stdout != "running" or hostvars['node-4'].nodestatus.stdout != "running"
