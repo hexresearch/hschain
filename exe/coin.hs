@@ -15,6 +15,7 @@ import Control.Monad.IO.Class
 import Data.Foldable
 import Data.Int
 import Data.Maybe             (isJust)
+import Data.Monoid
 import Options.Applicative
 
 import Codec.Serialise      (serialise)
