@@ -74,41 +74,11 @@ data family PublicKey alg
 newtype Signature alg = Signature BS.ByteString
   deriving (Eq, Ord, Generic, Generic1, Serialise, NFData)
 
-instance Show (Signature alg) where
-  showsPrec n (Signature bs)
-    = showParen (n > 10)
-    $ showString "Signature " . shows (encodeBase58 bs)
-
-instance Read (Signature alg) where
-  readPrec = do void $ lift $ string "Signature" >> some (char ' ')
-                Signature <$> readPrecBSBase58
-
-
-instance JSON.ToJSON (Signature alg) where
-  toJSON (Signature s) = JSON.String $ T.decodeUtf8 $ encodeBase58 s
-instance JSON.FromJSON (Signature alg) where
-  parseJSON (JSON.String s) =
-    case decodeBase58 $ T.encodeUtf8 s of
-      Nothing -> fail  "Incorrect Base58 encoding for bs"
-      Just bs -> return $ Signature bs
-  parseJSON _ = fail "Expected string for Signature"
-
-instance NFData1 Signature
-
--- |
+-- | Address of public key fingerprint (hash of public key)
 newtype Address alg = Address BS.ByteString
   deriving (Eq,Ord, Serialise)
 
-instance Show (Address alg) where
-  showsPrec n (Address bs)
-    = showParen (n > 10)
-    $ showString "Address " . shows (encodeBase58 bs)
-
-instance Read (Address alg) where
-  readPrec = do void $ lift $ string "Address" >> some (char ' ')
-                Address <$> readPrecBSBase58
-
--- |
+-- | Cryptographic hash of some value
 newtype Hash alg = Hash BS.ByteString
   deriving (Eq,Ord, Serialise, NFData)
 
@@ -116,25 +86,6 @@ newtype Hash alg = Hash BS.ByteString
 --   hash of encoded data is computed,
 hash :: (Crypto alg, Serialise a) => a -> Hash alg
 hash = hashBlob . toStrict . serialise
-
-instance Show (Hash alg) where
-  showsPrec n (Hash bs)
-    = showParen (n > 10)
-    $ showString "Hash " . shows (encodeBase58 bs)
-
-instance Read (Hash alg) where
-  readPrec = do void $ lift $ string "Hash" >> some (char ' ')
-                Hash <$> readPrecBSBase58
-
-
-instance JSON.ToJSON (Hash alg) where
-  toJSON (Hash s) = JSON.String $ T.decodeUtf8 $ encodeBase58 s
-instance JSON.FromJSON (Hash alg) where
-  parseJSON (JSON.String s) =
-    case decodeBase58 $ T.encodeUtf8 s of
-      Nothing -> fail  "Incorrect Base58 encoding for bs"
-      Just bs -> return $ Hash bs
-  parseJSON _ = fail "Expected string for Hash"
 
 
 -- | Type-indexed set of crypto algorithms. It's not very principled
@@ -160,22 +111,13 @@ class Crypto alg where
   -- | Convert public key to bytestring
   pubKeyToBS          :: PublicKey alg -> BS.ByteString
 
--- | Verify signature of value. Signature is verified for CBOR
---   encoding of object
-verifyCborSignature
-  :: (Serialise a, Crypto alg)
-  => PublicKey alg
-  -> a
-  -> Signature alg
-  -> Bool
-verifyCborSignature pk a
-  = verifyBlobSignature pk (toStrict $ serialise a)
+
+----------------------------------------------------------------
+-- Instances
+----------------------------------------------------------------
 
 instance Crypto alg => Show (PrivKey alg) where
   show = show . BC8.unpack . encodeBase58 . privKeyToBS
-
-instance Crypto alg => Show (PublicKey alg) where
-  show = show . BC8.unpack . encodeBase58 . pubKeyToBS
 
 instance Crypto alg => Read (PrivKey alg) where
   readPrec = do bs <- readPrecBSBase58
@@ -183,19 +125,6 @@ instance Crypto alg => Read (PrivKey alg) where
                   Just k  -> return k
                   Nothing -> empty
 
-instance Crypto alg => Read (PublicKey alg) where
-  readPrec = do bs <- readPrecBSBase58
-                case pubKeyFromBS bs of
-                  Just k  -> return k
-                  Nothing -> empty
-
-
-instance Crypto alg => Serialise (PrivKey alg) where
-  encode = CBOR.encode . privKeyToBS
-  decode = do bs <- CBOR.decode
-              case privKeyFromBS bs of
-                Nothing -> fail "Cannot decode private key"
-                Just k  -> return k
 
 instance Crypto alg => Serialise (PublicKey alg) where
   encode = CBOR.encode . pubKeyToBS
@@ -204,12 +133,8 @@ instance Crypto alg => Serialise (PublicKey alg) where
                 Nothing -> fail "Cannot decode private key"
                 Just k  -> return k
 
-
 instance Crypto alg => JSON.ToJSON (PrivKey alg) where
   toJSON = JSON.String . T.decodeUtf8 . encodeBase58 . privKeyToBS
-
-instance Crypto alg => JSON.ToJSON (PublicKey alg) where
-  toJSON = JSON.String . T.decodeUtf8 . encodeBase58 . pubKeyToBS
 
 instance Crypto alg => JSON.FromJSON (PrivKey alg) where
   parseJSON (JSON.String s) =
@@ -219,6 +144,28 @@ instance Crypto alg => JSON.FromJSON (PrivKey alg) where
         Nothing -> fail "Incorrect bytestring representation of PrivKey"
         Just k  -> return k
   parseJSON _          = fail "Expecting PrivKey as string"
+
+
+----------------------------------------
+
+instance Crypto alg => Show (PublicKey alg) where
+  show = show . BC8.unpack . encodeBase58 . pubKeyToBS
+
+instance Crypto alg => Read (PublicKey alg) where
+  readPrec = do bs <- readPrecBSBase58
+                case pubKeyFromBS bs of
+                  Just k  -> return k
+                  Nothing -> empty
+
+instance Crypto alg => Serialise (PrivKey alg) where
+  encode = CBOR.encode . privKeyToBS
+  decode = do bs <- CBOR.decode
+              case privKeyFromBS bs of
+                Nothing -> fail "Cannot decode private key"
+                Just k  -> return k
+
+instance Crypto alg => JSON.ToJSON (PublicKey alg) where
+  toJSON = JSON.String . T.decodeUtf8 . encodeBase58 . pubKeyToBS
 
 instance Crypto alg => JSON.FromJSON (PublicKey alg) where
   parseJSON (JSON.String s) =
@@ -230,54 +177,150 @@ instance Crypto alg => JSON.FromJSON (PublicKey alg) where
   parseJSON _          = fail "Expecting PrivKey as string"
 
 
+----------------------------------------
+
+
+instance Show (Address alg) where
+  showsPrec n (Address bs)
+    = showParen (n > 10)
+    $ showString "Address " . shows (encodeBase58 bs)
+
+instance Read (Address alg) where
+  readPrec = do void $ lift $ string "Address" >> some (char ' ')
+                Address <$> readPrecBSBase58
+
+instance JSON.ToJSON (Address alg) where
+  toJSON (Address s) = JSON.String $ T.decodeUtf8 $ encodeBase58 s
+
+instance JSON.FromJSON (Address alg) where
+  parseJSON (JSON.String s) =
+    case decodeBase58 $ T.encodeUtf8 s of
+      Nothing -> fail  "Incorrect Base58 encoding while decoding Address"
+      Just bs -> return $ Address bs
+  parseJSON _ = fail "Expected string for Address"
+
+
+----------------------------------------
+
+instance Show (Signature alg) where
+  showsPrec n (Signature bs)
+    = showParen (n > 10)
+    $ showString "Signature " . shows (encodeBase58 bs)
+
+instance Read (Signature alg) where
+  readPrec = do void $ lift $ string "Signature" >> some (char ' ')
+                Signature <$> readPrecBSBase58
+
+instance JSON.ToJSON (Signature alg) where
+  toJSON (Signature s) = JSON.String $ T.decodeUtf8 $ encodeBase58 s
+
+instance JSON.FromJSON (Signature alg) where
+  parseJSON (JSON.String s) =
+    case decodeBase58 $ T.encodeUtf8 s of
+      Nothing -> fail  "Incorrect Base58 encoding while decoding Address"
+      Just bs -> return $ Signature bs
+  parseJSON _ = fail "Expected string for Signature"
+
+instance NFData1 Signature
+
+
+----------------------------------------
+
+instance Show (Hash alg) where
+  showsPrec n (Hash bs)
+    = showParen (n > 10)
+    $ showString "Hash " . shows (encodeBase58 bs)
+
+instance Read (Hash alg) where
+  readPrec = do void $ lift $ string "Hash" >> some (char ' ')
+                Hash <$> readPrecBSBase58
+
+instance JSON.ToJSON (Hash alg) where
+  toJSON (Hash s) = JSON.String $ T.decodeUtf8 $ encodeBase58 s
+
+instance JSON.FromJSON (Hash alg) where
+  parseJSON (JSON.String s) =
+    case decodeBase58 $ T.encodeUtf8 s of
+      Nothing -> fail  "Incorrect Base58 encoding for bs"
+      Just bs -> return $ Hash bs
+  parseJSON _ = fail "Expected string for Hash"
+
+
+
 ----------------------------------------------------------------
 -- Signing and verification of values
 ----------------------------------------------------------------
 
--- | Whether signature has been verified or not
+-- | Whether signature has been verified or not. Note that all data
+--   coming from external sources should be treated as unverified.
 data SignedState = Verified
                  | Unverified
 
--- | Opaque data type holding
+-- | Signed value. It contain signature, fingerprint of public key
+--   (address) and value itself. Signature is computed for CBOR
+--   encoding of value.
 data Signed (sign :: SignedState) alg a
-  = Signed (Address alg) (Signature alg) a
+  = Signed !(Address alg) !(Signature alg) !a
   deriving (Generic, Eq, Show)
 
-instance Serialise a => Serialise (Signed 'Unverified alg a)
--- FIXME: we should be able to straight up decode withi\out verifying
---        signature.
-instance Serialise a => Serialise (Signed 'Verified alg a)
-
+-- | Obtain underlying value
 signedValue :: Signed sign alg a -> a
 signedValue (Signed _ _ a) = a
 
+-- | Obtain address used for signing
 signedAddr :: Signed sign alg a -> Address alg
 signedAddr (Signed a _ _) = a
 
 
-
+-- | Sign value. Not that we can generate both verified and unverified
+--   values this way.
 signValue
   :: (Serialise a, Crypto alg)
-  => PrivKey alg
-  -> a
-  -> Signed 'Verified alg a
+  => PrivKey alg                -- ^ Key for signing
+  -> a                          -- ^ Value to sign
+  -> Signed sign alg a
 signValue privK a
   = Signed (address $ publicKey privK)
            (signBlob privK $ toStrict $ serialise a)
            a
 
+-- | Verify signature. It return Nothing if verification fails for any
+--   reason. Note that since @Signed@ contain only fingerprint we need
+--   to supply function for looking up public keys.
 verifySignature
   :: (Serialise a, Crypto alg)
   => (Address alg -> Maybe (PublicKey alg))
+     -- ^ Lookup function for public keys. If address is unknown (this
+     --   function returns Nothing) verification fails.
   -> Signed 'Unverified alg a
+     -- ^ Value for verifying signature
   -> Maybe  (Signed 'Verified alg a)
 verifySignature lookupKey (Signed addr signature a) = do
   pubK <- lookupKey addr
   guard $ verifyCborSignature pubK a signature
   return $ Signed addr signature a
 
+-- | Strip verification tag
 unverifySignature :: Signed ty alg a -> Signed 'Unverified alg a
 unverifySignature (Signed addr sig a) = Signed addr sig a
+
+-- | Verify signature of value. Signature is verified for CBOR
+--   encoding of object
+verifyCborSignature
+  :: (Serialise a, Crypto alg)
+  => PublicKey alg
+  -> a
+  -> Signature alg
+  -> Bool
+verifyCborSignature pk a
+  = verifyBlobSignature pk (toStrict $ serialise a)
+
+instance Serialise a => Serialise (Signed 'Unverified alg a)
+-- FIXME: we should be able to straight up decode withi\out verifying
+--        signature.
+instance Serialise a => Serialise (Signed 'Verified alg a)
+
+
 
 ----------------------------------------------------------------
 -- Hashed data
