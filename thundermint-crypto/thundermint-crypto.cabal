@@ -24,9 +24,12 @@ Library
                      , serialise         >=0.2
                      , text              >=1
                      --
-                     , cryptonite        >=0.25
+  if impl(ghcjs)
+    hs-source-dirs: ghsjs .
+  else
+    hs-source-dirs: ghc .
+    Build-Depends:     cryptonite        >=0.25
                      , memory            >=0.14.14
-
   Exposed-modules:
                   Thundermint.Crypto
                   Thundermint.Crypto.Ed25519
