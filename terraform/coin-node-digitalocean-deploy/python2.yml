@@ -1,0 +1,8 @@
+---
+
+- name: Install python2
+  apt: name=python update_cache=yes cache_valid_time=3600
+
+- name: Set python enterpreter
+  set_fact:
+    ansible_python_interpreter: /usr/bin/python2

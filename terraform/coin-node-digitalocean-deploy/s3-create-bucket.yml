@@ -1,0 +1,15 @@
+- hosts: localhost
+
+  vars:
+    s3_bucket_name: mybucket
+
+  tasks:
+
+  - s3_bucket:
+      name: "{{ s3_bucket_name }}"
+      s3_url: https://ams3.digitaloceanspaces.com
+      ceph: true
+      state: absent
+      force: true
+      aws_access_key: "{{ s3_access_key }}"
+      aws_secret_key: "{{ s3_secret_key }}"

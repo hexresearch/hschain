@@ -1,0 +1,16 @@
+TAGS
+dist
+dist-newstyle
+.ghc.environment*
+result
+.stack-work
+.stack
+.cabal-sandbox
+cabal.sandbox.config
+.terraform
+terraform.tfstate
+terraform.tfstate.backup
+logs
+db
+.ipynb_checkpoints
+__pycache__

@@ -1,0 +1,8 @@
+- hosts: all
+
+  tasks:
+
+  - command: "docker inspect --format=\\{\\{.State.Status\\}\\} {{ ansible_hostname }}"
+    register: status
+
+  - debug: var=status.stdout

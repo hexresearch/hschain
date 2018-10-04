@@ -1,0 +1,46 @@
+{
+  "netNodeList" :
+  [
+    { "nspecPrivKey"     : "2K7bFuJXxKf5LqogvVRQjms2W26ZrjpvUjo5LdvPFa5Y",
+      "nspecLogFile"     :
+      [{ "type"      : "ScribeJSON",
+         "path"      : "logs/node-1",
+         "severity"  : "Debug",
+         "verbosity" : "V2"
+       }],
+        "nspecWalletKeys"  : [0,0]
+    },
+    { "nspecPrivKey"     : "4NSWtMsEPgfTK25tCPWqNzVVze1dgMwcUFwS5WkSpjJL",
+      "nspecByzantine"   : "InvalidBlock",
+      "nspecLogFile"     :
+      [{ "type"      : "ScribeJSON",
+         "path"      : "logs/node-2",
+         "severity"  : "Debug",
+         "verbosity" : "V2"
+       }],
+        "nspecWalletKeys"  : [0,0]
+    },
+    { "nspecPrivKey"     : "3Fj8bZjKc53F2a87sQaFkrDas2d9gjzK57FmQwnNnSHS",
+      "nspecLogFile"     :
+      [{ "type"      : "ScribeJSON",
+         "path"      : "logs/node-3",
+         "severity"  : "Debug",
+         "verbosity" : "V2"
+       }],
+        "nspecWalletKeys"  : [0,0]
+    },
+    { "nspecPrivKey"     : "D2fpHM1JA8trshiUW8XPvspsapUvPqVzSofaK1MGRySd",
+      "nspecLogFile"     :
+      [{ "type"      : "ScribeJSON",
+         "path"      : "logs/node-4",
+         "severity"  : "Debug",
+         "verbosity" : "V2"
+       }],
+        "nspecWalletKeys"  : [0,0]
+    }
+  ],
+  "netTopology"       : "All2All",
+  "netInitialDeposit" : 1000,
+  "netInitialKeys"    : 2000
+
+}
