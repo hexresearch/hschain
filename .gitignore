@@ -15,3 +15,5 @@ logs
 db
 .ipynb_checkpoints
 __pycache__
+
+terraform/**/inventory
