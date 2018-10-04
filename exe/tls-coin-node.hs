@@ -8,6 +8,7 @@ import Control.Concurrent
 import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Data.Int
+import Data.Monoid
 import Options.Applicative
 
 import Codec.Serialise      (serialise)
