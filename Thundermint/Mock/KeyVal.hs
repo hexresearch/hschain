@@ -23,7 +23,6 @@ import System.FilePath ((</>))
 
 import qualified Data.Map as Map
 
-import Thundermint.Mock.Store  (newBlockStorage)
 import Thundermint.P2P.Network (createMockNode)
 import Thundermint.P2P.Network (newMockNet)
 
@@ -40,7 +39,7 @@ import Thundermint.Mock.KeyList
 import Thundermint.Mock.Types
 import Thundermint.P2P
 import Thundermint.Store
-
+import Thundermint.Store.SQLite
 
 
 ----------------------------------------------------------------
@@ -96,7 +95,9 @@ interpretSpec maxH prefix NetSpec{..} = do
                   | s <- nspecLogFile
                   ]
     -- Create storage
-    storage  <- newBlockStorage prefix nspecDbName (genesisBlock validatorSet) validatorSet
+    storage  <- newSQLiteBlockStorage
+      (maybe ":memory:" (prefix </>) nspecDbName)
+      (genesisBlock validatorSet) validatorSet
     hChain   <- blockchainHeight storage
     return ( makeReadOnly storage
            , withLogEnv "TM" "DEV" loggers $ \logenv -> runLoggerT "general" logenv $ do

@@ -69,7 +69,6 @@ Library
                   Thundermint.Mock.Coin
                   Thundermint.Mock.KeyList
                   Thundermint.Mock.KeyVal
-                  Thundermint.Mock.Store
                   Thundermint.Mock.Types
                   Thundermint.P2P
                   Thundermint.P2P.Consts

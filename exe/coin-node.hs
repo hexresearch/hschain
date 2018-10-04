@@ -8,7 +8,6 @@ import Control.Concurrent
 import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Data.Int
-import Data.Monoid
 import Options.Applicative
 
 import Codec.Serialise      (serialise)
@@ -39,6 +38,7 @@ import Thundermint.P2P.Instances ()
 import Thundermint.P2P.Network               (getLocalAddress, realNetwork)
 import Thundermint.Store
 import Thundermint.Store.STM
+import Thundermint.Store.SQLite
 
 import qualified Control.Exception     as E
 import qualified Data.Aeson            as JSON
@@ -114,7 +114,9 @@ interpretSpec
    -> NodeSpec -> IO (BlockStorage 'RO IO Alg [Tx], IO ())
 interpretSpec Opts{..} netAddresses validatorSet logenv NodeSpec{..} = do
   -- Allocate storage for node
-  storage <- newBlockStorage prefix nspecDbName genesisBlock validatorSet
+  storage <- newSQLiteBlockStorage
+    (maybe ":memory:" (prefix </>) nspecDbName)
+    genesisBlock validatorSet
   hChain   <- blockchainHeight storage
   nodeAddr <- getLocalAddress
   return
