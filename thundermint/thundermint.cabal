@@ -206,6 +206,7 @@ Test-suite thundermint-tests
   Default-Language:    Haskell2010
   Build-Depends:       base              >=4.9 && <5
                      , thundermint
+                     , thundermint-crypto
                      , aeson
                      , async             >=2.2.1
                      , bytestring        >=0.10
@@ -232,7 +233,6 @@ Test-suite thundermint-tests
   hs-source-dirs:      test
   Main-is:             Main.hs
   Other-modules:       TM.Arbitrary.Instances
-                       TM.Crypto
                        TM.Mempool
                        TM.MockNet
                        TM.Network

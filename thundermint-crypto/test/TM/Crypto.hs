@@ -33,7 +33,7 @@ tests = testGroup "Crypto"
        assertBool "Signature check failed" $ verifyBlobSignature pubK blob sign
     --
   , testCase "Signature OK (golden)"
-  $ do let privK = read "\"HsBRtVUZ8ewZq5giWZHwr8crJm1iTVNLQeeyQk1vEmM8\"" :: PrivKey   Ed25519_SHA512
+  $ do let privK = read "\"HsBRtVUZ8ewZq5giWZHwr8crJm1iTVNLQeeyQk1vEmM8\""  :: PrivKey   Ed25519_SHA512
            pubK  = read "\"9xeYWVLneMHJHEtewZe9X4nKbLAYjFEHR98q9CyhSxQN\""  :: PublicKey Ed25519_SHA512
            sign  = read
              "Signature \
