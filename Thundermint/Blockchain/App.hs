@@ -23,12 +23,9 @@ import Control.Monad
 import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
-import Control.Monad.Trans.Maybe
--- import           Data.Foldable
 import           Data.Function
 import qualified Data.Map      as Map
 import           Data.Monoid   ((<>))
--- import           Data.Map          (Map)
 import Data.Time.Clock.POSIX (getPOSIXTime)
 import Pipes                 (Pipe,runEffect,yield,await,(>->))
 
@@ -123,8 +120,10 @@ decideNewBlock config appSt@AppState{..} appCh@AppChans{..} lastCommt = do
   let msgHandlerLoop mCmt tm = do
         -- Make current state of consensus available for gossip
         liftIO $ atomically $ writeTVar appTMState $ Just (currentH hParam , tm)
-        -- Handle message
-        res <- lift . handleVerifiedMessage appPropStorage hParam tm =<< await
+        -- Write message to WAL and handle it after that
+        msg <- await
+        lift $ writeToWAL appStorage (currentH hParam) (unverifyMessageRx msg)
+        res <- lift $ handleVerifiedMessage appPropStorage hParam tm msg
         case res of
           Tranquility      -> msgHandlerLoop mCmt tm
           Misdeed          -> msgHandlerLoop mCmt tm

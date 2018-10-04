@@ -16,11 +16,11 @@ module Thundermint.Blockchain.Types (
   , PrivValidator(..)
     -- * Messages and channels
   , MessageRx(..)
+  , unverifyMessageRx
   , Announcement(..)
   , AppChans(..)
   ) where
 
-import Codec.Serialise        (Serialise)
 import Control.Concurrent.STM
 import qualified Data.Aeson as JSON
 import GHC.Generics           (Generic)
