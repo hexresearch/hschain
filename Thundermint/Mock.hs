@@ -17,7 +17,6 @@ module Thundermint.Mock (
   , Topology(..)
   , NodeDescription(..)
   , runNode
-  , newBlockStorage
     -- * Running nodes
   , startNode
   , runNodeSet
@@ -48,7 +47,6 @@ import Thundermint.Crypto
 import Thundermint.Debug.Trace
 import Thundermint.Logger
 import Thundermint.Mock.KeyList
-import Thundermint.Mock.Store
 import Thundermint.Mock.Types
 import Thundermint.P2P
 import Thundermint.P2P.Network

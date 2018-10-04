@@ -15,7 +15,6 @@ import Control.Monad.IO.Class
 import Data.Foldable
 import Data.Int
 import Data.Maybe             (isJust)
-import Data.Monoid
 import Options.Applicative
 
 import Codec.Serialise      (serialise)
@@ -103,7 +102,9 @@ interpretSpec maxH prefix delay NetSpec{..} = do
   -- Connection map
   forM (Map.toList netAddresses) $ \(addr, NodeSpec{..}) -> do
     -- Allocate storage for node
-    storage  <- newBlockStorage prefix nspecDbName genesisBlock validatorSet
+    storage <- newSQLiteBlockStorage
+      (maybe ":memory:" (prefix </>) nspecDbName)
+      genesisBlock validatorSet
     hChain   <- blockchainHeight storage
     -- Prepare logging
     let loggers = [ makeScribe s { scribe'path = fmap (prefix </>) (scribe'path s) }
