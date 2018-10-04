@@ -8,13 +8,9 @@ variable "registry_url" {
   default = "registry.hxr.team"
 }
 
-variable "elastic_user" {
-  default = "elastic"
- }
+variable "elastic_user" {}
 
-variable "registry_user" {
-  default = "romcheck"
- }
+variable "registry_user" {}
 
 variable "elastic_pass" {}
 
