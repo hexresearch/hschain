@@ -10,7 +10,6 @@ module Thundermint.Mock.Types (
 
 import Control.Exception (Exception)
 import Control.Monad.Catch
-import Data.Foldable
 import Data.Monoid  (Endo(..))
 import GHC.Generics (Generic)
 

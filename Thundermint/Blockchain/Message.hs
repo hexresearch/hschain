@@ -1,15 +1,15 @@
 {-# LANGUAGE DataKinds         #-}
 {-# LANGUAGE DeriveGeneric     #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE LambdaCase        #-}
 -- |
 module Thundermint.Blockchain.Message (
     MessageRx(..)
+  , unverifyMessageRx
   , Announcement(..)
   ) where
 
 import Codec.Serialise        (Serialise)
-import Control.Concurrent.STM
-import qualified Data.Aeson as JSON
 import GHC.Generics           (Generic)
 
 import Thundermint.Crypto
@@ -30,6 +30,15 @@ data MessageRx ty alg a
   | RxBlock     !(Block alg a)
   deriving (Show, Generic)
 instance (Serialise a) => Serialise (MessageRx 'Unverified alg a)
+
+unverifyMessageRx :: MessageRx 'Verified alg a -> MessageRx 'Unverified alg a
+unverifyMessageRx = \case
+  RxPreVote   s -> RxPreVote   (unverifySignature s)
+  RxPreCommit s -> RxPreCommit (unverifySignature s)
+  RxProposal  s -> RxProposal  (unverifySignature s)
+  RxTimeout   t -> RxTimeout   t
+  RxBlock     b -> RxBlock     b
+
 
 -- | Messages which should be delivered to peers immediately. Those
 --   are control messages in gossip protocol. Actual proposals, votes
