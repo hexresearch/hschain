@@ -30,7 +30,7 @@ maxHeight = 10
 tests :: TestTree
 tests = testGroup "generate blockchain and check on consistency"
   [ testGroup "blockhains"
-    [ testCase "key-val db" $ runKeyVal (Just maxHeight)  "./test-data/key-val" "spec/simple-stm.json"
+    [ testCase "key-val db" $ runKeyVal (Just maxHeight)  "./test-data/key-val" "../spec/simple-stm.json"
     ]
   ]
 
