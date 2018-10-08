@@ -157,5 +157,5 @@ executeSpec
   -> IO [BlockStorage 'RO IO Ed25519_SHA512 [(String,Int)]]
 executeSpec maxH prefix spec = do
   actions <- interpretSpec maxH prefix spec
-  handleNAbort (length actions) $ runConcurrently (snd <$> actions)
+  runConcurrently (snd <$> actions) `catch` (\Abort -> return ())
   return $ fst <$> actions

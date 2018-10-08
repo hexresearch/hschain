@@ -4,7 +4,6 @@ module Thundermint.Mock.Types (
 , NetSpec(..)
 , Topology(..)
 , Abort(..)
-  , handleNAbort
 , defCfg
   ) where
 
@@ -16,6 +15,7 @@ import GHC.Generics (Generic)
 import qualified Data.Aeson as JSON
 
 
+import Thundermint.Control
 import Thundermint.Crypto.Ed25519 (Ed25519_SHA512)
 import Thundermint.Logger         (ScribeSpec)
 
@@ -47,12 +47,6 @@ defCfg = Configuration
 data Abort = Abort
   deriving Show
 instance Exception Abort
-
--- | Handle up to N @Abort@ exceptions. When we run N blockchains
---   simultaneously we can get up to N exceptions
-handleNAbort :: MonadCatch m => Int -> m () -> m ()
-handleNAbort n = appEndo $ foldMap Endo $ replicate n $ handle (\Abort -> return ())
-
 
 data Topology = All2All
               | Ring
