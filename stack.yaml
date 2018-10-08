@@ -52,6 +52,8 @@ extra-deps:
     - cborg-0.2.0.0
     - base58-bytestring-0.1.0
     - bytestring-arbitrary-0.1.2
+    - katip-elasticsearch-0.5.1.0
+    - bloodhound-0.16.0.0
 allow-newer: true
 
 

@@ -220,7 +220,7 @@ main = do
             )
        <*> option str
             (  long    "prefix"
-            <> value   "."
+            <> value   ""
             <> metavar "PATH"
             <> help    "prefix for db & logs"
             )
