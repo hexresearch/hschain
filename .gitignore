@@ -6,6 +6,7 @@ result
 .stack-work
 .stack
 .cabal-sandbox
+elastic-search.cfg
 cabal.sandbox.config
 .terraform
 terraform.tfstate
