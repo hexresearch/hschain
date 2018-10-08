@@ -41,4 +41,19 @@ tests = testGroup "Crypto"
            blob  = "ABCD"
        sign @=? signBlob privK blob
        assertBool "Signature check failed" $ verifyBlobSignature pubK blob sign
+    --
+  , testCase "Hash algorithm is correct"
+  $ do let h = hashBlob "ABCDF" :: Hash Ed25519_SHA512
+       read ("Hash \"wW3fpggshbTYibV8VHrz6ZFvs3EJig7geZTQvfy6FuVCsGDvamcKZHtV2TQMMjSU5i3TuzXSSjwsqGqR9aK1S5F\"")
+         @=? h
+    --
+  , testCase "Public key derivation is correct"
+  $ do let k :: PrivKey Ed25519_SHA512
+           k = read "\"Cn6mra73QDNPkyf56Cfoxh9y9HDS8MREPw4GNcCxQb5Q\""
+       read "\"5oxScYXwuzcCQRZ8QtUDzhxNdMx2g1nMabd4uPFPDdzi\"" @=? publicKey k
+  , testCase "Address derivation is correct"
+    --
+  $ do let k :: PrivKey Ed25519_SHA512
+           k = read "\"Cn6mra73QDNPkyf56Cfoxh9y9HDS8MREPw4GNcCxQb5Q\""
+       read "Address \"AhAM9SS8UQUbjrB3cwq9DMtb6mnyz61m9LuBr5kayq9q\"" @=? address (publicKey k)
   ]
