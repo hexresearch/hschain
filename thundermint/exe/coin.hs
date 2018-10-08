@@ -172,7 +172,7 @@ executeNodeSpec
   -> NetSpec -> IO [BlockStorage 'RO IO Alg [Tx]]
 executeNodeSpec maxH prefix delay spec = do
   actions <- interpretSpec maxH prefix delay spec
-  handleNAbort (length actions) $ runConcurrently (snd <$> actions)
+  runConcurrently (snd <$> actions) `catch` (\Abort -> return ())
   return $ fst <$> actions
 
 

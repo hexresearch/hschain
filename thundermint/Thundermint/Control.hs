@@ -1,3 +1,5 @@
+{-# LANGUAGE LambdaCase          #-}
+{-# LANGUAGE Rank2Types          #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 -- |
 module Thundermint.Control (
@@ -28,7 +30,7 @@ import Control.Monad.Trans.Reader
 
 import Control.Concurrent  (ThreadId, killThread, myThreadId, throwTo)
 import Control.Exception   (AsyncException, Exception(..), SomeException)
-import Control.Monad.Catch (MonadMask, MonadThrow, bracket, mask, onException, throwM)
+import Control.Monad.Catch (MonadMask, MonadThrow, bracket, mask, onException, throwM, try)
 
 import qualified Control.Concurrent as Conc
 
@@ -38,18 +40,23 @@ import qualified Control.Concurrent as Conc
 
 -- | Type class for monads which could be forked
 class MonadIO m => MonadFork m where
-  fork :: m () -> m ThreadId
-  forkFinally :: m a -> (Either SomeException a -> m ()) -> m ThreadId
+  fork           :: m () -> m ThreadId
+  forkFinally    :: m a -> (Either SomeException a -> m ()) -> m ThreadId
+  forkWithUnmask :: ((forall a. m a -> m a) -> m ()) -> m ThreadId
 
 instance MonadFork IO where
-  fork        = Conc.forkIO
-  forkFinally = Conc.forkFinally
+  fork           = Conc.forkIO
+  forkFinally    = Conc.forkFinally
+  forkWithUnmask = Conc.forkIOWithUnmask
 
 instance MonadFork m => MonadFork (ReaderT r m) where
   fork (ReaderT action) = ReaderT $ fork . action
   forkFinally (ReaderT action) fini = ReaderT $ \r ->
     forkFinally (action r) (\e -> runReaderT (fini e) r)
-
+  forkWithUnmask cont = ReaderT $ \r -> forkWithUnmask $ \restore ->
+    runReaderT (cont (liftF restore)) r
+    where
+      liftF f m = ReaderT $ f . runReaderT m
 
 
 -- | Fork thread. Any exception except `AsyncException` in forked
@@ -61,13 +68,20 @@ forkLinked :: (MonadIO m, MonadMask m, MonadFork m)
            -> m b
 forkLinked action io = do
   tid <- liftIO myThreadId
-  let fini (Right _) = return ()
-      fini (Left  e) = case fromException e of
-        Just (_ :: AsyncException) -> return ()
-        _                          -> liftIO $ throwTo tid e
-  bracket (forkFinally action fini)
-          (liftIO . killThread)
-          (const io)
+  -- NOTE: Resource in bracket is acquired with asynchronous
+  --       exceptions masked so child thread inherits masked state and
+  --       needs to be explicitly unmasked
+  bracket
+    (forkWithUnmask $ \restore ->
+         try (restore action) >>= \case
+          Right _ -> return ()
+          Left  e -> case fromException e of
+            Just (_ :: AsyncException) -> return ()
+            _                          -> liftIO $ throwTo tid e
+    )
+    (liftIO . killThread)
+    (const io)
+
 
 
 -- | Run computations concurrently. Any exception will propagate to
@@ -79,10 +93,24 @@ runConcurrently
   -> m ()
 runConcurrently []      = return ()
 runConcurrently actions = do
-  lock <- liftIO Conc.newEmptyMVar
-  foldr (\f -> forkLinked $ f >> void (liftIO (Conc.tryPutMVar lock ())))
-        (liftIO $ Conc.takeMVar lock)
-        actions
+  -- We communicate return status of thread via channel since we don't
+  -- know a priory which will terminated first
+  ch <- liftIO $ Conc.newChan
+  -- Run child threads. See NOTE in forkLinked
+  either throwM return =<<
+    bracket
+      (forM actions $ \f -> forkWithUnmask $ \restore -> do
+          try (restore f) >>= liftIO . \case
+            Right _ -> Conc.writeChan ch (Right ())
+            Left  e -> case fromException e of
+              Just (_ :: AsyncException) -> Conc.writeChan ch (Right ())
+              _                          -> Conc.writeChan ch (Left  e)
+      )
+      (liftIO . mapM killThread)
+      -- We wait for first thread to terminate. And we have at least
+      -- one thread!
+      (\_ -> liftIO $ Conc.readChan ch)
+
 
 
 ----------------------------------------------------------------
