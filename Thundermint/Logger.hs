@@ -211,7 +211,7 @@ makeJsonFileScribe nm sev verb = do
 
 
 ----------------------------------------------------------------
--- JSON scribe
+-- LogBlock
 ----------------------------------------------------------------
 
 -- | Type class for providing logging information about block
