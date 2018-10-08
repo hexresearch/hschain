@@ -48,11 +48,15 @@ import Data.Typeable
 import Data.Monoid     ((<>))
 import qualified Data.HashMap.Strict        as HM
 import qualified Data.ByteString.Lazy.Char8 as BL
+import qualified Data.Text as T
 import Katip
 import System.Directory (createDirectoryIfMissing)
 import System.FilePath  (splitFileName)
 import System.IO
 import GHC.Generics (Generic)
+import Network.HTTP.Client.TLS
+import Database.V5.Bloodhound
+import Katip.Scribes.ElasticSearch
 
 import Thundermint.Control
 import Thundermint.Consensus.Types
@@ -153,6 +157,7 @@ withLogEnv namespace env scribes action
 -- | Type of scribe to use
 data ScribeType
   = ScribeJSON
+  | ScribeES
   | ScribeTXT
   deriving (Show,Eq,Ord,Generic)
 instance ToJSON   ScribeType
@@ -173,17 +178,23 @@ deriveJSON defaultOptions
 
 makeScribe :: ScribeSpec -> IO Scribe
 makeScribe ScribeSpec{..} = do
-  forM_ scribe'path $ \path -> do
-    let (dir,_) = splitFileName path
-    createDirectoryIfMissing True dir
+  when needToPrepare $
+    forM_ scribe'path $ \path -> do
+      let (dir,_) = splitFileName path
+      createDirectoryIfMissing True dir
   case (scribe'type, scribe'path) of
     (ScribeTXT,  Nothing) -> mkHandleScribe ColorIfTerminal stdout  sev verb
     (ScribeTXT,  Just nm) -> mkFileScribe nm sev verb
+    (ScribeES,   Nothing) -> error "Empty ES address"
+    (ScribeES,   Just nm) -> makeEsUrlScribe nm sev verb
     (ScribeJSON, Nothing) -> makeJsonHandleScribe stdout sev verb
     (ScribeJSON, Just nm) -> makeJsonFileScribe nm sev verb
   where
     sev  = scribe'severity
     verb = scribe'verbosity
+    needToPrepare = case scribe'type of
+        ScribeES -> False
+        _        -> True
 
 instance ToJSON   Verbosity
 instance FromJSON Verbosity
@@ -208,6 +219,26 @@ makeJsonFileScribe nm sev verb = do
   h <- openFile nm AppendMode
   Scribe loggerFun finalizer <- makeJsonHandleScribe h sev verb
   return $ Scribe loggerFun (finalizer `finally` hClose h)
+
+
+----------------------------------------------------------------
+-- ES (ElasticSearch) scribe
+----------------------------------------------------------------
+
+makeEsUrlScribe :: FilePath -> Severity -> Verbosity -> IO Scribe
+makeEsUrlScribe serverPath sev verb = do
+  mgr <- newTlsManager
+  let bhe = mkBHEnv (Server (T.pack serverPath)) mgr
+  mkEsScribe
+    -- Reasonable for production
+    defaultEsScribeCfgV5
+    -- Reasonable for single-node in development
+    -- defaultEsScribeCfgV5 { essIndexSettings = IndexSettings (ShardCound 1) (ReplicaCount 0)}
+    bhe
+    (IndexName "xenochain")
+    (MappingName "application-logs")
+    sev
+    verb
 
 
 ----------------------------------------------------------------

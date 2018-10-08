@@ -45,6 +45,9 @@ Library
                      --
                      , cryptonite         >=0.25
                      , katip              >=0.5.4.0
+                     , katip-elasticsearch
+                     , http-client-tls
+                     , bloodhound
                      , network            >=2.6.0.0 && <2.8
                      , tls                >=1.4.1
                      , x509
