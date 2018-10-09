@@ -1,12 +1,12 @@
 # Nix expression for starting jupyter notebook
 let
-  pkgs   = import <nixpkgs> {inherit config;};
+  pkgs   = import <nixpkgs> {inherit config; overlays=[];};
   config = {
     packageOverrides = pkgs: rec {
       haskellPackages = pkgs.haskellPackages.override {
-        overrides = haskellPackagesNew: haskellPackagesOld:
+        overrides = hsPkgNew: hsPkgOld:
           rec {
-            splot = haskellPackagesOld.callPackage ./nix/splot.nix {};
+            splot = hsPkgOld.callPackage ./nix/splot.nix {};
           };
       };
     };

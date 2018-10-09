@@ -15,11 +15,19 @@ class Log(object):
 
     def __init__(self, fname = None, lines = None) :
         # Dispatch on arguments
+        def load_line(s) :
+            try:
+                return json.loads(s)
+            except json.JSONDecodeError as e:
+                print("Parse error %s" % format(e))
+                print(s)
+                raise e
+        #
         if lines is not None:
             rows = lines
         elif fname is not None:
             with open(fname) as f :
-                rows = [ json.loads(s) for s in f.readlines()]
+                rows = [ load_line(s) for s in f.readlines() if s.strip() != ""]
         else:
             raise Exception("Nor lines nor file is set")
         # Load data
