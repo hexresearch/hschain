@@ -19,6 +19,7 @@ let
       numpy
       pandas
       statsmodels
+      elasticsearch
     ]);
 in
   pkgs.stdenv.mkDerivation {
