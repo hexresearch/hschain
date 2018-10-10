@@ -196,8 +196,6 @@ makeScribe ScribeSpec{..} = do
         ScribeES -> False
         _        -> True
 
-instance ToJSON   Verbosity
-instance FromJSON Verbosity
 
 ----------------------------------------------------------------
 -- JSON scribe

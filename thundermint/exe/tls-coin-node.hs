@@ -145,20 +145,23 @@ interpretSpec Opts{..} netAddresses validatorSet logenv certPemBuf keyPemBuf Nod
               transferActions delay (publicKey <$> take netInitialKeys privateKeyList) privKeys
                 (void . pushTransaction cursor) st
         --
-        acts <- runNode defCfg NodeDescription
-          { nodeStorage         = hoistBlockStorageRW liftIO storage
-          , nodeBchState        = bchState
-          , nodeBlockChainLogic = transitions
-          , nodeMempool         = mempool
-          , nodeNetwork         = realNetworkTls credential (show thundermintPort)
-          , nodeAddr            = nodeAddr
-          , nodeInitialPeers    = netAddresses
-          , nodeValidationKey   = nspecPrivKey
-          , nodeCommitCallback = \case
-              h | Just hM <- maxH
-                , h > Height hM -> throwM Abort
-                | otherwise     -> return ()
-          }
+        acts <- runNode defCfg
+          BlockchainNet
+            { bchNetwork          = realNetworkTls credential (show thundermintPort)
+            , bchLocalAddr        = nodeAddr
+            , bchInitialPeers     = netAddresses
+            }
+          NodeDescription
+            { nodeStorage         = hoistBlockStorageRW liftIO storage
+            , nodeBchState        = bchState
+            , nodeBlockChainLogic = transitions
+            , nodeMempool         = mempool
+            , nodeValidationKey   = nspecPrivKey
+            , nodeCommitCallback = \case
+                h | Just hM <- maxH
+                  , h > Height hM -> throwM Abort
+                  | otherwise     -> return ()
+            }
         runConcurrently (generator : acts)
     )
   where

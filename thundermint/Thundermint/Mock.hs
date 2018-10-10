@@ -16,6 +16,7 @@ module Thundermint.Mock (
   , Abort(..)
   , Topology(..)
   , NodeDescription(..)
+  , BlockchainNet(..)
   , runNode
     -- * Running nodes
   , defCfg
@@ -55,8 +56,9 @@ import Thundermint.Control (MonadFork, runConcurrently)
 ----------------------------------------------------------------
 --
 ----------------------------------------------------------------
+
 -- | Specification of node
-data NodeDescription addr m alg st tx a = NodeDescription
+data NodeDescription m alg st tx a = NodeDescription
   { nodeBlockChainLogic :: BlockFold st tx a
     -- ^ Logic of blockchain
   , nodeStorage         :: BlockStorage 'RW m alg a
@@ -65,18 +67,18 @@ data NodeDescription addr m alg st tx a = NodeDescription
     -- ^ Current state of blockchain
   , nodeMempool         :: Mempool m alg tx
     -- ^ Mempool of node
-  , nodeNetwork         :: NetworkAPI addr
-    -- ^ Network API
-  , nodeAddr            :: addr
-    -- ^ Node address
-  , nodeInitialPeers    :: [addr]
-    -- ^ Initial peers
   , nodeValidationKey   :: Maybe (PrivValidator alg)
     -- ^ Private key of validator
   , nodeCommitCallback  :: Height -> m ()
     -- ^ Callback which is called on each commit
   }
 
+-- | Specification of network
+data BlockchainNet addr = BlockchainNet
+  { bchNetwork      :: NetworkAPI addr
+  , bchLocalAddr    :: addr
+  , bchInitialPeers :: [addr]
+  }
 
 runNode
   :: ( MonadMask m, MonadFork m, MonadLogger m, MonadTrace m
@@ -84,9 +86,10 @@ runNode
      , Crypto alg, Ord addr, Show addr, Serialise addr, Show a, LogBlock a
      , Serialise a)
   => Configuration
-  -> NodeDescription addr m alg st tx a
+  -> BlockchainNet addr
+  -> NodeDescription m alg st tx a
   -> m [m ()]
-runNode cfg NodeDescription{nodeBlockChainLogic=BlockFold{..}, ..} = do
+runNode cfg BlockchainNet{..} NodeDescription{nodeBlockChainLogic=BlockFold{..}, ..} = do
   -- Create state of blockchain & Update it to current state of
   -- blockchain
   hChain      <- blockchainHeight     nodeStorage
@@ -119,7 +122,7 @@ runNode cfg NodeDescription{nodeBlockChainLogic=BlockFold{..}, ..} = do
   appCh <- newAppChans
   return
     [ id $ setNamespace "net"
-         $ startPeerDispatcher cfg nodeNetwork nodeAddr nodeInitialPeers appCh
+         $ startPeerDispatcher cfg bchNetwork bchLocalAddr bchInitialPeers appCh
                                (makeReadOnly   nodeStorage)
                                nodeMempool
     , id $ setNamespace "consensus"
