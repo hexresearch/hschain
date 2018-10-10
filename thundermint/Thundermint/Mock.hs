@@ -18,8 +18,6 @@ module Thundermint.Mock (
   , NodeDescription(..)
   , runNode
     -- * Running nodes
-  , startNode
-  , runNodeSet
   , defCfg
   ) where
 
@@ -127,65 +125,3 @@ runNode cfg NodeDescription{nodeBlockChainLogic=BlockFold{..}, ..} = do
     , id $ setNamespace "consensus"
          $ runApplication cfg appSt appCh
     ]
-
-
-
-----------------------------------------------------------------
---
-----------------------------------------------------------------
-
--- | Start node which will now run consensus algorithm
-startNode
-  :: ( Ord addr, Show addr, Serialise addr, Crypto alg, Serialise a, Serialise tx
-     , Show a, LogBlock a)
-  => NetworkAPI addr
-  -> addr
-  -> [addr]
-  -> AppState IO alg a
-  -> Mempool IO alg tx
-  -> IO ()
-startNode net addr addrs appState@AppState{..} mempool = do
-  -- Initialize logging
-  logfile <- case appValidator of
-    Just (PrivValidator pk) ->
-      let Address nm = address $ publicKey pk
-      in return $ "val-" ++ BC8.unpack (Base58.encodeBase58 Base58.bitcoinAlphabet nm)
-    Nothing -> do
-      w1 <- randomIO
-      w2 <- randomIO
-      return $ printf "node-%016x-%016x" (w1 :: Word64) (w2 :: Word64)
-  scribe <- Katip.mkFileScribe ("logs/" ++ logfile) Katip.DebugS Katip.V2
-  logenv <- Katip.registerScribe "log" scribe Katip.defaultScribeSettings
-        =<< Katip.initLogEnv "TM" "DEV"
-  flip finally (Katip.closeScribes logenv) $ runLoggerT "" logenv $ do
-    appCh <- newAppChans
-    let netRoutine = setNamespace "net"
-                   $ startPeerDispatcher defCfg net addr addrs appCh
-                       (hoistBlockStorageRO liftIO $ makeReadOnly appStorage)
-                       (hoistMempool liftIO mempool)
-    runConcurrently
-      [ netRoutine
-      , setNamespace "consensus"
-          $ runApplication defCfg (hoistAppState liftIO appState) appCh
-      ]
-
--- | Start set of nodes and return their corresponding storage. Will
---   return their storage after all nodes finish execution
-runNodeSet
-  :: (Ord addr, Show addr, Serialise addr, Crypto alg, Serialise a, Show a
-     , Serialise tx, LogBlock a)
-  => [( NetworkAPI addr, addr, [addr], AppState IO alg a, Mempool IO alg tx)]
-  -> IO [BlockStorage 'RO IO alg a]
-runNodeSet nodes = do
-  withAsyncs [ startNode net addr addrs appSt mp
-             | (net,addr,addrs,appSt,mp) <- nodes
-             ]
-    $ void . waitAny
-  return [ makeReadOnly $ appStorage a | (_,_,_,a,_) <- nodes ]
-
-withAsyncs :: [IO a] -> ([Async a] -> IO b) -> IO b
-withAsyncs ios function
-  = recur ([],ios)
-  where
-    recur (as,[])   = function (reverse as)
-    recur (as,i:is) = withAsync i $ \a -> recur (a:as, is)
