@@ -69,7 +69,7 @@ runApplication
 runApplication config appSt@AppState{..} appCh@AppChans{..} = logOnException $ do
   height <- blockchainHeight appStorage
   lastCm <- retrieveLocalCommit appStorage height
-  advanceToHeight appPropStorage $ next height
+  advanceToHeight appPropStorage $ succ height
   void $ flip fix lastCm $ \loop commit -> do
     cm <- decideNewBlock config appSt appCh commit
     -- ASSERT: We successfully commited next block
@@ -140,7 +140,7 @@ decideNewBlock config appSt@AppState{..} appCh@AppChans{..} lastCommt = do
             logger InfoS "Actual commit"
               $ LogBlockInfo (currentH hParam) (blockData b)
             storeCommit appStorage vset cmt b
-            advanceToHeight appPropStorage . next =<< blockchainHeight appStorage
+            advanceToHeight appPropStorage . succ =<< blockchainHeight appStorage
             appCommitCallback (currentH hParam)
             return cmt
   --
@@ -247,7 +247,7 @@ makeHeightParameters
   -> m (HeightParameters (ConsensusM alg a m) alg a)
 makeHeightParameters Configuration{..} AppState{..} AppChans{..} = do
   h            <- blockchainHeight appStorage
-  Just valSet  <- retrieveValidatorSet appStorage (next h)
+  Just valSet  <- retrieveValidatorSet appStorage (succ h)
   Just genesis <- retrieveBlock appStorage (Height 0)
   let proposerChoice (Round r) =
         let Height h' = h
@@ -257,7 +257,7 @@ makeHeightParameters Configuration{..} AppState{..} AppChans{..} = do
         in  address (validatorPubKey v)
   --
   return HeightParameters
-    { currentH        = next h
+    { currentH        = succ h
     , validatorSet    = valSet
       -- FIXME: this is some random algorithms that should probably
       --        work (for some definition of work)
@@ -267,13 +267,13 @@ makeHeightParameters Configuration{..} AppState{..} AppChans{..} = do
     , proposerForRound = proposerChoice
     --
     , validateBlock = \bid -> do
-        let nH = next h
+        let nH = succ h
         blocks <- lift $ retrievePropBlocks appPropStorage nH
         case bid `Map.lookup` blocks of
           Nothing -> return UnseenProposal
           Just b  -> do
             inconsistencies <- lift $ checkProposedBlock appStorage nH b
-            blockOK         <- lift $ appValidationFun (next h) (blockData b)
+            blockOK         <- lift $ appValidationFun (succ h) (blockData b)
             case () of
               _| not (null inconsistencies) -> do
                    logger ErrorS ("Proposed block at height ::" <> showLS nH <> ":: has Inconsistency problem: " <> showLS inconsistencies) ()
@@ -283,7 +283,7 @@ makeHeightParameters Configuration{..} AppState{..} AppChans{..} = do
     --
     , broadcastProposal = \r bid lockInfo ->
         forM_ appValidator $ \(PrivValidator pk) -> do
-          let prop = Proposal { propHeight    = next h
+          let prop = Proposal { propHeight    = succ h
                               , propRound     = r
                               , propTimestamp = Time 0
                               , propPOL       = lockInfo
@@ -311,7 +311,7 @@ makeHeightParameters Configuration{..} AppState{..} AppChans{..} = do
     --
     , castPrevote     = \r b ->
         forM_ appValidator $ \(PrivValidator pk) -> do
-          let vote = Vote { voteHeight  = next h
+          let vote = Vote { voteHeight  = succ h
                           , voteRound   = r
                           , voteTime    = Time 0
                           , voteBlockID = b
@@ -324,7 +324,7 @@ makeHeightParameters Configuration{..} AppState{..} AppChans{..} = do
     , castPrecommit   = \r b ->
         forM_ appValidator $ \(PrivValidator pk) -> do
           currentT <- round <$> liftIO getPOSIXTime
-          let vote = Vote { voteHeight  = next h
+          let vote = Vote { voteHeight  = succ h
                           , voteRound   = r
                           , voteTime    = Time currentT
                           , voteBlockID = b
@@ -334,7 +334,7 @@ makeHeightParameters Configuration{..} AppState{..} AppChans{..} = do
           liftIO $ atomically $ writeTChan appChanRx $ RxPreCommit $ unverifySignature svote
     --
     , acceptBlock = \r bid -> do
-        liftIO $ atomically $ writeTChan appChanTx $ AnnHasProposal (next h) r
+        liftIO $ atomically $ writeTChan appChanTx $ AnnHasProposal (succ h) r
         lift $ allowBlockID appPropStorage r bid
     --
     , announceHasPreVote   = \sv -> do
@@ -350,14 +350,14 @@ makeHeightParameters Configuration{..} AppState{..} AppChans{..} = do
     , announceStep = liftIO . atomically . writeTChan appChanTx . AnnStep
     --
     , createProposal = \r commit -> lift $ do
-        bData          <- appBlockGenerator (next h)
+        bData          <- appBlockGenerator (succ h)
         Just lastBlock <- retrieveBlock appStorage
                       =<< blockchainHeight appStorage
         currentT       <- round <$> liftIO getPOSIXTime
         let block = Block
               { blockHeader     = Header
                   { headerChainID        = headerChainID $ blockHeader genesis
-                  , headerHeight         = next h
+                  , headerHeight         = succ h
                   , headerTime           = Time currentT
                   , headerLastBlockID    = Just (blockHash lastBlock)
                   , headerValidatorsHash = hash valSet

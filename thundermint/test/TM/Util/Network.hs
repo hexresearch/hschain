@@ -114,7 +114,7 @@ createTestNetworkWithConfig cfg desc = do
         fmap (map run) $ run $ do
             bchState     <- newBChState transitions
                           $ makeReadOnly (hoistBlockStorageRW liftIO blockStorage)
-            _            <- stateAtH bchState (next hChain)
+            _            <- stateAtH bchState (succ hChain)
             runNode cfg NodeDescription
                 { nodeStorage         = hoistBlockStorageRW liftIO blockStorage
                 , nodeBlockChainLogic = transitions

@@ -264,7 +264,7 @@ tendermintTransition par@HeightParameters{..} msg sm@TMState{..} =
       -- Collect stragglers precommits for inclusion of
       | smStep == StepNewHeight
       , Just cmt@(Commit cmtID ((signedValue -> Vote{voteRound=r}):_)) <- smLastCommit
-      , next voteHeight == currentH
+      , succ voteHeight == currentH
       , voteRound       == r
         -> case voteBlockID of
              -- Virtuous node can either vote for same block or for NIL
@@ -294,7 +294,7 @@ tendermintTransition par@HeightParameters{..} msg sm@TMState{..} =
             StepNewHeight   -> enterPropose   par smRound        sm Reason'Timeout
             StepProposal    -> enterPrevote   par smRound        sm Reason'Timeout
             StepPrevote     -> enterPrecommit par smRound        sm Reason'Timeout
-            StepPrecommit   -> enterPropose   par (next smRound) sm Reason'Timeout
+            StepPrecommit   -> enterPropose   par (succ smRound) sm Reason'Timeout
             StepAwaitCommit -> tranquility
       where
         t0 = Timeout currentH smRound smStep
@@ -357,7 +357,7 @@ checkTransitionPrecommit par@HeightParameters{..} r sm@(TMState{..})
   | r == smRound
   , Just Vote{..} <- majority23at r smPrecommitsSet
   , Nothing       <- voteBlockID
-    = enterPropose par (next r) sm Reason'PC_Nil
+    = enterPropose par (succ r) sm Reason'PC_Nil
   --  * We have +2/3 precommits for some round (R+x)
   --  => goto Precommit(H,R+x)
   | r > smRound
@@ -472,7 +472,7 @@ unlockOnPrevote sm@TMState{..}
   where
     hasAnyPolka lockR  = not $ null
       [ ()
-      | r      <- rangeExclusive lockR smRound
+      | r      <- [succ lockR .. pred smRound]
       , Just _ <- [majority23at r smPrevotesSet]
       ]
 

@@ -130,7 +130,7 @@ interpretSpec Opts{..} netAddresses validatorSet logenv certPemBuf keyPemBuf Nod
         --
         bchState <- newBChState transitions
                   $ makeReadOnly (hoistBlockStorageRW liftIO storage)
-        _        <- stateAtH bchState (next hChain)
+        _        <- stateAtH bchState (succ hChain)
         -- Create mempool
         let checkTx tx = do
               st <- currentState bchState

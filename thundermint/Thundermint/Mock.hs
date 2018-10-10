@@ -92,7 +92,7 @@ runNode cfg NodeDescription{nodeBlockChainLogic=BlockFold{..}, ..} = do
   -- Create state of blockchain & Update it to current state of
   -- blockchain
   hChain      <- blockchainHeight     nodeStorage
-  Just valSet <- retrieveValidatorSet nodeStorage (next hChain)
+  Just valSet <- retrieveValidatorSet nodeStorage (succ hChain)
   -- Build application state of consensus algorithm
   let appSt = AppState
         { appStorage     = nodeStorage

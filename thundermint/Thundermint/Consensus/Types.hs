@@ -13,7 +13,6 @@ module Thundermint.Consensus.Types (
     Height(..)
   , Round(..)
   , Time(..)
-  , Sequence(..)
     -- * Basic data types for blockchain
   , BlockID
   , Block(..)
@@ -65,22 +64,14 @@ import Thundermint.Crypto.Containers
 newtype Height = Height Int64
   deriving (Show, Eq, Ord, Serialise, JSON.ToJSON, JSON.FromJSON, Enum)
 
+-- | Voting round
 newtype Round = Round Int64
   deriving (Show, Eq, Ord, Serialise, JSON.ToJSON, JSON.FromJSON, Enum)
 
+-- | Unix timestamp
 newtype Time = Time Int64
   deriving (Show, Eq, Ord, Serialise)
 
-class Sequence a where
-  next :: a -> a
-  rangeExclusive :: a -> a -> [a]
-
-instance Sequence Height where
-  next h =  succ h
-  rangeExclusive a b = enumFromTo (succ a) (pred b)
-instance Sequence Round where
-  next r  = succ r
-  rangeExclusive a b = enumFromTo (succ a) (pred b)
 
 
 ----------------------------------------------------------------

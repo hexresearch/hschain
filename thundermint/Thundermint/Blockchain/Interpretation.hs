@@ -78,7 +78,7 @@ newBChState BlockFold{..} BlockStorage{..} = do
             EQ -> return (st, (s,False))
             LT -> do Just Block{..} <- retrieveBlock h
                      case processBlock h blockData s of
-                       Just st' -> return ((next h, st'), (st',True))
+                       Just st' -> return ((succ h, st'), (st',True))
                        Nothing  -> error "OOPS! Blockchain is not valid!!!"
         case flt of
           True  -> ensureHeight hBlk

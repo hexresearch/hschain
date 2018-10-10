@@ -639,7 +639,7 @@ peerGossipVotes peerObj PeerChans{..} gossipCh = logOnException $ do
       --
       Current p -> liftIO (atomically consensusState) >>= \case
         Nothing                       -> return ()
-        Just (h',_) | h' /= next bchH -> return ()
+        Just (h',_) | h' /= succ bchH -> return ()
         Just (_,tm)                   -> do
           let FullStep _ r _ = peerStep p
               doGosip        = liftIO . atomically . writeTChan gossipCh
