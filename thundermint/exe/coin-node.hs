@@ -39,7 +39,8 @@ import Thundermint.Mock.KeyList
 import Thundermint.Mock.Types
 import Thundermint.P2P.Consts
 import Thundermint.P2P.Instances ()
-import Thundermint.P2P.Network               (getLocalAddress, realNetwork)
+import Thundermint.P2P.Network               ( getLocalAddress, realNetwork
+                                             , getCredentialFromBuffer, realNetworkTls)
 import Thundermint.Store
 import Thundermint.Store.STM
 import Thundermint.Store.SQLite
@@ -60,6 +61,7 @@ data Opts = Opts
   , doValidate        :: Bool
   , netInitialDeposit :: Integer
   , netInitialKeys    :: Int
+  , optTls            :: Bool
   }
 
 ----------------------------------------------------------------
@@ -205,11 +207,18 @@ main = do
       nodeAddr     <- liftIO getLocalAddress
       netAddresses <- waitForAddrs
       logger InfoS ("net Addresses: " <> showLS netAddresses) ()
+      netAPI <- case optTls of
+        False -> return $ realNetwork (show listenPort)
+        True  -> liftIO $ do
+          keyPem  <- BC8.pack <$> getEnv "KEY_PEM"
+          certPem <- BC8.pack <$> getEnv "CERT_PEM"
+          let credential = getCredentialFromBuffer certPem keyPem
+          return $ realNetworkTls credential (show thundermintPort)
       let net = BlockchainNet
-            { bchNetwork          = realNetwork (show listenPort)
-            , bchLocalAddr        = nodeAddr
-            , bchInitialPeers     = netAddresses
-            }
+                   { bchNetwork          = netAPI
+                   , bchLocalAddr        = nodeAddr
+                   , bchInitialPeers     = netAddresses
+                   }
       (_,act) <- interpretSpec opts validatorSet net nodeSpec
       act `catch` (\Abort -> return ())
   where
@@ -250,6 +259,10 @@ main = do
         (  long "keys"
         <> help "Initial deposit"
         <> metavar "N"
+        )
+      optTls <- switch
+        (  long "tls"
+        <> help "Use TLS for node connection"
         )
       pure Opts{..}
 
