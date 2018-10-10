@@ -189,7 +189,7 @@ advancePeer (PeerStateObj BlockStorage{..} _ var) step@(FullStep h _ _)
           Unknown   -> return Unknown
       -- Otherwise we need to set new state of peer
       | otherwise
-      = do ourH <- next <$> blockchainHeight
+      = do ourH <- succ <$> blockchainHeight
            case compare h ourH of
              -- FIXME: valid storage MUST return valid answer in that
              --        case but we should handle Nothing case properly

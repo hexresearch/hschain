@@ -36,7 +36,7 @@ loadAllBlocks storage = go (Height 0)
   where
     go h = retrieveBlock storage h >>= \case
       Nothing -> return []
-      Just b  -> (b :) <$> go (next h)
+      Just b  -> (b :) <$> go (succ h)
 
 ----------------------------------------------------------------
 --

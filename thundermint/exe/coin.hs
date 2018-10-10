@@ -116,7 +116,7 @@ interpretSpec maxH prefix delay NetSpec{..} = do
           --
           bchState <- newBChState transitions
                     $ makeReadOnly (hoistBlockStorageRW liftIO storage)
-          _        <- stateAtH bchState (next hChain)
+          _        <- stateAtH bchState (succ hChain)
           -- Create mempool
           let checkTx tx = do
                 st <- currentState bchState

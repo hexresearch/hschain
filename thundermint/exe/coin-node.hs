@@ -127,7 +127,7 @@ interpretSpec Opts{..} netAddresses validatorSet logenv NodeSpec{..} = do
         --
         bchState <- newBChState transitions
                   $ makeReadOnly (hoistBlockStorageRW liftIO storage)
-        _        <- stateAtH bchState (next hChain)
+        _        <- stateAtH bchState (succ hChain)
         -- Create mempool
         let checkTx tx = do
               st <- currentState bchState
@@ -153,7 +153,7 @@ interpretSpec Opts{..} netAddresses validatorSet logenv NodeSpec{..} = do
           , nodeValidationKey   = nspecPrivKey
           , nodeCommitCallback  = \h -> do
               -- Update state
-              st <- stateAtH bchState (next h)
+              st <- stateAtH bchState (succ h)
               descendNamespace "coin" $ logger InfoS "State size" (sl "utxo" (Map.size (unspentOutputs st)))
               case maxH of
                 Just hM | h > Height hM -> throwM Abort

@@ -104,7 +104,7 @@ interpretSpec maxH prefix NetSpec{..} = do
                -- Blockchain state
                bchState <- newBChState transitions
                          $ makeReadOnly (hoistBlockStorageRW liftIO storage)
-               _        <- stateAtH bchState (next hChain)
+               _        <- stateAtH bchState (succ hChain)
                let appState = AppState
                      { appStorage        = hoistBlockStorageRW liftIO storage
                      --
