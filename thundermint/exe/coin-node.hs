@@ -4,10 +4,12 @@
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications    #-}
 {-# LANGUAGE TypeFamilies        #-}
 import Control.Concurrent
 import Control.Monad.Catch
 import Control.Monad.IO.Class
+import Control.Monad.Trans.Reader
 import Data.Int
 import Data.Monoid
 import Options.Applicative
@@ -16,7 +18,7 @@ import Codec.Serialise      (serialise)
 import Control.Monad        (forever, void)
 import Data.ByteString.Lazy (toStrict)
 import Data.Maybe           (isJust)
-import Katip.Core           (LogEnv, showLS, sl)
+import Katip.Core           (showLS, sl)
 import Network.Simple.TCP   (accept, listen, recv, closeSock)
 import Network.Socket       (SockAddr(..), PortNumber)
 import System.Environment   (getEnv)
@@ -112,20 +114,21 @@ findInputs tgt = go 0
 ----------------------------------------------------------------
 
 interpretSpec
-  :: Opts -> [SockAddr] -> ValidatorSet Ed25519_SHA512 -> LogEnv
-  -> NodeSpec -> IO (BlockStorage 'RO IO Alg [Tx], IO ())
-interpretSpec Opts{..} netAddresses validatorSet logenv NodeSpec{..} = do
+  :: Opts
+  -> ValidatorSet Ed25519_SHA512
+  -> BlockchainNet SockAddr
+  -> NodeSpec
+  -> LoggerT IO (BlockStorage 'RO IO Alg [Tx], LoggerT IO ())
+interpretSpec Opts{..} validatorSet net NodeSpec{..} = do
   -- Allocate storage for node
-  storage <- newSQLiteBlockStorage
-    (maybe ":memory:" (prefix </>) nspecDbName)
-    genesisBlock validatorSet
-  hChain   <- blockchainHeight storage
-  nodeAddr <- getLocalAddress
+  storage <- liftIO
+           $ newSQLiteBlockStorage (maybe ":memory:" (prefix </>) nspecDbName)
+                                   genesisBlock validatorSet
+  hChain  <- liftIO $ blockchainHeight storage
   return
     ( makeReadOnly storage
-    , runLoggerT "general" logenv $ do
-        logger InfoS ("net Addresses: " <> showLS netAddresses) ()
-        --
+    , do
+        -- Initialize b
         bchState <- newBChState transitions
                   $ makeReadOnly (hoistBlockStorageRW liftIO storage)
         _        <- stateAtH bchState (succ hChain)
@@ -143,12 +146,7 @@ interpretSpec Opts{..} netAddresses validatorSet logenv NodeSpec{..} = do
               transferActions delay (publicKey <$> take netInitialKeys privateKeyList) privKeys
                 (void . pushTransaction cursor) st
         --
-        acts <- runNode defCfg
-          BlockchainNet
-            { bchNetwork          = realNetwork (show listenPort)
-            , bchLocalAddr        = nodeAddr
-            , bchInitialPeers     = netAddresses
-            }
+        acts <- runNode defCfg net
           NodeDescription
             { nodeStorage         = hoistBlockStorageRW liftIO storage
             , nodeBchState        = bchState
@@ -194,17 +192,25 @@ main = do
                     )
     nodeSpecStr <- BC8.pack <$> getEnv "THUNDERMINT_NODE_SPEC"
     ipMapPath   <- BC8.pack <$> getEnv "THUNDERMINT_KEYS"
-    let nodeSpec@NodeSpec{..}    = either error id $ JSON.eitherDecodeStrict' nodeSpecStr
+    let nodeSpec@NodeSpec{..} = either error id $ JSON.eitherDecodeStrict' nodeSpecStr
         loggers = [ makeScribe s { scribe'path = fmap (prefix </>) (scribe'path s) }
-                  | s <- nspecLogFile ]
-    withLogEnv "TM" "DEV" loggers $ \logenv -> do
-      let !validators'' = either error (fmap PrivValidator)
-                        $ JSON.eitherDecodeStrict' ipMapPath  :: [PrivValidator Ed25519_SHA512]
-          !validatorSet = makeValidatorSetFromPriv validators''
-      runLoggerT "general" logenv $
-        logger InfoS "Listening for bootstrap adresses" ()
-      netAddresses <- waitForAddrs logenv
-      (_,act) <- interpretSpec opts netAddresses validatorSet logenv nodeSpec
+                  | s <- nspecLogFile
+                  ]
+    withLogEnv "TM" "DEV" loggers $ \logenv -> runLoggerT "Coin" logenv $ do
+      let !validatorSet = makeValidatorSetFromPriv
+                        $ (id @[PrivValidator Ed25519_SHA512])
+                        $ either error (fmap PrivValidator)
+                        $ JSON.eitherDecodeStrict' ipMapPath
+      logger InfoS "Listening for bootstrap adresses" ()
+      nodeAddr     <- liftIO getLocalAddress
+      netAddresses <- waitForAddrs
+      logger InfoS ("net Addresses: " <> showLS netAddresses) ()
+      let net = BlockchainNet
+            { bchNetwork          = realNetwork (show listenPort)
+            , bchLocalAddr        = nodeAddr
+            , bchInitialPeers     = netAddresses
+            }
+      (_,act) <- interpretSpec opts validatorSet net nodeSpec
       act `catch` (\Abort -> return ())
   where
     parser :: Parser Opts
@@ -252,8 +258,8 @@ main = do
 -- TCP server that listens for boostrap addresses
 ----------------------------------------------------------------
 
-waitForAddrs :: LogEnv -> IO [SockAddr]
-waitForAddrs logenv = E.handle allExc $ do
+waitForAddrs :: LoggerT IO [SockAddr]
+waitForAddrs = LoggerT $ ReaderT $ \(_,logenv) -> E.handle (allExc logenv) $ do
   addrs <- listen "0.0.0.0" "49999" $ \ (lsock, _addr) ->
     accept lsock $ \ (conn, _caddr) -> do
     mMsg <- recv conn 4096
@@ -267,7 +273,7 @@ waitForAddrs logenv = E.handle allExc $ do
     logger InfoS ("Got " <> showLS addrs <> " boostrap addresses.") ()
     logger InfoS "Stop listening" ()
   return addrs
- where
-    allExc (e::SomeException) = runLoggerT "boostrap" logenv $ do
+  where
+    allExc logenv (e::SomeException) = runLoggerT "boostrap" logenv $ do
       logger ErrorS (showLS e) ()
       E.throw e
