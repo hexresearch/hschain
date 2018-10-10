@@ -142,24 +142,26 @@ interpretSpec Opts{..} netAddresses validatorSet logenv NodeSpec{..} = do
               transferActions delay (publicKey <$> take netInitialKeys privateKeyList) privKeys
                 (void . pushTransaction cursor) st
         --
-        acts <- runNode defCfg NodeDescription
-          { nodeStorage         = hoistBlockStorageRW liftIO storage
-          , nodeBchState        = bchState
-          , nodeBlockChainLogic = transitions
-          , nodeMempool         = mempool
-          , nodeNetwork         = realNetwork (show listenPort)
-          , nodeAddr            = nodeAddr
-          , nodeInitialPeers    = netAddresses
-          , nodeValidationKey   = nspecPrivKey
-          , nodeCommitCallback  = \h -> do
-              -- Update state
-              st <- stateAtH bchState (succ h)
-              descendNamespace "coin" $ logger InfoS "State size" (sl "utxo" (Map.size (unspentOutputs st)))
-              case maxH of
-                Just hM | h > Height hM -> throwM Abort
-                _                       -> return ()
-
-          }
+        acts <- runNode defCfg
+          BlockchainNet
+            { bchNetwork          = realNetwork (show listenPort)
+            , bchLocalAddr        = nodeAddr
+            , bchInitialPeers     = netAddresses
+            }
+          NodeDescription
+            { nodeStorage         = hoistBlockStorageRW liftIO storage
+            , nodeBchState        = bchState
+            , nodeBlockChainLogic = transitions
+            , nodeMempool         = mempool
+            , nodeValidationKey   = nspecPrivKey
+            , nodeCommitCallback  = \h -> do
+                -- Update state
+                st <- stateAtH bchState (succ h)
+                descendNamespace "coin" $ logger InfoS "State size" (sl "utxo" (Map.size (unspentOutputs st)))
+                case maxH of
+                  Just hM | h > Height hM -> throwM Abort
+                  _                       -> return ()
+            }
         runConcurrently (generator : acts)
     )
   where

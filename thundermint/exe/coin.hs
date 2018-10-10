@@ -132,20 +132,23 @@ interpretSpec maxH prefix delay NetSpec{..} = do
                 transferActions delay (publicKey <$> take netInitialKeys privateKeyList) privKeys
                   (void . pushTransaction cursor) st
           --
-          acts <- runNode defCfg NodeDescription
-            { nodeStorage         = hoistBlockStorageRW liftIO storage
-            , nodeBchState        = bchState
-            , nodeBlockChainLogic = transitions
-            , nodeMempool         = mempool
-            , nodeNetwork         = createMockNode net "50000" addr
-            , nodeInitialPeers    = map (,"50000") $ connections netAddresses addr
-            , nodeValidationKey   = nspecPrivKey
-            , nodeAddr            = (addr, "50000")
-            , nodeCommitCallback = \case
-                h | Just hM <- maxH
-                  , h > Height hM -> throwM Abort
-                  | otherwise     -> return ()
-            }
+          acts <- runNode defCfg
+            BlockchainNet
+              { bchNetwork          = createMockNode net "50000" addr
+              , bchLocalAddr        = (addr, "50000")
+              , bchInitialPeers     = map (,"50000") $ connections netAddresses addr
+              }
+            NodeDescription
+              { nodeStorage         = hoistBlockStorageRW liftIO storage
+              , nodeBchState        = bchState
+              , nodeBlockChainLogic = transitions
+              , nodeMempool         = mempool
+              , nodeValidationKey   = nspecPrivKey
+              , nodeCommitCallback  = \case
+                  h | Just hM <- maxH
+                    , h > Height hM -> throwM Abort
+                    | otherwise     -> return ()
+              }
           runConcurrently (generator : acts)
       )
   where
