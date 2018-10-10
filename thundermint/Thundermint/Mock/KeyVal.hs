@@ -85,7 +85,7 @@ transitions = BlockFold
 interpretSpec
   :: Maybe Int64                -- ^ Maximum height
   -> FilePath
-  -> NetSpec                    --
+  -> NetSpec NodeSpec
   -> IO [(BlockStorage 'RO IO Ed25519_SHA512 [(String,Int)], IO ())]
 interpretSpec maxH prefix NetSpec{..} = do
   net <- newMockNet
@@ -153,7 +153,7 @@ interpretSpec maxH prefix NetSpec{..} = do
 executeSpec
   :: Maybe Int64                -- ^ Maximum height
   -> FilePath
-  -> NetSpec                    --
+  -> NetSpec NodeSpec
   -> IO [BlockStorage 'RO IO Ed25519_SHA512 [(String,Int)]]
 executeSpec maxH prefix spec = do
   actions <- interpretSpec maxH prefix spec

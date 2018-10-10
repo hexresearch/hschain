@@ -97,7 +97,8 @@ findInputs tgt = go 0
 
 interpretSpec
    :: Maybe Int64 -> FilePath -> Int
-   -> NetSpec -> IO [(BlockStorage 'RO IO Alg [Tx], IO ())]
+   -> NetSpec NodeSpec
+   -> IO [(BlockStorage 'RO IO Alg [Tx], IO ())]
 interpretSpec maxH prefix delay NetSpec{..} = do
   net   <- newMockNet
   -- Connection map
@@ -169,7 +170,8 @@ interpretSpec maxH prefix delay NetSpec{..} = do
 
 executeNodeSpec
   :: Maybe Int64 -> FilePath -> Int
-  -> NetSpec -> IO [BlockStorage 'RO IO Alg [Tx]]
+  -> NetSpec NodeSpec
+  -> IO [BlockStorage 'RO IO Alg [Tx]]
 executeNodeSpec maxH prefix delay spec = do
   actions <- interpretSpec maxH prefix delay spec
   runConcurrently (snd <$> actions) `catch` (\Abort -> return ())
