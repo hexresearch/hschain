@@ -147,6 +147,7 @@ Executable thundermint-coin-node
                      , optparse-applicative >=0.14
                      , random
                      , serialise
+                     , transformers
                      , stm
                      , text
   hs-source-dirs:      exe
