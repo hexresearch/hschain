@@ -10,6 +10,7 @@ module Thundermint.Mock.Types (
 import Control.Exception (Exception)
 import Control.Monad.Catch
 import Data.Monoid  (Endo(..))
+import Data.Int     (Int64)
 import GHC.Generics (Generic)
 
 import qualified Data.Aeson as JSON
@@ -63,16 +64,18 @@ data NodeSpec = NodeSpec
   }
   deriving (Generic,Show)
 
-data NetSpec = NetSpec
-  { netNodeList       :: [NodeSpec]
+data NetSpec a = NetSpec
+  { netNodeList       :: [a]
   , netTopology       :: Topology
   , netInitialDeposit :: Integer
   , netInitialKeys    :: Int
   , netPrefix         :: Maybe String
+  , netMaxH           :: Maybe Int64
   }
   deriving (Generic,Show)
 
 instance JSON.ToJSON   NodeSpec
-instance JSON.ToJSON   NetSpec
 instance JSON.FromJSON NodeSpec
-instance JSON.FromJSON NetSpec
+instance JSON.ToJSON   a => JSON.ToJSON   (NetSpec a)
+instance JSON.FromJSON a => JSON.FromJSON (NetSpec a)
+
