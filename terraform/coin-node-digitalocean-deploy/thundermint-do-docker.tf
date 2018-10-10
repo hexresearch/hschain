@@ -37,7 +37,7 @@ resource "digitalocean_droplet" "node" {
 
   count    = "${length(var.private_keys)}"
   image    = "docker-18-04"
-  size     = "4gb"
+  size     = "1gb"
   region   = "${element(var.regions, count.index)}"
   name     = "node-${count.index+1}"
   ssh_keys = ["22607679", "22838852", "22986074"]
@@ -63,7 +63,7 @@ resource "digitalocean_droplet" "node" {
       "docker run -p 172.17.0.1:12201:12201/udp -d -v /opt/logstash.conf:/logstash.conf docker.elastic.co/logstash/logstash-oss:6.4.2 -f /logstash.conf",
       "docker volume create thundermint",
       "docker login -u ${var.registry_user} -p ${var.registry_pass} ${var.registry_url}",
-      "docker run --log-driver gelf --log-opt gelf-address=udp://172.17.0.1:12201 -v thundermint:/thundermint -p 49999-50000:49999-50000 --name node-${count.index+1} -d -e THUNDERMINT_KEYS='${jsonencode(values(var.private_keys))}' -e THUNDERMINT_NODE_SPEC='{ \"nspecPrivKey\":\"${var.private_keys[count.index]}\", \"nspecDbName\": \"db/node-${count.index+1}\", \"nspecLogFile\" : [{ \"type\": \"ScribeJSON\", \"severity\" : \"Debug\", \"verbosity\" : \"V2\" }], \"nspecWalletKeys\"  : [${count.index*500},500]}' registry.hxr.team/thundermint-node /bin/thundermint-coin-node --prefix /thundermint --delay 100 --check-consensus --deposit 1000 --keys 2000"
+      "docker run --log-driver gelf --log-opt gelf-address=udp://172.17.0.1:12201 -v thundermint:/thundermint -p 49999-50000:49999-50000 --name node-${count.index+1} -d -e THUNDERMINT_KEYS='${jsonencode(values(var.private_keys))}' -e THUNDERMINT_NODE_SPEC='{ \"nspecPrivKey\":\"${var.private_keys[count.index]}\", \"nspecDbName\": \"db/node-${count.index+1}\", \"nspecLogFile\" : [{ \"type\": \"ScribeJSON\", \"severity\" : \"Debug\", \"verbosity\" : \"V2\" }], \"nspecWalletKeys\"  : [${count.index*4},4]}' registry.hxr.team/thundermint-node /bin/thundermint-coin-node --prefix /thundermint --delay 100 --check-consensus --deposit 100 --keys 16"
     ]
 
   }
