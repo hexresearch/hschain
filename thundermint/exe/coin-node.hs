@@ -1,3 +1,4 @@
+{-# LANGUAGE ApplicativeDo       #-}
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE OverloadedStrings   #-}
@@ -111,8 +112,8 @@ findInputs tgt = go 0
 ----------------------------------------------------------------
 
 interpretSpec
-   :: Opts -> [SockAddr] -> ValidatorSet Ed25519_SHA512 -> LogEnv
-   -> NodeSpec -> IO (BlockStorage 'RO IO Alg [Tx], IO ())
+  :: Opts -> [SockAddr] -> ValidatorSet Ed25519_SHA512 -> LogEnv
+  -> NodeSpec -> IO (BlockStorage 'RO IO Alg [Tx], IO ())
 interpretSpec Opts{..} netAddresses validatorSet logenv NodeSpec{..} = do
   -- Allocate storage for node
   storage <- newSQLiteBlockStorage
@@ -207,44 +208,44 @@ main = do
       act `catch` (\Abort -> return ())
   where
     parser :: Parser Opts
-    parser
-      =    Opts
-       <$> optional (option auto
-                      (  long    "max-h"
-                      <> metavar "N"
-                      <> help    "Maximum height"
-                      ))
-       <*> option auto
-            (  long    "listen-port"
-            <> value thundermintPort
-            <> metavar "PORT"
-            <> help    ("listening port (default " <> show thundermintPort <> ")")
-            )
-       <*> option str
-            (  long    "prefix"
-            <> value   ""
-            <> metavar "PATH"
-            <> help    "prefix for db & logs"
-            )
-       <*> option auto
-             (  long    "delay"
-             <> metavar "N"
-             <> help    "delay between transactions in ms"
-             )
-       <*> switch
-             (  long "check-consensus"
-             <> help "validate databases"
-             )
-       <*> option auto
-           (  long "deposit"
-           <> help "Initial deposit"
-           <> metavar "N.N"
-           )
-       <*> option auto
-           (  long "keys"
-           <> help "Initial deposit"
-           <> metavar "N"
-           )
+    parser = do
+      maxH <- optional $ option auto
+        (  long    "max-h"
+        <> metavar "N"
+        <> help    "Maximum height"
+        )
+      listenPort <- option auto
+        (  long    "listen-port"
+        <> value thundermintPort
+        <> metavar "PORT"
+        <> help    ("listening port (default " <> show thundermintPort <> ")")
+        )
+      prefix <- option str
+        (  long    "prefix"
+        <> value   ""
+        <> metavar "PATH"
+        <> help    "prefix for db & logs"
+        )
+      delay <- option auto
+        (  long    "delay"
+        <> metavar "N"
+        <> help    "delay between transactions in ms"
+        )
+      doValidate <- switch
+        (  long "check-consensus"
+        <> help "validate databases"
+        )
+      netInitialDeposit <- option auto
+        (  long "deposit"
+        <> help "Initial deposit"
+        <> metavar "N.N"
+        )
+      netInitialKeys <- option auto
+        (  long "keys"
+        <> help "Initial deposit"
+        <> metavar "N"
+        )
+      pure Opts{..}
 
 
 ----------------------------------------------------------------
