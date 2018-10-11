@@ -22,21 +22,9 @@ module Thundermint.Mock (
   , defCfg
   ) where
 
-import Control.Monad
 import Control.Monad.Catch
-import Control.Monad.IO.Class
-import Text.Printf
-
-import Control.Concurrent.Async hiding (runConcurrently)
-
 import Codec.Serialise (Serialise)
 import Data.Maybe      (isJust)
-import Data.Word       (Word64)
-import System.Random   (randomIO)
-
-import qualified Data.ByteString.Base58 as Base58
-import qualified Data.ByteString.Char8  as BC8
-import qualified Katip
 
 import Thundermint.Blockchain.App
 import Thundermint.Blockchain.Interpretation
@@ -51,7 +39,7 @@ import Thundermint.P2P
 import Thundermint.P2P.Network
 import Thundermint.Store
 
-import Thundermint.Control (MonadFork, runConcurrently)
+import Thundermint.Control (MonadFork)
 
 ----------------------------------------------------------------
 --

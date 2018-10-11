@@ -8,19 +8,14 @@ module Thundermint.Mock.Types (
   ) where
 
 import Control.Exception (Exception)
-import Control.Monad.Catch
-import Data.Monoid  (Endo(..))
 import Data.Int     (Int64)
 import GHC.Generics (Generic)
 
 import qualified Data.Aeson as JSON
 
-
-import Thundermint.Control
+import Thundermint.Blockchain.Types
 import Thundermint.Crypto.Ed25519 (Ed25519_SHA512)
 import Thundermint.Logger         (ScribeSpec)
-
-import Thundermint.Blockchain.Types
 
 
 
