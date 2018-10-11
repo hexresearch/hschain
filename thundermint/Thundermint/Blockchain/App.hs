@@ -16,7 +16,6 @@ module Thundermint.Blockchain.App (
   ) where
 
 import Codec.Serialise           (Serialise)
-import Control.Applicative
 import Control.Concurrent        (forkIO, threadDelay)
 import Control.Concurrent.STM
 import Control.Monad
