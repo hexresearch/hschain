@@ -115,19 +115,20 @@ createTestNetworkWithConfig cfg desc = do
             bchState     <- newBChState transitions
                           $ makeReadOnly (hoistBlockStorageRW liftIO blockStorage)
             _            <- stateAtH bchState (succ hChain)
-            runNode cfg NodeDescription
+            runNode cfg
+              BlockchainNet
+                { bchNetwork          = createMockNode net testNetworkName (TestAddr ncFrom)
+                , bchLocalAddr        = (TestAddr ncFrom, testNetworkName)
+                , bchInitialPeers     = map ((,testNetworkName) . TestAddr) ncTo
+                }
+              NodeDescription
                 { nodeStorage         = hoistBlockStorageRW liftIO blockStorage
                 , nodeBlockChainLogic = transitions
-                , nodeNetwork         = createMockNode net testNetworkName (TestAddr ncFrom)
-                , nodeAddr            = (TestAddr ncFrom, testNetworkName)
-                , nodeInitialPeers    = map ((,testNetworkName) . TestAddr) ncTo
                 , nodeValidationKey   = Nothing
                 , nodeCommitCallback  = \_ -> return ()
                 , nodeBchState        = bchState
                 , nodeMempool         = nullMempoolAny
                 }
-
-
 
 
 -- | Simple test to ensure that mock network works at all
