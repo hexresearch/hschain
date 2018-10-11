@@ -36,16 +36,14 @@ Library
                      , retry             >=0.7.6.2
                      , serialise         >=0.2
                      , sqlite-simple
-                     -- NOTE: Katip is broken with STM2.5
-                     --       https://github.com/Soostone/katip/issues/96
-                     , stm               >=2.4 && <2.5
+                     , stm               >=2.4
                      , text
                      , time
                      , transformers      >=0.5
                      , unordered-containers >=0.2.5.0
                      --
                      , cryptonite         >=0.25
-                     , katip              >=0.5.4.0
+                     , katip              >=0.6.3.0
                      , katip-elasticsearch
                      , http-client-tls
                      , bloodhound
