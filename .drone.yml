@@ -10,7 +10,6 @@ pipeline:
     image: haskell:8.2.2
     network_mode: host
     commands:
-    - rm -rf .stack-work
     - stack --stack-root $PWD/.stack --system-ghc test
 
   rebuild-cache:
