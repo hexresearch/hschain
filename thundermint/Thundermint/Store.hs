@@ -51,7 +51,6 @@ import Control.Monad.Trans.Class
 import Control.Monad.Trans.Except
 import Control.Monad.Trans.Writer
 import Data.Foldable             (forM_)
-import Data.Map                  (Map)
 import Data.Maybe                (isNothing, maybe)
 import GHC.Generics              (Generic)
 
@@ -192,23 +191,23 @@ hoistBlockStorageRO fun BlockStorage{..} =
 -- Storage for consensus
 ----------------------------------------------------------------
 
--- | Storage for intermediate data used for
+-- | Storage for proposed blocks that are not commited yet.
 data ProposalStorage rw m alg a = ProposalStorage
   { currentHeight      :: m Height
-    -- ^ Get current height of storage
+    -- ^ Height for which we store proposed blocks
+  , retrievePropByID   :: Height -> BlockID alg a -> m (Maybe (Block alg a))
+    -- ^ Retrieve proposed block by its ID
+  , retrievePropByR    :: Height -> Round -> m (Maybe (Block alg a, BlockID alg a))
+    -- ^ Retrieve proposed block by round number.
+
   , advanceToHeight    :: Writable rw (Height -> m ())
     -- ^ Advance to given height. If height is different from current
     --   all stored data is discarded
-  , retrievePropBlocks :: Height -> m (Map (BlockID alg a) (Block alg a))
-    -- ^ Retrieve blocks
+  , allowBlockID       :: Writable rw (Round -> BlockID alg a -> m ())
+    -- ^ Mark block ID as one that we could accept
   , storePropBlock     :: Writable rw (Block alg a -> m ())
     -- ^ Store block proposed at given height. If height is different
     --   from height we are at block is ignored.
-
-  , allowBlockID       :: Writable rw (Round -> BlockID alg a -> m ())
-    -- ^ Mark block ID as one that we could accept
-  , blockAtRound       :: Height -> Round -> m (Maybe (Block alg a, BlockID alg a))
-    -- ^ Get block at given round and height
   }
 
 makeReadOnlyPS :: ProposalStorage rw m alg a -> ProposalStorage 'RO m alg a
@@ -225,11 +224,11 @@ hoistPropStorageRW
   -> ProposalStorage 'RW n alg a
 hoistPropStorageRW fun ProposalStorage{..} =
   ProposalStorage { currentHeight      = fun currentHeight
+                  , retrievePropByID   = \h x -> fun (retrievePropByID h x)
+                  , retrievePropByR    = \h x -> fun (retrievePropByR  h x)
                   , advanceToHeight    = fun . advanceToHeight
-                  , retrievePropBlocks = fun . retrievePropBlocks
                   , storePropBlock     = fun . storePropBlock
                   , allowBlockID       = \r bid -> fun (allowBlockID r bid)
-                  , blockAtRound       = \h r   -> fun (blockAtRound h r)
                   }
 
 hoistPropStorageRO
@@ -238,11 +237,9 @@ hoistPropStorageRO
   -> ProposalStorage 'RO n alg a
 hoistPropStorageRO fun ProposalStorage{..} =
   ProposalStorage { currentHeight      = fun currentHeight
-                  , advanceToHeight    = ()
-                  , retrievePropBlocks = fun . retrievePropBlocks
-                  , storePropBlock     = ()
-                  , allowBlockID       = ()
-                  , blockAtRound       = \h r   -> fun (blockAtRound h r)
+                  , retrievePropByID   = \h x -> fun (retrievePropByID h x)
+                  , retrievePropByR    = \h x -> fun (retrievePropByR  h x)
+                  , ..
                   }
 
 ----------------------------------------------------------------

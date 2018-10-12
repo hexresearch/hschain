@@ -35,17 +35,17 @@ newSTMPropStorage = fmap (hoistPropStorageRW liftIO) $ liftIO $ do
   return ProposalStorage
     { currentHeight = readTVarIO varH
     --
+    , retrievePropByID = \height bid -> atomically $ do
+        h <- readTVar varH
+        if h == height then Map.lookup bid <$> readTVar varPBlk
+                       else return Nothing
+    --
     , advanceToHeight = \h -> atomically $ do
         h0 <- readTVar varH
         when (h /= h0) $ do writeTVar varH    h
                             writeTVar varPBlk Map.empty
                             writeTVar varRMap Map.empty
                             writeTVar varBids Set.empty
-    --
-    , retrievePropBlocks = \height -> atomically $ do
-        h <- readTVar varH
-        if h == height then readTVar varPBlk
-                       else return Map.empty
     --
     , storePropBlock = \blk -> atomically $ do
         h <- readTVar varH
@@ -59,7 +59,7 @@ newSTMPropStorage = fmap (hoistPropStorageRW liftIO) $ liftIO $ do
         modifyTVar' varRMap $ Map.insert r bid
         modifyTVar' varBids $ Set.insert bid
     --
-    , blockAtRound = \h r -> atomically $ do
+    , retrievePropByR = \h r -> atomically $ do
         h0 <- readTVar varH
         runMaybeT $ do
           guard (h == h0)
