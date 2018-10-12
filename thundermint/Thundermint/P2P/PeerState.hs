@@ -369,7 +369,7 @@ addBlockHR (PeerStateObj _ ProposalStorage{..} var) h r =
     Current p
       | FullStep hP _ _ <- peerStep p
       , h == hP
-        -> blockAtRound h r >>= \case
+        -> retrievePropByR h r >>= \case
              Nothing      -> return peer
              Just (_,bid) -> return $ Current p { peerBlocks = Set.insert bid (peerBlocks p) }
       | otherwise -> return peer

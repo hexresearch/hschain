@@ -730,7 +730,7 @@ peerGossipBlocks peerObj PeerChans{..} gossipCh = logOnException $ do
       --
       Current p -> do
         let FullStep h r _ = peerStep p
-        mbid <- blockAtRound proposalStorage h r
+        mbid <- retrievePropByR proposalStorage h r
         case () of
            -- Peer has proposal but not block
           _| Just (b,bid) <- mbid

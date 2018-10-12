@@ -24,7 +24,6 @@ import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
 import           Data.Function
-import qualified Data.Map      as Map
 import           Data.Monoid   ((<>))
 import Data.Time.Clock.POSIX (getPOSIXTime)
 import Pipes                 (Pipe,runEffect,yield,await,(>->))
@@ -138,8 +137,7 @@ decideNewBlock config appSt@AppState{..} appCh@AppChans{..} lastCommt = do
       --
       checkForCommit Nothing    tm = msgHandlerLoop Nothing tm
       checkForCommit (Just cmt) tm = do
-        blocks <- lift $ retrievePropBlocks appPropStorage (currentH hParam)
-        case commitBlockID cmt `Map.lookup` blocks of
+        lift (retrievePropByID appPropStorage (currentH hParam) (commitBlockID cmt)) >>= \case
           Nothing -> msgHandlerLoop (Just cmt) tm
           Just b  -> lift $ do
             vset <- appNextValidatorSet (currentH hParam) (blockData b)
@@ -274,8 +272,7 @@ makeHeightParameters Configuration{..} AppState{..} AppChans{..} = do
     --
     , validateBlock = \bid -> do
         let nH = succ h
-        blocks <- lift $ retrievePropBlocks appPropStorage nH
-        case bid `Map.lookup` blocks of
+        lift (retrievePropByID appPropStorage nH bid) >>= \case
           Nothing -> return UnseenProposal
           Just b  -> do
             inconsistencies <- lift $ checkProposedBlock appStorage nH b
@@ -296,11 +293,11 @@ makeHeightParameters Configuration{..} AppState{..} AppChans{..} = do
                               , propBlockID   = bid
                               }
               sprop  = signValue pk prop
-          blockMap <- lift $ retrievePropBlocks appPropStorage h
+          mBlock <- lift $ retrievePropByID appPropStorage h bid
           logger InfoS ("Sending proposal for " <> showLS r <> " " <> showLS bid) ()
           liftIO $ atomically $ do
             writeTQueue appChanRxInternal (RxProposal $ unverifySignature sprop)
-            case bid `Map.lookup` blockMap of
+            case mBlock of
               Nothing -> return ()
               Just b  -> writeTQueue appChanRxInternal (RxBlock b)
     --
