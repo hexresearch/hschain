@@ -128,9 +128,9 @@ newSQLiteBlockStorageConn conn = do
         SQL.execute_ conn "COMMIT"
     --
     , closeBlockStorage = SQL.close conn
-    --
+    -- We don't write identical messages on disk
     , writeToWAL = \(Height h) msg -> withMutex mutex $
-        SQL.execute conn "INSERT INTO wal VALUES (NULL,?,?)" (h, serialise msg)
+        SQL.execute conn "INSERT OR IGNORE INTO wal VALUES (NULL,?,?)" (h, serialise msg)
     --
     , resetWAL = \(Height h) -> withMutex mutex $
         SQL.execute conn "DELETE FROM wal WHERE height < ?" (Only h)
@@ -168,11 +168,16 @@ initializeDatabase conn gBlock initalVals = do
   -- ID field is used to keep order of messages. Primary key is
   -- incremented automatically and any new key will be large than any
   -- existing key
+  --
+  -- Note UNIQUE constraint. Receiving identical message at the same
+  -- height is noop so there's no point in storing them. Performance
+  -- gains are massive since writing to disk is slow, no SLOW.
   SQL.execute_ conn
     "CREATE TABLE IF NOT EXISTS wal \
     \  ( id      INTEGER PRIMARY KEY \
     \  , height  INTEGER NOT NULL \
-    \  , message BLOB NOT NULL)"
+    \  , message BLOB NOT NULL \
+    \  , UNIQUE(height,message))"
   -- Insert genesis block if needed
   SQL.query_ conn "SELECT MAX(height) FROM blockchain" >>= \case
     [Only Nothing] -> do
