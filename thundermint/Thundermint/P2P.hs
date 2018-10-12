@@ -282,26 +282,26 @@ acceptLoop peerAddr NetworkAPI{..} peerCh mempool peerRegistry = do
       mask $ \restore -> do
         (conn, addr') <- accept
         void $ flip forkFinally (const $ close conn) $ restore $ do
-          logger DebugS ("Accept connection from " <> showLS addr') ()
+          logger InfoS "Accept connection" ("addr" `sl` show addr')
           recvPeerInfo conn >>= \case
             Left err -> do
-              logger ErrorS ("Handshake error: " <> showLS err) ()
-              close conn
+              logger ErrorS "Handshake error" ("err" `sl` show err)
             Right peerInfo -> do
-              let otherPeerId = piPeerId peerInfo
+              let otherPeerId   = piPeerId   peerInfo
                   otherPeerPort = piPeerPort peerInfo
                   addr = normalizeNodeAddress addr' (Just $ fromIntegral otherPeerPort)
               trace $ TeNodeOtherTryConnect (show addr)
-              logger DebugS ("PreAccepted connection from " <> showLS addr
-                             <> ", (was: " <> showLS addr'
-                             <> "), otherPeerId = " <> showLS otherPeerId
-                             <> ", peerInfo = " <> showLS peerInfo) ()
+              logger DebugS "PreAccepted connection"
+                (  sl "addr"     (show addr )
+                <> sl "addr0"    (show addr')
+                <> sl "peerId"   otherPeerId
+                <> sl "peerPort" otherPeerPort
+                )
               if otherPeerId == prPeerId peerRegistry then do
                 logger DebugS "Self connection detected. Close connection" ()
-                close conn
               else
                 withPeer peerRegistry addr (CmAccept otherPeerId) $ do
-                  logger InfoS "Accepted connection" (sl "addr" (show addr))
+                  logger InfoS "Accepted connection" ("addr" `sl` show addr)
                   trace $ TeNodeOtherConnected (show addr)
                   descendNamespace (T.pack (show addr))
                     $ startPeer peerAddr addr peerCh conn peerRegistry mempool
