@@ -5,7 +5,7 @@ provider "docker" {
 
 locals {
 
-  exe_name = "thundermint-tls-coin-node"
+  exe_name = "thundermint-coin-node"
   db_path = "tls-coin/db"
   logs_path = "tls-coin/logs"
 
@@ -21,7 +21,7 @@ resource "docker_container" "node" {
           , "KEY_PEM=${var.pems["pk${count.index}"]}"
           , "CERT_PEM=${var.pems["cert${count.index}"]}"
           ]
-  command = ["/bin/${local.exe_name}", "--max-h", "10", "--prefix", "/thundermint", "--delay", "100", "--check-consensus", "--deposit", "1000", "--keys", "2000" ]
+  command = ["/bin/${local.exe_name}", "--max-h", "10", "--prefix", "/thundermint", "--delay", "100", "--check-consensus", "--deposit", "1000", "--keys", "2000", "--tls"]
   volumes = {
     volume_name = "thundermint"
     container_path = "/thundermint"
