@@ -202,7 +202,7 @@ startPeerDispatcher p2pConfig net peerAddr addrs AppChans{..} storage mempool = 
   cntGossipPex       <- newCounter
   let peerCh = PeerChans { peerChanTx      = appChanTx
                          , peerChanPex     = peerChanPex
-                         , peerChanRx      = writeTChan appChanRx
+                         , peerChanRx      = writeTBQueue appChanRx
                          , blockStorage    = storage
                          , proposalStorage = makeReadOnlyPS appPropStorage
                          , consensusState  = readTVar appTMState

@@ -16,6 +16,7 @@ module Thundermint.Blockchain.App (
   ) where
 
 import Codec.Serialise           (Serialise)
+import Control.Applicative
 import Control.Concurrent        (forkIO, threadDelay)
 import Control.Concurrent.STM
 import Control.Monad
@@ -45,10 +46,12 @@ import Katip (Severity(..), showLS)
 
 newAppChans :: (MonadIO m, Crypto alg, Serialise a) => m (AppChans m alg a)
 newAppChans = do
-  appChanRx      <- liftIO   newTChanIO
-  appChanTx      <- liftIO   newBroadcastTChanIO
-  appTMState     <- liftIO $ newTVarIO Nothing
-  appPropStorage <- newSTMPropStorage
+  -- 7 is magical no good reason to use 7 but no reason against it either
+  appChanRx         <- liftIO $ newTBQueueIO 7
+  appChanRxInternal <- liftIO   newTQueueIO
+  appChanTx         <- liftIO   newBroadcastTChanIO
+  appTMState        <- liftIO $ newTVarIO Nothing
+  appPropStorage    <- newSTMPropStorage
   return AppChans{..}
 
 -- | Main loop for application. Here we update state machine and
@@ -99,7 +102,7 @@ decideNewBlock config appSt@AppState{..} appCh@AppChans{..} lastCommt = do
   -- Get rid of messages in WAL that are no longer needed and replay
   -- all messages stored there.
   walMessages <- resetWAL appStorage (currentH hParam)
-              *> readWAL appStorage (currentH hParam)
+              *> readWAL  appStorage (currentH hParam)
   -- Producer of messages. First we replay messages from WAL. This is
   -- very important and failure to do so may violate protocol
   -- safety and possibly liveness.
@@ -108,7 +111,11 @@ decideNewBlock config appSt@AppState{..} appCh@AppChans{..} lastCommt = do
   -- mean loss of lock on block if we were locked on it.
   let messageSrc = do
         forM_ walMessages yield
-        forever $ yield =<< liftIO (atomically $ readTChan appChanRx)
+        -- NOTE: We try to read internal messages first. This is
+        --       needed to ensure that timeouts are delivered in
+        --       timely manner
+        forever $ yield =<< liftIO (atomically $  readTQueue  appChanRxInternal
+                                              <|> readTBQueue appChanRx)
   -- Main loop of message handler and message consumer. We process
   -- every message even after we decided to commit block. This is
   -- needed to
@@ -292,10 +299,10 @@ makeHeightParameters Configuration{..} AppState{..} AppChans{..} = do
           blockMap <- lift $ retrievePropBlocks appPropStorage h
           logger InfoS ("Sending proposal for " <> showLS r <> " " <> showLS bid) ()
           liftIO $ atomically $ do
-            writeTChan appChanRx (RxProposal $ unverifySignature sprop)
+            writeTQueue appChanRxInternal (RxProposal $ unverifySignature sprop)
             case bid `Map.lookup` blockMap of
               Nothing -> return ()
-              Just b  -> writeTChan appChanRx (RxBlock b)
+              Just b  -> writeTQueue appChanRxInternal (RxBlock b)
     --
     , scheduleTimeout = \t@(Timeout _ (Round r) step) ->
         liftIO $ void $ forkIO $ do
@@ -306,7 +313,7 @@ makeHeightParameters Configuration{..} AppState{..} AppChans{..} = do
                 StepPrecommit -> timeoutPrecommit
                 StepAwaitCommit -> (0, 0)
           threadDelay $ 1000 * (baseT + delta * fromIntegral r)
-          atomically $ writeTChan appChanRx $ RxTimeout t
+          atomically $ writeTQueue appChanRxInternal $ RxTimeout t
     --
     , castPrevote     = \r b ->
         forM_ appValidator $ \(PrivValidator pk) -> do
@@ -318,7 +325,7 @@ makeHeightParameters Configuration{..} AppState{..} AppChans{..} = do
               svote  = signValue pk vote
           logger InfoS ("Sending prevote for " <> showLS r <> " (" <> showLS b <> ")") ()
           liftIO $ atomically $
-            writeTChan appChanRx (RxPreVote $ unverifySignature svote)
+            writeTQueue appChanRxInternal (RxPreVote $ unverifySignature svote)
     --
     , castPrecommit   = \r b ->
         forM_ appValidator $ \(PrivValidator pk) -> do
@@ -330,7 +337,7 @@ makeHeightParameters Configuration{..} AppState{..} AppChans{..} = do
                           }
               svote  = signValue pk vote
           logger InfoS ("Sending precommit for " <> showLS r <> " (" <> showLS b <> ")") ()
-          liftIO $ atomically $ writeTChan appChanRx $ RxPreCommit $ unverifySignature svote
+          liftIO $ atomically $ writeTQueue appChanRxInternal $ RxPreCommit $ unverifySignature svote
     --
     , acceptBlock = \r bid -> do
         liftIO $ atomically $ writeTChan appChanTx $ AnnHasProposal (succ h) r
