@@ -530,7 +530,7 @@ peerGossipPeerExchange
   -> PeerChans m addr alg a
   -> PeerRegistry addr
   -> TChan (PexMessage addr)
-  -> TChan (GossipMsg tx addr alg a)
+  -> TBQueue (GossipMsg tx addr alg a)
   -> m ()
 peerGossipPeerExchange _peerAddr PeerChans{..} PeerRegistry{prConnected,prIsActive} pexCh gossipCh = forever $
     liftIO (atomically $ readTChan pexCh) >>= \case
@@ -550,14 +550,14 @@ peerGossipPeerExchange _peerAddr PeerChans{..} PeerRegistry{prConnected,prIsActi
                     if null addrList then
                         return False
                     else do
-                        writeTChan gossipCh (GossipPex (PexMsgMorePeers addrList)) -- TODO send only for requesting node!!!
+                        writeTBQueue gossipCh (GossipPex (PexMsgMorePeers addrList)) -- TODO send only for requesting node!!!
                         return True
         when isSomethingSent $ tickSend cntGossipPex
     connectToAddrs addrs = do
         logger DebugS ("peerGossipPeerExchange: some address received: " <> showLS addrs) ()
         liftIO $ atomically $ writeTChan peerChanPexNewAddresses addrs
     ping = do
-        liftIO $ atomically $ writeTChan gossipCh (GossipPex PexPong)
+        liftIO $ atomically $ writeTBQueue gossipCh (GossipPex PexPong)
         tickSend cntGossipPex
     pong = return ()
 
@@ -583,7 +583,7 @@ startPeer peerAddrFrom peerAddrTo peerCh@PeerChans{..} conn peerRegistry mempool
   logger InfoS "Starting peer" ()
   liftIO $ atomically $ writeTChan peerChanPexNewAddresses [peerAddrTo]
   peerSt   <- newPeerStateObj blockStorage proposalStorage
-  gossipCh <- liftIO newTChanIO
+  gossipCh <- liftIO (newTBQueueIO 10)
   pexCh    <- liftIO newTChanIO
   cursor   <- getMempoolCursor mempool
   runConcurrently
@@ -602,7 +602,7 @@ peerGossipVotes
   :: (MonadIO m, MonadFork m, MonadMask m, MonadLogger m, Crypto alg)
   => PeerStateObj m alg a         -- ^ Current state of peer
   -> PeerChans m addr alg a       -- ^ Read-only access to
-  -> TChan (GossipMsg tx addr alg a)
+  -> TBQueue (GossipMsg tx addr alg a)
   -> m x
 peerGossipVotes peerObj PeerChans{..} gossipCh = logOnException $ do
   logger InfoS "Starting routine for gossiping votes" ()
@@ -632,7 +632,7 @@ peerGossipVotes peerObj PeerChans{..} gossipCh = logOnException $ do
            case Map.size unknown of
              0 -> return ()
              n -> do i <- liftIO $ randomRIO (0,n-1)
-                     liftIO $ atomically $ writeTChan gossipCh $ GossipPreCommit
+                     liftIO $ atomically $ writeTBQueue gossipCh $ GossipPreCommit
                        $ unverifySignature $ toList unknown !! i
                      tickSend cntGossipPrecommit
          Nothing -> return ()
@@ -642,7 +642,7 @@ peerGossipVotes peerObj PeerChans{..} gossipCh = logOnException $ do
         Just (h',_) | h' /= succ bchH -> return ()
         Just (_,tm)                   -> do
           let FullStep _ r _ = peerStep p
-              doGosip        = liftIO . atomically . writeTChan gossipCh
+              doGosip        = liftIO . atomically . writeTBQueue gossipCh
           -- FIXME: poor performance. Avoid going through map!
           let toSet = Set.fromList
                     . map (address . validatorPubKey)
@@ -692,7 +692,7 @@ peerGossipMempool
   => PeerStateObj m alg a
   -> PeerChans m addr alg a
   -> Configuration
-  -> TChan (GossipMsg tx addr alg a)
+  -> TBQueue (GossipMsg tx addr alg a)
   -> MempoolCursor m alg tx
   -> m x
 peerGossipMempool peerObj PeerChans{..} config gossipCh MempoolCursor{..} = logOnException $ do
@@ -700,7 +700,7 @@ peerGossipMempool peerObj PeerChans{..} config gossipCh MempoolCursor{..} = logO
   forever $ do
     getPeerState peerObj >>= \case
       Current _ -> advanceCursor >>= \case
-        Just tx -> do liftIO $ atomically $ writeTChan gossipCh $ GossipTx tx
+        Just tx -> do liftIO $ atomically $ writeTBQueue gossipCh $ GossipTx tx
                       tickSend cntGossipTx
         Nothing -> return ()
       _         -> return ()
@@ -712,7 +712,7 @@ peerGossipBlocks
   :: (MonadIO m, MonadFork m, MonadMask m, MonadLogger m)
   => PeerStateObj m alg a       -- ^ Current state of peer
   -> PeerChans m addr alg a     -- ^ Read-only access to
-  -> TChan (GossipMsg tx addr alg a) -- ^ Network API
+  -> TBQueue (GossipMsg tx addr alg a) -- ^ Network API
   -> m x
 peerGossipBlocks peerObj PeerChans{..} gossipCh = logOnException $ do
   logger InfoS "Starting routine for gossiping votes" ()
@@ -724,7 +724,7 @@ peerGossipBlocks peerObj PeerChans{..} gossipCh = logOnException $ do
         , not (lagPeerHasBlock p)
           -> do let FullStep h _ _ = lagPeerStep p
                 Just b <- retrieveBlock blockStorage h -- FIXME: Partiality
-                liftIO $ atomically $ writeTChan gossipCh $ GossipBlock b
+                liftIO $ atomically $ writeTBQueue gossipCh $ GossipBlock b
                 tickSend cntGossipBlocks
         | otherwise -> return ()
       --
@@ -737,7 +737,7 @@ peerGossipBlocks peerObj PeerChans{..} gossipCh = logOnException $ do
            , r `Set.member` peerProposals p
            , not $ bid `Set.member` peerBlocks p
              -> do logger DebugS ("Gossip: " <> showLS bid) ()
-                   liftIO $ atomically $ writeTChan gossipCh $ GossipBlock b
+                   liftIO $ atomically $ writeTBQueue gossipCh $ GossipBlock b
                    tickSend cntGossipBlocks
            --
            | otherwise -> return ()
@@ -813,7 +813,7 @@ peerSend
   -> addr
   -> PeerStateObj m alg a
   -> PeerChans m addr alg a
-  -> TChan (GossipMsg tx addr alg a)
+  -> TBQueue (GossipMsg tx addr alg a)
   -> Connection
   -> m x
 peerSend _peerAddrFrom peerAddrTo peerSt PeerChans{..} gossipCh Connection{..} = logOnException $ do
@@ -821,8 +821,8 @@ peerSend _peerAddrFrom peerAddrTo peerSt PeerChans{..} gossipCh Connection{..} =
   ownPeerChanTx  <- liftIO $ atomically $ dupTChan peerChanTx
   ownPeerChanPex <- liftIO $ atomically $ dupTChan peerChanPex
   forever $ do
-    msg <- liftIO $ atomically $  readTChan gossipCh
-                              <|> fmap GossipAnn (readTChan ownPeerChanTx)
+    msg <- liftIO $ atomically $  fmap GossipAnn (readTChan ownPeerChanTx)
+                              <|> readTBQueue gossipCh
                               <|> fmap GossipPex (readTChan ownPeerChanPex)
     -- logger InfoS ("Send to (" <> showLS peerAddrTo <> "): " <> showlessShowGossipMsg msg) ()
     send $ serialise msg
