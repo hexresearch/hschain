@@ -104,10 +104,13 @@ instance Crypto alg => JSON.ToJSON   (PrivValidator alg) where
 
 -- | Application connection to outer world
 data AppChans m alg a = AppChans
-  { appChanRx      :: TChan (MessageRx 'Unverified alg a)
-    -- ^ TChan for receiving messages related to consensus protocol
-    --   from peers (our own votes are also passed on same channel for
-    --   uniformity)
+  { appChanRx         :: TBQueue (MessageRx 'Unverified alg a)
+    -- ^ Queue for receiving messages related to consensus protocol
+    --   from peers.
+  , appChanRxInternal :: TQueue (MessageRx 'Unverified alg a)
+    -- ^ Queue for sending messages by consensus engine to
+    --   itself. Note that it's unbounded since we must not block when
+    --   writing there.
   , appChanTx      :: TChan (Announcement alg)
     -- ^ TChan for broadcasting messages to the peers
   , appTMState     :: TVar  (Maybe (Height, TMState alg a))
