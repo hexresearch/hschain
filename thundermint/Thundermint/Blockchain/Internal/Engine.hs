@@ -58,8 +58,7 @@ newAppChans = do
 --
 --   * INVARIANT: Only this function can write to blockchain
 runApplication
-  :: ( MonadIO m, MonadCatch m, MonadLogger m, Crypto alg
-     , Serialise a, Show a, LogBlock a)
+  :: ( MonadIO m, MonadCatch m, MonadLogger m, Crypto alg, Show a, BlockData a)
   => Configuration
      -- ^ Configuration
   -> AppState m alg a
@@ -87,8 +86,7 @@ runApplication config appSt@AppState{..} appCh@AppChans{..} = logOnException $ d
 --
 -- FIXME: we should write block and last commit in transaction!
 decideNewBlock
-  :: ( MonadIO m, MonadLogger m, Crypto alg
-     , Serialise a, Show a, LogBlock a)
+  :: ( MonadIO m, MonadLogger m, Crypto alg, Show a, BlockData a)
   => Configuration
   -> AppState m alg a
   -> AppChans m alg a

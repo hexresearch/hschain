@@ -46,14 +46,14 @@ import Thundermint.Control (MonadFork)
 ----------------------------------------------------------------
 
 -- | Specification of node
-data NodeDescription m alg st tx a = NodeDescription
-  { nodeBlockChainLogic :: BlockFold st tx a
+data NodeDescription m alg st a = NodeDescription
+  { nodeBlockChainLogic :: BlockFold st a
     -- ^ Logic of blockchain
   , nodeStorage         :: BlockStorage 'RW m alg a
     -- ^ Storage for commited blocks
   , nodeBchState        :: BChState m st
     -- ^ Current state of blockchain
-  , nodeMempool         :: Mempool m alg tx
+  , nodeMempool         :: Mempool m alg (TX a)
     -- ^ Mempool of node
   , nodeValidationKey   :: Maybe (PrivValidator alg)
     -- ^ Private key of validator
@@ -70,12 +70,11 @@ data BlockchainNet addr = BlockchainNet
 
 runNode
   :: ( MonadMask m, MonadFork m, MonadLogger m, MonadTrace m
-     , Serialise tx
-     , Crypto alg, Ord addr, Show addr, Serialise addr, Show a, LogBlock a
-     , Serialise a)
+     , Crypto alg, Ord addr, Show addr, Serialise addr, Show a, BlockData a
+     )
   => Configuration
   -> BlockchainNet addr
-  -> NodeDescription m alg st tx a
+  -> NodeDescription m alg st a
   -> m [m ()]
 runNode cfg BlockchainNet{..} NodeDescription{nodeBlockChainLogic=BlockFold{..}, ..} = do
   -- Create state of blockchain & Update it to current state of

@@ -3,7 +3,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 {-# LANGUAGE TupleSections     #-}
-
 -- |
 module Thundermint.Mock.KeyVal (
     genesisBlock
@@ -59,7 +58,7 @@ genesisBlock valSet = Block
   , blockLastCommit = Nothing
   }
 
-transitions :: BlockFold (Map String Int) (String,Int) [(String,Int)]
+transitions :: BlockFold (Map String Int) [(String,Int)]
 transitions = BlockFold
   { processTx           = const process
   , processBlock        = \_ txs s0 -> foldM (flip process) s0 txs
@@ -137,7 +136,7 @@ interpretSpec maxH prefix NetSpec{..} = do
                        (map (,"50000") $ connections netAddresses addr)
                        appCh
                        (hoistBlockStorageRO liftIO $ makeReadOnly storage)
-                       nullMempool
+                       nullMempoolAny
                  , setNamespace "consensus"
                    $ runApplication defCfg appState appCh
                  ]

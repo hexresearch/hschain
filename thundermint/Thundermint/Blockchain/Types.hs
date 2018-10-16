@@ -6,6 +6,7 @@
 {-# LANGUAGE KindSignatures             #-}
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE RecordWildCards            #-}
+{-# LANGUAGE TypeFamilies               #-}
 -- |
 -- Data types for implementation of consensus algorithm
 module Thundermint.Blockchain.Types (
@@ -18,6 +19,7 @@ module Thundermint.Blockchain.Types (
   , Block(..)
   , Header(..)
   , Commit(..)
+  , BlockData(..)
     -- * Data types for establishing consensus
   , Step(..)
   , FullStep(..)
@@ -123,6 +125,19 @@ data Commit alg a = Commit
   deriving (Show, Eq, Generic)
 instance Serialise (Commit alg a)
 
+
+-- | Type class for data which could be put into block
+class (Serialise a, Serialise (TX a)) => BlockData a where
+  -- | Transaction type of block
+  type TX a
+  -- | Return list of transaction in block
+  blockTransactions :: a -> [TX a]
+  logBlockData      :: a -> JSON.Object
+
+instance (Serialise a) => BlockData [a] where
+  type TX [a] = a
+  blockTransactions = id
+  logBlockData      = HM.singleton "Ntx" . JSON.toJSON . length
 
 
 ----------------------------------------------------------------

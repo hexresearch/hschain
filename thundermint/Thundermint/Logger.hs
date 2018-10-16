@@ -28,7 +28,6 @@ module Thundermint.Logger (
   , Verbosity(..)
     -- * Structured logging
   , LogBlockInfo(..)
-  , LogBlock(..)
   ) where
 
 import Control.Arrow (first,second)
@@ -41,7 +40,6 @@ import Control.Monad.Trans.Maybe  (MaybeT(..))
 import Control.Exception          (SomeException(..),AsyncException(..))
 import Data.Aeson
 import Data.Aeson.TH
-import Data.Int
 import Data.IORef
 import Data.Text       (Text)
 import Data.Typeable
@@ -243,23 +241,14 @@ makeEsUrlScribe serverPath sev verb = do
 -- LogBlock
 ----------------------------------------------------------------
 
--- | Type class for providing logging information about block
-class LogBlock a where
-  logBlockData :: a -> Object
-  logBlockData _ = HM.empty
-
-instance LogBlock Int64
-instance LogBlock [a] where
-  logBlockData txs = HM.singleton "Ntx" (toJSON (length txs))
-
 -- | Wrapper for log data for logging purposes
 data LogBlockInfo a = LogBlockInfo Height a
 
-instance LogBlock a => ToObject (LogBlockInfo a) where
+instance BlockData a => ToObject (LogBlockInfo a) where
   toObject (LogBlockInfo (Height h) a)
     = HM.insert "H" (toJSON h)
     $ logBlockData a
 
-instance LogBlock a => LogItem (LogBlockInfo a) where
+instance BlockData a => LogItem (LogBlockInfo a) where
   payloadKeys Katip.V0 _ = Katip.SomeKeys ["H"]
   payloadKeys _        _ = Katip.AllKeys
