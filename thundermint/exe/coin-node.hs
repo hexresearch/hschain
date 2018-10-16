@@ -33,7 +33,7 @@ import Thundermint.Crypto
 import Thundermint.Crypto.Containers
 import Thundermint.Crypto.Ed25519            (Ed25519_SHA512)
 import Thundermint.Logger
-import Thundermint.Mock
+import Thundermint.Run
 import Thundermint.Mock.Coin
 import Thundermint.Mock.KeyList
 import Thundermint.Mock.Types
