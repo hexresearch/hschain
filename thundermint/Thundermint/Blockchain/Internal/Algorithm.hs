@@ -16,7 +16,7 @@
 -- assumes that everything sent to it is already validated! In
 -- particular dealing with block content is delegated to other parts
 -- of library
-module Thundermint.Blockchain.Algorithm (
+module Thundermint.Blockchain.Internal.Algorithm (
     -- * Data types
     ProposalState(..)
   , Message(..)

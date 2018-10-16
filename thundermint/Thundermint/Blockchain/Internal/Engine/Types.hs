@@ -6,7 +6,7 @@
 {-# LANGUAGE UndecidableInstances #-}
 -- |
 -- Data types for storage of blockchain
-module Thundermint.Blockchain.Engine.Types (
+module Thundermint.Blockchain.Internal.Engine.Types (
     -- * Configuration of blockchain
     Configuration(..)
     -- * Application state
@@ -25,7 +25,7 @@ import Control.Concurrent.STM
 import qualified Data.Aeson as JSON
 import GHC.Generics           (Generic)
 
-import Thundermint.Blockchain.Message
+import Thundermint.Blockchain.Internal.Message
 import Thundermint.Blockchain.Types
 import Thundermint.Crypto
 import Thundermint.Crypto.Containers

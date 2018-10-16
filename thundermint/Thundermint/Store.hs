@@ -59,7 +59,7 @@ import qualified Data.Aeson.TH   as JSON
 import qualified Data.ByteString as BS
 
 
-import Thundermint.Blockchain.Message
+import Thundermint.Blockchain.Internal.Message
 import Thundermint.Blockchain.Types
 import Thundermint.Crypto
 import Thundermint.Crypto.Containers

@@ -42,7 +42,7 @@ import System.Random.Shuffle (shuffle')
 import GHC.Generics  (Generic)
 
 
-import Thundermint.Blockchain.Engine.Types
+import Thundermint.Blockchain.Internal.Engine.Types
 import Thundermint.Blockchain.Types
 import Thundermint.Control
 import Thundermint.Crypto

@@ -26,9 +26,9 @@ import Control.Monad.Catch
 import Codec.Serialise (Serialise)
 import Data.Maybe      (isJust)
 
-import Thundermint.Blockchain.Engine
+import Thundermint.Blockchain.Internal.Engine
 import Thundermint.Blockchain.Interpretation
-import Thundermint.Blockchain.Engine.Types
+import Thundermint.Blockchain.Internal.Engine.Types
 import Thundermint.Blockchain.Types
 import Thundermint.Crypto
 import Thundermint.Debug.Trace
