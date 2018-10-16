@@ -6,7 +6,7 @@
 {-# LANGUAGE UndecidableInstances #-}
 -- |
 -- Data types for storage of blockchain
-module Thundermint.Blockchain.Types (
+module Thundermint.Blockchain.Engine.Types (
     -- * Configuration of blockchain
     Configuration(..)
     -- * Application state

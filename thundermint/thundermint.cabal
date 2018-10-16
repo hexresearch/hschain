@@ -55,10 +55,10 @@ Library
                      , x509-validation
 
   Exposed-modules:
-                  Thundermint.Blockchain.App
+                  Thundermint.Blockchain.Engine
                   Thundermint.Blockchain.Interpretation
                   Thundermint.Blockchain.Message
-                  Thundermint.Blockchain.Types
+                  Thundermint.Blockchain.Engine.Types
                   Thundermint.Consensus.Algorithm
                   Thundermint.Consensus.Types
                   Thundermint.Control
