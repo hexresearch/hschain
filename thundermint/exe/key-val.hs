@@ -7,6 +7,7 @@ import qualified Data.Aeson            as JSON
 import qualified Data.ByteString.Char8 as BC8
 
 import Thundermint.Mock.KeyVal
+import Thundermint.Mock.Types (ExeConfig(..))
 import Thundermint.Store
 
 
@@ -23,10 +24,10 @@ main
     work maxH prefix file = do
       -- Run blockchain
       blob <- BC8.readFile file
-      spec <- case JSON.eitherDecodeStrict blob of
+      cfg <- case JSON.eitherDecodeStrict blob of
         Right s -> return s
         Left  e -> error e
-      storageList <- executeSpec maxH prefix spec
+      storageList <- executeSpec maxH prefix $ netSpec cfg
       -- Check result against consistency invariants
       checks <- forM storageList checkStorage
       unless (null (concat checks)) $ error $ "Consistency problem: " ++ (show checks)
@@ -46,6 +47,6 @@ main
           <> help    "prefix for db & logs"
           )
      <*> argument str
-         (  help "Specification file"
+         (  help "Configuration file (network config and nodes spec)"
          <> metavar "JSON"
          )

@@ -4,6 +4,7 @@ module Thundermint.Mock.Types (
 , NetSpec(..)
 , Topology(..)
 , Abort(..)
+, ExeConfig(..)
 , defCfg
   ) where
 
@@ -74,3 +75,12 @@ instance JSON.FromJSON NodeSpec
 instance JSON.ToJSON   a => JSON.ToJSON   (NetSpec a)
 instance JSON.FromJSON a => JSON.FromJSON (NetSpec a)
 
+
+data ExeConfig a = ExeConfig
+  { netSpec :: NetSpec a
+  , netCfg  :: Configuration
+  }
+  deriving (Generic, Show)
+
+instance JSON.ToJSON a => JSON.ToJSON (ExeConfig a)
+instance JSON.FromJSON a => JSON.FromJSON (ExeConfig a)
