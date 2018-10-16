@@ -59,7 +59,7 @@ import Database.V5.Bloodhound
 import Katip.Scribes.ElasticSearch
 
 import Thundermint.Control
-import Thundermint.Consensus.Types
+import Thundermint.Blockchain.Types
 import Thundermint.Debug.Trace
 
 ----------------------------------------------------------------

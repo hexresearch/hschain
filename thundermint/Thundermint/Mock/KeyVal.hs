@@ -27,9 +27,9 @@ import Thundermint.P2P.Network (createMockNode)
 import Thundermint.P2P.Network (newMockNet)
 
 import Thundermint.Blockchain.Engine
-import Thundermint.Blockchain.Interpretation
 import Thundermint.Blockchain.Engine.Types
-import Thundermint.Consensus.Types
+import Thundermint.Blockchain.Interpretation
+import Thundermint.Blockchain.Types
 import Thundermint.Control
 import Thundermint.Crypto            (hash)
 import Thundermint.Crypto.Containers (ValidatorSet)

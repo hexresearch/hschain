@@ -12,7 +12,7 @@ import Control.Monad
 import Data.Monoid
 import Options.Applicative
 
-import Thundermint.Consensus.Types
+import Thundermint.Blockchain.Types
 import Thundermint.Store
 import Thundermint.Store.SQLite
 import Thundermint.Mock.Coin

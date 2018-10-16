@@ -30,7 +30,7 @@ import qualified Data.ByteString.Char8 as BC8
 import qualified Data.Map              as Map
 
 import Thundermint.Blockchain.Interpretation
-import Thundermint.Consensus.Types
+import Thundermint.Blockchain.Types
 import Thundermint.Control
 import Thundermint.Crypto
 import Thundermint.Logger

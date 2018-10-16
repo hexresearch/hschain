@@ -16,7 +16,7 @@
 -- assumes that everything sent to it is already validated! In
 -- particular dealing with block content is delegated to other parts
 -- of library
-module Thundermint.Consensus.Algorithm (
+module Thundermint.Blockchain.Algorithm (
     -- * Data types
     ProposalState(..)
   , Message(..)
@@ -47,7 +47,7 @@ import Thundermint.Crypto            ( Crypto,Signed,Address,SignedState(..),Blo
                                      , signedValue, signedAddr
                                      )
 import Thundermint.Crypto.Containers
-import Thundermint.Consensus.Types
+import Thundermint.Blockchain.Types
 import Thundermint.Logger
 
 

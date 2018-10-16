@@ -22,7 +22,7 @@ import Data.Map             (Map)
 import qualified Data.Map.Strict  as Map
 import GHC.Generics    (Generic)
 
-import Thundermint.Consensus.Types
+import Thundermint.Blockchain.Types
 import Thundermint.Blockchain.Interpretation
 import Thundermint.Crypto
 import Thundermint.Crypto.Ed25519

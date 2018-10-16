@@ -8,7 +8,7 @@
 {-# LANGUAGE RecordWildCards            #-}
 -- |
 -- Data types for implementation of consensus algorithm
-module Thundermint.Consensus.Types (
+module Thundermint.Blockchain.Types (
     -- * Newtype wrappers
     Height(..)
   , Round(..)
