@@ -12,18 +12,14 @@ import Test.Tasty
 import Test.Tasty.HUnit
 
 import Control.Concurrent     (threadDelay)
-import Control.Monad.Catch    (throwM)
-import Control.Monad.IO.Class (liftIO)
 import Data.Monoid            ((<>))
 
 import           Control.Exception          as E
 import qualified Data.ByteString.Lazy       as LBS
 import           Data.ByteString.Lazy.Char8 as LBC
-import qualified Network.Socket             as Net
 
 import Thundermint.P2P.Network
 
-import TM.RealNetwork
 import TM.Util.Network
 
 

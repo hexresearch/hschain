@@ -8,7 +8,6 @@ import Control.Monad.IO.Class
 import Data.List
 
 import Test.Tasty
-import Test.Tasty.HUnit
 import Test.Tasty.Hedgehog
 import Hedgehog
 import Hedgehog.Gen.QuickCheck (arbitrary)

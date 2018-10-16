@@ -27,19 +27,17 @@ import qualified Data.Map                 as Map
 import qualified Network.Socket           as Net
 
 import Thundermint.Blockchain.Interpretation
-import Thundermint.Blockchain.Types
-import Thundermint.Consensus.Types
+import Thundermint.Blockchain.Internal.Engine.Types
 import Thundermint.Control
 import Thundermint.Crypto
 import Thundermint.Crypto.Ed25519
 import Thundermint.Debug.Trace
 import Thundermint.Logger
-import Thundermint.Mock
+import Thundermint.Run
 import Thundermint.Mock.KeyVal
 import Thundermint.P2P.Network
 import Thundermint.Store
 import Thundermint.Store.SQLite
-import Thundermint.Store.STM
 import TM.RealNetwork
 
 testNetworkName :: String

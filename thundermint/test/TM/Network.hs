@@ -12,8 +12,6 @@ module TM.Network (tests) where
 import Control.Concurrent.Async
 
 import Control.Concurrent     (threadDelay)
-import Control.Monad.Catch    (bracketOnError, onException, throwM)
-import Control.Monad.IO.Class (liftIO)
 import Data.Monoid            ((<>))
 
 import           Control.Exception as E
@@ -24,7 +22,6 @@ import Thundermint.P2P.Network
 import Test.Tasty
 import Test.Tasty.HUnit
 import TM.MockNet
-import TM.RealNetwork
 import TM.Util.Network
 
 tests :: TestTree
