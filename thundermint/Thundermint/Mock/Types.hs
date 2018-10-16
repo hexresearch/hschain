@@ -13,7 +13,7 @@ import GHC.Generics (Generic)
 
 import qualified Data.Aeson as JSON
 
-import Thundermint.Blockchain.Types
+import Thundermint.Blockchain.Engine.Types
 import Thundermint.Crypto.Ed25519 (Ed25519_SHA512)
 import Thundermint.Logger         (ScribeSpec)
 
