@@ -5,7 +5,7 @@
 {-# LANGUAGE RecordWildCards   #-}
 -- |
 -- Helper function for running mock network of thundermint nodes
-module Thundermint.Mock (
+module Thundermint.Run (
     -- * Validators
     makePrivateValidators
   , makeValidatorSetFromPriv

@@ -34,7 +34,7 @@ import Thundermint.Blockchain.Types
 import Thundermint.Control
 import Thundermint.Crypto
 import Thundermint.Logger
-import Thundermint.Mock
+import Thundermint.Run
 import Thundermint.Mock.Coin
 import Thundermint.Mock.KeyList
 import Thundermint.Mock.Types
