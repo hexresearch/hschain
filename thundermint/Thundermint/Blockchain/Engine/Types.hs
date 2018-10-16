@@ -26,9 +26,9 @@ import qualified Data.Aeson as JSON
 import GHC.Generics           (Generic)
 
 import Thundermint.Blockchain.Message
+import Thundermint.Blockchain.Types
 import Thundermint.Crypto
 import Thundermint.Crypto.Containers
-import Thundermint.Consensus.Types
 import Thundermint.Store
 
 

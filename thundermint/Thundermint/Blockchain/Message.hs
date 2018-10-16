@@ -14,7 +14,7 @@ import GHC.Generics           (Generic)
 
 import Thundermint.Crypto
 import Thundermint.Crypto.Containers
-import Thundermint.Consensus.Types
+import Thundermint.Blockchain.Types
 
 
 ----------------------------------------------------------------

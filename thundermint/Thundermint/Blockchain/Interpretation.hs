@@ -16,7 +16,7 @@ import Control.Monad.IO.Class
 
 import Thundermint.Control
 import Thundermint.Store
-import Thundermint.Consensus.Types
+import Thundermint.Blockchain.Types
 
 
 

@@ -27,7 +27,7 @@ import System.Random        (randomRIO)
 
 import Thundermint.Blockchain.Interpretation
 import Thundermint.Blockchain.Engine.Types
-import Thundermint.Consensus.Types
+import Thundermint.Blockchain.Types
 import Thundermint.Control
 import Thundermint.Crypto
 import Thundermint.Crypto.Containers

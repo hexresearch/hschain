@@ -60,7 +60,7 @@ import qualified Data.ByteString as BS
 
 
 import Thundermint.Blockchain.Message
-import Thundermint.Consensus.Types
+import Thundermint.Blockchain.Types
 import Thundermint.Crypto
 import Thundermint.Crypto.Containers
 

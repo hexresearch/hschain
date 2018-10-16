@@ -29,7 +29,7 @@ import Data.Maybe      (isJust)
 import Thundermint.Blockchain.Engine
 import Thundermint.Blockchain.Interpretation
 import Thundermint.Blockchain.Engine.Types
-import Thundermint.Consensus.Types
+import Thundermint.Blockchain.Types
 import Thundermint.Crypto
 import Thundermint.Debug.Trace
 import Thundermint.Logger

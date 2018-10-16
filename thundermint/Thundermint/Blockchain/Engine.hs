@@ -29,8 +29,8 @@ import Data.Time.Clock.POSIX (getPOSIXTime)
 import Pipes                 (Pipe,runEffect,yield,await,(>->))
 
 import Thundermint.Blockchain.Engine.Types
-import Thundermint.Consensus.Algorithm
-import Thundermint.Consensus.Types
+import Thundermint.Blockchain.Algorithm
+import Thundermint.Blockchain.Types
 import Thundermint.Crypto
 import Thundermint.Crypto.Containers
 import Thundermint.Logger
