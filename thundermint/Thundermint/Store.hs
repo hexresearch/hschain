@@ -443,7 +443,7 @@ genesisBlockInvariant Block{blockHeader = Header{..}, ..} = do
 
 -- | Check invariant for block at height > 0
 blockInvariant
-  :: (Monad m, Crypto alg, Serialise a)
+  :: (Monad m, Crypto alg)
   => BS.ByteString
   -- ^ Blockchain ID
   -> Height
