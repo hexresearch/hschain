@@ -108,7 +108,7 @@ processTransaction transaction@(Send pubK sig txSend@TxSend{..}) CoinState{..} =
         in add $ spend unspentOutputs
     }
 
-transitions :: BlockFold CoinState Tx [Tx]
+transitions :: BlockFold CoinState [Tx]
 transitions = BlockFold
   { processTx           = process
   , processBlock        = \h txs s0 -> foldM (flip (process h)) s0 txs
