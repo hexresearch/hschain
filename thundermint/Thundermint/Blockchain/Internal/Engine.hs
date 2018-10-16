@@ -10,7 +10,7 @@
 -- Core of blockchain application. This module provides function which
 -- continuously updates blockchain using consensus algorithm and
 -- communicates with outside world using STM channels.
-module Thundermint.Blockchain.Engine (
+module Thundermint.Blockchain.Internal.Engine (
     newAppChans
   , runApplication
   ) where
@@ -28,8 +28,8 @@ import           Data.Monoid   ((<>))
 import Data.Time.Clock.POSIX (getPOSIXTime)
 import Pipes                 (Pipe,runEffect,yield,await,(>->))
 
-import Thundermint.Blockchain.Engine.Types
-import Thundermint.Blockchain.Algorithm
+import Thundermint.Blockchain.Internal.Engine.Types
+import Thundermint.Blockchain.Internal.Algorithm
 import Thundermint.Blockchain.Types
 import Thundermint.Crypto
 import Thundermint.Crypto.Containers

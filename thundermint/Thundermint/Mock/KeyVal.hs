@@ -26,8 +26,8 @@ import qualified Data.Map as Map
 import Thundermint.P2P.Network (createMockNode)
 import Thundermint.P2P.Network (newMockNet)
 
-import Thundermint.Blockchain.Engine
-import Thundermint.Blockchain.Engine.Types
+import Thundermint.Blockchain.Internal.Engine
+import Thundermint.Blockchain.Internal.Engine.Types
 import Thundermint.Blockchain.Interpretation
 import Thundermint.Blockchain.Types
 import Thundermint.Control

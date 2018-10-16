@@ -16,7 +16,7 @@ import           Data.Foldable          (toList)
 import           Data.Map               (Map)
 import qualified Data.Map               as Map
 
-import Thundermint.Blockchain.Engine.Types
+import Thundermint.Blockchain.Internal.Engine.Types
 import Thundermint.Crypto
 import Thundermint.Crypto.Containers
 import Thundermint.Crypto.Ed25519
