@@ -21,11 +21,10 @@ import Hedgehog as H
 import Hedgehog.Internal.Exception as H
 import Test.QuickCheck.Arbitrary
 import Test.Tasty
--- import Test.Tasty.HUnit
 import Test.Tasty.Hedgehog
 import qualified Hedgehog.Gen.QuickCheck as Gen
 
-import Thundermint.Consensus.Types
+import Thundermint.Blockchain.Types
 
 import TM.Arbitrary.Instances ()
 

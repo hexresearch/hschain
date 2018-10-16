@@ -20,11 +20,11 @@ import qualified Data.Set as Set
 import Test.Tasty
 import Test.Tasty.HUnit
 
-import Thundermint.Blockchain.Types
+import Thundermint.Blockchain.Internal.Engine.Types
 import Thundermint.Control
 import Thundermint.Debug.Trace
 import Thundermint.Utils
-import Thundermint.Mock
+import Thundermint.Run
 
 import TM.Util.Network
 import TM.Util.Tests

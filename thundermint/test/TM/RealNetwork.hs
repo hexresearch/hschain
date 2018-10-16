@@ -7,8 +7,6 @@ import System.Random
 
 import Thundermint.P2P.Network
 
-import Control.Monad.IO.Class (liftIO)
-
 import qualified Data.ByteString as BS
 import qualified Network.Socket  as Net
 ----------------------------------------------------------------
