@@ -97,9 +97,9 @@ findInputs tgt = go 0
 
 interpretSpec
    :: Maybe Int64 -> FilePath -> Int
-   -> ExeConfig NodeSpec
+   -> NetSpec NodeSpec
    -> IO [(BlockStorage 'RO IO Alg [Tx], IO ())]
-interpretSpec maxH prefix delay ExeConfig{..} = do
+interpretSpec maxH prefix delay NetSpec{..} = do
   net   <- newMockNet
   -- Connection map
   forM (Map.toList netAddresses) $ \(addr, NodeSpec{..}) -> do
@@ -129,7 +129,7 @@ interpretSpec maxH prefix delay ExeConfig{..} = do
                 st <- currentState bchState
                 let (off,n)  = nspecWalletKeys
                     privKeys = take n $ drop off privateKeyList
-                transferActions delay (publicKey <$> take (netInitialKeys netSpec) privateKeyList) privKeys
+                transferActions delay (publicKey <$> take netInitialKeys  privateKeyList) privKeys
                   (void . pushTransaction cursor) st
           --
           acts <- runNode netCfg
@@ -152,11 +152,11 @@ interpretSpec maxH prefix delay ExeConfig{..} = do
           runConcurrently (generator : acts)
       )
   where
-    netAddresses = Map.fromList $ [0::Int ..] `zip` netNodeList netSpec
-    connections  = case netTopology netSpec of
+    netAddresses = Map.fromList $ [0::Int ..] `zip` netNodeList
+    connections  = case netTopology of
       Ring    -> connectRing
       All2All -> connectAll2All
-    validatorSet = makeValidatorSetFromPriv [ pk | Just pk <- nspecPrivKey <$> netNodeList netSpec ]
+    validatorSet = makeValidatorSetFromPriv [ pk | Just pk <- nspecPrivKey <$> netNodeList ]
     genesisBlock = Block
       { blockHeader = Header
           { headerChainID        = "MONIES"
@@ -165,18 +165,18 @@ interpretSpec maxH prefix delay ExeConfig{..} = do
           , headerLastBlockID    = Nothing
           , headerValidatorsHash = hash validatorSet
           }
-      , blockData       = [ Deposit (publicKey pk) (netInitialDeposit netSpec)
-                          | pk <- take (netInitialKeys netSpec) privateKeyList
+      , blockData       = [ Deposit (publicKey pk) netInitialDeposit
+                          | pk <- take netInitialKeys privateKeyList
                           ]
       , blockLastCommit = Nothing
       }
 
-executeExeConfig
+executeNodeSpec
   :: Maybe Int64 -> FilePath -> Int
-  -> ExeConfig NodeSpec
+  -> NetSpec NodeSpec
   -> IO [BlockStorage 'RO IO Alg [Tx]]
-executeExeConfig maxH prefix delay cfg = do
-  actions <- interpretSpec maxH prefix delay cfg
+executeNodeSpec maxH prefix delay spec = do
+  actions <- interpretSpec maxH prefix delay spec
   runConcurrently (snd <$> actions) `catch` (\Abort -> return ())
   return $ fst <$> actions
 
@@ -197,10 +197,10 @@ main
   where
     work maxH prefix delay doValidate file = do
       blob <- BC8.readFile file
-      cfg <- case JSON.eitherDecodeStrict blob of
+      spec <- case JSON.eitherDecodeStrict blob of
         Right s -> return s
         Left  e -> error e
-      storageList <- executeExeConfig maxH prefix delay cfg
+      storageList <- executeNodeSpec maxH prefix delay spec
 
       when doValidate $ do
         -- If maxH is nothing code is not reachable

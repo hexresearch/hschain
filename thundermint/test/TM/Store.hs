@@ -15,7 +15,6 @@ import qualified Data.ByteString.Char8 as BC8
 
 import           Thundermint.Store
 import qualified Thundermint.Mock.KeyVal as KeyVal
-import           Thundermint.Mock.Types (ExeConfig(..))
 
 
 maxHeight :: Int64
@@ -36,7 +35,7 @@ runKeyVal maxH prefix file = do
       spec <- case JSON.eitherDecodeStrict blob of
         Right s -> return s
         Left  e -> error e
-      storageList <- KeyVal.executeSpec maxH prefix (netSpec spec)
+      storageList <- KeyVal.executeSpec maxH prefix spec
       -- Check result against consistency invariants
       checks <- forM storageList checkStorage
       assertEqual "failed consistency check" [] (concat checks)
