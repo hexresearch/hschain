@@ -1,9 +1,15 @@
 {-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE Rank2Types          #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeOperators       #-}
 -- |
 module Thundermint.Control (
-    MonadFork(..)
+    -- *
+    FunctorF(..)
+  , FloatOut(..)
+  , traverseF_
+    -- * 
+  , MonadFork(..)
   , forkLinked
   , runConcurrently
     -- * Generalized MVar-code
@@ -23,20 +29,40 @@ module Thundermint.Control (
   , withMany
   ) where
 
+import Control.Applicative
 import Control.Concurrent.MVar
 import Control.Monad
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Reader
-
 import Control.Concurrent  (ThreadId, killThread, myThreadId, throwTo)
 import Control.Exception   (AsyncException, Exception(..), SomeException)
 import Control.Monad.Catch (MonadMask, MonadThrow, bracket, mask, onException, throwM, try)
+import Data.Functor.Compose
+import Data.Functor.Identity
 
 import qualified Control.Concurrent as Conc
 
 ----------------------------------------------------------------
 --
 ----------------------------------------------------------------
+
+class FunctorF k where
+  fmapF :: (forall a. f a -> g a) -> k f -> k g
+
+class FunctorF k => FloatOut k where
+  -- | Sequence outer layer of effects in container
+  floatOut    :: Applicative f => k (f `Compose` g) -> f (k g)
+  -- | Sequence effects inside container
+  floatEffect :: Applicative f => k f -> f ()
+  floatEffect = void . floatOut . fmapF (Compose . fmap Identity)
+  -- | Traverse container using effectful function and discard result
+  --   of traversal
+  traverseEff :: Applicative f => (forall a. g a -> f ()) -> k g -> f ()
+  traverseEff f = void . floatOut . fmapF (Compose . fmap Const . f)
+
+
+traverseF_ :: (FloatOut k, Applicative f) => (forall a. g a -> f a) -> k g -> f ()
+traverseF_ f = floatEffect . fmapF f
 
 -- | Type class for monads which could be forked
 class MonadIO m => MonadFork m where
