@@ -86,9 +86,13 @@ realNetworkTls creds serviceName = (realNetworkStub serviceName)
 
 
 newSocket :: MonadIO m => Net.AddrInfo -> m Net.Socket
-newSocket ai = liftIO $ Net.socket (Net.addrFamily     ai)
-                                   (Net.addrSocketType ai)
-                                   (Net.addrProtocol   ai)
+newSocket ai = liftIO $ do
+    sock <- Net.socket (Net.addrFamily     ai)
+                       (Net.addrSocketType ai)
+                       (Net.addrProtocol   ai)
+    Net.setSocketOption sock Net.NoDelay 1
+    Net.setSocketOption sock Net.ReuseAddr 1
+    return sock
 
 
 isIPv6addr :: Net.AddrInfo -> Bool
