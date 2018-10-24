@@ -1,8 +1,8 @@
-{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE DataKinds                  #-}
 {-# LANGUAGE DeriveFunctor              #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE KindSignatures             #-}
+{-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
 -- |
 module Thundermint.Store.Internal.Query (
@@ -23,6 +23,7 @@ module Thundermint.Store.Internal.Query (
   , query
   , query1
   , execute
+  , execute_
   ) where
 
 import Codec.Serialise (Serialise,serialise,deserialiseOrFail)
@@ -177,3 +178,10 @@ execute
 execute sql param = Query $ do
   conn <- lift ask
   liftIO $ SQL.execute conn (SQL.Query sql) param
+
+execute_
+  :: Text                  -- ^ SQL query
+  -> Query rw ()
+execute_ sql = Query $ do
+  conn <- lift ask
+  liftIO $ SQL.execute_ conn (SQL.Query sql)
