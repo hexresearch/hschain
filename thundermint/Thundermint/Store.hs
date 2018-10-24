@@ -17,8 +17,13 @@
 --    crash but incoming messages are stored in write ahead log so
 --    they could be replayed.
 module Thundermint.Store (
-    -- * Block storage
+    -- * Monadic API for DB access
     Access(..)
+  , MonadDB(..)
+  , Query
+  , QueryRO
+  , runQuery
+    -- * Block storage
   , Writable
   , BlockStorage(..)
   , hoistBlockStorageRW
@@ -47,6 +52,7 @@ import qualified Katip
 
 import Codec.Serialise           (Serialise)
 import Control.Monad             ((<=<), foldM)
+import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Except
 import Control.Monad.Trans.Writer
@@ -58,17 +64,36 @@ import qualified Data.Aeson      as JSON
 import qualified Data.Aeson.TH   as JSON
 import qualified Data.ByteString as BS
 
-
 import Thundermint.Blockchain.Internal.Message
 import Thundermint.Blockchain.Types
 import Thundermint.Crypto
 import Thundermint.Crypto.Containers
-import Thundermint.Store.Internal.Query (Access(..))
+import Thundermint.Store.Internal.Query (Access(..), Connection, Query, QueryRO)
+import Thundermint.Store.SQL
+
+
+----------------------------------------------------------------
+-- Monadic API for DB access
+----------------------------------------------------------------
+
+-- | Reader monad containing connection in the context
+class MonadIO m => MonadDB m where
+  askConnection :: m Connection
+
+-- | Execute query. @Nothing@ means that query violated some invariant
+--   and was rolled back.
+runQuery :: (MonadDB m, RunQuery q) => q a -> m (Maybe a)
+runQuery q = flip runQueryConn q =<< askConnection
+
+
 
 
 ----------------------------------------------------------------
 -- Abstract API for storing data
 ----------------------------------------------------------------
+
+
+
 
 type family Writable (rw :: Access) a where
   Writable 'RO a = ()

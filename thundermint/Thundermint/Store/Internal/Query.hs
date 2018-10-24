@@ -8,13 +8,14 @@ module Thundermint.Store.Internal.Query (
     Connection(..)
   , openConnection
   , closeConnection
-  , withConnection  
+  , withConnection
     -- * Query wrappers
   , Access(..)
   , Query(..)
   , QueryRO(..)
   , toQueryRO
   , rollback
+    -- * Primitives
   , query
   , query1
   , execute
