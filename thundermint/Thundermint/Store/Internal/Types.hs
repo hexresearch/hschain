@@ -1,13 +1,41 @@
+{-# LANGUAGE GADTs      #-}
 {-# LANGUAGE LambdaCase #-}
 -- |
 module Thundermint.Store.Internal.Types where
 
+import Codec.Serialise (Serialise,serialise,deserialiseOrFail)
 import Data.Int
 import qualified Database.SQLite.Simple           as SQL
 import qualified Database.SQLite.Simple.ToField   as SQL
 import qualified Database.SQLite.Simple.FromField as SQL
 import Lens.Micro
 
+
+----------------------------------------------------------------
+-- Encoding for field of table
+----------------------------------------------------------------
+
+-- | Encoding of haskell value as field in SQLite database
+data FieldEncoding a where
+  FieldEncoding :: (SQL.FromField x, SQL.ToField x)
+                => (a -> x)
+                -> (x -> a)
+                -> FieldEncoding a
+
+-- | Value is encoded using CBOR and stored in database
+encodingCBOR :: Serialise a => FieldEncoding a
+encodingCBOR = FieldEncoding serialise $ \bs -> case deserialiseOrFail bs of
+  Right a -> a
+  Left  e -> error ("CBOR encoding error: " ++ show e)
+
+encodeField :: FieldEncoding a -> a -> SQL.SQLData
+encodeField (FieldEncoding to _) a
+  = SQL.toField (to a)
+
+
+----------------------------------------------------------------
+-- Other internal types
+----------------------------------------------------------------
 
 -- | Version of persistent structure
 data Version

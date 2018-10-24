@@ -25,7 +25,8 @@ module Thundermint.Store.SQL (
   , Query
   , QueryRO
   , toQueryRO
-  , RunQuery(..)
+  , RunQueryRO(..)
+  , RunQueryRW(..)
     -- * Persistent data
   , PersistentData(..)
   , Persistent(..)
@@ -65,60 +66,6 @@ import Thundermint.Blockchain.Types
 import Thundermint.Control
 import Thundermint.Store.Internal.Types
 import Thundermint.Store.Internal.Query
-
-
-
-
-----------------------------------------------------------------
--- Encoding for field of table
-----------------------------------------------------------------
-
--- | Encoding of haskell value as field in SQLite database
-data FieldEncoding a where
-  FieldEncoding :: (SQL.FromField x, SQL.ToField x)
-                => (a -> x)
-                -> (x -> a)
-                -> FieldEncoding a
-
--- | Value is encoded using CBOR and stored in database
-encodingCBOR :: Serialise a => FieldEncoding a
-encodingCBOR = FieldEncoding serialise $ \bs -> case deserialiseOrFail bs of
-  Right a -> a
-  Left  e -> error ("CBOR encoding error: " ++ show e)
-
-encodeField :: FieldEncoding a -> a -> SQL.SQLData
-encodeField (FieldEncoding to _) a
-  = SQL.toField (to a)
-
-
-
-
-
-----------------------------------------------------------------
--- Running queries
-----------------------------------------------------------------
-
--- | Query which could be executed.
-class RunQuery q where
-  runQueryConn :: MonadIO m => Connection -> q a -> m (Maybe a)
-
-
-instance (rw ~ 'RO) => RunQuery (QueryRO rw) where
-  runQueryConn c = liftIO . runQueryWorker c . unQueryRO
-
-instance RunQuery (Query rw) where
-  runQueryConn c = liftIO . runQueryWorker c . unQuery
-
-runQueryWorker :: Connection -> MaybeT (ReaderT SQL.Connection IO) a -> IO (Maybe a)
-runQueryWorker (Connection mutex conn) query = withMutex mutex $ do
-  SQL.execute_ conn "BEGIN TRANSACTION"
-  -- FIXME: exception safety. We need to rollback in presence of async
-  --        exceptions
-  r <- try $ runReaderT (runMaybeT query) conn
-  case r of
-    Left (e :: SomeException) -> Nothing <$ SQL.execute_ conn "ROLLBACK"
-    Right Nothing             -> Nothing <$ SQL.execute_ conn "ROLLBACK"
-    Right a                   -> a       <$ SQL.execute_ conn "COMMIT"
 
 
 
