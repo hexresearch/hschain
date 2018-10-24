@@ -63,16 +63,12 @@ import Thundermint.Blockchain.Internal.Message
 import Thundermint.Blockchain.Types
 import Thundermint.Crypto
 import Thundermint.Crypto.Containers
+import Thundermint.Store.Internal.Query (Access(..))
 
 
 ----------------------------------------------------------------
 -- Abstract API for storing data
 ----------------------------------------------------------------
-
--- | Access rights for storage
-data Access = RO                -- ^ Read-only access
-            | RW                -- ^ Read-write access
-            deriving (Show)
 
 type family Writable (rw :: Access) a where
   Writable 'RO a = ()
