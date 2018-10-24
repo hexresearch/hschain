@@ -2,6 +2,7 @@
 {-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE RankNTypes          #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 -- |
 -- Data types for primary database. Namely storage of blocks, commits and validators
@@ -116,18 +117,18 @@ initializeBlockhainTables genesis initialVals = do
 --         implement 'retrieveCommitRound'. It doesn't have @a@ nor
 --         @alg@ in its type signature yet depends on these instances.
 data BlockStorage alg a = BlockStorage
-  { blockchainHeight   :: Query 'RO Height
+  { blockchainHeight   :: forall rw. Query rw Height
     -- ^ Current height of blockchain (height of last commited block).
 
-  , retrieveBlock      :: Height -> Query 'RO (Maybe (Block alg a))
+  , retrieveBlock      :: forall rw. Height -> Query rw (Maybe (Block alg a))
     -- ^ Retrieve block at given height.
     --
     --   Must return block for every height @0 <= h <= blockchainHeight@
-  , retrieveBlockID    :: Height -> Query 'RO (Maybe (BlockID alg a))
+  , retrieveBlockID    :: forall rw. Height -> Query rw (Maybe (BlockID alg a))
     -- ^ Retrieve ID of block at given height. Must return same result
     --   as @fmap blockHash . retrieveBlock@ but implementation could
     --   do that more efficiently.
-  , retrieveCommit     :: Height -> Query 'RO (Maybe (Commit alg a))
+  , retrieveCommit     :: forall rw. Height -> Query rw (Maybe (Commit alg a))
     -- ^ Retrieve commit justifying commit of block at height
     --   @h@. Must return same result as @fmap blockLastCommit . retrieveBlock . next@
     --   but do it more efficiently.
@@ -135,13 +136,13 @@ data BlockStorage alg a = BlockStorage
     --   Note that this method returns @Nothing@ for last block since
     --   its commit is not persisted in blockchain yet and there's no
     --   commit for genesis block (h=0)
-  , retrieveCommitRound :: Height -> Query 'RO (Maybe Round)
+  , retrieveCommitRound :: forall rw. Height -> Query rw (Maybe Round)
     -- ^ Retrieve round when commit was made.
 
   , storeCommit :: ValidatorSet alg -> Commit alg a -> Block alg a -> Query 'RW ()
     -- ^ Write block and commit justifying it into persistent storage.
 
-  , retrieveLocalCommit :: Height -> Query 'RO (Maybe (Commit alg a))
+  , retrieveLocalCommit :: forall rw. Height -> Query rw (Maybe (Commit alg a))
     -- ^ Retrieve local commit justifying commit of block as known by
     --   node at moment of the commit. Implementation only MUST store
     --   commit for the last block but may choose to store earlier
@@ -152,7 +153,7 @@ data BlockStorage alg a = BlockStorage
     --   1) @retrieveCommit@ retrieve commit as seen by proposer not
     --   local node 2) each node collect straggler precommits for some
     --   time interval after commit.
-  , retrieveValidatorSet :: Height -> Query 'RO (Maybe (ValidatorSet alg))
+  , retrieveValidatorSet :: forall rw. Height -> Query rw (Maybe (ValidatorSet alg))
     -- ^ Retrieve set of validators for given round.
     --
     --   Must return validator set for every @0 < h <= blockchainHeight + 1@
@@ -160,10 +161,10 @@ data BlockStorage alg a = BlockStorage
   , writeToWAL :: Height -> MessageRx 'Unverified alg a -> Query 'RW ()
     -- ^ Add message to Write Ahead Log. Height parameter is height
     --   for which we're deciding block.
-  , resetWAL   :: Height -> Query 'RO ()
+  , resetWAL   :: forall rw. Height -> Query rw ()
     -- ^ Remove all entries from WAL which comes from height less than
     --   parameter.
-  , readWAL    :: Height -> Query 'RO [MessageRx 'Unverified alg a]
+  , readWAL    :: forall rw. Height -> Query rw [MessageRx 'Unverified alg a]
     -- ^ Get all parameters from WAL in order in which they were
     --   written
   }
