@@ -1,7 +1,9 @@
-{-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE DataKinds                  #-}
+{-# LANGUAGE DeriveFunctor              #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE KindSignatures #-}
-{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE KindSignatures             #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
 -- |
 module Thundermint.Store.Internal.Query (
     -- * Connection
@@ -15,6 +17,8 @@ module Thundermint.Store.Internal.Query (
   , QueryRO(..)
   , toQueryRO
   , rollback
+  , RunQueryRO(..)
+  , RunQueryRW(..)
     -- * Primitives
   , query
   , query1
@@ -104,7 +108,44 @@ toQueryRO (Query m) = QueryRO m
 rollback :: Monad m => m a
 rollback = fail "ROLLBACK"
 
+-- | Run read-only query. Note that read-only couldn't be rolled back
+--  so they always succeed
+class RunQueryRO q where
+  runQueryRO :: MonadIO m => Connection -> q 'RO a -> m a
 
+-- | Run read-write query
+class RunQueryRW q where
+  runQueryRW  :: MonadIO m => Connection -> q 'RW a -> m (Maybe a)
+
+instance RunQueryRO QueryRO where
+  runQueryRO c q = do r <-  liftIO . runQueryWorker c . unQueryRO $ q
+                      case r of
+                        Nothing -> error "QueryRO couldn't be rolled back"
+                        Just a  -> return a
+
+instance RunQueryRO Query where
+  runQueryRO c q = do r <-  liftIO . runQueryWorker c . unQuery $ q
+                      case r of
+                        Nothing -> error "QueryRO couldn't be rolled back"
+                        Just a  -> return a
+
+instance RunQueryRW Query where
+  runQueryRW c = liftIO . runQueryWorker c . unQuery
+
+runQueryWorker :: Connection -> MaybeT (ReaderT SQL.Connection IO) a -> IO (Maybe a)
+runQueryWorker (Connection mutex conn) query = withMutex mutex $ do
+  SQL.execute_ conn "BEGIN TRANSACTION"
+  -- FIXME: exception safety. We need to rollback in presence of async
+  --        exceptions
+  r <- try $ runReaderT (runMaybeT query) conn
+  case r of
+    Left (e :: SomeException) -> Nothing <$ SQL.execute_ conn "ROLLBACK"
+    Right Nothing             -> Nothing <$ SQL.execute_ conn "ROLLBACK"
+    Right a                   -> a       <$ SQL.execute_ conn "COMMIT"
+
+----------------------------------------------------------------
+-- Internal primitives
+----------------------------------------------------------------
 
 query
   :: (SQL.ToRow row, SQL.FromRow a)

@@ -22,7 +22,8 @@ module Thundermint.Store (
   , MonadDB(..)
   , Query
   , QueryRO
-  , runQuery
+  , queryRO
+  , queryRW
     -- * Block storage
   , Writable
   , BlockStorage(..)
@@ -80,10 +81,14 @@ import Thundermint.Store.SQL
 class MonadIO m => MonadDB m where
   askConnection :: m Connection
 
+-- | Execute query. 
+queryRO :: (MonadDB m, RunQueryRO q) => q 'RO a -> m a
+queryRO q = flip runQueryRO q =<< askConnection
+
 -- | Execute query. @Nothing@ means that query violated some invariant
 --   and was rolled back.
-runQuery :: (MonadDB m, RunQuery q) => q a -> m (Maybe a)
-runQuery q = flip runQueryConn q =<< askConnection
+queryRW :: (MonadDB m, RunQueryRW q) => q 'RW a -> m (Maybe a)
+queryRW q = flip runQueryRW q =<< askConnection
 
 
 
