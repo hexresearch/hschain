@@ -81,6 +81,7 @@ Library
                   Thundermint.Store
                   Thundermint.Store.SQLite
                   Thundermint.Store.STM
+                  Thundermint.Store.Internal.BlockDB
                   Thundermint.Store.Internal.Types
                   Thundermint.Store.Internal.Query
                   Thundermint.Utils

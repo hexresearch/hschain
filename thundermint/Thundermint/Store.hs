@@ -27,9 +27,6 @@ module Thundermint.Store (
     -- * Block storage
   , Writable
   , BlockStorage(..)
-  , hoistBlockStorageRW
-  , hoistBlockStorageRO
-  , makeReadOnly
     -- * In memory store for proposals
   , ProposalStorage(..)
   , hoistPropStorageRW
@@ -69,7 +66,8 @@ import Thundermint.Blockchain.Internal.Message
 import Thundermint.Blockchain.Types
 import Thundermint.Crypto
 import Thundermint.Crypto.Containers
-import Thundermint.Store.Internal.Query (Access(..), Connection, Query, QueryRO)
+import Thundermint.Store.Internal.Query   (Access(..), Connection, Query, QueryRO)
+import Thundermint.Store.Internal.BlockDB
 import Thundermint.Store.SQL
 
 
@@ -81,7 +79,7 @@ import Thundermint.Store.SQL
 class MonadIO m => MonadDB m where
   askConnection :: m Connection
 
--- | Execute query. 
+-- | Execute query.
 queryRO :: (MonadDB m, RunQueryRO q) => q 'RO a -> m a
 queryRO q = flip runQueryRO q =<< askConnection
 
@@ -104,113 +102,6 @@ type family Writable (rw :: Access) a where
   Writable 'RO a = ()
   Writable 'RW a = a
 
--- | API for persistent storage of blockchain and related
---   information. All assertion about behavior obviously hold only if
---   database backing store is not corrupted.
-data BlockStorage rw m alg a = BlockStorage
-  { blockchainHeight   :: m Height
-    -- ^ Current height of blockchain (height of last commited block).
-
-  , retrieveBlock      :: Height -> m (Maybe (Block alg a))
-    -- ^ Retrieve block at given height.
-    --
-    --   Must return block for every height @0 <= h <= blockchainHeight@
-  , retrieveBlockID    :: Height -> m (Maybe (BlockID alg a))
-    -- ^ Retrieve ID of block at given height. Must return same result
-    --   as @fmap blockHash . retrieveBlock@ but implementation could
-    --   do that more efficiently.
-  , retrieveCommit     :: Height -> m (Maybe (Commit alg a))
-    -- ^ Retrieve commit justifying commit of block at height
-    --   @h@. Must return same result as @fmap blockLastCommit . retrieveBlock . next@
-    --   but do it more efficiently.
-    --
-    --   Note that this method returns @Nothing@ for last block since
-    --   its commit is not persisted in blockchain yet and there's no
-    --   commit for genesis block (h=0)
-  , retrieveCommitRound :: Height -> m (Maybe Round)
-    -- ^ Retrieve round when commit was made.
-
-  , storeCommit :: Writable rw
-      (ValidatorSet alg -> Commit alg a -> Block alg a -> m ())
-    -- ^ Write block and commit justifying it into persistent storage.
-
-  , retrieveLocalCommit :: Height -> m (Maybe (Commit alg a))
-    -- ^ Retrieve local commit justifying commit of block as known by
-    --   node at moment of the commit. Implementation only MUST store
-    --   commit for the last block but may choose to store earlier
-    --   commits as well.
-    --
-    --   Note that commits returned by this functions may to differ
-    --   from ones returned by @retrieveCommit@ by set of votes since
-    --   1) @retrieveCommit@ retrieve commit as seen by proposer not
-    --   local node 2) each node collect straggler precommits for some
-    --   time interval after commit.
-
-  , retrieveValidatorSet :: Height -> m (Maybe (ValidatorSet alg))
-    -- ^ Retrieve set of validators for given round.
-    --
-    --   Must return validator set for every @0 < h <= blockchainHeight + 1@
-
-  , closeBlockStorage  :: Writable rw (m ())
-    -- ^ Close all handles etc. Functions in the dictionary should not
-    --   be called after that
-
-  , writeToWAL :: Writable rw (Height -> MessageRx 'Unverified alg a -> m ())
-    -- ^ Add message to Write Ahead Log. Height parameter is height
-    --   for which we're deciding block.
-  , resetWAL   :: Writable rw (Height -> m ())
-    -- ^ Remove all entries from WAL which comes from height less than
-    --   parameter.
-  , readWAL    :: Height -> m [MessageRx 'Unverified alg a]
-    -- ^ Get all parameters from WAL in order in which they were
-    --   written
-  }
-
-
--- | Strip write rights if storage API had any
-makeReadOnly :: BlockStorage rw m alg a -> BlockStorage 'RO m alg a
-makeReadOnly BlockStorage{..} =
-  BlockStorage{ storeCommit       = ()
-              , closeBlockStorage = ()
-              , writeToWAL        = ()
-              , resetWAL          = ()
-              , ..
-              }
-
-hoistBlockStorageRW
-  :: (forall x. m x -> n x)
-  -> BlockStorage 'RW m alg a
-  -> BlockStorage 'RW n alg a
-hoistBlockStorageRW fun BlockStorage{..} =
-  BlockStorage { blockchainHeight     = fun blockchainHeight
-               , retrieveBlock        = fun . retrieveBlock
-               , retrieveBlockID      = fun . retrieveBlockID
-               , retrieveCommitRound  = fun . retrieveCommitRound
-               , retrieveCommit       = fun . retrieveCommit
-               , retrieveLocalCommit  = fun . retrieveLocalCommit
-               , retrieveValidatorSet = fun . retrieveValidatorSet
-               , storeCommit          = \v c b -> fun (storeCommit v c b)
-               , closeBlockStorage    = fun closeBlockStorage
-               , writeToWAL           = \h m -> fun (writeToWAL h m)
-               , resetWAL             = fun . resetWAL
-               , readWAL              = fun . readWAL
-               }
-
-hoistBlockStorageRO
-  :: (forall x. m x -> n x)
-  -> BlockStorage 'RO m alg a
-  -> BlockStorage 'RO n alg a
-hoistBlockStorageRO fun BlockStorage{..} =
-  BlockStorage { blockchainHeight     = fun blockchainHeight
-               , retrieveBlock        = fun . retrieveBlock
-               , retrieveBlockID      = fun . retrieveBlockID
-               , retrieveCommitRound  = fun . retrieveCommitRound
-               , retrieveCommit       = fun . retrieveCommit
-               , retrieveLocalCommit  = fun . retrieveLocalCommit
-               , retrieveValidatorSet = fun . retrieveValidatorSet
-               , readWAL              = fun . readWAL
-               , ..
-               }
 
 
 ----------------------------------------------------------------
@@ -402,10 +293,10 @@ data BlockchainInconsistency
 
 -- | check storage against all consistency invariants
 checkStorage
-  :: (Monad m, Crypto alg, Serialise a)
-  => BlockStorage rw m alg a
+  :: (MonadDB m, Crypto alg, Serialise a)
+  => BlockStorage alg a
   -> m [BlockchainInconsistency]
-checkStorage storage = execWriterT $ do
+checkStorage storage = queryRO $ execWriterT $ do
   maxH         <- lift $ blockchainHeight storage
   Just genesis <- lift $ retrieveBlock storage (Height 0)
   let genesisChainId = headerChainID $ blockHeader genesis
@@ -433,12 +324,12 @@ checkStorage storage = execWriterT $ do
 -- | Check that block proposed at given height is correct in sense all
 --   blockchain invariants hold
 checkProposedBlock
-  :: (Monad m, Crypto alg, Serialise a)
-  => BlockStorage rw m alg a
+  :: (MonadDB m, Crypto alg, Serialise a)
+  => BlockStorage alg a
   -> Height
   -> Block alg a
   -> m [BlockchainInconsistency]
-checkProposedBlock storage h block = do
+checkProposedBlock storage h block = queryRO $ do
   Just genesis <- retrieveBlock        storage (Height 0)
   Just prevBID <- retrieveBlockID      storage (pred h)
   Just vset    <- retrieveValidatorSet storage  h
