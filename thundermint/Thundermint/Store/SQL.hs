@@ -100,14 +100,14 @@ encodeField (FieldEncoding to _) a
 
 -- | Query which could be executed.
 class RunQuery q where
-  runQuery :: MonadIO m => Connection -> q a -> m (Maybe a)
+  runQueryConn :: MonadIO m => Connection -> q a -> m (Maybe a)
 
 
 instance (rw ~ 'RO) => RunQuery (QueryRO rw) where
-  runQuery c = liftIO . runQueryWorker c . unQueryRO
+  runQueryConn c = liftIO . runQueryWorker c . unQueryRO
 
 instance RunQuery (Query rw) where
-  runQuery c = liftIO . runQueryWorker c . unQuery
+  runQueryConn c = liftIO . runQueryWorker c . unQuery
 
 runQueryWorker :: Connection -> MaybeT (ReaderT SQL.Connection IO) a -> IO (Maybe a)
 runQueryWorker (Connection mutex conn) query = withMutex mutex $ do
