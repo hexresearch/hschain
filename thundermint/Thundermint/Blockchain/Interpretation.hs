@@ -10,6 +10,7 @@ module Thundermint.Blockchain.Interpretation (
   , hoistBChState
   ) where
 
+import Codec.Serialise (Serialise)
 import Control.Concurrent.MVar
 import Control.Monad.Catch
 import Control.Monad.IO.Class
@@ -65,11 +66,10 @@ data BChState m s = BChState
 
 -- | Create block storage backed by MVar
 newBChState
-  :: (MonadMask m, MonadDB m)
+  :: (MonadMask m, MonadReadDB m alg a, Serialise a)
   => BlockFold s a             -- ^ Updating function
-  -> BlockStorage alg a        -- ^ Store of blocks
   -> m (BChState m s)
-newBChState BlockFold{..} BlockStorage{..} = do
+newBChState BlockFold{..} = do
   state <- liftIO $ newMVar (Height 0, initialState)
   let ensureHeight hBlk = do
         (st,flt) <- modifyMVarM state $ \st@(h,s) ->

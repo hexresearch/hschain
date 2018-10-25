@@ -8,7 +8,6 @@ import Data.Int
 import qualified Database.SQLite.Simple           as SQL
 import qualified Database.SQLite.Simple.ToField   as SQL
 import qualified Database.SQLite.Simple.FromField as SQL
-import Lens.Micro
 
 
 ----------------------------------------------------------------

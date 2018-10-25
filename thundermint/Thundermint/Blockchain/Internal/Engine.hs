@@ -37,6 +37,7 @@ import Thundermint.Crypto.Containers
 import Thundermint.Logger
 import Thundermint.Store
 import Thundermint.Store.STM
+import Thundermint.Store.Internal.BlockDB
 
 import Katip (Severity(..), showLS)
 
@@ -59,7 +60,7 @@ newAppChans = do
 --
 --   * INVARIANT: Only this function can write to blockchain
 runApplication
-  :: ( MonadDB m, MonadCatch m, MonadLogger m, Crypto alg, Show a, BlockData a)
+  :: ( MonadDB m alg a, MonadCatch m, MonadLogger m, Crypto alg, Show a, BlockData a)
   => Configuration
      -- ^ Configuration
   -> AppState m alg a
@@ -68,8 +69,8 @@ runApplication
      -- ^ Channels for communication with peers
   -> m ()
 runApplication config appSt@AppState{..} appCh@AppChans{..} = logOnException $ do
-  height <- queryRO $ blockchainHeight appStorage
-  lastCm <- queryRO $ retrieveLocalCommit appStorage height
+  height <- queryRO $ blockchainHeight 
+  lastCm <- queryRO $ retrieveLocalCommit height
   advanceToHeight appPropStorage $ succ height
   void $ flip fix lastCm $ \loop commit -> do
     cm <- decideNewBlock config appSt appCh commit
@@ -87,7 +88,7 @@ runApplication config appSt@AppState{..} appCh@AppChans{..} = logOnException $ d
 --
 -- FIXME: we should write block and last commit in transaction!
 decideNewBlock
-  :: ( MonadDB m, MonadLogger m, Crypto alg, Show a, BlockData a)
+  :: ( MonadDB m alg a, MonadLogger m, Crypto alg, Show a, BlockData a)
   => Configuration
   -> AppState m alg a
   -> AppChans m alg a
@@ -101,8 +102,8 @@ decideNewBlock config appSt@AppState{..} appCh@AppChans{..} lastCommt = do
   -- all messages stored there.
   walMessages <- fmap (fromMaybe [])
                $ queryRW
-               $ resetWAL appStorage (currentH hParam)
-              *> readWAL  appStorage (currentH hParam)
+               $ resetWAL (currentH hParam)
+              *> readWAL  (currentH hParam)
   -- Producer of messages. First we replay messages from WAL. This is
   -- very important and failure to do so may violate protocol
   -- safety and possibly liveness.
@@ -128,7 +129,7 @@ decideNewBlock config appSt@AppState{..} appCh@AppChans{..} lastCommt = do
         liftIO $ atomically $ writeTVar appTMState $ Just (currentH hParam , tm)
         -- Write message to WAL and handle it after that
         msg <- await
-        lift $ queryRW $ writeToWAL appStorage (currentH hParam) (unverifyMessageRx msg)
+        _   <- lift $ queryRW $ writeToWAL (currentH hParam) (unverifyMessageRx msg)
         res <- lift $ handleVerifiedMessage appPropStorage hParam tm msg
         case res of
           Tranquility      -> msgHandlerLoop mCmt tm
@@ -144,8 +145,10 @@ decideNewBlock config appSt@AppState{..} appCh@AppChans{..} lastCommt = do
             vset <- appNextValidatorSet (currentH hParam) (blockData b)
             logger InfoS "Actual commit"
               $ LogBlockInfo (currentH hParam) (blockData b)
-            queryRW $ storeCommit appStorage vset cmt b
-            advanceToHeight appPropStorage . succ =<< queryRO (blockchainHeight appStorage)
+            queryRW (storeCommit vset cmt b) >>= \case
+              Nothing -> error "Cannot write commit into database"
+              Just () -> return ()
+            advanceToHeight appPropStorage . succ =<< queryRO blockchainHeight
             appCommitCallback (currentH hParam)
             return cmt
   --
@@ -245,15 +248,15 @@ instance MonadTrans (ConsensusM alg a) where
   lift = ConsensusM . fmap Success
 
 makeHeightParameters
-  :: (MonadDB m, MonadLogger m, Crypto alg, Serialise a, Show a)
+  :: (MonadDB m alg a, MonadLogger m, Crypto alg, Serialise a, Show a)
   => Configuration
   -> AppState m alg a
   -> AppChans m alg a
   -> m (HeightParameters (ConsensusM alg a m) alg a)
 makeHeightParameters Configuration{..} AppState{..} AppChans{..} = do
-  h            <- queryRO $ blockchainHeight appStorage
-  Just valSet  <- queryRO $ retrieveValidatorSet appStorage (succ h)
-  Just genesis <- queryRO $ retrieveBlock appStorage (Height 0)
+  h            <- queryRO $ blockchainHeight
+  Just valSet  <- queryRO $ retrieveValidatorSet (succ h)
+  Just genesis <- queryRO $ retrieveBlock        (Height 0)
   let proposerChoice (Round r) =
         let Height h' = h
             n         = validatorSetSize valSet
@@ -276,7 +279,7 @@ makeHeightParameters Configuration{..} AppState{..} AppChans{..} = do
         lift (retrievePropByID appPropStorage nH bid) >>= \case
           Nothing -> return UnseenProposal
           Just b  -> do
-            inconsistencies <- lift $ checkProposedBlock appStorage nH b
+            inconsistencies <- lift $ checkProposedBlock nH b
             blockOK         <- lift $ appValidationFun (succ h) (blockData b)
             case () of
               _| not (null inconsistencies) -> do
@@ -355,8 +358,7 @@ makeHeightParameters Configuration{..} AppState{..} AppChans{..} = do
     --
     , createProposal = \r commit -> lift $ do
         bData          <- appBlockGenerator (succ h)
-        Just lastBlock <- queryRO
-                        $ retrieveBlock appStorage =<< blockchainHeight appStorage
+        Just lastBlock <- queryRO $ retrieveBlock =<< blockchainHeight
         currentT       <- round <$> liftIO getPOSIXTime
         let block = Block
               { blockHeader     = Header

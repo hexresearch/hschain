@@ -11,12 +11,12 @@ import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Reader
 import Data.Int
-import Data.Monoid
 import Options.Applicative
 
 import Codec.Serialise      (serialise)
 import Control.Monad        (forever, void)
 import Data.ByteString.Lazy (toStrict)
+import Data.Proxy           (Proxy(..))
 import Katip.Core           (showLS, sl)
 import Network.Simple.TCP   (accept, listen, recv, closeSock)
 import Network.Socket       (SockAddr(..), PortNumber)
@@ -34,8 +34,7 @@ import Thundermint.Crypto.Ed25519            (Ed25519_SHA512)
 import Thundermint.Logger
 import Thundermint.Run
 import Thundermint.Store
-import Thundermint.Store.Internal.Query (Connection, openConnection)
-import Thundermint.Store.Internal.BlockDB
+import Thundermint.Store.Internal.Query (Connection, connectionRO)
 import Thundermint.Mock.Coin
 import Thundermint.Mock.KeyList
 import Thundermint.Mock.Types
@@ -119,14 +118,13 @@ interpretSpec
   -> ValidatorSet Ed25519_SHA512
   -> BlockchainNet SockAddr
   -> NodeSpec
-  -> LoggerT IO (Connection, LoggerT IO ())
+  -> LoggerT IO (Connection 'RO Alg [Tx], LoggerT IO ())
 interpretSpec Opts{..} validatorSet net NodeSpec{..} = do
   -- Allocate storage for node
-  conn   <- openConnection (maybe ":memory:" (prefix </>) nspecDbName)
-  runDBT conn $ queryRW $ initializeBlockhainTables genesisBlock validatorSet
-  hChain <- runDBT conn $ queryRO $ blockchainHeight storage
+  conn   <- openDatabase (maybe ":memory:" (prefix </>) nspecDbName)
+            Proxy genesisBlock validatorSet
   return
-    ( conn
+    ( connectionRO conn
     , runDBT conn $ do
         (bchState,logic) <- logicFromFold transitions
         -- Transactions generator
@@ -152,8 +150,6 @@ interpretSpec Opts{..} validatorSet net NodeSpec{..} = do
         runConcurrently (generator : acts)
     )
   where
-    storage :: BlockStorage Alg [Tx]
-    storage = blockStorage
     genesisBlock :: Block Alg [Tx]
     genesisBlock =  Block
       { blockHeader = Header

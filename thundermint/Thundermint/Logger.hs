@@ -1,10 +1,13 @@
 {-# LANGUAGE DeriveFunctor              #-}
 {-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE RecordWildCards            #-}
+{-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE TemplateHaskell            #-}
-{-# OPTIONS_GHC -fno-warn-orphans       #-}
+{-# LANGUAGE UndecidableInstances       #-}
 -- |
 -- Logger
 module Thundermint.Logger (
@@ -94,7 +97,11 @@ descendNamespace nm = localNamespace $ \(Namespace x) -> Namespace (x ++ [nm])
 newtype LoggerT m a = LoggerT (ReaderT (Namespace, LogEnv) m a)
   deriving ( Functor, Applicative, Monad
            , MonadIO, MonadThrow, MonadCatch, MonadMask, MonadTrans
-           , MonadFork, MonadTrace, MonadDB)
+           , MonadFork, MonadTrace)
+instance (MonadReadDB m alg a) => MonadReadDB (LoggerT m) alg a where
+  askConnectionRO = lift askConnectionRO
+instance (MonadDB m alg a) => MonadDB (LoggerT m) alg a where
+  askConnectionRW = lift askConnectionRW
 
 runLoggerT :: Namespace -> LogEnv -> LoggerT m a -> m a
 runLoggerT nm le (LoggerT m) = runReaderT m (nm,le)
@@ -114,7 +121,11 @@ instance MonadIO m => MonadLogger (LoggerT m) where
 newtype NoLogsT m a = NoLogsT { runNoLogsT :: m a }
   deriving ( Functor, Applicative, Monad
            , MonadIO, MonadThrow, MonadCatch, MonadMask
-           , MonadFork, MonadTrace, MonadDB)
+           , MonadFork, MonadTrace)
+instance (MonadReadDB m alg a) => MonadReadDB (NoLogsT m) alg a where
+  askConnectionRO = lift askConnectionRO
+instance (MonadDB m alg a) => MonadDB (NoLogsT m) alg a where
+  askConnectionRW = lift askConnectionRW
 
 instance MonadTrans NoLogsT where
   lift = NoLogsT

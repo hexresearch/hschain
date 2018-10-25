@@ -19,6 +19,7 @@ import Control.Monad.IO.Class
 import Control.Concurrent (threadDelay)
 import Control.Retry      (RetryPolicy, constantDelay, limitRetries, recovering)
 import Data.Monoid        ((<>))
+import Data.Proxy         (Proxy(..))
 import GHC.Generics       (Generic)
 
 import qualified Control.Concurrent.Async as Async
@@ -26,7 +27,6 @@ import qualified Control.Exception        as E
 import qualified Data.Map                 as Map
 import qualified Network.Socket           as Net
 
-import Thundermint.Blockchain.Interpretation
 import Thundermint.Blockchain.Internal.Engine.Types
 import Thundermint.Control
 import Thundermint.Crypto
@@ -37,8 +37,6 @@ import Thundermint.Run
 import Thundermint.Mock.KeyVal
 import Thundermint.P2P.Network
 import Thundermint.Store
-import Thundermint.Store.Internal.Query (openConnection)
-import Thundermint.Store.Internal.BlockDB (initializeBlockhainTables)
 import TM.RealNetwork
 
 testNetworkName :: String
@@ -107,18 +105,11 @@ createTestNetworkWithConfig cfg desc = do
     mkTestNode :: (MonadIO m, MonadMask m, MonadFork m) => MockNet TestAddr -> TestNetLinkDescription m -> m [m ()]
     mkTestNode net TestNetLinkDescription{..} = do
         let validatorSet = makeValidatorSetFromPriv testValidators
-        conn     <- openConnection ":memory:"
-        let storage = blockStorage :: BlockStorage Ed25519_SHA512 [(String,Int)]
+        conn <- openDatabase ":memory:" Proxy (genesisBlock validatorSet) validatorSet
         --
         let run = runTracerT ncCallback . runNoLogsT . runDBT conn
         fmap (map run) $ run $ do
-            queryRW $ initializeBlockhainTables (genesisBlock validatorSet) validatorSet
-            hChain    <- queryRO $ blockchainHeight storage
             (_,logic) <- logicFromFold transitions
-            -- FIXME: VERY ugly fixing of type
-            let asED :: NodeLogic n Ed25519_SHA512 a -> NodeLogic n Ed25519_SHA512 a
-                asED = id
-                _ = asED logic
             runNode cfg
               BlockchainNet
                 { bchNetwork          = createMockNode net testNetworkName (TestAddr ncFrom)
