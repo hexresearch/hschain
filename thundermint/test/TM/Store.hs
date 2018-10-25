@@ -13,6 +13,8 @@ import Data.Traversable (forM)
 import qualified Data.Aeson            as JSON
 import qualified Data.ByteString.Char8 as BC8
 
+import           Thundermint.Crypto.Ed25519
+import           Thundermint.Run
 import           Thundermint.Store
 import qualified Thundermint.Mock.KeyVal as KeyVal
 
@@ -37,5 +39,6 @@ runKeyVal maxH prefix file = do
         Left  e -> error e
       storageList <- KeyVal.executeSpec maxH prefix spec
       -- Check result against consistency invariants
-      checks <- forM storageList checkStorage
+      checks <- forM storageList $ \c ->
+        runDBT c (checkStorage (blockStorage :: BlockStorage Ed25519_SHA512 [(String,Int)]))
       assertEqual "failed consistency check" [] (concat checks)

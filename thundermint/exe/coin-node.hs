@@ -17,7 +17,6 @@ import Options.Applicative
 import Codec.Serialise      (serialise)
 import Control.Monad        (forever, void)
 import Data.ByteString.Lazy (toStrict)
-import Data.Maybe           (isJust)
 import Katip.Core           (showLS, sl)
 import Network.Simple.TCP   (accept, listen, recv, closeSock)
 import Network.Socket       (SockAddr(..), PortNumber)
@@ -35,7 +34,6 @@ import Thundermint.Crypto.Ed25519            (Ed25519_SHA512)
 import Thundermint.Logger
 import Thundermint.Run
 import Thundermint.Store
-import Thundermint.Store.STM
 import Thundermint.Store.Internal.Query (Connection, openConnection)
 import Thundermint.Store.Internal.BlockDB
 import Thundermint.Mock.Coin
@@ -130,29 +128,18 @@ interpretSpec Opts{..} validatorSet net NodeSpec{..} = do
   return
     ( conn
     , runDBT conn $ do
-        -- Initialize b
-        bchState <- newBChState transitions storage
-        _        <- stateAtH bchState (succ hChain)
-        -- Create mempool
-        let checkTx tx = do
-              st <- currentState bchState
-              return $ isJust $ processTx transitions (Height 1) tx st
-        mempool <- newMempool checkTx
-        cursor  <- getMempoolCursor mempool
-        --
+        (bchState,logic) <- logicFromFold transitions
+        -- Transactions generator
+        cursor  <- getMempoolCursor $ nodeMempool logic
         let generator = forever $ do
               st <- currentState bchState
               let (off,n)  = nspecWalletKeys
                   privKeys = take n $ drop off privateKeyList
               transferActions delay (publicKey <$> take netInitialKeys privateKeyList) privKeys
                 (void . pushTransaction cursor) st
-        --
         acts <- runNode defCfg net
           NodeDescription
-            { nodeBchState        = bchState
-            , nodeBlockChainLogic = transitions
-            , nodeMempool         = mempool
-            , nodeValidationKey   = nspecPrivKey
+            { nodeValidationKey   = nspecPrivKey
             , nodeCommitCallback  = \h -> do
                 -- Update state
                 st <- stateAtH bchState (succ h)
@@ -161,6 +148,7 @@ interpretSpec Opts{..} validatorSet net NodeSpec{..} = do
                   Just hM | h > Height hM -> throwM Abort
                   _                       -> return ()
             }
+          logic
         runConcurrently (generator : acts)
     )
   where

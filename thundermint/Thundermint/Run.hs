@@ -5,6 +5,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE RecordWildCards            #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
 -- |
 -- Helper function for running mock network of thundermint nodes
 module Thundermint.Run (
@@ -19,6 +20,8 @@ module Thundermint.Run (
     -- * New node code
   , Abort(..)
   , Topology(..)
+  , NodeLogic(..)
+  , logicFromFold
   , NodeDescription(..)
   , BlockchainNet(..)
   , runNode
@@ -44,6 +47,7 @@ import Thundermint.Mock.Types
 import Thundermint.P2P
 import Thundermint.P2P.Network
 import Thundermint.Store
+import Thundermint.Store.STM
 import qualified Thundermint.Store.Internal.Query as DB
 
 import Thundermint.Control (MonadFork)
@@ -69,18 +73,54 @@ instance MonadIO m => MonadDB (DBT m) where
 --
 ----------------------------------------------------------------
 
--- | Specification of node
-data NodeDescription m alg st a = NodeDescription
-  { nodeBlockChainLogic :: BlockFold st a
-    -- ^ Logic of blockchain
-  , nodeBchState        :: BChState m st
-    -- ^ Current state of blockchain
+data NodeLogic m alg a = NodeLogic
+  { nodeBlockValidation :: Height -> a -> m Bool
+    -- ^ Callback used for validation of blocks
+  , nodeCommitQuery     :: Height -> a -> Query 'RW ()
+    -- ^ Query for modifying user state.
+  , nodeBlockGenerator  :: Height -> m a
+    -- ^ Generator for a new block
   , nodeMempool         :: Mempool m alg (TX a)
     -- ^ Mempool of node
-  , nodeValidationKey   :: Maybe (PrivValidator alg)
+  }
+
+logicFromFold
+  :: forall m st alg a. (MonadDB m, MonadMask m, BlockData a, Ord (TX a), Crypto alg)
+  => BlockFold st a
+  -> m (BChState m st, NodeLogic m alg a)
+logicFromFold transitions@BlockFold{..} = do
+  -- Create blockchain state and rewind it
+  let storage = blockStorage :: BlockStorage alg a
+  hChain   <- queryRO $ blockchainHeight storage
+  bchState <- newBChState transitions storage
+  _        <- stateAtH bchState (succ hChain)
+  -- Create mempool
+  let checkTx tx = do
+        st <- currentState bchState
+        -- FIXME: We need real height here!
+        return $ isJust $ processTx (Height 1) tx st
+  mempool <- newMempool checkTx
+  --
+  return ( bchState
+         , NodeLogic { nodeBlockValidation = \h a -> do
+                         st <- stateAtH bchState h
+                         return $ isJust $ processBlock h a st
+                     , nodeCommitQuery     = \_ _ -> return ()
+                     , nodeBlockGenerator  = \h -> do
+                         st  <- stateAtH bchState h
+                         txs <- peekNTransactions mempool Nothing
+                         return $ transactionsToBlock h st txs
+                     , nodeMempool         = mempool
+                     }
+         )
+
+-- | Specification of node
+data NodeDescription m alg a = NodeDescription
+  { nodeValidationKey   :: Maybe (PrivValidator alg)
     -- ^ Private key of validator
   , nodeCommitCallback  :: Height -> m ()
-    -- ^ Callback which is called on each commit
+    -- ^ Callback called immediately after block was commit and user
+    --   state in database is updated
   }
 
 -- | Specification of network
@@ -96,9 +136,10 @@ runNode
      )
   => Configuration
   -> BlockchainNet addr
-  -> NodeDescription m alg st a
+  -> NodeDescription m alg a
+  -> NodeLogic m alg a
   -> m [m ()]
-runNode cfg BlockchainNet{..} NodeDescription{nodeBlockChainLogic=BlockFold{..}, ..} = do
+runNode cfg BlockchainNet{..} NodeDescription{..} NodeLogic{..} = do
   -- Create state of blockchain & Update it to current state of
   -- blockchain
   let nodeStorage = blockStorage
@@ -106,23 +147,15 @@ runNode cfg BlockchainNet{..} NodeDescription{nodeBlockChainLogic=BlockFold{..},
   Just valSet <- queryRO $ retrieveValidatorSet nodeStorage (succ hChain)
   -- Build application state of consensus algorithm
   let appSt = AppState
-        { appStorage     = nodeStorage
-          --
-        , appValidationFun = \h a -> do
-            st <- stateAtH nodeBchState h
-            return $ isJust $ processBlock h a st
-          --
-        , appBlockGenerator = \h -> do
-            st  <- stateAtH nodeBchState h
-            txs <- peekNTransactions nodeMempool Nothing
-            return $ transactionsToBlock h st txs
-          --
+        { appStorage        = nodeStorage
+        , appValidationFun  = nodeBlockValidation
+        , appBlockGenerator = nodeBlockGenerator
         , appCommitCallback = \h -> setNamespace "mempool" $ do
-            before <- mempoolStats nodeMempool
-            logger InfoS "Mempool before filtering" before
+            do before <- mempoolStats nodeMempool
+               logger InfoS "Mempool before filtering" before
             filterMempool nodeMempool
-            after  <- mempoolStats nodeMempool
-            logger InfoS "Mempool after filtering" after
+            do after <- mempoolStats nodeMempool
+               logger InfoS "Mempool after filtering" after
             nodeCommitCallback h
           --
         , appValidator        = nodeValidationKey
