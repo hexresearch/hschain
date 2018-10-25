@@ -34,14 +34,14 @@ data TraceEvents
     | TePeerRegistryChanged (Set String)
     deriving (Show, Ord, Eq)
 
-class MonadTrace m where
+class Monad m => MonadTrace m where
     trace :: TraceEvents -> m ()
 
 instance MonadTrace IO where
     trace _ = return ()
 
-instance (Monad m) => MonadTrace (ReaderT r m) where
-    trace _ = return ()
+instance (MonadTrace m) => MonadTrace (ReaderT r m) where
+    trace = lift . trace
 
 type Callback m = TraceEvents -> m ()
 
