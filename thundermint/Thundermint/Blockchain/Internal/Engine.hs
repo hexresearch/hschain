@@ -145,7 +145,9 @@ decideNewBlock config appSt@AppState{..} appCh@AppChans{..} lastCommt = do
             vset <- appNextValidatorSet (currentH hParam) (blockData b)
             logger InfoS "Actual commit"
               $ LogBlockInfo (currentH hParam) (blockData b)
-            queryRW (storeCommit vset cmt b) >>= \case
+            queryRW (do storeCommit vset cmt b
+                        appCommitQuery (currentH hParam) (blockData b)
+                    ) >>= \case
               Nothing -> error "Cannot write commit into database"
               Just () -> return ()
             advanceToHeight appPropStorage . succ =<< queryRO blockchainHeight
