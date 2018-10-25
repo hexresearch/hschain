@@ -1,13 +1,17 @@
-{-# LANGUAGE DataKinds         #-}
-{-# LANGUAGE DeriveGeneric     #-}
-{-# LANGUAGE FlexibleContexts  #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards   #-}
+{-# LANGUAGE DataKinds                  #-}
+{-# LANGUAGE DeriveFunctor              #-}
+{-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE FlexibleContexts           #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE RecordWildCards            #-}
 -- |
 -- Helper function for running mock network of thundermint nodes
 module Thundermint.Run (
+    DBT(..)
+  , runDBT  
     -- * Validators
-    makePrivateValidators
+  , makePrivateValidators
   , makeValidatorSetFromPriv
     -- * Network connectivity
   , connectAll2All
@@ -23,6 +27,8 @@ module Thundermint.Run (
   ) where
 
 import Control.Monad.Catch
+import Control.Monad.IO.Class
+import Control.Monad.Trans.Reader
 import Codec.Serialise (Serialise)
 import Data.Maybe      (isJust)
 
@@ -38,8 +44,26 @@ import Thundermint.Mock.Types
 import Thundermint.P2P
 import Thundermint.P2P.Network
 import Thundermint.Store
+import qualified Thundermint.Store.Internal.Query as DB
 
 import Thundermint.Control (MonadFork)
+
+----------------------------------------------------------------
+--
+----------------------------------------------------------------
+
+newtype DBT m a = DBT (ReaderT DB.Connection m a)
+  deriving ( Functor, Applicative, Monad
+           , MonadIO, MonadThrow, MonadCatch, MonadMask
+           , MonadFork, MonadLogger, MonadTrace
+           )
+
+runDBT :: Monad m => DB.Connection -> DBT m a -> m a
+runDBT c (DBT m) = runReaderT m c
+
+instance MonadIO m => MonadDB (DBT m) where
+  askConnection = DBT ask
+
 
 ----------------------------------------------------------------
 --
@@ -49,8 +73,6 @@ import Thundermint.Control (MonadFork)
 data NodeDescription m alg st a = NodeDescription
   { nodeBlockChainLogic :: BlockFold st a
     -- ^ Logic of blockchain
-  , nodeStorage         :: BlockStorage 'RW m alg a
-    -- ^ Storage for commited blocks
   , nodeBchState        :: BChState m st
     -- ^ Current state of blockchain
   , nodeMempool         :: Mempool m alg (TX a)
@@ -69,7 +91,7 @@ data BlockchainNet addr = BlockchainNet
   }
 
 runNode
-  :: ( MonadMask m, MonadFork m, MonadLogger m, MonadTrace m
+  :: ( MonadDB m, MonadMask m, MonadFork m, MonadLogger m, MonadTrace m
      , Crypto alg, Ord addr, Show addr, Serialise addr, Show a, BlockData a
      )
   => Configuration
@@ -79,8 +101,9 @@ runNode
 runNode cfg BlockchainNet{..} NodeDescription{nodeBlockChainLogic=BlockFold{..}, ..} = do
   -- Create state of blockchain & Update it to current state of
   -- blockchain
-  hChain      <- blockchainHeight     nodeStorage
-  Just valSet <- retrieveValidatorSet nodeStorage (succ hChain)
+  let nodeStorage = blockStorage
+  hChain      <- queryRO $ blockchainHeight     nodeStorage
+  Just valSet <- queryRO $ retrieveValidatorSet nodeStorage (succ hChain)
   -- Build application state of consensus algorithm
   let appSt = AppState
         { appStorage     = nodeStorage
@@ -110,7 +133,7 @@ runNode cfg BlockchainNet{..} NodeDescription{nodeBlockChainLogic=BlockFold{..},
   return
     [ id $ setNamespace "net"
          $ startPeerDispatcher cfg bchNetwork bchLocalAddr bchInitialPeers appCh
-                               (makeReadOnly   nodeStorage)
+                               nodeStorage
                                nodeMempool
     , id $ setNamespace "consensus"
          $ runApplication cfg appSt appCh

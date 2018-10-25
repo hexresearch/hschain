@@ -27,6 +27,7 @@ module Thundermint.Store (
     -- * Block storage
   , Writable
   , BlockStorage(..)
+  , blockStorage
     -- * In memory store for proposals
   , ProposalStorage(..)
   , hoistPropStorageRW
@@ -53,6 +54,8 @@ import Control.Monad             ((<=<), foldM)
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Except
+import Control.Monad.Trans.Reader
+import Control.Monad.Trans.Maybe
 import Control.Monad.Trans.Writer
 import Data.Foldable             (forM_)
 import Data.Maybe                (isNothing, maybe)
@@ -78,6 +81,12 @@ import Thundermint.Store.SQL
 -- | Reader monad containing connection in the context
 class MonadIO m => MonadDB m where
   askConnection :: m Connection
+
+instance MonadDB m => MonadDB (ReaderT r m) where
+  askConnection = lift askConnection
+
+instance MonadDB m => MonadDB (MaybeT m) where
+  askConnection = lift askConnection
 
 -- | Execute query.
 queryRO :: (MonadDB m, RunQueryRO q) => q 'RO a -> m a

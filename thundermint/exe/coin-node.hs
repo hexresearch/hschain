@@ -34,6 +34,10 @@ import Thundermint.Crypto.Containers
 import Thundermint.Crypto.Ed25519            (Ed25519_SHA512)
 import Thundermint.Logger
 import Thundermint.Run
+import Thundermint.Store
+import Thundermint.Store.STM
+import Thundermint.Store.Internal.Query (Connection, openConnection)
+import Thundermint.Store.Internal.BlockDB
 import Thundermint.Mock.Coin
 import Thundermint.Mock.KeyList
 import Thundermint.Mock.Types
@@ -41,9 +45,6 @@ import Thundermint.P2P.Consts
 import Thundermint.P2P.Instances ()
 import Thundermint.P2P.Network               ( getLocalAddress, realNetwork
                                              , getCredentialFromBuffer, realNetworkTls)
-import Thundermint.Store
-import Thundermint.Store.STM
-import Thundermint.Store.SQLite
 
 import qualified Control.Exception     as E
 import qualified Data.Aeson            as JSON
@@ -120,19 +121,17 @@ interpretSpec
   -> ValidatorSet Ed25519_SHA512
   -> BlockchainNet SockAddr
   -> NodeSpec
-  -> LoggerT IO (BlockStorage 'RO IO Alg [Tx], LoggerT IO ())
+  -> LoggerT IO (Connection, LoggerT IO ())
 interpretSpec Opts{..} validatorSet net NodeSpec{..} = do
   -- Allocate storage for node
-  storage <- liftIO
-           $ newSQLiteBlockStorage (maybe ":memory:" (prefix </>) nspecDbName)
-                                   genesisBlock validatorSet
-  hChain  <- liftIO $ blockchainHeight storage
+  conn   <- openConnection (maybe ":memory:" (prefix </>) nspecDbName)
+  runDBT conn $ queryRW $ initializeBlockhainTables genesisBlock validatorSet
+  hChain <- runDBT conn $ queryRO $ blockchainHeight storage
   return
-    ( makeReadOnly storage
-    , do
+    ( conn
+    , runDBT conn $ do
         -- Initialize b
-        bchState <- newBChState transitions
-                  $ makeReadOnly (hoistBlockStorageRW liftIO storage)
+        bchState <- newBChState transitions storage
         _        <- stateAtH bchState (succ hChain)
         -- Create mempool
         let checkTx tx = do
@@ -150,8 +149,7 @@ interpretSpec Opts{..} validatorSet net NodeSpec{..} = do
         --
         acts <- runNode defCfg net
           NodeDescription
-            { nodeStorage         = hoistBlockStorageRW liftIO storage
-            , nodeBchState        = bchState
+            { nodeBchState        = bchState
             , nodeBlockChainLogic = transitions
             , nodeMempool         = mempool
             , nodeValidationKey   = nspecPrivKey
@@ -166,7 +164,10 @@ interpretSpec Opts{..} validatorSet net NodeSpec{..} = do
         runConcurrently (generator : acts)
     )
   where
-    genesisBlock = Block
+    storage :: BlockStorage Alg [Tx]
+    storage = blockStorage
+    genesisBlock :: Block Alg [Tx]
+    genesisBlock =  Block
       { blockHeader = Header
           { headerChainID        = "MONIES"
           , headerHeight         = Height 0
