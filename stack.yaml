@@ -47,6 +47,9 @@ extra-deps:
     - base58-bytestring-0.1.0
     - katip-elasticsearch-0.5.1.0
     - bloodhound-0.16.0.0
+    - bytestring-arbitrary-0.1.2
+    - hedgehog-quickcheck-0.1
+    
 #allow-newer: true
 
 # Override default flag values for local packages and extra-deps
