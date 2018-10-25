@@ -37,7 +37,8 @@ import Thundermint.Run
 import Thundermint.Mock.KeyVal
 import Thundermint.P2P.Network
 import Thundermint.Store
-import Thundermint.Store.SQLite
+import Thundermint.Store.Internal.Query (openConnection)
+import Thundermint.Store.Internal.BlockDB (initializeBlockhainTables)
 import TM.RealNetwork
 
 testNetworkName :: String
@@ -106,13 +107,18 @@ createTestNetworkWithConfig cfg desc = do
     mkTestNode :: (MonadIO m, MonadMask m, MonadFork m) => MockNet TestAddr -> TestNetLinkDescription m -> m [m ()]
     mkTestNode net TestNetLinkDescription{..} = do
         let validatorSet = makeValidatorSetFromPriv testValidators
-        blockStorage <- liftIO $ newSQLiteBlockStorage ":memory:" (genesisBlock validatorSet) validatorSet
-        hChain       <- liftIO $ blockchainHeight blockStorage
-        let run = runTracerT ncCallback . runNoLogsT
+        conn     <- openConnection ":memory:"
+        let storage = blockStorage :: BlockStorage Ed25519_SHA512 [(String,Int)]
+        --
+        let run = runTracerT ncCallback . runNoLogsT . runDBT conn
         fmap (map run) $ run $ do
-            bchState     <- newBChState transitions
-                          $ makeReadOnly (hoistBlockStorageRW liftIO blockStorage)
-            _            <- stateAtH bchState (succ hChain)
+            queryRW $ initializeBlockhainTables (genesisBlock validatorSet) validatorSet
+            hChain    <- queryRO $ blockchainHeight storage
+            (_,logic) <- logicFromFold transitions
+            -- FIXME: VERY ugly fixing of type
+            let asED :: NodeLogic n Ed25519_SHA512 a -> NodeLogic n Ed25519_SHA512 a
+                asED = id
+                _ = asED logic
             runNode cfg
               BlockchainNet
                 { bchNetwork          = createMockNode net testNetworkName (TestAddr ncFrom)
@@ -120,14 +126,10 @@ createTestNetworkWithConfig cfg desc = do
                 , bchInitialPeers     = map ((,testNetworkName) . TestAddr) ncTo
                 }
               NodeDescription
-                { nodeStorage         = hoistBlockStorageRW liftIO blockStorage
-                , nodeBlockChainLogic = transitions
+                { nodeCommitCallback  = \_ -> return ()
                 , nodeValidationKey   = Nothing
-                , nodeCommitCallback  = \_ -> return ()
-                , nodeBchState        = bchState
-                , nodeMempool         = nullMempoolAny
                 }
-
+              logic
 
 -- | Simple test to ensure that mock network works at all
 delayedWrite :: (addr, NetworkAPI addr)

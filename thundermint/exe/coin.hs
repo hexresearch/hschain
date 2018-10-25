@@ -113,16 +113,9 @@ interpretSpec maxH prefix delay NetSpec{..} = do
     return
       ( conn
       , runDBT conn $ withLogEnv "TM" "DEV" loggers $ \logenv -> runLoggerT "general" logenv $ do
-          --
-          bchState <- newBChState transitions storage
-          _        <- stateAtH bchState (succ hChain)
-          -- Create mempool
-          let checkTx tx = do
-                st <- currentState bchState
-                return $ isJust $ processTx transitions (Height 1) tx st
-          mempool <- newMempool checkTx
-          cursor  <- getMempoolCursor mempool
-          --
+          (bchState,logic) <- logicFromFold transitions
+          -- Transactions generator
+          cursor  <- getMempoolCursor $ nodeMempool logic
           let generator = forever $ do
                 st <- currentState bchState
                 let (off,n)  = nspecWalletKeys
@@ -137,15 +130,13 @@ interpretSpec maxH prefix delay NetSpec{..} = do
               , bchInitialPeers     = map (,"50000") $ connections netAddresses addr
               }
             NodeDescription
-              { nodeBchState        = bchState
-              , nodeBlockChainLogic = transitions
-              , nodeMempool         = mempool
-              , nodeValidationKey   = nspecPrivKey
+              { nodeValidationKey   = nspecPrivKey
               , nodeCommitCallback  = \case
                   h | Just hM <- maxH
                     , h > Height hM -> throwM Abort
                     | otherwise     -> return ()
               }
+            logic
           runConcurrently (generator : acts)
       )
   where    
