@@ -97,25 +97,23 @@ getPeerHeight p = do FullStep h _ _ <- getPeerStep p
 -- | Mutable reference to state of peer. It's safe to mutate
 --   concurrently
 data PeerStateObj m alg a = PeerStateObj
-  (BlockStorage          alg a)
   (ProposalStorage 'RO m alg a)
   (MVar (PeerState alg a))
 
 
 -- | Create new peer state with default state
 newPeerStateObj
-  :: MonadIO m
-  => BlockStorage          alg a
-  -> ProposalStorage 'RO m alg a
+  :: MonadReadDB m alg a
+  => ProposalStorage 'RO m alg a
   -> m (PeerStateObj m alg a)
-newPeerStateObj storage prop = do
+newPeerStateObj prop = do
   var <- liftIO $ newMVar Unknown
-  return $ PeerStateObj storage prop var
+  return $ PeerStateObj prop var
 
 -- | Obtain current state of peer
 getPeerState :: (MonadMask m, MonadIO m)
              => PeerStateObj m alg a -> m (PeerState alg a)
-getPeerState (PeerStateObj _ _ var)
+getPeerState (PeerStateObj _ var)
   = withMVarM var return
 
 ----------------------------------------------------------------
@@ -123,11 +121,11 @@ getPeerState (PeerStateObj _ _ var)
 -- | Local state increased to height H. Update our opinion about
 --   peer's state accordingly
 advanceOurHeight
-  :: (MonadDB m, MonadMask m)
+  :: (MonadReadDB m alg a, MonadMask m, Crypto alg, Serialise a)
   => PeerStateObj m alg a
   -> Height
   -> m ()
-advanceOurHeight (PeerStateObj BlockStorage{..} _ var) ourH =
+advanceOurHeight (PeerStateObj _ var) ourH =
   -- Since we (possibly) changed our height following may happen:
   modifyMVarM_ var $ \peer -> case peer of
     -- Lagging peer stays lagging
@@ -167,11 +165,11 @@ advanceOurHeight (PeerStateObj BlockStorage{..} _ var) ourH =
         -> return peer
     Unknown   -> return Unknown
 
-advancePeer :: (MonadDB m, MonadMask m)
+advancePeer :: (MonadReadDB m alg a, MonadMask m, Crypto alg, Serialise a)
             => PeerStateObj m alg a
             -> FullStep
             -> m ()
-advancePeer (PeerStateObj BlockStorage{..} _ var) step@(FullStep h _ _)
+advancePeer (PeerStateObj _ var) step@(FullStep h _ _)
   = modifyMVarM_ var modify
   where
     modify peer
@@ -223,7 +221,7 @@ addProposal :: (MonadIO m, MonadMask m)
             -> Height
             -> Round
             -> m ()
-addProposal (PeerStateObj _ _ var) hProp rProp =
+addProposal (PeerStateObj _ var) hProp rProp =
   modifyMVarM_ var $ \peer -> case peer of
     Lagging p
       | FullStep h _ _ <- lagPeerStep p
@@ -260,7 +258,7 @@ addPrevoteWrk :: (MonadIO m, MonadMask m)
               => PeerStateObj m alg a
               -> Height -> Round -> (ValidatorSet alg -> Maybe (ValidatorIdx alg))
               -> m ()
-addPrevoteWrk (PeerStateObj _ _ var) h r getI =
+addPrevoteWrk (PeerStateObj _ var) h r getI =
   modifyMVarM_ var $ \peer -> case peer of
     -- We send only precommits to lagging peers
     Lagging _ -> return peer
@@ -305,7 +303,7 @@ addPrecommitWrk :: (MonadIO m, MonadMask m)
                 => PeerStateObj m alg a
                 -> Height -> Round -> (ValidatorSet alg -> Maybe (ValidatorIdx alg))
                 -> m ()
-addPrecommitWrk (PeerStateObj _ _ var) h r getI =
+addPrecommitWrk (PeerStateObj _ var) h r getI =
   modifyMVarM_ var $ \peer -> case peer of
     --
     Lagging p
@@ -341,7 +339,7 @@ addBlock :: (MonadIO m, MonadMask m, Crypto alg, Serialise a)
          => PeerStateObj m alg a
          -> Block alg a
          -> m ()
-addBlock (PeerStateObj _ _ var) b =
+addBlock (PeerStateObj _ var) b =
   modifyMVarM_ var $ \peer -> case peer of
     Lagging p
       | bid == lagPeerBlockID p -> return $ Lagging p { lagPeerHasBlock = True }
@@ -357,7 +355,7 @@ addBlockHR :: (MonadIO m, MonadMask m)
            -> Height
            -> Round
            -> m ()
-addBlockHR (PeerStateObj _ ProposalStorage{..} var) h r =
+addBlockHR (PeerStateObj ProposalStorage{..} var) h r =
   modifyMVarM_ var $ \peer -> case peer of
     Lagging p
       | FullStep hP _ _ <- lagPeerStep p

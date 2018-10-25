@@ -1,4 +1,3 @@
-
 import Control.Monad
 import Data.Monoid         ((<>))
 import Options.Applicative
@@ -6,7 +5,6 @@ import Options.Applicative
 import qualified Data.Aeson            as JSON
 import qualified Data.ByteString.Char8 as BC8
 
-import Thundermint.Crypto.Ed25519
 import Thundermint.Mock.KeyVal
 import Thundermint.Store
 import Thundermint.Run
@@ -29,9 +27,7 @@ main
         Left  e -> error e
       storageList <- executeSpec maxH prefix spec
       -- Check result against consistency invariants
-      let storage :: BlockStorage Ed25519_SHA512 [(String,Int)]
-          storage = blockStorage
-      checks <- forM storageList $ \c -> runDBT c $ checkStorage storage
+      checks <- forM storageList $ \c -> runDBT c checkStorage
       unless (null (concat checks)) $ error $ "Consistency problem: " ++ (show checks)
     ----------------------------------------
     parser :: Parser (IO ())

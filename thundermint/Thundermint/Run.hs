@@ -1,3 +1,5 @@
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE DataKinds                  #-}
 {-# LANGUAGE DeriveFunctor              #-}
 {-# LANGUAGE DeriveGeneric              #-}
@@ -56,17 +58,19 @@ import Thundermint.Control (MonadFork)
 --
 ----------------------------------------------------------------
 
-newtype DBT m a = DBT (ReaderT DB.Connection m a)
+newtype DBT rw alg a m x = DBT (ReaderT (DB.Connection rw alg a) m x)
   deriving ( Functor, Applicative, Monad
            , MonadIO, MonadThrow, MonadCatch, MonadMask
            , MonadFork, MonadLogger, MonadTrace
            )
 
-runDBT :: Monad m => DB.Connection -> DBT m a -> m a
+runDBT :: Monad m => DB.Connection rw alg a -> DBT rw alg a m x -> m x
 runDBT c (DBT m) = runReaderT m c
 
-instance MonadIO m => MonadDB (DBT m) where
-  askConnection = DBT ask
+instance MonadIO m => MonadReadDB (DBT rw alg a m) alg a where
+  askConnectionRO = DB.connectionRO <$> DBT ask
+instance MonadIO m => MonadDB (DBT 'RW alg a m) alg a where
+  askConnectionRW = DBT ask
 
 
 ----------------------------------------------------------------
@@ -76,7 +80,7 @@ instance MonadIO m => MonadDB (DBT m) where
 data NodeLogic m alg a = NodeLogic
   { nodeBlockValidation :: Height -> a -> m Bool
     -- ^ Callback used for validation of blocks
-  , nodeCommitQuery     :: Height -> a -> Query 'RW ()
+  , nodeCommitQuery     :: Height -> a -> Query 'RW alg a ()
     -- ^ Query for modifying user state.
   , nodeBlockGenerator  :: Height -> m a
     -- ^ Generator for a new block
@@ -85,14 +89,12 @@ data NodeLogic m alg a = NodeLogic
   }
 
 logicFromFold
-  :: forall m st alg a. (MonadDB m, MonadMask m, BlockData a, Ord (TX a), Crypto alg)
+  :: (MonadDB m alg a, MonadMask m, BlockData a, Ord (TX a), Crypto alg)
   => BlockFold st a
   -> m (BChState m st, NodeLogic m alg a)
 logicFromFold transitions@BlockFold{..} = do
-  -- Create blockchain state and rewind it
-  let storage = blockStorage :: BlockStorage alg a
-  hChain   <- queryRO $ blockchainHeight storage
-  bchState <- newBChState transitions storage
+  hChain   <- queryRO blockchainHeight
+  bchState <- newBChState transitions
   _        <- stateAtH bchState (succ hChain)
   -- Create mempool
   let checkTx tx = do
@@ -131,7 +133,7 @@ data BlockchainNet addr = BlockchainNet
   }
 
 runNode
-  :: ( MonadDB m, MonadMask m, MonadFork m, MonadLogger m, MonadTrace m
+  :: ( MonadDB m alg a, MonadMask m, MonadFork m, MonadLogger m, MonadTrace m
      , Crypto alg, Ord addr, Show addr, Serialise addr, Show a, BlockData a
      )
   => Configuration
@@ -142,13 +144,11 @@ runNode
 runNode cfg BlockchainNet{..} NodeDescription{..} NodeLogic{..} = do
   -- Create state of blockchain & Update it to current state of
   -- blockchain
-  let nodeStorage = blockStorage
-  hChain      <- queryRO $ blockchainHeight     nodeStorage
-  Just valSet <- queryRO $ retrieveValidatorSet nodeStorage (succ hChain)
+  hChain      <- queryRO $ blockchainHeight
+  Just valSet <- queryRO $ retrieveValidatorSet (succ hChain)
   -- Build application state of consensus algorithm
   let appSt = AppState
-        { appStorage        = nodeStorage
-        , appValidationFun  = nodeBlockValidation
+        { appValidationFun  = nodeBlockValidation
         , appBlockGenerator = nodeBlockGenerator
         , appCommitCallback = \h -> setNamespace "mempool" $ do
             do before <- mempoolStats nodeMempool
@@ -166,7 +166,6 @@ runNode cfg BlockchainNet{..} NodeDescription{..} NodeLogic{..} = do
   return
     [ id $ setNamespace "net"
          $ startPeerDispatcher cfg bchNetwork bchLocalAddr bchInitialPeers appCh
-                               nodeStorage
                                nodeMempool
     , id $ setNamespace "consensus"
          $ runApplication cfg appSt appCh

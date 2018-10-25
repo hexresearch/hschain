@@ -6,15 +6,12 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections       #-}
 {-# LANGUAGE TypeFamilies        #-}
-
 import Control.Concurrent
 import Control.Monad
 import Control.Monad.Catch
 import Control.Monad.IO.Class
-import Data.Foldable
 import Data.Int
-import Data.Maybe             (isJust)
-import Data.Monoid
+import Data.Typeable          (Proxy(..))
 import Options.Applicative
 
 import Codec.Serialise      (serialise)
@@ -39,9 +36,7 @@ import Thundermint.Mock.KeyList
 import Thundermint.Mock.Types
 import Thundermint.P2P.Network hiding (Connection)
 import Thundermint.Store
-import Thundermint.Store.Internal.Query (Connection,openConnection)
-import Thundermint.Store.Internal.BlockDB
-import Thundermint.Store.STM
+import Thundermint.Store.Internal.Query (Connection,connectionRO)
 
 
 ----------------------------------------------------------------
@@ -98,20 +93,20 @@ findInputs tgt = go 0
 interpretSpec
    :: Maybe Int64 -> FilePath -> Int
    -> NetSpec NodeSpec
-   -> IO [(Connection, IO ())]
+   -> IO [(Connection 'RO Alg [Tx], IO ())]
 interpretSpec maxH prefix delay NetSpec{..} = do
   net   <- newMockNet
   -- Connection map
   forM (Map.toList netAddresses) $ \(addr, NodeSpec{..}) -> do
     -- Allocate storage for node
-    conn   <- openConnection $ maybe ":memory:" (prefix </>) nspecDbName
-    runDBT conn $ queryRW $ initializeBlockhainTables genesisBlock validatorSet
-    hChain <- runDBT conn $ queryRO $ blockchainHeight storage
+    conn   <- openDatabase
+      (maybe ":memory:" (prefix </>) nspecDbName)
+      Proxy genesisBlock validatorSet
     -- Prepare logging
     let loggers = [ makeScribe s { scribe'path = fmap (prefix </>) (scribe'path s) }
                   | s <- nspecLogFile ]
     return
-      ( conn
+      ( connectionRO conn
       , runDBT conn $ withLogEnv "TM" "DEV" loggers $ \logenv -> runLoggerT "general" logenv $ do
           (bchState,logic) <- logicFromFold transitions
           -- Transactions generator
@@ -146,8 +141,6 @@ interpretSpec maxH prefix delay NetSpec{..} = do
       All2All -> connectAll2All
     validatorSet = makeValidatorSetFromPriv [ pk | Just pk <- nspecPrivKey <$> netNodeList ]
     --
-    storage :: BlockStorage Alg [Tx]
-    storage = blockStorage
     genesisBlock :: Block Alg [Tx]
     genesisBlock =  Block
       { blockHeader = Header
@@ -166,7 +159,7 @@ interpretSpec maxH prefix delay NetSpec{..} = do
 executeNodeSpec
   :: Maybe Int64 -> FilePath -> Int
   -> NetSpec NodeSpec
-  -> IO [Connection]
+  -> IO [Connection 'RO Alg [Tx]]
 executeNodeSpec maxH prefix delay spec = do
   actions <- interpretSpec maxH prefix delay spec
   runConcurrently (snd <$> actions) `catch` (\Abort -> return ())
@@ -187,9 +180,6 @@ main
     <> progDesc ""
     )
   where
-    storage :: BlockStorage Alg [Tx]
-    storage = blockStorage
-    --
     work maxH prefix delay doValidate file = do
       blob <- BC8.readFile file
       spec <- case JSON.eitherDecodeStrict blob of
@@ -204,12 +194,12 @@ main
             allEqual []     = error "Empty list impossible!"
             allEqual (x:xs) = all (x==) xs
 
-        forM_ storageList $ \c -> runDBT c $ checkStorage storage
+        forM_ storageList $ \c -> runDBT c checkStorage
 
         forM_ heights $ \h -> do
           -- Check that all blocks match!
           blocks <- forM storageList $ \c -> do
-            mb <- runDBT c $ queryRO $ retrieveBlock storage h
+            mb <- runDBT c $ queryRO $ retrieveBlock h
             case mb of
               Nothing -> error ("Missing block at " <> show h)
               Just b  -> return b
@@ -217,7 +207,7 @@ main
             error ("Block mismatch!" <> show h <> "\n" <> show blocks)
           -- Check that validator set match
           vals <- forM storageList $ \c -> do
-            mv <- runDBT c $ queryRO $ retrieveValidatorSet storage h
+            mv <- runDBT c $ queryRO $ retrieveValidatorSet h
             case (h,mv) of
               (Height 0, Nothing) -> return Nothing
               (_       , Just v ) -> return (Just v)

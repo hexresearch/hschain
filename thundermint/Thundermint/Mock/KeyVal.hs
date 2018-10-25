@@ -12,9 +12,9 @@ module Thundermint.Mock.KeyVal (
 
 import Control.Monad
 import Control.Monad.Catch
-import Control.Monad.IO.Class
 import Data.Int
 import Data.List
+import Data.Typeable   (Proxy(..))
 
 import Data.Map        (Map)
 import Data.Maybe      (isJust)
@@ -39,8 +39,7 @@ import Thundermint.Mock.Types
 import Thundermint.P2P
 import Thundermint.Run
 import Thundermint.Store
-import Thundermint.Store.Internal.Query (Connection,openConnection)
-import Thundermint.Store.Internal.BlockDB
+import Thundermint.Store.Internal.Query (Connection,connectionRO)
 
 
 
@@ -88,7 +87,7 @@ interpretSpec
   :: Maybe Int64                -- ^ Maximum height
   -> FilePath
   -> NetSpec NodeSpec
-  -> IO [(Connection, IO ())]
+  -> IO [(Connection 'RO Ed25519_SHA512 [(String,Int)], IO ())]
 interpretSpec maxH prefix NetSpec{..} = do
   net <- newMockNet
   forM (Map.toList netAddresses) $ \(addr, NodeSpec{..}) -> do
@@ -97,20 +96,20 @@ interpretSpec maxH prefix NetSpec{..} = do
                   | s <- nspecLogFile
                   ]
     -- Create storage
-    conn     <- openConnection $ (maybe ":memory:" (prefix </>) nspecDbName)
+    conn     <- openDatabase
+      (maybe ":memory:" (prefix </>) nspecDbName)
+      Proxy
+      (genesisBlock validatorSet)
+      validatorSet
     runDBT conn $ do
-      let storage = blockStorage
-      queryRW $ initializeBlockhainTables (genesisBlock validatorSet) validatorSet
-      hChain <- queryRO $ blockchainHeight storage
-      return ( conn
+      hChain <- queryRO blockchainHeight
+      return ( connectionRO conn
              , runDBT conn $ withLogEnv "TM" "DEV" loggers $ \logenv -> runLoggerT "general" logenv $ do
                  -- Blockchain state
-                 bchState <- newBChState transitions storage
+                 bchState <- newBChState transitions
                  _        <- stateAtH bchState (succ hChain)
                  let appState = AppState
-                       { appStorage        = storage
-                       --
-                       , appValidationFun  = \h a -> do
+                       { appValidationFun  = \h a -> do
                            st <- stateAtH bchState h
                            return $ isJust $ processBlock transitions h a st
                        --
@@ -138,7 +137,6 @@ interpretSpec maxH prefix NetSpec{..} = do
                          (addr,"50000")
                          (map (,"50000") $ connections netAddresses addr)
                          appCh
-                         storage
                          nullMempoolAny
                    , setNamespace "consensus"
                      $ runApplication defCfg appState appCh
@@ -156,7 +154,7 @@ executeSpec
   :: Maybe Int64                -- ^ Maximum height
   -> FilePath
   -> NetSpec NodeSpec
-  -> IO [Connection]
+  -> IO [Connection 'RO Ed25519_SHA512 [(String,Int)]]
 executeSpec maxH prefix spec = do
   actions <- interpretSpec maxH prefix spec
   runConcurrently (snd <$> actions) `catch` (\Abort -> return ())

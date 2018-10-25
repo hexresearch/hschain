@@ -17,16 +17,6 @@ module Thundermint.Store.SQL (
   , openConnection
   , closeConnection
   , withConnection
-    -- ** Encoding for single field in table
-  , FieldEncoding(..)
-  , encodingCBOR
-    -- * SQL wrappers
-  , Access(..)
-  , Query
-  , QueryRO
-  , toQueryRO
-  , RunQueryRO(..)
-  , RunQueryRW(..)
     -- * Persistent data
   , PersistentData(..)
   , Persistent(..)
@@ -39,6 +29,9 @@ module Thundermint.Store.SQL (
   , runBlockUpdate
   , EphemeralQ
   , runEphemeralQ
+    --
+  , persistentTableName
+  , persistentCreateTable
   ) where
 
 import Control.Applicative
@@ -66,21 +59,17 @@ import Thundermint.Store.Internal.Query
 ----------------------------------------------------------------
 
 -- | Type class for data structures which are persisted to database.
-class PersistentData a where
+class PersistentData t where
   -- | Names of underlying tables
-  tableName   :: a -> Text
+  tableName   :: t -> Text
   -- | Create underlying tables if they do not exist.
-  createTable :: a -> Query 'RW ()
+  createTable :: t -> Query 'RW alg a ()
+  -- |
+  wrap        :: t -> Persistent t
 
 -- | Wrapper for carrying class dictionary with data type
 data Persistent a where
   PersistentPMap :: PMap k v -> Persistent (PMap k v)
-
-instance PersistentData (Persistent a) where
-  tableName = \case
-    PersistentPMap p -> tableName p
-  createTable = \case
-    PersistentPMap p -> createTable p
 
 
 -- | Implementation of specific operations for persistent data
@@ -90,7 +79,7 @@ class (Monad q) => ExecutorRO q where
   lookupKey  :: (Ord k)
              => (forall f. Lens' (Dct q f) (f (PMap k v))) -> k -> q (Maybe v)
 
--- | Read-write operations 
+-- | Read-write operations
 class (ExecutorRO q) => ExecutorRW q where
   storeKey :: (Ord k, Eq v)
            => (forall f. Lens' (Dct q f) (f (PMap k v))) -> k -> v -> q ()
@@ -122,7 +111,7 @@ instance PersistentData (PMap k v) where
     --
     --       tag if flag telling whether row is insertion or
     --       deletion
-
+  wrap = PersistentPMap
 
 
 ----------------------------------------------------------------
@@ -133,14 +122,14 @@ instance PersistentData (PMap k v) where
 --   database. Note that it's possible to replay transaction over
 --   already existing data in which case thy will be accepted iff they
 --   would result in same changes as recorded.
-newtype EffectfulQ (rw :: Access) dct a = EffectfulQ
-  { unEffectfulQ :: StateT (dct Versioned) (Query rw) a }
+newtype EffectfulQ (rw :: Access) alg a dct x = EffectfulQ
+  { _unEffectfulQ :: StateT (dct Versioned) (Query rw alg a) x }
   deriving (Functor, Applicative, Monad)
 
 data Versioned a = Versioned !Version !(Persistent a)
 
 versionedV :: Lens' (Versioned a) Version
-versionedV = lens (\(Versioned v _) -> v) (\(Versioned _ d) v -> Versioned v d) 
+versionedV = lens (\(Versioned v _) -> v) (\(Versioned _ d) v -> Versioned v d)
 
 
 -- | Update user's state for single block. If we trying to execute
@@ -148,27 +137,27 @@ versionedV = lens (\(Versioned v _) -> v) (\(Versioned _ d) v -> Versioned v d)
 --   produce exactly same results as already commited.
 runBlockUpdate
   :: (FloatOut dct)
-  => Height                -- ^ Height of commited block
-  -> dct Persistent        -- ^ Description of user state
-  -> EffectfulQ 'RW dct a  -- ^ Action to execute
-  -> Query 'RW a
+  => Height                      -- ^ Height of commited block
+  -> dct Persistent              -- ^ Description of user state
+  -> EffectfulQ 'RW alg a dct x  -- ^ Action to execute
+  -> Query 'RW alg a x
 runBlockUpdate h dct (EffectfulQ effect) = do
   -- 1. Find out version for state at given height.
   ver <- floatOut $ fmapF (Compose . versionForHeight h) dct
   -- 2. Execute query.
-  (a,ver') <- runStateT effect ver 
+  (a,ver') <- runStateT effect ver
   -- 3. Write down new checkpoint
   traverseEff (storeCheckpoint h) ver'
   return a
 
 
-instance ExecutorRO (EffectfulQ rw dct) where
-  type Dct (EffectfulQ rw dct) = dct
+instance ExecutorRO (EffectfulQ rw alg a dct) where
+  type Dct (EffectfulQ rw alg a dct) = dct
   lookupKey getter k = EffectfulQ $ do
     Versioned ver (PersistentPMap pmap) <- use getter
     lift $ lookupKeyPMap pmap ver k
 
-instance (rw ~ 'RW) => ExecutorRW (EffectfulQ rw dct) where
+instance (rw ~ 'RW) => ExecutorRW (EffectfulQ rw alg a dct) where
   storeKey getter k v = EffectfulQ $ do
     Versioned ver (PersistentPMap pmap@PMap{pmapTableName=tbl, ..}) <- use getter
     lift (checkPMapInsert pmap ver k v) >>= \case
@@ -179,7 +168,7 @@ instance (rw ~ 'RW) => ExecutorRW (EffectfulQ rw dct) where
         , encodeField pmapEncodingV v
         )
       UpdateNoop -> return ()
-      UpdateBad  -> rollback
+      UpdateBad  -> rollbackEff
     getter . versionedV %= bumpVersion
   --
   dropKey getter k = EffectfulQ $ do
@@ -191,12 +180,12 @@ instance (rw ~ 'RW) => ExecutorRW (EffectfulQ rw dct) where
         , encodeField pmapEncodingK k
         )
       UpdateNoop -> return ()
-      UpdateBad  -> rollback
+      UpdateBad  -> rollbackEff
     getter . versionedV %= bumpVersion
 
 
 --
-lookupKeyPMap :: PMap k v -> Version -> k -> Query rw (Maybe v)
+lookupKeyPMap :: PMap k v -> Version -> k -> Query rw alg a (Maybe v)
 lookupKeyPMap _ New _ = return Nothing
 lookupKeyPMap PMap{pmapTableName=tbl, ..} (Commited ver) k = do
   case pmapEncodingV of
@@ -210,7 +199,7 @@ lookupKeyPMap PMap{pmapTableName=tbl, ..} (Commited ver) k = do
         [(_, RowInsert),(_, RowDrop)] -> return Nothing
         _                             -> error "PMap: inconsistent DB"
 
-checkPMapInsert :: (Eq v) => PMap k v -> Version -> k -> v -> Query rw UpdateCheck
+checkPMapInsert :: (Eq v) => PMap k v -> Version -> k -> v -> Query rw alg a UpdateCheck
 checkPMapInsert pmap version k v = do
   tblHead <- tableHead pmap
   case tblHead `compare` version of
@@ -221,7 +210,7 @@ checkPMapInsert pmap version k v = do
     -- identical to recorded
     GT -> checkPMapInsertReplay pmap version k v
 
-checkPMapInsertReal :: PMap k v -> k -> Query rw UpdateCheck
+checkPMapInsertReal :: PMap k v -> k -> Query rw alg a UpdateCheck
 checkPMapInsertReal PMap{pmapTableName=tbl, ..} k = do
   r <- query ("SELECT tag FROM "<>tbl<>" WHERE key = ?")
              (Only $ encodeField pmapEncodingK k)
@@ -229,7 +218,7 @@ checkPMapInsertReal PMap{pmapTableName=tbl, ..} k = do
     [] -> return UpdateOK
     _  -> return UpdateBad
 
-checkPMapInsertReplay :: (Eq v) => PMap k v -> Version -> k -> v -> Query rw UpdateCheck
+checkPMapInsertReplay :: (Eq v) => PMap k v -> Version -> k -> v -> Query rw alg a UpdateCheck
 checkPMapInsertReplay PMap{pmapTableName=tbl, ..} version k v = do
   case pmapEncodingV of
     FieldEncoding _ from -> do
@@ -242,7 +231,7 @@ checkPMapInsertReplay PMap{pmapTableName=tbl, ..} version k v = do
         Just (RowInsert, v') | v == from v' -> return UpdateNoop
         _                                   -> return UpdateBad
 
-checkPMapDrop :: PMap k v -> Version -> k -> Query rw UpdateCheck
+checkPMapDrop :: PMap k v -> Version -> k -> Query rw alg a UpdateCheck
 checkPMapDrop pmap version k = do
   tblHead <- tableHead pmap
   case tblHead `compare` version of
@@ -250,7 +239,7 @@ checkPMapDrop pmap version k = do
     EQ -> checkPMapDropReal pmap k
     GT -> checkPMapDropReplay pmap version k
 
-checkPMapDropReal :: PMap k v -> k -> Query rw UpdateCheck
+checkPMapDropReal :: PMap k v -> k -> Query rw alg a UpdateCheck
 checkPMapDropReal PMap{pmapTableName=tbl, ..} k = do
   r <- query ("SELECT tag FROM "<>tbl<>" WHERE key = ?")
              (Only $ encodeField pmapEncodingK k)
@@ -258,7 +247,7 @@ checkPMapDropReal PMap{pmapTableName=tbl, ..} k = do
     [Only RowInsert] -> return UpdateOK
     _                -> return UpdateBad
 
-checkPMapDropReplay :: PMap k v -> Version -> k -> Query rw UpdateCheck
+checkPMapDropReplay :: PMap k v -> Version -> k -> Query rw alg a UpdateCheck
 checkPMapDropReplay PMap{pmapTableName=tbl, ..} version k = do
   r <- query1 ("SELECT tag FROM "<>tbl<>" WHERE key = ? AND ver = ?")
               ( encodeField pmapEncodingK k
@@ -269,6 +258,10 @@ checkPMapDropReplay PMap{pmapTableName=tbl, ..} version k = do
     Just (Only RowDrop) -> return UpdateNoop
     _                   -> return UpdateBad
 
+rollbackEff :: StateT (dct Versioned) (Query rw alg a) x
+rollbackEff = fail "ROLLBACK"
+
+
 
 ----------------------------------------------------------------
 -- Ephemeral updates
@@ -278,8 +271,8 @@ checkPMapDropReplay PMap{pmapTableName=tbl, ..} version k = do
 --   to database. Semantics is subtly different. Execution always
 --   starts from latest user state and there's support for
 --   backtracking implemented using 'Alternative'
-newtype EphemeralQ dct a = EphemeralQ
-  { unEphemeral :: StateT (dct Overlay) (MaybeT (Query 'RO)) a }
+newtype EphemeralQ alg a dct x = EphemeralQ
+  { _unEphemeral :: StateT (dct Overlay) (MaybeT (Query 'RO alg a)) x }
   deriving (Functor, Applicative, Monad, Alternative)
 
 data Overlay a where
@@ -294,9 +287,9 @@ overlayPMap = lens (\(OverlayPMap _ o) -> o) (\(OverlayPMap p _) o -> OverlayPMa
 --   corresponding to latest commited block.
 runEphemeralQ
   :: (FloatOut dct)
-  => dct Persistent    -- ^ Description of user state
-  -> EphemeralQ dct a  -- ^ Action to execute
-  -> Query 'RO a
+  => dct Persistent          -- ^ Description of user state
+  -> EphemeralQ alg a dct x  -- ^ Action to execute
+  -> Query 'RO  alg a x
 runEphemeralQ dct (EphemeralQ effect) = do
   -- 1. Find out version for state at given height.
   let overlay = fmapF makeOverlay dct
@@ -306,36 +299,38 @@ runEphemeralQ dct (EphemeralQ effect) = do
 
 
 
-instance ExecutorRO (EphemeralQ dct) where
-  type Dct (EphemeralQ dct) = dct
+instance ExecutorRO (EphemeralQ alg a dct) where
+  type Dct (EphemeralQ alg a dct) = dct
   lookupKey getter k = EphemeralQ $ do
     OverlayPMap pmap overlay <- use getter
     case k `Map.lookup` overlay of
       Just r  -> return r
       Nothing -> lift $ lift $ lookupKeyPMap pmap (Commited maxBound) k
 
-instance ExecutorRW (EphemeralQ dct) where
+instance ExecutorRW (EphemeralQ alg a dct) where
   storeKey getter k v = EphemeralQ $ do
     OverlayPMap pmap overlay <- use getter
     -- If we inserted/removed key insert is not valid anyway
-    when (k `Map.member` overlay) rollback
+    when (k `Map.member` overlay) rollbackEph
     -- Check for insert conflicts in DB
     lift (lift (checkPMapInsertReal pmap k)) >>= \case
       UpdateOK   -> getter . overlayPMap %= Map.insert k (Just v)
-      UpdateBad  -> rollback
+      UpdateBad  -> rollbackEph
       UpdateNoop -> error "Impossible"
   --
   dropKey getter k = EphemeralQ $ do
     OverlayPMap pmap overlay <- use getter
     case k `Map.lookup` overlay of
-      Just Nothing  -> rollback
+      Just Nothing  -> rollbackEph
       Just (Just _) -> getter . overlayPMap %= Map.insert k Nothing
       Nothing       -> lift (lift (checkPMapDropReal pmap k)) >>= \case
         UpdateOK   -> getter . overlayPMap %= Map.insert k Nothing
-        UpdateBad  -> rollback
+        UpdateBad  -> rollbackEph
         UpdateNoop -> error "Impossible"
 
 
+rollbackEph :: StateT (dct Overlay) (MaybeT (Query 'RO alg a)) x
+rollbackEph = fail "ROLLBACK"
 
 
 ----------------------------------------------------------------
@@ -343,7 +338,7 @@ instance ExecutorRW (EphemeralQ dct) where
 ----------------------------------------------------------------
 
 
-tableHead :: PersistentData a => a -> Query rw Version
+tableHead :: PersistentData p => p -> Query rw alg a Version
 tableHead a =
   query ("SELECT MAX(id) FROM "<>tbl) () >>= \case
     [Only Nothing ] -> return New
@@ -355,35 +350,44 @@ tableHead a =
 
 versionForHeight
   :: Height
-  -> Persistent a
-  -> Query rw (Versioned a)
+  -> Persistent x
+  -> Query rw alg a (Versioned x)
 versionForHeight (Height 0) p = return $ Versioned New p
 versionForHeight (Height h) p = do
   r <- query1 "SELECT id FROM thm_checkpoints WHERE height = ? AND tableName = ?"
-              (h-1, tableName p)
+              (h-1, persistentTableName p)
   case r of
-    Nothing              -> rollback
+    -- FIXME: Is calling error correct here???
+    Nothing              -> error "Unknown version"
     Just (Only Nothing)  -> return $ Versioned New p
     Just (Only (Just i)) -> return $ Versioned (Commited i) p
-  
+
 
 storeCheckpoint
   :: Height
-  -> Versioned a
-  -> Query 'RW ()
+  -> Versioned x
+  -> Query 'RW alg a ()
 storeCheckpoint (Height h) (Versioned ver p) = do
   r <- query1 "SELECT id FROM thm_checkpoints WHERE height = ? AND tableName = ?"
-              (h, tableName p)
+              (h, persistentTableName p)
   case r of
     Nothing       -> execute "INSERT INTO thm_checkpoints VALUES (?,?,?)"
-                             (tableName p, h, v)
+                             (persistentTableName p, h, v)
     Just (Only v')
       | v /= v'   -> rollback
       | otherwise -> rollback
   where
     v = case ver of New        -> Nothing
                     Commited i -> Just i
-    
+
 makeOverlay :: Persistent a -> Overlay a
 makeOverlay = \case
   PersistentPMap p -> OverlayPMap p Map.empty
+
+persistentTableName :: Persistent p -> Text
+persistentTableName = \case
+  PersistentPMap x -> tableName x
+
+persistentCreateTable :: Persistent p -> Query 'RW alg a ()
+persistentCreateTable = \case
+  PersistentPMap x -> createTable x

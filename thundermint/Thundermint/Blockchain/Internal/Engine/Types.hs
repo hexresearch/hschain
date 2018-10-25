@@ -63,9 +63,7 @@ instance JSON.ToJSON   Configuration
 
 -- | Full state of application.
 data AppState m alg a = AppState
-  { appStorage          :: BlockStorage alg a
-    -- ^ Persistent storage for blockchain and related data
-  , appBlockGenerator   :: Height -> m a
+  { appBlockGenerator   :: Height -> m a
     -- ^ Generate fresh block for proposal. It's called each time we
     --   need to create new block for proposal
   , appValidator        :: Maybe (PrivValidator alg)

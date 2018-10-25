@@ -1,12 +1,13 @@
-{-# LANGUAGE DataKinds        #-}
-{-# LANGUAGE DeriveGeneric    #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE KindSignatures   #-}
-{-# LANGUAGE LambdaCase       #-}
-{-# LANGUAGE RankNTypes       #-}
-{-# LANGUAGE RecordWildCards  #-}
-{-# LANGUAGE TemplateHaskell  #-}
-{-# LANGUAGE TypeFamilies     #-}
+{-# LANGUAGE DataKinds         #-}
+{-# LANGUAGE DeriveGeneric     #-}
+{-# LANGUAGE FlexibleContexts  #-}
+{-# LANGUAGE KindSignatures    #-}
+{-# LANGUAGE LambdaCase        #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RankNTypes        #-}
+{-# LANGUAGE RecordWildCards   #-}
+{-# LANGUAGE TemplateHaskell   #-}
+{-# LANGUAGE TypeFamilies      #-}
 -- |
 -- Abstract API for storing of blockchain. Storage works as follows:
 --
@@ -19,16 +20,22 @@
 module Thundermint.Store (
     -- * Monadic API for DB access
     Access(..)
+  , MonadReadDB(..)
   , MonadDB(..)
   , Query
-  , QueryRO
   , queryRO
   , queryRW
+  , openDatabase
     -- * Block storage
-  , Writable
-  , BlockStorage(..)
-  , blockStorage
+  , blockchainHeight
+  , retrieveBlock
+  , retrieveBlockID
+  , retrieveCommit
+  , retrieveLocalCommit
+  , retrieveCommitRound
+  , retrieveValidatorSet
     -- * In memory store for proposals
+  , Writable
   , ProposalStorage(..)
   , hoistPropStorageRW
   , hoistPropStorageRO
@@ -54,22 +61,22 @@ import Control.Monad             ((<=<), foldM)
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Except
-import Control.Monad.Trans.Reader
-import Control.Monad.Trans.Maybe
 import Control.Monad.Trans.Writer
 import Data.Foldable             (forM_)
 import Data.Maybe                (isNothing, maybe)
+import Data.Text                 (isPrefixOf)
+import Data.List                 (nub)
 import GHC.Generics              (Generic)
 
 import qualified Data.Aeson      as JSON
 import qualified Data.Aeson.TH   as JSON
 import qualified Data.ByteString as BS
 
-import Thundermint.Blockchain.Internal.Message
 import Thundermint.Blockchain.Types
+import Thundermint.Control                (FloatOut(..),foldF)
 import Thundermint.Crypto
 import Thundermint.Crypto.Containers
-import Thundermint.Store.Internal.Query   (Access(..), Connection, Query, QueryRO)
+import Thundermint.Store.Internal.Query
 import Thundermint.Store.Internal.BlockDB
 import Thundermint.Store.SQL
 
@@ -78,44 +85,59 @@ import Thundermint.Store.SQL
 -- Monadic API for DB access
 ----------------------------------------------------------------
 
--- | Reader monad containing connection in the context
-class MonadIO m => MonadDB m where
-  askConnection :: m Connection
-
-instance MonadDB m => MonadDB (ReaderT r m) where
-  askConnection = lift askConnection
-
-instance MonadDB m => MonadDB (MaybeT m) where
-  askConnection = lift askConnection
+-- | Open database and initialize tables.
+openDatabase
+  :: (MonadIO m, FloatOut dct, Crypto alg, Serialise a, Eq a, Eq (PublicKey alg))
+  => FilePath
+  -- ^ Path to the database
+  -> dct Persistent
+  -- ^ Users state. If no state is stored in the
+  -> Block alg a
+  -- ^ Genesis block
+  -> ValidatorSet alg
+  -- ^ Initial validators
+  -> m (Connection 'RW alg a)
+openDatabase path dct genesis vals = do
+  -- 1. Check that all tables has distinct names
+  let names = foldF ((:[]) . persistentTableName) dct
+  case () of
+    _| names /= nub names               -> error "Duplicate table names"
+     | any (=="wal")              names -> error "'wal' is not acceptable table name"
+     | any (=="blockchain")       names -> error "'blockchain' is not acceptable table name"
+     | any (=="commit")           names -> error "'commit' is not acceptable table name"
+     | any (=="validators")       names -> error "'validators' is not acceptable table name"
+     | any (isPrefixOf "thm_")    names -> error "'thm_' is not acceptable prefix for table"
+     | any (isPrefixOf "sqlite_") names -> error "'sqlite_' is not acceptable prefix for table"
+     | otherwise                        -> return ()
+  -- 2. Create tables for block
+  c <- openConnection path
+  r <- runQueryRW c $ do
+    initializeBlockhainTables genesis vals
+    traverseEff persistentCreateTable dct
+  case r of
+    -- FIXME: Resource leak!
+    Nothing -> error "Cannot initialize tables!"
+    Just () -> return c
 
 -- | Execute query.
-queryRO :: (MonadDB m, RunQueryRO q) => q 'RO a -> m a
-queryRO q = flip runQueryRO q =<< askConnection
+queryRO :: (MonadReadDB m alg a) => Query 'RO alg a x -> m x
+queryRO q = flip runQueryRO q =<< askConnectionRO
 
 -- | Execute query. @Nothing@ means that query violated some invariant
 --   and was rolled back.
-queryRW :: (MonadDB m, RunQueryRW q) => q 'RW a -> m (Maybe a)
-queryRW q = flip runQueryRW q =<< askConnection
-
-
-
-
-----------------------------------------------------------------
--- Abstract API for storing data
-----------------------------------------------------------------
-
-
-
-
-type family Writable (rw :: Access) a where
-  Writable 'RO a = ()
-  Writable 'RW a = a
+queryRW :: (MonadDB m alg a) => Query 'RW alg a x -> m (Maybe x)
+queryRW q = flip runQueryRW q =<< askConnectionRW
 
 
 
 ----------------------------------------------------------------
 -- Storage for consensus
 ----------------------------------------------------------------
+
+type family Writable (rw :: Access) a where
+  Writable 'RO a = ()
+  Writable 'RW a = a
+
 
 -- | Storage for proposed blocks that are not commited yet.
 data ProposalStorage rw m alg a = ProposalStorage
@@ -302,28 +324,27 @@ data BlockchainInconsistency
 
 -- | check storage against all consistency invariants
 checkStorage
-  :: (MonadDB m, Crypto alg, Serialise a)
-  => BlockStorage alg a
-  -> m [BlockchainInconsistency]
-checkStorage storage = queryRO $ execWriterT $ do
-  maxH         <- lift $ blockchainHeight storage
-  Just genesis <- lift $ retrieveBlock storage (Height 0)
+  :: (MonadReadDB m alg a, Crypto alg, Serialise a)
+  => m [BlockchainInconsistency]
+checkStorage = queryRO $ execWriterT $ do
+  maxH         <- lift $ blockchainHeight
+  Just genesis <- lift $ retrieveBlock (Height 0)
   let genesisChainId = headerChainID $ blockHeader genesis
   --
   forM_ [Height 0 .. maxH] $ \case
     Height 0 -> genesisBlockInvariant genesis
     h        -> checkRequire $ do
       -- Block, ID and validator set must be present
-      block  <- require [MissingBlock h]        $ retrieveBlock        storage h
-      bid    <- require [MissingBlock h]        $ retrieveBlockID      storage h
-      vset   <- require [MissingValidatorSet h] $ retrieveValidatorSet storage h
-      commit <- require [MissingLocalCommit h]  $ retrieveLocalCommit  storage h
+      block  <- require [MissingBlock h]        $ retrieveBlock        h
+      bid    <- require [MissingBlock h]        $ retrieveBlockID      h
+      vset   <- require [MissingValidatorSet h] $ retrieveValidatorSet h
+      commit <- require [MissingLocalCommit h]  $ retrieveLocalCommit  h
       -- Data for previous step.
       --
       -- NOTE: We don't show any errors for missing BID for previous
       --       block since we detected when checking for previous height
-      mprevVset <- lift $ lift $ retrieveValidatorSet storage (pred h)
-      prevBID   <- require [] $ retrieveBlockID storage (pred h)
+      mprevVset <- lift $ lift $ retrieveValidatorSet (pred h)
+      prevBID   <- require [] $ retrieveBlockID (pred h)
       --
       lift $ blockInvariant genesisChainId h prevBID (mprevVset,vset) block
       lift $ commitInvariant (InvalidLocalCommit h)
@@ -333,16 +354,15 @@ checkStorage storage = queryRO $ execWriterT $ do
 -- | Check that block proposed at given height is correct in sense all
 --   blockchain invariants hold
 checkProposedBlock
-  :: (MonadDB m, Crypto alg, Serialise a)
-  => BlockStorage alg a
-  -> Height
+  :: (MonadReadDB m alg a, Crypto alg, Serialise a)
+  => Height
   -> Block alg a
   -> m [BlockchainInconsistency]
-checkProposedBlock storage h block = queryRO $ do
-  Just genesis <- retrieveBlock        storage (Height 0)
-  Just prevBID <- retrieveBlockID      storage (pred h)
-  Just vset    <- retrieveValidatorSet storage  h
-  mprevVset    <- retrieveValidatorSet storage (pred h)
+checkProposedBlock h block = queryRO $ do
+  Just genesis <- retrieveBlock        (Height 0)
+  Just prevBID <- retrieveBlockID      (pred h)
+  Just vset    <- retrieveValidatorSet  h
+  mprevVset    <- retrieveValidatorSet (pred h)
   execWriterT $ blockInvariant
     (headerChainID $ blockHeader genesis) h prevBID (mprevVset,vset) block
 
