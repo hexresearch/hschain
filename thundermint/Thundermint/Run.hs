@@ -150,6 +150,7 @@ runNode cfg BlockchainNet{..} NodeDescription{..} NodeLogic{..} = do
   let appSt = AppState
         { appValidationFun  = nodeBlockValidation
         , appBlockGenerator = nodeBlockGenerator
+        , appCommitQuery    = nodeCommitQuery
         , appCommitCallback = \h -> setNamespace "mempool" $ do
             do before <- mempoolStats nodeMempool
                logger InfoS "Mempool before filtering" before

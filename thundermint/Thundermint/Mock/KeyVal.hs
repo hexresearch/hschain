@@ -125,6 +125,7 @@ interpretSpec maxH prefix NetSpec{..} = do
                            h | Just h' <- maxH
                              , h > Height h'   -> throwM Abort
                              | otherwise       -> return ()
+                       , appCommitQuery      = \_ _ -> return ()
                        , appValidator        = nspecPrivKey
                        , appNextValidatorSet = \_ _ -> return validatorSet
                        }

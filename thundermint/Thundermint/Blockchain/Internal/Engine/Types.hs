@@ -72,6 +72,9 @@ data AppState m alg a = AppState
     -- ^ Function for validation of proposed block data.
   , appNextValidatorSet :: Height -> a -> m (ValidatorSet alg)
     -- ^ Obtain validator set for next block.
+  , appCommitQuery      :: Height -> a -> Query 'RW alg a ()
+    -- ^ Database query called after block commit in the same
+    --   transaction
   , appCommitCallback   :: Height -> m ()
     -- ^ Function which is called after each commit.
   }
