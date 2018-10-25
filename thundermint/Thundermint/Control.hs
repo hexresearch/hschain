@@ -7,6 +7,7 @@ module Thundermint.Control (
     -- *
     FunctorF(..)
   , FloatOut(..)
+  , foldF
   , traverseF_
     -- * 
   , MonadFork(..)
@@ -39,6 +40,7 @@ import Control.Exception   (AsyncException, Exception(..), SomeException)
 import Control.Monad.Catch (MonadMask, MonadThrow, bracket, mask, onException, throwM, try)
 import Data.Functor.Compose
 import Data.Functor.Identity
+import Data.Typeable         (Proxy(..))
 
 import qualified Control.Concurrent as Conc
 
@@ -60,9 +62,24 @@ class FunctorF k => FloatOut k where
   traverseEff :: Applicative f => (forall a. g a -> f ()) -> k g -> f ()
   traverseEff f = void . floatOut . fmapF (Compose . fmap Const . f)
 
+foldF :: (Monoid m, FloatOut k) => (forall a. f a -> m) -> k f -> m
+foldF f = getConst . traverseEff (Const . f)
 
 traverseF_ :: (FloatOut k, Applicative f) => (forall a. g a -> f a) -> k g -> f ()
 traverseF_ f = floatEffect . fmapF f
+
+
+instance FunctorF Proxy where
+  fmapF _ Proxy = Proxy
+
+instance FloatOut Proxy where
+  floatOut      Proxy = pure Proxy
+  floatEffect   Proxy = pure ()
+  traverseEff _ Proxy = pure ()
+
+----------------------------------------------------------------
+--
+----------------------------------------------------------------
 
 -- | Type class for monads which could be forked
 class MonadIO m => MonadFork m where
