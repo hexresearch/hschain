@@ -24,6 +24,7 @@ module Thundermint.Run (
   , Topology(..)
   , NodeLogic(..)
   , logicFromFold
+  , logicFromPersistent
   , NodeDescription(..)
   , BlockchainNet(..)
   , runNode
@@ -41,6 +42,7 @@ import Thundermint.Blockchain.Internal.Engine
 import Thundermint.Blockchain.Interpretation
 import Thundermint.Blockchain.Internal.Engine.Types
 import Thundermint.Blockchain.Types
+import Thundermint.Control
 import Thundermint.Crypto
 import Thundermint.Debug.Trace
 import Thundermint.Logger
@@ -49,6 +51,7 @@ import Thundermint.Mock.Types
 import Thundermint.P2P
 import Thundermint.P2P.Network
 import Thundermint.Store
+import Thundermint.Store.SQL
 import Thundermint.Store.STM
 import qualified Thundermint.Store.Internal.Query as DB
 
@@ -115,6 +118,36 @@ logicFromFold transitions@BlockFold{..} = do
                      , nodeMempool         = mempool
                      }
          )
+
+logicFromPersistent
+  :: (MonadDB m alg a, MonadMask m, BlockData a, Ord (TX a), Crypto alg, FloatOut dct)
+  => PersistentState dct alg a
+  -> m (NodeLogic m alg a)
+logicFromPersistent PersistentState{..} = do
+  -- Create mempool
+  let checkTx tx = do
+        -- FIXME: we need real height here
+        r <- queryRO $ runEphemeralQ persistedData (processTxDB (Height 1) tx)
+        return $! isJust r
+  mempool <- newMempool checkTx
+  --
+  return NodeLogic
+    { nodeBlockValidation = \h a -> do
+        r <- queryRO $ runEphemeralQ persistedData (processBlockDB h a)
+        return $! isJust r
+    , nodeCommitQuery     = \h a -> do
+        runBlockUpdate h persistedData (processBlockDB h a)
+    , nodeBlockGenerator  = \h -> do
+        txs <- peekNTransactions mempool Nothing
+        r   <- queryRO $ runEphemeralQ persistedData (transactionsToBlockDB h txs)
+        case r of
+          -- FIXME: This should not happen!
+          Nothing -> error "Cannot generate block!"
+          Just a  -> return a
+    , nodeMempool         = mempool
+    }
+
+
 
 -- | Specification of node
 data NodeDescription m alg a = NodeDescription

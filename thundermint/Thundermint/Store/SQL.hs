@@ -289,13 +289,10 @@ runEphemeralQ
   :: (FloatOut dct)
   => dct Persistent          -- ^ Description of user state
   -> EphemeralQ alg a dct x  -- ^ Action to execute
-  -> Query 'RO  alg a x
+  -> Query 'RO  alg a (Maybe x)
 runEphemeralQ dct (EphemeralQ effect) = do
-  -- 1. Find out version for state at given height.
   let overlay = fmapF makeOverlay dct
-  -- 2. Execute query.
-  Just a <- runMaybeT $ evalStateT effect overlay
-  return a
+  runMaybeT $ evalStateT effect overlay
 
 
 

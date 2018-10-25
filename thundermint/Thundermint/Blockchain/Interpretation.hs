@@ -1,13 +1,17 @@
 {-# LANGUAGE DataKinds       #-}
-{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE RankNTypes      #-}
+{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE TypeFamilies    #-}
 -- |
 -- Encoding of application-specific logic for blockchain
 module Thundermint.Blockchain.Interpretation (
+    -- * Pure state
     BlockFold(..)
   , BChState(..)
   , newBChState
   , hoistBChState
+    -- * DB persisted state
+  , PersistentState(..)
   ) where
 
 import Codec.Serialise (Serialise)
@@ -17,6 +21,7 @@ import Control.Monad.IO.Class
 
 import Thundermint.Control
 import Thundermint.Store
+import Thundermint.Store.SQL
 import Thundermint.Blockchain.Types
 
 
@@ -92,3 +97,15 @@ hoistBChState :: (forall a . m a -> n a) -> BChState m s -> BChState n s
 hoistBChState f BChState{..} = BChState
   { currentState = f currentState
   , stateAtH     = f . stateAtH }
+
+
+----------------------------------------------------------------
+-- DB persisted state
+----------------------------------------------------------------
+
+data PersistentState dct alg a = PersistentState
+  { processTxDB           :: Height -> TX a -> EphemeralQ alg a dct ()
+  , processBlockDB        :: forall q. (ExecutorRW q, Dct q ~ dct) => Height -> a -> q () 
+  , transactionsToBlockDB :: Height -> [TX a] -> EphemeralQ alg a dct a
+  , persistedData         :: dct Persistent
+  }
