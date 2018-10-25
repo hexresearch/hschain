@@ -63,7 +63,7 @@ instance JSON.ToJSON   Configuration
 
 -- | Full state of application.
 data AppState m alg a = AppState
-  { appStorage          :: BlockStorage 'RW m alg a
+  { appStorage          :: BlockStorage alg a
     -- ^ Persistent storage for blockchain and related data
   , appBlockGenerator   :: Height -> m a
     -- ^ Generate fresh block for proposal. It's called each time we
@@ -80,8 +80,7 @@ data AppState m alg a = AppState
 
 hoistAppState :: (forall x. m x -> n x) -> AppState m alg a -> AppState n alg a
 hoistAppState fun AppState{..} = AppState
-  { appStorage          = hoistBlockStorageRW fun appStorage
-  , appBlockGenerator   = fun . appBlockGenerator
+  { appBlockGenerator   = fun . appBlockGenerator
   , appValidationFun    = \h a -> fun $ appValidationFun h a
   , appCommitCallback   = fun . appCommitCallback
   , appNextValidatorSet = \h a -> fun $ appNextValidatorSet h a

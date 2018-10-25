@@ -36,28 +36,20 @@ module Thundermint.Store.SQL (
   , ExecutorRW(..)
     -- ** Implementations
   , EffectfulQ
+  , runBlockUpdate
   , EphemeralQ
+  , runEphemeralQ
   ) where
 
-import Codec.Serialise (Serialise,serialise,deserialiseOrFail)
 import Control.Applicative
 import Control.Monad
-import Control.Monad.Catch
-import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
-import Control.Monad.Trans.Reader
 import Control.Monad.Trans.Maybe
 import Control.Monad.Trans.State
-import Data.Typeable
 import Data.Text (Text)
-import Data.IORef
-import Data.Int
 import Data.Functor.Compose
 import           Data.Map.Strict   (Map)
 import qualified Data.Map.Strict as Map
-import qualified Database.SQLite.Simple as SQL
-import qualified Database.SQLite.Simple.ToField as SQL
-import qualified Database.SQLite.Simple.FromField as SQL
 import           Database.SQLite.Simple   (Only(..))
 import Lens.Micro
 import Lens.Micro.Mtl
@@ -118,8 +110,7 @@ data PMap k v = PMap
 
 instance PersistentData (PMap k v) where
   tableName = pmapTableName
-  createTable PMap{pmapTableName=tbl} = Query $ lift $ ReaderT $ \conn -> do
-  SQL.execute_ conn $ SQL.Query $
+  createTable PMap{pmapTableName=tbl} = execute_ $
     "CREATE TABLE IF NOT EXISTS "<>tbl<>
     "( ver INTEGER PRIMARY KEY, \
     \  tag INTEGER, \
@@ -199,6 +190,8 @@ instance (rw ~ 'RW) => ExecutorRW (EffectfulQ rw dct) where
         ( RowDrop
         , encodeField pmapEncodingK k
         )
+      UpdateNoop -> return ()
+      UpdateBad  -> rollback
     getter . versionedV %= bumpVersion
 
 
@@ -218,20 +211,18 @@ lookupKeyPMap PMap{pmapTableName=tbl, ..} (Commited ver) k = do
         _                             -> error "PMap: inconsistent DB"
 
 checkPMapInsert :: (Eq v) => PMap k v -> Version -> k -> v -> Query rw UpdateCheck
-checkPMapInsert pmap@PMap{pmapTableName=tbl, ..} version k v = do
-  case pmapEncodingV of
-    FieldEncoding _ from -> do
-      tblHead <- tableHead pmap
-      case tblHead `compare` version of
-        LT -> error "We trying to update from point that not reached"
-        -- We updating HEAD and will make real write
-        EQ -> checkPMapInsertReal pmap k
-        -- We doing replay. We need to check that update will be
-        -- identical to recorded
-        GT -> checkPMapInsertReplay pmap version k v
+checkPMapInsert pmap version k v = do
+  tblHead <- tableHead pmap
+  case tblHead `compare` version of
+    LT -> error "We trying to update from point that not reached"
+    -- We updating HEAD and will make real write
+    EQ -> checkPMapInsertReal pmap k
+    -- We doing replay. We need to check that update will be
+    -- identical to recorded
+    GT -> checkPMapInsertReplay pmap version k v
 
 checkPMapInsertReal :: PMap k v -> k -> Query rw UpdateCheck
-checkPMapInsertReal pmap@PMap{pmapTableName=tbl, ..} k = do
+checkPMapInsertReal PMap{pmapTableName=tbl, ..} k = do
   r <- query ("SELECT tag FROM "<>tbl<>" WHERE key = ?")
              (Only $ encodeField pmapEncodingK k)
   case r :: [Only Row] of
@@ -239,7 +230,7 @@ checkPMapInsertReal pmap@PMap{pmapTableName=tbl, ..} k = do
     _  -> return UpdateBad
 
 checkPMapInsertReplay :: (Eq v) => PMap k v -> Version -> k -> v -> Query rw UpdateCheck
-checkPMapInsertReplay pmap@PMap{pmapTableName=tbl, ..} version k v = do
+checkPMapInsertReplay PMap{pmapTableName=tbl, ..} version k v = do
   case pmapEncodingV of
     FieldEncoding _ from -> do
       r <- query1 ("SELECT tag, val FROM "<>tbl<>" WHERE key = ? AND ver = ?")
@@ -252,7 +243,7 @@ checkPMapInsertReplay pmap@PMap{pmapTableName=tbl, ..} version k v = do
         _                                   -> return UpdateBad
 
 checkPMapDrop :: PMap k v -> Version -> k -> Query rw UpdateCheck
-checkPMapDrop pmap@PMap{pmapTableName=tbl, ..} version k = do
+checkPMapDrop pmap version k = do
   tblHead <- tableHead pmap
   case tblHead `compare` version of
     LT -> error "We trying to update from point that not reached"
@@ -260,7 +251,7 @@ checkPMapDrop pmap@PMap{pmapTableName=tbl, ..} version k = do
     GT -> checkPMapDropReplay pmap version k
 
 checkPMapDropReal :: PMap k v -> k -> Query rw UpdateCheck
-checkPMapDropReal pmap@PMap{pmapTableName=tbl, ..} k = do
+checkPMapDropReal PMap{pmapTableName=tbl, ..} k = do
   r <- query ("SELECT tag FROM "<>tbl<>" WHERE key = ?")
              (Only $ encodeField pmapEncodingK k)
   case r of
@@ -268,7 +259,7 @@ checkPMapDropReal pmap@PMap{pmapTableName=tbl, ..} k = do
     _                -> return UpdateBad
 
 checkPMapDropReplay :: PMap k v -> Version -> k -> Query rw UpdateCheck
-checkPMapDropReplay pmap@PMap{pmapTableName=tbl, ..} version k = do
+checkPMapDropReplay PMap{pmapTableName=tbl, ..} version k = do
   r <- query1 ("SELECT tag FROM "<>tbl<>" WHERE key = ? AND ver = ?")
               ( encodeField pmapEncodingK k
               , case version of New        -> 0
@@ -368,7 +359,7 @@ versionForHeight
   -> Query rw (Versioned a)
 versionForHeight (Height 0) p = return $ Versioned New p
 versionForHeight (Height h) p = do
-  r <- query1 "SELECT id FROM thm_checkpoints WHERE height = ? AND table = ?"
+  r <- query1 "SELECT id FROM thm_checkpoints WHERE height = ? AND tableName = ?"
               (h-1, tableName p)
   case r of
     Nothing              -> rollback
@@ -381,7 +372,7 @@ storeCheckpoint
   -> Versioned a
   -> Query 'RW ()
 storeCheckpoint (Height h) (Versioned ver p) = do
-  r <- query1 "SELECT id FROM thm_checkpoints WHERE height = ? AND table = ?"
+  r <- query1 "SELECT id FROM thm_checkpoints WHERE height = ? AND tableName = ?"
               (h, tableName p)
   case r of
     Nothing       -> execute "INSERT INTO thm_checkpoints VALUES (?,?,?)"

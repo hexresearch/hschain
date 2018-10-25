@@ -6,7 +6,6 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections       #-}
 {-# LANGUAGE TypeFamilies        #-}
-{-# OPTIONS_GHC -fno-warn-unused-top-binds #-} {- allow useful top functions for GHCi -}
 
 import Control.Concurrent
 import Control.Monad
@@ -38,9 +37,10 @@ import Thundermint.Run
 import Thundermint.Mock.Coin
 import Thundermint.Mock.KeyList
 import Thundermint.Mock.Types
-import Thundermint.P2P.Network
+import Thundermint.P2P.Network hiding (Connection)
 import Thundermint.Store
-import Thundermint.Store.SQLite
+import Thundermint.Store.Internal.Query (Connection,openConnection)
+import Thundermint.Store.Internal.BlockDB
 import Thundermint.Store.STM
 
 
@@ -98,25 +98,23 @@ findInputs tgt = go 0
 interpretSpec
    :: Maybe Int64 -> FilePath -> Int
    -> NetSpec NodeSpec
-   -> IO [(BlockStorage 'RO IO Alg [Tx], IO ())]
+   -> IO [(Connection, IO ())]
 interpretSpec maxH prefix delay NetSpec{..} = do
   net   <- newMockNet
   -- Connection map
   forM (Map.toList netAddresses) $ \(addr, NodeSpec{..}) -> do
     -- Allocate storage for node
-    storage <- newSQLiteBlockStorage
-      (maybe ":memory:" (prefix </>) nspecDbName)
-      genesisBlock validatorSet
-    hChain   <- blockchainHeight storage
+    conn   <- openConnection $ maybe ":memory:" (prefix </>) nspecDbName
+    runDBT conn $ queryRW $ initializeBlockhainTables genesisBlock validatorSet
+    hChain <- runDBT conn $ queryRO $ blockchainHeight storage
     -- Prepare logging
     let loggers = [ makeScribe s { scribe'path = fmap (prefix </>) (scribe'path s) }
                   | s <- nspecLogFile ]
     return
-      ( makeReadOnly storage
-      , withLogEnv "TM" "DEV" loggers $ \logenv -> runLoggerT "general" logenv $ do
+      ( conn
+      , runDBT conn $ withLogEnv "TM" "DEV" loggers $ \logenv -> runLoggerT "general" logenv $ do
           --
-          bchState <- newBChState transitions
-                    $ makeReadOnly (hoistBlockStorageRW liftIO storage)
+          bchState <- newBChState transitions storage
           _        <- stateAtH bchState (succ hChain)
           -- Create mempool
           let checkTx tx = do
@@ -139,8 +137,7 @@ interpretSpec maxH prefix delay NetSpec{..} = do
               , bchInitialPeers     = map (,"50000") $ connections netAddresses addr
               }
             NodeDescription
-              { nodeStorage         = hoistBlockStorageRW liftIO storage
-              , nodeBchState        = bchState
+              { nodeBchState        = bchState
               , nodeBlockChainLogic = transitions
               , nodeMempool         = mempool
               , nodeValidationKey   = nspecPrivKey
@@ -151,13 +148,17 @@ interpretSpec maxH prefix delay NetSpec{..} = do
               }
           runConcurrently (generator : acts)
       )
-  where
+  where    
     netAddresses = Map.fromList $ [0::Int ..] `zip` netNodeList
     connections  = case netTopology of
       Ring    -> connectRing
       All2All -> connectAll2All
     validatorSet = makeValidatorSetFromPriv [ pk | Just pk <- nspecPrivKey <$> netNodeList ]
-    genesisBlock = Block
+    --
+    storage :: BlockStorage Alg [Tx]
+    storage = blockStorage
+    genesisBlock :: Block Alg [Tx]
+    genesisBlock =  Block
       { blockHeader = Header
           { headerChainID        = "MONIES"
           , headerHeight         = Height 0
@@ -174,7 +175,7 @@ interpretSpec maxH prefix delay NetSpec{..} = do
 executeNodeSpec
   :: Maybe Int64 -> FilePath -> Int
   -> NetSpec NodeSpec
-  -> IO [BlockStorage 'RO IO Alg [Tx]]
+  -> IO [Connection]
 executeNodeSpec maxH prefix delay spec = do
   actions <- interpretSpec maxH prefix delay spec
   runConcurrently (snd <$> actions) `catch` (\Abort -> return ())
@@ -195,6 +196,9 @@ main
     <> progDesc ""
     )
   where
+    storage :: BlockStorage Alg [Tx]
+    storage = blockStorage
+    --
     work maxH prefix delay doValidate file = do
       blob <- BC8.readFile file
       spec <- case JSON.eitherDecodeStrict blob of
@@ -209,20 +213,20 @@ main
             allEqual []     = error "Empty list impossible!"
             allEqual (x:xs) = all (x==) xs
 
-        forM_ storageList checkStorage
+        forM_ storageList $ \c -> runDBT c $ checkStorage storage
 
         forM_ heights $ \h -> do
           -- Check that all blocks match!
-          blocks <- forM storageList $ \s -> do
-            mb <- retrieveBlock s h
+          blocks <- forM storageList $ \c -> do
+            mb <- runDBT c $ queryRO $ retrieveBlock storage h
             case mb of
               Nothing -> error ("Missing block at " <> show h)
               Just b  -> return b
           when (not $ allEqual blocks) $
             error ("Block mismatch!" <> show h <> "\n" <> show blocks)
           -- Check that validator set match
-          vals <- forM storageList $ \s -> do
-            mv <- retrieveValidatorSet s h
+          vals <- forM storageList $ \c -> do
+            mv <- runDBT c $ queryRO $ retrieveValidatorSet storage h
             case (h,mv) of
               (Height 0, Nothing) -> return Nothing
               (_       , Just v ) -> return (Just v)
@@ -263,7 +267,7 @@ main
 ----------------------------------------------------------------
 -- Additional functions meant to be run from GHCi
 ----------------------------------------------------------------
-
+{-
 pprCoinState :: CoinState -> IO ()
 pprCoinState (CoinState outs) = do
   let balances = Map.fromListWith (+)
@@ -285,3 +289,4 @@ printCoinStateUpdates dbName =
     Height hMax <- blockchainHeight storage
     _ <- foldM step CoinState{ unspentOutputs = Map.empty} [Height h | h <- [0 .. hMax]]
     return ()
+-}

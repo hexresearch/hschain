@@ -59,6 +59,8 @@ import Katip.Scribes.ElasticSearch
 import Thundermint.Control
 import Thundermint.Blockchain.Types
 import Thundermint.Debug.Trace
+import Thundermint.Store
+
 
 ----------------------------------------------------------------
 --
@@ -76,6 +78,10 @@ instance MonadLogger m => MonadLogger (MaybeT m) where
   logger sev str a = lift $ logger sev str a
   localNamespace fun (MaybeT m) = MaybeT (localNamespace fun m)
 
+instance MonadLogger m => MonadLogger (ReaderT r m) where
+  logger sev str a = lift $ logger sev str a
+  localNamespace fun (ReaderT m) = ReaderT $ localNamespace fun . m
+
 -- | Change logger's namespace
 setNamespace :: MonadLogger m => Namespace -> m a -> m a
 setNamespace nm = localNamespace (const nm)
@@ -87,7 +93,8 @@ descendNamespace nm = localNamespace $ \(Namespace x) -> Namespace (x ++ [nm])
 -- | Concrete implementation of logger monad
 newtype LoggerT m a = LoggerT (ReaderT (Namespace, LogEnv) m a)
   deriving ( Functor, Applicative, Monad
-           , MonadIO, MonadThrow, MonadCatch, MonadMask, MonadTrans, MonadFork, MonadTrace )
+           , MonadIO, MonadThrow, MonadCatch, MonadMask, MonadTrans
+           , MonadFork, MonadTrace, MonadDB)
 
 runLoggerT :: Namespace -> LogEnv -> LoggerT m a -> m a
 runLoggerT nm le (LoggerT m) = runReaderT m (nm,le)
@@ -106,7 +113,9 @@ instance MonadIO m => MonadLogger (LoggerT m) where
 --   but we don't need any
 newtype NoLogsT m a = NoLogsT { runNoLogsT :: m a }
   deriving ( Functor, Applicative, Monad
-           , MonadIO, MonadThrow, MonadCatch, MonadMask, MonadFork, MonadTrace )
+           , MonadIO, MonadThrow, MonadCatch, MonadMask
+           , MonadFork, MonadTrace, MonadDB)
+
 instance MonadTrans NoLogsT where
   lift = NoLogsT
 

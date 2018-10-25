@@ -65,9 +65,9 @@ data BChState m s = BChState
 
 -- | Create block storage backed by MVar
 newBChState
-  :: (MonadMask m, MonadIO m)
+  :: (MonadMask m, MonadDB m)
   => BlockFold s a             -- ^ Updating function
-  -> BlockStorage 'RO m alg a  -- ^ Store of blocks
+  -> BlockStorage alg a        -- ^ Store of blocks
   -> m (BChState m s)
 newBChState BlockFold{..} BlockStorage{..} = do
   state <- liftIO $ newMVar (Height 0, initialState)
@@ -76,7 +76,7 @@ newBChState BlockFold{..} BlockStorage{..} = do
           case h `compare` hBlk of
             GT -> error "newBChState: invalid parameter"
             EQ -> return (st, (s,False))
-            LT -> do Just Block{..} <- retrieveBlock h
+            LT -> do Just Block{..} <- queryRO $ retrieveBlock h
                      case processBlock h blockData s of
                        Just st' -> return ((succ h, st'), (st',True))
                        Nothing  -> error "OOPS! Blockchain is not valid!!!"
