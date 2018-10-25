@@ -74,17 +74,16 @@ data Persistent a where
 
 -- | Implementation of specific operations for persistent data
 --   structures.
-class (Monad q) => ExecutorRO q where
-  type Dct q :: (* -> *) -> *
+class ExecutorRO q where
   lookupKey  :: (Ord k)
-             => (forall f. Lens' (Dct q f) (f (PMap k v))) -> k -> q (Maybe v)
+             => (forall f. Lens' (dct f) (f (PMap k v))) -> k -> q dct (Maybe v)
 
 -- | Read-write operations
 class (ExecutorRO q) => ExecutorRW q where
   storeKey :: (Ord k, Eq v)
-           => (forall f. Lens' (Dct q f) (f (PMap k v))) -> k -> v -> q ()
+           => (forall f. Lens' (dct f) (f (PMap k v))) -> k -> v -> q dct ()
   dropKey  :: (Ord k, Eq v)
-           => (forall f. Lens' (Dct q f) (f (PMap k v))) -> k -> q ()
+           => (forall f. Lens' (dct f) (f (PMap k v))) -> k -> q dct ()
 
 
 
@@ -151,13 +150,12 @@ runBlockUpdate h dct (EffectfulQ effect) = do
   return a
 
 
-instance ExecutorRO (EffectfulQ rw alg a dct) where
-  type Dct (EffectfulQ rw alg a dct) = dct
+instance ExecutorRO (EffectfulQ rw alg a) where
   lookupKey getter k = EffectfulQ $ do
     Versioned ver (PersistentPMap pmap) <- use getter
     lift $ lookupKeyPMap pmap ver k
 
-instance (rw ~ 'RW) => ExecutorRW (EffectfulQ rw alg a dct) where
+instance (rw ~ 'RW) => ExecutorRW (EffectfulQ rw alg a) where
   storeKey getter k v = EffectfulQ $ do
     Versioned ver (PersistentPMap pmap@PMap{pmapTableName=tbl, ..}) <- use getter
     lift (checkPMapInsert pmap ver k v) >>= \case
@@ -296,15 +294,14 @@ runEphemeralQ dct (EphemeralQ effect) = do
 
 
 
-instance ExecutorRO (EphemeralQ alg a dct) where
-  type Dct (EphemeralQ alg a dct) = dct
+instance ExecutorRO (EphemeralQ alg a) where
   lookupKey getter k = EphemeralQ $ do
     OverlayPMap pmap overlay <- use getter
     case k `Map.lookup` overlay of
       Just r  -> return r
       Nothing -> lift $ lift $ lookupKeyPMap pmap (Commited maxBound) k
 
-instance ExecutorRW (EphemeralQ alg a dct) where
+instance ExecutorRW (EphemeralQ alg a) where
   storeKey getter k v = EphemeralQ $ do
     OverlayPMap pmap overlay <- use getter
     -- If we inserted/removed key insert is not valid anyway
