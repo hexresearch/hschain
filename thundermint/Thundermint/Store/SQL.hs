@@ -27,6 +27,7 @@ module Thundermint.Store.SQL (
     -- ** Implementations
   , EffectfulQ
   , runBlockUpdate
+  , queryUserState
   , EphemeralQ
   , runEphemeralQ
     --
@@ -105,8 +106,7 @@ instance PersistentData (PMap k v) where
     "( ver INTEGER PRIMARY KEY, \
     \  tag INTEGER, \
     \  key, \
-    \  val, \
-    \  FOREIGN KEY verDrop REFERENCES vec)"
+    \  val)"
     -- NOTE: ver field is versions PMap. Each change to PMap is
     --       represented by row and numbered consecutively
     --
@@ -149,6 +149,20 @@ runBlockUpdate h dct (EffectfulQ effect) = do
   (a,ver') <- runStateT effect ver
   -- 3. Write down new checkpoint
   traverseEff (storeCheckpoint h) ver'
+  return a
+
+-- | Update user's state for single block. If we trying to execute
+--   already commited changes transaction will only succeed if it will
+--   produce exactly same results as already commited.
+queryUserState
+  :: (FloatOut dct)
+  => Height                      -- ^ Height of commited block
+  -> dct Persistent              -- ^ Description of user state
+  -> EffectfulQ 'RO alg a dct x  -- ^ Action to execute
+  -> Query 'RO alg a x
+queryUserState h dct (EffectfulQ effect) = do
+  ver   <- floatOut $ fmapF (Compose . versionForHeight h) dct
+  (a,_) <- runStateT effect ver
   return a
 
 
@@ -198,7 +212,7 @@ lookupKeyPMap PMap{pmapTableName=tbl, ..} (Commited ver) k = do
         (encodeField pmapEncodingK k, ver)
       case r of
         []                            -> return Nothing
-        [(v, RowInsert)]              -> return $ Just $ from v
+        [(Just v, RowInsert)]         -> return $ Just $ from v
         [(_, RowInsert),(_, RowDrop)] -> return Nothing
         _                             -> error "PMap: inconsistent DB"
 
@@ -356,7 +370,7 @@ rollbackEph = fail "ROLLBACK"
 
 tableHead :: PersistentData p => p -> Query rw alg a Version
 tableHead a =
-  query ("SELECT MAX(id) FROM "<>tbl) () >>= \case
+  query ("SELECT MAX(ver) FROM "<>tbl) () >>= \case
     [Only Nothing ] -> return New
     [Only (Just v)] -> return (Commited v)
     _               -> error "Impossible"
@@ -370,7 +384,7 @@ versionForHeight
   -> Query rw alg a (Versioned x)
 versionForHeight (Height 0) p = return $ Versioned New p
 versionForHeight (Height h) p = do
-  r <- query1 "SELECT id FROM thm_checkpoints WHERE height = ? AND tableName = ?"
+  r <- query1 "SELECT ver FROM thm_checkpoints WHERE height = ? AND tableName = ?"
               (h-1, persistentTableName p)
   case r of
     -- FIXME: Is calling error correct here???
@@ -384,7 +398,7 @@ storeCheckpoint
   -> Versioned x
   -> Query 'RW alg a ()
 storeCheckpoint (Height h) (Versioned ver p) = do
-  r <- query1 "SELECT id FROM thm_checkpoints WHERE height = ? AND tableName = ?"
+  r <- query1 "SELECT ver FROM thm_checkpoints WHERE height = ? AND tableName = ?"
               (h, persistentTableName p)
   case r of
     Nothing       -> execute "INSERT INTO thm_checkpoints VALUES (?,?,?)"

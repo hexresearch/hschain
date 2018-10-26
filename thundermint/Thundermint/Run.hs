@@ -133,7 +133,7 @@ logicFromPersistent PersistentState{..} = do
   -- Now we need to update state using genesis block.
   queryRW $ do
     Just genesis <- retrieveBlock (Height 0)
-    runBlockUpdate (Height 0) persistedData (processBlock (Height 0) (blockData a))
+    runBlockUpdate (Height 0) persistedData $ processBlockDB (Height 0) (blockData genesis)
   --
   return NodeLogic
     { nodeBlockValidation = \h a -> do
