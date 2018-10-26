@@ -161,7 +161,7 @@ queryUserState
   -> EffectfulQ 'RO alg a dct x  -- ^ Action to execute
   -> Query 'RO alg a x
 queryUserState h dct (EffectfulQ effect) = do
-  ver   <- floatOut $ fmapF (Compose . versionForHeight h) dct
+  ver   <- floatOut $ fmapF (Compose . versionForHeight (succ h)) dct
   (a,_) <- runStateT effect ver
   return a
 
@@ -379,7 +379,7 @@ tableHead a =
 
 
 versionForHeight
-  :: Height
+  :: Height                     -- ^ Height of block _being_ evaluated
   -> Persistent x
   -> Query rw alg a (Versioned x)
 versionForHeight (Height 0) p = return $ Versioned New p
