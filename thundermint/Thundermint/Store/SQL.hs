@@ -223,8 +223,8 @@ materializePMapWorker PMap{pmapTableName=tbl, ..} (Commited ver) = do
     (FieldEncoding _ fromK, FieldEncoding _ fromV) -> do
       r <- query
         ("SELECT key,val FROM "<>tbl<>
-         " WHERE tag=? AND ver<=? AND key NOT IN (SELECT key FROM "<>tbl<>" WHERE tag = ?)")
-        (RowInsert, ver, RowDrop)
+         " WHERE tag=? AND ver<=? AND key NOT IN (SELECT key FROM "<>tbl<>" WHERE tag = ? AND ver<=?)")
+        (RowInsert, ver, RowDrop, ver)
       return $ Map.fromList [ (fromK k, fromV v) | (k,v) <- r ]
 
 
