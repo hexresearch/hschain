@@ -44,7 +44,7 @@ data Version
 
 bumpVersion :: Version -> Version
 bumpVersion = \case
-  New        -> Commited 0
+  New        -> Commited 1
   Commited n -> Commited (n+1)
 
 
