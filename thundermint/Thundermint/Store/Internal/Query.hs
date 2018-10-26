@@ -117,7 +117,8 @@ runQueryWorker (Connection mutex conn) sql = withMutex mutex $ do
   --        exceptions
   r <- try $ runReaderT (runMaybeT sql) conn
   case r of
-    Left (_ :: SomeException) -> Nothing <$ SQL.execute_ conn "ROLLBACK"
+    Left (e :: SomeException) -> do SQL.execute_ conn "ROLLBACK"
+                                    throwM e
     Right Nothing             -> Nothing <$ SQL.execute_ conn "ROLLBACK"
     Right a                   -> a       <$ SQL.execute_ conn "COMMIT"
 
