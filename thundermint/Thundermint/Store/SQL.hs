@@ -77,6 +77,8 @@ data Persistent a where
 class ExecutorRO q where
   lookupKey  :: (Ord k)
              => (forall f. Lens' (dct f) (f (PMap k v))) -> k -> q dct (Maybe v)
+  materializePMap
+    :: (Ord k) => (forall f. Lens' (dct f) (f (PMap k v))) -> q dct (Map k v)
 
 -- | Read-write operations
 class (ExecutorRO q) => ExecutorRW q where
@@ -154,6 +156,9 @@ instance ExecutorRO (EffectfulQ rw alg a) where
   lookupKey getter k = EffectfulQ $ do
     Versioned ver (PersistentPMap pmap) <- use getter
     lift $ lookupKeyPMap pmap ver k
+  materializePMap getter = EffectfulQ $ do
+    Versioned ver (PersistentPMap pmap) <- use getter
+    lift $ materializePMapWorker pmap ver
 
 instance (rw ~ 'RW) => ExecutorRW (EffectfulQ rw alg a) where
   storeKey getter k v = EffectfulQ $ do
@@ -196,6 +201,19 @@ lookupKeyPMap PMap{pmapTableName=tbl, ..} (Commited ver) k = do
         [(v, RowInsert)]              -> return $ Just $ from v
         [(_, RowInsert),(_, RowDrop)] -> return Nothing
         _                             -> error "PMap: inconsistent DB"
+
+materializePMapWorker :: Ord k => PMap k v -> Version -> Query rw alg a (Map k v)
+materializePMapWorker _                           New            = return Map.empty
+materializePMapWorker PMap{pmapTableName=tbl, ..} (Commited ver) = do
+  case (pmapEncodingK, pmapEncodingV) of
+    (FieldEncoding _ fromK, FieldEncoding _ fromV) -> do
+      r <- query
+        ("SELECT key,val FROM "<>tbl<>
+         " WHERE tag=? AND ver<=? AND key NOT IN (SELECT key FROM "<>tbl<>" WHERE tag = ?)")
+        (RowInsert, ver, RowDrop)
+      return $ Map.fromList [ (fromK k, fromV v) | (k,v) <- r ]
+
+
 
 checkPMapInsert :: (Eq v) => PMap k v -> Version -> k -> v -> Query rw alg a UpdateCheck
 checkPMapInsert pmap version k v = do
@@ -300,6 +318,10 @@ instance ExecutorRO (EphemeralQ alg a) where
     case k `Map.lookup` overlay of
       Just r  -> return r
       Nothing -> lift $ lift $ lookupKeyPMap pmap (Commited maxBound) k
+  materializePMap getter = EphemeralQ $ do
+    OverlayPMap pmap overlay <- use getter
+    db <- lift $ lift $ materializePMapWorker pmap (Commited maxBound)
+    return $ Map.mapMaybe id $ overlay <> (Just <$> db)
 
 instance ExecutorRW (EphemeralQ alg a) where
   storeKey getter k v = EphemeralQ $ do
