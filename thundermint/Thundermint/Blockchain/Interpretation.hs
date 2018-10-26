@@ -16,7 +16,7 @@ import Control.Monad.IO.Class
 
 import Thundermint.Control
 import Thundermint.Store
-import Thundermint.Consensus.Types
+import Thundermint.Blockchain.Types
 
 
 
@@ -32,8 +32,8 @@ import Thundermint.Consensus.Types
 --   wallet). Transition functions double as validation functions
 --   e.g. if transaction or block is not valid it will return
 --   @Nothing@.
-data BlockFold s tx a = BlockFold
-  { processTx    :: Height -> tx -> s -> Maybe s
+data BlockFold s a = BlockFold
+  { processTx    :: Height -> TX a -> s -> Maybe s
     -- ^ Try to process single transaction. Nothing indicates that
     --   transaction is invalid. This function will called very
     --   frequently so it need not to perform every check but should
@@ -43,7 +43,7 @@ data BlockFold s tx a = BlockFold
   , processBlock :: Height -> a  -> s -> Maybe s
     -- ^ Try to process whole block. Here application should perform
     --   complete validation of block
-  , transactionsToBlock :: Height -> s -> [tx] -> a
+  , transactionsToBlock :: Height -> s -> [TX a] -> a
     -- ^ Create block at given height from list of transactions. Not
     --   input could contain invalid transaction and they must be
     --   filtered out so that block is valid.
@@ -66,7 +66,7 @@ data BChState m s = BChState
 -- | Create block storage backed by MVar
 newBChState
   :: (MonadMask m, MonadIO m)
-  => BlockFold s tx a           -- ^ Updating function
+  => BlockFold s a             -- ^ Updating function
   -> BlockStorage 'RO m alg a  -- ^ Store of blocks
   -> m (BChState m s)
 newBChState BlockFold{..} BlockStorage{..} = do

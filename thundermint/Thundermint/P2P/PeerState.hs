@@ -36,7 +36,7 @@ import qualified Data.Set as Set
 import           Data.Set   (Set)
 
 import Thundermint.Control
-import Thundermint.Consensus.Types
+import Thundermint.Blockchain.Types
 import Thundermint.Crypto
 import Thundermint.Crypto.Containers
 import Thundermint.Store

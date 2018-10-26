@@ -3,7 +3,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE LambdaCase        #-}
 -- |
-module Thundermint.Blockchain.Message (
+module Thundermint.Blockchain.Internal.Message (
     MessageRx(..)
   , unverifyMessageRx
   , Announcement(..)
@@ -14,7 +14,7 @@ import GHC.Generics           (Generic)
 
 import Thundermint.Crypto
 import Thundermint.Crypto.Containers
-import Thundermint.Consensus.Types
+import Thundermint.Blockchain.Types
 
 
 ----------------------------------------------------------------

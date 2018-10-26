@@ -89,3 +89,27 @@ To list runnig containers use `docker container ls` .
 
 All logs can be found in `logs` volume. Use `docker volume inspect logs` to found directory with
 logs.
+
+
+# Migrations
+
+Here we describe database migrations between different versions of thundermint
+
+## 0.0.5 -> 0.0.6
+
+Simple variant. drop table `wal` when node is stopped. Correct `wal` will be
+created on node startup.
+
+If write-ahead log is to be preserved following SQL script should be used
+
+```
+CREATE TABLE wal_bak AS SELECT DISTINCT FROM wal;
+DROP TABLE wal;
+CREATE TABLE wal
+  ( id      INTEGER PRIMARY KEY
+  , height  INTEGER NOT NULL
+  , message BLOB NOT NULL
+  , UNIQUE(height,message));
+INSERT INTO wal SELECT * FROM wal_bak;
+DROP TABLE wal_bak
+```

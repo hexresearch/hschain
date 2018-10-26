@@ -10,7 +10,7 @@
 -- Core of blockchain application. This module provides function which
 -- continuously updates blockchain using consensus algorithm and
 -- communicates with outside world using STM channels.
-module Thundermint.Blockchain.App (
+module Thundermint.Blockchain.Internal.Engine (
     newAppChans
   , runApplication
   ) where
@@ -28,9 +28,9 @@ import           Data.Monoid   ((<>))
 import Data.Time.Clock.POSIX (getPOSIXTime)
 import Pipes                 (Pipe,runEffect,yield,await,(>->))
 
+import Thundermint.Blockchain.Internal.Engine.Types
+import Thundermint.Blockchain.Internal.Algorithm
 import Thundermint.Blockchain.Types
-import Thundermint.Consensus.Algorithm
-import Thundermint.Consensus.Types
 import Thundermint.Crypto
 import Thundermint.Crypto.Containers
 import Thundermint.Logger
@@ -58,8 +58,7 @@ newAppChans = do
 --
 --   * INVARIANT: Only this function can write to blockchain
 runApplication
-  :: ( MonadIO m, MonadCatch m, MonadLogger m, Crypto alg
-     , Serialise a, Show a, LogBlock a)
+  :: ( MonadIO m, MonadCatch m, MonadLogger m, Crypto alg, Show a, BlockData a)
   => Configuration
      -- ^ Configuration
   -> AppState m alg a
@@ -87,8 +86,7 @@ runApplication config appSt@AppState{..} appCh@AppChans{..} = logOnException $ d
 --
 -- FIXME: we should write block and last commit in transaction!
 decideNewBlock
-  :: ( MonadIO m, MonadLogger m, Crypto alg
-     , Serialise a, Show a, LogBlock a)
+  :: ( MonadIO m, MonadLogger m, Crypto alg, Show a, BlockData a)
   => Configuration
   -> AppState m alg a
   -> AppChans m alg a

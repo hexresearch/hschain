@@ -59,8 +59,8 @@ import qualified Data.Aeson.TH   as JSON
 import qualified Data.ByteString as BS
 
 
-import Thundermint.Blockchain.Message
-import Thundermint.Consensus.Types
+import Thundermint.Blockchain.Internal.Message
+import Thundermint.Blockchain.Types
 import Thundermint.Crypto
 import Thundermint.Crypto.Containers
 
@@ -443,7 +443,7 @@ genesisBlockInvariant Block{blockHeader = Header{..}, ..} = do
 
 -- | Check invariant for block at height > 0
 blockInvariant
-  :: (Monad m, Crypto alg, Serialise a)
+  :: (Monad m, Crypto alg)
   => BS.ByteString
   -- ^ Blockchain ID
   -> Height

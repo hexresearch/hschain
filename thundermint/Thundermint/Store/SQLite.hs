@@ -21,7 +21,7 @@ import qualified Database.SQLite.Simple           as SQL
 import           Database.SQLite.Simple             (Only(..))
 
 import Thundermint.Control
-import Thundermint.Consensus.Types
+import Thundermint.Blockchain.Types
 import Thundermint.Crypto
 import Thundermint.Crypto.Containers
 import Thundermint.Store

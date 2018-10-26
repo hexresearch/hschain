@@ -15,7 +15,7 @@
 # resolver:
 #  name: custom-snapshot
 #  location: "./custom-snapshot.yaml"
-resolver: lts-11.9
+resolver: lts-12.10
 
 # User packages to be built.
 # Various formats can be used as shown in the example below.
@@ -42,18 +42,15 @@ packages:
 # Dependency packages to be pulled from upstream that are not in the resolver
 # (e.g., acme-missiles-0.3)
 extra-deps:
-    - async-2.2.1
-    - exceptions-0.8.3
     - katip-0.6.3.0
-    - network-2.6.3.6
-    - serialise-0.2.0.0
-    - cborg-0.2.0.0
+    - serialise-0.2.1.0
     - base58-bytestring-0.1.0
-    - bytestring-arbitrary-0.1.2
     - katip-elasticsearch-0.5.1.0
     - bloodhound-0.16.0.0
-allow-newer: true
-
+    - bytestring-arbitrary-0.1.2
+    - hedgehog-quickcheck-0.1
+    
+#allow-newer: true
 
 # Override default flag values for local packages and extra-deps
 # flags: {}

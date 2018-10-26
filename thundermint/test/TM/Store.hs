@@ -7,20 +7,13 @@ module TM.Store ( tests) where
 import Test.Tasty
 import Test.Tasty.HUnit
 
-import Control.Monad
 import Data.Int         (Int64)
-import Data.Monoid      ((<>))
 import Data.Traversable (forM)
-import System.Directory (doesFileExist)
 
 import qualified Data.Aeson            as JSON
 import qualified Data.ByteString.Char8 as BC8
 
-import Thundermint.Consensus.Types
-import Thundermint.Mock.Coin
-import Thundermint.Store
-import Thundermint.Store.SQLite
-
+import           Thundermint.Store
 import qualified Thundermint.Mock.KeyVal as KeyVal
 
 
