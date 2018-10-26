@@ -1,5 +1,7 @@
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE LambdaCase                 #-}
+{-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE RecordWildCards            #-}
 -- |
 -- Simple coin for experimenting with blockchain
@@ -20,14 +22,15 @@ import Data.ByteString.Lazy (toStrict)
 import Data.Foldable
 import Data.Map             (Map)
 import qualified Data.Map.Strict  as Map
+import Lens.Micro
 import GHC.Generics    (Generic)
 
 import Thundermint.Blockchain.Types
 import Thundermint.Blockchain.Interpretation
 import Thundermint.Crypto
 import Thundermint.Crypto.Ed25519
-
-
+import Thundermint.Store.SQL
+import Thundermint.Store.Internal.Types
 
 
 type Alg = Ed25519_SHA512
@@ -123,3 +126,70 @@ transitions = BlockFold
   where
     process (Height 0) t s = processDeposit t s <|> processTransaction t s
     process _          t s = processTransaction t s
+
+
+----------------------------------------------------------------
+-- DB based API
+----------------------------------------------------------------
+
+newtype CoinStateDB f = CoinStateDB
+  { unspentOutputsDB :: f (PMap (Hash Alg, Int) (PublicKey Alg, Integer))
+  }
+
+
+transitionsDB :: PersistentState CoinStateDB Alg [Tx]
+transitionsDB = PersistentState
+  { processTxDB           = \_ -> processTransactionDB
+  , processBlockDB        = \h txs -> forM_ txs (processDB h)
+  , transactionsToBlockDB = \h ->
+      let selectTx []     = return []
+          selectTx (t:tx) = optional (processDB h t) >>= \case
+            Nothing -> return tx
+            Just () -> (t :) <$> selectTx tx
+      in selectTx
+  -- DB schema
+  , persistedData = CoinStateDB
+      { unspentOutputsDB = wrap $ PMap { pmapTableName = "utxo"
+                                       , pmapEncodingK = encodingCBOR
+                                       , pmapEncodingV = encodingCBOR
+                                       }
+      }
+  }
+
+
+processDB
+  :: (Monad (q CoinStateDB), Alternative (q CoinStateDB), ExecutorRW q)
+  => Height
+  -> Tx
+  -> q CoinStateDB ()
+processDB = undefined
+
+
+processTransactionDB
+  :: (Monad (q CoinStateDB), Alternative (q CoinStateDB), ExecutorRW q)
+  => Tx
+  -> q CoinStateDB ()
+processTransactionDB Deposit{} = fail ""
+processTransactionDB transaction@(Send pubK sig txSend@TxSend{..}) = do
+  -- Signature must be valid
+  guard $ verifyCborSignature pubK txSend sig
+  -- Inputs and outputs are not null
+  guard $ not $ null txInputs
+  guard $ not $ null txOutputs
+  -- Outputs are all positive
+  forM_ txOutputs $ \(_,n) -> guard (n > 0)
+  -- Inputs are owned Spend and generated amount match and transaction
+  -- issuer have rights to funds
+  inputs <- forM txInputs $ \i -> do
+    Just (pk,n) <- lookupKey unspentOutputsLens i
+    guard $ pk == pubK
+    return n
+  guard (sum inputs == sum (map snd txOutputs))
+  -- Update application state
+  let txHash = hashBlob $ toStrict $ serialise transaction
+  forM_ txInputs  $ dropKey  unspentOutputsLens
+  forM_ ([0..] `zip` txOutputs) $ \(i,out) ->
+    storeKey unspentOutputsLens (txHash,i) out
+
+unspentOutputsLens :: Lens' (CoinStateDB f) (f (PMap (Hash Alg, Int) (PublicKey Alg, Integer)))
+unspentOutputsLens = lens unspentOutputsDB (const CoinStateDB)
