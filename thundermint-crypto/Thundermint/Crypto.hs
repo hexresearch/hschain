@@ -221,7 +221,6 @@ instance JSON.FromJSON (Signature alg) where
       Just bs -> return $ Signature bs
   parseJSON _ = fail "Expected string for Signature"
 
-instance NFData1 Signature
 
 
 ----------------------------------------
