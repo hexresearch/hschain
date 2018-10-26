@@ -220,8 +220,7 @@ main
           --
           utxos <- forM storageList $ \c ->
             runDBT c $ queryRO $ queryUserState h coinDict $ materializePMap unspentOutputsLens
-          putStrLn $ show h ++ " - OK"
-          print    $ map (sum . fmap snd) utxos
+          print $ (sum . fmap snd) <$> utxos
     ----------------------------------------
     parser :: Parser (IO ())
     parser
