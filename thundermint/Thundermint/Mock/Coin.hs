@@ -15,6 +15,8 @@ module Thundermint.Mock.Coin (
     -- * DB based state
   , CoinStateDB(..)
   , transitionsDB
+  , unspentOutputsLens
+  , coinDict
   ) where
 
 import Control.Applicative
@@ -24,6 +26,7 @@ import Codec.Serialise      (Serialise,serialise)
 import qualified Data.Aeson as JSON
 import Data.ByteString.Lazy (toStrict)
 import Data.Foldable
+import Data.Functor.Compose
 import Data.Map             (Map)
 import qualified Data.Map.Strict  as Map
 import Lens.Micro
@@ -31,6 +34,7 @@ import GHC.Generics    (Generic)
 
 import Thundermint.Blockchain.Types
 import Thundermint.Blockchain.Interpretation
+import Thundermint.Control
 import Thundermint.Crypto
 import Thundermint.Crypto.Ed25519
 import Thundermint.Store.SQL
@@ -140,11 +144,17 @@ newtype CoinStateDB f = CoinStateDB
   { unspentOutputsDB :: f (PMap (Hash Alg, Int) (PublicKey Alg, Integer))
   }
 
+instance FunctorF CoinStateDB where
+  fmapF f (CoinStateDB u) = CoinStateDB (f u)
+
+instance FloatOut CoinStateDB where
+  floatOut (CoinStateDB (Compose u)) = fmap CoinStateDB u
+  traverseEff f (CoinStateDB u) = f u
 
 transitionsDB :: PersistentState CoinStateDB Alg [Tx]
 transitionsDB = PersistentState
   { processTxDB           = \_ -> processTransactionDB
-  , processBlockDB        = \h txs -> forM_ txs (processDB h)
+  , processBlockDB        = \h txs -> forM_ txs $ \t -> processDB h t
   , transactionsToBlockDB = \h ->
       let selectTx []     = return []
           selectTx (t:tx) = optional (processDB h t) >>= \case
@@ -152,56 +162,60 @@ transitionsDB = PersistentState
             Just () -> (t :) <$> selectTx tx
       in selectTx
   -- DB schema
-  , persistedData = CoinStateDB
-      { unspentOutputsDB = wrap $ PMap { pmapTableName = "utxo"
-                                       , pmapEncodingK = encodingCBOR
-                                       , pmapEncodingV = encodingCBOR
-                                       }
-      }
+  , persistedData = coinDict
   }
 
-
+coinDict :: CoinStateDB Persistent
+coinDict = CoinStateDB
+  { unspentOutputsDB = wrap $ PMap { pmapTableName = "utxo"
+                                   , pmapEncodingK = encodingCBOR
+                                   , pmapEncodingV = encodingCBOR
+                                   }
+  }
 
 processDB
-  :: (Monad (q CoinStateDB), Alternative (q CoinStateDB), ExecutorRW q)
+  :: (Monad (q CoinStateDB), ExecutorRW q)
   => Height
   -> Tx
   -> q CoinStateDB ()
-processDB (Height 0) tx = processDepositDB tx <|> processTransactionDB tx
-processDB _          tx = processTransactionDB tx
+processDB (Height 0) (Deposit pk nCoin) = processDepositDB pk nCoin
+processDB _          tx                 = processTransactionDB tx
 
-processDepositDB :: (Monad (q CoinStateDB), Alternative (q CoinStateDB), ExecutorRW q) => Tx -> q CoinStateDB ()
-processDepositDB Send{}                = fail ""
-processDepositDB tx@(Deposit pk nCoin) = do
-  storeKey unspentOutputsLens (hash tx,0) (pk,nCoin)
+processDepositDB :: (Monad (q CoinStateDB), ExecutorRW q)
+                 => PublicKey Alg -> Integer -> q CoinStateDB ()
+processDepositDB pk nCoin = do
+  storeKey unspentOutputsLens (hash (Deposit pk nCoin),0) (pk,nCoin)
 
 
 
 processTransactionDB
-  :: (Monad (q CoinStateDB), Alternative (q CoinStateDB), ExecutorRW q)
+  :: (Monad (q CoinStateDB), ExecutorRW q)
   => Tx
   -> q CoinStateDB ()
 processTransactionDB Deposit{} = fail ""
 processTransactionDB transaction@(Send pubK sig txSend@TxSend{..}) = do
   -- Signature must be valid
-  guard $ verifyCborSignature pubK txSend sig
+  check $ verifyCborSignature pubK txSend sig
   -- Inputs and outputs are not null
-  guard $ not $ null txInputs
-  guard $ not $ null txOutputs
+  check $ not $ null txInputs
+  check $ not $ null txOutputs
   -- Outputs are all positive
-  forM_ txOutputs $ \(_,n) -> guard (n > 0)
+  forM_ txOutputs $ \(_,n) -> check (n > 0)
   -- Inputs are owned Spend and generated amount match and transaction
   -- issuer have rights to funds
   inputs <- forM txInputs $ \i -> do
     Just (pk,n) <- lookupKey unspentOutputsLens i
-    guard $ pk == pubK
+    check $ pk == pubK
     return n
-  guard (sum inputs == sum (map snd txOutputs))
+  check (sum inputs == sum (map snd txOutputs))
   -- Update application state
   let txHash = hashBlob $ toStrict $ serialise transaction
   forM_ txInputs  $ dropKey  unspentOutputsLens
   forM_ ([0..] `zip` txOutputs) $ \(i,out) ->
     storeKey unspentOutputsLens (txHash,i) out
+  where
+    check True  = return ()
+    check False = fail ""
 
 unspentOutputsLens :: Lens' (CoinStateDB f) (f (PMap (Hash Alg, Int) (PublicKey Alg, Integer)))
 unspentOutputsLens = lens unspentOutputsDB (const CoinStateDB)

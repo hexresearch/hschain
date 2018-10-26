@@ -53,7 +53,7 @@ initializeBlockhainTables genesis initialVals = do
     "CREATE TABLE IF NOT EXISTS thm_checkpoints \
     \  ( tableName TEXT NOT NULL \
     \  , height    INT  NOT NULL \
-    \  , id        INT \
+    \  , ver       INT \
     \  , UNIQUE (tableName, height))"
   -- WAL
   --

@@ -36,6 +36,7 @@ import Thundermint.Mock.KeyList
 import Thundermint.Mock.Types
 import Thundermint.P2P.Network hiding (Connection)
 import Thundermint.Store
+import Thundermint.Store.SQL
 import Thundermint.Store.Internal.Query (Connection,connectionRO)
 
 
@@ -44,14 +45,11 @@ import Thundermint.Store.Internal.Query (Connection,connectionRO)
 ----------------------------------------------------------------
 
 transferActions
-  :: (MonadIO m)
-  => Int                        -- Delay between transactions
-  -> [PublicKey Alg]            -- List of possible addresses
+  :: ()
+  => [PublicKey Alg]            -- List of possible addresses
   -> [PrivKey Alg]              -- Private key which we own
-  -> (Tx -> m ())               -- push new transaction
-  -> CoinState                  -- Current state of
-  -> m ()
-transferActions delay publicKeys privKeys push CoinState{..} = do
+  -> IO (EphemeralQ Alg [Tx] CoinStateDB Tx)
+transferActions publicKeys privKeys = do
   -- Pick private key
   privK <- do i <- liftIO $ randomRIO (0, length privKeys - 1)
               return (privKeys !! i)
@@ -61,17 +59,18 @@ transferActions delay publicKeys privKeys push CoinState{..} = do
                return (publicKeys !! i)
   amount <- liftIO $ randomRIO (0,20)
   -- Create transaction
-  let inputs = findInputs amount [ (inp, n)
-                                 | (inp, (pk,n)) <- Map.toList unspentOutputs
-                                 , pk == pubK
-                                 ]
-      tx     = TxSend { txInputs  = map fst inputs
-                      , txOutputs = [ (target, amount)
-                                    , (pubK  , sum (map snd inputs) - amount)
-                                    ]
-                      }
-  push $ Send pubK (signBlob privK $ toStrict $ serialise tx) tx
-  liftIO $ threadDelay (delay * 1000)
+  return $ do
+    utxo <- materializePMap unspentOutputsLens
+    let inputs = findInputs amount [ (inp, n)
+                                   | (inp, (pk,n)) <- Map.toList utxo
+                                   , pk == pubK
+                                   ]
+        tx     = TxSend { txInputs  = map fst inputs
+                        , txOutputs = [ (target, amount)
+                                      , (pubK  , sum (map snd inputs) - amount)
+                                      ]
+                        }
+    return $ Send pubK (signBlob privK $ toStrict $ serialise tx) tx
   where
     nPK  = length publicKeys
 
@@ -101,22 +100,26 @@ interpretSpec maxH prefix delay NetSpec{..} = do
     -- Allocate storage for node
     conn   <- openDatabase
       (maybe ":memory:" (prefix </>) nspecDbName)
-      Proxy genesisBlock validatorSet
+      coinDict genesisBlock validatorSet
     -- Prepare logging
     let loggers = [ makeScribe s { scribe'path = fmap (prefix </>) (scribe'path s) }
                   | s <- nspecLogFile ]
     return
       ( connectionRO conn
       , runDBT conn $ withLogEnv "TM" "DEV" loggers $ \logenv -> runLoggerT "general" logenv $ do
-          (bchState,logic) <- logicFromFold transitions
+          logic  <- logicFromPersistent transitionsDB
           -- Transactions generator
-          cursor  <- getMempoolCursor $ nodeMempool logic
+          cursor <- getMempoolCursor $ nodeMempool logic
           let generator = forever $ do
-                st <- currentState bchState
                 let (off,n)  = nspecWalletKeys
                     privKeys = take n $ drop off privateKeyList
-                transferActions delay (publicKey <$> take netInitialKeys privateKeyList) privKeys
-                  (void . pushTransaction cursor) st
+                txGen   <- liftIO
+                         $ transferActions (publicKey <$> take netInitialKeys privateKeyList) privKeys
+                Just tx <- queryRO
+                         $ runEphemeralQ coinDict
+                         $ txGen
+                void $ pushTransaction cursor tx
+                liftIO $ threadDelay (delay * 1000)
           --
           acts <- runNode defCfg
             BlockchainNet
@@ -214,7 +217,11 @@ main
               _                   -> error "Invalid validator!"
           when (not $ allEqual vals) $
             error ("Validators mismatch!" <> show h)
+          --
+          utxos <- forM storageList $ \c ->
+            runDBT c $ queryRO $ queryUserState h coinDict $ materializePMap unspentOutputsLens
           putStrLn $ show h ++ " - OK"
+          print    $ map (sum . fmap snd) utxos
     ----------------------------------------
     parser :: Parser (IO ())
     parser
