@@ -9,8 +9,12 @@ module Thundermint.Mock.Coin (
     Alg
   , TxSend(..)
   , Tx(..)
+    -- * Pure state
   , CoinState(..)
   , transitions
+    -- * DB based state
+  , CoinStateDB(..)
+  , transitionsDB
   ) where
 
 import Control.Applicative
@@ -157,12 +161,20 @@ transitionsDB = PersistentState
   }
 
 
+
 processDB
   :: (Monad (q CoinStateDB), Alternative (q CoinStateDB), ExecutorRW q)
   => Height
   -> Tx
   -> q CoinStateDB ()
-processDB = undefined
+processDB (Height 0) tx = processDepositDB tx <|> processTransactionDB tx
+processDB _          tx = processTransactionDB tx
+
+processDepositDB :: (Monad (q CoinStateDB), Alternative (q CoinStateDB), ExecutorRW q) => Tx -> q CoinStateDB ()
+processDepositDB Send{}                = fail ""
+processDepositDB tx@(Deposit pk nCoin) = do
+  storeKey unspentOutputsLens (hash tx,0) (pk,nCoin)
+
 
 
 processTransactionDB
