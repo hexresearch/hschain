@@ -15,6 +15,7 @@ module Thundermint.Blockchain.Interpretation (
   ) where
 
 import Codec.Serialise (Serialise)
+import Control.Applicative
 import Control.Concurrent.MVar
 import Control.Monad.Catch
 import Control.Monad.IO.Class
@@ -105,7 +106,8 @@ hoistBChState f BChState{..} = BChState
 
 data PersistentState dct alg a = PersistentState
   { processTxDB           :: Height -> TX a -> EphemeralQ alg a dct ()
-  , processBlockDB        :: forall q. (ExecutorRW q, Monad (q dct)) => Height -> a -> q dct () 
+  , processBlockDB        :: forall q. (ExecutorRW q, Monad (q dct), Alternative (q dct))
+                          => Height -> a -> q dct () 
   , transactionsToBlockDB :: Height -> [TX a] -> EphemeralQ alg a dct a
   , persistedData         :: dct Persistent
   }
