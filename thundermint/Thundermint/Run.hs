@@ -130,6 +130,10 @@ logicFromPersistent PersistentState{..} = do
         r <- queryRO $ runEphemeralQ persistedData (processTxDB (Height 1) tx)
         return $! isJust r
   mempool <- newMempool checkTx
+  -- Now we need to update state using genesis block.
+  queryRW $ do
+    Just genesis <- retrieveBlock (Height 0)
+    runBlockUpdate (Height 0) persistedData (processBlock (Height 0) (blockData a))
   --
   return NodeLogic
     { nodeBlockValidation = \h a -> do
