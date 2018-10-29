@@ -8,7 +8,9 @@ module Thundermint.Crypto.Ed25519 (
 import Control.Monad
 import Data.ByteString (ByteString)
 import Data.Ord        (comparing)
-import qualified Data.ByteString as BS
+import qualified Data.ByteString      as BS
+import qualified Data.ByteString.Lazy as BL
+import qualified Data.Digest.Pure.SHA as SHA
 
 import GHCJS.Buffer
 import GHCJS.Types
@@ -43,7 +45,9 @@ instance Crypto Ed25519_SHA512 where
     = js_sign_detached_verify (bsToArray blob) (bsToArray s) pubKey
   --
   publicKey = PublicKey . pubK
-  address   = Address . arrayToBs . js_sha512 . unPublicKey
+  address   = Address
+            . BL.toStrict . SHA.bytestringDigest . SHA.sha256 . BL.fromStrict
+            . arrayToBs . js_sha512 . unPublicKey
   hashBlob  = Hash . arrayToBs . js_sha512 . bsToArray
   --
   privKeyFromBS bs = do
