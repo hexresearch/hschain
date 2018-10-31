@@ -1,114 +1,17 @@
-{-# LANGUAGE DataKinds           #-}
-{-# LANGUAGE DeriveGeneric       #-}
 {-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE RecordWildCards     #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TupleSections       #-}
-{-# LANGUAGE TypeFamilies        #-}
-import Control.Concurrent
 import Control.Monad
-import Control.Monad.Catch
-import Control.Monad.IO.Class
-import Data.Int
-import Data.Typeable          (Proxy(..))
 import Options.Applicative
-
-import Codec.Serialise      (serialise)
-import Data.ByteString.Lazy (toStrict)
-
-import System.FilePath ((</>))
-import System.Random   (randomRIO)
-
 
 import qualified Data.Aeson            as JSON
 import qualified Data.ByteString.Char8 as BC8
-import qualified Data.Map              as Map
 
-import Thundermint.Blockchain.Interpretation
 import Thundermint.Blockchain.Types
-import Thundermint.Control
-import Thundermint.Crypto
-import Thundermint.Logger
 import Thundermint.Run
 import Thundermint.Mock.Coin
-import Thundermint.Mock.KeyList
-import Thundermint.Mock.Types
-import Thundermint.P2P.Network hiding (Connection)
 import Thundermint.Store
 import Thundermint.Store.SQL
-import Thundermint.Store.Internal.Query (Connection,connectionRO)
-
-
-
-----------------------------------------------------------------
---
-----------------------------------------------------------------
-
-
-
-interpretSpec
-   :: Maybe Int64
-   -> FilePath
-   -> Int
-   -> NetSpec NodeSpec
-   -> IO [(Connection 'RO Alg [Tx], IO ())]
-interpretSpec maxH prefix delay NetSpec{..} = do
-  net   <- newMockNet
-  -- Connection map
-  forM (Map.toList netAddresses) $ \(addr, NodeSpec{..}) -> do
-    -- Allocate storage for node
-    conn   <- openDatabase
-      (maybe ":memory:" (prefix </>) nspecDbName)
-      coinDict genesisBlock validatorSet
-    -- Prepare logging
-    let loggers = [ makeScribe s { scribe'path = fmap (prefix </>) (scribe'path s) }
-                  | s <- nspecLogFile ]
-    return
-      ( connectionRO conn
-      , runDBT conn $ withLogEnv "TM" "DEV" loggers $ \logenv -> runLoggerT "general" logenv $ do
-          logic  <- logicFromPersistent transitionsDB
-          -- Transactions generator
-          cursor <- getMempoolCursor $ nodeMempool logic
-          let generator = transactionGenerator
-                (restrictGenerator addr totalNodes genSpec)
-                (void . pushTransaction cursor)
-          --
-          acts <- runNode defCfg
-            BlockchainNet
-              { bchNetwork          = createMockNode net "50000" addr
-              , bchLocalAddr        = (addr, "50000")
-              , bchInitialPeers     = map (,"50000") $ connections netAddresses addr
-              }
-            NodeDescription
-              { nodeValidationKey   = nspecPrivKey
-              , nodeCommitCallback  = \case
-                  h | Just hM <- maxH
-                    , h > Height hM -> throwM Abort
-                    | otherwise     -> return ()
-              }
-            logic
-          runConcurrently (generator : acts)
-      )
-  where
-    totalNodes   = length netNodeList
-    netAddresses = Map.fromList $ [0::Int ..] `zip` netNodeList
-    connections  = case netTopology of
-      Ring    -> connectRing
-      All2All -> connectAll2All
-    validatorSet = makeValidatorSetFromPriv [ pk | Just pk <- nspecPrivKey <$> netNodeList ]
-    --
-    genSpec      = defaultGenerator netInitialKeys netInitialDeposit delay
-    genesisBlock = genesisFromGenerator validatorSet genSpec
-
-executeNodeSpec
-  :: Maybe Int64 -> FilePath -> Int
-  -> NetSpec NodeSpec
-  -> IO [Connection 'RO Alg [Tx]]
-executeNodeSpec maxH prefix delay spec = do
-  actions <- interpretSpec maxH prefix delay spec
-  runConcurrently (snd <$> actions) `catch` (\Abort -> return ())
-  return $ fst <$> actions
 
 
 
@@ -125,12 +28,12 @@ main
     <> progDesc ""
     )
   where
-    work maxH prefix delay doValidate file = do
+    work maxH delay doValidate file = do
       blob <- BC8.readFile file
       spec <- case JSON.eitherDecodeStrict blob of
         Right s -> return s
         Left  e -> error e
-      storageList <- executeNodeSpec maxH prefix delay spec
+      storageList <- executeNodeSpec maxH delay spec
 
       when doValidate $ do
         -- If maxH is nothing code is not reachable
@@ -172,12 +75,6 @@ main
                     <> metavar "N"
                     <> help    "Maximum height"
                     ))
-     <*> option str
-          (  long    "prefix"
-          <> value   "."
-          <> metavar "PATH"
-          <> help    "prefix for db & logs"
-          )
      <*> option auto
            (  long    "delay"
            <> metavar "N"

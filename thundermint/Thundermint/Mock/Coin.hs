@@ -1,9 +1,11 @@
+{-# LANGUAGE DataKinds                  #-}
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase                 #-}
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE RecordWildCards            #-}
+{-# LANGUAGE TupleSections              #-}
 -- |
 -- Simple coin for experimenting with blockchain
 module Thundermint.Mock.Coin (
@@ -26,10 +28,14 @@ module Thundermint.Mock.Coin (
     -- ** Generator
   , generateTransaction
   , transactionGenerator
+    -- ** interpretation
+  , interpretSpec
+  , executeNodeSpec
   ) where
 
 import Control.Applicative
 import Control.Monad
+import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Control.Concurrent   (threadDelay)
 import Control.DeepSeq
@@ -38,6 +44,7 @@ import qualified Data.Aeson as JSON
 import Data.ByteString.Lazy (toStrict)
 import Data.Foldable
 import Data.Functor.Compose
+import Data.Int
 import Data.Map             (Map)
 import qualified Data.Map.Strict  as Map
 import Lens.Micro
@@ -50,10 +57,16 @@ import Thundermint.Control
 import Thundermint.Crypto
 import Thundermint.Crypto.Containers (ValidatorSet)
 import Thundermint.Crypto.Ed25519
+import Thundermint.Debug.Trace
+import Thundermint.Logger
+import Thundermint.Run
 import Thundermint.Store.SQL
 import Thundermint.Store
 import Thundermint.Store.Internal.Types
+import Thundermint.Store.Internal.Query (connectionRO)
 import Thundermint.Mock.KeyList (privateKeyList)
+import Thundermint.Mock.Types
+import qualified Thundermint.P2P.Network as P2P
 
 
 type Alg = Ed25519_SHA512
@@ -328,7 +341,7 @@ transactionGenerator gen push = forever $ do
            $ txGen
   push tx
   liftIO $ threadDelay (genDelay gen * 1000)
-  
+
 
 findInputs :: (Num i, Ord i) => i -> [(a,i)] -> [(a,i)]
 findInputs tgt = go 0
@@ -338,3 +351,74 @@ findInputs tgt = go 0
           | otherwise   = (tx,i) : go acc' rest
           where
             acc' = acc + i
+
+
+
+----------------------------------------------------------------
+-- Interpretation of coin
+----------------------------------------------------------------
+
+-- | Interpret specification for node
+interpretSpec
+  :: ( MonadIO m, MonadLogger m, MonadFork m, MonadTrace m, MonadMask m
+     , Ord addr, Show addr, Serialise addr)
+  => Maybe Int64                      -- ^ Maximum height
+  -> GeneratorSpec                    -- ^ Spec for generator of transactions
+  -> ValidatorSet Ed25519_SHA512      -- ^ Set of validators
+  -> BlockchainNet addr               -- ^ Network
+  -> NodeSpec                         -- ^ Node specifications
+  -> m (Connection 'RO Alg [Tx], m ())
+interpretSpec maxHeight genSpec validatorSet net NodeSpec{..} = do
+  -- Allocate storage for node
+  conn   <- openDatabase (maybe ":memory:" id nspecDbName)
+            coinDict genesisBlock validatorSet
+  return
+    ( connectionRO conn
+    , runDBT conn $ do
+        logic  <- logicFromPersistent transitionsDB
+        -- Transactions generator
+        cursor <- getMempoolCursor $ nodeMempool logic
+        let generator = transactionGenerator genSpec (void . pushTransaction cursor)
+        acts <- runNode defCfg net
+          NodeDescription
+            { nodeValidationKey   = nspecPrivKey
+            , nodeCommitCallback  = \case
+                h | Just hM <- maxHeight
+                  , h > Height hM -> throwM Abort
+                  | otherwise     -> return ()
+            }
+          logic
+        runConcurrently (generator : acts)
+    )
+  where
+    genesisBlock :: Block Alg [Tx]
+    genesisBlock = genesisFromGenerator validatorSet genSpec
+
+--
+executeNodeSpec
+  :: Maybe Int64                -- ^ Maximum height
+  -> Int                        -- ^ Delay for generator
+  -> NetSpec NodeSpec           -- ^ Specification for net
+  -> IO [Connection 'RO Alg [Tx]]
+executeNodeSpec maxH delay NetSpec{..} = do
+  net <- P2P.newMockNet
+  let totalNodes   = length netNodeList
+      netAddresses = Map.fromList $ [0::Int ..] `zip` netNodeList
+      connections  = case netTopology of
+        Ring    -> connectRing
+        All2All -> connectAll2All
+      validatorSet = makeValidatorSetFromPriv [ pk | Just pk <- nspecPrivKey <$> netNodeList ]
+
+  actions <- forM (Map.toList netAddresses) $ \(addr, nspec@NodeSpec{..}) -> do
+    let genSpec = restrictGenerator addr totalNodes
+                $ defaultGenerator netInitialKeys netInitialDeposit delay
+        bnet    = BlockchainNet
+          { bchNetwork      = P2P.createMockNode net "50000" addr
+          , bchLocalAddr    = (addr, "50000")
+          , bchInitialPeers = map (,"50000") $ connections netAddresses addr
+          }
+    let loggers = [ makeScribe s | s <- nspecLogFile ]
+        run m   = withLogEnv "TM" "DEV" loggers $ \logenv -> runLoggerT "general" logenv m
+    run $ (fmap . fmap) run $ interpretSpec maxH genSpec validatorSet bnet nspec
+  runConcurrently (snd <$> actions) `catch` (\Abort -> return ())
+  return $ fst <$> actions
