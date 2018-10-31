@@ -142,7 +142,7 @@ newMempool validation = do
                 case tx `Map.notMember` rmap of
                   True -> do
                     let txHash = hash tx
-                    modifyTVar varAdded     succ
+                    modifyTVar' varAdded     succ
                     n <- succ <$> readTVar varMaxN
                     modifyTVar' varFIFO   $ IMap.insert n tx
                     modifyTVar' varRevMap $ Map.insert tx n
