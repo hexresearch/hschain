@@ -184,12 +184,12 @@ instance FromJSON ScribeType
 
 -- | Description of scribe
 data ScribeSpec = ScribeSpec
-  { scribe'type      :: ScribeType
+  { scribe'type      :: !ScribeType
     -- ^ Type of scribe to use
-  , scribe'path      :: Maybe FilePath
+  , scribe'path      :: !(Maybe FilePath)
     -- ^ Log file if not specified will log to stdout
-  , scribe'severity  :: Severity
-  , scribe'verbosity :: Verbosity
+  , scribe'severity  :: !Severity
+  , scribe'verbosity :: !Verbosity
   }
   deriving (Show,Eq,Ord,Generic)
 deriveJSON defaultOptions
@@ -263,7 +263,7 @@ makeEsUrlScribe serverPath sev verb = do
 ----------------------------------------------------------------
 
 -- | Wrapper for log data for logging purposes
-data LogBlockInfo a = LogBlockInfo Height a
+data LogBlockInfo a = LogBlockInfo !Height !a
 
 instance BlockData a => ToObject (LogBlockInfo a) where
   toObject (LogBlockInfo (Height h) a)

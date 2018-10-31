@@ -81,13 +81,13 @@ instance MonadIO m => MonadDB (DBT 'RW alg a m) alg a where
 ----------------------------------------------------------------
 
 data NodeLogic m alg a = NodeLogic
-  { nodeBlockValidation :: Height -> a -> m Bool
+  { nodeBlockValidation :: !(Height -> a -> m Bool)
     -- ^ Callback used for validation of blocks
-  , nodeCommitQuery     :: Height -> a -> Query 'RW alg a ()
+  , nodeCommitQuery     :: !(Height -> a -> Query 'RW alg a ())
     -- ^ Query for modifying user state.
-  , nodeBlockGenerator  :: Height -> m a
+  , nodeBlockGenerator  :: !(Height -> m a)
     -- ^ Generator for a new block
-  , nodeMempool         :: Mempool m alg (TX a)
+  , nodeMempool         :: !(Mempool m alg (TX a))
     -- ^ Mempool of node
   }
 
@@ -155,18 +155,18 @@ logicFromPersistent PersistentState{..} = do
 
 -- | Specification of node
 data NodeDescription m alg a = NodeDescription
-  { nodeValidationKey   :: Maybe (PrivValidator alg)
+  { nodeValidationKey   :: !(Maybe (PrivValidator alg))
     -- ^ Private key of validator
-  , nodeCommitCallback  :: Height -> m ()
+  , nodeCommitCallback  :: !(Height -> m ())
     -- ^ Callback called immediately after block was commit and user
     --   state in database is updated
   }
 
 -- | Specification of network
 data BlockchainNet addr = BlockchainNet
-  { bchNetwork      :: NetworkAPI addr
-  , bchLocalAddr    :: addr
-  , bchInitialPeers :: [addr]
+  { bchNetwork      :: !(NetworkAPI addr)
+  , bchLocalAddr    :: !addr
+  , bchInitialPeers :: ![addr]
   }
 
 runNode

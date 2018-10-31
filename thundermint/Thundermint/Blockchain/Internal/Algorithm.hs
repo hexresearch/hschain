@@ -60,13 +60,13 @@ import Thundermint.Logger
 
 -- | Messages being sent to consensus engine
 data Message alg a
-  = ProposalMsg    (Signed 'Verified alg (Proposal alg a))
+  = ProposalMsg    !(Signed 'Verified alg (Proposal alg a))
     -- ^ Incoming proposal
-  | PreVoteMsg     (Signed 'Verified alg (Vote 'PreVote   alg a))
+  | PreVoteMsg     !(Signed 'Verified alg (Vote 'PreVote   alg a))
     -- ^ Incoming prevote
-  | PreCommitMsg   (Signed 'Verified alg (Vote 'PreCommit alg a))
+  | PreCommitMsg   !(Signed 'Verified alg (Vote 'PreCommit alg a))
     -- ^ Incoming precommit
-  | TimeoutMsg     Timeout
+  | TimeoutMsg     !Timeout
     -- ^ Timeout
   deriving Show
 
@@ -74,39 +74,39 @@ data Message alg a
 --   height. These parameters are constant while we're deciding on
 --   next block.
 data HeightParameters (m :: * -> *) alg a = HeightParameters
-  { currentH             :: Height
+  { currentH             :: !Height
     -- ^ Height we're on.
-  , validatorSet         :: ValidatorSet alg
-  , areWeProposers       :: Round -> Bool
+  , validatorSet         :: !(ValidatorSet alg)
+  , areWeProposers       :: !(Round -> Bool)
     -- ^ Find address of proposer for given round.
-  , proposerForRound     :: Round -> Address alg
+  , proposerForRound     :: !(Round -> Address alg)
     -- ^ Proposer for given round
-  , validateBlock        :: BlockID alg a -> m ProposalState
+  , validateBlock        :: !(BlockID alg a -> m ProposalState)
     -- ^ Request validation of particular block
 
-  , scheduleTimeout      :: Timeout -> m ()
+  , scheduleTimeout      :: !(Timeout -> m ())
     -- ^ Schedule timeout. It's called whenever we enter new step so
     --   it could be overloaded to announce to peers change of state
-  , broadcastProposal    :: Round -> BlockID alg a -> Maybe Round -> m ()
+  , broadcastProposal    :: !(Round -> BlockID alg a -> Maybe Round -> m ())
     -- ^ Broadcast proposal for given round and block.
-  , castPrevote          :: Round -> Maybe (BlockID alg a) -> m ()
+  , castPrevote          :: !(Round -> Maybe (BlockID alg a) -> m ())
     -- ^ Broadcast prevote for particular block ID in some round.
-  , castPrecommit        :: Round -> Maybe (BlockID alg a) -> m ()
+  , castPrecommit        :: !(Round -> Maybe (BlockID alg a) -> m ())
     -- ^ Broadcast precommit for particular block ID in some round.
 
-  , acceptBlock          :: Round -> BlockID alg a -> m ()
+  , acceptBlock          :: !(Round -> BlockID alg a -> m ())
     -- ^ Callback to signal that given block from given round should
     --   be accepted
-  , announceHasPreVote   :: Signed 'Verified alg (Vote 'PreVote alg a)   -> m ()
+  , announceHasPreVote   :: !(Signed 'Verified alg (Vote 'PreVote alg a)   -> m ())
     -- ^ Broadcast to peers announcement that we have given prevote
-  , announceHasPreCommit :: Signed 'Verified alg (Vote 'PreCommit alg a) -> m ()
+  , announceHasPreCommit :: !(Signed 'Verified alg (Vote 'PreCommit alg a) -> m ())
     -- ^ Broadcast to peers announcement that we have given precommit
-  , announceStep         :: FullStep -> m ()
+  , announceStep         :: !(FullStep -> m ())
 
-  , createProposal       :: Round -> Maybe (Commit alg a) -> m (BlockID alg a)
+  , createProposal       :: !(Round -> Maybe (Commit alg a) -> m (BlockID alg a))
     -- ^ Create new proposal block. Block itself should be stored
     --   elsewhere.
-  , commitBlock          :: forall x. Commit alg a -> TMState alg a -> m x
+  , commitBlock          :: !(forall x. Commit alg a -> TMState alg a -> m x)
     -- ^ We're done for this height. Commit block to blockchain
   }
 
@@ -134,11 +134,11 @@ JSON.deriveJSON JSON.defaultOptions
 
 -- | Description of state transition of
 data LogTransition = LogTransition
-  { transition'H      :: Height
-  , transition'R      :: Round
-  , transition'S      :: Step
-  , transition'newR   :: Round
-  , transition'reason :: LogTransitionReason
+  { transition'H      :: !Height
+  , transition'R      :: !Round
+  , transition'S      :: !Step
+  , transition'newR   :: !Round
+  , transition'reason :: !LogTransitionReason
   }
 JSON.deriveJSON JSON.defaultOptions
   { JSON.fieldLabelModifier = drop 11 } ''LogTransition
@@ -150,9 +150,9 @@ instance Katip.LogItem  LogTransition where
 
 -- | Description of proposal
 data LogProposal alg a = LogProposal
-  { proposal'H   :: Height
-  , proposal'R   :: Round
-  , proposal'bid :: BlockID alg a
+  { proposal'H   :: !Height
+  , proposal'R   :: !Round
+  , proposal'bid :: !(BlockID alg a)
   }
 
 instance Katip.ToObject (LogProposal alg a) where
@@ -167,8 +167,8 @@ instance Katip.LogItem (LogProposal alg a) where
 
 -- | Description of commit
 data LogCommit alg a = LogCommit
-  { commit'H   :: Height
-  , commit'bid :: BlockID alg a
+  { commit'H   :: !Height
+  , commit'bid :: !(BlockID alg a)
   }
 instance Katip.ToObject (LogCommit alg a) where
   toObject p = HM.fromList [ ("H",   JSON.toJSON (commit'H p))

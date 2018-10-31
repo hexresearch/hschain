@@ -97,8 +97,8 @@ getPeerHeight p = do FullStep h _ _ <- getPeerStep p
 -- | Mutable reference to state of peer. It's safe to mutate
 --   concurrently
 data PeerStateObj m alg a = PeerStateObj
-  (ProposalStorage 'RO m alg a)
-  (MVar (PeerState alg a))
+  !(ProposalStorage 'RO m alg a)
+  !(MVar (PeerState alg a))
 
 
 -- | Create new peer state with default state

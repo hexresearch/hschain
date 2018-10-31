@@ -141,19 +141,19 @@ type family Writable (rw :: Access) a where
 
 -- | Storage for proposed blocks that are not commited yet.
 data ProposalStorage rw m alg a = ProposalStorage
-  { currentHeight      :: m Height
+  { currentHeight      :: !(m Height)
     -- ^ Height for which we store proposed blocks
-  , retrievePropByID   :: Height -> BlockID alg a -> m (Maybe (Block alg a))
+  , retrievePropByID   :: !(Height -> BlockID alg a -> m (Maybe (Block alg a)))
     -- ^ Retrieve proposed block by its ID
-  , retrievePropByR    :: Height -> Round -> m (Maybe (Block alg a, BlockID alg a))
+  , retrievePropByR    :: !(Height -> Round -> m (Maybe (Block alg a, BlockID alg a)))
     -- ^ Retrieve proposed block by round number.
 
-  , advanceToHeight    :: Writable rw (Height -> m ())
+  , advanceToHeight    :: !(Writable rw (Height -> m ()))
     -- ^ Advance to given height. If height is different from current
     --   all stored data is discarded
-  , allowBlockID       :: Writable rw (Round -> BlockID alg a -> m ())
+  , allowBlockID       :: !(Writable rw (Round -> BlockID alg a -> m ()))
     -- ^ Mark block ID as one that we could accept
-  , storePropBlock     :: Writable rw (Block alg a -> m ())
+  , storePropBlock     :: !(Writable rw (Block alg a -> m ()))
     -- ^ Store block proposed at given height. If height is different
     --   from height we are at block is ignored.
   }
@@ -196,13 +196,13 @@ hoistPropStorageRO fun ProposalStorage{..} =
 
 -- | Statistics about mempool
 data MempoolInfo = MempoolInfo
-  { mempool'size      :: Int
+  { mempool'size      :: !Int
   -- ^ Number of transactions currently in mempool
-  , mempool'added     :: Int
+  , mempool'added     :: !Int
   -- ^ Number of transactions added to mempool since program start
-  , mempool'discarded :: Int
+  , mempool'discarded :: !Int
   -- ^ Number of transaction discarded immediately since program start
-  , mempool'filtered  :: Int
+  , mempool'filtered  :: !Int
   -- ^ Number of transaction removed during filtering
   }
   deriving (Show,Generic)
@@ -216,11 +216,11 @@ instance Katip.LogItem  MempoolInfo where
 
 -- | Cursor into mempool which is used for gossiping data
 data MempoolCursor m alg tx = MempoolCursor
-  { pushTransaction :: tx -> m (Maybe (Hash alg))
+  { pushTransaction :: !(tx -> m (Maybe (Hash alg)))
     -- ^ Add transaction to the mempool. It's preliminary checked and
     --   if check fails it immediately discarded. If transaction is
     --   accepted its hash is computed and returned
-  , advanceCursor   :: m (Maybe tx)
+  , advanceCursor   :: !(m (Maybe tx))
     -- ^ Take transaction from front and advance cursor. If cursor
     -- points at the end of queue nothing happens.
   }
@@ -228,19 +228,19 @@ data MempoolCursor m alg tx = MempoolCursor
 -- | Mempool which is used for storing transactions before they're
 --   added into blockchain. Transactions are stored in FIFO manner
 data Mempool m alg tx = Mempool
-  { peekNTransactions :: Maybe Int -> m [tx]
+  { peekNTransactions :: !(Maybe Int -> m [tx])
     -- ^ Take up to N transactions from mempool. If Nothing is passed
     --   that all transactions will be returned. This operation does
     --   not alter mempool state
-  , filterMempool     :: m ()
+  , filterMempool     :: !(m ())
     -- ^ Remove transactions that are no longer valid from mempool
-  , getMempoolCursor  :: m (MempoolCursor m alg tx)
+  , getMempoolCursor  :: !(m (MempoolCursor m alg tx))
     -- ^ Get cursor pointing to be
-  , txInMempool       :: Hash alg -> m Bool
+  , txInMempool       :: !(Hash alg -> m Bool)
     -- ^ Checks whether transaction is mempool
-  , mempoolStats      :: m MempoolInfo
+  , mempoolStats      :: !(m MempoolInfo)
     -- ^ Number of elements in mempool
-  , mempoolSelfTest   :: m [String]
+  , mempoolSelfTest   :: !(m [String])
     -- ^ Check mempool for internal consistency. Each returned string
     --   is internal inconsistency
   }
@@ -284,21 +284,21 @@ nullMempool = nullMempoolAny
 
 -- | Blockchain inconsistency types
 data BlockchainInconsistency
-  = MissingBlock        Height
+  = MissingBlock        !Height
   -- ^ Missing block at given height.
-  | MissingLocalCommit  Height
+  | MissingLocalCommit  !Height
   -- ^ Commit justifying commit of block at height H is missing
-  | MissingValidatorSet Height
+  | MissingValidatorSet !Height
   -- ^ Validator set for block at height H is missing
 
-  | BlockWrongChainID  Height
+  | BlockWrongChainID  !Height
   -- ^ Block at height H has blockchain ID different from genesis block
-  | BlockHeightMismatch Height
+  | BlockHeightMismatch !Height
   -- ^ Height in header of block at height H is not equal to H
-  | BlockValidatorHashMismatch Height
+  | BlockValidatorHashMismatch !Height
   -- ^ Hash of set of validators in block header does not match hash
   --   of actual set
-  | BlockInvalidPrevBID Height
+  | BlockInvalidPrevBID !Height
   -- ^ Previous block is does not match ID of block commited to
   --   blockchain.
   | GenesisHasLastCommit
@@ -307,12 +307,12 @@ data BlockchainInconsistency
   -- ^ Block ID of previous block is set in genesis block
   | FirstBlockHasLastCommit
   -- ^ Block at H=1 has last commit field set.
-  | BlockMissingLastCommit Height
+  | BlockMissingLastCommit !Height
   -- ^ Block with H>1 last commit field is @Nothing@
-  | InvalidCommit Height String
+  | InvalidCommit Height !String
   -- ^ Commit embedded into block at height H (it justifies commit of
   --   block H-1) is invalid for some reason
-  | InvalidLocalCommit Height String
+  | InvalidLocalCommit !Height !String
   -- ^ Commit which justified commit of block at height H is invalid
   --   for some reason.
   deriving (Eq, Show)

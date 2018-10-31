@@ -41,17 +41,17 @@ import Thundermint.Store
 --   timeout and second is increment. Unit of measurements for time is
 --   ms.
 data Configuration = Configuration
-  { timeoutNewHeight :: (Int,Int)
-  , timeoutProposal  :: (Int,Int)
-  , timeoutPrevote   :: (Int,Int)
-  , timeoutPrecommit :: (Int,Int)
-  , gossipDelayVotes :: Int
-  , gossipDelayBlocks :: Int
-  , gossipDelayMempool :: Int
-  , pexMinConnections :: Int
-  , pexMaxConnections :: Int
-  , pexMinKnownConnections :: Int
-  , pexMaxKnownConnections :: Int
+  { timeoutNewHeight :: !(Int,Int)
+  , timeoutProposal  :: !(Int,Int)
+  , timeoutPrevote   :: !(Int,Int)
+  , timeoutPrecommit :: !(Int,Int)
+  , gossipDelayVotes :: !Int
+  , gossipDelayBlocks :: !Int
+  , gossipDelayMempool :: !Int
+  , pexMinConnections :: !Int
+  , pexMaxConnections :: !Int
+  , pexMinKnownConnections :: !Int
+  , pexMaxKnownConnections :: !Int
   }
   deriving (Show,Generic)
 instance JSON.FromJSON Configuration

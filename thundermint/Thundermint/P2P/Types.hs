@@ -39,27 +39,27 @@ type NetworkPort addr = Net.PortNumber
 --   to provide two implementations of networking. One is real network
 --   and another is mock in-process network for testing.
 data NetworkAPI addr = NetworkAPI
-  { listenOn :: forall m. (MonadIO m, MonadThrow m, MonadMask m)
-             => m (m (), m (Connection , addr))
+  { listenOn :: !(forall m. (MonadIO m, MonadThrow m, MonadMask m)
+             => m (m (), m (Connection , addr)))
     -- ^ Start listening on given port. Returns action to stop listener
     --   and function for accepting new connections
-  , connect  :: forall m. (MonadIO m, MonadThrow m, MonadMask m)
-             => addr -> m Connection
+  , connect  :: !(forall m. (MonadIO m, MonadThrow m, MonadMask m)
+             => addr -> m Connection)
     -- ^ Connect to remote address
-  , filterOutOwnAddresses :: forall m. (MonadIO m, MonadThrow m, MonadMask m)
-             => Set addr -> m (Set addr)
+  , filterOutOwnAddresses :: !(forall m. (MonadIO m, MonadThrow m, MonadMask m)
+             => Set addr -> m (Set addr))
     -- ^ Filter out local addresses of node. Batch processing for speed.
-  , normalizeNodeAddress :: addr -> Maybe (NetworkPort addr) -> addr
+  , normalizeNodeAddress :: !(addr -> Maybe (NetworkPort addr) -> addr)
     -- ^ Normalize address, for example, convert '20.15.10.20:24431' to '20.15.10.20:50000'
-  , listenPort :: NetworkPort addr
+  , listenPort :: !(NetworkPort addr)
   }
 
 data Connection = Connection
-    { send  :: forall m. (MonadIO m) => LBS.ByteString -> m ()
+    { send  :: !(forall m. (MonadIO m) => LBS.ByteString -> m ())
       -- ^ Send data
-    , recv  :: forall m. (MonadIO m) => m (Maybe LBS.ByteString)
+    , recv  :: !(forall m. (MonadIO m) => m (Maybe LBS.ByteString))
       -- ^ Receive data
-    , close :: forall m. (MonadIO m) => m ()
+    , close :: !(forall m. (MonadIO m) => m ())
       -- ^ Close socket
     }
 
@@ -79,9 +79,9 @@ instance Exception NetworkError
 
 -- | Sockets for mock network
 data MockSocket = MockSocket
-  { msckActive :: TVar Bool
-  , msckSend   :: TChan LBS.ByteString
-  , msckRecv   :: TChan LBS.ByteString
+  { msckActive :: !(TVar Bool)
+  , msckSend   :: !(TChan LBS.ByteString)
+  , msckRecv   :: !(TChan LBS.ByteString)
   }
   deriving (Eq)
 
