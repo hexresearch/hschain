@@ -158,7 +158,7 @@ transitionsDB = PersistentState
   , transactionsToBlockDB = \h ->
       let selectTx []     = return []
           selectTx (t:tx) = optional (processDB h t) >>= \case
-            Nothing -> return tx
+            Nothing -> selectTx tx
             Just () -> (t :) <$> selectTx tx
       in selectTx
   -- DB schema
