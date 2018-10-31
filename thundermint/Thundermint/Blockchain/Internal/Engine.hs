@@ -69,18 +69,14 @@ runApplication
      -- ^ Channels for communication with peers
   -> m ()
 runApplication config appSt@AppState{..} appCh@AppChans{..} = logOnException $ do
+  logger InfoS "Starting consensus engine" ()
   height <- queryRO $ blockchainHeight 
   lastCm <- queryRO $ retrieveLocalCommit height
   advanceToHeight appPropStorage $ succ height
   void $ flip fix lastCm $ \loop commit -> do
     cm <- decideNewBlock config appSt appCh commit
-    -- ASSERT: We successfully commited next block
-    --
-    -- FIXME: do we need to communicate with peers about our
-    --        commit? (Do we need +2/3 commits to proceed
-    --        further)
     loop (Just cm)
-  logger InfoS "Finished execution of blockchain" ()
+
 
 -- This function uses consensus algorithm to decide which block we're
 -- going to commit at current height, then stores it in database and
