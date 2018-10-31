@@ -1,0 +1,50 @@
+{
+  "netNodeList" :
+  [
+    { "nspecPrivKey"     : "2K7bFuJXxKf5LqogvVRQjms2W26ZrjpvUjo5LdvPFa5Y",
+      "nspecDbName"      : "db/db1",
+      "nspecLogFile"     :
+      [{ "type"      : "ScribeJSON",
+         "path"      : "logs/node-1",
+         "severity"  : "Debug",
+         "verbosity" : "V2"
+       }],
+        "nspecWalletKeys"  : [0,4]
+    },
+    { "nspecPrivKey"     : "4NSWtMsEPgfTK25tCPWqNzVVze1dgMwcUFwS5WkSpjJL",
+      "nspecDbName"      : "db/db2",
+      "nspecByzantine"   : "InvalidBlock",
+      "nspecLogFile"     :
+      [{ "type"      : "ScribeJSON",
+         "path"      : "logs/node-2",
+         "severity"  : "Debug",
+         "verbosity" : "V2"
+       }],
+        "nspecWalletKeys"  : [4,4]
+    },
+    { "nspecPrivKey"     : "3Fj8bZjKc53F2a87sQaFkrDas2d9gjzK57FmQwnNnSHS",
+      "nspecDbName"      : "db/db3",
+      "nspecLogFile"     :
+      [{ "type"      : "ScribeJSON",
+         "path"      : "logs/node-3",
+         "severity"  : "Debug",
+         "verbosity" : "V2"
+       }],
+        "nspecWalletKeys"  : [8,4]
+    },
+    { "nspecPrivKey"     : "D2fpHM1JA8trshiUW8XPvspsapUvPqVzSofaK1MGRySd",
+      "nspecDbName"      : "db/db4",
+      "nspecLogFile"     :
+      [{ "type"      : "ScribeJSON",
+         "path"      : "logs/node-4",
+         "severity"  : "Debug",
+         "verbosity" : "V2"
+       }],
+        "nspecWalletKeys"  : [12,4]
+    }
+  ],
+  "netTopology"       : "All2All",
+  "netInitialDeposit" : 1000,
+  "netInitialKeys"    : 12
+
+}
