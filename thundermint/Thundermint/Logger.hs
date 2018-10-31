@@ -143,7 +143,8 @@ logOnException = handle logE
           logger InfoS "Killed normally by ThreadKilled" ()
           throwM e
       | SomeException eTy <- e               = do
-          logger ErrorS ("Killed by " <> showLS e <> " :: " <> showLS (typeOf eTy)) ()
+          logger ErrorS "Killed by" (  sl "type" (show (typeOf eTy))
+                                    <> sl "err"  (show eTy))
           throwM e
 
 
