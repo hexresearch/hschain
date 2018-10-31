@@ -111,16 +111,18 @@ runQueryRW  :: MonadIO m => Connection 'RW alg a -> Query 'RW alg a x -> m (Mayb
 runQueryRW c = liftIO . runQueryWorker c . unQuery
 
 runQueryWorker :: Connection rw alg a -> MaybeT (ReaderT SQL.Connection IO) x -> IO (Maybe x)
-runQueryWorker (Connection mutex conn) sql = withMutex mutex $ do
+runQueryWorker (Connection mutex conn) sql = withMutex mutex $ mask $ \restore -> do
   SQL.execute_ conn "BEGIN TRANSACTION"
   -- FIXME: exception safety. We need to rollback in presence of async
   --        exceptions
-  r <- try $ runReaderT (runMaybeT sql) conn
-  case r of
-    Left (e :: SomeException) -> do SQL.execute_ conn "ROLLBACK"
-                                    throwM e
-    Right Nothing             -> Nothing <$ SQL.execute_ conn "ROLLBACK"
-    Right a                   -> a       <$ SQL.execute_ conn "COMMIT"
+  r <- restore (runReaderT (runMaybeT sql) conn) `onException` rollbackTx
+  case r of Nothing -> rollbackTx
+            _       -> commitTx
+  return r
+  where
+    rollbackTx = SQL.execute_ conn "ROLLBACK"
+    commitTx   = SQL.execute_ conn "COMMIT"
+
 
 ----------------------------------------------------------------
 -- Internal primitives
