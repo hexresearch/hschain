@@ -45,8 +45,12 @@ import Thundermint.Store.Internal.Query (Connection,connectionRO)
 --
 ----------------------------------------------------------------
 
+
+
 interpretSpec
-   :: Maybe Int64 -> FilePath -> Int
+   :: Maybe Int64
+   -> FilePath
+   -> Int
    -> NetSpec NodeSpec
    -> IO [(Connection 'RO Alg [Tx], IO ())]
 interpretSpec maxH prefix delay NetSpec{..} = do
@@ -66,16 +70,9 @@ interpretSpec maxH prefix delay NetSpec{..} = do
           logic  <- logicFromPersistent transitionsDB
           -- Transactions generator
           cursor <- getMempoolCursor $ nodeMempool logic
-          let generator = forever $ do
-                let (off,n)  = nspecWalletKeys
-                    privKeys = take n $ drop off privateKeyList
-                txGen   <- liftIO
-                         $ generateTransaction (publicKey <$> take netInitialKeys privateKeyList) privKeys
-                Just tx <- queryRO
-                         $ runEphemeralQ coinDict
-                         $ txGen
-                void $ pushTransaction cursor tx
-                liftIO $ threadDelay (delay * 1000)
+          let generator = transactionGenerator
+                (restrictGenerator addr totalNodes genSpec)
+                (void . pushTransaction cursor)
           --
           acts <- runNode defCfg
             BlockchainNet
@@ -93,27 +90,16 @@ interpretSpec maxH prefix delay NetSpec{..} = do
             logic
           runConcurrently (generator : acts)
       )
-  where    
+  where
+    totalNodes   = length netNodeList
     netAddresses = Map.fromList $ [0::Int ..] `zip` netNodeList
     connections  = case netTopology of
       Ring    -> connectRing
       All2All -> connectAll2All
     validatorSet = makeValidatorSetFromPriv [ pk | Just pk <- nspecPrivKey <$> netNodeList ]
     --
-    genesisBlock :: Block Alg [Tx]
-    genesisBlock =  Block
-      { blockHeader = Header
-          { headerChainID        = "MONIES"
-          , headerHeight         = Height 0
-          , headerTime           = Time 0
-          , headerLastBlockID    = Nothing
-          , headerValidatorsHash = hash validatorSet
-          }
-      , blockData       = [ Deposit (publicKey pk) netInitialDeposit
-                          | pk <- take netInitialKeys privateKeyList
-                          ]
-      , blockLastCommit = Nothing
-      }
+    genSpec      = defaultGenerator netInitialKeys netInitialDeposit delay
+    genesisBlock = genesisFromGenerator validatorSet genSpec
 
 executeNodeSpec
   :: Maybe Int64 -> FilePath -> Int

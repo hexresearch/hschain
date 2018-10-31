@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase                 #-}
 {-# LANGUAGE OverloadedStrings          #-}
@@ -18,11 +19,19 @@ module Thundermint.Mock.Coin (
   , unspentOutputsLens
   , coinDict
     -- * Transaction generator
+  , GeneratorSpec(..)
+  , defaultGenerator
+  , restrictGenerator
+  , genesisFromGenerator
+    -- ** Generator
   , generateTransaction
+  , transactionGenerator
   ) where
 
 import Control.Applicative
 import Control.Monad
+import Control.Monad.IO.Class
+import Control.Concurrent   (threadDelay)
 import Control.DeepSeq
 import Codec.Serialise      (Serialise,serialise)
 import qualified Data.Aeson as JSON
@@ -39,9 +48,12 @@ import Thundermint.Blockchain.Types
 import Thundermint.Blockchain.Interpretation
 import Thundermint.Control
 import Thundermint.Crypto
+import Thundermint.Crypto.Containers (ValidatorSet)
 import Thundermint.Crypto.Ed25519
 import Thundermint.Store.SQL
+import Thundermint.Store
 import Thundermint.Store.Internal.Types
+import Thundermint.Mock.KeyList (privateKeyList)
 
 
 type Alg = Ed25519_SHA512
@@ -228,21 +240,65 @@ unspentOutputsLens = lens unspentOutputsDB (const CoinStateDB)
 -- Transaction generator
 ----------------------------------------------------------------
 
+-- | Specification for transaction generator
+data GeneratorSpec = GeneratorSpec
+  { genInitialKeys    :: [PublicKey Alg] -- ^ Public keys of all wallets
+  , genPrivateKeys    :: [PrivKey   Alg]
+  , genInitialDeposit :: Integer
+  , genDelay          :: Int
+  }
+  deriving (Show)
+
+-- | Default generator which uses 'privateKeyList' as source of
+--   keys. Useful since it allows to specify generator concisely.
+defaultGenerator :: Int -> Integer -> Int ->  GeneratorSpec
+defaultGenerator n dep delay = GeneratorSpec
+  { genInitialKeys    = map publicKey pk
+  , genPrivateKeys    = pk
+  , genInitialDeposit = dep
+  , genDelay          = delay
+  }
+  where pk = take n privateKeyList
+
+-- | @restrictGenerator i n@ restrict generator to only generate
+--   transaction for ith nth of all private keys
+restrictGenerator :: Int -> Int -> GeneratorSpec -> GeneratorSpec
+restrictGenerator n tot _
+  | n < 0 || tot < 0 || n >= tot = error "restrictGenerator: invalid parameters"
+restrictGenerator n tot GeneratorSpec{..} = GeneratorSpec
+  { genPrivateKeys = take (off2-off1) $ drop off1 genPrivateKeys
+  , ..
+  }
+  where
+    len  = length genPrivateKeys
+    off1 = (n     * len) `div` tot
+    off2 = ((n+1) * len) `div` tot
+
+genesisFromGenerator :: ValidatorSet Alg -> GeneratorSpec -> Block Alg [Tx]
+genesisFromGenerator validatorSet GeneratorSpec{..} = Block
+  { blockHeader = Header
+      { headerChainID        = "MONIES"
+      , headerHeight         = Height 0
+      , headerTime           = Time 0
+      , headerLastBlockID    = Nothing
+      , headerValidatorsHash = hash validatorSet
+      }
+  , blockData       = [ Deposit pk genInitialDeposit | pk <- genInitialKeys ]
+  , blockLastCommit = Nothing
+  }
+
 -- | Generate transaction. This implementation is really inefficient
 --   since it will materialize all unspent outputs into memory and
 --   shouldn't be used when number of wallets and coins is high
-generateTransaction
-  :: [PublicKey Alg]            -- ^ List of possible addresses
-  -> [PrivKey Alg]              -- ^ Private key which we own
-  -> IO (EphemeralQ Alg [Tx] CoinStateDB Tx)
-generateTransaction publicKeys privKeys = do
+generateTransaction :: GeneratorSpec -> IO (EphemeralQ Alg [Tx] CoinStateDB Tx)
+generateTransaction GeneratorSpec{..} = do
   -- Pick private key
-  privK <- do i <- randomRIO (0, length privKeys - 1)
-              return (privKeys !! i)
+  privK <- do i <- randomRIO (0, length genPrivateKeys - 1)
+              return (genPrivateKeys !! i)
   let pubK = publicKey privK
   -- Pick public key to send data to
   target <- do i <- randomRIO (0, nPK - 1)
-               return (publicKeys !! i)
+               return (genInitialKeys !! i)
   amount <- randomRIO (0,20)
   -- Create transaction
   return $ do
@@ -258,8 +314,21 @@ generateTransaction publicKeys privKeys = do
                         }
     return $ Send pubK (signBlob privK $ toStrict $ serialise tx) tx
   where
-    nPK  = length publicKeys
+    nPK  = length genInitialKeys
 
+
+-- | Generate transaction indefinitely
+transactionGenerator
+  :: (MonadIO m, MonadDB m Alg [Tx])
+  => GeneratorSpec -> (Tx -> m ()) -> m ()
+transactionGenerator gen push = forever $ do
+  txGen   <- liftIO $ generateTransaction gen
+  Just tx <- queryRO
+           $ runEphemeralQ coinDict
+           $ txGen
+  push tx
+  liftIO $ threadDelay (genDelay gen * 1000)
+  
 
 findInputs :: (Num i, Ord i) => i -> [(a,i)] -> [(a,i)]
 findInputs tgt = go 0
