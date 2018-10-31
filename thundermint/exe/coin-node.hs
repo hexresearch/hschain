@@ -13,18 +13,13 @@ import Control.Monad.Trans.Reader
 import Data.Int
 import Options.Applicative
 
-import Codec.Serialise      (serialise)
 import Control.Monad        (forever, void)
-import Data.ByteString.Lazy (toStrict)
-import Data.Proxy           (Proxy(..))
-import Katip.Core           (showLS, sl)
+import Katip.Core           (showLS)
 import Network.Simple.TCP   (accept, listen, recv, closeSock)
 import Network.Socket       (SockAddr(..), PortNumber)
 import System.Environment   (getEnv)
 import System.FilePath      ((</>))
-import System.Random        (randomRIO)
 
-import Thundermint.Blockchain.Interpretation
 import Thundermint.Blockchain.Internal.Engine.Types
 import Thundermint.Blockchain.Types
 import Thundermint.Control
@@ -34,6 +29,7 @@ import Thundermint.Crypto.Ed25519            (Ed25519_SHA512)
 import Thundermint.Logger
 import Thundermint.Run
 import Thundermint.Store
+import Thundermint.Store.SQL            (runEphemeralQ)
 import Thundermint.Store.Internal.Query (Connection, connectionRO)
 import Thundermint.Mock.Coin
 import Thundermint.Mock.KeyList
@@ -42,11 +38,10 @@ import Thundermint.P2P.Consts
 import Thundermint.P2P.Instances ()
 import Thundermint.P2P.Network               ( getLocalAddress, realNetwork
                                              , getCredentialFromBuffer, realNetworkTls)
-
 import qualified Control.Exception     as E
 import qualified Data.Aeson            as JSON
 import qualified Data.ByteString.Char8 as BC8
-import qualified Data.Map              as Map
+
 
 ----------------------------------------------------------------
 -- Cmd line specification
@@ -62,51 +57,6 @@ data Opts = Opts
   , optTls            :: Bool
   }
 
-----------------------------------------------------------------
--- Generation of transactions
-----------------------------------------------------------------
-
-transferActions
-  :: (MonadIO m)
-  => Int                        -- Delay between transactions
-  -> [PublicKey Alg]            -- List of possible addresses
-  -> [PrivKey Alg]              -- Private key which we own
-  -> (Tx -> m ())               -- push new transaction
-  -> CoinState                  -- Current state of
-  -> m ()
-transferActions delay publicKeys privKeys push CoinState{..} = do
-  -- Pick private key
-  privK <- do i <- liftIO $ randomRIO (0, length privKeys - 1)
-              return (privKeys !! i)
-  let pubK = publicKey privK
-  -- Pick public key to send data to
-  target <- do i <- liftIO $ randomRIO (0, nPK - 1)
-               return (publicKeys !! i)
-  amount <- liftIO $ randomRIO (0,20)
-  -- Create transaction
-  let inputs = findInputs amount [ (inp, n)
-                                 | (inp, (pk,n)) <- Map.toList unspentOutputs
-                                 , pk == pubK
-                                 ]
-      tx     = TxSend { txInputs  = map fst inputs
-                      , txOutputs = [ (target, amount)
-                                    , (pubK  , sum (map snd inputs) - amount)
-                                    ]
-                      }
-  push $ Send pubK (signBlob privK $ toStrict $ serialise tx) tx
-  liftIO $ threadDelay (delay * 1000)
-  where
-    nPK  = length publicKeys
-
-
-findInputs :: (Num i, Ord i) => i -> [(a,i)] -> [(a,i)]
-findInputs tgt = go 0
-  where go _ [] = []
-        go acc ((tx,i):rest)
-          | acc' >= tgt = [(tx,i)]
-          | otherwise   = (tx,i) : go acc' rest
-          where
-            acc' = acc + i
 
 
 ----------------------------------------------------------------
@@ -122,29 +72,30 @@ interpretSpec
 interpretSpec Opts{..} validatorSet net NodeSpec{..} = do
   -- Allocate storage for node
   conn   <- openDatabase (maybe ":memory:" (prefix </>) nspecDbName)
-            Proxy genesisBlock validatorSet
+            coinDict genesisBlock validatorSet
   return
     ( connectionRO conn
     , runDBT conn $ do
-        (bchState,logic) <- logicFromFold transitions
+        logic  <- logicFromPersistent transitionsDB
         -- Transactions generator
-        cursor  <- getMempoolCursor $ nodeMempool logic
+        cursor <- getMempoolCursor $ nodeMempool logic
         let generator = forever $ do
-              st <- currentState bchState
               let (off,n)  = nspecWalletKeys
                   privKeys = take n $ drop off privateKeyList
-              transferActions delay (publicKey <$> take netInitialKeys privateKeyList) privKeys
-                (void . pushTransaction cursor) st
+              txGen   <- liftIO
+                       $ generateTransaction (publicKey <$> take netInitialKeys privateKeyList) privKeys
+              Just tx <- queryRO
+                       $ runEphemeralQ coinDict
+                       $ txGen
+              void $ pushTransaction cursor tx
+              liftIO $ threadDelay (delay * 1000)
         acts <- runNode defCfg net
           NodeDescription
             { nodeValidationKey   = nspecPrivKey
-            , nodeCommitCallback  = \h -> do
-                -- Update state
-                st <- stateAtH bchState (succ h)
-                descendNamespace "coin" $ logger InfoS "State size" (sl "utxo" (Map.size (unspentOutputs st)))
-                case maxH of
-                  Just hM | h > Height hM -> throwM Abort
-                  _                       -> return ()
+            , nodeCommitCallback  = \case
+                h | Just hM <- maxH
+                  , h > Height hM -> throwM Abort
+                  | otherwise     -> return ()
             }
           logic
         runConcurrently (generator : acts)
