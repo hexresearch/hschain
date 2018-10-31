@@ -17,6 +17,8 @@ module Thundermint.Mock.Coin (
   , transitionsDB
   , unspentOutputsLens
   , coinDict
+    -- * Transaction generator
+  , generateTransaction
   ) where
 
 import Control.Applicative
@@ -30,6 +32,7 @@ import Data.Functor.Compose
 import Data.Map             (Map)
 import qualified Data.Map.Strict  as Map
 import Lens.Micro
+import System.Random   (randomRIO)
 import GHC.Generics    (Generic)
 
 import Thundermint.Blockchain.Types
@@ -219,3 +222,50 @@ processTransactionDB transaction@(Send pubK sig txSend@TxSend{..}) = do
 
 unspentOutputsLens :: Lens' (CoinStateDB f) (f (PMap (Hash Alg, Int) (PublicKey Alg, Integer)))
 unspentOutputsLens = lens unspentOutputsDB (const CoinStateDB)
+
+
+----------------------------------------------------------------
+-- Transaction generator
+----------------------------------------------------------------
+
+-- | Generate transaction. This implementation is really inefficient
+--   since it will materialize all unspent outputs into memory and
+--   shouldn't be used when number of wallets and coins is high
+generateTransaction
+  :: [PublicKey Alg]            -- ^ List of possible addresses
+  -> [PrivKey Alg]              -- ^ Private key which we own
+  -> IO (EphemeralQ Alg [Tx] CoinStateDB Tx)
+generateTransaction publicKeys privKeys = do
+  -- Pick private key
+  privK <- do i <- randomRIO (0, length privKeys - 1)
+              return (privKeys !! i)
+  let pubK = publicKey privK
+  -- Pick public key to send data to
+  target <- do i <- randomRIO (0, nPK - 1)
+               return (publicKeys !! i)
+  amount <- randomRIO (0,20)
+  -- Create transaction
+  return $ do
+    utxo <- materializePMap unspentOutputsLens
+    let inputs = findInputs amount [ (inp, n)
+                                   | (inp, (pk,n)) <- Map.toList utxo
+                                   , pk == pubK
+                                   ]
+        tx     = TxSend { txInputs  = map fst inputs
+                        , txOutputs = [ (target, amount)
+                                      , (pubK  , sum (map snd inputs) - amount)
+                                      ]
+                        }
+    return $ Send pubK (signBlob privK $ toStrict $ serialise tx) tx
+  where
+    nPK  = length publicKeys
+
+
+findInputs :: (Num i, Ord i) => i -> [(a,i)] -> [(a,i)]
+findInputs tgt = go 0
+  where go _ [] = []
+        go acc ((tx,i):rest)
+          | acc' >= tgt = [(tx,i)]
+          | otherwise   = (tx,i) : go acc' rest
+          where
+            acc' = acc + i
