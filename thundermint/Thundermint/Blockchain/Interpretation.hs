@@ -15,7 +15,6 @@ module Thundermint.Blockchain.Interpretation (
   ) where
 
 import Codec.Serialise (Serialise)
-import Control.Applicative
 import Control.Concurrent.MVar
 import Control.Monad.Catch
 import Control.Monad.IO.Class
@@ -40,21 +39,21 @@ import Thundermint.Blockchain.Types
 --   e.g. if transaction or block is not valid it will return
 --   @Nothing@.
 data BlockFold s a = BlockFold
-  { processTx    :: Height -> TX a -> s -> Maybe s
+  { processTx    :: !(Height -> TX a -> s -> Maybe s)
     -- ^ Try to process single transaction. Nothing indicates that
     --   transaction is invalid. This function will called very
     --   frequently so it need not to perform every check but should
     --   rule out invalid blocks.
     --
     --   FIXME: figure out exact semantics for Height parameter
-  , processBlock :: Height -> a  -> s -> Maybe s
+  , processBlock :: !(Height -> a  -> s -> Maybe s)
     -- ^ Try to process whole block. Here application should perform
     --   complete validation of block
-  , transactionsToBlock :: Height -> s -> [TX a] -> a
+  , transactionsToBlock :: !(Height -> s -> [TX a] -> a)
     -- ^ Create block at given height from list of transactions. Not
     --   input could contain invalid transaction and they must be
     --   filtered out so that block is valid.
-  , initialState :: s
+  , initialState :: !s
     -- ^ State of blockchain BEFORE genesis block.
   }
 
@@ -105,9 +104,9 @@ hoistBChState f BChState{..} = BChState
 ----------------------------------------------------------------
 
 data PersistentState dct alg a = PersistentState
-  { processTxDB           :: Height -> TX a -> EphemeralQ alg a dct ()
-  , processBlockDB        :: forall q. (ExecutorRW q, Monad (q dct))
-                          => Height -> a -> q dct () 
-  , transactionsToBlockDB :: Height -> [TX a] -> EphemeralQ alg a dct a
-  , persistedData         :: dct Persistent
+  { processTxDB           :: !(Height -> TX a -> EphemeralQ alg a dct ())
+  , processBlockDB        :: !(forall q. (ExecutorRW q, Monad (q dct))
+                          => Height -> a -> q dct ())
+  , transactionsToBlockDB :: !(Height -> [TX a] -> EphemeralQ alg a dct a)
+  , persistedData         :: !(dct Persistent)
   }

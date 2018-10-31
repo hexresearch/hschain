@@ -23,15 +23,15 @@ import Thundermint.Control
 data TraceEvents
     =  TeNodeStarted
     -- ^ Node is started
-    | TeNodeConnectingTo String
+    | TeNodeConnectingTo !String
     -- ^ Node try to connect to other address
-    | TeNodeOtherTryConnect String
+    | TeNodeOtherTryConnect !String
     -- ^ Other node try to connect; if it does not
     --   connected previously then `TeNodeConnected`
     --   event fired
-    | TeNodeOtherConnected String
+    | TeNodeOtherConnected !String
     -- ^ Other node connected successfully
-    | TePeerRegistryChanged (Set String)
+    | TePeerRegistryChanged !(Set String)
     deriving (Show, Ord, Eq)
 
 class Monad m => MonadTrace m where

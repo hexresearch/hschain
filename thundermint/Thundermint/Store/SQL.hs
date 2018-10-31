@@ -70,7 +70,7 @@ class PersistentData t where
 
 -- | Wrapper for carrying class dictionary with data type
 data Persistent a where
-  PersistentPMap :: PMap k v -> Persistent (PMap k v)
+  PersistentPMap :: !(PMap k v) -> Persistent (PMap k v)
 
 
 -- | Implementation of specific operations for persistent data
@@ -94,9 +94,9 @@ class (ExecutorRO q) => ExecutorRW q where
 
 -- | Map which is persisted on disk
 data PMap k v = PMap
-  { pmapTableName :: Text       -- Name of underlying SQL table
-  , pmapEncodingK :: FieldEncoding k
-  , pmapEncodingV :: FieldEncoding v
+  { pmapTableName :: !Text       -- Name of underlying SQL table
+  , pmapEncodingK :: !(FieldEncoding k)
+  , pmapEncodingV :: !(FieldEncoding v)
   }
 
 instance PersistentData (PMap k v) where
@@ -306,7 +306,7 @@ newtype EphemeralQ alg a dct x = EphemeralQ
   deriving (Functor, Applicative, Monad, Alternative)
 
 data Overlay a where
-  OverlayPMap :: PMap k v -> Map k (Maybe v) -> Overlay (PMap k v)
+  OverlayPMap :: !(PMap k v) -> !(Map k (Maybe v)) -> Overlay (PMap k v)
 
 overlayPMap :: Lens' (Overlay (PMap k v)) (Map k (Maybe v))
 overlayPMap = lens (\(OverlayPMap _ o) -> o) (\(OverlayPMap p _) o -> OverlayPMap p o)

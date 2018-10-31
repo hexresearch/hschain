@@ -85,9 +85,9 @@ type BlockID alg a = BlockHash alg (Block alg a)
 
 -- | Block data type
 data Block alg a = Block
-  { blockHeader     :: Header alg a
-  , blockData       :: a
-  , blockLastCommit :: Maybe (Commit alg a)
+  { blockHeader     :: !(Header alg a)
+  , blockData       :: !a
+  , blockLastCommit :: !(Maybe (Commit alg a))
     -- ^ Commit information for previous block. Nothing iff block
     --   is a genesis block or block at height 1.
   }
@@ -96,16 +96,16 @@ instance Serialise a => Serialise (Block alg a)
 
 -- | Block header
 data Header alg a = Header
-  { headerChainID        :: ByteString
+  { headerChainID        :: !ByteString
     -- ^ Identifier of chain we're working on. It should be same in
     --   all blocks in blockchain
-  , headerHeight         :: Height
+  , headerHeight         :: !Height
     -- ^ Height of block
-  , headerTime           :: Time
+  , headerTime           :: !Time
     -- ^ Time of block creation
-  , headerLastBlockID    :: Maybe (BlockID alg a)
+  , headerLastBlockID    :: !(Maybe (BlockID alg a))
     -- ^ Hash of previous block. Nothing iff block is a genesis block
-  , headerValidatorsHash :: Hash alg
+  , headerValidatorsHash :: !(Hash alg)
     -- ^ Hash of validators for current block.
 
   -- FIXME: Add various hashes
@@ -117,9 +117,9 @@ instance Serialise (Header alg a)
 
 -- | Data justifying commit
 data Commit alg a = Commit
-  { commitBlockID    :: BlockID alg a
+  { commitBlockID    :: !(BlockID alg a)
     -- ^ Block for which commit is done
-  , commitPrecommits :: [Signed 'Verified alg (Vote 'PreCommit alg a)]
+  , commitPrecommits :: !([Signed 'Verified alg (Vote 'PreCommit alg a)])
     -- ^ List of precommits which justify commit
   }
   deriving (Show, Eq, Generic)
@@ -166,24 +166,24 @@ data FullStep = FullStep !Height !Round !Step
   deriving (Show,Eq,Ord,Generic)
 instance Serialise FullStep
 
-data Timeout = Timeout Height Round Step
+data Timeout = Timeout !Height !Round !Step
   deriving (Show,Eq,Ord,Generic)
 instance Serialise Timeout
 
 -- | Proposal for new block. Proposal include only hash of block and
 --   block itself is gossiped separately.
 data Proposal alg a = Proposal
-  { propHeight    :: Height
+  { propHeight    :: !Height
     -- ^ Proposal height
-  , propRound     :: Round
+  , propRound     :: !Round
     -- ^ Propoasl round
-  , propTimestamp :: Time
+  , propTimestamp :: !Time
     -- ^ Time of proposal
-  , propPOL       :: Maybe Round
+  , propPOL       :: !(Maybe Round)
     -- ^ Proof of Lock for proposal
     --
     -- FIXME: why it's needed? How should it be used?
-  , propBlockID   :: BlockID alg a
+  , propBlockID   :: !(BlockID alg a)
     -- ^ Hash of proposed block
   }
   deriving (Show,Generic)
@@ -200,10 +200,10 @@ instance Serialise VoteType
 -- | Single vote cast validator. Type of vote is determined by its
 --   type tag
 data Vote (ty :: VoteType) alg a= Vote
-  { voteHeight  :: Height
-  , voteRound   :: Round
-  , voteTime    :: Time
-  , voteBlockID :: Maybe (BlockID alg a)
+  { voteHeight  :: !Height
+  , voteRound   :: !Round
+  , voteTime    :: !Time
+  , voteBlockID :: !(Maybe (BlockID alg a))
   }
   deriving (Show,Eq,Ord,Generic)
 
@@ -260,19 +260,19 @@ instance JSON.FromJSON ProposalState
 
 -- | State for tendermint consensus at some particular height.
 data TMState alg a = TMState
-  { smRound         :: Round
+  { smRound         :: !Round
     -- ^ Current round
-  , smStep          :: Step
+  , smStep          :: !Step
     -- ^ Current step in the round
-  , smProposals     :: Map Round (Signed 'Verified alg (Proposal alg a))
+  , smProposals     :: !(Map Round (Signed 'Verified alg (Proposal alg a)))
     -- ^ Proposal for current round
-  , smPrevotesSet   :: HeightVoteSet 'PreVote alg a
+  , smPrevotesSet   :: !(HeightVoteSet 'PreVote alg a)
     -- ^ Set of all received valid prevotes
-  , smPrecommitsSet :: HeightVoteSet 'PreCommit alg a
+  , smPrecommitsSet :: !(HeightVoteSet 'PreCommit alg a)
     -- ^ Set of all received valid precommits
-  , smLockedBlock   :: Maybe (Round, BlockID alg a)
+  , smLockedBlock   :: !(Maybe (Round, BlockID alg a))
     -- ^ Round and block we're locked on
-  , smLastCommit    :: Maybe (Commit alg a)
+  , smLastCommit    :: !(Maybe (Commit alg a))
     -- ^ Commit for previous block. Nothing if previous block is
     --   genesis block.
   }

@@ -17,8 +17,8 @@ import qualified Database.SQLite.Simple.FromField as SQL
 -- | Encoding of haskell value as field in SQLite database
 data FieldEncoding a where
   FieldEncoding :: (SQL.FromField x, SQL.ToField x)
-                => (a -> x)
-                -> (x -> a)
+                => !(a -> x)
+                -> !(x -> a)
                 -> FieldEncoding a
 
 -- | Value is encoded using CBOR and stored in database

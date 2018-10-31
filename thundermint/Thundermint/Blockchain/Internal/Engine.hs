@@ -216,10 +216,10 @@ newtype ConsensusM alg a m b = ConsensusM
   deriving (Functor)
 
 data ConsensusResult alg a b
-  = Success b
+  = Success !b
   | Tranquility
   | Misdeed
-  | DoCommit  (Commit alg a) (TMState alg a)
+  | DoCommit  !(Commit alg a) !(TMState alg a)
   deriving (Functor)
 
 instance Monad m => Applicative (ConsensusM alg a m) where

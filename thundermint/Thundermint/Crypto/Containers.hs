@@ -64,8 +64,8 @@ import Thundermint.Crypto
 
 -- | Information about remote validator
 data Validator alg = Validator
-  { validatorPubKey      :: PublicKey alg
-  , validatorVotingPower :: Integer
+  { validatorPubKey      :: !(PublicKey alg)
+  , validatorVotingPower :: !Integer
   }
   deriving (Generic)
 deriving instance Eq (PublicKey alg) => Eq (Validator alg)
@@ -170,9 +170,9 @@ emptyValidatorISet n
 --   one value per signature is allowed. Lookup is supported both by
 --   values and by signer's address.
 data SignedSet ty alg a = SignedSet
-  { vsetAddrMap    :: Map (Address alg) (Signed ty alg a)
-  , vsetValMap     :: Map a (Set (Address alg))
-  , vsetValidators :: ValidatorSet alg
+  { vsetAddrMap    :: !(Map (Address alg) (Signed ty alg a))
+  , vsetValMap     :: !(Map a (Set (Address alg)))
+  , vsetValidators :: !(ValidatorSet alg)
   }
 
 instance (Show a) => Show (SignedSet ty alg a) where
@@ -180,10 +180,10 @@ instance (Show a) => Show (SignedSet ty alg a) where
 
 -- | Result of insertion into 'SignedSet'
 data InsertResult b a
-  = InsertOK       a            -- ^ Insert is successful
+  = InsertOK       !a            -- ^ Insert is successful
   | InsertDup                   -- ^ Duplicate value. No change
-  | InsertConflict b            -- ^ Conflict during insertion
-  | InsertUnknown  b            -- ^ Value is signed by unknown validator
+  | InsertConflict !b            -- ^ Conflict during insertion
+  | InsertUnknown  !b            -- ^ Value is signed by unknown validator
   deriving (Show,Functor)
 
 instance Applicative (InsertResult b) where
@@ -269,8 +269,8 @@ any23 SignedSet{..}
 -- | Map from @r@ to @SignedSet ty alg a@. It maintains invariant that
 --   all submaps have same distribution of voting power
 data SignedSetMap r ty alg a = SignedSetMap
-  { vmapSubmaps    :: Map r (SignedSet ty alg a)
-  , vmapValidators :: ValidatorSet alg
+  { vmapSubmaps    :: !(Map r (SignedSet ty alg a))
+  , vmapValidators :: !(ValidatorSet alg)
   }
 
 instance (Show a, Show r) => Show (SignedSetMap r ty alg a) where

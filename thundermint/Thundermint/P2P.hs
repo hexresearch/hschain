@@ -67,13 +67,13 @@ import Thundermint.Utils
 --   FIXME: We don't have good way to prevent DoS by spamming too much
 --          data
 data GossipMsg addr alg a
-  = GossipPreVote   (Signed 'Unverified alg (Vote 'PreVote   alg a))
-  | GossipPreCommit (Signed 'Unverified alg (Vote 'PreCommit alg a))
-  | GossipProposal  (Signed 'Unverified alg (Proposal alg a))
-  | GossipBlock     (Block alg a)
-  | GossipAnn       (Announcement alg)
-  | GossipTx        (TX a)
-  | GossipPex       (PexMessage addr)
+  = GossipPreVote   !(Signed 'Unverified alg (Vote 'PreVote   alg a))
+  | GossipPreCommit !(Signed 'Unverified alg (Vote 'PreCommit alg a))
+  | GossipProposal  !(Signed 'Unverified alg (Proposal alg a))
+  | GossipBlock     !(Block alg a)
+  | GossipAnn       !(Announcement alg)
+  | GossipTx        !(TX a)
+  | GossipPex       !(PexMessage addr)
   deriving (Generic)
 deriving instance (Show a, Show addr, Show (TX a)) => Show (GossipMsg addr alg a)
 instance (Serialise (TX a), Serialise addr, Serialise a) => Serialise (GossipMsg addr alg a)
@@ -84,7 +84,7 @@ instance (Serialise (TX a), Serialise addr, Serialise a) => Serialise (GossipMsg
 data PexMessage addr
   = PexMsgAskForMorePeers
   -- ^ Peer need yet connections to peers
-  | PexMsgMorePeers [addr]
+  | PexMsgMorePeers ![addr]
   -- ^ Some addresses of other connected peers
   | PexPing
   -- ^ Message to estimate connection speed between peers
@@ -96,8 +96,8 @@ instance (Serialise addr) => Serialise (PexMessage addr)
 
 
 data PeerInfo addr = PeerInfo
-    { piPeerId   :: PeerId
-    , piPeerPort :: Word32
+    { piPeerId   :: !PeerId
+    , piPeerPort :: !Word32
     } deriving (Show, Generic)
 
 
@@ -128,30 +128,30 @@ instance Katip.LogItem  LogGossip where
 
 -- | Connection handed to process controlling communication with peer
 data PeerChans m addr alg a = PeerChans
-  { peerChanTx      :: TChan (Announcement alg)
+  { peerChanTx      :: !(TChan (Announcement alg))
     -- ^ Broadcast channel for outgoing messages
-  , peerChanPex     :: TChan (PexMessage addr)
+  , peerChanPex     :: !(TChan (PexMessage addr))
     -- ^ Broadcast channel for outgoing PEX messages
-  , peerChanPexNewAddresses :: TChan [addr]
+  , peerChanPexNewAddresses :: !(TChan [addr])
     -- ^ Channel for new addreses
-  , peerChanRx      :: MessageRx 'Unverified alg a -> STM ()
+  , peerChanRx      :: !(MessageRx 'Unverified alg a -> STM ())
     -- ^ STM action for sending message to main application
-  , proposalStorage :: ProposalStorage 'RO m alg a
+  , proposalStorage :: !(ProposalStorage 'RO m alg a)
     -- ^ Read only access to storage of proposals
-  , consensusState  :: STM (Maybe (Height, TMState alg a))
+  , consensusState  :: !(STM (Maybe (Height, TMState alg a)))
     -- ^ Read only access to current state of consensus state machine
-  , p2pConfig       :: Configuration
+  , p2pConfig       :: !Configuration
 
-  , cntGossipPrevote   :: Counter
-  , cntGossipPrecommit :: Counter
-  , cntGossipBlocks    :: Counter
-  , cntGossipProposals :: Counter
-  , cntGossipTx        :: Counter
-  , cntGossipPex       :: Counter
+  , cntGossipPrevote   :: !Counter
+  , cntGossipPrecommit :: !Counter
+  , cntGossipBlocks    :: !Counter
+  , cntGossipProposals :: !Counter
+  , cntGossipTx        :: !Counter
+  , cntGossipPex       :: !Counter
   }
 
 -- | Counter for counting send/receive event
-data Counter = Counter (MVar Int) (MVar Int)
+data Counter = Counter !(MVar Int) !(MVar Int)
 
 newCounter :: MonadIO m => m Counter
 newCounter = Counter <$> liftIO (newMVar 0) <*>liftIO (newMVar 0)
@@ -251,7 +251,7 @@ recvPeerInfo conn =
         Just spinfo -> return $ bimap show id $ deserialiseOrFail spinfo
 
 
-data ConnectMode = CmAccept PeerId
+data ConnectMode = CmAccept !PeerId
                  | CmConnect
                  deriving Show
 
@@ -338,15 +338,15 @@ connectPeerTo peerAddr NetworkAPI{..} addr peerCh mempool peerRegistry =
 
 -- Set of currently running peers
 data PeerRegistry addr = PeerRegistry
-    { prTidMap        :: TVar (Map ThreadId addr)
+    { prTidMap        :: !(TVar (Map ThreadId addr))
       -- ^ Threads that process connection to address
-    , prConnected     :: TVar (Set addr)
+    , prConnected     :: !(TVar (Set addr))
       -- ^ Connected addresses
-    , prKnownAddreses :: TVar (Set addr)
+    , prKnownAddreses :: !(TVar (Set addr))
       -- ^ New addresses to connect
-    , prPeerId        :: PeerId
+    , prPeerId        :: !PeerId
       -- ^ Unique peer id for controlling simultaneous connections
-    , prIsActive      :: TVar Bool
+    , prIsActive      :: !(TVar Bool)
       -- ^ `False` when close all connections
     }
 
