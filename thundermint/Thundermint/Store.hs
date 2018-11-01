@@ -23,6 +23,7 @@ module Thundermint.Store (
   , MonadReadDB(..)
   , MonadDB(..)
   , Query
+  , Connection
   , queryRO
   , queryRW
   , openDatabase

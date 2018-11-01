@@ -3,7 +3,7 @@
 -- Abstract API for network which support
 module Thundermint.P2P.Types (
     NetworkAPI(..)
-  , Connection(..)
+  , P2PConnection(..)
   , NetworkError(..)
   , MockSocket(..)
   , MockNet(..)
@@ -40,11 +40,11 @@ type NetworkPort addr = Net.PortNumber
 --   and another is mock in-process network for testing.
 data NetworkAPI addr = NetworkAPI
   { listenOn :: !(forall m. (MonadIO m, MonadThrow m, MonadMask m)
-             => m (m (), m (Connection , addr)))
+             => m (m (), m (P2PConnection , addr)))
     -- ^ Start listening on given port. Returns action to stop listener
     --   and function for accepting new connections
   , connect  :: !(forall m. (MonadIO m, MonadThrow m, MonadMask m)
-             => addr -> m Connection)
+             => addr -> m P2PConnection)
     -- ^ Connect to remote address
   , filterOutOwnAddresses :: !(forall m. (MonadIO m, MonadThrow m, MonadMask m)
              => Set addr -> m (Set addr))
@@ -54,14 +54,14 @@ data NetworkAPI addr = NetworkAPI
   , listenPort :: !(NetworkPort addr)
   }
 
-data Connection = Connection
-    { send  :: !(forall m. (MonadIO m) => LBS.ByteString -> m ())
-      -- ^ Send data
-    , recv  :: !(forall m. (MonadIO m) => m (Maybe LBS.ByteString))
-      -- ^ Receive data
-    , close :: !(forall m. (MonadIO m) => m ())
-      -- ^ Close socket
-    }
+data P2PConnection = P2PConnection
+  { send  :: !(forall m. (MonadIO m) => LBS.ByteString -> m ())
+    -- ^ Send data
+  , recv  :: !(forall m. (MonadIO m) => m (Maybe LBS.ByteString))
+    -- ^ Receive data
+  , close :: !(forall m. (MonadIO m) => m ())
+    -- ^ Close socket
+  }
 
 type HeaderSize = Int
 
