@@ -112,7 +112,7 @@ connectTls :: MonadIO m =>
            -> Maybe Net.HostName
            -> Maybe Net.ServiceName
            -> Net.Socket
-           -> m Connection
+           -> m P2PConnection
 connectTls creds host port sock = do
         store <- liftIO $ getSystemCertificateStore
         ctx <- liftIO $ TLS.contextNew sock (mkClientParams (fromJust  host) ( fromJust port) creds store)
@@ -122,7 +122,7 @@ connectTls creds host port sock = do
         return $ conn
 
 
-acceptTls :: (MonadMask m, MonadIO m) => TLS.Credential -> Net.Socket -> m (Connection, Net.SockAddr)
+acceptTls :: (MonadMask m, MonadIO m) => TLS.Credential -> Net.Socket -> m (P2PConnection, Net.SockAddr)
 acceptTls creds sock = do
     bracketOnError
         (liftIO $ Net.accept sock)
@@ -150,10 +150,10 @@ silentBye ctx = do
           -> return ()
         _ -> E.throwIO e
 
-applyConn :: MonadIO m => TLS.Context -> m Connection
+applyConn :: MonadIO m => TLS.Context -> m P2PConnection
 applyConn context = do
     ref <- liftIO $ I.newIORef ""
-    return $ Connection (tlsSend context) (tlsRecv context ref) (liftIO $ tlsClose context)
+    return $ P2PConnection (tlsSend context) (tlsRecv context ref) (liftIO $ tlsClose context)
 
         where
           tlsClose ctx = (silentBye ctx `E.catch` \(_ :: E.IOException) -> pure ())

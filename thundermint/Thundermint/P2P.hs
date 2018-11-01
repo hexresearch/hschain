@@ -244,7 +244,7 @@ bimap _ g (Right b) = Right (g b)
 
 -- | Exchange peer ids with other connection
 --
-recvPeerInfo :: (MonadIO m) => Connection -> m (Either String (PeerInfo addr))
+recvPeerInfo :: (MonadIO m) => P2PConnection -> m (Either String (PeerInfo addr))
 recvPeerInfo conn =
     recv conn >>= \case
         Nothing     -> return $ Left "Socket closed on handshake"
@@ -573,7 +573,7 @@ startPeer
   -> addr
   -> PeerChans m addr alg a  -- ^ Communication with main application
                              --   and peer dispatcher
-  -> Connection              -- ^ Functions for interaction with network
+  -> P2PConnection           -- ^ Functions for interaction with network
   -> PeerRegistry addr
   -> Mempool m alg (TX a)
   -> m ()
@@ -751,10 +751,10 @@ peerReceive
   => PeerStateObj m alg a
   -> PeerChans m addr alg a
   -> TChan (PexMessage addr)
-  -> Connection
+  -> P2PConnection
   -> MempoolCursor m alg (TX a)
   -> m ()
-peerReceive peerSt PeerChans{..} peerExchangeCh Connection{..} MempoolCursor{..} = logOnException $ do
+peerReceive peerSt PeerChans{..} peerExchangeCh P2PConnection{..} MempoolCursor{..} = logOnException $ do
   logger InfoS "Starting routing for receiving messages" ()
   fix $ \loop -> recv >>= \case
     Nothing  -> logger InfoS "Peer stopping since socket is closed" ()
@@ -812,9 +812,9 @@ peerSend
   -> PeerStateObj m alg a
   -> PeerChans m addr alg a
   -> TBQueue (GossipMsg addr alg a)
-  -> Connection
+  -> P2PConnection
   -> m x
-peerSend _peerAddrFrom peerAddrTo peerSt PeerChans{..} gossipCh Connection{..} = logOnException $ do
+peerSend _peerAddrFrom peerAddrTo peerSt PeerChans{..} gossipCh P2PConnection{..} = logOnException $ do
   logger InfoS ("Starting routing for sending data to " <> showLS peerAddrTo) ()
   ownPeerChanTx  <- liftIO $ atomically $ dupTChan peerChanTx
   ownPeerChanPex <- liftIO $ atomically $ dupTChan peerChanPex
