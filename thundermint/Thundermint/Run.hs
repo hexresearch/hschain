@@ -12,6 +12,7 @@
 -- Helper function for running mock network of thundermint nodes
 module Thundermint.Run (
     DBT(..)
+  , dbtRO
   , runDBT  
     -- * Validators
   , makePrivateValidators
@@ -35,6 +36,7 @@ module Thundermint.Run (
 import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Reader
+import Control.Monad.Trans.Class
 import Codec.Serialise (Serialise)
 import Data.Maybe      (isJust)
 
@@ -66,6 +68,12 @@ newtype DBT rw alg a m x = DBT (ReaderT (DB.Connection rw alg a) m x)
            , MonadIO, MonadThrow, MonadCatch, MonadMask
            , MonadFork, MonadLogger, MonadTrace
            )
+
+instance MonadTrans (DBT rw alg a) where
+  lift = DBT . lift
+
+dbtRO :: DBT 'RO alg a m x -> DBT rw alg a m x
+dbtRO (DBT m) = DBT (withReaderT DB.connectionRO m)
 
 runDBT :: Monad m => DB.Connection rw alg a -> DBT rw alg a m x -> m x
 runDBT c (DBT m) = runReaderT m c
