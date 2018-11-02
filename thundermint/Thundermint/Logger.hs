@@ -2,6 +2,7 @@
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE LambdaCase                 #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE RecordWildCards            #-}
@@ -176,11 +177,25 @@ withLogEnv namespace env scribes action
 -- | Type of scribe to use
 data ScribeType
   = ScribeJSON
-  | ScribeES
+  | ScribeES { elasticIndex :: Text }
   | ScribeTXT
   deriving (Show,Eq,Ord,Generic)
-instance ToJSON   ScribeType
-instance FromJSON ScribeType
+instance ToJSON   ScribeType where
+  toJSON = \case
+    ScribeJSON   -> String "ScribeJSON"
+    ScribeTXT    -> String "ScribeTXT"
+    ScribeES{..} -> object [ "tag"   .= ("ScribeES" :: Text)
+                           , "index" .= elasticIndex
+                           ]
+instance FromJSON ScribeType where
+  parseJSON (String "ScribeJSON") = return ScribeJSON
+  parseJSON (String "ScribeTXT")  = return ScribeTXT
+  parseJSON (Object o) = do
+    tag <- o .: "tag"
+    unless (tag == ("ScribeES" :: Text)) $ fail "Unexpected tag for ScribeType"
+    elasticIndex <- o .: "index"
+    return ScribeES{..}
+
 
 -- | Description of scribe
 data ScribeSpec = ScribeSpec
@@ -202,18 +217,18 @@ makeScribe ScribeSpec{..} = do
       let (dir,_) = splitFileName path
       createDirectoryIfMissing True dir
   case (scribe'type, scribe'path) of
-    (ScribeTXT,  Nothing) -> mkHandleScribe ColorIfTerminal stdout  sev verb
-    (ScribeTXT,  Just nm) -> mkFileScribe nm sev verb
-    (ScribeES,   Nothing) -> error "Empty ES address"
-    (ScribeES,   Just nm) -> makeEsUrlScribe nm sev verb
-    (ScribeJSON, Nothing) -> makeJsonHandleScribe stdout sev verb
-    (ScribeJSON, Just nm) -> makeJsonFileScribe nm sev verb
+    (ScribeTXT,    Nothing) -> mkHandleScribe ColorIfTerminal stdout  sev verb
+    (ScribeTXT,    Just nm) -> mkFileScribe nm sev verb
+    (ScribeES{},   Nothing) -> error "Empty ES address"
+    (ScribeES{..}, Just nm) -> makeEsUrlScribe nm elasticIndex sev verb
+    (ScribeJSON,   Nothing) -> makeJsonHandleScribe stdout sev verb
+    (ScribeJSON,   Just nm) -> makeJsonFileScribe nm sev verb
   where
     sev  = scribe'severity
     verb = scribe'verbosity
     needToPrepare = case scribe'type of
-        ScribeES -> False
-        _        -> True
+        ScribeES{} -> False
+        _          -> True
 
 
 ----------------------------------------------------------------
@@ -242,8 +257,8 @@ makeJsonFileScribe nm sev verb = do
 -- ES (ElasticSearch) scribe
 ----------------------------------------------------------------
 
-makeEsUrlScribe :: FilePath -> Severity -> Verbosity -> IO Scribe
-makeEsUrlScribe serverPath sev verb = do
+makeEsUrlScribe :: FilePath -> Text -> Severity -> Verbosity -> IO Scribe
+makeEsUrlScribe serverPath index sev verb = do
   mgr <- newTlsManager
   let bhe = mkBHEnv (Server (T.pack serverPath)) mgr
   mkEsScribe
@@ -252,7 +267,7 @@ makeEsUrlScribe serverPath sev verb = do
     -- Reasonable for single-node in development
     -- defaultEsScribeCfgV5 { essIndexSettings = IndexSettings (ShardCound 1) (ReplicaCount 0)}
     bhe
-    (IndexName "xenochain")
+    (IndexName index)
     (MappingName "application-logs")
     sev
     verb
