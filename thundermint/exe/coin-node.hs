@@ -6,14 +6,12 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications    #-}
 {-# LANGUAGE TypeFamilies        #-}
-import Codec.Serialise  (Serialise)
 import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Reader
 import Data.Int
 import Options.Applicative
 
-import Control.Monad        (void)
 import Katip.Core           (showLS)
 import Network.Simple.TCP   (accept, listen, recv, closeSock)
 import Network.Socket       (SockAddr(..), PortNumber)
@@ -21,15 +19,9 @@ import System.Environment   (getEnv)
 import System.FilePath      ((</>))
 
 import Thundermint.Blockchain.Internal.Engine.Types
-import Thundermint.Blockchain.Types
-import Thundermint.Control
-import Thundermint.Crypto.Containers
 import Thundermint.Crypto.Ed25519            (Ed25519_SHA512)
-import Thundermint.Debug.Trace
 import Thundermint.Logger
 import Thundermint.Run
-import Thundermint.Store
-import Thundermint.Store.Internal.Query (Connection, connectionRO)
 import Thundermint.Mock.Coin
 import Thundermint.Mock.Types
 import Thundermint.P2P.Consts
