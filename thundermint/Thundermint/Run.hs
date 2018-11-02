@@ -139,9 +139,12 @@ logicFromPersistent PersistentState{..} = do
         return $! isJust r
   mempool <- newMempool checkTx
   -- Now we need to update state using genesis block.
-  queryRW $ do
-    Just genesis <- retrieveBlock (Height 0)
-    runBlockUpdate (Height 0) persistedData $ processBlockDB (Height 0) (blockData genesis)
+  do r <- queryRW $ do
+       Just genesis <- retrieveBlock (Height 0)
+       runBlockUpdate (Height 0) persistedData $ processBlockDB (Height 0) (blockData genesis)
+     case r of
+       Just () -> return ()
+       Nothing -> error "Cannot initialize persistent storage"
   --
   return NodeLogic
     { nodeBlockValidation = \h a -> do
