@@ -64,7 +64,7 @@ import Thundermint.Crypto.Containers
 --   * Current height in consensus algorithm is height of block we're
 --     deciding on.
 newtype Height = Height Int64
-  deriving (Show, Eq, Ord, Serialise, JSON.ToJSON, JSON.FromJSON, Enum)
+  deriving (Show, Generic, Eq, Ord, Serialise, JSON.ToJSON, JSON.FromJSON, Enum)
 
 -- | Voting round
 newtype Round = Round Int64
