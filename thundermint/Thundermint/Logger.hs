@@ -189,13 +189,14 @@ instance ToJSON   ScribeType where
                            ]
 instance FromJSON ScribeType where
   parseJSON (String "ScribeJSON") = return ScribeJSON
-  parseJSON (String "ScribeTXT")  = return ScribeTXT
+  parseJSON (String "ScribeTXT" ) = return ScribeTXT
+  parseJSON (String _           ) = fail "Unknown string while decoding ScribeType"
   parseJSON (Object o) = do
     tag <- o .: "tag"
     unless (tag == ("ScribeES" :: Text)) $ fail "Unexpected tag for ScribeType"
     elasticIndex <- o .: "index"
     return ScribeES{..}
-
+  parseJSON _                     = fail "Expecting string or object while decoding ScribeType"
 
 -- | Description of scribe
 data ScribeSpec = ScribeSpec
