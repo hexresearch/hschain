@@ -49,6 +49,7 @@ Test-suite thundermint-crypto-tests
                      , aeson
                      , bytestring        >=0.10
                      , serialise         >=0.2
+                     , text
                      --
                      , tasty             >=0.11
                      -- Contains fix for GHCJS
