@@ -20,6 +20,10 @@ module Thundermint.Crypto (
   , Hash(..)
   , hash
   , Crypto(..)
+    -- * Encoding and decoding of values
+  , ByteRepr(..)
+  , encodeBase58
+  , decodeBase58
     -- * Serialization and signatures
   , SignedState(..)
   , Signed
@@ -35,8 +39,8 @@ module Thundermint.Crypto (
   , blockHash
   -- , HashTree(..)
     -- * base58 encoding
-  , encodeBase58
-  , decodeBase58
+  , encodeBSBase58
+  , decodeBSBase58
   , readPrecBSBase58
   ) where
 
@@ -46,9 +50,10 @@ import Control.Applicative
 import Control.DeepSeq
 import Control.Monad
 
-import qualified Data.Aeson         as JSON
-import qualified Data.Text.Encoding as T
-import Data.ByteString.Lazy (toStrict)
+import qualified Data.Aeson           as JSON
+import           Data.Text              (Text)
+import qualified Data.Text.Encoding   as T
+import           Data.ByteString.Lazy    (toStrict)
 import qualified Data.ByteString.Char8 as BC8
 import Data.Char  (isAscii)
 import Data.Word
@@ -112,12 +117,46 @@ class Crypto alg where
   pubKeyToBS          :: PublicKey alg -> BS.ByteString
 
 
+-- | Value could be represented as bytestring.
+class ByteRepr a where
+  decodeFromBS :: BS.ByteString -> Maybe a
+  encodeToBS   :: a -> BS.ByteString
+
+instance Crypto alg => ByteRepr (Hash alg) where
+  decodeFromBS            = Just . Hash
+  encodeToBS (Hash bs) = bs
+
+instance Crypto alg => ByteRepr (Address alg) where
+  decodeFromBS            = Just . Address
+  encodeToBS (Address bs) = bs
+
+instance Crypto alg => ByteRepr (Signature alg) where
+  decodeFromBS            = Just . Signature
+  encodeToBS (Signature bs) = bs
+
+instance Crypto alg => ByteRepr (PublicKey alg) where
+  decodeFromBS = pubKeyFromBS
+  encodeToBS   = pubKeyToBS
+
+instance Crypto alg => ByteRepr (PrivKey alg) where
+  decodeFromBS = privKeyFromBS
+  encodeToBS   = privKeyToBS
+
+-- | Encode value as base-58 encoded string
+encodeBase58 :: ByteRepr a => a -> Text
+encodeBase58 = T.decodeUtf8 . encodeBSBase58 . encodeToBS
+
+-- | Decode value from base-58 encoded string
+decodeBase58 :: ByteRepr a => Text -> Maybe a
+decodeBase58 = decodeFromBS <=< decodeBSBase58 . T.encodeUtf8
+
+
 ----------------------------------------------------------------
 -- Instances
 ----------------------------------------------------------------
 
 instance Crypto alg => Show (PrivKey alg) where
-  show = show . BC8.unpack . encodeBase58 . privKeyToBS
+  show = show . BC8.unpack . encodeBSBase58 . privKeyToBS
 
 instance Crypto alg => Read (PrivKey alg) where
   readPrec = do bs <- readPrecBSBase58
@@ -134,11 +173,11 @@ instance Crypto alg => Serialise (PublicKey alg) where
                 Just k  -> return k
 
 instance Crypto alg => JSON.ToJSON (PrivKey alg) where
-  toJSON = JSON.String . T.decodeUtf8 . encodeBase58 . privKeyToBS
+  toJSON = JSON.String . T.decodeUtf8 . encodeBSBase58 . privKeyToBS
 
 instance Crypto alg => JSON.FromJSON (PrivKey alg) where
   parseJSON (JSON.String s) =
-    case decodeBase58 $ T.encodeUtf8 s of
+    case decodeBSBase58 $ T.encodeUtf8 s of
       Nothing -> fail  "Incorrect Base58 encoding for PrivKey"
       Just bs -> case privKeyFromBS bs of
         Nothing -> fail "Incorrect bytestring representation of PrivKey"
@@ -149,7 +188,7 @@ instance Crypto alg => JSON.FromJSON (PrivKey alg) where
 ----------------------------------------
 
 instance Crypto alg => Show (PublicKey alg) where
-  show = show . BC8.unpack . encodeBase58 . pubKeyToBS
+  show = show . BC8.unpack . encodeBSBase58 . pubKeyToBS
 
 instance Crypto alg => Read (PublicKey alg) where
   readPrec = do bs <- readPrecBSBase58
@@ -165,11 +204,11 @@ instance Crypto alg => Serialise (PrivKey alg) where
                 Just k  -> return k
 
 instance Crypto alg => JSON.ToJSON (PublicKey alg) where
-  toJSON = JSON.String . T.decodeUtf8 . encodeBase58 . pubKeyToBS
+  toJSON = JSON.String . T.decodeUtf8 . encodeBSBase58 . pubKeyToBS
 
 instance Crypto alg => JSON.FromJSON (PublicKey alg) where
   parseJSON (JSON.String s) =
-    case decodeBase58 $ T.encodeUtf8 s of
+    case decodeBSBase58 $ T.encodeUtf8 s of
       Nothing -> fail  "Incorrect Base58 encoding for PrivKey"
       Just bs -> case pubKeyFromBS bs of
         Nothing -> fail "Incorrect bytestring representation of PrivKey"
@@ -183,18 +222,18 @@ instance Crypto alg => JSON.FromJSON (PublicKey alg) where
 instance Show (Address alg) where
   showsPrec n (Address bs)
     = showParen (n > 10)
-    $ showString "Address " . shows (encodeBase58 bs)
+    $ showString "Address " . shows (encodeBSBase58 bs)
 
 instance Read (Address alg) where
   readPrec = do void $ lift $ string "Address" >> some (char ' ')
                 Address <$> readPrecBSBase58
 
 instance JSON.ToJSON (Address alg) where
-  toJSON (Address s) = JSON.String $ T.decodeUtf8 $ encodeBase58 s
+  toJSON (Address s) = JSON.String $ T.decodeUtf8 $ encodeBSBase58 s
 
 instance JSON.FromJSON (Address alg) where
   parseJSON (JSON.String s) =
-    case decodeBase58 $ T.encodeUtf8 s of
+    case decodeBSBase58 $ T.encodeUtf8 s of
       Nothing -> fail  "Incorrect Base58 encoding while decoding Address"
       Just bs -> return $ Address bs
   parseJSON _ = fail "Expected string for Address"
@@ -205,18 +244,18 @@ instance JSON.FromJSON (Address alg) where
 instance Show (Signature alg) where
   showsPrec n (Signature bs)
     = showParen (n > 10)
-    $ showString "Signature " . shows (encodeBase58 bs)
+    $ showString "Signature " . shows (encodeBSBase58 bs)
 
 instance Read (Signature alg) where
   readPrec = do void $ lift $ string "Signature" >> some (char ' ')
                 Signature <$> readPrecBSBase58
 
 instance JSON.ToJSON (Signature alg) where
-  toJSON (Signature s) = JSON.String $ T.decodeUtf8 $ encodeBase58 s
+  toJSON (Signature s) = JSON.String $ T.decodeUtf8 $ encodeBSBase58 s
 
 instance JSON.FromJSON (Signature alg) where
   parseJSON (JSON.String s) =
-    case decodeBase58 $ T.encodeUtf8 s of
+    case decodeBSBase58 $ T.encodeUtf8 s of
       Nothing -> fail  "Incorrect Base58 encoding while decoding Address"
       Just bs -> return $ Signature bs
   parseJSON _ = fail "Expected string for Signature"
@@ -228,18 +267,18 @@ instance JSON.FromJSON (Signature alg) where
 instance Show (Hash alg) where
   showsPrec n (Hash bs)
     = showParen (n > 10)
-    $ showString "Hash " . shows (encodeBase58 bs)
+    $ showString "Hash " . shows (encodeBSBase58 bs)
 
 instance Read (Hash alg) where
   readPrec = do void $ lift $ string "Hash" >> some (char ' ')
                 Hash <$> readPrecBSBase58
 
 instance JSON.ToJSON (Hash alg) where
-  toJSON (Hash s) = JSON.String $ T.decodeUtf8 $ encodeBase58 s
+  toJSON (Hash s) = JSON.String $ T.decodeUtf8 $ encodeBSBase58 s
 
 instance JSON.FromJSON (Hash alg) where
   parseJSON (JSON.String s) =
-    case decodeBase58 $ T.encodeUtf8 s of
+    case decodeBSBase58 $ T.encodeUtf8 s of
       Nothing -> fail  "Incorrect Base58 encoding for bs"
       Just bs -> return $ Hash bs
   parseJSON _ = fail "Expected string for Hash"
@@ -343,16 +382,16 @@ instance Serialise (BlockHash alg a)
 -- Base58 encoding helpers
 ----------------------------------------------------------------
 
-encodeBase58 :: BS.ByteString -> BS.ByteString
-encodeBase58 = Base58.encodeBase58 Base58.bitcoinAlphabet
+encodeBSBase58 :: BS.ByteString -> BS.ByteString
+encodeBSBase58 = Base58.encodeBase58 Base58.bitcoinAlphabet
 
-decodeBase58 :: BS.ByteString -> Maybe BS.ByteString
-decodeBase58 = Base58.decodeBase58 Base58.bitcoinAlphabet
+decodeBSBase58 :: BS.ByteString -> Maybe BS.ByteString
+decodeBSBase58 = Base58.decodeBase58 Base58.bitcoinAlphabet
 
 readPrecBSBase58 :: ReadPrec BS.ByteString
 readPrecBSBase58 = do
   s <- readPrec
   guard (all isAscii s)
-  case decodeBase58 $ BC8.pack s of
+  case decodeBSBase58 $ BC8.pack s of
     Just bs -> return bs
     Nothing -> mzero
