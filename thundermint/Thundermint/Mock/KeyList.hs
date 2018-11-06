@@ -86,7 +86,7 @@ connectRing vals addr =
 --   couldn't be generate on the fly.
 privateKeyList :: [PrivKey Ed25519_SHA512]
 privateKeyList
-  = map (fromJust . privKeyFromBS . fromJust . decodeBase58)
+  = map (fromJust . decodeBase58)
   [ "3d6iUCAa2WQw1ePDtdp2qgji22PRmSrZ8zxhCeMRMBqX"
   , "6aNgwvijioMN98GFPbQUrJYNPRvh43mcGTCRi4U5eKCX"
   , "3NDY63fQYrRMHbYsFUZHAnqTGagVNMnWQrRBXbCqgxJ5"
