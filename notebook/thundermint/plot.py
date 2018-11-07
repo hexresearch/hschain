@@ -17,7 +17,8 @@ import statsmodels.api as sm
 def plot_commit_time(logs) :
     "Plot commit time and prime average block time"
     # Subtract leading time
-    dfs = [d.commit_times() for d in logs]
+    dfs = [d for d in logs]
+    #
     t0  = np.min([df['at'].values[0] for df in dfs])
     for df in dfs :
         df['at'] = (df['at'] - t0).astype('timedelta64[s]')
@@ -49,7 +50,7 @@ def plot_commit_time(logs) :
 
 def plot_n_tx_in_block(logs):
     "Plot number of transactions in block for every height"
-    dfs = [d.commit_n_tx() for d in logs]
+    dfs = [d for d in logs]
     tot = np.sum(dfs[0]['Ntx'])
     avg = np.average(dfs[0]['Ntx'])
     #
@@ -73,7 +74,6 @@ def plot_mempool_size(dfs):
     plt.title("Mempool size")
     colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
     for i,df in enumerate(dfs) :
-        df = df.mempool
         dB = df[df['msg'] == "Mempool before filtering"]
         dA = df[df['msg'] == "Mempool after filtering"]
         plt.plot(dB['at'], dB['size'], '+', color=colors[i], ms=3)
