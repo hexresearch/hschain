@@ -192,6 +192,7 @@ Test-suite thundermint-tests
                      , directory
                      , exceptions
                      , katip
+                     , microlens
                      , network
                      , random
                      , serialise         >=0.2
@@ -215,6 +216,7 @@ Test-suite thundermint-tests
                        TM.Network
                        TM.NetworkTls
                        TM.P2P
+                       TM.Persistence
                        TM.RealNetwork
                        TM.Serialisation
                        TM.Store
