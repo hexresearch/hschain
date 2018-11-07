@@ -20,6 +20,7 @@ let
       pandas
       statsmodels
       elasticsearch
+      elasticsearch-dsl
     ]);
 in
   pkgs.stdenv.mkDerivation {

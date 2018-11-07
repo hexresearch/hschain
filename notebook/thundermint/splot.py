@@ -11,17 +11,17 @@ import IPython.display
 def read_trace(log,i) :
     # Decision to commit
     rowsD = pd.DataFrame(
-        { 'at'   : log.cons[log.cons['msg'] == "Decision to commit"]['at'],
+        { 'at'   : log[log['msg'] == "Decision to commit"]['at'],
           'node' : 1000+i,
           'msg'  : "#FF9900",
         })
     rowsA = pd.DataFrame(
-        { 'at'   : log.cons[log.cons['msg'] == "Actual commit"]['at'],
+        { 'at'   : log[log['msg'] == "Actual commit"]['at'],
           'node' : 1000+i,
           'msg'  : "#99cc00",
         })
     # Commit trace
-    rowsC = log.cons[log.cons['msg'] == 'Entering new height ----------------'].copy()
+    rowsC = log[log['msg'] == 'Entering new height ----------------'].copy()
     rowsC['msg'] = rowsC['data'].apply(lambda x : str(x['H'] % 2))
     rowsC = pd.DataFrame({
         'at'  : rowsC['at'],
@@ -37,7 +37,7 @@ def read_trace(log,i) :
           'Entering precommit PV_Maj'  : "#0066ff",
           'Entering precommit Timeout' : "#ff33cc",
         }
-    steps    = log.cons[log.cons['msg'].apply(lambda s: s.startswith('Entering'))].copy().reset_index()
+    steps    = log[log['msg'].apply(lambda s: s.startswith('Entering'))].copy().reset_index()
     reasons  = steps['data'].apply(lambda x: x.get('reason')).fillna("")
     messages = (steps['msg'] + ' ' + reasons).apply(lambda x: msgMap.get(x,x))
     rowsS = pd.DataFrame(
@@ -49,7 +49,7 @@ def read_trace(log,i) :
 
 def splot(logs, w=1900) :
     nLogs = len(logs)
-    trace = pd.concat([read_trace(log,i) for i,log in enumerate(logs)]).sort_values(by='at').reset_index()
+    trace = pd.concat([read_trace(log,i) for i,log in enumerate(logs.values())]).sort_values(by='at').reset_index()
     with tempfile.NamedTemporaryFile(mode='w', suffix='.trace', delete=False) as f :
         for i in range(nLogs) :
             print( "%s <NODE%i XXX" % (trace['at'][0], i), file=f.file)
