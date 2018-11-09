@@ -100,13 +100,15 @@ def plot_mempool_size(dfs):
     "Plot mempool size over time"
     fig = plt.figure()
     plt.grid()
-    plt.title("Mempool size")
+    plt.title("Mempool size")    
     colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
+    def pickColor(i):
+        return colors[i % len(colors)]
     for i,df in enumerate(dfs) :
         dB = df[df['msg'] == "Mempool before filtering"]
         dA = df[df['msg'] == "Mempool after filtering"]
-        plt.plot(dB['at'], dB['size'], '+', color=colors[i], ms=3)
-        plt.plot(dA['at'], dA['size'], 'x', color=colors[i], ms=3)
+        plt.plot(dB['at'], dB['size'], '+', color=pickColor(i), ms=3)
+        plt.plot(dA['at'], dA['size'], 'x', color=pickColor(i), ms=3)
     return fig
 
 
