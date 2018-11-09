@@ -49,6 +49,7 @@ import Thundermint.Crypto            ( Crypto,Signed,Address,SignedState(..),Blo
 import Thundermint.Crypto.Containers
 import Thundermint.Blockchain.Types
 import Thundermint.Logger
+import Thundermint.Monitoring
 
 
 
@@ -198,7 +199,7 @@ class Monad m => ConsensusMonad m where
 
 -- | Enter new height and create new state for state machine
 newHeight
-  :: (ConsensusMonad m, MonadLogger m)
+  :: (ConsensusMonad m, MonadLogger m, MonadMonitor m)
   => HeightParameters m alg a
   -> Maybe (Commit alg a)
   -> m (TMState alg a)
@@ -224,7 +225,7 @@ newHeight HeightParameters{..} lastCommit = do
 --   Note that when state machine sends vote or proposal it does not
 --   update state and thus message should be send back to it
 tendermintTransition
-  :: (Crypto alg, ConsensusMonad m, MonadLogger m)
+  :: (Crypto alg, ConsensusMonad m, MonadLogger m, MonadMonitor m)
   => HeightParameters m alg a  -- ^ Parameters for current height
   -> Message alg a          -- ^ Message which causes state transition
   -> TMState alg a          -- ^ Initial state of state machine
@@ -303,7 +304,7 @@ tendermintTransition par@HeightParameters{..} msg sm@TMState{..} =
 -- Check whether we need to perform any state transition after we
 -- received prevote
 checkTransitionPrevote
-  :: (ConsensusMonad m, MonadLogger m, Crypto alg)
+  :: (ConsensusMonad m, MonadLogger m, MonadMonitor m, Crypto alg)
   => HeightParameters m alg a
   -> Round
   -> TMState alg a
@@ -327,7 +328,7 @@ checkTransitionPrevote par@HeightParameters{..} r sm@(TMState{..})
 -- Check whether we need to perform any state transition after we
 -- received precommit
 checkTransitionPrecommit
-  :: (ConsensusMonad m, MonadLogger m, Crypto alg)
+  :: (ConsensusMonad m, MonadLogger m, MonadMonitor m, Crypto alg)
   => HeightParameters m alg a
   -> Round
   -> TMState alg a
@@ -369,7 +370,7 @@ checkTransitionPrecommit par@HeightParameters{..} r sm@(TMState{..})
 
 -- Enter Propose stage and send required messages
 enterPropose
-  :: (ConsensusMonad m, MonadLogger m)
+  :: (ConsensusMonad m, MonadMonitor m, MonadLogger m)
   => HeightParameters m alg a
   -> Round
   -> TMState alg a
@@ -377,6 +378,7 @@ enterPropose
   -> m (TMState alg a)
 enterPropose HeightParameters{..} r sm@TMState{..} reason = do
   logger InfoS "Entering propose" $ LogTransition currentH smRound smStep r reason
+  updateMetrics currentH smRound
   scheduleTimeout $ Timeout currentH r StepProposal
   announceStep    $ FullStep currentH r StepProposal
   -- If we're proposers we need to broadcast proposal. Otherwise we do
@@ -401,7 +403,7 @@ enterPropose HeightParameters{..} r sm@TMState{..} reason = do
 --   2. Call checkTransitionPrevote to check whether we need to go to
 --      PRECOMMIT
 enterPrevote
-  :: (Crypto alg, ConsensusMonad m, MonadLogger m)
+  :: (Crypto alg, ConsensusMonad m, MonadLogger m, MonadMonitor m)
   => HeightParameters m alg a
   -> Round
   -> TMState alg a
@@ -410,6 +412,7 @@ enterPrevote
 enterPrevote par@HeightParameters{..} r (unlockOnPrevote -> sm@TMState{..}) reason = do
   --
   logger InfoS "Entering prevote" $ LogTransition currentH smRound smStep r reason
+  updateMetrics currentH smRound
   castPrevote smRound =<< prevoteBlock
   --
   scheduleTimeout $ Timeout currentH r StepPrevote
@@ -481,7 +484,7 @@ unlockOnPrevote sm@TMState{..}
 --   2. Broadcast precommit vote
 --   3. Check whether we need to make further state transitions.
 enterPrecommit
-  :: (Crypto alg, ConsensusMonad m, MonadLogger m)
+  :: (Crypto alg, ConsensusMonad m, MonadLogger m, MonadMonitor m)
   => HeightParameters m alg a
   -> Round
   -> TMState alg a
@@ -489,6 +492,7 @@ enterPrecommit
   -> m (TMState alg a)
 enterPrecommit par@HeightParameters{..} r sm@TMState{..} reason = do
   logger InfoS "Entering precommit" $ LogTransition currentH smRound smStep r reason
+  updateMetrics currentH smRound
   castPrecommit r precommitBlock
   scheduleTimeout $ Timeout currentH r StepPrecommit
   checkTransitionPrecommit par r sm
@@ -541,3 +545,10 @@ addPrecommit HeightParameters{..} v sm@TMState{..} = do
     InsertConflict _ -> misdeed
     -- NOTE: See addPrevote
     InsertUnknown  _ -> error "addPrecommit: Internal error"
+
+
+updateMetrics :: (MonadMonitor m) => Height -> Round -> m ()
+updateMetrics (Height h) (Round r) = do
+  setGaugeI metricHeight h
+  setGaugeI metricRounds r
+

@@ -33,6 +33,7 @@ Library
                      , microlens-mtl     >=0.1
                      , network-info
                      , pipes             >=4
+                     , prometheus-client
                      , random
                      , random-shuffle
                      , retry             >=0.7.6.2
@@ -67,6 +68,8 @@ Library
                   Thundermint.Crypto.Containers
                   Thundermint.Debug.Trace
                   Thundermint.Logger
+                  Thundermint.Monitoring
+                  Thundermint.Monitoring.Metrics
                   Thundermint.Run
                   Thundermint.Mock.Coin
                   Thundermint.Mock.KeyList
