@@ -35,6 +35,7 @@ import Thundermint.Blockchain.Types
 import Thundermint.Crypto
 import Thundermint.Crypto.Containers
 import Thundermint.Logger
+import Thundermint.Monitoring
 import Thundermint.Store
 import Thundermint.Store.STM
 import Thundermint.Store.Internal.BlockDB
@@ -74,8 +75,12 @@ runApplication config appSt@AppState{..} appCh@AppChans{..} = logOnException $ d
   lastCm <- queryRO $ retrieveLocalCommit height
   advanceToHeight appPropStorage $ succ height
   void $ flip fix lastCm $ \loop commit -> do
-    cm <- decideNewBlock config appSt appCh commit
+    (cm, updateMonitoring) <- runMonitorT' (decideNewBlock config (monitorizeAppSt appSt) (monitorizeAppCh appCh) commit)
+    liftIO updateMonitoring
     loop (Just cm)
+ where
+  monitorizeAppSt = hoistAppState hoistMonitorT
+  monitorizeAppCh = hoistAppChans hoistMonitorT
 
 
 -- This function uses consensus algorithm to decide which block we're
@@ -84,7 +89,7 @@ runApplication config appSt@AppState{..} appCh@AppChans{..} = logOnException $ d
 --
 -- FIXME: we should write block and last commit in transaction!
 decideNewBlock
-  :: ( MonadDB m alg a, MonadLogger m, Crypto alg, Show a, BlockData a)
+  :: ( MonadDB m alg a, MonadLogger m, MonadMonitor m, Crypto alg, Show a, BlockData a)
   => Configuration
   -> AppState m alg a
   -> AppChans m alg a
@@ -160,7 +165,7 @@ decideNewBlock config appSt@AppState{..} appCh@AppChans{..} lastCommt = do
 
 -- Handle message and perform state transitions for both
 handleVerifiedMessage
-  :: (MonadLogger m, Crypto alg)
+  :: (MonadLogger m, MonadMonitor m, Crypto alg)
   => ProposalStorage 'RW m alg a
   -> HeightParameters (ConsensusM alg a m) alg a
   -> TMState alg a
@@ -244,6 +249,9 @@ instance MonadLogger m => MonadLogger (ConsensusM alg a m) where
 
 instance MonadTrans (ConsensusM alg a) where
   lift = ConsensusM . fmap Success
+
+instance MonadMonitor m => MonadMonitor (ConsensusM alg a m) where
+  doIO = lift . doIO
 
 makeHeightParameters
   :: (MonadDB m alg a, MonadLogger m, Crypto alg, Serialise a, Show a)

@@ -56,6 +56,7 @@ import Thundermint.P2P.PeerState
 import Thundermint.P2P.Types
 import Thundermint.Store
 import Thundermint.Utils
+import qualified Thundermint.Monitoring as Mon
 
 
 ----------------------------------------------------------------
@@ -219,6 +220,9 @@ startPeerDispatcher p2pConfig net peerAddr addrs AppChans{..} mempool = logOnExc
     -- Peer connection monitor
     , descendNamespace "PEX" $
       peerPexMonitor peerAddr net peerCh mempool peerRegistry (pexMinConnections p2pConfig) (pexMaxConnections p2pConfig)
+    -- Peer connection capacity monitor for debug purpose
+    , descendNamespace "PEX" $
+      peerPexCapacityDebugMonitor peerRegistry
     -- Peer new addreses capacity monitor
     , descendNamespace "PEX" $
       peerPexKnownCapacityMonitor peerAddr peerCh peerRegistry (pexMinKnownConnections p2pConfig) (pexMaxKnownConnections p2pConfig)
@@ -521,6 +525,22 @@ peerPexMonitor peerAddr net peerCh mempool peerRegistry@PeerRegistry{..} minConn
             nextLoop
 
 
+-- | Watch number of connections and report it to monitoring system
+--
+peerPexCapacityDebugMonitor
+  :: (MonadIO m)
+  => PeerRegistry addr
+  -> m ()
+peerPexCapacityDebugMonitor PeerRegistry{..} =
+    fix $ \nextLoop ->
+        whenM (liftIO $ readTVarIO prIsActive) $ do
+            sizeConns <- Set.size <$> (liftIO $ readTVarIO prConnected)
+            (_, upd) <- Mon.runMonitorT' $ Mon.setGaugeI Mon.metricPeers sizeConns
+            liftIO upd
+            waitSec 1.0
+            nextLoop
+
+
 peerGossipPeerExchange
   :: ( MonadIO m, MonadFork m, MonadMask m, MonadLogger m
      , Show a, Serialise a, Serialise addr, Show addr, Ord addr, Crypto alg)
@@ -791,16 +811,16 @@ peerReceive peerSt PeerChans{..} peerExchangeCh P2PConnection{..} MempoolCursor{
         loop
 
 
--- | Dump GossipMsg without (Show) constraints
---
-showlessShowGossipMsg :: (Show addr) => GossipMsg addr alg a -> Katip.LogStr
-showlessShowGossipMsg (GossipPreVote _)   = "GossipPreVote ..."
-showlessShowGossipMsg (GossipPreCommit _) = "GossipPreCommit ..."
-showlessShowGossipMsg (GossipProposal _)  = "GossipProposal ..."
-showlessShowGossipMsg (GossipBlock _)     = "GossipBlock ..."
-showlessShowGossipMsg (GossipAnn _)       = "GossipAnn ..."
-showlessShowGossipMsg (GossipTx _)        = "GossipTx ..."
-showlessShowGossipMsg (GossipPex p)       = "GossipPex { " <> showLS p <> " }"
+---- | Dump GossipMsg without (Show) constraints
+----
+--showlessShowGossipMsg :: (Show addr) => GossipMsg addr alg a -> Katip.LogStr
+--showlessShowGossipMsg (GossipPreVote _)   = "GossipPreVote ..."
+--showlessShowGossipMsg (GossipPreCommit _) = "GossipPreCommit ..."
+--showlessShowGossipMsg (GossipProposal _)  = "GossipProposal ..."
+--showlessShowGossipMsg (GossipBlock _)     = "GossipBlock ..."
+--showlessShowGossipMsg (GossipAnn _)       = "GossipAnn ..."
+--showlessShowGossipMsg (GossipTx _)        = "GossipTx ..."
+--showlessShowGossipMsg (GossipPex p)       = "GossipPex { " <> showLS p <> " }"
 
 
 -- | Routine for actually sending data to peers

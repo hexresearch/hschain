@@ -19,6 +19,7 @@ module Thundermint.Blockchain.Internal.Engine.Types (
   , unverifyMessageRx
   , Announcement(..)
   , AppChans(..)
+  , hoistAppChans
   ) where
 
 import Control.Concurrent.STM
@@ -120,3 +121,11 @@ data AppChans m alg a = AppChans
   , appPropStorage :: ProposalStorage 'RW m alg a
     -- ^ Storage for proposed blocks
   }
+
+
+hoistAppChans :: (forall x. m x -> n x) -> AppChans m alg a -> AppChans n alg a
+hoistAppChans fun AppChans{..} = AppChans
+  { appPropStorage   = hoistPropStorageRW fun appPropStorage
+  , ..
+  }
+
