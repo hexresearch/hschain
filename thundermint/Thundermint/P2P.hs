@@ -630,8 +630,9 @@ peerGossipVotes peerObj PeerChans{..} gossipCh = logOnException $ do
            case Map.size unknown of
              0 -> return ()
              n -> do i <- liftIO $ randomRIO (0,n-1)
-                     liftIO $ atomically $ writeTBQueue gossipCh $ GossipPreCommit
-                       $ unverifySignature $ toList unknown !! i
+                     let vote = unverifySignature $ toList unknown !! i
+                     addPrecommit peerObj vote
+                     liftIO $ atomically $ writeTBQueue gossipCh $ GossipPreCommit vote
                      tickSend cntGossipPrecommit
          Nothing -> return ()
       --
@@ -661,7 +662,9 @@ peerGossipVotes peerObj PeerChans{..} gossipCh = logOnException $ do
              , not (Map.null unknown)
                -> do let n = Map.size unknown
                      i <- liftIO $ randomRIO (0,n-1)
-                     doGosip $ GossipPreVote $ unverifySignature $ toList unknown !! i
+                     let vote = unverifySignature $ toList unknown !! i
+                     addPrevote peerObj vote
+                     doGosip $ GossipPreVote vote
                      tickSend cntGossipPrevote
              | otherwise -> return ()
              where
@@ -674,7 +677,9 @@ peerGossipVotes peerObj PeerChans{..} gossipCh = logOnException $ do
              , not (Map.null unknown)
                -> do let n = Map.size unknown
                      i <- liftIO $ randomRIO (0,n-1)
-                     doGosip $ GossipPreCommit $ unverifySignature $ toList unknown !! i
+                     let vote = unverifySignature $ toList unknown !! i
+                     addPrecommit peerObj vote
+                     doGosip $ GossipPreCommit vote
                      tickSend cntGossipPrecommit
              | otherwise -> return ()
              where
