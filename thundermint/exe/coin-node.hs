@@ -6,6 +6,8 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications    #-}
 {-# LANGUAGE TypeFamilies        #-}
+import Control.Concurrent
+import Control.Monad
 import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Reader
@@ -15,8 +17,12 @@ import Options.Applicative
 import Katip.Core           (showLS)
 import Network.Simple.TCP   (accept, listen, recv, closeSock)
 import Network.Socket       (SockAddr(..), PortNumber)
+import Network.Wai.Middleware.Prometheus
+import Prometheus
+import Prometheus.Metric.GHC
 import System.Environment   (getEnv)
 import System.FilePath      ((</>))
+import qualified Network.Wai.Handler.Warp as Warp
 
 import Thundermint.Blockchain.Internal.Engine.Types
 import Thundermint.Crypto.Ed25519            (Ed25519_SHA512)
@@ -49,6 +55,18 @@ data Opts = Opts
   , optTls            :: Bool
   }
 
+----------------------------------------------------------------
+--
+----------------------------------------------------------------
+
+startWebMonitoring :: Warp.Port -> IO ()
+startWebMonitoring port = do
+    void $ register ghcMetrics
+    void $ forkIO
+         $ Warp.run port
+         $ prometheus def
+                      { prometheusInstrumentPrometheus = False }
+                      metricsApp
 
 ----------------------------------------------------------------
 --
@@ -68,6 +86,8 @@ main = do
         loggers = [ makeScribe s { scribe'path = fmap (prefix </>) (scribe'path s) }
                   | s <- nspecLogFile
                   ]
+    let port = 1000 + fromIntegral listenPort
+    startWebMonitoring port
     withLogEnv "TM" "DEV" loggers $ \logenv -> runLoggerT "Coin" logenv $ do
       let !validatorSet = makeValidatorSetFromPriv
                         $ (id @[PrivValidator Ed25519_SHA512])
