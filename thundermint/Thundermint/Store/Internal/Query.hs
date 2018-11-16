@@ -111,7 +111,28 @@ runQueryRW  :: MonadIO m => Connection 'RW alg a -> Query 'RW alg a x -> m (Mayb
 runQueryRW c = liftIO . runQueryWorker c . unQuery
 
 runQueryWorker :: Connection rw alg a -> MaybeT (ReaderT SQL.Connection IO) x -> IO (Maybe x)
-runQueryWorker (Connection mutex conn) sql = withMutex mutex $ mask $ \restore -> do
+runQueryWorker (Connection mutex conn) sql = withMutex mutex $ uninterruptibleMask $ \restore -> do
+  -- This function is rather tricky to get right. We need to maintain
+  -- following invariant: No matter what happens we MUST call either
+  -- ROLLBACK or COMMIT after BEGIN TRANSACTION. Otherwise database
+  -- will be left inside a transaction and any attempt to start
+  -- another will be met with error about nested transactions.
+  --
+  -- It seems that functions from sqlite-simple are interruptible so
+  -- we need to use uninterruptibleMask
+  --
+  --  * BEGIN TRANSACTION does not acquire lock. It's deferred and
+  --    lock is acquired only when database is actually accessed. So
+  --    it's fast
+  --
+  --  * Neither ROLLBACK nor COMMIT should block but may take time for
+  --    IO operations but that's inevitable
+  --
+  -- Therefore usage of uninterruptibleMask is justified
+  --
+  -- See following links for details
+  --  + https://www.sqlite.org/lang_transaction.html
+  --  + https://www.sqlite.org/lockingv3.html
   SQL.execute_ conn "BEGIN TRANSACTION"
   -- FIXME: exception safety. We need to rollback in presence of async
   --        exceptions
