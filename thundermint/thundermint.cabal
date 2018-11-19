@@ -202,6 +202,7 @@ Test-suite thundermint-tests
                      , microlens
                      , network
                      , random
+                     , sqlite-simple
                      , serialise         >=0.2
                      , stm               >=2.4
                      , tls               >=1.4.1
