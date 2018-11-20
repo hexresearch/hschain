@@ -98,14 +98,19 @@ createTestNetwork = createTestNetworkWithConfig defCfg
 
 createTestNetworkWithConfig :: forall m . (MonadIO m, MonadMask m, MonadFork m) => Configuration -> TestNetDescription m -> m ()
 createTestNetworkWithConfig cfg desc = do
-    net <- liftIO newMockNet
-    acts <- mapM (mkTestNode net) desc
-    runConcurrently $ join acts
+    net  <- liftIO newMockNet
+    withMany (\descr cont -> withConnection ":memory:" (\c -> cont (c,descr))) desc $ \descrList -> do
+      acts <- mapM (mkTestNode net) descrList
+      runConcurrently $ join acts
   where
-    mkTestNode :: (MonadIO m, MonadMask m, MonadFork m) => MockNet TestAddr -> TestNetLinkDescription m -> m [m ()]
-    mkTestNode net TestNetLinkDescription{..} = do
+    mkTestNode
+      :: (MonadIO m, MonadMask m, MonadFork m)
+      => MockNet TestAddr
+      -> (Connection 'RW Ed25519_SHA512 [(String,Int)], TestNetLinkDescription m)
+      -> m [m ()]
+    mkTestNode net (conn, TestNetLinkDescription{..}) = do
         let validatorSet = makeValidatorSetFromPriv testValidators
-        conn <- openDatabase ":memory:" Proxy (genesisBlock validatorSet) validatorSet
+        initDatabase conn Proxy (genesisBlock validatorSet) validatorSet
         --
         let run = runTracerT ncCallback . runNoLogsT . runDBT conn
         fmap (map run) $ run $ do

@@ -96,11 +96,8 @@ interpretSpec maxH prefix NetSpec{..} = do
                   | s <- nspecLogFile
                   ]
     -- Create storage
-    conn     <- openDatabase
-      (maybe ":memory:" (prefix </>) nspecDbName)
-      Proxy
-      (genesisBlock validatorSet)
-      validatorSet
+    conn <- openConnection (maybe ":memory:" (prefix </>) nspecDbName)
+    initDatabase conn Proxy (genesisBlock validatorSet) validatorSet
     runDBT conn $ do
       hChain <- queryRO blockchainHeight
       return ( connectionRO conn

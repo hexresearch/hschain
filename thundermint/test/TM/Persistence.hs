@@ -118,7 +118,8 @@ comparePMap
   => One (PMap k v) Persistent -> [PMapCmd k v] -> IO ()
 comparePMap dct cmds = do
   let model = evalPMapModel cmds
-  conn <- openDatabase ":memory:" dct genesis validatorSet
+  conn <- openConnection ":memory:"
+  initDatabase conn dct genesis validatorSet
   runQueryRW conn (runBlockUpdate (Height 0) dct (evalPMapStore cmds)) >>= \case
     Nothing -> assertEqual "Model when evaluation failed" Nothing model
     Just () -> do
