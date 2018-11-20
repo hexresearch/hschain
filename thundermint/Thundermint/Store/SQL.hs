@@ -21,9 +21,14 @@ module Thundermint.Store.SQL (
   , PersistentData(..)
   , Persistent(..)
     -- ** Concrete API
-  , PMap(..)
   , ExecutorRO(..)
   , ExecutorRW(..)
+    -- *** Data types
+  , PMap(..)
+  , PSet
+  , PSet'
+  , SetType(..)
+  , PersistentSet(..)
     -- ** Implementations
   , EffectfulQ
   , runBlockUpdate
@@ -44,6 +49,8 @@ import Data.Text (Text)
 import Data.Functor.Compose
 import           Data.Map.Strict   (Map)
 import qualified Data.Map.Strict as Map
+import           Data.Set          (Set)
+import qualified Data.Set        as Set
 import           Database.SQLite.Simple   (Only(..))
 import Lens.Micro
 import Lens.Micro.Mtl
@@ -70,25 +77,40 @@ class PersistentData t where
 
 -- | Wrapper for carrying class dictionary with data type
 data Persistent a where
-  PersistentPMap :: !(PMap k v) -> Persistent (PMap k v)
-
+  PersistentPMap :: !(PMap k v)           -> Persistent (PMap k v)
+  PersistentPSet :: !(PersistentSet ty k) -> Persistent (PersistentSet ty k)
 
 -- | Implementation of specific operations for persistent data
 --   structures.
 class ExecutorRO q where
-  lookupKey  :: (Ord k)
-             => (forall f. Lens' (dct f) (f (PMap k v))) -> k -> q dct (Maybe v)
-  materializePMap
-    :: (Ord k) => (forall f. Lens' (dct f) (f (PMap k v))) -> q dct (Map k v)
+  lookupKey       :: (Ord k)
+                  => (forall f. Lens' (dct f) (f (PMap k v)))
+                  -> k -> q dct (Maybe v)
+  materializePMap :: (Ord k)
+                  => (forall f. Lens' (dct f) (f (PMap k v)))
+                  -> q dct (Map k v)
+
+  isMember        :: (Ord k)
+                  => (forall f. Lens' (dct f) (f (PersistentSet ty k)))
+                  -> k -> q dct Bool
+  materializePSet :: (Ord k)
+                  => (forall f. Lens' (dct f) (f (PersistentSet ty k)))
+                  -> q dct (Set k)
 
 -- | Read-write operations
 class (ExecutorRO q) => ExecutorRW q where
-  storeKey :: (Ord k, Eq v)
-           => (forall f. Lens' (dct f) (f (PMap k v))) -> k -> v -> q dct ()
-  dropKey  :: (Ord k, Eq v)
-           => (forall f. Lens' (dct f) (f (PMap k v))) -> k -> q dct ()
-
-
+  storeKey     :: (Ord k, Eq v)
+               => (forall f. Lens' (dct f) (f (PMap k v)))
+               -> k -> v -> q dct ()
+  dropKey      :: (Ord k, Eq v)
+               => (forall f. Lens' (dct f) (f (PMap k v)))
+               -> k -> q dct ()
+  storeSetElem :: (Ord k)
+               => (forall f. Lens' (dct f) (f (PersistentSet ty k)))
+               -> k -> q dct ()
+  dropSetElem  :: (Ord k)
+               => (forall f. Lens' (dct f) (f (PSet k)))
+               -> k -> q dct ()
 
 
 
@@ -110,10 +132,37 @@ instance PersistentData (PMap k v) where
     -- NOTE: ver field is versions PMap. Each change to PMap is
     --       represented by row and numbered consecutively
     --
-    --       tag if flag telling whether row is insertion or
+    --       tag is flag telling whether row is insertion or
     --       deletion
   wrap = PersistentPMap
 
+
+
+-- | Set where elements could be added and removed but after removal
+--   attempt to readd element will fail.
+type PSet = PersistentSet 'StandardSet
+
+-- | Set where elements could be added but never removed.
+type PSet' = PersistentSet 'AppendOnlySet
+
+data SetType = AppendOnlySet -- ^ Elements could be only added to set
+             | StandardSet   -- ^ Value could be added and removed
+
+-- | Persistet set. It comes in two varieties: one that allows
+--   appending only and one which allows deletion.
+data PersistentSet (ty :: SetType) k = PSet
+  { psetTableName :: !Text
+  , psetEncodingK :: !(FieldEncoding k)
+  }
+
+instance PersistentData (PersistentSet ty k) where
+  tableName = psetTableName
+  createTable PSet{psetTableName=tbl} = execute_ $
+    "CREATE TABLE IF NOT EXISTS "<>tbl<>
+    "( ver INTEGER PRIMARY KEY, \
+    \  tag INTEGER, \
+    \  key)"
+  wrap = PersistentPSet
 
 ----------------------------------------------------------------
 -- Effectful queries
@@ -170,9 +219,19 @@ instance ExecutorRO (EffectfulQ rw alg a) where
   lookupKey getter k = EffectfulQ $ do
     Versioned ver (PersistentPMap pmap) <- use getter
     lift $ lookupKeyPMap pmap ver k
+  --
   materializePMap getter = EffectfulQ $ do
     Versioned ver (PersistentPMap pmap) <- use getter
     lift $ materializePMapWorker pmap ver
+  --
+  isMember getter k = EffectfulQ $ do
+    Versioned ver (PersistentPSet pset) <- use getter
+    lift $ isMemberPSet pset ver k
+  --
+  materializePSet getter = EffectfulQ $ do
+    Versioned ver (PersistentPSet pset) <- use getter
+    lift $ materializePSetWorker pset ver
+
 
 instance (rw ~ 'RW) => ExecutorRW (EffectfulQ rw alg a) where
   storeKey getter k v = EffectfulQ $ do
@@ -199,9 +258,30 @@ instance (rw ~ 'RW) => ExecutorRW (EffectfulQ rw alg a) where
       UpdateNoop -> return ()
       UpdateBad  -> rollbackEff
     getter . versionedV %= bumpVersion
+  --
+  storeSetElem getter k = EffectfulQ $ do
+    Versioned ver (PersistentPSet pset@PSet{psetTableName=tbl, ..}) <- use getter
+    lift (checkPSetStore pset ver k) >>= \case
+      UpdateOK -> lift $ execute
+        ("INSERT INTO "<>tbl<>" VALUES (NULL,?,?)")
+        ( RowInsert, encodeField psetEncodingK k)
+      UpdateNoop -> return ()
+      UpdateBad  -> rollbackEff
+    getter . versionedV %= bumpVersion
+  --
+  dropSetElem getter k = EffectfulQ $ do
+    Versioned ver (PersistentPSet pset@PSet{psetTableName=tbl, ..}) <- use getter
+    lift (checkPSetDrop pset ver k) >>= \case
+      UpdateOK -> lift $ execute
+        ("INSERT INTO "<>tbl<>" VALUES (NULL,?,?)")
+        ( RowDrop
+        , encodeField psetEncodingK k
+        )
+      UpdateNoop -> return ()
+      UpdateBad  -> rollbackEff
+    getter . versionedV %= bumpVersion
 
 
---
 lookupKeyPMap :: PMap k v -> Version -> k -> Query rw alg a (Maybe v)
 lookupKeyPMap _ New _ = return Nothing
 lookupKeyPMap PMap{pmapTableName=tbl, ..} (Commited ver) k = do
@@ -226,6 +306,29 @@ materializePMapWorker PMap{pmapTableName=tbl, ..} (Commited ver) = do
          " WHERE tag=? AND ver<=? AND key NOT IN (SELECT key FROM "<>tbl<>" WHERE tag = ? AND ver<=?)")
         (RowInsert, ver, RowDrop, ver)
       return $ Map.fromList [ (fromK k, fromV v) | (k,v) <- r ]
+
+isMemberPSet :: PersistentSet ty k -> Version -> k -> Query rw alg a Bool
+isMemberPSet _                           New            _ = return False
+isMemberPSet PSet{psetTableName=tbl, ..} (Commited ver) k = do
+  r <- query
+    ("SELECT tag FROM "<>tbl<>" WHERE key=? AND ver <= ? ORDER BY ver")
+    (encodeField psetEncodingK k, ver)
+  case r :: [Only Row] of
+    []                             -> return False
+    [Only RowInsert]               -> return True
+    [Only RowInsert, Only RowDrop] -> return False
+    _                              -> error "PSet: inconsistent DB"
+
+materializePSetWorker :: Ord k => PersistentSet ty k -> Version -> Query rw alg a (Set k)
+materializePSetWorker _                           New = return Set.empty
+materializePSetWorker PSet{psetTableName=tbl, ..} (Commited ver) =
+  case psetEncodingK of
+    FieldEncoding _ from -> do
+      r <- query
+        ("SELECT key FROM "<>tbl<>
+         " WHERE tag=? AND ver<=? AND key NOT IN (SELECT key FROM "<>tbl<>" WHERE tag = ? AND ver<=?)")
+        (RowInsert, ver, RowDrop, ver)
+      return $ Set.fromList $ from . fromOnly <$> r
 
 
 
@@ -261,6 +364,8 @@ checkPMapInsertReplay PMap{pmapTableName=tbl, ..} version k v = do
         Just (RowInsert, v') | v == from v' -> return UpdateNoop
         _                                   -> return UpdateBad
 
+
+
 checkPMapDrop :: PMap k v -> Version -> k -> Query rw alg a UpdateCheck
 checkPMapDrop pmap version k = do
   tblHead <- tableHead pmap
@@ -288,6 +393,66 @@ checkPMapDropReplay PMap{pmapTableName=tbl, ..} version k = do
     Just (Only RowDrop) -> return UpdateNoop
     _                   -> return UpdateBad
 
+
+
+checkPSetStore :: PersistentSet ty k -> Version -> k -> Query rw alg a UpdateCheck
+checkPSetStore pset version k = do
+  tblHead <- tableHead pset
+  case tblHead `compare` version of
+    LT -> error "We trying to update from point that not reached"
+    EQ -> checkPSetStoreReal   pset k
+    GT -> checkPSetStoreReplay pset version k
+
+checkPSetStoreReal :: PersistentSet ty k -> k -> Query rw alg a UpdateCheck
+checkPSetStoreReal PSet{psetTableName=tbl, ..} k = do
+  r <- query ("SELECT tag FROM "<>tbl<>" WHERE key = ?")
+             (Only $ encodeField psetEncodingK k)
+  case r :: [Only Row] of
+    [] -> return UpdateOK
+    _  -> return UpdateBad
+
+checkPSetStoreReplay :: PersistentSet ty k -> Version -> k -> Query rw alg a UpdateCheck
+checkPSetStoreReplay PSet{psetTableName=tbl, ..} version k = do
+  r <- query1 ("SELECT tag FROM "<>tbl<>" WHERE key = ? AND ver = ?")
+              ( encodeField psetEncodingK k
+              , case version of New        -> 0
+                                Commited i -> i + 1
+              )
+  case r of
+    Just (Only RowInsert) -> return UpdateNoop
+    _                     -> return UpdateBad
+
+
+
+checkPSetDrop :: PersistentSet ty k -> Version -> k -> Query rw alg a UpdateCheck
+checkPSetDrop pset version k = do
+  tblHead <- tableHead pset
+  case tblHead `compare` version of
+    LT -> error "We trying to update from point that not reached"
+    EQ -> checkPSetDropReal   pset k
+    GT -> checkPSetDropReplay pset version k
+
+checkPSetDropReal :: PersistentSet ty k -> k -> Query rw alg a UpdateCheck
+checkPSetDropReal PSet{psetTableName=tbl, ..} k = do
+  r <- query ("SELECT tag FROM "<>tbl<>" WHERE key = ?")
+             (Only $ encodeField psetEncodingK k)
+  case r of
+    [Only RowInsert] -> return UpdateOK
+    _                -> return UpdateBad
+
+checkPSetDropReplay :: PersistentSet ty k -> Version -> k -> Query rw alg a UpdateCheck
+checkPSetDropReplay PSet{psetTableName=tbl, ..} version k = do
+  r <- query1 ("SELECT tag FROM "<>tbl<>" WHERE key = ? AND ver = ?")
+              ( encodeField psetEncodingK k
+              , case version of New        -> 0
+                                Commited i -> i + 1
+              )
+  case r of
+    Just (Only RowDrop) -> return UpdateNoop
+    _                   -> return UpdateBad
+
+
+
 rollbackEff :: StateT (dct Versioned) (Query rw alg a) x
 rollbackEff = fail "ROLLBACK"
 
@@ -306,10 +471,18 @@ newtype EphemeralQ alg a dct x = EphemeralQ
   deriving (Functor, Applicative, Monad, Alternative)
 
 data Overlay a where
-  OverlayPMap :: !(PMap k v) -> !(Map k (Maybe v)) -> Overlay (PMap k v)
+  OverlayPMap :: !(PMap k v)
+              -> !(Map k (Maybe v))
+              -> Overlay (PMap k v)
+  OverlayPSet :: !(PersistentSet ty k)
+              -> !(Map k Bool)
+              -> Overlay (PersistentSet ty k)
 
 overlayPMap :: Lens' (Overlay (PMap k v)) (Map k (Maybe v))
 overlayPMap = lens (\(OverlayPMap _ o) -> o) (\(OverlayPMap p _) o -> OverlayPMap p o)
+
+overlayPSet :: Lens' (Overlay (PersistentSet ty k)) (Map k Bool)
+overlayPSet = lens (\(OverlayPSet _ o) -> o) (\(OverlayPSet p _) o -> OverlayPSet p o)
 
 
 -- | Run transaction without changing database. Since it's used for
@@ -332,10 +505,24 @@ instance ExecutorRO (EphemeralQ alg a) where
     case k `Map.lookup` overlay of
       Just r  -> return r
       Nothing -> lift $ lift $ lookupKeyPMap pmap (Commited maxBound) k
+  --
   materializePMap getter = EphemeralQ $ do
     OverlayPMap pmap overlay <- use getter
     db <- lift $ lift $ materializePMapWorker pmap (Commited maxBound)
     return $ Map.mapMaybe id $ overlay <> (Just <$> db)
+  --
+  isMember getter k = EphemeralQ $ do
+    OverlayPSet pset overlay <- use getter
+    case k `Map.lookup` overlay of
+      Just f  -> return f
+      Nothing -> lift $ lift $ isMemberPSet pset (Commited maxBound) k
+  --
+  materializePSet getter = EphemeralQ $ do
+    OverlayPSet pset overlay <- use getter
+    db <- lift $ lift $ materializePSetWorker pset (Commited maxBound)
+    return $ (db <> Map.keysSet (Map.filter id overlay)) `Set.difference`
+             Map.keysSet (Map.filter not overlay)
+
 
 instance ExecutorRW (EphemeralQ alg a) where
   storeKey getter k v = EphemeralQ $ do
@@ -357,7 +544,24 @@ instance ExecutorRW (EphemeralQ alg a) where
         UpdateOK   -> getter . overlayPMap %= Map.insert k Nothing
         UpdateBad  -> rollbackEph
         UpdateNoop -> error "Impossible"
-
+  --
+  storeSetElem getter k = EphemeralQ $ do
+    OverlayPSet pset overlay <- use getter
+    when (k `Map.member` overlay) rollbackEph
+    lift (lift (checkPSetStoreReal pset k)) >>= \case
+      UpdateOK   -> getter . overlayPSet %= Map.insert k True
+      UpdateBad  -> rollbackEph
+      UpdateNoop -> error "Impossible"
+  --
+  dropSetElem getter k = EphemeralQ $ do
+    OverlayPSet pset overlay <- use getter
+    case k `Map.lookup` overlay of
+      Just True  -> getter . overlayPSet %= Map.insert k False
+      Just False -> rollbackEph
+      Nothing    -> lift (lift (checkPSetDropReal pset k)) >>= \case
+        UpdateOK   -> getter . overlayPSet %= Map.insert k False
+        UpdateBad  -> rollbackEph
+        UpdateNoop -> error "Impossible"
 
 rollbackEph :: StateT (dct Overlay) (MaybeT (Query 'RO alg a)) x
 rollbackEph = fail "ROLLBACK"
@@ -413,11 +617,14 @@ storeCheckpoint (Height h) (Versioned ver p) = do
 makeOverlay :: Persistent a -> Overlay a
 makeOverlay = \case
   PersistentPMap p -> OverlayPMap p Map.empty
+  PersistentPSet p -> OverlayPSet p Map.empty
 
 persistentTableName :: Persistent p -> Text
 persistentTableName = \case
   PersistentPMap x -> tableName x
+  PersistentPSet x -> tableName x
 
 persistentCreateTable :: Persistent p -> Query 'RW alg a ()
 persistentCreateTable = \case
   PersistentPMap x -> createTable x
+  PersistentPSet x -> createTable x

@@ -1,5 +1,6 @@
 {-# LANGUAGE DataKinds         #-}
 {-# LANGUAGE FlexibleContexts  #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeFamilies      #-}
@@ -8,9 +9,12 @@ module TM.Persistence (tests) where
 
 import Control.Monad
 import Lens.Micro
+import Data.Foldable
 import Data.Functor.Compose
 import qualified Data.Map.Strict as Map
 import           Data.Map.Strict   (Map)
+import qualified Data.Set        as Set
+import           Data.Set          (Set)
 import Database.SQLite.Simple.FromField (FromField)
 import Database.SQLite.Simple.ToField   (ToField)
 
@@ -50,8 +54,40 @@ tests = testGroup "Tests for persistent data"
            , PMapDrop 1
            , PMapDrop 1
            ]
-       , testSimple "drop noexistent"  dct
+       , testSimple "drop nonexistent"  dct
            [ PMapDrop 1
+           ]
+       ]
+  ----------------------------------------
+  , testGroup "PSet'" $
+    let dct = dict :: One (PSet' Int) Persistent
+    in [ testSimple "insert" dct
+           [ PSetAdd' i | i <- [1..4]]
+       , testSimple "duplicate insert" dct
+           [ PSetAdd' 1
+           , PSetAdd' 1
+           ]
+       ]
+  , testGroup "PSet" $
+    let dct = dict :: One (PSet Int) Persistent
+    in [ testSimple "insert" dct
+           [ PSetAdd i | i <- [1..4]]
+       , testSimple "duplicate insert" dct
+           [ PSetAdd  1
+           , PSetAdd  2
+           , PSetDrop 1
+           ]
+       , testSimple "insert/drop" dct
+           [ PSetAdd 1
+           , PSetAdd 1
+           ]
+       , testSimple "drop nonexistent" dct
+           [ PSetDrop 1
+           ]
+       , testSimple "duplicate drop" dct
+           [ PSetAdd  1
+           , PSetDrop 1
+           , PSetDrop 1
            ]
        ]
   ]
@@ -171,4 +207,66 @@ instance ( Ord k, Ord v
       return $ assertEqual ("For key: " ++ show k) v v'
     return $ sequence_
       $ (Map.mapMaybe id m @=? res)
+      : tst
+
+
+instance (Ord k, Show k, FromField k, ToField k
+         ) => Model (PersistentSet 'AppendOnlySet k) where
+  newtype Repr    (PersistentSet 'AppendOnlySet k) = PSetA (Set k)
+                                                   deriving (Eq,Show)
+  data    Command (PersistentSet 'AppendOnlySet k) = PSetAdd' k
+  --
+  initialModel = PSetA mempty
+  dict         = One $ wrap $ PSet { psetTableName = "test"
+                                   , psetEncodingK = FieldEncoding id id
+                                   }
+  --
+  evalStore    = \case
+    PSetAdd' k -> storeSetElem one k
+  --
+  evalModel (PSetA m) = \case
+    PSetAdd' k | k `Set.member` m -> Nothing
+               | otherwise        -> Just $ PSetA $ Set.insert k m
+  --
+  check (PSetA m) = do
+    res <- materializePSet one
+    tst <- forM (toList m) $ \k -> do
+      b <- isMember one k
+      return $ assertBool ("Key " <> show k <> " must be present") b
+    return $ sequence_
+      $ (m @=? res)
+      : tst
+
+
+instance (Ord k, Show k, FromField k, ToField k
+         ) => Model (PersistentSet 'StandardSet k) where
+  newtype Repr    (PersistentSet 'StandardSet k) = PSetR (Map k Bool)
+                                                   deriving (Eq,Show)
+  data    Command (PersistentSet 'StandardSet k) = PSetAdd  k
+                                                 | PSetDrop k
+  --
+  initialModel = PSetR mempty
+  dict         = One $ wrap $ PSet { psetTableName = "test"
+                                   , psetEncodingK = FieldEncoding id id
+                                   }
+  --
+  evalStore = \case
+    PSetAdd  k -> storeSetElem one k
+    PSetDrop k -> dropSetElem  one k
+  --
+  evalModel (PSetR m) = \case
+    PSetAdd k   -> case k `Map.lookup` m of
+      Just _    -> Nothing
+      Nothing   -> return $ PSetR $ Map.insert k True m
+    PSetDrop k  -> case k `Map.lookup` m of
+      Just True -> return $ PSetR $ Map.insert k False m
+      _         -> Nothing
+  --
+  check (PSetR m) = do
+    res <- materializePSet one
+    tst <- forM (Map.toList m) $ \(k,v) -> do
+      b <- isMember one k
+      return $ assertEqual ("Key " <> show k <> " must be present") v b
+    return $ sequence_
+      $ (Map.keysSet (Map.filter id m) @=? res)
       : tst
