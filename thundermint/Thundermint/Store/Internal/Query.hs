@@ -62,7 +62,7 @@ closeConnection (Connection _ c) = liftIO $ SQL.close c
 
 withConnection
   :: (MonadMask m, MonadIO m)
-  => FilePath -> (Connection rw alg a -> m a) -> m a
+  => FilePath -> (Connection rw alg a -> m x) -> m x
 withConnection db = bracket (openConnection db) (closeConnection . coerce)
 
 class MonadIO m => MonadReadDB m alg a | m -> alg a where
