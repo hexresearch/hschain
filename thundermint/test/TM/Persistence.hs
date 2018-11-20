@@ -10,6 +10,7 @@ module TM.Persistence (tests) where
 import Control.Monad
 import Lens.Micro
 import Data.Foldable
+import Data.Int
 import Data.Functor.Compose
 import qualified Data.Map.Strict as Map
 import           Data.Map.Strict   (Map)
@@ -17,6 +18,7 @@ import qualified Data.Set        as Set
 import           Data.Set          (Set)
 import Database.SQLite.Simple.FromField (FromField)
 import Database.SQLite.Simple.ToField   (ToField)
+import Text.Printf
 
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -38,64 +40,101 @@ tests :: TestTree
 tests = testGroup "Tests for persistent data"
   [ testGroup "PMap" $
     let dct = dict :: One (PMap Int Int) Persistent
-    in [ testSimple "insert"      dct
-           [PMapInsert i i | i <- [1..4]]
-       , testSimple "insert/drop" dct
-           [ PMapInsert 1 1
-           , PMapDrop   1
-           , PMapInsert 2 2
+    in [ testCase "insert" $ exhaustiveTest dct
+           [ [PMapInsert i i | i <- [1..4]]
            ]
-       , testSimple "duplicate insert" dct
-           [ PMapInsert 1 1
-           , PMapInsert 1 1
+       , testCase "insert/drop" $ exhaustiveTest dct
+           [ [ PMapInsert 1 1
+             , PMapDrop   1
+             , PMapInsert 2 2
+             ]
            ]
-       , testSimple "duplicate drop"   dct
-           [ PMapInsert 1 1
-           , PMapDrop 1
-           , PMapDrop 1
+       , testCase "multiple stages" $ exhaustiveTest dct
+           [ [ PMapInsert 1 1
+             , PMapDrop   1
+             , PMapInsert 2 2
+             ]
+           , [ PMapInsert 3 3
+             , PMapDrop   2
+             ]
+           , [ PMapInsert 4 4
+             ]
            ]
-       , testSimple "drop nonexistent"  dct
-           [ PMapDrop 1
+       , testCase "duplicate insert" $ exhaustiveTest dct
+           [ [ PMapInsert 1 1
+             , PMapInsert 1 1
+             ]
+           ]
+       , testCase "duplicate drop"   $ exhaustiveTest dct
+           [ [ PMapInsert 1 1
+             , PMapDrop 1
+             , PMapDrop 1
+             ]
+           ]
+       , testCase "drop nonexistent"  $ exhaustiveTest dct
+           [ [ PMapDrop 1
+             ]
            ]
        ]
   ----------------------------------------
   , testGroup "PSet'" $
     let dct = dict :: One (PSet' Int) Persistent
-    in [ testSimple "insert" dct
-           [ PSetAdd' i | i <- [1..4]]
-       , testSimple "duplicate insert" dct
-           [ PSetAdd' 1
-           , PSetAdd' 1
+    in [ testCase "insert" $ exhaustiveTest dct
+           [ [ PSetAdd' i | i <- [1..4]]
+           ]
+       , testCase "multiple stages" $ exhaustiveTest dct
+           [ [ PSetAdd' 1
+             ]
+           , [ PSetAdd' 2
+             , PSetAdd' 3
+             ]
+           , [ PSetAdd' 4
+             ]
+           ]
+       , testCase "duplicate insert" $ exhaustiveTest dct
+           [ [ PSetAdd' 1
+             , PSetAdd' 1
+             ]
            ]
        ]
   , testGroup "PSet" $
     let dct = dict :: One (PSet Int) Persistent
-    in [ testSimple "insert" dct
-           [ PSetAdd i | i <- [1..4]]
-       , testSimple "duplicate insert" dct
-           [ PSetAdd  1
-           , PSetAdd  2
-           , PSetDrop 1
+    in [ testCase "insert" $ exhaustiveTest dct
+           [ [ PSetAdd i | i <- [1..4]]
            ]
-       , testSimple "insert/drop" dct
-           [ PSetAdd 1
-           , PSetAdd 1
+       , testCase "duplicate insert" $ exhaustiveTest dct
+           [ [ PSetAdd  1
+             , PSetAdd  2
+             , PSetDrop 1
+             ]
            ]
-       , testSimple "drop nonexistent" dct
-           [ PSetDrop 1
+       , testCase "multiple stages" $ exhaustiveTest dct
+           [ [ PSetAdd  1
+             , PSetDrop 1
+             , PSetAdd  2
+             ]
+           , [ PSetAdd  3
+             , PSetDrop 2
+             ]
+           , [ PSetAdd  4
+             ]
            ]
-       , testSimple "duplicate drop" dct
-           [ PSetAdd  1
-           , PSetDrop 1
-           , PSetDrop 1
+       , testCase "insert/drop" $ exhaustiveTest dct
+           [ [ PSetAdd 1
+             , PSetAdd 1
+             ]
+           ]
+       , testCase "drop nonexistent" $ exhaustiveTest dct
+           [ [ PSetDrop 1
+             ]
+           ]
+       , testCase "duplicate drop" $ exhaustiveTest dct
+           [ [ PSetAdd  1
+             , PSetDrop 1
+             , PSetDrop 1
+             ]
            ]
        ]
-  ]
-
-testSimple :: Model m => String -> One m Persistent -> [Command m] -> TestTree
-testSimple name dct cmds = testGroup name
-  [ testCase "persistent" $ testModel   dct cmds
-  , testCase "ephemeral"  $ testEpheral dct cmds
   ]
 
 genesis :: Block Ed25519_SHA512 ()
@@ -141,32 +180,54 @@ class (Eq (Repr m), Show (Repr m)) =>  Model m where
                => Command m -> q (One m) ()
   evalModel    :: Repr m -> Command m -> Maybe (Repr m)
   check        :: (ExecutorRO q, Monad (q (One m)))
-               => Repr m -> q (One m) (IO ())
+               => String -> Int64 -> Repr m -> q (One m) (IO ())
 
-testModel :: Model m => One m Persistent -> [Command m] -> IO ()
-testModel dct cmds = do
-  conn <- openDatabase ":memory:" dct genesis validatorSet
-  let model = foldM evalModel initialModel cmds
-  res <- runQueryRW conn (runBlockUpdate (Height 0) dct (mapM_ evalStore cmds))
-  case (model, res) of
-    (Nothing,Nothing) -> return ()
-    (Nothing,Just ()) -> assertFailure "Model failed while evaluation didn't!"
-    (Just _ ,Nothing) -> assertFailure "Model is OK while evaluation failed"
-    (Just m, Just ()) -> join $ runQueryRO conn $ queryUserState (Height 0) dct $ check m
+-- | Runs exhaustive test for persistent data structure.
+--
+--   - We run ephemeral test for each commit
+--   - We commit data
+--   - After we commited data we try to replay it
+exhaustiveTest :: Model m => One m Persistent -> [[Command m]] -> IO ()
+exhaustiveTest dct cmds = do
+  withDatabase ":memory:" dct genesis validatorSet $ \conn -> do
+    let evald = evaluateModel cmds
+    iterateCommands True conn dct evald
 
-testEpheral :: Model m => One m Persistent -> [Command m] -> IO ()
-testEpheral dct cmds = do
-  conn <- openDatabase ":memory:" dct genesis validatorSet
-  let model = foldM evalModel initialModel cmds
-  res <- runQueryRO conn $ runEphemeralQ dct $ do
-    mapM_ evalStore cmds
-    case model of
-      Just m  -> check m
-      Nothing -> return $ assertFailure "Model failed while evaluation didn't!"
-  case (model, res) of
-    (_      , Just m ) -> m
-    (Nothing, Nothing) -> return ()
-    (Just _ , Nothing) -> assertFailure "Model is OK while evaluation failed"
+evaluateModel :: (Model m) => [[Command m]] -> [(Int64, Maybe (Repr m), [Command m])]
+evaluateModel = zipWith (\h (a,b) -> (h,a,b)) [0..] . go initialModel
+  where
+    go _ [] = []
+    go m (cmds:rest) = case foldM evalModel m cmds of
+      Just m' -> (Just m', cmds) : go m' rest
+      Nothing -> case rest of
+        [] -> (Nothing, cmds) : []
+        _  -> error "evaluateModel: there are commands to evaluate"
+
+iterateCommands
+  :: (Model m)
+  => Bool -> Connection 'RW alg a -> One m Persistent -> [(Int64, Maybe (Repr m), [Command m])] -> IO ()
+iterateCommands _ _ _ [] = return ()
+iterateCommands runEph conn dct ((h,model,cmds):rest) = do
+  -- Test ephemeral update
+  when runEph $ do
+     res <- runQueryRO conn $ runEphemeralQ dct $ do
+       mapM_ evalStore cmds
+       case model of
+        Just m  -> check "Ephemeral" h m
+        Nothing -> return $ assertFailure $ printf "Ephemeral: Model failed, eval OK (H=%i)" h
+     case (model, res) of
+       (_      , Just m ) -> m
+       (Nothing, Nothing) -> return ()
+       (Just _ , Nothing) -> assertFailure $ printf "Ephemeral: Model OK, eval failed (H=%i)" h
+  -- Do real update
+  do res <- runQueryRW conn (runBlockUpdate (Height h) dct (mapM_ evalStore cmds))
+     case (model, res) of
+       (Nothing,Nothing) -> return ()
+       (Nothing,Just ()) -> assertFailure "Model failed while evaluation didn't!"
+       (Just _ ,Nothing) -> assertFailure "Model is OK while evaluation failed"
+       (Just m, Just ()) -> do join $ runQueryRO conn $ queryUserState (Height h) dct $ check "Persistent" h m
+                               iterateCommands runEph conn dct rest
+
 
 
 ----------------------------------------------------------------
@@ -200,13 +261,13 @@ instance ( Ord k, Ord v
       Just (Just _) -> Just $ PMapRepr $ Map.insert k Nothing m
       _             -> Nothing
   --
-  check (PMapRepr m) = do
+  check label h (PMapRepr m) = do
     res <- materializePMap one
     tst <- forM (Map.toList m) $ \(k,v) -> do
       v' <- lookupKey one k
-      return $ assertEqual ("For key: " ++ show k) v v'
+      return $ assertEqual (printf "(%s,H=%i) For key: %s" label h (show k)) v v'
     return $ sequence_
-      $ (Map.mapMaybe id m @=? res)
+      $ assertEqual (printf "%s, H=%i" label h) (Map.mapMaybe id m) res
       : tst
 
 
@@ -228,13 +289,13 @@ instance (Ord k, Show k, FromField k, ToField k
     PSetAdd' k | k `Set.member` m -> Nothing
                | otherwise        -> Just $ PSetA $ Set.insert k m
   --
-  check (PSetA m) = do
+  check label h (PSetA m) = do
     res <- materializePSet one
     tst <- forM (toList m) $ \k -> do
       b <- isMember one k
-      return $ assertBool ("Key " <> show k <> " must be present") b
+      return $ assertBool (printf "Key %s must be present (%s, H=%i)" (show k) label h) b
     return $ sequence_
-      $ (m @=? res)
+      $ assertEqual (printf "%s, H=%i" label h) m res
       : tst
 
 
@@ -262,11 +323,11 @@ instance (Ord k, Show k, FromField k, ToField k
       Just True -> return $ PSetR $ Map.insert k False m
       _         -> Nothing
   --
-  check (PSetR m) = do
+  check label h (PSetR m) = do
     res <- materializePSet one
     tst <- forM (Map.toList m) $ \(k,v) -> do
       b <- isMember one k
-      return $ assertEqual ("Key " <> show k <> " must be present") v b
+      return $ assertEqual (printf "Key %s must be (%s, H=%i)" (show k) label h) v b
     return $ sequence_
-      $ (Map.keysSet (Map.filter id m) @=? res)
+      $ assertEqual (printf "%s H=%i" label h) (Map.keysSet (Map.filter id m)) res
       : tst
