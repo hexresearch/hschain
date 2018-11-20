@@ -27,7 +27,12 @@ module Thundermint.Store (
   , connectionRO
   , queryRO
   , queryRW
-  , openDatabase
+    -- ** Opening database
+  , openConnection
+  , closeConnection
+  , withConnection
+  , initDatabase
+  , withDatabase
     -- * Block storage
   , blockchainHeight
   , retrieveBlock
@@ -60,6 +65,7 @@ import qualified Katip
 
 import Codec.Serialise           (Serialise)
 import Control.Monad             ((<=<), foldM)
+import Control.Monad.Catch       (MonadMask)
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Except
@@ -87,19 +93,27 @@ import Thundermint.Store.SQL
 -- Monadic API for DB access
 ----------------------------------------------------------------
 
--- | Open database and initialize tables.
-openDatabase
+-- | Helper function which opens database, initializes it and ensures
+--   that it's closed on function exit
+withDatabase
+  :: (MonadIO m, MonadMask m, FloatOut dct, Crypto alg, Serialise a, Eq a, Eq (PublicKey alg))
+  => FilePath         -- ^ Path to the database
+  -> dct Persistent   -- ^ Users state. If no state is stored in the
+  -> Block alg a      -- ^ Genesis block
+  -> ValidatorSet alg -- ^ Initial validators
+  -> (Connection 'RW alg a -> m x) -> m x
+withDatabase path dct genesis vals cont
+  = withConnection path $ \c -> initDatabase c dct genesis vals >> cont c
+
+-- | Initialize all required tables in database.
+initDatabase
   :: (MonadIO m, FloatOut dct, Crypto alg, Serialise a, Eq a, Eq (PublicKey alg))
-  => FilePath
-  -- ^ Path to the database
-  -> dct Persistent
-  -- ^ Users state. If no state is stored in the
-  -> Block alg a
-  -- ^ Genesis block
-  -> ValidatorSet alg
-  -- ^ Initial validators
-  -> m (Connection 'RW alg a)
-openDatabase path dct genesis vals = do
+  => Connection 'RW alg a  -- ^ Opened connection to database
+  -> dct Persistent        -- ^ Users state. If no state is stored in the
+  -> Block alg a           -- ^ Genesis block
+  -> ValidatorSet alg      -- ^ Initial validators
+  -> m ()
+initDatabase c dct genesis vals = do
   -- 1. Check that all tables has distinct names
   let names = foldF ((:[]) . persistentTableName) dct
   case () of
@@ -112,14 +126,13 @@ openDatabase path dct genesis vals = do
      | any (isPrefixOf "sqlite_") names -> error "'sqlite_' is not acceptable prefix for table"
      | otherwise                        -> return ()
   -- 2. Create tables for block
-  c <- openConnection path
   r <- runQueryRW c $ do
     initializeBlockhainTables genesis vals
     traverseEff persistentCreateTable dct
   case r of
     -- FIXME: Resource leak!
     Nothing -> error "Cannot initialize tables!"
-    Just () -> return c
+    Just () -> return ()
 
 -- | Execute query.
 queryRO :: (MonadReadDB m alg a) => Query 'RO alg a x -> m x
