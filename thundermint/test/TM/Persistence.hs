@@ -191,7 +191,8 @@ exhaustiveTest :: Model m => One m Persistent -> [[Command m]] -> IO ()
 exhaustiveTest dct cmds = do
   withDatabase ":memory:" dct genesis validatorSet $ \conn -> do
     let evald = evaluateModel cmds
-    iterateCommands True conn dct evald
+    iterateCommands True  conn dct evald
+    iterateCommands False conn dct evald
 
 evaluateModel :: (Model m) => [[Command m]] -> [(Int64, Maybe (Repr m), [Command m])]
 evaluateModel = zipWith (\h (a,b) -> (h,a,b)) [0..] . go initialModel
