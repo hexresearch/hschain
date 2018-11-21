@@ -236,50 +236,45 @@ instance ExecutorRO (EffectfulQ rw alg a) where
 instance (rw ~ 'RW) => ExecutorRW (EffectfulQ rw alg a) where
   storeKey getter k v = EffectfulQ $ do
     Versioned ver (PersistentPMap pmap@PMap{pmapTableName=tbl, ..}) <- use getter
-    lift (checkPMapInsert pmap ver k v) >>= \case
-      UpdateOK   -> lift $ execute
-        ("INSERT INTO "<>tbl<>" VALUES (NULL,?,?,?)")
-        ( RowInsert
-        , encodeField pmapEncodingK k
-        , encodeField pmapEncodingV v
-        )
-      UpdateNoop -> return ()
-      UpdateBad  -> rollbackEff
+    lift $ checkPMapInsert pmap ver k v `checkedReal` execute
+      ("INSERT INTO "<>tbl<>" VALUES (NULL,?,?,?)")
+      ( RowInsert
+      , encodeField pmapEncodingK k
+      , encodeField pmapEncodingV v
+      )
     getter . versionedV %= bumpVersion
   --
   dropKey getter k = EffectfulQ $ do
     Versioned ver (PersistentPMap pmap@PMap{pmapTableName=tbl, ..}) <- use getter
-    lift (checkPMapDrop pmap ver k) >>= \case
-      UpdateOK -> lift $ execute
-        ("INSERT INTO "<>tbl<>" VALUES (NULL,?,?,NULL)")
-        ( RowDrop
-        , encodeField pmapEncodingK k
-        )
-      UpdateNoop -> return ()
-      UpdateBad  -> rollbackEff
+    lift $ checkPMapDrop pmap ver k `checkedReal` execute
+      ("INSERT INTO "<>tbl<>" VALUES (NULL,?,?,NULL)")
+      ( RowDrop
+      , encodeField pmapEncodingK k
+      )
     getter . versionedV %= bumpVersion
   --
   storeSetElem getter k = EffectfulQ $ do
     Versioned ver (PersistentPSet pset@PSet{psetTableName=tbl, ..}) <- use getter
-    lift (checkPSetStore pset ver k) >>= \case
-      UpdateOK -> lift $ execute
-        ("INSERT INTO "<>tbl<>" VALUES (NULL,?,?)")
-        ( RowInsert, encodeField psetEncodingK k)
-      UpdateNoop -> return ()
-      UpdateBad  -> rollbackEff
+    lift $ checkPSetStore pset ver k `checkedReal` execute
+      ("INSERT INTO "<>tbl<>" VALUES (NULL,?,?)")
+      ( RowInsert, encodeField psetEncodingK k)
     getter . versionedV %= bumpVersion
   --
   dropSetElem getter k = EffectfulQ $ do
     Versioned ver (PersistentPSet pset@PSet{psetTableName=tbl, ..}) <- use getter
-    lift (checkPSetDrop pset ver k) >>= \case
-      UpdateOK -> lift $ execute
-        ("INSERT INTO "<>tbl<>" VALUES (NULL,?,?)")
-        ( RowDrop
-        , encodeField psetEncodingK k
-        )
-      UpdateNoop -> return ()
-      UpdateBad  -> rollbackEff
+    lift $ checkPSetDrop pset ver k `checkedReal` execute
+      ("INSERT INTO "<>tbl<>" VALUES (NULL,?,?)")
+      ( RowDrop
+      , encodeField psetEncodingK k
+      )
     getter . versionedV %= bumpVersion
+
+checkedReal :: (Monad m) => m UpdateCheck -> m () -> m ()
+checkedReal check action = check >>= \case
+  UpdateOK   -> action
+  UpdateNoop -> return ()
+  UpdateBad  -> fail "ROLLBACK"
+
 
 
 lookupKeyPMap :: PMap k v -> Version -> k -> Query rw alg a (Maybe v)
@@ -449,11 +444,6 @@ checkPSetDropReplay PSet{psetTableName=tbl, ..} version k = do
 
 
 
-rollbackEff :: StateT (dct Versioned) (Query rw alg a) x
-rollbackEff = fail "ROLLBACK"
-
-
-
 ----------------------------------------------------------------
 -- Ephemeral updates
 ----------------------------------------------------------------
@@ -526,38 +516,38 @@ instance ExecutorRW (EphemeralQ alg a) where
     -- If we inserted/removed key insert is not valid anyway
     when (k `Map.member` overlay) rollbackEph
     -- Check for insert conflicts in DB
-    lift (lift (checkPMapInsertReal pmap k)) >>= \case
-      UpdateOK   -> getter . overlayPMap %= Map.insert k (Just v)
-      UpdateBad  -> rollbackEph
-      UpdateNoop -> error "Impossible"
+    checkPMapInsertReal pmap k `checkedEph`
+      (getter . overlayPMap %= Map.insert k (Just v))
   --
   dropKey getter k = EphemeralQ $ do
     OverlayPMap pmap overlay <- use getter
     case k `Map.lookup` overlay of
       Just Nothing  -> rollbackEph
       Just (Just _) -> getter . overlayPMap %= Map.insert k Nothing
-      Nothing       -> lift (lift (checkPMapDropReal pmap k)) >>= \case
-        UpdateOK   -> getter . overlayPMap %= Map.insert k Nothing
-        UpdateBad  -> rollbackEph
-        UpdateNoop -> error "Impossible"
-  --
+      Nothing       -> checkPMapDropReal pmap k `checkedEph`
+        (getter . overlayPMap %= Map.insert k Nothing)
+ --
   storeSetElem getter k = EphemeralQ $ do
     OverlayPSet pset overlay <- use getter
     when (k `Map.member` overlay) rollbackEph
-    lift (lift (checkPSetStoreReal pset k)) >>= \case
-      UpdateOK   -> getter . overlayPSet %= Map.insert k True
-      UpdateBad  -> rollbackEph
-      UpdateNoop -> error "Impossible"
+    checkPSetStoreReal pset k `checkedEph`
+      (getter . overlayPSet %= Map.insert k True)
   --
   dropSetElem getter k = EphemeralQ $ do
     OverlayPSet pset overlay <- use getter
     case k `Map.lookup` overlay of
       Just True  -> getter . overlayPSet %= Map.insert k False
       Just False -> rollbackEph
-      Nothing    -> lift (lift (checkPSetDropReal pset k)) >>= \case
-        UpdateOK   -> getter . overlayPSet %= Map.insert k False
-        UpdateBad  -> rollbackEph
-        UpdateNoop -> error "Impossible"
+      Nothing    -> checkPSetDropReal pset k `checkedEph`
+        (getter . overlayPSet %= Map.insert k False)
+
+checkedEph
+  :: (MonadTrans t, MonadTrans q, Monad (t (q m)), Monad (q m), Monad m)
+  => m UpdateCheck -> t (q m) a -> t (q m) a
+checkedEph check action = lift (lift check) >>= \case
+  UpdateOK   -> action
+  UpdateBad  -> fail  "ROLLBACK"
+  UpdateNoop -> error "Impossible"
 
 rollbackEph :: StateT (dct Overlay) (MaybeT (Query 'RO alg a)) x
 rollbackEph = fail "ROLLBACK"
