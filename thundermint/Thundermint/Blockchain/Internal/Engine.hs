@@ -26,6 +26,7 @@ import Control.Monad.Trans.Class
 import           Data.Maybe    (fromMaybe)
 import           Data.Function
 import           Data.Monoid   ((<>))
+import Data.Text             (Text)
 import Data.Time.Clock.POSIX (getPOSIXTime)
 import Pipes                 (Pipe,runEffect,yield,await,(>->))
 
@@ -40,7 +41,7 @@ import Thundermint.Store
 import Thundermint.Store.STM
 import Thundermint.Store.Internal.BlockDB
 
-import Katip (Severity(..), showLS)
+import Katip (Severity(..), sl)
 
 ----------------------------------------------------------------
 --
@@ -202,7 +203,10 @@ verifyMessageSignature AppState{..} vset = forever $ do
   where
     verify name con sx = case verifySignature pkLookup sx of
       Just sx' -> yield $ con sx'
-      Nothing  -> lift $ logger WarningS ("Invalid signature for " <> name <> ": " <> showLS (signedAddr sx)) ()
+      Nothing  -> lift $ logger WarningS "Invalid signature"
+        (  sl "name" (name::Text)
+        <> sl "addr" (show (signedAddr sx))
+        )
     pkLookup a = validatorPubKey <$> validatorByAddr vset a
 
 
@@ -289,7 +293,10 @@ makeHeightParameters Configuration{..} AppState{..} AppChans{..} = do
             blockOK         <- lift $ appValidationFun (succ h) (blockData b)
             case () of
               _| not (null inconsistencies) -> do
-                   logger ErrorS ("Proposed block at height ::" <> showLS nH <> ":: has Inconsistency problem: " <> showLS inconsistencies) ()
+                   logger ErrorS "Proposed block has inconsistencies"
+                     (  sl "H" nH
+                     <> sl "errors" (map show inconsistencies)
+                     )
                    return InvalidProposal
                | blockOK    -> return GoodProposal
                | otherwise  -> return InvalidProposal
@@ -304,7 +311,10 @@ makeHeightParameters Configuration{..} AppState{..} AppChans{..} = do
                               }
               sprop  = signValue pk prop
           mBlock <- lift $ retrievePropByID appPropStorage h bid
-          logger InfoS ("Sending proposal for " <> showLS r <> " " <> showLS bid) ()
+          logger InfoS "Sending proposal"
+            (   sl "R"    r
+            <>  sl "BID" (show bid)
+            )
           liftIO $ atomically $ do
             writeTQueue appChanRxInternal (RxProposal $ unverifySignature sprop)
             case mBlock of
@@ -330,7 +340,10 @@ makeHeightParameters Configuration{..} AppState{..} AppChans{..} = do
                           , voteBlockID = b
                           }
               svote  = signValue pk vote
-          logger InfoS ("Sending prevote for " <> showLS r <> " (" <> showLS b <> ")") ()
+          logger InfoS "Sending prevote"
+            (  sl "R"    r
+            <> sl "bid" (show b)
+            )
           liftIO $ atomically $
             writeTQueue appChanRxInternal (RxPreVote $ unverifySignature svote)
     --
@@ -343,7 +356,10 @@ makeHeightParameters Configuration{..} AppState{..} AppChans{..} = do
                           , voteBlockID = b
                           }
               svote  = signValue pk vote
-          logger InfoS ("Sending precommit for " <> showLS r <> " (" <> showLS b <> ")") ()
+          logger InfoS "Sending precommit"
+            (  sl "R" r
+            <> sl "bid" (show b)
+            )
           liftIO $ atomically $ writeTQueue appChanRxInternal $ RxPreCommit $ unverifySignature svote
     --
     , acceptBlock = \r bid -> do
