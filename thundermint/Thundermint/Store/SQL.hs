@@ -357,8 +357,7 @@ checkPMapInsertReplay PMap{pmapTableName=tbl, ..} version k v = do
     FieldEncoding _ from -> do
       r <- query1 ("SELECT tag, val FROM "<>tbl<>" WHERE key = ? AND ver = ?")
                   ( encodeField pmapEncodingK k
-                  , case version of New        -> 0
-                                    Commited i -> i + 1
+                  , bumpForDB version
                   )
       case r of
         Just (RowInsert, v') | v == from v' -> return UpdateNoop
@@ -386,8 +385,7 @@ checkPMapDropReplay :: PMap k v -> Version -> k -> Query rw alg a UpdateCheck
 checkPMapDropReplay PMap{pmapTableName=tbl, ..} version k = do
   r <- query1 ("SELECT tag FROM "<>tbl<>" WHERE key = ? AND ver = ?")
               ( encodeField pmapEncodingK k
-              , case version of New        -> 0
-                                Commited i -> i + 1
+              , bumpForDB version
               )
   case r of
     Just (Only RowDrop) -> return UpdateNoop
@@ -415,8 +413,7 @@ checkPSetStoreReplay :: PersistentSet ty k -> Version -> k -> Query rw alg a Upd
 checkPSetStoreReplay PSet{psetTableName=tbl, ..} version k = do
   r <- query1 ("SELECT tag FROM "<>tbl<>" WHERE key = ? AND ver = ?")
               ( encodeField psetEncodingK k
-              , case version of New        -> 0
-                                Commited i -> i + 1
+              , bumpForDB version
               )
   case r of
     Just (Only RowInsert) -> return UpdateNoop
@@ -444,8 +441,7 @@ checkPSetDropReplay :: PersistentSet ty k -> Version -> k -> Query rw alg a Upda
 checkPSetDropReplay PSet{psetTableName=tbl, ..} version k = do
   r <- query1 ("SELECT tag FROM "<>tbl<>" WHERE key = ? AND ver = ?")
               ( encodeField psetEncodingK k
-              , case version of New        -> 0
-                                Commited i -> i + 1
+              , bumpForDB version
               )
   case r of
     Just (Only RowDrop) -> return UpdateNoop
@@ -609,7 +605,7 @@ storeCheckpoint (Height h) (Versioned ver p) = do
                              (persistentTableName p, h, v)
     Just (Only v')
       | v /= v'   -> rollback
-      | otherwise -> rollback
+      | otherwise -> return ()
   where
     v = case ver of New        -> Nothing
                     Commited i -> Just i

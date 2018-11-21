@@ -43,9 +43,12 @@ data Version
   deriving (Show,Eq,Ord)
 
 bumpVersion :: Version -> Version
-bumpVersion = \case
-  New        -> Commited 1
-  Commited n -> Commited (n+1)
+bumpVersion = Commited . bumpForDB
+
+bumpForDB :: Version -> Int64
+bumpForDB = \case
+  New        -> 1
+  Commited n -> n+1
 
 
 -- | Tag for single updates in the database.
