@@ -159,7 +159,7 @@ decideNewBlock config appSt@AppState{..} appCh@AppChans{..} lastCommt = do
   -- FIXME: encode that we cannot fail here!
   Success tm0 <- runConsesusM $ newHeight hParam lastCommt
   runEffect $ messageSrc
-          >-> verifyMessageSignature appSt (validatorSet hParam)
+          >-> verifyMessageSignature appSt hParam
           >-> msgHandlerLoop Nothing tm0
 
 
@@ -183,31 +183,42 @@ handleVerifiedMessage ProposalStorage{..} hParam tm = \case
                       return (Success tm)
 
 -- Verify signature of message. If signature is not correct message is
--- simply discarded
---
--- NOTE: set of validators may change so we may lack public key of
---       some validators from height different from current. But since
---       we ignore messages from wrong height anyway it doesn't matter
+-- simply discarded.
 verifyMessageSignature
   :: (MonadLogger m, Crypto alg, Serialise a)
   => AppState m alg a
-  -> ValidatorSet alg
+  -> HeightParameters n alg a
   -> Pipe (MessageRx 'Unverified alg a) (MessageRx 'Verified alg a) m r
-verifyMessageSignature AppState{..} vset = forever $ do
+verifyMessageSignature AppState{..} HeightParameters{..} = forever $ do
   await >>= \case
-    RxPreVote   sv -> verify "prevote"   RxPreVote   sv
-    RxPreCommit sv -> verify "precommit" RxPreCommit sv
-    RxProposal  sp -> verify "proposal"  RxProposal  sp
+    RxPreVote   sv
+      | h      == currentH -> verify "prevote"   RxPreVote   sv
+      | otherwise          -> return ()
+      where h = voteHeight $ signedValue sv
+    RxPreCommit sv
+      -- For messages from previous height we validate them against
+      -- correct validator set
+      | h      == currentH -> verify    "precommit" RxPreCommit sv
+      | succ h == currentH -> verifyOld "precommit" RxPreCommit sv
+      | otherwise          -> return ()
+      where h = voteHeight $ signedValue sv
+    RxProposal  sp
+      | h == currentH -> verify "proposal"  RxProposal  sp
+      | otherwise     -> return ()
+      where h = propHeight $ signedValue sp
     RxTimeout   t  -> yield $ RxTimeout t
     RxBlock     b  -> yield $ RxBlock   b
   where
-    verify name con sx = case verifySignature pkLookup sx of
+    verify    con sx = verifyAny (Just validatorSet) con sx
+    verifyOld con sx = verifyAny oldValidatorSet     con sx
+    verifyAny vset name con sx = case verifySignature (pkLookup vset) sx of
       Just sx' -> yield $ con sx'
       Nothing  -> lift $ logger WarningS "Invalid signature"
         (  sl "name" (name::Text)
         <> sl "addr" (show (signedAddr sx))
         )
-    pkLookup a = validatorPubKey <$> validatorByAddr vset a
+    pkLookup mvset a = do vset <- mvset
+                          validatorPubKey <$> validatorByAddr vset a
 
 
 
@@ -266,6 +277,7 @@ makeHeightParameters
 makeHeightParameters Configuration{..} AppState{..} AppChans{..} = do
   h            <- queryRO $ blockchainHeight
   Just valSet  <- queryRO $ retrieveValidatorSet (succ h)
+  oldValSet    <- queryRO $ retrieveValidatorSet  h
   Just genesis <- queryRO $ retrieveBlock        (Height 0)
   let proposerChoice (Round r) =
         let Height h' = h
@@ -277,6 +289,7 @@ makeHeightParameters Configuration{..} AppState{..} AppChans{..} = do
   return HeightParameters
     { currentH        = succ h
     , validatorSet    = valSet
+    , oldValidatorSet = oldValSet
       -- FIXME: this is some random algorithms that should probably
       --        work (for some definition of work)
     , areWeProposers  = \r -> case appValidator of

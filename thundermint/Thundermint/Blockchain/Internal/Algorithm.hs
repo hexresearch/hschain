@@ -78,6 +78,10 @@ data HeightParameters (m :: * -> *) alg a = HeightParameters
   { currentH             :: !Height
     -- ^ Height we're on.
   , validatorSet         :: !(ValidatorSet alg)
+    -- ^ Validator set for current height
+  , oldValidatorSet      :: !(Maybe (ValidatorSet alg))
+    -- ^ Validator set for previous height. It's used when collecting
+    --   stragglers votes
   , areWeProposers       :: !(Round -> Bool)
     -- ^ Find address of proposer for given round.
   , proposerForRound     :: !(Round -> Address alg)
