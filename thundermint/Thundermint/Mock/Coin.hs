@@ -298,6 +298,7 @@ genesisFromGenerator validatorSet GeneratorSpec{..} = Block
       }
   , blockData       = [ Deposit pk genInitialDeposit | pk <- genInitialKeys ]
   , blockLastCommit = Nothing
+  , blockEvidence   = []
   }
 
 -- | Generate transaction. This implementation is really inefficient

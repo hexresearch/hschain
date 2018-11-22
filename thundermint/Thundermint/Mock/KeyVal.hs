@@ -58,6 +58,7 @@ genesisBlock valSet = Block
       }
   , blockData       = []
   , blockLastCommit = Nothing
+  , blockEvidence   = []
   }
 
 transitions :: BlockFold (Map String Int) [(String,Int)]

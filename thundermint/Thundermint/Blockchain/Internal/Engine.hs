@@ -311,8 +311,10 @@ makeHeightParameters Configuration{..} AppState{..} AppChans{..} = do
                      <> sl "errors" (map show inconsistencies)
                      )
                    return InvalidProposal
-               | blockOK    -> return GoodProposal
-               | otherwise  -> return InvalidProposal
+               -- We don't put evidence into blocks yet so there shouldn't be any
+               | _:_ <- blockEvidence b -> return InvalidProposal
+               | blockOK                -> return GoodProposal
+               | otherwise              -> return InvalidProposal
     --
     , broadcastProposal = \r bid lockInfo ->
         forM_ appValidator $ \(PrivValidator pk) -> do
@@ -405,6 +407,7 @@ makeHeightParameters Configuration{..} AppState{..} AppChans{..} = do
                   }
               , blockData       = bData
               , blockLastCommit = commit
+              , blockEvidence   = []
               }
             bid   = blockHash block
         allowBlockID   appPropStorage r bid
