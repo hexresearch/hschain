@@ -106,9 +106,10 @@ interpretSpec maxH prefix NetSpec{..} = do
                  bchState <- newBChState transitions
                  _        <- stateAtH bchState (succ hChain)
                  let appState = AppState
-                       { appValidationFun  = \h a -> do
+                       { appValidationFun  = \b -> do
+                           let h = headerHeight $ blockHeader b
                            st <- stateAtH bchState h
-                           return $ isJust $ processBlock transitions h a st
+                           return $ isJust $ processBlock transitions h (blockData b) st
                        --
                        , appBlockGenerator = \h -> case nspecByzantine of
                            Just "InvalidBlock" -> do
@@ -119,12 +120,12 @@ interpretSpec maxH prefix NetSpec{..} = do
                              return [(k, addr)]
                        --
                        , appCommitCallback = \case
-                           h | Just h' <- maxH
-                             , h > Height h'   -> throwM Abort
-                             | otherwise       -> return ()
-                       , appCommitQuery      = \_ _ -> return ()
+                           b | Just hM <- maxH
+                             , headerHeight (blockHeader b) > Height hM -> throwM Abort
+                             | otherwise                                -> return ()
+                       , appCommitQuery      = \_ -> return ()
                        , appValidator        = nspecPrivKey
-                       , appNextValidatorSet = \_ _ -> return validatorSet
+                       , appNextValidatorSet = \_ -> return validatorSet
                        }
                  appCh <- newAppChans
                  runConcurrently

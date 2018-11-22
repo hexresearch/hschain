@@ -69,23 +69,23 @@ data AppState m alg a = AppState
     --   need to create new block for proposal
   , appValidator        :: Maybe (PrivValidator alg)
     -- ^ Private validator for node. It's @Nothing@ if node is not a validator
-  , appValidationFun    :: Height -> a -> m Bool
+  , appValidationFun    :: Block alg a -> m Bool
     -- ^ Function for validation of proposed block data.
-  , appNextValidatorSet :: Height -> a -> m (ValidatorSet alg)
+  , appNextValidatorSet :: Block alg a -> m (ValidatorSet alg)
     -- ^ Obtain validator set for next block.
-  , appCommitQuery      :: Height -> a -> Query 'RW alg a ()
+  , appCommitQuery      :: Block alg a -> Query 'RW alg a ()
     -- ^ Database query called after block commit in the same
     --   transaction
-  , appCommitCallback   :: Height -> m ()
+  , appCommitCallback   :: Block alg a -> m ()
     -- ^ Function which is called after each commit.
   }
 
 hoistAppState :: (forall x. m x -> n x) -> AppState m alg a -> AppState n alg a
 hoistAppState fun AppState{..} = AppState
   { appBlockGenerator   = fun . appBlockGenerator
-  , appValidationFun    = \h a -> fun $ appValidationFun h a
+  , appValidationFun    = fun . appValidationFun
   , appCommitCallback   = fun . appCommitCallback
-  , appNextValidatorSet = \h a -> fun $ appNextValidatorSet h a
+  , appNextValidatorSet = fun . appNextValidatorSet
   , ..
   }
 

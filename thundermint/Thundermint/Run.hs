@@ -89,9 +89,9 @@ instance MonadIO m => MonadDB (DBT 'RW alg a m) alg a where
 ----------------------------------------------------------------
 
 data NodeLogic m alg a = NodeLogic
-  { nodeBlockValidation :: !(Height -> a -> m Bool)
+  { nodeBlockValidation :: !(Block alg a -> m Bool)
     -- ^ Callback used for validation of blocks
-  , nodeCommitQuery     :: !(Height -> a -> Query 'RW alg a ())
+  , nodeCommitQuery     :: !(Block alg a -> Query 'RW alg a ())
     -- ^ Query for modifying user state.
   , nodeBlockGenerator  :: !(Height -> m a)
     -- ^ Generator for a new block
@@ -115,10 +115,11 @@ logicFromFold transitions@BlockFold{..} = do
   mempool <- newMempool checkTx
   --
   return ( bchState
-         , NodeLogic { nodeBlockValidation = \h a -> do
+         , NodeLogic { nodeBlockValidation = \b -> do
+                         let h = headerHeight $ blockHeader b
                          st <- stateAtH bchState h
-                         return $ isJust $ processBlock h a st
-                     , nodeCommitQuery     = \_ _ -> return ()
+                         return $ isJust $ processBlock h (blockData b) st
+                     , nodeCommitQuery     = \_ -> return ()
                      , nodeBlockGenerator  = \h -> do
                          st  <- stateAtH bchState h
                          txs <- peekNTransactions mempool Nothing
@@ -141,17 +142,16 @@ logicFromPersistent PersistentState{..} = do
   -- Now we need to update state using genesis block.
   do r <- queryRW $ do
        Just genesis <- retrieveBlock (Height 0)
-       runBlockUpdate (Height 0) persistedData $ processBlockDB (Height 0) (blockData genesis)
+       runBlockUpdate (Height 0) persistedData $ processBlockDB genesis
      case r of
        Just () -> return ()
        Nothing -> error "Cannot initialize persistent storage"
   --
   return NodeLogic
-    { nodeBlockValidation = \h a -> do
-        r <- queryRO $ runEphemeralQ persistedData (processBlockDB h a)
+    { nodeBlockValidation = \b -> do
+        r <- queryRO $ runEphemeralQ persistedData (processBlockDB b)
         return $! isJust r
-    , nodeCommitQuery     = \h a -> do
-        runBlockUpdate h persistedData (processBlockDB h a)
+    , nodeCommitQuery     = \b -> runBlockUpdate (headerHeight (blockHeader b)) persistedData $ processBlockDB b
     , nodeBlockGenerator  = \h -> do
         txs <- peekNTransactions mempool Nothing
         r   <- queryRO $ runEphemeralQ persistedData (transactionsToBlockDB h txs)
@@ -168,7 +168,7 @@ logicFromPersistent PersistentState{..} = do
 data NodeDescription m alg a = NodeDescription
   { nodeValidationKey   :: !(Maybe (PrivValidator alg))
     -- ^ Private key of validator
-  , nodeCommitCallback  :: !(Height -> m ())
+  , nodeCommitCallback  :: !(Block alg a -> m ())
     -- ^ Callback called immediately after block was commit and user
     --   state in database is updated
   }
@@ -199,16 +199,16 @@ runNode cfg BlockchainNet{..} NodeDescription{..} NodeLogic{..} = do
         { appValidationFun  = nodeBlockValidation
         , appBlockGenerator = nodeBlockGenerator
         , appCommitQuery    = nodeCommitQuery
-        , appCommitCallback = \h -> setNamespace "mempool" $ do
+        , appCommitCallback = \b -> setNamespace "mempool" $ do
             do before <- mempoolStats nodeMempool
                logger InfoS "Mempool before filtering" before
             filterMempool nodeMempool
             do after <- mempoolStats nodeMempool
                logger InfoS "Mempool after filtering" after
-            nodeCommitCallback h
+            nodeCommitCallback b
           --
         , appValidator        = nodeValidationKey
-        , appNextValidatorSet = \_ _ -> return valSet
+        , appNextValidatorSet = \_ -> return valSet
         }
   -- Networking
   appCh <- newAppChans

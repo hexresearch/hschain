@@ -106,7 +106,7 @@ hoistBChState f BChState{..} = BChState
 data PersistentState dct alg a = PersistentState
   { processTxDB           :: !(Height -> TX a -> EphemeralQ alg a dct ())
   , processBlockDB        :: !(forall q. (ExecutorRW q, Monad (q dct))
-                          => Height -> a -> q dct ())
+                          => Block alg a -> q dct ())
   , transactionsToBlockDB :: !(Height -> [TX a] -> EphemeralQ alg a dct a)
   , persistedData         :: !(dct Persistent)
   }
