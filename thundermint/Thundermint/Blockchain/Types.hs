@@ -19,6 +19,7 @@ module Thundermint.Blockchain.Types (
   , Block(..)
   , Header(..)
   , Commit(..)
+  , ByzantineEvidence(..)
   , BlockData(..)
     -- * Data types for establishing consensus
   , Step(..)
@@ -90,6 +91,8 @@ data Block alg a = Block
   , blockLastCommit :: !(Maybe (Commit alg a))
     -- ^ Commit information for previous block. Nothing iff block
     --   is a genesis block or block at height 1.
+  , blockEvidence   :: [ByzantineEvidence alg a]
+    -- ^ Evidence of byzantine behavior by nodes.
   }
   deriving (Show, Eq, Generic)
 instance Serialise a => Serialise (Block alg a)
@@ -114,6 +117,21 @@ data Header alg a = Header
   }
   deriving (Show, Eq, Generic)
 instance Serialise (Header alg a)
+
+-- | Evidence of byzantine behaviour by some node.
+data ByzantineEvidence alg a
+  = OutOfTurnProposal !(Signed 'Unverified alg (Proposal alg a))
+    -- ^ Node made proposal out of turn
+  | ConflictingPreVote
+      !(Signed 'Unverified alg (Vote 'PreVote alg a))
+      !(Signed 'Unverified alg (Vote 'PreVote alg a))
+    -- ^ Node made conflicting prevotes in the same round
+  | ConflictingPreCommit
+      !(Signed 'Unverified alg (Vote 'PreVote alg a))
+      !(Signed 'Unverified alg (Vote 'PreVote alg a))
+    -- ^ Node made conflicting precommits in the same round
+  deriving (Show, Eq, Generic)
+instance Serialise a => Serialise (ByzantineEvidence alg a)
 
 -- | Data justifying commit
 data Commit alg a = Commit
@@ -186,7 +204,7 @@ data Proposal alg a = Proposal
   , propBlockID   :: !(BlockID alg a)
     -- ^ Hash of proposed block
   }
-  deriving (Show,Generic)
+  deriving (Show, Eq, Generic)
 
 instance Serialise a => Serialise (Proposal alg a) where
 
