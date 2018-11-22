@@ -182,7 +182,7 @@ instance FloatOut CoinStateDB where
 transitionsDB :: PersistentState CoinStateDB Alg [Tx]
 transitionsDB = PersistentState
   { processTxDB           = \_ -> processTransactionDB
-  , processBlockDB        = \h txs -> forM_ txs $ \t -> processDB h t
+  , processBlockDB        = \b -> forM_ (blockData b) $ processDB (headerHeight (blockHeader b))
   , transactionsToBlockDB = \h ->
       let selectTx []     = return []
           selectTx (t:tx) = optional (processDB h t) >>= \case
@@ -383,9 +383,9 @@ interpretSpec maxHeight genSpec validatorSet net NodeSpec{..} = do
           NodeDescription
             { nodeValidationKey   = nspecPrivKey
             , nodeCommitCallback  = \case
-                h | Just hM <- maxHeight
-                  , h > Height hM -> throwM Abort
-                  | otherwise     -> return ()
+                b | Just hM <- maxHeight
+                  , headerHeight (blockHeader b) > Height hM -> throwM Abort
+                  | otherwise                                -> return ()
             }
           logic
         runConcurrently (generator : acts)

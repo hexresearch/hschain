@@ -144,16 +144,16 @@ decideNewBlock config appSt@AppState{..} appCh@AppChans{..} lastCommt = do
         lift (retrievePropByID appPropStorage (currentH hParam) (commitBlockID cmt)) >>= \case
           Nothing -> msgHandlerLoop (Just cmt) tm
           Just b  -> lift $ do
-            vset <- appNextValidatorSet (currentH hParam) (blockData b)
+            vset <- appNextValidatorSet b
             logger InfoS "Actual commit"
               $ LogBlockInfo (currentH hParam) (blockData b)
             queryRW (do storeCommit vset cmt b
-                        appCommitQuery (currentH hParam) (blockData b)
+                        appCommitQuery b
                     ) >>= \case
               Nothing -> error "Cannot write commit into database"
               Just () -> return ()
             advanceToHeight appPropStorage . succ =<< queryRO blockchainHeight
-            appCommitCallback (currentH hParam)
+            appCommitCallback b
             return cmt
   --
   -- FIXME: encode that we cannot fail here!
@@ -303,7 +303,7 @@ makeHeightParameters Configuration{..} AppState{..} AppChans{..} = do
           Nothing -> return UnseenProposal
           Just b  -> do
             inconsistencies <- lift $ checkProposedBlock nH b
-            blockOK         <- lift $ appValidationFun (succ h) (blockData b)
+            blockOK         <- lift $ appValidationFun b
             case () of
               _| not (null inconsistencies) -> do
                    logger ErrorS "Proposed block has inconsistencies"
