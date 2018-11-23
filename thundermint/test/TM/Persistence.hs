@@ -148,6 +148,7 @@ genesis = Block
       }
   , blockData       = ()
   , blockLastCommit = Nothing
+  , blockEvidence   = []
   }
 
 validatorSet :: ValidatorSet Ed25519_SHA512
