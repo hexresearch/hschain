@@ -14,6 +14,8 @@ module Thundermint.Blockchain.Internal.Engine.Types (
   , hoistAppState
   , Validator(..)
   , PrivValidator(..)
+  , CommitCallback(..)
+  , hoistCommitCallback
     -- * Messages and channels
   , MessageRx(..)
   , unverifyMessageRx
@@ -62,6 +64,17 @@ instance JSON.ToJSON   Configuration
 --
 ----------------------------------------------------------------
 
+-- | Callback which is called right after 
+data CommitCallback m alg a
+  = SimpleQuery !(Block alg a -> Query 'RW alg a (ValidatorSet alg))
+  -- ^ Query for updating user's state and to find out new set of
+  --   validators. It's evaluated in the same transaction as block
+  --   commit and thus atomic.
+  | MixedQuery  !(m (Block alg a -> Query 'RW alg a (ValidatorSet alg, m ())))
+  -- ^ Query which allow to mixed database updates with other
+  --   actions. If @Query@ succeeds returned action is executed immediately
+
+
 -- | Full state of application.
 data AppState m alg a = AppState
   { appBlockGenerator   :: Height -> m a
@@ -71,26 +84,31 @@ data AppState m alg a = AppState
     -- ^ Private validator for node. It's @Nothing@ if node is not a validator
   , appValidationFun    :: Block alg a -> m Bool
     -- ^ Function for validation of proposed block data.
-  , appNextValidatorSet :: Block alg a -> m (ValidatorSet alg)
-    -- ^ Obtain validator set for next block.
-  , appCommitQuery      :: Block alg a -> Query 'RW alg a ()
+  , appCommitQuery      :: CommitCallback m alg a
     -- ^ Database query called after block commit in the same
     --   transaction
   , appCommitCallback   :: Block alg a -> m ()
     -- ^ Function which is called after each commit.
   }
 
-hoistAppState :: (forall x. m x -> n x) -> AppState m alg a -> AppState n alg a
+hoistCommitCallback
+  :: (Functor m)
+  => (forall x. m x -> n x) -> CommitCallback m alg a -> CommitCallback n alg a
+hoistCommitCallback _   (SimpleQuery f) = SimpleQuery f
+hoistCommitCallback fun (MixedQuery  f) =
+  MixedQuery $ fun $ (fmap . fmap . fmap . fmap) fun f
+
+hoistAppState :: (Functor m) => (forall x. m x -> n x) -> AppState m alg a -> AppState n alg a
 hoistAppState fun AppState{..} = AppState
   { appBlockGenerator   = fun . appBlockGenerator
   , appValidationFun    = fun . appValidationFun
   , appCommitCallback   = fun . appCommitCallback
-  , appNextValidatorSet = fun . appNextValidatorSet
+  , appCommitQuery      = hoistCommitCallback fun appCommitQuery
   , ..
   }
 
 -- | Our own validator
-data PrivValidator alg = PrivValidator
+newtype PrivValidator alg = PrivValidator
   { validatorPrivKey  :: PrivKey alg
   }
 
@@ -122,10 +140,8 @@ data AppChans m alg a = AppChans
     -- ^ Storage for proposed blocks
   }
 
-
 hoistAppChans :: (forall x. m x -> n x) -> AppChans m alg a -> AppChans n alg a
 hoistAppChans fun AppChans{..} = AppChans
   { appPropStorage   = hoistPropStorageRW fun appPropStorage
   , ..
   }
-

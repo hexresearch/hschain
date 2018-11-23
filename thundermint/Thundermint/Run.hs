@@ -13,7 +13,7 @@
 module Thundermint.Run (
     DBT(..)
   , dbtRO
-  , runDBT  
+  , runDBT
     -- * Validators
   , makePrivateValidators
   , makeValidatorSetFromPriv
@@ -91,7 +91,7 @@ instance MonadIO m => MonadDB (DBT 'RW alg a m) alg a where
 data NodeLogic m alg a = NodeLogic
   { nodeBlockValidation :: !(Block alg a -> m Bool)
     -- ^ Callback used for validation of blocks
-  , nodeCommitQuery     :: !(Block alg a -> Query 'RW alg a ())
+  , nodeCommitQuery     :: !(CommitCallback m alg a)
     -- ^ Query for modifying user state.
   , nodeBlockGenerator  :: !(Height -> m a)
     -- ^ Generator for a new block
@@ -119,7 +119,9 @@ logicFromFold transitions@BlockFold{..} = do
                          let h = headerHeight $ blockHeader b
                          st <- stateAtH bchState h
                          return $ isJust $ processBlock h (blockData b) st
-                     , nodeCommitQuery     = \_ -> return ()
+                     , nodeCommitQuery     = SimpleQuery $ \b -> do
+                         Just vset <- retrieveValidatorSet $ headerHeight $ blockHeader b
+                         return vset
                      , nodeBlockGenerator  = \h -> do
                          st  <- stateAtH bchState h
                          txs <- peekNTransactions mempool Nothing
@@ -151,7 +153,10 @@ logicFromPersistent PersistentState{..} = do
     { nodeBlockValidation = \b -> do
         r <- queryRO $ runEphemeralQ persistedData (processBlockDB b)
         return $! isJust r
-    , nodeCommitQuery     = \b -> runBlockUpdate (headerHeight (blockHeader b)) persistedData $ processBlockDB b
+    , nodeCommitQuery     = SimpleQuery $ \b -> do
+        runBlockUpdate (headerHeight (blockHeader b)) persistedData $ processBlockDB b
+        Just vset <- retrieveValidatorSet $ headerHeight $ blockHeader b
+        return vset
     , nodeBlockGenerator  = \h -> do
         txs <- peekNTransactions mempool Nothing
         r   <- queryRO $ runEphemeralQ persistedData (transactionsToBlockDB h txs)
@@ -190,10 +195,6 @@ runNode
   -> NodeLogic m alg a
   -> m [m ()]
 runNode cfg BlockchainNet{..} NodeDescription{..} NodeLogic{..} = do
-  -- Create state of blockchain & Update it to current state of
-  -- blockchain
-  hChain      <- queryRO $ blockchainHeight
-  Just valSet <- queryRO $ retrieveValidatorSet (succ hChain)
   -- Build application state of consensus algorithm
   let appSt = AppState
         { appValidationFun  = nodeBlockValidation
@@ -208,7 +209,6 @@ runNode cfg BlockchainNet{..} NodeDescription{..} NodeLogic{..} = do
             nodeCommitCallback b
           --
         , appValidator        = nodeValidationKey
-        , appNextValidatorSet = \_ -> return valSet
         }
   -- Networking
   appCh <- newAppChans

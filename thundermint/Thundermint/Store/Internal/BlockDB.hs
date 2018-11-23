@@ -177,8 +177,8 @@ retrieveValidatorSet (Height h) =
 -- | Write block and commit justifying it into persistent storage.
 storeCommit
   :: forall alg a. (Crypto alg, Serialise a)
-  => ValidatorSet alg -> Commit alg a -> Block alg a -> Query 'RW alg a ()
-storeCommit vals cmt blk = do
+  => Commit alg a -> Block alg a -> Query 'RW alg a ()
+storeCommit cmt blk = do
   let Height h = headerHeight $ blockHeader blk
   execute "INSERT INTO commits VALUES (?,?)" (h, serialise cmt)
   execute "INSERT INTO blockchain VALUES (?,?,?)"
@@ -186,10 +186,13 @@ storeCommit vals cmt blk = do
     , serialise (blockHash blk :: BlockID alg a)
     , serialise blk
     )
+
+-- | Write validator set for next round into database
+storeValSet :: (Crypto alg) => Block alg a -> ValidatorSet alg -> Query 'RW alg a ()
+storeValSet blk vals = do
+  let Height h = headerHeight $ blockHeader blk
   execute "INSERT INTO validators VALUES (?,?)"
     (h+1, serialise vals)
-  return ()
-
 
 -- | Add message to Write Ahead Log. Height parameter is height
 --   for which we're deciding block.

@@ -144,14 +144,24 @@ decideNewBlock config appSt@AppState{..} appCh@AppChans{..} lastCommt = do
         lift (retrievePropByID appPropStorage (currentH hParam) (commitBlockID cmt)) >>= \case
           Nothing -> msgHandlerLoop (Just cmt) tm
           Just b  -> lift $ do
-            vset <- appNextValidatorSet b
-            logger InfoS "Actual commit"
-              $ LogBlockInfo (currentH hParam) (blockData b)
-            queryRW (do storeCommit vset cmt b
-                        appCommitQuery b
-                    ) >>= \case
-              Nothing -> error "Cannot write commit into database"
-              Just () -> return ()
+            logger InfoS "Actual commit" $ LogBlockInfo (currentH hParam) (blockData b)
+            case appCommitQuery of
+              SimpleQuery callback -> do
+                r <- queryRW $ do storeCommit cmt b
+                                  storeValSet b =<< callback b
+                case r of
+                  Nothing -> error "Cannot write commit into database"
+                  Just () -> return ()
+              --
+              MixedQuery mcall -> do
+                callback <- mcall
+                r <- queryRW $ do storeCommit cmt b
+                                  (vset,action) <- callback b
+                                  storeValSet b vset
+                                  return action
+                case r of
+                  Just action -> action
+                  Nothing     -> error "Cannot write commit into database"
             advanceToHeight appPropStorage . succ =<< queryRO blockchainHeight
             appCommitCallback b
             return cmt
