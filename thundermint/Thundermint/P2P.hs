@@ -141,7 +141,7 @@ data PeerChans m addr alg a = PeerChans
     -- ^ Read only access to storage of proposals
   , consensusState  :: !(STM (Maybe (Height, TMState alg a)))
     -- ^ Read only access to current state of consensus state machine
-  , p2pConfig       :: !Configuration
+  , p2pConfig       :: !NetworkCfg
 
   , cntGossipPrevote   :: !Counter
   , cntGossipPrecommit :: !Counter
@@ -180,7 +180,7 @@ readRecv (Counter _ r) = liftIO $ readMVar r
 startPeerDispatcher
   :: ( MonadMask m, MonadFork m, MonadLogger m, MonadTrace m, MonadReadDB m alg a
      , BlockData a,  Ord addr, Show addr, Serialise addr, Show a, Crypto alg)
-  => Configuration
+  => NetworkCfg
   -> NetworkAPI addr          -- ^ API for networking
   -> addr                     -- ^ Current peer address
   -> [addr]                   -- ^ Set of initial addresses to connect
@@ -714,7 +714,7 @@ peerGossipMempool
      )
   => PeerStateObj m alg a
   -> PeerChans m addr alg a
-  -> Configuration
+  -> NetworkCfg
   -> TBQueue (GossipMsg addr alg a)
   -> MempoolCursor m alg (TX a)
   -> m x

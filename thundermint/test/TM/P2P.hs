@@ -23,6 +23,7 @@ import Test.Tasty.HUnit
 import Thundermint.Blockchain.Internal.Engine.Types
 import Thundermint.Control
 import Thundermint.Debug.Trace
+import Thundermint.Mock.Types
 import Thundermint.Utils
 import Thundermint.Run
 
@@ -132,10 +133,15 @@ testPeersMustAckAndGetAddresses = do
 testBigNetMustInterconnect :: IO ()
 testBigNetMustInterconnect = do
     let netSize = 20
-        ownCfg = defCfg { pexMinConnections = netSize - 1
-                        , pexMaxConnections = netSize
-                        , pexMinKnownConnections = netSize - 1
-                        , pexMaxKnownConnections = netSize - 1 }
+        cfg0    = defCfg :: Configuration Example
+        ownCfg  = cfg0
+          { cfgNetwork = (cfgNetwork cfg0)
+            { pexMinConnections      = netSize - 1
+            , pexMaxConnections      = netSize
+            , pexMinKnownConnections = netSize - 1
+            , pexMaxKnownConnections = netSize - 1
+            }
+          }
     events <- replicateM netSize (newIORef Set.empty)
     ok <- newIORef False
     runConcurrently
