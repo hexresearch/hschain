@@ -30,12 +30,12 @@ def read_trace(log,i) :
     })
     # Steps trace
     msgMap = \
-        { 'Entering new height ---------------- ' : "#eeeeff",
-          'Entering propose Timeout'   : "#bbffbb",
-          'Entering propose PC_Nil'    : "#ff5050",
-          'Entering prevote Timeout'   : "#ffff66",
-          'Entering precommit PV_Maj'  : "#0066ff",
-          'Entering precommit Timeout' : "#ff33cc",
+        { 'Entering new height ---------------- ' : "#eeeeff", # Светло-серый
+          'Entering propose Timeout'   : "#bbffbb", # Салатовый 
+          'Entering propose PC_Nil'    : "#ff5050", # Красный
+          'Entering prevote Timeout'   : "#ffff66", # Желтый
+          'Entering precommit PV_Maj'  : "#0066ff", # Синий
+          'Entering precommit Timeout' : "#ff33cc", # Розовый
         }
     steps    = log[log['msg'].apply(lambda s: s.startswith('Entering'))].copy().reset_index()
     reasons  = steps['data'].apply(lambda x: x.get('reason')).fillna("")
