@@ -189,7 +189,7 @@ runNode
   :: ( MonadDB m alg a, MonadMask m, MonadFork m, MonadLogger m, MonadTrace m
      , Crypto alg, Ord addr, Show addr, Serialise addr, Show a, BlockData a
      )
-  => Configuration
+  => Configuration app
   -> BlockchainNet addr
   -> NodeDescription m alg a
   -> NodeLogic m alg a
@@ -214,8 +214,8 @@ runNode cfg BlockchainNet{..} NodeDescription{..} NodeLogic{..} = do
   appCh <- newAppChans
   return
     [ id $ setNamespace "net"
-         $ startPeerDispatcher cfg bchNetwork bchLocalAddr bchInitialPeers appCh
-                               nodeMempool
+         $ startPeerDispatcher (cfgNetwork cfg)
+              bchNetwork bchLocalAddr bchInitialPeers appCh nodeMempool
     , id $ setNamespace "consensus"
-         $ runApplication cfg appSt appCh
+         $ runApplication (cfgConsensus cfg) appSt appCh
     ]

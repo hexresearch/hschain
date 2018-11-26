@@ -1,10 +1,11 @@
 {-# LANGUAGE DeriveGeneric #-}
 module Thundermint.Mock.Types (
-  NodeSpec(..)
-, NetSpec(..)
-, Topology(..)
-, Abort(..)
-, defCfg
+    NodeSpec(..)
+  , NetSpec(..)
+  , Topology(..)
+  , Abort(..)
+  , Example
+  , defCfg
   ) where
 
 import Control.Exception (Exception)
@@ -19,20 +20,29 @@ import Thundermint.Logger         (ScribeSpec)
 
 
 
-defCfg :: Configuration
-defCfg = Configuration
-  { timeoutNewHeight   = (500, 500)
-  , timeoutProposal    = (500, 500)
-  , timeoutPrevote     = (500, 500)
-  , timeoutPrecommit   = (500, 500)
-  , gossipDelayVotes   = 25
-  , gossipDelayBlocks  = 25
-  , gossipDelayMempool = 25
-  , pexMinConnections  = 10
-  , pexMaxConnections  = 20
-  , pexMinKnownConnections = 15
-  , pexMaxKnownConnections = 20
-  }
+data Example
+
+instance DefaultConfig Example where
+  defCfg = Configuration
+    { cfgConsensus         = ConsensusCfg
+      { timeoutNewHeight   = (500, 500)
+      , timeoutProposal    = (500, 500)
+      , timeoutPrevote     = (500, 500)
+      , timeoutPrecommit   = (500, 500)
+      }
+    , cfgNetwork               = NetworkCfg
+      { gossipDelayVotes       = 25
+      , gossipDelayBlocks      = 25
+      , gossipDelayMempool     = 25
+      , pexMinConnections      = 10
+      , pexMaxConnections      = 20
+      , pexMinKnownConnections = 15
+      , pexMaxKnownConnections = 20
+      , reconnectionRetries    = 0
+      , reconnectionBackoff    = 0
+      }
+    }
+
 
 
 ----------------------------------------------------------------

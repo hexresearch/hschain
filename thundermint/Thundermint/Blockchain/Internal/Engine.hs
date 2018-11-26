@@ -63,7 +63,7 @@ newAppChans = do
 --   * INVARIANT: Only this function can write to blockchain
 runApplication
   :: ( MonadDB m alg a, MonadCatch m, MonadLogger m, Crypto alg, Show a, BlockData a)
-  => Configuration
+  => ConsensusCfg
      -- ^ Configuration
   -> AppState m alg a
      -- ^ Get initial state of the application
@@ -91,7 +91,7 @@ runApplication config appSt@AppState{..} appCh@AppChans{..} = logOnException $ d
 -- FIXME: we should write block and last commit in transaction!
 decideNewBlock
   :: ( MonadDB m alg a, MonadLogger m, MonadMonitor m, Crypto alg, Show a, BlockData a)
-  => Configuration
+  => ConsensusCfg
   -> AppState m alg a
   -> AppChans m alg a
   -> Maybe (Commit alg a)
@@ -280,11 +280,11 @@ instance MonadMonitor m => MonadMonitor (ConsensusM alg a m) where
 
 makeHeightParameters
   :: (MonadDB m alg a, MonadLogger m, Crypto alg, Serialise a, Show a)
-  => Configuration
+  => ConsensusCfg
   -> AppState m alg a
   -> AppChans m alg a
   -> m (HeightParameters (ConsensusM alg a m) alg a)
-makeHeightParameters Configuration{..} AppState{..} AppChans{..} = do
+makeHeightParameters ConsensusCfg{..} AppState{..} AppChans{..} = do
   h            <- queryRO $ blockchainHeight
   Just valSet  <- queryRO $ retrieveValidatorSet (succ h)
   oldValSet    <- queryRO $ retrieveValidatorSet  h

@@ -53,6 +53,7 @@ import GHC.Generics    (Generic)
 
 import Thundermint.Blockchain.Types
 import Thundermint.Blockchain.Interpretation
+import Thundermint.Blockchain.Internal.Engine.Types
 import Thundermint.Control
 import Thundermint.Crypto
 import Thundermint.Crypto.Containers (ValidatorSet)
@@ -380,7 +381,7 @@ interpretSpec maxHeight genSpec validatorSet net NodeSpec{..} = do
         -- Transactions generator
         cursor <- getMempoolCursor $ nodeMempool logic
         let generator = transactionGenerator genSpec (void . pushTransaction cursor)
-        acts <- runNode defCfg net
+        acts <- runNode (defCfg :: Configuration Example) net
           NodeDescription
             { nodeValidationKey   = nspecPrivKey
             , nodeCommitCallback  = \case
