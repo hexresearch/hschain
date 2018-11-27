@@ -73,8 +73,8 @@ data NetworkCfg = NetworkCfg
   , pexMaxConnections      :: !Int
   , pexMinKnownConnections :: !Int
   , pexMaxKnownConnections :: !Int
-  , reconnectionRetries    :: !Int
-  , reconnectionBackoff    :: !Int
+  , reconnectionRetries    :: !Int -- ^ Number of retries before abandoning reconnection attempts
+  , reconnectionDelay      :: !Int -- ^ Initial delay between attempting to reconnect
   }
   deriving (Show,Generic)
 
@@ -116,7 +116,7 @@ instance DefaultConfig app => FromJSON (Configuration app) where
         pexMinK <- field "pexMinKnownConnections" pexMinKnownConnections  o
         pexMaxK <- field "pexMaxKnownConnections" pexMaxKnownConnections  o
         rR      <- field "reconnectionRetries"    reconnectionRetries     o
-        rB      <- field "reconnectionBackoff"    reconnectionBackoff     o
+        rB      <- field "reconnectionDelay"      reconnectionDelay       o
         return NetworkCfg { gossipDelayVotes       = gV
                           , gossipDelayBlocks      = gB
                           , gossipDelayMempool     = gM
@@ -125,7 +125,7 @@ instance DefaultConfig app => FromJSON (Configuration app) where
                           , pexMinKnownConnections = pexMinK
                           , pexMaxKnownConnections = pexMaxK
                           , reconnectionRetries    = rR
-                          , reconnectionBackoff    = rB
+                          , reconnectionDelay      = rB
                           }
       --
       field name def o = optional (o .: name) >>= \case

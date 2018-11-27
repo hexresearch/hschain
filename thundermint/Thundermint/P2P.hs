@@ -5,6 +5,7 @@
 {-# LANGUAGE NamedFieldPuns      #-}
 {-# LANGUAGE NumDecimals         #-}
 {-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE RankNTypes          #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StandaloneDeriving  #-}
@@ -210,16 +211,16 @@ startPeerDispatcher p2pConfig net peerAddr addrs AppChans{..} mempool = logOnExc
   -- Accepting connection is managed by separate linked thread and
   -- this thread manages initiating connections
   flip finally (uninterruptibleMask_ $ reapPeers peerRegistry) $ runConcurrently
-    [ acceptLoop peerAddr net peerCh mempool peerRegistry
+    [ acceptLoop p2pConfig peerAddr net peerCh mempool peerRegistry
      -- FIXME: we should manage requests for peers and connecting to
      --        new peers here
     , do waitSec 0.1
          forM_ addrs $ \a ->
-             connectPeerTo peerAddr net a peerCh mempool peerRegistry
+             connectPeerTo p2pConfig peerAddr net a peerCh mempool peerRegistry
          forever $ waitSec 0.1
     -- Peer connection monitor
     , descendNamespace "PEX" $
-      peerPexMonitor peerAddr net peerCh mempool peerRegistry (pexMinConnections p2pConfig) (pexMaxConnections p2pConfig)
+      peerPexMonitor p2pConfig peerAddr net peerCh mempool peerRegistry
     -- Peer connection capacity monitor for debug purpose
     , descendNamespace "PEX" $
       peerPexCapacityDebugMonitor peerRegistry
@@ -260,23 +261,25 @@ data ConnectMode = CmAccept !PeerId
                  deriving Show
 
 
-retryPolicy :: RetryPolicy
-retryPolicy = exponentialBackoff 100000 <> limitRetries 5
+retryPolicy :: NetworkCfg -> RetryPolicy
+retryPolicy NetworkCfg{..} = exponentialBackoff (reconnectionDelay * 1000)
+                          <> limitRetries reconnectionRetries
 
 
 -- Thread which accepts connections from remote nodes
 acceptLoop
   :: ( MonadFork m, MonadMask m, MonadLogger m, MonadTrace m, MonadReadDB m alg a
      , BlockData a, Ord addr, Show addr, Serialise addr, Show a, Crypto alg)
-  => addr
+  => NetworkCfg
+  -> addr
   -> NetworkAPI addr
   -> PeerChans m addr alg a
   -> Mempool m alg (TX a)
   -> PeerRegistry addr
   -> m ()
-acceptLoop peerAddr NetworkAPI{..} peerCh mempool peerRegistry = do
+acceptLoop cfg peerAddr NetworkAPI{..} peerCh mempool peerRegistry = do
   logger InfoS "Starting accept loop" ()
-  recoverAll retryPolicy $ const $ logOnException $
+  recoverAll (retryPolicy cfg) $ const $ logOnException $
     bracket listenOn fst $ \(_,accept) -> forever $
       -- We accept connection, create new thread and put it into
       -- registry. If we already have connection from that peer we close
@@ -314,17 +317,18 @@ connectPeerTo
   :: ( MonadFork m, MonadMask m, MonadLogger m, MonadTrace m, MonadReadDB m alg a
      , Ord addr, BlockData a, Show addr, Serialise addr, Show a, Crypto alg
      )
-  => addr
+  => NetworkCfg
+  -> addr
   -> NetworkAPI addr
   -> addr
   -> PeerChans m addr alg a
   -> Mempool m alg (TX a)
   -> PeerRegistry addr
   -> m ()
-connectPeerTo peerAddr NetworkAPI{..} addr peerCh mempool peerRegistry =
+connectPeerTo cfg peerAddr NetworkAPI{..} addr peerCh mempool peerRegistry =
   -- Igrnore all exceptions to prevent apparing of error messages in stderr/stdout.
   void . flip forkFinally (const $ return ()) $
-    recoverAll retryPolicy $ const $ logOnException $ do
+    recoverAll (retryPolicy cfg) $ const $ logOnException $ do
       logger InfoS "Connecting to" (sl "addr" (show addr))
       trace (TeNodeConnectingTo (show addr))
       -- TODO : what first? "connection" or "withPeer" ?
@@ -485,15 +489,14 @@ peerPexKnownCapacityMonitor _peerAddr PeerChans{..} PeerRegistry{..} minKnownCon
 peerPexMonitor
   :: ( MonadFork m, MonadMask m, MonadLogger m, MonadTrace m, MonadReadDB m alg a
      , BlockData a, Ord addr, Show addr, Serialise addr, Show a, Crypto alg)
-  => addr -- ^ Current peer address for logging purpose
+  => NetworkCfg
+  -> addr -- ^ Current peer address for logging purpose
   -> NetworkAPI addr
   -> PeerChans m addr alg a
   -> Mempool m alg (TX a)
   -> PeerRegistry addr
-  -> Int
-  -> Int
   -> m ()
-peerPexMonitor peerAddr net peerCh mempool peerRegistry@PeerRegistry{..} minConnections maxConnections = do
+peerPexMonitor cfg peerAddr net peerCh mempool peerRegistry@PeerRegistry{..} = do
     logger InfoS "Start PEX monitor" ()
     locAddrs <- getLocalAddresses
     logger DebugS ("Local addresses: " <> showLS locAddrs) ()
@@ -503,7 +506,7 @@ peerPexMonitor peerAddr net peerCh mempool peerRegistry@PeerRegistry{..} minConn
         whenM (liftIO $ readTVarIO prIsActive) $ do
             conns <- liftIO $ readTVarIO prConnected
             let sizeConns = Set.size conns
-            if sizeConns < minConnections then do
+            if sizeConns < pexMinConnections cfg then do
                 logger DebugS ("Too few (" <> showLS (Set.size conns) <> " : " <> showLS conns <> ") connections") ()
                 knowns' <- liftIO $ readTVarIO prKnownAddreses
                 let conns' = Set.map (flip (normalizeNodeAddress net) Nothing) conns -- TODO нужно ли тут normalize?
@@ -514,10 +517,10 @@ peerPexMonitor peerAddr net peerCh mempool peerRegistry@PeerRegistry{..} minConn
                 else do
                     logger DebugS ("New peers: " <> showLS knowns) ()
                     rndGen <- liftIO newStdGen
-                    let randKnowns = take (maxConnections - sizeConns)
+                    let randKnowns = take (pexMaxConnections cfg - sizeConns)
                                    $ shuffle' (Set.toList knowns) (Set.size knowns) rndGen
                     logger DebugS ("New rand knowns: " <> showLS randKnowns) ()
-                    forM_ randKnowns $ \addr -> connectPeerTo peerAddr net addr peerCh mempool peerRegistry
+                    forM_ randKnowns $ \addr -> connectPeerTo cfg peerAddr net addr peerCh mempool peerRegistry
                     waitSec 1.0
             else do
                 logger InfoS ("Full of connections (" <> showLS (Set.size conns) <> " : " <>  showLS conns <> ")") ()
