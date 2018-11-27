@@ -9,7 +9,7 @@ module Thundermint.Control (
   , FloatOut(..)
   , foldF
   , traverseF_
-    -- * 
+    -- *
   , MonadFork(..)
   , forkLinked
   , runConcurrently
@@ -36,7 +36,7 @@ import Control.Monad
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Reader
 import Control.Concurrent  (ThreadId, killThread, myThreadId, throwTo)
-import Control.Exception   (AsyncException, Exception(..), SomeException)
+import Control.Exception   (AsyncException, Exception(..), SomeException(..))
 import Control.Monad.Catch (MonadMask, MonadThrow, bracket, mask, onException, throwM, try)
 import Data.Functor.Compose
 import Data.Functor.Identity
@@ -127,9 +127,11 @@ forkLinked action io = do
 
 
 
--- | Run computations concurrently. Any exception will propagate to
---   the top level and if any of them terminates normally function
---   will return and all other threads will be killed
+-- | Run computations concurrently. As soon as one thread finishes
+--   execution normally or abnormally all other threads are killed.
+--   Function blocks until all child threads finish execution. If
+--   thread is killed by exceptions it's rethrown. Being killed by
+--   'AsyncException' is considered normal termination.
 runConcurrently
   :: (MonadIO m, MonadMask m, MonadFork m)
   => [m ()]              -- ^ Functions to run
@@ -139,20 +141,28 @@ runConcurrently actions = do
   -- We communicate return status of thread via channel since we don't
   -- know a priory which will terminated first
   ch <- liftIO $ Conc.newChan
-  -- Run child threads. See NOTE in forkLinked
-  either throwM return =<<
-    bracket
-      (forM actions $ \f -> forkWithUnmask $ \restore -> do
-          try (restore f) >>= liftIO . \case
-            Right _ -> Conc.writeChan ch (Right ())
-            Left  e -> case fromException e of
-              Just (_ :: AsyncException) -> Conc.writeChan ch (Right ())
-              _                          -> Conc.writeChan ch (Left  e)
-      )
-      (liftIO . mapM killThread)
-      -- We wait for first thread to terminate. And we have at least
-      -- one thread!
-      (\_ -> liftIO $ Conc.readChan ch)
+  -- Run child threads. We wait until one of threads terminate and
+  -- then kill all others.
+  (r, tids) <- bracket
+    (forM actions $ \f -> forkWithUnmask $ \restore -> do
+        try (restore f) >>= liftIO . \case
+          Right _ -> Conc.writeChan ch (Right ())
+          Left  e -> case fromException e of
+            Just (_ :: AsyncException) -> Conc.writeChan ch (Right ())
+            _                          -> Conc.writeChan ch (Left  e)
+    )
+    (liftIO . mapM killThread)
+    (\tids -> do r <- liftIO $ Conc.readChan ch
+                 return (r,tids)
+    )
+  -- Wait until all other threads terminate. We can be killed by async
+  -- exceptions here. But so be it
+  case tids of
+    []   -> return ()
+    _:ts -> liftIO $ forM_ ts $ const $ Conc.readChan ch
+  case r of
+    Right () -> return ()
+    Left  e  -> throwM e
 
 
 
