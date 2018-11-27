@@ -38,8 +38,8 @@ instance DefaultConfig Example where
       , pexMaxConnections      = 20
       , pexMinKnownConnections = 15
       , pexMaxKnownConnections = 20
-      , reconnectionRetries    = 0
-      , reconnectionBackoff    = 0
+      , reconnectionRetries    = 12
+      , reconnectionDelay      = 100
       }
     }
 
