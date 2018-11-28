@@ -55,11 +55,13 @@ genesisBlock valSet = Block
       , headerTime           = Time 0
       , headerLastBlockID    = Nothing
       , headerValidatorsHash = hash valSet
+      , headerDataHash       = hash dat
       }
-  , blockData       = []
+  , blockData       = dat
   , blockLastCommit = Nothing
   , blockEvidence   = []
   }
+  where dat = [] :: [(String,Int)]
 
 transitions :: BlockFold (Map String Int) [(String,Int)]
 transitions = BlockFold

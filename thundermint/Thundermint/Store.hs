@@ -313,6 +313,8 @@ data BlockchainInconsistency
   | BlockValidatorHashMismatch !Height
   -- ^ Hash of set of validators in block header does not match hash
   --   of actual set
+  | BlockDataHashMismatch !Height
+  -- ^ Hash of block data in header and hash in the header do not match
   | BlockInvalidPrevBID !Height
   -- ^ Previous block is does not match ID of block commited to
   --   blockchain.
@@ -404,7 +406,7 @@ genesisBlockInvariant Block{blockHeader = Header{..}, ..} = do
 
 -- | Check invariant for block at height > 0
 blockInvariant
-  :: (Monad m, Crypto alg)
+  :: (Monad m, Crypto alg, Serialise a)
   => BS.ByteString
   -- ^ Blockchain ID
   -> Height
@@ -433,7 +435,9 @@ blockInvariant chainID h prevBID (mprevValSet, valSet) Block{blockHeader=Header{
   -- Validators' hash does not match correct one
   (headerValidatorsHash == hash valSet)
     `orElse` BlockValidatorHashMismatch h
-
+  -- Block data has correct hash
+  (headerDataHash == hash blockData)
+    `orElse` BlockDataHashMismatch h
   -- Validate commit of previous block
   case (headerHeight, blockLastCommit) of
     -- Last commit at H=1 must be Nothing
