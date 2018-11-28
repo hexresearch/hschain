@@ -25,7 +25,6 @@ import Thundermint.Control
 import Thundermint.Debug.Trace
 import Thundermint.Mock.Types
 import Thundermint.Utils
-import Thundermint.Run
 
 import TM.Util.Network
 import TM.Util.Tests

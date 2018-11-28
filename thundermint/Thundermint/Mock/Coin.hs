@@ -296,11 +296,14 @@ genesisFromGenerator validatorSet GeneratorSpec{..} = Block
       , headerTime           = Time 0
       , headerLastBlockID    = Nothing
       , headerValidatorsHash = hash validatorSet
+      , headerDataHash       = hash dat
       }
-  , blockData       = [ Deposit pk genInitialDeposit | pk <- genInitialKeys ]
+  , blockData       = dat
   , blockLastCommit = Nothing
   , blockEvidence   = []
   }
+  where
+    dat = [ Deposit pk genInitialDeposit | pk <- genInitialKeys ]
 
 -- | Generate transaction. This implementation is really inefficient
 --   since it will materialize all unspent outputs into memory and

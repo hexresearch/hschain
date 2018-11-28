@@ -110,10 +110,8 @@ data Header alg a = Header
     -- ^ Hash of previous block. Nothing iff block is a genesis block
   , headerValidatorsHash :: !(Hash alg)
     -- ^ Hash of validators for current block.
-
-  -- FIXME: Add various hashes
-  -- , headerDataHash       :: Hash
-  -- , headerConsensusHash  :: Hash
+  , headerDataHash       :: !(Hash alg)
+    -- ^ Hash of block data
   }
   deriving (Show, Eq, Generic)
 instance Serialise (Header alg a)

@@ -145,6 +145,7 @@ genesis = Block
       , headerTime           = Time 0
       , headerLastBlockID    = Nothing
       , headerValidatorsHash = hash validatorSet
+      , headerDataHash       = hash ()
       }
   , blockData       = ()
   , blockLastCommit = Nothing
