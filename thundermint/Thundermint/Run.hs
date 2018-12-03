@@ -33,6 +33,7 @@ module Thundermint.Run (
   , defCfg
   ) where
 
+import Control.Monad
 import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Reader
@@ -56,6 +57,7 @@ import Thundermint.Store
 import Thundermint.Store.SQL
 import Thundermint.Store.STM
 import Thundermint.Monitoring
+import Thundermint.Utils
 import qualified Thundermint.Store.Internal.Query as DB
 
 import Thundermint.Control (MonadFork)
@@ -220,4 +222,7 @@ runNode cfg BlockchainNet{..} NodeDescription{..} NodeLogic{..} = do
               bchNetwork bchLocalAddr bchInitialPeers appCh nodeMempool
     , id $ setNamespace "consensus"
          $ runApplication (cfgConsensus cfg) appSt appCh
+    , forever $ do
+        prometheusMempoolSize nodeMonitoring . mempool'size =<< mempoolStats nodeMempool
+        waitSec 1.0
     ]
