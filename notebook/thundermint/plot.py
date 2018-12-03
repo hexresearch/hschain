@@ -14,6 +14,8 @@ import pandas as pd
 import statsmodels.api as sm
 
 # ----------------------------------------------------------------
+# Extracting data from full data frame
+# ----------------------------------------------------------------
 
 def to_commit(d) :
     r = d[d['msg'] == "Entering new height ----------------"].copy()
@@ -26,57 +28,63 @@ def to_commit_n_tx(df):
                          'Ntx': r['data'].apply(lambda x : x['Ntx']),
                         })
 
+def extract_round(df) :
+    """
+    Extract round information from data frame
+    """
+    df = df[df['msg'] == 'Entering propose'].reset_index(drop=True)
+    df['H'] = df['data'].apply(lambda x: x['H'])
+    df['R'] = df['data'].apply(lambda x: x['R'])
+    return df.drop(['data', 'host'], axis=1)
+
+def extract_commit(df) :
+    """
+    Extract commit information from data frame
+    """
+    df = df[df['msg'] == 'Actual commit'].reset_index(drop=True)
+    df['H'] = df['data'].apply(lambda x: x['H'])
+    return df.drop(['data', 'host'], axis=1)
+
+
 # ----------------------------------------------------------------
+# Plotting routines
+# ----------------------------------------------------------------
+
+def figure_with_legend():
+    fig = plt.figure(figsize=[9, 4.8])
+    ax  = plt.subplot(111)
+    box = ax.get_position()
+    ax.set_position([box.x0, box.y0, box.width * 0.8, box.height])
+    return fig,ax
+
+def add_legend(ax) :
+    fontP = FontProperties()
+    fontP.set_size('small')
+    ax.legend(loc='center left', bbox_to_anchor=(1, 0.5), prop=fontP)
 
 def plot_commit_time(logs) :
     "Plot commit time and prime average block time"
     # Subtract leading time
-    dfs = {k:to_commit(d) for k,d in logs.items()}
+    dfs = {k : to_commit(d) for k,d in logs.items()}
     #
     t0  = np.min([df['at'].values[0] for df in dfs.values() if len(df) > 0])
     for k, df in dfs.items() :
         df['at'] = (df['at'] - t0).astype('timedelta64[s]')
-    # Fit averaged commit times with straign line
-    #
-    # FIXME: we need to join over H
-    #        This is crucial when some node is stuck
-#    n  = np.min([df['H'].shape[0] for df in dfs.values()])
-#    hs = list(dfs.values())[0]['H'][0:n]
-#    ts = np.average( [df['at'][0:n] for df in dfs.values()], axis=0 )
-#    r  = sm.OLS(ts, sm.add_constant(hs), missing='drop').fit()
-    # Plotting
-    fontP = FontProperties()
-    fontP.set_size('small')
     # Height plot
-    figA = plt.figure()
-    axA  = plt.subplot(111)
-    boxA = axA.get_position()
-    axA.set_position([boxA.x0, boxA.y0, boxA.width * 0.8, boxA.height])
-    axA.grid()
+    fig,ax = figure_with_legend()
     plt.title('Commit time')
+    plt.grid()
     plt.xlabel('Time (s)')
     plt.ylabel('Height')
-#    axA.plot(hs*r.params[1] + r.params[0], hs, color='grey', linewidth=0.5)
     for k,df in dfs.items() :
-        axA.plot(df['at'] , df['H'], '+', label=k)
-    axA.legend(loc='center left', bbox_to_anchor=(1, 0.5), prop=fontP)
-#    print("Time for commit of singe block %.3f s" % float(r.params[1]))
-    # Residuals plot
-    # figB = plt.figure()
-    # axB  = plt.subplot(111)
-    # boxB = axB.get_position()
-    # axB.set_position([boxB.x0, boxB.y0, boxB.width * 0.8, boxB.height])
-    # axB.grid()
-    # plt.title('Commit time residuals')
-    # plt.xlabel('Time (s)')
-    # plt.ylabel('Delta H')
-    # for k,df in dfs.items() :
-    #     axB.plot(df['at'] , df['H'] - (df['at'] - r.params[0]) / r.params[1], label=k)
-    # axB.legend(loc='center left', bbox_to_anchor=(1, 0.5), prop=fontP)
-    return [figA]
+        ax.plot(df['at'] , df['H'], '+', label=k)
+    add_legend(ax)
+    return fig
 
 def plot_n_tx_in_block(logs):
-    "Plot number of transactions in block for every height"
+    """
+    Plot number of transactions in block for every height
+    """
     dfs = [to_commit_n_tx(d) for d in logs.values()]
     tot = np.sum(dfs[0]['Ntx'])
     avg = np.average(dfs[0]['Ntx'])
@@ -89,11 +97,26 @@ def plot_n_tx_in_block(logs):
     plt.axhline(y=0,   color='k')
     plt.axhline(y=avg, color='k')
     for df in dfs:
-        plt.plot(df['H'], df['Ntx'])
+        plt.plot(df['H'], df['Ntx'],'+')
     print( "Total transactions commited: ", tot )
     print( "Transactions per block:      ", avg )
     return fig
 
+def plot_round(logs):
+    """
+    Plot round growth
+    """
+    dfs = {k : extract_round(v) for k,v in logs.items()}
+    #
+    fig,ax = figure_with_legend()
+    plt.title("Round vs T")
+    plt.grid()
+    plt.xlabel("Time")
+    plt.ylabel("Round")
+    for k,v in dfs.items():
+        plt.plot(v['at'], v['R'], lw=0.5, marker='x', markersize=2, label=k)
+    add_legend(ax)
+    return fig
 
 
 def plot_mempool_size(dfs):
@@ -130,16 +153,18 @@ def plot_mempool_added(dfs):
         plt.plot(d['at'], d['filtered'], 'x', color=colors[i], ms=3)
     return fig
 
-def plot_gossip(dfs, key):
-    "Plot statistics about gossip"
-    dfs    = [d.gossip() for d in dfs]
-    fig    = plt.figure()
-    colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
+def plot_gossip(logs, key):
+    """
+    Plot statistics about gossip"
+    """
+    fig,ax = figure_with_legend()
     plt.grid()
     plt.title("Gossip statistics for: "+key)
-    for i,d in enumerate(dfs):
-        plt.plot(d['at'], d['Rx' + key], '+', color=colors[i])
-        plt.plot(d['at'], d['Tx' + key], 'x', color=colors[i])
+    for i,(k,d) in enumerate(logs.items()):
+        tx = d[key]
+        tx = tx - tx.values[0]
+        ax.plot(d['at'], tx, '+', label=k, markersize=1.5)
+    add_legend(ax)
     return fig
 
 def plot_gossip_rxtx_ratio(dfs, key):
