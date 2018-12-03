@@ -675,7 +675,9 @@ peerGossipVotes peerObj PeerChans{..} gossipCh = logOnException $ do
           case () of
             _| not $ r `Set.member` peerProposals p
              , Just pr <- r `Map.lookup` smProposals tm
-               -> do doGosip $ GossipProposal $ unverifySignature pr
+               -> do let prop = signedValue pr
+                     addProposal peerObj (propHeight prop) (propRound prop)
+                     doGosip $ GossipProposal $ unverifySignature pr
                      tickSend cntGossipProposals
              | otherwise -> return ()
           -- Send prevotes
