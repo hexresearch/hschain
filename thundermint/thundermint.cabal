@@ -69,7 +69,6 @@ Library
                   Thundermint.Debug.Trace
                   Thundermint.Logger
                   Thundermint.Monitoring
-                  Thundermint.Monitoring.Metrics
                   Thundermint.Run
                   Thundermint.Mock.Coin
                   Thundermint.Mock.KeyList

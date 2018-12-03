@@ -40,7 +40,7 @@ import Thundermint.Blockchain.Types
 import Thundermint.Crypto
 import Thundermint.Crypto.Containers
 import Thundermint.Store
-
+import Thundermint.Monitoring
 
 
 ----------------------------------------------------------------
@@ -178,7 +178,7 @@ hoistAppState fun AppState{..} = AppState
   { appBlockGenerator   = fun . appBlockGenerator
   , appValidationFun    = fun . appValidationFun
   , appCommitCallback   = fun . appCommitCallback
-  , appCommitQuery      = hoistCommitCallback fun appCommitQuery
+  , appCommitQuery      = hoistCommitCallback   fun appCommitQuery
   , ..
   }
 
@@ -213,10 +213,12 @@ data AppChans m alg a = AppChans
     --   read-only manner for gossip with peers.
   , appPropStorage :: ProposalStorage 'RW m alg a
     -- ^ Storage for proposed blocks
+  , appMonitoring       :: PrometheusGauges m
   }
 
 hoistAppChans :: (forall x. m x -> n x) -> AppChans m alg a -> AppChans n alg a
 hoistAppChans fun AppChans{..} = AppChans
   { appPropStorage   = hoistPropStorageRW fun appPropStorage
+  , appMonitoring    = hoistPrometheusGauges fun appMonitoring
   , ..
   }

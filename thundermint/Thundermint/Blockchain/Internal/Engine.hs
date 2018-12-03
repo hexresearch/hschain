@@ -36,10 +36,10 @@ import Thundermint.Blockchain.Types
 import Thundermint.Crypto
 import Thundermint.Crypto.Containers
 import Thundermint.Logger
-import Thundermint.Monitoring
 import Thundermint.Store
 import Thundermint.Store.STM
 import Thundermint.Store.Internal.BlockDB
+import Thundermint.Monitoring
 
 import Katip (Severity(..), sl)
 
@@ -47,8 +47,9 @@ import Katip (Severity(..), sl)
 --
 ----------------------------------------------------------------
 
-newAppChans :: (MonadIO m, Crypto alg, Serialise a) => m (AppChans m alg a)
-newAppChans = do
+newAppChans :: (MonadIO m, Crypto alg, Serialise a)
+            => PrometheusGauges m -> m (AppChans m alg a)
+newAppChans appMonitoring  = do
   -- 7 is magical no good reason to use 7 but no reason against it either
   appChanRx         <- liftIO $ newTBQueueIO 7
   appChanRxInternal <- liftIO   newTQueueIO
@@ -76,12 +77,8 @@ runApplication config appSt@AppState{..} appCh@AppChans{..} = logOnException $ d
   lastCm <- queryRO $ retrieveLocalCommit height
   advanceToHeight appPropStorage $ succ height
   void $ flip fix lastCm $ \loop commit -> do
-    (cm, updateMonitoring) <- runMonitorT' (decideNewBlock config (monitorizeAppSt appSt) (monitorizeAppCh appCh) commit)
-    liftIO updateMonitoring
+    cm <- decideNewBlock config appSt appCh commit
     loop (Just cm)
- where
-  monitorizeAppSt = hoistAppState hoistMonitorT
-  monitorizeAppCh = hoistAppChans hoistMonitorT
 
 
 -- This function uses consensus algorithm to decide which block we're
@@ -90,7 +87,7 @@ runApplication config appSt@AppState{..} appCh@AppChans{..} = logOnException $ d
 --
 -- FIXME: we should write block and last commit in transaction!
 decideNewBlock
-  :: ( MonadDB m alg a, MonadLogger m, MonadMonitor m, Crypto alg, Show a, BlockData a)
+  :: ( MonadDB m alg a, MonadLogger m, Crypto alg, Show a, BlockData a)
   => ConsensusCfg
   -> AppState m alg a
   -> AppChans m alg a
@@ -176,7 +173,7 @@ decideNewBlock config appSt@AppState{..} appCh@AppChans{..} lastCommt = do
 
 -- Handle message and perform state transitions for both
 handleVerifiedMessage
-  :: (MonadLogger m, MonadMonitor m, Crypto alg)
+  :: (MonadLogger m, Crypto alg)
   => ProposalStorage 'RW m alg a
   -> HeightParameters (ConsensusM alg a m) alg a
   -> TMState alg a
@@ -274,9 +271,6 @@ instance MonadLogger m => MonadLogger (ConsensusM alg a m) where
 
 instance MonadTrans (ConsensusM alg a) where
   lift = ConsensusM . fmap Success
-
-instance MonadMonitor m => MonadMonitor (ConsensusM alg a m) where
-  doIO = lift . doIO
 
 makeHeightParameters
   :: (MonadDB m alg a, MonadLogger m, Crypto alg, Serialise a, Show a)
@@ -401,7 +395,8 @@ makeHeightParameters ConsensusCfg{..} AppState{..} AppChans{..} = do
         forM_ (indexByValidator valSet (signedAddr sv)) $ \v ->
           liftIO $ atomically $ writeTChan appChanTx $ AnnHasPreCommit voteHeight voteRound v
     --
-    , announceStep = liftIO . atomically . writeTChan appChanTx . AnnStep
+    , announceStep    = liftIO . atomically . writeTChan appChanTx . AnnStep
+    , updateMetricsHR = undefined
     --
     , createProposal = \r commit -> lift $ do
         bData          <- appBlockGenerator (succ h)
