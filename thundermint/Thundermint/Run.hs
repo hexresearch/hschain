@@ -55,6 +55,7 @@ import Thundermint.P2P.Network
 import Thundermint.Store
 import Thundermint.Store.SQL
 import Thundermint.Store.STM
+import Thundermint.Monitoring
 import qualified Thundermint.Store.Internal.Query as DB
 
 import Thundermint.Control (MonadFork)
@@ -176,6 +177,7 @@ data NodeDescription m alg a = NodeDescription
   , nodeCommitCallback  :: !(Block alg a -> m ())
     -- ^ Callback called immediately after block was commit and user
     --   state in database is updated
+  , nodeMonitoring      :: !(PrometheusGauges m)
   }
 
 -- | Specification of network
@@ -211,7 +213,7 @@ runNode cfg BlockchainNet{..} NodeDescription{..} NodeLogic{..} = do
         , appValidator        = nodeValidationKey
         }
   -- Networking
-  appCh <- newAppChans
+  appCh <- newAppChans nodeMonitoring
   return
     [ id $ setNamespace "net"
          $ startPeerDispatcher (cfgNetwork cfg)

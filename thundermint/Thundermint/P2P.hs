@@ -57,7 +57,7 @@ import Thundermint.P2P.PeerState
 import Thundermint.P2P.Types
 import Thundermint.Store
 import Thundermint.Utils
-import qualified Thundermint.Monitoring as Mon
+import Thundermint.Monitoring
 
 
 ----------------------------------------------------------------
@@ -144,6 +144,7 @@ data PeerChans m addr alg a = PeerChans
     -- ^ Read only access to current state of consensus state machine
   , p2pConfig       :: !NetworkCfg
 
+  , p2pMonitoring      :: PrometheusGauges m
   , cntGossipPrevote   :: !Counter
   , cntGossipPrecommit :: !Counter
   , cntGossipBlocks    :: !Counter
@@ -206,6 +207,7 @@ startPeerDispatcher p2pConfig net peerAddr addrs AppChans{..} mempool = logOnExc
                          , peerChanRx      = writeTBQueue appChanRx
                          , proposalStorage = makeReadOnlyPS appPropStorage
                          , consensusState  = readTVar appTMState
+                         , p2pMonitoring   = appMonitoring
                          , ..
                          }
   -- Accepting connection is managed by separate linked thread and
@@ -223,7 +225,7 @@ startPeerDispatcher p2pConfig net peerAddr addrs AppChans{..} mempool = logOnExc
       peerPexMonitor p2pConfig peerAddr net peerCh mempool peerRegistry
     -- Peer connection capacity monitor for debug purpose
     , descendNamespace "PEX" $
-      peerPexCapacityDebugMonitor peerRegistry
+      peerPexCapacityDebugMonitor appMonitoring peerRegistry
     -- Peer new addreses capacity monitor
     , descendNamespace "PEX" $
       peerPexKnownCapacityMonitor peerAddr peerCh peerRegistry (pexMinKnownConnections p2pConfig) (pexMaxKnownConnections p2pConfig)
@@ -532,16 +534,16 @@ peerPexMonitor cfg peerAddr net peerCh mempool peerRegistry@PeerRegistry{..} = d
 --
 peerPexCapacityDebugMonitor
   :: (MonadIO m)
-  => PeerRegistry addr
+  => PrometheusGauges m
+  -> PeerRegistry addr
   -> m ()
-peerPexCapacityDebugMonitor PeerRegistry{..} =
-    fix $ \nextLoop ->
-        whenM (liftIO $ readTVarIO prIsActive) $ do
-            sizeConns <- Set.size <$> (liftIO $ readTVarIO prConnected)
-            (_, upd) <- Mon.runMonitorT' $ Mon.setGaugeI Mon.metricPeers sizeConns
-            liftIO upd
-            waitSec 1.0
-            nextLoop
+peerPexCapacityDebugMonitor PrometheusGauges{..} PeerRegistry{..} =
+  fix $ \loop -> do
+    liftIO (readTVarIO prIsActive) >>= \case
+      True  -> prometheusNumPeers . Set.size =<< liftIO (readTVarIO prConnected)
+      False -> prometheusNumPeers 0
+    waitSec 1.0
+    loop
 
 
 peerGossipPeerExchange

@@ -67,6 +67,7 @@ import Thundermint.Store.Internal.Types
 import Thundermint.Store.Internal.Query (connectionRO)
 import Thundermint.Mock.KeyList (privateKeyList)
 import Thundermint.Mock.Types
+import Thundermint.Monitoring
 import qualified Thundermint.P2P.Network as P2P
 
 
@@ -391,6 +392,7 @@ interpretSpec maxHeight genSpec validatorSet net NodeSpec{..} = do
                 b | Just hM <- maxHeight
                   , headerHeight (blockHeader b) > Height hM -> throwM Abort
                   | otherwise                                -> return ()
+            , nodeMonitoring      = noMonitoring
             }
           logic
         runConcurrently (generator : acts)
