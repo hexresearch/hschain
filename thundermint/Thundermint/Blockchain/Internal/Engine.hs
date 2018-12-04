@@ -47,9 +47,8 @@ import Katip (Severity(..), sl)
 --
 ----------------------------------------------------------------
 
-newAppChans :: (MonadIO m, Crypto alg, Serialise a)
-            => PrometheusGauges m -> m (AppChans m alg a)
-newAppChans appMonitoring  = do
+newAppChans :: (MonadIO m, Crypto alg, Serialise a) => m (AppChans m alg a)
+newAppChans = do
   -- 7 is magical no good reason to use 7 but no reason against it either
   appChanRx         <- liftIO $ newTBQueueIO 7
   appChanRxInternal <- liftIO   newTQueueIO
@@ -63,7 +62,7 @@ newAppChans appMonitoring  = do
 --
 --   * INVARIANT: Only this function can write to blockchain
 runApplication
-  :: ( MonadDB m alg a, MonadCatch m, MonadLogger m, Crypto alg, Show a, BlockData a)
+  :: ( MonadDB m alg a, MonadCatch m, MonadLogger m, MonadTMMonitoring m, Crypto alg, Show a, BlockData a)
   => ConsensusCfg
      -- ^ Configuration
   -> AppState m alg a
@@ -87,7 +86,7 @@ runApplication config appSt@AppState{..} appCh@AppChans{..} = logOnException $ d
 --
 -- FIXME: we should write block and last commit in transaction!
 decideNewBlock
-  :: ( MonadDB m alg a, MonadLogger m, Crypto alg, Show a, BlockData a)
+  :: ( MonadDB m alg a, MonadLogger m, MonadTMMonitoring m, Crypto alg, Show a, BlockData a)
   => ConsensusCfg
   -> AppState m alg a
   -> AppChans m alg a
@@ -273,7 +272,7 @@ instance MonadTrans (ConsensusM alg a) where
   lift = ConsensusM . fmap Success
 
 makeHeightParameters
-  :: (MonadDB m alg a, MonadLogger m, Crypto alg, Serialise a, Show a)
+  :: (MonadDB m alg a, MonadLogger m, MonadTMMonitoring m, Crypto alg, Serialise a, Show a)
   => ConsensusCfg
   -> AppState m alg a
   -> AppChans m alg a
@@ -396,7 +395,9 @@ makeHeightParameters ConsensusCfg{..} AppState{..} AppChans{..} = do
           liftIO $ atomically $ writeTChan appChanTx $ AnnHasPreCommit voteHeight voteRound v
     --
     , announceStep    = liftIO . atomically . writeTChan appChanTx . AnnStep
-    , updateMetricsHR = undefined
+    , updateMetricsHR = \curH curR -> lift $ do
+        usingGauge prometheusHeight curH
+        usingGauge prometheusRound  curR
     --
     , createProposal = \r commit -> lift $ do
         bData          <- appBlockGenerator (succ h)

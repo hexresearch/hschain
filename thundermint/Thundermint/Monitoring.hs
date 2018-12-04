@@ -6,49 +6,42 @@
 -- libraries, such as Prometheus
 module Thundermint.Monitoring (
     PrometheusGauges(..)
-  , hoistPrometheusGauges
-  , noMonitoring
   , standardMonitoring
+  , MonadTMMonitoring(..)
   ) where
 
 import Control.Monad.IO.Class
+import Control.Monad.Trans.Class
+import Data.Text                  (Text)
 import Prometheus
 
+import Thundermint.Logger      (LoggerT(..),NoLogsT(..))
+import Thundermint.Store       (DBT(..))
+import Thundermint.Debug.Trace (TracerT(..))
 import Thundermint.Blockchain.Types
 
 ----------------------------------------------------------------
--- Data types
+-- Gauges
+----------------------------------------------------------------
+
+-- | Prometheus gauge to which values of given type could e written
+data TGauge a = TGauge (a -> Double) !Gauge
 
 -- | Collection of metrics for monitoring. This is dictionary of
---   functions which should be called to update 
-data PrometheusGauges m = PrometheusGauges
-  { prometheusHeight      :: Height -> m ()
-  , prometheusRound       :: Round  -> m ()
-  , prometheusNumPeers    :: Int    -> m ()
-  , prometheusMempoolSize :: Int    -> m ()
+--   functions which should be called to update
+data PrometheusGauges = PrometheusGauges
+  { prometheusHeight      :: !(TGauge Height)
+  , prometheusRound       :: !(TGauge Round)
+  , prometheusNumPeers    :: !(TGauge Int)
+  , prometheusMempoolSize :: !(TGauge Int)
   }
 
-hoistPrometheusGauges :: (forall a. m a -> n a) -> PrometheusGauges m -> PrometheusGauges n
-hoistPrometheusGauges f PrometheusGauges{..} = PrometheusGauges
-  { prometheusHeight      = f . prometheusHeight
-  , prometheusRound       = f . prometheusRound
-  , prometheusNumPeers    = f . prometheusNumPeers
-  , prometheusMempoolSize = f . prometheusMempoolSize
-  }
+standardMonitoring :: (MonadIO m) => m PrometheusGauges
+standardMonitoring = createMonitoring "thundermint"
 
-
--- | Don't do any monitoring
-noMonitoring :: Monad m => PrometheusGauges m
-noMonitoring = PrometheusGauges
-  { prometheusHeight      = \_ -> return ()
-  , prometheusRound       = \_ -> return ()
-  , prometheusNumPeers    = \_ -> return ()
-  , prometheusMempoolSize = \_ -> return ()
-  }
-
--- | Allocate set of gauges with standard names 
-standardMonitoring :: (MonadIO m, MonadMonitor n) => m (PrometheusGauges n)
-standardMonitoring = do
+-- | Allocate set of gauges with custom prefix
+createMonitoring :: (MonadIO m) => Text -> m PrometheusGauges
+createMonitoring prefix = do
   prometheusHeight      <- makeGauge (\(Height h) -> fromIntegral h)
     "blockchain_height_total"
     "Number of processed blocks"
@@ -64,5 +57,30 @@ standardMonitoring = do
   return PrometheusGauges{..}
   where
     makeGauge f nm help = do
-      g <- register $ gauge $ Info ("thundermint_" <> nm) help
-      return $ \x -> setGauge g (f x)
+      g <- register $ gauge $ Info (prefix <> "_" <> nm) help
+      return $ TGauge f g
+
+
+----------------------------------------------------------------
+-- Monadic API
+----------------------------------------------------------------
+
+-- | Monad which supports monitoring of thundermint.
+class Monad m => MonadTMMonitoring m where
+  usingGauge :: (PrometheusGauges -> TGauge a) -> a -> m ()
+
+-- | IO doesn't have monitoring
+instance MonadTMMonitoring IO where
+  usingGauge _ _ = return ()
+
+instance MonadTMMonitoring m => MonadTMMonitoring (LoggerT m) where
+  usingGauge f = lift . usingGauge f
+
+instance MonadTMMonitoring m => MonadTMMonitoring (NoLogsT m) where
+  usingGauge f = lift . usingGauge f
+
+instance MonadTMMonitoring m => MonadTMMonitoring (TracerT m) where
+  usingGauge f = lift . usingGauge f
+
+instance MonadTMMonitoring m => MonadTMMonitoring (DBT rm alg a m) where
+  usingGauge f = lift . usingGauge f

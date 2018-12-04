@@ -63,7 +63,7 @@ import Katip.Scribes.ElasticSearch
 import Thundermint.Control
 import Thundermint.Blockchain.Types
 import Thundermint.Debug.Trace
-import Thundermint.Store
+import Thundermint.Store.Internal.Query (MonadReadDB(..), MonadDB(..))
 
 
 ----------------------------------------------------------------

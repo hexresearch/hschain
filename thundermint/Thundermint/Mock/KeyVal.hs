@@ -40,8 +40,6 @@ import Thundermint.P2P
 import Thundermint.Run
 import Thundermint.Store
 import Thundermint.Store.Internal.Query (Connection,connectionRO)
-import Thundermint.Monitoring
-
 
 
 ----------------------------------------------------------------
@@ -132,7 +130,7 @@ interpretSpec maxH prefix NetSpec{..} = do
                            return vset
                        , appValidator        = nspecPrivKey
                        }
-                 appCh <- newAppChans noMonitoring
+                 appCh <- newAppChans
                  let cfg = defCfg :: Configuration Example
                  runConcurrently
                    [ setNamespace "net"
