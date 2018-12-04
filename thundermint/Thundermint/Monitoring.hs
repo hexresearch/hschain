@@ -8,6 +8,7 @@
 -- libraries, such as Prometheus
 module Thundermint.Monitoring (
     PrometheusGauges(..)
+  , TGauge(..)
   , standardMonitoring
   , MonadTMMonitoring(..)
   , setTGaugeNow
