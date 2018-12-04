@@ -10,7 +10,7 @@ module Thundermint.Monitoring (
     PrometheusGauges(..)
   , standardMonitoring
   , MonadTMMonitoring(..)
-  , setGaugeNow
+  , setTGaugeNow
   ) where
 
 import Control.Monad.IO.Class
@@ -119,8 +119,8 @@ createMonitoring prefix = do
 class Monad m => MonadTMMonitoring m where
   usingGauge :: (PrometheusGauges -> TGauge a) -> a -> m ()
 
-setGaugeNow :: (MonadIO m) => Gauge -> Double ->  m ()
-setGaugeNow g x = runMonitorNowT $ setGauge g x
+setTGaugeNow :: (MonadIO m) => TGauge a -> a ->  m ()
+setTGaugeNow (TGauge f g) x = runMonitorNowT $ setGauge g (f x)
 
 newtype MonitorNowT m a = MonitorNowT { runMonitorNowT :: m a }
   deriving (Functor, Applicative, Monad, MonadIO)
