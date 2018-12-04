@@ -191,6 +191,10 @@ runNode cfg BlockchainNet{..} NodeDescription{..} NodeLogic{..} = do
     , id $ setNamespace "consensus"
          $ runApplication (cfgConsensus cfg) appSt appCh
     , forever $ do
-        usingGauge prometheusMempoolSize . mempool'size =<< mempoolStats nodeMempool
+        MempoolInfo{..} <- mempoolStats nodeMempool
+        usingGauge prometheusMempoolSize      mempool'size
+        usingGauge prometheusMempoolDiscarded mempool'discarded
+        usingGauge prometheusMempoolFiltered  mempool'filtered
+        usingGauge prometheusMempoolAdded     mempool'added
         waitSec 1.0
     ]
