@@ -861,7 +861,7 @@ peerSend _peerAddrFrom peerAddrTo peerSt PeerChans{..} gossipCh P2PConnection{..
 
 
 logGossip
-  :: ( MonadIO m, MonadFork m, MonadMask m, MonadLogger m )
+  :: ( MonadIO m, MonadFork m, MonadMask m, MonadLogger m, MonadTMMonitoring m )
   => PeerChans m addr alg a
   -> m ()
 logGossip PeerChans{..} = do
@@ -877,4 +877,14 @@ logGossip PeerChans{..} = do
   gossip'RxTx  <- readRecv cntGossipTx
   gossip'TxPex <- readSend cntGossipPex
   gossip'RxPex <- readRecv cntGossipPex
+  --
+  usingGauge prometheusGossipTxPV gossip'TxPV
+  usingGauge prometheusGossipRxPV gossip'RxPV
+  usingGauge prometheusGossipTxPC gossip'TxPC
+  usingGauge prometheusGossipRxPC gossip'RxPC
+  usingGauge prometheusGossipTxP  gossip'TxP
+  usingGauge prometheusGossipRxP  gossip'RxP
+  usingGauge prometheusGossipTxB  gossip'TxB
+  usingGauge prometheusGossipRxB  gossip'RxB
+  --
   logger InfoS "Gossip stats" LogGossip{..}
