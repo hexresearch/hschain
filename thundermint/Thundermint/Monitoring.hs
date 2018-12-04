@@ -1,6 +1,8 @@
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RankNTypes        #-}
-{-# LANGUAGE RecordWildCards   #-}
+{-# LANGUAGE DeriveFunctor              #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE RankNTypes                 #-}
+{-# LANGUAGE RecordWildCards            #-}
 -- |
 -- Abstract layer for distinguish Thundermint and some monitoring
 -- libraries, such as Prometheus
@@ -8,6 +10,7 @@ module Thundermint.Monitoring (
     PrometheusGauges(..)
   , standardMonitoring
   , MonadTMMonitoring(..)
+  , setGaugeNow
   ) where
 
 import Control.Monad.IO.Class
@@ -37,6 +40,14 @@ data PrometheusGauges = PrometheusGauges
   , prometheusMempoolAdded     :: !(TGauge Int)
   , prometheusMempoolDiscarded :: !(TGauge Int)
   , prometheusMempoolFiltered  :: !(TGauge Int)
+  , prometheusGossipRxPV       :: !(TGauge Int)
+  , prometheusGossipTxPV       :: !(TGauge Int)
+  , prometheusGossipRxPC       :: !(TGauge Int)
+  , prometheusGossipTxPC       :: !(TGauge Int)
+  , prometheusGossipRxP        :: !(TGauge Int)
+  , prometheusGossipTxP        :: !(TGauge Int)
+  , prometheusGossipRxB        :: !(TGauge Int)
+  , prometheusGossipTxB        :: !(TGauge Int)
   }
 
 standardMonitoring :: (MonadIO m) => m PrometheusGauges
@@ -54,6 +65,7 @@ createMonitoring prefix = do
   prometheusNumPeers    <- makeGauge fromIntegral
     "peers_total"
     "Number of current connected peers"
+  -- Mempool
   prometheusMempoolSize <- makeGauge fromIntegral
     "mempool_size_total"
     "Number of transactions in mempool"
@@ -66,6 +78,32 @@ createMonitoring prefix = do
   prometheusMempoolFiltered <- makeGauge fromIntegral
     "mempool_filtered_total"
     "Number of transactions which were removed after being added"
+  -- Gossip
+  prometheusGossipRxPV <- makeGauge fromIntegral
+    "gossip_rx_prevote"
+    "Number of received prevotes"
+  prometheusGossipTxPV <- makeGauge fromIntegral
+    "gossip_rx_prevote"
+    "Number of transmitted prevotes"
+  prometheusGossipRxPC <- makeGauge fromIntegral
+    "gossip_rx_precommit"
+    "Number of received precommits"
+  prometheusGossipTxPC <- makeGauge fromIntegral
+    "gossip_rx_precommit"
+    "Number of transmitted precommits"
+  prometheusGossipRxP <- makeGauge fromIntegral
+    "gossip_rx_proposal"
+    "Number of received proposals"
+  prometheusGossipTxP <- makeGauge fromIntegral
+    "gossip_rx_proposal"
+    "Number of transmitted proposals"
+  prometheusGossipRxB <- makeGauge fromIntegral
+    "gossip_rx_block"
+    "Number of received blocks"
+  prometheusGossipTxB <- makeGauge fromIntegral
+    "gossip_rx_blocks"
+    "Number of transmitted blocks"
+  --
   return PrometheusGauges{..}
   where
     makeGauge f nm help = do
@@ -80,6 +118,16 @@ createMonitoring prefix = do
 -- | Monad which supports monitoring of thundermint.
 class Monad m => MonadTMMonitoring m where
   usingGauge :: (PrometheusGauges -> TGauge a) -> a -> m ()
+
+setGaugeNow :: (MonadIO m) => Gauge -> Double ->  m ()
+setGaugeNow g x = runMonitorNowT $ setGauge g x
+
+newtype MonitorNowT m a = MonitorNowT { runMonitorNowT :: m a }
+  deriving (Functor, Applicative, Monad, MonadIO)
+
+instance MonadIO m => MonadMonitor (MonitorNowT m) where
+  doIO = liftIO
+
 
 -- | IO doesn't have monitoring
 instance MonadTMMonitoring IO where
