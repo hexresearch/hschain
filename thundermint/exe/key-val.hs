@@ -7,7 +7,6 @@ import qualified Data.ByteString.Char8 as BC8
 
 import Thundermint.Mock.KeyVal
 import Thundermint.Store
-import Thundermint.Run
 
 
 main :: IO ()

@@ -30,10 +30,13 @@ data TGauge a = TGauge (a -> Double) !Gauge
 -- | Collection of metrics for monitoring. This is dictionary of
 --   functions which should be called to update
 data PrometheusGauges = PrometheusGauges
-  { prometheusHeight      :: !(TGauge Height)
-  , prometheusRound       :: !(TGauge Round)
-  , prometheusNumPeers    :: !(TGauge Int)
-  , prometheusMempoolSize :: !(TGauge Int)
+  { prometheusHeight           :: !(TGauge Height)
+  , prometheusRound            :: !(TGauge Round)
+  , prometheusNumPeers         :: !(TGauge Int)
+  , prometheusMempoolSize      :: !(TGauge Int)
+  , prometheusMempoolAdded     :: !(TGauge Int)
+  , prometheusMempoolDiscarded :: !(TGauge Int)
+  , prometheusMempoolFiltered  :: !(TGauge Int)
   }
 
 standardMonitoring :: (MonadIO m) => m PrometheusGauges
@@ -54,6 +57,15 @@ createMonitoring prefix = do
   prometheusMempoolSize <- makeGauge fromIntegral
     "mempool_size_total"
     "Number of transactions in mempool"
+  prometheusMempoolAdded <- makeGauge fromIntegral
+    "mempool_added_total"
+    "Number of transactions which were added to mempool"
+  prometheusMempoolDiscarded <- makeGauge fromIntegral
+    "mempool_discarded_total"
+    "Number of transactions which were discarded immediately"
+  prometheusMempoolFiltered <- makeGauge fromIntegral
+    "mempool_filtered_total"
+    "Number of transactions which were removed after being added"
   return PrometheusGauges{..}
   where
     makeGauge f nm help = do
