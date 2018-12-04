@@ -1,5 +1,3 @@
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE DataKinds                  #-}
 {-# LANGUAGE DeriveFunctor              #-}
 {-# LANGUAGE DeriveGeneric              #-}
@@ -35,9 +33,6 @@ module Thundermint.Run (
 
 import Control.Monad
 import Control.Monad.Catch
-import Control.Monad.IO.Class
-import Control.Monad.Trans.Reader
-import Control.Monad.Trans.Class
 import Codec.Serialise (Serialise)
 import Data.Maybe      (isJust)
 
@@ -58,34 +53,8 @@ import Thundermint.Store.SQL
 import Thundermint.Store.STM
 import Thundermint.Monitoring
 import Thundermint.Utils
-import qualified Thundermint.Store.Internal.Query as DB
 
 import Thundermint.Control (MonadFork)
-
-----------------------------------------------------------------
---
-----------------------------------------------------------------
-
-newtype DBT rw alg a m x = DBT (ReaderT (DB.Connection rw alg a) m x)
-  deriving ( Functor, Applicative, Monad
-           , MonadIO, MonadThrow, MonadCatch, MonadMask
-           , MonadFork, MonadLogger, MonadTrace
-           )
-
-instance MonadTrans (DBT rw alg a) where
-  lift = DBT . lift
-
-dbtRO :: DBT 'RO alg a m x -> DBT rw alg a m x
-dbtRO (DBT m) = DBT (withReaderT DB.connectionRO m)
-
-runDBT :: Monad m => DB.Connection rw alg a -> DBT rw alg a m x -> m x
-runDBT c (DBT m) = runReaderT m c
-
-instance MonadIO m => MonadReadDB (DBT rw alg a m) alg a where
-  askConnectionRO = DB.connectionRO <$> DBT ask
-instance MonadIO m => MonadDB (DBT 'RW alg a m) alg a where
-  askConnectionRW = DBT ask
-
 
 ----------------------------------------------------------------
 --
@@ -179,7 +148,6 @@ data NodeDescription m alg a = NodeDescription
   , nodeCommitCallback  :: !(Block alg a -> m ())
     -- ^ Callback called immediately after block was commit and user
     --   state in database is updated
-  , nodeMonitoring      :: !(PrometheusGauges m)
   }
 
 -- | Specification of network
@@ -190,7 +158,7 @@ data BlockchainNet addr = BlockchainNet
   }
 
 runNode
-  :: ( MonadDB m alg a, MonadMask m, MonadFork m, MonadLogger m, MonadTrace m
+  :: ( MonadDB m alg a, MonadMask m, MonadFork m, MonadLogger m, MonadTrace m, MonadTMMonitoring m
      , Crypto alg, Ord addr, Show addr, Serialise addr, Show a, BlockData a
      )
   => Configuration app
@@ -215,7 +183,7 @@ runNode cfg BlockchainNet{..} NodeDescription{..} NodeLogic{..} = do
         , appValidator        = nodeValidationKey
         }
   -- Networking
-  appCh <- newAppChans nodeMonitoring
+  appCh <- newAppChans
   return
     [ id $ setNamespace "net"
          $ startPeerDispatcher (cfgNetwork cfg)
@@ -223,6 +191,6 @@ runNode cfg BlockchainNet{..} NodeDescription{..} NodeLogic{..} = do
     , id $ setNamespace "consensus"
          $ runApplication (cfgConsensus cfg) appSt appCh
     , forever $ do
-        prometheusMempoolSize nodeMonitoring . mempool'size =<< mempoolStats nodeMempool
+        usingGauge prometheusMempoolSize . mempool'size =<< mempoolStats nodeMempool
         waitSec 1.0
     ]

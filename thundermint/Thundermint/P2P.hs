@@ -144,7 +144,6 @@ data PeerChans m addr alg a = PeerChans
     -- ^ Read only access to current state of consensus state machine
   , p2pConfig       :: !NetworkCfg
 
-  , p2pMonitoring      :: PrometheusGauges m
   , cntGossipPrevote   :: !Counter
   , cntGossipPrecommit :: !Counter
   , cntGossipBlocks    :: !Counter
@@ -180,7 +179,7 @@ readRecv (Counter _ r) = liftIO $ readMVar r
 --   from remote nodes, initiating connections to them, tracking state
 --   of nodes and gossip.
 startPeerDispatcher
-  :: ( MonadMask m, MonadFork m, MonadLogger m, MonadTrace m, MonadReadDB m alg a
+  :: ( MonadMask m, MonadFork m, MonadLogger m, MonadTrace m, MonadReadDB m alg a, MonadTMMonitoring m
      , BlockData a,  Ord addr, Show addr, Serialise addr, Show a, Crypto alg)
   => NetworkCfg
   -> NetworkAPI addr          -- ^ API for networking
@@ -207,7 +206,6 @@ startPeerDispatcher p2pConfig net peerAddr addrs AppChans{..} mempool = logOnExc
                          , peerChanRx      = writeTBQueue appChanRx
                          , proposalStorage = makeReadOnlyPS appPropStorage
                          , consensusState  = readTVar appTMState
-                         , p2pMonitoring   = appMonitoring
                          , ..
                          }
   -- Accepting connection is managed by separate linked thread and
@@ -225,7 +223,7 @@ startPeerDispatcher p2pConfig net peerAddr addrs AppChans{..} mempool = logOnExc
       peerPexMonitor p2pConfig peerAddr net peerCh mempool peerRegistry
     -- Peer connection capacity monitor for debug purpose
     , descendNamespace "PEX" $
-      peerPexCapacityDebugMonitor appMonitoring peerRegistry
+      peerPexCapacityDebugMonitor peerRegistry
     -- Peer new addreses capacity monitor
     , descendNamespace "PEX" $
       peerPexKnownCapacityMonitor peerAddr peerCh peerRegistry (pexMinKnownConnections p2pConfig) (pexMaxKnownConnections p2pConfig)
@@ -533,15 +531,14 @@ peerPexMonitor cfg peerAddr net peerCh mempool peerRegistry@PeerRegistry{..} = d
 -- | Watch number of connections and report it to monitoring system
 --
 peerPexCapacityDebugMonitor
-  :: (MonadIO m)
-  => PrometheusGauges m
-  -> PeerRegistry addr
+  :: (MonadIO m, MonadTMMonitoring m)
+  => PeerRegistry addr
   -> m ()
-peerPexCapacityDebugMonitor PrometheusGauges{..} PeerRegistry{..} =
+peerPexCapacityDebugMonitor PeerRegistry{..} =
   fix $ \loop -> do
     liftIO (readTVarIO prIsActive) >>= \case
-      True  -> prometheusNumPeers . Set.size =<< liftIO (readTVarIO prConnected)
-      False -> prometheusNumPeers 0
+      True  -> usingGauge prometheusNumPeers . Set.size =<< liftIO (readTVarIO prConnected)
+      False -> usingGauge prometheusNumPeers 0
     waitSec 1.0
     loop
 

@@ -38,6 +38,7 @@ import Thundermint.Mock.KeyVal
 import Thundermint.Mock.Types
 import Thundermint.P2P.Network
 import Thundermint.Store
+import Thundermint.Monitoring
 import TM.RealNetwork
 
 testNetworkName :: String
@@ -93,12 +94,13 @@ toPair :: TestNetLinkDescription m -> (Int, [Int])
 toPair TestNetLinkDescription{..} = (ncFrom, ncTo)
 
 
-createTestNetwork :: forall m . (MonadIO m, MonadMask m, MonadFork m) => TestNetDescription m -> m ()
+createTestNetwork :: (MonadIO m, MonadMask m, MonadFork m, MonadTMMonitoring m)
+                  => TestNetDescription m -> m ()
 createTestNetwork = createTestNetworkWithConfig (defCfg :: Configuration Example)
 
 
 createTestNetworkWithConfig
-  :: forall m app . (MonadIO m, MonadMask m, MonadFork m)
+  :: forall m app . (MonadIO m, MonadMask m, MonadFork m, MonadTMMonitoring m)
   => Configuration app -> TestNetDescription m -> m ()
 createTestNetworkWithConfig cfg desc = do
     net  <- liftIO newMockNet

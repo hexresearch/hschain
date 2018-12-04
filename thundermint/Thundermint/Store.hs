@@ -1,13 +1,16 @@
-{-# LANGUAGE DataKinds         #-}
-{-# LANGUAGE DeriveGeneric     #-}
-{-# LANGUAGE FlexibleContexts  #-}
-{-# LANGUAGE KindSignatures    #-}
-{-# LANGUAGE LambdaCase        #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RankNTypes        #-}
-{-# LANGUAGE RecordWildCards   #-}
-{-# LANGUAGE TemplateHaskell   #-}
-{-# LANGUAGE TypeFamilies      #-}
+{-# LANGUAGE DataKinds                  #-}
+{-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE FlexibleContexts           #-}
+{-# LANGUAGE FlexibleInstances          #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE KindSignatures             #-}
+{-# LANGUAGE LambdaCase                 #-}
+{-# LANGUAGE MultiParamTypeClasses      #-}
+{-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE RankNTypes                 #-}
+{-# LANGUAGE RecordWildCards            #-}
+{-# LANGUAGE TemplateHaskell            #-}
+{-# LANGUAGE TypeFamilies               #-}
 -- |
 -- Abstract API for storing of blockchain. Storage works as follows:
 --
@@ -18,8 +21,12 @@
 --    crash but incoming messages are stored in write ahead log so
 --    they could be replayed.
 module Thundermint.Store (
+    -- * Standard DB wrapper
+    DBT(..)
+  , dbtRO
+  , runDBT
     -- * Monadic API for DB access
-    Access(..)
+  , Access(..)
   , MonadReadDB(..)
   , MonadDB(..)
   , Query
@@ -65,10 +72,11 @@ import qualified Katip
 
 import Codec.Serialise           (Serialise)
 import Control.Monad             ((<=<), foldM)
-import Control.Monad.Catch       (MonadMask)
+import Control.Monad.Catch       (MonadMask,MonadThrow,MonadCatch)
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Except
+import Control.Monad.Trans.Reader
 import Control.Monad.Trans.Writer
 import Data.Foldable             (forM_)
 import Data.Maybe                (isNothing, maybe)
@@ -81,9 +89,11 @@ import qualified Data.Aeson.TH   as JSON
 import qualified Data.ByteString as BS
 
 import Thundermint.Blockchain.Types
-import Thundermint.Control                (FloatOut(..),foldF)
+import Thundermint.Control                (MonadFork,FloatOut(..),foldF)
 import Thundermint.Crypto
 import Thundermint.Crypto.Containers
+import Thundermint.Debug.Trace
+import Thundermint.Logger                 (MonadLogger)
 import Thundermint.Store.Internal.Query
 import Thundermint.Store.Internal.BlockDB
 import Thundermint.Store.SQL
@@ -92,6 +102,27 @@ import Thundermint.Store.SQL
 ----------------------------------------------------------------
 -- Monadic API for DB access
 ----------------------------------------------------------------
+
+newtype DBT rw alg a m x = DBT (ReaderT (Connection rw alg a) m x)
+  deriving ( Functor, Applicative, Monad
+           , MonadIO, MonadThrow, MonadCatch, MonadMask
+           , MonadFork, MonadLogger, MonadTrace
+           )
+
+instance MonadTrans (DBT rw alg a) where
+  lift = DBT . lift
+
+dbtRO :: DBT 'RO alg a m x -> DBT rw alg a m x
+dbtRO (DBT m) = DBT (withReaderT connectionRO m)
+
+runDBT :: Monad m => Connection rw alg a -> DBT rw alg a m x -> m x
+runDBT c (DBT m) = runReaderT m c
+
+instance MonadIO m => MonadReadDB (DBT rw alg a m) alg a where
+  askConnectionRO = connectionRO <$> DBT ask
+instance MonadIO m => MonadDB (DBT 'RW alg a m) alg a where
+  askConnectionRW = DBT ask
+
 
 -- | Helper function which opens database, initializes it and ensures
 --   that it's closed on function exit

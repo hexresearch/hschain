@@ -366,7 +366,7 @@ findInputs tgt = go 0
 
 -- | Interpret specification for node
 interpretSpec
-  :: ( MonadIO m, MonadLogger m, MonadFork m, MonadTrace m, MonadMask m
+  :: ( MonadIO m, MonadLogger m, MonadFork m, MonadTrace m, MonadMask m, MonadTMMonitoring m
      , Ord addr, Show addr, Serialise addr)
   => Maybe Int64                      -- ^ Maximum height
   -> GeneratorSpec                    -- ^ Spec for generator of transactions
@@ -392,7 +392,6 @@ interpretSpec maxHeight genSpec validatorSet net NodeSpec{..} = do
                 b | Just hM <- maxHeight
                   , headerHeight (blockHeader b) > Height hM -> throwM Abort
                   | otherwise                                -> return ()
-            , nodeMonitoring      = noMonitoring
             }
           logic
         runConcurrently (generator : acts)
