@@ -18,7 +18,7 @@ import statsmodels.api as sm
 # ----------------------------------------------------------------
 
 def to_commit(d) :
-    r = d[d['msg'] == "Entering new height ----------------"].copy()
+    r = d[d['msg'] == "Actual commit"].copy()
     r['H'] = r['data'].apply(lambda x : x['H'])
     return r.drop(['data','msg','host'], axis=1)
 
