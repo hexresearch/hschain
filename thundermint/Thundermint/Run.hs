@@ -32,7 +32,10 @@ module Thundermint.Run (
   ) where
 
 import Control.Monad
+import Control.Monad.IO.Class
 import Control.Monad.Catch
+import Control.Concurrent.STM         (atomically)
+import Control.Concurrent.STM.TBQueue (lengthTBQueue)
 import Codec.Serialise (Serialise)
 import Data.Maybe      (isJust)
 
@@ -196,5 +199,9 @@ runNode cfg BlockchainNet{..} NodeDescription{..} NodeLogic{..} = do
         usingGauge prometheusMempoolDiscarded mempool'discarded
         usingGauge prometheusMempoolFiltered  mempool'filtered
         usingGauge prometheusMempoolAdded     mempool'added
+        waitSec 1.0
+    , forever $ do
+        n <- liftIO $ atomically $ lengthTBQueue $ appChanRx appCh
+        usingGauge prometheusMsgQueue n
         waitSec 1.0
     ]
