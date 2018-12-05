@@ -17,6 +17,7 @@ module Thundermint.Monitoring (
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
 import Data.Text                  (Text)
+import Numeric.Natural
 import Prometheus
 
 import Thundermint.Logger      (LoggerT(..),NoLogsT(..))
@@ -49,6 +50,7 @@ data PrometheusGauges = PrometheusGauges
   , prometheusGossipTxP        :: !(TGauge Int)
   , prometheusGossipRxB        :: !(TGauge Int)
   , prometheusGossipTxB        :: !(TGauge Int)
+  , prometheusMsgQueue         :: !(TGauge Natural)
   }
 
 standardMonitoring :: (MonadIO m) => m PrometheusGauges
@@ -105,6 +107,9 @@ createMonitoring prefix = do
     "gossip_rx_blocks"
     "Number of transmitted blocks"
   --
+  prometheusMsgQueue <- makeGauge fromIntegral
+    "msg_queue_incoming"
+    "Number of messages in incoming queue"
   return PrometheusGauges{..}
   where
     makeGauge f nm help = do
