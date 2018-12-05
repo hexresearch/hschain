@@ -13,12 +13,12 @@ def read_trace(log,i) :
     rowsD = pd.DataFrame(
         { 'at'   : log[log['msg'] == "Decision to commit"]['at'],
           'node' : 1000+i,
-          'msg'  : "#FF9900",
+          'msg'  : "#FF9900", # orange
         })
     rowsA = pd.DataFrame(
         { 'at'   : log[log['msg'] == "Actual commit"]['at'],
           'node' : 1000+i,
-          'msg'  : "#99cc00",
+          'msg'  : "#99cc00", # жёлто-зелёный
         })
     # Commit trace
     rowsC = log[log['msg'] == 'Entering new height ----------------'].copy()
