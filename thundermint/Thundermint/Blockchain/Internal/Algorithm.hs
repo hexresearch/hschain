@@ -356,7 +356,8 @@ checkTransitionPrecommit par@HeightParameters{..} r sm@(TMState{..})
          acceptBlock voteRound bid
          commitBlock Commit{ commitBlockID    = bid
                            , commitPrecommits = valuesAtR r smPrecommitsSet
-                           } sm
+                           }
+                     sm { smStep = StepAwaitCommit }
   --  * We have +2/3 precommits for nil at current round
   --  * We are at Precommit step [FIXME?]
   --  => goto Propose(H,R+1)
