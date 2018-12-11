@@ -129,7 +129,7 @@ data ByzantineEvidence alg a
       !(Signed 'Unverified alg (Vote 'PreVote alg a))
     -- ^ Node made conflicting precommits in the same round
   deriving (Show, Eq, Generic)
-instance Serialise a => Serialise (ByzantineEvidence alg a)
+instance Serialise (ByzantineEvidence alg a)
 
 -- | Data justifying commit
 data Commit alg a = Commit
@@ -204,7 +204,7 @@ data Proposal alg a = Proposal
   }
   deriving (Show, Eq, Generic)
 
-instance Serialise a => Serialise (Proposal alg a) where
+instance Serialise (Proposal alg a) where
 
 -- | Type of vote. Used for type-tagging of votes
 data VoteType = PreVote
