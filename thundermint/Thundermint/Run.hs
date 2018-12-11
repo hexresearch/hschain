@@ -76,7 +76,7 @@ data NodeLogic m alg a = NodeLogic
 
 logicFromFold
   :: (MonadDB m alg a, MonadMask m, BlockData a, Ord (TX a), Crypto alg)
-  => BlockFold st a
+  => BlockFold st alg a
   -> m (BChState m st, NodeLogic m alg a)
 logicFromFold transitions@BlockFold{..} = do
   hChain   <- queryRO blockchainHeight
@@ -93,7 +93,7 @@ logicFromFold transitions@BlockFold{..} = do
          , NodeLogic { nodeBlockValidation = \b -> do
                          let h = headerHeight $ blockHeader b
                          st <- stateAtH bchState h
-                         return $ isJust $ processBlock h (blockData b) st
+                         return $ isJust $ processBlock b st
                      , nodeCommitQuery     = SimpleQuery $ \b -> do
                          Just vset <- retrieveValidatorSet $ headerHeight $ blockHeader b
                          return vset

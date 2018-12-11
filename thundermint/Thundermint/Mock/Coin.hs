@@ -149,10 +149,11 @@ processTransaction transaction@(Send pubK sig txSend@TxSend{..}) CoinState{..} =
         in add $ spend unspentOutputs
     }
 
-transitions :: BlockFold CoinState [Tx]
+transitions :: BlockFold CoinState alg [Tx]
 transitions = BlockFold
   { processTx           = process
-  , processBlock        = \h txs s0 -> foldM (flip (process h)) s0 txs
+  , processBlock        = \b s0 -> let h = headerHeight $ blockHeader b
+                                   in foldM (flip (process h)) s0 (blockData b)
   , transactionsToBlock = \_ ->
       let selectTx _ []     = []
           selectTx c (t:tx) = case processTransaction t c of

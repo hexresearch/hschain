@@ -62,10 +62,10 @@ genesisBlock valSet = Block
   }
   where dat = [] :: [(String,Int)]
 
-transitions :: BlockFold (Map String Int) [(String,Int)]
+transitions :: BlockFold (Map String Int) alg [(String,Int)]
 transitions = BlockFold
   { processTx           = const process
-  , processBlock        = \_ txs s0 -> foldM (flip process) s0 txs
+  , processBlock        = \b s0 -> foldM (flip process) s0 (blockData b)
   , transactionsToBlock = \_ ->
       let selectTx _ []     = []
           selectTx c (t:tx) = case process t c of
@@ -111,7 +111,7 @@ interpretSpec maxH prefix NetSpec{..} = do
                        { appValidationFun  = \b -> do
                            let h = headerHeight $ blockHeader b
                            st <- stateAtH bchState h
-                           return $ isJust $ processBlock transitions h (blockData b) st
+                           return $ isJust $ processBlock transitions b st
                        --
                        , appBlockGenerator = \h -> case nspecByzantine of
                            Just "InvalidBlock" -> do

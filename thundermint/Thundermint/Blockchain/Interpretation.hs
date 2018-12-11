@@ -38,7 +38,7 @@ import Thundermint.Blockchain.Types
 --   wallet). Transition functions double as validation functions
 --   e.g. if transaction or block is not valid it will return
 --   @Nothing@.
-data BlockFold s a = BlockFold
+data BlockFold s alg a = BlockFold
   { processTx    :: !(Height -> TX a -> s -> Maybe s)
     -- ^ Try to process single transaction. Nothing indicates that
     --   transaction is invalid. This function will called very
@@ -46,7 +46,7 @@ data BlockFold s a = BlockFold
     --   rule out invalid blocks.
     --
     --   FIXME: figure out exact semantics for Height parameter
-  , processBlock :: !(Height -> a  -> s -> Maybe s)
+  , processBlock :: !(Block alg a -> s -> Maybe s)
     -- ^ Try to process whole block. Here application should perform
     --   complete validation of block
   , transactionsToBlock :: !(Height -> s -> [TX a] -> a)
@@ -72,7 +72,7 @@ data BChState m s = BChState
 -- | Create block storage backed by MVar
 newBChState
   :: (MonadMask m, MonadReadDB m alg a, Serialise a)
-  => BlockFold s a             -- ^ Updating function
+  => BlockFold s alg a             -- ^ Updating function
   -> m (BChState m s)
 newBChState BlockFold{..} = do
   state <- liftIO $ newMVar (Height 0, initialState)
@@ -81,8 +81,8 @@ newBChState BlockFold{..} = do
           case h `compare` hBlk of
             GT -> error "newBChState: invalid parameter"
             EQ -> return (st, (s,False))
-            LT -> do Just Block{..} <- queryRO $ retrieveBlock h
-                     case processBlock h blockData s of
+            LT -> do Just b <- queryRO $ retrieveBlock h
+                     case processBlock b s of
                        Just st' -> return ((succ h, st'), (st',True))
                        Nothing  -> error "OOPS! Blockchain is not valid!!!"
         case flt of
