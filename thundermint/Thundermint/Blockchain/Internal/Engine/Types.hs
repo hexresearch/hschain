@@ -151,7 +151,11 @@ data CommitCallback m alg a
 
 -- | Full state of application.
 data AppState m alg a = AppState
-  { appBlockGenerator   :: Height -> m a
+  { appBlockGenerator   :: Height
+                        -> Time
+                        -> Maybe (Commit alg a)
+                        -> [ByzantineEvidence alg a]
+                        -> m a
     -- ^ Generate fresh block for proposal. It's called each time we
     --   need to create new block for proposal
   , appValidator        :: Maybe (PrivValidator alg)
@@ -174,7 +178,7 @@ hoistCommitCallback fun (MixedQuery  f) =
 
 hoistAppState :: (Functor m) => (forall x. m x -> n x) -> AppState m alg a -> AppState n alg a
 hoistAppState fun AppState{..} = AppState
-  { appBlockGenerator   = fun . appBlockGenerator
+  { appBlockGenerator   = \h t c e -> fun $ appBlockGenerator h t c e
   , appValidationFun    = fun . appValidationFun
   , appCommitCallback   = fun . appCommitCallback
   , appCommitQuery      = hoistCommitCallback   fun appCommitQuery

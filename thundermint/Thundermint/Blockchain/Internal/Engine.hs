@@ -72,7 +72,7 @@ runApplication
   -> m ()
 runApplication config appSt@AppState{..} appCh@AppChans{..} = logOnException $ do
   logger InfoS "Starting consensus engine" ()
-  height <- queryRO $ blockchainHeight 
+  height <- queryRO $ blockchainHeight
   lastCm <- queryRO $ retrieveLocalCommit height
   advanceToHeight appPropStorage $ succ height
   void $ flip fix lastCm $ \loop commit -> do
@@ -400,15 +400,15 @@ makeHeightParameters ConsensusCfg{..} AppState{..} AppChans{..} = do
         usingGauge prometheusRound  curR
     --
     , createProposal = \r commit -> lift $ do
-        bData          <- appBlockGenerator (succ h)
-        Just lastBlock <- queryRO $ retrieveBlock =<< blockchainHeight
-        currentT       <- round <$> liftIO getPOSIXTime
+        currentT <- Time . round <$> liftIO getPOSIXTime
+        bData    <- appBlockGenerator (succ h) currentT commit []
+        lastBID  <- queryRO $ retrieveBlockID =<< blockchainHeight
         let block = Block
               { blockHeader     = Header
                   { headerChainID        = headerChainID $ blockHeader genesis
                   , headerHeight         = succ h
-                  , headerTime           = Time currentT
-                  , headerLastBlockID    = Just (blockHash lastBlock)
+                  , headerTime           = currentT
+                  , headerLastBlockID    = lastBID
                   , headerValidatorsHash = hash valSet
                   , headerDataHash       = hash bData
                   }

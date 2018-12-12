@@ -113,7 +113,7 @@ interpretSpec maxH prefix NetSpec{..} = do
                            st <- stateAtH bchState h
                            return $ isJust $ processBlock transitions b st
                        --
-                       , appBlockGenerator = \h -> case nspecByzantine of
+                       , appBlockGenerator = \h _ _ _ -> case nspecByzantine of
                            Just "InvalidBlock" -> do
                              return [("XXX", 123)]
                            _ -> do
