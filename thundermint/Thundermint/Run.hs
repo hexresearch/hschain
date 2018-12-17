@@ -1,13 +1,19 @@
-{-# LANGUAGE DataKinds         #-}
-{-# LANGUAGE DeriveGeneric     #-}
-{-# LANGUAGE FlexibleContexts  #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards   #-}
+{-# LANGUAGE DataKinds                  #-}
+{-# LANGUAGE DeriveFunctor              #-}
+{-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE FlexibleContexts           #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE RecordWildCards            #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
 -- |
 -- Helper function for running mock network of thundermint nodes
 module Thundermint.Run (
+    DBT(..)
+  , dbtRO
+  , runDBT
     -- * Validators
-    makePrivateValidators
+  , makePrivateValidators
   , makeValidatorSetFromPriv
     -- * Network connectivity
   , connectAll2All
@@ -15,6 +21,9 @@ module Thundermint.Run (
     -- * New node code
   , Abort(..)
   , Topology(..)
+  , NodeLogic(..)
+  , logicFromFold
+  , logicFromPersistent
   , NodeDescription(..)
   , BlockchainNet(..)
   , runNode
@@ -22,7 +31,11 @@ module Thundermint.Run (
   , defCfg
   ) where
 
+import Control.Monad
+import Control.Monad.IO.Class
 import Control.Monad.Catch
+import Control.Concurrent.STM         (atomically)
+import Control.Concurrent.STM.TBQueue (lengthTBQueue)
 import Codec.Serialise (Serialise)
 import Data.Maybe      (isJust)
 
@@ -30,6 +43,7 @@ import Thundermint.Blockchain.Internal.Engine
 import Thundermint.Blockchain.Interpretation
 import Thundermint.Blockchain.Internal.Engine.Types
 import Thundermint.Blockchain.Types
+import Thundermint.Control
 import Thundermint.Crypto
 import Thundermint.Debug.Trace
 import Thundermint.Logger
@@ -38,6 +52,10 @@ import Thundermint.Mock.Types
 import Thundermint.P2P
 import Thundermint.P2P.Network
 import Thundermint.Store
+import Thundermint.Store.SQL
+import Thundermint.Store.STM
+import Thundermint.Monitoring
+import Thundermint.Utils
 
 import Thundermint.Control (MonadFork)
 
@@ -45,73 +63,145 @@ import Thundermint.Control (MonadFork)
 --
 ----------------------------------------------------------------
 
--- | Specification of node
-data NodeDescription m alg st a = NodeDescription
-  { nodeBlockChainLogic :: BlockFold st a
-    -- ^ Logic of blockchain
-  , nodeStorage         :: BlockStorage 'RW m alg a
-    -- ^ Storage for commited blocks
-  , nodeBchState        :: BChState m st
-    -- ^ Current state of blockchain
-  , nodeMempool         :: Mempool m alg (TX a)
+data NodeLogic m alg a = NodeLogic
+  { nodeBlockValidation :: !(Block alg a -> m Bool)
+    -- ^ Callback used for validation of blocks
+  , nodeCommitQuery     :: !(CommitCallback m alg a)
+    -- ^ Query for modifying user state.
+  , nodeBlockGenerator  :: !(Height -> Time -> Maybe (Commit alg a) -> [ByzantineEvidence alg a] -> m a)
+    -- ^ Generator for a new block
+  , nodeMempool         :: !(Mempool m alg (TX a))
     -- ^ Mempool of node
-  , nodeValidationKey   :: Maybe (PrivValidator alg)
+  }
+
+logicFromFold
+  :: (MonadDB m alg a, MonadMask m, BlockData a, Ord (TX a), Crypto alg)
+  => BlockFold st alg a
+  -> m (BChState m st, NodeLogic m alg a)
+logicFromFold transitions@BlockFold{..} = do
+  hChain   <- queryRO blockchainHeight
+  bchState <- newBChState transitions
+  _        <- stateAtH bchState (succ hChain)
+  -- Create mempool
+  let checkTx tx = do
+        st <- currentState bchState
+        -- FIXME: We need real height here!
+        return $ isJust $ processTx (Height 1) tx st
+  mempool <- newMempool checkTx
+  --
+  return ( bchState
+         , NodeLogic { nodeBlockValidation = \b -> do
+                         let h = headerHeight $ blockHeader b
+                         st <- stateAtH bchState h
+                         return $ isJust $ processBlock b st
+                     , nodeCommitQuery     = SimpleQuery $ \b -> do
+                         Just vset <- retrieveValidatorSet $ headerHeight $ blockHeader b
+                         return vset
+                     , nodeBlockGenerator  = \h _ _ _ -> do
+                         st  <- stateAtH bchState h
+                         txs <- peekNTransactions mempool Nothing
+                         return $ transactionsToBlock h st txs
+                     , nodeMempool         = mempool
+                     }
+         )
+
+logicFromPersistent
+  :: (MonadDB m alg a, MonadMask m, BlockData a, Ord (TX a), Crypto alg, FloatOut dct)
+  => PersistentState dct alg a
+  -> m (NodeLogic m alg a)
+logicFromPersistent PersistentState{..} = do
+  -- Create mempool
+  let checkTx tx = do
+        -- FIXME: we need real height here
+        r <- queryRO $ runEphemeralQ persistedData (processTxDB (Height 1) tx)
+        return $! isJust r
+  mempool <- newMempool checkTx
+  -- Now we need to update state using genesis block.
+  do r <- queryRW $ do
+       Just genesis <- retrieveBlock (Height 0)
+       runBlockUpdate (Height 0) persistedData $ processBlockDB genesis
+     case r of
+       Just () -> return ()
+       Nothing -> error "Cannot initialize persistent storage"
+  --
+  return NodeLogic
+    { nodeBlockValidation = \b -> do
+        r <- queryRO $ runEphemeralQ persistedData (processBlockDB b)
+        return $! isJust r
+    , nodeCommitQuery     = SimpleQuery $ \b -> do
+        runBlockUpdate (headerHeight (blockHeader b)) persistedData $ processBlockDB b
+        Just vset <- retrieveValidatorSet $ headerHeight $ blockHeader b
+        return vset
+    , nodeBlockGenerator  = \h _ _ _ -> do
+        txs <- peekNTransactions mempool Nothing
+        r   <- queryRO $ runEphemeralQ persistedData (transactionsToBlockDB h txs)
+        case r of
+          -- FIXME: This should not happen!
+          Nothing -> error "Cannot generate block!"
+          Just a  -> return a
+    , nodeMempool         = mempool
+    }
+
+
+
+-- | Specification of node
+data NodeDescription m alg a = NodeDescription
+  { nodeValidationKey   :: !(Maybe (PrivValidator alg))
     -- ^ Private key of validator
-  , nodeCommitCallback  :: Height -> m ()
-    -- ^ Callback which is called on each commit
+  , nodeCommitCallback  :: !(Block alg a -> m ())
+    -- ^ Callback called immediately after block was commit and user
+    --   state in database is updated
   }
 
 -- | Specification of network
 data BlockchainNet addr = BlockchainNet
-  { bchNetwork      :: NetworkAPI addr
-  , bchLocalAddr    :: addr
-  , bchInitialPeers :: [addr]
+  { bchNetwork      :: !(NetworkAPI addr)
+  , bchLocalAddr    :: !addr
+  , bchInitialPeers :: ![addr]
   }
 
 runNode
-  :: ( MonadMask m, MonadFork m, MonadLogger m, MonadTrace m
+  :: ( MonadDB m alg a, MonadMask m, MonadFork m, MonadLogger m, MonadTrace m, MonadTMMonitoring m
      , Crypto alg, Ord addr, Show addr, Serialise addr, Show a, BlockData a
      )
-  => Configuration
+  => Configuration app
   -> BlockchainNet addr
-  -> NodeDescription m alg st a
+  -> NodeDescription m alg a
+  -> NodeLogic m alg a
   -> m [m ()]
-runNode cfg BlockchainNet{..} NodeDescription{nodeBlockChainLogic=BlockFold{..}, ..} = do
-  -- Create state of blockchain & Update it to current state of
-  -- blockchain
-  hChain      <- blockchainHeight     nodeStorage
-  Just valSet <- retrieveValidatorSet nodeStorage (succ hChain)
+runNode cfg BlockchainNet{..} NodeDescription{..} NodeLogic{..} = do
   -- Build application state of consensus algorithm
   let appSt = AppState
-        { appStorage     = nodeStorage
-          --
-        , appValidationFun = \h a -> do
-            st <- stateAtH nodeBchState h
-            return $ isJust $ processBlock h a st
-          --
-        , appBlockGenerator = \h -> do
-            st  <- stateAtH nodeBchState h
-            txs <- peekNTransactions nodeMempool Nothing
-            return $ transactionsToBlock h st txs
-          --
-        , appCommitCallback = \h -> setNamespace "mempool" $ do
-            before <- mempoolStats nodeMempool
-            logger InfoS "Mempool before filtering" before
+        { appValidationFun  = nodeBlockValidation
+        , appBlockGenerator = nodeBlockGenerator
+        , appCommitQuery    = nodeCommitQuery
+        , appCommitCallback = \b -> setNamespace "mempool" $ do
+            do before <- mempoolStats nodeMempool
+               logger InfoS "Mempool before filtering" before
             filterMempool nodeMempool
-            after  <- mempoolStats nodeMempool
-            logger InfoS "Mempool after filtering" after
-            nodeCommitCallback h
+            do after <- mempoolStats nodeMempool
+               logger InfoS "Mempool after filtering" after
+            nodeCommitCallback b
           --
         , appValidator        = nodeValidationKey
-        , appNextValidatorSet = \_ _ -> return valSet
         }
   -- Networking
   appCh <- newAppChans
   return
     [ id $ setNamespace "net"
-         $ startPeerDispatcher cfg bchNetwork bchLocalAddr bchInitialPeers appCh
-                               (makeReadOnly   nodeStorage)
-                               nodeMempool
+         $ startPeerDispatcher (cfgNetwork cfg)
+              bchNetwork bchLocalAddr bchInitialPeers appCh nodeMempool
     , id $ setNamespace "consensus"
-         $ runApplication cfg appSt appCh
+         $ runApplication (cfgConsensus cfg) appSt appCh
+    , forever $ do
+        MempoolInfo{..} <- mempoolStats nodeMempool
+        usingGauge prometheusMempoolSize      mempool'size
+        usingGauge prometheusMempoolDiscarded mempool'discarded
+        usingGauge prometheusMempoolFiltered  mempool'filtered
+        usingGauge prometheusMempoolAdded     mempool'added
+        waitSec 1.0
+    , forever $ do
+        n <- liftIO $ atomically $ lengthTBQueue $ appChanRx appCh
+        usingGauge prometheusMsgQueue n
+        waitSec 1.0
     ]

@@ -7,48 +7,37 @@
 {-# LANGUAGE TypeApplications    #-}
 {-# LANGUAGE TypeFamilies        #-}
 import Control.Concurrent
+import Control.Monad
 import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Reader
 import Data.Int
-import Data.Monoid
 import Options.Applicative
 
-import Codec.Serialise      (serialise)
-import Control.Monad        (forever, void)
-import Data.ByteString.Lazy (toStrict)
-import Data.Maybe           (isJust)
-import Katip.Core           (showLS, sl)
+import Katip.Core           (showLS)
 import Network.Simple.TCP   (accept, listen, recv, closeSock)
 import Network.Socket       (SockAddr(..), PortNumber)
+import Network.Wai.Middleware.Prometheus
+import Prometheus
+import Prometheus.Metric.GHC
 import System.Environment   (getEnv)
 import System.FilePath      ((</>))
-import System.Random        (randomRIO)
+import qualified Network.Wai.Handler.Warp as Warp
 
-import Thundermint.Blockchain.Interpretation
 import Thundermint.Blockchain.Internal.Engine.Types
-import Thundermint.Blockchain.Types
-import Thundermint.Control
-import Thundermint.Crypto
-import Thundermint.Crypto.Containers
 import Thundermint.Crypto.Ed25519            (Ed25519_SHA512)
 import Thundermint.Logger
 import Thundermint.Run
 import Thundermint.Mock.Coin
-import Thundermint.Mock.KeyList
 import Thundermint.Mock.Types
 import Thundermint.P2P.Consts
 import Thundermint.P2P.Instances ()
 import Thundermint.P2P.Network               ( getLocalAddress, realNetwork
                                              , getCredentialFromBuffer, realNetworkTls)
-import Thundermint.Store
-import Thundermint.Store.STM
-import Thundermint.Store.SQLite
-
 import qualified Control.Exception     as E
 import qualified Data.Aeson            as JSON
 import qualified Data.ByteString.Char8 as BC8
-import qualified Data.Map              as Map
+
 
 ----------------------------------------------------------------
 -- Cmd line specification
@@ -61,124 +50,23 @@ data Opts = Opts
   , doValidate        :: Bool
   , netInitialDeposit :: Integer
   , netInitialKeys    :: Int
+  , nodeNumber        :: Int
+  , totalNodes        :: Int
   , optTls            :: Bool
   }
-
-----------------------------------------------------------------
--- Generation of transactions
-----------------------------------------------------------------
-
-transferActions
-  :: (MonadIO m)
-  => Int                        -- Delay between transactions
-  -> [PublicKey Alg]            -- List of possible addresses
-  -> [PrivKey Alg]              -- Private key which we own
-  -> (Tx -> m ())               -- push new transaction
-  -> CoinState                  -- Current state of
-  -> m ()
-transferActions delay publicKeys privKeys push CoinState{..} = do
-  -- Pick private key
-  privK <- do i <- liftIO $ randomRIO (0, length privKeys - 1)
-              return (privKeys !! i)
-  let pubK = publicKey privK
-  -- Pick public key to send data to
-  target <- do i <- liftIO $ randomRIO (0, nPK - 1)
-               return (publicKeys !! i)
-  amount <- liftIO $ randomRIO (0,20)
-  -- Create transaction
-  let inputs = findInputs amount [ (inp, n)
-                                 | (inp, (pk,n)) <- Map.toList unspentOutputs
-                                 , pk == pubK
-                                 ]
-      tx     = TxSend { txInputs  = map fst inputs
-                      , txOutputs = [ (target, amount)
-                                    , (pubK  , sum (map snd inputs) - amount)
-                                    ]
-                      }
-  push $ Send pubK (signBlob privK $ toStrict $ serialise tx) tx
-  liftIO $ threadDelay (delay * 1000)
-  where
-    nPK  = length publicKeys
-
-
-findInputs :: (Num i, Ord i) => i -> [(a,i)] -> [(a,i)]
-findInputs tgt = go 0
-  where go _ [] = []
-        go acc ((tx,i):rest)
-          | acc' >= tgt = [(tx,i)]
-          | otherwise   = (tx,i) : go acc' rest
-          where
-            acc' = acc + i
-
 
 ----------------------------------------------------------------
 --
 ----------------------------------------------------------------
 
-interpretSpec
-  :: Opts
-  -> ValidatorSet Ed25519_SHA512
-  -> BlockchainNet SockAddr
-  -> NodeSpec
-  -> LoggerT IO (BlockStorage 'RO IO Alg [Tx], LoggerT IO ())
-interpretSpec Opts{..} validatorSet net NodeSpec{..} = do
-  -- Allocate storage for node
-  storage <- liftIO
-           $ newSQLiteBlockStorage (maybe ":memory:" (prefix </>) nspecDbName)
-                                   genesisBlock validatorSet
-  hChain  <- liftIO $ blockchainHeight storage
-  return
-    ( makeReadOnly storage
-    , do
-        -- Initialize b
-        bchState <- newBChState transitions
-                  $ makeReadOnly (hoistBlockStorageRW liftIO storage)
-        _        <- stateAtH bchState (succ hChain)
-        -- Create mempool
-        let checkTx tx = do
-              st <- currentState bchState
-              return $ isJust $ processTx transitions (Height 1) tx st
-        mempool <- newMempool checkTx
-        cursor  <- getMempoolCursor mempool
-        --
-        let generator = forever $ do
-              st <- currentState bchState
-              let (off,n)  = nspecWalletKeys
-                  privKeys = take n $ drop off privateKeyList
-              transferActions delay (publicKey <$> take netInitialKeys privateKeyList) privKeys
-                (void . pushTransaction cursor) st
-        --
-        acts <- runNode defCfg net
-          NodeDescription
-            { nodeStorage         = hoistBlockStorageRW liftIO storage
-            , nodeBchState        = bchState
-            , nodeBlockChainLogic = transitions
-            , nodeMempool         = mempool
-            , nodeValidationKey   = nspecPrivKey
-            , nodeCommitCallback  = \h -> do
-                -- Update state
-                st <- stateAtH bchState (succ h)
-                descendNamespace "coin" $ logger InfoS "State size" (sl "utxo" (Map.size (unspentOutputs st)))
-                case maxH of
-                  Just hM | h > Height hM -> throwM Abort
-                  _                       -> return ()
-            }
-        runConcurrently (generator : acts)
-    )
-  where
-    genesisBlock = Block
-      { blockHeader = Header
-          { headerChainID        = "MONIES"
-          , headerHeight         = Height 0
-          , headerTime           = Time 0
-          , headerLastBlockID    = Nothing
-          , headerValidatorsHash = hash validatorSet
-          }
-      , blockData       = [ Deposit (publicKey pk) netInitialDeposit
-                          | pk <- take netInitialKeys privateKeyList
-                          ]
-      , blockLastCommit = Nothing
-      }
+startWebMonitoring :: Warp.Port -> IO ()
+startWebMonitoring port = do
+    void $ register ghcMetrics
+    void $ forkIO
+         $ Warp.run port
+         $ prometheus def
+                      { prometheusInstrumentPrometheus = False }
+                      metricsApp
 
 ----------------------------------------------------------------
 --
@@ -186,18 +74,20 @@ interpretSpec Opts{..} validatorSet net NodeSpec{..} = do
 
 main :: IO ()
 main = do
-    opts@Opts{..} <- customExecParser (prefs showHelpOnError)
-                  $ info (helper <*> parser)
-                    (  fullDesc
-                    <> header   "Coin test program"
-                    <> progDesc ""
-                    )
+    Opts{..} <- customExecParser (prefs showHelpOnError)
+              $ info (helper <*> parser)
+                (  fullDesc
+                <> header   "Coin test program"
+                <> progDesc ""
+                )
     nodeSpecStr <- BC8.pack <$> getEnv "THUNDERMINT_NODE_SPEC"
     ipMapPath   <- BC8.pack <$> getEnv "THUNDERMINT_KEYS"
     let nodeSpec@NodeSpec{..} = either error id $ JSON.eitherDecodeStrict' nodeSpecStr
         loggers = [ makeScribe s { scribe'path = fmap (prefix </>) (scribe'path s) }
                   | s <- nspecLogFile
                   ]
+    let port = 1000 + fromIntegral listenPort
+    startWebMonitoring port
     withLogEnv "TM" "DEV" loggers $ \logenv -> runLoggerT "Coin" logenv $ do
       let !validatorSet = makeValidatorSetFromPriv
                         $ (id @[PrivValidator Ed25519_SHA512])
@@ -219,7 +109,9 @@ main = do
                    , bchLocalAddr        = nodeAddr
                    , bchInitialPeers     = netAddresses
                    }
-      (_,act) <- interpretSpec opts validatorSet net nodeSpec
+          genSpec = restrictGenerator nodeNumber totalNodes
+                  $ defaultGenerator netInitialKeys netInitialDeposit delay
+      (_,act) <- interpretSpec maxH genSpec validatorSet net nodeSpec
       act `catch` (\Abort -> return ())
   where
     parser :: Parser Opts
@@ -258,6 +150,16 @@ main = do
       netInitialKeys <- option auto
         (  long "keys"
         <> help "Initial deposit"
+        <> metavar "N"
+        )
+      nodeNumber <- option auto
+        (  long "node-n"
+        <> help "Node number"
+        <> metavar "N"
+        )
+      totalNodes <- option auto
+        (  long "total-nodes"
+        <> help "Node number"
         <> metavar "N"
         )
       optTls <- switch

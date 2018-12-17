@@ -19,6 +19,7 @@ module Thundermint.Blockchain.Types (
   , Block(..)
   , Header(..)
   , Commit(..)
+  , ByzantineEvidence(..)
   , BlockData(..)
     -- * Data types for establishing consensus
   , Step(..)
@@ -39,6 +40,7 @@ import           Codec.Serialise
 import           Codec.Serialise.Decoding
 import           Codec.Serialise.Encoding
 import qualified Data.Aeson               as JSON
+import           Data.Aeson               ((.=), (.:))
 import           Data.ByteString          (ByteString)
 import qualified Data.HashMap.Strict      as HM
 import           Data.Int
@@ -64,7 +66,7 @@ import Thundermint.Crypto.Containers
 --   * Current height in consensus algorithm is height of block we're
 --     deciding on.
 newtype Height = Height Int64
-  deriving (Show, Eq, Ord, Serialise, JSON.ToJSON, JSON.FromJSON, Enum)
+  deriving (Show, Generic, Eq, Ord, Serialise, JSON.ToJSON, JSON.FromJSON, Enum)
 
 -- | Voting round
 newtype Round = Round Int64
@@ -72,7 +74,7 @@ newtype Round = Round Int64
 
 -- | Unix timestamp
 newtype Time = Time Int64
-  deriving (Show, Eq, Ord, Serialise)
+  deriving (Show, Eq, Ord, Serialise, JSON.ToJSON, JSON.FromJSON)
 
 
 
@@ -85,45 +87,88 @@ type BlockID alg a = BlockHash alg (Block alg a)
 
 -- | Block data type
 data Block alg a = Block
-  { blockHeader     :: Header alg a
-  , blockData       :: a
-  , blockLastCommit :: Maybe (Commit alg a)
+  { blockHeader     :: !(Header alg a)
+  , blockData       :: !a
+  , blockLastCommit :: !(Maybe (Commit alg a))
     -- ^ Commit information for previous block. Nothing iff block
     --   is a genesis block or block at height 1.
+  , blockEvidence   :: [ByzantineEvidence alg a]
+    -- ^ Evidence of byzantine behavior by nodes.
   }
   deriving (Show, Eq, Generic)
-instance Serialise a => Serialise (Block alg a)
+instance Serialise     a => Serialise     (Block alg a)
+instance JSON.FromJSON a => JSON.FromJSON (Block alg a)
+instance JSON.ToJSON   a => JSON.ToJSON   (Block alg a)
+
 
 -- | Block header
 data Header alg a = Header
-  { headerChainID        :: ByteString
+  { headerChainID        :: !ByteString
     -- ^ Identifier of chain we're working on. It should be same in
     --   all blocks in blockchain
-  , headerHeight         :: Height
+  , headerHeight         :: !Height
     -- ^ Height of block
-  , headerTime           :: Time
+  , headerTime           :: !Time
     -- ^ Time of block creation
-  , headerLastBlockID    :: Maybe (BlockID alg a)
+  , headerLastBlockID    :: !(Maybe (BlockID alg a))
     -- ^ Hash of previous block. Nothing iff block is a genesis block
-  , headerValidatorsHash :: Hash alg
+  , headerValidatorsHash :: !(Hash alg)
     -- ^ Hash of validators for current block.
-
-  -- FIXME: Add various hashes
-  -- , headerDataHash       :: Hash
-  -- , headerConsensusHash  :: Hash
+  , headerDataHash       :: !(Hash alg)
+    -- ^ Hash of block data
   }
   deriving (Show, Eq, Generic)
 instance Serialise (Header alg a)
 
+instance JSON.ToJSON (Header alg a) where
+  toJSON Header{..} =
+    JSON.object [ "headerChainID"        .= Hash headerChainID -- We ask to use Base58
+                , "headerHeight"         .= headerHeight
+                , "headerTime"           .= headerTime
+                , "headerLastBlockID"    .= headerLastBlockID
+                , "headerValidatorsHash" .= headerValidatorsHash
+                , "headerDataHash"       .= headerDataHash
+                ]
+
+instance JSON.FromJSON (Header alg a) where
+  parseJSON = JSON.withObject "Header" $ \o -> do
+    Hash headerChainID <- o .: "headerChainID"
+    headerHeight         <- o .: "headerHeight"
+    headerTime           <- o .: "headerTime"
+    headerLastBlockID    <- o .: "headerLastBlockID"
+    headerValidatorsHash <- o .: "headerValidatorsHash"
+    headerDataHash       <- o .: "headerDataHash"
+    return Header{..}
+
+-- | Evidence of byzantine behaviour by some node.
+data ByzantineEvidence alg a
+  = OutOfTurnProposal !(Signed 'Unverified alg (Proposal alg a))
+    -- ^ Node made proposal out of turn
+  | ConflictingPreVote
+      !(Signed 'Unverified alg (Vote 'PreVote alg a))
+      !(Signed 'Unverified alg (Vote 'PreVote alg a))
+    -- ^ Node made conflicting prevotes in the same round
+  | ConflictingPreCommit
+      !(Signed 'Unverified alg (Vote 'PreVote alg a))
+      !(Signed 'Unverified alg (Vote 'PreVote alg a))
+    -- ^ Node made conflicting precommits in the same round
+  deriving (Show, Eq, Generic)
+instance Serialise     (ByzantineEvidence alg a)
+instance JSON.FromJSON (ByzantineEvidence alg a)
+instance JSON.ToJSON   (ByzantineEvidence alg a)
+
+
 -- | Data justifying commit
 data Commit alg a = Commit
-  { commitBlockID    :: BlockID alg a
+  { commitBlockID    :: !(BlockID alg a)
     -- ^ Block for which commit is done
-  , commitPrecommits :: [Signed 'Verified alg (Vote 'PreCommit alg a)]
+  , commitPrecommits :: !([Signed 'Verified alg (Vote 'PreCommit alg a)])
     -- ^ List of precommits which justify commit
   }
   deriving (Show, Eq, Generic)
-instance Serialise (Commit alg a)
+instance Serialise     (Commit alg a)
+instance JSON.FromJSON (Commit alg a)
+instance JSON.ToJSON   (Commit alg a)
 
 
 -- | Type class for data which could be put into block
@@ -166,44 +211,48 @@ data FullStep = FullStep !Height !Round !Step
   deriving (Show,Eq,Ord,Generic)
 instance Serialise FullStep
 
-data Timeout = Timeout Height Round Step
+data Timeout = Timeout !Height !Round !Step
   deriving (Show,Eq,Ord,Generic)
 instance Serialise Timeout
 
 -- | Proposal for new block. Proposal include only hash of block and
 --   block itself is gossiped separately.
 data Proposal alg a = Proposal
-  { propHeight    :: Height
+  { propHeight    :: !Height
     -- ^ Proposal height
-  , propRound     :: Round
+  , propRound     :: !Round
     -- ^ Propoasl round
-  , propTimestamp :: Time
+  , propTimestamp :: !Time
     -- ^ Time of proposal
-  , propPOL       :: Maybe Round
+  , propPOL       :: !(Maybe Round)
     -- ^ Proof of Lock for proposal
     --
     -- FIXME: why it's needed? How should it be used?
-  , propBlockID   :: BlockID alg a
+  , propBlockID   :: !(BlockID alg a)
     -- ^ Hash of proposed block
   }
-  deriving (Show,Generic)
+  deriving (Show, Eq, Generic)
 
-instance Serialise a => Serialise (Proposal alg a) where
+instance Serialise     (Proposal alg a)
+instance JSON.FromJSON (Proposal alg a)
+instance JSON.ToJSON   (Proposal alg a)
 
 -- | Type of vote. Used for type-tagging of votes
 data VoteType = PreVote
               | PreCommit
               deriving (Show,Eq,Generic)
 
-instance Serialise VoteType
+instance Serialise     VoteType
+instance JSON.FromJSON VoteType
+instance JSON.ToJSON   VoteType
 
 -- | Single vote cast validator. Type of vote is determined by its
 --   type tag
 data Vote (ty :: VoteType) alg a= Vote
-  { voteHeight  :: Height
-  , voteRound   :: Round
-  , voteTime    :: Time
-  , voteBlockID :: Maybe (BlockID alg a)
+  { voteHeight  :: !Height
+  , voteRound   :: !Round
+  , voteTime    :: !Time
+  , voteBlockID :: !(Maybe (BlockID alg a))
   }
   deriving (Show,Eq,Ord,Generic)
 
@@ -214,6 +263,11 @@ instance Serialise (Vote 'PreVote alg a) where
 instance Serialise (Vote 'PreCommit alg a) where
     encode = encodeVote 1
     decode = decodeVote 1
+
+instance JSON.FromJSON (Vote ty alg a)
+instance JSON.ToJSON   (Vote ty alg a)
+
+
 
 encodeVote :: Word -> Vote ty alg a -> Encoding
 encodeVote tag Vote{..} =
@@ -260,19 +314,19 @@ instance JSON.FromJSON ProposalState
 
 -- | State for tendermint consensus at some particular height.
 data TMState alg a = TMState
-  { smRound         :: Round
+  { smRound         :: !Round
     -- ^ Current round
-  , smStep          :: Step
+  , smStep          :: !Step
     -- ^ Current step in the round
-  , smProposals     :: Map Round (Signed 'Verified alg (Proposal alg a))
+  , smProposals     :: !(Map Round (Signed 'Verified alg (Proposal alg a)))
     -- ^ Proposal for current round
-  , smPrevotesSet   :: HeightVoteSet 'PreVote alg a
+  , smPrevotesSet   :: !(HeightVoteSet 'PreVote alg a)
     -- ^ Set of all received valid prevotes
-  , smPrecommitsSet :: HeightVoteSet 'PreCommit alg a
+  , smPrecommitsSet :: !(HeightVoteSet 'PreCommit alg a)
     -- ^ Set of all received valid precommits
-  , smLockedBlock   :: Maybe (Round, BlockID alg a)
+  , smLockedBlock   :: !(Maybe (Round, BlockID alg a))
     -- ^ Round and block we're locked on
-  , smLastCommit    :: Maybe (Commit alg a)
+  , smLastCommit    :: !(Maybe (Commit alg a))
     -- ^ Commit for previous block. Nothing if previous block is
     --   genesis block.
   }

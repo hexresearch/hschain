@@ -1,9 +1,16 @@
 {-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE Rank2Types          #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeOperators       #-}
 -- |
 module Thundermint.Control (
-    MonadFork(..)
+    -- *
+    FunctorF(..)
+  , FloatOut(..)
+  , foldF
+  , traverseF_
+    -- *
+  , MonadFork(..)
   , forkLinked
   , runConcurrently
     -- * Generalized MVar-code
@@ -23,16 +30,52 @@ module Thundermint.Control (
   , withMany
   ) where
 
+import Control.Applicative
 import Control.Concurrent.MVar
 import Control.Monad
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Reader
-
 import Control.Concurrent  (ThreadId, killThread, myThreadId, throwTo)
-import Control.Exception   (AsyncException, Exception(..), SomeException)
+import Control.Exception   (AsyncException, Exception(..), SomeException(..))
 import Control.Monad.Catch (MonadMask, MonadThrow, bracket, mask, onException, throwM, try)
+import Data.Functor.Compose
+import Data.Functor.Identity
+import Data.Typeable         (Proxy(..))
 
 import qualified Control.Concurrent as Conc
+
+----------------------------------------------------------------
+--
+----------------------------------------------------------------
+
+class FunctorF k where
+  fmapF :: (forall a. f a -> g a) -> k f -> k g
+
+class FunctorF k => FloatOut k where
+  -- | Sequence outer layer of effects in container
+  floatOut    :: Applicative f => k (f `Compose` g) -> f (k g)
+  -- | Sequence effects inside container
+  floatEffect :: Applicative f => k f -> f ()
+  floatEffect = void . floatOut . fmapF (Compose . fmap Identity)
+  -- | Traverse container using effectful function and discard result
+  --   of traversal
+  traverseEff :: Applicative f => (forall a. g a -> f ()) -> k g -> f ()
+  traverseEff f = void . floatOut . fmapF (Compose . fmap Const . f)
+
+foldF :: (Monoid m, FloatOut k) => (forall a. f a -> m) -> k f -> m
+foldF f = getConst . traverseEff (Const . f)
+
+traverseF_ :: (FloatOut k, Applicative f) => (forall a. g a -> f a) -> k g -> f ()
+traverseF_ f = floatEffect . fmapF f
+
+
+instance FunctorF Proxy where
+  fmapF _ Proxy = Proxy
+
+instance FloatOut Proxy where
+  floatOut      Proxy = pure Proxy
+  floatEffect   Proxy = pure ()
+  traverseEff _ Proxy = pure ()
 
 ----------------------------------------------------------------
 --
@@ -84,9 +127,11 @@ forkLinked action io = do
 
 
 
--- | Run computations concurrently. Any exception will propagate to
---   the top level and if any of them terminates normally function
---   will return and all other threads will be killed
+-- | Run computations concurrently. As soon as one thread finishes
+--   execution normally or abnormally all other threads are killed.
+--   Function blocks until all child threads finish execution. If
+--   thread is killed by exceptions it's rethrown. Being killed by
+--   'AsyncException' is considered normal termination.
 runConcurrently
   :: (MonadIO m, MonadMask m, MonadFork m)
   => [m ()]              -- ^ Functions to run
@@ -96,20 +141,28 @@ runConcurrently actions = do
   -- We communicate return status of thread via channel since we don't
   -- know a priory which will terminated first
   ch <- liftIO $ Conc.newChan
-  -- Run child threads. See NOTE in forkLinked
-  either throwM return =<<
-    bracket
-      (forM actions $ \f -> forkWithUnmask $ \restore -> do
-          try (restore f) >>= liftIO . \case
-            Right _ -> Conc.writeChan ch (Right ())
-            Left  e -> case fromException e of
-              Just (_ :: AsyncException) -> Conc.writeChan ch (Right ())
-              _                          -> Conc.writeChan ch (Left  e)
-      )
-      (liftIO . mapM killThread)
-      -- We wait for first thread to terminate. And we have at least
-      -- one thread!
-      (\_ -> liftIO $ Conc.readChan ch)
+  -- Run child threads. We wait until one of threads terminate and
+  -- then kill all others.
+  (r, tids) <- bracket
+    (forM actions $ \f -> forkWithUnmask $ \restore -> do
+        try (restore f) >>= liftIO . \case
+          Right _ -> Conc.writeChan ch (Right ())
+          Left  e -> case fromException e of
+            Just (_ :: AsyncException) -> Conc.writeChan ch (Right ())
+            _                          -> Conc.writeChan ch (Left  e)
+    )
+    (liftIO . mapM killThread)
+    (\tids -> do r <- liftIO $ Conc.readChan ch
+                 return (r,tids)
+    )
+  -- Wait until all other threads terminate. We can be killed by async
+  -- exceptions here. But so be it
+  case tids of
+    []   -> return ()
+    _:ts -> liftIO $ forM_ ts $ const $ Conc.readChan ch
+  case r of
+    Right () -> return ()
+    Left  e  -> throwM e
 
 
 

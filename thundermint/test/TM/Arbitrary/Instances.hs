@@ -43,6 +43,7 @@ instance (Arbitrary a) => Arbitrary (Header alg a) where
                      <*> arbitrary
                      <*> arbitrary
                      <*> arbitrary
+                     <*> arbitrary
 
 instance (Arbitrary a) => Arbitrary (Signed sign alg a) where
   arbitrary = genericArbitrary
@@ -68,8 +69,15 @@ instance (Arbitrary a) => Arbitrary (Block alg a) where
   arbitrary = genericArbitrary
   shrink = genericShrink
 
+instance (Arbitrary a) => Arbitrary (ByzantineEvidence alg a) where
+  arbitrary = genericArbitrary
+  shrink = genericShrink
 
 instance (Arbitrary a) => Arbitrary (Vote ty alg a) where
+  arbitrary = genericArbitrary
+  shrink = genericShrink
+
+instance (Arbitrary a) => Arbitrary (Proposal alg a) where
   arbitrary = genericArbitrary
   shrink = genericShrink
 

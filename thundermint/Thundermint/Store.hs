@@ -1,12 +1,16 @@
-{-# LANGUAGE DataKinds        #-}
-{-# LANGUAGE DeriveGeneric    #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE KindSignatures   #-}
-{-# LANGUAGE LambdaCase       #-}
-{-# LANGUAGE RankNTypes       #-}
-{-# LANGUAGE RecordWildCards  #-}
-{-# LANGUAGE TemplateHaskell  #-}
-{-# LANGUAGE TypeFamilies     #-}
+{-# LANGUAGE DataKinds                  #-}
+{-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE FlexibleContexts           #-}
+{-# LANGUAGE FlexibleInstances          #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE KindSignatures             #-}
+{-# LANGUAGE LambdaCase                 #-}
+{-# LANGUAGE MultiParamTypeClasses      #-}
+{-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE RankNTypes                 #-}
+{-# LANGUAGE RecordWildCards            #-}
+{-# LANGUAGE TemplateHaskell            #-}
+{-# LANGUAGE TypeFamilies               #-}
 -- |
 -- Abstract API for storing of blockchain. Storage works as follows:
 --
@@ -17,14 +21,35 @@
 --    crash but incoming messages are stored in write ahead log so
 --    they could be replayed.
 module Thundermint.Store (
+    -- * Standard DB wrapper
+    DBT(..)
+  , dbtRO
+  , runDBT
+    -- * Monadic API for DB access
+  , Access(..)
+  , MonadReadDB(..)
+  , MonadDB(..)
+  , Query
+  , Connection
+  , connectionRO
+  , queryRO
+  , queryRW
+    -- ** Opening database
+  , openConnection
+  , closeConnection
+  , withConnection
+  , initDatabase
+  , withDatabase
     -- * Block storage
-    Access(..)
-  , Writable
-  , BlockStorage(..)
-  , hoistBlockStorageRW
-  , hoistBlockStorageRO
-  , makeReadOnly
+  , blockchainHeight
+  , retrieveBlock
+  , retrieveBlockID
+  , retrieveCommit
+  , retrieveLocalCommit
+  , retrieveCommitRound
+  , retrieveValidatorSet
     -- * In memory store for proposals
+  , Writable
   , ProposalStorage(..)
   , hoistPropStorageRW
   , hoistPropStorageRO
@@ -47,165 +72,134 @@ import qualified Katip
 
 import Codec.Serialise           (Serialise)
 import Control.Monad             ((<=<), foldM)
+import Control.Monad.Catch       (MonadMask,MonadThrow,MonadCatch)
+import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Except
+import Control.Monad.Trans.Reader
 import Control.Monad.Trans.Writer
 import Data.Foldable             (forM_)
 import Data.Maybe                (isNothing, maybe)
+import Data.Text                 (isPrefixOf)
+import Data.List                 (nub)
 import GHC.Generics              (Generic)
 
 import qualified Data.Aeson      as JSON
 import qualified Data.Aeson.TH   as JSON
 import qualified Data.ByteString as BS
 
-
-import Thundermint.Blockchain.Internal.Message
 import Thundermint.Blockchain.Types
+import Thundermint.Control                (MonadFork,FloatOut(..),foldF)
 import Thundermint.Crypto
 import Thundermint.Crypto.Containers
+import Thundermint.Debug.Trace
+import Thundermint.Logger                 (MonadLogger)
+import Thundermint.Store.Internal.Query
+import Thundermint.Store.Internal.BlockDB
+import Thundermint.Store.SQL
 
 
 ----------------------------------------------------------------
--- Abstract API for storing data
+-- Monadic API for DB access
 ----------------------------------------------------------------
 
--- | Access rights for storage
-data Access = RO                -- ^ Read-only access
-            | RW                -- ^ Read-write access
-            deriving (Show)
+newtype DBT rw alg a m x = DBT (ReaderT (Connection rw alg a) m x)
+  deriving ( Functor, Applicative, Monad
+           , MonadIO, MonadThrow, MonadCatch, MonadMask
+           , MonadFork, MonadLogger, MonadTrace
+           )
 
-type family Writable (rw :: Access) a where
-  Writable 'RO a = ()
-  Writable 'RW a = a
+instance MonadTrans (DBT rw alg a) where
+  lift = DBT . lift
 
--- | API for persistent storage of blockchain and related
---   information. All assertion about behavior obviously hold only if
---   database backing store is not corrupted.
-data BlockStorage rw m alg a = BlockStorage
-  { blockchainHeight   :: m Height
-    -- ^ Current height of blockchain (height of last commited block).
+dbtRO :: DBT 'RO alg a m x -> DBT rw alg a m x
+dbtRO (DBT m) = DBT (withReaderT connectionRO m)
 
-  , retrieveBlock      :: Height -> m (Maybe (Block alg a))
-    -- ^ Retrieve block at given height.
-    --
-    --   Must return block for every height @0 <= h <= blockchainHeight@
-  , retrieveBlockID    :: Height -> m (Maybe (BlockID alg a))
-    -- ^ Retrieve ID of block at given height. Must return same result
-    --   as @fmap blockHash . retrieveBlock@ but implementation could
-    --   do that more efficiently.
-  , retrieveCommit     :: Height -> m (Maybe (Commit alg a))
-    -- ^ Retrieve commit justifying commit of block at height
-    --   @h@. Must return same result as @fmap blockLastCommit . retrieveBlock . next@
-    --   but do it more efficiently.
-    --
-    --   Note that this method returns @Nothing@ for last block since
-    --   its commit is not persisted in blockchain yet and there's no
-    --   commit for genesis block (h=0)
-  , retrieveCommitRound :: Height -> m (Maybe Round)
-    -- ^ Retrieve round when commit was made.
+runDBT :: Monad m => Connection rw alg a -> DBT rw alg a m x -> m x
+runDBT c (DBT m) = runReaderT m c
 
-  , storeCommit :: Writable rw
-      (ValidatorSet alg -> Commit alg a -> Block alg a -> m ())
-    -- ^ Write block and commit justifying it into persistent storage.
-
-  , retrieveLocalCommit :: Height -> m (Maybe (Commit alg a))
-    -- ^ Retrieve local commit justifying commit of block as known by
-    --   node at moment of the commit. Implementation only MUST store
-    --   commit for the last block but may choose to store earlier
-    --   commits as well.
-    --
-    --   Note that commits returned by this functions may to differ
-    --   from ones returned by @retrieveCommit@ by set of votes since
-    --   1) @retrieveCommit@ retrieve commit as seen by proposer not
-    --   local node 2) each node collect straggler precommits for some
-    --   time interval after commit.
-
-  , retrieveValidatorSet :: Height -> m (Maybe (ValidatorSet alg))
-    -- ^ Retrieve set of validators for given round.
-    --
-    --   Must return validator set for every @0 < h <= blockchainHeight + 1@
-
-  , closeBlockStorage  :: Writable rw (m ())
-    -- ^ Close all handles etc. Functions in the dictionary should not
-    --   be called after that
-
-  , writeToWAL :: Writable rw (Height -> MessageRx 'Unverified alg a -> m ())
-    -- ^ Add message to Write Ahead Log. Height parameter is height
-    --   for which we're deciding block.
-  , resetWAL   :: Writable rw (Height -> m ())
-    -- ^ Remove all entries from WAL which comes from height less than
-    --   parameter.
-  , readWAL    :: Height -> m [MessageRx 'Unverified alg a]
-    -- ^ Get all parameters from WAL in order in which they were
-    --   written
-  }
+instance MonadIO m => MonadReadDB (DBT rw alg a m) alg a where
+  askConnectionRO = connectionRO <$> DBT ask
+instance MonadIO m => MonadDB (DBT 'RW alg a m) alg a where
+  askConnectionRW = DBT ask
 
 
--- | Strip write rights if storage API had any
-makeReadOnly :: BlockStorage rw m alg a -> BlockStorage 'RO m alg a
-makeReadOnly BlockStorage{..} =
-  BlockStorage{ storeCommit       = ()
-              , closeBlockStorage = ()
-              , writeToWAL        = ()
-              , resetWAL          = ()
-              , ..
-              }
+-- | Helper function which opens database, initializes it and ensures
+--   that it's closed on function exit
+withDatabase
+  :: (MonadIO m, MonadMask m, FloatOut dct, Crypto alg, Serialise a, Eq a, Eq (PublicKey alg))
+  => FilePath         -- ^ Path to the database
+  -> dct Persistent   -- ^ Users state. If no state is stored in the
+  -> Block alg a      -- ^ Genesis block
+  -> ValidatorSet alg -- ^ Initial validators
+  -> (Connection 'RW alg a -> m x) -> m x
+withDatabase path dct genesis vals cont
+  = withConnection path $ \c -> initDatabase c dct genesis vals >> cont c
 
-hoistBlockStorageRW
-  :: (forall x. m x -> n x)
-  -> BlockStorage 'RW m alg a
-  -> BlockStorage 'RW n alg a
-hoistBlockStorageRW fun BlockStorage{..} =
-  BlockStorage { blockchainHeight     = fun blockchainHeight
-               , retrieveBlock        = fun . retrieveBlock
-               , retrieveBlockID      = fun . retrieveBlockID
-               , retrieveCommitRound  = fun . retrieveCommitRound
-               , retrieveCommit       = fun . retrieveCommit
-               , retrieveLocalCommit  = fun . retrieveLocalCommit
-               , retrieveValidatorSet = fun . retrieveValidatorSet
-               , storeCommit          = \v c b -> fun (storeCommit v c b)
-               , closeBlockStorage    = fun closeBlockStorage
-               , writeToWAL           = \h m -> fun (writeToWAL h m)
-               , resetWAL             = fun . resetWAL
-               , readWAL              = fun . readWAL
-               }
+-- | Initialize all required tables in database.
+initDatabase
+  :: (MonadIO m, FloatOut dct, Crypto alg, Serialise a, Eq a, Eq (PublicKey alg))
+  => Connection 'RW alg a  -- ^ Opened connection to database
+  -> dct Persistent        -- ^ Users state. If no state is stored in the
+  -> Block alg a           -- ^ Genesis block
+  -> ValidatorSet alg      -- ^ Initial validators
+  -> m ()
+initDatabase c dct genesis vals = do
+  -- 1. Check that all tables has distinct names
+  let names = foldF ((:[]) . persistentTableName) dct
+  case () of
+    _| names /= nub names               -> error "Duplicate table names"
+     | any (=="wal")              names -> error "'wal' is not acceptable table name"
+     | any (=="blockchain")       names -> error "'blockchain' is not acceptable table name"
+     | any (=="commit")           names -> error "'commit' is not acceptable table name"
+     | any (=="validators")       names -> error "'validators' is not acceptable table name"
+     | any (isPrefixOf "thm_")    names -> error "'thm_' is not acceptable prefix for table"
+     | any (isPrefixOf "sqlite_") names -> error "'sqlite_' is not acceptable prefix for table"
+     | otherwise                        -> return ()
+  -- 2. Create tables for block
+  r <- runQueryRW c $ do
+    initializeBlockhainTables genesis vals
+    traverseEff persistentCreateTable dct
+  case r of
+    -- FIXME: Resource leak!
+    Nothing -> error "Cannot initialize tables!"
+    Just () -> return ()
 
-hoistBlockStorageRO
-  :: (forall x. m x -> n x)
-  -> BlockStorage 'RO m alg a
-  -> BlockStorage 'RO n alg a
-hoistBlockStorageRO fun BlockStorage{..} =
-  BlockStorage { blockchainHeight     = fun blockchainHeight
-               , retrieveBlock        = fun . retrieveBlock
-               , retrieveBlockID      = fun . retrieveBlockID
-               , retrieveCommitRound  = fun . retrieveCommitRound
-               , retrieveCommit       = fun . retrieveCommit
-               , retrieveLocalCommit  = fun . retrieveLocalCommit
-               , retrieveValidatorSet = fun . retrieveValidatorSet
-               , readWAL              = fun . readWAL
-               , ..
-               }
+-- | Execute query.
+queryRO :: (MonadReadDB m alg a) => Query 'RO alg a x -> m x
+queryRO q = flip runQueryRO q =<< askConnectionRO
+
+-- | Execute query. @Nothing@ means that query violated some invariant
+--   and was rolled back.
+queryRW :: (MonadDB m alg a) => Query 'RW alg a x -> m (Maybe x)
+queryRW q = flip runQueryRW q =<< askConnectionRW
+
 
 
 ----------------------------------------------------------------
 -- Storage for consensus
 ----------------------------------------------------------------
 
+type family Writable (rw :: Access) a where
+  Writable 'RO a = ()
+  Writable 'RW a = a
+
+
 -- | Storage for proposed blocks that are not commited yet.
 data ProposalStorage rw m alg a = ProposalStorage
-  { currentHeight      :: m Height
+  { currentHeight      :: !(m Height)
     -- ^ Height for which we store proposed blocks
-  , retrievePropByID   :: Height -> BlockID alg a -> m (Maybe (Block alg a))
+  , retrievePropByID   :: !(Height -> BlockID alg a -> m (Maybe (Block alg a)))
     -- ^ Retrieve proposed block by its ID
-  , retrievePropByR    :: Height -> Round -> m (Maybe (Block alg a, BlockID alg a))
+  , retrievePropByR    :: !(Height -> Round -> m (Maybe (Block alg a, BlockID alg a)))
     -- ^ Retrieve proposed block by round number.
 
-  , advanceToHeight    :: Writable rw (Height -> m ())
+  , advanceToHeight    :: !(Writable rw (Height -> m ()))
     -- ^ Advance to given height. If height is different from current
     --   all stored data is discarded
-  , allowBlockID       :: Writable rw (Round -> BlockID alg a -> m ())
+  , allowBlockID       :: !(Writable rw (Round -> BlockID alg a -> m ()))
     -- ^ Mark block ID as one that we could accept
-  , storePropBlock     :: Writable rw (Block alg a -> m ())
+  , storePropBlock     :: !(Writable rw (Block alg a -> m ()))
     -- ^ Store block proposed at given height. If height is different
     --   from height we are at block is ignored.
   }
@@ -248,13 +242,13 @@ hoistPropStorageRO fun ProposalStorage{..} =
 
 -- | Statistics about mempool
 data MempoolInfo = MempoolInfo
-  { mempool'size      :: Int
+  { mempool'size      :: !Int
   -- ^ Number of transactions currently in mempool
-  , mempool'added     :: Int
+  , mempool'added     :: !Int
   -- ^ Number of transactions added to mempool since program start
-  , mempool'discarded :: Int
+  , mempool'discarded :: !Int
   -- ^ Number of transaction discarded immediately since program start
-  , mempool'filtered  :: Int
+  , mempool'filtered  :: !Int
   -- ^ Number of transaction removed during filtering
   }
   deriving (Show,Generic)
@@ -268,11 +262,11 @@ instance Katip.LogItem  MempoolInfo where
 
 -- | Cursor into mempool which is used for gossiping data
 data MempoolCursor m alg tx = MempoolCursor
-  { pushTransaction :: tx -> m (Maybe (Hash alg))
+  { pushTransaction :: !(tx -> m (Maybe (Hash alg)))
     -- ^ Add transaction to the mempool. It's preliminary checked and
     --   if check fails it immediately discarded. If transaction is
     --   accepted its hash is computed and returned
-  , advanceCursor   :: m (Maybe tx)
+  , advanceCursor   :: !(m (Maybe tx))
     -- ^ Take transaction from front and advance cursor. If cursor
     -- points at the end of queue nothing happens.
   }
@@ -280,19 +274,19 @@ data MempoolCursor m alg tx = MempoolCursor
 -- | Mempool which is used for storing transactions before they're
 --   added into blockchain. Transactions are stored in FIFO manner
 data Mempool m alg tx = Mempool
-  { peekNTransactions :: Maybe Int -> m [tx]
+  { peekNTransactions :: !(Maybe Int -> m [tx])
     -- ^ Take up to N transactions from mempool. If Nothing is passed
     --   that all transactions will be returned. This operation does
     --   not alter mempool state
-  , filterMempool     :: m ()
+  , filterMempool     :: !(m ())
     -- ^ Remove transactions that are no longer valid from mempool
-  , getMempoolCursor  :: m (MempoolCursor m alg tx)
+  , getMempoolCursor  :: !(m (MempoolCursor m alg tx))
     -- ^ Get cursor pointing to be
-  , txInMempool       :: Hash alg -> m Bool
+  , txInMempool       :: !(Hash alg -> m Bool)
     -- ^ Checks whether transaction is mempool
-  , mempoolStats      :: m MempoolInfo
+  , mempoolStats      :: !(m MempoolInfo)
     -- ^ Number of elements in mempool
-  , mempoolSelfTest   :: m [String]
+  , mempoolSelfTest   :: !(m [String])
     -- ^ Check mempool for internal consistency. Each returned string
     --   is internal inconsistency
   }
@@ -336,21 +330,23 @@ nullMempool = nullMempoolAny
 
 -- | Blockchain inconsistency types
 data BlockchainInconsistency
-  = MissingBlock        Height
+  = MissingBlock        !Height
   -- ^ Missing block at given height.
-  | MissingLocalCommit  Height
+  | MissingLocalCommit  !Height
   -- ^ Commit justifying commit of block at height H is missing
-  | MissingValidatorSet Height
+  | MissingValidatorSet !Height
   -- ^ Validator set for block at height H is missing
 
-  | BlockWrongChainID  Height
+  | BlockWrongChainID  !Height
   -- ^ Block at height H has blockchain ID different from genesis block
-  | BlockHeightMismatch Height
+  | BlockHeightMismatch !Height
   -- ^ Height in header of block at height H is not equal to H
-  | BlockValidatorHashMismatch Height
+  | BlockValidatorHashMismatch !Height
   -- ^ Hash of set of validators in block header does not match hash
   --   of actual set
-  | BlockInvalidPrevBID Height
+  | BlockDataHashMismatch !Height
+  -- ^ Hash of block data in header and hash in the header do not match
+  | BlockInvalidPrevBID !Height
   -- ^ Previous block is does not match ID of block commited to
   --   blockchain.
   | GenesisHasLastCommit
@@ -359,12 +355,12 @@ data BlockchainInconsistency
   -- ^ Block ID of previous block is set in genesis block
   | FirstBlockHasLastCommit
   -- ^ Block at H=1 has last commit field set.
-  | BlockMissingLastCommit Height
+  | BlockMissingLastCommit !Height
   -- ^ Block with H>1 last commit field is @Nothing@
-  | InvalidCommit Height String
+  | InvalidCommit Height !String
   -- ^ Commit embedded into block at height H (it justifies commit of
   --   block H-1) is invalid for some reason
-  | InvalidLocalCommit Height String
+  | InvalidLocalCommit !Height !String
   -- ^ Commit which justified commit of block at height H is invalid
   --   for some reason.
   deriving (Eq, Show)
@@ -376,28 +372,27 @@ data BlockchainInconsistency
 
 -- | check storage against all consistency invariants
 checkStorage
-  :: (Monad m, Crypto alg, Serialise a)
-  => BlockStorage rw m alg a
-  -> m [BlockchainInconsistency]
-checkStorage storage = execWriterT $ do
-  maxH         <- lift $ blockchainHeight storage
-  Just genesis <- lift $ retrieveBlock storage (Height 0)
+  :: (MonadReadDB m alg a, Crypto alg, Serialise a)
+  => m [BlockchainInconsistency]
+checkStorage = queryRO $ execWriterT $ do
+  maxH         <- lift $ blockchainHeight
+  Just genesis <- lift $ retrieveBlock (Height 0)
   let genesisChainId = headerChainID $ blockHeader genesis
   --
   forM_ [Height 0 .. maxH] $ \case
     Height 0 -> genesisBlockInvariant genesis
     h        -> checkRequire $ do
       -- Block, ID and validator set must be present
-      block  <- require [MissingBlock h]        $ retrieveBlock        storage h
-      bid    <- require [MissingBlock h]        $ retrieveBlockID      storage h
-      vset   <- require [MissingValidatorSet h] $ retrieveValidatorSet storage h
-      commit <- require [MissingLocalCommit h]  $ retrieveLocalCommit  storage h
+      block  <- require [MissingBlock h]        $ retrieveBlock        h
+      bid    <- require [MissingBlock h]        $ retrieveBlockID      h
+      vset   <- require [MissingValidatorSet h] $ retrieveValidatorSet h
+      commit <- require [MissingLocalCommit h]  $ retrieveLocalCommit  h
       -- Data for previous step.
       --
       -- NOTE: We don't show any errors for missing BID for previous
       --       block since we detected when checking for previous height
-      mprevVset <- lift $ lift $ retrieveValidatorSet storage (pred h)
-      prevBID   <- require [] $ retrieveBlockID storage (pred h)
+      mprevVset <- lift $ lift $ retrieveValidatorSet (pred h)
+      prevBID   <- require [] $ retrieveBlockID (pred h)
       --
       lift $ blockInvariant genesisChainId h prevBID (mprevVset,vset) block
       lift $ commitInvariant (InvalidLocalCommit h)
@@ -407,16 +402,15 @@ checkStorage storage = execWriterT $ do
 -- | Check that block proposed at given height is correct in sense all
 --   blockchain invariants hold
 checkProposedBlock
-  :: (Monad m, Crypto alg, Serialise a)
-  => BlockStorage rw m alg a
-  -> Height
+  :: (MonadReadDB m alg a, Crypto alg, Serialise a)
+  => Height
   -> Block alg a
   -> m [BlockchainInconsistency]
-checkProposedBlock storage h block = do
-  Just genesis <- retrieveBlock        storage (Height 0)
-  Just prevBID <- retrieveBlockID      storage (pred h)
-  Just vset    <- retrieveValidatorSet storage  h
-  mprevVset    <- retrieveValidatorSet storage (pred h)
+checkProposedBlock h block = queryRO $ do
+  Just genesis <- retrieveBlock        (Height 0)
+  Just prevBID <- retrieveBlockID      (pred h)
+  Just vset    <- retrieveValidatorSet  h
+  mprevVset    <- retrieveValidatorSet (pred h)
   execWriterT $ blockInvariant
     (headerChainID $ blockHeader genesis) h prevBID (mprevVset,vset) block
 
@@ -443,7 +437,7 @@ genesisBlockInvariant Block{blockHeader = Header{..}, ..} = do
 
 -- | Check invariant for block at height > 0
 blockInvariant
-  :: (Monad m, Crypto alg)
+  :: (Monad m, Crypto alg, Serialise a)
   => BS.ByteString
   -- ^ Blockchain ID
   -> Height
@@ -472,7 +466,9 @@ blockInvariant chainID h prevBID (mprevValSet, valSet) Block{blockHeader=Header{
   -- Validators' hash does not match correct one
   (headerValidatorsHash == hash valSet)
     `orElse` BlockValidatorHashMismatch h
-
+  -- Block data has correct hash
+  (headerDataHash == hash blockData)
+    `orElse` BlockDataHashMismatch h
   -- Validate commit of previous block
   case (headerHeight, blockLastCommit) of
     -- Last commit at H=1 must be Nothing

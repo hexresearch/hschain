@@ -1,4 +1,3 @@
-
 import Control.Monad
 import Data.Monoid         ((<>))
 import Options.Applicative
@@ -8,7 +7,6 @@ import qualified Data.ByteString.Char8 as BC8
 
 import Thundermint.Mock.KeyVal
 import Thundermint.Store
-
 
 
 main :: IO ()
@@ -28,7 +26,7 @@ main
         Left  e -> error e
       storageList <- executeSpec maxH prefix spec
       -- Check result against consistency invariants
-      checks <- forM storageList checkStorage
+      checks <- forM storageList $ \c -> runDBT c checkStorage
       unless (null (concat checks)) $ error $ "Consistency problem: " ++ (show checks)
     ----------------------------------------
     parser :: Parser (IO ())

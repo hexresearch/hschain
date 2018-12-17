@@ -23,8 +23,10 @@ import Control.Monad
 import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
+import           Data.Maybe    (fromMaybe)
 import           Data.Function
 import           Data.Monoid   ((<>))
+import Data.Text             (Text)
 import Data.Time.Clock.POSIX (getPOSIXTime)
 import Pipes                 (Pipe,runEffect,yield,await,(>->))
 
@@ -36,8 +38,10 @@ import Thundermint.Crypto.Containers
 import Thundermint.Logger
 import Thundermint.Store
 import Thundermint.Store.STM
+import Thundermint.Store.Internal.BlockDB
+import Thundermint.Monitoring
 
-import Katip (Severity(..), showLS)
+import Katip (Severity(..), sl)
 
 ----------------------------------------------------------------
 --
@@ -58,8 +62,8 @@ newAppChans = do
 --
 --   * INVARIANT: Only this function can write to blockchain
 runApplication
-  :: ( MonadIO m, MonadCatch m, MonadLogger m, Crypto alg, Show a, BlockData a)
-  => Configuration
+  :: ( MonadDB m alg a, MonadCatch m, MonadLogger m, MonadTMMonitoring m, Crypto alg, Show a, BlockData a)
+  => ConsensusCfg
      -- ^ Configuration
   -> AppState m alg a
      -- ^ Get initial state of the application
@@ -67,18 +71,14 @@ runApplication
      -- ^ Channels for communication with peers
   -> m ()
 runApplication config appSt@AppState{..} appCh@AppChans{..} = logOnException $ do
-  height <- blockchainHeight appStorage
-  lastCm <- retrieveLocalCommit appStorage height
+  logger InfoS "Starting consensus engine" ()
+  height <- queryRO $ blockchainHeight
+  lastCm <- queryRO $ retrieveLocalCommit height
   advanceToHeight appPropStorage $ succ height
   void $ flip fix lastCm $ \loop commit -> do
     cm <- decideNewBlock config appSt appCh commit
-    -- ASSERT: We successfully commited next block
-    --
-    -- FIXME: do we need to communicate with peers about our
-    --        commit? (Do we need +2/3 commits to proceed
-    --        further)
     loop (Just cm)
-  logger InfoS "Finished execution of blockchain" ()
+
 
 -- This function uses consensus algorithm to decide which block we're
 -- going to commit at current height, then stores it in database and
@@ -86,8 +86,8 @@ runApplication config appSt@AppState{..} appCh@AppChans{..} = logOnException $ d
 --
 -- FIXME: we should write block and last commit in transaction!
 decideNewBlock
-  :: ( MonadIO m, MonadLogger m, Crypto alg, Show a, BlockData a)
-  => Configuration
+  :: ( MonadDB m alg a, MonadLogger m, MonadTMMonitoring m, Crypto alg, Show a, BlockData a)
+  => ConsensusCfg
   -> AppState m alg a
   -> AppChans m alg a
   -> Maybe (Commit alg a)
@@ -98,8 +98,10 @@ decideNewBlock config appSt@AppState{..} appCh@AppChans{..} lastCommt = do
   hParam <- makeHeightParameters config appSt appCh
   -- Get rid of messages in WAL that are no longer needed and replay
   -- all messages stored there.
-  walMessages <- resetWAL appStorage (currentH hParam)
-              *> readWAL  appStorage (currentH hParam)
+  walMessages <- fmap (fromMaybe [])
+               $ queryRW
+               $ resetWAL (currentH hParam)
+              *> readWAL  (currentH hParam)
   -- Producer of messages. First we replay messages from WAL. This is
   -- very important and failure to do so may violate protocol
   -- safety and possibly liveness.
@@ -125,7 +127,7 @@ decideNewBlock config appSt@AppState{..} appCh@AppChans{..} lastCommt = do
         liftIO $ atomically $ writeTVar appTMState $ Just (currentH hParam , tm)
         -- Write message to WAL and handle it after that
         msg <- await
-        lift $ writeToWAL appStorage (currentH hParam) (unverifyMessageRx msg)
+        _   <- lift $ queryRW $ writeToWAL (currentH hParam) (unverifyMessageRx msg)
         res <- lift $ handleVerifiedMessage appPropStorage hParam tm msg
         case res of
           Tranquility      -> msgHandlerLoop mCmt tm
@@ -138,18 +140,32 @@ decideNewBlock config appSt@AppState{..} appCh@AppChans{..} lastCommt = do
         lift (retrievePropByID appPropStorage (currentH hParam) (commitBlockID cmt)) >>= \case
           Nothing -> msgHandlerLoop (Just cmt) tm
           Just b  -> lift $ do
-            vset <- appNextValidatorSet (currentH hParam) (blockData b)
-            logger InfoS "Actual commit"
-              $ LogBlockInfo (currentH hParam) (blockData b)
-            storeCommit appStorage vset cmt b
-            advanceToHeight appPropStorage . succ =<< blockchainHeight appStorage
-            appCommitCallback (currentH hParam)
+            logger InfoS "Actual commit" $ LogBlockInfo (currentH hParam) (blockData b)
+            case appCommitQuery of
+              SimpleQuery callback -> do
+                r <- queryRW $ do storeCommit cmt b
+                                  storeValSet b =<< callback b
+                case r of
+                  Nothing -> error "Cannot write commit into database"
+                  Just () -> return ()
+              --
+              MixedQuery mcall -> do
+                callback <- mcall
+                r <- queryRW $ do storeCommit cmt b
+                                  (vset,action) <- callback b
+                                  storeValSet b vset
+                                  return action
+                case r of
+                  Just action -> action
+                  Nothing     -> error "Cannot write commit into database"
+            advanceToHeight appPropStorage . succ =<< queryRO blockchainHeight
+            appCommitCallback b
             return cmt
   --
   -- FIXME: encode that we cannot fail here!
   Success tm0 <- runConsesusM $ newHeight hParam lastCommt
   runEffect $ messageSrc
-          >-> verifyMessageSignature appSt (validatorSet hParam)
+          >-> verifyMessageSignature appSt hParam
           >-> msgHandlerLoop Nothing tm0
 
 
@@ -173,28 +189,42 @@ handleVerifiedMessage ProposalStorage{..} hParam tm = \case
                       return (Success tm)
 
 -- Verify signature of message. If signature is not correct message is
--- simply discarded
---
--- NOTE: set of validators may change so we may lack public key of
---       some validators from height different from current. But since
---       we ignore messages from wrong height anyway it doesn't matter
+-- simply discarded.
 verifyMessageSignature
   :: (MonadLogger m, Crypto alg, Serialise a)
   => AppState m alg a
-  -> ValidatorSet alg
+  -> HeightParameters n alg a
   -> Pipe (MessageRx 'Unverified alg a) (MessageRx 'Verified alg a) m r
-verifyMessageSignature AppState{..} vset = forever $ do
+verifyMessageSignature AppState{..} HeightParameters{..} = forever $ do
   await >>= \case
-    RxPreVote   sv -> verify "prevote"   RxPreVote   sv
-    RxPreCommit sv -> verify "precommit" RxPreCommit sv
-    RxProposal  sp -> verify "proposal"  RxProposal  sp
+    RxPreVote   sv
+      | h      == currentH -> verify "prevote"   RxPreVote   sv
+      | otherwise          -> return ()
+      where h = voteHeight $ signedValue sv
+    RxPreCommit sv
+      -- For messages from previous height we validate them against
+      -- correct validator set
+      | h      == currentH -> verify    "precommit" RxPreCommit sv
+      | succ h == currentH -> verifyOld "precommit" RxPreCommit sv
+      | otherwise          -> return ()
+      where h = voteHeight $ signedValue sv
+    RxProposal  sp
+      | h == currentH -> verify "proposal"  RxProposal  sp
+      | otherwise     -> return ()
+      where h = propHeight $ signedValue sp
     RxTimeout   t  -> yield $ RxTimeout t
     RxBlock     b  -> yield $ RxBlock   b
   where
-    verify name con sx = case verifySignature pkLookup sx of
+    verify    con sx = verifyAny (Just validatorSet) con sx
+    verifyOld con sx = verifyAny oldValidatorSet     con sx
+    verifyAny vset name con sx = case verifySignature (pkLookup vset) sx of
       Just sx' -> yield $ con sx'
-      Nothing  -> lift $ logger WarningS ("Invalid signature for " <> name <> ": " <> showLS (signedAddr sx)) ()
-    pkLookup a = validatorPubKey <$> validatorByAddr vset a
+      Nothing  -> lift $ logger WarningS "Invalid signature"
+        (  sl "name" (name::Text)
+        <> sl "addr" (show (signedAddr sx))
+        )
+    pkLookup mvset a = do vset <- mvset
+                          validatorPubKey <$> validatorByAddr vset a
 
 
 
@@ -208,10 +238,10 @@ newtype ConsensusM alg a m b = ConsensusM
   deriving (Functor)
 
 data ConsensusResult alg a b
-  = Success b
+  = Success !b
   | Tranquility
   | Misdeed
-  | DoCommit  (Commit alg a) (TMState alg a)
+  | DoCommit  !(Commit alg a) !(TMState alg a)
   deriving (Functor)
 
 instance Monad m => Applicative (ConsensusM alg a m) where
@@ -242,15 +272,16 @@ instance MonadTrans (ConsensusM alg a) where
   lift = ConsensusM . fmap Success
 
 makeHeightParameters
-  :: (MonadIO m, MonadLogger m, Crypto alg, Serialise a, Show a)
-  => Configuration
+  :: (MonadDB m alg a, MonadLogger m, MonadTMMonitoring m, Crypto alg, Serialise a, Show a)
+  => ConsensusCfg
   -> AppState m alg a
   -> AppChans m alg a
   -> m (HeightParameters (ConsensusM alg a m) alg a)
-makeHeightParameters Configuration{..} AppState{..} AppChans{..} = do
-  h            <- blockchainHeight appStorage
-  Just valSet  <- retrieveValidatorSet appStorage (succ h)
-  Just genesis <- retrieveBlock appStorage (Height 0)
+makeHeightParameters ConsensusCfg{..} AppState{..} AppChans{..} = do
+  h            <- queryRO $ blockchainHeight
+  Just valSet  <- queryRO $ retrieveValidatorSet (succ h)
+  oldValSet    <- queryRO $ retrieveValidatorSet  h
+  Just genesis <- queryRO $ retrieveBlock        (Height 0)
   let proposerChoice (Round r) =
         let Height h' = h
             n         = validatorSetSize valSet
@@ -261,6 +292,7 @@ makeHeightParameters Configuration{..} AppState{..} AppChans{..} = do
   return HeightParameters
     { currentH        = succ h
     , validatorSet    = valSet
+    , oldValidatorSet = oldValSet
       -- FIXME: this is some random algorithms that should probably
       --        work (for some definition of work)
     , areWeProposers  = \r -> case appValidator of
@@ -273,14 +305,19 @@ makeHeightParameters Configuration{..} AppState{..} AppChans{..} = do
         lift (retrievePropByID appPropStorage nH bid) >>= \case
           Nothing -> return UnseenProposal
           Just b  -> do
-            inconsistencies <- lift $ checkProposedBlock appStorage nH b
-            blockOK         <- lift $ appValidationFun (succ h) (blockData b)
+            inconsistencies <- lift $ checkProposedBlock nH b
+            blockOK         <- lift $ appValidationFun b
             case () of
               _| not (null inconsistencies) -> do
-                   logger ErrorS ("Proposed block at height ::" <> showLS nH <> ":: has Inconsistency problem: " <> showLS inconsistencies) ()
+                   logger ErrorS "Proposed block has inconsistencies"
+                     (  sl "H" nH
+                     <> sl "errors" (map show inconsistencies)
+                     )
                    return InvalidProposal
-               | blockOK    -> return GoodProposal
-               | otherwise  -> return InvalidProposal
+               -- We don't put evidence into blocks yet so there shouldn't be any
+               | _:_ <- blockEvidence b -> return InvalidProposal
+               | blockOK                -> return GoodProposal
+               | otherwise              -> return InvalidProposal
     --
     , broadcastProposal = \r bid lockInfo ->
         forM_ appValidator $ \(PrivValidator pk) -> do
@@ -292,7 +329,10 @@ makeHeightParameters Configuration{..} AppState{..} AppChans{..} = do
                               }
               sprop  = signValue pk prop
           mBlock <- lift $ retrievePropByID appPropStorage h bid
-          logger InfoS ("Sending proposal for " <> showLS r <> " " <> showLS bid) ()
+          logger InfoS "Sending proposal"
+            (   sl "R"    r
+            <>  sl "BID" (show bid)
+            )
           liftIO $ atomically $ do
             writeTQueue appChanRxInternal (RxProposal $ unverifySignature sprop)
             case mBlock of
@@ -318,7 +358,10 @@ makeHeightParameters Configuration{..} AppState{..} AppChans{..} = do
                           , voteBlockID = b
                           }
               svote  = signValue pk vote
-          logger InfoS ("Sending prevote for " <> showLS r <> " (" <> showLS b <> ")") ()
+          logger InfoS "Sending prevote"
+            (  sl "R"    r
+            <> sl "bid" (show b)
+            )
           liftIO $ atomically $
             writeTQueue appChanRxInternal (RxPreVote $ unverifySignature svote)
     --
@@ -331,7 +374,10 @@ makeHeightParameters Configuration{..} AppState{..} AppChans{..} = do
                           , voteBlockID = b
                           }
               svote  = signValue pk vote
-          logger InfoS ("Sending precommit for " <> showLS r <> " (" <> showLS b <> ")") ()
+          logger InfoS "Sending precommit"
+            (  sl "R" r
+            <> sl "bid" (show b)
+            )
           liftIO $ atomically $ writeTQueue appChanRxInternal $ RxPreCommit $ unverifySignature svote
     --
     , acceptBlock = \r bid -> do
@@ -348,23 +394,27 @@ makeHeightParameters Configuration{..} AppState{..} AppChans{..} = do
         forM_ (indexByValidator valSet (signedAddr sv)) $ \v ->
           liftIO $ atomically $ writeTChan appChanTx $ AnnHasPreCommit voteHeight voteRound v
     --
-    , announceStep = liftIO . atomically . writeTChan appChanTx . AnnStep
+    , announceStep    = liftIO . atomically . writeTChan appChanTx . AnnStep
+    , updateMetricsHR = \curH curR -> lift $ do
+        usingGauge prometheusHeight curH
+        usingGauge prometheusRound  curR
     --
     , createProposal = \r commit -> lift $ do
-        bData          <- appBlockGenerator (succ h)
-        Just lastBlock <- retrieveBlock appStorage
-                      =<< blockchainHeight appStorage
-        currentT       <- round <$> liftIO getPOSIXTime
+        currentT <- Time . round <$> liftIO getPOSIXTime
+        bData    <- appBlockGenerator (succ h) currentT commit []
+        lastBID  <- queryRO $ retrieveBlockID =<< blockchainHeight
         let block = Block
               { blockHeader     = Header
                   { headerChainID        = headerChainID $ blockHeader genesis
                   , headerHeight         = succ h
-                  , headerTime           = Time currentT
-                  , headerLastBlockID    = Just (blockHash lastBlock)
+                  , headerTime           = currentT
+                  , headerLastBlockID    = lastBID
                   , headerValidatorsHash = hash valSet
+                  , headerDataHash       = hash bData
                   }
               , blockData       = bData
               , blockLastCommit = commit
+              , blockEvidence   = []
               }
             bid   = blockHash block
         allowBlockID   appPropStorage r bid

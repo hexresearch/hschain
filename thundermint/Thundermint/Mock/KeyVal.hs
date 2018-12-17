@@ -12,9 +12,9 @@ module Thundermint.Mock.KeyVal (
 
 import Control.Monad
 import Control.Monad.Catch
-import Control.Monad.IO.Class
 import Data.Int
 import Data.List
+import Data.Typeable   (Proxy(..))
 
 import Data.Map        (Map)
 import Data.Maybe      (isJust)
@@ -37,8 +37,9 @@ import Thundermint.Logger
 import Thundermint.Mock.KeyList
 import Thundermint.Mock.Types
 import Thundermint.P2P
+import Thundermint.Run
 import Thundermint.Store
-import Thundermint.Store.SQLite
+import Thundermint.Store.Internal.Query (Connection,connectionRO)
 
 
 ----------------------------------------------------------------
@@ -53,15 +54,18 @@ genesisBlock valSet = Block
       , headerTime           = Time 0
       , headerLastBlockID    = Nothing
       , headerValidatorsHash = hash valSet
+      , headerDataHash       = hash dat
       }
-  , blockData       = []
+  , blockData       = dat
   , blockLastCommit = Nothing
+  , blockEvidence   = []
   }
+  where dat = [] :: [(String,Int)]
 
-transitions :: BlockFold (Map String Int) [(String,Int)]
+transitions :: BlockFold (Map String Int) alg [(String,Int)]
 transitions = BlockFold
   { processTx           = const process
-  , processBlock        = \_ txs s0 -> foldM (flip process) s0 txs
+  , processBlock        = \b s0 -> foldM (flip process) s0 (blockData b)
   , transactionsToBlock = \_ ->
       let selectTx _ []     = []
           selectTx c (t:tx) = case process t c of
@@ -85,7 +89,7 @@ interpretSpec
   :: Maybe Int64                -- ^ Maximum height
   -> FilePath
   -> NetSpec NodeSpec
-  -> IO [(BlockStorage 'RO IO Ed25519_SHA512 [(String,Int)], IO ())]
+  -> IO [(Connection 'RO Ed25519_SHA512 [(String,Int)], IO ())]
 interpretSpec maxH prefix NetSpec{..} = do
   net <- newMockNet
   forM (Map.toList netAddresses) $ \(addr, NodeSpec{..}) -> do
@@ -94,53 +98,53 @@ interpretSpec maxH prefix NetSpec{..} = do
                   | s <- nspecLogFile
                   ]
     -- Create storage
-    storage  <- newSQLiteBlockStorage
-      (maybe ":memory:" (prefix </>) nspecDbName)
-      (genesisBlock validatorSet) validatorSet
-    hChain   <- blockchainHeight storage
-    return ( makeReadOnly storage
-           , withLogEnv "TM" "DEV" loggers $ \logenv -> runLoggerT "general" logenv $ do
-               -- Blockchain state
-               bchState <- newBChState transitions
-                         $ makeReadOnly (hoistBlockStorageRW liftIO storage)
-               _        <- stateAtH bchState (succ hChain)
-               let appState = AppState
-                     { appStorage        = hoistBlockStorageRW liftIO storage
-                     --
-                     , appValidationFun  = \h a -> do
-                         st <- stateAtH bchState h
-                         return $ isJust $ processBlock transitions h a st
-                     --
-                     , appBlockGenerator = \h -> case nspecByzantine of
-                         Just "InvalidBlock" -> do
-                           return [("XXX", 123)]
-                         _ -> do
+    conn <- openConnection (maybe ":memory:" (prefix </>) nspecDbName)
+    initDatabase conn Proxy (genesisBlock validatorSet) validatorSet
+    runDBT conn $ do
+      hChain <- queryRO blockchainHeight
+      return ( connectionRO conn
+             , runDBT conn $ withLogEnv "TM" "DEV" loggers $ \logenv -> runLoggerT "general" logenv $ do
+                 -- Blockchain state
+                 bchState <- newBChState transitions
+                 _        <- stateAtH bchState (succ hChain)
+                 let appState = AppState
+                       { appValidationFun  = \b -> do
+                           let h = headerHeight $ blockHeader b
                            st <- stateAtH bchState h
-                           let Just k = find (`Map.notMember` st) ["K_" ++ show (n :: Int) | n <- [1 ..]]
-                           return [(k, addr)]
-                     --
-                     , appCommitCallback = \case
-                         h | Just h' <- maxH
-                           , h > Height h'   -> throwM Abort
-                           | otherwise       -> return ()
-                     , appValidator        = nspecPrivKey
-                     , appNextValidatorSet = \_ _ -> return validatorSet
-                     }
-               appCh <- newAppChans
-               runConcurrently
-                 [ setNamespace "net"
-                   $ startPeerDispatcher
-                       defCfg
-                       (createMockNode net "50000" addr)
-                       (addr,"50000")
-                       (map (,"50000") $ connections netAddresses addr)
-                       appCh
-                       (hoistBlockStorageRO liftIO $ makeReadOnly storage)
-                       nullMempoolAny
-                 , setNamespace "consensus"
-                   $ runApplication defCfg appState appCh
-                 ]
-           )
+                           return $ isJust $ processBlock transitions b st
+                       --
+                       , appBlockGenerator = \h _ _ _ -> case nspecByzantine of
+                           Just "InvalidBlock" -> do
+                             return [("XXX", 123)]
+                           _ -> do
+                             st <- stateAtH bchState h
+                             let Just k = find (`Map.notMember` st) ["K_" ++ show (n :: Int) | n <- [1 ..]]
+                             return [(k, addr)]
+                       --
+                       , appCommitCallback = \case
+                           b | Just hM <- maxH
+                             , headerHeight (blockHeader b) > Height hM -> throwM Abort
+                             | otherwise                                -> return ()
+                       , appCommitQuery      = SimpleQuery $ \b -> do
+                           Just vset <- retrieveValidatorSet $ headerHeight $ blockHeader b
+                           return vset
+                       , appValidator        = nspecPrivKey
+                       }
+                 appCh <- newAppChans
+                 let cfg = defCfg :: Configuration Example
+                 runConcurrently
+                   [ setNamespace "net"
+                     $ startPeerDispatcher
+                         (cfgNetwork cfg)
+                         (createMockNode net "50000" addr)
+                         (addr,"50000")
+                         (map (,"50000") $ connections netAddresses addr)
+                         appCh
+                         nullMempoolAny
+                   , setNamespace "consensus"
+                     $ runApplication (cfgConsensus cfg) appState appCh
+                   ]
+             )
   where
     netAddresses = Map.fromList $ [0::Int ..] `zip` netNodeList
     connections  = case netTopology of
@@ -153,7 +157,7 @@ executeSpec
   :: Maybe Int64                -- ^ Maximum height
   -> FilePath
   -> NetSpec NodeSpec
-  -> IO [BlockStorage 'RO IO Ed25519_SHA512 [(String,Int)]]
+  -> IO [Connection 'RO Ed25519_SHA512 [(String,Int)]]
 executeSpec maxH prefix spec = do
   actions <- interpretSpec maxH prefix spec
   runConcurrently (snd <$> actions) `catch` (\Abort -> return ())

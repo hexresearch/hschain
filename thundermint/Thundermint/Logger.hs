@@ -1,10 +1,14 @@
 {-# LANGUAGE DeriveFunctor              #-}
 {-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE LambdaCase                 #-}
+{-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE RecordWildCards            #-}
+{-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE TemplateHaskell            #-}
-{-# OPTIONS_GHC -fno-warn-orphans       #-}
+{-# LANGUAGE UndecidableInstances       #-}
 -- |
 -- Logger
 module Thundermint.Logger (
@@ -16,6 +20,7 @@ module Thundermint.Logger (
   , runLoggerT
   , logOnException
   , withLogEnv
+  , newLogEnv
     -- ** Scribe construction helpers
   , ScribeType(..)
   , ScribeSpec(..)
@@ -59,6 +64,8 @@ import Katip.Scribes.ElasticSearch
 import Thundermint.Control
 import Thundermint.Blockchain.Types
 import Thundermint.Debug.Trace
+import Thundermint.Store.Internal.Query (MonadReadDB(..), MonadDB(..))
+
 
 ----------------------------------------------------------------
 --
@@ -76,6 +83,10 @@ instance MonadLogger m => MonadLogger (MaybeT m) where
   logger sev str a = lift $ logger sev str a
   localNamespace fun (MaybeT m) = MaybeT (localNamespace fun m)
 
+instance MonadLogger m => MonadLogger (ReaderT r m) where
+  logger sev str a = lift $ logger sev str a
+  localNamespace fun (ReaderT m) = ReaderT $ localNamespace fun . m
+
 -- | Change logger's namespace
 setNamespace :: MonadLogger m => Namespace -> m a -> m a
 setNamespace nm = localNamespace (const nm)
@@ -87,7 +98,12 @@ descendNamespace nm = localNamespace $ \(Namespace x) -> Namespace (x ++ [nm])
 -- | Concrete implementation of logger monad
 newtype LoggerT m a = LoggerT (ReaderT (Namespace, LogEnv) m a)
   deriving ( Functor, Applicative, Monad
-           , MonadIO, MonadThrow, MonadCatch, MonadMask, MonadTrans, MonadFork, MonadTrace )
+           , MonadIO, MonadThrow, MonadCatch, MonadMask, MonadTrans
+           , MonadFork, MonadTrace)
+instance (MonadReadDB m alg a) => MonadReadDB (LoggerT m) alg a where
+  askConnectionRO = lift askConnectionRO
+instance (MonadDB m alg a) => MonadDB (LoggerT m) alg a where
+  askConnectionRW = lift askConnectionRW
 
 runLoggerT :: Namespace -> LogEnv -> LoggerT m a -> m a
 runLoggerT nm le (LoggerT m) = runReaderT m (nm,le)
@@ -106,7 +122,13 @@ instance MonadIO m => MonadLogger (LoggerT m) where
 --   but we don't need any
 newtype NoLogsT m a = NoLogsT { runNoLogsT :: m a }
   deriving ( Functor, Applicative, Monad
-           , MonadIO, MonadThrow, MonadCatch, MonadMask, MonadFork, MonadTrace )
+           , MonadIO, MonadThrow, MonadCatch, MonadMask
+           , MonadFork, MonadTrace)
+instance (MonadReadDB m alg a) => MonadReadDB (NoLogsT m) alg a where
+  askConnectionRO = lift askConnectionRO
+instance (MonadDB m alg a) => MonadDB (NoLogsT m) alg a where
+  askConnectionRW = lift askConnectionRW
+
 instance MonadTrans NoLogsT where
   lift = NoLogsT
 
@@ -123,7 +145,8 @@ logOnException = handle logE
           logger InfoS "Killed normally by ThreadKilled" ()
           throwM e
       | SomeException eTy <- e               = do
-          logger ErrorS ("Killed by " <> showLS e <> " :: " <> showLS (typeOf eTy)) ()
+          logger ErrorS "Killed by" (  sl "type" (show (typeOf eTy))
+                                    <> sl "err"  (show eTy))
           throwM e
 
 
@@ -137,38 +160,72 @@ withLogEnv
   -> (Katip.LogEnv -> m a)
   -> m a
 withLogEnv namespace env scribes action
-  = bracket initLE fini $ \leRef -> loop leRef scribes
+  = bracket initLE fini $ \leRef -> loop leRef (names `zip` scribes)
   where
     initLE = liftIO (newIORef =<< Katip.initLogEnv namespace env)
     -- N.B. We need IORef to pass LogEnv with all scribes to fini
     fini   = liftIO . (Katip.closeScribes <=< readIORef)
     --
-    loop leRef []           = action =<< liftIO (readIORef leRef)
-    loop leRef (ios : rest) = mask $ \unmask -> do
+    loop leRef []                = action =<< liftIO (readIORef leRef)
+    loop leRef ((nm,ios) : rest) = mask $ \unmask -> do
       scribe <- liftIO ios
       le  <- liftIO (readIORef leRef)
-      le' <- liftIO (Katip.registerScribe "log" scribe Katip.defaultScribeSettings le)
+      le' <- liftIO (Katip.registerScribe nm scribe Katip.defaultScribeSettings le)
         `onException` liftIO (Katip.scribeFinalizer scribe)
       liftIO (writeIORef leRef le')
       unmask $ loop leRef rest
+    --
+    names = [T.pack ("log_" ++ show i) | i <- [0::Int ..]]
+
+-- | Initialize logging environment and add scribes.
+newLogEnv
+  :: (MonadIO m)
+  => Katip.Namespace
+  -> Katip.Environment
+  -> [IO Katip.Scribe]          -- ^ List of scribes to add to environment
+  -> m Katip.LogEnv
+newLogEnv namespace env scribes = liftIO $ do
+  le <- Katip.initLogEnv namespace env
+  foldM addScribe le (names `zip` scribes)
+  where
+    addScribe le (nm,io) = do
+      scribe <- io
+      Katip.registerScribe nm scribe Katip.defaultScribeSettings le
+    names = [T.pack ("log_" ++ show i) | i <- [0::Int ..]]
+
 
 -- | Type of scribe to use
 data ScribeType
   = ScribeJSON
-  | ScribeES
+  | ScribeES { elasticIndex :: Text }
   | ScribeTXT
   deriving (Show,Eq,Ord,Generic)
-instance ToJSON   ScribeType
-instance FromJSON ScribeType
+instance ToJSON   ScribeType where
+  toJSON = \case
+    ScribeJSON   -> String "ScribeJSON"
+    ScribeTXT    -> String "ScribeTXT"
+    ScribeES{..} -> object [ "tag"   .= ("ScribeES" :: Text)
+                           , "index" .= elasticIndex
+                           ]
+instance FromJSON ScribeType where
+  parseJSON (String "ScribeJSON") = return ScribeJSON
+  parseJSON (String "ScribeTXT" ) = return ScribeTXT
+  parseJSON (String _           ) = fail "Unknown string while decoding ScribeType"
+  parseJSON (Object o) = do
+    tag <- o .: "tag"
+    unless (tag == ("ScribeES" :: Text)) $ fail "Unexpected tag for ScribeType"
+    elasticIndex <- o .: "index"
+    return ScribeES{..}
+  parseJSON _                     = fail "Expecting string or object while decoding ScribeType"
 
 -- | Description of scribe
 data ScribeSpec = ScribeSpec
-  { scribe'type      :: ScribeType
+  { scribe'type      :: !ScribeType
     -- ^ Type of scribe to use
-  , scribe'path      :: Maybe FilePath
+  , scribe'path      :: !(Maybe FilePath)
     -- ^ Log file if not specified will log to stdout
-  , scribe'severity  :: Severity
-  , scribe'verbosity :: Verbosity
+  , scribe'severity  :: !Severity
+  , scribe'verbosity :: !Verbosity
   }
   deriving (Show,Eq,Ord,Generic)
 deriveJSON defaultOptions
@@ -181,18 +238,18 @@ makeScribe ScribeSpec{..} = do
       let (dir,_) = splitFileName path
       createDirectoryIfMissing True dir
   case (scribe'type, scribe'path) of
-    (ScribeTXT,  Nothing) -> mkHandleScribe ColorIfTerminal stdout  sev verb
-    (ScribeTXT,  Just nm) -> mkFileScribe nm sev verb
-    (ScribeES,   Nothing) -> error "Empty ES address"
-    (ScribeES,   Just nm) -> makeEsUrlScribe nm sev verb
-    (ScribeJSON, Nothing) -> makeJsonHandleScribe stdout sev verb
-    (ScribeJSON, Just nm) -> makeJsonFileScribe nm sev verb
+    (ScribeTXT,    Nothing) -> mkHandleScribe ColorIfTerminal stdout  sev verb
+    (ScribeTXT,    Just nm) -> mkFileScribe nm sev verb
+    (ScribeES{},   Nothing) -> error "Empty ES address"
+    (ScribeES{..}, Just nm) -> makeEsUrlScribe nm elasticIndex sev verb
+    (ScribeJSON,   Nothing) -> makeJsonHandleScribe stdout sev verb
+    (ScribeJSON,   Just nm) -> makeJsonFileScribe nm sev verb
   where
     sev  = scribe'severity
     verb = scribe'verbosity
     needToPrepare = case scribe'type of
-        ScribeES -> False
-        _        -> True
+        ScribeES{} -> False
+        _          -> True
 
 
 ----------------------------------------------------------------
@@ -221,8 +278,8 @@ makeJsonFileScribe nm sev verb = do
 -- ES (ElasticSearch) scribe
 ----------------------------------------------------------------
 
-makeEsUrlScribe :: FilePath -> Severity -> Verbosity -> IO Scribe
-makeEsUrlScribe serverPath sev verb = do
+makeEsUrlScribe :: FilePath -> Text -> Severity -> Verbosity -> IO Scribe
+makeEsUrlScribe serverPath index sev verb = do
   mgr <- newTlsManager
   let bhe = mkBHEnv (Server (T.pack serverPath)) mgr
   mkEsScribe
@@ -231,7 +288,7 @@ makeEsUrlScribe serverPath sev verb = do
     -- Reasonable for single-node in development
     -- defaultEsScribeCfgV5 { essIndexSettings = IndexSettings (ShardCound 1) (ReplicaCount 0)}
     bhe
-    (IndexName "xenochain")
+    (IndexName index)
     (MappingName "application-logs")
     sev
     verb
@@ -242,7 +299,7 @@ makeEsUrlScribe serverPath sev verb = do
 ----------------------------------------------------------------
 
 -- | Wrapper for log data for logging purposes
-data LogBlockInfo a = LogBlockInfo Height a
+data LogBlockInfo a = LogBlockInfo !Height !a
 
 instance BlockData a => ToObject (LogBlockInfo a) where
   toObject (LogBlockInfo (Height h) a)

@@ -5,7 +5,7 @@
 -- Abstract API for network which support
 module Thundermint.P2P.Network (
     NetworkAPI(..)
-  , Connection(..)
+  , P2PConnection(..)
     -- * Real network stub
   , realNetworkStub
     -- * Real network
@@ -97,7 +97,7 @@ realNetwork serviceName = (realNetworkStub serviceName)
   accept sock = do
     (conn, addr) <- liftIO $ Net.accept sock
     return (applyConn conn, addr)
-  applyConn conn = Connection (liftIO . sendBS conn) (liftIO $ recvBS conn) (liftIO $ Net.close conn)
+  applyConn conn = P2PConnection (liftIO . sendBS conn) (liftIO $ recvBS conn) (liftIO $ Net.close conn)
   sendBS sock =  \s -> NetLBS.sendAll sock (BB.toLazyByteString $ toFrame s)
                  where
                    toFrame msg = let len =  fromIntegral (LBS.length msg) :: Word32
@@ -147,7 +147,7 @@ realNetworkUdp :: Net.ServiceName -> IO (NetworkAPI Net.SockAddr)
 realNetworkUdp serviceName = do
   -- FIXME: prolly HostName fits better than SockAddr
   tChans <- newTVarIO Map.empty
-  acceptChan <- newTChanIO :: IO (TChan (Connection, Net.SockAddr))
+  acceptChan <- newTChanIO :: IO (TChan (P2PConnection, Net.SockAddr))
   let hints = Net.defaultHints
         { Net.addrFlags      = [Net.AI_PASSIVE]
         , Net.addrSocketType = Net.Datagram
@@ -179,7 +179,7 @@ realNetworkUdp serviceName = do
         recvChan <- newTChan
         writeTVar tChans $ Map.insert addr recvChan chans
         return recvChan
-  applyConn sock addr peerChan = Connection
+  applyConn sock addr peerChan = P2PConnection
     (\s -> liftIO.void $ NetBS.sendAllTo sock (LBS.toStrict s) addr)
     (emptyBs2Maybe <$> liftIO (atomically $ readTChan peerChan))
     (return ())
@@ -258,7 +258,7 @@ createMockNode MockNet{..} port addr = NetworkAPI
   , listenPort = 0
   }
  where
-  applyConn conn = Connection (liftIO . sendBS conn) (liftIO $ recvBS conn) (liftIO $ close conn)
+  applyConn conn = P2PConnection (liftIO . sendBS conn) (liftIO $ recvBS conn) (liftIO $ close conn)
   sendBS MockSocket{..} bs = atomically $
       readTVar msckActive >>= \case
         False -> error "MockNet: Cannot write to closed socket"

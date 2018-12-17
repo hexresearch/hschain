@@ -29,14 +29,17 @@ Library
                      , exceptions        >=0.8.3
                      , filepath
                      , memory            >=0.14.14
+                     , microlens         >=0.4
+                     , microlens-mtl     >=0.1
                      , network-info
                      , pipes             >=4
+                     , prometheus-client
                      , random
                      , random-shuffle
                      , retry             >=0.7.6.2
                      , serialise         >=0.2
                      , sqlite-simple
-                     , stm               >=2.4
+                     , stm               >=2.5
                      , text
                      , time
                      , transformers      >=0.5
@@ -65,6 +68,7 @@ Library
                   Thundermint.Crypto.Containers
                   Thundermint.Debug.Trace
                   Thundermint.Logger
+                  Thundermint.Monitoring
                   Thundermint.Run
                   Thundermint.Mock.Coin
                   Thundermint.Mock.KeyList
@@ -77,8 +81,11 @@ Library
                   Thundermint.P2P.PeerState
                   Thundermint.P2P.Types
                   Thundermint.Store
-                  Thundermint.Store.SQLite
+                  Thundermint.Store.SQL
                   Thundermint.Store.STM
+                  Thundermint.Store.Internal.BlockDB
+                  Thundermint.Store.Internal.Types
+                  Thundermint.Store.Internal.Query
                   Thundermint.Utils
   Other-modules:
                   Thundermint.P2P.Network.Parameters
@@ -125,7 +132,7 @@ Executable thundermint-coin
   Main-is:             coin.hs
 
 Executable thundermint-coin-node
-  Ghc-options:         -Wall -threaded -Wno-orphans -rtsopts "-with-rtsopts=-N -c"
+  Ghc-options:         -Wall -threaded -Wno-orphans -rtsopts "-with-rtsopts=-N -T -c"
   Default-Language:    Haskell2010
   Build-Depends:       base                 >=4.9 && <5
                      , thundermint
@@ -143,32 +150,36 @@ Executable thundermint-coin-node
                      , network              >=2.6.0.0
                      , network-simple       >=0.4.2
                      , optparse-applicative >=0.14
+                     , prometheus-client
+                     , prometheus-metrics-ghc
                      , random
                      , serialise
-                     , transformers
                      , stm
                      , text
+                     , transformers
+                     , wai-middleware-prometheus
+                     , warp
   hs-source-dirs:      exe
   Main-is:             coin-node.hs
 
-Executable thundermint-coin-db
-  Ghc-options:         -Wall -threaded -Wno-orphans
-  Default-Language:    Haskell2010
-  Build-Depends:       base                 >=4.9 && <5
-                     , thundermint
-                     , thundermint-crypto
-                     , aeson
-                     , base58-bytestring    >=0.1
-                     , bytestring           >=0.10
-                     , containers           >=0.5.7
-                     , directory
-                     , filepath
-                     , optparse-applicative >=0.14
-                     , serialise
-                     , stm
-                     , text
-  hs-source-dirs:      exe
-  Main-is:             coin-db.hs
+-- Executable thundermint-coin-db
+--   Ghc-options:         -Wall -threaded -Wno-orphans
+--   Default-Language:    Haskell2010
+--   Build-Depends:       base                 >=4.9 && <5
+--                      , thundermint
+--                      , thundermint-crypto
+--                      , aeson
+--                      , base58-bytestring    >=0.1
+--                      , bytestring           >=0.10
+--                      , containers           >=0.5.7
+--                      , directory
+--                      , filepath
+--                      , optparse-applicative >=0.14
+--                      , serialise
+--                      , stm
+--                      , text
+--   hs-source-dirs:      exe
+--   Main-is:             coin-db.hs
 
 
 -- Test suite
@@ -187,8 +198,10 @@ Test-suite thundermint-tests
                      , directory
                      , exceptions
                      , katip
+                     , microlens
                      , network
                      , random
+                     , sqlite-simple
                      , serialise         >=0.2
                      , stm               >=2.4
                      , tls               >=1.4.1
@@ -201,6 +214,7 @@ Test-suite thundermint-tests
                      , hedgehog-quickcheck
                      , tasty             >=0.11
                      , tasty-hedgehog
+                     , tasty-quickcheck
                      , tasty-hunit       >=0.10
   hs-source-dirs:      test
   Main-is:             Main.hs
@@ -210,6 +224,7 @@ Test-suite thundermint-tests
                        TM.Network
                        TM.NetworkTls
                        TM.P2P
+                       TM.Persistence
                        TM.RealNetwork
                        TM.Serialisation
                        TM.Store

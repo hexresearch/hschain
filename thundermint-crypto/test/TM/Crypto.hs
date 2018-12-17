@@ -2,6 +2,7 @@
 -- |
 module TM.Crypto (tests) where
 
+import qualified Data.Text as T
 import Test.Tasty
 import Test.Tasty.HUnit
 
@@ -56,4 +57,32 @@ tests = testGroup "Crypto"
   $ do let k :: PrivKey Ed25519_SHA512
            k = read "\"Cn6mra73QDNPkyf56Cfoxh9y9HDS8MREPw4GNcCxQb5Q\""
        read "Address \"AhAM9SS8UQUbjrB3cwq9DMtb6mnyz61m9LuBr5kayq9q\"" @=? address (publicKey k)
+    --
+  , testCase "decodeBS . encodeBS = id"
+  $ do privK <- generatePrivKey
+       let pubK = publicKey privK
+           addr = address pubK
+           blob = "ABCD"
+           sign = signBlob privK blob
+       Just privK @=? (decodeFromBS . encodeToBS) privK
+       Just pubK  @=? (decodeFromBS . encodeToBS) pubK
+       Just addr  @=? (decodeFromBS . encodeToBS) addr
+       Just sign  @=? (decodeFromBS . encodeToBS) sign
+    --
+  , testCase "decodeBase58 . encodeBase58 = id"
+  $ do privK <- generatePrivKey
+       let pubK = publicKey privK
+           addr = address pubK
+           blob = "ABCD"
+           sign = signBlob privK blob
+       Just privK @=? (decodeBase58 . encodeBase58) privK
+       Just pubK  @=? (decodeBase58 . encodeBase58) pubK
+       Just addr  @=? (decodeBase58 . encodeBase58) addr
+       Just sign  @=? (decodeBase58 . encodeBase58) sign
+    --
+  , testCase "encodeBase58 is Show compatible"
+  $ do privK <- generatePrivKey
+       let pubK = publicKey privK
+       show privK @=? T.unpack ("\"" <> encodeBase58 privK <> "\"")
+       show pubK  @=? T.unpack ("\"" <> encodeBase58 pubK  <> "\"")
   ]

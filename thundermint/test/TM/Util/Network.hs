@@ -19,6 +19,7 @@ import Control.Monad.IO.Class
 import Control.Concurrent (threadDelay)
 import Control.Retry      (RetryPolicy, constantDelay, limitRetries, recovering)
 import Data.Monoid        ((<>))
+import Data.Proxy         (Proxy(..))
 import GHC.Generics       (Generic)
 
 import qualified Control.Concurrent.Async as Async
@@ -26,7 +27,6 @@ import qualified Control.Exception        as E
 import qualified Data.Map                 as Map
 import qualified Network.Socket           as Net
 
-import Thundermint.Blockchain.Interpretation
 import Thundermint.Blockchain.Internal.Engine.Types
 import Thundermint.Control
 import Thundermint.Crypto
@@ -35,9 +35,10 @@ import Thundermint.Debug.Trace
 import Thundermint.Logger
 import Thundermint.Run
 import Thundermint.Mock.KeyVal
+import Thundermint.Mock.Types
 import Thundermint.P2P.Network
 import Thundermint.Store
-import Thundermint.Store.SQLite
+import Thundermint.Monitoring
 import TM.RealNetwork
 
 testNetworkName :: String
@@ -93,26 +94,32 @@ toPair :: TestNetLinkDescription m -> (Int, [Int])
 toPair TestNetLinkDescription{..} = (ncFrom, ncTo)
 
 
-createTestNetwork :: forall m . (MonadIO m, MonadMask m, MonadFork m) => TestNetDescription m -> m ()
-createTestNetwork = createTestNetworkWithConfig defCfg
+createTestNetwork :: (MonadIO m, MonadMask m, MonadFork m, MonadTMMonitoring m)
+                  => TestNetDescription m -> m ()
+createTestNetwork = createTestNetworkWithConfig (defCfg :: Configuration Example)
 
 
-createTestNetworkWithConfig :: forall m . (MonadIO m, MonadMask m, MonadFork m) => Configuration -> TestNetDescription m -> m ()
+createTestNetworkWithConfig
+  :: forall m app . (MonadIO m, MonadMask m, MonadFork m, MonadTMMonitoring m)
+  => Configuration app -> TestNetDescription m -> m ()
 createTestNetworkWithConfig cfg desc = do
-    net <- liftIO newMockNet
-    acts <- mapM (mkTestNode net) desc
-    runConcurrently $ join acts
+    net  <- liftIO newMockNet
+    withMany (\descr cont -> withConnection ":memory:" (\c -> cont (c,descr))) desc $ \descrList -> do
+      acts <- mapM (mkTestNode net) descrList
+      runConcurrently $ join acts
   where
-    mkTestNode :: (MonadIO m, MonadMask m, MonadFork m) => MockNet TestAddr -> TestNetLinkDescription m -> m [m ()]
-    mkTestNode net TestNetLinkDescription{..} = do
+    mkTestNode
+      :: (MonadIO m, MonadMask m, MonadFork m)
+      => MockNet TestAddr
+      -> (Connection 'RW Ed25519_SHA512 [(String,Int)], TestNetLinkDescription m)
+      -> m [m ()]
+    mkTestNode net (conn, TestNetLinkDescription{..}) = do
         let validatorSet = makeValidatorSetFromPriv testValidators
-        blockStorage <- liftIO $ newSQLiteBlockStorage ":memory:" (genesisBlock validatorSet) validatorSet
-        hChain       <- liftIO $ blockchainHeight blockStorage
-        let run = runTracerT ncCallback . runNoLogsT
+        initDatabase conn Proxy (genesisBlock validatorSet) validatorSet
+        --
+        let run = runTracerT ncCallback . runNoLogsT . runDBT conn
         fmap (map run) $ run $ do
-            bchState     <- newBChState transitions
-                          $ makeReadOnly (hoistBlockStorageRW liftIO blockStorage)
-            _            <- stateAtH bchState (succ hChain)
+            (_,logic) <- logicFromFold transitions
             runNode cfg
               BlockchainNet
                 { bchNetwork          = createMockNode net testNetworkName (TestAddr ncFrom)
@@ -120,14 +127,10 @@ createTestNetworkWithConfig cfg desc = do
                 , bchInitialPeers     = map ((,testNetworkName) . TestAddr) ncTo
                 }
               NodeDescription
-                { nodeStorage         = hoistBlockStorageRW liftIO blockStorage
-                , nodeBlockChainLogic = transitions
+                { nodeCommitCallback  = \_ -> return ()
                 , nodeValidationKey   = Nothing
-                , nodeCommitCallback  = \_ -> return ()
-                , nodeBchState        = bchState
-                , nodeMempool         = nullMempoolAny
                 }
-
+              logic
 
 -- | Simple test to ensure that mock network works at all
 delayedWrite :: (addr, NetworkAPI addr)
