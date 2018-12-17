@@ -40,6 +40,7 @@ import           Codec.Serialise
 import           Codec.Serialise.Decoding
 import           Codec.Serialise.Encoding
 import qualified Data.Aeson               as JSON
+import           Data.Aeson               ((.=), (.:))
 import           Data.ByteString          (ByteString)
 import qualified Data.HashMap.Strict      as HM
 import           Data.Int
@@ -73,7 +74,7 @@ newtype Round = Round Int64
 
 -- | Unix timestamp
 newtype Time = Time Int64
-  deriving (Show, Eq, Ord, Serialise)
+  deriving (Show, Eq, Ord, Serialise, JSON.ToJSON, JSON.FromJSON)
 
 
 
@@ -95,7 +96,10 @@ data Block alg a = Block
     -- ^ Evidence of byzantine behavior by nodes.
   }
   deriving (Show, Eq, Generic)
-instance Serialise a => Serialise (Block alg a)
+instance Serialise     a => Serialise     (Block alg a)
+instance JSON.FromJSON a => JSON.FromJSON (Block alg a)
+instance JSON.ToJSON   a => JSON.ToJSON   (Block alg a)
+
 
 -- | Block header
 data Header alg a = Header
@@ -116,6 +120,26 @@ data Header alg a = Header
   deriving (Show, Eq, Generic)
 instance Serialise (Header alg a)
 
+instance JSON.ToJSON (Header alg a) where
+  toJSON Header{..} =
+    JSON.object [ "headerChainID"        .= Hash headerChainID -- We ask to use Base58
+                , "headerHeight"         .= headerHeight
+                , "headerTime"           .= headerTime
+                , "headerLastBlockID"    .= headerLastBlockID
+                , "headerValidatorsHash" .= headerValidatorsHash
+                , "headerDataHash"       .= headerDataHash
+                ]
+
+instance JSON.FromJSON (Header alg a) where
+  parseJSON = JSON.withObject "Header" $ \o -> do
+    Hash headerChainID <- o .: "headerChainID"
+    headerHeight         <- o .: "headerHeight"
+    headerTime           <- o .: "headerTime"
+    headerLastBlockID    <- o .: "headerLastBlockID"
+    headerValidatorsHash <- o .: "headerValidatorsHash"
+    headerDataHash       <- o .: "headerDataHash"
+    return Header{..}
+
 -- | Evidence of byzantine behaviour by some node.
 data ByzantineEvidence alg a
   = OutOfTurnProposal !(Signed 'Unverified alg (Proposal alg a))
@@ -129,7 +153,10 @@ data ByzantineEvidence alg a
       !(Signed 'Unverified alg (Vote 'PreVote alg a))
     -- ^ Node made conflicting precommits in the same round
   deriving (Show, Eq, Generic)
-instance Serialise (ByzantineEvidence alg a)
+instance Serialise     (ByzantineEvidence alg a)
+instance JSON.FromJSON (ByzantineEvidence alg a)
+instance JSON.ToJSON   (ByzantineEvidence alg a)
+
 
 -- | Data justifying commit
 data Commit alg a = Commit
@@ -139,7 +166,9 @@ data Commit alg a = Commit
     -- ^ List of precommits which justify commit
   }
   deriving (Show, Eq, Generic)
-instance Serialise (Commit alg a)
+instance Serialise     (Commit alg a)
+instance JSON.FromJSON (Commit alg a)
+instance JSON.ToJSON   (Commit alg a)
 
 
 -- | Type class for data which could be put into block
@@ -204,14 +233,18 @@ data Proposal alg a = Proposal
   }
   deriving (Show, Eq, Generic)
 
-instance Serialise (Proposal alg a) where
+instance Serialise     (Proposal alg a)
+instance JSON.FromJSON (Proposal alg a)
+instance JSON.ToJSON   (Proposal alg a)
 
 -- | Type of vote. Used for type-tagging of votes
 data VoteType = PreVote
               | PreCommit
               deriving (Show,Eq,Generic)
 
-instance Serialise VoteType
+instance Serialise     VoteType
+instance JSON.FromJSON VoteType
+instance JSON.ToJSON   VoteType
 
 -- | Single vote cast validator. Type of vote is determined by its
 --   type tag
@@ -230,6 +263,11 @@ instance Serialise (Vote 'PreVote alg a) where
 instance Serialise (Vote 'PreCommit alg a) where
     encode = encodeVote 1
     decode = decodeVote 1
+
+instance JSON.FromJSON (Vote ty alg a)
+instance JSON.ToJSON   (Vote ty alg a)
+
+
 
 encodeVote :: Word -> Vote ty alg a -> Encoding
 encodeVote tag Vote{..} =
