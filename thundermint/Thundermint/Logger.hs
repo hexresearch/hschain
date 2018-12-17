@@ -20,6 +20,7 @@ module Thundermint.Logger (
   , runLoggerT
   , logOnException
   , withLogEnv
+  , newLogEnv
     -- ** Scribe construction helpers
   , ScribeType(..)
   , ScribeSpec(..)
@@ -159,20 +160,39 @@ withLogEnv
   -> (Katip.LogEnv -> m a)
   -> m a
 withLogEnv namespace env scribes action
-  = bracket initLE fini $ \leRef -> loop leRef scribes
+  = bracket initLE fini $ \leRef -> loop leRef (names `zip` scribes)
   where
     initLE = liftIO (newIORef =<< Katip.initLogEnv namespace env)
     -- N.B. We need IORef to pass LogEnv with all scribes to fini
     fini   = liftIO . (Katip.closeScribes <=< readIORef)
     --
-    loop leRef []           = action =<< liftIO (readIORef leRef)
-    loop leRef (ios : rest) = mask $ \unmask -> do
+    loop leRef []                = action =<< liftIO (readIORef leRef)
+    loop leRef ((nm,ios) : rest) = mask $ \unmask -> do
       scribe <- liftIO ios
       le  <- liftIO (readIORef leRef)
-      le' <- liftIO (Katip.registerScribe "log" scribe Katip.defaultScribeSettings le)
+      le' <- liftIO (Katip.registerScribe nm scribe Katip.defaultScribeSettings le)
         `onException` liftIO (Katip.scribeFinalizer scribe)
       liftIO (writeIORef leRef le')
       unmask $ loop leRef rest
+    --
+    names = [T.pack ("log_" ++ show i) | i <- [0::Int ..]]
+
+-- | Initialize logging environment and add scribes.
+newLogEnv
+  :: (MonadIO m)
+  => Katip.Namespace
+  -> Katip.Environment
+  -> [IO Katip.Scribe]          -- ^ List of scribes to add to environment
+  -> m Katip.LogEnv
+newLogEnv namespace env scribes = liftIO $ do
+  le <- Katip.initLogEnv namespace env
+  foldM addScribe le (names `zip` scribes)
+  where
+    addScribe le (nm,io) = do
+      scribe <- io
+      Katip.registerScribe nm scribe Katip.defaultScribeSettings le
+    names = [T.pack ("log_" ++ show i) | i <- [0::Int ..]]
+
 
 -- | Type of scribe to use
 data ScribeType
