@@ -184,13 +184,15 @@ realNetworkUdp serviceName = do
         writeTVar tChans $ Map.insert addr recvChan chans
         return recvChan
   applyConn sock addr peerChan tChans = P2PConnection
-    (\s -> liftIO.void $ NetBS.sendAllTo sock (LBS.toStrict s) addr)
+    (\s -> liftIO.void $ mapM_ (flip (NetBS.sendAllTo sock) addr . LBS.toStrict) $ splitToChunks s addr)
     (emptyBs2Maybe <$> liftIO (atomically $ readTChan peerChan))
     (close addr tChans)
+  sendSplitted frontVar msg = 
   close addr tChans = do
     liftIO . atomically $ do
       chans <- readTVar tChans
       writeTVar tChans $ Map.delete addr chans
+  splitToChunks 
 
 
 ----------------------------------------------------------------
