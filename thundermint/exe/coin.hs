@@ -7,6 +7,8 @@ import Options.Applicative
 import qualified Data.Aeson            as JSON
 import qualified Data.ByteString.Char8 as BC8
 
+import Data.Monoid ((<>))
+
 import Thundermint.Blockchain.Types
 import Thundermint.Run
 import Thundermint.Mock.Coin

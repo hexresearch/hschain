@@ -54,6 +54,7 @@ import Thundermint.P2P.Types
 import qualified Thundermint.P2P.Network.IpAddresses as Ip
 
 
+
 -- | API implementation for real tcp network
 realNetwork :: Net.ServiceName -> NetworkAPI Net.SockAddr
 realNetwork serviceName = (realNetworkStub serviceName)
@@ -160,15 +161,18 @@ realNetworkUdp serviceName = do
       forever $ do
         (bs, addr) <- NetBS.recvFrom sock 4096
         recvChan <- findOrCreateRecvChan tChans addr
-        atomically $ writeTChan acceptChan (applyConn sock addr recvChan, addr)
+        atomically $ writeTChan acceptChan (applyConn sock addr recvChan tChans, addr)
         atomically $ writeTChan recvChan $ LBS.fromStrict bs
 
-  return $ (realNetworkStub serviceName)
+  return $ NetworkAPI
     { listenOn =
         return (liftIO $ killThread tid, liftIO.atomically $ readTChan acceptChan)
       --
     , connect  = \addr ->
-         applyConn sock addr <$> findOrCreateRecvChan tChans addr
+         flip (applyConn sock addr) tChans <$> findOrCreateRecvChan tChans addr
+    , filterOutOwnAddresses = filterOutOwnAddresses (realNetworkStub serviceName)
+    , normalizeNodeAddress = normalizeNodeAddress (realNetworkStub serviceName)
+    , listenPort = listenPort (realNetworkStub serviceName)
     }
  where
   findOrCreateRecvChan tChans addr = liftIO.atomically $ do
@@ -179,10 +183,14 @@ realNetworkUdp serviceName = do
         recvChan <- newTChan
         writeTVar tChans $ Map.insert addr recvChan chans
         return recvChan
-  applyConn sock addr peerChan = P2PConnection
+  applyConn sock addr peerChan tChans = P2PConnection
     (\s -> liftIO.void $ NetBS.sendAllTo sock (LBS.toStrict s) addr)
     (emptyBs2Maybe <$> liftIO (atomically $ readTChan peerChan))
-    (return ())
+    (close addr tChans)
+  close addr tChans = do
+    liftIO . atomically $ do
+      chans <- readTVar tChans
+      writeTVar tChans $ Map.delete addr chans
 
 
 ----------------------------------------------------------------

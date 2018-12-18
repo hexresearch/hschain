@@ -1,4 +1,5 @@
 {-# LANGUAGE ApplicativeDo       #-}
+{-# LANGUAGE BangPatterns        #-}
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE OverloadedStrings   #-}
@@ -12,6 +13,7 @@ import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Reader
 import Data.Int
+import Data.Monoid ((<>))
 import Options.Applicative
 
 import Katip.Core           (showLS)
