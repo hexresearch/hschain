@@ -117,6 +117,7 @@ newMempool validation = do
             foldl' (\m (_,tx) -> Map.delete tx m) m0 invalidTx
           modifyTVar' varTxSet  $ \s0 ->
             foldl' (\s(_,tx) -> Set.delete (hash tx) s) s0 invalidTx
+          modifyTVar' varFiltered (+ (length invalidTx))
     --
     , mempoolStats = liftIO $ atomically $ do
         mempool'size      <- IMap.size <$> readTVar varFIFO
