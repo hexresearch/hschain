@@ -402,7 +402,7 @@ makeHeightParameters ConsensusCfg{..} AppState{..} AppChans{..} = do
         usingGauge prometheusRound  curR
     --
     , createProposal = \r commit -> lift $ do
-        currentT <- Time . round <$> liftIO getPOSIXTime
+        currentT <- getCurrentTime
         bData    <- appBlockGenerator (succ h) currentT commit []
         lastBID  <- queryRO $ retrieveBlockID =<< blockchainHeight
         let block = Block

@@ -15,6 +15,7 @@ module Thundermint.Blockchain.Types (
   , Round(..)
   , Time(..)
   , getCurrentTime
+  , timeToUTC
     -- * Basic data types for blockchain
   , BlockID
   , Block(..)
@@ -46,10 +47,10 @@ import           Data.Aeson               ((.=), (.:))
 import           Data.ByteString          (ByteString)
 import qualified Data.HashMap.Strict      as HM
 import           Data.Int
-import           Data.Fixed               (Pico)
 import           Data.Map                 (Map)
 import           Data.Monoid              ((<>))
-import           Data.Time.Clock.POSIX    (getPOSIXTime)
+import           Data.Time.Clock          (UTCTime)
+import           Data.Time.Clock.POSIX    (getPOSIXTime,posixSecondsToUTCTime)
 import           GHC.Generics             (Generic)
 import qualified Katip
 
@@ -84,7 +85,11 @@ newtype Time = Time Int64
 getCurrentTime :: MonadIO m => m Time
 getCurrentTime = do
   t <- liftIO getPOSIXTime
-  return $! Time $ round $ 1000 * (realToFrac t :: Pico)
+  return $! Time $ round $ 1000 * t
+
+-- | Convert timestamp to UTCTime
+timeToUTC :: Time -> UTCTime
+timeToUTC (Time t) = posixSecondsToUTCTime (realToFrac t / 1000)
 
 
 ----------------------------------------------------------------
