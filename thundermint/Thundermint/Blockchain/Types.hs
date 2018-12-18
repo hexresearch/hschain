@@ -14,6 +14,7 @@ module Thundermint.Blockchain.Types (
     Height(..)
   , Round(..)
   , Time(..)
+  , getCurrentTime
     -- * Basic data types for blockchain
   , BlockID
   , Block(..)
@@ -39,13 +40,16 @@ module Thundermint.Blockchain.Types (
 import           Codec.Serialise
 import           Codec.Serialise.Decoding
 import           Codec.Serialise.Encoding
+import           Control.Monad.IO.Class   (MonadIO(..))
 import qualified Data.Aeson               as JSON
 import           Data.Aeson               ((.=), (.:))
 import           Data.ByteString          (ByteString)
 import qualified Data.HashMap.Strict      as HM
 import           Data.Int
+import           Data.Fixed               (Pico)
 import           Data.Map                 (Map)
 import           Data.Monoid              ((<>))
+import           Data.Time.Clock.POSIX    (getPOSIXTime)
 import           GHC.Generics             (Generic)
 import qualified Katip
 
@@ -72,10 +76,15 @@ newtype Height = Height Int64
 newtype Round = Round Int64
   deriving (Show, Eq, Ord, Serialise, JSON.ToJSON, JSON.FromJSON, Enum)
 
--- | Unix timestamp
+-- | Time in milliseconds since UNIX epoch.
 newtype Time = Time Int64
   deriving (Show, Eq, Ord, Serialise, JSON.ToJSON, JSON.FromJSON)
 
+-- | Get current time
+getCurrentTime :: MonadIO m => m Time
+getCurrentTime = do
+  t <- liftIO getPOSIXTime
+  return $! Time $ round $ 1000 * (realToFrac t :: Pico)
 
 
 ----------------------------------------------------------------
