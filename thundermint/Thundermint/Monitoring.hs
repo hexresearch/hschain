@@ -86,25 +86,25 @@ createMonitoring prefix = do
     "gossip_rx_prevote"
     "Number of received prevotes"
   prometheusGossipTxPV <- makeGauge fromIntegral
-    "gossip_rx_prevote"
+    "gossip_tx_prevote"
     "Number of transmitted prevotes"
   prometheusGossipRxPC <- makeGauge fromIntegral
     "gossip_rx_precommit"
     "Number of received precommits"
   prometheusGossipTxPC <- makeGauge fromIntegral
-    "gossip_rx_precommit"
+    "gossip_tx_precommit"
     "Number of transmitted precommits"
   prometheusGossipRxP <- makeGauge fromIntegral
     "gossip_rx_proposal"
     "Number of received proposals"
   prometheusGossipTxP <- makeGauge fromIntegral
-    "gossip_rx_proposal"
+    "gossip_tx_proposal"
     "Number of transmitted proposals"
   prometheusGossipRxB <- makeGauge fromIntegral
     "gossip_rx_block"
     "Number of received blocks"
   prometheusGossipTxB <- makeGauge fromIntegral
-    "gossip_rx_blocks"
+    "gossip_tx_blocks"
     "Number of transmitted blocks"
   --
   prometheusMsgQueue <- makeGauge fromIntegral
