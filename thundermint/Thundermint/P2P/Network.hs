@@ -36,7 +36,7 @@ import Data.Bits              (unsafeShiftL)
 import Data.List              (find)
 import Data.Maybe             (fromMaybe)
 import Data.Monoid            ((<>))
-import Data.Word              (Word32)
+import Data.Word              (Word32, Word8)
 import System.Timeout         (timeout)
 
 import qualified Data.ByteString.Builder        as BB
@@ -187,7 +187,27 @@ realNetworkUdp serviceName = do
     (\s -> liftIO.void $ mapM_ (flip (NetBS.sendAllTo sock) addr . LBS.toStrict) $ splitToChunks s addr)
     (emptyBs2Maybe <$> liftIO (atomically $ readTChan peerChan))
     (close addr tChans)
-  sendSplitted frontVar msg = 
+  sendSplitted frontVar sock msg = so
+    front <- atomically $ do -- slightly overkill, but in line with other's code.
+      i <- readTVar frontVar
+      writeTVar frontVar $ i + 1
+      return i
+    forM_ splitChunks $ \(ofs, chunk) -> do
+      NetBS.sendAllTo sock $ LBS.toStrict $ LBS.concat [
+    where
+      splitChunks = splitToChunks s
+  chunkSize = 1400
+  splitToChunks s
+    | LBS.length s < 1 = [(0, s)] -- do not lose empty messages.
+    | otherwise = go ofs s
+    where
+      len = LBS.length s
+      go ofs bs
+        | LBS.length bs < 1 = []
+        | LBS.length bs == chunkSize = [(ofs, bs), (ofs + chunkSize, LBS.empty)]
+        | otherwise = (ofs, hd) : go (ofs + LBS.length hd) tl
+        where
+          (hd,tl) = LBS.splitAt chunkSize
   close addr tChans = do
     liftIO . atomically $ do
       chans <- readTVar tChans
