@@ -14,6 +14,7 @@ import Control.Monad.Trans.Class
 import Control.Monad.Trans.Maybe
 import Control.Concurrent.STM
 import Data.Foldable
+import Data.List (nub)
 import qualified Data.Map             as Map
 import qualified Data.IntMap          as IMap
 import qualified Data.Set             as Set
@@ -182,6 +183,10 @@ newMempool validation = do
                       ]
             | let trueTX = Set.fromList (hash <$> toList fifo)
             , trueTX /= tx
+            ]
+          , [ "Duplicate transactions present"
+            | let txs = toList fifo
+            , nub txs /= txs
             ]
           ]
     }
