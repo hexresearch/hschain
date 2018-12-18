@@ -321,9 +321,10 @@ makeHeightParameters ConsensusCfg{..} AppState{..} AppChans{..} = do
     --
     , broadcastProposal = \r bid lockInfo ->
         forM_ appValidator $ \(PrivValidator pk) -> do
+          t <- getCurrentTime
           let prop = Proposal { propHeight    = succ h
                               , propRound     = r
-                              , propTimestamp = Time 0
+                              , propTimestamp = t
                               , propPOL       = lockInfo
                               , propBlockID   = bid
                               }
@@ -352,9 +353,10 @@ makeHeightParameters ConsensusCfg{..} AppState{..} AppChans{..} = do
     --
     , castPrevote     = \r b ->
         forM_ appValidator $ \(PrivValidator pk) -> do
+          t <-  getCurrentTime
           let vote = Vote { voteHeight  = succ h
                           , voteRound   = r
-                          , voteTime    = Time 0
+                          , voteTime    = t
                           , voteBlockID = b
                           }
               svote  = signValue pk vote
@@ -367,10 +369,10 @@ makeHeightParameters ConsensusCfg{..} AppState{..} AppChans{..} = do
     --
     , castPrecommit   = \r b ->
         forM_ appValidator $ \(PrivValidator pk) -> do
-          currentT <- round <$> liftIO getPOSIXTime
+          t <- getCurrentTime
           let vote = Vote { voteHeight  = succ h
                           , voteRound   = r
-                          , voteTime    = Time currentT
+                          , voteTime    = t
                           , voteBlockID = b
                           }
               svote  = signValue pk vote
