@@ -878,13 +878,13 @@ logGossip PeerChans{..} = do
   gossip'TxPex <- readSend cntGossipPex
   gossip'RxPex <- readRecv cntGossipPex
   --
-  usingGauge prometheusGossipTxPV gossip'TxPV
-  usingGauge prometheusGossipRxPV gossip'RxPV
-  usingGauge prometheusGossipTxPC gossip'TxPC
-  usingGauge prometheusGossipRxPC gossip'RxPC
-  usingGauge prometheusGossipTxP  gossip'TxP
-  usingGauge prometheusGossipRxP  gossip'RxP
-  usingGauge prometheusGossipTxB  gossip'TxB
-  usingGauge prometheusGossipRxB  gossip'RxB
+  usingVector prometheusGossip ("TX","prevote")   gossip'TxPV
+  usingVector prometheusGossip ("RX","prevote")   gossip'RxPV
+  usingVector prometheusGossip ("TX","precommit") gossip'TxPC
+  usingVector prometheusGossip ("RX","precommit") gossip'RxPC
+  usingVector prometheusGossip ("TX","proposal")  gossip'TxP
+  usingVector prometheusGossip ("RX","proposal")  gossip'RxP
+  usingVector prometheusGossip ("TX","block")     gossip'TxB
+  usingVector prometheusGossip ("RX","block")     gossip'RxB
   --
   logger InfoS "Gossip stats" LogGossip{..}
