@@ -190,6 +190,27 @@ realNetworkUdp serviceName = do
     (\s -> liftIO.void $ sendSplitted frontVar sock addr s)
     (emptyBs2Maybe <$> liftIO (atomically $ readTChan peerChan))
     (close addr tChans)
+  receiveAction frontsVar peerChan = do
+    (message, logMsg) <- atomically $ do
+      serializedTriple <- readTChan peerChan
+      case CBOR.deserialiseOrFail serializedTriple of
+        Right (front, ofs, chunk) -> do
+          fronts <- readTVar frontsVar
+          let (newFronts, message) = updateMessages front ofs chunk fronts
+          writeTVar frontsVar newFronts
+          return (message, "")
+        Left err -> return (LBS.empty, "unable to deserialize packet")
+    if null logMsg
+      then return $ emptyBs2Maybe message
+      else do
+        putStrLn $ "error in assembling packet: " ++ logMsg
+        return Nothing
+  updateMessages :: Word8 -> Word32 -> LBS.ByteString -> Map.Map Word8 [(Word32, LBS.ByteString)]
+                 -> (Map.Map Word8 [(Word32, LBS.ByteString)], LBS.ByteString)
+  updateMessages front ofs chunk fronts = (newFronts, extractedMessage)
+    where
+      newFronts = error "newFronts"
+      extractedMessage = error "extracted message"
   sendSplitted frontVar sock addr msg = do
     front <- atomically $ do -- slightly overkill, but in line with other's code.
       i <- readTVar frontVar
