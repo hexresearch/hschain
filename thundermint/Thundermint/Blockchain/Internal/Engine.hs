@@ -27,7 +27,6 @@ import           Data.Maybe    (fromMaybe)
 import           Data.Function
 import           Data.Monoid   ((<>))
 import Data.Text             (Text)
-import Data.Time.Clock.POSIX (getPOSIXTime)
 import Pipes                 (Pipe,runEffect,yield,await,(>->))
 
 import Thundermint.Blockchain.Internal.Engine.Types
@@ -282,6 +281,8 @@ makeHeightParameters ConsensusCfg{..} AppState{..} AppChans{..} = do
   Just valSet  <- queryRO $ retrieveValidatorSet (succ h)
   oldValSet    <- queryRO $ retrieveValidatorSet  h
   Just genesis <- queryRO $ retrieveBlock        (Height 0)
+  bchTime      <- do Just b <- queryRO $ retrieveBlock h
+                     return $ headerTime $ blockHeader b
   let proposerChoice (Round r) =
         let Height h' = h
             n         = validatorSetSize valSet
@@ -291,6 +292,7 @@ makeHeightParameters ConsensusCfg{..} AppState{..} AppChans{..} = do
   --
   return HeightParameters
     { currentH        = succ h
+    , currentTime     = bchTime
     , validatorSet    = valSet
     , oldValidatorSet = oldValSet
       -- FIXME: this is some random algorithms that should probably
@@ -402,9 +404,21 @@ makeHeightParameters ConsensusCfg{..} AppState{..} AppChans{..} = do
         usingGauge prometheusRound  curR
     --
     , createProposal = \r commit -> lift $ do
-        currentT <- getCurrentTime
-        bData    <- appBlockGenerator (succ h) currentT commit []
         lastBID  <- queryRO $ retrieveBlockID =<< blockchainHeight
+        -- Calculate time for block.
+        currentT <- case h of
+          -- For block at H=1 we in rather arbitrary manner take time
+          -- of genesis + 1s
+          Height 0 -> do Just b <- queryRO $ retrieveBlock (Height 0)
+                         let Time t = headerTime $ blockHeader b
+                         return $! Time (t + 1000)
+          -- Otherwise we take time from commit and if for some reason
+          -- we can't we have corrupted commit for latest block and
+          -- can't continue anyway.
+          _        -> case join $ liftA2 commitTime oldValSet commit of
+            Just t  -> return t
+            Nothing -> error "Corrupted commit. Cannot generate block"
+        bData    <- appBlockGenerator (succ h) currentT commit []
         let block = Block
               { blockHeader     = Header
                   { headerChainID        = headerChainID $ blockHeader genesis
