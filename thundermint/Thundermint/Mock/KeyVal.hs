@@ -130,8 +130,8 @@ interpretSpec maxH prefix NetSpec{..} = do
                            return vset
                        , appValidator        = nspecPrivKey
                        }
-                 appCh <- newAppChans
                  let cfg = defCfg :: Configuration Example
+                 appCh <- newAppChans (cfgConsensus cfg)
                  runConcurrently
                    [ setNamespace "net"
                      $ startPeerDispatcher
