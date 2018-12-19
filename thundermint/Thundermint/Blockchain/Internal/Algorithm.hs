@@ -76,6 +76,8 @@ data Message alg a
 data HeightParameters (m :: * -> *) alg a = HeightParameters
   { currentH             :: !Height
     -- ^ Height we're on.
+  , currentTime          :: !Time
+    -- ^ Time of last block
   , validatorSet         :: !(ValidatorSet alg)
     -- ^ Validator set for current height
   , oldValidatorSet      :: !(Maybe (ValidatorSet alg))
