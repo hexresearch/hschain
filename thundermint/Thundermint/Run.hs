@@ -186,7 +186,7 @@ runNode cfg BlockchainNet{..} NodeDescription{..} NodeLogic{..} = do
         , appValidator        = nodeValidationKey
         }
   -- Networking
-  appCh <- newAppChans
+  appCh <- newAppChans (cfgConsensus cfg)
   return
     [ id $ setNamespace "net"
          $ startPeerDispatcher (cfgNetwork cfg)

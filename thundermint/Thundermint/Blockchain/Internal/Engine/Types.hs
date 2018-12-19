@@ -33,6 +33,7 @@ module Thundermint.Blockchain.Internal.Engine.Types (
 import Control.Applicative
 import Control.Concurrent.STM
 import Data.Aeson
+import Numeric.Natural
 import GHC.Generics           (Generic)
 
 import Thundermint.Blockchain.Internal.Message
@@ -56,10 +57,11 @@ data Configuration app = Configuration
 --   timeout and second is increment. Unit of measurements for time is
 --   ms.
 data ConsensusCfg = ConsensusCfg
-  { timeoutNewHeight :: !(Int,Int)
-  , timeoutProposal  :: !(Int,Int)
-  , timeoutPrevote   :: !(Int,Int)
-  , timeoutPrecommit :: !(Int,Int)
+  { timeoutNewHeight  :: !(Int,Int)
+  , timeoutProposal   :: !(Int,Int)
+  , timeoutPrevote    :: !(Int,Int)
+  , timeoutPrecommit  :: !(Int,Int)
+  , incomingQueueSize :: !Natural
   }
   deriving (Show,Generic)
 
@@ -96,14 +98,16 @@ instance DefaultConfig app => FromJSON (Configuration app) where
       cfg = defCfg :: Configuration app
       --
       parseC ConsensusCfg{..} = withObject "Configuration.ConsesusCfg" $ \o -> do
-        tH  <- field "timeoutNewHeight"  timeoutNewHeight o
-        tP  <- field "timeoutProposal"   timeoutProposal  o
-        tPV <- field "timeoutPrevote"    timeoutPrevote   o
-        tPC <- field "timeoutPrecommit"  timeoutPrecommit o
-        return ConsensusCfg{ timeoutNewHeight = tH
-                           , timeoutProposal  = tP
-                           , timeoutPrevote   = tPV
-                           , timeoutPrecommit = tPC
+        tH  <- field "timeoutNewHeight"  timeoutNewHeight  o
+        tP  <- field "timeoutProposal"   timeoutProposal   o
+        tPV <- field "timeoutPrevote"    timeoutPrevote    o
+        tPC <- field "timeoutPrecommit"  timeoutPrecommit  o
+        qs  <- field "incomingQueueSize" incomingQueueSize o
+        return ConsensusCfg{ timeoutNewHeight  = tH
+                           , timeoutProposal   = tP
+                           , timeoutPrevote    = tPV
+                           , timeoutPrecommit  = tPC
+                           , incomingQueueSize = qs
                            }
       --
       parseN NetworkCfg{..} = withObject "Configuration.NetworkCfg" $ \o -> do

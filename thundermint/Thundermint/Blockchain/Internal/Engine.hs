@@ -47,10 +47,10 @@ import Katip (Severity(..), sl)
 --
 ----------------------------------------------------------------
 
-newAppChans :: (MonadIO m, Crypto alg, Serialise a) => m (AppChans m alg a)
-newAppChans = do
+newAppChans :: (MonadIO m, Crypto alg, Serialise a) => ConsensusCfg -> m (AppChans m alg a)
+newAppChans ConsensusCfg{incomingQueueSize = sz} = do
   -- 7 is magical no good reason to use 7 but no reason against it either
-  appChanRx         <- liftIO $ newTBQueueIO 7
+  appChanRx         <- liftIO $ newTBQueueIO sz
   appChanRxInternal <- liftIO   newTQueueIO
   appChanTx         <- liftIO   newBroadcastTChanIO
   appTMState        <- liftIO $ newTVarIO Nothing
