@@ -26,6 +26,8 @@ module Thundermint.P2P.Network (
   , Ip.getLocalAddresses
   ) where
 
+import qualified Codec.Serialise as CBOR
+
 import Control.Concurrent.STM
 
 import Control.Concurrent     (forkIO, killThread)
@@ -160,8 +162,8 @@ realNetworkUdp serviceName = do
       Net.bind sock (Net.addrAddress addrInfo)
       forever $ do
         (bs, addr) <- NetBS.recvFrom sock 4096
-        recvChan <- findOrCreateRecvChan tChans addr
-        atomically $ writeTChan acceptChan (applyConn sock addr recvChan tChans, addr)
+        (recvChan, frontVar) <- findOrCreateRecvChan tChans addr
+        atomically $ writeTChan acceptChan (applyConn sock addr frontVar recvChan tChans, addr)
         atomically $ writeTChan recvChan $ LBS.fromStrict bs
 
   return $ NetworkAPI
@@ -169,7 +171,7 @@ realNetworkUdp serviceName = do
         return (liftIO $ killThread tid, liftIO.atomically $ readTChan acceptChan)
       --
     , connect  = \addr ->
-         flip (applyConn sock addr) tChans <$> findOrCreateRecvChan tChans addr
+         (\(peerChan, frontVar) ->applyConn sock addr frontVar peerChan tChans) <$> findOrCreateRecvChan tChans addr
     , filterOutOwnAddresses = filterOutOwnAddresses (realNetworkStub serviceName)
     , normalizeNodeAddress = normalizeNodeAddress (realNetworkStub serviceName)
     , listenPort = listenPort (realNetworkStub serviceName)
@@ -178,41 +180,40 @@ realNetworkUdp serviceName = do
   findOrCreateRecvChan tChans addr = liftIO.atomically $ do
     chans <- readTVar tChans
     case Map.lookup addr chans of
-      Just chan -> return chan
+      Just chanFrontVar -> return chanFrontVar
       Nothing   -> do
         recvChan <- newTChan
-        writeTVar tChans $ Map.insert addr recvChan chans
-        return recvChan
-  applyConn sock addr peerChan tChans = P2PConnection
-    (\s -> liftIO.void $ mapM_ (flip (NetBS.sendAllTo sock) addr . LBS.toStrict) $ splitToChunks s addr)
+        frontVar <- newTVar (0 :: Word8)
+        writeTVar tChans $ Map.insert addr (recvChan, frontVar) chans
+        return (recvChan, frontVar)
+  applyConn sock addr frontVar peerChan tChans = P2PConnection
+    (\s -> liftIO.void $ sendSplitted frontVar sock addr s)
     (emptyBs2Maybe <$> liftIO (atomically $ readTChan peerChan))
     (close addr tChans)
-  sendSplitted frontVar sock msg = so
+  sendSplitted frontVar sock addr msg = do
     front <- atomically $ do -- slightly overkill, but in line with other's code.
       i <- readTVar frontVar
       writeTVar frontVar $ i + 1
       return i
     forM_ splitChunks $ \(ofs, chunk) -> do
-      NetBS.sendAllTo sock $ LBS.toStrict $ LBS.concat [
+      flip (NetBS.sendAllTo sock) addr $ LBS.toStrict $ CBOR.serialise (front, ofs, chunk)
     where
-      splitChunks = splitToChunks s
+      splitChunks = splitToChunks msg
   chunkSize = 1400
   splitToChunks s
     | LBS.length s < 1 = [(0, s)] -- do not lose empty messages.
-    | otherwise = go ofs s
+    | otherwise = go 0 s
     where
-      len = LBS.length s
       go ofs bs
         | LBS.length bs < 1 = []
         | LBS.length bs == chunkSize = [(ofs, bs), (ofs + chunkSize, LBS.empty)]
         | otherwise = (ofs, hd) : go (ofs + LBS.length hd) tl
         where
-          (hd,tl) = LBS.splitAt chunkSize
+          (hd,tl) = LBS.splitAt chunkSize bs
   close addr tChans = do
     liftIO . atomically $ do
       chans <- readTVar tChans
       writeTVar tChans $ Map.delete addr chans
-  splitToChunks 
 
 
 ----------------------------------------------------------------
