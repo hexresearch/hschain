@@ -217,8 +217,8 @@ newHeight HeightParameters{..} lastCommit = do
   return TMState
     { smRound         = Round 0
     , smStep          = StepNewHeight
-    , smPrevotesSet   = emptySignedSetMap validatorSet
-    , smPrecommitsSet = emptySignedSetMap validatorSet
+    , smPrevotesSet   = emptySignedSetMap validatorSet voteBlockID
+    , smPrecommitsSet = emptySignedSetMap validatorSet voteBlockID
     , smProposals     = Map.empty
     , smLockedBlock   = Nothing
     , smLastCommit    = lastCommit
@@ -352,10 +352,9 @@ checkTransitionPrecommit par@HeightParameters{..} r sm@(TMState{..})
   --        height. A & B will never receive +2/3 vote at rounds R+x
   --        since there are only 2 validators at height H. But at some
   --        later moment they'll get
-  | Just Vote{..} <- majority23at r smPrecommitsSet
-  , Just bid      <- voteBlockID
+  | Just (Just bid) <- majority23at r smPrecommitsSet
     = do logger InfoS "Decision to commit" $ LogCommit currentH bid
-         acceptBlock voteRound bid
+         acceptBlock r bid
          commitBlock Commit{ commitBlockID    = bid
                            , commitPrecommits = valuesAtR r smPrecommitsSet
                            }
@@ -364,8 +363,7 @@ checkTransitionPrecommit par@HeightParameters{..} r sm@(TMState{..})
   --  * We are at Precommit step [FIXME?]
   --  => goto Propose(H,R+1)
   | r == smRound
-  , Just Vote{..} <- majority23at r smPrecommitsSet
-  , Nothing       <- voteBlockID
+  , Just Nothing <- majority23at r smPrecommitsSet
     = enterPropose par (succ r) sm Reason'PC_Nil
   --  * We have +2/3 precommits for some round (R+x)
   --  => goto Precommit(H,R+x)
@@ -439,10 +437,10 @@ enterPrevote par@HeightParameters{..} r (unlockOnPrevote -> sm@TMState{..}) reas
           case propPOL of
             Just lockR ->
               case majority23at lockR smPrevotesSet of
-                Just v
+                Just bid
                   | lockR < propRound
-                  , voteBlockID v == Just propBlockID -> checkPrevoteBlock propBlockID
-                  | otherwise                         -> do
+                  , bid == Just propBlockID -> checkPrevoteBlock propBlockID
+                  | otherwise               -> do
                       --  FIXME: Byzantine!
                       logger WarningS "BYZANTINE proposal POL BID does not match votes" ()
                       return Nothing
@@ -511,8 +509,8 @@ enterPrecommit par@HeightParameters{..} r sm@TMState{..} reason = do
   where
     (precommitBlock,lock)
       -- We have polka at round R
-      | Just v <- majority23at r smPrevotesSet
-        = case voteBlockID v of
+      | Just mbid <- majority23at r smPrevotesSet
+        = case mbid of
             -- Polka for NIL. Unlock and precommit NIL
             Nothing  -> ( Nothing
                         , Nothing)
