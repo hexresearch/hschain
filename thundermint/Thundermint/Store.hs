@@ -363,6 +363,8 @@ data BlockchainInconsistency
   | InvalidLocalCommit !Height !String
   -- ^ Commit which justified commit of block at height H is invalid
   --   for some reason.
+  | BlockInvalidTime !Height
+  -- ^ Block contains invalid time in header
   deriving (Eq, Show)
 
 
@@ -393,10 +395,12 @@ checkStorage = queryRO $ execWriterT $ do
       --       block since we detected when checking for previous height
       mprevVset <- lift $ lift $ retrieveValidatorSet (pred h)
       prevBID   <- require [] $ retrieveBlockID (pred h)
+      prevB     <- require [] $ retrieveBlock   (pred h)
       --
-      lift $ blockInvariant genesisChainId h prevBID (mprevVset,vset) block
+      lift $ blockInvariant
+        genesisChainId h (headerTime $ blockHeader prevB) prevBID (mprevVset,vset) block
       lift $ commitInvariant (InvalidLocalCommit h)
-        h bid vset commit
+        h (headerTime $ blockHeader prevB) bid vset commit
 
 
 -- | Check that block proposed at given height is correct in sense all
@@ -408,11 +412,17 @@ checkProposedBlock
   -> m [BlockchainInconsistency]
 checkProposedBlock h block = queryRO $ do
   Just genesis <- retrieveBlock        (Height 0)
+  Just prevB   <- retrieveBlock        (pred h)
   Just prevBID <- retrieveBlockID      (pred h)
   Just vset    <- retrieveValidatorSet  h
   mprevVset    <- retrieveValidatorSet (pred h)
   execWriterT $ blockInvariant
-    (headerChainID $ blockHeader genesis) h prevBID (mprevVset,vset) block
+    (headerChainID $ blockHeader genesis)
+    h
+    (headerTime $ blockHeader prevB)
+    prevBID
+    (mprevVset,vset)
+    block
 
 
 
@@ -442,6 +452,8 @@ blockInvariant
   -- ^ Blockchain ID
   -> Height
   -- ^ Height of block
+  -> Time
+  -- ^ Time of previous block
   -> BlockID alg a
   -- ^ Block ID of previous block
   -> (Maybe (ValidatorSet alg), ValidatorSet alg)
@@ -449,9 +461,9 @@ blockInvariant
   -> Block alg a
   -- ^ Block to check
   -> WriterT [BlockchainInconsistency] m ()
-blockInvariant _ h _ _ _
+blockInvariant _ h _ _ _ _
   | h <= Height 0 = error "blockInvariant called with invalid parameters"
-blockInvariant chainID h prevBID (mprevValSet, valSet) Block{blockHeader=Header{..}, ..} = do
+blockInvariant chainID h prevT prevBID (mprevValSet, valSet) Block{blockHeader=Header{..}, ..} = do
   -- All blocks must have same chain ID, i.e. chain ID of
   -- genesis block
   (chainID == headerChainID)
@@ -459,6 +471,15 @@ blockInvariant chainID h prevBID (mprevValSet, valSet) Block{blockHeader=Header{
   -- Block at height H has H in its header
   (headerHeight == h)
     `orElse` BlockHeightMismatch h
+  -- Block time is calculated correctly
+  case headerHeight of
+    Height 1 -> (headerTime > prevT) `orElse` BlockInvalidTime h
+    _        -> do let commitT = do vals <- mprevValSet
+                                    commitTime vals prevT =<< blockLastCommit
+                   case commitT of
+                     Nothing -> tell [BlockInvalidTime h]
+                     Just t  -> do (t == headerTime) `orElse` BlockInvalidTime h
+                                   (t >= prevT     ) `orElse` BlockInvalidTime h
   -- Previous block ID in header must match actual BID of previous
   -- block
   (headerLastBlockID == Just prevBID)
@@ -469,6 +490,7 @@ blockInvariant chainID h prevBID (mprevValSet, valSet) Block{blockHeader=Header{
   -- Block data has correct hash
   (headerDataHash == hash blockData)
     `orElse` BlockDataHashMismatch h
+  -- Block time must be equal to commit time
   -- Validate commit of previous block
   case (headerHeight, blockLastCommit) of
     -- Last commit at H=1 must be Nothing
@@ -478,19 +500,20 @@ blockInvariant chainID h prevBID (mprevValSet, valSet) Block{blockHeader=Header{
     (_, Nothing       ) -> tell [BlockMissingLastCommit h]
     (_, Just commit   )
       | Just prevValSet <- mprevValSet
-        -> commitInvariant (InvalidCommit h) (pred h) prevBID prevValSet commit
+        -> commitInvariant (InvalidCommit h) (pred h) prevT prevBID prevValSet commit
       | otherwise
         -> tell [InvalidCommit h "Cannot validate commit"]
 
 commitInvariant
   :: (Monad m)
-  => (String -> BlockchainInconsistency)
-  -> Height
+  => (String -> BlockchainInconsistency) -- Error constructor
+  -> Height                              -- Height of block for
+  -> Time                                -- Time of previous block
   -> BlockID alg a
   -> ValidatorSet alg
   -> Commit alg a
   -> WriterT [BlockchainInconsistency] m ()
-commitInvariant mkErr h bid valSet Commit{..} = do
+commitInvariant mkErr h prevT bid valSet Commit{..} = do
   -- It must justify commit of correct block!
   (commitBlockID == bid)
     `orElse` mkErr "Commit is for wrong block"
@@ -509,7 +532,10 @@ commitInvariant mkErr h bid valSet Commit{..} = do
   -- Commit has enough (+2/3) voting power, doesn't have votes
   -- from unknown validators, doesn't have duplicate votes, and
   -- vote goes for correct block
-  let mvoteSet = foldM (flip insertSigned) (emptySignedSet valSet voteBlockID) commitPrecommits
+  let mvoteSet = foldM
+        (flip insertSigned)
+        (emptySignedSet valSet voteBlockID ((> prevT) . voteTime))
+        commitPrecommits
   case mvoteSet of
     InsertConflict _ -> tell [mkErr "Conflicting votes"]
     InsertDup        -> tell [mkErr "Duplicate votes"]

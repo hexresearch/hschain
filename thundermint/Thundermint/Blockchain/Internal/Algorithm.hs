@@ -39,7 +39,7 @@ import qualified Data.Aeson          as JSON
 import qualified Data.Aeson.TH       as JSON
 import qualified Data.Map            as Map
 import qualified Data.HashMap.Strict as HM
-import           Katip (Severity(..))
+import           Katip (Severity(..),sl)
 import qualified Katip
 import GHC.Generics
 
@@ -217,13 +217,14 @@ newHeight HeightParameters{..} lastCommit = do
   return TMState
     { smRound         = Round 0
     , smStep          = StepNewHeight
-    , smPrevotesSet   = emptySignedSetMap validatorSet voteBlockID
-    , smPrecommitsSet = emptySignedSetMap validatorSet voteBlockID
+    , smPrevotesSet   = emptySignedSetMap validatorSet voteBlockID checkVoteTime
+    , smPrecommitsSet = emptySignedSetMap validatorSet voteBlockID checkVoteTime
     , smProposals     = Map.empty
     , smLockedBlock   = Nothing
     , smLastCommit    = lastCommit
     }
-
+  where
+    checkVoteTime = (> currentTime) . voteTime
 
 -- | Transition rule for tendermint state machine. State is passed
 --   explicitly and we track effects like sending message and

@@ -175,12 +175,15 @@ data SignedSet ty alg a k = SignedSet
   , vsetValMap     :: !(Map k (VoteGroup alg))
   , vsetAccPower   :: !Integer
   , vsetValidators :: !(ValidatorSet alg)
-  , vsetToPayload  :: !(a -> k)
+  , vsetToKey      :: !(a -> k)
+  , vsetValueOK    :: !(a -> Bool)
   }
 
 data VoteGroup alg = VoteGroup
-  { accWeight :: !Integer             -- Accumulated weight of vote
-  , voters    :: !(Set (Address alg)) -- Set of voters
+  { accOK     :: !Integer             -- Accumulated weight of good votes
+  , accBad    :: !Integer             -- Accumulated weight of invalid votes
+  , votersOK  :: !(Set (Address alg)) -- Set of voters with good votes
+  , votersBad :: !(Set (Address alg)) -- Set of voters with invalid votes
   }
 
 instance (Show a) => Show (SignedSet ty alg a k) where
@@ -209,6 +212,7 @@ instance Monad (InsertResult b) where
 emptySignedSet
   :: ValidatorSet alg           -- ^ Set of validators
   -> (a -> k)                   -- ^ Key for grouping votes
+  -> (a -> Bool)                -- ^ Additional validation for vote
   -> SignedSet ty alg a k
 emptySignedSet = SignedSet Map.empty Map.empty 0
 
@@ -232,18 +236,25 @@ insertSigned sval SignedSet{..} =
           { vsetAddrMap  = Map.insert addr sval vsetAddrMap
           , vsetAccPower = vsetAccPower + validatorVotingPower validator
           , vsetValMap   =
-              let upd VoteGroup{..} = Just VoteGroup
-                    { accWeight = accWeight + validatorVotingPower validator
-                    , voters    = Set.insert addr voters
-                    }
+              let upd VoteGroup{..}
+                    | vsetValueOK val = Just VoteGroup
+                                        { accOK    = accOK + validatorVotingPower validator
+                                        , votersOK = Set.insert addr votersOK
+                                        , ..
+                                        }
+                    | otherwise       = Just VoteGroup
+                                        { accBad    = accBad + validatorVotingPower validator
+                                        , votersBad = Set.insert addr votersBad
+                                        , ..
+                                        }
               in Map.alter (upd . fromMaybe nullVote) k vsetValMap
           , ..
           }
   where
-    addr     = signedAddr   sval
-    val      = signedValue  sval
-    k        = vsetToPayload val
-    nullVote = VoteGroup 0 Set.empty
+    addr     = signedAddr  sval
+    val      = signedValue sval
+    k        = vsetToKey    val
+    nullVote = VoteGroup 0 0 Set.empty Set.empty
 
 -- | We have +2\/3 majority of votes return vote for
 majority23
@@ -253,7 +264,7 @@ majority23 SignedSet{..} = do
   (k,_) <- find maj23 $ Map.toList vsetValMap
   return k
   where
-    maj23 (_, VoteGroup{..}) = accWeight >= quorum
+    maj23 (_, VoteGroup{..}) = accOK >= quorum
     quorum = 2 * totalVotingPower vsetValidators `div` 3 + 1
 
 -- | We have +2\/3 of votes which are distributed in any manner
@@ -277,7 +288,8 @@ any23 SignedSet{..}
 data SignedSetMap r ty alg a k = SignedSetMap
   { vmapSubmaps    :: !(Map r (SignedSet ty alg a k))
   , vmapValidators :: !(ValidatorSet alg)
-  , vmapToPayload  :: !(a -> k)
+  , vmapToKey      :: !(a -> k)
+  , vmapValueOk    :: !(a -> Bool)
   }
 
 instance (Show a, Show r) => Show (SignedSetMap r ty alg a k) where
@@ -286,6 +298,7 @@ instance (Show a, Show r) => Show (SignedSetMap r ty alg a k) where
 emptySignedSetMap
   :: ValidatorSet alg
   -> (a -> k)
+  -> (a -> Bool)
   -> SignedSetMap r ty alg a k
 emptySignedSetMap = SignedSetMap Map.empty
 
@@ -303,7 +316,7 @@ addSignedValue
   -> InsertResult (Signed ty alg a) (SignedSetMap r ty alg a k)
 addSignedValue r a sm@SignedSetMap{..} = do
   m <- insertSigned a
-     $ fromMaybe (emptySignedSet vmapValidators vmapToPayload)
+     $ fromMaybe (emptySignedSet vmapValidators vmapToKey vmapValueOk)
      $ Map.lookup r vmapSubmaps
   return sm { vmapSubmaps = Map.insert r m vmapSubmaps }
 

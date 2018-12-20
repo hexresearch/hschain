@@ -307,6 +307,7 @@ makeHeightParameters ConsensusCfg{..} AppState{..} AppChans{..} = do
         lift (retrievePropByID appPropStorage nH bid) >>= \case
           Nothing -> return UnseenProposal
           Just b  -> do
+            logger InfoS "TIME" (sl "t_B" (show $ timeToUTC $ headerTime $ blockHeader b))
             inconsistencies <- lift $ checkProposedBlock nH b
             blockOK         <- lift $ appValidationFun b
             case () of
@@ -415,7 +416,7 @@ makeHeightParameters ConsensusCfg{..} AppState{..} AppChans{..} = do
           -- Otherwise we take time from commit and if for some reason
           -- we can't we have corrupted commit for latest block and
           -- can't continue anyway.
-          _        -> case join $ liftA2 commitTime oldValSet commit of
+          _        -> case join $ liftA3 commitTime oldValSet (pure bchTime) commit of
             Just t  -> return t
             Nothing -> error "Corrupted commit. Cannot generate block"
         bData    <- appBlockGenerator (succ h) currentT commit []

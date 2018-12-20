@@ -192,26 +192,35 @@ instance JSON.ToJSON   (Commit alg a)
 -- | Calculate time of commit as median of time of votes where votes
 --   are weighted according to voting power of corresponding
 --   validators.
-commitTime :: ValidatorSet alg -> Commit alg a -> Maybe Time
-commitTime vset Commit{..} = do
+commitTime
+  :: ValidatorSet alg -- ^ Set of validators for commit
+  -> Time             -- ^ Time of previous block. Votes that aren't
+                      --   cast later that that are discarded.
+  -> Commit alg a     -- ^ Commit to calculate time
+  -> Maybe Time
+commitTime vset t0 Commit{..} = do
   times <- forM commitPrecommits $ \sv -> do
     val <- validatorByAddr vset (signedAddr sv)
     return ( validatorVotingPower val
            , voteTime (signedValue sv)
            )
-  let totPower = sum $ fst <$> times
+  -- Here we discard invalid votes and calculate median time
+  let cleaned  = filter ((> t0) . snd) times
+      totPower = sum (fst <$> cleaned)
       i        = totPower `div` 2
-      otime    = zDrop (fromIntegral i) $ sortBy (comparing snd) times
-      -- Mean that doesn't overflow
-      avg (Time t1) (Time t2) = Time $ (t1 `div` 2) + (t2 `div` 2) + (t1 .&. t2 .&. 1)
+      otime    = zDrop (fromIntegral i)
+               $ sortBy (comparing snd) cleaned
   case () of
     _| odd totPower
      , (_,t):_ <- otime         -> return t
      | even totPower
-     , (1,t1):(_,t2):_ <- otime -> return $! avg t1 t2
+     , (1,t1):(_,t2):_ <- otime -> return $! average t1 t2
      | even totPower
      , (_,t):_ <- otime         -> return t
      | otherwise                -> Nothing
+
+average :: Time -> Time -> Time
+average (Time t1) (Time t2) = Time $ (t1 `div` 2) + (t2 `div` 2) + (t1 .&. t2 .&. 1)
 
 zDrop :: Integer -> [(Integer,a)] -> [(Integer,a)]
 zDrop _ [] = []
