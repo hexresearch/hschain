@@ -509,15 +509,15 @@ commitInvariant mkErr h bid valSet Commit{..} = do
   -- Commit has enough (+2/3) voting power, doesn't have votes
   -- from unknown validators, doesn't have duplicate votes, and
   -- vote goes for correct block
-  let mvoteSet = foldM (flip insertSigned) (emptySignedSet valSet) commitPrecommits
+  let mvoteSet = foldM (flip insertSigned) (emptySignedSet valSet voteBlockID) commitPrecommits
   case mvoteSet of
     InsertConflict _ -> tell [mkErr "Conflicting votes"]
     InsertDup        -> tell [mkErr "Duplicate votes"]
     InsertUnknown  _ -> tell [mkErr "Votes from unknown source"]
     InsertOK vset    -> case majority23 vset of
       Nothing        -> tell [mkErr "Commit doesn't have 2/3+ majority"]
-      Just v
-        | voteBlockID v == Just bid -> return ()
+      Just b
+        | b == Just bid -> return ()
         | otherwise
           -> tell [mkErr "2/3+ majority for wrong block"]
 

@@ -340,9 +340,9 @@ decodeVote expectedTag = do
                       ++ ", actual: " ++ show tag)
         _ -> fail $ "Invalid Vote encoding"
 
-type VoteSet ty alg a = SignedSet 'Verified (Vote ty alg a)
+type VoteSet ty alg a = SignedSet 'Verified (Vote ty alg a) (Maybe (BlockID alg a))
 
-type HeightVoteSet ty alg a = SignedSetMap Round 'Verified alg (Vote ty alg a)
+type HeightVoteSet ty alg a = SignedSetMap Round 'Verified alg (Vote ty alg a) (Maybe (BlockID alg a))
 
 
 ----------------------------------------------------------------
