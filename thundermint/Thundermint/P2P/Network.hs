@@ -162,8 +162,9 @@ realNetworkUdp serviceName = do
       Net.bind sock (Net.addrAddress addrInfo)
       forever $ do
         (bs, addr) <- NetBS.recvFrom sock 4096
-        (recvChan, frontVar) <- findOrCreateRecvChan tChans addr
-        atomically $ writeTChan acceptChan (applyConn sock addr frontVar recvChan tChans, addr)
+        (recvChan, frontVar, receivedFrontsVar) <- findOrCreateRecvTuple tChans addr
+        atomically $ writeTChan acceptChan
+          (applyConn sock addr frontVar receivedFrontsVar recvChan tChans, addr)
         atomically $ writeTChan recvChan $ LBS.fromStrict bs
 
   return $ NetworkAPI
@@ -171,24 +172,27 @@ realNetworkUdp serviceName = do
         return (liftIO $ killThread tid, liftIO.atomically $ readTChan acceptChan)
       --
     , connect  = \addr ->
-         (\(peerChan, frontVar) ->applyConn sock addr frontVar peerChan tChans) <$> findOrCreateRecvChan tChans addr
+         (\(peerChan, frontVar, receivedFrontsVar) ->
+               applyConn sock addr frontVar receivedFrontsVar peerChan tChans)
+           <$> findOrCreateRecvTuple tChans addr
     , filterOutOwnAddresses = filterOutOwnAddresses (realNetworkStub serviceName)
     , normalizeNodeAddress = normalizeNodeAddress (realNetworkStub serviceName)
     , listenPort = listenPort (realNetworkStub serviceName)
     }
  where
-  findOrCreateRecvChan tChans addr = liftIO.atomically $ do
+  findOrCreateRecvTuple tChans addr = liftIO.atomically $ do
     chans <- readTVar tChans
     case Map.lookup addr chans of
       Just chanFrontVar -> return chanFrontVar
       Nothing   -> do
         recvChan <- newTChan
         frontVar <- newTVar (0 :: Word8)
-        writeTVar tChans $ Map.insert addr (recvChan, frontVar) chans
-        return (recvChan, frontVar)
-  applyConn sock addr frontVar peerChan tChans = P2PConnection
+        receivedFrontsVar <- newTVar Map.empty
+        writeTVar tChans $ Map.insert addr (recvChan, frontVar, receivedFrontsVar) chans
+        return (recvChan, frontVar, receivedFrontsVar)
+  applyConn sock addr frontVar receivedFrontsVar peerChan tChans = P2PConnection
     (\s -> liftIO.void $ sendSplitted frontVar sock addr s)
-    (emptyBs2Maybe <$> liftIO (atomically $ readTChan peerChan))
+    (liftIO $ receiveAction receivedFrontsVar peerChan)
     (close addr tChans)
   receiveAction frontsVar peerChan = do
     (message, logMsg) <- atomically $ do
@@ -199,7 +203,7 @@ realNetworkUdp serviceName = do
           let (newFronts, message) = updateMessages front ofs chunk fronts
           writeTVar frontsVar newFronts
           return (message, "")
-        Left err -> return (LBS.empty, "unable to deserialize packet")
+        Left err -> return (LBS.empty, "unable to deserialize packet: " ++ show err)
     if null logMsg
       then return $ emptyBs2Maybe message
       else do
@@ -209,8 +213,30 @@ realNetworkUdp serviceName = do
                  -> (Map.Map Word8 [(Word32, LBS.ByteString)], LBS.ByteString)
   updateMessages front ofs chunk fronts = (newFronts, extractedMessage)
     where
-      newFronts = error "newFronts"
-      extractedMessage = error "extracted message"
+      listOfPartials = insert (ofs, chunk) $ Map.findWithDefault [] front fronts
+      insert ofsChunk [] = [ofsChunk]
+      insert ofsChunk@(ofs', _) restPartials@(oc@(headOfs, _):ocs)
+        | ofs' < headOfs = ofsChunk : restPartials
+        | otherwise = oc : insert ofsChunk ocs
+      (invalidPartials, canCombinePartials) = checkPartials False True 0 listOfPartials
+      lbsLength = fromIntegral . LBS.length
+      checkPartials _ _ _ [] =
+        error "internal error: empty list of partials"
+      checkPartials invalid canCombine currentPartialLen [(lastOfs, lastChunk)] =
+        ( invalid, canCombine && lastOfs == currentPartialLen && lbsLength lastChunk < chunkSize)
+      checkPartials invalid canCombine currentPartialLen ((headOfs, headChunk):ocs) =
+        checkPartials
+          (invalid || lbsLength headChunk /= chunkSize || mod headOfs chunkSize /= 0 || headOfs < currentPartialLen)
+          (canCombine && headOfs == currentPartialLen)
+          (headOfs + lbsLength headChunk)
+          ocs
+      (extractedMessage, updatedFront)
+        | invalidPartials = (LBS.empty, Map.delete front fronts)
+        | canCombinePartials = (LBS.concat $ map snd listOfPartials, Map.delete front fronts)
+        | otherwise = (LBS.empty, Map.insert front listOfPartials fronts)
+      newFronts
+        | Map.size updatedFront > 10 = error "internal error: no pruning of fronts was devised"
+        | otherwise = updatedFront
   sendSplitted frontVar sock addr msg = do
     front <- atomically $ do -- slightly overkill, but in line with other's code.
       i <- readTVar frontVar
@@ -220,17 +246,18 @@ realNetworkUdp serviceName = do
       flip (NetBS.sendAllTo sock) addr $ LBS.toStrict $ CBOR.serialise (front, ofs, chunk)
     where
       splitChunks = splitToChunks msg
-  chunkSize = 1400
+  chunkSize = 1400 :: Word32
   splitToChunks s
     | LBS.length s < 1 = [(0, s)] -- do not lose empty messages.
     | otherwise = go 0 s
     where
       go ofs bs
         | LBS.length bs < 1 = []
-        | LBS.length bs == chunkSize = [(ofs, bs), (ofs + chunkSize, LBS.empty)]
+        | LBS.length bs == intChunkSize = [(ofs, bs), (ofs + intChunkSize, LBS.empty)]
         | otherwise = (ofs, hd) : go (ofs + LBS.length hd) tl
         where
-          (hd,tl) = LBS.splitAt chunkSize bs
+          intChunkSize = fromIntegral chunkSize
+          (hd,tl) = LBS.splitAt intChunkSize bs
   close addr tChans = do
     liftIO . atomically $ do
       chans <- readTVar tChans
