@@ -56,7 +56,7 @@ instance (Arbitrary a) => Arbitrary (Commit alg a) where
 
 
 instance (Arbitrary a) => Arbitrary (BlockHash alg a) where
-  arbitrary = genericArbitrary
+  arbitrary = BlockHash <$> arbitrary <*> arbitrary <*> pure []
   shrink = genericShrink
 
 
