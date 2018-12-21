@@ -151,6 +151,7 @@ data NodeDescription m alg a = NodeDescription
   , nodeCommitCallback  :: !(Block alg a -> m ())
     -- ^ Callback called immediately after block was commit and user
     --   state in database is updated
+  , nodeReadyCreateBlock :: !(m Bool)
   }
 
 -- | Specification of network
@@ -192,7 +193,7 @@ runNode cfg BlockchainNet{..} NodeDescription{..} NodeLogic{..} = do
          $ startPeerDispatcher (cfgNetwork cfg)
               bchNetwork bchLocalAddr bchInitialPeers appCh nodeMempool
     , id $ setNamespace "consensus"
-         $ runApplication (cfgConsensus cfg) appSt appCh
+         $ runApplication (cfgConsensus cfg) nodeReadyCreateBlock appSt appCh
     , forever $ do
         MempoolInfo{..} <- mempoolStats nodeMempool
         usingGauge prometheusMempoolSize      mempool'size

@@ -286,6 +286,8 @@ data Mempool m alg tx = Mempool
     -- ^ Checks whether transaction is mempool
   , mempoolStats      :: !(m MempoolInfo)
     -- ^ Number of elements in mempool
+  , mempoolSize       :: !(m Int)
+    -- ^ Number of transactions in mempool
   , mempoolSelfTest   :: !(m [String])
     -- ^ Check mempool for internal consistency. Each returned string
     --   is internal inconsistency
@@ -304,6 +306,7 @@ hoistMempool fun Mempool{..} = Mempool
   , getMempoolCursor  = hoistMempoolCursor fun <$> fun getMempoolCursor
   , txInMempool       = fun . txInMempool
   , mempoolStats      = fun mempoolStats
+  , mempoolSize       = fun mempoolSize
   , mempoolSelfTest   = fun mempoolSelfTest
   }
 
@@ -313,6 +316,7 @@ nullMempoolAny = Mempool
   { peekNTransactions = const (return [])
   , filterMempool     = return ()
   , mempoolStats      = return $ MempoolInfo 0 0 0 0
+  , mempoolSize       = return 0
   , txInMempool       = const (return False)
   , getMempoolCursor  = return MempoolCursor
       { pushTransaction = const $ return Nothing
