@@ -49,11 +49,18 @@ shouldRetry = True
 retryPolicy :: RetryPolicy
 retryPolicy = constantDelay 500 <> limitRetries 20
 
-withRetry :: MonadIO m => ( (Net.SockAddr, NetworkAPI Net.SockAddr)
+withRetry :: MonadIO m =>  ( (Net.SockAddr, NetworkAPI Net.SockAddr)
                         -> (Net.SockAddr, NetworkAPI Net.SockAddr) -> IO a)
          -> Net.HostName -> m a
-withRetry fun host = do
-  liftIO $ recovering retryPolicy hs (const $ realNetPair host >>= uncurry fun)
+withRetry = withRetry' False
+
+withRetry' :: MonadIO m => Bool
+                        -> ( (Net.SockAddr, NetworkAPI Net.SockAddr)
+                        -> (Net.SockAddr, NetworkAPI Net.SockAddr) -> IO a)
+         -> Net.HostName -> m a
+withRetry' useUDP fun host = do
+  liftIO $ recovering retryPolicy hs
+    (const $ realNetPair useUDP host >>= uncurry fun)
     where
       -- | exceptions list to trigger the recovery logic
       hs :: [a -> Handler IO Bool]

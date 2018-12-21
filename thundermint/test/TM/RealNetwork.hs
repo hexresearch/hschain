@@ -11,17 +11,19 @@ import qualified Data.ByteString as BS
 import qualified Network.Socket  as Net
 ----------------------------------------------------------------
 
-realNetPair :: Net.HostName
+realNetPair :: Bool
+            -> Net.HostName
             -> IO ((Net.SockAddr, NetworkAPI Net.SockAddr),
                    (Net.SockAddr, NetworkAPI Net.SockAddr))
-realNetPair host = do
+realNetPair useUDP host = do
     n <- randomRIO (10, 89 :: Int)
     m <- randomRIO (1, 9 :: Int)
     let port1 = concat ["30", show m, show  n]
         port2 = concat ["31", show m, show (n + m)]
-        server = realNetwork port1
-        client = realNetwork port2
+        realNet = if useUDP then return . realNetwork else realNetworkUdp
         hints = Net.defaultHints  { Net.addrSocketType = Net.Stream }
+    server <- realNet port1
+    client <- realNet port2
     addr1:_ <- Net.getAddrInfo (Just hints) (Just host) (Just port1)
     addr2:_ <- Net.getAddrInfo (Just hints) (Just host) (Just port2)
 
