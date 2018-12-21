@@ -39,7 +39,7 @@ import qualified Data.Aeson          as JSON
 import qualified Data.Aeson.TH       as JSON
 import qualified Data.Map            as Map
 import qualified Data.HashMap.Strict as HM
-import           Katip (Severity(..),sl)
+import           Katip (Severity(..))
 import qualified Katip
 import GHC.Generics
 

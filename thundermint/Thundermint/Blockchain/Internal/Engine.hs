@@ -356,10 +356,13 @@ makeHeightParameters ConsensusCfg{..} AppState{..} AppChans{..} = do
     --
     , castPrevote     = \r b ->
         forM_ appValidator $ \(PrivValidator pk) -> do
-          t <-  getCurrentTime
+          t <- getCurrentTime
           let vote = Vote { voteHeight  = succ h
                           , voteRound   = r
-                          , voteTime    = t
+                          , voteTime    = if t > bchTime
+                                          then t
+                                          else let Time i = t in Time (i + 1)
+                              
                           , voteBlockID = b
                           }
               svote  = signValue pk vote
