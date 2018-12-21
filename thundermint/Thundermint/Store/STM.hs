@@ -127,6 +127,9 @@ newMempool validation = do
         mempool'filtered  <- readTVar varFiltered
         return MempoolInfo{..}
     --
+    , mempoolSize = do m <- liftIO $ readTVarIO varFIFO
+                       return $! IMap.size m
+    --
     , txInMempool = \txHash -> liftIO $ do
         txSet <- readTVarIO varTxSet
         return $ txHash `Set.member` txSet

@@ -64,18 +64,20 @@ runApplication
   :: ( MonadDB m alg a, MonadCatch m, MonadLogger m, MonadTMMonitoring m, Crypto alg, Show a, BlockData a)
   => ConsensusCfg
      -- ^ Configuration
+  -> m Bool
+     -- ^ Whether application is ready to create new block
   -> AppState m alg a
      -- ^ Get initial state of the application
   -> AppChans m alg a
      -- ^ Channels for communication with peers
   -> m ()
-runApplication config appSt@AppState{..} appCh@AppChans{..} = logOnException $ do
+runApplication config ready appSt@AppState{..} appCh@AppChans{..} = logOnException $ do
   logger InfoS "Starting consensus engine" ()
   height <- queryRO $ blockchainHeight
   lastCm <- queryRO $ retrieveLocalCommit height
   advanceToHeight appPropStorage $ succ height
   void $ flip fix lastCm $ \loop commit -> do
-    cm <- decideNewBlock config appSt appCh commit
+    cm <- decideNewBlock config ready appSt appCh commit
     loop (Just cm)
 
 
@@ -87,14 +89,15 @@ runApplication config appSt@AppState{..} appCh@AppChans{..} = logOnException $ d
 decideNewBlock
   :: ( MonadDB m alg a, MonadLogger m, MonadTMMonitoring m, Crypto alg, Show a, BlockData a)
   => ConsensusCfg
+  -> m Bool
   -> AppState m alg a
   -> AppChans m alg a
   -> Maybe (Commit alg a)
   -> m (Commit alg a)
-decideNewBlock config appSt@AppState{..} appCh@AppChans{..} lastCommt = do
+decideNewBlock config ready appSt@AppState{..} appCh@AppChans{..} lastCommt = do
   -- Enter NEW HEIGHT and create initial state for consensus state
   -- machine
-  hParam <- makeHeightParameters config appSt appCh
+  hParam <- makeHeightParameters config ready appSt appCh
   -- Get rid of messages in WAL that are no longer needed and replay
   -- all messages stored there.
   walMessages <- fmap (fromMaybe [])
@@ -273,10 +276,11 @@ instance MonadTrans (ConsensusM alg a) where
 makeHeightParameters
   :: (MonadDB m alg a, MonadLogger m, MonadTMMonitoring m, Crypto alg, Serialise a, Show a)
   => ConsensusCfg
+  -> m Bool
   -> AppState m alg a
   -> AppChans m alg a
   -> m (HeightParameters (ConsensusM alg a m) alg a)
-makeHeightParameters ConsensusCfg{..} AppState{..} AppChans{..} = do
+makeHeightParameters ConsensusCfg{..} ready AppState{..} AppChans{..} = do
   h            <- queryRO $ blockchainHeight
   Just valSet  <- queryRO $ retrieveValidatorSet (succ h)
   oldValSet    <- queryRO $ retrieveValidatorSet  h
@@ -301,7 +305,7 @@ makeHeightParameters ConsensusCfg{..} AppState{..} AppChans{..} = do
         Nothing                 -> False
         Just (PrivValidator pk) -> proposerChoice r == address (publicKey pk)
     , proposerForRound = proposerChoice
-    , readyCreateBlock = return True
+    , readyCreateBlock = lift ready
     --
     , validateBlock = \bid -> do
         let nH = succ h
