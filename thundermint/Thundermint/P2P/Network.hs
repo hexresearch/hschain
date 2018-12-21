@@ -96,7 +96,6 @@ realNetwork serviceName = (realNetworkStub serviceName)
         return $ applyConn sock
   }
  where
-  isIPv6addr = (==) Net.AF_INET6 . Net.addrFamily
   accept sock = do
     (conn, addr) <- liftIO $ Net.accept sock
     return (applyConn conn, addr)
@@ -127,6 +126,9 @@ decodeWord16BE bs | LBS.length bs < fromIntegral headerSize = Nothing
                                    w8s
                       in (Just $ fst word32)
 
+-- |Shared code - we need checking of IPv6 in several different places.
+isIPv6addr :: Net.AddrInfo -> Bool
+isIPv6addr = (==) Net.AF_INET6 . Net.addrFamily
 
 -- | helper function read given length of bytes
 recvAll :: Net.Socket -> Int -> IO LBS.ByteString
@@ -152,11 +154,11 @@ realNetworkUdp serviceName = do
   tChans <- newTVarIO Map.empty
   acceptChan <- newTChanIO :: IO (TChan (P2PConnection, Net.SockAddr))
   let hints = Net.defaultHints
-        { Net.addrFlags      = [Net.AI_PASSIVE]
+        { Net.addrFlags      = []
         , Net.addrSocketType = Net.Datagram
         }
   addrInfo:_ <- Net.getAddrInfo (Just hints) Nothing (Just serviceName)
-  sock       <- newSocket addrInfo
+  sock       <- newUDPSocket addrInfo
   tid <- forkIO $
     flip onException (Net.close sock) $ do
       Net.bind sock (Net.addrAddress addrInfo)
@@ -180,6 +182,12 @@ realNetworkUdp serviceName = do
     , listenPort = listenPort (realNetworkStub serviceName)
     }
  where
+  newUDPSocket ai = do
+    sock <- Net.socket (Net.addrFamily     ai)
+                       (Net.addrSocketType ai)
+                       (Net.addrProtocol   ai)
+    Net.setSocketOption sock Net.ReuseAddr 1
+    return sock
   findOrCreateRecvTuple tChans addr = liftIO.atomically $ do
     chans <- readTVar tChans
     case Map.lookup addr chans of
@@ -242,6 +250,11 @@ realNetworkUdp serviceName = do
       i <- readTVar frontVar
       writeTVar frontVar $ i + 1
       return i
+    let Net.MkSocket a b c d _ = sock
+    bnd <- Net.isBound sock
+    rd <- Net.isReadable sock
+    wr <- Net.isWritable sock
+    putStrLn $ "sending to socket '"++show sock++"' ("++show (a,b,c,d, (bnd, rd, wr))++"), addr '"++show addr++"'"
     forM_ splitChunks $ \(ofs, chunk) -> do
       flip (NetBS.sendAllTo sock) addr $ LBS.toStrict $ CBOR.serialise (front, ofs, chunk)
     where
