@@ -259,8 +259,12 @@ data Step
     -- ^ We have just entered new height and waiting for stragglers
     --   precommits for block
   | StepProposal
+    -- ^ Making proposal if node is proposed or receiving proposal
   | StepPrevote
+    -- ^ Prevoting block or NIL and collecting prevotes from other nodes
   | StepPrecommit
+    -- ^ Precommiting block or NIL and collecting precommits from
+    --   other nodes
   | StepAwaitCommit
     -- ^ We already reached consensus and now waiting for data to
     --   perform commit. Node could only stay in this state if it

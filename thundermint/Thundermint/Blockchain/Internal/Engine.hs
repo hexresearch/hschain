@@ -301,6 +301,7 @@ makeHeightParameters ConsensusCfg{..} AppState{..} AppChans{..} = do
         Nothing                 -> False
         Just (PrivValidator pk) -> proposerChoice r == address (publicKey pk)
     , proposerForRound = proposerChoice
+    , readyCreateBlock = return True
     --
     , validateBlock = \bid -> do
         let nH = succ h

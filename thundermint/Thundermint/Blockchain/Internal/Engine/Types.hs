@@ -61,6 +61,7 @@ data ConsensusCfg = ConsensusCfg
   , timeoutProposal   :: !(Int,Int)
   , timeoutPrevote    :: !(Int,Int)
   , timeoutPrecommit  :: !(Int,Int)
+  , timeoutEmptyBlock :: !Int
   , incomingQueueSize :: !Natural
   }
   deriving (Show,Generic)
@@ -102,11 +103,13 @@ instance DefaultConfig app => FromJSON (Configuration app) where
         tP  <- field "timeoutProposal"   timeoutProposal   o
         tPV <- field "timeoutPrevote"    timeoutPrevote    o
         tPC <- field "timeoutPrecommit"  timeoutPrecommit  o
+        tE  <- field "timeoutEmptyBlock" timeoutEmptyBlock o
         qs  <- field "incomingQueueSize" incomingQueueSize o
         return ConsensusCfg{ timeoutNewHeight  = tH
                            , timeoutProposal   = tP
                            , timeoutPrevote    = tPV
                            , timeoutPrecommit  = tPC
+                           , timeoutEmptyBlock = tE
                            , incomingQueueSize = qs
                            }
       --

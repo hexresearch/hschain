@@ -85,6 +85,10 @@ data HeightParameters (m :: * -> *) alg a = HeightParameters
     --   stragglers votes
   , areWeProposers       :: !(Round -> Bool)
     -- ^ Find address of proposer for given round.
+  , readyCreateBlock     :: !(m Bool)
+    -- ^ Returns true if validator is ready to create new block. If
+    --   false validator will stay in @NewHeight@ step until it
+    --   becomes true.
   , proposerForRound     :: !(Round -> Address alg)
     -- ^ Proposer for given round
   , validateBlock        :: !(BlockID alg a -> m ProposalState)
@@ -298,7 +302,11 @@ tendermintTransition par@HeightParameters{..} msg sm@TMState{..} =
         --        implementation advances unconditionally
         EQ -> do
           case smStep of
-            StepNewHeight   -> enterPropose   par smRound        sm Reason'Timeout
+            --
+            StepNewHeight   -> needNewBlock par sm >>= \case
+              True  -> enterPropose par smRound sm Reason'Timeout
+              False -> do scheduleTimeout $ Timeout currentH (Round 0) StepNewHeight
+                          return sm
             StepProposal    -> enterPrevote   par smRound        sm Reason'Timeout
             StepPrevote     -> enterPrecommit par smRound        sm Reason'Timeout
             StepPrecommit   -> enterPropose   par (succ smRound) sm Reason'Timeout
@@ -306,6 +314,17 @@ tendermintTransition par@HeightParameters{..} msg sm@TMState{..} =
       where
         t0 = Timeout currentH smRound smStep
 
+-- Check whether we need to create new block or we should wait
+needNewBlock
+  :: (ConsensusMonad m, MonadLogger m, Crypto alg)
+  => HeightParameters m alg a
+  -> TMState alg a
+  -> m Bool
+needNewBlock HeightParameters{..} TMState{..}
+  -- We want to create first block signed by all validators as soon as
+  -- possible
+  | currentH == Height 1 = return True
+  | otherwise            = readyCreateBlock
 
 -- Check whether we need to perform any state transition after we
 -- received prevote
