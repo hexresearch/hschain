@@ -159,9 +159,11 @@ realNetworkUdp serviceName = do
         }
   addrInfo:_ <- Net.getAddrInfo (Just hints) Nothing (Just serviceName)
   sock       <- newUDPSocket addrInfo
+  Net.setSocketOption sock Net.IPv6Only 0
   tid <- forkIO $
     flip onException (Net.close sock) $ do
       Net.bind sock (Net.addrAddress addrInfo)
+      Net.setSocketOption sock Net.IPv6Only 0
       forever $ do
         (bs, addr) <- NetBS.recvFrom sock 4096
         (recvChan, frontVar, receivedFrontsVar) <- findOrCreateRecvTuple tChans addr
