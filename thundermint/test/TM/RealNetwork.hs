@@ -20,12 +20,12 @@ realNetPair useUDP host = do
     m <- randomRIO (1, 9 :: Int)
     let port1 = concat ["30", show m, show  n]
         port2 = concat ["31", show m, show (n + m)]
-        realNet = if useUDP then return . realNetwork else realNetworkUdp
+        realNet = if not useUDP then return . realNetwork else realNetworkUdp
         hints = Net.defaultHints  { Net.addrSocketType = Net.Stream }
-    server <- realNet port1
-    client <- realNet port2
     addr1:_ <- Net.getAddrInfo (Just hints) (Just host) (Just port1)
     addr2:_ <- Net.getAddrInfo (Just hints) (Just host) (Just port2)
+    server <- realNet port1
+    client <- realNet port2
 
     let sockAddr1 = Net.addrAddress addr1
     let sockAddr2 = Net.addrAddress addr2
