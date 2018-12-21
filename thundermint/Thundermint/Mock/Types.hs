@@ -29,6 +29,7 @@ instance DefaultConfig Example where
       , timeoutProposal    = (500, 500)
       , timeoutPrevote     = (500, 500)
       , timeoutPrecommit   = (500, 500)
+      , timeoutEmptyBlock  = 100
       , incomingQueueSize  = 7
       }
     , cfgNetwork               = NetworkCfg
