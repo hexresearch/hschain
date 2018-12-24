@@ -42,11 +42,11 @@ tests =
                           ]
                     ]
                   , testGroup "real-udp"
-                    [ {-testGroup "IPv4"
+                    [ testGroup "IPv4"
                          [ testCase "ping-pong" $ withRetry' True pingPong "127.0.0.1"
                          , testCase "delayed write" $ withRetry' True delayedWrite "127.0.0.1"
                           ]
-                    ,-} testGroup "IPv6"
+                    , testGroup "IPv6"
                           [ testCase "ping-pong" $ withRetry' True pingPong "::1"
                           , testCase "delayed write" $ withRetry' True delayedWrite "::1"
                           ]

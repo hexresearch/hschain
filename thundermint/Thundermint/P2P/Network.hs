@@ -162,14 +162,18 @@ realNetworkUdp serviceName = do
   addrInfo:_ <- Net.getAddrInfo (Just hints) Nothing (Just serviceName)
   --error ("udp at "++show (serviceName, addrInfo))
   sock       <- newUDPSocket addrInfo
+  otherSock  <- newUDPSocket addrInfo
   Net.setSocketOption sock Net.IPv6Only 0
+  Net.setSocketOption otherSock Net.IPv6Only 0
   tid <- forkIO $
     flip onException (Net.close sock) $ do
       Net.bind sock (Net.addrAddress addrInfo)
+      Net.setSocketOption otherSock Net.IPv6Only 0
       forever $ do
-        putStrLn $ "trying to receive to " ++ show addrInfo
+        --putStrLn $ "trying to receive to " ++ show addrInfo
         (bs, addr) <- NetBS.recvFrom sock 4096
-        putStrLn $ "received packet " ++ show (LBS.take 10 $ LBS.fromStrict bs) ++ "from " ++ show addr
+        o6 <- Net.getSocketOption otherSock Net.IPv6Only
+        putStrLn $ "received packet " ++ show (LBS.take 10 $ LBS.fromStrict bs) ++ "from " ++ show addr ++ ", only v6 " ++ show o6
         (recvChan, frontVar, receivedFrontsVar) <- findOrCreateRecvTuple tChans addr
         atomically $ writeTChan acceptChan
           (applyConn sock addr frontVar receivedFrontsVar recvChan tChans, addr)
@@ -261,8 +265,15 @@ realNetworkUdp serviceName = do
     bnd <- Net.isBound sock
     rd <- Net.isReadable sock
     wr <- Net.isWritable sock
-    putStrLn $ "msg len is " ++ show (LBS.length msg) ++ ", offsets and lengths are " ++ show (map (\(o,c) -> (o, LBS.length c)) splitChunks)
+    --putStrLn $ "msg len is " ++ show (LBS.length msg) ++ ", offsets and lengths are " ++ show (map (\(o,c) -> (o, LBS.length c)) splitChunks)
     forM_ splitChunks $ \(ofs, chunk) -> do
+      let Net.MkSocket a b c d _ = sock
+      bnd <- Net.isBound sock
+      rd <- Net.isReadable sock
+      wr <- Net.isWritable sock
+      Net.setSocketOption sock Net.IPv6Only 0
+      only6 <- Net.getSocketOption sock Net.IPv6Only
+      putStrLn $ "sending to socket '"++show sock++"' ("++show (a,b,c,d, (bnd, rd, wr))++"), addr '"++show addr++"', only v6 "++show only6
       flip (NetBS.sendAllTo sock) addr $ LBS.toStrict $ CBOR.serialise (front, ofs, chunk)
       --error $ "sending to socket '"++show sock++"' ("++show (a,b,c,d, (bnd, rd, wr))++"), addr '"++show addr++"', result "
     where
