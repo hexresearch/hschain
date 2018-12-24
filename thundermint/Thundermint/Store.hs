@@ -534,7 +534,7 @@ commitInvariant mkErr h prevT bid valSet Commit{..} = do
   -- vote goes for correct block
   let mvoteSet = foldM
         (flip insertSigned)
-        (emptySignedSet valSet voteBlockID ((> prevT) . voteTime))
+        (newVoteSet valSet prevT)
         commitPrecommits
   case mvoteSet of
     InsertConflict _ -> tell [mkErr "Conflicting votes"]

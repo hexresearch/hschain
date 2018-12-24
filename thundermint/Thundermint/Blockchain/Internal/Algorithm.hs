@@ -217,14 +217,12 @@ newHeight HeightParameters{..} lastCommit = do
   return TMState
     { smRound         = Round 0
     , smStep          = StepNewHeight
-    , smPrevotesSet   = emptySignedSetMap validatorSet voteBlockID checkVoteTime
-    , smPrecommitsSet = emptySignedSetMap validatorSet voteBlockID checkVoteTime
+    , smPrevotesSet   = newHeightVoteSet validatorSet currentTime
+    , smPrecommitsSet = newHeightVoteSet validatorSet currentTime
     , smProposals     = Map.empty
     , smLockedBlock   = Nothing
     , smLastCommit    = lastCommit
     }
-  where
-    checkVoteTime = (> currentTime) . voteTime
 
 -- | Transition rule for tendermint state machine. State is passed
 --   explicitly and we track effects like sending message and
