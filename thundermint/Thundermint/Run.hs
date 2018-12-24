@@ -151,7 +151,12 @@ data NodeDescription m alg a = NodeDescription
   , nodeCommitCallback  :: !(Block alg a -> m ())
     -- ^ Callback called immediately after block was commit and user
     --   state in database is updated
-  , nodeReadyCreateBlock :: !(m Bool)
+  , nodeReadyCreateBlock :: !(Height -> Time -> m Bool)
+    -- ^ It's called with height of blockchain and time of topmost block.
+    --
+    --   Called when node enters NEW_HEIGHT step. If it returns true
+    --   it will continue to create new block. If False it will it
+    --   call repeatedly (with timeout) until it becomes True
   }
 
 -- | Specification of network

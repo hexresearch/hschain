@@ -393,8 +393,8 @@ interpretSpec maxHeight genSpec validatorSet net NodeSpec{..} = do
                 b | Just hM <- maxHeight
                   , headerHeight (blockHeader b) > Height hM -> throwM Abort
                   | otherwise                                -> return ()
-            , nodeReadyCreateBlock = do n <- mempoolSize $ nodeMempool logic
-                                        return $ n > 0
+            , nodeReadyCreateBlock = \_ _ -> do n <- mempoolSize $ nodeMempool logic
+                                                return $ n > 0
             }
           logic
         runConcurrently (generator : acts)
