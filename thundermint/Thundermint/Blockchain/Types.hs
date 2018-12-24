@@ -34,6 +34,8 @@ module Thundermint.Blockchain.Types (
   , Vote(..)
   , VoteSet
   , HeightVoteSet
+  , newVoteSet
+  , newHeightVoteSet
     -- * State of tendermint consensus
   , ProposalState(..)
   , TMState(..)
@@ -352,9 +354,17 @@ decodeVote expectedTag = do
                       ++ ", actual: " ++ show tag)
         _ -> fail $ "Invalid Vote encoding"
 
-type VoteSet ty alg a = SignedSet 'Verified (Vote ty alg a) (Maybe (BlockID alg a))
+type VoteSet ty alg a = SignedSet 'Verified alg (Vote ty alg a) (Maybe (BlockID alg a))
 
 type HeightVoteSet ty alg a = SignedSetMap Round 'Verified alg (Vote ty alg a) (Maybe (BlockID alg a))
+
+-- | Create new empty vote set
+newVoteSet :: ValidatorSet alg -> Time -> VoteSet ty alg a
+newVoteSet valSet t = emptySignedSet valSet voteBlockID ((> t) . voteTime)
+
+-- | Create new empty vote set
+newHeightVoteSet :: ValidatorSet alg -> Time -> HeightVoteSet ty alg a
+newHeightVoteSet valSet t = emptySignedSetMap valSet voteBlockID ((> t) . voteTime)
 
 
 ----------------------------------------------------------------
