@@ -129,7 +129,7 @@ createTestNetworkWithConfig cfg desc = do
               NodeDescription
                 { nodeCommitCallback   = \_ -> return ()
                 , nodeValidationKey    = Nothing
-                , nodeReadyCreateBlock = return True
+                , nodeReadyCreateBlock = \_ _ -> return True
                 }
               logic
 

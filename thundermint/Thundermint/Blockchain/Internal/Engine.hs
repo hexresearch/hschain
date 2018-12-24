@@ -64,7 +64,7 @@ runApplication
   :: ( MonadDB m alg a, MonadCatch m, MonadLogger m, MonadTMMonitoring m, Crypto alg, Show a, BlockData a)
   => ConsensusCfg
      -- ^ Configuration
-  -> m Bool
+  -> (Height -> Time -> m Bool)
      -- ^ Whether application is ready to create new block
   -> AppState m alg a
      -- ^ Get initial state of the application
@@ -89,7 +89,7 @@ runApplication config ready appSt@AppState{..} appCh@AppChans{..} = logOnExcepti
 decideNewBlock
   :: ( MonadDB m alg a, MonadLogger m, MonadTMMonitoring m, Crypto alg, Show a, BlockData a)
   => ConsensusCfg
-  -> m Bool
+  -> (Height -> Time -> m Bool)
   -> AppState m alg a
   -> AppChans m alg a
   -> Maybe (Commit alg a)
@@ -276,7 +276,7 @@ instance MonadTrans (ConsensusM alg a) where
 makeHeightParameters
   :: (MonadDB m alg a, MonadLogger m, MonadTMMonitoring m, Crypto alg, Serialise a, Show a)
   => ConsensusCfg
-  -> m Bool
+  -> (Height -> Time -> m Bool)
   -> AppState m alg a
   -> AppChans m alg a
   -> m (HeightParameters (ConsensusM alg a m) alg a)
@@ -305,7 +305,7 @@ makeHeightParameters ConsensusCfg{..} ready AppState{..} AppChans{..} = do
         Nothing                 -> False
         Just (PrivValidator pk) -> proposerChoice r == address (publicKey pk)
     , proposerForRound = proposerChoice
-    , readyCreateBlock = lift ready
+    , readyCreateBlock = lift $ ready h bchTime
     --
     , validateBlock = \bid -> do
         let nH = succ h
