@@ -228,6 +228,7 @@ Test-suite thundermint-tests
                        TM.RealNetwork
                        TM.Serialisation
                        TM.Store
+                       TM.Time
                        TM.Util.Network
                        TM.Util.Tests
 

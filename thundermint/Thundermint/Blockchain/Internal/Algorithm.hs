@@ -76,6 +76,8 @@ data Message alg a
 data HeightParameters (m :: * -> *) alg a = HeightParameters
   { currentH             :: !Height
     -- ^ Height we're on.
+  , currentTime          :: !Time
+    -- ^ Time of last block
   , validatorSet         :: !(ValidatorSet alg)
     -- ^ Validator set for current height
   , oldValidatorSet      :: !(Maybe (ValidatorSet alg))
@@ -83,6 +85,10 @@ data HeightParameters (m :: * -> *) alg a = HeightParameters
     --   stragglers votes
   , areWeProposers       :: !(Round -> Bool)
     -- ^ Find address of proposer for given round.
+  , readyCreateBlock     :: !(m Bool)
+    -- ^ Returns true if validator is ready to create new block. If
+    --   false validator will stay in @NewHeight@ step until it
+    --   becomes true.
   , proposerForRound     :: !(Round -> Address alg)
     -- ^ Proposer for given round
   , validateBlock        :: !(BlockID alg a -> m ProposalState)
@@ -215,13 +221,12 @@ newHeight HeightParameters{..} lastCommit = do
   return TMState
     { smRound         = Round 0
     , smStep          = StepNewHeight
-    , smPrevotesSet   = emptySignedSetMap validatorSet
-    , smPrecommitsSet = emptySignedSetMap validatorSet
+    , smPrevotesSet   = newHeightVoteSet validatorSet currentTime
+    , smPrecommitsSet = newHeightVoteSet validatorSet currentTime
     , smProposals     = Map.empty
     , smLockedBlock   = Nothing
     , smLastCommit    = lastCommit
     }
-
 
 -- | Transition rule for tendermint state machine. State is passed
 --   explicitly and we track effects like sending message and
@@ -297,7 +302,11 @@ tendermintTransition par@HeightParameters{..} msg sm@TMState{..} =
         --        implementation advances unconditionally
         EQ -> do
           case smStep of
-            StepNewHeight   -> enterPropose   par smRound        sm Reason'Timeout
+            --
+            StepNewHeight   -> needNewBlock par sm >>= \case
+              True  -> enterPropose par smRound sm Reason'Timeout
+              False -> do scheduleTimeout $ Timeout currentH (Round 0) StepNewHeight
+                          return sm
             StepProposal    -> enterPrevote   par smRound        sm Reason'Timeout
             StepPrevote     -> enterPrecommit par smRound        sm Reason'Timeout
             StepPrecommit   -> enterPropose   par (succ smRound) sm Reason'Timeout
@@ -305,6 +314,17 @@ tendermintTransition par@HeightParameters{..} msg sm@TMState{..} =
       where
         t0 = Timeout currentH smRound smStep
 
+-- Check whether we need to create new block or we should wait
+needNewBlock
+  :: (ConsensusMonad m, MonadLogger m, Crypto alg)
+  => HeightParameters m alg a
+  -> TMState alg a
+  -> m Bool
+needNewBlock HeightParameters{..} TMState{..}
+  -- We want to create first block signed by all validators as soon as
+  -- possible
+  | currentH == Height 1 = return True
+  | otherwise            = readyCreateBlock
 
 -- Check whether we need to perform any state transition after we
 -- received prevote
@@ -350,10 +370,9 @@ checkTransitionPrecommit par@HeightParameters{..} r sm@(TMState{..})
   --        height. A & B will never receive +2/3 vote at rounds R+x
   --        since there are only 2 validators at height H. But at some
   --        later moment they'll get
-  | Just Vote{..} <- majority23at r smPrecommitsSet
-  , Just bid      <- voteBlockID
+  | Just (Just bid) <- majority23at r smPrecommitsSet
     = do logger InfoS "Decision to commit" $ LogCommit currentH bid
-         acceptBlock voteRound bid
+         acceptBlock r bid
          commitBlock Commit{ commitBlockID    = bid
                            , commitPrecommits = valuesAtR r smPrecommitsSet
                            }
@@ -362,8 +381,7 @@ checkTransitionPrecommit par@HeightParameters{..} r sm@(TMState{..})
   --  * We are at Precommit step [FIXME?]
   --  => goto Propose(H,R+1)
   | r == smRound
-  , Just Vote{..} <- majority23at r smPrecommitsSet
-  , Nothing       <- voteBlockID
+  , Just Nothing <- majority23at r smPrecommitsSet
     = enterPropose par (succ r) sm Reason'PC_Nil
   --  * We have +2/3 precommits for some round (R+x)
   --  => goto Precommit(H,R+x)
@@ -437,10 +455,10 @@ enterPrevote par@HeightParameters{..} r (unlockOnPrevote -> sm@TMState{..}) reas
           case propPOL of
             Just lockR ->
               case majority23at lockR smPrevotesSet of
-                Just v
+                Just bid
                   | lockR < propRound
-                  , voteBlockID v == Just propBlockID -> checkPrevoteBlock propBlockID
-                  | otherwise                         -> do
+                  , bid == Just propBlockID -> checkPrevoteBlock propBlockID
+                  | otherwise               -> do
                       --  FIXME: Byzantine!
                       logger WarningS "BYZANTINE proposal POL BID does not match votes" ()
                       return Nothing
@@ -509,8 +527,8 @@ enterPrecommit par@HeightParameters{..} r sm@TMState{..} reason = do
   where
     (precommitBlock,lock)
       -- We have polka at round R
-      | Just v <- majority23at r smPrevotesSet
-        = case voteBlockID v of
+      | Just mbid <- majority23at r smPrevotesSet
+        = case mbid of
             -- Polka for NIL. Unlock and precommit NIL
             Nothing  -> ( Nothing
                         , Nothing)

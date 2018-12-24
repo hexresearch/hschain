@@ -27,7 +27,6 @@ import           Data.Maybe    (fromMaybe)
 import           Data.Function
 import           Data.Monoid   ((<>))
 import Data.Text             (Text)
-import Data.Time.Clock.POSIX (getPOSIXTime)
 import Pipes                 (Pipe,runEffect,yield,await,(>->))
 
 import Thundermint.Blockchain.Internal.Engine.Types
@@ -47,10 +46,10 @@ import Katip (Severity(..), sl)
 --
 ----------------------------------------------------------------
 
-newAppChans :: (MonadIO m, Crypto alg, Serialise a) => m (AppChans m alg a)
-newAppChans = do
+newAppChans :: (MonadIO m, Crypto alg, Serialise a) => ConsensusCfg -> m (AppChans m alg a)
+newAppChans ConsensusCfg{incomingQueueSize = sz} = do
   -- 7 is magical no good reason to use 7 but no reason against it either
-  appChanRx         <- liftIO $ newTBQueueIO 7
+  appChanRx         <- liftIO $ newTBQueueIO sz
   appChanRxInternal <- liftIO   newTQueueIO
   appChanTx         <- liftIO   newBroadcastTChanIO
   appTMState        <- liftIO $ newTVarIO Nothing
@@ -65,18 +64,20 @@ runApplication
   :: ( MonadDB m alg a, MonadCatch m, MonadLogger m, MonadTMMonitoring m, Crypto alg, Show a, BlockData a)
   => ConsensusCfg
      -- ^ Configuration
+  -> (Height -> Time -> m Bool)
+     -- ^ Whether application is ready to create new block
   -> AppState m alg a
      -- ^ Get initial state of the application
   -> AppChans m alg a
      -- ^ Channels for communication with peers
   -> m ()
-runApplication config appSt@AppState{..} appCh@AppChans{..} = logOnException $ do
+runApplication config ready appSt@AppState{..} appCh@AppChans{..} = logOnException $ do
   logger InfoS "Starting consensus engine" ()
   height <- queryRO $ blockchainHeight
   lastCm <- queryRO $ retrieveLocalCommit height
   advanceToHeight appPropStorage $ succ height
   void $ flip fix lastCm $ \loop commit -> do
-    cm <- decideNewBlock config appSt appCh commit
+    cm <- decideNewBlock config ready appSt appCh commit
     loop (Just cm)
 
 
@@ -88,14 +89,15 @@ runApplication config appSt@AppState{..} appCh@AppChans{..} = logOnException $ d
 decideNewBlock
   :: ( MonadDB m alg a, MonadLogger m, MonadTMMonitoring m, Crypto alg, Show a, BlockData a)
   => ConsensusCfg
+  -> (Height -> Time -> m Bool)
   -> AppState m alg a
   -> AppChans m alg a
   -> Maybe (Commit alg a)
   -> m (Commit alg a)
-decideNewBlock config appSt@AppState{..} appCh@AppChans{..} lastCommt = do
+decideNewBlock config ready appSt@AppState{..} appCh@AppChans{..} lastCommt = do
   -- Enter NEW HEIGHT and create initial state for consensus state
   -- machine
-  hParam <- makeHeightParameters config appSt appCh
+  hParam <- makeHeightParameters config ready appSt appCh
   -- Get rid of messages in WAL that are no longer needed and replay
   -- all messages stored there.
   walMessages <- fmap (fromMaybe [])
@@ -274,14 +276,17 @@ instance MonadTrans (ConsensusM alg a) where
 makeHeightParameters
   :: (MonadDB m alg a, MonadLogger m, MonadTMMonitoring m, Crypto alg, Serialise a, Show a)
   => ConsensusCfg
+  -> (Height -> Time -> m Bool)
   -> AppState m alg a
   -> AppChans m alg a
   -> m (HeightParameters (ConsensusM alg a m) alg a)
-makeHeightParameters ConsensusCfg{..} AppState{..} AppChans{..} = do
+makeHeightParameters ConsensusCfg{..} ready AppState{..} AppChans{..} = do
   h            <- queryRO $ blockchainHeight
   Just valSet  <- queryRO $ retrieveValidatorSet (succ h)
   oldValSet    <- queryRO $ retrieveValidatorSet  h
   Just genesis <- queryRO $ retrieveBlock        (Height 0)
+  bchTime      <- do Just b <- queryRO $ retrieveBlock h
+                     return $ headerTime $ blockHeader b
   let proposerChoice (Round r) =
         let Height h' = h
             n         = validatorSetSize valSet
@@ -291,6 +296,7 @@ makeHeightParameters ConsensusCfg{..} AppState{..} AppChans{..} = do
   --
   return HeightParameters
     { currentH        = succ h
+    , currentTime     = bchTime
     , validatorSet    = valSet
     , oldValidatorSet = oldValSet
       -- FIXME: this is some random algorithms that should probably
@@ -299,6 +305,7 @@ makeHeightParameters ConsensusCfg{..} AppState{..} AppChans{..} = do
         Nothing                 -> False
         Just (PrivValidator pk) -> proposerChoice r == address (publicKey pk)
     , proposerForRound = proposerChoice
+    , readyCreateBlock = lift $ ready h bchTime
     --
     , validateBlock = \bid -> do
         let nH = succ h
@@ -321,9 +328,10 @@ makeHeightParameters ConsensusCfg{..} AppState{..} AppChans{..} = do
     --
     , broadcastProposal = \r bid lockInfo ->
         forM_ appValidator $ \(PrivValidator pk) -> do
+          t <- getCurrentTime
           let prop = Proposal { propHeight    = succ h
                               , propRound     = r
-                              , propTimestamp = Time 0
+                              , propTimestamp = t
                               , propPOL       = lockInfo
                               , propBlockID   = bid
                               }
@@ -352,9 +360,10 @@ makeHeightParameters ConsensusCfg{..} AppState{..} AppChans{..} = do
     --
     , castPrevote     = \r b ->
         forM_ appValidator $ \(PrivValidator pk) -> do
+          t@(Time ti) <- getCurrentTime
           let vote = Vote { voteHeight  = succ h
                           , voteRound   = r
-                          , voteTime    = Time 0
+                          , voteTime    = if t > bchTime then t else Time (ti + 1)
                           , voteBlockID = b
                           }
               svote  = signValue pk vote
@@ -367,10 +376,10 @@ makeHeightParameters ConsensusCfg{..} AppState{..} AppChans{..} = do
     --
     , castPrecommit   = \r b ->
         forM_ appValidator $ \(PrivValidator pk) -> do
-          currentT <- round <$> liftIO getPOSIXTime
+          t <- getCurrentTime
           let vote = Vote { voteHeight  = succ h
                           , voteRound   = r
-                          , voteTime    = Time currentT
+                          , voteTime    = t
                           , voteBlockID = b
                           }
               svote  = signValue pk vote
@@ -400,9 +409,21 @@ makeHeightParameters ConsensusCfg{..} AppState{..} AppChans{..} = do
         usingGauge prometheusRound  curR
     --
     , createProposal = \r commit -> lift $ do
-        currentT <- Time . round <$> liftIO getPOSIXTime
-        bData    <- appBlockGenerator (succ h) currentT commit []
         lastBID  <- queryRO $ retrieveBlockID =<< blockchainHeight
+        -- Calculate time for block.
+        currentT <- case h of
+          -- For block at H=1 we in rather arbitrary manner take time
+          -- of genesis + 1s
+          Height 0 -> do Just b <- queryRO $ retrieveBlock (Height 0)
+                         let Time t = headerTime $ blockHeader b
+                         return $! Time (t + 1000)
+          -- Otherwise we take time from commit and if for some reason
+          -- we can't we have corrupted commit for latest block and
+          -- can't continue anyway.
+          _        -> case join $ liftA3 commitTime oldValSet (pure bchTime) commit of
+            Just t  -> return t
+            Nothing -> error "Corrupted commit. Cannot generate block"
+        bData    <- appBlockGenerator (succ h) currentT commit []
         let block = Block
               { blockHeader     = Header
                   { headerChainID        = headerChainID $ blockHeader genesis

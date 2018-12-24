@@ -14,6 +14,7 @@ import Control.Monad.Trans.Class
 import Control.Monad.Trans.Maybe
 import Control.Concurrent.STM
 import Data.Foldable
+import Data.List (nub)
 import qualified Data.Map             as Map
 import qualified Data.IntMap          as IMap
 import qualified Data.Set             as Set
@@ -117,6 +118,7 @@ newMempool validation = do
             foldl' (\m (_,tx) -> Map.delete tx m) m0 invalidTx
           modifyTVar' varTxSet  $ \s0 ->
             foldl' (\s(_,tx) -> Set.delete (hash tx) s) s0 invalidTx
+          modifyTVar' varFiltered (+ (length invalidTx))
     --
     , mempoolStats = liftIO $ atomically $ do
         mempool'size      <- IMap.size <$> readTVar varFIFO
@@ -124,6 +126,9 @@ newMempool validation = do
         mempool'discarded <- readTVar varDiscarded
         mempool'filtered  <- readTVar varFiltered
         return MempoolInfo{..}
+    --
+    , mempoolSize = do m <- liftIO $ readTVarIO varFIFO
+                       return $! IMap.size m
     --
     , txInMempool = \txHash -> liftIO $ do
         txSet <- readTVarIO varTxSet
@@ -181,6 +186,10 @@ newMempool validation = do
                       ]
             | let trueTX = Set.fromList (hash <$> toList fifo)
             , trueTX /= tx
+            ]
+          , [ "Duplicate transactions present"
+            | let txs = toList fifo
+            , nub txs /= txs
             ]
           ]
     }

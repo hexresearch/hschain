@@ -12,6 +12,7 @@ module Thundermint.Monitoring (
   , standardMonitoring
   , MonadTMMonitoring(..)
   , setTGaugeNow
+  , setTGVectorNow
   ) where
 
 import Control.Monad.IO.Class
@@ -32,6 +33,9 @@ import Thundermint.Blockchain.Types
 -- | Prometheus gauge to which values of given type could e written
 data TGauge a = TGauge (a -> Double) !Gauge
 
+-- | Prometheus vector of gauges
+data TGVector l a = TGVector (a -> Double) !(Vector l Gauge)
+
 -- | Collection of metrics for monitoring. This is dictionary of
 --   functions which should be called to update
 data PrometheusGauges = PrometheusGauges
@@ -42,15 +46,8 @@ data PrometheusGauges = PrometheusGauges
   , prometheusMempoolAdded     :: !(TGauge Int)
   , prometheusMempoolDiscarded :: !(TGauge Int)
   , prometheusMempoolFiltered  :: !(TGauge Int)
-  , prometheusGossipRxPV       :: !(TGauge Int)
-  , prometheusGossipTxPV       :: !(TGauge Int)
-  , prometheusGossipRxPC       :: !(TGauge Int)
-  , prometheusGossipTxPC       :: !(TGauge Int)
-  , prometheusGossipRxP        :: !(TGauge Int)
-  , prometheusGossipTxP        :: !(TGauge Int)
-  , prometheusGossipRxB        :: !(TGauge Int)
-  , prometheusGossipTxB        :: !(TGauge Int)
-  , prometheusMsgQueue         :: !(TGauge Natural)
+  , prometheusGossip           :: !(TGVector (Text,Text) Int)
+  , prometheusMsgQueue         :: !(TGauge   Natural)
   }
 
 standardMonitoring :: (MonadIO m) => m PrometheusGauges
@@ -82,30 +79,9 @@ createMonitoring prefix = do
     "mempool_filtered_total"
     "Number of transactions which were removed after being added"
   -- Gossip
-  prometheusGossipRxPV <- makeGauge fromIntegral
-    "gossip_rx_prevote"
-    "Number of received prevotes"
-  prometheusGossipTxPV <- makeGauge fromIntegral
-    "gossip_rx_prevote"
-    "Number of transmitted prevotes"
-  prometheusGossipRxPC <- makeGauge fromIntegral
-    "gossip_rx_precommit"
-    "Number of received precommits"
-  prometheusGossipTxPC <- makeGauge fromIntegral
-    "gossip_rx_precommit"
-    "Number of transmitted precommits"
-  prometheusGossipRxP <- makeGauge fromIntegral
-    "gossip_rx_proposal"
-    "Number of received proposals"
-  prometheusGossipTxP <- makeGauge fromIntegral
-    "gossip_rx_proposal"
-    "Number of transmitted proposals"
-  prometheusGossipRxB <- makeGauge fromIntegral
-    "gossip_rx_block"
-    "Number of received blocks"
-  prometheusGossipTxB <- makeGauge fromIntegral
-    "gossip_rx_blocks"
-    "Number of transmitted blocks"
+  prometheusGossip <- makeVector fromIntegral ("dir","type")
+    "gossip_total"
+    "Gossip statistics"
   --
   prometheusMsgQueue <- makeGauge fromIntegral
     "msg_queue_incoming"
@@ -115,7 +91,9 @@ createMonitoring prefix = do
     makeGauge f nm help = do
       g <- register $ gauge $ Info (prefix <> "_" <> nm) help
       return $ TGauge f g
-
+    makeVector f label nm help = do
+      v <- register $ vector label $ gauge $ Info (prefix <> "_" <> nm) help
+      return $ TGVector f v
 
 ----------------------------------------------------------------
 -- Monadic API
@@ -123,10 +101,16 @@ createMonitoring prefix = do
 
 -- | Monad which supports monitoring of thundermint.
 class Monad m => MonadTMMonitoring m where
-  usingGauge :: (PrometheusGauges -> TGauge a) -> a -> m ()
+  usingGauge  :: (PrometheusGauges -> TGauge a) -> a -> m ()
+  usingVector :: (Label l) => (PrometheusGauges -> TGVector l a) -> l -> a -> m ()
 
 setTGaugeNow :: (MonadIO m) => TGauge a -> a ->  m ()
 setTGaugeNow (TGauge f g) x = runMonitorNowT $ setGauge g (f x)
+
+setTGVectorNow :: (Label l, MonadIO m) => TGVector l a -> l -> a -> m ()
+setTGVectorNow (TGVector f v) l x = runMonitorNowT $
+  withLabel v l (\g -> setGauge g (f x))
+
 
 newtype MonitorNowT m a = MonitorNowT { runMonitorNowT :: m a }
   deriving (Functor, Applicative, Monad, MonadIO)
@@ -137,16 +121,21 @@ instance MonadIO m => MonadMonitor (MonitorNowT m) where
 
 -- | IO doesn't have monitoring
 instance MonadTMMonitoring IO where
-  usingGauge _ _ = return ()
+  usingGauge  _ _   = return ()
+  usingVector _ _ _ = return ()
 
 instance MonadTMMonitoring m => MonadTMMonitoring (LoggerT m) where
-  usingGauge f = lift . usingGauge f
+  usingGauge  f   = lift . usingGauge  f
+  usingVector f l = lift . usingVector f l
 
 instance MonadTMMonitoring m => MonadTMMonitoring (NoLogsT m) where
-  usingGauge f = lift . usingGauge f
+  usingGauge  f   = lift . usingGauge  f
+  usingVector f l = lift . usingVector f l
 
 instance MonadTMMonitoring m => MonadTMMonitoring (TracerT m) where
-  usingGauge f = lift . usingGauge f
+  usingGauge  f   = lift . usingGauge  f
+  usingVector f l = lift . usingVector f l
 
 instance MonadTMMonitoring m => MonadTMMonitoring (DBT rm alg a m) where
-  usingGauge f = lift . usingGauge f
+  usingGauge  f   = lift . usingGauge  f
+  usingVector f l = lift . usingVector f l

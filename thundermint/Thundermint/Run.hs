@@ -151,6 +151,12 @@ data NodeDescription m alg a = NodeDescription
   , nodeCommitCallback  :: !(Block alg a -> m ())
     -- ^ Callback called immediately after block was commit and user
     --   state in database is updated
+  , nodeReadyCreateBlock :: !(Height -> Time -> m Bool)
+    -- ^ It's called with height of blockchain and time of topmost block.
+    --
+    --   Called when node enters NEW_HEIGHT step. If it returns true
+    --   it will continue to create new block. If False it will it
+    --   call repeatedly (with timeout) until it becomes True
   }
 
 -- | Specification of network
@@ -186,13 +192,13 @@ runNode cfg BlockchainNet{..} NodeDescription{..} NodeLogic{..} = do
         , appValidator        = nodeValidationKey
         }
   -- Networking
-  appCh <- newAppChans
+  appCh <- newAppChans (cfgConsensus cfg)
   return
     [ id $ setNamespace "net"
          $ startPeerDispatcher (cfgNetwork cfg)
               bchNetwork bchLocalAddr bchInitialPeers appCh nodeMempool
     , id $ setNamespace "consensus"
-         $ runApplication (cfgConsensus cfg) appSt appCh
+         $ runApplication (cfgConsensus cfg) nodeReadyCreateBlock appSt appCh
     , forever $ do
         MempoolInfo{..} <- mempoolStats nodeMempool
         usingGauge prometheusMempoolSize      mempool'size

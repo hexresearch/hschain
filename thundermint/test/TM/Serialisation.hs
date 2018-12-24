@@ -112,13 +112,13 @@ tests =
                   => Proxy a -> TestTree
               run p = QC.testProperty (show (typeRep p)) (prop_JSON_roundtrip @a)
           in testGroup "JSON"
-             [ run (Proxy @(Block  TestCryptoAlg String))
-             , run (Proxy @(Header TestCryptoAlg String))
-             , run (Proxy @(Commit TestCryptoAlg String))
-             , run (Proxy @(ByzantineEvidence TestCryptoAlg String))
-             , run (Proxy @(Proposal TestCryptoAlg String))
-             , run (Proxy @(Vote 'PreVote   TestCryptoAlg String))
-             , run (Proxy @(Vote 'PreCommit TestCryptoAlg String))
+             [ run (Proxy @(Block  TestCryptoAlg Int))
+             , run (Proxy @(Header TestCryptoAlg Int))
+             , run (Proxy @(Commit TestCryptoAlg Int))
+             , run (Proxy @(ByzantineEvidence TestCryptoAlg Int))
+             , run (Proxy @(Proposal TestCryptoAlg Int))
+             , run (Proxy @(Vote 'PreVote   TestCryptoAlg Int))
+             , run (Proxy @(Vote 'PreCommit TestCryptoAlg Int))
              , run (Proxy @Height)
              , run (Proxy @Round)
              ]
