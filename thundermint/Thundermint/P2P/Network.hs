@@ -39,6 +39,8 @@ import Data.List              (find)
 import Data.Maybe             (fromMaybe)
 import Data.Monoid            ((<>))
 import Data.Word              (Word32, Word8)
+import System.IO              (hFlush, stdout)
+import Debug.Trace
 import System.Timeout         (timeout)
 
 import qualified Data.ByteString.Builder        as BB
@@ -158,14 +160,16 @@ realNetworkUdp serviceName = do
         , Net.addrSocketType = Net.Datagram
         }
   addrInfo:_ <- Net.getAddrInfo (Just hints) Nothing (Just serviceName)
+  --error ("udp at "++show (serviceName, addrInfo))
   sock       <- newUDPSocket addrInfo
   Net.setSocketOption sock Net.IPv6Only 0
   tid <- forkIO $
     flip onException (Net.close sock) $ do
       Net.bind sock (Net.addrAddress addrInfo)
-      Net.setSocketOption sock Net.IPv6Only 0
       forever $ do
+        putStrLn $ "trying to receive to " ++ show addrInfo
         (bs, addr) <- NetBS.recvFrom sock 4096
+        putStrLn $ "received packet " ++ show (LBS.take 10 $ LBS.fromStrict bs) ++ "from " ++ show addr
         (recvChan, frontVar, receivedFrontsVar) <- findOrCreateRecvTuple tChans addr
         atomically $ writeTChan acceptChan
           (applyConn sock addr frontVar receivedFrontsVar recvChan tChans, addr)
@@ -205,15 +209,16 @@ realNetworkUdp serviceName = do
     (liftIO $ receiveAction receivedFrontsVar peerChan)
     (close addr tChans)
   receiveAction frontsVar peerChan = do
-    (message, logMsg) <- atomically $ do
+    (message, logMsg, front, ofs) <- atomically $ do
       serializedTriple <- readTChan peerChan
       case CBOR.deserialiseOrFail serializedTriple of
         Right (front, ofs, chunk) -> do
           fronts <- readTVar frontsVar
           let (newFronts, message) = updateMessages front ofs chunk fronts
           writeTVar frontsVar newFronts
-          return (message, "")
-        Left err -> return (LBS.empty, "unable to deserialize packet: " ++ show err)
+          return (message, "", front, ofs)
+        Left err -> return (LBS.empty, "unable to deserialize packet: " ++ show err, -1, -1)
+    putStrLn $ "RECEIVED: " ++ show (front, ofs)
     if null logMsg
       then return $ emptyBs2Maybe message
       else do
@@ -256,9 +261,10 @@ realNetworkUdp serviceName = do
     bnd <- Net.isBound sock
     rd <- Net.isReadable sock
     wr <- Net.isWritable sock
-    putStrLn $ "sending to socket '"++show sock++"' ("++show (a,b,c,d, (bnd, rd, wr))++"), addr '"++show addr++"'"
+    putStrLn $ "msg len is " ++ show (LBS.length msg) ++ ", offsets and lengths are " ++ show (map (\(o,c) -> (o, LBS.length c)) splitChunks)
     forM_ splitChunks $ \(ofs, chunk) -> do
       flip (NetBS.sendAllTo sock) addr $ LBS.toStrict $ CBOR.serialise (front, ofs, chunk)
+      --error $ "sending to socket '"++show sock++"' ("++show (a,b,c,d, (bnd, rd, wr))++"), addr '"++show addr++"', result "
     where
       splitChunks = splitToChunks msg
   chunkSize = 1400 :: Word32
