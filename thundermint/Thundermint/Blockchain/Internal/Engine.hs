@@ -307,7 +307,6 @@ makeHeightParameters ConsensusCfg{..} AppState{..} AppChans{..} = do
         lift (retrievePropByID appPropStorage nH bid) >>= \case
           Nothing -> return UnseenProposal
           Just b  -> do
-            logger InfoS "TIME" (sl "t_B" (show $ timeToUTC $ headerTime $ blockHeader b))
             inconsistencies <- lift $ checkProposedBlock nH b
             blockOK         <- lift $ appValidationFun b
             case () of
@@ -356,13 +355,10 @@ makeHeightParameters ConsensusCfg{..} AppState{..} AppChans{..} = do
     --
     , castPrevote     = \r b ->
         forM_ appValidator $ \(PrivValidator pk) -> do
-          t <- getCurrentTime
+          t@(Time ti) <- getCurrentTime
           let vote = Vote { voteHeight  = succ h
                           , voteRound   = r
-                          , voteTime    = if t > bchTime
-                                          then t
-                                          else let Time i = t in Time (i + 1)
-                              
+                          , voteTime    = if t > bchTime then t else Time (ti + 1)
                           , voteBlockID = b
                           }
               svote  = signValue pk vote
