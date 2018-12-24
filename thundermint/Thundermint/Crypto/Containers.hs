@@ -47,7 +47,6 @@ import Control.Monad
 import           Data.Foldable
 import           Data.List         (find)
 import           Data.Maybe        (fromMaybe)
-import           Data.Monoid       (Sum(..))
 import qualified Data.Map        as Map
 import           Data.Map          (Map)
 import qualified Data.Set        as Set
