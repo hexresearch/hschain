@@ -199,25 +199,28 @@ commitTime
   -> Commit alg a     -- ^ Commit to calculate time
   -> Maybe Time
 commitTime vset t0 Commit{..} = do
-  times <- forM commitPrecommits $ \sv -> do
+  votes <- forM commitPrecommits $ \sv -> do
     val <- validatorByAddr vset (signedAddr sv)
     return ( validatorVotingPower val
-           , voteTime (signedValue sv)
+           , signedValue sv
            )
   -- Here we discard invalid votes and calculate median time
-  let cleaned  = filter ((> t0) . snd) times
-      totPower = sum (fst <$> cleaned)
-      i        = totPower `div` 2
-      otime    = zDrop (fromIntegral i)
-               $ sortBy (comparing snd) cleaned
-  case () of
-    _| odd totPower
-     , (_,t):_ <- otime         -> return t
-     | even totPower
-     , (1,t1):(_,t2):_ <- otime -> return $! average t1 t2
-     | even totPower
-     , (_,t):_ <- otime         -> return t
-     | otherwise                -> Nothing
+  let times    = sortBy (comparing snd)
+               $ [ (w,voteTime) | (w,Vote{..}) <- votes
+                                , voteTime > t0
+                                , voteBlockID == Just commitBlockID
+                                ]
+      totPower = sum (fst <$> times)
+      half     = fromIntegral $ totPower `div` 2
+  case odd totPower of
+    True  -> case zDrop half times of
+      (_,t):_         -> return t
+      _               -> Nothing
+    False -> case zDrop (half - 1) times of
+      (1,t1):(_,t2):_ -> return $ average t1 t2
+      (_,t ):_        -> return t
+      _               -> Nothing
+
 
 average :: Time -> Time -> Time
 average (Time t1) (Time t2) = Time $ (t1 `div` 2) + (t2 `div` 2) + (t1 .&. t2 .&. 1)
