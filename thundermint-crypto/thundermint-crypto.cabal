@@ -32,6 +32,7 @@ Library
   else
     hs-source-dirs: ghc .
     Build-Depends:     cryptonite        >=0.25
+                     , entropy           >=0.4
                      , memory            >=0.14.14
   Exposed-modules:
                   Thundermint.Crypto

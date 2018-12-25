@@ -7,15 +7,15 @@
 module Thundermint.Crypto.Ed25519 where
 
 import Thundermint.Crypto
-
+import Control.Monad.IO.Class
 import Control.DeepSeq       (NFData(..))
 import Crypto.Error          (CryptoFailable(..), throwCryptoError)
 import Crypto.Hash           (Digest, SHA256, SHA512)
 import qualified Crypto.Hash as Crypto
-import Crypto.Random.Types   (MonadRandom)
 import Data.ByteArray        (convert)
 import Data.ByteString       (ByteString)
 import Data.Ord              (comparing)
+import System.Entropy        (getEntropy)
 
 import qualified Crypto.PubKey.Ed25519 as Ed
 
@@ -54,8 +54,12 @@ instance Crypto Ed25519_SHA512 where
   privKeyToBS (PrivKey   k) = convert k
   pubKeyToBS  (PublicKey k) = convert k
 
-generatePrivKey :: MonadRandom m => m (PrivKey Ed25519_SHA512)
-generatePrivKey = fmap PrivKey Ed.generateSecretKey
+generatePrivKey :: MonadIO m => m (PrivKey Ed25519_SHA512)
+generatePrivKey = do
+  bs <- liftIO $ getEntropy Ed.secretKeySize
+  case Ed.secretKey bs of
+    CryptoPassed k -> return $! PrivKey k
+    CryptoFailed e -> error (show e)
 
 
 deriving instance Eq (PrivKey Ed25519_SHA512)
