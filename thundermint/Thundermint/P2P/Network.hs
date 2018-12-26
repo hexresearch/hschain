@@ -24,6 +24,7 @@ module Thundermint.P2P.Network (
   , Ip.getLocalAddress
   , Ip.isLocalAddress
   , Ip.getLocalAddresses
+  , dumpStrLn
   ) where
 
 import qualified Codec.Serialise as CBOR
@@ -40,6 +41,8 @@ import Data.Maybe             (fromMaybe)
 import Data.Monoid            ((<>))
 import Data.Word              (Word32, Word8)
 import System.IO              (hFlush, stdout)
+import System.IO              (hPutStrLn, hFlush, openFile, IOMode(..))
+import System.IO.Unsafe       (unsafePerformIO)
 import Debug.Trace
 import System.Timeout         (timeout)
 
@@ -149,6 +152,9 @@ emptyBs2Maybe bs
   | LBS.null bs = Nothing
   | otherwise  = Just bs
 
+dumph = unsafePerformIO $ openFile "log-dump" WriteMode
+dumpStrLn s = hPutStrLn dumph s >> hFlush dumph
+
 -- | API implementation example for real udp network
 realNetworkUdp :: Net.ServiceName -> IO (NetworkAPI Net.SockAddr)
 realNetworkUdp serviceName = do
@@ -170,10 +176,11 @@ realNetworkUdp serviceName = do
       Net.bind sock (Net.addrAddress addrInfo)
       Net.setSocketOption otherSock Net.IPv6Only 0
       forever $ do
-        --putStrLn $ "trying to receive to " ++ show addrInfo
+        o6 <- Net.getSocketOption otherSock Net.IPv6Only
+        dumpStrLn $ "trying to receive to " ++ show addrInfo ++ ", socket "++show sock++", only v6 "++show o6
         (bs, addr) <- NetBS.recvFrom sock 4096
         o6 <- Net.getSocketOption otherSock Net.IPv6Only
-        putStrLn $ "received packet " ++ show (LBS.take 10 $ LBS.fromStrict bs) ++ "from " ++ show addr ++ ", only v6 " ++ show o6
+        dumpStrLn $ "received packet " ++ show (LBS.take 10 $ LBS.fromStrict bs) ++ "from " ++ show addr ++ ", only v6 " ++ show o6
         (recvChan, frontVar, receivedFrontsVar) <- findOrCreateRecvTuple tChans addr
         atomically $ writeTChan acceptChan
           (applyConn sock addr frontVar receivedFrontsVar recvChan tChans, addr)
@@ -184,14 +191,19 @@ realNetworkUdp serviceName = do
         return (liftIO $ killThread tid, liftIO.atomically $ readTChan acceptChan)
       --
     , connect  = \addr ->
-         (\(peerChan, frontVar, receivedFrontsVar) ->
+         (\sock (peerChan, frontVar, receivedFrontsVar) ->
                applyConn sock addr frontVar receivedFrontsVar peerChan tChans)
-           <$> findOrCreateRecvTuple tChans addr
+           <$> return sock --liftIO (Net.socket (sockAddrFamily addr) Net.Datagram 0)
+           <*> findOrCreateRecvTuple tChans addr
     , filterOutOwnAddresses = filterOutOwnAddresses (realNetworkStub serviceName)
     , normalizeNodeAddress = normalizeNodeAddress (realNetworkStub serviceName)
     , listenPort = listenPort (realNetworkStub serviceName)
     }
  where
+  sockAddrFamily sockAddr = case sockAddr of
+    Net.SockAddrInet _ _ -> Net.AF_INET
+    Net.SockAddrInet6 _ _ _ _ -> Net.AF_INET6
+    _ -> error "socket must be either IPv4 or IPv6"
   newUDPSocket ai = do
     sock <- Net.socket (Net.addrFamily     ai)
                        (Net.addrSocketType ai)
@@ -222,7 +234,7 @@ realNetworkUdp serviceName = do
           writeTVar frontsVar newFronts
           return (message, "", front, ofs)
         Left err -> return (LBS.empty, "unable to deserialize packet: " ++ show err, -1, -1)
-    putStrLn $ "RECEIVED: " ++ show (front, ofs)
+    dumpStrLn $ "RECEIVED: " ++ show (front, ofs)
     if null logMsg
       then return $ emptyBs2Maybe message
       else do
@@ -265,15 +277,15 @@ realNetworkUdp serviceName = do
     bnd <- Net.isBound sock
     rd <- Net.isReadable sock
     wr <- Net.isWritable sock
-    --putStrLn $ "msg len is " ++ show (LBS.length msg) ++ ", offsets and lengths are " ++ show (map (\(o,c) -> (o, LBS.length c)) splitChunks)
+    --onException (Net.setSocketOption sock Net.IPv6Only 0) $ error $ "socket "++show sock++" "++show (a,b,c,d)++", addr "++show addr++"\nexception in setSockOption"
+    dumpStrLn $ "msg len is " ++ show (LBS.length msg) ++ ", offsets and lengths are " ++ show (map (\(o,c) -> (o, LBS.length c)) splitChunks)
     forM_ splitChunks $ \(ofs, chunk) -> do
       let Net.MkSocket a b c d _ = sock
       bnd <- Net.isBound sock
       rd <- Net.isReadable sock
       wr <- Net.isWritable sock
-      Net.setSocketOption sock Net.IPv6Only 0
-      only6 <- Net.getSocketOption sock Net.IPv6Only
-      putStrLn $ "sending to socket '"++show sock++"' ("++show (a,b,c,d, (bnd, rd, wr))++"), addr '"++show addr++"', only v6 "++show only6
+      only6 <- return 1234 --Net.getSocketOption sock Net.IPv6Only
+      dumpStrLn $ "sending to socket '"++show sock++"' ("++show (a,b,c,d, (bnd, rd, wr))++"), addr '"++show addr++"', only v6 "++show only6
       flip (NetBS.sendAllTo sock) addr $ LBS.toStrict $ CBOR.serialise (front, ofs, chunk)
       --error $ "sending to socket '"++show sock++"' ("++show (a,b,c,d, (bnd, rd, wr))++"), addr '"++show addr++"', result "
     where

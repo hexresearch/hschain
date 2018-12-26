@@ -12,8 +12,8 @@ import qualified TM.Persistence
 main :: IO ()
 main = defaultMain $ testGroup "test suite"
   [ TM.Network.tests
-  , TM.P2P.tests
-  {-, TM.NetworkTls.tests
+  {-, TM.P2P.tests
+  , TM.NetworkTls.tests
   , TM.Mempool.tests
   , TM.Persistence.tests
   , TM.Serialisation.tests
