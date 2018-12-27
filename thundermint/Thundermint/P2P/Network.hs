@@ -165,43 +165,57 @@ realNetworkUdp serviceName = do
         { Net.addrFlags      = []
         , Net.addrSocketType = Net.Datagram
         }
-  addrInfo:_ <- Net.getAddrInfo (Just hints) Nothing (Just serviceName)
-  --error ("udp at "++show (serviceName, addrInfo))
+  addrInfos@(addrInfo':_) <- Net.getAddrInfo (Just hints) Nothing (Just serviceName)
+  let changeToWildcard addrInfo@(Net.AddrInfo{..})
+        = addrInfo
+            { Net.addrAddress = case addrAddress of
+              Net.SockAddrInet6 p f h s
+                | h == (0,0,0,1) -> Net.SockAddrInet6 p f (0,0,0,0) s
+              _ -> addrAddress
+            }
+      addrInfo = changeToWildcard addrInfo'
+  dumpStrLn $ "udp at "++show (serviceName, addrInfo)
   sock       <- newUDPSocket addrInfo
-  otherSock  <- newUDPSocket addrInfo
-  Net.setSocketOption sock Net.IPv6Only 0
-  Net.setSocketOption otherSock Net.IPv6Only 0
+  dumpv6only sock
   tid <- forkIO $
     flip onException (Net.close sock) $ do
       Net.bind sock (Net.addrAddress addrInfo)
-      Net.setSocketOption otherSock Net.IPv6Only 0
+      dumpStrLn $ "sock "++show sock++" is bound to "++show addrInfo
       forever $ do
-        o6 <- Net.getSocketOption otherSock Net.IPv6Only
+        o6 <- Net.getSocketOption sock Net.IPv6Only
         dumpStrLn $ "trying to receive to " ++ show addrInfo ++ ", socket "++show sock++", only v6 "++show o6
-        (bs, addr) <- NetBS.recvFrom sock 4096
-        o6 <- Net.getSocketOption otherSock Net.IPv6Only
+        (bs, addr') <- NetBS.recvFrom sock 4096
+        let addr = Ip.normalizeIpAddr addr'
+        o6 <- Net.getSocketOption sock Net.IPv6Only
         dumpStrLn $ "received packet " ++ show (LBS.take 10 $ LBS.fromStrict bs) ++ "from " ++ show addr ++ ", only v6 " ++ show o6
-        (recvChan, frontVar, receivedFrontsVar) <- findOrCreateRecvTuple tChans addr
+        (chans, (recvChan, frontVar, receivedFrontsVar)) <- findOrCreateRecvTuple tChans addr
+        dumpStrLn $ "chans registered before: "++show (Map.keys chans)
         atomically $ writeTChan acceptChan
           (applyConn sock addr frontVar receivedFrontsVar recvChan tChans, addr)
         atomically $ writeTChan recvChan $ LBS.fromStrict bs
 
   return $ NetworkAPI
-    { listenOn =
+    { listenOn = do
         return (liftIO $ killThread tid, liftIO.atomically $ readTChan acceptChan)
       --
     , connect  = \addr ->
-         (\sock (peerChan, frontVar, receivedFrontsVar) ->
+         (\(peerChan, frontVar, receivedFrontsVar) ->
                applyConn sock addr frontVar receivedFrontsVar peerChan tChans)
-           <$> return sock --liftIO (Net.socket (sockAddrFamily addr) Net.Datagram 0)
-           <*> findOrCreateRecvTuple tChans addr
+           <$> do
+              (a,b) <- (findOrCreateRecvTuple tChans addr)
+              liftIO $ dumpStrLn $ "chans before connecting to "++show addr++": "++show (Map.keys a)
+              return b
     , filterOutOwnAddresses = filterOutOwnAddresses (realNetworkStub serviceName)
     , normalizeNodeAddress = normalizeNodeAddress (realNetworkStub serviceName)
     , listenPort = listenPort (realNetworkStub serviceName)
     }
  where
+  dumpv6only sock = do
+    dumpStrLn $ "getting v6only for "++show sock
+    o6 <- Net.getSocketOption sock Net.IPv6Only
+    dumpStrLn $ "socket "++show sock ++ " has only v6 "++show o6
   sockAddrFamily sockAddr = case sockAddr of
-    Net.SockAddrInet _ _ -> Net.AF_INET
+    Net.SockAddrInet _ _      -> Net.AF_INET
     Net.SockAddrInet6 _ _ _ _ -> Net.AF_INET6
     _ -> error "socket must be either IPv4 or IPv6"
   newUDPSocket ai = do
@@ -212,7 +226,7 @@ realNetworkUdp serviceName = do
     return sock
   findOrCreateRecvTuple tChans addr = liftIO.atomically $ do
     chans <- readTVar tChans
-    case Map.lookup addr chans of
+    fmap ((,) chans) $ case Map.lookup addr chans of
       Just chanFrontVar -> return chanFrontVar
       Nothing   -> do
         recvChan <- newTChan
@@ -278,6 +292,9 @@ realNetworkUdp serviceName = do
     rd <- Net.isReadable sock
     wr <- Net.isWritable sock
     --onException (Net.setSocketOption sock Net.IPv6Only 0) $ error $ "socket "++show sock++" "++show (a,b,c,d)++", addr "++show addr++"\nexception in setSockOption"
+    dumpStrLn $ "trying to get IPv6 only for "++show sock
+    o6 <- Net.getSocketOption sock Net.IPv6Only
+    dumpStrLn $ "IPv6 only is "++show o6++" for socket "++show sock
     dumpStrLn $ "msg len is " ++ show (LBS.length msg) ++ ", offsets and lengths are " ++ show (map (\(o,c) -> (o, LBS.length c)) splitChunks)
     forM_ splitChunks $ \(ofs, chunk) -> do
       let Net.MkSocket a b c d _ = sock

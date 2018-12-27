@@ -19,7 +19,7 @@ realNetPair useUDP host = do
     n <- randomRIO (10, 89 :: Int)
     m <- randomRIO (1, 9 :: Int)
     let port1 = concat ["30", show m, show  n]
-        port2 = concat ["31", show m, show (n + m)]
+        port2 = concat ["31", show m, show (mod (n + m) 100)]
         realNet = if not useUDP then return . realNetwork else realNetworkUdp
         hints = Net.defaultHints  { Net.addrSocketType = Net.Stream }
     addr1:_ <- Net.getAddrInfo (Just hints) (Just host) (Just port1)
@@ -44,7 +44,7 @@ realTlsNetPair  host = do
     n <- randomRIO (10, 99 :: Int)
     m <- randomRIO (1, 9 :: Int)
     let port1 = concat ["32", show  m,  show  n]
-        port2 = concat ["33", show  m, show  (n + m)]
+        port2 = concat ["33", show  m, show  (mod (n + m) 100)]
         credential = getCredentialFromBuffer certificatePem keyPem
         server = realNetworkTls credential port1
         client = realNetworkTls credential port2

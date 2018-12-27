@@ -71,7 +71,7 @@ loopbackIpv6 = Net.SockAddrInet6 50000 0 (0,0,0,1) 0
 pingPong :: Show addr => (addr, NetworkAPI addr)
          -> (addr, NetworkAPI addr)
          -> IO ()
-pingPong (serverAddr, server) (_, client) = do
+pingPong (serverAddr, server) (clientAddr, client) = do
   let runServer NetworkAPI{..} = do
         bracket listenOn fst $ \(_,accept) ->
           bracket accept (close . fst) $ \(conn,_) -> do
