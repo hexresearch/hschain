@@ -39,7 +39,7 @@ import qualified Data.Aeson          as JSON
 import qualified Data.Aeson.TH       as JSON
 import qualified Data.Map            as Map
 import qualified Data.HashMap.Strict as HM
-import           Katip (Severity(..))
+import           Katip (Severity(..),sl)
 import qualified Katip
 import GHC.Generics
 
@@ -214,7 +214,7 @@ newHeight
   -> Maybe (Commit alg a)
   -> m (TMState alg a)
 newHeight HeightParameters{..} lastCommit = do
-  logger InfoS "Entering new height ----------------" currentH
+  logger InfoS "Entering new height ----------------" (sl "H" currentH)
   scheduleTimeout $ Timeout  currentH (Round 0) StepNewHeight
   announceStep    $ FullStep currentH (Round 0) StepNewHeight
   return TMState
