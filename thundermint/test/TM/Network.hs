@@ -27,7 +27,7 @@ import TM.Util.Network
 tests :: TestTree
 tests =
     testGroup "network test"
-                  [ {-testGroup "mock"
+                  [ testGroup "mock"
                     [ testCase "ping-pong" $ mockNetPair >>= uncurry pingPong
                     , testCase "delayed write" $ mockNetPair >>= uncurry delayedWrite
                     ]
@@ -41,22 +41,22 @@ tests =
                           , testCase "delayed write" $ withRetry delayedWrite "::1"
                           ]
                     ]
-                  , -}testGroup "real-udp"
+                  , testGroup "real-udp"
                     [ testGroup "IPv4"
                          [ testCase "ping-pong" $ withRetry' True pingPong "127.0.0.1"
                          , testCase "delayed write" $ withRetry' True delayedWrite "127.0.0.1"
                           ]
-                    {-, testGroup "IPv6"
+                    , testGroup "IPv6"
                           [ testCase "ping-pong" $ withRetry' True pingPong "::1"
                           , testCase "delayed write" $ withRetry' True delayedWrite "::1"
-                          ]-}
-                    ]{-
+                          ]
+                    ]
                   , testGroup "local addresses detection"
                     [ testCase "all locals must be local" $ getLocalAddresses >>= (fmap and . mapM isLocalAddress) >>= (@? "Must be local")
                     , testCase "loopback is local" $ (and <$> mapM isLocalAddress [loopbackIpv4, loopbackIpv6]) >>= (@? "Must be local")
                     -- TODO: Randomly generate addresses and check it is not isLocalAddress
 
-                    ]-}
+                    ]
                   ]
 
 
@@ -75,18 +75,13 @@ pingPong (serverAddr, server) (clientAddr, client) = do
   let runServer NetworkAPI{..} = do
         bracket listenOn fst $ \(_,accept) ->
           bracket accept (close . fst) $ \(conn,_) -> do
-            dumpStrLn $ "server "++show serverAddr++" got connected."
             Just bs <- recv conn
-            dumpStrLn $ "server "++show serverAddr++" received "++show bs
             send conn ("PONG_" <> bs)
-            dumpStrLn $ "server "++show serverAddr++" sent response."
-        dumpStrLn $ "SERVER IS DONE!!!"
   let runClient NetworkAPI{..} = do
         threadDelay 10e3
         bracket (connect serverAddr) close $ \conn -> do
           send conn "PING"
           bs <- recv conn
           assertEqual "Ping-pong" (Just "PONG_PING") bs
-        dumpStrLn $ "CLIENT IS DONE!!!"
   ((),()) <- concurrently (runServer server) (runClient client)
   return ()

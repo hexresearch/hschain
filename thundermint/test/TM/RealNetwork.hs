@@ -30,8 +30,6 @@ realNetPair useUDP host = do
     let sockAddr1 = Net.addrAddress addr1
     let sockAddr2 = Net.addrAddress addr2
 
-    if useUDP then dumpStrLn $ "server port "++show port1++", client port "++show port2 else return ()
-
     return ( (sockAddr1, server)
            , (sockAddr2, client)
            )
