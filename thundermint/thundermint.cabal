@@ -61,7 +61,7 @@ Library
                   Thundermint.Blockchain.Internal.Algorithm
                   Thundermint.Blockchain.Internal.Engine
                   Thundermint.Blockchain.Internal.Engine.Types
-                  Thundermint.Blockchain.Internal.Message
+                  Thundermint.Blockchain.Internal.Types
                   Thundermint.Blockchain.Interpretation
                   Thundermint.Blockchain.Types
                   Thundermint.Control

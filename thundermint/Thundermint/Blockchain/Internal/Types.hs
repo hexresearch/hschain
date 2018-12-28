@@ -3,7 +3,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE LambdaCase        #-}
 -- |
-module Thundermint.Blockchain.Internal.Message (
+module Thundermint.Blockchain.Internal.Types (
     MessageRx(..)
   , unverifyMessageRx
   , Announcement(..)

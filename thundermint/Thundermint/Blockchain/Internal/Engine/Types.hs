@@ -36,7 +36,7 @@ import Data.Aeson
 import Numeric.Natural
 import GHC.Generics           (Generic)
 
-import Thundermint.Blockchain.Internal.Message
+import Thundermint.Blockchain.Internal.Types
 import Thundermint.Blockchain.Types
 import Thundermint.Crypto
 import Thundermint.Store
