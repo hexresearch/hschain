@@ -38,8 +38,9 @@ import           Data.Set   (Set)
 import Thundermint.Control
 import Thundermint.Blockchain.Types
 import Thundermint.Crypto
-import Thundermint.Crypto.Containers
 import Thundermint.Store
+import Thundermint.Validators
+
 
 ----------------------------------------------------------------
 --

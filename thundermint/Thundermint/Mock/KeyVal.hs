@@ -31,7 +31,6 @@ import Thundermint.Blockchain.Interpretation
 import Thundermint.Blockchain.Types
 import Thundermint.Control
 import Thundermint.Crypto            (hash)
-import Thundermint.Crypto.Containers (ValidatorSet)
 import Thundermint.Crypto.Ed25519
 import Thundermint.Logger
 import Thundermint.Mock.KeyList
@@ -40,7 +39,7 @@ import Thundermint.P2P
 import Thundermint.Run
 import Thundermint.Store
 import Thundermint.Store.Internal.Query (Connection,connectionRO)
-
+import Thundermint.Validators (ValidatorSet)
 
 ----------------------------------------------------------------
 --

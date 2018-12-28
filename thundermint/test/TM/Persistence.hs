@@ -27,13 +27,13 @@ import Thundermint.Blockchain.Types
 import Thundermint.Blockchain.Internal.Engine.Types
 import Thundermint.Control
 import Thundermint.Crypto
-import Thundermint.Crypto.Containers
 import Thundermint.Crypto.Ed25519
 import Thundermint.Mock.KeyList
 import Thundermint.Store
 import Thundermint.Store.SQL
 import Thundermint.Store.Internal.Query
 import Thundermint.Store.Internal.Types
+import Thundermint.Validators
 
 
 tests :: TestTree

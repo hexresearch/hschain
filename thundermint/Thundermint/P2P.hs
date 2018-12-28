@@ -58,6 +58,7 @@ import Thundermint.P2P.Types
 import Thundermint.Store
 import Thundermint.Utils
 import Thundermint.Monitoring
+import Thundermint.Validators
 
 
 ----------------------------------------------------------------

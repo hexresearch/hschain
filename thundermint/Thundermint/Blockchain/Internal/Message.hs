@@ -13,8 +13,8 @@ import Codec.Serialise        (Serialise)
 import GHC.Generics           (Generic)
 
 import Thundermint.Crypto
-import Thundermint.Crypto.Containers
 import Thundermint.Blockchain.Types
+import Thundermint.Validators
 
 
 ----------------------------------------------------------------

@@ -63,6 +63,8 @@ import qualified Katip
 
 import Thundermint.Crypto
 import Thundermint.Crypto.Containers
+import Thundermint.Validators
+
 
 ----------------------------------------------------------------
 -- Primitives

@@ -97,6 +97,7 @@ import Thundermint.Logger                 (MonadLogger)
 import Thundermint.Store.Internal.Query
 import Thundermint.Store.Internal.BlockDB
 import Thundermint.Store.SQL
+import Thundermint.Validators
 
 
 ----------------------------------------------------------------
