@@ -51,7 +51,6 @@ import           Data.Ord                 (comparing)
 import           Data.Time.Clock          (UTCTime)
 import           Data.Time.Clock.POSIX    (getPOSIXTime,posixSecondsToUTCTime)
 import           GHC.Generics             (Generic)
-import qualified Katip
 
 import Thundermint.Crypto
 import Thundermint.Validators
@@ -350,29 +349,3 @@ decodeVote expectedTag = do
                 fail ("Invalid Vote tag, expected: " ++ show expectedTag
                       ++ ", actual: " ++ show tag)
         _ -> fail $ "Invalid Vote encoding"
-
-
-
-
-----------------------------------------------------------------
--- Logging instances
-----------------------------------------------------------------
-
-instance Katip.ToObject Round where
-  toObject (Round i) = HM.singleton "R" (JSON.toJSON i)
-instance Katip.LogItem Round where
-  payloadKeys _ _ = Katip.AllKeys
-
-instance Katip.ToObject Height where
-  toObject (Height i) = HM.singleton "H" (JSON.toJSON i)
-instance Katip.LogItem Height where
-  payloadKeys _ _ = Katip.AllKeys
-
-instance Katip.ToObject FullStep where
-  toObject (FullStep (Height h) (Round r) s) = HM.fromList
-    [ ("H", JSON.toJSON h)
-    , ("R", JSON.toJSON r)
-    , ("S", JSON.toJSON s)
-    ]
-instance Katip.LogItem FullStep where
-  payloadKeys _ _ = Katip.AllKeys
