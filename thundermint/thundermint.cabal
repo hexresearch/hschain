@@ -87,6 +87,7 @@ Library
                   Thundermint.Store.Internal.Types
                   Thundermint.Store.Internal.Query
                   Thundermint.Utils
+                  Thundermint.Validators
   Other-modules:
                   Thundermint.P2P.Network.Parameters
                   Thundermint.P2P.Network.TLS

@@ -19,7 +19,7 @@ import           Database.SQLite.Simple             (Only(..))
 import Thundermint.Blockchain.Types
 import Thundermint.Blockchain.Internal.Message
 import Thundermint.Crypto
-import Thundermint.Crypto.Containers
+import Thundermint.Validators
 import Thundermint.Store.Internal.Query
 
 

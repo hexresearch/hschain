@@ -39,8 +39,8 @@ import GHC.Generics           (Generic)
 import Thundermint.Blockchain.Internal.Message
 import Thundermint.Blockchain.Types
 import Thundermint.Crypto
-import Thundermint.Crypto.Containers
 import Thundermint.Store
+import Thundermint.Validators
 
 
 ----------------------------------------------------------------

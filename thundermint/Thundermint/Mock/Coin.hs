@@ -56,7 +56,6 @@ import Thundermint.Blockchain.Interpretation
 import Thundermint.Blockchain.Internal.Engine.Types
 import Thundermint.Control
 import Thundermint.Crypto
-import Thundermint.Crypto.Containers (ValidatorSet)
 import Thundermint.Crypto.Ed25519
 import Thundermint.Debug.Trace
 import Thundermint.Logger
@@ -68,6 +67,7 @@ import Thundermint.Store.Internal.Query (connectionRO)
 import Thundermint.Mock.KeyList (privateKeyList)
 import Thundermint.Mock.Types
 import Thundermint.Monitoring
+import Thundermint.Validators (ValidatorSet)
 import qualified Thundermint.P2P.Network as P2P
 
 

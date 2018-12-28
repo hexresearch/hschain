@@ -10,7 +10,7 @@ import Test.Tasty.HUnit
 
 import Thundermint.Blockchain.Types
 import Thundermint.Crypto
-import Thundermint.Crypto.Containers
+import Thundermint.Validators
 import Thundermint.Crypto.Ed25519
 import Thundermint.Mock.KeyList (privateKeyList)
 
