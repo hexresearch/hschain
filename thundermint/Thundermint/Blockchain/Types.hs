@@ -32,13 +32,6 @@ module Thundermint.Blockchain.Types (
     -- ** Votes
   , VoteType(..)
   , Vote(..)
-  , VoteSet
-  , HeightVoteSet
-  , newVoteSet
-  , newHeightVoteSet
-    -- * State of tendermint consensus
-  , ProposalState(..)
-  , TMState(..)
   ) where
 
 import           Codec.Serialise
@@ -53,7 +46,6 @@ import qualified Data.HashMap.Strict      as HM
 import           Data.Bits                ((.&.))
 import           Data.Int
 import           Data.List                (sortBy)
-import           Data.Map                 (Map)
 import           Data.Monoid              ((<>))
 import           Data.Ord                 (comparing)
 import           Data.Time.Clock          (UTCTime)
@@ -62,7 +54,6 @@ import           GHC.Generics             (Generic)
 import qualified Katip
 
 import Thundermint.Crypto
-import Thundermint.Crypto.Containers
 import Thundermint.Validators
 
 
@@ -360,55 +351,6 @@ decodeVote expectedTag = do
                       ++ ", actual: " ++ show tag)
         _ -> fail $ "Invalid Vote encoding"
 
-type VoteSet ty alg a = SignedSet 'Verified alg (Vote ty alg a) (Maybe (BlockID alg a))
-
-type HeightVoteSet ty alg a = SignedSetMap Round 'Verified alg (Vote ty alg a) (Maybe (BlockID alg a))
-
--- | Create new empty vote set
-newVoteSet :: ValidatorSet alg -> Time -> VoteSet ty alg a
-newVoteSet valSet t = emptySignedSet valSet voteBlockID ((> t) . voteTime)
-
--- | Create new empty vote set
-newHeightVoteSet :: ValidatorSet alg -> Time -> HeightVoteSet ty alg a
-newHeightVoteSet valSet t = emptySignedSetMap valSet voteBlockID ((> t) . voteTime)
-
-
-----------------------------------------------------------------
--- State for of tendermint state machine
-----------------------------------------------------------------
-
--- | Proposal state as seen by consensus algorithm
-data ProposalState
-  = GoodProposal
-    -- ^ Proposal is valid and we could vote for it
-  | InvalidProposal
-    -- ^ Proposal is invalid for some reason
-  | UnseenProposal
-    -- ^ We don't have complete block data for particular block ID yet
-  deriving (Show, Eq, Generic)
-instance Serialise     ProposalState
-instance JSON.ToJSON   ProposalState
-instance JSON.FromJSON ProposalState
-
--- | State for tendermint consensus at some particular height.
-data TMState alg a = TMState
-  { smRound         :: !Round
-    -- ^ Current round
-  , smStep          :: !Step
-    -- ^ Current step in the round
-  , smProposals     :: !(Map Round (Signed 'Verified alg (Proposal alg a)))
-    -- ^ Proposal for current round
-  , smPrevotesSet   :: !(HeightVoteSet 'PreVote alg a)
-    -- ^ Set of all received valid prevotes
-  , smPrecommitsSet :: !(HeightVoteSet 'PreCommit alg a)
-    -- ^ Set of all received valid precommits
-  , smLockedBlock   :: !(Maybe (Round, BlockID alg a))
-    -- ^ Round and block we're locked on
-  , smLastCommit    :: !(Maybe (Commit alg a))
-    -- ^ Commit for previous block. Nothing if previous block is
-    --   genesis block.
-  }
-  deriving (Show)
 
 
 
@@ -433,9 +375,4 @@ instance Katip.ToObject FullStep where
     , ("S", JSON.toJSON s)
     ]
 instance Katip.LogItem FullStep where
-  payloadKeys _ _ = Katip.AllKeys
-
-instance Katip.ToObject ProposalState where
-  toObject p = HM.singleton "val" (JSON.toJSON p)
-instance Katip.LogItem ProposalState where
   payloadKeys _ _ = Katip.AllKeys

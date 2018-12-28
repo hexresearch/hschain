@@ -48,6 +48,7 @@ import Thundermint.Crypto            ( Crypto,Signed,Address,SignedState(..),Blo
                                      )
 import Thundermint.Crypto.Containers
 import Thundermint.Blockchain.Types
+import Thundermint.Blockchain.Internal.Types
 import Thundermint.Logger
 import Thundermint.Validators
 

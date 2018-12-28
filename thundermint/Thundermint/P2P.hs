@@ -46,6 +46,7 @@ import GHC.Generics  (Generic)
 
 
 import Thundermint.Blockchain.Internal.Engine.Types
+import Thundermint.Blockchain.Internal.Types
 import Thundermint.Blockchain.Types
 import Thundermint.Control
 import Thundermint.Crypto
