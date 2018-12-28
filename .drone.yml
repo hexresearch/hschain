@@ -1,3 +1,8 @@
+clone:
+  git:
+    image: plugins/git:next
+    pull: true
+
 pipeline:
   restore-cache:
     image: plugins/s3-cache:1
@@ -41,7 +46,7 @@ pipeline:
 
       {{build.link}}
 
-      branch *{{commit.branch}}* by {{commit.author}}
+      ${DRONE_BUILD_EVENT} ${DRONE_PULL_REQUEST= } to branch *{{commit.branch}}* by {{commit.author}}
 
       {{commit.message}}
 
@@ -49,4 +54,4 @@ pipeline:
     when:
       status: [ success, failure ]
 
-branches: master
+branches: [ master ]
