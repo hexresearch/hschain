@@ -171,7 +171,7 @@ realNetworkUdp serviceName = do
     flip onException (Net.close sock) $ do
       Net.bind sock (Net.addrAddress addrInfo)
       forever $ do
-        (bs, addr') <- NetBS.recvFrom sock 4096
+        (bs, addr') <- NetBS.recvFrom sock (fromIntegral chunkSize * 2)
         let addr = Ip.normalizeIpAddr addr'
         (recvChan, frontVar, receivedFrontsVar) <- findOrCreateRecvTuple tChans addr
         atomically $ writeTChan acceptChan
@@ -258,9 +258,9 @@ realNetworkUdp serviceName = do
     front <- atomically $ do -- slightly overkill, but in line with other's code.
       i <- readTVar frontVar
       writeTVar frontVar $ i + 1
-      return i
+      return (i :: Word8)
     forM_ splitChunks $ \(ofs, chunk) -> do
-      flip (NetBS.sendAllTo sock) addr $ LBS.toStrict $ CBOR.serialise (front, ofs, chunk)
+      flip (NetBS.sendAllTo sock) addr $ LBS.toStrict $ CBOR.serialise (front :: Word8, ofs :: Word32, chunk)
     where
       splitChunks = splitToChunks msg
   chunkSize = 1400 :: Word32 -- should prevent in-kernel UDP splitting/reassembling most of the time.
@@ -270,8 +270,8 @@ realNetworkUdp serviceName = do
     where
       go ofs bs
         | LBS.length bs < 1 = []
-        | LBS.length bs == intChunkSize = [(ofs, bs), (ofs + intChunkSize, LBS.empty)]
-        | otherwise = (ofs, hd) : go (ofs + LBS.length hd) tl
+        | LBS.length bs == intChunkSize = [(ofs, LBS.copy bs), (ofs + chunkSize, LBS.empty)]
+        | otherwise = (ofs, LBS.copy hd) : go (ofs + (fromIntegral $ LBS.length hd)) tl
         where
           intChunkSize = fromIntegral chunkSize
           (hd,tl) = LBS.splitAt intChunkSize bs
