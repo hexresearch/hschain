@@ -46,9 +46,10 @@ tests =
                     [ testGroup group $
                          [ testCase "ping-pong" $ withRetry' True pingPong address
                          , testCase "delayed write" $ withRetry' True delayedWrite address
-                         ] ++
-                         [ testCase ("ping-pong-"++show size) $ withRetry' True (sizedPingPong size) address
-                         | size <- map (2^) [4..20]
+                         , testGroup "sized ping pongs"
+                           [ testCase ("ping-pong-"++show size) $ withRetry' True (sizedPingPong size) address
+                           | size <- map (2^) [4..20]
+                           ]
                          ]
                     | (group, address) <- [("IPv4", "127.0.0.1"), ("IPv6", "::1")]
                     ]
