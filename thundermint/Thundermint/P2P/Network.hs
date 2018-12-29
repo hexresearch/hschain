@@ -255,11 +255,18 @@ realNetworkUdp serviceName = do
         | Map.size updatedFront > 10 = error "internal error: no pruning of fronts was devised"
         | otherwise = updatedFront
   pruneFront fronts
-    | minFro
+    | maxMinDelta < minMaxDelta = Map.delete minFront fronts
+    | otherwise = Map.delete maxFront fronts
     where
       Just ((minFront, _), _) = Map.minViewWithKey fronts
       Just ((maxFront, _), _) = Map.maxViewWithKey fronts
-      -- these deltas
+      -- these deltas are modulo 256, which is useful.
+      -- thus if we have maxFront 252 and minFront 240, the
+      -- maxMinDelta will be 12 and minMaxDelta will be 244.
+      -- if minFront is 4 and maxFront is 252 (suggesting that
+      -- there was an overflow), the maxMinDelta will be 248
+      -- and minMaxDelta will be 8.
+      -- shorter delta indicate where oldest front was.
       maxMinDelta = maxFront - minFront
       minMaxDelta = minFront - maxFront
   sendSplitted frontVar sock addr msg = do
