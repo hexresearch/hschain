@@ -86,6 +86,7 @@ Library
                   Thundermint.Store.Internal.Types
                   Thundermint.Store.Internal.Query
                   Thundermint.Utils
+                  Thundermint.Types
                   Thundermint.Types.Validators
                   Thundermint.Types.Blockchain
   Other-modules:
