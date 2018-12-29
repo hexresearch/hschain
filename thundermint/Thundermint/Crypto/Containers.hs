@@ -36,7 +36,7 @@ import qualified Data.Set        as Set
 import           Data.Set          (Set)
 
 import Thundermint.Crypto
-import Thundermint.Validators
+import Thundermint.Types.Validators
 
 
 ----------------------------------------------------------------

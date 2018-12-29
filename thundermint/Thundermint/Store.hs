@@ -88,7 +88,7 @@ import qualified Data.Aeson      as JSON
 import qualified Data.Aeson.TH   as JSON
 import qualified Data.ByteString as BS
 
-import Thundermint.Blockchain.Types
+import Thundermint.Types.Blockchain
 import Thundermint.Blockchain.Internal.Types
 import Thundermint.Control                (MonadFork,FloatOut(..),foldF)
 import Thundermint.Crypto
@@ -98,7 +98,7 @@ import Thundermint.Logger                 (MonadLogger)
 import Thundermint.Store.Internal.Query
 import Thundermint.Store.Internal.BlockDB
 import Thundermint.Store.SQL
-import Thundermint.Validators
+import Thundermint.Types.Validators
 
 
 ----------------------------------------------------------------

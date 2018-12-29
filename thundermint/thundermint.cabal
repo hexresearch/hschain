@@ -63,7 +63,6 @@ Library
                   Thundermint.Blockchain.Internal.Engine.Types
                   Thundermint.Blockchain.Internal.Types
                   Thundermint.Blockchain.Interpretation
-                  Thundermint.Blockchain.Types
                   Thundermint.Control
                   Thundermint.Crypto.Containers
                   Thundermint.Debug.Trace
@@ -87,7 +86,8 @@ Library
                   Thundermint.Store.Internal.Types
                   Thundermint.Store.Internal.Query
                   Thundermint.Utils
-                  Thundermint.Validators
+                  Thundermint.Types.Validators
+                  Thundermint.Types.Blockchain
   Other-modules:
                   Thundermint.P2P.Network.Parameters
                   Thundermint.P2P.Network.TLS

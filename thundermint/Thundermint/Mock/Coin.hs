@@ -51,7 +51,7 @@ import Lens.Micro
 import System.Random   (randomRIO)
 import GHC.Generics    (Generic)
 
-import Thundermint.Blockchain.Types
+import Thundermint.Types.Blockchain
 import Thundermint.Blockchain.Interpretation
 import Thundermint.Blockchain.Internal.Engine.Types
 import Thundermint.Control
@@ -67,7 +67,7 @@ import Thundermint.Store.Internal.Query (connectionRO)
 import Thundermint.Mock.KeyList (privateKeyList)
 import Thundermint.Mock.Types
 import Thundermint.Monitoring
-import Thundermint.Validators (ValidatorSet)
+import Thundermint.Types.Validators (ValidatorSet)
 import qualified Thundermint.P2P.Network as P2P
 
 

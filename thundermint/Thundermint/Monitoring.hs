@@ -24,7 +24,7 @@ import Prometheus
 import Thundermint.Logger      (LoggerT(..),NoLogsT(..))
 import Thundermint.Store       (DBT(..))
 import Thundermint.Debug.Trace (TracerT(..))
-import Thundermint.Blockchain.Types
+import Thundermint.Types.Blockchain
 
 ----------------------------------------------------------------
 -- Gauges

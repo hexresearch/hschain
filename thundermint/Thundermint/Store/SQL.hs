@@ -55,7 +55,7 @@ import           Database.SQLite.Simple   (Only(..))
 import Lens.Micro
 import Lens.Micro.Mtl
 
-import Thundermint.Blockchain.Types
+import Thundermint.Types.Blockchain
 import Thundermint.Control
 import Thundermint.Store.Internal.Types
 import Thundermint.Store.Internal.Query

@@ -36,10 +36,10 @@ import qualified Data.Set as Set
 import           Data.Set   (Set)
 
 import Thundermint.Control
-import Thundermint.Blockchain.Types
 import Thundermint.Crypto
 import Thundermint.Store
-import Thundermint.Validators
+import Thundermint.Types.Blockchain
+import Thundermint.Types.Validators
 
 
 ----------------------------------------------------------------

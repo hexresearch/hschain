@@ -23,17 +23,17 @@ import Text.Printf
 import Test.Tasty
 import Test.Tasty.HUnit
 
-import Thundermint.Blockchain.Types
 import Thundermint.Blockchain.Internal.Engine.Types
 import Thundermint.Control
 import Thundermint.Crypto
 import Thundermint.Crypto.Ed25519
 import Thundermint.Mock.KeyList
 import Thundermint.Store
-import Thundermint.Store.SQL
 import Thundermint.Store.Internal.Query
 import Thundermint.Store.Internal.Types
-import Thundermint.Validators
+import Thundermint.Store.SQL
+import Thundermint.Types.Blockchain
+import Thundermint.Types.Validators
 
 
 tests :: TestTree

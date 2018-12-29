@@ -20,7 +20,7 @@ import qualified Data.IntMap          as IMap
 import qualified Data.Set             as Set
 import Text.Printf
 
-import Thundermint.Blockchain.Types
+import Thundermint.Types.Blockchain
 import Thundermint.Crypto
 import Thundermint.Store
 

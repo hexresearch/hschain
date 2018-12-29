@@ -16,10 +16,10 @@ import Data.Text (Text)
 import qualified Database.SQLite.Simple           as SQL
 import           Database.SQLite.Simple             (Only(..))
 
-import Thundermint.Blockchain.Types
+import Thundermint.Types.Blockchain
 import Thundermint.Blockchain.Internal.Types
 import Thundermint.Crypto
-import Thundermint.Validators
+import Thundermint.Types.Validators
 import Thundermint.Store.Internal.Query
 
 
