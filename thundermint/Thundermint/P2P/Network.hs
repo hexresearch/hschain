@@ -254,6 +254,14 @@ realNetworkUdp serviceName = do
       newFronts
         | Map.size updatedFront > 10 = error "internal error: no pruning of fronts was devised"
         | otherwise = updatedFront
+  pruneFront fronts
+    | minFro
+    where
+      Just ((minFront, _), _) = Map.minViewWithKey fronts
+      Just ((maxFront, _), _) = Map.maxViewWithKey fronts
+      -- these deltas
+      maxMinDelta = maxFront - minFront
+      minMaxDelta = minFront - maxFront
   sendSplitted frontVar sock addr msg = do
     front <- atomically $ do -- slightly overkill, but in line with other's code.
       i <- readTVar frontVar
