@@ -8,7 +8,7 @@
 {-# LANGUAGE UndecidableInstances       #-}
 -- |
 -- Data types for
-module Thundermint.Validators (
+module Thundermint.Types.Validators (
     -- * Validators
     Validator(..)
     -- ** Validator sets

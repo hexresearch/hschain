@@ -37,10 +37,10 @@ import Numeric.Natural
 import GHC.Generics           (Generic)
 
 import Thundermint.Blockchain.Internal.Types
-import Thundermint.Blockchain.Types
 import Thundermint.Crypto
 import Thundermint.Store
-import Thundermint.Validators
+import Thundermint.Types.Blockchain
+import Thundermint.Types.Validators
 
 
 ----------------------------------------------------------------

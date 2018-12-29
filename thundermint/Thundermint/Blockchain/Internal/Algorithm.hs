@@ -46,11 +46,11 @@ import GHC.Generics
 import Thundermint.Crypto            ( Crypto,Signed,Address,SignedState(..),BlockHash(..)
                                      , signedValue, signedAddr
                                      )
-import Thundermint.Crypto.Containers
-import Thundermint.Blockchain.Types
 import Thundermint.Blockchain.Internal.Types
+import Thundermint.Crypto.Containers
 import Thundermint.Logger
-import Thundermint.Validators
+import Thundermint.Types.Blockchain
+import Thundermint.Types.Validators
 
 
 ----------------------------------------------------------------

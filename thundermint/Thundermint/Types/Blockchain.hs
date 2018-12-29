@@ -9,7 +9,7 @@
 {-# LANGUAGE TypeFamilies               #-}
 -- |
 -- Data types for implementation of consensus algorithm
-module Thundermint.Blockchain.Types (
+module Thundermint.Types.Blockchain (
     -- * Newtype wrappers
     Height(..)
   , Round(..)
@@ -53,7 +53,7 @@ import           Data.Time.Clock.POSIX    (getPOSIXTime,posixSecondsToUTCTime)
 import           GHC.Generics             (Generic)
 
 import Thundermint.Crypto
-import Thundermint.Validators
+import Thundermint.Types.Validators
 
 
 ----------------------------------------------------------------

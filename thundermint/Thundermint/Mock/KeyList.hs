@@ -18,8 +18,8 @@ import qualified Data.Map               as Map
 
 import Thundermint.Blockchain.Internal.Engine.Types
 import Thundermint.Crypto
-import Thundermint.Validators
 import Thundermint.Crypto.Ed25519
+import Thundermint.Types.Validators
 
 ----------------------------------------------------------------
 --

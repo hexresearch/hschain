@@ -27,8 +27,8 @@ import qualified Katip
 
 import Thundermint.Crypto
 import Thundermint.Crypto.Containers
-import Thundermint.Blockchain.Types
-import Thundermint.Validators
+import Thundermint.Types.Blockchain
+import Thundermint.Types.Validators
 
 
 ----------------------------------------------------------------

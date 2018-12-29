@@ -27,7 +27,7 @@ import Test.Tasty.Hedgehog
 import qualified Test.Tasty.QuickCheck as QC
 import qualified Hedgehog.Gen.QuickCheck as Gen
 
-import Thundermint.Blockchain.Types
+import Thundermint.Types.Blockchain
 
 import TM.Arbitrary.Instances ()
 
