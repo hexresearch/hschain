@@ -1,3 +1,4 @@
 packages:
-         thundermint/*.cabal
-         thundermint-crypto/*.cabal   
+         thundermint
+         thundermint-crypto
+         thundermint-types

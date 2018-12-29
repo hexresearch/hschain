@@ -18,8 +18,8 @@ Library
   Default-Language:    Haskell2010
   Build-Depends:       base              >=4.9 && <5
                      , thundermint-crypto
+                     , thundermint-types
                      , aeson
-                     , async             >=2.2.1
                      , base58-bytestring >=0.1
                      , bytestring        >=0.10
                      , containers        >=0.5.9
@@ -28,7 +28,6 @@ Library
                      , directory
                      , exceptions        >=0.8.3
                      , filepath
-                     , memory            >=0.14.14
                      , microlens         >=0.4
                      , microlens-mtl     >=0.1
                      , network-info
@@ -41,11 +40,9 @@ Library
                      , sqlite-simple
                      , stm               >=2.5
                      , text
-                     , time
                      , transformers      >=0.5
                      , unordered-containers >=0.2.5.0
                      --
-                     , cryptonite         >=0.25
                      , katip              >=0.6.3.0
                      , katip-elasticsearch
                      , http-client-tls
@@ -86,9 +83,6 @@ Library
                   Thundermint.Store.Internal.Types
                   Thundermint.Store.Internal.Query
                   Thundermint.Utils
-                  Thundermint.Types
-                  Thundermint.Types.Validators
-                  Thundermint.Types.Blockchain
   Other-modules:
                   Thundermint.P2P.Network.Parameters
                   Thundermint.P2P.Network.TLS
@@ -101,12 +95,8 @@ Executable thundermint-keyval
   Default-Language:    Haskell2010
   Build-Depends:       base       >=4.9 && <5
                      , thundermint
-                     , thundermint-crypto
                      , aeson
                      , bytestring >=0.10
-                     , containers >=0.5.7
-                     , exceptions
-                     , filepath
                      , optparse-applicative
   hs-source-dirs:      exe
   Main-is:             key-val.hs
@@ -116,20 +106,10 @@ Executable thundermint-coin
   Default-Language:    Haskell2010
   Build-Depends:       base       >=4.9 && <5
                      , thundermint
-                     , thundermint-crypto
+                     , thundermint-types
                      , aeson
-                     , async
-                     , base58-bytestring    >=0.1
                      , bytestring           >=0.10
-                     , containers           >=0.5.7
-                     , directory
-                     , exceptions
-                     , filepath
                      , optparse-applicative >= 0.14
-                     , random
-                     , serialise
-                     , stm
-                     , text
   hs-source-dirs:      exe
   Main-is:             coin.hs
 
@@ -140,12 +120,8 @@ Executable thundermint-coin-node
                      , thundermint
                      , thundermint-crypto
                      , aeson
-                     , async
-                     , base58-bytestring    >=0.1
                      , bytestring           >=0.10
-                     , containers           >=0.5.7
                      , data-default-class
-                     , directory
                      , exceptions
                      , filepath
                      , katip                >=0.5.4.0
@@ -154,10 +130,6 @@ Executable thundermint-coin-node
                      , optparse-applicative >=0.14
                      , prometheus-client
                      , prometheus-metrics-ghc
-                     , random
-                     , serialise
-                     , stm
-                     , text
                      , transformers
                      , wai-middleware-prometheus
                      , warp
@@ -192,21 +164,18 @@ Test-suite thundermint-tests
   Build-Depends:       base              >=4.9 && <5
                      , thundermint
                      , thundermint-crypto
+                     , thundermint-types
                      , aeson
                      , async             >=2.2.1
                      , bytestring        >=0.10
                      , containers
-                     , data-default-class
-                     , directory
                      , exceptions
-                     , katip
                      , microlens
                      , network
                      , random
                      , sqlite-simple
                      , serialise         >=0.2
                      , stm               >=2.4
-                     , tls               >=1.4.1
                      , retry             >=0.7.6.2
                      --
                      , QuickCheck
