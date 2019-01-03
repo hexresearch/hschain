@@ -15,7 +15,19 @@ pipeline:
     image: haskell:8.2.2
     network_mode: host
     commands:
-    - stack --allow-different-user --stack-root $PWD/.stack --system-ghc test
+    - stack --copy-bins --local-bin bin --allow-different-user --stack-root $PWD/.stack --system-ghc test
+
+  publish:
+    image: docker
+    pull: true
+    volumes:
+    - /var/run/docker.sock:/var/run/docker.sock
+    commands:
+    #- ./dockerize-ci.sh
+    - ls -la bin
+    secrets: [ docker_username, docker_password ]
+    when:
+      event: [ push, tag, pull_request ]
 
   rebuild-cache:
     image: plugins/s3-cache:1
