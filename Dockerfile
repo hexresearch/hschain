@@ -1,5 +1,5 @@
 FROM debian:9
 
-COPY bin/thundermint-node /usr/local/bin/
+COPY bin/thundermint-coin-node /usr/local/bin/
 
-CMD ["thundermint-node"]
+CMD ["thundermint-coin-node"]
