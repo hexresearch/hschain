@@ -16,6 +16,7 @@ pipeline:
     network_mode: host
     commands:
     - stack --copy-bins --local-bin bin --allow-different-user --stack-root $PWD/.stack --system-ghc test
+    - stack --local-bin bin --allow-different-user --stack-root $PWD/.stack --system-ghc install
 
   publish:
     image: docker
@@ -23,8 +24,7 @@ pipeline:
     volumes:
     - /var/run/docker.sock:/var/run/docker.sock
     commands:
-    #- ./dockerize-ci.sh
-    - ls -la bin
+    - ./dockerize-ci.sh
     secrets: [ docker_username, docker_password ]
     when:
       event: [ push, tag, pull_request ]
