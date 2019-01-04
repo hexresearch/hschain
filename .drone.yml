@@ -12,11 +12,11 @@ pipeline:
     restore: true
 
   build:
-    image: haskell:8.2.2
+    image: haskell:8.4.3
     network_mode: host
     commands:
     - stack --allow-different-user --stack-root $PWD/.stack --system-ghc test
-    - stack --local-bin bin --allow-different-user --stack-root $PWD/.stack --system-ghc install
+    - stack --allow-different-user --stack-root $PWD/.stack --system-ghc --local-bin bin install
 
   publish:
     image: docker
