@@ -15,7 +15,7 @@ pipeline:
     image: haskell:8.2.2
     network_mode: host
     commands:
-    - stack --copy-bins --local-bin bin --allow-different-user --stack-root $PWD/.stack --system-ghc test
+    - stack --allow-different-user --stack-root $PWD/.stack --system-ghc test
     - stack --local-bin bin --allow-different-user --stack-root $PWD/.stack --system-ghc install
 
   publish:
