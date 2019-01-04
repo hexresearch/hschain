@@ -16,7 +16,7 @@ pipeline:
     network_mode: host
     commands:
     - stack --allow-different-user --stack-root $PWD/.stack --system-ghc test
-    - stack --allow-different-user --stack-root $PWD/.stack --system-ghc --local-bin bin install
+    - stack --allow-different-user --stack-root $PWD/.stack --system-ghc --local-bin-path bin install
 
   publish:
     image: docker
