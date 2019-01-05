@@ -111,10 +111,8 @@ interpretSpec maxH prefix NetSpec{..} = do
                            b | Just hM <- maxH
                              , headerHeight (blockHeader b) > Height hM -> throwM Abort
                              | otherwise                                -> return ()
-                       , appCommitQuery      = SimpleQuery $ \b -> do
-                           Just vset <- retrieveValidatorSet $ headerHeight $ blockHeader b
-                           return vset
-                       , appValidator        = nspecPrivKey
+                       , appCommitQuery    = SimpleQuery $ \_ -> return []
+                       , appValidator      = nspecPrivKey
                        }
                  let cfg = defCfg :: Configuration Example
                  appCh <- newAppChans (cfgConsensus cfg)
