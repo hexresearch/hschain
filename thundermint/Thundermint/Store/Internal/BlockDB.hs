@@ -113,7 +113,7 @@ blockchainHeight =
 -- | Retrieve block at given height.
 --
 --   Must return block for every height @0 <= h <= blockchainHeight@
-retrieveBlock :: (Serialise a) => Height -> Query rw alg a (Maybe (Block alg a))
+retrieveBlock :: (Serialise a, Crypto alg) => Height -> Query rw alg a (Maybe (Block alg a))
 retrieveBlock (Height h) =
   singleQ "SELECT block FROM blockchain WHERE height = ?" (Only h)
 
@@ -131,13 +131,13 @@ retrieveBlockID (Height h) =
 --   Note that this method returns @Nothing@ for last block since
 --   its commit is not persisted in blockchain yet and there's no
 --   commit for genesis block (h=0)
-retrieveCommit :: (Serialise a) => Height -> Query rw alg a (Maybe (Commit alg a))
+retrieveCommit :: (Serialise a, Crypto alg) => Height -> Query rw alg a (Maybe (Commit alg a))
 retrieveCommit (Height h) = do
   mb <- singleQ "SELECT block FROM blockchain WHERE height = ?" (Only (h+1))
   return $ blockLastCommit =<< mb
 
 -- | Retrieve round when commit was made.
-retrieveCommitRound :: (Serialise a) => Height -> Query rw alg a (Maybe Round)
+retrieveCommitRound :: (Serialise a, Crypto alg) => Height -> Query rw alg a (Maybe Round)
 retrieveCommitRound (Height h) = runMaybeT $ do
   c <-  MaybeT (retrieveCommit (Height h))
     <|> MaybeT (singleQ "SELECT cmt FROM commits WHERE height = ?" (Only h))
@@ -194,7 +194,7 @@ storeValSet blk vals = do
 
 -- | Add message to Write Ahead Log. Height parameter is height
 --   for which we're deciding block.
-writeToWAL :: (Serialise a) => Height -> MessageRx 'Unverified alg a -> Query 'RW alg a ()
+writeToWAL :: (Serialise a, Crypto alg) => Height -> MessageRx 'Unverified alg a -> Query 'RW alg a ()
 writeToWAL (Height h) msg =
   execute "INSERT OR IGNORE INTO wal VALUES (NULL,?,?)" (h, serialise msg)
 
@@ -206,7 +206,7 @@ resetWAL (Height h) =
 
 -- | Get all parameters from WAL in order in which they were
 --   written
-readWAL :: (Serialise a) => Height -> Query rw alg a [MessageRx 'Unverified alg a]
+readWAL :: (Serialise a, Crypto alg) => Height -> Query rw alg a [MessageRx 'Unverified alg a]
 readWAL (Height h) = do
   rows <- query "SELECT message FROM wal WHERE height = ? ORDER BY id" (Only h)
   return [ case deserialiseOrFail bs of

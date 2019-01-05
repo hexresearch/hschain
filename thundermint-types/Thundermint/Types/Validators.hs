@@ -32,6 +32,7 @@ module Thundermint.Types.Validators (
 
 import qualified Codec.Serialise as CBOR
 import Control.Monad
+import qualified Data.Aeson      as JSON
 import           Data.Foldable
 import qualified Data.Set        as Set
 import qualified Data.Map        as Map
@@ -161,7 +162,10 @@ data ValidatorChange alg
   -- ^ Change validator voting power or add new validator
   deriving (Show,Generic)
 
+deriving instance (Eq (PublicKey alg)) => Eq (ValidatorChange alg)
 instance Crypto alg => CBOR.Serialise (ValidatorChange alg)
+instance Crypto alg => JSON.ToJSON    (ValidatorChange alg)
+instance Crypto alg => JSON.FromJSON  (ValidatorChange alg)
 
 -- | Update set of validators according to diff. Function is rather
 --   restrictive. If any of following conditions is violated @Nothing@

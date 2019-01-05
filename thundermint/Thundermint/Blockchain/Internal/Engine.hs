@@ -432,7 +432,7 @@ makeHeightParameters ConsensusCfg{..} ready AppState{..} AppChans{..} = do
           _        -> case join $ liftA3 commitTime oldValSet (pure bchTime) commit of
             Just t  -> return t
             Nothing -> error "Corrupted commit. Cannot generate block"
-        bData    <- appBlockGenerator (succ h) currentT commit []
+        (bData, valCh) <- appBlockGenerator (succ h) currentT commit []
         let block = Block
               { blockHeader     = Header
                   { headerChainID        = headerChainID $ blockHeader genesis
@@ -441,10 +441,12 @@ makeHeightParameters ConsensusCfg{..} ready AppState{..} AppChans{..} = do
                   , headerLastBlockID    = lastBID
                   , headerValidatorsHash = hash valSet
                   , headerDataHash       = hashed bData
+                  , headerValChangeHash  = hashed valCh
                   , headerLastCommitHash = hashed commit
                   , headerEvidenceHash   = hashed []
                   }
               , blockData       = bData
+              , blockValChange  = valCh
               , blockLastCommit = commit
               , blockEvidence   = []
               }
