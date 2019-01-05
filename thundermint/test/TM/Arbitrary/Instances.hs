@@ -16,6 +16,8 @@ import Thundermint.Crypto
 instance Arbitrary (Hash alg) where
     arbitrary = Hash <$> Arb.fastRandBs 100
 
+instance Arbitrary (Hashed alg a) where
+    arbitrary = Hashed <$> arbitrary
 
 instance Arbitrary Height where
     arbitrary = Height <$> arbitrary
@@ -39,6 +41,8 @@ instance Arbitrary (Signature alg) where
 
 instance (Arbitrary a) => Arbitrary (Header alg a) where
   arbitrary = Header <$> Arb.fastRandBs 1024
+                     <*> arbitrary
+                     <*> arbitrary
                      <*> arbitrary
                      <*> arbitrary
                      <*> arbitrary

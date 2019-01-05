@@ -431,7 +431,9 @@ makeHeightParameters ConsensusCfg{..} ready AppState{..} AppChans{..} = do
                   , headerTime           = currentT
                   , headerLastBlockID    = lastBID
                   , headerValidatorsHash = hash valSet
-                  , headerDataHash       = hash bData
+                  , headerDataHash       = hashed bData
+                  , headerLastCommitHash = hashed commit
+                  , headerEvidenceHash   = hashed []
                   }
               , blockData       = bData
               , blockLastCommit = commit
