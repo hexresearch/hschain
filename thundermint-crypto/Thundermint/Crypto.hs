@@ -402,7 +402,7 @@ instance JSON.ToJSON   a => JSON.ToJSON   (Signed 'Unverified alg a)
 ----------------------------------------------------------------
 
 newtype Hashed alg a = Hashed (Hash alg)
-  deriving (Show,Eq,Ord, Serialise)
+  deriving (Show,Eq,Ord, Generic, Serialise,JSON.FromJSON,JSON.ToJSON)
 
 data BlockHash alg a = BlockHash Word32 (Hash alg) [Hash alg]
   deriving (Show,Eq,Ord,Generic)
