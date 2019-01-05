@@ -1,6 +1,6 @@
 {-# LANGUAGE RecordWildCards #-}
 -- |
-module TM.Time where
+module TM.Time (tests) where
 
 import Control.Monad
 import Data.Int
