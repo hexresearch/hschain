@@ -352,6 +352,10 @@ data BlockchainInconsistency
   --   of actual set
   | BlockDataHashMismatch !Height
   -- ^ Hash of block data in header and hash in the header do not match
+  | BlockLastCommitHashMismatch !Height
+  -- ^ Hash of last commit does not match hash in the header
+  | BlockEvidenceHashMismatch   !Height
+  -- ^ Hash of evidence does not match hash in the header
   | BlockInvalidPrevBID !Height
   -- ^ Previous block is does not match ID of block commited to
   --   blockchain.
@@ -493,9 +497,13 @@ blockInvariant chainID h prevT prevBID (mprevValSet, valSet) Block{blockHeader=H
   -- Validators' hash does not match correct one
   (headerValidatorsHash == hash valSet)
     `orElse` BlockValidatorHashMismatch h
-  -- Block data has correct hash
-  (headerDataHash == hash blockData)
+  -- Hashes of block fields are correct
+  (headerDataHash == hashed blockData)
     `orElse` BlockDataHashMismatch h
+  (headerLastCommitHash == hashed blockLastCommit)
+    `orElse` BlockLastCommitHashMismatch h
+  (headerEvidenceHash == hashed blockEvidence)
+    `orElse` BlockEvidenceHashMismatch h
   -- Block time must be equal to commit time
   -- Validate commit of previous block
   case (headerHeight, blockLastCommit) of

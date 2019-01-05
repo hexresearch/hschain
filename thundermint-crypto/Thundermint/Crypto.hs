@@ -43,6 +43,7 @@ module Thundermint.Crypto (
   , verifyCborSignature
     -- * Hash trees
   , Hashed(..)
+  , hashed
   , BlockHash(..)
   , blockHash
     -- * base58 encoding
@@ -401,8 +402,13 @@ instance JSON.ToJSON   a => JSON.ToJSON   (Signed 'Unverified alg a)
 -- Hashed data
 ----------------------------------------------------------------
 
+-- | Newtype wrapper with phantom type tag which show hash of which
+--   value is being calculated
 newtype Hashed alg a = Hashed (Hash alg)
   deriving (Show,Eq,Ord, Generic, Serialise,JSON.FromJSON,JSON.ToJSON)
+
+hashed :: (Crypto alg, Serialise a) => a -> Hashed alg a
+hashed = Hashed . hash
 
 data BlockHash alg a = BlockHash Word32 (Hash alg) [Hash alg]
   deriving (Show,Eq,Ord,Generic)

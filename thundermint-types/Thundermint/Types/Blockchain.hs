@@ -130,7 +130,9 @@ makeGenesis chainID t dat valSet = Block
       , headerTime           = t
       , headerLastBlockID    = Nothing
       , headerValidatorsHash = hash valSet
-      , headerDataHash       = hash dat
+      , headerDataHash       = hashed dat
+      , headerLastCommitHash = hashed Nothing
+      , headerEvidenceHash   = hashed []
       }
   , blockData       = dat
   , blockLastCommit = Nothing
@@ -150,8 +152,13 @@ data Header alg a = Header
     -- ^ Hash of previous block. Nothing iff block is a genesis block
   , headerValidatorsHash :: !(Hash alg)
     -- ^ Hash of validators for current block.
-  , headerDataHash       :: !(Hash alg)
+
+  , headerDataHash       :: !(Hashed alg a)
     -- ^ Hash of block data
+  , headerLastCommitHash :: !(Hashed alg (Maybe (Commit alg a)))
+    -- ^ Hash of last commit
+  , headerEvidenceHash   :: !(Hashed alg [ByzantineEvidence alg a])
+    -- ^ Hash of evidence of byzantine behavior
   }
   deriving (Show, Eq, Generic)
 instance Serialise (Header alg a)
@@ -164,6 +171,8 @@ instance JSON.ToJSON (Header alg a) where
                 , "headerLastBlockID"    .= headerLastBlockID
                 , "headerValidatorsHash" .= headerValidatorsHash
                 , "headerDataHash"       .= headerDataHash
+                , "headerLastCommitHash" .= headerLastCommitHash
+                , "headerEvidenceHash"   .= headerEvidenceHash
                 ]
 
 instance JSON.FromJSON (Header alg a) where
@@ -174,6 +183,8 @@ instance JSON.FromJSON (Header alg a) where
     headerLastBlockID    <- o .: "headerLastBlockID"
     headerValidatorsHash <- o .: "headerValidatorsHash"
     headerDataHash       <- o .: "headerDataHash"
+    headerLastCommitHash <- o .: "headerLastCommitHash"
+    headerEvidenceHash   <- o .: "headerEvidenceHash"
     return Header{..}
 
 -- | Evidence of byzantine behaviour by some node.
