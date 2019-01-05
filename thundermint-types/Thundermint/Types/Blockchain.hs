@@ -17,7 +17,8 @@ module Thundermint.Types.Blockchain (
   , getCurrentTime
   , timeToUTC
     -- * Basic data types for blockchain
-  , BlockID
+  , BlockID(..)
+  , blockHash
   , Block(..)
   , makeGenesis
   , Header(..)
@@ -97,7 +98,18 @@ timeToUTC (Time t) = posixSecondsToUTCTime (realToFrac t / 1000)
 ----------------------------------------------------------------
 
 -- | Block identified by hash
-type BlockID alg a = BlockHash alg (Block alg a)
+data BlockID alg a = BlockID !(Hashed alg (Header alg a))
+  deriving (Show,Eq,Ord,Generic)
+instance Serialise     (BlockID alg a)
+instance JSON.ToJSON   (BlockID alg a)
+instance JSON.FromJSON (BlockID alg a)
+
+blockHash
+  :: (Crypto alg, Serialise a)
+  => Block alg a
+  -> BlockID alg a
+blockHash b = BlockID (hashed (blockHeader b))
+
 
 -- | Block data type
 data Block alg a = Block

@@ -43,7 +43,7 @@ import           Katip (Severity(..),sl)
 import qualified Katip
 import GHC.Generics
 
-import Thundermint.Crypto            ( Crypto,Signed,Address,SignedState(..),BlockHash(..)
+import Thundermint.Crypto            ( Crypto,Signed,Address,SignedState(..)
                                      , signedValue, signedAddr
                                      )
 import Thundermint.Blockchain.Internal.Types
@@ -170,7 +170,7 @@ data LogProposal alg a = LogProposal
 instance Katip.ToObject (LogProposal alg a) where
   toObject p = HM.fromList [ ("H",   JSON.toJSON (proposal'H p))
                            , ("R",   JSON.toJSON (proposal'R p))
-                           , ("bid", JSON.toJSON $ let BlockHash _ hash _ = proposal'bid p
+                           , ("bid", JSON.toJSON $ let BlockID hash = proposal'bid p
                                                    in hash
                              )]
 instance Katip.LogItem (LogProposal alg a) where
@@ -184,7 +184,7 @@ data LogCommit alg a = LogCommit
   }
 instance Katip.ToObject (LogCommit alg a) where
   toObject p = HM.fromList [ ("H",   JSON.toJSON (commit'H p))
-                           , ("bid", JSON.toJSON $ let BlockHash _ hash _ = commit'bid p
+                           , ("bid", JSON.toJSON $ let BlockID hash = commit'bid p
                                                    in hash
                              )]
 instance Katip.LogItem (LogCommit alg a) where
