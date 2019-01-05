@@ -68,7 +68,11 @@ data NodeLogic m alg a = NodeLogic
     -- ^ Callback used for validation of blocks
   , nodeCommitQuery     :: !(CommitCallback m alg a)
     -- ^ Query for modifying user state.
-  , nodeBlockGenerator  :: !(Height -> Time -> Maybe (Commit alg a) -> [ByzantineEvidence alg a] -> m a)
+  , nodeBlockGenerator  :: !(Height
+                          -> Time
+                          -> Maybe (Commit alg a)
+                          -> [ByzantineEvidence alg a]
+                          -> m (a, [ValidatorChange alg]))
     -- ^ Generator for a new block
   , nodeMempool         :: !(Mempool m alg (TX a))
     -- ^ Mempool of node
@@ -98,7 +102,7 @@ logicFromFold transitions@BlockFold{..} = do
                      , nodeBlockGenerator  = \h _ _ _ -> do
                          st  <- stateAtH bchState h
                          txs <- peekNTransactions mempool Nothing
-                         return $ transactionsToBlock h st txs
+                         return (transactionsToBlock h st txs, [])
                      , nodeMempool         = mempool
                      }
          )
@@ -135,7 +139,7 @@ logicFromPersistent PersistentState{..} = do
         case r of
           -- FIXME: This should not happen!
           Nothing -> error "Cannot generate block!"
-          Just a  -> return a
+          Just a  -> return (a, [])
     , nodeMempool         = mempool
     }
 

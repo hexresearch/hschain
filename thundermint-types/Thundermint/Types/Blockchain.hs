@@ -6,6 +6,7 @@
 {-# LANGUAGE KindSignatures             #-}
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE RecordWildCards            #-}
+{-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE TypeFamilies               #-}
 -- |
 -- Data types for implementation of consensus algorithm
@@ -115,16 +116,22 @@ blockHash b = BlockID (hashed (blockHeader b))
 data Block alg a = Block
   { blockHeader     :: !(Header alg a)
   , blockData       :: !a
+    -- ^ Payload of block. Thundermint treats it completely opaque and
+    --   rely on callback to do anything to it.
+  , blockValChange  :: [ValidatorChange alg]
+    -- ^ Changes in set of validators as result of block evaluation
   , blockLastCommit :: !(Maybe (Commit alg a))
     -- ^ Commit information for previous block. Nothing iff block
     --   is a genesis block or block at height 1.
   , blockEvidence   :: [ByzantineEvidence alg a]
     -- ^ Evidence of byzantine behavior by nodes.
   }
-  deriving (Show, Eq, Generic)
-instance Serialise     a => Serialise     (Block alg a)
-instance JSON.FromJSON a => JSON.FromJSON (Block alg a)
-instance JSON.ToJSON   a => JSON.ToJSON   (Block alg a)
+  deriving (Show, Generic)
+
+deriving instance (Eq (PublicKey alg), Eq a) => Eq (Block alg a)
+instance (Crypto alg, Serialise     a) => Serialise     (Block alg a)
+instance (Crypto alg, JSON.FromJSON a) => JSON.FromJSON (Block alg a)
+instance (Crypto alg, JSON.ToJSON   a) => JSON.ToJSON   (Block alg a)
 
 -- | Genesis block has many field with predetermined content so this
 --   is convenience function to create genesis block.
@@ -142,11 +149,13 @@ makeGenesis chainID t dat valSet = Block
       , headerTime           = t
       , headerLastBlockID    = Nothing
       , headerValidatorsHash = hash valSet
+      , headerValChangeHash  = hashed []
       , headerDataHash       = hashed dat
       , headerLastCommitHash = hashed Nothing
       , headerEvidenceHash   = hashed []
       }
   , blockData       = dat
+  , blockValChange  = []
   , blockLastCommit = Nothing
   , blockEvidence   = []
   }
@@ -167,6 +176,8 @@ data Header alg a = Header
 
   , headerDataHash       :: !(Hashed alg a)
     -- ^ Hash of block data
+  , headerValChangeHash  :: !(Hashed alg [ValidatorChange alg])
+    -- ^ Hash of change in validators set.
   , headerLastCommitHash :: !(Hashed alg (Maybe (Commit alg a)))
     -- ^ Hash of last commit
   , headerEvidenceHash   :: !(Hashed alg [ByzantineEvidence alg a])
@@ -183,6 +194,7 @@ instance JSON.ToJSON (Header alg a) where
                 , "headerLastBlockID"    .= headerLastBlockID
                 , "headerValidatorsHash" .= headerValidatorsHash
                 , "headerDataHash"       .= headerDataHash
+                , "headerValChangeHash"  .= headerValChangeHash
                 , "headerLastCommitHash" .= headerLastCommitHash
                 , "headerEvidenceHash"   .= headerEvidenceHash
                 ]
@@ -195,6 +207,7 @@ instance JSON.FromJSON (Header alg a) where
     headerLastBlockID    <- o .: "headerLastBlockID"
     headerValidatorsHash <- o .: "headerValidatorsHash"
     headerDataHash       <- o .: "headerDataHash"
+    headerValChangeHash  <- o .: "headerValChangeHash"
     headerLastCommitHash <- o .: "headerLastCommitHash"
     headerEvidenceHash   <- o .: "headerEvidenceHash"
     return Header{..}

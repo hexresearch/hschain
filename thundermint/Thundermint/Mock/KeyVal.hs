@@ -100,11 +100,11 @@ interpretSpec maxH prefix NetSpec{..} = do
                        --
                        , appBlockGenerator = \h _ _ _ -> case nspecByzantine of
                            Just "InvalidBlock" -> do
-                             return [("XXX", 123)]
+                             return ([("XXX", 123)], [])
                            _ -> do
                              st <- stateAtH bchState h
                              let Just k = find (`Map.notMember` st) ["K_" ++ show (n :: Int) | n <- [1 ..]]
-                             return [(k, addr)]
+                             return ([(k, addr)], [])
                        --
                        , appCommitCallback = \case
                            b | Just hM <- maxH

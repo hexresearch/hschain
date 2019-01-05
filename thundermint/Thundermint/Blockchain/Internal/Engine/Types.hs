@@ -163,7 +163,7 @@ data AppState m alg a = AppState
                         -> Time
                         -> Maybe (Commit alg a)
                         -> [ByzantineEvidence alg a]
-                        -> m a
+                        -> m (a, [ValidatorChange alg])
     -- ^ Generate fresh block for proposal. It's called each time we
     --   need to create new block for proposal
   , appValidator        :: Maybe (PrivValidator alg)

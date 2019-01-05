@@ -19,6 +19,7 @@ import Control.Concurrent.MVar
 import Control.Monad.Catch
 import Control.Monad.IO.Class
 
+import Thundermint.Crypto
 import Thundermint.Control
 import Thundermint.Store
 import Thundermint.Store.SQL
@@ -71,7 +72,7 @@ data BChState m s = BChState
 
 -- | Create block storage backed by MVar
 newBChState
-  :: (MonadMask m, MonadReadDB m alg a, Serialise a)
+  :: (MonadMask m, MonadReadDB m alg a, Serialise a, Crypto alg)
   => BlockFold s alg a             -- ^ Updating function
   -> m (BChState m s)
 newBChState BlockFold{..} = do
