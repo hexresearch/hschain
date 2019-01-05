@@ -2,8 +2,6 @@
 {-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE OverloadedStrings   #-}
-{-# LANGUAGE RankNTypes          #-}
-{-# LANGUAGE ScopedTypeVariables #-}
 -- |
 -- Data types for primary database. Namely storage of blocks, commits and validators
 module Thundermint.Store.Internal.BlockDB where
@@ -29,7 +27,7 @@ import Thundermint.Store.Internal.Query
 
 -- | Create tables for storing blockchain data
 initializeBlockhainTables
-  :: forall alg a. (Crypto alg, Eq (PublicKey alg), Serialise a, Eq a)
+  :: (Crypto alg, Eq (PublicKey alg), Serialise a, Eq a)
   => Block alg a                -- ^ Genesis block
   -> ValidatorSet alg           -- ^ Initial validator set
   -> Query 'RW alg a ()
@@ -79,7 +77,7 @@ initializeBlockhainTables genesis initialVals = do
      , [] <- storedVals
        -> do execute "INSERT INTO blockchain VALUES (?,?,?)"
                ( 0 :: Int64
-               , serialise (blockHash genesis :: BlockID alg a)
+               , serialise (blockHash genesis)
                , serialise genesis
                )
              execute "INSERT INTO validators VALUES (?,?)"
@@ -176,14 +174,14 @@ retrieveValidatorSet (Height h) =
 
 -- | Write block and commit justifying it into persistent storage.
 storeCommit
-  :: forall alg a. (Crypto alg, Serialise a)
+  :: (Crypto alg, Serialise a)
   => Commit alg a -> Block alg a -> Query 'RW alg a ()
 storeCommit cmt blk = do
   let Height h = headerHeight $ blockHeader blk
   execute "INSERT INTO commits VALUES (?,?)" (h, serialise cmt)
   execute "INSERT INTO blockchain VALUES (?,?,?)"
     ( h
-    , serialise (blockHash blk :: BlockID alg a)
+    , serialise (blockHash blk)
     , serialise blk
     )
 
