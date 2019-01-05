@@ -44,8 +44,6 @@ module Thundermint.Crypto (
     -- * Hash trees
   , Hashed(..)
   , hashed
-  , BlockHash(..)
-  , blockHash
     -- * base58 encoding
   , encodeBSBase58
   , decodeBSBase58
@@ -65,7 +63,6 @@ import           Data.ByteString.Lazy    (toStrict)
 import qualified Data.ByteString.Char8 as BC8
 import Data.Char     (isAscii)
 import Data.Typeable (Proxy(..))
-import Data.Word
 import Text.Read
 import Text.ParserCombinators.ReadP
 import GHC.TypeNats
@@ -410,18 +407,6 @@ newtype Hashed alg a = Hashed (Hash alg)
 hashed :: (Crypto alg, Serialise a) => a -> Hashed alg a
 hashed = Hashed . hash
 
-data BlockHash alg a = BlockHash Word32 (Hash alg) [Hash alg]
-  deriving (Show,Eq,Ord,Generic)
-
-blockHash
-  :: (Crypto alg, Serialise a)
-  => a
-  -> BlockHash alg a
-blockHash a = BlockHash 0xFFFFFFFF (hashBlob (toStrict $ serialise a)) []
-
-instance Serialise     (BlockHash alg a)
-instance JSON.ToJSON   (BlockHash alg a)
-instance JSON.FromJSON (BlockHash alg a)
 
 
 ----------------------------------------------------------------
