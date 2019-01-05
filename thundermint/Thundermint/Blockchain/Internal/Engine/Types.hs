@@ -147,11 +147,11 @@ instance DefaultConfig app => FromJSON (Configuration app) where
 
 -- | Callback which is called right after 
 data CommitCallback m alg a
-  = SimpleQuery !(Block alg a -> Query 'RW alg a (ValidatorSet alg))
+  = SimpleQuery !(Block alg a -> Query 'RW alg a [ValidatorChange alg])
   -- ^ Query for updating user's state and to find out new set of
   --   validators. It's evaluated in the same transaction as block
   --   commit and thus atomic.
-  | MixedQuery  !(m (Block alg a -> Query 'RW alg a (ValidatorSet alg, m ())))
+  | MixedQuery  !(m (Block alg a -> Query 'RW alg a ([ValidatorChange alg], m ())))
   -- ^ Query which allow to mixed database updates with other
   --   actions. If @Query@ succeeds returned action is executed immediately
 

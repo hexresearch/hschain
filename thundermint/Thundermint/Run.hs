@@ -94,9 +94,7 @@ logicFromFold transitions@BlockFold{..} = do
                          let h = headerHeight $ blockHeader b
                          st <- stateAtH bchState h
                          return $ isJust $ processBlock b st
-                     , nodeCommitQuery     = SimpleQuery $ \b -> do
-                         Just vset <- retrieveValidatorSet $ headerHeight $ blockHeader b
-                         return vset
+                     , nodeCommitQuery     = SimpleQuery $ \_ -> return []
                      , nodeBlockGenerator  = \h _ _ _ -> do
                          st  <- stateAtH bchState h
                          txs <- peekNTransactions mempool Nothing
@@ -130,8 +128,7 @@ logicFromPersistent PersistentState{..} = do
         return $! isJust r
     , nodeCommitQuery     = SimpleQuery $ \b -> do
         runBlockUpdate (headerHeight (blockHeader b)) persistedData $ processBlockDB b
-        Just vset <- retrieveValidatorSet $ headerHeight $ blockHeader b
-        return vset
+        return []
     , nodeBlockGenerator  = \h _ _ _ -> do
         txs <- peekNTransactions mempool Nothing
         r   <- queryRO $ runEphemeralQ persistedData (transactionsToBlockDB h txs)

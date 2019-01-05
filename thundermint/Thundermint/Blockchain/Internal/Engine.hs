@@ -87,7 +87,7 @@ runApplication config ready appSt@AppState{..} appCh@AppChans{..} = logOnExcepti
 --
 -- FIXME: we should write block and last commit in transaction!
 decideNewBlock
-  :: ( MonadDB m alg a, MonadLogger m, MonadTMMonitoring m, Crypto alg, Show a, BlockData a)
+  :: (MonadDB m alg a, MonadLogger m, MonadTMMonitoring m, Crypto alg, Show a, BlockData a)
   => ConsensusCfg
   -> (Height -> Time -> m Bool)
   -> AppState m alg a
@@ -146,7 +146,10 @@ decideNewBlock config ready appSt@AppState{..} appCh@AppChans{..} lastCommt = do
             case appCommitQuery of
               SimpleQuery callback -> do
                 r <- queryRW $ do storeCommit cmt b
-                                  storeValSet b =<< callback b
+                                  vsetChange <- callback b
+                                  case changeValidators vsetChange (validatorSet hParam) of
+                                    Just vset -> storeValSet b vset
+                                    Nothing   -> fail ""
                 case r of
                   Nothing -> error "Cannot write commit into database"
                   Just () -> return ()
@@ -154,8 +157,10 @@ decideNewBlock config ready appSt@AppState{..} appCh@AppChans{..} lastCommt = do
               MixedQuery mcall -> do
                 callback <- mcall
                 r <- queryRW $ do storeCommit cmt b
-                                  (vset,action) <- callback b
-                                  storeValSet b vset
+                                  (vsetChange,action) <- callback b
+                                  case changeValidators vsetChange (validatorSet hParam) of
+                                    Just vset -> storeValSet b vset
+                                    Nothing   -> fail ""
                                   return action
                 case r of
                   Just action -> action
