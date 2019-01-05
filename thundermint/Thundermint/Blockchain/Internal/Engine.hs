@@ -318,7 +318,7 @@ makeHeightParameters ConsensusCfg{..} ready AppState{..} AppChans{..} = do
           Nothing -> return UnseenProposal
           Just b  -> do
             inconsistencies <- lift $ checkProposedBlock nH b
-            blockOK         <- lift $ appValidationFun b
+            mvalChange      <- lift $ appValidationFun b
             case () of
               _| not (null inconsistencies) -> do
                    logger ErrorS "Proposed block has inconsistencies"
@@ -328,7 +328,11 @@ makeHeightParameters ConsensusCfg{..} ready AppState{..} AppChans{..} = do
                    return InvalidProposal
                -- We don't put evidence into blocks yet so there shouldn't be any
                | _:_ <- blockEvidence b -> return InvalidProposal
-               | blockOK                -> return GoodProposal
+               -- Block is correct and validators change is correct as
+               -- well
+               | Just ch <- mvalChange
+               , Just _  <- changeValidators ch valSet
+                 -> return GoodProposal
                | otherwise              -> return InvalidProposal
     --
     , broadcastProposal = \r bid lockInfo ->

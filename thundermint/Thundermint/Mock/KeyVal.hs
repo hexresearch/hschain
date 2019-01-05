@@ -17,7 +17,6 @@ import Data.List
 import Data.Typeable   (Proxy(..))
 
 import Data.Map        (Map)
-import Data.Maybe      (isJust)
 import System.FilePath ((</>))
 
 import qualified Data.Map as Map
@@ -97,7 +96,7 @@ interpretSpec maxH prefix NetSpec{..} = do
                        { appValidationFun  = \b -> do
                            let h = headerHeight $ blockHeader b
                            st <- stateAtH bchState h
-                           return $ isJust $ processBlock transitions b st
+                           return $ [] <$ processBlock transitions b st
                        --
                        , appBlockGenerator = \h _ _ _ -> case nspecByzantine of
                            Just "InvalidBlock" -> do
