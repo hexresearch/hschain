@@ -19,6 +19,7 @@ module Thundermint.Types.Blockchain (
     -- * Basic data types for blockchain
   , BlockID
   , Block(..)
+  , makeGenesis
   , Header(..)
   , Commit(..)
   , commitTime
@@ -113,6 +114,28 @@ instance Serialise     a => Serialise     (Block alg a)
 instance JSON.FromJSON a => JSON.FromJSON (Block alg a)
 instance JSON.ToJSON   a => JSON.ToJSON   (Block alg a)
 
+-- | Genesis block has many field with predetermined content so this
+--   is convenience function to create genesis block.
+makeGenesis
+  :: (Crypto alg, Serialise a)
+  => ByteString                 -- ^ Text identifier of chain
+  -> Time                       -- ^ Time of genesis
+  -> a                          -- ^ Block data
+  -> ValidatorSet alg           -- ^ Set of validators for block 1
+  -> Block alg a
+makeGenesis chainID t dat valSet = Block
+  { blockHeader = Header
+      { headerChainID        = chainID
+      , headerHeight         = Height 0
+      , headerTime           = t
+      , headerLastBlockID    = Nothing
+      , headerValidatorsHash = hash valSet
+      , headerDataHash       = hash dat
+      }
+  , blockData       = dat
+  , blockLastCommit = Nothing
+  , blockEvidence   = []
+  }
 
 -- | Block header
 data Header alg a = Header
