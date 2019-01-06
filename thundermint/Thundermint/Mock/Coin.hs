@@ -291,19 +291,8 @@ restrictGenerator n tot GeneratorSpec{..} = GeneratorSpec
     off2 = ((n+1) * len) `div` tot
 
 genesisFromGenerator :: ValidatorSet Alg -> GeneratorSpec -> Block Alg [Tx]
-genesisFromGenerator validatorSet GeneratorSpec{..} = Block
-  { blockHeader = Header
-      { headerChainID        = "MONIES"
-      , headerHeight         = Height 0
-      , headerTime           = Time 0
-      , headerLastBlockID    = Nothing
-      , headerValidatorsHash = hash validatorSet
-      , headerDataHash       = hash dat
-      }
-  , blockData       = dat
-  , blockLastCommit = Nothing
-  , blockEvidence   = []
-  }
+genesisFromGenerator validatorSet GeneratorSpec{..} =
+  makeGenesis "MONIES" (Time 0) dat validatorSet
   where
     dat = [ Deposit pk genInitialDeposit | pk <- genInitialKeys ]
 

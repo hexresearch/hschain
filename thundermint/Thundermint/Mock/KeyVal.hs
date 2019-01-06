@@ -30,7 +30,6 @@ import Thundermint.Blockchain.Internal.Engine.Types
 import Thundermint.Blockchain.Interpretation
 import Thundermint.Types.Blockchain
 import Thundermint.Control
-import Thundermint.Crypto            (hash)
 import Thundermint.Crypto.Ed25519
 import Thundermint.Logger
 import Thundermint.Mock.KeyList
@@ -46,20 +45,8 @@ import Thundermint.Types.Validators (ValidatorSet)
 ----------------------------------------------------------------
 
 genesisBlock :: ValidatorSet Ed25519_SHA512 -> Block Ed25519_SHA512 [(String,Int)]
-genesisBlock valSet = Block
-  { blockHeader = Header
-      { headerChainID        = "KV"
-      , headerHeight         = Height 0
-      , headerTime           = Time 0
-      , headerLastBlockID    = Nothing
-      , headerValidatorsHash = hash valSet
-      , headerDataHash       = hash dat
-      }
-  , blockData       = dat
-  , blockLastCommit = Nothing
-  , blockEvidence   = []
-  }
-  where dat = [] :: [(String,Int)]
+genesisBlock valSet
+  = makeGenesis "KV" (Time 0) [] valSet
 
 transitions :: BlockFold (Map String Int) alg [(String,Int)]
 transitions = BlockFold
