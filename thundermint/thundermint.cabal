@@ -218,6 +218,7 @@ Test-suite thundermint-tests
   Other-modules:       TM.Consensus
                        TM.Gossip
                        TM.Mempool
+                       TM.Merkle
                        TM.MockNet
                        TM.Network
                        TM.NetworkTls
