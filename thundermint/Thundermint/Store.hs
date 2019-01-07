@@ -436,10 +436,10 @@ checkProposedBlock h block = queryRO $ do
 
 -- | Check invariants for genesis block
 genesisBlockInvariant
-  :: Monad m
+  :: (Monad m, Crypto alg, Serialise a)
   => Block alg a
   -> WriterT [BlockchainInconsistency] m ()
-genesisBlockInvariant Block{blockHeader = Header{..}, ..} = do
+genesisBlockInvariant block@Block{blockHeader = Header{..}, ..} = do
   -- It must have height 0
   (headerHeight == Height 0)
     `orElse` BlockHeightMismatch (Height 0)
@@ -449,7 +449,8 @@ genesisBlockInvariant Block{blockHeader = Header{..}, ..} = do
   -- Last block must be Nothing
   isNothing headerLastBlockID
     `orElse` GenesisHasHeaderLastBlockID
-
+  --
+  headerHashesInvariant block
 
 -- | Check invariant for block at height > 0
 blockInvariant
@@ -469,7 +470,7 @@ blockInvariant
   -> WriterT [BlockchainInconsistency] m ()
 blockInvariant _ h _ _ _ _
   | h <= Height 0 = error "blockInvariant called with invalid parameters"
-blockInvariant chainID h prevT prevBID (mprevValSet, valSet) Block{blockHeader=Header{..}, ..} = do
+blockInvariant chainID h prevT prevBID (mprevValSet, valSet) block@Block{blockHeader=Header{..}, ..} = do
   -- All blocks must have same chain ID, i.e. chain ID of
   -- genesis block
   (chainID == headerChainID)
@@ -494,14 +495,7 @@ blockInvariant chainID h prevT prevBID (mprevValSet, valSet) Block{blockHeader=H
   (headerValidatorsHash == hashed valSet)
     `orElse` BlockValidatorHashMismatch h
   -- Hashes of block fields are correct
-  (headerDataHash == hashed blockData)
-    `orElse` HeaderHashMismatch h "Data"
-  (headerValChangeHash == hashed blockValChange)
-    `orElse` HeaderHashMismatch h "Validator change"
-  (headerLastCommitHash == hashed blockLastCommit)
-    `orElse` HeaderHashMismatch h "Commit hash"
-  (headerEvidenceHash == hashed blockEvidence)
-    `orElse` HeaderHashMismatch h "Evidence"
+  headerHashesInvariant block
   -- Block time must be equal to commit time
   -- Validate commit of previous block
   case (headerHeight, blockLastCommit) of
@@ -515,6 +509,20 @@ blockInvariant chainID h prevT prevBID (mprevValSet, valSet) Block{blockHeader=H
         -> commitInvariant (InvalidCommit h) (pred h) prevT prevBID prevValSet commit
       | otherwise
         -> tell [InvalidCommit h "Cannot validate commit"]
+
+headerHashesInvariant
+  :: (Monad m, Crypto alg, Serialise a)
+  => Block alg a
+  -> WriterT [BlockchainInconsistency] m ()
+headerHashesInvariant Block{blockHeader=Header{..}, ..} = do
+  (headerDataHash == hashed blockData)
+    `orElse` HeaderHashMismatch headerHeight "Data"
+  (headerValChangeHash == hashed blockValChange)
+    `orElse` HeaderHashMismatch headerHeight "Validator change"
+  (headerLastCommitHash == hashed blockLastCommit)
+    `orElse` HeaderHashMismatch headerHeight "Commit hash"
+  (headerEvidenceHash == hashed blockEvidence)
+    `orElse` HeaderHashMismatch headerHeight "Evidence"
 
 commitInvariant
   :: (Monad m, Crypto alg)
