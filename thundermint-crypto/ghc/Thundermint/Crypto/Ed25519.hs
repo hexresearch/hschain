@@ -36,6 +36,11 @@ newtype instance PrivKey   Ed25519_SHA512 = PrivKey   Ed.SecretKey
 newtype instance PublicKey Ed25519_SHA512 = PublicKey Ed.PublicKey
 
 instance Crypto Ed25519_SHA512 where
+  type HashSize      Ed25519_SHA512 = 64
+  type AddressSize   Ed25519_SHA512 = 32
+  type PublicKeySize Ed25519_SHA512 = 32
+  type PrivKeySize   Ed25519_SHA512 = 32
+  type SignatureSize Ed25519_SHA512 = 64
   signBlob (PrivKey k)  = Signature . convert . Ed.sign k pubKey
    where pubKey = Ed.toPublic k
 

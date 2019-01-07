@@ -2,7 +2,9 @@
 -- |
 module TM.Crypto (tests) where
 
-import qualified Data.Text as T
+import Data.Typeable
+import qualified Data.ByteString as BS
+import qualified Data.Text       as T
 import Test.Tasty
 import Test.Tasty.HUnit
 
@@ -85,4 +87,18 @@ tests = testGroup "Crypto"
        let pubK = publicKey privK
        show privK @=? T.unpack ("\"" <> encodeBase58 privK <> "\"")
        show pubK  @=? T.unpack ("\"" <> encodeBase58 pubK  <> "\"")
+    --
+  , testCase "Sizes are correct"
+  $ do privK <- generatePrivKey
+       let pubK         = publicKey privK
+           Address addr = address pubK
+           blob         = "ABCD"
+           Signature s  = signBlob privK blob
+           Hash bs      = hash () :: Hash Ed25519_SHA512
+           ed           = Proxy :: Proxy Ed25519_SHA512
+       BS.length bs                  @=? hashSize      ed
+       BS.length addr                @=? addressSize   ed
+       BS.length (pubKeyToBS  pubK ) @=? publicKeySize ed
+       BS.length (privKeyToBS privK) @=? privKeySize   ed
+       BS.length s                   @=? signatureSize ed
   ]
