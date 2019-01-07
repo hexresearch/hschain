@@ -80,7 +80,7 @@ import Control.Monad.Trans.Reader
 import Control.Monad.Trans.Writer
 import Data.Foldable             (forM_)
 import Data.Maybe                (isNothing, maybe)
-import Data.Text                 (isPrefixOf)
+import Data.Text                 (isPrefixOf, Text)
 import Data.List                 (nub)
 import GHC.Generics              (Generic)
 
@@ -350,12 +350,8 @@ data BlockchainInconsistency
   | BlockValidatorHashMismatch !Height
   -- ^ Hash of set of validators in block header does not match hash
   --   of actual set
-  | BlockDataHashMismatch !Height
-  -- ^ Hash of block data in header and hash in the header do not match
-  | BlockLastCommitHashMismatch !Height
-  -- ^ Hash of last commit does not match hash in the header
-  | BlockEvidenceHashMismatch   !Height
-  -- ^ Hash of evidence does not match hash in the header
+  | HeaderHashMismatch !Height !Text
+  -- ^ Hash of field of block in header and actual hash do not match.
   | BlockInvalidPrevBID !Height
   -- ^ Previous block is does not match ID of block commited to
   --   blockchain.
@@ -499,11 +495,13 @@ blockInvariant chainID h prevT prevBID (mprevValSet, valSet) Block{blockHeader=H
     `orElse` BlockValidatorHashMismatch h
   -- Hashes of block fields are correct
   (headerDataHash == hashed blockData)
-    `orElse` BlockDataHashMismatch h
+    `orElse` HeaderHashMismatch h "Data"
+  (headerValChangeHash == hashed blockValChange)
+    `orElse` HeaderHashMismatch h "Validator change"
   (headerLastCommitHash == hashed blockLastCommit)
-    `orElse` BlockLastCommitHashMismatch h
+    `orElse` HeaderHashMismatch h "Commit hash"
   (headerEvidenceHash == hashed blockEvidence)
-    `orElse` BlockEvidenceHashMismatch h
+    `orElse` HeaderHashMismatch h "Evidence"
   -- Block time must be equal to commit time
   -- Validate commit of previous block
   case (headerHeight, blockLastCommit) of
