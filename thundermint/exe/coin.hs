@@ -13,6 +13,7 @@ import Thundermint.Mock.Coin
 import Thundermint.Store
 import Thundermint.Store.SQL
 
+import Data.Monoid ((<>))
 
 
 ----------------------------------------------------------------

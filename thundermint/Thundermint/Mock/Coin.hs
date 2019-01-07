@@ -47,6 +47,7 @@ import Data.Functor.Compose
 import Data.Int
 import Data.Map             (Map)
 import qualified Data.Map.Strict  as Map
+import Data.SafeCopy
 import Lens.Micro
 import System.Random   (randomRIO)
 import GHC.Generics    (Generic)
@@ -80,6 +81,7 @@ data TxSend = TxSend
   }
   deriving (Show, Eq, Ord, Generic)
 instance Serialise TxSend
+instance SafeCopy TxSend
 instance NFData    TxSend
 instance JSON.ToJSON   TxSend
 instance JSON.FromJSON TxSend
@@ -101,6 +103,8 @@ instance Serialise Tx
 instance NFData    Tx
 instance JSON.ToJSON   Tx
 instance JSON.FromJSON Tx
+
+instance SafeCopy Tx
 
 -- | State of coins in program-digestible format
 --
@@ -427,6 +431,7 @@ executeNodeSpec maxH delay NetSpec{..} = do
           , bchInitialPeers = map (,"50000") $ connections netAddresses addr
           }
     let loggers = [ makeScribe s | s <- nspecLogFile ]
+        run :: LoggerT IO a -> IO a
         run m   = withLogEnv "TM" "DEV" loggers $ \logenv -> runLoggerT "general" logenv m
     run $ (fmap . fmap) run $ interpretSpec maxH genSpec validatorSet bnet nspec
   runConcurrently (snd <$> actions) `catch` (\Abort -> return ())

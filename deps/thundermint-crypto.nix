@@ -1,14 +1,14 @@
 { mkDerivation, aeson, base, base58-bytestring, bytestring
-, cryptonite, deepseq, memory, serialise, stdenv, tasty
-, tasty-hunit, text
+, cryptonite, deepseq, entropy, memory, serialise, stdenv, tasty
+, tasty-hunit, text, safecopy
 }:
 mkDerivation {
   pname = "thundermint-crypto";
   version = "0.1";
   src = ../thundermint-crypto;
   libraryHaskellDepends = [
-    aeson base base58-bytestring bytestring cryptonite deepseq memory
-    serialise text
+    aeson base base58-bytestring bytestring cryptonite deepseq entropy
+    memory serialise text safecopy
   ];
   testHaskellDepends = [
     aeson base bytestring serialise tasty tasty-hunit

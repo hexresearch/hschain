@@ -22,14 +22,25 @@ import Thundermint.Crypto
 import Thundermint.Types.Validators
 import Thundermint.Store.Internal.Query
 
+import Data.SafeCopy
 
+import Codec.CBOR.Write
+import Codec.CBOR.Read
+
+import Data.ByteString.Lazy (ByteString)
+
+safeSerialise :: SafeCopy a => a -> ByteString
+safeSerialise = toLazyByteString . safePut
+
+safeDeserialiseOrFail :: SafeCopy a => ByteString -> Either DeserialiseFailure a
+safeDeserialiseOrFail = fmap snd . deserialiseFromBytes safeGet
 ----------------------------------------------------------------
 --
 ----------------------------------------------------------------
 
 -- | Create tables for storing blockchain data
 initializeBlockhainTables
-  :: forall alg a. (Crypto alg, Eq (PublicKey alg), Serialise a, Eq a)
+  :: forall alg a. (Crypto alg, Eq (PublicKey alg), SafeCopy a, Serialise a, Eq a)
   => Block alg a                -- ^ Genesis block
   -> ValidatorSet alg           -- ^ Initial validator set
   -> Query 'RW alg a ()
@@ -80,7 +91,7 @@ initializeBlockhainTables genesis initialVals = do
        -> do execute "INSERT INTO blockchain VALUES (?,?,?)"
                ( 0 :: Int64
                , serialise (blockHash genesis :: BlockID alg a)
-               , serialise genesis
+               , safeSerialise genesis
                )
              execute "INSERT INTO validators VALUES (?,?)"
                ( 1 :: Int64
@@ -88,7 +99,7 @@ initializeBlockhainTables genesis initialVals = do
                )
      -- Genesis and validator set matches ones recorded
      | [Only blk ]    <- storedGen
-     , Right genesis' <- deserialiseOrFail blk
+     , Right genesis' <- safeDeserialiseOrFail blk
      , genesis == genesis'
      , [Only vals]        <- storedVals
      , Right initialVals' <- deserialiseOrFail vals
@@ -115,9 +126,9 @@ blockchainHeight =
 -- | Retrieve block at given height.
 --
 --   Must return block for every height @0 <= h <= blockchainHeight@
-retrieveBlock :: (Serialise a) => Height -> Query rw alg a (Maybe (Block alg a))
+retrieveBlock :: (Serialise a, SafeCopy a) => Height -> Query rw alg a (Maybe (Block alg a))
 retrieveBlock (Height h) =
-  singleQ "SELECT block FROM blockchain WHERE height = ?" (Only h)
+  singleSafeQ "SELECT block FROM blockchain WHERE height = ?" (Only h)
 
 -- | Retrieve ID of block at given height. Must return same result
 --   as @fmap blockHash . retrieveBlock@ but implementation could
@@ -133,13 +144,13 @@ retrieveBlockID (Height h) =
 --   Note that this method returns @Nothing@ for last block since
 --   its commit is not persisted in blockchain yet and there's no
 --   commit for genesis block (h=0)
-retrieveCommit :: (Serialise a) => Height -> Query rw alg a (Maybe (Commit alg a))
+retrieveCommit :: (Serialise a, SafeCopy a) => Height -> Query rw alg a (Maybe (Commit alg a))
 retrieveCommit (Height h) = do
-  mb <- singleQ "SELECT block FROM blockchain WHERE height = ?" (Only (h+1))
+  mb <- singleSafeQ "SELECT block FROM blockchain WHERE height = ?" (Only (h+1))
   return $ blockLastCommit =<< mb
 
 -- | Retrieve round when commit was made.
-retrieveCommitRound :: (Serialise a) => Height -> Query rw alg a (Maybe Round)
+retrieveCommitRound :: (Serialise a, SafeCopy a) => Height -> Query rw alg a (Maybe Round)
 retrieveCommitRound (Height h) = runMaybeT $ do
   c <-  MaybeT (retrieveCommit (Height h))
     <|> MaybeT (singleQ "SELECT cmt FROM commits WHERE height = ?" (Only h))
@@ -176,7 +187,7 @@ retrieveValidatorSet (Height h) =
 
 -- | Write block and commit justifying it into persistent storage.
 storeCommit
-  :: forall alg a. (Crypto alg, Serialise a)
+  :: forall alg a. (Crypto alg, Serialise a, SafeCopy a)
   => Commit alg a -> Block alg a -> Query 'RW alg a ()
 storeCommit cmt blk = do
   let Height h = headerHeight $ blockHeader blk
@@ -184,7 +195,7 @@ storeCommit cmt blk = do
   execute "INSERT INTO blockchain VALUES (?,?,?)"
     ( h
     , serialise (blockHash blk :: BlockID alg a)
-    , serialise blk
+    , safeSerialise blk
     )
 
 -- | Write validator set for next round into database
@@ -225,6 +236,17 @@ singleQ sql p =
   query sql p >>= \case
     []        -> return Nothing
     [Only bs] -> case deserialiseOrFail bs of
+      Right a -> return (Just a)
+      Left  e -> error ("CBOR encoding error: " ++ show e)
+    _         -> error "Impossible"
+
+-- Query that returns 0 or 1 result which is CBOR-encoded value
+singleSafeQ :: (SQL.ToRow p, SafeCopy x)
+        => Text -> p -> Query rw alg a (Maybe x)
+singleSafeQ sql p =
+  query sql p >>= \case
+    []        -> return Nothing
+    [Only bs] -> case safeDeserialiseOrFail bs of
       Right a -> return (Just a)
       Left  e -> error ("CBOR encoding error: " ++ show e)
     _         -> error "Impossible"

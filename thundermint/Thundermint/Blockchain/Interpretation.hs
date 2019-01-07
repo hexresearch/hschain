@@ -18,6 +18,7 @@ import Codec.Serialise (Serialise)
 import Control.Concurrent.MVar
 import Control.Monad.Catch
 import Control.Monad.IO.Class
+import Data.SafeCopy
 
 import Thundermint.Control
 import Thundermint.Store
@@ -71,7 +72,7 @@ data BChState m s = BChState
 
 -- | Create block storage backed by MVar
 newBChState
-  :: (MonadMask m, MonadReadDB m alg a, Serialise a)
+  :: (MonadMask m, MonadReadDB m alg a, Serialise a, SafeCopy a)
   => BlockFold s alg a             -- ^ Updating function
   -> m (BChState m s)
 newBChState BlockFold{..} = do

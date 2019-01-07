@@ -7,6 +7,8 @@
 {-# LANGUAGE LambdaCase                 #-}
 {-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE TypeFamilies               #-}
+{-# LANGUAGE BangPatterns               #-}
+{-# LANGUAGE TemplateHaskell            #-}
 -- |
 -- Simple API for cryptographic operations. Crypto algorithms are
 -- selected by type and all necessary types are implemented as data
@@ -61,9 +63,10 @@ import Text.Read
 import Text.ParserCombinators.ReadP
 import GHC.Generics         (Generic,Generic1)
 
+import Data.SafeCopy
+
 import qualified Data.ByteString        as BS
 import qualified Data.ByteString.Base58 as Base58
-
 
 ----------------------------------------------------------------
 -- Basic crypto API
@@ -79,13 +82,19 @@ data family PublicKey alg
 newtype Signature alg = Signature BS.ByteString
   deriving (Eq, Ord, Generic, Generic1, Serialise, NFData)
 
+instance  SafeCopy (Signature alg)
+
 -- | Address of public key fingerprint (hash of public key)
 newtype Address alg = Address BS.ByteString
-  deriving (Eq,Ord, Serialise)
+  deriving (Eq,Ord, Serialise, Generic)
+
+instance  SafeCopy (Address alg)
 
 -- | Cryptographic hash of some value
 newtype Hash alg = Hash BS.ByteString
-  deriving (Eq,Ord, Serialise, NFData)
+  deriving (Eq,Ord, Serialise, Generic, NFData)
+
+instance  SafeCopy (Hash alg)
 
 -- | Compute hash of value. It's first serialized using CBOR and then
 --   hash of encoded data is computed,
@@ -171,6 +180,14 @@ instance Crypto alg => Serialise (PublicKey alg) where
               case pubKeyFromBS bs of
                 Nothing -> fail "Cannot decode private key"
                 Just k  -> return k
+
+instance Crypto alg => SafeCopy (PublicKey alg) where
+  putCopy = contain . safePut . pubKeyToBS
+  getCopy = contain $ 
+    do bs <- safeGet
+       case pubKeyFromBS bs of
+         Nothing -> fail "Cannot decode private key"
+         Just k  -> return k
 
 instance Crypto alg => JSON.ToJSON (PrivKey alg) where
   toJSON = JSON.String . T.decodeUtf8 . encodeBSBase58 . privKeyToBS
@@ -353,6 +370,7 @@ verifyCborSignature
 verifyCborSignature pk a
   = verifyBlobSignature pk (toStrict $ serialise a)
 
+instance SafeCopy a => SafeCopy (Signed sign alg a)
 instance Serialise a => Serialise (Signed 'Unverified alg a)
 instance JSON.FromJSON a => JSON.FromJSON (Signed 'Unverified alg a)
 instance JSON.ToJSON   a => JSON.ToJSON   (Signed 'Unverified alg a)
@@ -373,6 +391,8 @@ newtype Hashed alg a = Hashed (Hash alg)
 
 data BlockHash alg a = BlockHash Word32 (Hash alg) [Hash alg]
   deriving (Show,Eq,Ord,Generic)
+
+instance SafeCopy (BlockHash alg a) 
 
 blockHash
   :: (Crypto alg, Serialise a)

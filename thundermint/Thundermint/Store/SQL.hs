@@ -60,6 +60,8 @@ import Thundermint.Control
 import Thundermint.Store.Internal.Types
 import Thundermint.Store.Internal.Query
 
+import Data.Monoid ((<>))
+
 
 
 ----------------------------------------------------------------

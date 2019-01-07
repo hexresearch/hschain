@@ -11,33 +11,43 @@
 import Control.Monad
 import Data.Monoid
 import Options.Applicative
+import Control.Monad.Trans.Class
+import Control.Monad.IO.Class
 
-import Thundermint.Blockchain.Types
+import qualified Data.Aeson as JSON
+import qualified Data.ByteString.Lazy.Char8 as B
+
+import Thundermint.Types.Blockchain
 import Thundermint.Store
-import Thundermint.Store.SQLite
 import Thundermint.Mock.Coin
 
 ----------------------------------------------------------------
 -- Reader for database
 ----------------------------------------------------------------
 
-totalNOfBlocks :: BlockStorage 'RO IO Alg [Tx] -> IO ()
-totalNOfBlocks storage@BlockStorage{..} = do
-  blocks <- loadAllBlocks storage
-  print $ length $ blockData =<< blocks
+totalNOfBlocks :: DBT 'RO Alg [Tx] IO ()
+totalNOfBlocks = do
+  blocks <- loadAllBlocks
+  lift $ B.putStrLn $ JSON.encode $ fmap blockData blocks
 
-printHeight :: BlockStorage 'RO IO Alg [Tx] -> IO ()
-printHeight BlockStorage{..} =
-  print =<< blockchainHeight
+printHeight :: DBT 'RO Alg [Tx] IO ()
+printHeight = do
+  height <- queryRO $  blockchainHeight
+  lift $ print height
 
 
-loadAllBlocks :: Monad m => BlockStorage ro m alg a -> m [Block alg a]
-loadAllBlocks storage = go (Height 0)
+loadAllBlocks :: DBT 'RO Alg [Tx] IO [Block Alg [Tx]]
+loadAllBlocks = go (Height 0)
   where
-    go h = retrieveBlock storage h >>= \case
-      Nothing -> return []
-      Just b  -> (b :) <$> go (succ h)
+    go h = queryRO (retrieveBlock h) >>= \case
+            Nothing -> return []
+            Just b  -> (b :) <$> go (succ h)
 
+withSQLiteBlockStorageRO :: MonadIO m
+                         => FilePath -> DBT 'RO alg a m b -> m b
+withSQLiteBlockStorageRO db command' = do
+  conn <- connectionRO <$> openConnection db
+  runDBT conn $ command'
 ----------------------------------------------------------------
 --
 ----------------------------------------------------------------
@@ -63,7 +73,7 @@ main
 
 
 
-dbCommand :: Parser (BlockStorage 'RO IO Alg [Tx] -> IO ())
+dbCommand :: Parser (DBT 'RO Alg [Tx] IO ())
 dbCommand =
   argument (maybeReader $ \case
                "tr_total" -> Just totalNOfBlocks

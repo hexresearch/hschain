@@ -9,6 +9,8 @@ import Test.Tasty.HUnit
 import Thundermint.Crypto
 import Thundermint.Crypto.Ed25519
 
+import Data.Monoid ((<>))
+
 tests :: TestTree
 tests = testGroup "Crypto"
   [ testCase "read . show = id @ Address/PublicKey/PrivKey Ed25519_SHA512"

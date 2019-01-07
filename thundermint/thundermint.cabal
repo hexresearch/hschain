@@ -53,6 +53,8 @@ Library
                      , x509-store
                      , x509-system
                      , x509-validation
+                     , safecopy           >= 0.10.0.0
+                     , cborg
 
   Exposed-modules:
                   Thundermint.Blockchain.Internal.Algorithm
@@ -136,24 +138,26 @@ Executable thundermint-coin-node
   hs-source-dirs:      exe
   Main-is:             coin-node.hs
 
--- Executable thundermint-coin-db
---   Ghc-options:         -Wall -threaded -Wno-orphans
---   Default-Language:    Haskell2010
---   Build-Depends:       base                 >=4.9 && <5
---                      , thundermint
---                      , thundermint-crypto
---                      , aeson
---                      , base58-bytestring    >=0.1
---                      , bytestring           >=0.10
---                      , containers           >=0.5.7
---                      , directory
---                      , filepath
---                      , optparse-applicative >=0.14
---                      , serialise
---                      , stm
---                      , text
---   hs-source-dirs:      exe
---   Main-is:             coin-db.hs
+Executable thundermint-coin-db
+  Ghc-options:         -Wall -threaded -Wno-orphans
+  Default-Language:    Haskell2010
+  Build-Depends:       base                 >=4.9 && <5
+                     , thundermint
+                     , thundermint-crypto
+                     , thundermint-types
+                     , aeson
+                     , base58-bytestring    >=0.1
+                     , bytestring           >=0.10
+                     , containers           >=0.5.7
+                     , directory
+                     , filepath
+                     , optparse-applicative >=0.14
+                     , serialise
+                     , stm
+                     , text
+                     , transformers
+  hs-source-dirs:      exe
+  Main-is:             coin-db.hs
 
 
 -- Test suite

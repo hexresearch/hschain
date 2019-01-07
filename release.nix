@@ -47,6 +47,8 @@ let
           tasty = lib.dontCheck haskellPackagesOld.tasty;
           tasty-hunit = lib.dontCheck haskellPackagesNew.tasty-hunit_0_10_0_1;
           text = haskellPackagesNew.text_1_2_3_0;
+          entropy = pkgs.haskellPackages.entropy_0_4_1_1;
+          safecopy = haskellPackagesOld.callPackage ./deps/safecopy.nix {};
           thundermint-crypto = haskellPackagesOld.callPackage ./deps/thundermint-crypto.nix {};
           thundermint = pkgs.haskell.lib.overrideCabal
               ( pkgs.haskell.lib.justStaticExecutables

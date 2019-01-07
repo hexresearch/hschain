@@ -38,6 +38,7 @@ import           Data.Set          (Set)
 import qualified Data.Aeson      as JSON
 import qualified Data.Aeson.TH   as JSON
 import qualified Data.Text       as T
+import           Data.SafeCopy
 import Katip         (showLS,sl)
 import qualified Katip
 import System.Random (newStdGen, randomIO, randomRIO)
@@ -621,7 +622,7 @@ startPeer peerAddrFrom peerAddrTo peerCh@PeerChans{..} conn peerRegistry mempool
 
 -- | Gossip votes with given peer
 peerGossipVotes
-  :: (MonadReadDB m alg a, MonadFork m, MonadMask m, MonadLogger m, Crypto alg, Serialise a)
+  :: (MonadReadDB m alg a, MonadFork m, MonadMask m, MonadLogger m, Crypto alg, Serialise a, SafeCopy a)
   => PeerStateObj m alg a         -- ^ Current state of peer
   -> PeerChans m addr alg a       -- ^ Read-only access to
   -> TBQueue (GossipMsg addr alg a)
@@ -738,7 +739,7 @@ peerGossipMempool peerObj PeerChans{..} config gossipCh MempoolCursor{..} = logO
 
 -- | Gossip blocks with given peer
 peerGossipBlocks
-  :: (MonadReadDB m alg a, MonadFork m, MonadMask m, MonadLogger m, Serialise a)
+  :: (MonadReadDB m alg a, MonadFork m, MonadMask m, MonadLogger m, Serialise a, SafeCopy a)
   => PeerStateObj m alg a       -- ^ Current state of peer
   -> PeerChans m addr alg a     -- ^ Read-only access to
   -> TBQueue (GossipMsg addr alg a) -- ^ Network API

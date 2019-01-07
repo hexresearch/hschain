@@ -7,6 +7,8 @@
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE RecordWildCards            #-}
 {-# LANGUAGE TypeFamilies               #-}
+{-# LANGUAGE TemplateHaskell            #-}
+{-# LANGUAGE BangPatterns               #-}
 -- |
 -- Data types for implementation of consensus algorithm
 module Thundermint.Types.Blockchain (
@@ -51,6 +53,8 @@ import           Data.Ord                 (comparing)
 import           Data.Time.Clock          (UTCTime)
 import           Data.Time.Clock.POSIX    (getPOSIXTime,posixSecondsToUTCTime)
 import           GHC.Generics             (Generic)
+import           Data.SafeCopy
+import           Data.Word
 
 import Thundermint.Crypto
 import Thundermint.Types.Validators
@@ -72,13 +76,19 @@ import Thundermint.Types.Validators
 newtype Height = Height Int64
   deriving (Show, Generic, Eq, Ord, Serialise, JSON.ToJSON, JSON.FromJSON, Enum)
 
+instance SafeCopy Height
+
 -- | Voting round
 newtype Round = Round Int64
-  deriving (Show, Eq, Ord, Serialise, JSON.ToJSON, JSON.FromJSON, Enum)
+  deriving (Show, Generic, Eq, Ord, Serialise, JSON.ToJSON, JSON.FromJSON, Enum)
+
+instance SafeCopy Round
 
 -- | Time in milliseconds since UNIX epoch.
 newtype Time = Time Int64
-  deriving (Show, Eq, Ord, Serialise, JSON.ToJSON, JSON.FromJSON)
+  deriving (Show, Generic, Eq, Ord, Serialise, JSON.ToJSON, JSON.FromJSON)
+
+instance SafeCopy Time
 
 -- | Get current time
 getCurrentTime :: MonadIO m => m Time
@@ -110,8 +120,10 @@ data Block alg a = Block
   }
   deriving (Show, Eq, Generic)
 instance Serialise     a => Serialise     (Block alg a)
+instance SafeCopy      a => SafeCopy      (Block alg a)
 instance JSON.FromJSON a => JSON.FromJSON (Block alg a)
 instance JSON.ToJSON   a => JSON.ToJSON   (Block alg a)
+
 
 
 -- | Block header
@@ -132,6 +144,7 @@ data Header alg a = Header
   }
   deriving (Show, Eq, Generic)
 instance Serialise (Header alg a)
+instance SafeCopy (Header alg a)
 
 instance JSON.ToJSON (Header alg a) where
   toJSON Header{..} =
@@ -167,6 +180,7 @@ data ByzantineEvidence alg a
     -- ^ Node made conflicting precommits in the same round
   deriving (Show, Eq, Generic)
 instance Serialise     (ByzantineEvidence alg a)
+instance SafeCopy a => SafeCopy      (ByzantineEvidence alg a)
 instance JSON.FromJSON (ByzantineEvidence alg a)
 instance JSON.ToJSON   (ByzantineEvidence alg a)
 
@@ -180,6 +194,7 @@ data Commit alg a = Commit
   }
   deriving (Show, Eq, Generic)
 instance Serialise     (Commit alg a)
+instance SafeCopy a => SafeCopy      (Commit alg a)
 instance JSON.FromJSON (Commit alg a)
 instance JSON.ToJSON   (Commit alg a)
 
@@ -228,14 +243,14 @@ zDrop i ((n,x):xs)
 
 
 -- | Type class for data which could be put into block
-class (Serialise a, Serialise (TX a)) => BlockData a where
+class (Serialise a, Serialise (TX a), SafeCopy a, SafeCopy (TX a)) => BlockData a where
   -- | Transaction type of block
   type TX a
   -- | Return list of transaction in block
   blockTransactions :: a -> [TX a]
   logBlockData      :: a -> JSON.Object
 
-instance (Serialise a) => BlockData [a] where
+instance (Serialise a, SafeCopy a) => BlockData [a] where
   type TX [a] = a
   blockTransactions = id
   logBlockData      = HM.singleton "Ntx" . JSON.toJSON . length
@@ -294,6 +309,7 @@ data Proposal alg a = Proposal
   deriving (Show, Eq, Generic)
 
 instance Serialise     (Proposal alg a)
+instance SafeCopy      (Proposal alg a)
 instance JSON.FromJSON (Proposal alg a)
 instance JSON.ToJSON   (Proposal alg a)
 
@@ -328,20 +344,58 @@ instance JSON.FromJSON (Vote ty alg a)
 instance JSON.ToJSON   (Vote ty alg a)
 
 
+instance SafeCopy a => SafeCopy (Vote 'PreVote alg a) where
+  putCopy v = contain $ putVoteCopy 0 v
+  getCopy = contain $ getVoteCopy 0
+  version = 1
+  kind = base
+  errorTypeName _ = "Blockchain.Vote"
 
-encodeVote :: Word -> Vote ty alg a -> Encoding
+instance SafeCopy a => SafeCopy (Vote 'PreCommit alg a) where
+  putCopy v = contain $ putVoteCopy 1 v
+  getCopy = contain $ getVoteCopy 1
+  version = 1
+  kind = base
+  errorTypeName _ = "Blockchain.Vote"
+
+putVoteCopy :: Word8 -> Vote ty alg a -> Encoding
+putVoteCopy tag Vote{..}
+  = encodeListLen 5
+           <> encodeWord8 tag
+           <> safePut voteHeight
+           <> safePut voteRound
+           <> safePut voteTime
+           <> safePut voteBlockID
+
+getVoteCopy :: Word8 -> Decoder s (Vote ty alg a)
+getVoteCopy expectedTag
+  = do len <- decodeListLen
+       tag <- decodeWord8
+       case len of
+         5 | tag == expectedTag -> do 
+               !voteHeight <- safeGet
+               !voteRound  <- safeGet
+               !voteTime   <- safeGet
+               !voteBlockID <- safeGet
+               return $ Vote{..}
+           | otherwise ->
+                 fail ("Invalid Vote tag, expected: " ++ show expectedTag
+                       ++ ", actual: " ++ show tag)
+         _ -> fail $ "Invalid Vote encoding"
+
+encodeVote :: Word8 -> Vote ty alg a -> Encoding
 encodeVote tag Vote{..} =
     encodeListLen 5 <>
-    encodeWord tag <>
+    encodeWord8 tag <>
     encode voteHeight <>
     encode voteRound <>
     encode voteTime <>
     encode voteBlockID
 
-decodeVote :: Word -> Decoder s (Vote ty alg a)
+decodeVote :: Word8 -> Decoder s (Vote ty alg a)
 decodeVote expectedTag = do
     len <- decodeListLen
-    tag <- decodeWord
+    tag <- decodeWord8
     case len of
         5 | tag == expectedTag ->
                 Vote <$> decode <*> decode <*> decode <*> decode

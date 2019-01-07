@@ -38,6 +38,7 @@ import qualified Control.Exception     as E
 import qualified Data.Aeson            as JSON
 import qualified Data.ByteString.Char8 as BC8
 
+import Data.Monoid ((<>))
 
 ----------------------------------------------------------------
 -- Cmd line specification

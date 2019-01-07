@@ -27,6 +27,7 @@ Library
                      , containers        >=0.5.9
                      , data-default-class
                      , deepseq           >=1.4
+                     , safecopy          >=0.10.0.0
                      , serialise         >=0.2
                      , text
                      , time

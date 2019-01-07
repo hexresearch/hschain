@@ -26,6 +26,7 @@ import Control.Monad.Trans.Class
 import           Data.Maybe    (fromMaybe)
 import           Data.Function
 import           Data.Monoid   ((<>))
+import Data.SafeCopy
 import Data.Text             (Text)
 import Pipes                 (Pipe,runEffect,yield,await,(>->))
 
@@ -274,7 +275,7 @@ instance MonadTrans (ConsensusM alg a) where
   lift = ConsensusM . fmap Success
 
 makeHeightParameters
-  :: (MonadDB m alg a, MonadLogger m, MonadTMMonitoring m, Crypto alg, Serialise a, Show a)
+  :: (MonadDB m alg a, MonadLogger m, MonadTMMonitoring m, Crypto alg, Serialise a, SafeCopy a, Show a)
   => ConsensusCfg
   -> (Height -> Time -> m Bool)
   -> AppState m alg a

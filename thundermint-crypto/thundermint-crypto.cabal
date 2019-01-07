@@ -20,7 +20,9 @@ Library
                      , aeson
                      , base58-bytestring >=0.1
                      , bytestring        >=0.10
+                     , cborg
                      , deepseq           >=1.4
+                     , safecopy          >=0.10.0.0
                      , serialise         >=0.2
                      , text              >=1
                      --

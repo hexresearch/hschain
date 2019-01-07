@@ -25,6 +25,7 @@ import Thundermint.Logger      (LoggerT(..),NoLogsT(..))
 import Thundermint.Store       (DBT(..))
 import Thundermint.Debug.Trace (TracerT(..))
 import Thundermint.Types.Blockchain
+import Data.Monoid ((<>))
 
 ----------------------------------------------------------------
 -- Gauges

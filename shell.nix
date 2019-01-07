@@ -3,7 +3,7 @@ with import ./release.nix;
   #  nixpkgs = import <nixpkgs> {};
   #in pkgs.stdenv.mkDerivation {
   #  name        = "dev-env";
-  #  buildInputs = [pkgs.ghc thundermint];
+  #  buildInputs = [pkgs.ghc pkgs.zlib];
   #  system      = builtins.currentSystem;
   #}
   #(pkgs.haskell.lib.doBenchmark thundermint).env 
