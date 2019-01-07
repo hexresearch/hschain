@@ -5,6 +5,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE KindSignatures             #-}
 {-# LANGUAGE LambdaCase                 #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE TypeFamilies               #-}
 -- |
@@ -20,6 +21,12 @@ module Thundermint.Crypto (
   , Hash(..)
   , hash
   , Crypto(..)
+    -- ** Sizes of crypto types
+  , hashSize
+  , addressSize
+  , publicKeySize
+  , privKeySize
+  , signatureSize
     -- * Encoding and decoding of values
   , ByteRepr(..)
   , encodeBase58
@@ -37,7 +44,6 @@ module Thundermint.Crypto (
   , Hashed(..)
   , BlockHash(..)
   , blockHash
-  -- , HashTree(..)
     -- * base58 encoding
   , encodeBSBase58
   , decodeBSBase58
@@ -55,10 +61,12 @@ import           Data.Text              (Text)
 import qualified Data.Text.Encoding   as T
 import           Data.ByteString.Lazy    (toStrict)
 import qualified Data.ByteString.Char8 as BC8
-import Data.Char  (isAscii)
+import Data.Char     (isAscii)
+import Data.Typeable (Proxy(..))
 import Data.Word
 import Text.Read
 import Text.ParserCombinators.ReadP
+import GHC.TypeNats
 import GHC.Generics         (Generic,Generic1)
 
 import qualified Data.ByteString        as BS
@@ -96,7 +104,14 @@ hash = hashBlob . toStrict . serialise
 -- | Type-indexed set of crypto algorithms. It's not very principled
 --   by to keep signatures sane everything was thrown into same type
 --   class.
-class Crypto alg where
+class ( KnownNat (HashSize alg), KnownNat (SignatureSize alg)
+      , KnownNat (AddressSize alg), KnownNat (PublicKeySize alg), KnownNat (PrivKeySize alg)
+      ) => Crypto alg where
+  type HashSize      alg :: Nat
+  type AddressSize   alg :: Nat
+  type PublicKeySize alg :: Nat
+  type PrivKeySize   alg :: Nat
+  type SignatureSize alg :: Nat
   -- | Sign sequence of bytes
   signBlob            :: PrivKey   alg -> BS.ByteString -> Signature alg
   -- | Check that signature is correct
@@ -116,6 +131,25 @@ class Crypto alg where
   -- | Convert public key to bytestring
   pubKeyToBS          :: PublicKey alg -> BS.ByteString
 
+-- | Size of hash in bytes
+hashSize :: forall alg proxy i. (Crypto alg, Num i) => proxy alg -> i
+hashSize _ = fromIntegral $ natVal (Proxy :: Proxy (HashSize alg))
+
+-- | Size of public key fingerprint in bytes
+addressSize :: forall alg proxy i. (Crypto alg, Num i) => proxy alg -> i
+addressSize _ = fromIntegral $ natVal (Proxy :: Proxy (AddressSize alg))
+
+-- | Size of public key in bytes
+publicKeySize :: forall alg proxy i. (Crypto alg, Num i) => proxy alg -> i
+publicKeySize _ = fromIntegral $ natVal (Proxy :: Proxy (PublicKeySize alg))
+
+-- | Size of private key in bytes
+privKeySize :: forall alg proxy i. (Crypto alg, Num i) => proxy alg -> i
+privKeySize _ = fromIntegral $ natVal (Proxy :: Proxy (PrivKeySize alg))
+
+-- | Size of signature in bytes
+signatureSize :: forall alg proxy i. (Crypto alg, Num i) => proxy alg -> i
+signatureSize _ = fromIntegral $ natVal (Proxy :: Proxy (SignatureSize alg))
 
 -- | Value could be represented as bytestring.
 class ByteRepr a where
