@@ -148,7 +148,7 @@ makeGenesis chainID t dat valSet = Block
       , headerHeight         = Height 0
       , headerTime           = t
       , headerLastBlockID    = Nothing
-      , headerValidatorsHash = hash valSet
+      , headerValidatorsHash = hashed valSet
       , headerValChangeHash  = hashed []
       , headerDataHash       = hashed dat
       , headerLastCommitHash = hashed Nothing
@@ -171,7 +171,7 @@ data Header alg a = Header
     -- ^ Time of block creation
   , headerLastBlockID    :: !(Maybe (BlockID alg a))
     -- ^ Hash of previous block. Nothing iff block is a genesis block
-  , headerValidatorsHash :: !(Hash alg)
+  , headerValidatorsHash :: !(Hashed alg (ValidatorSet alg))
     -- ^ Hash of validators for current block.
 
   , headerDataHash       :: !(Hashed alg a)
