@@ -491,7 +491,7 @@ blockInvariant chainID h prevT prevBID (mprevValSet, valSet) Block{blockHeader=H
   (headerLastBlockID == Just prevBID)
     `orElse` BlockInvalidPrevBID h
   -- Validators' hash does not match correct one
-  (headerValidatorsHash == hash valSet)
+  (headerValidatorsHash == hashed valSet)
     `orElse` BlockValidatorHashMismatch h
   -- Hashes of block fields are correct
   (headerDataHash == hashed blockData)
