@@ -102,8 +102,8 @@ hash = hashBlob . toStrict . serialise
 
 
 -- | Type-indexed set of crypto algorithms. It's not very principled
---   by to keep signatures sane everything was thrown into same type
---   class.
+--   to push everything into singe type class.  But in order to keep
+--   signatures sane it was done this way.
 class ( KnownNat (HashSize alg), KnownNat (SignatureSize alg)
       , KnownNat (AddressSize alg), KnownNat (PublicKeySize alg), KnownNat (PrivKeySize alg)
       ) => Crypto alg where
