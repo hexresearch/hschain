@@ -10,7 +10,22 @@ Thundermint is a haskell implementation of tendermint bysantine consesus algorit
 
 # Build
 
+Thundermint could be build either with `stack` or with `cabal`. Following
+command will build it using stack:
+
+```
+stack build
+```
+
+Or with cabal:
+
+```
+cabal new-build all
+```
+
 ## Build with `nix`
+
+NOTE: at the moment nix build does not work
 
 Install Nix
 ```
