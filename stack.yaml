@@ -31,6 +31,7 @@ resolver: lts-12.10
 packages:
  - thundermint
  - thundermint-crypto
+ - thundermint-types
 
 # Dependency packages to be pulled from upstream that are not in the resolver
 # (e.g., acme-missiles-0.3)

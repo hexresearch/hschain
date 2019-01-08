@@ -134,8 +134,9 @@ createTestNetworkWithConfig cfg desc = do
                 , bchInitialPeers     = map ((,testNetworkName) . TestAddr) ncTo
                 }
               NodeDescription
-                { nodeCommitCallback  = \_ -> return ()
-                , nodeValidationKey   = Nothing
+                { nodeCommitCallback   = \_ -> return ()
+                , nodeValidationKey    = Nothing
+                , nodeReadyCreateBlock = \_ _ -> return True
                 }
               logic
 

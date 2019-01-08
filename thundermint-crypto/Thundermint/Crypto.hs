@@ -354,10 +354,14 @@ verifyCborSignature pk a
   = verifyBlobSignature pk (toStrict $ serialise a)
 
 instance Serialise a => Serialise (Signed 'Unverified alg a)
+instance JSON.FromJSON a => JSON.FromJSON (Signed 'Unverified alg a)
+instance JSON.ToJSON   a => JSON.ToJSON   (Signed 'Unverified alg a)
+
 -- FIXME: we should be able to straight up decode withi\out verifying
 --        signature.
 instance Serialise a => Serialise (Signed 'Verified alg a)
-
+instance JSON.FromJSON a => JSON.FromJSON (Signed 'Verified alg a)
+instance JSON.ToJSON   a => JSON.ToJSON   (Signed 'Verified alg a)
 
 
 ----------------------------------------------------------------
@@ -376,7 +380,10 @@ blockHash
   -> BlockHash alg a
 blockHash a = BlockHash 0xFFFFFFFF (hashBlob (toStrict $ serialise a)) []
 
-instance Serialise (BlockHash alg a)
+instance Serialise     (BlockHash alg a)
+instance JSON.ToJSON   (BlockHash alg a)
+instance JSON.FromJSON (BlockHash alg a)
+
 
 ----------------------------------------------------------------
 -- Base58 encoding helpers

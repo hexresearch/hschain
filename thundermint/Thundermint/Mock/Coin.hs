@@ -51,12 +51,11 @@ import Lens.Micro
 import System.Random   (randomRIO)
 import GHC.Generics    (Generic)
 
-import Thundermint.Blockchain.Types
+import Thundermint.Types.Blockchain
 import Thundermint.Blockchain.Interpretation
 import Thundermint.Blockchain.Internal.Engine.Types
 import Thundermint.Control
 import Thundermint.Crypto
-import Thundermint.Crypto.Containers (ValidatorSet)
 import Thundermint.Crypto.Ed25519
 import Thundermint.Debug.Trace
 import Thundermint.Logger
@@ -68,6 +67,7 @@ import Thundermint.Store.Internal.Query (connectionRO)
 import Thundermint.Mock.KeyList (privateKeyList)
 import Thundermint.Mock.Types
 import Thundermint.Monitoring
+import Thundermint.Types.Validators (ValidatorSet)
 import qualified Thundermint.P2P.Network as P2P
 
 
@@ -291,19 +291,8 @@ restrictGenerator n tot GeneratorSpec{..} = GeneratorSpec
     off2 = ((n+1) * len) `div` tot
 
 genesisFromGenerator :: ValidatorSet Alg -> GeneratorSpec -> Block Alg [Tx]
-genesisFromGenerator validatorSet GeneratorSpec{..} = Block
-  { blockHeader = Header
-      { headerChainID        = "MONIES"
-      , headerHeight         = Height 0
-      , headerTime           = Time 0
-      , headerLastBlockID    = Nothing
-      , headerValidatorsHash = hash validatorSet
-      , headerDataHash       = hash dat
-      }
-  , blockData       = dat
-  , blockLastCommit = Nothing
-  , blockEvidence   = []
-  }
+genesisFromGenerator validatorSet GeneratorSpec{..} =
+  makeGenesis "MONIES" (Time 0) dat validatorSet
   where
     dat = [ Deposit pk genInitialDeposit | pk <- genInitialKeys ]
 
@@ -393,6 +382,8 @@ interpretSpec maxHeight genSpec validatorSet net NodeSpec{..} = do
                 b | Just hM <- maxHeight
                   , headerHeight (blockHeader b) > Height hM -> throwM Abort
                   | otherwise                                -> return ()
+            , nodeReadyCreateBlock = \_ _ -> do n <- mempoolSize $ nodeMempool logic
+                                                return $ n > 0
             }
           logic
         runConcurrently (generator : acts)

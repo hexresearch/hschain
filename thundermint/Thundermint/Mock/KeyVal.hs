@@ -28,10 +28,8 @@ import Thundermint.P2P.Network (newMockNet)
 import Thundermint.Blockchain.Internal.Engine
 import Thundermint.Blockchain.Internal.Engine.Types
 import Thundermint.Blockchain.Interpretation
-import Thundermint.Blockchain.Types
+import Thundermint.Types.Blockchain
 import Thundermint.Control
-import Thundermint.Crypto            (hash)
-import Thundermint.Crypto.Containers (ValidatorSet)
 import Thundermint.Crypto.Ed25519
 import Thundermint.Logger
 import Thundermint.Mock.KeyList
@@ -40,27 +38,15 @@ import Thundermint.P2P
 import Thundermint.Run
 import Thundermint.Store
 import Thundermint.Store.Internal.Query (Connection,connectionRO)
-
+import Thundermint.Types.Validators (ValidatorSet)
 
 ----------------------------------------------------------------
 --
 ----------------------------------------------------------------
 
 genesisBlock :: ValidatorSet Ed25519_SHA512 -> Block Ed25519_SHA512 [(String,Int)]
-genesisBlock valSet = Block
-  { blockHeader = Header
-      { headerChainID        = "KV"
-      , headerHeight         = Height 0
-      , headerTime           = Time 0
-      , headerLastBlockID    = Nothing
-      , headerValidatorsHash = hash valSet
-      , headerDataHash       = hash dat
-      }
-  , blockData       = dat
-  , blockLastCommit = Nothing
-  , blockEvidence   = []
-  }
-  where dat = [] :: [(String,Int)]
+genesisBlock valSet
+  = makeGenesis "KV" (Time 0) [] valSet
 
 transitions :: BlockFold (Map String Int) alg [(String,Int)]
 transitions = BlockFold
@@ -130,8 +116,8 @@ interpretSpec maxH prefix NetSpec{..} = do
                            return vset
                        , appValidator        = nspecPrivKey
                        }
-                 appCh <- newAppChans
                  let cfg = defCfg :: Configuration Example
+                 appCh <- newAppChans (cfgConsensus cfg)
                  runConcurrently
                    [ setNamespace "net"
                      $ startPeerDispatcher
@@ -142,7 +128,7 @@ interpretSpec maxH prefix NetSpec{..} = do
                          appCh
                          nullMempoolAny
                    , setNamespace "consensus"
-                     $ runApplication (cfgConsensus cfg) appState appCh
+                     $ runApplication (cfgConsensus cfg) (\_ _ -> return True) appState appCh
                    ]
              )
   where

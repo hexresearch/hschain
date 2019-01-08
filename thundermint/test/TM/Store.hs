@@ -12,7 +12,7 @@ import Data.Traversable (forM)
 import qualified Data.Aeson            as JSON
 import qualified Data.ByteString.Char8 as BC8
 
-import           Thundermint.Blockchain.Types
+import           Thundermint.Types.Blockchain
 import           Thundermint.Run
 import           Thundermint.Store
 import           Thundermint.Store.SQL

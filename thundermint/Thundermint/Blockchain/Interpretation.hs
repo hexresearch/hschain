@@ -22,7 +22,7 @@ import Control.Monad.IO.Class
 import Thundermint.Control
 import Thundermint.Store
 import Thundermint.Store.SQL
-import Thundermint.Blockchain.Types
+import Thundermint.Types.Blockchain
 
 
 

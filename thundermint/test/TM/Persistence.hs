@@ -23,17 +23,16 @@ import Text.Printf
 import Test.Tasty
 import Test.Tasty.HUnit
 
-import Thundermint.Blockchain.Types
 import Thundermint.Blockchain.Internal.Engine.Types
 import Thundermint.Control
-import Thundermint.Crypto
-import Thundermint.Crypto.Containers
 import Thundermint.Crypto.Ed25519
 import Thundermint.Mock.KeyList
 import Thundermint.Store
-import Thundermint.Store.SQL
 import Thundermint.Store.Internal.Query
 import Thundermint.Store.Internal.Types
+import Thundermint.Store.SQL
+import Thundermint.Types.Blockchain
+import Thundermint.Types.Validators
 
 
 tests :: TestTree
@@ -138,19 +137,7 @@ tests = testGroup "Tests for persistent data"
   ]
 
 genesis :: Block Ed25519_SHA512 ()
-genesis = Block
-  { blockHeader = Header
-      { headerChainID        = "TEST"
-      , headerHeight         = Height 0
-      , headerTime           = Time 0
-      , headerLastBlockID    = Nothing
-      , headerValidatorsHash = hash validatorSet
-      , headerDataHash       = hash ()
-      }
-  , blockData       = ()
-  , blockLastCommit = Nothing
-  , blockEvidence   = []
-  }
+genesis = makeGenesis "TEST" (Time 0) () validatorSet
 
 validatorSet :: ValidatorSet Ed25519_SHA512
 validatorSet = makeValidatorSetFromPriv [ PrivValidator k | k <- take 4  privateKeyList ]

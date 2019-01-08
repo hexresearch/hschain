@@ -8,6 +8,7 @@ import qualified TM.Mempool
 import qualified TM.Serialisation
 import qualified TM.Store
 import qualified TM.Persistence
+import qualified TM.Time
 
 main :: IO ()
 main = defaultMain $ testGroup "test suite"
@@ -18,4 +19,5 @@ main = defaultMain $ testGroup "test suite"
   , TM.Persistence.tests
   , TM.Serialisation.tests
   , TM.Store.tests
+  , TM.Time.tests
   ]

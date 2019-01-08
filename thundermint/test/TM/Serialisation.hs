@@ -14,7 +14,9 @@ module TM.Serialisation (tests) where
 
 
 import Codec.Serialise as C
+import qualified Data.Aeson as JSON
 import Data.Functor.Identity
+import Data.Typeable
 import qualified Data.ByteString.Lazy as BSL
 
 import Hedgehog as H
@@ -22,9 +24,10 @@ import Hedgehog.Internal.Exception as H
 import Test.QuickCheck.Arbitrary
 import Test.Tasty
 import Test.Tasty.Hedgehog
+import qualified Test.Tasty.QuickCheck as QC
 import qualified Hedgehog.Gen.QuickCheck as Gen
 
-import Thundermint.Blockchain.Types
+import Thundermint.Types.Blockchain
 
 import TM.Arbitrary.Instances ()
 
@@ -86,6 +89,8 @@ prop_diff_cant_serialize_to_other  = property $ do
     let (votePrecommit :: TestVotePrecommit) = C.deserialise (C.serialise votePrevote)
     either (const success) (const failure) $ tryEvaluate votePrecommit
 
+prop_JSON_roundtrip :: (Eq a, JSON.FromJSON a, JSON.ToJSON a) => a -> Bool
+prop_JSON_roundtrip a = Just a == (JSON.decode . JSON.encode) a
 
 tests :: TestTree
 tests =
@@ -103,4 +108,18 @@ tests =
             , testProperty "can't serialize to other"
                            prop_diff_cant_serialize_to_other
             ]
+        , let run :: forall a. (Arbitrary a, Show a, Typeable a, Eq a, JSON.FromJSON a, JSON.ToJSON a)
+                  => Proxy a -> TestTree
+              run p = QC.testProperty (show (typeRep p)) (prop_JSON_roundtrip @a)
+          in testGroup "JSON"
+             [ run (Proxy @(Block  TestCryptoAlg Int))
+             , run (Proxy @(Header TestCryptoAlg Int))
+             , run (Proxy @(Commit TestCryptoAlg Int))
+             , run (Proxy @(ByzantineEvidence TestCryptoAlg Int))
+             , run (Proxy @(Proposal TestCryptoAlg Int))
+             , run (Proxy @(Vote 'PreVote   TestCryptoAlg Int))
+             , run (Proxy @(Vote 'PreCommit TestCryptoAlg Int))
+             , run (Proxy @Height)
+             , run (Proxy @Round)
+             ]
         ]
