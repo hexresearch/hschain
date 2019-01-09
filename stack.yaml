@@ -49,6 +49,8 @@ extra-deps:
     - stm-2.5.0.0
     - hedgehog-0.6.1
     - concurrent-output-1.10.9
+    - git: https://github.com/drchaos/safecopy.git
+      commit: 0eb51dccbbe00cccdb41d800b57d92c1be420989
 
 #allow-newer: true
 
