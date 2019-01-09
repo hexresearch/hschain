@@ -5,7 +5,7 @@ module TM.Merkle (tests) where
 
 import Data.ByteString (ByteString)
 import Data.Functor.Identity
-import Data.Word
+import Data.Maybe
 import qualified Data.ByteString as BS
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -26,13 +26,15 @@ tests = testGroup "Merkle tree"
         _ -> assertFailure "Invalid tree"
   ]
 
-
-prop_TreeCorrect :: [Word8] -> Bool
-prop_TreeCorrect (BS.pack . (0:) -> blob)
-  = and [ chunk == partSize root
+prop_TreeCorrect :: BS -> Property
+prop_TreeCorrect (BS blob)
+  = counterexample ("length = " ++ show (BS.length blob))
+  $ counterexample ("chunks = " ++ show (BS.length <$> leaves))
+  $ counterexample ("Reconstructed = " ++ show (isJust reco))
+  $ and [ chunk == partSize root
         , fromIntegral (BS.length blob) == blobSize root
           --
-        , BS.concat leaves == blob
+        , reco == Just blob
         , leafLengthOK chunk leaves
         ]
   where
@@ -42,7 +44,8 @@ prop_TreeCorrect (BS.pack . (0:) -> blob)
     tree   = merklize chunk blob
     root   = merkleRoot tree
     leaves = treeLeaves tree
-
+    reco   = concatTree tree
+    
 leafLengthOK :: Int -> [ByteString] -> Bool
 leafLengthOK _ []     = True
 leafLengthOK n [b]    = let m = BS.length b in m > 0 && m <= n
@@ -53,3 +56,16 @@ treeLeaves = go . merkleTree
   where
     go (Leaf   bs) = [bs]
     go (Branch ns) = go . runIdentity . merkleChild =<< ns
+
+
+newtype BS = BS ByteString
+  deriving (Show)
+
+instance Arbitrary BS where
+  arbitrary = do
+    n <- choose (1,4000)
+    BS . BS.pack <$> vectorOf n arbitrary
+  shrink (BS bs) = [ BS (BS.pack x)
+                   | x <- shrink (BS.unpack bs)
+                   , not (null x)
+                   ]

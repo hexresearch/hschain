@@ -1,6 +1,7 @@
 {-# LANGUAGE DeriveGeneric        #-}
 {-# LANGUAGE FlexibleContexts     #-}
 {-# LANGUAGE LambdaCase           #-}
+{-# LANGUAGE RecordWildCards      #-}
 {-# LANGUAGE ScopedTypeVariables  #-}
 {-# LANGUAGE StandaloneDeriving   #-}
 {-# LANGUAGE TypeApplications     #-}
@@ -15,6 +16,9 @@ module Thundermint.Types.Merkle (
   , MerkleChild(..)
     -- * Building tree
   , merklize
+    -- * Reassembly of tree
+  , concatTree
+  , checkMerkleTree
   ) where
 
 import Codec.Serialise
@@ -34,7 +38,7 @@ import Thundermint.Crypto
 
 -- | Root of Merkle tree. It contains hash of root node and parameters
 --   of tree.
-data MerkleRoot alg = MerkleRoot 
+data MerkleRoot alg = MerkleRoot
   { blobSize :: !Word32
   , partSize :: !Word32
   , rootHash :: !(Hash alg)
@@ -57,7 +61,7 @@ deriving instance (Show (f (MerkleNode alg f))) => Show (MerkleTree alg f)
 -- | Single node of tree
 data MerkleNode alg f
   = Branch ![MerkleChild alg f]
-  -- ^ List of leaf nodes of 
+  -- ^ List of leaf nodes of
   | Leaf   !ByteString
   -- ^ Leaf node
   deriving (Generic)
@@ -95,7 +99,7 @@ merklize chunkSize blob
       }
   where
     root   = buildTree fanout leafs
-    fanout = chunkSize `div` hashSize (Proxy @ alg)    
+    fanout = chunkSize `div` hashSize (Proxy @ alg)
     leafs  = Leaf <$> chunkBS (fromIntegral chunkSize) blob
 
 
@@ -135,11 +139,40 @@ chunk n xs = case splitAt n xs of
   (c,[]) -> [c]
   (c,cs) -> c : chunk n cs
 
-  
+----------------------------------------------------------------
+-- Assemble tree
+----------------------------------------------------------------
+
+concatTree :: Crypto alg => MerkleTree alg Identity -> Maybe ByteString
+concatTree tree
+  | checkMerkleTree tree = Just $ BS.concat $ recur $ merkleTree tree
+  | otherwise            = Nothing
+  where
+    recur (Leaf   bs) = [bs]
+    recur (Branch ns) = foldMap (recur . runIdentity . merkleChild) ns
+
+checkMerkleTree :: Crypto alg => MerkleTree alg Identity -> Bool
+checkMerkleTree MerkleTree{..}
+  =  calculateNodeHash merkleTree == rootHash merkleRoot
+  && checkNode  merkleTree
+  && checkDepth 1 merkleTree
+  where
+    depth = treeDepth merkleRoot
+    checkDepth n Leaf{}      = n == depth
+    checkDepth n (Branch ns) = all (checkDepth (n+1) . runIdentity .  merkleChild) ns
+
+    checkNode Leaf{}      = True
+    checkNode (Branch ns) = all checkChild ns
+    checkChild (MerkleChild h (Identity node))
+      =  h == calculateNodeHash node
+      && checkNode node
+
+
 ----------------------------------------------------------------
 -- Deltas
 ----------------------------------------------------------------
 
+{-
 data UpdLeaf alg = UpdLeaf
   { updRootL :: Hash alg
   , updLeafN :: Int
@@ -152,7 +185,7 @@ data UpdTree alg = UpdTree
   , hashNum   :: Int
   , hashList  :: [Hash alg]
   }
-
+-}
 
 
 ----------------------------------------------------------------
@@ -160,11 +193,27 @@ data UpdTree alg = UpdTree
 ----------------------------------------------------------------
 
 
-nLeafs :: MerkleRoot alg -> Int
-nLeafs = undefined
+numberLeaves :: MerkleRoot alg -> Word32
+numberLeaves MerkleRoot{..}
+  = max 1
+  $ blobSize `div1` partSize
 
-leafSize :: MerkleRoot alg -> Int -> Int
-leafSize = undefined
+treeFanout :: forall alg. Crypto alg => MerkleRoot alg -> Word32
+treeFanout MerkleRoot{..}
+  = partSize `div` hashSize (Proxy @ alg)
 
-treeDepth :: MerkleRoot alg -> Int
-treeDepth = undefined
+treeDepth :: Crypto alg => MerkleRoot alg -> Word32
+treeDepth root@MerkleRoot{..}
+  | blobSize <= partSize = 1
+  | otherwise            = 1 + dlog (treeFanout root) (numberLeaves root)
+
+dlog :: Integral i => i -> i -> i
+dlog base n
+  | n <= base = 1
+  | otherwise = 1 + dlog base (n `div1` base)
+
+
+div1 :: Integral i => i -> i -> i
+div1 n m = case n `divMod` m of
+  (i,0) -> i
+  (i,_) -> i+1
