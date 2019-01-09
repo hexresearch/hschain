@@ -252,7 +252,7 @@ realNetworkUdp serviceName = do
         | canCombinePartials = (LBS.concat $ map snd listOfPartials, Map.delete front fronts)
         | otherwise = (LBS.empty, Map.insert front listOfPartials fronts)
       newFronts
-        | Map.size updatedFront > 10 = error "internal error: no pruning of fronts was devised"
+        | Map.size updatedFront > 10 = pruneFront updatedFront
         | otherwise = updatedFront
   pruneFront fronts
     | maxMinDelta < minMaxDelta = Map.delete minFront fronts
