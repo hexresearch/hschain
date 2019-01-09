@@ -9,6 +9,9 @@ import Thundermint.P2P.Network
 
 import qualified Data.ByteString as BS
 import qualified Network.Socket  as Net
+
+import System.IO.Unsafe (unsafePerformIO)
+
 ----------------------------------------------------------------
 
 realNetPair :: Bool
@@ -16,10 +19,10 @@ realNetPair :: Bool
             -> IO ((Net.SockAddr, NetworkAPI Net.SockAddr),
                    (Net.SockAddr, NetworkAPI Net.SockAddr))
 realNetPair useUDP host = do
-    n <- randomRIO (10, 89 :: Int)
-    m <- randomRIO (1, 9 :: Int)
-    let port1 = concat ["30", show m, show  n]
-        port2 = concat ["31", show m, show (mod (n + m) 100)]
+    n <- randomRIO (1, 9999 :: Int)
+    let suffix = reverse $ take 4 $ (reverse $ show n) ++ repeat '0'
+        port1 = concat ["3", suffix]
+        port2 = concat ["4", suffix]
         realNet = if not useUDP then return . realNetwork else realNetworkUdp
         hints = Net.defaultHints  { Net.addrSocketType = Net.Stream }
     addr1:_ <- Net.getAddrInfo (Just hints) (Just host) (Just port1)
