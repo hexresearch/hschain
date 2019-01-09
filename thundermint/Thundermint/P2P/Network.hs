@@ -173,17 +173,18 @@ realNetworkUdp serviceName = do
       forever $ do
         (bs, addr') <- NetBS.recvFrom sock (fromIntegral chunkSize * 2)
         let addr = Ip.normalizeIpAddr addr'
-        (recvChan, frontVar, receivedFrontsVar) <- findOrCreateRecvTuple tChans addr
-        atomically $ writeTChan acceptChan
-          (applyConn sock addr frontVar receivedFrontsVar recvChan tChans, addr)
-        atomically $ writeTChan recvChan $ LBS.fromStrict bs
+        atomically $ do
+          (recvChan, frontVar, receivedFrontsVar) <- findOrCreateRecvTuple tChans addr
+          writeTChan acceptChan
+            (applyConn sock addr frontVar receivedFrontsVar recvChan tChans, addr)
+          writeTChan recvChan $ LBS.fromStrict bs
 
   return $ NetworkAPI
     { listenOn = do
         return (liftIO $ killThread tid, liftIO.atomically $ readTChan acceptChan)
       --
     , connect  = \addr ->
-         (\(peerChan, frontVar, receivedFrontsVar) ->
+         liftIO . atomically $ (\(peerChan, frontVar, receivedFrontsVar) ->
                applyConn sock addr frontVar receivedFrontsVar peerChan tChans)
            <$> findOrCreateRecvTuple tChans addr
     , filterOutOwnAddresses = filterOutOwnAddresses (realNetworkStub serviceName)
@@ -197,7 +198,7 @@ realNetworkUdp serviceName = do
                        (Net.addrProtocol   ai)
     Net.setSocketOption sock Net.ReuseAddr 1
     return sock
-  findOrCreateRecvTuple tChans addr = liftIO.atomically $ do
+  findOrCreateRecvTuple tChans addr = do
     chans <- readTVar tChans
     case Map.lookup addr chans of
       Just chanFrontVar -> return chanFrontVar
