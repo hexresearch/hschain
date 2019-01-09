@@ -519,28 +519,18 @@ commitInvariant
   -> ValidatorSet alg
   -> Commit alg a
   -> WriterT [BlockchainInconsistency] m ()
-commitInvariant mkErr h prevT bid valSet Commit{..} = do
+commitInvariant mkErr h prevT bid valSet cmt@Commit{..} = do
   -- It must justify commit of correct block!
   (commitBlockID == bid)
     `orElse` mkErr "Commit is for wrong block"
-  -- All votes should be for previous height
-  do let invalid = [ svote
-                   | svote <- commitPrecommits
-                   , h /= voteHeight (signedValue svote)
-                   ]
-     null invalid
-       `orElse` mkErr "Commit contains votes for invalid height"
-  -- All votes must be in same round
-  do let rounds = voteRound . signedValue <$> commitPrecommits
-     case rounds of
-       r:rs | all (==r) rs -> return ()
-       _                   -> tell [mkErr "Commit contains votes for different rounds"]
   -- Commit has enough (+2/3) voting power, doesn't have votes
   -- from unknown validators, doesn't have duplicate votes, and
   -- vote goes for correct block
-  let verifiedPrecommits = forM commitPrecommits $ \v ->
-        verifySignature (fmap validatorPubKey . validatorByAddr valSet) v
-  case verifiedPrecommits of
+  let verifiedVotes = do
+        votes <- getCommitVotes valSet cmt
+        forM votes $ \v -> 
+          verifySignature (fmap validatorPubKey . validatorByAddr valSet) v
+  case verifiedVotes of
     Nothing   -> tell [mkErr "Commit contains invalid signatures"]
     Just sigs -> do
       let mvoteSet = foldM

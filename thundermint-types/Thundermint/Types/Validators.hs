@@ -120,7 +120,7 @@ validatorSetSize = Map.size  . vsValidators
 --
 --   This for example allows to represent validators as bit arrays.
 newtype ValidatorIdx alg = ValidatorIdx Int
-  deriving (Show, Eq, CBOR.Serialise)
+  deriving (Show, Eq, Ord, CBOR.Serialise)
 
 -- | Set of validators where they are represented by their index.
 data ValidatorISet = ValidatorISet !Int !IntSet

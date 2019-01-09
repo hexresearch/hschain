@@ -641,23 +641,24 @@ peerGossipVotes peerObj PeerChans{..} gossipCh = logOnException $ do
         --
         case mcmt of
          Just cmt -> do
-           let cmtVotes  = Map.fromList [ (signedAddr v, unverifySignature v)
-                                        | v <- commitPrecommits cmt ]
-               -- FIXME: inefficient
-           let toSet = Set.fromList
-                     . map (address . validatorPubKey)
-                     . mapMaybe (validatorByIndex (lagPeerValidators p))
-                     . getValidatorIntSet
-           let peerVotes = Map.fromSet (const ())
-                         $ toSet (lagPeerPrecommits p)
-               unknown   = Map.difference cmtVotes peerVotes
-           case Map.size unknown of
-             0 -> return ()
-             n -> do i <- liftIO $ randomRIO (0,n-1)
-                     let vote = unverifySignature $ toList unknown !! i
-                     addPrecommit peerObj vote
-                     liftIO $ atomically $ writeTBQueue gossipCh $ GossipPreCommit vote
-                     tickSend cntGossipPrecommit
+           undefined
+           -- let cmtVotes  = Map.fromList [ (signedAddr v, unverifySignature v)
+           --                              | v <- commitPrecommits cmt ]
+           --     -- FIXME: inefficient
+           -- let toSet = Set.fromList
+           --           . map (address . validatorPubKey)
+           --           . mapMaybe (validatorByIndex (lagPeerValidators p))
+           --           . getValidatorIntSet
+           -- let peerVotes = Map.fromSet (const ())
+           --               $ toSet (lagPeerPrecommits p)
+           --     unknown   = Map.difference cmtVotes peerVotes
+           -- case Map.size unknown of
+           --   0 -> return ()
+           --   n -> do i <- liftIO $ randomRIO (0,n-1)
+           --           let vote = unverifySignature $ toList unknown !! i
+           --           addPrecommit peerObj vote
+           --           liftIO $ atomically $ writeTBQueue gossipCh $ GossipPreCommit vote
+           --           tickSend cntGossipPrecommit
          Nothing -> return ()
       --
       Current p -> liftIO (atomically consensusState) >>= \case

@@ -22,6 +22,7 @@ module Thundermint.Types.Blockchain (
   , makeGenesis
   , Header(..)
   , Commit(..)
+  , getCommitVotes
   , commitTime
   , ByzantineEvidence(..)
   , BlockData(..)
@@ -44,8 +45,10 @@ import qualified Data.Aeson               as JSON
 import           Data.Aeson               ((.=), (.:))
 import           Data.ByteString          (ByteString)
 import qualified Data.HashMap.Strict      as HM
+import qualified Data.Map.Strict          as Map
 import           Data.Bits                ((.&.))
 import           Data.Int
+import           Data.Map.Strict          (Map)
 import           Data.List                (sortBy)
 import           Data.Monoid              ((<>))
 import           Data.Ord                 (comparing)
@@ -111,8 +114,8 @@ data Block alg a = Block
   }
   deriving (Show, Eq, Generic)
 instance Serialise     a => Serialise     (Block alg a)
-instance JSON.FromJSON a => JSON.FromJSON (Block alg a)
-instance JSON.ToJSON   a => JSON.ToJSON   (Block alg a)
+-- instance JSON.FromJSON a => JSON.FromJSON (Block alg a)
+-- instance JSON.ToJSON   a => JSON.ToJSON   (Block alg a)
 
 -- | Genesis block has many field with predetermined content so this
 --   is convenience function to create genesis block.
@@ -194,17 +197,68 @@ instance JSON.FromJSON (ByzantineEvidence alg a)
 instance JSON.ToJSON   (ByzantineEvidence alg a)
 
 
--- | Data justifying commit
+-- | Data justifying commit of block with given ID at height H and
+--   round R. Here we choose data representation which is most compact
+--   and doesn't have any reduncancy
 data Commit alg a = Commit
-  { commitBlockID    :: !(BlockID alg a)
+  { commitH          :: !Height
+    -- ^ Height at which commit was made
+  , commitR          :: !Round
+    -- ^ Round at which commit was made
+  , commitBlockID    :: !(BlockID alg a)
     -- ^ Block for which commit is done
-  , commitPrecommits :: !([Signed 'Unverified alg (Vote 'PreCommit alg a)])
-    -- ^ List of precommits which justify commit
+  , commitVotes      :: !(Map (ValidatorIdx alg) (Time, Signature alg))
+    -- ^ Votes given for commited block. Validators are identified by
+    --   their number instead of their public key\/fingerprint since
+    --   it's much more compact encoding and we need validator set to
+    --   check them anyway.
+  , commitOtherVotes :: !(Map (Maybe (BlockID alg a))
+                              (Map (ValidatorIdx alg) (Time, Signature alg)))
+    -- ^ Votes given for other blocks
   }
   deriving (Show, Eq, Generic)
 instance Serialise     (Commit alg a)
-instance JSON.FromJSON (Commit alg a)
-instance JSON.ToJSON   (Commit alg a)
+-- instance JSON.FromJSON (Commit alg a)
+-- instance JSON.ToJSON   (Commit alg a)
+
+-- | Get list of all unverified votes from commit.
+getCommitVotes
+  :: (Crypto alg)
+  => ValidatorSet alg
+  -> Commit alg a
+  -> Maybe [Signed 'Unverified alg (Vote 'PreCommit alg a)]
+getCommitVotes valSet Commit{..} = do
+  other   <- forM (Map.toList commitOtherVotes) $ \(mbid,votes) ->
+    mapM (toSVote mbid) (Map.toList votes)
+  primary <- mapM (toSVote (Just commitBlockID)) (Map.toList commitVotes)
+  return $ concat $ primary : other
+  where
+    toSVote mbid (i,(t,sig)) = do
+      addr <- address . validatorPubKey <$> validatorByIndex valSet i
+      return $! makeSigned addr sig Vote
+        { voteHeight  = commitH
+        , voteRound   = commitR
+        , voteTime    = t
+        , voteBlockID = mbid
+        }
+
+insertCommit
+  :: (Crypto alg)
+  => ValidatorSet alg
+  -> Signed 'Verified alg (Vote 'PreCommit alg a)
+  -> Commit alg a
+  -> Commit alg a
+insertCommit valSet svote@(signedValue -> Vote{..}) cmt@Commit{..}
+  | voteHeight /= commitH = cmt
+  | voteRound  /= commitR = cmt
+  | otherwise             = case mIdx of
+      Nothing -> cmt
+      Just i
+        | voteBlockID == Just commitBlockID = Commit
+          {
+          }
+  where
+    mIdx = indexByValidator valSet (signedAddr svote)
 
 -- | Calculate time of commit as median of time of votes where votes
 --   are weighted according to voting power of corresponding
@@ -216,17 +270,14 @@ commitTime
   -> Commit alg a     -- ^ Commit to calculate time
   -> Maybe Time
 commitTime vset t0 Commit{..} = do
-  votes <- forM commitPrecommits $ \sv -> do
-    val <- validatorByAddr vset (signedAddr sv)
-    return ( validatorVotingPower val
-           , signedValue sv
-           )
+  votes <- forM (Map.toList commitVotes) $ \(i,(t,_)) -> do
+    val <- validatorByIndex vset i
+    return (validatorVotingPower val, t)
   -- Here we discard invalid votes and calculate median time
   let times    = sortBy (comparing snd)
-               $ [ (w,voteTime) | (w,Vote{..}) <- votes
-                                , voteTime > t0
-                                , voteBlockID == Just commitBlockID
-                                ]
+               $ [ (w,t) | (w, t) <- votes
+                         , t > t0
+                         ]
       totPower = sum (fst <$> times)
       half     = fromIntegral $ totPower `div` 2
   case odd totPower of

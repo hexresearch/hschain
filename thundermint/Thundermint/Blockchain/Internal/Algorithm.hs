@@ -274,16 +274,16 @@ tendermintTransition par@HeightParameters{..} msg sm@TMState{..} =
     PreCommitMsg v@(signedValue -> Vote{..})
       -- Collect stragglers precommits for inclusion of
       | smStep == StepNewHeight
-      , Just cmt@(Commit cmtID ((signedValue -> Vote{voteRound=r}):_)) <- smLastCommit
+      , Just cmt <- smLastCommit
       , succ voteHeight == currentH
-      , voteRound       == r
+      , voteRound       == commitR cmt
         -> case voteBlockID of
              -- Virtuous node can either vote for same block or for NIL
-             Just bid | bid /= cmtID                  -> misdeed
+             Just bid | bid /= commitBlockID cmt       -> misdeed
              -- Add vote while ignoring duplicates
              _        | v' `elem` commitPrecommits cmt -> tranquility
-                      | otherwise                      -> return sm
-               { smLastCommit = Just cmt { commitPrecommits = v' : commitPrecommits cmt } }
+             --          | otherwise                      -> return sm
+      --          -- { smLastCommit = Just cmt { commitPrecommits = v' : commitPrecommits cmt } }
       -- Only accept votes with current height
       | voteHeight /= currentH -> tranquility
       | otherwise              -> checkTransitionPrecommit par voteRound
@@ -375,11 +375,12 @@ checkTransitionPrecommit par@HeightParameters{..} r sm@(TMState{..})
   | Just (Just bid) <- majority23at r smPrecommitsSet
     = do logger InfoS "Decision to commit" $ LogCommit currentH bid
          acceptBlock r bid
-         commitBlock Commit{ commitBlockID    = bid
-                           , commitPrecommits =  unverifySignature
-                                             <$> valuesAtR r smPrecommitsSet
-                           }
-                     sm { smStep = StepAwaitCommit }
+         undefined
+         -- commitBlock Commit{ commitBlockID    = bid
+         --                   , commitPrecommits =  unverifySignature
+         --                                     <$> valuesAtR r smPrecommitsSet
+         --                   }
+         --             sm { smStep = StepAwaitCommit }
   --  * We have +2/3 precommits for nil at current round
   --  * We are at Precommit step [FIXME?]
   --  => goto Propose(H,R+1)

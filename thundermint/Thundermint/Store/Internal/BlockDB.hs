@@ -143,9 +143,7 @@ retrieveCommitRound :: (Serialise a) => Height -> Query rw alg a (Maybe Round)
 retrieveCommitRound (Height h) = runMaybeT $ do
   c <-  MaybeT (retrieveCommit (Height h))
     <|> MaybeT (singleQ "SELECT cmt FROM commits WHERE height = ?" (Only h))
-  let getRound (Commit _ (v:_)) = voteRound (signedValue v)
-      getRound _                = error "Impossible"
-  return $ getRound c
+  return $! commitR c
 
 
 -- | Retrieve local commit justifying commit of block as known by
