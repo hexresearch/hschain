@@ -2,7 +2,10 @@
 {-# LANGUAGE TypeFamilies               #-}
 module Thundermint.Crypto.Ed25519 (
     Ed25519_SHA512
+  , Uint8Array
   , generatePrivKey
+  , generateEntroPrivKey
+  , newEntroUint8Array
   ) where
 
 import Control.Monad
@@ -19,7 +22,7 @@ import JavaScript.TypedArray
 import Thundermint.Crypto
 
 ----------------------------------------------------------------
--- 
+--
 ----------------------------------------------------------------
 
 -- sha256 :: ByteString -> ByteString
@@ -70,6 +73,17 @@ generatePrivKey = do
     Just k  -> return k
     Nothing -> error "Ed25519: internal error. Cannot generate key"
 
+generateEntroPrivKey :: Uint8Array -> IO (PrivKey Ed25519_SHA512)
+generateEntroPrivKey arr = do
+  case privKeyFromBS $ arrayToBs arr of
+    Just k  -> return k
+    Nothing -> error "Ed25519: internal error. Cannot generate key"
+
+newEntroUint8Array :: [Int] -> IO Uint8Array
+newEntroUint8Array arrEntr = do
+  unt <- js_newEntroUint8Array
+  zipWithM_ (js_writeUint8Array unt) [0..] arrEntr
+  return unt
 
 instance Eq (PrivKey Ed25519_SHA512) where
   PrivKey b1 _ _ == PrivKey b2 _ _ = b1 == b2
@@ -130,3 +144,9 @@ foreign import javascript unsafe "$1.secretKey"
 
 foreign import javascript safe "nacl.randomBytes($1)"
   js_randombytes :: Int -> IO Uint8Array
+
+foreign import javascript safe "$r = new Uint8Array(32);"
+  js_newEntroUint8Array :: IO Uint8Array
+
+foreign import javascript unsafe "$1[$2] = $3;"
+  js_writeUint8Array :: Uint8Array -> Int -> Int -> IO ()
