@@ -34,7 +34,7 @@ import Thundermint.Mock.Coin
 import Thundermint.Mock.Types
 import Thundermint.P2P.Consts
 import Thundermint.P2P.Instances ()
-import Thundermint.P2P.Network               ( getLocalAddress, realNetwork
+import Thundermint.P2P.Network               ( getLocalAddress, realNetwork, realNetworkUdp
                                              , getCredentialFromBuffer, realNetworkTls)
 import qualified Control.Exception     as E
 import qualified Data.Aeson            as JSON
@@ -55,6 +55,7 @@ data Opts = Opts
   , nodeNumber        :: Int
   , totalNodes        :: Int
   , optTls            :: Bool
+  , optUDP            :: Bool
   }
 
 ----------------------------------------------------------------
@@ -100,7 +101,9 @@ main = do
       netAddresses <- waitForAddrs
       logger InfoS ("net Addresses: " <> showLS netAddresses) ()
       netAPI <- case optTls of
-        False -> return $ realNetwork (show listenPort)
+        False -> case optUDP of
+          False -> return $ realNetwork (show listenPort)
+          True  -> liftIO $ realNetworkUdp (show listenPort)
         True  -> liftIO $ do
           keyPem  <- BC8.pack <$> getEnv "KEY_PEM"
           certPem <- BC8.pack <$> getEnv "CERT_PEM"
@@ -167,6 +170,10 @@ main = do
       optTls <- switch
         (  long "tls"
         <> help "Use TLS for node connection"
+        )
+      optUDP <- switch
+        (  long "udp"
+        <> help "use UDP instead of TCP when TLS is not used"
         )
       pure Opts{..}
 
