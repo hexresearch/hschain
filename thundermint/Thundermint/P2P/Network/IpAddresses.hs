@@ -82,7 +82,6 @@ partOfIpv6ToIpv4 ipv6part =
 
 
 normalizeIpAddr :: Net.SockAddr -> Net.SockAddr
-normalizeIpAddr a@(Net.SockAddrInet _ _) = a
 normalizeIpAddr (Net.SockAddrInet6 p _ (0, 0, 0xFFFF, x) _) = -- IPv4 mapped addreses
     Net.SockAddrInet p (partOfIpv6ToIpv4 x)
 normalizeIpAddr a = a

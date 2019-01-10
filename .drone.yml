@@ -15,7 +15,7 @@ pipeline:
     image: haskell:8.4.3
     network_mode: host
     commands:
-    - stack --allow-different-user --stack-root $PWD/.stack --system-ghc test
+    - stack --allow-different-user --stack-root $PWD/.stack --system-ghc test --test-arguments "-t30s"
     - stack --allow-different-user --stack-root $PWD/.stack --system-ghc --local-bin-path bin install
 
   publish:

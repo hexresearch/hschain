@@ -52,9 +52,9 @@ retryPolicy = constantDelay 500 <> limitRetries 20
 withRetry :: MonadIO m =>  ( (Net.SockAddr, NetworkAPI Net.SockAddr)
                         -> (Net.SockAddr, NetworkAPI Net.SockAddr) -> IO a)
          -> Net.HostName -> m a
-withRetry = withRetry' False
+withRetry = withRetry' Nothing
 
-withRetry' :: MonadIO m => Bool
+withRetry' :: MonadIO m => Maybe (Maybe Int)
                         -> ( (Net.SockAddr, NetworkAPI Net.SockAddr)
                         -> (Net.SockAddr, NetworkAPI Net.SockAddr) -> IO a)
          -> Net.HostName -> m a

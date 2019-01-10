@@ -44,14 +44,15 @@ tests =
                     ]
                   , testGroup "real-udp"
                     [ testGroup group $
-                         [ testCase "ping-pong" $ withRetry' True pingPong address
-                         , testCase "delayed write" $ withRetry' True delayedWrite address
+                         [ testCase "ping-pong" $ withRetry' (Just Nothing) pingPong address
+                         , testCase "delayed write" $ withRetry' (Just Nothing) delayedWrite address
                          , testGroup "sized ping pongs"
-                           [ testCase ("ping-pong-"++show size) $ withRetry' True (sizedPingPong size) address
-                           | size <- map (2^) [4..20]
+                           [ testCase ("ping-pong-"++show size) $ withRetry' (Just $ Just $ p * 10 + v6) (sizedPingPong size) address
+                           | p <- [4..16]
+                           , let size = 2 ^ p
                            ]
                          ]
-                    | (group, address) <- [("IPv4", "127.0.0.1"), ("IPv6", "::1")]
+                    | (group, address, v6) <- [("IPv4", "127.0.0.1", 0), ("IPv6", "::1", 1)]
                     ]
                   , testGroup "local addresses detection"
                     [ testCase "all locals must be local" $ getLocalAddresses >>= (fmap and . mapM isLocalAddress) >>= (@? "Must be local")
@@ -104,7 +105,7 @@ sizedPingPong messageSize (serverAddr, server) (clientAddr, client) = do
           bracket accept (close . fst) $ \(conn,_) -> do
             bs <- skipNothings recv conn
             send conn ("PONG_" <> bs)
-  let runClient NetworkAPI{..} = do
+      runClient NetworkAPI{..} = do
         threadDelay 10e3
         bracket (connect serverAddr) close $ \conn -> do
           let msg = "PING" <> block

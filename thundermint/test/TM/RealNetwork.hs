@@ -14,17 +14,20 @@ import System.IO.Unsafe (unsafePerformIO)
 
 ----------------------------------------------------------------
 
-realNetPair :: Bool
+realNetPair :: Maybe (Maybe Int)
             -> Net.HostName
             -> IO ((Net.SockAddr, NetworkAPI Net.SockAddr),
                    (Net.SockAddr, NetworkAPI Net.SockAddr))
-realNetPair useUDP host = do
-    n <- randomRIO (1, 9999 :: Int)
+realNetPair udpPortSpec host = do
+    let useUDP = udpPortSpec /= Nothing
+    n <- case udpPortSpec of
+      Just (Just p) -> return p
+      _ -> randomRIO (1, 9999 :: Int)
     let suffix = reverse $ take 4 $ (reverse $ show n) ++ repeat '0'
         port1 = concat ["3", suffix]
         port2 = concat ["4", suffix]
         realNet = if not useUDP then return . realNetwork else realNetworkUdp
-        hints = Net.defaultHints  { Net.addrSocketType = Net.Stream }
+        hints = Net.defaultHints  { Net.addrSocketType = if useUDP then Net.Datagram else Net.Stream }
     addr1:_ <- Net.getAddrInfo (Just hints) (Just host) (Just port1)
     addr2:_ <- Net.getAddrInfo (Just hints) (Just host) (Just port2)
     server <- realNet port1
