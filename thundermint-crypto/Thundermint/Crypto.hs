@@ -34,6 +34,7 @@ module Thundermint.Crypto (
     -- * Serialization and signatures
   , SignedState(..)
   , Signed
+  , makeSigned
   , signedValue
   , signedAddr
   , signValue
@@ -343,6 +344,9 @@ signedValue (Signed _ _ a) = a
 signedAddr :: Signed sign alg a -> Address alg
 signedAddr (Signed a _ _) = a
 
+-- | Make unverified signature
+makeSigned :: Address alg -> Signature alg -> a -> Signed 'Unverified alg a
+makeSigned = Signed
 
 -- | Sign value. Not that we can generate both verified and unverified
 --   values this way.
