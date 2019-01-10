@@ -18,6 +18,13 @@ pipeline:
     - stack --allow-different-user --stack-root $PWD/.stack --system-ghc test
     - stack --allow-different-user --stack-root $PWD/.stack --system-ghc --local-bin-path bin install
 
+  build-errors-log:
+    image: alpine
+    commands:
+    - cat .stack-work/logs/thundermint-*-test*
+    when:
+      status: [ failure ]
+
   publish:
     image: docker
     pull: true
