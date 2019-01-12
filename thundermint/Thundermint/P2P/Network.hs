@@ -24,13 +24,14 @@ module Thundermint.P2P.Network (
   , Ip.getLocalAddress
   , Ip.isLocalAddress
   , Ip.getLocalAddresses
+  , dumpStrLn
   ) where
 
 import qualified Codec.Serialise as CBOR
 
 import Control.Concurrent.STM
 
-import Control.Concurrent     (forkIO, killThread)
+import Control.Concurrent     (forkIO, killThread, threadDelay)
 import Control.Monad          (forM_, forever, void, when)
 import Control.Monad.Catch    (bracketOnError, onException, throwM)
 import Control.Monad.IO.Class (liftIO)
@@ -55,7 +56,20 @@ import Thundermint.P2P.Network.RealNetworkStub
 import Thundermint.P2P.Types
 import qualified Thundermint.P2P.Network.IpAddresses as Ip
 
+import System.IO
+import System.IO.Unsafe
+import Debug.Trace
 
+{-# NOINLINE dumph #-}
+dumph = unsafePerformIO $ openFile "dumpf" WriteMode
+{-# NOINLINE dumpStrLn #-}
+dumpStrLn' s = hPutStrLn dumph s >> hFlush dumph
+{-# NOINLINE dumpTraceM #-}
+dumpTraceM' :: Applicative m => String -> m ()
+dumpTraceM' s = let r = unsafePerformIO $ dumpStrLn s in seq r (pure r)
+
+dumpStrLn = traceEventIO . ("ZZZZ: " ++)
+dumpTraceM s = traceEvent ("ZZZZ: "++s) (return ())
 
 -- | API implementation for real tcp network
 realNetwork :: Net.ServiceName -> NetworkAPI Net.SockAddr
@@ -171,8 +185,10 @@ realNetworkUdp serviceName = do
     flip onException (Net.close sock) $ do
       Net.bind sock (Net.addrAddress addrInfo)
       forever $ do
+        dumpStrLn $ "receiving at "++show (Net.addrAddress addrInfo)
         (bs, addr') <- NetBS.recvFrom sock (fromIntegral chunkSize * 2)
         let addr = Ip.normalizeIpAddr addr'
+        dumpStrLn $ "at "++show (Net.addrAddress addrInfo)++": "++show (LBS.length $ LBS.fromStrict bs)++" from "++show (addr, addr')
         atomically $ do
           (recvChan, frontVar, receivedFrontsVar) <- findOrCreateRecvTuple tChans addr
           writeTChan acceptChan
@@ -215,13 +231,16 @@ realNetworkUdp serviceName = do
   receiveAction frontsVar peerChan = do
     (message, logMsg) <- atomically $ do
       serializedTriple <- readTChan peerChan
+      dumpTraceM $ "serialized triple length "++show (LBS.length serializedTriple)
       case CBOR.deserialiseOrFail serializedTriple of
         Right (front, ofs, chunk) -> do
           fronts <- readTVar frontsVar
           let (newFronts, message) = updateMessages front ofs chunk fronts
           writeTVar frontsVar newFronts
+          dumpTraceM $ "decoded front "++show front++", decoded offset "++show ofs++", message length "++show (LBS.length message)++", chunk length "++show (LBS.length chunk)
           return (message, "")
         Left err -> return (LBS.empty, "unable to deserialize packet: " ++ show err)
+    dumpStrLn $ "returning "++show (LBS.length message)
     if null logMsg
       then return $ emptyBs2Maybe message
       else do
@@ -229,7 +248,8 @@ realNetworkUdp serviceName = do
         return Nothing
   updateMessages :: Word8 -> Word32 -> LBS.ByteString -> Map.Map Word8 [(Word32, LBS.ByteString)]
                  -> (Map.Map Word8 [(Word32, LBS.ByteString)], LBS.ByteString)
-  updateMessages front ofs chunk fronts = (newFronts, extractedMessage)
+  updateMessages front ofs chunk fronts = traceEvent ("ZZZZ: list of partials' lengths: "++show (map (\(o,c) -> (o,lbsLength c)) listOfPartials))
+    traceEvent ("ZZZZ: canCombine, invalid: "++show (canCombinePartials, invalidPartials)) (newFronts, extractedMessage)
     where
       listOfPartials = insert (ofs, chunk) $ Map.findWithDefault [] front fronts
       insert ofsChunk [] = [ofsChunk]
@@ -243,6 +263,8 @@ realNetworkUdp serviceName = do
       checkPartials invalid canCombine currentPartialLen [(lastOfs, lastChunk)] =
         ( invalid, canCombine && lastOfs == currentPartialLen && lbsLength lastChunk < chunkSize)
       checkPartials invalid canCombine currentPartialLen ((headOfs, headChunk):ocs) =
+        traceEvent ("ZZZZ: at headOfs "++show headOfs++" invalid is "++show invalid++" and canCombined is "++show canCombine) $
+        traceEvent ("ZZZZ: at headOfs "++show headOfs++" current partial len is "++show currentPartialLen) $
         checkPartials
           (invalid || lbsLength headChunk /= chunkSize || mod headOfs chunkSize /= 0 || headOfs < currentPartialLen)
           (canCombine && headOfs == currentPartialLen)
@@ -271,15 +293,18 @@ realNetworkUdp serviceName = do
       maxMinDelta = maxFront - minFront
       minMaxDelta = minFront - maxFront
   sendSplitted frontVar sock addr msg = do
+    dumpStrLn $ "asked to send "++show (LBS.length msg)++" to "++show addr
     front <- atomically $ do -- slightly overkill, but in line with other's code.
       i <- readTVar frontVar
       writeTVar frontVar $ i + 1
       return (i :: Word8)
-    forM_ splitChunks $ \(ofs, chunk) -> do
+    forM_ (zip sleeps splitChunks) $ \(sleep, (ofs, chunk)) -> do
       flip (NetBS.sendAllTo sock) addr $ LBS.toStrict $ CBOR.serialise (front :: Word8, ofs :: Word32, chunk)
+      when sleep $ threadDelay 100
     where
       splitChunks = splitToChunks msg
   chunkSize = 1400 :: Word32 -- should prevent in-kernel UDP splitting/reassembling most of the time.
+  sleeps = cycle (replicate 12 False ++ [True])
   splitToChunks s
     | LBS.length s < 1 = [(0, s)] -- do not lose empty messages.
     | otherwise = go 0 s
