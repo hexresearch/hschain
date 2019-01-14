@@ -31,7 +31,7 @@ import TM.Util.Network
 tests :: TestTree
 tests =
     testGroup "network test"
-                  [ {-testGroup "mock"
+                  [ testGroup "mock"
                     [ testCase "ping-pong" $ mockNetPair >>= uncurry pingPong
                     , testCase "delayed write" $ mockNetPair >>= uncurry delayedWrite
                     ]
@@ -45,20 +45,20 @@ tests =
                           , testCase "delayed write" $ withRetry delayedWrite "::1"
                           ]
                     ]
-                  , -}testGroup "real-udp"
+                  , testGroup "real-udp"
                     [ testGroup group $
                          [ {-testCase "ping-pong" $ withRetry' (Just Nothing) pingPong address
                          , testCase "delayed write" $ withRetry' (Just Nothing) delayedWrite address
                          , -}testCase "sized ping pongs" $ withRetry' (Just $ Just $ 123 + v6) (sizedPingPong 1 20) address
                          ]
                     | (group, address, v6) <- [("IPv4", "127.0.0.1", 0)]--, ("IPv6", "::1", 1)]
-                    ]{-
+                    ]
                   , testGroup "local addresses detection"
                     [ testCase "all locals must be local" $ getLocalAddresses >>= (fmap and . mapM isLocalAddress) >>= (@? "Must be local")
                     , testCase "loopback is local" $ (and <$> mapM isLocalAddress [loopbackIpv4, loopbackIpv6]) >>= (@? "Must be local")
                     -- TODO: Randomly generate addresses and check it is not isLocalAddress
 
-                    ]-}
+                    ]
                   ]
 
 
