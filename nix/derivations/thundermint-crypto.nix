@@ -5,7 +5,7 @@
 mkDerivation {
   pname = "thundermint-crypto";
   version = "0.1";
-  src = ../thundermint-crypto;
+  src = ../../thundermint-crypto;
   libraryHaskellDepends = [
     aeson base base58-bytestring bytestring cryptonite deepseq entropy
     memory serialise text
