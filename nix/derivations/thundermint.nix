@@ -15,7 +15,7 @@
 mkDerivation {
   pname = "thundermint";
   version = "0.1";
-  src = ../thundermint;
+  src = ../../thundermint;
   isLibrary = true;
   isExecutable = true;
   libraryHaskellDepends = [

@@ -20,16 +20,16 @@ let
         };
       haskellPackages = pkgs.haskellPackages.override {
         overrides = hsNew: hsOld: rec {
-          concurrent-output   = hsOld.callPackage ./deps/concurrent-output.nix {};
-          hedgehog            = hsOld.callPackage ./deps/hedgehog.nix {};
-          katip               = hsOld.callPackage ./deps/katip.nix {};
-          katip-elasticsearch = lib.dontCheck (hsOld.callPackage ./deps/katip-elasticsearch.nix {});
-          prometheus-client   = hsOld.callPackage ./deps/prometheus-client.nix {};
-          stm                 = hsOld.callPackage ./deps/stm.nix {};
+          concurrent-output   = hsOld.callPackage ./derivations/concurrent-output.nix {};
+          hedgehog            = hsOld.callPackage ./derivations/hedgehog.nix {};
+          katip               = hsOld.callPackage ./derivations/katip.nix {};
+          katip-elasticsearch = lib.dontCheck (hsOld.callPackage ./derivations/katip-elasticsearch.nix {});
+          prometheus-client   = hsOld.callPackage ./derivations/prometheus-client.nix {};
+          stm                 = hsOld.callPackage ./derivations/stm.nix {};
           # -
-          thundermint-crypto  = hsOld.callPackage ./deps/thundermint-crypto.nix {};
-          thundermint-types   = hsOld.callPackage ./deps/thundermint-types.nix {};
-          thundermint         = hsOld.callPackage ./deps/thundermint.nix {};
+          thundermint-crypto  = hsOld.callPackage ./derivations/thundermint-crypto.nix {};
+          thundermint-types   = hsOld.callPackage ./derivations/thundermint-types.nix {};
+          thundermint         = hsOld.callPackage ./derivations/thundermint.nix {};
           thundermint-exe     = pkgs.haskell.lib.overrideCabal
               ( pkgs.haskell.lib.justStaticExecutables
                 ( lib.dontCheck thundermint))( oldDerivation: { }

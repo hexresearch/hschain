@@ -5,7 +5,7 @@
 mkDerivation {
   pname = "thundermint-types";
   version = "0.1";
-  src = ../thundermint-types;
+  src = ../../thundermint-types;
   libraryHaskellDepends = [
     aeson async base base58-bytestring bytestring containers
     data-default-class deepseq serialise text thundermint-crypto time

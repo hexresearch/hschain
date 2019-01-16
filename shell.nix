@@ -1,4 +1,4 @@
-let release = import ./release.nix;
+let release = import ./nix/release.nix;
     pkgs    = release.pkgs;
 in pkgs.haskellPackages.shellFor {
      nativeBuildInputs = with pkgs.haskellPackages; [
