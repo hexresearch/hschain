@@ -1,5 +1,5 @@
 { mkDerivation, aeson, base, base58-bytestring, bytestring
-, cryptonite, deepseq, memory, serialise, stdenv, tasty
+, cryptonite, deepseq, entropy, memory, serialise, stdenv, tasty
 , tasty-hunit, text
 }:
 mkDerivation {
@@ -7,11 +7,11 @@ mkDerivation {
   version = "0.1";
   src = ../thundermint-crypto;
   libraryHaskellDepends = [
-    aeson base base58-bytestring bytestring cryptonite deepseq memory
-    serialise text
+    aeson base base58-bytestring bytestring cryptonite deepseq entropy
+    memory serialise text
   ];
   testHaskellDepends = [
-    aeson base bytestring serialise tasty tasty-hunit
+    aeson base bytestring serialise tasty tasty-hunit text
   ];
   homepage = "https://github.com/hexresearch/thundermint";
   description = "Simple cryptography API for thundermint";
