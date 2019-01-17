@@ -48,7 +48,7 @@ headerSize = 4
 
 
 
-realNetworkTls :: TLS.Credential -> Net.ServiceName -> NetworkAPI Net.SockAddr
+realNetworkTls :: TLS.Credential -> Net.ServiceName -> NetworkAPI
 realNetworkTls creds serviceName = (realNetworkStub serviceName)
   { listenOn = do
       let hints = Net.defaultHints

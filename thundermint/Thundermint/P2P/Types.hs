@@ -5,6 +5,7 @@
 -- Abstract API for network which support
 module Thundermint.P2P.Types (
     NetworkAPI(..)
+  , Addr(..)
   , P2PConnection(..)
   , NetworkError(..)
   , MockSocket(..)
@@ -17,15 +18,18 @@ module Thundermint.P2P.Types (
   ) where
 
 import Codec.Serialise
+import Control.Applicative
 import Control.Concurrent.STM
 import Control.Exception        (Exception)
 import Control.Monad.Catch      (MonadMask, MonadThrow)
 import Control.Monad.IO.Class   (MonadIO)
 import Data.ByteString.Internal (ByteString(..))
+import qualified Data.List as List
 import Data.Map                 (Map)
 import Data.Set                 (Set)
 import Data.Word
-import GHC.Generics  (Generic)
+import GHC.Generics             (Generic)
+import Network.Socket           (SockAddr)
 
 
 import qualified Data.ByteString.Lazy as LBS
@@ -47,26 +51,72 @@ data PeerInfo addr = PeerInfo
 instance Serialise (PeerInfo addr)
 
 
+----------------------------------------------------------------
+--
+----------------------------------------------------------------
+
+data Addr = AddrV4 !Net.HostAddress !Net.PortNumber
+          | AddrV6 !Net.HostAddress6 !Net.PortNumber
+          deriving (Eq, Ord)
+
+instance Show Addr where
+  show (AddrV4 ha p) = let (a,b,c,d) = Net.hostAddressToTuple ha
+                       in ((++show p) . (++":")) $ List.intercalate "." $ map show [a,b,c,d]
+  show (AddrV6 ha p) = let (a,b,c,d,e,f,g,h) = Net.hostAddress6ToTuple ha
+                       in ((++show p) . (++".")) $ List.intercalate ":" $ map show [a,b,c,d,e,f,g,h]
+
+newtype P a = P { parse :: String -> [(a, String)] }
+
+instance Functor P where
+  fmap f (P q) = P $ \s -> [(f a, s') | (a,s') <- q s]
+
+instance Applicative P where
+  pure c = P $ \s -> [(c, s)]
+  P pf <*> P pa = P $ \s -> [(f a, s'') | (f, s') <- pf s, (a, s'') <- pa s']
+
+instance Alternative P where
+  empty = P $ const []
+  P f <|> P g = P $ \s -> f s ++ g s
+
+instance Read Addr where
+  readsPrec _ = parse (readV4 <|> readV6)
+    where
+      readV4 = AddrV4 <$> (Net.tupleToHostAddress <$> (pcheck getTuple4 $ sepBy1 (pitem '.') pread)) <* pstring ":" <*> pread
+      readV6 = AddrV6 <$> (Net.tupleToHostAddress6 <$> (pcheck getTuple6 $ sepBy1 (pitem ':') pread)) <* pstring "." <*> pread
+      sepBy1 delim p = (:) <$> p <*> many (delim *> p)
+      pitem x = P $ \s -> case s of
+        (i:is) | i == x -> [(x, is)]
+        _               -> []
+      pstring [] = pure []
+      pstring (c:cs) = (:) <$> pitem c <*> pstring cs
+      pcheck f (P q) = P $ \s -> [(y, s') | (x, s') <- q s, y <- f x]
+      pread :: Read a => P a
+      pread = P reads
+      getTuple4 [a,b,c,d] = [(a,b,c,d)]
+      getTuple4 _         = []
+      getTuple6 [a,b,c,d,e,f,g,h] = [(a,b,c,d,e,f,g,h)]
+      getTuple6 _                 = []
+
 -- | Network port
-type NetworkPort addr = Net.PortNumber
+type NetworkPort = Net.PortNumber
 
 -- | Dictionary with API for network programming. We use it to be able
 --   to provide two implementations of networking. One is real network
 --   and another is mock in-process network for testing.
-data NetworkAPI addr = NetworkAPI
+data NetworkAPI = NetworkAPI
   { listenOn :: !(forall m. (MonadIO m, MonadThrow m, MonadMask m)
-             => m (m (), m (P2PConnection , addr)))
+             => m (m (), m (P2PConnection, SockAddr)))
     -- ^ Start listening on given port. Returns action to stop listener
     --   and function for accepting new connections
   , connect  :: !(forall m. (MonadIO m, MonadThrow m, MonadMask m)
-             => addr -> m P2PConnection)
+             => SockAddr -> m P2PConnection)
     -- ^ Connect to remote address
   , filterOutOwnAddresses :: !(forall m. (MonadIO m, MonadThrow m, MonadMask m)
-             => Set addr -> m (Set addr))
+             => Set SockAddr -> m (Set SockAddr))
     -- ^ Filter out local addresses of node. Batch processing for speed.
-  , normalizeNodeAddress :: !(addr -> Maybe (NetworkPort addr) -> addr)
+  , normalizeNodeAddress :: !(SockAddr -> Maybe NetworkPort -> SockAddr)
     -- ^ Normalize address, for example, convert '20.15.10.20:24431' to '20.15.10.20:50000'
-  , listenPort :: !(NetworkPort addr)
+  , listenPort :: !NetworkPort 
   }
 
 data P2PConnection = P2PConnection

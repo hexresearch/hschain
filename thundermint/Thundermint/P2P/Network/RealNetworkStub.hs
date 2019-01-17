@@ -11,7 +11,7 @@ import Thundermint.P2P.Types
 import qualified Thundermint.P2P.Network.IpAddresses as Ip
 
 
-realNetworkStub :: Net.ServiceName -> NetworkAPI Net.SockAddr
+realNetworkStub :: Net.ServiceName -> NetworkAPI
 realNetworkStub serviceName = NetworkAPI
   { listenOn = undefined
   , connect  = undefined

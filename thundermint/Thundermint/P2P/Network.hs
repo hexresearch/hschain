@@ -72,7 +72,7 @@ dumpStrLn = traceEventIO . ("ZZZZ: " ++)
 dumpTraceM s = traceEvent ("ZZZZ: "++s) (return ())
 
 -- | API implementation for real tcp network
-realNetwork :: Net.ServiceName -> NetworkAPI Net.SockAddr
+realNetwork :: Net.ServiceName -> NetworkAPI
 realNetwork serviceName = (realNetworkStub serviceName)
   { listenOn = do
       let hints = Net.defaultHints
@@ -162,7 +162,7 @@ emptyBs2Maybe bs
   | otherwise  = Just bs
 
 -- | API implementation example for real udp network
-realNetworkUdp :: Net.ServiceName -> IO (NetworkAPI Net.SockAddr)
+realNetworkUdp :: Net.ServiceName -> IO NetworkAPI
 realNetworkUdp serviceName = do
   -- FIXME: prolly HostName fits better than SockAddr
   tChans <- newTVarIO Map.empty
