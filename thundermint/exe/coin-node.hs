@@ -18,7 +18,7 @@ import Network.Socket       (SockAddr(..), PortNumber)
 import Network.Wai.Middleware.Prometheus
 import Prometheus
 import Prometheus.Metric.GHC
-import System.Environment   (getEnv)
+import System.Environment   (getEnv,lookupEnv)
 import System.FilePath      ((</>))
 import qualified Network.Wai.Handler.Warp as Warp
 
@@ -78,8 +78,12 @@ main = do
                 <> header   "Coin test program"
                 <> progDesc ""
                 )
-    nodeSpecStr <- BC8.pack <$> getEnv "THUNDERMINT_NODE_SPEC"
-    ipMapPath   <- BC8.pack <$> getEnv "THUNDERMINT_KEYS"
+    nodeSpecStr <- BC8.pack <$> getEnv    "THUNDERMINT_NODE_SPEC"
+    netParamStr <- lookupEnv "THUNDERMINT_NET_PARAM"
+    ipMapPath   <- BC8.pack <$> getEnv    "THUNDERMINT_KEYS"
+    let netCfg = case netParamStr of
+          Nothing -> defCfg :: Configuration Example
+          Just s  -> either error id $ JSON.eitherDecodeStrict' $ BC8.pack s
     let nodeSpec@NodeSpec{..} = either error id $ JSON.eitherDecodeStrict' nodeSpecStr
         loggers = [ makeScribe s { scribe'path = fmap (prefix </>) (scribe'path s) }
                   | s <- nspecLogFile
@@ -108,7 +112,7 @@ main = do
                    }
           genSpec = restrictGenerator nodeNumber totalNodes
                   $ defaultGenerator netInitialKeys netInitialDeposit delay
-      (_,act) <- interpretSpec maxH genSpec validatorSet net nodeSpec
+      (_,act) <- interpretSpec maxH genSpec validatorSet net netCfg nodeSpec
       act `catch` (\Abort -> return ())
   where
     parser :: Parser Opts
