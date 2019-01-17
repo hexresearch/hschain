@@ -357,14 +357,15 @@ findInputs tgt = go 0
 -- | Interpret specification for node
 interpretSpec
   :: ( MonadIO m, MonadLogger m, MonadFork m, MonadTrace m, MonadMask m, MonadTMMonitoring m
-     , Ord addr, Show addr, Serialise addr)
+     , Ord addr, Show addr, Serialise addr, DefaultConfig cfg)
   => Maybe Int64                      -- ^ Maximum height
   -> GeneratorSpec                    -- ^ Spec for generator of transactions
   -> ValidatorSet Ed25519_SHA512      -- ^ Set of validators
   -> BlockchainNet addr               -- ^ Network
+  -> Configuration cfg                -- ^ Configuration for network
   -> NodeSpec                         -- ^ Node specifications
   -> m (Connection 'RO Alg [Tx], m ())
-interpretSpec maxHeight genSpec validatorSet net NodeSpec{..} = do
+interpretSpec maxHeight genSpec validatorSet net cfg NodeSpec{..} = do
   -- Allocate storage for node
   conn <- openConnection (maybe ":memory:" id nspecDbName)
   initDatabase conn coinDict genesisBlock validatorSet
@@ -375,7 +376,7 @@ interpretSpec maxHeight genSpec validatorSet net NodeSpec{..} = do
         -- Transactions generator
         cursor <- getMempoolCursor $ nodeMempool logic
         let generator = transactionGenerator genSpec (void . pushTransaction cursor)
-        acts <- runNode (defCfg :: Configuration Example) net
+        acts <- runNode cfg net
           NodeDescription
             { nodeValidationKey   = nspecPrivKey
             , nodeCommitCallback  = \case
@@ -417,6 +418,6 @@ executeNodeSpec maxH delay NetSpec{..} = do
           }
     let loggers = [ makeScribe s | s <- nspecLogFile ]
         run m   = withLogEnv "TM" "DEV" loggers $ \logenv -> runLoggerT "general" logenv m
-    run $ (fmap . fmap) run $ interpretSpec maxH genSpec validatorSet bnet nspec
+    run $ (fmap . fmap) run $ interpretSpec maxH genSpec validatorSet bnet netNetCfg nspec
   runConcurrently (snd <$> actions) `catch` (\Abort -> return ())
   return $ fst <$> actions
