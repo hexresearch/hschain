@@ -1,6 +1,8 @@
 FROM debian:9
 
-RUN apt install --yes libgmp10 ca-certificates
+RUN  apt update \
+     && apt install --yes libgmp10 ca-certificates \
+     && rm -rf /var/lib/apt/lists
 
 COPY bin/thundermint-coin-node /usr/local/bin/
 
