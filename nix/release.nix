@@ -46,6 +46,7 @@ let
   self = rec {
     inherit pkgs;
     thundermint         = pkgs.haskellPackages.thundermint;
+    thundermint-exe     = pkgs.haskellPackages.thundermint-exe;
     docker-container    = pkgs.docker-container;
     thundermintPackages = {
       inherit (pkgs.haskellPackages)

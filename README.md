@@ -32,7 +32,7 @@ https://nixos.wiki/wiki/Nix_Installation_Guide
 
 Just use following command
 ```
-nix-build -A thundermint nix/release.nix
+nix-build -A thundermint-exe nix/release.nix
 ```
 Note that if project directory contains `.ghc.environment.*` files created by new-style cabal commands build will fail.
 
