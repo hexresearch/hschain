@@ -10,12 +10,10 @@ import Control.Concurrent
 import Control.Monad
 import Control.Monad.Catch
 import Control.Monad.IO.Class
-import Control.Monad.Trans.Reader
 import Data.Int
 import Options.Applicative
 
 import Katip.Core           (showLS)
-import Network.Simple.TCP   (accept, listen, recv, closeSock)
 import Network.Socket       (SockAddr(..), PortNumber)
 import Network.Wai.Middleware.Prometheus
 import Prometheus
@@ -34,7 +32,6 @@ import Thundermint.P2P.Consts
 import Thundermint.P2P.Instances ()
 import Thundermint.P2P.Network               ( getLocalAddress, realNetwork
                                              , getCredentialFromBuffer, realNetworkTls)
-import qualified Control.Exception     as E
 import qualified Data.Aeson            as JSON
 import qualified Data.ByteString.Char8 as BC8
 
@@ -53,6 +50,7 @@ data Opts = Opts
   , nodeNumber        :: Int
   , totalNodes        :: Int
   , optTls            :: Bool
+  , netAddresses      :: [SockAddr]
   }
 
 ----------------------------------------------------------------
@@ -95,7 +93,6 @@ main = do
                         $ JSON.eitherDecodeStrict' ipMapPath
       logger InfoS "Listening for bootstrap adresses" ()
       nodeAddr     <- liftIO getLocalAddress
-      netAddresses <- waitForAddrs
       logger InfoS ("net Addresses: " <> showLS netAddresses) ()
       netAPI <- case optTls of
         False -> return $ realNetwork (show listenPort)
@@ -166,29 +163,11 @@ main = do
         (  long "tls"
         <> help "Use TLS for node connection"
         )
+      netAddresses <- option json
+        (  long "peers"
+        <> help "List of initial peers"
+        <> metavar "JSON"
+        )
       pure Opts{..}
-
-
-----------------------------------------------------------------
--- TCP server that listens for boostrap addresses
-----------------------------------------------------------------
-
-waitForAddrs :: LoggerT IO [SockAddr]
-waitForAddrs = LoggerT $ ReaderT $ \(_,logenv) -> E.handle (allExc logenv) $ do
-  addrs <- listen "0.0.0.0" "49999" $ \ (lsock, _addr) ->
-    accept lsock $ \ (conn, _caddr) -> do
-    mMsg <- recv conn 4096
-    closeSock conn
-    runLoggerT "boostrap" logenv $ do
-      logger InfoS ("accept this: " <> showLS mMsg) ()
-    case mMsg of
-        Nothing  -> fail "Connection closed by peer."
-        Just msg -> either fail return $ JSON.eitherDecodeStrict' msg
-  runLoggerT "boostrap" logenv $ do
-    logger InfoS ("Got " <> showLS addrs <> " boostrap addresses.") ()
-    logger InfoS "Stop listening" ()
-  return addrs
-  where
-    allExc logenv (e::SomeException) = runLoggerT "boostrap" logenv $ do
-      logger ErrorS (showLS e) ()
-      E.throw e
+    --
+    json = maybeReader $ JSON.decodeStrict . BC8.pack
