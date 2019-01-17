@@ -1,16 +1,19 @@
 #!/bin/bash -e
 
+set -euo pipefail
+#IFS='\n\t'
+
 # Build with this command:
 # stack build --library-profiling --executable-profiling --profile
 #
 
 export THUNDERMINT_KEYS="[\"2K7bFuJXxKf5LqogvVRQjms2W26ZrjpvUjo5LdvPFa5Y\",\"4NSWtMsEPgfTK25tCPWqNzVVze1dgMwcUFwS5WkSpjJL\",\"3Fj8bZjKc53F2a87sQaFkrDas2d9gjzK57FmQwnNnSHS\",\"D2fpHM1JA8trshiUW8XPvspsapUvPqVzSofaK1MGRySd\"]"
 
-THUNDERMINT_COIN_NODE=$(cabal new-exec which thundermint-coin-node)
+THUNDERMINT_COIN_NODE=/home/sz/work/thunders/thundermint/dist-newstyle/build/x86_64-linux/ghc-8.4.4/thundermint-0.1/x/thundermint-coin-node/build/thundermint-coin-node/thundermint-coin-node
 
 PREFIX=tmp/thundermint
 
-COMMON_OPTIONS="--total-nodes 4 --max-h 100 --delay 500 --check-consensus --deposit 1000 --keys 2000"
+COMMON_OPTIONS='--total-nodes 4 --max-h 10 --delay 500 --check-consensus --deposit 1000 --keys 2000 --udp'
 
 #LOG_SPEC="\"nspecLogFile\" : [{ \"type\": \"ScribeES\", \"path\" : \"`cat elastic-search.cfg`\", \"severity\" : \"Debug\", \"verbosity\" : \"V2\" }]"
 LOG_SPEC='"nspecLogFile" : [{ "type": "ScribeJSON", "path" : "log.js", "severity" : "Debug", "verbosity" : "V2" }]'
@@ -62,6 +65,7 @@ sleep 0.5
 
 echo "Ok, node started!"
 echo "Waiting for node finished"
-sleep 1h
+#sleep 1h
+sleep 220
 
 echo "OK"

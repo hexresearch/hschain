@@ -10,8 +10,6 @@ import Thundermint.P2P.Network
 import qualified Data.ByteString as BS
 import qualified Network.Socket  as Net
 
-import System.IO.Unsafe (unsafePerformIO)
-
 ----------------------------------------------------------------
 
 realNetPair :: Maybe (Maybe Int)

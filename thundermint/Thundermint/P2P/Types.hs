@@ -1,4 +1,6 @@
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE RankNTypes #-}
+
 -- |
 -- Abstract API for network which support
 module Thundermint.P2P.Types (
@@ -11,8 +13,10 @@ module Thundermint.P2P.Types (
   , RecvFun
   , NetworkPort
   , PeerId
+  , PeerInfo(..)
   ) where
 
+import Codec.Serialise
 import Control.Concurrent.STM
 import Control.Exception        (Exception)
 import Control.Monad.Catch      (MonadMask, MonadThrow)
@@ -21,6 +25,8 @@ import Data.ByteString.Internal (ByteString(..))
 import Data.Map                 (Map)
 import Data.Set                 (Set)
 import Data.Word
+import GHC.Generics  (Generic)
+
 
 import qualified Data.ByteString.Lazy as LBS
 import qualified Network.Socket       as Net
@@ -30,6 +36,15 @@ import qualified Network.Socket       as Net
 ----------------------------------------------------------------
 
 type PeerId = Word64
+
+
+data PeerInfo addr = PeerInfo
+    { piPeerId   :: !PeerId
+    , piPeerPort :: !Word32
+    } deriving (Show, Generic)
+
+
+instance Serialise (PeerInfo addr)
 
 
 -- | Network port

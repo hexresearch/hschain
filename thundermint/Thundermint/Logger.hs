@@ -282,9 +282,10 @@ makeEsUrlScribe :: FilePath -> Text -> Severity -> Verbosity -> IO Scribe
 makeEsUrlScribe serverPath index sev verb = do
   mgr <- newTlsManager
   let bhe = mkBHEnv (Server (T.pack serverPath)) mgr
+      Just queSize = mkEsQueueSize 20
   mkEsScribe
     -- Reasonable for production
-    defaultEsScribeCfgV5
+    defaultEsScribeCfgV5 { essQueueSize = queSize }
     -- Reasonable for single-node in development
     -- defaultEsScribeCfgV5 { essIndexSettings = IndexSettings (ShardCound 1) (ReplicaCount 0)}
     bhe
@@ -292,7 +293,6 @@ makeEsUrlScribe serverPath index sev verb = do
     (MappingName "application-logs")
     sev
     verb
-
 
 ----------------------------------------------------------------
 -- LogBlock

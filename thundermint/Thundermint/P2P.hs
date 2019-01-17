@@ -99,15 +99,6 @@ data PexMessage addr
 instance (Serialise addr) => Serialise (PexMessage addr)
 
 
-data PeerInfo addr = PeerInfo
-    { piPeerId   :: !PeerId
-    , piPeerPort :: !Word32
-    } deriving (Show, Generic)
-
-
-instance Serialise (PeerInfo addr)
-
-
 data LogGossip = LogGossip
   { gossip'TxPV  :: !Int
   , gossip'RxPV  :: !Int

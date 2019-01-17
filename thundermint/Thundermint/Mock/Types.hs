@@ -36,7 +36,7 @@ instance DefaultConfig Example where
       { gossipDelayVotes       = 25
       , gossipDelayBlocks      = 25
       , gossipDelayMempool     = 25
-      , pexMinConnections      = 10
+      , pexMinConnections      = 3
       , pexMaxConnections      = 20
       , pexMinKnownConnections = 15
       , pexMaxKnownConnections = 20
