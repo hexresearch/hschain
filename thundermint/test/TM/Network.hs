@@ -47,9 +47,9 @@ tests =
                     ]
                   , testGroup "real-udp"
                     [ testGroup group $
-                         [ {-testCase "ping-pong" $ withRetry' (Just Nothing) pingPong address
+                         [ testCase "ping-pong" $ withRetry' (Just Nothing) pingPong address
                          , testCase "delayed write" $ withRetry' (Just Nothing) delayedWrite address
-                         , -}testCase "sized ping pongs" $ withRetry' (Just $ Just $ 123 + v6) (sizedPingPong 1 20) address
+                         , testCase "sized ping pongs" $ withRetry' (Just $ Just $ 123 + v6) (sizedPingPong 8 11) address
                          ]
                     | (group, address, v6) <- [("IPv4", "127.0.0.1", 0)]--, ("IPv6", "::1", 1)]
                     ]
