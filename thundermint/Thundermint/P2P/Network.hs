@@ -347,7 +347,7 @@ createMockNode
   => MockNet addr
   -> Net.ServiceName
   -> addr
-  -> NetworkAPI (addr, Net.ServiceName)
+  -> NetworkAPI
 createMockNode MockNet{..} port addr = NetworkAPI
   { listenOn = liftIO.atomically $ do
       let key = (addr, port)

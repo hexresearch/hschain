@@ -5,7 +5,7 @@
 -- Abstract API for network which support
 module Thundermint.P2P.Types (
     NetworkAPI(..)
-  , Addr(..)
+  , NetAddr(..)
   , P2PConnection(..)
   , NetworkError(..)
   , MockSocket(..)
@@ -55,14 +55,14 @@ instance Serialise (PeerInfo addr)
 --
 ----------------------------------------------------------------
 
-data Addr = AddrV4 !Net.HostAddress !Net.PortNumber
-          | AddrV6 !Net.HostAddress6 !Net.PortNumber
+data NetAddr = NetAddrV4 !Net.HostAddress !Net.PortNumber
+          | NetAddrV6 !Net.HostAddress6 !Net.PortNumber
           deriving (Eq, Ord)
 
-instance Show Addr where
-  show (AddrV4 ha p) = let (a,b,c,d) = Net.hostAddressToTuple ha
+instance Show NetAddr where
+  show (NetAddrV4 ha p) = let (a,b,c,d) = Net.hostAddressToTuple ha
                        in ((++show p) . (++":")) $ List.intercalate "." $ map show [a,b,c,d]
-  show (AddrV6 ha p) = let (a,b,c,d,e,f,g,h) = Net.hostAddress6ToTuple ha
+  show (NetAddrV6 ha p) = let (a,b,c,d,e,f,g,h) = Net.hostAddress6ToTuple ha
                        in ((++show p) . (++".")) $ List.intercalate ":" $ map show [a,b,c,d,e,f,g,h]
 
 newtype P a = P { parse :: String -> [(a, String)] }
@@ -78,20 +78,34 @@ instance Alternative P where
   empty = P $ const []
   P f <|> P g = P $ \s -> f s ++ g s
 
-instance Read Addr where
+
+pcheck :: (a -> [b]) -> P a -> P b
+pcheck f (P q) = P $ \s -> [(y, s') | (x, s') <- q s, y <- f x]
+
+sepBy1 :: P d -> P a -> P [a]
+sepBy1 delim p = (:) <$> p <*> many (delim *> p)
+
+pstring :: String -> P String
+pstring [] = pure []
+pstring (c:cs) = (:) <$> pitem c <*> pstring cs
+
+pitem :: Char -> P Char
+pitem x = P $ \s -> case s of
+  (i:is) | i == x -> [(x, is)]
+  _               -> []
+
+pnum :: Integral i => P i
+pnum = fromIntegral <$> pinteger
+  where
+    pinteger :: P Integer
+    pinteger = read <$> (pstring "0" <|> nonzero)
+    nonzero = (:) <$> foldr (<|>) empty (map pitem "123456789") <*> many (foldr (<|>) empty $ map pitem "0123456789")
+
+instance Read NetAddr where
   readsPrec _ = parse (readV4 <|> readV6)
     where
-      readV4 = AddrV4 <$> (Net.tupleToHostAddress <$> (pcheck getTuple4 $ sepBy1 (pitem '.') pread)) <* pstring ":" <*> pread
-      readV6 = AddrV6 <$> (Net.tupleToHostAddress6 <$> (pcheck getTuple6 $ sepBy1 (pitem ':') pread)) <* pstring "." <*> pread
-      sepBy1 delim p = (:) <$> p <*> many (delim *> p)
-      pitem x = P $ \s -> case s of
-        (i:is) | i == x -> [(x, is)]
-        _               -> []
-      pstring [] = pure []
-      pstring (c:cs) = (:) <$> pitem c <*> pstring cs
-      pcheck f (P q) = P $ \s -> [(y, s') | (x, s') <- q s, y <- f x]
-      pread :: Read a => P a
-      pread = P reads
+      readV4 = NetAddrV4 <$> (Net.tupleToHostAddress <$> (pcheck getTuple4 $ sepBy1 (pitem '.') pnum)) <* pstring ":" <*> pnum
+      readV6 = NetAddrV6 <$> (Net.tupleToHostAddress6 <$> (pcheck getTuple6 $ sepBy1 (pitem ':') pnum)) <* pstring "." <*> pnum
       getTuple4 [a,b,c,d] = [(a,b,c,d)]
       getTuple4 _         = []
       getTuple6 [a,b,c,d,e,f,g,h] = [(a,b,c,d,e,f,g,h)]
