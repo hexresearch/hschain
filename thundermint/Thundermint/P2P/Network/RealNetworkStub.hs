@@ -4,6 +4,7 @@ module Thundermint.P2P.Network.RealNetworkStub
       realNetworkStub
     ) where
 
+import qualified Data.Set as Set
 
 import qualified Network.Socket                 as Net
 
@@ -15,12 +16,13 @@ realNetworkStub :: Net.ServiceName -> NetworkAPI
 realNetworkStub serviceName = NetworkAPI
   { listenOn = undefined
   , connect  = undefined
-  , filterOutOwnAddresses = Ip.filterOutOwnAddresses (Ip.serviceNameToPortNumber serviceName)
-  , normalizeNodeAddress = flip setPort . Ip.normalizeIpAddr
+  , filterOutOwnAddresses = fmap (Set.map sockAddrToNetAddr)
+                          . Ip.filterOutOwnAddresses (Ip.serviceNameToPortNumber serviceName)
+                          . Set.map netAddrToSockAddr
+  , normalizeNodeAddress = flip setPort . sockAddrToNetAddr . Ip.normalizeIpAddr . netAddrToSockAddr
   , listenPort = Ip.serviceNameToPortNumber serviceName
   }
   where
     setPort Nothing a = a
-    setPort (Just port) (Net.SockAddrInet _ ha)        = Net.SockAddrInet port ha
-    setPort (Just port) (Net.SockAddrInet6 _ fi ha si) = Net.SockAddrInet6 port fi ha si
-    setPort _ s = s
+    setPort (Just port) (NetAddrV4 ha _) = NetAddrV4 ha port
+    setPort (Just port) (NetAddrV6 ha _) = NetAddrV6 ha port

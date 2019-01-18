@@ -173,11 +173,11 @@ readRecv (Counter _ r) = liftIO $ readMVar r
 --   of nodes and gossip.
 startPeerDispatcher
   :: ( MonadMask m, MonadFork m, MonadLogger m, MonadTrace m, MonadReadDB m alg a, MonadTMMonitoring m
-     , BlockData a,  Ord addr, Show addr, Serialise addr, Show a, Crypto alg)
+     , BlockData a,  Show a, Crypto alg)
   => NetworkCfg
-  -> NetworkAPI addr          -- ^ API for networking
-  -> addr                     -- ^ Current peer address
-  -> [addr]                   -- ^ Set of initial addresses to connect
+  -> NetworkAPI               -- ^ API for networking
+  -> NetAddr                  -- ^ Current peer address
+  -> [NetAddr]                -- ^ Set of initial addresses to connect
   -> AppChans m   alg a       -- ^ Channels for communication with main application
   -> Mempool m alg (TX a)
   -> m ()

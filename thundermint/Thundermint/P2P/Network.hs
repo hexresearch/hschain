@@ -24,7 +24,6 @@ module Thundermint.P2P.Network (
   , Ip.getLocalAddress
   , Ip.isLocalAddress
   , Ip.getLocalAddresses
-  , dumpStrLn
   ) where
 
 import qualified Codec.Serialise as CBOR
@@ -56,20 +55,7 @@ import Thundermint.P2P.Network.RealNetworkStub
 import Thundermint.P2P.Types
 import qualified Thundermint.P2P.Network.IpAddresses as Ip
 
-import System.IO
-import System.IO.Unsafe
 import Debug.Trace
-
-{-# NOINLINE dumph #-}
-dumph = unsafePerformIO $ openFile "dumpf" WriteMode
-{-# NOINLINE dumpStrLn #-}
-dumpStrLn' s = hPutStrLn dumph s >> hFlush dumph
-{-# NOINLINE dumpTraceM #-}
-dumpTraceM' :: Applicative m => String -> m ()
-dumpTraceM' s = let r = unsafePerformIO $ dumpStrLn s in seq r (pure r)
-
-dumpStrLn = traceEventIO . ("ZZZZ: " ++)
-dumpTraceM s = traceEvent ("ZZZZ: "++s) (return ())
 
 -- | API implementation for real tcp network
 realNetwork :: Net.ServiceName -> NetworkAPI
@@ -99,20 +85,20 @@ realNetwork serviceName = (realNetworkStub serviceName)
                                             [Net.NI_NUMERICHOST, Net.NI_NUMERICSERV]
                                             True
                                             True
-                                            addr
+                                            $ netAddrToSockAddr addr
       addrInfo:_ <- liftIO $ Net.getAddrInfo hints hostName serviceName'
       bracketOnError (newSocket addrInfo) (liftIO . Net.close) $ \ sock -> do
         let tenSec = 10000000
         -- Waits for connection for 10 sec and throws `ConnectionTimedOut` exception
         liftIO $ throwNothingM ConnectionTimedOut
                $ timeout tenSec
-               $ Net.connect sock addr
+               $ Net.connect sock $ netAddrToSockAddr addr
         return $ applyConn sock
   }
  where
   accept sock = do
     (conn, addr) <- liftIO $ Net.accept sock
-    return (applyConn conn, addr)
+    return (applyConn conn, sockAddrToNetAddr addr)
   applyConn conn = P2PConnection (liftIO . sendBS conn) (liftIO $ recvBS conn) (liftIO $ Net.close conn)
   sendBS sock =  \s -> NetLBS.sendAll sock (BB.toLazyByteString $ toFrame s)
                  where
@@ -166,7 +152,7 @@ realNetworkUdp :: Net.ServiceName -> IO NetworkAPI
 realNetworkUdp serviceName = do
   -- FIXME: prolly HostName fits better than SockAddr
   tChans <- newTVarIO Map.empty
-  acceptChan <- newTChanIO :: IO (TChan (P2PConnection, Net.SockAddr))
+  acceptChan <- newTChanIO :: IO (TChan (P2PConnection, NetAddr))
   let hints = Net.defaultHints
         { Net.addrFlags      = []
         , Net.addrSocketType = Net.Datagram
@@ -185,10 +171,8 @@ realNetworkUdp serviceName = do
     flip onException (Net.close sock) $ do
       Net.bind sock (Net.addrAddress addrInfo)
       forever $ do
-        dumpStrLn $ "receiving at "++show (Net.addrAddress addrInfo)
         (bs, addr') <- NetBS.recvFrom sock (fromIntegral chunkSize * 2)
-        let addr = Ip.normalizeIpAddr addr'
-        dumpStrLn $ "at "++show (Net.addrAddress addrInfo)++": "++show (LBS.length $ LBS.fromStrict bs)++" from "++show (addr, addr')
+        let addr = sockAddrToNetAddr $ Ip.normalizeIpAddr addr'
         atomically $ do
           (recvChan, frontVar, receivedFrontsVar) <- findOrCreateRecvTuple tChans addr
           writeTChan acceptChan
@@ -216,7 +200,7 @@ realNetworkUdp serviceName = do
     return sock
   findOrCreateRecvTuple tChans addr = do
     chans <- readTVar tChans
-    case Map.lookup addr chans of
+    case Map.lookup (addr :: NetAddr) chans of
       Just chanFrontVar -> return chanFrontVar
       Nothing   -> do
         recvChan <- newTChan
@@ -231,16 +215,13 @@ realNetworkUdp serviceName = do
   receiveAction frontsVar peerChan = do
     (message, logMsg) <- atomically $ do
       serializedTriple <- readTChan peerChan
-      dumpTraceM $ "serialized triple length "++show (LBS.length serializedTriple)
       case CBOR.deserialiseOrFail serializedTriple of
         Right (front, ofs, chunk) -> do
           fronts <- readTVar frontsVar
           let (newFronts, message) = updateMessages front ofs chunk fronts
           writeTVar frontsVar newFronts
-          dumpTraceM $ "decoded front "++show front++", decoded offset "++show ofs++", message length "++show (LBS.length message)++", chunk length "++show (LBS.length chunk)
           return (message, "")
         Left err -> return (LBS.empty, "unable to deserialize packet: " ++ show err)
-    dumpStrLn $ "returning "++show (LBS.length message)
     if null logMsg
       then return $ emptyBs2Maybe message
       else do
@@ -293,13 +274,12 @@ realNetworkUdp serviceName = do
       maxMinDelta = maxFront - minFront
       minMaxDelta = minFront - maxFront
   sendSplitted frontVar sock addr msg = do
-    dumpStrLn $ "asked to send "++show (LBS.length msg)++" to "++show addr
     front <- atomically $ do -- slightly overkill, but in line with other's code.
       i <- readTVar frontVar
       writeTVar frontVar $ i + 1
       return (i :: Word8)
     forM_ (zip sleeps splitChunks) $ \(sleep, (ofs, chunk)) -> do
-      flip (NetBS.sendAllTo sock) addr $ LBS.toStrict $ CBOR.serialise (front :: Word8, ofs :: Word32, chunk)
+      flip (NetBS.sendAllTo sock) (netAddrToSockAddr addr) $ LBS.toStrict $ CBOR.serialise (front :: Word8, ofs :: Word32, chunk)
       when sleep $ threadDelay 100
     where
       splitChunks = splitToChunks msg
@@ -334,7 +314,7 @@ realNetworkUdp serviceName = do
 --showSockAddr s = "?? (" <> show s <> ")"
 
 
-newMockNet :: IO (MockNet addr)
+newMockNet :: IO (MockNet)
 newMockNet = MockNet <$> newTVarIO Map.empty
 
 
@@ -343,14 +323,12 @@ closeMockSocket MockSocket{..} = writeTVar msckActive False
 
 
 createMockNode
-  :: Ord addr
-  => MockNet addr
-  -> Net.ServiceName
-  -> addr
+  :: MockNet
+  -> NetAddr
   -> NetworkAPI
-createMockNode MockNet{..} port addr = NetworkAPI
+createMockNode MockNet{..} addr = NetworkAPI
   { listenOn = liftIO.atomically $ do
-      let key = (addr, port)
+      let key = addr
       -- Start listening on port
       do mListen <- readTVar mnetIncoming
          case key `Map.lookup` mListen of
@@ -388,9 +366,9 @@ createMockNode MockNet{..} port addr = NetworkAPI
       cmap <- readTVar mnetIncoming
       case loc `Map.lookup` cmap of
         Nothing -> error "MockNet: Cannot connect to closed socket"
-        Just xs -> writeTVar mnetIncoming $ Map.insert loc (xs ++ [(sockFrom,(addr,snd loc))]) cmap
+        Just xs -> writeTVar mnetIncoming $ Map.insert loc (xs ++ [(sockFrom,loc)]) cmap
       return $ applyConn sockTo
-  , filterOutOwnAddresses = return . Set.filter ((addr /=) . fst)
+  , filterOutOwnAddresses = return . Set.filter ((addr /=))
   , normalizeNodeAddress = const
   , listenPort = 0
   }

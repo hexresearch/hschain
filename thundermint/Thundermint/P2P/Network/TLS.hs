@@ -73,14 +73,14 @@ realNetworkTls creds serviceName = (realNetworkStub serviceName)
                                             [Net.NI_NUMERICHOST, Net.NI_NUMERICSERV]
                                             True
                                             True
-                                            addr
+                                            $ netAddrToSockAddr addr
       addrInfo:_ <- liftIO $ Net.getAddrInfo hints hostName serviceName'
       bracketOnError (newSocket addrInfo) (liftIO . Net.close) $ \ sock -> do
         let tenSec = 10000000
         -- Waits for connection for 10 sec and throws `ConnectionTimedOut` exception
         liftIO $ throwNothingM ConnectionTimedOut
                $ timeout tenSec
-               $ Net.connect sock addr
+               $ Net.connect sock $ netAddrToSockAddr addr
         connectTls creds hostName serviceName' sock
   }
 
@@ -122,7 +122,7 @@ connectTls creds host port sock = do
         return $ conn
 
 
-acceptTls :: (MonadMask m, MonadIO m) => TLS.Credential -> Net.Socket -> m (P2PConnection, Net.SockAddr)
+acceptTls :: (MonadMask m, MonadIO m) => TLS.Credential -> Net.Socket -> m (P2PConnection, NetAddr)
 acceptTls creds sock = do
     bracketOnError
         (liftIO $ Net.accept sock)
@@ -133,7 +133,7 @@ acceptTls creds sock = do
            liftIO $ TLS.contextHookSetLogging ctx getLogging
            TLS.handshake ctx
            cnn <- applyConn ctx
-           return $ (cnn, addr)
+           return $ (cnn, sockAddrToNetAddr addr)
 
         )
 

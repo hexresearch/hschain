@@ -6,6 +6,8 @@
 module Thundermint.P2P.Types (
     NetworkAPI(..)
   , NetAddr(..)
+  , sockAddrToNetAddr
+  , netAddrToSockAddr
   , P2PConnection(..)
   , NetworkError(..)
   , MockSocket(..)
@@ -29,11 +31,12 @@ import Data.Map                 (Map)
 import Data.Set                 (Set)
 import Data.Word
 import GHC.Generics             (Generic)
-import Network.Socket           (SockAddr)
 
 
 import qualified Data.ByteString.Lazy as LBS
 import qualified Network.Socket       as Net
+
+import qualified Thundermint.Utils.Parser as Parse
 
 ----------------------------------------------------------------
 --
@@ -65,51 +68,29 @@ instance Show NetAddr where
   show (NetAddrV6 ha p) = let (a,b,c,d,e,f,g,h) = Net.hostAddress6ToTuple ha
                        in ((++show p) . (++".")) $ List.intercalate ":" $ map show [a,b,c,d,e,f,g,h]
 
-newtype P a = P { parse :: String -> [(a, String)] }
-
-instance Functor P where
-  fmap f (P q) = P $ \s -> [(f a, s') | (a,s') <- q s]
-
-instance Applicative P where
-  pure c = P $ \s -> [(c, s)]
-  P pf <*> P pa = P $ \s -> [(f a, s'') | (f, s') <- pf s, (a, s'') <- pa s']
-
-instance Alternative P where
-  empty = P $ const []
-  P f <|> P g = P $ \s -> f s ++ g s
-
-
-pcheck :: (a -> [b]) -> P a -> P b
-pcheck f (P q) = P $ \s -> [(y, s') | (x, s') <- q s, y <- f x]
-
-sepBy1 :: P d -> P a -> P [a]
-sepBy1 delim p = (:) <$> p <*> many (delim *> p)
-
-pstring :: String -> P String
-pstring [] = pure []
-pstring (c:cs) = (:) <$> pitem c <*> pstring cs
-
-pitem :: Char -> P Char
-pitem x = P $ \s -> case s of
-  (i:is) | i == x -> [(x, is)]
-  _               -> []
-
-pnum :: Integral i => P i
-pnum = fromIntegral <$> pinteger
-  where
-    pinteger :: P Integer
-    pinteger = read <$> (pstring "0" <|> nonzero)
-    nonzero = (:) <$> foldr (<|>) empty (map pitem "123456789") <*> many (foldr (<|>) empty $ map pitem "0123456789")
-
 instance Read NetAddr where
-  readsPrec _ = parse (readV4 <|> readV6)
+  readsPrec _ = Parse.parse (readV4 <|> readV6)
     where
-      readV4 = NetAddrV4 <$> (Net.tupleToHostAddress <$> (pcheck getTuple4 $ sepBy1 (pitem '.') pnum)) <* pstring ":" <*> pnum
-      readV6 = NetAddrV6 <$> (Net.tupleToHostAddress6 <$> (pcheck getTuple6 $ sepBy1 (pitem ':') pnum)) <* pstring "." <*> pnum
+      readV4 = NetAddrV4 <$>
+          (Net.tupleToHostAddress <$>
+            (Parse.pcheck getTuple4 $ Parse.psepby1 (Parse.pitem '.') Parse.pnum)) <* Parse.pstring ":" <*> Parse.pnum
+      readV6 = NetAddrV6 <$>
+          (Net.tupleToHostAddress6 <$>
+            (Parse.pcheck getTuple6 $ Parse.psepby1 (Parse.pitem ':') Parse.pnum)) <* Parse.pstring "." <*> Parse.pnum
       getTuple4 [a,b,c,d] = [(a,b,c,d)]
       getTuple4 _         = []
       getTuple6 [a,b,c,d,e,f,g,h] = [(a,b,c,d,e,f,g,h)]
       getTuple6 _                 = []
+
+sockAddrToNetAddr :: Net.SockAddr -> NetAddr
+sockAddrToNetAddr sa = case sa of
+  Net.SockAddrInet  port ha     -> NetAddrV4 ha port
+  Net.SockAddrInet6 port _ ha _ -> NetAddrV6 ha port
+  _                             -> error $ "unsupported socket address kind: "++show sa
+
+netAddrToSockAddr :: NetAddr -> Net.SockAddr
+netAddrToSockAddr (NetAddrV4 ha port) = Net.SockAddrInet  port ha
+netAddrToSockAddr (NetAddrV6 ha port) = Net.SockAddrInet6 port 0 ha 0
 
 -- | Network port
 type NetworkPort = Net.PortNumber
@@ -119,16 +100,16 @@ type NetworkPort = Net.PortNumber
 --   and another is mock in-process network for testing.
 data NetworkAPI = NetworkAPI
   { listenOn :: !(forall m. (MonadIO m, MonadThrow m, MonadMask m)
-             => m (m (), m (P2PConnection, SockAddr)))
+             => m (m (), m (P2PConnection, NetAddr)))
     -- ^ Start listening on given port. Returns action to stop listener
     --   and function for accepting new connections
   , connect  :: !(forall m. (MonadIO m, MonadThrow m, MonadMask m)
-             => SockAddr -> m P2PConnection)
+             => NetAddr -> m P2PConnection)
     -- ^ Connect to remote address
   , filterOutOwnAddresses :: !(forall m. (MonadIO m, MonadThrow m, MonadMask m)
-             => Set SockAddr -> m (Set SockAddr))
+             => Set NetAddr -> m (Set NetAddr))
     -- ^ Filter out local addresses of node. Batch processing for speed.
-  , normalizeNodeAddress :: !(SockAddr -> Maybe NetworkPort -> SockAddr)
+  , normalizeNodeAddress :: !(NetAddr -> Maybe NetworkPort -> NetAddr)
     -- ^ Normalize address, for example, convert '20.15.10.20:24431' to '20.15.10.20:50000'
   , listenPort :: !NetworkPort 
   }
@@ -165,9 +146,9 @@ data MockSocket = MockSocket
   deriving (Eq)
 
 -- | Mock network which uses STM to deliver messages
-newtype MockNet addr = MockNet
-  { mnetIncoming    :: TVar (Map (addr,Net.ServiceName)
-                                 [(MockSocket, (addr,Net.ServiceName))])
+newtype MockNet = MockNet
+  { mnetIncoming    :: TVar (Map (NetAddr)
+                                 [(MockSocket, NetAddr)])
     -- ^ Incoming connections for node.
   }
 
