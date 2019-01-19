@@ -21,7 +21,6 @@ module Thundermint.Utils.Parser (
   ) where
 
 import Control.Applicative
-import qualified Data.List as List
 
 newtype P a = P { parse :: String -> [(a, String)] }
 
