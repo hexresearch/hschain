@@ -44,11 +44,11 @@ import Thundermint.Types.Validators (ValidatorSet)
 --
 ----------------------------------------------------------------
 
-genesisBlock :: ValidatorSet Ed25519_SHA512 -> Block Ed25519_SHA512 [(String,Int)]
+genesisBlock :: ValidatorSet Ed25519_SHA512 -> Block Ed25519_SHA512 [(String,NetAddr)]
 genesisBlock valSet
   = makeGenesis "KV" (Time 0) [] valSet
 
-transitions :: BlockFold (Map String Int) alg [(String,Int)]
+transitions :: BlockFold (Map String NetAddr) alg [(String,NetAddr)]
 transitions = BlockFold
   { processTx           = const process
   , processBlock        = \b s0 -> foldM (flip process) s0 (blockData b)
@@ -75,7 +75,7 @@ interpretSpec
   :: Maybe Int64                -- ^ Maximum height
   -> FilePath
   -> NetSpec NodeSpec
-  -> IO [(Connection 'RO Ed25519_SHA512 [(String,Int)], IO ())]
+  -> IO [(Connection 'RO Ed25519_SHA512 [(String,NetAddr)], IO ())]
 interpretSpec maxH prefix NetSpec{..} = do
   net <- newMockNet
   forM (Map.toList netAddresses) $ \(addr, NodeSpec{..}) -> do
@@ -101,7 +101,7 @@ interpretSpec maxH prefix NetSpec{..} = do
                        --
                        , appBlockGenerator = \h _ _ _ -> case nspecByzantine of
                            Just "InvalidBlock" -> do
-                             return [("XXX", 123)]
+                             return [("XXX", NetAddrV6 (1,2,3,4) 4433)]
                            _ -> do
                              st <- stateAtH bchState h
                              let Just k = find (`Map.notMember` st) ["K_" ++ show (n :: Int) | n <- [1 ..]]
@@ -122,9 +122,9 @@ interpretSpec maxH prefix NetSpec{..} = do
                    [ setNamespace "net"
                      $ startPeerDispatcher
                          (cfgNetwork cfg)
-                         (createMockNode net "50000" addr)
-                         (addr,"50000")
-                         (map (,"50000") $ connections netAddresses addr)
+                         (createMockNode net addr)
+                         addr
+                         (connections netAddresses addr)
                          appCh
                          nullMempoolAny
                    , setNamespace "consensus"
@@ -132,7 +132,7 @@ interpretSpec maxH prefix NetSpec{..} = do
                    ]
              )
   where
-    netAddresses = Map.fromList $ [0::Int ..] `zip` netNodeList
+    netAddresses = Map.fromList $ [ NetAddrV4 ha 2233 | ha <- [0 ..]] `zip` netNodeList
     connections  = case netTopology of
       Ring    -> connectRing
       All2All -> connectAll2All
@@ -143,7 +143,7 @@ executeSpec
   :: Maybe Int64                -- ^ Maximum height
   -> FilePath
   -> NetSpec NodeSpec
-  -> IO [Connection 'RO Ed25519_SHA512 [(String,Int)]]
+  -> IO [Connection 'RO Ed25519_SHA512 [(String,NetAddr)]]
 executeSpec maxH prefix spec = do
   actions <- interpretSpec maxH prefix spec
   runConcurrently (snd <$> actions) `catch` (\Abort -> return ())

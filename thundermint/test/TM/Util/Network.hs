@@ -34,8 +34,10 @@ import Thundermint.Crypto.Ed25519
 import Thundermint.Debug.Trace
 import Thundermint.Logger
 import Thundermint.Run
+import Thundermint.Mock.Coin (intToNetAddr)
 import Thundermint.Mock.KeyVal
 import Thundermint.Mock.Types
+import Thundermint.P2P
 import Thundermint.P2P.Network
 import Thundermint.Store
 import Thundermint.Monitoring
@@ -49,14 +51,14 @@ shouldRetry = True
 retryPolicy :: RetryPolicy
 retryPolicy = constantDelay 500 <> limitRetries 20
 
-withRetry :: MonadIO m =>  ( (Net.SockAddr, NetworkAPI Net.SockAddr)
-                        -> (Net.SockAddr, NetworkAPI Net.SockAddr) -> IO a)
+withRetry :: MonadIO m =>  ( (NetAddr, NetworkAPI)
+                        -> (NetAddr, NetworkAPI) -> IO a)
          -> Net.HostName -> m a
 withRetry = withRetry' Nothing
 
 withRetry' :: MonadIO m => Maybe (Maybe Int)
-                        -> ( (Net.SockAddr, NetworkAPI Net.SockAddr)
-                        -> (Net.SockAddr, NetworkAPI Net.SockAddr) -> IO a)
+                        -> ( (NetAddr, NetworkAPI)
+                        -> (NetAddr, NetworkAPI) -> IO a)
          -> Net.HostName -> m a
 withRetry' useUDP fun host = do
   liftIO $ recovering retryPolicy hs
@@ -92,11 +94,6 @@ type TestNetNode = ()
 type TestNet = Map.Map Int TestNetNode
 
 
-newtype TestAddr = TestAddr Int deriving (Show, Ord, Eq, Generic)
-
-instance Serialise TestAddr
-
-
 toPair :: TestNetLinkDescription m -> (Int, [Int])
 toPair TestNetLinkDescription{..} = (ncFrom, ncTo)
 
@@ -117,8 +114,8 @@ createTestNetworkWithConfig cfg desc = do
   where
     mkTestNode
       :: (MonadIO m, MonadMask m, MonadFork m)
-      => MockNet TestAddr
-      -> (Connection 'RW Ed25519_SHA512 [(String,Int)], TestNetLinkDescription m)
+      => MockNet
+      -> (Connection 'RW Ed25519_SHA512 [(String, NetAddr)], TestNetLinkDescription m)
       -> m [m ()]
     mkTestNode net (conn, TestNetLinkDescription{..}) = do
         let validatorSet = makeValidatorSetFromPriv testValidators
@@ -129,9 +126,9 @@ createTestNetworkWithConfig cfg desc = do
             (_,logic) <- logicFromFold transitions
             runNode cfg
               BlockchainNet
-                { bchNetwork          = createMockNode net testNetworkName (TestAddr ncFrom)
-                , bchLocalAddr        = (TestAddr ncFrom, testNetworkName)
-                , bchInitialPeers     = map ((,testNetworkName) . TestAddr) ncTo
+                { bchNetwork          = createMockNode net (intToNetAddr ncFrom)
+                , bchLocalAddr        = intToNetAddr ncFrom
+                , bchInitialPeers     = map intToNetAddr ncTo
                 }
               NodeDescription
                 { nodeCommitCallback   = \_ -> return ()
@@ -141,8 +138,8 @@ createTestNetworkWithConfig cfg desc = do
               logic
 
 -- | Simple test to ensure that mock network works at all
-delayedWrite :: (addr, NetworkAPI addr)
-         -> (addr, NetworkAPI addr)
+delayedWrite :: (NetAddr, NetworkAPI)
+         -> (NetAddr, NetworkAPI)
          -> IO ()
 delayedWrite (serverAddr, server) (_, client) = do
   let runServer NetworkAPI{..} =

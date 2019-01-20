@@ -15,6 +15,9 @@
 module Thundermint.P2P (
     startPeerDispatcher
   , LogGossip(..)
+  , NetAddr(..)
+  , netAddrToSockAddr
+  , sockAddrToNetAddr
   ) where
 
 import Codec.Serialise
@@ -30,7 +33,6 @@ import           Data.Monoid       ((<>))
 import           Data.Maybe        (mapMaybe)
 import           Data.Foldable
 import           Data.Function
-import           Data.Word
 import qualified Data.Map        as Map
 import           Data.Map          (Map)
 import qualified Data.Set        as Set
@@ -880,3 +882,4 @@ logGossip PeerChans{..} = do
   usingVector prometheusGossip ("RX","block")     gossip'RxB
   --
   logger InfoS "Gossip stats" LogGossip{..}
+

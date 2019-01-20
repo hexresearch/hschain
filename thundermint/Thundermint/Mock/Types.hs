@@ -14,6 +14,7 @@ import GHC.Generics (Generic)
 
 import qualified Data.Aeson as JSON
 
+import Thundermint.P2P
 import Thundermint.Blockchain.Internal.Engine.Types
 import Thundermint.Crypto.Ed25519 (Ed25519_SHA512)
 import Thundermint.Logger         (ScribeSpec)
@@ -83,6 +84,6 @@ data NetSpec a = NetSpec
 
 instance JSON.ToJSON   NodeSpec
 instance JSON.FromJSON NodeSpec
-instance JSON.ToJSON   a => JSON.ToJSON   (NetSpec a)
+instance JSON.ToJSON a   => JSON.ToJSON   (NetSpec a)
 instance JSON.FromJSON a => JSON.FromJSON (NetSpec a)
 

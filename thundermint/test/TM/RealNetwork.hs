@@ -5,6 +5,7 @@ module TM.RealNetwork ( realNetPair
 
 import System.Random
 
+import Thundermint.P2P
 import Thundermint.P2P.Network
 
 import qualified Data.ByteString as BS
@@ -14,8 +15,8 @@ import qualified Network.Socket  as Net
 
 realNetPair :: Maybe (Maybe Int)
             -> Net.HostName
-            -> IO ((Net.SockAddr, NetworkAPI Net.SockAddr),
-                   (Net.SockAddr, NetworkAPI Net.SockAddr))
+            -> IO ((NetAddr, NetworkAPI),
+                   (NetAddr, NetworkAPI))
 realNetPair udpPortSpec host = do
     let useUDP = udpPortSpec /= Nothing
     n <- case udpPortSpec of
@@ -34,14 +35,14 @@ realNetPair udpPortSpec host = do
     let sockAddr1 = Net.addrAddress addr1
     let sockAddr2 = Net.addrAddress addr2
 
-    return ( (sockAddr1, server)
-           , (sockAddr2, client)
+    return ( (sockAddrToNetAddr sockAddr1, server)
+           , (sockAddrToNetAddr sockAddr2, client)
            )
 
 
 realTlsNetPair :: Net.HostName
-               -> IO ((Net.SockAddr, NetworkAPI Net.SockAddr),
-                      (Net.SockAddr, NetworkAPI Net.SockAddr))
+               -> IO ((NetAddr, NetworkAPI),
+                      (NetAddr, NetworkAPI))
 realTlsNetPair  host = do
     n <- randomRIO (10, 99 :: Int)
     m <- randomRIO (1, 9 :: Int)
@@ -57,8 +58,8 @@ realTlsNetPair  host = do
     let sockAddr1 = Net.addrAddress addr1
     let sockAddr2 = Net.addrAddress addr2
 
-    return ( (sockAddr1, server)
-           , (sockAddr2, client)
+    return ( (sockAddrToNetAddr sockAddr1, server)
+           , (sockAddrToNetAddr sockAddr2, client)
            )
 
 

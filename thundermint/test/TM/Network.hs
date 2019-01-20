@@ -21,6 +21,7 @@ import qualified Data.ByteString.Lazy as LBS
 import           Control.Exception as E
 import qualified Network.Socket    as Net
 
+import Thundermint.P2P
 import Thundermint.P2P.Network
 
 import Test.Tasty
@@ -70,8 +71,8 @@ loopbackIpv6 = Net.SockAddrInet6 50000 0 (0,0,0,1) 0
 
 
 -- | Simple test to ensure that mock network works at all
-pingPong :: (addr, NetworkAPI addr)
-         -> (addr, NetworkAPI addr)
+pingPong :: (NetAddr, NetworkAPI)
+         -> (NetAddr, NetworkAPI)
          -> IO ()
 pingPong (serverAddr, server) (clientAddr, client) = do
   let runServer NetworkAPI{..} = do
@@ -89,17 +90,15 @@ pingPong (serverAddr, server) (clientAddr, client) = do
   return ()
 
 -- | Ping pong test parametrized by message size.
-sizedPingPong :: Show addr => Int
+sizedPingPong :: Int
          -> Int
-         -> (addr, NetworkAPI addr)
-         -> (addr, NetworkAPI addr)
+         -> (NetAddr, NetworkAPI)
+         -> (NetAddr, NetworkAPI)
          -> IO ()
 sizedPingPong startPower endPower (serverAddr, server) (clientAddr, client) = do
   let powers = [startPower..endPower]
       skipNothings lbl recv conn = do
-        dumpStrLn $ "at skipNothings for "++show lbl
         mbMsg <- recv conn
-        dumpStrLn $ "skip nothings result "++show (fmap LBS.length mbMsg)
         case mbMsg of
           Just msg -> return msg
           Nothing -> skipNothings lbl recv conn
@@ -111,17 +110,13 @@ sizedPingPong startPower endPower (serverAddr, server) (clientAddr, client) = do
               send conn ("PONG_" <> bs)
       runClient NetworkAPI{..} = do
         threadDelay 10e3
-        dumpStrLn $ "sending from "++show clientAddr
         bracket (connect serverAddr) close $ \conn -> do
           forM_ powers $ \power -> do
             let messageSize = 2 ^ power
                 block = fromString [ toEnum $ fromEnum ' ' + mod i 64 | i <- [1..messageSize]]
                 msg = "PING" <> block
             send conn msg
-            dumpStrLn $ "sent "++show (LBS.length msg)
             bs <- skipNothings "client" recv conn
-            dumpStrLn $ "sent "++show (LBS.length msg)++", received "++show (LBS.length bs)
             assertEqual ("Ping-pong power " ++ show power) ("PONG_" <> msg) bs
-  dumpStrLn $ "client address "++show (clientAddr)
   ((),()) <- concurrently (runServer server) (runClient client)
   return ()

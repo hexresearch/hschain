@@ -24,5 +24,5 @@ realNetworkStub serviceName = NetworkAPI
   }
   where
     setPort Nothing a = a
-    setPort (Just port) (NetAddrV4 ha _) = NetAddrV4 ha port
-    setPort (Just port) (NetAddrV6 ha _) = NetAddrV6 ha port
+    setPort (Just port) (NetAddrV4 ha _) = NetAddrV4 ha $ fromIntegral port
+    setPort (Just port) (NetAddrV6 ha _) = NetAddrV6 ha $ fromIntegral port

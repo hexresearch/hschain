@@ -23,6 +23,7 @@ import Test.Tasty.HUnit
 import Thundermint.Blockchain.Internal.Engine.Types
 import Thundermint.Control
 import Thundermint.Debug.Trace
+import Thundermint.Mock.Coin
 import Thundermint.Mock.Types
 import Thundermint.Utils
 
@@ -80,7 +81,7 @@ testPeerRegistryMustBeFilled = do
 
 mkExpectedRegistry :: [Int] -> Set TraceEvents
 mkExpectedRegistry ids =
-    Set.fromList [TePeerRegistryChanged $ Set.fromList $ map (\nid -> show (TestAddr nid, testNetworkName)) ids]
+    Set.fromList [TePeerRegistryChanged $ Set.fromList $ map (\nid -> show (intToNetAddr nid, testNetworkName)) ids]
 
 hasRegistryInEvent :: [Int] -> IORef (Set TraceEvents) -> IO Bool
 hasRegistryInEvent ids events = Set.isSubsetOf (mkExpectedRegistry ids) <$> readIORef events
