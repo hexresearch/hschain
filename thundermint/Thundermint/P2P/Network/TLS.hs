@@ -1,5 +1,6 @@
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE RecordWildCards #-}
 -- |
 -- Abstract API for network which support
 module Thundermint.P2P.Network.TLS (
@@ -11,6 +12,7 @@ module Thundermint.P2P.Network.TLS (
  , headerSize
   ) where
 
+import Codec.Serialise
 import Control.Monad            (when)
 import Control.Monad.Catch      (bracketOnError, throwM, MonadMask)
 import Control.Monad.IO.Class   (MonadIO, liftIO)
@@ -150,10 +152,19 @@ silentBye ctx = do
           -> return ()
         _ -> E.throwIO e
 
+setProperPeerInfo :: MonadIO m => P2PConnection -> m P2PConnection
+setProperPeerInfo conn@P2PConnection{..} = do
+    encodedPeerInfo <- recv
+    case encodedPeerInfo of
+      Nothing -> fail "connection dropped before receiving peer info"
+      Just bs -> case deserialiseOrFail bs of
+        Left err -> fail ("unable to deserealize peer info: " ++ show err)
+        Right peerInfo -> return $ conn { connectedPeer = peerInfo }
+
 applyConn :: MonadIO m => TLS.Context -> m P2PConnection
 applyConn context = do
     ref <- liftIO $ I.newIORef ""
-    return $ P2PConnection (tlsSend context) (tlsRecv context ref) (liftIO $ tlsClose context)
+    setProperPeerInfo $ P2PConnection (tlsSend context) (tlsRecv context ref) (liftIO $ tlsClose context) (PeerInfo 0 0 0)
 
         where
           tlsClose ctx = (silentBye ctx `E.catch` \(_ :: E.IOException) -> pure ())

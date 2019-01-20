@@ -26,7 +26,6 @@ import Control.Exception        (Exception)
 import Control.Monad.Catch      (MonadMask, MonadThrow)
 import Control.Monad.IO.Class   (MonadIO)
 import qualified Data.Aeson as JSON
-import Data.Bits
 import Data.ByteString.Internal (ByteString(..))
 import qualified Data.List as List
 import Data.Map                 (Map)
@@ -47,13 +46,14 @@ import qualified Thundermint.Utils.Parser as Parse
 type PeerId = Word64
 
 
-data PeerInfo addr = PeerInfo
-    { piPeerId   :: !PeerId
-    , piPeerPort :: !Word32
+data PeerInfo = PeerInfo
+    { piPeerId        :: !PeerId -- ^An ID to identify the machine
+    , piPeerPort      :: !Word16 -- ^Original listening port of the machine of the peer.
+    , piPeerSchemeVer :: !Word16 -- ^The scheme encoding version. It is not possible tp decode values safely between two different versions.
     } deriving (Show, Generic)
 
 
-instance Serialise (PeerInfo addr)
+instance Serialise PeerInfo
 
 
 ----------------------------------------------------------------
@@ -127,6 +127,7 @@ data P2PConnection = P2PConnection
     -- ^ Receive data
   , close :: !(forall m. (MonadIO m) => m ())
     -- ^ Close socket
+  , connectedPeer :: !PeerInfo
   }
 
 type HeaderSize = Int
