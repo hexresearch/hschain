@@ -36,17 +36,17 @@ tests =
                     [ testCase "ping-pong" $ mockNetPair >>= uncurry pingPong
                     , testCase "delayed write" $ mockNetPair >>= uncurry delayedWrite
                     ]
-                  , -}testGroup "real"
+                  , testGroup "real"
                     [ testGroup "IPv4"
                          [ testCase "ping-pong" $ withRetry pingPong "127.0.0.1"
                          --, testCase "delayed write" $ withRetry delayedWrite "127.0.0.1"
                           ]
-                    {-, testGroup "IPv6"
+                    2, testGroup "IPv6"
                           [ testCase "ping-pong" $ withRetry pingPong "::1"
                           , testCase "delayed write" $ withRetry delayedWrite "::1"
-                          ]-}
+                          ]
                     ]
-                  {-, testGroup "real-udp"
+                  ,-} testGroup "real-udp"
                     [ testGroup group $
                          [ testCase "ping-pong" $ withRetry' (Just Nothing) pingPong address
                          , testCase "delayed write" $ withRetry' (Just Nothing) delayedWrite address
@@ -54,7 +54,7 @@ tests =
                          ]
                     | (group, address, v6) <- [("IPv4", "127.0.0.1", 0)]--, ("IPv6", "::1", 1)]
                     ]
-                  , testGroup "local addresses detection"
+                  {-, testGroup "local addresses detection"
                     [ testCase "all locals must be local" $ getLocalAddresses >>= (fmap and . mapM isLocalAddress) >>= (@? "Must be local")
                     , testCase "loopback is local" $ (and <$> mapM isLocalAddress [loopbackIpv4, loopbackIpv6]) >>= (@? "Must be local")
                     -- TODO: Randomly generate addresses and check it is not isLocalAddress

@@ -95,9 +95,7 @@ realNetwork ourPeerInfo serviceName = (realNetworkStub serviceName)
                $ timeout tenSec
                $ Net.connect sock $ netAddrToSockAddr addr
         liftIO $ sendBS sock $ CBOR.serialise ourPeerInfo
-        liftIO $ putStrLn $ "receiving peer info in connect: " ++show addr
         mbOtherPeerInfo <- liftIO $ recvBS sock
-        liftIO $ putStrLn $ "received peer info in connect: " ++show addr
         case fmap CBOR.deserialiseOrFail mbOtherPeerInfo of
           Nothing -> fail $ "connection dropped while receiving peer info from " ++ show addr
           Just (Left err) -> fail $ "failure to decode PeerInfo from " ++ show addr
@@ -107,9 +105,7 @@ realNetwork ourPeerInfo serviceName = (realNetworkStub serviceName)
   accept sock = do
     (conn, addr) <- liftIO $ Net.accept sock
     liftIO $ sendBS conn $ CBOR.serialise ourPeerInfo
-    liftIO $ putStrLn $ "receiving peer info in accept: "++show addr ++ " ("++serviceName++")"
     mbOtherPeerInfo <- liftIO $ recvBS conn
-    liftIO $ putStrLn $ "received peer info in accept: "++show addr ++ " ("++serviceName++")"
     case fmap CBOR.deserialiseOrFail mbOtherPeerInfo of
       Nothing -> fail $ "connection dropped while receiving peer info from " ++ show addr
       Just (Left err) -> fail $ "failure to decode PeerInfo from " ++ show addr
@@ -188,24 +184,35 @@ realNetworkUdp ourPeerInfo serviceName = do
       forever $ do
         (bs, addr') <- NetBS.recvFrom sock (fromIntegral chunkSize * 2)
         let addr = sockAddrToNetAddr $ Ip.normalizeIpAddr addr'
-            peerInfoPayloadTupleDecoded = CBOR.deserialiseOrFail $ LBS.fromStrict bs
+            lazyByteString = LBS.fromStrict bs
+            peerInfoPayloadTupleDecoded = CBOR.deserialiseOrFail lazyByteString
         case peerInfoPayloadTupleDecoded of
           Left err -> putStrLn $ "error decoding peerinfo+payload tuple from "++show addr
           Right (otherPeerInfo, payload) -> atomically $ do
-            (recvChan, frontVar, receivedFrontsVar, isinConnect) <- findOrCreateRecvTuple tChans addr False
-            writeTChan acceptChan
+            (found, (recvChan, frontVar, receivedFrontsVar)) <- findOrCreateRecvTuple tChans addr
+            when (not found) $ writeTChan acceptChan
               (applyConn otherPeerInfo sock addr frontVar receivedFrontsVar recvChan tChans, addr)
-            writeTChan recvChan (payload)
+            writeTChan recvChan (otherPeerInfo, payload)
 
   return $ NetworkAPI
     { listenOn = do
         return (liftIO $ killThread tid, liftIO.atomically $ readTChan acceptChan)
       --
     , connect  = \addr -> liftIO $ do
-         connection <- atomically $ (\(peerChan, frontVar, receivedFrontsVar, isFromConnect) ->
-               applyConn (error "peerInfo in connect") sock addr frontVar receivedFrontsVar peerChan tChans)
-           <$> findOrCreateRecvTuple tChans addr True
-         return connection
+         (peerChan, connection) <- atomically $ (\(_, (peerChan, frontVar, receivedFrontsVar)) ->
+               (peerChan, applyConn (error "peerInfo in connect") sock addr frontVar receivedFrontsVar peerChan tChans))
+           <$> findOrCreateRecvTuple tChans addr
+         let waitLoop 0 _ _ = fail "timeout waiting for 'UDP connection' (actually, peerinfo exchange)."
+             waitLoop n partialConnection@P2PConnection{..} receiveChan = do
+               send $ LBS.empty
+               maybeInfoPayload <- timeout 500000 $ atomically $ readTChan receiveChan
+               case maybeInfoPayload of
+                 Nothing -> waitLoop (n-1 :: Int) partialConnection receiveChan
+                 Just pkt@(peerInfo, payload) -> do
+                   when (not $ LBS.null payload) $ atomically $ writeTChan receiveChan pkt
+                   return peerInfo
+         otherPeerInfo <- waitLoop 20 connection peerChan
+         return $ connection { connectedPeer = otherPeerInfo }
     , filterOutOwnAddresses = filterOutOwnAddresses (realNetworkStub serviceName)
     , normalizeNodeAddress = normalizeNodeAddress (realNetworkStub serviceName)
     , listenPort = listenPort (realNetworkStub serviceName)
@@ -217,32 +224,33 @@ realNetworkUdp ourPeerInfo serviceName = do
                        (Net.addrProtocol   ai)
     Net.setSocketOption sock Net.ReuseAddr 1
     return sock
-  findOrCreateRecvTuple tChans addr fromConnect = do
+  findOrCreateRecvTuple tChans addr = do
     chans <- readTVar tChans
     case Map.lookup (addr :: NetAddr) chans of
-      Just chanFrontVar -> return chanFrontVar
+      Just chanFrontVar -> return (True, chanFrontVar)
       Nothing   -> do
         recvChan <- newTChan
         frontVar <- newTVar (0 :: Word8)
         receivedFrontsVar <- newTVar Map.empty
-        let fullInfo = (recvChan, frontVar, receivedFrontsVar, fromConnect) 
+        let fullInfo = (recvChan, frontVar, receivedFrontsVar) 
         writeTVar tChans $ Map.insert addr fullInfo chans
-        return fullInfo
-  applyConn peerInfo sock addr frontVar receivedFrontsVar peerChan tChans = P2PConnection
+        return (False, fullInfo)
+  applyConn otherPeerInfo sock addr frontVar receivedFrontsVar peerChan tChans = P2PConnection
     (\s -> liftIO.void $ sendSplitted frontVar sock addr s)
     (liftIO $ receiveAction receivedFrontsVar peerChan)
     (close addr tChans)
-    peerInfo
+    otherPeerInfo
   receiveAction frontsVar peerChan = do
     (message, logMsg) <- atomically $ do
-      serializedTriple <- readTChan peerChan
-      case CBOR.deserialiseOrFail serializedTriple of
-        Right (front, ofs, chunk) -> do
+      (_peerInfo, serializedTriple) <- readTChan peerChan
+      case (LBS.null serializedTriple, CBOR.deserialiseOrFail serializedTriple) of
+        (True, _) -> return (LBS.empty, "")
+        (_, Right (front, ofs, chunk)) -> do
           fronts <- readTVar frontsVar
           let (newFronts, message) = updateMessages front ofs chunk fronts
           writeTVar frontsVar newFronts
           return (message, "")
-        Left err -> return (LBS.empty, "unable to deserialize packet: " ++ show err)
+        (_, Left err) -> return (LBS.empty, "unable to deserialize packet: " ++ show err)
     if null logMsg
       then return $ emptyBs2Maybe message
       else do
@@ -300,7 +308,8 @@ realNetworkUdp ourPeerInfo serviceName = do
       writeTVar frontVar $ i + 1
       return (i :: Word8)
     forM_ (zip sleeps splitChunks) $ \(sleep, (ofs, chunk)) -> do
-      flip (NetBS.sendAllTo sock) (netAddrToSockAddr addr) $ LBS.toStrict $ CBOR.serialise (front :: Word8, ofs :: Word32, chunk)
+      flip (NetBS.sendAllTo sock) (netAddrToSockAddr addr) $ LBS.toStrict $
+        CBOR.serialise (ourPeerInfo, CBOR.serialise (front :: Word8, ofs :: Word32, chunk))
       when sleep $ threadDelay 100
     where
       splitChunks = splitToChunks msg
