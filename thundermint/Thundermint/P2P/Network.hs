@@ -58,8 +58,8 @@ import qualified Thundermint.P2P.Network.IpAddresses as Ip
 import Debug.Trace
 
 -- | API implementation for real tcp network
-realNetwork :: Net.ServiceName -> NetworkAPI
-realNetwork serviceName = (realNetworkStub serviceName)
+realNetwork :: PeerInfo -> Net.ServiceName -> NetworkAPI
+realNetwork ourPeerInfo serviceName = (realNetworkStub serviceName)
   { listenOn = do
       let hints = Net.defaultHints
             { Net.addrFlags      = [Net.AI_PASSIVE]
@@ -93,13 +93,23 @@ realNetwork serviceName = (realNetworkStub serviceName)
         liftIO $ throwNothingM ConnectionTimedOut
                $ timeout tenSec
                $ Net.connect sock $ netAddrToSockAddr addr
-        return $ applyConn sock
+        liftIO $ sendBS sock $ CBOR.serialise ourPeerInfo
+        mbOtherPeerInfo <- liftIO $ recvBS sock
+        case fmap CBOR.deserialiseOrFail mbOtherPeerInfo of
+          Nothing -> fail $ "connection dropped while receiving peer info from " ++ show addr
+          Just (Left err) -> fail $ "failure to decode PeerInfo from " ++ show addr
+          Just (Right otherPI) -> return $ applyConn otherPI sock
   }
  where
   accept sock = do
     (conn, addr) <- liftIO $ Net.accept sock
-    return (applyConn conn, sockAddrToNetAddr addr)
-  applyConn conn = P2PConnection (liftIO . sendBS conn) (liftIO $ recvBS conn) (liftIO $ Net.close conn)
+    liftIO $ sendBS conn $ CBOR.serialise ourPeerInfo
+    mbOtherPeerInfo <- liftIO $ recvBS sock
+    case fmap CBOR.deserialiseOrFail mbOtherPeerInfo of
+      Nothing -> fail $ "connection dropped while receiving peer info from " ++ show addr
+      Just (Left err) -> fail $ "failure to decode PeerInfo from " ++ show addr
+      Just (Right otherPI) -> return (applyConn otherPI sock, sockAddrToNetAddr addr)
+  applyConn pi conn = P2PConnection (liftIO . sendBS conn) (liftIO $ recvBS conn) (liftIO $ Net.close conn) pi
   sendBS sock =  \s -> NetLBS.sendAll sock (BB.toLazyByteString $ toFrame s)
                  where
                    toFrame msg = let len =  fromIntegral (LBS.length msg) :: Word32
