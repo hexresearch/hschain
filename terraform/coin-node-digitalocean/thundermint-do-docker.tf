@@ -24,6 +24,10 @@ provider "digitalocean" {
   token = "${var.dotoken}"
 }
 
+variable "cluster-id" {
+  default = "coin"
+}
+
 variable "private_keys" {
   default = {
     "0" = "2K7bFuJXxKf5LqogvVRQjms2W26ZrjpvUjo5LdvPFa5Y"
@@ -40,11 +44,22 @@ variable "regions" {
 resource "digitalocean_droplet" "node" {
   count    = "${length(var.private_keys)}"
   image    = "docker-18-04"
-  size     = "1gb"
+  size     = "s-3vcpu-1gb"
 #  region   = "${element(var.regions, count.index)}"
   region   = "fra1"
-  name     = "thundermint${count.index+1}"
+  name     = "node${count.index+1}"
   ssh_keys = ["22607679"]
+  private_networking = true
+}
+
+data "template_file" "inventory" {
+  count = "${length(var.private_keys)}"
+  template = "$${inventory_hostname} ansible_host=$${ansible_host} private_host=$${private_host}"
+  vars {
+    inventory_hostname = "${var.cluster-id}-node${count.index + 1}"
+    ansible_host = "${element(digitalocean_droplet.node.*.ipv4_address,count.index)}"
+    private_host = "${element(digitalocean_droplet.node.*.ipv4_address_private,count.index)}"
+  }
 }
 
 resource "null_resource" "deploy" {
@@ -63,9 +78,20 @@ resource "null_resource" "deploy" {
     inline = [
       "systemctl stop ufw",
       "systemctl disable ufw",
-      "docker login -u ${var.registry_user} -p ${var.registry_pass} ${var.registry_url}",
-      "docker run --name thundermint${count.index+1} -d --net host -e THUNDERMINT_KEYS='${jsonencode(values(var.private_keys))}' -e THUNDERMINT_NODE_SPEC='{ \"nspecPrivKey\":\"${var.private_keys[count.index]}\", \"nspecLogFile\" : [{ \"type\" : { \"tag\" : \"ScribeES\", \"index\" : \"thundermint\" }, \"path\" : \"https://${var.elastic_user}:${var.elastic_pass}@${var.elastic_url}\", \"severity\" : \"Info\", \"verbosity\" : \"V2\" }], \"nspecWalletKeys\"  : [${count.index*4},4]}' registry.hxr.team/thundermint --max-h 10000 --delay 10 --deposit 1000 --keys 16 --peers '${jsonencode(digitalocean_droplet.node.*.ipv4_address)}' --node-n ${count.index+1} --total-nodes ${length(var.private_keys)}"
+      "docker login -v -u ${var.registry_user} -p ${var.registry_pass} ${var.registry_url}",
+      "docker run --name node${count.index+1} -d --net host -e THUNDERMINT_KEYS='${jsonencode(values(var.private_keys))}' -e THUNDERMINT_NODE_SPEC='{ \"nspecPrivKey\":\"${var.private_keys[count.index]}\", \"nspecLogFile\" : [{ \"type\" : { \"tag\" : \"ScribeES\", \"index\" : \"thundermint\" }, \"path\" : \"https://${var.elastic_user}:${var.elastic_pass}@${var.elastic_url}\", \"severity\" : \"Info\", \"verbosity\" : \"V2\" }], \"nspecWalletKeys\"  : [${count.index*4},4]}' registry.hxr.team/thundermint --max-h 10000 --delay 10 --deposit 1000 --keys 16 --peers '${jsonencode(digitalocean_droplet.node.*.ipv4_address)}' --node-n ${count.index+1} --total-nodes ${length(var.private_keys)}"
     ]
+  }
+}
 
+resource "null_resource" "node" {
+  triggers {
+    cluster_instance_validator_ids = "${join(",", digitalocean_droplet.node.*.id)}"
+  }
+  provisioner "local-exec" {
+    command = "echo -e '[${var.cluster-id}:children]\n${var.cluster-id}-node' > inventory"
+  }
+  provisioner "local-exec" {
+    command = "echo -e '[${var.cluster-id}-node]\n${join("\n",data.template_file.inventory.*.rendered)}' >> inventory"
   }
 }
