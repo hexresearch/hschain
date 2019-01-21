@@ -56,6 +56,7 @@ import Thundermint.P2P.Network.RealNetworkStub
 import Thundermint.P2P.Types
 import qualified Thundermint.P2P.Network.IpAddresses as Ip
 
+import Text.Printf
 import Debug.Trace
 
 -- | API implementation for real tcp network
@@ -186,15 +187,19 @@ realNetworkUdp ourPeerInfo serviceName = do
         let addr = sockAddrToNetAddr $ Ip.normalizeIpAddr addr'
             lazyByteString = LBS.fromStrict bs
             peerInfoPayloadTupleDecoded = CBOR.deserialiseOrFail lazyByteString
+        putStrLn $ "received packet from "++show addr++": "++concatMap (printf " %02x") (LBS.unpack $ LBS.fromStrict bs)
         case peerInfoPayloadTupleDecoded of
-          Left err -> putStrLn $ "error decoding peerinfo+payload tuple from "++show addr
-          Right (otherPeerInfo, payload) -> do
+          Left err -> putStrLn $ "error decoding peerinfo+payload tuple from "++show addr++": "++show err
+          Right (otherPeerInfo, (front, ofs, payload)) -> do
+            putStrLn $ "packet from "++show addr++" decoded into "++show (otherPeerInfo, payload)
             atomically $ do
               (found, (recvChan, frontVar, receivedFrontsVar)) <- findOrCreateRecvTuple tChans addr
               when (not found) $ writeTChan acceptChan
                 (applyConn otherPeerInfo sock addr frontVar receivedFrontsVar recvChan tChans, addr)
-              writeTChan recvChan (otherPeerInfo, payload)
-            when (LBS.null payload) $ flip (NetBS.sendAllTo sock) addr' $ LBS.toStrict $ CBOR.serialise (ourPeerInfo, LBS.empty)
+              writeTChan recvChan (otherPeerInfo, (front, ofs, payload))
+            when (LBS.null payload) $ do
+              putStrLn $ "in main UDP receive loop: "++show addr++" sent empty payload. returning the peerinfo."
+              flip (NetBS.sendAllTo sock) addr' $ LBS.toStrict $ CBOR.serialise (ourPeerInfo, (255 :: Word8, 0 :: Word32, LBS.empty))
 
   return $ NetworkAPI
     { listenOn = do
@@ -206,11 +211,12 @@ realNetworkUdp ourPeerInfo serviceName = do
            <$> findOrCreateRecvTuple tChans addr
          let waitLoop 0 _ _ = fail "timeout waiting for 'UDP connection' (actually, peerinfo exchange)."
              waitLoop n partialConnection@P2PConnection{..} receiveChan = do
+               putStrLn $ ""
                send $ LBS.empty
                maybeInfoPayload <- timeout 500000 $ atomically $ readTChan receiveChan
                case maybeInfoPayload of
                  Nothing -> waitLoop (n-1 :: Int) partialConnection receiveChan
-                 Just pkt@(peerInfo, payload) -> do
+                 Just pkt@(peerInfo, (_, _, payload)) -> do
                    when (not $ LBS.null payload) $ atomically $ writeTChan receiveChan pkt
                    return peerInfo
          otherPeerInfo <- waitLoop 20 connection peerChan
@@ -243,21 +249,13 @@ realNetworkUdp ourPeerInfo serviceName = do
     (close addr tChans)
     otherPeerInfo
   receiveAction frontsVar peerChan = do
-    (message, logMsg) <- atomically $ do
-      (_peerInfo, serializedTriple) <- readTChan peerChan
-      case (LBS.null serializedTriple, CBOR.deserialiseOrFail serializedTriple) of
-        (True, _) -> return (LBS.empty, "")
-        (_, Right (front, ofs, chunk)) -> do
-          fronts <- readTVar frontsVar
-          let (newFronts, message) = updateMessages front ofs chunk fronts
-          writeTVar frontsVar newFronts
-          return (message, "")
-        (_, Left err) -> return (LBS.empty, "unable to deserialize packet: " ++ show err)
-    if null logMsg
-      then return $ emptyBs2Maybe message
-      else do
-        putStrLn $ "error in assembling packet: " ++ logMsg
-        return Nothing
+    message <- atomically $ do
+      (_peerInfo, (front, ofs, chunk)) <- readTChan peerChan
+      fronts <- readTVar frontsVar
+      let (newFronts, message) = updateMessages front ofs chunk fronts
+      writeTVar frontsVar newFronts
+      return message
+    return $ emptyBs2Maybe message
   updateMessages :: Word8 -> Word32 -> LBS.ByteString -> Map.Map Word8 [(Word32, LBS.ByteString)]
                  -> (Map.Map Word8 [(Word32, LBS.ByteString)], LBS.ByteString)
   updateMessages front ofs chunk fronts = traceEvent ("ZZZZ: list of partials' lengths: "++show (map (\(o,c) -> (o,lbsLength c)) listOfPartials))
@@ -311,7 +309,7 @@ realNetworkUdp ourPeerInfo serviceName = do
       return (i :: Word8)
     forM_ (zip sleeps splitChunks) $ \(sleep, (ofs, chunk)) -> do
       flip (NetBS.sendAllTo sock) (netAddrToSockAddr addr) $ LBS.toStrict $
-        CBOR.serialise (ourPeerInfo, CBOR.serialise (front :: Word8, ofs :: Word32, chunk))
+        CBOR.serialise (ourPeerInfo, (front :: Word8, ofs :: Word32, chunk))
       when sleep $ threadDelay 100
     where
       splitChunks = splitToChunks msg
