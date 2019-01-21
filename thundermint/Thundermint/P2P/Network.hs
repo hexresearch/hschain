@@ -24,6 +24,7 @@ module Thundermint.P2P.Network (
   , Ip.getLocalAddress
   , Ip.isLocalAddress
   , Ip.getLocalAddresses
+  , PeerInfo(..)
   ) where
 
 import qualified Codec.Serialise as CBOR
@@ -94,7 +95,9 @@ realNetwork ourPeerInfo serviceName = (realNetworkStub serviceName)
                $ timeout tenSec
                $ Net.connect sock $ netAddrToSockAddr addr
         liftIO $ sendBS sock $ CBOR.serialise ourPeerInfo
+        liftIO $ putStrLn $ "receiving peer info in connect: " ++show addr
         mbOtherPeerInfo <- liftIO $ recvBS sock
+        liftIO $ putStrLn $ "received peer info in connect: " ++show addr
         case fmap CBOR.deserialiseOrFail mbOtherPeerInfo of
           Nothing -> fail $ "connection dropped while receiving peer info from " ++ show addr
           Just (Left err) -> fail $ "failure to decode PeerInfo from " ++ show addr
@@ -104,11 +107,13 @@ realNetwork ourPeerInfo serviceName = (realNetworkStub serviceName)
   accept sock = do
     (conn, addr) <- liftIO $ Net.accept sock
     liftIO $ sendBS conn $ CBOR.serialise ourPeerInfo
-    mbOtherPeerInfo <- liftIO $ recvBS sock
+    liftIO $ putStrLn $ "receiving peer info in accept: "++show addr ++ " ("++serviceName++")"
+    mbOtherPeerInfo <- liftIO $ recvBS conn
+    liftIO $ putStrLn $ "received peer info in accept: "++show addr ++ " ("++serviceName++")"
     case fmap CBOR.deserialiseOrFail mbOtherPeerInfo of
       Nothing -> fail $ "connection dropped while receiving peer info from " ++ show addr
       Just (Left err) -> fail $ "failure to decode PeerInfo from " ++ show addr
-      Just (Right otherPI) -> return (applyConn otherPI sock, sockAddrToNetAddr addr)
+      Just (Right otherPI) -> return (applyConn otherPI conn, sockAddrToNetAddr addr)
   applyConn pi conn = P2PConnection (liftIO . sendBS conn) (liftIO $ recvBS conn) (liftIO $ Net.close conn) pi
   sendBS sock =  \s -> NetLBS.sendAll sock (BB.toLazyByteString $ toFrame s)
                  where
@@ -158,8 +163,8 @@ emptyBs2Maybe bs
   | otherwise  = Just bs
 
 -- | API implementation example for real udp network
-realNetworkUdp :: Net.ServiceName -> IO NetworkAPI
-realNetworkUdp serviceName = do
+realNetworkUdp :: PeerInfo -> Net.ServiceName -> IO NetworkAPI
+realNetworkUdp ourPeerInfo serviceName = do
   -- FIXME: prolly HostName fits better than SockAddr
   tChans <- newTVarIO Map.empty
   acceptChan <- newTChanIO :: IO (TChan (P2PConnection, NetAddr))
@@ -183,20 +188,24 @@ realNetworkUdp serviceName = do
       forever $ do
         (bs, addr') <- NetBS.recvFrom sock (fromIntegral chunkSize * 2)
         let addr = sockAddrToNetAddr $ Ip.normalizeIpAddr addr'
-        atomically $ do
-          (recvChan, frontVar, receivedFrontsVar) <- findOrCreateRecvTuple tChans addr
-          writeTChan acceptChan
-            (applyConn sock addr frontVar receivedFrontsVar recvChan tChans, addr)
-          writeTChan recvChan $ LBS.fromStrict bs
+            peerInfoPayloadTupleDecoded = CBOR.deserialiseOrFail $ LBS.fromStrict bs
+        case peerInfoPayloadTupleDecoded of
+          Left err -> putStrLn $ "error decoding peerinfo+payload tuple from "++show addr
+          Right (otherPeerInfo, payload) -> atomically $ do
+            (recvChan, frontVar, receivedFrontsVar, isinConnect) <- findOrCreateRecvTuple tChans addr False
+            writeTChan acceptChan
+              (applyConn otherPeerInfo sock addr frontVar receivedFrontsVar recvChan tChans, addr)
+            writeTChan recvChan (payload)
 
   return $ NetworkAPI
     { listenOn = do
         return (liftIO $ killThread tid, liftIO.atomically $ readTChan acceptChan)
       --
-    , connect  = \addr ->
-         liftIO . atomically $ (\(peerChan, frontVar, receivedFrontsVar) ->
-               applyConn sock addr frontVar receivedFrontsVar peerChan tChans)
-           <$> findOrCreateRecvTuple tChans addr
+    , connect  = \addr -> liftIO $ do
+         connection <- atomically $ (\(peerChan, frontVar, receivedFrontsVar, isFromConnect) ->
+               applyConn (error "peerInfo in connect") sock addr frontVar receivedFrontsVar peerChan tChans)
+           <$> findOrCreateRecvTuple tChans addr True
+         return connection
     , filterOutOwnAddresses = filterOutOwnAddresses (realNetworkStub serviceName)
     , normalizeNodeAddress = normalizeNodeAddress (realNetworkStub serviceName)
     , listenPort = listenPort (realNetworkStub serviceName)
@@ -208,7 +217,7 @@ realNetworkUdp serviceName = do
                        (Net.addrProtocol   ai)
     Net.setSocketOption sock Net.ReuseAddr 1
     return sock
-  findOrCreateRecvTuple tChans addr = do
+  findOrCreateRecvTuple tChans addr fromConnect = do
     chans <- readTVar tChans
     case Map.lookup (addr :: NetAddr) chans of
       Just chanFrontVar -> return chanFrontVar
@@ -216,12 +225,14 @@ realNetworkUdp serviceName = do
         recvChan <- newTChan
         frontVar <- newTVar (0 :: Word8)
         receivedFrontsVar <- newTVar Map.empty
-        writeTVar tChans $ Map.insert addr (recvChan, frontVar, receivedFrontsVar) chans
-        return (recvChan, frontVar, receivedFrontsVar)
-  applyConn sock addr frontVar receivedFrontsVar peerChan tChans = P2PConnection
+        let fullInfo = (recvChan, frontVar, receivedFrontsVar, fromConnect) 
+        writeTVar tChans $ Map.insert addr fullInfo chans
+        return fullInfo
+  applyConn peerInfo sock addr frontVar receivedFrontsVar peerChan tChans = P2PConnection
     (\s -> liftIO.void $ sendSplitted frontVar sock addr s)
     (liftIO $ receiveAction receivedFrontsVar peerChan)
     (close addr tChans)
+    peerInfo
   receiveAction frontsVar peerChan = do
     (message, logMsg) <- atomically $ do
       serializedTriple <- readTChan peerChan
@@ -383,7 +394,7 @@ createMockNode MockNet{..} addr = NetworkAPI
   , listenPort = 0
   }
  where
-  applyConn conn = P2PConnection (liftIO . sendBS conn) (liftIO $ recvBS conn) (liftIO $ close conn)
+  applyConn conn = P2PConnection (liftIO . sendBS conn) (liftIO $ recvBS conn) (liftIO $ close conn) (PeerInfo 0 0 0)
   sendBS MockSocket{..} bs = atomically $
       readTVar msckActive >>= \case
         False -> error "MockNet: Cannot write to closed socket"

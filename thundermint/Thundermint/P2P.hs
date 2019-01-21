@@ -238,19 +238,6 @@ generatePeerId :: (MonadIO m) => m PeerId
 generatePeerId = liftIO randomIO
 
 
-bimap :: (a -> b) -> (c -> d) -> Either a c -> Either b d
-bimap f _ (Left a) = Left (f a)
-bimap _ g (Right b) = Right (g b)
-
--- | Exchange peer ids with other connection
---
-recvPeerInfo :: (MonadIO m) => P2PConnection -> m (Either String (PeerInfo addr))
-recvPeerInfo conn =
-    recv conn >>= \case
-        Nothing     -> return $ Left "Socket closed on handshake"
-        Just spinfo -> return $ bimap show id $ deserialiseOrFail spinfo
-
-
 data ConnectMode = CmAccept !PeerId
                  | CmConnect
                  deriving Show
@@ -282,25 +269,22 @@ acceptLoop cfg peerAddr NetworkAPI{..} peerCh mempool peerRegistry = do
       mask $ \restore -> do
         (conn, addr') <- accept
         void $ flip forkFinally (const $ close conn) $ restore $ do
+          let peerInfo = connectedPeer conn
           logger InfoS "Accept connection" ("addr" `sl` show addr')
-          recvPeerInfo conn >>= \case
-            Left err -> do
-              logger ErrorS "Handshake error" ("err" `sl` show err)
-            Right peerInfo -> do
-              let otherPeerId   = piPeerId   peerInfo
-                  otherPeerPort = piPeerPort peerInfo
-                  addr = normalizeNodeAddress addr' (Just $ fromIntegral otherPeerPort)
-              trace $ TeNodeOtherTryConnect (show addr)
-              logger DebugS "PreAccepted connection"
+          let otherPeerId   = piPeerId   peerInfo
+              otherPeerPort = piPeerPort peerInfo
+              addr = normalizeNodeAddress addr' (Just $ fromIntegral otherPeerPort)
+          trace $ TeNodeOtherTryConnect (show addr)
+          logger DebugS "PreAccepted connection"
                 (  sl "addr"     (show addr )
                 <> sl "addr0"    (show addr')
                 <> sl "peerId"   otherPeerId
                 <> sl "peerPort" otherPeerPort
                 )
-              if otherPeerId == prPeerId peerRegistry then do
-                logger DebugS "Self connection detected. Close connection" ()
-              else
-                withPeer peerRegistry addr (CmAccept otherPeerId) $ do
+          if otherPeerId == prPeerId peerRegistry then do
+            logger DebugS "Self connection detected. Close connection" ()
+          else
+            withPeer peerRegistry addr (CmAccept otherPeerId) $ do
                   logger InfoS "Accepted connection" ("addr" `sl` show addr)
                   trace $ TeNodeOtherConnected (show addr)
                   descendNamespace (T.pack (show addr))
@@ -329,8 +313,6 @@ connectPeerTo cfg peerAddr NetworkAPI{..} addr peerCh mempool peerRegistry =
       -- TODO : what first? "connection" or "withPeer" ?
       bracket (connect addr) (\c -> logClose >> close c) $ \conn -> do
         withPeer peerRegistry addr CmConnect $ do
-            send conn $ serialise $ PeerInfo { piPeerId = prPeerId peerRegistry
-                                             , piPeerPort = fromIntegral listenPort }
             logger InfoS "Successfully connected to" (sl "addr" (show addr))
             descendNamespace (T.pack (show addr))
               $ startPeer peerAddr addr peerCh conn peerRegistry mempool

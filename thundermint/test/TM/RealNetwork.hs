@@ -25,7 +25,12 @@ realNetPair udpPortSpec host = do
     let suffix = reverse $ take 4 $ (reverse $ show n) ++ repeat '0'
         port1 = concat ["3", suffix]
         port2 = concat ["4", suffix]
-        realNet = if not useUDP then return . realNetwork else realNetworkUdp
+        realNet p = if not useUDP
+          then return (realNetwork peerInfoForOurPort p)
+          else realNetworkUdp peerInfoForOurPort p
+          where
+            port = read p
+            peerInfoForOurPort = PeerInfo (fromIntegral port) port 0
         hints = Net.defaultHints  { Net.addrSocketType = if useUDP then Net.Datagram else Net.Stream }
     addr1:_ <- Net.getAddrInfo (Just hints) (Just host) (Just port1)
     addr2:_ <- Net.getAddrInfo (Just hints) (Just host) (Just port2)
