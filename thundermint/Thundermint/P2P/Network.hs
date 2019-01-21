@@ -187,18 +187,15 @@ realNetworkUdp ourPeerInfo serviceName = do
         let addr = sockAddrToNetAddr $ Ip.normalizeIpAddr addr'
             lazyByteString = LBS.fromStrict bs
             peerInfoPayloadTupleDecoded = CBOR.deserialiseOrFail lazyByteString
-        putStrLn $ "received packet from "++show addr++": "++concatMap (printf " %02x") (LBS.unpack $ LBS.fromStrict bs)
         case peerInfoPayloadTupleDecoded of
           Left err -> putStrLn $ "error decoding peerinfo+payload tuple from "++show addr++": "++show err
           Right (otherPeerInfo, (front, ofs, payload)) -> do
-            putStrLn $ "packet from "++show addr++" decoded into "++show (otherPeerInfo, payload)
             atomically $ do
               (found, (recvChan, frontVar, receivedFrontsVar)) <- findOrCreateRecvTuple tChans addr
               when (not found) $ writeTChan acceptChan
                 (applyConn otherPeerInfo sock addr frontVar receivedFrontsVar recvChan tChans, addr)
               writeTChan recvChan (otherPeerInfo, (front, ofs, payload))
             when (LBS.null payload) $ do
-              putStrLn $ "in main UDP receive loop: "++show addr++" sent empty payload. returning the peerinfo."
               flip (NetBS.sendAllTo sock) addr' $ LBS.toStrict $ CBOR.serialise (ourPeerInfo, (255 :: Word8, 0 :: Word32, LBS.empty))
 
   return $ NetworkAPI
@@ -211,7 +208,6 @@ realNetworkUdp ourPeerInfo serviceName = do
            <$> findOrCreateRecvTuple tChans addr
          let waitLoop 0 _ _ = fail "timeout waiting for 'UDP connection' (actually, peerinfo exchange)."
              waitLoop n partialConnection@P2PConnection{..} receiveChan = do
-               putStrLn $ ""
                send $ LBS.empty
                maybeInfoPayload <- timeout 500000 $ atomically $ readTChan receiveChan
                case maybeInfoPayload of
