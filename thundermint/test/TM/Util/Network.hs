@@ -24,6 +24,7 @@ import GHC.Generics       (Generic)
 
 import qualified Control.Concurrent.Async as Async
 import qualified Control.Exception        as E
+import qualified Data.ByteString.Lazy     as LBS
 import qualified Data.Map                 as Map
 import qualified Network.Socket           as Net
 
@@ -137,6 +138,16 @@ createTestNetworkWithConfig cfg desc = do
                 }
               logic
 
+-- |UDP may return Nothings for the message receive operation.
+skipNothings :: String -> (a -> IO (Maybe LBS.ByteString)) -> a -> IO LBS.ByteString
+skipNothings _lbl recv conn = do
+  mbMsg <- recv conn
+  case mbMsg of
+    Just msg -> return msg
+    Nothing -> skipNothings _lbl recv conn
+
+
+
 -- | Simple test to ensure that mock network works at all
 delayedWrite :: (NetAddr, NetworkAPI)
          -> (NetAddr, NetworkAPI)
@@ -145,9 +156,9 @@ delayedWrite (serverAddr, server) (_, client) = do
   let runServer NetworkAPI{..} =
         bracket listenOn fst $ \(_,accept) ->
           bracket accept (close . fst) $ \(conn,_) -> do
-            Just "A1" <- recv conn
-            Just "A2" <- recv conn
-            Just "A3" <- recv conn
+            "A1" <- skipNothings "A1" recv conn
+            "A2" <- skipNothings "A2" recv conn
+            "A3" <- skipNothings "A3" recv conn
             return ()
   let runClient NetworkAPI{..} = do
         threadDelay 10e3

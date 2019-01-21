@@ -188,11 +188,13 @@ realNetworkUdp ourPeerInfo serviceName = do
             peerInfoPayloadTupleDecoded = CBOR.deserialiseOrFail lazyByteString
         case peerInfoPayloadTupleDecoded of
           Left err -> putStrLn $ "error decoding peerinfo+payload tuple from "++show addr
-          Right (otherPeerInfo, payload) -> atomically $ do
-            (found, (recvChan, frontVar, receivedFrontsVar)) <- findOrCreateRecvTuple tChans addr
-            when (not found) $ writeTChan acceptChan
-              (applyConn otherPeerInfo sock addr frontVar receivedFrontsVar recvChan tChans, addr)
-            writeTChan recvChan (otherPeerInfo, payload)
+          Right (otherPeerInfo, payload) -> do
+            atomically $ do
+              (found, (recvChan, frontVar, receivedFrontsVar)) <- findOrCreateRecvTuple tChans addr
+              when (not found) $ writeTChan acceptChan
+                (applyConn otherPeerInfo sock addr frontVar receivedFrontsVar recvChan tChans, addr)
+              writeTChan recvChan (otherPeerInfo, payload)
+            when (LBS.null payload) $ flip (NetBS.sendAllTo sock) addr' $ LBS.toStrict $ CBOR.serialise (ourPeerInfo, LBS.empty)
 
   return $ NetworkAPI
     { listenOn = do
@@ -200,7 +202,7 @@ realNetworkUdp ourPeerInfo serviceName = do
       --
     , connect  = \addr -> liftIO $ do
          (peerChan, connection) <- atomically $ (\(_, (peerChan, frontVar, receivedFrontsVar)) ->
-               (peerChan, applyConn (error "peerInfo in connect") sock addr frontVar receivedFrontsVar peerChan tChans))
+               (peerChan, applyConn (PeerInfo 0 0 0) sock addr frontVar receivedFrontsVar peerChan tChans))
            <$> findOrCreateRecvTuple tChans addr
          let waitLoop 0 _ _ = fail "timeout waiting for 'UDP connection' (actually, peerinfo exchange)."
              waitLoop n partialConnection@P2PConnection{..} receiveChan = do

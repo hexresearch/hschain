@@ -69,7 +69,6 @@ loopbackIpv4 = Net.SockAddrInet  50000 0x100007f
 loopbackIpv6 = Net.SockAddrInet6 50000 0 (0,0,0,1) 0
 
 
-
 -- | Simple test to ensure that mock network works at all
 pingPong :: (NetAddr, NetworkAPI)
          -> (NetAddr, NetworkAPI)
@@ -79,7 +78,7 @@ pingPong (serverAddr, server) (clientAddr, client) = do
         bracket listenOn fst $ \(_,accept) ->
           bracket accept (close . fst) $ \(conn,_) -> do
             putStrLn $ "receiving ping on server side "++show serverAddr
-            Just bs <- recv conn
+            bs <- skipNothings "ping pong server" recv conn
             putStrLn $ "received ping on server side "++show serverAddr
             send conn ("PONG_" <> bs)
   let runClient NetworkAPI{..} = do
@@ -87,9 +86,9 @@ pingPong (serverAddr, server) (clientAddr, client) = do
         bracket (connect serverAddr) close $ \conn -> do
           send conn "PING"
           putStrLn $ "receiving pong on client side "++show clientAddr
-          bs <- recv conn
+          bs <- skipNothings "ping pong client" recv conn
           putStrLn $ "received pong on client side "++show clientAddr
-          assertEqual "Ping-pong" (Just "PONG_PING") bs
+          assertEqual "Ping-pong" ("PONG_PING") bs
   ((),()) <- concurrently (runServer server) (runClient client)
   return ()
 
@@ -101,11 +100,6 @@ sizedPingPong :: Int
          -> IO ()
 sizedPingPong startPower endPower (serverAddr, server) (clientAddr, client) = do
   let powers = [startPower..endPower]
-      skipNothings lbl recv conn = do
-        mbMsg <- recv conn
-        case mbMsg of
-          Just msg -> return msg
-          Nothing -> skipNothings lbl recv conn
       runServer NetworkAPI{..} = do
         bracket listenOn fst $ \(_,accept) ->
           bracket accept (close . fst) $ \(conn,_) -> do
