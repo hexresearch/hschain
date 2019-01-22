@@ -1,5 +1,6 @@
-{-# LANGUAGE FlexibleInstances          #-}
-{-# LANGUAGE TypeFamilies               #-}
+{-# LANGUAGE DataKinds         #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE TypeFamilies      #-}
 module Thundermint.Crypto.Ed25519 (
     Ed25519_SHA512
   , generatePrivKey
@@ -37,6 +38,12 @@ newtype instance PublicKey Ed25519_SHA512 = PublicKey { unPublicKey :: Uint8Arra
 
 
 instance Crypto Ed25519_SHA512 where
+  type HashSize      Ed25519_SHA512 = 64
+  type AddressSize   Ed25519_SHA512 = 32
+  type PublicKeySize Ed25519_SHA512 = 32
+  type PrivKeySize   Ed25519_SHA512 = 32
+  type SignatureSize Ed25519_SHA512 = 64
+  --
   signBlob k bs
     = Signature
     $ arrayToBs
