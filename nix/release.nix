@@ -3,13 +3,16 @@ let
   lib    = pkgs.haskell.lib;
   # Overrides for haskell packages
   haskOverrides = hsNew: hsOld: rec {
-    cborg               = hsOld.callPackage ./derivations/cborg.nix {};
+    cborg               = lib.dontCheck (hsOld.callPackage ./derivations/cborg.nix {});
     concurrent-output   = hsOld.callPackage ./derivations/concurrent-output.nix {};
     hedgehog            = hsOld.callPackage ./derivations/hedgehog.nix {};
     katip               = hsOld.callPackage ./derivations/katip.nix {};
     katip-elasticsearch = lib.dontCheck (hsOld.callPackage ./derivations/katip-elasticsearch.nix {});
     prometheus-client   = hsOld.callPackage ./derivations/prometheus-client.nix {};
     stm                 = hsOld.callPackage ./derivations/stm.nix {};
+    tasty               = hsOld.callPackage ./derivations/tasty.nix {};
+    tasty-ant-xml       = hsOld.callPackage ./derivations/tasty-ant-xml.nix {};
+    tasty-hedgehog      = hsOld.callPackage ./derivations/tasty-hedgehog.nix {};
     unliftio            = hsOld.callPackage ./derivations/unliftio.nix {};
     # -
     thundermint-crypto  = hsOld.callPackage ./derivations/thundermint-crypto.nix {};
@@ -20,9 +23,12 @@ let
   };
   # Additional overrides for GHCJS
   ghcjsOverrides = hsNew: hsOld: {
+    SHA                   = lib.dontCheck hsOld.SHA;
+    aeson                 = lib.dontCheck hsOld.aeson;
     half                  = lib.dontCheck hsOld.half;
     quickcheck-assertions = lib.dontCheck hsOld.quickcheck-assertions;
-    SHA                   = lib.dontCheck hsOld.SHA;
+    scientific            = lib.dontCheck hsOld.scientific;
+    tasty-quickcheck      = lib.dontCheck hsOld.tasty-quickcheck;
     thundermint-crypto    = hsOld.callPackage ./derivations/thundermint-crypto.nix {isGHCJS = true;};
   };
   config = {
