@@ -7,10 +7,10 @@
 }:
 mkDerivation {
   pname = "hedgehog";
-  version = "0.5.3";
-  sha256 = "a4739630d3dec1762e69b371e11d1caaa5e6a50aa13abe41dd0e34b3a7dd68ef";
-  revision = "1";
-  editedCabalFile = "0hhzkl88xk9j62897y11f4xx84qdh0mdap55iw30cl4zwlgp10ir";
+  version = "0.6.1";
+  sha256 = "d2f94024906af37fed427fa1f03177d9a530078a2e54cfb24d7397da9807e177";
+  revision = "2";
+  editedCabalFile = "1l0iw2jqdvxgfysfvp1x0s2pq3kyvpapjdjkx9pi4bkxpjpkvbza";
   libraryHaskellDepends = [
     ansi-terminal async base bytestring concurrent-output containers
     directory exceptions lifted-async mmorph monad-control mtl

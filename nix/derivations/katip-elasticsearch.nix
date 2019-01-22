@@ -8,8 +8,8 @@
 }:
 mkDerivation {
   pname = "katip-elasticsearch";
-  version = "0.5.1.0";
-  sha256 = "7003fe3390871e95c6260db3b9a2787ced90e2ecf8a447023cf170d0b346885a";
+  version = "0.5.1.1";
+  sha256 = "40aa3aac446de02e9ac4bed5a098180e2c4b5d9716ddf2d9472594f577c63da5";
   libraryHaskellDepends = [
     aeson async base bloodhound bytestring enclosed-exceptions
     exceptions http-client http-types katip retry scientific semigroups

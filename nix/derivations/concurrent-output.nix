@@ -3,8 +3,8 @@
 }:
 mkDerivation {
   pname = "concurrent-output";
-  version = "1.10.5";
-  sha256 = "98c096228664d591eb2c352080955a202e883cdab8452efae3cae407e30fa5c3";
+  version = "1.10.9";
+  sha256 = "8cc49408e957c65359182fbfcda80717b931915d101e4be55ccb26c44b098e57";
   libraryHaskellDepends = [
     ansi-terminal async base directory exceptions process stm
     terminal-size text transformers unix

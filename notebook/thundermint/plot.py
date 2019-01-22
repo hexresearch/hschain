@@ -64,21 +64,23 @@ def add_legend(ax) :
 
 def plot_commit_time(logs) :
     "Plot commit time and prime average block time"
-    # Subtract leading time
-    dfs = {k : to_commit(d) for k,d in logs.items()}
-    #
-    t0  = np.min([df['at'].values[0] for df in dfs.values() if len(df) > 0])
-    for k, df in dfs.items() :
-        df['at'] = (df['at'] - t0).astype('timedelta64[s]')
-    # Height plot
+    # Prepare figure
     fig,ax = figure_with_legend()
     plt.title('Commit time')
     plt.grid()
     plt.xlabel('Time (s)')
     plt.ylabel('Height')
-    for k,df in dfs.items() :
-        ax.plot(df['at'] , df['H'], '+', label=k)
-    add_legend(ax)
+    # Subtract leading time
+    dfs = {k : to_commit(d) for k,d in logs.items()}
+    dfs = {k : d for k,d in dfs.items() if not d.empty}
+    if dfs:
+        t0  = np.min([df['at'].values[0] for df in dfs.values() if len(df) > 0])
+        for k, df in dfs.items() :
+            df['at'] = (df['at'] - t0).astype('timedelta64[s]')
+        # Height plot
+        for k,df in dfs.items() :
+            ax.plot(df['at'] , df['H'], '+', label=k)
+        add_legend(ax)
     return fig
 
 def plot_n_tx_in_block(logs):

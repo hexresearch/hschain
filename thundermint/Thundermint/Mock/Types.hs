@@ -79,11 +79,11 @@ data NetSpec a = NetSpec
   , netInitialKeys    :: Int
   , netPrefix         :: Maybe String
   , netMaxH           :: Maybe Int64
+  , netNetCfg         :: Configuration Example
   }
   deriving (Generic,Show)
 
 instance JSON.ToJSON   NodeSpec
 instance JSON.FromJSON NodeSpec
-instance JSON.ToJSON a   => JSON.ToJSON   (NetSpec a)
 instance JSON.FromJSON a => JSON.FromJSON (NetSpec a)
 

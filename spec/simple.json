@@ -44,5 +44,6 @@
   ],
   "netTopology"       : "All2All",
   "netInitialDeposit" : 1000,
-  "netInitialKeys"    : 2000
+  "netInitialKeys"    : 2000,
+  "netNetCfg"         : {}
 }

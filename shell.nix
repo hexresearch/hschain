@@ -1,10 +1,8 @@
-with import ./release.nix;
-  #let
-  #  nixpkgs = import <nixpkgs> {};
-  #in pkgs.stdenv.mkDerivation {
-  #  name        = "dev-env";
-  #  buildInputs = [pkgs.ghc thundermint];
-  #  system      = builtins.currentSystem;
-  #}
-  #(pkgs.haskell.lib.doBenchmark thundermint).env 
-  thundermint.env 
+let release = import ./nix/release.nix;
+    pkgs    = release.pkgs;
+in pkgs.haskellPackages.shellFor {
+     nativeBuildInputs = with pkgs.haskellPackages; [
+       cabal-install
+     ];
+     packages = _: pkgs.lib.attrValues release.thundermintPackages;
+}

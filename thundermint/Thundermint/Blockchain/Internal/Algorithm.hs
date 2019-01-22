@@ -47,6 +47,7 @@ import Thundermint.Crypto            ( Crypto,Signed,Address,SignedState(..),Blo
                                      , signedValue, signedAddr
                                      )
 import Thundermint.Blockchain.Internal.Types
+import Thundermint.Crypto            (unverifySignature)
 import Thundermint.Crypto.Containers
 import Thundermint.Logger
 import Thundermint.Types.Blockchain
@@ -280,13 +281,15 @@ tendermintTransition par@HeightParameters{..} msg sm@TMState{..} =
              -- Virtuous node can either vote for same block or for NIL
              Just bid | bid /= cmtID                  -> misdeed
              -- Add vote while ignoring duplicates
-             _        | v `elem` commitPrecommits cmt -> tranquility
-                      | otherwise                     -> return sm
-               { smLastCommit = Just cmt { commitPrecommits = v : commitPrecommits cmt } }
+             _        | v' `elem` commitPrecommits cmt -> tranquility
+                      | otherwise                      -> return sm
+               { smLastCommit = Just cmt { commitPrecommits = v' : commitPrecommits cmt } }
       -- Only accept votes with current height
       | voteHeight /= currentH -> tranquility
       | otherwise              -> checkTransitionPrecommit par voteRound
                               =<< addPrecommit par v sm
+      where
+        v' = unverifySignature v
     ----------------------------------------------------------------
     TimeoutMsg t ->
       case compare t t0 of
@@ -373,7 +376,8 @@ checkTransitionPrecommit par@HeightParameters{..} r sm@(TMState{..})
     = do logger InfoS "Decision to commit" $ LogCommit currentH bid
          acceptBlock r bid
          commitBlock Commit{ commitBlockID    = bid
-                           , commitPrecommits = valuesAtR r smPrecommitsSet
+                           , commitPrecommits =  unverifySignature
+                                             <$> valuesAtR r smPrecommitsSet
                            }
                      sm { smStep = StepAwaitCommit }
   --  * We have +2/3 precommits for nil at current round

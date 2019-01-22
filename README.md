@@ -10,6 +10,19 @@ Thundermint is a haskell implementation of tendermint bysantine consesus algorit
 
 # Build
 
+Thundermint could be build either with `stack` or with `cabal`. Following
+command will build it using stack:
+
+```
+stack build
+```
+
+Or with cabal:
+
+```
+cabal new-build all
+```
+
 ## Build with `nix`
 
 Install Nix
@@ -19,7 +32,7 @@ https://nixos.wiki/wiki/Nix_Installation_Guide
 
 Just use following command
 ```
-nix-build -A thundermint release.nix
+nix-build -A thundermint-exe nix/release.nix
 ```
 Note that if project directory contains `.ghc.environment.*` files created by new-style cabal commands build will fail.
 
@@ -29,7 +42,7 @@ Note that if project directory contains `.ghc.environment.*` files created by ne
 nix-shell
 ```
 
-You can use `cabal build` inside opened shell.
+After that you can use normal cabal workflow. Namely: `cabal new-build all` to build all packages, `cabal new-test all` to build and run tests
 
 To install needed programs just use:
 

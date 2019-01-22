@@ -198,7 +198,7 @@ instance JSON.ToJSON   (ByzantineEvidence alg a)
 data Commit alg a = Commit
   { commitBlockID    :: !(BlockID alg a)
     -- ^ Block for which commit is done
-  , commitPrecommits :: !([Signed 'Verified alg (Vote 'PreCommit alg a)])
+  , commitPrecommits :: !([Signed 'Unverified alg (Vote 'PreCommit alg a)])
     -- ^ List of precommits which justify commit
   }
   deriving (Show, Eq, Generic)
