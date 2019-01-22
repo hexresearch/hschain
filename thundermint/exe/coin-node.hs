@@ -17,7 +17,7 @@ import Data.Monoid ((<>))
 import Options.Applicative
 
 import Katip.Core           (showLS)
-import Network.Socket       (SockAddr(..), PortNumber)
+import Network.Socket       (PortNumber)
 import Network.Wai.Middleware.Prometheus
 import Prometheus
 import Prometheus.Metric.GHC
@@ -37,7 +37,6 @@ import Thundermint.P2P.Instances ()
 import Thundermint.P2P.Network               ( getLocalAddress, realNetwork, realNetworkUdp
                                              , getCredentialFromBuffer, realNetworkTls)
 import qualified Thundermint.P2P.Types as P2PT
-import qualified Control.Exception     as E
 import qualified Data.Aeson            as JSON
 import qualified Data.ByteString.Char8 as BC8
 
@@ -45,6 +44,9 @@ import qualified Data.ByteString.Char8 as BC8
 ----------------------------------------------------------------
 -- Cmd line specification
 ----------------------------------------------------------------
+
+-- Please keep these fields lazy - we feel them incrementally because
+-- @Parser@ lacks @Monad@ interface.
 data Opts = Opts
   { maxH              :: Maybe Int64
   , listenPort        :: PortNumber
@@ -58,6 +60,22 @@ data Opts = Opts
   , optTls            :: Bool
   , optUDP            :: Bool
   , netAddresses      :: [P2PT.NetAddr]
+  }
+
+emptyOpts :: Opts
+emptyOpts = Opts
+  { maxH              = error "no maximal height"
+  , listenPort        = error "no listen port"
+  , prefix            = error "no prefix"
+  , delay             = error "no delay"
+  , doValidate        = error "no do-validate"
+  , netInitialDeposit = error "no initial deposit"
+  , netInitialKeys    = error "no initial keys"
+  , nodeNumber        = error "no node number"
+  , totalNodes        = error "no total nodes"
+  , optTls            = error "no TLS-enable flag"
+  , optUDP            = error "no UDP enable flag"
+  , netAddresses      = error "no addresses specified"
   }
 
 ----------------------------------------------------------------
@@ -77,11 +95,9 @@ startWebMonitoring port = do
 --
 ----------------------------------------------------------------
 
-deriving instance Monad Parser
-
 main :: IO ()
 main = do
-    Opts{..} <- customExecParser (prefs showHelpOnError)
+    Opts{..} <- fmap ($ emptyOpts) $ customExecParser (prefs showHelpOnError)
               $ info (helper <*> parser)
                 (  fullDesc
                 <> header   "Coin test program"
@@ -128,69 +144,70 @@ main = do
       (_,act) <- interpretSpec maxH genSpec validatorSet net netCfg nodeSpec
       act `catch` (\Abort -> return ())
   where
-    parser :: Parser Opts
-    parser = do
-      maxH <- optional $ option auto
-        (  long    "max-h"
-        <> metavar "N"
-        <> help    "Maximum height"
-        )
-      listenPort <- option auto
-        (  long    "listen-port"
-        <> value thundermintPort
-        <> metavar "PORT"
-        <> help    ("listening port (default " <> show thundermintPort <> ")")
-        )
-      prefix <- option str
-        (  long    "prefix"
-        <> value   ""
-        <> metavar "PATH"
-        <> help    "prefix for db & logs"
-        )
-      delay <- option auto
-        (  long    "delay"
-        <> metavar "N"
-        <> help    "delay between transactions in ms"
-        )
-      doValidate <- switch
-        (  long "check-consensus"
-        <> help "validate databases"
-        )
-      netInitialDeposit <- option auto
-        (  long "deposit"
-        <> help "Initial deposit"
-        <> metavar "N.N"
-        )
-      netInitialKeys <- option auto
-        (  long "keys"
-        <> help "Initial deposit"
-        <> metavar "N"
-        )
-      nodeNumber <- option auto
-        (  long "node-n"
-        <> help "Node number"
-        <> metavar "N"
-        )
-      totalNodes <- option auto
-        (  long "total-nodes"
-        <> help "Node number"
-        <> metavar "N"
-        )
-      optTls <- switch
-        (  long "tls"
-        <> help "Use TLS for node connection"
-        )
-      optUDP <- switch
-        (  long "udp"
-        <> help "use UDP instead of TCP when TLS is not used"
-        )
-      netAddresses <- option json
-        (  long "peers"
-        <> help "List of initial peers"
-        <> metavar "JSON"
-        )
-      pure Opts{..}
+    parser = foldr (\pf ps -> (.) <$> pf <*> ps) (pure id) parsersList
+    parsersList :: [Parser (Opts -> Opts)]
+    parsersList =
+      [ (\x opts -> opts { maxH = x}) <$> (optional $ option auto
+          (  long    "max-h"
+          <> metavar "N"
+          <> help    "Maximum height"
+          ))
+      {-, (\x -> opts { listenPort = x}) <$> (option auto
+          (  long    "listen-port"
+          <> value thundermintPort
+          <> metavar "PORT"
+          <> help    ("listening port (default " <> show thundermintPort <> ")")
+          ))
+      , (\x -> opts { prefix = x}) <$> (option str
+          (  long    "prefix"
+          <> value   ""
+          <> metavar "PATH"
+          <> help    "prefix for db & logs"
+          ))
+      , (\x -> opts { delay = x}) <$> (option auto
+          (  long    "delay"
+          <> metavar "N"
+          <> help    "delay between transactions in ms"
+          ))
+      , (\x -> opts { doValidate = x}) <$> (switch
+          (  long "check-consensus"
+          <> help "validate databases"
+          ))
+      , (\x -> opts { netInitialDeposit = x}) <$> (option auto
+          (  long "deposit"
+          <> help "Initial deposit"
+          <> metavar "N.N"
+          ))
+      , (\x -> opts { netInitialKeys = x}) <$> (option auto
+          (  long "keys"
+          <> help "Initial deposit"
+          <> metavar "N"
+          ))
+      , (\x -> opts { nodeNumber = x}) <$> (option auto
+          (  long "node-n"
+          <> help "Node number"
+          <> metavar "N"
+          ))
+      , (\x -> opts { totalNodes = x}) <$> (option auto
+          (  long "total-nodes"
+          <> help "Node number"
+          <> metavar "N"
+          ))
+      , (\x -> opts { optTls = x}) <$> (switch
+          (  long "tls"
+          <> help "Use TLS for node connection"
+          ))
+      , (\x -> opts { optUDP = x}) <$> (switch
+          (  long "udp"
+          <> help "use UDP instead of TCP when TLS is not used"
+          ))
+      , (\x -> opts { netAddresses =x }) <$> (option json
+          (  long "peers"
+          <> help "List of initial peers"
+          <> metavar "JSON"
+          ))-}
+      ]
     --
-    json = maybeReader $ JSON.decodeStrict . BC8.pack
+    --json = maybeReader $ JSON.decodeStrict . BC8.pack
 
 
