@@ -38,8 +38,7 @@ let
     };
   };
   # ----------------------------------------
-  self = rec {
-    inherit pkgs;
+  packagesGHC = rec {
     thundermint         = pkgs.haskellPackages.thundermint;
     thundermint-exe     = pkgs.haskellPackages.thundermint-exe;
     docker-container    = pkgs.docker-container;
@@ -51,5 +50,10 @@ let
         thundermint-exe
        ;
     };
-    };
-in self
+  };
+  packagesGHCJS = {
+    inherit (pkgs.haskell.packages.ghcjs)
+      thundermint-crypto
+    ;
+  };
+in { inherit pkgs packagesGHC packagesGHCJS; }
