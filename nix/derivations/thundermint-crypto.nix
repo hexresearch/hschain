@@ -1,15 +1,18 @@
-{ mkDerivation, aeson, base, base58-bytestring, bytestring
+{ isGHCJS ? false
+, mkDerivation, aeson, base, base58-bytestring, bytestring
 , cryptonite, deepseq, entropy, memory, serialise, stdenv, tasty
-, tasty-hunit, text
+, tasty-hunit, text, SHA, ghcjs-base
 }:
 mkDerivation {
   pname = "thundermint-crypto";
   version = "0.1";
   src = ../../thundermint-crypto;
-  libraryHaskellDepends = [
-    aeson base base58-bytestring bytestring cryptonite deepseq entropy
-    memory serialise text
-  ];
+  libraryHaskellDepends =
+    [ base aeson base58-bytestring bytestring deepseq serialise text ]
+    ++ (if isGHCJS
+        then [SHA ghcjs-base]
+        else [cryptonite entropy memory])
+  ;
   testHaskellDepends = [
     aeson base bytestring serialise tasty tasty-hunit text
   ];
