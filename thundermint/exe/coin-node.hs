@@ -208,6 +208,11 @@ main = do
           ))
       ]
     --
-    json = maybeReader $ JSON.decodeStrict . BC8.pack
-
+    json = maybeReader $ \s -> do
+            addrStrings <- JSON.decodeStrict $ BC8.pack s
+            sequence $ map readNA addrStrings
+        where
+          readNA addrStr = case reads addrStr of
+            ((addr, ""):_) -> Just addr
+            _ -> Nothing
 
