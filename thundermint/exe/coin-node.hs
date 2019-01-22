@@ -48,34 +48,34 @@ import qualified Data.ByteString.Char8 as BC8
 -- Please keep these fields lazy - we feel them incrementally because
 -- @Parser@ lacks @Monad@ interface.
 data Opts = Opts
-  { maxH              :: Maybe Int64
-  , listenPort        :: PortNumber
-  , prefix            :: FilePath
-  , delay             :: Int
-  , doValidate        :: Bool
-  , netInitialDeposit :: Integer
-  , netInitialKeys    :: Int
-  , nodeNumber        :: Int
-  , totalNodes        :: Int
-  , optTls            :: Bool
-  , optUDP            :: Bool
-  , netAddresses      :: [P2PT.NetAddr]
+  { maxH                  :: Maybe Int64
+  , listenPort            :: PortNumber
+  , prefix                :: FilePath
+  , delay                 :: Int
+  , doValidate            :: Bool
+  , optsNetInitialDeposit :: Integer
+  , optsNetInitialKeys    :: Int
+  , nodeNumber            :: Int
+  , totalNodes            :: Int
+  , optTls                :: Bool
+  , optUDP                :: Bool
+  , netAddresses          :: [P2PT.NetAddr]
   }
 
 emptyOpts :: Opts
 emptyOpts = Opts
-  { maxH              = error "no maximal height"
-  , listenPort        = error "no listen port"
-  , prefix            = error "no prefix"
-  , delay             = error "no delay"
-  , doValidate        = error "no do-validate"
-  , netInitialDeposit = error "no initial deposit"
-  , netInitialKeys    = error "no initial keys"
-  , nodeNumber        = error "no node number"
-  , totalNodes        = error "no total nodes"
-  , optTls            = error "no TLS-enable flag"
-  , optUDP            = error "no UDP enable flag"
-  , netAddresses      = error "no addresses specified"
+  { maxH                  = error "no maximal height"
+  , listenPort            = error "no listen port"
+  , prefix                = error "no prefix"
+  , delay                 = error "no delay"
+  , doValidate            = error "no do-validate"
+  , optsNetInitialDeposit = error "no initial deposit"
+  , optsNetInitialKeys    = error "no initial keys"
+  , nodeNumber            = error "no node number"
+  , totalNodes            = error "no total nodes"
+  , optTls                = error "no TLS-enable flag"
+  , optUDP                = error "no UDP enable flag"
+  , netAddresses          = error "no addresses specified"
   }
 
 ----------------------------------------------------------------
@@ -140,7 +140,7 @@ main = do
                    , bchInitialPeers     = netAddresses
                    }
           genSpec = restrictGenerator nodeNumber totalNodes
-                  $ defaultGenerator netInitialKeys netInitialDeposit delay
+                  $ defaultGenerator optsNetInitialKeys optsNetInitialDeposit delay
       (_,act) <- interpretSpec maxH genSpec validatorSet net netCfg nodeSpec
       act `catch` (\Abort -> return ())
   where
@@ -152,62 +152,62 @@ main = do
           <> metavar "N"
           <> help    "Maximum height"
           ))
-      {-, (\x -> opts { listenPort = x}) <$> (option auto
+      , (\x opts -> opts { listenPort = x}) <$> (option auto
           (  long    "listen-port"
           <> value thundermintPort
           <> metavar "PORT"
           <> help    ("listening port (default " <> show thundermintPort <> ")")
           ))
-      , (\x -> opts { prefix = x}) <$> (option str
+      , (\x opts -> opts { prefix = x}) <$> (option str
           (  long    "prefix"
           <> value   ""
           <> metavar "PATH"
           <> help    "prefix for db & logs"
           ))
-      , (\x -> opts { delay = x}) <$> (option auto
+      , (\x opts -> opts { delay = x}) <$> (option auto
           (  long    "delay"
           <> metavar "N"
           <> help    "delay between transactions in ms"
           ))
-      , (\x -> opts { doValidate = x}) <$> (switch
+      , (\x opts -> opts { doValidate = x}) <$> (switch
           (  long "check-consensus"
           <> help "validate databases"
           ))
-      , (\x -> opts { netInitialDeposit = x}) <$> (option auto
+      , (\x opts -> opts { optsNetInitialDeposit = x}) <$> (option auto
           (  long "deposit"
           <> help "Initial deposit"
           <> metavar "N.N"
           ))
-      , (\x -> opts { netInitialKeys = x}) <$> (option auto
+      , (\x opts -> opts { optsNetInitialKeys = x}) <$> (option auto
           (  long "keys"
           <> help "Initial deposit"
           <> metavar "N"
           ))
-      , (\x -> opts { nodeNumber = x}) <$> (option auto
+      , (\x opts -> opts { nodeNumber = x}) <$> (option auto
           (  long "node-n"
           <> help "Node number"
           <> metavar "N"
           ))
-      , (\x -> opts { totalNodes = x}) <$> (option auto
+      , (\x opts -> opts { totalNodes = x}) <$> (option auto
           (  long "total-nodes"
           <> help "Node number"
           <> metavar "N"
           ))
-      , (\x -> opts { optTls = x}) <$> (switch
+      , (\x opts -> opts { optTls = x}) <$> (switch
           (  long "tls"
           <> help "Use TLS for node connection"
           ))
-      , (\x -> opts { optUDP = x}) <$> (switch
+      , (\x opts -> opts { optUDP = x}) <$> (switch
           (  long "udp"
           <> help "use UDP instead of TCP when TLS is not used"
           ))
-      , (\x -> opts { netAddresses =x }) <$> (option json
+      , (\x opts -> opts { netAddresses =x }) <$> (option json
           (  long "peers"
           <> help "List of initial peers"
           <> metavar "JSON"
-          ))-}
+          ))
       ]
     --
-    --json = maybeReader $ JSON.decodeStrict . BC8.pack
+    json = maybeReader $ JSON.decodeStrict . BC8.pack
 
 
