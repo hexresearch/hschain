@@ -46,18 +46,20 @@ import GHC.Generics  (Generic)
 
 
 import Thundermint.Blockchain.Internal.Engine.Types
-import Thundermint.Blockchain.Types
+import Thundermint.Blockchain.Internal.Types
 import Thundermint.Control
 import Thundermint.Crypto
 import Thundermint.Crypto.Containers
 import Thundermint.Debug.Trace
 import Thundermint.Logger
+import Thundermint.Monitoring
 import Thundermint.P2P.Network
 import Thundermint.P2P.PeerState
 import Thundermint.P2P.Types
 import Thundermint.Store
+import Thundermint.Types.Blockchain
+import Thundermint.Types.Validators
 import Thundermint.Utils
-import Thundermint.Monitoring
 
 
 ----------------------------------------------------------------

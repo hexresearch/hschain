@@ -42,7 +42,7 @@ import Data.Maybe      (isJust)
 import Thundermint.Blockchain.Internal.Engine
 import Thundermint.Blockchain.Interpretation
 import Thundermint.Blockchain.Internal.Engine.Types
-import Thundermint.Blockchain.Types
+import Thundermint.Types.Blockchain
 import Thundermint.Control
 import Thundermint.Crypto
 import Thundermint.Debug.Trace

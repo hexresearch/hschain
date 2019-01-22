@@ -32,6 +32,7 @@ Library
   else
     hs-source-dirs: ghc .
     Build-Depends:     cryptonite        >=0.25
+                     , entropy           >=0.4
                      , memory            >=0.14.14
   Exposed-modules:
                   Thundermint.Crypto
@@ -51,7 +52,7 @@ Test-suite thundermint-crypto-tests
                      , serialise         >=0.2
                      , text
                      --
-                     , tasty             >=0.11
+                     , tasty             >=0.12
                      -- Contains fix for GHCJS
                      , tasty-hunit       >=0.10.0.1
   hs-source-dirs:      test

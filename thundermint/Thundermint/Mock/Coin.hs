@@ -51,12 +51,11 @@ import Lens.Micro
 import System.Random   (randomRIO)
 import GHC.Generics    (Generic)
 
-import Thundermint.Blockchain.Types
+import Thundermint.Types.Blockchain
 import Thundermint.Blockchain.Interpretation
 import Thundermint.Blockchain.Internal.Engine.Types
 import Thundermint.Control
 import Thundermint.Crypto
-import Thundermint.Crypto.Containers (ValidatorSet)
 import Thundermint.Crypto.Ed25519
 import Thundermint.Debug.Trace
 import Thundermint.Logger
@@ -68,6 +67,7 @@ import Thundermint.Store.Internal.Query (connectionRO)
 import Thundermint.Mock.KeyList (privateKeyList)
 import Thundermint.Mock.Types
 import Thundermint.Monitoring
+import Thundermint.Types.Validators (ValidatorSet)
 import qualified Thundermint.P2P.Network as P2P
 
 
@@ -291,19 +291,8 @@ restrictGenerator n tot GeneratorSpec{..} = GeneratorSpec
     off2 = ((n+1) * len) `div` tot
 
 genesisFromGenerator :: ValidatorSet Alg -> GeneratorSpec -> Block Alg [Tx]
-genesisFromGenerator validatorSet GeneratorSpec{..} = Block
-  { blockHeader = Header
-      { headerChainID        = "MONIES"
-      , headerHeight         = Height 0
-      , headerTime           = Time 0
-      , headerLastBlockID    = Nothing
-      , headerValidatorsHash = hash validatorSet
-      , headerDataHash       = hash dat
-      }
-  , blockData       = dat
-  , blockLastCommit = Nothing
-  , blockEvidence   = []
-  }
+genesisFromGenerator validatorSet GeneratorSpec{..} =
+  makeGenesis "MONIES" (Time 0) dat validatorSet
   where
     dat = [ Deposit pk genInitialDeposit | pk <- genInitialKeys ]
 
@@ -368,14 +357,15 @@ findInputs tgt = go 0
 -- | Interpret specification for node
 interpretSpec
   :: ( MonadIO m, MonadLogger m, MonadFork m, MonadTrace m, MonadMask m, MonadTMMonitoring m
-     , Ord addr, Show addr, Serialise addr)
+     , Ord addr, Show addr, Serialise addr, DefaultConfig cfg)
   => Maybe Int64                      -- ^ Maximum height
   -> GeneratorSpec                    -- ^ Spec for generator of transactions
   -> ValidatorSet Ed25519_SHA512      -- ^ Set of validators
   -> BlockchainNet addr               -- ^ Network
+  -> Configuration cfg                -- ^ Configuration for network
   -> NodeSpec                         -- ^ Node specifications
   -> m (Connection 'RO Alg [Tx], m ())
-interpretSpec maxHeight genSpec validatorSet net NodeSpec{..} = do
+interpretSpec maxHeight genSpec validatorSet net cfg NodeSpec{..} = do
   -- Allocate storage for node
   conn <- openConnection (maybe ":memory:" id nspecDbName)
   initDatabase conn coinDict genesisBlock validatorSet
@@ -386,7 +376,7 @@ interpretSpec maxHeight genSpec validatorSet net NodeSpec{..} = do
         -- Transactions generator
         cursor <- getMempoolCursor $ nodeMempool logic
         let generator = transactionGenerator genSpec (void . pushTransaction cursor)
-        acts <- runNode (defCfg :: Configuration Example) net
+        acts <- runNode cfg net
           NodeDescription
             { nodeValidationKey   = nspecPrivKey
             , nodeCommitCallback  = \case
@@ -428,6 +418,6 @@ executeNodeSpec maxH delay NetSpec{..} = do
           }
     let loggers = [ makeScribe s | s <- nspecLogFile ]
         run m   = withLogEnv "TM" "DEV" loggers $ \logenv -> runLoggerT "general" logenv m
-    run $ (fmap . fmap) run $ interpretSpec maxH genSpec validatorSet bnet nspec
+    run $ (fmap . fmap) run $ interpretSpec maxH genSpec validatorSet bnet netNetCfg nspec
   runConcurrently (snd <$> actions) `catch` (\Abort -> return ())
   return $ fst <$> actions

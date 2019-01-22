@@ -8,11 +8,11 @@ import Data.List
 import Test.Tasty
 import Test.Tasty.HUnit
 
-import Thundermint.Blockchain.Types
 import Thundermint.Crypto
-import Thundermint.Crypto.Containers
 import Thundermint.Crypto.Ed25519
 import Thundermint.Mock.KeyList (privateKeyList)
+import Thundermint.Types.Blockchain
+import Thundermint.Types.Validators
 
 tests :: TestTree
 tests = testGroup "time"

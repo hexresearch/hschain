@@ -39,24 +39,24 @@ import qualified Data.Aeson          as JSON
 import qualified Data.Aeson.TH       as JSON
 import qualified Data.Map            as Map
 import qualified Data.HashMap.Strict as HM
-import           Katip (Severity(..))
+import           Katip (Severity(..),sl)
 import qualified Katip
 import GHC.Generics
 
 import Thundermint.Crypto            ( Crypto,Signed,Address,SignedState(..),BlockHash(..)
                                      , signedValue, signedAddr
                                      )
+import Thundermint.Blockchain.Internal.Types
+import Thundermint.Crypto            (unverifySignature)
 import Thundermint.Crypto.Containers
-import Thundermint.Blockchain.Types
 import Thundermint.Logger
-
+import Thundermint.Types.Blockchain
+import Thundermint.Types.Validators
 
 
 ----------------------------------------------------------------
 --
 ----------------------------------------------------------------
-
-
 
 -- | Messages being sent to consensus engine
 data Message alg a
@@ -215,7 +215,7 @@ newHeight
   -> Maybe (Commit alg a)
   -> m (TMState alg a)
 newHeight HeightParameters{..} lastCommit = do
-  logger InfoS "Entering new height ----------------" currentH
+  logger InfoS "Entering new height ----------------" (sl "H" currentH)
   scheduleTimeout $ Timeout  currentH (Round 0) StepNewHeight
   announceStep    $ FullStep currentH (Round 0) StepNewHeight
   return TMState
@@ -281,13 +281,15 @@ tendermintTransition par@HeightParameters{..} msg sm@TMState{..} =
              -- Virtuous node can either vote for same block or for NIL
              Just bid | bid /= cmtID                  -> misdeed
              -- Add vote while ignoring duplicates
-             _        | v `elem` commitPrecommits cmt -> tranquility
-                      | otherwise                     -> return sm
-               { smLastCommit = Just cmt { commitPrecommits = v : commitPrecommits cmt } }
+             _        | v' `elem` commitPrecommits cmt -> tranquility
+                      | otherwise                      -> return sm
+               { smLastCommit = Just cmt { commitPrecommits = v' : commitPrecommits cmt } }
       -- Only accept votes with current height
       | voteHeight /= currentH -> tranquility
       | otherwise              -> checkTransitionPrecommit par voteRound
                               =<< addPrecommit par v sm
+      where
+        v' = unverifySignature v
     ----------------------------------------------------------------
     TimeoutMsg t ->
       case compare t t0 of
@@ -374,7 +376,8 @@ checkTransitionPrecommit par@HeightParameters{..} r sm@(TMState{..})
     = do logger InfoS "Decision to commit" $ LogCommit currentH bid
          acceptBlock r bid
          commitBlock Commit{ commitBlockID    = bid
-                           , commitPrecommits = valuesAtR r smPrecommitsSet
+                           , commitPrecommits =  unverifySignature
+                                             <$> valuesAtR r smPrecommitsSet
                            }
                      sm { smStep = StepAwaitCommit }
   --  * We have +2/3 precommits for nil at current round

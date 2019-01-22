@@ -36,11 +36,11 @@ import Data.Aeson
 import Numeric.Natural
 import GHC.Generics           (Generic)
 
-import Thundermint.Blockchain.Internal.Message
-import Thundermint.Blockchain.Types
+import Thundermint.Blockchain.Internal.Types
 import Thundermint.Crypto
-import Thundermint.Crypto.Containers
 import Thundermint.Store
+import Thundermint.Types.Blockchain
+import Thundermint.Types.Validators
 
 
 ----------------------------------------------------------------

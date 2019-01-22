@@ -71,7 +71,7 @@ module Thundermint.Store (
 import qualified Katip
 
 import Codec.Serialise           (Serialise)
-import Control.Monad             ((<=<), foldM)
+import Control.Monad             ((<=<), foldM, forM)
 import Control.Monad.Catch       (MonadMask,MonadThrow,MonadCatch)
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
@@ -88,7 +88,8 @@ import qualified Data.Aeson      as JSON
 import qualified Data.Aeson.TH   as JSON
 import qualified Data.ByteString as BS
 
-import Thundermint.Blockchain.Types
+import Thundermint.Types.Blockchain
+import Thundermint.Blockchain.Internal.Types
 import Thundermint.Control                (MonadFork,FloatOut(..),foldF)
 import Thundermint.Crypto
 import Thundermint.Crypto.Containers
@@ -97,6 +98,7 @@ import Thundermint.Logger                 (MonadLogger)
 import Thundermint.Store.Internal.Query
 import Thundermint.Store.Internal.BlockDB
 import Thundermint.Store.SQL
+import Thundermint.Types.Validators
 
 
 ----------------------------------------------------------------
@@ -509,7 +511,7 @@ blockInvariant chainID h prevT prevBID (mprevValSet, valSet) Block{blockHeader=H
         -> tell [InvalidCommit h "Cannot validate commit"]
 
 commitInvariant
-  :: (Monad m)
+  :: (Monad m, Crypto alg)
   => (String -> BlockchainInconsistency) -- Error constructor
   -> Height                              -- Height of block for
   -> Time                                -- Time of previous block
@@ -536,20 +538,25 @@ commitInvariant mkErr h prevT bid valSet Commit{..} = do
   -- Commit has enough (+2/3) voting power, doesn't have votes
   -- from unknown validators, doesn't have duplicate votes, and
   -- vote goes for correct block
-  let mvoteSet = foldM
-        (flip insertSigned)
-        (newVoteSet valSet prevT)
-        commitPrecommits
-  case mvoteSet of
-    InsertConflict _ -> tell [mkErr "Conflicting votes"]
-    InsertDup        -> tell [mkErr "Duplicate votes"]
-    InsertUnknown  _ -> tell [mkErr "Votes from unknown source"]
-    InsertOK vset    -> case majority23 vset of
-      Nothing        -> tell [mkErr "Commit doesn't have 2/3+ majority"]
-      Just b
-        | b == Just bid -> return ()
-        | otherwise
-          -> tell [mkErr "2/3+ majority for wrong block"]
+  let verifiedPrecommits = forM commitPrecommits $ \v ->
+        verifySignature (fmap validatorPubKey . validatorByAddr valSet) v
+  case verifiedPrecommits of
+    Nothing   -> tell [mkErr "Commit contains invalid signatures"]
+    Just sigs -> do
+      let mvoteSet = foldM
+            (flip insertSigned)
+            (newVoteSet valSet prevT)
+            sigs
+      case mvoteSet of
+        InsertConflict _ -> tell [mkErr "Conflicting votes"]
+        InsertDup        -> tell [mkErr "Duplicate votes"]
+        InsertUnknown  _ -> tell [mkErr "Votes from unknown source"]
+        InsertOK vset    -> case majority23 vset of
+          Nothing        -> tell [mkErr "Commit doesn't have 2/3+ majority"]
+          Just b
+            | b == Just bid -> return ()
+            | otherwise
+              -> tell [mkErr "2/3+ majority for wrong block"]
 
 
 checkRequire

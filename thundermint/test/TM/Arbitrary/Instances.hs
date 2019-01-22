@@ -9,7 +9,7 @@ import Data.ByteString.Arbitrary as Arb
 import Test.QuickCheck.Arbitrary
 import Test.QuickCheck.Arbitrary.Generic
 
-import Thundermint.Blockchain.Types
+import Thundermint.Types.Blockchain
 import Thundermint.Crypto
 
 

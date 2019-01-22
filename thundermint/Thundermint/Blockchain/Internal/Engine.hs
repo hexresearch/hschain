@@ -31,14 +31,14 @@ import Pipes                 (Pipe,runEffect,yield,await,(>->))
 
 import Thundermint.Blockchain.Internal.Engine.Types
 import Thundermint.Blockchain.Internal.Algorithm
-import Thundermint.Blockchain.Types
+import Thundermint.Types.Blockchain
 import Thundermint.Crypto
-import Thundermint.Crypto.Containers
 import Thundermint.Logger
 import Thundermint.Store
 import Thundermint.Store.STM
 import Thundermint.Store.Internal.BlockDB
 import Thundermint.Monitoring
+import Thundermint.Types.Validators
 
 import Katip (Severity(..), sl)
 
