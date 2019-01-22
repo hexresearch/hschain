@@ -251,7 +251,7 @@ realNetworkUdp ourPeerInfo serviceName = do
       let (newFronts, message) = updateMessages front ofs chunk fronts
       writeTVar frontsVar newFronts
       return message
-    return $ emptyBs2Maybe message
+    if LBS.null message then receiveAction frontsVar peerChan else return $ Just message
   updateMessages :: Word8 -> Word32 -> LBS.ByteString -> Map.Map Word8 [(Word32, LBS.ByteString)]
                  -> (Map.Map Word8 [(Word32, LBS.ByteString)], LBS.ByteString)
   updateMessages front ofs chunk fronts = traceEvent ("ZZZZ: list of partials' lengths: "++show (map (\(o,c) -> (o,lbsLength c)) listOfPartials))

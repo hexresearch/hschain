@@ -18,6 +18,7 @@ module Thundermint.P2P (
   , NetAddr(..)
   , netAddrToSockAddr
   , sockAddrToNetAddr
+  , generatePeerId
   ) where
 
 import Codec.Serialise

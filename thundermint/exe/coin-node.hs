@@ -32,10 +32,12 @@ import Thundermint.Logger
 import Thundermint.Run
 import Thundermint.Mock.Coin
 import Thundermint.Mock.Types
+import Thundermint.P2P (generatePeerId)
 import Thundermint.P2P.Consts
 import Thundermint.P2P.Instances ()
 import Thundermint.P2P.Network               ( getLocalAddress, realNetwork, realNetworkUdp
                                              , getCredentialFromBuffer, realNetworkTls)
+import qualified Thundermint.P2P.Types as P2PT
 import qualified Control.Exception     as E
 import qualified Data.Aeson            as JSON
 import qualified Data.ByteString.Char8 as BC8
@@ -100,10 +102,12 @@ main = do
       nodeAddr     <- liftIO getLocalAddress
       netAddresses <- waitForAddrs
       logger InfoS ("net Addresses: " <> showLS netAddresses) ()
+      peerId <- generatePeerId
+      let peerInfo = P2PT.PeerInfo peerId (fromIntegral listenPort) 0
       netAPI <- case optTls of
         False -> case optUDP of
-          False -> return $ realNetwork (show listenPort)
-          True  -> liftIO $ realNetworkUdp (show listenPort)
+          False -> return $ realNetwork peerInfo (show listenPort)
+          True  -> liftIO $ realNetworkUdp peerInfo (show listenPort)
         True  -> liftIO $ do
           keyPem  <- BC8.pack <$> getEnv "KEY_PEM"
           certPem <- BC8.pack <$> getEnv "CERT_PEM"
@@ -111,7 +115,7 @@ main = do
           return $ realNetworkTls credential (show thundermintPort)
       let net = BlockchainNet
                    { bchNetwork          = netAPI
-                   , bchLocalAddr        = nodeAddr
+                   , bchLocalAddr        = P2PT.sockAddrToNetAddr nodeAddr
                    , bchInitialPeers     = netAddresses
                    }
           genSpec = restrictGenerator nodeNumber totalNodes
@@ -182,11 +186,11 @@ main = do
 -- TCP server that listens for boostrap addresses
 ----------------------------------------------------------------
 
-waitForAddrs :: LoggerT IO [SockAddr]
+waitForAddrs :: LoggerT IO [P2PT.NetAddr]
 waitForAddrs = LoggerT $ ReaderT $ \(_,logenv) -> E.handle (allExc logenv) $ do
   addrs <- listen "0.0.0.0" "49999" $ \ (lsock, _addr) ->
     accept lsock $ \ (conn, _caddr) -> do
-    mMsg <- recv conn 4096
+    mMsg <- recv conn 1000000
     closeSock conn
     runLoggerT "boostrap" logenv $ do
       logger InfoS ("accept this: " <> showLS mMsg) ()
@@ -196,7 +200,7 @@ waitForAddrs = LoggerT $ ReaderT $ \(_,logenv) -> E.handle (allExc logenv) $ do
   runLoggerT "boostrap" logenv $ do
     logger InfoS ("Got " <> showLS addrs <> " boostrap addresses.") ()
     logger InfoS "Stop listening" ()
-  return addrs
+  return $ map P2PT.sockAddrToNetAddr addrs
   where
     allExc logenv (e::SomeException) = runLoggerT "boostrap" logenv $ do
       logger ErrorS (showLS e) ()
