@@ -44,7 +44,7 @@ import System.Timeout         (timeout)
 
 import qualified Data.ByteString.Builder        as BB
 import qualified Data.ByteString.Lazy           as LBS
-import qualified Data.Map                       as Map
+import qualified Data.Map.Strict                as Map
 import qualified Data.Set                       as Set
 import qualified Network.Socket                 as Net
 import qualified Network.Socket.ByteString      as NetBS

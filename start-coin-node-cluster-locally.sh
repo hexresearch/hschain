@@ -15,8 +15,9 @@ THUNDERMINT_COIN_NODE=/home/sz/work/thunders/thundermint/dist-newstyle/build/x86
 PREFIX=tmp/thundermint
 
 EXTRA=$*
+echo "$EXTRA"
 
-COMMON_OPTIONS='--total-nodes 4 --max-h 10 --delay 500 --check-consensus --deposit 1000 --keys 2000'
+COMMON_OPTIONS='--total-nodes 4 --max-h 2 --delay 50 --check-consensus --deposit 1000 --keys 2000'
 
 #LOG_SPEC="\"nspecLogFile\" : [{ \"type\": \"ScribeES\", \"path\" : \"`cat elastic-search.cfg`\", \"severity\" : \"Debug\", \"verbosity\" : \"V2\" }]"
 LOG_SPEC='"nspecLogFile" : [{ "type": "ScribeJSON", "path" : "log.js", "severity" : "Debug", "verbosity" : "V2" }]'
@@ -65,7 +66,7 @@ sleep 0.5
 
 echo "Ok, node started!"
 echo "Waiting for node finished"
-#sleep 1h
-sleep 220
+sleep 1h
+#sleep 600
 
 echo "OK"

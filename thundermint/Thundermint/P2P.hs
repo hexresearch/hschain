@@ -454,7 +454,7 @@ peerPexKnownCapacityMonitor _peerAddr PeerChans{..} PeerRegistry{..} minKnownCon
     forever $ do
         currentKnowns <- liftIO (readTVarIO prKnownAddreses)
         if Set.size currentKnowns < minKnownConnections then do
-            logger DebugS ("Too few known (" <> showLS (Set.size currentKnowns) <> ":" <> showLS currentKnowns <> ") conns; ask for more known connections") ()
+            logger DebugS ("Too few known (" <> showLS (Set.size currentKnowns) <> ":" <> showLS currentKnowns <> ") conns (need "<>showLS minKnownConnections<>"); ask for more known connections") ()
             -- TODO firstly ask only last peers
             liftIO $ atomically $ writeTChan peerChanPex PexMsgAskForMorePeers
             waitSec 1.0 -- TODO wait for new connections OR timeout (see https://stackoverflow.com/questions/22171895/using-tchan-with-timeout)

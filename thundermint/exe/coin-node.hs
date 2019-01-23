@@ -107,7 +107,9 @@ main = do
     netParamStr <- lookupEnv "THUNDERMINT_NET_PARAM"
     ipMapPath   <- BC8.pack <$> getEnv    "THUNDERMINT_KEYS"
     let netCfg = case netParamStr of
-          Nothing -> defCfg :: Configuration Example
+          Nothing -> change (defCfg :: Configuration Example) :: Configuration Example
+            where
+              change cfg = cfg { cfgNetwork = (cfgNetwork cfg) { pexMinKnownConnections = totalNodes - 1} }
           Just s  -> either error id $ JSON.eitherDecodeStrict' $ BC8.pack s
     let nodeSpec@NodeSpec{..} = either error id $ JSON.eitherDecodeStrict' nodeSpecStr
         loggers = [ makeScribe s { scribe'path = fmap (prefix </>) (scribe'path s) }
