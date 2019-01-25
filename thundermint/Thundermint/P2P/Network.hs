@@ -45,6 +45,7 @@ import System.Timeout         (timeout)
 import qualified Data.ByteString.Builder        as BB
 import qualified Data.ByteString.Lazy           as LBS
 import qualified Data.Map.Strict                as Map
+import qualified Data.IntMap.Strict             as IntMap
 import qualified Data.Set                       as Set
 import qualified Network.Socket                 as Net
 import qualified Network.Socket.ByteString      as NetBS
@@ -252,12 +253,12 @@ realNetworkUdp ourPeerInfo serviceName = do
       writeTVar frontsVar newFronts
       return message
     if LBS.null message then receiveAction frontsVar peerChan else return $ Just message
-  updateMessages :: Word8 -> Word32 -> LBS.ByteString -> Map.Map Word8 [(Word32, LBS.ByteString)]
-                 -> (Map.Map Word8 [(Word32, LBS.ByteString)], LBS.ByteString)
+  updateMessages :: Word8 -> Word32 -> LBS.ByteString -> Map.Map Word8 (IntMap.IntMap LBS.ByteString)
+                 -> (Map.Map Word8 (IntMap.IntMap LBS.ByteString), LBS.ByteString)
   updateMessages front ofs chunk fronts = traceEvent ("ZZZZ: list of partials' lengths: "++show (map (\(o,c) -> (o,lbsLength c)) listOfPartials))
     traceEvent ("ZZZZ: canCombine, invalid: "++show (canCombinePartials, invalidPartials)) (newFronts, extractedMessage)
     where
-      listOfPartials = insert (ofs, chunk) $ Map.findWithDefault [] front fronts
+      listOfPartials = insert (ofs, chunk) $ Map.findWithDefault Map.empty front fronts
       insert ofsChunk [] = [ofsChunk]
       insert ofsChunk@(ofs', _) restPartials@(oc@(headOfs, _):ocs)
         | ofs' < headOfs = ofsChunk : restPartials
