@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns    #-}
 {-# LANGUAGE LambdaCase      #-}
 {-# LANGUAGE RankNTypes      #-}
 {-# LANGUAGE RecordWildCards #-}
@@ -35,7 +36,7 @@ import Control.Concurrent     (forkIO, killThread, threadDelay)
 import Control.Monad          (forM_, forever, void, when)
 import Control.Monad.Catch    (bracketOnError, onException, throwM)
 import Control.Monad.IO.Class (liftIO)
-import Data.Bits              (unsafeShiftL)
+import Data.Bits              (unsafeShiftL, complement)
 import Data.List              (find)
 import Data.Maybe             (fromMaybe)
 import Data.Monoid            ((<>))
@@ -45,7 +46,6 @@ import System.Timeout         (timeout)
 import qualified Data.ByteString.Builder        as BB
 import qualified Data.ByteString.Lazy           as LBS
 import qualified Data.Map.Strict                as Map
-import qualified Data.IntMap.Strict             as IntMap
 import qualified Data.Set                       as Set
 import qualified Network.Socket                 as Net
 import qualified Network.Socket.ByteString      as NetBS
@@ -188,16 +188,19 @@ realNetworkUdp ourPeerInfo serviceName = do
         let addr = sockAddrToNetAddr $ Ip.normalizeIpAddr addr'
             lazyByteString = LBS.fromStrict bs
             peerInfoPayloadTupleDecoded = CBOR.deserialiseOrFail lazyByteString
+        putStrLn $ "Received some buffer from "++show addr
         case peerInfoPayloadTupleDecoded of
           Left err -> putStrLn $ "error decoding peerinfo+payload tuple from "++show addr++": "++show err
           Right (otherPeerInfo, (front, ofs, payload)) -> do
+            let connectPacket = isConnectPart (front, ofs, payload)
             atomically $ do
               (found, (recvChan, frontVar, receivedFrontsVar)) <- findOrCreateRecvTuple tChans addr
               when (not found) $ writeTChan acceptChan
                 (applyConn otherPeerInfo sock addr frontVar receivedFrontsVar recvChan tChans, addr)
               writeTChan recvChan (otherPeerInfo, (front, ofs, payload))
-            when (LBS.null payload) $ do
-              flip (NetBS.sendAllTo sock) addr' $ LBS.toStrict $ CBOR.serialise (ourPeerInfo, (255 :: Word8, 0 :: Word32, LBS.empty))
+            when connectPacket $ do
+              putStrLn $ "send connection ACK to "++show addr++" <"++show (front, ofs, payload)++">"
+              flip (NetBS.sendAllTo sock) addr' $ LBS.toStrict $ CBOR.serialise (ourPeerInfo, mkAckPart)
 
   return $ NetworkAPI
     { listenOn = do
@@ -209,12 +212,14 @@ realNetworkUdp ourPeerInfo serviceName = do
            <$> findOrCreateRecvTuple tChans addr
          let waitLoop 0 _ _ = fail "timeout waiting for 'UDP connection' (actually, peerinfo exchange)."
              waitLoop n partialConnection@P2PConnection{..} receiveChan = do
-               send $ LBS.empty
+               flip (NetBS.sendAllTo sock) (netAddrToSockAddr addr) $ LBS.toStrict $ CBOR.serialise (ourPeerInfo, mkConnectPart)
                maybeInfoPayload <- timeout 500000 $ atomically $ readTChan receiveChan
+               putStrLn $ "waiting for ACK from "++show addr++", read result "++show maybeInfoPayload
                case maybeInfoPayload of
                  Nothing -> waitLoop (n-1 :: Int) partialConnection receiveChan
-                 Just pkt@(peerInfo, (_, _, payload)) -> do
-                   when (not $ LBS.null payload) $ atomically $ writeTChan receiveChan pkt
+                 Just pkt@(peerInfo, packet) -> do
+                   let special = isConnectPart packet || isAckPart packet
+                   when (not special) $ atomically $ writeTChan receiveChan pkt
                    return peerInfo
          otherPeerInfo <- waitLoop 20 connection peerChan
          return $ connection { connectedPeer = otherPeerInfo }
@@ -223,6 +228,10 @@ realNetworkUdp ourPeerInfo serviceName = do
     , listenPort = listenPort (realNetworkStub serviceName)
     }
  where
+  mkConnectPart = (255 :: Word8, complement 0 :: Word32, LBS.empty)
+  mkAckPart = (255 :: Word8, complement 1 :: Word32, LBS.empty)
+  isConnectPart (front, ofs, payload) = front == 255 && ofs == complement 0 && LBS.length payload == 0
+  isAckPart (front, ofs, payload) = front == 255 && ofs == complement 1 && LBS.length payload == 0
   newUDPSocket ai = do
     sock <- Net.socket (Net.addrFamily     ai)
                        (Net.addrSocketType ai)
@@ -242,23 +251,23 @@ realNetworkUdp ourPeerInfo serviceName = do
         return (False, fullInfo)
   applyConn otherPeerInfo sock addr frontVar receivedFrontsVar peerChan tChans = P2PConnection
     (\s -> liftIO.void $ sendSplitted frontVar sock addr s)
-    (liftIO $ receiveAction receivedFrontsVar peerChan)
+    (liftIO $ receiveAction addr receivedFrontsVar peerChan)
     (close addr tChans)
     otherPeerInfo
-  receiveAction frontsVar peerChan = do
-    message <- atomically $ do
+  receiveAction addr frontsVar peerChan = do
+    (message, fs) <- atomically $ do
       (_peerInfo, (front, ofs, chunk)) <- readTChan peerChan
       fronts <- readTVar frontsVar
       let (newFronts, message) = updateMessages front ofs chunk fronts
       writeTVar frontsVar newFronts
-      return message
-    if LBS.null message then receiveAction frontsVar peerChan else return $ Just message
-  updateMessages :: Word8 -> Word32 -> LBS.ByteString -> Map.Map Word8 (IntMap.IntMap LBS.ByteString)
-                 -> (Map.Map Word8 (IntMap.IntMap LBS.ByteString), LBS.ByteString)
-  updateMessages front ofs chunk fronts = traceEvent ("ZZZZ: list of partials' lengths: "++show (map (\(o,c) -> (o,lbsLength c)) listOfPartials))
-    traceEvent ("ZZZZ: canCombine, invalid: "++show (canCombinePartials, invalidPartials)) (newFronts, extractedMessage)
+      return (message, Map.size newFronts)
+    putStrLn $ "from "++show addr++": fronts size: "++show fs++", message size "++show (LBS.length message)
+    if LBS.null message then receiveAction addr frontsVar peerChan else let c = LBS.copy message in c `seq` return $ Just c
+  updateMessages :: Word8 -> Word32 -> LBS.ByteString -> Map.Map Word8 [(Word32, LBS.ByteString)]
+                 -> (Map.Map Word8 [(Word32, LBS.ByteString)], LBS.ByteString)
+  updateMessages front ofs !chunk fronts =  (newFronts, extractedMessage)
     where
-      listOfPartials = insert (ofs, chunk) $ Map.findWithDefault Map.empty front fronts
+      listOfPartials = insert (ofs, chunk) $ Map.findWithDefault [] front fronts
       insert ofsChunk [] = [ofsChunk]
       insert ofsChunk@(ofs', _) restPartials@(oc@(headOfs, _):ocs)
         | ofs' < headOfs = ofsChunk : restPartials
@@ -270,8 +279,6 @@ realNetworkUdp ourPeerInfo serviceName = do
       checkPartials invalid canCombine currentPartialLen [(lastOfs, lastChunk)] =
         ( invalid, canCombine && lastOfs == currentPartialLen && lbsLength lastChunk < chunkSize)
       checkPartials invalid canCombine currentPartialLen ((headOfs, headChunk):ocs) =
-        traceEvent ("ZZZZ: at headOfs "++show headOfs++" invalid is "++show invalid++" and canCombined is "++show canCombine) $
-        traceEvent ("ZZZZ: at headOfs "++show headOfs++" current partial len is "++show currentPartialLen) $
         checkPartials
           (invalid || lbsLength headChunk /= chunkSize || mod headOfs chunkSize /= 0 || headOfs < currentPartialLen)
           (canCombine && headOfs == currentPartialLen)
@@ -279,7 +286,7 @@ realNetworkUdp ourPeerInfo serviceName = do
           ocs
       (extractedMessage, updatedFront)
         | invalidPartials = (LBS.empty, Map.delete front fronts)
-        | canCombinePartials = (LBS.concat $ map snd listOfPartials, Map.delete front fronts)
+        | canCombinePartials = (LBS.copy $ LBS.concat $ map snd listOfPartials, Map.delete front fronts)
         | otherwise = (LBS.empty, Map.insert front listOfPartials fronts)
       newFronts
         | Map.size updatedFront > 10 = pruneFront updatedFront
