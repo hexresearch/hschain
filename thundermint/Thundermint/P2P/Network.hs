@@ -188,7 +188,6 @@ realNetworkUdp ourPeerInfo serviceName = do
         let addr = sockAddrToNetAddr $ Ip.normalizeIpAddr addr'
             lazyByteString = LBS.fromStrict bs
             peerInfoPayloadTupleDecoded = CBOR.deserialiseOrFail lazyByteString
-        putStrLn $ "Received some buffer from "++show addr
         case peerInfoPayloadTupleDecoded of
           Left err -> putStrLn $ "error decoding peerinfo+payload tuple from "++show addr++": "++show err
           Right (otherPeerInfo, (front, ofs, payload)) -> do
@@ -199,7 +198,6 @@ realNetworkUdp ourPeerInfo serviceName = do
                 (applyConn otherPeerInfo sock addr frontVar receivedFrontsVar recvChan tChans, addr)
               writeTChan recvChan (otherPeerInfo, (front, ofs, payload))
             when connectPacket $ do
-              putStrLn $ "send connection ACK to "++show addr++" <"++show (front, ofs, payload)++">"
               flip (NetBS.sendAllTo sock) addr' $ LBS.toStrict $ CBOR.serialise (ourPeerInfo, mkAckPart)
 
   return $ NetworkAPI
@@ -214,7 +212,6 @@ realNetworkUdp ourPeerInfo serviceName = do
              waitLoop n partialConnection@P2PConnection{..} receiveChan = do
                flip (NetBS.sendAllTo sock) (netAddrToSockAddr addr) $ LBS.toStrict $ CBOR.serialise (ourPeerInfo, mkConnectPart)
                maybeInfoPayload <- timeout 500000 $ atomically $ readTChan receiveChan
-               putStrLn $ "waiting for ACK from "++show addr++", read result "++show maybeInfoPayload
                case maybeInfoPayload of
                  Nothing -> waitLoop (n-1 :: Int) partialConnection receiveChan
                  Just pkt@(peerInfo, packet) -> do
@@ -261,7 +258,6 @@ realNetworkUdp ourPeerInfo serviceName = do
       let (newFronts, message) = updateMessages front ofs chunk fronts
       writeTVar frontsVar newFronts
       return (message, Map.size newFronts)
-    putStrLn $ "from "++show addr++": fronts size: "++show fs++", message size "++show (LBS.length message)
     if LBS.null message then receiveAction addr frontsVar peerChan else let c = LBS.copy message in c `seq` return $ Just c
   updateMessages :: Word8 -> Word32 -> LBS.ByteString -> Map.Map Word8 [(Word32, LBS.ByteString)]
                  -> (Map.Map Word8 [(Word32, LBS.ByteString)], LBS.ByteString)
