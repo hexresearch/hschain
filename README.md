@@ -126,3 +126,4 @@ CREATE TABLE wal
 INSERT INTO wal SELECT * FROM wal_bak;
 DROP TABLE wal_bak
 ```
+
