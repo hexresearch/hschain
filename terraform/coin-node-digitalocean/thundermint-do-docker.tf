@@ -16,6 +16,14 @@ variable "registry_user" {
   default = "romcheck"
 }
 
+variable "tag" {
+  default = "latest"
+}
+
+variable "port" {
+  default = "50000"
+}
+
 variable "elastic_pass" {}
 
 variable "registry_pass" {}
@@ -78,8 +86,8 @@ resource "null_resource" "deploy" {
     inline = [
       "systemctl stop ufw",
       "systemctl disable ufw",
-      "docker login -v -u ${var.registry_user} -p ${var.registry_pass} ${var.registry_url}",
-      "docker run --name node${count.index+1} -d --net host -e THUNDERMINT_KEYS='${jsonencode(values(var.private_keys))}' -e THUNDERMINT_NODE_SPEC='{ \"nspecPrivKey\":\"${var.private_keys[count.index]}\", \"nspecLogFile\" : [{ \"type\" : { \"tag\" : \"ScribeES\", \"index\" : \"thundermint\" }, \"path\" : \"https://${var.elastic_user}:${var.elastic_pass}@${var.elastic_url}\", \"severity\" : \"Info\", \"verbosity\" : \"V2\" }], \"nspecWalletKeys\"  : [${count.index*4},4]}' registry.hxr.team/thundermint --max-h 10000 --delay 10 --deposit 1000 --keys 16 --peers '${jsonencode(digitalocean_droplet.node.*.ipv4_address)}' --node-n ${count.index+1} --total-nodes ${length(var.private_keys)}"
+      "docker login -u ${var.registry_user} -p ${var.registry_pass} ${var.registry_url}",
+      "docker run --name node${count.index+1} -d --net host -e THUNDERMINT_KEYS='${jsonencode(values(var.private_keys))}' -e THUNDERMINT_NODE_SPEC='{ \"nspecPrivKey\":\"${var.private_keys[count.index]}\", \"nspecLogFile\" : [{ \"type\" : { \"tag\" : \"ScribeES\", \"index\" : \"thundermint\" }, \"path\" : \"https://${var.elastic_user}:${var.elastic_pass}@${var.elastic_url}\", \"severity\" : \"Info\", \"verbosity\" : \"V2\" }], \"nspecWalletKeys\"  : [${count.index*4},4]}' registry.hxr.team/thundermint:${var.tag} --udp --max-h 10000 --delay 10 --deposit 1000 --keys 16 --peers '${jsonencode(formatlist("%s:%s", digitalocean_droplet.node.*.ipv4_address, var.port))}' --node-n ${count.index+1} --total-nodes ${length(var.private_keys)}"
     ]
   }
 }
