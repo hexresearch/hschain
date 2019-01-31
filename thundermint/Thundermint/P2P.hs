@@ -185,8 +185,9 @@ startPeerDispatcher
   -> Mempool m alg (TX a)
   -> m ()
 startPeerDispatcher p2pConfig net peerAddr addrs AppChans{..} mempool = logOnException $ do
-  peerId <- generatePeerId
+  let PeerInfo peerId _ _ = ourPeerInfo net
   logger InfoS ("Starting peer dispatcher: addrs = " <> showLS addrs <> ", PeerId = " <> showLS peerId) ()
+  liftIO $ putStrLn $ "Starting peer dispatcher: addrs = " ++ show addrs ++ ", PeerId = " ++ show (peerId, ourPeerInfo net)
   trace TeNodeStarted
   peerRegistry       <- newPeerRegistry peerId
   peerChanPex        <- liftIO newBroadcastTChanIO
@@ -272,6 +273,7 @@ acceptLoop cfg peerAddr NetworkAPI{..} peerCh mempool peerRegistry = do
         void $ flip forkFinally (const $ close conn) $ restore $ do
           let peerInfo = connectedPeer conn
           logger InfoS "Accept connection" ("addr" `sl` show addr')
+          liftIO $ putStrLn $ "Accept connection: addr, other peerInfo, our addr: " ++show (addr', peerInfo, peerAddr)
           let otherPeerId   = piPeerId   peerInfo
               otherPeerPort = piPeerPort peerInfo
               addr = normalizeNodeAddress addr' (Just $ fromIntegral otherPeerPort)
@@ -284,7 +286,9 @@ acceptLoop cfg peerAddr NetworkAPI{..} peerCh mempool peerRegistry = do
                 )
           if otherPeerId == prPeerId peerRegistry then do
             logger DebugS "Self connection detected. Close connection" ()
-          else
+            liftIO $ putStrLn $ "self connection"
+          else do
+            liftIO $ putStrLn $ "connection at <"++show (prPeerId peerRegistry)++"> with <"++show otherPeerId++">"
             withPeer peerRegistry addr (CmAccept otherPeerId) $ do
                   logger InfoS "Accepted connection" ("addr" `sl` show addr)
                   trace $ TeNodeOtherConnected (show addr)

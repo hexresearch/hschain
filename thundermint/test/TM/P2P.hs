@@ -173,10 +173,9 @@ tests :: TestTree
 tests = testGroup "p2p"
     [ testGroup "simple tests" [
           testCase "Tests must be multithreaded" testMultithread
-        {-, testCase "Peers must connect" testPeersMustConnect
+        , testCase "Peers must connect" testPeersMustConnect
         , testCase "Peer registry must be filled" testPeerRegistryMustBeFilled
         , testCase "Peers must ack and get addresses" testPeersMustAckAndGetAddresses
         , testCase "Peers in big net must interconnects" testBigNetMustInterconnect
-        -}
         ]
     ]

@@ -102,6 +102,7 @@ realNetwork ourPeerInfo serviceName = (realNetworkStub serviceName)
           Nothing -> fail $ "connection dropped while receiving peer info from " ++ show addr
           Just (Left err) -> fail $ "failure to decode PeerInfo from " ++ show addr
           Just (Right otherPI) -> return $ applyConn otherPI sock
+  , ourPeerInfo = ourPeerInfo
   }
  where
   accept sock = do
@@ -223,6 +224,7 @@ realNetworkUdp ourPeerInfo serviceName = do
     , filterOutOwnAddresses = filterOutOwnAddresses (realNetworkStub serviceName)
     , normalizeNodeAddress = normalizeNodeAddress (realNetworkStub serviceName)
     , listenPort = listenPort (realNetworkStub serviceName)
+    , ourPeerInfo = ourPeerInfo
     }
  where
   mkConnectPart = (255 :: Word8, complement 0 :: Word32, LBS.empty)
@@ -377,10 +379,12 @@ createMockNode MockNet{..} addr = NetworkAPI
               Just []     -> retry
               Just ((conn,addr'):xs) -> do
                 writeTVar mnetIncoming $ Map.insert key xs mList
-                return (applyConn conn, addr')
+                return (applyConn addr' conn, addr')
       return (stopListening, accept)
     --
-  , connect = \loc -> liftIO.atomically $ do
+  , connect = \loc -> do
+    liftIO $ putStrLn $ "MOCK: node "++show addr++" has been asked to connect to "++show loc
+    liftIO.atomically $ do
       chA <- newTChan
       chB <- newTChan
       v   <- newTVar True
@@ -396,14 +400,17 @@ createMockNode MockNet{..} addr = NetworkAPI
       cmap <- readTVar mnetIncoming
       case loc `Map.lookup` cmap of
         Nothing -> error "MockNet: Cannot connect to closed socket"
-        Just xs -> writeTVar mnetIncoming $ Map.insert loc (xs ++ [(sockFrom,loc)]) cmap
-      return $ applyConn sockTo
+        Just xs -> writeTVar mnetIncoming $ Map.insert loc (xs ++ [(sockFrom,addr)]) cmap
+      return $ applyConn loc sockTo
   , filterOutOwnAddresses = return . Set.filter ((addr /=))
   , normalizeNodeAddress = const
   , listenPort = 0
+  , ourPeerInfo = mkPeerInfoFromAddr addr
   }
  where
-  applyConn conn = P2PConnection (liftIO . sendBS conn) (liftIO $ recvBS conn) (liftIO $ close conn) (PeerInfo 0 0 0)
+  mkPeerInfoFromAddr (NetAddrV4 ha _) = PeerInfo (fromIntegral ha) 0 0
+  mkPeerInfoFromAddr _ = error "IPv6 addr in mkPeerInfoFromAddr"
+  applyConn otherAddr conn = P2PConnection (liftIO . sendBS conn) (liftIO $ recvBS conn) (liftIO $ close conn) (mkPeerInfoFromAddr otherAddr)
   sendBS MockSocket{..} bs = atomically $
       readTVar msckActive >>= \case
         False -> error "MockNet: Cannot write to closed socket"

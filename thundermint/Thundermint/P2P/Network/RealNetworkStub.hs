@@ -21,6 +21,7 @@ realNetworkStub serviceName = NetworkAPI
                           . Set.map netAddrToSockAddr
   , normalizeNodeAddress = flip setPort . sockAddrToNetAddr . Ip.normalizeIpAddr . netAddrToSockAddr
   , listenPort = Ip.serviceNameToPortNumber serviceName
+  , ourPeerInfo = PeerInfo 0 0 0
   }
   where
     setPort Nothing a = a

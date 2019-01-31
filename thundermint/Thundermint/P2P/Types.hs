@@ -118,6 +118,9 @@ data NetworkAPI = NetworkAPI
   , normalizeNodeAddress :: !(NetAddr -> Maybe NetworkPort -> NetAddr)
     -- ^ Normalize address, for example, convert '20.15.10.20:24431' to '20.15.10.20:50000'
   , listenPort :: !NetworkPort 
+    -- ^ Listen port.
+  , ourPeerInfo :: !PeerInfo
+    -- ^ peer info for easy reference.
   }
 
 data P2PConnection = P2PConnection
