@@ -362,8 +362,9 @@ withPeer PeerRegistry{..} addr connMode action = do
   -- NOTE: we need uninterruptibleMask since we STM operation are
   --       blocking and they must not be interrupted
   uninterruptibleMask $ \restore -> do
-    r@(ok, addrs) <- liftIO $ atomically $ registerPeer tid
+    r@(ok, addrs, addrsBefore) <- liftIO $ atomically $ registerPeer tid
     logger DebugS ("withPeer: result: " <> showLS r) ()
+    liftIO $ putStrLn $ "WITHPEER: "++show (prPeerId, addr, r, connMode)
     when ok $
         restore (tracePRChange addrs >> action)
         `finally`
@@ -372,12 +373,12 @@ withPeer PeerRegistry{..} addr connMode action = do
     tracePRChange addrs = trace $ TePeerRegistryChanged (Set.map show addrs)
     -- Add peer to registry and return whether it was success
     registerPeer tid = readTVar prIsActive >>= \case
-      False -> return (False, Set.empty)
+      False -> return (False, Set.empty, Set.empty)
       True  -> do
         addrs <- readTVar prConnected
         if addr `Set.member` addrs then
           case connMode of
-            CmConnect -> return (False, addrs)
+            CmConnect -> return (False, addrs, addrs)
             CmAccept otherPeerId ->
               -- Something terrible happened: mutual connection!
               -- So we compare peerId-s: lesser let greater have connection.
@@ -388,12 +389,12 @@ withPeer PeerRegistry{..} addr connMode action = do
               else
                 -- Deny connection on this size
                 -- (for releasing addr from addrs on other side).
-                return (False, addrs)
+                return (False, addrs, addrs)
         else do
           modifyTVar' prTidMap    $ Map.insert tid addr
           modifyTVar' prConnected $ Set.insert addr
           addrs' <- readTVar prConnected
-          return (True, addrs')
+          return (True, addrs', addrs)
     -- Remove peer from registry
     unregisterPeer tid = readTVar prIsActive >>= \case
       False -> return Set.empty

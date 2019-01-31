@@ -44,9 +44,6 @@ import Thundermint.Store
 import Thundermint.Monitoring
 import TM.RealNetwork
 
-testNetworkName :: String
-testNetworkName = "tst"
-
 shouldRetry :: Bool
 shouldRetry = True
 retryPolicy :: RetryPolicy
