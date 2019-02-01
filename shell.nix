@@ -4,5 +4,5 @@ in pkgs.haskellPackages.shellFor {
      nativeBuildInputs = with pkgs.haskellPackages; [
        cabal-install
      ];
-     packages = _: pkgs.lib.attrValues release.thundermintPackages;
+     packages = _: pkgs.lib.attrValues release.packagesGHC.thundermintPackages;
 }
