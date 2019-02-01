@@ -254,12 +254,12 @@ realNetworkUdp ourPeerInfo serviceName = do
     (close addr tChans)
     otherPeerInfo
   receiveAction addr frontsVar peerChan = do
-    (message, fs) <- atomically $ do
+    (message) <- atomically $ do
       (_peerInfo, (front, ofs, chunk)) <- readTChan peerChan
       fronts <- readTVar frontsVar
       let (newFronts, message) = updateMessages front ofs chunk fronts
       writeTVar frontsVar newFronts
-      return (message, Map.size newFronts)
+      return (message)
     if LBS.null message then receiveAction addr frontsVar peerChan else let c = LBS.copy message in c `seq` return $ Just c
   updateMessages :: Word8 -> Word32 -> LBS.ByteString -> Map.Map Word8 [(Word32, LBS.ByteString)]
                  -> (Map.Map Word8 [(Word32, LBS.ByteString)], LBS.ByteString)
@@ -383,7 +383,6 @@ createMockNode MockNet{..} addr = NetworkAPI
       return (stopListening, accept)
     --
   , connect = \loc -> do
-    liftIO $ putStrLn $ "MOCK: node "++show addr++" has been asked to connect to "++show loc
     liftIO.atomically $ do
       chA <- newTChan
       chB <- newTChan

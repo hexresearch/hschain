@@ -187,7 +187,6 @@ startPeerDispatcher
 startPeerDispatcher p2pConfig net peerAddr addrs AppChans{..} mempool = logOnException $ do
   let PeerInfo peerId _ _ = ourPeerInfo net
   logger InfoS ("Starting peer dispatcher: addrs = " <> showLS addrs <> ", PeerId = " <> showLS peerId) ()
-  liftIO $ putStrLn $ "Starting peer dispatcher: addrs = " ++ show addrs ++ ", PeerId = " ++ show (peerId, ourPeerInfo net)
   trace TeNodeStarted
   peerRegistry       <- newPeerRegistry peerId
   peerChanPex        <- liftIO newBroadcastTChanIO
@@ -273,7 +272,6 @@ acceptLoop cfg peerAddr NetworkAPI{..} peerCh mempool peerRegistry = do
         void $ flip forkFinally (const $ close conn) $ restore $ do
           let peerInfo = connectedPeer conn
           logger InfoS "Accept connection" ("addr" `sl` show addr')
-          liftIO $ putStrLn $ "Accept connection: addr, other peerInfo, our addr: " ++show (addr', peerInfo, peerAddr)
           let otherPeerId   = piPeerId   peerInfo
               otherPeerPort = piPeerPort peerInfo
               addr = normalizeNodeAddress addr' (Just $ fromIntegral otherPeerPort)
@@ -286,9 +284,7 @@ acceptLoop cfg peerAddr NetworkAPI{..} peerCh mempool peerRegistry = do
                 )
           if otherPeerId == prPeerId peerRegistry then do
             logger DebugS "Self connection detected. Close connection" ()
-            liftIO $ putStrLn $ "self connection"
           else do
-            liftIO $ putStrLn $ "connection at <"++show (prPeerId peerRegistry)++"> with <"++show otherPeerId++">"
             withPeer peerRegistry addr (CmAccept otherPeerId) $ do
                   logger InfoS "Accepted connection" ("addr" `sl` show addr)
                   trace $ TeNodeOtherConnected (show addr)
@@ -362,9 +358,8 @@ withPeer PeerRegistry{..} addr connMode action = do
   -- NOTE: we need uninterruptibleMask since we STM operation are
   --       blocking and they must not be interrupted
   uninterruptibleMask $ \restore -> do
-    r@(ok, addrs, addrsBefore) <- liftIO $ atomically $ registerPeer tid
+    r@(ok, addrs) <- liftIO $ atomically $ registerPeer tid
     logger DebugS ("withPeer: result: " <> showLS r) ()
-    liftIO $ putStrLn $ "WITHPEER: "++show (prPeerId, addr, r, connMode)
     when ok $
         restore (tracePRChange addrs >> action)
         `finally`
@@ -373,12 +368,12 @@ withPeer PeerRegistry{..} addr connMode action = do
     tracePRChange addrs = trace $ TePeerRegistryChanged (Set.map show addrs)
     -- Add peer to registry and return whether it was success
     registerPeer tid = readTVar prIsActive >>= \case
-      False -> return (False, Set.empty, Set.empty)
+      False -> return (False, Set.empty)
       True  -> do
         addrs <- readTVar prConnected
         if addr `Set.member` addrs then
           case connMode of
-            CmConnect -> return (False, addrs, addrs)
+            CmConnect -> return (False, addrs)
             CmAccept otherPeerId ->
               -- Something terrible happened: mutual connection!
               -- So we compare peerId-s: lesser let greater have connection.
@@ -389,12 +384,12 @@ withPeer PeerRegistry{..} addr connMode action = do
               else
                 -- Deny connection on this size
                 -- (for releasing addr from addrs on other side).
-                return (False, addrs, addrs)
+                return (False, addrs)
         else do
           modifyTVar' prTidMap    $ Map.insert tid addr
           modifyTVar' prConnected $ Set.insert addr
           addrs' <- readTVar prConnected
-          return (True, addrs', addrs)
+          return (True, addrs')
     -- Remove peer from registry
     unregisterPeer tid = readTVar prIsActive >>= \case
       False -> return Set.empty
