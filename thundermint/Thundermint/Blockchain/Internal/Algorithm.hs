@@ -218,6 +218,7 @@ newHeight HeightParameters{..} lastCommit = do
   logger InfoS "Entering new height ----------------" (sl "H" currentH)
   scheduleTimeout $ Timeout  currentH (Round 0) StepNewHeight
   announceStep    $ FullStep currentH (Round 0) StepNewHeight
+  updateMetricsHR currentH (Round 0)
   return TMState
     { smRound         = Round 0
     , smStep          = StepNewHeight
