@@ -12,9 +12,11 @@ import Test.Tasty.Hedgehog
 import Hedgehog
 import Hedgehog.Gen.QuickCheck (arbitrary)
 
+import Thundermint.Crypto (petrify,pet)
 import Thundermint.Crypto.Ed25519
 import Thundermint.Store
 import Thundermint.Store.STM
+import TM.Arbitrary.Instances ()
 
 
 tests :: TestTree
@@ -36,7 +38,7 @@ createTestMempool :: MonadIO m => m (m (), Mempool m Ed25519_SHA512 Int)
 createTestMempool = do
   varBch  <- liftIO $ newTVarIO 0
   let checkTx i = liftIO $ do n <- readTVarIO varBch
-                              return (i > n)
+                              return (pet i > n)
   mempool <- newMempool checkTx
   return ( liftIO $ atomically $ modifyTVar' varBch (+10)
          , mempool
@@ -46,7 +48,8 @@ createTestMempool = do
 propSelfCheck :: Property
 propSelfCheck = property $ do
   -- Parametsrs
-  txsSets <-  zipWith (\n -> map (+n)) (iterate (+10) 0)
+  txsSets <-  zipWith (\off -> map (petrify . (+off)))
+              (iterate (+10) 0)
           <$> forAll arbitrary
   -- Create mempool
   (commit,mempool) <- createTestMempool
@@ -76,4 +79,4 @@ propDuplicate = property $ do
   mapM_ (pushTransaction cursor) txs
   -- TX should be in same order, positive, and duplicates should be removed
   txs' <- peekNTransactions mempool Nothing
-  unless (txs' == nub (filter (>0) txs)) failure
+  unless (txs' == nub (filter ((>0) . pet) txs)) failure

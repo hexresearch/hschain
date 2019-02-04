@@ -26,6 +26,7 @@ import System.FilePath      ((</>))
 import qualified Network.Wai.Handler.Warp as Warp
 
 import Thundermint.Blockchain.Internal.Engine.Types
+import Thundermint.Crypto                    (petrify)
 import Thundermint.Crypto.Ed25519            (Ed25519_SHA512)
 import Thundermint.Logger
 import Thundermint.Run

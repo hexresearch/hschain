@@ -41,7 +41,7 @@ import Thundermint.Types.Blockchain
 --   e.g. if transaction or block is not valid it will return
 --   @Nothing@.
 data BlockFold s alg a = BlockFold
-  { processTx    :: !(Height -> TX a -> s -> Maybe s)
+  { processTx    :: !(Height -> Pet (TX a) -> s -> Maybe s)
     -- ^ Try to process single transaction. Nothing indicates that
     --   transaction is invalid. This function will called very
     --   frequently so it need not to perform every check but should
@@ -51,7 +51,7 @@ data BlockFold s alg a = BlockFold
   , processBlock :: !(Block alg a -> s -> Maybe s)
     -- ^ Try to process whole block. Here application should perform
     --   complete validation of block
-  , transactionsToBlock :: !(Height -> s -> [TX a] -> a)
+  , transactionsToBlock :: !(Height -> s -> [Pet (TX a)] -> a)
     -- ^ Create block at given height from list of transactions. Not
     --   input could contain invalid transaction and they must be
     --   filtered out so that block is valid.
@@ -84,7 +84,7 @@ newBChState BlockFold{..} = do
             GT -> error "newBChState: invalid parameter"
             EQ -> return (st, (s,False))
             LT -> do Just b <- queryRO $ retrieveBlock h
-                     case processBlock b s of
+                     case processBlock (pet b) s of
                        Just st' -> return ((succ h, st'), (st',True))
                        Nothing  -> error "OOPS! Blockchain is not valid!!!"
         case flt of
@@ -106,9 +106,9 @@ hoistBChState f BChState{..} = BChState
 ----------------------------------------------------------------
 
 data PersistentState dct alg a = PersistentState
-  { processTxDB           :: !(Height -> TX a -> EphemeralQ alg a dct ())
+  { processTxDB           :: !(Height -> Pet (TX a) -> EphemeralQ alg a dct ())
   , processBlockDB        :: !(forall q. (ExecutorRW q, Monad (q dct), MonadFail (q dct))
                           => Block alg a -> q dct ())
-  , transactionsToBlockDB :: !(Height -> [TX a] -> EphemeralQ alg a dct a)
+  , transactionsToBlockDB :: !(Height -> [Pet (TX a)] -> EphemeralQ alg a dct a)
   , persistedData         :: !(dct Persistent)
   }

@@ -22,7 +22,9 @@ Library
                      , bytestring        >=0.10
                      , deepseq           >=1.4
                      , serialise         >=0.2
+                     , cborg             >=0.2.1
                      , text              >=1
+                     , transformers
                      --
   if impl(ghcjs)
     hs-source-dirs: ghcjs .

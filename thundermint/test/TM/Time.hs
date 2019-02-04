@@ -50,11 +50,11 @@ checkMedian wtimes expectedT = forM_ (permuteCommit commit) $ \cmt ->
     commit = Commit
       { commitBlockID    = bid
       , commitPrecommits =
-          [ signValue pk Vote { voteHeight  = Height 1
-                              , voteRound   = Round 0
-                              , voteBlockID = Just bid
-                              , voteTime    = Time t
-                              }
+          [ signValue pk $ petrify Vote { voteHeight  = Height 1
+                                        , voteRound   = Round 0
+                                        , voteBlockID = Just bid
+                                        , voteTime    = Time t
+                                        }
           | ((_,t),pk) <- wtimes `zip` privateKeyList
           ]
       }
@@ -68,4 +68,4 @@ permuteCommit Commit{..} =
   ]
 
 bid :: BlockID Ed25519_SHA512 ()
-bid = BlockID (Hashed (hash ()))
+bid = BlockID (Hashed (hash (petrify ())))

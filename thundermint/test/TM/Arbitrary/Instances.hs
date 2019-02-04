@@ -7,6 +7,7 @@
 --
 module TM.Arbitrary.Instances where
 
+import Codec.Serialise (Serialise)
 import Data.ByteString.Arbitrary as Arb
 import Data.Maybe
 import qualified Data.ByteString as BS
@@ -56,7 +57,7 @@ instance (Arbitrary a) => Arbitrary (Header alg a) where
                      <*> arbitrary
                      <*> arbitrary
 
-instance (Arbitrary a) => Arbitrary (Signed sign alg a) where
+instance (Serialise a, Arbitrary a) => Arbitrary (Signed sign alg a) where
   arbitrary = genericArbitrary
   shrink = genericShrink
 
@@ -77,7 +78,7 @@ instance Arbitrary VoteType where
   shrink = genericShrink
 
 
-instance (Arbitrary a, Crypto alg, Arbitrary (PublicKey alg)) => Arbitrary (Block alg a) where
+instance (Serialise a, Arbitrary a, Crypto alg, Arbitrary (PublicKey alg)) => Arbitrary (Block alg a) where
   arbitrary = Block <$> arbitrary
                     <*> arbitrary
                     <*> resize 4 arbitrary
@@ -106,3 +107,7 @@ instance Arbitrary (PublicKey Ed25519_SHA512) where
     bs <- vectorOf 32 arbitrary
     return $ fromJust $ decodeFromBS $ BS.pack bs
   shrink _ = []
+
+instance (Serialise a, Arbitrary a) => Arbitrary (Pet a) where
+  arbitrary = petrify <$> arbitrary
+  shrink    = map petrify . shrink . pet

@@ -25,6 +25,7 @@ import Test.Tasty.HUnit
 
 import Thundermint.Blockchain.Internal.Engine.Types
 import Thundermint.Control
+import Thundermint.Crypto (Pet,petrify)
 import Thundermint.Crypto.Ed25519
 import Thundermint.Mock.KeyList
 import Thundermint.Store
@@ -136,11 +137,11 @@ tests = testGroup "Tests for persistent data"
        ]
   ]
 
-genesis :: Block Ed25519_SHA512 ()
+genesis :: Pet (Block Ed25519_SHA512 ())
 genesis = makeGenesis "TEST" (Time 0) () validatorSet
 
-validatorSet :: ValidatorSet Ed25519_SHA512
-validatorSet = makeValidatorSetFromPriv [ PrivValidator k | k <- take 4  privateKeyList ]
+validatorSet :: Pet (ValidatorSet Ed25519_SHA512)
+validatorSet = petrify $ makeValidatorSetFromPriv [ PrivValidator k | k <- take 4  privateKeyList ]
 
 ----------------------------------------------------------------
 -- Common code

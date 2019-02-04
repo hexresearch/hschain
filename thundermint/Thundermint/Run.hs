@@ -69,10 +69,10 @@ data NodeLogic m alg a = NodeLogic
   , nodeCommitQuery     :: !(CommitCallback m alg a)
     -- ^ Query for modifying user state.
   , nodeBlockGenerator  :: !(Height
-                          -> Time
-                          -> Maybe (Commit alg a)
-                          -> [ByzantineEvidence alg a]
-                          -> m (a, [ValidatorChange alg]))
+                        -> Time
+                        -> Maybe (Commit alg a)
+                        -> [ByzantineEvidence alg a]
+                        -> m (a, [ValidatorChange alg]))
     -- ^ Generator for a new block
   , nodeMempool         :: !(Mempool m alg (TX a))
     -- ^ Mempool of node
@@ -95,7 +95,7 @@ logicFromFold transitions@BlockFold{..} = do
   --
   return ( bchState
          , NodeLogic { nodeBlockValidation = \b -> do
-                         let h = headerHeight $ blockHeader b
+                         let h = headerHeight $ pet $ blockHeader b
                          st <- stateAtH bchState h
                          return $ [] <$ processBlock b st
                      , nodeCommitQuery     = SimpleQuery $ \_ -> return []
@@ -121,7 +121,7 @@ logicFromPersistent PersistentState{..} = do
   -- Now we need to update state using genesis block.
   do r <- queryRW $ do
        Just genesis <- retrieveBlock (Height 0)
-       runBlockUpdate (Height 0) persistedData $ processBlockDB genesis
+       runBlockUpdate (Height 0) persistedData $ processBlockDB $ pet genesis
      case r of
        Just () -> return ()
        Nothing -> error "Cannot initialize persistent storage"
@@ -131,7 +131,7 @@ logicFromPersistent PersistentState{..} = do
         r <- queryRO $ runEphemeralQ persistedData (processBlockDB b)
         return $! [] <$ r
     , nodeCommitQuery     = SimpleQuery $ \b -> do
-        runBlockUpdate (headerHeight (blockHeader b)) persistedData $ processBlockDB b
+        runBlockUpdate (headerHeight $ pet $ blockHeader b) persistedData $ processBlockDB b
         return []
     , nodeBlockGenerator  = \h _ _ _ -> do
         txs <- peekNTransactions mempool Nothing

@@ -114,22 +114,22 @@ insertSigned sval SignedSet{..} =
           , vsetValMap   =
               let upd VoteGroup{..}
                     | vsetValueOK val = Just VoteGroup
-                                        { accOK    = accOK + validatorVotingPower validator
-                                        , votersOK = Set.insert addr votersOK
-                                        , ..
-                                        }
-                    | otherwise       = Just VoteGroup
-                                        { accBad    = accBad + validatorVotingPower validator
-                                        , votersBad = Set.insert addr votersBad
-                                        , ..
-                                        }
+                        { accOK    = accOK + validatorVotingPower validator
+                        , votersOK = Set.insert addr votersOK
+                        , ..
+                        }
+                    | otherwise             = Just VoteGroup
+                        { accBad    = accBad + validatorVotingPower validator
+                        , votersBad = Set.insert addr votersBad
+                        , ..
+                        }
               in Map.alter (upd . fromMaybe nullVote) k vsetValMap
           , ..
           }
   where
     addr     = signedAddr  sval
     val      = signedValue sval
-    k        = vsetToKey    val
+    k        = vsetToKey   val
     nullVote = VoteGroup 0 0 Set.empty Set.empty
 
 -- | We have +2\/3 majority of votes return vote for

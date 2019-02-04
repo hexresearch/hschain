@@ -79,9 +79,9 @@ data GossipMsg alg a
   = GossipPreVote   !(Signed 'Unverified alg (Vote 'PreVote   alg a))
   | GossipPreCommit !(Signed 'Unverified alg (Vote 'PreCommit alg a))
   | GossipProposal  !(Signed 'Unverified alg (Proposal alg a))
-  | GossipBlock     !(Block alg a)
+  | GossipBlock     !(Pet (Block alg a))
   | GossipAnn       !(Announcement alg)
-  | GossipTx        !(TX a)
+  | GossipTx        !(Pet (TX a))
   | GossipPex       !PexMessage
   deriving (Generic)
 deriving instance (Show a, Show (TX a), Crypto alg) => Show (GossipMsg alg a)
@@ -616,8 +616,8 @@ peerGossipVotes peerObj PeerChans{..} gossipCh = logOnException $ do
         mcmt <- case lagPeerStep p of
           FullStep peerH _ _
             | peerH == bchH -> queryRO $ retrieveLocalCommit peerH
-            | otherwise     -> queryRO $ retrieveCommit      peerH
-        --
+            | otherwise     -> queryRO $ fmap pet <$> retrieveCommit peerH
+       --
         case mcmt of
          Just cmt -> do
            let cmtVotes  = Map.fromList [ (signedAddr v, unverifySignature v)

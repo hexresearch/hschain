@@ -1,4 +1,5 @@
 {-# LANGUAGE DataKinds                  #-}
+{-# LANGUAGE DefaultSignatures          #-}
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE FlexibleInstances          #-}
@@ -22,7 +23,6 @@ module Thundermint.Crypto (
   , Signature(..)
   , Fingerprint(..)
   , Hash(..)
-  , hash
   , Crypto
   , CryptoSign(..)
   , CryptoHash(..)
@@ -34,49 +34,55 @@ module Thundermint.Crypto (
   , publicKeySize
   , privKeySize
   , signatureSize
+    -- * Petrification
+  , Pet
+  , pet
+  , petrify
+    -- * Hashes
+  , Hashed(..)
+  , hashed
+  , hash
     -- * Encoding and decoding of values
   , ByteRepr(..)
   , encodeBase58
   , decodeBase58
+  , encodeBSBase58
+  , decodeBSBase58
+  , readPrecBSBase58
     -- * Serialization and signatures
   , SignedState(..)
   , Signed
   , makeSigned
   , signedValue
+  , signedPetrified
   , signedAddr
   , signValue
   , verifySignature
   , unverifySignature
-  , verifyCborSignature
-    -- * Hash trees
-  , Hashed(..)
-  , hashed
-    -- * base58 encoding
-  , encodeBSBase58
-  , decodeBSBase58
-  , readPrecBSBase58
+  , signPetrified
+  , verifyPetrifiedSignature
   ) where
 
 import Codec.Serialise (Serialise, serialise)
-import qualified Codec.Serialise as CBOR
+import qualified Codec.Serialise          as CBOR
 import Control.Applicative
 import Control.DeepSeq
 import Control.Monad
 
 import qualified Data.Aeson           as JSON
 import           Data.Text              (Text)
-import qualified Data.Text.Encoding   as T
-import           Data.ByteString.Lazy    (toStrict)
-import qualified Data.ByteString.Char8 as BC8
+import           Data.Coerce
+import qualified Data.Text.Encoding            as T
+import qualified Data.ByteString               as BS
+import qualified Data.ByteString.Base58        as Base58
+import           Data.ByteString.Lazy    (toStrict,fromStrict)
+import qualified Data.ByteString.Char8         as BC8
 import Data.Char     (isAscii)
 import Data.Typeable (Proxy(..))
-import Text.Read
+import Text.Read     (Read(..), ReadPrec,lift)
 import Text.ParserCombinators.ReadP
 import GHC.TypeNats
 import GHC.Generics         (Generic,Generic1)
-
-import qualified Data.ByteString        as BS
-import qualified Data.ByteString.Base58 as Base58
 
 
 ----------------------------------------------------------------
@@ -104,11 +110,6 @@ newtype Fingerprint alg = Fingerprint BS.ByteString
 -- | Cryptographic hash of some value
 newtype Hash alg = Hash BS.ByteString
   deriving (Eq,Ord, Generic, Generic1, Serialise, NFData)
-
--- | Compute hash of value. It's first serialized using CBOR and then
---   hash of encoded data is computed,
-hash :: (Crypto alg, Serialise a) => a -> Hash alg
-hash = hashBlob . toStrict . serialise
 
 class ( ByteRepr (Fingerprint alg)
       , ByteRepr (Signature   alg)
@@ -335,6 +336,54 @@ instance CryptoHash alg => JSON.FromJSON (Hash alg) where
   parseJSON _ = fail "Expected string for Hash"
 
 
+----------------------------------------------------------------
+-- Petrification of data
+----------------------------------------------------------------
+
+-- | Petrified data. When we introduce migrations @encode . decode@ is
+--   no longer @id@ in general. So after introduction of new version
+--   of data types its serialized form changes and hashes and
+--   signatures are no longer valid. To circumvent this problem we
+--   carry around serialized representation of data type.
+--
+--   Only way to petrify data is to call 'petrify'. It should be only
+--   called for creation of blocks/transactions.
+data Pet a = Pet !a !BS.ByteString
+  deriving (Show)
+
+instance Eq a => Eq (Pet a) where
+  Pet a _ == Pet b _ = a == b
+
+instance Ord a => Ord (Pet a) where
+  compare (Pet a _) (Pet b _) = compare a b
+
+instance NFData a => NFData (Pet a) where
+  rnf (Pet a bs) = rnf a `seq` rnf bs
+
+instance Serialise a => Serialise (Pet a) where
+  encode (Pet _ bs) = CBOR.encode bs
+  decode = do
+    bs <- CBOR.decode
+    case CBOR.deserialiseOrFail (fromStrict bs) of
+      Left  e -> fail (show e)
+      Right a -> return $! Pet a bs
+
+instance JSON.ToJSON (Pet a) where
+  toJSON (Pet _ bs) = JSON.String $ T.decodeUtf8 $ encodeBSBase58 bs
+instance (Serialise a) => JSON.FromJSON (Pet a) where
+  parseJSON = JSON.withText "Pet a" $ \s -> 
+    case decodeBSBase58 $ T.encodeUtf8 s of
+      Nothing -> fail  "Incorrect Base58 encoding while decoding Address"
+      Just bs -> case CBOR.deserialiseOrFail (fromStrict bs) of
+        Left  e -> fail (show e)
+        Right a -> return $! Pet a bs
+
+pet :: Pet a -> a
+pet (Pet a _) = a
+
+petrify :: Serialise a => a -> Pet a
+petrify a = Pet a (toStrict (serialise a))
+
 
 ----------------------------------------------------------------
 -- Signing and verification of values
@@ -349,7 +398,7 @@ data SignedState = Verified
 --   (address) and value itself. Signature is computed for CBOR
 --   encoding of value.
 data Signed (sign :: SignedState) alg a
-  = Signed !(Fingerprint alg) !(Signature alg) !a
+  = Signed !(Fingerprint alg) !(Signature alg) !(Pet a)
   deriving (Generic, Eq, Show)
 
 instance (NFData a) => NFData (Signed sign alg a) where
@@ -357,14 +406,17 @@ instance (NFData a) => NFData (Signed sign alg a) where
 
 -- | Obtain underlying value
 signedValue :: Signed sign alg a -> a
-signedValue (Signed _ _ a) = a
+signedValue (Signed _ _ a) = pet a
+
+signedPetrified :: Signed sign alg a -> Pet a
+signedPetrified (Signed _ _ a) = a
 
 -- | Obtain fingerprint used for signing
 signedAddr :: Signed sign alg a -> Fingerprint alg
 signedAddr (Signed a _ _) = a
 
 -- | Make unverified signature
-makeSigned :: Fingerprint alg -> Signature alg -> a -> Signed 'Unverified alg a
+makeSigned :: Fingerprint alg -> Signature alg -> Pet a -> Signed 'Unverified alg a
 makeSigned = Signed
 
 -- | Sign value. Not that we can generate both verified and unverified
@@ -372,7 +424,7 @@ makeSigned = Signed
 signValue
   :: (Serialise a, CryptoSign alg)
   => PrivKey alg                -- ^ Key for signing
-  -> a                          -- ^ Value to sign
+  -> Pet a                      -- ^ Value to sign
   -> Signed sign alg a
 signValue privK a
   = Signed (fingerprint $ publicKey privK)
@@ -390,29 +442,35 @@ verifySignature
   -> Signed 'Unverified alg a
      -- ^ Value for verifying signature
   -> Maybe  (Signed 'Verified alg a)
-verifySignature lookupKey (Signed addr signature a) = do
+verifySignature lookupKey s@(Signed addr signature (Pet _ bs)) = do
   pubK <- lookupKey addr
-  guard $ verifyCborSignature pubK a signature
-  return $ Signed addr signature a
+  guard $ verifyBlobSignature pubK bs signature
+  return $ coerce s
 
 -- | Strip verification tag
 unverifySignature :: Signed ty alg a -> Signed 'Unverified alg a
 unverifySignature (Signed addr sig a) = Signed addr sig a
 
--- | Verify signature of value. Signature is verified for CBOR
---   encoding of object
-verifyCborSignature
-  :: (Serialise a, CryptoSign alg)
+
+signPetrified
+  :: (CryptoSign alg)
+  => PrivKey alg
+  -> Pet a
+  -> Signature alg
+signPetrified pk (Pet _ bs) = signBlob pk bs
+
+-- | Verify signature of value.
+verifyPetrifiedSignature
+  :: (Crypto alg)
   => PublicKey alg
-  -> a
+  -> Pet a
   -> Signature alg
   -> Bool
-verifyCborSignature pk a
-  = verifyBlobSignature pk (toStrict $ serialise a)
+verifyPetrifiedSignature pk (Pet _ bs) = verifyBlobSignature pk bs
 
-instance Serialise a => Serialise (Signed 'Unverified alg a)
-instance JSON.FromJSON a => JSON.FromJSON (Signed 'Unverified alg a)
-instance JSON.ToJSON   a => JSON.ToJSON   (Signed 'Unverified alg a)
+instance Serialise   a => Serialise (Signed 'Unverified alg a)
+instance Serialise   a => JSON.FromJSON (Signed 'Unverified alg a)
+instance JSON.ToJSON a => JSON.ToJSON (Signed 'Unverified alg a)
 
 
 
@@ -426,7 +484,12 @@ newtype Hashed alg a = Hashed (Hash alg)
   deriving ( Show,Eq,Ord, Generic, Generic1, NFData
            , Serialise,JSON.FromJSON,JSON.ToJSON)
 
-hashed :: (Crypto alg, Serialise a) => a -> Hashed alg a
+-- | Compute hash of value. It's first serialized using CBOR and then
+--   hash of encoded data is computed,
+hash :: (Crypto alg) => Pet a -> Hash alg
+hash (Pet _ bs) = hashBlob bs
+
+hashed :: (Crypto alg) => Pet a -> Hashed alg a
 hashed = Hashed . hash
 
 

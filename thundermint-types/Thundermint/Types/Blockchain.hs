@@ -8,6 +8,7 @@
 {-# LANGUAGE RecordWildCards            #-}
 {-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE TypeFamilies               #-}
+{-# LANGUAGE ViewPatterns               #-}
 -- |
 -- Data types for implementation of consensus algorithm
 module Thundermint.Types.Blockchain (
@@ -110,32 +111,33 @@ instance CryptoHash alg => JSON.FromJSON (BlockID alg a)
 
 blockHash
   :: (Crypto alg, Serialise a)
-  => Block alg a
+  => Pet (Block alg a)
   -> BlockID alg a
-blockHash b = BlockID (hashed (blockHeader b))
+blockHash b = BlockID (hashed . blockHeader . pet $ b)
 
 
 -- | Block data type
 data Block alg a = Block
-  { blockHeader     :: !(Header alg a)
-  , blockData       :: !a
+  { blockHeader     :: !(Pet (Header alg a))
+    -- ^ Header of block.
+  , blockData       :: !(Pet a)
     -- ^ Payload of block. Thundermint treats it completely opaque and
     --   rely on callback to do anything to it.
-  , blockValChange  :: [ValidatorChange alg]
+  , blockValChange  :: !(Pet [ValidatorChange alg])
     -- ^ Changes in set of validators as result of block evaluation
-  , blockLastCommit :: !(Maybe (Commit alg a))
+  , blockLastCommit :: !(Maybe (Pet (Commit alg a)))
     -- ^ Commit information for previous block. Nothing iff block
     --   is a genesis block or block at height 1.
-  , blockEvidence   :: [ByzantineEvidence alg a]
+  , blockEvidence   :: !(Pet [ByzantineEvidence alg a])
     -- ^ Evidence of byzantine behavior by nodes.
   }
   deriving (Show, Generic)
 
 instance (NFData a, NFData (PublicKey alg)) => NFData (Block alg a)
 deriving instance (Eq (PublicKey alg), Eq a) => Eq (Block alg a)
-instance (Crypto alg, Serialise     a) => Serialise     (Block alg a)
-instance (Crypto alg, JSON.FromJSON a) => JSON.FromJSON (Block alg a)
-instance (Crypto alg, JSON.ToJSON   a) => JSON.ToJSON   (Block alg a)
+instance (Crypto alg, Serialise   a) => Serialise     (Block alg a)
+instance (Crypto alg, Serialise   a) => JSON.FromJSON (Block alg a)
+instance (Crypto alg, JSON.ToJSON a) => JSON.ToJSON   (Block alg a)
 
 -- | Genesis block has many field with predetermined content so this
 --   is convenience function to create genesis block.
@@ -144,25 +146,30 @@ makeGenesis
   => ByteString                 -- ^ Text identifier of chain
   -> Time                       -- ^ Time of genesis
   -> a                          -- ^ Block data
-  -> ValidatorSet alg           -- ^ Set of validators for block 1
-  -> Block alg a
-makeGenesis chainID t dat valSet = Block
-  { blockHeader = Header
+  -> Pet (ValidatorSet alg)     -- ^ Set of validators for block 1
+  -> Pet (Block alg a)
+makeGenesis chainID t dat valSet = petrify Block
+  { blockHeader = petrify $ Header
       { headerChainID        = chainID
       , headerHeight         = Height 0
       , headerTime           = t
       , headerLastBlockID    = Nothing
       , headerValidatorsHash = hashed valSet
-      , headerValChangeHash  = hashed []
-      , headerDataHash       = hashed dat
-      , headerLastCommitHash = hashed Nothing
-      , headerEvidenceHash   = hashed []
+      , headerValChangeHash  = hashed bValChange
+      , headerDataHash       = hashed bData
+      , headerLastCommitHash = Nothing
+      , headerEvidenceHash   = hashed bEvidence
       }
-  , blockData       = dat
-  , blockValChange  = []
+  , blockData       = bData
+  , blockValChange  = bValChange
   , blockLastCommit = Nothing
-  , blockEvidence   = []
+  , blockEvidence   = bEvidence
   }
+  where
+    bData       = petrify dat
+    bValChange  = petrify []
+    bEvidence   = petrify []
+
 
 -- | Block header
 data Header alg a = Header
@@ -182,8 +189,9 @@ data Header alg a = Header
     -- ^ Hash of block data
   , headerValChangeHash  :: !(Hashed alg [ValidatorChange alg])
     -- ^ Hash of change in validators set.
-  , headerLastCommitHash :: !(Hashed alg (Maybe (Commit alg a)))
-    -- ^ Hash of last commit
+  , headerLastCommitHash :: !(Maybe (Hashed alg (Commit alg a)))
+    -- ^ Hash of last commit. @Nothing@ if there's no commit for last
+    --   block.
   , headerEvidenceHash   :: !(Hashed alg [ByzantineEvidence alg a])
     -- ^ Hash of evidence of byzantine behavior
   }
@@ -269,7 +277,7 @@ commitTime vset t0 Commit{..} = do
            )
   -- Here we discard invalid votes and calculate median time
   let times    = sortBy (comparing snd)
-               $ [ (w,voteTime) | (w,Vote{..}) <- votes
+               $ [ (w,voteTime) | (w, Vote{..}) <- votes
                                 , voteTime > t0
                                 , voteBlockID == Just commitBlockID
                                 ]
@@ -301,11 +309,11 @@ class (Serialise a, Serialise (TX a)) => BlockData a where
   -- | Transaction type of block
   type TX a
   -- | Return list of transaction in block
-  blockTransactions :: a -> [TX a]
+  blockTransactions :: a -> [Pet (TX a)]
   logBlockData      :: a -> JSON.Object
 
-instance (Serialise a) => BlockData [a] where
-  type TX [a] = a
+instance (Serialise a) => BlockData [Pet a] where
+  type TX [Pet a] = a
   blockTransactions = id
   logBlockData      = HM.singleton "Ntx" . JSON.toJSON . length
 
@@ -377,7 +385,7 @@ instance JSON.ToJSON   VoteType
 
 -- | Single vote cast validator. Type of vote is determined by its
 --   type tag
-data Vote (ty :: VoteType) alg a= Vote
+data Vote (ty :: VoteType) alg a = Vote
   { voteHeight  :: !Height
   , voteRound   :: !Round
   , voteTime    :: !Time

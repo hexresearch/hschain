@@ -28,8 +28,8 @@ import Thundermint.Store.Internal.Query
 -- | Create tables for storing blockchain data
 initializeBlockhainTables
   :: (Crypto alg, Eq (PublicKey alg), Serialise a, Eq a)
-  => Block alg a                -- ^ Genesis block
-  -> ValidatorSet alg           -- ^ Initial validator set
+  => Pet (Block alg a)                -- ^ Genesis block
+  -> Pet (ValidatorSet alg)           -- ^ Initial validator set
   -> Query 'RW alg a ()
 initializeBlockhainTables genesis initialVals = do
   -- Initialize tables for storage of blockchain
@@ -110,38 +110,49 @@ blockchainHeight =
     _        -> error "Impossible"
 
 
--- | Retrieve block at given height.
---
---   Must return block for every height @0 <= h <= blockchainHeight@
-retrieveBlock :: (Serialise a, Crypto alg) => Height -> Query rw alg a (Maybe (Block alg a))
+-- | Retrieve block at given height. For valid blockchain database
+--   returns block for every height @0 <= h <= blockchainHeight@
+retrieveBlock
+  :: (Serialise a, Crypto alg)
+  => Height
+  -> Query rw alg a (Maybe (Pet (Block alg a)))
 retrieveBlock (Height h) =
   singleQ "SELECT block FROM blockchain WHERE height = ?" (Only h)
 
--- | Retrieve ID of block at given height. Must return same result
---   as @fmap blockHash . retrieveBlock@ but implementation could
---   do that more efficiently.
+
+-- | Retrieve ID of block at given height.
 retrieveBlockID :: Height -> Query rw alg a (Maybe (BlockID alg a))
 retrieveBlockID (Height h) =
   singleQ "SELECT bid FROM blockchain WHERE height = ?" (Only h)
 
--- | Retrieve commit justifying commit of block at height
+
+-- | Retrieve commit justifying commit of block at given height.
+--
 --   @h@. Must return same result as @fmap blockLastCommit . retrieveBlock . next@
 --   but do it more efficiently.
 --
 --   Note that this method returns @Nothing@ for last block since
 --   its commit is not persisted in blockchain yet and there's no
 --   commit for genesis block (h=0)
-retrieveCommit :: (Serialise a, Crypto alg) => Height -> Query rw alg a (Maybe (Commit alg a))
+retrieveCommit
+  :: (Serialise a, Crypto alg)
+  => Height
+  -> Query rw alg a (Maybe (Pet (Commit alg a)))
 retrieveCommit (Height h) = do
   mb <- singleQ "SELECT block FROM blockchain WHERE height = ?" (Only (h+1))
-  return $ blockLastCommit =<< mb
+  return $ blockLastCommit . pet =<< mb
+
 
 -- | Retrieve round when commit was made.
-retrieveCommitRound :: (Serialise a, Crypto alg) => Height -> Query rw alg a (Maybe Round)
+retrieveCommitRound
+  :: (Serialise a, Crypto alg)
+  => Height
+  -> Query rw alg a (Maybe Round)
 retrieveCommitRound (Height h) = runMaybeT $ do
-  c <-  MaybeT (retrieveCommit (Height h))
+  c <-  MaybeT (fmap pet <$> retrieveCommit (Height h))
     <|> MaybeT (singleQ "SELECT cmt FROM commits WHERE height = ?" (Only h))
-  let getRound (Commit _ (v:_)) = voteRound (signedValue v)
+  -- FIXME
+  let getRound (Commit _ (v:_)) = voteRound $ signedValue v
       getRound _                = error "Impossible"
   return $ getRound c
 
@@ -163,7 +174,7 @@ retrieveLocalCommit (Height h) =
 -- | Retrieve set of validators for given round.
 --
 --   Must return validator set for every @0 < h <= blockchainHeight + 1@
-retrieveValidatorSet :: (Crypto alg) =>  Height -> Query rw alg a (Maybe (ValidatorSet alg))
+retrieveValidatorSet :: (Crypto alg) => Height -> Query rw alg a (Maybe (Pet (ValidatorSet alg)))
 retrieveValidatorSet (Height h) =
   singleQ "SELECT valset FROM validators WHERE height = ?" (Only h)
 
@@ -175,9 +186,11 @@ retrieveValidatorSet (Height h) =
 -- | Write block and commit justifying it into persistent storage.
 storeCommit
   :: (Crypto alg, Serialise a)
-  => Commit alg a -> Block alg a -> Query 'RW alg a ()
+  => Commit alg a
+  -> Pet (Block  alg a)
+  -> Query 'RW alg a ()
 storeCommit cmt blk = do
-  let Height h = headerHeight $ blockHeader blk
+  let Height h = headerHeight $ pet $ blockHeader $ pet blk
   execute "INSERT INTO commits VALUES (?,?)" (h, serialise cmt)
   execute "INSERT INTO blockchain VALUES (?,?,?)"
     ( h
@@ -186,9 +199,12 @@ storeCommit cmt blk = do
     )
 
 -- | Write validator set for next round into database
-storeValSet :: (Crypto alg) => Block alg a -> ValidatorSet alg -> Query 'RW alg a ()
+storeValSet :: (Crypto alg)
+  => Pet (Block alg a)
+  -> Pet (ValidatorSet alg)
+  -> Query 'RW alg a ()
 storeValSet blk vals = do
-  let Height h = headerHeight $ blockHeader blk
+  let Height h = headerHeight $ pet $ blockHeader $ pet blk
   execute "INSERT INTO validators VALUES (?,?)"
     (h+1, serialise vals)
 

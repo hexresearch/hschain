@@ -120,10 +120,10 @@ createTestNetworkWithConfig cfg desc = do
     mkTestNode
       :: (MonadIO m, MonadMask m, MonadFork m)
       => MockNet
-      -> (Connection 'RW Ed25519_SHA512 [(String, NetAddr)], TestNetLinkDescription m)
+      -> (Connection 'RW Ed25519_SHA512 [Pet (String, NetAddr)], TestNetLinkDescription m)
       -> m [m ()]
     mkTestNode net (conn, TestNetLinkDescription{..}) = do
-        let validatorSet = makeValidatorSetFromPriv testValidators
+        let validatorSet = petrify $ makeValidatorSetFromPriv testValidators
         initDatabase conn Proxy (genesisBlock validatorSet) validatorSet
         --
         let run = runTracerT ncCallback . runNoLogsT . runDBT conn

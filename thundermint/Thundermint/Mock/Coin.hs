@@ -6,6 +6,7 @@
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE RecordWildCards            #-}
 {-# LANGUAGE TupleSections              #-}
+{-# LANGUAGE ViewPatterns               #-}
 -- |
 -- Simple coin for experimenting with blockchain
 module Thundermint.Mock.Coin (
@@ -93,7 +94,7 @@ data Tx
   = Deposit !(PublicKey Alg) !Integer
     -- ^ Deposit tokens to given key. Could only appear in genesis
     --   block
-  | Send !(PublicKey Alg) !(Signature Alg) !TxSend
+  | Send !(PublicKey Alg) !(Signature Alg) !(Pet TxSend)
     -- ^ Send coins to other addresses. Transaction must obey
     --   following invariants:
     --
@@ -118,19 +119,19 @@ newtype CoinState = CoinState
   }
   deriving (Show, NFData, Generic)
 
-processDeposit :: Tx -> CoinState -> Maybe CoinState
-processDeposit Send{}                _             = Nothing
-processDeposit tx@(Deposit pk nCoin) CoinState{..} =
+processDeposit :: Pet Tx -> CoinState -> Maybe CoinState
+processDeposit (pet -> Send{})              _             = Nothing
+processDeposit tx@(pet -> Deposit pk nCoin) CoinState{..} =
   return CoinState
     { unspentOutputs = Map.insert (hash tx,0) (pk,nCoin) unspentOutputs
     }
 
 
-processTransaction :: Tx -> CoinState -> Maybe CoinState
-processTransaction Deposit{} _ = Nothing
-processTransaction transaction@(Send pubK sig txSend@TxSend{..}) CoinState{..} = do
+processTransaction :: Pet Tx -> CoinState -> Maybe CoinState
+processTransaction (pet -> Deposit{}) _ = Nothing
+processTransaction transaction@(pet -> Send pubK sig txSend@(pet -> TxSend{..})) CoinState{..} = do
   -- Signature must be valid
-  guard $ verifyCborSignature pubK txSend sig
+  guard $ verifyPetrifiedSignature pubK txSend sig
   -- Inputs and outputs are not null
   guard $ not $ null txInputs
   guard $ not $ null txOutputs
@@ -144,7 +145,7 @@ processTransaction transaction@(Send pubK sig txSend@TxSend{..}) CoinState{..} =
     return n
   guard (sum inputs == sum (map snd txOutputs))
   -- Update application state
-  let txHash = hashBlob $ toStrict $ serialise transaction
+  let txHash = hash transaction
   return CoinState
     { unspentOutputs =
         let spend txMap = foldl' (flip  Map.delete) txMap txInputs
@@ -154,11 +155,11 @@ processTransaction transaction@(Send pubK sig txSend@TxSend{..}) CoinState{..} =
         in add $ spend unspentOutputs
     }
 
-transitions :: BlockFold CoinState alg [Tx]
+transitions :: BlockFold CoinState alg [Pet Tx]
 transitions = BlockFold
   { processTx           = process
-  , processBlock        = \b s0 -> let h = headerHeight $ blockHeader b
-                                   in foldM (flip (process h)) s0 (blockData b)
+  , processBlock        = \b s0 -> let h = headerHeight $ pet $ blockHeader b
+                                   in foldM (flip (process h)) s0 (pet (blockData b))
   , transactionsToBlock = \_ ->
       let selectTx _ []     = []
           selectTx c (t:tx) = case processTransaction t c of
@@ -187,10 +188,10 @@ instance FloatOut CoinStateDB where
   floatOut (CoinStateDB (Compose u)) = fmap CoinStateDB u
   traverseEff f (CoinStateDB u) = f u
 
-transitionsDB :: PersistentState CoinStateDB Alg [Tx]
+transitionsDB :: PersistentState CoinStateDB Alg [Pet Tx]
 transitionsDB = PersistentState
   { processTxDB           = \_ -> processTransactionDB
-  , processBlockDB        = \b -> forM_ (blockData b) $ processDB (headerHeight (blockHeader b))
+  , processBlockDB        = \b -> forM_ (pet (blockData b)) $ processDB (headerHeight (pet (blockHeader b)))
   , transactionsToBlockDB = \h ->
       let selectTx []     = return []
           selectTx (t:tx) = optional (processDB h t) >>= \case
@@ -212,26 +213,26 @@ coinDict = CoinStateDB
 processDB
   :: (Monad (q CoinStateDB), ExecutorRW q, MonadFail (q CoinStateDB))
   => Height
-  -> Tx
+  -> Pet Tx
   -> q CoinStateDB ()
-processDB (Height 0) (Deposit pk nCoin) = processDepositDB pk nCoin
-processDB _          tx                 = processTransactionDB tx
+processDB (Height 0) tx@(pet -> Deposit pk nCoin) = processDepositDB (hash tx) pk nCoin
+processDB _          tx                           = processTransactionDB tx
 
 processDepositDB :: (Monad (q CoinStateDB), ExecutorRW q)
-                 => PublicKey Alg -> Integer -> q CoinStateDB ()
-processDepositDB pk nCoin = do
-  storeKey unspentOutputsLens (hash (Deposit pk nCoin),0) (pk,nCoin)
+                 => Hash Alg -> PublicKey Alg -> Integer -> q CoinStateDB ()
+processDepositDB txHash pk nCoin = do
+  storeKey unspentOutputsLens (txHash, 0) (pk, nCoin)
 
 
 
 processTransactionDB
   :: (Monad (q CoinStateDB), MonadFail (q CoinStateDB), ExecutorRW q)
-  => Tx
+  => Pet Tx
   -> q CoinStateDB ()
-processTransactionDB Deposit{} = Control.Monad.Fail.fail ""
-processTransactionDB transaction@(Send pubK sig txSend@TxSend{..}) = do
+processTransactionDB (pet -> Deposit{}) = Control.Monad.Fail.fail ""
+processTransactionDB transaction@(pet -> Send pubK sig txSend@(pet -> TxSend{..})) = do
   -- Signature must be valid
-  check $ verifyCborSignature pubK txSend sig
+  check $ verifyPetrifiedSignature pubK txSend sig
   -- Inputs and outputs are not null
   check $ not $ null txInputs
   check $ not $ null txOutputs
@@ -302,16 +303,16 @@ restrictGenerator n tot GeneratorSpec{..} = GeneratorSpec
     off1 = (n     * len) `div` tot
     off2 = ((n+1) * len) `div` tot
 
-genesisFromGenerator :: ValidatorSet Alg -> GeneratorSpec -> Block Alg [Tx]
+genesisFromGenerator :: Pet (ValidatorSet Alg) -> GeneratorSpec -> Pet (Block Alg [Pet Tx])
 genesisFromGenerator validatorSet GeneratorSpec{..} =
   makeGenesis "MONIES" (Time 0) dat validatorSet
   where
-    dat = [ Deposit pk genInitialDeposit | pk <- genInitialKeys ]
+    dat = [ petrify $ Deposit pk genInitialDeposit | pk <- genInitialKeys ]
 
 -- | Generate transaction. This implementation is really inefficient
 --   since it will materialize all unspent outputs into memory and
 --   shouldn't be used when number of wallets and coins is high
-generateTransaction :: GeneratorSpec -> IO (EphemeralQ Alg [Tx] CoinStateDB Tx)
+generateTransaction :: GeneratorSpec -> IO (EphemeralQ Alg [Pet Tx] CoinStateDB (Pet Tx))
 generateTransaction GeneratorSpec{..} = do
   -- Pick private key
   privK <- do i <- randomRIO (0, length genPrivateKeys - 1)
@@ -328,20 +329,21 @@ generateTransaction GeneratorSpec{..} = do
                                    | (inp, (pk,n)) <- Map.toList utxo
                                    , pk == pubK
                                    ]
-        tx     = TxSend { txInputs  = map fst inputs
-                        , txOutputs = [ (target, amount)
-                                      , (pubK  , sum (map snd inputs) - amount)
-                                      ]
-                        }
-    return $ Send pubK (signBlob privK $ toStrict $ serialise tx) tx
+        tx     = petrify TxSend
+                   { txInputs  = map fst inputs
+                   , txOutputs = [ (target, amount)
+                                 , (pubK  , sum (map snd inputs) - amount)
+                                 ]
+                   }
+    return $ petrify $ Send pubK (signPetrified privK tx) tx
   where
     nPK  = length genInitialKeys
 
 
 -- | Generate transaction indefinitely
 transactionGenerator
-  :: (MonadIO m, MonadDB m Alg [Tx], MonadFail m)
-  => GeneratorSpec -> (Tx -> m ()) -> m ()
+  :: (MonadIO m, MonadDB m Alg [Pet Tx], MonadFail m)
+  => GeneratorSpec -> (Pet Tx -> m ()) -> m ()
 transactionGenerator gen push = forever $ do
   txGen   <- liftIO $ generateTransaction gen
   Just tx <- queryRO
@@ -369,13 +371,13 @@ findInputs tgt = go 0
 -- | Interpret specification for node
 interpretSpec
   :: ( MonadIO m, MonadLogger m, MonadFork m, MonadTrace m, MonadMask m, MonadTMMonitoring m, MonadFail m)
-  => Maybe Int64                      -- ^ Maximum height
-  -> GeneratorSpec                    -- ^ Spec for generator of transactions
-  -> ValidatorSet Ed25519_SHA512      -- ^ Set of validators
+  => Maybe Int64                       -- ^ Maximum height
+  -> GeneratorSpec                     -- ^ Spec for generator of transactions
+  -> Pet (ValidatorSet Ed25519_SHA512) -- ^ Set of validators
   -> BlockchainNet                    -- ^ Network
-  -> Configuration cfg                -- ^ Configuration for network
-  -> NodeSpec                         -- ^ Node specifications
-  -> m (Connection 'RO Alg [Tx], m ())
+  -> Configuration cfg                 -- ^ Configuration for network
+  -> NodeSpec                          -- ^ Node specifications
+  -> m (Connection 'RO Alg [Pet Tx], m ())
 interpretSpec maxHeight genSpec validatorSet net cfg NodeSpec{..} = do
   -- Allocate storage for node
   conn <- openConnection (maybe ":memory:" id nspecDbName)
@@ -392,8 +394,8 @@ interpretSpec maxHeight genSpec validatorSet net cfg NodeSpec{..} = do
             { nodeValidationKey   = nspecPrivKey
             , nodeCommitCallback  = \case
                 b | Just hM <- maxHeight
-                  , headerHeight (blockHeader b) > Height hM -> throwM Abort
-                  | otherwise                                -> return ()
+                  , headerHeight (pet (blockHeader b)) > Height hM -> throwM Abort
+                  | otherwise                                      -> return ()
             , nodeReadyCreateBlock = \_ _ -> do n <- mempoolSize $ nodeMempool logic
                                                 return $ n > 0
             }
@@ -401,7 +403,7 @@ interpretSpec maxHeight genSpec validatorSet net cfg NodeSpec{..} = do
         runConcurrently (generator : acts)
     )
   where
-    genesisBlock :: Block Alg [Tx]
+    genesisBlock :: Pet (Block Alg [Pet Tx])
     genesisBlock = genesisFromGenerator validatorSet genSpec
 
 --
@@ -409,7 +411,7 @@ executeNodeSpec
   :: Maybe Int64                -- ^ Maximum height
   -> Int                        -- ^ Delay for generator
   -> NetSpec NodeSpec           -- ^ Specification for net
-  -> IO [Connection 'RO Alg [Tx]]
+  -> IO [Connection 'RO Alg [Pet Tx]]
 executeNodeSpec maxH delay NetSpec{..} = do
   net <- P2P.newMockNet
   let totalNodes   = length netNodeList
@@ -417,7 +419,8 @@ executeNodeSpec maxH delay NetSpec{..} = do
       connections  = case netTopology of
         Ring    -> connectRing
         All2All -> connectAll2All
-      validatorSet = makeValidatorSetFromPriv [ pk | Just pk <- nspecPrivKey <$> netNodeList ]
+      validatorSet = petrify
+                   $ makeValidatorSetFromPriv [ pk | Just pk <- nspecPrivKey <$> netNodeList ]
 
   actions <- forM (Map.toList netAddresses) $ \(addr, nspec@NodeSpec{..}) -> do
     let genSpec = restrictGenerator (netAddrToInt addr) totalNodes

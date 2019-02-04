@@ -1,3 +1,4 @@
+{-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE DataKinds         #-}
 {-# LANGUAGE DeriveFunctor     #-}
 {-# LANGUAGE FlexibleContexts  #-}
@@ -143,13 +144,13 @@ decideNewBlock config ready appSt@AppState{..} appCh@AppChans{..} lastCommt = do
         lift (retrievePropByID appPropStorage (currentH hParam) (commitBlockID cmt)) >>= \case
           Nothing -> msgHandlerLoop (Just cmt) tm
           Just b  -> lift $ do
-            logger InfoS "Actual commit" $ LogBlockInfo (currentH hParam) (blockData b)
+            logger InfoS "Actual commit" $ LogBlockInfo (currentH hParam) (pet (blockData (pet b)))
             case appCommitQuery of
               SimpleQuery callback -> do
                 r <- queryRW $ do storeCommit cmt b
-                                  vsetChange <- callback b
+                                  vsetChange <- callback (pet b)
                                   case changeValidators vsetChange (validatorSet hParam) of
-                                    Just vset -> storeValSet b vset
+                                    Just vset -> storeValSet b (petrify vset)
                                     Nothing   -> fail ""
                 case r of
                   Nothing -> error "Cannot write commit into database"
@@ -158,16 +159,16 @@ decideNewBlock config ready appSt@AppState{..} appCh@AppChans{..} lastCommt = do
               MixedQuery mcall -> do
                 callback <- mcall
                 r <- queryRW $ do storeCommit cmt b
-                                  (vsetChange,action) <- callback b
+                                  (vsetChange,action) <- callback (pet b)
                                   case changeValidators vsetChange (validatorSet hParam) of
-                                    Just vset -> storeValSet b vset
+                                    Just vset -> storeValSet b (petrify vset)
                                     Nothing   -> fail ""
                                   return action
                 case r of
                   Just action -> action
                   Nothing     -> error "Cannot write commit into database"
             advanceToHeight appPropStorage . succ =<< queryRO blockchainHeight
-            appCommitCallback b
+            appCommitCallback (pet b)
             return cmt
   --
   -- FIXME: encode that we cannot fail here!
@@ -292,19 +293,19 @@ makeHeightParameters ConsensusCfg{..} ready AppState{..} AppChans{..} = do
   oldValSet    <- queryRO $ retrieveValidatorSet  h
   Just genesis <- queryRO $ retrieveBlock        (Height 0)
   bchTime      <- do Just b <- queryRO $ retrieveBlock h
-                     return $ headerTime $ blockHeader b
+                     return $! headerTime $ pet $ blockHeader $ pet b
   let proposerChoice (Round r) =
         let Height h' = h
-            n         = validatorSetSize valSet
+            n         = validatorSetSize (pet valSet)
             i         = (h' + r) `mod` fromIntegral n
-            Just v    = validatorByIndex valSet (ValidatorIdx (fromIntegral i))
+            Just v    = validatorByIndex (pet valSet) (ValidatorIdx (fromIntegral i))
         in  fingerprint (validatorPubKey v)
   --
   return HeightParameters
     { currentH        = succ h
     , currentTime     = bchTime
-    , validatorSet    = valSet
-    , oldValidatorSet = oldValSet
+    , validatorSet    = pet valSet
+    , oldValidatorSet = pet <$> oldValSet
       -- FIXME: this is some random algorithms that should probably
       --        work (for some definition of work)
     , areWeProposers  = \r -> case appValidator of
@@ -316,9 +317,9 @@ makeHeightParameters ConsensusCfg{..} ready AppState{..} AppChans{..} = do
     , validateBlock = \bid -> do
         let nH = succ h
         lift (retrievePropByID appPropStorage nH bid) >>= \case
-          Nothing -> return UnseenProposal
-          Just b  -> do
-            inconsistencies <- lift $ checkProposedBlock nH b
+          Nothing              -> return UnseenProposal
+          Just petB@(pet -> b) -> do
+            inconsistencies <- lift $ checkProposedBlock nH petB
             mvalChange      <- lift $ appValidationFun b
             case () of
               _| not (null inconsistencies) -> do
@@ -328,23 +329,23 @@ makeHeightParameters ConsensusCfg{..} ready AppState{..} AppChans{..} = do
                      )
                    return InvalidProposal
                -- We don't put evidence into blocks yet so there shouldn't be any
-               | _:_ <- blockEvidence b -> return InvalidProposal
+               | _:_ <- pet (blockEvidence b) -> return InvalidProposal
                -- Block is correct and validators change is correct as
                -- well
                | Just ch <- mvalChange
-               , Just _  <- changeValidators ch valSet
+               , Just _  <- changeValidators ch (pet valSet)
                  -> return GoodProposal
                | otherwise              -> return InvalidProposal
     --
     , broadcastProposal = \r bid lockInfo ->
         forM_ appValidator $ \(PrivValidator pk) -> do
           t <- getCurrentTime
-          let prop = Proposal { propHeight    = succ h
-                              , propRound     = r
-                              , propTimestamp = t
-                              , propPOL       = lockInfo
-                              , propBlockID   = bid
-                              }
+          let prop = petrify Proposal { propHeight    = succ h
+                                      , propRound     = r
+                                      , propTimestamp = t
+                                      , propPOL       = lockInfo
+                                      , propBlockID   = bid
+                                      }
               sprop  = signValue pk prop
           mBlock <- lift $ retrievePropByID appPropStorage h bid
           logger InfoS "Sending proposal"
@@ -371,11 +372,11 @@ makeHeightParameters ConsensusCfg{..} ready AppState{..} AppChans{..} = do
     , castPrevote     = \r b ->
         forM_ appValidator $ \(PrivValidator pk) -> do
           t@(Time ti) <- getCurrentTime
-          let vote = Vote { voteHeight  = succ h
-                          , voteRound   = r
-                          , voteTime    = if t > bchTime then t else Time (ti + 1)
-                          , voteBlockID = b
-                          }
+          let vote = petrify Vote { voteHeight  = succ h
+                                  , voteRound   = r
+                                  , voteTime    = if t > bchTime then t else Time (ti + 1)
+                                  , voteBlockID = b
+                                  }
               svote  = signValue pk vote
           logger InfoS "Sending prevote"
             (  sl "R"    r
@@ -387,11 +388,11 @@ makeHeightParameters ConsensusCfg{..} ready AppState{..} AppChans{..} = do
     , castPrecommit   = \r b ->
         forM_ appValidator $ \(PrivValidator pk) -> do
           t <- getCurrentTime
-          let vote = Vote { voteHeight  = succ h
-                          , voteRound   = r
-                          , voteTime    = t
-                          , voteBlockID = b
-                          }
+          let vote = petrify Vote { voteHeight  = succ h
+                                  , voteRound   = r
+                                  , voteTime    = t
+                                  , voteBlockID = b
+                                  }
               svote  = signValue pk vote
           logger InfoS "Sending precommit"
             (  sl "R" r
@@ -405,12 +406,12 @@ makeHeightParameters ConsensusCfg{..} ready AppState{..} AppChans{..} = do
     --
     , announceHasPreVote   = \sv -> do
         let Vote{..} = signedValue sv
-        forM_ (indexByValidator valSet (signedAddr sv)) $ \v ->
+        forM_ (indexByValidator (pet valSet) (signedAddr sv)) $ \v ->
           liftIO $ atomically $ writeTChan appChanTx $ AnnHasPreVote voteHeight voteRound v
     --
     , announceHasPreCommit = \sv -> do
         let Vote{..} = signedValue sv
-        forM_ (indexByValidator valSet (signedAddr sv)) $ \v ->
+        forM_ (indexByValidator (pet valSet) (signedAddr sv)) $ \v ->
           liftIO $ atomically $ writeTChan appChanTx $ AnnHasPreCommit voteHeight voteRound v
     --
     , announceStep    = liftIO . atomically . writeTChan appChanTx . AnnStep
@@ -425,32 +426,37 @@ makeHeightParameters ConsensusCfg{..} ready AppState{..} AppChans{..} = do
           -- For block at H=1 we in rather arbitrary manner take time
           -- of genesis + 1s
           Height 0 -> do Just b <- queryRO $ retrieveBlock (Height 0)
-                         let Time t = headerTime $ blockHeader b
+                         let Time t = headerTime $ pet $ blockHeader $ pet b
                          return $! Time (t + 1000)
           -- Otherwise we take time from commit and if for some reason
           -- we can't we have corrupted commit for latest block and
           -- can't continue anyway.
-          _        -> case join $ liftA3 commitTime oldValSet (pure bchTime) commit of
+          _        -> case join $ liftA3 commitTime (pet <$> oldValSet) (pure bchTime) commit of
             Just t  -> return t
             Nothing -> error "Corrupted commit. Cannot generate block"
-        (bData, valCh) <- appBlockGenerator (succ h) currentT commit []
-        let block = Block
-              { blockHeader     = Header
-                  { headerChainID        = headerChainID $ blockHeader genesis
+        (dat, valCh) <- appBlockGenerator (succ h) currentT commit []
+        let block = petrify Block
+              { blockHeader     = petrify $ Header
+                  { headerChainID        = headerChainID $ pet $ blockHeader $ pet genesis
                   , headerHeight         = succ h
                   , headerTime           = currentT
                   , headerLastBlockID    = lastBID
                   , headerValidatorsHash = hashed valSet
                   , headerDataHash       = hashed bData
-                  , headerValChangeHash  = hashed valCh
-                  , headerLastCommitHash = hashed commit
-                  , headerEvidenceHash   = hashed []
+                  , headerValChangeHash  = hashed bValCh
+                  , headerLastCommitHash = hashed <$> bCommit
+                  , headerEvidenceHash   = hashed bEvidence
                   }
               , blockData       = bData
-              , blockValChange  = valCh
-              , blockLastCommit = commit
-              , blockEvidence   = []
+              , blockValChange  = bValCh
+              , blockLastCommit = bCommit
+              , blockEvidence   = bEvidence
               }
+              where
+                bData     = petrify dat
+                bValCh    = petrify valCh
+                bCommit   = petrify <$> commit
+                bEvidence = petrify []
             bid   = blockHash block
         allowBlockID   appPropStorage r bid
         storePropBlock appPropStorage block

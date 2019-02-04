@@ -143,8 +143,8 @@ advanceOurHeight (PeerStateObj _ var) ourH =
               return $ Lagging LaggingPeer
                 { lagPeerStep        = peerStep p
                 , lagPeerCommitR     = r
-                , lagPeerValidators  = vals
-                , lagPeerPrecommits  = emptyValidatorISet $ validatorSetSize vals
+                , lagPeerValidators  = pet vals
+                , lagPeerPrecommits  = emptyValidatorISet $ validatorSetSize $ pet vals
                 , lagPeerHasProposal = r   `Set.member` peerProposals p
                 , lagPeerHasBlock    = bid `Set.member` peerBlocks p
                 , lagPeerBlockID     = bid
@@ -157,7 +157,7 @@ advanceOurHeight (PeerStateObj _ var) ourH =
         -> do Just vals <- queryRO $ retrieveValidatorSet h
               return $ Current CurrentPeer
                 { peerStep       = step
-                , peerValidators = vals
+                , peerValidators = pet vals
                 , peerPrevotes   = Map.empty
                 , peerPrecommits = Map.empty
                 , peerProposals  = Set.empty
@@ -200,8 +200,8 @@ advancePeer (PeerStateObj _ var) step@(FullStep h _ _)
                       return $ Lagging LaggingPeer
                         { lagPeerStep        = step
                         , lagPeerCommitR     = cmtR
-                        , lagPeerValidators  = vals
-                        , lagPeerPrecommits  = emptyValidatorISet $ validatorSetSize vals
+                        , lagPeerValidators  = pet vals
+                        , lagPeerPrecommits  = emptyValidatorISet $ validatorSetSize $ pet vals
                         , lagPeerHasProposal = False
                         , lagPeerHasBlock    = False
                         , lagPeerBlockID     = bid
@@ -209,7 +209,7 @@ advancePeer (PeerStateObj _ var) step@(FullStep h _ _)
              EQ -> do Just vals <- queryRO $ retrieveValidatorSet h
                       return $ Current CurrentPeer
                         { peerStep       = step
-                        , peerValidators = vals
+                        , peerValidators = pet vals
                         , peerPrevotes   = Map.empty
                         , peerPrecommits = Map.empty
                         , peerProposals  = Set.empty
@@ -339,7 +339,7 @@ addPrecommitWrk (PeerStateObj _ var) h r getI =
 
 addBlock :: (MonadIO m, MonadMask m, Crypto alg, Serialise a)
          => PeerStateObj m alg a
-         -> Block alg a
+         -> Pet (Block alg a)
          -> m ()
 addBlock (PeerStateObj _ var) b =
   modifyMVarM_ var $ \peer -> case peer of

@@ -1,3 +1,4 @@
+{-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE DataKinds                  #-}
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE FlexibleContexts           #-}
@@ -131,10 +132,10 @@ instance MonadIO m => MonadDB (DBT 'RW alg a m) alg a where
 --   that it's closed on function exit
 withDatabase
   :: (MonadIO m, MonadMask m, FloatOut dct, Crypto alg, Serialise a, Eq a, Eq (PublicKey alg))
-  => FilePath         -- ^ Path to the database
-  -> dct Persistent   -- ^ Users state. If no state is stored in the
-  -> Block alg a      -- ^ Genesis block
-  -> ValidatorSet alg -- ^ Initial validators
+  => FilePath               -- ^ Path to the database
+  -> dct Persistent         -- ^ Users state. If no state is stored in the
+  -> Pet (Block alg a)      -- ^ Genesis block
+  -> Pet (ValidatorSet alg) -- ^ Initial validators
   -> (Connection 'RW alg a -> m x) -> m x
 withDatabase path dct genesis vals cont
   = withConnection path $ \c -> initDatabase c dct genesis vals >> cont c
@@ -142,10 +143,10 @@ withDatabase path dct genesis vals cont
 -- | Initialize all required tables in database.
 initDatabase
   :: (MonadIO m, FloatOut dct, Crypto alg, Serialise a, Eq a, Eq (PublicKey alg))
-  => Connection 'RW alg a  -- ^ Opened connection to database
-  -> dct Persistent        -- ^ Users state. If no state is stored in the
-  -> Block alg a           -- ^ Genesis block
-  -> ValidatorSet alg      -- ^ Initial validators
+  => Connection 'RW alg a   -- ^ Opened connection to database
+  -> dct Persistent         -- ^ Users state. If no state is stored in the
+  -> Pet (Block alg a)      -- ^ Genesis block
+  -> Pet (ValidatorSet alg) -- ^ Initial validators
   -> m ()
 initDatabase c dct genesis vals = do
   -- 1. Check that all tables has distinct names
@@ -192,9 +193,9 @@ type family Writable (rw :: Access) a where
 data ProposalStorage rw m alg a = ProposalStorage
   { currentHeight      :: !(m Height)
     -- ^ Height for which we store proposed blocks
-  , retrievePropByID   :: !(Height -> BlockID alg a -> m (Maybe (Block alg a)))
+  , retrievePropByID   :: !(Height -> BlockID alg a -> m (Maybe (Pet (Block alg a))))
     -- ^ Retrieve proposed block by its ID
-  , retrievePropByR    :: !(Height -> Round -> m (Maybe (Block alg a, BlockID alg a)))
+  , retrievePropByR    :: !(Height -> Round -> m (Maybe (Pet (Block alg a), BlockID alg a)))
     -- ^ Retrieve proposed block by round number.
 
   , advanceToHeight    :: !(Writable rw (Height -> m ()))
@@ -202,7 +203,7 @@ data ProposalStorage rw m alg a = ProposalStorage
     --   all stored data is discarded
   , allowBlockID       :: !(Writable rw (Round -> BlockID alg a -> m ()))
     -- ^ Mark block ID as one that we could accept
-  , storePropBlock     :: !(Writable rw (Block alg a -> m ()))
+  , storePropBlock     :: !(Writable rw (Pet (Block alg a) -> m ()))
     -- ^ Store block proposed at given height. If height is different
     --   from height we are at block is ignored.
   }
@@ -265,19 +266,19 @@ instance Katip.LogItem  MempoolInfo where
 
 -- | Cursor into mempool which is used for gossiping data
 data MempoolCursor m alg tx = MempoolCursor
-  { pushTransaction :: !(tx -> m (Maybe (Hash alg)))
+  { pushTransaction :: !(Pet tx -> m (Maybe (Hash alg)))
     -- ^ Add transaction to the mempool. It's preliminary checked and
     --   if check fails it immediately discarded. If transaction is
     --   accepted its hash is computed and returned
-  , advanceCursor   :: !(m (Maybe tx))
+  , advanceCursor   :: !(m (Maybe (Pet tx)))
     -- ^ Take transaction from front and advance cursor. If cursor
-    -- points at the end of queue nothing happens.
+    --   points at the end of queue nothing happens.
   }
 
 -- | Mempool which is used for storing transactions before they're
 --   added into blockchain. Transactions are stored in FIFO manner
 data Mempool m alg tx = Mempool
-  { peekNTransactions :: !(Maybe Int -> m [tx])
+  { peekNTransactions :: !(Maybe Int -> m [Pet tx])
     -- ^ Take up to N transactions from mempool. If Nothing is passed
     --   that all transactions will be returned. This operation does
     --   not alter mempool state
@@ -386,10 +387,10 @@ checkStorage
 checkStorage = queryRO $ execWriterT $ do
   maxH         <- lift $ blockchainHeight
   Just genesis <- lift $ retrieveBlock (Height 0)
-  let genesisChainId = headerChainID $ blockHeader genesis
+  let genesisChainId = headerChainID $ pet $ blockHeader $ pet genesis
   --
   forM_ [Height 0 .. maxH] $ \case
-    Height 0 -> genesisBlockInvariant genesis
+    Height 0 -> genesisBlockInvariant $ pet genesis
     h        -> checkRequire $ do
       -- Block, ID and validator set must be present
       block  <- require [MissingBlock h]        $ retrieveBlock        h
@@ -405,9 +406,9 @@ checkStorage = queryRO $ execWriterT $ do
       prevB     <- require [] $ retrieveBlock   (pred h)
       --
       lift $ blockInvariant
-        genesisChainId h (headerTime $ blockHeader prevB) prevBID (mprevVset,vset) block
+        genesisChainId h (headerTime $ pet $ blockHeader $ pet prevB) prevBID (mprevVset,vset) block
       lift $ commitInvariant (InvalidLocalCommit h)
-        h (headerTime $ blockHeader prevB) bid vset commit
+        h (headerTime $ pet $ blockHeader $ pet prevB) bid vset commit
 
 
 -- | Check that block proposed at given height is correct in sense all
@@ -415,7 +416,7 @@ checkStorage = queryRO $ execWriterT $ do
 checkProposedBlock
   :: (MonadReadDB m alg a, Crypto alg, Serialise a)
   => Height
-  -> Block alg a
+  -> Pet (Block alg a)
   -> m [BlockchainInconsistency]
 checkProposedBlock h block = queryRO $ do
   Just genesis <- retrieveBlock        (Height 0)
@@ -424,9 +425,9 @@ checkProposedBlock h block = queryRO $ do
   Just vset    <- retrieveValidatorSet  h
   mprevVset    <- retrieveValidatorSet (pred h)
   execWriterT $ blockInvariant
-    (headerChainID $ blockHeader genesis)
+    (headerChainID $ pet $ blockHeader $ pet genesis)
     h
-    (headerTime $ blockHeader prevB)
+    (headerTime $ pet $ blockHeader $ pet prevB)
     prevBID
     (mprevVset,vset)
     block
@@ -440,7 +441,8 @@ genesisBlockInvariant
   :: (Monad m, Crypto alg, Serialise a)
   => Block alg a
   -> WriterT [BlockchainInconsistency] m ()
-genesisBlockInvariant block@Block{blockHeader = Header{..}, ..} = do
+genesisBlockInvariant block@Block{..} = do
+  let Header{..} = pet blockHeader
   -- It must have height 0
   (headerHeight == Height 0)
     `orElse` BlockHeightMismatch (Height 0)
@@ -464,14 +466,16 @@ blockInvariant
   -- ^ Time of previous block
   -> BlockID alg a
   -- ^ Block ID of previous block
-  -> (Maybe (ValidatorSet alg), ValidatorSet alg)
+  -> ( Maybe (Pet (ValidatorSet alg))
+     , Pet (ValidatorSet alg))
   -- ^ Validator set for previous and current height
-  -> Block alg a
+  -> Pet (Block alg a)
   -- ^ Block to check
   -> WriterT [BlockchainInconsistency] m ()
 blockInvariant _ h _ _ _ _
   | h <= Height 0 = error "blockInvariant called with invalid parameters"
-blockInvariant chainID h prevT prevBID (mprevValSet, valSet) block@Block{blockHeader=Header{..}, ..} = do
+blockInvariant chainID h prevT prevBID (mprevValSet, valSet) block@(pet -> Block{..}) = do
+  let Header{..} = pet blockHeader
   -- All blocks must have same chain ID, i.e. chain ID of
   -- genesis block
   (chainID == headerChainID)
@@ -483,7 +487,7 @@ blockInvariant chainID h prevT prevBID (mprevValSet, valSet) block@Block{blockHe
   case headerHeight of
     Height 1 -> (headerTime > prevT) `orElse` BlockInvalidTime h
     _        -> do let commitT = do vals <- mprevValSet
-                                    commitTime vals prevT =<< blockLastCommit
+                                    commitTime (pet vals) prevT . pet =<< blockLastCommit
                    case commitT of
                      Nothing -> tell [BlockInvalidTime h]
                      Just t  -> do (t == headerTime) `orElse` BlockInvalidTime h
@@ -496,7 +500,7 @@ blockInvariant chainID h prevT prevBID (mprevValSet, valSet) block@Block{blockHe
   (headerValidatorsHash == hashed valSet)
     `orElse` BlockValidatorHashMismatch h
   -- Hashes of block fields are correct
-  headerHashesInvariant block
+  headerHashesInvariant (pet block)
   -- Block time must be equal to commit time
   -- Validate commit of previous block
   case (headerHeight, blockLastCommit) of
@@ -507,7 +511,7 @@ blockInvariant chainID h prevT prevBID (mprevValSet, valSet) block@Block{blockHe
     (_, Nothing       ) -> tell [BlockMissingLastCommit h]
     (_, Just commit   )
       | Just prevValSet <- mprevValSet
-        -> commitInvariant (InvalidCommit h) (pred h) prevT prevBID prevValSet commit
+        -> commitInvariant (InvalidCommit h) (pred h) prevT prevBID prevValSet (pet commit)
       | otherwise
         -> tell [InvalidCommit h "Cannot validate commit"]
 
@@ -515,13 +519,16 @@ headerHashesInvariant
   :: (Monad m, Crypto alg, Serialise a)
   => Block alg a
   -> WriterT [BlockchainInconsistency] m ()
-headerHashesInvariant Block{blockHeader=Header{..}, ..} = do
+headerHashesInvariant Block{..} = do
+  let Header{..} = pet blockHeader
   (headerDataHash == hashed blockData)
     `orElse` HeaderHashMismatch headerHeight "Data"
   (headerValChangeHash == hashed blockValChange)
     `orElse` HeaderHashMismatch headerHeight "Validator change"
-  (headerLastCommitHash == hashed blockLastCommit)
-    `orElse` HeaderHashMismatch headerHeight "Commit hash"
+  case (headerLastCommitHash, blockLastCommit) of
+    (Nothing, Nothing)                 -> return ()
+    (Just h,  Just c ) | h == hashed c -> return ()
+    _                                  -> tell [HeaderHashMismatch headerHeight "Commit hash"]
   (headerEvidenceHash == hashed blockEvidence)
     `orElse` HeaderHashMismatch headerHeight "Evidence"
 
@@ -531,10 +538,10 @@ commitInvariant
   -> Height                              -- Height of block for
   -> Time                                -- Time of previous block
   -> BlockID alg a
-  -> ValidatorSet alg
+  -> Pet (ValidatorSet alg)
   -> Commit alg a
   -> WriterT [BlockchainInconsistency] m ()
-commitInvariant mkErr h prevT bid valSet Commit{..} = do
+commitInvariant mkErr h prevT bid valSet (Commit{..}) = do
   -- It must justify commit of correct block!
   (commitBlockID == bid)
     `orElse` mkErr "Commit is for wrong block"
@@ -554,13 +561,13 @@ commitInvariant mkErr h prevT bid valSet Commit{..} = do
   -- from unknown validators, doesn't have duplicate votes, and
   -- vote goes for correct block
   let verifiedPrecommits = forM commitPrecommits $ \v ->
-        verifySignature (fmap validatorPubKey . validatorByAddr valSet) v
+        verifySignature (fmap validatorPubKey . validatorByAddr (pet valSet)) v
   case verifiedPrecommits of
     Nothing   -> tell [mkErr "Commit contains invalid signatures"]
     Just sigs -> do
       let mvoteSet = foldM
             (flip insertSigned)
-            (newVoteSet valSet prevT)
+            (newVoteSet (pet valSet) prevT)
             sigs
       case mvoteSet of
         InsertConflict _ -> tell [mkErr "Conflicting votes"]

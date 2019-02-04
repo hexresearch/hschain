@@ -94,7 +94,7 @@ data MessageRx ty alg a
   | RxPreCommit !(Signed ty alg (Vote 'PreCommit alg a))
   | RxProposal  !(Signed ty alg (Proposal alg a))
   | RxTimeout   !Timeout
-  | RxBlock     !(Block alg a)
+  | RxBlock     !(Pet (Block alg a))
   deriving (Show, Generic)
 instance (Serialise a, Crypto alg) => Serialise (MessageRx 'Unverified alg a)
 

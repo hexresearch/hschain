@@ -50,7 +50,7 @@ newSTMPropStorage = fmap (hoistPropStorageRW liftIO) $ liftIO $ do
     --
     , storePropBlock = \blk -> atomically $ do
         h <- readTVar varH
-        when (headerHeight (blockHeader blk) == h) $ do
+        when ((headerHeight $ pet $ blockHeader $ pet blk) == h) $ do
           let bid = blockHash blk
           bids <- readTVar varBids
           when (bid `Set.member` bids) $
@@ -71,7 +71,7 @@ newSTMPropStorage = fmap (hoistPropStorageRW liftIO) $ liftIO $ do
 
 newMempool
   :: (Ord tx, Serialise tx, Crypto alg, MonadIO m)
-  => (tx -> m Bool)
+  => (Pet tx -> m Bool)
   -> m (Mempool m alg tx)
 newMempool validation = do
   varFIFO      <- liftIO $ newTVarIO IMap.empty
