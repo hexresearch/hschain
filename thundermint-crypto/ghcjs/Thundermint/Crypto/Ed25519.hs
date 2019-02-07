@@ -6,6 +6,7 @@ module Thundermint.Crypto.Ed25519 (
   ) where
 
 import Control.Monad
+import Control.DeepSeq
 import Data.ByteString (ByteString)
 import Data.Ord        (comparing)
 import qualified Data.ByteString      as BS
@@ -19,7 +20,7 @@ import JavaScript.TypedArray
 import Thundermint.Crypto
 
 ----------------------------------------------------------------
--- 
+--
 ----------------------------------------------------------------
 
 -- sha256 :: ByteString -> ByteString
@@ -28,9 +29,9 @@ import Thundermint.Crypto
 data Ed25519_SHA512
 
 data instance PrivKey Ed25519_SHA512 = PrivKey
-  { pkBS  :: ByteString
-  , privK :: Uint8Array
-  , pubK  :: Uint8Array
+  { pkBS  :: !ByteString
+  , privK :: !Uint8Array
+  , pubK  :: !Uint8Array
   }
 
 newtype instance PublicKey Ed25519_SHA512 = PublicKey { unPublicKey :: Uint8Array }
@@ -83,6 +84,12 @@ instance Ord (PrivKey Ed25519_SHA512) where
 instance Ord (PublicKey Ed25519_SHA512) where
   compare = comparing pubKeyToBS
 
+
+instance NFData (PrivKey Ed25519_SHA512) where
+  rnf k = k `seq` ()
+
+instance NFData (PublicKey Ed25519_SHA512) where
+  rnf k = k `seq` ()
 
 
 ----------------------------------------------------------------
