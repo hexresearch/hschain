@@ -200,11 +200,16 @@ modifyMVarM m action =
 
 newtype Mutex = Mutex (MVar ())
 
-newMutex :: IO Mutex
-newMutex = Mutex <$> newMVar ()
+newMutex :: MonadIO m => m Mutex
+newMutex = Mutex <$> liftIO (newMVar ())
 
-withMutex :: Mutex -> IO a -> IO a
-withMutex (Mutex mvar) = withMVar mvar . const
+withMutex :: (MonadMask m, MonadIO m) => Mutex -> m a -> m a
+withMutex (Mutex m) action = do
+  mask $ \restore -> do
+    () <- liftIO (takeMVar m)
+    a  <- restore action `onException` liftIO (putMVar m ())
+    liftIO (putMVar m ())
+    return a
 
 ----------------------------------------------------------------
 --
