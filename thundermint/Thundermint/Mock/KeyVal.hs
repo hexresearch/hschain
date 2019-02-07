@@ -17,7 +17,6 @@ import Data.List
 import Data.Typeable   (Proxy(..))
 
 import Data.Map        (Map)
-import Data.Maybe      (isJust)
 import System.FilePath ((</>))
 
 import qualified Data.Map as Map
@@ -97,7 +96,7 @@ interpretSpec maxH prefix NetSpec{..} = do
                        { appValidationFun  = \b -> do
                            let h = headerHeight $ blockHeader b
                            st <- stateAtH bchState h
-                           return $ isJust $ processBlock transitions b st
+                           return $ [] <$ processBlock transitions b st
                        --
                        , appBlockGenerator = \h _ _ _ -> case nspecByzantine of
                            Just "InvalidBlock" -> do
@@ -105,16 +104,14 @@ interpretSpec maxH prefix NetSpec{..} = do
                            _ -> do
                              st <- stateAtH bchState h
                              let Just k = find (`Map.notMember` st) ["K_" ++ show (n :: Int) | n <- [1 ..]]
-                             return [(k, addr)]
+                             return ([(k, addr)], [])
                        --
                        , appCommitCallback = \case
                            b | Just hM <- maxH
                              , headerHeight (blockHeader b) > Height hM -> throwM Abort
                              | otherwise                                -> return ()
-                       , appCommitQuery      = SimpleQuery $ \b -> do
-                           Just vset <- retrieveValidatorSet $ headerHeight $ blockHeader b
-                           return vset
-                       , appValidator        = nspecPrivKey
+                       , appCommitQuery    = SimpleQuery $ \_ -> return []
+                       , appValidator      = nspecPrivKey
                        }
                  let cfg = defCfg :: Configuration Example
                  appCh <- newAppChans (cfgConsensus cfg)

@@ -41,7 +41,7 @@ import Data.Maybe      (isJust)
 import Thundermint.Blockchain.Internal.Engine
 import Thundermint.Blockchain.Interpretation
 import Thundermint.Blockchain.Internal.Engine.Types
-import Thundermint.Types.Blockchain
+import Thundermint.Types
 import Thundermint.Control
 import Thundermint.Crypto
 import Thundermint.Debug.Trace
@@ -63,11 +63,15 @@ import Thundermint.Control (MonadFork)
 ----------------------------------------------------------------
 
 data NodeLogic m alg a = NodeLogic
-  { nodeBlockValidation :: !(Block alg a -> m Bool)
+  { nodeBlockValidation :: !(Block alg a -> m (Maybe [ValidatorChange alg]))
     -- ^ Callback used for validation of blocks
   , nodeCommitQuery     :: !(CommitCallback m alg a)
     -- ^ Query for modifying user state.
-  , nodeBlockGenerator  :: !(Height -> Time -> Maybe (Commit alg a) -> [ByzantineEvidence alg a] -> m a)
+  , nodeBlockGenerator  :: !(Height
+                          -> Time
+                          -> Maybe (Commit alg a)
+                          -> [ByzantineEvidence alg a]
+                          -> m (a, [ValidatorChange alg]))
     -- ^ Generator for a new block
   , nodeMempool         :: !(Mempool m alg (TX a))
     -- ^ Mempool of node
@@ -92,14 +96,12 @@ logicFromFold transitions@BlockFold{..} = do
          , NodeLogic { nodeBlockValidation = \b -> do
                          let h = headerHeight $ blockHeader b
                          st <- stateAtH bchState h
-                         return $ isJust $ processBlock b st
-                     , nodeCommitQuery     = SimpleQuery $ \b -> do
-                         Just vset <- retrieveValidatorSet $ headerHeight $ blockHeader b
-                         return vset
+                         return $ [] <$ processBlock b st
+                     , nodeCommitQuery     = SimpleQuery $ \_ -> return []
                      , nodeBlockGenerator  = \h _ _ _ -> do
                          st  <- stateAtH bchState h
                          txs <- peekNTransactions mempool Nothing
-                         return $ transactionsToBlock h st txs
+                         return (transactionsToBlock h st txs, [])
                      , nodeMempool         = mempool
                      }
          )
@@ -126,18 +128,17 @@ logicFromPersistent PersistentState{..} = do
   return NodeLogic
     { nodeBlockValidation = \b -> do
         r <- queryRO $ runEphemeralQ persistedData (processBlockDB b)
-        return $! isJust r
+        return $! [] <$ r
     , nodeCommitQuery     = SimpleQuery $ \b -> do
         runBlockUpdate (headerHeight (blockHeader b)) persistedData $ processBlockDB b
-        Just vset <- retrieveValidatorSet $ headerHeight $ blockHeader b
-        return vset
+        return []
     , nodeBlockGenerator  = \h _ _ _ -> do
         txs <- peekNTransactions mempool Nothing
         r   <- queryRO $ runEphemeralQ persistedData (transactionsToBlockDB h txs)
         case r of
           -- FIXME: This should not happen!
           Nothing -> error "Cannot generate block!"
-          Just a  -> return a
+          Just a  -> return (a, [])
     , nodeMempool         = mempool
     }
 

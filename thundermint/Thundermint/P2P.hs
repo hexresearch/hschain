@@ -82,8 +82,8 @@ data GossipMsg addr alg a
   | GossipTx        !(TX a)
   | GossipPex       !(PexMessage addr)
   deriving (Generic)
-deriving instance (Show a, Show addr, Show (TX a)) => Show (GossipMsg addr alg a)
-instance (Serialise (TX a), Serialise addr, Serialise a) => Serialise (GossipMsg addr alg a)
+deriving instance (Show a, Show addr, Show (TX a), Crypto alg) => Show (GossipMsg addr alg a)
+instance (Serialise (TX a), Serialise addr, Serialise a, Crypto alg) => Serialise (GossipMsg addr alg a)
 
 
 -- | Peer exchage gossip sub-message
@@ -713,7 +713,7 @@ peerGossipMempool peerObj PeerChans{..} config gossipCh MempoolCursor{..} = logO
 
 -- | Gossip blocks with given peer
 peerGossipBlocks
-  :: (MonadReadDB m alg a, MonadFork m, MonadMask m, MonadLogger m, Serialise a)
+  :: (MonadReadDB m alg a, MonadFork m, MonadMask m, MonadLogger m, Serialise a, Crypto alg)
   => PeerStateObj m alg a       -- ^ Current state of peer
   -> PeerChans m alg a     -- ^ Read-only access to
   -> TBQueue (GossipMsg NetAddr alg a) -- ^ Network API

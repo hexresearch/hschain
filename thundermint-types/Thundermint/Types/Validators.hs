@@ -25,11 +25,16 @@ module Thundermint.Types.Validators (
   , getValidatorIntSet
   , insertValidatorIdx
   , emptyValidatorISet
+    -- * Change of validator sets
+  , ValidatorChange(..)
+  , changeValidators
   ) where
 
 import qualified Codec.Serialise as CBOR
 import Control.Monad
+import qualified Data.Aeson      as JSON
 import           Data.Foldable
+import qualified Data.Set        as Set
 import qualified Data.Map        as Map
 import           Data.Map          (Map)
 import qualified Data.IntSet as ISet
@@ -49,7 +54,8 @@ data Validator alg = Validator
   , validatorVotingPower :: !Integer
   }
   deriving (Generic)
-deriving instance Eq (PublicKey alg) => Eq (Validator alg)
+deriving instance Crypto alg => Show (Validator alg)
+deriving instance Eq   (PublicKey alg) => Eq   (Validator alg)
 instance Crypto alg => CBOR.Serialise (Validator alg)
 
 -- | Set of all known validators for given height
@@ -59,7 +65,8 @@ data ValidatorSet alg = ValidatorSet
   , vsTotPower   :: !Integer
   }
   deriving (Generic)
-deriving instance Eq (PublicKey alg) => Eq (ValidatorSet alg)
+deriving instance Crypto alg => Show (ValidatorSet alg)
+deriving instance Eq   (PublicKey alg) => Eq   (ValidatorSet alg)
 
 instance (Crypto alg) => CBOR.Serialise (ValidatorSet alg) where
   encode = CBOR.encode . toList . vsValidators
@@ -140,3 +147,66 @@ emptyValidatorISet :: Int -> ValidatorISet
 emptyValidatorISet n
   | n < 0     = error "Negative size"
   | otherwise = ValidatorISet n ISet.empty
+
+
+
+----------------------------------------------------------------
+-- Changes in validator sets
+----------------------------------------------------------------
+
+-- | Change in set of validators
+data ValidatorChange alg
+  = RemoveValidator !(PublicKey alg)
+  -- ^ Remove validator from set
+  | ChangeValidator !(PublicKey alg) !Integer
+  -- ^ Change validator voting power or add new validator
+  deriving (Show,Generic)
+
+deriving instance (Eq (PublicKey alg)) => Eq (ValidatorChange alg)
+instance Crypto alg => CBOR.Serialise (ValidatorChange alg)
+instance Crypto alg => JSON.ToJSON    (ValidatorChange alg)
+instance Crypto alg => JSON.FromJSON  (ValidatorChange alg)
+
+-- | Update set of validators according to diff. Function is rather
+--   restrictive. If any of following conditions is violated @Nothing@
+--   is returned.
+--
+--    * Voting power in @ChangeValidator@ must be positive.
+--
+--    * Validator which is not in the set cannot be removed.
+--
+--    * Same validator could not be changed twice
+--
+--    * Noop changes are disallowed. Primarily to ensure that won't
+--      end up storing useless data.
+changeValidators
+  :: (Crypto alg)
+  => [ValidatorChange alg] -> ValidatorSet alg -> Maybe (ValidatorSet alg)
+changeValidators []      vset = Just vset
+changeValidators changes ValidatorSet{..} = do
+  -- No duplicate references to validator
+  guard $ length changes == Set.size (Set.fromList keys)
+  -- Update validator set
+  newVals      <- foldM step vsValidators changes
+  Right  vset' <- return $ makeValidatorSet newVals
+  return vset'
+  where
+    step vals (RemoveValidator pk) = do
+      let addr = address pk
+      guard  $  Map.member addr vals
+      return $! Map.delete addr vals
+    step vals (ChangeValidator pk pwr)
+      | pwr <= 0 = Nothing
+      | isNoop addr pwr vals = Nothing
+      | otherwise            = return $! Map.insert addr (Validator pk pwr) vals
+      where
+        addr = address pk
+    --
+    isNoop addr pwr vals = case Map.lookup addr vals of
+      Just (Validator _ p) -> pwr == p
+      _                    -> False
+    --
+    keys = [ address $ case c of RemoveValidator pk   -> pk
+                                 ChangeValidator pk _ -> pk
+           | c <- changes
+           ]

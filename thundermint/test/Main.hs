@@ -9,6 +9,7 @@ import qualified TM.Serialisation
 import qualified TM.Store
 import qualified TM.Persistence
 import qualified TM.Time
+import qualified TM.Validators
 
 main :: IO ()
 main = defaultMain $ testGroup "test suite"
@@ -20,4 +21,5 @@ main = defaultMain $ testGroup "test suite"
   , TM.Serialisation.tests
   , TM.Store.tests
   , TM.Time.tests
+  , TM.Validators.tests
   ]

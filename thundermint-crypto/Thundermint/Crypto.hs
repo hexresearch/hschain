@@ -43,8 +43,7 @@ module Thundermint.Crypto (
   , verifyCborSignature
     -- * Hash trees
   , Hashed(..)
-  , BlockHash(..)
-  , blockHash
+  , hashed
     -- * base58 encoding
   , encodeBSBase58
   , decodeBSBase58
@@ -64,7 +63,6 @@ import           Data.ByteString.Lazy    (toStrict)
 import qualified Data.ByteString.Char8 as BC8
 import Data.Char     (isAscii)
 import Data.Typeable (Proxy(..))
-import Data.Word
 import Text.Read
 import Text.ParserCombinators.ReadP
 import GHC.TypeNats
@@ -401,21 +399,14 @@ instance JSON.ToJSON   a => JSON.ToJSON   (Signed 'Unverified alg a)
 -- Hashed data
 ----------------------------------------------------------------
 
+-- | Newtype wrapper with phantom type tag which show hash of which
+--   value is being calculated
 newtype Hashed alg a = Hashed (Hash alg)
   deriving (Show,Eq,Ord, Generic, Serialise,JSON.FromJSON,JSON.ToJSON)
 
-data BlockHash alg a = BlockHash Word32 (Hash alg) [Hash alg]
-  deriving (Show,Eq,Ord,Generic)
+hashed :: (Crypto alg, Serialise a) => a -> Hashed alg a
+hashed = Hashed . hash
 
-blockHash
-  :: (Crypto alg, Serialise a)
-  => a
-  -> BlockHash alg a
-blockHash a = BlockHash 0xFFFFFFFF (hashBlob (toStrict $ serialise a)) []
-
-instance Serialise     (BlockHash alg a)
-instance JSON.ToJSON   (BlockHash alg a)
-instance JSON.FromJSON (BlockHash alg a)
 
 
 ----------------------------------------------------------------

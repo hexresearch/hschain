@@ -80,7 +80,7 @@ import Control.Monad.Trans.Reader
 import Control.Monad.Trans.Writer
 import Data.Foldable             (forM_)
 import Data.Maybe                (isNothing, maybe)
-import Data.Text                 (isPrefixOf)
+import Data.Text                 (isPrefixOf, Text)
 import Data.List                 (nub)
 import GHC.Generics              (Generic)
 
@@ -350,8 +350,8 @@ data BlockchainInconsistency
   | BlockValidatorHashMismatch !Height
   -- ^ Hash of set of validators in block header does not match hash
   --   of actual set
-  | BlockDataHashMismatch !Height
-  -- ^ Hash of block data in header and hash in the header do not match
+  | HeaderHashMismatch !Height !Text
+  -- ^ Hash of field of block in header and actual hash do not match.
   | BlockInvalidPrevBID !Height
   -- ^ Previous block is does not match ID of block commited to
   --   blockchain.
@@ -436,10 +436,10 @@ checkProposedBlock h block = queryRO $ do
 
 -- | Check invariants for genesis block
 genesisBlockInvariant
-  :: Monad m
+  :: (Monad m, Crypto alg, Serialise a)
   => Block alg a
   -> WriterT [BlockchainInconsistency] m ()
-genesisBlockInvariant Block{blockHeader = Header{..}, ..} = do
+genesisBlockInvariant block@Block{blockHeader = Header{..}, ..} = do
   -- It must have height 0
   (headerHeight == Height 0)
     `orElse` BlockHeightMismatch (Height 0)
@@ -449,7 +449,8 @@ genesisBlockInvariant Block{blockHeader = Header{..}, ..} = do
   -- Last block must be Nothing
   isNothing headerLastBlockID
     `orElse` GenesisHasHeaderLastBlockID
-
+  --
+  headerHashesInvariant block
 
 -- | Check invariant for block at height > 0
 blockInvariant
@@ -469,7 +470,7 @@ blockInvariant
   -> WriterT [BlockchainInconsistency] m ()
 blockInvariant _ h _ _ _ _
   | h <= Height 0 = error "blockInvariant called with invalid parameters"
-blockInvariant chainID h prevT prevBID (mprevValSet, valSet) Block{blockHeader=Header{..}, ..} = do
+blockInvariant chainID h prevT prevBID (mprevValSet, valSet) block@Block{blockHeader=Header{..}, ..} = do
   -- All blocks must have same chain ID, i.e. chain ID of
   -- genesis block
   (chainID == headerChainID)
@@ -491,11 +492,10 @@ blockInvariant chainID h prevT prevBID (mprevValSet, valSet) Block{blockHeader=H
   (headerLastBlockID == Just prevBID)
     `orElse` BlockInvalidPrevBID h
   -- Validators' hash does not match correct one
-  (headerValidatorsHash == hash valSet)
+  (headerValidatorsHash == hashed valSet)
     `orElse` BlockValidatorHashMismatch h
-  -- Block data has correct hash
-  (headerDataHash == hash blockData)
-    `orElse` BlockDataHashMismatch h
+  -- Hashes of block fields are correct
+  headerHashesInvariant block
   -- Block time must be equal to commit time
   -- Validate commit of previous block
   case (headerHeight, blockLastCommit) of
@@ -509,6 +509,20 @@ blockInvariant chainID h prevT prevBID (mprevValSet, valSet) Block{blockHeader=H
         -> commitInvariant (InvalidCommit h) (pred h) prevT prevBID prevValSet commit
       | otherwise
         -> tell [InvalidCommit h "Cannot validate commit"]
+
+headerHashesInvariant
+  :: (Monad m, Crypto alg, Serialise a)
+  => Block alg a
+  -> WriterT [BlockchainInconsistency] m ()
+headerHashesInvariant Block{blockHeader=Header{..}, ..} = do
+  (headerDataHash == hashed blockData)
+    `orElse` HeaderHashMismatch headerHeight "Data"
+  (headerValChangeHash == hashed blockValChange)
+    `orElse` HeaderHashMismatch headerHeight "Validator change"
+  (headerLastCommitHash == hashed blockLastCommit)
+    `orElse` HeaderHashMismatch headerHeight "Commit hash"
+  (headerEvidenceHash == hashed blockEvidence)
+    `orElse` HeaderHashMismatch headerHeight "Evidence"
 
 commitInvariant
   :: (Monad m, Crypto alg)

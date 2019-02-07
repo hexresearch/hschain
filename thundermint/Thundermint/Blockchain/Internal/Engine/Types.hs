@@ -145,13 +145,14 @@ instance DefaultConfig app => FromJSON (Configuration app) where
 --
 ----------------------------------------------------------------
 
--- | Callback which is called right after 
+-- | Callback which is called right after block is commited to
+--   database.
 data CommitCallback m alg a
-  = SimpleQuery !(Block alg a -> Query 'RW alg a (ValidatorSet alg))
+  = SimpleQuery !(Block alg a -> Query 'RW alg a [ValidatorChange alg])
   -- ^ Query for updating user's state and to find out new set of
   --   validators. It's evaluated in the same transaction as block
   --   commit and thus atomic.
-  | MixedQuery  !(m (Block alg a -> Query 'RW alg a (ValidatorSet alg, m ())))
+  | MixedQuery  !(m (Block alg a -> Query 'RW alg a ([ValidatorChange alg], m ())))
   -- ^ Query which allow to mixed database updates with other
   --   actions. If @Query@ succeeds returned action is executed immediately
 
@@ -162,13 +163,15 @@ data AppState m alg a = AppState
                         -> Time
                         -> Maybe (Commit alg a)
                         -> [ByzantineEvidence alg a]
-                        -> m a
+                        -> m (a, [ValidatorChange alg])
     -- ^ Generate fresh block for proposal. It's called each time we
     --   need to create new block for proposal
   , appValidator        :: Maybe (PrivValidator alg)
     -- ^ Private validator for node. It's @Nothing@ if node is not a validator
-  , appValidationFun    :: Block alg a -> m Bool
-    -- ^ Function for validation of proposed block data.
+  , appValidationFun    :: Block alg a -> m (Maybe [ValidatorChange alg])
+    -- ^ Function for validation of proposed block data. It returns
+    --   change of validators for given block if it's valid and
+    --   @Nothing@ if it's not.
   , appCommitQuery      :: CommitCallback m alg a
     -- ^ Database query called after block commit in the same
     --   transaction

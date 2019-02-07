@@ -87,7 +87,7 @@ runApplication config ready appSt@AppState{..} appCh@AppChans{..} = logOnExcepti
 --
 -- FIXME: we should write block and last commit in transaction!
 decideNewBlock
-  :: ( MonadDB m alg a, MonadLogger m, MonadTMMonitoring m, Crypto alg, Show a, BlockData a)
+  :: (MonadDB m alg a, MonadLogger m, MonadTMMonitoring m, Crypto alg, Show a, BlockData a)
   => ConsensusCfg
   -> (Height -> Time -> m Bool)
   -> AppState m alg a
@@ -146,7 +146,10 @@ decideNewBlock config ready appSt@AppState{..} appCh@AppChans{..} lastCommt = do
             case appCommitQuery of
               SimpleQuery callback -> do
                 r <- queryRW $ do storeCommit cmt b
-                                  storeValSet b =<< callback b
+                                  vsetChange <- callback b
+                                  case changeValidators vsetChange (validatorSet hParam) of
+                                    Just vset -> storeValSet b vset
+                                    Nothing   -> fail ""
                 case r of
                   Nothing -> error "Cannot write commit into database"
                   Just () -> return ()
@@ -154,8 +157,10 @@ decideNewBlock config ready appSt@AppState{..} appCh@AppChans{..} lastCommt = do
               MixedQuery mcall -> do
                 callback <- mcall
                 r <- queryRW $ do storeCommit cmt b
-                                  (vset,action) <- callback b
-                                  storeValSet b vset
+                                  (vsetChange,action) <- callback b
+                                  case changeValidators vsetChange (validatorSet hParam) of
+                                    Just vset -> storeValSet b vset
+                                    Nothing   -> fail ""
                                   return action
                 case r of
                   Just action -> action
@@ -313,7 +318,7 @@ makeHeightParameters ConsensusCfg{..} ready AppState{..} AppChans{..} = do
           Nothing -> return UnseenProposal
           Just b  -> do
             inconsistencies <- lift $ checkProposedBlock nH b
-            blockOK         <- lift $ appValidationFun b
+            mvalChange      <- lift $ appValidationFun b
             case () of
               _| not (null inconsistencies) -> do
                    logger ErrorS "Proposed block has inconsistencies"
@@ -323,7 +328,11 @@ makeHeightParameters ConsensusCfg{..} ready AppState{..} AppChans{..} = do
                    return InvalidProposal
                -- We don't put evidence into blocks yet so there shouldn't be any
                | _:_ <- blockEvidence b -> return InvalidProposal
-               | blockOK                -> return GoodProposal
+               -- Block is correct and validators change is correct as
+               -- well
+               | Just ch <- mvalChange
+               , Just _  <- changeValidators ch valSet
+                 -> return GoodProposal
                | otherwise              -> return InvalidProposal
     --
     , broadcastProposal = \r bid lockInfo ->
@@ -423,17 +432,21 @@ makeHeightParameters ConsensusCfg{..} ready AppState{..} AppChans{..} = do
           _        -> case join $ liftA3 commitTime oldValSet (pure bchTime) commit of
             Just t  -> return t
             Nothing -> error "Corrupted commit. Cannot generate block"
-        bData    <- appBlockGenerator (succ h) currentT commit []
+        (bData, valCh) <- appBlockGenerator (succ h) currentT commit []
         let block = Block
               { blockHeader     = Header
                   { headerChainID        = headerChainID $ blockHeader genesis
                   , headerHeight         = succ h
                   , headerTime           = currentT
                   , headerLastBlockID    = lastBID
-                  , headerValidatorsHash = hash valSet
-                  , headerDataHash       = hash bData
+                  , headerValidatorsHash = hashed valSet
+                  , headerDataHash       = hashed bData
+                  , headerValChangeHash  = hashed valCh
+                  , headerLastCommitHash = hashed commit
+                  , headerEvidenceHash   = hashed []
                   }
               , blockData       = bData
+              , blockValChange  = valCh
               , blockLastCommit = commit
               , blockEvidence   = []
               }

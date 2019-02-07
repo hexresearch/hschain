@@ -27,12 +27,13 @@ import Test.Tasty.Hedgehog
 import qualified Test.Tasty.QuickCheck as QC
 import qualified Hedgehog.Gen.QuickCheck as Gen
 
+import Thundermint.Crypto.Ed25519
 import Thundermint.Types.Blockchain
 
 import TM.Arbitrary.Instances ()
 
 
-data TestCryptoAlg
+type TestCryptoAlg     = Ed25519_SHA512
 type TestBlock         = String
 type TestVote ty       = Vote ty TestCryptoAlg TestBlock
 type TestVotePrevote   = Vote 'PreVote TestCryptoAlg TestBlock

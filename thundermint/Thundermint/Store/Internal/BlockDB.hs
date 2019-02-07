@@ -2,8 +2,6 @@
 {-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE OverloadedStrings   #-}
-{-# LANGUAGE RankNTypes          #-}
-{-# LANGUAGE ScopedTypeVariables #-}
 -- |
 -- Data types for primary database. Namely storage of blocks, commits and validators
 module Thundermint.Store.Internal.BlockDB where
@@ -29,7 +27,7 @@ import Thundermint.Store.Internal.Query
 
 -- | Create tables for storing blockchain data
 initializeBlockhainTables
-  :: forall alg a. (Crypto alg, Eq (PublicKey alg), Serialise a, Eq a)
+  :: (Crypto alg, Eq (PublicKey alg), Serialise a, Eq a)
   => Block alg a                -- ^ Genesis block
   -> ValidatorSet alg           -- ^ Initial validator set
   -> Query 'RW alg a ()
@@ -79,7 +77,7 @@ initializeBlockhainTables genesis initialVals = do
      , [] <- storedVals
        -> do execute "INSERT INTO blockchain VALUES (?,?,?)"
                ( 0 :: Int64
-               , serialise (blockHash genesis :: BlockID alg a)
+               , serialise (blockHash genesis)
                , serialise genesis
                )
              execute "INSERT INTO validators VALUES (?,?)"
@@ -115,7 +113,7 @@ blockchainHeight =
 -- | Retrieve block at given height.
 --
 --   Must return block for every height @0 <= h <= blockchainHeight@
-retrieveBlock :: (Serialise a) => Height -> Query rw alg a (Maybe (Block alg a))
+retrieveBlock :: (Serialise a, Crypto alg) => Height -> Query rw alg a (Maybe (Block alg a))
 retrieveBlock (Height h) =
   singleQ "SELECT block FROM blockchain WHERE height = ?" (Only h)
 
@@ -133,13 +131,13 @@ retrieveBlockID (Height h) =
 --   Note that this method returns @Nothing@ for last block since
 --   its commit is not persisted in blockchain yet and there's no
 --   commit for genesis block (h=0)
-retrieveCommit :: (Serialise a) => Height -> Query rw alg a (Maybe (Commit alg a))
+retrieveCommit :: (Serialise a, Crypto alg) => Height -> Query rw alg a (Maybe (Commit alg a))
 retrieveCommit (Height h) = do
   mb <- singleQ "SELECT block FROM blockchain WHERE height = ?" (Only (h+1))
   return $ blockLastCommit =<< mb
 
 -- | Retrieve round when commit was made.
-retrieveCommitRound :: (Serialise a) => Height -> Query rw alg a (Maybe Round)
+retrieveCommitRound :: (Serialise a, Crypto alg) => Height -> Query rw alg a (Maybe Round)
 retrieveCommitRound (Height h) = runMaybeT $ do
   c <-  MaybeT (retrieveCommit (Height h))
     <|> MaybeT (singleQ "SELECT cmt FROM commits WHERE height = ?" (Only h))
@@ -176,14 +174,14 @@ retrieveValidatorSet (Height h) =
 
 -- | Write block and commit justifying it into persistent storage.
 storeCommit
-  :: forall alg a. (Crypto alg, Serialise a)
+  :: (Crypto alg, Serialise a)
   => Commit alg a -> Block alg a -> Query 'RW alg a ()
 storeCommit cmt blk = do
   let Height h = headerHeight $ blockHeader blk
   execute "INSERT INTO commits VALUES (?,?)" (h, serialise cmt)
   execute "INSERT INTO blockchain VALUES (?,?,?)"
     ( h
-    , serialise (blockHash blk :: BlockID alg a)
+    , serialise (blockHash blk)
     , serialise blk
     )
 
@@ -196,7 +194,7 @@ storeValSet blk vals = do
 
 -- | Add message to Write Ahead Log. Height parameter is height
 --   for which we're deciding block.
-writeToWAL :: (Serialise a) => Height -> MessageRx 'Unverified alg a -> Query 'RW alg a ()
+writeToWAL :: (Serialise a, Crypto alg) => Height -> MessageRx 'Unverified alg a -> Query 'RW alg a ()
 writeToWAL (Height h) msg =
   execute "INSERT OR IGNORE INTO wal VALUES (NULL,?,?)" (h, serialise msg)
 
@@ -208,7 +206,7 @@ resetWAL (Height h) =
 
 -- | Get all parameters from WAL in order in which they were
 --   written
-readWAL :: (Serialise a) => Height -> Query rw alg a [MessageRx 'Unverified alg a]
+readWAL :: (Serialise a, Crypto alg) => Height -> Query rw alg a [MessageRx 'Unverified alg a]
 readWAL (Height h) = do
   rows <- query "SELECT message FROM wal WHERE height = ? ORDER BY id" (Only h)
   return [ case deserialiseOrFail bs of
