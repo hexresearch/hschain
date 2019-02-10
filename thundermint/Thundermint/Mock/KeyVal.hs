@@ -100,7 +100,7 @@ interpretSpec maxH prefix NetSpec{..} = do
                        --
                        , appBlockGenerator = \h _ _ _ -> case nspecByzantine of
                            Just "InvalidBlock" -> do
-                             return [("XXX", NetAddrV6 (1,2,3,4) 4433)]
+                             return ([("XXX", NetAddrV6 (1,2,3,4) 4433)], [])
                            _ -> do
                              st <- stateAtH bchState h
                              let Just k = find (`Map.notMember` st) ["K_" ++ show (n :: Int) | n <- [1 ..]]

@@ -32,10 +32,16 @@ variable "cluster-id" {
 
 variable "private_keys" {
   default = {
-    "0" = "2K7bFuJXxKf5LqogvVRQjms2W26ZrjpvUjo5LdvPFa5Y"
-    "1" = "4NSWtMsEPgfTK25tCPWqNzVVze1dgMwcUFwS5WkSpjJL"
-    "2" = "3Fj8bZjKc53F2a87sQaFkrDas2d9gjzK57FmQwnNnSHS"
-    "3" = "D2fpHM1JA8trshiUW8XPvspsapUvPqVzSofaK1MGRySd"
+    "0" = "Vv36tyN7Vw8FTqzcVhhz3zyyqiC5bD2Q7fF4CpSzSVF"
+    "1" = "8zy9cdTaqwzRkjjNa2ngsBFkiePbjkeXBJW3uNgrCsH1"
+    "2" = "FPXWML5Z4tq2qq4dHtnsMV22TaFUTY8U6PNGMzGUbyA"
+    "3" = "3qL9i1gLgpXKFt4i54QaTQofk6fU8XirQteYbWzcQLVB"
+    "4" = "229KaJdRBdxAgmkPUbpKAez2L3cNAQDyQkDLG5zz8md4"
+    "5" = "9VauHFBipRepsZXroYn99kM8eXEi2WwT3D6rehsgxhpp"
+    "6" = "Dxgq4sghFUkGeiRKcARGGsvav6D82NMLegmxLyCa4Udt"
+    "7" = "Fa3KRZYK6zEPqyscd1wgVij73YXhXepkQVvz9hXMogU7"
+    "8" = "DtNQTEbCsqoow5W1Z7SRDoTCd6Fpur5yr7zxQbjDkbHa"
+    "9" = "QhbeeT9ia7N5JJ6iWJh8hLZ9ThnRwqHb85eBu2g5HKZ"
   }
 }
 
@@ -82,7 +88,7 @@ resource "null_resource" "deploy" {
       "systemctl stop ufw",
       "systemctl disable ufw",
       "docker login -u ${var.auth_user} -p ${var.auth_pass} ${var.registry_url}",
-      "docker run --restart always --name ${var.cluster-id}-node${count.index+1} -d --net host -e THUNDERMINT_KEYS='${jsonencode(values(var.private_keys))}' -e THUNDERMINT_NODE_SPEC='{ \"nspecPrivKey\":\"${var.private_keys[count.index]}\", \"nspecLogFile\" : [{ \"type\" : { \"tag\" : \"ScribeES\", \"index\" : \"thundermint\" }, \"path\" : \"https://${var.auth_user}:${var.auth_pass}@${var.elastic_url}\", \"severity\" : \"Info\", \"verbosity\" : \"V2\" }], \"nspecWalletKeys\"  : [${count.index*4},4]}' registry.hxr.team/thundermint:${var.tag} --udp --max-h 10000 --delay 10 --deposit 1000 --keys 16 --peers '${jsonencode(formatlist("%s:%s", digitalocean_droplet.node.*.ipv4_address, var.port))}' --node-n ${count.index+1} --total-nodes ${length(var.private_keys)}"
+      "docker run --restart always --name ${var.cluster-id}-node${count.index+1} -d --net host -e THUNDERMINT_KEYS='${jsonencode(values(var.private_keys))}' -e THUNDERMINT_NODE_SPEC='{ \"nspecPrivKey\":\"${var.private_keys[count.index]}\", \"nspecLogFile\" : [{ \"type\" : { \"tag\" : \"ScribeES\", \"index\" : \"thundermint\" }, \"path\" : \"https://${var.auth_user}:${var.auth_pass}@${var.elastic_url}\", \"severity\" : \"Info\", \"verbosity\" : \"V2\" }], \"nspecWalletKeys\"  : [${count.index*4},4]}' registry.hxr.team/thundermint:${var.tag} --max-h 10000 --delay 10 --deposit 1000 --keys 16 --peers '${jsonencode(formatlist("%s:%s", digitalocean_droplet.node.*.ipv4_address, var.port))}' --node-n ${count.index+1} --total-nodes ${length(var.private_keys)}"
     ]
   }
 }
