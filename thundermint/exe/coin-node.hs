@@ -123,10 +123,13 @@ main = do
                         $ either error (fmap PrivValidator)
                         $ JSON.eitherDecodeStrict' ipMapPath
       logger InfoS "Listening for bootstrap adresses" ()
-      nodeAddr     <- liftIO getLocalAddress
       logger InfoS ("net Addresses: " <> showLS netAddresses) ()
+      nodeAddr     <- liftIO getLocalAddress
+      logger InfoS ("local Address: " <> showLS nodeAddr) ()
       peerId <- generatePeerId
+      logger InfoS ("peer Id generated: " <> showLS peerId) ()
       let peerInfo = P2PT.PeerInfo peerId (fromIntegral listenPort) 0
+      logger InfoS ("peer Info generated: " <> showLS peerInfo) ()
       netAPI <- case optTls of
         False -> case optUDP of
           False -> return $ realNetwork peerInfo (show listenPort)
