@@ -31,6 +31,7 @@ module Thundermint.Types.Validators (
   ) where
 
 import qualified Codec.Serialise as CBOR
+import Control.DeepSeq
 import Control.Monad
 import qualified Data.Aeson      as JSON
 import           Data.Foldable
@@ -39,7 +40,7 @@ import qualified Data.Map        as Map
 import           Data.Map          (Map)
 import qualified Data.IntSet as ISet
 import           Data.IntSet   (IntSet)
-import           GHC.Generics  (Generic)
+import           GHC.Generics  (Generic,Generic1)
 
 import Thundermint.Crypto
 
@@ -54,6 +55,7 @@ data Validator alg = Validator
   , validatorVotingPower :: !Integer
   }
   deriving (Generic)
+instance NFData (PublicKey alg) => NFData (Validator alg)
 deriving instance Crypto alg => Show (Validator alg)
 deriving instance Eq   (PublicKey alg) => Eq   (Validator alg)
 instance Crypto alg => CBOR.Serialise (Validator alg)
@@ -65,6 +67,7 @@ data ValidatorSet alg = ValidatorSet
   , vsTotPower   :: !Integer
   }
   deriving (Generic)
+instance NFData (PublicKey alg) => NFData (ValidatorSet alg)
 deriving instance Crypto alg => Show (ValidatorSet alg)
 deriving instance Eq   (PublicKey alg) => Eq   (ValidatorSet alg)
 
@@ -127,10 +130,13 @@ validatorSetSize = Map.size  . vsValidators
 --
 --   This for example allows to represent validators as bit arrays.
 newtype ValidatorIdx alg = ValidatorIdx Int
-  deriving (Show, Eq, CBOR.Serialise)
+  deriving (Show, Eq, Generic, Generic1, NFData, CBOR.Serialise)
 
 -- | Set of validators where they are represented by their index.
 data ValidatorISet = ValidatorISet !Int !IntSet
+
+instance NFData ValidatorISet where
+  rnf (ValidatorISet a b) = rnf a `seq` rnf b
 
 getValidatorIntSet :: ValidatorISet -> [ValidatorIdx alg]
 getValidatorIntSet (ValidatorISet _ iset)
@@ -163,6 +169,7 @@ data ValidatorChange alg
   deriving (Show,Generic)
 
 deriving instance (Eq (PublicKey alg)) => Eq (ValidatorChange alg)
+instance NFData (PublicKey alg) => NFData (ValidatorChange alg)
 instance Crypto alg => CBOR.Serialise (ValidatorChange alg)
 instance Crypto alg => JSON.ToJSON    (ValidatorChange alg)
 instance Crypto alg => JSON.FromJSON  (ValidatorChange alg)
