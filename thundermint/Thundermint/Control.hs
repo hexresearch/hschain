@@ -35,6 +35,8 @@ import Control.Concurrent.MVar
 import Control.Monad
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Reader
+import qualified Control.Monad.Trans.State.Strict as SS
+import qualified Control.Monad.Trans.State.Lazy   as SL
 import Control.Concurrent  (ThreadId, killThread, myThreadId, throwTo)
 import Control.Exception   (AsyncException, Exception(..), SomeException(..))
 import Control.Monad.Catch (MonadMask, MonadThrow, bracket, mask, onException, throwM, try)
@@ -100,6 +102,34 @@ instance MonadFork m => MonadFork (ReaderT r m) where
     runReaderT (cont (liftF restore)) r
     where
       liftF f m = ReaderT $ f . runReaderT m
+
+instance MonadFork m => MonadFork (SS.StateT s m) where
+  fork action = SS.StateT $ \s -> do
+    tid <- fork $ SS.evalStateT action s
+    return (tid,s)
+  forkFinally action fini = SS.StateT $ \s -> do
+    tid <- forkFinally (SS.evalStateT action s) (flip SS.evalStateT s . fini)
+    return (tid,s)
+  forkWithUnmask cont = SS.StateT $ \s -> do
+    tid <- forkWithUnmask $ \restore ->
+      SS.evalStateT (cont (liftF restore)) s
+    return (tid,s)
+    where
+      liftF f m = SS.StateT $ f . SS.runStateT m
+
+instance MonadFork m => MonadFork (SL.StateT s m) where
+  fork action = SL.StateT $ \s -> do
+    tid <- fork $ SL.evalStateT action s
+    return (tid,s)
+  forkFinally action fini = SL.StateT $ \s -> do
+    tid <- forkFinally (SL.evalStateT action s) (flip SL.evalStateT s . fini)
+    return (tid,s)
+  forkWithUnmask cont = SL.StateT $ \s -> do
+    tid <- forkWithUnmask $ \restore ->
+      SL.evalStateT (cont (liftF restore)) s
+    return (tid,s)
+    where
+      liftF f m = SL.StateT $ f . SL.runStateT m
 
 
 -- | Fork thread. Any exception except `AsyncException` in forked
