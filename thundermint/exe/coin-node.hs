@@ -147,9 +147,11 @@ main = do
                    }
           genSpec = restrictGenerator nodeNumber totalNodes
                   $ defaultGenerator optsNetInitialKeys optsNetInitialDeposit delay
-      (_,act) <- interpretSpec maxH genSpec validatorSet net netCfg nodeSpec
-      logger InfoS ("spec has been interpreted") ()
-      act `catch` (\e -> logger InfoS ("Exiting due to "<> (showLS (e :: SomeException))) ())
+      catch (do
+        (_,act) <- interpretSpec maxH genSpec validatorSet net netCfg nodeSpec
+        logger InfoS ("spec has been interpreted") ()
+        act `catch` (\e -> logger InfoS ("Exiting due to "<> (showLS (e :: SomeException))) ())
+        ) (\e -> logger InfoS ("Exiting interpretSpec sequence due to "<> (showLS (e :: SomeException))) ())
       logger InfoS "Normal exit" ()
   where
     parser = foldr (\pf ps -> (.) <$> pf <*> ps) (pure id) parsersList
