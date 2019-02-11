@@ -139,6 +139,7 @@ main = do
           certPem <- BC8.pack <$> getEnv "CERT_PEM"
           let credential = getCredentialFromBuffer certPem keyPem
           return $ realNetworkTls credential (show thundermintPort)
+      logger InfoS ("network API created") ()
       let net = BlockchainNet
                    { bchNetwork          = netAPI
                    , bchLocalAddr        = P2PT.sockAddrToNetAddr nodeAddr
@@ -147,6 +148,7 @@ main = do
           genSpec = restrictGenerator nodeNumber totalNodes
                   $ defaultGenerator optsNetInitialKeys optsNetInitialDeposit delay
       (_,act) <- interpretSpec maxH genSpec validatorSet net netCfg nodeSpec
+      logger InfoS ("spec has been interpreted") ()
       act `catch` (\e -> logger InfoS ("Exiting due to "<> (showLS (e :: SomeException))) ())
       logger InfoS "Normal exit" ()
   where
