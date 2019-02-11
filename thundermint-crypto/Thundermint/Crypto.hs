@@ -426,9 +426,9 @@ signValue
   => PrivKey alg                -- ^ Key for signing
   -> Pet a                      -- ^ Value to sign
   -> Signed sign alg a
-signValue privK a
+signValue privK a@(Pet _ bs)
   = Signed (fingerprint $ publicKey privK)
-           (signBlob privK $ toStrict $ serialise a)
+           (signBlob privK bs)
            a
 
 -- | Verify signature. It return Nothing if verification fails for any

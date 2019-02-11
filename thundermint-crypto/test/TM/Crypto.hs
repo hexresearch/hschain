@@ -2,6 +2,7 @@
 -- |
 module TM.Crypto (tests) where
 
+import Data.Maybe
 import Data.Typeable
 import qualified Data.ByteString as BS
 import qualified Data.Text       as T
@@ -44,6 +45,15 @@ tests = testGroup "Crypto"
            blob  = "ABCD"
        sign @=? signBlob privK blob
        assertBool "Signature check failed" $ verifyBlobSignature pubK blob sign
+    --
+  , testCase "Signed works"
+  $ do privK <- generatePrivKey
+       let pubK  = publicKey privK
+           addr  = address pubK
+           signV = signValue privK $ petrify ()
+       let getKey a | a == addr = Just pubK
+                    | otherwise = Nothing
+       assertBool "Signature check failed" $ isJust $ verifySignature getKey signV
     --
   , testCase "Hash algorithm is correct"
   $ do let h = hashBlob "ABCDF" :: Hash Ed25519_SHA512
