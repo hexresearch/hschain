@@ -10,6 +10,8 @@ import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Reader
+import qualified Control.Monad.Trans.State.Strict as SS
+import qualified Control.Monad.Trans.State.Lazy   as SL
 import Data.Set (Set)
 
 import Thundermint.Control
@@ -42,6 +44,12 @@ instance MonadTrace IO where
 
 instance (MonadTrace m) => MonadTrace (ReaderT r m) where
     trace = lift . trace
+
+instance (MonadTrace m) => MonadTrace (SS.StateT s m) where
+  trace = lift . trace
+
+instance (MonadTrace m) => MonadTrace (SL.StateT s m) where
+  trace = lift . trace
 
 type Callback m = TraceEvents -> m ()
 
