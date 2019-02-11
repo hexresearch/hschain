@@ -37,6 +37,7 @@ module Thundermint.Types.Blockchain (
 import           Codec.Serialise
 import           Codec.Serialise.Decoding
 import           Codec.Serialise.Encoding
+import           Control.DeepSeq
 import           Control.Monad
 import           Control.Monad.IO.Class   (MonadIO(..))
 import qualified Data.Aeson               as JSON
@@ -70,15 +71,15 @@ import Thundermint.Types.Validators
 --   * Current height in consensus algorithm is height of block we're
 --     deciding on.
 newtype Height = Height Int64
-  deriving (Show, Generic, Eq, Ord, Serialise, JSON.ToJSON, JSON.FromJSON, Enum)
+  deriving (Show, Generic, Eq, Ord, NFData, Serialise, JSON.ToJSON, JSON.FromJSON, Enum)
 
 -- | Voting round
 newtype Round = Round Int64
-  deriving (Show, Eq, Ord, Serialise, JSON.ToJSON, JSON.FromJSON, Enum)
+  deriving (Show, Generic, Eq, Ord, NFData, Serialise, JSON.ToJSON, JSON.FromJSON, Enum)
 
 -- | Time in milliseconds since UNIX epoch.
 newtype Time = Time Int64
-  deriving (Show, Eq, Ord, Serialise, JSON.ToJSON, JSON.FromJSON)
+  deriving (Show, Generic, Eq, Ord, NFData, Serialise, JSON.ToJSON, JSON.FromJSON)
 
 -- | Get current time
 getCurrentTime :: MonadIO m => m Time
@@ -97,6 +98,7 @@ timeToUTC (Time t) = posixSecondsToUTCTime (realToFrac t / 1000)
 
 -- | Block identified by hash
 type BlockID alg a = BlockHash alg (Block alg a)
+instance NFData        (BlockID alg a)
 
 -- | Block data type
 data Block alg a = Block
@@ -113,6 +115,7 @@ instance Serialise     a => Serialise     (Block alg a)
 instance JSON.FromJSON a => JSON.FromJSON (Block alg a)
 instance JSON.ToJSON   a => JSON.ToJSON   (Block alg a)
 
+instance (NFData a, NFData (PublicKey alg)) => NFData (Block alg a)
 
 -- | Block header
 data Header alg a = Header
@@ -131,6 +134,7 @@ data Header alg a = Header
     -- ^ Hash of block data
   }
   deriving (Show, Eq, Generic)
+instance NFData    (Header alg a)
 instance Serialise (Header alg a)
 
 instance JSON.ToJSON (Header alg a) where
@@ -166,6 +170,7 @@ data ByzantineEvidence alg a
       !(Signed 'Unverified alg (Vote 'PreVote alg a))
     -- ^ Node made conflicting precommits in the same round
   deriving (Show, Eq, Generic)
+instance NFData        (ByzantineEvidence alg a)
 instance Serialise     (ByzantineEvidence alg a)
 instance JSON.FromJSON (ByzantineEvidence alg a)
 instance JSON.ToJSON   (ByzantineEvidence alg a)
@@ -179,6 +184,7 @@ data Commit alg a = Commit
     -- ^ List of precommits which justify commit
   }
   deriving (Show, Eq, Generic)
+instance NFData        (Commit alg a)
 instance Serialise     (Commit alg a)
 instance JSON.FromJSON (Commit alg a)
 instance JSON.ToJSON   (Commit alg a)
@@ -292,7 +298,7 @@ data Proposal alg a = Proposal
     -- ^ Hash of proposed block
   }
   deriving (Show, Eq, Generic)
-
+instance NFData        (Proposal alg a)
 instance Serialise     (Proposal alg a)
 instance JSON.FromJSON (Proposal alg a)
 instance JSON.ToJSON   (Proposal alg a)
@@ -316,6 +322,7 @@ data Vote (ty :: VoteType) alg a= Vote
   }
   deriving (Show,Eq,Ord,Generic)
 
+instance NFData (Vote ty alg a)
 instance Serialise (Vote 'PreVote alg a) where
     encode = encodeVote 0
     decode = decodeVote 0
