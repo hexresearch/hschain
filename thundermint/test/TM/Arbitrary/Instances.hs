@@ -62,7 +62,8 @@ instance (Arbitrary a) => Arbitrary (Signed sign alg a) where
 
 
 instance (Arbitrary a) => Arbitrary (Commit alg a) where
-  arbitrary = genericArbitrary
+  arbitrary = Commit <$> arbitrary
+                     <*> resize 4 arbitrary
   shrink = genericShrink
 
 
@@ -77,7 +78,11 @@ instance Arbitrary VoteType where
 
 
 instance (Arbitrary a, Crypto alg, Arbitrary (PublicKey alg)) => Arbitrary (Block alg a) where
-  arbitrary = genericArbitrary
+  arbitrary = Block <$> arbitrary
+                    <*> arbitrary
+                    <*> resize 4 arbitrary
+                    <*> arbitrary
+                    <*> resize 4 arbitrary
   shrink = genericShrink
 
 instance (Arbitrary a) => Arbitrary (ByzantineEvidence alg a) where

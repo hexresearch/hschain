@@ -12,7 +12,6 @@
 --
 module TM.Serialisation (tests) where
 
-
 import Codec.Serialise as C
 import qualified Data.Aeson as JSON
 import Data.Functor.Identity
