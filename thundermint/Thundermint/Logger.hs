@@ -105,8 +105,8 @@ instance (MonadReadDB m alg a) => MonadReadDB (LoggerT m) alg a where
 instance (MonadDB m alg a) => MonadDB (LoggerT m) alg a where
   askConnectionRW = lift askConnectionRW
 
-runLoggerT :: Namespace -> LogEnv -> LoggerT m a -> m a
-runLoggerT nm le (LoggerT m) = runReaderT m (nm,le)
+runLoggerT :: LogEnv -> LoggerT m a -> m a
+runLoggerT le (LoggerT m) = runReaderT m (mempty, le)
 
 instance MonadIO m => Katip (LoggerT m) where
   getLogEnv = LoggerT $ fmap snd ask

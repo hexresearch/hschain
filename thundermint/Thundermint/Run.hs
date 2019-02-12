@@ -182,7 +182,7 @@ runNode cfg BlockchainNet{..} NodeDescription{..} NodeLogic{..} = do
         { appValidationFun  = nodeBlockValidation
         , appBlockGenerator = nodeBlockGenerator
         , appCommitQuery    = nodeCommitQuery
-        , appCommitCallback = \b -> setNamespace "mempool" $ do
+        , appCommitCallback = \b -> descendNamespace "mempool" $ do
             do before <- mempoolStats nodeMempool
                logger InfoS "Mempool before filtering" before
             filterMempool nodeMempool
@@ -195,10 +195,10 @@ runNode cfg BlockchainNet{..} NodeDescription{..} NodeLogic{..} = do
   -- Networking
   appCh <- newAppChans (cfgConsensus cfg)
   return
-    [ id $ setNamespace "net"
+    [ id $ descendNamespace "net"
          $ startPeerDispatcher (cfgNetwork cfg)
               bchNetwork bchLocalAddr bchInitialPeers appCh nodeMempool
-    , id $ setNamespace "consensus"
+    , id $ descendNamespace "consensus"
          $ runApplication (cfgConsensus cfg) nodeReadyCreateBlock appSt appCh
     , forever $ do
         MempoolInfo{..} <- mempoolStats nodeMempool
