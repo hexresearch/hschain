@@ -90,7 +90,7 @@ main = do
                   ]
     let port = 1000 + fromIntegral listenPort
     startWebMonitoring port
-    withLogEnv "TM" "DEV" loggers $ \logenv -> runLoggerT "Coin" logenv $ do
+    withLogEnv "TM" "DEV" loggers $ \logenv -> runLoggerT logenv $ do
       let !validatorSet = makeValidatorSetFromPriv
                         $ (id @[PrivValidator Ed25519_SHA512])
                         $ either error (fmap PrivValidator)

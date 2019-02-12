@@ -88,7 +88,7 @@ interpretSpec maxH prefix NetSpec{..} = do
     runDBT conn $ do
       hChain <- queryRO blockchainHeight
       return ( connectionRO conn
-             , runDBT conn $ withLogEnv "TM" "DEV" loggers $ \logenv -> runLoggerT "general" logenv $ do
+             , runDBT conn $ withLogEnv "TM" "DEV" loggers $ \logenv -> runLoggerT logenv $ do
                  -- Blockchain state
                  bchState <- newBChState transitions
                  _        <- stateAtH bchState (succ hChain)
