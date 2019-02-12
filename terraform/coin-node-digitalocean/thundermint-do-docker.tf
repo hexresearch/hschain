@@ -88,7 +88,7 @@ resource "null_resource" "deploy" {
       "systemctl stop ufw",
       "systemctl disable ufw",
       "docker login -u ${var.auth_user} -p ${var.auth_pass} ${var.registry_url}",
-      "docker run --restart always --name ${var.cluster-id}-node${count.index+1} -d --net host -e THUNDERMINT_KEYS='${jsonencode(values(var.private_keys))}' -e THUNDERMINT_NODE_SPEC='{ \"nspecPrivKey\":\"${var.private_keys[count.index]}\", \"nspecLogFile\" : [{ \"type\" : { \"tag\" : \"ScribeES\", \"index\" : \"thundermint\" }, \"path\" : \"https://${var.auth_user}:${var.auth_pass}@${var.elastic_url}\", \"severity\" : \"Info\", \"verbosity\" : \"V2\" }], \"nspecWalletKeys\"  : [${count.index*4},4]}' registry.hxr.team/thundermint:${var.tag} --max-h 10000 --delay 10 --deposit 1000 --keys 16 --peers '${jsonencode(formatlist("%s:%s", digitalocean_droplet.node.*.ipv4_address, var.port))}' --node-n ${count.index} --total-nodes ${length(var.private_keys)}"
+      "docker run --restart always --name ${var.cluster-id}-node${count.index+1} -d --net host -e THUNDERMINT_KEYS='${jsonencode(values(var.private_keys))}' -e THUNDERMINT_NODE_SPEC='{ \"nspecPrivKey\":\"${var.private_keys[count.index]}\", \"nspecLogFile\" : [{ \"type\" : { \"tag\" : \"ScribeES\", \"index\" : \"thundermint\" }, \"path\" : \"https://${var.auth_user}:${var.auth_pass}@${var.elastic_url}\", \"severity\" : \"Info\", \"verbosity\" : \"V2\" }], \"nspecWalletKeys\"  : [${count.index*4},4]}' registry.hxr.team/thundermint:${var.tag} --max-h 10000 --delay 100 --deposit 1000 --keys 16 --peers '${jsonencode(formatlist("%s:%s", digitalocean_droplet.node.*.ipv4_address, var.port))}' --node-n ${count.index} --total-nodes ${length(var.private_keys)} --udp"
     ]
   }
 }
