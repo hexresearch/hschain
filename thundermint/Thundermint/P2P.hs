@@ -285,11 +285,12 @@ acceptLoop cfg peerAddr NetworkAPI{..} peerCh mempool peerRegistry = do
           if otherPeerId == prPeerId peerRegistry then do
             logger DebugS "Self connection detected. Close connection" ()
           else do
-            withPeer peerRegistry addr (CmAccept otherPeerId) $ do
+            catch (withPeer peerRegistry addr (CmAccept otherPeerId) $ do
                   logger InfoS "Accepted connection" ("addr" `sl` show addr)
                   trace $ TeNodeOtherConnected (show addr)
                   descendNamespace (T.pack (show addr))
                     $ startPeer peerAddr addr peerCh conn peerRegistry mempool
+                  ) (\e -> logger InfoS ("withPeer has thrown " <> showLS (e :: SomeException)) ())
 
 
 -- Initiate connection to remote host and register peer
