@@ -271,7 +271,7 @@ acceptLoop cfg peerAddr NetworkAPI{..} peerCh mempool peerRegistry = do
         (conn, addr') <- accept
         void $ flip forkFinally (const $ close conn) $ restore $ do
           let peerInfo = connectedPeer conn
-          logger InfoS ("Accept connection " <> showLS addr') ("addr" `sl` show addr')
+          logger InfoS ("Accept connection " <> showLS addr' <> ", peer info " <> showLS peerInfo) ("addr" `sl` show addr')
           let otherPeerId   = piPeerId   peerInfo
               otherPeerPort = piPeerPort peerInfo
               addr = normalizeNodeAddress addr' (Just $ fromIntegral otherPeerPort)
