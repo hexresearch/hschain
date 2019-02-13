@@ -37,6 +37,7 @@ import GHC.Generics             (Generic)
 import qualified Data.ByteString.Lazy as LBS
 import qualified Network.Socket       as Net
 
+import           Thundermint.Logger
 import qualified Thundermint.Utils.Parser as Parse
 
 ----------------------------------------------------------------
@@ -105,7 +106,7 @@ type NetworkPort = Net.PortNumber
 --   to provide two implementations of networking. One is real network
 --   and another is mock in-process network for testing.
 data NetworkAPI = NetworkAPI
-  { listenOn :: !(forall m. (MonadIO m, MonadThrow m, MonadMask m)
+  { listenOn :: !(forall m. (MonadLogger m, MonadIO m, MonadThrow m, MonadMask m)
              => m (m (), m (P2PConnection, NetAddr)))
     -- ^ Start listening on given port. Returns action to stop listener
     --   and function for accepting new connections

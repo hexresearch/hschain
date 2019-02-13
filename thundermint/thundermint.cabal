@@ -175,6 +175,7 @@ Test-suite thundermint-tests
                      , network
                      , random
                      , sqlite-simple
+                     , katip
                      , serialise         >=0.2
                      , stm               >=2.4
                      , retry             >=0.7.6.2

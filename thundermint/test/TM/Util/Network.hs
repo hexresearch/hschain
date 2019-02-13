@@ -28,6 +28,8 @@ import qualified Data.ByteString.Lazy     as LBS
 import qualified Data.Map                 as Map
 import qualified Network.Socket           as Net
 
+import Katip
+
 import Thundermint.Blockchain.Internal.Engine.Types
 import Thundermint.Control
 import Thundermint.Crypto
@@ -43,6 +45,12 @@ import Thundermint.P2P.Network
 import Thundermint.Store
 import Thundermint.Monitoring
 import TM.RealNetwork
+
+import Thundermint.Logger
+
+instance MonadLogger IO where
+  logger severity str extra = putStrLn $ "LOG: " ++ show severity ++ ": " ++ show str ++ "(" ++ show (toObject extra) ++ ")"
+  localNamespace _ act = act
 
 shouldRetry :: Bool
 shouldRetry = True
