@@ -24,8 +24,11 @@ import GHC.Generics       (Generic)
 
 import qualified Control.Concurrent.Async as Async
 import qualified Control.Exception        as E
+import qualified Data.ByteString.Lazy     as LBS
 import qualified Data.Map                 as Map
 import qualified Network.Socket           as Net
+
+import Katip
 
 import Thundermint.Blockchain.Internal.Engine.Types
 import Thundermint.Control
@@ -34,26 +37,38 @@ import Thundermint.Crypto.Ed25519
 import Thundermint.Debug.Trace
 import Thundermint.Logger
 import Thundermint.Run
+import Thundermint.Mock.Coin (intToNetAddr)
 import Thundermint.Mock.KeyVal
 import Thundermint.Mock.Types
+import Thundermint.P2P
 import Thundermint.P2P.Network
 import Thundermint.Store
 import Thundermint.Monitoring
 import TM.RealNetwork
 
-testNetworkName :: String
-testNetworkName = "tst"
+import Thundermint.Logger
+
+instance MonadLogger IO where
+  logger severity str extra = putStrLn $ "LOG: " ++ show severity ++ ": " ++ show str ++ "(" ++ show (toObject extra) ++ ")"
+  localNamespace _ act = act
 
 shouldRetry :: Bool
 shouldRetry = True
 retryPolicy :: RetryPolicy
 retryPolicy = constantDelay 500 <> limitRetries 20
 
-withRetry :: MonadIO m => ( (Net.SockAddr, NetworkAPI Net.SockAddr)
-                        -> (Net.SockAddr, NetworkAPI Net.SockAddr) -> IO a)
+withRetry :: MonadIO m =>  ( (NetAddr, NetworkAPI)
+                        -> (NetAddr, NetworkAPI) -> IO a)
          -> Net.HostName -> m a
-withRetry fun host = do
-  liftIO $ recovering retryPolicy hs (const $ realNetPair host >>= uncurry fun)
+withRetry = withRetry' Nothing
+
+withRetry' :: MonadIO m => Maybe (Maybe Int)
+                        -> ( (NetAddr, NetworkAPI)
+                        -> (NetAddr, NetworkAPI) -> IO a)
+         -> Net.HostName -> m a
+withRetry' useUDP fun host = do
+  liftIO $ recovering retryPolicy hs
+    (const $ realNetPair useUDP host >>= uncurry fun)
     where
       -- | exceptions list to trigger the recovery logic
       hs :: [a -> Handler IO Bool]
@@ -85,11 +100,6 @@ type TestNetNode = ()
 type TestNet = Map.Map Int TestNetNode
 
 
-newtype TestAddr = TestAddr Int deriving (Show, Ord, Eq, Generic)
-
-instance Serialise TestAddr
-
-
 toPair :: TestNetLinkDescription m -> (Int, [Int])
 toPair TestNetLinkDescription{..} = (ncFrom, ncTo)
 
@@ -110,8 +120,8 @@ createTestNetworkWithConfig cfg desc = do
   where
     mkTestNode
       :: (MonadIO m, MonadMask m, MonadFork m)
-      => MockNet TestAddr
-      -> (Connection 'RW Ed25519_SHA512 [(String,Int)], TestNetLinkDescription m)
+      => MockNet
+      -> (Connection 'RW Ed25519_SHA512 [(String, NetAddr)], TestNetLinkDescription m)
       -> m [m ()]
     mkTestNode net (conn, TestNetLinkDescription{..}) = do
         let validatorSet = makeValidatorSetFromPriv testValidators
@@ -122,9 +132,9 @@ createTestNetworkWithConfig cfg desc = do
             (_,logic) <- logicFromFold transitions
             runNode cfg
               BlockchainNet
-                { bchNetwork          = createMockNode net testNetworkName (TestAddr ncFrom)
-                , bchLocalAddr        = (TestAddr ncFrom, testNetworkName)
-                , bchInitialPeers     = map ((,testNetworkName) . TestAddr) ncTo
+                { bchNetwork          = createMockNode net (intToNetAddr ncFrom)
+                , bchLocalAddr        = intToNetAddr ncFrom
+                , bchInitialPeers     = map intToNetAddr ncTo
                 }
               NodeDescription
                 { nodeCommitCallback   = \_ -> return ()
@@ -133,17 +143,27 @@ createTestNetworkWithConfig cfg desc = do
                 }
               logic
 
+-- |UDP may return Nothings for the message receive operation.
+skipNothings :: String -> (a -> IO (Maybe LBS.ByteString)) -> a -> IO LBS.ByteString
+skipNothings _lbl recv conn = do
+  mbMsg <- recv conn
+  case mbMsg of
+    Just msg -> return msg
+    Nothing -> skipNothings _lbl recv conn
+
+
+
 -- | Simple test to ensure that mock network works at all
-delayedWrite :: (addr, NetworkAPI addr)
-         -> (addr, NetworkAPI addr)
+delayedWrite :: (NetAddr, NetworkAPI)
+         -> (NetAddr, NetworkAPI)
          -> IO ()
 delayedWrite (serverAddr, server) (_, client) = do
   let runServer NetworkAPI{..} =
         bracket listenOn fst $ \(_,accept) ->
           bracket accept (close . fst) $ \(conn,_) -> do
-            Just "A1" <- recv conn
-            Just "A2" <- recv conn
-            Just "A3" <- recv conn
+            "A1" <- skipNothings "A1" recv conn
+            "A2" <- skipNothings "A2" recv conn
+            "A3" <- skipNothings "A3" recv conn
             return ()
   let runClient NetworkAPI{..} = do
         threadDelay 10e3

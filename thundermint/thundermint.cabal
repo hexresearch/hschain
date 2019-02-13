@@ -83,6 +83,7 @@ Library
                   Thundermint.Store.Internal.Types
                   Thundermint.Store.Internal.Query
                   Thundermint.Utils
+                  Thundermint.Utils.Parser
   Other-modules:
                   Thundermint.P2P.Network.Parameters
                   Thundermint.P2P.Network.TLS
@@ -174,6 +175,7 @@ Test-suite thundermint-tests
                      , network
                      , random
                      , sqlite-simple
+                     , katip
                      , serialise         >=0.2
                      , stm               >=2.4
                      , retry             >=0.7.6.2

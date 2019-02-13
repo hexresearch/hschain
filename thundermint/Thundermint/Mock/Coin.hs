@@ -31,6 +31,8 @@ module Thundermint.Mock.Coin (
     -- ** interpretation
   , interpretSpec
   , executeNodeSpec
+
+  , intToNetAddr
   ) where
 
 import Control.Applicative
@@ -51,6 +53,7 @@ import Lens.Micro
 import System.Random   (randomRIO)
 import GHC.Generics    (Generic)
 
+import Thundermint.P2P
 import Thundermint.Types.Blockchain
 import Thundermint.Blockchain.Interpretation
 import Thundermint.Blockchain.Internal.Engine.Types
@@ -276,6 +279,13 @@ defaultGenerator n dep delay = GeneratorSpec
   }
   where pk = take n privateKeyList
 
+intToNetAddr :: Int -> NetAddr
+intToNetAddr i = NetAddrV4 (fromIntegral i) 1122
+
+netAddrToInt :: NetAddr -> Int
+netAddrToInt (NetAddrV4 x 1122) = fromIntegral x
+netAddrToInt na = error $ "invalid netaddr "++show na++" for conversion to int in Mock part of Thundermint"
+
 -- | @restrictGenerator i n@ restrict generator to only generate
 --   transaction for ith nth of all private keys
 restrictGenerator :: Int -> Int -> GeneratorSpec -> GeneratorSpec
@@ -356,12 +366,11 @@ findInputs tgt = go 0
 
 -- | Interpret specification for node
 interpretSpec
-  :: ( MonadIO m, MonadLogger m, MonadFork m, MonadTrace m, MonadMask m, MonadTMMonitoring m
-     , Ord addr, Show addr, Serialise addr, DefaultConfig cfg)
+  :: ( MonadIO m, MonadLogger m, MonadFork m, MonadTrace m, MonadMask m, MonadTMMonitoring m)
   => Maybe Int64                      -- ^ Maximum height
   -> GeneratorSpec                    -- ^ Spec for generator of transactions
   -> ValidatorSet Ed25519_SHA512      -- ^ Set of validators
-  -> BlockchainNet addr               -- ^ Network
+  -> BlockchainNet                    -- ^ Network
   -> Configuration cfg                -- ^ Configuration for network
   -> NodeSpec                         -- ^ Node specifications
   -> m (Connection 'RO Alg [Tx], m ())
@@ -402,19 +411,19 @@ executeNodeSpec
 executeNodeSpec maxH delay NetSpec{..} = do
   net <- P2P.newMockNet
   let totalNodes   = length netNodeList
-      netAddresses = Map.fromList $ [0::Int ..] `zip` netNodeList
+      netAddresses = Map.fromList $ [ intToNetAddr i | i <- [0..]] `zip` netNodeList
       connections  = case netTopology of
         Ring    -> connectRing
         All2All -> connectAll2All
       validatorSet = makeValidatorSetFromPriv [ pk | Just pk <- nspecPrivKey <$> netNodeList ]
 
   actions <- forM (Map.toList netAddresses) $ \(addr, nspec@NodeSpec{..}) -> do
-    let genSpec = restrictGenerator addr totalNodes
+    let genSpec = restrictGenerator (netAddrToInt addr) totalNodes
                 $ defaultGenerator netInitialKeys netInitialDeposit delay
         bnet    = BlockchainNet
-          { bchNetwork      = P2P.createMockNode net "50000" addr
-          , bchLocalAddr    = (addr, "50000")
-          , bchInitialPeers = map (,"50000") $ connections netAddresses addr
+          { bchNetwork      = P2P.createMockNode net addr
+          , bchLocalAddr    = addr
+          , bchInitialPeers = connections netAddresses addr
           }
     let loggers = [ makeScribe s | s <- nspecLogFile ]
         run m   = withLogEnv "TM" "DEV" loggers $ \logenv -> runLoggerT logenv m

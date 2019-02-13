@@ -6,6 +6,7 @@ import Test.Tasty
 import Test.Tasty.HUnit
 
 import Data.Int         (Int64)
+import Data.Monoid      ((<>))
 import Data.Traversable (forM)
 
 import qualified Data.Aeson            as JSON

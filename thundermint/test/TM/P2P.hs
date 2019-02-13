@@ -23,6 +23,7 @@ import Test.Tasty.HUnit
 import Thundermint.Blockchain.Internal.Engine.Types
 import Thundermint.Control
 import Thundermint.Debug.Trace
+import Thundermint.Mock.Coin
 import Thundermint.Mock.Types
 import Thundermint.Utils
 
@@ -46,14 +47,14 @@ testPeersMustConnect = do
         , waitSec 0.5
         ]
     readIORef events1 >>= ([ TeNodeStarted
-                           , TeNodeConnectingTo "(TestAddr 2,\"tst\")"
-                           , TeNodeConnectingTo "(TestAddr 3,\"tst\")"
+                           , TeNodeConnectingTo "2.0.0.0:1122"
+                           , TeNodeConnectingTo "3.0.0.0:1122"
                            ] @~<?)
     readIORef events2 >>= ([ TeNodeStarted
-                           , TePeerRegistryChanged (Set.fromList ["(TestAddr 1,\"tst\")","(TestAddr 3,\"tst\")"])
+                           , TePeerRegistryChanged (Set.fromList ["1.0.0.0:1122","3.0.0.0:1122"])
                            ] @~<?)
     readIORef events3 >>= ([ TeNodeStarted
-                           , TePeerRegistryChanged (Set.fromList ["(TestAddr 1,\"tst\")","(TestAddr 2,\"tst\")"])
+                           , TePeerRegistryChanged (Set.fromList ["1.0.0.0:1122","2.0.0.0:1122"])
                            ] @~<?)
 
 
@@ -73,14 +74,14 @@ testPeerRegistryMustBeFilled = do
             ]
         , waitSec 0.5
         ]
-    readIORef events1 >>= ([TePeerRegistryChanged (Set.fromList ["(TestAddr 2,\"tst\")","(TestAddr 3,\"tst\")"])] @~<?)
-    readIORef events2 >>= ([TePeerRegistryChanged (Set.fromList ["(TestAddr 1,\"tst\")","(TestAddr 3,\"tst\")"])] @~<?)
-    readIORef events3 >>= ([TePeerRegistryChanged (Set.fromList ["(TestAddr 1,\"tst\")","(TestAddr 2,\"tst\")"])] @~<?)
+    readIORef events1 >>= ([TePeerRegistryChanged (Set.fromList ["2.0.0.0:1122","3.0.0.0:1122"])] @~<?)
+    readIORef events2 >>= ([TePeerRegistryChanged (Set.fromList ["1.0.0.0:1122","3.0.0.0:1122"])] @~<?)
+    readIORef events3 >>= ([TePeerRegistryChanged (Set.fromList ["1.0.0.0:1122","2.0.0.0:1122"])] @~<?)
 
 
 mkExpectedRegistry :: [Int] -> Set TraceEvents
 mkExpectedRegistry ids =
-    Set.fromList [TePeerRegistryChanged $ Set.fromList $ map (\nid -> show (TestAddr nid, testNetworkName)) ids]
+    Set.fromList [TePeerRegistryChanged $ Set.fromList $ map (\nid -> show (intToNetAddr nid)) ids]
 
 hasRegistryInEvent :: [Int] -> IORef (Set TraceEvents) -> IO Bool
 hasRegistryInEvent ids events = Set.isSubsetOf (mkExpectedRegistry ids) <$> readIORef events
@@ -121,7 +122,7 @@ testPeersMustAckAndGetAddresses = do
                   ] >>= \case
                   True  -> writeIORef ok True
                   False -> waitSec 0.1 >> next
-        , waitSec 5
+        , waitSec 10
         ]
     --readIORef events1 >>= (mkExpectedRegistry [2,3,4] @<?)
     --readIORef events3 >>= (mkExpectedRegistry [1,2,4] @<?)

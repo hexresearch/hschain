@@ -36,7 +36,6 @@ import Control.Monad.IO.Class
 import Control.Monad.Catch
 import Control.Concurrent.STM         (atomically)
 import Control.Concurrent.STM.TBQueue (lengthTBQueue)
-import Codec.Serialise (Serialise)
 import Data.Maybe      (isJust)
 
 import Thundermint.Blockchain.Internal.Engine
@@ -161,18 +160,18 @@ data NodeDescription m alg a = NodeDescription
   }
 
 -- | Specification of network
-data BlockchainNet addr = BlockchainNet
-  { bchNetwork      :: !(NetworkAPI addr)
-  , bchLocalAddr    :: !addr
-  , bchInitialPeers :: ![addr]
+data BlockchainNet = BlockchainNet
+  { bchNetwork      :: !NetworkAPI
+  , bchLocalAddr    :: !NetAddr
+  , bchInitialPeers :: ![NetAddr]
   }
 
 runNode
   :: ( MonadDB m alg a, MonadMask m, MonadFork m, MonadLogger m, MonadTrace m, MonadTMMonitoring m
-     , Crypto alg, Ord addr, Show addr, Serialise addr, Show a, BlockData a
+     , Crypto alg, Show a, BlockData a
      )
   => Configuration app
-  -> BlockchainNet addr
+  -> BlockchainNet
   -> NodeDescription m alg a
   -> NodeLogic m alg a
   -> m [m ()]

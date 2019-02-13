@@ -12,11 +12,16 @@ module TM.Network (tests) where
 import Control.Concurrent.Async
 
 import Control.Concurrent     (threadDelay)
+import Control.Monad          (forM_)
+
 import Data.Monoid            ((<>))
+import Data.String            (fromString)
+import qualified Data.ByteString.Lazy as LBS
 
 import           Control.Exception as E
 import qualified Network.Socket    as Net
 
+import Thundermint.P2P
 import Thundermint.P2P.Network
 
 import Test.Tasty
@@ -35,11 +40,19 @@ tests =
                     [ testGroup "IPv4"
                          [ testCase "ping-pong" $ withRetry pingPong "127.0.0.1"
                          , testCase "delayed write" $ withRetry delayedWrite "127.0.0.1"
-                          ]
+                         ]
                     , testGroup "IPv6"
                           [ testCase "ping-pong" $ withRetry pingPong "::1"
                           , testCase "delayed write" $ withRetry delayedWrite "::1"
                           ]
+                    ]
+                  , testGroup "real-udp"
+                    [ testGroup group $
+                         [ testCase "ping-pong" $ withRetry' (Just Nothing) pingPong address
+                         , testCase "delayed write" $ withRetry' (Just Nothing) delayedWrite address
+                         , testCase "sized ping pongs" $ withRetry' (Just $ Just $ 123 + v6) (sizedPingPong 8 11) address
+                         ]
+                    | (group, address, v6) <- [("IPv4", "127.0.0.1", 0)]--, ("IPv6", "::1", 1)]
                     ]
                   , testGroup "local addresses detection"
                     [ testCase "all locals must be local" $ getLocalAddresses >>= (fmap and . mapM isLocalAddress) >>= (@? "Must be local")
@@ -56,22 +69,48 @@ loopbackIpv4 = Net.SockAddrInet  50000 0x100007f
 loopbackIpv6 = Net.SockAddrInet6 50000 0 (0,0,0,1) 0
 
 
-
 -- | Simple test to ensure that mock network works at all
-pingPong :: (addr, NetworkAPI addr)
-         -> (addr, NetworkAPI addr)
+pingPong :: (NetAddr, NetworkAPI)
+         -> (NetAddr, NetworkAPI)
          -> IO ()
-pingPong (serverAddr, server) (_, client) = do
+pingPong (serverAddr, server) (clientAddr, client) = do
   let runServer NetworkAPI{..} = do
         bracket listenOn fst $ \(_,accept) ->
           bracket accept (close . fst) $ \(conn,_) -> do
-            Just bs <- recv conn
+            bs <- skipNothings "ping pong server" recv conn
             send conn ("PONG_" <> bs)
   let runClient NetworkAPI{..} = do
         threadDelay 10e3
         bracket (connect serverAddr) close $ \conn -> do
           send conn "PING"
-          bs <- recv conn
-          assertEqual "Ping-pong" (Just "PONG_PING") bs
+          bs <- skipNothings "ping pong client" recv conn
+          assertEqual "Ping-pong" ("PONG_PING") bs
+  ((),()) <- concurrently (runServer server) (runClient client)
+  return ()
+
+-- | Ping pong test parametrized by message size.
+sizedPingPong :: Int
+         -> Int
+         -> (NetAddr, NetworkAPI)
+         -> (NetAddr, NetworkAPI)
+         -> IO ()
+sizedPingPong startPower endPower (serverAddr, server) (clientAddr, client) = do
+  let powers = [startPower..endPower]
+      runServer NetworkAPI{..} = do
+        bracket listenOn fst $ \(_,accept) ->
+          bracket accept (close . fst) $ \(conn,_) -> do
+            forM_ powers $ \_ -> do
+              bs <- skipNothings "server" recv conn
+              send conn ("PONG_" <> bs)
+      runClient NetworkAPI{..} = do
+        threadDelay 10e3
+        bracket (connect serverAddr) close $ \conn -> do
+          forM_ powers $ \power -> do
+            let messageSize = 2 ^ power
+                block = fromString [ toEnum $ fromEnum ' ' + mod i 64 | i <- [1..messageSize]]
+                msg = "PING" <> block
+            send conn msg
+            bs <- skipNothings "client" recv conn
+            assertEqual ("Ping-pong power " ++ show power) ("PONG_" <> msg) bs
   ((),()) <- concurrently (runServer server) (runClient client)
   return ()

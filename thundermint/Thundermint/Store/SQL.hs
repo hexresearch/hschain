@@ -45,6 +45,7 @@ import Control.Monad
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Maybe
 import Control.Monad.Trans.State
+import Data.Monoid ((<>))
 import Data.Text (Text)
 import Data.Functor.Compose
 import           Data.Map.Strict   (Map)

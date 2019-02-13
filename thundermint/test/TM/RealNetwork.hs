@@ -5,42 +5,54 @@ module TM.RealNetwork ( realNetPair
 
 import System.Random
 
+import Thundermint.P2P
 import Thundermint.P2P.Network
 
 import qualified Data.ByteString as BS
 import qualified Network.Socket  as Net
+
 ----------------------------------------------------------------
 
-realNetPair :: Net.HostName
-            -> IO ((Net.SockAddr, NetworkAPI Net.SockAddr),
-                   (Net.SockAddr, NetworkAPI Net.SockAddr))
-realNetPair host = do
-    n <- randomRIO (10, 89 :: Int)
-    m <- randomRIO (1, 9 :: Int)
-    let port1 = concat ["30", show m, show  n]
-        port2 = concat ["31", show m, show (n + m)]
-        server = realNetwork port1
-        client = realNetwork port2
-        hints = Net.defaultHints  { Net.addrSocketType = Net.Stream }
+realNetPair :: Maybe (Maybe Int)
+            -> Net.HostName
+            -> IO ((NetAddr, NetworkAPI),
+                   (NetAddr, NetworkAPI))
+realNetPair udpPortSpec host = do
+    let useUDP = udpPortSpec /= Nothing
+    n <- case udpPortSpec of
+      Just (Just p) -> return p
+      _ -> randomRIO (1, 9999 :: Int)
+    let suffix = reverse $ take 4 $ (reverse $ show n) ++ repeat '0'
+        port1 = concat ["3", suffix]
+        port2 = concat ["4", suffix]
+        realNet p = if not useUDP
+          then return (realNetwork peerInfoForOurPort p)
+          else realNetworkUdp peerInfoForOurPort p
+          where
+            port = read p
+            peerInfoForOurPort = PeerInfo (fromIntegral port) port 0
+        hints = Net.defaultHints  { Net.addrSocketType = if useUDP then Net.Datagram else Net.Stream }
     addr1:_ <- Net.getAddrInfo (Just hints) (Just host) (Just port1)
     addr2:_ <- Net.getAddrInfo (Just hints) (Just host) (Just port2)
+    server <- realNet port1
+    client <- realNet port2
 
     let sockAddr1 = Net.addrAddress addr1
     let sockAddr2 = Net.addrAddress addr2
 
-    return ( (sockAddr1, server)
-           , (sockAddr2, client)
+    return ( (sockAddrToNetAddr sockAddr1, server)
+           , (sockAddrToNetAddr sockAddr2, client)
            )
 
 
 realTlsNetPair :: Net.HostName
-               -> IO ((Net.SockAddr, NetworkAPI Net.SockAddr),
-                      (Net.SockAddr, NetworkAPI Net.SockAddr))
+               -> IO ((NetAddr, NetworkAPI),
+                      (NetAddr, NetworkAPI))
 realTlsNetPair  host = do
     n <- randomRIO (10, 99 :: Int)
     m <- randomRIO (1, 9 :: Int)
     let port1 = concat ["32", show  m,  show  n]
-        port2 = concat ["33", show  m, show  (n + m)]
+        port2 = concat ["33", show  m, show  (mod (n + m) 100)]
         credential = getCredentialFromBuffer certificatePem keyPem
         server = realNetworkTls credential port1
         client = realNetworkTls credential port2
@@ -51,8 +63,8 @@ realTlsNetPair  host = do
     let sockAddr1 = Net.addrAddress addr1
     let sockAddr2 = Net.addrAddress addr2
 
-    return ( (sockAddr1, server)
-           , (sockAddr2, client)
+    return ( (sockAddrToNetAddr sockAddr1, server)
+           , (sockAddrToNetAddr sockAddr2, client)
            )
 
 

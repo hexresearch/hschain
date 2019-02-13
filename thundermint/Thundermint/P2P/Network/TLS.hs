@@ -1,5 +1,6 @@
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE RecordWildCards #-}
 -- |
 -- Abstract API for network which support
 module Thundermint.P2P.Network.TLS (
@@ -11,6 +12,7 @@ module Thundermint.P2P.Network.TLS (
  , headerSize
   ) where
 
+import Codec.Serialise
 import Control.Monad            (when)
 import Control.Monad.Catch      (bracketOnError, throwM, MonadMask)
 import Control.Monad.IO.Class   (MonadIO, liftIO)
@@ -48,7 +50,7 @@ headerSize = 4
 
 
 
-realNetworkTls :: TLS.Credential -> Net.ServiceName -> NetworkAPI Net.SockAddr
+realNetworkTls :: TLS.Credential -> Net.ServiceName -> NetworkAPI
 realNetworkTls creds serviceName = (realNetworkStub serviceName)
   { listenOn = do
       let hints = Net.defaultHints
@@ -73,14 +75,14 @@ realNetworkTls creds serviceName = (realNetworkStub serviceName)
                                             [Net.NI_NUMERICHOST, Net.NI_NUMERICSERV]
                                             True
                                             True
-                                            addr
+                                            $ netAddrToSockAddr addr
       addrInfo:_ <- liftIO $ Net.getAddrInfo hints hostName serviceName'
       bracketOnError (newSocket addrInfo) (liftIO . Net.close) $ \ sock -> do
         let tenSec = 10000000
         -- Waits for connection for 10 sec and throws `ConnectionTimedOut` exception
         liftIO $ throwNothingM ConnectionTimedOut
                $ timeout tenSec
-               $ Net.connect sock addr
+               $ Net.connect sock $ netAddrToSockAddr addr
         connectTls creds hostName serviceName' sock
   }
 
@@ -122,7 +124,7 @@ connectTls creds host port sock = do
         return $ conn
 
 
-acceptTls :: (MonadMask m, MonadIO m) => TLS.Credential -> Net.Socket -> m (P2PConnection, Net.SockAddr)
+acceptTls :: (MonadMask m, MonadIO m) => TLS.Credential -> Net.Socket -> m (P2PConnection, NetAddr)
 acceptTls creds sock = do
     bracketOnError
         (liftIO $ Net.accept sock)
@@ -133,7 +135,7 @@ acceptTls creds sock = do
            liftIO $ TLS.contextHookSetLogging ctx getLogging
            TLS.handshake ctx
            cnn <- applyConn ctx
-           return $ (cnn, addr)
+           return $ (cnn, sockAddrToNetAddr addr)
 
         )
 
@@ -150,10 +152,19 @@ silentBye ctx = do
           -> return ()
         _ -> E.throwIO e
 
+setProperPeerInfo :: MonadIO m => P2PConnection -> m P2PConnection
+setProperPeerInfo conn@P2PConnection{..} = do
+    encodedPeerInfo <- recv
+    case encodedPeerInfo of
+      Nothing -> fail "connection dropped before receiving peer info"
+      Just bs -> case deserialiseOrFail bs of
+        Left err -> fail ("unable to deserealize peer info: " ++ show err)
+        Right peerInfo -> return $ conn { connectedPeer = peerInfo }
+
 applyConn :: MonadIO m => TLS.Context -> m P2PConnection
 applyConn context = do
     ref <- liftIO $ I.newIORef ""
-    return $ P2PConnection (tlsSend context) (tlsRecv context ref) (liftIO $ tlsClose context)
+    setProperPeerInfo $ P2PConnection (tlsSend context) (tlsRecv context ref) (liftIO $ tlsClose context) (PeerInfo 0 0 0)
 
         where
           tlsClose ctx = (silentBye ctx `E.catch` \(_ :: E.IOException) -> pure ())

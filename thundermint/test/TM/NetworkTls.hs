@@ -18,6 +18,7 @@ import           Control.Exception          as E
 import qualified Data.ByteString.Lazy       as LBS
 import           Data.ByteString.Lazy.Char8 as LBC
 
+import Thundermint.P2P
 import Thundermint.P2P.Network
 
 import TM.Util.Network
@@ -41,8 +42,8 @@ tests =
 
 
 -- | Simple test to ensure that real network works at all
-pingPong :: (addr, NetworkAPI addr)
-         -> (addr, NetworkAPI addr)
+pingPong :: (NetAddr, NetworkAPI)
+         -> (NetAddr, NetworkAPI)
          -> IO ()
 pingPong (serverAddr, server) (_, client) = do
   let runServer NetworkAPI{..} =
@@ -61,8 +62,8 @@ pingPong (serverAddr, server) (_, client) = do
 
 
 -- | Simple test to ensure that framing works
-bigDataSend :: (addr, NetworkAPI addr)
-         -> (addr, NetworkAPI addr)
+bigDataSend :: (NetAddr, NetworkAPI)
+         -> (NetAddr, NetworkAPI)
          -> IO ()
 bigDataSend (serverAddr, server) (_, client) = do
   let runServer NetworkAPI{..} =

@@ -2,6 +2,7 @@
 module TM.MockNet ( mockNetPair) where
 
 
+import Thundermint.P2P
 import Thundermint.P2P.Network
 
 import qualified Network.Socket as Net
@@ -9,10 +10,13 @@ import qualified Network.Socket as Net
 
 ----------------------------------------------------------------
 
-mockNetPair :: IO ( ((Int, Net.ServiceName), NetworkAPI (Int, Net.ServiceName))
-                  , ((Int, Net.ServiceName), NetworkAPI (Int, Net.ServiceName)))
+mockNetPair :: IO ( (NetAddr, NetworkAPI)
+                  , (NetAddr, NetworkAPI))
 mockNetPair = do
   network <- newMockNet
-  return ( ((1,"3000"), createMockNode network "3000" 1)
-         , ((2,"3000"), createMockNode network "3000" 2)
+  return ( (a1, createMockNode network a1)
+         , (a2, createMockNode network a2)
          )
+  where
+    a1 = NetAddrV4 40001 2222
+    a2 = NetAddrV4 10004 2222
