@@ -190,7 +190,8 @@ realNetworkUdp ourPeerInfo serviceName = do
             lazyByteString = LBS.fromStrict bs
             peerInfoPayloadTupleDecoded = CBOR.deserialiseOrFail lazyByteString
         case peerInfoPayloadTupleDecoded of
-          Left err -> putStrLn $ "error decoding peerinfo+payload tuple from "++show addr++": "++show err
+          Left err -> -- silently dropping the packet.
+            return ()
           Right (otherPeerInfo, (front, ofs, payload)) -> do
             let connectPacket = isConnectPart (front, ofs, payload)
             atomically $ do
