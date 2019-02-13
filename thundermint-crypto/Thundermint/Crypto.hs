@@ -88,11 +88,11 @@ newtype Signature alg = Signature BS.ByteString
 
 -- | Address of public key fingerprint (hash of public key)
 newtype Address alg = Address BS.ByteString
-  deriving (Eq,Ord, Serialise)
+  deriving (Eq,Ord, Generic, Generic1, Serialise, NFData)
 
 -- | Cryptographic hash of some value
 newtype Hash alg = Hash BS.ByteString
-  deriving (Eq,Ord, Serialise, NFData)
+  deriving (Eq,Ord, Generic, Generic1, Serialise, NFData)
 
 -- | Compute hash of value. It's first serialized using CBOR and then
 --   hash of encoded data is computed,
@@ -334,6 +334,9 @@ data Signed (sign :: SignedState) alg a
   = Signed !(Address alg) !(Signature alg) !a
   deriving (Generic, Eq, Show)
 
+instance (NFData a) => NFData (Signed sign alg a) where
+  rnf (Signed a s x) = rnf a `seq` rnf s `seq` rnf x
+
 -- | Obtain underlying value
 signedValue :: Signed sign alg a -> a
 signedValue (Signed _ _ a) = a
@@ -402,7 +405,8 @@ instance JSON.ToJSON   a => JSON.ToJSON   (Signed 'Unverified alg a)
 -- | Newtype wrapper with phantom type tag which show hash of which
 --   value is being calculated
 newtype Hashed alg a = Hashed (Hash alg)
-  deriving (Show,Eq,Ord, Generic, Serialise,JSON.FromJSON,JSON.ToJSON)
+  deriving ( Show,Eq,Ord, Generic, Generic1, NFData
+           , Serialise,JSON.FromJSON,JSON.ToJSON)
 
 hashed :: (Crypto alg, Serialise a) => a -> Hashed alg a
 hashed = Hashed . hash

@@ -426,7 +426,7 @@ executeNodeSpec maxH delay NetSpec{..} = do
           , bchInitialPeers = connections netAddresses addr
           }
     let loggers = [ makeScribe s | s <- nspecLogFile ]
-        run m   = withLogEnv "TM" "DEV" loggers $ \logenv -> runLoggerT "general" logenv m
+        run m   = withLogEnv "TM" "DEV" loggers $ \logenv -> runLoggerT logenv m
     run $ (fmap . fmap) run $ interpretSpec maxH genSpec validatorSet bnet netNetCfg nspec
   runConcurrently (snd <$> actions) `catch` (\Abort -> return ())
   return $ fst <$> actions
