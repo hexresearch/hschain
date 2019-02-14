@@ -615,6 +615,7 @@ startPeer peerAddrFrom peerAddrTo peerCh@PeerChans{..} conn peerRegistry mempool
     , descendNamespace "PEX"  $ peerGossipPeerExchange  peerAddrFrom peerCh peerRegistry pexCh gossipCh
     , descendNamespace "send" $ peerSend                peerAddrFrom peerAddrTo peerSt peerCh gossipCh conn
     , descendNamespace "recv" $ peerReceive             peerSt peerCh pexCh conn cursor
+    , peerGossipAnnounce peerCh gossipCh
     ]
   logger InfoS "Stopping peer" ()
 
@@ -821,6 +822,22 @@ peerReceive peerSt PeerChans{..} peerExchangeCh P2PConnection{..} MempoolCursor{
             AnnHasBlock     h r   -> addBlockHR    peerSt h r
         loop
 
+-- Infrequently announce our current state. This is needed if node was
+-- terminated when it got all necessary votes but don't have block
+-- yet. On start it will quickly replay WAL, enter StepAwaitCommit and
+-- will never change state and announce it.
+peerGossipAnnounce
+  :: (MonadIO m, MonadLogger m, MonadCatch m)
+  => PeerChans m addr alg a
+  -> TBQueue (GossipMsg addr alg a)
+  -> m ()
+peerGossipAnnounce PeerChans{..} gossipCh = logOnException $
+  forever $ do
+    liftIO $ atomically $ do
+      st <- consensusState
+      forM_ st $ \(h,TMState{smRound,smStep}) -> do
+        writeTBQueue gossipCh $ GossipAnn $ AnnStep $ FullStep h smRound smStep
+    waitSec 10
 
 ---- | Dump GossipMsg without (Show) constraints
 ----
