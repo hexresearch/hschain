@@ -1,27 +1,62 @@
+{ isProd      ? false
+, isProfile   ? false
+, gitTag      ? null  # current tag
+, buildNumber ? null  # CI build number
+}:
+with import ./lib/utils.nix;
 let
-  pkgs   = import ./pkgs.nix { inherit config; };
-  lib    = pkgs.haskell.lib;
-  # Overrides for haskell packages
-  haskOverrides = hsNew: hsOld: rec {
-    cborg               = lib.dontCheck (hsOld.callPackage ./derivations/cborg.nix {});
-    concurrent-output   = hsOld.callPackage ./derivations/concurrent-output.nix {};
-    hedgehog            = hsOld.callPackage ./derivations/hedgehog.nix {};
-    katip               = hsOld.callPackage ./derivations/katip.nix {};
-    katip-elasticsearch = lib.dontCheck (hsOld.callPackage ./derivations/katip-elasticsearch.nix {});
-    prometheus-client   = hsOld.callPackage ./derivations/prometheus-client.nix {};
-    stm                 = hsOld.callPackage ./derivations/stm.nix {};
-    tasty               = hsOld.callPackage ./derivations/tasty.nix {};
-    tasty-ant-xml       = hsOld.callPackage ./derivations/tasty-ant-xml.nix {};
-    tasty-hedgehog      = hsOld.callPackage ./derivations/tasty-hedgehog.nix {};
-    unliftio            = hsOld.callPackage ./derivations/unliftio.nix {};
-    # -
-    thundermint-crypto  = hsOld.callPackage ./derivations/thundermint-crypto.nix {};
-    thundermint-types   = hsOld.callPackage ./derivations/thundermint-types.nix {};
-    thundermint         = hsOld.callPackage ./derivations/thundermint.nix {};
-    thundermint-exe     = pkgs.haskell.lib.overrideCabal
-      (lib.justStaticExecutables (lib.dontCheck thundermint)) (oldDerivation: { });
+
+  imports = {
+    inherit tryEval;
+    pkgConfig = readConfig <cfg> ./versions.json;
   };
-  # Additional overrides for GHCJS
+
+  lib = pkgs.haskell.lib;
+  overrideCabal = lib.overrideCabal;
+  justStaticExecutables = lib.justStaticExecutables;
+  dontHaddock = lib.dontHaddock;
+  doCheck = lib.doCheck;
+  doPendantic = drv: overrideCabal drv (drv: {
+    buildFlags = (drv.buildFlags or []) ++ ["--ghc-option=-Wall" "--ghc-option=-Werror"];
+  });
+  doShow = drv: overrideCabal drv (drv: {preCheck = ((drv.preCheck or "") + ''find .. -name "*stm.json"'');});
+  enableLibraryProfiling = lib.enableLibraryProfiling;
+  enableExecutableProfiling = lib.enableExecutableProfiling;
+  prodOverrideE = drv: if isProd then justStaticExecutables (dontHaddock drv) else drv;
+  prodOverrideAll = drv: if isProd then doPendantic (doCheck drv) else drv;
+  profileOverride = drv: if isProfile then enableExecutableProfiling (enableLibraryProfiling drv) else drv;
+  addLibrary = drv: x: addLibraries drv [x];
+  addLibraries = drv: xs: overrideCabal drv (drv: { libraryHaskellDepends = (drv.libraryHaskellDepends or []) ++ xs; });
+  increaseGhcStack = drv: overrideCabal drv (drv: let
+    flags = ["--ghcjs-option=+RTS" "--ghcjs-option=-K512M" "--ghcjs-option=-RTS"];
+    in {
+      buildFlags = (drv.buildFlags or []) ++ flags;
+    });
+  addVersions = drv: overrideCabal drv (drv: {
+    preConfigure = (drv.preConfigure or "") + ''
+      ${pkgs.lib.optionalString (! builtins.isNull gitTag) "export GIT_TAG=${gitTag}"}
+      ${pkgs.lib.optionalString (! builtins.isNull buildNumber) "export BUILD_NUMBER=${builtins.toString buildNumber}"}
+    '';
+  });
+  gitignore = pkgs.callPackage (pkgs.fetchFromGitHub {
+    owner = "siers";
+    repo = "nix-gitignore";
+    rev = "ce0778ddd8b1f5f92d26480c21706b51b1af9166";
+    sha256 = "1d7ab78i2k13lffskb23x8b5h24x7wkdmpvmria1v3wb9pcpkg2w";
+  }) {};
+  ignoreStack = source: let
+    ignore-list = ''
+      /.stack-work
+      /db
+      /crypto-history
+    '';
+    in gitignore.gitignoreSourceAux ignore-list source;
+
+  # Internal packages (depends on production or dev environment)
+  callInternal = name: path: args: (prodOverrideAll (profileOverride ( addVersions (
+      doShow (dontHaddock ( pkgs.haskellPackages.callCabal2nix name (ignoreStack path) args )
+    )))));
+
   ghcjsOverrides = hsNew: hsOld: {
     SHA                   = lib.dontCheck hsOld.SHA;
     aeson                 = lib.dontCheck hsOld.aeson;
@@ -29,52 +64,57 @@ let
     quickcheck-assertions = lib.dontCheck hsOld.quickcheck-assertions;
     scientific            = lib.dontCheck hsOld.scientific;
     tasty-quickcheck      = lib.dontCheck hsOld.tasty-quickcheck;
-    thundermint-crypto    = hsOld.callPackage ./derivations/thundermint-crypto.nix {isGHCJS = true;};
+    thundermint-crypto    = increaseGhcStack (dontHaddock (addLibrary (callInternal "thundermint" ../thundermint-crypto {}) hsNew.SHA));
   };
-  config = {
+
+  haskOverrides = haskellPackagesNew: haskellPackagesOld: let
+          # Overrides from cabal2nix files
+          derivationsOverrides = lib.packagesFromDirectory { directory = ./derivations; } haskellPackagesNew haskellPackagesOld;
+
+          internal = {
+            thundermint-types = callInternal "thundermint" ../thundermint-types { };
+            thundermint-crypto = callInternal "thundermint" ../thundermint-crypto { };
+            thundermint = callInternal "thundermint" ../thundermint { };
+          };
+
+          in derivationsOverrides // imports // internal // {
+            # Overrides from nixpkgs
+            katip-elasticsearch = lib.dontCheck derivationsOverrides.katip-elasticsearch;
+            #gdax = lib.dontCheck haskellPackagesOld.gdax;
+            serialise = lib.dontCheck haskellPackagesOld.serialise;
+            tasty = lib.dontCheck haskellPackagesOld.tasty;
+            #wl-pprint-annotated = lib.dontCheck haskellPackagesOld.wl-pprint-annotated;
+          };
+  config  = {
     allowUnfree = true;
-    packageOverrides = pkgs: rec {
-      docker-container = pkgs.dockerTools.buildImage {
-        name = "thundermint-node";
-        fromImageName = "scratch";
-        contents = [pkgs.haskellPackages.thundermint-exe];
-        config = {
-          Volumes = {
-            "/thundermint" = {};
-          };
-          ExposedPorts = {
-            "49999" = {};
-            "50000" = {};
-          };
-          };
-      };
-      haskell = pkgs.haskell // {
+    packageOverrides = rpkgs: rec {
+      haskell = rpkgs.haskell // {
         packageOverrides = haskOverrides;
-        packages = pkgs.haskell.packages // {
-          ghcjs = pkgs.haskell.packages.ghcjs.override {
+        packages = rpkgs.haskell.packages // {
+          ghcjs = rpkgs.haskell.packages.ghcjs.override {
             overrides = hsNew: hsOld: haskOverrides hsNew hsOld // ghcjsOverrides hsNew hsOld;
           };
         };
       };
     };
   };
-  # ----------------------------------------
-  packagesGHC = rec {
-    thundermint         = pkgs.haskellPackages.thundermint;
-    thundermint-exe     = pkgs.haskellPackages.thundermint-exe;
-    docker-container    = pkgs.docker-container;
+
+  pkgs = import ./pkgs.nix { inherit config; overlays=[]; };
+  /* pkgs = if isProd then rawPkgs.pkgsMusl else rawPkgs; */
+
+  callPackage = pkgs.haskellPackages.callPackage;
+
+  self = rec {
+    inherit pkgs;
     thundermintPackages = {
       inherit (pkgs.haskellPackages)
-        thundermint
         thundermint-types
         thundermint-crypto
-        thundermint-exe
-       ;
+        thundermint;
+      };
+    packagesGHCJS = {
+      inherit (pkgs.haskell.packages.ghcjs)
+        thundermint-crypto ;
+      };
     };
-  };
-  packagesGHCJS = {
-    inherit (pkgs.haskell.packages.ghcjs)
-      thundermint-crypto
-    ;
-  };
-in { inherit pkgs packagesGHC packagesGHCJS; }
+in self
