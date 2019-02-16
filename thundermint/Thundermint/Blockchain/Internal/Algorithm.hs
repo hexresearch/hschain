@@ -266,11 +266,11 @@ tendermintTransition par@HeightParameters{..} msg sm@TMState{..} =
     ----------------------------------------------------------------
     PreVoteMsg v@(signedValue -> Vote{..})
       -- Only accept votes with current height
-      | voteHeight /= currentH    -> tranquility
+      | voteHeight /= currentH      -> tranquility
       -- If we awaiting commit we don't care about prevotes
-      | smStep == StepAwaitCommit -> tranquility
-      | otherwise                 -> checkTransitionPrevote par voteRound
-                                 =<< addPrevote par v sm
+      | StepAwaitCommit _ <- smStep -> tranquility
+      | otherwise                   -> checkTransitionPrevote par voteRound
+                                   =<< addPrevote par v sm
     ----------------------------------------------------------------
     PreCommitMsg v@(signedValue -> Vote{..})
       -- Collect stragglers precommits for inclusion of
@@ -306,14 +306,14 @@ tendermintTransition par@HeightParameters{..} msg sm@TMState{..} =
         EQ -> do
           case smStep of
             --
-            StepNewHeight   -> needNewBlock par sm >>= \case
+            StepNewHeight     -> needNewBlock par sm >>= \case
               True  -> enterPropose par smRound sm Reason'Timeout
               False -> do scheduleTimeout $ Timeout currentH (Round 0) StepNewHeight
                           return sm
-            StepProposal    -> enterPrevote   par smRound        sm Reason'Timeout
-            StepPrevote     -> enterPrecommit par smRound        sm Reason'Timeout
-            StepPrecommit   -> enterPropose   par (succ smRound) sm Reason'Timeout
-            StepAwaitCommit -> tranquility
+            StepProposal      -> enterPrevote   par smRound        sm Reason'Timeout
+            StepPrevote       -> enterPrecommit par smRound        sm Reason'Timeout
+            StepPrecommit     -> enterPropose   par (succ smRound) sm Reason'Timeout
+            StepAwaitCommit _ -> tranquility
       where
         t0 = Timeout currentH smRound smStep
 
@@ -380,7 +380,7 @@ checkTransitionPrecommit par@HeightParameters{..} r sm@(TMState{..})
                            , commitPrecommits =  unverifySignature
                                              <$> valuesAtR r smPrecommitsSet
                            }
-                     sm { smStep = StepAwaitCommit }
+                     sm { smStep = StepAwaitCommit r }
   --  * We have +2/3 precommits for nil at current round
   --  * We are at Precommit step [FIXME?]
   --  => goto Propose(H,R+1)
