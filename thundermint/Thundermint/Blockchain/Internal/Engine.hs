@@ -350,11 +350,11 @@ makeHeightParameters ConsensusCfg{..} ready AppState{..} AppChans{..} = do
     , scheduleTimeout = \t@(Timeout _ (Round r) step) ->
         liftIO $ void $ forkIO $ do
           let (baseT,delta) = case step of
-                StepNewHeight -> timeoutNewHeight
-                StepProposal  -> timeoutProposal
-                StepPrevote   -> timeoutPrevote
-                StepPrecommit -> timeoutPrecommit
-                StepAwaitCommit -> (0, 0)
+                StepNewHeight     -> timeoutNewHeight
+                StepProposal      -> timeoutProposal
+                StepPrevote       -> timeoutPrevote
+                StepPrecommit     -> timeoutPrecommit
+                StepAwaitCommit _ -> (0, 0)
           threadDelay $ 1000 * (baseT + delta * fromIntegral r)
           atomically $ writeTQueue appChanRxInternal $ RxTimeout t
     --
