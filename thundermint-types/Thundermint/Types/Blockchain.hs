@@ -322,7 +322,7 @@ data Step
   | StepPrecommit
     -- ^ Precommiting block or NIL and collecting precommits from
     --   other nodes
-  | StepAwaitCommit
+  | StepAwaitCommit !Round
     -- ^ We already reached consensus and now waiting for data to
     --   perform commit. Node could only stay in this state if it
     --   catching up and got all required precommits before getting
