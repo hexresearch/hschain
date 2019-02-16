@@ -837,6 +837,9 @@ peerGossipAnnounce PeerChans{..} gossipCh = logOnException $
       st <- consensusState
       forM_ st $ \(h,TMState{smRound,smStep}) -> do
         writeTBQueue gossipCh $ GossipAnn $ AnnStep $ FullStep h smRound smStep
+        case smStep of
+          StepAwaitCommit r -> writeTBQueue gossipCh $ GossipAnn $ AnnHasProposal h r
+          _                 -> return ()
     waitSec 10
 
 ---- | Dump GossipMsg without (Show) constraints
