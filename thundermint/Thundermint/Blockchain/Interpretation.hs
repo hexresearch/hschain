@@ -18,6 +18,7 @@ import Codec.Serialise (Serialise)
 import Control.Concurrent.MVar
 import Control.Monad.Catch
 import Control.Monad.IO.Class
+import Control.Monad.Fail
 
 import Thundermint.Crypto
 import Thundermint.Control
@@ -72,7 +73,7 @@ data BChState m s = BChState
 
 -- | Create block storage backed by MVar
 newBChState
-  :: (MonadMask m, MonadReadDB m alg a, Serialise a, Crypto alg)
+  :: (MonadMask m, MonadReadDB m alg a, Serialise a, Crypto alg, MonadFail m)
   => BlockFold s alg a             -- ^ Updating function
   -> m (BChState m s)
 newBChState BlockFold{..} = do
@@ -106,7 +107,7 @@ hoistBChState f BChState{..} = BChState
 
 data PersistentState dct alg a = PersistentState
   { processTxDB           :: !(Height -> TX a -> EphemeralQ alg a dct ())
-  , processBlockDB        :: !(forall q. (ExecutorRW q, Monad (q dct))
+  , processBlockDB        :: !(forall q. (ExecutorRW q, Monad (q dct), MonadFail (q dct))
                           => Block alg a -> q dct ())
   , transactionsToBlockDB :: !(Height -> [TX a] -> EphemeralQ alg a dct a)
   , persistedData         :: !(dct Persistent)

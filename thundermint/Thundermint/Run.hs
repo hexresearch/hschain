@@ -32,6 +32,7 @@ module Thundermint.Run (
   ) where
 
 import Control.Monad
+import Control.Monad.Fail hiding (fail)
 import Control.Monad.IO.Class
 import Control.Monad.Catch
 import Control.Concurrent.STM         (atomically)
@@ -78,7 +79,7 @@ data NodeLogic m alg a = NodeLogic
   }
 
 logicFromFold
-  :: (MonadDB m alg a, MonadMask m, BlockData a, Ord (TX a), Crypto alg)
+  :: (MonadDB m alg a, MonadMask m, BlockData a, Ord (TX a), Crypto alg, MonadFail m)
   => BlockFold st alg a
   -> m (BChState m st, NodeLogic m alg a)
 logicFromFold transitions@BlockFold{..} = do
@@ -167,7 +168,7 @@ data BlockchainNet = BlockchainNet
   }
 
 runNode
-  :: ( MonadDB m alg a, MonadMask m, MonadFork m, MonadLogger m, MonadTrace m, MonadTMMonitoring m
+  :: ( MonadDB m alg a, MonadMask m, MonadFork m, MonadLogger m, MonadTrace m, MonadTMMonitoring m, MonadFail m
      , Crypto alg, Show a, BlockData a
      )
   => Configuration app

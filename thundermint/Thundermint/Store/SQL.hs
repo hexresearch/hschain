@@ -42,6 +42,7 @@ module Thundermint.Store.SQL (
 
 import Control.Applicative
 import Control.Monad
+import Control.Monad.Fail hiding (fail)
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Maybe
 import Control.Monad.Trans.State
@@ -175,7 +176,7 @@ instance PersistentData (PersistentSet ty k) where
 --   would result in same changes as recorded.
 newtype EffectfulQ (rw :: Access) alg a dct x = EffectfulQ
   { _unEffectfulQ :: StateT (dct Versioned) (Query rw alg a) x }
-  deriving (Functor, Applicative, Monad)
+  deriving (Functor, Applicative, Monad, MonadFail)
 
 data Versioned a = Versioned !Version !(Persistent a)
 
@@ -455,7 +456,7 @@ checkPSetDropReplay PSet{psetTableName=tbl, ..} version k = do
 --   backtracking implemented using 'Alternative'
 newtype EphemeralQ alg a dct x = EphemeralQ
   { _unEphemeral :: StateT (dct Overlay) (MaybeT (Query 'RO alg a)) x }
-  deriving (Functor, Applicative, Monad, Alternative)
+  deriving (Functor, Applicative, Monad, MonadFail, Alternative)
 
 data Overlay a where
   OverlayPMap :: !(PMap k v)

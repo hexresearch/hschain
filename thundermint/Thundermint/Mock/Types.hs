@@ -85,4 +85,3 @@ data NetSpec a = NetSpec
 instance JSON.ToJSON   NodeSpec
 instance JSON.FromJSON NodeSpec
 instance JSON.FromJSON a => JSON.FromJSON (NetSpec a)
-

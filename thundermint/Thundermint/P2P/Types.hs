@@ -20,6 +20,7 @@ module Thundermint.P2P.Types (
   ) where
 
 import Codec.Serialise
+import Control.Monad.Fail hiding (fail)
 import Control.Applicative
 import Control.Concurrent.STM
 import Control.Exception        (Exception)
@@ -106,19 +107,19 @@ type NetworkPort = Net.PortNumber
 --   to provide two implementations of networking. One is real network
 --   and another is mock in-process network for testing.
 data NetworkAPI = NetworkAPI
-  { listenOn :: !(forall m. (MonadLogger m, MonadIO m, MonadThrow m, MonadMask m)
+  { listenOn :: !(forall m. (MonadLogger m, MonadIO m, MonadThrow m, MonadMask m, MonadFail m)
              => m (m (), m (P2PConnection, NetAddr)))
     -- ^ Start listening on given port. Returns action to stop listener
     --   and function for accepting new connections
-  , connect  :: !(forall m. (MonadIO m, MonadThrow m, MonadMask m)
+  , connect  :: !(forall m. (MonadIO m, MonadThrow m, MonadMask m, MonadFail m)
              => NetAddr -> m P2PConnection)
     -- ^ Connect to remote address
-  , filterOutOwnAddresses :: !(forall m. (MonadIO m, MonadThrow m, MonadMask m)
+  , filterOutOwnAddresses :: !(forall m. (MonadIO m, MonadThrow m, MonadMask m, MonadFail m)
              => Set NetAddr -> m (Set NetAddr))
     -- ^ Filter out local addresses of node. Batch processing for speed.
   , normalizeNodeAddress :: !(NetAddr -> Maybe NetworkPort -> NetAddr)
     -- ^ Normalize address, for example, convert '20.15.10.20:24431' to '20.15.10.20:50000'
-  , listenPort :: !NetworkPort 
+  , listenPort :: !NetworkPort
     -- ^ Listen port.
   , ourPeerInfo :: !PeerInfo
     -- ^ peer info for easy reference.

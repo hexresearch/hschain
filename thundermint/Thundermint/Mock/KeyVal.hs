@@ -3,6 +3,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 {-# LANGUAGE TupleSections     #-}
+{-# OPTIONS_GHC -fno-warn-orphans #-}
 -- |
 module Thundermint.Mock.KeyVal (
     genesisBlock
@@ -11,6 +12,8 @@ module Thundermint.Mock.KeyVal (
   ) where
 
 import Control.Monad
+import Control.Monad.Trans.Class
+import Control.Monad.Fail
 import Control.Monad.Catch
 import Data.Int
 import Data.List
@@ -38,6 +41,12 @@ import Thundermint.Run
 import Thundermint.Store
 import Thundermint.Store.Internal.Query (Connection,connectionRO)
 import Thundermint.Types.Validators (ValidatorSet)
+
+instance MonadFail m => MonadFail (LoggerT m) where
+  fail = lift . Control.Monad.fail
+
+instance MonadFail m => MonadFail (DBT a b c m) where
+  fail = lift . Control.Monad.fail
 
 ----------------------------------------------------------------
 --
