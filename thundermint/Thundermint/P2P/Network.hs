@@ -57,8 +57,6 @@ import Thundermint.P2P.Network.RealNetworkStub
 import Thundermint.P2P.Types
 import qualified Thundermint.P2P.Network.IpAddresses as Ip
 
-import Text.Printf
-import Debug.Trace
 
 -- | API implementation for real tcp network
 realNetwork :: PeerInfo -> Net.ServiceName -> NetworkAPI
@@ -100,8 +98,8 @@ realNetwork ourPeerInfo serviceName = (realNetworkStub serviceName)
         mbOtherPeerInfo <- liftIO $ recvBS sock
         case fmap CBOR.deserialiseOrFail mbOtherPeerInfo of
           Nothing -> fail $ "connection dropped while receiving peer info from " ++ show addr
-          Just (Left err) -> fail $ "failure to decode PeerInfo from " ++ show addr
-          Just (Right otherPI) -> return $ applyConn otherPI sock
+          Just (Left  _      ) -> fail $ "failure to decode PeerInfo from " ++ show addr
+          Just (Right otherPI) -> return $ applyConn sock otherPI
   , ourPeerInfo = ourPeerInfo
   }
  where
@@ -111,9 +109,9 @@ realNetwork ourPeerInfo serviceName = (realNetworkStub serviceName)
     mbOtherPeerInfo <- liftIO $ recvBS conn
     case fmap CBOR.deserialiseOrFail mbOtherPeerInfo of
       Nothing -> fail $ "connection dropped while receiving peer info from " ++ show addr
-      Just (Left err) -> fail $ "failure to decode PeerInfo from " ++ show addr
-      Just (Right otherPI) -> return (applyConn otherPI conn, sockAddrToNetAddr addr)
-  applyConn pi conn = P2PConnection (liftIO . sendBS conn) (liftIO $ recvBS conn) (liftIO $ Net.close conn) pi
+      Just (Left  _      ) -> fail $ "failure to decode PeerInfo from " ++ show addr
+      Just (Right otherPI) -> return (applyConn conn otherPI, sockAddrToNetAddr addr)
+  applyConn conn = P2PConnection (liftIO . sendBS conn) (liftIO $ recvBS conn) (liftIO $ Net.close conn)
   sendBS sock =  \s -> NetLBS.sendAll sock (BB.toLazyByteString $ toFrame s)
                  where
                    toFrame msg = let len =  fromIntegral (LBS.length msg) :: Word32
@@ -155,12 +153,6 @@ recvAll sock n = LBS.concat `fmap` loop (fromIntegral n)
       then return []
       else fmap (r:) (loop (left - LBS.length r))
 
-
-emptyBs2Maybe :: LBS.ByteString -> Maybe LBS.ByteString
-emptyBs2Maybe bs
-  | LBS.null bs = Nothing
-  | otherwise  = Just bs
-
 -- | API implementation example for real udp network
 realNetworkUdp :: PeerInfo -> Net.ServiceName -> IO NetworkAPI
 realNetworkUdp ourPeerInfo serviceName = do
@@ -190,7 +182,7 @@ realNetworkUdp ourPeerInfo serviceName = do
             lazyByteString = LBS.fromStrict bs
             peerInfoPayloadTupleDecoded = CBOR.deserialiseOrFail lazyByteString
         case peerInfoPayloadTupleDecoded of
-          Left err -> -- silently dropping the packet.
+          Left _ -> -- silently dropping the packet.
             return ()
           Right (otherPeerInfo, (front, ofs, payload)) -> do
             let connectPacket = isConnectPart (front, ofs, payload)
