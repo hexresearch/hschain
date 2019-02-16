@@ -6,6 +6,7 @@
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE RecordWildCards            #-}
 {-# LANGUAGE TupleSections              #-}
+{-# OPTIONS_GHC -fno-warn-orphans #-}
 -- |
 -- Simple coin for experimenting with blockchain
 module Thundermint.Mock.Coin (
@@ -35,8 +36,11 @@ module Thundermint.Mock.Coin (
   , intToNetAddr
   ) where
 
+import Prelude hiding (fail)
 import Control.Applicative
 import Control.Monad
+import Control.Monad.Trans.Class
+import Control.Monad.Fail
 import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Control.Concurrent   (threadDelay)
@@ -73,6 +77,13 @@ import Thundermint.Monitoring
 import Thundermint.Types.Validators (ValidatorSet)
 import qualified Thundermint.P2P.Network as P2P
 
+
+
+instance MonadFail m => MonadFail (LoggerT m) where
+  fail = lift . Control.Monad.fail
+
+instance MonadFail m => MonadFail (DBT a b c m) where
+  fail = lift . Control.Monad.fail
 
 type Alg = Ed25519_SHA512
 
@@ -208,7 +219,7 @@ coinDict = CoinStateDB
   }
 
 processDB
-  :: (Monad (q CoinStateDB), ExecutorRW q)
+  :: (Monad (q CoinStateDB), ExecutorRW q, MonadFail (q CoinStateDB))
   => Height
   -> Tx
   -> q CoinStateDB ()
@@ -223,10 +234,10 @@ processDepositDB pk nCoin = do
 
 
 processTransactionDB
-  :: (Monad (q CoinStateDB), ExecutorRW q)
+  :: (Monad (q CoinStateDB), MonadFail (q CoinStateDB), ExecutorRW q)
   => Tx
   -> q CoinStateDB ()
-processTransactionDB Deposit{} = fail ""
+processTransactionDB Deposit{} = Control.Monad.Fail.fail ""
 processTransactionDB transaction@(Send pubK sig txSend@TxSend{..}) = do
   -- Signature must be valid
   check $ verifyCborSignature pubK txSend sig
@@ -249,7 +260,7 @@ processTransactionDB transaction@(Send pubK sig txSend@TxSend{..}) = do
     storeKey unspentOutputsLens (txHash,i) out
   where
     check True  = return ()
-    check False = fail ""
+    check False = Control.Monad.Fail.fail ""
 
 unspentOutputsLens :: Lens' (CoinStateDB f) (f (PMap (Hash Alg, Int) (PublicKey Alg, Integer)))
 unspentOutputsLens = lens unspentOutputsDB (const CoinStateDB)
@@ -338,7 +349,7 @@ generateTransaction GeneratorSpec{..} = do
 
 -- | Generate transaction indefinitely
 transactionGenerator
-  :: (MonadIO m, MonadDB m Alg [Tx])
+  :: (MonadIO m, MonadDB m Alg [Tx], MonadFail m)
   => GeneratorSpec -> (Tx -> m ()) -> m ()
 transactionGenerator gen push = forever $ do
   txGen   <- liftIO $ generateTransaction gen
@@ -366,7 +377,7 @@ findInputs tgt = go 0
 
 -- | Interpret specification for node
 interpretSpec
-  :: ( MonadIO m, MonadLogger m, MonadFork m, MonadTrace m, MonadMask m, MonadTMMonitoring m)
+  :: ( MonadIO m, MonadLogger m, MonadFork m, MonadTrace m, MonadMask m, MonadTMMonitoring m, MonadFail m)
   => Maybe Int64                      -- ^ Maximum height
   -> GeneratorSpec                    -- ^ Spec for generator of transactions
   -> ValidatorSet Ed25519_SHA512      -- ^ Set of validators

@@ -10,6 +10,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StandaloneDeriving  #-}
 {-# LANGUAGE TemplateHaskell     #-}
+{-# LANGUAGE UndecidableInstances #-}
 -- |
 -- Mock P2P
 module Thundermint.P2P (
@@ -27,6 +28,7 @@ import Control.Concurrent      ( ThreadId, myThreadId, killThread
                                , MVar, readMVar, newMVar)
 import Control.Concurrent.STM
 import Control.Monad
+import Control.Monad.Fail hiding (fail)
 import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Control.Retry           (recoverAll, exponentialBackoff, limitRetries, RetryPolicy)
@@ -176,7 +178,7 @@ readRecv (Counter _ r) = liftIO $ readMVar r
 --   of nodes and gossip.
 startPeerDispatcher
   :: ( MonadMask m, MonadFork m, MonadLogger m, MonadTrace m, MonadReadDB m alg a, MonadTMMonitoring m
-     , BlockData a,  Show a, Crypto alg)
+     , BlockData a,  Show a, Crypto alg, MonadFail m)
   => NetworkCfg
   -> NetworkAPI               -- ^ API for networking
   -> NetAddr                  -- ^ Current peer address
@@ -252,7 +254,7 @@ retryPolicy NetworkCfg{..} = exponentialBackoff (reconnectionDelay * 1000)
 -- Thread which accepts connections from remote nodes
 acceptLoop
   :: ( MonadFork m, MonadMask m, MonadLogger m, MonadTrace m, MonadReadDB m alg a
-     , BlockData a, Show a, Crypto alg)
+     , BlockData a, Show a, Crypto alg, MonadFail m)
   => NetworkCfg
   -> NetAddr
   -> NetworkAPI
@@ -296,7 +298,7 @@ acceptLoop cfg peerAddr NetworkAPI{..} peerCh mempool peerRegistry = do
 -- Initiate connection to remote host and register peer
 connectPeerTo
   :: ( MonadFork m, MonadMask m, MonadLogger m, MonadTrace m, MonadReadDB m alg a
-     , BlockData a, Show a, Crypto alg
+     , BlockData a, Show a, Crypto alg, MonadFail m
      )
   => NetworkCfg
   -> NetAddr
@@ -428,7 +430,7 @@ whenM predicate act = ifM predicate act (return ())
 
 
 peerPexNewAddressMonitor
-  :: ( MonadIO m, MonadThrow m, MonadMask m)
+  :: ( MonadIO m, MonadThrow m, MonadMask m, MonadFail m)
   => TChan [NetAddr]
   -> PeerRegistry
   -> NetworkAPI
@@ -466,7 +468,7 @@ peerPexKnownCapacityMonitor _peerAddr PeerChans{..} PeerRegistry{..} minKnownCon
 
 peerPexMonitor
   :: ( MonadFork m, MonadMask m, MonadLogger m, MonadTrace m, MonadReadDB m alg a
-     , BlockData a, Show a, Crypto alg)
+     , BlockData a, Show a, Crypto alg, MonadFail m)
   => NetworkCfg
   -> NetAddr -- ^ Current peer address for logging purpose
   -> NetworkAPI
@@ -568,7 +570,7 @@ peerGossipPeerExchange _peerAddr PeerChans{..} PeerRegistry{prConnected,prIsActi
 --   established and peer is registered.
 startPeer
   :: ( MonadFork m, MonadMask m, MonadLogger m, MonadReadDB m alg a
-     , Show a, BlockData a, Crypto alg)
+     , Show a, BlockData a, Crypto alg, MonadFail m)
   => NetAddr
   -> NetAddr
   -> PeerChans m alg a       -- ^ Communication with main application
@@ -715,7 +717,7 @@ peerGossipMempool peerObj PeerChans{..} config gossipCh MempoolCursor{..} = logO
 
 -- | Gossip blocks with given peer
 peerGossipBlocks
-  :: (MonadReadDB m alg a, MonadFork m, MonadMask m, MonadLogger m, Serialise a, Crypto alg)
+  :: (MonadReadDB m alg a, MonadFork m, MonadMask m, MonadLogger m, Serialise a, Crypto alg, MonadFail m)
   => PeerStateObj m alg a       -- ^ Current state of peer
   -> PeerChans m alg a          -- ^ Read-only access to
   -> TBQueue (GossipMsg alg a)  -- ^ Network API
@@ -754,7 +756,7 @@ peerGossipBlocks peerObj PeerChans{..} gossipCh = logOnException $ do
 
 -- | Routine for receiving messages from peer
 peerReceive
-  :: ( MonadReadDB m alg a, MonadFork m, MonadMask m, MonadLogger m
+  :: ( MonadReadDB m alg a, MonadFork m, MonadMask m, MonadLogger m, MonadFail m
      , Crypto alg, BlockData a)
   => PeerStateObj m alg a
   -> PeerChans m alg a
@@ -832,7 +834,7 @@ peerGossipAnnounce PeerChans{..} gossipCh = logOnException $
 
 -- | Routine for actually sending data to peers
 peerSend
-  :: ( MonadReadDB m alg a, MonadFork m, MonadMask m, MonadLogger m
+  :: ( MonadReadDB m alg a, MonadFork m, MonadMask m, MonadLogger m, MonadFail m
      , Crypto alg, BlockData a)
   => NetAddr
   -> NetAddr
@@ -886,4 +888,3 @@ logGossip PeerChans{..} = do
   usingVector prometheusGossip ("RX","block")     gossip'RxB
   --
   logger InfoS "Gossip stats" LogGossip{..}
-

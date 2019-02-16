@@ -28,6 +28,7 @@ import           Data.Function
 import           Data.Monoid   ((<>))
 import Data.Text             (Text)
 import Pipes                 (Pipe,runEffect,yield,await,(>->))
+import Control.Monad.Fail hiding (fail)
 
 import Thundermint.Blockchain.Internal.Engine.Types
 import Thundermint.Blockchain.Internal.Algorithm
@@ -61,7 +62,7 @@ newAppChans ConsensusCfg{incomingQueueSize = sz} = do
 --
 --   * INVARIANT: Only this function can write to blockchain
 runApplication
-  :: ( MonadDB m alg a, MonadCatch m, MonadLogger m, MonadTMMonitoring m, Crypto alg, Show a, BlockData a)
+  :: ( MonadDB m alg a, MonadCatch m, MonadLogger m, MonadTMMonitoring m, Crypto alg, Show a, BlockData a, MonadFail m)
   => ConsensusCfg
      -- ^ Configuration
   -> (Height -> Time -> m Bool)
@@ -87,7 +88,7 @@ runApplication config ready appSt@AppState{..} appCh@AppChans{..} = logOnExcepti
 --
 -- FIXME: we should write block and last commit in transaction!
 decideNewBlock
-  :: (MonadDB m alg a, MonadLogger m, MonadTMMonitoring m, Crypto alg, Show a, BlockData a)
+  :: (MonadDB m alg a, MonadLogger m, MonadTMMonitoring m, Crypto alg, Show a, BlockData a, MonadFail m)
   => ConsensusCfg
   -> (Height -> Time -> m Bool)
   -> AppState m alg a
@@ -279,7 +280,7 @@ instance MonadTrans (ConsensusM alg a) where
   lift = ConsensusM . fmap Success
 
 makeHeightParameters
-  :: (MonadDB m alg a, MonadLogger m, MonadTMMonitoring m, Crypto alg, Serialise a, Show a)
+  :: (MonadDB m alg a, MonadLogger m, MonadTMMonitoring m, Crypto alg, Serialise a, Show a, MonadFail m)
   => ConsensusCfg
   -> (Height -> Time -> m Bool)
   -> AppState m alg a

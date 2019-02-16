@@ -29,6 +29,7 @@ module Thundermint.Store.Internal.Query (
   ) where
 
 import Control.Monad.Catch
+import Control.Monad.Fail hiding (fail)
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Reader
@@ -92,7 +93,7 @@ data Access = RO                -- ^ Read-only access
 --   instance since we don't want allow arbitrary IO.
 newtype Query (rw :: Access) alg a x = Query
   { unQuery :: MaybeT (ReaderT SQL.Connection IO) x }
-  deriving (Functor, Applicative, Monad)
+  deriving (Functor, Applicative, Monad, MonadFail)
 
 -- | Cause transaction rollback.
 rollback :: Query 'RW alg a x

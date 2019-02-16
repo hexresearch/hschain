@@ -57,7 +57,6 @@ import Thundermint.P2P.Network.RealNetworkStub
 import Thundermint.P2P.Types
 import qualified Thundermint.P2P.Network.IpAddresses as Ip
 
-
 -- | API implementation for real tcp network
 realNetwork :: PeerInfo -> Net.ServiceName -> NetworkAPI
 realNetwork ourPeerInfo serviceName = (realNetworkStub serviceName)
@@ -238,13 +237,13 @@ realNetworkUdp ourPeerInfo serviceName = do
         recvChan <- newTChan
         frontVar <- newTVar (0 :: Word8)
         receivedFrontsVar <- newTVar Map.empty
-        let fullInfo = (recvChan, frontVar, receivedFrontsVar) 
+        let fullInfo = (recvChan, frontVar, receivedFrontsVar)
         writeTVar tChans $ Map.insert addr fullInfo chans
         return (False, fullInfo)
   applyConn otherPeerInfo sock addr frontVar receivedFrontsVar peerChan tChans = P2PConnection
     (\s -> liftIO.void $ sendSplitted frontVar sock addr s)
     (liftIO $ receiveAction addr receivedFrontsVar peerChan)
-    (close addr tChans)
+    (closeConn addr tChans)
     otherPeerInfo
   receiveAction addr frontsVar peerChan = do
     (message) <- atomically $ do
@@ -321,7 +320,7 @@ realNetworkUdp ourPeerInfo serviceName = do
         where
           intChunkSize = fromIntegral chunkSize
           (hd,tl) = LBS.splitAt intChunkSize bs
-  close addr tChans = do
+  closeConn addr tChans = do
     liftIO . atomically $ do
       chans <- readTVar tChans
       writeTVar tChans $ Map.delete addr chans

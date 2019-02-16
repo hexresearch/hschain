@@ -15,6 +15,7 @@ import Network.Socket
 import qualified Data.Text             as T
 import Data.Maybe                (fromMaybe)
 import System.IO.Unsafe          (unsafePerformIO)
+import Data.Word
 
 import Thundermint.P2P.Consts
 
@@ -22,17 +23,17 @@ import Thundermint.P2P.Consts
 -- FIXME Add automatic (by Typable interface) serialization!!!
 --
 instance Serialise SockAddr where
-    encode (SockAddrInet  (PortNum port) host) =
-        encodeListLen 2 <> encodeWord 0 <> encode port <> encode host
-    encode (SockAddrInet6 (PortNum port) flowInfo host scopeid) =
-        encodeListLen 4 <> encodeWord 1 <> encode port <> encode flowInfo <> encode host <> encode scopeid
+    encode (SockAddrInet  port host) =
+        encodeListLen 2 <> encodeWord 0 <> encode (fromIntegral port :: Word16) <> encode host
+    encode (SockAddrInet6 port flowInfo host scopeid) =
+        encodeListLen 4 <> encodeWord 1 <> encode (fromIntegral port :: Word16) <> encode flowInfo <> encode host <> encode scopeid
     encode _ = error "Serialise SockAddr not implemented yet!"
     decode = do
         len <- decodeListLen
         tag <- decodeWord
         case (len, tag) of
-            (2, 0) -> SockAddrInet  <$> (PortNum <$> decode) <*> decode
-            (4, 1) -> SockAddrInet6 <$> (PortNum <$> decode) <*> decode <*> decode <*> decode
+            (2, 0) -> SockAddrInet  <$> ((fromIntegral :: Word16 -> PortNumber) <$> decode) <*> decode
+            (4, 1) -> SockAddrInet6 <$> ((fromIntegral :: Word16 -> PortNumber) <$> decode) <*> decode <*> decode <*> decode
             a      -> error ("Can't decode SocketAddr len/tag pair: " ++ show a)
 
 
@@ -70,4 +71,3 @@ text2Sa s = addrAddress $ head addrInfos
                        then Just (show thundermintPort)
                        else Just $ T.unpack $ T.tail sN
         addrInfos = unsafePerformIO $ getAddrInfo Nothing mHN mSN
-

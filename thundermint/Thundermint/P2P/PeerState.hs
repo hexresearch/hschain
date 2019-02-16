@@ -29,6 +29,7 @@ import Codec.Serialise (Serialise)
 import Control.Concurrent hiding (modifyMVar_)
 import Control.Monad.Catch
 import Control.Monad.IO.Class
+import Control.Monad.Fail
 
 import qualified Data.Map as Map
 import           Data.Map   (Map)
@@ -122,7 +123,7 @@ getPeerState (PeerStateObj _ var)
 -- | Local state increased to height H. Update our opinion about
 --   peer's state accordingly
 advanceOurHeight
-  :: (MonadReadDB m alg a, MonadMask m, Crypto alg, Serialise a)
+  :: (MonadReadDB m alg a, MonadMask m, Crypto alg, Serialise a, MonadFail m)
   => PeerStateObj m alg a
   -> Height
   -> m ()
@@ -166,7 +167,7 @@ advanceOurHeight (PeerStateObj _ var) ourH =
         -> return peer
     Unknown   -> return Unknown
 
-advancePeer :: (MonadReadDB m alg a, MonadMask m, Crypto alg, Serialise a)
+advancePeer :: (MonadReadDB m alg a, MonadMask m, Crypto alg, Serialise a, MonadFail m)
             => PeerStateObj m alg a
             -> FullStep
             -> m ()
