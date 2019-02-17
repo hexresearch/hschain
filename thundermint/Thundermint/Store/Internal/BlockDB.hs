@@ -11,6 +11,7 @@ module Thundermint.Store.Internal.BlockDB where
 import Codec.Serialise (Serialise,serialise,deserialiseOrFail)
 import Control.Applicative
 import Control.Monad.Trans.Maybe
+import qualified Data.ByteString.Lazy as LBS
 import Data.Int
 import Data.Text (Text)
 import qualified Database.SQLite.Simple           as SQL
@@ -186,6 +187,18 @@ storeCommit cmt blk = do
     , serialise (blockHash blk :: BlockID alg a)
     , serialise blk
     )
+
+-- | Write state snapshot into DB.
+-- @maybeSnapshot@ contains a serialized value of a state associated with the processed block.
+storeStateSnapshotAfterCommit
+  :: forall alg a .
+  Block alg a -> Maybe LBS.ByteString -> Query 'RW alg a ()
+storeStateSnapshotAfterCommit blk maybeSnapshot = do
+  let Height h = headerHeight $ blockHeader blk
+  case maybeSnapshot of
+    Just s -> execute "UPDATE state_snapshot SET height = ?, snapshot_blob = ?" (h, s)
+    Nothing -> return ()
+
 
 -- | Write validator set for next round into database
 storeValSet :: (Crypto alg) => Block alg a -> ValidatorSet alg -> Query 'RW alg a ()

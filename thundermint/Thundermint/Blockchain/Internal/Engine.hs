@@ -161,7 +161,8 @@ decideNewBlock config ready appSt@AppState{..} appCh@AppChans{..} lastCommt = do
                   Just action -> action
                   Nothing     -> error "Cannot write commit into database"
             advanceToHeight appPropStorage . succ =<< queryRO blockchainHeight
-            appCommitCallback b
+            mbSnapshot <- appCommitCallback b
+            queryRW $ storeStateSnapshotAfterCommit b mbSnapshot
             return cmt
   --
   -- FIXME: encode that we cannot fail here!
