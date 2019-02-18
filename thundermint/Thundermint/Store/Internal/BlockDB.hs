@@ -207,14 +207,11 @@ storeCommit cmt blk = do
 
 -- | Write state snapshot into DB.
 -- @maybeSnapshot@ contains a serialized value of a state associated with the processed block.
-storeStateSnapshotAfterCommit
-  :: forall alg a .
-  Block alg a -> Maybe LBS.ByteString -> Query 'RW alg a ()
-storeStateSnapshotAfterCommit blk maybeSnapshot = do
-  let Height h = headerHeight $ blockHeader blk
-  case maybeSnapshot of
-    Just s -> execute "UPDATE state_snapshot SET height = ?, snapshot_blob = ?" (h, s)
-    Nothing -> return ()
+storeStateSnapshot
+  :: Serialise s =>
+  Height -> s -> Query 'RW alg a ()
+storeStateSnapshot (Height h) state = do
+  execute "UPDATE state_snapshot SET height = ?, snapshot_blob = ?" (h, serialise state)
 
 
 -- | Write validator set for next round into database

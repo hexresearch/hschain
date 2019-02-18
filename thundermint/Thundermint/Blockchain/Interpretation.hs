@@ -71,7 +71,7 @@ data BChState m s = BChState
 
 -- | Create block storage backed by MVar
 newBChState
-  :: (MonadMask m, MonadReadDB m alg a, Serialise a, Serialise s)
+  :: (MonadMask m, MonadDB m alg a, Serialise a, Serialise s)
   => BlockFold s alg a             -- ^ Updating function
   -> m (BChState m s)
 newBChState BlockFold{..} = do
@@ -86,7 +86,10 @@ newBChState BlockFold{..} = do
             EQ -> return (st, (s,False))
             LT -> do Just b <- queryRO $ retrieveBlock h
                      case processBlock b s of
-                       Just st' -> return ((succ h, st'), (st',True))
+                       Just st' -> do
+                         let h' = succ h
+                         _ <- queryRW $ storeStateSnapshot h' st'
+                         return ((h', st'), (st',True))
                        Nothing  -> error "OOPS! Blockchain is not valid!!!"
         case flt of
           True  -> ensureHeight hBlk
