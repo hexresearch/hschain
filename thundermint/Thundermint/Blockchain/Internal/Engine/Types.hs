@@ -33,7 +33,6 @@ module Thundermint.Blockchain.Internal.Engine.Types (
 import Control.Applicative
 import Control.Concurrent.STM
 import Data.Aeson
-import qualified Data.ByteString.Lazy as LBS
 import Numeric.Natural
 import GHC.Generics           (Generic)
 
@@ -173,7 +172,7 @@ data AppState m alg a = AppState
   , appCommitQuery      :: CommitCallback m alg a
     -- ^ Database query called after block commit in the same
     --   transaction
-  , appCommitCallback   :: Block alg a -> m (Maybe LBS.ByteString)
+  , appCommitCallback   :: Block alg a -> m ()
     -- ^ Function which is called after each commit.
   }
 

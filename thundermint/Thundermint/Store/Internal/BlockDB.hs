@@ -42,6 +42,11 @@ initializeBlockhainTables genesis initialVals = do
     \  , bid    BLOB NOT NULL \
     \  , block  BLOB NOT NULL)"
   execute_
+    "CREATE TABLE IF NOT EXISTS state_snapshot \
+    \  ( height           INT  NOT NULL \
+    \  , snapshot_blob    BLOB NOT NULL)"
+  execute_ "INSERT INTO state_snapshot (height, snapshot_blob) VALUES (-1, X'')"
+  execute_
     "CREATE TABLE IF NOT EXISTS commits \
     \  ( height INT  NOT NULL UNIQUE \
     \  , cmt    BLOB NOT NULL)"
@@ -170,6 +175,18 @@ retrieveValidatorSet :: (Crypto alg) =>  Height -> Query rw alg a (Maybe (Valida
 retrieveValidatorSet (Height h) =
   singleQ "SELECT valset FROM validators WHERE height = ?" (Only h)
 
+-- |Retrieve height and state saved as snapshot.
+--
+retrieveSavedState :: Serialise s => Query 'RO alg a (Maybe (Height, s))
+retrieveSavedState =
+  singleQWithParser parse "SELECT height, snapshot_blob FROM state_snapshot" ()
+  where
+    parse [SQL.SQLInteger h, SQL.SQLBlob s]
+      | h > 0
+      , Right r <- deserialiseOrFail (LBS.fromStrict s) = Just (Height $ fromIntegral h, r)
+      | otherwise = Nothing
+    parse _ = Nothing
+
 
 ----------------------------------------------------------------
 -- Writing to DB
@@ -241,3 +258,12 @@ singleQ sql p =
       Right a -> return (Just a)
       Left  e -> error ("CBOR encoding error: " ++ show e)
     _         -> error "Impossible"
+
+-- Query that returns results parsed from single row ().
+singleQWithParser :: (SQL.ToRow p)
+        => ([SQL.SQLData] -> Maybe x) -> Text -> p -> Query rw alg a (Maybe x)
+singleQWithParser resultsParser sql p =
+  query sql p >>= \case
+    [x] -> return (resultsParser x)
+    _ -> error $ "SQL statement resulted in too many (>1) or zero result rows: " ++ show sql
+  where

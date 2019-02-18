@@ -37,7 +37,6 @@ import Control.Monad.Catch
 import Control.Concurrent.STM         (atomically)
 import Control.Concurrent.STM.TBQueue (lengthTBQueue)
 import Codec.Serialise (Serialise)
-import qualified Data.ByteString.Lazy as LBS
 import Data.Maybe      (isJust)
 
 import Thundermint.Blockchain.Internal.Engine
@@ -76,7 +75,7 @@ data NodeLogic m alg a = NodeLogic
   }
 
 logicFromFold
-  :: (MonadDB m alg a, MonadMask m, BlockData a, Ord (TX a), Crypto alg)
+  :: (MonadDB m alg a, MonadMask m, BlockData a, Ord (TX a), Crypto alg, Serialise st)
   => BlockFold st alg a
   -> m (BChState m st, NodeLogic m alg a)
 logicFromFold transitions@BlockFold{..} = do
@@ -149,7 +148,7 @@ logicFromPersistent PersistentState{..} = do
 data NodeDescription m alg a = NodeDescription
   { nodeValidationKey   :: !(Maybe (PrivValidator alg))
     -- ^ Private key of validator
-  , nodeCommitCallback  :: !(Block alg a -> m (Maybe LBS.ByteString))
+  , nodeCommitCallback  :: !(Block alg a -> m ())
     -- ^ Callback called immediately after block was commit and user
     --   state in database is updated
   , nodeReadyCreateBlock :: !(Height -> Time -> m Bool)

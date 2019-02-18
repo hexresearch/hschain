@@ -71,11 +71,14 @@ data BChState m s = BChState
 
 -- | Create block storage backed by MVar
 newBChState
-  :: (MonadMask m, MonadReadDB m alg a, Serialise a)
+  :: (MonadMask m, MonadReadDB m alg a, Serialise a, Serialise s)
   => BlockFold s alg a             -- ^ Updating function
   -> m (BChState m s)
 newBChState BlockFold{..} = do
-  state <- liftIO $ newMVar (Height 0, initialState)
+  maybeState <- queryRO $ retrieveSavedState
+  state <- liftIO $ newMVar $ case maybeState of
+    Just (h, s) -> (h,        s)
+    _ ->           (Height 0, initialState)
   let ensureHeight hBlk = do
         (st,flt) <- modifyMVarM state $ \st@(h,s) ->
           case h `compare` hBlk of
