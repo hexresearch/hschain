@@ -804,7 +804,7 @@ peerReceive peerSt PeerChans{..} peerExchangeCh P2PConnection{..} MempoolCursor{
 -- will never change state and announce it.
 peerGossipAnnounce
   :: (MonadIO m, MonadLogger m, MonadCatch m)
-  => PeerChans m addr alg a
+  => PeerChans m alg a
   -> TBQueue (GossipMsg addr alg a)
   -> m ()
 peerGossipAnnounce PeerChans{..} gossipCh = logOnException $
