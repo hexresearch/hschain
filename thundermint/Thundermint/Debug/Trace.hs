@@ -2,11 +2,10 @@
 --
 {-# LANGUAGE DeriveFunctor              #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE ScopedTypeVariables        #-}
 module Thundermint.Debug.Trace where
 
-
 import Control.Monad.Catch
+import Control.Monad.Fail         (MonadFail)
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Reader
@@ -23,7 +22,7 @@ import Thundermint.Control
 --        Data types a la carte
 
 data TraceEvents
-    =  TeNodeStarted
+    = TeNodeStarted
     -- ^ Node is started
     | TeNodeConnectingTo !String
     -- ^ Node try to connect to other address
@@ -54,7 +53,7 @@ instance (MonadTrace m) => MonadTrace (SL.StateT s m) where
 type Callback m = TraceEvents -> m ()
 
 newtype TracerT m a = TracerT ( ReaderT (Callback m) m a )
-  deriving ( Functor, Applicative, Monad
+  deriving ( Functor, Applicative, Monad, MonadFail
            , MonadIO, MonadThrow, MonadCatch, MonadMask, MonadFork )
 
 instance MonadTrans TracerT where

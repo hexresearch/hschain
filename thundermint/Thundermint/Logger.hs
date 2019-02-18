@@ -39,6 +39,7 @@ import Control.Arrow (first,second)
 import Control.Monad
 import Control.Monad.Catch
 import Control.Monad.IO.Class
+import Control.Monad.Fail         (MonadFail)
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Reader
 import Control.Monad.Trans.Maybe  (MaybeT(..))
@@ -99,7 +100,7 @@ descendNamespace nm = localNamespace $ \(Namespace x) -> Namespace (x ++ [nm])
 newtype LoggerT m a = LoggerT (ReaderT (Namespace, LogEnv) m a)
   deriving ( Functor, Applicative, Monad
            , MonadIO, MonadThrow, MonadCatch, MonadMask, MonadTrans
-           , MonadFork, MonadTrace)
+           , MonadFork, MonadTrace, MonadFail)
 instance (MonadReadDB m alg a) => MonadReadDB (LoggerT m) alg a where
   askConnectionRO = lift askConnectionRO
 instance (MonadDB m alg a) => MonadDB (LoggerT m) alg a where
@@ -121,7 +122,7 @@ instance MonadIO m => MonadLogger (LoggerT m) where
 -- | Mock logging. Useful for cases where constraints require logging
 --   but we don't need any
 newtype NoLogsT m a = NoLogsT { runNoLogsT :: m a }
-  deriving ( Functor, Applicative, Monad
+  deriving ( Functor, Applicative, Monad, MonadFail
            , MonadIO, MonadThrow, MonadCatch, MonadMask
            , MonadFork, MonadTrace)
 instance (MonadReadDB m alg a) => MonadReadDB (NoLogsT m) alg a where

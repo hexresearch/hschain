@@ -73,6 +73,7 @@ import qualified Katip
 import Codec.Serialise           (Serialise)
 import Control.Monad             ((<=<), foldM, forM)
 import Control.Monad.Catch       (MonadMask,MonadThrow,MonadCatch)
+import Control.Monad.Fail        (MonadFail)
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Except
@@ -108,7 +109,7 @@ import Thundermint.Types.Validators
 newtype DBT rw alg a m x = DBT (ReaderT (Connection rw alg a) m x)
   deriving ( Functor, Applicative, Monad
            , MonadIO, MonadThrow, MonadCatch, MonadMask
-           , MonadFork, MonadLogger, MonadTrace
+           , MonadFork, MonadLogger, MonadTrace, MonadFail
            )
 
 instance MonadTrans (DBT rw alg a) where
