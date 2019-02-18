@@ -5,9 +5,6 @@ module TM.MockNet ( mockNetPair) where
 import Thundermint.P2P
 import Thundermint.P2P.Network
 
-import qualified Network.Socket as Net
-
-
 ----------------------------------------------------------------
 
 mockNetPair :: IO ( (NetAddr, NetworkAPI)

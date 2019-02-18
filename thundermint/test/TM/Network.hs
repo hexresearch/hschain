@@ -16,7 +16,6 @@ import Control.Monad          (forM_)
 
 import Data.Monoid            ((<>))
 import Data.String            (fromString)
-import qualified Data.ByteString.Lazy as LBS
 
 import           Control.Exception as E
 import qualified Network.Socket    as Net
