@@ -10,8 +10,6 @@
 -- |
 module TM.Util.Network where
 
-
-import Codec.Serialise
 import Control.Monad
 import Control.Monad.Catch
 import Control.Monad.IO.Class
@@ -20,7 +18,6 @@ import Control.Concurrent (threadDelay)
 import Control.Retry      (RetryPolicy, constantDelay, limitRetries, recovering)
 import Data.Monoid        ((<>))
 import Data.Proxy         (Proxy(..))
-import GHC.Generics       (Generic)
 
 import qualified Control.Concurrent.Async as Async
 import qualified Control.Exception        as E
@@ -35,7 +32,6 @@ import Thundermint.Control
 import Thundermint.Crypto
 import Thundermint.Crypto.Ed25519
 import Thundermint.Debug.Trace
-import Thundermint.Logger
 import Thundermint.Run
 import Thundermint.Mock.Coin (intToNetAddr)
 import Thundermint.Mock.KeyVal
