@@ -11,6 +11,7 @@
 module TM.Util.Network where
 
 import Control.Monad
+import Control.Monad.Fail     (MonadFail)
 import Control.Monad.Catch
 import Control.Monad.IO.Class
 
@@ -100,13 +101,13 @@ toPair :: TestNetLinkDescription m -> (Int, [Int])
 toPair TestNetLinkDescription{..} = (ncFrom, ncTo)
 
 
-createTestNetwork :: (MonadIO m, MonadMask m, MonadFork m, MonadTMMonitoring m)
+createTestNetwork :: (MonadIO m, MonadMask m, MonadFork m, MonadTMMonitoring m, MonadFail m)
                   => TestNetDescription m -> m ()
 createTestNetwork = createTestNetworkWithConfig (defCfg :: Configuration Example)
 
 
 createTestNetworkWithConfig
-  :: forall m app . (MonadIO m, MonadMask m, MonadFork m, MonadTMMonitoring m)
+  :: forall m app . (MonadIO m, MonadMask m, MonadFork m, MonadTMMonitoring m, MonadFail m)
   => Configuration app -> TestNetDescription m -> m ()
 createTestNetworkWithConfig cfg desc = do
     net  <- liftIO newMockNet

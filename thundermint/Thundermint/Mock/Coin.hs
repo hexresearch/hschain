@@ -6,7 +6,6 @@
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE RecordWildCards            #-}
 {-# LANGUAGE TupleSections              #-}
-{-# OPTIONS_GHC -fno-warn-orphans #-}
 -- |
 -- Simple coin for experimenting with blockchain
 module Thundermint.Mock.Coin (
@@ -39,7 +38,6 @@ module Thundermint.Mock.Coin (
 import Prelude hiding (fail)
 import Control.Applicative
 import Control.Monad
-import Control.Monad.Trans.Class
 import Control.Monad.Fail
 import Control.Monad.Catch
 import Control.Monad.IO.Class
@@ -77,13 +75,6 @@ import Thundermint.Monitoring
 import Thundermint.Types.Validators (ValidatorSet)
 import qualified Thundermint.P2P.Network as P2P
 
-
-
-instance MonadFail m => MonadFail (LoggerT m) where
-  fail = lift . Control.Monad.fail
-
-instance MonadFail m => MonadFail (DBT a b c m) where
-  fail = lift . Control.Monad.fail
 
 type Alg = Ed25519_SHA512
 
