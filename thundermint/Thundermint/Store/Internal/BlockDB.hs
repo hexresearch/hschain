@@ -10,6 +10,7 @@ module Thundermint.Store.Internal.BlockDB where
 
 import Codec.Serialise (Serialise,serialise,deserialiseOrFail)
 import Control.Applicative
+import Control.Monad (when)
 import Control.Monad.Trans.Maybe
 import qualified Data.ByteString.Lazy as LBS
 import Data.Int
@@ -45,7 +46,8 @@ initializeBlockhainTables genesis initialVals = do
     "CREATE TABLE IF NOT EXISTS state_snapshot \
     \  ( height           INT  NOT NULL \
     \  , snapshot_blob    BLOB NOT NULL)"
-  execute_ "INSERT INTO state_snapshot (height, snapshot_blob) VALUES (-1, X'')"
+  r <- query "SELECT height FROM state_snapshot" ()
+  when (null (r :: [[SQL.SQLData]])) $ execute_ "INSERT INTO state_snapshot (height, snapshot_blob) VALUES (-1, X'')"
   execute_
     "CREATE TABLE IF NOT EXISTS commits \
     \  ( height INT  NOT NULL UNIQUE \

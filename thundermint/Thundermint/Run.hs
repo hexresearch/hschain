@@ -75,7 +75,7 @@ data NodeLogic m alg a = NodeLogic
   }
 
 logicFromFold
-  :: (MonadDB m alg a, MonadMask m, BlockData a, Ord (TX a), Crypto alg, Serialise st)
+  :: (MonadDB m alg a, MonadMask m, BlockData a, Ord (TX a), Crypto alg, Serialise st, Eq st)
   => BlockFold st alg a
   -> m (BChState m st, NodeLogic m alg a)
 logicFromFold transitions@BlockFold{..} = do
