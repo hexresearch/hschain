@@ -22,6 +22,24 @@ pipeline:
     - ./build-ci.sh
     secrets: [ nix_cache_key, nix_cache_signing_key, drone_github_pull_key ]
 
+  build-thundemint-ghcjs:
+    group: build
+    image: nixos/nix
+    pull: true
+    privileged: true
+    network_mode: host
+    commands:
+    - apk add --no-cache git bash openssh-client
+    # Setup SSH connection to git repos and cache server
+    - source ./nix/setup_ssh_ci.sh
+    # Setup signing key
+    - echo -n "$${NIX_CACHE_SIGNING_KEY}" > "$${HOME}/nix-cache-key.sec"
+    - chmod 400 "$${HOME}/nix-cache-key.sec"
+    # Build backend
+    - cd nix
+    - ./build-ci.sh GHCJS
+    secrets: [ nix_cache_key, nix_cache_signing_key, drone_github_pull_key ]
+
   dockerize-thundemint:
     group: publish
     image: nixos/nix

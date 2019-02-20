@@ -7,6 +7,8 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections       #-}
 
+{-# OPTIONS_GHC -fno-warn-orphans #-}
+
 -- |
 module TM.Util.Network where
 

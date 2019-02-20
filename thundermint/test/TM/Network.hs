@@ -72,7 +72,7 @@ loopbackIpv6 = Net.SockAddrInet6 50000 0 (0,0,0,1) 0
 pingPong :: (NetAddr, NetworkAPI)
          -> (NetAddr, NetworkAPI)
          -> IO ()
-pingPong (serverAddr, server) (clientAddr, client) = do
+pingPong (serverAddr, server) (_clientAddr, client) = do
   let runServer NetworkAPI{..} = do
         bracket listenOn fst $ \(_,accept) ->
           bracket accept (close . fst) $ \(conn,_) -> do
@@ -93,7 +93,7 @@ sizedPingPong :: Int
          -> (NetAddr, NetworkAPI)
          -> (NetAddr, NetworkAPI)
          -> IO ()
-sizedPingPong startPower endPower (serverAddr, server) (clientAddr, client) = do
+sizedPingPong startPower endPower (serverAddr, server) (_clientAddr, client) = do
   let powers = [startPower..endPower]
       runServer NetworkAPI{..} = do
         bracket listenOn fst $ \(_,accept) ->
