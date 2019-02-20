@@ -2,6 +2,7 @@
 , isProfile   ? false
 , gitTag      ? null  # current tag
 , buildNumber ? null  # CI build number
+, ...
 }:
 with import ./lib/utils.nix;
 let
@@ -114,7 +115,8 @@ let
       };
     packagesGHCJS = {
       inherit (pkgs.haskell.packages.ghcjs)
-        thundermint-crypto ;
+      thundermint-crypto
+      thundermint-types;
       };
     };
 in self

@@ -6,34 +6,6 @@ You need:
 - installed nix
 - configured ssh access to other private repos on hexresearch github
 
-# Private repo clone configure
-
-## NixOS
-
-We have special NixOS module to support SSH agent passing to nix daemon. See [private-ssh-pipe.nix](./private-ssh-pipe.nix).
-To use it, simply copy it to `/etc/nixos/private-ssh-pipe.nix` and modify your `configuration.nix`:
-``` nix
-imports =
-  [ # Include the results of the hardware scan.
-    ./hardware-configuration.nix
-    ./private-ssh-pipe.nix
-  ];
-
-services.private-ssh-pipe.enable = true;
-services.private-ssh-pipe.user = "user"; # Here insert name of your user
-```
-Switch to new configuration `sudo nixos-build switch` and relog/reboot (need to update $NIX_PATH system wide).
-
-To test that you have all set right:
-```
-$ systemctl status --user ssh-agent-pipe.service # should be active
-$ echo $NIX_PATH # should contains <ssh-config-file> and <ssh-auth-socket>
-```
-
-## Not NixOS
-
-You shouldn't do nothing, the clone should work as it.
-
 # Building of backend
 
 To enter build environment you need to just:

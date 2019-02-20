@@ -20,13 +20,21 @@ if [[ ! -z $gittag ]]; then
   gitTagArg="--arg gitTag \"\\\"$gittag\\\"\""
 fi
 
+isGHCJS="false"
+if [ "$1" == "GHCJS" ]; then
+  echo "GHCJS build"
+  isGHCJS="true"
+fi
+
 # Debug version variables
 echo $DRONE_COMMIT
 echo $DRONE_BRANCH
 echo $DRONE_BUILD_NUMBER
 
 # Build backend packages
-NIX_PATH=$GIT_NIX_PATH$NIX_PATH backend_output=$(nix-build --arg isProd true --arg isProfile $isProfile \
+NIX_PATH=$GIT_NIX_PATH$NIX_PATH backend_output=$(nix-build --arg isProd true \
+  --arg isProfile $isProfile \
+  --arg isGHCJS $isGHCJS \
   $gitTagArg \
   --arg buildNumber $DRONE_BUILD_NUMBER )
 # Get runtime deps
