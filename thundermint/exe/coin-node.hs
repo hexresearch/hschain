@@ -46,37 +46,19 @@ import qualified Data.ByteString.Char8 as BC8
 -- Cmd line specification
 ----------------------------------------------------------------
 
--- Please keep these fields lazy - we feel them incrementally because
--- @Parser@ lacks @Monad@ interface.
 data Opts = Opts
-  { maxH                  :: Maybe Int64
-  , listenPort            :: PortNumber
-  , prefix                :: FilePath
-  , delay                 :: Int
-  , doValidate            :: Bool
-  , optsNetInitialDeposit :: Integer
-  , optsNetInitialKeys    :: Int
-  , nodeNumber            :: Int
-  , totalNodes            :: Int
-  , optTls                :: Bool
-  , optUDP                :: Bool
-  , netAddresses          :: [P2PT.NetAddr]
-  }
-
-emptyOpts :: Opts
-emptyOpts = Opts
-  { maxH                  = error "no maximal height"
-  , listenPort            = error "no listen port"
-  , prefix                = error "no prefix"
-  , delay                 = error "no delay"
-  , doValidate            = error "no do-validate"
-  , optsNetInitialDeposit = error "no initial deposit"
-  , optsNetInitialKeys    = error "no initial keys"
-  , nodeNumber            = error "no node number"
-  , totalNodes            = error "no total nodes"
-  , optTls                = error "no TLS-enable flag"
-  , optUDP                = error "no UDP enable flag"
-  , netAddresses          = error "no addresses specified"
+  { maxH                  :: !(Maybe Int64)
+  , listenPort            :: !PortNumber
+  , prefix                :: !FilePath
+  , delay                 :: !Int
+  , doValidate            :: !Bool
+  , optsNetInitialDeposit :: !Integer
+  , optsNetInitialKeys    :: !Int
+  , nodeNumber            :: !Int
+  , totalNodes            :: !Int
+  , optTls                :: !Bool
+  , optUDP                :: !Bool
+  , netAddresses          :: ![P2PT.NetAddr]
   }
 
 ----------------------------------------------------------------
@@ -98,7 +80,7 @@ startWebMonitoring port = do
 
 main :: IO ()
 main = do
-    Opts{..} <- fmap ($ emptyOpts) $ customExecParser (prefs showHelpOnError)
+    Opts{..} <- customExecParser (prefs showHelpOnError)
               $ info (helper <*> parser)
                 (  fullDesc
                 <> header   "Coin test program"
@@ -149,75 +131,73 @@ main = do
           genSpec = restrictGenerator nodeNumber totalNodes
                   $ defaultGenerator optsNetInitialKeys optsNetInitialDeposit delay
       catch (do
-        (_,act) <- interpretSpec maxH genSpec validatorSet net netCfg nodeSpec
+        (_,act) <- interpretSpec maxH genSpec (petrify validatorSet) net netCfg nodeSpec
         logger InfoS ("spec has been interpreted") ()
         act `catch` (\e -> logger InfoS ("Exiting due to "<> (showLS (e :: SomeException))) ())
         ) (\e -> logger InfoS ("Exiting interpretSpec sequence due to "<> (showLS (e :: SomeException))) ())
       logger InfoS "Normal exit" ()
   where
-    parser = foldr (\pf ps -> (.) <$> pf <*> ps) (pure id) parsersList
-    parsersList :: [Parser (Opts -> Opts)]
-    parsersList =
-      [ (\x opts -> opts { maxH = x}) <$> (optional $ option auto
+    parser = do
+      maxH <- optional $ option auto
           (  long    "max-h"
           <> metavar "N"
           <> help    "Maximum height"
-          ))
-      , (\x opts -> opts { listenPort = x}) <$> (option auto
+          )
+      listenPort <- option auto
           (  long    "listen-port"
           <> value thundermintPort
           <> metavar "PORT"
           <> help    ("listening port (default " <> show thundermintPort <> ")")
-          ))
-      , (\x opts -> opts { prefix = x}) <$> (option str
+          )
+      prefix <- option str
           (  long    "prefix"
           <> value   ""
           <> metavar "PATH"
           <> help    "prefix for db & logs"
-          ))
-      , (\x opts -> opts { delay = x}) <$> (option auto
+          )
+      delay <- option auto
           (  long    "delay"
           <> metavar "N"
           <> help    "delay between transactions in ms"
-          ))
-      , (\x opts -> opts { doValidate = x}) <$> (switch
+          )
+      doValidate <- switch
           (  long "check-consensus"
           <> help "validate databases"
-          ))
-      , (\x opts -> opts { optsNetInitialDeposit = x}) <$> (option auto
+          )
+      optsNetInitialDeposit <- option auto
           (  long "deposit"
           <> help "Initial deposit"
           <> metavar "N.N"
-          ))
-      , (\x opts -> opts { optsNetInitialKeys = x}) <$> (option auto
+          )
+      optsNetInitialKeys <- option auto
           (  long "keys"
           <> help "Initial deposit"
           <> metavar "N"
-          ))
-      , (\x opts -> opts { nodeNumber = x}) <$> (option auto
+          )
+      nodeNumber <- option auto
           (  long "node-n"
           <> help "Node number"
           <> metavar "N"
-          ))
-      , (\x opts -> opts { totalNodes = x}) <$> (option auto
+          )
+      totalNodes <- option auto
           (  long "total-nodes"
           <> help "Node number"
           <> metavar "N"
-          ))
-      , (\x opts -> opts { optTls = x}) <$> (switch
+          )
+      optTls <- switch
           (  long "tls"
           <> help "Use TLS for node connection"
-          ))
-      , (\x opts -> opts { optUDP = x}) <$> (switch
+          )
+      optUDP <- switch
           (  long "udp"
           <> help "use UDP instead of TCP when TLS is not used"
-          ))
-      , (\x opts -> opts { netAddresses =x }) <$> (option json
+          )
+      netAddresses <- option json
           (  long "peers"
           <> help "List of initial peers"
           <> metavar "JSON"
-          ))
-      ]
+          )
+      return Opts{..}
     --
     json = maybeReader $ \s -> do
             addrStrings <- JSON.decodeStrict $ BC8.pack s
