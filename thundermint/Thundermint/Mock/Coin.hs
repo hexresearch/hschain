@@ -120,40 +120,41 @@ newtype CoinState = CoinState
   deriving (Show, NFData, Generic)
 
 processDeposit :: Pet Tx -> CoinState -> Maybe CoinState
-processDeposit (pet -> Send{})              _             = Nothing
-processDeposit tx@(pet -> Deposit pk nCoin) CoinState{..} =
-  return CoinState
+processDeposit tx CoinState{..} = case pet tx of
+  Send{}           -> Nothing
+  Deposit pk nCoin -> return CoinState
     { unspentOutputs = Map.insert (hash tx,0) (pk,nCoin) unspentOutputs
     }
 
 
 processTransaction :: Pet Tx -> CoinState -> Maybe CoinState
-processTransaction (pet -> Deposit{}) _ = Nothing
-processTransaction transaction@(pet -> Send pubK sig txSend@(pet -> TxSend{..})) CoinState{..} = do
-  -- Signature must be valid
-  guard $ verifyPetrifiedSignature pubK txSend sig
-  -- Inputs and outputs are not null
-  guard $ not $ null txInputs
-  guard $ not $ null txOutputs
-  -- Outputs are all positive
-  forM_ txOutputs $ \(_,n) -> guard (n > 0)
-  -- Inputs are owned Spend and generated amount match and transaction
-  -- issuer have rights to funds
-  inputs <- forM txInputs $ \i -> do
-    (pk,n) <- Map.lookup i unspentOutputs
-    guard $ pk == pubK
-    return n
-  guard (sum inputs == sum (map snd txOutputs))
-  -- Update application state
-  let txHash = hash transaction
-  return CoinState
-    { unspentOutputs =
-        let spend txMap = foldl' (flip  Map.delete) txMap txInputs
-            add   txMap = foldl'
-                            (\m (i,out) -> Map.insert (txHash,i) out m)
-                            txMap ([0..] `zip` txOutputs)
-        in add $ spend unspentOutputs
-    }
+processTransaction tx CoinState{..} = case pet tx of
+  Deposit{} -> Nothing
+  Send pubK sig txSend@(pet -> TxSend{..}) -> do
+    -- Signature must be valid
+    guard $ verifyPetrifiedSignature pubK txSend sig
+    -- Inputs and outputs are not null
+    guard $ not $ null txInputs
+    guard $ not $ null txOutputs
+    -- Outputs are all positive
+    forM_ txOutputs $ \(_,n) -> guard (n > 0)
+    -- Inputs are owned Spend and generated amount match and transaction
+    -- issuer have rights to funds
+    inputs <- forM txInputs $ \i -> do
+      (pk,n) <- Map.lookup i unspentOutputs
+      guard $ pk == pubK
+      return n
+    guard (sum inputs == sum (map snd txOutputs))
+    -- Update application state
+    let txHash = hash tx
+    return CoinState
+      { unspentOutputs =
+          let spend txMap = foldl' (flip  Map.delete) txMap txInputs
+              add   txMap = foldl'
+                              (\m (i,out) -> Map.insert (txHash,i) out m)
+                              txMap ([0..] `zip` txOutputs)
+          in add $ spend unspentOutputs
+      }
 
 transitions :: BlockFold CoinState alg [Pet Tx]
 transitions = BlockFold
@@ -229,30 +230,31 @@ processTransactionDB
   :: (Monad (q CoinStateDB), MonadFail (q CoinStateDB), ExecutorRW q)
   => Pet Tx
   -> q CoinStateDB ()
-processTransactionDB (pet -> Deposit{}) = Control.Monad.Fail.fail ""
-processTransactionDB transaction@(pet -> Send pubK sig txSend@(pet -> TxSend{..})) = do
-  -- Signature must be valid
-  check $ verifyPetrifiedSignature pubK txSend sig
-  -- Inputs and outputs are not null
-  check $ not $ null txInputs
-  check $ not $ null txOutputs
-  -- Outputs are all positive
-  forM_ txOutputs $ \(_,n) -> check (n > 0)
-  -- Inputs are owned Spend and generated amount match and transaction
-  -- issuer have rights to funds
-  inputs <- forM txInputs $ \i -> do
-    Just (pk,n) <- lookupKey unspentOutputsLens i
-    check $ pk == pubK
-    return n
-  check (sum inputs == sum (map snd txOutputs))
-  -- Update application state
-  let txHash = hashBlob $ toStrict $ serialise transaction
-  forM_ txInputs  $ dropKey  unspentOutputsLens
-  forM_ ([0..] `zip` txOutputs) $ \(i,out) ->
-    storeKey unspentOutputsLens (txHash,i) out
-  where
-    check True  = return ()
-    check False = Control.Monad.Fail.fail ""
+processTransactionDB transaction = case pet transaction of
+  Deposit{} -> Control.Monad.Fail.fail ""
+  Send pubK sig txSend@(pet -> TxSend{..}) -> do
+    -- Signature must be valid
+    check $ verifyPetrifiedSignature pubK txSend sig
+    -- Inputs and outputs are not null
+    check $ not $ null txInputs
+    check $ not $ null txOutputs
+    -- Outputs are all positive
+    forM_ txOutputs $ \(_,n) -> check (n > 0)
+    -- Inputs are owned Spend and generated amount match and transaction
+    -- issuer have rights to funds
+    inputs <- forM txInputs $ \i -> do
+      Just (pk,n) <- lookupKey unspentOutputsLens i
+      check $ pk == pubK
+      return n
+    check (sum inputs == sum (map snd txOutputs))
+    -- Update application state
+    let txHash = hashBlob $ toStrict $ serialise transaction
+    forM_ txInputs  $ dropKey  unspentOutputsLens
+    forM_ ([0..] `zip` txOutputs) $ \(i,out) ->
+      storeKey unspentOutputsLens (txHash,i) out
+    where
+      check True  = return ()
+      check False = Control.Monad.Fail.fail ""
 
 unspentOutputsLens :: Lens' (CoinStateDB f) (f (PMap (Hash Alg, Int) (PublicKey Alg, Integer)))
 unspentOutputsLens = lens unspentOutputsDB (const CoinStateDB)
