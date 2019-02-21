@@ -35,6 +35,7 @@ import Control.DeepSeq
 import Control.Monad
 import qualified Data.Aeson      as JSON
 import           Data.Foldable
+import           Data.SafeCopy
 import qualified Data.Set        as Set
 import qualified Data.Map        as Map
 import           Data.Map          (Map)
@@ -58,7 +59,7 @@ data Validator alg = Validator
 instance NFData (PublicKey alg) => NFData (Validator alg)
 deriving instance Crypto alg => Show (Validator alg)
 deriving instance Eq   (PublicKey alg) => Eq   (Validator alg)
-instance Crypto alg => CBOR.Serialise (Validator alg)
+instance Crypto alg => SafeCopy       (Validator alg)
 
 -- | Set of all known validators for given height
 data ValidatorSet alg = ValidatorSet
@@ -71,9 +72,9 @@ instance NFData (PublicKey alg) => NFData (ValidatorSet alg)
 deriving instance Crypto alg => Show (ValidatorSet alg)
 deriving instance Eq   (PublicKey alg) => Eq   (ValidatorSet alg)
 
-instance (Crypto alg) => CBOR.Serialise (ValidatorSet alg) where
-  encode = CBOR.encode . toList . vsValidators
-  decode = fmap (makeValidatorSet . asList) CBOR.decode >>= \case
+instance (Crypto alg) => SafeCopy (ValidatorSet alg) where
+  putCopy = contain . safePut . toList . vsValidators
+  getCopy = contain $ fmap (makeValidatorSet . asList) safeGet >>= \case
     Left  e -> fail (show e)
     Right a -> return a
     where
@@ -131,6 +132,7 @@ validatorSetSize = Map.size  . vsValidators
 --   This for example allows to represent validators as bit arrays.
 newtype ValidatorIdx alg = ValidatorIdx Int
   deriving (Show, Eq, Generic, Generic1, NFData, CBOR.Serialise)
+instance SafeCopy (ValidatorIdx alg)
 
 -- | Set of validators where they are represented by their index.
 data ValidatorISet = ValidatorISet !Int !IntSet
@@ -170,7 +172,7 @@ data ValidatorChange alg
 
 deriving instance (Eq (PublicKey alg)) => Eq (ValidatorChange alg)
 instance NFData (PublicKey alg) => NFData (ValidatorChange alg)
-instance Crypto alg => CBOR.Serialise (ValidatorChange alg)
+instance Crypto alg => SafeCopy       (ValidatorChange alg)
 instance Crypto alg => JSON.ToJSON    (ValidatorChange alg)
 instance Crypto alg => JSON.FromJSON  (ValidatorChange alg)
 

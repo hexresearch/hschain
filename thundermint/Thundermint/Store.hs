@@ -80,6 +80,7 @@ import Control.Monad.Trans.Class
 import Control.Monad.Trans.Except
 import Control.Monad.Trans.Reader
 import Control.Monad.Trans.Writer
+import Data.SafeCopy             (SafeCopy)
 import Data.Foldable             (forM_)
 import Data.Maybe                (isNothing, maybe)
 import Data.Text                 (isPrefixOf, Text)
@@ -131,7 +132,7 @@ instance MonadIO m => MonadDB (DBT 'RW alg a m) alg a where
 -- | Helper function which opens database, initializes it and ensures
 --   that it's closed on function exit
 withDatabase
-  :: (MonadIO m, MonadMask m, FloatOut dct, Crypto alg, Serialise a, Eq a, Eq (PublicKey alg))
+  :: (MonadIO m, MonadMask m, FloatOut dct, Crypto alg, SafeCopy a, Eq a, Eq (PublicKey alg))
   => FilePath               -- ^ Path to the database
   -> dct Persistent         -- ^ Users state. If no state is stored in the
   -> Pet (Block alg a)      -- ^ Genesis block
@@ -142,7 +143,7 @@ withDatabase path dct genesis vals cont
 
 -- | Initialize all required tables in database.
 initDatabase
-  :: (MonadIO m, FloatOut dct, Crypto alg, Serialise a, Eq a, Eq (PublicKey alg))
+  :: (MonadIO m, FloatOut dct, Crypto alg, SafeCopy a, Eq a, Eq (PublicKey alg))
   => Connection 'RW alg a   -- ^ Opened connection to database
   -> dct Persistent         -- ^ Users state. If no state is stored in the
   -> Pet (Block alg a)      -- ^ Genesis block
@@ -382,7 +383,7 @@ data BlockchainInconsistency
 
 -- | check storage against all consistency invariants
 checkStorage
-  :: (MonadReadDB m alg a, Crypto alg, Serialise a)
+  :: (MonadReadDB m alg a, Crypto alg, SafeCopy a)
   => m [BlockchainInconsistency]
 checkStorage = queryRO $ execWriterT $ do
   maxH         <- lift $ blockchainHeight
@@ -414,7 +415,7 @@ checkStorage = queryRO $ execWriterT $ do
 -- | Check that block proposed at given height is correct in sense all
 --   blockchain invariants hold
 checkProposedBlock
-  :: (MonadReadDB m alg a, Crypto alg, Serialise a)
+  :: (MonadReadDB m alg a, Crypto alg, SafeCopy a)
   => Height
   -> Pet (Block alg a)
   -> m [BlockchainInconsistency]
@@ -438,7 +439,7 @@ checkProposedBlock h block = queryRO $ do
 
 -- | Check invariants for genesis block
 genesisBlockInvariant
-  :: (Monad m, Crypto alg, Serialise a)
+  :: (Monad m, Crypto alg, SafeCopy a)
   => Block alg a
   -> WriterT [BlockchainInconsistency] m ()
 genesisBlockInvariant block@Block{..} = do
@@ -457,7 +458,7 @@ genesisBlockInvariant block@Block{..} = do
 
 -- | Check invariant for block at height > 0
 blockInvariant
-  :: (Monad m, Crypto alg, Serialise a)
+  :: (Monad m, Crypto alg, SafeCopy a)
   => BS.ByteString
   -- ^ Blockchain ID
   -> Height
@@ -516,7 +517,7 @@ blockInvariant chainID h prevT prevBID (mprevValSet, valSet) block@(pet -> Block
         -> tell [InvalidCommit h "Cannot validate commit"]
 
 headerHashesInvariant
-  :: (Monad m, Crypto alg, Serialise a)
+  :: (Monad m, Crypto alg, SafeCopy a)
   => Block alg a
   -> WriterT [BlockchainInconsistency] m ()
 headerHashesInvariant Block{..} = do

@@ -7,7 +7,6 @@ module Thundermint.Store.STM (
   , newMempool
   ) where
 
-import Codec.Serialise (Serialise)
 import Control.Monad
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
@@ -26,7 +25,7 @@ import Thundermint.Store
 
 
 newSTMPropStorage
-  :: (Crypto alg, Serialise a, MonadIO m)
+  :: (Crypto alg, MonadIO m)
   => m (ProposalStorage 'RW m alg a)
 newSTMPropStorage = fmap (hoistPropStorageRW liftIO) $ liftIO $ do
   varH    <- newTVarIO (Height 0) -- Current height
@@ -70,7 +69,7 @@ newSTMPropStorage = fmap (hoistPropStorageRW liftIO) $ liftIO $ do
     }
 
 newMempool
-  :: (Ord tx, Serialise tx, Crypto alg, MonadIO m)
+  :: (Ord tx, Crypto alg, MonadIO m)
   => (Pet tx -> m Bool)
   -> m (Mempool m alg tx)
 newMempool validation = do

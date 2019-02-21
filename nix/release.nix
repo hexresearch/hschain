@@ -61,6 +61,7 @@ let
             thundermint-types = callInternal "thundermint" ../thundermint-types { };
             thundermint-crypto = callInternal "thundermint" ../thundermint-crypto { };
             thundermint = callInternal "thundermint" ../thundermint { };
+            safecopy-cbor = haskellPackagesNew.callPackage derivations/safecopy-cbor.nix {};
           };
 
           in derivationsOverrides // internal // {

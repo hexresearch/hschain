@@ -29,6 +29,7 @@ import Control.Monad.IO.Class   (MonadIO)
 import qualified Data.Aeson as JSON
 import Data.ByteString.Internal (ByteString(..))
 import qualified Data.List as List
+import Data.SafeCopy            (SafeCopy,kind,primitive)
 import Data.Map                 (Map)
 import Data.Set                 (Set)
 import Data.Word
@@ -96,7 +97,8 @@ netAddrToSockAddr :: NetAddr -> Net.SockAddr
 netAddrToSockAddr (NetAddrV4 ha port) = Net.SockAddrInet  (fromIntegral port)  ha
 netAddrToSockAddr (NetAddrV6 ha port) = Net.SockAddrInet6 (fromIntegral port) 0 ha 0
 
-instance Serialise NetAddr
+instance SafeCopy      NetAddr where
+  kind = primitive
 instance JSON.ToJSON   NetAddr
 instance JSON.FromJSON NetAddr
 

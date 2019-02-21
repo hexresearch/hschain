@@ -20,6 +20,7 @@ module Thundermint.Blockchain.Internal.Types (
 
 import Codec.Serialise        (Serialise)
 import GHC.Generics           (Generic)
+import           Data.SafeCopy
 import qualified Data.Aeson          as JSON
 import           Data.Map              (Map)
 import qualified Data.HashMap.Strict as HM
@@ -96,7 +97,7 @@ data MessageRx ty alg a
   | RxTimeout   !Timeout
   | RxBlock     !(Pet (Block alg a))
   deriving (Show, Generic)
-instance (Serialise a, Crypto alg) => Serialise (MessageRx 'Unverified alg a)
+instance (SafeCopy a, Crypto alg) => SafeCopy (MessageRx 'Unverified alg a)
 
 unverifyMessageRx :: MessageRx 'Verified alg a -> MessageRx 'Unverified alg a
 unverifyMessageRx = \case
@@ -117,7 +118,7 @@ data Announcement alg
   | AnnHasPreVote   !Height !Round !(ValidatorIdx alg)
   | AnnHasPreCommit !Height !Round !(ValidatorIdx alg)
   deriving (Show,Generic)
-instance Serialise (Announcement alg)
+instance SafeCopy (Announcement alg)
 
 instance Katip.ToObject ProposalState where
   toObject p = HM.singleton "val" (JSON.toJSON p)

@@ -22,7 +22,6 @@ module Thundermint.P2P (
   , generatePeerId
   ) where
 
-import Codec.Serialise
 import Control.Applicative
 import Control.Concurrent      ( ThreadId, myThreadId, killThread
                                , MVar, readMVar, newMVar)
@@ -34,6 +33,7 @@ import Control.Monad.IO.Class
 import Control.Retry           (recoverAll, exponentialBackoff, limitRetries, RetryPolicy)
 import           Data.Monoid       ((<>))
 import           Data.Maybe        (mapMaybe)
+import           Data.SafeCopy     (SafeCopy, kind, primitive, safeEncode, safeDecode)
 import           Data.Foldable
 import           Data.Function
 import qualified Data.Map        as Map
@@ -85,7 +85,8 @@ data GossipMsg alg a
   | GossipPex       !PexMessage
   deriving (Generic)
 deriving instance (Show a, Show (TX a), Crypto alg) => Show (GossipMsg alg a)
-instance (Serialise (TX a), Serialise a, Crypto alg) => Serialise (GossipMsg alg a)
+instance (SafeCopy (TX a), SafeCopy a, Crypto alg) => SafeCopy (GossipMsg alg a) where
+  kind = primitive
 
 
 -- | Peer exchage gossip sub-message
@@ -101,7 +102,8 @@ data PexMessage
   -- ^ Answer for Ping
   deriving (Show, Generic)
 
-instance Serialise PexMessage
+instance SafeCopy PexMessage where
+  kind = primitive
 
 
 data LogGossip = LogGossip
@@ -443,7 +445,7 @@ peerPexNewAddressMonitor peerChanPexNewAddresses PeerRegistry{..} NetworkAPI{..}
 
 peerPexKnownCapacityMonitor
   :: ( MonadIO m, MonadLogger m
-     , Serialise a, Show a, Crypto alg)
+     , SafeCopy a, Show a, Crypto alg)
   => NetAddr
   -> PeerChans m alg a
   -> PeerRegistry
@@ -525,7 +527,7 @@ peerPexCapacityDebugMonitor PeerRegistry{..} =
 
 peerGossipPeerExchange
   :: ( MonadIO m, MonadFork m, MonadMask m, MonadLogger m
-     , Show a, Serialise a, Crypto alg)
+     , Show a, SafeCopy a, Crypto alg)
   => NetAddr
   -> PeerChans m alg a
   -> PeerRegistry
@@ -600,7 +602,7 @@ startPeer peerAddrFrom peerAddrTo peerCh@PeerChans{..} conn peerRegistry mempool
 
 -- | Gossip votes with given peer
 peerGossipVotes
-  :: (MonadReadDB m alg a, MonadFork m, MonadMask m, MonadLogger m, Crypto alg, Serialise a)
+  :: (MonadReadDB m alg a, MonadFork m, MonadMask m, MonadLogger m, Crypto alg, SafeCopy a)
   => PeerStateObj m alg a         -- ^ Current state of peer
   -> PeerChans m alg a            -- ^ Read-only access to
   -> TBQueue (GossipMsg alg a)
@@ -717,7 +719,7 @@ peerGossipMempool peerObj PeerChans{..} config gossipCh MempoolCursor{..} = logO
 
 -- | Gossip blocks with given peer
 peerGossipBlocks
-  :: (MonadReadDB m alg a, MonadFork m, MonadMask m, MonadLogger m, Serialise a, Crypto alg, MonadFail m)
+  :: (MonadReadDB m alg a, MonadFork m, MonadMask m, MonadLogger m, SafeCopy a, Crypto alg, MonadFail m)
   => PeerStateObj m alg a       -- ^ Current state of peer
   -> PeerChans m alg a          -- ^ Read-only access to
   -> TBQueue (GossipMsg alg a)  -- ^ Network API
@@ -768,7 +770,7 @@ peerReceive peerSt PeerChans{..} peerExchangeCh P2PConnection{..} MempoolCursor{
   logger InfoS "Starting routing for receiving messages" ()
   fix $ \loop -> recv >>= \case
     Nothing  -> logger InfoS "Peer stopping since socket is closed" ()
-    Just bs  -> case deserialiseOrFail bs of
+    Just bs  -> case safeDecode bs of
       Left  e   -> logger ErrorS ("Deserialization error: " <> showLS e) ()
       Right msg -> do
         case msg of
@@ -852,7 +854,7 @@ peerSend _peerAddrFrom peerAddrTo peerSt PeerChans{..} gossipCh P2PConnection{..
                               <|> readTBQueue gossipCh
                               <|> fmap GossipPex (readTChan ownPeerChanPex)
     -- logger InfoS ("Send to (" <> showLS peerAddrTo <> "): " <> showlessShowGossipMsg msg) ()
-    send $ serialise msg
+    send $ safeEncode msg
     -- Update state of peer when we advance to next height
     case msg of
       GossipBlock b                        -> addBlock peerSt b

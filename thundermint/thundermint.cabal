@@ -33,6 +33,7 @@ Library
                      , network-info
                      , pipes             >=4
                      , prometheus-client
+                     , safecopy-cbor
                      , random
                      , random-shuffle
                      , retry             >=0.7.6.2
@@ -172,6 +173,7 @@ Test-suite thundermint-tests
                      , containers
                      , exceptions
                      , microlens
+                     , safecopy-cbor
                      , network
                      , random
                      , sqlite-simple

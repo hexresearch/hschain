@@ -12,10 +12,10 @@
 --
 module TM.Serialisation (tests) where
 
-import Codec.Serialise as C
 import qualified Data.Aeson as JSON
 import Data.Functor.Identity
 import Data.Typeable
+import Data.SafeCopy
 import qualified Data.ByteString.Lazy as BSL
 
 import Hedgehog as H
@@ -59,10 +59,10 @@ prop_can_serialize = property $ do
     prop @TestVotePrevote
     prop @TestVotePrecommit
   where
-    prop :: forall ty . (Serialise ty, Show ty, Arbitrary ty) => PropertyT IO ()
+    prop :: forall ty . (SafeCopy ty, Show ty, Arbitrary ty) => PropertyT IO ()
     prop = do
         (vote :: ty) <- forAll (Gen.arbitrary)
-        H.assert $ not $ BSL.null $ C.serialise vote
+        H.assert $ not $ BSL.null $ safeEncode vote
 
 
 prop_can_deserialize :: Property
@@ -70,24 +70,25 @@ prop_can_deserialize = property $ do
     prop @TestVotePrevote
     prop @TestVotePrecommit
   where
-    prop :: forall ty . (Arbitrary ty, Eq ty, Serialise ty, Show ty) => PropertyT IO ()
+    prop :: forall ty . (Arbitrary ty, Eq ty, SafeCopy ty, Show ty) => PropertyT IO ()
     prop = do
         (vote :: ty) <- forAll (Gen.arbitrary)
-        H.tripping vote (C.serialise) (Identity . C.deserialise)
+        H.tripping vote (safeEncode) (Identity . either (error "Bade decode") id . safeDecode)
 
 
 prop_diff_serialize :: Property
 prop_diff_serialize = property $ do
     (votePrevote :: TestVotePrevote) <- forAll testVotes
     let votePrecommit = convertToOther @_ @'PreCommit votePrevote
-    C.serialise votePrevote /== C.serialise votePrecommit
+    safeEncode votePrevote /== safeEncode votePrecommit
 
 
 prop_diff_cant_serialize_to_other :: Property
 prop_diff_cant_serialize_to_other  = property $ do
     (votePrevote :: TestVotePrevote) <- forAll testVotes
-    let (votePrecommit :: TestVotePrecommit) = C.deserialise (C.serialise votePrevote)
-    either (const success) (const failure) $ tryEvaluate votePrecommit
+    either (const success) (const failure) $ tryEvaluate $ 
+      let Right (votePrecommit :: TestVotePrecommit) = safeDecode (safeEncode votePrevote)
+      in votePrecommit
 
 prop_JSON_roundtrip :: (Eq a, JSON.FromJSON a, JSON.ToJSON a) => a -> Bool
 prop_JSON_roundtrip a = Just a == (JSON.decode . JSON.encode) a

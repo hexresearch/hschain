@@ -50,6 +50,7 @@ import           Data.ByteString          (ByteString)
 import qualified Data.HashMap.Strict      as HM
 import           Data.Bits                ((.&.))
 import           Data.Int
+import           Data.SafeCopy
 import           Data.List                (sortBy)
 import           Data.Monoid              ((<>))
 import           Data.Ord                 (comparing)
@@ -97,6 +98,22 @@ timeToUTC :: Time -> UTCTime
 timeToUTC (Time t) = posixSecondsToUTCTime (realToFrac t / 1000)
 
 
+instance SafeCopy Height where
+  kind    = primitive
+  putCopy = contain . encode
+  getCopy = contain   decode
+
+instance SafeCopy Round where
+  kind    = primitive
+  putCopy = contain . encode
+  getCopy = contain   decode
+
+instance SafeCopy Time where
+  kind    = primitive
+  putCopy = contain . encode
+  getCopy = contain   decode
+
+
 ----------------------------------------------------------------
 -- Blocks
 ----------------------------------------------------------------
@@ -105,12 +122,12 @@ timeToUTC (Time t) = posixSecondsToUTCTime (realToFrac t / 1000)
 data BlockID alg a = BlockID !(Hashed alg (Header alg a))
   deriving (Show,Eq,Ord,Generic)
 instance NFData        (BlockID alg a)
-instance Serialise     (BlockID alg a)
+instance SafeCopy      (BlockID alg a)
 instance CryptoHash alg => JSON.ToJSON   (BlockID alg a)
 instance CryptoHash alg => JSON.FromJSON (BlockID alg a)
 
 blockHash
-  :: (Crypto alg, Serialise a)
+  :: (Crypto alg)
   => Pet (Block alg a)
   -> BlockID alg a
 blockHash b = BlockID (hashed . blockHeader . pet $ b)
@@ -135,14 +152,14 @@ data Block alg a = Block
 
 instance (NFData a, NFData (PublicKey alg)) => NFData (Block alg a)
 deriving instance (Eq (PublicKey alg), Eq a) => Eq (Block alg a)
-instance (Crypto alg, Serialise   a) => Serialise     (Block alg a)
-instance (Crypto alg, Serialise   a) => JSON.FromJSON (Block alg a)
+instance (Crypto alg, SafeCopy    a) => JSON.FromJSON (Block alg a)
 instance (Crypto alg, JSON.ToJSON a) => JSON.ToJSON   (Block alg a)
+instance (Crypto alg, SafeCopy    a) => SafeCopy (Block alg a)
 
 -- | Genesis block has many field with predetermined content so this
 --   is convenience function to create genesis block.
 makeGenesis
-  :: (Crypto alg, Serialise a)
+  :: (Crypto alg, SafeCopy a)
   => ByteString                 -- ^ Text identifier of chain
   -> Time                       -- ^ Time of genesis
   -> a                          -- ^ Block data
@@ -196,8 +213,8 @@ data Header alg a = Header
     -- ^ Hash of evidence of byzantine behavior
   }
   deriving (Show, Eq, Generic)
-instance NFData    (Header alg a)
-instance Serialise (Header alg a)
+instance NFData   (Header alg a)
+instance SafeCopy (Header alg a)
 
 instance CryptoHash alg => JSON.ToJSON (Header alg a) where
   toJSON Header{..} =
@@ -242,7 +259,7 @@ data ByzantineEvidence alg a
     -- ^ Node made conflicting precommits in the same round
   deriving (Show, Eq, Generic)
 instance NFData        (ByzantineEvidence alg a)
-instance Serialise     (ByzantineEvidence alg a)
+instance SafeCopy      (ByzantineEvidence alg a)
 instance CryptoHash alg => JSON.FromJSON (ByzantineEvidence alg a)
 instance CryptoHash alg => JSON.ToJSON   (ByzantineEvidence alg a)
 
@@ -256,7 +273,7 @@ data Commit alg a = Commit
   }
   deriving (Show, Eq, Generic)
 instance NFData        (Commit alg a)
-instance Serialise     (Commit alg a)
+instance SafeCopy      (Commit alg a)
 instance CryptoHash alg => JSON.FromJSON (Commit alg a)
 instance CryptoHash alg => JSON.ToJSON   (Commit alg a)
 
@@ -305,14 +322,14 @@ zDrop i ((n,x):xs)
 
 
 -- | Type class for data which could be put into block
-class (Serialise a, Serialise (TX a)) => BlockData a where
+class (SafeCopy a, SafeCopy (TX a)) => BlockData a where
   -- | Transaction type of block
   type TX a
   -- | Return list of transaction in block
   blockTransactions :: a -> [Pet (TX a)]
   logBlockData      :: a -> JSON.Object
 
-instance (Serialise a) => BlockData [Pet a] where
+instance (SafeCopy a) => BlockData [Pet a] where
   type TX [Pet a] = a
   blockTransactions = id
   logBlockData      = HM.singleton "Ntx" . JSON.toJSON . length
@@ -340,17 +357,17 @@ data Step
     --   catching up and got all required precommits before getting
     --   block.
   deriving (Show,Eq,Ord,Generic)
-instance Serialise     Step
+instance SafeCopy      Step
 instance JSON.ToJSON   Step
 instance JSON.FromJSON Step
 
 data FullStep = FullStep !Height !Round !Step
   deriving (Show,Eq,Ord,Generic)
-instance Serialise FullStep
+instance SafeCopy FullStep
 
 data Timeout = Timeout !Height !Round !Step
   deriving (Show,Eq,Ord,Generic)
-instance Serialise Timeout
+instance SafeCopy Timeout
 
 -- | Proposal for new block. Proposal include only hash of block and
 --   block itself is gossiped separately.
@@ -370,7 +387,7 @@ data Proposal alg a = Proposal
   }
   deriving (Show, Eq, Generic)
 instance NFData        (Proposal alg a)
-instance Serialise     (Proposal alg a)
+instance SafeCopy      (Proposal alg a)
 instance CryptoHash alg => JSON.FromJSON (Proposal alg a)
 instance CryptoHash alg => JSON.ToJSON   (Proposal alg a)
 
@@ -394,13 +411,13 @@ data Vote (ty :: VoteType) alg a = Vote
   deriving (Show,Eq,Ord,Generic)
 
 instance NFData (Vote ty alg a)
-instance Serialise (Vote 'PreVote alg a) where
-    encode = encodeVote 0
-    decode = decodeVote 0
+instance SafeCopy (Vote 'PreVote alg a) where
+  putCopy = contain . encodeVote 0
+  getCopy = contain $ decodeVote 0
 
-instance Serialise (Vote 'PreCommit alg a) where
-    encode = encodeVote 1
-    decode = decodeVote 1
+instance SafeCopy (Vote 'PreCommit alg a) where
+  putCopy = contain . encodeVote 1
+  getCopy = contain $ decodeVote 1
 
 instance CryptoHash alg => JSON.FromJSON (Vote ty alg a)
 instance CryptoHash alg => JSON.ToJSON   (Vote ty alg a)
@@ -414,7 +431,7 @@ encodeVote tag Vote{..} =
     encode voteHeight <>
     encode voteRound <>
     encode voteTime <>
-    encode voteBlockID
+    safePut voteBlockID
 
 decodeVote :: Word -> Decoder s (Vote ty alg a)
 decodeVote expectedTag = do
@@ -422,7 +439,7 @@ decodeVote expectedTag = do
     tag <- decodeWord
     case len of
         5 | tag == expectedTag ->
-                Vote <$> decode <*> decode <*> decode <*> decode
+                Vote <$> decode <*> decode <*> decode <*> safeGet
           | otherwise ->
                 fail ("Invalid Vote tag, expected: " ++ show expectedTag
                       ++ ", actual: " ++ show tag)

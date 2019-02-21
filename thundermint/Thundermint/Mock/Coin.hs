@@ -48,6 +48,7 @@ import Codec.Serialise      (Serialise,serialise)
 import qualified Data.Aeson as JSON
 import Data.ByteString.Lazy (toStrict)
 import Data.Foldable
+import Data.SafeCopy
 import Data.Functor.Compose
 import Data.Int
 import Data.Map             (Map)
@@ -85,7 +86,7 @@ data TxSend = TxSend
   , txOutputs :: [(PublicKey Alg, Integer)]
   }
   deriving (Show, Eq, Ord, Generic)
-instance Serialise TxSend
+instance SafeCopy  TxSend
 instance NFData    TxSend
 instance JSON.ToJSON   TxSend
 instance JSON.FromJSON TxSend
@@ -103,7 +104,7 @@ data Tx
     --   3. Inputs and outputs must be nonempty
     --   2. Sum of inputs must be equal to sum of outputs
   deriving (Show, Eq, Ord, Generic)
-instance Serialise Tx
+instance SafeCopy  Tx
 instance NFData    Tx
 instance JSON.ToJSON   Tx
 instance JSON.FromJSON Tx
@@ -248,7 +249,7 @@ processTransactionDB transaction = case pet transaction of
       return n
     check (sum inputs == sum (map snd txOutputs))
     -- Update application state
-    let txHash = hashBlob $ toStrict $ serialise transaction
+    let txHash = hash transaction
     forM_ txInputs  $ dropKey  unspentOutputsLens
     forM_ ([0..] `zip` txOutputs) $ \(i,out) ->
       storeKey unspentOutputsLens (txHash,i) out

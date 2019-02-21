@@ -28,6 +28,7 @@ Library
                      , data-default-class
                      , deepseq           >=1.4
                      , serialise         >=0.2
+                     , safecopy-cbor
                      , text
                      , time
                      , unordered-containers >=0.2.5.0

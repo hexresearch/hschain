@@ -6,11 +6,11 @@
 -- Data types for primary database. Namely storage of blocks, commits and validators
 module Thundermint.Store.Internal.BlockDB where
 
-import Codec.Serialise (Serialise,serialise,deserialiseOrFail)
 import Control.Applicative
 import Control.Monad.Trans.Maybe
 import Data.Int
-import Data.Text (Text)
+import Data.SafeCopy (SafeCopy,safeDecode,safeEncode)
+import Data.Text     (Text)
 import qualified Database.SQLite.Simple           as SQL
 import           Database.SQLite.Simple             (Only(..))
 
@@ -27,7 +27,7 @@ import Thundermint.Store.Internal.Query
 
 -- | Create tables for storing blockchain data
 initializeBlockhainTables
-  :: (Crypto alg, Eq (PublicKey alg), Serialise a, Eq a)
+  :: (Crypto alg, Eq (PublicKey alg), SafeCopy a, Eq a)
   => Pet (Block alg a)                -- ^ Genesis block
   -> Pet (ValidatorSet alg)           -- ^ Initial validator set
   -> Query 'RW alg a ()
@@ -77,19 +77,21 @@ initializeBlockhainTables genesis initialVals = do
      , [] <- storedVals
        -> do execute "INSERT INTO blockchain VALUES (?,?,?)"
                ( 0 :: Int64
-               , serialise (blockHash genesis)
-               , serialise genesis
+               , safeEncode (blockHash genesis)
+               , safeEncode genesis
                )
              execute "INSERT INTO validators VALUES (?,?)"
                ( 1 :: Int64
-               , serialise initialVals
+               , safeEncode initialVals
                )
      -- Genesis and validator set matches ones recorded
+     --
+     -- FIXME: equality check of validator and geneisis???
      | [Only blk ]    <- storedGen
-     , Right genesis' <- deserialiseOrFail blk
+     , Right genesis' <- safeDecode blk
      , genesis == genesis'
      , [Only vals]        <- storedVals
-     , Right initialVals' <- deserialiseOrFail vals
+     , Right initialVals' <- safeDecode vals
      , initialVals == initialVals'
        -> return ()
      -- Otherwise we're reading wrong database. No other way but fiery death
@@ -113,7 +115,7 @@ blockchainHeight =
 -- | Retrieve block at given height. For valid blockchain database
 --   returns block for every height @0 <= h <= blockchainHeight@
 retrieveBlock
-  :: (Serialise a, Crypto alg)
+  :: (SafeCopy a, Crypto alg)
   => Height
   -> Query rw alg a (Maybe (Pet (Block alg a)))
 retrieveBlock (Height h) =
@@ -135,7 +137,7 @@ retrieveBlockID (Height h) =
 --   its commit is not persisted in blockchain yet and there's no
 --   commit for genesis block (h=0)
 retrieveCommit
-  :: (Serialise a, Crypto alg)
+  :: (SafeCopy a, Crypto alg)
   => Height
   -> Query rw alg a (Maybe (Pet (Commit alg a)))
 retrieveCommit (Height h) = do
@@ -145,7 +147,7 @@ retrieveCommit (Height h) = do
 
 -- | Retrieve round when commit was made.
 retrieveCommitRound
-  :: (Serialise a, Crypto alg)
+  :: (SafeCopy a, Crypto alg)
   => Height
   -> Query rw alg a (Maybe Round)
 retrieveCommitRound (Height h) = runMaybeT $ do
@@ -185,17 +187,17 @@ retrieveValidatorSet (Height h) =
 
 -- | Write block and commit justifying it into persistent storage.
 storeCommit
-  :: (Crypto alg, Serialise a)
+  :: (Crypto alg, SafeCopy a)
   => Commit alg a
   -> Pet (Block  alg a)
   -> Query 'RW alg a ()
 storeCommit cmt blk = do
   let Height h = headerHeight $ pet $ blockHeader $ pet blk
-  execute "INSERT INTO commits VALUES (?,?)" (h, serialise cmt)
+  execute "INSERT INTO commits VALUES (?,?)" (h, safeEncode cmt)
   execute "INSERT INTO blockchain VALUES (?,?,?)"
     ( h
-    , serialise (blockHash blk)
-    , serialise blk
+    , safeEncode (blockHash blk)
+    , safeEncode blk
     )
 
 -- | Write validator set for next round into database
@@ -206,13 +208,13 @@ storeValSet :: (Crypto alg)
 storeValSet blk vals = do
   let Height h = headerHeight $ pet $ blockHeader $ pet blk
   execute "INSERT INTO validators VALUES (?,?)"
-    (h+1, serialise vals)
+    (h+1, safeEncode vals)
 
 -- | Add message to Write Ahead Log. Height parameter is height
 --   for which we're deciding block.
-writeToWAL :: (Serialise a, Crypto alg) => Height -> MessageRx 'Unverified alg a -> Query 'RW alg a ()
+writeToWAL :: (SafeCopy a, Crypto alg) => Height -> MessageRx 'Unverified alg a -> Query 'RW alg a ()
 writeToWAL (Height h) msg =
-  execute "INSERT OR IGNORE INTO wal VALUES (NULL,?,?)" (h, serialise msg)
+  execute "INSERT OR IGNORE INTO wal VALUES (NULL,?,?)" (h, safeEncode msg)
 
 -- | Remove all entries from WAL which comes from height less than
 --   parameter.
@@ -222,10 +224,10 @@ resetWAL (Height h) =
 
 -- | Get all parameters from WAL in order in which they were
 --   written
-readWAL :: (Serialise a, Crypto alg) => Height -> Query rw alg a [MessageRx 'Unverified alg a]
+readWAL :: (SafeCopy a, Crypto alg) => Height -> Query rw alg a [MessageRx 'Unverified alg a]
 readWAL (Height h) = do
   rows <- query "SELECT message FROM wal WHERE height = ? ORDER BY id" (Only h)
-  return [ case deserialiseOrFail bs of
+  return [ case safeDecode bs of
              Right a -> a
              Left  e -> error ("CBOR encoding error: " ++ show e)
          | Only bs <- rows
@@ -233,12 +235,12 @@ readWAL (Height h) = do
 
 
 -- Query that returns 0 or 1 result which is CBOR-encoded value
-singleQ :: (SQL.ToRow p, Serialise x)
+singleQ :: (SQL.ToRow p, SafeCopy x)
         => Text -> p -> Query rw alg a (Maybe x)
 singleQ sql p =
   query sql p >>= \case
     []        -> return Nothing
-    [Only bs] -> case deserialiseOrFail bs of
+    [Only bs] -> case safeDecode bs of
       Right a -> return (Just a)
       Left  e -> error ("CBOR encoding error: " ++ show e)
     _         -> error "Impossible"

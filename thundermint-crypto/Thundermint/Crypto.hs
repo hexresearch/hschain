@@ -63,7 +63,7 @@ module Thundermint.Crypto (
   , verifyPetrifiedSignature
   ) where
 
-import Codec.Serialise (Serialise, serialise)
+import Codec.Serialise (Serialise)
 import qualified Codec.Serialise          as CBOR
 import Control.Applicative
 import Control.DeepSeq
@@ -72,6 +72,7 @@ import Control.Monad
 import qualified Data.Aeson           as JSON
 import           Data.Text              (Text)
 import           Data.Coerce
+import           Data.SafeCopy
 import qualified Data.Text.Encoding            as T
 import qualified Data.ByteString               as BS
 import qualified Data.ByteString.Base58        as Base58
@@ -213,13 +214,17 @@ instance CryptoSign alg => Read (PrivKey alg) where
                   Just k  -> return k
                   Nothing -> empty
 
-
-instance CryptoSign alg => Serialise (PublicKey alg) where
+instance CryptoSign alg => Serialise (PrivKey alg) where
   encode = CBOR.encode . encodeToBS
   decode = do bs <- CBOR.decode
               case decodeFromBS bs of
                 Nothing -> fail "Cannot decode private key"
                 Just k  -> return k
+
+instance Crypto alg => SafeCopy (PrivKey alg) where
+  kind    = primitive
+  putCopy = contain . CBOR.encode
+  getCopy = contain   CBOR.decode
 
 instance CryptoSign alg => JSON.ToJSON (PrivKey alg) where
   toJSON = JSON.String . T.decodeUtf8 . encodeBSBase58 . encodeToBS
@@ -245,7 +250,7 @@ instance CryptoSign alg => Read (PublicKey alg) where
                   Just k  -> return k
                   Nothing -> empty
 
-instance CryptoSign alg => Serialise (PrivKey alg) where
+instance CryptoSign alg => Serialise (PublicKey alg) where
   encode = CBOR.encode . encodeToBS
   decode = do bs <- CBOR.decode
               case decodeFromBS bs of
@@ -254,6 +259,12 @@ instance CryptoSign alg => Serialise (PrivKey alg) where
 
 instance CryptoSign alg => JSON.ToJSON (PublicKey alg) where
   toJSON = JSON.String . T.decodeUtf8 . encodeBSBase58 . encodeToBS
+
+instance Crypto alg => SafeCopy (PublicKey alg) where
+  kind    = primitive
+  putCopy = contain . CBOR.encode
+  getCopy = contain   CBOR.decode
+
 
 instance CryptoSign alg => JSON.FromJSON (PublicKey alg) where
   parseJSON (JSON.String s) =
@@ -280,6 +291,11 @@ instance Read (Fingerprint alg) where
 instance JSON.ToJSON (Fingerprint alg) where
   toJSON (Fingerprint s) = JSON.String $ T.decodeUtf8 $ encodeBSBase58 s
 
+instance SafeCopy (Fingerprint alg) where
+  kind    = primitive
+  putCopy = contain . CBOR.encode
+  getCopy = contain   CBOR.decode
+
 instance JSON.FromJSON (Fingerprint alg) where
   parseJSON (JSON.String s) =
     case decodeBSBase58 $ T.encodeUtf8 s of
@@ -298,6 +314,11 @@ instance Show (Signature alg) where
 instance Read (Signature alg) where
   readPrec = do void $ lift $ string "Signature" >> some (char ' ')
                 Signature <$> readPrecBSBase58
+
+instance SafeCopy (Signature alg) where
+  kind    = primitive
+  putCopy = contain . CBOR.encode
+  getCopy = contain   CBOR.decode
 
 instance JSON.ToJSON (Signature alg) where
   toJSON (Signature s) = JSON.String $ T.decodeUtf8 $ encodeBSBase58 s
@@ -327,6 +348,12 @@ instance CryptoHash alg => Read (Hash alg) where
 
 instance CryptoHash alg => JSON.ToJSON (Hash alg) where
   toJSON = JSON.String . encodeBase58
+
+instance SafeCopy (Hash alg) where
+  kind    = primitive
+  putCopy = contain . CBOR.encode
+  getCopy = contain   CBOR.decode
+
 
 instance CryptoHash alg => JSON.FromJSON (Hash alg) where
   parseJSON (JSON.String s) =
@@ -360,29 +387,30 @@ instance Ord a => Ord (Pet a) where
 instance NFData a => NFData (Pet a) where
   rnf (Pet a bs) = rnf a `seq` rnf bs
 
-instance Serialise a => Serialise (Pet a) where
-  encode (Pet _ bs) = CBOR.encode bs
-  decode = do
+instance SafeCopy a => SafeCopy (Pet a) where
+  kind    = primitive
+  putCopy = \(Pet _ bs) -> contain $ CBOR.encode bs
+  getCopy = contain $ do
     bs <- CBOR.decode
-    case CBOR.deserialiseOrFail (fromStrict bs) of
+    case safeDecode (fromStrict bs) of
       Left  e -> fail (show e)
       Right a -> return $! Pet a bs
 
 instance JSON.ToJSON (Pet a) where
   toJSON (Pet _ bs) = JSON.String $ T.decodeUtf8 $ encodeBSBase58 bs
-instance (Serialise a) => JSON.FromJSON (Pet a) where
+instance (SafeCopy a) => JSON.FromJSON (Pet a) where
   parseJSON = JSON.withText "Pet a" $ \s -> 
     case decodeBSBase58 $ T.encodeUtf8 s of
       Nothing -> fail  "Incorrect Base58 encoding while decoding Address"
-      Just bs -> case CBOR.deserialiseOrFail (fromStrict bs) of
+      Just bs -> case safeDecode (fromStrict bs) of
         Left  e -> fail (show e)
         Right a -> return $! Pet a bs
 
 pet :: Pet a -> a
 pet (Pet a _) = a
 
-petrify :: Serialise a => a -> Pet a
-petrify a = Pet a (toStrict (serialise a))
+petrify :: SafeCopy a => a -> Pet a
+petrify a = Pet a (toStrict (safeEncode a))
 
 
 ----------------------------------------------------------------
@@ -422,7 +450,7 @@ makeSigned = Signed
 -- | Sign value. Not that we can generate both verified and unverified
 --   values this way.
 signValue
-  :: (Serialise a, CryptoSign alg)
+  :: (CryptoSign alg)
   => PrivKey alg                -- ^ Key for signing
   -> Pet a                      -- ^ Value to sign
   -> Signed sign alg a
@@ -435,7 +463,7 @@ signValue privK a@(Pet _ bs)
 --   reason. Note that since @Signed@ contain only fingerprint we need
 --   to supply function for looking up public keys.
 verifySignature
-  :: (Serialise a, CryptoSign alg)
+  :: (CryptoSign alg)
   => (Fingerprint alg -> Maybe (PublicKey alg))
      -- ^ Lookup function for public keys. If fingerprint is unknown (this
      --   function returns Nothing) verification fails.
@@ -468,9 +496,10 @@ verifyPetrifiedSignature
   -> Bool
 verifyPetrifiedSignature pk (Pet _ bs) = verifyBlobSignature pk bs
 
-instance Serialise   a => Serialise (Signed 'Unverified alg a)
-instance Serialise   a => JSON.FromJSON (Signed 'Unverified alg a)
-instance JSON.ToJSON a => JSON.ToJSON (Signed 'Unverified alg a)
+instance SafeCopy    a => SafeCopy (Signed 'Unverified alg a) where
+  kind = primitive
+instance SafeCopy    a => JSON.FromJSON (Signed 'Unverified alg a)
+instance JSON.ToJSON a => JSON.ToJSON   (Signed 'Unverified alg a)
 
 
 
@@ -482,7 +511,12 @@ instance JSON.ToJSON a => JSON.ToJSON (Signed 'Unverified alg a)
 --   value is being calculated
 newtype Hashed alg a = Hashed (Hash alg)
   deriving ( Show,Eq,Ord, Generic, Generic1, NFData
-           , Serialise,JSON.FromJSON,JSON.ToJSON)
+           , Serialise, JSON.FromJSON,JSON.ToJSON)
+
+instance SafeCopy (Hashed alg a) where
+  kind    = primitive
+  putCopy = contain . CBOR.encode
+  getCopy = contain   CBOR.decode
 
 -- | Compute hash of value. It's first serialized using CBOR and then
 --   hash of encoded data is computed,

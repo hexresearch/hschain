@@ -27,6 +27,7 @@ import Control.Monad.Trans.Class
 import           Data.Maybe    (fromMaybe)
 import           Data.Function
 import           Data.Monoid   ((<>))
+import Data.SafeCopy         (SafeCopy)
 import Data.Text             (Text)
 import Pipes                 (Pipe,runEffect,yield,await,(>->))
 import Control.Monad.Fail hiding (fail)
@@ -48,7 +49,7 @@ import Katip (Severity(..), sl)
 --
 ----------------------------------------------------------------
 
-newAppChans :: (MonadIO m, Crypto alg, Serialise a) => ConsensusCfg -> m (AppChans m alg a)
+newAppChans :: (MonadIO m, Crypto alg) => ConsensusCfg -> m (AppChans m alg a)
 newAppChans ConsensusCfg{incomingQueueSize = sz} = do
   -- 7 is magical no good reason to use 7 but no reason against it either
   appChanRx         <- liftIO $ newTBQueueIO sz
@@ -200,7 +201,7 @@ handleVerifiedMessage ProposalStorage{..} hParam tm = \case
 -- Verify signature of message. If signature is not correct message is
 -- simply discarded.
 verifyMessageSignature
-  :: (MonadLogger m, Crypto alg, Serialise a)
+  :: (MonadLogger m, Crypto alg)
   => AppState m alg a
   -> HeightParameters n alg a
   -> Pipe (MessageRx 'Unverified alg a) (MessageRx 'Verified alg a) m r
@@ -281,7 +282,7 @@ instance MonadTrans (ConsensusM alg a) where
   lift = ConsensusM . fmap Success
 
 makeHeightParameters
-  :: (MonadDB m alg a, MonadLogger m, MonadTMMonitoring m, Crypto alg, Serialise a, Show a, MonadFail m)
+  :: (MonadDB m alg a, MonadLogger m, MonadTMMonitoring m, Crypto alg, SafeCopy a, Show a, MonadFail m)
   => ConsensusCfg
   -> (Height -> Time -> m Bool)
   -> AppState m alg a

@@ -14,11 +14,11 @@ module Thundermint.Blockchain.Interpretation (
   , PersistentState(..)
   ) where
 
-import Codec.Serialise (Serialise)
 import Control.Concurrent.MVar
 import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Control.Monad.Fail
+import Data.SafeCopy (SafeCopy)
 
 import Thundermint.Crypto
 import Thundermint.Control
@@ -73,7 +73,7 @@ data BChState m s = BChState
 
 -- | Create block storage backed by MVar
 newBChState
-  :: (MonadMask m, MonadReadDB m alg a, Serialise a, Crypto alg, MonadFail m)
+  :: (MonadMask m, MonadReadDB m alg a, SafeCopy a, Crypto alg, MonadFail m)
   => BlockFold s alg a             -- ^ Updating function
   -> m (BChState m s)
 newBChState BlockFold{..} = do
