@@ -52,10 +52,5 @@ done
 
 if $publish; then
 docker login --password $DOCKER_PASSWORD --username $DOCKER_USERNAME registry.hxr.team
-docker push registry.hxr.team/xenochain-mock:$tag
-docker push registry.hxr.team/xenochain:$tag
-docker push registry.hxr.team/validator:$tag
-docker push registry.hxr.team/xenogate:$tag
-docker push registry.hxr.team/blockexplorer:$tag
-docker push registry.hxr.team/xenochain-genesis-gen:$tag
+docker push registry.hxr.team/thundermint-node:$tag
 fi
