@@ -86,14 +86,14 @@ logicFromFold transitions@BlockFold{..} = do
   let checkTx tx = do
         st <- currentState bchState
         -- FIXME: We need real height here!
-        return $ isJust $ processTx (Height 1) tx st
+        return $ isJust $ processTx False (Height 1) tx st
   mempool <- newMempool checkTx
   --
   return ( bchState
          , NodeLogic { nodeBlockValidation = \b -> do
                          let h = headerHeight $ blockHeader b
                          st <- stateAtH bchState h
-                         return $ isJust $ processBlock b st
+                         return $ isJust $ processBlock False b st
                      , nodeCommitQuery     = SimpleQuery $ \b -> do
                          Just vset <- retrieveValidatorSet $ headerHeight $ blockHeader b
                          return vset

@@ -152,8 +152,8 @@ processTransaction transaction@(Send pubK sig txSend@TxSend{..}) CoinState{..} =
 transitions :: BlockFold CoinState alg [Tx]
 transitions = BlockFold
   { processTx           = process
-  , processBlock        = \b s0 -> let h = headerHeight $ blockHeader b
-                                   in foldM (flip (process h)) s0 (blockData b)
+  , processBlock        = \_ b s0 -> let h = headerHeight $ blockHeader b
+                                   in foldM (flip (process False h)) s0 (blockData b)
   , transactionsToBlock = \_ ->
       let selectTx _ []     = []
           selectTx c (t:tx) = case processTransaction t c of
@@ -163,8 +163,8 @@ transitions = BlockFold
   , initialState        = CoinState Map.empty
   }
   where
-    process (Height 0) t s = processDeposit t s <|> processTransaction t s
-    process _          t s = processTransaction t s
+    process _ (Height 0) t s = processDeposit t s <|> processTransaction t s
+    process _ _          t s = processTransaction t s
 
 
 ----------------------------------------------------------------

@@ -63,18 +63,18 @@ genesisBlock valSet = Block
 
 transitions :: BlockFold (Map String Int) alg [(String,Int)]
 transitions = BlockFold
-  { processTx           = const process
-  , processBlock        = \b s0 -> foldM (flip process) s0 (blockData b)
+  { processTx           = process
+  , processBlock        = \_ b s0 -> foldM (flip $ process undefined undefined) s0 (blockData b)
   , transactionsToBlock = \_ ->
       let selectTx _ []     = []
-          selectTx c (t:tx) = case process t c of
+          selectTx c (t:tx) = case process undefined undefined t c of
                                 Nothing -> selectTx c  tx
                                 Just c' -> t : selectTx c' tx
       in selectTx
   , initialState        = Map.empty
   }
   where
-    process (k,v) m
+    process _ _ (k,v) m
       | k `Map.member` m = Nothing
       | otherwise        = Just $ Map.insert k v m
 
@@ -110,7 +110,7 @@ interpretSpec maxH prefix NetSpec{..} = do
                        { appValidationFun  = \b -> do
                            let h = headerHeight $ blockHeader b
                            st <- stateAtH bchState h
-                           return $ isJust $ processBlock transitions b st
+                           return $ isJust $ processBlock transitions False b st
                        --
                        , appBlockGenerator = \h _ _ _ -> case nspecByzantine of
                            Just "InvalidBlock" -> do

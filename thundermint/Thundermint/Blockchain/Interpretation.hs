@@ -16,7 +16,6 @@ module Thundermint.Blockchain.Interpretation (
 
 import Codec.Serialise (Serialise)
 import Control.Concurrent.MVar
-import Control.Monad (when)
 import Control.Monad.Catch
 import Control.Monad.IO.Class
 
@@ -90,7 +89,7 @@ newBChState BlockFold{..} = do
             GT -> error "newBChState, ensureHeight: invalid parameter"
             EQ -> return (st, (s,False))
             LT -> do Just b <- queryRO $ retrieveBlock h
-                     case processBlock b s of
+                     case processBlock (succ h == hBlk) b s of
                        Just st' -> do
                          let h' = succ h
                          _ <- queryRW $ storeStateSnapshot h' st'
