@@ -1,17 +1,9 @@
 { isProd      ? false
 , isProfile   ? false
-, gitTag      ? null  # current tag
-, buildNumber ? null  # CI build number
 , ...
 }:
 with import ./lib/utils.nix;
 let
-
-  imports = {
-    inherit tryEval;
-    pkgConfig = readConfig <cfg> ./versions.json;
-  };
-
   lib = pkgs.haskell.lib;
   overrideCabal = lib.overrideCabal;
   justStaticExecutables = lib.justStaticExecutables;
@@ -33,12 +25,6 @@ let
     in {
       buildFlags = (drv.buildFlags or []) ++ flags;
     });
-  addVersions = drv: overrideCabal drv (drv: {
-    preConfigure = (drv.preConfigure or "") + ''
-      ${pkgs.lib.optionalString (! builtins.isNull gitTag) "export GIT_TAG=${gitTag}"}
-      ${pkgs.lib.optionalString (! builtins.isNull buildNumber) "export BUILD_NUMBER=${builtins.toString buildNumber}"}
-    '';
-  });
   gitignore = pkgs.callPackage (pkgs.fetchFromGitHub {
     owner = "siers";
     repo = "nix-gitignore";
@@ -48,15 +34,13 @@ let
   ignoreStack = source: let
     ignore-list = ''
       /.stack-work
-      /db
-      /crypto-history
     '';
     in gitignore.gitignoreSourceAux ignore-list source;
 
   # Internal packages (depends on production or dev environment)
-  callInternal = name: path: args: (prodOverrideAll (profileOverride ( addVersions (
+  callInternal = name: path: args: (prodOverrideAll (profileOverride (
       doShow (dontHaddock ( pkgs.haskellPackages.callCabal2nix name (ignoreStack path) args )
-    )))));
+    ))));
 
   ghcjsOverrides = hsNew: hsOld: {
     SHA                   = lib.dontCheck hsOld.SHA;
@@ -78,13 +62,11 @@ let
             thundermint = callInternal "thundermint" ../thundermint { };
           };
 
-          in derivationsOverrides // imports // internal // {
+          in derivationsOverrides // internal // {
             # Overrides from nixpkgs
             katip-elasticsearch = lib.dontCheck derivationsOverrides.katip-elasticsearch;
-            #gdax = lib.dontCheck haskellPackagesOld.gdax;
             serialise = lib.dontCheck haskellPackagesOld.serialise;
             tasty = lib.dontCheck haskellPackagesOld.tasty;
-            #wl-pprint-annotated = lib.dontCheck haskellPackagesOld.wl-pprint-annotated;
           };
   config  = {
     allowUnfree = true;

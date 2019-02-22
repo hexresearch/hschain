@@ -7,19 +7,6 @@ set -xe
 # Minimal nsswitch.conf
 [[ ! -e /etc/nsswitch.conf ]] && echo 'hosts: files dns' > /etc/nsswitch.conf
 
-# Decide whether to build profile
-gittag=$DRONE_TAG
-isProfile="false"
-if [[ $gittag =~ "profile" ]]; then
-  echo "It is profile build"
-  isProfile="true"
-fi
-
-# Feed envs that requires for version setup in code
-if [[ ! -z $gittag ]]; then
-  gitTagArg="--arg gitTag \"\\\"$gittag\\\"\""
-fi
-
 isGHCJS="false"
 if [ "$1" == "GHCJS" ]; then
   echo "GHCJS build"
