@@ -39,16 +39,20 @@ import Thundermint.Types.Blockchain
 --   e.g. if transaction or block is not valid it will return
 --   @Nothing@.
 data BlockFold s alg a = BlockFold
-  { processTx    :: !(Height -> TX a -> s -> Maybe s)
+  { processTx    :: !(Bool -> Height -> TX a -> s -> Maybe s)
     -- ^ Try to process single transaction. Nothing indicates that
     --   transaction is invalid. This function will called very
     --   frequently so it need not to perform every check but should
     --   rule out invalid blocks.
     --
+    --   The first parameter indicates (True) the need to validate transaction signature.
+    --
     --   FIXME: figure out exact semantics for Height parameter
-  , processBlock :: !(Block alg a -> s -> Maybe s)
+  , processBlock :: !(Bool -> Block alg a -> s -> Maybe s)
     -- ^ Try to process whole block. Here application should perform
     --   complete validation of block
+    --
+    --   Again, first parameter indicates the need to check block signature.
   , transactionsToBlock :: !(Height -> s -> [TX a] -> a)
     -- ^ Create block at given height from list of transactions. Not
     --   input could contain invalid transaction and they must be
