@@ -16,6 +16,7 @@ module Thundermint.Blockchain.Interpretation (
 
 import Codec.Serialise (Serialise)
 import Control.Concurrent.MVar
+import Control.Monad (when)
 import Control.Monad.Catch
 import Control.Monad.IO.Class
 
@@ -75,19 +76,25 @@ data BChState m s = BChState
 
 -- | Create block storage backed by MVar
 newBChState
-  :: (MonadMask m, MonadReadDB m alg a, Serialise a)
+  :: (MonadMask m, MonadDB m alg a, Serialise a, Serialise s)
   => BlockFold s alg a             -- ^ Updating function
   -> m (BChState m s)
 newBChState BlockFold{..} = do
-  state <- liftIO $ newMVar (Height 0, initialState)
+  maybeState <- queryRO $ retrieveSavedState
+  state <- liftIO $ newMVar $ case maybeState of
+    Just (h, s) -> (h,        s)
+    _ ->           (Height 0, initialState)
   let ensureHeight hBlk = do
-        (st,flt) <- modifyMVarM state $ \st@(h,s) ->
+        (st,flt) <- modifyMVarM state $ \st@(h,s) -> do
           case h `compare` hBlk of
-            GT -> error "newBChState: invalid parameter"
+            GT -> error "newBChState, ensureHeight: invalid parameter"
             EQ -> return (st, (s,False))
             LT -> do Just b <- queryRO $ retrieveBlock h
                      case processBlock b s of
-                       Just st' -> return ((succ h, st'), (st',True))
+                       Just st' -> do
+                         let h' = succ h
+                         _ <- queryRW $ storeStateSnapshot h' st'
+                         return ((h', st'), (st',True))
                        Nothing  -> error "OOPS! Blockchain is not valid!!!"
         case flt of
           True  -> ensureHeight hBlk
