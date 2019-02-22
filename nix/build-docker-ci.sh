@@ -6,7 +6,6 @@ set -e
 export NIX_PATH=$GIT_NIX_PATH$NIX_PATH
 
 branch=$DRONE_BRANCH
-gittag=$DRONE_TAG
 event=$DRONE_BUILD_EVENT
 publish=false
 
@@ -27,23 +26,11 @@ else
     tag="latest"
   fi
 fi
-# Decide whether to build profile
-gittag=$DRONE_TAG
-isProfile="false"
-if [[ $gittag =~ "profile" ]]; then
-  echo "It is profile build"
-  isProfile="true"
-fi
-if [[ ! -z $gittag ]]; then
-  gitTagArg="--arg gitTag \"\\\"$gittag\\\"\""
-fi
 
 containers=$(nix-build containers.nix --arg isProd true \
   --arg isProfile $isProfile \
   --arg containerTag \"$tag\" \
   --arg prefixName \"registry.hxr.team/\" \
-  $gitTagArg \
-  --arg buildNumber $DRONE_BUILD_NUMBER )
 
 for container in $containers
 do

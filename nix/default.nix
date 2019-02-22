@@ -1,8 +1,6 @@
 args@{
   isProd      ? false
 , isProfile   ? false
-, gitTag      ? null  # current tag
-, buildNumber ? null  # CI build number
 , isGHCJS     ? false
 }:
 let release = import ./release.nix args;
