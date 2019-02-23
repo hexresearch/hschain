@@ -28,9 +28,8 @@ else
 fi
 
 containers=$(nix-build containers.nix --arg isProd true \
-  --arg isProfile $isProfile \
   --arg containerTag \"$tag\" \
-  --arg prefixName \"registry.hxr.team/\" \
+  --arg prefixName \"registry.hxr.team/\" )
 
 for container in $containers
 do

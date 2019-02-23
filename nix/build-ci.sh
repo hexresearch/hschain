@@ -20,10 +20,7 @@ echo $DRONE_BUILD_NUMBER
 
 # Build backend packages
 NIX_PATH=$GIT_NIX_PATH$NIX_PATH backend_output=$(nix-build --arg isProd true \
-  --arg isProfile $isProfile \
-  --arg isGHCJS $isGHCJS \
-  $gitTagArg \
-  --arg buildNumber $DRONE_BUILD_NUMBER )
+  --arg isGHCJS $isGHCJS )
 # Get runtime deps
 backend_deps=$(nix-store --query --requisites $backend_output)
 

@@ -32,7 +32,8 @@ https://nixos.wiki/wiki/Nix_Installation_Guide
 
 Just use following command
 ```
-nix-build -A thundermint-exe nix/release.nix
+cd nix
+build.sh
 ```
 Note that if project directory contains `.ghc.environment.*` files created by new-style cabal commands build will fail.
 
@@ -59,12 +60,6 @@ nix-env -i hlint
 
 Then you can use `cabal` to build thundermit inside this shell or run `thundermint-simple` binary.
 
-## Build with `stack`
-
-```
-stack build
-```
-
 # Run testing network using terraform
 
 First of all you have to install terraform and docker. Dowload `terraform` from [here](https://www.terraform.io/downloads.html), unzip and put in $PATH.
@@ -74,18 +69,15 @@ First of all you have to install terraform and docker. Dowload `terraform` from 
 ## Build docker image
 
 ```
-nix-build release.nix -A docker-container
+cd nix
+build-docker.sh
 ```
 
 All info about building docker images by `nix` I found [here](https://github.com/Gabriel439/haskell-nix/blob/master/project3/README.md#minimizing-the-closure).
 
 When that command is finished you will have `result` simlink that refers to the docker image in tar archive format.
 
-Then you need to load this archive into local docker image.
-
-```
-docker load < result
-```
+`build-docker.sh` loads this archive into local docker image.
 
 ## Run testing network
 
