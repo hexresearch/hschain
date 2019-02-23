@@ -2,15 +2,11 @@
 , isProfile ? false
 , containerTag ? "latest"
 , prefixName ? ""
-, gitTag      ? null  # current tag
-, buildNumber ? null  # CI build number
 , ...}:
 let
   release = import ./release.nix { inherit
     isProd
-    isProfile
-    gitTag
-    buildNumber; };
+    isProfile; };
   pkgs = release.pkgs;
   lib = pkgs.haskell.lib;
 

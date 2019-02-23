@@ -1,8 +1,13 @@
-let release = import ./nix/release.nix;
-    pkgs    = release.pkgs;
-in pkgs.haskellPackages.shellFor {
-     nativeBuildInputs = with pkgs.haskellPackages; [
-       cabal-install
-     ];
-     packages = _: pkgs.lib.attrValues release.packagesGHC.thundermintPackages;
-}
+args@{
+  isProd      ? false
+, isProfile   ? false
+}:
+let release = import ./nix/release.nix args;
+    pkgs = release.pkgs;
+in release.pkgs.haskellPackages.shellFor {
+    nativeBuildInputs = with pkgs.haskellPackages; [
+      cabal-install
+      ghcid
+    ];
+    packages = _: pkgs.lib.attrValues release.thundermintPackages;
+  }
