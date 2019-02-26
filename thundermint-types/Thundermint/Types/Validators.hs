@@ -62,8 +62,8 @@ instance Crypto alg => CBOR.Serialise (Validator alg)
 
 -- | Set of all known validators for given height
 data ValidatorSet alg = ValidatorSet
-  { vsValidators :: !(Map (Address alg) (Validator    alg))
-  , vsIndexes    :: !(Map (Address alg) (ValidatorIdx alg))
+  { vsValidators :: !(Map (Fingerprint alg) (Validator    alg))
+  , vsIndexes    :: !(Map (Fingerprint alg) (ValidatorIdx alg))
   , vsTotPower   :: !Integer
   }
   deriving (Generic)
@@ -86,12 +86,12 @@ instance (Crypto alg) => CBOR.Serialise (ValidatorSet alg) where
 makeValidatorSet
   :: (Crypto alg, Foldable f)
   => f (Validator alg)
-  -> Either (Maybe (Address alg)) (ValidatorSet alg)
+  -> Either (Maybe (Fingerprint alg)) (ValidatorSet alg)
 makeValidatorSet vals = do
   when (null vals) $ Left Nothing
   vmap <- sequence
         $ Map.fromListWithKey (\k _ _ -> Left (Just k))
-          [ ( address (validatorPubKey v), Right v) | v <- toList vals ]
+          [ ( fingerprint (validatorPubKey v), Right v) | v <- toList vals ]
   return ValidatorSet
     { vsValidators = vmap
     , vsIndexes    = Map.fromList $ Map.keys vmap `zip` map ValidatorIdx [0..]
@@ -102,11 +102,11 @@ makeValidatorSet vals = do
 totalVotingPower :: ValidatorSet alg -> Integer
 totalVotingPower = vsTotPower
 
--- | Get validator by its address
-validatorByAddr :: ValidatorSet alg -> Address alg -> Maybe (Validator alg)
+-- | Get validator by its fingerprint
+validatorByAddr :: ValidatorSet alg -> Fingerprint alg -> Maybe (Validator alg)
 validatorByAddr vs addr = addr `Map.lookup` vsValidators vs
 
--- | Get validator by its address
+-- | Get validator by its fingerprint
 validatorByIndex :: ValidatorSet alg -> ValidatorIdx alg -> Maybe (Validator alg)
 validatorByIndex vs (ValidatorIdx i)
   | i < 0                    = Nothing
@@ -114,7 +114,7 @@ validatorByIndex vs (ValidatorIdx i)
   | otherwise                = Just (toList (vsValidators vs) !! i)
 
 -- | Get index of validator in set of validators
-indexByValidator :: ValidatorSet alg -> Address alg -> Maybe (ValidatorIdx alg)
+indexByValidator :: ValidatorSet alg -> Fingerprint alg -> Maybe (ValidatorIdx alg)
 indexByValidator vs addr = addr `Map.lookup` vsIndexes vs
 
 -- | Number of validators in set
@@ -199,7 +199,7 @@ changeValidators changes ValidatorSet{..} = do
   return vset'
   where
     step vals (RemoveValidator pk) = do
-      let addr = address pk
+      let addr = fingerprint pk
       guard  $  Map.member addr vals
       return $! Map.delete addr vals
     step vals (ChangeValidator pk pwr)
@@ -207,13 +207,13 @@ changeValidators changes ValidatorSet{..} = do
       | isNoop addr pwr vals = Nothing
       | otherwise            = return $! Map.insert addr (Validator pk pwr) vals
       where
-        addr = address pk
+        addr = fingerprint pk
     --
     isNoop addr pwr vals = case Map.lookup addr vals of
       Just (Validator _ p) -> pwr == p
       _                    -> False
     --
-    keys = [ address $ case c of RemoveValidator pk   -> pk
-                                 ChangeValidator pk _ -> pk
+    keys = [ fingerprint $ case c of RemoveValidator pk   -> pk
+                                     ChangeValidator pk _ -> pk
            | c <- changes
            ]

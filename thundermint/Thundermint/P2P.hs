@@ -624,7 +624,7 @@ peerGossipVotes peerObj PeerChans{..} gossipCh = logOnException $ do
                                         | v <- commitPrecommits cmt ]
                -- FIXME: inefficient
            let toSet = Set.fromList
-                     . map (address . validatorPubKey)
+                     . map (fingerprint . validatorPubKey)
                      . mapMaybe (validatorByIndex (lagPeerValidators p))
                      . getValidatorIntSet
            let peerVotes = Map.fromSet (const ())
@@ -647,7 +647,7 @@ peerGossipVotes peerObj PeerChans{..} gossipCh = logOnException $ do
               doGosip        = liftIO . atomically . writeTBQueue gossipCh
           -- FIXME: poor performance. Avoid going through map!
           let toSet = Set.fromList
-                    . map (address . validatorPubKey)
+                    . map (fingerprint . validatorPubKey)
                     . mapMaybe (validatorByIndex (peerValidators p))
                     . getValidatorIntSet
 

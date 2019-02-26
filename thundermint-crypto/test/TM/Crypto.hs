@@ -13,10 +13,10 @@ import Thundermint.Crypto.Ed25519
 
 tests :: TestTree
 tests = testGroup "Crypto"
-  [ testCase "read . show = id @ Address/PublicKey/PrivKey Ed25519_SHA512"
+  [ testCase "read . show = id @ Fingerprint/PublicKey/PrivKey Ed25519_SHA512"
   $ do privK <- generatePrivKey
        let pubK = publicKey privK
-           addr = address pubK
+           addr = fingerprint pubK
            blob = "ABCD"
            sign = signBlob privK blob
        privK @=? (read . show) privK
@@ -54,16 +54,16 @@ tests = testGroup "Crypto"
   $ do let k :: PrivKey Ed25519_SHA512
            k = read "\"Cn6mra73QDNPkyf56Cfoxh9y9HDS8MREPw4GNcCxQb5Q\""
        read "\"5oxScYXwuzcCQRZ8QtUDzhxNdMx2g1nMabd4uPFPDdzi\"" @=? publicKey k
-  , testCase "Address derivation is correct"
+  , testCase "Fingerprint derivation is correct"
     --
   $ do let k :: PrivKey Ed25519_SHA512
            k = read "\"Cn6mra73QDNPkyf56Cfoxh9y9HDS8MREPw4GNcCxQb5Q\""
-       read "Address \"AhAM9SS8UQUbjrB3cwq9DMtb6mnyz61m9LuBr5kayq9q\"" @=? address (publicKey k)
+       read "Fingerprint \"AhAM9SS8UQUbjrB3cwq9DMtb6mnyz61m9LuBr5kayq9q\"" @=? fingerprint (publicKey k)
     --
   , testCase "decodeBS . encodeBS = id"
   $ do privK <- generatePrivKey
        let pubK = publicKey privK
-           addr = address pubK
+           addr = fingerprint pubK
            blob = "ABCD"
            sign = signBlob privK blob
        Just privK @=? (decodeFromBS . encodeToBS) privK
@@ -74,7 +74,7 @@ tests = testGroup "Crypto"
   , testCase "decodeBase58 . encodeBase58 = id"
   $ do privK <- generatePrivKey
        let pubK = publicKey privK
-           addr = address pubK
+           addr = fingerprint pubK
            blob = "ABCD"
            sign = signBlob privK blob
        Just privK @=? (decodeBase58 . encodeBase58) privK
@@ -90,15 +90,15 @@ tests = testGroup "Crypto"
     --
   , testCase "Sizes are correct"
   $ do privK <- generatePrivKey
-       let pubK         = publicKey privK
-           Address addr = address pubK
-           blob         = "ABCD"
-           Signature s  = signBlob privK blob
-           Hash bs      = hash () :: Hash Ed25519_SHA512
-           ed           = Proxy :: Proxy Ed25519_SHA512
-       BS.length bs                  @=? hashSize      ed
-       BS.length addr                @=? addressSize   ed
-       BS.length (pubKeyToBS  pubK ) @=? publicKeySize ed
-       BS.length (privKeyToBS privK) @=? privKeySize   ed
-       BS.length s                   @=? signatureSize ed
+       let pubK             = publicKey privK
+           Fingerprint addr = fingerprint pubK
+           blob             = "ABCD"
+           Signature s      = signBlob privK blob
+           Hash bs          = hash () :: Hash Ed25519_SHA512
+           ed               = Proxy :: Proxy Ed25519_SHA512
+       BS.length bs                  @=? hashSize        ed
+       BS.length addr                @=? fingerprintSize ed
+       BS.length (pubKeyToBS  pubK ) @=? publicKeySize   ed
+       BS.length (privKeyToBS privK) @=? privKeySize     ed
+       BS.length s                   @=? signatureSize   ed
   ]

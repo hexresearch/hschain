@@ -29,9 +29,9 @@ import Thundermint.Types.Validators
 -- | Generate list of private validators
 makePrivateValidators
   :: [BS.ByteString]
-  -> Map (Address Ed25519_SHA512) (PrivValidator Ed25519_SHA512)
+  -> Map (Fingerprint Ed25519_SHA512) (PrivValidator Ed25519_SHA512)
 makePrivateValidators keys = Map.fromList
-  [ (address (publicKey pk) , PrivValidator pk)
+  [ (fingerprint (publicKey pk) , PrivValidator pk)
   | bs58 <- keys
   , let pk = fromJust $ privKeyFromBS =<< Base58.decodeBase58 Base58.bitcoinAlphabet bs58
   ]

@@ -8,6 +8,9 @@
 {-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE TypeFamilies               #-}
+{-# LANGUAGE TypeOperators              #-}
+{-# LANGUAGE ConstraintKinds            #-}
+{-# LANGUAGE UndecidableInstances       #-}
 -- |
 -- Simple API for cryptographic operations. Crypto algorithms are
 -- selected by type and all necessary types are implemented as data
@@ -17,13 +20,17 @@ module Thundermint.Crypto (
     PrivKey
   , PublicKey
   , Signature(..)
-  , Address(..)
+  , Fingerprint(..)
   , Hash(..)
   , hash
-  , Crypto(..)
+  , Crypto
+  , CryptoSign(..)
+  , CryptoHash(..)
+  , CryptoSignPrim(..)
+  , (:&)
     -- ** Sizes of crypto types
   , hashSize
-  , addressSize
+  , fingerprintSize
   , publicKeySize
   , privKeySize
   , signatureSize
@@ -76,6 +83,10 @@ import qualified Data.ByteString.Base58 as Base58
 -- Basic crypto API
 ----------------------------------------------------------------
 
+type Crypto (alg) = (CryptoSign alg, CryptoHash alg)
+
+data sign :& hash
+
 -- | Private key
 data family PrivKey   alg
 
@@ -86,8 +97,8 @@ data family PublicKey alg
 newtype Signature alg = Signature BS.ByteString
   deriving (Eq, Ord, Generic, Generic1, Serialise, NFData)
 
--- | Address of public key fingerprint (hash of public key)
-newtype Address alg = Address BS.ByteString
+-- | Public key fingerprint (hash of public key)
+newtype Fingerprint alg = Fingerprint BS.ByteString
   deriving (Eq,Ord, Generic, Generic1, Serialise, NFData)
 
 -- | Cryptographic hash of some value
@@ -99,28 +110,22 @@ newtype Hash alg = Hash BS.ByteString
 hash :: (Crypto alg, Serialise a) => a -> Hash alg
 hash = hashBlob . toStrict . serialise
 
+class ( ByteRepr (Fingerprint alg)
+      , ByteRepr (Signature   alg)
+      , ByteRepr (PublicKey   alg)
+      , ByteRepr (PrivKey     alg)
+      , CryptoSignPrim alg
+      ) => CryptoSign alg where
 
--- | Type-indexed set of crypto algorithms. It's not very principled
---   to push everything into singe type class.  But in order to keep
---   signatures sane it was done this way.
-class ( KnownNat (HashSize alg), KnownNat (SignatureSize alg)
-      , KnownNat (AddressSize alg), KnownNat (PublicKeySize alg), KnownNat (PrivKeySize alg)
-      ) => Crypto alg where
-  type HashSize      alg :: Nat
-  type AddressSize   alg :: Nat
-  type PublicKeySize alg :: Nat
-  type PrivKeySize   alg :: Nat
-  type SignatureSize alg :: Nat
   -- | Sign sequence of bytes
   signBlob            :: PrivKey   alg -> BS.ByteString -> Signature alg
   -- | Check that signature is correct
   verifyBlobSignature :: PublicKey alg -> BS.ByteString -> Signature alg -> Bool
   -- | Compute public key from  private key
   publicKey           :: PrivKey   alg -> PublicKey alg
-  -- | Compute address or public key fingerprint
-  address             :: PublicKey alg -> Address alg
-  -- | Compute hash of sequence of bytes
-  hashBlob            :: BS.ByteString -> Hash alg
+  -- | Compute fingerprint or public key fingerprint
+  fingerprint         :: PublicKey alg -> Fingerprint alg
+
   -- | Create private key from bytestring
   privKeyFromBS       :: BS.ByteString -> Maybe (PrivKey alg)
   -- | Create public key from bytestring
@@ -130,13 +135,37 @@ class ( KnownNat (HashSize alg), KnownNat (SignatureSize alg)
   -- | Convert public key to bytestring
   pubKeyToBS          :: PublicKey alg -> BS.ByteString
 
+class ( KnownNat (SignatureSize alg)
+      , KnownNat (FingerprintSize alg)
+      , KnownNat (PublicKeySize alg)
+      , KnownNat (PrivKeySize alg)
+      --, CryptoSign alg
+      ) => CryptoSignPrim alg where
+  type FingerprintSize alg :: Nat
+  type PublicKeySize   alg :: Nat
+  type PrivKeySize     alg :: Nat
+  type SignatureSize   alg :: Nat
+
+-- | Type-indexed set of crypto algorithms. It's not very principled
+--   to push everything into singe type class.  But in order to keep
+--   signatures sane it was done this way.
+class (
+--    , CryptoSignPrim alg
+       ByteRepr (Hash   alg)
+      , KnownNat (HashSize alg)
+      ) => CryptoHash alg where
+  -- | Compute hash of sequence of bytes
+  hashBlob            :: BS.ByteString -> Hash alg
+
+  type HashSize        alg :: Nat
+
 -- | Size of hash in bytes
 hashSize :: forall alg proxy i. (Crypto alg, Num i) => proxy alg -> i
 hashSize _ = fromIntegral $ natVal (Proxy :: Proxy (HashSize alg))
 
 -- | Size of public key fingerprint in bytes
-addressSize :: forall alg proxy i. (Crypto alg, Num i) => proxy alg -> i
-addressSize _ = fromIntegral $ natVal (Proxy :: Proxy (AddressSize alg))
+fingerprintSize :: forall alg proxy i. (Crypto alg, Num i) => proxy alg -> i
+fingerprintSize _ = fromIntegral $ natVal (Proxy :: Proxy (FingerprintSize alg))
 
 -- | Size of public key in bytes
 publicKeySize :: forall alg proxy i. (Crypto alg, Num i) => proxy alg -> i
@@ -151,27 +180,27 @@ signatureSize :: forall alg proxy i. (Crypto alg, Num i) => proxy alg -> i
 signatureSize _ = fromIntegral $ natVal (Proxy :: Proxy (SignatureSize alg))
 
 -- | Value could be represented as bytestring.
-class ByteRepr a where
+class (Ord a) => ByteRepr a where
   decodeFromBS :: BS.ByteString -> Maybe a
   encodeToBS   :: a -> BS.ByteString
 
-instance Crypto alg => ByteRepr (Hash alg) where
+instance CryptoHash alg => ByteRepr (Hash alg) where
   decodeFromBS            = Just . Hash
   encodeToBS (Hash bs) = bs
 
-instance Crypto alg => ByteRepr (Address alg) where
-  decodeFromBS            = Just . Address
-  encodeToBS (Address bs) = bs
+instance CryptoSign alg => ByteRepr (Fingerprint alg) where
+  decodeFromBS            = Just . Fingerprint
+  encodeToBS (Fingerprint bs) = bs
 
-instance Crypto alg => ByteRepr (Signature alg) where
+instance CryptoSign alg => ByteRepr (Signature alg) where
   decodeFromBS            = Just . Signature
   encodeToBS (Signature bs) = bs
 
-instance Crypto alg => ByteRepr (PublicKey alg) where
+instance (Ord (PublicKey alg), CryptoSign alg) => ByteRepr (PublicKey alg) where
   decodeFromBS = pubKeyFromBS
   encodeToBS   = pubKeyToBS
 
-instance Crypto alg => ByteRepr (PrivKey alg) where
+instance (Ord (PrivKey alg), CryptoSign alg) => ByteRepr (PrivKey alg) where
   decodeFromBS = privKeyFromBS
   encodeToBS   = privKeyToBS
 
@@ -188,27 +217,27 @@ decodeBase58 = decodeFromBS <=< decodeBSBase58 . T.encodeUtf8
 -- Instances
 ----------------------------------------------------------------
 
-instance Crypto alg => Show (PrivKey alg) where
+instance CryptoSign alg => Show (PrivKey alg) where
   show = show . BC8.unpack . encodeBSBase58 . privKeyToBS
 
-instance Crypto alg => Read (PrivKey alg) where
+instance CryptoSign alg => Read (PrivKey alg) where
   readPrec = do bs <- readPrecBSBase58
                 case privKeyFromBS bs of
                   Just k  -> return k
                   Nothing -> empty
 
 
-instance Crypto alg => Serialise (PublicKey alg) where
+instance CryptoSign alg => Serialise (PublicKey alg) where
   encode = CBOR.encode . pubKeyToBS
   decode = do bs <- CBOR.decode
               case pubKeyFromBS bs of
                 Nothing -> fail "Cannot decode private key"
                 Just k  -> return k
 
-instance Crypto alg => JSON.ToJSON (PrivKey alg) where
+instance CryptoSign alg => JSON.ToJSON (PrivKey alg) where
   toJSON = JSON.String . T.decodeUtf8 . encodeBSBase58 . privKeyToBS
 
-instance Crypto alg => JSON.FromJSON (PrivKey alg) where
+instance CryptoSign alg => JSON.FromJSON (PrivKey alg) where
   parseJSON (JSON.String s) =
     case decodeBSBase58 $ T.encodeUtf8 s of
       Nothing -> fail  "Incorrect Base58 encoding for PrivKey"
@@ -220,26 +249,26 @@ instance Crypto alg => JSON.FromJSON (PrivKey alg) where
 
 ----------------------------------------
 
-instance Crypto alg => Show (PublicKey alg) where
+instance CryptoSign alg => Show (PublicKey alg) where
   show = show . BC8.unpack . encodeBSBase58 . pubKeyToBS
 
-instance Crypto alg => Read (PublicKey alg) where
+instance CryptoSign alg => Read (PublicKey alg) where
   readPrec = do bs <- readPrecBSBase58
                 case pubKeyFromBS bs of
                   Just k  -> return k
                   Nothing -> empty
 
-instance Crypto alg => Serialise (PrivKey alg) where
+instance CryptoSign alg => Serialise (PrivKey alg) where
   encode = CBOR.encode . privKeyToBS
   decode = do bs <- CBOR.decode
               case privKeyFromBS bs of
                 Nothing -> fail "Cannot decode private key"
                 Just k  -> return k
 
-instance Crypto alg => JSON.ToJSON (PublicKey alg) where
+instance CryptoSign alg => JSON.ToJSON (PublicKey alg) where
   toJSON = JSON.String . T.decodeUtf8 . encodeBSBase58 . pubKeyToBS
 
-instance Crypto alg => JSON.FromJSON (PublicKey alg) where
+instance CryptoSign alg => JSON.FromJSON (PublicKey alg) where
   parseJSON (JSON.String s) =
     case decodeBSBase58 $ T.encodeUtf8 s of
       Nothing -> fail  "Incorrect Base58 encoding for PrivKey"
@@ -252,24 +281,24 @@ instance Crypto alg => JSON.FromJSON (PublicKey alg) where
 ----------------------------------------
 
 
-instance Show (Address alg) where
-  showsPrec n (Address bs)
+instance Show (Fingerprint alg) where
+  showsPrec n (Fingerprint bs)
     = showParen (n > 10)
-    $ showString "Address " . shows (encodeBSBase58 bs)
+    $ showString "Fingerprint " . shows (encodeBSBase58 bs)
 
-instance Read (Address alg) where
-  readPrec = do void $ lift $ string "Address" >> some (char ' ')
-                Address <$> readPrecBSBase58
+instance Read (Fingerprint alg) where
+  readPrec = do void $ lift $ string "Fingerprint" >> some (char ' ')
+                Fingerprint <$> readPrecBSBase58
 
-instance JSON.ToJSON (Address alg) where
-  toJSON (Address s) = JSON.String $ T.decodeUtf8 $ encodeBSBase58 s
+instance JSON.ToJSON (Fingerprint alg) where
+  toJSON (Fingerprint s) = JSON.String $ T.decodeUtf8 $ encodeBSBase58 s
 
-instance JSON.FromJSON (Address alg) where
+instance JSON.FromJSON (Fingerprint alg) where
   parseJSON (JSON.String s) =
     case decodeBSBase58 $ T.encodeUtf8 s of
-      Nothing -> fail  "Incorrect Base58 encoding while decoding Address"
-      Just bs -> return $ Address bs
-  parseJSON _ = fail "Expected string for Address"
+      Nothing -> fail  "Incorrect Base58 encoding while decoding Fingerprint"
+      Just bs -> return $ Fingerprint bs
+  parseJSON _ = fail "Expected string for Fingerprint"
 
 
 ----------------------------------------
@@ -289,7 +318,7 @@ instance JSON.ToJSON (Signature alg) where
 instance JSON.FromJSON (Signature alg) where
   parseJSON (JSON.String s) =
     case decodeBSBase58 $ T.encodeUtf8 s of
-      Nothing -> fail  "Incorrect Base58 encoding while decoding Address"
+      Nothing -> fail  "Incorrect Base58 encoding while decoding Fingerprint"
       Just bs -> return $ Signature bs
   parseJSON _ = fail "Expected string for Signature"
 
@@ -331,7 +360,7 @@ data SignedState = Verified
 --   (address) and value itself. Signature is computed for CBOR
 --   encoding of value.
 data Signed (sign :: SignedState) alg a
-  = Signed !(Address alg) !(Signature alg) !a
+  = Signed !(Fingerprint alg) !(Signature alg) !a
   deriving (Generic, Eq, Show)
 
 instance (NFData a) => NFData (Signed sign alg a) where
@@ -341,23 +370,23 @@ instance (NFData a) => NFData (Signed sign alg a) where
 signedValue :: Signed sign alg a -> a
 signedValue (Signed _ _ a) = a
 
--- | Obtain address used for signing
-signedAddr :: Signed sign alg a -> Address alg
+-- | Obtain fingerprint used for signing
+signedAddr :: Signed sign alg a -> Fingerprint alg
 signedAddr (Signed a _ _) = a
 
 -- | Make unverified signature
-makeSigned :: Address alg -> Signature alg -> a -> Signed 'Unverified alg a
+makeSigned :: Fingerprint alg -> Signature alg -> a -> Signed 'Unverified alg a
 makeSigned = Signed
 
 -- | Sign value. Not that we can generate both verified and unverified
 --   values this way.
 signValue
-  :: (Serialise a, Crypto alg)
+  :: (Serialise a, CryptoSign alg)
   => PrivKey alg                -- ^ Key for signing
   -> a                          -- ^ Value to sign
   -> Signed sign alg a
 signValue privK a
-  = Signed (address $ publicKey privK)
+  = Signed (fingerprint $ publicKey privK)
            (signBlob privK $ toStrict $ serialise a)
            a
 
@@ -365,9 +394,9 @@ signValue privK a
 --   reason. Note that since @Signed@ contain only fingerprint we need
 --   to supply function for looking up public keys.
 verifySignature
-  :: (Serialise a, Crypto alg)
-  => (Address alg -> Maybe (PublicKey alg))
-     -- ^ Lookup function for public keys. If address is unknown (this
+  :: (Serialise a, CryptoSign alg)
+  => (Fingerprint alg -> Maybe (PublicKey alg))
+     -- ^ Lookup function for public keys. If fingerprint is unknown (this
      --   function returns Nothing) verification fails.
   -> Signed 'Unverified alg a
      -- ^ Value for verifying signature
@@ -384,7 +413,7 @@ unverifySignature (Signed addr sig a) = Signed addr sig a
 -- | Verify signature of value. Signature is verified for CBOR
 --   encoding of object
 verifyCborSignature
-  :: (Serialise a, Crypto alg)
+  :: (Serialise a, CryptoSign alg)
   => PublicKey alg
   -> a
   -> Signature alg
