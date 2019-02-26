@@ -37,8 +37,8 @@ instance Arbitrary Round where
     arbitrary = Round <$> arbitrary
 
 
-instance Arbitrary (Address alg) where
-  arbitrary = Address <$> Arb.fastRandBs 256
+instance Arbitrary (Fingerprint alg) where
+  arbitrary = Fingerprint <$> Arb.fastRandBs 256
 
 
 instance Arbitrary (Signature alg) where

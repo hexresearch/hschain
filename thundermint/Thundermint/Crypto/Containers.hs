@@ -45,9 +45,9 @@ import Thundermint.Types.Validators
 
 -- | Collection of signed values. It's intended to hold votes so only
 --   one value per signature is allowed. Lookup is supported both by
---   values and by signer's address.
+--   values and by signer's fingerprint.
 data SignedSet ty alg a k = SignedSet
-  { vsetAddrMap    :: !(Map (Address alg) (Signed ty alg a))
+  { vsetAddrMap    :: !(Map (Fingerprint alg) (Signed ty alg a))
   , vsetValMap     :: !(Map k (VoteGroup alg))
   , vsetAccPower   :: !Integer
   , vsetValidators :: !(ValidatorSet alg)
@@ -58,8 +58,8 @@ data SignedSet ty alg a k = SignedSet
 data VoteGroup alg = VoteGroup
   { accOK     :: !Integer             -- Accumulated weight of good votes
   , accBad    :: !Integer             -- Accumulated weight of invalid votes
-  , votersOK  :: !(Set (Address alg)) -- Set of voters with good votes
-  , votersBad :: !(Set (Address alg)) -- Set of voters with invalid votes
+  , votersOK  :: !(Set (Fingerprint alg)) -- Set of voters with good votes
+  , votersBad :: !(Set (Fingerprint alg)) -- Set of voters with invalid votes
   }
 
 instance (Show a) => Show (SignedSet ty alg a k) where
@@ -181,7 +181,7 @@ emptySignedSetMap = SignedSetMap Map.empty
 -- | Convert collection of signed values to plain map
 toPlainMap
   :: SignedSetMap r ty alg a k
-  -> Map r (Map (Address alg) (Signed ty alg a))
+  -> Map r (Map (Fingerprint alg) (Signed ty alg a))
 toPlainMap = fmap vsetAddrMap . vmapSubmaps
 
 addSignedValue

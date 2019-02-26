@@ -27,23 +27,27 @@ import Thundermint.Crypto
 -- sha256 :: ByteString -> ByteString
 -- sha256 = convert . id @(Digest SHA256) . Crypto.hash
 
-data Ed25519_SHA512
+data Ed25519
+data SHA512
 
-data instance PrivKey Ed25519_SHA512 = PrivKey
+type Ed25519_SHA512 = Ed25519 :& SHA512
+
+data instance PrivKey (Ed25519 :& hash) = PrivKey
   { pkBS  :: !ByteString
   , privK :: !Uint8Array
   , pubK  :: !Uint8Array
   }
 
-newtype instance PublicKey Ed25519_SHA512 = PublicKey { unPublicKey :: Uint8Array }
+newtype instance PublicKey (Ed25519 :& hash) = PublicKey { unPublicKey :: Uint8Array }
+
+instance CryptoSignPrim (Ed25519 :& hash) where
+  type FingerprintSize (Ed25519 :& hash) = 32
+  type PublicKeySize   (Ed25519 :& hash) = 32
+  type PrivKeySize     (Ed25519 :& hash) = 32
+  type SignatureSize   (Ed25519 :& hash) = 64
 
 
-instance Crypto Ed25519_SHA512 where
-  type HashSize      Ed25519_SHA512 = 64
-  type AddressSize   Ed25519_SHA512 = 32
-  type PublicKeySize Ed25519_SHA512 = 32
-  type PrivKeySize   Ed25519_SHA512 = 32
-  type SignatureSize Ed25519_SHA512 = 64
+instance CryptoSign (Ed25519 :& hash) where
   --
   signBlob k bs
     = Signature
@@ -53,10 +57,9 @@ instance Crypto Ed25519_SHA512 where
     = js_sign_detached_verify (bsToArray blob) (bsToArray s) pubKey
   --
   publicKey = PublicKey . pubK
-  address   = Address
-            . BL.toStrict . SHA.bytestringDigest . SHA.sha256 . BL.fromStrict
-            . arrayToBs . js_sha512 . unPublicKey
-  hashBlob  = Hash . arrayToBs . js_sha512 . bsToArray
+  fingerprint   = Address
+                . BL.toStrict . SHA.bytestringDigest . SHA.sha256 . BL.fromStrict
+                . arrayToBs . js_sha512 . unPublicKey
   --
   privKeyFromBS bs = do
     keypair <- nonNullJs $ js_nacl_sign_fromSeed $ bsToArray bs
@@ -71,7 +74,13 @@ instance Crypto Ed25519_SHA512 where
   privKeyToBS               = pkBS
   pubKeyToBS  (PublicKey k) = arrayToBs k
 
-generatePrivKey :: IO (PrivKey Ed25519_SHA512)
+instance CryptoHash (sign :& SHA512) where
+
+  hashBlob  = Hash . arrayToBs . js_sha512 . bsToArray
+
+  type HashSize     (sign :& SHA512) = 64
+
+generatePrivKey :: IO (PrivKey (Ed25519 :& hash))
 generatePrivKey = do
   arr <- js_randombytes 32
   case privKeyFromBS $ arrayToBs arr of
@@ -79,23 +88,23 @@ generatePrivKey = do
     Nothing -> error "Ed25519: internal error. Cannot generate key"
 
 
-instance Eq (PrivKey Ed25519_SHA512) where
+instance Eq (PrivKey (Ed25519 :& hash)) where
   PrivKey b1 _ _ == PrivKey b2 _ _ = b1 == b2
 
-instance Eq (PublicKey Ed25519_SHA512) where
+instance Eq (PublicKey (Ed25519 :& hash)) where
   PublicKey a == PublicKey b = arrayToBs a == arrayToBs b
 
-instance Ord (PrivKey Ed25519_SHA512) where
+instance Ord (PrivKey (Ed25519 :& hash)) where
   compare = comparing privKeyToBS
 
-instance Ord (PublicKey Ed25519_SHA512) where
+instance Ord (PublicKey (Ed25519 :& hash)) where
   compare = comparing pubKeyToBS
 
 
-instance NFData (PrivKey Ed25519_SHA512) where
+instance NFData (PrivKey (Ed25519 :& hash)) where
   rnf k = k `seq` ()
 
-instance NFData (PublicKey Ed25519_SHA512) where
+instance NFData (PublicKey (Ed25519 :& hash)) where
   rnf k = k `seq` ()
 
 

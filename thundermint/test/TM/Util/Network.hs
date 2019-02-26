@@ -74,7 +74,7 @@ withRetry' useUDP fun host = do
       hs = [const $ Handler (\(_::E.IOException) -> return shouldRetry)]
 
 
-testValidators :: Map.Map (Address Ed25519_SHA512) (PrivValidator Ed25519_SHA512)
+testValidators :: Map.Map (Fingerprint Ed25519_SHA512) (PrivValidator Ed25519_SHA512)
 testValidators = makePrivateValidators
   [ "2K7bFuJXxKf5LqogvVRQjms2W26ZrjpvUjo5LdvPFa5Y"
   , "4NSWtMsEPgfTK25tCPWqNzVVze1dgMwcUFwS5WkSpjJL"

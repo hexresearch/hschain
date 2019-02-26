@@ -298,7 +298,7 @@ makeHeightParameters ConsensusCfg{..} ready AppState{..} AppChans{..} = do
             n         = validatorSetSize valSet
             i         = (h' + r) `mod` fromIntegral n
             Just v    = validatorByIndex valSet (ValidatorIdx (fromIntegral i))
-        in  address (validatorPubKey v)
+        in  fingerprint (validatorPubKey v)
   --
   return HeightParameters
     { currentH        = succ h
@@ -309,7 +309,7 @@ makeHeightParameters ConsensusCfg{..} ready AppState{..} AppChans{..} = do
       --        work (for some definition of work)
     , areWeProposers  = \r -> case appValidator of
         Nothing                 -> False
-        Just (PrivValidator pk) -> proposerChoice r == address (publicKey pk)
+        Just (PrivValidator pk) -> proposerChoice r == fingerprint (publicKey pk)
     , proposerForRound = proposerChoice
     , readyCreateBlock = lift $ ready h bchTime
     --

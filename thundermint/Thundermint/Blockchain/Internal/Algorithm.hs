@@ -43,7 +43,7 @@ import           Katip (Severity(..),sl)
 import qualified Katip
 import GHC.Generics
 
-import Thundermint.Crypto            ( Crypto,Signed,Address,SignedState(..)
+import Thundermint.Crypto            ( Crypto, Signed, Fingerprint, SignedState(..)
                                      , signedValue, signedAddr
                                      )
 import Thundermint.Blockchain.Internal.Types
@@ -89,7 +89,7 @@ data HeightParameters (m :: * -> *) alg a = HeightParameters
     -- ^ Returns true if validator is ready to create new block. If
     --   false validator will stay in @NewHeight@ step until it
     --   becomes true.
-  , proposerForRound     :: !(Round -> Address alg)
+  , proposerForRound     :: !(Round -> Fingerprint alg)
     -- ^ Proposer for given round
   , validateBlock        :: !(BlockID alg a -> m ProposalState)
     -- ^ Request validation of particular block
