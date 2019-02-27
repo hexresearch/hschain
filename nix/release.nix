@@ -67,6 +67,7 @@ let
             katip-elasticsearch = lib.dontCheck derivationsOverrides.katip-elasticsearch;
             serialise = lib.dontCheck haskellPackagesOld.serialise;
             tasty = lib.dontCheck haskellPackagesOld.tasty;
+            bloodhound = lib.dontCheck derivationsOverrides.bloodhound;
           };
   config  = {
     allowUnfree = true;
