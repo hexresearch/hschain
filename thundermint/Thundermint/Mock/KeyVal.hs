@@ -110,7 +110,7 @@ interpretSpec maxH prefix NetSpec{..} = do
                        { appValidationFun  = \b -> do
                            let h = headerHeight $ blockHeader b
                            st <- stateAtH bchState h
-                           return $ isJust $ processBlock transitions False b st
+                           return $ isJust $ processBlock transitions CheckSignature b st
                        --
                        , appBlockGenerator = \h _ _ _ -> case nspecByzantine of
                            Just "InvalidBlock" -> do

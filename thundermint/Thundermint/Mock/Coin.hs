@@ -153,7 +153,7 @@ transitions :: BlockFold CoinState alg [Tx]
 transitions = BlockFold
   { processTx           = process
   , processBlock        = \_ b s0 -> let h = headerHeight $ blockHeader b
-                                   in foldM (flip (process False h)) s0 (blockData b)
+                                   in foldM (flip (process True h)) s0 (blockData b)
   , transactionsToBlock = \_ ->
       let selectTx _ []     = []
           selectTx c (t:tx) = case processTransaction t c of

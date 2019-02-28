@@ -32,6 +32,7 @@ module Thundermint.Types.Blockchain (
     -- ** Votes
   , VoteType(..)
   , Vote(..)
+  , CheckSignature(..)
   ) where
 
 import           Codec.Serialise
@@ -356,3 +357,12 @@ decodeVote expectedTag = do
                 fail ("Invalid Vote tag, expected: " ++ show expectedTag
                       ++ ", actual: " ++ show tag)
         _ -> fail $ "Invalid Vote encoding"
+
+----------------------------------------------------------------
+-- Helping application be faster.
+----------------------------------------------------------------
+
+-- |Better signalling of the need to check signatures.
+data CheckSignature = CheckSignature | AlreadyChecked
+  deriving (Eq, Ord, Show)
+

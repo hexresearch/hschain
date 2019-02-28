@@ -7,6 +7,7 @@
 module Thundermint.Blockchain.Interpretation (
     -- * Pure state
     BlockFold(..)
+  , CheckSignature(..)
   , BChState(..)
   , newBChState
   , hoistBChState
@@ -16,14 +17,16 @@ module Thundermint.Blockchain.Interpretation (
 
 import Codec.Serialise (Serialise)
 import Control.Concurrent.MVar
+import Control.Monad (when)
 import Control.Monad.Catch
 import Control.Monad.IO.Class
+
+import qualified Data.Time.Clock as CT
 
 import Thundermint.Control
 import Thundermint.Store
 import Thundermint.Store.SQL
 import Thundermint.Types.Blockchain
-
 
 
 -- | Data structure which encapsulate interpretation of
@@ -39,7 +42,7 @@ import Thundermint.Types.Blockchain
 --   e.g. if transaction or block is not valid it will return
 --   @Nothing@.
 data BlockFold s alg a = BlockFold
-  { processTx    :: !(Bool -> Height -> TX a -> s -> Maybe s)
+  { processTx    :: !(CheckSignature -> Height -> TX a -> s -> Maybe s)
     -- ^ Try to process single transaction. Nothing indicates that
     --   transaction is invalid. This function will called very
     --   frequently so it need not to perform every check but should
@@ -48,7 +51,7 @@ data BlockFold s alg a = BlockFold
     --   The first parameter indicates (True) the need to validate transaction signature.
     --
     --   FIXME: figure out exact semantics for Height parameter
-  , processBlock :: !(Bool -> Block alg a -> s -> Maybe s)
+  , processBlock :: !(CheckSignature -> Block alg a -> s -> Maybe s)
     -- ^ Try to process whole block. Here application should perform
     --   complete validation of block
     --
@@ -89,10 +92,14 @@ newBChState BlockFold{..} = do
             GT -> error "newBChState, ensureHeight: invalid parameter"
             EQ -> return (st, (s,False))
             LT -> do Just b <- queryRO $ retrieveBlock h
-                     case processBlock (succ h == hBlk) b s of
+                     let checkSignature = if succ h == hBlk then CheckSignature else AlreadyChecked
+                     checkSignature `seq` case processBlock checkSignature b s of
                        Just st' -> do
                          let h' = succ h
-                         _ <- queryRW $ storeStateSnapshot h' st'
+                         let Height hToCheck = h
+                         when (hToCheck `mod` 50 == 0) $ do
+                            _ <- queryRW $ storeStateSnapshot h' st'
+                            return ()
                          return ((h', st'), (st',True))
                        Nothing  -> error "OOPS! Blockchain is not valid!!!"
         case flt of
