@@ -2,11 +2,24 @@
 
 source ./setup_git.sh
 
-isGHCJS="false"
-if [ "$1" == "GHCJS" ]; then
-  echo "GHCJS build"
-  isGHCJS="true"
-fi
+isGhcjs="false"
+isGhc86="false"
+
+while [ "$1" != "" ]; do
+  case $1 in
+    --enableGhcjs)  echo "Ghcjs build"
+                    isGhcjs="true"
+                    ;;
+    --enableGhc86)  echo "Ghc86 build"
+                    isGhc86="true"
+                    ;;
+    *)              echo "You can specify --enableGhcjs or --enableGhc86"
+                    exit 1
+  esac
+
+  shift
+done
 
 NIX_PATH=$GIT_NIX_PATH$NIX_PATH nix-build --arg isProd true \
-                                          --arg isGHCJS $isGHCJS
+                                          --arg isGHCJS $isGhcjs \
+                                          --arg isGHCJS $isGhc86

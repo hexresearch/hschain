@@ -1,5 +1,6 @@
 { isProd      ? false
 , isProfile   ? false
+, isGhc86     ? false
 , ...
 }:
 with import ./lib/utils.nix;
@@ -54,7 +55,7 @@ let
 
   haskOverrides = haskellPackagesNew: haskellPackagesOld: let
           # Overrides from cabal2nix files
-          derivationsOverrides = lib.packagesFromDirectory { directory = ./derivations; } haskellPackagesNew haskellPackagesOld;
+          derivationsOverrides = lib.packagesFromDirectory { directory = derivationsPath; } haskellPackagesNew haskellPackagesOld;
 
           internal = {
             thundermint-types = callInternal "thundermint" ../thundermint-types { };
@@ -67,6 +68,7 @@ let
             katip-elasticsearch = lib.dontCheck derivationsOverrides.katip-elasticsearch;
             serialise = lib.dontCheck haskellPackagesOld.serialise;
             tasty = lib.dontCheck haskellPackagesOld.tasty;
+            bloodhound = if isGhc86 then lib.dontCheck derivationsOverrides.bloodhound else haskellPackagesOld.bloodhound;
           };
   config  = {
     allowUnfree = true;
@@ -82,7 +84,11 @@ let
     };
   };
 
-  pkgs = import ./pkgs.nix { inherit config; overlays=[]; };
+  derivationsPath = if isGhc86 then ./derivations/ghc86 else ./derivations;
+  #pkgsPath = if isGhc86 then 
+  pkgs = if isGhc86
+          then import ./pkgs/ghc863.nix { inherit config; overlays=[]; }
+          else import ./pkgs/ghc844.nix { inherit config; overlays=[]; };
   /* pkgs = if isProd then rawPkgs.pkgsMusl else rawPkgs; */
 
   callPackage = pkgs.haskellPackages.callPackage;
