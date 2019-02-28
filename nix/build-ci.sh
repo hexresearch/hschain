@@ -7,11 +7,23 @@ set -xe
 # Minimal nsswitch.conf
 [[ ! -e /etc/nsswitch.conf ]] && echo 'hosts: files dns' > /etc/nsswitch.conf
 
-isGHCJS="false"
-if [ "$1" == "GHCJS" ]; then
-  echo "GHCJS build"
-  isGHCJS="true"
-fi
+isGhcjs="false"
+isGhc86="false"
+
+while [ "$1" != "" ]; do
+  case $1 in
+    --enableGhcjs)  echo "Ghcjs build"
+                    isGhcjs="true"
+                    ;;
+    --enableGhc86)  echo "Ghc86 build"
+                    isGhc86="true"
+                    ;;
+    *)              echo "You can specify --enableGhcjs or --enableGhc86"
+                    exit 1
+  esac
+
+  shift
+done
 
 # Debug version variables
 echo $DRONE_COMMIT
@@ -20,7 +32,8 @@ echo $DRONE_BUILD_NUMBER
 
 # Build backend packages
 NIX_PATH=$GIT_NIX_PATH$NIX_PATH backend_output=$(nix-build --arg isProd true \
-  --arg isGHCJS $isGHCJS )
+  --arg isGhc86 $isGhc86 \
+  --arg isGHCJS $isGhcjs )
 # Get runtime deps
 backend_deps=$(nix-store --query --requisites $backend_output)
 

@@ -47,7 +47,7 @@ Library
                      , katip-elasticsearch
                      , http-client-tls
                      , bloodhound
-                     , network            >=2.6.0.0 && <2.8
+                     , network            >=2.6.0.0 && <2.9
                      , tls                >=1.4.1
                      , x509
                      , x509-store
