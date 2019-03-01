@@ -6,13 +6,16 @@
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE RecordWildCards            #-}
 {-# LANGUAGE TupleSections              #-}
+{-# LANGUAGE TypeFamilies               #-}
 {-# LANGUAGE ViewPatterns               #-}
 -- |
 -- Simple coin for experimenting with blockchain
 module Thundermint.Mock.Coin (
     Alg
   , TxSend(..)
-  , Tx(..)
+  , TxV1(..)
+  , TxV2(..)
+  , Tx
     -- * Pure state
   , CoinState(..)
   , transitions
@@ -44,17 +47,16 @@ import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Control.Concurrent   (threadDelay)
 import Control.DeepSeq
-import Codec.Serialise      (Serialise,serialise)
 import qualified Data.Aeson as JSON
-import Data.ByteString.Lazy (toStrict)
 import Data.Foldable
 import Data.SafeCopy
+import Data.Typeable        (Proxy(..))
 import Data.Functor.Compose
 import Data.Int
 import Data.Map             (Map)
 import qualified Data.Map.Strict  as Map
 import Lens.Micro
-import System.Random   (randomRIO)
+import System.Random   (randomRIO, randomIO)
 import GHC.Generics    (Generic)
 
 import Thundermint.P2P
@@ -91,7 +93,15 @@ instance NFData    TxSend
 instance JSON.ToJSON   TxSend
 instance JSON.FromJSON TxSend
 
-data Tx
+data TxV1
+  = SendV1 !(PublicKey Alg) !(Signature Alg) !(Pet TxSend)
+  deriving (Show, Eq, Ord, Generic)
+instance SafeCopy      TxV1
+instance NFData        TxV1
+instance JSON.ToJSON   TxV1
+instance JSON.FromJSON TxV1
+
+data TxV2
   = Deposit !(PublicKey Alg) !Integer
     -- ^ Deposit tokens to given key. Could only appear in genesis
     --   block
@@ -104,10 +114,19 @@ data Tx
     --   3. Inputs and outputs must be nonempty
     --   2. Sum of inputs must be equal to sum of outputs
   deriving (Show, Eq, Ord, Generic)
-instance SafeCopy  Tx
-instance NFData    Tx
-instance JSON.ToJSON   Tx
-instance JSON.FromJSON Tx
+
+instance Migrate TxV2 where
+  type MigrateFrom TxV2 = TxV1
+  migrate (SendV1 k s t) = Send k s t
+instance SafeCopy      TxV2 where
+  version = Version 1
+  kind    = Extends (Proxy :: Proxy TxV1)
+instance NFData        TxV2
+instance JSON.ToJSON   TxV2
+instance JSON.FromJSON TxV2
+
+type Tx = TxV2
+
 
 -- | State of coins in program-digestible format
 --
@@ -139,8 +158,8 @@ processTransaction tx CoinState{..} = case pet tx of
     guard $ not $ null txOutputs
     -- Outputs are all positive
     forM_ txOutputs $ \(_,n) -> guard (n > 0)
-    -- Inputs are owned Spend and generated amount match and transaction
-    -- issuer have rights to funds
+    -- Inputs are owned Spend and generated amount match and
+    -- transaction issuer have rights to funds
     inputs <- forM txInputs $ \i -> do
       (pk,n) <- Map.lookup i unspentOutputs
       guard $ pk == pubK
@@ -325,6 +344,7 @@ generateTransaction GeneratorSpec{..} = do
   target <- do i <- randomRIO (0, nPK - 1)
                return (genInitialKeys !! i)
   amount <- randomRIO (0,20)
+  useV1  <- randomIO
   -- Create transaction
   return $ do
     utxo <- materializePMap unspentOutputsLens
@@ -338,7 +358,11 @@ generateTransaction GeneratorSpec{..} = do
                                  , (pubK  , sum (map snd inputs) - amount)
                                  ]
                    }
-    return $ petrify $ Send pubK (signPetrified privK tx) tx
+    return $! case useV1 of
+      True  -> let txV1     = petrify $ SendV1 pubK (signPetrified privK tx) tx
+                   Right v2 = safeDecode $ safeEncode txV1
+               in v2
+      False -> petrify $ Send pubK (signPetrified privK tx) tx
   where
     nPK  = length genInitialKeys
 
@@ -434,6 +458,7 @@ executeNodeSpec maxH delay NetSpec{..} = do
           , bchInitialPeers = connections netAddresses addr
           }
     let loggers = [ makeScribe s | s <- nspecLogFile ]
+        run :: (MonadMask m, MonadIO m) => LoggerT m a -> m a
         run m   = withLogEnv "TM" "DEV" loggers $ \logenv -> runLoggerT logenv m
     run $ (fmap . fmap) run $ interpretSpec maxH genSpec validatorSet bnet netNetCfg nspec
   runConcurrently (snd <$> actions) `catch` (\Abort -> return ())
