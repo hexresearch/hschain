@@ -54,8 +54,13 @@ connectionRO :: Connection rw alg a -> Connection 'RO alg a
 connectionRO = coerce
 
 openConnection :: MonadIO m => FilePath -> m (Connection rw alg a)
-openConnection db
-  = liftIO $ Connection <$> newMutex <*> SQL.open db
+openConnection db = liftIO $ do
+  m <- newMutex
+  c <- SQL.open db
+  -- SQLite have support for retrying transactions in case database is
+  -- busy. Here we switch ot on
+  SQL.execute_ c "PRAGMA busy_timeout = 10"
+  return $! Connection m c
 
 closeConnection :: MonadIO m => Connection 'RW alg a -> m ()
 closeConnection (Connection _ c) = liftIO $ SQL.close c
@@ -101,17 +106,17 @@ rollback = fail "ROLLBACK"
 -- | Run read-only query. Note that read-only couldn't be rolled back
 --  so they always succeed
 runQueryRO :: MonadIO m => Connection rw alg a -> Query 'RO alg a x -> m x
-runQueryRO c q = do r <- liftIO . runQueryWorker c . unQuery $ q
+runQueryRO c q = do r <- liftIO . runQueryWorker False c . unQuery $ q
                     case r of
                       Nothing -> error "Query 'RO couldn't be rolled back"
                       Just a  -> return a
 
 -- | Run read-write query
 runQueryRW  :: MonadIO m => Connection 'RW alg a -> Query 'RW alg a x -> m (Maybe x)
-runQueryRW c = liftIO . runQueryWorker c . unQuery
+runQueryRW c = liftIO . runQueryWorker True c . unQuery
 
-runQueryWorker :: Connection rw alg a -> MaybeT (ReaderT SQL.Connection IO) x -> IO (Maybe x)
-runQueryWorker (Connection mutex conn) sql = withMutex mutex $ uninterruptibleMask $ \restore -> do
+runQueryWorker :: Bool -> Connection rw alg a -> MaybeT (ReaderT SQL.Connection IO) x -> IO (Maybe x)
+runQueryWorker isWrite (Connection mutex conn) sql = withMutex mutex $ uninterruptibleMask $ \restore -> do
   -- This function is rather tricky to get right. We need to maintain
   -- following invariant: No matter what happens we MUST call either
   -- ROLLBACK or COMMIT after BEGIN TRANSACTION. Otherwise database
@@ -133,9 +138,8 @@ runQueryWorker (Connection mutex conn) sql = withMutex mutex $ uninterruptibleMa
   -- See following links for details
   --  + https://www.sqlite.org/lang_transaction.html
   --  + https://www.sqlite.org/lockingv3.html
-  SQL.execute_ conn "BEGIN TRANSACTION"
-  -- FIXME: exception safety. We need to rollback in presence of async
-  --        exceptions
+  SQL.execute_ conn $
+    if isWrite then "BEGIN TRANSACTION IMMEDIATE" else "BEGIN TRANSACTION"
   r <- restore (runReaderT (runMaybeT sql) conn) `onException` rollbackTx
   case r of Nothing -> rollbackTx
             _       -> commitTx
@@ -143,6 +147,7 @@ runQueryWorker (Connection mutex conn) sql = withMutex mutex $ uninterruptibleMa
   where
     rollbackTx = SQL.execute_ conn "ROLLBACK"
     commitTx   = SQL.execute_ conn "COMMIT"
+
 
 
 ----------------------------------------------------------------
