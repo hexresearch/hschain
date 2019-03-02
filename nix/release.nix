@@ -85,10 +85,8 @@ let
   };
 
   derivationsPath = if isGhc86 then ./derivations/ghc86 else ./derivations;
-  #pkgsPath = if isGhc86 then 
-  pkgs = if isGhc86
-          then import ./pkgs/ghc863.nix { inherit config; overlays=[]; }
-          else import ./pkgs/ghc844.nix { inherit config; overlays=[]; };
+  pkgsPath = if isGhc86 then  ./pkgs/ghc863.nix else ./pkgs/ghc844.nix;
+  pkgs = import pkgsPath { inherit config; overlays=[]; };
   /* pkgs = if isProd then rawPkgs.pkgsMusl else rawPkgs; */
 
   callPackage = pkgs.haskellPackages.callPackage;

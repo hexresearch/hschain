@@ -21,5 +21,5 @@ while [ "$1" != "" ]; do
 done
 
 NIX_PATH=$GIT_NIX_PATH$NIX_PATH nix-build --arg isProd true \
-                                          --arg isGHCJS $isGhcjs \
-                                          --arg isGHCJS $isGhc86
+                                          --arg isGhcjs $isGhcjs \
+                                          --arg isGhc86 $isGhc86
