@@ -1,5 +1,5 @@
 Name:           thundermint-types
-Version:        0.1
+Version:        0.1.1
 Synopsis:       Core data types of thundermint
 Description:
   Data type definitions for thundermint package. Mainly useful for in
