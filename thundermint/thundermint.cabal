@@ -1,5 +1,5 @@
 Name:           thundermint
-Version:        0.1.1
+Version:        0.1.2
 Synopsis:       Haskell reimplementation of tendermint protocol
 Description:
   Haskell reimplementation of tendermint protocol
