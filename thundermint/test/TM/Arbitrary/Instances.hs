@@ -104,5 +104,5 @@ instance (Arbitrary (PublicKey alg), Crypto alg) => Arbitrary (ValidatorChange a
 instance Arbitrary (PublicKey Ed25519_SHA512) where
   arbitrary = do
     bs <- vectorOf 32 arbitrary
-    return $ fromJust $ pubKeyFromBS $ BS.pack bs
+    return $ fromJust $ decodeFromBS $ BS.pack bs
   shrink _ = []

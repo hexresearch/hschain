@@ -60,19 +60,6 @@ instance CryptoSign (Ed25519 :& hash) where
   fingerprint   = Address
                 . BL.toStrict . SHA.bytestringDigest . SHA.sha256 . BL.fromStrict
                 . arrayToBs . js_sha512 . unPublicKey
-  --
-  privKeyFromBS bs = do
-    keypair <- nonNullJs $ js_nacl_sign_fromSeed $ bsToArray bs
-    return PrivKey { pkBS  = bs
-                   , privK = js_getSecretKey keypair
-                   , pubK  = js_getPublicKey keypair
-                   }
-  pubKeyFromBS bs = do
-    guard $ BS.length bs == 32
-    return $ PublicKey $ bsToArray bs
-  --
-  privKeyToBS               = pkBS
-  pubKeyToBS  (PublicKey k) = arrayToBs k
 
 instance CryptoHash (sign :& SHA512) where
 
@@ -95,10 +82,10 @@ instance Eq (PublicKey (Ed25519 :& hash)) where
   PublicKey a == PublicKey b = arrayToBs a == arrayToBs b
 
 instance Ord (PrivKey (Ed25519 :& hash)) where
-  compare = comparing privKeyToBS
+  compare = comparing encodeToBS
 
 instance Ord (PublicKey (Ed25519 :& hash)) where
-  compare = comparing pubKeyToBS
+  compare = comparing encodeToBS
 
 
 instance NFData (PrivKey (Ed25519 :& hash)) where
@@ -107,6 +94,22 @@ instance NFData (PrivKey (Ed25519 :& hash)) where
 instance NFData (PublicKey (Ed25519 :& hash)) where
   rnf k = k `seq` ()
 
+instance (Ord (PrivKey (Ed25519 :& hash))) => ByteRepr (PrivKey (Ed25519 :& hash)) where
+  decodeFromBS        bs = do
+    keypair <- nonNullJs $ js_nacl_sign_fromSeed $ bsToArray bs
+    return PrivKey { pkBS  = bs
+                   , privK = js_getSecretKey keypair
+                   , pubK  = js_getPublicKey keypair
+                   }
+
+  encodeToBS = pkBS
+
+instance (Ord (PublicKey (Ed25519 :& hash))) => ByteRepr (PublicKey (Ed25519 :& hash)) where
+  decodeFromBS        bs = do
+    guard $ BS.length bs == 32
+    return $ PublicKey $ bsToArray bs
+
+  encodeToBS (PublicKey k) = arrayToBs k
 
 ----------------------------------------------------------------
 -- NaCl ed25519
