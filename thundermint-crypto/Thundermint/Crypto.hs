@@ -126,15 +126,6 @@ class ( ByteRepr (Fingerprint alg)
   -- | Compute fingerprint or public key fingerprint
   fingerprint         :: PublicKey alg -> Fingerprint alg
 
-  -- | Create private key from bytestring
-  privKeyFromBS       :: BS.ByteString -> Maybe (PrivKey alg)
-  -- | Create public key from bytestring
-  pubKeyFromBS        :: BS.ByteString -> Maybe (PublicKey alg)
-  -- | Convert private key to bytestring
-  privKeyToBS         :: PrivKey alg -> BS.ByteString
-  -- | Convert public key to bytestring
-  pubKeyToBS          :: PublicKey alg -> BS.ByteString
-
 class ( KnownNat (SignatureSize alg)
       , KnownNat (FingerprintSize alg)
       , KnownNat (PublicKeySize alg)
@@ -196,14 +187,6 @@ instance CryptoSign alg => ByteRepr (Signature alg) where
   decodeFromBS            = Just . Signature
   encodeToBS (Signature bs) = bs
 
-instance (Ord (PublicKey alg), CryptoSign alg) => ByteRepr (PublicKey alg) where
-  decodeFromBS = pubKeyFromBS
-  encodeToBS   = pubKeyToBS
-
-instance (Ord (PrivKey alg), CryptoSign alg) => ByteRepr (PrivKey alg) where
-  decodeFromBS = privKeyFromBS
-  encodeToBS   = privKeyToBS
-
 -- | Encode value as base-58 encoded string
 encodeBase58 :: ByteRepr a => a -> Text
 encodeBase58 = T.decodeUtf8 . encodeBSBase58 . encodeToBS
@@ -218,30 +201,30 @@ decodeBase58 = decodeFromBS <=< decodeBSBase58 . T.encodeUtf8
 ----------------------------------------------------------------
 
 instance CryptoSign alg => Show (PrivKey alg) where
-  show = show . BC8.unpack . encodeBSBase58 . privKeyToBS
+  show = show . BC8.unpack . encodeBSBase58 . encodeToBS
 
 instance CryptoSign alg => Read (PrivKey alg) where
   readPrec = do bs <- readPrecBSBase58
-                case privKeyFromBS bs of
+                case decodeFromBS bs of
                   Just k  -> return k
                   Nothing -> empty
 
 
 instance CryptoSign alg => Serialise (PublicKey alg) where
-  encode = CBOR.encode . pubKeyToBS
+  encode = CBOR.encode . encodeToBS
   decode = do bs <- CBOR.decode
-              case pubKeyFromBS bs of
+              case decodeFromBS bs of
                 Nothing -> fail "Cannot decode private key"
                 Just k  -> return k
 
 instance CryptoSign alg => JSON.ToJSON (PrivKey alg) where
-  toJSON = JSON.String . T.decodeUtf8 . encodeBSBase58 . privKeyToBS
+  toJSON = JSON.String . T.decodeUtf8 . encodeBSBase58 . encodeToBS
 
 instance CryptoSign alg => JSON.FromJSON (PrivKey alg) where
   parseJSON (JSON.String s) =
     case decodeBSBase58 $ T.encodeUtf8 s of
       Nothing -> fail  "Incorrect Base58 encoding for PrivKey"
-      Just bs -> case privKeyFromBS bs of
+      Just bs -> case decodeFromBS bs of
         Nothing -> fail "Incorrect bytestring representation of PrivKey"
         Just k  -> return k
   parseJSON _          = fail "Expecting PrivKey as string"
@@ -250,29 +233,29 @@ instance CryptoSign alg => JSON.FromJSON (PrivKey alg) where
 ----------------------------------------
 
 instance CryptoSign alg => Show (PublicKey alg) where
-  show = show . BC8.unpack . encodeBSBase58 . pubKeyToBS
+  show = show . BC8.unpack . encodeBSBase58 . encodeToBS
 
 instance CryptoSign alg => Read (PublicKey alg) where
   readPrec = do bs <- readPrecBSBase58
-                case pubKeyFromBS bs of
+                case decodeFromBS bs of
                   Just k  -> return k
                   Nothing -> empty
 
 instance CryptoSign alg => Serialise (PrivKey alg) where
-  encode = CBOR.encode . privKeyToBS
+  encode = CBOR.encode . encodeToBS
   decode = do bs <- CBOR.decode
-              case privKeyFromBS bs of
+              case decodeFromBS bs of
                 Nothing -> fail "Cannot decode private key"
                 Just k  -> return k
 
 instance CryptoSign alg => JSON.ToJSON (PublicKey alg) where
-  toJSON = JSON.String . T.decodeUtf8 . encodeBSBase58 . pubKeyToBS
+  toJSON = JSON.String . T.decodeUtf8 . encodeBSBase58 . encodeToBS
 
 instance CryptoSign alg => JSON.FromJSON (PublicKey alg) where
   parseJSON (JSON.String s) =
     case decodeBSBase58 $ T.encodeUtf8 s of
       Nothing -> fail  "Incorrect Base58 encoding for PrivKey"
-      Just bs -> case pubKeyFromBS bs of
+      Just bs -> case decodeFromBS bs of
         Nothing -> fail "Incorrect bytestring representation of PrivKey"
         Just k  -> return k
   parseJSON _          = fail "Expecting PrivKey as string"

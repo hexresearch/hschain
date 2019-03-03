@@ -57,15 +57,6 @@ instance CryptoSign (Ed25519 :& hash) where
   publicKey   (PrivKey k)   = PublicKey $ Ed.toPublic k
   fingerprint (PublicKey k) = Fingerprint $ sha256 . sha512 $ convert k
 
-  privKeyFromBS bs = case Ed.secretKey bs of
-    CryptoPassed k -> Just (PrivKey k)
-    CryptoFailed _ -> Nothing
-  pubKeyFromBS  bs = case Ed.publicKey bs of
-    CryptoPassed k -> Just (PublicKey k)
-    CryptoFailed _ -> Nothing
-  privKeyToBS (PrivKey   k) = convert k
-  pubKeyToBS  (PublicKey k) = convert k
-
 instance CryptoHash (sign :& SHA512) where
 
   hashBlob                = Hash . sha512
@@ -83,14 +74,26 @@ generatePrivKey = do
 deriving instance Eq (PrivKey (Ed25519 :& hash))
 
 instance Ord (PrivKey (Ed25519 :& hash)) where
-  compare = comparing privKeyToBS
+  compare = comparing encodeToBS
 
 deriving instance NFData (PrivKey (Ed25519 :& hash))
 
+instance (Ord (PrivKey (Ed25519 :& hash))) => ByteRepr (PrivKey (Ed25519 :& hash)) where
+  decodeFromBS        bs = case Ed.secretKey bs of
+    CryptoPassed k -> Just (PrivKey k)
+    CryptoFailed _ -> Nothing
+  encodeToBS (PrivKey k) = convert k
 
 deriving instance Eq  (PublicKey (Ed25519 :& hash))
 
 instance Ord (PublicKey (Ed25519 :& hash)) where
-  compare = comparing pubKeyToBS
+  compare = comparing encodeToBS
 
 deriving instance NFData (PublicKey (Ed25519 :& hash))
+
+instance (Ord (PublicKey (Ed25519 :& hash))) => ByteRepr (PublicKey (Ed25519 :& hash)) where
+  decodeFromBS        bs = case Ed.publicKey bs of
+    CryptoPassed k -> Just (PublicKey k)
+    CryptoFailed _ -> Nothing
+  encodeToBS (PublicKey k) = convert k
+

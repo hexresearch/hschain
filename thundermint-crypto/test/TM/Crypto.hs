@@ -98,7 +98,7 @@ tests = testGroup "Crypto"
            ed               = Proxy :: Proxy Ed25519_SHA512
        BS.length bs                  @=? hashSize        ed
        BS.length addr                @=? fingerprintSize ed
-       BS.length (pubKeyToBS  pubK ) @=? publicKeySize   ed
-       BS.length (privKeyToBS privK) @=? privKeySize     ed
+       BS.length (encodeToBS  pubK ) @=? publicKeySize   ed
+       BS.length (encodeToBS privK)  @=? privKeySize     ed
        BS.length s                   @=? signatureSize   ed
   ]

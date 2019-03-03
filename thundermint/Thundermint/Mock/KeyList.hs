@@ -33,7 +33,7 @@ makePrivateValidators
 makePrivateValidators keys = Map.fromList
   [ (fingerprint (publicKey pk) , PrivValidator pk)
   | bs58 <- keys
-  , let pk = fromJust $ privKeyFromBS =<< Base58.decodeBase58 Base58.bitcoinAlphabet bs58
+  , let pk = fromJust $ decodeFromBS =<< Base58.decodeBase58 Base58.bitcoinAlphabet bs58
   ]
 
 -- | Create set of all known public validators from set of private
