@@ -362,7 +362,7 @@ decodeVote expectedTag = do
 -- Helping application be faster.
 ----------------------------------------------------------------
 
--- |Better signalling of the need to check signatures.
+-- | Better signalling of the need to check signatures.
 data CheckSignature = CheckSignature | AlreadyChecked
   deriving (Eq, Ord, Show)
 
