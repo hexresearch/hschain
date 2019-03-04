@@ -43,7 +43,7 @@ testPeersMustConnect = do
             , TestNetLinkDescription 2 [1, 3] (collectEvents events2)
             , TestNetLinkDescription 3 [1, 2] (collectEvents events3)
             ]
-        , waitSec 0.5
+        , waitSec 5.5
         ]
     readIORef events1 >>= ([ TeNodeStarted
                            , TeNodeConnectingTo "(TestAddr 2,\"tst\")"
