@@ -52,6 +52,7 @@ import           Data.Int
 import           Data.List                (sortBy)
 import           Data.Monoid              ((<>))
 import           Data.Ord                 (comparing)
+import qualified Data.Text.Encoding       as T
 import           Data.Time.Clock          (UTCTime)
 import           Data.Time.Clock.POSIX    (getPOSIXTime,posixSecondsToUTCTime)
 import           GHC.Generics             (Generic)
@@ -104,8 +105,8 @@ data BlockID alg a = BlockID !(Hashed alg (Header alg a))
   deriving (Show,Eq,Ord,Generic)
 instance NFData        (BlockID alg a)
 instance Serialise     (BlockID alg a)
-instance JSON.ToJSON   (BlockID alg a)
-instance JSON.FromJSON (BlockID alg a)
+instance CryptoHash alg => JSON.ToJSON   (BlockID alg a)
+instance CryptoHash alg => JSON.FromJSON (BlockID alg a)
 
 blockHash
   :: (Crypto alg, Serialise a)
@@ -190,9 +191,9 @@ data Header alg a = Header
 instance NFData    (Header alg a)
 instance Serialise (Header alg a)
 
-instance JSON.ToJSON (Header alg a) where
+instance CryptoHash alg => JSON.ToJSON (Header alg a) where
   toJSON Header{..} =
-    JSON.object [ "headerChainID"        .= Hash headerChainID -- We ask to use Base58
+    JSON.object [ "headerChainID"        .= T.decodeUtf8 (encodeBSBase58 headerChainID) -- We ask to use Base58
                 , "headerHeight"         .= headerHeight
                 , "headerTime"           .= headerTime
                 , "headerLastBlockID"    .= headerLastBlockID
@@ -203,9 +204,9 @@ instance JSON.ToJSON (Header alg a) where
                 , "headerEvidenceHash"   .= headerEvidenceHash
                 ]
 
-instance JSON.FromJSON (Header alg a) where
+instance CryptoHash alg => JSON.FromJSON (Header alg a) where
   parseJSON = JSON.withObject "Header" $ \o -> do
-    Hash headerChainID <- o .: "headerChainID"
+    headerChainID        <- fromBase58 =<< o .: "headerChainID"
     headerHeight         <- o .: "headerHeight"
     headerTime           <- o .: "headerTime"
     headerLastBlockID    <- o .: "headerLastBlockID"
@@ -215,6 +216,9 @@ instance JSON.FromJSON (Header alg a) where
     headerLastCommitHash <- o .: "headerLastCommitHash"
     headerEvidenceHash   <- o .: "headerEvidenceHash"
     return Header{..}
+    where
+      fromBase58 = maybe complain return . decodeBSBase58 . T.encodeUtf8
+      complain   = fail "Incorrect Base58 encoding" 
 
 -- | Evidence of byzantine behaviour by some node.
 data ByzantineEvidence alg a
@@ -231,8 +235,8 @@ data ByzantineEvidence alg a
   deriving (Show, Eq, Generic)
 instance NFData        (ByzantineEvidence alg a)
 instance Serialise     (ByzantineEvidence alg a)
-instance JSON.FromJSON (ByzantineEvidence alg a)
-instance JSON.ToJSON   (ByzantineEvidence alg a)
+instance CryptoHash alg => JSON.FromJSON (ByzantineEvidence alg a)
+instance CryptoHash alg => JSON.ToJSON   (ByzantineEvidence alg a)
 
 
 -- | Data justifying commit
@@ -245,8 +249,8 @@ data Commit alg a = Commit
   deriving (Show, Eq, Generic)
 instance NFData        (Commit alg a)
 instance Serialise     (Commit alg a)
-instance JSON.FromJSON (Commit alg a)
-instance JSON.ToJSON   (Commit alg a)
+instance CryptoHash alg => JSON.FromJSON (Commit alg a)
+instance CryptoHash alg => JSON.ToJSON   (Commit alg a)
 
 -- | Calculate time of commit as median of time of votes where votes
 --   are weighted according to voting power of corresponding
@@ -359,8 +363,8 @@ data Proposal alg a = Proposal
   deriving (Show, Eq, Generic)
 instance NFData        (Proposal alg a)
 instance Serialise     (Proposal alg a)
-instance JSON.FromJSON (Proposal alg a)
-instance JSON.ToJSON   (Proposal alg a)
+instance CryptoHash alg => JSON.FromJSON (Proposal alg a)
+instance CryptoHash alg => JSON.ToJSON   (Proposal alg a)
 
 -- | Type of vote. Used for type-tagging of votes
 data VoteType = PreVote
@@ -390,8 +394,8 @@ instance Serialise (Vote 'PreCommit alg a) where
     encode = encodeVote 1
     decode = decodeVote 1
 
-instance JSON.FromJSON (Vote ty alg a)
-instance JSON.ToJSON   (Vote ty alg a)
+instance CryptoHash alg => JSON.FromJSON (Vote ty alg a)
+instance CryptoHash alg => JSON.ToJSON   (Vote ty alg a)
 
 
 

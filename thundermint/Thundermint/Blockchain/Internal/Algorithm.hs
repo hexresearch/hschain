@@ -43,7 +43,7 @@ import           Katip (Severity(..),sl)
 import qualified Katip
 import GHC.Generics
 
-import Thundermint.Crypto            ( Crypto, Signed, Fingerprint, SignedState(..)
+import Thundermint.Crypto            ( Crypto, CryptoHash, Signed, Fingerprint, SignedState(..)
                                      , signedValue, signedAddr
                                      )
 import Thundermint.Blockchain.Internal.Types
@@ -167,13 +167,13 @@ data LogProposal alg a = LogProposal
   , proposal'bid :: !(BlockID alg a)
   }
 
-instance Katip.ToObject (LogProposal alg a) where
+instance CryptoHash alg => Katip.ToObject (LogProposal alg a) where
   toObject p = HM.fromList [ ("H",   JSON.toJSON (proposal'H p))
                            , ("R",   JSON.toJSON (proposal'R p))
                            , ("bid", JSON.toJSON $ let BlockID hash = proposal'bid p
                                                    in hash
                              )]
-instance Katip.LogItem (LogProposal alg a) where
+instance CryptoHash alg => Katip.LogItem (LogProposal alg a) where
   payloadKeys Katip.V0 _ = Katip.SomeKeys ["H","R"]
   payloadKeys _        _ = Katip.AllKeys
 
@@ -182,12 +182,12 @@ data LogCommit alg a = LogCommit
   { commit'H   :: !Height
   , commit'bid :: !(BlockID alg a)
   }
-instance Katip.ToObject (LogCommit alg a) where
+instance CryptoHash alg => Katip.ToObject (LogCommit alg a) where
   toObject p = HM.fromList [ ("H",   JSON.toJSON (commit'H p))
                            , ("bid", JSON.toJSON $ let BlockID hash = commit'bid p
                                                    in hash
                              )]
-instance Katip.LogItem (LogCommit alg a) where
+instance CryptoHash alg => Katip.LogItem (LogCommit alg a) where
   payloadKeys _ _ = Katip.AllKeys
 
 ----------------------------------------------------------------
@@ -398,7 +398,7 @@ checkTransitionPrecommit par@HeightParameters{..} r sm@(TMState{..})
 
 -- Enter Propose stage and send required messages
 enterPropose
-  :: (ConsensusMonad m, MonadLogger m)
+  :: (ConsensusMonad m, MonadLogger m, CryptoHash alg)
   => HeightParameters m alg a
   -> Round
   -> TMState alg a
