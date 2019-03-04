@@ -64,10 +64,10 @@ genesisBlock valSet = Block
 transitions :: BlockFold (Map String Int) alg [(String,Int)]
 transitions = BlockFold
   { processTx           = process
-  , processBlock        = \_ b s0 -> foldM (flip $ process undefined undefined) s0 (blockData b)
-  , transactionsToBlock = \_ ->
+  , processBlock        = \c b s0 -> foldM (flip $ process c (Height (-1))) s0 (blockData b)
+  , transactionsToBlock = \h ->
       let selectTx _ []     = []
-          selectTx c (t:tx) = case process undefined undefined t c of
+          selectTx c (t:tx) = case process CheckSignature h t c of
                                 Nothing -> selectTx c  tx
                                 Just c' -> t : selectTx c' tx
       in selectTx
