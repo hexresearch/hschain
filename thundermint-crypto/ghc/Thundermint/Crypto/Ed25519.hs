@@ -61,6 +61,8 @@ instance CryptoHash (sign :& SHA512) where
 
   hashBlob                = Hash . sha512
 
+  hashEquality (Hash hbs) bs = hbs == bs
+
   type HashSize     (sign :& SHA512) = 64
 
 generatePrivKey :: (MonadIO m) => m (PrivKey (Ed25519 :& hash))

@@ -146,7 +146,10 @@ class (
       , KnownNat (HashSize alg)
       ) => CryptoHash alg where
   -- | Compute hash of sequence of bytes
-  hashBlob            :: BS.ByteString -> Hash alg
+  hashBlob     :: BS.ByteString -> Hash alg
+
+  -- | Compare hash with a bytestring safly
+  hashEquality :: Hash alg -> BS.ByteString -> Bool
 
   type HashSize        alg :: Nat
 
@@ -309,23 +312,26 @@ instance JSON.FromJSON (Signature alg) where
 
 ----------------------------------------
 
-instance Show (Hash alg) where
-  showsPrec n (Hash bs)
+instance CryptoHash alg => Show (Hash alg) where
+  showsPrec n h
     = showParen (n > 10)
-    $ showString "Hash " . shows (encodeBSBase58 bs)
+    $ showString "Hash " . shows (encodeBSBase58 $ encodeToBS h)
 
-instance Read (Hash alg) where
+instance CryptoHash alg => Read (Hash alg) where
   readPrec = do void $ lift $ string "Hash" >> some (char ' ')
-                Hash <$> readPrecBSBase58
+                val <- readPrecBSBase58
+                case decodeFromBS val of
+                  Nothing -> fail "Incorrect bytestring representation of Hash"
+                  Just h  -> return h
 
-instance JSON.ToJSON (Hash alg) where
-  toJSON (Hash s) = JSON.String $ T.decodeUtf8 $ encodeBSBase58 s
+instance CryptoHash alg => JSON.ToJSON (Hash alg) where
+  toJSON = JSON.String . encodeBase58
 
-instance JSON.FromJSON (Hash alg) where
+instance CryptoHash alg => JSON.FromJSON (Hash alg) where
   parseJSON (JSON.String s) =
-    case decodeBSBase58 $ T.encodeUtf8 s of
+    case decodeBase58 s of
       Nothing -> fail  "Incorrect Base58 encoding for bs"
-      Just bs -> return $ Hash bs
+      Just h  -> return h
   parseJSON _ = fail "Expected string for Hash"
 
 
