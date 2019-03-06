@@ -16,7 +16,7 @@ let
   };
   # General utilds
   lib  = pkgs.haskell.lib;
-  hlib = import ./lib/haskell.nix;
+  hlib = import ./lib/haskell.nix pkgs;
   util = import ./lib/utils.nix;
   doIf = util.doIf;
   # Generate packages for thundermint
@@ -30,7 +30,7 @@ let
     prodOverride (profileOverride (hask.callCabal2nix name (ignoreStack path) args))
     ;
   prodOverride    = doIf isProd (drv:
-    hlib.doPendantic (lib.doCheck drv));
+    hlib.doPedantic (lib.doCheck drv));
   profileOverride = doIf isProfile hlib.doProfile;
   #
   ignoreStack = source:
