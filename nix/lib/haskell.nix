@@ -1,7 +1,7 @@
 # Various utilities for haskell
 pkgs:
 let
-  lib = pkgs.lib.haskell;
+  lib = pkgs.haskell.lib;
 in
 rec {
   /* Add flags to GHC invocation to derivations
@@ -12,7 +12,7 @@ rec {
 
   /* Add -Wall and -Werror flags to derivation
    */
-  doPendantic = addGhcFlags ["-Wall" "-Werror"];
+  doPedantic = addGhcFlags ["-Wall" "-Werror"];
 
   /* Add build derivation with profiling enabled
    */
