@@ -49,7 +49,7 @@ tests = testGroup "Crypto"
   , testCase "Signed works"
   $ do privK <- generatePrivKey
        let pubK  = publicKey privK
-           addr  = address pubK
+           addr  = fingerprint pubK
            signV = signValue privK $ petrify ()
        let getKey a | a == addr = Just pubK
                     | otherwise = Nothing
