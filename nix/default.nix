@@ -4,7 +4,7 @@ args@{
 , ghc       ? "ghc844"
 }:
 let
-  release = import ./release2.nix args;
+  release = import ./release.nix args;
   pkgs    = release.pkgs;
 in
 pkgs.buildEnv {
