@@ -36,7 +36,7 @@ pipeline:
     - chmod 400 "$${HOME}/nix-cache-key.sec"
     # Build backend
     - cd nix
-    - ./build-ci.sh --argstr ghc863
+    - ./build-ci.sh --argstr ghc ghc863
     secrets: [ nix_cache_key, nix_cache_signing_key, drone_github_pull_key ]
 
   build-thundemint-ghcjs:
@@ -54,7 +54,7 @@ pipeline:
     - chmod 400 "$${HOME}/nix-cache-key.sec"
     # Build backend
     - cd nix
-    - ./build-ci.sh --argstr ghcjs
+    - ./build-ci.sh --argstr ghc ghcjs
     secrets: [ nix_cache_key, nix_cache_signing_key, drone_github_pull_key ]
 
 #  dockerize-thundemint:
