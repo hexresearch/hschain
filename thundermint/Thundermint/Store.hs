@@ -71,7 +71,6 @@ module Thundermint.Store (
 
 import qualified Katip
 
-import Codec.Serialise           (Serialise)
 import Control.Monad             ((<=<), foldM, forM)
 import Control.Monad.Catch       (MonadMask,MonadThrow,MonadCatch)
 import Control.Monad.Fail        (MonadFail)

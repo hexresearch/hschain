@@ -1,4 +1,3 @@
-{-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE DataKinds         #-}
 {-# LANGUAGE DeriveFunctor     #-}
 {-# LANGUAGE FlexibleContexts  #-}
@@ -7,6 +6,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 {-# LANGUAGE TupleSections     #-}
+{-# LANGUAGE ViewPatterns      #-}
 -- |
 -- Core of blockchain application. This module provides function which
 -- continuously updates blockchain using consensus algorithm and
@@ -16,7 +16,6 @@ module Thundermint.Blockchain.Internal.Engine (
   , runApplication
   ) where
 
-import Codec.Serialise           (Serialise)
 import Control.Applicative
 import Control.Concurrent        (forkIO, threadDelay)
 import Control.Concurrent.STM
