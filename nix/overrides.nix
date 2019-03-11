@@ -28,5 +28,6 @@
     quickcheck-assertions = { check = false; };
     scientific            = { check = false; };
     tasty-quickcheck      = { check = false; };
+    tasty-hedgehog        = { check = false; };
   };
 }
