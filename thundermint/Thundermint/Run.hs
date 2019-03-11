@@ -31,6 +31,7 @@ module Thundermint.Run (
   , defCfg
   ) where
 
+import Codec.Serialise
 import Control.Monad
 import Control.Monad.Fail hiding (fail)
 import Control.Monad.IO.Class
@@ -58,6 +59,7 @@ import Thundermint.Monitoring
 import Thundermint.Utils
 
 import Thundermint.Control (MonadFork)
+import Thundermint.Types (CheckSignature(..))
 
 ----------------------------------------------------------------
 --
@@ -79,7 +81,7 @@ data NodeLogic m alg a = NodeLogic
   }
 
 logicFromFold
-  :: (MonadDB m alg a, MonadMask m, BlockData a, Ord (TX a), Crypto alg, MonadFail m)
+  :: (MonadDB m alg a, MonadMask m, BlockData a, Ord (TX a), Crypto alg, MonadFail m, Serialise st)
   => BlockFold st alg a
   -> m (BChState m st, NodeLogic m alg a)
 logicFromFold transitions@BlockFold{..} = do
@@ -90,14 +92,14 @@ logicFromFold transitions@BlockFold{..} = do
   let checkTx tx = do
         st <- currentState bchState
         -- FIXME: We need real height here!
-        return $ isJust $ processTx (Height 1) tx st
+        return $ isJust $ processTx CheckSignature (Height 1) tx st
   mempool <- newMempool checkTx
   --
   return ( bchState
          , NodeLogic { nodeBlockValidation = \b -> do
                          let h = headerHeight $ blockHeader b
                          st <- stateAtH bchState h
-                         return $ [] <$ processBlock b st
+                         return $ [] <$ processBlock CheckSignature b st
                      , nodeCommitQuery     = SimpleQuery $ \_ -> return []
                      , nodeBlockGenerator  = \h _ _ _ -> do
                          st  <- stateAtH bchState h

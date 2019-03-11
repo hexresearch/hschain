@@ -50,8 +50,8 @@ genesisBlock valSet
 
 transitions :: BlockFold (Map String NetAddr) alg [(String,NetAddr)]
 transitions = BlockFold
-  { processTx           = const process
-  , processBlock        = \b s0 -> foldM (flip process) s0 (blockData b)
+  { processTx           = const $ const process
+  , processBlock        = \_ b s0 -> foldM (flip process) s0 (blockData b)
   , transactionsToBlock = \_ ->
       let selectTx _ []     = []
           selectTx c (t:tx) = case process t c of
@@ -97,7 +97,7 @@ interpretSpec maxH prefix NetSpec{..} = do
                        { appValidationFun  = \b -> do
                            let h = headerHeight $ blockHeader b
                            st <- stateAtH bchState h
-                           return $ [] <$ processBlock transitions b st
+                           return $ [] <$ processBlock transitions CheckSignature b st
                        --
                        , appBlockGenerator = \h _ _ _ -> case nspecByzantine of
                            Just "InvalidBlock" -> do
