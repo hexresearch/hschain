@@ -1,6 +1,11 @@
 {
   versions = ["ghc844" "ghc863" "ghcjs"];
-  # Common overrides for libraries
+  # List of packages with custom overrides
+  derivations = {
+    haskell = ./derivations/haskell;
+    ghc844  = ./derivations/ghc84;
+  };
+  # Common overrides for librarise
   haskell = {
     katip-elasticsearch = { check = false; };
     serialise           = { check = false; };

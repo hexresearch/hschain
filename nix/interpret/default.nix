@@ -37,13 +37,21 @@ in let
     directory = spec.extraPackages;
   };
   # Modifications to flags of packages
-  flagOverrides = import ./flags.nix pkgs spec.flags;
+  flagOverrides = import ./flags.nix pkgs spec.overrides;
 in let
   # Create overrides for different GHC version
   makeOverride = super: ghc: addFlags:
     super."${ghc}".override {
       overrides = hsSelf: hsSuper:
-        addFlags (hsSuper // extraPackages hsSelf hsSuper // spec.release hsSuper)
+        let
+          readExtra   = dir: lib.packagesFromDirectory { directory = dir; } hsSelf hsSuper;
+          deriv       = spec.overrides.derivations;
+          extraCommon = readExtra deriv.haskell;
+          extraPerGhc = if builtins.hasAttr "${ghc}" deriv
+            then readExtra deriv."${ghc}"
+            else {};
+        in
+          addFlags (hsSuper // extraCommon // extraPerGhc // spec.release hsSuper)
       ;
     };
   overridesPerGhc = super:

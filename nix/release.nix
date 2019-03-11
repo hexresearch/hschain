@@ -8,9 +8,8 @@ let
     allowUnfree = true;
     packageOverrides = super: {
       haskell = import ./interpret pkgs super {
-        flags         = import ./overrides.nix;
-        extraPackages = ./derivations;
-        release       = thundermintPackages;
+        overrides = import ./overrides.nix;
+        release   = thundermintPackages;
       };
     };
   };
