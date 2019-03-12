@@ -7,8 +7,6 @@
 module Thundermint.P2P.Network (
     NetworkAPI(..)
   , P2PConnection(..)
-    -- * Real network stub
-  , realNetworkStub
     -- * Real network
   , realNetwork
   , realNetworkUdp
