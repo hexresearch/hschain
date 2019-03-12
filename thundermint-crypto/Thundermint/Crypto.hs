@@ -232,6 +232,9 @@ instance CryptoSign alg => JSON.FromJSON (PrivKey alg) where
         Just k  -> return k
   parseJSON _          = fail "Expecting PrivKey as string"
 
+instance CryptoSign alg => JSON.FromJSONKey (PrivKey alg)
+instance CryptoSign alg => JSON.ToJSONKey   (PrivKey alg)
+
 
 ----------------------------------------
 
@@ -263,6 +266,9 @@ instance CryptoSign alg => JSON.FromJSON (PublicKey alg) where
         Just k  -> return k
   parseJSON _          = fail "Expecting PrivKey as string"
 
+instance CryptoSign alg => JSON.FromJSONKey (PublicKey alg)
+instance CryptoSign alg => JSON.ToJSONKey   (PublicKey alg)
+
 
 ----------------------------------------
 
@@ -286,6 +292,9 @@ instance JSON.FromJSON (Fingerprint alg) where
       Just bs -> return $ Fingerprint bs
   parseJSON _ = fail "Expected string for Fingerprint"
 
+instance JSON.FromJSONKey (Fingerprint alg)
+instance JSON.ToJSONKey   (Fingerprint alg)
+
 
 ----------------------------------------
 
@@ -308,6 +317,8 @@ instance JSON.FromJSON (Signature alg) where
       Just bs -> return $ Signature bs
   parseJSON _ = fail "Expected string for Signature"
 
+instance JSON.FromJSONKey (Signature alg)
+instance JSON.ToJSONKey   (Signature alg)
 
 
 ----------------------------------------
@@ -334,6 +345,8 @@ instance CryptoHash alg => JSON.FromJSON (Hash alg) where
       Just h  -> return h
   parseJSON _ = fail "Expected string for Hash"
 
+instance CryptoHash alg => JSON.FromJSONKey (Hash alg)
+instance CryptoHash alg => JSON.ToJSONKey   (Hash alg)
 
 
 ----------------------------------------------------------------
@@ -424,7 +437,7 @@ instance JSON.ToJSON   a => JSON.ToJSON   (Signed 'Unverified alg a)
 --   value is being calculated
 newtype Hashed alg a = Hashed (Hash alg)
   deriving ( Show,Eq,Ord, Generic, Generic1, NFData
-           , Serialise,JSON.FromJSON,JSON.ToJSON)
+           , Serialise, JSON.FromJSON, JSON.ToJSON, JSON.ToJSONKey, JSON.FromJSONKey)
 
 hashed :: (Crypto alg, Serialise a) => a -> Hashed alg a
 hashed = Hashed . hash
