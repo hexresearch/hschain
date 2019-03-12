@@ -432,7 +432,9 @@ newtype Hashed alg a = Hashed (Hash alg)
 hashed :: (Crypto alg, Serialise a) => a -> Hashed alg a
 hashed = Hashed . hash
 
-
+instance (CryptoHash alg) => ByteRepr (Hashed alg a) where
+  encodeToBS (Hashed h) = encodeToBS h
+  decodeFromBS = fmap Hashed . decodeFromBS
 
 ----------------------------------------------------------------
 -- Base58 encoding helpers
