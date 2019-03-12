@@ -132,7 +132,7 @@ main = do
       logger InfoS ("peer Info generated: " <> showLS peerInfo) ()
       netAPI <- case optTls of
         False -> case optUDP of
-          False -> return $ realNetwork peerInfo (show listenPort)
+          False -> return $ realNetwork peerInfo
           True  -> liftIO $ realNetworkUdp peerInfo (show listenPort)
         True  -> liftIO $ do
           keyPem  <- BC8.pack <$> getEnv "KEY_PEM"

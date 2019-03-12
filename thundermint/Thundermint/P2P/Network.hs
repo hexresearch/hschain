@@ -58,8 +58,8 @@ import Thundermint.P2P.Types
 import qualified Thundermint.P2P.Network.IpAddresses as Ip
 
 -- | API implementation for real tcp network
-realNetwork :: PeerInfo -> Net.ServiceName -> NetworkAPI
-realNetwork ourPeerInfo serviceName = (realNetworkStub serviceName)
+realNetwork :: PeerInfo -> NetworkAPI
+realNetwork ourPeerInfo = (realNetworkStub serviceName)
   { listenOn = do
       let hints = Net.defaultHints
             { Net.addrFlags      = [Net.AI_PASSIVE]
@@ -102,6 +102,7 @@ realNetwork ourPeerInfo serviceName = (realNetworkStub serviceName)
   , ourPeerInfo = ourPeerInfo
   }
  where
+  serviceName = show $ piPeerPort ourPeerInfo
   accept sock = do
     (conn, addr) <- liftIO $ Net.accept sock
     liftIO $ sendBS conn $ CBOR.serialise ourPeerInfo
