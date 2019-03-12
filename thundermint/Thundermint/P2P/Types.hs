@@ -49,9 +49,13 @@ type PeerId = Word64
 
 
 data PeerInfo = PeerInfo
-    { piPeerId        :: !PeerId -- ^An ID to identify the machine
-    , piPeerPort      :: !Word16 -- ^Original listening port of the machine of the peer.
-    , piPeerSchemeVer :: !Word16 -- ^The scheme encoding version. It is not possible tp decode values safely between two different versions.
+    { piPeerId        :: !PeerId
+    -- ^ An ID to identify the machine
+    , piPeerPort      :: !Word16
+    -- ^ Original listening port of the machine of the peer.
+    , piPeerSchemeVer :: !Word16
+    -- ^ The scheme encoding version. It is not possible tp decode
+    --   values safely between two different versions.
     } deriving (Show, Generic)
 
 
