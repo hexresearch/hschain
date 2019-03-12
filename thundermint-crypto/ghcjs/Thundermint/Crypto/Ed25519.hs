@@ -60,7 +60,7 @@ instance CryptoSign (Ed25519 :& hash) where
     = js_sign_detached_verify (bsToArray blob) (bsToArray s) pubKey
   --
   publicKey = PublicKey . pubK
-  fingerprint   = Address
+  fingerprint   = Fingerprint
                 . BL.toStrict . SHA.bytestringDigest . SHA.sha256 . BL.fromStrict
                 . arrayToBs . js_sha512 . unPublicKey
 
@@ -73,7 +73,7 @@ instance CryptoHash (sign :& SHA512) where
 generatePrivKey :: IO (PrivKey (Ed25519 :& hash))
 generatePrivKey = do
   arr <- js_randombytes 32
-  case privKeyFromBS $ arrayToBs arr of
+  case decodeFromBS $ arrayToBs arr of
     Just k  -> return k
     Nothing -> error "Ed25519: internal error. Cannot generate key"
 
