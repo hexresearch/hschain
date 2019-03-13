@@ -33,7 +33,6 @@ import Thundermint.Mock.Coin
 import Thundermint.Mock.Types
 import Thundermint.P2P (generatePeerId)
 import Thundermint.P2P.Consts
-import Thundermint.P2P.Instances ()
 import Thundermint.P2P.Network               ( getLocalAddress, realNetwork, realNetworkUdp
                                              , getCredentialFromBuffer, realNetworkTls)
 import qualified Thundermint.P2P.Types as P2PT
