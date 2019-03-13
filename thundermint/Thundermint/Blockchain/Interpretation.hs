@@ -93,7 +93,7 @@ newBChState BlockFold{..} = do
                        Just st' -> do
                          let h' = succ h
                          let Height hToCheck = h
-                         when (mod hToCheck 100 == 0) $ do
+                         when (mod hToCheck 200 == 0) $ do
                             _ <- queryRW $ storeStateSnapshot h' st'
                             return ()
                          return ((h', st'), (st',True))
