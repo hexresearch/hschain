@@ -7,11 +7,8 @@
 module Thundermint.Store.Internal.BlockDB where
 
 import Codec.Serialise (Serialise,serialise,deserialiseOrFail)
-import Control.Applicative
 import Control.Monad (when)
-import Control.Monad.Trans.Maybe
 import qualified Data.ByteString.Lazy as LBS
-import Data.Int
 import Data.Text (Text)
 import qualified Database.SQLite.Simple           as SQL
 import           Database.SQLite.Simple             (Only(..))
@@ -38,6 +35,7 @@ initializeBlockhainTables genesis initialVals = do
   execute_
     "CREATE TABLE IF NOT EXISTS blockchain \
     \  ( height INT NOT NULL UNIQUE \
+    \  , round  INT NOT NULL  \
     \  , bid    BLOB NOT NULL \
     \  , block  BLOB NOT NULL)"
   execute_
@@ -83,15 +81,12 @@ initializeBlockhainTables genesis initialVals = do
      -- Fresh DB without genesis block
     _| [] <- storedGen
      , [] <- storedVals
-       -> do execute "INSERT INTO blockchain VALUES (?,?,?)"
-               ( 0 :: Int64
-               , serialise (blockHash genesis)
+       -> do execute "INSERT INTO blockchain VALUES (0,0,?,?)"
+               ( serialise (blockHash genesis)
                , serialise genesis
                )
-             execute "INSERT INTO validators VALUES (?,?)"
-               ( 1 :: Int64
-               , serialise initialVals
-               )
+             execute "INSERT INTO validators VALUES (1,?)"
+               (Only (serialise initialVals))
      -- Genesis and validator set matches ones recorded
      | [Only blk ]    <- storedGen
      , Right genesis' <- deserialiseOrFail blk
@@ -146,12 +141,11 @@ retrieveCommit h = do
 
 -- | Retrieve round when commit was made.
 retrieveCommitRound :: (Serialise a, Crypto alg) => Height -> Query rw alg a (Maybe Round)
-retrieveCommitRound h = runMaybeT $ do
-  c <-  MaybeT (retrieveCommit h)
-    <|> MaybeT (singleQ "SELECT cmt FROM commits WHERE height = ?" (Only h))
-  let getRound (Commit _ (v:_)) = voteRound (signedValue v)
-      getRound _                = error "Impossible"
-  return $ getRound c
+retrieveCommitRound h =
+  query "SELECT round FROM blockchain WHERE height = ?" (Only h) >>= \case
+    []       -> return Nothing
+    [Only r] -> return $! Just $ Round r
+    _        -> error "Impossible"
 
 
 -- | Retrieve local commit justifying commit of block as known by
@@ -198,9 +192,11 @@ storeCommit
   => Commit alg a -> Block alg a -> Query 'RW alg a ()
 storeCommit cmt blk = do
   let h = headerHeight $ blockHeader blk
+      Round  r = voteRound $ signedValue $ head $ commitPrecommits cmt
   execute "INSERT INTO commits VALUES (?,?)" (h, serialise cmt)
-  execute "INSERT INTO blockchain VALUES (?,?,?)"
+  execute "INSERT INTO blockchain VALUES (?,?,?,?)"
     ( h
+    , r
     , serialise (blockHash blk)
     , serialise blk
     )
