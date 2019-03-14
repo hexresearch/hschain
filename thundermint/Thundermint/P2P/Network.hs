@@ -7,8 +7,6 @@
 module Thundermint.P2P.Network (
     NetworkAPI(..)
   , P2PConnection(..)
-    -- * Real network stub
-  , realNetworkStub
     -- * Real network
   , realNetwork
   , realNetworkUdp
@@ -154,8 +152,9 @@ recvAll sock n = LBS.concat `fmap` loop (fromIntegral n)
       else fmap (r:) (loop (left - LBS.length r))
 
 -- | API implementation example for real udp network
-realNetworkUdp :: PeerInfo -> Net.ServiceName -> IO NetworkAPI
-realNetworkUdp ourPeerInfo serviceName = do
+realNetworkUdp :: PeerInfo -> IO NetworkAPI
+realNetworkUdp ourPeerInfo = do
+  let serviceName = show $ piPeerPort ourPeerInfo
   -- FIXME: prolly HostName fits better than SockAddr
   tChans <- newTVarIO Map.empty
   acceptChan <- newTChanIO :: IO (TChan (P2PConnection, NetAddr))

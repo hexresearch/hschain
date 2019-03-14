@@ -26,8 +26,8 @@ realNetPair udpPortSpec host = do
         port1 = concat ["3", suffix]
         port2 = concat ["4", suffix]
         realNet p = if not useUDP
-          then return (realNetwork peerInfoForOurPort p)
-          else realNetworkUdp peerInfoForOurPort p
+          then return (realNetwork peerInfoForOurPort)
+          else realNetworkUdp peerInfoForOurPort
           where
             port = read p
             peerInfoForOurPort = PeerInfo (fromIntegral port) port 0
