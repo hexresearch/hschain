@@ -1,5 +1,6 @@
 {-# LANGUAGE DataKinds                  #-}
 {-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE DeriveDataTypeable         #-}
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
@@ -64,6 +65,7 @@ import Control.DeepSeq
 import Control.Monad
 
 import qualified Data.Aeson           as JSON
+import Data.Data (Data)
 import           Data.Text              (Text)
 import qualified Data.Text.Encoding   as T
 import           Data.ByteString.Lazy    (toStrict)
@@ -86,6 +88,7 @@ import qualified Data.ByteString.Base58 as Base58
 type Crypto (alg) = (CryptoSign alg, CryptoHash alg)
 
 data sign :& hash
+  deriving (Data)
 
 -- | Private key
 data family PrivKey   alg
@@ -442,7 +445,9 @@ newtype Hashed alg a = Hashed (Hash alg)
 hashed :: (Crypto alg, Serialise a) => a -> Hashed alg a
 hashed = Hashed . hash
 
-
+instance (CryptoHash alg) => ByteRepr (Hashed alg a) where
+  encodeToBS (Hashed h) = encodeToBS h
+  decodeFromBS = fmap Hashed . decodeFromBS
 
 ----------------------------------------------------------------
 -- Base58 encoding helpers

@@ -16,6 +16,7 @@ module Thundermint.Blockchain.Interpretation (
 
 import Codec.Serialise (Serialise)
 import Control.Concurrent.MVar
+import Control.Monad (when)
 import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Control.Monad.Fail
@@ -41,14 +42,14 @@ import Thundermint.Types.Blockchain
 --   e.g. if transaction or block is not valid it will return
 --   @Nothing@.
 data BlockFold s alg a = BlockFold
-  { processTx    :: !(Height -> TX a -> s -> Maybe s)
+  { processTx    :: !(CheckSignature -> Height -> TX a -> s -> Maybe s)
     -- ^ Try to process single transaction. Nothing indicates that
     --   transaction is invalid. This function will called very
     --   frequently so it need not to perform every check but should
     --   rule out invalid blocks.
     --
     --   FIXME: figure out exact semantics for Height parameter
-  , processBlock :: !(Block alg a -> s -> Maybe s)
+  , processBlock :: !(CheckSignature -> Block alg a -> s -> Maybe s)
     -- ^ Try to process whole block. Here application should perform
     --   complete validation of block
   , transactionsToBlock :: !(Height -> s -> [TX a] -> a)
@@ -73,19 +74,29 @@ data BChState m s = BChState
 
 -- | Create block storage backed by MVar
 newBChState
-  :: (MonadMask m, MonadReadDB m alg a, Serialise a, Crypto alg, MonadFail m)
+  :: (MonadMask m, MonadDB m alg a, Serialise a, Crypto alg, MonadFail m, Serialise s)
   => BlockFold s alg a             -- ^ Updating function
   -> m (BChState m s)
 newBChState BlockFold{..} = do
-  state <- liftIO $ newMVar (Height 0, initialState)
+  maybeState <- queryRO retrieveSavedState
+  state <- liftIO $ newMVar $ case maybeState of
+    Just (h, s) -> (h,        s)
+    _ ->           (Height 0, initialState)
   let ensureHeight hBlk = do
         (st,flt) <- modifyMVarM state $ \st@(h,s) ->
           case h `compare` hBlk of
             GT -> error "newBChState: invalid parameter"
             EQ -> return (st, (s,False))
             LT -> do Just b <- queryRO $ retrieveBlock h
-                     case processBlock b s of
-                       Just st' -> return ((succ h, st'), (st',True))
+                     let checkSignature = if succ h == hBlk then CheckSignature else AlreadyChecked
+                     checkSignature `seq` case processBlock checkSignature b s of
+                       Just st' -> do
+                         let h' = succ h
+                         let Height hToCheck = h
+                         when (mod hToCheck 200 == 0) $ do
+                            _ <- queryRW $ storeStateSnapshot h' st'
+                            return ()
+                         return ((h', st'), (st',True))
                        Nothing  -> error "OOPS! Blockchain is not valid!!!"
         case flt of
           True  -> ensureHeight hBlk

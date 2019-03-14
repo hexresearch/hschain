@@ -8,7 +8,9 @@ module Thundermint.Store.Internal.BlockDB where
 
 import Codec.Serialise (Serialise,serialise,deserialiseOrFail)
 import Control.Applicative
+import Control.Monad (when)
 import Control.Monad.Trans.Maybe
+import qualified Data.ByteString.Lazy as LBS
 import Data.Int
 import Data.Text (Text)
 import qualified Database.SQLite.Simple           as SQL
@@ -38,6 +40,12 @@ initializeBlockhainTables genesis initialVals = do
     \  ( height INT NOT NULL UNIQUE \
     \  , bid    BLOB NOT NULL \
     \  , block  BLOB NOT NULL)"
+  execute_
+    "CREATE TABLE IF NOT EXISTS state_snapshot \
+    \  ( height           INT  NOT NULL \
+    \  , snapshot_blob    BLOB NOT NULL)"
+  r <- query "SELECT height FROM state_snapshot" ()
+  when (null (r :: [[SQL.SQLData]])) $ execute_ "INSERT INTO state_snapshot (height, snapshot_blob) VALUES (-1, X'')"
   execute_
     "CREATE TABLE IF NOT EXISTS commits \
     \  ( height INT  NOT NULL UNIQUE \
@@ -167,6 +175,18 @@ retrieveValidatorSet :: (Crypto alg) =>  Height -> Query rw alg a (Maybe (Valida
 retrieveValidatorSet (Height h) =
   singleQ "SELECT valset FROM validators WHERE height = ?" (Only h)
 
+-- |Retrieve height and state saved as snapshot.
+--
+retrieveSavedState :: Serialise s => Query 'RO alg a (Maybe (Height, s))
+retrieveSavedState =
+  singleQWithParser parse "SELECT height, snapshot_blob FROM state_snapshot" ()
+  where
+    parse [SQL.SQLInteger h, SQL.SQLBlob s]
+      | h > 0
+      , Right r <- deserialiseOrFail (LBS.fromStrict s) = Just (Height $ fromIntegral h, r)
+      | otherwise = Nothing
+    parse _ = Nothing
+
 
 ----------------------------------------------------------------
 -- Writing to DB
@@ -184,6 +204,15 @@ storeCommit cmt blk = do
     , serialise (blockHash blk)
     , serialise blk
     )
+
+-- | Write state snapshot into DB.
+-- @maybeSnapshot@ contains a serialized value of a state associated with the processed block.
+storeStateSnapshot
+  :: Serialise s =>
+  Height -> s -> Query 'RW alg a ()
+storeStateSnapshot (Height h) state = do
+  execute "UPDATE state_snapshot SET height = ?, snapshot_blob = ?" (h, serialise state)
+
 
 -- | Write validator set for next round into database
 storeValSet :: (Crypto alg) => Block alg a -> ValidatorSet alg -> Query 'RW alg a ()
@@ -226,3 +255,12 @@ singleQ sql p =
       Right a -> return (Just a)
       Left  e -> error ("CBOR encoding error: " ++ show e)
     _         -> error "Impossible"
+
+-- Query that returns results parsed from single row ().
+singleQWithParser :: (SQL.ToRow p)
+        => ([SQL.SQLData] -> Maybe x) -> Text -> p -> Query rw alg a (Maybe x)
+singleQWithParser resultsParser sql p =
+  query sql p >>= \case
+    [x] -> return (resultsParser x)
+    _ -> error $ "SQL statement resulted in too many (>1) or zero result rows: " ++ show sql
+  where

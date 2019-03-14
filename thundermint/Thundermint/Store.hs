@@ -48,6 +48,8 @@ module Thundermint.Store (
   , retrieveLocalCommit
   , retrieveCommitRound
   , retrieveValidatorSet
+  , retrieveSavedState
+  , storeStateSnapshot
     -- * In memory store for proposals
   , Writable
   , ProposalStorage(..)
