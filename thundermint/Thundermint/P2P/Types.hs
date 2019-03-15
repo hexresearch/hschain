@@ -102,7 +102,8 @@ netAddrToSockAddr (NetAddrV4 ha port) = Net.SockAddrInet  (fromIntegral port)  h
 netAddrToSockAddr (NetAddrV6 ha port) = Net.SockAddrInet6 (fromIntegral port) 0 ha 0
 
 instance Serialise NetAddr
-instance JSON.ToJSON   NetAddr
+instance JSON.ToJSON   NetAddr where
+  toJSON netAddr = JSON.String $ Text.pack $ show netAddr
 instance JSON.FromJSON NetAddr where
   parseJSON (JSON.String text) = case reads str of
     ((netaddr, ""):_) -> pure netaddr
