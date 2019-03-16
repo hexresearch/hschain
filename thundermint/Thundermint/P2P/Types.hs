@@ -31,6 +31,7 @@ import Data.ByteString.Internal (ByteString(..))
 import qualified Data.List as List
 import Data.Map                 (Map)
 import Data.Set                 (Set)
+import qualified Data.Text as Text
 import Data.Word
 import GHC.Generics             (Generic)
 
@@ -101,8 +102,15 @@ netAddrToSockAddr (NetAddrV4 ha port) = Net.SockAddrInet  (fromIntegral port)  h
 netAddrToSockAddr (NetAddrV6 ha port) = Net.SockAddrInet6 (fromIntegral port) 0 ha 0
 
 instance Serialise NetAddr
-instance JSON.ToJSON   NetAddr
-instance JSON.FromJSON NetAddr
+instance JSON.ToJSON   NetAddr where
+  toJSON netAddr = JSON.String $ Text.pack $ show netAddr
+instance JSON.FromJSON NetAddr where
+  parseJSON (JSON.String text) = case reads str of
+    ((netaddr, ""):_) -> pure netaddr
+    _ -> fail $ "can't parse net addr from " ++ show str
+    where
+      str = Text.unpack text
+  parseJSON _ = fail $ "NetAddr parsing expects String"
 
 -- | Network port
 type NetworkPort = Net.PortNumber
