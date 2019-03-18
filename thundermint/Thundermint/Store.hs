@@ -267,7 +267,7 @@ instance Katip.LogItem  MempoolInfo where
 
 -- | Cursor into mempool which is used for gossiping data
 data MempoolCursor m alg tx = MempoolCursor
-  { pushTransaction :: !(tx -> m (Maybe (Hash alg)))
+  { pushTransaction :: !(tx -> m (Maybe (Hashed alg tx)))
     -- ^ Add transaction to the mempool. It's preliminary checked and
     --   if check fails it immediately discarded. If transaction is
     --   accepted its hash is computed and returned
@@ -287,7 +287,7 @@ data Mempool m alg tx = Mempool
     -- ^ Remove transactions that are no longer valid from mempool
   , getMempoolCursor  :: !(m (MempoolCursor m alg tx))
     -- ^ Get cursor pointing to be
-  , txInMempool       :: !(Hash alg -> m Bool)
+  , txInMempool       :: !(Hashed alg tx -> m Bool)
     -- ^ Checks whether transaction is mempool
   , mempoolStats      :: !(m MempoolInfo)
     -- ^ Number of elements in mempool
