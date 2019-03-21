@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP                        #-}
 {-# LANGUAGE DataKinds                  #-}
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE FlexibleContexts           #-}
@@ -60,6 +61,10 @@ import           Data.Time.Clock          (UTCTime)
 import           Data.Time.Clock.POSIX    (getPOSIXTime,posixSecondsToUTCTime)
 import           Data.Vector.Unboxed.Deriving
 import           GHC.Generics             (Generic)
+#ifdef INSTANCES_SQLITE
+import qualified Database.SQLite.Simple.FromField as SQL
+import qualified Database.SQLite.Simple.ToField   as SQL
+#endif
 
 import Thundermint.Crypto
 import Thundermint.Types.Validators
@@ -435,3 +440,12 @@ data CheckSignature = CheckSignature | AlreadyChecked
 derivingUnbox "Time"   [t| Time   -> Int64 |] [| coerce |] [| coerce |]
 derivingUnbox "Height" [t| Height -> Int64 |] [| coerce |] [| coerce |]
 derivingUnbox "Round"  [t| Round  -> Int64 |] [| coerce |] [| coerce |]
+
+#ifdef INSTANCES_SQLITE
+deriving instance SQL.FromField Height
+deriving instance SQL.ToField   Height
+deriving instance SQL.FromField Round
+deriving instance SQL.ToField   Round
+deriving instance SQL.FromField Time
+deriving instance SQL.ToField   Time
+#endif
