@@ -30,6 +30,8 @@ Library
                      , serialise         >=0.2
                      , text
                      , time
+                     , vector
+                     , vector-th-unbox
                      , unordered-containers >=0.2.5.0
   Exposed-modules:
                   Thundermint.Types
