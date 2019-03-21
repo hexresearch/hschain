@@ -133,7 +133,6 @@ class ( KnownNat (SignatureSize alg)
       , KnownNat (FingerprintSize alg)
       , KnownNat (PublicKeySize alg)
       , KnownNat (PrivKeySize alg)
-      --, CryptoSign alg
       ) => CryptoSignPrim alg where
   type FingerprintSize alg :: Nat
   type PublicKeySize   alg :: Nat
@@ -143,9 +142,7 @@ class ( KnownNat (SignatureSize alg)
 -- | Type-indexed set of crypto algorithms. It's not very principled
 --   to push everything into singe type class.  But in order to keep
 --   signatures sane it was done this way.
-class (
---    , CryptoSignPrim alg
-       ByteRepr (Hash   alg)
+class ( ByteRepr (Hash   alg)
       , KnownNat (HashSize alg)
       ) => CryptoHash alg where
   -- | Compute hash of sequence of bytes
