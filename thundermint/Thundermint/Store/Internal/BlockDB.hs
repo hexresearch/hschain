@@ -114,7 +114,7 @@ blockchainHeight :: Query rw alg a Height
 blockchainHeight =
   query "SELECT MAX(height) FROM blockchain" () >>= \case
     []       -> error "Blockchain cannot be empty"
-    [Only i] -> return (Height i)
+    [Only h] -> return h
     _        -> error "Impossible"
 
 
@@ -122,14 +122,14 @@ blockchainHeight =
 --
 --   Must return block for every height @0 <= h <= blockchainHeight@
 retrieveBlock :: (Serialise a, Crypto alg) => Height -> Query rw alg a (Maybe (Block alg a))
-retrieveBlock (Height h) =
+retrieveBlock h =
   singleQ "SELECT block FROM blockchain WHERE height = ?" (Only h)
 
 -- | Retrieve ID of block at given height. Must return same result
 --   as @fmap blockHash . retrieveBlock@ but implementation could
 --   do that more efficiently.
 retrieveBlockID :: Height -> Query rw alg a (Maybe (BlockID alg a))
-retrieveBlockID (Height h) =
+retrieveBlockID h =
   singleQ "SELECT bid FROM blockchain WHERE height = ?" (Only h)
 
 -- | Retrieve commit justifying commit of block at height
@@ -140,14 +140,14 @@ retrieveBlockID (Height h) =
 --   its commit is not persisted in blockchain yet and there's no
 --   commit for genesis block (h=0)
 retrieveCommit :: (Serialise a, Crypto alg) => Height -> Query rw alg a (Maybe (Commit alg a))
-retrieveCommit (Height h) = do
-  mb <- singleQ "SELECT block FROM blockchain WHERE height = ?" (Only (h+1))
+retrieveCommit h = do
+  mb <- singleQ "SELECT block FROM blockchain WHERE height = ?" (Only (succ h))
   return $ blockLastCommit =<< mb
 
 -- | Retrieve round when commit was made.
 retrieveCommitRound :: (Serialise a, Crypto alg) => Height -> Query rw alg a (Maybe Round)
-retrieveCommitRound (Height h) = runMaybeT $ do
-  c <-  MaybeT (retrieveCommit (Height h))
+retrieveCommitRound h = runMaybeT $ do
+  c <-  MaybeT (retrieveCommit h)
     <|> MaybeT (singleQ "SELECT cmt FROM commits WHERE height = ?" (Only h))
   let getRound (Commit _ (v:_)) = voteRound (signedValue v)
       getRound _                = error "Impossible"
@@ -165,14 +165,14 @@ retrieveCommitRound (Height h) = runMaybeT $ do
 --   local node 2) each node collect straggler precommits for some
 --   time interval after commit.
 retrieveLocalCommit :: Height -> Query rw alg a (Maybe (Commit alg a))
-retrieveLocalCommit (Height h) =
+retrieveLocalCommit h =
   singleQ "SELECT cmt FROM commits WHERE height = ?" (Only h)
 
 -- | Retrieve set of validators for given round.
 --
 --   Must return validator set for every @0 < h <= blockchainHeight + 1@
 retrieveValidatorSet :: (Crypto alg) =>  Height -> Query rw alg a (Maybe (ValidatorSet alg))
-retrieveValidatorSet (Height h) =
+retrieveValidatorSet h =
   singleQ "SELECT valset FROM validators WHERE height = ?" (Only h)
 
 -- |Retrieve height and state saved as snapshot.
@@ -197,7 +197,7 @@ storeCommit
   :: (Crypto alg, Serialise a)
   => Commit alg a -> Block alg a -> Query 'RW alg a ()
 storeCommit cmt blk = do
-  let Height h = headerHeight $ blockHeader blk
+  let h = headerHeight $ blockHeader blk
   execute "INSERT INTO commits VALUES (?,?)" (h, serialise cmt)
   execute "INSERT INTO blockchain VALUES (?,?,?)"
     ( h
@@ -217,26 +217,26 @@ storeStateSnapshot (Height h) state = do
 -- | Write validator set for next round into database
 storeValSet :: (Crypto alg) => Block alg a -> ValidatorSet alg -> Query 'RW alg a ()
 storeValSet blk vals = do
-  let Height h = headerHeight $ blockHeader blk
+  let h = headerHeight $ blockHeader blk
   execute "INSERT INTO validators VALUES (?,?)"
-    (h+1, serialise vals)
+    (succ h, serialise vals)
 
 -- | Add message to Write Ahead Log. Height parameter is height
 --   for which we're deciding block.
 writeToWAL :: (Serialise a, Crypto alg) => Height -> MessageRx 'Unverified alg a -> Query 'RW alg a ()
-writeToWAL (Height h) msg =
+writeToWAL h msg =
   execute "INSERT OR IGNORE INTO wal VALUES (NULL,?,?)" (h, serialise msg)
 
 -- | Remove all entries from WAL which comes from height less than
 --   parameter.
 resetWAL :: Height -> Query 'RW alg a ()
-resetWAL (Height h) =
+resetWAL h =
   execute "DELETE FROM wal WHERE height < ?" (Only h)
 
 -- | Get all parameters from WAL in order in which they were
 --   written
 readWAL :: (Serialise a, Crypto alg) => Height -> Query rw alg a [MessageRx 'Unverified alg a]
-readWAL (Height h) = do
+readWAL h = do
   rows <- query "SELECT message FROM wal WHERE height = ? ORDER BY id" (Only h)
   return [ case deserialiseOrFail bs of
              Right a -> a
