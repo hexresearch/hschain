@@ -181,6 +181,10 @@ class (Ord a) => ByteRepr a where
   decodeFromBS :: BS.ByteString -> Maybe a
   encodeToBS   :: a -> BS.ByteString
 
+instance ByteRepr BS.ByteString where
+  decodeFromBS = Just
+  encodeToBS   = id
+
 instance CryptoHash alg => ByteRepr (Hash alg) where
   decodeFromBS            = Just . Hash
   encodeToBS (Hash bs) = bs
