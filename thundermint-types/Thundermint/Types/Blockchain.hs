@@ -4,9 +4,11 @@
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE KindSignatures             #-}
+{-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE RecordWildCards            #-}
 {-# LANGUAGE StandaloneDeriving         #-}
+{-# LANGUAGE TemplateHaskell            #-}
 {-# LANGUAGE TypeFamilies               #-}
 -- |
 -- Data types for implementation of consensus algorithm
@@ -49,12 +51,14 @@ import           Data.Aeson               ((.=), (.:))
 import           Data.ByteString          (ByteString)
 import qualified Data.HashMap.Strict      as HM
 import           Data.Bits                ((.&.))
+import           Data.Coerce
 import           Data.Int
 import           Data.List                (sortBy)
 import           Data.Monoid              ((<>))
 import           Data.Ord                 (comparing)
 import           Data.Time.Clock          (UTCTime)
 import           Data.Time.Clock.POSIX    (getPOSIXTime,posixSecondsToUTCTime)
+import           Data.Vector.Unboxed.Deriving
 import           GHC.Generics             (Generic)
 
 import Thundermint.Crypto
@@ -428,3 +432,6 @@ decodeVote expectedTag = do
 data CheckSignature = CheckSignature | AlreadyChecked
   deriving (Eq, Ord, Show)
 
+derivingUnbox "Time"   [t| Time   -> Int64 |] [| coerce |] [| coerce |]
+derivingUnbox "Height" [t| Height -> Int64 |] [| coerce |] [| coerce |]
+derivingUnbox "Round"  [t| Round  -> Int64 |] [| coerce |] [| coerce |]
