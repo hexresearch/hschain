@@ -53,7 +53,6 @@ import           Data.Int
 import           Data.List                (sortBy)
 import           Data.Monoid              ((<>))
 import           Data.Ord                 (comparing)
-import qualified Data.Text.Encoding       as T
 import           Data.Time.Clock          (UTCTime)
 import           Data.Time.Clock.POSIX    (getPOSIXTime,posixSecondsToUTCTime)
 import           GHC.Generics             (Generic)
@@ -194,7 +193,7 @@ instance Serialise (Header alg a)
 
 instance CryptoHash alg => JSON.ToJSON (Header alg a) where
   toJSON Header{..} =
-    JSON.object [ "headerChainID"        .= T.decodeUtf8 (encodeBSBase58 headerChainID) -- We ask to use Base58
+    JSON.object [ "headerChainID"        .= encodeBase58 headerChainID
                 , "headerHeight"         .= headerHeight
                 , "headerTime"           .= headerTime
                 , "headerLastBlockID"    .= headerLastBlockID
@@ -218,7 +217,7 @@ instance CryptoHash alg => JSON.FromJSON (Header alg a) where
     headerEvidenceHash   <- o .: "headerEvidenceHash"
     return Header{..}
     where
-      fromBase58 = maybe complain return . decodeBSBase58 . T.encodeUtf8
+      fromBase58 = maybe complain return . decodeBase58
       complain   = fail "Incorrect Base58 encoding" 
 
 -- | Evidence of byzantine behaviour by some node.
