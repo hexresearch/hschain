@@ -177,7 +177,7 @@ signatureSize :: forall alg proxy i. (Crypto alg, Num i) => proxy alg -> i
 signatureSize _ = fromIntegral $ natVal (Proxy :: Proxy (SignatureSize alg))
 
 -- | Value could be represented as bytestring.
-class (Ord a) => ByteRepr a where
+class ByteRepr a where
   decodeFromBS :: BS.ByteString -> Maybe a
   encodeToBS   :: a -> BS.ByteString
 
