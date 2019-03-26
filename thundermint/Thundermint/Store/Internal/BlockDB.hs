@@ -33,7 +33,7 @@ initializeBlockhainTables
 initializeBlockhainTables genesis initialVals = do
   -- Initialize tables for storage of blockchain
   execute_
-    "CREATE TABLE IF NOT EXISTS blockchain \
+    "CREATE TABLE IF NOT EXISTS thm_blockchain \
     \  ( height INT NOT NULL UNIQUE \
     \  , round  INT NOT NULL  \
     \  , bid    BLOB NOT NULL \
@@ -45,11 +45,11 @@ initializeBlockhainTables genesis initialVals = do
   r <- query "SELECT height FROM state_snapshot" ()
   when (null (r :: [[SQL.SQLData]])) $ execute_ "INSERT INTO state_snapshot (height, snapshot_blob) VALUES (-1, X'')"
   execute_
-    "CREATE TABLE IF NOT EXISTS commits \
+    "CREATE TABLE IF NOT EXISTS thm_commits \
     \  ( height INT  NOT NULL UNIQUE \
     \  , cmt    BLOB NOT NULL)"
   execute_
-    "CREATE TABLE IF NOT EXISTS validators \
+    "CREATE TABLE IF NOT EXISTS thm_validators \
     \  ( height INT  NOT NULL UNIQUE \
     \  , valset BLOB NOT NULL)"
   -- Checkpoints for user state
@@ -69,23 +69,23 @@ initializeBlockhainTables genesis initialVals = do
   -- height is noop so there's no point in storing them. Performance
   -- gains are massive since writing to disk is slow, no SLOW.
   execute_
-    "CREATE TABLE IF NOT EXISTS wal \
+    "CREATE TABLE IF NOT EXISTS thm_wal \
     \  ( id      INTEGER PRIMARY KEY \
     \  , height  INTEGER NOT NULL \
     \  , message BLOB NOT NULL \
     \  , UNIQUE(height,message))"
   -- Insert genesis block if needed
-  storedGen  <- query "SELECT block  FROM blockchain WHERE height = 0" ()
-  storedVals <- query "SELECT valset FROM validators WHERE height = 1" ()
+  storedGen  <- query "SELECT block  FROM thm_blockchain WHERE height = 0" ()
+  storedVals <- query "SELECT valset FROM thm_validators WHERE height = 1" ()
   case () of
      -- Fresh DB without genesis block
     _| [] <- storedGen
      , [] <- storedVals
-       -> do execute "INSERT INTO blockchain VALUES (0,0,?,?)"
+       -> do execute "INSERT INTO thm_blockchain VALUES (0,0,?,?)"
                ( serialise (blockHash genesis)
                , serialise genesis
                )
-             execute "INSERT INTO validators VALUES (1,?)"
+             execute "INSERT INTO thm_validators VALUES (1,?)"
                (Only (serialise initialVals))
      -- Genesis and validator set matches ones recorded
      | [Only blk ]    <- storedGen
@@ -107,7 +107,7 @@ initializeBlockhainTables genesis initialVals = do
 -- | Current height of blockchain (height of last commited block).
 blockchainHeight :: Query rw alg a Height
 blockchainHeight =
-  query "SELECT MAX(height) FROM blockchain" () >>= \case
+  query "SELECT MAX(height) FROM thm_blockchain" () >>= \case
     []       -> error "Blockchain cannot be empty"
     [Only h] -> return h
     _        -> error "Impossible"
@@ -118,14 +118,14 @@ blockchainHeight =
 --   Must return block for every height @0 <= h <= blockchainHeight@
 retrieveBlock :: (Serialise a, Crypto alg) => Height -> Query rw alg a (Maybe (Block alg a))
 retrieveBlock h =
-  singleQ "SELECT block FROM blockchain WHERE height = ?" (Only h)
+  singleQ "SELECT block FROM thm_blockchain WHERE height = ?" (Only h)
 
 -- | Retrieve ID of block at given height. Must return same result
 --   as @fmap blockHash . retrieveBlock@ but implementation could
 --   do that more efficiently.
 retrieveBlockID :: Height -> Query rw alg a (Maybe (BlockID alg a))
 retrieveBlockID h =
-  singleQ "SELECT bid FROM blockchain WHERE height = ?" (Only h)
+  singleQ "SELECT bid FROM thm_blockchain WHERE height = ?" (Only h)
 
 -- | Retrieve commit justifying commit of block at height
 --   @h@. Must return same result as @fmap blockLastCommit . retrieveBlock . next@
@@ -136,13 +136,13 @@ retrieveBlockID h =
 --   commit for genesis block (h=0)
 retrieveCommit :: (Serialise a, Crypto alg) => Height -> Query rw alg a (Maybe (Commit alg a))
 retrieveCommit h = do
-  mb <- singleQ "SELECT block FROM blockchain WHERE height = ?" (Only (succ h))
+  mb <- singleQ "SELECT block FROM thm_blockchain WHERE height = ?" (Only (succ h))
   return $ blockLastCommit =<< mb
 
 -- | Retrieve round when commit was made.
 retrieveCommitRound :: (Serialise a, Crypto alg) => Height -> Query rw alg a (Maybe Round)
 retrieveCommitRound h =
-  query "SELECT round FROM blockchain WHERE height = ?" (Only h) >>= \case
+  query "SELECT round FROM thm_blockchain WHERE height = ?" (Only h) >>= \case
     []       -> return Nothing
     [Only r] -> return $! Just $ Round r
     _        -> error "Impossible"
@@ -160,14 +160,14 @@ retrieveCommitRound h =
 --   time interval after commit.
 retrieveLocalCommit :: Height -> Query rw alg a (Maybe (Commit alg a))
 retrieveLocalCommit h =
-  singleQ "SELECT cmt FROM commits WHERE height = ?" (Only h)
+  singleQ "SELECT cmt FROM thm_commits WHERE height = ?" (Only h)
 
 -- | Retrieve set of validators for given round.
 --
 --   Must return validator set for every @0 < h <= blockchainHeight + 1@
 retrieveValidatorSet :: (Crypto alg) =>  Height -> Query rw alg a (Maybe (ValidatorSet alg))
 retrieveValidatorSet h =
-  singleQ "SELECT valset FROM validators WHERE height = ?" (Only h)
+  singleQ "SELECT valset FROM thm_validators WHERE height = ?" (Only h)
 
 -- |Retrieve height and state saved as snapshot.
 --
@@ -193,8 +193,8 @@ storeCommit
 storeCommit cmt blk = do
   let h = headerHeight $ blockHeader blk
       Round  r = voteRound $ signedValue $ head $ commitPrecommits cmt
-  execute "INSERT INTO commits VALUES (?,?)" (h, serialise cmt)
-  execute "INSERT INTO blockchain VALUES (?,?,?,?)"
+  execute "INSERT INTO thm_commits VALUES (?,?)" (h, serialise cmt)
+  execute "INSERT INTO thm_blockchain VALUES (?,?,?,?)"
     ( h
     , r
     , serialise (blockHash blk)
@@ -214,26 +214,26 @@ storeStateSnapshot (Height h) state = do
 storeValSet :: (Crypto alg) => Block alg a -> ValidatorSet alg -> Query 'RW alg a ()
 storeValSet blk vals = do
   let h = headerHeight $ blockHeader blk
-  execute "INSERT INTO validators VALUES (?,?)"
+  execute "INSERT INTO thm_validators VALUES (?,?)"
     (succ h, serialise vals)
 
 -- | Add message to Write Ahead Log. Height parameter is height
 --   for which we're deciding block.
 writeToWAL :: (Serialise a, Crypto alg) => Height -> MessageRx 'Unverified alg a -> Query 'RW alg a ()
 writeToWAL h msg =
-  execute "INSERT OR IGNORE INTO wal VALUES (NULL,?,?)" (h, serialise msg)
+  execute "INSERT OR IGNORE INTO thm_wal VALUES (NULL,?,?)" (h, serialise msg)
 
 -- | Remove all entries from WAL which comes from height less than
 --   parameter.
 resetWAL :: Height -> Query 'RW alg a ()
 resetWAL h =
-  execute "DELETE FROM wal WHERE height < ?" (Only h)
+  execute "DELETE FROM thm_wal WHERE height < ?" (Only h)
 
 -- | Get all parameters from WAL in order in which they were
 --   written
 readWAL :: (Serialise a, Crypto alg) => Height -> Query rw alg a [MessageRx 'Unverified alg a]
 readWAL h = do
-  rows <- query "SELECT message FROM wal WHERE height = ? ORDER BY id" (Only h)
+  rows <- query "SELECT message FROM thm_wal WHERE height = ? ORDER BY id" (Only h)
   return [ case deserialiseOrFail bs of
              Right a -> a
              Left  e -> error ("CBOR encoding error: " ++ show e)
