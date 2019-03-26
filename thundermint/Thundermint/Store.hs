@@ -166,16 +166,6 @@ initDatabase c dct genesis vals = do
     Nothing -> error "Cannot initialize tables!"
     Just () -> return ()
 
--- | Execute query.
-queryRO :: (MonadReadDB m alg a) => Query 'RO alg a x -> m x
-queryRO q = flip runQueryRO q =<< askConnectionRO
-
--- | Execute query. @Nothing@ means that query violated some invariant
---   and was rolled back.
-queryRW :: (MonadDB m alg a) => Query 'RW alg a x -> m (Maybe x)
-queryRW q = flip runQueryRW q =<< askConnectionRW
-
-
 
 ----------------------------------------------------------------
 -- Storage for consensus
@@ -379,7 +369,7 @@ data BlockchainInconsistency
 
 -- | check storage against all consistency invariants
 checkStorage
-  :: (MonadReadDB m alg a, Crypto alg, Serialise a)
+  :: (MonadReadDB m alg a, MonadIO m, Crypto alg, Serialise a)
   => m [BlockchainInconsistency]
 checkStorage = queryRO $ execWriterT $ do
   maxH         <- lift $ blockchainHeight
@@ -411,7 +401,7 @@ checkStorage = queryRO $ execWriterT $ do
 -- | Check that block proposed at given height is correct in sense all
 --   blockchain invariants hold
 checkProposedBlock
-  :: (MonadReadDB m alg a, Crypto alg, Serialise a)
+  :: (MonadReadDB m alg a, MonadIO m, Crypto alg, Serialise a)
   => Height
   -> Block alg a
   -> m [BlockchainInconsistency]
