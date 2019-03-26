@@ -74,7 +74,7 @@ data BChState m s = BChState
 
 -- | Create block storage backed by MVar
 newBChState
-  :: (MonadMask m, MonadDB m alg a, Serialise a, Crypto alg, MonadFail m, Serialise s)
+  :: (MonadMask m, MonadIO m, MonadDB m alg a, Serialise a, Crypto alg, MonadFail m, Serialise s)
   => BlockFold s alg a             -- ^ Updating function
   -> m (BChState m s)
 newBChState BlockFold{..} = do
