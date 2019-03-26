@@ -154,10 +154,6 @@ initDatabase c dct genesis vals = do
   let names = foldF ((:[]) . persistentTableName) dct
   case () of
     _| names /= nub names               -> error "Duplicate table names"
-     | any (=="wal")              names -> error "'wal' is not acceptable table name"
-     | any (=="blockchain")       names -> error "'blockchain' is not acceptable table name"
-     | any (=="commit")           names -> error "'commit' is not acceptable table name"
-     | any (=="validators")       names -> error "'validators' is not acceptable table name"
      | any (isPrefixOf "thm_")    names -> error "'thm_' is not acceptable prefix for table"
      | any (isPrefixOf "sqlite_") names -> error "'sqlite_' is not acceptable prefix for table"
      | otherwise                        -> return ()
