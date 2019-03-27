@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP                        #-}
 {-# LANGUAGE DataKinds                  #-}
 {-# LANGUAGE DeriveFunctor              #-}
 {-# LANGUAGE DerivingStrategies         #-}
@@ -40,7 +41,7 @@ module Thundermint.Store.Internal.Query (
   ) where
 
 import Control.Monad.Catch
-import Control.Monad.Fail hiding (fail)
+import qualified Control.Monad.Fail as Fail
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Reader
@@ -229,9 +230,17 @@ instance MonadQueryRW m alg a => MonadQueryRW (SL.StateT s m) alg a where
 --   @StateT@ will while @IO@-effects obviously won't. Proceed with
 --   caution.
 newtype QueryT (rw :: Access) alg a m x = QueryT { unQueryT :: m x }
-  deriving newtype ( Functor, Applicative, Monad, MonadFail
-                   , MonadIO, MonadThrow, MonadCatch, MonadMask
-                   ) 
+  deriving newtype ( Functor, Applicative, MonadIO, MonadThrow, MonadCatch, MonadMask) 
+
+instance MonadThrow m => Monad (QueryT rw alg a m) where
+  return         = QueryT . return
+  QueryT m >>= f = QueryT $ unQueryT . f =<< m
+#if !MIN_VERSION_base(4,12,0)
+  fail _         = throwM Rollback
+#endif
+
+instance MonadThrow m => Fail.MonadFail (QueryT rw alg a m) where
+  fail _ = throwM Rollback
 
 -- | Exception thrown in order to roll back transaction
 data Rollback = Rollback
@@ -242,13 +251,13 @@ instance Exception Rollback
 instance MonadTrans (QueryT rr alg a) where
   lift = QueryT
 
-instance MonadReadDB m alg a => MonadReadDB (QueryT rw alg a m) alg a where
+instance (MonadThrow m, MonadReadDB m alg a) => MonadReadDB (QueryT rw alg a m) alg a where
   askConnectionRO = QueryT askConnectionRO
 
-instance MonadDB m alg a => MonadDB (QueryT 'RW alg a m) alg a where
+instance (MonadThrow m, MonadDB m alg a) => MonadDB (QueryT 'RW alg a m) alg a where
   askConnectionRW = QueryT askConnectionRW
 
-instance (MonadIO m, MonadReadDB m alg a) => MonadQueryRO (QueryT rw alg a m) alg a where
+instance (MonadIO m, MonadThrow m, MonadReadDB m alg a) => MonadQueryRO (QueryT rw alg a m) alg a where
   basicQuery sql param = do
     Connection _ conn <- askConnectionRO
     liftIO $ SQL.query conn sql param
@@ -256,7 +265,7 @@ instance (MonadIO m, MonadReadDB m alg a) => MonadQueryRO (QueryT rw alg a m) al
     Connection _ conn <- askConnectionRO
     liftIO $ SQL.query_ conn sql
 
-instance (MonadThrow m, MonadIO m, MonadDB m alg a) => MonadQueryRW (QueryT 'RW alg a m) alg a where
+instance (MonadIO m, MonadThrow m, MonadDB m alg a) => MonadQueryRW (QueryT 'RW alg a m) alg a where
   basicExecute  sql param = do
     Connection _ conn <- askConnectionRW
     liftIO $ SQL.execute conn sql param
@@ -305,7 +314,17 @@ queryRWT q = flip runQueryRWT q =<< askConnectionRW
 -- | Query which doesn't allow any other effect except interaction
 --   with database.
 newtype Query rw alg a x = Query (ReaderT (Connection rw alg a) IO x)
-  deriving newtype (Functor, Applicative, Monad, MonadFail, MonadThrow)
+  deriving newtype (Functor, Applicative)
+
+instance Monad (Query rm alg a) where
+  return = Query . return
+  Query m >>= f = Query $ (\(Query q) -> q) . f =<< m
+#if !MIN_VERSION_base(4,12,0)
+  fail _ = Query $ throwM Rollback
+#endif
+
+instance Fail.MonadFail (Query rw alg a) where
+  fail _ = Query $ throwM Rollback
 
 instance MonadReadDB (Query rw alg a) alg a where
   askConnectionRO = Query $ asks connectionRO
@@ -328,7 +347,7 @@ instance MonadQueryRW (Query 'RW alg a) alg a where
   basicExecute_ sql = do
     Connection _ conn <- askConnectionRW
     Query $ liftIO $ SQL.execute_ conn sql
-  rollback = throwM Rollback
+  rollback = Query $ throwM Rollback
 
 
 -- | Run read-only query. Note that read-only couldn't be rolled back
