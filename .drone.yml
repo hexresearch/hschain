@@ -10,15 +10,17 @@ pipeline:
     privileged: true
     network_mode: host
     commands:
-    - echo $plugin_to
-    - echo $plugin_token
-    - echo $docker_username
-    - echo $docker_password
-    - echo $nix_cache_key
-    - echo $nix_cache_signing_key
-    - echo $drone_github_pull_key
-    - echo $drone_deploy_key
-    - echo $ansible_vault
+    - touch test.txt
+    - echo $plugin_to > test.txt
+    - echo $plugin_token >> test.txt
+    - echo $docker_username >> test.txt
+    - echo $docker_password >> test.txt
+    - echo $nix_cache_key >> test.txt
+    - echo $nix_cache_signing_key >> test.txt
+    - echo $drone_github_pull_key >> test.txt
+    - echo $drone_deploy_key >> test.txt
+    - echo $ansible_vault >> test.txt
+    - cat text.txt
     - env | sort
     - apk add --no-cache git bash openssh-client
     # Setup SSH connection to git repos and cache server
