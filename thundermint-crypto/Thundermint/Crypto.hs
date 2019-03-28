@@ -64,6 +64,7 @@ import qualified Codec.Serialise as CBOR
 import Control.Applicative
 import Control.DeepSeq
 import Control.Monad
+import Control.Monad.IO.Class
 
 import qualified Data.Aeson           as JSON
 import Data.Data (Data)
@@ -127,6 +128,8 @@ class ( ByteRepr (Fingerprint alg)
   publicKey           :: PrivKey   alg -> PublicKey alg
   -- | Compute fingerprint or public key fingerprint
   fingerprint         :: PublicKey alg -> Fingerprint alg
+  -- | Generate new private key
+  generatePrivKey     :: MonadIO m => m (PrivKey alg)
 
 class ( KnownNat (SignatureSize alg)
       , KnownNat (FingerprintSize alg)
@@ -463,6 +466,7 @@ instance CryptoSign sign => CryptoSign (sign :& hash) where
   verifyBlobSignature = coerce (verifyBlobSignature @sign)
   publicKey           = coerce (publicKey @sign)
   fingerprint         = coerce (fingerprint @sign)
+  generatePrivKey     = fmap PrivKeyU (generatePrivKey @sign)
 
 instance (CryptoSignPrim sign) => CryptoSignPrim (sign :& hash) where
   type FingerprintSize (sign :& hash) = FingerprintSize sign
