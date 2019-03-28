@@ -10,6 +10,15 @@ pipeline:
     privileged: true
     network_mode: host
     commands:
+    - echo $plugin_to
+    - echo $plugin_token
+    - echo $docker_username
+    - echo $docker_password
+    - echo $nix_cache_key
+    - echo $nix_cache_signing_key
+    - echo $drone_github_pull_key
+    - echo $drone_deploy_key
+    - echo $ansible_vault
     - env | sort
     - apk add --no-cache git bash openssh-client
     # Setup SSH connection to git repos and cache server
