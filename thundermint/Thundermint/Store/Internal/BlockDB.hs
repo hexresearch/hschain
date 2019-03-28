@@ -6,9 +6,8 @@
 -- Data types for primary database. Namely storage of blocks, commits and validators
 module Thundermint.Store.Internal.BlockDB where
 
-import Control.Applicative
-import Control.Monad.Trans.Maybe
-import Data.Int
+import Control.Monad (when)
+import qualified Data.ByteString.Lazy as LBS
 import Data.SafeCopy (SafeCopy,safeDecode,safeEncode)
 import Data.Text     (Text)
 import qualified Database.SQLite.Simple           as SQL
@@ -34,16 +33,23 @@ initializeBlockhainTables
 initializeBlockhainTables genesis initialVals = do
   -- Initialize tables for storage of blockchain
   execute_
-    "CREATE TABLE IF NOT EXISTS blockchain \
+    "CREATE TABLE IF NOT EXISTS thm_blockchain \
     \  ( height INT NOT NULL UNIQUE \
+    \  , round  INT NOT NULL  \
     \  , bid    BLOB NOT NULL \
     \  , block  BLOB NOT NULL)"
   execute_
-    "CREATE TABLE IF NOT EXISTS commits \
+    "CREATE TABLE IF NOT EXISTS state_snapshot \
+    \  ( height           INT  NOT NULL \
+    \  , snapshot_blob    BLOB NOT NULL)"
+  r <- query "SELECT height FROM state_snapshot" ()
+  when (null (r :: [[SQL.SQLData]])) $ execute_ "INSERT INTO state_snapshot (height, snapshot_blob) VALUES (-1, X'')"
+  execute_
+    "CREATE TABLE IF NOT EXISTS thm_commits \
     \  ( height INT  NOT NULL UNIQUE \
     \  , cmt    BLOB NOT NULL)"
   execute_
-    "CREATE TABLE IF NOT EXISTS validators \
+    "CREATE TABLE IF NOT EXISTS thm_validators \
     \  ( height INT  NOT NULL UNIQUE \
     \  , valset BLOB NOT NULL)"
   -- Checkpoints for user state
@@ -63,27 +69,24 @@ initializeBlockhainTables genesis initialVals = do
   -- height is noop so there's no point in storing them. Performance
   -- gains are massive since writing to disk is slow, no SLOW.
   execute_
-    "CREATE TABLE IF NOT EXISTS wal \
+    "CREATE TABLE IF NOT EXISTS thm_wal \
     \  ( id      INTEGER PRIMARY KEY \
     \  , height  INTEGER NOT NULL \
     \  , message BLOB NOT NULL \
     \  , UNIQUE(height,message))"
   -- Insert genesis block if needed
-  storedGen  <- query "SELECT block  FROM blockchain WHERE height = 0" ()
-  storedVals <- query "SELECT valset FROM validators WHERE height = 1" ()
+  storedGen  <- query "SELECT block  FROM thm_blockchain WHERE height = 0" ()
+  storedVals <- query "SELECT valset FROM thm_validators WHERE height = 1" ()
   case () of
      -- Fresh DB without genesis block
     _| [] <- storedGen
      , [] <- storedVals
-       -> do execute "INSERT INTO blockchain VALUES (?,?,?)"
-               ( 0 :: Int64
-               , safeEncode (blockHash genesis)
+       -> do execute "INSERT INTO thm_blockchain VALUES (0,0,?,?)"
+               ( safeEncode (blockHash genesis)
                , safeEncode genesis
                )
-             execute "INSERT INTO validators VALUES (?,?)"
-               ( 1 :: Int64
-               , safeEncode initialVals
-               )
+             execute "INSERT INTO thm_validators VALUES (1,?)"
+               (Only (safeEncode initialVals))
      -- Genesis and validator set matches ones recorded
      --
      -- FIXME: equality check of validator and geneisis???
@@ -106,9 +109,9 @@ initializeBlockhainTables genesis initialVals = do
 -- | Current height of blockchain (height of last commited block).
 blockchainHeight :: Query rw alg a Height
 blockchainHeight =
-  query "SELECT MAX(height) FROM blockchain" () >>= \case
+  query "SELECT MAX(height) FROM thm_blockchain" () >>= \case
     []       -> error "Blockchain cannot be empty"
-    [Only i] -> return (Height i)
+    [Only h] -> return h
     _        -> error "Impossible"
 
 
@@ -116,16 +119,14 @@ blockchainHeight =
 --   returns block for every height @0 <= h <= blockchainHeight@
 retrieveBlock
   :: (SafeCopy a, Crypto alg)
-  => Height
-  -> Query rw alg a (Maybe (Pet (Block alg a)))
-retrieveBlock (Height h) =
-  singleQ "SELECT block FROM blockchain WHERE height = ?" (Only h)
+retrieveBlock h =
+  singleQ "SELECT block FROM thm_blockchain WHERE height = ?" (Only h)
 
 
 -- | Retrieve ID of block at given height.
 retrieveBlockID :: Height -> Query rw alg a (Maybe (BlockID alg a))
-retrieveBlockID (Height h) =
-  singleQ "SELECT bid FROM blockchain WHERE height = ?" (Only h)
+retrieveBlockID h =
+  singleQ "SELECT bid FROM thm_blockchain WHERE height = ?" (Only h)
 
 
 -- | Retrieve commit justifying commit of block at given height.
@@ -136,27 +137,18 @@ retrieveBlockID (Height h) =
 --   Note that this method returns @Nothing@ for last block since
 --   its commit is not persisted in blockchain yet and there's no
 --   commit for genesis block (h=0)
-retrieveCommit
-  :: (SafeCopy a, Crypto alg)
-  => Height
-  -> Query rw alg a (Maybe (Pet (Commit alg a)))
-retrieveCommit (Height h) = do
-  mb <- singleQ "SELECT block FROM blockchain WHERE height = ?" (Only (h+1))
+retrieveCommit :: (Serialise a, Crypto alg) => Height -> Query rw alg a (Maybe (Commit alg a))
+retrieveCommit h = do
+  mb <- singleQ "SELECT block FROM thm_blockchain WHERE height = ?" (Only (succ h))
   return $ blockLastCommit . pet =<< mb
-
 
 -- | Retrieve round when commit was made.
 retrieveCommitRound
-  :: (SafeCopy a, Crypto alg)
-  => Height
-  -> Query rw alg a (Maybe Round)
-retrieveCommitRound (Height h) = runMaybeT $ do
-  c <-  MaybeT (fmap pet <$> retrieveCommit (Height h))
-    <|> MaybeT (singleQ "SELECT cmt FROM commits WHERE height = ?" (Only h))
-  -- FIXME
-  let getRound (Commit _ (v:_)) = voteRound $ signedValue v
-      getRound _                = error "Impossible"
-  return $ getRound c
+retrieveCommitRound h =
+  query "SELECT round FROM thm_blockchain WHERE height = ?" (Only h) >>= \case
+    []       -> return Nothing
+    [Only r] -> return $! Just $ Round r
+    _        -> error "Impossible"
 
 
 -- | Retrieve local commit justifying commit of block as known by
@@ -170,15 +162,27 @@ retrieveCommitRound (Height h) = runMaybeT $ do
 --   local node 2) each node collect straggler precommits for some
 --   time interval after commit.
 retrieveLocalCommit :: Height -> Query rw alg a (Maybe (Commit alg a))
-retrieveLocalCommit (Height h) =
-  singleQ "SELECT cmt FROM commits WHERE height = ?" (Only h)
+retrieveLocalCommit h =
+  singleQ "SELECT cmt FROM thm_commits WHERE height = ?" (Only h)
 
 -- | Retrieve set of validators for given round.
 --
 --   Must return validator set for every @0 < h <= blockchainHeight + 1@
 retrieveValidatorSet :: (Crypto alg) => Height -> Query rw alg a (Maybe (Pet (ValidatorSet alg)))
-retrieveValidatorSet (Height h) =
-  singleQ "SELECT valset FROM validators WHERE height = ?" (Only h)
+retrieveValidatorSet h =
+  singleQ "SELECT valset FROM thm_validators WHERE height = ?" (Only h)
+
+-- |Retrieve height and state saved as snapshot.
+--
+retrieveSavedState :: Serialise s => Query 'RO alg a (Maybe (Height, s))
+retrieveSavedState =
+  singleQWithParser parse "SELECT height, snapshot_blob FROM state_snapshot" ()
+  where
+    parse [SQL.SQLInteger h, SQL.SQLBlob s]
+      | h > 0
+      , Right r <- deserialiseOrFail (LBS.fromStrict s) = Just (Height $ fromIntegral h, r)
+      | otherwise = Nothing
+    parse _ = Nothing
 
 
 ----------------------------------------------------------------
@@ -192,13 +196,24 @@ storeCommit
   -> Pet (Block  alg a)
   -> Query 'RW alg a ()
 storeCommit cmt blk = do
-  let Height h = headerHeight $ pet $ blockHeader $ pet blk
-  execute "INSERT INTO commits VALUES (?,?)" (h, safeEncode cmt)
-  execute "INSERT INTO blockchain VALUES (?,?,?)"
+  let h = headerHeight $ blockHeader blk
+      Round  r = voteRound $ signedValue $ head $ commitPrecommits cmt
+  execute "INSERT INTO thm_commits VALUES (?,?)" (h, serialise cmt)
+  execute "INSERT INTO thm_blockchain VALUES (?,?,?,?)"
     ( h
+    , r
     , safeEncode (blockHash blk)
     , safeEncode blk
     )
+
+-- | Write state snapshot into DB.
+-- @maybeSnapshot@ contains a serialized value of a state associated with the processed block.
+storeStateSnapshot
+  :: Serialise s =>
+  Height -> s -> Query 'RW alg a ()
+storeStateSnapshot (Height h) state = do
+  execute "UPDATE state_snapshot SET height = ?, snapshot_blob = ?" (h, serialise state)
+
 
 -- | Write validator set for next round into database
 storeValSet :: (Crypto alg)
@@ -206,27 +221,27 @@ storeValSet :: (Crypto alg)
   -> Pet (ValidatorSet alg)
   -> Query 'RW alg a ()
 storeValSet blk vals = do
-  let Height h = headerHeight $ pet $ blockHeader $ pet blk
-  execute "INSERT INTO validators VALUES (?,?)"
-    (h+1, safeEncode vals)
+  let h = headerHeight $ pet $ blockHeader $ pet blk
+  execute "INSERT INTO thm_validators VALUES (?,?)"
+    (succ h, safeEncode vals)
 
 -- | Add message to Write Ahead Log. Height parameter is height
 --   for which we're deciding block.
 writeToWAL :: (SafeCopy a, Crypto alg) => Height -> MessageRx 'Unverified alg a -> Query 'RW alg a ()
-writeToWAL (Height h) msg =
-  execute "INSERT OR IGNORE INTO wal VALUES (NULL,?,?)" (h, safeEncode msg)
+writeToWAL h msg =
+  execute "INSERT OR IGNORE INTO thm_wal VALUES (NULL,?,?)" (h, safeEncode msg)
 
 -- | Remove all entries from WAL which comes from height less than
 --   parameter.
 resetWAL :: Height -> Query 'RW alg a ()
-resetWAL (Height h) =
-  execute "DELETE FROM wal WHERE height < ?" (Only h)
+resetWAL h =
+  execute "DELETE FROM thm_wal WHERE height < ?" (Only h)
 
 -- | Get all parameters from WAL in order in which they were
 --   written
 readWAL :: (SafeCopy a, Crypto alg) => Height -> Query rw alg a [MessageRx 'Unverified alg a]
-readWAL (Height h) = do
-  rows <- query "SELECT message FROM wal WHERE height = ? ORDER BY id" (Only h)
+readWAL h = do
+  rows <- query "SELECT message FROM thm_wal WHERE height = ? ORDER BY id" (Only h)
   return [ case safeDecode bs of
              Right a -> a
              Left  e -> error ("CBOR encoding error: " ++ show e)
@@ -244,3 +259,12 @@ singleQ sql p =
       Right a -> return (Just a)
       Left  e -> error ("CBOR encoding error: " ++ show e)
     _         -> error "Impossible"
+
+-- Query that returns results parsed from single row ().
+singleQWithParser :: (SQL.ToRow p)
+        => ([SQL.SQLData] -> Maybe x) -> Text -> p -> Query rw alg a (Maybe x)
+singleQWithParser resultsParser sql p =
+  query sql p >>= \case
+    [x] -> return (resultsParser x)
+    _ -> error $ "SQL statement resulted in too many (>1) or zero result rows: " ++ show sql
+  where

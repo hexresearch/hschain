@@ -73,7 +73,6 @@ Library
                   Thundermint.Mock.Types
                   Thundermint.P2P
                   Thundermint.P2P.Consts
-                  Thundermint.P2P.Instances
                   Thundermint.P2P.Network
                   Thundermint.P2P.PeerState
                   Thundermint.P2P.Types

@@ -42,7 +42,12 @@ import Control.Monad.IO.Class
 import Control.Monad.Fail         (MonadFail)
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Reader
-import Control.Monad.Trans.Maybe  (MaybeT(..))
+import Control.Monad.Trans.Maybe             (MaybeT(..))
+import Control.Monad.Trans.State.Strict as SS(StateT(..))
+import Control.Monad.Trans.State.Lazy   as SL(StateT(..))
+import Control.Monad.Trans.Except            (ExceptT(..))
+import Control.Monad.Trans.Identity          (IdentityT(..))
+
 import Control.Exception          (SomeException(..),AsyncException(..))
 import Data.Aeson
 import Data.Aeson.TH
@@ -87,6 +92,22 @@ instance MonadLogger m => MonadLogger (MaybeT m) where
 instance MonadLogger m => MonadLogger (ReaderT r m) where
   logger sev str a = lift $ logger sev str a
   localNamespace fun (ReaderT m) = ReaderT $ localNamespace fun . m
+
+instance MonadLogger m => MonadLogger (SS.StateT s m) where
+  logger sev str a = lift $ logger sev str a
+  localNamespace fun (SS.StateT m) = SS.StateT $ localNamespace fun . m
+
+instance MonadLogger m => MonadLogger (SL.StateT s m) where
+  logger sev str a = lift $ logger sev str a
+  localNamespace fun (SL.StateT m) = SL.StateT $ localNamespace fun . m
+
+instance MonadLogger m => MonadLogger (ExceptT e m) where
+  logger sev str a = lift $ logger sev str a
+  localNamespace fun (ExceptT m) = ExceptT $ localNamespace fun m
+
+instance MonadLogger m => MonadLogger (IdentityT m) where
+  logger sev str a = lift $ logger sev str a
+  localNamespace fun (IdentityT m) = IdentityT $ localNamespace fun m
 
 -- | Change logger's namespace
 setNamespace :: MonadLogger m => Namespace -> m a -> m a

@@ -62,7 +62,7 @@ def add_legend(ax) :
     fontP.set_size('small')
     ax.legend(loc='center left', bbox_to_anchor=(1, 0.5), prop=fontP)
 
-def plot_commit_time(logs) :
+def plot_commit_time(logs, relative=False) :
     "Plot commit time and prime average block time"
     # Prepare figure
     fig,ax = figure_with_legend()
@@ -74,9 +74,10 @@ def plot_commit_time(logs) :
     dfs = {k : to_commit(d) for k,d in logs.items()}
     dfs = {k : d for k,d in dfs.items() if not d.empty}
     if dfs:
-        t0  = np.min([df['at'].values[0] for df in dfs.values() if len(df) > 0])
-        for k, df in dfs.items() :
-            df['at'] = (df['at'] - t0).astype('timedelta64[s]')
+        if relative:
+            t0  = np.min([df['at'].values[0] for df in dfs.values() if len(df) > 0])
+            for k, df in dfs.items() :
+                df['at'] = (df['at'] - t0).astype('timedelta64[s]')
         # Height plot
         for k,df in dfs.items() :
             ax.plot(df['at'] , df['H'], '+', label=k)

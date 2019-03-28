@@ -34,7 +34,6 @@ import Thundermint.Mock.Coin
 import Thundermint.Mock.Types
 import Thundermint.P2P (generatePeerId)
 import Thundermint.P2P.Consts
-import Thundermint.P2P.Instances ()
 import Thundermint.P2P.Network               ( getLocalAddress, realNetwork, realNetworkUdp
                                              , getCredentialFromBuffer, realNetworkTls)
 import qualified Thundermint.P2P.Types as P2PT
@@ -115,8 +114,8 @@ main = do
       logger InfoS ("peer Info generated: " <> showLS peerInfo) ()
       netAPI <- case optTls of
         False -> case optUDP of
-          False -> return $ realNetwork peerInfo (show listenPort)
-          True  -> liftIO $ realNetworkUdp peerInfo (show listenPort)
+          False -> return $ realNetwork peerInfo
+          True  -> liftIO $ realNetworkUdp peerInfo
         True  -> liftIO $ do
           keyPem  <- BC8.pack <$> getEnv "KEY_PEM"
           certPem <- BC8.pack <$> getEnv "CERT_PEM"

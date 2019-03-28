@@ -49,6 +49,8 @@ module Thundermint.Store (
   , retrieveLocalCommit
   , retrieveCommitRound
   , retrieveValidatorSet
+  , retrieveSavedState
+  , storeStateSnapshot
     -- * In memory store for proposals
   , Writable
   , ProposalStorage(..)
@@ -153,10 +155,6 @@ initDatabase c dct genesis vals = do
   let names = foldF ((:[]) . persistentTableName) dct
   case () of
     _| names /= nub names               -> error "Duplicate table names"
-     | any (=="wal")              names -> error "'wal' is not acceptable table name"
-     | any (=="blockchain")       names -> error "'blockchain' is not acceptable table name"
-     | any (=="commit")           names -> error "'commit' is not acceptable table name"
-     | any (=="validators")       names -> error "'validators' is not acceptable table name"
      | any (isPrefixOf "thm_")    names -> error "'thm_' is not acceptable prefix for table"
      | any (isPrefixOf "sqlite_") names -> error "'sqlite_' is not acceptable prefix for table"
      | otherwise                        -> return ()
@@ -266,7 +264,7 @@ instance Katip.LogItem  MempoolInfo where
 
 -- | Cursor into mempool which is used for gossiping data
 data MempoolCursor m alg tx = MempoolCursor
-  { pushTransaction :: !(Pet tx -> m (Maybe (Hash alg)))
+  { pushTransaction :: !(Pet tx -> m (Maybe (Hashed alg tx)))
     -- ^ Add transaction to the mempool. It's preliminary checked and
     --   if check fails it immediately discarded. If transaction is
     --   accepted its hash is computed and returned
@@ -286,7 +284,7 @@ data Mempool m alg tx = Mempool
     -- ^ Remove transactions that are no longer valid from mempool
   , getMempoolCursor  :: !(m (MempoolCursor m alg tx))
     -- ^ Get cursor pointing to be
-  , txInMempool       :: !(Hash alg -> m Bool)
+  , txInMempool       :: !(Hashed alg tx -> m Bool)
     -- ^ Checks whether transaction is mempool
   , mempoolStats      :: !(m MempoolInfo)
     -- ^ Number of elements in mempool

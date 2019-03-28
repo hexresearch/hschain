@@ -32,6 +32,7 @@ import qualified Data.List as List
 import Data.SafeCopy            (SafeCopy,kind,primitive)
 import Data.Map                 (Map)
 import Data.Set                 (Set)
+import qualified Data.Text as Text
 import Data.Word
 import GHC.Generics             (Generic)
 
@@ -50,9 +51,13 @@ type PeerId = Word64
 
 
 data PeerInfo = PeerInfo
-    { piPeerId        :: !PeerId -- ^An ID to identify the machine
-    , piPeerPort      :: !Word16 -- ^Original listening port of the machine of the peer.
-    , piPeerSchemeVer :: !Word16 -- ^The scheme encoding version. It is not possible tp decode values safely between two different versions.
+    { piPeerId        :: !PeerId
+    -- ^ An ID to identify the machine
+    , piPeerPort      :: !Word16
+    -- ^ Original listening port of the machine of the peer.
+    , piPeerSchemeVer :: !Word16
+    -- ^ The scheme encoding version. It is not possible tp decode
+    --   values safely between two different versions.
     } deriving (Show, Generic)
 
 
@@ -97,10 +102,18 @@ netAddrToSockAddr :: NetAddr -> Net.SockAddr
 netAddrToSockAddr (NetAddrV4 ha port) = Net.SockAddrInet  (fromIntegral port)  ha
 netAddrToSockAddr (NetAddrV6 ha port) = Net.SockAddrInet6 (fromIntegral port) 0 ha 0
 
-instance SafeCopy      NetAddr where
+instance Serialise NetAddr
+instance SafeCopy  NetAddr where
   kind = primitive
-instance JSON.ToJSON   NetAddr
-instance JSON.FromJSON NetAddr
+instance JSON.ToJSON   NetAddr where
+  toJSON netAddr = JSON.String $ Text.pack $ show netAddr
+instance JSON.FromJSON NetAddr where
+  parseJSON (JSON.String text) = case reads str of
+    ((netaddr, ""):_) -> pure netaddr
+    _ -> fail $ "can't parse net addr from " ++ show str
+    where
+      str = Text.unpack text
+  parseJSON _ = fail $ "NetAddr parsing expects String"
 
 -- | Network port
 type NetworkPort = Net.PortNumber

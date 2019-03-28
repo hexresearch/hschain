@@ -1,12 +1,15 @@
+{-# LANGUAGE CPP                        #-}
 {-# LANGUAGE DataKinds                  #-}
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE KindSignatures             #-}
+{-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE RecordWildCards            #-}
 {-# LANGUAGE StandaloneDeriving         #-}
+{-# LANGUAGE TemplateHaskell            #-}
 {-# LANGUAGE TypeFamilies               #-}
 {-# LANGUAGE ViewPatterns               #-}
 -- |
@@ -36,6 +39,7 @@ module Thundermint.Types.Blockchain (
     -- ** Votes
   , VoteType(..)
   , Vote(..)
+  , CheckSignature(..)
   ) where
 
 import           Codec.Serialise
@@ -49,15 +53,20 @@ import           Data.Aeson               ((.=), (.:))
 import           Data.ByteString          (ByteString)
 import qualified Data.HashMap.Strict      as HM
 import           Data.Bits                ((.&.))
+import           Data.Coerce
 import           Data.Int
 import           Data.SafeCopy
 import           Data.List                (sortBy)
 import           Data.Monoid              ((<>))
 import           Data.Ord                 (comparing)
-import qualified Data.Text.Encoding       as T
 import           Data.Time.Clock          (UTCTime)
 import           Data.Time.Clock.POSIX    (getPOSIXTime,posixSecondsToUTCTime)
+import           Data.Vector.Unboxed.Deriving
 import           GHC.Generics             (Generic)
+#ifdef INSTANCES_SQLITE
+import qualified Database.SQLite.Simple.FromField as SQL
+import qualified Database.SQLite.Simple.ToField   as SQL
+#endif
 
 import Thundermint.Crypto
 import Thundermint.Types.Validators
@@ -218,7 +227,7 @@ instance SafeCopy (Header alg a)
 
 instance CryptoHash alg => JSON.ToJSON (Header alg a) where
   toJSON Header{..} =
-    JSON.object [ "headerChainID"        .= T.decodeUtf8 (encodeBSBase58 headerChainID) -- We ask to use Base58
+    JSON.object [ "headerChainID"        .= encodeBase58 headerChainID
                 , "headerHeight"         .= headerHeight
                 , "headerTime"           .= headerTime
                 , "headerLastBlockID"    .= headerLastBlockID
@@ -242,7 +251,7 @@ instance CryptoHash alg => JSON.FromJSON (Header alg a) where
     headerEvidenceHash   <- o .: "headerEvidenceHash"
     return Header{..}
     where
-      fromBase58 = maybe complain return . decodeBSBase58 . T.encodeUtf8
+      fromBase58 = maybe complain return . decodeBase58
       complain   = fail "Incorrect Base58 encoding" 
 
 -- | Evidence of byzantine behaviour by some node.
@@ -444,3 +453,24 @@ decodeVote expectedTag = do
                 fail ("Invalid Vote tag, expected: " ++ show expectedTag
                       ++ ", actual: " ++ show tag)
         _ -> fail $ "Invalid Vote encoding"
+
+----------------------------------------------------------------
+-- Helping application be faster.
+----------------------------------------------------------------
+
+-- | Better signalling of the need to check signatures.
+data CheckSignature = CheckSignature | AlreadyChecked
+  deriving (Eq, Ord, Show)
+
+derivingUnbox "Time"   [t| Time   -> Int64 |] [| coerce |] [| coerce |]
+derivingUnbox "Height" [t| Height -> Int64 |] [| coerce |] [| coerce |]
+derivingUnbox "Round"  [t| Round  -> Int64 |] [| coerce |] [| coerce |]
+
+#ifdef INSTANCES_SQLITE
+deriving instance SQL.FromField Height
+deriving instance SQL.ToField   Height
+deriving instance SQL.FromField Round
+deriving instance SQL.ToField   Round
+deriving instance SQL.FromField Time
+deriving instance SQL.ToField   Time
+#endif

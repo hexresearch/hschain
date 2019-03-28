@@ -709,13 +709,15 @@ peerGossipMempool peerObj PeerChans{..} config gossipCh MempoolCursor{..} = logO
   logger InfoS "Starting routine for gossiping transactions" ()
   forever $ do
     getPeerState peerObj >>= \case
-      Current _ -> advanceCursor >>= \case
-        Just tx -> do liftIO $ atomically $ writeTBQueue gossipCh $ GossipTx tx
-                      tickSend cntGossipTx
-        Nothing -> return ()
+      Current{} -> gossipTx
+      Ahead{}   -> gossipTx
       _         -> return ()
     waitSec (0.001 * fromIntegral (gossipDelayMempool config))
-
+  where
+    gossipTx = advanceCursor >>= \case
+      Just tx -> do liftIO $ atomically $ writeTBQueue gossipCh $ GossipTx tx
+                    tickSend cntGossipTx
+      Nothing -> return ()
 
 -- | Gossip blocks with given peer
 peerGossipBlocks

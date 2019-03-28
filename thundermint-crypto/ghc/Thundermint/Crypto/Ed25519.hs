@@ -1,6 +1,7 @@
 {-# LANGUAGE DataKinds                  #-}
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE FlexibleInstances          #-}
+{-# LANGUAGE DeriveDataTypeable         #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE TypeApplications           #-}
@@ -9,19 +10,20 @@
 {-# LANGUAGE UndecidableInstances       #-}
 module Thundermint.Crypto.Ed25519 where
 
-import Thundermint.Crypto
 import Control.Monad.IO.Class
 import Control.DeepSeq       (NFData(..))
 import Crypto.Error          (CryptoFailable(..), throwCryptoError)
 import Crypto.Hash           (Digest)
 import Data.ByteArray        (convert)
 import Data.ByteString       (ByteString)
+import Data.Data             (Data)
 import Data.Ord              (comparing)
 import System.Entropy        (getEntropy)
 
 import qualified Crypto.PubKey.Ed25519 as Ed
 import qualified Crypto.Hash           as Crypto
 
+import Thundermint.Crypto
 
 ----------------------------------------------------------------
 -- 
@@ -33,8 +35,8 @@ sha512 = convert . id @(Digest Crypto.SHA512) . Crypto.hash
 sha256 :: ByteString -> ByteString
 sha256 = convert . id @(Digest Crypto.SHA256) . Crypto.hash
 
-data Ed25519
-data SHA512
+data Ed25519 deriving (Data)
+data SHA512  deriving (Data)
 
 type Ed25519_SHA512 = Ed25519 :& SHA512
 

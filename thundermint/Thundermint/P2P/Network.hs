@@ -7,8 +7,6 @@
 module Thundermint.P2P.Network (
     NetworkAPI(..)
   , P2PConnection(..)
-    -- * Real network stub
-  , realNetworkStub
     -- * Real network
   , realNetwork
   , realNetworkUdp
@@ -58,8 +56,8 @@ import Thundermint.P2P.Types
 import qualified Thundermint.P2P.Network.IpAddresses as Ip
 
 -- | API implementation for real tcp network
-realNetwork :: PeerInfo -> Net.ServiceName -> NetworkAPI
-realNetwork ourPeerInfo serviceName = (realNetworkStub serviceName)
+realNetwork :: PeerInfo -> NetworkAPI
+realNetwork ourPeerInfo = (realNetworkStub serviceName)
   { listenOn = do
       let hints = Net.defaultHints
             { Net.addrFlags      = [Net.AI_PASSIVE]
@@ -102,6 +100,7 @@ realNetwork ourPeerInfo serviceName = (realNetworkStub serviceName)
   , ourPeerInfo = ourPeerInfo
   }
  where
+  serviceName = show $ piPeerPort ourPeerInfo
   accept sock = do
     (conn, addr) <- liftIO $ Net.accept sock
     liftIO $ sendBS conn $ CBOR.serialise ourPeerInfo
@@ -153,8 +152,9 @@ recvAll sock n = LBS.concat `fmap` loop (fromIntegral n)
       else fmap (r:) (loop (left - LBS.length r))
 
 -- | API implementation example for real udp network
-realNetworkUdp :: PeerInfo -> Net.ServiceName -> IO NetworkAPI
-realNetworkUdp ourPeerInfo serviceName = do
+realNetworkUdp :: PeerInfo -> IO NetworkAPI
+realNetworkUdp ourPeerInfo = do
+  let serviceName = show $ piPeerPort ourPeerInfo
   -- FIXME: prolly HostName fits better than SockAddr
   tChans <- newTVarIO Map.empty
   acceptChan <- newTChanIO :: IO (TChan (P2PConnection, NetAddr))

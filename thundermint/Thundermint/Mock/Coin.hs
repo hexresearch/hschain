@@ -178,8 +178,8 @@ processTransaction tx CoinState{..} = case pet tx of
 
 transitions :: BlockFold CoinState alg [Pet Tx]
 transitions = BlockFold
-  { processTx           = process
-  , processBlock        = \b s0 -> let h = headerHeight $ pet $ blockHeader b
+  { processTx           = const process
+  , processBlock        = \_ b s0 -> let h = headerHeight $ pet $ blockHeader $ pet b
                                    in foldM (flip (process h)) s0 (pet (blockData b))
   , transactionsToBlock = \_ ->
       let selectTx _ []     = []

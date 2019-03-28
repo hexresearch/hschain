@@ -116,7 +116,7 @@ newMempool validation = do
           modifyTVar' varRevMap $ \m0 ->
             foldl' (\m (_,tx) -> Map.delete tx m) m0 invalidTx
           modifyTVar' varTxSet  $ \s0 ->
-            foldl' (\s(_,tx) -> Set.delete (hash tx) s) s0 invalidTx
+            foldl' (\s(_,tx) -> Set.delete (hashed tx) s) s0 invalidTx
           modifyTVar' varFiltered (+ (length invalidTx))
     --
     , mempoolStats = liftIO $ atomically $ do
@@ -145,7 +145,7 @@ newMempool validation = do
                 rmap <- readTVar varRevMap
                 case tx `Map.notMember` rmap of
                   True -> do
-                    let txHash = hash tx
+                    let txHash = hashed tx
                     modifyTVar' varAdded     succ
                     n <- succ <$> readTVar varMaxN
                     modifyTVar' varFIFO   $ IMap.insert n tx
@@ -183,7 +183,7 @@ newMempool validation = do
                       , show trueTX
                       , show tx
                       ]
-            | let trueTX = Set.fromList (hash <$> toList fifo)
+            | let trueTX = Set.fromList (hashed <$> toList fifo)
             , trueTX /= tx
             ]
           , [ "Duplicate transactions present"

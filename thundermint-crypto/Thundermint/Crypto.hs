@@ -1,6 +1,7 @@
 {-# LANGUAGE DataKinds                  #-}
 {-# LANGUAGE DefaultSignatures          #-}
 {-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE DeriveDataTypeable         #-}
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
@@ -70,6 +71,7 @@ import Control.DeepSeq
 import Control.Monad
 
 import qualified Data.Aeson           as JSON
+import Data.Data (Data)
 import           Data.Text              (Text)
 import           Data.Coerce
 import           Data.SafeCopy
@@ -93,6 +95,7 @@ import GHC.Generics         (Generic,Generic1)
 type Crypto (alg) = (CryptoSign alg, CryptoHash alg)
 
 data sign :& hash
+  deriving (Data)
 
 -- | Private key
 data family PrivKey   alg
@@ -176,9 +179,13 @@ signatureSize :: forall alg proxy i. (Crypto alg, Num i) => proxy alg -> i
 signatureSize _ = fromIntegral $ natVal (Proxy :: Proxy (SignatureSize alg))
 
 -- | Value could be represented as bytestring.
-class (Ord a) => ByteRepr a where
+class ByteRepr a where
   decodeFromBS :: BS.ByteString -> Maybe a
   encodeToBS   :: a -> BS.ByteString
+
+instance ByteRepr BS.ByteString where
+  decodeFromBS = Just
+  encodeToBS   = id
 
 instance CryptoHash alg => ByteRepr (Hash alg) where
   decodeFromBS            = Just . Hash
@@ -238,6 +245,9 @@ instance CryptoSign alg => JSON.FromJSON (PrivKey alg) where
         Just k  -> return k
   parseJSON _          = fail "Expecting PrivKey as string"
 
+instance CryptoSign alg => JSON.FromJSONKey (PrivKey alg)
+instance CryptoSign alg => JSON.ToJSONKey   (PrivKey alg)
+
 
 ----------------------------------------
 
@@ -275,6 +285,9 @@ instance CryptoSign alg => JSON.FromJSON (PublicKey alg) where
         Just k  -> return k
   parseJSON _          = fail "Expecting PrivKey as string"
 
+instance CryptoSign alg => JSON.FromJSONKey (PublicKey alg)
+instance CryptoSign alg => JSON.ToJSONKey   (PublicKey alg)
+
 
 ----------------------------------------
 
@@ -303,6 +316,9 @@ instance JSON.FromJSON (Fingerprint alg) where
       Just bs -> return $ Fingerprint bs
   parseJSON _ = fail "Expected string for Fingerprint"
 
+instance JSON.FromJSONKey (Fingerprint alg)
+instance JSON.ToJSONKey   (Fingerprint alg)
+
 
 ----------------------------------------
 
@@ -330,6 +346,8 @@ instance JSON.FromJSON (Signature alg) where
       Just bs -> return $ Signature bs
   parseJSON _ = fail "Expected string for Signature"
 
+instance JSON.FromJSONKey (Signature alg)
+instance JSON.ToJSONKey   (Signature alg)
 
 
 ----------------------------------------
@@ -362,6 +380,8 @@ instance CryptoHash alg => JSON.FromJSON (Hash alg) where
       Just h  -> return h
   parseJSON _ = fail "Expected string for Hash"
 
+instance CryptoHash alg => JSON.FromJSONKey (Hash alg)
+instance CryptoHash alg => JSON.ToJSONKey   (Hash alg)
 
 ----------------------------------------------------------------
 -- Petrification of data
@@ -511,7 +531,7 @@ instance JSON.ToJSON a => JSON.ToJSON   (Signed 'Unverified alg a)
 --   value is being calculated
 newtype Hashed alg a = Hashed (Hash alg)
   deriving ( Show,Eq,Ord, Generic, Generic1, NFData
-           , Serialise, JSON.FromJSON,JSON.ToJSON)
+           , Serialise, JSON.FromJSON, JSON.ToJSON, JSON.ToJSONKey, JSON.FromJSONKey)
 
 instance SafeCopy (Hashed alg a) where
   kind    = primitive
@@ -526,7 +546,9 @@ hash (Pet _ bs) = hashBlob bs
 hashed :: (Crypto alg) => Pet a -> Hashed alg a
 hashed = Hashed . hash
 
-
+instance (CryptoHash alg) => ByteRepr (Hashed alg a) where
+  encodeToBS (Hashed h) = encodeToBS h
+  decodeFromBS = fmap Hashed . decodeFromBS
 
 ----------------------------------------------------------------
 -- Base58 encoding helpers
