@@ -1,4 +1,3 @@
-{-# LANGUAGE CPP                        #-}
 {-# LANGUAGE DataKinds                  #-}
 {-# LANGUAGE DeriveFunctor              #-}
 {-# LANGUAGE DerivingStrategies         #-}
@@ -235,9 +234,7 @@ newtype QueryT (rw :: Access) alg a m x = QueryT { unQueryT :: m x }
 instance MonadThrow m => Monad (QueryT rw alg a m) where
   return         = QueryT . return
   QueryT m >>= f = QueryT $ unQueryT . f =<< m
-#if !MIN_VERSION_base(4,12,0)
   fail _         = throwM Rollback
-#endif
 
 instance MonadThrow m => Fail.MonadFail (QueryT rw alg a m) where
   fail _ = throwM Rollback
@@ -319,9 +316,7 @@ newtype Query rw alg a x = Query (ReaderT (Connection rw alg a) IO x)
 instance Monad (Query rm alg a) where
   return = Query . return
   Query m >>= f = Query $ (\(Query q) -> q) . f =<< m
-#if !MIN_VERSION_base(4,12,0)
   fail _ = Query $ throwM Rollback
-#endif
 
 instance Fail.MonadFail (Query rw alg a) where
   fail _ = Query $ throwM Rollback
