@@ -4,13 +4,13 @@ clone:
     pull: true
 
 pipeline:
-
   build-thundemint:
     image: nixos/nix
     pull: true
     privileged: true
     network_mode: host
     commands:
+    - env | sort
     - apk add --no-cache git bash openssh-client
     # Setup SSH connection to git repos and cache server
     - source ./nix/setup_ssh_ci.sh
