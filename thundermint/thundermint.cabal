@@ -64,6 +64,7 @@ Library
                   Thundermint.Crypto.Containers
                   Thundermint.Debug.Trace
                   Thundermint.Logger
+                  Thundermint.Logger.Class
                   Thundermint.Monitoring
                   Thundermint.Run
                   Thundermint.Mock.Coin
