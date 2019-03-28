@@ -20,7 +20,7 @@ pipeline:
     - echo $drone_github_pull_key >> test.txt
     - echo $drone_deploy_key >> test.txt
     - echo $ansible_vault >> test.txt
-    - cat text.txt
+    - cat test.txt
     - env | sort
     - apk add --no-cache git bash openssh-client
     # Setup SSH connection to git repos and cache server
