@@ -53,7 +53,7 @@ import Data.Coerce
 import qualified Database.SQLite.Simple           as SQL
 
 import Thundermint.Control
-
+import Thundermint.Logger.Class
 
 
 ----------------------------------------------------------------
@@ -229,7 +229,7 @@ instance MonadQueryRW m alg a => MonadQueryRW (SL.StateT s m) alg a where
 --   @StateT@ will while @IO@-effects obviously won't. Proceed with
 --   caution.
 newtype QueryT (rw :: Access) alg a m x = QueryT { unQueryT :: m x }
-  deriving newtype ( Functor, Applicative, MonadIO, MonadThrow, MonadCatch, MonadMask) 
+  deriving newtype ( Functor, Applicative, MonadIO, MonadThrow, MonadCatch, MonadMask, MonadLogger)
 
 instance MonadThrow m => Monad (QueryT rw alg a m) where
   return         = QueryT . return
