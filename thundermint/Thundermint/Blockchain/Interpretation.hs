@@ -14,6 +14,7 @@ module Thundermint.Blockchain.Interpretation (
   , PersistentState(..)
   ) where
 
+import Codec.Serialise (Serialise)
 import Control.Concurrent.MVar
 import Control.Monad (when)
 import Control.Monad.Catch

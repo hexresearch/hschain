@@ -6,6 +6,7 @@
 -- Data types for primary database. Namely storage of blocks, commits and validators
 module Thundermint.Store.Internal.BlockDB where
 
+import Codec.Serialise (Serialise, serialise,deserialiseOrFail)
 import Control.Monad (when)
 import qualified Data.ByteString.Lazy as LBS
 import Data.SafeCopy (SafeCopy,safeDecode,safeEncode)
@@ -119,6 +120,8 @@ blockchainHeight =
 --   returns block for every height @0 <= h <= blockchainHeight@
 retrieveBlock
   :: (SafeCopy a, Crypto alg)
+  => Height
+  -> Query rw alg a (Maybe (Pet (Block alg a)))
 retrieveBlock h =
   singleQ "SELECT block FROM thm_blockchain WHERE height = ?" (Only h)
 
@@ -137,17 +140,20 @@ retrieveBlockID h =
 --   Note that this method returns @Nothing@ for last block since
 --   its commit is not persisted in blockchain yet and there's no
 --   commit for genesis block (h=0)
-retrieveCommit :: (Serialise a, Crypto alg) => Height -> Query rw alg a (Maybe (Commit alg a))
+retrieveCommit
+  :: (SafeCopy a, Crypto alg)
+  => Height
+  -> Query rw alg a (Maybe (Pet (Commit alg a)))
 retrieveCommit h = do
   mb <- singleQ "SELECT block FROM thm_blockchain WHERE height = ?" (Only (succ h))
   return $ blockLastCommit . pet =<< mb
 
 -- | Retrieve round when commit was made.
-retrieveCommitRound
+retrieveCommitRound :: Height -> Query rw alg a (Maybe Round)
 retrieveCommitRound h =
   query "SELECT round FROM thm_blockchain WHERE height = ?" (Only h) >>= \case
     []       -> return Nothing
-    [Only r] -> return $! Just $ Round r
+    [Only r] -> return $! Just r
     _        -> error "Impossible"
 
 
@@ -196,15 +202,16 @@ storeCommit
   -> Pet (Block  alg a)
   -> Query 'RW alg a ()
 storeCommit cmt blk = do
-  let h = headerHeight $ blockHeader blk
-      Round  r = voteRound $ signedValue $ head $ commitPrecommits cmt
-  execute "INSERT INTO thm_commits VALUES (?,?)" (h, serialise cmt)
+  let h = headerHeight $ pet $ blockHeader $ pet blk
+      r = voteRound $ signedValue $ head $ commitPrecommits cmt
+  execute "INSERT INTO thm_commits VALUES (?,?)"
+    ( h
+    , safeEncode cmt)
   execute "INSERT INTO thm_blockchain VALUES (?,?,?,?)"
     ( h
     , r
     , safeEncode (blockHash blk)
-    , safeEncode blk
-    )
+    , safeEncode blk)
 
 -- | Write state snapshot into DB.
 -- @maybeSnapshot@ contains a serialized value of a state associated with the processed block.

@@ -46,7 +46,6 @@ let
     in gitignore.gitignoreSourceAux ignore-list source;
   #
   release = {
-            safecopy-cbor = haskellPackagesNew.callPackage derivations/safecopy-cbor.nix {};
     inherit pkgs;
     ghc844 = p: with p; [ thundermint-crypto thundermint-types thundermint ];
     ghc863 = p: with p; [ thundermint-crypto thundermint-types thundermint ];
