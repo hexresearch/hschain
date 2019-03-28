@@ -598,7 +598,7 @@ startPeer peerAddrFrom peerAddrTo peerCh@PeerChans{..} conn peerRegistry mempool
 
 -- | Gossip votes with given peer
 peerGossipVotes
-  :: (MonadReadDB m alg a, MonadMask m, MonadLogger m, Crypto alg, Serialise a)
+  :: (MonadReadDB m alg a, MonadMask m, MonadIO m, MonadLogger m, Crypto alg, Serialise a)
   => PeerStateObj m alg a         -- ^ Current state of peer
   -> PeerChans m alg a            -- ^ Read-only access to
   -> TBQueue (GossipMsg alg a)
@@ -717,7 +717,7 @@ peerGossipMempool peerObj PeerChans{..} config gossipCh MempoolCursor{..} = logO
 
 -- | Gossip blocks with given peer
 peerGossipBlocks
-  :: (MonadReadDB m alg a, MonadMask m, MonadLogger m, Serialise a, Crypto alg, MonadFail m)
+  :: (MonadReadDB m alg a, MonadIO m, MonadMask m, MonadLogger m, Serialise a, Crypto alg, MonadFail m)
   => PeerStateObj m alg a       -- ^ Current state of peer
   -> PeerChans m alg a          -- ^ Read-only access to
   -> TBQueue (GossipMsg alg a)  -- ^ Network API
@@ -756,7 +756,7 @@ peerGossipBlocks peerObj PeerChans{..} gossipCh = logOnException $ do
 
 -- | Routine for receiving messages from peer
 peerReceive
-  :: ( MonadReadDB m alg a, MonadMask m, MonadLogger m, MonadFail m
+  :: ( MonadReadDB m alg a, MonadIO m, MonadMask m, MonadLogger m, MonadFail m
      , Crypto alg, BlockData a)
   => PeerStateObj m alg a
   -> PeerChans m alg a
@@ -834,7 +834,7 @@ peerGossipAnnounce PeerChans{..} gossipCh = logOnException $
 
 -- | Routine for actually sending data to peers
 peerSend
-  :: ( MonadReadDB m alg a, MonadMask m, MonadLogger m, MonadFail m
+  :: ( MonadReadDB m alg a, MonadMask m, MonadIO m,  MonadLogger m, MonadFail m
      , Crypto alg, BlockData a)
   => NetAddr
   -> NetAddr
