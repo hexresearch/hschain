@@ -110,7 +110,7 @@ logicFromFold transitions@BlockFold{..} = do
          )
 
 logicFromPersistent
-  :: (MonadDB m alg a, MonadMask m, BlockData a, Ord (TX a), Crypto alg, FloatOut dct)
+  :: (MonadDB m alg a, BlockData a, Ord (TX a), Crypto alg, FloatOut dct)
   => PersistentState dct alg a
   -> m (NodeLogic m alg a)
 logicFromPersistent PersistentState{..} = do

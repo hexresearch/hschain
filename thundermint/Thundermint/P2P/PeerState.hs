@@ -25,7 +25,6 @@ module Thundermint.P2P.PeerState (
   , addBlockHR
   ) where
 
-import Codec.Serialise (Serialise)
 import Control.Concurrent hiding (modifyMVar_)
 import Control.Monad.Catch
 import Control.Monad.IO.Class
@@ -123,7 +122,7 @@ getPeerState (PeerStateObj _ var)
 -- | Local state increased to height H. Update our opinion about
 --   peer's state accordingly
 advanceOurHeight
-  :: (MonadReadDB m alg a, MonadMask m, Crypto alg, Serialise a, MonadFail m)
+  :: (MonadReadDB m alg a, MonadMask m, Crypto alg, MonadFail m)
   => PeerStateObj m alg a
   -> Height
   -> m ()
@@ -167,7 +166,7 @@ advanceOurHeight (PeerStateObj _ var) ourH =
         -> return peer
     Unknown   -> return Unknown
 
-advancePeer :: (MonadReadDB m alg a, MonadMask m, Crypto alg, Serialise a, MonadFail m)
+advancePeer :: (MonadReadDB m alg a, MonadMask m, Crypto alg, MonadFail m)
             => PeerStateObj m alg a
             -> FullStep
             -> m ()
@@ -337,7 +336,7 @@ addPrecommitWrk (PeerStateObj _ var) h r getI =
     Ahead _ -> return peer
     Unknown -> return peer
 
-addBlock :: (MonadIO m, MonadMask m, Crypto alg, Serialise a)
+addBlock :: (MonadIO m, MonadMask m, Crypto alg)
          => PeerStateObj m alg a
          -> Block alg a
          -> m ()

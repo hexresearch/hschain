@@ -178,7 +178,7 @@ readRecv (Counter _ r) = liftIO $ readMVar r
 --   of nodes and gossip.
 startPeerDispatcher
   :: ( MonadMask m, MonadFork m, MonadLogger m, MonadTrace m, MonadReadDB m alg a, MonadTMMonitoring m
-     , BlockData a,  Show a, Crypto alg, MonadFail m)
+     , BlockData a, Crypto alg, MonadFail m)
   => NetworkCfg
   -> NetworkAPI               -- ^ API for networking
   -> NetAddr                  -- ^ Current peer address
@@ -254,7 +254,7 @@ retryPolicy NetworkCfg{..} = exponentialBackoff (reconnectionDelay * 1000)
 -- Thread which accepts connections from remote nodes
 acceptLoop
   :: ( MonadFork m, MonadMask m, MonadLogger m, MonadTrace m, MonadReadDB m alg a
-     , BlockData a, Show a, Crypto alg, MonadFail m)
+     , BlockData a, Crypto alg, MonadFail m)
   => NetworkCfg
   -> NetAddr
   -> NetworkAPI
@@ -298,7 +298,7 @@ acceptLoop cfg peerAddr NetworkAPI{..} peerCh mempool peerRegistry = do
 -- Initiate connection to remote host and register peer
 connectPeerTo
   :: ( MonadFork m, MonadMask m, MonadLogger m, MonadTrace m, MonadReadDB m alg a
-     , BlockData a, Show a, Crypto alg, MonadFail m
+     , BlockData a, Crypto alg, MonadFail m
      )
   => NetworkCfg
   -> NetAddr
@@ -430,7 +430,7 @@ whenM predicate act = ifM predicate act (return ())
 
 
 peerPexNewAddressMonitor
-  :: ( MonadIO m, MonadThrow m, MonadMask m, MonadFail m)
+  :: ( MonadIO m, MonadMask m, MonadFail m)
   => TChan [NetAddr]
   -> PeerRegistry
   -> NetworkAPI
@@ -442,8 +442,7 @@ peerPexNewAddressMonitor peerChanPexNewAddresses PeerRegistry{..} NetworkAPI{..}
 
 
 peerPexKnownCapacityMonitor
-  :: ( MonadIO m, MonadLogger m
-     , Serialise a, Show a, Crypto alg)
+  :: ( MonadIO m, MonadLogger m)
   => NetAddr
   -> PeerChans m alg a
   -> PeerRegistry
@@ -468,7 +467,7 @@ peerPexKnownCapacityMonitor _peerAddr PeerChans{..} PeerRegistry{..} minKnownCon
 
 peerPexMonitor
   :: ( MonadFork m, MonadMask m, MonadLogger m, MonadTrace m, MonadReadDB m alg a
-     , BlockData a, Show a, Crypto alg, MonadFail m)
+     , BlockData a, Crypto alg, MonadFail m)
   => NetworkCfg
   -> NetAddr -- ^ Current peer address for logging purpose
   -> NetworkAPI
@@ -524,8 +523,7 @@ peerPexCapacityDebugMonitor PeerRegistry{..} =
 
 
 peerGossipPeerExchange
-  :: ( MonadIO m, MonadFork m, MonadMask m, MonadLogger m
-     , Show a, Serialise a, Crypto alg)
+  :: ( MonadIO m, MonadFork m, MonadMask m, MonadLogger m)
   => NetAddr
   -> PeerChans m alg a
   -> PeerRegistry
@@ -570,7 +568,7 @@ peerGossipPeerExchange _peerAddr PeerChans{..} PeerRegistry{prConnected,prIsActi
 --   established and peer is registered.
 startPeer
   :: ( MonadFork m, MonadMask m, MonadLogger m, MonadReadDB m alg a
-     , Show a, BlockData a, Crypto alg, MonadFail m)
+     , BlockData a, Crypto alg, MonadFail m)
   => NetAddr
   -> NetAddr
   -> PeerChans m alg a       -- ^ Communication with main application
@@ -600,7 +598,7 @@ startPeer peerAddrFrom peerAddrTo peerCh@PeerChans{..} conn peerRegistry mempool
 
 -- | Gossip votes with given peer
 peerGossipVotes
-  :: (MonadReadDB m alg a, MonadFork m, MonadMask m, MonadLogger m, Crypto alg, Serialise a)
+  :: (MonadReadDB m alg a, MonadMask m, MonadLogger m, Crypto alg, Serialise a)
   => PeerStateObj m alg a         -- ^ Current state of peer
   -> PeerChans m alg a            -- ^ Read-only access to
   -> TBQueue (GossipMsg alg a)
@@ -719,7 +717,7 @@ peerGossipMempool peerObj PeerChans{..} config gossipCh MempoolCursor{..} = logO
 
 -- | Gossip blocks with given peer
 peerGossipBlocks
-  :: (MonadReadDB m alg a, MonadFork m, MonadMask m, MonadLogger m, Serialise a, Crypto alg, MonadFail m)
+  :: (MonadReadDB m alg a, MonadMask m, MonadLogger m, Serialise a, Crypto alg, MonadFail m)
   => PeerStateObj m alg a       -- ^ Current state of peer
   -> PeerChans m alg a          -- ^ Read-only access to
   -> TBQueue (GossipMsg alg a)  -- ^ Network API
@@ -758,7 +756,7 @@ peerGossipBlocks peerObj PeerChans{..} gossipCh = logOnException $ do
 
 -- | Routine for receiving messages from peer
 peerReceive
-  :: ( MonadReadDB m alg a, MonadFork m, MonadMask m, MonadLogger m, MonadFail m
+  :: ( MonadReadDB m alg a, MonadMask m, MonadLogger m, MonadFail m
      , Crypto alg, BlockData a)
   => PeerStateObj m alg a
   -> PeerChans m alg a
@@ -836,7 +834,7 @@ peerGossipAnnounce PeerChans{..} gossipCh = logOnException $
 
 -- | Routine for actually sending data to peers
 peerSend
-  :: ( MonadReadDB m alg a, MonadFork m, MonadMask m, MonadLogger m, MonadFail m
+  :: ( MonadReadDB m alg a, MonadMask m, MonadLogger m, MonadFail m
      , Crypto alg, BlockData a)
   => NetAddr
   -> NetAddr
@@ -863,7 +861,7 @@ peerSend _peerAddrFrom peerAddrTo peerSt PeerChans{..} gossipCh P2PConnection{..
 
 
 logGossip
-  :: ( MonadIO m, MonadFork m, MonadMask m, MonadLogger m, MonadTMMonitoring m )
+  :: ( MonadIO m, MonadFork m, MonadLogger m, MonadTMMonitoring m )
   => PeerChans m alg a
   -> m ()
 logGossip PeerChans{..} = do

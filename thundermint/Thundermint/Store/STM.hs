@@ -26,7 +26,7 @@ import Thundermint.Store
 
 
 newSTMPropStorage
-  :: (Crypto alg, Serialise a, MonadIO m)
+  :: (Crypto alg, MonadIO m)
   => m (ProposalStorage 'RW m alg a)
 newSTMPropStorage = fmap (hoistPropStorageRW liftIO) $ liftIO $ do
   varH    <- newTVarIO (Height 0) -- Current height

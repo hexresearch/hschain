@@ -120,7 +120,7 @@ instance MonadTrans (DBT rw alg a) where
 dbtRO :: DBT 'RO alg a m x -> DBT rw alg a m x
 dbtRO (DBT m) = DBT (withReaderT connectionRO m)
 
-runDBT :: Monad m => Connection rw alg a -> DBT rw alg a m x -> m x
+runDBT :: Connection rw alg a -> DBT rw alg a m x -> m x
 runDBT c (DBT m) = runReaderT m c
 
 instance MonadIO m => MonadReadDB (DBT rw alg a m) alg a where

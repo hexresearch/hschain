@@ -61,13 +61,13 @@ instance (Arbitrary a) => Arbitrary (Signed sign alg a) where
   shrink = genericShrink
 
 
-instance (Arbitrary a) => Arbitrary (Commit alg a) where
+instance Arbitrary (Commit alg a) where
   arbitrary = Commit <$> arbitrary
                      <*> resize 4 arbitrary
   shrink = genericShrink
 
 
-instance (Arbitrary a) => Arbitrary (BlockID alg a) where
+instance Arbitrary (BlockID alg a) where
   arbitrary = BlockID <$> arbitrary
   shrink = genericShrink
 
@@ -77,7 +77,7 @@ instance Arbitrary VoteType where
   shrink = genericShrink
 
 
-instance (Arbitrary a, Crypto alg, Arbitrary (PublicKey alg)) => Arbitrary (Block alg a) where
+instance (Arbitrary a, Arbitrary (PublicKey alg)) => Arbitrary (Block alg a) where
   arbitrary = Block <$> arbitrary
                     <*> arbitrary
                     <*> resize 4 arbitrary
@@ -85,19 +85,19 @@ instance (Arbitrary a, Crypto alg, Arbitrary (PublicKey alg)) => Arbitrary (Bloc
                     <*> resize 4 arbitrary
   shrink = genericShrink
 
-instance (Arbitrary a) => Arbitrary (ByzantineEvidence alg a) where
+instance Arbitrary (ByzantineEvidence alg a) where
   arbitrary = genericArbitrary
   shrink = genericShrink
 
-instance (Arbitrary a) => Arbitrary (Vote ty alg a) where
+instance Arbitrary (Vote ty alg a) where
   arbitrary = genericArbitrary
   shrink = genericShrink
 
-instance (Arbitrary a) => Arbitrary (Proposal alg a) where
+instance Arbitrary (Proposal alg a) where
   arbitrary = genericArbitrary
   shrink = genericShrink
 
-instance (Arbitrary (PublicKey alg), Crypto alg) => Arbitrary (ValidatorChange alg) where
+instance (Arbitrary (PublicKey alg)) => Arbitrary (ValidatorChange alg) where
   arbitrary = genericArbitrary
   shrink = genericShrink
 

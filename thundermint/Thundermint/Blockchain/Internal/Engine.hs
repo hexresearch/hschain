@@ -47,7 +47,7 @@ import Katip (Severity(..), sl)
 --
 ----------------------------------------------------------------
 
-newAppChans :: (MonadIO m, Crypto alg, Serialise a) => ConsensusCfg -> m (AppChans m alg a)
+newAppChans :: (MonadIO m, Crypto alg) => ConsensusCfg -> m (AppChans m alg a)
 newAppChans ConsensusCfg{incomingQueueSize = sz} = do
   -- 7 is magical no good reason to use 7 but no reason against it either
   appChanRx         <- liftIO $ newTBQueueIO sz
@@ -62,7 +62,7 @@ newAppChans ConsensusCfg{incomingQueueSize = sz} = do
 --
 --   * INVARIANT: Only this function can write to blockchain
 runApplication
-  :: ( MonadDB m alg a, MonadCatch m, MonadLogger m, MonadTMMonitoring m, Crypto alg, Show a, BlockData a, MonadFail m)
+  :: ( MonadDB m alg a, MonadCatch m, MonadLogger m, MonadTMMonitoring m, Crypto alg, BlockData a, MonadFail m)
   => ConsensusCfg
      -- ^ Configuration
   -> (Height -> Time -> m Bool)
@@ -88,7 +88,7 @@ runApplication config ready appSt@AppState{..} appCh@AppChans{..} = logOnExcepti
 --
 -- FIXME: we should write block and last commit in transaction!
 decideNewBlock
-  :: (MonadDB m alg a, MonadLogger m, MonadTMMonitoring m, Crypto alg, Show a, BlockData a, MonadFail m)
+  :: (MonadDB m alg a, MonadLogger m, MonadTMMonitoring m, Crypto alg, BlockData a, MonadFail m)
   => ConsensusCfg
   -> (Height -> Time -> m Bool)
   -> AppState m alg a
@@ -199,7 +199,7 @@ handleVerifiedMessage ProposalStorage{..} hParam tm = \case
 -- Verify signature of message. If signature is not correct message is
 -- simply discarded.
 verifyMessageSignature
-  :: (MonadLogger m, Crypto alg, Serialise a)
+  :: (MonadLogger m, Crypto alg)
   => AppState m alg a
   -> HeightParameters n alg a
   -> Pipe (MessageRx 'Unverified alg a) (MessageRx 'Verified alg a) m r
@@ -280,7 +280,7 @@ instance MonadTrans (ConsensusM alg a) where
   lift = ConsensusM . fmap Success
 
 makeHeightParameters
-  :: (MonadDB m alg a, MonadLogger m, MonadTMMonitoring m, Crypto alg, Serialise a, Show a, MonadFail m)
+  :: (MonadDB m alg a, MonadLogger m, MonadTMMonitoring m, Crypto alg, Serialise a, MonadFail m)
   => ConsensusCfg
   -> (Height -> Time -> m Bool)
   -> AppState m alg a
