@@ -103,7 +103,7 @@ toPair :: TestNetLinkDescription m -> (Int, [Int])
 toPair TestNetLinkDescription{..} = (ncFrom, ncTo)
 
 
-createTestNetwork :: (MonadIO m, MonadMask m, MonadFork m, MonadTMMonitoring m, MonadFail m)
+createTestNetwork :: (MonadMask m, MonadFork m, MonadTMMonitoring m, MonadFail m)
                   => TestNetDescription m -> m ()
 createTestNetwork = createTestNetworkWithConfig (defCfg :: Configuration Example)
 
@@ -118,8 +118,7 @@ createTestNetworkWithConfig cfg desc = do
       runConcurrently $ join acts
   where
     mkTestNode
-      :: (MonadIO m, MonadMask m, MonadFork m)
-      => MockNet
+      :: MockNet
       -> (Connection 'RW Ed25519_SHA512 [(String, NetAddr)], TestNetLinkDescription m)
       -> m [m ()]
     mkTestNode net (conn, TestNetLinkDescription{..}) = do

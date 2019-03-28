@@ -319,7 +319,7 @@ tendermintTransition par@HeightParameters{..} msg sm@TMState{..} =
 
 -- Check whether we need to create new block or we should wait
 needNewBlock
-  :: (ConsensusMonad m, MonadLogger m, Crypto alg)
+  :: (ConsensusMonad m)
   => HeightParameters m alg a
   -> TMState alg a
   -> m Bool

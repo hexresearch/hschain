@@ -140,7 +140,7 @@ retrieveCommit h = do
   return $ blockLastCommit =<< mb
 
 -- | Retrieve round when commit was made.
-retrieveCommitRound :: (Serialise a, Crypto alg) => Height -> Query rw alg a (Maybe Round)
+retrieveCommitRound :: Height -> Query rw alg a (Maybe Round)
 retrieveCommitRound h =
   query "SELECT round FROM thm_blockchain WHERE height = ?" (Only h) >>= \case
     []       -> return Nothing

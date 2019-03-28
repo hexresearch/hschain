@@ -118,7 +118,7 @@ instance CryptoHash alg => JSON.ToJSON   (BlockID alg a)
 instance CryptoHash alg => JSON.FromJSON (BlockID alg a)
 
 blockHash
-  :: (Crypto alg, Serialise a)
+  :: (Crypto alg)
   => Block alg a
   -> BlockID alg a
 blockHash b = BlockID (hashed (blockHeader b))

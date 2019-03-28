@@ -210,14 +210,14 @@ coinDict = CoinStateDB
   }
 
 processDB
-  :: (Monad (q CoinStateDB), ExecutorRW q, MonadFail (q CoinStateDB))
+  :: (ExecutorRW q, MonadFail (q CoinStateDB))
   => Height
   -> Tx
   -> q CoinStateDB ()
 processDB (Height 0) (Deposit pk nCoin) = processDepositDB pk nCoin
 processDB _          tx                 = processTransactionDB tx
 
-processDepositDB :: (Monad (q CoinStateDB), ExecutorRW q)
+processDepositDB :: (ExecutorRW q)
                  => PublicKey Alg -> Integer -> q CoinStateDB ()
 processDepositDB pk nCoin = do
   storeKey unspentOutputsLens (hash (Deposit pk nCoin),0) (pk,nCoin)
@@ -225,7 +225,7 @@ processDepositDB pk nCoin = do
 
 
 processTransactionDB
-  :: (Monad (q CoinStateDB), MonadFail (q CoinStateDB), ExecutorRW q)
+  :: (MonadFail (q CoinStateDB), ExecutorRW q)
   => Tx
   -> q CoinStateDB ()
 processTransactionDB Deposit{} = Control.Monad.Fail.fail ""
