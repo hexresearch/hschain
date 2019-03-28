@@ -73,6 +73,7 @@ instance CryptoSign Ed25519 where
 instance CryptoHash SHA512 where
   type HashSize SHA512 = 64
   hashBlob  = Hash . arrayToBs . js_sha512 . bsToArray
+  hashEquality (Hash hbs) bs = hbs == bs
 
 instance Eq (PrivKey Ed25519) where
   PrivKey b1 _ _ == PrivKey b2 _ _ = b1 == b2
