@@ -10,6 +10,7 @@ module Thundermint.Crypto.Ed25519 (
   ) where
 
 import Control.Monad
+import Control.Monad.IO.Class
 import Control.DeepSeq
 import Data.ByteString (ByteString)
 import Data.Ord        (comparing)
@@ -63,19 +64,15 @@ instance CryptoSign Ed25519 where
   fingerprint   = Fingerprint
                 . BL.toStrict . SHA.bytestringDigest . SHA.sha256 . BL.fromStrict
                 . arrayToBs . js_sha512 . unPublicKey
+  generatePrivKey = liftIO $ do
+    arr <- js_randombytes 32
+    case decodeFromBS $ arrayToBs arr of
+      Just k  -> return k
+      Nothing -> error "Ed25519: internal error. Cannot generate key"
 
 instance CryptoHash SHA512 where
   type HashSize SHA512 = 64
   hashBlob  = Hash . arrayToBs . js_sha512 . bsToArray
-
-
-generatePrivKey :: IO (PrivKey Ed25519)
-generatePrivKey = do
-  arr <- js_randombytes 32
-  case decodeFromBS $ arrayToBs arr of
-    Just k  -> return k
-    Nothing -> error "Ed25519: internal error. Cannot generate key"
-
 
 instance Eq (PrivKey Ed25519) where
   PrivKey b1 _ _ == PrivKey b2 _ _ = b1 == b2

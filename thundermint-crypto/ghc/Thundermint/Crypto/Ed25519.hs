@@ -58,20 +58,16 @@ instance CryptoSign Ed25519 where
 
   publicKey   (PrivKey k)   = PublicKey $ Ed.toPublic k
   fingerprint (PublicKey k) = Fingerprint $ sha256 . sha512 $ convert k
+  generatePrivKey = do
+    bs <- liftIO $ getEntropy Ed.secretKeySize
+    case Ed.secretKey bs of
+      CryptoPassed k -> return $! PrivKey k
+      CryptoFailed e -> error (show e)
 
 instance CryptoHash SHA512 where
   type HashSize SHA512 = 64
   hashBlob                   = Hash . sha512
   hashEquality (Hash hbs) bs = hbs == bs
-
-
-generatePrivKey :: (MonadIO m) => m (PrivKey Ed25519)
-generatePrivKey = do
-  bs <- liftIO $ getEntropy Ed.secretKeySize
-  case Ed.secretKey bs of
-    CryptoPassed k -> return $! PrivKey k
-    CryptoFailed e -> error (show e)
-
 
 deriving instance Eq (PrivKey Ed25519)
 
