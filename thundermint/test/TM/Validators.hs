@@ -50,6 +50,9 @@ tests = testGroup "validators"
   , testCase "Noop is error" $ invalid
       [Validator v1 1]
       [ChangeValidator v1 1]
+  , testGroup "handling in gossip"
+      [ testCase "adding and removing validators" $ fail "miserably"
+      ]
   ]
 
 invalid :: [Validator Ed25519_SHA512] -> [ValidatorChange Ed25519_SHA512] -> IO ()
