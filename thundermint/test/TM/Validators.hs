@@ -2,13 +2,28 @@
 -- |
 module TM.Validators (tests) where
 
+import Control.Applicative
+import Control.Monad
+
+import Data.IORef
+
+import qualified Data.Map.Strict as Map
+
 import Test.Tasty
 import Test.Tasty.HUnit
 
 import Thundermint.Crypto
 import Thundermint.Crypto.Ed25519
+import Thundermint.Blockchain.Internal.Engine.Types
+import Thundermint.Blockchain.Interpretation
 import Thundermint.Mock.KeyList (privateKeyList)
+import Thundermint.P2P
+import Thundermint.P2P.Network
+import Thundermint.Run
+import Thundermint.Types.Blockchain
 import Thundermint.Types.Validators
+
+import TM.Util.Network
 
 
 tests :: TestTree
@@ -51,7 +66,7 @@ tests = testGroup "validators"
       [Validator v1 1]
       [ChangeValidator v1 1]
   , testGroup "handling in gossip"
-      [ testCase "adding and removing validators" $ fail "miserably"
+      [ testCase "adding and removing validators" $ testAddRemValidators
       ]
   ]
 
@@ -63,3 +78,31 @@ invalid vals changes = do
 
 v1,v2 :: PublicKey Ed25519_SHA512
 v1:v2:_ = map publicKey privateKeyList
+
+data ValidatorsTestsState = ValidatorsTestsState
+  deriving (Show)
+
+data VTSTx = VTSTx
+  deriving (Show)
+
+transitions :: IORef () -> BlockFold ValidatorsTestsState alg [VTSTx]
+transitions _log = BlockFold
+  { processTx           = const process
+  , processBlock        = \_ b s0 -> let h = headerHeight $ blockHeader b
+                                   in foldM (flip (process h)) s0 (blockData b)
+  , transactionsToBlock = \_ ->
+      let selectTx _ []     = []
+          selectTx c (t:tx) = case processTransaction t c of
+                                Nothing -> selectTx c  tx
+                                Just c' -> t : selectTx c' tx
+      in selectTx
+  , initialState        = ValidatorsTestsState
+  }
+  where
+    process (Height 0) t s = processDeposit t s <|> processTransaction t s
+    process _          t s = processTransaction t s
+    processTransaction VTSTx ValidatorsTestsState = Just ValidatorsTestsState
+    processDeposit _ _ = Just ValidatorsTestsState
+
+testAddRemValidators :: IO ()
+testAddRemValidators = createTestNetworkWithConfig (error "A") (error "B")

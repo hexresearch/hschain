@@ -82,6 +82,19 @@ testValidators = makePrivateValidators
   , "D2fpHM1JA8trshiUW8XPvspsapUvPqVzSofaK1MGRySd"
   ]
 
+extraTestValidators = makePrivateValidators
+  [ "EiG2NbUV9ofWeyXcoCkJYvuyLEEQhyeWtGh5n9fcobQi"
+  , "CPSbRfUkV6QcUSBucJ6YN1zVm2h8ZMBNdBhm4Fwd46km"
+  , "GGy5NQVwQxuLBLewmgiDziMAbEN3tfNHetCFrF44n5uL"
+  , "ENf7S1yqKQyeBC59RJWgGB5qHA3GYzwaxHGx1MTXiyts"
+  , "EbG1Bo6NBPuYVT5u44epdjfbYiSaqLzhTWg7NghwDstp"
+  , "BtrJnk73h4WYxfiYJYuw85bhFUi2y6mYpxac2ChoUyHK"
+  , "4eWJ5jSzaBUjkP5kG7gJa3Ad9btjbXMVBxiMQq59M774"
+  , "E8Su8SBtP6F3UjwjSTmZbccD3U8B1amP5syyLyLUY732"
+  , "9ygyNr894jDvMoymQhdEsrnrxotXKfyKETUkH8qM2LCc"
+  , "9Yjk2NmuirUtf8b15jRSzHM5H7L2G1hoN6HTsRAJ8pCF"
+  ]
+
 
 data TestNetLinkDescription m = TestNetLinkDescription
     { ncFrom     :: Int
@@ -108,10 +121,11 @@ createTestNetwork :: (MonadMask m, MonadFork m, MonadTMMonitoring m, MonadFail m
 createTestNetwork = createTestNetworkWithConfig (defCfg :: Configuration Example)
 
 
-createTestNetworkWithConfig
+createTestNetworkWithValidatorsSetAndConfig
   :: forall m app . (MonadIO m, MonadMask m, MonadFork m, MonadTMMonitoring m, MonadFail m)
-  => Configuration app -> TestNetDescription m -> m ()
-createTestNetworkWithConfig cfg desc = do
+  => Map.Map (Fingerprint Ed25519_SHA512) (PrivValidator Ed25519_SHA512)
+  -> Configuration app -> TestNetDescription m -> m ()
+createTestNetworkWithValidatorsSetAndConfig validatorsSet cfg desc = do
     net  <- liftIO newMockNet
     withMany (\descr cont -> withConnection ":memory:" (\c -> cont (c,descr))) desc $ \descrList -> do
       acts <- mapM (mkTestNode net) descrList
@@ -122,7 +136,7 @@ createTestNetworkWithConfig cfg desc = do
       -> (Connection 'RW Ed25519_SHA512 [(String, NetAddr)], TestNetLinkDescription m)
       -> m [m ()]
     mkTestNode net (conn, TestNetLinkDescription{..}) = do
-        let validatorSet = makeValidatorSetFromPriv testValidators
+        let validatorSet = makeValidatorSetFromPriv validatorsSet
         initDatabase conn Proxy (genesisBlock validatorSet) validatorSet
         --
         let run = runTracerT ncCallback . runNoLogsT . runDBT conn
@@ -140,6 +154,12 @@ createTestNetworkWithConfig cfg desc = do
                 , nodeReadyCreateBlock = \_ _ -> return True
                 }
               logic
+
+
+createTestNetworkWithConfig
+  :: forall m app . (MonadIO m, MonadMask m, MonadFork m, MonadTMMonitoring m, MonadFail m)
+  => Configuration app -> TestNetDescription m -> m ()
+createTestNetworkWithConfig = createTestNetworkWithValidatorsSetAndConfig testValidators
 
 -- |UDP may return Nothings for the message receive operation.
 skipNothings :: String -> (a -> IO (Maybe LBS.ByteString)) -> a -> IO LBS.ByteString
