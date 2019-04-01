@@ -81,7 +81,7 @@ data NodeLogic m alg a = NodeLogic
   }
 
 logicFromFold
-  :: (MonadDB m alg a, MonadMask m, BlockData a, Ord (TX a), Crypto alg, MonadFail m, Serialise st)
+  :: (MonadDB m alg a, MonadMask m, MonadIO m, BlockData a, Ord (TX a), Crypto alg, MonadFail m, Serialise st)
   => BlockFold st alg a
   -> m (BChState m st, NodeLogic m alg a)
 logicFromFold transitions@BlockFold{..} = do
@@ -110,7 +110,7 @@ logicFromFold transitions@BlockFold{..} = do
          )
 
 logicFromPersistent
-  :: (MonadDB m alg a, MonadMask m, BlockData a, Ord (TX a), Crypto alg, FloatOut dct)
+  :: (MonadDB m alg a, MonadIO m, BlockData a, Ord (TX a), Crypto alg, FloatOut dct)
   => PersistentState dct alg a
   -> m (NodeLogic m alg a)
 logicFromPersistent PersistentState{..} = do

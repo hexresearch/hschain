@@ -54,6 +54,7 @@ import qualified Data.Map.Strict as Map
 import           Data.Set          (Set)
 import qualified Data.Set        as Set
 import           Database.SQLite.Simple   (Only(..))
+import qualified Database.SQLite.Simple           as SQL
 import Lens.Micro
 import Lens.Micro.Mtl
 
@@ -125,7 +126,7 @@ data PMap k v = PMap
 
 instance PersistentData (PMap k v) where
   tableName = pmapTableName
-  createTable PMap{pmapTableName=tbl} = execute_ $
+  createTable PMap{pmapTableName=tbl} = basicExecute_ $ SQL.Query $
     "CREATE TABLE IF NOT EXISTS "<>tbl<>
     "( ver INTEGER PRIMARY KEY, \
     \  tag INTEGER, \
@@ -159,7 +160,7 @@ data PersistentSet (ty :: SetType) k = PSet
 
 instance PersistentData (PersistentSet ty k) where
   tableName = psetTableName
-  createTable PSet{psetTableName=tbl} = execute_ $
+  createTable PSet{psetTableName=tbl} = basicExecute_ $ SQL.Query $
     "CREATE TABLE IF NOT EXISTS "<>tbl<>
     "( ver INTEGER PRIMARY KEY, \
     \  tag INTEGER, \
@@ -238,8 +239,8 @@ instance ExecutorRO (EffectfulQ rw alg a) where
 instance (rw ~ 'RW) => ExecutorRW (EffectfulQ rw alg a) where
   storeKey getter k v = EffectfulQ $ do
     Versioned ver (PersistentPMap pmap@PMap{pmapTableName=tbl, ..}) <- use getter
-    lift $ checkPMapInsert pmap ver k v `checkedReal` execute
-      ("INSERT INTO "<>tbl<>" VALUES (NULL,?,?,?)")
+    lift $ checkPMapInsert pmap ver k v `checkedReal` basicExecute
+      (SQL.Query $ "INSERT INTO "<>tbl<>" VALUES (NULL,?,?,?)")
       ( RowInsert
       , encodeField pmapEncodingK k
       , encodeField pmapEncodingV v
@@ -248,8 +249,8 @@ instance (rw ~ 'RW) => ExecutorRW (EffectfulQ rw alg a) where
   --
   dropKey getter k = EffectfulQ $ do
     Versioned ver (PersistentPMap pmap@PMap{pmapTableName=tbl, ..}) <- use getter
-    lift $ checkPMapDrop pmap ver k `checkedReal` execute
-      ("INSERT INTO "<>tbl<>" VALUES (NULL,?,?,NULL)")
+    lift $ checkPMapDrop pmap ver k `checkedReal` basicExecute
+      (SQL.Query $ "INSERT INTO "<>tbl<>" VALUES (NULL,?,?,NULL)")
       ( RowDrop
       , encodeField pmapEncodingK k
       )
@@ -257,15 +258,15 @@ instance (rw ~ 'RW) => ExecutorRW (EffectfulQ rw alg a) where
   --
   storeSetElem getter k = EffectfulQ $ do
     Versioned ver (PersistentPSet pset@PSet{psetTableName=tbl, ..}) <- use getter
-    lift $ checkPSetStore pset ver k `checkedReal` execute
-      ("INSERT INTO "<>tbl<>" VALUES (NULL,?,?)")
+    lift $ checkPSetStore pset ver k `checkedReal` basicExecute
+      (SQL.Query $ "INSERT INTO "<>tbl<>" VALUES (NULL,?,?)")
       ( RowInsert, encodeField psetEncodingK k)
     getter . versionedV %= bumpVersion
   --
   dropSetElem getter k = EffectfulQ $ do
     Versioned ver (PersistentPSet pset@PSet{psetTableName=tbl, ..}) <- use getter
-    lift $ checkPSetDrop pset ver k `checkedReal` execute
-      ("INSERT INTO "<>tbl<>" VALUES (NULL,?,?)")
+    lift $ checkPSetDrop pset ver k `checkedReal` basicExecute
+      (SQL.Query $ "INSERT INTO "<>tbl<>" VALUES (NULL,?,?)")
       ( RowDrop
       , encodeField psetEncodingK k
       )
@@ -284,8 +285,8 @@ lookupKeyPMap _ New _ = return Nothing
 lookupKeyPMap PMap{pmapTableName=tbl, ..} (Commited ver) k = do
   case pmapEncodingV of
     FieldEncoding _ from -> do
-      r <- query
-        ("SELECT val, tag FROM "<>tbl<>" WHERE key=? AND ver <= ? ORDER BY ver")
+      r <- basicQuery
+        (SQL.Query $ "SELECT val, tag FROM "<>tbl<>" WHERE key=? AND ver <= ? ORDER BY ver")
         (encodeField pmapEncodingK k, ver)
       case r of
         []                            -> return Nothing
@@ -298,8 +299,8 @@ materializePMapWorker _                           New            = return Map.em
 materializePMapWorker PMap{pmapTableName=tbl, ..} (Commited ver) = do
   case (pmapEncodingK, pmapEncodingV) of
     (FieldEncoding _ fromK, FieldEncoding _ fromV) -> do
-      r <- query
-        ("SELECT key,val FROM "<>tbl<>
+      r <- basicQuery
+        (SQL.Query $ "SELECT key,val FROM "<>tbl<>
          " WHERE tag=? AND ver<=? AND key NOT IN (SELECT key FROM "<>tbl<>" WHERE tag = ? AND ver<=?)")
         (RowInsert, ver, RowDrop, ver)
       return $ Map.fromList [ (fromK k, fromV v) | (k,v) <- r ]
@@ -307,8 +308,8 @@ materializePMapWorker PMap{pmapTableName=tbl, ..} (Commited ver) = do
 isMemberPSet :: PersistentSet ty k -> Version -> k -> Query rw alg a Bool
 isMemberPSet _                           New            _ = return False
 isMemberPSet PSet{psetTableName=tbl, ..} (Commited ver) k = do
-  r <- query
-    ("SELECT tag FROM "<>tbl<>" WHERE key=? AND ver <= ? ORDER BY ver")
+  r <- basicQuery
+    (SQL.Query $ "SELECT tag FROM "<>tbl<>" WHERE key=? AND ver <= ? ORDER BY ver")
     (encodeField psetEncodingK k, ver)
   case r :: [Only Row] of
     []                             -> return False
@@ -321,8 +322,8 @@ materializePSetWorker _                           New = return Set.empty
 materializePSetWorker PSet{psetTableName=tbl, ..} (Commited ver) =
   case psetEncodingK of
     FieldEncoding _ from -> do
-      r <- query
-        ("SELECT key FROM "<>tbl<>
+      r <- basicQuery
+        (SQL.Query $ "SELECT key FROM "<>tbl<>
          " WHERE tag=? AND ver<=? AND key NOT IN (SELECT key FROM "<>tbl<>" WHERE tag = ? AND ver<=?)")
         (RowInsert, ver, RowDrop, ver)
       return $ Set.fromList $ from . fromOnly <$> r
@@ -342,8 +343,9 @@ checkPMapInsert pmap version k v = do
 
 checkPMapInsertReal :: PMap k v -> k -> Query rw alg a UpdateCheck
 checkPMapInsertReal PMap{pmapTableName=tbl, ..} k = do
-  r <- query ("SELECT tag FROM "<>tbl<>" WHERE key = ?")
-             (Only $ encodeField pmapEncodingK k)
+  r <- basicQuery
+    (SQL.Query $ "SELECT tag FROM "<>tbl<>" WHERE key = ?")
+    (Only $ encodeField pmapEncodingK k)
   case r :: [Only Row] of
     [] -> return UpdateOK
     _  -> return UpdateBad
@@ -352,10 +354,11 @@ checkPMapInsertReplay :: (Eq v) => PMap k v -> Version -> k -> v -> Query rw alg
 checkPMapInsertReplay PMap{pmapTableName=tbl, ..} version k v = do
   case pmapEncodingV of
     FieldEncoding _ from -> do
-      r <- query1 ("SELECT tag, val FROM "<>tbl<>" WHERE key = ? AND ver = ?")
-                  ( encodeField pmapEncodingK k
-                  , bumpForDB version
-                  )
+      r <- basicQuery1
+        (SQL.Query $ "SELECT tag, val FROM "<>tbl<>" WHERE key = ? AND ver = ?")
+        ( encodeField pmapEncodingK k
+        , bumpForDB version
+        )
       case r of
         Just (RowInsert, v') | v == from v' -> return UpdateNoop
         _                                   -> return UpdateBad
@@ -372,18 +375,20 @@ checkPMapDrop pmap version k = do
 
 checkPMapDropReal :: PMap k v -> k -> Query rw alg a UpdateCheck
 checkPMapDropReal PMap{pmapTableName=tbl, ..} k = do
-  r <- query ("SELECT tag FROM "<>tbl<>" WHERE key = ?")
-             (Only $ encodeField pmapEncodingK k)
+  r <- basicQuery
+    (SQL.Query $ "SELECT tag FROM "<>tbl<>" WHERE key = ?")
+    (Only $ encodeField pmapEncodingK k)
   case r of
     [Only RowInsert] -> return UpdateOK
     _                -> return UpdateBad
 
 checkPMapDropReplay :: PMap k v -> Version -> k -> Query rw alg a UpdateCheck
 checkPMapDropReplay PMap{pmapTableName=tbl, ..} version k = do
-  r <- query1 ("SELECT tag FROM "<>tbl<>" WHERE key = ? AND ver = ?")
-              ( encodeField pmapEncodingK k
-              , bumpForDB version
-              )
+  r <- basicQuery1
+    (SQL.Query $ "SELECT tag FROM "<>tbl<>" WHERE key = ? AND ver = ?")
+    ( encodeField pmapEncodingK k
+    , bumpForDB version
+    )
   case r of
     Just (Only RowDrop) -> return UpdateNoop
     _                   -> return UpdateBad
@@ -400,18 +405,20 @@ checkPSetStore pset version k = do
 
 checkPSetStoreReal :: PersistentSet ty k -> k -> Query rw alg a UpdateCheck
 checkPSetStoreReal PSet{psetTableName=tbl, ..} k = do
-  r <- query ("SELECT tag FROM "<>tbl<>" WHERE key = ?")
-             (Only $ encodeField psetEncodingK k)
+  r <- basicQuery
+    (SQL.Query $ "SELECT tag FROM "<>tbl<>" WHERE key = ?")
+    (Only $ encodeField psetEncodingK k)
   case r :: [Only Row] of
     [] -> return UpdateOK
     _  -> return UpdateBad
 
 checkPSetStoreReplay :: PersistentSet ty k -> Version -> k -> Query rw alg a UpdateCheck
 checkPSetStoreReplay PSet{psetTableName=tbl, ..} version k = do
-  r <- query1 ("SELECT tag FROM "<>tbl<>" WHERE key = ? AND ver = ?")
-              ( encodeField psetEncodingK k
-              , bumpForDB version
-              )
+  r <- basicQuery1
+    (SQL.Query $ "SELECT tag FROM "<>tbl<>" WHERE key = ? AND ver = ?")
+    ( encodeField psetEncodingK k
+    , bumpForDB version
+    )
   case r of
     Just (Only RowInsert) -> return UpdateNoop
     _                     -> return UpdateBad
@@ -428,18 +435,20 @@ checkPSetDrop pset version k = do
 
 checkPSetDropReal :: PersistentSet ty k -> k -> Query rw alg a UpdateCheck
 checkPSetDropReal PSet{psetTableName=tbl, ..} k = do
-  r <- query ("SELECT tag FROM "<>tbl<>" WHERE key = ?")
-             (Only $ encodeField psetEncodingK k)
+  r <- basicQuery
+    (SQL.Query $ "SELECT tag FROM "<>tbl<>" WHERE key = ?")
+    (Only $ encodeField psetEncodingK k)
   case r of
     [Only RowInsert] -> return UpdateOK
     _                -> return UpdateBad
 
 checkPSetDropReplay :: PersistentSet ty k -> Version -> k -> Query rw alg a UpdateCheck
 checkPSetDropReplay PSet{psetTableName=tbl, ..} version k = do
-  r <- query1 ("SELECT tag FROM "<>tbl<>" WHERE key = ? AND ver = ?")
-              ( encodeField psetEncodingK k
-              , bumpForDB version
-              )
+  r <- basicQuery1
+    (SQL.Query $ "SELECT tag FROM "<>tbl<>" WHERE key = ? AND ver = ?")
+    ( encodeField psetEncodingK k
+    , bumpForDB version
+    )
   case r of
     Just (Only RowDrop) -> return UpdateNoop
     _                   -> return UpdateBad
@@ -562,7 +571,7 @@ rollbackEph = fail "ROLLBACK"
 
 tableHead :: PersistentData p => p -> Query rw alg a Version
 tableHead a =
-  query ("SELECT MAX(ver) FROM "<>tbl) () >>= \case
+  basicQuery (SQL.Query $ "SELECT MAX(ver) FROM "<>tbl) () >>= \case
     [Only Nothing ] -> return New
     [Only (Just v)] -> return (Commited v)
     _               -> error "Impossible"
@@ -576,8 +585,8 @@ versionForHeight
   -> Query rw alg a (Versioned x)
 versionForHeight (Height 0) p = return $ Versioned New p
 versionForHeight (Height h) p = do
-  r <- query1 "SELECT ver FROM thm_checkpoints WHERE height = ? AND tableName = ?"
-              (h-1, persistentTableName p)
+  r <- basicQuery1 "SELECT ver FROM thm_checkpoints WHERE height = ? AND tableName = ?"
+         (h-1, persistentTableName p)
   case r of
     -- FIXME: Is calling error correct here???
     Nothing              -> error "Unknown version"
@@ -590,11 +599,11 @@ storeCheckpoint
   -> Versioned x
   -> Query 'RW alg a ()
 storeCheckpoint (Height h) (Versioned ver p) = do
-  r <- query1 "SELECT ver FROM thm_checkpoints WHERE height = ? AND tableName = ?"
-              (h, persistentTableName p)
+  r <- basicQuery1 "SELECT ver FROM thm_checkpoints WHERE height = ? AND tableName = ?"
+         (h, persistentTableName p)
   case r of
-    Nothing       -> execute "INSERT INTO thm_checkpoints VALUES (?,?,?)"
-                             (persistentTableName p, h, v)
+    Nothing       -> basicExecute "INSERT INTO thm_checkpoints VALUES (?,?,?)"
+                       (persistentTableName p, h, v)
     Just (Only v')
       | v /= v'   -> rollback
       | otherwise -> return ()

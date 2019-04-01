@@ -40,16 +40,16 @@ data SHA512  deriving (Data)
 
 type Ed25519_SHA512 = Ed25519 :& SHA512
 
-newtype instance PrivKey   (Ed25519 :& hash) = PrivKey   Ed.SecretKey
-newtype instance PublicKey (Ed25519 :& hash) = PublicKey Ed.PublicKey
+newtype instance PrivKey   Ed25519 = PrivKey   Ed.SecretKey
+newtype instance PublicKey Ed25519 = PublicKey Ed.PublicKey
 
-instance CryptoSignPrim (Ed25519 :& hash) where
-  type FingerprintSize (Ed25519 :& hash) = 32
-  type PublicKeySize   (Ed25519 :& hash) = 32
-  type PrivKeySize     (Ed25519 :& hash) = 32
-  type SignatureSize   (Ed25519 :& hash) = 64
+instance CryptoSignPrim Ed25519 where
+  type FingerprintSize Ed25519 = 32
+  type PublicKeySize   Ed25519 = 32
+  type PrivKeySize     Ed25519 = 32
+  type SignatureSize   Ed25519 = 64
 
-instance CryptoSign (Ed25519 :& hash) where
+instance CryptoSign Ed25519 where
   signBlob (PrivKey k)  = Signature . convert . Ed.sign k pubKey
    where pubKey = Ed.toPublic k
 
@@ -58,44 +58,38 @@ instance CryptoSign (Ed25519 :& hash) where
 
   publicKey   (PrivKey k)   = PublicKey $ Ed.toPublic k
   fingerprint (PublicKey k) = Fingerprint $ sha256 . sha512 $ convert k
+  generatePrivKey = do
+    bs <- liftIO $ getEntropy Ed.secretKeySize
+    case Ed.secretKey bs of
+      CryptoPassed k -> return $! PrivKey k
+      CryptoFailed e -> error (show e)
 
-instance CryptoHash (sign :& SHA512) where
-
-  hashBlob                = Hash . sha512
-
+instance CryptoHash SHA512 where
+  type HashSize SHA512 = 64
+  hashBlob                   = Hash . sha512
   hashEquality (Hash hbs) bs = hbs == bs
 
-  type HashSize     (sign :& SHA512) = 64
+deriving instance Eq (PrivKey Ed25519)
 
-generatePrivKey :: (MonadIO m) => m (PrivKey (Ed25519 :& hash))
-generatePrivKey = do
-  bs <- liftIO $ getEntropy Ed.secretKeySize
-  case Ed.secretKey bs of
-    CryptoPassed k -> return $! PrivKey k
-    CryptoFailed e -> error (show e)
-
-
-deriving instance Eq (PrivKey (Ed25519 :& hash))
-
-instance Ord (PrivKey (Ed25519 :& hash)) where
+instance Ord (PrivKey Ed25519) where
   compare = comparing encodeToBS
 
-deriving instance NFData (PrivKey (Ed25519 :& hash))
+deriving instance NFData (PrivKey Ed25519)
 
-instance (Ord (PrivKey (Ed25519 :& hash))) => ByteRepr (PrivKey (Ed25519 :& hash)) where
+instance (Ord (PrivKey Ed25519)) => ByteRepr (PrivKey Ed25519) where
   decodeFromBS        bs = case Ed.secretKey bs of
     CryptoPassed k -> Just (PrivKey k)
     CryptoFailed _ -> Nothing
   encodeToBS (PrivKey k) = convert k
 
-deriving instance Eq  (PublicKey (Ed25519 :& hash))
+deriving instance Eq  (PublicKey Ed25519)
 
-instance Ord (PublicKey (Ed25519 :& hash)) where
+instance Ord (PublicKey Ed25519) where
   compare = comparing encodeToBS
 
-deriving instance NFData (PublicKey (Ed25519 :& hash))
+deriving instance NFData (PublicKey Ed25519)
 
-instance (Ord (PublicKey (Ed25519 :& hash))) => ByteRepr (PublicKey (Ed25519 :& hash)) where
+instance (Ord (PublicKey Ed25519)) => ByteRepr (PublicKey Ed25519) where
   decodeFromBS        bs = case Ed.publicKey bs of
     CryptoPassed k -> Just (PublicKey k)
     CryptoFailed _ -> Nothing

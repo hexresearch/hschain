@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TypeApplications  #-}
 -- |
 module TM.Crypto (tests) where
 
@@ -15,7 +16,7 @@ import Thundermint.Crypto.Ed25519
 tests :: TestTree
 tests = testGroup "Crypto"
   [ testCase "read . show = id @ Fingerprint/PublicKey/PrivKey Ed25519_SHA512"
-  $ do privK <- generatePrivKey
+  $ do privK <- generatePrivKey @Ed25519_SHA512
        let pubK = publicKey privK
            addr = fingerprint pubK
            blob = "ABCD"
@@ -30,7 +31,7 @@ tests = testGroup "Crypto"
        x @=? (read . show) x
     --
   , testCase "Signature OK (roundtrip)"
-  $ do privK <- generatePrivKey
+  $ do privK <- generatePrivKey @Ed25519_SHA512
        let pubK = publicKey privK
            blob = "ABCD"
            sign = signBlob privK blob
@@ -47,7 +48,7 @@ tests = testGroup "Crypto"
        assertBool "Signature check failed" $ verifyBlobSignature pubK blob sign
     --
   , testCase "Signed works"
-  $ do privK <- generatePrivKey
+  $ do privK <- generatePrivKey @Ed25519_SHA512
        let pubK  = publicKey privK
            addr  = fingerprint pubK
            signV = signValue privK $ petrify ()
@@ -71,7 +72,7 @@ tests = testGroup "Crypto"
        read "Fingerprint \"AhAM9SS8UQUbjrB3cwq9DMtb6mnyz61m9LuBr5kayq9q\"" @=? fingerprint (publicKey k)
     --
   , testCase "decodeBS . encodeBS = id"
-  $ do privK <- generatePrivKey
+  $ do privK <- generatePrivKey @Ed25519_SHA512
        let pubK = publicKey privK
            addr = fingerprint pubK
            blob = "ABCD"
@@ -82,7 +83,7 @@ tests = testGroup "Crypto"
        Just sign  @=? (decodeFromBS . encodeToBS) sign
     --
   , testCase "decodeBase58 . encodeBase58 = id"
-  $ do privK <- generatePrivKey
+  $ do privK <- generatePrivKey @Ed25519_SHA512
        let pubK = publicKey privK
            addr = fingerprint pubK
            blob = "ABCD"
@@ -93,13 +94,13 @@ tests = testGroup "Crypto"
        Just sign  @=? (decodeBase58 . encodeBase58) sign
     --
   , testCase "encodeBase58 is Show compatible"
-  $ do privK <- generatePrivKey
+  $ do privK <- generatePrivKey @Ed25519_SHA512
        let pubK = publicKey privK
        show privK @=? T.unpack ("\"" <> encodeBase58 privK <> "\"")
        show pubK  @=? T.unpack ("\"" <> encodeBase58 pubK  <> "\"")
     --
   , testCase "Sizes are correct"
-  $ do privK <- generatePrivKey
+  $ do privK <- generatePrivKey @Ed25519_SHA512
        let pubK             = publicKey privK
            Fingerprint addr = fingerprint pubK
            blob             = "ABCD"

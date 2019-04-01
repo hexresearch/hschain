@@ -1,7 +1,8 @@
+{-# LANGUAGE ConstraintKinds            #-}
 {-# LANGUAGE DataKinds                  #-}
 {-# LANGUAGE DefaultSignatures          #-}
-{-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE DeriveDataTypeable         #-}
+{-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
@@ -9,9 +10,9 @@
 {-# LANGUAGE LambdaCase                 #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE StandaloneDeriving         #-}
+{-# LANGUAGE TypeApplications           #-}
 {-# LANGUAGE TypeFamilies               #-}
 {-# LANGUAGE TypeOperators              #-}
-{-# LANGUAGE ConstraintKinds            #-}
 {-# LANGUAGE UndecidableInstances       #-}
 -- |
 -- Simple API for cryptographic operations. Crypto algorithms are
@@ -69,6 +70,7 @@ import qualified Codec.Serialise          as CBOR
 import Control.Applicative
 import Control.DeepSeq
 import Control.Monad
+import Control.Monad.IO.Class
 
 import qualified Data.Aeson           as JSON
 import Data.Data (Data)
@@ -80,6 +82,7 @@ import qualified Data.ByteString               as BS
 import qualified Data.ByteString.Base58        as Base58
 import           Data.ByteString.Lazy    (toStrict,fromStrict)
 import qualified Data.ByteString.Char8         as BC8
+import Data.Coerce
 import Data.Char     (isAscii)
 import Data.Typeable (Proxy(..))
 import Text.Read     (Read(..), ReadPrec,lift)
@@ -93,9 +96,6 @@ import GHC.Generics         (Generic,Generic1)
 ----------------------------------------------------------------
 
 type Crypto (alg) = (CryptoSign alg, CryptoHash alg)
-
-data sign :& hash
-  deriving (Data)
 
 -- | Private key
 data family PrivKey   alg
@@ -130,12 +130,13 @@ class ( ByteRepr (Fingerprint alg)
   publicKey           :: PrivKey   alg -> PublicKey alg
   -- | Compute fingerprint or public key fingerprint
   fingerprint         :: PublicKey alg -> Fingerprint alg
+  -- | Generate new private key
+  generatePrivKey     :: MonadIO m => m (PrivKey alg)
 
 class ( KnownNat (SignatureSize alg)
       , KnownNat (FingerprintSize alg)
       , KnownNat (PublicKeySize alg)
       , KnownNat (PrivKeySize alg)
-      --, CryptoSign alg
       ) => CryptoSignPrim alg where
   type FingerprintSize alg :: Nat
   type PublicKeySize   alg :: Nat
@@ -145,18 +146,16 @@ class ( KnownNat (SignatureSize alg)
 -- | Type-indexed set of crypto algorithms. It's not very principled
 --   to push everything into singe type class.  But in order to keep
 --   signatures sane it was done this way.
-class (
---    , CryptoSignPrim alg
-       ByteRepr (Hash   alg)
+class ( ByteRepr (Hash   alg)
       , KnownNat (HashSize alg)
       ) => CryptoHash alg where
+  type HashSize        alg :: Nat
   -- | Compute hash of sequence of bytes
   hashBlob     :: BS.ByteString -> Hash alg
-
   -- | Compare hash with a bytestring safly
   hashEquality :: Hash alg -> BS.ByteString -> Bool
 
-  type HashSize        alg :: Nat
+
 
 -- | Size of hash in bytes
 hashSize :: forall alg proxy i. (Crypto alg, Num i) => proxy alg -> i
@@ -521,6 +520,51 @@ instance SafeCopy    a => SafeCopy (Signed 'Unverified alg a) where
 instance SafeCopy    a => JSON.FromJSON (Signed 'Unverified alg a)
 instance JSON.ToJSON a => JSON.ToJSON   (Signed 'Unverified alg a)
 
+
+----------------------------------------------------------------
+-- Union of hashing and signing
+----------------------------------------------------------------
+
+-- | Data type which support both hashing and signing
+data sign :& hash
+  deriving (Data)
+
+
+newtype instance PrivKey   (sign :& hash) = PrivKeyU   (PrivKey   sign)
+newtype instance PublicKey (sign :& hash) = PublicKeyU (PublicKey sign)
+
+deriving instance (Eq     (PrivKey   sign)) => Eq     (PrivKey   (sign :& hash))
+deriving instance (Ord    (PrivKey   sign)) => Ord    (PrivKey   (sign :& hash))
+deriving instance (NFData (PrivKey   sign)) => NFData (PrivKey   (sign :& hash))
+deriving instance (Eq     (PublicKey sign)) => Eq     (PublicKey (sign :& hash))
+deriving instance (Ord    (PublicKey sign)) => Ord    (PublicKey (sign :& hash))
+deriving instance (NFData (PublicKey sign)) => NFData (PublicKey (sign :& hash))
+
+instance (ByteRepr (PrivKey sign)) => ByteRepr (PrivKey (sign :& hash)) where
+  encodeToBS   = coerce (encodeToBS   @(PrivKey sign))
+  decodeFromBS = coerce (decodeFromBS @(PrivKey sign))
+
+instance (ByteRepr (PublicKey sign)) => ByteRepr (PublicKey (sign :& hash)) where
+  encodeToBS   = coerce (encodeToBS   @(PublicKey sign))
+  decodeFromBS = coerce (decodeFromBS @(PublicKey sign))
+
+instance CryptoSign sign => CryptoSign (sign :& hash) where
+  signBlob            = coerce (signBlob @sign)
+  verifyBlobSignature = coerce (verifyBlobSignature @sign)
+  publicKey           = coerce (publicKey @sign)
+  fingerprint         = coerce (fingerprint @sign)
+  generatePrivKey     = fmap PrivKeyU (generatePrivKey @sign)
+
+instance (CryptoSignPrim sign) => CryptoSignPrim (sign :& hash) where
+  type FingerprintSize (sign :& hash) = FingerprintSize sign
+  type PublicKeySize   (sign :& hash) = PublicKeySize   sign
+  type PrivKeySize     (sign :& hash) = PrivKeySize     sign
+  type SignatureSize   (sign :& hash) = SignatureSize   sign
+
+instance (CryptoHash hash) => CryptoHash (sign :& hash) where
+  type HashSize (sign :& hash) = HashSize hash
+  hashBlob     = coerce (hashBlob @hash)
+  hashEquality = coerce (hashEquality @hash)
 
 
 ----------------------------------------------------------------

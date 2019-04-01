@@ -105,7 +105,7 @@ data PeerStateObj m alg a = PeerStateObj
 
 -- | Create new peer state with default state
 newPeerStateObj
-  :: MonadReadDB m alg a
+  :: (MonadIO m)
   => ProposalStorage 'RO m alg a
   -> m (PeerStateObj m alg a)
 newPeerStateObj prop = do
@@ -123,7 +123,7 @@ getPeerState (PeerStateObj _ var)
 -- | Local state increased to height H. Update our opinion about
 --   peer's state accordingly
 advanceOurHeight
-  :: (MonadReadDB m alg a, MonadMask m, Crypto alg, SafeCopy a, MonadFail m)
+  :: (MonadReadDB m alg a, MonadIO m, MonadMask m, Crypto alg, MonadFail m)
   => PeerStateObj m alg a
   -> Height
   -> m ()
@@ -167,7 +167,7 @@ advanceOurHeight (PeerStateObj _ var) ourH =
         -> return peer
     Unknown   -> return Unknown
 
-advancePeer :: (MonadReadDB m alg a, MonadMask m, Crypto alg, SafeCopy a, MonadFail m)
+advancePeer :: (MonadReadDB m alg a, MonadIO m, MonadMask m, Crypto alg, MonadFail m)
             => PeerStateObj m alg a
             -> FullStep
             -> m ()

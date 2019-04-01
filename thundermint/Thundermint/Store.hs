@@ -121,7 +121,7 @@ instance MonadTrans (DBT rw alg a) where
 dbtRO :: DBT 'RO alg a m x -> DBT rw alg a m x
 dbtRO (DBT m) = DBT (withReaderT connectionRO m)
 
-runDBT :: Monad m => Connection rw alg a -> DBT rw alg a m x -> m x
+runDBT :: Connection rw alg a -> DBT rw alg a m x -> m x
 runDBT c (DBT m) = runReaderT m c
 
 instance MonadIO m => MonadReadDB (DBT rw alg a m) alg a where
@@ -166,16 +166,6 @@ initDatabase c dct genesis vals = do
     -- FIXME: Resource leak!
     Nothing -> error "Cannot initialize tables!"
     Just () -> return ()
-
--- | Execute query.
-queryRO :: (MonadReadDB m alg a) => Query 'RO alg a x -> m x
-queryRO q = flip runQueryRO q =<< askConnectionRO
-
--- | Execute query. @Nothing@ means that query violated some invariant
---   and was rolled back.
-queryRW :: (MonadDB m alg a) => Query 'RW alg a x -> m (Maybe x)
-queryRW q = flip runQueryRW q =<< askConnectionRW
-
 
 
 ----------------------------------------------------------------
@@ -380,7 +370,7 @@ data BlockchainInconsistency
 
 -- | check storage against all consistency invariants
 checkStorage
-  :: (MonadReadDB m alg a, Crypto alg, SafeCopy a)
+  :: (MonadReadDB m alg a, MonadIO m, Crypto alg, SafeCopy a)
   => m [BlockchainInconsistency]
 checkStorage = queryRO $ execWriterT $ do
   maxH         <- lift $ blockchainHeight
@@ -412,7 +402,7 @@ checkStorage = queryRO $ execWriterT $ do
 -- | Check that block proposed at given height is correct in sense all
 --   blockchain invariants hold
 checkProposedBlock
-  :: (MonadReadDB m alg a, Crypto alg, SafeCopy a)
+  :: (MonadReadDB m alg a, MonadIO m, Crypto alg, SafeCopy a)
   => Height
   -> Pet (Block alg a)
   -> m [BlockchainInconsistency]

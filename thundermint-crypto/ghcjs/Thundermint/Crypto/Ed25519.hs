@@ -10,6 +10,7 @@ module Thundermint.Crypto.Ed25519 (
   ) where
 
 import Control.Monad
+import Control.Monad.IO.Class
 import Control.DeepSeq
 import Data.ByteString (ByteString)
 import Data.Ord        (comparing)
@@ -35,22 +36,22 @@ data SHA512
 
 type Ed25519_SHA512 = Ed25519 :& SHA512
 
-data instance PrivKey (Ed25519 :& hash) = PrivKey
+data instance PrivKey Ed25519 = PrivKey
   { pkBS  :: !ByteString
   , privK :: !Uint8Array
   , pubK  :: !Uint8Array
   }
 
-newtype instance PublicKey (Ed25519 :& hash) = PublicKey { unPublicKey :: Uint8Array }
+newtype instance PublicKey Ed25519 = PublicKey { unPublicKey :: Uint8Array }
 
-instance CryptoSignPrim (Ed25519 :& hash) where
-  type FingerprintSize (Ed25519 :& hash) = 32
-  type PublicKeySize   (Ed25519 :& hash) = 32
-  type PrivKeySize     (Ed25519 :& hash) = 32
-  type SignatureSize   (Ed25519 :& hash) = 64
+instance CryptoSignPrim Ed25519 where
+  type FingerprintSize Ed25519 = 32
+  type PublicKeySize   Ed25519 = 32
+  type PrivKeySize     Ed25519 = 32
+  type SignatureSize   Ed25519 = 64
 
 
-instance CryptoSign (Ed25519 :& hash) where
+instance CryptoSign Ed25519 where
   --
   signBlob k bs
     = Signature
@@ -63,41 +64,37 @@ instance CryptoSign (Ed25519 :& hash) where
   fingerprint   = Fingerprint
                 . BL.toStrict . SHA.bytestringDigest . SHA.sha256 . BL.fromStrict
                 . arrayToBs . js_sha512 . unPublicKey
+  generatePrivKey = liftIO $ do
+    arr <- js_randombytes 32
+    case decodeFromBS $ arrayToBs arr of
+      Just k  -> return k
+      Nothing -> error "Ed25519: internal error. Cannot generate key"
 
-instance CryptoHash (sign :& SHA512) where
-
+instance CryptoHash SHA512 where
+  type HashSize SHA512 = 64
   hashBlob  = Hash . arrayToBs . js_sha512 . bsToArray
+  hashEquality (Hash hbs) bs = hbs == bs
 
-  type HashSize     (sign :& SHA512) = 64
-
-generatePrivKey :: IO (PrivKey (Ed25519 :& hash))
-generatePrivKey = do
-  arr <- js_randombytes 32
-  case decodeFromBS $ arrayToBs arr of
-    Just k  -> return k
-    Nothing -> error "Ed25519: internal error. Cannot generate key"
-
-
-instance Eq (PrivKey (Ed25519 :& hash)) where
+instance Eq (PrivKey Ed25519) where
   PrivKey b1 _ _ == PrivKey b2 _ _ = b1 == b2
 
-instance Eq (PublicKey (Ed25519 :& hash)) where
+instance Eq (PublicKey Ed25519) where
   PublicKey a == PublicKey b = arrayToBs a == arrayToBs b
 
-instance Ord (PrivKey (Ed25519 :& hash)) where
+instance Ord (PrivKey Ed25519) where
   compare = comparing encodeToBS
 
-instance Ord (PublicKey (Ed25519 :& hash)) where
+instance Ord (PublicKey Ed25519) where
   compare = comparing encodeToBS
 
 
-instance NFData (PrivKey (Ed25519 :& hash)) where
+instance NFData (PrivKey Ed25519) where
   rnf k = k `seq` ()
 
-instance NFData (PublicKey (Ed25519 :& hash)) where
+instance NFData (PublicKey Ed25519) where
   rnf k = k `seq` ()
 
-instance (Ord (PrivKey (Ed25519 :& hash))) => ByteRepr (PrivKey (Ed25519 :& hash)) where
+instance (Ord (PrivKey Ed25519)) => ByteRepr (PrivKey Ed25519) where
   decodeFromBS        bs = do
     keypair <- nonNullJs $ js_nacl_sign_fromSeed $ bsToArray bs
     return PrivKey { pkBS  = bs
@@ -107,7 +104,7 @@ instance (Ord (PrivKey (Ed25519 :& hash))) => ByteRepr (PrivKey (Ed25519 :& hash
 
   encodeToBS = pkBS
 
-instance (Ord (PublicKey (Ed25519 :& hash))) => ByteRepr (PublicKey (Ed25519 :& hash)) where
+instance (Ord (PublicKey Ed25519)) => ByteRepr (PublicKey Ed25519) where
   decodeFromBS        bs = do
     guard $ BS.length bs == 32
     return $ PublicKey $ bsToArray bs

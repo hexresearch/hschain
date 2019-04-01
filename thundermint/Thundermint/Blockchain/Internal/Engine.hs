@@ -63,7 +63,13 @@ newAppChans ConsensusCfg{incomingQueueSize = sz} = do
 --
 --   * INVARIANT: Only this function can write to blockchain
 runApplication
-  :: ( MonadDB m alg a, MonadCatch m, MonadLogger m, MonadTMMonitoring m, Crypto alg, Show a, BlockData a, MonadFail m)
+  :: ( MonadDB m alg a
+     , MonadCatch m
+     , MonadFail m
+     , MonadIO m
+     , MonadLogger m
+     , MonadTMMonitoring m
+     , Crypto alg, BlockData a)
   => ConsensusCfg
      -- ^ Configuration
   -> (Height -> Time -> m Bool)
@@ -89,7 +95,12 @@ runApplication config ready appSt@AppState{..} appCh@AppChans{..} = logOnExcepti
 --
 -- FIXME: we should write block and last commit in transaction!
 decideNewBlock
-  :: (MonadDB m alg a, MonadLogger m, MonadTMMonitoring m, Crypto alg, Show a, BlockData a, MonadFail m)
+  :: ( MonadDB m alg a
+     , MonadIO m
+     , MonadFail m
+     , MonadLogger m
+     , MonadTMMonitoring m
+     , Crypto alg, BlockData a)
   => ConsensusCfg
   -> (Height -> Time -> m Bool)
   -> AppState m alg a
@@ -281,7 +292,12 @@ instance MonadTrans (ConsensusM alg a) where
   lift = ConsensusM . fmap Success
 
 makeHeightParameters
-  :: (MonadDB m alg a, MonadLogger m, MonadTMMonitoring m, Crypto alg, SafeCopy a, Show a, MonadFail m)
+  :: ( MonadDB m alg a
+     , MonadFail m
+     , MonadIO m
+     , MonadLogger m
+     , MonadTMMonitoring m
+     , Crypto alg, SafeCopy a)
   => ConsensusCfg
   -> (Height -> Time -> m Bool)
   -> AppState m alg a
