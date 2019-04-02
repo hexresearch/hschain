@@ -12,7 +12,7 @@ export THUNDERMINT_KEYS="[\"2K7bFuJXxKf5LqogvVRQjms2W26ZrjpvUjo5LdvPFa5Y\",\"4NS
 
 # made it into a function, otherwise it is unwieldy - needs special kind of quotes for it to work and not reliably.
 THUNDERMINT_COIN_NODE () {
-  cabal new-exec --with-ghc=ghc-8.4.4 -- thundermint-coin-node $*
+  cabal new-exec -- thundermint-coin-node $*
 }
 
 PREFIX=tmp/thundermint
@@ -20,7 +20,7 @@ PREFIX=tmp/thundermint
 EXTRA=$*
 echo "$EXTRA"
 
-COMMON_OPTIONS='--total-nodes 4 --max-h 2 --delay 50 --check-consensus --deposit 1000 --keys 2000'
+COMMON_OPTIONS='--total-nodes 4 --max-h 100 --delay 200 --check-consensus --deposit 1000 --keys 2000'
 
 #LOG_SPEC="\"nspecLogFile\" : [{ \"type\": \"ScribeES\", \"path\" : \"`cat elastic-search.cfg`\", \"severity\" : \"Debug\", \"verbosity\" : \"V2\" }]"
 LOG_SPEC='"nspecLogFile" : [{ "type": "ScribeJSON", "path" : "log.js", "severity" : "Debug", "verbosity" : "V2" }]'
@@ -32,12 +32,7 @@ mkdir --parents $PREFIX/node-2/db
 mkdir --parents $PREFIX/node-3/db
 mkdir --parents $PREFIX/node-4/db
 
-trap 'kill -KILL 0' SIGINT EXIT
-
-bootstrap() {
-    bs=$1
-    ( echo -e $bs | nc 127.0.0.1 49999 -w 1 > /dev/null 2> /dev/null ) || ( sleep 0.1 ; bootstrap $bs )
-}
+trap 'kill -KILL 0' SIGINT
 
 echo "Node 1"
 export THUNDERMINT_NODE_SPEC="{ \"nspecPrivKey\":\"2K7bFuJXxKf5LqogvVRQjms2W26ZrjpvUjo5LdvPFa5Y\", \"nspecDbName\": \"./db/node-1\", $LOG_SPEC, \"nspecWalletKeys\"  : [0,1]}"
@@ -69,7 +64,5 @@ sleep 0.5
 
 echo "Ok, node started!"
 echo "Waiting for node finished"
-sleep 1h
-#sleep 600
-
+wait
 echo "OK"
