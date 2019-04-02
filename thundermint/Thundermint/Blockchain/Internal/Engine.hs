@@ -66,6 +66,7 @@ runApplication
      , MonadCatch m
      , MonadFail m
      , MonadIO m
+     , MonadMask m
      , MonadLogger m
      , MonadTMMonitoring m
      , Crypto alg, BlockData a)
@@ -97,6 +98,7 @@ decideNewBlock
   :: ( MonadDB m alg a
      , MonadIO m
      , MonadFail m
+     , MonadMask m
      , MonadLogger m
      , MonadTMMonitoring m
      , Crypto alg, BlockData a)
@@ -167,16 +169,14 @@ decideNewBlock config ready appSt@AppState{..} appCh@AppChans{..} lastCommt = do
                   Just () -> return ()
               --
               MixedQuery mcall -> do
-                callback <- mcall
-                r <- queryRW $ do storeCommit cmt b
-                                  (vsetChange,action) <- callback b
-                                  case changeValidators vsetChange (validatorSet hParam) of
-                                    Just vset -> storeValSet b vset
-                                    Nothing   -> fail ""
-                                  return action
+                r <- queryRWT $ do storeCommit cmt b
+                                   vsetChange <- mcall b
+                                   case changeValidators vsetChange (validatorSet hParam) of
+                                     Just vset -> storeValSet b vset
+                                     Nothing   -> fail ""
                 case r of
-                  Just action -> action
-                  Nothing     -> error "Cannot write commit into database"
+                  Nothing -> error "Cannot write commit into database"
+                  Just () -> return ()
             advanceToHeight appPropStorage . succ =<< queryRO blockchainHeight
             appCommitCallback b
             return cmt

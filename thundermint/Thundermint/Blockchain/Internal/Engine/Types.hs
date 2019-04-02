@@ -32,6 +32,7 @@ module Thundermint.Blockchain.Internal.Engine.Types (
 
 import Control.Applicative
 import Control.Concurrent.STM
+import Control.Monad.Morph    (MFunctor(..))
 import Data.Aeson
 import Numeric.Natural
 import GHC.Generics           (Generic)
@@ -152,7 +153,7 @@ data CommitCallback m alg a
   -- ^ Query for updating user's state and to find out new set of
   --   validators. It's evaluated in the same transaction as block
   --   commit and thus atomic.
-  | MixedQuery  !(m (Block alg a -> Query 'RW alg a ([ValidatorChange alg], m ())))
+  | MixedQuery  !(Block alg a -> QueryT 'RW alg a m [ValidatorChange alg])
   -- ^ Query which allow to mixed database updates with other
   --   actions. If @Query@ succeeds returned action is executed immediately
 
@@ -180,13 +181,13 @@ data AppState m alg a = AppState
   }
 
 hoistCommitCallback
-  :: (Functor m)
+  :: (Monad m)
   => (forall x. m x -> n x) -> CommitCallback m alg a -> CommitCallback n alg a
 hoistCommitCallback _   (SimpleQuery f) = SimpleQuery f
-hoistCommitCallback fun (MixedQuery  f) =
-  MixedQuery $ fun $ (fmap . fmap . fmap . fmap) fun f
+hoistCommitCallback fun (MixedQuery  f) = MixedQuery $ fmap (hoist fun) f
 
-hoistAppState :: (Functor m) => (forall x. m x -> n x) -> AppState m alg a -> AppState n alg a
+
+hoistAppState :: (Monad m) => (forall x. m x -> n x) -> AppState m alg a -> AppState n alg a
 hoistAppState fun AppState{..} = AppState
   { appBlockGenerator   = \h t c e -> fun $ appBlockGenerator h t c e
   , appValidationFun    = fun . appValidationFun
