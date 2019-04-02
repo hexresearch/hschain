@@ -112,7 +112,6 @@ interpretSpec maxH prefix NetSpec{..} = do
                              , headerHeight (blockHeader b) > Height hM -> throwM Abort
                              | otherwise                                -> return ()
                        , appCommitQuery    = SimpleQuery $ \_ -> return []
-                       , appValidator      = nspecPrivKey
                        }
                  let cfg = defCfg :: Configuration Example
                  appCh <- newAppChans (cfgConsensus cfg)
@@ -126,7 +125,7 @@ interpretSpec maxH prefix NetSpec{..} = do
                          appCh
                          nullMempoolAny
                    , setNamespace "consensus"
-                     $ runApplication (cfgConsensus cfg) (\_ _ -> return True) appState appCh
+                     $ runApplication (cfgConsensus cfg) (\_ _ -> return True) nspecPrivKey appState appCh
                    ]
              )
   where

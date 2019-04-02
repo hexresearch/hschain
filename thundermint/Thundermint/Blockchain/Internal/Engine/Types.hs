@@ -167,8 +167,6 @@ data AppState m alg a = AppState
                         -> m (a, [ValidatorChange alg])
     -- ^ Generate fresh block for proposal. It's called each time we
     --   need to create new block for proposal
-  , appValidator        :: Maybe (PrivValidator alg)
-    -- ^ Private validator for node. It's @Nothing@ if node is not a validator
   , appValidationFun    :: Block alg a -> m (Maybe [ValidatorChange alg])
     -- ^ Function for validation of proposed block data. It returns
     --   change of validators for given block if it's valid and
@@ -193,7 +191,6 @@ hoistAppState fun AppState{..} = AppState
   , appValidationFun    = fun . appValidationFun
   , appCommitCallback   = fun . appCommitCallback
   , appCommitQuery      = hoistCommitCallback   fun appCommitQuery
-  , ..
   }
 
 -- | Our own validator

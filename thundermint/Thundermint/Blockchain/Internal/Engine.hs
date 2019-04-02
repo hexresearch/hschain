@@ -74,18 +74,19 @@ runApplication
      -- ^ Configuration
   -> (Height -> Time -> m Bool)
      -- ^ Whether application is ready to create new block
+  -> Maybe (PrivValidator alg)
   -> AppState m alg a
      -- ^ Get initial state of the application
   -> AppChans m alg a
      -- ^ Channels for communication with peers
   -> m ()
-runApplication config ready appSt@AppState{..} appCh@AppChans{..} = logOnException $ do
+runApplication config ready appValidatorKey appSt@AppState{..} appCh@AppChans{..} = logOnException $ do
   logger InfoS "Starting consensus engine" ()
   height <- queryRO $ blockchainHeight
   lastCm <- queryRO $ retrieveLocalCommit height
   advanceToHeight appPropStorage $ succ height
   void $ flip fix lastCm $ \loop commit -> do
-    cm <- decideNewBlock config ready appSt appCh commit
+    cm <- decideNewBlock config ready appValidatorKey appSt appCh commit
     loop (Just cm)
 
 
@@ -104,14 +105,15 @@ decideNewBlock
      , Crypto alg, BlockData a)
   => ConsensusCfg
   -> (Height -> Time -> m Bool)
+  -> Maybe (PrivValidator alg)
   -> AppState m alg a
   -> AppChans m alg a
   -> Maybe (Commit alg a)
   -> m (Commit alg a)
-decideNewBlock config ready appSt@AppState{..} appCh@AppChans{..} lastCommt = do
+decideNewBlock config ready appValidatorKey appSt@AppState{..} appCh@AppChans{..} lastCommt = do
   -- Enter NEW HEIGHT and create initial state for consensus state
   -- machine
-  hParam <- makeHeightParameters config ready appSt appCh
+  hParam <- makeHeightParameters config ready appValidatorKey appSt appCh
   -- Get rid of messages in WAL that are no longer needed and replay
   -- all messages stored there.
   walMessages <- fmap (fromMaybe [])
@@ -299,10 +301,11 @@ makeHeightParameters
      , Crypto alg, Serialise a)
   => ConsensusCfg
   -> (Height -> Time -> m Bool)
+  -> Maybe (PrivValidator alg)
   -> AppState m alg a
   -> AppChans m alg a
   -> m (HeightParameters (ConsensusM alg a m) alg a)
-makeHeightParameters ConsensusCfg{..} ready AppState{..} AppChans{..} = do
+makeHeightParameters ConsensusCfg{..} ready appValidatorKey AppState{..} AppChans{..} = do
   h            <- queryRO $ blockchainHeight
   Just valSet  <- queryRO $ retrieveValidatorSet (succ h)
   oldValSet    <- queryRO $ retrieveValidatorSet  h
@@ -323,7 +326,7 @@ makeHeightParameters ConsensusCfg{..} ready AppState{..} AppChans{..} = do
     , oldValidatorSet = oldValSet
       -- FIXME: this is some random algorithms that should probably
       --        work (for some definition of work)
-    , areWeProposers  = \r -> case appValidator of
+    , areWeProposers  = \r -> case appValidatorKey of
         Nothing                 -> False
         Just (PrivValidator pk) -> proposerChoice r == fingerprint (publicKey pk)
     , proposerForRound = proposerChoice
@@ -353,7 +356,7 @@ makeHeightParameters ConsensusCfg{..} ready AppState{..} AppChans{..} = do
                | otherwise              -> return InvalidProposal
     --
     , broadcastProposal = \r bid lockInfo ->
-        forM_ appValidator $ \(PrivValidator pk) -> do
+        forM_ appValidatorKey $ \(PrivValidator pk) -> do
           t <- getCurrentTime
           let prop = Proposal { propHeight    = succ h
                               , propRound     = r
@@ -385,7 +388,7 @@ makeHeightParameters ConsensusCfg{..} ready AppState{..} AppChans{..} = do
           atomically $ writeTQueue appChanRxInternal $ RxTimeout t
     --
     , castPrevote     = \r b ->
-        forM_ appValidator $ \(PrivValidator pk) -> do
+        forM_ appValidatorKey $ \(PrivValidator pk) -> do
           t@(Time ti) <- getCurrentTime
           let vote = Vote { voteHeight  = succ h
                           , voteRound   = r
@@ -401,7 +404,7 @@ makeHeightParameters ConsensusCfg{..} ready AppState{..} AppChans{..} = do
             writeTQueue appChanRxInternal (RxPreVote $ unverifySignature svote)
     --
     , castPrecommit   = \r b ->
-        forM_ appValidator $ \(PrivValidator pk) -> do
+        forM_ appValidatorKey $ \(PrivValidator pk) -> do
           t <- getCurrentTime
           let vote = Vote { voteHeight  = succ h
                           , voteRound   = r

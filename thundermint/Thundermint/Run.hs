@@ -192,7 +192,6 @@ runNode cfg BlockchainNet{..} NodeDescription{..} NodeLogic{..} = do
                logger InfoS "Mempool after filtering" after
             nodeCommitCallback b
           --
-        , appValidator        = nodeValidationKey
         }
   -- Networking
   appCh <- newAppChans (cfgConsensus cfg)
@@ -201,7 +200,7 @@ runNode cfg BlockchainNet{..} NodeDescription{..} NodeLogic{..} = do
          $ startPeerDispatcher (cfgNetwork cfg)
               bchNetwork bchLocalAddr bchInitialPeers appCh nodeMempool
     , id $ descendNamespace "consensus"
-         $ runApplication (cfgConsensus cfg) nodeReadyCreateBlock appSt appCh
+         $ runApplication (cfgConsensus cfg) nodeReadyCreateBlock nodeValidationKey appSt appCh
     , forever $ do
         MempoolInfo{..} <- mempoolStats nodeMempool
         usingGauge prometheusMempoolSize      mempool'size
