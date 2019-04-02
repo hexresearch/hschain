@@ -28,7 +28,6 @@ Library
                      , directory
                      , exceptions        >=0.8.3
                      , filepath
-                     , mmorph
                      , microlens         >=0.4
                      , microlens-mtl     >=0.1
                      , network-info
@@ -217,8 +216,6 @@ Benchmark thundermint-bench
   Main-is:             main.hs
   Build-Depends:       base  >=4.9 && <5
                      , thundermint
-                     , thundermint-crypto
-                     , thundermint-types
                      , bytestring >=0.10
                      , criterion
                      , cryptonite
