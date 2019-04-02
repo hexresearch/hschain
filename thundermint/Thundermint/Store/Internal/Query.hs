@@ -42,6 +42,7 @@ module Thundermint.Store.Internal.Query (
 import Control.Monad.Catch
 import qualified Control.Monad.Fail as Fail
 import Control.Monad.IO.Class
+import Control.Monad.Morph            (MFunctor(..))
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Reader
 import Control.Monad.Trans.Maybe
@@ -230,6 +231,9 @@ instance MonadQueryRW m alg a => MonadQueryRW (SL.StateT s m) alg a where
 --   caution.
 newtype QueryT (rw :: Access) alg a m x = QueryT { unQueryT :: m x }
   deriving newtype ( Functor, Applicative, MonadIO, MonadThrow, MonadCatch, MonadMask, MonadLogger)
+
+instance MFunctor (QueryT rw alg a) where
+  hoist f (QueryT m) = QueryT (f m)
 
 instance MonadThrow m => Monad (QueryT rw alg a m) where
   return         = QueryT . return
