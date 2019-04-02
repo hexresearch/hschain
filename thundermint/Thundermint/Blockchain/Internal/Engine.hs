@@ -49,7 +49,6 @@ import Katip (Severity(..), sl)
 
 newAppChans :: (MonadIO m, Crypto alg) => ConsensusCfg -> m (AppChans m alg a)
 newAppChans ConsensusCfg{incomingQueueSize = sz} = do
-  -- 7 is magical no good reason to use 7 but no reason against it either
   appChanRx         <- liftIO $ newTBQueueIO sz
   appChanRxInternal <- liftIO   newTQueueIO
   appChanTx         <- liftIO   newBroadcastTChanIO
@@ -72,21 +71,20 @@ runApplication
      , Crypto alg, BlockData a)
   => ConsensusCfg
      -- ^ Configuration
-  -> (Height -> Time -> m Bool)
-     -- ^ Whether application is ready to create new block
   -> Maybe (PrivValidator alg)
+     -- ^ Private key of validator
   -> AppState m alg a
      -- ^ Get initial state of the application
   -> AppChans m alg a
      -- ^ Channels for communication with peers
   -> m ()
-runApplication config ready appValidatorKey appSt@AppState{..} appCh@AppChans{..} = logOnException $ do
+runApplication config appValidatorKey appSt@AppState{..} appCh@AppChans{..} = logOnException $ do
   logger InfoS "Starting consensus engine" ()
   height <- queryRO $ blockchainHeight
   lastCm <- queryRO $ retrieveLocalCommit height
   advanceToHeight appPropStorage $ succ height
   void $ flip fix lastCm $ \loop commit -> do
-    cm <- decideNewBlock config ready appValidatorKey appSt appCh commit
+    cm <- decideNewBlock config appValidatorKey appSt appCh commit
     loop (Just cm)
 
 
@@ -104,16 +102,15 @@ decideNewBlock
      , MonadTMMonitoring m
      , Crypto alg, BlockData a)
   => ConsensusCfg
-  -> (Height -> Time -> m Bool)
   -> Maybe (PrivValidator alg)
   -> AppState m alg a
   -> AppChans m alg a
   -> Maybe (Commit alg a)
   -> m (Commit alg a)
-decideNewBlock config ready appValidatorKey appSt@AppState{..} appCh@AppChans{..} lastCommt = do
+decideNewBlock config appValidatorKey appSt@AppState{..} appCh@AppChans{..} lastCommt = do
   -- Enter NEW HEIGHT and create initial state for consensus state
   -- machine
-  hParam <- makeHeightParameters config ready appValidatorKey appSt appCh
+  hParam <- makeHeightParameters config appValidatorKey appSt appCh
   -- Get rid of messages in WAL that are no longer needed and replay
   -- all messages stored there.
   walMessages <- fmap (fromMaybe [])
@@ -300,12 +297,11 @@ makeHeightParameters
      , MonadTMMonitoring m
      , Crypto alg, Serialise a)
   => ConsensusCfg
-  -> (Height -> Time -> m Bool)
   -> Maybe (PrivValidator alg)
   -> AppState m alg a
   -> AppChans m alg a
   -> m (HeightParameters (ConsensusM alg a m) alg a)
-makeHeightParameters ConsensusCfg{..} ready appValidatorKey AppState{..} AppChans{..} = do
+makeHeightParameters ConsensusCfg{..} appValidatorKey AppState{..} AppChans{..} = do
   h            <- queryRO $ blockchainHeight
   Just valSet  <- queryRO $ retrieveValidatorSet (succ h)
   oldValSet    <- queryRO $ retrieveValidatorSet  h
@@ -330,7 +326,7 @@ makeHeightParameters ConsensusCfg{..} ready appValidatorKey AppState{..} AppChan
         Nothing                 -> False
         Just (PrivValidator pk) -> proposerChoice r == fingerprint (publicKey pk)
     , proposerForRound = proposerChoice
-    , readyCreateBlock = lift $ ready h bchTime
+    , readyCreateBlock = lift $ appCanCreateBlock h bchTime
     --
     , validateBlock = \bid -> do
         let nH = succ h
