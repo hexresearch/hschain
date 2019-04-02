@@ -18,10 +18,13 @@ import Control.Monad.IO.Class
 
 
 import qualified Data.Map.Strict as Map
+import qualified Data.Set        as Set
 
 import Data.Typeable (Proxy(..))
 
 import GHC.Generics
+
+import System.IO
 
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -115,7 +118,7 @@ deriving instance Serialise VTSTx
 testAddRemValidators :: IO ()
 testAddRemValidators = do
   net  <- liftIO newMockNet
-  summary <- newMVar []
+  summary <- newMVar Set.empty
   withMany (\descr cont -> withConnection ":memory:" (\c -> cont (c,descr))) desc $ \descrList -> do
     acts <- mapM (mkTestNode net summary) descrList
     runConcurrently $ join acts
@@ -140,12 +143,14 @@ testAddRemValidators = do
         processDeposit _ _ = Just ValidatorsTestsState
 
     cfg = (defCfg :: Configuration Example)
-    desc = []
+    nodesIndices = [1..5]
+    desc = map mkTestNetLinkDescription nodesIndices
+    mkTestNetLinkDescription i = TestNetLinkDescription i (filter (/=i) nodesIndices) (const $ return ())
 
     mkTestNode
       :: (Functor m, MonadMask m, MonadFork m, MonadFail m, MonadTMMonitoring m)
       => MockNet
-      -> MVar [VTSTx]
+      -> MVar (Set.Set VTSTx)
       -> (Connection 'RW Ed25519_SHA512 [VTSTx], TestNetLinkDescription m)
       -> m [m ()]
     mkTestNode net summary (conn, TestNetLinkDescription{..}) = do
@@ -166,8 +171,11 @@ testAddRemValidators = do
                 { nodeCommitCallback   = \block -> do
                   let memPool = nodeMempool logic
                       h = headerHeight $ blockHeader block
+                  when (h > Height 100) $ throwM Abort
+                  liftIO $ hPutStrLn stderr $ show ("block", h)
                   cursor <- getMempoolCursor memPool
                   pushTransaction cursor (VTSTx h nodeIndex)
+                  liftIO $ modifyMVar_ summary $ \s -> return $ Set.union s $ Set.fromList (blockData block)
                   return ()
                 , nodeValidationKey    = Nothing
                 , nodeReadyCreateBlock = \_ _ -> return True
