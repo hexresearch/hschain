@@ -216,10 +216,15 @@ Benchmark thundermint-bench
   Default-Language:    Haskell2010
   Main-is:             main.hs
   Build-Depends:       base  >=4.9 && <5
-                     , thundermint
-                     , thundermint-crypto
-                     , thundermint-types
                      , bytestring >=0.10
                      , criterion
                      , cryptonite
                      , deepseq
+                     , random
+                     , vector
+                     --
+                     , thundermint
+                     , thundermint-crypto
+                     , thundermint-types
+
+  Other-modules:       ValidatorSetsBench
