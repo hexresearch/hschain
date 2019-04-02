@@ -30,10 +30,13 @@ module Thundermint.Store (
   , MonadReadDB(..)
   , MonadDB(..)
   , Query
+  , QueryT
   , Connection
   , connectionRO
   , queryRO
   , queryRW
+  , queryROT
+  , queryRWT
     -- ** Opening database
   , openConnection
   , closeConnection
