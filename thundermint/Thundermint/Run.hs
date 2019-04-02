@@ -180,7 +180,7 @@ runNode
   -> m [m ()]
 runNode cfg BlockchainNet{..} NodeDescription{..} NodeLogic{..} = do
   -- Build application state of consensus algorithm
-  let appSt = AppState
+  let appSt = AppLogic
         { appValidationFun  = nodeBlockValidation
         , appBlockGenerator = nodeBlockGenerator
         , appCommitQuery    = nodeCommitQuery

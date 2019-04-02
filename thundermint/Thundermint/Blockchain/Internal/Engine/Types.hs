@@ -16,8 +16,8 @@ module Thundermint.Blockchain.Internal.Engine.Types (
   , NetworkCfg(..)
   , DefaultConfig(..)
     -- * Application state
-  , AppState(..)
-  , hoistAppState
+  , AppLogic(..)
+  , hoistAppLogic
   , Validator(..)
   , PrivValidator(..)
   , CommitCallback(..)
@@ -158,8 +158,11 @@ data CommitCallback m alg a
   --   actions. If @Query@ succeeds returned action is executed immediately
 
 
--- | Full state of application.
-data AppState m alg a = AppState
+-- | Collection of callbacks which implement actual logic of
+--   blockchain. This is most generic form which doesn't expose any
+--   underlying structure. It's expected that this structure will be
+--   generated from more specialized functions
+data AppLogic m alg a = AppLogic
   { appBlockGenerator   :: Height
                         -> Time
                         -> Maybe (Commit alg a)
@@ -188,8 +191,8 @@ hoistCommitCallback _   (SimpleQuery f) = SimpleQuery f
 hoistCommitCallback fun (MixedQuery  f) = MixedQuery $ fmap (hoist fun) f
 
 
-hoistAppState :: (Monad m) => (forall x. m x -> n x) -> AppState m alg a -> AppState n alg a
-hoistAppState fun AppState{..} = AppState
+hoistAppLogic :: (Monad m) => (forall x. m x -> n x) -> AppLogic m alg a -> AppLogic n alg a
+hoistAppLogic fun AppLogic{..} = AppLogic
   { appBlockGenerator   = \h t c e -> fun $ appBlockGenerator h t c e
   , appValidationFun    = fun . appValidationFun
   , appCommitCallback   = fun . appCommitCallback

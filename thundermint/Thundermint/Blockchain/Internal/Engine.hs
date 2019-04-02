@@ -73,12 +73,12 @@ runApplication
      -- ^ Configuration
   -> Maybe (PrivValidator alg)
      -- ^ Private key of validator
-  -> AppState m alg a
+  -> AppLogic m alg a
      -- ^ Get initial state of the application
   -> AppChans m alg a
      -- ^ Channels for communication with peers
   -> m ()
-runApplication config appValidatorKey appSt@AppState{..} appCh@AppChans{..} = logOnException $ do
+runApplication config appValidatorKey appSt@AppLogic{..} appCh@AppChans{..} = logOnException $ do
   logger InfoS "Starting consensus engine" ()
   height <- queryRO $ blockchainHeight
   lastCm <- queryRO $ retrieveLocalCommit height
@@ -103,11 +103,11 @@ decideNewBlock
      , Crypto alg, BlockData a)
   => ConsensusCfg
   -> Maybe (PrivValidator alg)
-  -> AppState m alg a
+  -> AppLogic m alg a
   -> AppChans m alg a
   -> Maybe (Commit alg a)
   -> m (Commit alg a)
-decideNewBlock config appValidatorKey appSt@AppState{..} appCh@AppChans{..} lastCommt = do
+decideNewBlock config appValidatorKey appSt@AppLogic{..} appCh@AppChans{..} lastCommt = do
   -- Enter NEW HEIGHT and create initial state for consensus state
   -- machine
   hParam <- makeHeightParameters config appValidatorKey appSt appCh
@@ -210,10 +210,10 @@ handleVerifiedMessage ProposalStorage{..} hParam tm = \case
 -- simply discarded.
 verifyMessageSignature
   :: (MonadLogger m, Crypto alg)
-  => AppState m alg a
+  => AppLogic m alg a
   -> HeightParameters n alg a
   -> Pipe (MessageRx 'Unverified alg a) (MessageRx 'Verified alg a) m r
-verifyMessageSignature AppState{..} HeightParameters{..} = forever $ do
+verifyMessageSignature AppLogic{..} HeightParameters{..} = forever $ do
   await >>= \case
     RxPreVote   sv
       | h      == currentH -> verify "prevote"   RxPreVote   sv
@@ -298,10 +298,10 @@ makeHeightParameters
      , Crypto alg, Serialise a)
   => ConsensusCfg
   -> Maybe (PrivValidator alg)
-  -> AppState m alg a
+  -> AppLogic m alg a
   -> AppChans m alg a
   -> m (HeightParameters (ConsensusM alg a m) alg a)
-makeHeightParameters ConsensusCfg{..} appValidatorKey AppState{..} AppChans{..} = do
+makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppChans{..} = do
   h            <- queryRO $ blockchainHeight
   Just valSet  <- queryRO $ retrieveValidatorSet (succ h)
   oldValSet    <- queryRO $ retrieveValidatorSet  h
