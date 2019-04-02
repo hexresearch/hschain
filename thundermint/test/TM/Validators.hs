@@ -1,16 +1,27 @@
-{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE StandaloneDeriving #-}
+
 -- |
 module TM.Validators (tests) where
 
+import Codec.Serialise
 import Control.Applicative
 import Control.Concurrent.MVar
 import Control.Monad
+import Control.Monad.Catch
+import Control.Monad.Fail
 import Control.Monad.IO.Class
+
 
 import qualified Data.Map.Strict as Map
 
-import Data.Proxy
+import Data.Typeable (Proxy(..))
+
+import GHC.Generics
 
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -26,6 +37,7 @@ import Thundermint.Mock.Coin
 import Thundermint.Mock.KeyList (privateKeyList)
 import Thundermint.Mock.KeyVal (genesisBlock)
 import Thundermint.Mock.Types
+import Thundermint.Monitoring
 import Thundermint.P2P
 import Thundermint.P2P.Network
 import Thundermint.P2P.Types
@@ -91,10 +103,14 @@ v1,v2 :: PublicKey Ed25519_SHA512
 v1:v2:_ = map publicKey privateKeyList
 
 data ValidatorsTestsState = ValidatorsTestsState
-  deriving (Show)
+  deriving (Show, Generic)
+
+deriving instance Serialise ValidatorsTestsState
 
 data VTSTx = VTSTx Height Int
-  deriving (Show)
+  deriving (Eq, Ord, Show, Generic)
+
+deriving instance Serialise VTSTx
 
 testAddRemValidators :: IO ()
 testAddRemValidators = do
@@ -127,14 +143,15 @@ testAddRemValidators = do
     desc = []
 
     mkTestNode
-      :: MockNet
+      :: (Functor m, MonadMask m, MonadFork m, MonadFail m, MonadTMMonitoring m)
+      => MockNet
       -> MVar [VTSTx]
-      -> (Connection 'RW Ed25519_SHA512 VTSTx, TestNetLinkDescription m)
+      -> (Connection 'RW Ed25519_SHA512 [VTSTx], TestNetLinkDescription m)
       -> m [m ()]
     mkTestNode net summary (conn, TestNetLinkDescription{..}) = do
         let validatorSet = makeValidatorSetFromPriv testValidators
             nodeIndex = ncFrom
-        initDatabase conn Proxy (genesisBlock validatorSet) validatorSet
+        initDatabase conn Proxy (makeGenesis "TESTVALS" (Time 0) [] validatorSet) validatorSet
         --
         let run = runTracerT ncCallback . runNoLogsT . runDBT conn
         fmap (map run) $ run $ do
