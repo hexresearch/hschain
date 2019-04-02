@@ -176,6 +176,9 @@ data AppState m alg a = AppState
     --   transaction
   , appCommitCallback   :: Block alg a -> m ()
     -- ^ Function which is called after each commit.
+  , appCanCreateBlock    :: Height -> Time -> m Bool
+    -- ^ Callback which is called to decide whether we ready to create
+    --   new block or whether we should wait
   }
 
 hoistCommitCallback
@@ -191,6 +194,7 @@ hoistAppState fun AppState{..} = AppState
   , appValidationFun    = fun . appValidationFun
   , appCommitCallback   = fun . appCommitCallback
   , appCommitQuery      = hoistCommitCallback   fun appCommitQuery
+  , appCanCreateBlock    = \h t -> fun (appCanCreateBlock h t)
   }
 
 -- | Our own validator
