@@ -93,7 +93,7 @@ interpretSpec maxH prefix NetSpec{..} = do
                  -- Blockchain state
                  bchState <- newBChState transitions
                  _        <- stateAtH bchState (succ hChain)
-                 let appState = AppState
+                 let appState = AppLogic
                        { appValidationFun  = \b -> do
                            let h = headerHeight $ blockHeader b
                            st <- stateAtH bchState h
