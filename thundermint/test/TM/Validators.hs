@@ -121,8 +121,9 @@ testAddRemValidators = do
   summary <- newMVar Set.empty
   withMany (\descr cont -> withConnection ":memory:" (\c -> cont (c,descr))) desc $ \descrList -> do
     acts <- mapM (mkTestNode net summary) descrList
-    runConcurrently $ join acts
+    catchAbort $ runConcurrently $ join acts
   where
+    catchAbort act = catch act (\Abort -> return ())
     transitions :: BlockFold ValidatorsTestsState alg [VTSTx]
     transitions = BlockFold
       { processTx           = const process
@@ -143,6 +144,16 @@ testAddRemValidators = do
         processDeposit _ _ = Just ValidatorsTestsState
 
     cfg = (defCfg :: Configuration Example)
+      { cfgConsensus         = ConsensusCfg
+        { timeoutNewHeight   = (5, 5)
+        , timeoutProposal    = (5, 5)
+        , timeoutPrevote     = (5, 5)
+        , timeoutPrecommit   = (5, 5)
+        , timeoutEmptyBlock  = 10
+        , incomingQueueSize  = 7
+        }
+      }
+
     extendedListOfValidators = Map.elems testValidators ++ Map.elems extraTestValidators
     nodesIndices = [1..5]
     desc = map mkTestNetLinkDescription (zip nodesIndices extendedListOfValidators)
@@ -151,7 +162,7 @@ testAddRemValidators = do
     mkTestNode
       :: (Functor m, MonadMask m, MonadFork m, MonadFail m, MonadTMMonitoring m)
       => MockNet
-      -> MVar (Set.Set VTSTx)
+      -> MVar (Set.Set (Int, VTSTx))
       -> (Connection 'RW Ed25519_SHA512 [VTSTx], (TestNetLinkDescription m, PrivValidator Ed25519_SHA512))
       -> m [m ()]
     mkTestNode net summary (conn, (TestNetLinkDescription{..}, privKey)) = do
@@ -172,23 +183,23 @@ testAddRemValidators = do
                 }
                 memPool = nodeMempool logic
             runNode cfg
-              BlockchainNet
-                { bchNetwork          = createMockNode net (intToNetAddr ncFrom)
-                , bchLocalAddr        = intToNetAddr ncFrom
-                , bchInitialPeers     = map intToNetAddr ncTo
-                }
-              NodeDescription
-                { nodeCommitCallback   = \block -> do
-                  let h = headerHeight $ blockHeader block
-                  when (h > Height 100) $ throwM Abort
-                  liftIO $ hPutStrLn stderr $ show ("block", h)
-                  cursor <- getMempoolCursor memPool
-                  pushTransaction cursor (VTSTx h nodeIndex)
-                  liftIO $ modifyMVar_ summary $ \s -> return $ Set.union s $ Set.fromList (blockData block)
-                  return ()
-                , nodeValidationKey    = Just privKey
-                , nodeReadyCreateBlock = \_ _ -> return True
-                }
-              logic
+                BlockchainNet
+                  { bchNetwork          = createMockNode net (intToNetAddr ncFrom)
+                  , bchLocalAddr        = intToNetAddr ncFrom
+                  , bchInitialPeers     = map intToNetAddr ncTo
+                  }
+                NodeDescription
+                  { nodeCommitCallback   = \block -> do
+                    let h = headerHeight $ blockHeader block
+                    when (h > Height 100) $ throwM Abort
+                    cursor <- getMempoolCursor memPool
+                    pushTransaction cursor (VTSTx h nodeIndex)
+                    liftIO $ modifyMVar_ summary $
+                      \s -> return $ Set.union s $ Set.fromList (map ((,) nodeIndex) $ blockData block)
+                    return ()
+                  , nodeValidationKey    = Just privKey
+                  , nodeReadyCreateBlock = \_ _ -> return True
+                  }
+                logic
 
 
