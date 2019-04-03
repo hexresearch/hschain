@@ -143,24 +143,34 @@ testAddRemValidators = do
         processDeposit _ _ = Just ValidatorsTestsState
 
     cfg = (defCfg :: Configuration Example)
+    extendedListOfValidators = Map.elems testValidators ++ Map.elems extraTestValidators
     nodesIndices = [1..5]
-    desc = map mkTestNetLinkDescription nodesIndices
-    mkTestNetLinkDescription i = TestNetLinkDescription i (filter (/=i) nodesIndices) (const $ return ())
+    desc = map mkTestNetLinkDescription (zip nodesIndices extendedListOfValidators)
+    mkTestNetLinkDescription (i, pk) = (TestNetLinkDescription i (filter (/=i) nodesIndices) (const $ return ()), pk)
 
     mkTestNode
       :: (Functor m, MonadMask m, MonadFork m, MonadFail m, MonadTMMonitoring m)
       => MockNet
       -> MVar (Set.Set VTSTx)
-      -> (Connection 'RW Ed25519_SHA512 [VTSTx], TestNetLinkDescription m)
+      -> (Connection 'RW Ed25519_SHA512 [VTSTx], (TestNetLinkDescription m, PrivValidator Ed25519_SHA512))
       -> m [m ()]
-    mkTestNode net summary (conn, TestNetLinkDescription{..}) = do
+    mkTestNode net summary (conn, (TestNetLinkDescription{..}, privKey)) = do
         let validatorSet = makeValidatorSetFromPriv testValidators
             nodeIndex = ncFrom
         initDatabase conn Proxy (makeGenesis "TESTVALS" (Time 0) [] validatorSet) validatorSet
         --
         let run = runTracerT ncCallback . runNoLogsT . runDBT conn
         fmap (map run) $ run $ do
-            (_,logic) <- logicFromFold transitions
+            (_,generatedLogic) <- logicFromFold transitions
+            let logic = NodeLogic {
+                  nodeMempool = nodeMempool generatedLogic
+                , nodeCommitQuery = nodeCommitQuery generatedLogic
+                , nodeBlockGenerator = \height time maybeCommit byzantineEvidence -> do
+                  nodeBlockGenerator generatedLogic height time maybeCommit byzantineEvidence
+                , nodeBlockValidation = \block -> do
+                  nodeBlockValidation generatedLogic block
+                }
+                memPool = nodeMempool logic
             runNode cfg
               BlockchainNet
                 { bchNetwork          = createMockNode net (intToNetAddr ncFrom)
@@ -169,15 +179,14 @@ testAddRemValidators = do
                 }
               NodeDescription
                 { nodeCommitCallback   = \block -> do
-                  let memPool = nodeMempool logic
-                      h = headerHeight $ blockHeader block
+                  let h = headerHeight $ blockHeader block
                   when (h > Height 100) $ throwM Abort
                   liftIO $ hPutStrLn stderr $ show ("block", h)
                   cursor <- getMempoolCursor memPool
                   pushTransaction cursor (VTSTx h nodeIndex)
                   liftIO $ modifyMVar_ summary $ \s -> return $ Set.union s $ Set.fromList (blockData block)
                   return ()
-                , nodeValidationKey    = Nothing
+                , nodeValidationKey    = Just privKey
                 , nodeReadyCreateBlock = \_ _ -> return True
                 }
               logic
