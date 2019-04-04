@@ -156,10 +156,13 @@ testAddRemValidators = do
         }
       }
 
-    extendedListOfValidators = Map.elems testValidators ++ Map.elems extraTestValidators
+    testValidatorsCount = 10
+    allValidatorsList = take testValidatorsCount $ Map.toList testValidators ++ Map.toList extraTestValidators
+    ((_, PrivValidator dynamicValidatorPrivKey) : initialValidatorsList) = allValidatorsList
+    dynamicValidatorPubKey = publicKey dynamicValidatorPrivKey
+    initialValidators = Map.fromList $ initialValidatorsList
     nodesIndices = [1 .. Map.size testValidators + 1]
-    desc = map mkTestNetLinkDescription (zip nodesIndices extendedListOfValidators)
-    extraValidatorPubKey = publicKey $ validatorPrivKey $ snd $ last desc
+    desc = map mkTestNetLinkDescription (zip [1..] $ map snd allValidatorsList)
     mkTestNetLinkDescription (i, pk) = (TestNetLinkDescription i (filter (/=i) nodesIndices) (const $ return ()), pk)
 
     mkTestNode
@@ -169,7 +172,7 @@ testAddRemValidators = do
       -> (Connection 'RW Ed25519_SHA512 [VTSTx], (TestNetLinkDescription m, PrivValidator Ed25519_SHA512))
       -> m [m ()]
     mkTestNode net summary (conn, (TestNetLinkDescription{..}, privKey)) = do
-        let validatorSet = makeValidatorSetFromPriv testValidators
+        let validatorSet = makeValidatorSetFromPriv initialValidators
             nodeIndex = ncFrom
         initDatabase conn Proxy (makeGenesis "TESTVALS" (Time 0) [] validatorSet) validatorSet
         --
@@ -185,8 +188,8 @@ testAddRemValidators = do
                   changes <- nodeBlockValidation generatedLogic block
                   let h = headerHeight $ blockHeader block
                   case h of
-                    Height 20 -> return $ fmap (ChangeValidator extraValidatorPubKey 10 :) changes
-                    Height 40 -> return $ fmap (RemoveValidator extraValidatorPubKey :) changes
+                    Height 20 -> return $ fmap (ChangeValidator dynamicValidatorPubKey 10 :) changes
+                    Height 40 -> return $ fmap (RemoveValidator dynamicValidatorPubKey :) changes
                     _         -> return changes
                 }
                 memPool = nodeMempool logic
