@@ -119,11 +119,13 @@ testAddRemValidators :: IO ()
 testAddRemValidators = do
   net  <- liftIO newMockNet
   summary <- newMVar Set.empty
+  putStrLn $ "dynamic address: "++show dynamicValidatorAddr
   withMany (\descr cont -> withConnection ":memory:" (\c -> cont (c,descr))) desc $ \descrList -> do
     acts <- mapM (mkTestNode net summary) descrList
     catchAbort $ runConcurrently $ join acts
   events <- takeMVar summary
   putStrLn $ "events: "++ show events
+  putStrLn $ "set " ++ show (validatorSetSize validatorSet)
   where
     catchAbort act = catch act (\Abort -> return ())
     transitions :: BlockFold ValidatorsTestsState alg [VTSTx]
@@ -160,20 +162,22 @@ testAddRemValidators = do
     allValidatorsList = take testValidatorsCount $ Map.toList testValidators ++ Map.toList extraTestValidators
     ((_, PrivValidator dynamicValidatorPrivKey) : initialValidatorsList) = allValidatorsList
     dynamicValidatorPubKey = publicKey dynamicValidatorPrivKey
+    dynamicValidatorAddr = fingerprint dynamicValidatorPubKey
     initialValidators = Map.fromList $ initialValidatorsList
     nodesIndices = [1 .. Map.size testValidators + 1]
     desc = map mkTestNetLinkDescription (zip [1..] $ map snd allValidatorsList)
     mkTestNetLinkDescription (i, pk) = (TestNetLinkDescription i (filter (/=i) nodesIndices) (const $ return ()), pk)
+    validatorSet = makeValidatorSetFromPriv initialValidators
 
     mkTestNode
       :: (Functor m, MonadMask m, MonadFork m, MonadFail m, MonadTMMonitoring m)
       => MockNet
-      -> MVar (Set.Set (Int, VTSTx))
+      -> MVar (Set.Set (Int, Height, Bool))
       -> (Connection 'RW Ed25519_SHA512 [VTSTx], (TestNetLinkDescription m, PrivValidator Ed25519_SHA512))
       -> m [m ()]
-    mkTestNode net summary (conn, (TestNetLinkDescription{..}, privKey)) = do
-        let validatorSet = makeValidatorSetFromPriv initialValidators
-            nodeIndex = ncFrom
+    mkTestNode net summary (conn, (TestNetLinkDescription{..}, privKey@(PrivValidator ourPrivKey))) = do
+        let nodeIndex = ncFrom
+            ourPublicKey = publicKey ourPrivKey
         initDatabase conn Proxy (makeGenesis "TESTVALS" (Time 0) [] validatorSet) validatorSet
         --
         let run = runTracerT ncCallback . runNoLogsT . runDBT conn
@@ -201,13 +205,22 @@ testAddRemValidators = do
                   }
                 NodeDescription
                   { nodeCommitCallback   = \block -> do
-                    let h = headerHeight $ blockHeader block
+                    let header = blockHeader block
+                        h = headerHeight header
+                        maybeLastCommit = blockLastCommit block
+                        checkCommitContainsDynamic commit = containsFingerprintOfDynamic
+                          where
+                            precommitsList = commitPrecommits commit
+                            addresses = map signedAddr precommitsList
+                            containsFingerprintOfDynamic = dynamicValidatorAddr `elem` addresses
+                        lastCommitContainsDynamic = Just True == fmap checkCommitContainsDynamic maybeLastCommit
                     liftIO $ putStrLn $ "Height "++show h++" at "++show nodeIndex
-                    when (h > Height 60) $ throwM Abort
+                    liftIO $ putStrLn $ "commit addresses("++show nodeIndex++"): "++show (fmap (filter (== dynamicValidatorAddr) . map signedAddr . commitPrecommits) maybeLastCommit)
+                    when (h > Height 35) $ throwM Abort
                     cursor <- getMempoolCursor memPool
                     pushTransaction cursor (VTSTx h nodeIndex)
-                    liftIO $ modifyMVar_ summary $
-                      \s -> return $ Set.union s $ Set.fromList (map ((,) nodeIndex) $ blockData block)
+                    when (nodeIndex < 4) $ liftIO $ modifyMVar_ summary $
+                      \s -> return $ Set.insert (nodeIndex, h, lastCommitContainsDynamic) s
                     return ()
                   , nodeValidationKey    = Just privKey
                   , nodeReadyCreateBlock = \_ _ -> return True
