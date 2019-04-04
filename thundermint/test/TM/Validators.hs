@@ -122,6 +122,8 @@ testAddRemValidators = do
   withMany (\descr cont -> withConnection ":memory:" (\c -> cont (c,descr))) desc $ \descrList -> do
     acts <- mapM (mkTestNode net summary) descrList
     catchAbort $ runConcurrently $ join acts
+  events <- takeMVar summary
+  putStrLn $ "events: "++ show events
   where
     catchAbort act = catch act (\Abort -> return ())
     transitions :: BlockFold ValidatorsTestsState alg [VTSTx]
@@ -155,8 +157,9 @@ testAddRemValidators = do
       }
 
     extendedListOfValidators = Map.elems testValidators ++ Map.elems extraTestValidators
-    nodesIndices = [1..5]
+    nodesIndices = [1 .. Map.size testValidators + 1]
     desc = map mkTestNetLinkDescription (zip nodesIndices extendedListOfValidators)
+    extraValidatorPubKey = publicKey $ validatorPrivKey $ snd $ last desc
     mkTestNetLinkDescription (i, pk) = (TestNetLinkDescription i (filter (/=i) nodesIndices) (const $ return ()), pk)
 
     mkTestNode
@@ -179,7 +182,12 @@ testAddRemValidators = do
                 , nodeBlockGenerator = \height time maybeCommit byzantineEvidence -> do
                   nodeBlockGenerator generatedLogic height time maybeCommit byzantineEvidence
                 , nodeBlockValidation = \block -> do
-                  nodeBlockValidation generatedLogic block
+                  changes <- nodeBlockValidation generatedLogic block
+                  let h = headerHeight $ blockHeader block
+                  case h of
+                    Height 20 -> return $ fmap (ChangeValidator extraValidatorPubKey 10 :) changes
+                    Height 40 -> return $ fmap (RemoveValidator extraValidatorPubKey :) changes
+                    _         -> return changes
                 }
                 memPool = nodeMempool logic
             runNode cfg
@@ -191,7 +199,8 @@ testAddRemValidators = do
                 NodeDescription
                   { nodeCommitCallback   = \block -> do
                     let h = headerHeight $ blockHeader block
-                    when (h > Height 100) $ throwM Abort
+                    liftIO $ putStrLn $ "Height "++show h++" at "++show nodeIndex
+                    when (h > Height 60) $ throwM Abort
                     cursor <- getMempoolCursor memPool
                     pushTransaction cursor (VTSTx h nodeIndex)
                     liftIO $ modifyMVar_ summary $
