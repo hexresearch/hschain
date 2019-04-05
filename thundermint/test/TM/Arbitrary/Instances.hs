@@ -9,7 +9,8 @@ module TM.Arbitrary.Instances where
 
 import Data.ByteString.Arbitrary as Arb
 import Data.Maybe
-import qualified Data.ByteString as BS
+import qualified Data.ByteString    as BS
+import qualified Data.List.NonEmpty as NE
 import Test.QuickCheck.Arbitrary
 import Test.QuickCheck.Arbitrary.Generic
 import Test.QuickCheck.Gen
@@ -63,8 +64,7 @@ instance (Arbitrary a) => Arbitrary (Signed sign alg a) where
 
 instance Arbitrary (Commit alg a) where
   arbitrary = Commit <$> arbitrary
-                     <*> resize 4 arbitrary
-  shrink = genericShrink
+                     <*> ((NE.:|) <$> arbitrary <*> resize 3 arbitrary)
 
 
 instance Arbitrary (BlockID alg a) where

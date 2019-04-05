@@ -8,6 +8,7 @@ module Thundermint.Store.Internal.BlockDB where
 
 import Codec.Serialise (Serialise,serialise,deserialiseOrFail)
 import Control.Monad (when)
+import qualified Data.List.NonEmpty   as NE
 import qualified Data.ByteString.Lazy as LBS
 import qualified Database.SQLite.Simple           as SQL
 import           Database.SQLite.Simple             (Only(..))
@@ -191,7 +192,7 @@ storeCommit
   => Commit alg a -> Block alg a -> m ()
 storeCommit cmt blk = do
   let h = headerHeight $ blockHeader blk
-      r = voteRound $ signedValue $ head $ commitPrecommits cmt
+      r = voteRound $ signedValue $ NE.head $ commitPrecommits cmt
   basicExecute "INSERT INTO thm_commits VALUES (?,?)" (h, serialise cmt)
   basicExecute "INSERT INTO thm_blockchain VALUES (?,?,?,?)"
     ( h
