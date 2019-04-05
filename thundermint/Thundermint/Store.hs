@@ -76,7 +76,7 @@ module Thundermint.Store (
 import qualified Katip
 
 import Codec.Serialise           (Serialise)
-import Control.Monad             ((<=<), foldM, forM)
+import Control.Monad             ((<=<), foldM, forM, unless)
 import Control.Monad.Catch       (MonadMask,MonadThrow,MonadCatch)
 import Control.Monad.Fail        (MonadFail)
 import Control.Monad.Morph       (MFunctor(..))
@@ -85,15 +85,16 @@ import Control.Monad.Trans.Class
 import Control.Monad.Trans.Except
 import Control.Monad.Trans.Reader
 import Control.Monad.Trans.Writer
+
 import Data.Foldable             (forM_)
 import Data.Maybe                (isNothing, maybe)
 import Data.Text                 (isPrefixOf, Text)
 import Data.List                 (nub)
+import qualified Data.List.NonEmpty as NE
+import qualified Data.Aeson         as JSON
+import qualified Data.Aeson.TH      as JSON
+import qualified Data.ByteString    as BS
 import GHC.Generics              (Generic)
-
-import qualified Data.Aeson      as JSON
-import qualified Data.Aeson.TH   as JSON
-import qualified Data.ByteString as BS
 
 import Thundermint.Types.Blockchain
 import Thundermint.Blockchain.Internal.Types
@@ -535,16 +536,15 @@ commitInvariant mkErr h prevT bid valSet Commit{..} = do
     `orElse` mkErr "Commit is for wrong block"
   -- All votes should be for previous height
   do let invalid = [ svote
-                   | svote <- commitPrecommits
+                   | svote <- NE.toList commitPrecommits
                    , h /= voteHeight (signedValue svote)
                    ]
      null invalid
        `orElse` mkErr "Commit contains votes for invalid height"
   -- All votes must be in same round
-  do let rounds = voteRound . signedValue <$> commitPrecommits
-     case rounds of
-       r:rs | all (==r) rs -> return ()
-       _                   -> tell [mkErr "Commit contains votes for different rounds"]
+  do let r NE.:| rs = voteRound . signedValue <$> commitPrecommits
+     unless (all (==r) rs)
+       $ tell [mkErr "Commit contains votes for different rounds"]
   -- Commit has enough (+2/3) voting power, doesn't have votes
   -- from unknown validators, doesn't have duplicate votes, and
   -- vote goes for correct block
