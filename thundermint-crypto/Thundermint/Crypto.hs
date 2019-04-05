@@ -487,7 +487,7 @@ instance (CryptoHash hash) => CryptoHash (sign :& hash) where
 -- | Newtype wrapper with phantom type tag which show hash of which
 --   value is being calculated
 newtype Hashed alg a = Hashed (Hash alg)
-  deriving ( Show,Eq,Ord, Generic, Generic1, NFData
+  deriving ( Show,Read, Eq,Ord, Generic, Generic1, NFData
            , Serialise, JSON.FromJSON, JSON.ToJSON, JSON.ToJSONKey, JSON.FromJSONKey)
 
 hashed :: (Crypto alg, Serialise a) => a -> Hashed alg a
