@@ -18,6 +18,7 @@ module Thundermint.Types.Validators (
   , validatorSetSize
   , validatorByAddr
   , validatorByIndex
+  , asValidatorList
   , indexByValidator
     -- ** Indexed validator sets
   , ValidatorIdx(..)
@@ -70,6 +71,10 @@ data ValidatorSet alg = ValidatorSet
 instance NFData (PublicKey alg) => NFData (ValidatorSet alg)
 deriving instance Crypto alg => Show (ValidatorSet alg)
 deriving instance Eq   (PublicKey alg) => Eq   (ValidatorSet alg)
+
+-- | Get list of all validators included into set
+asValidatorList :: ValidatorSet alg -> [Validator alg]
+asValidatorList = toList . vsValidators
 
 instance (Crypto alg) => CBOR.Serialise (ValidatorSet alg) where
   encode = CBOR.encode . toList . vsValidators
