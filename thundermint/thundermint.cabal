@@ -138,25 +138,6 @@ Executable thundermint-coin-node
   hs-source-dirs:      exe
   Main-is:             coin-node.hs
 
--- Executable thundermint-coin-db
---   Ghc-options:         -Wall -threaded -Wno-orphans
---   Default-Language:    Haskell2010
---   Build-Depends:       base                 >=4.9 && <5
---                      , thundermint
---                      , thundermint-crypto
---                      , aeson
---                      , base58-bytestring    >=0.1
---                      , bytestring           >=0.10
---                      , containers           >=0.5.7
---                      , directory
---                      , filepath
---                      , optparse-applicative >=0.14
---                      , serialise
---                      , stm
---                      , text
---   hs-source-dirs:      exe
---   Main-is:             coin-db.hs
-
 Executable thundermint-db
   Ghc-options:         -Wall -threaded -Wno-orphans
   Default-Language:    Haskell2010
