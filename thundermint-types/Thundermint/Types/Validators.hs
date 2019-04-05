@@ -59,6 +59,7 @@ data Validator alg = Validator
 instance NFData (PublicKey alg) => NFData (Validator alg)
 deriving instance Crypto alg => Show (Validator alg)
 deriving instance Eq   (PublicKey alg) => Eq   (Validator alg)
+deriving instance Ord  (PublicKey alg) => Ord  (Validator alg)
 instance Crypto alg => CBOR.Serialise (Validator alg)
 
 -- | Set of all known validators for given height
