@@ -6,6 +6,7 @@
 {-# LANGUAGE RankNTypes           #-}
 {-# LANGUAGE RecordWildCards      #-}
 {-# LANGUAGE ScopedTypeVariables  #-}
+{-# LANGUAGE TypeApplications     #-}
 {-# LANGUAGE UndecidableInstances #-}
 -- |
 -- Data types for storage of blockchain
@@ -18,6 +19,8 @@ module Thundermint.Blockchain.Internal.Engine.Types (
     -- * Application state
   , AppLogic(..)
   , hoistAppLogic
+  , AppCallbacks(..)
+  , hoistAppCallback
   , Validator(..)
   , PrivValidator(..)
   , CommitCallback(..)
@@ -34,6 +37,8 @@ import Control.Applicative
 import Control.Concurrent.STM
 import Control.Monad.Morph    (MFunctor(..))
 import Data.Aeson
+import Data.Coerce
+import Data.Monoid            (Any(..))
 import Numeric.Natural
 import GHC.Generics           (Generic)
 
@@ -177,12 +182,24 @@ data AppLogic m alg a = AppLogic
   , appCommitQuery      :: CommitCallback m alg a
     -- ^ Database query called after block commit in the same
     --   transaction
-  , appCommitCallback   :: Block alg a -> m ()
+  }
+
+data AppCallbacks m alg a = AppCallbacks
+  { appCommitCallback   :: Block alg a -> m ()
     -- ^ Function which is called after each commit.
-  , appCanCreateBlock    :: Height -> Time -> m Bool
+  , appCanCreateBlock   :: Height -> Time -> m (Maybe Bool)
     -- ^ Callback which is called to decide whether we ready to create
     --   new block or whether we should wait
   }
+
+instance Applicative m => Semigroup (AppCallbacks m alg a) where
+  AppCallbacks f1 g1 <> AppCallbacks f2 g2 = AppCallbacks
+    { appCommitCallback = liftA2 (*>) f1 f2
+    , appCanCreateBlock = (liftA2 . liftA2 . liftA2) (coerce ((<>) @(Maybe Any))) g1 g2
+    }
+instance Applicative m => Monoid (AppCallbacks m alg a) where
+  mempty  = AppCallbacks (\_ -> pure ()) (\_ _ -> pure Nothing)
+
 
 hoistCommitCallback
   :: (Monad m)
@@ -195,10 +212,15 @@ hoistAppLogic :: (Monad m) => (forall x. m x -> n x) -> AppLogic m alg a -> AppL
 hoistAppLogic fun AppLogic{..} = AppLogic
   { appBlockGenerator   = \h t c e -> fun $ appBlockGenerator h t c e
   , appValidationFun    = fun . appValidationFun
-  , appCommitCallback   = fun . appCommitCallback
   , appCommitQuery      = hoistCommitCallback   fun appCommitQuery
-  , appCanCreateBlock    = \h t -> fun (appCanCreateBlock h t)
   }
+
+hoistAppCallback :: (Monad m) => (forall x. m x -> n x) -> AppCallbacks m alg a -> AppCallbacks n alg a
+hoistAppCallback fun AppCallbacks{..} = AppCallbacks
+  { appCommitCallback = fun . appCommitCallback
+  , appCanCreateBlock = \h t -> fun (appCanCreateBlock h t)
+  }
+
 
 -- | Our own validator
 newtype PrivValidator alg = PrivValidator
