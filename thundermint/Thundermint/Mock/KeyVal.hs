@@ -107,12 +107,13 @@ interpretSpec maxH prefix NetSpec{..} = do
                              let Just k = find (`Map.notMember` st) ["K_" ++ show (n :: Int) | n <- [1 ..]]
                              return ([(k, addr)], [])
                        --
-                       , appCommitCallback = \case
+                       , appCommitQuery    = SimpleQuery $ \_ -> return []
+                       }
+                     appCall = mempty
+                       { appCommitCallback = \case
                            b | Just hM <- maxH
                              , headerHeight (blockHeader b) > Height hM -> throwM Abort
                              | otherwise                                -> return ()
-                       , appCommitQuery    = SimpleQuery $ \_ -> return []
-                       , appCanCreateBlock = \_ _ -> return True
                        }
                  let cfg = defCfg :: Configuration Example
                  appCh <- newAppChans (cfgConsensus cfg)
@@ -126,7 +127,7 @@ interpretSpec maxH prefix NetSpec{..} = do
                          appCh
                          nullMempoolAny
                    , setNamespace "consensus"
-                     $ runApplication (cfgConsensus cfg) nspecPrivKey appState appCh
+                     $ runApplication (cfgConsensus cfg) nspecPrivKey appState appCall appCh
                    ]
              )
   where

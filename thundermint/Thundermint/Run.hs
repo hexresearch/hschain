@@ -184,14 +184,16 @@ runNode cfg BlockchainNet{..} NodeDescription{..} NodeLogic{..} = do
         { appValidationFun  = nodeBlockValidation
         , appBlockGenerator = nodeBlockGenerator
         , appCommitQuery    = nodeCommitQuery
-        , appCommitCallback = \b -> descendNamespace "mempool" $ do
+        }
+      appCall = AppCallbacks
+        { appCommitCallback = \b -> descendNamespace "mempool" $ do
             do before <- mempoolStats nodeMempool
                logger InfoS "Mempool before filtering" before
             filterMempool nodeMempool
             do after <- mempoolStats nodeMempool
                logger InfoS "Mempool after filtering" after
             nodeCommitCallback b
-        , appCanCreateBlock = nodeReadyCreateBlock
+        , appCanCreateBlock = (fmap . fmap . fmap) Just nodeReadyCreateBlock
           --
         }
   -- Networking
@@ -201,7 +203,7 @@ runNode cfg BlockchainNet{..} NodeDescription{..} NodeLogic{..} = do
          $ startPeerDispatcher (cfgNetwork cfg)
               bchNetwork bchLocalAddr bchInitialPeers appCh nodeMempool
     , id $ descendNamespace "consensus"
-         $ runApplication (cfgConsensus cfg) nodeValidationKey appSt appCh
+         $ runApplication (cfgConsensus cfg) nodeValidationKey appSt appCall appCh
     , forever $ do
         MempoolInfo{..} <- mempoolStats nodeMempool
         usingGauge prometheusMempoolSize      mempool'size
