@@ -110,7 +110,7 @@ data ValidatorsTestsState = ValidatorsTestsState
 
 deriving instance Serialise ValidatorsTestsState
 
-data VTSTx = VTSTx Height Int
+data VTSTx = Add | Del | OriginMark Int
   deriving (Eq, Ord, Show, Generic)
 
 deriving instance Serialise VTSTx
@@ -118,14 +118,12 @@ deriving instance Serialise VTSTx
 testAddRemValidators :: IO ()
 testAddRemValidators = do
   net  <- liftIO newMockNet
-  summary <- newMVar Set.empty
-  putStrLn $ "dynamic address: "++show dynamicValidatorAddr
+  summary <- newMVar False
   withMany (\descr cont -> withConnection ":memory:" (\c -> cont (c,descr))) desc $ \descrList -> do
     acts <- mapM (mkTestNode net summary) descrList
     catchAbort $ runConcurrently $ join acts
-  events <- takeMVar summary
-  putStrLn $ "events: "++ show events
-  putStrLn $ "set " ++ show (validatorSetSize validatorSet)
+  hasBlockFromDynamicOne <- takeMVar summary
+  when (not hasBlockFromDynamicOne) $ error "failed to have block from dynamic validator"
   where
     catchAbort act = catch act (\Abort -> return ())
     transitions :: BlockFold ValidatorsTestsState alg [VTSTx]
@@ -144,7 +142,7 @@ testAddRemValidators = do
       where
         process (Height 0) t s = processDeposit t s <|> processTransaction t s
         process _          t s = processTransaction t s
-        processTransaction (VTSTx _ _) ValidatorsTestsState = Just ValidatorsTestsState
+        processTransaction _ ValidatorsTestsState = Just ValidatorsTestsState
         processDeposit _ _ = Just ValidatorsTestsState
 
     cfg = (defCfg :: Configuration Example)
@@ -163,21 +161,24 @@ testAddRemValidators = do
     ((_, PrivValidator dynamicValidatorPrivKey) : initialValidatorsList) = allValidatorsList
     dynamicValidatorPubKey = publicKey dynamicValidatorPrivKey
     dynamicValidatorAddr = fingerprint dynamicValidatorPubKey
-    initialValidators = Map.fromList $ initialValidatorsList
-    nodesIndices = [1 .. Map.size testValidators + 1]
+    dynamicValidatorIndex = 1
+    initialValidators = Map.fromList $ tail initialValidatorsList
+    nodesIndices = [1 .. testValidatorsCount]
     desc = map mkTestNetLinkDescription (zip [1..] $ map snd allValidatorsList)
     mkTestNetLinkDescription (i, pk) = (TestNetLinkDescription i (filter (/=i) nodesIndices) (const $ return ()), pk)
     validatorSet = makeValidatorSetFromPriv initialValidators
 
+    enableHeight = Height 20
+    disableHeight = Height 40
+
     mkTestNode
       :: (Functor m, MonadMask m, MonadFork m, MonadFail m, MonadTMMonitoring m)
       => MockNet
-      -> MVar (Set.Set (Int, Height, Bool))
+      -> MVar (Bool)
       -> (Connection 'RW Ed25519_SHA512 [VTSTx], (TestNetLinkDescription m, PrivValidator Ed25519_SHA512))
       -> m [m ()]
     mkTestNode net summary (conn, (TestNetLinkDescription{..}, privKey@(PrivValidator ourPrivKey))) = do
         let nodeIndex = ncFrom
-            ourPublicKey = publicKey ourPrivKey
         initDatabase conn Proxy (makeGenesis "TESTVALS" (Time 0) [] validatorSet) validatorSet
         --
         let run = runTracerT ncCallback . runNoLogsT . runDBT conn
@@ -185,16 +186,36 @@ testAddRemValidators = do
             (_,generatedLogic) <- logicFromFold transitions
             let logic = NodeLogic {
                   nodeMempool = nodeMempool generatedLogic
-                , nodeCommitQuery = nodeCommitQuery generatedLogic
+                , nodeCommitQuery = case nodeCommitQuery generatedLogic of
+                      SimpleQuery cb -> SimpleQuery $ \block ->
+                          let addChanges = case (elem Add $ blockData block, elem Del $ blockData block) of
+                                (True, False) -> [ChangeValidator dynamicValidatorPubKey 10]
+                                (False, True) -> [RemoveValidator dynamicValidatorPubKey]
+                                _ -> []
+                          in fmap (addChanges ++) $ cb block
+                      MixedQuery _ -> error "mixed query in test!"
                 , nodeBlockGenerator = \height time maybeCommit byzantineEvidence -> do
-                  nodeBlockGenerator generatedLogic height time maybeCommit byzantineEvidence
+                  (block, changes) <- nodeBlockGenerator generatedLogic height time maybeCommit byzantineEvidence
+                  case height of
+                    Height 20 -> return (Add : block, ChangeValidator dynamicValidatorPubKey 10 : changes)
+                    Height 40 -> return (Del : block, RemoveValidator dynamicValidatorPubKey : changes)
+                    _         -> return (block, changes)
                 , nodeBlockValidation = \block -> do
-                  changes <- nodeBlockValidation generatedLogic block
-                  let h = headerHeight $ blockHeader block
-                  case h of
-                    Height 20 -> return $ fmap (ChangeValidator dynamicValidatorPubKey 10 :) changes
-                    Height 40 -> return $ fmap (RemoveValidator dynamicValidatorPubKey :) changes
-                    _         -> return changes
+                    let header = blockHeader block
+                        txs = blockData block
+                        h = headerHeight header
+                        blockContainsDynamic = not (null txs) && any (== OriginMark dynamicValidatorIndex) txs
+                    when ((h < enableHeight || h > disableHeight) && blockContainsDynamic) $
+                      error $ "origin mark is dynamic in a prohibited range.\nnodeIndex "++ show nodeIndex ++ ", height "++show h++", txs "++show txs
+                    when (h > Height 60) $ throwM Abort
+                    when (nodeIndex < 4) $ liftIO $ modifyMVar_ summary $
+                      return . (|| blockContainsDynamic)
+                    changes <- nodeBlockValidation generatedLogic block
+                    let addChanges = case (elem Add $ blockData block, elem Del $ blockData block) of
+                          (True, False) -> [ChangeValidator dynamicValidatorPubKey 10]
+                          (False, True) -> [RemoveValidator dynamicValidatorPubKey]
+                          _ -> []
+                    return $ fmap (addChanges ++) changes
                 }
                 memPool = nodeMempool logic
             runNode cfg
@@ -204,24 +225,7 @@ testAddRemValidators = do
                   , bchInitialPeers     = map intToNetAddr ncTo
                   }
                 NodeDescription
-                  { nodeCommitCallback   = \block -> do
-                    let header = blockHeader block
-                        h = headerHeight header
-                        maybeLastCommit = blockLastCommit block
-                        checkCommitContainsDynamic commit = containsFingerprintOfDynamic
-                          where
-                            precommitsList = commitPrecommits commit
-                            addresses = map signedAddr precommitsList
-                            containsFingerprintOfDynamic = dynamicValidatorAddr `elem` addresses
-                        lastCommitContainsDynamic = Just True == fmap checkCommitContainsDynamic maybeLastCommit
-                    liftIO $ putStrLn $ "Height "++show h++" at "++show nodeIndex
-                    liftIO $ putStrLn $ "commit addresses("++show nodeIndex++"): "++show (fmap (filter (== dynamicValidatorAddr) . map signedAddr . commitPrecommits) maybeLastCommit)
-                    when (h > Height 35) $ throwM Abort
-                    cursor <- getMempoolCursor memPool
-                    pushTransaction cursor (VTSTx h nodeIndex)
-                    when (nodeIndex < 4) $ liftIO $ modifyMVar_ summary $
-                      \s -> return $ Set.insert (nodeIndex, h, lastCommitContainsDynamic) s
-                    return ()
+                  { nodeCommitCallback   = \block -> return ()
                   , nodeValidationKey    = Just privKey
                   , nodeReadyCreateBlock = \_ _ -> return True
                   }
