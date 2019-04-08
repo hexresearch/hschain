@@ -126,7 +126,7 @@ testAddRemValidators = do
       { processTx           = const process
       , processBlock        = \_ b s0 -> let h = headerHeight $ blockHeader b
                                        in foldM (flip (process h)) s0 (blockData b)
-      , transactionsToBlock = \h ->
+      , transactionsToBlock = \_ ->
           let selectTx _ []     = []
               selectTx c (t:tx) = case processTransaction t c of
                                     Nothing -> selectTx c  tx
@@ -155,7 +155,6 @@ testAddRemValidators = do
     allValidatorsList = take testValidatorsCount $ Map.toList testValidators ++ Map.toList extraTestValidators
     ((_, PrivValidator dynamicValidatorPrivKey) : initialValidatorsList) = allValidatorsList
     dynamicValidatorPubKey = publicKey dynamicValidatorPrivKey
-    dynamicValidatorAddr = fingerprint dynamicValidatorPubKey
     dynamicValidatorIndex = 1
     initialValidators = Map.fromList $ tail initialValidatorsList
     nodesIndices = [1 .. testValidatorsCount]
@@ -172,7 +171,7 @@ testAddRemValidators = do
       -> MVar (Bool)
       -> (Connection 'RW Ed25519_SHA512 [VTSTx], (TestNetLinkDescription m, PrivValidator Ed25519_SHA512))
       -> m [m ()]
-    mkTestNode net summary (conn, (TestNetLinkDescription{..}, privKey@(PrivValidator ourPrivKey))) = do
+    mkTestNode net summary (conn, (TestNetLinkDescription{..}, privKey@)) = do
         let nodeIndex = ncFrom
         initDatabase conn Proxy (makeGenesis "TESTVALS" (Time 0) [] validatorSet) validatorSet
         --
