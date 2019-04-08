@@ -218,7 +218,6 @@ testAddRemValidators = do
                           _ -> []
                     return $ fmap (addChanges ++) changes
                 }
-                memPool = nodeMempool logic
             runNode cfg
                 BlockchainNet
                   { bchNetwork          = createMockNode net (intToNetAddr ncFrom)
@@ -226,7 +225,7 @@ testAddRemValidators = do
                   , bchInitialPeers     = map intToNetAddr ncTo
                   }
                 NodeDescription
-                  { nodeCommitCallback   = \block -> return ()
+                  { nodeCommitCallback   = \_ -> return ()
                   , nodeValidationKey    = Just privKey
                   , nodeReadyCreateBlock = \_ _ -> return True
                   }
