@@ -195,7 +195,8 @@ testAddRemValidators = do
                           in fmap (addChanges ++) $ cb block
                       MixedQuery _ -> error "mixed query in test!"
                 , nodeBlockGenerator = \height time maybeCommit byzantineEvidence -> do
-                  (block, changes) <- nodeBlockGenerator generatedLogic height time maybeCommit byzantineEvidence
+                  (block', changes) <- nodeBlockGenerator generatedLogic height time maybeCommit byzantineEvidence
+                  let block = OriginMark nodeIndex : block'
                   case height of
                     Height 20 -> return (Add : block, ChangeValidator dynamicValidatorPubKey 10 : changes)
                     Height 40 -> return (Del : block, RemoveValidator dynamicValidatorPubKey : changes)
