@@ -18,13 +18,10 @@ import Control.Monad.IO.Class
 
 
 import qualified Data.Map.Strict as Map
-import qualified Data.Set        as Set
 
 import Data.Typeable (Proxy(..))
 
 import GHC.Generics
-
-import System.IO
 
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -41,9 +38,7 @@ import Thundermint.Mock.KeyList (privateKeyList)
 import Thundermint.Mock.KeyVal (genesisBlock)
 import Thundermint.Mock.Types
 import Thundermint.Monitoring
-import Thundermint.P2P
 import Thundermint.P2P.Network
-import Thundermint.P2P.Types
 import Thundermint.Run
 import Thundermint.Store
 import Thundermint.Types.Blockchain
@@ -126,8 +121,8 @@ testAddRemValidators = do
   when (not hasBlockFromDynamicOne) $ error "failed to have block from dynamic validator"
   where
     catchAbort act = catch act (\Abort -> return ())
-    transitions :: BlockFold ValidatorsTestsState alg [VTSTx]
-    transitions = BlockFold
+    testTransitions :: BlockFold ValidatorsTestsState alg [VTSTx]
+    testTransitions = BlockFold
       { processTx           = const process
       , processBlock        = \_ b s0 -> let h = headerHeight $ blockHeader b
                                        in foldM (flip (process h)) s0 (blockData b)
@@ -183,7 +178,7 @@ testAddRemValidators = do
         --
         let run = runTracerT ncCallback . runNoLogsT . runDBT conn
         fmap (map run) $ run $ do
-            (_,generatedLogic) <- logicFromFold transitions
+            (_,generatedLogic) <- logicFromFold testTransitions
             let logic = NodeLogic {
                   nodeMempool = nodeMempool generatedLogic
                 , nodeCommitQuery = case nodeCommitQuery generatedLogic of
