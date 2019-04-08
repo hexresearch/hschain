@@ -171,7 +171,7 @@ testAddRemValidators = do
       -> MVar (Bool)
       -> (Connection 'RW Ed25519_SHA512 [VTSTx], (TestNetLinkDescription m, PrivValidator Ed25519_SHA512))
       -> m [m ()]
-    mkTestNode net summary (conn, (TestNetLinkDescription{..}, privKey@)) = do
+    mkTestNode net summary (conn, (TestNetLinkDescription{..}, privKey)) = do
         let nodeIndex = ncFrom
         initDatabase conn Proxy (makeGenesis "TESTVALS" (Time 0) [] validatorSet) validatorSet
         --
