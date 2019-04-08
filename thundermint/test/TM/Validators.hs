@@ -35,7 +35,6 @@ import Thundermint.Debug.Trace
 import Thundermint.Logger
 import Thundermint.Mock.Coin
 import Thundermint.Mock.KeyList (privateKeyList)
-import Thundermint.Mock.KeyVal (genesisBlock)
 import Thundermint.Mock.Types
 import Thundermint.Monitoring
 import Thundermint.P2P.Network
