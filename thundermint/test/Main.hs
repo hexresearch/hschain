@@ -13,7 +13,7 @@ import qualified TM.Validators
 
 main :: IO ()
 main = defaultMain $ testGroup "test suite"
-  [ {-TM.Network.tests
+  [ TM.Network.tests
   , TM.P2P.tests
   , TM.NetworkTls.tests
   , TM.Mempool.tests
@@ -21,5 +21,5 @@ main = defaultMain $ testGroup "test suite"
   , TM.Serialisation.tests
   , TM.Store.tests
   , TM.Time.tests
-  , -}TM.Validators.tests
+  , TM.Validators.tests
   ]
