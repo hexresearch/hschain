@@ -210,13 +210,20 @@ Test-suite thundermint-tests
 -- Benchmarks
 Benchmark thundermint-bench
   Type:                exitcode-stdio-1.0
-  Ghc-options:         -threaded -O2 -Wall
+  Ghc-options:         -threaded -Wall
   hs-source-dirs:      bench
   Default-Language:    Haskell2010
   Main-is:             main.hs
   Build-Depends:       base  >=4.9 && <5
-                     , thundermint
                      , bytestring >=0.10
                      , criterion
                      , cryptonite
                      , deepseq
+                     , random
+                     , vector
+                     --
+                     , thundermint
+                     , thundermint-crypto
+                     , thundermint-types
+
+  Other-modules:       ValidatorSetsBench
