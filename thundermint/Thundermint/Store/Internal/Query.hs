@@ -33,6 +33,8 @@ module Thundermint.Store.Internal.Query (
   , queryRWT
     -- ** Plain queries
   , Query(..)
+  , liftQueryRO
+  , liftQueryRW
   , runQueryRO
   , runQueryRW
   , queryRO
@@ -316,6 +318,20 @@ queryRWT q = flip runQueryRWT q =<< askConnectionRW
 --   with database.
 newtype Query rw alg a x = Query (ReaderT (Connection rw alg a) IO x)
   deriving newtype (Functor, Applicative)
+
+liftQueryRO
+  :: (MonadReadDB m alg a, MonadThrow m, MonadIO m)
+  => Query  'RO alg a   x
+  -> QueryT 'RO alg a m x
+liftQueryRO (Query action)
+  = liftIO . runReaderT action =<< askConnectionRO
+
+liftQueryRW
+  :: (MonadDB m alg a, MonadThrow m, MonadIO m)
+  => Query  'RW alg a   x
+  -> QueryT 'RW alg a m x
+liftQueryRW (Query action)
+  = liftIO . runReaderT action =<< askConnectionRW
 
 instance Monad (Query rm alg a) where
   return = Query . return
