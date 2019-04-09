@@ -15,9 +15,12 @@ type BenchValidatorIdx = ValidatorIdx ()
 
 benchValidatorSets :: Benchmark
 benchValidatorSets = bgroup "ValidatorISet"
-    [ {- bgroup "empty"
+    [ bgroup "empty"
         [ bench "emptyValidatorISet 4"   $ nf emptyValidatorISet 4
         , bench "emptyValidatorISet 8"   $ nf emptyValidatorISet 8
+        , bench "emptyValidatorISet 16"  $ nf emptyValidatorISet 16
+        , bench "emptyValidatorISet 32"  $ nf emptyValidatorISet 32
+        , bench "emptyValidatorISet 64"  $ nf emptyValidatorISet 64
         , bench "emptyValidatorISet 128" $ nf emptyValidatorISet 128
         ]
     , bgroup "insert"
@@ -28,7 +31,7 @@ benchValidatorSets = bgroup "ValidatorISet"
         , let !size = 64;  !count = 1000 ; !lst = generateIdxes 0 size count in bench (show size ++ "-" ++ show count) $ nf insertIdxes (size, lst)
         , let !size = 128; !count = 1000 ; !lst = generateIdxes 0 size count in bench (show size ++ "-" ++ show count) $ nf insertIdxes (size, lst)
         ]
-    , -} bgroup "getValidatorIntSet"
+    , bgroup "getValidatorIntSet"
         [ let !size = 4;   !set = force $ generateSet size in bench (show size) $ nf getValidatorIntSet set
         , let !size = 8;   !set = force $ generateSet size in bench (show size) $ nf getValidatorIntSet set
         , let !size = 16;  !set = force $ generateSet size in bench (show size) $ nf getValidatorIntSet set
