@@ -14,7 +14,7 @@ main
   = join . customExecParser (prefs showHelpOnError)
   $ info (helper <*> parser)
     (  fullDesc
-    <> header   "Coin test program"
+    <> header   "Key-value test program"
     <> progDesc ""
     )
   where
