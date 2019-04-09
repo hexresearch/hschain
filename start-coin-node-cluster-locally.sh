@@ -12,18 +12,23 @@ export THUNDERMINT_KEYS="[\"2K7bFuJXxKf5LqogvVRQjms2W26ZrjpvUjo5LdvPFa5Y\",\"4NS
 
 # made it into a function, otherwise it is unwieldy - needs special kind of quotes for it to work and not reliably.
 THUNDERMINT_COIN_NODE () {
-  cabal new-exec -- thundermint-coin-node $*
+  #cabal new-exec -- thundermint-coin-node $*
+  cabal new-exec -- thundermint-keyval $*
 }
 
 PREFIX=tmp/thundermint
 
-EXTRA=$*
-echo "$EXTRA"
+EXTRA=""
+RTS_OPTS=""
+#RTS_OPTS="+RTS -P"
 
-COMMON_OPTIONS='--total-nodes 4 --max-h 100 --delay 200 --check-consensus --deposit 1000 --keys 2000'
+
+#COMMON_OPTIONS='--total-nodes 4 --max-h 30 --delay 100 --check-consensus --deposit 1000 --keys 2000'
+COMMON_OPTIONS='--max-h 10'
 
 #LOG_SPEC="\"nspecLogFile\" : [{ \"type\": \"ScribeES\", \"path\" : \"`cat elastic-search.cfg`\", \"severity\" : \"Debug\", \"verbosity\" : \"V2\" }]"
 LOG_SPEC='"nspecLogFile" : [{ "type": "ScribeJSON", "path" : "log.js", "severity" : "Debug", "verbosity" : "V2" }]'
+#LOG_SPEC='"nspecLogFile" : []'
 
 rm -rf $PREFIX
 mkdir --parents $PREFIX
@@ -37,7 +42,10 @@ trap 'kill -KILL 0' SIGINT
 echo "Node 1"
 export THUNDERMINT_NODE_SPEC="{ \"nspecPrivKey\":\"2K7bFuJXxKf5LqogvVRQjms2W26ZrjpvUjo5LdvPFa5Y\", \"nspecDbName\": \"./db/node-1\", $LOG_SPEC, \"nspecWalletKeys\"  : [0,1]}"
 pushd $PREFIX/node-1 > /dev/null
-    THUNDERMINT_COIN_NODE --node-n 0 --listen-port 50001 $COMMON_OPTIONS --peers "[\"127.0.0.1:50002\",\"127.0.0.1:50003\",\"127.0.0.1:50004\"]" $EXTRA >logs &
+    THUNDERMINT_COIN_NODE \
+        --node-n 0 --listen-port 50001 $COMMON_OPTIONS --peers "[\"127.0.0.1:50002\",\"127.0.0.1:50003\",\"127.0.0.1:50004\"]" \
+        $RTS_OPTS \
+        $EXTRA >logs &
 popd > /dev/null
 sleep 0.5
 
