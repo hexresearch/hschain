@@ -149,9 +149,8 @@ createTestNetworkWithValidatorsSetAndConfig validatorsSet cfg desc = do
                 , bchInitialPeers     = map intToNetAddr ncTo
                 }
               NodeDescription
-                { nodeCommitCallback   = \_ -> return ()
-                , nodeValidationKey    = Nothing
-                , nodeReadyCreateBlock = \_ _ -> return True
+                { nodeValidationKey = Nothing
+                , nodeCallbacks     = mempty
                 }
               logic
 
