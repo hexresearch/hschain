@@ -218,9 +218,8 @@ testAddRemValidators = do
                   , bchInitialPeers     = map intToNetAddr ncTo
                   }
                 NodeDescription
-                  { nodeCommitCallback   = \_ -> return ()
-                  , nodeValidationKey    = Just privKey
-                  , nodeReadyCreateBlock = \_ _ -> return True
+                  { nodeValidationKey = Just privKey
+                  , nodeCallbacks     = mempty
                   }
                 logic
 

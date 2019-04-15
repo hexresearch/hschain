@@ -27,6 +27,9 @@ module Thundermint.Run (
   , NodeDescription(..)
   , BlockchainNet(..)
   , runNode
+    -- * Standard callbacks
+  , nonemptyMempoolCallback
+  , mempoolFilterCallback
     -- * Running nodes
   , defCfg
   ) where
@@ -149,17 +152,10 @@ logicFromPersistent PersistentState{..} = do
 
 -- | Specification of node
 data NodeDescription m alg a = NodeDescription
-  { nodeValidationKey   :: !(Maybe (PrivValidator alg))
+  { nodeValidationKey :: !(Maybe (PrivValidator alg))
     -- ^ Private key of validator
-  , nodeCommitCallback  :: !(Block alg a -> m ())
-    -- ^ Callback called immediately after block was commit and user
-    --   state in database is updated
-  , nodeReadyCreateBlock :: !(Height -> Time -> m Bool)
-    -- ^ It's called with height of blockchain and time of topmost block.
-    --
-    --   Called when node enters NEW_HEIGHT step. If it returns true
-    --   it will continue to create new block. If False it will it
-    --   call repeatedly (with timeout) until it becomes True
+  , nodeCallbacks     :: !(AppCallbacks m alg a)
+    -- ^ Callback for node
   }
 
 -- | Specification of network
@@ -167,6 +163,23 @@ data BlockchainNet = BlockchainNet
   { bchNetwork      :: !NetworkAPI
   , bchLocalAddr    :: !NetAddr
   , bchInitialPeers :: ![NetAddr]
+  }
+
+mempoolFilterCallback :: (MonadLogger m) => Mempool m alg tx -> AppCallbacks m alg a
+mempoolFilterCallback mempool = mempty
+  { appCommitCallback = \_ -> descendNamespace "mempool" $ do
+      do before <- mempoolStats mempool
+         logger InfoS "Mempool before filtering" before
+      filterMempool mempool
+      do after <- mempoolStats mempool
+         logger InfoS "Mempool after filtering" after
+  }
+
+nonemptyMempoolCallback :: (Monad m) => Mempool m alg tx -> AppCallbacks m alg a
+nonemptyMempoolCallback mempool = mempty
+  { appCanCreateBlock = \_ _ -> do
+      n <- mempoolSize mempool
+      return $! Just $! n > 0
   }
 
 runNode
@@ -185,17 +198,7 @@ runNode cfg BlockchainNet{..} NodeDescription{..} NodeLogic{..} = do
         , appBlockGenerator = nodeBlockGenerator
         , appCommitQuery    = nodeCommitQuery
         }
-      appCall = AppCallbacks
-        { appCommitCallback = \b -> descendNamespace "mempool" $ do
-            do before <- mempoolStats nodeMempool
-               logger InfoS "Mempool before filtering" before
-            filterMempool nodeMempool
-            do after <- mempoolStats nodeMempool
-               logger InfoS "Mempool after filtering" after
-            nodeCommitCallback b
-        , appCanCreateBlock = (fmap . fmap . fmap) Just nodeReadyCreateBlock
-          --
-        }
+      appCall = mempoolFilterCallback nodeMempool <> nodeCallbacks
   -- Networking
   appCh <- newAppChans (cfgConsensus cfg)
   return
