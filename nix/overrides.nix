@@ -15,6 +15,9 @@
     thundermint-crypto = { haddock = false; };
     thundermint-types  = { haddock = false; };
     thundermint        = { haddock = false; };
+
+    # liquid haskell deps
+    liquidhaskell  = { check = false; }; 
   };
   # Compiler specific overrides
   ghc863 = {

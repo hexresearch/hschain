@@ -13,9 +13,12 @@ in
   pkgs.haskell.packages."${ghc}".shellFor {
     nativeBuildInputs = with pkgs.haskellPackages; [
       cabal-install
+      pkgs.z3
     ];
     buildInputs = [
       pkgs.libsodium
     ];
+    buildInputs =
+      if ghc != "ghcjs" then [pkgs.haskell.packages."${ghc}".liquidhaskell] else [];
     packages = release."${ghc}";
   }
