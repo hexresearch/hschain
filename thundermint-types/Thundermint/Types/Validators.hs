@@ -39,11 +39,11 @@ import           Data.Foldable
 import qualified Data.Set        as Set
 import qualified Data.Map        as Map
 import           Data.Map          (Map)
-import qualified Data.IntSet as ISet
-import           Data.IntSet   (IntSet)
 import           GHC.Generics  (Generic,Generic1)
 
 import Thundermint.Crypto
+
+import qualified Thundermint.Types.BitVector as BV
 
 
 ----------------------------------------------------------------
@@ -128,8 +128,6 @@ validatorSetSize :: ValidatorSet alg -> Int
 validatorSetSize = Map.size  . vsValidators
 
 
-
-
 -- | Since all nodes agree on set of validators for given height they
 --   could be identified simply by number where validators public keys
 --   are lexicographically sorted.
@@ -138,28 +136,25 @@ validatorSetSize = Map.size  . vsValidators
 newtype ValidatorIdx alg = ValidatorIdx Int
   deriving (Show, Eq, Generic, Generic1, NFData, CBOR.Serialise)
 
--- | Set of validators where they are represented by their index.
-data ValidatorISet = ValidatorISet !Int !IntSet
 
-instance NFData ValidatorISet where
-  rnf (ValidatorISet a b) = rnf a `seq` rnf b
+-- | Set of validators where they are represented by their index.
+type ValidatorISet = BV.FixedBitVector
 
 getValidatorIntSet :: ValidatorISet -> [ValidatorIdx alg]
-getValidatorIntSet (ValidatorISet _ iset)
-  = [ValidatorIdx i | i <- ISet.toList iset]
+getValidatorIntSet vset
+  = [ValidatorIdx i | i <- BV.toList vset]
 
 insertValidatorIdx :: ValidatorIdx alg -> ValidatorISet -> ValidatorISet
-insertValidatorIdx (ValidatorIdx i) vset@(ValidatorISet n iset)
-  | i < 0     = vset
-  | i >= n    = vset
-  | otherwise = ValidatorISet n (ISet.insert i iset)
+insertValidatorIdx (ValidatorIdx i) vset
+  | i < 0             = vset
+  | i >= BV.size vset = vset
+  | otherwise         = BV.insert i vset
 
 -- | Create empty validator set of given size
 emptyValidatorISet :: Int -> ValidatorISet
 emptyValidatorISet n
   | n < 0     = error "Negative size"
-  | otherwise = ValidatorISet n ISet.empty
-
+  | otherwise = BV.new n
 
 
 ----------------------------------------------------------------
