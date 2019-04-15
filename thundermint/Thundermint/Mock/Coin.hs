@@ -390,7 +390,7 @@ interpretSpec maxHeight genSpec validatorSet net cfg NodeSpec{..} = do
         acts <- runNode cfg net
           NodeDescription
             { nodeValidationKey = nspecPrivKey
-            , nodeCallbacks     = maybe mempty (abortAtH . Height) maxHeight
+            , nodeCallbacks     = maybe mempty (callbackAbortAtH . Height) maxHeight
                                <> nonemptyMempoolCallback (nodeMempool logic)
             }
           logic

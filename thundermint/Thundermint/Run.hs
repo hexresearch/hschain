@@ -28,6 +28,7 @@ module Thundermint.Run (
   , BlockchainNet(..)
   , runNode
     -- * Standard callbacks
+  , callbackAbortAtH
   , nonemptyMempoolCallback
   , mempoolFilterCallback
     -- * Running nodes
@@ -165,22 +166,6 @@ data BlockchainNet = BlockchainNet
   , bchInitialPeers :: ![NetAddr]
   }
 
-mempoolFilterCallback :: (MonadLogger m) => Mempool m alg tx -> AppCallbacks m alg a
-mempoolFilterCallback mempool = mempty
-  { appCommitCallback = \_ -> descendNamespace "mempool" $ do
-      do before <- mempoolStats mempool
-         logger InfoS "Mempool before filtering" before
-      filterMempool mempool
-      do after <- mempoolStats mempool
-         logger InfoS "Mempool after filtering" after
-  }
-
-nonemptyMempoolCallback :: (Monad m) => Mempool m alg tx -> AppCallbacks m alg a
-nonemptyMempoolCallback mempool = mempty
-  { appCanCreateBlock = \_ _ -> do
-      n <- mempoolSize mempool
-      return $! Just $! n > 0
-  }
 
 runNode
   :: ( MonadDB m alg a, MonadMask m, MonadFork m, MonadLogger m, MonadTrace m, MonadTMMonitoring m, MonadFail m
@@ -219,3 +204,35 @@ runNode cfg BlockchainNet{..} NodeDescription{..} NodeLogic{..} = do
         usingGauge prometheusMsgQueue n
         waitSec 1.0
     ]
+
+----------------------------------------------------------------
+-- Callbacks
+----------------------------------------------------------------
+
+-- | Callback which aborts execution when blockchain exceed given
+--   height. It's done by throwing 'Abort'.
+callbackAbortAtH :: MonadThrow m => Height -> AppCallbacks m alg a
+callbackAbortAtH hMax = mempty
+  { appCommitCallback = \b ->
+      when (headerHeight (blockHeader b) > hMax) $ throwM Abort
+  }
+
+-- | Callback which removes from mempool all transactions which are
+--   not longer valid.
+mempoolFilterCallback :: (MonadLogger m) => Mempool m alg tx -> AppCallbacks m alg a
+mempoolFilterCallback mempool = mempty
+  { appCommitCallback = \_ -> descendNamespace "mempool" $ do
+      do before <- mempoolStats mempool
+         logger InfoS "Mempool before filtering" before
+      filterMempool mempool
+      do after <- mempoolStats mempool
+         logger InfoS "Mempool after filtering" after
+  }
+
+-- | Callback which allow block creation only if mempool is not empty
+nonemptyMempoolCallback :: (Monad m) => Mempool m alg tx -> AppCallbacks m alg a
+nonemptyMempoolCallback mempool = mempty
+  { appCanCreateBlock = \_ _ -> do
+      n <- mempoolSize mempool
+      return $! Just $! n > 0
+  }

@@ -6,19 +6,14 @@ module Thundermint.Mock.Types (
   , Abort(..)
   , Example
   , defCfg
-    -- * Standard callbacks
-  , abortAtH
   ) where
 
 import Control.Exception (Exception)
-import Control.Monad
-import Control.Monad.Catch
 import Data.Int     (Int64)
 import GHC.Generics (Generic)
 
 import qualified Data.Aeson as JSON
 
-import Thundermint.Types
 import Thundermint.Blockchain.Internal.Engine.Types
 import Thundermint.Crypto.Ed25519 (Ed25519_SHA512)
 import Thundermint.Logger         (ScribeSpec)
@@ -55,13 +50,6 @@ instance DefaultConfig Example where
 ----------------------------------------------------------------
 -- Generating node specification
 ----------------------------------------------------------------
-
--- | Callback which aborts execution of program at given height
-abortAtH :: MonadThrow m => Height -> AppCallbacks m alg a
-abortAtH hMax = mempty
-  { appCommitCallback = \b ->
-      when (headerHeight (blockHeader b) > hMax) $ throwM Abort
-  }
 
 -- | Exception for aborting execution of blockchain
 data Abort = Abort
