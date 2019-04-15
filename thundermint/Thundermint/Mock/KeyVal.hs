@@ -109,12 +109,7 @@ interpretSpec maxH prefix NetSpec{..} = do
                        --
                        , appCommitQuery    = SimpleQuery $ \_ -> return []
                        }
-                     appCall = mempty
-                       { appCommitCallback = \case
-                           b | Just hM <- maxH
-                             , headerHeight (blockHeader b) > Height hM -> throwM Abort
-                             | otherwise                                -> return ()
-                       }
+                     appCall = maybe mempty (callbackAbortAtH . Height) maxH
                  let cfg = defCfg :: Configuration Example
                  appCh <- newAppChans (cfgConsensus cfg)
                  runConcurrently
