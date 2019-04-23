@@ -37,17 +37,18 @@ import Thundermint.Crypto         ((:&), Fingerprint)
 import Thundermint.Crypto.Ed25519 (Ed25519)
 import Thundermint.Crypto.SHA     (SHA512)
 import Thundermint.Debug.Trace
-import Thundermint.Run
+import Thundermint.Logger
 import Thundermint.Mock.Coin (intToNetAddr)
 import Thundermint.Mock.KeyVal
 import Thundermint.Mock.Types
+import Thundermint.Monitoring
 import Thundermint.P2P
 import Thundermint.P2P.Network
+import Thundermint.Run
 import Thundermint.Store
-import Thundermint.Monitoring
+
 import TM.RealNetwork
 
-import Thundermint.Logger
 
 instance MonadLogger IO where
   logger severity str extra = putStrLn $ "LOG: " ++ show severity ++ ": " ++ show str ++ "(" ++ show (toObject extra) ++ ")"

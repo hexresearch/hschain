@@ -31,8 +31,6 @@ import TM.Util.Network
 import TM.Util.Tests
 
 
-collectEvents :: IORef (Set TraceEvents) -> TraceEvents -> IO ()
-collectEvents events event = atomicModifyIORef events (\s -> (Set.insert event s, ()))
 
 
 testPeersMustConnect :: IO ()

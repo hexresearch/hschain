@@ -8,11 +8,14 @@
 module TM.Util.Tests where
 
 
-import           Data.Set          (Set)
+import           Control.Monad
+import           Data.IORef
+import           Data.Set   (Set)
 import qualified Data.Set as Set
-import Control.Monad
 
-import Test.Tasty.HUnit
+import           Thundermint.Debug.Trace
+
+import           Test.Tasty.HUnit
 
 
 assertSubset :: (Ord a, Show a, HasCallStack)
@@ -43,3 +46,6 @@ infix 1 @~<?
       -> Assertion
 expected @~<? actual = assertSubset "" (Set.fromList expected) actual
 
+
+collectEvents :: IORef (Set TraceEvents) -> TraceEvents -> IO ()
+collectEvents events event = atomicModifyIORef events (\s -> (Set.insert event s, ()))
