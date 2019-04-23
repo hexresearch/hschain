@@ -33,6 +33,10 @@ data TraceEvents
     | TeNodeOtherConnected !String
     -- ^ Other node connected successfully
     | TePeerRegistryChanged !(Set String)
+    -- *
+    -- *
+    | TePeerGossipVotesStarted
+    -- ^ Gossip votes controller started
     deriving (Show, Ord, Eq)
 
 class Monad m => MonadTrace m where

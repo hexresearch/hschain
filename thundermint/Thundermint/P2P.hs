@@ -567,7 +567,7 @@ peerGossipPeerExchange _peerAddr PeerChans{..} PeerRegistry{prConnected,prIsActi
 -- | Start interactions with peer. At this point connection is already
 --   established and peer is registered.
 startPeer
-  :: ( MonadFork m, MonadMask m, MonadLogger m, MonadReadDB m alg a
+  :: ( MonadFork m, MonadMask m, MonadLogger m, MonadReadDB m alg a, MonadTrace m
      , BlockData a, Crypto alg, MonadFail m)
   => NetAddr
   -> NetAddr
@@ -598,13 +598,15 @@ startPeer peerAddrFrom peerAddrTo peerCh@PeerChans{..} conn peerRegistry mempool
 
 -- | Gossip votes with given peer
 peerGossipVotes
-  :: (MonadReadDB m alg a, MonadMask m, MonadIO m, MonadLogger m, Crypto alg, Serialise a)
+  :: ( MonadReadDB m alg a, MonadMask m, MonadIO m, MonadLogger m, MonadTrace m
+     , Crypto alg, Serialise a)
   => PeerStateObj m alg a         -- ^ Current state of peer
   -> PeerChans m alg a            -- ^ Read-only access to
   -> TBQueue (GossipMsg alg a)
   -> m x
 peerGossipVotes peerObj PeerChans{..} gossipCh = logOnException $ do
   logger InfoS "Starting routine for gossiping votes" ()
+  trace TePeerGossipVotesStarted
   forever $ do
     bchH <- queryRO blockchainHeight
     peer <- getPeerState peerObj
