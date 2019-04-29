@@ -7,17 +7,22 @@ let
   config = {
     allowUnfree = true;
     packageOverrides = super: {
-      haskell = import ./interpret pkgs super {
+      haskell = haskTools.interpret pkgs super {
         overrides = import ./overrides.nix;
         release   = thundermintPackages;
       };
     };
   };
   # General utilds
-  lib  = pkgs.haskell.lib;
-  hlib = import ./lib/haskell.nix pkgs;
-  util = import ./lib/utils.nix;
-  doIf = util.doIf;
+  lib       = pkgs.haskell.lib;
+  haskTools = import (pkgs.fetchFromGitHub {
+    owner  = "hexresearch";
+    repo   = "haskell-nix-tools";
+    rev    = "65c493f1990829adfdc212affd993ae277663749";
+    sha256 = "178fa5s1axqpjfdas3q1plfvvk7ajravw5fiz35c5j5h7bdnl48y";
+  }) pkgs;
+  hask = haskTools.hask;
+  doIf = haskTools.doIf;
   # Generate packages for thundermint
   thundermintPackages = hsPkgs: {
     thundermint-crypto = callInternal hsPkgs "thundermint" ../thundermint-crypto {};
@@ -29,8 +34,8 @@ let
     prodOverride (profileOverride (hask.callCabal2nix name (ignoreStack path) args))
     ;
   prodOverride    = doIf isProd (drv:
-    hlib.doPedantic (lib.doCheck drv));
-  profileOverride = doIf isProfile hlib.doProfile;
+    hask.doPedantic (lib.doCheck drv));
+  profileOverride = doIf isProfile hask.doProfile;
   #
   ignoreStack = source:
     let
