@@ -3,16 +3,9 @@
 , ...
 }:
 let
-  pkgs   = import ./pkgs.nix { inherit config; overlays=[]; };
-  config = {
-    allowUnfree = true;
-    packageOverrides = super: {
-      haskell = haskTools.interpret pkgs super {
-        overrides = import ./overrides.nix;
-        release   = thundermintPackages;
-      };
-    };
-  };
+  pkgs     = import ./pkgs.nix { inherit config overlays; };
+  config   = { allowUnfree = true; };
+  overlays = [ overlay ];
   # General utilds
   lib       = pkgs.haskell.lib;
   haskTools = import (pkgs.fetchFromGitHub {
@@ -23,21 +16,27 @@ let
   }) pkgs;
   hask = haskTools.hask;
   doIf = haskTools.doIf;
+  # ================================================================
+  # Overlay for haskell packages
+  overlay = self: super: {
+    haskell = haskTools.interpret pkgs super {
+      overrides = import ./overrides.nix;
+      release   = thundermintPackages;
+    };
+  };
   # Generate packages for thundermint
   thundermintPackages = hsPkgs: {
     thundermint-crypto = callInternal hsPkgs "thundermint" ../thundermint-crypto {};
     thundermint-types  = callInternal hsPkgs "thundermint" ../thundermint-types  {};
-    thundermint        = callInternal hsPkgs "thundermint" ../thundermint        {};          
+    thundermint        = callInternal hsPkgs "thundermint" ../thundermint        {};
   };
   # Build internal package
   callInternal = hask: name: path: args:
     prodOverride (profileOverride (hask.callCabal2nix name (ignoreStack path) args))
     ;
-  prodOverride    = doIf isProd (drv:
-    hask.doPedantic (lib.doCheck drv));
+  prodOverride    = doIf isProd    (drv: hask.doPedantic (lib.doCheck drv));
   profileOverride = doIf isProfile hask.doProfile;
-  #
-  ignoreStack = haskTools.ignoreSources ''
+  ignoreStack     = haskTools.ignoreSources ''
     /.stack-work
     '';
   #
