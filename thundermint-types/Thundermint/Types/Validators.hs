@@ -31,17 +31,20 @@ module Thundermint.Types.Validators (
   , changeValidators
   ) where
 
-import qualified Codec.Serialise as CBOR
 import Control.DeepSeq
 import Control.Monad
+import Data.Foldable
+
+import Data.Coerce  (coerce)
+import Data.IntSet  (IntSet)
+import Data.Map     (Map)
+import GHC.Generics (Generic, Generic1)
+
+import qualified Codec.Serialise as CBOR
 import qualified Data.Aeson      as JSON
-import           Data.Foldable
-import qualified Data.Set        as Set
+import qualified Data.IntSet     as ISet
 import qualified Data.Map        as Map
-import           Data.Map          (Map)
-import qualified Data.IntSet as ISet
-import           Data.IntSet   (IntSet)
-import           GHC.Generics  (Generic,Generic1)
+import qualified Data.Set        as Set
 
 import Thundermint.Crypto
 
@@ -146,7 +149,7 @@ instance NFData ValidatorISet where
 
 getValidatorIntSet :: ValidatorISet -> [ValidatorIdx alg]
 getValidatorIntSet (ValidatorISet _ iset)
-  = [ValidatorIdx i | i <- ISet.toList iset]
+  = coerce $ ISet.toList iset
 
 insertValidatorIdx :: ValidatorIdx alg -> ValidatorISet -> ValidatorISet
 insertValidatorIdx (ValidatorIdx i) vset@(ValidatorISet n iset)
