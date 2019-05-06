@@ -239,8 +239,8 @@ newHeight HeightParameters{..} lastCommit = do
 tendermintTransition
   :: (Crypto alg, ConsensusMonad m, MonadLogger m)
   => HeightParameters m alg a  -- ^ Parameters for current height
-  -> Message alg a          -- ^ Message which causes state transition
-  -> TMState alg a          -- ^ Initial state of state machine
+  -> Message alg a             -- ^ Message which causes state transition
+  -> TMState alg a             -- ^ Initial state of state machine
   -> m (TMState alg a)
 tendermintTransition par@HeightParameters{..} msg sm@TMState{..} =
   case msg of

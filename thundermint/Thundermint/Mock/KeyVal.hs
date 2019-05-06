@@ -138,7 +138,7 @@ interpretSpec maxH prefix NetSpec{..} = do
 
 executeSpec
   :: Maybe Int64                -- ^ Maximum height
-  -> FilePath
+  -> FilePath                   -- ^ Directory for store logs and DBs
   -> NetSpec NodeSpec
   -> IO [Connection 'RO (Ed25519 :& SHA512) [(String,NetAddr)]]
 executeSpec maxH prefix spec = do

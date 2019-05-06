@@ -228,7 +228,7 @@ instance CryptoHash alg => JSON.FromJSON (Header alg a) where
     return Header{..}
     where
       fromBase58 = maybe complain return . decodeBase58
-      complain   = fail "Incorrect Base58 encoding" 
+      complain   = fail "Incorrect Base58 encoding"
 
 -- | Evidence of byzantine behaviour by some node.
 data ByzantineEvidence alg a
@@ -387,7 +387,7 @@ instance JSON.ToJSON   VoteType
 
 -- | Single vote cast validator. Type of vote is determined by its
 --   type tag
-data Vote (ty :: VoteType) alg a= Vote
+data Vote (ty :: VoteType) alg a = Vote
   { voteHeight  :: !Height
   , voteRound   :: !Round
   , voteTime    :: !Time

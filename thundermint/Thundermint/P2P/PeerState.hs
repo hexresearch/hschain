@@ -64,7 +64,7 @@ data LaggingPeer alg a = LaggingPeer
   , lagPeerPrecommits  :: !ValidatorISet         -- ^ Precommits that peer have
   , lagPeerHasProposal :: !Bool                  -- ^ Whether peer have proposal
   , lagPeerHasBlock    :: !Bool                  -- ^ Whether peer have block
-  , lagPeerBlockID     :: BlockID alg a          -- ^ ID of commited block
+  , lagPeerBlockID     :: !(BlockID alg a)       -- ^ ID of commited block
   }
 
 -- | Peer which is at the same height as we. Here state is more
@@ -115,7 +115,7 @@ newPeerStateObj prop = do
 getPeerState :: (MonadMask m, MonadIO m)
              => PeerStateObj m alg a -> m (PeerState alg a)
 getPeerState (PeerStateObj _ var)
-  = withMVarM var return
+  = withMVarM var return -- TODO readMVar var
 
 ----------------------------------------------------------------
 
@@ -297,8 +297,7 @@ addPrecommitI (PeerStateObj _ var) h r i =
       | FullStep hPeer _ _ <- lagPeerStep p
       , h == hPeer
       , r == lagPeerCommitR p
-      -> return $ Lagging p { lagPeerPrecommits = insertValidatorIdx i (lagPeerPrecommits p)
-                            }
+      -> return $ Lagging p { lagPeerPrecommits = insertValidatorIdx i (lagPeerPrecommits p) }
       | otherwise -> return peer
     --
     Current p

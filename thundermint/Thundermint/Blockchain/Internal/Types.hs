@@ -78,7 +78,7 @@ data TMState alg a = TMState
     -- ^ Set of all received valid precommits
   , smLockedBlock   :: !(Maybe (Round, BlockID alg a))
     -- ^ Round and block we're locked on
-  , smLastCommit    :: !(Maybe (Commit alg a))
+  , smLastCommit    :: !(Maybe (Commit alg a))                   -- TODO try strict Maybe
     -- ^ Commit for previous block. Nothing if previous block is
     --   genesis block.
   }
