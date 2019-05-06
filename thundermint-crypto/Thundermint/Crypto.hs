@@ -30,6 +30,7 @@ module Thundermint.Crypto (
   , CryptoHash(..)
   , CryptoSignPrim(..)
   , (:&)
+  , (:<<<)
     -- ** Sizes of crypto types
   , hashSize
   , fingerprintSize
@@ -478,6 +479,23 @@ instance (CryptoHash hash) => CryptoHash (sign :& hash) where
   type HashSize (sign :& hash) = HashSize hash
   hashBlob     = coerce (hashBlob @hash)
   hashEquality = coerce (hashEquality @hash)
+
+
+----------------------------------------------------------------
+-- Hash chaining
+----------------------------------------------------------------
+
+-- | Chaining of hash algorithms. For example @SHA256 :<<< SHA256@
+--   would mean applying SHA256 twice or @SHA256 :<<< SHA512@ will
+--   work as @sha256 . sha512@.
+data hashA :<<< hashB
+
+instance (CryptoHash hashA, CryptoHash hashB) => CryptoHash (hashA :<<< hashB) where
+  type HashSize (hashA :<<< hashB) = HashSize hashA
+  hashBlob bs = let Hash hB = hashBlob bs :: Hash hashB
+                    Hash hA = hashBlob hB :: Hash hashA
+                in Hash hA
+  hashEquality (Hash hbs) bs = hbs == bs
 
 
 ----------------------------------------------------------------
