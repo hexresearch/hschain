@@ -13,6 +13,11 @@ Homepage:       https://github.com/hexresearch/thundermint
 Category:       Data
 Build-Type:     Simple
 
+flag android-impl
+  Description: Build for android
+  Default:     False
+  Manual:      True
+
 Library
   Ghc-options:         -Wall
   Default-Language:    Haskell2010
@@ -218,7 +223,6 @@ Benchmark thundermint-bench
   Build-Depends:       base  >=4.9 && <5
                      , bytestring >=0.10
                      , criterion
-                     , cryptonite
                      , deepseq
                      , random
                      , vector
@@ -226,5 +230,6 @@ Benchmark thundermint-bench
                      , thundermint
                      , thundermint-crypto
                      , thundermint-types
-
+  if !flag(android-impl)
+    Build-Depends: cryptonite
   Other-modules:       ValidatorSetsBench
