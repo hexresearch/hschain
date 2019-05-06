@@ -2,6 +2,7 @@
 {-# LANGUAGE DataKinds         #-}
 {-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TypeOperators     #-}
 import Control.Monad
 import Control.Monad.IO.Class
 import Codec.CBOR.FlatTerm (FlatTerm)
@@ -11,13 +12,15 @@ import Options.Applicative
 
 import Thundermint.Types
 import Thundermint.Store
+import Thundermint.Crypto
 import Thundermint.Crypto.Ed25519
+import Thundermint.Crypto.SHA
 
 ----------------------------------------------------------------
 -- Reader for database
 ----------------------------------------------------------------
 
-type Alg = Ed25519_SHA512
+type Alg = Ed25519 :& SHA512
 
 
 printHeight :: DBT 'RO Alg FlatTerm IO ()

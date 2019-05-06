@@ -1,5 +1,7 @@
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE FlexibleContexts     #-}
 {-# LANGUAGE FlexibleInstances    #-}
+{-# LANGUAGE TypeApplications     #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
@@ -9,6 +11,7 @@ module TM.Arbitrary.Instances where
 
 import Data.ByteString.Arbitrary as Arb
 import Data.Maybe
+import Data.Proxy
 import qualified Data.ByteString    as BS
 import qualified Data.List.NonEmpty as NE
 import Test.QuickCheck.Arbitrary
@@ -17,7 +20,7 @@ import Test.QuickCheck.Gen
 
 import Thundermint.Types
 import Thundermint.Crypto
-import Thundermint.Crypto.Ed25519
+
 
 
 instance Arbitrary (Hash alg) where
@@ -101,8 +104,8 @@ instance (Arbitrary (PublicKey alg)) => Arbitrary (ValidatorChange alg) where
   arbitrary = genericArbitrary
   shrink = genericShrink
 
-instance Arbitrary (PublicKey Ed25519_SHA512) where
+instance CryptoSign alg => Arbitrary (PublicKey alg) where
   arbitrary = do
-    bs <- vectorOf 32 arbitrary
+    bs <- vectorOf (privKeySize (Proxy @alg)) arbitrary
     return $ fromJust $ decodeFromBS $ BS.pack bs
   shrink _ = []

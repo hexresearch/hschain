@@ -1,3 +1,4 @@
+{-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE DataKinds                  #-}
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE FlexibleContexts           #-}
@@ -62,6 +63,7 @@ import Thundermint.Blockchain.Internal.Engine.Types
 import Thundermint.Control
 import Thundermint.Crypto
 import Thundermint.Crypto.Ed25519
+import Thundermint.Crypto.SHA
 import Thundermint.Debug.Trace
 import Thundermint.Logger
 import Thundermint.Run
@@ -76,7 +78,7 @@ import Thundermint.Types.Validators (ValidatorSet)
 import qualified Thundermint.P2P.Network as P2P
 
 
-type Alg = Ed25519_SHA512
+type Alg = (Ed25519 :& SHA512)
 
 -- | Single transaction for transfer of coins
 data TxSend = TxSend
@@ -371,7 +373,7 @@ interpretSpec
   :: ( MonadIO m, MonadLogger m, MonadFork m, MonadTrace m, MonadMask m, MonadTMMonitoring m, MonadFail m)
   => Maybe Int64                      -- ^ Maximum height
   -> GeneratorSpec                    -- ^ Spec for generator of transactions
-  -> ValidatorSet Ed25519_SHA512      -- ^ Set of validators
+  -> ValidatorSet Alg                 -- ^ Set of validators
   -> BlockchainNet                    -- ^ Network
   -> Configuration cfg                -- ^ Configuration for network
   -> NodeSpec                         -- ^ Node specifications

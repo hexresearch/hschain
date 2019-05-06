@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TypeOperators     #-}
 -- |
 module Thundermint.Mock.KeyList (
     privateKeyList
@@ -19,6 +20,7 @@ import qualified Data.Map               as Map
 import Thundermint.Blockchain.Internal.Engine.Types
 import Thundermint.Crypto
 import Thundermint.Crypto.Ed25519
+import Thundermint.Crypto.SHA
 import Thundermint.Types.Validators
 
 ----------------------------------------------------------------
@@ -29,7 +31,7 @@ import Thundermint.Types.Validators
 -- | Generate list of private validators
 makePrivateValidators
   :: [BS.ByteString]
-  -> Map (Fingerprint Ed25519_SHA512) (PrivValidator Ed25519_SHA512)
+  -> Map (Fingerprint (Ed25519 :& SHA512)) (PrivValidator (Ed25519 :& SHA512))
 makePrivateValidators keys = Map.fromList
   [ (fingerprint (publicKey pk) , PrivValidator pk)
   | bs58 <- keys
@@ -84,7 +86,7 @@ connectRing vals addr =
 -- | List of private keys which could be used in test programs where
 --   significant number of persistent private keys are needed and they
 --   couldn't be generate on the fly.
-privateKeyList :: [PrivKey Ed25519_SHA512]
+privateKeyList :: [PrivKey (Ed25519 :& SHA512)]
 privateKeyList
   = map (fromJust . decodeBase58)
   [ "3d6iUCAa2WQw1ePDtdp2qgji22PRmSrZ8zxhCeMRMBqX"

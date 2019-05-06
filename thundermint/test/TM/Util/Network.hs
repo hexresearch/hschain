@@ -1,3 +1,4 @@
+{-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE DeriveGeneric       #-}
 {-# LANGUAGE NumDecimals         #-}
@@ -32,8 +33,9 @@ import Katip
 
 import Thundermint.Blockchain.Internal.Engine.Types
 import Thundermint.Control
-import Thundermint.Crypto
-import Thundermint.Crypto.Ed25519
+import Thundermint.Crypto         ((:&), Fingerprint)
+import Thundermint.Crypto.Ed25519 (Ed25519)
+import Thundermint.Crypto.SHA     (SHA512)
 import Thundermint.Debug.Trace
 import Thundermint.Run
 import Thundermint.Mock.Coin (intToNetAddr)
@@ -74,7 +76,7 @@ withRetry' useUDP fun host = do
       hs = [const $ Handler (\(_::E.IOException) -> return shouldRetry)]
 
 
-testValidators, extraTestValidators :: Map.Map (Fingerprint Ed25519_SHA512) (PrivValidator Ed25519_SHA512)
+testValidators, extraTestValidators :: Map.Map (Fingerprint (Ed25519 :& SHA512)) (PrivValidator (Ed25519 :& SHA512))
 testValidators = makePrivateValidators
   [ "2K7bFuJXxKf5LqogvVRQjms2W26ZrjpvUjo5LdvPFa5Y"
   , "4NSWtMsEPgfTK25tCPWqNzVVze1dgMwcUFwS5WkSpjJL"
@@ -123,7 +125,7 @@ createTestNetwork = createTestNetworkWithConfig (defCfg :: Configuration Example
 
 createTestNetworkWithValidatorsSetAndConfig
   :: forall m app . (MonadIO m, MonadMask m, MonadFork m, MonadTMMonitoring m, MonadFail m)
-  => Map.Map (Fingerprint Ed25519_SHA512) (PrivValidator Ed25519_SHA512)
+  => Map.Map (Fingerprint (Ed25519 :& SHA512)) (PrivValidator (Ed25519 :& SHA512))
   -> Configuration app -> TestNetDescription m -> m ()
 createTestNetworkWithValidatorsSetAndConfig validatorsSet cfg desc = do
     net  <- liftIO newMockNet
@@ -133,7 +135,7 @@ createTestNetworkWithValidatorsSetAndConfig validatorsSet cfg desc = do
   where
     mkTestNode
       :: MockNet
-      -> (Connection 'RW Ed25519_SHA512 [(String, NetAddr)], TestNetLinkDescription m)
+      -> (Connection 'RW (Ed25519 :& SHA512) [(String, NetAddr)], TestNetLinkDescription m)
       -> m [m ()]
     mkTestNode net (conn, TestNetLinkDescription{..}) = do
         let validatorSet = makeValidatorSetFromPriv validatorsSet
