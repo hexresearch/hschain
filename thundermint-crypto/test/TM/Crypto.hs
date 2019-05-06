@@ -114,6 +114,8 @@ testsSHA = testGroup "SHA"
     "212nrAU3Wf4tsoxRSTmEZGU24f67cAYG15rWMExaET1XEoy2Mcqm5zcQMBvwjDDWK9"
   , testHash (Proxy @SHA512)
     "wW3fpggshbTYibV8VHrz6ZFvs3EJig7geZTQvfy6FuVCsGDvamcKZHtV2TQMMjSU5i3TuzXSSjwsqGqR9aK1S5F"
+  , testHash (Proxy @(SHA256 :<<< SHA512))
+    "5V5rmaBpjNYQsC1Tv2pehRWzjX2G1LFPLR3K1RwsNevs"
   ]
 
 testHash :: forall alg. (Typeable alg, CryptoHash alg) => Proxy alg -> Text -> TestTree
