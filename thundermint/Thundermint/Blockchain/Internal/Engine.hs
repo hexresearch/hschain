@@ -109,10 +109,10 @@ decideNewBlock
   -> AppChans     m alg a
   -> Maybe (Commit alg a)
   -> m (Commit alg a)
-decideNewBlock config appValidatorKey appSt@AppLogic{..} appCall@AppCallbacks{..} appCh@AppChans{..} lastCommt = do
+decideNewBlock config appValidatorKey appLogic@AppLogic{..} appCall@AppCallbacks{..} appCh@AppChans{..} lastCommt = do
   -- Enter NEW HEIGHT and create initial state for consensus state
   -- machine
-  hParam <- makeHeightParameters config appValidatorKey appSt appCall appCh
+  hParam <- makeHeightParameters config appValidatorKey appLogic appCall appCh
   -- Get rid of messages in WAL that are no longer needed and replay
   -- all messages stored there.
   walMessages <- fmap (fromMaybe [])
@@ -185,7 +185,7 @@ decideNewBlock config appValidatorKey appSt@AppLogic{..} appCall@AppCallbacks{..
   -- FIXME: encode that we cannot fail here!
   Success tm0 <- runConsesusM $ newHeight hParam lastCommt
   runEffect $ messageSrc
-          >-> verifyMessageSignature appSt hParam
+          >-> verifyMessageSignature appLogic hParam
           >-> msgHandlerLoop Nothing tm0
 
 
@@ -241,10 +241,10 @@ verifyMessageSignature AppLogic{..} HeightParameters{..} = forever $ do
       Just sx' -> yield $ con sx'
       Nothing  -> lift $ logger WarningS "Invalid signature"
         (  sl "name" (name::Text)
-        <> sl "addr" (show (signedKeyInfo sx))
+        <> sl "addr" (show (signedAddr sx))
         )
     pkLookup mvset a = do vset <- mvset
-                          validatorPubKey <$> validatorByIndex vset a
+                          validatorPubKey <$> validatorByAddr vset a
 
 
 

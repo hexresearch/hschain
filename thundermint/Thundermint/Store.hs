@@ -6,6 +6,7 @@
 {-# LANGUAGE KindSignatures             #-}
 {-# LANGUAGE LambdaCase                 #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
+{-# LANGUAGE MultiWayIf                 #-}
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE RankNTypes                 #-}
 {-# LANGUAGE RecordWildCards            #-}
@@ -159,8 +160,7 @@ initDatabase
 initDatabase c dct genesis vals = do
   -- 1. Check that all tables has distinct names
   let names = foldF ((:[]) . persistentTableName) dct
-  case () of
-    _| names /= nub names               -> error "Duplicate table names"
+  if | names /= nub names               -> error "Duplicate table names"
      | any (isPrefixOf "thm_")    names -> error "'thm_' is not acceptable prefix for table"
      | any (isPrefixOf "sqlite_") names -> error "'sqlite_' is not acceptable prefix for table"
      | otherwise                        -> return ()

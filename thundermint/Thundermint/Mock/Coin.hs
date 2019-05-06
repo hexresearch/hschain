@@ -288,7 +288,7 @@ intToNetAddr i = NetAddrV4 (fromIntegral i) 1122
 
 netAddrToInt :: NetAddr -> Int
 netAddrToInt (NetAddrV4 x 1122) = fromIntegral x
-netAddrToInt na = error $ "invalid netaddr "++show na++" for conversion to int in Mock part of Thundermint"
+netAddrToInt na = error $ "Invalid NetAddr " ++ show na ++ " for conversion to Int in Mock part of Thundermint"
 
 -- | @restrictGenerator i n@ restrict generator to only generate
 --   transaction for ith nth of all private keys

@@ -1,6 +1,7 @@
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE LambdaCase          #-}
+{-# LANGUAGE MultiWayIf          #-}
 {-# LANGUAGE OverloadedStrings   #-}
 
 -- |
@@ -95,9 +96,8 @@ initializeBlockhainTables genesis initialVals = do
               | otherwise -> Just $ "validators are not equal: "
             Left _ -> Just "unable to deserialise validators"
           _ -> Just "validators are not stored in singleton"
-  case () of
-     -- Fresh DB without genesis block
-    _| [] <- storedGen
+  if -- Fresh DB without genesis block
+     | [] <- storedGen
      , [] <- storedVals
        -> do basicExecute "INSERT INTO thm_blockchain VALUES (0,0,?,?)"
                ( serialise (blockHash genesis)

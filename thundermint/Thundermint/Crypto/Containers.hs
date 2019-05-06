@@ -3,6 +3,7 @@
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase                 #-}
+{-# LANGUAGE MultiWayIf                 #-}
 {-# LANGUAGE RecordWildCards            #-}
 {-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE UndecidableInstances       #-}
@@ -108,8 +109,8 @@ insertSigned sval SignedSet{..} =
     Nothing -> InsertUnknown sval
     Just validator
       -- We already have value signed by that key
-      | Just v <- idx `IMap.lookup` vsetAddrMap -> case () of
-          _| signedValue v == val -> InsertDup
+      | Just v <- idx `IMap.lookup` vsetAddrMap -> if
+           | signedValue v == val -> InsertDup
            | otherwise            -> InsertConflict sval
       -- OK insert value then
       | otherwise -> InsertOK SignedSet
