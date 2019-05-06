@@ -4,6 +4,7 @@
 {-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeFamilies      #-}
+{-# LANGUAGE TypeOperators     #-}
 -- |
 module TM.Persistence (tests) where
 
@@ -25,7 +26,9 @@ import Test.Tasty.HUnit
 
 import Thundermint.Blockchain.Internal.Engine.Types
 import Thundermint.Control
-import Thundermint.Crypto.Ed25519
+import Thundermint.Crypto         ((:&))
+import Thundermint.Crypto.Ed25519 (Ed25519)
+import Thundermint.Crypto.SHA     (SHA512)
 import Thundermint.Mock.KeyList
 import Thundermint.Store
 import Thundermint.Store.Internal.Query
@@ -136,10 +139,10 @@ tests = testGroup "Tests for persistent data"
        ]
   ]
 
-genesis :: Block Ed25519_SHA512 ()
+genesis :: Block (Ed25519 :& SHA512) ()
 genesis = makeGenesis "TEST" (Time 0) () validatorSet
 
-validatorSet :: ValidatorSet Ed25519_SHA512
+validatorSet :: ValidatorSet (Ed25519 :& SHA512)
 validatorSet = makeValidatorSetFromPriv [ PrivValidator k | k <- take 4  privateKeyList ]
 
 ----------------------------------------------------------------

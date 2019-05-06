@@ -29,6 +29,8 @@ Library
     Build-depends:     ghcjs-prim
                      , ghcjs-base
                      , SHA               >=1.6 && <2
+    Other-modules:
+                  Thundermint.Crypto.NaCl
   else
     hs-source-dirs: ghc .
     Build-Depends:     cryptonite        >=0.25
@@ -37,7 +39,8 @@ Library
   Exposed-modules:
                   Thundermint.Crypto
                   Thundermint.Crypto.Ed25519
-
+                  Thundermint.Crypto.SHA
+                  
 Test-suite thundermint-crypto-tests
   if impl(ghcjs)
     js-sources: js/nacl-fast.js

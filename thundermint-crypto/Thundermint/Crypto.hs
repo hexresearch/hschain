@@ -110,7 +110,7 @@ newtype Hash alg = Hash BS.ByteString
 
 -- | Compute hash of value. It's first serialized using CBOR and then
 --   hash of encoded data is computed,
-hash :: (Crypto alg, Serialise a) => a -> Hash alg
+hash :: (CryptoHash alg, Serialise a) => a -> Hash alg
 hash = hashBlob . toStrict . serialise
 
 class ( ByteRepr (Fingerprint alg)
@@ -156,23 +156,23 @@ class ( ByteRepr (Hash   alg)
 
 
 -- | Size of hash in bytes
-hashSize :: forall alg proxy i. (Crypto alg, Num i) => proxy alg -> i
+hashSize :: forall alg proxy i. (CryptoHash alg, Num i) => proxy alg -> i
 hashSize _ = fromIntegral $ natVal (Proxy :: Proxy (HashSize alg))
 
 -- | Size of public key fingerprint in bytes
-fingerprintSize :: forall alg proxy i. (Crypto alg, Num i) => proxy alg -> i
+fingerprintSize :: forall alg proxy i. (CryptoSign alg, Num i) => proxy alg -> i
 fingerprintSize _ = fromIntegral $ natVal (Proxy :: Proxy (FingerprintSize alg))
 
 -- | Size of public key in bytes
-publicKeySize :: forall alg proxy i. (Crypto alg, Num i) => proxy alg -> i
+publicKeySize :: forall alg proxy i. (CryptoSign alg, Num i) => proxy alg -> i
 publicKeySize _ = fromIntegral $ natVal (Proxy :: Proxy (PublicKeySize alg))
 
 -- | Size of private key in bytes
-privKeySize :: forall alg proxy i. (Crypto alg, Num i) => proxy alg -> i
+privKeySize :: forall alg proxy i. (CryptoSign alg, Num i) => proxy alg -> i
 privKeySize _ = fromIntegral $ natVal (Proxy :: Proxy (PrivKeySize alg))
 
 -- | Size of signature in bytes
-signatureSize :: forall alg proxy i. (Crypto alg, Num i) => proxy alg -> i
+signatureSize :: forall alg proxy i. (CryptoSign alg, Num i) => proxy alg -> i
 signatureSize _ = fromIntegral $ natVal (Proxy :: Proxy (SignatureSize alg))
 
 -- | Value could be represented as bytestring.

@@ -1,9 +1,10 @@
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE DeriveAnyClass #-}
-{-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE DataKinds          #-}
+{-# LANGUAGE DeriveAnyClass     #-}
+{-# LANGUAGE DeriveGeneric      #-}
+{-# LANGUAGE OverloadedStrings  #-}
+{-# LANGUAGE RecordWildCards    #-}
 {-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE TypeOperators      #-}
 
 -- |
 module TM.Validators (tests) where
@@ -30,7 +31,8 @@ import Thundermint.Blockchain.Internal.Engine.Types
 import Thundermint.Blockchain.Interpretation
 import Thundermint.Control
 import Thundermint.Crypto
-import Thundermint.Crypto.Ed25519
+import Thundermint.Crypto.Ed25519 (Ed25519)
+import Thundermint.Crypto.SHA     (SHA512)
 import Thundermint.Debug.Trace
 import Thundermint.Logger
 import Thundermint.Mock.Coin
@@ -90,13 +92,13 @@ tests = testGroup "validators"
       ]
   ]
 
-invalid :: [Validator Ed25519_SHA512] -> [ValidatorChange Ed25519_SHA512] -> IO ()
+invalid :: [Validator (Ed25519 :& SHA512)] -> [ValidatorChange (Ed25519 :& SHA512)] -> IO ()
 invalid vals changes = do
   let Right vset = makeValidatorSet vals
   Nothing @=? changeValidators changes vset
 
 
-v1,v2 :: PublicKey Ed25519_SHA512
+v1,v2 :: PublicKey (Ed25519 :& SHA512)
 v1:v2:_ = map publicKey privateKeyList
 
 data ValidatorsTestsState = ValidatorsTestsState
@@ -168,7 +170,7 @@ testAddRemValidators = do
       :: (Functor m, MonadMask m, MonadFork m, MonadFail m, MonadTMMonitoring m)
       => MockNet
       -> MVar (Bool)
-      -> (Connection 'RW Ed25519_SHA512 [VTSTx], (TestNetLinkDescription m, PrivValidator Ed25519_SHA512))
+      -> (Connection 'RW (Ed25519 :& SHA512) [VTSTx], (TestNetLinkDescription m, PrivValidator (Ed25519 :& SHA512)))
       -> m [m ()]
     mkTestNode net summary (conn, (TestNetLinkDescription{..}, privKey)) = do
         let nodeIndex = ncFrom

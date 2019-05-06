@@ -8,6 +8,7 @@
 {-# LANGUAGE StandaloneDeriving  #-}
 {-# LANGUAGE TypeApplications    #-}
 {-# LANGUAGE TypeFamilies        #-}
+{-# LANGUAGE TypeOperators       #-}
 import Control.Concurrent
 import Control.Monad
 import Control.Monad.Catch
@@ -26,7 +27,9 @@ import System.FilePath      ((</>))
 import qualified Network.Wai.Handler.Warp as Warp
 
 import Thundermint.Blockchain.Internal.Engine.Types
-import Thundermint.Crypto.Ed25519            (Ed25519_SHA512)
+import Thundermint.Crypto                    ((:&))
+import Thundermint.Crypto.Ed25519            (Ed25519)
+import Thundermint.Crypto.SHA                (SHA512)
 import Thundermint.Logger
 import Thundermint.Run
 import Thundermint.Mock.Coin
@@ -118,7 +121,7 @@ main = do
     startWebMonitoring port
     withLogEnv "TM" "DEV" loggers $ \logenv -> runLoggerT logenv $ do
       let !validatorSet = makeValidatorSetFromPriv
-                        $ (id @[PrivValidator Ed25519_SHA512])
+                        $ (id @[PrivValidator (Ed25519 :& SHA512)])
                         $ either error (fmap PrivValidator)
                         $ JSON.eitherDecodeStrict' ipMapPath
       logger InfoS "Listening for bootstrap adresses" ()

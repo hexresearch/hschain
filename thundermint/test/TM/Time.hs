@@ -1,4 +1,5 @@
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE TypeOperators   #-}
 -- |
 module TM.Time (tests) where
 
@@ -10,7 +11,8 @@ import Test.Tasty
 import Test.Tasty.HUnit
 
 import Thundermint.Crypto
-import Thundermint.Crypto.Ed25519
+import Thundermint.Crypto.Ed25519 (Ed25519)
+import Thundermint.Crypto.SHA     (SHA512)
 import Thundermint.Mock.KeyList (privateKeyList)
 import Thundermint.Types.Blockchain
 import Thundermint.Types.Validators
@@ -67,5 +69,5 @@ permuteCommit Commit{..} =
   | pc <- NE.fromList <$> permutations (NE.toList commitPrecommits)
   ]
 
-bid :: BlockID Ed25519_SHA512 ()
+bid :: BlockID (Ed25519 :& SHA512) ()
 bid = BlockID (Hashed (hash ()))

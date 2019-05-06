@@ -3,6 +3,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 {-# LANGUAGE TupleSections     #-}
+{-# LANGUAGE TypeOperators     #-}
 -- |
 module Thundermint.Mock.KeyVal (
     genesisBlock
@@ -29,7 +30,9 @@ import Thundermint.Blockchain.Internal.Engine.Types
 import Thundermint.Blockchain.Interpretation
 import Thundermint.Types.Blockchain
 import Thundermint.Control
+import Thundermint.Crypto
 import Thundermint.Crypto.Ed25519
+import Thundermint.Crypto.SHA
 import Thundermint.Logger
 import Thundermint.Mock.KeyList
 import Thundermint.Mock.Types
@@ -44,7 +47,7 @@ import Thundermint.Types.Validators (ValidatorSet)
 --
 ----------------------------------------------------------------
 
-genesisBlock :: ValidatorSet Ed25519_SHA512 -> Block Ed25519_SHA512 [(String,NetAddr)]
+genesisBlock :: ValidatorSet (Ed25519 :& SHA512) -> Block (Ed25519 :& SHA512) [(String,NetAddr)]
 genesisBlock valSet
   = makeGenesis "KV" (Time 0) [] valSet
 
@@ -75,7 +78,7 @@ interpretSpec
   :: Maybe Int64                -- ^ Maximum height
   -> FilePath
   -> NetSpec NodeSpec
-  -> IO [(Connection 'RO Ed25519_SHA512 [(String,NetAddr)], IO ())]
+  -> IO [(Connection 'RO (Ed25519 :& SHA512) [(String,NetAddr)], IO ())]
 interpretSpec maxH prefix NetSpec{..} = do
   net <- newMockNet
   forM (Map.toList netAddresses) $ \(addr, NodeSpec{..}) -> do
@@ -137,7 +140,7 @@ executeSpec
   :: Maybe Int64                -- ^ Maximum height
   -> FilePath
   -> NetSpec NodeSpec
-  -> IO [Connection 'RO Ed25519_SHA512 [(String,NetAddr)]]
+  -> IO [Connection 'RO (Ed25519 :& SHA512) [(String,NetAddr)]]
 executeSpec maxH prefix spec = do
   actions <- interpretSpec maxH prefix spec
   runConcurrently (snd <$> actions) `catch` (\Abort -> return ())
