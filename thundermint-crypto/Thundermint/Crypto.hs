@@ -1,3 +1,4 @@
+{-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE ConstraintKinds            #-}
 {-# LANGUAGE DataKinds                  #-}
 {-# LANGUAGE DeriveDataTypeable         #-}
@@ -89,7 +90,8 @@ import Thundermint.Crypto.Classes
 
 -- | Cryptographic hash of some value
 newtype Hash alg = Hash BS.ByteString
-  deriving (Eq,Ord, Generic, Generic1, Serialise, NFData)
+  deriving stock   (Generic, Generic1)
+  deriving newtype (Eq,Ord,Serialise,NFData)
 
 -- | Compute hash of value. It's first serialized using CBOR and then
 --   hash of encoded data is computed,
@@ -115,8 +117,9 @@ hashSize _ = fromIntegral $ natVal (Proxy :: Proxy (HashSize alg))
 -- | Newtype wrapper with phantom type tag which show hash of which
 --   value is being calculated
 newtype Hashed alg a = Hashed (Hash alg)
-  deriving ( Show,Read, Eq,Ord, Generic, Generic1, NFData
-           , Serialise, JSON.FromJSON, JSON.ToJSON, JSON.ToJSONKey, JSON.FromJSONKey)
+  deriving stock   ( Show, Read, Generic, Generic1)
+  deriving newtype ( Eq,Ord,NFData, Serialise
+                   , JSON.FromJSON, JSON.ToJSON, JSON.ToJSONKey, JSON.FromJSONKey)
 
 hashed :: (Crypto alg, Serialise a) => a -> Hashed alg a
 hashed = Hashed . hash
@@ -177,11 +180,13 @@ data family PublicKey alg
 
 -- | Signature
 newtype Signature alg = Signature BS.ByteString
-  deriving (Eq, Ord, Generic, Generic1, Serialise, NFData)
+  deriving stock   (Generic, Generic1)
+  deriving newtype (Eq, Ord, Serialise, NFData)
 
 -- | Public key fingerprint (hash of public key)
 newtype Fingerprint alg = Fingerprint BS.ByteString
-  deriving (Eq,Ord, Generic, Generic1, Serialise, NFData)
+  deriving stock   (Generic, Generic1)
+  deriving newtype (Eq, Ord, Serialise, NFData)
 
 class ( ByteRepr (PublicKey   alg)
       , ByteRepr (PrivKey     alg)
@@ -443,7 +448,7 @@ data SignedState = Verified
 --   encoding of value.
 data Signed (sign :: SignedState) alg a
   = Signed !(Fingerprint alg) !(Signature alg) !a
-  deriving (Generic, Eq, Show)
+  deriving stock (Generic, Eq, Show)
 
 instance (NFData a) => NFData (Signed sign alg a) where
   rnf (Signed a s x) = rnf a `seq` rnf s `seq` rnf x
