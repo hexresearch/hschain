@@ -18,33 +18,38 @@
 -- selected by type and all necessary types are implemented as data
 -- families
 module Thundermint.Crypto (
-    -- * Signatures and hashes API
-    PrivKey
+    -- * Cryptographic hashes
+    CryptoHash(..)
+  , Hash(..)
+  , Hashed(..)
+  , hash
+  , hashed
+  , (:<<<)
+    -- ** Sizes
+  , hashSize
+    -- * Signatures API
+  , PrivKey
   , PublicKey
   , Signature(..)
   , Fingerprint(..)
-  , Hash(..)
-  , hash
-  , Crypto
   , CryptoSign(..)
-  , CryptoHash(..)
   , CryptoSignPrim(..)
-  , (:&)
-  , (:<<<)
-    -- ** Sizes of crypto types
-  , hashSize
+    -- ** Sizes
   , fingerprintSize
   , publicKeySize
   , privKeySize
   , signatureSize
-    -- * Encoding and decoding of values
-  , ByteRepr(..)
-  , encodeBase58
-  , decodeBase58
+    -- * Convenince: signatures and hashes
+  , Crypto
+  , (:&)
     -- * Stream cyphers
   , CypherKey
   , CypherNonce
   , StreamCypher(..)
+    -- * Encoding and decoding of values
+  , ByteRepr(..)
+  , encodeBase58
+  , decodeBase58
     -- * Serialization and signatures
   , SignedState(..)
   , Signed
@@ -55,9 +60,6 @@ module Thundermint.Crypto (
   , verifySignature
   , unverifySignature
   , verifyCborSignature
-    -- * Hash trees
-  , Hashed(..)
-  , hashed
   ) where
 
 import Codec.Serialise (Serialise, serialise)
@@ -69,9 +71,7 @@ import Control.Monad.IO.Class
 
 import qualified Data.Aeson           as JSON
 import           Data.Data (Data)
-import qualified Data.Text.Encoding   as T
 import           Data.ByteString.Lazy    (toStrict)
-import qualified Data.ByteString.Char8 as BC8
 import qualified Data.ByteString       as BS
 import Data.Coerce
 import Data.Typeable (Proxy(..))
@@ -82,11 +82,92 @@ import GHC.Generics         (Generic,Generic1)
 
 import Thundermint.Crypto.Classes
 
+
 ----------------------------------------------------------------
--- Basic crypto API
+-- Cryptographic hashes
 ----------------------------------------------------------------
 
-type Crypto (alg) = (CryptoSign alg, CryptoHash alg)
+-- | Cryptographic hash of some value
+newtype Hash alg = Hash BS.ByteString
+  deriving (Eq,Ord, Generic, Generic1, Serialise, NFData)
+
+-- | Compute hash of value. It's first serialized using CBOR and then
+--   hash of encoded data is computed,
+hash :: (CryptoHash alg, Serialise a) => a -> Hash alg
+hash = hashBlob . toStrict . serialise
+
+-- | Type-indexed set of crypto algorithms. It's not very principled
+--   to push everything into singe type class.  But in order to keep
+--   signatures sane it was done this way.
+class ( ByteRepr (Hash   alg)
+      , KnownNat (HashSize alg)
+      ) => CryptoHash alg where
+  type HashSize        alg :: Nat
+  -- | Compute hash of sequence of bytes
+  hashBlob     :: BS.ByteString -> Hash alg
+  -- | Compare hash with a bytestring safly
+  hashEquality :: Hash alg -> BS.ByteString -> Bool
+
+-- | Size of hash in bytes
+hashSize :: forall alg proxy i. (CryptoHash alg, Num i) => proxy alg -> i
+hashSize _ = fromIntegral $ natVal (Proxy :: Proxy (HashSize alg))
+
+-- | Newtype wrapper with phantom type tag which show hash of which
+--   value is being calculated
+newtype Hashed alg a = Hashed (Hash alg)
+  deriving ( Show,Read, Eq,Ord, Generic, Generic1, NFData
+           , Serialise, JSON.FromJSON, JSON.ToJSON, JSON.ToJSONKey, JSON.FromJSONKey)
+
+hashed :: (Crypto alg, Serialise a) => a -> Hashed alg a
+hashed = Hashed . hash
+
+instance (CryptoHash alg) => ByteRepr (Hashed alg a) where
+  encodeToBS (Hashed h) = encodeToBS h
+  decodeFromBS = fmap Hashed . decodeFromBS
+
+-- | Chaining of hash algorithms. For example @SHA256 :<<< SHA256@
+--   would mean applying SHA256 twice or @SHA256 :<<< SHA512@ will
+--   work as @sha256 . sha512@.
+data hashA :<<< hashB
+
+instance (CryptoHash hashA, CryptoHash hashB) => CryptoHash (hashA :<<< hashB) where
+  type HashSize (hashA :<<< hashB) = HashSize hashA
+  hashBlob bs = let Hash hB = hashBlob bs :: Hash hashB
+                    Hash hA = hashBlob hB :: Hash hashA
+                in Hash hA
+  hashEquality (Hash hbs) bs = hbs == bs
+
+
+----------------------------------------
+
+instance ByteRepr (Hash alg) where
+  decodeFromBS         = Just . Hash
+  encodeToBS (Hash bs) = bs
+
+instance Show (Hash alg) where
+  showsPrec n h
+    = showParen (n > 10)
+    $ showString "Hash " . shows (encodeBSBase58 $ encodeToBS h)
+
+instance Read (Hash alg) where
+  readPrec = do void $ lift $ string "Hash" >> some (char ' ')
+                val <- readPrecBSBase58
+                case decodeFromBS val of
+                  Nothing -> fail "Incorrect bytestring representation of Hash"
+                  Just h  -> return h
+
+instance JSON.ToJSON   (Hash alg) where
+  toJSON    = defaultToJSON
+instance JSON.FromJSON (Hash alg) where
+  parseJSON = defaultParseJSON "Hash"
+instance JSON.FromJSONKey (Hash alg)
+instance JSON.ToJSONKey   (Hash alg)
+
+
+
+----------------------------------------------------------------
+-- Signatures API
+----------------------------------------------------------------
 
 -- | Private key
 data family PrivKey   alg
@@ -101,15 +182,6 @@ newtype Signature alg = Signature BS.ByteString
 -- | Public key fingerprint (hash of public key)
 newtype Fingerprint alg = Fingerprint BS.ByteString
   deriving (Eq,Ord, Generic, Generic1, Serialise, NFData)
-
--- | Cryptographic hash of some value
-newtype Hash alg = Hash BS.ByteString
-  deriving (Eq,Ord, Generic, Generic1, Serialise, NFData)
-
--- | Compute hash of value. It's first serialized using CBOR and then
---   hash of encoded data is computed,
-hash :: (CryptoHash alg, Serialise a) => a -> Hash alg
-hash = hashBlob . toStrict . serialise
 
 class ( ByteRepr (PublicKey   alg)
       , ByteRepr (PrivKey     alg)
@@ -137,22 +209,6 @@ class ( KnownNat (SignatureSize alg)
   type PrivKeySize     alg :: Nat
   type SignatureSize   alg :: Nat
 
--- | Type-indexed set of crypto algorithms. It's not very principled
---   to push everything into singe type class.  But in order to keep
---   signatures sane it was done this way.
-class ( ByteRepr (Hash   alg)
-      , KnownNat (HashSize alg)
-      ) => CryptoHash alg where
-  type HashSize        alg :: Nat
-  -- | Compute hash of sequence of bytes
-  hashBlob     :: BS.ByteString -> Hash alg
-  -- | Compare hash with a bytestring safly
-  hashEquality :: Hash alg -> BS.ByteString -> Bool
-
-
--- | Size of hash in bytes
-hashSize :: forall alg proxy i. (CryptoHash alg, Num i) => proxy alg -> i
-hashSize _ = fromIntegral $ natVal (Proxy :: Proxy (HashSize alg))
 
 -- | Size of public key fingerprint in bytes
 fingerprintSize :: forall alg proxy i. (CryptoSign alg, Num i) => proxy alg -> i
@@ -170,9 +226,8 @@ privKeySize _ = fromIntegral $ natVal (Proxy :: Proxy (PrivKeySize alg))
 signatureSize :: forall alg proxy i. (CryptoSign alg, Num i) => proxy alg -> i
 signatureSize _ = fromIntegral $ natVal (Proxy :: Proxy (SignatureSize alg))
 
-instance ByteRepr (Hash alg) where
-  decodeFromBS         = Just . Hash
-  encodeToBS (Hash bs) = bs
+
+----------------------------------------
 
 instance ByteRepr (Fingerprint alg) where
   decodeFromBS                = Just . Fingerprint
@@ -183,38 +238,7 @@ instance ByteRepr (Signature alg) where
   encodeToBS (Signature bs) = bs
 
 
-
-----------------------------------------------------------------
--- Stream cyphers
-----------------------------------------------------------------
-
--- | Key for cypher algorithm
-data family CypherKey alg
-
--- | Nonce for stream cypher
-data family CypherNonce alg
-
-
--- | High level API for stream cypher. In order to protect against
---   bit-flipping attack ecrypted message must contain MAC (message
---   authentication code).
---
---   Note that to protect against reused key attacks same pair key,
---   nonce MUST NOT be used for more than one message.
-class ( ByteRepr (CypherKey   alg)
-      , ByteRepr (CypherNonce alg)
-      ) => StreamCypher alg where
-  -- | Encrypt message. Note that same nonce MUST NOT be reused.
-  encryptMessage :: CypherKey alg -> CypherNonce alg -> BS.ByteString -> BS.ByteString
-  -- | Decrypt message. If MAC verification fails (message was
-  --   tampered with) decription returns @Nothing@
-  decryptMessage :: CypherKey alg -> CypherNonce alg -> BS.ByteString -> Maybe BS.ByteString
-
-
-
-----------------------------------------------------------------
--- Instances
-----------------------------------------------------------------
+----------------------------------------
 
 instance CryptoSign alg => Show (PrivKey alg) where
   show = defaultShow
@@ -289,26 +313,81 @@ instance JSON.FromJSON (Signature alg) where
 instance JSON.FromJSONKey (Signature alg)
 instance JSON.ToJSONKey   (Signature alg)
 
-----------------------------------------
 
-instance CryptoHash alg => Show (Hash alg) where
-  showsPrec n h
-    = showParen (n > 10)
-    $ showString "Hash " . shows (encodeBSBase58 $ encodeToBS h)
+----------------------------------------------------------------
+-- Convenience: Signatures & hashes
+----------------------------------------------------------------
 
-instance CryptoHash alg => Read (Hash alg) where
-  readPrec = do void $ lift $ string "Hash" >> some (char ' ')
-                val <- readPrecBSBase58
-                case decodeFromBS val of
-                  Nothing -> fail "Incorrect bytestring representation of Hash"
-                  Just h  -> return h
+type Crypto (alg) = (CryptoSign alg, CryptoHash alg)
 
-instance CryptoHash alg => JSON.ToJSON   (Hash alg) where
-  toJSON    = defaultToJSON
-instance CryptoHash alg => JSON.FromJSON (Hash alg) where
-  parseJSON = defaultParseJSON "Hash"
-instance CryptoHash alg => JSON.FromJSONKey (Hash alg)
-instance CryptoHash alg => JSON.ToJSONKey   (Hash alg)
+-- | Data type which support both hashing and signing
+data sign :& hash
+  deriving (Data)
+
+
+newtype instance PrivKey   (sign :& hash) = PrivKeyU   (PrivKey   sign)
+newtype instance PublicKey (sign :& hash) = PublicKeyU (PublicKey sign)
+
+deriving instance (Eq     (PrivKey   sign)) => Eq     (PrivKey   (sign :& hash))
+deriving instance (Ord    (PrivKey   sign)) => Ord    (PrivKey   (sign :& hash))
+deriving instance (NFData (PrivKey   sign)) => NFData (PrivKey   (sign :& hash))
+deriving instance (Eq     (PublicKey sign)) => Eq     (PublicKey (sign :& hash))
+deriving instance (Ord    (PublicKey sign)) => Ord    (PublicKey (sign :& hash))
+deriving instance (NFData (PublicKey sign)) => NFData (PublicKey (sign :& hash))
+
+instance (ByteRepr (PrivKey sign)) => ByteRepr (PrivKey (sign :& hash)) where
+  encodeToBS   = coerce (encodeToBS   @(PrivKey sign))
+  decodeFromBS = coerce (decodeFromBS @(PrivKey sign))
+
+instance (ByteRepr (PublicKey sign)) => ByteRepr (PublicKey (sign :& hash)) where
+  encodeToBS   = coerce (encodeToBS   @(PublicKey sign))
+  decodeFromBS = coerce (decodeFromBS @(PublicKey sign))
+
+instance CryptoSign sign => CryptoSign (sign :& hash) where
+  signBlob            = coerce (signBlob @sign)
+  verifyBlobSignature = coerce (verifyBlobSignature @sign)
+  publicKey           = coerce (publicKey @sign)
+  fingerprint         = coerce (fingerprint @sign)
+  generatePrivKey     = fmap PrivKeyU (generatePrivKey @sign)
+
+instance (CryptoSignPrim sign) => CryptoSignPrim (sign :& hash) where
+  type FingerprintSize (sign :& hash) = FingerprintSize sign
+  type PublicKeySize   (sign :& hash) = PublicKeySize   sign
+  type PrivKeySize     (sign :& hash) = PrivKeySize     sign
+  type SignatureSize   (sign :& hash) = SignatureSize   sign
+
+instance (CryptoHash hash) => CryptoHash (sign :& hash) where
+  type HashSize (sign :& hash) = HashSize hash
+  hashBlob     = coerce (hashBlob @hash)
+  hashEquality = coerce (hashEquality @hash)
+
+
+
+----------------------------------------------------------------
+-- Stream cyphers
+----------------------------------------------------------------
+
+-- | Key for cypher algorithm
+data family CypherKey alg
+
+-- | Nonce for stream cypher
+data family CypherNonce alg
+
+
+-- | High level API for stream cypher. In order to protect against
+--   bit-flipping attack ecrypted message must contain MAC (message
+--   authentication code).
+--
+--   Note that to protect against reused key attacks same pair key,
+--   nonce MUST NOT be used for more than one message.
+class ( ByteRepr (CypherKey   alg)
+      , ByteRepr (CypherNonce alg)
+      ) => StreamCypher alg where
+  -- | Encrypt message. Note that same nonce MUST NOT be reused.
+  encryptMessage :: CypherKey alg -> CypherNonce alg -> BS.ByteString -> BS.ByteString
+  -- | Decrypt message. If MAC verification fails (message was
+  --   tampered with) decription returns @Nothing@
+  decryptMessage :: CypherKey alg -> CypherNonce alg -> BS.ByteString -> Maybe BS.ByteString
 
 
 ----------------------------------------
@@ -433,78 +512,3 @@ instance JSON.ToJSON   a => JSON.ToJSON   (Signed 'Unverified alg a)
 -- Union of hashing and signing
 ----------------------------------------------------------------
 
--- | Data type which support both hashing and signing
-data sign :& hash
-  deriving (Data)
-
-
-newtype instance PrivKey   (sign :& hash) = PrivKeyU   (PrivKey   sign)
-newtype instance PublicKey (sign :& hash) = PublicKeyU (PublicKey sign)
-
-deriving instance (Eq     (PrivKey   sign)) => Eq     (PrivKey   (sign :& hash))
-deriving instance (Ord    (PrivKey   sign)) => Ord    (PrivKey   (sign :& hash))
-deriving instance (NFData (PrivKey   sign)) => NFData (PrivKey   (sign :& hash))
-deriving instance (Eq     (PublicKey sign)) => Eq     (PublicKey (sign :& hash))
-deriving instance (Ord    (PublicKey sign)) => Ord    (PublicKey (sign :& hash))
-deriving instance (NFData (PublicKey sign)) => NFData (PublicKey (sign :& hash))
-
-instance (ByteRepr (PrivKey sign)) => ByteRepr (PrivKey (sign :& hash)) where
-  encodeToBS   = coerce (encodeToBS   @(PrivKey sign))
-  decodeFromBS = coerce (decodeFromBS @(PrivKey sign))
-
-instance (ByteRepr (PublicKey sign)) => ByteRepr (PublicKey (sign :& hash)) where
-  encodeToBS   = coerce (encodeToBS   @(PublicKey sign))
-  decodeFromBS = coerce (decodeFromBS @(PublicKey sign))
-
-instance CryptoSign sign => CryptoSign (sign :& hash) where
-  signBlob            = coerce (signBlob @sign)
-  verifyBlobSignature = coerce (verifyBlobSignature @sign)
-  publicKey           = coerce (publicKey @sign)
-  fingerprint         = coerce (fingerprint @sign)
-  generatePrivKey     = fmap PrivKeyU (generatePrivKey @sign)
-
-instance (CryptoSignPrim sign) => CryptoSignPrim (sign :& hash) where
-  type FingerprintSize (sign :& hash) = FingerprintSize sign
-  type PublicKeySize   (sign :& hash) = PublicKeySize   sign
-  type PrivKeySize     (sign :& hash) = PrivKeySize     sign
-  type SignatureSize   (sign :& hash) = SignatureSize   sign
-
-instance (CryptoHash hash) => CryptoHash (sign :& hash) where
-  type HashSize (sign :& hash) = HashSize hash
-  hashBlob     = coerce (hashBlob @hash)
-  hashEquality = coerce (hashEquality @hash)
-
-
-----------------------------------------------------------------
--- Hash chaining
-----------------------------------------------------------------
-
--- | Chaining of hash algorithms. For example @SHA256 :<<< SHA256@
---   would mean applying SHA256 twice or @SHA256 :<<< SHA512@ will
---   work as @sha256 . sha512@.
-data hashA :<<< hashB
-
-instance (CryptoHash hashA, CryptoHash hashB) => CryptoHash (hashA :<<< hashB) where
-  type HashSize (hashA :<<< hashB) = HashSize hashA
-  hashBlob bs = let Hash hB = hashBlob bs :: Hash hashB
-                    Hash hA = hashBlob hB :: Hash hashA
-                in Hash hA
-  hashEquality (Hash hbs) bs = hbs == bs
-
-
-----------------------------------------------------------------
--- Hashed data
-----------------------------------------------------------------
-
--- | Newtype wrapper with phantom type tag which show hash of which
---   value is being calculated
-newtype Hashed alg a = Hashed (Hash alg)
-  deriving ( Show,Read, Eq,Ord, Generic, Generic1, NFData
-           , Serialise, JSON.FromJSON, JSON.ToJSON, JSON.ToJSONKey, JSON.FromJSONKey)
-
-hashed :: (Crypto alg, Serialise a) => a -> Hashed alg a
-hashed = Hashed . hash
-
-instance (CryptoHash alg) => ByteRepr (Hashed alg a) where
-  encodeToBS (Hashed h) = encodeToBS h
-  decodeFromBS = fmap Hashed . decodeFromBS
