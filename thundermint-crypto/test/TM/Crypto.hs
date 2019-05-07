@@ -5,6 +5,8 @@
 -- |
 module TM.Crypto (tests) where
 
+import qualified Codec.Serialise as CBOR
+import qualified Data.Aeson      as JSON
 import Data.Typeable
 import Data.Text      (Text)
 import qualified Data.ByteString as BS
@@ -84,6 +86,28 @@ testsEd25519 = testGroup "ed25519"
        Just pubK  @=? (decodeBase58 . encodeBase58) pubK
        Just addr  @=? (decodeBase58 . encodeBase58) addr
        Just sign  @=? (decodeBase58 . encodeBase58) sign
+    --
+  , testCase "CBOR roundtrip"
+  $ do privK <- generatePrivKey @Ed25519
+       let pubK = publicKey privK
+           addr = fingerprint pubK
+           blob = "ABCD"
+           sign = signBlob privK blob
+       Right privK @=? (CBOR.deserialiseOrFail . CBOR.serialise) privK
+       Right pubK  @=? (CBOR.deserialiseOrFail . CBOR.serialise) pubK
+       Right addr  @=? (CBOR.deserialiseOrFail . CBOR.serialise) addr
+       Right sign  @=? (CBOR.deserialiseOrFail . CBOR.serialise) sign
+    --
+  , testCase "Aeson roundtrip"
+  $ do privK <- generatePrivKey @Ed25519
+       let pubK = publicKey privK
+           addr = fingerprint pubK
+           blob = "ABCD"
+           sign = signBlob privK blob
+       Just privK @=? (JSON.decode . JSON.encode) privK
+       Just pubK  @=? (JSON.decode . JSON.encode) pubK
+       Just addr  @=? (JSON.decode . JSON.encode) addr
+       Just sign  @=? (JSON.decode . JSON.encode) sign
     --
   , testCase "encodeBase58 is Show compatible"
   $ do privK <- generatePrivKey @Ed25519
