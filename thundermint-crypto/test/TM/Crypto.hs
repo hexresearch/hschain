@@ -10,6 +10,7 @@ import qualified Data.Aeson      as JSON
 import Data.Typeable
 import Data.Text      (Text)
 import qualified Data.ByteString as BS
+import qualified Data.ByteString.Base64 as B64
 import qualified Data.Text       as T
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -17,12 +18,14 @@ import Test.Tasty.HUnit
 import Thundermint.Crypto
 import Thundermint.Crypto.Ed25519
 import Thundermint.Crypto.SHA
+import Thundermint.Crypto.Salsa20Poly1305
 
 
 tests :: TestTree
 tests = testGroup "Crypto"
   [ testsEd25519
   , testsSHA
+  , testSalsa20
   ]
 
 testsEd25519 :: TestTree
@@ -162,3 +165,22 @@ testHashSize p
   = testCase ("Size of Hash " ++ show (typeRep p) ++ " is correct")
   $ do let Hash bs = hashBlob "ABCD" :: Hash alg
        BS.length bs @=? hashSize p
+
+
+
+testSalsa20 :: TestTree
+testSalsa20 = testGroup "Salsa20Poly1305"
+  [ testCase "Decoding works" $ do
+      let key :: CypherKey Salsa20Poly1305
+          Just key        = decodeFromBS =<< decodeB64 "lt8thW/fKVtoQ63/f3k9vLxBRxHTSbj2ZKa9bM3uXOU="
+          Just nonce      = decodeFromBS =<< decodeB64 "z62h/TTmeH3s7pDX3NoiUcZjsLAUbd7F"
+          cleartext       = "Lorem ipsum dolor amet"
+          Just cyphertext = decodeB64 "wUr1JSEU2YogthaetNAiuPppjsw31HHTjYikwmFJ0domMi1Uleo="
+      cyphertext     @=? encryptMessage key nonce cleartext
+      Just cleartext @=? decryptMessage key nonce cyphertext
+  ]
+
+decodeB64 :: BS.ByteString -> Maybe BS.ByteString
+decodeB64 bs = case B64.decode bs of
+  Right x -> Just x
+  Left  _ -> Nothing

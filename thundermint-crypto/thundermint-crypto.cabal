@@ -52,7 +52,8 @@ Library
                   Thundermint.Crypto.Classes
                   Thundermint.Crypto.Ed25519
                   Thundermint.Crypto.SHA
-                  
+                  Thundermint.Crypto.Salsa20Poly1305
+
 Test-suite thundermint-crypto-tests
   if impl(ghcjs)
     js-sources: js/nacl-fast.js
@@ -64,6 +65,7 @@ Test-suite thundermint-crypto-tests
                      , thundermint-crypto
                      , aeson
                      , bytestring        >=0.10
+                     , base64-bytestring
                      , serialise         >=0.2
                      , text
                      --
