@@ -506,9 +506,3 @@ verifyCborSignature pk a
 instance Serialise a => Serialise (Signed 'Unverified alg a)
 instance JSON.FromJSON a => JSON.FromJSON (Signed 'Unverified alg a)
 instance JSON.ToJSON   a => JSON.ToJSON   (Signed 'Unverified alg a)
-
-
-----------------------------------------------------------------
--- Union of hashing and signing
-----------------------------------------------------------------
-
