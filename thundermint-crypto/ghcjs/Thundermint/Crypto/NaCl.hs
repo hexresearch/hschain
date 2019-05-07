@@ -16,7 +16,7 @@ arrayToBs :: Uint8Array -> ByteString
 arrayToBs arr
   -- Note that some intermediate buffer is have size which is multiple
   -- of 8 so we need to pass length explicitly
-  = toByteString 0 (Just (JavaScript.TypedArray.length arr))
+  = toByteString (byteOffset arr) (Just (JavaScript.TypedArray.length arr))
   $ createFromArrayBuffer
   $ buffer arr
 
