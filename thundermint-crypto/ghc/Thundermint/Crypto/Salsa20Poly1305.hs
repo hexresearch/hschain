@@ -1,3 +1,4 @@
+{-# LANGUAGE DataKinds                  #-}
 {-# LANGUAGE DeriveDataTypeable         #-}
 {-# LANGUAGE DerivingStrategies         #-}
 {-# LANGUAGE FlexibleInstances          #-}
@@ -10,9 +11,11 @@
 module Thundermint.Crypto.Salsa20Poly1305 where
 
 import Control.Monad
-import Control.DeepSeq       (NFData(..))
-import Data.Data (Data)
+import Control.Monad.IO.Class
+import Control.DeepSeq (NFData(..))
+import Data.Data       (Data)
 import Data.ByteArray
+import System.Entropy  (getEntropy)
 import qualified Data.ByteString      as BS
 import qualified Crypto.Cipher.XSalsa as XSalsa
 import qualified Crypto.MAC.Poly1305  as Poly1305
@@ -30,6 +33,9 @@ newtype instance CypherNonce Salsa20Poly1305 = Nonce ScrubbedBytes
   deriving newtype (Eq, Ord, NFData)
 
 instance StreamCypher Salsa20Poly1305 where
+  type instance CypherKeySize   Salsa20Poly1305 = 32
+  type instance CypherNonceSize Salsa20Poly1305 = 24
+  --
   encryptMessage (Key key) (Nonce nonce) msg
     =  convert tag
     <> ciphertext
@@ -53,6 +59,15 @@ instance StreamCypher Salsa20Poly1305 where
     guard $ convert mac == computedMac
     -- Decrypt message
     return $ fst $ XSalsa.combine st' ciphertext
+  --
+  generateCypherKey = do
+    bs <- liftIO $ getEntropy 32
+    return $! Key $ convert bs
+  --
+  generateCypherNonce = do
+    bs <- liftIO $ getEntropy 24
+    return $! Nonce $ convert bs
+
     
 
 instance ByteRepr (CypherKey Salsa20Poly1305) where

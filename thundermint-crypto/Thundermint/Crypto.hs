@@ -47,6 +47,8 @@ module Thundermint.Crypto (
   , CypherKey
   , CypherNonce
   , StreamCypher(..)
+  , cypherKeySize
+  , cypherNonceSize
     -- * Encoding and decoding of values
   , ByteRepr(..)
   , encodeBase58
@@ -385,14 +387,31 @@ data family CypherNonce alg
 --
 --   Note that to protect against reused key attacks same pair key,
 --   nonce MUST NOT be used for more than one message.
-class ( ByteRepr (CypherKey   alg)
-      , ByteRepr (CypherNonce alg)
+class ( ByteRepr (CypherKey       alg)
+      , ByteRepr (CypherNonce     alg)
+      , KnownNat (CypherKeySize   alg)
+      , KnownNat (CypherNonceSize alg)
       ) => StreamCypher alg where
+  type family CypherNonceSize alg :: Nat
+  type family CypherKeySize   alg :: Nat
   -- | Encrypt message. Note that same nonce MUST NOT be reused.
   encryptMessage :: CypherKey alg -> CypherNonce alg -> BS.ByteString -> BS.ByteString
   -- | Decrypt message. If MAC verification fails (message was
   --   tampered with) decription returns @Nothing@
   decryptMessage :: CypherKey alg -> CypherNonce alg -> BS.ByteString -> Maybe BS.ByteString
+  -- | Generate random key using cryptographically secure RNG
+  generateCypherKey :: MonadIO m => m (CypherKey alg)
+  -- | Generate random nonce using cryptographically secure RNG
+  generateCypherNonce :: MonadIO m => m (CypherNonce alg)
+  
+
+-- | Size of key of cyper algorithm
+cypherKeySize :: forall alg proxy i. (StreamCypher alg, Num i) => proxy alg -> i
+cypherKeySize _ = fromIntegral $ natVal (Proxy @(CypherKeySize alg))
+
+-- | Size of nonce of cyper algorithm
+cypherNonceSize :: forall alg proxy i. (StreamCypher alg, Num i) => proxy alg -> i
+cypherNonceSize _ = fromIntegral $ natVal (Proxy @(CypherNonceSize alg))
 
 
 ----------------------------------------
