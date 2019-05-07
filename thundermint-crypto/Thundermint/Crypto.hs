@@ -58,10 +58,6 @@ module Thundermint.Crypto (
     -- * Hash trees
   , Hashed(..)
   , hashed
-    -- * base58 encoding
-  , encodeBSBase58
-  , decodeBSBase58
-  , readPrecBSBase58
   ) where
 
 import Codec.Serialise (Serialise, serialise)
@@ -72,22 +68,19 @@ import Control.Monad
 import Control.Monad.IO.Class
 
 import qualified Data.Aeson           as JSON
-import Data.Data (Data)
-import           Data.Text              (Text)
+import           Data.Data (Data)
 import qualified Data.Text.Encoding   as T
 import           Data.ByteString.Lazy    (toStrict)
 import qualified Data.ByteString.Char8 as BC8
+import qualified Data.ByteString       as BS
 import Data.Coerce
-import Data.Char     (isAscii)
 import Data.Typeable (Proxy(..))
 import Text.Read
 import Text.ParserCombinators.ReadP
 import GHC.TypeNats
 import GHC.Generics         (Generic,Generic1)
 
-import qualified Data.ByteString        as BS
-import qualified Data.ByteString.Base58 as Base58
-
+import Thundermint.Crypto.Classes
 
 ----------------------------------------------------------------
 -- Basic crypto API
@@ -118,9 +111,7 @@ newtype Hash alg = Hash BS.ByteString
 hash :: (CryptoHash alg, Serialise a) => a -> Hash alg
 hash = hashBlob . toStrict . serialise
 
-class ( ByteRepr (Fingerprint alg)
-      , ByteRepr (Signature   alg)
-      , ByteRepr (PublicKey   alg)
+class ( ByteRepr (PublicKey   alg)
       , ByteRepr (PrivKey     alg)
       , CryptoSignPrim alg
       ) => CryptoSign alg where
@@ -179,38 +170,22 @@ privKeySize _ = fromIntegral $ natVal (Proxy :: Proxy (PrivKeySize alg))
 signatureSize :: forall alg proxy i. (CryptoSign alg, Num i) => proxy alg -> i
 signatureSize _ = fromIntegral $ natVal (Proxy :: Proxy (SignatureSize alg))
 
--- | Value could be represented as bytestring.
-class ByteRepr a where
-  decodeFromBS :: BS.ByteString -> Maybe a
-  encodeToBS   :: a -> BS.ByteString
-
-instance ByteRepr BS.ByteString where
-  decodeFromBS = Just
-  encodeToBS   = id
-
-instance CryptoHash alg => ByteRepr (Hash alg) where
-  decodeFromBS            = Just . Hash
+instance ByteRepr (Hash alg) where
+  decodeFromBS         = Just . Hash
   encodeToBS (Hash bs) = bs
 
-instance CryptoSign alg => ByteRepr (Fingerprint alg) where
-  decodeFromBS            = Just . Fingerprint
+instance ByteRepr (Fingerprint alg) where
+  decodeFromBS                = Just . Fingerprint
   encodeToBS (Fingerprint bs) = bs
 
-instance CryptoSign alg => ByteRepr (Signature alg) where
-  decodeFromBS            = Just . Signature
+instance ByteRepr (Signature alg) where
+  decodeFromBS              = Just . Signature
   encodeToBS (Signature bs) = bs
 
--- | Encode value as base-58 encoded string
-encodeBase58 :: ByteRepr a => a -> Text
-encodeBase58 = T.decodeUtf8 . encodeBSBase58 . encodeToBS
-
--- | Decode value from base-58 encoded string
-decodeBase58 :: ByteRepr a => Text -> Maybe a
-decodeBase58 = decodeFromBS <=< decodeBSBase58 . T.encodeUtf8
 
 
 ----------------------------------------------------------------
---
+-- Stream cyphers
 ----------------------------------------------------------------
 
 -- | Key for cypher algorithm
@@ -242,34 +217,18 @@ class ( ByteRepr (CypherKey   alg)
 ----------------------------------------------------------------
 
 instance CryptoSign alg => Show (PrivKey alg) where
-  show = show . BC8.unpack . encodeBSBase58 . encodeToBS
-
+  show = defaultShow
 instance CryptoSign alg => Read (PrivKey alg) where
-  readPrec = do bs <- readPrecBSBase58
-                case decodeFromBS bs of
-                  Just k  -> return k
-                  Nothing -> empty
-
+  readPrec = defaultReadPrec
 
 instance CryptoSign alg => Serialise (PrivKey alg) where
-  encode = CBOR.encode . encodeToBS
-  decode = do bs <- CBOR.decode
-              case decodeFromBS bs of
-                Nothing -> fail "Cannot decode private key"
-                Just k  -> return k
+  encode = defaultCborEncode
+  decode = defaultCborDecode "PrivKey"
 
-instance CryptoSign alg => JSON.ToJSON (PrivKey alg) where
-  toJSON = JSON.String . T.decodeUtf8 . encodeBSBase58 . encodeToBS
-
+instance CryptoSign alg => JSON.ToJSON   (PrivKey alg) where
+  toJSON    = defaultToJSON
 instance CryptoSign alg => JSON.FromJSON (PrivKey alg) where
-  parseJSON (JSON.String s) =
-    case decodeBSBase58 $ T.encodeUtf8 s of
-      Nothing -> fail  "Incorrect Base58 encoding for PrivKey"
-      Just bs -> case decodeFromBS bs of
-        Nothing -> fail "Incorrect bytestring representation of PrivKey"
-        Just k  -> return k
-  parseJSON _          = fail "Expecting PrivKey as string"
-
+  parseJSON = defaultParseJSON "PrivKey"
 instance CryptoSign alg => JSON.FromJSONKey (PrivKey alg)
 instance CryptoSign alg => JSON.ToJSONKey   (PrivKey alg)
 
@@ -277,39 +236,23 @@ instance CryptoSign alg => JSON.ToJSONKey   (PrivKey alg)
 ----------------------------------------
 
 instance CryptoSign alg => Show (PublicKey alg) where
-  show = show . BC8.unpack . encodeBSBase58 . encodeToBS
-
+  show = defaultShow
 instance CryptoSign alg => Read (PublicKey alg) where
-  readPrec = do bs <- readPrecBSBase58
-                case decodeFromBS bs of
-                  Just k  -> return k
-                  Nothing -> empty
+  readPrec = defaultReadPrec
 
 instance CryptoSign alg => Serialise (PublicKey alg) where
-  encode = CBOR.encode . encodeToBS
-  decode = do bs <- CBOR.decode
-              case decodeFromBS bs of
-                Nothing -> fail "Cannot decode private key"
-                Just k  -> return k
+  encode = defaultCborEncode
+  decode = defaultCborDecode "PublicKey"
 
-instance CryptoSign alg => JSON.ToJSON (PublicKey alg) where
-  toJSON = JSON.String . T.decodeUtf8 . encodeBSBase58 . encodeToBS
-
+instance CryptoSign alg => JSON.ToJSON   (PublicKey alg) where
+  toJSON    = defaultToJSON
 instance CryptoSign alg => JSON.FromJSON (PublicKey alg) where
-  parseJSON (JSON.String s) =
-    case decodeBSBase58 $ T.encodeUtf8 s of
-      Nothing -> fail  "Incorrect Base58 encoding for PrivKey"
-      Just bs -> case decodeFromBS bs of
-        Nothing -> fail "Incorrect bytestring representation of PrivKey"
-        Just k  -> return k
-  parseJSON _          = fail "Expecting PrivKey as string"
-
+  parseJSON = defaultParseJSON "PublicKey"
 instance CryptoSign alg => JSON.FromJSONKey (PublicKey alg)
 instance CryptoSign alg => JSON.ToJSONKey   (PublicKey alg)
 
 
 ----------------------------------------
-
 
 instance Show (Fingerprint alg) where
   showsPrec n (Fingerprint bs)
@@ -320,16 +263,10 @@ instance Read (Fingerprint alg) where
   readPrec = do void $ lift $ string "Fingerprint" >> some (char ' ')
                 Fingerprint <$> readPrecBSBase58
 
-instance JSON.ToJSON (Fingerprint alg) where
-  toJSON (Fingerprint s) = JSON.String $ T.decodeUtf8 $ encodeBSBase58 s
-
+instance JSON.ToJSON   (Fingerprint alg) where
+  toJSON    = defaultToJSON
 instance JSON.FromJSON (Fingerprint alg) where
-  parseJSON (JSON.String s) =
-    case decodeBSBase58 $ T.encodeUtf8 s of
-      Nothing -> fail  "Incorrect Base58 encoding while decoding Fingerprint"
-      Just bs -> return $ Fingerprint bs
-  parseJSON _ = fail "Expected string for Fingerprint"
-
+  parseJSON = defaultParseJSON "Fingerprint"
 instance JSON.FromJSONKey (Fingerprint alg)
 instance JSON.ToJSONKey   (Fingerprint alg)
 
@@ -345,19 +282,12 @@ instance Read (Signature alg) where
   readPrec = do void $ lift $ string "Signature" >> some (char ' ')
                 Signature <$> readPrecBSBase58
 
-instance JSON.ToJSON (Signature alg) where
-  toJSON (Signature s) = JSON.String $ T.decodeUtf8 $ encodeBSBase58 s
-
+instance JSON.ToJSON   (Signature alg) where
+  toJSON    = defaultToJSON
 instance JSON.FromJSON (Signature alg) where
-  parseJSON (JSON.String s) =
-    case decodeBSBase58 $ T.encodeUtf8 s of
-      Nothing -> fail  "Incorrect Base58 encoding while decoding Fingerprint"
-      Just bs -> return $ Signature bs
-  parseJSON _ = fail "Expected string for Signature"
-
+  parseJSON = defaultParseJSON "Signature"
 instance JSON.FromJSONKey (Signature alg)
 instance JSON.ToJSONKey   (Signature alg)
-
 
 ----------------------------------------
 
@@ -373,16 +303,10 @@ instance CryptoHash alg => Read (Hash alg) where
                   Nothing -> fail "Incorrect bytestring representation of Hash"
                   Just h  -> return h
 
-instance CryptoHash alg => JSON.ToJSON (Hash alg) where
-  toJSON = JSON.String . encodeBase58
-
+instance CryptoHash alg => JSON.ToJSON   (Hash alg) where
+  toJSON    = defaultToJSON
 instance CryptoHash alg => JSON.FromJSON (Hash alg) where
-  parseJSON (JSON.String s) =
-    case decodeBase58 s of
-      Nothing -> fail  "Incorrect Base58 encoding for bs"
-      Just h  -> return h
-  parseJSON _ = fail "Expected string for Hash"
-
+  parseJSON = defaultParseJSON "Hash"
 instance CryptoHash alg => JSON.FromJSONKey (Hash alg)
 instance CryptoHash alg => JSON.ToJSONKey   (Hash alg)
 
@@ -390,33 +314,18 @@ instance CryptoHash alg => JSON.ToJSONKey   (Hash alg)
 ----------------------------------------
 
 instance StreamCypher alg => Show (CypherKey alg) where
-  show = show . BC8.unpack . encodeBSBase58 . encodeToBS
-
+  show = defaultShow
 instance StreamCypher alg => Read (CypherKey alg) where
-  readPrec = do bs <- readPrecBSBase58
-                case decodeFromBS bs of
-                  Just k  -> return k
-                  Nothing -> empty
+  readPrec = defaultReadPrec
 
 instance StreamCypher alg => Serialise (CypherKey alg) where
-  encode = CBOR.encode . encodeToBS
-  decode = do bs <- CBOR.decode
-              case decodeFromBS bs of
-                Nothing -> fail "Cannot decode CypherKey"
-                Just k  -> return k
+  encode = defaultCborEncode
+  decode = defaultCborDecode "CypherKey"
 
-instance StreamCypher alg => JSON.ToJSON (CypherKey alg) where
-  toJSON = JSON.String . T.decodeUtf8 . encodeBSBase58 . encodeToBS
-
+instance StreamCypher alg => JSON.ToJSON   (CypherKey alg) where
+  toJSON    = defaultToJSON
 instance StreamCypher alg => JSON.FromJSON (CypherKey alg) where
-  parseJSON (JSON.String s) =
-    case decodeBSBase58 $ T.encodeUtf8 s of
-      Nothing -> fail  "Incorrect Base58 encoding for CypherKey"
-      Just bs -> case decodeFromBS bs of
-        Nothing -> fail "Incorrect bytestring representation of CypherKey"
-        Just k  -> return k
-  parseJSON _          = fail "Expecting CypherKey as string"
-
+  parseJSON = defaultParseJSON "CypherKey"
 instance StreamCypher alg => JSON.FromJSONKey (CypherKey alg)
 instance StreamCypher alg => JSON.ToJSONKey   (CypherKey alg)
 
@@ -424,35 +333,21 @@ instance StreamCypher alg => JSON.ToJSONKey   (CypherKey alg)
 ----------------------------------------
 
 instance StreamCypher alg => Show (CypherNonce alg) where
-  show = show . BC8.unpack . encodeBSBase58 . encodeToBS
-
+  show = defaultShow
 instance StreamCypher alg => Read (CypherNonce alg) where
-  readPrec = do bs <- readPrecBSBase58
-                case decodeFromBS bs of
-                  Just k  -> return k
-                  Nothing -> empty
+  readPrec = defaultReadPrec
 
 instance StreamCypher alg => Serialise (CypherNonce alg) where
-  encode = CBOR.encode . encodeToBS
-  decode = do bs <- CBOR.decode
-              case decodeFromBS bs of
-                Nothing -> fail "Cannot decode CypherNonce"
-                Just k  -> return k
+  encode = defaultCborEncode
+  decode = defaultCborDecode "CypherNonce"
 
-instance StreamCypher alg => JSON.ToJSON (CypherNonce alg) where
-  toJSON = JSON.String . T.decodeUtf8 . encodeBSBase58 . encodeToBS
-
+instance StreamCypher alg => JSON.ToJSON   (CypherNonce alg) where
+  toJSON    = defaultToJSON
 instance StreamCypher alg => JSON.FromJSON (CypherNonce alg) where
-  parseJSON (JSON.String s) =
-    case decodeBSBase58 $ T.encodeUtf8 s of
-      Nothing -> fail  "Incorrect Base58 encoding for CypherNonce"
-      Just bs -> case decodeFromBS bs of
-        Nothing -> fail "Incorrect bytestring representation of CypherNonce"
-        Just k  -> return k
-  parseJSON _          = fail "Expecting CypherNonce as string"
-
+  parseJSON = defaultParseJSON "CypherNonce"
 instance StreamCypher alg => JSON.FromJSONKey (CypherNonce alg)
 instance StreamCypher alg => JSON.ToJSONKey   (CypherNonce alg)
+
 
 
 ----------------------------------------------------------------
@@ -613,21 +508,3 @@ hashed = Hashed . hash
 instance (CryptoHash alg) => ByteRepr (Hashed alg a) where
   encodeToBS (Hashed h) = encodeToBS h
   decodeFromBS = fmap Hashed . decodeFromBS
-
-----------------------------------------------------------------
--- Base58 encoding helpers
-----------------------------------------------------------------
-
-encodeBSBase58 :: BS.ByteString -> BS.ByteString
-encodeBSBase58 = Base58.encodeBase58 Base58.bitcoinAlphabet
-
-decodeBSBase58 :: BS.ByteString -> Maybe BS.ByteString
-decodeBSBase58 = Base58.decodeBase58 Base58.bitcoinAlphabet
-
-readPrecBSBase58 :: ReadPrec BS.ByteString
-readPrecBSBase58 = do
-  s <- readPrec
-  guard (all isAscii s)
-  case decodeBSBase58 $ BC8.pack s of
-    Just bs -> return bs
-    Nothing -> mzero
