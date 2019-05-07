@@ -14,6 +14,7 @@ import qualified Data.ByteString.Base64 as B64
 import qualified Data.Text       as T
 import Test.Tasty
 import Test.Tasty.HUnit
+import System.Entropy (getEntropy)
 
 import Thundermint.Crypto
 import Thundermint.Crypto.Ed25519
@@ -178,6 +179,25 @@ testSalsa20 = testGroup "Salsa20Poly1305"
           Just cyphertext = decodeB64 "wUr1JSEU2YogthaetNAiuPppjsw31HHTjYikwmFJ0domMi1Uleo="
       cyphertext     @=? encryptMessage key nonce cleartext
       Just cleartext @=? decryptMessage key nonce cyphertext
+  --
+  , testCase "Decoding roundtrip" $ do
+      key   <- generateCypherKey   @Salsa20Poly1305
+      nonce <- generateCypherNonce @Salsa20Poly1305
+      cleartext <- getEntropy 123
+      Just cleartext @=? decryptMessage key nonce (encryptMessage key nonce cleartext)
+  --
+  , testCase "decodeBS . encodeBS = id"
+  $ do key   <- generateCypherKey   @Salsa20Poly1305
+       nonce <- generateCypherNonce @Salsa20Poly1305
+       Just key   @=? (decodeFromBS . encodeToBS) key
+       Just nonce @=? (decodeFromBS . encodeToBS) nonce
+  --
+  , testCase "Sizes are correct"
+  $ do key   <- generateCypherKey   @Salsa20Poly1305
+       nonce <- generateCypherNonce @Salsa20Poly1305
+       let ed = Proxy @Salsa20Poly1305
+       BS.length (encodeToBS key  ) @=? cypherKeySize   ed
+       BS.length (encodeToBS nonce) @=? cypherNonceSize ed
   ]
 
 decodeB64 :: BS.ByteString -> Maybe BS.ByteString
