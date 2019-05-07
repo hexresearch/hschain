@@ -18,7 +18,7 @@
 -- selected by type and all necessary types are implemented as data
 -- families
 module Thundermint.Crypto (
-    -- * Crypto API
+    -- * Signatures and hashes API
     PrivKey
   , PublicKey
   , Signature(..)
@@ -41,6 +41,10 @@ module Thundermint.Crypto (
   , ByteRepr(..)
   , encodeBase58
   , decodeBase58
+    -- * Stream cyphers
+  , CypherKey
+  , CypherNonce
+  , StreamCypher(..)
     -- * Serialization and signatures
   , SignedState(..)
   , Signed
@@ -155,7 +159,6 @@ class ( ByteRepr (Hash   alg)
   hashEquality :: Hash alg -> BS.ByteString -> Bool
 
 
-
 -- | Size of hash in bytes
 hashSize :: forall alg proxy i. (CryptoHash alg, Num i) => proxy alg -> i
 hashSize _ = fromIntegral $ natVal (Proxy :: Proxy (HashSize alg))
@@ -207,6 +210,34 @@ decodeBase58 = decodeFromBS <=< decodeBSBase58 . T.encodeUtf8
 
 
 ----------------------------------------------------------------
+--
+----------------------------------------------------------------
+
+-- | Key for cypher algorithm
+data family CypherKey alg
+
+-- | Nonce for stream cypher
+data family CypherNonce alg
+
+
+-- | High level API for stream cypher. In order to protect against
+--   bit-flipping attack ecrypted message must contain MAC (message
+--   authentication code).
+--
+--   Note that to protect against reused key attacks same pair key,
+--   nonce MUST NOT be used for more than one message.
+class ( ByteRepr (CypherKey   alg)
+      , ByteRepr (CypherNonce alg)
+      ) => StreamCypher alg where
+  -- | Encrypt message. Note that same nonce MUST NOT be reused.
+  encryptMessage :: CypherKey alg -> CypherNonce alg -> BS.ByteString -> BS.ByteString
+  -- | Decrypt message. If MAC verification fails (message was
+  --   tampered with) decription returns @Nothing@
+  decryptMessage :: CypherKey alg -> CypherNonce alg -> BS.ByteString -> Maybe BS.ByteString
+
+
+
+----------------------------------------------------------------
 -- Instances
 ----------------------------------------------------------------
 
@@ -220,7 +251,7 @@ instance CryptoSign alg => Read (PrivKey alg) where
                   Nothing -> empty
 
 
-instance CryptoSign alg => Serialise (PublicKey alg) where
+instance CryptoSign alg => Serialise (PrivKey alg) where
   encode = CBOR.encode . encodeToBS
   decode = do bs <- CBOR.decode
               case decodeFromBS bs of
@@ -254,7 +285,7 @@ instance CryptoSign alg => Read (PublicKey alg) where
                   Just k  -> return k
                   Nothing -> empty
 
-instance CryptoSign alg => Serialise (PrivKey alg) where
+instance CryptoSign alg => Serialise (PublicKey alg) where
   encode = CBOR.encode . encodeToBS
   decode = do bs <- CBOR.decode
               case decodeFromBS bs of
@@ -354,6 +385,74 @@ instance CryptoHash alg => JSON.FromJSON (Hash alg) where
 
 instance CryptoHash alg => JSON.FromJSONKey (Hash alg)
 instance CryptoHash alg => JSON.ToJSONKey   (Hash alg)
+
+
+----------------------------------------
+
+instance StreamCypher alg => Show (CypherKey alg) where
+  show = show . BC8.unpack . encodeBSBase58 . encodeToBS
+
+instance StreamCypher alg => Read (CypherKey alg) where
+  readPrec = do bs <- readPrecBSBase58
+                case decodeFromBS bs of
+                  Just k  -> return k
+                  Nothing -> empty
+
+instance StreamCypher alg => Serialise (CypherKey alg) where
+  encode = CBOR.encode . encodeToBS
+  decode = do bs <- CBOR.decode
+              case decodeFromBS bs of
+                Nothing -> fail "Cannot decode CypherKey"
+                Just k  -> return k
+
+instance StreamCypher alg => JSON.ToJSON (CypherKey alg) where
+  toJSON = JSON.String . T.decodeUtf8 . encodeBSBase58 . encodeToBS
+
+instance StreamCypher alg => JSON.FromJSON (CypherKey alg) where
+  parseJSON (JSON.String s) =
+    case decodeBSBase58 $ T.encodeUtf8 s of
+      Nothing -> fail  "Incorrect Base58 encoding for CypherKey"
+      Just bs -> case decodeFromBS bs of
+        Nothing -> fail "Incorrect bytestring representation of CypherKey"
+        Just k  -> return k
+  parseJSON _          = fail "Expecting CypherKey as string"
+
+instance StreamCypher alg => JSON.FromJSONKey (CypherKey alg)
+instance StreamCypher alg => JSON.ToJSONKey   (CypherKey alg)
+
+
+----------------------------------------
+
+instance StreamCypher alg => Show (CypherNonce alg) where
+  show = show . BC8.unpack . encodeBSBase58 . encodeToBS
+
+instance StreamCypher alg => Read (CypherNonce alg) where
+  readPrec = do bs <- readPrecBSBase58
+                case decodeFromBS bs of
+                  Just k  -> return k
+                  Nothing -> empty
+
+instance StreamCypher alg => Serialise (CypherNonce alg) where
+  encode = CBOR.encode . encodeToBS
+  decode = do bs <- CBOR.decode
+              case decodeFromBS bs of
+                Nothing -> fail "Cannot decode CypherNonce"
+                Just k  -> return k
+
+instance StreamCypher alg => JSON.ToJSON (CypherNonce alg) where
+  toJSON = JSON.String . T.decodeUtf8 . encodeBSBase58 . encodeToBS
+
+instance StreamCypher alg => JSON.FromJSON (CypherNonce alg) where
+  parseJSON (JSON.String s) =
+    case decodeBSBase58 $ T.encodeUtf8 s of
+      Nothing -> fail  "Incorrect Base58 encoding for CypherNonce"
+      Just bs -> case decodeFromBS bs of
+        Nothing -> fail "Incorrect bytestring representation of CypherNonce"
+        Just k  -> return k
+  parseJSON _          = fail "Expecting CypherNonce as string"
+
+instance StreamCypher alg => JSON.FromJSONKey (CypherNonce alg)
+instance StreamCypher alg => JSON.ToJSONKey   (CypherNonce alg)
 
 
 ----------------------------------------------------------------
