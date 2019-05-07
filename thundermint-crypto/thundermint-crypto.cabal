@@ -38,6 +38,7 @@ Library
                      , memory            >=0.14.14
   Exposed-modules:
                   Thundermint.Crypto
+                  Thundermint.Crypto.Classes
                   Thundermint.Crypto.Ed25519
                   Thundermint.Crypto.SHA
                   
