@@ -125,7 +125,7 @@ interpretSpec maxH prefix NetSpec{..} = do
                          appCh
                          nullMempoolAny
                    , setNamespace "consensus"
-                     $ runApplication (cfgConsensus cfg) nspecPrivKey appState appCall appCh
+                     $ runApplication (cfgConsensus cfg) nspecPrivKey appState appCall appCh mempty
                    ]
              )
   where

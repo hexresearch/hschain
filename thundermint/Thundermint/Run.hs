@@ -83,6 +83,7 @@ data NodeLogic m alg a = NodeLogic
     -- ^ Generator for a new block
   , nodeMempool         :: !(Mempool m alg (TX a))
     -- ^ Mempool of node
+  , nodeByzantine       :: AppByzantine m alg a
   }
 
 logicFromFold
@@ -111,6 +112,7 @@ logicFromFold transitions@BlockFold{..} = do
                          txs <- peekNTransactions mempool Nothing
                          return (transactionsToBlock h st txs, [])
                      , nodeMempool         = mempool
+                     , nodeByzantine       = mempty
                      }
          )
 
@@ -148,6 +150,7 @@ logicFromPersistent PersistentState{..} = do
           Nothing -> error "Cannot generate block!"
           Just a  -> return (a, [])
     , nodeMempool         = mempool
+    , nodeByzantine       = mempty
     }
 
 
@@ -178,13 +181,14 @@ runNode
   -> NodeLogic m alg a
   -> m [m ()]
 runNode cfg BlockchainNet{..} NodeDescription{..} NodeLogic{..} = do
-  -- Build application state of consensus algorithm
-  let appSt = AppLogic
+  -- Build application logic of consensus algorithm
+  let appLogic = AppLogic
         { appValidationFun  = nodeBlockValidation
         , appBlockGenerator = nodeBlockGenerator
         , appCommitQuery    = nodeCommitQuery
         }
       appCall = mempoolFilterCallback nodeMempool <> nodeCallbacks
+      appByzantine = nodeByzantine
   -- Networking
   appCh <- newAppChans (cfgConsensus cfg)
   return
@@ -192,7 +196,7 @@ runNode cfg BlockchainNet{..} NodeDescription{..} NodeLogic{..} = do
          $ startPeerDispatcher (cfgNetwork cfg)
               bchNetwork bchLocalAddr bchInitialPeers appCh nodeMempool
     , id $ descendNamespace "consensus"
-         $ runApplication (cfgConsensus cfg) nodeValidationKey appSt appCall appCh
+         $ runApplication (cfgConsensus cfg) nodeValidationKey appLogic appCall appCh appByzantine
     , forever $ do
         MempoolInfo{..} <- mempoolStats nodeMempool
         usingGauge prometheusMempoolSize      mempool'size
