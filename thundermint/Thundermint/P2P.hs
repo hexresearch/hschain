@@ -765,7 +765,7 @@ peerReceive
   -> m ()
 peerReceive peerSt PeerChans{..} peerExchangeCh P2PConnection{..} MempoolCursor{..} = logOnException $ do
   logger InfoS "Starting routing for receiving messages" ()
-  fix $ \loop -> recv >>= \case
+  fix $ \loop -> recv >>= \case -- TODO поменять fix на forever, т.к. в последних версиях base они одни и те же
     Nothing  -> logger InfoS "Peer stopping since socket is closed" ()
     Just bs  -> case deserialiseOrFail bs of
       Left  e   -> logger ErrorS ("Deserialization error: " <> showLS e) ()
