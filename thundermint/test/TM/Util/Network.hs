@@ -1,13 +1,12 @@
-{-# LANGUAGE TypeOperators #-}
-{-# LANGUAGE DataKinds           #-}
-{-# LANGUAGE DeriveGeneric       #-}
-{-# LANGUAGE NumDecimals         #-}
-{-# LANGUAGE OverloadedStrings   #-}
-{-# LANGUAGE RankNTypes          #-}
-{-# LANGUAGE RecordWildCards     #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TupleSections       #-}
-
+{-# LANGUAGE DataKinds            #-}
+{-# LANGUAGE DeriveGeneric        #-}
+{-# LANGUAGE NumDecimals          #-}
+{-# LANGUAGE OverloadedStrings    #-}
+{-# LANGUAGE RankNTypes           #-}
+{-# LANGUAGE RecordWildCards      #-}
+{-# LANGUAGE ScopedTypeVariables  #-}
+{-# LANGUAGE TupleSections        #-}
+{-# LANGUAGE TypeOperators        #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
 -- |
@@ -39,13 +38,13 @@ import Thundermint.Crypto.SHA     (SHA512)
 import Thundermint.Debug.Trace
 import Thundermint.Logger
 import Thundermint.Mock.Coin (intToNetAddr)
-import Thundermint.Mock.KeyVal
 import Thundermint.Mock.Types
 import Thundermint.Monitoring
 import Thundermint.P2P
 import Thundermint.P2P.Network
 import Thundermint.Run
 import Thundermint.Store
+import qualified Thundermint.Mock.KeyVal as Mock
 
 import TM.RealNetwork
 
@@ -76,7 +75,7 @@ withRetry' useUDP fun host = do
       hs :: [a -> Handler IO Bool]
       hs = [const $ Handler (\(_::E.IOException) -> return shouldRetry)]
 
-
+-- TODO объединить в один список, а лучше сделать бесконечный
 testValidators, extraTestValidators :: Map.Map (Fingerprint (Ed25519 :& SHA512)) (PrivValidator (Ed25519 :& SHA512))
 testValidators = makePrivateValidators
   [ "2K7bFuJXxKf5LqogvVRQjms2W26ZrjpvUjo5LdvPFa5Y"
@@ -84,6 +83,7 @@ testValidators = makePrivateValidators
   , "3Fj8bZjKc53F2a87sQaFkrDas2d9gjzK57FmQwnNnSHS"
   , "D2fpHM1JA8trshiUW8XPvspsapUvPqVzSofaK1MGRySd"
   ]
+
 
 extraTestValidators = makePrivateValidators
   [ "EiG2NbUV9ofWeyXcoCkJYvuyLEEQhyeWtGh5n9fcobQi"
@@ -99,11 +99,30 @@ extraTestValidators = makePrivateValidators
   ]
 
 
+type TestBlock = [(String, NetAddr)]
+
+type TestAlg = Ed25519_SHA512
+
+type TestMonad m = DBT 'RW Ed25519_SHA512 [(String, NetAddr)] (NoLogsT (TracerT m))
+
+type TestAppByzantine m = AppByzantine (TestMonad m) TestAlg [(String, NetAddr)]
+
+
+
 data TestNetLinkDescription m = TestNetLinkDescription
-    { ncFrom     :: Int
-    , ncTo       :: [Int]
-    , ncCallback :: TraceEvents -> m ()
+    { ncFrom          :: Int
+    , ncTo            :: [Int]
+    , ncByzantine     :: TestAppByzantine m
+    , ncTraceCallback :: TraceEvents -> m ()
+    , ncAppCallbacks  :: AppCallbacks (TestMonad m) TestAlg TestBlock
     }
+
+
+mkNodeDescription :: (Monad m) => Int -> [Int] -> (TraceEvents -> m ()) -> TestNetLinkDescription m
+mkNodeDescription ncFrom ncTo ncTraceCallback =
+    let ncByzantine   = mempty
+        ncAppCallbacks = mempty
+    in TestNetLinkDescription {..}
 
 
 type TestNetDescription m = [TestNetLinkDescription m]
@@ -120,10 +139,35 @@ toPair TestNetLinkDescription{..} = (ncFrom, ncTo)
 
 
 createTestNetwork :: (MonadMask m, MonadFork m, MonadTMMonitoring m, MonadFail m)
-                  => TestNetDescription m -> m ()
-createTestNetwork = createTestNetworkWithConfig (defCfg :: Configuration Example)
+                  => TestNetDescription m
+                  -> m ()
+createTestNetwork descr = createTestNetworkWithConfig (defCfg :: Configuration Example) descr
 
 
+-- | Create fully connected network with byzantine behaviour
+--
+createGossipTestNetwork :: (MonadMask m, MonadFork m, MonadTMMonitoring m, MonadFail m)
+                        => [(TestAppByzantine m, AppCallbacks (TestMonad m) TestAlg TestBlock)]
+                        -> m ()
+createGossipTestNetwork byzs =
+    let maxN = length byzs - 1
+    in createTestNetworkWithValidatorsSetAndConfig
+        testValidators
+        (defCfg :: Configuration Example)
+        [ (mkNodeDescription i [(i+1)..maxN] (\_ -> return ())) { ncByzantine = byz, ncAppCallbacks = appc }
+        | (i, (byz, appc)) <- zip [0..] byzs
+        ]
+
+
+createTestNetworkWithConfig
+    :: forall m app . (MonadIO m, MonadMask m, MonadFork m, MonadTMMonitoring m, MonadFail m)
+    => Configuration app
+    -> TestNetDescription m
+    -> m ()
+createTestNetworkWithConfig = createTestNetworkWithValidatorsSetAndConfig testValidators
+
+
+{-
 createTestNetworkWithValidatorsSetAndConfig
   :: forall m app . (MonadIO m, MonadMask m, MonadFork m, MonadTMMonitoring m, MonadFail m)
   => Map.Map (Fingerprint (Ed25519 :& SHA512)) (PrivValidator (Ed25519 :& SHA512))
@@ -138,32 +182,46 @@ createTestNetworkWithValidatorsSetAndConfig validatorsSet cfg desc = do
       :: MockNet
       -> (Connection 'RW (Ed25519 :& SHA512) [(String, NetAddr)], TestNetLinkDescription m)
       -> m [m ()]
-    mkTestNode net (conn, TestNetLinkDescription{..}) = do
-        let validatorSet = makeValidatorSetFromPriv validatorsSet
-        initDatabase conn Proxy (genesisBlock validatorSet) validatorSet
+-}
+
+
+createTestNetworkWithValidatorsSetAndConfig
+    :: forall m app . (MonadIO m, MonadMask m, MonadFork m, MonadTMMonitoring m, MonadFail m)
+    => Map.Map (Fingerprint Ed25519_SHA512) (PrivValidator Ed25519_SHA512)
+    -> Configuration app
+    -> TestNetDescription m
+    -> m ()
+createTestNetworkWithValidatorsSetAndConfig validators cfg netDescr = do
+    net <- liftIO newMockNet
+    withMany (\(ndescr, val) cont -> withConnection ":memory:" (\c -> cont (c,ndescr,val))) (zip netDescr (Map.toList validators)) $ \lst -> do
+      acts <- mapM (mkTestNode net) lst
+      catchAbort $ runConcurrently $ join acts
+  where
+    mkTestNode
+      :: MockNet
+      -> (Connection 'RW Ed25519_SHA512 [(String, NetAddr)], TestNetLinkDescription m)
+      -> m [m ()]
+    mkTestNode net (conn, TestNetLinkDescription{..}, (_, validatorPK)) = do
+        initDatabase conn Proxy (Mock.genesisBlock dbValidatorSet) dbValidatorSet
         --
-        let run = runTracerT ncCallback . runNoLogsT . runDBT conn
+        let run = runTracerT ncTraceCallback . runNoLogsT . runDBT conn
         fmap (map run) $ run $ do
-            (_,logic) <- logicFromFold transitions
+            (_,logic) <- logicFromFold Mock.transitions
+            let logic' = logic { nodeByzantine = (nodeByzantine logic) <> ncByzantine }
             runNode cfg
               BlockchainNet
-                { bchNetwork          = createMockNode net (intToNetAddr ncFrom)
-                , bchLocalAddr        = intToNetAddr ncFrom
-                , bchInitialPeers     = map intToNetAddr ncTo
+                { bchNetwork        = createMockNode net (intToNetAddr ncFrom)
+                , bchLocalAddr      = intToNetAddr ncFrom
+                , bchInitialPeers   = map intToNetAddr ncTo
                 }
               NodeDescription
-                { nodeValidationKey = Nothing
-                , nodeCallbacks     = mempty
+                { nodeValidationKey = Just validatorPK
+                , nodeCallbacks     = ncAppCallbacks
                 }
-              logic
+              logic'
 
 
-createTestNetworkWithConfig
-  :: forall m app . (MonadIO m, MonadMask m, MonadFork m, MonadTMMonitoring m, MonadFail m)
-  => Configuration app -> TestNetDescription m -> m ()
-createTestNetworkWithConfig = createTestNetworkWithValidatorsSetAndConfig testValidators
-
--- |UDP may return Nothings for the message receive operation.
+-- | UDP may return Nothings for the message receive operation.
 skipNothings :: String -> (a -> IO (Maybe LBS.ByteString)) -> a -> IO LBS.ByteString
 skipNothings _lbl recv conn = do
   mbMsg <- recv conn
@@ -172,11 +230,10 @@ skipNothings _lbl recv conn = do
     Nothing -> skipNothings _lbl recv conn
 
 
-
 -- | Simple test to ensure that mock network works at all
 delayedWrite :: (NetAddr, NetworkAPI)
-         -> (NetAddr, NetworkAPI)
-         -> IO ()
+             -> (NetAddr, NetworkAPI)
+             -> IO ()
 delayedWrite (serverAddr, server) (_, client) = do
   let runServer NetworkAPI{..} =
         bracket listenOn fst $ \(_,accept) ->

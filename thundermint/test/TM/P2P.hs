@@ -31,16 +31,14 @@ import TM.Util.Network
 import TM.Util.Tests
 
 
-
-
 testPeersMustConnect :: IO ()
 testPeersMustConnect = do
     [events1, events2, events3] <- replicateM 3 (newIORef Set.empty)
     runConcurrently
         [ createTestNetwork
-            [ TestNetLinkDescription 1 [2, 3] (collectEvents events1)
-            , TestNetLinkDescription 2 [1, 3] (collectEvents events2)
-            , TestNetLinkDescription 3 [1, 2] (collectEvents events3)
+            [ mkNodeDescription 1 [2, 3] (collectEvents events1)
+            , mkNodeDescription 2 [1, 3] (collectEvents events2)
+            , mkNodeDescription 3 [1, 2] (collectEvents events3)
             ]
         , waitSec 0.5
         ]
@@ -66,9 +64,9 @@ testPeerRegistryMustBeFilled = do
     [events1, events2, events3] <- replicateM 3 (newIORef Set.empty)
     runConcurrently
         [ createTestNetwork
-            [ TestNetLinkDescription 1 [2, 3] (collectEvents events1)
-            , TestNetLinkDescription 2 [1, 3] (collectEvents events2)
-            , TestNetLinkDescription 3 [1, 2] (collectEvents events3)
+            [ mkNodeDescription 1 [2, 3] (collectEvents events1)
+            , mkNodeDescription 2 [1, 3] (collectEvents events2)
+            , mkNodeDescription 3 [1, 2] (collectEvents events3)
             ]
         , waitSec 0.5
         ]
@@ -107,11 +105,11 @@ testPeersMustAckAndGetAddresses = do
             --        \ |
             --          4
             --
-            [ TestNetLinkDescription 2 [1, 3, 4] (collectEvents events2)
-            , TestNetLinkDescription 3 [2, 4]    (collectEvents events3)
-            , TestNetLinkDescription 4 [2, 3]    (collectEvents events4)
+            [ mkNodeDescription 2 [1, 3, 4] (collectEvents events2)
+            , mkNodeDescription 3 [2, 4]    (collectEvents events3)
+            , mkNodeDescription 4 [2, 3]    (collectEvents events4)
             --
-            , TestNetLinkDescription 1 [2]       (collectEvents events1)
+            , mkNodeDescription 1 [2]       (collectEvents events1)
             ]
         , fix $ \next ->
             andM [  hasRegistryInEvent [2,3,4] events1
@@ -153,7 +151,7 @@ testBigNetMustInterconnect = do
             --        \
             --          0 -- (n-1) -- (n-2) -- ...
             --
-            [ TestNetLinkDescription i [(i - 1) `mod` netSize] (collectEvents e)
+            [ mkNodeDescription i [(i - 1) `mod` netSize] (collectEvents e)
             | (i,e) <- zip [0..] events]
         , fix $ \next ->
             andM [  hasRegistryInEvent (i `delete` [0..(netSize - 1)]) e
