@@ -18,7 +18,6 @@ module Thundermint.Crypto.Classes (
   , readPrecBSBase58
   ) where
 
-import Codec.Serialise          (Serialise, serialise)
 import Codec.Serialise.Decoding (Decoder)
 import Codec.Serialise.Encoding (Encoding)
 import Control.Applicative
@@ -30,8 +29,6 @@ import Data.Aeson.Types (Parser)
 import           Data.Text             (Text)
 import qualified Data.Text.Encoding   as T
 import Text.Read
-import Text.ParserCombinators.ReadP
-
 
 import qualified Data.ByteString        as BS
 import qualified Data.ByteString.Char8  as BC8
