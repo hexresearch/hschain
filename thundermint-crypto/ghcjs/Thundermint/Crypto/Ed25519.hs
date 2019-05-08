@@ -57,8 +57,8 @@ instance CryptoSign Ed25519 where
   fingerprint   = Fingerprint
                 . BL.toStrict . SHA.bytestringDigest . SHA.sha256 . BL.fromStrict
                 . arrayToBs . js_sha512 . unPublicKey
-  generatePrivKey = liftIO $ do
-    arr <- js_randombytes 32
+  generatePrivKey = do
+    arr <- randomBytes 32
     case decodeFromBS $ arrayToBs arr of
       Just k  -> return k
       Nothing -> error "Ed25519: internal error. Cannot generate key"
@@ -89,7 +89,6 @@ instance (Ord (PrivKey Ed25519)) => ByteRepr (PrivKey Ed25519) where
                    , privK = js_getSecretKey keypair
                    , pubK  = js_getPublicKey keypair
                    }
-
   encodeToBS = pkBS
 
 instance (Ord (PublicKey Ed25519)) => ByteRepr (PublicKey Ed25519) where
@@ -102,12 +101,6 @@ instance (Ord (PublicKey Ed25519)) => ByteRepr (PublicKey Ed25519) where
 ----------------------------------------------------------------
 -- NaCl ed25519
 ----------------------------------------------------------------
-
-nonNullJs :: JSVal -> Maybe JSVal
-nonNullJs res
-  | isNull res || isUndefined res = Nothing
-  | otherwise                     = Just res
-
 
 foreign import javascript safe "nacl.sign.detached($1, $2)"
   js_sign_detached :: Uint8Array -> Uint8Array -> Uint8Array
@@ -123,6 +116,3 @@ foreign import javascript unsafe "$1.publicKey"
 
 foreign import javascript unsafe "$1.secretKey"
   js_getSecretKey :: JSVal -> Uint8Array
-
-foreign import javascript safe "nacl.randomBytes($1)"
-  js_randombytes :: Int -> IO Uint8Array

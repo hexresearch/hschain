@@ -57,7 +57,6 @@ Test-suite thundermint-crypto-tests
                      , base64-bytestring
                      , serialise         >=0.2
                      , text
-                     , entropy
                      --
                      , tasty             >=0.12
                      -- Contains fix for GHCJS
