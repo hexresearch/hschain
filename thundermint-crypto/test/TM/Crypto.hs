@@ -1,7 +1,7 @@
+{-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TypeApplications  #-}
-{-# LANGUAGE TypeOperators     #-}
+{-# LANGUAGE TypeApplications    #-}
+{-# LANGUAGE TypeOperators       #-}
 -- |
 module TM.Crypto (tests) where
 
@@ -14,7 +14,6 @@ import qualified Data.ByteString.Base64 as B64
 import qualified Data.Text       as T
 import Test.Tasty
 import Test.Tasty.HUnit
-import System.Entropy (getEntropy)
 
 import Thundermint.Crypto
 import Thundermint.Crypto.Ed25519
@@ -183,8 +182,16 @@ testSalsa20 = testGroup "Salsa20Poly1305"
   , testCase "Decoding roundtrip" $ do
       key   <- generateCypherKey   @Salsa20Poly1305
       nonce <- generateCypherNonce @Salsa20Poly1305
-      cleartext <- getEntropy 123
+      let  cleartext = "ASDF"
       Just cleartext @=? decryptMessage key nonce (encryptMessage key nonce cleartext)
+  --
+  , testCase "Tampering detected" $ do
+      key   <- generateCypherKey   @Salsa20Poly1305
+      nonce <- generateCypherNonce @Salsa20Poly1305
+      let cleartext   = "ASDF"
+          cyphertext  = encryptMessage key nonce cleartext
+          cyphertext' = BS.take (BS.length cyphertext - 1) cyphertext
+      Nothing @=? decryptMessage key nonce cyphertext'
   --
   , testCase "decodeBS . encodeBS = id"
   $ do key   <- generateCypherKey   @Salsa20Poly1305
