@@ -41,7 +41,7 @@ instance DefaultConfig Example where
       , gossipDelayMempool     = 25
       , pexMinConnections      = 3
       , pexMaxConnections      = 20
-      , pexMinKnownConnections = 15
+      , pexMinKnownConnections = 3
       , pexMaxKnownConnections = 20
       , reconnectionRetries    = 12
       , reconnectionDelay      = 100
