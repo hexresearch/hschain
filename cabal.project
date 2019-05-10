@@ -2,3 +2,7 @@ packages:
          thundermint
          thundermint-crypto
          thundermint-types
+
+-- Jailbreak bytestring-arbitrary
+--   https://github.com/tsuraan/bytestring-arbitrary/issues/10
+allow-newer: bytestring-arbitrary:base
