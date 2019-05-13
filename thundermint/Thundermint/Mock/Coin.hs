@@ -1,3 +1,4 @@
+{-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE DataKinds                  #-}
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE FlexibleContexts           #-}
@@ -66,6 +67,7 @@ import Thundermint.Blockchain.Internal.Engine.Types
 import Thundermint.Control
 import Thundermint.Crypto
 import Thundermint.Crypto.Ed25519
+import Thundermint.Crypto.SHA
 import Thundermint.Debug.Trace
 import Thundermint.Logger
 import Thundermint.Run
@@ -80,7 +82,7 @@ import Thundermint.Types.Validators (ValidatorSet)
 import qualified Thundermint.P2P.Network as P2P
 
 
-type Alg = Ed25519_SHA512
+type Alg = (Ed25519 :& SHA512)
 
 -- | Single transaction for transfer of coins
 data TxSend = TxSend
@@ -400,8 +402,8 @@ interpretSpec
   :: ( MonadIO m, MonadLogger m, MonadFork m, MonadTrace m, MonadMask m, MonadTMMonitoring m, MonadFail m)
   => Maybe Int64                       -- ^ Maximum height
   -> GeneratorSpec                     -- ^ Spec for generator of transactions
-  -> Pet (ValidatorSet Ed25519_SHA512) -- ^ Set of validators
-  -> BlockchainNet                    -- ^ Network
+  -> Pet (ValidatorSet Alg)            -- ^ Set of validators
+  -> BlockchainNet                     -- ^ Network
   -> Configuration cfg                 -- ^ Configuration for network
   -> NodeSpec                          -- ^ Node specifications
   -> m (Connection 'RO Alg [Pet Tx], m ())
@@ -418,13 +420,9 @@ interpretSpec maxHeight genSpec validatorSet net cfg NodeSpec{..} = do
         let generator = transactionGenerator genSpec (void . pushTransaction cursor)
         acts <- runNode cfg net
           NodeDescription
-            { nodeValidationKey   = nspecPrivKey
-            , nodeCommitCallback  = \case
-                b | Just hM <- maxHeight
-                  , headerHeight (pet (blockHeader b)) > Height hM -> throwM Abort
-                  | otherwise                                      -> return ()
-            , nodeReadyCreateBlock = \_ _ -> do n <- mempoolSize $ nodeMempool logic
-                                                return $ n > 0
+            { nodeValidationKey = nspecPrivKey
+            , nodeCallbacks     = maybe mempty (callbackAbortAtH . Height) maxHeight
+                               <> nonemptyMempoolCallback (nodeMempool logic)
             }
           logic
         runConcurrently (generator : acts)

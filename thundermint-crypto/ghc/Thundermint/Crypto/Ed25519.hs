@@ -1,5 +1,4 @@
 {-# LANGUAGE DataKinds                  #-}
-{-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE DeriveDataTypeable         #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
@@ -35,10 +34,8 @@ sha512 = convert . id @(Digest Crypto.SHA512) . Crypto.hash
 sha256 :: ByteString -> ByteString
 sha256 = convert . id @(Digest Crypto.SHA256) . Crypto.hash
 
+-- | Ed25519 publick key signature system
 data Ed25519 deriving (Data)
-data SHA512  deriving (Data)
-
-type Ed25519_SHA512 = Ed25519 :& SHA512
 
 newtype instance PrivKey   Ed25519 = PrivKey   Ed.SecretKey
 newtype instance PublicKey Ed25519 = PublicKey Ed.PublicKey
@@ -64,10 +61,6 @@ instance CryptoSign Ed25519 where
       CryptoPassed k -> return $! PrivKey k
       CryptoFailed e -> error (show e)
 
-instance CryptoHash SHA512 where
-  type HashSize SHA512 = 64
-  hashBlob                   = Hash . sha512
-  hashEquality (Hash hbs) bs = hbs == bs
 
 deriving instance Eq (PrivKey Ed25519)
 

@@ -36,13 +36,14 @@ import           Data.Maybe        (mapMaybe)
 import           Data.SafeCopy     (SafeCopy, kind, primitive, safeEncode, safeDecode)
 import           Data.Foldable
 import           Data.Function
-import qualified Data.Map        as Map
-import           Data.Map          (Map)
-import qualified Data.Set        as Set
-import           Data.Set          (Set)
-import qualified Data.Aeson      as JSON
-import qualified Data.Aeson.TH   as JSON
-import qualified Data.Text       as T
+import qualified Data.List.NonEmpty as NE
+import qualified Data.Map           as Map
+import           Data.Map             (Map)
+import qualified Data.Set           as Set
+import           Data.Set             (Set)
+import qualified Data.Aeson         as JSON
+import qualified Data.Aeson.TH      as JSON
+import qualified Data.Text          as T
 import Katip         (showLS,sl)
 import qualified Katip
 import System.Random (newStdGen, randomIO, randomRIO)
@@ -621,7 +622,7 @@ peerGossipVotes peerObj PeerChans{..} gossipCh = logOnException $ do
         case mcmt of
          Just cmt -> do
            let cmtVotes  = Map.fromList [ (signedAddr v, unverifySignature v)
-                                        | v <- commitPrecommits cmt ]
+                                        | v <- NE.toList (commitPrecommits cmt) ]
                -- FIXME: inefficient
            let toSet = Set.fromList
                      . map (fingerprint . validatorPubKey)

@@ -13,6 +13,11 @@ Homepage:       https://github.com/hexresearch/thundermint
 Category:       Data
 Build-Type:     Simple
 
+flag android-impl
+  Description: Build for android
+  Default:     False
+  Manual:      True
+
 Library
   Ghc-options:         -Wall
   Default-Language:    Haskell2010
@@ -28,6 +33,7 @@ Library
                      , directory
                      , exceptions        >=0.8.3
                      , filepath
+                     , mmorph
                      , microlens         >=0.4
                      , microlens-mtl     >=0.1
                      , network-info
@@ -44,7 +50,7 @@ Library
                      , transformers      >=0.5
                      , unordered-containers >=0.2.5.0
                      --
-                     , katip              >=0.6.3.0
+                     , katip              >= 0.6.3.0
                      , katip-elasticsearch
                      , http-client-tls
                      , bloodhound
@@ -138,24 +144,25 @@ Executable thundermint-coin-node
   hs-source-dirs:      exe
   Main-is:             coin-node.hs
 
--- Executable thundermint-coin-db
---   Ghc-options:         -Wall -threaded -Wno-orphans
---   Default-Language:    Haskell2010
---   Build-Depends:       base                 >=4.9 && <5
---                      , thundermint
---                      , thundermint-crypto
---                      , aeson
---                      , base58-bytestring    >=0.1
---                      , bytestring           >=0.10
---                      , containers           >=0.5.7
---                      , directory
---                      , filepath
---                      , optparse-applicative >=0.14
---                      , serialise
---                      , stm
---                      , text
---   hs-source-dirs:      exe
---   Main-is:             coin-db.hs
+Executable thundermint-db
+  Ghc-options:         -Wall -threaded -Wno-orphans
+  Default-Language:    Haskell2010
+  Build-Depends:       base                 >=4.9 && <5
+                     , thundermint
+                     , thundermint-types
+                     , thundermint-crypto
+                     , aeson
+                     , cborg                >=0.2
+                     , bytestring           >=0.10
+                     , containers           >=0.5.7
+                     , directory
+                     , filepath
+                     , optparse-applicative >=0.14
+                     , serialise
+                     , stm
+                     , text
+  hs-source-dirs:      exe
+  Main-is:             db-dump.hs
 
 
 -- Test suite
@@ -216,8 +223,15 @@ Benchmark thundermint-bench
   Default-Language:    Haskell2010
   Main-is:             main.hs
   Build-Depends:       base  >=4.9 && <5
-                     , thundermint
                      , bytestring >=0.10
                      , criterion
-                     , cryptonite
                      , deepseq
+                     , random
+                     , vector
+                     --
+                     , thundermint
+                     , thundermint-crypto
+                     , thundermint-types
+  if !flag(android-impl)
+    Build-Depends: cryptonite
+  Other-modules:       ValidatorSetsBench

@@ -21,6 +21,11 @@ flag sqlite-instances
   Default:     True
   Manual:      True
 
+flag android-impl
+  Description: Build for android
+  Default:     False
+  Manual:      True
+
 Library
   Ghc-options:         -Wall
   Default-Language:    Haskell2010
@@ -41,7 +46,7 @@ Library
                      , vector-th-unbox
                      , unordered-containers >=0.2.5.0
   if flag(sqlite-instances)
-    if !impl(ghcjs)
+    if !impl(ghcjs) && !flag(android-impl)
       CPP-Options:   -DINSTANCES_SQLITE
       Build-Depends: sqlite-simple
   Exposed-modules:

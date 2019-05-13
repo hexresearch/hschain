@@ -1,4 +1,5 @@
-{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE LambdaCase    #-}
+{-# LANGUAGE TypeOperators #-}
 -- |
 module TM.Mempool (tests) where
 
@@ -12,8 +13,9 @@ import Test.Tasty.Hedgehog
 import Hedgehog
 import Hedgehog.Gen.QuickCheck (arbitrary)
 
-import Thundermint.Crypto (petrify,pet)
-import Thundermint.Crypto.Ed25519
+import Thundermint.Crypto         ((:&), petrify, pet)
+import Thundermint.Crypto.Ed25519 (Ed25519)
+import Thundermint.Crypto.SHA     (SHA512)
 import Thundermint.Store
 import Thundermint.Store.STM
 import TM.Arbitrary.Instances ()
@@ -34,7 +36,7 @@ tests = testGroup "Mempool"
 -- just a simple variable.
 
 -- Create mempool and callback for incrementing blockchain value
-createTestMempool :: MonadIO m => m (m (), Mempool m Ed25519_SHA512 Int)
+createTestMempool :: MonadIO m => m (m (), Mempool m (Ed25519 :& SHA512) Int)
 createTestMempool = do
   varBch  <- liftIO $ newTVarIO 0
   let checkTx i = liftIO $ do n <- readTVarIO varBch

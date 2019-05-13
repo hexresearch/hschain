@@ -33,6 +33,8 @@ module Thundermint.Store.Internal.Query (
   , queryRWT
     -- ** Plain queries
   , Query(..)
+  , liftQueryRO
+  , liftQueryRW
   , runQueryRO
   , runQueryRW
   , queryRO
@@ -42,6 +44,7 @@ module Thundermint.Store.Internal.Query (
 import Control.Monad.Catch
 import qualified Control.Monad.Fail as Fail
 import Control.Monad.IO.Class
+import Control.Monad.Morph            (MFunctor(..))
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Reader
 import Control.Monad.Trans.Maybe
@@ -114,7 +117,7 @@ class MonadReadDB m alg a => MonadDB m alg a | m -> alg a where
 -- | Monad which allows to perform read-only queries. API is just thin
 --   wrappers about @sqlite-simple@ functions thus they shouldn't be
 --   used directly. Also note that it doesn't have 'MonadIO' superclass.
-class MonadReadDB m alg a => MonadQueryRO m alg a | m -> alg a where
+class Monad m => MonadQueryRO m alg a | m -> alg a where
   basicQuery    :: (SQL.ToRow p, SQL.FromRow q) => SQL.Query -> p -> m [q]
   basicQuery_   :: (SQL.FromRow q)              => SQL.Query -> m [q]
 
@@ -131,7 +134,7 @@ basicQuery1 sql param =
 
 -- | Monad which can perform read-write queries. @basic*RW@ functions
 --   are same as @RO@ variants and intended to be used as 
-class (MonadDB m alg a, MonadQueryRO m alg a) => MonadQueryRW m alg a | m -> alg a where
+class (MonadQueryRO m alg a) => MonadQueryRW m alg a | m -> alg a where
   basicExecute  :: (SQL.ToRow p) => SQL.Query -> p -> m ()
   basicExecute_ :: ()            => SQL.Query ->      m ()
   -- | Roll back execution of transaction. It's executed as throwing
@@ -231,6 +234,9 @@ instance MonadQueryRW m alg a => MonadQueryRW (SL.StateT s m) alg a where
 newtype QueryT (rw :: Access) alg a m x = QueryT { unQueryT :: m x }
   deriving newtype ( Functor, Applicative, MonadIO, MonadThrow, MonadCatch, MonadMask, MonadLogger)
 
+instance MFunctor (QueryT rw alg a) where
+  hoist f (QueryT m) = QueryT (f m)
+
 instance MonadThrow m => Monad (QueryT rw alg a m) where
   return         = QueryT . return
   QueryT m >>= f = QueryT $ unQueryT . f =<< m
@@ -248,26 +254,20 @@ instance Exception Rollback
 instance MonadTrans (QueryT rr alg a) where
   lift = QueryT
 
-instance (MonadThrow m, MonadReadDB m alg a) => MonadReadDB (QueryT rw alg a m) alg a where
-  askConnectionRO = QueryT askConnectionRO
-
-instance (MonadThrow m, MonadDB m alg a) => MonadDB (QueryT 'RW alg a m) alg a where
-  askConnectionRW = QueryT askConnectionRW
-
 instance (MonadIO m, MonadThrow m, MonadReadDB m alg a) => MonadQueryRO (QueryT rw alg a m) alg a where
   basicQuery sql param = do
-    Connection _ conn <- askConnectionRO
+    Connection _ conn <- QueryT askConnectionRO
     liftIO $ SQL.query conn sql param
   basicQuery_ sql = do
-    Connection _ conn <- askConnectionRO
+    Connection _ conn <- QueryT askConnectionRO
     liftIO $ SQL.query_ conn sql
 
 instance (MonadIO m, MonadThrow m, MonadDB m alg a) => MonadQueryRW (QueryT 'RW alg a m) alg a where
   basicExecute  sql param = do
-    Connection _ conn <- askConnectionRW
+    Connection _ conn <- QueryT askConnectionRW
     liftIO $ SQL.execute conn sql param
   basicExecute_ sql = do
-    Connection _ conn <- askConnectionRW
+    Connection _ conn <- QueryT askConnectionRW
     liftIO $ SQL.execute_ conn sql
   rollback      = throwM Rollback
 
@@ -313,6 +313,20 @@ queryRWT q = flip runQueryRWT q =<< askConnectionRW
 newtype Query rw alg a x = Query (ReaderT (Connection rw alg a) IO x)
   deriving newtype (Functor, Applicative)
 
+liftQueryRO
+  :: (MonadReadDB m alg a, MonadThrow m, MonadIO m)
+  => Query  'RO alg a   x
+  -> QueryT 'RO alg a m x
+liftQueryRO (Query action)
+  = liftIO . runReaderT action =<< QueryT askConnectionRO
+
+liftQueryRW
+  :: (MonadDB m alg a, MonadThrow m, MonadIO m)
+  => Query  'RW alg a   x
+  -> QueryT 'RW alg a m x
+liftQueryRW (Query action) = do
+  liftIO . runReaderT action =<< QueryT askConnectionRW
+
 instance Monad (Query rm alg a) where
   return = Query . return
   Query m >>= f = Query $ (\(Query q) -> q) . f =<< m
@@ -321,26 +335,20 @@ instance Monad (Query rm alg a) where
 instance Fail.MonadFail (Query rw alg a) where
   fail _ = Query $ throwM Rollback
 
-instance MonadReadDB (Query rw alg a) alg a where
-  askConnectionRO = Query $ asks connectionRO
-
-instance MonadDB (Query 'RW alg a) alg a where
-  askConnectionRW = Query ask
-
 instance MonadQueryRO (Query rw alg a) alg a where
   basicQuery sql param = do
-    Connection _ conn <- askConnectionRO
+    Connection _ conn <- Query $ asks connectionRO
     Query $ liftIO $ SQL.query conn sql param
   basicQuery_ sql = do
-    Connection _ conn <- askConnectionRO
+    Connection _ conn <- Query $ asks connectionRO
     Query $ liftIO $ SQL.query_ conn sql
 
 instance MonadQueryRW (Query 'RW alg a) alg a where
   basicExecute  sql param = do
-    Connection _ conn <- askConnectionRW
+    Connection _ conn <- Query ask
     Query $ liftIO $ SQL.execute conn sql param
   basicExecute_ sql = do
-    Connection _ conn <- askConnectionRW
+    Connection _ conn <- Query ask
     Query $ liftIO $ SQL.execute_ conn sql
   rollback = Query $ throwM Rollback
 

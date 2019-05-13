@@ -37,6 +37,7 @@ import Control.Monad
 
 import qualified Data.Aeson          as JSON
 import qualified Data.Aeson.TH       as JSON
+import qualified Data.List.NonEmpty  as NE
 import qualified Data.Map            as Map
 import qualified Data.HashMap.Strict as HM
 import           Katip (Severity(..),sl)
@@ -275,7 +276,8 @@ tendermintTransition par@HeightParameters{..} msg sm@TMState{..} =
     PreCommitMsg v@(signedValue -> Vote{..})
       -- Collect stragglers precommits for inclusion of
       | smStep == StepNewHeight
-      , Just cmt@(Commit cmtID ((signedValue -> Vote{voteRound=r}):_)) <- smLastCommit
+      , Just cmt@(Commit cmtID voteList) <- smLastCommit
+      , Vote{voteRound = r}              <- signedValue $ NE.head voteList
       , succ voteHeight == currentH
       , voteRound       == r
         -> case voteBlockID of
@@ -284,7 +286,7 @@ tendermintTransition par@HeightParameters{..} msg sm@TMState{..} =
              -- Add vote while ignoring duplicates
              _        | v' `elem` commitPrecommits cmt -> tranquility
                       | otherwise                      -> return sm
-               { smLastCommit = Just cmt { commitPrecommits = v' : commitPrecommits cmt } }
+               { smLastCommit = Just cmt { commitPrecommits = NE.cons v' (commitPrecommits cmt) } }
       -- Only accept votes with current height
       | voteHeight /= currentH -> tranquility
       | otherwise              -> checkTransitionPrecommit par voteRound
@@ -378,7 +380,7 @@ checkTransitionPrecommit par@HeightParameters{..} r sm@(TMState{..})
          acceptBlock r bid
          commitBlock Commit{ commitBlockID    = bid
                            , commitPrecommits =  unverifySignature
-                                             <$> valuesAtR r smPrecommitsSet
+                                             <$> NE.fromList (valuesAtR r smPrecommitsSet)
                            }
                      sm { smStep = StepAwaitCommit r }
   --  * We have +2/3 precommits for nil at current round

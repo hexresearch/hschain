@@ -3,6 +3,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 {-# LANGUAGE TupleSections     #-}
+{-# LANGUAGE TypeOperators     #-}
 {-# LANGUAGE ViewPatterns      #-}
 -- |
 module Thundermint.Mock.KeyVal (
@@ -32,6 +33,7 @@ import Thundermint.Types.Blockchain
 import Thundermint.Control
 import Thundermint.Crypto
 import Thundermint.Crypto.Ed25519
+import Thundermint.Crypto.SHA
 import Thundermint.Logger
 import Thundermint.Mock.KeyList
 import Thundermint.Mock.Types
@@ -46,8 +48,8 @@ import Thundermint.Types.Validators (ValidatorSet)
 --
 ----------------------------------------------------------------
 
-genesisBlock :: Pet (ValidatorSet Ed25519_SHA512 )
-             -> Pet (Block Ed25519_SHA512 [Pet (String,NetAddr)])
+genesisBlock :: Pet (ValidatorSet (Ed25519 :& SHA512))
+             -> Pet (Block (Ed25519 :& SHA512) [Pet (String,NetAddr)])
 genesisBlock valSet
   = makeGenesis "KV" (Time 0) [] valSet
 
@@ -78,7 +80,7 @@ interpretSpec
   :: Maybe Int64                -- ^ Maximum height
   -> FilePath
   -> NetSpec NodeSpec
-  -> IO [(Connection 'RO Ed25519_SHA512 [Pet (String,NetAddr)], IO ())]
+  -> IO [(Connection 'RO (Ed25519 :& SHA512) [Pet (String,NetAddr)], IO ())]
 interpretSpec maxH prefix NetSpec{..} = do
   net <- newMockNet
   forM (Map.toList netAddresses) $ \(addr, NodeSpec{..}) -> do
@@ -96,7 +98,7 @@ interpretSpec maxH prefix NetSpec{..} = do
                  -- Blockchain state
                  bchState <- newBChState transitions
                  _        <- stateAtH bchState (succ hChain)
-                 let appState = AppState
+                 let appState = AppLogic
                        { appValidationFun  = \b -> do
                            let h = headerHeight $ pet $ blockHeader b
                            st <- stateAtH bchState h
@@ -112,13 +114,9 @@ interpretSpec maxH prefix NetSpec{..} = do
                                     , []
                                     )
                        --
-                       , appCommitCallback = \case
-                           b | Just hM <- maxH
-                             , headerHeight (pet (blockHeader b)) > Height hM -> throwM Abort
-                             | otherwise                                      -> return ()
                        , appCommitQuery    = SimpleQuery $ \_ -> return []
-                       , appValidator      = nspecPrivKey
                        }
+                     appCall = maybe mempty (callbackAbortAtH . Height) maxH
                  let cfg = defCfg :: Configuration Example
                  appCh <- newAppChans (cfgConsensus cfg)
                  runConcurrently
@@ -131,7 +129,7 @@ interpretSpec maxH prefix NetSpec{..} = do
                          appCh
                          nullMempoolAny
                    , setNamespace "consensus"
-                     $ runApplication (cfgConsensus cfg) (\_ _ -> return True) appState appCh
+                     $ runApplication (cfgConsensus cfg) nspecPrivKey appState appCall appCh
                    ]
              )
   where
@@ -147,7 +145,7 @@ executeSpec
   :: Maybe Int64                -- ^ Maximum height
   -> FilePath
   -> NetSpec NodeSpec
-  -> IO [Connection 'RO Ed25519_SHA512 [Pet (String,NetAddr)]]
+  -> IO [Connection 'RO (Ed25519 :& SHA512) [Pet (String,NetAddr)]]
 executeSpec maxH prefix spec = do
   actions <- interpretSpec maxH prefix spec
   runConcurrently (snd <$> actions) `catch` (\Abort -> return ())

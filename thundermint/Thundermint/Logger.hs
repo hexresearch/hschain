@@ -39,6 +39,7 @@ import Control.Arrow (first,second)
 import Control.Monad
 import Control.Monad.Catch
 import Control.Monad.IO.Class
+import Control.Monad.Morph        (MFunctor(..))
 import Control.Monad.Fail         (MonadFail)
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Reader
@@ -78,6 +79,9 @@ newtype LoggerT m a = LoggerT (ReaderT (Namespace, LogEnv) m a)
   deriving ( Functor, Applicative, Monad
            , MonadIO, MonadThrow, MonadCatch, MonadMask, MonadTrans
            , MonadFork, MonadTrace, MonadFail)
+
+instance MFunctor LoggerT where
+  hoist f (LoggerT m) = LoggerT (hoist f m)
 instance (MonadReadDB m alg a) => MonadReadDB (LoggerT m) alg a where
   askConnectionRO = lift askConnectionRO
 instance (MonadDB m alg a) => MonadDB (LoggerT m) alg a where
@@ -102,6 +106,9 @@ newtype NoLogsT m a = NoLogsT { runNoLogsT :: m a }
   deriving ( Functor, Applicative, Monad, MonadFail
            , MonadIO, MonadThrow, MonadCatch, MonadMask
            , MonadFork, MonadTrace)
+
+instance MFunctor NoLogsT where
+  hoist f (NoLogsT m) = NoLogsT (f m)
 instance (MonadReadDB m alg a) => MonadReadDB (NoLogsT m) alg a where
   askConnectionRO = lift askConnectionRO
 instance (MonadDB m alg a) => MonadDB (NoLogsT m) alg a where

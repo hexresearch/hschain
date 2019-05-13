@@ -13,6 +13,11 @@ Homepage:       https://github.com/hexresearch/thundermint
 Category:       Data
 Build-Type:     Simple
 
+flag android-impl
+  Description: Build for android
+  Default:     False
+  Manual:      True
+
 Library
   Ghc-options:         -Wall
   Default-Language:    Haskell2010
@@ -26,20 +31,31 @@ Library
                      , cborg             >=0.2.1
                      , text              >=1
                      , transformers
-                     --
   if impl(ghcjs)
     hs-source-dirs: ghcjs .
     Build-depends:     ghcjs-prim
                      , ghcjs-base
                      , SHA               >=1.6 && <2
+    Other-modules:
+                  Thundermint.Crypto.NaCl
   else
-    hs-source-dirs: ghc .
-    Build-Depends:     cryptonite        >=0.25
-                     , entropy           >=0.4
-                     , memory            >=0.14.14
+    if flag(android-impl)
+      hs-source-dirs: pure .
+      Build-Depends:     ed25519-donna
+                       , SHA               >=1.6 && <2
+                       , crypto-api
+    else
+      if impl(ghc)
+        hs-source-dirs: ghc .
+        Build-Depends:     cryptonite        >=0.25
+                         , entropy           >=0.4
+                         , memory            >=0.14.14
   Exposed-modules:
                   Thundermint.Crypto
+                  Thundermint.Crypto.Classes
                   Thundermint.Crypto.Ed25519
+                  Thundermint.Crypto.SHA
+                  Thundermint.Crypto.Salsa20Poly1305
 
 Test-suite thundermint-crypto-tests
   if impl(ghcjs)
@@ -52,6 +68,7 @@ Test-suite thundermint-crypto-tests
                      , thundermint-crypto
                      , aeson
                      , bytestring        >=0.10
+                     , base64-bytestring
                      , serialise         >=0.2
                      , text
                      --

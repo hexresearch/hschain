@@ -6,6 +6,7 @@
 {-# LANGUAGE RankNTypes           #-}
 {-# LANGUAGE RecordWildCards      #-}
 {-# LANGUAGE ScopedTypeVariables  #-}
+{-# LANGUAGE TypeApplications     #-}
 {-# LANGUAGE UndecidableInstances #-}
 -- |
 -- Data types for storage of blockchain
@@ -16,8 +17,10 @@ module Thundermint.Blockchain.Internal.Engine.Types (
   , NetworkCfg(..)
   , DefaultConfig(..)
     -- * Application state
-  , AppState(..)
-  , hoistAppState
+  , AppLogic(..)
+  , hoistAppLogic
+  , AppCallbacks(..)
+  , hoistAppCallback
   , Validator(..)
   , PrivValidator(..)
   , CommitCallback(..)
@@ -32,7 +35,10 @@ module Thundermint.Blockchain.Internal.Engine.Types (
 
 import Control.Applicative
 import Control.Concurrent.STM
+import Control.Monad.Morph    (MFunctor(..))
 import Data.Aeson
+import Data.Coerce
+import Data.Monoid            (Any(..))
 import Numeric.Natural
 import GHC.Generics           (Generic)
 
@@ -152,13 +158,16 @@ data CommitCallback m alg a
   -- ^ Query for updating user's state and to find out new set of
   --   validators. It's evaluated in the same transaction as block
   --   commit and thus atomic.
-  | MixedQuery  !(m (Block alg a -> Query 'RW alg a ([ValidatorChange alg], m ())))
+  | MixedQuery  !(Block alg a -> QueryT 'RW alg a m [ValidatorChange alg])
   -- ^ Query which allow to mixed database updates with other
   --   actions. If @Query@ succeeds returned action is executed immediately
 
 
--- | Full state of application.
-data AppState m alg a = AppState
+-- | Collection of callbacks which implement actual logic of
+--   blockchain. This is most generic form which doesn't expose any
+--   underlying structure. It's expected that this structure will be
+--   generated from more specialized functions
+data AppLogic m alg a = AppLogic
   { appBlockGenerator   :: Height
                         -> Time
                         -> Maybe (Commit alg a)
@@ -166,8 +175,6 @@ data AppState m alg a = AppState
                         -> m (a, [ValidatorChange alg])
     -- ^ Generate fresh block for proposal. It's called each time we
     --   need to create new block for proposal
-  , appValidator        :: Maybe (PrivValidator alg)
-    -- ^ Private validator for node. It's @Nothing@ if node is not a validator
   , appValidationFun    :: Block alg a -> m (Maybe [ValidatorChange alg])
     -- ^ Function for validation of proposed block data. It returns
     --   change of validators for given block if it's valid and
@@ -175,25 +182,45 @@ data AppState m alg a = AppState
   , appCommitQuery      :: CommitCallback m alg a
     -- ^ Database query called after block commit in the same
     --   transaction
-  , appCommitCallback   :: Block alg a -> m ()
-    -- ^ Function which is called after each commit.
   }
+
+data AppCallbacks m alg a = AppCallbacks
+  { appCommitCallback   :: Block alg a -> m ()
+    -- ^ Function which is called after each commit.
+  , appCanCreateBlock   :: Height -> Time -> m (Maybe Bool)
+    -- ^ Callback which is called to decide whether we ready to create
+    --   new block or whether we should wait
+  }
+
+instance Applicative m => Semigroup (AppCallbacks m alg a) where
+  AppCallbacks f1 g1 <> AppCallbacks f2 g2 = AppCallbacks
+    { appCommitCallback = liftA2 (*>) f1 f2
+    , appCanCreateBlock = (liftA2 . liftA2 . liftA2) (coerce ((<>) @(Maybe Any))) g1 g2
+    }
+instance Applicative m => Monoid (AppCallbacks m alg a) where
+  mempty  = AppCallbacks (\_ -> pure ()) (\_ _ -> pure Nothing)
+
 
 hoistCommitCallback
-  :: (Functor m)
+  :: (Monad m)
   => (forall x. m x -> n x) -> CommitCallback m alg a -> CommitCallback n alg a
 hoistCommitCallback _   (SimpleQuery f) = SimpleQuery f
-hoistCommitCallback fun (MixedQuery  f) =
-  MixedQuery $ fun $ (fmap . fmap . fmap . fmap) fun f
+hoistCommitCallback fun (MixedQuery  f) = MixedQuery $ fmap (hoist fun) f
 
-hoistAppState :: (Functor m) => (forall x. m x -> n x) -> AppState m alg a -> AppState n alg a
-hoistAppState fun AppState{..} = AppState
+
+hoistAppLogic :: (Monad m) => (forall x. m x -> n x) -> AppLogic m alg a -> AppLogic n alg a
+hoistAppLogic fun AppLogic{..} = AppLogic
   { appBlockGenerator   = \h t c e -> fun $ appBlockGenerator h t c e
   , appValidationFun    = fun . appValidationFun
-  , appCommitCallback   = fun . appCommitCallback
   , appCommitQuery      = hoistCommitCallback   fun appCommitQuery
-  , ..
   }
+
+hoistAppCallback :: (Monad m) => (forall x. m x -> n x) -> AppCallbacks m alg a -> AppCallbacks n alg a
+hoistAppCallback fun AppCallbacks{..} = AppCallbacks
+  { appCommitCallback = fun . appCommitCallback
+  , appCanCreateBlock = \h t -> fun (appCanCreateBlock h t)
+  }
+
 
 -- | Our own validator
 newtype PrivValidator alg = PrivValidator

@@ -1,3 +1,4 @@
+{-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE DeriveGeneric       #-}
 {-# LANGUAGE NumDecimals         #-}
@@ -32,8 +33,9 @@ import Katip
 
 import Thundermint.Blockchain.Internal.Engine.Types
 import Thundermint.Control
-import Thundermint.Crypto
-import Thundermint.Crypto.Ed25519
+import Thundermint.Crypto         ((:&), Fingerprint)
+import Thundermint.Crypto.Ed25519 (Ed25519)
+import Thundermint.Crypto.SHA     (SHA512)
 import Thundermint.Debug.Trace
 import Thundermint.Run
 import Thundermint.Mock.Coin (intToNetAddr)
@@ -74,12 +76,25 @@ withRetry' useUDP fun host = do
       hs = [const $ Handler (\(_::E.IOException) -> return shouldRetry)]
 
 
-testValidators :: Map.Map (Fingerprint Ed25519_SHA512) (PrivValidator Ed25519_SHA512)
+testValidators, extraTestValidators :: Map.Map (Fingerprint (Ed25519 :& SHA512)) (PrivValidator (Ed25519 :& SHA512))
 testValidators = makePrivateValidators
   [ "2K7bFuJXxKf5LqogvVRQjms2W26ZrjpvUjo5LdvPFa5Y"
   , "4NSWtMsEPgfTK25tCPWqNzVVze1dgMwcUFwS5WkSpjJL"
   , "3Fj8bZjKc53F2a87sQaFkrDas2d9gjzK57FmQwnNnSHS"
   , "D2fpHM1JA8trshiUW8XPvspsapUvPqVzSofaK1MGRySd"
+  ]
+
+extraTestValidators = makePrivateValidators
+  [ "EiG2NbUV9ofWeyXcoCkJYvuyLEEQhyeWtGh5n9fcobQi"
+  , "CPSbRfUkV6QcUSBucJ6YN1zVm2h8ZMBNdBhm4Fwd46km"
+  , "GGy5NQVwQxuLBLewmgiDziMAbEN3tfNHetCFrF44n5uL"
+  , "ENf7S1yqKQyeBC59RJWgGB5qHA3GYzwaxHGx1MTXiyts"
+  , "EbG1Bo6NBPuYVT5u44epdjfbYiSaqLzhTWg7NghwDstp"
+  , "BtrJnk73h4WYxfiYJYuw85bhFUi2y6mYpxac2ChoUyHK"
+  , "4eWJ5jSzaBUjkP5kG7gJa3Ad9btjbXMVBxiMQq59M774"
+  , "E8Su8SBtP6F3UjwjSTmZbccD3U8B1amP5syyLyLUY732"
+  , "9ygyNr894jDvMoymQhdEsrnrxotXKfyKETUkH8qM2LCc"
+  , "9Yjk2NmuirUtf8b15jRSzHM5H7L2G1hoN6HTsRAJ8pCF"
   ]
 
 
@@ -108,10 +123,11 @@ createTestNetwork :: (MonadMask m, MonadFork m, MonadTMMonitoring m, MonadFail m
 createTestNetwork = createTestNetworkWithConfig (defCfg :: Configuration Example)
 
 
-createTestNetworkWithConfig
+createTestNetworkWithValidatorsSetAndConfig
   :: forall m app . (MonadIO m, MonadMask m, MonadFork m, MonadTMMonitoring m, MonadFail m)
-  => Configuration app -> TestNetDescription m -> m ()
-createTestNetworkWithConfig cfg desc = do
+  => Map.Map (Fingerprint (Ed25519 :& SHA512)) (PrivValidator (Ed25519 :& SHA512))
+  -> Configuration app -> TestNetDescription m -> m ()
+createTestNetworkWithValidatorsSetAndConfig validatorsSet cfg desc = do
     net  <- liftIO newMockNet
     withMany (\descr cont -> withConnection ":memory:" (\c -> cont (c,descr))) desc $ \descrList -> do
       acts <- mapM (mkTestNode net) descrList
@@ -119,10 +135,10 @@ createTestNetworkWithConfig cfg desc = do
   where
     mkTestNode
       :: MockNet
-      -> (Connection 'RW Ed25519_SHA512 [Pet (String, NetAddr)], TestNetLinkDescription m)
+      -> (Connection 'RW (Ed25519 :& SHA512) [Pet (String, NetAddr)], TestNetLinkDescription m)
       -> m [m ()]
     mkTestNode net (conn, TestNetLinkDescription{..}) = do
-        let validatorSet = petrify $ makeValidatorSetFromPriv testValidators
+        let validatorSet = petrify $ makeValidatorSetFromPriv validatorsSet
         initDatabase conn Proxy (genesisBlock validatorSet) validatorSet
         --
         let run = runTracerT ncCallback . runNoLogsT . runDBT conn
@@ -135,11 +151,16 @@ createTestNetworkWithConfig cfg desc = do
                 , bchInitialPeers     = map intToNetAddr ncTo
                 }
               NodeDescription
-                { nodeCommitCallback   = \_ -> return ()
-                , nodeValidationKey    = Nothing
-                , nodeReadyCreateBlock = \_ _ -> return True
+                { nodeValidationKey = Nothing
+                , nodeCallbacks     = mempty
                 }
               logic
+
+
+createTestNetworkWithConfig
+  :: forall m app . (MonadIO m, MonadMask m, MonadFork m, MonadTMMonitoring m, MonadFail m)
+  => Configuration app -> TestNetDescription m -> m ()
+createTestNetworkWithConfig = createTestNetworkWithValidatorsSetAndConfig testValidators
 
 -- |UDP may return Nothings for the message receive operation.
 skipNothings :: String -> (a -> IO (Maybe LBS.ByteString)) -> a -> IO LBS.ByteString

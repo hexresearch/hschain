@@ -1,10 +1,11 @@
-{-# LANGUAGE AllowAmbiguousTypes            #-}
-{-# LANGUAGE DataKinds                      #-}
-{-# LANGUAGE LambdaCase                     #-}
-{-# LANGUAGE RankNTypes                     #-}
-{-# LANGUAGE RecordWildCards                #-}
-{-# LANGUAGE ScopedTypeVariables            #-}
-{-# LANGUAGE TypeApplications               #-}
+{-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE DataKinds           #-}
+{-# LANGUAGE LambdaCase          #-}
+{-# LANGUAGE RankNTypes          #-}
+{-# LANGUAGE RecordWildCards     #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications    #-}
+{-# LANGUAGE TypeOperators       #-}
 {-# OPTIONS_GHC -Werror=incomplete-patterns #-}
 -- {-# LANGUAGE TemplateHaskell #-}
 
@@ -26,13 +27,15 @@ import Test.Tasty.Hedgehog
 import qualified Test.Tasty.QuickCheck as QC
 import qualified Hedgehog.Gen.QuickCheck as Gen
 
-import Thundermint.Crypto.Ed25519
+import Thundermint.Crypto         ((:&))
+import Thundermint.Crypto.Ed25519 (Ed25519)
+import Thundermint.Crypto.SHA     (SHA512)
 import Thundermint.Types.Blockchain
 
 import TM.Arbitrary.Instances ()
 
 
-type TestCryptoAlg     = Ed25519_SHA512
+type TestCryptoAlg     = Ed25519 :& SHA512
 type TestBlock         = String
 type TestVote ty       = Vote ty TestCryptoAlg TestBlock
 type TestVotePrevote   = Vote 'PreVote TestCryptoAlg TestBlock
