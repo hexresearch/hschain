@@ -34,7 +34,7 @@ printValidators = do
     liftIO $ putStrLn $ "==== " ++ show h
     queryRO (retrieveValidatorSet h) >>= \case
       Nothing -> liftIO $ putStrLn "ERROR: no validator set"
-      Just v  -> liftIO $ mapM_ print $ sort $ asValidatorList v
+      Just v  -> liftIO $ mapM_ print $ sort $ asValidatorList $ pet v
     
 runCommand :: FilePath -> DBT 'RO Alg FlatTerm IO () -> IO ()
 runCommand path dbt =

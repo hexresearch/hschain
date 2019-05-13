@@ -33,7 +33,7 @@ import Katip
 
 import Thundermint.Blockchain.Internal.Engine.Types
 import Thundermint.Control
-import Thundermint.Crypto         ((:&), Fingerprint)
+import Thundermint.Crypto         (Pet, petrify, (:&), Fingerprint)
 import Thundermint.Crypto.Ed25519 (Ed25519)
 import Thundermint.Crypto.SHA     (SHA512)
 import Thundermint.Debug.Trace

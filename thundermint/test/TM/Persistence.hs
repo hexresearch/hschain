@@ -139,7 +139,7 @@ tests = testGroup "Tests for persistent data"
        ]
   ]
 
-genesis :: Pet (Block (Ed25519 :& SHA512)) ()
+genesis :: Pet (Block (Ed25519 :& SHA512) ())
 genesis = makeGenesis "TEST" (Time 0) () validatorSet
 
 validatorSet :: Pet (ValidatorSet (Ed25519 :& SHA512))

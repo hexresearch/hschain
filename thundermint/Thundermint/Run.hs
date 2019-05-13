@@ -214,7 +214,7 @@ runNode cfg BlockchainNet{..} NodeDescription{..} NodeLogic{..} = do
 callbackAbortAtH :: MonadThrow m => Height -> AppCallbacks m alg a
 callbackAbortAtH hMax = mempty
   { appCommitCallback = \b ->
-      when (headerHeight (blockHeader b) > hMax) $ throwM Abort
+      when ((headerHeight . pet . blockHeader) b > hMax) $ throwM Abort
   }
 
 -- | Callback which removes from mempool all transactions which are

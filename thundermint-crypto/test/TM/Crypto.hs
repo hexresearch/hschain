@@ -7,6 +7,7 @@ module TM.Crypto (tests) where
 
 import qualified Codec.Serialise as CBOR
 import qualified Data.Aeson      as JSON
+import Data.Maybe
 import Data.Typeable
 import Data.Text      (Text)
 import qualified Data.ByteString as BS
@@ -59,7 +60,7 @@ testsEd25519 = testGroup "ed25519"
        assertBool "Signature check failed" $ verifyBlobSignature pubK blob sign
     --
   , testCase "Signed works"
-  $ do privK <- generatePrivKey @Ed25519_SHA512
+  $ do privK <- generatePrivKey @Ed25519
        let pubK  = publicKey privK
            addr  = fingerprint pubK
            signV = signValue privK $ petrify ()

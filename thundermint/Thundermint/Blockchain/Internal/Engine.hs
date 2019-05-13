@@ -172,9 +172,9 @@ decideNewBlock config appValidatorKey appSt@AppLogic{..} appCall@AppCallbacks{..
               --
               MixedQuery mcall -> do
                 r <- queryRWT $ do storeCommit cmt b
-                                   vsetChange <- mcall b
+                                   vsetChange <- mcall (pet b)
                                    case changeValidators vsetChange (validatorSet hParam) of
-                                     Just vset -> storeValSet b vset
+                                     Just vset -> storeValSet b (petrify vset)
                                      Nothing   -> fail ""
                 case r of
                   Nothing -> error "Cannot write commit into database"

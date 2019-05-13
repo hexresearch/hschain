@@ -17,7 +17,7 @@ import Control.Monad.Catch
 import Control.Monad.Fail
 import Control.Monad.IO.Class
 
-
+import Data.SafeCopy
 import qualified Data.Map.Strict as Map
 
 import Data.Typeable (Proxy(..))
@@ -109,7 +109,8 @@ deriving instance Serialise ValidatorsTestsState
 data VTSTx = Add | Del | OriginMark Int
   deriving (Eq, Ord, Show, Generic)
 
-deriving instance Serialise VTSTx
+instance SafeCopy VTSTx
+
 
 testAddRemValidators :: IO ()
 testAddRemValidators = do
@@ -122,11 +123,11 @@ testAddRemValidators = do
   when (not hasBlockFromDynamicOne) $ error "failed to have block from dynamic validator"
   where
     catchAbort act = catch act (\Abort -> return ())
-    testTransitions :: BlockFold ValidatorsTestsState alg [VTSTx]
+    testTransitions :: BlockFold ValidatorsTestsState alg [Pet VTSTx]
     testTransitions = BlockFold
       { processTx           = const process
-      , processBlock        = \_ b s0 -> let h = headerHeight $ blockHeader b
-                                       in foldM (flip (process h)) s0 (blockData b)
+      , processBlock        = \_ b s0 -> let h = headerHeight $ pet $ blockHeader b
+                                         in foldM (flip (process h)) s0 (pet $ blockData b)
       , transactionsToBlock = \_ ->
           let selectTx _ []     = []
               selectTx c (t:tx) = case processTransaction t c of
@@ -161,7 +162,7 @@ testAddRemValidators = do
     nodesIndices = [1 .. testValidatorsCount]
     desc = map mkTestNetLinkDescription (zip [1..] $ map snd allValidatorsList)
     mkTestNetLinkDescription (i, pk) = (TestNetLinkDescription i (filter (/=i) nodesIndices) (const $ return ()), pk)
-    validatorSet = makeValidatorSetFromPriv initialValidators
+    validatorSet = petrify $ makeValidatorSetFromPriv initialValidators
 
     enableHeight = Height 20
     disableHeight = Height 40
@@ -170,7 +171,9 @@ testAddRemValidators = do
       :: (Functor m, MonadMask m, MonadFork m, MonadFail m, MonadTMMonitoring m)
       => MockNet
       -> MVar (Bool)
-      -> (Connection 'RW (Ed25519 :& SHA512) [VTSTx], (TestNetLinkDescription m, PrivValidator (Ed25519 :& SHA512)))
+      -> ( Connection 'RW (Ed25519 :& SHA512) [Pet VTSTx]
+         , (TestNetLinkDescription m, PrivValidator (Ed25519 :& SHA512))
+         )
       -> m [m ()]
     mkTestNode net summary (conn, (TestNetLinkDescription{..}, privKey)) = do
         let nodeIndex = ncFrom
@@ -183,7 +186,8 @@ testAddRemValidators = do
                   nodeMempool = nodeMempool generatedLogic
                 , nodeCommitQuery = case nodeCommitQuery generatedLogic of
                       SimpleQuery cb -> SimpleQuery $ \block ->
-                          let addChanges = case (elem Add $ blockData block, elem Del $ blockData block) of
+                          let addChanges = case ( elem Add $ map pet $ pet $ blockData block
+                                                , elem Del $ map pet $ pet $ blockData block) of
                                 (True, False) -> [ChangeValidator dynamicValidatorPubKey 10]
                                 (False, True) -> [RemoveValidator dynamicValidatorPubKey]
                                 _ -> []
@@ -191,14 +195,14 @@ testAddRemValidators = do
                       MixedQuery _ -> error "mixed query in test!"
                 , nodeBlockGenerator = \height time maybeCommit byzantineEvidence -> do
                   (block', changes) <- nodeBlockGenerator generatedLogic height time maybeCommit byzantineEvidence
-                  let block = OriginMark nodeIndex : block'
+                  let block = petrify (OriginMark nodeIndex) : block'
                   case height of
-                    Height 20 -> return (Add : block, ChangeValidator dynamicValidatorPubKey 10 : changes)
-                    Height 40 -> return (Del : block, RemoveValidator dynamicValidatorPubKey : changes)
+                    Height 20 -> return (petrify Add : block, ChangeValidator dynamicValidatorPubKey 10 : changes)
+                    Height 40 -> return (petrify Del : block, RemoveValidator dynamicValidatorPubKey : changes)
                     _         -> return (block, changes)
                 , nodeBlockValidation = \block -> do
-                    let header = blockHeader block
-                        txs = blockData block
+                    let header = pet $ blockHeader block
+                        txs = map pet $ pet $ blockData block
                         h = headerHeight header
                         blockContainsDynamic = not (null txs) && any (== OriginMark dynamicValidatorIndex) txs
                     when ((h < enableHeight || h > disableHeight) && blockContainsDynamic) $
@@ -207,7 +211,8 @@ testAddRemValidators = do
                     when (nodeIndex < 4) $ liftIO $ modifyMVar_ summary $
                       return . (|| blockContainsDynamic)
                     changes <- nodeBlockValidation generatedLogic block
-                    let addChanges = case (elem Add $ blockData block, elem Del $ blockData block) of
+                    let addChanges = case ( elem Add $ map pet $ pet $ blockData block
+                                          , elem Del $ map pet $ pet $ blockData block) of
                           (True, False) -> [ChangeValidator dynamicValidatorPubKey 10]
                           (False, True) -> [RemoveValidator dynamicValidatorPubKey]
                           _ -> []

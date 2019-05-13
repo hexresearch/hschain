@@ -45,10 +45,6 @@ module Thundermint.Crypto (
   , Pet
   , pet
   , petrify
-    -- * Hashes
-  , Hashed(..)
-  , hashed
-  , hash
     -- * Convenince: signatures and hashes
   , Crypto
   , (:&)
@@ -90,12 +86,10 @@ import qualified Data.Aeson           as JSON
 import           Data.Data (Data)
 import           Data.Coerce
 import           Data.SafeCopy
-import qualified Data.ByteString               as BS
 import qualified Data.ByteString       as BS
 import           Data.ByteString.Lazy    (toStrict,fromStrict)
-import Data.Coerce
 import Data.Typeable (Proxy(..))
-import Text.Read     (Read(..), ReadPrec,lift)
+import Text.Read     (Read(..), lift)
 import Text.ParserCombinators.ReadP
 import GHC.TypeNats
 import GHC.Generics         (Generic,Generic1)
@@ -113,8 +107,8 @@ newtype Hash alg = Hash BS.ByteString
 
 -- | Compute hash of value. It's first serialized using CBOR and then
 --   hash of encoded data is computed,
-hash :: (CryptoHash alg, Serialise a) => a -> Hash alg
-hash = hashBlob . toStrict . serialise
+hash :: (CryptoHash alg) => Pet a -> Hash alg
+hash (Pet _ bs) = hashBlob bs
 
 -- | Type-indexed set of crypto algorithms. It's not very principled
 --   to push everything into singe type class.  But in order to keep
@@ -139,12 +133,18 @@ newtype Hashed alg a = Hashed (Hash alg)
   deriving newtype ( Eq,Ord,NFData, Serialise
                    , JSON.FromJSON, JSON.ToJSON, JSON.ToJSONKey, JSON.FromJSONKey)
 
-hashed :: (Crypto alg, Serialise a) => a -> Hashed alg a
+hashed :: (Crypto alg) => Pet a -> Hashed alg a
 hashed = Hashed . hash
 
 instance (CryptoHash alg) => ByteRepr (Hashed alg a) where
   encodeToBS (Hashed h) = encodeToBS h
   decodeFromBS = fmap Hashed . decodeFromBS
+
+instance SafeCopy (Hashed alg a) where
+  kind    = primitive
+  putCopy = contain . CBOR.encode
+  getCopy = contain   CBOR.decode
+
 
 -- | Chaining of hash algorithms. For example @SHA256 :<<< SHA256@
 --   would mean applying SHA256 twice or @SHA256 :<<< SHA512@ will
@@ -527,10 +527,10 @@ instance SafeCopy a => SafeCopy (Pet a) where
       Right a -> return $! Pet a bs
 
 instance JSON.ToJSON (Pet a) where
-  toJSON (Pet _ bs) = JSON.String $ T.decodeUtf8 $ encodeBSBase58 bs
+  toJSON (Pet _ bs) = JSON.String $ encodeBase58 bs
 instance (SafeCopy a) => JSON.FromJSON (Pet a) where
   parseJSON = JSON.withText "Pet a" $ \s -> 
-    case decodeBSBase58 $ T.encodeUtf8 s of
+    case decodeBase58 s of
       Nothing -> fail  "Incorrect Base58 encoding while decoding Address"
       Just bs -> case safeDecode (fromStrict bs) of
         Left  e -> fail (show e)
@@ -630,72 +630,3 @@ instance SafeCopy    a => SafeCopy (Signed 'Unverified alg a) where
   kind = primitive
 instance SafeCopy    a => JSON.FromJSON (Signed 'Unverified alg a)
 instance JSON.ToJSON a => JSON.ToJSON   (Signed 'Unverified alg a)
-
-
-----------------------------------------------------------------
--- Union of hashing and signing
-----------------------------------------------------------------
-
--- | Data type which support both hashing and signing
-data sign :& hash
-  deriving (Data)
-
-
-newtype instance PrivKey   (sign :& hash) = PrivKeyU   (PrivKey   sign)
-newtype instance PublicKey (sign :& hash) = PublicKeyU (PublicKey sign)
-
-deriving instance (Eq     (PrivKey   sign)) => Eq     (PrivKey   (sign :& hash))
-deriving instance (Ord    (PrivKey   sign)) => Ord    (PrivKey   (sign :& hash))
-deriving instance (NFData (PrivKey   sign)) => NFData (PrivKey   (sign :& hash))
-deriving instance (Eq     (PublicKey sign)) => Eq     (PublicKey (sign :& hash))
-deriving instance (Ord    (PublicKey sign)) => Ord    (PublicKey (sign :& hash))
-deriving instance (NFData (PublicKey sign)) => NFData (PublicKey (sign :& hash))
-
-instance (ByteRepr (PrivKey sign)) => ByteRepr (PrivKey (sign :& hash)) where
-  encodeToBS   = coerce (encodeToBS   @(PrivKey sign))
-  decodeFromBS = coerce (decodeFromBS @(PrivKey sign))
-
-instance (ByteRepr (PublicKey sign)) => ByteRepr (PublicKey (sign :& hash)) where
-  encodeToBS   = coerce (encodeToBS   @(PublicKey sign))
-  decodeFromBS = coerce (decodeFromBS @(PublicKey sign))
-
-instance CryptoSign sign => CryptoSign (sign :& hash) where
-  signBlob            = coerce (signBlob @sign)
-  verifyBlobSignature = coerce (verifyBlobSignature @sign)
-  publicKey           = coerce (publicKey @sign)
-  fingerprint         = coerce (fingerprint @sign)
-  generatePrivKey     = fmap PrivKeyU (generatePrivKey @sign)
-
-instance (CryptoSignPrim sign) => CryptoSignPrim (sign :& hash) where
-  type FingerprintSize (sign :& hash) = FingerprintSize sign
-  type PublicKeySize   (sign :& hash) = PublicKeySize   sign
-  type PrivKeySize     (sign :& hash) = PrivKeySize     sign
-  type SignatureSize   (sign :& hash) = SignatureSize   sign
-
-instance (CryptoHash hash) => CryptoHash (sign :& hash) where
-  type HashSize (sign :& hash) = HashSize hash
-  hashBlob     = coerce (hashBlob @hash)
-  hashEquality = coerce (hashEquality @hash)
-
-
-----------------------------------------------------------------
--- Hashed data
-----------------------------------------------------------------
-
--- | Newtype wrapper with phantom type tag which show hash of which
---   value is being calculated
-newtype Hashed alg a = Hashed (Hash alg)
-  deriving ( Show,Eq,Ord, Generic, Generic1, NFData
-           , Serialise, JSON.FromJSON, JSON.ToJSON, JSON.ToJSONKey, JSON.FromJSONKey)
-
-instance SafeCopy (Hashed alg a) where
-  kind    = primitive
-  putCopy = contain . CBOR.encode
-  getCopy = contain   CBOR.decode
-
--- | Compute hash of value. It's first serialized using CBOR and then
---   hash of encoded data is computed,
-hash :: (Crypto alg) => Pet a -> Hash alg
-hash (Pet _ bs) = hashBlob bs
-
-hashed :: (Crypto alg) => Pet a -> Hashed alg a
