@@ -1,9 +1,10 @@
-{-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE ConstraintKinds            #-}
 {-# LANGUAGE DataKinds                  #-}
+{-# LANGUAGE DeriveAnyClass             #-}
 {-# LANGUAGE DefaultSignatures          #-}
 {-# LANGUAGE DeriveDataTypeable         #-}
 {-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE DerivingStrategies         #-}
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
@@ -54,6 +55,10 @@ module Thundermint.Crypto (
   , StreamCypher(..)
   , cypherKeySize
   , cypherNonceSize
+    -- ** Higher-level API
+  , SecretBox(..)
+  , makeSecretBox
+  , openSecretBox
     -- * Encoding and decoding of values
   , ByteRepr(..)
   , encodeBase58
@@ -364,18 +369,17 @@ type Crypto (alg) = (CryptoSign alg, CryptoHash alg)
 
 -- | Data type which support both hashing and signing
 data sign :& hash
-  deriving (Data)
-
+  deriving stock (Data)
 
 newtype instance PrivKey   (sign :& hash) = PrivKeyU   (PrivKey   sign)
 newtype instance PublicKey (sign :& hash) = PublicKeyU (PublicKey sign)
 
-deriving instance (Eq     (PrivKey   sign)) => Eq     (PrivKey   (sign :& hash))
-deriving instance (Ord    (PrivKey   sign)) => Ord    (PrivKey   (sign :& hash))
-deriving instance (NFData (PrivKey   sign)) => NFData (PrivKey   (sign :& hash))
-deriving instance (Eq     (PublicKey sign)) => Eq     (PublicKey (sign :& hash))
-deriving instance (Ord    (PublicKey sign)) => Ord    (PublicKey (sign :& hash))
-deriving instance (NFData (PublicKey sign)) => NFData (PublicKey (sign :& hash))
+deriving         instance (Eq     (PrivKey   sign)) => Eq     (PrivKey   (sign :& hash))
+deriving         instance (Ord    (PrivKey   sign)) => Ord    (PrivKey   (sign :& hash))
+deriving newtype instance (NFData (PrivKey   sign)) => NFData (PrivKey   (sign :& hash))
+deriving         instance (Eq     (PublicKey sign)) => Eq     (PublicKey (sign :& hash))
+deriving         instance (Ord    (PublicKey sign)) => Ord    (PublicKey (sign :& hash))
+deriving newtype instance (NFData (PublicKey sign)) => NFData (PublicKey (sign :& hash))
 
 instance (ByteRepr (PrivKey sign)) => ByteRepr (PrivKey (sign :& hash)) where
   encodeToBS   = coerce (encodeToBS   @(PrivKey sign))
@@ -412,7 +416,11 @@ instance (CryptoHash hash) => CryptoHash (sign :& hash) where
 -- | Key for cypher algorithm
 data family CypherKey alg
 
--- | Nonce for stream cypher
+-- | Nonce for stream cypher. They operate by generating random stream
+--   of bytes from key and nonce and xoring cleartext with it. Nonce
+--   is required to protect against key reuse attack and same key
+--   nonce pair should never be reused. Otherwise it's possible to
+--   recover @A xor B@ by xoring cyphertexts created with same key-nonce pair.
 data family CypherNonce alg
 
 
@@ -438,7 +446,31 @@ class ( ByteRepr (CypherKey       alg)
   generateCypherKey :: MonadIO m => m (CypherKey alg)
   -- | Generate random nonce using cryptographically secure RNG
   generateCypherNonce :: MonadIO m => m (CypherNonce alg)
-  
+
+
+-- | Value encrypted with stream cypher. It should be created by
+--   'makeSecretBox' which takes care of generating nonce.
+data SecretBox alg = SecretBox
+  { secretBoxValue :: !BS.ByteString
+  , secretBoxNonce :: !(CypherNonce alg)
+  }
+  deriving stock    (Show, Generic)
+  deriving anyclass (CBOR.Serialise)
+
+-- | Encrypt value and generate random nonce. This method should be
+--   used only if nonce is big enough for collision probability to be
+--   negligible.
+makeSecretBox :: (MonadIO m, StreamCypher alg) => CypherKey alg -> BS.ByteString -> m (SecretBox alg)
+makeSecretBox key msg = do
+  nonce <- generateCypherNonce
+  return $! SecretBox { secretBoxValue = encryptMessage key nonce msg
+                      , secretBoxNonce = nonce
+                      }
+
+-- | Decrypt secretbox. It will return @Nothing@ if MAC verification
+--   fails. That mean either that message was encrypted.
+openSecretBox :: (StreamCypher alg) => CypherKey alg -> SecretBox alg -> Maybe BS.ByteString
+openSecretBox key box = decryptMessage key (secretBoxNonce box) (secretBoxValue box)
 
 -- | Size of key of cyper algorithm
 cypherKeySize :: forall alg proxy i. (StreamCypher alg, Num i) => proxy alg -> i
