@@ -36,11 +36,15 @@ module Thundermint.Crypto (
   , Fingerprint(..)
   , CryptoSign(..)
   , CryptoSignPrim(..)
+    -- ** Diffie–Hellman key exchange
+  , DHSecret
+  , CryptoDH(..)
     -- ** Sizes
   , fingerprintSize
   , publicKeySize
   , privKeySize
   , signatureSize
+  , dhSecretSize
     -- * Convenince: signatures and hashes
   , Crypto
   , (:&)
@@ -222,6 +226,26 @@ class ( KnownNat (SignatureSize alg)
   type SignatureSize   alg :: Nat
 
 
+
+-- | Shared secret produced by Diffie-Hellman key exchange algorithm.
+data family DHSecret alg
+
+-- | Cryptographical algorithm that support some variant of
+--   Diffie-Hellman key exchange
+class ( ByteRepr (DHSecret alg)
+      , KnownNat (DHSecretSize alg)
+      , CryptoSign alg
+      ) => CryptoDH alg where
+  type family DHSecretSize alg :: Nat
+  -- | Calculate shared secret from private and public key. Following
+  --   property must hold:
+  --
+  --   > diffieHelman (public k1) k2 == diffieHelman (public k2) k1
+  diffieHelman :: PublicKey alg -> PrivKey alg -> DHSecret alg
+
+
+
+
 -- | Size of public key fingerprint in bytes
 fingerprintSize :: forall alg proxy i. (CryptoSign alg, Num i) => proxy alg -> i
 fingerprintSize _ = fromIntegral $ natVal (Proxy :: Proxy (FingerprintSize alg))
@@ -237,6 +261,10 @@ privKeySize _ = fromIntegral $ natVal (Proxy :: Proxy (PrivKeySize alg))
 -- | Size of signature in bytes
 signatureSize :: forall alg proxy i. (CryptoSign alg, Num i) => proxy alg -> i
 signatureSize _ = fromIntegral $ natVal (Proxy :: Proxy (SignatureSize alg))
+
+-- | Size of signature in bytes
+dhSecretSize :: forall alg proxy i. (CryptoDH alg, Num i) => proxy alg -> i
+dhSecretSize _ = fromIntegral $ natVal (Proxy :: Proxy (DHSecretSize alg))
 
 
 ----------------------------------------
@@ -286,6 +314,25 @@ instance CryptoSign alg => JSON.FromJSON (PublicKey alg) where
   parseJSON = defaultParseJSON "PublicKey"
 instance CryptoSign alg => JSON.FromJSONKey (PublicKey alg)
 instance CryptoSign alg => JSON.ToJSONKey   (PublicKey alg)
+
+
+----------------------------------------
+
+instance CryptoDH alg => Show (DHSecret alg) where
+  show = defaultShow
+instance CryptoDH alg => Read (DHSecret alg) where
+  readPrec = defaultReadPrec
+
+instance CryptoDH alg => Serialise (DHSecret alg) where
+  encode = defaultCborEncode
+  decode = defaultCborDecode "DHSecret"
+
+instance CryptoDH alg => JSON.ToJSON   (DHSecret alg) where
+  toJSON    = defaultToJSON
+instance CryptoDH alg => JSON.FromJSON (DHSecret alg) where
+  parseJSON = defaultParseJSON "DHSecret"
+instance CryptoDH alg => JSON.FromJSONKey (DHSecret alg)
+instance CryptoDH alg => JSON.ToJSONKey   (DHSecret alg)
 
 
 ----------------------------------------
