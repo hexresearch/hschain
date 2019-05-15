@@ -39,6 +39,7 @@ data Ed25519 deriving (Data)
 
 newtype instance PrivKey   Ed25519 = PrivKey   Ed.SecretKey
 newtype instance PublicKey Ed25519 = PublicKey Ed.PublicKey
+newtype instance DHSecret  Ed25519 = DHSecret  Ed.DhSecret
 
 instance CryptoSignPrim Ed25519 where
   type FingerprintSize Ed25519 = 32
@@ -61,13 +62,26 @@ instance CryptoSign Ed25519 where
       CryptoPassed k -> return $! PrivKey k
       CryptoFailed e -> error (show e)
 
+instance CryptoDH Ed25519 where
+  type DHSecretSize Ed25519 = 32
+  diffieHelman pub priv = DHSecret $ Ed.dh pub priv
 
-deriving instance Eq (PrivKey Ed25519)
+deriving instance Eq (PrivKey   Ed25519)
+deriving instance Eq (PublicKey Ed25519)
+deriving instance Eq (DhSecret  Ed25519)
 
+-- | WARNING: variable execution time!
 instance Ord (PrivKey Ed25519) where
   compare = comparing encodeToBS
+instance Ord (PublicKey Ed25519) where
+  compare = comparing encodeToBS
+-- | WARNING: variable execution time!
+instance Ord (DHSecret Ed25519) where
+  compare = comparing encodeToBS
 
-deriving instance NFData (PrivKey Ed25519)
+deriving instance NFData (PrivKey   Ed25519)
+deriving instance NFData (PublicKey Ed25519)
+deriving instance NFData (DhSecret  Ed25519)
 
 instance (Ord (PrivKey Ed25519)) => ByteRepr (PrivKey Ed25519) where
   decodeFromBS        bs = case Ed.secretKey bs of
@@ -75,16 +89,14 @@ instance (Ord (PrivKey Ed25519)) => ByteRepr (PrivKey Ed25519) where
     CryptoFailed _ -> Nothing
   encodeToBS (PrivKey k) = convert k
 
-deriving instance Eq  (PublicKey Ed25519)
-
-instance Ord (PublicKey Ed25519) where
-  compare = comparing encodeToBS
-
-deriving instance NFData (PublicKey Ed25519)
-
 instance (Ord (PublicKey Ed25519)) => ByteRepr (PublicKey Ed25519) where
   decodeFromBS        bs = case Ed.publicKey bs of
     CryptoPassed k -> Just (PublicKey k)
     CryptoFailed _ -> Nothing
   encodeToBS (PublicKey k) = convert k
 
+instance ByteRepr (DhSecret Ed25519) where
+  decodeFromBS bs = case Ed.dhSecret bs of
+    CryptoPassed k -> Just (DHSecret k)
+    CryptoFailed _ -> Nothing
+  encodeToBS (DHSecret k) = convert k
