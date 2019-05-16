@@ -50,6 +50,7 @@ Library
   Exposed-modules:
                   Thundermint.Crypto
                   Thundermint.Crypto.Classes
+                  Thundermint.Crypto.Curve25519
                   Thundermint.Crypto.Ed25519
                   Thundermint.Crypto.SHA
                   Thundermint.Crypto.Salsa20Poly1305
