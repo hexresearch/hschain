@@ -257,23 +257,23 @@ class ( ByteRepr (DHSecret  alg)
 
 -- | Size of public key fingerprint in bytes
 fingerprintSize :: forall alg proxy i. (CryptoSign alg, Num i) => proxy alg -> i
-fingerprintSize _ = fromIntegral $ natVal (Proxy :: Proxy (FingerprintSize alg))
+fingerprintSize _ = fromIntegral $ natVal (Proxy @(FingerprintSize alg))
 
 -- | Size of public key in bytes
 publicKeySize :: forall alg proxy i. (CryptoAsymmetric alg, Num i) => proxy alg -> i
-publicKeySize _ = fromIntegral $ natVal (Proxy :: Proxy (PublicKeySize alg))
+publicKeySize _ = fromIntegral $ natVal (Proxy @(PublicKeySize alg))
 
 -- | Size of private key in bytes
 privKeySize :: forall alg proxy i. (CryptoAsymmetric alg, Num i) => proxy alg -> i
-privKeySize _ = fromIntegral $ natVal (Proxy :: Proxy (PrivKeySize alg))
+privKeySize _ = fromIntegral $ natVal (Proxy @(PrivKeySize alg))
 
 -- | Size of signature in bytes
 signatureSize :: forall alg proxy i. (CryptoSign alg, Num i) => proxy alg -> i
-signatureSize _ = fromIntegral $ natVal (Proxy :: Proxy (SignatureSize alg))
+signatureSize _ = fromIntegral $ natVal (Proxy @(SignatureSize alg))
 
 -- | Size of signature in bytes
 dhSecretSize :: forall alg proxy i. (CryptoDH alg, Num i) => proxy alg -> i
-dhSecretSize _ = fromIntegral $ natVal (Proxy :: Proxy (DHSecretSize alg))
+dhSecretSize _ = fromIntegral $ natVal (Proxy @(DHSecretSize alg))
 
 
 ----------------------------------------
