@@ -21,6 +21,7 @@ import Thundermint.Crypto.Ed25519
 import Thundermint.Crypto.Curve25519
 import Thundermint.Crypto.SHA
 import Thundermint.Crypto.Salsa20Poly1305
+import Thundermint.Crypto.KDFNaCl
 
 
 tests :: TestTree
@@ -29,6 +30,7 @@ tests = testGroup "Crypto"
   , testsCurve25519
   , testsSHA
   , testSalsa20
+  , testsNaClBox
   ]
 
 testsEd25519 :: TestTree
@@ -76,6 +78,25 @@ testsCurve25519 = testGroup "Curve25519"
        dh @=? diffieHelman (publicKey k2) k1
   ]
 
+
+testsNaClBox :: TestTree
+testsNaClBox = testGroup "Tests for NaCl box"
+  [ testCase "We correcttly work with box"
+  $ do let k1,k2 :: PrivKey Curve25519
+           Just k1 = decodeFromBS =<< decodeB64 "to7g9QMuKT68la5EeU69v5FoDSGkp3cszDiLdmcxMeU="
+           Just k2 = decodeFromBS =<< decodeB64 "0TVBDcAS1AwDyNpjUpwPgoiPm1uOcBmTNVxPiz6Q3gk="
+           pubK1   = publicKey k1
+           pubK2   = publicKey k2
+           -- Encrypted data
+           cleartext       = "abcd"
+           Just nonce      = decodeFromBS =<< decodeB64 "W0o/q7paOp2CBj0s0+KQfVyZ4q9Ugu33"
+           Just cyphertext = decodeB64 "ogaTrD3fEcn/4U+IHukyWkxs/yw="
+           --
+           box :: PubKeyBox Curve25519 KDFNaCl Salsa20Poly1305
+           box = PubKeyBox cyphertext nonce
+       Just cleartext @=? openPubKeyBox k1 pubK2 box
+       Just cleartext @=? openPubKeyBox k2 pubK1 box
+  ]
 
 testsAsymmetricCrypto
   :: forall alg. (CryptoAsymmetric alg, Eq (PublicKey alg), Eq (PrivKey alg))

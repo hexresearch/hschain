@@ -54,6 +54,7 @@ Library
                   Thundermint.Crypto.Ed25519
                   Thundermint.Crypto.SHA
                   Thundermint.Crypto.Salsa20Poly1305
+                  Thundermint.Crypto.KDFNaCl
 
 Test-suite thundermint-crypto-tests
   if impl(ghcjs)
