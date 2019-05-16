@@ -43,9 +43,13 @@ data Ed25519 deriving (Data)
 newtype instance PrivKey   Ed25519 = PrivKey   Ed.SecretKey
 newtype instance PublicKey Ed25519 = PublicKey Ed.PublicKey
 
+
+instance ByteReprSized (PublicKey Ed25519) where
+  type ByteSize (PublicKey Ed25519) = 32
+instance ByteReprSized (PrivKey Ed25519) where
+  type ByteSize (PrivKey Ed25519) = 32
+
 instance CryptoAsymmetric Ed25519 where
-  type PublicKeySize Ed25519 = 32
-  type PrivKeySize   Ed25519 = 32
   publicKey   (PrivKey k)   = PublicKey $ Ed.toPublic k
   generatePrivKey = do
     bs <- liftIO $ getEntropy Ed.secretKeySize
