@@ -49,6 +49,9 @@ module Thundermint.Crypto (
     -- * Convenince: signatures and hashes
   , Crypto
   , (:&)
+    -- * Key derivation functions
+  , KDFOutput(..)
+  , CryptoKDF(..)
     -- * Stream cyphers
   , CypherKey
   , CypherNonce
@@ -422,6 +425,21 @@ instance ByteReprSized (Hash hash) => ByteReprSized (Hash (sign :& hash)) where
 instance (CryptoHash hash) => CryptoHash (sign :& hash) where
   hashBlob     = coerce (hashBlob @hash)
   hashEquality = coerce (hashEquality @hash)
+
+
+----------------------------------------------------------------
+-- Key derivation functions
+----------------------------------------------------------------
+
+-- | Output of key derivation functions
+newtype KDFOutput alg = KDFOutput BS.ByteString
+
+-- | Type class for key derivation functions.
+class (ByteReprSized (KDFOutput alg)) => CryptoKDF alg where
+  -- | Extra parameters such as nonce, number of iterations etc.
+  type KDFParams alg
+  -- | Generate random sequence of bytes
+  deriveKey :: KDFParams alg -> BS.ByteString -> KDFOutput alg
 
 
 
