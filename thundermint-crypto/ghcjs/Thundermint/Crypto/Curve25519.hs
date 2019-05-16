@@ -50,8 +50,10 @@ instance CryptoAsymmetric Curve25519 where
       Just k  -> return k
       Nothing -> error "Curve25519: internal error. Cannot generate key"
 
+instance ByteReprSized (DHSecret Curve25519) where
+  type ByteSize (DHSecret Curve25519) = 32
+
 instance CryptoDH Curve25519 where
-  type DHSecretSize Curve25519 = 32
   diffieHelman (PublicKey pub) pk = DHSecret $ js_diffieHelman (privK pk) pub
 
 instance Eq (PrivKey Curve25519) where

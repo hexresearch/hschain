@@ -48,9 +48,12 @@ instance CryptoAsymmetric Ed25519 where
       Just k  -> return k
       Nothing -> error "Ed25519: internal error. Cannot generate key"
 
+instance ByteReprSized (Fingerprint Ed25519) where
+  type ByteSize (Fingerprint Ed25519) = 32
+instance ByteReprSized (Signature Ed25519) where
+  type ByteSize (Signature Ed25519) = 64
+
 instance CryptoSign Ed25519 where
-  type FingerprintSize Ed25519 = 32
-  type SignatureSize   Ed25519 = 64
   signBlob k bs
     = Signature
     $ arrayToBs
