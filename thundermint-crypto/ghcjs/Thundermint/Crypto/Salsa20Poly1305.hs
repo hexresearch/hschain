@@ -28,10 +28,12 @@ newtype instance CypherKey Salsa20Poly1305 = Key Uint8Array
 
 newtype instance CypherNonce Salsa20Poly1305 = Nonce Uint8Array
 
+instance ByteReprSized (CypherKey Salsa20Poly1305) where
+  type ByteSize (CypherKey Salsa20Poly1305) = 32 
+instance ByteReprSized (CypherNonce Salsa20Poly1305) where
+  type ByteSize (CypherNonce Salsa20Poly1305) = 24
+
 instance StreamCypher Salsa20Poly1305 where
-  type instance CypherKeySize   Salsa20Poly1305 = 32
-  type instance CypherNonceSize Salsa20Poly1305 = 24
-  --
   encryptMessage (Key key) (Nonce nonce) msg
     = arrayToBs
     $ js_nacl_secretbox (bsToArray msg) nonce key

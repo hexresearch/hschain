@@ -62,6 +62,9 @@ module Thundermint.Crypto (
   , SecretBox(..)
   , makeSecretBox
   , openSecretBox
+  , PubKeyBox(..)
+  , makePubKeyBox
+  , openPubKeyBox
     -- * Encoding and decoding of values
   , ByteRepr(..)
   , ByteReprSized(..)
@@ -441,6 +444,9 @@ class (ByteReprSized (KDFOutput alg)) => CryptoKDF alg where
   -- | Generate random sequence of bytes
   deriveKey :: KDFParams alg -> BS.ByteString -> KDFOutput alg
 
+instance ByteRepr (KDFOutput alg) where
+  encodeToBS (KDFOutput h) = encodeToBS h
+  decodeFromBS = fmap KDFOutput . decodeFromBS
 
 
 ----------------------------------------------------------------
@@ -464,13 +470,9 @@ data family CypherNonce alg
 --
 --   Note that to protect against reused key attacks same pair key,
 --   nonce MUST NOT be used for more than one message.
-class ( ByteRepr (CypherKey       alg)
-      , ByteRepr (CypherNonce     alg)
-      , KnownNat (CypherKeySize   alg)
-      , KnownNat (CypherNonceSize alg)
+class ( ByteReprSized (CypherKey       alg)
+      , ByteReprSized (CypherNonce     alg)
       ) => StreamCypher alg where
-  type family CypherNonceSize alg :: Nat
-  type family CypherKeySize   alg :: Nat
   -- | Encrypt message. Note that same nonce MUST NOT be reused.
   encryptMessage :: CypherKey alg -> CypherNonce alg -> BS.ByteString -> BS.ByteString
   -- | Decrypt message. If MAC verification fails (message was
@@ -506,13 +508,57 @@ makeSecretBox key msg = do
 openSecretBox :: (StreamCypher alg) => CypherKey alg -> SecretBox alg -> Maybe BS.ByteString
 openSecretBox key box = decryptMessage key (secretBoxNonce box) (secretBoxValue box)
 
+
+-- | Value ecrypted using public key cryptography
+data PubKeyBox key kdf cypher = PubKeyBox
+  { pubKeyBoxValue :: !BS.ByteString
+  , pubKeyNonce    :: !(CypherNonce cypher)
+  }
+
+makePubKeyBox
+  :: forall m key kdf cypher.
+     ( MonadIO m
+     , CryptoDH key, CryptoKDF kdf, StreamCypher cypher
+     , ByteSize (KDFOutput kdf) ~ ByteSize (CypherKey cypher)
+     , KDFParams kdf            ~ ()
+     )
+  => PrivKey   key              -- ^ Our private key
+  -> PublicKey key              -- ^ Public key of repicient or sender
+  -> BS.ByteString              -- ^ Clear text message
+  -> m (PubKeyBox key kdf cypher)
+makePubKeyBox privK pubK msg = do
+  let sharedSecret     = diffieHelman pubK privK
+      KDFOutput kdf    = deriveKey () $ encodeToBS sharedSecret :: KDFOutput kdf
+      Just derivedKey  = decodeFromBS kdf
+  nonce <- generateCypherNonce
+  return $! PubKeyBox { pubKeyBoxValue = encryptMessage derivedKey nonce msg
+                      , pubKeyNonce    = nonce
+                      }
+
+openPubKeyBox
+  :: forall key kdf cypher.
+     ( CryptoDH key, CryptoKDF kdf, StreamCypher cypher
+     , ByteSize (KDFOutput kdf) ~ ByteSize (CypherKey cypher)
+     , KDFParams kdf            ~ ()
+     )
+  => PrivKey   key              -- ^ Our private key
+  -> PublicKey key              -- ^ Public key of repicient or sender
+  -> PubKeyBox key kdf cypher
+  -> Maybe BS.ByteString
+openPubKeyBox privK pubK box = do
+  let sharedSecret     = diffieHelman pubK privK
+      KDFOutput kdf    = deriveKey () $ encodeToBS sharedSecret :: KDFOutput kdf
+      Just derivedKey  = decodeFromBS kdf
+  decryptMessage derivedKey (pubKeyNonce box) (pubKeyBoxValue box)
+
+
 -- | Size of key of cyper algorithm
 cypherKeySize :: forall alg proxy i. (StreamCypher alg, Num i) => proxy alg -> i
-cypherKeySize _ = fromIntegral $ natVal (Proxy @(CypherKeySize alg))
+cypherKeySize _ = fromIntegral $ natVal (Proxy @(ByteSize (CypherKey alg)))
 
 -- | Size of nonce of cyper algorithm
 cypherNonceSize :: forall alg proxy i. (StreamCypher alg, Num i) => proxy alg -> i
-cypherNonceSize _ = fromIntegral $ natVal (Proxy @(CypherNonceSize alg))
+cypherNonceSize _ = fromIntegral $ natVal (Proxy @(ByteSize (CypherNonce alg)))
 
 
 ----------------------------------------
