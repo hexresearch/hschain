@@ -29,9 +29,11 @@ module Thundermint.Crypto (
   , (:<<<)
     -- ** Sizes
   , hashSize
-    -- * Signatures API
+    -- * Cryptography with asymmetric keys
   , PrivKey
   , PublicKey
+  , CryptoAsymmetric(..)
+    -- * Signatures API
   , Signature(..)
   , Fingerprint(..)
   , CryptoSign(..)
@@ -189,6 +191,26 @@ data family PrivKey   alg
 -- | Public key
 data family PublicKey alg
 
+-- | Cryptographical algorithms with asymmetrical keys. This is base
+--   class which doesn;t provide any interesting functionality except
+--   for generation of keys and coversion private to public.
+class ( ByteRepr (PublicKey alg)
+      , ByteRepr (PrivKey   alg)
+      , KnownNat (PublicKeySize alg)
+      , KnownNat (PrivKeySize   alg)
+      ) => CryptoAsymmetric alg where
+  -- | Size of public key corresponding to algorithm in bytes
+  type PublicKeySize   alg :: Nat
+  -- | Size of private key corresponding to algorithm in bytes
+  type PrivKeySize     alg :: Nat
+  -- | Compute public key from  private key
+  publicKey       :: PrivKey   alg -> PublicKey alg
+  -- | Generate new private key
+  generatePrivKey :: MonadIO m => m (PrivKey alg)
+  
+
+
+
 -- | Signature
 newtype Signature alg = Signature BS.ByteString
   deriving stock   (Generic, Generic1)
@@ -202,18 +224,15 @@ newtype Fingerprint alg = Fingerprint BS.ByteString
 class ( ByteRepr (PublicKey   alg)
       , ByteRepr (PrivKey     alg)
       , CryptoSignPrim alg
+      , CryptoAsymmetric alg
       ) => CryptoSign alg where
 
   -- | Sign sequence of bytes
   signBlob            :: PrivKey   alg -> BS.ByteString -> Signature alg
   -- | Check that signature is correct
   verifyBlobSignature :: PublicKey alg -> BS.ByteString -> Signature alg -> Bool
-  -- | Compute public key from  private key
-  publicKey           :: PrivKey   alg -> PublicKey alg
   -- | Compute fingerprint or public key fingerprint
   fingerprint         :: PublicKey alg -> Fingerprint alg
-  -- | Generate new private key
-  generatePrivKey     :: MonadIO m => m (PrivKey alg)
 
 class ( KnownNat (SignatureSize alg)
       , KnownNat (FingerprintSize alg)
@@ -221,8 +240,6 @@ class ( KnownNat (SignatureSize alg)
       , KnownNat (PrivKeySize alg)
       ) => CryptoSignPrim alg where
   type FingerprintSize alg :: Nat
-  type PublicKeySize   alg :: Nat
-  type PrivKeySize     alg :: Nat
   type SignatureSize   alg :: Nat
 
 
@@ -232,9 +249,9 @@ data family DHSecret alg
 
 -- | Cryptographical algorithm that support some variant of
 --   Diffie-Hellman key exchange
-class ( ByteRepr (DHSecret alg)
-      , KnownNat (DHSecretSize alg)
-      , CryptoSign alg
+class ( ByteRepr (DHSecret  alg)
+      , KnownNat (DHSecretSize  alg)
+      , CryptoAsymmetric alg
       ) => CryptoDH alg where
   type family DHSecretSize alg :: Nat
   -- | Calculate shared secret from private and public key. Following
@@ -242,7 +259,8 @@ class ( ByteRepr (DHSecret alg)
   --
   --   > diffieHelman (public k1) k2 == diffieHelman (public k2) k1
   diffieHelman :: PublicKey alg -> PrivKey alg -> DHSecret alg
-
+  --
+  generateDHPrivKey :: MonadIO m => m (PrivKey alg)
 
 
 
@@ -251,11 +269,11 @@ fingerprintSize :: forall alg proxy i. (CryptoSign alg, Num i) => proxy alg -> i
 fingerprintSize _ = fromIntegral $ natVal (Proxy :: Proxy (FingerprintSize alg))
 
 -- | Size of public key in bytes
-publicKeySize :: forall alg proxy i. (CryptoSign alg, Num i) => proxy alg -> i
+publicKeySize :: forall alg proxy i. (CryptoAsymmetric alg, Num i) => proxy alg -> i
 publicKeySize _ = fromIntegral $ natVal (Proxy :: Proxy (PublicKeySize alg))
 
 -- | Size of private key in bytes
-privKeySize :: forall alg proxy i. (CryptoSign alg, Num i) => proxy alg -> i
+privKeySize :: forall alg proxy i. (CryptoAsymmetric alg, Num i) => proxy alg -> i
 privKeySize _ = fromIntegral $ natVal (Proxy :: Proxy (PrivKeySize alg))
 
 -- | Size of signature in bytes
@@ -280,40 +298,40 @@ instance ByteRepr (Signature alg) where
 
 ----------------------------------------
 
-instance CryptoSign alg => Show (PrivKey alg) where
+instance CryptoAsymmetric alg => Show (PrivKey alg) where
   show = defaultShow
-instance CryptoSign alg => Read (PrivKey alg) where
+instance CryptoAsymmetric alg => Read (PrivKey alg) where
   readPrec = defaultReadPrec
 
-instance CryptoSign alg => Serialise (PrivKey alg) where
+instance CryptoAsymmetric alg => Serialise (PrivKey alg) where
   encode = defaultCborEncode
   decode = defaultCborDecode "PrivKey"
 
-instance CryptoSign alg => JSON.ToJSON   (PrivKey alg) where
+instance CryptoAsymmetric alg => JSON.ToJSON   (PrivKey alg) where
   toJSON    = defaultToJSON
-instance CryptoSign alg => JSON.FromJSON (PrivKey alg) where
+instance CryptoAsymmetric alg => JSON.FromJSON (PrivKey alg) where
   parseJSON = defaultParseJSON "PrivKey"
-instance CryptoSign alg => JSON.FromJSONKey (PrivKey alg)
-instance CryptoSign alg => JSON.ToJSONKey   (PrivKey alg)
+instance CryptoAsymmetric alg => JSON.FromJSONKey (PrivKey alg)
+instance CryptoAsymmetric alg => JSON.ToJSONKey   (PrivKey alg)
 
 
 ----------------------------------------
 
-instance CryptoSign alg => Show (PublicKey alg) where
+instance CryptoAsymmetric alg => Show (PublicKey alg) where
   show = defaultShow
-instance CryptoSign alg => Read (PublicKey alg) where
+instance CryptoAsymmetric alg => Read (PublicKey alg) where
   readPrec = defaultReadPrec
 
-instance CryptoSign alg => Serialise (PublicKey alg) where
+instance CryptoAsymmetric alg => Serialise (PublicKey alg) where
   encode = defaultCborEncode
   decode = defaultCborDecode "PublicKey"
 
-instance CryptoSign alg => JSON.ToJSON   (PublicKey alg) where
+instance CryptoAsymmetric alg => JSON.ToJSON   (PublicKey alg) where
   toJSON    = defaultToJSON
-instance CryptoSign alg => JSON.FromJSON (PublicKey alg) where
+instance CryptoAsymmetric alg => JSON.FromJSON (PublicKey alg) where
   parseJSON = defaultParseJSON "PublicKey"
-instance CryptoSign alg => JSON.FromJSONKey (PublicKey alg)
-instance CryptoSign alg => JSON.ToJSONKey   (PublicKey alg)
+instance CryptoAsymmetric alg => JSON.FromJSONKey (PublicKey alg)
+instance CryptoAsymmetric alg => JSON.ToJSONKey   (PublicKey alg)
 
 
 ----------------------------------------
@@ -401,17 +419,19 @@ instance (ByteRepr (PublicKey sign)) => ByteRepr (PublicKey (sign :& hash)) wher
   encodeToBS   = coerce (encodeToBS   @(PublicKey sign))
   decodeFromBS = coerce (decodeFromBS @(PublicKey sign))
 
+instance CryptoAsymmetric sign => CryptoAsymmetric (sign :& hash) where
+  type PublicKeySize   (sign :& hash) = PublicKeySize   sign
+  type PrivKeySize     (sign :& hash) = PrivKeySize     sign
+  publicKey       = coerce (publicKey @sign)
+  generatePrivKey = fmap PrivKeyU (generatePrivKey @sign)
+  
 instance CryptoSign sign => CryptoSign (sign :& hash) where
   signBlob            = coerce (signBlob @sign)
   verifyBlobSignature = coerce (verifyBlobSignature @sign)
-  publicKey           = coerce (publicKey @sign)
   fingerprint         = coerce (fingerprint @sign)
-  generatePrivKey     = fmap PrivKeyU (generatePrivKey @sign)
 
 instance (CryptoSignPrim sign) => CryptoSignPrim (sign :& hash) where
   type FingerprintSize (sign :& hash) = FingerprintSize sign
-  type PublicKeySize   (sign :& hash) = PublicKeySize   sign
-  type PrivKeySize     (sign :& hash) = PrivKeySize     sign
   type SignatureSize   (sign :& hash) = SignatureSize   sign
 
 instance (CryptoHash hash) => CryptoHash (sign :& hash) where
