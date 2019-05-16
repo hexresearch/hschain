@@ -35,10 +35,6 @@ data instance PrivKey Ed25519 = PrivKey
 
 newtype instance PublicKey Ed25519 = PublicKey { unPublicKey :: Uint8Array }
 
-instance CryptoSignPrim Ed25519 where
-  type FingerprintSize Ed25519 = 32
-  type SignatureSize   Ed25519 = 64
-
 instance CryptoAsymmetric Ed25519 where
   type PublicKeySize   Ed25519 = 32
   type PrivKeySize     Ed25519 = 32
@@ -50,6 +46,8 @@ instance CryptoAsymmetric Ed25519 where
       Nothing -> error "Ed25519: internal error. Cannot generate key"
 
 instance CryptoSign Ed25519 where
+  type FingerprintSize Ed25519 = 32
+  type SignatureSize   Ed25519 = 64
   signBlob k bs
     = Signature
     $ arrayToBs

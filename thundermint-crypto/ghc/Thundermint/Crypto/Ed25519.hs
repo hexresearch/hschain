@@ -53,11 +53,9 @@ instance CryptoAsymmetric Ed25519 where
       CryptoPassed k -> return $! PrivKey k
       CryptoFailed e -> error (show e)
 
-instance CryptoSignPrim Ed25519 where
+instance CryptoSign Ed25519 where
   type FingerprintSize Ed25519 = 32
   type SignatureSize   Ed25519 = 64
-
-instance CryptoSign Ed25519 where
   signBlob (PrivKey k)  = Signature . convert . Ed.sign k pubKey
    where pubKey = Ed.toPublic k
 
