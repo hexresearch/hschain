@@ -35,9 +35,12 @@ data instance PrivKey Ed25519 = PrivKey
 
 newtype instance PublicKey Ed25519 = PublicKey { unPublicKey :: Uint8Array }
 
+instance ByteReprSized (PublicKey Ed25519) where
+  type ByteSize (PublicKey Ed25519) = 32
+instance ByteReprSized (PrivKey Ed25519) where
+  type ByteSize (PrivKey Ed25519) = 32
+
 instance CryptoAsymmetric Ed25519 where
-  type PublicKeySize   Ed25519 = 32
-  type PrivKeySize     Ed25519 = 32
   publicKey = PublicKey . pubK
   generatePrivKey = do
     arr <- randomBytes 32

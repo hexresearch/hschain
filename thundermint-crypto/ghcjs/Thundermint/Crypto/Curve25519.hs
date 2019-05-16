@@ -37,16 +37,19 @@ newtype instance PublicKey Curve25519 = PublicKey { unPublicKey :: Uint8Array }
 
 newtype instance DHSecret Curve25519 = DHSecret { unDHSecret :: Uint8Array }
 
+instance ByteReprSized (PublicKey Curve25519) where
+  type ByteSize (PublicKey Curve25519) = 32
+instance ByteReprSized (PrivKey Curve25519) where
+  type ByteSize (PrivKey Curve25519) = 32
+
 instance CryptoAsymmetric Curve25519 where
-  type PublicKeySize   Curve25519 = 32
-  type PrivKeySize     Curve25519 = 32
   publicKey = PublicKey . pubK
   generatePrivKey = do
     arr <- randomBytes 32
     case decodeFromBS $ arrayToBs arr of
       Just k  -> return k
       Nothing -> error "Curve25519: internal error. Cannot generate key"
-  
+
 instance CryptoDH Curve25519 where
   type DHSecretSize Curve25519 = 32
   diffieHelman (PublicKey pub) pk = DHSecret $ js_diffieHelman (privK pk) pub

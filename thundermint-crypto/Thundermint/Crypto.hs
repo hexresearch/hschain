@@ -194,20 +194,14 @@ data family PublicKey alg
 -- | Cryptographical algorithms with asymmetrical keys. This is base
 --   class which doesn;t provide any interesting functionality except
 --   for generation of keys and coversion private to public.
-class ( ByteRepr (PublicKey alg)
-      , ByteRepr (PrivKey   alg)
-      , KnownNat (PublicKeySize alg)
-      , KnownNat (PrivKeySize   alg)
+class ( ByteReprSized (PublicKey alg)
+      , ByteReprSized (PrivKey   alg)
       ) => CryptoAsymmetric alg where
-  -- | Size of public key corresponding to algorithm in bytes
-  type PublicKeySize   alg :: Nat
-  -- | Size of private key corresponding to algorithm in bytes
-  type PrivKeySize     alg :: Nat
   -- | Compute public key from  private key
   publicKey       :: PrivKey   alg -> PublicKey alg
   -- | Generate new private key
   generatePrivKey :: MonadIO m => m (PrivKey alg)
-  
+
 
 
 
@@ -262,11 +256,11 @@ fingerprintSize _ = fromIntegral $ natVal (Proxy @(FingerprintSize alg))
 
 -- | Size of public key in bytes
 publicKeySize :: forall alg proxy i. (CryptoAsymmetric alg, Num i) => proxy alg -> i
-publicKeySize _ = fromIntegral $ natVal (Proxy @(PublicKeySize alg))
+publicKeySize _ = fromIntegral $ natVal (Proxy @(ByteSize (PublicKey alg)))
 
 -- | Size of private key in bytes
 privKeySize :: forall alg proxy i. (CryptoAsymmetric alg, Num i) => proxy alg -> i
-privKeySize _ = fromIntegral $ natVal (Proxy @(PrivKeySize alg))
+privKeySize _ = fromIntegral $ natVal (Proxy @(ByteSize (PrivKey alg)))
 
 -- | Size of signature in bytes
 signatureSize :: forall alg proxy i. (CryptoSign alg, Num i) => proxy alg -> i
@@ -411,12 +405,15 @@ instance (ByteRepr (PublicKey sign)) => ByteRepr (PublicKey (sign :& hash)) wher
   encodeToBS   = coerce (encodeToBS   @(PublicKey sign))
   decodeFromBS = coerce (decodeFromBS @(PublicKey sign))
 
+instance ByteReprSized (PublicKey sign) => ByteReprSized (PublicKey (sign :& hash)) where
+  type ByteSize (PublicKey (sign :& hash)) = ByteSize (PublicKey sign)
+instance ByteReprSized (PrivKey sign) => ByteReprSized (PrivKey (sign :& hash)) where
+  type ByteSize (PrivKey (sign :& hash)) = ByteSize (PrivKey sign)
+
 instance CryptoAsymmetric sign => CryptoAsymmetric (sign :& hash) where
-  type PublicKeySize   (sign :& hash) = PublicKeySize   sign
-  type PrivKeySize     (sign :& hash) = PrivKeySize     sign
   publicKey       = coerce (publicKey @sign)
   generatePrivKey = fmap PrivKeyU (generatePrivKey @sign)
-  
+
 instance CryptoSign sign => CryptoSign (sign :& hash) where
   type FingerprintSize (sign :& hash) = FingerprintSize sign
   type SignatureSize   (sign :& hash) = SignatureSize   sign
