@@ -215,13 +215,10 @@ newtype Fingerprint alg = Fingerprint BS.ByteString
   deriving stock   (Generic, Generic1)
   deriving newtype (Eq, Ord, Serialise, NFData)
 
-class ( KnownNat (SignatureSize   alg)
-      , KnownNat (FingerprintSize alg)
+class ( ByteReprSized (Signature   alg)
+      , ByteReprSized (Fingerprint alg)
       , CryptoAsymmetric alg
       ) => CryptoSign alg where
-  type FingerprintSize alg :: Nat
-  type SignatureSize   alg :: Nat
-
   -- | Sign sequence of bytes
   signBlob            :: PrivKey   alg -> BS.ByteString -> Signature alg
   -- | Check that signature is correct
@@ -235,11 +232,9 @@ data family DHSecret alg
 
 -- | Cryptographical algorithm that support some variant of
 --   Diffie-Hellman key exchange
-class ( ByteRepr (DHSecret  alg)
-      , KnownNat (DHSecretSize  alg)
+class ( ByteReprSized (DHSecret alg)
       , CryptoAsymmetric alg
       ) => CryptoDH alg where
-  type family DHSecretSize alg :: Nat
   -- | Calculate shared secret from private and public key. Following
   --   property must hold:
   --
@@ -249,7 +244,7 @@ class ( ByteRepr (DHSecret  alg)
 
 -- | Size of public key fingerprint in bytes
 fingerprintSize :: forall alg proxy i. (CryptoSign alg, Num i) => proxy alg -> i
-fingerprintSize _ = fromIntegral $ natVal (Proxy @(FingerprintSize alg))
+fingerprintSize _ = fromIntegral $ natVal (Proxy @(ByteSize (Fingerprint alg)))
 
 -- | Size of public key in bytes
 publicKeySize :: forall alg proxy i. (CryptoAsymmetric alg, Num i) => proxy alg -> i
@@ -261,11 +256,11 @@ privKeySize _ = fromIntegral $ natVal (Proxy @(ByteSize (PrivKey alg)))
 
 -- | Size of signature in bytes
 signatureSize :: forall alg proxy i. (CryptoSign alg, Num i) => proxy alg -> i
-signatureSize _ = fromIntegral $ natVal (Proxy @(SignatureSize alg))
+signatureSize _ = fromIntegral $ natVal (Proxy @(ByteSize (Signature alg)))
 
 -- | Size of signature in bytes
 dhSecretSize :: forall alg proxy i. (CryptoDH alg, Num i) => proxy alg -> i
-dhSecretSize _ = fromIntegral $ natVal (Proxy @(DHSecretSize alg))
+dhSecretSize _ = fromIntegral $ natVal (Proxy @(ByteSize (DHSecret alg)))
 
 
 ----------------------------------------
@@ -411,9 +406,12 @@ instance CryptoAsymmetric sign => CryptoAsymmetric (sign :& hash) where
   publicKey       = coerce (publicKey @sign)
   generatePrivKey = fmap PrivKeyU (generatePrivKey @sign)
 
+instance ByteReprSized (Fingerprint sign) => ByteReprSized (Fingerprint (sign :& hash)) where
+  type ByteSize (Fingerprint (sign :& hash)) = ByteSize (Fingerprint sign)
+instance ByteReprSized (Signature sign) => ByteReprSized (Signature (sign :& hash)) where
+  type ByteSize (Signature (sign :& hash)) = ByteSize (Signature sign)
+
 instance CryptoSign sign => CryptoSign (sign :& hash) where
-  type FingerprintSize (sign :& hash) = FingerprintSize sign
-  type SignatureSize   (sign :& hash) = SignatureSize   sign
   signBlob            = coerce (signBlob @sign)
   verifyBlobSignature = coerce (verifyBlobSignature @sign)
   fingerprint         = coerce (fingerprint @sign)
