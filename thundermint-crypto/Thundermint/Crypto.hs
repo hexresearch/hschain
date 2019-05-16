@@ -245,9 +245,6 @@ class ( ByteRepr (DHSecret  alg)
   --
   --   > diffieHelman (public k1) k2 == diffieHelman (public k2) k1
   diffieHelman :: PublicKey alg -> PrivKey alg -> DHSecret alg
-  --
-  generateDHPrivKey :: MonadIO m => m (PrivKey alg)
-
 
 
 -- | Size of public key fingerprint in bytes
