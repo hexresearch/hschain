@@ -61,6 +61,7 @@ module Thundermint.Crypto (
   , openSecretBox
     -- * Encoding and decoding of values
   , ByteRepr(..)
+  , ByteReprSized(..)
   , encodeBase58
   , decodeBase58
     -- * Serialization and signatures
@@ -113,10 +114,8 @@ hash = hashBlob . toStrict . serialise
 -- | Type-indexed set of crypto algorithms. It's not very principled
 --   to push everything into singe type class.  But in order to keep
 --   signatures sane it was done this way.
-class ( ByteRepr (Hash   alg)
-      , KnownNat (HashSize alg)
+class ( ByteReprSized (Hash alg)
       ) => CryptoHash alg where
-  type HashSize        alg :: Nat
   -- | Compute hash of sequence of bytes
   hashBlob     :: BS.ByteString -> Hash alg
   -- | Compare hash with a bytestring safly
@@ -124,7 +123,7 @@ class ( ByteRepr (Hash   alg)
 
 -- | Size of hash in bytes
 hashSize :: forall alg proxy i. (CryptoHash alg, Num i) => proxy alg -> i
-hashSize _ = fromIntegral $ natVal (Proxy :: Proxy (HashSize alg))
+hashSize _ = fromIntegral $ natVal (Proxy @(ByteSize (Hash alg)))
 
 -- | Newtype wrapper with phantom type tag which show hash of which
 --   value is being calculated
@@ -145,8 +144,10 @@ instance (CryptoHash alg) => ByteRepr (Hashed alg a) where
 --   work as @sha256 . sha512@.
 data hashA :<<< hashB
 
+instance ByteReprSized (Hash hashA) => ByteReprSized (Hash (hashA :<<< hashB)) where
+  type ByteSize (Hash (hashA :<<< hashB)) = ByteSize (Hash hashA)
+
 instance (CryptoHash hashA, CryptoHash hashB) => CryptoHash (hashA :<<< hashB) where
-  type HashSize (hashA :<<< hashB) = HashSize hashA
   hashBlob bs = let Hash hB = hashBlob bs :: Hash hashB
                     Hash hA = hashBlob hB :: Hash hashA
                 in Hash hA
@@ -423,8 +424,10 @@ instance CryptoSign sign => CryptoSign (sign :& hash) where
   verifyBlobSignature = coerce (verifyBlobSignature @sign)
   fingerprint         = coerce (fingerprint @sign)
 
+instance ByteReprSized (Hash hash) => ByteReprSized (Hash (sign :& hash)) where
+  type ByteSize (Hash (sign :& hash)) = ByteSize (Hash hash)
+
 instance (CryptoHash hash) => CryptoHash (sign :& hash) where
-  type HashSize (sign :& hash) = HashSize hash
   hashBlob     = coerce (hashBlob @hash)
   hashEquality = coerce (hashEquality @hash)
 
