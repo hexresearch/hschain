@@ -37,7 +37,6 @@ module Thundermint.Crypto (
   , Signature(..)
   , Fingerprint(..)
   , CryptoSign(..)
-  , CryptoSignPrim(..)
     -- ** Diffie–Hellman key exchange
   , DHSecret
   , CryptoDH(..)
@@ -221,11 +220,12 @@ newtype Fingerprint alg = Fingerprint BS.ByteString
   deriving stock   (Generic, Generic1)
   deriving newtype (Eq, Ord, Serialise, NFData)
 
-class ( ByteRepr (PublicKey   alg)
-      , ByteRepr (PrivKey     alg)
-      , CryptoSignPrim alg
+class ( KnownNat (SignatureSize   alg)
+      , KnownNat (FingerprintSize alg)
       , CryptoAsymmetric alg
       ) => CryptoSign alg where
+  type FingerprintSize alg :: Nat
+  type SignatureSize   alg :: Nat
 
   -- | Sign sequence of bytes
   signBlob            :: PrivKey   alg -> BS.ByteString -> Signature alg
@@ -233,15 +233,6 @@ class ( ByteRepr (PublicKey   alg)
   verifyBlobSignature :: PublicKey alg -> BS.ByteString -> Signature alg -> Bool
   -- | Compute fingerprint or public key fingerprint
   fingerprint         :: PublicKey alg -> Fingerprint alg
-
-class ( KnownNat (SignatureSize alg)
-      , KnownNat (FingerprintSize alg)
-      , KnownNat (PublicKeySize alg)
-      , KnownNat (PrivKeySize alg)
-      ) => CryptoSignPrim alg where
-  type FingerprintSize alg :: Nat
-  type SignatureSize   alg :: Nat
-
 
 
 -- | Shared secret produced by Diffie-Hellman key exchange algorithm.
@@ -426,13 +417,11 @@ instance CryptoAsymmetric sign => CryptoAsymmetric (sign :& hash) where
   generatePrivKey = fmap PrivKeyU (generatePrivKey @sign)
   
 instance CryptoSign sign => CryptoSign (sign :& hash) where
+  type FingerprintSize (sign :& hash) = FingerprintSize sign
+  type SignatureSize   (sign :& hash) = SignatureSize   sign
   signBlob            = coerce (signBlob @sign)
   verifyBlobSignature = coerce (verifyBlobSignature @sign)
   fingerprint         = coerce (fingerprint @sign)
-
-instance (CryptoSignPrim sign) => CryptoSignPrim (sign :& hash) where
-  type FingerprintSize (sign :& hash) = FingerprintSize sign
-  type SignatureSize   (sign :& hash) = SignatureSize   sign
 
 instance (CryptoHash hash) => CryptoHash (sign :& hash) where
   type HashSize (sign :& hash) = HashSize hash
