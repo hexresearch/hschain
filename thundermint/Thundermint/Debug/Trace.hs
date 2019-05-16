@@ -21,6 +21,14 @@ import Thundermint.Control
 --        которые могут быть любыми. Посмотреть в сторону
 --        Data types a la carte
 
+
+data PeerGossipVotesTraceEvents
+    = TepgvStarted
+    | TepgvNewIter
+    | TepgvLagging
+    deriving (Show, Ord, Eq)
+
+
 data TraceEvents
     = TeNodeStarted
     -- ^ Node is started
@@ -34,8 +42,7 @@ data TraceEvents
     -- ^ Other node connected successfully
     | TePeerRegistryChanged !(Set String)
     -- *
-    -- *
-    | TePeerGossipVotesStarted
+    | TePeerGossipVotes PeerGossipVotesTraceEvents
     -- ^ Gossip votes controller started
     deriving (Show, Ord, Eq)
 

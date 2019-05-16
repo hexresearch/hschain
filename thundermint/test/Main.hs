@@ -1,6 +1,7 @@
 import Test.Tasty
 
 
+import qualified TM.Consensus
 import qualified TM.Gossip
 import qualified TM.Mempool
 import qualified TM.Network
@@ -24,5 +25,6 @@ main = defaultMain $ testGroup "thundermint"
   , TM.Store.tests
   , TM.Time.tests
   , TM.Validators.tests
+  , TM.Consensus.tests
   , TM.Gossip.tests
   ]
