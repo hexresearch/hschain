@@ -7,7 +7,6 @@ module Thundermint.Crypto.Salsa20Poly1305 (
   Salsa20Poly1305
   ) where
 
-import Control.Monad.IO.Class
 import Control.DeepSeq (NFData(..))
 import Data.Data       (Data)
 import qualified Data.ByteString as BS

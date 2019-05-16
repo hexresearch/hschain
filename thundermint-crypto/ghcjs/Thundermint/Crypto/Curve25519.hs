@@ -33,9 +33,9 @@ data instance PrivKey Curve25519 = PrivKey
   , pubK  :: !Uint8Array
   }
 
-newtype instance PublicKey Curve25519 = PublicKey { unPublicKey :: Uint8Array }
+newtype instance PublicKey Curve25519 = PublicKey Uint8Array
 
-newtype instance DHSecret Curve25519 = DHSecret { unDHSecret :: Uint8Array }
+newtype instance DHSecret Curve25519 = DHSecret Uint8Array
 
 instance ByteReprSized (PublicKey Curve25519) where
   type ByteSize (PublicKey Curve25519) = 32
