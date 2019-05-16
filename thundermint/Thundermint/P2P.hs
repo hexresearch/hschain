@@ -20,6 +20,12 @@ module Thundermint.P2P (
   , netAddrToSockAddr
   , sockAddrToNetAddr
   , generatePeerId
+  -- * for tests only * --
+  , peerGossipVotes
+  , PeerChans(..)
+  , newPeerRegistry
+  , newCounter
+  , GossipMsg(..)
   ) where
 
 import Codec.Serialise
@@ -602,18 +608,20 @@ peerGossipVotes
   :: ( MonadReadDB m alg a, MonadMask m, MonadIO m, MonadLogger m, MonadTrace m
      , Crypto alg, Serialise a)
   => PeerStateObj m alg a         -- ^ Current state of peer
-  -> PeerChans m alg a            -- ^ Read-only access to
+  -> PeerChans    m alg a         -- ^ Read-only access to
   -> TBQueue (GossipMsg alg a)
   -> m ()
 peerGossipVotes peerObj PeerChans{..} gossipCh = logOnException $ do
   logger InfoS "Starting routine for gossiping votes" ()
-  trace TePeerGossipVotesStarted
+  trace (TePeerGossipVotes TepgvStarted)
   forever $ do
     bchH      <- queryRO blockchainHeight
     peerState <- getPeerState peerObj
+    trace (TePeerGossipVotes TepgvNewIter)
     case peerState of
       --
       Lagging p -> do
+        trace (TePeerGossipVotes TepgvLagging)
         mcmt <- case lagPeerStep p of
           FullStep peerH _ _
             | peerH == bchH -> queryRO $ retrieveLocalCommit peerH
@@ -890,9 +898,9 @@ showGossipMsg (GossipAnn ann)     = "GossipAnn { " <> showLS ann <> " }"
 showGossipMsg (GossipTx _)        = "GossipTx {}"
 showGossipMsg (GossipPex p)       = "GossipPex { " <> showLS p <> " }"
 
-showPeerState :: PeerState alg a -> Katip.LogStr
+showPeerState :: PeerState alg a -> String -- Katip.LogStr
 showPeerState (Lagging _) = "Lagging {}"
 showPeerState (Current _) = "Current {}"
-showPeerState (Ahead fs)  = "Ahead { " <> showLS fs <> " }"
+showPeerState (Ahead fs)  = "Ahead { " <> show fs <> " }"
 showPeerState Unknown     = "Unknown {}"
 

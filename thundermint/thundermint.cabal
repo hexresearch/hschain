@@ -200,6 +200,8 @@ Test-suite thundermint-tests
   hs-source-dirs:      test
   Main-is:             Main.hs
   Other-modules:       TM.Mempool
+                       TM.Gossip
+                       TM.Mempool
                        TM.MockNet
                        TM.Network
                        TM.NetworkTls
