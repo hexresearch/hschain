@@ -27,18 +27,20 @@ import Control.Exception        (Exception)
 import Control.Monad.Catch      (MonadMask, MonadThrow)
 import Control.Monad.IO.Class   (MonadIO)
 import qualified Data.Aeson as JSON
+import Data.Char                (isDigit)
 import qualified Data.List as List
 import Data.Set                 (Set)
 import qualified Data.Text as Text
 import Data.Word
 import GHC.Generics             (Generic)
-
-
+import GHC.Read                 (Read(..))
+import qualified Text.ParserCombinators.ReadP    as ReadP
+import qualified Text.ParserCombinators.ReadPrec as Read
 import qualified Data.ByteString.Lazy as LBS
 import qualified Network.Socket       as Net
 
 import           Thundermint.Logger
-import qualified Thundermint.Utils.Parser as Parse
+
 
 ----------------------------------------------------------------
 --
@@ -76,18 +78,33 @@ instance Show NetAddr where
                        in ((++show p) . (++".")) $ List.intercalate ":" $ map show [a,b,c,d,e,f,g,h]
 
 instance Read NetAddr where
-  readsPrec _ = Parse.parse (readV4 <|> readV6)
+  readPrec
+    = Read.lift $ readV4 <|> readV6
     where
-      readV4 = NetAddrV4 <$>
-          (Net.tupleToHostAddress <$>
-            (Parse.pcheck getTuple4 $ Parse.psepby1 (Parse.pitem '.') Parse.pnum)) <* Parse.pstring ":" <*> Parse.pnum
-      readV6 = NetAddrV6 <$>
-          (Net.tupleToHostAddress6 <$>
-            (Parse.pcheck getTuple6 $ Parse.psepby1 (Parse.pitem ':') Parse.pnum)) <* Parse.pstring "." <*> Parse.pnum
-      getTuple4 [a,b,c,d] = [(a,b,c,d)]
-      getTuple4 _         = []
-      getTuple6 [a,b,c,d,e,f,g,h] = [(a,b,c,d,e,f,g,h)]
-      getTuple6 _                 = []
+      readV4
+        = NetAddrV4
+       <$> (Net.tupleToHostAddress <$>
+             ((,,,) <$> digit <* ReadP.char '.'
+                    <*> digit <* ReadP.char '.'
+                    <*> digit <* ReadP.char '.'
+                    <*> digit)
+           )
+       <*  ReadP.char ':'
+       <*> digit
+      --
+      readV6
+        = NetAddrV6
+       <$> (Net.tupleToHostAddress6 <$>
+             ((,,,,,,,) <$> digit <* ReadP.char ':' <*> digit <* ReadP.char ':'
+                        <*> digit <* ReadP.char ':' <*> digit <* ReadP.char ':'
+                        <*> digit <* ReadP.char ':' <*> digit <* ReadP.char ':'
+                        <*> digit <* ReadP.char ':' <*> digit)
+           )
+       <*  ReadP.char '.'
+       <*> digit
+      --
+      digit :: Integral i => ReadP.ReadP i
+      digit = fromInteger . read <$> ReadP.munch1 isDigit
 
 sockAddrToNetAddr :: Net.SockAddr -> NetAddr
 sockAddrToNetAddr sa = case sa of
