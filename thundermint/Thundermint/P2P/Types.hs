@@ -13,7 +13,6 @@ module Thundermint.P2P.Types (
   , MockSocket(..)
   , MockNet(..)
   , HeaderSize
-  , RecvFun
   , NetworkPort
   , PeerId
   , PeerInfo(..)
@@ -175,12 +174,3 @@ newtype MockNet = MockNet
                                  [(MockSocket, NetAddr)])
     -- ^ Incoming connections for node.
   }
-
-
-
-----------------------------------------------------------------
--- types used in tls
-----------------------------------------------------------------
-
--- | Type for the action to receive input data
-type RecvFun = IO ByteString

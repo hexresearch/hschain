@@ -233,7 +233,7 @@ recvBufT' ctx cref siz = do
 
 
 
-fill :: BS.ByteString -> Int -> RecvFun -> IO (LBS.ByteString,BS.ByteString)
+fill :: BS.ByteString -> Int -> IO BS.ByteString -> IO (LBS.ByteString,BS.ByteString)
 fill bs0 siz0 tlsRecv
   | siz0 <= len0 = do
       let (bs, leftover) = BS.splitAt siz0 bs0
