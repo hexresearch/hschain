@@ -330,12 +330,19 @@ realNetworkUdp ourPeerInfo = do
 -- Some useful utilities
 ----------------------------------------------------------------
 
---showSockAddr :: Net.SockAddr -> String
---showSockAddr s@(Net.SockAddrInet pn ha) =
---    unwords ["SockAddrInet", show pn, show ha, "(" <> show s <> ")"]
---showSockAddr s@(Net.SockAddrInet6 pn fi ha si) =
---    unwords ["SockAddrInet6 ", show pn, show fi, show ha, show si, "(" <> show s <> ")"]
---showSockAddr s = "?? (" <> show s <> ")"
+-- | Sockets for mock network
+data MockSocket = MockSocket
+  { msckActive :: !(TVar Bool)
+  , msckSend   :: !(TChan LBS.ByteString)
+  , msckRecv   :: !(TChan LBS.ByteString)
+  }
+  deriving (Eq)
+
+-- | Mock network which uses STM to deliver messages
+newtype MockNet = MockNet
+  { mnetIncoming :: TVar (Map.Map NetAddr [(MockSocket, NetAddr)])
+    -- ^ Incoming connections for node.
+  }
 
 
 newMockNet :: IO (MockNet)
