@@ -51,7 +51,7 @@ headerSize = 4
 
 
 realNetworkTls :: TLS.Credential -> PeerInfo -> NetworkAPI
-realNetworkTls creds ourPeerInfo = (realNetworkStub serviceName)
+realNetworkTls creds ourPeerInfo = (realNetworkStub ourPeerInfo)
   { listenOn = do
       let hints = Net.defaultHints
             { Net.addrFlags      = [Net.AI_PASSIVE]

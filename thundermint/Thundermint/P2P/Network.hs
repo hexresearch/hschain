@@ -57,7 +57,7 @@ import qualified Thundermint.P2P.Network.IpAddresses as Ip
 
 -- | API implementation for real tcp network
 realNetwork :: PeerInfo -> NetworkAPI
-realNetwork ourPeerInfo = (realNetworkStub serviceName)
+realNetwork ourPeerInfo = (realNetworkStub ourPeerInfo)
   { listenOn = do
       let hints = Net.defaultHints
             { Net.addrFlags      = [Net.AI_PASSIVE]
@@ -213,9 +213,9 @@ realNetworkUdp ourPeerInfo = do
                    return peerInfo
          otherPeerInfo <- waitLoop 20 connection peerChan
          return $ connection { connectedPeer = otherPeerInfo }
-    , filterOutOwnAddresses = filterOutOwnAddresses (realNetworkStub serviceName)
-    , normalizeNodeAddress = normalizeNodeAddress (realNetworkStub serviceName)
-    , listenPort = listenPort (realNetworkStub serviceName)
+    , filterOutOwnAddresses = filterOutOwnAddresses $ realNetworkStub ourPeerInfo
+    , normalizeNodeAddress = normalizeNodeAddress $ realNetworkStub ourPeerInfo
+    , listenPort = listenPort $ realNetworkStub ourPeerInfo
     , ourPeerInfo = ourPeerInfo
     }
  where
