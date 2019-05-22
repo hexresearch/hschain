@@ -11,5 +11,8 @@ in
     nativeBuildInputs = with pkgs.haskellPackages; [
       cabal-install
     ];
+    buildInputs = [
+      pkgs.libsodium
+    ];
     packages = release."${ghc}";
   }
