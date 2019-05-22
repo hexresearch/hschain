@@ -20,7 +20,7 @@ import Data.Bits                (unsafeShiftL)
 import Data.ByteString.Internal (ByteString(..))
 import Data.Default.Class       (def)
 import Data.List                (find)
-import Data.Maybe               (fromJust, fromMaybe)
+import Data.Maybe               (fromJust)
 import Data.Monoid              ((<>))
 import Data.Word                (Word32)
 import Foreign.C.Error          (Errno(Errno), ePIPE)
@@ -58,15 +58,12 @@ realNetworkTls creds ourPeerInfo = (realNetworkStub ourPeerInfo)
             , Net.addrSocketType = Net.Stream
             }
       addrs <- liftIO $ Net.getAddrInfo (Just hints) Nothing (Just serviceName)
-
-      when (null addrs) $
-        throwM NoAddressAvailable
-      let addr = fromMaybe (head addrs) $ find isIPv6addr addrs
-
-      bracketOnError (liftIO $ listenerTls addr) (liftIO .  Net.close . fst)
-                     (\(sock, _) -> liftIO $
-                                    return (liftIO $ Net.close sock, acceptTls creds sock))
-
+      addr  <- case () of
+        _ | Just a <- find isIPv6addr addrs -> return a
+          | a:_    <- addrs                 -> return a
+          | otherwise                       -> throwM NoAddressAvailable
+      liftIO $ listenerTls creds addr
+  --
   , connect  = \addr -> do
       let hints = Just Net.defaultHints
             { Net.addrSocketType = Net.Stream
@@ -101,14 +98,18 @@ newSocket ai = liftIO $ do
 isIPv6addr :: Net.AddrInfo -> Bool
 isIPv6addr = (==) Net.AF_INET6 . Net.addrFamily
 
-listenerTls :: Net.AddrInfo -> IO (Net.Socket, Net.AddrInfo)
-listenerTls addr = do
-      sock <- newSocket addr
-      when (isIPv6addr addr) $
-        Net.setSocketOption sock Net.IPv6Only 0
-      Net.bind sock (Net.addrAddress addr)
-      Net.listen sock 5
-      return (sock, addr)
+listenerTls
+  :: (MonadIO m, MonadMask m)
+  => TLS.Credential -> Net.AddrInfo -> IO (m (), m (P2PConnection, NetAddr))
+listenerTls creds addr =
+  bracketOnError (newSocket addr) Net.close $ \sock -> do
+    when (isIPv6addr addr) $
+      Net.setSocketOption sock Net.IPv6Only 0
+    Net.bind sock (Net.addrAddress addr)
+    Net.listen sock 5
+    return ( liftIO $ Net.close sock
+           , acceptTls creds sock
+           )
 
 connectTls :: MonadIO m =>
               TLS.Credential
