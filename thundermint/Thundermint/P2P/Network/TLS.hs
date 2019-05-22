@@ -50,8 +50,8 @@ headerSize = 4
 
 
 
-realNetworkTls :: TLS.Credential -> Net.ServiceName -> NetworkAPI
-realNetworkTls creds serviceName = (realNetworkStub serviceName)
+realNetworkTls :: TLS.Credential -> PeerInfo -> NetworkAPI
+realNetworkTls creds ourPeerInfo = (realNetworkStub serviceName)
   { listenOn = do
       let hints = Net.defaultHints
             { Net.addrFlags      = [Net.AI_PASSIVE]
@@ -85,7 +85,8 @@ realNetworkTls creds serviceName = (realNetworkStub serviceName)
                $ Net.connect sock $ netAddrToSockAddr addr
         connectTls creds hostName serviceName' sock
   }
-
+  where
+    serviceName = show $ piPeerPort ourPeerInfo
 
 newSocket :: MonadIO m => Net.AddrInfo -> m Net.Socket
 newSocket ai = liftIO $ do
