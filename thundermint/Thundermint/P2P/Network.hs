@@ -36,7 +36,6 @@ import Control.Monad.Catch    (bracketOnError, onException, throwM)
 import Control.Monad.IO.Class (liftIO)
 import Data.Bits              (unsafeShiftL, complement)
 import Data.List              (find)
-import Data.Maybe             (fromMaybe)
 import Data.Monoid            ((<>))
 import Data.Word              (Word32, Word8)
 import System.Timeout         (timeout)
@@ -64,17 +63,18 @@ realNetwork ourPeerInfo = (realNetworkStub ourPeerInfo)
             , Net.addrSocketType = Net.Stream
             }
       addrs <- liftIO $ Net.getAddrInfo (Just hints) Nothing (Just serviceName)
-
-      when (null addrs) $
-        throwM NoAddressAvailable
-      let addr = fromMaybe (head addrs) $ find isIPv6addr addrs
-
+      addr  <- case () of
+        _ | Just a <- find Ip.isIPv6addr addrs -> return a
+          | a:_    <- addrs                    -> return a
+          | otherwise                          -> throwM NoAddressAvailable
+      --
       bracketOnError (liftIO $ newSocket addr) (liftIO . Net.close) $ \sock -> liftIO $ do
-        when (isIPv6addr addr) $
+        when (Ip.isIPv6addr addr) $
           Net.setSocketOption sock Net.IPv6Only 0
         Net.bind sock (Net.addrAddress addr)
         Net.listen sock 5
         return (liftIO $ Net.close sock, accept sock)
+  --
   , connect  = \addr -> do
       let hints = Just Net.defaultHints
             { Net.addrSocketType = Net.Stream
@@ -134,10 +134,6 @@ decodeWord16BE bs | LBS.length bs < fromIntegral headerSize = Nothing
                                    (0,0)
                                    w8s
                       in (Just $ fst word32)
-
--- |Shared code - we need checking of IPv6 in several different places.
-isIPv6addr :: Net.AddrInfo -> Bool
-isIPv6addr = (==) Net.AF_INET6 . Net.addrFamily
 
 -- | helper function read given length of bytes
 recvAll :: Net.Socket -> Int -> IO LBS.ByteString

@@ -40,7 +40,10 @@ import qualified Network.TLS             as TLS
 import Thundermint.Control
 import Thundermint.P2P.Network.Parameters
 import Thundermint.P2P.Network.RealNetworkStub
+import Thundermint.P2P.Network.IpAddresses     (isIPv6addr)
 import Thundermint.P2P.Types
+
+
 ----------------------------------------------------------------
 --
 ----------------------------------------------------------------
@@ -94,9 +97,6 @@ newSocket ai = liftIO $ do
     Net.setSocketOption sock Net.ReuseAddr 1
     return sock
 
-
-isIPv6addr :: Net.AddrInfo -> Bool
-isIPv6addr = (==) Net.AF_INET6 . Net.addrFamily
 
 listenerTls
   :: (MonadIO m, MonadMask m)
