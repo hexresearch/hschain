@@ -15,7 +15,6 @@ module Thundermint.P2P.Network (
   , getCredential
   , getCredentialFromBuffer
     -- * Mock in-memory network
-  , MockSocket
   , MockNet
   , newMockNet
   , createMockNode
