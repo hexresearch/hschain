@@ -164,7 +164,8 @@ setProperPeerInfo conn@P2PConnection{..} = do
 applyConn :: MonadIO m => TLS.Context -> m P2PConnection
 applyConn context = do
     ref <- liftIO $ I.newIORef ""
-    setProperPeerInfo $ P2PConnection (tlsSend context) (tlsRecv context ref) (liftIO $ tlsClose context) (PeerInfo 0 0 0)
+    setProperPeerInfo $ P2PConnection (tlsSend context) (tlsRecv context ref) (liftIO $ tlsClose context)
+      (PeerInfo (PeerId 0) 0 0)
 
         where
           tlsClose ctx = (silentBye ctx `E.catch` \(_ :: E.IOException) -> pure ())

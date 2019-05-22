@@ -199,7 +199,7 @@ realNetworkUdp ourPeerInfo = do
       --
     , connect  = \addr -> liftIO $ do
          (peerChan, connection) <- atomically $ (\(_, (peerChan, frontVar, receivedFrontsVar)) ->
-               (peerChan, applyConn (PeerInfo 0 0 0) sock addr frontVar receivedFrontsVar peerChan tChans))
+               (peerChan, applyConn (PeerInfo (PeerId 0) 0 0) sock addr frontVar receivedFrontsVar peerChan tChans))
            <$> findOrCreateRecvTuple tChans addr
          let waitLoop 0 _ _ = fail "timeout waiting for 'UDP connection' (actually, peerinfo exchange)."
              waitLoop n partialConnection@P2PConnection{..} receiveChan = do
@@ -406,7 +406,7 @@ createMockNode MockNet{..} addr = NetworkAPI
   , ourPeerInfo = mkPeerInfoFromAddr addr
   }
  where
-  mkPeerInfoFromAddr (NetAddrV4 ha _) = PeerInfo (fromIntegral ha) 0 0
+  mkPeerInfoFromAddr (NetAddrV4 ha _) = PeerInfo (PeerId (fromIntegral ha)) 0 0
   mkPeerInfoFromAddr _ = error "IPv6 addr in mkPeerInfoFromAddr"
   applyConn otherAddr conn = P2PConnection (liftIO . sendBS conn) (liftIO $ recvBS conn) (liftIO $ close conn) (mkPeerInfoFromAddr otherAddr)
   sendBS MockSocket{..} bs = atomically $
