@@ -5,11 +5,11 @@
 -- Abstract API for network which support
 module Thundermint.P2P.Network.TLS (
     -- * Real tls network
-   realNetworkTls
- , newSocket
- , getCredential
- , getCredentialFromBuffer
- , headerSize
+    realNetworkTls
+  , newSocket
+  , getCredential
+  , getCredentialFromBuffer
+  , headerSize
   ) where
 
 import Codec.Serialise
