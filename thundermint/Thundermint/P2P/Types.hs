@@ -10,8 +10,6 @@ module Thundermint.P2P.Types (
   , netAddrToSockAddr
   , P2PConnection(..)
   , NetworkError(..)
-  , MockSocket(..)
-  , MockNet(..)
   , HeaderSize
   , NetworkPort
   , PeerId
@@ -21,14 +19,11 @@ module Thundermint.P2P.Types (
 import Codec.Serialise
 import Control.Monad.Fail hiding (fail)
 import Control.Applicative
-import Control.Concurrent.STM
 import Control.Exception        (Exception)
 import Control.Monad.Catch      (MonadMask, MonadThrow)
 import Control.Monad.IO.Class   (MonadIO)
 import qualified Data.Aeson as JSON
-import Data.ByteString.Internal (ByteString(..))
 import qualified Data.List as List
-import Data.Map                 (Map)
 import Data.Set                 (Set)
 import qualified Data.Text as Text
 import Data.Word
@@ -154,23 +149,3 @@ data NetworkError = ConnectionTimedOut
   deriving (Show)
 
 instance Exception NetworkError
-
-
-----------------------------------------------------------------
--- Mock network
-----------------------------------------------------------------
-
--- | Sockets for mock network
-data MockSocket = MockSocket
-  { msckActive :: !(TVar Bool)
-  , msckSend   :: !(TChan LBS.ByteString)
-  , msckRecv   :: !(TChan LBS.ByteString)
-  }
-  deriving (Eq)
-
--- | Mock network which uses STM to deliver messages
-newtype MockNet = MockNet
-  { mnetIncoming    :: TVar (Map (NetAddr)
-                                 [(MockSocket, NetAddr)])
-    -- ^ Incoming connections for node.
-  }
