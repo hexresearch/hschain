@@ -1,5 +1,9 @@
-{-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE DeriveAnyClass             #-}
+{-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE DerivingStrategies         #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE RankNTypes                 #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
 
 -- |
 -- Abstract API for network which support
@@ -12,7 +16,7 @@ module Thundermint.P2P.Types (
   , NetworkError(..)
   , HeaderSize
   , NetworkPort
-  , PeerId
+  , PeerId(..)
   , PeerInfo(..)
   ) where
 
@@ -40,7 +44,8 @@ import qualified Thundermint.Utils.Parser as Parse
 --
 ----------------------------------------------------------------
 
-type PeerId = Word64
+newtype PeerId = PeerId Word64
+  deriving newtype (Show, Read, Eq, Ord, Serialise, JSON.ToJSON, JSON.FromJSON)
 
 
 data PeerInfo = PeerInfo
@@ -51,10 +56,9 @@ data PeerInfo = PeerInfo
     , piPeerSchemeVer :: !Word16
     -- ^ The scheme encoding version. It is not possible tp decode
     --   values safely between two different versions.
-    } deriving (Show, Generic)
-
-
-instance Serialise PeerInfo
+    }
+    deriving stock    (Show, Generic)
+    deriving anyclass (Serialise)
 
 
 ----------------------------------------------------------------

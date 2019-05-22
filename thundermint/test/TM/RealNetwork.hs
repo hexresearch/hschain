@@ -6,6 +6,7 @@ module TM.RealNetwork ( realNetPair
 import System.Random
 
 import Thundermint.P2P
+import Thundermint.P2P.Types
 import Thundermint.P2P.Network
 
 import qualified Data.ByteString as BS
@@ -30,7 +31,7 @@ realNetPair udpPortSpec host = do
           else realNetworkUdp peerInfoForOurPort
           where
             port = read p
-            peerInfoForOurPort = PeerInfo (fromIntegral port) port 0
+            peerInfoForOurPort = PeerInfo (PeerId (fromIntegral port)) port 0
         hints = Net.defaultHints  { Net.addrSocketType = if useUDP then Net.Datagram else Net.Stream }
     addr1:_ <- Net.getAddrInfo (Just hints) (Just host) (Just port1)
     addr2:_ <- Net.getAddrInfo (Just hints) (Just host) (Just port2)
