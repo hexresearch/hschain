@@ -97,7 +97,6 @@ realNetwork ourPeerInfo = (realNetworkStub ourPeerInfo)
           Nothing -> fail $ "connection dropped while receiving peer info from " ++ show addr
           Just (Left  _      ) -> fail $ "failure to decode PeerInfo from " ++ show addr
           Just (Right otherPI) -> return $ applyConn sock otherPI
-  , ourPeerInfo = ourPeerInfo
   }
  where
   serviceName = show $ piPeerPort ourPeerInfo
@@ -193,7 +192,7 @@ realNetworkUdp ourPeerInfo = do
             when connectPacket $ do
               flip (NetBS.sendAllTo sock) addr' $ LBS.toStrict $ CBOR.serialise (ourPeerInfo, mkAckPart)
 
-  return $ NetworkAPI
+  return $ (realNetworkStub ourPeerInfo)
     { listenOn = do
         return (liftIO $ killThread tid, liftIO.atomically $ readTChan acceptChan)
       --
@@ -213,10 +212,6 @@ realNetworkUdp ourPeerInfo = do
                    return peerInfo
          otherPeerInfo <- waitLoop 20 connection peerChan
          return $ connection { connectedPeer = otherPeerInfo }
-    , filterOutOwnAddresses = filterOutOwnAddresses $ realNetworkStub ourPeerInfo
-    , normalizeNodeAddress = normalizeNodeAddress $ realNetworkStub ourPeerInfo
-    , listenPort = listenPort $ realNetworkStub ourPeerInfo
-    , ourPeerInfo = ourPeerInfo
     }
  where
   mkConnectPart = (255 :: Word8, complement 0 :: Word32, LBS.empty)
