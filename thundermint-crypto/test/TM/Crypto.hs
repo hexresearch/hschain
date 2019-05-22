@@ -111,11 +111,14 @@ testsAsymmetricCrypto tag =
        show privK @=? T.unpack ("\"" <> encodeBase58 privK <> "\"")
        show pubK  @=? T.unpack ("\"" <> encodeBase58 pubK  <> "\"")
     --
-  , testCase "Sizes are correct"
+  , testCase "Sizes are correct (Private key)"
+  $ do privK <- generatePrivKey @alg
+       privKeySize   tag @=? BS.length (encodeToBS privK)
+    --
+  , testCase "Sizes are correct (Public key)"
   $ do privK <- generatePrivKey @alg
        let pubK = publicKey privK
-       BS.length (encodeToBS pubK ) @=? publicKeySize tag
-       BS.length (encodeToBS privK) @=? privKeySize   tag
+       publicKeySize tag @=? BS.length (encodeToBS pubK )
   ]
 
 
