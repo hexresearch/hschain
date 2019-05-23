@@ -139,5 +139,7 @@ tests =
              , run @Round
              , run @Time
              , run @NetAddr
+             , QC.testProperty "NetAddr tcp://" $ \(a :: NetAddr) ->
+                 a == (read . ("tcp://"++) . show) a
              ]
         ]

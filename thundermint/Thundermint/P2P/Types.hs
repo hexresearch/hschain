@@ -79,7 +79,7 @@ instance Show NetAddr where
 
 instance Read NetAddr where
   readPrec
-    = Read.lift $ readV4 <|> readV6
+    = Read.lift $ optional (ReadP.string "tcp://") *> (readV4 <|> readV6)
     where
       readV4
         = NetAddrV4
