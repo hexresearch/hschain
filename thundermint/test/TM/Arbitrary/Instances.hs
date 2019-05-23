@@ -9,14 +9,11 @@
 --
 module TM.Arbitrary.Instances where
 
-import Control.Monad
 import Data.ByteString.Arbitrary as Arb
 import Data.Maybe
 import Data.Proxy
-import Data.List  (intercalate)
 import qualified Data.ByteString    as BS
 import qualified Data.List.NonEmpty as NE
-import qualified Data.Text          as T
 import Test.QuickCheck.Arbitrary
 import Test.QuickCheck.Arbitrary.Generic
 import Test.QuickCheck.Gen
