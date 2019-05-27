@@ -123,6 +123,9 @@ instance (Ord (PublicKey Ed25519)) => ByteRepr (PublicKey Ed25519) where
   encodeToBS (PublicKey k) = k
 
 
+----------------------------------------------------------------
+-- C API bindings
+----------------------------------------------------------------
 
 foreign import capi "sodium.h crypto_sign_keypair" sodium_crypto_sign_keypair
   :: Ptr Word8 -> Ptr Word8 -> IO CInt
