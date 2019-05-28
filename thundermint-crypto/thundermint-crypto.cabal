@@ -47,6 +47,7 @@ Library
       extra-libraries: sodium
       Build-Depends: SHA               >=1.6 && <2
                    , memory            >=0.14.14
+      Other-modules: Thundermint.Crypto.Sodium
     else
       if impl(ghc)
         hs-source-dirs: ghc .

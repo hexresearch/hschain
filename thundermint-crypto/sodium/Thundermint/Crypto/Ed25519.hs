@@ -27,6 +27,7 @@ import System.IO.Unsafe
 
 import Thundermint.Crypto
 import Thundermint.Crypto.SHA
+import Thundermint.Crypto.Sodium
 
 ----------------------------------------------------------------
 --
@@ -145,13 +146,5 @@ foreign import capi "sodium.h crypto_sign_verify_detached" crypto_sign_verify_de
   -> Ptr Word8                  -- Public key
   -> IO CInt
 
-foreign import capi "sodium.h value crypto_sign_PUBLICKEYBYTES" crypto_sign_PUBLICKEYBYTES
-  :: CInt
-
-foreign import capi "sodium.h value crypto_sign_SECRETKEYBYTES" crypto_sign_SECRETKEYBYTES
-  :: CInt
-
-
-check :: CInt -> IO ()
-check 0 = return ()
-check _ = error "sodium error"
+foreign import capi "sodium.h value crypto_sign_PUBLICKEYBYTES" crypto_sign_PUBLICKEYBYTES :: CInt
+foreign import capi "sodium.h value crypto_sign_SECRETKEYBYTES" crypto_sign_SECRETKEYBYTES :: CInt
