@@ -25,6 +25,7 @@ import Foreign.Ptr
 import System.IO.Unsafe
 
 import Thundermint.Crypto
+import Thundermint.Crypto.Sodium
 
 
 ----------------------------------------------------------------
@@ -129,9 +130,3 @@ foreign import capi "sodium.h crypto_scalarmult_curve25519"
 
 foreign import capi "sodium.h value crypto_box_SECRETKEYBYTES" crypto_box_SECRETKEYBYTES :: CInt
 foreign import capi "sodium.h value crypto_box_PUBLICKEYBYTES" crypto_box_PUBLICKEYBYTES :: CInt
-
-
-
-check :: CInt -> IO ()
-check 0 = return ()
-check _ = error "sodium error"

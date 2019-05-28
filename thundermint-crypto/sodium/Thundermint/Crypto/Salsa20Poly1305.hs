@@ -10,18 +10,23 @@
 -- |
 module Thundermint.Crypto.Salsa20Poly1305 (Salsa20Poly1305) where
 
-import Control.Monad
 import Control.Monad.IO.Class
 import Control.DeepSeq (NFData(..))
 import Data.Data       (Data)
 import Data.Word
 import qualified Data.ByteString as BS
 import qualified Data.ByteArray  as Arr
-import Thundermint.Crypto
 import Foreign.C.Types
 import Foreign.Ptr
 import System.IO.Unsafe
 
+import Thundermint.Crypto
+import Thundermint.Crypto.Sodium
+
+
+----------------------------------------------------------------
+--
+----------------------------------------------------------------
 
 data Salsa20Poly1305
   deriving (Data)
@@ -71,12 +76,10 @@ instance StreamCypher Salsa20Poly1305 where
       lenM = lenC - fromIntegral crypto_secretbox_MACBYTES
   --
   generateCypherKey   = liftIO $ do
-    let n = crypto_secretbox_KEYBYTES
-    buf <- Arr.alloc (fromIntegral n) $ \p -> randombytes_buf p (fromIntegral n)
+    buf <- randomBytes $ fromIntegral crypto_secretbox_KEYBYTES
     return $! Key buf
   generateCypherNonce = liftIO $ do
-    let n = crypto_secretbox_NONCEBYTES
-    buf <- Arr.alloc (fromIntegral n) $ \p -> randombytes_buf p (fromIntegral n)
+    buf <- randomBytes $ fromIntegral crypto_secretbox_NONCEBYTES
     return $! Nonce buf
 
 
@@ -97,9 +100,6 @@ instance ByteRepr (CypherNonce Salsa20Poly1305) where
 --
 ----------------------------------------------------------------
 
-foreign import capi "sodium.h randombytes_buf" randombytes_buf
-  :: Ptr Word8 -> CSize -> IO ()
-
 foreign import capi "sodium.h crypto_secretbox_easy" crypto_secretbox_easy
   :: Ptr Word8 -> Ptr Word8 -> CULLong -> Ptr Word8 -> Ptr Word8 -> IO CInt
 
@@ -109,7 +109,3 @@ foreign import capi "sodium.h crypto_secretbox_open_easy" crypto_secretbox_open_
 foreign import capi "sodium.h value crypto_secretbox_KEYBYTES"   crypto_secretbox_KEYBYTES   :: CInt
 foreign import capi "sodium.h value crypto_secretbox_NONCEBYTES" crypto_secretbox_NONCEBYTES :: CInt
 foreign import capi "sodium.h value crypto_secretbox_MACBYTES"   crypto_secretbox_MACBYTES   :: CInt
-
-check :: CInt -> IO ()
-check 0 = return ()
-check _ = error "sodium error"
