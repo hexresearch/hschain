@@ -7,10 +7,6 @@ steps:
   image: nixos/nix
   privileged: true
   network_mode: host
-  when:
-    event:
-    - push
-    - pull_request
   environment:
     DRONE_GITHUB_PULL_KEY:
       from_secret: drone_github_pull_key
@@ -30,10 +26,6 @@ steps:
   image: nixos/nix
   privileged: true
   network_mode: host
-  when:
-    event:
-    - push
-    - pull_request
   commands:
   - apk add --no-cache git bash openssh-client
   - source ./nix/setup_ssh_ci.sh
@@ -53,10 +45,6 @@ steps:
   image: nixos/nix
   privileged: true
   network_mode: host
-  when:
-    event:
-    - push
-    - pull_request
   commands:
   - apk add --no-cache git bash openssh-client
   - source ./nix/setup_ssh_ci.sh
@@ -100,7 +88,6 @@ steps:
   - build-thundemint
   - build-thundemint-ghc86
   - build-thundemint-ghcjs
-  - build-thundemint-nightly
   settings:
     to:
       from_secret: telegram_id
@@ -124,3 +111,59 @@ steps:
 trigger:
   branch:
   - master
+
+---
+kind: pipeline
+name: cron
+
+steps:
+- name: build-thundemint-nightly
+  image: nixos/nix
+  privileged: true
+  network_mode: host
+  when:
+    event:
+    - push
+    - pull_request
+  environment:
+    DRONE_GITHUB_PULL_KEY:
+      from_secret: drone_github_pull_key
+    NIX_CACHE_KEY:
+      from_secret: nix_cache_key
+    NIX_CACHE_SIGNING_KEY:
+      from_secret: nix_cache_signing_key
+  commands:
+  - apk add --no-cache git bash openssh-client
+  - source ./nix/setup_ssh_ci.sh
+  - "echo -n \"$${NIX_CACHE_SIGNING_KEY}\" > \"$${HOME}/nix-cache-key.sec\""
+  - "chmod 400 \"$${HOME}/nix-cache-key.sec\""
+  - cd nix
+  - echo "this is cron nightly build"
+
+- name: telegram
+  image: appleboy/drone-telegram
+  depends_on:
+  - build-thundemint-nightly
+  settings:
+    to:
+      from_secret: telegram_id
+    token:
+      from_secret: telegram_token
+    message: >
+      {{build.status}}
+
+      {{build.link}}
+
+      ${DRONE_BUILD_EVENT} ${DRONE_PULL_REQUEST= }${DRONE_TAG= } to branch *{{commit.branch}}* by {{commit.author}}
+
+      {{commit.message}}
+
+      build time is {{buildtime build.started}}
+  when:
+    status:
+    - success
+    - failure
+
+trigger:
+  cron:
+  - nightly
