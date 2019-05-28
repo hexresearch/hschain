@@ -1,99 +1,92 @@
-clone:
-  git:
-    image: plugins/git:next
-    pull: true
+---
+kind: pipeline
+name: default
 
-pipeline:
+steps:
+- name: build-thundemint
+  image: nixos/nix
+  privileged: true
+  network_mode: host
+  environment:
+    DRONE_GITHUB_PULL_KEY:
+      from_secret: drone_github_pull_key
+    NIX_CACHE_KEY:
+      from_secret: nix_cache_key
+    NIX_CACHE_SIGNING_KEY:
+      from_secret: nix_cache_signing_key
+  commands:
+  - apk add --no-cache git bash openssh-client
+  - source ./nix/setup_ssh_ci.sh
+  - "echo -n \"$${NIX_CACHE_SIGNING_KEY}\" > \"$${HOME}/nix-cache-key.sec\""
+  - "chmod 400 \"$${HOME}/nix-cache-key.sec\""
+  - cd nix
+  - ./build-ci.sh
 
-  build-thundemint:
-    image: nixos/nix
-    pull: true
-    privileged: true
-    network_mode: host
-    commands:
-    - apk add --no-cache git bash openssh-client
-    # Setup SSH connection to git repos and cache server
-    - source ./nix/setup_ssh_ci.sh
-    # Setup signing key
-    - echo -n "$${NIX_CACHE_SIGNING_KEY}" > "$${HOME}/nix-cache-key.sec"
-    - chmod 400 "$${HOME}/nix-cache-key.sec"
-    # Build backend
-    - cd nix
-    - ./build-ci.sh
-    secrets: [ nix_cache_key, nix_cache_signing_key, drone_github_pull_key ]
+- name: build-thundemint-ghc86
+  image: nixos/nix
+  privileged: true
+  network_mode: host
+  commands:
+  - apk add --no-cache git bash openssh-client
+  - source ./nix/setup_ssh_ci.sh
+  - "echo -n \"$${NIX_CACHE_SIGNING_KEY}\" > \"$${HOME}/nix-cache-key.sec\""
+  - "chmod 400 \"$${HOME}/nix-cache-key.sec\""
+  - cd nix
+  - ./build-ci.sh --argstr ghc ghc863
+  environment:
+    DRONE_GITHUB_PULL_KEY:
+      from_secret: drone_github_pull_key
+    NIX_CACHE_KEY:
+      from_secret: nix_cache_key
+    NIX_CACHE_SIGNING_KEY:
+      from_secret: nix_cache_signing_key
 
-  build-thundemint-ghc86:
-    image: nixos/nix
-    pull: true
-    privileged: true
-    network_mode: host
-    commands:
-    - apk add --no-cache git bash openssh-client
-    # Setup SSH connection to git repos and cache server
-    - source ./nix/setup_ssh_ci.sh
-    # Setup signing key
-    - echo -n "$${NIX_CACHE_SIGNING_KEY}" > "$${HOME}/nix-cache-key.sec"
-    - chmod 400 "$${HOME}/nix-cache-key.sec"
-    # Build backend
-    - cd nix
-    - ./build-ci.sh --argstr ghc ghc863
-    secrets: [ nix_cache_key, nix_cache_signing_key, drone_github_pull_key ]
+- name: build-thundemint-ghcjs
+  image: nixos/nix
+  privileged: true
+  network_mode: host
+  commands:
+  - apk add --no-cache git bash openssh-client
+  - source ./nix/setup_ssh_ci.sh
+  - "echo -n \"$${NIX_CACHE_SIGNING_KEY}\" > \"$${HOME}/nix-cache-key.sec\""
+  - "chmod 400 \"$${HOME}/nix-cache-key.sec\""
+  - cd nix
+  - ./build-ci.sh --argstr ghc ghcjs
+  environment:
+    DRONE_GITHUB_PULL_KEY:
+      from_secret: drone_github_pull_key
+    NIX_CACHE_KEY:
+      from_secret: nix_cache_key
+    NIX_CACHE_SIGNING_KEY:
+      from_secret: nix_cache_signing_key
 
-  build-thundemint-ghcjs:
-    group: build
-    image: nixos/nix
-    pull: true
-    privileged: true
-    network_mode: host
-    commands:
-    - apk add --no-cache git bash openssh-client
-    # Setup SSH connection to git repos and cache server
-    - source ./nix/setup_ssh_ci.sh
-    # Setup signing key
-    - echo -n "$${NIX_CACHE_SIGNING_KEY}" > "$${HOME}/nix-cache-key.sec"
-    - chmod 400 "$${HOME}/nix-cache-key.sec"
-    # Build backend
-    - cd nix
-    - ./build-ci.sh --argstr ghc ghcjs
-    secrets: [ nix_cache_key, nix_cache_signing_key, drone_github_pull_key ]
-
-#  dockerize-thundemint:
-#    group: publish
-#    image: nixos/nix
-#    pull: true
-#    privileged: true
-#    volumes:
-#    - /var/run/docker.sock:/var/run/docker.sock
-#    commands:
-#    - apk add --no-cache git bash openssh-client docker
-#    # Setup SSH connection to git repos and cache server
-#    - source ./nix/setup_ssh_ci.sh
-#    # Setup signing key
-#    - echo -n "$${NIX_CACHE_SIGNING_KEY}" > "$${HOME}/nix-cache-key.sec"
-#    - chmod 400 "$${HOME}/nix-cache-key.sec"
-#    # Build containers
-#    - cd nix
-#    - ./build-docker-ci.sh
-#    secrets: [ nix_cache_key, nix_cache_signing_key, drone_github_pull_key, docker_username, docker_password ]
-#    when:
-#      event: [ push, tag, pull_request ]
-
-  telegram:
-    image: appleboy/drone-telegram
-    token: $PLUGIN_TOKEN
-    to: $PLUGIN_TO
-    secrets: [ plugin_token, plugin_to ]
+- name: telegram
+  image: appleboy/drone-telegram
+  depends_on:
+  - build-thundemint
+  - build-thundemint-ghc86
+  - build-thundemint-ghcjs
+  settings:
+    to:
+      from_secret: telegram_id
+    token:
+      from_secret: telegram_token
     message: >
       {{build.status}}
 
       {{build.link}}
 
-      ${DRONE_BUILD_EVENT} ${DRONE_PULL_REQUEST= } to branch *{{commit.branch}}* by {{commit.author}}
+      ${DRONE_BUILD_EVENT} ${DRONE_PULL_REQUEST= }${DRONE_TAG= } to branch *{{commit.branch}}* by {{commit.author}}
 
       {{commit.message}}
 
       build time is {{buildtime build.started}}
-    when:
-      status: [ success, failure ]
+  when:
+    status:
+    - success
+    - failure
 
-branches: [ master ]
+trigger:
+  branch:
+  - master
+  - drone11
