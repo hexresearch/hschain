@@ -1,6 +1,6 @@
-{ isProfile
-, isProd
-, isCoreLint
+{ isProfile  ? false
+, isProd     ? false
+, isCoreLint ? false
 , ...
 }:
 let
