@@ -15,7 +15,7 @@ import Foreign.Ptr
 import System.IO.Unsafe
 
 import Thundermint.Crypto
-
+import Thundermint.Crypto.Sodium
 
 ----------------------------------------------------------------
 --
@@ -41,13 +41,11 @@ instance CryptoKDF KDFNaCl where
 
 zeros :: BS.ByteString
 zeros = BS.replicate 16 0
+
+
 ----------------------------------------------------------------
 -- FFI
 ----------------------------------------------------------------
 
 foreign import capi "sodium.h crypto_core_hsalsa20" crypto_core_hsalsa20
   :: Ptr Word8 -> Ptr Word8 -> Ptr Word8 -> Ptr Word8 -> IO CInt
-
-check :: CInt -> IO ()
-check 0 = return ()
-check _ = error "sodium error"
