@@ -64,9 +64,6 @@ steps:
   image: nixos/nix
   privileged: true
   network_mode: host
-  when:
-    cron:
-    - nightly
   commands:
   - apk add --no-cache git bash openssh-client
   - source ./nix/setup_ssh_ci.sh
