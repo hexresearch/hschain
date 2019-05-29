@@ -118,10 +118,6 @@ steps:
   image: nixos/nix
   privileged: true
   network_mode: host
-  when:
-    event:
-    - push
-    - pull_request
   environment:
     DRONE_GITHUB_PULL_KEY:
       from_secret: drone_github_pull_key
