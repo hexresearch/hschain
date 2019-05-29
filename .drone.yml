@@ -89,6 +89,9 @@ steps:
 trigger:
   branch:
   - master
+  event:
+    exclude:
+    - cron
 
 ---
 kind: pipeline
