@@ -49,7 +49,6 @@ import Katip (Severity(..), sl)
 
 newAppChans :: (MonadIO m, Crypto alg) => ConsensusCfg -> m (AppChans m alg a)
 newAppChans ConsensusCfg{incomingQueueSize = sz} = do
-  -- 7 is magical no good reason to use 7 but no reason against it either
   appChanRx         <- liftIO $ newTBQueueIO sz
   appChanRxInternal <- liftIO   newTQueueIO
   appChanTx         <- liftIO   newBroadcastTChanIO
@@ -66,25 +65,27 @@ runApplication
      , MonadCatch m
      , MonadFail m
      , MonadIO m
+     , MonadMask m
      , MonadLogger m
      , MonadTMMonitoring m
      , Crypto alg, BlockData a)
   => ConsensusCfg
      -- ^ Configuration
-  -> (Height -> Time -> m Bool)
-     -- ^ Whether application is ready to create new block
-  -> AppState m alg a
+  -> Maybe (PrivValidator alg)
+     -- ^ Private key of validator
+  -> AppLogic m alg a
      -- ^ Get initial state of the application
+  -> AppCallbacks m alg a
   -> AppChans m alg a
      -- ^ Channels for communication with peers
   -> m ()
-runApplication config ready appSt@AppState{..} appCh@AppChans{..} = logOnException $ do
+runApplication config appValidatorKey appSt@AppLogic{..} appCall appCh@AppChans{..} = logOnException $ do
   logger InfoS "Starting consensus engine" ()
   height <- queryRO $ blockchainHeight
   lastCm <- queryRO $ retrieveLocalCommit height
   advanceToHeight appPropStorage $ succ height
   void $ flip fix lastCm $ \loop commit -> do
-    cm <- decideNewBlock config ready appSt appCh commit
+    cm <- decideNewBlock config appValidatorKey appSt appCall appCh commit
     loop (Just cm)
 
 
@@ -97,19 +98,21 @@ decideNewBlock
   :: ( MonadDB m alg a
      , MonadIO m
      , MonadFail m
+     , MonadMask m
      , MonadLogger m
      , MonadTMMonitoring m
      , Crypto alg, BlockData a)
   => ConsensusCfg
-  -> (Height -> Time -> m Bool)
-  -> AppState m alg a
-  -> AppChans m alg a
+  -> Maybe (PrivValidator alg)
+  -> AppLogic     m alg a
+  -> AppCallbacks m alg a
+  -> AppChans     m alg a
   -> Maybe (Commit alg a)
   -> m (Commit alg a)
-decideNewBlock config ready appSt@AppState{..} appCh@AppChans{..} lastCommt = do
+decideNewBlock config appValidatorKey appSt@AppLogic{..} appCall@AppCallbacks{..} appCh@AppChans{..} lastCommt = do
   -- Enter NEW HEIGHT and create initial state for consensus state
   -- machine
-  hParam <- makeHeightParameters config ready appSt appCh
+  hParam <- makeHeightParameters config appValidatorKey appSt appCall appCh
   -- Get rid of messages in WAL that are no longer needed and replay
   -- all messages stored there.
   walMessages <- fmap (fromMaybe [])
@@ -167,16 +170,14 @@ decideNewBlock config ready appSt@AppState{..} appCh@AppChans{..} lastCommt = do
                   Just () -> return ()
               --
               MixedQuery mcall -> do
-                callback <- mcall
-                r <- queryRW $ do storeCommit cmt b
-                                  (vsetChange,action) <- callback b
-                                  case changeValidators vsetChange (validatorSet hParam) of
-                                    Just vset -> storeValSet b vset
-                                    Nothing   -> fail ""
-                                  return action
+                r <- queryRWT $ do storeCommit cmt b
+                                   vsetChange <- mcall b
+                                   case changeValidators vsetChange (validatorSet hParam) of
+                                     Just vset -> storeValSet b vset
+                                     Nothing   -> fail ""
                 case r of
-                  Just action -> action
-                  Nothing     -> error "Cannot write commit into database"
+                  Nothing -> error "Cannot write commit into database"
+                  Just () -> return ()
             advanceToHeight appPropStorage . succ =<< queryRO blockchainHeight
             appCommitCallback b
             return cmt
@@ -211,10 +212,10 @@ handleVerifiedMessage ProposalStorage{..} hParam tm = \case
 -- simply discarded.
 verifyMessageSignature
   :: (MonadLogger m, Crypto alg)
-  => AppState m alg a
+  => AppLogic m alg a
   -> HeightParameters n alg a
   -> Pipe (MessageRx 'Unverified alg a) (MessageRx 'Verified alg a) m r
-verifyMessageSignature AppState{..} HeightParameters{..} = forever $ do
+verifyMessageSignature AppLogic{..} HeightParameters{..} = forever $ do
   await >>= \case
     RxPreVote   sv
       | h      == currentH -> verify "prevote"   RxPreVote   sv
@@ -298,11 +299,12 @@ makeHeightParameters
      , MonadTMMonitoring m
      , Crypto alg, Serialise a)
   => ConsensusCfg
-  -> (Height -> Time -> m Bool)
-  -> AppState m alg a
-  -> AppChans m alg a
+  -> Maybe (PrivValidator alg)
+  -> AppLogic     m alg a
+  -> AppCallbacks m alg a
+  -> AppChans     m alg a
   -> m (HeightParameters (ConsensusM alg a m) alg a)
-makeHeightParameters ConsensusCfg{..} ready AppState{..} AppChans{..} = do
+makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{..} AppChans{..} = do
   h            <- queryRO $ blockchainHeight
   Just valSet  <- queryRO $ retrieveValidatorSet (succ h)
   oldValSet    <- queryRO $ retrieveValidatorSet  h
@@ -323,11 +325,11 @@ makeHeightParameters ConsensusCfg{..} ready AppState{..} AppChans{..} = do
     , oldValidatorSet = oldValSet
       -- FIXME: this is some random algorithms that should probably
       --        work (for some definition of work)
-    , areWeProposers  = \r -> case appValidator of
+    , areWeProposers  = \r -> case appValidatorKey of
         Nothing                 -> False
         Just (PrivValidator pk) -> proposerChoice r == fingerprint (publicKey pk)
     , proposerForRound = proposerChoice
-    , readyCreateBlock = lift $ ready h bchTime
+    , readyCreateBlock = lift $ fromMaybe True <$> appCanCreateBlock h bchTime
     --
     , validateBlock = \bid -> do
         let nH = succ h
@@ -353,7 +355,7 @@ makeHeightParameters ConsensusCfg{..} ready AppState{..} AppChans{..} = do
                | otherwise              -> return InvalidProposal
     --
     , broadcastProposal = \r bid lockInfo ->
-        forM_ appValidator $ \(PrivValidator pk) -> do
+        forM_ appValidatorKey $ \(PrivValidator pk) -> do
           t <- getCurrentTime
           let prop = Proposal { propHeight    = succ h
                               , propRound     = r
@@ -385,7 +387,7 @@ makeHeightParameters ConsensusCfg{..} ready AppState{..} AppChans{..} = do
           atomically $ writeTQueue appChanRxInternal $ RxTimeout t
     --
     , castPrevote     = \r b ->
-        forM_ appValidator $ \(PrivValidator pk) -> do
+        forM_ appValidatorKey $ \(PrivValidator pk) -> do
           t@(Time ti) <- getCurrentTime
           let vote = Vote { voteHeight  = succ h
                           , voteRound   = r
@@ -401,7 +403,7 @@ makeHeightParameters ConsensusCfg{..} ready AppState{..} AppChans{..} = do
             writeTQueue appChanRxInternal (RxPreVote $ unverifySignature svote)
     --
     , castPrecommit   = \r b ->
-        forM_ appValidator $ \(PrivValidator pk) -> do
+        forM_ appValidatorKey $ \(PrivValidator pk) -> do
           t <- getCurrentTime
           let vote = Vote { voteHeight  = succ h
                           , voteRound   = r

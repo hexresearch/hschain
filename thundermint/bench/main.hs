@@ -5,18 +5,22 @@ module Main where
 import Criterion.Main
 import Prelude
 
-import Control.DeepSeq
-import Control.Exception (evaluate)
+--import Control.DeepSeq
+--import Control.Exception (evaluate)
 
-import Crypto.Random              (getRandomBytes)
-import Thundermint.Crypto
-import Thundermint.Crypto.Ed25519
+--import Crypto.Random              (getRandomBytes)
+--import Thundermint.Crypto
+--import Thundermint.Crypto.Ed25519
 
-kB :: Int
-kB = 1024
+
+import ValidatorSetsBench
+
+--kB :: Int
+--kB = 1024
 
 main :: IO ()
-main = do
+main = defaultMain [ benchValidatorSets ]
+{-
   !prk <- generatePrivKey
   let !pk = publicKey prk
   !blobs <- force . replicate 10000 <$> getRandomBytes kB
@@ -40,3 +44,4 @@ main = do
                  , bench "verifying"  $ nf (map (uncurry (verifyBlobSignature pk))) blobWithSign
                  ]
     ]
+-}

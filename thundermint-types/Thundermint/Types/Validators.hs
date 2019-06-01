@@ -18,6 +18,7 @@ module Thundermint.Types.Validators (
   , validatorSetSize
   , validatorByAddr
   , validatorByIndex
+  , asValidatorList
   , indexByValidator
     -- ** Indexed validator sets
   , ValidatorIdx(..)
@@ -30,17 +31,20 @@ module Thundermint.Types.Validators (
   , changeValidators
   ) where
 
-import qualified Codec.Serialise as CBOR
 import Control.DeepSeq
 import Control.Monad
+import Data.Foldable
+
+import Data.Coerce  (coerce)
+import Data.IntSet  (IntSet)
+import Data.Map     (Map)
+import GHC.Generics (Generic, Generic1)
+
+import qualified Codec.Serialise as CBOR
 import qualified Data.Aeson      as JSON
-import           Data.Foldable
-import qualified Data.Set        as Set
+import qualified Data.IntSet     as ISet
 import qualified Data.Map        as Map
-import           Data.Map          (Map)
-import qualified Data.IntSet as ISet
-import           Data.IntSet   (IntSet)
-import           GHC.Generics  (Generic,Generic1)
+import qualified Data.Set        as Set
 
 import Thundermint.Crypto
 
@@ -58,6 +62,7 @@ data Validator alg = Validator
 instance NFData (PublicKey alg) => NFData (Validator alg)
 deriving instance Crypto alg => Show (Validator alg)
 deriving instance Eq   (PublicKey alg) => Eq   (Validator alg)
+deriving instance Ord  (PublicKey alg) => Ord  (Validator alg)
 instance Crypto alg => CBOR.Serialise (Validator alg)
 
 -- | Set of all known validators for given height
@@ -70,6 +75,10 @@ data ValidatorSet alg = ValidatorSet
 instance NFData (PublicKey alg) => NFData (ValidatorSet alg)
 deriving instance Crypto alg => Show (ValidatorSet alg)
 deriving instance Eq   (PublicKey alg) => Eq   (ValidatorSet alg)
+
+-- | Get list of all validators included into set
+asValidatorList :: ValidatorSet alg -> [Validator alg]
+asValidatorList = toList . vsValidators
 
 instance (Crypto alg) => CBOR.Serialise (ValidatorSet alg) where
   encode = CBOR.encode . toList . vsValidators
@@ -140,7 +149,7 @@ instance NFData ValidatorISet where
 
 getValidatorIntSet :: ValidatorISet -> [ValidatorIdx alg]
 getValidatorIntSet (ValidatorISet _ iset)
-  = [ValidatorIdx i | i <- ISet.toList iset]
+  = coerce $ ISet.toList iset
 
 insertValidatorIdx :: ValidatorIdx alg -> ValidatorISet -> ValidatorISet
 insertValidatorIdx (ValidatorIdx i) vset@(ValidatorISet n iset)

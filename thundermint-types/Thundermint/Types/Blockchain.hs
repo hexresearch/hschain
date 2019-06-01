@@ -55,6 +55,7 @@ import           Data.Bits                ((.&.))
 import           Data.Coerce
 import           Data.Int
 import           Data.List                (sortBy)
+import qualified Data.List.NonEmpty       as NE
 import           Data.Monoid              ((<>))
 import           Data.Ord                 (comparing)
 import           Data.Time.Clock          (UTCTime)
@@ -252,7 +253,7 @@ instance CryptoHash alg => JSON.ToJSON   (ByzantineEvidence alg a)
 data Commit alg a = Commit
   { commitBlockID    :: !(BlockID alg a)
     -- ^ Block for which commit is done
-  , commitPrecommits :: !([Signed 'Unverified alg (Vote 'PreCommit alg a)])
+  , commitPrecommits :: !(NE.NonEmpty (Signed 'Unverified alg (Vote 'PreCommit alg a)))
     -- ^ List of precommits which justify commit
   }
   deriving (Show, Eq, Generic)
@@ -278,7 +279,7 @@ commitTime vset t0 Commit{..} = do
            )
   -- Here we discard invalid votes and calculate median time
   let times    = sortBy (comparing snd)
-               $ [ (w,voteTime) | (w,Vote{..}) <- votes
+               $ [ (w,voteTime) | (w,Vote{..}) <- NE.toList votes
                                 , voteTime > t0
                                 , voteBlockID == Just commitBlockID
                                 ]

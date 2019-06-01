@@ -19,6 +19,7 @@
   # Compiler specific overrides
   ghc863 = {
     bloodhound           = { check = false; jailbreak = true;};
+    # https://github.com/tsuraan/bytestring-arbitrary/issues/10
     bytestring-arbitrary = { jailbreak = true; };
   };
   ghcjs = {

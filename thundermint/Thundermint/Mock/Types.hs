@@ -1,3 +1,4 @@
+{-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE DeriveGeneric #-}
 module Thundermint.Mock.Types (
     NodeSpec(..)
@@ -15,7 +16,9 @@ import GHC.Generics (Generic)
 import qualified Data.Aeson as JSON
 
 import Thundermint.Blockchain.Internal.Engine.Types
-import Thundermint.Crypto.Ed25519 (Ed25519_SHA512)
+import Thundermint.Crypto         ((:&))
+import Thundermint.Crypto.Ed25519 (Ed25519)
+import Thundermint.Crypto.SHA     (SHA512)
 import Thundermint.Logger         (ScribeSpec)
 
 
@@ -63,7 +66,7 @@ instance JSON.ToJSON   Topology
 instance JSON.FromJSON Topology
 
 data NodeSpec = NodeSpec
-  { nspecPrivKey    :: Maybe (PrivValidator Ed25519_SHA512)
+  { nspecPrivKey    :: Maybe (PrivValidator (Ed25519 :& SHA512))
   , nspecDbName     :: Maybe FilePath
   , nspecLogFile    :: [ScribeSpec]
   , nspecWalletKeys :: (Int,Int)
