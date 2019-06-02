@@ -33,6 +33,7 @@ import Thundermint.Types.Blockchain
 import Thundermint.P2P.Types      (NetAddr)
 
 import TM.Arbitrary.Instances ()
+import Thundermint.Arbitrary.Instances ()
 
 type TestCryptoAlg     = Ed25519 :& SHA512
 type TestBlock         = String

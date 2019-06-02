@@ -172,6 +172,7 @@ Test-suite thundermint-tests
                      , thundermint
                      , thundermint-crypto
                      , thundermint-types
+                     , thundermint-arb
                      , aeson
                      , async             >=2.2.1
                      , bytestring        >=0.10
