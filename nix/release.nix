@@ -28,6 +28,7 @@ let
   thundermintPackages = hsPkgs: {
     thundermint-crypto = callInternal hsPkgs "thundermint" ../thundermint-crypto {};
     thundermint-types  = callInternal hsPkgs "thundermint" ../thundermint-types  {};
+    thundermint-arb    = callInternal hsPkgs "thundermint" ../thundermint-arb    {};
     thundermint        = callInternal hsPkgs "thundermint" ../thundermint        {};
   };
   # Build internal package
