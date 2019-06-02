@@ -199,8 +199,7 @@ Test-suite thundermint-tests
                      , tasty-hunit       >=0.10
   hs-source-dirs:      test
   Main-is:             Main.hs
-  Other-modules:       TM.Arbitrary.Instances
-                       TM.Mempool
+  Other-modules:       TM.Mempool
                        TM.MockNet
                        TM.Network
                        TM.NetworkTls
