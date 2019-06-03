@@ -1,6 +1,7 @@
 { isProfile  ? false
 , isProd     ? false
 , isCoreLint ? false
+, useSodium ? false
 , ...
 }:
 let
@@ -27,14 +28,15 @@ let
   };
   # Generate packages for thundermint
   thundermintPackages = hsPkgs: {
-    thundermint-crypto = callInternal hsPkgs "thundermint" ../thundermint-crypto {};
-    thundermint-types  = callInternal hsPkgs "thundermint" ../thundermint-types  {};
-    thundermint-arb    = callInternal hsPkgs "thundermint" ../thundermint-arb    {};
-    thundermint        = callInternal hsPkgs "thundermint" ../thundermint        {};
+    thundermint-crypto = callInternal hsPkgs "thundermint" ../thundermint-crypto {}
+      (if useSodium then "-flibsodium" else "");
+    thundermint-arb    = callInternal hsPkgs "thundermint" ../thundermint-arb    {} "";
+    thundermint-types  = callInternal hsPkgs "thundermint" ../thundermint-types  {} "";
+    thundermint        = callInternal hsPkgs "thundermint" ../thundermint        {} "";
   };
   # Build internal package
-  callInternal = hask: name: path: args:
-    lintOverride (prodOverride (profileOverride (hask.callCabal2nix name (ignoreStack path) args)))
+  callInternal = hask: name: path: args: opts:
+    lintOverride (prodOverride (profileOverride (hask.callCabal2nixWithOptions name (ignoreStack path) opts args)))
     ;
   lintOverride    = doIf isCoreLint hask.doCoreLint;
   prodOverride    = doIf isProd    (drv: hask.doPedantic (lib.doCheck drv));
