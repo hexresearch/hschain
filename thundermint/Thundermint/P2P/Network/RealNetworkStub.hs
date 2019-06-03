@@ -18,9 +18,7 @@ realNetworkStub peerInfo = NetworkAPI
                           . Ip.filterOutOwnAddresses (fromIntegral (piPeerPort peerInfo))
                           . Set.map netAddrToSockAddr
   , normalizeNodeAddress  = flip setPort
-                          . sockAddrToNetAddr
-                          . Ip.normalizeIpAddr
-                          . netAddrToSockAddr
+                          . Ip.normalizeNetAddr
   , listenPort            = fromIntegral $ piPeerPort peerInfo
   , ourPeerInfo           = peerInfo
   }

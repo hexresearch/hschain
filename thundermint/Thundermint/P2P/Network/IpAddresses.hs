@@ -7,6 +7,7 @@ module Thundermint.P2P.Network.IpAddresses (
   , getLocalAddress
   , getLocalAddresses
   , isLocalAddress
+  , normalizeNetAddr
   , normalizeIpAddr
   , isIPv6addr
   ) where
@@ -19,6 +20,8 @@ import Data.Word              (Word32)
 import qualified Data.Set       as Set
 import qualified Network.Info   as Net
 import qualified Network.Socket as Net
+
+import Thundermint.Types.Network
 
 
 -- | Get local node address
@@ -82,6 +85,11 @@ normalizeIpAddr :: Net.SockAddr -> Net.SockAddr
 normalizeIpAddr (Net.SockAddrInet6 p _ (0, 0, 0xFFFF, x) _) = -- IPv4 mapped addreses
     Net.SockAddrInet p (partOfIpv6ToIpv4 x)
 normalizeIpAddr a = a
+
+normalizeNetAddr :: NetAddr -> NetAddr
+-- IPv4 mapped addreses
+normalizeNetAddr (NetAddrV6 (0, 0, 0xFFFF, x) p) = NetAddrV4 (partOfIpv6ToIpv4 x) p
+normalizeNetAddr a = a
 
 
 getPort :: Net.SockAddr -> Net.PortNumber
