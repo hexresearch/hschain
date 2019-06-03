@@ -115,7 +115,7 @@ steps:
   - "echo -n \"$${NIX_CACHE_SIGNING_KEY}\" > \"$${HOME}/nix-cache-key.sec\""
   - "chmod 400 \"$${HOME}/nix-cache-key.sec\""
   - cd nix
-  - echo "this is cron nightly build"
+  - ./build-ci.sh --arg isCoreLint true
 
 - name: telegram
   image: appleboy/drone-telegram
