@@ -18,7 +18,7 @@ Build-Type:     Simple
 
 flag sqlite-instances
   Description: Enable instances for sqlite-simple
-  Default:     True
+  Default:     False
   Manual:      True
 
 flag android-impl
