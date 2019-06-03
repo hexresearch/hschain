@@ -38,19 +38,20 @@ Library
                      , containers        >=0.5.9
                      , data-default-class
                      , deepseq           >=1.4
-                     , network           >=2.6.0.0 && <2.9
                      , serialise         >=0.2
                      , text
                      , time
                      , vector
                      , vector-th-unbox
                      , unordered-containers >=0.2.5.0
-  if flag(sqlite-instances)
-    if !impl(ghcjs) && !flag(android-impl)
+  if !impl(ghcjs) && !flag(android-impl)
+    Exposed-modules:
+      Thundermint.Types.Network
+    Build-depends: network           >=2.6.0.0 && <2.9
+    if flag(sqlite-instances)
       CPP-Options:   -DINSTANCES_SQLITE
       Build-Depends: sqlite-simple
   Exposed-modules:
                   Thundermint.Types
-                  Thundermint.Types.Network
                   Thundermint.Types.Validators
                   Thundermint.Types.Blockchain
