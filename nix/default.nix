@@ -1,6 +1,7 @@
 args@{
   isProfile ? false
 , isProd    ? false
+, useSodium ? false
 , ghc       ? "ghc844"
 }:
 let

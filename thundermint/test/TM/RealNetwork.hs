@@ -6,6 +6,7 @@ module TM.RealNetwork ( realNetPair
 import System.Random
 
 import Thundermint.P2P
+import Thundermint.P2P.Types
 import Thundermint.P2P.Network
 
 import qualified Data.ByteString as BS
@@ -30,7 +31,7 @@ realNetPair udpPortSpec host = do
           else realNetworkUdp peerInfoForOurPort
           where
             port = read p
-            peerInfoForOurPort = PeerInfo (fromIntegral port) port 0
+            peerInfoForOurPort = PeerInfo (PeerId (fromIntegral port)) port 0
         hints = Net.defaultHints  { Net.addrSocketType = if useUDP then Net.Datagram else Net.Stream }
     addr1:_ <- Net.getAddrInfo (Just hints) (Just host) (Just port1)
     addr2:_ <- Net.getAddrInfo (Just hints) (Just host) (Just port2)
@@ -49,16 +50,15 @@ realTlsNetPair :: Net.HostName
                -> IO ((NetAddr, NetworkAPI),
                       (NetAddr, NetworkAPI))
 realTlsNetPair  host = do
-    n <- randomRIO (10, 99 :: Int)
-    m <- randomRIO (1, 9 :: Int)
-    let port1 = concat ["32", show  m,  show  n]
-        port2 = concat ["33", show  m, show  (mod (n + m) 100)]
-        credential = getCredentialFromBuffer certificatePem keyPem
-        server = realNetworkTls credential port1
-        client = realNetworkTls credential port2
-        hints = Net.defaultHints  { Net.addrSocketType = Net.Stream }
-    addr1:_ <- Net.getAddrInfo (Just hints) (Just host) (Just port1)
-    addr2:_ <- Net.getAddrInfo (Just hints) (Just host) (Just port2)
+    port1 <- (+32000) <$> randomRIO (1, 999)
+    port2 <- (+33000) <$> randomRIO (1, 999)
+    let credential = getCredentialFromBuffer certificatePem keyPem
+        toPeerInfo p = PeerInfo (PeerId (fromIntegral p)) p 0
+        server = realNetworkTls credential $ toPeerInfo port1
+        client = realNetworkTls credential $ toPeerInfo port2
+        hints  = Net.defaultHints  { Net.addrSocketType = Net.Stream }
+    addr1:_ <- Net.getAddrInfo (Just hints) (Just host) (Just (show port1))
+    addr2:_ <- Net.getAddrInfo (Just hints) (Just host) (Just (show port2))
 
     let sockAddr1 = Net.addrAddress addr1
     let sockAddr2 = Net.addrAddress addr2

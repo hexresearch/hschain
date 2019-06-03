@@ -1,36 +1,41 @@
-{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE FlexibleContexts     #-}
 {-# LANGUAGE FlexibleInstances    #-}
+{-# LANGUAGE ScopedTypeVariables  #-}
 {-# LANGUAGE TypeApplications     #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
 -- | Arbitrary instances for QuickTest
 --
-module TM.Arbitrary.Instances where
+module Thundermint.Arbitrary.Instances where
 
-import Data.ByteString.Arbitrary as Arb
 import Data.Maybe
 import Data.Proxy
-import qualified Data.ByteString    as BS
-import qualified Data.List.NonEmpty as NE
 import Test.QuickCheck.Arbitrary
 import Test.QuickCheck.Arbitrary.Generic
 import Test.QuickCheck.Gen
 
 import Thundermint.Types
 import Thundermint.Crypto
+import Thundermint.Types.Network (NetAddr(..))
+
+import qualified Data.ByteString           as BS
+import           Data.ByteString.Arbitrary as Arb
+import qualified Data.List.NonEmpty        as NE
+
+instance CryptoHash alg => Arbitrary (Hash alg) where
+  arbitrary = Hash <$> Arb.fastRandBs (hashSize (Proxy @alg))
+  shrink _ = []
 
 
-
-instance Arbitrary (Hash alg) where
-    arbitrary = Hash <$> Arb.fastRandBs 100
-
-instance Arbitrary (Hashed alg a) where
-    arbitrary = Hashed <$> arbitrary
+instance Arbitrary (Hash alg) => Arbitrary (Hashed alg a) where
+  arbitrary = Hashed <$> arbitrary
+  shrink  _ = []
 
 instance Arbitrary Height where
-    arbitrary = Height <$> arbitrary
+--  arbitrary = Height <$> arbitrary
+  arbitrary = genericArbitrary
+  shrink = genericShrink
 
 
 instance Arbitrary Time where
@@ -45,11 +50,15 @@ instance Arbitrary (Fingerprint alg) where
   arbitrary = Fingerprint <$> Arb.fastRandBs 256
 
 
-instance Arbitrary (Signature alg) where
-  arbitrary = Signature <$> Arb.fastRandBs 256
+--instance Arbitrary (Signature alg) where
+--  arbitrary = Signature <$> Arb.fastRandBs 256
+
+instance CryptoSign alg => Arbitrary (Signature alg) where
+  arbitrary = Signature <$> Arb.fastRandBs (signatureSize (Proxy @alg))
+  shrink _ = []
 
 
-instance (Arbitrary a) => Arbitrary (Header alg a) where
+instance (CryptoHash alg, Arbitrary a) => Arbitrary (Header alg a) where
   arbitrary = Header <$> Arb.fastRandBs 1024
                      <*> arbitrary
                      <*> arbitrary
@@ -60,17 +69,17 @@ instance (Arbitrary a) => Arbitrary (Header alg a) where
                      <*> arbitrary
                      <*> arbitrary
 
-instance (Arbitrary a) => Arbitrary (Signed sign alg a) where
+instance (CryptoSign alg, Arbitrary a) => Arbitrary (Signed sign alg a) where
   arbitrary = genericArbitrary
   shrink = genericShrink
 
 
-instance Arbitrary (Commit alg a) where
+instance (CryptoSign alg, CryptoHash alg) => Arbitrary (Commit alg a) where
   arbitrary = Commit <$> arbitrary
                      <*> ((NE.:|) <$> arbitrary <*> resize 3 arbitrary)
 
 
-instance Arbitrary (BlockID alg a) where
+instance (CryptoHash alg) => Arbitrary (BlockID alg a) where
   arbitrary = BlockID <$> arbitrary
   shrink = genericShrink
 
@@ -80,7 +89,7 @@ instance Arbitrary VoteType where
   shrink = genericShrink
 
 
-instance (Arbitrary a, Arbitrary (PublicKey alg)) => Arbitrary (Block alg a) where
+instance (CryptoSign alg, CryptoHash alg, Arbitrary a, Arbitrary (PublicKey alg)) => Arbitrary (Block alg a) where
   arbitrary = Block <$> arbitrary
                     <*> arbitrary
                     <*> resize 4 arbitrary
@@ -88,15 +97,15 @@ instance (Arbitrary a, Arbitrary (PublicKey alg)) => Arbitrary (Block alg a) whe
                     <*> resize 4 arbitrary
   shrink = genericShrink
 
-instance Arbitrary (ByzantineEvidence alg a) where
+instance (CryptoSign alg, CryptoHash alg) => Arbitrary (ByzantineEvidence alg a) where
   arbitrary = genericArbitrary
   shrink = genericShrink
 
-instance Arbitrary (Vote ty alg a) where
+instance (CryptoHash alg) => Arbitrary (Vote ty alg a) where
   arbitrary = genericArbitrary
   shrink = genericShrink
 
-instance Arbitrary (Proposal alg a) where
+instance (CryptoHash alg) => Arbitrary (Proposal alg a) where
   arbitrary = genericArbitrary
   shrink = genericShrink
 
@@ -109,3 +118,16 @@ instance CryptoSign alg => Arbitrary (PublicKey alg) where
     bs <- vectorOf (privKeySize (Proxy @alg)) arbitrary
     return $ fromJust $ decodeFromBS $ BS.pack bs
   shrink _ = []
+
+instance CryptoSign alg => Arbitrary (PrivKey alg) where
+  arbitrary = do
+    bs <- vectorOf (privKeySize (Proxy @alg)) arbitrary
+    return $ fromJust $ decodeFromBS $ BS.pack bs
+  shrink _ = []
+
+instance Arbitrary NetAddr where
+  arbitrary = oneof
+    [ NetAddrV4   <$> arbitrary <*> arbitrary
+    , NetAddrV6   <$> arbitrary <*> arbitrary
+    ]
+

@@ -239,7 +239,7 @@ startPeerDispatcher p2pConfig net peerAddr addrs AppChans{..} mempool = logOnExc
 -- | Generate "unique" peer id for current session.
 --
 generatePeerId :: (MonadIO m) => m PeerId
-generatePeerId = liftIO randomIO
+generatePeerId = PeerId <$> liftIO randomIO
 
 
 data ConnectMode = CmAccept !PeerId
