@@ -1,12 +1,12 @@
 { isProfile  ? false
 , isProd     ? false
 , isCoreLint ? false
-, useSodium ? false
+, useSodium  ? false
 , ghc        ? "ghc844"
 }:
 let
   release = import ./release.nix {
-    inherit isProd isProfile isCoreLint;
+    inherit isProd isProfile isCoreLint useSodium;
   };
   pkgs    = release.pkgs;
 in
