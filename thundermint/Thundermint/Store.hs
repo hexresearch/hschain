@@ -108,7 +108,6 @@ import Thundermint.Store.Internal.BlockDB
 import Thundermint.Store.SQL
 import Thundermint.Types.Validators
 
-
 ----------------------------------------------------------------
 -- Monadic API for DB access
 ----------------------------------------------------------------
@@ -140,7 +139,7 @@ instance MonadIO m => MonadDB (DBT 'RW alg a m) alg a where
 -- | Helper function which opens database, initializes it and ensures
 --   that it's closed on function exit
 withDatabase
-  :: (MonadIO m, MonadMask m, FloatOut dct, Crypto alg, Serialise a, Eq a, Eq (PublicKey alg))
+  :: (MonadIO m, MonadMask m, FloatOut dct, Crypto alg, Serialise a, Eq a, Show a, Eq (PublicKey alg))
   => FilePath         -- ^ Path to the database
   -> dct Persistent   -- ^ Users state. If no state is stored in the
   -> Block alg a      -- ^ Genesis block
@@ -151,7 +150,7 @@ withDatabase path dct genesis vals cont
 
 -- | Initialize all required tables in database.
 initDatabase
-  :: (MonadIO m, FloatOut dct, Crypto alg, Serialise a, Eq a, Eq (PublicKey alg))
+  :: (MonadIO m, FloatOut dct, Crypto alg, Serialise a, Eq a, Show a, Eq (PublicKey alg))
   => Connection 'RW alg a  -- ^ Opened connection to database
   -> dct Persistent        -- ^ Users state. If no state is stored in the
   -> Block alg a           -- ^ Genesis block

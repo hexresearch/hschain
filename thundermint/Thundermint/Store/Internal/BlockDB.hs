@@ -2,11 +2,12 @@
 {-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE OverloadedStrings   #-}
+
 -- |
 -- Data types for primary database. Namely storage of blocks, commits and validators
 module Thundermint.Store.Internal.BlockDB where
 
-import Codec.Serialise (Serialise,serialise,deserialiseOrFail)
+import Codec.Serialise (Serialise, serialise, deserialiseOrFail)
 import Control.Monad (when)
 import qualified Data.List.NonEmpty   as NE
 import qualified Data.ByteString.Lazy as LBS
@@ -26,7 +27,7 @@ import Thundermint.Store.Internal.Query
 
 -- | Create tables for storing blockchain data
 initializeBlockhainTables
-  :: (Crypto alg, Eq (PublicKey alg), Serialise a, Eq a, MonadQueryRW m alg a)
+  :: (Crypto alg, Eq (PublicKey alg), Serialise a, Eq a, MonadQueryRW m alg a, Show a)
   => Block alg a                -- ^ Genesis block
   -> ValidatorSet alg           -- ^ Initial validator set
   -> m ()
@@ -77,6 +78,23 @@ initializeBlockhainTables genesis initialVals = do
   -- Insert genesis block if needed
   storedGen  <- basicQuery_ "SELECT block  FROM thm_blockchain WHERE height = 0"
   storedVals <- basicQuery_ "SELECT valset FROM thm_validators WHERE height = 1"
+  let checkResult = genCheck <> valCheck
+      genCheck = case storedGen of
+          [Only blk] -> case deserialiseOrFail blk of
+            Right genesis'
+              | genesis == genesis' -> Nothing
+              | otherwise -> Just $ "genesis blocks do not match:"
+                                    ++ "\n  stored: " ++ show genesis'
+                                    ++ "\nexpected: " ++ show genesis
+            Left _ -> Just "deserialisation for genesis failed"
+          _ -> Just "block is not singleton"
+      valCheck = case storedVals of
+          [Only vs] -> case deserialiseOrFail vs of
+            Right initialVals'
+              | initialVals == initialVals' -> Nothing
+              | otherwise -> Just $ "validators are not equal: "
+            Left _ -> Just "unable to deserialise validators"
+          _ -> Just "validators are not stored in singleton"
   case () of
      -- Fresh DB without genesis block
     _| [] <- storedGen
@@ -88,17 +106,8 @@ initializeBlockhainTables genesis initialVals = do
              basicExecute "INSERT INTO thm_validators VALUES (1,?)"
                (Only (serialise initialVals))
      -- Genesis and validator set matches ones recorded
-     | [Only blk ]    <- storedGen
-     , Right genesis' <- deserialiseOrFail blk
-     , genesis == genesis'
-     , [Only vals]        <- storedVals
-     , Right initialVals' <- deserialiseOrFail vals
-     , initialVals == initialVals'
-       -> return ()
-     -- Otherwise we're reading wrong database. No other way but fiery death
-     | otherwise -> error "initializeBlockhainTables: inconsistent genesis/initial validators"
-
-
+     | Just failure <- checkResult -> error $ "initializeBlockhainTables failure: "++failure
+     | otherwise -> return ()
 
 ----------------------------------------------------------------
 -- Public API
