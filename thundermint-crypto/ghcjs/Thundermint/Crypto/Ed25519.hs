@@ -8,14 +8,12 @@ module Thundermint.Crypto.Ed25519 (
   ) where
 
 import Control.Monad
-import Control.Monad.IO.Class
 import Control.DeepSeq
 import Data.ByteString (ByteString)
 import Data.Ord        (comparing)
 import qualified Data.ByteString      as BS
 import qualified Data.ByteString.Lazy as BL
 import qualified Data.Digest.Pure.SHA as SHA
-
 
 import GHCJS.Types
 import JavaScript.TypedArray
@@ -37,15 +35,25 @@ data instance PrivKey Ed25519 = PrivKey
 
 newtype instance PublicKey Ed25519 = PublicKey { unPublicKey :: Uint8Array }
 
-instance CryptoSignPrim Ed25519 where
-  type FingerprintSize Ed25519 = 32
-  type PublicKeySize   Ed25519 = 32
-  type PrivKeySize     Ed25519 = 32
-  type SignatureSize   Ed25519 = 64
+instance ByteReprSized (PublicKey Ed25519) where
+  type ByteSize (PublicKey Ed25519) = 32
+instance ByteReprSized (PrivKey Ed25519) where
+  type ByteSize (PrivKey Ed25519) = 32
 
+instance CryptoAsymmetric Ed25519 where
+  publicKey = PublicKey . pubK
+  generatePrivKey = do
+    arr <- randomBytes 32
+    case decodeFromBS $ arrayToBs arr of
+      Just k  -> return k
+      Nothing -> error "Ed25519: internal error. Cannot generate key"
+
+instance ByteReprSized (Fingerprint Ed25519) where
+  type ByteSize (Fingerprint Ed25519) = 32
+instance ByteReprSized (Signature Ed25519) where
+  type ByteSize (Signature Ed25519) = 64
 
 instance CryptoSign Ed25519 where
-  --
   signBlob k bs
     = Signature
     $ arrayToBs
@@ -53,15 +61,9 @@ instance CryptoSign Ed25519 where
   verifyBlobSignature (PublicKey pubKey) blob (Signature s)
     = js_sign_detached_verify (bsToArray blob) (bsToArray s) pubKey
   --
-  publicKey = PublicKey . pubK
   fingerprint   = Fingerprint
                 . BL.toStrict . SHA.bytestringDigest . SHA.sha256 . BL.fromStrict
                 . arrayToBs . js_sha512 . unPublicKey
-  generatePrivKey = do
-    arr <- randomBytes 32
-    case decodeFromBS $ arrayToBs arr of
-      Just k  -> return k
-      Nothing -> error "Ed25519: internal error. Cannot generate key"
 
 instance Eq (PrivKey Ed25519) where
   PrivKey b1 _ _ == PrivKey b2 _ _ = b1 == b2
@@ -94,7 +96,7 @@ instance (Ord (PrivKey Ed25519)) => ByteRepr (PrivKey Ed25519) where
 instance (Ord (PublicKey Ed25519)) => ByteRepr (PublicKey Ed25519) where
   decodeFromBS        bs = do
     guard $ BS.length bs == 32
-    return $ PublicKey $ bsToArray bs
+    return $! PublicKey $ bsToArray bs
 
   encodeToBS (PublicKey k) = arrayToBs k
 

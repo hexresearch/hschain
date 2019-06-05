@@ -7,8 +7,9 @@ module Thundermint.P2P.Network.IpAddresses (
   , getLocalAddress
   , getLocalAddresses
   , isLocalAddress
+  , normalizeNetAddr
   , normalizeIpAddr
-  , serviceNameToPortNumber
+  , isIPv6addr
   ) where
 
 
@@ -16,12 +17,11 @@ import Control.Monad
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Set               (Set)
 import Data.Word              (Word32)
-import System.IO.Unsafe
 import qualified Data.Set       as Set
 import qualified Network.Info   as Net
 import qualified Network.Socket as Net
 
-import Thundermint.P2P.Consts
+import Thundermint.Types.Network
 
 
 -- | Get local node address
@@ -86,6 +86,11 @@ normalizeIpAddr (Net.SockAddrInet6 p _ (0, 0, 0xFFFF, x) _) = -- IPv4 mapped add
     Net.SockAddrInet p (partOfIpv6ToIpv4 x)
 normalizeIpAddr a = a
 
+normalizeNetAddr :: NetAddr -> NetAddr
+-- IPv4 mapped addreses
+normalizeNetAddr (NetAddrV6 (0, 0, 0xFFFF, x) p) = NetAddrV4 (partOfIpv6ToIpv4 x) p
+normalizeNetAddr a = a
+
 
 getPort :: Net.SockAddr -> Net.PortNumber
 getPort (Net.SockAddrInet port _) = port
@@ -105,13 +110,6 @@ filterOutOwnAddresses ownPort =
             ) .
     Set.toList
 
-
-serviceNameToPortNumber :: Net.ServiceName -> Net.PortNumber
-serviceNameToPortNumber sn =
-    case map Net.addrAddress $ unsafePerformIO $
-        Net.getAddrInfo (Just (Net.defaultHints {Net.addrSocketType = Net.Stream, Net.addrFamily = Net.AF_INET6}))
-                        Nothing
-                        (Just sn) of
-        Net.SockAddrInet6 port _ _ _:_ -> port
-        _ -> thundermintPort
-
+-- | Check whether socket is IP6
+isIPv6addr :: Net.AddrInfo -> Bool
+isIPv6addr = (==) Net.AF_INET6 . Net.addrFamily

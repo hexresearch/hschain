@@ -13,6 +13,12 @@ Homepage:       https://github.com/hexresearch/thundermint
 Category:       Data
 Build-Type:     Simple
 
+
+flag libsodium
+  Description: Use libsodium for cryptography
+  Default:     False
+  Manual:      True
+
 flag android-impl
   Description: Build for android
   Default:     False
@@ -36,11 +42,12 @@ Library
     Other-modules:
                   Thundermint.Crypto.NaCl
   else
-    if flag(android-impl)
-      hs-source-dirs: pure .
-      Build-Depends:     ed25519-donna
-                       , SHA               >=1.6 && <2
-                       , crypto-api
+    if flag(libsodium)
+      hs-source-dirs:  sodium .
+      extra-libraries: sodium
+      Build-Depends: SHA               >=1.6 && <2
+                   , memory            >=0.14.14
+      Other-modules: Thundermint.Crypto.Sodium
     else
       if impl(ghc)
         hs-source-dirs: ghc .
@@ -50,9 +57,11 @@ Library
   Exposed-modules:
                   Thundermint.Crypto
                   Thundermint.Crypto.Classes
+                  Thundermint.Crypto.Curve25519
                   Thundermint.Crypto.Ed25519
                   Thundermint.Crypto.SHA
                   Thundermint.Crypto.Salsa20Poly1305
+                  Thundermint.Crypto.KDFNaCl
 
 Test-suite thundermint-crypto-tests
   if impl(ghcjs)

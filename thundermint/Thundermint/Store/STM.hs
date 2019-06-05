@@ -7,22 +7,26 @@ module Thundermint.Store.STM (
   , newMempool
   ) where
 
-import Codec.Serialise (Serialise)
+import Control.Concurrent.STM
 import Control.Monad
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Maybe
-import Control.Concurrent.STM
 import Data.Foldable
-import Data.List (nub)
-import qualified Data.Map             as Map
-import qualified Data.IntMap          as IMap
-import qualified Data.Set             as Set
 import Text.Printf
 
-import Thundermint.Types.Blockchain
+import Codec.Serialise (Serialise)
+import Data.List       (nub, sort)
+import Data.Maybe      (fromMaybe)
+import Data.Tuple      (swap)
+
+import qualified Data.IntMap as IMap
+import qualified Data.Map    as Map
+import qualified Data.Set    as Set
+
 import Thundermint.Crypto
 import Thundermint.Store
+import Thundermint.Types.Blockchain
 
 
 newSTMPropStorage
@@ -70,7 +74,7 @@ newSTMPropStorage = fmap (hoistPropStorageRW liftIO) $ liftIO $ do
     }
 
 newMempool
-  :: (Ord tx, Serialise tx, Crypto alg, MonadIO m)
+  :: (Show tx, Ord tx, Serialise tx, Crypto alg, MonadIO m)
   => (tx -> m Bool)
   -> m (Mempool m alg tx)
 newMempool validation = do
@@ -169,9 +173,13 @@ newMempool validation = do
         fifo <- readTVar varFIFO
         rev  <- readTVar varRevMap
         tx   <- readTVar varTxSet
-        let nFIFO = IMap.size fifo
-            nRev  = Map.size rev
-            nTX   = Set.size tx
+        maxN <- readTVar varMaxN
+        let nFIFO  = IMap.size fifo
+            nRev   = Map.size rev
+            nTX    = Set.size tx
+            lFifo  = IMap.toAscList fifo
+            lRev   = sort $ swap <$> Map.toList rev
+            maxKey = fst <$> IMap.lookupMax fifo
         --
         return $ concat
           [ [ printf "Mismatch in rev.map. nFIFO=%i nRev=%i" nFIFO nRev
@@ -190,6 +198,12 @@ newMempool validation = do
           , [ "Duplicate transactions present"
             | let txs = toList fifo
             , nub txs /= txs
+            ]
+          , [ printf "RevMap is not reverse of FIFO.\nFIFO: %s\nRevMap: %s" (show lFifo) (show lRev)
+            | lFifo /= lRev
+            ]
+          , [ printf "Max N less than max FIFO key. maxN=%i maxKey=%s" maxN (show maxKey)
+            | maxN < fromMaybe 0 maxKey
             ]
           ]
     }

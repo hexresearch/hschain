@@ -15,7 +15,6 @@ import qualified Data.ByteString.Lazy as BL
 import qualified Data.Digest.Pure.SHA as SHA
 
 import Thundermint.Crypto
-import Thundermint.Crypto.NaCl
 
 
 -- | SHA1 hash function
@@ -55,5 +54,5 @@ data SHA512  deriving (Data)
 instance ByteReprSized (Hash SHA512) where
   type ByteSize (Hash SHA512) = 64
 instance CryptoHash SHA512 where
-  hashBlob  = Hash . arrayToBs . js_sha512 . bsToArray
+  hashBlob                   = Hash . BL.toStrict . SHA.bytestringDigest . SHA.sha512 . BL.fromStrict
   hashEquality (Hash hbs) bs = hbs == bs

@@ -15,7 +15,6 @@ module Thundermint.P2P.Network (
   , getCredential
   , getCredentialFromBuffer
     -- * Mock in-memory network
-  , MockSocket
   , MockNet
   , newMockNet
   , createMockNode
@@ -36,7 +35,6 @@ import Control.Monad.Catch    (bracketOnError, onException, throwM)
 import Control.Monad.IO.Class (liftIO)
 import Data.Bits              (unsafeShiftL, complement)
 import Data.List              (find)
-import Data.Maybe             (fromMaybe)
 import Data.Monoid            ((<>))
 import Data.Word              (Word32, Word8)
 import System.Timeout         (timeout)
@@ -57,24 +55,25 @@ import qualified Thundermint.P2P.Network.IpAddresses as Ip
 
 -- | API implementation for real tcp network
 realNetwork :: PeerInfo -> NetworkAPI
-realNetwork ourPeerInfo = (realNetworkStub serviceName)
+realNetwork ourPeerInfo = (realNetworkStub ourPeerInfo)
   { listenOn = do
       let hints = Net.defaultHints
             { Net.addrFlags      = [Net.AI_PASSIVE]
             , Net.addrSocketType = Net.Stream
             }
       addrs <- liftIO $ Net.getAddrInfo (Just hints) Nothing (Just serviceName)
-
-      when (null addrs) $
-        throwM NoAddressAvailable
-      let addr = fromMaybe (head addrs) $ find isIPv6addr addrs
-
+      addr  <- case () of
+        _ | Just a <- find Ip.isIPv6addr addrs -> return a
+          | a:_    <- addrs                    -> return a
+          | otherwise                          -> throwM NoAddressAvailable
+      --
       bracketOnError (liftIO $ newSocket addr) (liftIO . Net.close) $ \sock -> liftIO $ do
-        when (isIPv6addr addr) $
+        when (Ip.isIPv6addr addr) $
           Net.setSocketOption sock Net.IPv6Only 0
         Net.bind sock (Net.addrAddress addr)
         Net.listen sock 5
         return (liftIO $ Net.close sock, accept sock)
+  --
   , connect  = \addr -> do
       let hints = Just Net.defaultHints
             { Net.addrSocketType = Net.Stream
@@ -97,7 +96,6 @@ realNetwork ourPeerInfo = (realNetworkStub serviceName)
           Nothing -> fail $ "connection dropped while receiving peer info from " ++ show addr
           Just (Left  _      ) -> fail $ "failure to decode PeerInfo from " ++ show addr
           Just (Right otherPI) -> return $ applyConn sock otherPI
-  , ourPeerInfo = ourPeerInfo
   }
  where
   serviceName = show $ piPeerPort ourPeerInfo
@@ -135,10 +133,6 @@ decodeWord16BE bs | LBS.length bs < fromIntegral headerSize = Nothing
                                    (0,0)
                                    w8s
                       in (Just $ fst word32)
-
--- |Shared code - we need checking of IPv6 in several different places.
-isIPv6addr :: Net.AddrInfo -> Bool
-isIPv6addr = (==) Net.AF_INET6 . Net.addrFamily
 
 -- | helper function read given length of bytes
 recvAll :: Net.Socket -> Int -> IO LBS.ByteString
@@ -193,13 +187,13 @@ realNetworkUdp ourPeerInfo = do
             when connectPacket $ do
               flip (NetBS.sendAllTo sock) addr' $ LBS.toStrict $ CBOR.serialise (ourPeerInfo, mkAckPart)
 
-  return $ NetworkAPI
+  return $ (realNetworkStub ourPeerInfo)
     { listenOn = do
         return (liftIO $ killThread tid, liftIO.atomically $ readTChan acceptChan)
       --
     , connect  = \addr -> liftIO $ do
          (peerChan, connection) <- atomically $ (\(_, (peerChan, frontVar, receivedFrontsVar)) ->
-               (peerChan, applyConn (PeerInfo 0 0 0) sock addr frontVar receivedFrontsVar peerChan tChans))
+               (peerChan, applyConn (PeerInfo (PeerId 0) 0 0) sock addr frontVar receivedFrontsVar peerChan tChans))
            <$> findOrCreateRecvTuple tChans addr
          let waitLoop 0 _ _ = fail "timeout waiting for 'UDP connection' (actually, peerinfo exchange)."
              waitLoop n partialConnection@P2PConnection{..} receiveChan = do
@@ -213,10 +207,6 @@ realNetworkUdp ourPeerInfo = do
                    return peerInfo
          otherPeerInfo <- waitLoop 20 connection peerChan
          return $ connection { connectedPeer = otherPeerInfo }
-    , filterOutOwnAddresses = filterOutOwnAddresses (realNetworkStub serviceName)
-    , normalizeNodeAddress = normalizeNodeAddress (realNetworkStub serviceName)
-    , listenPort = listenPort (realNetworkStub serviceName)
-    , ourPeerInfo = ourPeerInfo
     }
  where
   mkConnectPart = (255 :: Word8, complement 0 :: Word32, LBS.empty)
@@ -330,12 +320,19 @@ realNetworkUdp ourPeerInfo = do
 -- Some useful utilities
 ----------------------------------------------------------------
 
---showSockAddr :: Net.SockAddr -> String
---showSockAddr s@(Net.SockAddrInet pn ha) =
---    unwords ["SockAddrInet", show pn, show ha, "(" <> show s <> ")"]
---showSockAddr s@(Net.SockAddrInet6 pn fi ha si) =
---    unwords ["SockAddrInet6 ", show pn, show fi, show ha, show si, "(" <> show s <> ")"]
---showSockAddr s = "?? (" <> show s <> ")"
+-- | Sockets for mock network
+data MockSocket = MockSocket
+  { msckActive :: !(TVar Bool)
+  , msckSend   :: !(TChan LBS.ByteString)
+  , msckRecv   :: !(TChan LBS.ByteString)
+  }
+  deriving (Eq)
+
+-- | Mock network which uses STM to deliver messages
+newtype MockNet = MockNet
+  { mnetIncoming :: TVar (Map.Map NetAddr [(MockSocket, NetAddr)])
+    -- ^ Incoming connections for node.
+  }
 
 
 newMockNet :: IO (MockNet)
@@ -399,7 +396,7 @@ createMockNode MockNet{..} addr = NetworkAPI
   , ourPeerInfo = mkPeerInfoFromAddr addr
   }
  where
-  mkPeerInfoFromAddr (NetAddrV4 ha _) = PeerInfo (fromIntegral ha) 0 0
+  mkPeerInfoFromAddr (NetAddrV4 ha _) = PeerInfo (PeerId (fromIntegral ha)) 0 0
   mkPeerInfoFromAddr _ = error "IPv6 addr in mkPeerInfoFromAddr"
   applyConn otherAddr conn = P2PConnection (liftIO . sendBS conn) (liftIO $ recvBS conn) (liftIO $ close conn) (mkPeerInfoFromAddr otherAddr)
   sendBS MockSocket{..} bs = atomically $

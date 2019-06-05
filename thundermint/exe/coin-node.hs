@@ -134,13 +134,13 @@ main = do
       logger InfoS ("peer Info generated: " <> showLS peerInfo) ()
       netAPI <- case optTls of
         False -> case optUDP of
-          False -> return $ realNetwork peerInfo
+          False -> return $ realNetwork    peerInfo
           True  -> liftIO $ realNetworkUdp peerInfo
         True  -> liftIO $ do
           keyPem  <- BC8.pack <$> getEnv "KEY_PEM"
           certPem <- BC8.pack <$> getEnv "CERT_PEM"
           let credential = getCredentialFromBuffer certPem keyPem
-          return $ realNetworkTls credential (show thundermintPort)
+          return $ realNetworkTls credential peerInfo
       logger InfoS ("network API created") ()
       let net = BlockchainNet
                    { bchNetwork          = netAPI

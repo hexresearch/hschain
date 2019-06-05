@@ -6,22 +6,21 @@ module Thundermint.P2P.Network.RealNetworkStub
 
 import qualified Data.Set as Set
 
-import qualified Network.Socket                 as Net
-
 import Thundermint.P2P.Types
 import qualified Thundermint.P2P.Network.IpAddresses as Ip
 
 
-realNetworkStub :: Net.ServiceName -> NetworkAPI
-realNetworkStub serviceName = NetworkAPI
+realNetworkStub :: PeerInfo -> NetworkAPI
+realNetworkStub peerInfo = NetworkAPI
   { listenOn = undefined
   , connect  = undefined
   , filterOutOwnAddresses = fmap (Set.map sockAddrToNetAddr)
-                          . Ip.filterOutOwnAddresses (Ip.serviceNameToPortNumber serviceName)
+                          . Ip.filterOutOwnAddresses (fromIntegral (piPeerPort peerInfo))
                           . Set.map netAddrToSockAddr
-  , normalizeNodeAddress = flip setPort . sockAddrToNetAddr . Ip.normalizeIpAddr . netAddrToSockAddr
-  , listenPort = Ip.serviceNameToPortNumber serviceName
-  , ourPeerInfo = PeerInfo 0 0 0
+  , normalizeNodeAddress  = flip setPort
+                          . Ip.normalizeNetAddr
+  , listenPort            = fromIntegral $ piPeerPort peerInfo
+  , ourPeerInfo           = peerInfo
   }
   where
     setPort Nothing a = a

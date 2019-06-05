@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications    #-}
@@ -17,37 +18,25 @@ import Test.Tasty.HUnit
 
 import Thundermint.Crypto
 import Thundermint.Crypto.Ed25519
+import Thundermint.Crypto.Curve25519
 import Thundermint.Crypto.SHA
 import Thundermint.Crypto.Salsa20Poly1305
+import Thundermint.Crypto.KDFNaCl
 
 
 tests :: TestTree
 tests = testGroup "Crypto"
   [ testsEd25519
+  , testsCurve25519
   , testsSHA
   , testSalsa20
+  , testsNaClBox
   ]
 
 testsEd25519 :: TestTree
 testsEd25519 = testGroup "ed25519"
-  [ testCase "read . show = id @ Fingerprint/PublicKey/PrivKey Ed25519"
-  $ do privK <- generatePrivKey @Ed25519
-       let pubK = publicKey privK
-           addr = fingerprint pubK
-           blob = "ABCD"
-           sign = signBlob privK blob
-       privK @=? (read . show) privK
-       pubK  @=? (read . show) pubK
-       addr  @=? (read . show) addr
-       sign  @=? (read . show) sign
-    --
-  , testCase "Signature OK (roundtrip)"
-  $ do privK <- generatePrivKey @Ed25519
-       let pubK = publicKey privK
-           blob = "ABCD"
-           sign = signBlob privK blob
-       assertBool "Signature check failed" $ verifyBlobSignature pubK blob sign
-    --
+  [ testGroup "Asymmetric" $ testsAsymmetricCrypto (Proxy @Ed25519)
+  , testGroup "Signatures" $ testsSignatureCrypto  (Proxy @Ed25519)
   , testCase "Signature OK (golden)"
   $ do let privK = read "\"HsBRtVUZ8ewZq5giWZHwr8crJm1iTVNLQeeyQk1vEmM8\""  :: PrivKey   Ed25519
            pubK  = read "\"9xeYWVLneMHJHEtewZe9X4nKbLAYjFEHR98q9CyhSxQN\""  :: PublicKey Ed25519
@@ -57,79 +46,166 @@ testsEd25519 = testGroup "ed25519"
            blob  = "ABCD"
        sign @=? signBlob privK blob
        assertBool "Signature check failed" $ verifyBlobSignature pubK blob sign
-    --
+  --
   , testCase "Public key derivation is correct"
   $ do let k :: PrivKey Ed25519
            k = read "\"Cn6mra73QDNPkyf56Cfoxh9y9HDS8MREPw4GNcCxQb5Q\""
        read "\"5oxScYXwuzcCQRZ8QtUDzhxNdMx2g1nMabd4uPFPDdzi\"" @=? publicKey k
+  --
   , testCase "Fingerprint derivation is correct"
-    --
   $ do let k :: PrivKey Ed25519
            k = read "\"Cn6mra73QDNPkyf56Cfoxh9y9HDS8MREPw4GNcCxQb5Q\""
        read "Fingerprint \"AhAM9SS8UQUbjrB3cwq9DMtb6mnyz61m9LuBr5kayq9q\"" @=? fingerprint (publicKey k)
-    --
-  , testCase "decodeBS . encodeBS = id"
-  $ do privK <- generatePrivKey @Ed25519
-       let pubK = publicKey privK
-           addr = fingerprint pubK
-           blob = "ABCD"
-           sign = signBlob privK blob
-       Just privK @=? (decodeFromBS . encodeToBS) privK
-       Just pubK  @=? (decodeFromBS . encodeToBS) pubK
-       Just addr  @=? (decodeFromBS . encodeToBS) addr
-       Just sign  @=? (decodeFromBS . encodeToBS) sign
-    --
-  , testCase "decodeBase58 . encodeBase58 = id"
-  $ do privK <- generatePrivKey @Ed25519
-       let pubK = publicKey privK
-           addr = fingerprint pubK
-           blob = "ABCD"
-           sign = signBlob privK blob
-       Just privK @=? (decodeBase58 . encodeBase58) privK
-       Just pubK  @=? (decodeBase58 . encodeBase58) pubK
-       Just addr  @=? (decodeBase58 . encodeBase58) addr
-       Just sign  @=? (decodeBase58 . encodeBase58) sign
-    --
-  , testCase "CBOR roundtrip"
-  $ do privK <- generatePrivKey @Ed25519
-       let pubK = publicKey privK
-           addr = fingerprint pubK
-           blob = "ABCD"
-           sign = signBlob privK blob
-       Right privK @=? (CBOR.deserialiseOrFail . CBOR.serialise) privK
-       Right pubK  @=? (CBOR.deserialiseOrFail . CBOR.serialise) pubK
-       Right addr  @=? (CBOR.deserialiseOrFail . CBOR.serialise) addr
-       Right sign  @=? (CBOR.deserialiseOrFail . CBOR.serialise) sign
-    --
-  , testCase "Aeson roundtrip"
-  $ do privK <- generatePrivKey @Ed25519
-       let pubK = publicKey privK
-           addr = fingerprint pubK
-           blob = "ABCD"
-           sign = signBlob privK blob
-       Just privK @=? (JSON.decode . JSON.encode) privK
-       Just pubK  @=? (JSON.decode . JSON.encode) pubK
-       Just addr  @=? (JSON.decode . JSON.encode) addr
-       Just sign  @=? (JSON.decode . JSON.encode) sign
+  ]
+
+testsCurve25519 :: TestTree
+testsCurve25519 = testGroup "Curve25519"
+  [ testGroup "Asymmetric"     $ testsAsymmetricCrypto (Proxy @Curve25519)
+  , testGroup "Diffie-Hellman" $ testsDHCrypto         (Proxy @Curve25519)
+  , testCase  "DH secrec calculated corectly"
+  $ do let k1,k2 :: PrivKey Curve25519
+           Just k1 = decodeFromBS $ BS.pack
+             [7, 72, 169, 73, 9, 245, 29, 176, 157, 135, 28, 208, 153, 120, 191, 175
+             , 157, 231, 38, 52, 198, 137, 196, 64, 131, 234, 207, 71, 114, 78, 159, 168]
+           Just k2 = decodeFromBS $ BS.pack
+             [91, 18, 95, 167, 15, 132, 156, 104, 150, 91, 173, 110, 70, 36, 98, 57
+             , 7, 12, 167, 135, 238, 128, 112, 220, 56, 184, 48, 34, 0, 96, 65, 61]
+           Just dh = decodeFromBS $ BS.pack
+             [ 165, 79, 158, 94, 144, 197, 201, 61, 185, 4, 199, 97, 73, 130, 159, 233
+             , 23, 6, 122, 248, 184, 217, 216, 36, 106, 12, 205, 198, 240, 200, 48, 63
+             ]
+       dh @=? diffieHelman (publicKey k1) k2
+       dh @=? diffieHelman (publicKey k2) k1
+  ]
+
+
+testsNaClBox :: TestTree
+testsNaClBox = testGroup "Tests for NaCl box"
+  [ testCase "We correcttly work with box"
+  $ do let k1,k2 :: PrivKey Curve25519
+           Just k1 = decodeFromBS =<< decodeB64 "to7g9QMuKT68la5EeU69v5FoDSGkp3cszDiLdmcxMeU="
+           Just k2 = decodeFromBS =<< decodeB64 "0TVBDcAS1AwDyNpjUpwPgoiPm1uOcBmTNVxPiz6Q3gk="
+           pubK1   = publicKey k1
+           pubK2   = publicKey k2
+           -- Encrypted data
+           cleartext       = "abcd"
+           Just nonce      = decodeFromBS =<< decodeB64 "W0o/q7paOp2CBj0s0+KQfVyZ4q9Ugu33"
+           Just cyphertext = decodeB64 "ogaTrD3fEcn/4U+IHukyWkxs/yw="
+           --
+           box :: PubKeyBox Curve25519 KDFNaCl Salsa20Poly1305
+           box = PubKeyBox cyphertext nonce
+       Just cleartext @=? openPubKeyBox k1 pubK2 box
+       Just cleartext @=? openPubKeyBox k2 pubK1 box
+  ]
+
+testsAsymmetricCrypto
+  :: forall alg. (CryptoAsymmetric alg, Eq (PublicKey alg), Eq (PrivKey alg))
+  => Proxy alg -> [TestTree]
+testsAsymmetricCrypto tag =
+  [ testGroup "PrivKey"   $ testsStdIntances (Proxy @(PrivKey   alg))
+  , testGroup "PublicKey" $ testsStdIntances (Proxy @(PublicKey alg))
     --
   , testCase "encodeBase58 is Show compatible"
-  $ do privK <- generatePrivKey @Ed25519
+  $ do privK <- generatePrivKey @alg
        let pubK = publicKey privK
        show privK @=? T.unpack ("\"" <> encodeBase58 privK <> "\"")
        show pubK  @=? T.unpack ("\"" <> encodeBase58 pubK  <> "\"")
     --
-  , testCase "Sizes are correct"
-  $ do privK <- generatePrivKey @Ed25519
-       let pubK             = publicKey privK
-           Fingerprint addr = fingerprint pubK
-           blob             = "ABCD"
-           Signature s      = signBlob privK blob
-           ed               = Proxy :: Proxy Ed25519
-       BS.length addr               @=? fingerprintSize ed
-       BS.length (encodeToBS pubK ) @=? publicKeySize   ed
-       BS.length (encodeToBS privK) @=? privKeySize     ed
-       BS.length s                  @=? signatureSize   ed
+  , testCase "Sizes are correct (Private key)"
+  $ do privK <- generatePrivKey @alg
+       privKeySize   tag @=? BS.length (encodeToBS privK)
+    --
+  , testCase "Sizes are correct (Public key)"
+  $ do privK <- generatePrivKey @alg
+       let pubK = publicKey privK
+       publicKeySize tag @=? BS.length (encodeToBS pubK )
   ]
+
+
+testsSignatureCrypto
+  :: forall alg. CryptoSign alg
+  => Proxy alg -> [TestTree]
+testsSignatureCrypto tag =
+  [ testGroup "Fingerprint" $ testsStdIntances (Proxy @(Fingerprint alg))
+  , testGroup "Signature"   $ testsStdIntances (Proxy @(Signature   alg))
+    --
+  , testCase "Signature OK (roundtrip)"
+  $ do privK <- generatePrivKey @alg
+       let pubK = publicKey privK
+           blob = "ABCD"
+           sign = signBlob privK blob
+       assertBool "Signature check failed" $ verifyBlobSignature pubK blob sign
+    --
+  , testCase "Sizes are correct"
+  $ do addr <- generateIO @(Fingerprint alg)
+       sign <- generateIO @(Signature   alg)
+       BS.length (encodeToBS addr) @=? fingerprintSize tag
+       BS.length (encodeToBS sign) @=? signatureSize   tag
+  ]
+
+
+testsDHCrypto
+  :: forall alg. (CryptoDH alg, Eq (DHSecret alg))
+  => Proxy alg -> [TestTree]
+testsDHCrypto _ =
+  [ testGroup "DHSecret" $ testsStdIntances (Proxy @(DHSecret alg))
+  --
+  , testCase "Diffie–Hellman key exchange works"
+  $ do k1 <- generatePrivKey @alg
+       k2 <- generatePrivKey @alg
+       diffieHelman (publicKey k1) k2 @=? diffieHelman (publicKey k2) k1
+  ]
+
+
+testsStdIntances
+  :: forall a. (Generate a
+               , Show a, Read a, Eq a
+               , JSON.ToJSON a, JSON.FromJSON a, CBOR.Serialise a
+               , ByteRepr a
+               )
+  => Proxy a -> [TestTree]
+testsStdIntances _ =
+  [ testCase "read . show = id"
+  $ do a <- generateIO @a
+       a @=? (read . show) a
+  --
+  , testCase "decodeBS . encodeBS = id"
+  $ do a <- generateIO @a
+       Just a @=? (decodeFromBS . encodeToBS) a
+  --
+  , testCase "decodeBase58 . encodeBase58 = id"
+  $ do a <- generateIO @a
+       Just a @=? (decodeBase58 . encodeBase58) a
+    --
+  , testCase "CBOR roundtrip"
+  $ do a <- generateIO @a
+       Right a @=? (CBOR.deserialiseOrFail . CBOR.serialise) a
+    --
+  , testCase "Aeson roundtrip"
+  $ do a <- generateIO @a
+       Just a @=? (JSON.decode . JSON.encode) a
+  ]
+
+-- Helper type class for generation test sameples
+class Generate a where
+  generateIO :: IO a
+
+instance CryptoAsymmetric alg => Generate (PrivKey alg) where
+  generateIO = generatePrivKey
+instance CryptoAsymmetric alg => Generate (PublicKey alg) where
+  generateIO = publicKey <$> generatePrivKey
+instance CryptoSign alg => Generate (Fingerprint alg) where
+  generateIO = fingerprint . publicKey <$> generatePrivKey
+instance CryptoSign alg => Generate (Signature alg) where
+  generateIO = do pk <- generatePrivKey
+                  return $! signBlob pk "ABCD"
+instance CryptoDH alg => Generate (DHSecret alg) where
+  generateIO = diffieHelman <$> generateIO <*> generateIO
+
+
+----------------------------------------------------------------
+-- Generic tests for hashes
+----------------------------------------------------------------
 
 testsSHA :: TestTree
 testsSHA = testGroup "SHA"
@@ -167,6 +243,9 @@ testHashSize p
        BS.length bs @=? hashSize p
 
 
+----------------------------------------------------------------
+-- Tests for cyphers
+----------------------------------------------------------------
 
 testSalsa20 :: TestTree
 testSalsa20 = testGroup "Salsa20Poly1305"

@@ -85,15 +85,15 @@ import Thundermint.Types.Validators
 --   * Current height in consensus algorithm is height of block we're
 --     deciding on.
 newtype Height = Height Int64
-  deriving (Show, Generic, Eq, Ord, NFData, Serialise, JSON.ToJSON, JSON.FromJSON, Enum)
+  deriving (Show, Read, Generic, Eq, Ord, NFData, Serialise, JSON.ToJSON, JSON.FromJSON, Enum)
 
 -- | Voting round
 newtype Round = Round Int64
-  deriving (Show, Generic, Eq, Ord, NFData, Serialise, JSON.ToJSON, JSON.FromJSON, Enum)
+  deriving (Show, Read, Generic, Eq, Ord, NFData, Serialise, JSON.ToJSON, JSON.FromJSON, Enum)
 
 -- | Time in milliseconds since UNIX epoch.
 newtype Time = Time Int64
-  deriving (Show, Generic, Eq, Ord, NFData, Serialise, JSON.ToJSON, JSON.FromJSON)
+  deriving (Show, Read, Generic, Eq, Ord, NFData, Serialise, JSON.ToJSON, JSON.FromJSON)
 
 -- | Get current time
 getCurrentTime :: MonadIO m => m Time

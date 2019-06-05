@@ -1,7 +1,11 @@
+{-# LANGUAGE DataKinds        #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE TypeFamilies     #-}
 -- |
 module Thundermint.Crypto.Classes (
     -- * Conversion to or from bytestrings
     ByteRepr(..)
+  , ByteReprSized(..)
     -- * Convenience encoding functions
   , encodeBase58
   , decodeBase58
@@ -29,6 +33,7 @@ import Data.Aeson.Types (Parser)
 import           Data.Text             (Text)
 import qualified Data.Text.Encoding   as T
 import Text.Read
+import GHC.TypeNats
 
 import qualified Data.ByteString        as BS
 import qualified Data.ByteString.Char8  as BC8
@@ -49,7 +54,9 @@ instance ByteRepr BS.ByteString where
   decodeFromBS = Just
   encodeToBS   = id
 
-
+-- | Values which have fixed-size represenations
+class (KnownNat (ByteSize a), ByteRepr a) => ByteReprSized a where
+  type ByteSize a :: Nat
 
 -- | Encode value as base-58 encoded string
 encodeBase58 :: ByteRepr a => a -> Text

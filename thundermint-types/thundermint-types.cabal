@@ -38,6 +38,7 @@ Library
                      , containers        >=0.5.9
                      , data-default-class
                      , deepseq           >=1.4
+                     , network           >=2.6.0.0 && <2.9
                      , serialise         >=0.2
                      , text
                      , time
@@ -50,5 +51,6 @@ Library
       Build-Depends: sqlite-simple
   Exposed-modules:
                   Thundermint.Types
+                  Thundermint.Types.Network
                   Thundermint.Types.Validators
                   Thundermint.Types.Blockchain

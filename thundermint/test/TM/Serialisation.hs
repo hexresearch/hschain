@@ -6,7 +6,6 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications    #-}
 {-# LANGUAGE TypeOperators       #-}
-{-# OPTIONS_GHC -Werror=incomplete-patterns #-}
 -- {-# LANGUAGE TemplateHaskell #-}
 
 -- | Tests for some serialisation things
@@ -31,9 +30,9 @@ import Thundermint.Crypto         ((:&))
 import Thundermint.Crypto.Ed25519 (Ed25519)
 import Thundermint.Crypto.SHA     (SHA512)
 import Thundermint.Types.Blockchain
+import Thundermint.P2P.Types      (NetAddr)
 
-import TM.Arbitrary.Instances ()
-
+import Thundermint.Arbitrary.Instances ()
 
 type TestCryptoAlg     = Ed25519 :& SHA512
 type TestBlock         = String
@@ -95,10 +94,12 @@ prop_diff_cant_serialize_to_other  = property $ do
 prop_JSON_roundtrip :: (Eq a, JSON.FromJSON a, JSON.ToJSON a) => a -> Bool
 prop_JSON_roundtrip a = Just a == (JSON.decode . JSON.encode) a
 
+prop_ShowRead_roundtrip :: (Eq a, Show a, Read a) => a -> Bool
+prop_ShowRead_roundtrip a = a == (read . show) a
+
 tests :: TestTree
 tests =
     testGroup "serialisation"
-        -- [ testCase "All tests" $ H.checkSequential $$(discover) >>= assertBool "All tests must be OK" ]
         [ testGroup "Vote"
             [ testProperty "only prevote and precommit"
                            prop_only_prevote_and_precommit
@@ -111,18 +112,34 @@ tests =
             , testProperty "can't serialize to other"
                            prop_diff_cant_serialize_to_other
             ]
-        , let run :: forall a. (Arbitrary a, Show a, Typeable a, Eq a, JSON.FromJSON a, JSON.ToJSON a)
-                  => Proxy a -> TestTree
-              run p = QC.testProperty (show (typeRep p)) (prop_JSON_roundtrip @a)
+        , let run :: forall a. ( Arbitrary a, Show a, Typeable a, Eq a
+                               , JSON.FromJSON a, JSON.ToJSON a)
+                  => TestTree
+              run = QC.testProperty (show (typeRep (Proxy @a)))
+                                    (prop_JSON_roundtrip @a)
           in testGroup "JSON"
-             [ run (Proxy @(Block  TestCryptoAlg Int))
-             , run (Proxy @(Header TestCryptoAlg Int))
-             , run (Proxy @(Commit TestCryptoAlg Int))
-             , run (Proxy @(ByzantineEvidence TestCryptoAlg Int))
-             , run (Proxy @(Proposal TestCryptoAlg Int))
-             , run (Proxy @(Vote 'PreVote   TestCryptoAlg Int))
-             , run (Proxy @(Vote 'PreCommit TestCryptoAlg Int))
-             , run (Proxy @Height)
-             , run (Proxy @Round)
+             [ run @(Block  TestCryptoAlg Int)
+             , run @(Header TestCryptoAlg Int)
+             , run @(Commit TestCryptoAlg Int)
+             , run @(ByzantineEvidence TestCryptoAlg Int)
+             , run @(Proposal TestCryptoAlg Int)
+             , run @(Vote 'PreVote   TestCryptoAlg Int)
+             , run @(Vote 'PreCommit TestCryptoAlg Int)
+             , run @Height
+             , run @Round
+             , run @Time
+             , run @NetAddr
+             ]
+        , let run :: forall a. (Arbitrary a, Typeable a, Eq a, Show a, Read a)
+                  => TestTree
+              run = QC.testProperty (show (typeRep (Proxy @a)))
+                                    (prop_ShowRead_roundtrip @a)
+          in testGroup "Read/Show"
+             [ run @Height
+             , run @Round
+             , run @Time
+             , run @NetAddr
+             , QC.testProperty "NetAddr tcp://" $ \(a :: NetAddr) ->
+                 a == (read . ("tcp://"++) . show) a
              ]
         ]
