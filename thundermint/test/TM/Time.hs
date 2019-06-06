@@ -52,12 +52,13 @@ checkMedian wtimes expectedT = forM_ (permuteCommit commit) $ \cmt ->
     commit = Commit
       { commitBlockID    = bid
       , commitPrecommits = NE.fromList
-          [ signValue pk Vote { voteHeight  = Height 1
-                              , voteRound   = Round 0
-                              , voteBlockID = Just bid
-                              , voteTime    = Time t
-                              }
-          | ((_,t),pk) <- wtimes `zip` privateKeyList
+          [ signValue (ValidatorIdx i) pk Vote
+              { voteHeight  = Height 1
+              , voteRound   = Round 0
+              , voteBlockID = Just bid
+              , voteTime    = Time t
+              }
+          | ((i,(_,t)),pk) <- [0..] `zip` wtimes `zip` privateKeyList
           ]
       }
 
