@@ -75,9 +75,9 @@ import Thundermint.Utils
 --   FIXME: We don't have good way to prevent DoS by spamming too much
 --          data
 data GossipMsg alg a
-  = GossipPreVote   !(Signed 'Unverified alg (Vote 'PreVote   alg a))
-  | GossipPreCommit !(Signed 'Unverified alg (Vote 'PreCommit alg a))
-  | GossipProposal  !(Signed 'Unverified alg (Proposal alg a))
+  = GossipPreVote   !(Signed (Fingerprint alg) 'Unverified alg (Vote 'PreVote   alg a))
+  | GossipPreCommit !(Signed (Fingerprint alg) 'Unverified alg (Vote 'PreCommit alg a))
+  | GossipProposal  !(Signed (Fingerprint alg) 'Unverified alg (Proposal alg a))
   | GossipBlock     !(Block alg a)
   | GossipAnn       !(Announcement alg)
   | GossipTx        !(TX a)
@@ -617,7 +617,7 @@ peerGossipVotes peerObj PeerChans{..} gossipCh = logOnException $ do
         --
         case mcmt of
          Just cmt -> do
-           let cmtVotes  = Map.fromList [ (signedAddr v, unverifySignature v)
+           let cmtVotes  = Map.fromList [ (signedKeyInfo v, unverifySignature v)
                                         | v <- NE.toList (commitPrecommits cmt) ]
                -- FIXME: inefficient
            let toSet = Set.fromList

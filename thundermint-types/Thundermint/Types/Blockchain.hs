@@ -232,15 +232,15 @@ instance CryptoHash alg => JSON.FromJSON (Header alg a) where
 
 -- | Evidence of byzantine behaviour by some node.
 data ByzantineEvidence alg a
-  = OutOfTurnProposal !(Signed 'Unverified alg (Proposal alg a))
+  = OutOfTurnProposal !(Signed (Fingerprint alg) 'Unverified alg (Proposal alg a))
     -- ^ Node made proposal out of turn
   | ConflictingPreVote
-      !(Signed 'Unverified alg (Vote 'PreVote alg a))
-      !(Signed 'Unverified alg (Vote 'PreVote alg a))
+      !(Signed (Fingerprint alg) 'Unverified alg (Vote 'PreVote alg a))
+      !(Signed (Fingerprint alg) 'Unverified alg (Vote 'PreVote alg a))
     -- ^ Node made conflicting prevotes in the same round
   | ConflictingPreCommit
-      !(Signed 'Unverified alg (Vote 'PreVote alg a))
-      !(Signed 'Unverified alg (Vote 'PreVote alg a))
+      !(Signed (Fingerprint alg) 'Unverified alg (Vote 'PreVote alg a))
+      !(Signed (Fingerprint alg) 'Unverified alg (Vote 'PreVote alg a))
     -- ^ Node made conflicting precommits in the same round
   deriving (Show, Eq, Generic)
 instance NFData        (ByzantineEvidence alg a)
@@ -253,7 +253,7 @@ instance CryptoHash alg => JSON.ToJSON   (ByzantineEvidence alg a)
 data Commit alg a = Commit
   { commitBlockID    :: !(BlockID alg a)
     -- ^ Block for which commit is done
-  , commitPrecommits :: !(NE.NonEmpty (Signed 'Unverified alg (Vote 'PreCommit alg a)))
+  , commitPrecommits :: !(NE.NonEmpty (Signed (Fingerprint alg) 'Unverified alg (Vote 'PreCommit alg a)))
     -- ^ List of precommits which justify commit
   }
   deriving (Show, Eq, Generic)
@@ -273,7 +273,7 @@ commitTime
   -> Maybe Time
 commitTime vset t0 Commit{..} = do
   votes <- forM commitPrecommits $ \sv -> do
-    val <- validatorByAddr vset (signedAddr sv)
+    val <- validatorByAddr vset (signedKeyInfo sv)
     return ( validatorVotingPower val
            , signedValue sv
            )
