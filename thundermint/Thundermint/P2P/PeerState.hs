@@ -246,7 +246,7 @@ addPrevote :: (MonadIO m, MonadMask m)
            -> Signed (Fingerprint alg) ty alg (Vote 'PreVote alg a)
            -> m ()
 addPrevote peer sv@(signedValue -> Vote{..})
-  = addPrevoteWrk peer voteHeight voteRound (\vals -> indexByValidator vals (signedKeyInfo sv))
+  = addPrevoteWrk peer voteHeight voteRound (\vals -> indexByFingerprint vals (signedKeyInfo sv))
 
 -- | Add prevote to peer's state given peer's vote index.
 addPrevoteI :: (MonadIO m, MonadMask m)
@@ -291,7 +291,7 @@ addPrecommit :: (MonadIO m, MonadMask m)
              -> Signed (Fingerprint alg) ty alg (Vote 'PreCommit alg a)
              -> m ()
 addPrecommit peer sv@(signedValue -> Vote{..})
-  = addPrecommitWrk peer voteHeight voteRound (\vals -> indexByValidator vals (signedKeyInfo sv))
+  = addPrecommitWrk peer voteHeight voteRound (\vals -> indexByFingerprint vals (signedKeyInfo sv))
 
 addPrecommitI :: (MonadIO m, MonadMask m)
               => PeerStateObj m alg a
