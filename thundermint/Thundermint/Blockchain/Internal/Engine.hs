@@ -423,12 +423,12 @@ makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{
     --
     , announceHasPreVote   = \sv -> do
         let Vote{..} = signedValue sv
-        forM_ (indexByValidator valSet (signedKeyInfo sv)) $ \v ->
+        forM_ (indexByFingerprint valSet (signedKeyInfo sv)) $ \v ->
           liftIO $ atomically $ writeTChan appChanTx $ AnnHasPreVote voteHeight voteRound v
     --
     , announceHasPreCommit = \sv -> do
         let Vote{..} = signedValue sv
-        forM_ (indexByValidator valSet (signedKeyInfo sv)) $ \v ->
+        forM_ (indexByFingerprint valSet (signedKeyInfo sv)) $ \v ->
           liftIO $ atomically $ writeTChan appChanTx $ AnnHasPreCommit voteHeight voteRound v
     --
     , announceStep    = liftIO . atomically . writeTChan appChanTx . AnnStep
