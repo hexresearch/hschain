@@ -1,5 +1,7 @@
+{-# LANGUAGE DeriveAnyClass             #-}
 {-# LANGUAGE DeriveFunctor              #-}
 {-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE DerivingStrategies         #-}
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase                 #-}
@@ -58,12 +60,11 @@ data Validator alg = Validator
   { validatorPubKey      :: !(PublicKey alg)
   , validatorVotingPower :: !Integer
   }
-  deriving (Generic)
+  deriving stock    (Generic, Show)
+  deriving anyclass (CBOR.Serialise)
 instance NFData (PublicKey alg) => NFData (Validator alg)
-deriving instance Crypto alg => Show (Validator alg)
 deriving instance Eq   (PublicKey alg) => Eq   (Validator alg)
 deriving instance Ord  (PublicKey alg) => Ord  (Validator alg)
-instance Crypto alg => CBOR.Serialise (Validator alg)
 
 -- | Set of all known validators for given height
 data ValidatorSet alg = ValidatorSet
@@ -71,9 +72,8 @@ data ValidatorSet alg = ValidatorSet
   , vsIndexes    :: !(Map (Fingerprint alg) (ValidatorIdx alg))
   , vsTotPower   :: !Integer
   }
-  deriving (Generic)
+  deriving (Generic, Show)
 instance NFData (PublicKey alg) => NFData (ValidatorSet alg)
-deriving instance Crypto alg => Show (ValidatorSet alg)
 deriving instance Eq   (PublicKey alg) => Eq   (ValidatorSet alg)
 
 -- | Get list of all validators included into set
@@ -139,7 +139,9 @@ validatorSetSize = Map.size  . vsValidators
 --
 --   This for example allows to represent validators as bit arrays.
 newtype ValidatorIdx alg = ValidatorIdx Int
-  deriving (Show, Eq, Generic, Generic1, NFData, CBOR.Serialise)
+  deriving stock    (Show, Eq, Generic, Generic1)
+  deriving anyclass (NFData, CBOR.Serialise)
+  deriving newtype  (JSON.ToJSON, JSON.FromJSON, JSON.FromJSONKey, JSON.ToJSONKey)
 
 -- | Set of validators where they are represented by their index.
 data ValidatorISet = ValidatorISet !Int !IntSet
