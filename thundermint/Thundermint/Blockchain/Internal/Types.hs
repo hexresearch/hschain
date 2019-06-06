@@ -70,7 +70,7 @@ data TMState alg a = TMState
     -- ^ Current round
   , smStep          :: !Step
     -- ^ Current step in the round
-  , smProposals     :: !(Map Round (Signed (Fingerprint alg) 'Verified alg (Proposal alg a)))
+  , smProposals     :: !(Map Round (Signed (ValidatorIdx alg) 'Verified alg (Proposal alg a)))
     -- ^ Proposal for current round
   , smPrevotesSet   :: !(HeightVoteSet 'PreVote alg a)
     -- ^ Set of all received valid prevotes
@@ -90,9 +90,9 @@ data TMState alg a = TMState
 
 -- | Message received by main application
 data MessageRx ty alg a
-  = RxPreVote   !(Signed (Fingerprint alg) ty alg (Vote 'PreVote   alg a))
-  | RxPreCommit !(Signed (Fingerprint alg) ty alg (Vote 'PreCommit alg a))
-  | RxProposal  !(Signed (Fingerprint alg) ty alg (Proposal alg a))
+  = RxPreVote   !(Signed (ValidatorIdx alg) ty alg (Vote 'PreVote   alg a))
+  | RxPreCommit !(Signed (ValidatorIdx alg) ty alg (Vote 'PreCommit alg a))
+  | RxProposal  !(Signed (ValidatorIdx alg) ty alg (Proposal alg a))
   | RxTimeout   !Timeout
   | RxBlock     !(Block alg a)
   deriving (Show, Generic)

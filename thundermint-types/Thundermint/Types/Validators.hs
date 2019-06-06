@@ -139,7 +139,7 @@ validatorSetSize = Map.size  . vsValidators
 --
 --   This for example allows to represent validators as bit arrays.
 newtype ValidatorIdx alg = ValidatorIdx Int
-  deriving stock    (Show, Eq, Generic, Generic1)
+  deriving stock    (Show, Eq, Ord, Generic, Generic1)
   deriving anyclass (NFData, CBOR.Serialise)
   deriving newtype  (JSON.ToJSON, JSON.FromJSON, JSON.FromJSONKey, JSON.ToJSONKey)
 
@@ -149,9 +149,8 @@ data ValidatorISet = ValidatorISet !Int !IntSet
 instance NFData ValidatorISet where
   rnf (ValidatorISet a b) = rnf a `seq` rnf b
 
-getValidatorIntSet :: ValidatorISet -> [ValidatorIdx alg]
-getValidatorIntSet (ValidatorISet _ iset)
-  = coerce $ ISet.toList iset
+getValidatorIntSet :: ValidatorISet -> IntSet
+getValidatorIntSet (ValidatorISet _ iset) = iset
 
 insertValidatorIdx :: ValidatorIdx alg -> ValidatorISet -> ValidatorISet
 insertValidatorIdx (ValidatorIdx i) vset@(ValidatorISet n iset)

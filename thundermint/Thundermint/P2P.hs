@@ -31,12 +31,13 @@ import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Control.Retry           (recoverAll, exponentialBackoff, limitRetries, RetryPolicy)
 import           Data.Monoid       ((<>))
-import           Data.Maybe        (mapMaybe)
 import           Data.Foldable
 import           Data.Function
 import qualified Data.List.NonEmpty as NE
-import qualified Data.Map           as Map
+import qualified Data.Map.Strict    as Map
+import qualified Data.IntMap.Strict as IMap
 import           Data.Map             (Map)
+import qualified Data.IntSet        as ISet
 import qualified Data.Set           as Set
 import           Data.Set             (Set)
 import qualified Data.Aeson         as JSON
@@ -75,9 +76,9 @@ import Thundermint.Utils
 --   FIXME: We don't have good way to prevent DoS by spamming too much
 --          data
 data GossipMsg alg a
-  = GossipPreVote   !(Signed (Fingerprint alg) 'Unverified alg (Vote 'PreVote   alg a))
-  | GossipPreCommit !(Signed (Fingerprint alg) 'Unverified alg (Vote 'PreCommit alg a))
-  | GossipProposal  !(Signed (Fingerprint alg) 'Unverified alg (Proposal alg a))
+  = GossipPreVote   !(Signed (ValidatorIdx alg) 'Unverified alg (Vote 'PreVote   alg a))
+  | GossipPreCommit !(Signed (ValidatorIdx alg) 'Unverified alg (Vote 'PreCommit alg a))
+  | GossipProposal  !(Signed (ValidatorIdx alg) 'Unverified alg (Proposal alg a))
   | GossipBlock     !(Block alg a)
   | GossipAnn       !(Announcement alg)
   | GossipTx        !(TX a)
@@ -619,13 +620,11 @@ peerGossipVotes peerObj PeerChans{..} gossipCh = logOnException $ do
          Just cmt -> do
            let cmtVotes  = Map.fromList [ (signedKeyInfo v, unverifySignature v)
                                         | v <- NE.toList (commitPrecommits cmt) ]
-               -- FIXME: inefficient
-           let toSet = Set.fromList
-                     . map (fingerprint . validatorPubKey)
-                     . mapMaybe (validatorByIndex (lagPeerValidators p))
-                     . getValidatorIntSet
-           let peerVotes = Map.fromSet (const ())
-                         $ toSet (lagPeerPrecommits p)
+           let peerVotes = Map.fromList
+                         $ map (\x -> (ValidatorIdx x,()))  
+                         $ ISet.toList
+                         $ getValidatorIntSet
+                         $ lagPeerPrecommits p
                unknown   = Map.difference cmtVotes peerVotes
            case Map.size unknown of
              0 -> return ()
@@ -642,11 +641,7 @@ peerGossipVotes peerObj PeerChans{..} gossipCh = logOnException $ do
         Just (_,tm)                   -> do
           let FullStep _ r _ = peerStep p
               doGosip        = liftIO . atomically . writeTBQueue gossipCh
-          -- FIXME: poor performance. Avoid going through map!
-          let toSet = Set.fromList
-                    . map (fingerprint . validatorPubKey)
-                    . mapMaybe (validatorByIndex (peerValidators p))
-                    . getValidatorIntSet
+          let toSet = getValidatorIntSet
 
           -- Send proposals
           case () of
@@ -660,9 +655,9 @@ peerGossipVotes peerObj PeerChans{..} gossipCh = logOnException $ do
           -- Send prevotes
           case () of
             _| Just localPV <- Map.lookup r $ toPlainMap $ smPrevotesSet tm
-             , unknown      <- Map.difference localPV peerPV
-             , not (Map.null unknown)
-               -> do let n = Map.size unknown
+             , unknown      <- IMap.difference localPV peerPV
+             , not (IMap.null unknown)
+               -> do let n = IMap.size unknown
                      i <- liftIO $ randomRIO (0,n-1)
                      let vote = unverifySignature $ toList unknown !! i
                      addPrevote peerObj vote
@@ -670,23 +665,25 @@ peerGossipVotes peerObj PeerChans{..} gossipCh = logOnException $ do
                      tickSend cntGossipPrevote
              | otherwise -> return ()
              where
-               peerPV = maybe Map.empty (Map.fromSet (const ()) . toSet)
-                      $ Map.lookup r $ peerPrevotes p
+               peerPV = maybe IMap.empty (IMap.fromSet (const ()) . toSet)
+                      $ Map.lookup r
+                      $ peerPrevotes p
           -- Send precommits
           case () of
             _| Just localPC <- Map.lookup r $ toPlainMap $ smPrecommitsSet tm
-             , unknown      <- Map.difference localPC peerPC
-             , not (Map.null unknown)
-               -> do let n = Map.size unknown
+             , unknown      <- IMap.difference localPC peerPC
+             , not (IMap.null unknown)
+               -> do let n = IMap.size unknown
                      i <- liftIO $ randomRIO (0,n-1)
                      let vote = unverifySignature $ toList unknown !! i
                      addPrecommit peerObj vote
                      doGosip $ GossipPreCommit vote
                      tickSend cntGossipPrecommit
              | otherwise -> return ()
-             where
-               peerPC = maybe Map.empty (Map.fromSet (const ()) . toSet)
-                      $ Map.lookup r $ peerPrecommits p
+             where               
+               peerPC = maybe IMap.empty (IMap.fromSet (const ()) . toSet)
+                      $ Map.lookup r
+                      $ peerPrecommits p
       Ahead   _ -> return ()
       Unknown   -> return ()
     waitSec (0.001 * fromIntegral (gossipDelayVotes p2pConfig))

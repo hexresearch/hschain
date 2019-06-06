@@ -44,7 +44,7 @@ import           Katip (Severity(..),sl)
 import qualified Katip
 import GHC.Generics
 
-import Thundermint.Crypto            ( Crypto, CryptoHash, Signed, Fingerprint, SignedState(..)
+import Thundermint.Crypto            ( Crypto, CryptoHash, Signed, SignedState(..)
                                      , signedValue, signedKeyInfo
                                      )
 import Thundermint.Blockchain.Internal.Types
@@ -61,11 +61,11 @@ import Thundermint.Types.Validators
 
 -- | Messages being sent to consensus engine
 data Message alg a
-  = ProposalMsg    !(Signed (Fingerprint alg) 'Verified alg (Proposal alg a))
+  = ProposalMsg    !(Signed (ValidatorIdx alg) 'Verified alg (Proposal alg a))
     -- ^ Incoming proposal
-  | PreVoteMsg     !(Signed (Fingerprint alg) 'Verified alg (Vote 'PreVote   alg a))
+  | PreVoteMsg     !(Signed (ValidatorIdx alg) 'Verified alg (Vote 'PreVote   alg a))
     -- ^ Incoming prevote
-  | PreCommitMsg   !(Signed (Fingerprint alg) 'Verified alg (Vote 'PreCommit alg a))
+  | PreCommitMsg   !(Signed (ValidatorIdx alg) 'Verified alg (Vote 'PreCommit alg a))
     -- ^ Incoming precommit
   | TimeoutMsg     !Timeout
     -- ^ Timeout
@@ -90,7 +90,7 @@ data HeightParameters (m :: * -> *) alg a = HeightParameters
     -- ^ Returns true if validator is ready to create new block. If
     --   false validator will stay in @NewHeight@ step until it
     --   becomes true.
-  , proposerForRound     :: !(Round -> Fingerprint alg)
+  , proposerForRound     :: !(Round -> ValidatorIdx alg)
     -- ^ Proposer for given round
   , validateBlock        :: !(BlockID alg a -> m ProposalState)
     -- ^ Request validation of particular block
@@ -108,9 +108,9 @@ data HeightParameters (m :: * -> *) alg a = HeightParameters
   , acceptBlock          :: !(Round -> BlockID alg a -> m ())
     -- ^ Callback to signal that given block from given round should
     --   be accepted
-  , announceHasPreVote   :: !(Signed (Fingerprint alg) 'Verified alg (Vote 'PreVote alg a)   -> m ())
+  , announceHasPreVote   :: !(Signed (ValidatorIdx alg) 'Verified alg (Vote 'PreVote alg a)   -> m ())
     -- ^ Broadcast to peers announcement that we have given prevote
-  , announceHasPreCommit :: !(Signed (Fingerprint alg) 'Verified alg (Vote 'PreCommit alg a) -> m ())
+  , announceHasPreCommit :: !(Signed (ValidatorIdx alg) 'Verified alg (Vote 'PreCommit alg a) -> m ())
     -- ^ Broadcast to peers announcement that we have given precommit
   , announceStep         :: !(FullStep -> m ())
   , updateMetricsHR      :: !(Height -> Round -> m ())
@@ -549,7 +549,7 @@ enterPrecommit par@HeightParameters{..} r sm@TMState{..} reason = do
 addPrevote
   :: (ConsensusMonad m)
   => HeightParameters m alg a
-  -> Signed (Fingerprint alg) 'Verified alg (Vote 'PreVote alg a)
+  -> Signed (ValidatorIdx alg) 'Verified alg (Vote 'PreVote alg a)
   -> TMState alg a
   -> m (TMState alg a)
 addPrevote HeightParameters{..} v sm@TMState{..} = do
@@ -564,7 +564,7 @@ addPrevote HeightParameters{..} v sm@TMState{..} = do
 addPrecommit
   :: (ConsensusMonad m)
   => HeightParameters m alg a
-  -> Signed (Fingerprint alg) 'Verified alg (Vote 'PreCommit alg a)
+  -> Signed (ValidatorIdx alg) 'Verified alg (Vote 'PreCommit alg a)
   -> TMState alg a
   -> m (TMState alg a)
 addPrecommit HeightParameters{..} v sm@TMState{..} = do

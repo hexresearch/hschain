@@ -243,10 +243,10 @@ addProposal (PeerStateObj _ var) hProp rProp =
 -- | Add prevote to peer's state given vote itself
 addPrevote :: (MonadIO m, MonadMask m)
            => PeerStateObj m alg a
-           -> Signed (Fingerprint alg) ty alg (Vote 'PreVote alg a)
+           -> Signed (ValidatorIdx alg) ty alg (Vote 'PreVote alg a)
            -> m ()
 addPrevote peer sv@(signedValue -> Vote{..})
-  = addPrevoteWrk peer voteHeight voteRound (\vals -> indexByFingerprint vals (signedKeyInfo sv))
+  = addPrevoteWrk peer voteHeight voteRound (\_ -> Just $ signedKeyInfo sv)
 
 -- | Add prevote to peer's state given peer's vote index.
 addPrevoteI :: (MonadIO m, MonadMask m)
@@ -288,10 +288,10 @@ addPrevoteWrk (PeerStateObj _ var) h r getI =
 
 addPrecommit :: (MonadIO m, MonadMask m)
              => PeerStateObj m alg a
-             -> Signed (Fingerprint alg) ty alg (Vote 'PreCommit alg a)
+             -> Signed (ValidatorIdx alg) ty alg (Vote 'PreCommit alg a)
              -> m ()
 addPrecommit peer sv@(signedValue -> Vote{..})
-  = addPrecommitWrk peer voteHeight voteRound (\vals -> indexByFingerprint vals (signedKeyInfo sv))
+  = addPrecommitWrk peer voteHeight voteRound (\_ -> Just $ signedKeyInfo sv)
 
 addPrecommitI :: (MonadIO m, MonadMask m)
               => PeerStateObj m alg a
