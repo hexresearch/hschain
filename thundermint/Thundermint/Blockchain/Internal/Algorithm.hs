@@ -45,7 +45,7 @@ import qualified Katip
 import GHC.Generics
 
 import Thundermint.Crypto            ( Crypto, CryptoHash, Signed, Fingerprint, SignedState(..)
-                                     , signedValue, signedAddr
+                                     , signedValue, signedKeyInfo
                                      )
 import Thundermint.Blockchain.Internal.Types
 import Thundermint.Crypto            (unverifySignature)
@@ -61,11 +61,11 @@ import Thundermint.Types.Validators
 
 -- | Messages being sent to consensus engine
 data Message alg a
-  = ProposalMsg    !(Signed 'Verified alg (Proposal alg a))
+  = ProposalMsg    !(Signed (Fingerprint alg) 'Verified alg (Proposal alg a))
     -- ^ Incoming proposal
-  | PreVoteMsg     !(Signed 'Verified alg (Vote 'PreVote   alg a))
+  | PreVoteMsg     !(Signed (Fingerprint alg) 'Verified alg (Vote 'PreVote   alg a))
     -- ^ Incoming prevote
-  | PreCommitMsg   !(Signed 'Verified alg (Vote 'PreCommit alg a))
+  | PreCommitMsg   !(Signed (Fingerprint alg) 'Verified alg (Vote 'PreCommit alg a))
     -- ^ Incoming precommit
   | TimeoutMsg     !Timeout
     -- ^ Timeout
@@ -108,9 +108,9 @@ data HeightParameters (m :: * -> *) alg a = HeightParameters
   , acceptBlock          :: !(Round -> BlockID alg a -> m ())
     -- ^ Callback to signal that given block from given round should
     --   be accepted
-  , announceHasPreVote   :: !(Signed 'Verified alg (Vote 'PreVote alg a)   -> m ())
+  , announceHasPreVote   :: !(Signed (Fingerprint alg) 'Verified alg (Vote 'PreVote alg a)   -> m ())
     -- ^ Broadcast to peers announcement that we have given prevote
-  , announceHasPreCommit :: !(Signed 'Verified alg (Vote 'PreCommit alg a) -> m ())
+  , announceHasPreCommit :: !(Signed (Fingerprint alg) 'Verified alg (Vote 'PreCommit alg a) -> m ())
     -- ^ Broadcast to peers announcement that we have given precommit
   , announceStep         :: !(FullStep -> m ())
   , updateMetricsHR      :: !(Height -> Round -> m ())
@@ -257,7 +257,7 @@ tendermintTransition par@HeightParameters{..} msg sm@TMState{..} =
       | Just _ <- Map.lookup propRound smProposals
         -> tranquility
       -- Node sending message out of order is clearly byzantine
-      | signedAddr p /= proposerForRound propRound
+      | signedKeyInfo p /= proposerForRound propRound
         -> misdeed
       -- Add it to map of proposals
       | otherwise
@@ -549,7 +549,7 @@ enterPrecommit par@HeightParameters{..} r sm@TMState{..} reason = do
 addPrevote
   :: (ConsensusMonad m)
   => HeightParameters m alg a
-  -> Signed 'Verified alg (Vote 'PreVote alg a)
+  -> Signed (Fingerprint alg) 'Verified alg (Vote 'PreVote alg a)
   -> TMState alg a
   -> m (TMState alg a)
 addPrevote HeightParameters{..} v sm@TMState{..} = do
@@ -564,7 +564,7 @@ addPrevote HeightParameters{..} v sm@TMState{..} = do
 addPrecommit
   :: (ConsensusMonad m)
   => HeightParameters m alg a
-  -> Signed 'Verified alg (Vote 'PreCommit alg a)
+  -> Signed (Fingerprint alg) 'Verified alg (Vote 'PreCommit alg a)
   -> TMState alg a
   -> m (TMState alg a)
 addPrecommit HeightParameters{..} v sm@TMState{..} = do

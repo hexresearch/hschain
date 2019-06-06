@@ -75,7 +75,7 @@ module Thundermint.Crypto (
   , Signed
   , makeSigned
   , signedValue
-  , signedAddr
+  , signedKeyInfo
   , signValue
   , verifySignature
   , unverifySignature
@@ -609,37 +609,40 @@ instance StreamCypher alg => JSON.ToJSONKey   (CypherNonce alg)
 data SignedState = Verified
                  | Unverified
 
--- | Signed value. It contain signature, fingerprint of public key
---   (address) and value itself. Signature is computed for CBOR
+-- | Signed value. It contains value itself, signature, and
+--   information which could be used to indentify secret key which was
+--   used for signing. It could be public key, hash of public key
+--   (fingerprint) or anything else. Signature is computed for CBOR
 --   encoding of value.
-data Signed (sign :: SignedState) alg a
-  = Signed !(Fingerprint alg) !(Signature alg) !a
+data Signed key (sign :: SignedState) alg a
+  = Signed !key !(Signature alg) !a
   deriving stock (Generic, Eq, Show)
 
-instance (NFData a) => NFData (Signed sign alg a) where
+instance (NFData a, NFData key) => NFData (Signed key sign alg a) where
   rnf (Signed a s x) = rnf a `seq` rnf s `seq` rnf x
 
 -- | Obtain underlying value
-signedValue :: Signed sign alg a -> a
+signedValue :: Signed key sign alg a -> a
 signedValue (Signed _ _ a) = a
 
 -- | Obtain fingerprint used for signing
-signedAddr :: Signed sign alg a -> Fingerprint alg
-signedAddr (Signed a _ _) = a
+signedKeyInfo :: Signed key sign alg a -> key
+signedKeyInfo (Signed a _ _) = a
 
 -- | Make unverified signature
-makeSigned :: Fingerprint alg -> Signature alg -> a -> Signed 'Unverified alg a
+makeSigned :: key -> Signature alg -> a -> Signed key 'Unverified alg a
 makeSigned = Signed
 
 -- | Sign value. Not that we can generate both verified and unverified
 --   values this way.
 signValue
   :: (Serialise a, CryptoSign alg)
-  => PrivKey alg                -- ^ Key for signing
+  => key                        -- ^ Key identifier
+  -> PrivKey alg                -- ^ Key for signing
   -> a                          -- ^ Value to sign
-  -> Signed sign alg a
-signValue privK a
-  = Signed (fingerprint $ publicKey privK)
+  -> Signed key sign alg a
+signValue key privK a
+  = Signed key
            (signBlob privK $ toStrict $ serialise a)
            a
 
@@ -648,20 +651,20 @@ signValue privK a
 --   to supply function for looking up public keys.
 verifySignature
   :: (Serialise a, CryptoSign alg)
-  => (Fingerprint alg -> Maybe (PublicKey alg))
+  => (key -> Maybe (PublicKey alg))
      -- ^ Lookup function for public keys. If fingerprint is unknown (this
      --   function returns Nothing) verification fails.
-  -> Signed 'Unverified alg a
+  -> Signed key 'Unverified alg a
      -- ^ Value for verifying signature
-  -> Maybe  (Signed 'Verified alg a)
+  -> Maybe  (Signed key 'Verified alg a)
 verifySignature lookupKey (Signed addr signature a) = do
   pubK <- lookupKey addr
   guard $ verifyCborSignature pubK a signature
   return $ Signed addr signature a
 
 -- | Strip verification tag
-unverifySignature :: Signed ty alg a -> Signed 'Unverified alg a
-unverifySignature (Signed addr sig a) = Signed addr sig a
+unverifySignature :: Signed key ty alg a -> Signed key 'Unverified alg a
+unverifySignature = coerce
 
 -- | Verify signature of value. Signature is verified for CBOR
 --   encoding of object
@@ -674,6 +677,6 @@ verifyCborSignature
 verifyCborSignature pk a
   = verifyBlobSignature pk (toStrict $ serialise a)
 
-instance Serialise a => Serialise (Signed 'Unverified alg a)
-instance JSON.FromJSON a => JSON.FromJSON (Signed 'Unverified alg a)
-instance JSON.ToJSON   a => JSON.ToJSON   (Signed 'Unverified alg a)
+instance (Serialise key, Serialise a) => Serialise (Signed key 'Unverified alg a)
+instance (JSON.FromJSON key, JSON.FromJSON a) => JSON.FromJSON (Signed key 'Unverified alg a)
+instance (JSON.ToJSON   key, JSON.ToJSON   a) => JSON.ToJSON   (Signed key 'Unverified alg a)

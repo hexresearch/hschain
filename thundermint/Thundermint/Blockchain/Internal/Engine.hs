@@ -241,7 +241,7 @@ verifyMessageSignature AppLogic{..} HeightParameters{..} = forever $ do
       Just sx' -> yield $ con sx'
       Nothing  -> lift $ logger WarningS "Invalid signature"
         (  sl "name" (name::Text)
-        <> sl "addr" (show (signedAddr sx))
+        <> sl "addr" (show (signedKeyInfo sx))
         )
     pkLookup mvset a = do vset <- mvset
                           validatorPubKey <$> validatorByAddr vset a
@@ -363,7 +363,7 @@ makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{
                               , propPOL       = lockInfo
                               , propBlockID   = bid
                               }
-              sprop  = signValue pk prop
+              sprop  = signValue (fingerprint (publicKey pk)) pk prop
           mBlock <- lift $ retrievePropByID appPropStorage h bid
           logger InfoS "Sending proposal"
             (   sl "R"    r
@@ -394,7 +394,7 @@ makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{
                           , voteTime    = if t > bchTime then t else Time (ti + 1)
                           , voteBlockID = b
                           }
-              svote  = signValue pk vote
+              svote  = signValue (fingerprint (publicKey pk)) pk vote
           logger InfoS "Sending prevote"
             (  sl "R"    r
             <> sl "bid" (show b)
@@ -410,7 +410,7 @@ makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{
                           , voteTime    = t
                           , voteBlockID = b
                           }
-              svote  = signValue pk vote
+              svote  = signValue (fingerprint (publicKey pk)) pk vote
           logger InfoS "Sending precommit"
             (  sl "R" r
             <> sl "bid" (show b)
@@ -423,12 +423,12 @@ makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{
     --
     , announceHasPreVote   = \sv -> do
         let Vote{..} = signedValue sv
-        forM_ (indexByValidator valSet (signedAddr sv)) $ \v ->
+        forM_ (indexByValidator valSet (signedKeyInfo sv)) $ \v ->
           liftIO $ atomically $ writeTChan appChanTx $ AnnHasPreVote voteHeight voteRound v
     --
     , announceHasPreCommit = \sv -> do
         let Vote{..} = signedValue sv
-        forM_ (indexByValidator valSet (signedAddr sv)) $ \v ->
+        forM_ (indexByValidator valSet (signedKeyInfo sv)) $ \v ->
           liftIO $ atomically $ writeTChan appChanTx $ AnnHasPreCommit voteHeight voteRound v
     --
     , announceStep    = liftIO . atomically . writeTChan appChanTx . AnnStep

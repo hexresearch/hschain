@@ -69,7 +69,7 @@ instance (CryptoHash alg, Arbitrary a) => Arbitrary (Header alg a) where
                      <*> arbitrary
                      <*> arbitrary
 
-instance (CryptoSign alg, Arbitrary a) => Arbitrary (Signed sign alg a) where
+instance (CryptoSign alg, Arbitrary a, Arbitrary key) => Arbitrary (Signed key sign alg a) where
   arbitrary = genericArbitrary
   shrink = genericShrink
 

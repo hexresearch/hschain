@@ -47,7 +47,7 @@ import Thundermint.Types.Validators
 --   one value per signature is allowed. Lookup is supported both by
 --   values and by signer's fingerprint.
 data SignedSet ty alg a k = SignedSet
-  { vsetAddrMap    :: !(Map (Fingerprint alg) (Signed ty alg a))
+  { vsetAddrMap    :: !(Map (Fingerprint alg) (Signed (Fingerprint alg) ty alg a))
   , vsetValMap     :: !(Map k (VoteGroup alg))
   , vsetAccPower   :: !Integer
   , vsetValidators :: !(ValidatorSet alg)
@@ -95,11 +95,11 @@ emptySignedSet = SignedSet Map.empty Map.empty 0
 -- | Insert value into set of votes
 insertSigned
   :: (Ord a, Ord k)
-  => Signed ty alg a
+  => Signed (Fingerprint alg) ty alg a
   -> SignedSet ty alg a k
-  -> InsertResult (Signed ty alg a) (SignedSet ty alg a k)
+  -> InsertResult (Signed (Fingerprint alg) ty alg a) (SignedSet ty alg a k)
 insertSigned sval SignedSet{..} =
-  case validatorByAddr vsetValidators (signedAddr sval) of
+  case validatorByAddr vsetValidators (signedKeyInfo sval) of
     -- We trying to insert value signed by unknown key
     Nothing -> InsertUnknown sval
     Just validator
@@ -127,9 +127,9 @@ insertSigned sval SignedSet{..} =
           , ..
           }
   where
-    addr     = signedAddr  sval
-    val      = signedValue sval
-    k        = vsetToKey    val
+    addr     = signedKeyInfo sval
+    val      = signedValue   sval
+    k        = vsetToKey      val
     nullVote = VoteGroup 0 0 Set.empty Set.empty
 
 -- | We have +2\/3 majority of votes return vote for
@@ -181,15 +181,15 @@ emptySignedSetMap = SignedSetMap Map.empty
 -- | Convert collection of signed values to plain map
 toPlainMap
   :: SignedSetMap r ty alg a k
-  -> Map r (Map (Fingerprint alg) (Signed ty alg a))
+  -> Map r (Map (Fingerprint alg) (Signed (Fingerprint alg) ty alg a))
 toPlainMap = fmap vsetAddrMap . vmapSubmaps
 
 addSignedValue
   :: (Ord r, Ord a, Ord k)
   => r
-  -> Signed ty alg a
+  -> Signed (Fingerprint alg) ty alg a
   -> SignedSetMap r ty alg a k
-  -> InsertResult (Signed ty alg a) (SignedSetMap r ty alg a k)
+  -> InsertResult (Signed (Fingerprint alg) ty alg a) (SignedSetMap r ty alg a k)
 addSignedValue r a sm@SignedSetMap{..} = do
   m <- insertSigned a
      $ fromMaybe (emptySignedSet vmapValidators vmapToKey vmapValueOk)
@@ -216,7 +216,7 @@ valuesAtR
   :: (Ord r)
   => r
   -> SignedSetMap r ty alg a k
-  -> [Signed ty alg a]
+  -> [Signed (Fingerprint alg) ty alg a]
 valuesAtR r SignedSetMap{..} =
   case Map.lookup r vmapSubmaps of
     Nothing            -> []
