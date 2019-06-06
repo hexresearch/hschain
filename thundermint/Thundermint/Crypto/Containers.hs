@@ -10,7 +10,7 @@
 -- Data types for
 module Thundermint.Crypto.Containers (
     -- * Sets of signed values
-   SignedSet
+    SignedSet
   , InsertResult(..)
   , emptySignedSet
   , insertSigned
@@ -30,10 +30,12 @@ import Control.Monad
 import           Data.Foldable
 import           Data.List         (find)
 import           Data.Maybe        (fromMaybe)
-import qualified Data.Map        as Map
-import           Data.Map          (Map)
-import qualified Data.Set        as Set
-import           Data.Set          (Set)
+import qualified Data.Map.Strict    as Map
+import           Data.Map.Strict      (Map)
+import qualified Data.IntMap.Strict as IMap
+import           Data.IntMap.Strict   (IntMap)
+import qualified Data.Set           as Set
+import           Data.Set             (Set)
 
 import Thundermint.Crypto
 import Thundermint.Types.Validators
@@ -47,8 +49,10 @@ import Thundermint.Types.Validators
 --   one value per signature is allowed. Lookup is supported both by
 --   values and by signer's fingerprint.
 data SignedSet ty alg a k = SignedSet
-  { vsetAddrMap    :: !(Map (Fingerprint alg) (Signed (Fingerprint alg) ty alg a))
+  { vsetAddrMap    :: !(IntMap (Signed (ValidatorIdx alg) ty alg a))
+    -- Set of all votes
   , vsetValMap     :: !(Map k (VoteGroup alg))
+    -- Reverse mapping from 
   , vsetAccPower   :: !Integer
   , vsetValidators :: !(ValidatorSet alg)
   , vsetToKey      :: !(a -> k)
@@ -58,8 +62,8 @@ data SignedSet ty alg a k = SignedSet
 data VoteGroup alg = VoteGroup
   { accOK     :: !Integer             -- Accumulated weight of good votes
   , accBad    :: !Integer             -- Accumulated weight of invalid votes
-  , votersOK  :: !(Set (Fingerprint alg)) -- Set of voters with good votes
-  , votersBad :: !(Set (Fingerprint alg)) -- Set of voters with invalid votes
+  , votersOK  :: !(Set (ValidatorIdx alg)) -- Set of voters with good votes
+  , votersBad :: !(Set (ValidatorIdx alg)) -- Set of voters with invalid votes
   }
 
 instance (Show a) => Show (SignedSet ty alg a k) where
@@ -90,26 +94,26 @@ emptySignedSet
   -> (a -> k)                   -- ^ Key for grouping votes
   -> (a -> Bool)                -- ^ Additional validation for vote
   -> SignedSet ty alg a k
-emptySignedSet = SignedSet Map.empty Map.empty 0
+emptySignedSet = SignedSet IMap.empty Map.empty 0
 
 -- | Insert value into set of votes
 insertSigned
   :: (Ord a, Ord k)
-  => Signed (Fingerprint alg) ty alg a
+  => Signed (ValidatorIdx alg) ty alg a
   -> SignedSet ty alg a k
-  -> InsertResult (Signed (Fingerprint alg) ty alg a) (SignedSet ty alg a k)
+  -> InsertResult (Signed (ValidatorIdx alg) ty alg a) (SignedSet ty alg a k)
 insertSigned sval SignedSet{..} =
-  case validatorByAddr vsetValidators (signedKeyInfo sval) of
+  case validatorByIndex vsetValidators addr of
     -- We trying to insert value signed by unknown key
     Nothing -> InsertUnknown sval
     Just validator
       -- We already have value signed by that key
-      | Just v <- addr `Map.lookup` vsetAddrMap -> case () of
+      | Just v <- idx `IMap.lookup` vsetAddrMap -> case () of
           _| signedValue v == val -> InsertDup
            | otherwise            -> InsertConflict sval
       -- OK insert value then
       | otherwise -> InsertOK SignedSet
-          { vsetAddrMap  = Map.insert addr sval vsetAddrMap
+          { vsetAddrMap  = IMap.insert idx sval vsetAddrMap
           , vsetAccPower = vsetAccPower + validatorVotingPower validator
           , vsetValMap   =
               let upd VoteGroup{..}
@@ -127,7 +131,7 @@ insertSigned sval SignedSet{..} =
           , ..
           }
   where
-    addr     = signedKeyInfo sval
+    addr@(ValidatorIdx idx) = signedKeyInfo sval
     val      = signedValue   sval
     k        = vsetToKey      val
     nullVote = VoteGroup 0 0 Set.empty Set.empty
@@ -181,15 +185,15 @@ emptySignedSetMap = SignedSetMap Map.empty
 -- | Convert collection of signed values to plain map
 toPlainMap
   :: SignedSetMap r ty alg a k
-  -> Map r (Map (Fingerprint alg) (Signed (Fingerprint alg) ty alg a))
+  -> Map r (IntMap (Signed (ValidatorIdx alg) ty alg a))
 toPlainMap = fmap vsetAddrMap . vmapSubmaps
 
 addSignedValue
   :: (Ord r, Ord a, Ord k)
   => r
-  -> Signed (Fingerprint alg) ty alg a
+  -> Signed (ValidatorIdx alg) ty alg a
   -> SignedSetMap r ty alg a k
-  -> InsertResult (Signed (Fingerprint alg) ty alg a) (SignedSetMap r ty alg a k)
+  -> InsertResult (Signed (ValidatorIdx alg) ty alg a) (SignedSetMap r ty alg a k)
 addSignedValue r a sm@SignedSetMap{..} = do
   m <- insertSigned a
      $ fromMaybe (emptySignedSet vmapValidators vmapToKey vmapValueOk)
@@ -216,7 +220,7 @@ valuesAtR
   :: (Ord r)
   => r
   -> SignedSetMap r ty alg a k
-  -> [Signed (Fingerprint alg) ty alg a]
+  -> [Signed (ValidatorIdx alg) ty alg a]
 valuesAtR r SignedSetMap{..} =
   case Map.lookup r vmapSubmaps of
     Nothing            -> []

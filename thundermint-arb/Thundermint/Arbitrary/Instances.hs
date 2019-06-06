@@ -131,3 +131,5 @@ instance Arbitrary NetAddr where
     , NetAddrV6   <$> arbitrary <*> arbitrary
     ]
 
+instance Arbitrary (ValidatorIdx alg) where
+  arbitrary = ValidatorIdx <$> arbitrary

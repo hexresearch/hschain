@@ -244,7 +244,7 @@ verifyMessageSignature AppLogic{..} HeightParameters{..} = forever $ do
         <> sl "addr" (show (signedKeyInfo sx))
         )
     pkLookup mvset a = do vset <- mvset
-                          validatorPubKey <$> validatorByAddr vset a
+                          validatorPubKey <$> validatorByIndex vset a
 
 
 
@@ -311,12 +311,12 @@ makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{
   Just genesis <- queryRO $ retrieveBlock        (Height 0)
   bchTime      <- do Just b <- queryRO $ retrieveBlock h
                      return $ headerTime $ blockHeader b
+  let ourIndex = indexByValidator valSet . fingerprint . publicKey . validatorPrivKey
+             =<< appValidatorKey
   let proposerChoice (Round r) =
         let Height h' = h
             n         = validatorSetSize valSet
-            i         = (h' + r) `mod` fromIntegral n
-            Just v    = validatorByIndex valSet (ValidatorIdx (fromIntegral i))
-        in  fingerprint (validatorPubKey v)
+        in ValidatorIdx $! fromIntegral $ (h' + r) `mod` fromIntegral n
   --
   return HeightParameters
     { currentH        = succ h
@@ -325,9 +325,7 @@ makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{
     , oldValidatorSet = oldValSet
       -- FIXME: this is some random algorithms that should probably
       --        work (for some definition of work)
-    , areWeProposers  = \r -> case appValidatorKey of
-        Nothing                 -> False
-        Just (PrivValidator pk) -> proposerChoice r == fingerprint (publicKey pk)
+    , areWeProposers  = \r -> Just (proposerChoice r) == ourIndex
     , proposerForRound = proposerChoice
     , readyCreateBlock = lift $ fromMaybe True <$> appCanCreateBlock h bchTime
     --
@@ -355,7 +353,7 @@ makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{
                | otherwise              -> return InvalidProposal
     --
     , broadcastProposal = \r bid lockInfo ->
-        forM_ appValidatorKey $ \(PrivValidator pk) -> do
+        forM_ (liftA2 (,) appValidatorKey ourIndex) $ \(PrivValidator pk, idx) -> do
           t <- getCurrentTime
           let prop = Proposal { propHeight    = succ h
                               , propRound     = r
@@ -363,7 +361,7 @@ makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{
                               , propPOL       = lockInfo
                               , propBlockID   = bid
                               }
-              sprop  = signValue (fingerprint (publicKey pk)) pk prop
+              sprop  = signValue idx pk prop
           mBlock <- lift $ retrievePropByID appPropStorage h bid
           logger InfoS "Sending proposal"
             (   sl "R"    r
@@ -387,14 +385,14 @@ makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{
           atomically $ writeTQueue appChanRxInternal $ RxTimeout t
     --
     , castPrevote     = \r b ->
-        forM_ appValidatorKey $ \(PrivValidator pk) -> do
+        forM_ (liftA2 (,) appValidatorKey ourIndex) $ \(PrivValidator pk, idx) -> do
           t@(Time ti) <- getCurrentTime
           let vote = Vote { voteHeight  = succ h
                           , voteRound   = r
                           , voteTime    = if t > bchTime then t else Time (ti + 1)
                           , voteBlockID = b
                           }
-              svote  = signValue (fingerprint (publicKey pk)) pk vote
+              svote  = signValue (idx) pk vote
           logger InfoS "Sending prevote"
             (  sl "R"    r
             <> sl "bid" (show b)
@@ -403,14 +401,14 @@ makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{
             writeTQueue appChanRxInternal (RxPreVote $ unverifySignature svote)
     --
     , castPrecommit   = \r b ->
-        forM_ appValidatorKey $ \(PrivValidator pk) -> do
+        forM_ (liftA2 (,) appValidatorKey ourIndex) $ \(PrivValidator pk, idx) -> do
           t <- getCurrentTime
           let vote = Vote { voteHeight  = succ h
                           , voteRound   = r
                           , voteTime    = t
                           , voteBlockID = b
                           }
-              svote  = signValue (fingerprint (publicKey pk)) pk vote
+              svote  = signValue idx pk vote
           logger InfoS "Sending precommit"
             (  sl "R" r
             <> sl "bid" (show b)
@@ -422,14 +420,14 @@ makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{
         lift $ allowBlockID appPropStorage r bid
     --
     , announceHasPreVote   = \sv -> do
-        let Vote{..} = signedValue sv
-        forM_ (indexByFingerprint valSet (signedKeyInfo sv)) $ \v ->
-          liftIO $ atomically $ writeTChan appChanTx $ AnnHasPreVote voteHeight voteRound v
+        let Vote{..} = signedValue   sv
+            i        = signedKeyInfo sv
+        liftIO $ atomically $ writeTChan appChanTx $ AnnHasPreVote voteHeight voteRound i
     --
     , announceHasPreCommit = \sv -> do
         let Vote{..} = signedValue sv
-        forM_ (indexByFingerprint valSet (signedKeyInfo sv)) $ \v ->
-          liftIO $ atomically $ writeTChan appChanTx $ AnnHasPreCommit voteHeight voteRound v
+            i        = signedKeyInfo sv
+        liftIO $ atomically $ writeTChan appChanTx $ AnnHasPreCommit voteHeight voteRound i
     --
     , announceStep    = liftIO . atomically . writeTChan appChanTx . AnnStep
     , updateMetricsHR = \curH curR -> lift $ do

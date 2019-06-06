@@ -548,7 +548,7 @@ commitInvariant mkErr h prevT bid valSet Commit{..} = do
   -- from unknown validators, doesn't have duplicate votes, and
   -- vote goes for correct block
   let verifiedPrecommits = forM commitPrecommits $ \v ->
-        verifySignature (fmap validatorPubKey . validatorByAddr valSet) v
+        verifySignature (fmap validatorPubKey . validatorByIndex valSet) v
   case verifiedPrecommits of
     Nothing   -> tell [mkErr "Commit contains invalid signatures"]
     Just sigs -> do
