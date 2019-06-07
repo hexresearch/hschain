@@ -605,7 +605,9 @@ instance StreamCypher alg => JSON.ToJSONKey   (CypherNonce alg)
 ----------------------------------------------------------------
 
 -- | Whether signature has been verified or not. Note that all data
---   coming from external sources should be treated as unverified.
+--   coming from external sources should be treated as unverified
+--   therefore only @Signed 'Unverified@ has instances for
+--   serialization
 data SignedState = Verified
                  | Unverified
 
@@ -625,7 +627,9 @@ instance (NFData a, NFData key) => NFData (Signed key sign alg a) where
 signedValue :: Signed key sign alg a -> a
 signedValue (Signed _ _ a) = a
 
--- | Obtain fingerprint used for signing
+-- | Obtain information about key used for signing. It could be public
+--   key itself or any other information which allows to figure out
+--   which key should be used to verify signature.
 signedKeyInfo :: Signed key sign alg a -> key
 signedKeyInfo (Signed a _ _) = a
 
@@ -633,7 +637,7 @@ signedKeyInfo (Signed a _ _) = a
 makeSigned :: key -> Signature alg -> a -> Signed key 'Unverified alg a
 makeSigned = Signed
 
--- | Sign value. Not that we can generate both verified and unverified
+-- | Sign value. Note that we can generate both verified and unverified
 --   values this way.
 signValue
   :: (Serialise a, CryptoSign alg)
