@@ -1,11 +1,13 @@
-args@{
-  isProfile ? false
-, isProd    ? false
-, useSodium ? false
-, ghc       ? "ghc844"
+{ isProfile  ? false
+, isProd     ? false
+, isCoreLint ? false
+, useSodium  ? false
+, ghc        ? "ghc844"
 }:
 let
-  release = import ./release.nix args;
+  release = import ./release.nix {
+    inherit isProd isProfile isCoreLint useSodium;
+  };
   pkgs    = release.pkgs;
 in
 pkgs.buildEnv {

@@ -17,8 +17,6 @@ module Thundermint.P2P (
     startPeerDispatcher
   , LogGossip(..)
   , NetAddr(..)
-  , netAddrToSockAddr
-  , sockAddrToNetAddr
   , generatePeerId
   ) where
 
