@@ -36,7 +36,6 @@ import Control.DeepSeq
 import Control.Monad
 import Data.Foldable
 
-import Data.Coerce  (coerce)
 import Data.IntSet  (IntSet)
 import Data.Map     (Map)
 import GHC.Generics (Generic, Generic1)
