@@ -18,7 +18,6 @@ module Thundermint.Types.Validators (
   , makeValidatorSet
   , totalVotingPower
   , validatorSetSize
-  , validatorByAddr
   , validatorByIndex
   , asValidatorList
   , indexByValidator
@@ -110,10 +109,6 @@ makeValidatorSet vals = do
 -- | Return total voting power of all validators
 totalVotingPower :: ValidatorSet alg -> Integer
 totalVotingPower = vsTotPower
-
--- | Get validator by its fingerprint
-validatorByAddr :: ValidatorSet alg -> Fingerprint alg -> Maybe (Validator alg)
-validatorByAddr vs addr = addr `Map.lookup` vsValidators vs
 
 -- | Get validator by its fingerprint
 validatorByIndex :: ValidatorSet alg -> ValidatorIdx alg -> Maybe (Validator alg)
