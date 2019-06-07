@@ -246,20 +246,14 @@ addPrevote :: (MonadIO m, MonadMask m)
            -> Signed (ValidatorIdx alg) ty alg (Vote 'PreVote alg a)
            -> m ()
 addPrevote peer sv@(signedValue -> Vote{..})
-  = addPrevoteWrk peer voteHeight voteRound (\_ -> Just $ signedKeyInfo sv)
+  = addPrevoteI peer voteHeight voteRound (signedKeyInfo sv)
 
 -- | Add prevote to peer's state given peer's vote index.
 addPrevoteI :: (MonadIO m, MonadMask m)
             => PeerStateObj m alg a
             -> Height -> Round -> ValidatorIdx alg
             -> m ()
-addPrevoteI peer h r i = addPrevoteWrk peer h r (Just . const i)
-
-addPrevoteWrk :: (MonadIO m, MonadMask m)
-              => PeerStateObj m alg a
-              -> Height -> Round -> (ValidatorSet alg -> Maybe (ValidatorIdx alg))
-              -> m ()
-addPrevoteWrk (PeerStateObj _ var) h r getI =
+addPrevoteI (PeerStateObj _ var) h r i =
   modifyMVarM_ var $ \peer -> case peer of
     -- We send only precommits to lagging peers
     Lagging _ -> return peer
@@ -267,7 +261,6 @@ addPrevoteWrk (PeerStateObj _ var) h r getI =
     Current p
       | FullStep hPeer _ _ <- peerStep p
       , h == hPeer
-      , Just i <- getI (peerValidators p)
       -> return $ Current p { peerPrevotes = Map.alter
                                 (\case
                                     Nothing   -> Just
@@ -291,27 +284,19 @@ addPrecommit :: (MonadIO m, MonadMask m)
              -> Signed (ValidatorIdx alg) ty alg (Vote 'PreCommit alg a)
              -> m ()
 addPrecommit peer sv@(signedValue -> Vote{..})
-  = addPrecommitWrk peer voteHeight voteRound (\_ -> Just $ signedKeyInfo sv)
+  = addPrecommitI peer voteHeight voteRound (signedKeyInfo sv)
 
 addPrecommitI :: (MonadIO m, MonadMask m)
               => PeerStateObj m alg a
               -> Height -> Round -> ValidatorIdx alg
               -> m ()
-addPrecommitI peer h r i
-  = addPrecommitWrk peer h r (Just . const i)
-
-addPrecommitWrk :: (MonadIO m, MonadMask m)
-                => PeerStateObj m alg a
-                -> Height -> Round -> (ValidatorSet alg -> Maybe (ValidatorIdx alg))
-                -> m ()
-addPrecommitWrk (PeerStateObj _ var) h r getI =
+addPrecommitI (PeerStateObj _ var) h r i =
   modifyMVarM_ var $ \peer -> case peer of
     --
     Lagging p
       | FullStep hPeer _ _ <- lagPeerStep p
       , h == hPeer
       , r == lagPeerCommitR p
-      , Just i <- getI (lagPeerValidators p)
       -> return $ Lagging p { lagPeerPrecommits = insertValidatorIdx i (lagPeerPrecommits p)
                             }
       | otherwise -> return peer
@@ -319,7 +304,6 @@ addPrecommitWrk (PeerStateObj _ var) h r getI =
     Current p
       | FullStep hPeer _ _ <- peerStep p
       , h == hPeer
-      , Just i <- getI (peerValidators p)
       -> return $ Current p { peerPrecommits = Map.alter
                                 (\case
                                     Nothing   -> Just
