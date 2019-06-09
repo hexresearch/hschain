@@ -44,14 +44,14 @@ Library
                      , vector
                      , vector-th-unbox
                      , unordered-containers >=0.2.5.0
+  if arch(i386) || arch(x86_64)
+    CPP-Options:   -DWORDS_BIGENDIAN
   if !impl(ghcjs) && !flag(android-impl)
-    Exposed-modules:
-      Thundermint.Types.Network
-    Build-depends: network           >=2.6.0.0 && <2.9
     if flag(sqlite-instances)
       CPP-Options:   -DINSTANCES_SQLITE
       Build-Depends: sqlite-simple
   Exposed-modules:
                   Thundermint.Types
+                  Thundermint.Types.Network
                   Thundermint.Types.Validators
                   Thundermint.Types.Blockchain
