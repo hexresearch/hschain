@@ -30,9 +30,9 @@ let
   thundermintPackages = hsPkgs: {
     thundermint-crypto = callInternal hsPkgs "thundermint" ../thundermint-crypto {}
       (if useSodium then "-flibsodium" else "");
-    thundermint-arb    = callInternal hsPkgs "thundermint" ../thundermint-arb    {} "";
-    thundermint-types  = callInternal hsPkgs "thundermint" ../thundermint-types  {} "";
-    thundermint        = callInternal hsPkgs "thundermint" ../thundermint        {} "";
+    thundermint-quickcheck = callInternal hsPkgs "thundermint" ../thundermint-quickcheck    {} "";
+    thundermint-types      = callInternal hsPkgs "thundermint" ../thundermint-types         {} "";
+    thundermint            = callInternal hsPkgs "thundermint" ../thundermint               {} "";
   };
   # Build internal package
   callInternal = hask: name: path: args: opts:

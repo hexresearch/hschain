@@ -63,6 +63,16 @@ data PeerInfo = PeerInfo
 --
 ----------------------------------------------------------------
 
+sockAddrToNetAddr :: Net.SockAddr -> NetAddr
+sockAddrToNetAddr sa = case sa of
+  Net.SockAddrInet  port ha     -> NetAddrV4 ha $ fromIntegral port
+  Net.SockAddrInet6 port _ ha _ -> NetAddrV6 ha $ fromIntegral port
+  _                             -> error $ "unsupported socket address kind: "++show sa
+
+netAddrToSockAddr :: NetAddr -> Net.SockAddr
+netAddrToSockAddr (NetAddrV4 ha port) = Net.SockAddrInet  (fromIntegral port)  ha
+netAddrToSockAddr (NetAddrV6 ha port) = Net.SockAddrInet6 (fromIntegral port) 0 ha 0
+
 -- | Network port
 type NetworkPort = Net.PortNumber
 

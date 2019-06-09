@@ -1,4 +1,4 @@
-Name:           thundermint-arb
+Name:           thundermint-quickcheck
 Version:        0.1
 Synopsis:       Arbitraty instances for thundermint
 Description:
@@ -20,7 +20,6 @@ Library
                      , bytestring
                      , thundermint-crypto
                      , thundermint-types
-                     -- , thundermint
                      , QuickCheck
                      , bytestring-arbitrary
                      , generic-arbitrary
