@@ -91,7 +91,7 @@ Library
                   Thundermint.Utils
   Other-modules:
                   Thundermint.P2P.Network.Parameters
-                  Thundermint.P2P.Network.TLS
+                  Thundermint.P2P.Network.Internal.TLS
                   Thundermint.P2P.Network.Internal.TCP
                   Thundermint.P2P.Network.Internal.Utils
                   Thundermint.P2P.Network.IpAddresses

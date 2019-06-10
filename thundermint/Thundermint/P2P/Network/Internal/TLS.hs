@@ -3,7 +3,7 @@
 {-# LANGUAGE RecordWildCards #-}
 -- |
 -- Abstract API for network which support
-module Thundermint.P2P.Network.TLS (
+module Thundermint.P2P.Network.Internal.TLS (
     -- * Real tls network
     realNetworkTls
   , newSocket
