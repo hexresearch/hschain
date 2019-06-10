@@ -15,7 +15,6 @@ import GHC.Read     (Read(..))
 import qualified Data.Aeson                      as JSON
 import qualified Data.List                       as List
 import qualified Data.Text                       as Text
---import qualified Network.Socket                  as Net
 import qualified Text.ParserCombinators.ReadP    as ReadP
 import qualified Text.ParserCombinators.ReadPrec as Read
 
@@ -39,9 +38,7 @@ tupleToHostAddress (b3, b2, b1, b0) =
     let x `sl` i = fromIntegral x `shiftL` i :: Word32
     in ntohl $ (b3 `sl` 24) .|. (b2 `sl` 16) .|. (b1 `sl` 8) .|. (b0 `sl` 0)
 
--- TODO: This is not work BE platforms
---
-#ifdef WORDS_BIGENDIAN
+#ifdef WORDS_LITTLEENDIAN
 htonl :: Word32 -> Word32
 htonl = byteSwap32
 

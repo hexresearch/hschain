@@ -45,7 +45,7 @@ Library
                      , vector-th-unbox
                      , unordered-containers >=0.2.5.0
   if arch(i386) || arch(x86_64)
-    CPP-Options:   -DWORDS_BIGENDIAN
+    CPP-Options:   -DWORDS_LITTLEENDIAN
   if !impl(ghcjs) && !flag(android-impl)
     if flag(sqlite-instances)
       CPP-Options:   -DINSTANCES_SQLITE
