@@ -1,4 +1,5 @@
-{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications    #-}
@@ -12,6 +13,7 @@ import Data.Typeable
 import Data.Text      (Text)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Base64 as B64
+import qualified Data.ByteString.Base16 as B16
 import qualified Data.Text       as T
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -31,6 +33,7 @@ tests = testGroup "Crypto"
   , testsSHA
   , testSalsa20
   , testsNaClBox
+  , testsHMAC
   ]
 
 testsEd25519 :: TestTree
@@ -290,3 +293,35 @@ decodeB64 :: BS.ByteString -> Maybe BS.ByteString
 decodeB64 bs = case B64.decode bs of
   Right x -> Just x
   Left  _ -> Nothing
+
+----------------------------------------------------------------
+-- Tests for HMAC
+----------------------------------------------------------------
+
+testsHMAC :: TestTree
+testsHMAC = testGroup "HMAC"
+  [ testHMAC @SHA1
+    "e2a7671c074e39a5df933a44cbce8f9d88145f7d"
+  , testHMAC @SHA256
+    "8552e36de7567f917d99ce866a0b9837d1f2a892e4fc75eb74133c2d453a802f"
+  , testHMAC @SHA384
+    "2d51b05e3cb71a55a010a6c7799a34e2c5422e11851497b591ed239ce92a1d6a\
+    \d36cc0990066c5b3d1aef16b73f69946"
+  , testHMAC @SHA512
+    "67d12aac1ce3b9fa4a707384c07731f30c68810b1d971b2550c2a8708e59ba5d\
+    \cd86c2664bde4eb3e0f653c40619bdff81fd18efeecdfea769f960ffba600e38"
+  ]
+
+testHMAC :: forall alg. (Typeable alg, CryptoHMAC alg)
+         => BS.ByteString -> TestTree
+testHMAC str = testGroup (show (typeRep (Proxy @alg)))
+  [ testCase "HMAC is correct"
+  $ let Just expected = decodeFromBS $ fst $ B16.decode str
+    in expected @=? mac
+  --
+  , testCase "Size is correct"
+  $ hashSize (Proxy @alg) @=? BS.length (encodeToBS mac)
+  ]
+  where
+    mac :: HMAC alg
+    mac = hmac "KEY" "asdf"
