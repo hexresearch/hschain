@@ -14,7 +14,6 @@ module Thundermint.P2P.Types (
   , netAddrToSockAddr
   , P2PConnection(..)
   , NetworkError(..)
-  , HeaderSize
   , NetworkPort
   , PeerId(..)
   , PeerInfo(..)
@@ -107,9 +106,6 @@ data P2PConnection = P2PConnection
     -- ^ Close socket
   , connectedPeer :: !PeerInfo
   }
-
-type HeaderSize = Int
-
 
 data NetworkError = ConnectionTimedOut
                   | NoAddressAvailable

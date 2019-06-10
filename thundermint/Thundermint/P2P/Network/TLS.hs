@@ -16,7 +16,6 @@ import Codec.Serialise
 import Control.Monad            (when)
 import Control.Monad.Catch      (bracketOnError, throwM, MonadMask)
 import Control.Monad.IO.Class   (MonadIO, liftIO)
-import Data.Bits                (unsafeShiftL)
 import Data.ByteString.Internal (ByteString(..))
 import Data.Default.Class       (def)
 import Data.List                (find)
@@ -40,18 +39,13 @@ import qualified Network.TLS             as TLS
 import Thundermint.Control
 import Thundermint.P2P.Network.Parameters
 import Thundermint.P2P.Network.RealNetworkStub
-import Thundermint.P2P.Network.IpAddresses     (isIPv6addr)
+import Thundermint.P2P.Network.Internal.Utils
 import Thundermint.P2P.Types
 
 
 ----------------------------------------------------------------
 --
 ----------------------------------------------------------------
-
-headerSize :: HeaderSize
-headerSize = 4
-
-
 
 realNetworkTls :: TLS.Credential -> PeerInfo -> NetworkAPI
 realNetworkTls creds ourPeerInfo = (realNetworkStub ourPeerInfo)
@@ -87,15 +81,6 @@ realNetworkTls creds ourPeerInfo = (realNetworkStub ourPeerInfo)
   }
   where
     serviceName = show $ piPeerPort ourPeerInfo
-
-newSocket :: MonadIO m => Net.AddrInfo -> m Net.Socket
-newSocket ai = liftIO $ do
-    sock <- Net.socket (Net.addrFamily     ai)
-                       (Net.addrSocketType ai)
-                       (Net.addrProtocol   ai)
-    Net.setSocketOption sock Net.NoDelay 1
-    Net.setSocketOption sock Net.ReuseAddr 1
-    return sock
 
 
 listenerTls
@@ -190,17 +175,6 @@ applyConn context = do
 -------------------------------------------------------------------------------
 -- framing for tls
 -------------------------------------------------------------------------------
-decodeWord16BE :: LBS.ByteString -> Maybe Word32
-decodeWord16BE bs | LBS.length bs < fromIntegral headerSize = Nothing
-                  | otherwise =
-                      let w8s = LBS.unpack $ LBS.take (fromIntegral headerSize) bs
-                          shiftBy = (*) 8
-                          word32 = foldr (\b (acc, i) ->
-                                         (fromIntegral b `unsafeShiftL` shiftBy i + acc, i + 1))
-                                   (0,0)
-                                   w8s
-                      in (Just $ fst word32)
-
 recvT :: I.IORef ByteString -> TLS.Context -> IO ByteString
 recvT cref ctx = do
             cached <- I.readIORef cref
