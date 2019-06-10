@@ -39,8 +39,7 @@ instance ByteReprSized (Hash SHA1) where
   type ByteSize (Hash SHA1) = 20
 
 instance CryptoHash SHA1 where
-  hashBlob                   = defaultHash @Crypto.SHA1
-  hashEquality (Hash hbs) bs = hbs == bs
+  hashBlob = defaultHash @Crypto.SHA1
 
 instance CryptoHMAC SHA1 where
   hmac = defaultHMAC @Crypto.SHA1
@@ -54,8 +53,7 @@ instance ByteReprSized (Hash SHA256) where
   type ByteSize (Hash SHA256) = 32
 
 instance CryptoHash SHA256 where
-  hashBlob                   = defaultHash @Crypto.SHA256
-  hashEquality (Hash hbs) bs = hbs == bs
+  hashBlob = defaultHash @Crypto.SHA256
 
 instance CryptoHMAC SHA256 where
   hmac = defaultHMAC @Crypto.SHA256
@@ -69,8 +67,7 @@ instance ByteReprSized (Hash SHA384) where
   type ByteSize (Hash SHA384) = 48
 
 instance CryptoHash SHA384 where
-  hashBlob                   = defaultHash @Crypto.SHA384
-  hashEquality (Hash hbs) bs = hbs == bs
+  hashBlob = defaultHash @Crypto.SHA384
 
 instance CryptoHMAC SHA384 where
   hmac = defaultHMAC @Crypto.SHA384
@@ -84,8 +81,7 @@ instance ByteReprSized (Hash SHA512) where
   type ByteSize (Hash SHA512) = 64
 
 instance CryptoHash SHA512 where
-  hashBlob                   = defaultHash @Crypto.SHA512
-  hashEquality (Hash hbs) bs = hbs == bs
+  hashBlob = defaultHash @Crypto.SHA512
 
 instance CryptoHMAC SHA512 where
   hmac = defaultHMAC @Crypto.SHA512
