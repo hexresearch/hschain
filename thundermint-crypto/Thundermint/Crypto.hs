@@ -27,6 +27,9 @@ module Thundermint.Crypto (
   , hash
   , hashed
   , (:<<<)
+    -- * HMAC
+  , CryptoHMAC(..)
+  , HMAC(..)
     -- ** Sizes
   , hashSize
     -- * Cryptography with asymmetric keys
@@ -186,6 +189,24 @@ instance JSON.FromJSONKey (Hash alg)
 instance JSON.ToJSONKey   (Hash alg)
 
 
+----------------------------------------------------------------
+-- Cryptographic hashes
+----------------------------------------------------------------
+
+newtype HMAC alg = HMAC (Hash alg)
+  deriving stock   ( Show, Read, Generic, Generic1)
+  deriving newtype ( Eq, Ord, NFData, Serialise, ByteRepr
+                   , JSON.FromJSON, JSON.ToJSON, JSON.ToJSONKey, JSON.FromJSONKey)
+
+-- | Calculate Hash-based Message Authetication Code (HMAC) according
+--   to RFC2104
+class CryptoHash alg => CryptoHMAC alg where
+  hmac :: BS.ByteString
+       -- ^ Key. Must be kept secret since leaking will allow attacker
+       --   forge HMACs trivially
+       -> BS.ByteString
+       -- ^ Message for which HMAC is created
+       -> HMAC alg
 
 ----------------------------------------------------------------
 -- Signatures API
