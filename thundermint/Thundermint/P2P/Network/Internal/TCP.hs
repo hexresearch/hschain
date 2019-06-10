@@ -22,8 +22,8 @@ import Thundermint.P2P.Types
 
 
 -- | API implementation for real tcp network
-realNetwork :: PeerInfo -> NetworkAPI
-realNetwork peerInfo = (realNetworkStub peerInfo)
+newNetworkTcp :: PeerInfo -> NetworkAPI
+newNetworkTcp peerInfo = (realNetworkStub peerInfo)
   { listenOn = do
       let hints = Net.defaultHints
             { Net.addrFlags      = [Net.AI_PASSIVE]

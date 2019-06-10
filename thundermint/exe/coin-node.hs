@@ -36,7 +36,7 @@ import Thundermint.Crypto         ((:&))
 import Thundermint.Crypto.Ed25519 (Ed25519)
 import Thundermint.Crypto.SHA     (SHA512)
 import Thundermint.P2P            (generatePeerId)
-import Thundermint.P2P.Network    (getLocalAddress, realNetwork)
+import Thundermint.P2P.Network    (getLocalAddress, newNetworkTcp)
 
 import qualified Thundermint.P2P.Types as P2PT
 
@@ -85,7 +85,7 @@ main = do
       logger InfoS ("peer Id generated: " <> showLS peerId) ()
       let peerInfo = P2PT.PeerInfo peerId (fromIntegral nspec'port) 0
       logger InfoS ("peer Info generated: " <> showLS peerInfo) ()
-      let netAPI = realNetwork peerInfo
+      let netAPI = newNetworkTcp peerInfo
       logger InfoS ("network API created") ()
       let net = BlockchainNet
                    { bchNetwork          = netAPI
