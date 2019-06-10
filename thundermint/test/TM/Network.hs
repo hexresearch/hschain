@@ -22,9 +22,11 @@ import qualified Network.Socket    as Net
 
 import Thundermint.P2P
 import Thundermint.P2P.Network
+import Thundermint.Types.Network
 
 import Test.Tasty
 import Test.Tasty.HUnit
+import Test.QuickCheck
 import TM.MockNet
 import TM.Util.Network
 
@@ -34,6 +36,20 @@ tests =
                   [ testGroup "mock"
                     [ testCase "ping-pong" $ mockNetPair >>= uncurry pingPong
                     , testCase "delayed write" $ mockNetPair >>= uncurry delayedWrite
+                    ]
+                  , testGroup "NetAddr"
+                    [ testCase "tupleToHostAddress" $ do
+                        a <- generate arbitrary
+                        Net.tupleToHostAddress a @=? tupleToHostAddress a
+                    , testCase "hostAddressToTuple" $ do
+                        a <- generate arbitrary
+                        Net.hostAddressToTuple a @=? hostAddressToTuple a
+                    , testCase "tupleToHostAddress6" $ do
+                        a <- generate arbitrary
+                        Net.tupleToHostAddress6 a @=? tupleToHostAddress6 a
+                    , testCase "hostAddress6ToTuple" $ do
+                        a <- generate arbitrary
+                        Net.hostAddress6ToTuple a @=? hostAddress6ToTuple a
                     ]
                   , testGroup "real"
                     [ testGroup "IPv4"
