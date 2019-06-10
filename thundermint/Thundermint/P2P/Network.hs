@@ -43,7 +43,7 @@ import qualified Data.Set                       as Set
 import qualified Network.Socket                 as Net
 import qualified Network.Socket.ByteString      as NetBS
 
-import Thundermint.P2P.Network.TLS
+import Thundermint.P2P.Network.Internal.TLS
 import Thundermint.P2P.Network.Internal.TCP
 import Thundermint.P2P.Network.RealNetworkStub
 import Thundermint.P2P.Types
