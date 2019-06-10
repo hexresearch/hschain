@@ -30,5 +30,7 @@
     scientific            = { check = false; };
     tasty-quickcheck      = { check = false; };
     tasty-hedgehog        = { check = false; };
+    # Test have dependency on cryptonite
+    Lazy-Pbkdf2           = { check = false; };
   };
 }
