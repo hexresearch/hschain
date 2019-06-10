@@ -129,6 +129,7 @@ class ( ByteReprSized (Hash alg)
   hashBlob     :: BS.ByteString -> Hash alg
   -- | Compare hash with a bytestring safly
   hashEquality :: Hash alg -> BS.ByteString -> Bool
+  hashEquality (Hash h) bs = h == bs
 
 -- | Size of hash in bytes
 hashSize :: forall alg proxy i. (CryptoHash alg, Num i) => proxy alg -> i
@@ -160,7 +161,6 @@ instance (CryptoHash hashA, CryptoHash hashB) => CryptoHash (hashA :<<< hashB) w
   hashBlob bs = let Hash hB = hashBlob bs :: Hash hashB
                     Hash hA = hashBlob hB :: Hash hashA
                 in Hash hA
-  hashEquality (Hash hbs) bs = hbs == bs
 
 
 ----------------------------------------
