@@ -26,8 +26,8 @@ import Thundermint.P2P.Types
 import qualified Thundermint.P2P.Network.IpAddresses as Ip
 
 -- | API implementation example for real udp network
-realNetworkUdp :: PeerInfo -> IO NetworkAPI
-realNetworkUdp ourPeerInfo = do
+newNetworkUdp :: PeerInfo -> IO NetworkAPI
+newNetworkUdp ourPeerInfo = do
   let serviceName = show $ piPeerPort ourPeerInfo
   -- FIXME: prolly HostName fits better than SockAddr
   tChans <- newTVarIO Map.empty

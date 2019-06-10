@@ -5,11 +5,9 @@
 -- Abstract API for network which support
 module Thundermint.P2P.Network.Internal.TLS (
     -- * Real tls network
-    realNetworkTls
-  , newSocket
+    newNetworkTls
   , getCredential
   , getCredentialFromBuffer
-  , headerSize
   ) where
 
 import Codec.Serialise
@@ -47,8 +45,8 @@ import Thundermint.P2P.Types
 --
 ----------------------------------------------------------------
 
-realNetworkTls :: TLS.Credential -> PeerInfo -> NetworkAPI
-realNetworkTls creds ourPeerInfo = (realNetworkStub ourPeerInfo)
+newNetworkTls :: TLS.Credential -> PeerInfo -> NetworkAPI
+newNetworkTls creds ourPeerInfo = (realNetworkStub ourPeerInfo)
   { listenOn = do
       let hints = Net.defaultHints
             { Net.addrFlags      = [Net.AI_PASSIVE]

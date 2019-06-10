@@ -8,10 +8,10 @@ module Thundermint.P2P.Network (
     NetworkAPI(..)
   , P2PConnection(..)
     -- * Real network
-  , realNetwork
-  , realNetworkUdp
+  , newNetworkTcp
+  , newNetworkUdp
     -- * Real tls network
-  , realNetworkTls
+  , newNetworkTls
   , getCredential
   , getCredentialFromBuffer
     -- * Mock in-memory network
