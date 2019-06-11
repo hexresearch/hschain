@@ -93,11 +93,10 @@ instance (Crypto alg) => CBOR.Serialise (ValidatorSet alg) where
 makeValidatorSet
   :: (Crypto alg, Foldable f)
   => f (Validator alg)
-  -> Either (Maybe (Fingerprint alg)) (ValidatorSet alg)
+  -> Either (Fingerprint alg) (ValidatorSet alg)
 makeValidatorSet vals = do
-  when (null vals) $ Left Nothing
   vmap <- sequence
-        $ Map.fromListWithKey (\k _ _ -> Left (Just k))
+        $ Map.fromListWithKey (\k _ _ -> Left k)
           [ ( fingerprint (validatorPubKey v), Right v) | v <- toList vals ]
   return ValidatorSet
     { vsValidators = vmap

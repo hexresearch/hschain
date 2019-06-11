@@ -45,9 +45,8 @@ makeValidatorSetFromPriv
   => f (PrivValidator alg) -> ValidatorSet alg
 makeValidatorSetFromPriv vals =
   case r of
-    Right x        -> x
-    Left  Nothing  -> error   "Empty validator set"
-    Left  (Just e) -> error $ "Duplicate public key in validator: " ++ show e
+    Right x -> x
+    Left  e -> error $ "Duplicate public key in validator: " ++ show e
   where
     r = makeValidatorSet
       [ Validator { validatorPubKey      = publicKey (validatorPrivKey v)

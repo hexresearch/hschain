@@ -347,8 +347,9 @@ makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{
                | _:_ <- blockEvidence b -> return InvalidProposal
                -- Block is correct and validators change is correct as
                -- well
-               | Just ch <- mvalChange
-               , Just _  <- changeValidators ch valSet
+               | Just ch      <- mvalChange
+               , Just valSet' <- changeValidators ch valSet
+               , validatorSetSize valSet' > 0
                  -> return GoodProposal
                | otherwise              -> return InvalidProposal
     --
