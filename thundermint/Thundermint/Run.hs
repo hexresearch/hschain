@@ -70,7 +70,7 @@ import Thundermint.Types (CheckSignature(..))
 ----------------------------------------------------------------
 
 data NodeLogic m alg a = NodeLogic
-  { nodeBlockValidation :: !(Block alg a -> m (Maybe [ValidatorChange alg]))
+  { nodeBlockValidation :: !(ValidatorSet alg -> Block alg a -> m (Maybe [ValidatorChange alg]))
     -- ^ Callback used for validation of blocks
   , nodeCommitQuery     :: !(CommitCallback m alg a)
     -- ^ Query for modifying user state.
@@ -78,6 +78,7 @@ data NodeLogic m alg a = NodeLogic
                           -> Time
                           -> Maybe (Commit alg a)
                           -> [ByzantineEvidence alg a]
+                          -> ValidatorSet alg
                           -> m (a, [ValidatorChange alg]))
     -- ^ Generator for a new block
   , nodeMempool         :: !(Mempool m alg (TX a))
@@ -100,12 +101,12 @@ logicFromFold transitions@BlockFold{..} = do
   mempool <- newMempool checkTx
   --
   return ( bchState
-         , NodeLogic { nodeBlockValidation = \b -> do
+         , NodeLogic { nodeBlockValidation = \_ b -> do
                          let h = headerHeight $ blockHeader b
                          st <- stateAtH bchState h
                          return $ [] <$ processBlock CheckSignature b st
-                     , nodeCommitQuery     = SimpleQuery $ \_ -> return []
-                     , nodeBlockGenerator  = \h _ _ _ -> do
+                     , nodeCommitQuery     = SimpleQuery $ \_ _ -> return []
+                     , nodeBlockGenerator  = \h _ _ _ _ -> do
                          st  <- stateAtH bchState h
                          txs <- peekNTransactions mempool Nothing
                          return (transactionsToBlock h st txs, [])
@@ -133,13 +134,13 @@ logicFromPersistent PersistentState{..} = do
        Nothing -> error "Cannot initialize persistent storage"
   --
   return NodeLogic
-    { nodeBlockValidation = \b -> do
+    { nodeBlockValidation = \_ b -> do
         r <- queryRO $ runEphemeralQ persistedData (processBlockDB b)
         return $! [] <$ r
-    , nodeCommitQuery     = SimpleQuery $ \b -> do
+    , nodeCommitQuery     = SimpleQuery $ \_ b -> do
         runBlockUpdate (headerHeight (blockHeader b)) persistedData $ processBlockDB b
         return []
-    , nodeBlockGenerator  = \h _ _ _ -> do
+    , nodeBlockGenerator  = \h _ _ _ _ -> do
         txs <- peekNTransactions mempool Nothing
         r   <- queryRO $ runEphemeralQ persistedData (transactionsToBlockDB h txs)
         case r of

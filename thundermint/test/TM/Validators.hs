@@ -179,21 +179,21 @@ testAddRemValidators = do
             let logic = NodeLogic {
                   nodeMempool = nodeMempool generatedLogic
                 , nodeCommitQuery = case nodeCommitQuery generatedLogic of
-                      SimpleQuery cb -> SimpleQuery $ \block ->
+                      SimpleQuery cb -> SimpleQuery $ \vset block ->
                           let addChanges = case (elem Add $ blockData block, elem Del $ blockData block) of
                                 (True, False) -> [ChangeValidator dynamicValidatorPubKey 10]
                                 (False, True) -> [RemoveValidator dynamicValidatorPubKey]
                                 _ -> []
-                          in fmap (addChanges ++) $ cb block
+                          in (addChanges ++) <$> cb vset block
                       MixedQuery _ -> error "mixed query in test!"
-                , nodeBlockGenerator = \height time maybeCommit byzantineEvidence -> do
-                  (block', changes) <- nodeBlockGenerator generatedLogic height time maybeCommit byzantineEvidence
+                , nodeBlockGenerator = \height time maybeCommit byzantineEvidence vSet -> do
+                  (block', changes) <- nodeBlockGenerator generatedLogic height time maybeCommit byzantineEvidence vSet
                   let block = OriginMark nodeIndex : block'
                   case height of
                     Height 20 -> return (Add : block, ChangeValidator dynamicValidatorPubKey 10 : changes)
                     Height 40 -> return (Del : block, RemoveValidator dynamicValidatorPubKey : changes)
                     _         -> return (block, changes)
-                , nodeBlockValidation = \block -> do
+                , nodeBlockValidation = \valSet block -> do
                     let header = blockHeader block
                         txs = blockData block
                         h = headerHeight header
@@ -203,7 +203,7 @@ testAddRemValidators = do
                     when (h > Height 60) $ throwM Abort
                     when (nodeIndex < 4) $ liftIO $ modifyMVar_ summary $
                       return . (|| blockContainsDynamic)
-                    changes <- nodeBlockValidation generatedLogic block
+                    changes <- nodeBlockValidation generatedLogic valSet block
                     let addChanges = case (elem Add $ blockData block, elem Del $ blockData block) of
                           (True, False) -> [ChangeValidator dynamicValidatorPubKey 10]
                           (False, True) -> [RemoveValidator dynamicValidatorPubKey]

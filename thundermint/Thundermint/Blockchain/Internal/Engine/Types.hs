@@ -154,11 +154,11 @@ instance DefaultConfig app => FromJSON (Configuration app) where
 -- | Callback which is called right after block is commited to
 --   database.
 data CommitCallback m alg a
-  = SimpleQuery !(Block alg a -> Query 'RW alg a [ValidatorChange alg])
+  = SimpleQuery !(ValidatorSet alg -> Block alg a -> Query 'RW alg a [ValidatorChange alg])
   -- ^ Query for updating user's state and to find out new set of
   --   validators. It's evaluated in the same transaction as block
   --   commit and thus atomic.
-  | MixedQuery  !(Block alg a -> QueryT 'RW alg a m [ValidatorChange alg])
+  | MixedQuery  !(ValidatorSet alg -> Block alg a -> QueryT 'RW alg a m [ValidatorChange alg])
   -- ^ Query which allow to mixed database updates with other
   --   actions. If @Query@ succeeds returned action is executed immediately
 
@@ -172,10 +172,11 @@ data AppLogic m alg a = AppLogic
                         -> Time
                         -> Maybe (Commit alg a)
                         -> [ByzantineEvidence alg a]
+                        -> ValidatorSet alg
                         -> m (a, [ValidatorChange alg])
     -- ^ Generate fresh block for proposal. It's called each time we
     --   need to create new block for proposal
-  , appValidationFun    :: Block alg a -> m (Maybe [ValidatorChange alg])
+  , appValidationFun    :: ValidatorSet alg -> Block alg a -> m (Maybe [ValidatorChange alg])
     -- ^ Function for validation of proposed block data. It returns
     --   change of validators for given block if it's valid and
     --   @Nothing@ if it's not.
@@ -205,13 +206,13 @@ hoistCommitCallback
   :: (Monad m)
   => (forall x. m x -> n x) -> CommitCallback m alg a -> CommitCallback n alg a
 hoistCommitCallback _   (SimpleQuery f) = SimpleQuery f
-hoistCommitCallback fun (MixedQuery  f) = MixedQuery $ fmap (hoist fun) f
+hoistCommitCallback fun (MixedQuery  f) = MixedQuery $ (fmap . fmap) (hoist fun) f
 
 
 hoistAppLogic :: (Monad m) => (forall x. m x -> n x) -> AppLogic m alg a -> AppLogic n alg a
 hoistAppLogic fun AppLogic{..} = AppLogic
-  { appBlockGenerator   = \h t c e -> fun $ appBlockGenerator h t c e
-  , appValidationFun    = fun . appValidationFun
+  { appBlockGenerator   = \h t c e v -> fun $ appBlockGenerator h t c e v
+  , appValidationFun    = \v b -> fun $ appValidationFun v b
   , appCommitQuery      = hoistCommitCallback   fun appCommitQuery
   }
 
