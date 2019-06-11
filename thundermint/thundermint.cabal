@@ -94,6 +94,7 @@ Library
                   Thundermint.P2P.Network.Internal.TLS
                   Thundermint.P2P.Network.Internal.TCP
                   Thundermint.P2P.Network.Internal.UDP
+                  Thundermint.P2P.Network.Internal.Mock
                   Thundermint.P2P.Network.Internal.Utils
                   Thundermint.P2P.Network.IpAddresses
                   Thundermint.P2P.Network.RealNetworkStub
