@@ -81,9 +81,6 @@ tests = testGroup "validators"
   , testCase "Double reference (4)" $ invalid [Validator v1 1, Validator v2 1]
       [ChangeValidator v1 2, ChangeValidator v1 3]
     -- Subtler invalid cases
-  , testCase "Can't leave empty validator sets" $ invalid
-      [Validator v1 1]
-      [RemoveValidator v1]
   , testCase "Noop is error" $ invalid
       [Validator v1 1]
       [ChangeValidator v1 1]
