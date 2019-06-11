@@ -161,7 +161,7 @@ decideNewBlock config appValidatorKey appSt@AppLogic{..} appCall@AppCallbacks{..
             case appCommitQuery of
               SimpleQuery callback -> do
                 r <- queryRW $ do storeCommit cmt b
-                                  vsetChange <- callback b
+                                  vsetChange <- callback (validatorSet hParam) b
                                   case changeValidators vsetChange (validatorSet hParam) of
                                     Just vset -> storeValSet b vset
                                     Nothing   -> fail ""
@@ -169,9 +169,9 @@ decideNewBlock config appValidatorKey appSt@AppLogic{..} appCall@AppCallbacks{..
                   Nothing -> error "Cannot write commit into database"
                   Just () -> return ()
               --
-              MixedQuery mcall -> do
+              MixedQuery callback -> do
                 r <- queryRWT $ do storeCommit cmt b
-                                   vsetChange <- mcall b
+                                   vsetChange <- callback (validatorSet hParam) b
                                    case changeValidators vsetChange (validatorSet hParam) of
                                      Just vset -> storeValSet b vset
                                      Nothing   -> fail ""
@@ -335,7 +335,7 @@ makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{
           Nothing -> return UnseenProposal
           Just b  -> do
             inconsistencies <- lift $ checkProposedBlock nH b
-            mvalChange      <- lift $ appValidationFun b
+            mvalChange      <- lift $ appValidationFun valSet b
             case () of
               _| not (null inconsistencies) -> do
                    logger ErrorS "Proposed block has inconsistencies"
@@ -449,7 +449,7 @@ makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{
           _        -> case join $ liftA3 commitTime oldValSet (pure bchTime) commit of
             Just t  -> return t
             Nothing -> error "Corrupted commit. Cannot generate block"
-        (bData, valCh) <- appBlockGenerator (succ h) currentT commit []
+        (bData, valCh) <- appBlockGenerator (succ h) currentT commit [] valSet
         let block = Block
               { blockHeader     = Header
                   { headerChainID        = headerChainID $ blockHeader genesis
