@@ -18,10 +18,7 @@ module TM.Validators (tests) where
 -- import Control.Monad.Fail
 -- import Control.Monad.IO.Class
 
-
 import qualified Data.Map.Strict as Map
-
--- import Data.Typeable (Proxy(..))
 
 -- import GHC.Generics
 
@@ -178,7 +175,7 @@ testAddRemValidators = do
       -> m [m ()]
     mkTestNode net summary (conn, (TestNetLinkDescription{..}, privKey)) = do
         let nodeIndex = ncFrom
-        initDatabase conn Proxy (makeGenesis "TESTVALS" (Time 0) [] validatorSet) validatorSet
+        initDatabase conn (makeGenesis "TESTVALS" (Time 0) [] validatorSet) validatorSet
         --
         let run = runTracerT ncCallback . runNoLogsT . runDBT conn
         fmap (map run) $ run $ do

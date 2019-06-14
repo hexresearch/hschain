@@ -23,7 +23,6 @@ module Thundermint.Run (
   , Topology(..)
   , NodeLogic(..)
   , logicFromFold
-  , logicFromPersistent
   , NodeDescription(..)
   , BlockchainNet(..)
   , runNode
@@ -48,7 +47,6 @@ import Thundermint.Blockchain.Internal.Engine
 import Thundermint.Blockchain.Interpretation
 import Thundermint.Blockchain.Internal.Engine.Types
 import Thundermint.Types
-import Thundermint.Control
 import Thundermint.Crypto
 import Thundermint.Debug.Trace
 import Thundermint.Logger
@@ -57,7 +55,6 @@ import Thundermint.Mock.Types
 import Thundermint.P2P
 import Thundermint.P2P.Network
 import Thundermint.Store
-import Thundermint.Store.SQL
 import Thundermint.Store.STM
 import Thundermint.Monitoring
 import Thundermint.Utils
@@ -113,43 +110,6 @@ logicFromFold transitions@BlockFold{..} = do
                      , nodeMempool         = mempool
                      }
          )
-
-logicFromPersistent
-  :: (MonadDB m alg a, MonadIO m, BlockData a, Show (TX a), Ord (TX a), Crypto alg, FloatOut dct)
-  => PersistentState dct alg a
-  -> m (NodeLogic m alg a)
-logicFromPersistent PersistentState{..} = do
-  -- Create mempool
-  let checkTx tx = do
-        -- FIXME: we need real height here
-        r <- queryRO $ runEphemeralQ persistedData (processTxDB (Height 1) tx)
-        return $! isJust r
-  mempool <- newMempool checkTx
-  -- Now we need to update state using genesis block.
-  do r <- queryRW $ do
-       Just genesis <- retrieveBlock (Height 0)
-       runBlockUpdate (Height 0) persistedData $ processBlockDB genesis
-     case r of
-       Just () -> return ()
-       Nothing -> error "Cannot initialize persistent storage"
-  --
-  return NodeLogic
-    { nodeBlockValidation = \valset b -> do
-        r <- queryRO $ runEphemeralQ persistedData (processBlockDB b)
-        return $! valset <$ r
-    , nodeCommitQuery     = SimpleQuery $ \valset b -> do
-        runBlockUpdate (headerHeight (blockHeader b)) persistedData $ processBlockDB b
-        return valset
-    , nodeBlockGenerator  = \h _ _ _ valset -> do
-        txs <- peekNTransactions mempool Nothing
-        r   <- queryRO $ runEphemeralQ persistedData (transactionsToBlockDB h txs)
-        case r of
-          -- FIXME: This should not happen!
-          Nothing -> error "Cannot generate block!"
-          Just a  -> return (a, valset)
-    , nodeMempool         = mempool
-    }
-
 
 
 -- | Specification of node

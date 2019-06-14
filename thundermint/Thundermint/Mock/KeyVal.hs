@@ -15,7 +15,6 @@ import Control.Monad
 import Control.Monad.Catch
 import Data.Int
 import Data.List
-import Data.Typeable   (Proxy(..))
 
 import Data.Map        (Map)
 import System.FilePath ((</>))
@@ -88,7 +87,7 @@ interpretSpec maxH prefix NetSpec{..} = do
                   ]
     -- Create storage
     conn <- openConnection (maybe ":memory:" (prefix </>) nspecDbName)
-    initDatabase conn Proxy (genesisBlock validatorSet) validatorSet
+    initDatabase conn (genesisBlock validatorSet) validatorSet
     runDBT conn $ do
       hChain <- queryRO blockchainHeight
       return ( connectionRO conn

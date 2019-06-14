@@ -88,8 +88,7 @@ import Control.Monad.Trans.Writer
 
 import Data.Foldable             (forM_)
 import Data.Maybe                (isNothing, maybe)
-import Data.Text                 (isPrefixOf, Text)
-import Data.List                 (nub)
+import Data.Text                 (Text)
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Aeson         as JSON
 import qualified Data.Aeson.TH      as JSON
@@ -98,14 +97,13 @@ import GHC.Generics              (Generic)
 
 import Thundermint.Types.Blockchain
 import Thundermint.Blockchain.Internal.Types
-import Thundermint.Control                (MonadFork,FloatOut(..),foldF)
+import Thundermint.Control                (MonadFork)
 import Thundermint.Crypto
 import Thundermint.Crypto.Containers
 import Thundermint.Debug.Trace
 import Thundermint.Logger                 (MonadLogger)
 import Thundermint.Store.Internal.Query
 import Thundermint.Store.Internal.BlockDB
-import Thundermint.Store.SQL
 import Thundermint.Types.Validators
 
 ----------------------------------------------------------------
@@ -139,35 +137,24 @@ instance MonadIO m => MonadDB (DBT 'RW alg a m) alg a where
 -- | Helper function which opens database, initializes it and ensures
 --   that it's closed on function exit
 withDatabase
-  :: (MonadIO m, MonadMask m, FloatOut dct, Crypto alg, Serialise a, Eq a, Show a, Eq (PublicKey alg))
+  :: (MonadIO m, MonadMask m, Crypto alg, Serialise a, Eq a, Show a, Eq (PublicKey alg))
   => FilePath         -- ^ Path to the database
-  -> dct Persistent   -- ^ Users state. If no state is stored in the
   -> Block alg a      -- ^ Genesis block
   -> ValidatorSet alg -- ^ Initial validators
   -> (Connection 'RW alg a -> m x) -> m x
-withDatabase path dct genesis vals cont
-  = withConnection path $ \c -> initDatabase c dct genesis vals >> cont c
+withDatabase path genesis vals cont
+  = withConnection path $ \c -> initDatabase c genesis vals >> cont c
 
 -- | Initialize all required tables in database.
 initDatabase
-  :: (MonadIO m, FloatOut dct, Crypto alg, Serialise a, Eq a, Show a, Eq (PublicKey alg))
+  :: (MonadIO m, Crypto alg, Serialise a, Eq a, Show a, Eq (PublicKey alg))
   => Connection 'RW alg a  -- ^ Opened connection to database
-  -> dct Persistent        -- ^ Users state. If no state is stored in the
   -> Block alg a           -- ^ Genesis block
   -> ValidatorSet alg      -- ^ Initial validators
   -> m ()
-initDatabase c dct genesis vals = do
-  -- 1. Check that all tables has distinct names
-  let names = foldF ((:[]) . persistentTableName) dct
-  case () of
-    _| names /= nub names               -> error "Duplicate table names"
-     | any (isPrefixOf "thm_")    names -> error "'thm_' is not acceptable prefix for table"
-     | any (isPrefixOf "sqlite_") names -> error "'sqlite_' is not acceptable prefix for table"
-     | otherwise                        -> return ()
+initDatabase c genesis vals = do
   -- 2. Create tables for block
-  r <- runQueryRW c $ do
-    initializeBlockhainTables genesis vals
-    traverseEff persistentCreateTable dct
+  r <- runQueryRW c $ initializeBlockhainTables genesis vals
   case r of
     -- FIXME: Resource leak!
     Nothing -> error "Cannot initialize tables!"
