@@ -101,21 +101,21 @@ connectTls :: MonadIO m =>
            -> Net.Socket
            -> m P2PConnection
 connectTls creds host port sock = do
-        store <- liftIO $ getSystemCertificateStore
+        store <- liftIO getSystemCertificateStore
         ctx <- liftIO $ TLS.contextNew sock (mkClientParams (fromJust  host) ( fromJust port) creds store)
         TLS.handshake ctx
         liftIO $ TLS.contextHookSetLogging ctx getLogging
-        conn <- applyConn ctx
-        return $ conn
+        applyConn ctx
 
 
-acceptTls :: (MonadMask m, MonadIO m) => TLS.Credential -> Net.Socket -> m (P2PConnection, NetAddr)
-acceptTls creds sock = do
+acceptTls :: (MonadMask m, MonadIO m)
+          => TLS.Credential -> Net.Socket -> m (P2PConnection, NetAddr)
+acceptTls creds sock =
     bracketOnError
         (liftIO $ Net.accept sock)
         (\(s,_) -> liftIO $ Net.close s)
         (\(s, addr) -> do
-           store <- liftIO $ getSystemCertificateStore
+           store <- liftIO getSystemCertificateStore
            ctx <- TLS.contextNew s (mkServerParams creds  (Just store))
            liftIO $ TLS.contextHookSetLogging ctx getLogging
            TLS.handshake ctx
@@ -129,7 +129,7 @@ acceptTls creds sock = do
 -- errors which might happen if the remote peer closes the connection first.
 -- from Network.Simple.TCP.TLS module
 silentBye :: TLS.Context -> IO ()
-silentBye ctx = do
+silentBye ctx =
     E.catch (TLS.bye ctx) $ \e -> case e of
         Eg.IOError{ Eg.ioe_type  = Eg.ResourceVanished
                   , Eg.ioe_errno = Just ioe
