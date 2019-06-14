@@ -21,7 +21,6 @@ import Control.Monad.IO.Class
 import Control.Concurrent (threadDelay)
 import Control.Retry      (RetryPolicy, constantDelay, limitRetries, recovering)
 import Data.Monoid        ((<>))
-import Data.Proxy         (Proxy(..))
 
 import qualified Control.Concurrent.Async as Async
 import qualified Control.Exception        as E
@@ -140,7 +139,7 @@ createTestNetworkWithValidatorsSetAndConfig validatorsSet cfg desc = do
       -> m [m ()]
     mkTestNode net (conn, TestNetLinkDescription{..}) = do
         let validatorSet = makeValidatorSetFromPriv validatorsSet
-        initDatabase conn Proxy (genesisBlock validatorSet) validatorSet
+        initDatabase conn (genesisBlock validatorSet) validatorSet
         --
         let run = runTracerT ncCallback . runNoLogsT . runDBT conn
         fmap (map run) $ run $ do

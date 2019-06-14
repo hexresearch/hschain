@@ -16,11 +16,6 @@ module Thundermint.Mock.Coin (
     -- * Pure state
   , CoinState(..)
   , transitions
-    -- * DB based state
-  , CoinStateDB(..)
-  , transitionsDB
-  , unspentOutputsLens
-  , coinDict
     -- * Transaction generator
   , GeneratorSpec(..)
   , defaultGenerator
@@ -48,11 +43,9 @@ import Codec.Serialise      (Serialise,serialise)
 import qualified Data.Aeson as JSON
 import Data.ByteString.Lazy (toStrict)
 import Data.Foldable
-import Data.Functor.Compose
 import Data.Int
 import Data.Map             (Map)
 import qualified Data.Map.Strict  as Map
-import Lens.Micro
 import System.Random   (randomRIO)
 import GHC.Generics    (Generic)
 
@@ -67,9 +60,7 @@ import Thundermint.Crypto.SHA
 import Thundermint.Debug.Trace
 import Thundermint.Logger
 import Thundermint.Run
-import Thundermint.Store.SQL
 import Thundermint.Store
-import Thundermint.Store.Internal.Types
 import Thundermint.Store.Internal.Query (connectionRO)
 import Thundermint.Mock.KeyList (privateKeyList)
 import Thundermint.Mock.Types
@@ -118,7 +109,8 @@ newtype CoinState = CoinState
     --   transaction hash and output index to amount of coins stored
     --   there.
   }
-  deriving (Show, NFData, Generic)
+  deriving (Show, NFData, Generic, Serialise)
+
 
 processDeposit :: Tx -> CoinState -> Maybe CoinState
 processDeposit Send{}                _             = Nothing
@@ -175,91 +167,6 @@ transitions = BlockFold
 
 
 ----------------------------------------------------------------
--- DB based API
-----------------------------------------------------------------
-
-newtype CoinStateDB f = CoinStateDB
-  { unspentOutputsDB :: f (PMap (Hash Alg, Int) (PublicKey Alg, Integer))
-  }
-
-instance FunctorF CoinStateDB where
-  fmapF f (CoinStateDB u) = CoinStateDB (f u)
-
-instance FloatOut CoinStateDB where
-  floatOut (CoinStateDB (Compose u)) = fmap CoinStateDB u
-  traverseEff f (CoinStateDB u) = f u
-
-transitionsDB :: PersistentState CoinStateDB Alg [Tx]
-transitionsDB = PersistentState
-  { processTxDB           = \_ -> processTransactionDB
-  , processBlockDB        = \b -> forM_ (blockData b) $ processDB (headerHeight (blockHeader b))
-  , transactionsToBlockDB = \h ->
-      let selectTx []     = return []
-          selectTx (t:tx) = optional (processDB h t) >>= \case
-            Nothing -> selectTx tx
-            Just () -> (t :) <$> selectTx tx
-      in selectTx
-  -- DB schema
-  , persistedData = coinDict
-  }
-
-coinDict :: CoinStateDB Persistent
-coinDict = CoinStateDB
-  { unspentOutputsDB = wrap $ PMap { pmapTableName = "utxo"
-                                   , pmapEncodingK = encodingCBOR
-                                   , pmapEncodingV = encodingCBOR
-                                   }
-  }
-
-processDB
-  :: (ExecutorRW q, MonadFail (q CoinStateDB))
-  => Height
-  -> Tx
-  -> q CoinStateDB ()
-processDB (Height 0) (Deposit pk nCoin) = processDepositDB pk nCoin
-processDB _          tx                 = processTransactionDB tx
-
-processDepositDB :: (ExecutorRW q)
-                 => PublicKey Alg -> Integer -> q CoinStateDB ()
-processDepositDB pk nCoin = do
-  storeKey unspentOutputsLens (hash (Deposit pk nCoin),0) (pk,nCoin)
-
-
-
-processTransactionDB
-  :: (MonadFail (q CoinStateDB), ExecutorRW q)
-  => Tx
-  -> q CoinStateDB ()
-processTransactionDB Deposit{} = Control.Monad.Fail.fail ""
-processTransactionDB transaction@(Send pubK sig txSend@TxSend{..}) = do
-  -- Signature must be valid
-  check $ verifyCborSignature pubK txSend sig
-  -- Inputs and outputs are not null
-  check $ not $ null txInputs
-  check $ not $ null txOutputs
-  -- Outputs are all positive
-  forM_ txOutputs $ \(_,n) -> check (n > 0)
-  -- Inputs are owned Spend and generated amount match and transaction
-  -- issuer have rights to funds
-  inputs <- forM txInputs $ \i -> do
-    Just (pk,n) <- lookupKey unspentOutputsLens i
-    check $ pk == pubK
-    return n
-  check (sum inputs == sum (map snd txOutputs))
-  -- Update application state
-  let txHash = hashBlob $ toStrict $ serialise transaction
-  forM_ txInputs  $ dropKey  unspentOutputsLens
-  forM_ ([0..] `zip` txOutputs) $ \(i,out) ->
-    storeKey unspentOutputsLens (txHash,i) out
-  where
-    check True  = return ()
-    check False = Control.Monad.Fail.fail ""
-
-unspentOutputsLens :: Lens' (CoinStateDB f) (f (PMap (Hash Alg, Int) (PublicKey Alg, Integer)))
-unspentOutputsLens = lens unspentOutputsDB (const CoinStateDB)
-
-
-----------------------------------------------------------------
 -- Transaction generator
 ----------------------------------------------------------------
 
@@ -313,8 +220,8 @@ genesisFromGenerator validatorSet GeneratorSpec{..} =
 -- | Generate transaction. This implementation is really inefficient
 --   since it will materialize all unspent outputs into memory and
 --   shouldn't be used when number of wallets and coins is high
-generateTransaction :: GeneratorSpec -> IO (EphemeralQ Alg [Tx] CoinStateDB Tx)
-generateTransaction GeneratorSpec{..} = do
+generateTransaction :: GeneratorSpec -> CoinState -> IO Tx
+generateTransaction GeneratorSpec{..} (CoinState utxo)= do
   -- Pick private key
   privK <- do i <- randomRIO (0, length genPrivateKeys - 1)
               return (genPrivateKeys !! i)
@@ -324,18 +231,16 @@ generateTransaction GeneratorSpec{..} = do
                return (genInitialKeys !! i)
   amount <- randomRIO (0,20)
   -- Create transaction
-  return $ do
-    utxo <- materializePMap unspentOutputsLens
-    let inputs = findInputs amount [ (inp, n)
-                                   | (inp, (pk,n)) <- Map.toList utxo
-                                   , pk == pubK
-                                   ]
-        tx     = TxSend { txInputs  = map fst inputs
-                        , txOutputs = [ (target, amount)
-                                      , (pubK  , sum (map snd inputs) - amount)
-                                      ]
-                        }
-    return $ Send pubK (signBlob privK $ toStrict $ serialise tx) tx
+  let inputs = findInputs amount [ (inp, n)
+                                 | (inp, (pk,n)) <- Map.toList utxo
+                                 , pk == pubK
+                                 ]
+      tx     = TxSend { txInputs  = map fst inputs
+                      , txOutputs = [ (target, amount)
+                                    , (pubK  , sum (map snd inputs) - amount)
+                                    ]
+                      }
+  return $ Send pubK (signBlob privK $ toStrict $ serialise tx) tx
   where
     nPK  = length genInitialKeys
 
@@ -343,12 +248,13 @@ generateTransaction GeneratorSpec{..} = do
 -- | Generate transaction indefinitely
 transactionGenerator
   :: (MonadIO m, MonadDB m Alg [Tx], MonadFail m)
-  => GeneratorSpec -> (Tx -> m ()) -> m ()
-transactionGenerator gen push = forever $ do
-  txGen   <- liftIO $ generateTransaction gen
-  Just tx <- queryRO
-           $ runEphemeralQ coinDict
-           $ txGen
+  => GeneratorSpec
+  -> BChState m CoinState
+  -> (Tx -> m ())
+  -> m ()
+transactionGenerator gen bchState push = forever $ do
+  st <- currentState bchState
+  tx <- liftIO $ generateTransaction gen st
   push tx
   liftIO $ threadDelay (genDelay gen * 1000)
 
@@ -381,14 +287,14 @@ interpretSpec
 interpretSpec maxHeight genSpec validatorSet net cfg NodeSpec{..} = do
   -- Allocate storage for node
   conn <- openConnection (maybe ":memory:" id nspecDbName)
-  initDatabase conn coinDict genesisBlock validatorSet
+  initDatabase conn genesisBlock validatorSet
   return
     ( connectionRO conn
     , runDBT conn $ do
-        logic  <- logicFromPersistent transitionsDB
+        (bchState,logic) <- logicFromFold transitions
         -- Transactions generator
         cursor <- getMempoolCursor $ nodeMempool logic
-        let generator = transactionGenerator genSpec (void . pushTransaction cursor)
+        let generator = transactionGenerator genSpec bchState (void . pushTransaction cursor)
         acts <- runNode cfg net
           NodeDescription
             { nodeValidationKey = nspecPrivKey
@@ -396,7 +302,7 @@ interpretSpec maxHeight genSpec validatorSet net cfg NodeSpec{..} = do
                                <> nonemptyMempoolCallback (nodeMempool logic)
             }
           logic
-        runConcurrently (generator : acts)
+        runConcurrently ( generator : acts)
     )
   where
     genesisBlock :: Block Alg [Tx]
