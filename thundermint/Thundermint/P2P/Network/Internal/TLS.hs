@@ -11,15 +11,16 @@ module Thundermint.P2P.Network.Internal.TLS (
   ) where
 
 import Codec.Serialise
-import Control.Monad            (when)
+import Control.Arrow            (first)
+import Control.Monad            (when, forM, join)
 import Control.Monad.Catch      (bracketOnError, throwM, MonadMask)
+import Control.Monad.Fix        (fix)
 import Control.Monad.IO.Class   (MonadIO, liftIO)
 import Data.ByteString.Internal (ByteString(..))
 import Data.Default.Class       (def)
 import Data.List                (find)
 import Data.Maybe               (fromJust)
 import Data.Monoid              ((<>))
-import Data.Word                (Word32)
 import Foreign.C.Error          (Errno(Errno), ePIPE)
 import System.IO.Error          (isEOFError)
 import System.Timeout           (timeout)
@@ -57,7 +58,7 @@ newNetworkTls creds ourPeerInfo = (realNetworkStub ourPeerInfo)
         _ | Just a <- find isIPv6addr addrs -> return a
           | a:_    <- addrs                 -> return a
           | otherwise                       -> throwM NoAddressAvailable
-      liftIO $ listenerTls creds addr
+      liftIO $ listenerTls ourPeerInfo creds addr
   --
   , connect  = \addr -> do
       let hints = Just Net.defaultHints
@@ -75,7 +76,7 @@ newNetworkTls creds ourPeerInfo = (realNetworkStub ourPeerInfo)
         liftIO $ throwNothingM ConnectionTimedOut
                $ timeout tenSec
                $ Net.connect sock $ netAddrToSockAddr addr
-        connectTls creds hostName serviceName' sock
+        connectTls ourPeerInfo creds hostName serviceName' sock
   }
   where
     serviceName = show $ piPeerPort ourPeerInfo
@@ -83,34 +84,38 @@ newNetworkTls creds ourPeerInfo = (realNetworkStub ourPeerInfo)
 
 listenerTls
   :: (MonadIO m, MonadMask m)
-  => TLS.Credential -> Net.AddrInfo -> IO (m (), m (P2PConnection, NetAddr))
-listenerTls creds addr =
+  => PeerInfo
+  -> TLS.Credential
+  -> Net.AddrInfo
+  -> IO (m (), m (P2PConnection, NetAddr))
+listenerTls selfPI creds addr =
   bracketOnError (newSocket addr) Net.close $ \sock -> do
     when (isIPv6addr addr) $
       Net.setSocketOption sock Net.IPv6Only 0
     Net.bind sock (Net.addrAddress addr)
     Net.listen sock 5
     return ( liftIO $ Net.close sock
-           , acceptTls creds sock
+           , acceptTls selfPI creds sock
            )
 
-connectTls :: MonadIO m =>
-              TLS.Credential
+connectTls :: MonadIO m
+           => PeerInfo
+           -> TLS.Credential
            -> Maybe Net.HostName
            -> Maybe Net.ServiceName
            -> Net.Socket
            -> m P2PConnection
-connectTls creds host port sock = do
+connectTls selfPI creds host port sock = do
         store <- liftIO getSystemCertificateStore
         ctx <- liftIO $ TLS.contextNew sock (mkClientParams (fromJust  host) ( fromJust port) creds store)
         TLS.handshake ctx
         liftIO $ TLS.contextHookSetLogging ctx getLogging
-        applyConn ctx
+        applyConn ctx selfPI
 
 
 acceptTls :: (MonadMask m, MonadIO m)
-          => TLS.Credential -> Net.Socket -> m (P2PConnection, NetAddr)
-acceptTls creds sock =
+          => PeerInfo -> TLS.Credential -> Net.Socket -> m (P2PConnection, NetAddr)
+acceptTls selfPI creds sock =
     bracketOnError
         (liftIO $ Net.accept sock)
         (\(s,_) -> liftIO $ Net.close s)
@@ -119,8 +124,8 @@ acceptTls creds sock =
            ctx <- TLS.contextNew s (mkServerParams creds  (Just store))
            liftIO $ TLS.contextHookSetLogging ctx getLogging
            TLS.handshake ctx
-           cnn <- applyConn ctx
-           return $ (cnn, sockAddrToNetAddr addr)
+           cnn <- applyConn ctx selfPI
+           return (cnn, sockAddrToNetAddr addr)
 
         )
 
@@ -137,8 +142,9 @@ silentBye ctx =
           -> return ()
         _ -> E.throwIO e
 
-setProperPeerInfo :: MonadIO m => P2PConnection -> m P2PConnection
-setProperPeerInfo conn@P2PConnection{..} = do
+setProperPeerInfo :: MonadIO m => PeerInfo -> P2PConnection -> m P2PConnection
+setProperPeerInfo selfPI conn@P2PConnection{..} = do
+    send $ serialise selfPI
     encodedPeerInfo <- recv
     case encodedPeerInfo of
       Nothing -> fail "connection dropped before receiving peer info"
@@ -146,87 +152,82 @@ setProperPeerInfo conn@P2PConnection{..} = do
         Left err -> fail ("unable to deserealize peer info: " ++ show err)
         Right peerInfo -> return $ conn { connectedPeer = peerInfo }
 
-applyConn :: MonadIO m => TLS.Context -> m P2PConnection
-applyConn context = do
+applyConn :: MonadIO m => TLS.Context -> PeerInfo -> m P2PConnection
+applyConn context selfPI = do
     ref <- liftIO $ I.newIORef ""
-    setProperPeerInfo $ P2PConnection (tlsSend context) (tlsRecv context ref) (liftIO $ tlsClose context)
-      (PeerInfo (PeerId 0) 0 0)
+    setProperPeerInfo selfPI $ P2PConnection (tlsSend context)
+                                             (tlsRecv context ref)
+                                             (liftIO $ tlsClose context)
+                                             (PeerInfo (PeerId 0) 0 0)
+  where 
+    tlsClose :: TLS.Context -> IO ()
+    tlsClose ctx = silentBye ctx `E.catch` \(_ :: E.IOException) -> pure ()
 
-        where
-          tlsClose ctx = (silentBye ctx `E.catch` \(_ :: E.IOException) -> pure ())
-
-          tlsRecv ctx ref = liftIO $ do
-            header <- recvBufT' ctx ref headerSize
-            if LBS.null header
-            then return Nothing
-            else let len = decodeWord16BE header
-                 in case len of
-                      Just n  -> Just <$> (recvBufT' ctx ref (fromIntegral n))
-                      Nothing -> return Nothing
-
-          tlsSend ctx =  \s -> TLS.sendData ctx (BB.toLazyByteString $ toFrame s)
-                 where
-                   toFrame msg = let len =  fromIntegral (LBS.length msg) :: Word32
-                                     hexLen = BB.word32BE len
-                                 in (hexLen <> BB.lazyByteString msg)
+    tlsRecv :: MonadIO m
+            => TLS.Context -> I.IORef ByteString -> m (Maybe LBS.ByteString)
+    tlsRecv ctx ref = liftIO $ do
+      -- FIXME: This function is not threadsafe. It is not a problem, because 
+      -- P2PConnection is not used concurrently now. To fix that this function
+      -- call should be exclusive. 
+      b0 <- I.readIORef ref
+      (mHeader, headerLeftover) <- recvAll ctx b0 headerSize
+      join.join <$> do
+        forM mHeader $ \ header ->
+          forM (decodeWord16BE header) $ \ n -> do
+            (result,leftover) <- recvAll ctx headerLeftover $ fromIntegral n
+            I.writeIORef ref leftover
+            return result
+            
+    tlsSend :: MonadIO m
+            => TLS.Context -> LBS.ByteString -> m ()
+    tlsSend ctx = TLS.sendData ctx . BB.toLazyByteString . toFrame
+      where
+        toFrame msg = let len = fromIntegral $ LBS.length msg
+                      in (BB.word32BE len <> BB.lazyByteString msg)
 
 -------------------------------------------------------------------------------
 -- framing for tls
 -------------------------------------------------------------------------------
-recvT :: I.IORef ByteString -> TLS.Context -> IO ByteString
-recvT cref ctx = do
-            cached <- I.readIORef cref
-            if cached /= "" then do
-                I.writeIORef cref ""
-                return cached
-              else
-                recvT' ctx
 
--- TLS version of recv (decrypting) without a cache.
-recvT' :: TLS.Context -> IO ByteString
-recvT' ctx =  E.handle onEOF go
-    where
-      onEOF e
-              | Just TLS.Error_EOF <- E.fromException e       = return BS.empty
-              | Just ioe <- E.fromException e, isEOFError ioe = return BS.empty
-              | otherwise                                   = E.throwIO e
-      go = do
-                x <- TLS.recvData ctx
-                if BS.null x then
-                    go
-                  else
-                    return x
-
--- TLS version of recvBuf with a cache for leftover input data.
-recvBufT' :: TLS.Context -> I.IORef ByteString -> Int -> IO LBS.ByteString
-recvBufT' ctx cref siz = do
-            cached <- I.readIORef cref
-            when(cached /= "") $ I.writeIORef cref ""
-            (ret, leftover) <- fill cached siz (recvT cref ctx)
-            I.writeIORef cref leftover
-            return ret
-
-
-
-fill :: BS.ByteString -> Int -> IO BS.ByteString -> IO (LBS.ByteString,BS.ByteString)
-fill bs0 siz0 tlsRecv
-  | siz0 <= len0 = do
-      let (bs, leftover) = BS.splitAt siz0 bs0
-      return (LBS.fromStrict bs, leftover)
-  | otherwise = do
-    loop bs0 (siz0 - len0)
+-- | Reads from TLS context specified bytes number taking in account leftovers
+recvAll :: TLS.Context
+        -> BS.ByteString
+        -> Int
+        -> IO (Maybe LBS.ByteString, BS.ByteString)
+recvAll ctx bs0 size0
+  | size0 <= len0 = return
+                  $ first (Just . LBS.fromStrict)
+                  $ BS.splitAt size0 bs0 
+  | otherwise     = fix go (BB.byteString bs0) (size0 - len0)
   where
     len0 = BS.length bs0
-    loop b  0   = return (LBS.fromStrict b, "")
-    loop buf siz = do
-      bs <- tlsRecv
-      let len = BS.length bs
-      if len == 0 then return ("", "")
-        else if (len <= siz) then do
-          loop (buf `BS.append` bs) (siz - len)
-        else do
-          let (bs1,bs2) = BS.splitAt siz bs
-          return (LBS.fromStrict (buf `BS.append` bs1), bs2)
+    go loop b sizeLeft = do
+      mBs <- recvT ctx
+      case mBs of
+        Nothing -> return (Nothing,"")
+        Just bs -> do
+          let receivedLen = BS.length bs
+              b'          = b <> BB.byteString bs
+          if receivedLen < sizeLeft
+             then
+               loop b' (sizeLeft - receivedLen)
+             else do
+               let (r, leftover) = LBS.splitAt (fromIntegral size0) $ BB.toLazyByteString b'
+               return (Just r, LBS.toStrict leftover)
+
+-- | recvData wrapper which converts EOF to Maybe ByteString
+recvT :: TLS.Context -> IO (Maybe ByteString)
+recvT ctx =  E.handle onEOF $ do
+    x <- TLS.recvData ctx
+    return $ if BS.null x
+                then Nothing -- never should happend
+                else Just x
+  where
+    onEOF e
+      | Just TLS.Error_EOF <- E.fromException e = return Nothing
+      | Just ioe <- E.fromException e
+      , isEOFError ioe                          = return Nothing
+      | otherwise                               = E.throwIO e
 
 -------------------------------------------------------------------------------
 -- debuger hooks
@@ -239,7 +240,7 @@ debug :: Bool
 ioDebug = False
 
 getLogging :: TLS.Logging
-getLogging = ioLogging $ packetLogging $ def
+getLogging = ioLogging $ packetLogging def
 
 packetLogging :: TLS.Logging -> TLS.Logging
 packetLogging logging

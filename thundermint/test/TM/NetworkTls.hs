@@ -16,9 +16,8 @@ import Data.Monoid            ((<>))
 
 import           Control.Exception          as E
 import qualified Data.ByteString.Lazy       as LBS
-import           Data.ByteString.Lazy.Char8 as LBC
+import qualified Data.ByteString.Lazy.Char8 as LBC
 
-import Thundermint.P2P
 import Thundermint.P2P.Network
 
 import TM.Util.Network
@@ -28,24 +27,19 @@ import TM.Util.Network
 tests :: TestTree
 tests =
     testGroup "Tls network test"
-                  [ testGroup "IPv4"
-                          [ testCase "tls ping-pong" $ withRetry pingPong  "127.0.0.1"
-                          , testCase "tls delayed write" $ withRetry delayedWrite "127.0.0.1"
-                          , testCase "tls framing: send big data" $ withRetry bigDataSend "127.0.0.1"
+                  [ testGroup group
+                          [ testCase "tls ping-pong" $ withRetryTLS address pingPong
+                          , testCase "tls delayed write" $ withRetryTLS address delayedWrite
+                          , testCase "tls framing: send big data" $ withRetryTLS address bigDataSend
                           ]
-                    , testGroup "IPv6"
-                          [ testCase "tls ping-pong" $ withRetry pingPong "::1"
-                          , testCase "tls delayed write" $ withRetry delayedWrite  "::1"
-                          , testCase "tls framing: send big data" $ withRetry bigDataSend "::1"
-                          ]
+                  | (group, address) <- [("IPv4", "127.0.0.1"), ("IPv6", "::1")]
                   ]
 
 
 -- | Simple test to ensure that real network works at all
-pingPong :: (NetAddr, NetworkAPI)
-         -> (NetAddr, NetworkAPI)
+pingPong :: NetPair
          -> IO ()
-pingPong (serverAddr, server) (_, client) = do
+pingPong ((serverAddr, server), (_, client)) = do
   let runServer NetworkAPI{..} =
         bracket listenOn fst $ \(_,accept) ->
           bracket accept (close . fst) $ \(conn,_) -> do
@@ -62,10 +56,9 @@ pingPong (serverAddr, server) (_, client) = do
 
 
 -- | Simple test to ensure that framing works
-bigDataSend :: (NetAddr, NetworkAPI)
-         -> (NetAddr, NetworkAPI)
-         -> IO ()
-bigDataSend (serverAddr, server) (_, client) = do
+bigDataSend :: NetPair
+            -> IO ()
+bigDataSend ((serverAddr, server), (_, client)) = do
   let runServer NetworkAPI{..} =
         bracket listenOn fst $ \(_,accept) ->
           bracket accept (close . fst) $ \(conn,_) -> do
@@ -74,9 +67,9 @@ bigDataSend (serverAddr, server) (_, client) = do
   let runClient NetworkAPI{..} = do
         threadDelay 10e3
         bracket (connect serverAddr) close $ \conn -> do
-          let sbuf0 = LBC.take 2100 $ LBC.repeat 'A'
-          let sbuf1 = LBC.take 1000 $ LBC.repeat 'B'
-          let sbuf2 = LBC.take 3000 $ LBC.repeat 'C'
+          let sbuf0 = LBC.take 21000 $ LBC.repeat 'A'
+          let sbuf1 = LBC.take 10000 $ LBC.repeat 'B'
+          let sbuf2 = LBC.take 30000 $ LBC.repeat 'C'
           let sbuf = sbuf0 <> sbuf1 <> sbuf2
           send conn sbuf
           bs <- recv conn

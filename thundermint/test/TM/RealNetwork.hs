@@ -1,7 +1,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 -- |
 module TM.RealNetwork ( realNetPair
-                      , realTlsNetPair ) where
+                      , realTlsNetPair
+                      , NetPair ) where
 
 import System.Random
 
@@ -14,10 +15,11 @@ import qualified Network.Socket  as Net
 
 ----------------------------------------------------------------
 
+type NetPair = ((NetAddr, NetworkAPI), (NetAddr, NetworkAPI))
+
 realNetPair :: Maybe (Maybe Int)
             -> Net.HostName
-            -> IO ((NetAddr, NetworkAPI),
-                   (NetAddr, NetworkAPI))
+            -> IO NetPair
 realNetPair udpPortSpec host = do
     let useUDP = udpPortSpec /= Nothing
     n <- case udpPortSpec of
@@ -47,8 +49,7 @@ realNetPair udpPortSpec host = do
 
 
 realTlsNetPair :: Net.HostName
-               -> IO ((NetAddr, NetworkAPI),
-                      (NetAddr, NetworkAPI))
+               -> IO NetPair
 realTlsNetPair  host = do
     port1 <- (+32000) <$> randomRIO (1, 999)
     port2 <- (+33000) <$> randomRIO (1, 999)
