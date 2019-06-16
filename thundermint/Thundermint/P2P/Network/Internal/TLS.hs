@@ -10,7 +10,6 @@ module Thundermint.P2P.Network.Internal.TLS (
   , getCredentialFromBuffer
   ) where
 
-import Codec.Serialise
 import Control.Arrow            (first)
 import Control.Monad            (when, forM, join)
 import Control.Monad.Catch      (bracketOnError, throwM, MonadMask)
@@ -64,19 +63,20 @@ newNetworkTls creds ourPeerInfo = (realNetworkStub ourPeerInfo)
       let hints = Just Net.defaultHints
             { Net.addrSocketType = Net.Stream
             }
+          sockAddr = netAddrToSockAddr addr
       (hostName, serviceName') <- liftIO $ Net.getNameInfo
                                             [Net.NI_NUMERICHOST, Net.NI_NUMERICSERV]
                                             True
                                             True
-                                            $ netAddrToSockAddr addr
+                                            sockAddr
       addrInfo:_ <- liftIO $ Net.getAddrInfo hints hostName serviceName'
       bracketOnError (newSocket addrInfo) (liftIO . Net.close) $ \ sock -> do
         let tenSec = 10000000
         -- Waits for connection for 10 sec and throws `ConnectionTimedOut` exception
         liftIO $ throwNothingM ConnectionTimedOut
                $ timeout tenSec
-               $ Net.connect sock $ netAddrToSockAddr addr
-        connectTls ourPeerInfo creds hostName serviceName' sock
+               $ Net.connect sock sockAddr
+        connectTls ourPeerInfo creds hostName serviceName' sock addr
   }
   where
     serviceName = show $ piPeerPort ourPeerInfo
@@ -104,13 +104,14 @@ connectTls :: MonadIO m
            -> Maybe Net.HostName
            -> Maybe Net.ServiceName
            -> Net.Socket
+           -> NetAddr
            -> m P2PConnection
-connectTls selfPI creds host port sock = do
+connectTls selfPI creds host port sock addr = do
         store <- liftIO getSystemCertificateStore
         ctx <- liftIO $ TLS.contextNew sock (mkClientParams (fromJust  host) ( fromJust port) creds store)
         TLS.handshake ctx
         liftIO $ TLS.contextHookSetLogging ctx getLogging
-        applyConn ctx selfPI
+        applyConn ctx selfPI addr
 
 
 acceptTls :: (MonadMask m, MonadIO m)
@@ -124,8 +125,9 @@ acceptTls selfPI creds sock =
            ctx <- TLS.contextNew s (mkServerParams creds  (Just store))
            liftIO $ TLS.contextHookSetLogging ctx getLogging
            TLS.handshake ctx
-           cnn <- applyConn ctx selfPI
-           return (cnn, sockAddrToNetAddr addr)
+           let netAddr = sockAddrToNetAddr addr
+           cnn <- applyConn ctx selfPI netAddr
+           return (cnn, netAddr)
 
         )
 
@@ -142,23 +144,18 @@ silentBye ctx =
           -> return ()
         _ -> E.throwIO e
 
-setProperPeerInfo :: MonadIO m => PeerInfo -> P2PConnection -> m P2PConnection
-setProperPeerInfo selfPI conn@P2PConnection{..} = do
-    send $ serialise selfPI
-    encodedPeerInfo <- recv
-    case encodedPeerInfo of
-      Nothing -> fail "connection dropped before receiving peer info"
-      Just bs -> case deserialiseOrFail bs of
-        Left err -> fail ("unable to deserealize peer info: " ++ show err)
-        Right peerInfo -> return $ conn { connectedPeer = peerInfo }
-
-applyConn :: MonadIO m => TLS.Context -> PeerInfo -> m P2PConnection
-applyConn context selfPI = do
+applyConn :: MonadIO m
+          => TLS.Context
+          -> PeerInfo
+          -> NetAddr
+          -> m P2PConnection
+applyConn context selfPI addr = do
     ref <- liftIO $ I.newIORef ""
-    setProperPeerInfo selfPI $ P2PConnection (tlsSend context)
-                                             (tlsRecv context ref)
-                                             (liftIO $ tlsClose context)
-                                             (PeerInfo (PeerId 0) 0 0)
+    initialPeerExchange selfPI addr $
+      P2PConnection (tlsSend context)
+                    (tlsRecv context ref)
+                    (liftIO $ tlsClose context)
+                    (PeerInfo (PeerId 0) 0 0)
   where 
     tlsClose :: TLS.Context -> IO ()
     tlsClose ctx = silentBye ctx `E.catch` \(_ :: E.IOException) -> pure ()
