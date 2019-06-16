@@ -17,6 +17,7 @@ module Thundermint.P2P.Types (
   , NetworkPort
   , PeerId(..)
   , PeerInfo(..)
+  , defPeerInfo
   ) where
 
 import Codec.Serialise
@@ -57,6 +58,8 @@ data PeerInfo = PeerInfo
     deriving stock    (Show, Generic)
     deriving anyclass (Serialise)
 
+defPeerInfo :: PeerInfo
+defPeerInfo = PeerInfo (PeerId 0) 0 0
 
 ----------------------------------------------------------------
 --

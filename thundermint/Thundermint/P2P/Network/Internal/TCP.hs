@@ -1,8 +1,6 @@
 module Thundermint.P2P.Network.Internal.TCP 
   ( newNetworkTcp ) where
 
-import qualified Codec.Serialise as CBOR
-
 import Control.Monad          (when)
 import Control.Monad.Catch    (bracketOnError, throwM)
 import Control.Monad.IO.Class (liftIO, MonadIO)
@@ -24,7 +22,7 @@ import Thundermint.P2P.Types
 
 -- | API implementation for real tcp network
 newNetworkTcp :: PeerInfo -> NetworkAPI
-newNetworkTcp peerInfo = (realNetworkStub peerInfo)
+newNetworkTcp selfPeerInfo = (realNetworkStub selfPeerInfo)
   { listenOn = do
       let hints = Net.defaultHints
             { Net.addrFlags      = [Net.AI_PASSIVE]
@@ -41,47 +39,40 @@ newNetworkTcp peerInfo = (realNetworkStub peerInfo)
           Net.setSocketOption sock Net.IPv6Only 0
         Net.bind sock (Net.addrAddress addr)
         Net.listen sock 5
-        return (liftIO $ Net.close sock, accept peerInfo sock)
+        return (liftIO $ Net.close sock, accept selfPeerInfo sock)
   --
   , connect  = \addr -> do
       let hints = Just Net.defaultHints
             { Net.addrSocketType = Net.Stream
             }
+          sockAddr = netAddrToSockAddr addr
       (hostName, serviceName') <- liftIO $ Net.getNameInfo
                                             [Net.NI_NUMERICHOST, Net.NI_NUMERICSERV]
                                             True
                                             True
-                                            $ netAddrToSockAddr addr
+                                            sockAddr
       addrInfo:_ <- liftIO $ Net.getAddrInfo hints hostName serviceName'
       bracketOnError (newSocket addrInfo) (liftIO . Net.close) $ \ sock -> do
         let tenSec = 10000000
         -- Waits for connection for 10 sec and throws `ConnectionTimedOut` exception
         liftIO $ throwNothingM ConnectionTimedOut
                $ timeout tenSec
-               $ Net.connect sock $ netAddrToSockAddr addr
-        liftIO $ sendBS sock $ CBOR.serialise peerInfo
-        mbOtherPeerInfo <- liftIO $ recvBS sock
-        case fmap CBOR.deserialiseOrFail mbOtherPeerInfo of
-          Nothing -> fail $ "connection dropped while receiving peer info from " ++ show addr
-          Just (Left  _      ) -> fail $ "failure to decode PeerInfo from " ++ show addr
-          Just (Right otherPI) -> return $ applyConn sock otherPI
+               $ Net.connect sock sockAddr
+        initialPeerExchange selfPeerInfo addr $ applyConn sock
   }
  where
-  serviceName = show $ piPeerPort peerInfo
+  serviceName = show $ piPeerPort selfPeerInfo
 
-accept :: (MonadIO m, CBOR.Serialise a)
-       => a -> Net.Socket -> m (P2PConnection, NetAddr)
-accept peerInfo sock = do
+accept :: (MonadIO m)
+       => PeerInfo -> Net.Socket -> m (P2PConnection, NetAddr)
+accept selfPeerInfo sock = do
   (conn, addr) <- liftIO $ Net.accept sock
-  liftIO $ sendBS conn $ CBOR.serialise peerInfo
-  mbOtherPeerInfo <- liftIO $ recvBS conn
-  case fmap CBOR.deserialiseOrFail mbOtherPeerInfo of
-    Nothing -> fail $ "connection dropped while receiving peer info from " ++ show addr
-    Just (Left  _      ) -> fail $ "failure to decode PeerInfo from " ++ show addr
-    Just (Right otherPI) -> return (applyConn conn otherPI, sockAddrToNetAddr addr)
+  let netAddr = sockAddrToNetAddr addr
+  p2pConn <- initialPeerExchange selfPeerInfo netAddr $ applyConn conn
+  return (p2pConn, netAddr)
 
-applyConn :: Net.Socket -> PeerInfo -> P2PConnection
-applyConn conn = P2PConnection (liftIO . sendBS conn) (liftIO $ recvBS conn) (liftIO $ Net.close conn)
+applyConn :: Net.Socket -> P2PConnection
+applyConn conn = P2PConnection (liftIO . sendBS conn) (liftIO $ recvBS conn) (liftIO $ Net.close conn) defPeerInfo
 
 sendBS :: Net.Socket -> LBS.ByteString -> IO ()
 sendBS sock =  \s -> NetLBS.sendAll sock (BB.toLazyByteString $ toFrame s)
