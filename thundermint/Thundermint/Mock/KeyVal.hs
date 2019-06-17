@@ -100,17 +100,17 @@ interpretSpec maxH prefix NetSpec{..} = do
                        { appValidationFun  = \_ b -> do
                            let h = headerHeight $ blockHeader b
                            st <- stateAtH bchState h
-                           return $ [] <$ processBlock transitions CheckSignature b st
+                           return $ mempty <$ processBlock transitions CheckSignature b st
                        --
                        , appBlockGenerator = \h _ _ _ _ -> case nspecByzantine of
                            Just "InvalidBlock" -> do
-                             return ([("XXX", NetAddrV6 (1,2,3,4) 4433)], [])
+                             return ([("XXX", NetAddrV6 (1,2,3,4) 4433)], mempty)
                            _ -> do
                              st <- stateAtH bchState h
                              let Just k = find (`Map.notMember` st) ["K_" ++ show (n :: Int) | n <- [1 ..]]
-                             return ([(k, addr)], [])
+                             return ([(k, addr)], mempty)
                        --
-                       , appCommitQuery    = SimpleQuery $ \_ _ -> return []
+                       , appCommitQuery    = SimpleQuery $ \_ _ -> return mempty
                        }
                      appCall = maybe mempty (callbackAbortAtH . Height) maxH
                  let cfg = defCfg :: Configuration Example

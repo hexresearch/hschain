@@ -131,7 +131,7 @@ data Block alg a = Block
   , blockData       :: !a
     -- ^ Payload of block. Thundermint treats it completely opaque and
     --   rely on callback to do anything to it.
-  , blockValChange  :: [ValidatorChange alg]
+  , blockValChange  :: !(ValidatorChange alg)
     -- ^ Changes in set of validators as result of block evaluation
   , blockLastCommit :: !(Maybe (Commit alg a))
     -- ^ Commit information for previous block. Nothing iff block
@@ -163,13 +163,13 @@ makeGenesis chainID t dat valSet = Block
       , headerTime           = t
       , headerLastBlockID    = Nothing
       , headerValidatorsHash = hashed valSet
-      , headerValChangeHash  = hashed []
+      , headerValChangeHash  = hashed mempty
       , headerDataHash       = hashed dat
       , headerLastCommitHash = hashed Nothing
       , headerEvidenceHash   = hashed []
       }
   , blockData       = dat
-  , blockValChange  = []
+  , blockValChange  = mempty
   , blockLastCommit = Nothing
   , blockEvidence   = []
   }
@@ -190,7 +190,7 @@ data Header alg a = Header
 
   , headerDataHash       :: !(Hashed alg a)
     -- ^ Hash of block data
-  , headerValChangeHash  :: !(Hashed alg [ValidatorChange alg])
+  , headerValChangeHash  :: !(Hashed alg (ValidatorChange alg))
     -- ^ Hash of change in validators set.
   , headerLastCommitHash :: !(Hashed alg (Maybe (Commit alg a)))
     -- ^ Hash of last commit

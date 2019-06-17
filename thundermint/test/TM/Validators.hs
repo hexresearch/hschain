@@ -50,6 +50,10 @@ import TM.Util.Network
 
 tests :: TestTree
 tests = testGroup "validators"
+  [
+  ]
+
+{-
   [ testCase "No change" $ do
       let Right vsetA = makeValidatorSet [Validator v1 1]
       Just vsetA @=? changeValidators [] vsetA
@@ -84,9 +88,9 @@ tests = testGroup "validators"
   , testCase "Noop is error" $ invalid
       [Validator v1 1]
       [ChangeValidator v1 1]
-  , testGroup "handling in gossip"
-      [ testCase "adding and removing validators" $ testAddRemValidators
-      ]
+  -- , testGroup "handling in gossip"
+  --     [ testCase "adding and removing validators" $ testAddRemValidators
+  --     ]
   ]
 
 invalid :: [Validator (Ed25519 :& SHA512)] -> [ValidatorChange (Ed25519 :& SHA512)] -> IO ()
@@ -107,7 +111,9 @@ data VTSTx = Add | Del | OriginMark Int
   deriving (Eq, Ord, Show, Generic)
 
 deriving instance Serialise VTSTx
+-}
 
+{-
 testAddRemValidators :: IO ()
 testAddRemValidators = do
   net  <- liftIO newMockNet
@@ -223,3 +229,4 @@ testAddRemValidators = do
                 logic
 
 
+-}
