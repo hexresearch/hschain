@@ -151,7 +151,7 @@ instance (CryptoHash alg) => Arbitrary (Proposal alg a) where
   arbitrary = genericArbitrary
   shrink = genericShrink
 
-instance (Arbitrary (PublicKey alg)) => Arbitrary (ValidatorChange alg) where
+instance (Ord (PublicKey alg), Arbitrary (PublicKey alg)) => Arbitrary (ValidatorChange alg) where
   arbitrary = genericArbitrary
   shrink = genericShrink
 

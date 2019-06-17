@@ -30,21 +30,21 @@ module Thundermint.Types.Validators (
     -- * Change of validator sets
   , ValidatorChange(..)
   , changeValidators
+  , validatorsDifference
   ) where
 
 import Control.DeepSeq
-import Control.Monad
 import Data.Foldable
 
 import Data.IntSet  (IntSet)
 import Data.Map     (Map)
 import GHC.Generics (Generic, Generic1)
 
-import qualified Codec.Serialise as CBOR
-import qualified Data.Aeson      as JSON
-import qualified Data.IntSet     as ISet
-import qualified Data.Map        as Map
-import qualified Data.Set        as Set
+import qualified Codec.Serialise       as CBOR
+import qualified Data.Aeson            as JSON
+import qualified Data.IntSet           as ISet
+import qualified Data.Map              as Map
+import qualified Data.Map.Merge.Strict as Map
 
 import Thundermint.Crypto
 
@@ -163,19 +163,44 @@ emptyValidatorISet n
 -- Changes in validator sets
 ----------------------------------------------------------------
 
--- | Change in set of validators
-data ValidatorChange alg
-  = RemoveValidator !(PublicKey alg)
-  -- ^ Remove validator from set
-  | ChangeValidator !(PublicKey alg) !Integer
-  -- ^ Change validator voting power or add new validator
-  deriving (Show,Generic)
+-- | Change of validators. If voting power of validator is changed to
+--   zero it's removed from set.
+newtype ValidatorChange alg = ValidatorChange (Map (PublicKey alg) Integer)
+  deriving stock    (Show, Generic)
+  deriving newtype  (JSON.ToJSON, JSON.FromJSON)
+  deriving anyclass (CBOR.Serialise)
 
-deriving instance (Eq (PublicKey alg)) => Eq (ValidatorChange alg)
-instance NFData (PublicKey alg) => NFData (ValidatorChange alg)
-instance Crypto alg => CBOR.Serialise (ValidatorChange alg)
-instance Crypto alg => JSON.ToJSON    (ValidatorChange alg)
-instance Crypto alg => JSON.FromJSON  (ValidatorChange alg)
+deriving newtype instance Eq     (PublicKey alg) => Eq     (ValidatorChange alg)
+deriving newtype instance Ord    (PublicKey alg) => Ord    (ValidatorChange alg)
+deriving newtype instance NFData (PublicKey alg) => NFData (ValidatorChange alg)
+
+
+instance (Ord (PublicKey alg)) => Semigroup (ValidatorChange alg) where
+  ValidatorChange c1 <> ValidatorChange c2 = ValidatorChange (c2 <> c1) 
+
+instance (Ord (PublicKey alg)) => Monoid (ValidatorChange alg) where
+  mempty  = ValidatorChange mempty
+  mappend = (<>)
+
+
+-- | Compute difference between sets of validators 
+validatorsDifference
+  :: CryptoSign alg
+  => ValidatorSet alg -> ValidatorSet alg -> ValidatorChange alg
+validatorsDifference (ValidatorSet vsOld _ _) (ValidatorSet vsNew _ _)
+  = ValidatorChange change
+  where
+    change = Map.merge
+      (Map.traverseMissing $ \_ _ -> pure 0)
+      (Map.traverseMissing $ \_ n -> pure n)
+      (Map.zipWithMaybeAMatched match)
+      vmapOld vmapNew
+    match _ old new | old == new = pure Nothing
+                    | otherwise  = pure (Just new)
+    --
+    vmapOld   = toVMap vsOld
+    vmapNew   = toVMap vsNew
+    toVMap vs = Map.fromList [ (k, p) | Validator k p <- toList vs ]
 
 -- | Update set of validators according to diff. Function is rather
 --   restrictive. If any of following conditions is violated @Nothing@
@@ -191,32 +216,13 @@ instance Crypto alg => JSON.FromJSON  (ValidatorChange alg)
 --      end up storing useless data.
 changeValidators
   :: (Crypto alg)
-  => [ValidatorChange alg] -> ValidatorSet alg -> Maybe (ValidatorSet alg)
-changeValidators []      vset = Just vset
-changeValidators changes ValidatorSet{..} = do
-  -- No duplicate references to validator
-  guard $ length changes == Set.size (Set.fromList keys)
-  -- Update validator set
-  newVals      <- foldM step vsValidators changes
-  Right  vset' <- return $ makeValidatorSet newVals
-  return vset'
+  => ValidatorChange alg -> ValidatorSet alg -> Maybe (ValidatorSet alg)
+changeValidators (ValidatorChange delta) (ValidatorSet vset _ _)
+  = either (const Nothing) Just
+  $ makeValidatorSet
+  $ map (uncurry Validator)
+  $ Map.toList vmapNew
   where
-    step vals (RemoveValidator pk) = do
-      let addr = fingerprint pk
-      guard  $  Map.member addr vals
-      return $! Map.delete addr vals
-    step vals (ChangeValidator pk pwr)
-      | pwr <= 0 = Nothing
-      | isNoop addr pwr vals = Nothing
-      | otherwise            = return $! Map.insert addr (Validator pk pwr) vals
-      where
-        addr = fingerprint pk
-    --
-    isNoop addr pwr vals = case Map.lookup addr vals of
-      Just (Validator _ p) -> pwr == p
-      _                    -> False
-    --
-    keys = [ fingerprint $ case c of RemoveValidator pk   -> pk
-                                     ChangeValidator pk _ -> pk
-           | c <- changes
-           ]
+    vmapOld = Map.fromList [ (k, p) | Validator k p <- toList vset ]
+    vmapNew = Map.filter (>0)
+            $ delta <> vmapOld
