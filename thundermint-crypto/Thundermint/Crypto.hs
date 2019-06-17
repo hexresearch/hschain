@@ -223,6 +223,7 @@ data family PublicKey alg
 --   for generation of keys and coversion private to public.
 class ( ByteReprSized (PublicKey alg)
       , ByteReprSized (PrivKey   alg)
+      , Ord (PublicKey alg)
       ) => CryptoAsymmetric alg where
   -- | Compute public key from  private key
   publicKey       :: PrivKey   alg -> PublicKey alg
