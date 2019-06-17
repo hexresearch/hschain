@@ -18,6 +18,7 @@ Library
   Default-Language:    Haskell2010
   Build-Depends:       base              >=4.9 && <5
                      , bytestring
+                     , containers
                      , thundermint-crypto
                      , thundermint-types
                      , QuickCheck

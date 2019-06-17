@@ -9,8 +9,11 @@
 --
 module Thundermint.Arbitrary.Instances where
 
+import Control.Monad
 import Data.Maybe
 import Data.Proxy
+import Data.List     (nubBy)
+import Data.Function (on)
 import Test.QuickCheck.Arbitrary
 import Test.QuickCheck.Arbitrary.Generic
 import Test.QuickCheck.Gen
@@ -19,6 +22,7 @@ import Thundermint.Types
 import Thundermint.Crypto
 import Thundermint.Types.Network (NetAddr(..))
 
+import qualified Data.Map.Strict           as Map
 import qualified Data.ByteString           as BS
 import           Data.ByteString.Arbitrary as Arb
 import qualified Data.List.NonEmpty        as NE
@@ -152,11 +156,31 @@ instance (CryptoHash alg) => Arbitrary (Proposal alg a) where
   shrink = genericShrink
 
 instance (Ord (PublicKey alg), Arbitrary (PublicKey alg)) => Arbitrary (ValidatorChange alg) where
-  arbitrary = genericArbitrary
-  shrink = genericShrink
+  arbitrary = do
+    n     <- choose (0,5)
+    pairs <- replicateM n $ do
+      k <- arbitrary
+      p <- frequency [ (3, pure 0) , (1, pure 1) , (1, pure 2) , (1, pure 3) ]
+      return (k,p)
+    return $ ValidatorChange $ Map.fromList pairs
+
+instance (Eq (PublicKey alg), Crypto alg) => Arbitrary (ValidatorSet alg) where
+  arbitrary = do
+    n     <- choose (0,10)
+    pairs <- replicateM n arbitrary
+    let Right vset = makeValidatorSet $ nubBy ((==) `on` validatorPubKey) pairs
+    return vset
+  --
+  shrink vset =
+    [ let Right v = makeValidatorSet vset' in v
+    | vset' <-  shrink $ asValidatorList vset
+    ]
+
+instance CryptoSign alg => Arbitrary (Validator alg) where
+  arbitrary = Validator <$> arbitrary <*> choose (1,10)
 
 instance Arbitrary (ValidatorIdx alg) where
-  arbitrary = ValidatorIdx <$> arbitrary
+  arbitrary = ValidatorIdx . abs <$> arbitrary
 
 ----------------------------------------------------------------
 -- Network inctances
@@ -167,4 +191,3 @@ instance Arbitrary NetAddr where
     [ NetAddrV4   <$> arbitrary <*> arbitrary
     , NetAddrV6   <$> arbitrary <*> arbitrary
     ]
-
