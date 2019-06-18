@@ -311,7 +311,7 @@ makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{
   Just genesis <- queryRO $ retrieveBlock        (Height 0)
   bchTime      <- do Just b <- queryRO $ retrieveBlock h
                      return $ headerTime $ blockHeader b
-  let ourIndex = indexByValidator valSet . fingerprint . publicKey . validatorPrivKey
+  let ourIndex = indexByValidator valSet . publicKey . validatorPrivKey
              =<< appValidatorKey
   let proposerChoice (Round r) =
         let Height h' = h
