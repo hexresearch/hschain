@@ -108,6 +108,7 @@ steps:
 trigger:
   branch:
   - master
+  - userstate
   cron:
     exclude:
     - nightly
