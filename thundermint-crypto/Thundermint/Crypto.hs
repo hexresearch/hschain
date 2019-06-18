@@ -39,12 +39,12 @@ module Thundermint.Crypto (
     -- * Signatures API
   , Signature(..)
   , Fingerprint(..)
+  , fingerprint
   , CryptoSign(..)
     -- ** Diffie–Hellman key exchange
   , DHSecret
   , CryptoDH(..)
     -- ** Sizes
-  , fingerprintSize
   , publicKeySize
   , privKeySize
   , signatureSize
@@ -238,21 +238,26 @@ newtype Signature alg = Signature BS.ByteString
   deriving stock   (Generic, Generic1)
   deriving newtype (Eq, Ord, Serialise, NFData)
 
--- | Public key fingerprint (hash of public key)
-newtype Fingerprint alg = Fingerprint BS.ByteString
-  deriving stock   (Generic, Generic1)
-  deriving newtype (Eq, Ord, Serialise, NFData)
-
 class ( ByteReprSized (Signature   alg)
-      , ByteReprSized (Fingerprint alg)
       , CryptoAsymmetric alg
       ) => CryptoSign alg where
   -- | Sign sequence of bytes
   signBlob            :: PrivKey   alg -> BS.ByteString -> Signature alg
   -- | Check that signature is correct
   verifyBlobSignature :: PublicKey alg -> BS.ByteString -> Signature alg -> Bool
-  -- | Compute fingerprint or public key fingerprint
-  fingerprint         :: PublicKey alg -> Fingerprint alg
+
+-- | Public key fingerprint (hash of public key)
+newtype Fingerprint hash alg = Fingerprint (Hashed hash (PublicKey alg))
+  deriving stock   ( Generic)
+  deriving newtype ( Eq, Ord, Serialise, NFData, ByteRepr
+                   , JSON.FromJSON, JSON.ToJSON, JSON.ToJSONKey, JSON.FromJSONKey)
+
+instance (CryptoHash hash, ByteReprSized (Hash hash)) => ByteReprSized (Fingerprint hash alg) where
+  type ByteSize (Fingerprint hash alg) = ByteSize (Hash hash)
+
+-- | Compute fingerprint or public key fingerprint
+fingerprint :: (CryptoAsymmetric alg, CryptoHash hash) => PublicKey alg -> Fingerprint hash alg
+fingerprint = Fingerprint . Hashed . hashBlob . encodeToBS
 
 
 -- | Shared secret produced by Diffie-Hellman key exchange algorithm.
@@ -269,10 +274,6 @@ class ( ByteReprSized (DHSecret alg)
   --   > diffieHelman (public k1) k2 == diffieHelman (public k2) k1
   diffieHelman :: PublicKey alg -> PrivKey alg -> DHSecret alg
 
-
--- | Size of public key fingerprint in bytes
-fingerprintSize :: forall alg proxy i. (CryptoSign alg, Num i) => proxy alg -> i
-fingerprintSize _ = fromIntegral $ natVal (Proxy @(ByteSize (Fingerprint alg)))
 
 -- | Size of public key in bytes
 publicKeySize :: forall alg proxy i. (CryptoAsymmetric alg, Num i) => proxy alg -> i
@@ -292,10 +293,6 @@ dhSecretSize _ = fromIntegral $ natVal (Proxy @(ByteSize (DHSecret alg)))
 
 
 ----------------------------------------
-
-instance ByteRepr (Fingerprint alg) where
-  decodeFromBS                = Just . Fingerprint
-  encodeToBS (Fingerprint bs) = bs
 
 instance ByteRepr (Signature alg) where
   decodeFromBS              = Just . Signature
@@ -361,22 +358,14 @@ instance CryptoDH alg => JSON.ToJSONKey   (DHSecret alg)
 
 ----------------------------------------
 
-instance Show (Fingerprint alg) where
-  showsPrec n (Fingerprint bs)
+instance Show (Fingerprint hash alg) where
+  showsPrec n (Fingerprint (Hashed (Hash bs)))
     = showParen (n > 10)
     $ showString "Fingerprint " . shows (encodeBSBase58 bs)
 
-instance Read (Fingerprint alg) where
+instance Read (Fingerprint hash alg) where
   readPrec = do void $ lift $ string "Fingerprint" >> some (char ' ')
-                Fingerprint <$> readPrecBSBase58
-
-instance JSON.ToJSON   (Fingerprint alg) where
-  toJSON    = defaultToJSON
-instance JSON.FromJSON (Fingerprint alg) where
-  parseJSON = defaultParseJSON "Fingerprint"
-instance JSON.FromJSONKey (Fingerprint alg)
-instance JSON.ToJSONKey   (Fingerprint alg)
-
+                coerce <$> readPrecBSBase58
 
 ----------------------------------------
 
@@ -434,15 +423,12 @@ instance CryptoAsymmetric sign => CryptoAsymmetric (sign :& hash) where
   publicKey       = coerce (publicKey @sign)
   generatePrivKey = fmap PrivKeyU (generatePrivKey @sign)
 
-instance ByteReprSized (Fingerprint sign) => ByteReprSized (Fingerprint (sign :& hash)) where
-  type ByteSize (Fingerprint (sign :& hash)) = ByteSize (Fingerprint sign)
 instance ByteReprSized (Signature sign) => ByteReprSized (Signature (sign :& hash)) where
   type ByteSize (Signature (sign :& hash)) = ByteSize (Signature sign)
 
 instance CryptoSign sign => CryptoSign (sign :& hash) where
   signBlob            = coerce (signBlob @sign)
   verifyBlobSignature = coerce (verifyBlobSignature @sign)
-  fingerprint         = coerce (fingerprint @sign)
 
 instance ByteReprSized (Hash hash) => ByteReprSized (Hash (sign :& hash)) where
   type ByteSize (Hash (sign :& hash)) = ByteSize (Hash hash)

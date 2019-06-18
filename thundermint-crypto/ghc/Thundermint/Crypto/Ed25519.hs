@@ -14,28 +14,18 @@ module Thundermint.Crypto.Ed25519 (
 import Control.Monad.IO.Class
 import Control.DeepSeq       (NFData(..))
 import Crypto.Error          (CryptoFailable(..), throwCryptoError)
-import Crypto.Hash           (Digest)
 import Data.ByteArray        (convert)
-import Data.ByteString       (ByteString)
 import Data.Data             (Data)
 import Data.Ord              (comparing)
 import System.Entropy        (getEntropy)
 
-
 import qualified Crypto.PubKey.Ed25519    as Ed
-import qualified Crypto.Hash              as Crypto
 
 import Thundermint.Crypto
 
 ----------------------------------------------------------------
 --
 ----------------------------------------------------------------
-
-sha512 :: ByteString -> ByteString
-sha512 = convert . id @(Digest Crypto.SHA512) . Crypto.hash
-
-sha256 :: ByteString -> ByteString
-sha256 = convert . id @(Digest Crypto.SHA256) . Crypto.hash
 
 -- | Ed25519 public key signature system
 data Ed25519 deriving (Data)
@@ -57,8 +47,6 @@ instance CryptoAsymmetric Ed25519 where
       CryptoPassed k -> return $! PrivKey k
       CryptoFailed e -> error (show e)
 
-instance ByteReprSized (Fingerprint Ed25519) where
-  type ByteSize (Fingerprint Ed25519) = 32
 instance ByteReprSized (Signature Ed25519) where
   type ByteSize (Signature Ed25519) = 64
 
@@ -68,7 +56,6 @@ instance CryptoSign Ed25519 where
 
   verifyBlobSignature (PublicKey pubKey) blob (Signature s)
     = Ed.verify pubKey blob (throwCryptoError $ Ed.signature s)
-  fingerprint (PublicKey k) = Fingerprint $ sha256 . sha512 $ convert k
 
 
 ----------------------------------------------------------------
