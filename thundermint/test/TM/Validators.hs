@@ -10,45 +10,45 @@
 -- |
 module TM.Validators (tests) where
 
-import Codec.Serialise
-import Control.Applicative
-import Control.Concurrent.MVar
-import Control.Monad
-import Control.Monad.Catch
-import Control.Monad.Fail
-import Control.Monad.IO.Class
+-- import Codec.Serialise
+-- import Control.Applicative
+-- import Control.Concurrent.MVar
+-- import Control.Monad
+-- import Control.Monad.Catch
+-- import Control.Monad.Fail
+-- import Control.Monad.IO.Class
 
 
 import qualified Data.Map.Strict as Map
 
-import Data.Typeable (Proxy(..))
+-- import Data.Typeable (Proxy(..))
 
-import GHC.Generics
+-- import GHC.Generics
 
 import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Tasty.QuickCheck
 
 import Thundermint.Blockchain.Internal.Engine.Types
-import Thundermint.Blockchain.Interpretation
-import Thundermint.Control
+-- import Thundermint.Blockchain.Interpretation
+-- import Thundermint.Control
 import Thundermint.Crypto
 import Thundermint.Crypto.Ed25519 (Ed25519)
 import Thundermint.Crypto.SHA     (SHA512)
-import Thundermint.Debug.Trace
-import Thundermint.Logger
-import Thundermint.Mock.Coin
+-- import Thundermint.Debug.Trace
+-- import Thundermint.Logger
+-- import Thundermint.Mock.Coin
 import Thundermint.Mock.KeyList (privateKeyList)
-import Thundermint.Mock.Types
-import Thundermint.Monitoring
-import Thundermint.P2P.Network
-import Thundermint.Run
-import Thundermint.Store
-import Thundermint.Types.Blockchain
+-- import Thundermint.Mock.Types
+-- import Thundermint.Monitoring
+-- import Thundermint.P2P.Network
+-- import Thundermint.Run
+-- import Thundermint.Store
+-- import Thundermint.Types.Blockchain
 import Thundermint.Types.Validators
-import Thundermint.Arbitrary.Instances
+import Thundermint.Arbitrary.Instances ()
 
-import TM.Util.Network
+-- import TM.Util.Network
 
 
 type VSet = ValidatorSet (Ed25519 :& SHA512)
