@@ -208,21 +208,31 @@ validatorsDifference (ValidatorSet vsOld _ _) (ValidatorSet vsNew _ _)
 --
 --    * Voting power in @ChangeValidator@ must be positive.
 --
---    * Validator which is not in the set cannot be removed.
---
---    * Same validator could not be changed twice
---
 --    * Noop changes are disallowed. Primarily to ensure that won't
 --      end up storing useless data.
 changeValidators
   :: (Crypto alg)
   => ValidatorChange alg -> ValidatorSet alg -> Maybe (ValidatorSet alg)
 changeValidators (ValidatorChange delta) (ValidatorSet vset _ _)
-  = either (const Nothing) Just
-  $ makeValidatorSet
-  $ map (uncurry Validator)
-  $ Map.toList vmapNew
+  =   either (const Nothing) Just
+  .   makeValidatorSet
+  .   map (uncurry Validator)
+  .   Map.toList
+  =<< Map.mergeA (Map.traverseMissing      (\_ n -> Just n))
+                 (Map.traverseMaybeMissing addNew)
+                 (Map.zipWithMaybeAMatched update)
+                 vmapOld delta
   where
+    -- In order to allow working composition of changes we have to
+    -- noop deletions
+    addNew  _ n | n < 0     = Nothing
+                | n == 0    = Just Nothing
+                | otherwise = Just (Just n)
+    -- Update existing validator
+    update  _ _ 0             = Just Nothing
+    update  _ n m | n == m    = Nothing
+                  | m <  0    = Nothing
+                  | otherwise = Just (Just m)
+    --
     vmapOld = Map.fromList [ (k, p) | Validator k p <- toList vset ]
-    vmapNew = Map.filter (>0)
-            $ delta <> vmapOld
+
