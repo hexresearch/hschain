@@ -7,7 +7,7 @@ export NIX_PATH=$GIT_NIX_PATH$NIX_PATH
 
 containers=$(NIX_PATH=$GIT_NIX_PATH$NIX_PATH nix-build containers.nix \
   --arg isProd true \
-  --arg containerTag \"develop\" \
+#  --arg containerTag \"develop\" \
   )
 
 for container in $containers

@@ -18,4 +18,8 @@ in
       pkgs.libsodium
     ];
     packages = release."${ghc}";
+    
+    shellHook = ''
+    export PATH=~/.cabal/bin:$PATH
+  '';
   }
