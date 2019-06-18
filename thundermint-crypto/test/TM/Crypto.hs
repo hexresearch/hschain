@@ -58,7 +58,9 @@ testsEd25519 = testGroup "ed25519"
   , testCase "Fingerprint derivation is correct"
   $ do let k :: PrivKey Ed25519
            k = read "\"Cn6mra73QDNPkyf56Cfoxh9y9HDS8MREPw4GNcCxQb5Q\""
-       read "Fingerprint \"AhAM9SS8UQUbjrB3cwq9DMtb6mnyz61m9LuBr5kayq9q\"" @=? fingerprint (publicKey k)
+           fp :: Fingerprint (SHA256 :<<< SHA512) Ed25519
+           fp = fingerprint (publicKey k)
+       read "Fingerprint \"AhAM9SS8UQUbjrB3cwq9DMtb6mnyz61m9LuBr5kayq9q\"" @=? fp
   ]
 
 testsCurve25519 :: TestTree
@@ -129,7 +131,7 @@ testsSignatureCrypto
   :: forall alg. CryptoSign alg
   => Proxy alg -> [TestTree]
 testsSignatureCrypto tag =
-  [ testGroup "Fingerprint" $ testsStdIntances (Proxy @(Fingerprint alg))
+  [ testGroup "Fingerprint" $ testsStdIntances (Proxy @(Fingerprint SHA512 alg))
   , testGroup "Signature"   $ testsStdIntances (Proxy @(Signature   alg))
     --
   , testCase "Signature OK (roundtrip)"
@@ -140,9 +142,7 @@ testsSignatureCrypto tag =
        assertBool "Signature check failed" $ verifyBlobSignature pubK blob sign
     --
   , testCase "Sizes are correct"
-  $ do addr <- generateIO @(Fingerprint alg)
-       sign <- generateIO @(Signature   alg)
-       BS.length (encodeToBS addr) @=? fingerprintSize tag
+  $ do sign <- generateIO @(Signature   alg)
        BS.length (encodeToBS sign) @=? signatureSize   tag
   ]
 
@@ -197,7 +197,7 @@ instance CryptoAsymmetric alg => Generate (PrivKey alg) where
   generateIO = generatePrivKey
 instance CryptoAsymmetric alg => Generate (PublicKey alg) where
   generateIO = publicKey <$> generatePrivKey
-instance CryptoSign alg => Generate (Fingerprint alg) where
+instance (CryptoHash hash, CryptoAsymmetric alg) => Generate (Fingerprint hash alg) where
   generateIO = fingerprint . publicKey <$> generatePrivKey
 instance CryptoSign alg => Generate (Signature alg) where
   generateIO = do pk <- generatePrivKey

@@ -31,7 +31,7 @@ import Thundermint.Types.Validators
 -- | Generate list of private validators
 makePrivateValidators
   :: [BS.ByteString]
-  -> Map (Fingerprint (Ed25519 :& SHA512)) (PrivValidator (Ed25519 :& SHA512))
+  -> Map (Fingerprint (SHA256 :<<< SHA512) (Ed25519 :& SHA512)) (PrivValidator (Ed25519 :& SHA512))
 makePrivateValidators keys = Map.fromList
   [ (fingerprint (publicKey pk) , PrivValidator pk)
   | bs58 <- keys
