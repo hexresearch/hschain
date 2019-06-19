@@ -26,7 +26,6 @@ import Foreign.Storable
 import System.IO.Unsafe
 
 import Thundermint.Crypto
-import Thundermint.Crypto.SHA
 import Thundermint.Crypto.Sodium
 
 ----------------------------------------------------------------
@@ -56,8 +55,6 @@ instance CryptoAsymmetric Ed25519 where
           check =<< sodium_crypto_sign_keypair pPub pPriv
     return $! PrivKey priv (PublicKey pub)
 
-instance ByteReprSized (Fingerprint Ed25519) where
-  type ByteSize (Fingerprint Ed25519) = 32
 instance ByteReprSized (Signature Ed25519) where
   type ByteSize (Signature Ed25519) = 64
 
@@ -82,9 +79,6 @@ instance CryptoSign Ed25519 where
             pMsg (fromIntegral $ Arr.length blob)
             pPK
           return $! r == 0
-  fingerprint (PublicKey k) =
-    let Hash h = hashBlob k :: Hash (SHA256 :<<< SHA512)
-    in  Fingerprint h
 
 
 ----------------------------------------------------------------
