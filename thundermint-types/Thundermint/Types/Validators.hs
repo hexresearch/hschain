@@ -15,6 +15,7 @@ module Thundermint.Types.Validators (
     Validator(..)
     -- ** Validator sets
   , ValidatorSet
+  , emptyValidatorSet
   , makeValidatorSet
   , totalVotingPower
   , validatorSetSize
@@ -76,6 +77,9 @@ data ValidatorSet alg = ValidatorSet
   deriving (Generic, Show)
 instance NFData (PublicKey alg) => NFData (ValidatorSet alg)
 deriving instance Eq   (PublicKey alg) => Eq   (ValidatorSet alg)
+
+emptyValidatorSet :: ValidatorSet alg
+emptyValidatorSet = ValidatorSet V.empty 0
 
 -- | Get list of all validators included into set
 asValidatorList :: ValidatorSet alg -> [Validator alg]
