@@ -125,14 +125,28 @@ blockHash
 blockHash b = BlockID (hashed (blockHeader b))
 
 
--- | Block data type
+-- | Block of blockchain.
 data Block alg a = Block
   { blockHeader     :: !(Header alg a)
+    -- ^ Block header it contains height, time of the block and hashes
+    --   of all other block fields. @BlockId@ is calculated from header
   , blockData       :: !a
     -- ^ Payload of block. Thundermint treats it completely opaque and
     --   rely on callback to do anything to it.
   , blockValChange  :: !(ValidatorChange alg)
-    -- ^ Changes in set of validators as result of block evaluation
+    -- ^ Changes in set of validators as result of block
+    --   evaluation. We store changes of validators in the block for
+    --
+    --    1. Audit. We record changes to validator set explicitly
+    --
+    --    2. Allow to verify blockchain integrity without interpreting
+    --       transactions. Since we know change of validators we can
+    --       infer validator set for next block. This is particularly
+    --       important for light clients
+    --
+    --   Note that we store changes since validators change
+    --   infrequently and storing same validator set again and again
+    --   is not economical.
   , blockLastCommit :: !(Maybe (Commit alg a))
     -- ^ Commit information for previous block. Nothing iff block
     --   is a genesis block or block at height 1.
