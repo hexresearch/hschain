@@ -287,7 +287,7 @@ interpretSpec
 interpretSpec maxHeight genSpec validatorSet net cfg NodeSpec{..} = do
   -- Allocate storage for node
   conn <- openConnection (maybe ":memory:" id nspecDbName)
-  initDatabase conn genesisBlock validatorSet
+  initDatabase conn genesisBlock
   return
     ( connectionRO conn
     , runDBT conn $ do

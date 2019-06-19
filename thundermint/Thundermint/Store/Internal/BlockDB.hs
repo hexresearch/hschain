@@ -29,9 +29,8 @@ import Thundermint.Store.Internal.Query
 initializeBlockhainTables
   :: (Crypto alg, Eq (PublicKey alg), Serialise a, Eq a, MonadQueryRW m alg a, Show a)
   => Block alg a                -- ^ Genesis block
-  -> ValidatorSet alg           -- ^ Initial validator set
   -> m ()
-initializeBlockhainTables genesis initialVals = do
+initializeBlockhainTables genesis = do
   -- Initialize tables for storage of blockchain
   basicExecute_
     "CREATE TABLE IF NOT EXISTS thm_blockchain \
@@ -78,26 +77,44 @@ initializeBlockhainTables genesis initialVals = do
   -- Insert genesis block if needed
   storedGen  <- basicQuery_ "SELECT block  FROM thm_blockchain WHERE height = 0"
   storedVals <- basicQuery_ "SELECT valset FROM thm_validators WHERE height = 1"
-  let checkResult = genCheck <> valCheck
-      genCheck = case storedGen of
-          [Only blk] -> case deserialiseOrFail blk of
-            Right genesis'
-              | genesis == genesis' -> Nothing
-              | otherwise -> Just $ "genesis blocks do not match:"
-                                    ++ "\n  stored: " ++ show genesis'
-                                    ++ "\nexpected: " ++ show genesis
-            Left _ -> Just "deserialisation for genesis failed"
-          _ -> Just "block is not singleton"
+  let initialVals = case changeValidators (blockValChange genesis) emptyValidatorSet of
+        Just v  -> v
+        Nothing -> error "initializeBlockhainTables: cannot apply change of validators"
+      checkResult = genCheck <> valCheck
+      genCheck    = case storedGen of
+        []         -> []
+        [Only blk] -> case deserialiseOrFail blk of
+          Right genesis'
+            | genesis == genesis' -> []
+            | otherwise           ->
+                [ "Genesis blocks do not match:"
+                , "  stored: " ++ show genesis'
+                , "  expected: " ++ show genesis
+                ]
+          Left e -> [ "Deserialisation for genesis failed:"
+                    , "  " ++ show e
+                    ]
+        _        -> ["DB corruption. Multiple blocks at H=0"]
       valCheck = case storedVals of
-          [Only vs] -> case deserialiseOrFail vs of
-            Right initialVals'
-              | initialVals == initialVals' -> Nothing
-              | otherwise -> Just $ "validators are not equal: "
-            Left _ -> Just "unable to deserialise validators"
-          _ -> Just "validators are not stored in singleton"
+        []        -> []
+        [Only vs] -> case deserialiseOrFail vs of
+          Right initialVals'
+            | initialVals == initialVals' -> []
+            | otherwise                   ->
+                [ "Validators set are not equal:"
+                , "  stored:   " ++ show initialVals'
+                , "  expected: " ++ show initialVals
+                ]
+          Left e -> [ "Unable to deserialise validator set"
+                    , "  " ++ show e
+                    ]
+        _        -> ["DB corruption. Multiple validator sets at H=1"]
   case () of
+     -- Initial validator set must not be empty
+    _| validatorSetSize initialVals == 0
+       -> error "initializeBlockhainTables: Invalid genesis: empty validator set"
      -- Fresh DB without genesis block
-    _| [] <- storedGen
+     | [] <- storedGen
      , [] <- storedVals
        -> do basicExecute "INSERT INTO thm_blockchain VALUES (0,0,?,?)"
                ( serialise (blockHash genesis)
@@ -105,9 +122,17 @@ initializeBlockhainTables genesis initialVals = do
                )
              basicExecute "INSERT INTO thm_validators VALUES (1,?)"
                (Only (serialise initialVals))
-     -- Genesis and validator set matches ones recorded
-     | Just failure <- checkResult -> error $ "initializeBlockhainTables failure: "++failure
-     | otherwise -> return ()
+     -- We have errors
+     | _:_ <- checkResult
+       -> error $ unlines $ "initializeBlockhainTables:" : checkResult
+     -- Everything OK
+     | [_]  <- storedGen
+     , [_] <- storedVals
+       -> return ()
+     -- Error otherwise
+     | otherwise
+       -> error "initializeBlockhainTables: either only genesis or only validator set are present"
+
 
 ----------------------------------------------------------------
 -- Public API

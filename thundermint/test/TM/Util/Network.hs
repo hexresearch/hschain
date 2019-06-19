@@ -139,7 +139,7 @@ createTestNetworkWithValidatorsSetAndConfig validatorsSet cfg desc = do
       -> m [m ()]
     mkTestNode net (conn, TestNetLinkDescription{..}) = do
         let validatorSet = makeValidatorSetFromPriv validatorsSet
-        initDatabase conn (genesisBlock validatorSet) validatorSet
+        initDatabase conn (genesisBlock validatorSet)
         --
         let run = runTracerT ncCallback . runNoLogsT . runDBT conn
         fmap (map run) $ run $ do

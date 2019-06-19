@@ -140,21 +140,19 @@ withDatabase
   :: (MonadIO m, MonadMask m, Crypto alg, Serialise a, Eq a, Show a, Eq (PublicKey alg))
   => FilePath         -- ^ Path to the database
   -> Block alg a      -- ^ Genesis block
-  -> ValidatorSet alg -- ^ Initial validators
   -> (Connection 'RW alg a -> m x) -> m x
-withDatabase path genesis vals cont
-  = withConnection path $ \c -> initDatabase c genesis vals >> cont c
+withDatabase path genesis cont
+  = withConnection path $ \c -> initDatabase c genesis >> cont c
 
 -- | Initialize all required tables in database.
 initDatabase
   :: (MonadIO m, Crypto alg, Serialise a, Eq a, Show a, Eq (PublicKey alg))
   => Connection 'RW alg a  -- ^ Opened connection to database
   -> Block alg a           -- ^ Genesis block
-  -> ValidatorSet alg      -- ^ Initial validators
   -> m ()
-initDatabase c genesis vals = do
+initDatabase c genesis = do
   -- 2. Create tables for block
-  r <- runQueryRW c $ initializeBlockhainTables genesis vals
+  r <- runQueryRW c $ initializeBlockhainTables genesis
   case r of
     -- FIXME: Resource leak!
     Nothing -> error "Cannot initialize tables!"
@@ -412,7 +410,6 @@ checkProposedBlock h block = queryRO $ do
     prevBID
     (mprevVset,vset)
     block
-
 
 
 
