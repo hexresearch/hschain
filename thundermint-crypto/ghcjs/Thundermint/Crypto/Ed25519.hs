@@ -13,7 +13,6 @@ import Data.ByteString (ByteString)
 import Data.Ord        (comparing)
 import qualified Data.ByteString      as BS
 import qualified Data.ByteString.Lazy as BL
-import qualified Data.Digest.Pure.SHA as SHA
 
 import GHCJS.Types
 import JavaScript.TypedArray
@@ -48,8 +47,6 @@ instance CryptoAsymmetric Ed25519 where
       Just k  -> return k
       Nothing -> error "Ed25519: internal error. Cannot generate key"
 
-instance ByteReprSized (Fingerprint Ed25519) where
-  type ByteSize (Fingerprint Ed25519) = 32
 instance ByteReprSized (Signature Ed25519) where
   type ByteSize (Signature Ed25519) = 64
 
@@ -60,10 +57,6 @@ instance CryptoSign Ed25519 where
     $ js_sign_detached (bsToArray bs) (privK k)
   verifyBlobSignature (PublicKey pubKey) blob (Signature s)
     = js_sign_detached_verify (bsToArray blob) (bsToArray s) pubKey
-  --
-  fingerprint   = Fingerprint
-                . BL.toStrict . SHA.bytestringDigest . SHA.sha256 . BL.fromStrict
-                . arrayToBs . js_sha512 . unPublicKey
 
 instance Eq (PrivKey Ed25519) where
   PrivKey b1 _ _ == PrivKey b2 _ _ = b1 == b2
