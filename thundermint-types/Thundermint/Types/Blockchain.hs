@@ -176,17 +176,20 @@ makeGenesis chainID t dat valSet = Block
       , headerHeight         = Height 0
       , headerTime           = t
       , headerLastBlockID    = Nothing
-      , headerValidatorsHash = hashed valSet
-      , headerValChangeHash  = hashed mempty
+      , headerValidatorsHash = hashed emptyValidatorSet
+      , headerValChangeHash  = hashed delta
       , headerDataHash       = hashed dat
       , headerLastCommitHash = hashed Nothing
       , headerEvidenceHash   = hashed []
       }
   , blockData       = dat
-  , blockValChange  = mempty
+  , blockValChange  = delta
   , blockLastCommit = Nothing
   , blockEvidence   = []
   }
+  where
+    delta = validatorsDifference emptyValidatorSet valSet
+
 
 -- | Block header
 data Header alg a = Header
