@@ -161,20 +161,14 @@ decideNewBlock config appValidatorKey appSt@AppLogic{..} appCall@AppCallbacks{..
             case appCommitQuery of
               SimpleQuery callback -> do
                 r <- queryRW $ do storeCommit cmt b
-                                  vsetChange <- callback (validatorSet hParam) b
-                                  case changeValidators vsetChange (validatorSet hParam) of
-                                    Just vset -> storeValSet b vset
-                                    Nothing   -> fail ""
+                                  storeValSet b =<< callback (validatorSet hParam) b
                 case r of
                   Nothing -> error "Cannot write commit into database"
                   Just () -> return ()
               --
               MixedQuery callback -> do
                 r <- queryRWT $ do storeCommit cmt b
-                                   vsetChange <- callback (validatorSet hParam) b
-                                   case changeValidators vsetChange (validatorSet hParam) of
-                                     Just vset -> storeValSet b vset
-                                     Nothing   -> fail ""
+                                   storeValSet b =<< callback (validatorSet hParam) b
                 case r of
                   Nothing -> error "Cannot write commit into database"
                   Just () -> return ()
@@ -335,8 +329,9 @@ makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{
           Nothing -> return UnseenProposal
           Just b  -> do
             inconsistencies <- lift $ checkProposedBlock nH b
-            mvalChange      <- lift $ appValidationFun valSet b
+            mvalSet'        <- lift $ appValidationFun valSet b
             case () of
+               -- Block is not internally consistent
               _| not (null inconsistencies) -> do
                    logger ErrorS "Proposed block has inconsistencies"
                      (  sl "H" nH
@@ -347,11 +342,11 @@ makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{
                | _:_ <- blockEvidence b -> return InvalidProposal
                -- Block is correct and validators change is correct as
                -- well
-               | Just ch      <- mvalChange
-               , Just valSet' <- changeValidators ch valSet
+               | Just valSet' <- mvalSet'
                , validatorSetSize valSet' > 0
+               , blockValChange b == validatorsDifference valSet valSet'
                  -> return GoodProposal
-               | otherwise              -> return InvalidProposal
+               | otherwise -> return InvalidProposal
     --
     , broadcastProposal = \r bid lockInfo ->
         forM_ (liftA2 (,) appValidatorKey ourIndex) $ \(PrivValidator pk, idx) -> do
@@ -450,8 +445,9 @@ makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{
           _        -> case join $ liftA3 commitTime oldValSet (pure bchTime) commit of
             Just t  -> return t
             Nothing -> error "Corrupted commit. Cannot generate block"
-        (bData, valCh) <- appBlockGenerator (succ h) currentT commit [] valSet
-        let block = Block
+        (bData, valSet') <- appBlockGenerator (succ h) currentT commit [] valSet
+        let valCh = validatorsDifference valSet valSet'
+            block = Block
               { blockHeader     = Header
                   { headerChainID        = headerChainID $ blockHeader genesis
                   , headerHeight         = succ h
