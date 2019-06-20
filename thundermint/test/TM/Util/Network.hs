@@ -12,23 +12,21 @@
 -- |
 module TM.Util.Network where
 
+
+import Control.Concurrent                 (threadDelay)
 import Control.Monad
-import Control.Monad.Fail     (MonadFail)
 import Control.Monad.Catch
+import Control.Monad.Fail                 (MonadFail)
 import Control.Monad.IO.Class
-
-import Control.Concurrent (threadDelay)
-import Control.Retry      (RetryPolicy, constantDelay, limitRetries, recovering)
-import Data.Monoid        ((<>))
-import Data.Proxy         (Proxy(..))
-
+import Control.Retry                      (RetryPolicy, constantDelay, limitRetries, recovering)
+import Data.Monoid                        ((<>))
+import Data.Proxy                         (Proxy(..))
+import Katip
 import qualified Control.Concurrent.Async as Async
 import qualified Control.Exception        as E
 import qualified Data.ByteString.Lazy     as LBS
 import qualified Data.Map                 as Map
 import qualified Network.Socket           as Net
-
-import Katip
 
 import Thundermint.Blockchain.Internal.Engine.Types
 import Thundermint.Control
@@ -37,7 +35,7 @@ import Thundermint.Crypto.Ed25519 (Ed25519)
 import Thundermint.Crypto.SHA     (SHA512)
 import Thundermint.Debug.Trace
 import Thundermint.Logger
-import Thundermint.Mock.Coin (intToNetAddr)
+import Thundermint.Mock.Coin      (intToNetAddr)
 import Thundermint.Mock.Types
 import Thundermint.Monitoring
 import Thundermint.P2P
@@ -77,7 +75,7 @@ withRetry' useUDP fun host = do
 
 
 -- TODO объединить в один список, а лучше сделать бесконечный
-testValidators, extraTestValidators :: Map.Map (Fingerprint (Ed25519 :& SHA512)) (PrivValidator (Ed25519 :& SHA512))
+testValidators, extraTestValidators :: Map.Map (Fingerprint TestAlg) (PrivValidator TestAlg)
 testValidators = makePrivateValidators
   [ "2K7bFuJXxKf5LqogvVRQjms2W26ZrjpvUjo5LdvPFa5Y"
   , "4NSWtMsEPgfTK25tCPWqNzVVze1dgMwcUFwS5WkSpjJL"
@@ -102,9 +100,9 @@ extraTestValidators = makePrivateValidators
 
 type TestBlock = [(String, NetAddr)]
 
-type TestAlg = Ed25519_SHA512
+type TestAlg = Ed25519 :& SHA512
 
-type TestMonad m = DBT 'RW Ed25519_SHA512 [(String, NetAddr)] (NoLogsT (TracerT m))
+type TestMonad m = DBT 'RW TestAlg [(String, NetAddr)] (NoLogsT (TracerT m))
 
 type TestAppByzantine m = AppByzantine (TestMonad m) TestAlg [(String, NetAddr)]
 

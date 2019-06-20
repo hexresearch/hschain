@@ -36,7 +36,6 @@ import Thundermint.Blockchain.Internal.Types
 import Thundermint.Control
 import Thundermint.Crypto
 import Thundermint.Crypto.Containers
-import Thundermint.Crypto.Ed25519
 import Thundermint.Debug.Trace
 import Thundermint.Logger
 import Thundermint.Mock.Types
@@ -130,7 +129,7 @@ testRawGossipCurrentSentProposal = do
                                 , propPOL = Nothing
                                 , propBlockID = commitBlockID lastCommit
                                 }
-        newTMState env ourH $ \tm -> tm { smProposals = Map.singleton (Round 0) (signValue privK proposal) }
+        newTMState env ourH $ \tm -> tm { smProposals = Map.singleton (Round 0) (signValue currentNodeValIdx currentNodePrivKey proposal) }
         prePeerState <- (getPeerState peerStateObj >>= \case
                 Current cp -> return cp
                 _ -> liftIO $ assertFailure "Wrong initial state")
@@ -178,15 +177,15 @@ internalTestRawGossipCurrentCurrent isTestingSendProposals isTestingSendPrevotes
                         }
         newTMState env ourH $
             (\tm -> if isTestingSendProposals then
-                        tm { smProposals = Map.singleton (Round 0) (signValue privK proposal) }
+                        tm { smProposals = Map.singleton (Round 0) (signValue currentNodeValIdx currentNodePrivKey proposal) }
                     else tm) .
             (\tm -> if isTestingSendPrevotes then
-                        case addSignedValue (Round 0) (signValue privK vote) (smPrevotesSet tm) of
+                        case addSignedValue (Round 0) (signValue currentNodeValIdx currentNodePrivKey vote) (smPrevotesSet tm) of
                             InsertOK votes -> tm { smPrevotesSet = votes }
                             _ -> error "Can't insert votes"
                     else tm) .
             (\tm -> if isTestingSendPrecommits then
-                        case addSignedValue (Round 0) (signValue privK vote) (smPrecommitsSet tm) of
+                        case addSignedValue (Round 0) (signValue currentNodeValIdx currentNodePrivKey vote) (smPrecommitsSet tm) of
                             InsertOK votes -> tm { smPrecommitsSet = votes }
                             _ -> error "Can't insert votes"
                     else tm)
@@ -253,8 +252,12 @@ testRawGossipCurrent8 = internalTestRawGossipCurrentCurrent True  True  True
 
 -- | Private key of current test node.
 --
-privK :: PrivKey Ed25519_SHA512
-privK = validatorPrivKey $ snd $ head $ Map.toList testValidators
+currentNodePrivKey :: PrivKey TestAlg
+currentNodePrivKey = validatorPrivKey $ snd $ head $ Map.toList testValidators
+
+
+currentNodeValIdx :: ValidatorIdx TestAlg
+currentNodeValIdx = ValidatorIdx 0
 
 
 -- | Some object in environment.
@@ -311,7 +314,7 @@ addSomeBlocks' GossipEnv{..} blocksCount =
                 }
             bid = blockHash block
             commit = Commit { commitBlockID    = bid
-                            , commitPrecommits = NE.fromList [signValue privK Vote
+                            , commitPrecommits = NE.fromList [signValue currentNodeValIdx currentNodePrivKey Vote
                                       { voteHeight  = succ h
                                       , voteRound   = Round 0
                                       , voteTime    = t

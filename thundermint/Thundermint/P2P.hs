@@ -41,12 +41,13 @@ import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Control.Retry           (recoverAll, exponentialBackoff, limitRetries, RetryPolicy)
 import           Data.Monoid       ((<>))
-import           Data.Maybe        (mapMaybe)
 import           Data.Foldable
 import           Data.Function
 import qualified Data.List.NonEmpty as NE
-import qualified Data.Map           as Map
+import qualified Data.Map.Strict    as Map
+import qualified Data.IntMap.Strict as IMap
 import           Data.Map             (Map)
+import qualified Data.IntSet        as ISet
 import qualified Data.Set           as Set
 import           Data.Set             (Set)
 import qualified Data.Aeson         as JSON
@@ -634,7 +635,7 @@ peerGossipVotes peerObj PeerChans{..} gossipCh = logOnException $ do
            let cmtVotes  = Map.fromList [ (signedKeyInfo v, unverifySignature v)
                                         | v <- NE.toList (commitPrecommits cmt) ]
            let peerVotes = Map.fromList
-                         $ map (\x -> (ValidatorIdx x,()))  
+                         $ map (\x -> (ValidatorIdx x,()))
                          $ ISet.toList
                          $ getValidatorIntSet
                          $ lagPeerPrecommits p
@@ -648,7 +649,7 @@ peerGossipVotes peerObj PeerChans{..} gossipCh = logOnException $ do
                      tickSend cntGossipPrecommit
          Nothing -> return ()
       --
-      Current p -> liftIO (atomically consensusState) >>= \case
+      Current p -> trace (TePeerGossipVotes TepgvCurrent) >> liftIO (atomically consensusState) >>= \case
         Nothing                       -> return ()
         Just (h',_) | h' /= succ bchH -> return ()
         Just (_,tm)                   -> do
@@ -693,12 +694,12 @@ peerGossipVotes peerObj PeerChans{..} gossipCh = logOnException $ do
                      doGosip $ GossipPreCommit vote
                      tickSend cntGossipPrecommit
              | otherwise -> return ()
-             where               
+             where
                peerPC = maybe IMap.empty (IMap.fromSet (const ()) . toSet)
                       $ Map.lookup round
                       $ peerPrecommits p
-      Ahead   _ -> return ()
-      Unknown   -> return ()
+      Ahead   _ -> trace (TePeerGossipVotes TepgvAhead)   >> return ()
+      Unknown   -> trace (TePeerGossipVotes TepgvUnknown) >> return ()
     waitSec (0.001 * fromIntegral (gossipDelayVotes p2pConfig))
 
 peerGossipMempool
