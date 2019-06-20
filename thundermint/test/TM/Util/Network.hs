@@ -75,6 +75,7 @@ withRetry' useUDP fun host = do
       hs :: [a -> Handler IO Bool]
       hs = [const $ Handler (\(_::E.IOException) -> return shouldRetry)]
 
+
 -- TODO объединить в один список, а лучше сделать бесконечный
 testValidators, extraTestValidators :: Map.Map (Fingerprint (Ed25519 :& SHA512)) (PrivValidator (Ed25519 :& SHA512))
 testValidators = makePrivateValidators
@@ -187,21 +188,26 @@ createTestNetworkWithValidatorsSetAndConfig validatorsSet cfg desc = do
 
 createTestNetworkWithValidatorsSetAndConfig
     :: forall m app . (MonadIO m, MonadMask m, MonadFork m, MonadTMMonitoring m, MonadFail m)
-    => Map.Map (Fingerprint Ed25519_SHA512) (PrivValidator Ed25519_SHA512)
+    => Map.Map (Fingerprint TestAlg) (PrivValidator TestAlg)
     -> Configuration app
     -> TestNetDescription m
     -> m ()
 createTestNetworkWithValidatorsSetAndConfig validators cfg netDescr = do
     net <- liftIO newMockNet
-    withMany (\(ndescr, val) cont -> withConnection ":memory:" (\c -> cont (c,ndescr,val))) (zip netDescr (Map.toList validators)) $ \lst -> do
+    let vallist = map (Just . snd) (Map.toList validators) ++ repeat Nothing
+    withMany (\(ndescr, val) cont -> withConnection ":memory:" (\c -> cont (c,ndescr,val))) (zip netDescr vallist) $ \lst -> do
       acts <- mapM (mkTestNode net) lst
       catchAbort $ runConcurrently $ join acts
   where
+    dbValidatorSet = makeValidatorSetFromPriv validators
+    catchAbort act = catch act (\Abort -> return ())
     mkTestNode
       :: MockNet
-      -> (Connection 'RW Ed25519_SHA512 [(String, NetAddr)], TestNetLinkDescription m)
+      -> ( Connection 'RW TestAlg [(String, NetAddr)]
+         , TestNetLinkDescription m
+         , Maybe (PrivValidator TestAlg))
       -> m [m ()]
-    mkTestNode net (conn, TestNetLinkDescription{..}, (_, validatorPK)) = do
+    mkTestNode net (conn, TestNetLinkDescription{..}, validatorPK) = do
         initDatabase conn Proxy (Mock.genesisBlock dbValidatorSet) dbValidatorSet
         --
         let run = runTracerT ncTraceCallback . runNoLogsT . runDBT conn
@@ -215,7 +221,7 @@ createTestNetworkWithValidatorsSetAndConfig validators cfg netDescr = do
                 , bchInitialPeers   = map intToNetAddr ncTo
                 }
               NodeDescription
-                { nodeValidationKey = Just validatorPK
+                { nodeValidationKey = validatorPK
                 , nodeCallbacks     = ncAppCallbacks
                 }
               logic'
