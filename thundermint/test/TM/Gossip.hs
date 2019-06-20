@@ -137,7 +137,7 @@ testRawGossipCurrentSentProposal = do
         catchTestError $ runConcurrently
             [ peerGossipVotes peerStateObj peerChans gossipCh
             , waitForEvents envEventsQueue [(TepgvStarted, 1), (TepgvNewIter, 2), (TepgvCurrent, 1)]
-            , waitSec 0.5 >> throwM (TestError "Timeout!")
+            , waitSec 5.0 >> throwM (TestError "Timeout!")
             ]
         -- Check proposal message sent
         liftIO $
@@ -197,7 +197,7 @@ internalTestRawGossipCurrentCurrent isTestingSendProposals isTestingSendPrevotes
         catchTestError $ runConcurrently
             [ peerGossipVotes peerStateObj peerChans gossipCh
             , waitForEvents envEventsQueue [(TepgvStarted, 1), (TepgvNewIter, 2), (TepgvCurrent, 1)]
-            , waitSec 0.5 >> throwM (TestError "Timeout!")
+            , waitSec 5.0 >> throwM (TestError "Timeout!")
             ]
         -- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         -- Check sent messages
