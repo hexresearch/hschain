@@ -245,10 +245,10 @@ verifyMessageSignature AppLogic{..} HeightParameters{..} = forever $ do
       Just sx' -> yield $ con sx'
       Nothing  -> lift $ logger WarningS "Invalid signature"
         (  sl "name" (name::Text)
-        <> sl "addr" (show (signedAddr sx))
+        <> sl "addr" (show (signedKeyInfo sx))
         )
     pkLookup mvset a = do vset <- mvset
-                          validatorPubKey <$> validatorByAddr vset a
+                          validatorPubKey <$> validatorByIndex vset a
 
 
 
@@ -342,8 +342,7 @@ makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{
           Just b  -> do
             inconsistencies <- lift $ checkProposedBlock nH b
             mvalChange      <- lift $ appValidationFun valSet b
-            case () of
-              _| not (null inconsistencies) -> do
+            if | not (null inconsistencies) -> do
                    logger ErrorS "Proposed block has inconsistencies"
                      (  sl "H" nH
                      <> sl "errors" (map show inconsistencies)
@@ -357,7 +356,8 @@ makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{
                , Just valSet' <- changeValidators ch valSet
                , validatorSetSize valSet' > 0
                  -> return GoodProposal
-               | otherwise              -> return InvalidProposal
+               | otherwise
+                 -> return InvalidProposal
     --
     , broadcastProposal = \r bid lockInfo ->
         forM_ (liftA2 (,) appValidatorKey ourIndex) $ \(PrivValidator pk, idx) -> do
@@ -375,7 +375,7 @@ makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{
             )
           tryByzantine byzantineBroadcastProposal prop $ \prop' ->
             liftIO $ atomically $ do
-              writeTQueue appChanRxInternal (RxProposal $ unverifySignature $ signValue pk prop')
+              writeTQueue appChanRxInternal (RxProposal $ unverifySignature $ signValue idx pk prop')
               case mBlock of
                 Nothing -> return ()
                 Just b  -> writeTQueue appChanRxInternal (RxBlock b)
@@ -405,10 +405,10 @@ makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{
             )
           tryByzantine byzantineCastPrevote vote $ \vote' ->
             liftIO $ atomically $
-              writeTQueue appChanRxInternal (RxPreVote $ unverifySignature $ signValue pk $ vote')
+              writeTQueue appChanRxInternal (RxPreVote $ unverifySignature $ signValue idx pk $ vote')
     --
     , castPrecommit   = \r b ->
-        forM_ appValidatorKey $ \(PrivValidator pk) -> do
+        forM_ (liftA2 (,) appValidatorKey ourIndex) $ \(PrivValidator pk, idx) -> do
           t <- getCurrentTime
           let vote = Vote { voteHeight  = succ h
                           , voteRound   = r
@@ -421,7 +421,7 @@ makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{
             )
           tryByzantine byzantineCastPrecommit vote $ \vote' ->
             liftIO $ atomically $
-              writeTQueue appChanRxInternal $ RxPreCommit $ unverifySignature $ signValue pk $ vote'
+              writeTQueue appChanRxInternal $ RxPreCommit $ unverifySignature $ signValue idx pk $ vote'
     --
     , acceptBlock = \r bid -> do
         liftIO $ atomically $ writeTChan appChanTx $ AnnHasProposal (succ h) r
