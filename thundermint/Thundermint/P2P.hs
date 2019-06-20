@@ -778,6 +778,7 @@ peerReceive peerSt PeerChans{..} peerExchangeCh P2PConnection{..} MempoolCursor{
     Just bs  -> case deserialiseOrFail bs of
       Left  e   -> logger ErrorS ("Deserialization error: " <> showLS e) ()
       Right msg -> do
+        -- logger DebugS ("Message received: " <> showGossipMsg msg) ()
         case msg of
           -- Forward to application and record that peer has
           -- given vote/proposal/block
@@ -889,18 +890,18 @@ logGossip PeerChans{..} = do
 
 -- | Dump GossipMsg without (Show) constraints
 --
-showGossipMsg :: GossipMsg alg a -> Katip.LogStr
-showGossipMsg (GossipPreVote _)   = "GossipPreVote {}"
-showGossipMsg (GossipPreCommit _) = "GossipPreCommit {}"
-showGossipMsg (GossipProposal _)  = "GossipProposal {}"
-showGossipMsg (GossipBlock _)     = "GossipBlock {}"
-showGossipMsg (GossipAnn ann)     = "GossipAnn { " <> showLS ann <> " }"
-showGossipMsg (GossipTx _)        = "GossipTx {}"
-showGossipMsg (GossipPex p)       = "GossipPex { " <> showLS p <> " }"
+--showGossipMsg :: GossipMsg alg a -> Katip.LogStr
+--showGossipMsg (GossipPreVote _)   = "GossipPreVote {}"
+--showGossipMsg (GossipPreCommit _) = "GossipPreCommit {}"
+--showGossipMsg (GossipProposal _)  = "GossipProposal {}"
+--showGossipMsg (GossipBlock _)     = "GossipBlock {}"
+--showGossipMsg (GossipAnn ann)     = "GossipAnn { " <> showLS ann <> " }"
+--showGossipMsg (GossipTx _)        = "GossipTx {}"
+--showGossipMsg (GossipPex p)       = "GossipPex { " <> showLS p <> " }"
 
-showPeerState :: PeerState alg a -> String -- Katip.LogStr
-showPeerState (Lagging _) = "Lagging {}"
-showPeerState (Current _) = "Current {}"
-showPeerState (Ahead fs)  = "Ahead { " <> show fs <> " }"
-showPeerState Unknown     = "Unknown {}"
+--showPeerState :: PeerState alg a -> String -- Katip.LogStr
+--showPeerState (Lagging _) = "Lagging {}"
+--showPeerState (Current _) = "Current {}"
+--showPeerState (Ahead fs)  = "Ahead { " <> show fs <> " }"
+--showPeerState Unknown     = "Unknown {}"
 
