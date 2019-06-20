@@ -2,6 +2,7 @@
 {-# LANGUAGE DeriveGeneric        #-}
 {-# LANGUAGE FlexibleContexts     #-}
 {-# LANGUAGE LambdaCase           #-}
+{-# LANGUAGE MultiWayIf           #-}
 {-# LANGUAGE NamedFieldPuns       #-}
 {-# LANGUAGE NumDecimals          #-}
 {-# LANGUAGE OverloadedStrings    #-}
@@ -32,6 +33,7 @@ import Codec.Serialise
 import Control.Applicative
 import Control.Concurrent      ( ThreadId, myThreadId, killThread
                                , MVar, readMVar, newMVar)
+import Prelude hiding (round)
 import Control.Concurrent.STM
 import Control.Monad
 import Control.Monad.Fail hiding (fail)
