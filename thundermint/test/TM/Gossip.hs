@@ -82,7 +82,7 @@ testRawGossipLagging =
         catchTestError $ runConcurrently
             [ peerGossipVotes peerStateObj peerChans gossipCh
             , waitForEvents envEventsQueue [(TepgvStarted, 1), (TepgvNewIter, 3), (TepgvLagging, 3)]
-            , waitSec 1.0 >> throwM (TestError "Timeout!")
+            , waitSec 10.0 >> throwM (TestError "Timeout!")
             ]
         -- Check sent messages
         liftIO $ do
