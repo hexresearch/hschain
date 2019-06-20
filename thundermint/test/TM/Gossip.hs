@@ -65,7 +65,7 @@ testRawGossipUnknown =
     withGossipEnv $ \peerStateObj peerChans gossipCh _env -> do
         runConcurrently
             [ peerGossipVotes peerStateObj peerChans gossipCh
-            , waitSec 0.5
+            , waitSec 0.3
             ]
         -- TODO проверить, что ничего не поменялось
 
@@ -122,7 +122,6 @@ testRawGossipCurrentSentProposal = do
     withGossipEnv $ \peerStateObj peerChans gossipCh env@GossipEnv{..} -> do
         (_lastBlock, lastCommit) <- last <$> addSomeBlocks' env 10
         ourH  <- succ <$> queryRO blockchainHeight
-        liftIO $ putStrLn ("ourH: " ++ show ourH)
         advancePeer peerStateObj (FullStep ourH (Round 0) StepNewHeight)
         currentTime <- getCurrentTime
         let proposal = Proposal { propHeight = ourH
