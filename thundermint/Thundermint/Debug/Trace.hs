@@ -26,6 +26,9 @@ data PeerGossipVotesTraceEvents
     = TepgvStarted
     | TepgvNewIter
     | TepgvLagging
+    | TepgvCurrent
+    | TepgvAhead
+    | TepgvUnknown
     deriving (Show, Ord, Eq)
 
 
