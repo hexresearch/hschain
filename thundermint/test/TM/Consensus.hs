@@ -33,7 +33,7 @@ testConsensusLightByzantine1 = do
             , mempty
             , waitHeight (Height 2) achievedHeight
             ]
-        , waitSec 5
+        , waitSec 10
         ]
     readIORef achievedHeight >>= assertBool "Must achieve some height" . (>= Height 1)
 
@@ -51,7 +51,7 @@ testConsensusLightByzantine2 = do
             , mempty
             , waitHeight (Height 2) achievedHeight
             ]
-        , waitSec 5
+        , waitSec 10
         ]
     readIORef achievedHeight >>= assertBool "Must achieve some height" . (>= Height 1)
 
