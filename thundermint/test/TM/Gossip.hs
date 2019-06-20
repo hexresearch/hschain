@@ -1,12 +1,17 @@
--- | Tests for gossip
+-- | Tests for gossip.
 --
+-- These tests prepare environment, call functions from Thundermint.P2P
+-- and then check results. Because of these functions don't contain
+-- any callback we can rely upon only tracing ('TepgvCurrent' for example).
+--
+
 {-# LANGUAGE FlexibleContexts  #-}
-{-# LANGUAGE ViewPatterns      #-}
 {-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes        #-}
 {-# LANGUAGE RecordWildCards   #-}
-{-# LANGUAGE ScopedTypeVariables   #-}
+{-# LANGUAGE ViewPatterns      #-}
+
 module TM.Gossip (tests) where
 
 
@@ -14,22 +19,23 @@ import Control.Concurrent.Chan
 import Control.Concurrent.STM.TBQueue
 import Control.Concurrent.STM.TChan
 import Control.Concurrent.STM.TVar
-import Control.Monad.Catch
 import Control.Monad
+import Control.Monad.Catch
 import Control.Monad.Fail
 import Control.Monad.Fix
 import Control.Monad.IO.Class
 import Control.Monad.STM
 import Data.Proxy (Proxy(..))
-import Prelude as P
+import Prelude                      as P
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Map           as Map
-import qualified Data.Set as Set
+import qualified Data.Set           as Set
 
 import Thundermint.Blockchain.Internal.Engine.Types
 import Thundermint.Blockchain.Internal.Types
 import Thundermint.Control
 import Thundermint.Crypto
+import Thundermint.Crypto.Containers
 import Thundermint.Crypto.Ed25519
 import Thundermint.Debug.Trace
 import Thundermint.Logger
@@ -43,33 +49,17 @@ import Thundermint.Store.STM
 import Thundermint.Types.Blockchain
 import Thundermint.Types.Validators
 import Thundermint.Utils
-
-import Thundermint.Crypto.Containers
+import qualified Thundermint.Mock.KeyVal as Mock
 
 import Test.Tasty
 import Test.Tasty.HUnit
 
 import TM.Util.Network
-import qualified Thundermint.Mock.KeyVal as Mock
 
 
--- TODO:
+-- | Test 'Unknown' branch of peerGossipVotes.
+--   Simple run and check that nothing changed.
 --
--- 2. Тест, который проверяет, что при изменении подписи не будет работать
--- 3. Тест, считающий количество лагов с одной  отстающей вершиной
--- 4. Проверить, что вызываются соответствующие event'ы
--- 5. Отдельный тест, который тестирует только функцию peerGossipVotes непосредственно
--- 6. Добиться 100% покрытия peerGossipVotes
--- 7. Добиться 100% покрытия P2P.hs
--- 
--- 8. Перенести useful-функции в отдельный модуль
---
--- КОЕНЦ.
-
-
--- *
-
-
 testRawGossipUnknown :: IO ()
 testRawGossipUnknown =
     withGossipEnv $ \peerStateObj peerChans gossipCh _env -> do
@@ -80,111 +70,55 @@ testRawGossipUnknown =
         -- TODO проверить, что ничего не поменялось
 
 
--- | Тест: если пир отстаёт от текущей ноды,
---   то его состояние -- Lagging, и текущая нода
---   посылает пиру голоса с предыдущих и текущей высот.
+-- | Connected peer is lagging from current node, so
+--   current node send 'GossipPreCommit' from previous heights/rounds.
 --
 testRawGossipLagging :: IO ()
-testRawGossipLagging = do
+testRawGossipLagging =
     withGossipEnv $ \peerStateObj peerChans gossipCh env@GossipEnv{..} -> do
         addSomeBlocks env 10
         ourH  <- succ <$> queryRO blockchainHeight
-        liftIO $ putStrLn ("ourH: " ++ show ourH)
         advancePeer peerStateObj (FullStep (pred ourH) (Round 0) StepNewHeight)
-        -- Запустить peerGossipVotes
+        -- Run peerGossipVotes
         catchTestError $ runConcurrently
             [ peerGossipVotes peerStateObj peerChans gossipCh
             , waitForEvents envEventsQueue [(TepgvStarted, 1), (TepgvNewIter, 3), (TepgvLagging, 3)]
             , waitSec 0.5 >> throwM (TestError "Timeout!")
             ]
-        -- Проверить, что отослано сообщение о прекоммите
+        -- Check sent messages
         liftIO $ do
             atomically (tryReadTBQueue gossipCh) >>= \case
-                Nothing                  -> assertFailure "`gossipCh` does not contains any message!"
                 Just (GossipPreCommit _) -> return ()
+                Nothing                  -> assertFailure "`gossipCh` does not contains any message!"
                 msg                      -> assertFailure ("Wrong message: " ++ show msg)
-  where
-    catchTestError act = catch act (\err@(TestError _) -> P.fail $ show err)
 
 
--- | Тест: если пир впереди от текущей ноды,
---   то его состояние -- Ahead. Ничего не меняется,
---   пир просто ждёт, когда его нагонят.
+-- | Connected peer is ahead of us, so do nothing.
 --
 testRawGossipAhead :: IO ()
-testRawGossipAhead = do
+testRawGossipAhead =
     withGossipEnv $ \peerStateObj peerChans gossipCh env@GossipEnv{..} -> do
         addSomeBlocks env 10
         ourH  <- succ <$> queryRO blockchainHeight
-        liftIO $ putStrLn ("ourH: " ++ show ourH)
         advancePeer peerStateObj (FullStep (succ ourH) (Round 0) StepNewHeight)
-        -- Запустить peerGossipVotes
+        -- Run peerGossipVotes
         catchTestError $ runConcurrently
             [ peerGossipVotes peerStateObj peerChans gossipCh
             , waitForEvents envEventsQueue [(TepgvStarted, 1), (TepgvNewIter, 3), (TepgvAhead, 3)]
             , waitSec 0.5 >> throwM (TestError "Timeout!")
             ]
-        -- Проверить, что отослано сообщение о прекоммите
+        -- Check sent messages
         liftIO $
             atomically (tryReadTBQueue gossipCh) >>= \case
-                Nothing  -> return ()
                 Just msg -> assertFailure $ "`gossipCh` contains some message: " ++ show msg ++ "!"
-  where
-    catchTestError act = catch act (\err@(TestError _) -> P.fail $ show err)
-
-
--- | Тест: TODO
---
-testRawGossipCurrentNoAction1 :: IO ()
-testRawGossipCurrentNoAction1 = do
-    withGossipEnv $ \peerStateObj peerChans gossipCh env@GossipEnv{..} -> do
-        addSomeBlocks env 10
-        ourH  <- succ <$> queryRO blockchainHeight
-        liftIO $ putStrLn ("ourH: " ++ show ourH)
-        advancePeer peerStateObj (FullStep ourH (Round 0) StepNewHeight)
-        -- Запустить peerGossipVotes
-        catchTestError $ runConcurrently
-            [ peerGossipVotes peerStateObj peerChans gossipCh
-            , waitForEvents envEventsQueue [(TepgvStarted, 1), (TepgvNewIter, 3), (TepgvCurrent, 3)]
-            , waitSec 0.5 >> throwM (TestError "Timeout!")
-            ]
-        -- Проверить, что отослано сообщение о прекоммите
-        liftIO $
-            atomically (tryReadTBQueue gossipCh) >>= \case
                 Nothing  -> return ()
-                Just msg -> assertFailure $ "`gossipCh` contains some message: " ++ show msg ++ "!"
-  where
-    catchTestError act = catch act (\err@(TestError _) -> P.fail $ show err)
 
 
--- | Тест: TODO
+
+-- | Connected peer at our height/round, and we are proposal.
 --
-testRawGossipCurrentNoAction2 :: IO ()
-testRawGossipCurrentNoAction2 = do
-    withGossipEnv $ \peerStateObj peerChans gossipCh env@GossipEnv{..} -> do
-        addSomeBlocks env 10
-        ourH  <- succ <$> queryRO blockchainHeight
-        liftIO $ putStrLn ("ourH: " ++ show ourH)
-        advancePeer peerStateObj (FullStep ourH (Round 0) StepNewHeight)
-        newTMState env (pred ourH) id
-        -- Запустить peerGossipVotes
-        catchTestError $ runConcurrently
-            [ peerGossipVotes peerStateObj peerChans gossipCh
-            , waitForEvents envEventsQueue [(TepgvStarted, 1), (TepgvNewIter, 3), (TepgvCurrent, 3)]
-            , waitSec 0.5 >> throwM (TestError "Timeout!")
-            ]
-        -- Проверить, что отослано сообщение о прекоммите
-        liftIO $
-            atomically (tryReadTBQueue gossipCh) >>= \case
-                Nothing  -> return ()
-                Just msg -> assertFailure $ "`gossipCh` contains some message: " ++ show msg ++ "!"
-  where
-    catchTestError act = catch act (\err@(TestError _) -> P.fail $ show err)
-
--- | Тест: TODO
---
-testRawGossipCurrentCurrent :: IO ()
-testRawGossipCurrentCurrent = do
+testRawGossipCurrentSentProposal :: IO ()
+testRawGossipCurrentSentProposal = do
     withGossipEnv $ \peerStateObj peerChans gossipCh env@GossipEnv{..} -> do
         (_lastBlock, lastCommit) <- last <$> addSomeBlocks' env 10
         ourH  <- succ <$> queryRO blockchainHeight
@@ -201,39 +135,35 @@ testRawGossipCurrentCurrent = do
         prePeerState <- (getPeerState peerStateObj >>= \case
                 Current cp -> return cp
                 _ -> liftIO $ assertFailure "Wrong initial state")
-        -- Запустить peerGossipVotes
+        -- Run peerGossipVotes
         catchTestError $ runConcurrently
             [ peerGossipVotes peerStateObj peerChans gossipCh
             , waitForEvents envEventsQueue [(TepgvStarted, 1), (TepgvNewIter, 2), (TepgvCurrent, 1)]
             , waitSec 0.5 >> throwM (TestError "Timeout!")
             ]
-        -- Проверить, что отослано сообщение о пропозале
+        -- Check proposal message sent
         liftIO $
             atomically (tryReadTBQueue gossipCh) >>= \case
-                Nothing -> assertFailure "`gossipCh` does not contains any message!"
                 Just (GossipProposal (signedValue -> sentProposal)) ->
                     proposal @=? sentProposal
-                msg -> assertFailure ("Wrong message: " ++ show msg)
-        -- Проверить, что список обновился, а остальные структуры -- нет
+                Nothing -> assertFailure "`gossipCh` does not contains any message!"
+                msg     -> assertFailure ("Wrong message: " ++ show msg)
+        -- Check state has updated
         getPeerState peerStateObj >>= liftIO . \case
-            Current ppp -> ppp @?= (prePeerState { peerProposals = Set.insert (Round 0) (peerProposals prePeerState) })
-            s           -> assertFailure ("Wrong state: " ++ show s)
-  where
-    catchTestError act = catch act (\err@(TestError _) -> P.fail $ show err)
+            Current p -> p @?= (prePeerState { peerProposals = Set.insert (Round 0) (peerProposals prePeerState) })
+            s         -> assertFailure ("Wrong state: " ++ show s)
 
 
-
-
-
-
--- | Тест: TODO
+-- | Auxiliary test function.
+--   Prepare state according to arguments, run peerGossipVotes and then check messages and state
 --
 internalTestRawGossipCurrentCurrent :: Bool -> Bool -> Bool -> IO ()
-internalTestRawGossipCurrentCurrent isTestingSendProposals isTestingSendPrevotes isTestingSendPrecommits = do
+internalTestRawGossipCurrentCurrent isTestingSendProposals isTestingSendPrevotes isTestingSendPrecommits =
     withGossipEnv $ \peerStateObj peerChans gossipCh env@GossipEnv{..} -> do
+        -- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        -- Prepare state
         (_lastBlock, lastCommit) <- last <$> addSomeBlocks' env 10
         ourH  <- succ <$> queryRO blockchainHeight
-        liftIO $ putStrLn ("ourH: " ++ show ourH)
         advancePeer peerStateObj (FullStep ourH (Round 0) StepNewHeight)
         currentTime <- getCurrentTime
         let proposal = Proposal { propHeight = ourH
@@ -265,14 +195,14 @@ internalTestRawGossipCurrentCurrent isTestingSendProposals isTestingSendPrevotes
                 Current cp -> return cp
                 _ -> liftIO $ assertFailure "Wrong initial state")
         -- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        -- Запустить peerGossipVotes
+        -- Run peerGossipVotes
         catchTestError $ runConcurrently
             [ peerGossipVotes peerStateObj peerChans gossipCh
             , waitForEvents envEventsQueue [(TepgvStarted, 1), (TepgvNewIter, 2), (TepgvCurrent, 1)]
             , waitSec 0.5 >> throwM (TestError "Timeout!")
             ]
         -- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        -- Проверить, что отосланы нужные сообщения
+        -- Check sent messages
         liftIO $ do
             messages <- atomically $ flushTBQueue gossipCh
             let expectedNumberOfMessages = sum $ map fromEnum [isTestingSendProposals, isTestingSendPrevotes, isTestingSendPrecommits]
@@ -286,13 +216,13 @@ internalTestRawGossipCurrentCurrent isTestingSendProposals isTestingSendPrevotes
             assertBool "" $ (if isTestingSendPrecommits then id else not) $ (flip any) messages $ \case
                     GossipPreCommit (signedValue -> sentPrecommit) -> vote == sentPrecommit
                     _ -> False
-        -- Проверить, что состояние изменено нужным образом
+        -- Check final state
         let expectedPeerState =
                 (\ps -> if isTestingSendProposals then
                             (ps { peerProposals = Set.insert (Round 0) (peerProposals ps) })
                         else ps) $
                 (\ps -> if isTestingSendPrevotes then
-                            (ps { peerPrevotes   = Map.insert (Round 0) (insertValidatorIdx (ValidatorIdx 0) (emptyValidatorISet 4 )) (peerPrevotes ps) })
+                            (ps { peerPrevotes  = Map.insert (Round 0) (insertValidatorIdx (ValidatorIdx 0) (emptyValidatorISet 4 )) (peerPrevotes ps) })
                         else ps) $
                 (\ps -> if isTestingSendPrecommits then
                             (ps { peerPrecommits = Map.insert (Round 0) (insertValidatorIdx (ValidatorIdx 0) (emptyValidatorISet 4 )) (peerPrecommits ps) })
@@ -301,10 +231,9 @@ internalTestRawGossipCurrentCurrent isTestingSendProposals isTestingSendPrevotes
         getPeerState peerStateObj >>= liftIO . \case
             Current ps -> ps @?= expectedPeerState
             s          -> assertFailure ("Wrong state: " ++ show s)
-  where
-    catchTestError act = catch act (\err@(TestError _) -> P.fail $ show err)
 
 
+-- | Testing all combinations of behaviour
 testRawGossipCurrent1, testRawGossipCurrent2,
   testRawGossipCurrent3, testRawGossipCurrent4,
   testRawGossipCurrent5, testRawGossipCurrent6,
@@ -319,9 +248,18 @@ testRawGossipCurrent6 = internalTestRawGossipCurrentCurrent True  False True
 testRawGossipCurrent7 = internalTestRawGossipCurrentCurrent False True  True
 testRawGossipCurrent8 = internalTestRawGossipCurrentCurrent True  True  True
 
+
 -- * Some useful utilities ------------------------
 
 
+-- | Private key of current test node.
+--
+privK :: PrivKey Ed25519_SHA512
+privK = validatorPrivKey $ snd $ head $ Map.toList testValidators
+
+
+-- | Some object in environment.
+--
 data GossipEnv = GossipEnv
     { envValidatorSet :: ValidatorSet TestAlg
     , envEventsQueue  :: Chan TraceEvents
@@ -329,6 +267,64 @@ data GossipEnv = GossipEnv
     }
 
 
+-- | Add some test blocks to blockchain.
+--
+addSomeBlocks
+    :: (MonadIO m, MonadFail m, MonadDB m TestAlg TestBlock)
+    => GossipEnv
+    -> Int       -- ^ Number of blocks to add
+    -> m ()
+addSomeBlocks env blocksCount = void $ addSomeBlocks' env blocksCount
+
+
+-- | Add some test blocks to blockchain and return a list of these blocks & commits.
+--
+addSomeBlocks'
+    :: (MonadIO m, MonadFail m, MonadDB m TestAlg TestBlock)
+    => GossipEnv
+    -> Int -- ^ Number of blocks to add
+    -> m [(Block TestAlg TestBlock, Commit TestAlg TestBlock)]
+addSomeBlocks' GossipEnv{..} blocksCount =
+    mapM addOneBlock
+         [ [(show i, NetAddrV6 (fromIntegral $ i `mod` 256, 2, 3, 4) 4433)]
+         | i <- [1..blocksCount] ]
+  where
+    addOneBlock tx = do
+        t  <- getCurrentTime
+        h  <- queryRO blockchainHeight
+        -- st <- stateAtH bchState (succ h) -- WTF?
+        let block = Block
+                { blockHeader = Header
+                    { headerChainID        = "TEST"
+                    , headerHeight         = succ h
+                    , headerTime           = t
+                    , headerLastBlockID    = Nothing -- TODO get from previous block
+                    , headerValidatorsHash = Hashed $ Hash ""
+                    , headerDataHash       = hashed tx
+                    , headerValChangeHash  = hashed []
+                    , headerLastCommitHash = Hashed $ Hash ""
+                    , headerEvidenceHash   = hashed []
+                    }
+                , blockData       = tx
+                , blockLastCommit = Nothing
+                , blockEvidence   = []
+                , blockValChange  = []
+                }
+            bid = blockHash block
+            commit = Commit { commitBlockID    = bid
+                            , commitPrecommits = NE.fromList [signValue privK Vote
+                                      { voteHeight  = succ h
+                                      , voteRound   = Round 0
+                                      , voteTime    = t
+                                      , voteBlockID = Just bid
+                                      }]}
+        Just () <- queryRW $ storeCommit commit block
+        Just () <- queryRW $ storeValSet block envValidatorSet
+        return (block, commit)
+
+
+-- | Prepare test environment and run callback in this environment with created objects.
+--
 withGossipEnv
     :: (    forall m . (MonadDB m TestAlg TestBlock, MonadMask m, MonadIO m, MonadLogger m, MonadTrace m, MonadFork m, MonadFail m)
             => PeerStateObj m TestAlg TestBlock
@@ -341,11 +337,9 @@ withGossipEnv
 withGossipEnv fun = do
     let dbValidatorSet = makeValidatorSetFromPriv testValidators
     eventsQueue <- newChan
-    --
     withConnection ":memory:" $ \conn -> do
         initDatabase conn Proxy (Mock.genesisBlock dbValidatorSet) dbValidatorSet
         runTracerT (writeChan eventsQueue) . runNoLogsT . runDBT conn $ do
-            --
             proposalStorage <- newSTMPropStorage
             peerStateObj <- newPeerStateObj (makeReadOnlyPS proposalStorage)
             -- let peerId = 0xDEADC0DE
@@ -372,63 +366,7 @@ withGossipEnv fun = do
             fun peerStateObj peerChans gossipCh genv
 
 
-privK :: PrivKey Ed25519_SHA512
-privK = validatorPrivKey $ snd $ head $ Map.toList testValidators
-
-
-addSomeBlocks
-    :: (MonadIO m, MonadFail m, MonadDB m TestAlg TestBlock)
-    => GossipEnv
-    -> Int -- ^ Number of blocks to add
-    -> m ()
-addSomeBlocks env blocksCount = void $ addSomeBlocks' env blocksCount
-
-
-addSomeBlocks'
-    :: (MonadIO m, MonadFail m, MonadDB m TestAlg TestBlock)
-    => GossipEnv
-    -> Int -- ^ Number of blocks to add
-    -> m [(Block TestAlg TestBlock, Commit TestAlg TestBlock)]
-addSomeBlocks' GossipEnv{..} blocksCount =
-    mapM addOneBlock
-         [ [(show i, NetAddrV6 (fromIntegral $ i `mod` 256, 2, 3, 4) 4433)]
-         | i <- [1..blocksCount] ]
-  where
-    addOneBlock tx = do
-        t  <- getCurrentTime
-        h  <- queryRO blockchainHeight
-        -- st <- stateAtH bchState (succ h) -- TODO WTF?
-        let block = Block
-                { blockHeader = Header
-                    { headerChainID        = "TEST"
-                    , headerHeight         = succ h
-                    , headerTime           = t
-                    , headerLastBlockID    = Nothing           -- TODO get from previous block
-                    , headerValidatorsHash = Hashed $ Hash ""
-                    , headerDataHash       = hashed tx
-                    , headerValChangeHash  = hashed []
-                    , headerLastCommitHash = Hashed $ Hash ""
-                    , headerEvidenceHash   = hashed []
-                    }
-                , blockData       = tx
-                , blockLastCommit = Nothing
-                , blockEvidence   = []
-                , blockValChange  = []
-                }
-            bid = blockHash block
-            commit = Commit { commitBlockID    = bid
-                            , commitPrecommits = NE.fromList [signValue privK Vote
-                                      { voteHeight  = succ h
-                                      , voteRound   = Round 0
-                                      , voteTime    = t
-                                      , voteBlockID = Just bid
-                                      }]}
-        Just () <- queryRW $ storeCommit commit block
-        Just () <- queryRW $ storeValSet block envValidatorSet
-        return (block, commit)
-
-
--- | Wait for events; fail if another events occurs
+-- | Wait for events; fail if another event occurs.
 --
 waitForEvents :: (MonadIO m, MonadFail m, MonadThrow m)
               => Chan TraceEvents
@@ -436,9 +374,7 @@ waitForEvents :: (MonadIO m, MonadFail m, MonadThrow m)
               -> m ()
 waitForEvents queue events = liftIO $
     flip fix (Map.fromList events) $ \next residualEvents ->
-        if Map.null residualEvents then
-            return ()
-        else
+        when (not $ Map.null residualEvents) $
             readChan queue >>= \case
                 TePeerGossipVotes v ->
                     case Map.updateLookupWithKey (\_ n -> if n == 1 then Nothing else Just (pred n)) v residualEvents of
@@ -447,10 +383,12 @@ waitForEvents queue events = liftIO $
                 _ -> next residualEvents
 
 
+-- | Create test TMState.
+--
 newTMState :: (MonadIO m, MonadFail m, MonadThrow m)
            => GossipEnv
            -> Height
-           -> (TMState TestAlg TestBlock -> TMState TestAlg TestBlock)
+           -> (TMState TestAlg TestBlock -> TMState TestAlg TestBlock) -- ^ Postprocessor of created TMState
            -> m ()
 newTMState GossipEnv{..} h postProcess = do
     currentTime <- getCurrentTime
@@ -464,20 +402,24 @@ data TestError = TestError String
 instance Exception TestError
 
 
+catchTestError :: MonadCatch m => m a -> m a
+catchTestError act = catch act (\err@(TestError _) -> P.fail $ show err)
+
+
 tests :: TestTree
 tests = testGroup "eigen-gossip"
-    [ testCase "unknown"             testRawGossipUnknown
-    , testCase "lagging"             testRawGossipLagging
-    , testCase "ahead"               testRawGossipAhead
-    , testCase "current no action 1" testRawGossipCurrentNoAction1
-    , testCase "current no action 2" testRawGossipCurrentNoAction2
-    , testCase "current current"     testRawGossipCurrentCurrent
-    , testCase "current_1"            testRawGossipCurrent1
-    , testCase "current_2"            testRawGossipCurrent2
-    , testCase "current_3"            testRawGossipCurrent3
-    , testCase "current_4"            testRawGossipCurrent4
-    , testCase "current_5"            testRawGossipCurrent5
-    , testCase "current_6"            testRawGossipCurrent6
-    , testCase "current_7"            testRawGossipCurrent7
-    , testCase "current_8"            testRawGossipCurrent8
+    [ testCase "unknown"              testRawGossipUnknown
+    , testCase "lagging"              testRawGossipLagging
+    , testCase "ahead"                testRawGossipAhead
+    , testGroup "current"
+        [ testCase "proposal"                      testRawGossipCurrentSentProposal
+        , testCase "nothing"                       testRawGossipCurrent1
+        , testCase "proposal"                      testRawGossipCurrent2
+        , testCase "prevotes"                      testRawGossipCurrent3
+        , testCase "precommits"                    testRawGossipCurrent4
+        , testCase "proposal,prevotes"             testRawGossipCurrent5
+        , testCase "proposal,precommits"           testRawGossipCurrent6
+        , testCase "precommits,prevotes"           testRawGossipCurrent7
+        , testCase "proposal,precommits,prevotes"  testRawGossipCurrent8
+        ]
     ]
