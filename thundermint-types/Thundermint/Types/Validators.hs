@@ -23,7 +23,7 @@ module Thundermint.Types.Validators (
   , indexByValidator
     -- ** Indexed validator sets
   , ValidatorIdx(..)
-  , ValidatorISet
+  , ValidatorISet(..)
   , getValidatorIntSet
   , insertValidatorIdx
   , emptyValidatorISet
@@ -137,7 +137,7 @@ newtype ValidatorIdx alg = ValidatorIdx Int
   deriving newtype  (JSON.ToJSON, JSON.FromJSON, JSON.FromJSONKey, JSON.ToJSONKey)
 
 -- | Set of validators where they are represented by their index.
-data ValidatorISet = ValidatorISet !Int !IntSet
+data ValidatorISet = ValidatorISet !Int !IntSet deriving (Show, Eq)
 
 instance NFData ValidatorISet where
   rnf (ValidatorISet a b) = rnf a `seq` rnf b
