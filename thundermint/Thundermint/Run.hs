@@ -147,8 +147,9 @@ runNode cfg BlockchainNet{..} NodeDescription{..} NodeLogic{..} = do
         , appCommitQuery    = nodeCommitQuery
         , appMempool        = nodeMempool
         }
-      appCall = mempoolFilterCallback nodeMempool <> nodeCallbacks
-      appByzantine = nodeByzantine
+      appCall = mempoolFilterCallback nodeMempool
+             <> nodeCallbacks
+             <> mempty { appByzantine = nodeByzantine }
   -- Networking
   appCh <- newAppChans (cfgConsensus cfg)
   return
@@ -156,7 +157,7 @@ runNode cfg BlockchainNet{..} NodeDescription{..} NodeLogic{..} = do
          $ startPeerDispatcher (cfgNetwork cfg)
               bchNetwork bchLocalAddr bchInitialPeers appCh nodeMempool
     , id $ descendNamespace "consensus"
-         $ runApplication (cfgConsensus cfg) nodeValidationKey appLogic appCall appCh appByzantine
+         $ runApplication (cfgConsensus cfg) nodeValidationKey appLogic appCall appCh
     , forever $ do
         MempoolInfo{..} <- mempoolStats nodeMempool
         usingGauge prometheusMempoolSize      mempool'size

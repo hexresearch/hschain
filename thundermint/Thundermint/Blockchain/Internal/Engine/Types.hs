@@ -26,6 +26,7 @@ module Thundermint.Blockchain.Internal.Engine.Types (
   , CommitCallback(..)
   , hoistCommitCallback
   , AppByzantine(..)
+  , hoistAppByzantine
   , noByz
     -- * Messages and channels
   , MessageRx(..)
@@ -189,14 +190,16 @@ data AppLogic m alg a = AppLogic
   , appMempool          :: Mempool m alg (TX a)
   }
 
+-- | User callbacks which have monoidal strcture
 data AppCallbacks m alg a = AppCallbacks
   { appCommitCallback   :: Block alg a -> m ()
     -- ^ Function which is called after each commit.
   , appCanCreateBlock   :: Height -> Time -> m (Maybe Bool)
     -- ^ Callback which is called to decide whether we ready to create
     --   new block or whether we should wait
+  , appByzantine        :: AppByzantine m alg a
+    -- ^ Callbacks for insering byzantine behavior
   }
-
 
 data AppByzantine m alg a = AppByzantine
   { byzantineBroadcastProposal :: Maybe (Proposal alg a        -> m (Maybe (Proposal alg a)))
@@ -205,13 +208,14 @@ data AppByzantine m alg a = AppByzantine
   }
 
 
-instance Applicative m => Semigroup (AppCallbacks m alg a) where
-  AppCallbacks f1 g1 <> AppCallbacks f2 g2 = AppCallbacks
+instance Monad m => Semigroup (AppCallbacks m alg a) where
+  AppCallbacks f1 g1 b1 <> AppCallbacks f2 g2 b2 = AppCallbacks
     { appCommitCallback = liftA2 (*>) f1 f2
     , appCanCreateBlock = (liftA2 . liftA2 . liftA2) (coerce ((<>) @(Maybe Any))) g1 g2
+    , appByzantine      = b1 <> b2
     }
-instance Applicative m => Monoid (AppCallbacks m alg a) where
-  mempty  = AppCallbacks (\_ -> pure ()) (\_ _ -> pure Nothing)
+instance Monad m => Monoid (AppCallbacks m alg a) where
+  mempty  = AppCallbacks (\_ -> pure ()) (\_ _ -> pure Nothing) mempty
 
 
 instance Monad m => Semigroup (AppByzantine m alg a) where
@@ -260,8 +264,15 @@ hoistAppCallback :: (Monad m) => (forall x. m x -> n x) -> AppCallbacks m alg a 
 hoistAppCallback fun AppCallbacks{..} = AppCallbacks
   { appCommitCallback = fun . appCommitCallback
   , appCanCreateBlock = \h t -> fun (appCanCreateBlock h t)
+  , appByzantine     = hoistAppByzantine fun appByzantine
   }
 
+hoistAppByzantine :: Monad m => (forall x. m x -> n x) -> AppByzantine m alg a -> AppByzantine n alg a
+hoistAppByzantine fun AppByzantine{..} = AppByzantine
+  { byzantineBroadcastProposal = (fmap . fmap) fun byzantineBroadcastProposal
+  , byzantineCastPrevote       = (fmap . fmap) fun byzantineCastPrevote
+  , byzantineCastPrecommit     = (fmap . fmap) fun byzantineCastPrecommit
+  }                                    
 
 -- | Our own validator
 newtype PrivValidator alg = PrivValidator
