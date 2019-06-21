@@ -1,6 +1,7 @@
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE LambdaCase          #-}
+{-# LANGUAGE MultiWayIf          #-}
 {-# LANGUAGE OverloadedStrings   #-}
 
 -- |
@@ -109,9 +110,8 @@ initializeBlockhainTables genesis = do
                     , "  " ++ show e
                     ]
         _        -> ["DB corruption. Multiple validator sets at H=1"]
-  case () of
-     -- Initial validator set must not be empty
-    _| validatorSetSize initialVals == 0
+  if -- Initial validator set must not be empty
+     | validatorSetSize initialVals == 0
        -> error "initializeBlockhainTables: Invalid genesis: empty validator set"
      -- Fresh DB without genesis block
      | [] <- storedGen

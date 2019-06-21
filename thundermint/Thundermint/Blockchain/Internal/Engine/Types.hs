@@ -25,6 +25,8 @@ module Thundermint.Blockchain.Internal.Engine.Types (
   , PrivValidator(..)
   , CommitCallback(..)
   , hoistCommitCallback
+  , AppByzantine(..)
+  , noByz
     -- * Messages and channels
   , MessageRx(..)
   , unverifyMessageRx
@@ -193,6 +195,14 @@ data AppCallbacks m alg a = AppCallbacks
     --   new block or whether we should wait
   }
 
+
+data AppByzantine m alg a = AppByzantine
+  { byzantineBroadcastProposal :: Maybe (Proposal alg a        -> m (Maybe (Proposal alg a)))
+  , byzantineCastPrevote       :: Maybe (Vote 'PreVote alg a   -> m (Maybe (Vote 'PreVote alg a)))
+  , byzantineCastPrecommit     :: Maybe (Vote 'PreCommit alg a -> m (Maybe (Vote 'PreCommit alg a)))
+  }
+
+
 instance Applicative m => Semigroup (AppCallbacks m alg a) where
   AppCallbacks f1 g1 <> AppCallbacks f2 g2 = AppCallbacks
     { appCommitCallback = liftA2 (*>) f1 f2
@@ -200,6 +210,33 @@ instance Applicative m => Semigroup (AppCallbacks m alg a) where
     }
 instance Applicative m => Monoid (AppCallbacks m alg a) where
   mempty  = AppCallbacks (\_ -> pure ()) (\_ _ -> pure Nothing)
+
+
+instance Monad m => Semigroup (AppByzantine m alg a) where
+  bc1 <> bc2 = AppByzantine
+    { byzantineBroadcastProposal = semiForField byzantineBroadcastProposal
+    , byzantineCastPrevote       = semiForField byzantineCastPrevote
+    , byzantineCastPrecommit     = semiForField byzantineCastPrecommit
+    }
+    where
+      semiForField f = f bc1 `seqappl` f bc2
+
+
+instance (Monad m) => Monoid (AppByzantine m alg a) where
+    mempty = AppByzantine Nothing Nothing Nothing
+
+
+noByz :: (Monad m) => AppByzantine m alg a
+noByz = mempty
+
+seqappl :: (Monad m)
+      => Maybe (a -> m (Maybe a))
+      -> Maybe (a -> m (Maybe a))
+      -> Maybe (a -> m (Maybe a))
+seqappl Nothing Nothing     = Nothing
+seqappl Nothing   x         = x
+seqappl x         Nothing   = x
+seqappl (Just b1) (Just b2) = Just $ \arg -> b1 arg >>= maybe (return Nothing) b2
 
 
 hoistCommitCallback

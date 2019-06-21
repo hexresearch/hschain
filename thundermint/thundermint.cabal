@@ -186,7 +186,9 @@ Test-suite thundermint-tests
                      , tasty-hunit       >=0.10
   hs-source-dirs:      test
   Main-is:             Main.hs
-  Other-modules:       TM.Mempool
+  Other-modules:       TM.Consensus
+                       TM.Gossip
+                       TM.Mempool
                        TM.MockNet
                        TM.Network
                        TM.NetworkTls
@@ -195,9 +197,9 @@ Test-suite thundermint-tests
                        TM.Serialisation
                        TM.Store
                        TM.Time
-                       TM.Validators
                        TM.Util.Network
                        TM.Util.Tests
+                       TM.Validators
 
 -- Benchmarks
 Benchmark thundermint-bench

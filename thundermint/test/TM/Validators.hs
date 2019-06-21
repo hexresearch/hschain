@@ -161,7 +161,7 @@ testAddRemValidators = do
     initialValidators = Map.fromList $ tail initialValidatorsList
     nodesIndices = [1 .. testValidatorsCount]
     desc = map mkTestNetLinkDescription (zip [1..] $ map snd allValidatorsList)
-    mkTestNetLinkDescription (i, pk) = (TestNetLinkDescription i (filter (/=i) nodesIndices) (const $ return ()), pk)
+    mkTestNetLinkDescription (i, pk) = (mkNodeDescription i (filter (/=i) nodesIndices) (const $ return ()), pk)
     validatorSet = makeValidatorSetFromPriv initialValidators
 
     enableHeight = Height 20
@@ -177,7 +177,7 @@ testAddRemValidators = do
         let nodeIndex = ncFrom
         initDatabase conn (makeGenesis "TESTVALS" (Time 0) [] validatorSet) validatorSet
         --
-        let run = runTracerT ncCallback . runNoLogsT . runDBT conn
+        let run = runTracerT ncTraceCallback . runNoLogsT . runDBT conn
         fmap (map run) $ run $ do
             (_,generatedLogic) <- logicFromFold testTransitions
             let logic = NodeLogic {
@@ -213,6 +213,7 @@ testAddRemValidators = do
                           (False, True) -> [RemoveValidator dynamicValidatorPubKey]
                           _ -> []
                     return $ fmap (addChanges ++) changes
+                , nodeByzantine = mempty
                 }
             runNode cfg
                 BlockchainNet

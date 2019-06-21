@@ -1,7 +1,9 @@
-{-# LANGUAGE DataKinds       #-}
-{-# LANGUAGE LambdaCase      #-}
-{-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE ViewPatterns    #-}
+{-# LANGUAGE DataKinds          #-}
+{-# LANGUAGE FlexibleContexts   #-}
+{-# LANGUAGE LambdaCase         #-}
+{-# LANGUAGE RecordWildCards    #-}
+{-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE ViewPatterns       #-}
 -- |
 module Thundermint.P2P.PeerState (
     FullStep(..)
@@ -52,6 +54,8 @@ data PeerState alg a
   | Current !(CurrentPeer alg a)  -- ^ Peer is at the same height as us
   | Ahead   !FullStep             -- ^ Peer is ahead of us
   | Unknown                       -- ^ We don't know anything about peer yet
+  deriving Show
+
 
 -- | State of peer which is lagging behind us. In this case we only
 --   interested in precommits which are part of commit justifying next
@@ -64,8 +68,9 @@ data LaggingPeer alg a = LaggingPeer
   , lagPeerPrecommits  :: !ValidatorISet         -- ^ Precommits that peer have
   , lagPeerHasProposal :: !Bool                  -- ^ Whether peer have proposal
   , lagPeerHasBlock    :: !Bool                  -- ^ Whether peer have block
-  , lagPeerBlockID     :: BlockID alg a          -- ^ ID of commited block
+  , lagPeerBlockID     :: !(BlockID alg a)       -- ^ ID of commited block
   }
+  deriving Show
 
 -- | Peer which is at the same height as we. Here state is more
 --   complicated and somewhat redundant. Tendermint only tracks votes
@@ -80,6 +85,8 @@ data CurrentPeer alg a = CurrentPeer
   , peerProposals  :: !(Set Round)               -- ^ Set of proposals peer has
   , peerBlocks     :: !(Set (BlockID alg a))     -- ^ Set of blocks for proposals
   }
+  deriving Show
+deriving instance Eq   (PublicKey alg) => Eq   (CurrentPeer alg a)
 
 getPeerStep :: PeerState alg a -> Maybe FullStep
 getPeerStep = \case
@@ -115,7 +122,7 @@ newPeerStateObj prop = do
 getPeerState :: (MonadMask m, MonadIO m)
              => PeerStateObj m alg a -> m (PeerState alg a)
 getPeerState (PeerStateObj _ var)
-  = withMVarM var return
+  = withMVarM var return -- TODO readMVar var
 
 ----------------------------------------------------------------
 
@@ -297,8 +304,7 @@ addPrecommitI (PeerStateObj _ var) h r i =
       | FullStep hPeer _ _ <- lagPeerStep p
       , h == hPeer
       , r == lagPeerCommitR p
-      -> return $ Lagging p { lagPeerPrecommits = insertValidatorIdx i (lagPeerPrecommits p)
-                            }
+      -> return $ Lagging p { lagPeerPrecommits = insertValidatorIdx i (lagPeerPrecommits p) }
       | otherwise -> return peer
     --
     Current p

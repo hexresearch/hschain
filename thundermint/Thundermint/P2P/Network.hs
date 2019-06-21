@@ -335,7 +335,7 @@ newtype MockNet = MockNet
   }
 
 
-newMockNet :: IO (MockNet)
+newMockNet :: IO MockNet
 newMockNet = MockNet <$> newTVarIO Map.empty
 
 

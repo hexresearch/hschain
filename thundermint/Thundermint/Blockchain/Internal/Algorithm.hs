@@ -223,9 +223,9 @@ newHeight HeightParameters{..} lastCommit = do
   return TMState
     { smRound         = Round 0
     , smStep          = StepNewHeight
+    , smProposals     = Map.empty
     , smPrevotesSet   = newHeightVoteSet validatorSet currentTime
     , smPrecommitsSet = newHeightVoteSet validatorSet currentTime
-    , smProposals     = Map.empty
     , smLockedBlock   = Nothing
     , smLastCommit    = lastCommit
     }
@@ -239,8 +239,8 @@ newHeight HeightParameters{..} lastCommit = do
 tendermintTransition
   :: (Crypto alg, ConsensusMonad m, MonadLogger m)
   => HeightParameters m alg a  -- ^ Parameters for current height
-  -> Message alg a          -- ^ Message which causes state transition
-  -> TMState alg a          -- ^ Initial state of state machine
+  -> Message alg a             -- ^ Message which causes state transition
+  -> TMState alg a             -- ^ Initial state of state machine
   -> m (TMState alg a)
 tendermintTransition par@HeightParameters{..} msg sm@TMState{..} =
   case msg of
@@ -555,7 +555,7 @@ addPrevote
 addPrevote HeightParameters{..} v sm@TMState{..} = do
   announceHasPreVote v
   case addSignedValue (voteRound $ signedValue v) v smPrevotesSet of
-    InsertOK votes   -> return sm{ smPrevotesSet = votes }
+    InsertOK votes   -> return sm { smPrevotesSet = votes }
     InsertDup        -> tranquility
     InsertConflict _ -> misdeed
     -- NOTE: Couldn't happen since we reject votes signed by unknown keys
@@ -570,7 +570,7 @@ addPrecommit
 addPrecommit HeightParameters{..} v sm@TMState{..} = do
   announceHasPreCommit v
   case addSignedValue (voteRound $ signedValue v) v smPrecommitsSet of
-    InsertOK votes   -> return sm{ smPrecommitsSet = votes }
+    InsertOK votes   -> return sm { smPrecommitsSet = votes }
     InsertDup        -> tranquility
     InsertConflict _ -> misdeed
     -- NOTE: See addPrevote

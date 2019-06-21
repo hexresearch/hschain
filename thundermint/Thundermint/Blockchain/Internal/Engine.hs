@@ -2,6 +2,7 @@
 {-# LANGUAGE DeriveFunctor     #-}
 {-# LANGUAGE FlexibleContexts  #-}
 {-# LANGUAGE LambdaCase        #-}
+{-# LANGUAGE MultiWayIf        #-}
 {-# LANGUAGE NumDecimals       #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
@@ -78,14 +79,16 @@ runApplication
   -> AppCallbacks m alg a
   -> AppChans m alg a
      -- ^ Channels for communication with peers
+  -> AppByzantine m alg a
+     -- ^ Debug callbacks for byzantine
   -> m ()
-runApplication config appValidatorKey appSt@AppLogic{..} appCall appCh@AppChans{..} = logOnException $ do
+runApplication config appValidatorKey appSt@AppLogic{..} appCall appCh@AppChans{..} appByzantine = logOnException $ do
   logger InfoS "Starting consensus engine" ()
   height <- queryRO $ blockchainHeight
   lastCm <- queryRO $ retrieveLocalCommit height
   advanceToHeight appPropStorage $ succ height
   void $ flip fix lastCm $ \loop commit -> do
-    cm <- decideNewBlock config appValidatorKey appSt appCall appCh commit
+    cm <- decideNewBlock config appValidatorKey appSt appCall appCh appByzantine commit
     loop (Just cm)
 
 
@@ -107,12 +110,13 @@ decideNewBlock
   -> AppLogic     m alg a
   -> AppCallbacks m alg a
   -> AppChans     m alg a
+  -> AppByzantine m alg a
   -> Maybe (Commit alg a)
   -> m (Commit alg a)
-decideNewBlock config appValidatorKey appSt@AppLogic{..} appCall@AppCallbacks{..} appCh@AppChans{..} lastCommt = do
+decideNewBlock config appValidatorKey appLogic@AppLogic{..} appCall@AppCallbacks{..} appCh@AppChans{..} appByzantine lastCommt = do
   -- Enter NEW HEIGHT and create initial state for consensus state
   -- machine
-  hParam <- makeHeightParameters config appValidatorKey appSt appCall appCh
+  hParam <- makeHeightParameters config appValidatorKey appLogic appCall appCh appByzantine
   -- Get rid of messages in WAL that are no longer needed and replay
   -- all messages stored there.
   walMessages <- fmap (fromMaybe [])
@@ -179,7 +183,7 @@ decideNewBlock config appValidatorKey appSt@AppLogic{..} appCall@AppCallbacks{..
   -- FIXME: encode that we cannot fail here!
   Success tm0 <- runConsesusM $ newHeight hParam lastCommt
   runEffect $ messageSrc
-          >-> verifyMessageSignature appSt hParam
+          >-> verifyMessageSignature appLogic hParam
           >-> msgHandlerLoop Nothing tm0
 
 
@@ -285,6 +289,7 @@ instance MonadLogger m => MonadLogger (ConsensusM alg a m) where
 instance MonadTrans (ConsensusM alg a) where
   lift = ConsensusM . fmap Success
 
+
 makeHeightParameters
   :: ( MonadDB m alg a
      , MonadFail m
@@ -297,8 +302,9 @@ makeHeightParameters
   -> AppLogic     m alg a
   -> AppCallbacks m alg a
   -> AppChans     m alg a
+  -> AppByzantine m alg a
   -> m (HeightParameters (ConsensusM alg a m) alg a)
-makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{..} AppChans{..} = do
+makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{..} AppChans{..} AppByzantine{..} = do
   h            <- queryRO $ blockchainHeight
   Just valSet  <- queryRO $ retrieveValidatorSet (succ h)
   oldValSet    <- queryRO $ retrieveValidatorSet  h
@@ -330,9 +336,8 @@ makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{
           Just b  -> do
             inconsistencies <- lift $ checkProposedBlock nH b
             mvalSet'        <- lift $ appValidationFun valSet b
-            case () of
+            if | not (null inconsistencies) -> do
                -- Block is not internally consistent
-              _| not (null inconsistencies) -> do
                    logger ErrorS "Proposed block has inconsistencies"
                      (  sl "H" nH
                      <> sl "errors" (map show inconsistencies)
@@ -346,7 +351,8 @@ makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{
                , validatorSetSize valSet' > 0
                , blockValChange b == validatorsDifference valSet valSet'
                  -> return GoodProposal
-               | otherwise -> return InvalidProposal
+               | otherwise
+                 -> return InvalidProposal
     --
     , broadcastProposal = \r bid lockInfo ->
         forM_ (liftA2 (,) appValidatorKey ourIndex) $ \(PrivValidator pk, idx) -> do
@@ -357,17 +363,17 @@ makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{
                               , propPOL       = lockInfo
                               , propBlockID   = bid
                               }
-              sprop  = signValue idx pk prop
           mBlock <- lift $ retrievePropByID appPropStorage h bid
-          logger InfoS "Sending proposal"
+          logger InfoS ("Sending proposal" <> byzantineMark byzantineBroadcastProposal)
             (   sl "R"    r
             <>  sl "BID" (show bid)
             )
-          liftIO $ atomically $ do
-            writeTQueue appChanRxInternal (RxProposal $ unverifySignature sprop)
-            case mBlock of
-              Nothing -> return ()
-              Just b  -> writeTQueue appChanRxInternal (RxBlock b)
+          tryByzantine byzantineBroadcastProposal prop $ \prop' ->
+            liftIO $ atomically $ do
+              writeTQueue appChanRxInternal (RxProposal $ unverifySignature $ signValue idx pk prop')
+              case mBlock of
+                Nothing -> return ()
+                Just b  -> writeTQueue appChanRxInternal (RxBlock b)
     --
     , scheduleTimeout = \t@(Timeout _ (Round r) step) ->
         liftIO $ void $ forkIO $ do
@@ -388,13 +394,13 @@ makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{
                           , voteTime    = if t > bchTime then t else Time (ti + 1)
                           , voteBlockID = b
                           }
-              svote  = signValue (idx) pk vote
-          logger InfoS "Sending prevote"
+          logger InfoS ("Sending prevote" <> byzantineMark byzantineCastPrevote)
             (  sl "R"    r
             <> sl "bid" (show b)
             )
-          liftIO $ atomically $
-            writeTQueue appChanRxInternal (RxPreVote $ unverifySignature svote)
+          tryByzantine byzantineCastPrevote vote $ \vote' ->
+            liftIO $ atomically $
+              writeTQueue appChanRxInternal (RxPreVote $ unverifySignature $ signValue idx pk $ vote')
     --
     , castPrecommit   = \r b ->
         forM_ (liftA2 (,) appValidatorKey ourIndex) $ \(PrivValidator pk, idx) -> do
@@ -404,12 +410,13 @@ makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{
                           , voteTime    = t
                           , voteBlockID = b
                           }
-              svote  = signValue idx pk vote
-          logger InfoS "Sending precommit"
+          logger InfoS ("Sending precommit" <> byzantineMark byzantineCastPrecommit)
             (  sl "R" r
             <> sl "bid" (show b)
             )
-          liftIO $ atomically $ writeTQueue appChanRxInternal $ RxPreCommit $ unverifySignature svote
+          tryByzantine byzantineCastPrecommit vote $ \vote' ->
+            liftIO $ atomically $
+              writeTQueue appChanRxInternal $ RxPreCommit $ unverifySignature $ signValue idx pk $ vote'
     --
     , acceptBlock = \r bid -> do
         liftIO $ atomically $ writeTChan appChanTx $ AnnHasProposal (succ h) r
@@ -471,3 +478,16 @@ makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{
 
     , commitBlock     = \cm r -> ConsensusM $ return $ DoCommit cm r
     }
+  where
+    -- | Add marks for analyzing logs
+    byzantineMark = maybe mempty (const " (byzantine!)")
+    -- | If 'modifier' exists, modify 'arg' with it and run 'action' with modified argument;
+    --   else run 'action' with original argument.
+    tryByzantine :: (Monad m)
+                 => Maybe (a -> m (Maybe a))
+                 -> a
+                 -> (a -> ConsensusM alg b m ())
+                 -> ConsensusM alg b m ()
+    tryByzantine Nothing         arg action = action arg
+    tryByzantine (Just modifier) arg action =
+        lift (modifier arg) >>= maybe (return ()) action
