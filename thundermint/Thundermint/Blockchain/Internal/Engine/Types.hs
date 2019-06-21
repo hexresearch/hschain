@@ -170,7 +170,8 @@ data CommitCallback m alg a
 --   underlying structure. It's expected that this structure will be
 --   generated from more specialized functions
 data AppLogic m alg a = AppLogic
-  { appBlockGenerator   :: Height
+  { appBlockGenerator   :: [TX a]
+                        -> Height
                         -> Time
                         -> Maybe (Commit alg a)
                         -> [ByzantineEvidence alg a]
@@ -185,6 +186,7 @@ data AppLogic m alg a = AppLogic
   , appCommitQuery      :: CommitCallback m alg a
     -- ^ Database query called after block commit in the same
     --   transaction
+  , appMempool          :: Mempool m alg (TX a)
   }
 
 data AppCallbacks m alg a = AppCallbacks
@@ -246,11 +248,12 @@ hoistCommitCallback _   (SimpleQuery f) = SimpleQuery f
 hoistCommitCallback fun (MixedQuery  f) = MixedQuery $ (fmap . fmap) (hoist fun) f
 
 
-hoistAppLogic :: (Monad m) => (forall x. m x -> n x) -> AppLogic m alg a -> AppLogic n alg a
+hoistAppLogic :: (Monad m, Functor n) => (forall x. m x -> n x) -> AppLogic m alg a -> AppLogic n alg a
 hoistAppLogic fun AppLogic{..} = AppLogic
-  { appBlockGenerator   = \h t c e v -> fun $ appBlockGenerator h t c e v
+  { appBlockGenerator   = \tx h t c e v -> fun $ appBlockGenerator tx h t c e v
   , appValidationFun    = \v b -> fun $ appValidationFun v b
-  , appCommitQuery      = hoistCommitCallback   fun appCommitQuery
+  , appCommitQuery      = hoistCommitCallback fun appCommitQuery
+  , appMempool          = hoistMempool fun appMempool
   }
 
 hoistAppCallback :: (Monad m) => (forall x. m x -> n x) -> AppCallbacks m alg a -> AppCallbacks n alg a
