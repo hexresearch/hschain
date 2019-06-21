@@ -23,7 +23,7 @@ module Thundermint.Types.Validators (
   , indexByValidator
     -- ** Indexed validator sets
   , ValidatorIdx(..)
-  , ValidatorISet(..)
+  , ValidatorISet
   , getValidatorIntSet
   , insertValidatorIdx
   , emptyValidatorISet
