@@ -79,16 +79,14 @@ runApplication
   -> AppCallbacks m alg a
   -> AppChans m alg a
      -- ^ Channels for communication with peers
-  -> AppByzantine m alg a
-     -- ^ Debug callbacks for byzantine
   -> m ()
-runApplication config appValidatorKey appSt@AppLogic{..} appCall appCh@AppChans{..} appByzantine = logOnException $ do
+runApplication config appValidatorKey appSt@AppLogic{..} appCall appCh@AppChans{..} = logOnException $ do
   logger InfoS "Starting consensus engine" ()
   height <- queryRO $ blockchainHeight
   lastCm <- queryRO $ retrieveLocalCommit height
   advanceToHeight appPropStorage $ succ height
   void $ flip fix lastCm $ \loop commit -> do
-    cm <- decideNewBlock config appValidatorKey appSt appCall appCh appByzantine commit
+    cm <- decideNewBlock config appValidatorKey appSt appCall appCh commit
     loop (Just cm)
 
 
@@ -110,13 +108,12 @@ decideNewBlock
   -> AppLogic     m alg a
   -> AppCallbacks m alg a
   -> AppChans     m alg a
-  -> AppByzantine m alg a
   -> Maybe (Commit alg a)
   -> m (Commit alg a)
-decideNewBlock config appValidatorKey appLogic@AppLogic{..} appCall@AppCallbacks{..} appCh@AppChans{..} appByzantine lastCommt = do
+decideNewBlock config appValidatorKey appLogic@AppLogic{..} appCall@AppCallbacks{..} appCh@AppChans{..} lastCommt = do
   -- Enter NEW HEIGHT and create initial state for consensus state
   -- machine
-  hParam <- makeHeightParameters config appValidatorKey appLogic appCall appCh appByzantine
+  hParam <- makeHeightParameters config appValidatorKey appLogic appCall appCh
   -- Get rid of messages in WAL that are no longer needed and replay
   -- all messages stored there.
   walMessages <- fmap (fromMaybe [])
@@ -302,9 +299,9 @@ makeHeightParameters
   -> AppLogic     m alg a
   -> AppCallbacks m alg a
   -> AppChans     m alg a
-  -> AppByzantine m alg a
   -> m (HeightParameters (ConsensusM alg a m) alg a)
-makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{..} AppChans{..} AppByzantine{..} = do
+makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{..} AppChans{..} = do
+  let AppByzantine{..} = appByzantine
   h            <- queryRO $ blockchainHeight
   Just valSet  <- queryRO $ retrieveValidatorSet (succ h)
   oldValSet    <- queryRO $ retrieveValidatorSet  h
