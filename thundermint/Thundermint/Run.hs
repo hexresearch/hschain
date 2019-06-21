@@ -71,12 +71,13 @@ data NodeLogic m alg a = NodeLogic
     -- ^ Callback used for validation of blocks
   , nodeCommitQuery     :: !(CommitCallback m alg a)
     -- ^ Query for modifying user state.
-  , nodeBlockGenerator  :: !(Height
-                          -> Time
-                          -> Maybe (Commit alg a)
-                          -> [ByzantineEvidence alg a]
-                          -> ValidatorSet alg
-                          -> m (a, (ValidatorSet alg)))
+  , nodeBlockGenerator  :: !([TX a]
+                        -> Height
+                        -> Time
+                        -> Maybe (Commit alg a)
+                        -> [ByzantineEvidence alg a]
+                        -> ValidatorSet alg
+                        -> m (a, (ValidatorSet alg)))
     -- ^ Generator for a new block
   , nodeMempool         :: !(Mempool m alg (TX a))
     -- ^ Mempool of node
@@ -104,9 +105,8 @@ logicFromFold transitions@BlockFold{..} = do
                          st <- stateAtH bchState h
                          return $ valset <$ processBlock CheckSignature b st
                      , nodeCommitQuery     = SimpleQuery $ \valset _ -> return valset
-                     , nodeBlockGenerator  = \h _ _ _ valset -> do
+                     , nodeBlockGenerator  = \txs h _ _ _ valset -> do
                          st  <- stateAtH bchState h
-                         txs <- peekNTransactions mempool Nothing
                          return (transactionsToBlock h st txs, valset)
                      , nodeMempool         = mempool
                      , nodeByzantine       = mempty
@@ -145,6 +145,7 @@ runNode cfg BlockchainNet{..} NodeDescription{..} NodeLogic{..} = do
         { appValidationFun  = nodeBlockValidation
         , appBlockGenerator = nodeBlockGenerator
         , appCommitQuery    = nodeCommitQuery
+        , appMempool        = nodeMempool
         }
       appCall = mempoolFilterCallback nodeMempool <> nodeCallbacks
       appByzantine = nodeByzantine

@@ -452,7 +452,8 @@ makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{
           _        -> case join $ liftA3 commitTime oldValSet (pure bchTime) commit of
             Just t  -> return t
             Nothing -> error "Corrupted commit. Cannot generate block"
-        (bData, valSet') <- appBlockGenerator (succ h) currentT commit [] valSet
+        txs              <- peekNTransactions appMempool Nothing
+        (bData, valSet') <- appBlockGenerator txs (succ h) currentT commit [] valSet
         let valCh = validatorsDifference valSet valSet'
             block = Block
               { blockHeader     = Header

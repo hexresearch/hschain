@@ -101,7 +101,7 @@ interpretSpec maxH prefix NetSpec{..} = do
                            st <- stateAtH bchState h
                            return $ vals <$ processBlock transitions CheckSignature b st
                        --
-                       , appBlockGenerator = \h _ _ _ vals -> case nspecByzantine of
+                       , appBlockGenerator = \_ h _ _ _ vals -> case nspecByzantine of
                            Just "InvalidBlock" -> do
                              return ([("XXX", NetAddrV6 (1,2,3,4) 4433)], vals)
                            _ -> do
@@ -110,6 +110,7 @@ interpretSpec maxH prefix NetSpec{..} = do
                              return ([(k, addr)], vals)
                        --
                        , appCommitQuery    = SimpleQuery $ \vals _ -> return vals
+                       , appMempool        = nullMempoolAny
                        }
                      appCall = maybe mempty (callbackAbortAtH . Height) maxH
                  let cfg = defCfg :: Configuration Example
