@@ -100,8 +100,11 @@ logicFromFold transitions@BlockFold{..} = do
 data NodeDescription m alg a = NodeDescription
   { nodeValidationKey :: !(Maybe (PrivValidator alg))
     -- ^ Private key of validator
+  , nodeLogic         :: !(AppLogic m alg a)
+    -- ^ Callbacks for validation of block, transaction and generation
+    --   of new block
   , nodeCallbacks     :: !(AppCallbacks m alg a)
-    -- ^ Callback for node
+    -- ^ Callbacks with monoidal structure
   }
 
 -- | Specification of network
@@ -119,13 +122,11 @@ runNode
   => Configuration app
   -> BlockchainNet
   -> NodeDescription m alg a
-  -> AppLogic m alg a
   -> m [m ()]
-runNode cfg BlockchainNet{..} NodeDescription{..} appLogic@AppLogic{..} = do
-  -- Build application logic of consensus algorithm
-  let appCall = mempoolFilterCallback appMempool
+runNode cfg BlockchainNet{..} NodeDescription{..} = do
+  let appLogic@AppLogic{..} = nodeLogic
+      appCall = mempoolFilterCallback appMempool
              <> nodeCallbacks
-  -- Networking
   appCh <- newAppChans (cfgConsensus cfg)
   return
     [ id $ descendNamespace "net"

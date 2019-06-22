@@ -220,8 +220,8 @@ createTestNetworkWithValidatorsSetAndConfig validators cfg netDescr = do
                 { nodeValidationKey = validatorPK
                 , nodeCallbacks     = ncAppCallbacks
                                    <> mempty { appByzantine = ncByzantine }
+                , nodeLogic         = logic
                 }
-              logic
 
 
 -- | UDP may return Nothings for the message receive operation.
