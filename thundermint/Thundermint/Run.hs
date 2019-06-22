@@ -21,7 +21,6 @@ module Thundermint.Run (
     -- * New node code
   , Abort(..)
   , Topology(..)
-  , NodeLogic(..)
   , logicFromFold
   , NodeDescription(..)
   , BlockchainNet(..)
@@ -66,28 +65,12 @@ import Thundermint.Types (CheckSignature(..))
 --
 ----------------------------------------------------------------
 
-data NodeLogic m alg a = NodeLogic
-  { nodeBlockValidation :: !(ValidatorSet alg -> Block alg a -> m (Maybe (ValidatorSet alg)))
-    -- ^ Callback used for validation of blocks
-  , nodeCommitQuery     :: !(CommitCallback m alg a)
-    -- ^ Query for modifying user state.
-  , nodeBlockGenerator  :: !([TX a]
-                        -> Height
-                        -> Time
-                        -> Maybe (Commit alg a)
-                        -> [ByzantineEvidence alg a]
-                        -> ValidatorSet alg
-                        -> m (a, (ValidatorSet alg)))
-    -- ^ Generator for a new block
-  , nodeMempool         :: !(Mempool m alg (TX a))
-  }
-
 logicFromFold
   :: (MonadDB m alg a, MonadMask m, MonadIO m, MonadFail m
      , BlockData a, Show (TX a), Ord (TX a), Crypto alg, Serialise st
      )
   => BlockFold st alg a
-  -> m (BChState m st, NodeLogic m alg a)
+  -> m (BChState m st, AppLogic m alg a)
 logicFromFold transitions@BlockFold{..} = do
   hChain   <- queryRO blockchainHeight
   bchState <- newBChState transitions
@@ -100,15 +83,15 @@ logicFromFold transitions@BlockFold{..} = do
   mempool <- newMempool checkTx
   --
   return ( bchState
-         , NodeLogic { nodeBlockValidation = \valset b -> do
+         , AppLogic { appValidationFun    = \valset b -> do
                          let h = headerHeight $ blockHeader b
                          st <- stateAtH bchState h
                          return $ valset <$ processBlock CheckSignature b st
-                     , nodeCommitQuery     = SimpleQuery $ \valset _ -> return valset
-                     , nodeBlockGenerator  = \txs h _ _ _ valset -> do
+                     , appCommitQuery     = SimpleQuery $ \valset _ -> return valset
+                     , appBlockGenerator  = \txs h _ _ _ valset -> do
                          st  <- stateAtH bchState h
                          return (transactionsToBlock h st txs, valset)
-                     , nodeMempool         = mempool
+                     , appMempool         = mempool
                      }
          )
 
@@ -136,28 +119,22 @@ runNode
   => Configuration app
   -> BlockchainNet
   -> NodeDescription m alg a
-  -> NodeLogic m alg a
+  -> AppLogic m alg a
   -> m [m ()]
-runNode cfg BlockchainNet{..} NodeDescription{..} NodeLogic{..} = do
+runNode cfg BlockchainNet{..} NodeDescription{..} appLogic@AppLogic{..} = do
   -- Build application logic of consensus algorithm
-  let appLogic = AppLogic
-        { appValidationFun  = nodeBlockValidation
-        , appBlockGenerator = nodeBlockGenerator
-        , appCommitQuery    = nodeCommitQuery
-        , appMempool        = nodeMempool
-        }
-      appCall = mempoolFilterCallback nodeMempool
+  let appCall = mempoolFilterCallback appMempool
              <> nodeCallbacks
   -- Networking
   appCh <- newAppChans (cfgConsensus cfg)
   return
     [ id $ descendNamespace "net"
          $ startPeerDispatcher (cfgNetwork cfg)
-              bchNetwork bchLocalAddr bchInitialPeers appCh nodeMempool
+              bchNetwork bchLocalAddr bchInitialPeers appCh appMempool
     , id $ descendNamespace "consensus"
          $ runApplication (cfgConsensus cfg) nodeValidationKey appLogic appCall appCh
     , forever $ do
-        MempoolInfo{..} <- mempoolStats nodeMempool
+        MempoolInfo{..} <- mempoolStats appMempool
         usingGauge prometheusMempoolSize      mempool'size
         usingGauge prometheusMempoolDiscarded mempool'discarded
         usingGauge prometheusMempoolFiltered  mempool'filtered
