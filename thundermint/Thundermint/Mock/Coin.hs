@@ -293,13 +293,13 @@ interpretSpec maxHeight genSpec validatorSet net cfg NodeSpec{..} = do
     , runDBT conn $ do
         (bchState,logic) <- logicFromFold transitions
         -- Transactions generator
-        cursor <- getMempoolCursor $ nodeMempool logic
+        cursor <- getMempoolCursor $ appMempool logic
         let generator = transactionGenerator genSpec bchState (void . pushTransaction cursor)
         acts <- runNode cfg net
           NodeDescription
             { nodeValidationKey = nspecPrivKey
             , nodeCallbacks     = maybe mempty (callbackAbortAtH . Height) maxHeight
-                               <> nonemptyMempoolCallback (nodeMempool logic)
+                               <> nonemptyMempoolCallback (appMempool logic)
             }
           logic
         runConcurrently ( generator : acts)
