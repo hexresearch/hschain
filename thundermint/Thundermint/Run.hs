@@ -80,8 +80,6 @@ data NodeLogic m alg a = NodeLogic
                         -> m (a, (ValidatorSet alg)))
     -- ^ Generator for a new block
   , nodeMempool         :: !(Mempool m alg (TX a))
-    -- ^ Mempool of node
-  , nodeByzantine       :: AppByzantine m alg a
   }
 
 logicFromFold
@@ -109,7 +107,6 @@ logicFromFold transitions@BlockFold{..} = do
                          st  <- stateAtH bchState h
                          return (transactionsToBlock h st txs, valset)
                      , nodeMempool         = mempool
-                     , nodeByzantine       = mempty
                      }
          )
 
@@ -149,7 +146,6 @@ runNode cfg BlockchainNet{..} NodeDescription{..} NodeLogic{..} = do
         }
       appCall = mempoolFilterCallback nodeMempool
              <> nodeCallbacks
-             <> mempty { appByzantine = nodeByzantine }
   -- Networking
   appCh <- newAppChans (cfgConsensus cfg)
   return
