@@ -98,6 +98,9 @@ Library
                   Thundermint.P2P.Network.Internal.Utils
                   Thundermint.P2P.Network.IpAddresses
                   Thundermint.P2P.Network.RealNetworkStub
+                  Thundermint.P2P.Internal
+                  Thundermint.P2P.Internal.PeerRegistry
+                  Thundermint.P2P.Internal.Types
 
 -- Example programs
 Executable thundermint-keyval
