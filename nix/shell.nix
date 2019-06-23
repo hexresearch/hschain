@@ -14,6 +14,7 @@ in
     nativeBuildInputs = with pkgs.haskellPackages; [
       cabal-install
       ghcid
+      stylish-haskell
     ];
     buildInputs = [
       pkgs.libsodium
