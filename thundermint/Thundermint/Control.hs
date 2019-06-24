@@ -34,6 +34,7 @@ import Control.Applicative
 import Control.Concurrent.MVar
 import Control.Monad
 import Control.Monad.IO.Class
+import Control.Monad.Trans.Cont   (ContT(..))
 import Control.Monad.Trans.Reader
 import qualified Control.Monad.Trans.State.Strict as SS
 import qualified Control.Monad.Trans.State.Lazy   as SL
@@ -248,15 +249,10 @@ withMutex (Mutex m) action = do
 -- | Convert some @withResource@ function to work with multiple
 --   resources at once
 withMany
-  :: (r -> (h -> m a) -> m a)
-  -> [r]
-  -> ([h] -> m a)
-  -> m a
-withMany with rs0 action = go [] rs0
-  where
-    go hs []     = action (reverse hs)
-    go hs (r:rs) = with r $ \h -> go (h:hs) rs
-
+  :: (Monad m, Traversable t)
+  => (a   -> (b   -> m r) -> m r)
+  -> (t a -> (t b -> m r) -> m r)
+withMany run = runContT . traverse (ContT . run)
 
 throwNothing :: (Exception e, MonadThrow m) => e -> Maybe a -> m a
 throwNothing e = maybe (throwM e) pure
