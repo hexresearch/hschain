@@ -1,0 +1,29 @@
+node:
+  number    : 0
+  count     : 4
+  port      : 45001
+  seeds     :
+    - "127.0.0.1:45002"
+    - "127.0.0.1:45003"
+    - "127.0.0.1:45004"
+  privKey   : "2K7bFuJXxKf5LqogvVRQjms2W26ZrjpvUjo5LdvPFa5Y"
+  validators:
+    - "2K7bFuJXxKf5LqogvVRQjms2W26ZrjpvUjo5LdvPFa5Y"
+    - "4NSWtMsEPgfTK25tCPWqNzVVze1dgMwcUFwS5WkSpjJL"
+    - "3Fj8bZjKc53F2a87sQaFkrDas2d9gjzK57FmQwnNnSHS"
+    - "D2fpHM1JA8trshiUW8XPvspsapUvPqVzSofaK1MGRySd"
+  dbName  : "db/node-1"
+coin:
+   maxH:       10
+   delay:      300
+   deposit:    1000
+   keys:       2000
+   walletKeys: [0,500]
+logs:
+  logFiles :
+    - type      : "ScribeJSON"
+      path      : "logs/node-1.log"
+      severity  : "Debug"
+      verbosity : "V2"
+  hostnameSuffix: "-node1"
+  clusterId     : "stand"

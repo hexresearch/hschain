@@ -139,8 +139,16 @@ Executable thundermint-coin-node
                      , transformers
                      , wai-middleware-prometheus
                      , warp
+                     , yaml
+                     , text
+                     , filepath
+                     , directory
   hs-source-dirs:      exe
   Main-is:             coin-node.hs
+  other-modules:
+                App.Yaml
+                App.AesonTH
+                App.Settings
 
 Executable thundermint-db
   Ghc-options:         -Wall -threaded -Wno-orphans
