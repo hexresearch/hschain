@@ -105,6 +105,7 @@ data NodeDescription m alg a = NodeDescription
     --   of new block
   , nodeCallbacks     :: !(AppCallbacks m alg a)
     -- ^ Callbacks with monoidal structure
+  , nodeNetwork       :: !BlockchainNet
   }
 
 -- | Specification of network
@@ -120,11 +121,11 @@ runNode
      , Crypto alg, Show a, BlockData a
      )
   => Configuration app
-  -> BlockchainNet
   -> NodeDescription m alg a
   -> m [m ()]
-runNode cfg BlockchainNet{..} NodeDescription{..} = do
+runNode cfg NodeDescription{..} = do
   let appLogic@AppLogic{..} = nodeLogic
+      BlockchainNet{..}     = nodeNetwork
       appCall = mempoolFilterCallback appMempool
              <> nodeCallbacks
   appCh <- newAppChans (cfgConsensus cfg)
