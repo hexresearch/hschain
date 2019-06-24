@@ -1,4 +1,5 @@
 {-# LANGUAGE ApplicativeDo       #-}
+{-# LANGUAGE BangPatterns        #-}
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE OverloadedStrings   #-}
@@ -8,6 +9,7 @@
 {-# LANGUAGE TypeApplications    #-}
 {-# LANGUAGE TypeFamilies        #-}
 {-# LANGUAGE TypeOperators       #-}
+
 import Control.Concurrent
 import Control.Monad
 import Control.Monad.Catch
