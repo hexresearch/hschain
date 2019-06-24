@@ -1,4 +1,3 @@
-{-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE DataKinds                  #-}
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE FlexibleContexts           #-}
@@ -7,6 +6,7 @@
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE RecordWildCards            #-}
 {-# LANGUAGE TupleSections              #-}
+{-# LANGUAGE TypeOperators              #-}
 -- |
 -- Simple coin for experimenting with blockchain
 module Thundermint.Mock.Coin (
@@ -295,11 +295,12 @@ interpretSpec maxHeight genSpec validatorSet net cfg NodeSpec{..} = do
         -- Transactions generator
         cursor <- getMempoolCursor $ appMempool logic
         let generator = transactionGenerator genSpec bchState (void . pushTransaction cursor)
-        acts <- runNode cfg net NodeDescription
+        acts <- runNode cfg NodeDescription
           { nodeValidationKey = nspecPrivKey
           , nodeCallbacks     = maybe mempty (callbackAbortAtH . Height) maxHeight
                              <> nonemptyMempoolCallback (appMempool logic)
           , nodeLogic         = logic
+          , nodeNetwork       = net
           }
         runConcurrently ( generator : acts)
     )

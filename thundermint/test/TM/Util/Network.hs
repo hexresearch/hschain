@@ -210,18 +210,17 @@ createTestNetworkWithValidatorsSetAndConfig validators cfg netDescr = do
         let run = runTracerT ncTraceCallback . runNoLogsT . runDBT conn
         fmap (map run) $ run $ do
             (_,logic) <- logicFromFold Mock.transitions
-            runNode cfg
-              BlockchainNet
+            runNode cfg NodeDescription
+              { nodeValidationKey = validatorPK
+              , nodeCallbacks     = ncAppCallbacks
+                                 <> mempty { appByzantine = ncByzantine }
+              , nodeLogic         = logic
+              , nodeNetwork       = BlockchainNet
                 { bchNetwork        = createMockNode net (intToNetAddr ncFrom)
                 , bchLocalAddr      = intToNetAddr ncFrom
                 , bchInitialPeers   = map intToNetAddr ncTo
                 }
-              NodeDescription
-                { nodeValidationKey = validatorPK
-                , nodeCallbacks     = ncAppCallbacks
-                                   <> mempty { appByzantine = ncByzantine }
-                , nodeLogic         = logic
-                }
+              }
 
 
 -- | UDP may return Nothings for the message receive operation.
