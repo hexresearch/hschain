@@ -279,12 +279,12 @@ interpretSpec
   :: ( MonadIO m, MonadLogger m, MonadFork m, MonadTrace m, MonadMask m, MonadTMMonitoring m, MonadFail m)
   => Maybe Int64                      -- ^ Maximum height
   -> GeneratorSpec                    -- ^ Spec for generator of transactions
-  -> ValidatorSet Alg                 -- ^ Set of validators
+  -> Block Alg [Tx]                   -- ^ Set of validators
   -> BlockchainNet                    -- ^ Network
   -> Configuration cfg                -- ^ Configuration for network
   -> NodeSpec                         -- ^ Node specifications
   -> m (Connection 'RO Alg [Tx], m ())
-interpretSpec maxHeight genSpec validatorSet net cfg NodeSpec{..} = do
+interpretSpec maxHeight genSpec genesisBlock net cfg NodeSpec{..} = do
   -- Allocate storage for node
   conn <- openConnection (maybe ":memory:" id nspecDbName)
   initDatabase conn genesisBlock
@@ -304,9 +304,6 @@ interpretSpec maxHeight genSpec validatorSet net cfg NodeSpec{..} = do
           }
         runConcurrently ( generator : acts)
     )
-  where
-    genesisBlock :: Block Alg [Tx]
-    genesisBlock = genesisFromGenerator validatorSet genSpec
 
 --
 executeNodeSpec
@@ -322,10 +319,12 @@ executeNodeSpec maxH delay NetSpec{..} = do
         Ring    -> connectRing
         All2All -> connectAll2All
       validatorSet = makeValidatorSetFromPriv [ pk | Just pk <- nspecPrivKey <$> netNodeList ]
-
+      defGenSpec   = defaultGenerator netInitialKeys netInitialDeposit delay
+      genesisBlock = genesisFromGenerator validatorSet defGenSpec
+  --
   actions <- forM (Map.toList netAddresses) $ \(addr, nspec@NodeSpec{..}) -> do
     let genSpec = restrictGenerator (netAddrToInt addr) totalNodes
-                $ defaultGenerator netInitialKeys netInitialDeposit delay
+                $ defGenSpec
         bnet    = BlockchainNet
           { bchNetwork      = P2P.createMockNode net addr
           , bchLocalAddr    = addr
@@ -333,6 +332,6 @@ executeNodeSpec maxH delay NetSpec{..} = do
           }
     let loggers = [ makeScribe s | s <- nspecLogFile ]
         run m   = withLogEnv "TM" "DEV" loggers $ \logenv -> runLoggerT logenv m
-    run $ (fmap . fmap) run $ interpretSpec maxH genSpec validatorSet bnet netNetCfg nspec
+    run $ (fmap . fmap) run $ interpretSpec maxH genSpec genesisBlock bnet netNetCfg nspec
   runConcurrently (snd <$> actions) `catch` (\Abort -> return ())
   return $ fst <$> actions
