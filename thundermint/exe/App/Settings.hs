@@ -6,13 +6,11 @@
 module App.Settings where
 
 
-import Data.Text    (Text, unpack)
+import Data.Text    (Text)
 import GHC.Generics (Generic)
 import GHC.Int      (Int64)
 
 import Thundermint.Blockchain.Internal.Engine.Types
-
-import qualified Data.Aeson as JSON
 
 import Thundermint.Crypto
 import Thundermint.Crypto.Ed25519 (Ed25519)
