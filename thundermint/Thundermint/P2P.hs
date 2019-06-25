@@ -191,12 +191,11 @@ startPeerDispatcher
      , BlockData a, Crypto alg, MonadFail m)
   => NetworkCfg
   -> NetworkAPI               -- ^ API for networking
-  -> NetAddr                  -- ^ Current peer address
   -> [NetAddr]                -- ^ Set of initial addresses to connect
   -> AppChans m alg a         -- ^ Channels for communication with main application
   -> Mempool m alg (TX a)
   -> m ()
-startPeerDispatcher p2pConfig net peerAddr addrs AppChans{..} mempool = logOnException $ do
+startPeerDispatcher p2pConfig net addrs AppChans{..} mempool = logOnException $ do
   let PeerInfo peerId _ _ = ourPeerInfo net
   logger InfoS ("Starting peer dispatcher: addrs = " <> showLS addrs <> ", PeerId = " <> showLS peerId) ()
   trace TeNodeStarted

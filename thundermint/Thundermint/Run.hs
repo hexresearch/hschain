@@ -166,7 +166,6 @@ data NodeDescription m alg a = NodeDescription
 -- | Specification of network
 data BlockchainNet = BlockchainNet
   { bchNetwork      :: !NetworkAPI
-  , bchLocalAddr    :: !NetAddr
   , bchInitialPeers :: ![NetAddr]
   }
 
@@ -193,8 +192,7 @@ runNode cfg BlockchainNet{..} NodeDescription{..} NodeLogic{..} = do
   appCh <- newAppChans (cfgConsensus cfg)
   return
     [ id $ descendNamespace "net"
-         $ startPeerDispatcher (cfgNetwork cfg)
-              bchNetwork bchLocalAddr bchInitialPeers appCh nodeMempool
+         $ startPeerDispatcher (cfgNetwork cfg) bchNetwork bchInitialPeers appCh nodeMempool
     , id $ descendNamespace "consensus"
          $ runApplication (cfgConsensus cfg) nodeValidationKey appLogic appCall appCh appByzantine
     , forever $ do
