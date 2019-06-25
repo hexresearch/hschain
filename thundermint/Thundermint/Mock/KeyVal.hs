@@ -120,7 +120,6 @@ interpretSpec maxH prefix NetSpec{..} = do
                      $ startPeerDispatcher
                          (cfgNetwork cfg)
                          (createMockNode net addr)
-                         addr
                          (connections netAddresses addr)
                          appCh
                          nullMempoolAny

@@ -89,7 +89,6 @@ main = do
       logger InfoS ("network API created") ()
       let net = BlockchainNet
                    { bchNetwork          = netAPI
-                   , bchLocalAddr        = P2PT.sockAddrToNetAddr nodeAddr
                    , bchInitialPeers     = nspec'seeds
                    }
           genSpec = restrictGenerator nspec'number nspec'count
