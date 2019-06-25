@@ -1,47 +1,58 @@
-{-# LANGUAGE DataKinds            #-}
-{-# LANGUAGE DeriveGeneric        #-}
-{-# LANGUAGE NumDecimals          #-}
-{-# LANGUAGE OverloadedStrings    #-}
-{-# LANGUAGE RankNTypes           #-}
-{-# LANGUAGE RecordWildCards      #-}
-{-# LANGUAGE ScopedTypeVariables  #-}
-{-# LANGUAGE TupleSections        #-}
-{-# LANGUAGE TypeOperators        #-}
+{-# LANGUAGE DataKinds           #-}
+{-# LANGUAGE DeriveGeneric       #-}
+{-# LANGUAGE LambdaCase          #-}
+{-# LANGUAGE NumDecimals         #-}
+{-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE RankNTypes          #-}
+{-# LANGUAGE RecordWildCards     #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TupleSections       #-}
+{-# LANGUAGE TypeOperators       #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
 -- |
 module TM.Util.Network where
 
 
-import Control.Concurrent                 (threadDelay)
-import Control.Monad
-import Control.Monad.Catch
-import Control.Monad.Fail                 (MonadFail)
-import Control.Monad.IO.Class
-import Control.Retry                      (RetryPolicy, constantDelay, limitRetries, recovering)
-import Data.Monoid                        ((<>))
-import Katip
+import Control.Concurrent (threadDelay)
+
 import qualified Control.Concurrent.Async as Async
 import qualified Control.Exception        as E
-import qualified Data.ByteString.Lazy     as LBS
-import qualified Data.Map                 as Map
-import qualified Network.Socket           as Net
+
+import Control.Monad
+import Control.Monad.Catch
+import Control.Monad.Fail     (MonadFail)
+import Control.Monad.IO.Class
+import Control.Retry
+    (RetryPolicy, constantDelay, limitRetries, recovering, skipAsyncExceptions)
+
+import qualified Data.ByteString.Lazy as LBS
+import qualified Data.Map             as Map
+
+import Data.Monoid    ((<>))
+import Data.Proxy     (Proxy(..))
+import System.Timeout (timeout)
+
+import Katip
+
+import qualified Network.Socket as Net
+
+import qualified Thundermint.Mock.KeyVal as Mock
 
 import Thundermint.Blockchain.Internal.Engine.Types
 import Thundermint.Control
-import Thundermint.Crypto         ((:&), Fingerprint, (:<<<))
-import Thundermint.Crypto.Ed25519 (Ed25519)
-import Thundermint.Crypto.SHA     (SHA512,SHA256)
+import Thundermint.Crypto                           ((:&), Fingerprint, (:<<<))
+import Thundermint.Crypto.Ed25519                   (Ed25519)
+import Thundermint.Crypto.SHA                       (SHA512,SHA256)
 import Thundermint.Debug.Trace
 import Thundermint.Logger
-import Thundermint.Mock.Coin      (intToNetAddr)
+import Thundermint.Mock.Coin                        (intToNetAddr)
 import Thundermint.Mock.Types
 import Thundermint.Monitoring
 import Thundermint.P2P
 import Thundermint.P2P.Network
 import Thundermint.Run
 import Thundermint.Store
-import qualified Thundermint.Mock.KeyVal as Mock
 
 import TM.RealNetwork
 
@@ -55,23 +66,54 @@ shouldRetry = True
 retryPolicy :: RetryPolicy
 retryPolicy = constantDelay 500 <> limitRetries 20
 
-withRetry :: MonadIO m =>  ( (NetAddr, NetworkAPI)
-                        -> (NetAddr, NetworkAPI) -> IO a)
-         -> Net.HostName -> m a
+withRetry
+  :: MonadIO m
+  => ((NetAddr, NetworkAPI) -> (NetAddr, NetworkAPI) -> IO a)
+  -> Net.HostName
+  -> m a
 withRetry = withRetry' Nothing
 
-withRetry' :: MonadIO m => Maybe (Maybe Int)
-                        -> ( (NetAddr, NetworkAPI)
-                        -> (NetAddr, NetworkAPI) -> IO a)
-         -> Net.HostName -> m a
+withRetry'
+  :: MonadIO m
+  => Maybe (Maybe Int)
+  -> ((NetAddr, NetworkAPI) -> (NetAddr, NetworkAPI) -> IO a)
+  -> Net.HostName -> m a
 withRetry' useUDP fun host = do
-  liftIO $ recovering retryPolicy hs
+  liftIO $ recovering retryPolicy (skipAsyncExceptions ++ hs)
     (const $ realNetPair useUDP host >>= uncurry fun)
     where
       -- | exceptions list to trigger the recovery logic
       hs :: [a -> Handler IO Bool]
       hs = [const $ Handler (\(_::E.IOException) -> return shouldRetry)]
 
+
+withTimeoutRetry
+  :: MonadIO m
+  => Maybe (Maybe Int)
+  -> String
+  -> Int
+  -> ((NetAddr, NetworkAPI) -> (NetAddr, NetworkAPI) -> IO a)
+  -> Net.HostName
+  -> m a
+withTimeoutRetry useUDP msg t fun host = do
+  liftIO $ recovering retryPolicy (skipAsyncExceptions ++ hs)
+    (const action)
+    where
+      action = withTimeOut msg t (realNetPair useUDP host >>= uncurry fun)
+      -- | exceptions list to trigger the recovery logic
+      hs :: [a -> Handler IO Bool]
+      hs = [const $ Handler (\(_::E.IOException) -> return shouldRetry)]
+
+-- | Exception for aborting the execution of test
+data AbortTest = AbortTest String
+                 deriving Show
+
+instance Exception AbortTest
+
+withTimeOut :: String -> Int -> IO a -> IO a
+withTimeOut abortMsg t act = timeout t act >>= \case
+    Just n  -> pure n
+    Nothing -> E.throwIO $ AbortTest $ abortMsg <> " due to timeout"
 
 -- TODO объединить в один список, а лучше сделать бесконечный
 testValidators, extraTestValidators :: Map.Map (Fingerprint (SHA256 :<<< SHA512) TestAlg) (PrivValidator TestAlg)
@@ -217,7 +259,6 @@ createTestNetworkWithValidatorsSetAndConfig validators cfg netDescr = do
               , nodeLogic         = logic
               , nodeNetwork       = BlockchainNet
                 { bchNetwork        = createMockNode net (intToNetAddr ncFrom)
-                , bchLocalAddr      = intToNetAddr ncFrom
                 , bchInitialPeers   = map intToNetAddr ncTo
                 }
               }
@@ -229,7 +270,7 @@ skipNothings _lbl recv conn = do
   mbMsg <- recv conn
   case mbMsg of
     Just msg -> return msg
-    Nothing -> skipNothings _lbl recv conn
+    Nothing  -> skipNothings _lbl recv conn
 
 
 -- | Simple test to ensure that mock network works at all

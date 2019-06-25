@@ -11,22 +11,22 @@ module TM.Network (tests) where
 
 import Control.Concurrent.Async
 
-import Control.Concurrent     (threadDelay)
-import Control.Monad          (forM_)
+import Control.Concurrent (threadDelay)
+import Control.Monad      (forM_)
+import Data.Monoid        ((<>))
+import Data.String        (fromString)
 
-import Data.Monoid            ((<>))
-import Data.String            (fromString)
+import Control.Exception as E
 
-import           Control.Exception as E
-import qualified Network.Socket    as Net
+import qualified Network.Socket as Net
 
 import Thundermint.P2P
 import Thundermint.P2P.Network
 import Thundermint.Types.Network
 
+import Test.QuickCheck
 import Test.Tasty
 import Test.Tasty.HUnit
-import Test.QuickCheck
 import TM.MockNet
 import TM.Util.Network
 
@@ -63,9 +63,9 @@ tests =
                     ]
                   , testGroup "real-udp"
                     [ testGroup group $
-                         [ testCase "ping-pong" $ withRetry' (Just Nothing) pingPong address
-                         , testCase "delayed write" $ withRetry' (Just Nothing) delayedWrite address
-                         , testCase "sized ping pongs" $ withRetry' (Just $ Just $ 123 + v6) (sizedPingPong 8 11) address
+                         [ testCase "ping-pong" $ withTimeoutRetry (Just Nothing) "ping-pong" 10e6 pingPong address
+                         , testCase "delayed write" $ withTimeoutRetry (Just Nothing) "delayed wrote" 10e6 delayedWrite address
+                         , testCase "sized ping pongs" $ withTimeoutRetry (Just $ Just $ 123 + v6) "sized ping pongs" 10e6 (sizedPingPong 8 11) address
                          ]
                     | (group, address, v6) <- [("IPv4", "127.0.0.1", 0)]--, ("IPv6", "::1", 1)]
                     ]

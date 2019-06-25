@@ -327,7 +327,6 @@ executeNodeSpec maxH delay NetSpec{..} = do
                 $ defGenSpec
         bnet    = BlockchainNet
           { bchNetwork      = P2P.createMockNode net addr
-          , bchLocalAddr    = addr
           , bchInitialPeers = connections netAddresses addr
           }
     let loggers = [ makeScribe s | s <- nspecLogFile ]

@@ -218,7 +218,6 @@ testAddRemValidators = do
             runNode cfg
                 BlockchainNet
                   { bchNetwork          = createMockNode net (intToNetAddr ncFrom)
-                  , bchLocalAddr        = intToNetAddr ncFrom
                   , bchInitialPeers     = map intToNetAddr ncTo
                   }
                 NodeDescription
