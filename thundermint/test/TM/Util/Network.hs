@@ -66,15 +66,18 @@ shouldRetry = True
 retryPolicy :: RetryPolicy
 retryPolicy = constantDelay 500 <> limitRetries 20
 
-withRetry :: MonadIO m =>  ( (NetAddr, NetworkAPI)
-                        -> (NetAddr, NetworkAPI) -> IO a)
-         -> Net.HostName -> m a
+withRetry
+  :: MonadIO m
+  => ((NetAddr, NetworkAPI) -> (NetAddr, NetworkAPI) -> IO a)
+  -> Net.HostName
+  -> m a
 withRetry = withRetry' Nothing
 
-withRetry' :: MonadIO m => Maybe (Maybe Int)
-                        -> ( (NetAddr, NetworkAPI)
-                        -> (NetAddr, NetworkAPI) -> IO a)
-                        -> Net.HostName -> m a
+withRetry'
+  :: MonadIO m
+  => Maybe (Maybe Int)
+  -> ((NetAddr, NetworkAPI) -> (NetAddr, NetworkAPI) -> IO a)
+  -> Net.HostName -> m a
 withRetry' useUDP fun host = do
   liftIO $ recovering retryPolicy (skipAsyncExceptions ++ hs)
     (const $ realNetPair useUDP host >>= uncurry fun)
@@ -84,12 +87,14 @@ withRetry' useUDP fun host = do
       hs = [const $ Handler (\(_::E.IOException) -> return shouldRetry)]
 
 
-withTimeoutRetry :: MonadIO m => Maybe (Maybe Int)
-                     -> String
-                     -> Int
-                     -> ( (NetAddr, NetworkAPI)
-                     -> (NetAddr, NetworkAPI) -> IO a)
-                     -> Net.HostName -> m a
+withTimeoutRetry
+  :: MonadIO m
+  => Maybe (Maybe Int)
+  -> String
+  -> Int
+  -> ((NetAddr, NetworkAPI) -> (NetAddr, NetworkAPI) -> IO a)
+  -> Net.HostName
+  -> m a
 withTimeoutRetry useUDP msg t fun host = do
   liftIO $ recovering retryPolicy (skipAsyncExceptions ++ hs)
     (const action)
