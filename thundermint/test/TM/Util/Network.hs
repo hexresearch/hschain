@@ -30,7 +30,6 @@ import qualified Data.ByteString.Lazy as LBS
 import qualified Data.Map             as Map
 
 import Data.Monoid    ((<>))
-import Data.Proxy     (Proxy(..))
 import System.Timeout (timeout)
 
 import Katip
