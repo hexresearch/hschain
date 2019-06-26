@@ -101,10 +101,7 @@ interpretSpec maxH prefix NetSpec{..} = do
                            st <- stateAtH bchState h
                            return $ vals <$ processBlock transitions CheckSignature b st
                        --
-                       , appBlockGenerator = \_ h _ _ _ vals -> case nspecByzantine of
-                           Just "InvalidBlock" -> do
-                             return ([("XXX", NetAddrV6 (1,2,3,4) 4433)], vals)
-                           _ -> do
+                       , appBlockGenerator = \_ h _ _ _ vals -> do
                              st <- stateAtH bchState h
                              let Just k = find (`Map.notMember` st) ["K_" ++ show (n :: Int) | n <- [1 ..]]
                              return ([(k, addr)], vals)

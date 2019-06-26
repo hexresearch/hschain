@@ -91,7 +91,6 @@ data NodeSpec = NodeSpec
   , nspecDbName     :: Maybe FilePath
   , nspecLogFile    :: [ScribeSpec]
   , nspecWalletKeys :: (Int,Int)
-  , nspecByzantine  :: Maybe String
   }
   deriving (Generic,Show)
 
