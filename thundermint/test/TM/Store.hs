@@ -5,7 +5,6 @@ module TM.Store ( tests) where
 import Test.Tasty
 import Test.Tasty.HUnit
 
-import Data.Int         (Int64)
 import Data.Monoid      ((<>))
 import Data.Traversable (forM)
 
@@ -18,8 +17,8 @@ import           Thundermint.Store
 import qualified Thundermint.Mock.KeyVal as KeyVal
 import qualified Thundermint.Mock.Coin   as Coin
 
-maxHeight :: Int64
-maxHeight = 10
+maxHeight :: Height
+maxHeight = Height 10
 
 tests :: TestTree
 tests = testGroup "generate blockchain and check on consistency"
@@ -30,7 +29,7 @@ tests = testGroup "generate blockchain and check on consistency"
   ]
 
 -- Run key-val blockchain mock
-runKeyVal :: Maybe Int64 -> FilePath -> FilePath -> IO ()
+runKeyVal :: Maybe Height -> FilePath -> FilePath -> IO ()
 runKeyVal maxH prefix file = do
       -- read config
       blob <- BC8.readFile file
@@ -44,7 +43,7 @@ runKeyVal maxH prefix file = do
 
 
 -- Run coin blockchain mock
-runCoin :: Maybe Int64 -> FilePath -> IO ()
+runCoin :: Maybe Height -> FilePath -> IO ()
 runCoin maxH file = do
   -- read config
   blob <- BC8.readFile file
@@ -57,7 +56,7 @@ runCoin maxH file = do
   assertEqual "failed consistency check" [] (concat checks)
   -- Check that block and validators identical on each node
   let Just maximumH = maxH
-      heights = map (Height . fromIntegral) [0 .. maximumH]
+      heights = [Height 0 .. maximumH]
   coins <- forM heights $ \h -> do
     -- blocks
     blocks <- forM storageList $ \c -> do

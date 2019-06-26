@@ -8,7 +8,6 @@ module App.Settings where
 
 import Data.Text    (Text)
 import GHC.Generics (Generic)
-import GHC.Int      (Int64)
 
 import Thundermint.Blockchain.Internal.Engine.Types
 
@@ -17,7 +16,7 @@ import Thundermint.Crypto.Ed25519 (Ed25519)
 import Thundermint.Crypto.SHA     (SHA512)
 import Thundermint.Logger         (ScribeSpec)
 import Thundermint.P2P            (NetAddr)
-
+import Thundermint.Types
 
 import App.AesonTH
 
@@ -59,7 +58,7 @@ data LogSpec = LogSpec
 
 -- | Specification of coin node
 data CoinSpec = CoinSpec
-  { coin'maxH       :: Int64
+  { coin'maxH       :: Height
   , coin'delay      :: Int
   , coin'deposit    :: Integer
   , coin'keys       :: Int
