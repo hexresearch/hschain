@@ -19,15 +19,6 @@ let
     fromImageName = "scratch";
     tag = containerTag;
     contents = [thundermint-exe];
-    config = {
-      Volumes = {
-        "/thundermint" = {};
-      };
-      ExposedPorts = {
-        "49999" = {};
-        "50000" = {};
-      };
-      };
   };
 in {
   inherit
