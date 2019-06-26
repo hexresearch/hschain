@@ -47,6 +47,7 @@ import Data.ByteString.Lazy (toStrict)
 import Data.Foldable
 import Data.Maybe
 import Data.Map             (Map)
+import qualified Data.Vector      as V
 import qualified Data.Map.Strict  as Map
 import System.Random   (randomRIO)
 import GHC.Generics    (Generic)
@@ -166,6 +167,55 @@ transitions = BlockFold
   where
     process (Height 0) t s = processDeposit t s <|> processTransaction t s
     process _          t s = processTransaction t s
+
+
+----------------------------------------------------------------
+-- Transaction generator
+----------------------------------------------------------------
+
+{-
+-- | Specification of generator of transactions
+data TxGenerator = TxGenerator
+  { genPrivateKeys :: V.Vector (PrivKey Alg)
+    -- ^ Private keys for which we can generate transactions
+  , genDestinaions :: V.Vector (PublicKey Alg)
+    -- ^ List of all addresses to which we can send money
+  , genDelay       :: Int
+    -- ^ Delay between invokations of generator
+  }
+
+transactionGenerator
+  :: MonadIO m
+  => TxGenerator
+  -> m CoinState
+  -> (Tx -> m ())
+  -> m a
+transactionGenerator gen coinState push = forever $ do
+  push =<< generateTransaction gen =<< coinState
+  liftIO $ threadDelay $ genDelay gen * 1000
+
+generateTransaction :: MonadIO m => TxGenerator -> CoinState -> m Tx
+generateTransaction TxGenerator{..} (CoinState utxo) = liftIO $ do
+  privK  <- selectFromVec genPrivateKeys
+  target <- selectFromVec genDestinaions
+  amount <- randomRIO (0,20)
+  let pubK   = publicKey privK
+      inputs = findInputs amount [ (inp, n)
+                                 | (inp, (pk,n)) <- Map.toList utxo
+                                 , pk == pubK
+                                 ]
+      tx     = TxSend { txInputs  = map fst inputs
+                      , txOutputs = [ (target, amount)
+                                    , (pubK  , sum (snd <$> inputs) - amount)
+                                    ]
+                      }
+  return $ Send pubK (signBlob privK $ toStrict $ serialise tx) tx
+
+selectFromVec :: V.Vector a -> IO a
+selectFromVec v = do
+  i <- randomRIO (0, V.length v - 1)
+  return $ v V.! i
+-}
 
 
 ----------------------------------------------------------------
