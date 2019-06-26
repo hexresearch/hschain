@@ -115,6 +115,7 @@ data BlockchainNet = BlockchainNet
   }
 
 
+-- | Create list of threads which should be executed in parallel.
 runNode
   :: ( MonadDB m alg a, MonadMask m, MonadFork m, MonadLogger m, MonadTrace m, MonadTMMonitoring m, MonadFail m
      , Crypto alg, Show a, BlockData a
