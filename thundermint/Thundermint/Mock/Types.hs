@@ -104,14 +104,16 @@ data NetSpec a = NetSpec
 
   , netInitialDeposit :: Integer
   , netInitialKeys    :: Int
+  , netGeneratorDelay :: Int
   }
   deriving (Generic,Show)
 
 -- | Specifications for mock coin status.
 data CoinSpecification = CoinSpecification
- { coinAridrop     :: !Integer -- ^ Amount of coins allocated to each wallet
- , coinWallets     :: !Int     -- ^ Number of wallets in use
- , coinWalletsSeed :: !Int     -- ^ Seed used to generate private keys for wallets
+ { coinAridrop        :: !Integer     -- ^ Amount of coins allocated to each wallet
+ , coinWallets        :: !Int         -- ^ Number of wallets in use
+ , coinWalletsSeed    :: !Int         -- ^ Seed used to generate private keys for wallets
+ , coinGeneratorDelay :: !(Maybe Int) -- ^ Delay between TX generation. Nothing means don't generate
  }
  deriving (Generic,Show)
 
