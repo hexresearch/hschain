@@ -27,7 +27,6 @@ module Thundermint.Mock.Types (
   ) where
 
 import Control.Exception (Exception)
-import Data.Int     (Int64)
 import Data.Type.Equality
 import GHC.Exts     (Proxy#,proxy#)
 import GHC.Generics (Generic)
@@ -39,6 +38,8 @@ import Thundermint.Crypto         ((:&))
 import Thundermint.Crypto.Ed25519 (Ed25519)
 import Thundermint.Crypto.SHA     (SHA512)
 import Thundermint.Logger         (ScribeSpec)
+import Thundermint.Types          (Height(..))
+
 
 ----------------------------------------------------------------
 --
@@ -99,7 +100,7 @@ data NetSpec a = NetSpec
   { netNodeList       :: [a]      -- ^ List of nodes
   , netTopology       :: Topology -- ^ Network topology
   , netNetCfg         :: Configuration Example
-  , netMaxH           :: Maybe Int64
+  , netMaxH           :: Maybe Height
 
   , netInitialDeposit :: Integer
   , netInitialKeys    :: Int

@@ -111,6 +111,7 @@ Executable thundermint-coin-node
   Default-Language:    Haskell2010
   Build-Depends:       base                 >=4.9 && <5
                      , thundermint
+                     , thundermint-types
                      , thundermint-crypto
                      , aeson
                      , bytestring           >=0.10

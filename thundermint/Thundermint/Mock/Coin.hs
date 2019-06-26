@@ -43,7 +43,6 @@ import Codec.Serialise      (Serialise,serialise)
 import qualified Data.Aeson as JSON
 import Data.ByteString.Lazy (toStrict)
 import Data.Foldable
-import Data.Int
 import Data.Map             (Map)
 import qualified Data.Map.Strict  as Map
 import System.Random   (randomRIO)
@@ -277,7 +276,7 @@ findInputs tgt = go 0
 -- | Interpret specification for node
 interpretSpec
   :: ( MonadIO m, MonadLogger m, MonadFork m, MonadTrace m, MonadMask m, MonadTMMonitoring m, MonadFail m)
-  => Maybe Int64                      -- ^ Maximum height
+  => Maybe Height                     -- ^ Maximum height
   -> GeneratorSpec                    -- ^ Spec for generator of transactions
   -> Block Alg [Tx]                   -- ^ Set of validators
   -> BlockchainNet                    -- ^ Network
@@ -297,7 +296,7 @@ interpretSpec maxHeight genSpec genesisBlock net cfg NodeSpec{..} = do
         let generator = transactionGenerator genSpec bchState (void . pushTransaction cursor)
         acts <- runNode cfg NodeDescription
           { nodeValidationKey = nspecPrivKey
-          , nodeCallbacks     = maybe mempty (callbackAbortAtH . Height) maxHeight
+          , nodeCallbacks     = maybe mempty callbackAbortAtH maxHeight
                              <> nonemptyMempoolCallback (appMempool logic)
           , nodeLogic         = logic
           , nodeNetwork       = net
@@ -307,7 +306,7 @@ interpretSpec maxHeight genSpec genesisBlock net cfg NodeSpec{..} = do
 
 --
 executeNodeSpec
-  :: Maybe Int64                -- ^ Maximum height
+  :: Maybe Height               -- ^ Maximum height
   -> Int                        -- ^ Delay for generator
   -> NetSpec NodeSpec           -- ^ Specification for net
   -> IO [Connection 'RO Alg [Tx]]

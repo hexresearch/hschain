@@ -13,7 +13,6 @@ module Thundermint.Mock.KeyVal (
 
 import Control.Monad
 import Control.Monad.Catch
-import Data.Int
 import Data.List
 
 import Data.Map        (Map)
@@ -74,7 +73,7 @@ transitions = BlockFold
 -------------------------------------------------------------------------------
 
 interpretSpec
-  :: Maybe Int64                -- ^ Maximum height
+  :: Maybe Height                -- ^ Maximum height
   -> FilePath
   -> NetSpec NodeSpec
   -> IO [(Connection 'RO (Ed25519 :& SHA512) [(String,NetAddr)], IO ())]
@@ -109,7 +108,7 @@ interpretSpec maxH prefix NetSpec{..} = do
                        , appCommitQuery    = SimpleQuery $ \vals _ -> return vals
                        , appMempool        = nullMempoolAny
                        }
-                     appCall = maybe mempty (callbackAbortAtH . Height) maxH
+                     appCall = maybe mempty callbackAbortAtH maxH
                  let cfg = defCfg :: Configuration Example
                  appCh <- newAppChans (cfgConsensus cfg)
                  runConcurrently
@@ -133,7 +132,7 @@ interpretSpec maxH prefix NetSpec{..} = do
 
 
 executeSpec
-  :: Maybe Int64                -- ^ Maximum height
+  :: Maybe Height               -- ^ Maximum height
   -> FilePath                   -- ^ Directory for store logs and DBs
   -> NetSpec NodeSpec
   -> IO [Connection 'RO (Ed25519 :& SHA512) [(String,NetAddr)]]
