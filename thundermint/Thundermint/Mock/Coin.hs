@@ -309,14 +309,13 @@ interpretSpec maxHeight genSpec genesisBlock net cfg NodeSpec{..} = do
 
 --
 executeNodeSpec
-  :: Int                        -- ^ Delay for generator
-  -> NetSpec NodeSpec           -- ^ Specification for net
+  :: NetSpec NodeSpec           -- ^ Specification for net
   -> IO [Connection 'RO Alg [Tx]]
-executeNodeSpec delay NetSpec{..} = do
+executeNodeSpec NetSpec{..} = do
   net <- P2P.newMockNet
   let totalNodes   = length netNodeList
       validatorSet = makeValidatorSetFromPriv [ pk | Just pk <- nspecPrivKey <$> netNodeList ]
-      defGenSpec   = defaultGenerator netInitialKeys netInitialDeposit delay
+      defGenSpec   = defaultGenerator netInitialKeys netInitialDeposit netGeneratorDelay
       genesisBlock = genesisFromGenerator validatorSet defGenSpec
   --
   actions <- forM (allocateMockNetAddrs net netTopology netNodeList) $ \(nspec@NodeSpec{..}, addr, bnet) -> do
@@ -364,6 +363,7 @@ withNodeSpec genesis x action = evalContT $ do
   lift $ runLoggerT logenv
        $ runDBT conn
        $ action x
+
 
 withNodeSpecMany
   :: ( MonadIO m, MonadMask m, MonadFork m

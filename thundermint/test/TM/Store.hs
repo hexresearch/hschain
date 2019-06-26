@@ -52,7 +52,9 @@ runCoin maxH file = do
   spec <- case JSON.eitherDecodeStrict blob of
     Right s -> return s
     Left  e -> error e
-  storageList <- Coin.executeNodeSpec 300 spec { netMaxH = netMaxH spec <|> maxH }
+  storageList <- Coin.executeNodeSpec spec { netMaxH           = netMaxH spec <|> maxH
+                                           , netGeneratorDelay = 300
+                                           }
   -- Check that each blockchain is internally consistent\
   checks <- forM storageList $ \c -> runDBT c checkStorage
   assertEqual "failed consistency check" [] (concat checks)
