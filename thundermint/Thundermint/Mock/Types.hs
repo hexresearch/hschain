@@ -11,12 +11,15 @@
 {-# LANGUAGE TypeOperators         #-}
 {-# LANGUAGE UndecidableInstances  #-}
 module Thundermint.Mock.Types (
+    -- * Data types
+    -- ** Node and network specification
     NodeSpec(..)
   , NetSpec(..)
+  , CoinSpecification(..)
+    -- ** Other
   , Topology(..)
   , Abort(..)
   , Example
-  , defCfg
     -- * Anonymous product
   , (:*:)(..)
   , Has(..)
@@ -37,7 +40,9 @@ import Thundermint.Crypto.Ed25519 (Ed25519)
 import Thundermint.Crypto.SHA     (SHA512)
 import Thundermint.Logger         (ScribeSpec)
 
-
+----------------------------------------------------------------
+--
+----------------------------------------------------------------
 
 data Example
 
@@ -90,9 +95,10 @@ data NodeSpec = NodeSpec
   }
   deriving (Generic,Show)
 
+-- | Specification of mock cluster
 data NetSpec a = NetSpec
-  { netNodeList       :: [a]
-  , netTopology       :: Topology
+  { netNodeList       :: [a]      -- ^ List of nodes
+  , netTopology       :: Topology -- ^ Network topology
   , netInitialDeposit :: Integer
   , netInitialKeys    :: Int
   , netPrefix         :: Maybe String
@@ -101,7 +107,17 @@ data NetSpec a = NetSpec
   }
   deriving (Generic,Show)
 
+-- | Specifications for mock coin status.
+data CoinSpecification = CoinSpecification
+ { coinAridrop     :: !Integer -- ^ Amount of coins allocated to each wallet
+ , coinWallets     :: !Int     -- ^ Number of wallets in use
+ , coinWalletsSeed :: !Int     -- ^ Seed used to generate private keys for wallets
+ }
+ deriving (Generic,Show)
+
 instance JSON.ToJSON   NodeSpec
+
+instance JSON.FromJSON CoinSpecification
 instance JSON.FromJSON NodeSpec
 instance JSON.FromJSON a => JSON.FromJSON (NetSpec a)
 
