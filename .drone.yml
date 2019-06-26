@@ -24,6 +24,9 @@ steps:
 
 - name: dockerize-thundemint
   image: nixos/nix
+  volumes:
+  - name: dockersock
+    path: /var/run/docker.sock
   privileged: true
   network_mode: host
   depends_on:
@@ -40,7 +43,7 @@ steps:
     NIX_CACHE_SIGNING_KEY:
       from_secret: nix_cache_signing_key
   commands:
-  - apk add --no-cache git bash openssh-client
+  - apk add --no-cache git bash openssh-client docker
   - source ./nix/setup_ssh_ci.sh
   - "echo -n \"$${NIX_CACHE_SIGNING_KEY}\" > \"$${HOME}/nix-cache-key.sec\""
   - "chmod 400 \"$${HOME}/nix-cache-key.sec\""
@@ -129,6 +132,11 @@ steps:
     status:
     - success
     - failure
+
+volumes:
+- name: dockersock
+  host:
+    path: /var/run/docker.sock
 
 trigger:
   branch:
