@@ -98,10 +98,11 @@ data NodeSpec = NodeSpec
 data NetSpec a = NetSpec
   { netNodeList       :: [a]      -- ^ List of nodes
   , netTopology       :: Topology -- ^ Network topology
+  , netNetCfg         :: Configuration Example
+  , netMaxH           :: Maybe Int64
+
   , netInitialDeposit :: Integer
   , netInitialKeys    :: Int
-  , netMaxH           :: Maybe Int64
-  , netNetCfg         :: Configuration Example
   }
   deriving (Generic,Show)
 
