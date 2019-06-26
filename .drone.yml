@@ -22,6 +22,31 @@ steps:
   - cd nix
   - ./build-ci.sh
 
+- name: dockerize-thundemint
+  image: nixos/nix
+  privileged: true
+  network_mode: host
+  depends_on:
+    - build-thundemint
+  environment:
+    DOCKER_PASSWORD:
+      from_secret: docker_password
+    DOCKER_USERNAME:
+      from_secret: docker_username
+    DRONE_GITHUB_PULL_KEY:
+      from_secret: drone_github_pull_key
+    NIX_CACHE_KEY:
+      from_secret: nix_cache_key
+    NIX_CACHE_SIGNING_KEY:
+      from_secret: nix_cache_signing_key
+  commands:
+  - apk add --no-cache git bash openssh-client
+  - source ./nix/setup_ssh_ci.sh
+  - "echo -n \"$${NIX_CACHE_SIGNING_KEY}\" > \"$${HOME}/nix-cache-key.sec\""
+  - "chmod 400 \"$${HOME}/nix-cache-key.sec\""
+  - cd nix
+  - ./build-docker-ci.sh
+
 - name: build-thundemint-sodium
   image: nixos/nix
   privileged: true
