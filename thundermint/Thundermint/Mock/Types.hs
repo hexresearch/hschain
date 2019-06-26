@@ -112,6 +112,13 @@ data a :*: b = a :*: b
   deriving (Show,Eq)
 infixr 5 :*:
 
+instance (JSON.FromJSON a, JSON.FromJSON b) => JSON.FromJSON (a :*: b) where
+  parseJSON = JSON.withObject "Expecting object" $ \o -> do
+    a <- JSON.parseJSON (JSON.Object o)
+    b <- JSON.parseJSON (JSON.Object o)
+    return (a :*: b)
+
+
 -- | Obtain value from product using its type
 class Has a x where
   getT :: a -> x
