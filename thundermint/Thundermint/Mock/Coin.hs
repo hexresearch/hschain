@@ -314,23 +314,32 @@ executeNodeSpec
 executeNodeSpec maxH delay NetSpec{..} = do
   net <- P2P.newMockNet
   let totalNodes   = length netNodeList
-      netAddresses = Map.fromList $ [ intToNetAddr i | i <- [0..]] `zip` netNodeList
-      connections  = case netTopology of
-        Ring    -> connectRing
-        All2All -> connectAll2All
       validatorSet = makeValidatorSetFromPriv [ pk | Just pk <- nspecPrivKey <$> netNodeList ]
       defGenSpec   = defaultGenerator netInitialKeys netInitialDeposit delay
       genesisBlock = genesisFromGenerator validatorSet defGenSpec
   --
-  actions <- forM (Map.toList netAddresses) $ \(addr, nspec@NodeSpec{..}) -> do
+  actions <- forM (allocateMockNetAddrs net netTopology netNodeList) $ \(nspec@NodeSpec{..}, addr, bnet) -> do
     let genSpec = restrictGenerator (netAddrToInt addr) totalNodes
                 $ defGenSpec
-        bnet    = BlockchainNet
-          { bchNetwork      = P2P.createMockNode net addr
-          , bchInitialPeers = connections netAddresses addr
-          }
     let loggers = [ makeScribe s | s <- nspecLogFile ]
         run m   = withLogEnv "TM" "DEV" loggers $ \logenv -> runLoggerT logenv m
     run $ (fmap . fmap) run $ interpretSpec maxH genSpec genesisBlock bnet netNetCfg nspec
   runConcurrently (snd <$> actions) `catch` (\Abort -> return ())
   return $ fst <$> actions
+
+
+allocateMockNetAddrs :: P2P.MockNet -> Topology -> [a] -> [(a, NetAddr, BlockchainNet)]
+allocateMockNetAddrs net topo nodes =
+  [ ( n
+    , addr
+    , BlockchainNet { bchNetwork      = P2P.createMockNode net addr
+                    , bchInitialPeers = connections addresses addr
+                    })
+  | (addr, n) <- Map.toList addresses
+  ]
+  where
+    addresses   = Map.fromList $ [ intToNetAddr i | i <- [0..]] `zip` nodes
+    connections = case topo of
+        Ring    -> connectRing
+        All2All -> connectAll2All
+
