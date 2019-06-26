@@ -359,13 +359,14 @@ interpretSpec maxHeight genSpec genesisBlock net cfg NodeSpec{..} = do
 
 --
 executeNodeSpec
-  :: NetSpec NodeSpec           -- ^ Specification for net
+  :: NetSpec NodeSpec :*: CoinSpecification
   -> IO [Connection 'RO Alg [Tx]]
-executeNodeSpec NetSpec{..} = do
+executeNodeSpec (NetSpec{..} :*: CoinSpecification{..}) = do
   net <- P2P.newMockNet
   let totalNodes   = length netNodeList
       validatorSet = makeValidatorSetFromPriv [ pk | Just pk <- nspecPrivKey <$> netNodeList ]
-      defGenSpec   = defaultGenerator netInitialKeys netInitialDeposit netGeneratorDelay
+      -- FIXME: wrong
+      defGenSpec   = defaultGenerator coinWallets coinAridrop (fromMaybe 0 coinGeneratorDelay)
       genesisBlock = genesisFromGenerator validatorSet defGenSpec
   --
   actions <- forM (allocateMockNetAddrs net netTopology netNodeList) $ \(nspec@NodeSpec{..}, addr, bnet) -> do
