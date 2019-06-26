@@ -101,10 +101,6 @@ data NetSpec a = NetSpec
   , netTopology       :: Topology -- ^ Network topology
   , netNetCfg         :: Configuration Example
   , netMaxH           :: Maybe Height
-
-  , netInitialDeposit :: Integer
-  , netInitialKeys    :: Int
-  , netGeneratorDelay :: Int
   }
   deriving (Generic,Show)
 

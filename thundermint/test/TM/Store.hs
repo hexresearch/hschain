@@ -49,12 +49,12 @@ runCoin :: Maybe Height -> FilePath -> IO ()
 runCoin maxH file = do
   -- read config
   blob <- BC8.readFile file
-  spec <- case JSON.eitherDecodeStrict blob of
+  spec :*: coin <- case JSON.eitherDecodeStrict blob of
     Right s -> return s
     Left  e -> error e
-  storageList <- Coin.executeNodeSpec spec { netMaxH           = netMaxH spec <|> maxH
-                                           , netGeneratorDelay = 300
-                                           }
+  storageList <- Coin.executeNodeSpec
+               $  spec { netMaxH            = netMaxH spec <|> maxH }
+              :*: coin { coinGeneratorDelay = Just 300 }
   -- Check that each blockchain is internally consistent\
   checks <- forM storageList $ \c -> runDBT c checkStorage
   assertEqual "failed consistency check" [] (concat checks)
