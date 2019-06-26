@@ -1,5 +1,15 @@
-{-# LANGUAGE TypeOperators #-}
-{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DataKinds             #-}
+{-# LANGUAGE DeriveGeneric         #-}
+{-# LANGUAGE FlexibleContexts      #-}
+{-# LANGUAGE FlexibleInstances     #-}
+{-# LANGUAGE KindSignatures        #-}
+{-# LANGUAGE MagicHash             #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE ScopedTypeVariables   #-}
+{-# LANGUAGE TypeApplications      #-}
+{-# LANGUAGE TypeFamilies          #-}
+{-# LANGUAGE TypeOperators         #-}
+{-# LANGUAGE UndecidableInstances  #-}
 module Thundermint.Mock.Types (
     NodeSpec(..)
   , NetSpec(..)
@@ -11,6 +21,8 @@ module Thundermint.Mock.Types (
 
 import Control.Exception (Exception)
 import Data.Int     (Int64)
+import Data.Type.Equality
+import GHC.Exts     (Proxy#,proxy#)
 import GHC.Generics (Generic)
 
 import qualified Data.Aeson as JSON
@@ -88,3 +100,31 @@ data NetSpec a = NetSpec
 instance JSON.ToJSON   NodeSpec
 instance JSON.FromJSON NodeSpec
 instance JSON.FromJSON a => JSON.FromJSON (NetSpec a)
+
+
+
+----------------------------------------------------------------
+-- Anonymous products
+----------------------------------------------------------------
+
+-- | Anonymous products. Main feature is lookup of value by its type
+data a :*: b = a :*: b
+  deriving (Show,Eq)
+infixr 5 :*:
+
+-- | Obtain value from product using its type
+class Has a x where
+  getT :: a -> x
+
+class HasCase a x (eq :: Bool) where
+  getCase :: Proxy# eq -> a -> x
+
+instance {-# OVERLAPPABLE #-} (a ~ b) => Has a b where
+  getT = id
+instance HasCase (a :*: b) x (a == x) => Has (a :*: b) x where
+  getT = getCase (proxy# :: Proxy# (a == x))
+
+instance (a ~ x)   => HasCase (a :*: b) x 'True where
+  getCase _ (a :*: _) = a
+instance (Has b x) => HasCase (a :*: b) x 'False where
+  getCase _ (_ :*: b) = getT b
