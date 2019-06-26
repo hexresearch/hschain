@@ -37,12 +37,15 @@ import Control.Monad
 import Control.Monad.Fail
 import Control.Monad.Catch
 import Control.Monad.IO.Class
+import Control.Monad.Trans.Class
+import Control.Monad.Trans.Cont
 import Control.Concurrent   (threadDelay)
 import Control.DeepSeq
 import Codec.Serialise      (Serialise,serialise)
 import qualified Data.Aeson as JSON
 import Data.ByteString.Lazy (toStrict)
 import Data.Foldable
+import Data.Maybe
 import Data.Map             (Map)
 import qualified Data.Map.Strict  as Map
 import System.Random   (randomRIO)
@@ -278,7 +281,7 @@ interpretSpec
   :: ( MonadIO m, MonadLogger m, MonadFork m, MonadTrace m, MonadMask m, MonadTMMonitoring m, MonadFail m)
   => Maybe Height                     -- ^ Maximum height
   -> GeneratorSpec                    -- ^ Spec for generator of transactions
-  -> Block Alg [Tx]                   -- ^ Set of validators
+  -> Block Alg [Tx]                   -- ^ Genesis
   -> BlockchainNet                    -- ^ Network
   -> Configuration cfg                -- ^ Configuration for network
   -> NodeSpec                         -- ^ Node specifications
@@ -341,3 +344,45 @@ allocateMockNetAddrs net topo nodes =
         Ring    -> connectRing
         All2All -> connectAll2All
 
+
+----------------------------------------------------------------
+-- Specialized ode runners
+----------------------------------------------------------------
+
+withNodeSpec
+  :: ( MonadIO m, MonadMask m
+     , Crypto alg, Serialise a, Eq a, Show a
+     , Has x NodeSpec
+     )
+  => Block alg a
+  -> x
+  -> (x -> DBT 'RW alg a (LoggerT m) r)
+  -> m r
+withNodeSpec genesis x action = evalContT $ do
+  conn   <- ContT $ withDatabase (fromMaybe "" $ x ^.. nspecDbName) genesis
+  logenv <- ContT $ withLogEnv "TM" "DEV" [ makeScribe s | s <- x ^.. nspecLogFile ]
+  lift $ runLoggerT logenv
+       $ runDBT conn
+       $ action x
+
+withNodeSpecMany
+  :: ( MonadIO m, MonadMask m, MonadFork m
+     , Crypto alg, Serialise a, Eq a, Show a, Traversable t
+     , Has x NodeSpec
+     )
+  => Block alg a
+  -> t x
+  -> (x -> DBT 'RW alg a (LoggerT m) r)
+  -> (t (m r) -> m q)
+  -> m q
+withNodeSpecMany genesis xs action cont = evalContT $ do
+  pars <- traverse acquire xs
+  lift $ cont $ fini <$> pars
+  where
+    fini (x,conn,logenv) = runLoggerT logenv
+                         $ runDBT conn
+                         $ action x
+    acquire x = do
+      conn   <- ContT $ withDatabase (fromMaybe "" $ x ^.. nspecDbName) genesis
+      logenv <- ContT $ withLogEnv "TM" "DEV" [ makeScribe s | s <- x ^.. nspecLogFile ]
+      return (x,conn,logenv)
