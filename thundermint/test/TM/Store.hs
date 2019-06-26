@@ -5,6 +5,7 @@ module TM.Store ( tests) where
 import Test.Tasty
 import Test.Tasty.HUnit
 
+import Control.Applicative
 import Data.Monoid      ((<>))
 import Data.Traversable (forM)
 
@@ -16,6 +17,7 @@ import           Thundermint.Run
 import           Thundermint.Store
 import qualified Thundermint.Mock.KeyVal as KeyVal
 import qualified Thundermint.Mock.Coin   as Coin
+import           Thundermint.Mock.Types
 
 maxHeight :: Height
 maxHeight = Height 10
@@ -50,7 +52,7 @@ runCoin maxH file = do
   spec <- case JSON.eitherDecodeStrict blob of
     Right s -> return s
     Left  e -> error e
-  storageList <- Coin.executeNodeSpec maxH 300 spec
+  storageList <- Coin.executeNodeSpec 300 spec { netMaxH = netMaxH spec <|> maxH }
   -- Check that each blockchain is internally consistent\
   checks <- forM storageList $ \c -> runDBT c checkStorage
   assertEqual "failed consistency check" [] (concat checks)

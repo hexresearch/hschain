@@ -306,11 +306,10 @@ interpretSpec maxHeight genSpec genesisBlock net cfg NodeSpec{..} = do
 
 --
 executeNodeSpec
-  :: Maybe Height               -- ^ Maximum height
-  -> Int                        -- ^ Delay for generator
+  :: Int                        -- ^ Delay for generator
   -> NetSpec NodeSpec           -- ^ Specification for net
   -> IO [Connection 'RO Alg [Tx]]
-executeNodeSpec maxH delay NetSpec{..} = do
+executeNodeSpec delay NetSpec{..} = do
   net <- P2P.newMockNet
   let totalNodes   = length netNodeList
       validatorSet = makeValidatorSetFromPriv [ pk | Just pk <- nspecPrivKey <$> netNodeList ]
@@ -322,7 +321,7 @@ executeNodeSpec maxH delay NetSpec{..} = do
                 $ defGenSpec
     let loggers = [ makeScribe s | s <- nspecLogFile ]
         run m   = withLogEnv "TM" "DEV" loggers $ \logenv -> runLoggerT logenv m
-    run $ (fmap . fmap) run $ interpretSpec maxH genSpec genesisBlock bnet netNetCfg nspec
+    run $ (fmap . fmap) run $ interpretSpec netMaxH genSpec genesisBlock bnet netNetCfg nspec
   runConcurrently (snd <$> actions) `catch` (\Abort -> return ())
   return $ fst <$> actions
 
