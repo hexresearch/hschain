@@ -17,6 +17,10 @@ module Thundermint.Mock.Types (
   , Abort(..)
   , Example
   , defCfg
+    -- * Anonymous product
+  , (:*:)(..)
+  , Has(..)
+  , (^..)
   ) where
 
 import Control.Exception (Exception)
@@ -122,6 +126,11 @@ instance (JSON.FromJSON a, JSON.FromJSON b) => JSON.FromJSON (a :*: b) where
 -- | Obtain value from product using its type
 class Has a x where
   getT :: a -> x
+
+-- | Lens-like getter
+(^..) :: (Has a x) => a -> (x -> y) -> y
+a ^.. f = f (getT a)
+
 
 class HasCase a x (eq :: Bool) where
   getCase :: Proxy# eq -> a -> x
