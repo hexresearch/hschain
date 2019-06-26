@@ -95,7 +95,7 @@ main = do
                   $ defaultGenerator coin'keys coin'deposit coin'delay
           genesis = genesisFromGenerator validatorSet genSpec
       catch (do
-        (_,act) <- interpretSpec (Just coin'maxH) genSpec genesis net netCfg (NodeSpec nspec'privKey (Just nspec'dbName) logSpec'logFiles coin'walletKeys coin'byzantine)
+        (_,act) <- interpretSpec (Just coin'maxH) genSpec genesis net netCfg (NodeSpec nspec'privKey (Just nspec'dbName) logSpec'logFiles coin'walletKeys)
         logger InfoS ("spec has been interpreted") ()
         act `catch` (\e -> logger InfoS ("Exiting due to "<> (showLS (e :: SomeException))) ())
         ) (\e -> logger InfoS ("Exiting interpretSpec sequence due to "<> (showLS (e :: SomeException))) ())
