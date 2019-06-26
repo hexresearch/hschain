@@ -100,7 +100,6 @@ data NetSpec a = NetSpec
   , netTopology       :: Topology -- ^ Network topology
   , netInitialDeposit :: Integer
   , netInitialKeys    :: Int
-  , netPrefix         :: Maybe String
   , netMaxH           :: Maybe Int64
   , netNetCfg         :: Configuration Example
   }
