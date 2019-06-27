@@ -90,19 +90,24 @@ newNetworkUdp ourPeerInfo = do
  where
   applyConn otherPeerInfo sock addr frontVar receivedFrontsVar peerChan tChans = P2PConnection
     { send          = \s -> liftIO.void $ sendSplitted ourPeerInfo frontVar sock addr s
-    , recv          = liftIO $ receiveAction addr receivedFrontsVar peerChan
+    , recv          = liftIO $ receiveAction receivedFrontsVar peerChan
     , close         = closeConn addr tChans
     , connectedPeer = otherPeerInfo
     }
-  receiveAction addr frontsVar peerChan = do
-    (message) <- atomically $ do
-      (_peerInfo, (front, ofs, chunk)) <- readTChan peerChan
-      fronts <- readTVar frontsVar
-      let (newFronts, message) = updateMessages front ofs chunk fronts
-      writeTVar frontsVar newFronts
-      return message
-    if LBS.null message then receiveAction addr frontsVar peerChan
-                        else return $! Just $! LBS.copy message
+
+receiveAction
+  :: TVar (Map.Map Word8 [(Word32, LBS.ByteString)])
+  -> TChan (PeerInfo, (Word8, Word32, LBS.ByteString))
+  -> IO (Maybe LBS.ByteString)
+receiveAction frontsVar peerChan = do
+  (message) <- atomically $ do
+    (_peerInfo, (front, ofs, chunk)) <- readTChan peerChan
+    fronts <- readTVar frontsVar
+    let (newFronts, message) = updateMessages front ofs chunk fronts
+    writeTVar frontsVar newFronts
+    return message
+  if LBS.null message then receiveAction frontsVar peerChan
+                      else return $! Just $! LBS.copy message
 
 sendSplitted :: PeerInfo -> TVar Word8 -> Net.Socket -> NetAddr -> LBS.ByteString -> IO ()
 sendSplitted ourPeerInfo frontVar sock addr msg = do
