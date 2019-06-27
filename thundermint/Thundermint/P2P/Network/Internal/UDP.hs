@@ -104,7 +104,8 @@ newNetworkUdp ourPeerInfo = do
       let (newFronts, message) = updateMessages front ofs chunk fronts
       writeTVar frontsVar newFronts
       return message
-    if LBS.null message then receiveAction addr frontsVar peerChan else let c = LBS.copy message in c `seq` return $ Just c
+    if LBS.null message then receiveAction addr frontsVar peerChan
+                        else return $! Just $! LBS.copy message
   sendSplitted frontVar sock addr msg = do
     front <- atomically $ do -- slightly overkill, but in line with other's code.
       i <- readTVar frontVar
