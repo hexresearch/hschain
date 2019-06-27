@@ -89,10 +89,11 @@ newNetworkUdp ourPeerInfo = do
     }
  where
   applyConn otherPeerInfo sock addr frontVar receivedFrontsVar peerChan tChans = P2PConnection
-    (\s -> liftIO.void $ sendSplitted frontVar sock addr s)
-    (liftIO $ receiveAction addr receivedFrontsVar peerChan)
-    (closeConn addr tChans)
-    otherPeerInfo
+    { send          = \s -> liftIO.void $ sendSplitted frontVar sock addr s
+    , recv          = liftIO $ receiveAction addr receivedFrontsVar peerChan
+    , close         = closeConn addr tChans
+    , connectedPeer = otherPeerInfo
+    }
   receiveAction addr frontsVar peerChan = do
     (message) <- atomically $ do
       (_peerInfo, (front, ofs, chunk)) <- readTChan peerChan
