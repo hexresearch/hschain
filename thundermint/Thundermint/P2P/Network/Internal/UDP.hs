@@ -88,12 +88,12 @@ newNetworkUdp ourPeerInfo = do
          return $ connection { connectedPeer = otherPeerInfo }
     }
  where
-  applyConn otherPeerInfo sock addr frontVar receivedFrontsVar peerChan tChans = P2PConnection
-    { send          = liftIO . sendSplitted ourPeerInfo frontVar sock addr
-    , recv          = liftIO $ receiveAction receivedFrontsVar peerChan
-    , close         = closeConn addr tChans
-    , connectedPeer = otherPeerInfo
-    }
+   applyConn otherPeerInfo sock addr frontVar receivedFrontsVar peerChan tChans = P2PConnection
+     { send          = liftIO . sendSplitted ourPeerInfo frontVar sock addr
+     , recv          = liftIO $ receiveAction receivedFrontsVar peerChan
+     , close         = closeConn addr tChans
+     , connectedPeer = otherPeerInfo
+     }
 
 receiveAction
   :: TVar (Map.Map Word8 [(Word32, LBS.ByteString)])
