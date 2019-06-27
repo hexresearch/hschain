@@ -103,7 +103,7 @@ newNetworkUdp ourPeerInfo = do
       fronts <- readTVar frontsVar
       let (newFronts, message) = updateMessages front ofs chunk fronts
       writeTVar frontsVar newFronts
-      return (message)
+      return message
     if LBS.null message then receiveAction addr frontsVar peerChan else let c = LBS.copy message in c `seq` return $ Just c
   sendSplitted frontVar sock addr msg = do
     front <- atomically $ do -- slightly overkill, but in line with other's code.
@@ -116,7 +116,7 @@ newNetworkUdp ourPeerInfo = do
       when sleep $ threadDelay 100
     where
       splitChunks = splitToChunks msg
-  sleeps = cycle (replicate 12 False ++ [True])
+      sleeps = cycle (replicate 12 False ++ [True])
 
 splitToChunks :: LBS.ByteString -> [(Word32, LBS.ByteString)]
 splitToChunks s
