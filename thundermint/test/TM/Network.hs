@@ -31,48 +31,47 @@ import TM.RealNetwork
 import TM.Util.Network
 
 tests :: TestTree
-tests =
-    testGroup "network test"
-                  [ testGroup "mock"
-                    [ testCase "ping-pong" $ mockNetPair >>= pingPong
-                    , testCase "delayed write" $ mockNetPair >>= delayedWrite
-                    ]
-                  , testGroup "NetAddr"
-                    [ testCase "tupleToHostAddress" $ do
-                        a <- generate arbitrary
-                        Net.tupleToHostAddress a @=? tupleToHostAddress a
-                    , testCase "hostAddressToTuple" $ do
-                        a <- generate arbitrary
-                        Net.hostAddressToTuple a @=? hostAddressToTuple a
-                    , testCase "tupleToHostAddress6" $ do
-                        a <- generate arbitrary
-                        Net.tupleToHostAddress6 a @=? tupleToHostAddress6 a
-                    , testCase "hostAddress6ToTuple" $ do
-                        a <- generate arbitrary
-                        Net.hostAddress6ToTuple a @=? hostAddress6ToTuple a
-                    ]
-                  , testGroup "real"
-                    [ testGroup group
-                         [ testCase "ping-pong" $ withRetryTCP address pingPong
-                         , testCase "delayed write" $ withRetryTCP address delayedWrite
-                         ]
-                    | (group, address) <- [("IPv4", "127.0.0.1"), ("IPv6", "::1")]
-                    ]
-                  , testGroup "real-udp"
-                    [ testGroup group $
-                         [ testCase "ping-pong" $ withTimeoutRetry "ping-pong" 10e6 (newNetPair (Just Nothing)) pingPong
-                         , testCase "delayed write" $ withTimeoutRetry "delayed wrote" 10e6 (newNetPair (Just Nothing)) delayedWrite
-                         , testCase "sized ping pongs" $ withTimeoutRetry "sized ping pongs" 10e6 (newNetPair (Just $ Just $ 123 + v6)) (sizedPingPong 8 11)
-                         ]
-                    | (group, newNetPair, v6) <- [("IPv4", (`realNetPair` "127.0.0.1"), 0), ("IPv6", (`realNetPair`  "::1"), 1)]
-                    ]
-                  , testGroup "local addresses detection"
-                    [ testCase "all locals must be local" $ getLocalAddresses >>= (fmap and . mapM isLocalAddress) >>= (@? "Must be local")
-                    , testCase "loopback is local" $ (and <$> mapM isLocalAddress [loopbackIpv4, loopbackIpv6]) >>= (@? "Must be local")
-                    -- TODO: Randomly generate addresses and check it is not isLocalAddress
-
-                    ]
-                  ]
+tests = testGroup "network test"
+  [ testGroup "mock"
+    [ testCase "ping-pong" $ mockNetPair >>= pingPong
+    , testCase "delayed write" $ mockNetPair >>= delayedWrite
+    ]
+  , testGroup "NetAddr"
+    [ testCase "tupleToHostAddress" $ do
+        a <- generate arbitrary
+        Net.tupleToHostAddress a @=? tupleToHostAddress a
+    , testCase "hostAddressToTuple" $ do
+        a <- generate arbitrary
+        Net.hostAddressToTuple a @=? hostAddressToTuple a
+    , testCase "tupleToHostAddress6" $ do
+        a <- generate arbitrary
+        Net.tupleToHostAddress6 a @=? tupleToHostAddress6 a
+    , testCase "hostAddress6ToTuple" $ do
+        a <- generate arbitrary
+        Net.hostAddress6ToTuple a @=? hostAddress6ToTuple a
+    ]
+  , testGroup "real"
+    [ testGroup group
+      [ testCase "ping-pong" $ withRetryTCP address pingPong
+      , testCase "delayed write" $ withRetryTCP address delayedWrite
+      ]
+    | (group, address) <- [("IPv4", "127.0.0.1"), ("IPv6", "::1")]
+    ]
+  , testGroup "real-udp"
+    [ testGroup group $
+      [ testCase "ping-pong"        $ withTimeoutRetry "ping-pong"        10e6 (newNetPair (Just Nothing)) pingPong
+      , testCase "delayed write"    $ withTimeoutRetry "delayed wrote"    10e6 (newNetPair (Just Nothing)) delayedWrite
+      , testCase "sized ping pongs" $ withTimeoutRetry "sized ping pongs" 10e6 (newNetPair (Just $ Just $ 123 + v6)) (sizedPingPong 8 11)
+      ]
+    | (group, newNetPair, v6) <- [ ("IPv4", (`realNetPair` "127.0.0.1"), 0)
+                                 , ("IPv6", (`realNetPair`  "::1"), 1)]
+    ]
+  , testGroup "local addresses detection"
+    [ testCase "all locals must be local" $ getLocalAddresses >>= (fmap and . mapM isLocalAddress) >>= (@? "Must be local")
+    , testCase "loopback is local" $ (and <$> mapM isLocalAddress [loopbackIpv4, loopbackIpv6]) >>= (@? "Must be local")
+      -- TODO: Randomly generate addresses and check it is not isLocalAddress
+    ]
+  ]
 
 
 
