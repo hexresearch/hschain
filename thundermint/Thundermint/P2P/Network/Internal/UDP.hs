@@ -117,17 +117,19 @@ newNetworkUdp ourPeerInfo = do
     where
       splitChunks = splitToChunks msg
   sleeps = cycle (replicate 12 False ++ [True])
-  splitToChunks s
-    | LBS.length s < 1 = [(0, s)] -- do not lose empty messages.
-    | otherwise = go 0 s
-    where
-      go ofs bs
-        | LBS.length bs < 1 = []
-        | LBS.length bs == intChunkSize = [(ofs, LBS.copy bs), (ofs + chunkSize, LBS.empty)]
-        | otherwise = (ofs, LBS.copy hd) : go (ofs + (fromIntegral $ LBS.length hd)) tl
-        where
-          intChunkSize = fromIntegral chunkSize
-          (hd,tl) = LBS.splitAt intChunkSize bs
+
+splitToChunks :: LBS.ByteString -> [(Word32, LBS.ByteString)]
+splitToChunks s
+  | LBS.length s < 1 = [(0, s)] -- do not lose empty messages.
+  | otherwise = go 0 s
+  where
+    go ofs bs
+      | LBS.length bs < 1 = []
+      | LBS.length bs == intChunkSize = [(ofs, LBS.copy bs), (ofs + chunkSize, LBS.empty)]
+      | otherwise = (ofs, LBS.copy hd) : go (ofs + (fromIntegral $ LBS.length hd)) tl
+      where
+        intChunkSize = fromIntegral chunkSize
+        (hd,tl) = LBS.splitAt intChunkSize bs
 
 findOrCreateRecvTuple :: TVar (Map.Map NetAddr (TChan a1, TVar Word8, TVar (Map.Map k a2)))
                       -> NetAddr
