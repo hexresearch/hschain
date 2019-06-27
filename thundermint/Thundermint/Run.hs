@@ -6,6 +6,7 @@
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE RecordWildCards            #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
+{-# LANGUAGE TypeOperators              #-}
 -- |
 -- Helper function for running mock network of thundermint nodes
 module Thundermint.Run (
@@ -31,6 +32,9 @@ module Thundermint.Run (
   , mempoolFilterCallback
     -- * Running nodes
   , defCfg
+    -- * Running mock network
+  , allocNode
+  , allocateMockNetAddrs
   ) where
 
 import Codec.Serialise
@@ -38,15 +42,20 @@ import Control.Monad
 import Control.Monad.Fail hiding (fail)
 import Control.Monad.IO.Class
 import Control.Monad.Catch
+import Control.Monad.Trans.Class
+import Control.Monad.Trans.Cont
 import Control.Concurrent.STM         (atomically)
 import Control.Concurrent.STM.TBQueue (lengthTBQueue)
-import Data.Maybe      (isJust)
+import Data.Maybe      (isJust,fromMaybe)
+import qualified Data.Map.Strict as Map
+import Katip           (LogEnv)
 
 import Thundermint.Blockchain.Internal.Engine
 import Thundermint.Blockchain.Interpretation
 import Thundermint.Blockchain.Internal.Engine.Types
 import Thundermint.Types
 import Thundermint.Crypto
+import Thundermint.Control
 import Thundermint.Debug.Trace
 import Thundermint.Logger
 import Thundermint.Mock.KeyList
@@ -57,9 +66,10 @@ import Thundermint.Store
 import Thundermint.Store.STM
 import Thundermint.Monitoring
 import Thundermint.Utils
-
 import Thundermint.Control (MonadFork)
 import Thundermint.Types (CheckSignature(..))
+import qualified Thundermint.P2P.Network as P2P
+
 
 ----------------------------------------------------------------
 --
@@ -178,3 +188,40 @@ nonemptyMempoolCallback mempool = mempty
       n <- mempoolSize mempool
       return $! Just $! n > 0
   }
+
+
+----------------------------------------------------------------
+-- Mock network utils
+----------------------------------------------------------------
+
+-- | Allocate mock P2P connections for node
+allocateMockNetAddrs
+  :: P2P.MockNet                -- ^ Mock network
+  -> Topology                   -- ^ Nodes connection Interconnection
+  -> [a]                        -- ^ List of nodes
+  -> [BlockchainNet :*: a]
+allocateMockNetAddrs net topo nodes =
+  [ BlockchainNet { bchNetwork      = P2P.createMockNode net addr
+                  , bchInitialPeers = connections addresses addr
+                  } :*: n
+  | (addr, n) <- Map.toList addresses
+  ]
+  where
+    addresses   = Map.fromList $ [ NetAddrV4 (fromIntegral i) 1337
+                                 | i <- [0..]] `zip` nodes
+    connections = case topo of
+        Ring    -> connectRing
+        All2All -> connectAll2All
+
+
+-- | Allocate resources for node
+allocNode
+  :: ( MonadIO m, MonadMask m
+     , Crypto alg, Serialise a, Eq a, Show a, Has x NodeSpec)
+  => Block alg a                -- ^ Genesis block
+  -> x                          -- ^ Node parameters
+  -> ContT r m (x,Connection 'RW alg a, LogEnv)
+allocNode genesis x = do
+  conn   <- ContT $ withDatabase (fromMaybe "" $ x ^.. nspecDbName) genesis
+  logenv <- ContT $ withLogEnv "TM" "DEV" [ makeScribe s | s <- x ^.. nspecLogFile ]
+  return (x,conn,logenv)

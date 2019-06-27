@@ -4,6 +4,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase                 #-}
 {-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE RankNTypes                 #-}
 {-# LANGUAGE RecordWildCards            #-}
 {-# LANGUAGE TupleSections              #-}
 {-# LANGUAGE TypeOperators              #-}
@@ -17,23 +18,23 @@ module Thundermint.Mock.Coin (
   , CoinState(..)
   , transitions
     -- * Transaction generator
-  , GeneratorSpec(..)
-  , defaultGenerator
-  , restrictGenerator
-  , genesisFromGenerator
+  -- , GeneratorSpec(..)
+  -- , defaultGenerator
+  -- , restrictGenerator
+  -- , genesisFromGenerator
     -- ** Generator
   , generateTransaction
   , transactionGenerator
     -- ** interpretation
   , interpretSpec
+  , RunningNode(..)
   , executeNodeSpec
-
-  , intToNetAddr
   ) where
 
 import Prelude hiding (fail)
 import Control.Applicative
 import Control.Monad
+
 import Control.Monad.Fail
 import Control.Monad.Catch
 import Control.Monad.IO.Class
@@ -52,7 +53,6 @@ import qualified Data.Map.Strict  as Map
 import System.Random   (randomRIO)
 import GHC.Generics    (Generic)
 
-import Thundermint.P2P
 import Thundermint.Types.Blockchain
 import Thundermint.Blockchain.Interpretation
 import Thundermint.Blockchain.Internal.Engine.Types
@@ -64,13 +64,15 @@ import Thundermint.Debug.Trace
 import Thundermint.Logger
 import Thundermint.Run
 import Thundermint.Store
-import Thundermint.Store.Internal.Query (connectionRO)
-import Thundermint.Mock.KeyList (privateKeyList)
+import Thundermint.Mock.KeyList         (makePrivKeyStream)
 import Thundermint.Mock.Types
 import Thundermint.Monitoring
-import Thundermint.Types.Validators (ValidatorSet)
 import qualified Thundermint.P2P.Network as P2P
 
+
+----------------------------------------------------------------
+-- Basic coin logic
+----------------------------------------------------------------
 
 type Alg = (Ed25519 :& SHA512)
 
@@ -173,7 +175,6 @@ transitions = BlockFold
 -- Transaction generator
 ----------------------------------------------------------------
 
-{-
 -- | Specification of generator of transactions
 data TxGenerator = TxGenerator
   { genPrivateKeys :: V.Vector (PrivKey Alg)
@@ -215,100 +216,27 @@ selectFromVec :: V.Vector a -> IO a
 selectFromVec v = do
   i <- randomRIO (0, V.length v - 1)
   return $ v V.! i
--}
 
 
-----------------------------------------------------------------
--- Transaction generator
-----------------------------------------------------------------
-
--- | Specification for transaction generator
-data GeneratorSpec = GeneratorSpec
-  { genInitialKeys    :: [PublicKey Alg] -- ^ Public keys of all wallets
-  , genPrivateKeys    :: [PrivKey   Alg]
-  , genInitialDeposit :: Integer
-  , genDelay          :: Int
-  }
-  deriving (Show)
-
--- | Default generator which uses 'privateKeyList' as source of
---   keys. Useful since it allows to specify generator concisely.
-defaultGenerator :: Int -> Integer -> Int ->  GeneratorSpec
-defaultGenerator n dep delay = GeneratorSpec
-  { genInitialKeys    = map publicKey pk
-  , genPrivateKeys    = pk
-  , genInitialDeposit = dep
-  , genDelay          = delay
-  }
-  where pk = take n privateKeyList
-
-intToNetAddr :: Int -> NetAddr
-intToNetAddr i = NetAddrV4 (fromIntegral i) 1122
-
-netAddrToInt :: NetAddr -> Int
-netAddrToInt (NetAddrV4 x 1122) = fromIntegral x
-netAddrToInt na = error $ "Invalid NetAddr " ++ show na ++ " for conversion to Int in Mock part of Thundermint"
-
--- | @restrictGenerator i n@ restrict generator to only generate
---   transaction for ith nth of all private keys
-restrictGenerator :: Int -> Int -> GeneratorSpec -> GeneratorSpec
-restrictGenerator n tot _
-  | n < 0 || tot < 0 || n >= tot = error "restrictGenerator: invalid parameters"
-restrictGenerator n tot GeneratorSpec{..} = GeneratorSpec
-  { genPrivateKeys = take (off2-off1) $ drop off1 genPrivateKeys
-  , ..
-  }
+mintMockCoin
+  :: (Has a NodeSpec)
+  => [a]
+  -> CoinSpecification
+  -> (Maybe TxGenerator, Block Alg [Tx])
+mintMockCoin nodes CoinSpecification{..} =
+  ( do delay <- coinGeneratorDelay
+       return TxGenerator
+         { genPrivateKeys = V.fromList privK
+         , genDestinaions = V.fromList pubK
+         , genDelay       = delay
+         }
+  , makeGenesis "MONIES" (Time 0) txs valSet
+  )
   where
-    len  = length genPrivateKeys
-    off1 = (n     * len) `div` tot
-    off2 = ((n+1) * len) `div` tot
-
-genesisFromGenerator :: ValidatorSet Alg -> GeneratorSpec -> Block Alg [Tx]
-genesisFromGenerator validatorSet GeneratorSpec{..} =
-  makeGenesis "MONIES" (Time 0) dat validatorSet
-  where
-    dat = [ Deposit pk genInitialDeposit | pk <- genInitialKeys ]
-
--- | Generate transaction. This implementation is really inefficient
---   since it will materialize all unspent outputs into memory and
---   shouldn't be used when number of wallets and coins is high
-generateTransaction :: GeneratorSpec -> CoinState -> IO Tx
-generateTransaction GeneratorSpec{..} (CoinState utxo)= do
-  -- Pick private key
-  privK <- do i <- randomRIO (0, length genPrivateKeys - 1)
-              return (genPrivateKeys !! i)
-  let pubK = publicKey privK
-  -- Pick public key to send data to
-  target <- do i <- randomRIO (0, nPK - 1)
-               return (genInitialKeys !! i)
-  amount <- randomRIO (0,20)
-  -- Create transaction
-  let inputs = findInputs amount [ (inp, n)
-                                 | (inp, (pk,n)) <- Map.toList utxo
-                                 , pk == pubK
-                                 ]
-      tx     = TxSend { txInputs  = map fst inputs
-                      , txOutputs = [ (target, amount)
-                                    , (pubK  , sum (map snd inputs) - amount)
-                                    ]
-                      }
-  return $ Send pubK (signBlob privK $ toStrict $ serialise tx) tx
-  where
-    nPK  = length genInitialKeys
-
-
--- | Generate transaction indefinitely
-transactionGenerator
-  :: (MonadIO m, MonadDB m Alg [Tx], MonadFail m)
-  => GeneratorSpec
-  -> BChState m CoinState
-  -> (Tx -> m ())
-  -> m ()
-transactionGenerator gen bchState push = forever $ do
-  st <- currentState bchState
-  tx <- liftIO $ generateTransaction gen st
-  push tx
-  liftIO $ threadDelay (genDelay gen * 1000)
+    privK  = take coinWallets $ makePrivKeyStream coinWalletsSeed
+    pubK   = publicKey <$> privK
+    valSet = makeValidatorSetFromPriv $ catMaybes [ x ^.. nspecPrivKey | x <- nodes ]    
+    txs    = [ Deposit pk coinAridrop | pk <- pubK ]
 
 
 findInputs :: (Num i, Ord i) => i -> [(a,i)] -> [(a,i)]
@@ -321,119 +249,79 @@ findInputs tgt = go 0
             acc' = acc + i
 
 
-
 ----------------------------------------------------------------
 -- Interpretation of coin
 ----------------------------------------------------------------
 
--- | Interpret specification for node
+data RunningNode s m alg a = RunningNode
+  { rnodeState   :: BChState m s
+  , rnodeConn    :: Connection 'RO alg a
+  , rnodeMempool :: Mempool m alg (TX a)
+  }
+
+hoistRunningNode
+  :: (Functor n)
+  => (forall x. m x -> n x) -> RunningNode s m alg a -> RunningNode s n alg a
+hoistRunningNode fun RunningNode{..} = RunningNode
+  { rnodeState   = hoistBChState fun rnodeState
+  , rnodeMempool = hoistMempool  fun rnodeMempool
+  , ..
+  }
+
+
 interpretSpec
-  :: ( MonadIO m, MonadLogger m, MonadFork m, MonadTrace m, MonadMask m, MonadTMMonitoring m, MonadFail m)
-  => Maybe Height                     -- ^ Maximum height
-  -> GeneratorSpec                    -- ^ Spec for generator of transactions
-  -> Block Alg [Tx]                   -- ^ Genesis
-  -> BlockchainNet                    -- ^ Network
-  -> Configuration cfg                -- ^ Configuration for network
-  -> NodeSpec                         -- ^ Node specifications
-  -> m (Connection 'RO Alg [Tx], m ())
-interpretSpec maxHeight genSpec genesisBlock net cfg NodeSpec{..} = do
-  -- Allocate storage for node
-  conn <- openConnection (maybe ":memory:" id nspecDbName)
-  initDatabase conn genesisBlock
+  :: ( MonadDB m Alg [Tx], MonadFork m, MonadMask m, MonadLogger m
+     , MonadTrace m, MonadFail m, MonadTMMonitoring m
+     , Has x BlockchainNet
+     , Has x NodeSpec
+     , Has x (Configuration Example))
+  => x
+  -> AppCallbacks m Alg [Tx]
+  -> m (RunningNode CoinState m Alg [Tx], [m ()])
+interpretSpec p cb = do
+  conn              <- askConnectionRO
+  (bchState, logic) <- logicFromFold transitions
+  acts <- runNode (getT p :: Configuration Example) NodeDescription
+    { nodeValidationKey = p ^.. nspecPrivKey
+    , nodeCallbacks     = cb <> nonemptyMempoolCallback (appMempool logic)
+    , nodeLogic         = logic
+    , nodeNetwork       = getT p
+    }
   return
-    ( connectionRO conn
-    , runDBT conn $ do
-        (bchState,logic) <- logicFromFold transitions
-        -- Transactions generator
-        cursor <- getMempoolCursor $ appMempool logic
-        let generator = transactionGenerator genSpec bchState (void . pushTransaction cursor)
-        acts <- runNode cfg NodeDescription
-          { nodeValidationKey = nspecPrivKey
-          , nodeCallbacks     = maybe mempty callbackAbortAtH maxHeight
-                             <> nonemptyMempoolCallback (appMempool logic)
-          , nodeLogic         = logic
-          , nodeNetwork       = net
-          }
-        runConcurrently ( generator : acts)
+    ( RunningNode { rnodeState   = bchState
+                  , rnodeConn    = conn
+                  , rnodeMempool = appMempool logic
+                  }
+    , acts
     )
 
---
+  
 executeNodeSpec
-  :: NetSpec NodeSpec :*: CoinSpecification
-  -> IO [Connection 'RO Alg [Tx]]
-executeNodeSpec (NetSpec{..} :*: CoinSpecification{..}) = do
-  net <- P2P.newMockNet
-  let totalNodes   = length netNodeList
-      validatorSet = makeValidatorSetFromPriv [ pk | Just pk <- nspecPrivKey <$> netNodeList ]
-      -- FIXME: wrong
-      defGenSpec   = defaultGenerator coinWallets coinAridrop (fromMaybe 0 coinGeneratorDelay)
-      genesisBlock = genesisFromGenerator validatorSet defGenSpec
-  --
-  actions <- forM (allocateMockNetAddrs net netTopology netNodeList) $ \(nspec@NodeSpec{..}, addr, bnet) -> do
-    let genSpec = restrictGenerator (netAddrToInt addr) totalNodes
-                $ defGenSpec
-    let loggers = [ makeScribe s | s <- nspecLogFile ]
-        run m   = withLogEnv "TM" "DEV" loggers $ \logenv -> runLoggerT logenv m
-    run $ (fmap . fmap) run $ interpretSpec netMaxH genSpec genesisBlock bnet netNetCfg nspec
-  runConcurrently (snd <$> actions) `catch` (\Abort -> return ())
-  return $ fst <$> actions
-
-
-allocateMockNetAddrs :: P2P.MockNet -> Topology -> [a] -> [(a, NetAddr, BlockchainNet)]
-allocateMockNetAddrs net topo nodes =
-  [ ( n
-    , addr
-    , BlockchainNet { bchNetwork      = P2P.createMockNode net addr
-                    , bchInitialPeers = connections addresses addr
-                    })
-  | (addr, n) <- Map.toList addresses
-  ]
+  :: (MonadIO m, MonadMask m, MonadFork m, MonadTrace m, MonadTMMonitoring m, MonadFail m)
+  => NetSpec NodeSpec :*: CoinSpecification
+  -> ContT r m [RunningNode CoinState m Alg [Tx]]
+executeNodeSpec (NetSpec{..} :*: coin@CoinSpecification{..}) = do
+  -- Create mock network and allocate DB handles for nodes
+  net       <- liftIO P2P.newMockNet
+  resources <- traverse (allocNode genesis)
+             $ allocateMockNetAddrs net netTopology
+             $ netNodeList
+  -- Start nodes
+  rnodes    <- lift $ forM resources $ \(x, conn, logenv) -> do
+    let run = runLoggerT logenv . runDBT conn
+    (rn, acts) <- run $ interpretSpec (netNetCfg :*: x)
+      (maybe mempty callbackAbortAtH netMaxH)
+    return ( hoistRunningNode run rn
+           , run <$> acts
+           )
+  -- Allocate transactions generators
+  txGens <- lift $ case mtxGen of
+    Nothing  -> return []
+    Just txG -> forM rnodes $ \(RunningNode{..}, _) -> do
+      cursor <- getMempoolCursor rnodeMempool
+      return $ transactionGenerator txG (currentState rnodeState) (void . pushTransaction cursor)
+  -- Actually run nodes
+  lift   $ catchAbort $ runConcurrently $ (snd =<< rnodes) ++ txGens
+  return $ fst <$> rnodes
   where
-    addresses   = Map.fromList $ [ intToNetAddr i | i <- [0..]] `zip` nodes
-    connections = case topo of
-        Ring    -> connectRing
-        All2All -> connectAll2All
-
-
-----------------------------------------------------------------
--- Specialized ode runners
-----------------------------------------------------------------
-
-withNodeSpec
-  :: ( MonadIO m, MonadMask m
-     , Crypto alg, Serialise a, Eq a, Show a
-     , Has x NodeSpec
-     )
-  => Block alg a
-  -> x
-  -> (x -> DBT 'RW alg a (LoggerT m) r)
-  -> m r
-withNodeSpec genesis x action = evalContT $ do
-  conn   <- ContT $ withDatabase (fromMaybe "" $ x ^.. nspecDbName) genesis
-  logenv <- ContT $ withLogEnv "TM" "DEV" [ makeScribe s | s <- x ^.. nspecLogFile ]
-  lift $ runLoggerT logenv
-       $ runDBT conn
-       $ action x
-
-
-withNodeSpecMany
-  :: ( MonadIO m, MonadMask m, MonadFork m
-     , Crypto alg, Serialise a, Eq a, Show a, Traversable t
-     , Has x NodeSpec
-     )
-  => Block alg a
-  -> t x
-  -> (x -> DBT 'RW alg a (LoggerT m) r)
-  -> (t (m r) -> m q)
-  -> m q
-withNodeSpecMany genesis xs action cont = evalContT $ do
-  pars <- traverse acquire xs
-  lift $ cont $ fini <$> pars
-  where
-    fini (x,conn,logenv) = runLoggerT logenv
-                         $ runDBT conn
-                         $ action x
-    acquire x = do
-      conn   <- ContT $ withDatabase (fromMaybe "" $ x ^.. nspecDbName) genesis
-      logenv <- ContT $ withLogEnv "TM" "DEV" [ makeScribe s | s <- x ^.. nspecLogFile ]
-      return (x,conn,logenv)
+    (mtxGen, genesis) = mintMockCoin netNodeList coin

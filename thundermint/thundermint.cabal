@@ -183,6 +183,7 @@ Test-suite thundermint-tests
                      , katip
                      , serialise         >=0.2
                      , stm               >=2.4
+                     , transformers
                      , retry             >=0.7.6.2
                      , text
                      --
