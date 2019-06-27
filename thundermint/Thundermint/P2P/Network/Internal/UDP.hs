@@ -8,7 +8,7 @@ module Thundermint.P2P.Network.Internal.UDP
 import Control.Concurrent.STM
 
 import Data.Word              (Word32, Word8)
-import Control.Monad          (forM_, forever, void, when)
+import Control.Monad          (forM_, forever, when)
 import Control.Monad.IO.Class (liftIO, MonadIO)
 import Data.Bits              (complement)
 import Control.Monad.Catch    (onException)
@@ -89,7 +89,7 @@ newNetworkUdp ourPeerInfo = do
     }
  where
   applyConn otherPeerInfo sock addr frontVar receivedFrontsVar peerChan tChans = P2PConnection
-    { send          = \s -> liftIO.void $ sendSplitted ourPeerInfo frontVar sock addr s
+    { send          = liftIO . sendSplitted ourPeerInfo frontVar sock addr
     , recv          = liftIO $ receiveAction receivedFrontsVar peerChan
     , close         = closeConn addr tChans
     , connectedPeer = otherPeerInfo
