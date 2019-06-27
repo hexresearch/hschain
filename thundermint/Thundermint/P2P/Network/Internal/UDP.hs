@@ -89,7 +89,7 @@ newNetworkUdp ourPeerInfo = do
     }
  where
   applyConn otherPeerInfo sock addr frontVar receivedFrontsVar peerChan tChans = P2PConnection
-    { send          = \s -> liftIO.void $ sendSplitted frontVar sock addr s
+    { send          = \s -> liftIO.void $ sendSplitted ourPeerInfo frontVar sock addr s
     , recv          = liftIO $ receiveAction addr receivedFrontsVar peerChan
     , close         = closeConn addr tChans
     , connectedPeer = otherPeerInfo
@@ -103,18 +103,20 @@ newNetworkUdp ourPeerInfo = do
       return message
     if LBS.null message then receiveAction addr frontsVar peerChan
                         else return $! Just $! LBS.copy message
-  sendSplitted frontVar sock addr msg = do
-    front <- atomically $ do -- slightly overkill, but in line with other's code.
-      i <- readTVar frontVar
-      writeTVar frontVar $ i + 1
-      return (i :: Word8)
-    forM_ (zip sleeps splitChunks) $ \(sleep, (ofs, chunk)) -> do
-      flip (NetBS.sendAllTo sock) (netAddrToSockAddr addr) $ LBS.toStrict $
-        CBOR.serialise (ourPeerInfo, (front :: Word8, ofs :: Word32, chunk))
-      when sleep $ threadDelay 100
-    where
-      splitChunks = splitToChunks msg
-      sleeps = cycle (replicate 12 False ++ [True])
+
+sendSplitted :: PeerInfo -> TVar Word8 -> Net.Socket -> NetAddr -> LBS.ByteString -> IO ()
+sendSplitted ourPeerInfo frontVar sock addr msg = do
+  front <- atomically $ do -- slightly overkill, but in line with other's code.
+    i <- readTVar frontVar
+    writeTVar frontVar $ i + 1
+    return (i :: Word8)
+  forM_ (zip sleeps splitChunks) $ \(sleep, (ofs, chunk)) -> do
+    flip (NetBS.sendAllTo sock) (netAddrToSockAddr addr) $ LBS.toStrict $
+      CBOR.serialise (ourPeerInfo, (front :: Word8, ofs :: Word32, chunk))
+    when sleep $ threadDelay 100
+  where
+    splitChunks = splitToChunks msg
+    sleeps = cycle (replicate 12 False ++ [True])
 
 
 mkConnectPart,mkAckPart :: (Word8, Word32, LBS.ByteString)
