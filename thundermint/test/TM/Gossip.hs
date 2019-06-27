@@ -64,7 +64,7 @@ testRawGossipUnknown =
     withGossipEnv $ \peerStateObj peerChans gossipCh _env -> do
         runConcurrently
             [ peerGossipVotes peerStateObj peerChans gossipCh
-            , waitSec 0.3
+            , waitSec 1
             ]
         -- TODO проверить, что ничего не поменялось
 
