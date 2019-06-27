@@ -88,10 +88,6 @@ newNetworkUdp ourPeerInfo = do
          return $ connection { connectedPeer = otherPeerInfo }
     }
  where
-  mkConnectPart = (255 :: Word8, complement 0 :: Word32, LBS.empty)
-  mkAckPart = (255 :: Word8, complement 1 :: Word32, LBS.empty)
-  isConnectPart (front, ofs, payload) = front == 255 && ofs == complement 0 && LBS.length payload == 0
-  isAckPart (front, ofs, payload) = front == 255 && ofs == complement 1 && LBS.length payload == 0
   applyConn otherPeerInfo sock addr frontVar receivedFrontsVar peerChan tChans = P2PConnection
     (\s -> liftIO.void $ sendSplitted frontVar sock addr s)
     (liftIO $ receiveAction addr receivedFrontsVar peerChan)
@@ -118,6 +114,16 @@ newNetworkUdp ourPeerInfo = do
     where
       splitChunks = splitToChunks msg
       sleeps = cycle (replicate 12 False ++ [True])
+
+
+mkConnectPart,mkAckPart :: (Word8, Word32, LBS.ByteString)
+mkConnectPart = (255, complement 0, LBS.empty)
+mkAckPart     = (255, complement 1, LBS.empty)
+
+isConnectPart, isAckPart :: (Word8, Word32, LBS.ByteString) -> Bool
+isConnectPart (front, ofs, payload) = front == 255 && ofs == complement 0 && LBS.null payload
+isAckPart     (front, ofs, payload) = front == 255 && ofs == complement 1 && LBS.null payload
+
 
 splitToChunks :: LBS.ByteString -> [(Word32, LBS.ByteString)]
 splitToChunks s
