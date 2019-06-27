@@ -46,16 +46,16 @@ newNetworkUdp ourPeerInfo = do
               _ -> addrAddress
             }
       addrInfo = changeToWildcard addrInfo'
-  sock       <- newUDPSocket addrInfo
-  tid <- forkIO $
+  sock <- newUDPSocket addrInfo
+  tid  <- forkIO $
     flip onException (Net.close sock) $ do
       Net.bind sock (Net.addrAddress addrInfo)
       forever $ do
         (bs, addr') <- NetBS.recvFrom sock (fromIntegral chunkSize * 2)
         let addr = sockAddrToNetAddr $ Ip.normalizeIpAddr addr'
         case CBOR.deserialiseOrFail $ LBS.fromStrict bs of
-          Left _ -> -- silently dropping the packet.
-            return ()
+          -- silently dropping the packet.
+          Left _ -> return ()
           Right (otherPeerInfo, (front, ofs, payload)) -> do
             let connectPacket = isConnectPart (front, ofs, payload)
             atomically $ do
@@ -65,28 +65,27 @@ newNetworkUdp ourPeerInfo = do
               writeTChan recvChan (otherPeerInfo, (front, ofs, payload))
             when connectPacket $ do
               flip (NetBS.sendAllTo sock) addr' $ LBS.toStrict $ CBOR.serialise (ourPeerInfo, mkAckPart)
-
   return $ (realNetworkStub ourPeerInfo)
     { listenOn = do
         return (liftIO $ killThread tid, liftIO.atomically $ readTChan acceptChan)
       --
     , connect  = \addr -> liftIO $ do
-         (peerChan, connection) <- atomically $ do
-           (_, (peerChan, frontVar, receivedFrontsVar)) <- findOrCreateRecvTuple tChans addr
-           return ( peerChan
-                  , applyConn (PeerInfo (PeerId 0) 0 0) sock addr frontVar receivedFrontsVar peerChan tChans
-                  )
-         otherPeerInfo <- retryN 20 $ do
-           flip (NetBS.sendAllTo sock) (netAddrToSockAddr addr)
-             $ LBS.toStrict $ CBOR.serialise (ourPeerInfo, mkConnectPart)
-           maybeInfoPayload <- timeout 500000 $ atomically $ readTChan peerChan
-           case maybeInfoPayload of
-             Nothing -> return Nothing
-             Just pkt@(peerInfo, packet) -> do
-               let special = isConnectPart packet || isAckPart packet
-               when (not special) $ atomically $ writeTChan peerChan pkt
-               return $ Just peerInfo
-         return $ connection { connectedPeer = otherPeerInfo }
+        (peerChan, connection) <- atomically $ do
+          (_, (peerChan, frontVar, receivedFrontsVar)) <- findOrCreateRecvTuple tChans addr
+          return ( peerChan
+                 , applyConn (PeerInfo (PeerId 0) 0 0) sock addr frontVar receivedFrontsVar peerChan tChans
+                 )
+        otherPeerInfo <- retryN 20 $ do
+          flip (NetBS.sendAllTo sock) (netAddrToSockAddr addr)
+            $ LBS.toStrict $ CBOR.serialise (ourPeerInfo, mkConnectPart)
+          maybeInfoPayload <- timeout 500000 $ atomically $ readTChan peerChan
+          case maybeInfoPayload of
+            Nothing -> return Nothing
+            Just pkt@(peerInfo, packet) -> do
+              let special = isConnectPart packet || isAckPart packet
+              when (not special) $ atomically $ writeTChan peerChan pkt
+              return $ Just peerInfo
+        return $ connection { connectedPeer = otherPeerInfo }
     }
  where
    applyConn otherPeerInfo sock addr frontVar receivedFrontsVar peerChan tChans = P2PConnection
