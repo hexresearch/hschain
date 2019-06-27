@@ -1,7 +1,15 @@
-{-# LANGUAGE LambdaCase          #-}
-{-# LANGUAGE Rank2Types          #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeOperators       #-}
+{-# LANGUAGE DataKinds             #-}
+{-# LANGUAGE FlexibleContexts      #-}
+{-# LANGUAGE FlexibleInstances     #-}
+{-# LANGUAGE KindSignatures        #-}
+{-# LANGUAGE LambdaCase            #-}
+{-# LANGUAGE MagicHash             #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE Rank2Types            #-}
+{-# LANGUAGE ScopedTypeVariables   #-}
+{-# LANGUAGE TypeFamilies          #-}
+{-# LANGUAGE TypeOperators         #-}
+{-# LANGUAGE UndecidableInstances  #-}
 -- |
 module Thundermint.Control (
     -- *
@@ -28,6 +36,10 @@ module Thundermint.Control (
   , throwLeftM
     -- * Generalized bracket
   , withMany
+    -- * Products with lookup by type
+  , (:*:)(..)
+  , Has(..)
+  , (^..)
   ) where
 
 import Control.Applicative
@@ -38,12 +50,15 @@ import Control.Monad.Trans.Cont   (ContT(..))
 import Control.Monad.Trans.Reader
 import qualified Control.Monad.Trans.State.Strict as SS
 import qualified Control.Monad.Trans.State.Lazy   as SL
+import qualified Data.Aeson                       as JSON
 import Control.Concurrent  (ThreadId, killThread, myThreadId, throwTo)
 import Control.Exception   (AsyncException, Exception(..), SomeException(..))
 import Control.Monad.Catch (MonadMask, MonadThrow, bracket, mask, onException, throwM, try)
 import Data.Functor.Compose
 import Data.Functor.Identity
+import Data.Type.Equality
 import Data.Typeable         (Proxy(..))
+import GHC.Exts              (Proxy#,proxy#)
 
 import qualified Control.Concurrent as Conc
 
@@ -265,3 +280,42 @@ throwLeft = either throwM pure
 
 throwLeftM :: (Exception e, MonadThrow m) => m (Either e a) -> m a
 throwLeftM m = m >>= throwLeft
+
+
+----------------------------------------------------------------
+-- Anonymous products
+----------------------------------------------------------------
+
+-- | Anonymous products. Main feature is lookup of value by its type
+data a :*: b = a :*: b
+  deriving (Show,Eq)
+infixr 5 :*:
+
+instance (JSON.FromJSON a, JSON.FromJSON b) => JSON.FromJSON (a :*: b) where
+  parseJSON = JSON.withObject "Expecting object" $ \o -> do
+    a <- JSON.parseJSON (JSON.Object o)
+    b <- JSON.parseJSON (JSON.Object o)
+    return (a :*: b)
+
+
+-- | Obtain value from product using its type
+class Has a x where
+  getT :: a -> x
+
+-- | Lens-like getter
+(^..) :: (Has a x) => a -> (x -> y) -> y
+a ^.. f = f (getT a)
+
+
+class HasCase a x (eq :: Bool) where
+  getCase :: Proxy# eq -> a -> x
+
+instance {-# OVERLAPPABLE #-} (a ~ b) => Has a b where
+  getT = id
+instance HasCase (a :*: b) x (a == x) => Has (a :*: b) x where
+  getT = getCase (proxy# :: Proxy# (a == x))
+
+instance (a ~ x)   => HasCase (a :*: b) x 'True where
+  getCase _ (a :*: _) = a
+instance (Has b x) => HasCase (a :*: b) x 'False where
+  getCase _ (_ :*: b) = getT b

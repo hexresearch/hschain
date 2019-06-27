@@ -45,7 +45,6 @@ import Thundermint.Crypto.Ed25519                   (Ed25519)
 import Thundermint.Crypto.SHA                       (SHA512,SHA256)
 import Thundermint.Debug.Trace
 import Thundermint.Logger
-import Thundermint.Mock.Coin                        (intToNetAddr)
 import Thundermint.Mock.Types
 import Thundermint.Monitoring
 import Thundermint.P2P
@@ -238,7 +237,6 @@ createTestNetworkWithValidatorsSetAndConfig validators cfg netDescr = do
       catchAbort $ runConcurrently $ join acts
   where
     dbValidatorSet = makeValidatorSetFromPriv validators
-    catchAbort act = catch act (\Abort -> return ())
     mkTestNode
       :: MockNet
       -> ( Connection 'RW TestAlg [(String, NetAddr)]
@@ -294,3 +292,6 @@ delayedWrite (serverAddr, server) (_, client) = do
           send conn "A3"
   ((),()) <- Async.concurrently (runServer server) (runClient client)
   return ()
+
+intToNetAddr :: Int -> NetAddr
+intToNetAddr i = NetAddrV4 (fromIntegral i) 1122
