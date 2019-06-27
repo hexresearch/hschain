@@ -53,9 +53,7 @@ newNetworkUdp ourPeerInfo = do
       forever $ do
         (bs, addr') <- NetBS.recvFrom sock (fromIntegral chunkSize * 2)
         let addr = sockAddrToNetAddr $ Ip.normalizeIpAddr addr'
-            lazyByteString = LBS.fromStrict bs
-            peerInfoPayloadTupleDecoded = CBOR.deserialiseOrFail lazyByteString
-        case peerInfoPayloadTupleDecoded of
+        case CBOR.deserialiseOrFail $ LBS.fromStrict bs of
           Left _ -> -- silently dropping the packet.
             return ()
           Right (otherPeerInfo, (front, ofs, payload)) -> do
