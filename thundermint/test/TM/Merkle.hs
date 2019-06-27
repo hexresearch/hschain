@@ -1,25 +1,31 @@
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE ViewPatterns      #-}
--- |
+{-# LANGUAGE TypeOperators     #-}
+
 module TM.Merkle (tests) where
 
-import Data.ByteString (ByteString)
 import Data.Functor.Identity
 import Data.Maybe
-import qualified Data.ByteString as BS
 import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Tasty.QuickCheck
 
-import Thundermint.Crypto.Ed25519
+import Data.ByteString (ByteString)
+
+import qualified Data.ByteString as BS
+
+import Thundermint.Crypto         ((:&))
+import Thundermint.Crypto.Ed25519 (Ed25519)
+import Thundermint.Crypto.SHA     (SHA512)
+
 import Thundermint.Types.Merkle
 
 
+-- | Merkle tree tests
 tests :: TestTree
 tests = testGroup "Merkle tree"
   [ testProperty "Constructed tree is correct" prop_TreeCorrect
   , testCase     "Null string" $ do
-      case merklize 128 "" :: MerkleTree Ed25519_SHA512 Identity of
+      case merklize 128 "" :: MerkleTree (Ed25519 :& SHA512) Identity of
         MerkleTree { merkleRoot = MerkleRoot { blobSize = 0 }
                    , merkleTree = Leaf ""
                    } -> return ()
@@ -40,12 +46,12 @@ prop_TreeCorrect (BS blob)
   where
     chunk  :: Num a => a
     chunk  = 128
-    tree   :: MerkleTree Ed25519_SHA512 Identity
+    tree   :: MerkleTree (Ed25519 :& SHA512) Identity
     tree   = merklize chunk blob
     root   = merkleRoot tree
     leaves = treeLeaves tree
     reco   = concatTree tree
-    
+
 leafLengthOK :: Int -> [ByteString] -> Bool
 leafLengthOK _ []     = True
 leafLengthOK n [b]    = let m = BS.length b in m > 0 && m <= n
