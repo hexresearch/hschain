@@ -71,20 +71,21 @@ newNetworkUdp ourPeerInfo = do
         return (liftIO $ killThread tid, liftIO.atomically $ readTChan acceptChan)
       --
     , connect  = \addr -> liftIO $ do
-         (peerChan, connection) <- atomically $ (\(_, (peerChan, frontVar, receivedFrontsVar)) ->
-               (peerChan, applyConn (PeerInfo (PeerId 0) 0 0) sock addr frontVar receivedFrontsVar peerChan tChans))
-           <$> findOrCreateRecvTuple tChans addr
-         let waitLoop 0 _ _ = fail "timeout waiting for 'UDP connection' (actually, peerinfo exchange)."
-             waitLoop n partialConnection@P2PConnection{..} receiveChan = do
-               flip (NetBS.sendAllTo sock) (netAddrToSockAddr addr) $ LBS.toStrict $ CBOR.serialise (ourPeerInfo, mkConnectPart)
-               maybeInfoPayload <- timeout 500000 $ atomically $ readTChan receiveChan
-               case maybeInfoPayload of
-                 Nothing -> waitLoop (n-1 :: Int) partialConnection receiveChan
-                 Just pkt@(peerInfo, packet) -> do
-                   let special = isConnectPart packet || isAckPart packet
-                   when (not special) $ atomically $ writeTChan receiveChan pkt
-                   return peerInfo
-         otherPeerInfo <- waitLoop 20 connection peerChan
+         (peerChan, connection) <- atomically $ do
+           (_, (peerChan, frontVar, receivedFrontsVar)) <- findOrCreateRecvTuple tChans addr
+           return ( peerChan
+                  , applyConn (PeerInfo (PeerId 0) 0 0) sock addr frontVar receivedFrontsVar peerChan tChans
+                  )
+         otherPeerInfo <- retryN 20 $ do
+           flip (NetBS.sendAllTo sock) (netAddrToSockAddr addr)
+             $ LBS.toStrict $ CBOR.serialise (ourPeerInfo, mkConnectPart)
+           maybeInfoPayload <- timeout 500000 $ atomically $ readTChan peerChan
+           case maybeInfoPayload of
+             Nothing -> return Nothing
+             Just pkt@(peerInfo, packet) -> do
+               let special = isConnectPart packet || isAckPart packet
+               when (not special) $ atomically $ writeTChan peerChan pkt
+               return $ Just peerInfo
          return $ connection { connectedPeer = otherPeerInfo }
     }
  where
@@ -224,3 +225,14 @@ pruneFront fronts
     -- shorter delta indicate where oldest front was.
     maxMinDelta = maxFront - minFront
     minMaxDelta = minFront - maxFront
+
+retryN
+  :: Int
+  -> IO (Maybe a)
+  -> IO a
+retryN n action = loop n
+  where
+    loop 0 = error "timeout waiting for 'UDP connection' (actually, peerinfo exchange)."
+    loop k = action >>= \case
+      Just a  -> return a
+      Nothing -> loop (k - 1)
