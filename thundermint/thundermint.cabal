@@ -108,6 +108,7 @@ Executable thundermint-keyval
   Main-is:             key-val.hs
 
 Executable thundermint-coin-node
+  Buildable: False
   Ghc-options:         -Wall -threaded -Wno-orphans -rtsopts "-with-rtsopts=-N -T -c -qn1"
   Default-Language:    Haskell2010
   Build-Depends:       base                 >=4.9 && <5
