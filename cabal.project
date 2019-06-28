@@ -3,6 +3,7 @@ packages:
          thundermint-crypto
          thundermint-types
          thundermint-quickcheck
+         lightweight
 
 -- Jailbreak bytestring-arbitrary
 --   https://github.com/tsuraan/bytestring-arbitrary/issues/10
