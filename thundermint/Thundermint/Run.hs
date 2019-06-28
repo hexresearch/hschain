@@ -42,7 +42,6 @@ import Control.Monad
 import Control.Monad.Fail hiding (fail)
 import Control.Monad.IO.Class
 import Control.Monad.Catch
-import Control.Monad.Trans.Class
 import Control.Monad.Trans.Cont
 import Control.Concurrent.STM         (atomically)
 import Control.Concurrent.STM.TBQueue (lengthTBQueue)
@@ -207,8 +206,7 @@ allocateMockNetAddrs net topo nodes =
   | (addr, n) <- Map.toList addresses
   ]
   where
-    addresses   = Map.fromList $ [ NetAddrV4 (fromIntegral i) 1337
-                                 | i <- [0..]] `zip` nodes
+    addresses   = Map.fromList $ [ NetAddrV4 i 1337 | i <- [0..]] `zip` nodes
     connections = case topo of
         Ring    -> connectRing
         All2All -> connectAll2All
