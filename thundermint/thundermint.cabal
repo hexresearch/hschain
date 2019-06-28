@@ -97,6 +97,7 @@ Library
 
 -- Example programs
 Executable thundermint-keyval
+  Buildable:           False
   Ghc-options:         -Wall
   Default-Language:    Haskell2010
   Build-Depends:       base       >=4.9 && <5
