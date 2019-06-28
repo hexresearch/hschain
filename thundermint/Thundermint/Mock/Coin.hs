@@ -253,22 +253,6 @@ findInputs tgt = go 0
 -- Interpretation of coin
 ----------------------------------------------------------------
 
-data RunningNode s m alg a = RunningNode
-  { rnodeState   :: BChState m s
-  , rnodeConn    :: Connection 'RO alg a
-  , rnodeMempool :: Mempool m alg (TX a)
-  }
-
-hoistRunningNode
-  :: (Functor n)
-  => (forall x. m x -> n x) -> RunningNode s m alg a -> RunningNode s n alg a
-hoistRunningNode fun RunningNode{..} = RunningNode
-  { rnodeState   = hoistBChState fun rnodeState
-  , rnodeMempool = hoistMempool  fun rnodeMempool
-  , ..
-  }
-
-
 interpretSpec
   :: ( MonadDB m Alg [Tx], MonadFork m, MonadMask m, MonadLogger m
      , MonadTrace m, MonadFail m, MonadTMMonitoring m

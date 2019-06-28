@@ -1,12 +1,17 @@
-{-# LANGUAGE DeriveGeneric         #-}
-{-# LANGUAGE ScopedTypeVariables   #-}
-{-# LANGUAGE TypeOperators         #-}
+{-# LANGUAGE DataKinds           #-}
+{-# LANGUAGE DeriveGeneric       #-}
+{-# LANGUAGE RankNTypes          #-}
+{-# LANGUAGE RecordWildCards     #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeOperators       #-}
 module Thundermint.Mock.Types (
     -- * Data types
     -- ** Node and network specification
     NodeSpec(..)
   , NetSpec(..)
   , CoinSpecification(..)
+  , RunningNode(..)
+  , hoistRunningNode
     -- ** Other
   , Topology(..)
   , Abort(..)
@@ -26,8 +31,9 @@ import Thundermint.Crypto         ((:&))
 import Thundermint.Crypto.Ed25519 (Ed25519)
 import Thundermint.Crypto.SHA     (SHA512)
 import Thundermint.Logger         (ScribeSpec)
-import Thundermint.Types          (Height(..))
-
+import Thundermint.Types
+import Thundermint.Blockchain.Interpretation
+import Thundermint.Store
 
 ----------------------------------------------------------------
 --
@@ -63,6 +69,22 @@ instance DefaultConfig Example where
 ----------------------------------------------------------------
 -- Generating node specification
 ----------------------------------------------------------------
+
+data RunningNode s m alg a = RunningNode
+  { rnodeState   :: BChState m s
+  , rnodeConn    :: Connection 'RO alg a
+  , rnodeMempool :: Mempool m alg (TX a)
+  }
+
+hoistRunningNode
+  :: (Functor n)
+  => (forall x. m x -> n x) -> RunningNode s m alg a -> RunningNode s n alg a
+hoistRunningNode fun RunningNode{..} = RunningNode
+  { rnodeState   = hoistBChState fun rnodeState
+  , rnodeMempool = hoistMempool  fun rnodeMempool
+  , ..
+  }
+
 
 -- | Exception for aborting execution of blockchain
 data Abort = Abort
