@@ -101,6 +101,7 @@ Library
                   Thundermint.P2P.Internal
                   Thundermint.P2P.Internal.PeerRegistry
                   Thundermint.P2P.Internal.Types
+                  Thundermint.P2P.Internal.Logging
 
 -- Example programs
 Executable thundermint-keyval
