@@ -1,6 +1,11 @@
-module LTM.SP where
+module LTM.SP
+  ( module LTM.SP
+  , module LTM.Types
+  ) where
 
 import Control.Applicative
+
+import LTM.Types
 
 data SP i o =
      N
@@ -44,3 +49,15 @@ transCompose _ N = N
 transCompose a (O o b) = O o $ transCompose a b
 transCompose (O a spa) (I f) = transCompose spa (f a <|> I f)
 transCompose (I f) b = I $ flip transCompose b . f
+
+foldSP :: (o -> a -> o) -> o -> SP i a -> SP i o
+foldSP f o N = return o
+foldSP f o (O a sp) = foldSP f (f o a) sp
+foldSP f o (I g) = I $ \x -> foldSP f o (g x)
+
+scanSP :: (o -> a -> o) -> o -> SP i a -> SP i o
+scanSP f o N = return o
+scanSP f o (O a sp) = O o $ scanSP f (f o a) sp
+scanSP f o (I g) = I $ \i -> scanSP f o $ g i
+
+above :: 

@@ -53,6 +53,7 @@ library
                      LTM.SP
                    , LTM.SPM
                    , LTM.LTM
+                   , LTM.Types
 
   -- Modules included in this library but not exported.
   -- other-modules:
