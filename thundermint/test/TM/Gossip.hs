@@ -351,12 +351,7 @@ withGossipEnv fun = do
             peerChanPexNewAddresses <- liftIO newTChanIO
             consensusState'         <- liftIO (newTVarIO Nothing)
             let consensusState      =  readTVar consensusState'
-            cntGossipPrevote        <- newCounter
-            cntGossipPrecommit      <- newCounter
-            cntGossipProposals      <- newCounter
-            cntGossipBlocks         <- newCounter
-            cntGossipTx             <- newCounter
-            cntGossipPex            <- newCounter
+            gossipCnts              <- newGossipCounters
             let peerChans = PeerChans { proposalStorage = makeReadOnlyPS proposalStorage
                                       , p2pConfig       = cfgNetwork (defCfg :: Configuration Example)
                                       , ..

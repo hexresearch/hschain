@@ -18,7 +18,7 @@ module Thundermint.P2P (
   , peerGossipVotes
   , PeerChans(..)
   , newPeerRegistry
-  , newCounter
+  , newGossipCounters
   , GossipMsg(..)
   ) where
 
@@ -46,6 +46,7 @@ import Thundermint.Types.Blockchain
 import Thundermint.Utils
 
 import Thundermint.P2P.Internal
+import Thundermint.P2P.Internal.Logging
 
 
 ----------------------------------------------------------------
@@ -68,15 +69,10 @@ startPeerDispatcher p2pConfig net addrs AppChans{..} mempool = logOnException $ 
   let PeerInfo peerId _ _ = ourPeerInfo net
   logger InfoS ("Starting peer dispatcher: addrs = " <> showLS addrs <> ", PeerId = " <> showLS peerId) ()
   trace TeNodeStarted
-  peerRegistry       <- newPeerRegistry peerId
-  peerChanPex        <- liftIO newBroadcastTChanIO
+  peerRegistry            <- newPeerRegistry peerId
+  peerChanPex             <- liftIO newBroadcastTChanIO
   peerChanPexNewAddresses <- liftIO newTChanIO
-  cntGossipPrevote   <- newCounter
-  cntGossipPrecommit <- newCounter
-  cntGossipProposals <- newCounter
-  cntGossipBlocks    <- newCounter
-  cntGossipTx        <- newCounter
-  cntGossipPex       <- newCounter
+  gossipCnts              <- newGossipCounters
   let peerCh = PeerChans { peerChanTx      = appChanTx
                          , peerChanPex     = peerChanPex
                          , peerChanRx      = writeTBQueue appChanRx
@@ -108,7 +104,7 @@ startPeerDispatcher p2pConfig net addrs AppChans{..} mempool = logOnException $ 
       peerPexNewAddressMonitor peerChanPexNewAddresses peerRegistry net
     -- Output gossip statistics to
     , forever $ do
-        logGossip peerCh
+        logGossip gossipCnts
         waitSec 1.0
     ]
 

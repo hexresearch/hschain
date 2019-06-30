@@ -1,28 +1,31 @@
-{-# LANGUAGE DataKinds          #-}
-{-# LANGUAGE DeriveGeneric      #-}
-{-# LANGUAGE FlexibleContexts   #-}
-{-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE DataKinds            #-}
+{-# LANGUAGE DeriveGeneric        #-}
+{-# LANGUAGE FlexibleContexts     #-}
+{-# LANGUAGE OverloadedStrings    #-}
+{-# LANGUAGE StandaloneDeriving   #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 module Thundermint.P2P.Internal.Types where
 
-import Codec.Serialise
-import Control.Concurrent     (MVar, newMVar, readMVar)
-import Control.Concurrent.STM
-import Control.Monad.Catch
-import Control.Monad.IO.Class (MonadIO, liftIO)
+import Codec.Serialise        (Serialise)
+import Control.Concurrent.STM (STM, TChan)
 import GHC.Generics           (Generic)
 
 import Thundermint.Blockchain.Internal.Engine.Types (NetworkCfg)
 import Thundermint.Blockchain.Internal.Types        (Announcement, MessageRx, TMState)
-import Thundermint.Control                          (modifyMVarM_)
-import Thundermint.Crypto
-import Thundermint.P2P.Types
+import Thundermint.Crypto                           (Crypto, Signed, SignedState(..))
+import Thundermint.P2P.Types                        (NetAddr)
 import Thundermint.Store                            (ProposalStorage)
 import Thundermint.Store.Internal.Query             (Access(..))
-import Thundermint.Types.Blockchain                 (Height)
 
 import Thundermint.Types.Blockchain
 import Thundermint.Types.Validators
+
+import Thundermint.P2P.Internal.Logging
+import Thundermint.P2P.PeerState
+
+import qualified Katip
+
 -- | Messages which peers exchange with each other
 --
 --   FIXME: We don't have good way to prevent DoS by spamming too much
@@ -72,29 +75,22 @@ data PeerChans m alg a = PeerChans
     -- ^ Read only access to current state of consensus state machine
   , p2pConfig               :: !NetworkCfg
 
-  , cntGossipPrevote        :: !Counter
-  , cntGossipPrecommit      :: !Counter
-  , cntGossipBlocks         :: !Counter
-  , cntGossipProposals      :: !Counter
-  , cntGossipTx             :: !Counter
-  , cntGossipPex            :: !Counter
+  , gossipCnts              :: !GossipCounters
   }
 
--- | Counter for counting send/receive event
-data Counter = Counter !(MVar Int) !(MVar Int)
+-- | Dump GossipMsg without (Show) constraints
+--
+showGossipMsg :: GossipMsg alg a -> Katip.LogStr
+showGossipMsg (GossipPreVote _)   = "GossipPreVote {}"
+showGossipMsg (GossipPreCommit _) = "GossipPreCommit {}"
+showGossipMsg (GossipProposal _)  = "GossipProposal {}"
+showGossipMsg (GossipBlock _)     = "GossipBlock {}"
+showGossipMsg (GossipAnn ann)     = "GossipAnn { " <> Katip.showLS ann <> " }"
+showGossipMsg (GossipTx _)        = "GossipTx {}"
+showGossipMsg (GossipPex p)       = "GossipPex { " <> Katip.showLS p <> " }"
 
-newCounter :: MonadIO m => m Counter
-newCounter = Counter <$> liftIO (newMVar 0) <*>liftIO (newMVar 0)
-
-tickSend :: (MonadMask m, MonadIO m) => Counter -> m ()
-tickSend (Counter s _) = modifyMVarM_ s (return . succ)
-
-tickRecv :: (MonadMask m, MonadIO m) => Counter -> m ()
-tickRecv (Counter _ r) = modifyMVarM_ r (return . succ)
-
-readSend :: MonadIO m => Counter -> m Int
-readSend (Counter s _) = liftIO $ readMVar s
-
-readRecv :: MonadIO m => Counter -> m Int
-readRecv (Counter _ r) = liftIO $ readMVar r
-
+showPeerState :: PeerState alg a -> Katip.LogStr
+showPeerState (Lagging _) = "Lagging {}"
+showPeerState (Current _) = "Current {}"
+showPeerState (Ahead fs)  = "Ahead { " <> Katip.showLS fs <> " }"
+showPeerState Unknown     = "Unknown {}"
