@@ -36,3 +36,11 @@ instance Monad (SP i) where
   O o sp >>= g = g o <|> (sp >>= g)
   I f    >>= g = I $ \i -> f i >>= g
 
+infixl 1 `transCompose`
+
+transCompose :: SP i a -> SP a o -> SP i o
+transCompose N _ = N
+transCompose _ N = N
+transCompose a (O o b) = O o $ transCompose a b
+transCompose (O a spa) (I f) = transCompose spa (f a <|> I f)
+transCompose (I f) b = I $ flip transCompose b . f

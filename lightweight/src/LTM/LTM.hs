@@ -3,13 +3,25 @@
 --
 
 {-# LANGUAGE DeriveAnyClass, DeriveFunctor #-}
+{-# LANGUAGE StandaloneDeriving #-}
 
 module LTM.LTM where
 
 import LTM.SP
 
 -- |Same as Either, defined for better readability.
-data UpDown up down = Up up | Down down deriving (Eq, Ord, Show, Functor, Applicative, Monad)
+data UpDown up down = Up up | Down down deriving (Eq, Ord, Show, Functor)
+
+instance Applicative (UpDown up) where
+  pure = Down
+  Up up <*> _ = Up up
+  Down f <*> Up up = Up up
+  Down f <*> Down x = Down $ f x
+
+instance Monad (UpDown up) where
+  return = pure
+  Up up >>= _ = Up up
+  Down dn >>= g = g dn
 
 -- |Type of LTM processor.
 --
@@ -21,4 +33,5 @@ type LTM imsg omsg tx state = SP -- the processor
                               (UpDown tx imsg) -- transactions fall from higher level
                                                -- input messages bubble up from lower level
                               (UpDown state omsg) -- state goes to upper level
-                                                  -- 
+                                                  -- output messages - to lower level.
+
