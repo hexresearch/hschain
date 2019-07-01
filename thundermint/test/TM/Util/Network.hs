@@ -137,13 +137,13 @@ extraTestValidators = makePrivateValidators
   ]
 
 
-type TestBlock = [(String, NetAddr)]
+type TestBlock = [(String, Int)]
 
 type TestAlg = Ed25519 :& SHA512
 
-type TestMonad m = DBT 'RW TestAlg [(String, NetAddr)] (NoLogsT (TracerT m))
+type TestMonad m = DBT 'RW TestAlg TestBlock (NoLogsT (TracerT m))
 
-type TestAppByzantine m = AppByzantine (TestMonad m) TestAlg [(String, NetAddr)]
+type TestAppByzantine m = AppByzantine (TestMonad m) TestAlg TestBlock
 
 
 
@@ -239,7 +239,7 @@ createTestNetworkWithValidatorsSetAndConfig validators cfg netDescr = do
     dbValidatorSet = makeValidatorSetFromPriv validators
     mkTestNode
       :: MockNet
-      -> ( Connection 'RW TestAlg [(String, NetAddr)]
+      -> ( Connection 'RW TestAlg TestBlock
          , TestNetLinkDescription m
          , Maybe (PrivValidator TestAlg))
       -> m [m ()]

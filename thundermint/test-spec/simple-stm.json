@@ -7,39 +7,19 @@
          "path"      : "logs/node-1",
          "severity"  : "Debug",
          "verbosity" : "V2"
-      }],
-      "nspecWalletKeys"  : [0,500]
+      }]
     },
     { "nspecPrivKey"     : "4NSWtMsEPgfTK25tCPWqNzVVze1dgMwcUFwS5WkSpjJL",
-      "nspecLogFile"     :
-      [{ "type"      : "ScribeJSON",
-         "path"      : "logs/node-2",
-         "severity"  : "Debug",
-         "verbosity" : "V2"
-      }],
-      "nspecWalletKeys"  : [500,500]
+      "nspecLogFile"     : []
     },
     { "nspecPrivKey"     : "3Fj8bZjKc53F2a87sQaFkrDas2d9gjzK57FmQwnNnSHS",
-      "nspecLogFile"     :
-      [{ "type"      : "ScribeJSON",
-         "path"      : "logs/node-3",
-         "severity"  : "Debug",
-         "verbosity" : "V2"
-      }],
-      "nspecWalletKeys"  : [1000,500]
+      "nspecLogFile"     : []
     },
     { "nspecPrivKey"     : "D2fpHM1JA8trshiUW8XPvspsapUvPqVzSofaK1MGRySd",
-      "nspecLogFile"     :
-      [{ "type"      : "ScribeJSON",
-         "path"      : "logs/node-4",
-         "severity"  : "Debug",
-         "verbosity" : "V2"
-      }],
-      "nspecWalletKeys"  : [1500,500]
+      "nspecLogFile"     : []
     }
   ],
   "netTopology"       : "All2All",
-  "netInitialDeposit" : 1000,
-  "netInitialKeys"    : 2000,
-  "netNetCfg"         : {}
+  "netNetCfg"         : {},
+  "netMaxH"           : 10
 }
