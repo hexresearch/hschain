@@ -5,7 +5,6 @@
 {-# LANGUAGE ScopedTypeVariables  #-}
 {-# LANGUAGE StandaloneDeriving   #-}
 {-# LANGUAGE TypeApplications     #-}
-{-# LANGUAGE TypeApplications     #-}
 {-# LANGUAGE UndecidableInstances #-}
 -- |
 module Thundermint.Types.Merkle (
@@ -19,15 +18,20 @@ module Thundermint.Types.Merkle (
     -- * Reassembly of tree
   , concatTree
   , checkMerkleTree
+    -- * Proof of existence of leaf in Merkle tree
+  , merkleProof
+  , merklePath
   ) where
 
 import Codec.Serialise
 import Data.Functor.Identity
-import Data.Word
 import Data.Typeable
-import           Data.ByteString   (ByteString)
+import Data.Word
+
+import Data.ByteString (ByteString)
+import GHC.Generics    (Generic)
+
 import qualified Data.ByteString as BS
-import GHC.Generics (Generic)
 
 import Thundermint.Crypto
 
@@ -186,6 +190,41 @@ data UpdTree alg = UpdTree
   , hashList  :: [Hash alg]
   }
 -}
+
+
+
+----------------------------------------------------------------
+-- Merkel Proof
+----------------------------------------------------------------
+
+-- |
+-- proof that the leaf exists in the given merkle tree
+merkleProof :: Crypto alg => MerkleTree alg Identity -> Hash alg -> Bool
+merkleProof tree@MerkleTree{..} leafHash =
+    let path = merklePath tree leafHash
+    in proof path leafHash
+  where
+    proof [] h = h == (rootHash merkleRoot)
+    proof (xs:xss) h
+      | all (h /=) xs = False
+      | otherwise = proof xss (elemHash xs)
+
+    elemHash hs = hash (1::Int, hs)
+
+
+-- |
+-- return the path from leaf to root of branch if any
+merklePath :: Crypto alg => MerkleTree alg Identity -> Hash alg -> [[Hash alg]]
+merklePath tree nodeHash = recur [] $ merkleTree tree
+  where
+    recur acc leaf@(Leaf _)
+        | calculateNodeHash leaf == nodeHash = acc
+        | otherwise = []
+
+    recur acc (Branch [l, r]) = recur ([(merkleNodeHash l), (merkleNodeHash r) ] : acc) (runIdentity $ merkleChild l) ++ recur ([(merkleNodeHash l), (merkleNodeHash r) ] : acc) (runIdentity $ merkleChild r)
+    recur acc (Branch [n])    = recur ([merkleNodeHash n] : acc) (runIdentity $ merkleChild n)
+    recur acc (Branch _)      = acc
+
 
 
 ----------------------------------------------------------------

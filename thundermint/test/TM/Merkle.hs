@@ -1,7 +1,10 @@
+{-# LANGUAGE DataKinds         #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TypeFamilies      #-}
 {-# LANGUAGE TypeOperators     #-}
 
-module TM.Merkle (tests) where
+module TM.Merkle where -- (tests) where
 
 import Data.Functor.Identity
 import Data.Maybe
@@ -10,10 +13,11 @@ import Test.Tasty.HUnit
 import Test.Tasty.QuickCheck
 
 import Data.ByteString (ByteString)
+import System.Random   (randomRIO)
 
 import qualified Data.ByteString as BS
 
-import Thundermint.Crypto         ((:&))
+import Thundermint.Crypto         ((:&), ByteReprSized(..), CryptoHash(..), Hash(..), hash)
 import Thundermint.Crypto.Ed25519 (Ed25519)
 import Thundermint.Crypto.SHA     (SHA512)
 
@@ -30,6 +34,7 @@ tests = testGroup "Merkle tree"
                    , merkleTree = Leaf ""
                    } -> return ()
         _ -> assertFailure "Invalid tree"
+  , testProperty "Merkle proof of inclusion is correct" prop_MerkleProofCorrect
   ]
 
 prop_TreeCorrect :: BS -> Property
@@ -75,3 +80,32 @@ instance Arbitrary BS where
                    | x <- shrink (BS.unpack bs)
                    , not (null x)
                    ]
+
+
+-- | Merkle tree proof tests
+
+-- |
+-- the short hash size type for testing in ghci
+-- e.g. tree = merklize 2 "asdasd asda " :: MerkleTree (Ed25519 :& TT) Identity
+data TT
+instance ByteReprSized (Hash TT) where
+  type ByteSize (Hash TT) = 1
+
+
+instance CryptoHash TT where
+  hashBlob  = Hash
+
+
+prop_MerkleProofCorrect :: BS -> Property
+prop_MerkleProofCorrect (BS blob) = ioProperty $ do
+  index <- randomRIO (0, n-1)
+  let leafBS = leaves !! index
+  return $ merkleProof tree (hash (0::Int, leafBS))
+  where
+    chunk  :: Num a => a
+    chunk  = 128
+    tree   :: MerkleTree (Ed25519 :& SHA512) Identity
+    tree   = merklize chunk blob
+    leaves = treeLeaves tree
+    n = length leaves
+
