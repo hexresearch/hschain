@@ -31,23 +31,26 @@ maxHeight = Height 10
 tests :: TestTree
 tests = testGroup "generate blockchain and check on consistency"
   [ testGroup "blockhains"
-    [ testCase "key-val db" $ runKeyVal (Just maxHeight)  "./test-data/key-val" "./test-spec/simple-stm.json"
+    [ testCase "key-val db" $ runKeyVal (Just maxHeight) "./test-spec/simple-stm.json"
     , testCase "Mock coin"  $ runCoin   maxHeight "./test-spec/keyval-stm.json"
     ]
   ]
 
 -- Run key-val blockchain mock
-runKeyVal :: Maybe Height -> FilePath -> FilePath -> IO ()
-runKeyVal maxH prefix file = do
+runKeyVal :: Maybe Height -> FilePath -> IO ()
+runKeyVal maxH file = do
   -- read config
   blob <- BC8.readFile file
   spec <- case JSON.eitherDecodeStrict blob of
     Right s -> return s
     Left  e -> error e
-  storageList <- KeyVal.executeSpec maxH prefix spec
-  -- Check result against consistency invariants
-  checks <- forM storageList $ \c -> runDBT c checkStorage
-  assertEqual "failed consistency check" [] (concat checks)
+  --
+  evalContT $ do
+    -- Run blockchain
+    rnodes <- KeyVal.executeSpec spec
+    -- Check that each blockchain is internally consistent
+    checks <- forM rnodes $ \n -> runDBT (Coin.rnodeConn n) checkStorage
+    liftIO $ assertEqual "Failed consistency check" [] (concat checks)
 
 
 -- Run coin blockchain mock

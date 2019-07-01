@@ -286,9 +286,7 @@ addSomeBlocks'
     -> Int -- ^ Number of blocks to add
     -> m [(Block TestAlg TestBlock, Commit TestAlg TestBlock)]
 addSomeBlocks' GossipEnv{..} blocksCount =
-    mapM addOneBlock
-         [ [(show i, NetAddrV6 (fromIntegral $ i `mod` 256, 2, 3, 4) 4433)]
-         | i <- [1..blocksCount] ]
+  mapM addOneBlock [ [(show i, 4433)] | i <- [1 .. blocksCount] ]
   where
     addOneBlock tx = do
         t  <- getCurrentTime
