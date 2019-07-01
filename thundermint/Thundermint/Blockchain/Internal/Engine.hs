@@ -257,7 +257,7 @@ data ConsensusResult alg a b
   | Tranquility
   | Misdeed
   | DoCommit  !(Commit alg a) !(TMState alg a)
-  deriving (Functor)
+  deriving (Show,Functor)
 
 instance Monad m => Applicative (ConsensusM alg a m) where
   pure  = return
