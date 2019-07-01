@@ -4,7 +4,7 @@
 {-# LANGUAGE TypeFamilies      #-}
 {-# LANGUAGE TypeOperators     #-}
 
-module TM.Merkle where -- (tests) where
+module TM.Merkle (tests) where
 
 import Data.Functor.Identity
 import Data.Maybe
@@ -100,12 +100,15 @@ prop_MerkleProofCorrect :: BS -> Property
 prop_MerkleProofCorrect (BS blob) = ioProperty $ do
   index <- randomRIO (0, n-1)
   let leafBS = leaves !! index
-  return $ merkleProof tree (hash (0::Int, leafBS))
+      leafHash = (hash (0::Int, leafBS))
+      proofPath = merklePath tree leafHash
+  return $ merkleProof rootH proofPath leafHash
   where
     chunk  :: Num a => a
     chunk  = 128
     tree   :: MerkleTree (Ed25519 :& SHA512) Identity
     tree   = merklize chunk blob
+    rootH = rootHash $ merkleRoot tree
     leaves = treeLeaves tree
     n = length leaves
 

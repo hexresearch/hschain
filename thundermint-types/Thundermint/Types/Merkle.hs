@@ -198,13 +198,11 @@ data UpdTree alg = UpdTree
 ----------------------------------------------------------------
 
 -- |
--- proof that the leaf exists in the given merkle tree
-merkleProof :: Crypto alg => MerkleTree alg Identity -> Hash alg -> Bool
-merkleProof tree@MerkleTree{..} leafHash =
-    let path = merklePath tree leafHash
-    in proof path leafHash
+-- proof that the leaf exists in the merkle tree by tree rootHash and path
+merkleProof :: Crypto alg => Hash alg -> [[Hash alg]] -> Hash alg -> Bool
+merkleProof rootHash proofPath leafHash = proof proofPath leafHash
   where
-    proof [] h = h == (rootHash merkleRoot)
+    proof [] h = h == rootHash
     proof (xs:xss) h
       | all (h /=) xs = False
       | otherwise = proof xss (elemHash xs)
