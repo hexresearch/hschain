@@ -18,9 +18,6 @@ module Thundermint.Types.Merkle (
     -- * Reassembly of tree
   , concatTree
   , checkMerkleTree
-    -- * Proof of existence of leaf in Merkle tree
-  , merkleProof
-  , merklePath
   ) where
 
 import Codec.Serialise
@@ -86,7 +83,7 @@ deriving instance (Show (f (MerkleNode alg f))) => Show (MerkleChild alg f)
 ----------------------------------------------------------------
 
 merklize
-  :: forall alg. Crypto alg
+  :: forall alg. CryptoHash alg
   => Word32                     -- ^ Size of chunk
   -> ByteString                 -- ^ Blob to split
   -> MerkleTree alg Identity
@@ -107,20 +104,20 @@ merklize chunkSize blob
     leafs  = Leaf <$> chunkBS (fromIntegral chunkSize) blob
 
 
-buildTree :: (Crypto alg) => Word32 -> [MerkleNode alg Identity] -> MerkleNode alg Identity
+buildTree :: (CryptoHash alg) => Word32 -> [MerkleNode alg Identity] -> MerkleNode alg Identity
 buildTree _      []    = error "Cannot have empty list as parameter"
 buildTree _      [n]   = n
 buildTree fanout nodes = buildTree fanout
                        $ map (Branch . map makeChild)
                        $ chunk (fromIntegral fanout) nodes
 
-makeChild :: (Crypto alg) => MerkleNode alg Identity -> MerkleChild alg Identity
+makeChild :: (CryptoHash alg) => MerkleNode alg Identity -> MerkleChild alg Identity
 makeChild node = MerkleChild
   { merkleNodeHash = calculateNodeHash node
   , merkleChild    = Identity node
   }
 
-calculateNodeHash :: Crypto alg => MerkleNode alg Identity -> Hash alg
+calculateNodeHash :: CryptoHash alg => MerkleNode alg Identity -> Hash alg
 calculateNodeHash = \case
   Leaf   bs -> hash (0::Int, bs)
   Branch xs -> hash (1::Int, merkleNodeHash <$> xs)
@@ -147,7 +144,7 @@ chunk n xs = case splitAt n xs of
 -- Assemble tree
 ----------------------------------------------------------------
 
-concatTree :: Crypto alg => MerkleTree alg Identity -> Maybe ByteString
+concatTree :: CryptoHash alg => MerkleTree alg Identity -> Maybe ByteString
 concatTree tree
   | checkMerkleTree tree = Just $ BS.concat $ recur $ merkleTree tree
   | otherwise            = Nothing
@@ -155,7 +152,7 @@ concatTree tree
     recur (Leaf   bs) = [bs]
     recur (Branch ns) = foldMap (recur . runIdentity . merkleChild) ns
 
-checkMerkleTree :: Crypto alg => MerkleTree alg Identity -> Bool
+checkMerkleTree :: CryptoHash alg => MerkleTree alg Identity -> Bool
 checkMerkleTree MerkleTree{..}
   =  calculateNodeHash merkleTree == rootHash merkleRoot
   && checkNode  merkleTree
@@ -192,39 +189,6 @@ data UpdTree alg = UpdTree
 -}
 
 
-
-----------------------------------------------------------------
--- Merkel Proof
-----------------------------------------------------------------
-
--- |
--- proof that the leaf exists in the merkle tree by tree rootHash and path
-merkleProof :: Crypto alg => Hash alg -> [[Hash alg]] -> Hash alg -> Bool
-merkleProof rootHash proofPath leafHash = proof proofPath leafHash
-  where
-    proof [] h = h == rootHash
-    proof (xs:xss) h
-      | all (h /=) xs = False
-      | otherwise = proof xss (elemHash xs)
-
-    elemHash hs = hash (1::Int, hs)
-
-
--- |
--- return the path from leaf to root of branch if any
-merklePath :: Crypto alg => MerkleTree alg Identity -> Hash alg -> [[Hash alg]]
-merklePath tree nodeHash = recur [] $ merkleTree tree
-  where
-    recur acc leaf@(Leaf _)
-        | calculateNodeHash leaf == nodeHash = acc
-        | otherwise = []
-
-    recur acc (Branch [l, r]) = recur ([(merkleNodeHash l), (merkleNodeHash r) ] : acc) (runIdentity $ merkleChild l) ++ recur ([(merkleNodeHash l), (merkleNodeHash r) ] : acc) (runIdentity $ merkleChild r)
-    recur acc (Branch [n])    = recur ([merkleNodeHash n] : acc) (runIdentity $ merkleChild n)
-    recur acc (Branch _)      = acc
-
-
-
 ----------------------------------------------------------------
 --
 ----------------------------------------------------------------
@@ -235,11 +199,11 @@ numberLeaves MerkleRoot{..}
   = max 1
   $ blobSize `div1` partSize
 
-treeFanout :: forall alg. Crypto alg => MerkleRoot alg -> Word32
+treeFanout :: forall alg. CryptoHash alg => MerkleRoot alg -> Word32
 treeFanout MerkleRoot{..}
   = partSize `div` hashSize (Proxy @ alg)
 
-treeDepth :: Crypto alg => MerkleRoot alg -> Word32
+treeDepth :: CryptoHash alg => MerkleRoot alg -> Word32
 treeDepth root@MerkleRoot{..}
   | blobSize <= partSize = 1
   | otherwise            = 1 + dlog (treeFanout root) (numberLeaves root)
