@@ -95,19 +95,6 @@ Library
                   Thundermint.P2P.Network.IpAddresses
                   Thundermint.P2P.Network.RealNetworkStub
 
--- Example programs
-Executable thundermint-keyval
-  Buildable:           False
-  Ghc-options:         -Wall
-  Default-Language:    Haskell2010
-  Build-Depends:       base       >=4.9 && <5
-                     , thundermint
-                     , aeson
-                     , bytestring >=0.10
-                     , optparse-applicative
-  hs-source-dirs:      exe
-  Main-is:             key-val.hs
-
 Executable thundermint-coin-node
   Buildable: False
   Ghc-options:         -Wall -threaded -Wno-orphans -rtsopts "-with-rtsopts=-N -T -c -qn1"
