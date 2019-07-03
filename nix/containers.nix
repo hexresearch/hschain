@@ -16,7 +16,7 @@ let
 
   thundermint-docker = pkgs.dockerTools.buildImage {
     name = "${prefixName}thundermint-node";
-    fromImageName = "scratch";
+    fromImageName = "alpine";
     tag = containerTag;
     created = "now";
     contents = [thundermint-exe];
