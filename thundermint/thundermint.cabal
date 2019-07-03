@@ -96,7 +96,6 @@ Library
                   Thundermint.P2P.Network.RealNetworkStub
 
 Executable thundermint-coin-node
-  Buildable: False
   Ghc-options:         -Wall -threaded -Wno-orphans -rtsopts "-with-rtsopts=-N -T -c -qn1"
   Default-Language:    Haskell2010
   Build-Depends:       base                 >=4.9 && <5
@@ -123,10 +122,6 @@ Executable thundermint-coin-node
                      , directory
   hs-source-dirs:      exe
   Main-is:             coin-node.hs
-  other-modules:
-                App.Yaml
-                App.AesonTH
-                App.Settings
 
 Executable thundermint-db
   Ghc-options:         -Wall -threaded -Wno-orphans

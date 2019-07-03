@@ -1,0 +1,8 @@
+nodePort: 40004
+nspecPrivKey: "FJgB8hGT34QpemNc4Hgc9hkwKScTyugXtLtL19xB1gpJ"
+nspecLogFile:
+  - type      : "ScribeJSON"
+    path      : "logs/node-4.log"
+    severity  : "Debug"
+    verbosity : "V2"
+nspecDbName: "db/db4"
