@@ -46,7 +46,6 @@ import Codec.Serialise      (Serialise,serialise)
 import qualified Data.Aeson as JSON
 import Data.ByteString.Lazy (toStrict)
 import Data.Foldable
-import Data.Maybe
 import Data.Map             (Map)
 import qualified Data.Vector      as V
 import qualified Data.Map.Strict  as Map
@@ -54,6 +53,7 @@ import System.Random   (randomRIO)
 import GHC.Generics    (Generic)
 
 import Thundermint.Types.Blockchain
+import Thundermint.Types.Validators
 import Thundermint.Blockchain.Interpretation
 import Thundermint.Blockchain.Internal.Engine.Types
 import Thundermint.Control
@@ -219,8 +219,8 @@ selectFromVec v = do
 
 
 mintMockCoin
-  :: (Has a NodeSpec)
-  => [a]
+  :: (Foldable f)
+  => f (Validator Alg)
   -> CoinSpecification
   -> (Maybe TxGenerator, Block Alg [Tx])
 mintMockCoin nodes CoinSpecification{..} =
@@ -233,10 +233,10 @@ mintMockCoin nodes CoinSpecification{..} =
   , makeGenesis "MONIES" (Time 0) txs valSet
   )
   where
-    privK  = take coinWallets $ makePrivKeyStream coinWalletsSeed
-    pubK   = publicKey <$> privK
-    valSet = makeValidatorSetFromPriv $ catMaybes [ x ^.. nspecPrivKey | x <- nodes ]    
-    txs    = [ Deposit pk coinAridrop | pk <- pubK ]
+    privK        = take coinWallets $ makePrivKeyStream coinWalletsSeed
+    pubK         = publicKey <$> privK
+    Right valSet = makeValidatorSet nodes
+    txs          = [ Deposit pk coinAridrop | pk <- pubK ]
 
 
 findInputs :: (Num i, Ord i) => i -> [(a,i)] -> [(a,i)]
@@ -308,4 +308,6 @@ executeNodeSpec (NetSpec{..} :*: coin@CoinSpecification{..}) = do
   lift   $ catchAbort $ runConcurrently $ (snd =<< rnodes) ++ txGens
   return $ fst <$> rnodes
   where
-    (mtxGen, genesis) = mintMockCoin netNodeList coin
+    (mtxGen, genesis) = mintMockCoin [ Validator (publicKey k) 1
+                                     | Just (PrivValidator k) <- nspecPrivKey <$> netNodeList
+                                     ] coin
