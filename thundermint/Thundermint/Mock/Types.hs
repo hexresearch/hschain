@@ -21,7 +21,6 @@ module Thundermint.Mock.Types (
 
 import Control.Exception   (Exception)
 import Control.Monad.Catch (MonadCatch(..))
-import Data.Type.Equality
 import GHC.Generics (Generic)
 
 import qualified Data.Aeson as JSON

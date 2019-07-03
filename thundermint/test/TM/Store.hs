@@ -5,7 +5,6 @@ module TM.Store ( tests) where
 import Test.Tasty
 import Test.Tasty.HUnit
 
-import Control.Applicative
 import Control.Monad
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Cont
@@ -25,20 +24,18 @@ import qualified Thundermint.Mock.KeyVal as KeyVal
 import qualified Thundermint.Mock.Coin   as Coin
 import           Thundermint.Mock.Types
 
-maxHeight :: Height
-maxHeight = Height 10
 
 tests :: TestTree
 tests = testGroup "generate blockchain and check on consistency"
   [ testGroup "blockhains"
-    [ testCase "key-val db" $ runKeyVal (Just maxHeight) "./test-spec/simple-stm.json"
-    , testCase "Mock coin"  $ runCoin   maxHeight "./test-spec/keyval-stm.json"
+    [ testCase "key-val db" $ runKeyVal "./test-spec/simple-stm.json"
+    , testCase "Mock coin"  $ runCoin   "./test-spec/keyval-stm.json"
     ]
   ]
 
 -- Run key-val blockchain mock
-runKeyVal :: Maybe Height -> FilePath -> IO ()
-runKeyVal maxH file = do
+runKeyVal :: FilePath -> IO ()
+runKeyVal file = do
   -- read config
   blob <- BC8.readFile file
   spec <- case JSON.eitherDecodeStrict blob of
@@ -54,8 +51,8 @@ runKeyVal maxH file = do
 
 
 -- Run coin blockchain mock
-runCoin :: Height -> FilePath -> IO ()
-runCoin maxH file = do
+runCoin :: FilePath -> IO ()
+runCoin file = do
   -- read config
   blob <- BC8.readFile file
   spec :*: coin <- case JSON.eitherDecodeStrict blob of
@@ -64,12 +61,15 @@ runCoin maxH file = do
   -- Run mock cluster
   evalContT $ do
     rnodes <- Coin.executeNodeSpec
-            $  spec { netMaxH            = netMaxH spec <|> Just maxH }
+            $  spec
            :*: coin { coinGeneratorDelay = Just 200 }
     -- Check that each blockchain is internally consistent
     checks <- forM rnodes $ \n -> runDBT (Coin.rnodeConn n) checkStorage
     liftIO $ assertEqual "Failed consistency check" [] (concat checks)
     -- Check that block and validators identical on each node
+    maxH <- fmap minimum
+          $ forM rnodes $ \n ->
+            runDBT (Coin.rnodeConn n) $ queryRO $ blockchainHeight
     forM_ [Height 0 .. maxH] $ \h -> do
       -- Blocks match
       blocks <- forM rnodes $ \n -> do

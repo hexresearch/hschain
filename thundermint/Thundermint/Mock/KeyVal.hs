@@ -34,7 +34,6 @@ import Thundermint.Crypto.SHA
 import Thundermint.Logger
 import Thundermint.Mock.KeyList
 import Thundermint.Mock.Types
-import Thundermint.P2P
 import Thundermint.Monitoring
 import Thundermint.Run
 import Thundermint.Store
@@ -92,7 +91,6 @@ interpretSpec
   -> m (RunningNode BState m Alg [Tx], [m ()])
 interpretSpec p cb = do
   conn     <- askConnectionRO
-  hChain   <- queryRO blockchainHeight
   bchState <- newBChState transitions
   let logic = AppLogic
         { appValidationFun    = \valset b -> do
@@ -100,7 +98,7 @@ interpretSpec p cb = do
             st <- stateAtH bchState h
             return $ valset <$ processBlock transitions CheckSignature b st
         , appCommitQuery     = SimpleQuery $ \valset _ -> return valset
-        , appBlockGenerator  = \txs h _ _ _ valset -> do
+        , appBlockGenerator  = \_ h _ _ _ valset -> do
             st <- stateAtH bchState h
             let Just k = find (`Map.notMember` st) ["K_" ++ show (n :: Int) | n <- [1 ..]]
             i <- liftIO $ randomRIO (1,100)
