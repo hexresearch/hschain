@@ -18,14 +18,10 @@ module Thundermint.Mock.Coin (
   , CoinState(..)
   , transitions
     -- * Transaction generator
-  -- , GeneratorSpec(..)
-  -- , defaultGenerator
-  -- , restrictGenerator
-  -- , genesisFromGenerator
-    -- ** Generator
+  , mintMockCoin
   , generateTransaction
   , transactionGenerator
-    -- ** interpretation
+    -- * Interpretation
   , interpretSpec
   , RunningNode(..)
   , executeNodeSpec
