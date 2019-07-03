@@ -18,7 +18,7 @@ let
     name = "${prefixName}thundermint-node";
     fromImageName = "scratch";
     tag = containerTag;
-    reated = "now";
+    created = "now";
     contents = [thundermint-exe];
   };
 in {
