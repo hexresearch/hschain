@@ -57,17 +57,14 @@ getLocalAddresses =
 
 
 isLocalAddress :: MonadIO m => Net.SockAddr -> m Bool
-isLocalAddress sockAddr =
-    if isLoopback sockAddr then
-        return True
-    else do
-        let sockAddr' = case sockAddr of
-                Net.SockAddrInet _ ipv4 ->
-                    Net.SockAddrInet defaultPort ipv4
-                Net.SockAddrInet6 _ _ ipv6 _ ->
-                    Net.SockAddrInet6 defaultPort defaultFlow ipv6 defaultScope
-                s -> s
-        elem sockAddr' <$> getLocalAddresses
+isLocalAddress sockAddr
+  | isLoopback sockAddr = return True
+  | otherwise           = do
+      let sockAddr' = case sockAddr of
+            Net.SockAddrInet  _   ipv4   -> Net.SockAddrInet  defaultPort ipv4
+            Net.SockAddrInet6 _ _ ipv6 _ -> Net.SockAddrInet6 defaultPort defaultFlow ipv6 defaultScope
+            s -> s
+      elem sockAddr' <$> getLocalAddresses
   where
     isLoopback = isLoopback' . normalizeIpAddr
     isLoopback' (Net.SockAddrInet _ 0x100007f) = True
