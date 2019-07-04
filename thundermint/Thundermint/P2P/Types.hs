@@ -86,10 +86,10 @@ data NetworkAPI = NetworkAPI
              => m (m (), m (P2PConnection, NetAddr)))
     -- ^ Start listening on given port. Returns action to stop listener
     --   and function for accepting new connections
-  , connect  :: !(forall m. (MonadIO m, MonadMask m)
+  , connect  :: !(forall m. (MonadIO m, MonadThrow m, MonadMask m)
              => NetAddr -> m P2PConnection)
     -- ^ Connect to remote address
-  , filterOutOwnAddresses :: !(forall m. (MonadIO m) => Set NetAddr -> m (Set NetAddr))
+  , filterOutOwnAddresses :: !(forall m. (MonadIO m) => [NetAddr] -> m [NetAddr])
     -- ^ Filter out local addresses of node. Batch processing for speed.
   , normalizeNodeAddress :: !(NetAddr -> Maybe NetworkPort -> NetAddr)
     -- ^ Normalize address, for example, convert '20.15.10.20:24431' to '20.15.10.20:50000'
