@@ -26,7 +26,6 @@ module Thundermint.P2P.Types (
 import Codec.Serialise
 import Control.Monad.Catch    (MonadMask)
 import Control.Monad.IO.Class (MonadIO)
-import Data.Set               (Set)
 import Data.Word              (Word16, Word64)
 import GHC.Generics           (Generic)
 import GHC.Read               (Read(..))

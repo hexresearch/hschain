@@ -14,9 +14,7 @@ module Thundermint.P2P.Network.IpAddresses (
 
 import Control.Monad
 import Control.Monad.IO.Class (MonadIO, liftIO)
-import Data.Set               (Set)
 import Data.Word              (Word32)
-import qualified Data.Set       as Set
 import qualified Network.Info   as Net
 import qualified Network.Socket as Net
 
@@ -97,12 +95,9 @@ getPort _ = defaultPort
 filterOutOwnAddresses
     :: forall m. (MonadIO m)
     => Net.PortNumber       -- ^ Own port number
-    -> Set Net.SockAddr     -- ^ Some addresses
-    -> m (Set Net.SockAddr)
+    -> [Net.SockAddr]       -- ^ Some addresses
+    -> m [Net.SockAddr]
 filterOutOwnAddresses ownPort =
-    fmap Set.fromList .
-    filterM (\a -> isLocalAddress a >>=
-                   (\isLocal -> return $ not (isLocal && ownPort == getPort a))
-            ) .
-    Set.toList
-
+  filterM (\a -> isLocalAddress a >>=
+                 (\isLocal -> return $ not (isLocal && ownPort == getPort a))
+          )

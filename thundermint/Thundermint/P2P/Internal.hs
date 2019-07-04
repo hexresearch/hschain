@@ -449,7 +449,7 @@ peerPexNewAddressMonitor
   -> m ()
 peerPexNewAddressMonitor peerChanPexNewAddresses PeerRegistry{..} NetworkAPI{..} = forever $ do
   addrs' <- liftIO $ atomically $ readTChan peerChanPexNewAddresses
-  addrs  <- filterOutOwnAddresses $ Set.fromList $ map (`normalizeNodeAddress` Nothing) addrs'
+  addrs  <- fmap Set.fromList $ filterOutOwnAddresses $ map (`normalizeNodeAddress` Nothing) addrs'
   liftIO $ atomically $ modifyTVar' prKnownAddreses (`Set.union` addrs)
 
 
