@@ -84,6 +84,7 @@ Library
                   Thundermint.P2P.Network
                   Thundermint.P2P.PeerState
                   Thundermint.P2P.Types
+                  Thundermint.P2P.Network.IpAddresses
                   Thundermint.Store
                   Thundermint.Store.STM
                   Thundermint.Store.Internal.BlockDB
@@ -97,7 +98,6 @@ Library
                   Thundermint.P2P.Network.Internal.UDP
                   Thundermint.P2P.Network.Internal.Mock
                   Thundermint.P2P.Network.Internal.Utils
-                  Thundermint.P2P.Network.IpAddresses
                   Thundermint.P2P.Network.RealNetworkStub
                   Thundermint.P2P.Internal
                   Thundermint.P2P.Internal.PeerRegistry
