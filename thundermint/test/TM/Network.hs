@@ -76,9 +76,9 @@ tests = testGroup "network test"
 
 
 
-loopbackIpv4, loopbackIpv6 :: Net.SockAddr
-loopbackIpv4 = Net.SockAddrInet  50000 0x100007f
-loopbackIpv6 = Net.SockAddrInet6 50000 0 (0,0,0,1) 0
+loopbackIpv4, loopbackIpv6 :: NetAddr
+loopbackIpv4 = NetAddrV4 0x100007f 50000
+loopbackIpv6 = NetAddrV6 (0,0,0,1) 50000
 
 
 -- | Simple test to ensure that mock network works at all

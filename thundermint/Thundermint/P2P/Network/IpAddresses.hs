@@ -14,7 +14,7 @@ module Thundermint.P2P.Network.IpAddresses (
 
 import Control.Monad
 import Control.Monad.IO.Class (MonadIO, liftIO)
-import Data.Word              (Word32)
+import Data.Word
 import qualified Network.Info   as Net
 import qualified Network.Socket as Net
 
@@ -27,45 +27,37 @@ getLocalAddress :: IO Net.SockAddr
 getLocalAddress =
     return $ Net.SockAddrInet 0 (Net.tupleToHostAddress (0x7f, 0, 0, 1))
 
-
-defaultPort :: Net.PortNumber
+defaultPort :: Word16
 defaultPort = 0
 
-defaultFlow :: Net.FlowInfo
-defaultFlow = 0
-
-defaultScope :: Net.ScopeID
-defaultScope = 0
-
-
-getLocalAddresses :: MonadIO m => m [Net.SockAddr]
-getLocalAddresses =
-    concatMap (\Net.NetworkInterface{..} ->
-        let Net.IPv4 ipv4w1 = ipv4
-            Net.IPv6 ipv6w1' ipv6w2' ipv6w3' ipv6w4' = ipv6
-            ipv6w1 = partOfIpv6ToIpv4 ipv6w1'
-            ipv6w2 = partOfIpv6ToIpv4 ipv6w2'
-            ipv6w3 = partOfIpv6ToIpv4 ipv6w3'
-            ipv6w4 = partOfIpv6ToIpv4 ipv6w4'
-        in [ Net.SockAddrInet  defaultPort ipv4w1
-           , Net.SockAddrInet6 defaultPort defaultFlow (ipv6w1, ipv6w2, ipv6w3, ipv6w4) defaultScope
-           ]
-      )
-      <$> (liftIO Net.getNetworkInterfaces)
+getLocalAddresses :: MonadIO m => m [NetAddr]
+getLocalAddresses
+  = concatMap toAddr <$> liftIO Net.getNetworkInterfaces
+  where
+    toAddr Net.NetworkInterface{..} =
+      [ NetAddrV4 ipv4w1                           defaultPort
+      , NetAddrV6 (ipv6w1, ipv6w2, ipv6w3, ipv6w4) defaultPort
+      ]
+      where
+        Net.IPv4 ipv4w1                          = ipv4
+        Net.IPv6 ipv6w1' ipv6w2' ipv6w3' ipv6w4' = ipv6
+        ipv6w1 = partOfIpv6ToIpv4 ipv6w1'
+        ipv6w2 = partOfIpv6ToIpv4 ipv6w2'
+        ipv6w3 = partOfIpv6ToIpv4 ipv6w3'
+        ipv6w4 = partOfIpv6ToIpv4 ipv6w4'
 
 
-isLocalAddress :: MonadIO m => Net.SockAddr -> m Bool
+isLocalAddress :: MonadIO m => NetAddr -> m Bool
 isLocalAddress sockAddr
   | isLoopback sockAddr = return True
   | otherwise           = do
       let sockAddr' = case sockAddr of
-            Net.SockAddrInet  _   ipv4   -> Net.SockAddrInet  defaultPort ipv4
-            Net.SockAddrInet6 _ _ ipv6 _ -> Net.SockAddrInet6 defaultPort defaultFlow ipv6 defaultScope
-            s -> s
+            NetAddrV4 ip _ -> NetAddrV4 ip defaultPort
+            NetAddrV6 ip _ -> NetAddrV6 ip defaultPort
       elem sockAddr' <$> getLocalAddresses
   where
-    isLoopback = isLoopback' . normalizeIpAddr
-    isLoopback' (Net.SockAddrInet _ 0x100007f) = True
+    isLoopback = isLoopback' . normalizeNetAddr
+    isLoopback' (NetAddrV4 0x100007f _) = True
     isLoopback' _ = False
 
 
@@ -86,18 +78,15 @@ normalizeNetAddr (NetAddrV6 (0, 0, 0xFFFF, x) p) = NetAddrV4 (partOfIpv6ToIpv4 x
 normalizeNetAddr a = a
 
 
-getPort :: Net.SockAddr -> Net.PortNumber
-getPort (Net.SockAddrInet port _) = port
-getPort (Net.SockAddrInet6 port _ _ _) = port
-getPort _ = defaultPort
-
+getPort :: NetAddr -> Word16
+getPort (NetAddrV4 _ p) = p
+getPort (NetAddrV6 _ p) = p
 
 filterOutOwnAddresses
     :: forall m. (MonadIO m)
-    => Net.PortNumber       -- ^ Own port number
-    -> [Net.SockAddr]       -- ^ Some addresses
-    -> m [Net.SockAddr]
+    => Word16               -- ^ Own port number
+    -> [NetAddr]            -- ^ Some addresses
+    -> m [NetAddr]
 filterOutOwnAddresses ownPort =
-  filterM (\a -> isLocalAddress a >>=
-                 (\isLocal -> return $ not (isLocal && ownPort == getPort a))
-          )
+  filterM $ \a -> do isLocal <- isLocalAddress a
+                     return $! not $ isLocal && ownPort == getPort a
