@@ -26,6 +26,7 @@ import Thundermint.P2P.PeerState
 
 import qualified Katip
 
+
 -- | Messages which peers exchange with each other
 --
 --   FIXME: We don't have good way to prevent DoS by spamming too much

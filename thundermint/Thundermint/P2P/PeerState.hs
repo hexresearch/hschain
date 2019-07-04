@@ -4,6 +4,7 @@
 {-# LANGUAGE RecordWildCards    #-}
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE ViewPatterns       #-}
+
 -- |
 module Thundermint.P2P.PeerState (
     FullStep(..)
@@ -44,10 +45,11 @@ import Thundermint.Store
 import Thundermint.Types.Blockchain
 import Thundermint.Types.Validators
 
-
 ----------------------------------------------------------------
 --
 ----------------------------------------------------------------
+
+-------------------------------------------------------------------
 
 -- | Our knowledge of peer state
 data PeerState alg a
@@ -370,7 +372,7 @@ addBlockHR (PeerStateObj ProposalStorage{..} var) h r =
         -> do mBlk <- retrievePropByR h r
               case blockFromBlockValidation mBlk of
                 Just (bid,_) -> return $ Current p { peerBlocks = Set.insert bid (peerBlocks p) }
-                Nothing        -> return peer
+                Nothing      -> return peer
       | otherwise -> return peer
     Ahead _ -> return peer
     Unknown -> return peer

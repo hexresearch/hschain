@@ -57,6 +57,9 @@ import Thundermint.P2P.Internal.PeerRegistry
 import Thundermint.P2P.Internal.Logging as Logging
 import Thundermint.P2P.Internal.Types
 
+import Thundermint.P2P.PeerState.Handle
+  (Command(..), Event(..), wrap, UnknownState(..), Config(..), handler)
+
 --
 -- Connect/accept
 --
@@ -136,6 +139,29 @@ connectPeerTo cfg NetworkAPI{..} addr peerCh mempool peerRegistry =
 ----------------------------------------------------------------
 -- Peer
 ----------------------------------------------------------------
+-- | Routine for receiving messages from peer
+peerFSM
+  :: ( MonadReadDB m alg a, MonadIO m, MonadMask m, MonadLogger m
+     , Crypto alg, BlockData a)
+  => PeerChans m alg a
+  -> TChan PexMessage
+  -> P2PConnection
+  -> MempoolCursor m alg (TX a)
+  -> m ()
+peerFSM PeerChans{..} peerExchangeCh P2PConnection{..} MempoolCursor{..} = logOnException $ do
+  logger InfoS "Starting routing for receiving messages" ()
+  (`fix` wrap UnknownState) $ \loop s -> recv >>= \case
+    Nothing  -> logger InfoS "Peer stopping since socket is closed" ()
+    Just bs  -> case deserialiseOrFail bs of
+      Left  e   -> logger ErrorS ("Deserialization error: " <> showLS e) ()
+      Right msg -> do
+        (s', cmds) <- handler (Config proposalStorage) s (EGossip msg)
+        forM_ cmds $ \case
+          SendRX rx         -> liftIO $ atomically $ peerChanRx rx -- FIXME: tickRecv
+          Push2Mempool tx   -> void $ pushTransaction tx
+          SendPEX pexMsg    -> liftIO $ atomically $ writeTChan peerExchangeCh pexMsg
+        loop s'
+  return ()
 
 -- | Start interactions with peer. At this point connection is already
 --   established and peer is registered.
@@ -149,7 +175,7 @@ startPeer
   -> PeerRegistry
   -> Mempool m alg (TX a)
   -> m ()
-startPeer peerAddrTo peerCh@PeerChans{..} conn peerRegistry mempool =
+startPeer peerAddrTo peerCh@PeerChans{..} conn peerRegistry mempool = logOnException $ do
   descendNamespace (T.pack (show peerAddrTo)) $ logOnException $ do
     logger InfoS "Starting peer" ()
     liftIO $ atomically $ writeTChan peerChanPexNewAddresses [peerAddrTo]
@@ -165,6 +191,7 @@ startPeer peerAddrTo peerCh@PeerChans{..} conn peerRegistry mempool =
       , descendNamespace "send" $ peerSend                peerSt peerCh gossipCh conn
       , descendNamespace "PEX"  $ peerGossipPeerExchange  peerCh peerRegistry pexCh gossipCh
       , peerGossipAnnounce peerCh gossipCh
+      , descendNamespace "peerFSM" $ peerFSM peerCh pexCh conn cursor
       ]
     logger InfoS "Stopping peer" ()
 
