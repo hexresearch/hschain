@@ -18,16 +18,13 @@ let
     name = "${prefixName}thundermint-node";
     fromImageName = "scratch";
     tag = containerTag;
+    created = "now";
     contents = [thundermint-exe];
     config = {
-      Volumes = {
-        "/thundermint" = {};
-      };
-      ExposedPorts = {
-        "49999" = {};
-        "50000" = {};
-      };
-      };
+       Entrypoint = [
+         "thundermint-coin-node"
+       ];
+    };
   };
 in {
   inherit

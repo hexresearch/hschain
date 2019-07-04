@@ -33,7 +33,7 @@ testConsensusLightByzantine1 = do
             , mempty
             , waitHeight (Height 2) achievedHeight
             ]
-        , waitSec 6
+        , waitSec 10
         ]
     readIORef achievedHeight >>= assertBool "Must achieve some height" . (>= Height 1)
 
@@ -51,7 +51,7 @@ testConsensusLightByzantine2 = do
             , mempty
             , waitHeight (Height 2) achievedHeight
             ]
-        , waitSec 6
+        , waitSec 10
         ]
     readIORef achievedHeight >>= assertBool "Must achieve some height" . (>= Height 1)
 
@@ -69,7 +69,7 @@ testConsensusLightByzantine3 = do
             , mempty
             , waitHeight (Height 2) achievedHeight
             ]
-        , waitSec 3
+        , waitSec 5
         ]
     readIORef achievedHeight >>= assertEqual "Must stay on initial height" (Height 0)
 
@@ -87,7 +87,7 @@ testConsensusLightByzantine4 = do
             , mempty
             , waitHeight (Height 2) achievedHeight
             ]
-        , waitSec 3
+        , waitSec 5
         ]
     readIORef achievedHeight >>= assertEqual "Must stay on initial height" (Height 0)
 
@@ -105,7 +105,7 @@ testConsensusLightByzantine5 = do
             , mempty
             , waitHeight (Height 2) achievedHeight
             ]
-        , waitSec 3
+        , waitSec 5
         ]
     readIORef achievedHeight >>= assertEqual "Must stay on initial height" (Height 0)
 
@@ -123,7 +123,7 @@ testConsensusLightByzantine6 = do
             , mempty
             , waitHeight (Height 2) achievedHeight
             ]
-        , waitSec 3
+        , waitSec 5
         ]
     readIORef achievedHeight >>= assertEqual "Must stay on initial height" (Height 0)
 

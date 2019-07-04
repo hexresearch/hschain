@@ -63,7 +63,7 @@ testRawGossipUnknown =
     withGossipEnv $ \peerStateObj peerChans gossipCh _env -> do
         runConcurrently
             [ peerGossipVotes peerStateObj peerChans gossipCh
-            , waitSec 0.3
+            , waitSec 1
             ]
         -- TODO проверить, что ничего не поменялось
 
@@ -348,12 +348,7 @@ withGossipEnv fun = do
             peerChanPexNewAddresses <- liftIO newTChanIO
             consensusState'         <- liftIO (newTVarIO Nothing)
             let consensusState      =  readTVar consensusState'
-            cntGossipPrevote        <- newCounter
-            cntGossipPrecommit      <- newCounter
-            cntGossipProposals      <- newCounter
-            cntGossipBlocks         <- newCounter
-            cntGossipTx             <- newCounter
-            cntGossipPex            <- newCounter
+            gossipCnts              <- newGossipCounters
             let peerChans = PeerChans { proposalStorage = makeReadOnlyPS proposalStorage
                                       , p2pConfig       = cfgNetwork (defCfg :: Configuration Example)
                                       , ..

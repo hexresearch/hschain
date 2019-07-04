@@ -14,10 +14,10 @@ module Thundermint.P2P.Types (
   , netAddrToSockAddr
   , P2PConnection(..)
   , NetworkError(..)
-  , HeaderSize
   , NetworkPort
   , PeerId(..)
   , PeerInfo(..)
+  , defPeerInfo
   ) where
 
 import Codec.Serialise
@@ -58,6 +58,8 @@ data PeerInfo = PeerInfo
     deriving stock    (Show, Generic)
     deriving anyclass (Serialise)
 
+defPeerInfo :: PeerInfo
+defPeerInfo = PeerInfo (PeerId 0) 0 0
 
 ----------------------------------------------------------------
 --
@@ -107,9 +109,6 @@ data P2PConnection = P2PConnection
     -- ^ Close socket
   , connectedPeer :: !PeerInfo
   }
-
-type HeaderSize = Int
-
 
 data NetworkError = ConnectionTimedOut
                   | NoAddressAvailable

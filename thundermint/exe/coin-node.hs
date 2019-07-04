@@ -37,7 +37,7 @@ import Thundermint.Blockchain.Interpretation
 import Thundermint.Store
 import Thundermint.Crypto         (PublicKey)
 import Thundermint.P2P            (generatePeerId)
-import Thundermint.P2P.Network    (realNetwork)
+import Thundermint.P2P.Network    (newNetworkTcp)
 import Thundermint.Types
 
 import qualified Thundermint.P2P.Types as P2PT
@@ -84,7 +84,7 @@ main = do
     -- Create network
     peerId <- generatePeerId
     let peerInfo = P2PT.PeerInfo peerId nodePort 0
-        bnet     = BlockchainNet { bchNetwork      = realNetwork peerInfo
+        bnet     = BlockchainNet { bchNetwork      = newNetworkTcp peerInfo
                                  , bchInitialPeers = nodeSeeds
                                  }
     -- Actually run node

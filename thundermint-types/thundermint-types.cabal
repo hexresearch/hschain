@@ -55,3 +55,4 @@ Library
                   Thundermint.Types.Network
                   Thundermint.Types.Validators
                   Thundermint.Types.Blockchain
+                  Thundermint.Types.Merkle

@@ -9,7 +9,6 @@ module Thundermint.P2P.Network.IpAddresses (
   , isLocalAddress
   , normalizeNetAddr
   , normalizeIpAddr
-  , isIPv6addr
   ) where
 
 
@@ -110,6 +109,3 @@ filterOutOwnAddresses ownPort =
             ) .
     Set.toList
 
--- | Check whether socket is IP6
-isIPv6addr :: Net.AddrInfo -> Bool
-isIPv6addr = (==) Net.AF_INET6 . Net.addrFamily

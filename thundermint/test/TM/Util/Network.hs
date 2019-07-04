@@ -10,8 +10,11 @@
 {-# LANGUAGE TypeOperators       #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
--- |
-module TM.Util.Network where
+-- | Contains helpers for network UTs
+module TM.Util.Network
+  ( module TM.Util.Network
+  , NetPair
+  ) where
 
 
 import Control.Concurrent (threadDelay)
@@ -64,21 +67,29 @@ shouldRetry = True
 retryPolicy :: RetryPolicy
 retryPolicy = constantDelay 500 <> limitRetries 20
 
-withRetry
-  :: MonadIO m
-  => ((NetAddr, NetworkAPI) -> (NetAddr, NetworkAPI) -> IO a)
-  -> Net.HostName
-  -> m a
-withRetry = withRetry' Nothing
+withRetryTCP :: MonadIO m
+             => Net.HostName
+             -> (NetPair -> IO a)
+             -> m a
+withRetryTCP = withRetry . realNetPair Nothing 
 
-withRetry'
-  :: MonadIO m
-  => Maybe (Maybe Int)
-  -> ((NetAddr, NetworkAPI) -> (NetAddr, NetworkAPI) -> IO a)
-  -> Net.HostName -> m a
-withRetry' useUDP fun host = do
-  liftIO $ recovering retryPolicy (skipAsyncExceptions ++ hs)
-    (const $ realNetPair useUDP host >>= uncurry fun)
+withRetryUDP :: MonadIO m
+             => Maybe (Maybe Int)
+             -> Net.HostName
+             -> (NetPair -> IO a)
+             -> m a
+withRetryUDP useUDP = withRetry . (realNetPair useUDP)
+
+withRetryTLS :: MonadIO m
+             => Net.HostName
+             -> (NetPair -> IO a)
+             -> m a
+withRetryTLS = withRetry . realTlsNetPair
+
+withRetry :: MonadIO m => (IO NetPair) -> (NetPair -> IO a) -> m a
+withRetry newNetPair fun = do
+  liftIO $ recovering retryPolicy hs
+    (const $ newNetPair >>= fun)
     where
       -- | exceptions list to trigger the recovery logic
       hs :: [a -> Handler IO Bool]
@@ -87,17 +98,16 @@ withRetry' useUDP fun host = do
 
 withTimeoutRetry
   :: MonadIO m
-  => Maybe (Maybe Int)
-  -> String
+  => String
   -> Int
-  -> ((NetAddr, NetworkAPI) -> (NetAddr, NetworkAPI) -> IO a)
-  -> Net.HostName
+  -> (IO NetPair)
+  -> (NetPair -> IO a)
   -> m a
-withTimeoutRetry useUDP msg t fun host = do
+withTimeoutRetry msg t newNetPair fun = do
   liftIO $ recovering retryPolicy (skipAsyncExceptions ++ hs)
     (const action)
     where
-      action = withTimeOut msg t (realNetPair useUDP host >>= uncurry fun)
+      action = withTimeOut msg t (newNetPair >>= fun)
       -- | exceptions list to trigger the recovery logic
       hs :: [a -> Handler IO Bool]
       hs = [const $ Handler (\(_::E.IOException) -> return shouldRetry)]
@@ -271,10 +281,8 @@ skipNothings _lbl recv conn = do
 
 
 -- | Simple test to ensure that mock network works at all
-delayedWrite :: (NetAddr, NetworkAPI)
-             -> (NetAddr, NetworkAPI)
-             -> IO ()
-delayedWrite (serverAddr, server) (_, client) = do
+delayedWrite :: NetPair -> IO ()
+delayedWrite ((serverAddr, server), (_, client)) = do
   let runServer NetworkAPI{..} =
         bracket listenOn fst $ \(_,accept) ->
           bracket accept (close . fst) $ \(conn,_) -> do

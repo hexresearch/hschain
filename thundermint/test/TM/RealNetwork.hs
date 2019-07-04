@@ -1,7 +1,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 -- |
 module TM.RealNetwork ( realNetPair
-                      , realTlsNetPair ) where
+                      , realTlsNetPair
+                      , NetPair ) where
 
 import System.Random
 
@@ -14,10 +15,11 @@ import qualified Network.Socket  as Net
 
 ----------------------------------------------------------------
 
+type NetPair = ((NetAddr, NetworkAPI), (NetAddr, NetworkAPI))
+
 realNetPair :: Maybe (Maybe Int)
             -> Net.HostName
-            -> IO ((NetAddr, NetworkAPI),
-                   (NetAddr, NetworkAPI))
+            -> IO NetPair
 realNetPair udpPortSpec host = do
     let useUDP = udpPortSpec /= Nothing
     n <- case udpPortSpec of
@@ -27,8 +29,8 @@ realNetPair udpPortSpec host = do
         port1 = concat ["3", suffix]
         port2 = concat ["4", suffix]
         realNet p = if not useUDP
-          then return (realNetwork peerInfoForOurPort)
-          else realNetworkUdp peerInfoForOurPort
+          then return (newNetworkTcp peerInfoForOurPort)
+          else newNetworkUdp peerInfoForOurPort
           where
             port = read p
             peerInfoForOurPort = PeerInfo (PeerId (fromIntegral port)) port 0
@@ -47,15 +49,14 @@ realNetPair udpPortSpec host = do
 
 
 realTlsNetPair :: Net.HostName
-               -> IO ((NetAddr, NetworkAPI),
-                      (NetAddr, NetworkAPI))
+               -> IO NetPair
 realTlsNetPair  host = do
     port1 <- (+32000) <$> randomRIO (1, 999)
     port2 <- (+33000) <$> randomRIO (1, 999)
     let credential = getCredentialFromBuffer certificatePem keyPem
         toPeerInfo p = PeerInfo (PeerId (fromIntegral p)) p 0
-        server = realNetworkTls credential $ toPeerInfo port1
-        client = realNetworkTls credential $ toPeerInfo port2
+        server = newNetworkTls credential $ toPeerInfo port1
+        client = newNetworkTls credential $ toPeerInfo port2
         hints  = Net.defaultHints  { Net.addrSocketType = Net.Stream }
     addr1:_ <- Net.getAddrInfo (Just hints) (Just host) (Just (show port1))
     addr2:_ <- Net.getAddrInfo (Just hints) (Just host) (Just (show port2))

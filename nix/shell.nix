@@ -13,6 +13,8 @@ in
   pkgs.haskell.packages."${ghc}".shellFor {
     nativeBuildInputs = with pkgs.haskellPackages; [
       cabal-install
+      ghcid
+      stylish-haskell
     ];
     buildInputs = [
       pkgs.libsodium
