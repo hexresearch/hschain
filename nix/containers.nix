@@ -26,6 +26,11 @@ let
     tag = containerTag;
     created = "now";
     contents = [thundermint-exe];
+    config = {
+       Entrypoint = [
+         "thundermint-coin-node"
+       ];
+    };
   };
 in {
   inherit
