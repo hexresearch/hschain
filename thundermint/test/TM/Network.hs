@@ -22,6 +22,7 @@ import qualified Network.Socket as Net
 
 import Thundermint.P2P.Network
 import Thundermint.Types.Network
+import Thundermint.P2P.Network.IpAddresses (isLocalAddress)
 
 import Test.QuickCheck
 import Test.Tasty

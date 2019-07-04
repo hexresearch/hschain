@@ -16,7 +16,6 @@ module Thundermint.P2P.Network (
   , createMockNode
     -- * Local address detection
   , Ip.getLocalAddress
-  , Ip.isLocalAddress
   , Ip.getLocalAddresses
   , PeerInfo(..)
   ) where
