@@ -52,7 +52,7 @@ newNetworkUdp ourPeerInfo = do
       Net.bind sock (Net.addrAddress addrInfo)
       forever $ do
         (bs, addr') <- NetBS.recvFrom sock (fromIntegral chunkSize * 2)
-        let addr = sockAddrToNetAddr $ Ip.normalizeIpAddr addr'
+        let addr = Ip.normalizeNetAddr $ sockAddrToNetAddr addr'
         case CBOR.deserialiseOrFail $ LBS.fromStrict bs of
           -- silently dropping the packet.
           Left _ -> return ()
