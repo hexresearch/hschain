@@ -8,7 +8,6 @@ module Thundermint.P2P.Network.IpAddresses (
   , getLocalAddresses
   , isLocalAddress
   , normalizeNetAddr
-  , normalizeIpAddr
   ) where
 
 
@@ -65,12 +64,6 @@ partOfIpv6ToIpv4 :: Word32 -> Word32
 partOfIpv6ToIpv4 ipv6part =
     let (i1,i2,i3,i4) = Net.hostAddressToTuple ipv6part
     in Net.tupleToHostAddress (i4,i3,i2,i1)
-
-
-normalizeIpAddr :: Net.SockAddr -> Net.SockAddr
-normalizeIpAddr (Net.SockAddrInet6 p _ (0, 0, 0xFFFF, x) _) = -- IPv4 mapped addreses
-    Net.SockAddrInet p (partOfIpv6ToIpv4 x)
-normalizeIpAddr a = a
 
 normalizeNetAddr :: NetAddr -> NetAddr
 -- IPv4 mapped addreses
