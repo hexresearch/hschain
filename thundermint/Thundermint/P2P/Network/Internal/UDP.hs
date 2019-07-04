@@ -100,8 +100,8 @@ receiveAction
   -> TChan (PeerInfo, (Word8, Word32, LBS.ByteString))
   -> IO (Maybe LBS.ByteString)
 receiveAction frontsVar peerChan = do
-  (message) <- atomically $ do
-    (_peerInfo, (front, ofs, chunk)) <- readTChan peerChan
+  message <- atomically $ do
+    (_, (front, ofs, chunk)) <- readTChan peerChan
     fronts <- readTVar frontsVar
     let (newFronts, message) = updateMessages front ofs chunk fronts
     writeTVar frontsVar newFronts
