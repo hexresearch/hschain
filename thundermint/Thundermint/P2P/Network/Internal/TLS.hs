@@ -28,6 +28,7 @@ import System.Timeout           (timeout)
 import System.X509              (getSystemCertificateStore)
 
 import qualified Control.Exception       as E
+
 import qualified Data.ByteString         as BS
 import qualified Data.ByteString.Builder as BB
 import qualified Data.ByteString.Lazy    as LBS
@@ -59,18 +60,9 @@ newNetworkTls creds ourPeerInfo = (realNetworkStub ourPeerInfo)
       liftIO $ listenerTls ourPeerInfo creds addr
   --
   , connect  = \addr -> do
-      let sockAddr = netAddrToSockAddr addr
-          port     = getNetAddrPort addr
-          srvName  = Just $ show port
-      (mhostName, _) <- liftIO $ Net.getNameInfo
-                                            [Net.NI_NUMERICHOST, Net.NI_NUMERICSERV]
-                                            True
-                                            True
-                                            sockAddr
+      let port = getNetAddrPort addr
+      (addrInfo,sockAddr,mhostName) <- netAddrToAddrInfo addr
       hostName <- throwNothing CantReverseLookipHostname mhostName
-      addrInfo <- liftIO (Net.getAddrInfo (Just tcpHints) mhostName srvName) >>= \case
-        a:_ -> return a
-        []  -> throwM NoAddressAvailable
       bracketOnError (newSocket addrInfo) (liftIO . Net.close) $ \ sock -> do
         -- Waits for connection for 10 sec and throws `ConnectionTimedOut` exception
         liftIO $ throwNothingM ConnectionTimedOut
