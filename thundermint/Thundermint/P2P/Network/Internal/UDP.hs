@@ -1,7 +1,6 @@
 {-# LANGUAGE BangPatterns    #-}
 {-# LANGUAGE LambdaCase      #-}
 {-# LANGUAGE RecordWildCards #-}
-
 module Thundermint.P2P.Network.Internal.UDP 
   ( newNetworkUdp ) where
 
@@ -38,13 +37,13 @@ newNetworkUdp ourPeerInfo = do
         , Net.addrSocketType = Net.Datagram
         }
   addrInfo':_ <- Net.getAddrInfo (Just hints) Nothing (Just serviceName)
-  let changeToWildcard ai@(Net.AddrInfo{..})
-        = ai
-            { Net.addrAddress = case addrAddress of
-              Net.SockAddrInet6 p f h s
-                | h == (0,0,0,1) -> Net.SockAddrInet6 p f (0,0,0,0) s
-              _ -> addrAddress
-            }
+  let changeToWildcard Net.AddrInfo{..} = Net.AddrInfo
+        { Net.addrAddress = case addrAddress of
+            Net.SockAddrInet6 p f h s
+              | h == (0,0,0,1) -> Net.SockAddrInet6 p f (0,0,0,0) s
+            _ -> addrAddress
+        , ..
+        }
       addrInfo = changeToWildcard addrInfo'
   sock <- newUDPSocket addrInfo
   tid  <- forkIO $
