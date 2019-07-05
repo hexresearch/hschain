@@ -1,4 +1,5 @@
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE MultiWayIf #-}
 module Thundermint.P2P.Network.Internal.TCP 
   ( newNetworkTcp ) where
 
@@ -26,10 +27,10 @@ newNetworkTcp :: PeerInfo -> NetworkAPI
 newNetworkTcp selfPeerInfo = (realNetworkStub selfPeerInfo)
   { listenOn = do
       addrs <- liftIO $ Net.getAddrInfo (Just tcpListenHints) Nothing (Just serviceName)
-      addr  <- case () of
-        _ | Just a <- find isIPv6addr addrs -> return a
-          | a:_    <- addrs                 -> return a
-          | otherwise                       -> throwM NoAddressAvailable
+      addr  <- if
+        | Just a <- find isIPv6addr addrs -> return a
+        | a:_    <- addrs                 -> return a
+        | otherwise                       -> throwM NoAddressAvailable
       --
       bracketOnError (liftIO $ newSocket addr) (liftIO . Net.close) $ \sock -> liftIO $ do
         when (isIPv6addr addr) $

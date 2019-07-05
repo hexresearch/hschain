@@ -4,7 +4,6 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE RankNTypes                 #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
-
 -- |
 -- Abstract API for network which support
 module Thundermint.P2P.Types (
