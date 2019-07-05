@@ -21,6 +21,7 @@ module Thundermint.P2P.Types (
     -- *
   , tcpHints
   , tcpListenHints
+  , udpHints
   , netAddrToAddrInfo
   ) where
 
@@ -117,13 +118,17 @@ data P2PConnection = P2PConnection
 -- Hints
 ----------------------------------------------------------------
 
-tcpHints, tcpListenHints :: Net.AddrInfo
+tcpHints, tcpListenHints, udpHints :: Net.AddrInfo
 tcpHints       = Net.defaultHints
   { Net.addrSocketType = Net.Stream
   }
 tcpListenHints = Net.defaultHints
   { Net.addrFlags      = [Net.AI_PASSIVE]
   , Net.addrSocketType = Net.Stream
+  }
+udpHints       = Net.defaultHints
+  { Net.addrFlags      = []
+  , Net.addrSocketType = Net.Datagram
   }
 
 -- | Convert 'NetAddr to 'Net.AddrInfo' for creating socket to connect
