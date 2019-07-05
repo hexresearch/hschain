@@ -63,7 +63,6 @@ newAppChans ConsensusCfg{incomingQueueSize = sz} = do
 --   * INVARIANT: Only this function can write to blockchain
 runApplication
   :: ( MonadDB m alg a
-     , MonadCatch m
      , MonadFail m
      , MonadIO m
      , MonadMask m
