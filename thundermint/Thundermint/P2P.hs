@@ -26,7 +26,6 @@ import Control.Concurrent.STM
 
 import Control.Monad          (forM_, forever)
 import Control.Monad.Catch    (MonadMask, finally, uninterruptibleMask_)
-import Control.Monad.Fail     hiding (fail)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Monoid            ((<>))
 import Katip                  (showLS)
@@ -58,7 +57,7 @@ import Thundermint.P2P.Internal.Logging
 --   of nodes and gossip.
 startPeerDispatcher
   :: ( MonadMask m, MonadFork m, MonadLogger m, MonadTrace m, MonadReadDB m alg a, MonadTMMonitoring m
-     , BlockData a, Crypto alg, MonadFail m)
+     , BlockData a, Crypto alg)
   => NetworkCfg
   -> NetworkAPI               -- ^ API for networking
   -> [NetAddr]                -- ^ Set of initial addresses to connect

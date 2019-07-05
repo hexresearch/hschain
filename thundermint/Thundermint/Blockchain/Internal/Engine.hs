@@ -29,12 +29,13 @@ import           Data.Function
 import           Data.Monoid   ((<>))
 import Data.Text             (Text)
 import Pipes                 (Pipe,runEffect,yield,await,(>->))
-import Control.Monad.Fail hiding (fail)
 
 import Thundermint.Blockchain.Internal.Engine.Types
 import Thundermint.Blockchain.Internal.Algorithm
 import Thundermint.Types.Blockchain
+import Thundermint.Control (throwNothing)
 import Thundermint.Crypto
+import Thundermint.Exceptions
 import Thundermint.Logger
 import Thundermint.Store
 import Thundermint.Store.STM
@@ -63,7 +64,6 @@ newAppChans ConsensusCfg{incomingQueueSize = sz} = do
 --   * INVARIANT: Only this function can write to blockchain
 runApplication
   :: ( MonadDB m alg a
-     , MonadFail m
      , MonadIO m
      , MonadMask m
      , MonadLogger m
@@ -97,7 +97,6 @@ runApplication config appValidatorKey appSt@AppLogic{..} appCall appCh@AppChans{
 decideNewBlock
   :: ( MonadDB m alg a
      , MonadIO m
-     , MonadFail m
      , MonadMask m
      , MonadLogger m
      , MonadTMMonitoring m
@@ -177,7 +176,9 @@ decideNewBlock config appValidatorKey appLogic@AppLogic{..} appCall@AppCallbacks
             return cmt
   --
   -- FIXME: encode that we cannot fail here!
-  Success tm0 <- runConsesusM $ newHeight hParam lastCommt
+  tm0 <- runConsesusM (newHeight hParam lastCommt) >>= \case
+    Success t -> return t
+    _         -> throwM ImpossibleError
   runEffect $ messageSrc
           >-> verifyMessageSignature appLogic hParam
           >-> msgHandlerLoop Nothing tm0
@@ -288,8 +289,8 @@ instance MonadTrans (ConsensusM alg a) where
 
 makeHeightParameters
   :: ( MonadDB m alg a
-     , MonadFail m
      , MonadIO m
+     , MonadThrow m
      , MonadLogger m
      , MonadTMMonitoring m
      , Crypto alg, Serialise a)
@@ -301,12 +302,15 @@ makeHeightParameters
   -> m (HeightParameters (ConsensusM alg a m) alg a)
 makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{..} AppChans{..} = do
   let AppByzantine{..} = appByzantine
-  h            <- queryRO $ blockchainHeight
-  Just valSet  <- queryRO $ retrieveValidatorSet (succ h)
-  oldValSet    <- queryRO $ retrieveValidatorSet  h
-  Just genesis <- queryRO $ retrieveBlock        (Height 0)
-  bchTime      <- do Just b <- queryRO $ retrieveBlock h
-                     return $ headerTime $ blockHeader b
+  h         <- queryRO $ blockchainHeight
+  valSet    <- throwNothing (DBMissingValSet (succ h)) <=< queryRO
+             $ retrieveValidatorSet (succ h)
+  oldValSet <- queryRO $ retrieveValidatorSet  h
+  genesis   <- throwNothing DBMissingGenesis <=< queryRO
+             $ retrieveBlock (Height 0)
+  bchTime   <- do b <- throwNothing (DBMissingBlock h) <=< queryRO
+                     $ retrieveBlock h
+                  return $! headerTime $ blockHeader b
   let ourIndex = indexByValidator valSet . publicKey . validatorPrivKey
              =<< appValidatorKey
   let proposerChoice (Round r) =
@@ -439,7 +443,8 @@ makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{
         currentT <- case h of
           -- For block at H=1 we in rather arbitrary manner take time
           -- of genesis + 1s
-          Height 0 -> do Just b <- queryRO $ retrieveBlock (Height 0)
+          Height 0 -> do b <- throwNothing DBMissingGenesis <=< queryRO
+                            $ retrieveBlock (Height 0)
                          let Time t = headerTime $ blockHeader b
                          return $! Time (t + 1000)
           -- Otherwise we take time from commit and if for some reason

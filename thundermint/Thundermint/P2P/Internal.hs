@@ -19,7 +19,6 @@ import Control.Applicative
 import Control.Concurrent.STM
 import Control.Monad
 import Control.Monad.Catch
-import Control.Monad.Fail     hiding (fail)
 import Prelude                hiding (round)
 
 import Control.Monad.IO.Class (MonadIO, liftIO)
@@ -43,6 +42,7 @@ import Thundermint.Control
 import Thundermint.Crypto
 import Thundermint.Crypto.Containers
 import Thundermint.Debug.Trace
+import Thundermint.Exceptions
 import Thundermint.Logger
 import Thundermint.Monitoring
 import Thundermint.P2P.Network
@@ -67,7 +67,7 @@ retryPolicy NetworkCfg{..} = exponentialBackoff (reconnectionDelay * 1000)
 -- Thread which accepts connections from remote nodes
 acceptLoop
   :: ( MonadFork m, MonadMask m, MonadLogger m, MonadTrace m, MonadReadDB m alg a
-     , BlockData a, Crypto alg, MonadFail m)
+     , BlockData a, Crypto alg)
   => NetworkCfg
   -> NetworkAPI
   -> PeerChans m alg a
@@ -110,7 +110,7 @@ acceptLoop cfg NetworkAPI{..} peerCh mempool peerRegistry = do
 -- Initiate connection to remote host and register peer
 connectPeerTo
   :: ( MonadFork m, MonadMask m, MonadLogger m, MonadTrace m, MonadReadDB m alg a
-     , BlockData a, Crypto alg, MonadFail m
+     , BlockData a, Crypto alg
      )
   => NetworkCfg
   -> NetworkAPI
@@ -143,7 +143,7 @@ connectPeerTo cfg NetworkAPI{..} addr peerCh mempool peerRegistry =
 --   established and peer is registered.
 startPeer
   :: ( MonadFork m, MonadMask m, MonadLogger m, MonadReadDB m alg a, MonadTrace m
-     , BlockData a, Crypto alg, MonadFail m)
+     , BlockData a, Crypto alg)
   => NetAddr
   -> PeerChans m alg a       -- ^ Communication with main application
                              --   and peer dispatcher
@@ -291,7 +291,7 @@ peerGossipMempool peerObj PeerChans{..} config gossipCh MempoolCursor{..} = logO
 
 -- | Gossip blocks with given peer
 peerGossipBlocks
-  :: (MonadReadDB m alg a, MonadIO m, MonadMask m, MonadLogger m, Serialise a, Crypto alg, MonadFail m)
+  :: (MonadReadDB m alg a, MonadIO m, MonadMask m, MonadLogger m, Serialise a, Crypto alg)
   => PeerStateObj m alg a       -- ^ Current state of peer
   -> PeerChans m alg a          -- ^ Read-only access to
   -> TBQueue (GossipMsg alg a)  -- ^ Network API
@@ -305,7 +305,9 @@ peerGossipBlocks peerObj PeerChans{..} gossipCh = logOnException $ do
         | lagPeerHasProposal p
         , not (lagPeerHasBlock p)
           -> do let FullStep h _ _ = lagPeerStep p
-                Just b <- queryRO $ retrieveBlock h -- FIXME: Partiality
+                -- FIXME: Partiality
+                b <- throwNothing (DBMissingBlock h) <=< queryRO
+                   $ retrieveBlock h
                 liftIO $ atomically $ writeTBQueue gossipCh $ GossipBlock b
                 tickSend $ blocks gossipCnts
         | otherwise -> return ()
@@ -330,7 +332,7 @@ peerGossipBlocks peerObj PeerChans{..} gossipCh = logOnException $ do
 
 -- | Routine for receiving messages from peer
 peerReceive
-  :: ( MonadReadDB m alg a, MonadIO m, MonadMask m, MonadLogger m, MonadFail m
+  :: ( MonadReadDB m alg a, MonadIO m, MonadMask m, MonadLogger m
      , Crypto alg, BlockData a)
   => PeerStateObj m alg a
   -> PeerChans m alg a
@@ -397,7 +399,7 @@ peerGossipAnnounce PeerChans{..} gossipCh = logOnException $
 
 -- | Routine for actually sending data to peers
 peerSend
-  :: ( MonadReadDB m alg a, MonadMask m, MonadIO m,  MonadLogger m, MonadFail m
+  :: ( MonadReadDB m alg a, MonadMask m, MonadIO m,  MonadLogger m
      , Crypto alg, BlockData a)
   => NetAddr
   -> PeerStateObj m alg a
@@ -476,7 +478,7 @@ peerPexKnownCapacityMonitor PeerChans{..} PeerRegistry{..} minKnownConnections _
 
 peerPexMonitor
   :: ( MonadFork m, MonadMask m, MonadLogger m, MonadTrace m, MonadReadDB m alg a
-     , BlockData a, Crypto alg, MonadFail m)
+     , BlockData a, Crypto alg)
   => NetworkCfg
   -> NetworkAPI
   -> PeerChans m alg a

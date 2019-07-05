@@ -28,9 +28,9 @@ module Thundermint.P2P.PeerState (
   ) where
 
 import Control.Concurrent hiding (modifyMVar_)
+import Control.Monad
 import Control.Monad.Catch
 import Control.Monad.IO.Class
-import Control.Monad.Fail
 
 import qualified Data.Map as Map
 import           Data.Map   (Map)
@@ -39,6 +39,7 @@ import           Data.Set   (Set)
 
 import Thundermint.Control
 import Thundermint.Crypto
+import Thundermint.Exceptions
 import Thundermint.Store
 import Thundermint.Types.Blockchain
 import Thundermint.Types.Validators
@@ -129,7 +130,7 @@ getPeerState (PeerStateObj _ var)
 -- | Local state increased to height H. Update our opinion about
 --   peer's state accordingly
 advanceOurHeight
-  :: (MonadReadDB m alg a, MonadIO m, MonadMask m, Crypto alg, MonadFail m)
+  :: (MonadReadDB m alg a, MonadIO m, MonadMask m, Crypto alg)
   => PeerStateObj m alg a
   -> Height
   -> m ()
@@ -143,9 +144,12 @@ advanceOurHeight (PeerStateObj _ var) ourH =
       -- Current peer may become lagging if we increase our height
       | FullStep h _ _ <- peerStep p
       , h < ourH
-        -> do Just vals <- queryRO $ retrieveValidatorSet h
-              Just r    <- queryRO $ retrieveCommitRound  h
-              Just bid  <- queryRO $ retrieveBlockID      h
+        -> do vals <- throwNothing (DBMissingValSet  h) <=< queryRO
+                    $ retrieveValidatorSet h
+              r    <- throwNothing (DBMissingRound   h) <=< queryRO
+                    $ retrieveCommitRound  h
+              bid  <- throwNothing (DBMissingBlockID h) <=< queryRO
+                    $ retrieveBlockID      h
               return $ Lagging LaggingPeer
                 { lagPeerStep        = peerStep p
                 , lagPeerCommitR     = r
@@ -160,7 +164,8 @@ advanceOurHeight (PeerStateObj _ var) ourH =
     -- We may catch up to the peer
     Ahead step@(FullStep h _ _)
       | h == ourH
-        -> do Just vals <- queryRO $ retrieveValidatorSet h
+        -> do vals <- throwNothing (DBMissingValSet h) <=< queryRO
+                    $ retrieveValidatorSet h
               return $ Current CurrentPeer
                 { peerStep       = step
                 , peerValidators = vals
@@ -173,7 +178,7 @@ advanceOurHeight (PeerStateObj _ var) ourH =
         -> return peer
     Unknown   -> return Unknown
 
-advancePeer :: (MonadReadDB m alg a, MonadIO m, MonadMask m, Crypto alg, MonadFail m)
+advancePeer :: (MonadReadDB m alg a, MonadIO m, MonadMask m, Crypto alg)
             => PeerStateObj m alg a
             -> FullStep
             -> m ()
@@ -200,9 +205,12 @@ advancePeer (PeerStateObj _ var) step@(FullStep h _ _)
              -- FIXME: valid storage MUST return valid answer in that
              --        case but we should handle Nothing case properly
              --        (panic)
-             LT -> do Just vals <- queryRO $ retrieveValidatorSet h
-                      Just cmtR <- queryRO $ retrieveCommitRound  h
-                      Just bid  <- queryRO $ retrieveBlockID      h
+             LT -> do vals <- throwNothing (DBMissingValSet  h) <=< queryRO
+                            $ retrieveValidatorSet h
+                      cmtR <- throwNothing (DBMissingRound   h) <=< queryRO
+                            $ retrieveCommitRound  h
+                      bid  <- throwNothing (DBMissingBlockID h) <=< queryRO
+                            $ retrieveBlockID      h
                       return $ Lagging LaggingPeer
                         { lagPeerStep        = step
                         , lagPeerCommitR     = cmtR
@@ -212,7 +220,8 @@ advancePeer (PeerStateObj _ var) step@(FullStep h _ _)
                         , lagPeerHasBlock    = False
                         , lagPeerBlockID     = bid
                         }
-             EQ -> do Just vals <- queryRO $ retrieveValidatorSet h
+             EQ -> do vals <- throwNothing (DBMissingValSet h) <=< queryRO
+                            $ retrieveValidatorSet h
                       return $ Current CurrentPeer
                         { peerStep       = step
                         , peerValidators = vals

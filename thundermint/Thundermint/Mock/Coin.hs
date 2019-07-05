@@ -27,11 +27,9 @@ module Thundermint.Mock.Coin (
   , executeNodeSpec
   ) where
 
-import Prelude hiding (fail)
 import Control.Applicative
 import Control.Monad
 
-import Control.Monad.Fail
 import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
@@ -251,7 +249,7 @@ findInputs tgt = go 0
 
 interpretSpec
   :: ( MonadDB m Alg [Tx], MonadFork m, MonadMask m, MonadLogger m
-     , MonadTrace m, MonadFail m, MonadTMMonitoring m
+     , MonadTrace m, MonadTMMonitoring m
      , Has x BlockchainNet
      , Has x NodeSpec
      , Has x (Configuration Example))
@@ -277,7 +275,7 @@ interpretSpec p cb = do
 
   
 executeNodeSpec
-  :: (MonadIO m, MonadMask m, MonadFork m, MonadTrace m, MonadTMMonitoring m, MonadFail m)
+  :: (MonadIO m, MonadMask m, MonadFork m, MonadTrace m, MonadTMMonitoring m)
   => NetSpec NodeSpec :*: CoinSpecification
   -> ContT r m [RunningNode CoinState m Alg [Tx]]
 executeNodeSpec (NetSpec{..} :*: coin@CoinSpecification{..}) = do
