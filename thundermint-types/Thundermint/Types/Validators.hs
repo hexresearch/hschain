@@ -98,7 +98,7 @@ instance (Crypto alg) => CBOR.Serialise (ValidatorSet alg) where
 --   contains multiple validators with same public keys, or @Left
 --   Nothing@ if list is empty.
 makeValidatorSet
-  :: (Crypto alg, Ord (PublicKey alg), Foldable f)
+  :: (Crypto alg, Foldable f)
   => f (Validator alg)
   -> Either (PublicKey alg) (ValidatorSet alg)
 makeValidatorSet vals = do

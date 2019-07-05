@@ -74,13 +74,13 @@ instance Ord (PublicKey Ed25519) where
 deriving instance NFData (PrivKey   Ed25519)
 deriving instance NFData (PublicKey Ed25519)
 
-instance (Ord (PrivKey Ed25519)) => ByteRepr (PrivKey Ed25519) where
+instance ByteRepr (PrivKey Ed25519) where
   decodeFromBS        bs = case Ed.secretKey bs of
     CryptoPassed k -> Just (PrivKey k)
     CryptoFailed _ -> Nothing
   encodeToBS (PrivKey k) = convert k
 
-instance (Ord (PublicKey Ed25519)) => ByteRepr (PublicKey Ed25519) where
+instance ByteRepr (PublicKey Ed25519) where
   decodeFromBS        bs = case Ed.publicKey bs of
     CryptoPassed k -> Just (PublicKey k)
     CryptoFailed _ -> Nothing

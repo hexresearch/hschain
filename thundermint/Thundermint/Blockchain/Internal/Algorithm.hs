@@ -44,7 +44,7 @@ import           Katip (Severity(..),sl)
 import qualified Katip
 import GHC.Generics
 
-import Thundermint.Crypto            ( Crypto, CryptoHash, Signed, SignedState(..)
+import Thundermint.Crypto            ( Crypto, Signed, SignedState(..)
                                      , signedValue, signedKeyInfo
                                      )
 import Thundermint.Blockchain.Internal.Types
@@ -175,7 +175,7 @@ instance Katip.ToObject (LogProposal alg a) where
                            , ("bid", JSON.toJSON $ let BlockID hash = proposal'bid p
                                                    in hash
                              )]
-instance CryptoHash alg => Katip.LogItem (LogProposal alg a) where
+instance Katip.LogItem (LogProposal alg a) where
   payloadKeys Katip.V0 _ = Katip.SomeKeys ["H","R"]
   payloadKeys _        _ = Katip.AllKeys
 
@@ -189,7 +189,7 @@ instance Katip.ToObject (LogCommit alg a) where
                            , ("bid", JSON.toJSON $ let BlockID hash = commit'bid p
                                                    in hash
                              )]
-instance CryptoHash alg => Katip.LogItem (LogCommit alg a) where
+instance Katip.LogItem (LogCommit alg a) where
   payloadKeys _ _ = Katip.AllKeys
 
 ----------------------------------------------------------------
@@ -401,7 +401,7 @@ checkTransitionPrecommit par@HeightParameters{..} r sm@(TMState{..})
 
 -- Enter Propose stage and send required messages
 enterPropose
-  :: (ConsensusMonad m, MonadLogger m, CryptoHash alg)
+  :: (ConsensusMonad m, MonadLogger m)
   => HeightParameters m alg a
   -> Round
   -> TMState alg a
