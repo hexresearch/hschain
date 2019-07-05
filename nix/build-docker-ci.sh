@@ -5,27 +5,36 @@ set -e
 ./setup-cache.sh
 export NIX_PATH=$GIT_NIX_PATH$NIX_PATH
 
-branch=$DRONE_BRANCH
-event=$DRONE_BUILD_EVENT
-publish=false
-
 # Minimal nsswitch.conf
 [[ ! -e /etc/nsswitch.conf ]] && echo 'hosts: files dns' > /etc/nsswitch.conf
 
+gitbranch=$DRONE_BRANCH
+gittag=$DRONE_TAG
+gitevent=$DRONE_BUILD_EVENT
+
+publish="false"
+
+# Decide what artifcats to build and publish
 if [[ -n "${gittag// }" ]]; then
-    echo "Publish with $gittag."
     tag=${gittag// }
-    publish=true
+    publish="true"
+    gitTagArg="--arg gitTag \"\\\"$gittag\\\"\""
+    echo "Publish with $gittag"
 else
-  if [[ "$branch" == "master" && "$event" != "pull_request" ]]; then
-  echo "Publish with latest"
+  if [[ "$gitbranch" == "master" && "$gitevent" != "pull_request" ]]; then
   tag="latest"
-  publish=true
+  publish="true"
+  echo "Publish with latest"
   else
-    echo "Not publish."
     tag="latest"
+    echo "Not publish"
   fi
 fi
+
+# Debug drone variables
+echo "git branch: $gitbranch"
+echo "git tag: $gittag"
+echo "git event: $gitevent"
 
 containers=$(nix-build containers.nix --arg isProd true \
   --arg containerTag \"$tag\" \
