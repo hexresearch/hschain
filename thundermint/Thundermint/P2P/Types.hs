@@ -24,7 +24,6 @@ module Thundermint.P2P.Types (
   ) where
 
 import Codec.Serialise
-import Control.Exception      (Exception)
 import Control.Monad.Catch    (MonadMask)
 import Control.Monad.IO.Class (MonadIO)
 import Data.Set               (Set)
@@ -36,6 +35,7 @@ import qualified Data.Aeson           as JSON
 import qualified Data.ByteString.Lazy as LBS
 import qualified Network.Socket       as Net
 
+import Thundermint.Exceptions
 import Thundermint.Types.Network
 
 
@@ -110,11 +110,6 @@ data P2PConnection = P2PConnection
   , connectedPeer :: !PeerInfo
   }
 
-data NetworkError = ConnectionTimedOut
-                  | NoAddressAvailable
-  deriving (Show)
-
-instance Exception NetworkError
 
 
 ----------------------------------------------------------------

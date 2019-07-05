@@ -70,6 +70,7 @@ Library
                   Thundermint.Control
                   Thundermint.Crypto.Containers
                   Thundermint.Debug.Trace
+                  Thundermint.Exceptions
                   Thundermint.Logger
                   Thundermint.Logger.Class
                   Thundermint.Monitoring
