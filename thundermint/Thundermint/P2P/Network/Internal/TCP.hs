@@ -40,7 +40,7 @@ newNetworkTcp selfPeerInfo = (realNetworkStub selfPeerInfo)
         return (liftIO $ Net.close sock, accept selfPeerInfo sock)
   --
   , connect  = \addr -> do
-      (addrInfo,sockAddr) <- netAddrToAddrInfo addr
+      (addrInfo,sockAddr,_) <- netAddrToAddrInfo addr
       bracketOnError (newSocket addrInfo) (liftIO . Net.close) $ \sock -> do
         let tenSec = 10000000
         -- Waits for connection for 10 sec and throws `ConnectionTimedOut` exception

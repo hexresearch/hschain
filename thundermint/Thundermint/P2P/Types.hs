@@ -25,7 +25,7 @@ module Thundermint.P2P.Types (
   ) where
 
 import Codec.Serialise
-import Control.Exception      (Exception,throwIO)
+import Control.Exception      (throwIO)
 import Control.Monad.Catch    (MonadMask, MonadThrow)
 import Control.Monad.IO.Class (MonadIO(..))
 import Data.Word              (Word16, Word64)
@@ -128,13 +128,15 @@ tcpListenHints = Net.defaultHints
 
 -- | Convert 'NetAddr to 'Net.AddrInfo' for creating socket to connect
 --   to given address
-netAddrToAddrInfo :: MonadIO m => NetAddr -> m (Net.AddrInfo, Net.SockAddr)
+netAddrToAddrInfo
+  :: MonadIO m
+  => NetAddr -> m (Net.AddrInfo, Net.SockAddr, Maybe Net.HostName)
 netAddrToAddrInfo addr = liftIO $ do
   (hostName, serviceName) <- Net.getNameInfo
     [Net.NI_NUMERICHOST, Net.NI_NUMERICSERV] True True sockAddr
   ai <- Net.getAddrInfo (Just tcpHints) hostName serviceName >>= \case
     a:_ -> return a
     []  -> throwIO NoAddressAvailable
-  return (ai,sockAddr)
+  return (ai,sockAddr,hostName)
   where
     sockAddr = netAddrToSockAddr addr
