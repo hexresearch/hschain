@@ -1,10 +1,9 @@
--- | Functions for manipulating IP addresses
---
 {-# LANGUAGE RankNTypes      #-}
 {-# LANGUAGE RecordWildCards #-}
+-- | Functions for manipulating IP addresses
+--
 module Thundermint.P2P.Network.IpAddresses (
     filterOutOwnAddresses
-  , getLocalAddress
   , getLocalAddresses
   , isLocalAddress
   , normalizeNetAddr
@@ -19,12 +18,6 @@ import qualified Network.Socket as Net
 
 import Thundermint.Types.Network
 
-
--- | Get local node address
---
-getLocalAddress :: IO Net.SockAddr
-getLocalAddress =
-    return $ Net.SockAddrInet 0 (Net.tupleToHostAddress (0x7f, 0, 0, 1))
 
 defaultPort :: Word16
 defaultPort = 0
