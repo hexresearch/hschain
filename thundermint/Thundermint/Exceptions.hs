@@ -15,6 +15,7 @@ import Thundermint.Types.Blockchain
 data NetworkError
   = ConnectionTimedOut
   | NoAddressAvailable
+  | CantReverseLookipHostname
   deriving stock    (Show)
   deriving anyclass (Exception)
 
