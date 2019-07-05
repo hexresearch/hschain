@@ -13,7 +13,6 @@ module Thundermint.Mock.KeyVal (
   ) where
 
 import Control.Monad
-import Control.Monad.Fail
 import Control.Monad.Catch
 import Control.Monad.Trans.Cont
 import Control.Monad.Trans.Class
@@ -82,7 +81,7 @@ process (k,v) m
 
 interpretSpec
   :: ( MonadDB m Alg [Tx], MonadFork m, MonadMask m, MonadLogger m
-     , MonadTrace m, MonadFail m, MonadTMMonitoring m
+     , MonadTrace m, MonadTMMonitoring m
      , Has x BlockchainNet
      , Has x NodeSpec
      , Has x (Configuration Example))
@@ -121,7 +120,7 @@ interpretSpec p cb = do
 
 
 executeSpec
-  :: (MonadIO m, MonadMask m, MonadFork m, MonadTrace m, MonadTMMonitoring m, MonadFail m)
+  :: (MonadIO m, MonadMask m, MonadFork m, MonadTrace m, MonadTMMonitoring m)
   => NetSpec NodeSpec
   -> ContT r m [RunningNode BState m Alg [Tx]]
 executeSpec NetSpec{..} = do

@@ -39,7 +39,6 @@ module Thundermint.Run (
 
 import Codec.Serialise
 import Control.Monad
-import Control.Monad.Fail hiding (fail)
 import Control.Monad.IO.Class
 import Control.Monad.Catch
 import Control.Monad.Trans.Cont
@@ -75,7 +74,7 @@ import qualified Thundermint.P2P.Network as P2P
 ----------------------------------------------------------------
 
 logicFromFold
-  :: (MonadDB m alg a, MonadMask m, MonadIO m, MonadFail m
+  :: (MonadDB m alg a, MonadMask m, MonadIO m
      , BlockData a, Show (TX a), Ord (TX a), Crypto alg, Serialise st
      )
   => BlockFold st alg a
@@ -126,7 +125,7 @@ data BlockchainNet = BlockchainNet
 
 -- | Create list of threads which should be executed in parallel.
 runNode
-  :: ( MonadDB m alg a, MonadMask m, MonadFork m, MonadLogger m, MonadTrace m, MonadTMMonitoring m, MonadFail m
+  :: ( MonadDB m alg a, MonadMask m, MonadFork m, MonadLogger m, MonadTrace m, MonadTMMonitoring m
      , Crypto alg, BlockData a
      )
   => Configuration app

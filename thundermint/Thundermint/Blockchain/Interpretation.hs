@@ -14,13 +14,13 @@ module Thundermint.Blockchain.Interpretation (
 
 import Codec.Serialise (Serialise)
 import Control.Concurrent.MVar
-import Control.Monad (when)
+import Control.Monad (when,(<=<))
 import Control.Monad.Catch
 import Control.Monad.IO.Class
-import Control.Monad.Fail
 
 import Thundermint.Crypto
 import Thundermint.Control
+import Thundermint.Exceptions
 import Thundermint.Store
 import Thundermint.Types.Blockchain
 
@@ -71,7 +71,7 @@ data BChState m s = BChState
 
 -- | Create block storage backed by MVar
 newBChState
-  :: (MonadMask m, MonadIO m, MonadDB m alg a, Serialise a, Crypto alg, MonadFail m, Serialise s)
+  :: (MonadMask m, MonadIO m, MonadDB m alg a, Serialise a, Crypto alg, Serialise s)
   => BlockFold s alg a             -- ^ Updating function
   -> m (BChState m s)
 newBChState BlockFold{..} = do
@@ -84,7 +84,8 @@ newBChState BlockFold{..} = do
           case h `compare` hBlk of
             GT -> error "newBChState: invalid parameter"
             EQ -> return (st, (s,False))
-            LT -> do Just b <- queryRO $ retrieveBlock h
+            LT -> do b <- throwNothing (DBMissingBlock h) <=< queryRO
+                        $ retrieveBlock h
                      let checkSignature = if succ h == hBlk then CheckSignature else AlreadyChecked
                      checkSignature `seq` case processBlock checkSignature b s of
                        Just st' -> do
