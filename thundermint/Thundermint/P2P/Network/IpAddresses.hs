@@ -7,6 +7,7 @@ module Thundermint.P2P.Network.IpAddresses (
   , getLocalAddresses
   , isLocalAddress
   , normalizeNetAddr
+  , getNetAddrPort
   ) where
 
 
@@ -64,9 +65,9 @@ normalizeNetAddr (NetAddrV6 (0, 0, 0xFFFF, x) p) = NetAddrV4 (partOfIpv6ToIpv4 x
 normalizeNetAddr a = a
 
 
-getPort :: NetAddr -> Word16
-getPort (NetAddrV4 _ p) = p
-getPort (NetAddrV6 _ p) = p
+getNetAddrPort :: NetAddr -> Word16
+getNetAddrPort (NetAddrV4 _ p) = p
+getNetAddrPort (NetAddrV6 _ p) = p
 
 filterOutOwnAddresses
     :: forall m. (MonadIO m)
@@ -75,4 +76,4 @@ filterOutOwnAddresses
     -> m [NetAddr]
 filterOutOwnAddresses ownPort =
   filterM $ \a -> do isLocal <- isLocalAddress a
-                     return $! not $ isLocal && ownPort == getPort a
+                     return $! not $ isLocal && ownPort == getNetAddrPort a
