@@ -18,6 +18,9 @@ module Thundermint.P2P.Types (
   , PeerId(..)
   , PeerInfo(..)
   , defPeerInfo
+    -- *
+  , tcpHints
+  , tcpListenHints
   ) where
 
 import Codec.Serialise
@@ -115,3 +118,17 @@ data NetworkError = ConnectionTimedOut
   deriving (Show)
 
 instance Exception NetworkError
+
+
+----------------------------------------------------------------
+-- Hints
+----------------------------------------------------------------
+
+tcpHints, tcpListenHints :: Net.AddrInfo
+tcpHints       = Net.defaultHints
+  { Net.addrSocketType = Net.Stream
+  }
+tcpListenHints = Net.defaultHints
+  { Net.addrFlags      = [Net.AI_PASSIVE]
+  , Net.addrSocketType = Net.Stream
+  }

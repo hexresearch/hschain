@@ -1,3 +1,4 @@
+{-# LANGUAGE LambdaCase #-}
 module Thundermint.P2P.Network.Internal.TCP 
   ( newNetworkTcp ) where
 
@@ -24,11 +25,7 @@ import Thundermint.P2P.Types
 newNetworkTcp :: PeerInfo -> NetworkAPI
 newNetworkTcp selfPeerInfo = (realNetworkStub selfPeerInfo)
   { listenOn = do
-      let hints = Net.defaultHints
-            { Net.addrFlags      = [Net.AI_PASSIVE]
-            , Net.addrSocketType = Net.Stream
-            }
-      addrs <- liftIO $ Net.getAddrInfo (Just hints) Nothing (Just serviceName)
+      addrs <- liftIO $ Net.getAddrInfo (Just tcpListenHints) Nothing (Just serviceName)
       addr  <- case () of
         _ | Just a <- find isIPv6addr addrs -> return a
           | a:_    <- addrs                 -> return a
@@ -42,16 +39,15 @@ newNetworkTcp selfPeerInfo = (realNetworkStub selfPeerInfo)
         return (liftIO $ Net.close sock, accept selfPeerInfo sock)
   --
   , connect  = \addr -> do
-      let hints = Just Net.defaultHints
-            { Net.addrSocketType = Net.Stream
-            }
-          sockAddr = netAddrToSockAddr addr
+      let sockAddr = netAddrToSockAddr addr
       (hostName, serviceName') <- liftIO $ Net.getNameInfo
                                             [Net.NI_NUMERICHOST, Net.NI_NUMERICSERV]
                                             True
                                             True
                                             sockAddr
-      addrInfo:_ <- liftIO $ Net.getAddrInfo hints hostName serviceName'
+      addrInfo <- liftIO (Net.getAddrInfo (Just tcpHints) hostName serviceName') >>= \case
+        a:_ -> return a
+        []  -> throwM NoAddressAvailable
       bracketOnError (newSocket addrInfo) (liftIO . Net.close) $ \ sock -> do
         let tenSec = 10000000
         -- Waits for connection for 10 sec and throws `ConnectionTimedOut` exception
