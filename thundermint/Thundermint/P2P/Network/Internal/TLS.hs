@@ -20,7 +20,6 @@ import Control.Monad.IO.Class   (MonadIO, liftIO)
 import Data.ByteString.Internal (ByteString(..))
 import Data.Default.Class       (def)
 import Data.List                (find)
-import Data.Maybe               (fromJust)
 import Data.Monoid              ((<>))
 import Data.Word
 import Foreign.C.Error          (Errno(Errno), ePIPE)
@@ -63,12 +62,13 @@ newNetworkTls creds ourPeerInfo = (realNetworkStub ourPeerInfo)
       let sockAddr = netAddrToSockAddr addr
           port     = getNetAddrPort addr
           srvName  = Just $ show port
-      (hostName, _) <- liftIO $ Net.getNameInfo
+      (mhostName, _) <- liftIO $ Net.getNameInfo
                                             [Net.NI_NUMERICHOST, Net.NI_NUMERICSERV]
                                             True
                                             True
                                             sockAddr
-      addrInfo <- liftIO (Net.getAddrInfo (Just tcpHints) hostName srvName) >>= \case
+      hostName <- throwNothing CantReverseLookipHostname mhostName
+      addrInfo <- liftIO (Net.getAddrInfo (Just tcpHints) mhostName srvName) >>= \case
         a:_ -> return a
         []  -> throwM NoAddressAvailable
       bracketOnError (newSocket addrInfo) (liftIO . Net.close) $ \ sock -> do
@@ -101,7 +101,7 @@ listenerTls selfPI creds addr =
 connectTls :: MonadIO m
            => PeerInfo
            -> TLS.Credential
-           -> Maybe Net.HostName
+           -> Net.HostName
            -> Word16
            -> Net.Socket
            -> NetAddr
@@ -109,7 +109,7 @@ connectTls :: MonadIO m
 connectTls selfPI creds host port sock addr = liftIO $ do
   store <- getSystemCertificateStore
   ctx   <- TLS.contextNew sock
-         $ mkClientParams (fromJust host) (show port) creds store
+         $ mkClientParams host (show port) creds store
   TLS.handshake ctx
   TLS.contextHookSetLogging ctx getLogging
   applyConn ctx selfPI addr
