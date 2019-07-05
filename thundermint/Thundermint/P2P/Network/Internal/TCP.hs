@@ -40,16 +40,8 @@ newNetworkTcp selfPeerInfo = (realNetworkStub selfPeerInfo)
         return (liftIO $ Net.close sock, accept selfPeerInfo sock)
   --
   , connect  = \addr -> do
-      let sockAddr = netAddrToSockAddr addr
-      (hostName, serviceName') <- liftIO $ Net.getNameInfo
-                                            [Net.NI_NUMERICHOST, Net.NI_NUMERICSERV]
-                                            True
-                                            True
-                                            sockAddr
-      addrInfo <- liftIO (Net.getAddrInfo (Just tcpHints) hostName serviceName') >>= \case
-        a:_ -> return a
-        []  -> throwM NoAddressAvailable
-      bracketOnError (newSocket addrInfo) (liftIO . Net.close) $ \ sock -> do
+      (addrInfo,sockAddr) <- netAddrToAddrInfo addr
+      bracketOnError (newSocket addrInfo) (liftIO . Net.close) $ \sock -> do
         let tenSec = 10000000
         -- Waits for connection for 10 sec and throws `ConnectionTimedOut` exception
         liftIO $ throwNothingM ConnectionTimedOut
