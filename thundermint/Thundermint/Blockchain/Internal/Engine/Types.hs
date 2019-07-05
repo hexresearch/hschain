@@ -260,7 +260,7 @@ hoistAppLogic fun AppLogic{..} = AppLogic
   , appMempool          = hoistMempool fun appMempool
   }
 
-hoistAppCallback :: (Monad m) => (forall x. m x -> n x) -> AppCallbacks m alg a -> AppCallbacks n alg a
+hoistAppCallback :: (forall x. m x -> n x) -> AppCallbacks m alg a -> AppCallbacks n alg a
 hoistAppCallback fun AppCallbacks{..} = AppCallbacks
   { appCommitCallback = fun . appCommitCallback
   , appCanCreateBlock = \h t -> fun (appCanCreateBlock h t)

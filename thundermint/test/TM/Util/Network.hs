@@ -208,7 +208,7 @@ createGossipTestNetwork byzs =
 
 
 createTestNetworkWithConfig
-    :: forall m app . (MonadIO m, MonadMask m, MonadFork m, MonadTMMonitoring m, MonadFail m)
+    :: forall m app . (MonadMask m, MonadFork m, MonadTMMonitoring m, MonadFail m)
     => Configuration app
     -> TestNetDescription m
     -> m ()

@@ -362,7 +362,7 @@ withGossipEnv fun = do
 
 -- | Wait for events; fail if another event occurs.
 --
-waitForEvents :: (MonadIO m, MonadFail m, MonadThrow m)
+waitForEvents :: (MonadIO m)
               => Chan TraceEvents
               -> [(PeerGossipVotesTraceEvents, Int)]
               -> m ()
@@ -379,7 +379,7 @@ waitForEvents queue events = liftIO $
 
 -- | Create test TMState.
 --
-newTMState :: (MonadIO m, MonadFail m, MonadThrow m)
+newTMState :: (MonadIO m)
            => GossipEnv
            -> Height
            -> (TMState TestAlg TestBlock -> TMState TestAlg TestBlock) -- ^ Postprocessor of created TMState

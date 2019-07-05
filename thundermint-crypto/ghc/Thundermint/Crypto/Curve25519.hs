@@ -76,13 +76,13 @@ deriving instance NFData (PrivKey   Curve25519)
 deriving instance NFData (PublicKey Curve25519)
 deriving instance NFData (DHSecret  Curve25519)
 
-instance (Ord (PrivKey Curve25519)) => ByteRepr (PrivKey Curve25519) where
+instance ByteRepr (PrivKey Curve25519) where
   decodeFromBS        bs = case C25519.secretKey bs of
     CryptoPassed k -> Just (PrivKey k)
     CryptoFailed _ -> Nothing
   encodeToBS (PrivKey k) = convert k
 
-instance (Ord (PublicKey Curve25519)) => ByteRepr (PublicKey Curve25519) where
+instance ByteRepr (PublicKey Curve25519) where
   decodeFromBS        bs = case C25519.publicKey bs of
     CryptoPassed k -> Just (PublicKey k)
     CryptoFailed _ -> Nothing

@@ -104,7 +104,7 @@ testsNaClBox = testGroup "Tests for NaCl box"
   ]
 
 testsAsymmetricCrypto
-  :: forall alg. (CryptoAsymmetric alg, Eq (PublicKey alg), Eq (PrivKey alg))
+  :: forall alg. (CryptoAsymmetric alg, Eq (PrivKey alg))
   => Proxy alg -> [TestTree]
 testsAsymmetricCrypto tag =
   [ testGroup "PrivKey"   $ testsStdIntances (Proxy @(PrivKey   alg))
