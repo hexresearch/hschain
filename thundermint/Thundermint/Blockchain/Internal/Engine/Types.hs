@@ -267,7 +267,7 @@ hoistAppCallback fun AppCallbacks{..} = AppCallbacks
   , appByzantine     = hoistAppByzantine fun appByzantine
   }
 
-hoistAppByzantine :: Monad m => (forall x. m x -> n x) -> AppByzantine m alg a -> AppByzantine n alg a
+hoistAppByzantine :: (forall x. m x -> n x) -> AppByzantine m alg a -> AppByzantine n alg a
 hoistAppByzantine fun AppByzantine{..} = AppByzantine
   { byzantineBroadcastProposal = (fmap . fmap) fun byzantineBroadcastProposal
   , byzantineCastPrevote       = (fmap . fmap) fun byzantineCastPrevote

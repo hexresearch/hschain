@@ -440,7 +440,7 @@ whenM predicate act = ifM predicate act (return ())
 
 
 peerPexNewAddressMonitor
-  :: ( MonadIO m, MonadMask m, MonadFail m)
+  :: ( MonadIO m, MonadFail m)
   => TChan [NetAddr]
   -> PeerRegistry
   -> NetworkAPI

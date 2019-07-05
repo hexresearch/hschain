@@ -28,7 +28,7 @@ import Thundermint.Store.Internal.Query
 
 -- | Create tables for storing blockchain data
 initializeBlockhainTables
-  :: (Crypto alg, Eq (PublicKey alg), Serialise a, Eq a, MonadQueryRW m alg a, Show a)
+  :: (Crypto alg, Serialise a, Eq a, MonadQueryRW m alg a, Show a)
   => Block alg a                -- ^ Genesis block
   -> m ()
 initializeBlockhainTables genesis = do

@@ -138,7 +138,7 @@ instance MonadIO m => MonadDB (DBT 'RW alg a m) alg a where
 -- | Helper function which opens database, initializes it and ensures
 --   that it's closed on function exit
 withDatabase
-  :: (MonadIO m, MonadMask m, Crypto alg, Serialise a, Eq a, Show a, Eq (PublicKey alg))
+  :: (MonadIO m, MonadMask m, Crypto alg, Serialise a, Eq a, Show a)
   => FilePath         -- ^ Path to the database
   -> Block alg a      -- ^ Genesis block
   -> (Connection 'RW alg a -> m x) -> m x
@@ -147,7 +147,7 @@ withDatabase path genesis cont
 
 -- | Initialize all required tables in database.
 initDatabase
-  :: (MonadIO m, Crypto alg, Serialise a, Eq a, Show a, Eq (PublicKey alg))
+  :: (MonadIO m, Crypto alg, Serialise a, Eq a, Show a)
   => Connection 'RW alg a  -- ^ Opened connection to database
   -> Block alg a           -- ^ Genesis block
   -> m ()

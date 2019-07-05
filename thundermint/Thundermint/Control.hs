@@ -264,7 +264,7 @@ withMutex (Mutex m) action = do
 -- | Convert some @withResource@ function to work with multiple
 --   resources at once
 withMany
-  :: (Monad m, Traversable t)
+  :: (Traversable t)
   => (a   -> (b   -> m r) -> m r)
   -> (t a -> (t b -> m r) -> m r)
 withMany run = runContT . traverse (ContT . run)

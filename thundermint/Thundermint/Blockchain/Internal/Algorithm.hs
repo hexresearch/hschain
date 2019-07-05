@@ -168,7 +168,8 @@ data LogProposal alg a = LogProposal
   , proposal'bid :: !(BlockID alg a)
   }
 
-instance CryptoHash alg => Katip.ToObject (LogProposal alg a) where
+
+instance Katip.ToObject (LogProposal alg a) where
   toObject p = HM.fromList [ ("H",   JSON.toJSON (proposal'H p))
                            , ("R",   JSON.toJSON (proposal'R p))
                            , ("bid", JSON.toJSON $ let BlockID hash = proposal'bid p
@@ -183,7 +184,7 @@ data LogCommit alg a = LogCommit
   { commit'H   :: !Height
   , commit'bid :: !(BlockID alg a)
   }
-instance CryptoHash alg => Katip.ToObject (LogCommit alg a) where
+instance Katip.ToObject (LogCommit alg a) where
   toObject p = HM.fromList [ ("H",   JSON.toJSON (commit'H p))
                            , ("bid", JSON.toJSON $ let BlockID hash = commit'bid p
                                                    in hash
