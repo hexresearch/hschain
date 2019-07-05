@@ -1,4 +1,5 @@
 {-# LANGUAGE LambdaCase          #-}
+{-# LANGUAGE NumDecimals         #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -67,10 +68,9 @@ newNetworkTls creds ourPeerInfo = (realNetworkStub ourPeerInfo)
         a:_ -> return a
         []  -> throwM NoAddressAvailable
       bracketOnError (newSocket addrInfo) (liftIO . Net.close) $ \ sock -> do
-        let tenSec = 10000000
         -- Waits for connection for 10 sec and throws `ConnectionTimedOut` exception
         liftIO $ throwNothingM ConnectionTimedOut
-               $ timeout tenSec
+               $ timeout 10e6
                $ Net.connect sock sockAddr
         connectTls ourPeerInfo creds hostName serviceName' sock addr
   }
