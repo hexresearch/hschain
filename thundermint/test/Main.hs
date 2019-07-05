@@ -5,6 +5,7 @@ import qualified TM.Consensus
 import qualified TM.Gossip
 import qualified TM.Mempool
 import qualified TM.Merkle
+import qualified TM.MerkleBlock
 import qualified TM.Network
 import qualified TM.NetworkTls
 import qualified TM.P2P
@@ -12,7 +13,6 @@ import qualified TM.Serialisation
 import qualified TM.Store
 import qualified TM.Time
 import qualified TM.Validators
-
 
 main :: IO ()
 main = defaultMain $ testGroup "thundermint"
@@ -27,4 +27,5 @@ main = defaultMain $ testGroup "thundermint"
   , TM.Consensus.tests
   , TM.Gossip.tests
   , TM.Merkle.tests
+  , TM.MerkleBlock.tests
   ]

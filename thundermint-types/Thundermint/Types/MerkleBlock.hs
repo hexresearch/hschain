@@ -39,7 +39,7 @@ data MerkleBlockTree alg a = MerkleBlockTree
   { merkleBlockRoot :: !(MerkleBlockRoot alg)
   , merkleBlockTree :: !(Node alg a)
   }
-  deriving (Generic)
+  deriving (Show, Generic)
 
 -- | Single node of tree
 data Node alg a
@@ -60,11 +60,13 @@ data MerklePath alg a
 
 -- | Create Merkle tree
 -- similar to compute merkle root hash, but use intermediate calculatio of hashes to construct merkle tree
-createMerkleTree :: forall alg a.  (CryptoHash alg, Serialise a) => [a] -> Maybe (Node alg a)
+createMerkleTree :: forall alg a.  (CryptoHash alg, Serialise a)
+                    => [a] -> Maybe (MerkleBlockTree alg a)
 createMerkleTree []     = Nothing
 createMerkleTree tx = let dtx = (duplicateLast tx)
                           leaves :: [Node alg a]= map  (Leaf . computeLeafHash) dtx
-                      in Just $ go leaves
+                          tree@(Branch h _ _) = go leaves
+                      in Just $ MerkleBlockTree (MerkleBlockRoot h) tree
   where
     go [b] = b
     go hs  = go (combine hs)
@@ -81,7 +83,7 @@ createMerkleTree tx = let dtx = (duplicateLast tx)
 
     concatNodes [l@(Leaf a), r@(Leaf b)]             = Branch (hash (1::Int, [a,b])) l r
     concatNodes [l@(Branch a _ _), r@(Branch b _ _)] = Branch (hash (1::Int, [a,b])) l r
-    concatNodes [b]                                  = b
+    concatNodes [b@(Branch a _ _)]                   = Branch (hash (1::Int, [a,a])) b b
     concatNodes []                                   = error "The chunk of 2 of non empty has empty item"
     concatNodes _                                    = error "impossible case in createMerkletree for block' transactions"
 
