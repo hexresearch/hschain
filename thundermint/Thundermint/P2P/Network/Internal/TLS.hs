@@ -102,12 +102,13 @@ connectTls :: MonadIO m
            -> Net.Socket
            -> NetAddr
            -> m P2PConnection
-connectTls selfPI creds host port sock addr = do
-        store <- liftIO getSystemCertificateStore
-        ctx <- liftIO $ TLS.contextNew sock (mkClientParams (fromJust  host) ( fromJust port) creds store)
-        TLS.handshake ctx
-        liftIO $ TLS.contextHookSetLogging ctx getLogging
-        applyConn ctx selfPI addr
+connectTls selfPI creds host port sock addr = liftIO $ do
+  store <- getSystemCertificateStore
+  ctx   <- TLS.contextNew sock
+         $ mkClientParams (fromJust host) (fromJust port) creds store
+  TLS.handshake ctx
+  TLS.contextHookSetLogging ctx getLogging
+  applyConn ctx selfPI addr
 
 
 acceptTls :: (MonadMask m, MonadIO m)
@@ -122,10 +123,9 @@ acceptTls selfPI creds sock =
            liftIO $ TLS.contextHookSetLogging ctx getLogging
            TLS.handshake ctx
            let netAddr = sockAddrToNetAddr addr
-           cnn <- applyConn ctx selfPI netAddr
+           cnn <- liftIO $ applyConn ctx selfPI netAddr
            return (cnn, netAddr)
-
-        )
+       )
 
 
 -- | Like 'TLS.bye' from the "Network.TLS" module, except it ignores 'ePIPE'
@@ -140,18 +140,17 @@ silentBye ctx =
           -> return ()
         _ -> E.throwIO e
 
-applyConn :: MonadIO m
-          => TLS.Context
+applyConn :: TLS.Context
           -> PeerInfo
           -> NetAddr
-          -> m P2PConnection
+          -> IO P2PConnection
 applyConn context selfPI addr = do
-    ref <- liftIO $ I.newIORef ""
-    initialPeerExchange selfPI addr $
-      P2PConnection (tlsSend context)
-                    (tlsRecv context ref)
-                    (liftIO $ tlsClose context)
-                    (PeerInfo (PeerId 0) 0 0)
+  ref <- liftIO $ I.newIORef ""
+  initialPeerExchange selfPI addr $
+     P2PConnection (tlsSend context)
+                   (tlsRecv context ref)
+                   (liftIO $ tlsClose context)
+                   (PeerInfo (PeerId 0) 0 0)
   where 
     tlsClose :: TLS.Context -> IO ()
     tlsClose ctx = silentBye ctx `E.catch` \(_ :: E.IOException) -> pure ()
