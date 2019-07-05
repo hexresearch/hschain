@@ -54,7 +54,7 @@ newNetworkUdp ourPeerInfo = do
             atomically $ do
               (found, (recvChan, frontVar, receivedFrontsVar)) <- findOrCreateRecvTuple tChans addr
               when (not found) $ writeTChan acceptChan
-                (applyConn otherPeerInfo sock addr frontVar receivedFrontsVar recvChan tChans, addr)
+                (applyConn ourPeerInfo otherPeerInfo sock addr frontVar receivedFrontsVar recvChan tChans, addr)
               writeTChan recvChan (otherPeerInfo, (front, ofs, payload))
             when connectPacket $ do
               flip (NetBS.sendAllTo sock) addr' $ LBS.toStrict $ CBOR.serialise (ourPeerInfo, mkAckPart)
@@ -66,7 +66,8 @@ newNetworkUdp ourPeerInfo = do
         (peerChan, connection) <- atomically $ do
           (_, (peerChan, frontVar, receivedFrontsVar)) <- findOrCreateRecvTuple tChans addr
           return ( peerChan
-                 , applyConn (PeerInfo (PeerId 0) 0 0) sock addr frontVar receivedFrontsVar peerChan tChans
+                 , applyConn ourPeerInfo (PeerInfo (PeerId 0) 0 0)
+                     sock addr frontVar receivedFrontsVar peerChan tChans
                  )
         otherPeerInfo <- retryN 20 $ do
           flip (NetBS.sendAllTo sock) (netAddrToSockAddr addr)
@@ -81,12 +82,24 @@ newNetworkUdp ourPeerInfo = do
         return $ connection { connectedPeer = otherPeerInfo }
     }
  where
-   applyConn otherPeerInfo sock addr frontVar receivedFrontsVar peerChan tChans = P2PConnection
-     { send          = liftIO . sendSplitted ourPeerInfo frontVar sock addr
-     , recv          = liftIO $ receiveAction receivedFrontsVar peerChan
-     , close         = closeConn addr tChans
-     , connectedPeer = otherPeerInfo
-     }
+
+
+applyConn
+  :: PeerInfo
+  -> PeerInfo
+  -> Net.Socket
+  -> NetAddr
+  -> TVar  Word8
+  -> TVar  (Map.Map Word8 [(Word32, LBS.ByteString)])
+  -> TChan (PeerInfo, (Word8, Word32, LBS.ByteString))
+  -> TVar  (Map.Map NetAddr a)
+  -> P2PConnection
+applyConn ourPeerInfo otherPeerInfo sock addr frontVar receivedFrontsVar peerChan tChans = P2PConnection
+  { send          = liftIO . sendSplitted ourPeerInfo frontVar sock addr
+  , recv          = liftIO $ receiveAction receivedFrontsVar peerChan
+  , close         = closeConn addr tChans
+  , connectedPeer = otherPeerInfo
+  }
 
 receiveAction
   :: TVar (Map.Map Word8 [(Word32, LBS.ByteString)])
