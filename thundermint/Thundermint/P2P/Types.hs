@@ -2,6 +2,7 @@
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE DerivingStrategies         #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE LambdaCase                 #-}
 {-# LANGUAGE RankNTypes                 #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
 -- |
@@ -20,11 +21,13 @@ module Thundermint.P2P.Types (
     -- *
   , tcpHints
   , tcpListenHints
+  , netAddrToAddrInfo
   ) where
 
 import Codec.Serialise
-import Control.Monad.Catch    (MonadMask)
-import Control.Monad.IO.Class (MonadIO)
+import Control.Exception      (Exception,throwIO)
+import Control.Monad.Catch    (MonadMask, MonadThrow)
+import Control.Monad.IO.Class (MonadIO(..))
 import Data.Word              (Word16, Word64)
 import GHC.Generics           (Generic)
 import GHC.Read               (Read(..))
@@ -122,3 +125,16 @@ tcpListenHints = Net.defaultHints
   { Net.addrFlags      = [Net.AI_PASSIVE]
   , Net.addrSocketType = Net.Stream
   }
+
+-- | Convert 'NetAddr to 'Net.AddrInfo' for creating socket to connect
+--   to given address
+netAddrToAddrInfo :: MonadIO m => NetAddr -> m (Net.AddrInfo, Net.SockAddr)
+netAddrToAddrInfo addr = liftIO $ do
+  (hostName, serviceName) <- Net.getNameInfo
+    [Net.NI_NUMERICHOST, Net.NI_NUMERICSERV] True True sockAddr
+  ai <- Net.getAddrInfo (Just tcpHints) hostName serviceName >>= \case
+    a:_ -> return a
+    []  -> throwIO NoAddressAvailable
+  return (ai,sockAddr)
+  where
+    sockAddr = netAddrToSockAddr addr
