@@ -48,6 +48,8 @@ import Control.Concurrent.STM.TBQueue (lengthTBQueue)
 import Data.Maybe      (isJust,fromMaybe)
 import qualified Data.Map.Strict as Map
 import Katip           (LogEnv)
+import System.Directory (createDirectoryIfMissing)
+import System.FilePath  (takeDirectory)
 
 import Thundermint.Blockchain.Internal.Engine
 import Thundermint.Blockchain.Interpretation
@@ -220,6 +222,8 @@ allocNode
   -> x                          -- ^ Node parameters
   -> ContT r m (x,Connection 'RW alg a, LogEnv)
 allocNode genesis x = do
+  let dbname = fromMaybe "" $ x ^.. nspecDbName
+  liftIO $ createDirectoryIfMissing True $ takeDirectory dbname
   conn   <- ContT $ withDatabase (fromMaybe "" $ x ^.. nspecDbName) genesis
   logenv <- ContT $ withLogEnv "TM" "DEV" [ makeScribe s | s <- x ^.. nspecLogFile ]
   return (x,conn,logenv)
