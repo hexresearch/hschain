@@ -10,9 +10,8 @@ import Data.Word              (Word32, Word8)
 import Control.Monad          (forM_, forever, when)
 import Control.Monad.IO.Class (liftIO, MonadIO)
 import Data.Bits              (complement)
-import Control.Monad.Catch    (onException)
 import System.Timeout         (timeout)
-import Control.Concurrent     (forkIO, killThread, threadDelay)
+import Control.Concurrent     (forkFinally, killThread, threadDelay)
 
 import qualified Codec.Serialise           as CBOR
 import qualified Data.ByteString.Lazy      as LBS
@@ -46,8 +45,7 @@ newNetworkUdp ourPeerInfo = do
         }
       addrInfo = changeToWildcard addrInfo'
   sock <- newUDPSocket addrInfo
-  tid  <- forkIO $
-    flip onException (Net.close sock) $ do
+  tid  <- flip forkFinally (\_ -> Net.close sock) $ do
       Net.bind sock (Net.addrAddress addrInfo)
       forever $ do
         (bs, addr') <- NetBS.recvFrom sock (fromIntegral chunkSize * 2)
