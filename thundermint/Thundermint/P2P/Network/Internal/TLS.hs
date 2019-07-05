@@ -22,6 +22,7 @@ import Data.Default.Class       (def)
 import Data.List                (find)
 import Data.Maybe               (fromJust)
 import Data.Monoid              ((<>))
+import Data.Word
 import Foreign.C.Error          (Errno(Errno), ePIPE)
 import System.IO.Error          (isEOFError)
 import System.Timeout           (timeout)
@@ -40,6 +41,7 @@ import Thundermint.Control
 import Thundermint.P2P.Network.Parameters
 import Thundermint.P2P.Network.RealNetworkStub
 import Thundermint.P2P.Network.Internal.Utils
+import Thundermint.P2P.Network.IpAddresses     (getNetAddrPort)
 import Thundermint.P2P.Types
 
 
@@ -59,12 +61,14 @@ newNetworkTls creds ourPeerInfo = (realNetworkStub ourPeerInfo)
   --
   , connect  = \addr -> do
       let sockAddr = netAddrToSockAddr addr
-      (hostName, serviceName') <- liftIO $ Net.getNameInfo
+          port     = getNetAddrPort addr
+          srvName  = Just $ show port
+      (hostName, _) <- liftIO $ Net.getNameInfo
                                             [Net.NI_NUMERICHOST, Net.NI_NUMERICSERV]
                                             True
                                             True
                                             sockAddr
-      addrInfo <- liftIO (Net.getAddrInfo (Just tcpHints) hostName serviceName') >>= \case
+      addrInfo <- liftIO (Net.getAddrInfo (Just tcpHints) hostName srvName) >>= \case
         a:_ -> return a
         []  -> throwM NoAddressAvailable
       bracketOnError (newSocket addrInfo) (liftIO . Net.close) $ \ sock -> do
@@ -72,7 +76,7 @@ newNetworkTls creds ourPeerInfo = (realNetworkStub ourPeerInfo)
         liftIO $ throwNothingM ConnectionTimedOut
                $ timeout 10e6
                $ Net.connect sock sockAddr
-        connectTls ourPeerInfo creds hostName serviceName' sock addr
+        connectTls ourPeerInfo creds hostName port sock addr
   }
   where
     serviceName = show $ piPeerPort ourPeerInfo
@@ -98,14 +102,14 @@ connectTls :: MonadIO m
            => PeerInfo
            -> TLS.Credential
            -> Maybe Net.HostName
-           -> Maybe Net.ServiceName
+           -> Word16
            -> Net.Socket
            -> NetAddr
            -> m P2PConnection
 connectTls selfPI creds host port sock addr = liftIO $ do
   store <- getSystemCertificateStore
   ctx   <- TLS.contextNew sock
-         $ mkClientParams (fromJust host) (fromJust port) creds store
+         $ mkClientParams (fromJust host) (show port) creds store
   TLS.handshake ctx
   TLS.contextHookSetLogging ctx getLogging
   applyConn ctx selfPI addr
