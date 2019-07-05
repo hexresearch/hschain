@@ -1,6 +1,7 @@
 {-# LANGUAGE ApplicativeDo       #-}
 {-# LANGUAGE BangPatterns        #-}
 {-# LANGUAGE DataKinds           #-}
+{-# LANGUAGE DeriveGeneric       #-}
 {-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE RecordWildCards     #-}
@@ -9,21 +10,20 @@
 {-# LANGUAGE TypeApplications    #-}
 {-# LANGUAGE TypeFamilies        #-}
 {-# LANGUAGE TypeOperators       #-}
-
 import Control.Concurrent
 import Control.Monad
-import Control.Monad.Catch
-import Control.Monad.IO.Class
+import Control.Monad.Trans.Class
+import Control.Monad.Trans.Cont
+import Data.Aeson             (FromJSON)
 import Data.Monoid            ((<>))
+import Data.Word
+import Data.Yaml.Config       (loadYamlSettings, requireEnv)
 import Options.Applicative
-import System.Directory       (createDirectoryIfMissing)
-import System.FilePath        (splitFileName)
 
-import Katip.Core                        (showLS)
 import Network.Wai.Middleware.Prometheus
 import Prometheus
 import Prometheus.Metric.GHC
-
+import GHC.Generics (Generic)
 import qualified Network.Wai.Handler.Warp as Warp
 
 import Thundermint.Blockchain.Internal.Engine.Types
@@ -32,82 +32,78 @@ import Thundermint.Mock.Coin
 import Thundermint.Mock.Types
 import Thundermint.Run
 
-import Thundermint.Crypto         ((:&))
-import Thundermint.Crypto.Ed25519 (Ed25519)
-import Thundermint.Crypto.SHA     (SHA512)
+import Thundermint.Control
+import Thundermint.Blockchain.Interpretation
+import Thundermint.Store
+import Thundermint.Crypto         (PublicKey)
 import Thundermint.P2P            (generatePeerId)
-import Thundermint.P2P.Network    (getLocalAddress, newNetworkTcp)
+import Thundermint.P2P.Network    (newNetworkTcp)
+import Thundermint.Types
 
 import qualified Thundermint.P2P.Types as P2PT
 
-import App.Settings
-import App.Yaml
 
 ----------------------------------------------------------------
 --
 ----------------------------------------------------------------
 
 data Opts = Opts
-    { cmdConfigPath :: FilePath
-    }
+  { cmdConfigPath :: [FilePath]
+  }
 
+data NodeCfg = NodeCfg
+  { validatorKeys :: [PublicKey Alg]
+  , nodePort      :: Word16
+  , nodeSeeds     :: [P2PT.NetAddr]
+  , nodeMaxH      :: Maybe Height
+  }
+  deriving (Show,Generic)
+instance FromJSON NodeCfg
 
 main :: IO ()
 main = do
-    Opts{..} <- customExecParser (prefs showHelpOnError)
-              $ info (helper <*> parser)
-                (  fullDesc
-                <> header   "Coin node settings"
-                <> progDesc ""
-                )
-    CoinSettings{settings'node = CoinNodeSpec{..}
-                  , settings'coin = CoinSpec{..}
-                  , settings'logs = LogSpec{..}} <- readYaml cmdConfigPath
-    let loggers = [ makeScribe s { scribe'path = scribe'path s }
-                  | s <- logSpec'logFiles
-                  ]
-    let netCfg = let change cfg = cfg { cfgNetwork = (cfgNetwork cfg) { pexMinKnownConnections = nspec'count - 1} }
-                 in change (defCfg :: Configuration Example) :: Configuration Example
-
-    let port = 1000 + fromIntegral nspec'port
-    startWebMonitoring port
-
-    liftIO $ createDirectoryIfMissing True $ fst $ splitFileName nspec'dbName
-    withLogEnv "TM" "DEV" loggers $ \logenv -> runLoggerT logenv $ do
-      let !validatorSet = makeValidatorSetFromPriv
-                        $ (id @[PrivValidator (Ed25519 :& SHA512)])
-                        $ nspec'validators
-      logger InfoS "Listening for bootstrap adresses" ()
-      logger InfoS ("net Addresses: " <> showLS nspec'seeds) ()
-      nodeAddr     <- liftIO getLocalAddress
-      logger InfoS ("local Address: " <> showLS nodeAddr) ()
-      peerId <- generatePeerId
-      logger InfoS ("peer Id generated: " <> showLS peerId) ()
-      let peerInfo = P2PT.PeerInfo peerId (fromIntegral nspec'port) 0
-      logger InfoS ("peer Info generated: " <> showLS peerInfo) ()
-      let netAPI = newNetworkTcp peerInfo
-      logger InfoS ("network API created") ()
-      let net = BlockchainNet
-                   { bchNetwork          = netAPI
-                   , bchInitialPeers     = nspec'seeds
-                   }
-          genSpec = restrictGenerator nspec'number nspec'count
-                  $ defaultGenerator coin'keys coin'deposit coin'delay
-      catch (do
-        (_,act) <- interpretSpec (Just coin'maxH) genSpec validatorSet net netCfg (NodeSpec nspec'privKey (Just nspec'dbName) logSpec'logFiles coin'walletKeys coin'byzantine)
-        logger InfoS ("spec has been interpreted") ()
-        act `catch` (\e -> logger InfoS ("Exiting due to "<> (showLS (e :: SomeException))) ())
-        ) (\e -> logger InfoS ("Exiting interpretSpec sequence due to "<> (showLS (e :: SomeException))) ())
-      logger InfoS "Normal exit" ()
-      liftIO $ print $ "Node number " <> show nspec'number <> " Normal exit"
-
+  -- Parse CLI
+  Opts{..} <- customExecParser (prefs showHelpOnError)
+            $ info (helper <*> parser)
+              (  fullDesc
+              <> header   "Coin node settings"
+              <> progDesc ""
+              )
+  -- Read config.
+  --
+  -- NOTE: later files take precedence
+  coin :*: nspec@NodeSpec{} :*: NodeCfg{..} :*: (cfg :: Configuration Example)
+    <- loadYamlSettings (reverse cmdConfigPath) [] requireEnv
+  startWebMonitoring $ fromIntegral nodePort + 1000
+  -- Start node
+  evalContT $ do
+    let (mtxGen, genesis) = mintMockCoin [ Validator v 1 | v <- validatorKeys] coin
+    --- Allocate resources
+    (_, conn, logenv) <- allocNode genesis nspec
+    let run = runLoggerT logenv . runDBT conn
+    -- Create network
+    peerId <- generatePeerId
+    let peerInfo = P2PT.PeerInfo peerId nodePort 0
+        bnet     = BlockchainNet { bchNetwork      = newNetworkTcp peerInfo
+                                 , bchInitialPeers = nodeSeeds
+                                 }
+    -- Actually run node
+    lift $ run $ do
+      (RunningNode{..},acts) <- interpretSpec
+        (nspec :*: cfg :*: bnet)
+        (maybe mempty callbackAbortAtH nodeMaxH)
+      txGen <- case mtxGen of
+        Nothing  -> return []
+        Just txG -> do
+          cursor <- getMempoolCursor rnodeMempool
+          return [transactionGenerator txG (currentState rnodeState) (void . pushTransaction cursor)]
+      logOnException $ runConcurrently $ txGen ++ acts
 
 parser :: Parser Opts
 parser = do
-  cmdConfigPath <- strArgument
+  cmdConfigPath <- some $ strArgument
     (  metavar "PATH"
-    <> help "Path to configuration"
-    <> value "config/coin-node1.yaml"
+    <> help  "Path to configuration"
     <> showDefault
     )
   return Opts{..}
@@ -124,4 +120,3 @@ startWebMonitoring port = do
          $ prometheus def
                       { prometheusInstrumentPrometheus = False }
                       metricsApp
-

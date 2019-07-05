@@ -3,7 +3,7 @@ kind: pipeline
 name: default
 
 steps:
-- name: build-thundemint
+- name: build-thundermint
   image: nixos/nix
   privileged: true
   network_mode: host
@@ -22,7 +22,64 @@ steps:
   - cd nix
   - ./build-ci.sh
 
-- name: dockerize-thundemint
+- name: build-thundermint-sodium
+  image: nixos/nix
+  privileged: true
+  network_mode: host
+  environment:
+    DRONE_GITHUB_PULL_KEY:
+      from_secret: drone_github_pull_key
+    NIX_CACHE_KEY:
+      from_secret: nix_cache_key
+    NIX_CACHE_SIGNING_KEY:
+      from_secret: nix_cache_signing_key
+  commands:
+  - apk add --no-cache git bash openssh-client
+  - source ./nix/setup_ssh_ci.sh
+  - "echo -n \"$${NIX_CACHE_SIGNING_KEY}\" > \"$${HOME}/nix-cache-key.sec\""
+  - "chmod 400 \"$${HOME}/nix-cache-key.sec\""
+  - cd nix
+  - ./build-ci.sh --arg useSodium true
+
+- name: build-thundermint-ghc86
+  image: nixos/nix
+  privileged: true
+  network_mode: host
+  commands:
+  - apk add --no-cache git bash openssh-client
+  - source ./nix/setup_ssh_ci.sh
+  - "echo -n \"$${NIX_CACHE_SIGNING_KEY}\" > \"$${HOME}/nix-cache-key.sec\""
+  - "chmod 400 \"$${HOME}/nix-cache-key.sec\""
+  - cd nix
+  - ./build-ci.sh --argstr ghc ghc863
+  environment:
+    DRONE_GITHUB_PULL_KEY:
+      from_secret: drone_github_pull_key
+    NIX_CACHE_KEY:
+      from_secret: nix_cache_key
+    NIX_CACHE_SIGNING_KEY:
+      from_secret: nix_cache_signing_key
+
+- name: build-thundermint-ghcjs
+  image: nixos/nix
+  privileged: true
+  network_mode: host
+  commands:
+  - apk add --no-cache git bash openssh-client
+  - source ./nix/setup_ssh_ci.sh
+  - "echo -n \"$${NIX_CACHE_SIGNING_KEY}\" > \"$${HOME}/nix-cache-key.sec\""
+  - "chmod 400 \"$${HOME}/nix-cache-key.sec\""
+  - cd nix
+  - ./build-ci.sh --argstr ghc ghcjs
+  environment:
+    DRONE_GITHUB_PULL_KEY:
+      from_secret: drone_github_pull_key
+    NIX_CACHE_KEY:
+      from_secret: nix_cache_key
+    NIX_CACHE_SIGNING_KEY:
+      from_secret: nix_cache_signing_key
+
+- name: dockerize-thundermint
   image: nixos/nix
   volumes:
   - name: dockersock
@@ -30,7 +87,9 @@ steps:
   privileged: true
   network_mode: host
   depends_on:
-    - build-thundemint
+  - build-thundermint
+  - build-thundermint-ghc86
+  - build-thundermint-ghcjs
   environment:
     DOCKER_PASSWORD:
       from_secret: docker_password
@@ -50,69 +109,10 @@ steps:
   - cd nix
   - ./build-docker-ci.sh
 
-- name: build-thundemint-sodium
-  image: nixos/nix
-  privileged: true
-  network_mode: host
-  environment:
-    DRONE_GITHUB_PULL_KEY:
-      from_secret: drone_github_pull_key
-    NIX_CACHE_KEY:
-      from_secret: nix_cache_key
-    NIX_CACHE_SIGNING_KEY:
-      from_secret: nix_cache_signing_key
-  commands:
-  - apk add --no-cache git bash openssh-client
-  - source ./nix/setup_ssh_ci.sh
-  - "echo -n \"$${NIX_CACHE_SIGNING_KEY}\" > \"$${HOME}/nix-cache-key.sec\""
-  - "chmod 400 \"$${HOME}/nix-cache-key.sec\""
-  - cd nix
-  - ./build-ci.sh --arg useSodium true
-
-- name: build-thundemint-ghc86
-  image: nixos/nix
-  privileged: true
-  network_mode: host
-  commands:
-  - apk add --no-cache git bash openssh-client
-  - source ./nix/setup_ssh_ci.sh
-  - "echo -n \"$${NIX_CACHE_SIGNING_KEY}\" > \"$${HOME}/nix-cache-key.sec\""
-  - "chmod 400 \"$${HOME}/nix-cache-key.sec\""
-  - cd nix
-  - ./build-ci.sh --argstr ghc ghc863
-  environment:
-    DRONE_GITHUB_PULL_KEY:
-      from_secret: drone_github_pull_key
-    NIX_CACHE_KEY:
-      from_secret: nix_cache_key
-    NIX_CACHE_SIGNING_KEY:
-      from_secret: nix_cache_signing_key
-
-- name: build-thundemint-ghcjs
-  image: nixos/nix
-  privileged: true
-  network_mode: host
-  commands:
-  - apk add --no-cache git bash openssh-client
-  - source ./nix/setup_ssh_ci.sh
-  - "echo -n \"$${NIX_CACHE_SIGNING_KEY}\" > \"$${HOME}/nix-cache-key.sec\""
-  - "chmod 400 \"$${HOME}/nix-cache-key.sec\""
-  - cd nix
-  - ./build-ci.sh --argstr ghc ghcjs
-  environment:
-    DRONE_GITHUB_PULL_KEY:
-      from_secret: drone_github_pull_key
-    NIX_CACHE_KEY:
-      from_secret: nix_cache_key
-    NIX_CACHE_SIGNING_KEY:
-      from_secret: nix_cache_signing_key
-
 - name: telegram
   image: appleboy/drone-telegram
   depends_on:
-  - build-thundemint
-  - build-thundemint-ghc86
-  - build-thundemint-ghcjs
+  - dockerize-thundermint
   settings:
     to:
       from_secret: telegram_id
@@ -141,16 +141,102 @@ volumes:
 trigger:
   branch:
   - master
+  - userstate
   cron:
     exclude:
     - nightly
 
 ---
 kind: pipeline
+name: tag
+
+steps:
+- name: build-thundermint
+  image: nixos/nix
+  privileged: true
+  network_mode: host
+  environment:
+    DRONE_GITHUB_PULL_KEY:
+      from_secret: drone_github_pull_key
+    NIX_CACHE_KEY:
+      from_secret: nix_cache_key
+    NIX_CACHE_SIGNING_KEY:
+      from_secret: nix_cache_signing_key
+  commands:
+  - apk add --no-cache git bash openssh-client
+  - source ./nix/setup_ssh_ci.sh
+  - "echo -n \"$${NIX_CACHE_SIGNING_KEY}\" > \"$${HOME}/nix-cache-key.sec\""
+  - "chmod 400 \"$${HOME}/nix-cache-key.sec\""
+  - cd nix
+  - ./build-ci.sh
+
+- name: dockerize-thundermint
+  image: nixos/nix
+  volumes:
+  - name: dockersock
+    path: /var/run/docker.sock
+  privileged: true
+  network_mode: host
+  depends_on:
+  - build-thundermint
+  environment:
+    DOCKER_PASSWORD:
+      from_secret: docker_password
+    DOCKER_USERNAME:
+      from_secret: docker_username
+    DRONE_GITHUB_PULL_KEY:
+      from_secret: drone_github_pull_key
+    NIX_CACHE_KEY:
+      from_secret: nix_cache_key
+    NIX_CACHE_SIGNING_KEY:
+      from_secret: nix_cache_signing_key
+  commands:
+  - apk add --no-cache git bash openssh-client docker
+  - source ./nix/setup_ssh_ci.sh
+  - "echo -n \"$${NIX_CACHE_SIGNING_KEY}\" > \"$${HOME}/nix-cache-key.sec\""
+  - "chmod 400 \"$${HOME}/nix-cache-key.sec\""
+  - cd nix
+  - ./build-docker-ci.sh
+
+- name: telegram
+  image: appleboy/drone-telegram
+  depends_on:
+  - dockerize-thundermint
+  settings:
+    to:
+      from_secret: telegram_id
+    token:
+      from_secret: telegram_token
+    message: >
+      {{build.status}}
+
+      {{build.link}}
+
+      ${DRONE_BUILD_EVENT} ${DRONE_PULL_REQUEST= }${DRONE_TAG= } to branch *{{commit.branch}}* by {{commit.author}}
+
+      {{commit.message}}
+
+      build time is {{buildtime build.started}}
+  when:
+    status:
+    - success
+    - failure
+
+volumes:
+- name: dockersock
+  host:
+    path: /var/run/docker.sock
+
+trigger:
+  event:
+  - tag
+
+---
+kind: pipeline
 name: cron
 
 steps:
-- name: build-thundemint-nightly
+- name: build-thundermint-nightly
   image: nixos/nix
   privileged: true
   network_mode: host
@@ -172,7 +258,7 @@ steps:
 - name: telegram
   image: appleboy/drone-telegram
   depends_on:
-  - build-thundemint-nightly
+  - build-thundermint-nightly
   settings:
     to:
       from_secret: telegram_id

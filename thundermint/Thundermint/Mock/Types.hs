@@ -1,16 +1,26 @@
-{-# LANGUAGE TypeOperators #-}
-{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DataKinds           #-}
+{-# LANGUAGE DeriveGeneric       #-}
+{-# LANGUAGE RankNTypes          #-}
+{-# LANGUAGE RecordWildCards     #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeOperators       #-}
 module Thundermint.Mock.Types (
+    -- * Data types
+    -- ** Node and network specification
     NodeSpec(..)
   , NetSpec(..)
+  , CoinSpecification(..)
+  , RunningNode(..)
+  , hoistRunningNode
+    -- ** Other
   , Topology(..)
   , Abort(..)
+  , catchAbort
   , Example
-  , defCfg
   ) where
 
-import Control.Exception (Exception)
-import Data.Int     (Int64)
+import Control.Exception   (Exception)
+import Control.Monad.Catch (MonadCatch(..))
 import GHC.Generics (Generic)
 
 import qualified Data.Aeson as JSON
@@ -20,8 +30,13 @@ import Thundermint.Crypto         ((:&))
 import Thundermint.Crypto.Ed25519 (Ed25519)
 import Thundermint.Crypto.SHA     (SHA512)
 import Thundermint.Logger         (ScribeSpec)
+import Thundermint.Types
+import Thundermint.Blockchain.Interpretation
+import Thundermint.Store
 
-
+----------------------------------------------------------------
+--
+----------------------------------------------------------------
 
 data Example
 
@@ -54,10 +69,29 @@ instance DefaultConfig Example where
 -- Generating node specification
 ----------------------------------------------------------------
 
+data RunningNode s m alg a = RunningNode
+  { rnodeState   :: BChState m s
+  , rnodeConn    :: Connection 'RO alg a
+  , rnodeMempool :: Mempool m alg (TX a)
+  }
+
+hoistRunningNode
+  :: (Functor n)
+  => (forall x. m x -> n x) -> RunningNode s m alg a -> RunningNode s n alg a
+hoistRunningNode fun RunningNode{..} = RunningNode
+  { rnodeState   = hoistBChState fun rnodeState
+  , rnodeMempool = hoistMempool  fun rnodeMempool
+  , ..
+  }
+
+
 -- | Exception for aborting execution of blockchain
 data Abort = Abort
   deriving Show
 instance Exception Abort
+
+catchAbort :: MonadCatch m => m () -> m ()
+catchAbort act = catch act (\Abort -> return ())
 
 data Topology = All2All
               | Ring
@@ -65,26 +99,34 @@ data Topology = All2All
 instance JSON.ToJSON   Topology
 instance JSON.FromJSON Topology
 
+
+-- | Specification of test cluster
+data NetSpec a = NetSpec
+  { netNodeList  :: [a]                   -- ^ List of nodes
+  , netTopology  :: Topology              -- ^ Network topology
+  , netNetCfg    :: Configuration Example -- ^ Delay and such
+  , netMaxH      :: Maybe Height          -- ^ Maximum height
+  }
+  deriving (Generic,Show)
+
 data NodeSpec = NodeSpec
   { nspecPrivKey    :: Maybe (PrivValidator (Ed25519 :& SHA512))
   , nspecDbName     :: Maybe FilePath
   , nspecLogFile    :: [ScribeSpec]
-  , nspecWalletKeys :: (Int,Int)
-  , nspecByzantine  :: Maybe String
   }
   deriving (Generic,Show)
 
-data NetSpec a = NetSpec
-  { netNodeList       :: [a]
-  , netTopology       :: Topology
-  , netInitialDeposit :: Integer
-  , netInitialKeys    :: Int
-  , netPrefix         :: Maybe String
-  , netMaxH           :: Maybe Int64
-  , netNetCfg         :: Configuration Example
-  }
-  deriving (Generic,Show)
+-- | Specifications for mock coin status.
+data CoinSpecification = CoinSpecification
+ { coinAridrop        :: !Integer     -- ^ Amount of coins allocated to each wallet
+ , coinWallets        :: !Int         -- ^ Number of wallets in use
+ , coinWalletsSeed    :: !Int         -- ^ Seed used to generate private keys for wallets
+ , coinGeneratorDelay :: !(Maybe Int) -- ^ Delay between TX generation. Nothing means don't generate
+ }
+ deriving (Generic,Show)
 
 instance JSON.ToJSON   NodeSpec
+
+instance JSON.FromJSON CoinSpecification
 instance JSON.FromJSON NodeSpec
 instance JSON.FromJSON a => JSON.FromJSON (NetSpec a)

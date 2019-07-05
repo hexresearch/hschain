@@ -47,6 +47,7 @@ Library
                      , stm               >=2.5
                      , text
                      , transformers      >=0.5
+                     , vector
                      , unordered-containers >=0.2.5.0
                      --
                      , katip              == 0.7.0.0
@@ -83,7 +84,6 @@ Library
                   Thundermint.P2P.PeerState
                   Thundermint.P2P.Types
                   Thundermint.Store
-                  Thundermint.Store.SQL
                   Thundermint.Store.STM
                   Thundermint.Store.Internal.BlockDB
                   Thundermint.Store.Internal.Types
@@ -103,35 +103,12 @@ Library
                   Thundermint.P2P.Internal.Types
                   Thundermint.P2P.Internal.Logging
 
--- Example programs
-Executable thundermint-keyval
-  Ghc-options:         -Wall
-  Default-Language:    Haskell2010
-  Build-Depends:       base       >=4.9 && <5
-                     , thundermint
-                     , aeson
-                     , bytestring >=0.10
-                     , optparse-applicative
-  hs-source-dirs:      exe
-  Main-is:             key-val.hs
-
-Executable thundermint-coin
-  Ghc-options:         -Wall -threaded -Wno-orphans
-  Default-Language:    Haskell2010
-  Build-Depends:       base       >=4.9 && <5
-                     , thundermint
-                     , thundermint-types
-                     , aeson
-                     , bytestring           >=0.10
-                     , optparse-applicative >= 0.14
-  hs-source-dirs:      exe
-  Main-is:             coin.hs
-
 Executable thundermint-coin-node
   Ghc-options:         -Wall -threaded -Wno-orphans -rtsopts "-with-rtsopts=-N -T -c -qn1"
   Default-Language:    Haskell2010
   Build-Depends:       base                 >=4.9 && <5
                      , thundermint
+                     , thundermint-types
                      , thundermint-crypto
                      , aeson
                      , bytestring           >=0.10
@@ -153,10 +130,6 @@ Executable thundermint-coin-node
                      , directory
   hs-source-dirs:      exe
   Main-is:             coin-node.hs
-  other-modules:
-                App.Yaml
-                App.AesonTH
-                App.Settings
 
 Executable thundermint-db
   Ghc-options:         -Wall -threaded -Wno-orphans
@@ -201,6 +174,7 @@ Test-suite thundermint-tests
                      , katip
                      , serialise         >=0.2
                      , stm               >=2.4
+                     , transformers
                      , retry             >=0.7.6.2
                      , text
                      --
@@ -223,7 +197,6 @@ Test-suite thundermint-tests
                        TM.Network
                        TM.NetworkTls
                        TM.P2P
-                       TM.Persistence
                        TM.RealNetwork
                        TM.Serialisation
                        TM.Store

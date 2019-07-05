@@ -25,7 +25,6 @@ import Control.Monad.Fail
 import Control.Monad.Fix
 import Control.Monad.IO.Class
 import Control.Monad.STM
-import Data.Proxy (Proxy(..))
 import Prelude                      as P
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Map           as Map
@@ -287,9 +286,7 @@ addSomeBlocks'
     -> Int -- ^ Number of blocks to add
     -> m [(Block TestAlg TestBlock, Commit TestAlg TestBlock)]
 addSomeBlocks' GossipEnv{..} blocksCount =
-    mapM addOneBlock
-         [ [(show i, NetAddrV6 (fromIntegral $ i `mod` 256, 2, 3, 4) 4433)]
-         | i <- [1..blocksCount] ]
+  mapM addOneBlock [ [(show i, 4433)] | i <- [1 .. blocksCount] ]
   where
     addOneBlock tx = do
         t  <- getCurrentTime
@@ -303,14 +300,14 @@ addSomeBlocks' GossipEnv{..} blocksCount =
                     , headerLastBlockID    = Nothing -- TODO get from previous block
                     , headerValidatorsHash = Hashed $ Hash ""
                     , headerDataHash       = hashed tx
-                    , headerValChangeHash  = hashed []
+                    , headerValChangeHash  = hashed mempty
                     , headerLastCommitHash = Hashed $ Hash ""
                     , headerEvidenceHash   = hashed []
                     }
                 , blockData       = tx
                 , blockLastCommit = Nothing
                 , blockEvidence   = []
-                , blockValChange  = []
+                , blockValChange  = mempty
                 }
             bid = blockHash block
             commit = Commit { commitBlockID    = bid
@@ -340,7 +337,7 @@ withGossipEnv fun = do
     let dbValidatorSet = makeValidatorSetFromPriv testValidators
     eventsQueue <- newChan
     withConnection ":memory:" $ \conn -> do
-        initDatabase conn Proxy (Mock.genesisBlock dbValidatorSet) dbValidatorSet
+        initDatabase conn (Mock.genesisBlock dbValidatorSet)
         runTracerT (writeChan eventsQueue) . runNoLogsT . runDBT conn $ do
             proposalStorage <- newSTMPropStorage
             peerStateObj <- newPeerStateObj (makeReadOnlyPS proposalStorage)

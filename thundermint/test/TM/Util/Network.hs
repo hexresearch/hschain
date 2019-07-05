@@ -33,7 +33,6 @@ import qualified Data.ByteString.Lazy as LBS
 import qualified Data.Map             as Map
 
 import Data.Monoid    ((<>))
-import Data.Proxy     (Proxy(..))
 import System.Timeout (timeout)
 
 import Katip
@@ -44,12 +43,11 @@ import qualified Thundermint.Mock.KeyVal as Mock
 
 import Thundermint.Blockchain.Internal.Engine.Types
 import Thundermint.Control
-import Thundermint.Crypto                           ((:&), Fingerprint)
+import Thundermint.Crypto                           ((:&), Fingerprint, (:<<<))
 import Thundermint.Crypto.Ed25519                   (Ed25519)
-import Thundermint.Crypto.SHA                       (SHA512)
+import Thundermint.Crypto.SHA                       (SHA512,SHA256)
 import Thundermint.Debug.Trace
 import Thundermint.Logger
-import Thundermint.Mock.Coin                        (intToNetAddr)
 import Thundermint.Mock.Types
 import Thundermint.Monitoring
 import Thundermint.P2P
@@ -126,7 +124,7 @@ withTimeOut abortMsg t act = timeout t act >>= \case
     Nothing -> E.throwIO $ AbortTest $ abortMsg <> " due to timeout"
 
 -- TODO объединить в один список, а лучше сделать бесконечный
-testValidators, extraTestValidators :: Map.Map (Fingerprint TestAlg) (PrivValidator TestAlg)
+testValidators, extraTestValidators :: Map.Map (Fingerprint (SHA256 :<<< SHA512) TestAlg) (PrivValidator TestAlg)
 testValidators = makePrivateValidators
   [ "2K7bFuJXxKf5LqogvVRQjms2W26ZrjpvUjo5LdvPFa5Y"
   , "4NSWtMsEPgfTK25tCPWqNzVVze1dgMwcUFwS5WkSpjJL"
@@ -149,13 +147,13 @@ extraTestValidators = makePrivateValidators
   ]
 
 
-type TestBlock = [(String, NetAddr)]
+type TestBlock = [(String, Int)]
 
 type TestAlg = Ed25519 :& SHA512
 
-type TestMonad m = DBT 'RW TestAlg [(String, NetAddr)] (NoLogsT (TracerT m))
+type TestMonad m = DBT 'RW TestAlg TestBlock (NoLogsT (TracerT m))
 
-type TestAppByzantine m = AppByzantine (TestMonad m) TestAlg [(String, NetAddr)]
+type TestAppByzantine m = AppByzantine (TestMonad m) TestAlg TestBlock
 
 
 
@@ -220,7 +218,7 @@ createTestNetworkWithConfig = createTestNetworkWithValidatorsSetAndConfig testVa
 {-
 createTestNetworkWithValidatorsSetAndConfig
   :: forall m app . (MonadIO m, MonadMask m, MonadFork m, MonadTMMonitoring m, MonadFail m)
-  => Map.Map (Fingerprint (Ed25519 :& SHA512)) (PrivValidator (Ed25519 :& SHA512))
+  => Map.Map (Fingerprint (SHA256 :<<< SHA512) (Ed25519 :& SHA512)) (PrivValidator (Ed25519 :& SHA512))
   -> Configuration app -> TestNetDescription m -> m ()
 createTestNetworkWithValidatorsSetAndConfig validatorsSet cfg desc = do
     net  <- liftIO newMockNet
@@ -237,7 +235,7 @@ createTestNetworkWithValidatorsSetAndConfig validatorsSet cfg desc = do
 
 createTestNetworkWithValidatorsSetAndConfig
     :: forall m app . (MonadIO m, MonadMask m, MonadFork m, MonadTMMonitoring m, MonadFail m)
-    => Map.Map (Fingerprint TestAlg) (PrivValidator TestAlg)
+    => Map.Map (Fingerprint (SHA256 :<<< SHA512) TestAlg) (PrivValidator TestAlg)
     -> Configuration app
     -> TestNetDescription m
     -> m ()
@@ -249,30 +247,28 @@ createTestNetworkWithValidatorsSetAndConfig validators cfg netDescr = do
       catchAbort $ runConcurrently $ join acts
   where
     dbValidatorSet = makeValidatorSetFromPriv validators
-    catchAbort act = catch act (\Abort -> return ())
     mkTestNode
       :: MockNet
-      -> ( Connection 'RW TestAlg [(String, NetAddr)]
+      -> ( Connection 'RW TestAlg TestBlock
          , TestNetLinkDescription m
          , Maybe (PrivValidator TestAlg))
       -> m [m ()]
     mkTestNode net (conn, TestNetLinkDescription{..}, validatorPK) = do
-        initDatabase conn Proxy (Mock.genesisBlock dbValidatorSet) dbValidatorSet
+        initDatabase conn (Mock.genesisBlock dbValidatorSet)
         --
         let run = runTracerT ncTraceCallback . runNoLogsT . runDBT conn
         fmap (map run) $ run $ do
             (_,logic) <- logicFromFold Mock.transitions
-            let logic' = logic { nodeByzantine = (nodeByzantine logic) <> ncByzantine }
-            runNode cfg
-              BlockchainNet
+            runNode cfg NodeDescription
+              { nodeValidationKey = validatorPK
+              , nodeCallbacks     = ncAppCallbacks
+                                 <> mempty { appByzantine = ncByzantine }
+              , nodeLogic         = logic
+              , nodeNetwork       = BlockchainNet
                 { bchNetwork        = createMockNode net (intToNetAddr ncFrom)
                 , bchInitialPeers   = map intToNetAddr ncTo
                 }
-              NodeDescription
-                { nodeValidationKey = validatorPK
-                , nodeCallbacks     = ncAppCallbacks
-                }
-              logic'
+              }
 
 
 -- | UDP may return Nothings for the message receive operation.
@@ -304,3 +300,6 @@ delayedWrite ((serverAddr, server), (_, client)) = do
           send conn "A3"
   ((),()) <- Async.concurrently (runServer server) (runClient client)
   return ()
+
+intToNetAddr :: Int -> NetAddr
+intToNetAddr i = NetAddrV4 (fromIntegral i) 1122

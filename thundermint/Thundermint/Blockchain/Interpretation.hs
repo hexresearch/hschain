@@ -10,8 +10,6 @@ module Thundermint.Blockchain.Interpretation (
   , BChState(..)
   , newBChState
   , hoistBChState
-    -- * DB persisted state
-  , PersistentState(..)
   ) where
 
 import Codec.Serialise (Serialise)
@@ -24,7 +22,6 @@ import Control.Monad.Fail
 import Thundermint.Crypto
 import Thundermint.Control
 import Thundermint.Store
-import Thundermint.Store.SQL
 import Thundermint.Types.Blockchain
 
 
@@ -110,16 +107,3 @@ hoistBChState :: (forall a . m a -> n a) -> BChState m s -> BChState n s
 hoistBChState f BChState{..} = BChState
   { currentState = f currentState
   , stateAtH     = f . stateAtH }
-
-
-----------------------------------------------------------------
--- DB persisted state
-----------------------------------------------------------------
-
-data PersistentState dct alg a = PersistentState
-  { processTxDB           :: !(Height -> TX a -> EphemeralQ alg a dct ())
-  , processBlockDB        :: !(forall q. (ExecutorRW q, Monad (q dct), MonadFail (q dct))
-                          => Block alg a -> q dct ())
-  , transactionsToBlockDB :: !(Height -> [TX a] -> EphemeralQ alg a dct a)
-  , persistedData         :: !(dct Persistent)
-  }

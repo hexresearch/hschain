@@ -23,7 +23,6 @@ import Test.Tasty.HUnit
 import Thundermint.Blockchain.Internal.Engine.Types
 import Thundermint.Control
 import Thundermint.Debug.Trace
-import Thundermint.Mock.Coin
 import Thundermint.Mock.Types
 import Thundermint.Utils
 

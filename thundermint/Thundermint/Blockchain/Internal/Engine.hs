@@ -79,16 +79,14 @@ runApplication
   -> AppCallbacks m alg a
   -> AppChans m alg a
      -- ^ Channels for communication with peers
-  -> AppByzantine m alg a
-     -- ^ Debug callbacks for byzantine
   -> m ()
-runApplication config appValidatorKey appSt@AppLogic{..} appCall appCh@AppChans{..} appByzantine = logOnException $ do
+runApplication config appValidatorKey appSt@AppLogic{..} appCall appCh@AppChans{..} = logOnException $ do
   logger InfoS "Starting consensus engine" ()
   height <- queryRO $ blockchainHeight
   lastCm <- queryRO $ retrieveLocalCommit height
   advanceToHeight appPropStorage $ succ height
   void $ flip fix lastCm $ \loop commit -> do
-    cm <- decideNewBlock config appValidatorKey appSt appCall appCh appByzantine commit
+    cm <- decideNewBlock config appValidatorKey appSt appCall appCh commit
     loop (Just cm)
 
 
@@ -110,13 +108,12 @@ decideNewBlock
   -> AppLogic     m alg a
   -> AppCallbacks m alg a
   -> AppChans     m alg a
-  -> AppByzantine m alg a
   -> Maybe (Commit alg a)
   -> m (Commit alg a)
-decideNewBlock config appValidatorKey appLogic@AppLogic{..} appCall@AppCallbacks{..} appCh@AppChans{..} appByzantine lastCommt = do
+decideNewBlock config appValidatorKey appLogic@AppLogic{..} appCall@AppCallbacks{..} appCh@AppChans{..} lastCommt = do
   -- Enter NEW HEIGHT and create initial state for consensus state
   -- machine
-  hParam <- makeHeightParameters config appValidatorKey appLogic appCall appCh appByzantine
+  hParam <- makeHeightParameters config appValidatorKey appLogic appCall appCh
   -- Get rid of messages in WAL that are no longer needed and replay
   -- all messages stored there.
   walMessages <- fmap (fromMaybe [])
@@ -165,20 +162,14 @@ decideNewBlock config appValidatorKey appLogic@AppLogic{..} appCall@AppCallbacks
             case appCommitQuery of
               SimpleQuery callback -> do
                 r <- queryRW $ do storeCommit cmt b
-                                  vsetChange <- callback (validatorSet hParam) b
-                                  case changeValidators vsetChange (validatorSet hParam) of
-                                    Just vset -> storeValSet b vset
-                                    Nothing   -> fail ""
+                                  storeValSet b =<< callback (validatorSet hParam) b
                 case r of
                   Nothing -> error "Cannot write commit into database"
                   Just () -> return ()
               --
               MixedQuery callback -> do
                 r <- queryRWT $ do storeCommit cmt b
-                                   vsetChange <- callback (validatorSet hParam) b
-                                   case changeValidators vsetChange (validatorSet hParam) of
-                                     Just vset -> storeValSet b vset
-                                     Nothing   -> fail ""
+                                   storeValSet b =<< callback (validatorSet hParam) b
                 case r of
                   Nothing -> error "Cannot write commit into database"
                   Just () -> return ()
@@ -266,7 +257,7 @@ data ConsensusResult alg a b
   | Tranquility
   | Misdeed
   | DoCommit  !(Commit alg a) !(TMState alg a)
-  deriving (Functor)
+  deriving (Show,Functor)
 
 instance Monad m => Applicative (ConsensusM alg a m) where
   pure  = return
@@ -308,16 +299,16 @@ makeHeightParameters
   -> AppLogic     m alg a
   -> AppCallbacks m alg a
   -> AppChans     m alg a
-  -> AppByzantine m alg a
   -> m (HeightParameters (ConsensusM alg a m) alg a)
-makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{..} AppChans{..} AppByzantine{..} = do
+makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{..} AppChans{..} = do
+  let AppByzantine{..} = appByzantine
   h            <- queryRO $ blockchainHeight
   Just valSet  <- queryRO $ retrieveValidatorSet (succ h)
   oldValSet    <- queryRO $ retrieveValidatorSet  h
   Just genesis <- queryRO $ retrieveBlock        (Height 0)
   bchTime      <- do Just b <- queryRO $ retrieveBlock h
                      return $ headerTime $ blockHeader b
-  let ourIndex = indexByValidator valSet . fingerprint . publicKey . validatorPrivKey
+  let ourIndex = indexByValidator valSet . publicKey . validatorPrivKey
              =<< appValidatorKey
   let proposerChoice (Round r) =
         let Height h' = h
@@ -341,8 +332,9 @@ makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{
           Nothing -> return UnseenProposal
           Just b  -> do
             inconsistencies <- lift $ checkProposedBlock nH b
-            mvalChange      <- lift $ appValidationFun valSet b
+            mvalSet'        <- lift $ appValidationFun valSet b
             if | not (null inconsistencies) -> do
+               -- Block is not internally consistent
                    logger ErrorS "Proposed block has inconsistencies"
                      (  sl "H" nH
                      <> sl "errors" (map show inconsistencies)
@@ -352,9 +344,9 @@ makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{
                | _:_ <- blockEvidence b -> return InvalidProposal
                -- Block is correct and validators change is correct as
                -- well
-               | Just ch      <- mvalChange
-               , Just valSet' <- changeValidators ch valSet
+               | Just valSet' <- mvalSet'
                , validatorSetSize valSet' > 0
+               , blockValChange b == validatorsDifference valSet valSet'
                  -> return GoodProposal
                | otherwise
                  -> return InvalidProposal
@@ -457,8 +449,10 @@ makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{
           _        -> case join $ liftA3 commitTime oldValSet (pure bchTime) commit of
             Just t  -> return t
             Nothing -> error "Corrupted commit. Cannot generate block"
-        (bData, valCh) <- appBlockGenerator (succ h) currentT commit [] valSet
-        let block = Block
+        txs              <- peekNTransactions appMempool Nothing
+        (bData, valSet') <- appBlockGenerator txs (succ h) currentT commit [] valSet
+        let valCh = validatorsDifference valSet valSet'
+            block = Block
               { blockHeader     = Header
                   { headerChainID        = headerChainID $ blockHeader genesis
                   , headerHeight         = succ h

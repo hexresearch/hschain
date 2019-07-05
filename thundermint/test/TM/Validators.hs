@@ -1,102 +1,104 @@
-{-# LANGUAGE DataKinds          #-}
-{-# LANGUAGE DeriveAnyClass     #-}
-{-# LANGUAGE DeriveGeneric      #-}
-{-# LANGUAGE OverloadedStrings  #-}
-{-# LANGUAGE RecordWildCards    #-}
-{-# LANGUAGE StandaloneDeriving #-}
-{-# LANGUAGE TypeOperators      #-}
+{-# LANGUAGE DataKinds           #-}
+{-# LANGUAGE DeriveAnyClass      #-}
+{-# LANGUAGE DeriveGeneric       #-}
+{-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE RecordWildCards     #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE StandaloneDeriving  #-}
+{-# LANGUAGE TypeOperators       #-}
 
 -- |
 module TM.Validators (tests) where
 
-import Codec.Serialise
-import Control.Applicative
-import Control.Concurrent.MVar
-import Control.Monad
-import Control.Monad.Catch
-import Control.Monad.Fail
-import Control.Monad.IO.Class
-
+-- import Codec.Serialise
+-- import Control.Applicative
+-- import Control.Concurrent.MVar
+-- import Control.Monad
+-- import Control.Monad.Catch
+-- import Control.Monad.Fail
+-- import Control.Monad.IO.Class
 
 import qualified Data.Map.Strict as Map
 
-import Data.Typeable (Proxy(..))
-
-import GHC.Generics
+-- import GHC.Generics
 
 import Test.Tasty
 import Test.Tasty.HUnit
+import Test.Tasty.QuickCheck
 
 import Thundermint.Blockchain.Internal.Engine.Types
-import Thundermint.Blockchain.Interpretation
-import Thundermint.Control
+-- import Thundermint.Blockchain.Interpretation
+-- import Thundermint.Control
 import Thundermint.Crypto
 import Thundermint.Crypto.Ed25519 (Ed25519)
 import Thundermint.Crypto.SHA     (SHA512)
-import Thundermint.Debug.Trace
-import Thundermint.Logger
-import Thundermint.Mock.Coin
+-- import Thundermint.Debug.Trace
+-- import Thundermint.Logger
+-- import Thundermint.Mock.Coin
 import Thundermint.Mock.KeyList (privateKeyList)
-import Thundermint.Mock.Types
-import Thundermint.Monitoring
-import Thundermint.P2P.Network
-import Thundermint.Run
-import Thundermint.Store
-import Thundermint.Types.Blockchain
+-- import Thundermint.Mock.Types
+-- import Thundermint.Monitoring
+-- import Thundermint.P2P.Network
+-- import Thundermint.Run
+-- import Thundermint.Store
+-- import Thundermint.Types.Blockchain
 import Thundermint.Types.Validators
+import Thundermint.Arbitrary.Instances ()
 
-import TM.Util.Network
+-- import TM.Util.Network
 
+
+type VSet = ValidatorSet (Ed25519 :& SHA512)
 
 tests :: TestTree
 tests = testGroup "validators"
-  [ testCase "No change" $ do
-      let Right vsetA = makeValidatorSet [Validator v1 1]
-      Just vsetA @=? changeValidators [] vsetA
-  , testCase "Simple insert" $ do
-      let Right vsetA = makeValidatorSet [Validator v1 1]
-          Right vsetB = makeValidatorSet [Validator v1 1, Validator v2 1]
-      Just vsetB @=? changeValidators [ChangeValidator v2 1] vsetA
-  , testCase "Change voting power" $ do
-      let Right vsetA = makeValidatorSet [Validator v1 1]
-          Right vsetB = makeValidatorSet [Validator v1 2]
-      Just vsetB @=? changeValidators [ChangeValidator v1 2] vsetA
-  , testCase "Simple delete" $ do
-      let Right vsetA = makeValidatorSet [Validator v1 1, Validator v2 2]
-          Right vsetB = makeValidatorSet [Validator v1 1]
-      Just vsetB @=? changeValidators [RemoveValidator v2] vsetA
-    -- Invalid updades
-  , testCase "Delete nonexistent" $ invalid
-      [Validator v1 1]
-      [RemoveValidator v2]
-  , testCase "Invalid voting power" $ invalid
-      [Validator v1 1]
-      [ChangeValidator v2 0]
-  , testCase "Double reference (1)" $ invalid [Validator v1 1, Validator v2 1]
-      [RemoveValidator v1, RemoveValidator v1]
-  , testCase "Double reference (2)" $ invalid [Validator v1 1, Validator v2 1]
-      [ChangeValidator v1 2, RemoveValidator v1]
-  , testCase "Double reference (3)" $ invalid [Validator v1 1, Validator v2 1]
-      [RemoveValidator v1, ChangeValidator v1 2]
-  , testCase "Double reference (4)" $ invalid [Validator v1 1, Validator v2 1]
-      [ChangeValidator v1 2, ChangeValidator v1 3]
-    -- Subtler invalid cases
-  , testCase "Noop is error" $ invalid
-      [Validator v1 1]
-      [ChangeValidator v1 1]
-  , testGroup "handling in gossip"
-      [ testCase "adding and removing validators" $ testAddRemValidators
-      ]
+  [ testProperty "No change 1" $ \(vset :: VSet) ->
+      Just vset == changeValidators mempty vset
+  , testProperty "No change 2" $ \(vset :: VSet) ->
+      mempty == validatorsDifference vset vset
+  , testProperty "Roundtrip" $ \(vsetOld :: VSet) vsetNew ->
+      let diff = validatorsDifference vsetOld vsetNew
+      in Just vsetNew == changeValidators diff vsetOld
+  , testProperty "Compose" $ \(vset1 :: VSet) vset2 vset3 ->
+      let diff1 = validatorsDifference vset1 vset2
+          diff2 = validatorsDifference vset2 vset3
+      in id $ counterexample ("diff1 = " ++ show diff1)
+            $ counterexample ("diff2 = " ++ show diff2)
+            $ counterexample ("union = " ++ show (diff1 <> diff2))
+            $ Just vset3 == changeValidators (diff1 <> diff2) vset1
+    --
+  , testCase "Delete nonexistent" $ do
+      let Right vset = makeValidatorSet [Validator v1 1]
+          diff       = ValidatorChange $ Map.fromList [(v2,0)]
+      Just vset @=? changeValidators diff vset
+  , testCase "Attempt to make noop" $ do
+      let Right vset = makeValidatorSet [Validator v1 1]
+          diff       = ValidatorChange $ Map.fromList [(v1,1)]
+      Nothing @=? changeValidators diff vset
+  , testCase "Invalid voting power 1" $ do
+      let Right vset = makeValidatorSet [Validator v1 1]
+          diff       = ValidatorChange $ Map.fromList [(v1, -1)]
+      Nothing @=? changeValidators diff vset
+  , testCase "Invalid voting power 2" $ do
+      let Right vset = makeValidatorSet [Validator v1 1]
+          diff       = ValidatorChange $ Map.fromList [(v2, -1)]
+      Nothing @=? changeValidators diff vset
   ]
+
+v1,v2 :: PublicKey (Ed25519 :& SHA512)
+v1:v2:_ = map publicKey privateKeyList
+
+
+{-
+  -- , testGroup "handling in gossip"
+  --     [ testCase "adding and removing validators" $ testAddRemValidators
+  --     ]
+
 
 invalid :: [Validator (Ed25519 :& SHA512)] -> [ValidatorChange (Ed25519 :& SHA512)] -> IO ()
 invalid vals changes = do
   let Right vset = makeValidatorSet vals
   Nothing @=? changeValidators changes vset
-
-
-v1,v2 :: PublicKey (Ed25519 :& SHA512)
-v1:v2:_ = map publicKey privateKeyList
 
 data ValidatorsTestsState = ValidatorsTestsState
   deriving (Show, Generic)
@@ -107,7 +109,9 @@ data VTSTx = Add | Del | OriginMark Int
   deriving (Eq, Ord, Show, Generic)
 
 deriving instance Serialise VTSTx
+-}
 
+{-
 testAddRemValidators :: IO ()
 testAddRemValidators = do
   net  <- liftIO newMockNet
@@ -171,7 +175,7 @@ testAddRemValidators = do
       -> m [m ()]
     mkTestNode net summary (conn, (TestNetLinkDescription{..}, privKey)) = do
         let nodeIndex = ncFrom
-        initDatabase conn Proxy (makeGenesis "TESTVALS" (Time 0) [] validatorSet) validatorSet
+        initDatabase conn (makeGenesis "TESTVALS" (Time 0) [] validatorSet) validatorSet
         --
         let run = runTracerT ncTraceCallback . runNoLogsT . runDBT conn
         fmap (map run) $ run $ do
@@ -223,3 +227,4 @@ testAddRemValidators = do
                 logic
 
 
+-}

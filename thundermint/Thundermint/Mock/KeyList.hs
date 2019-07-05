@@ -1,12 +1,17 @@
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TypeOperators     #-}
+{-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications    #-}
+{-# LANGUAGE TypeOperators       #-}
 -- |
 module Thundermint.Mock.KeyList (
+    -- * Private keys for testing
     privateKeyList
-  , connectAll2All
-  , connectRing
   , makePrivateValidators
   , makeValidatorSetFromPriv
+  , makePrivKeyStream
+    -- * Connection in mock network
+  , connectAll2All
+  , connectRing
   ) where
 
 import Data.Maybe
@@ -14,8 +19,11 @@ import Data.Maybe
 import qualified Data.ByteString        as BS
 import qualified Data.ByteString.Base58 as Base58
 import           Data.Foldable          (toList)
+import           Data.List
+import           Data.Proxy
 import           Data.Map               (Map)
 import qualified Data.Map               as Map
+import           System.Random
 
 import Thundermint.Blockchain.Internal.Engine.Types
 import Thundermint.Crypto
@@ -31,7 +39,7 @@ import Thundermint.Types.Validators
 -- | Generate list of private validators
 makePrivateValidators
   :: [BS.ByteString]
-  -> Map (Fingerprint (Ed25519 :& SHA512)) (PrivValidator (Ed25519 :& SHA512))
+  -> Map (Fingerprint (SHA256 :<<< SHA512) (Ed25519 :& SHA512)) (PrivValidator (Ed25519 :& SHA512))
 makePrivateValidators keys = Map.fromList
   [ (fingerprint (publicKey pk) , PrivValidator pk)
   | bs58 <- keys
@@ -80,6 +88,23 @@ connectRing vals addr =
         Just (a,_) -> [a]
         Nothing    -> []
 
+
+-- | Generate infinite stream of private keys from single seed. This
+--   function is very useful for testing since it allows to generate a
+--   lot of keys quickly and in deterministic manner. Naturally it
+--   shoulldn't be used in production
+makePrivKeyStream :: forall alg. CryptoSign alg => Int -> [PrivKey alg]
+makePrivKeyStream seed
+  = unfoldr step
+  $ randoms (mkStdGen seed)
+  where
+    -- Size of key
+    keySize = privKeySize (Proxy @alg)
+    -- Generate single key
+    step stream = Just (k, stream')
+      where
+        Just k    = decodeFromBS $ BS.pack bs
+        (bs, stream') = splitAt keySize stream
 
 
 -- | List of private keys which could be used in test programs where
