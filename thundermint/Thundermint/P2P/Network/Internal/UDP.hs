@@ -27,15 +27,11 @@ import qualified Thundermint.P2P.Network.IpAddresses as Ip
 -- | API implementation example for real udp network
 newNetworkUdp :: PeerInfo -> IO NetworkAPI
 newNetworkUdp ourPeerInfo = do
-  let serviceName = show $ piPeerPort ourPeerInfo
   -- FIXME: prolly HostName fits better than SockAddr
-  tChans <- newTVarIO Map.empty
-  acceptChan <- newTChanIO :: IO (TChan (P2PConnection, NetAddr))
-  let hints = Net.defaultHints
-        { Net.addrFlags      = []
-        , Net.addrSocketType = Net.Datagram
-        }
-  addrInfo':_ <- Net.getAddrInfo (Just hints) Nothing (Just serviceName)
+  tChans      <- newTVarIO Map.empty
+  acceptChan  <- newTChanIO :: IO (TChan (P2PConnection, NetAddr))
+  addrInfo':_ <- Net.getAddrInfo (Just udpHints) Nothing
+    (Just $ show $ piPeerPort ourPeerInfo)
   let changeToWildcard Net.AddrInfo{..} = Net.AddrInfo
         { Net.addrAddress = case addrAddress of
             Net.SockAddrInet6 p f h s
