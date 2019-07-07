@@ -33,7 +33,7 @@ import Thundermint.Types.MerkleBlock
 -- | Merkle tree tests
 tests :: TestTree
 tests = testGroup "Block Merkle tree (fanout=2)"
-        [testProperty "Root of tree and computed root equals" prop_MerkleBlockTree]
+        [testProperty "Constructed tree is correct" prop_MerkleBlockTree]
 
 newtype BS = BS ByteString
   deriving (Show)
@@ -50,7 +50,9 @@ instance Arbitrary BS where
 
 prop_MerkleBlockTree :: [BS] -> Property
 prop_MerkleBlockTree bs = property $
-  ((rootHash . merkleBlockRoot) tree) == (computeMerkleRoot $ unWrap bs)
+  and [ ((rootHash . merkleBlockRoot) tree) == (computeMerkleRoot $ unWrap bs)
+      , isBalanced (merkleBlockTree tree)
+      ]
   where
     tree   :: (MerkleBlockTree SHA512 ByteString)
     tree = createMerkleTree $ unWrap bs
