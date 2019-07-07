@@ -22,11 +22,7 @@ import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 
 import Thundermint.Crypto
-import Thundermint.Crypto.Ed25519 (Ed25519)
-import Thundermint.Crypto.SHA     (SHA512)
-
-import Codec.Serialise
-import GHC.Generics    (Generic)
+import Thundermint.Crypto.SHA (SHA512)
 
 import Thundermint.Types.MerkleBlock
 
@@ -54,12 +50,12 @@ instance Arbitrary BS where
 
 prop_MerkleBlockTree :: [BS] -> Property
 prop_MerkleBlockTree bs = property $
-  ((rootHash . merkleBlockRoot) <$> tree) == (computeMerkleRoot $ unWrap bs)
+  ((rootHash . merkleBlockRoot) tree) == (computeMerkleRoot $ unWrap bs)
   where
-    tree   :: Maybe (MerkleBlockTree SHA512 ByteString)
+    tree   :: (MerkleBlockTree SHA512 ByteString)
     tree = createMerkleTree $ unWrap bs
     unWrap :: [BS] -> [ByteString]
-    unWrap bs = [blob | BS blob <- bs]
+    unWrap xs = [blob | BS blob <- xs]
 
 
 
