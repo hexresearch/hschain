@@ -1,11 +1,13 @@
 {-# LANGUAGE DeriveGeneric        #-}
 {-# LANGUAGE FlexibleContexts     #-}
 {-# LANGUAGE LambdaCase           #-}
+{-# LANGUAGE OverloadedStrings    #-}
 {-# LANGUAGE RecordWildCards      #-}
 {-# LANGUAGE ScopedTypeVariables  #-}
 {-# LANGUAGE StandaloneDeriving   #-}
 {-# LANGUAGE TypeApplications     #-}
 {-# LANGUAGE UndecidableInstances #-}
+
 -- |
 module Thundermint.Types.MerkleBlock
   (
@@ -45,7 +47,7 @@ data MerkleBlockTree alg a = MerkleBlockTree
 data Node alg a
   = Branch (Hash alg) (Node alg a) (Node alg a)
   | Leaf   (Hash alg)
-  -- ^ Leaf node
+  | Empty
   deriving (Show, Generic)
 
 {-
@@ -56,17 +58,24 @@ data MerklePath alg a
 -}
 
 
+nullHash :: CryptoHash alg => Hash alg
+nullHash = Hash "0"
 
+
+nullRoot :: CryptoHash alg => MerkleBlockRoot alg
+nullRoot  = MerkleBlockRoot nullHash
 
 -- | Create Merkle tree
 -- similar to compute merkle root hash, but use intermediate calculatio of hashes to construct merkle tree
-createMerkleTree :: forall alg a.  (CryptoHash alg, Serialise a)
-                    => [a] -> Maybe (MerkleBlockTree alg a)
-createMerkleTree []     = Nothing
+createMerkleTree
+  :: forall alg a.  (CryptoHash alg, Serialise a)
+  => [a]
+  -> MerkleBlockTree alg a
+createMerkleTree []     = MerkleBlockTree nullRoot Empty
 createMerkleTree tx = let dtx = (duplicateLast tx)
                           leaves :: [Node alg a]= map  (Leaf . computeLeafHash) dtx
                           tree@(Branch h _ _) = go leaves
-                      in Just $ MerkleBlockTree (MerkleBlockRoot h) tree
+                      in MerkleBlockTree (MerkleBlockRoot h) tree
   where
     go [b] = b
     go hs  = go (combine hs)
@@ -91,13 +100,16 @@ createMerkleTree tx = let dtx = (duplicateLast tx)
 
 -- | calculate Merkle root of given sequence
 -- to calculate merkle root hash we do not need explicit tree data structure
-computeMerkleRoot :: (CryptoHash alg, Serialise a) => [a] -> Maybe (Hash alg)
-computeMerkleRoot []     = Nothing -- Here we can put (Hash "0") and remove Maybe
+computeMerkleRoot
+  :: (CryptoHash alg, Serialise a)
+  => [a]
+  -> Hash alg
+computeMerkleRoot []     = nullHash -- Here we can put (Hash "0") and remove Maybe
 computeMerkleRoot tx = let dtx = (duplicateLast tx)
                            hashes = map computeLeafHash dtx
                        in go hashes
   where
-   go [h] = Just h
+   go [h] = h
    go hs  = go (combine hs)
 
    -- If number of hashes is odd, duplicate last hash in the list.
@@ -124,6 +136,9 @@ chunksOf2 xs = case splitAt 2 xs of
   (c,cs) -> c : chunksOf2 cs
 
 
-computeLeafHash :: (CryptoHash alg, Serialise a) => a -> Hash alg
+computeLeafHash
+  :: (CryptoHash alg, Serialise a)
+  => a
+  -> Hash alg
 computeLeafHash a = hash (0::Int, a)
 
