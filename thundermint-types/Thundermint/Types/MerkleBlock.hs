@@ -18,6 +18,8 @@ module Thundermint.Types.MerkleBlock
   , computeMerkleRoot
   -- * Building tree
   , createMerkleTree
+  -- * Check tree
+  , isBalanced
   ) where
 
 
@@ -46,24 +48,32 @@ data MerkleBlockTree alg a = MerkleBlockTree
 -- | Single node of tree
 data Node alg a
   = Branch (Hash alg) (Node alg a) (Node alg a)
-  | Leaf   (Hash alg)
+  | Leaf   (Hash alg) a
   | Empty
   deriving (Show, Generic)
 
-{-
-data MerklePath alg a
-  = R (Hash alg) (MerklePath alg a)
-  | L (MerklePath alg a) (Hash alg)
-  | Init (Hash alg)
--}
 
+
+instance Foldable (Node alg) where
+  foldMap f x = case x of
+    Empty        -> mempty
+    Leaf _ a     -> f a
+    Branch _ l r -> foldMap f l `mappend` foldMap f r
+
+  null Empty = True
+  null _     = False
 
 nullHash :: CryptoHash alg => Hash alg
-nullHash = Hash "0"
+nullHash = Hash ""
 
 
 nullRoot :: CryptoHash alg => MerkleBlockRoot alg
 nullRoot  = MerkleBlockRoot nullHash
+
+
+----------------------------------------------------------------
+-- Build tree, compute rooth hash
+----------------------------------------------------------------
 
 -- | Create Merkle tree
 -- similar to compute merkle root hash, but use intermediate calculatio of hashes to construct merkle tree
@@ -73,7 +83,7 @@ createMerkleTree
   -> MerkleBlockTree alg a
 createMerkleTree []     = MerkleBlockTree nullRoot Empty
 createMerkleTree tx = let dtx = (duplicateLast tx)
-                          leaves :: [Node alg a]= map  (Leaf . computeLeafHash) dtx
+                          leaves :: [Node alg a]= map  (\x -> Leaf ( computeLeafHash x) x) dtx
                           tree@(Branch h _ _) = go leaves
                       in MerkleBlockTree (MerkleBlockRoot h) tree
   where
@@ -90,7 +100,7 @@ createMerkleTree tx = let dtx = (duplicateLast tx)
     -- combine hashes bye pair and get hashes of next level of tree
     combine hs = map concatNodes (chunksOf2 hs)
 
-    concatNodes [l@(Leaf a), r@(Leaf b)]             = Branch (hash (1::Int, [a,b])) l r
+    concatNodes [l@(Leaf a _), r@(Leaf b _)]         = Branch (hash (1::Int, [a,b])) l r
     concatNodes [l@(Branch a _ _), r@(Branch b _ _)] = Branch (hash (1::Int, [a,b])) l r
     concatNodes [b@(Branch a _ _)]                   = Branch (hash (1::Int, [a,a])) b b
     concatNodes []                                   = error "The chunk of 2 of non empty has empty item"
@@ -141,4 +151,27 @@ computeLeafHash
   => a
   -> Hash alg
 computeLeafHash a = hash (0::Int, a)
+
+
+----------------------------------------------------------------
+-- Balance checker
+----------------------------------------------------------------
+
+isBalanced
+  :: forall alg a. (CryptoHash alg, Serialise a)
+  => Node alg a
+  -> Bool
+isBalanced tree | go tree > 0 = True
+                | otherwise = False
+  where
+   go :: Node alg a -> Int
+   go Empty = 1 -- empty tree asume is balancde
+   go (Leaf {}) = 0
+   go (Branch _ l r) | lH == (-1) = -1
+                     | rH == (-1) = -1
+                     | abs(lH - rH) > 1 = (-1)
+                     | otherwise = 1 + (max lH rH)
+       where
+         lH = go l
+         rH = go r
 
