@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns    #-}
 {-# LANGUAGE DataKinds       #-}
 {-# LANGUAGE RankNTypes      #-}
 {-# LANGUAGE RecordWildCards #-}
@@ -86,8 +87,9 @@ newBChState BlockFold{..} = do
             EQ -> return (st, (s,False))
             LT -> do b <- throwNothing (DBMissingBlock h) <=< queryRO
                         $ retrieveBlock h
-                     let checkSignature = if succ h == hBlk then CheckSignature else AlreadyChecked
-                     checkSignature `seq` case processBlock checkSignature b s of
+                     let !checkSignature | succ h == hBlk = CheckSignature
+                                         | otherwise      = AlreadyChecked
+                     case processBlock checkSignature b s of
                        Just st' -> do
                          let h' = succ h
                          let Height hToCheck = h
