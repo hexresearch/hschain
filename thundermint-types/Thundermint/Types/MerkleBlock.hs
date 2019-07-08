@@ -20,6 +20,7 @@ module Thundermint.Types.MerkleBlock
   , createMerkleTree
   -- * Check tree
   , isBalanced
+  , isBalanced'
   ) where
 
 
@@ -55,6 +56,10 @@ data Node alg a
 
 
 instance Foldable (Node alg) where
+  foldr _ acc Empty          = acc
+  foldr f acc (Leaf _ x)     = f x acc
+  foldr f acc (Branch _ l r) = foldr f (foldr f acc r) l
+
   foldMap f x = case x of
     Empty        -> mempty
     Leaf _ a     -> f a
@@ -152,6 +157,9 @@ computeLeafHash
   -> Hash alg
 computeLeafHash a = hash (0::Int, a)
 
+----------------------------------------------------------------
+-- Merkel Proof
+----------------------------------------------------------------
 
 ----------------------------------------------------------------
 -- Balance checker
@@ -167,11 +175,21 @@ isBalanced tree | go tree > 0 = True
    go :: Node alg a -> Int
    go Empty = 1 -- empty tree asume is balancde
    go (Leaf {}) = 0
-   go (Branch _ l r) | lH == (-1) = -1
-                     | rH == (-1) = -1
+   go (Branch _ l r) | lH == (-1) = (-1)
+                     | rH == (-1) = (-1)
                      | abs(lH - rH) > 1 = (-1)
                      | otherwise = 1 + (max lH rH)
        where
          lH = go l
          rH = go r
 
+isBalanced'
+  :: forall alg a. (CryptoHash alg, Serialise a)
+  => Node alg a
+  -> (Int, Bool)
+isBalanced' Empty = (0,True)
+isBalanced' (Leaf {})  = (1,True)
+isBalanced' (Branch _ l r) =
+    let (lH, lB) = isBalanced' l
+        (rH, rB) = isBalanced' r
+    in (1 + max lH rH, abs (lH - rH) <= 1 && lB && rB)

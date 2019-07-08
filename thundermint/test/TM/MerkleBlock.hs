@@ -52,6 +52,8 @@ prop_MerkleBlockTree :: [BS] -> Property
 prop_MerkleBlockTree bs = property $
   and [ ((rootHash . merkleBlockRoot) tree) == (computeMerkleRoot $ unWrap bs)
       , isBalanced (merkleBlockTree tree)
+      , snd $ isBalanced' (merkleBlockTree tree)
+
       ]
   where
     tree   :: (MerkleBlockTree SHA512 ByteString)
