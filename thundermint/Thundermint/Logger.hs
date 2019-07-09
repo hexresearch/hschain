@@ -284,11 +284,12 @@ makeEsUrlScribe serverPath index sev verb = do
 ----------------------------------------------------------------
 
 -- | Wrapper for log data for logging purposes
-data LogBlockInfo a = LogBlockInfo !Height !a
+data LogBlockInfo a = LogBlockInfo !Height !a !Int
 
 instance BlockData a => ToObject (LogBlockInfo a) where
-  toObject (LogBlockInfo (Height h) a)
-    = HM.insert "H" (toJSON h)
+  toObject (LogBlockInfo (Height h) a ns)
+    = HM.insert "H"     (toJSON h)
+    $ HM.insert "nsign" (toJSON ns)
     $ logBlockData a
 
 instance BlockData a => LogItem (LogBlockInfo a) where

@@ -156,7 +156,10 @@ decideNewBlock config appValidatorKey appLogic@AppLogic{..} appCall@AppCallbacks
         lift (retrievePropByID appPropStorage (currentH hParam) (commitBlockID cmt)) >>= \case
           Nothing -> msgHandlerLoop (Just cmt) tm
           Just b  -> lift $ do
-            logger InfoS "Actual commit" $ LogBlockInfo (currentH hParam) (blockData b)
+            logger InfoS "Actual commit" $ LogBlockInfo
+              (currentH hParam)
+              (blockData b)
+              (maybe 0 (length . commitPrecommits) (blockLastCommit b))
             case appCommitQuery of
               SimpleQuery callback -> do
                 r <- queryRW $ do storeCommit cmt b
