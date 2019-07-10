@@ -18,9 +18,13 @@ module Thundermint.Types.MerkleBlock
   , computeMerkleRoot
   -- * Building tree
   , createMerkleTree
+  , treeLeaves
   -- * Check tree
   , isBalanced
   , isBalanced'
+  -- * Merkle proof
+  , merklePath
+  , merkleProof
   ) where
 
 
@@ -157,9 +161,40 @@ computeLeafHash
   -> Hash alg
 computeLeafHash a = hash (0::Int, a)
 
+treeLeaves :: (CryptoHash alg, Serialise a)  => Node alg a -> [a]
+treeLeaves Empty          = []
+treeLeaves (Leaf _ x)     = [x]
+treeLeaves (Branch _ l r) = treeLeaves l ++ treeLeaves r
+
 ----------------------------------------------------------------
 -- Merkel Proof
 ----------------------------------------------------------------
+
+-- |
+-- return the path from leaf to root of branch if any
+merklePath :: (CryptoHash alg, Serialise a) => Node alg a -> Hash alg -> [Either (Hash alg) (Hash alg)]
+merklePath tree nodeHash = recur [] tree
+  where
+    recur _ Empty = []
+    recur acc (Leaf h _)
+        | h == nodeHash = acc
+        | otherwise = []
+
+    recur acc (Branch _ l r) = recur (Right (getHash' r) : acc) l ++ recur (Left (getHash' l) : acc) r
+
+    getHash' Empty          = nullHash
+    getHash' (Leaf h _)     = h
+    getHash' (Branch h _ _) = h
+
+
+merkleProof :: CryptoHash alg => Hash alg -> [Either (Hash alg) (Hash alg)] -> Hash alg -> (Hash alg, Bool)
+merkleProof rootHash proofPath leafHash = (computeHash, computeHash == rootHash)
+  where
+    computeHash = foldl (\acc x -> case x of
+                                   Left s  ->  hash (1::Int, [s, acc])
+                                   Right s ->  hash (1::Int, [acc, s])) leafHash proofPath
+
+
 
 ----------------------------------------------------------------
 -- Balance checker
@@ -193,3 +228,6 @@ isBalanced' (Branch _ l r) =
     let (lH, lB) = isBalanced' l
         (rH, rB) = isBalanced' r
     in (1 + max lH rH, abs (lH - rH) <= 1 && lB && rB)
+
+
+
