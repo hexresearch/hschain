@@ -6,6 +6,6 @@ validatorKeys:
   - "4bcPSxioBPbHVpfTTfsWBHwFX4mZhdcqNiXimrFp8QBu"
 # Coin specification
 coinAridrop        : 1000
-coinWallets        : 1000
+coinWallets        : 8000
 coinWalletsSeed    : 1337
-coinGeneratorDelay : 100
+coinGeneratorDelay : 30
