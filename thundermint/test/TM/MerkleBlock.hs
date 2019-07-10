@@ -18,6 +18,7 @@ import Test.Tasty.HUnit
 import Test.Tasty.QuickCheck
 
 import Data.ByteString (ByteString)
+import System.Random   (randomRIO)
 
 import qualified Data.ByteString as BS
 
@@ -33,9 +34,14 @@ import Thundermint.Types.MerkleBlock
 -- | Merkle tree tests
 tests :: TestTree
 tests = testGroup "Block Merkle tree (fanout=2)"
-        [testProperty "Constructed tree is correct" prop_MerkleBlockTree]
+        [ testProperty "Constructed tree is correct" prop_MerkleBlockTree
+--        , testProperty "Merkle proof of inclusion is correct" prop_MerkleProofCorrect
+        ]
 
 newtype BS = BS ByteString
+  deriving (Show)
+
+newtype BSList = BSList [ByteString]
   deriving (Show)
 
 instance Arbitrary BS where
@@ -46,6 +52,14 @@ instance Arbitrary BS where
                    | x <- shrink (BS.unpack bs)
                    , not (null x)
                    ]
+
+-- instance Arbitrary BSList where
+--   arbitrary = do
+--     n <- choose (1,4000)
+--     BSList . map  BS.pack <$> vectorOf n arbitrary
+--   shrink (BSList bs) = [BSList [x | x <- shrink bs
+--                               , not (null x)
+--                               ]]
 
 
 prop_MerkleBlockTree :: [BS] -> Property
@@ -62,4 +76,25 @@ prop_MerkleBlockTree bs = property $
     unWrap xs = [blob | BS blob <- xs]
 
 
+-- | Merkle tree proof tests
+--
+prop_MerkleProofCorrect :: BS  -> Property
+prop_MerkleProofCorrect (BS bs) = ioProperty $ do
+  index <- randomRIO (0, n-1)
+  let leafBS = leaves !! index
+      leafHash = (hash (0::Int, leafBS))
+
+      path = merklePath tree leafHash
+
+  return $ snd $ merkleProof rootH path leafHash
+  where
+    mTree   :: (MerkleBlockTree SHA512 ByteString)
+    mTree = createMerkleTree $ BS.group bs
+    -- unWrap :: [BS] -> [ByteString]
+    -- unWrap xs = [blob | BS blob <- xs]
+
+    tree = merkleBlockTree mTree
+    rootH = rootHash $ merkleBlockRoot mTree
+    leaves = treeLeaves tree
+    n = length leaves
 
