@@ -12,9 +12,9 @@
 
 module TM.MerkleBlock where
 
-import Data.Maybe
+import Data.List (nub)
+
 import Test.Tasty
-import Test.Tasty.HUnit
 import Test.Tasty.QuickCheck
 
 import Data.ByteString (ByteString)
@@ -35,7 +35,7 @@ import Thundermint.Types.MerkleBlock
 tests :: TestTree
 tests = testGroup "Block Merkle tree (fanout=2)"
         [ testProperty "Constructed tree is correct" prop_MerkleBlockTree
---        , testProperty "Merkle proof of inclusion is correct" prop_MerkleProofCorrect
+        , testProperty "Merkle proof of inclusion is correct" prop_MerkleProofCorrect
         ]
 
 newtype BS = BS ByteString
@@ -61,7 +61,8 @@ instance Arbitrary BS where
 --                               , not (null x)
 --                               ]]
 
-
+-- |
+-- test tree root hash, is balanced
 prop_MerkleBlockTree :: [BS] -> Property
 prop_MerkleBlockTree bs = property $
   and [ ((rootHash . merkleBlockRoot) tree) == (computeMerkleRoot $ unWrap bs)
@@ -73,11 +74,11 @@ prop_MerkleBlockTree bs = property $
     tree   :: (MerkleBlockTree SHA512 ByteString)
     tree = createMerkleTree $ unWrap bs
     unWrap :: [BS] -> [ByteString]
-    unWrap xs = [blob | BS blob <- xs]
+    unWrap xs = nub [blob | BS blob <- xs]
 
 
--- | Merkle tree proof tests
---
+-- |
+-- Merkle tree proof tests
 prop_MerkleProofCorrect :: BS  -> Property
 prop_MerkleProofCorrect (BS bs) = ioProperty $ do
   index <- randomRIO (0, n-1)
@@ -89,12 +90,12 @@ prop_MerkleProofCorrect (BS bs) = ioProperty $ do
   return $ snd $ merkleProof rootH path leafHash
   where
     mTree   :: (MerkleBlockTree SHA512 ByteString)
-    mTree = createMerkleTree $ BS.group bs
+    mTree = createMerkleTree $ nub $ BS.group bs
     -- unWrap :: [BS] -> [ByteString]
     -- unWrap xs = [blob | BS blob <- xs]
 
     tree = merkleBlockTree mTree
     rootH = rootHash $ merkleBlockRoot mTree
-    leaves = treeLeaves tree
+    leaves = nub $ treeLeaves tree
     n = length leaves
 
