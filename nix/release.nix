@@ -32,7 +32,7 @@ let
   # Generate packages for thundermint
   thundermintPackages = hsPkgs: {
     thundermint-crypto = callInternal hsPkgs "thundermint" ../thundermint-crypto {}
-      (if useSodium then "-flibsodium" else "");
+      (if useSodium then "-flibsodium" else "-f-libsodium");
     thundermint-quickcheck = callInternal hsPkgs "thundermint" ../thundermint-quickcheck    {} "";
     thundermint-types      = callInternal hsPkgs "thundermint" ../thundermint-types         {} "";
     thundermint            = callInternal hsPkgs "thundermint" ../thundermint               {} "";
