@@ -51,7 +51,7 @@ steps:
   - "echo -n \"$${NIX_CACHE_SIGNING_KEY}\" > \"$${HOME}/nix-cache-key.sec\""
   - "chmod 400 \"$${HOME}/nix-cache-key.sec\""
   - cd nix
-  - ./build-ci.sh --argstr ghc ghc863
+  - ./build-ci.sh --argstr ghc ghc865
   environment:
     DRONE_GITHUB_PULL_KEY:
       from_secret: drone_github_pull_key

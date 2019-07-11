@@ -6,7 +6,10 @@
 }:
 let
   pkgs     = import ./pkgs.nix { inherit config overlays; };
-  config   = { allowUnfree = true; };
+  config   = {
+    allowUnfree = true;
+    allowBroken = true;
+  };
   overlays = [ overlay ];
   # General utilds
   lib       = pkgs.haskell.lib;
@@ -48,7 +51,7 @@ let
   release = {
     inherit pkgs;
     ghc844 = p: with p; [ thundermint-crypto thundermint-types thundermint ];
-    ghc863 = p: with p; [ thundermint-crypto thundermint-types thundermint ];
+    ghc865 = p: with p; [ thundermint-crypto thundermint-types thundermint ];
     ghcjs  = p: with p; [ thundermint-crypto thundermint-types  ];
     };
 in release

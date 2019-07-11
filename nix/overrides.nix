@@ -1,5 +1,5 @@
 {
-  versions = ["ghc844" "ghc863" "ghcjs"];
+  versions = ["ghc844" "ghc865" "ghcjs"];
   # List of packages with custom overrides
   derivations = {
     haskell = ./derivations/haskell;
@@ -8,6 +8,7 @@
   # Common overrides for librarise
   haskell = {
     katip-elasticsearch = { check = false; };
+    Lazy-Pbkdf2         = { check = false; };
     serialise           = { check = false; };
     tasty               = { check = false; };
     cborg               = { check = false; };
@@ -17,7 +18,7 @@
     thundermint        = { haddock = false; };
   };
   # Compiler specific overrides
-  ghc863 = {
+  ghc865 = {
     bloodhound           = { check = false; jailbreak = true;};
     # https://github.com/tsuraan/bytestring-arbitrary/issues/10
     bytestring-arbitrary = { jailbreak = true; };

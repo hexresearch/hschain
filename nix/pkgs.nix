@@ -1,9 +1,7 @@
-# Release is pinned to the stable 1809 branch
+# Release is pinned to the stable 1903 branch
 let
-#  rev = "e542fc2c94dbebeb51757dbd9ab3f54c41652858";
-# sha256 = "1321yr0s7kijpnpzpg3dnqyh92wcmj5d6qpl9jhx7mrvrjniqqkz";
-  rev = "889815fd7bf633d3a7c116dbf3598f57129cd221";
-  sha256  = "1pxbzasf371gh64174l10nd64bkjlcdn0akpjc3cz25sr0v5vsx9";
+  rev     = "ecc64b374b26df7c198f0d01bd2cb559cd7062a4";
+  sha256  = "sha256:1gi76qgf7622hb03yz7kjgw41vy79pfk0gwsvb0m5wq6vi19dp78";
 in
 import (builtins.fetchTarball {
   inherit sha256;
