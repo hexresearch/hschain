@@ -50,8 +50,8 @@ let
   #
   release = {
     inherit pkgs;
-    ghc844 = p: with p; [ thundermint-crypto thundermint-types thundermint ];
-    ghc865 = p: with p; [ thundermint-crypto thundermint-types thundermint ];
+    ghc844 = p: with p; [ thundermint-crypto thundermint-types thundermint-quickcheck thundermint ];
+    ghc865 = p: with p; [ thundermint-crypto thundermint-types thundermint-quickcheck thundermint ];
     ghcjs  = p: with p; [ thundermint-crypto thundermint-types  ];
     };
 in release
