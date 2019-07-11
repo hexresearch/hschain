@@ -54,6 +54,8 @@ data MerkleBlockTree alg a = MerkleBlockTree
 data Node alg a
   = Branch (Hash alg) (Node alg a) (Node alg a)
   | Leaf   (Hash alg) a
+  | LeafH  (Hash alg) a
+  -- ^ to ignore in proof path constructing
   | Empty
   deriving (Show, Generic)
 
@@ -62,11 +64,13 @@ data Node alg a
 instance Foldable (Node alg) where
   foldr _ acc Empty          = acc
   foldr f acc (Leaf _ x)     = f x acc
+  foldr f acc (LeafH _ x)    = f x acc
   foldr f acc (Branch _ l r) = foldr f (foldr f acc r) l
 
   foldMap f x = case x of
     Empty        -> mempty
     Leaf _ a     -> f a
+    LeafH _ a    -> f a
     Branch _ l r -> foldMap f l `mappend` foldMap f r
 
   null Empty = True
@@ -91,30 +95,35 @@ createMerkleTree
   => [a]
   -> MerkleBlockTree alg a
 createMerkleTree []     = MerkleBlockTree nullRoot Empty
-createMerkleTree tx = let dtx = (duplicateLast tx)
-                          leaves :: [Node alg a]= map  (\x -> Leaf ( computeLeafHash x) x) dtx
+createMerkleTree tx = let leaves :: [Node alg a]= map  (\x -> Leaf ( computeLeafHash x) x) tx
                           tree@(Branch h _ _) = go leaves
                       in MerkleBlockTree (MerkleBlockRoot h) tree
   where
-    go [b] = b
-    go hs  = go (combine hs)
-
-    -- If number of hashes is odd, duplicate last hash in the list.
-    -- this last function is O(n) we should go with
-    -- Data.Sequence which supports O(1) insertion and removal of items at both ends.
-    -- this procedure for the list with duplicate elements will resulting in a vulnerability (CVE-2012-2459).
-    duplicateLast xs | odd (length xs) = xs ++ [last xs]
-                    | otherwise = xs
+    go [b@Branch{}] = b
+    go hs           = go (combine hs)
 
     -- combine hashes bye pair and get hashes of next level of tree
     combine hs = map concatNodes (chunksOf2 hs)
 
-    concatNodes [l@(Leaf a _), r@(Leaf b _)]         = Branch (hash (1::Int, [a,b])) l r
-    concatNodes [l@(Branch a _ _), r@(Branch b _ _)] = Branch (hash (1::Int, [a,b])) l r
-    concatNodes [b@(Branch a _ _)]                   = Branch (hash (1::Int, [a,a])) b b
-    concatNodes []                                   = error "The chunk of 2 of non empty has empty item"
-    concatNodes _                                    = error "impossible case in createMerkletree for block' transactions"
+    -- |
+    concatNodes :: (CryptoHash alg, Serialise a) => [Node alg a] -> Node alg a
+    -- If number of hashes is odd, duplicate last hash in the list.
+    -- this procedure for the list with non distinct elements will resulting in a vulnerability (CVE-2012-2459).
+    concatNodes [l@(Leaf a x)]        = Branch (hash (1::Int, [a,a])) l (LeafH a x)
 
+    concatNodes [l@(Leaf a _), r@(Leaf b _)]         = Branch (hash (1::Int, [a,b])) l r
+
+    concatNodes [l@(Branch a _ _), r@(Branch b _ _)] = Branch (hash (1::Int, [a,b])) l r
+    concatNodes [b@(Branch a _ _)]                   = Branch (hash (1::Int, [a,a])) b (conv b)  -- duplicate the odd branch and convert to LeafH to igonre in path cosntructing
+
+    concatNodes []                                   = error "Impossible case: the chunk of 2 of non empty has empty item"
+    concatNodes _                                    = error "Impossible case: in createMerkletree for block' transactions"
+
+    -- | replace Leaf with LeafH to ignore in path
+    conv Empty          = Empty
+    conv (Leaf h a)     = LeafH h a
+    conv (LeafH h a)    = LeafH h a
+    conv (Branch h l r) = Branch h (conv l) (conv r)
 
 
 -- | calculate Merkle root of given sequence
@@ -123,7 +132,7 @@ computeMerkleRoot
   :: (CryptoHash alg, Serialise a)
   => [a]
   -> Hash alg
-computeMerkleRoot []     = nullHash -- Here we can put (Hash "0") and remove Maybe
+computeMerkleRoot []     = nullHash
 computeMerkleRoot tx = let dtx = (duplicateLast tx)
                            hashes = map computeLeafHash dtx
                        in go hashes
@@ -132,9 +141,7 @@ computeMerkleRoot tx = let dtx = (duplicateLast tx)
    go hs  = go (combine hs)
 
    -- If number of hashes is odd, duplicate last hash in the list.
-   -- this last function is O(n) we should go with
-   -- Data.Sequence which supports O(1) insertion and removal of items at both ends.
-   -- this procedure for the list with duplicate elements will resulting in a vulnerability
+   -- this procedure for the list with non distinct elements will resulting in a vulnerability
    duplicateLast xs | odd (length xs) = xs ++ [last xs]
                     | otherwise = xs
 
@@ -164,6 +171,7 @@ computeLeafHash a = hash (0::Int, a)
 treeLeaves :: (CryptoHash alg, Serialise a)  => Node alg a -> [a]
 treeLeaves Empty          = []
 treeLeaves (Leaf _ x)     = [x]
+treeLeaves (LeafH _ _)    = []
 treeLeaves (Branch _ l r) = treeLeaves l ++ treeLeaves r
 
 ----------------------------------------------------------------
@@ -176,6 +184,7 @@ merklePath :: (CryptoHash alg, Serialise a) => Node alg a -> Hash alg -> [Either
 merklePath tree nodeHash = recur [] tree
   where
     recur _ Empty = []
+    recur _ LeafH {} = []
     recur acc (Leaf h _)
         | h == nodeHash = acc
         | otherwise = []
@@ -184,6 +193,7 @@ merklePath tree nodeHash = recur [] tree
 
     getHash' Empty          = nullHash
     getHash' (Leaf h _)     = h
+    getHash' (LeafH h _)    = h
     getHash' (Branch h _ _) = h
 
 
@@ -199,7 +209,8 @@ merkleProof rootHash proofPath leafHash = (computeHash, computeHash == rootHash)
 ----------------------------------------------------------------
 -- Balance checker
 ----------------------------------------------------------------
-
+-- |
+-- optimal algorithm
 isBalanced
   :: forall alg a. (CryptoHash alg, Serialise a)
   => Node alg a
@@ -210,6 +221,7 @@ isBalanced tree | go tree > 0 = True
    go :: Node alg a -> Int
    go Empty = 1 -- empty tree asume is balancde
    go (Leaf {}) = 0
+   go (LeafH {}) = 0
    go (Branch _ l r) | lH == (-1) = (-1)
                      | rH == (-1) = (-1)
                      | abs(lH - rH) > 1 = (-1)
@@ -218,12 +230,15 @@ isBalanced tree | go tree > 0 = True
          lH = go l
          rH = go r
 
+-- |
+-- more intuitive way to check
 isBalanced'
   :: forall alg a. (CryptoHash alg, Serialise a)
   => Node alg a
   -> (Int, Bool)
 isBalanced' Empty = (0,True)
 isBalanced' (Leaf {})  = (1,True)
+isBalanced' (LeafH {})  = (1,True)
 isBalanced' (Branch _ l r) =
     let (lH, lB) = isBalanced' l
         (rH, rB) = isBalanced' r
