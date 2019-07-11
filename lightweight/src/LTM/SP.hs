@@ -42,6 +42,10 @@ instance Monad (SP i) where
   N      >>= _ = N
   O o sp >>= g = g o <|> (sp >>= g)
   I f    >>= g = I $ \i -> f i >>= g
+  fail _ = N
+
+input :: SP i i
+input = I return
 
 infixl 1 `transCompose`
 
@@ -96,3 +100,23 @@ above termP sp = case sp of
                            N -> empty
                            O o sp -> withOutput o sp
                            I g' -> wait g'
+
+newtype SPB i o a = SPB { runSPB :: SP i (Either o a)}
+
+instance Functor (SPB i o) where
+  fmap f = SPB . fmap (fmap f) . runSPB
+
+instance Applicative (SPB i o) where
+  pure = SPB . return . Right
+  SPB spf <*> SPB spa = SPB $ liftA2 (<*>) spf spa
+
+instance Monad (SPB i o) where
+  return = pure
+  SPB spa >>= q = SPB $ case spa of
+    N -> N
+    O (Left o) sp -> O (Left o) $ runSPB (SPB sp >>= q)
+    O (Right r) sp -> runSPB (q r) <|> runSPB (SPB sp >>= q)
+    I f -> I $ runSPB . ((>>= q) . SPB) . f
+
+out :: o -> SPB i o a
+out o = SPB $ O (Left o) N

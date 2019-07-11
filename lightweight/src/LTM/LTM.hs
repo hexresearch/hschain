@@ -3,8 +3,9 @@
 --
 
 {-# LANGUAGE DeriveAnyClass, DeriveFunctor, GADTs #-}
-{-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE RecordWildCards, StandaloneDeriving #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 module LTM.LTM where
 
@@ -36,17 +37,15 @@ class LTMState state where
   -- |Type of outgoing messages.
   type OutputMessage state :: *
 
-  -- |Should we propose at this height and round?
-  shouldPropose :: Height -> Round -> state -> Bool
-
   -- |Form the block from state, modifying state in the process.
-  proposal :: Height -> Round -> state -> (block, state)
+  -- Nothing means we aren't proposing.
+  proposal :: state -> Maybe (Block state, state)
 
   -- |Get a list of peer identifiers from state.
   peersList :: state -> [PeerId state]
 
-  -- |Timeout for round, microseconds.
-  roundTimeout :: state -> Microseconds
+  -- |Timeout for propose, microseconds.
+  proposeTime :: state -> Microseconds
 
   -- |Receive a vote. A processor that
   -- awaits for input messages and returns
@@ -56,23 +55,34 @@ class LTMState state where
 
   -- 
 
-lightweightThundermint :: Height -> state -> SP () ()
-lightweightThundermint height state = loop height 0 state
+type LTMSP state a = SPB (Timed (InputMessage state)) (UpDown state (OutputMessage state)) a
+lightweightThundermint :: LTMState state
+                       => state
+                       -> LTMSP state ()
+lightweightThundermint state = loop state
   where
-    loop height round state = do
-      (state, block) <- proposeReceive height round state
-      block <- precommit height round state block
-      (height, round, state) <- commit height round state block
-      loop height round state
+    loop state = do
+      (state, block) <- proposeReceive state
+      block <- precommit state block
+      state <- commit state block
+      loop state
+
+proposeReceive :: LTMState state => state -> LTMSP state (state, Block state)
+proposeReceive state = error "propo rec"
+
+precommit = error "pcm"
+commit = error "comt"
+
+{-
 
 -- |Send proposa
-proposeReceive :: Height -> Round -> state
-               -> SP (UpDown (Timed (InputMessage state)) ()) (UpDown ()())
+proposeReceive :: state
+               -> SPB (Timed (InputMessage state)) (UpDown state (OutputMessage state)) ()
 proposeReceive height round state = do
-  state' <- if shouldPropose height round state
+  state' <- if shouldPropose state
     then do
-      let (block, state') = proposal height round state
-      multicast height round block state'
+      let (block, state') = proposal state
+      multicast block state'
       return state'
     else return state
   withTimeout roundTimeout state' PreVote $ do
@@ -81,13 +91,48 @@ proposeReceive height round state = do
 selectProposal :: a
 selectProposal = undefined
 
-multicast :: Height -> Round -> Block state -> state -> SP a (OutputMessage state)
-multicast height round block state = error "multicast!"
+multicast :: Block state -> state -> SP a (OutputMessage state)
+multicast block state = error "multicast!"
 
 withTimeout :: (state -> Microseconds)
             -> state
             -> VotingStage
             -> SP (InputMessage state) state
             -> SP (UpDown () ()) ()
-withTimeout us stage belowProcessor =
+withTimeout us state stage belowProcessor =
   undefined
+-}
+
+--------------------------------------------------------------------------------
+-- tests.
+
+data TestState = TestState
+  { testStateHeight      :: Height
+  , testStateRound       :: Round
+  , testStateId          :: String
+  , testStatePeers       :: [String]
+  , testStateState       :: [String] -- strings received.
+  , testStateWaitingMsgs :: [String] -- strings waiting to be sent.
+  } deriving Show
+
+instance LTMState TestState where
+  type PeerId TestState = String
+  type OutputMessage TestState = ()
+  type InputMessage TestState = ()
+  type Block TestState = (PeerId TestState, Height, [String])
+
+  proposal state@TestState{..}
+    | mod (testStateHeight + testStateRound) n == ourIndex =
+      Just
+        ( (testStateId, testStateHeight, take 1 testStateWaitingMsgs)
+        , state { testStateWaitingMsgs = drop 1 testStateWaitingMsgs })
+    | otherwise = Nothing
+    where
+      n = length testStatePeers
+      ourIndex = length $ takeWhile (/= testStateId) testStatePeers
+
+  peersList state@TestState{..} = testStatePeers
+
+  proposeTime _state = 100000
+
+  receiveVote = undefined
