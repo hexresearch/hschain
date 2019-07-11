@@ -1,7 +1,7 @@
 { isProfile  ? false
 , isProd     ? false
 , isCoreLint ? false
-, useSodium  ? false
+, useSodium  ? true
 , ghc        ? "ghc844"
 }:
 let
