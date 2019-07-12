@@ -20,5 +20,11 @@ in
       pkgs.libsodium
     ];
     packages = release."${ghc}";
-    
+    # NOTE: this is workaround for problem with building
+    #       thundermint-types. Without this build fails
+    #       mysteriously. Note that build with nix-build is not
+    #       affected.
+    shellHook = ''
+      export LD_LIBRARY_PATH=${pkgs.libsodium}/lib''${LD_LIBRARY_PATH:+:}$LD_LIBRARY_PATH
+      '';
   }
