@@ -15,6 +15,12 @@ import pandas as pd
 import statsmodels.api as sm
 
 # ----------------------------------------------------------------
+# Some settings
+# ----------------------------------------------------------------
+
+FIGURE_SIZE = [16, 9]
+
+# ----------------------------------------------------------------
 # Extracting data from full data frame
 # ----------------------------------------------------------------
 
@@ -151,7 +157,7 @@ class CommitData(object):
 class SimplePlot(object):
     "Simple plotter"
     def __init__(self):
-        self.fig = plt.figure()
+        self.fig = plt.figure(figsize=FIGURE_SIZE)
         self.ax  = plt.subplot(111)
         plt.grid()
     def __enter__(self):
@@ -175,7 +181,7 @@ class LegendPlot(object):
 
 
 def figure_with_legend():
-    fig = plt.figure(figsize=[9, 4.8])
+    fig = plt.figure(figsize=FIGURE_SIZE)
     ax  = plt.subplot(111)
     box = ax.get_position()
     ax.set_position([box.x0, box.y0, box.width * 0.8, box.height])
