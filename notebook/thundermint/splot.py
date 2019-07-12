@@ -49,7 +49,9 @@ def read_trace(log,i) :
 
 def splot(logs, w=1900) :
     nLogs = len(logs)
-    trace = pd.concat([read_trace(log,i) for i,log in enumerate(logs.values())]).sort_values(by='at').reset_index()
+    trace = pd.concat([read_trace(log.cons,i)
+                       for i,log
+                       in enumerate(logs.values())]).sort_values(by='at').reset_index()
     with tempfile.NamedTemporaryFile(mode='w', suffix='.trace', delete=False) as f :
         for i in range(nLogs) :
             print( "%s <NODE%i XXX" % (trace['at'][0], i), file=f.file)

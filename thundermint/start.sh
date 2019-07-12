@@ -1,10 +1,9 @@
-#!/usr/bin/env bash
-set -e
+#!/bin/bash
 
 trap 'kill 0' SIGINT
 
-cabal new-run exe:thundermint-coin-node -- config/coin-node1.yaml "$@" &
-cabal new-run exe:thundermint-coin-node -- config/coin-node2.yaml "$@" &
-cabal new-run exe:thundermint-coin-node -- config/coin-node3.yaml "$@" &
-cabal new-run exe:thundermint-coin-node -- config/coin-node4.yaml "$@" &
-
+thundermint-coin-node config/common.yaml config/local.yaml config/local1.yaml &
+thundermint-coin-node config/common.yaml config/local.yaml config/local2.yaml &
+thundermint-coin-node config/common.yaml config/local.yaml config/local3.yaml &
+thundermint-coin-node config/common.yaml config/local.yaml config/local4.yaml
+kill 0

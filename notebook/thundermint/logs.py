@@ -10,35 +10,48 @@ import pandas as pd
 # Loading logs
 # ================================================================
 
-class Log(object):
-    "Log file decoded as data frame"
+keys = set(['at','ns','data','msg','sev'])
 
-    def __init__(self, fname = None, lines = None) :
-        # Dispatch on arguments
-        def load_line(s) :
-            try:
-                return json.loads(s)
-            except json.JSONDecodeError as e:
-                print("Parse error %s" % format(e))
-                print(s)
-                raise e
-        #
-        if lines is not None:
-            rows = lines
-        elif fname is not None:
-            with open(fname) as f :
-                rows = [ load_line(s) for s in f.readlines() if s.strip() != ""]
-        else:
-            raise Exception("Nor lines nor file is set")
+def gen_dicts(itr):
+    """
+    Helper function which generates list of dictionaries to be made in
+    data frames
+    """
+    for s in itr:
+        s = s.strip()
+        if s == "":
+            continue
+        try:
+            r = json.loads(s)
+        except json.JSONDecodeError as e:
+            print("Parse error %s" % format(e))
+            print(s)
+            raise e
+        r = json.loads(s)
+        r = {k:r[k] for k in keys}
+        r['ns'] = r['ns'][1:]
+        if not r['ns']:
+            continue
+        yield(r)
+
+
+class Log(object):
+    """
+    Import logs as data frames. Data is read line-by-line from some
+    iterable. Most likely file
+    """
+
+    def __init__(self, iterable) :
+        """
+        """
         # Load data
-        df       = pd.DataFrame.from_records(rows, columns=['at','data','msg','ns','sev'])
+        df       = pd.DataFrame.from_records(gen_dicts(iterable), columns=keys)
         df['at'] = pd.to_datetime(df['at'])
-        df['ns'] = df['ns'].apply(lambda x : x[-1])
         #
-        self.all     = df
-        self.net     = df[df['ns'] == 'net'].drop(['ns'], axis=1)
-        self.cons    = df[df['ns'] == 'consensus'].drop(['ns'], axis=1)
-        self.mempool = df[df['ns'] == 'mempool'].drop(['ns'], axis=1).copy()
+        self.df      = df
+        # self.net     = df[df['ns'] == 'net'].drop(['ns'], axis=1)
+        self.cons = df[df['ns'].apply(lambda ns: ns==["consensus"])].drop(['ns'], axis=1)
+        self.mempool = df[df['ns'].apply(lambda ns: ns == ['consensus','mempool'])].drop(['ns'], axis=1).copy()
         self.mempool['size']      = self.mempool['data'].apply(lambda x: x['size'])
         self.mempool['filtered']  = self.mempool['data'].apply(lambda x: x['filtered'])
         self.mempool['added']     = self.mempool['data'].apply(lambda x: x['added'])
@@ -61,3 +74,11 @@ class Log(object):
         df  = pd.DataFrame.from_records(net['data'].values)
         df['at'] = net['at']
         return df
+
+
+def load_logs_files(prefix, names):
+    dct = {}
+    for nm in names:
+        with open(prefix+"/"+nm) as f:
+            dct[nm] = Log(f)
+    return dct
