@@ -57,7 +57,7 @@ class CommitData(object):
         # Calculate relative time
         t0  = np.min([df['at'].values[0] for df in dfs.values() if len(df) > 0])
         for k, df in dfs.items() :
-            df['dt'] = (df['at'] - t0).astype('timedelta64[s]')
+            df['dt'] = (df['at'].dt.tz_localize(None) - t0).astype('timedelta64[ms]') / 1000
         # Calculate linear fit
         points   = pd.concat([d for _,d in dfs.items()])
         hs       = points['H'].values
