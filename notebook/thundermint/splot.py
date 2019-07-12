@@ -53,10 +53,10 @@ def splot(logs, w=1900) :
                        in enumerate(logs.values())]).sort_values(by='at').reset_index()
     with tempfile.NamedTemporaryFile(mode='w', suffix='.trace', delete=False) as f :
         for i in range(nLogs) :
-            print( "%s <NODE%i XXX" % (trace['at'][0], i), file=f.file)
-            print( "%s <NODE%i XXX" % (trace['at'][0], 1000+i), file=f.file)
+            print( "%s <NODE%i XXX" % (trace['at'][0].tz_localize(None), i), file=f.file)
+            print( "%s <NODE%i XXX" % (trace['at'][0].tz_localize(None), 1000+i), file=f.file)
         for _,q in trace.iterrows() :
-            print( "%s >NODE%i %s" % (q['at'], q['node'], q['msg']), file=f.file)
+            print( "%s >NODE%i %s" % (q['at'].tz_localize(None), q['node'], q['msg']), file=f.file)
         with tempfile.NamedTemporaryFile(suffix='.png') as out :
             subprocess.run(["splot", "-w", str(w), "-h", str(nLogs*2*30), "-bh 18", "-if", f.name, "-o", out.name],
                            check=True)
