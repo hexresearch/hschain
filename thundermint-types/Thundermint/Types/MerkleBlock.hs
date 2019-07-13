@@ -46,7 +46,7 @@ instance Serialise (MerkleBlockRoot alg)
 --
 data MerkleBlockTree alg a = MerkleBlockTree
   { merkleBlockRoot :: !(MerkleBlockRoot alg)
-  , merkleBlockTree :: !(Node alg a)
+  , merkleBlockTree :: !(Maybe (Node alg a))
   }
   deriving (Show, Generic)
 
@@ -56,28 +56,22 @@ data Node alg a
   | Leaf   (Hash alg) a
   | LeafH  (Hash alg) a
   -- ^ to ignore in proof path constructing
-  | Empty
   deriving (Show, Generic)
 
 
 
 instance Foldable (Node alg) where
-  foldr _ acc Empty          = acc
   foldr f acc (Leaf _ x)     = f x acc
   foldr f acc (LeafH _ x)    = f x acc
   foldr f acc (Branch _ l r) = foldr f (foldr f acc r) l
 
   foldMap f x = case x of
-    Empty        -> mempty
     Leaf _ a     -> f a
     LeafH _ a    -> f a
     Branch _ l r -> foldMap f l `mappend` foldMap f r
 
-  null Empty = True
-  null _     = False
-
 nullHash :: CryptoHash alg => Hash alg
-nullHash = Hash ""
+nullHash = hash (2:: Int)
 
 
 nullRoot :: CryptoHash alg => MerkleBlockRoot alg
@@ -94,10 +88,10 @@ createMerkleTree
   :: forall alg a.  (CryptoHash alg, Serialise a)
   => [a]
   -> MerkleBlockTree alg a
-createMerkleTree []     = MerkleBlockTree nullRoot Empty
+createMerkleTree []     = MerkleBlockTree nullRoot Nothing
 createMerkleTree tx = let leaves :: [Node alg a]= map  (\x -> Leaf ( computeLeafHash x) x) tx
                           tree@(Branch h _ _) = go leaves
-                      in MerkleBlockTree (MerkleBlockRoot h) tree
+                      in MerkleBlockTree (MerkleBlockRoot h) (Just tree)
   where
     go [b@Branch{}] = b
     go hs           = go (combine hs)
@@ -120,7 +114,6 @@ createMerkleTree tx = let leaves :: [Node alg a]= map  (\x -> Leaf ( computeLeaf
     concatNodes _                                    = error "Impossible case: in createMerkletree for block' transactions"
 
     -- | replace Leaf with LeafH to ignore in path
-    conv Empty          = Empty
     conv (Leaf h a)     = LeafH h a
     conv (LeafH h a)    = LeafH h a
     conv (Branch h l r) = Branch h (conv l) (conv r)
@@ -169,7 +162,6 @@ computeLeafHash
 computeLeafHash a = hash (0::Int, a)
 
 treeLeaves :: (CryptoHash alg, Serialise a)  => Node alg a -> [a]
-treeLeaves Empty          = []
 treeLeaves (Leaf _ x)     = [x]
 treeLeaves (LeafH _ _)    = []
 treeLeaves (Branch _ l r) = treeLeaves l ++ treeLeaves r
@@ -180,10 +172,10 @@ treeLeaves (Branch _ l r) = treeLeaves l ++ treeLeaves r
 
 -- |
 -- return the path from leaf to root of branch if any
-merklePath :: (CryptoHash alg, Serialise a) => Node alg a -> Hash alg -> [Either (Hash alg) (Hash alg)]
-merklePath tree nodeHash = recur [] tree
+merklePath :: (CryptoHash alg, Serialise a) => Maybe (Node alg a) -> Hash alg -> [Either (Hash alg) (Hash alg)]
+merklePath Nothing _ = []
+merklePath (Just tree) nodeHash = recur [] tree
   where
-    recur _ Empty = []
     recur _ LeafH {} = []
     recur acc (Leaf h _)
         | h == nodeHash = acc
@@ -191,7 +183,6 @@ merklePath tree nodeHash = recur [] tree
 
     recur acc (Branch _ l r) = recur (Right (getHash' r) : acc) l ++ recur (Left (getHash' l) : acc) r
 
-    getHash' Empty          = nullHash
     getHash' (Leaf h _)     = h
     getHash' (LeafH h _)    = h
     getHash' (Branch h _ _) = h
@@ -213,13 +204,13 @@ merkleProof rootHash proofPath leafHash = (computeHash, computeHash == rootHash)
 -- optimal algorithm
 isBalanced
   :: forall alg a. (CryptoHash alg, Serialise a)
-  => Node alg a
+  => Maybe (Node alg a)
   -> Bool
-isBalanced tree | go tree > 0 = True
-                | otherwise = False
+isBalanced Nothing = True
+isBalanced (Just tree) | go tree > 0 = True
+                       | otherwise = False
   where
    go :: Node alg a -> Int
-   go Empty = 1 -- empty tree asume is balancde
    go (Leaf {}) = 0
    go (LeafH {}) = 0
    go (Branch _ l r) | lH == (-1) = (-1)
@@ -234,15 +225,18 @@ isBalanced tree | go tree > 0 = True
 -- more intuitive way to check
 isBalanced'
   :: forall alg a. (CryptoHash alg, Serialise a)
-  => Node alg a
-  -> (Int, Bool)
-isBalanced' Empty = (0,True)
-isBalanced' (Leaf {})  = (1,True)
-isBalanced' (LeafH {})  = (1,True)
-isBalanced' (Branch _ l r) =
-    let (lH, lB) = isBalanced' l
-        (rH, rB) = isBalanced' r
-    in (1 + max lH rH, abs (lH - rH) <= 1 && lB && rB)
+  => Maybe (Node alg a)
+  -> Bool
+isBalanced' Nothing          = True
+isBalanced' (Just tree)      = snd $ go tree
+  where
+    go :: Node alg a -> (Int, Bool)
+    go (Leaf {})   = (1,True)
+    go (LeafH {})  = (1,True)
+    go (Branch _ l r) =
+        let (lH, lB) = go l
+            (rH, rB) = go r
+        in (1 + max lH rH, abs (lH - rH) <= 1 && lB && rB)
 
 
 
