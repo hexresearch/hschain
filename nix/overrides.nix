@@ -8,11 +8,7 @@
   # Common overrides for librarise
   haskell = {
     katip-elasticsearch = { check = false; };
-    Lazy-Pbkdf2         = { check = false; };
-    serialise           = { check = false; };
-    tasty               = { check = false; };
-    cborg               = { check = false; };
-
+    #
     thundermint-crypto = { haddock = false; };
     thundermint-types  = { haddock = false; };
     thundermint        = { haddock = false; };
@@ -25,12 +21,12 @@
   };
   ghcjs = {
     SHA                   = { check = false; };
-    aeson                 = { check = false; };
+    cborg                 = { check = false; };
     half                  = { check = false; };
     quickcheck-assertions = { check = false; };
     scientific            = { check = false; };
     tasty-quickcheck      = { check = false; };
-    tasty-hedgehog        = { check = false; };
+    QuickCheck            = { check = false; };
     # Test have dependency on cryptonite
     Lazy-Pbkdf2           = { check = false; };
   };
