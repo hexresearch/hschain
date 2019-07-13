@@ -9,3 +9,4 @@ coinAridrop        : 1000
 coinWallets        : 8000
 coinWalletsSeed    : 1337
 coinGeneratorDelay : 30
+nodeMaxH: 100
