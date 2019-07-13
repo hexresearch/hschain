@@ -9,6 +9,7 @@
 
 module LTM.LTM where
 
+import Control.Applicative
 import Control.Monad (when, forM, forM_)
 
 import qualified Data.Map as Map
@@ -17,6 +18,8 @@ import qualified Data.Set as Set
 import Text.Printf
 
 import LTM.SP
+
+import qualified Debug.Trace as DT
 
 type Height = Int
 type Round = Int
@@ -57,6 +60,9 @@ class LTMState state where
   -- |Type of outgoing messages.
   type OutputMessage state :: *
 
+  -- |Get current height and round.
+  getHeightRound :: state -> (Height, Round)
+
   -- |Form the block from state, modifying state in the process.
   -- Nothing means we aren't proposing.
   proposal :: state -> Maybe (Block state, [OutputMessage state], state)
@@ -64,84 +70,80 @@ class LTMState state where
   -- |Add a vote from ourselves.
   addSelfVote :: Maybe (Block state) -> state -> state
 
+  -- |Collect a vote from message.
+  addVote :: InputMessage state -> state -> state
+
+  -- |Are there enough votes so we can stop collecting them?
+  enoughVotes :: state -> Bool
+
   -- |Get a list of peer identifiers from state.
   peersList :: state -> [PeerId state]
 
   -- |Timeout for propose, microseconds.
   halfRoundTime :: state -> Microseconds
 
-  -- |Receive a vote. A processor that
-  -- awaits for input messages and returns
-  -- voting messages - pairs (peer ID, Vote).
-  -- State parameter is used as witness.
-  receiveVote :: state -> SP (InputMessage state) (PeerId state, Vote)
+  -- |Get block consent.
+  getBlockConsent :: state -> Maybe (Block state)
 
-  -- 
+  -- |Clear votes.
+  clearVotes :: state -> state
 
-type LTMSP state a = SPB (LTMIn state) (LTMOut state) a
+type LTMSP state a = SP (LTMIn state) (Either (LTMOut state) a)
 
 type LTM state = LTMSP state ()
 
 lightweightThundermint :: LTMState state
                        => state
                        -> LTM state
-lightweightThundermint state = loop state
+lightweightThundermint = loop
   where
-    loop state = do
-      (state, block) <- proposeReceive state
-      (state, block) <- precommit state block
-      state <- commit state block
-      loop state
+    loop state =
+      proposeReceive state
+      >>=^ \(state, block) -> precommit state block
+      >>=^ \state -> commit state block
+      >>=^ loop
 
 proposeReceive :: LTMState state => state -> LTMSP state (state, Maybe (Block state))
-proposeReceive state = withTimeout (halfRoundTime state) $ do
-  case proposal state of
-    Just (block, blockMessages, state') -> do
-      forM_ blockMessages outMessage
-      collect (addSelfVote (Just block) state') (Just block)
-    Nothing -> collect state Nothing
+proposeReceive state = withTimeout state halfRoundTime PreVote $ do
+  propose state
+  >>=^ \state' -> collect state'
   where
-    collect state maybeBlock = error "collect!"
+    (h, r) = getHeightRound state
+    propose state = case proposal state of
+      Just (block, blockMessages, state') ->
+        forSPE_ blockMessages outMessage
+        >>=^ \_ -> returnR (addSelfVote (Just block) $ clearVotes state')
+      Nothing -> returnR state
+    collect state
+      | enoughVotes state = returnR (state, getBlockConsent state)
+      | otherwise = inputR
+         >>=^ \msg -> case msg of
+          InMessage inMsg -> collect (addVote inMsg state)
+          _ -> collect state
 
 outMessage :: OutputMessage state -> LTMSP state ()
 outMessage msg = out $ OutMessage msg
 
-withTimeout :: Microseconds -> LTMSP state a -> LTMSP state a
-withTimeout waitFor processor = do
-  error "with timeout"
+withTimeout :: LTMState state => state -> (state -> Microseconds) -> VotingStage -> LTMSP state a -> LTMSP state a
+withTimeout state getWaitTime votingStage processor = do
+  out $ RequestTimeout h r votingStage (getWaitTime state)
+  loop processor
+  where
+    (h, r) = getHeightRound state
+    loop processor = do
+      processor
 
-precommit = error "pcm"
-commit state = error "comt"
+returnR :: a -> SP i (Either o a)
+returnR = return . Right
 
-{-
+inputR :: SPE i o i
+inputR = fmap Right input
 
--- |Send proposa
-proposeReceive :: state
-               -> SPB (Timed (InputMessage state)) (UpDown state (OutputMessage state)) ()
-proposeReceive height round state = do
-  state' <- if shouldPropose state
-    then do
-      let (block, state') = proposal state
-      multicast block state'
-      return state'
-    else return state
-  withTimeout roundTimeout state' PreVote $ do
-    scanSP selectProposal state' (receiveVote state')
+precommit state block = returnR state
 
-selectProposal :: a
-selectProposal = undefined
-
-multicast :: Block state -> state -> SP a (OutputMessage state)
-multicast block state = error "multicast!"
-
-withTimeout :: (state -> Microseconds)
-            -> state
-            -> VotingStage
-            -> SP (InputMessage state) state
-            -> SP (UpDown () ()) ()
-withTimeout us state stage belowProcessor =
-  undefined
--}
+commit :: state -> Maybe (Block state) -> LTMSP state state
+commit state block =
+  out (NewHeight state) >>=^ const (returnR state)
 
 --------------------------------------------------------------------------------
 -- tests.
@@ -179,6 +181,8 @@ instance LTMState TestState where
   type InputMessage TestState = Either (OutputMessage TestState) [String]
   type Block TestState = (PeerId TestState, Height, [String])
 
+  getHeightRound state@TestState{..} = (testStateHeight, testStateRound)
+
   proposal state@TestState{..}
     | mod (testStateHeight + testStateRound) n == ourIndex =
       Just
@@ -195,10 +199,27 @@ instance LTMState TestState where
 
   halfRoundTime _state = 100000
 
-  receiveVote = undefined
+  enoughVotes TestState{..} = sum (map Set.size $ Map.elems testStateVotesForBlock) > threshold
+    where
+      peerCount = length testStatePeers
+      threshold = div (peerCount * 2) 3
 
   addSelfVote maybeBlock state@TestState{..} =
     state { testStateVotesForBlock = Map.insertWith Set.union maybeBlock (Set.singleton testStateId) testStateVotesForBlock }
+
+  addVote (Left (us, them, TSProposal block)) state@TestState {..}
+    = state { testStateVotesForBlock = Map.insertWith Set.union (Just block) (Set.singleton them) testStateVotesForBlock }
+  addVote (Left (us, them, TSPrevote maybeBlock)) state@TestState {..}
+    = state { testStateVotesForBlock = Map.insertWith Set.union maybeBlock (Set.singleton them) testStateVotesForBlock }
+  addVote (Right sortaTransactions) state@TestState {..}
+    = state { testStateWaitingMsgs = testStateWaitingMsgs ++ sortaTransactions }
+
+  getBlockConsent state@TestState{..} = head (Map.keys consent ++ [Nothing])
+    where
+      peerCount = length testStatePeers
+      threshold = div (peerCount * 2) 3
+      consent = Map.filter ((>threshold) . Set.size) testStateVotesForBlock
+  clearVotes state = state { testStateVotesForBlock = Map.empty }
 
 testIds :: [String]
 testIds = ["n-" ++ printf "%03d" (i + 1) | i <- [0 :: Int .. 3]]
@@ -210,13 +231,28 @@ findSomeOuts processors = searchOut [] [] $ Map.toList processors
   where
     searchOut outputs acc [] = (outputs, Map.fromAscList $ reverse acc)
     searchOut outputs acc ((i, ltm) : iltms) = case ltm of
-      SPB (O o sp) -> searchOut ((i, o):outputs) acc ((i, SPB sp) : iltms)
+      O o sp -> searchOut ((i, o):outputs) acc ((i, sp) : iltms)
       _ -> searchOut outputs ((i,ltm) : acc) iltms
 
 run :: [Either (LTMOut TestState) ()] -> [Either (LTMOut TestState) ()]
     -> Map.Map String (LTM TestState) -> [(String, Either (LTMOut TestState) ())]
 run [] [] processors = case findSomeOuts processors of
-  ([], procs) -> error "no messages and no outputs!"
+  ([], procs)
+    | not (null stopped) -> error $ "stopped: "++show stopped
+    | otherwise -> error "no messages and no outputs!"
   (os, procs) -> os ++ run [] (map snd os) procs
+  where
+    stopped = [ i | (i, N) <- Map.toList processors]
+run acc (msg : msgs) processors = case msg of
+  Right _ -> error "there must not be Right seen"
+  -- no notion of time right now.
+  Left (RequestTimeout _ _ _ _) -> run acc msgs processors
+  -- new height is purely bureacratic for us.
+  Left (NewHeight _) -> run acc msgs processors
+  Left (OutMessage om@(dest, src, msg)) -> case processor of
+    N -> error "definitely an internal error"
+    I f -> let sp = f (InMessage $ Left om) in run acc msgs $ Map.insert dest sp processors
+    where
+      processor = Map.findWithDefault (error "no processor?") dest processors
 
 t = run [] [] testLTMMap

@@ -1,4 +1,4 @@
-{-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE BangPatterns, FlexibleInstances, FunctionalDependencies, MultiParamTypeClasses #-}
 
 module LTM.SP
   ( module LTM.SP
@@ -27,7 +27,7 @@ instance Applicative (SP i) where
   O f spF <*> spA = spF <*> spA <|> fmap f spA
   N       <*> _   = N
   _       <*> N   = N
-  I f     <*> I g = I (\i -> f i <*> g i)
+  I f     <*> spA = I (\i -> f i <*> spA)
 
 instance Alternative (SP i) where
   empty = N
@@ -44,8 +44,11 @@ instance Monad (SP i) where
   I f    >>= g = I $ \i -> f i >>= g
   fail _ = N
 
-input :: SP i i
-input = I return
+class HasInput m i | m -> i where
+  input :: m i
+
+instance HasInput (SP i) i where
+  input = I return
 
 infixl 1 `transCompose`
 
@@ -98,8 +101,31 @@ above termP sp = case sp of
                            | otherwise -> wait g
                          Down dnEv -> case g dnEv of
                            N -> empty
-                           O o sp -> withOutput o sp
+                           O o sp' -> withOutput o sp'
                            I g' -> wait g'
+
+type SPE i l a = SP i (Either l a)
+
+infixr 1 >>=^
+(>>=^) :: SPE i l a -> (a -> SPE i l b) -> SPE i l b
+O (Left l) sp >>=^ q = O (Left l) $ sp >>=^ q
+O (Right a) sp >>=^ q = (sp >>=^ q) <|> q a
+I f >>=^ q = I $ (>>=^ q) . f
+N >>=^ _ = N
+
+mapSPE :: (a -> SPE i l b) -> [a] -> SPE i l [b]
+mapSPE f [] = pure (Right [])
+mapSPE f (x:xs) = f x >>=^ \y -> mapSPE f xs >>=^ \ys -> pure (Right (y:ys))
+
+mapSPE_ :: (a -> SPE i l ()) -> [a] -> SPE i l ()
+mapSPE_ f [] = pure (Right ())
+mapSPE_ f (x:xs) = f x >>=^ \_ -> mapSPE_ f xs >>=^ \_ -> pure (Right ())
+
+forSPE :: [a] -> (a -> SPE i l b) -> SPE i l [b]
+forSPE = flip mapSPE
+
+forSPE_ :: [a] -> (a -> SPE i l ()) -> SPE i l ()
+forSPE_ = flip mapSPE_
 
 newtype SPB i o a = SPB { runSPB :: SP i (Either o a)}
 
@@ -108,15 +134,28 @@ instance Functor (SPB i o) where
 
 instance Applicative (SPB i o) where
   pure = SPB . return . Right
-  SPB spf <*> SPB spa = SPB $ liftA2 (<*>) spf spa
+  ~(SPB spf) <*> ~(SPB spa) = SPB $ liftA2 (<*>) spf spa
+
+instance Alternative (SPB i o) where
+  empty = SPB empty
+  ~(SPB a) <|> ~(SPB b) = SPB $ a <|> b
 
 instance Monad (SPB i o) where
   return = pure
-  SPB spa >>= q = SPB $ case spa of
+  ~(SPB spa) >>= q = SPB $ case spa of
     N -> N
     O (Left o) sp -> O (Left o) $ runSPB (SPB sp >>= q)
     O (Right r) sp -> runSPB (q r) <|> runSPB (SPB sp >>= q)
     I f -> I $ runSPB . ((>>= q) . SPB) . f
 
-out :: o -> SPB i o a
-out o = SPB $ O (Left o) N
+out :: o -> SP i (Either o ())
+out o = O (Left o) N <|> return (Right ())
+
+instance HasInput (SPB i o) i where
+  input = SPB $ fmap Right input
+
+takeApply :: [i] -> SP i o -> [o]
+takeApply xs (O o sp) = o : takeApply xs sp
+takeApply xs N = []
+takeApply [] _ = []
+takeApply (x:xs) (I f) = takeApply xs (f x)
