@@ -65,14 +65,16 @@ instance Arbitrary BS where
 -- test tree root hash, is balanced
 prop_MerkleBlockTree :: [BS] -> Property
 prop_MerkleBlockTree bs = property $
-  and [ ((rootHash . merkleBlockRoot) tree) == (computeMerkleRoot $ unWrap bs)
-      , isBalanced (merkleBlockTree tree)
-      , snd $ isBalanced' (merkleBlockTree tree)
+  and [ rootH == (computeMerkleRoot $ unWrap bs)
+--      , isBalanced  tree
+      , isBalanced' tree
 
       ]
   where
-    tree   :: (MerkleBlockTree SHA512 ByteString)
-    tree = createMerkleTree $ unWrap bs
+    mTree   :: MerkleBlockTree SHA512 ByteString
+    mTree = createMerkleTree $ unWrap bs
+    tree = merkleBlockTree  mTree
+    rootH = rootHash . merkleBlockRoot $ mTree
     unWrap :: [BS] -> [ByteString]
     unWrap xs = nub [blob | BS blob <- xs]
 
@@ -89,13 +91,17 @@ prop_MerkleProofCorrect (BS bs) = ioProperty $ do
 
   return $ snd $ merkleProof rootH path leafHash
   where
-    mTree   :: (MerkleBlockTree SHA512 ByteString)
-    mTree = createMerkleTree $ nub $ BS.group bs
+    blockTree :: MerkleBlockTree SHA512 ByteString
+    blockTree = createMerkleTree $ nub $ BS.group bs
     -- unWrap :: [BS] -> [ByteString]
     -- unWrap xs = [blob | BS blob <- xs]
 
-    tree = merkleBlockTree mTree
-    rootH = rootHash $ merkleBlockRoot mTree
-    leaves = nub $ treeLeaves tree
-    n = length leaves
+    tree = merkleBlockTree blockTree
+    rootH = rootHash $ merkleBlockRoot blockTree
+
+    (n, leaves) = case tree of
+                          Just t -> let xs = (nub . treeLeaves) t
+                                    in (length xs, xs)
+                          Nothing -> (0, [])
+
 
