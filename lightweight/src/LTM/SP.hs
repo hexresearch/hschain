@@ -106,12 +106,15 @@ above termP sp = case sp of
 
 type SPE i l a = SP i (Either l a)
 
-infixr 1 >>=^
+infixr 1 >>=^, >>^
 (>>=^) :: SPE i l a -> (a -> SPE i l b) -> SPE i l b
 O (Left l) sp >>=^ q = O (Left l) $ sp >>=^ q
 O (Right a) sp >>=^ q = (sp >>=^ q) <|> q a
 I f >>=^ q = I $ (>>=^ q) . f
 N >>=^ _ = N
+
+(>>^) :: SPE i l a -> SPE i l b -> SPE i l b
+a >>^ b = a >>=^ const b
 
 mapSPE :: (a -> SPE i l b) -> [a] -> SPE i l [b]
 mapSPE f [] = pure (Right [])

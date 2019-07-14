@@ -71,7 +71,7 @@ class LTMState state where
   addSelfVote :: Maybe (Block state) -> state -> state
 
   -- |Collect a vote from message.
-  addVote :: InputMessage state -> state -> state
+  addVote :: InputMessage state -> state -> ([OutputMessage state], state)
 
   -- |Are there enough votes so we can stop collecting them?
   enoughVotes :: state -> Bool
@@ -118,7 +118,9 @@ proposeReceive state = withTimeout state halfRoundTime PreVote $ do
       | enoughVotes state = returnR (state, getBlockConsent state)
       | otherwise = inputR
          >>=^ \msg -> case msg of
-          InMessage inMsg -> collect (addVote inMsg state)
+          InMessage inMsg -> let (messages, state') = addVote inMsg state
+            in forSPE_ messages outMessage
+               >>^ collect state'
           _ -> collect state
 
 outMessage :: OutputMessage state -> LTMSP state ()
@@ -208,11 +210,11 @@ instance LTMState TestState where
     state { testStateVotesForBlock = Map.insertWith Set.union maybeBlock (Set.singleton testStateId) testStateVotesForBlock }
 
   addVote (Left (us, them, TSProposal block)) state@TestState {..}
-    = state { testStateVotesForBlock = Map.insertWith Set.union (Just block) (Set.singleton them) testStateVotesForBlock }
+    = (map (\it->(it, us, TSPrevote (Just block))) testStatePeers, state { testStateVotesForBlock = Map.insertWith Set.union (Just block) (Set.singleton them) testStateVotesForBlock })
   addVote (Left (us, them, TSPrevote maybeBlock)) state@TestState {..}
-    = state { testStateVotesForBlock = Map.insertWith Set.union maybeBlock (Set.singleton them) testStateVotesForBlock }
+    = ([], state { testStateVotesForBlock = Map.insertWith Set.union maybeBlock (Set.singleton them) testStateVotesForBlock })
   addVote (Right sortaTransactions) state@TestState {..}
-    = state { testStateWaitingMsgs = testStateWaitingMsgs ++ sortaTransactions }
+    = ([], state { testStateWaitingMsgs = testStateWaitingMsgs ++ sortaTransactions })
 
   getBlockConsent state@TestState{..} = head (Map.keys consent ++ [Nothing])
     where
@@ -249,9 +251,10 @@ run acc (msg : msgs) processors = case msg of
   Left (RequestTimeout _ _ _ _) -> run acc msgs processors
   -- new height is purely bureacratic for us.
   Left (NewHeight _) -> run acc msgs processors
-  Left (OutMessage om@(dest, src, msg)) -> case processor of
+  Left (OutMessage om@(dest, src, _)) -> case processor of
     N -> error "definitely an internal error"
     I f -> let sp = f (InMessage $ Left om) in run acc msgs $ Map.insert dest sp processors
+    O o sp -> (dest, o) : run acc (msg : (msgs ++ [o])) (Map.insert dest sp processors)
     where
       processor = Map.findWithDefault (error "no processor?") dest processors
 
