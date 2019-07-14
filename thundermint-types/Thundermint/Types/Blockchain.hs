@@ -41,33 +41,37 @@ module Thundermint.Types.Blockchain (
   , CheckSignature(..)
   ) where
 
-import           Codec.Serialise
-import           Codec.Serialise.Decoding
-import           Codec.Serialise.Encoding
-import           Control.DeepSeq
-import           Control.Monad
-import           Control.Monad.IO.Class   (MonadIO(..))
-import qualified Data.Aeson               as JSON
-import           Data.Aeson               ((.=), (.:))
-import           Data.ByteString          (ByteString)
-import qualified Data.HashMap.Strict      as HM
-import           Data.Bits                ((.&.))
-import           Data.Coerce
-import           Data.Int
-import           Data.List                (sortBy)
-import qualified Data.List.NonEmpty       as NE
-import           Data.Monoid              ((<>))
-import           Data.Ord                 (comparing)
-import           Data.Time.Clock          (UTCTime)
-import           Data.Time.Clock.POSIX    (getPOSIXTime,posixSecondsToUTCTime)
-import           Data.Vector.Unboxed.Deriving
-import           GHC.Generics             (Generic)
+import Codec.Serialise
+import Codec.Serialise.Decoding
+import Codec.Serialise.Encoding
+import Control.DeepSeq
+import Control.Monad
+import Data.Coerce
+import Data.Int
+import Data.Vector.Unboxed.Deriving
+
+import Control.Monad.IO.Class (MonadIO(..))
+import Data.Aeson             ((.:), (.=))
+import Data.Bits              ((.&.))
+import Data.ByteString        (ByteString)
+import Data.List              (sortBy)
+import Data.Monoid            ((<>))
+import Data.Ord               (comparing)
+import Data.Time.Clock        (UTCTime)
+import Data.Time.Clock.POSIX  (getPOSIXTime, posixSecondsToUTCTime)
+import GHC.Generics           (Generic)
+
+import qualified Data.Aeson          as JSON
+import qualified Data.HashMap.Strict as HM
+import qualified Data.List.NonEmpty  as NE
+
 #ifdef INSTANCES_SQLITE
 import qualified Database.SQLite.Simple.FromField as SQL
 import qualified Database.SQLite.Simple.ToField   as SQL
 #endif
 
 import Thundermint.Crypto
+import Thundermint.Types.MerkleBlock
 import Thundermint.Types.Validators
 
 
@@ -161,6 +165,7 @@ instance (Crypto alg, Serialise     a) => Serialise     (Block alg a)
 instance (Crypto alg, JSON.FromJSON a) => JSON.FromJSON (Block alg a)
 instance (Crypto alg, JSON.ToJSON   a) => JSON.ToJSON   (Block alg a)
 
+
 -- | Genesis block has many field with predetermined content so this
 --   is convenience function to create genesis block.
 makeGenesis
@@ -181,6 +186,7 @@ makeGenesis chainID t dat valSet = Block
       , headerDataHash       = hashed dat
       , headerLastCommitHash = hashed Nothing
       , headerEvidenceHash   = hashed []
+      , headerMerkleHash     = Hashed $ computeMerkleRoot dat -- ??
       }
   , blockData       = dat
   , blockValChange  = delta
@@ -213,6 +219,8 @@ data Header alg a = Header
     -- ^ Hash of last commit
   , headerEvidenceHash   :: !(Hashed alg [ByzantineEvidence alg a])
     -- ^ Hash of evidence of byzantine behavior
+  , headerMerkleHash     :: !(Hashed alg a)
+    -- ^ Hash of merkle tree root of block data
   }
   deriving (Show, Eq, Generic)
 instance NFData    (Header alg a)
@@ -229,6 +237,8 @@ instance CryptoHash alg => JSON.ToJSON (Header alg a) where
                 , "headerValChangeHash"  .= headerValChangeHash
                 , "headerLastCommitHash" .= headerLastCommitHash
                 , "headerEvidenceHash"   .= headerEvidenceHash
+                , "headerMerkleHash"     .= headerMerkleHash
+
                 ]
 
 instance CryptoHash alg => JSON.FromJSON (Header alg a) where
@@ -242,6 +252,8 @@ instance CryptoHash alg => JSON.FromJSON (Header alg a) where
     headerValChangeHash  <- o .: "headerValChangeHash"
     headerLastCommitHash <- o .: "headerLastCommitHash"
     headerEvidenceHash   <- o .: "headerEvidenceHash"
+    headerMerkleHash     <- o .: "headerMerkleHash"
+
     return Header{..}
     where
       fromBase58 = maybe complain return . decodeBase58
@@ -304,8 +316,8 @@ commitTime vset t0 Commit{..} = do
       half     = fromIntegral $ totPower `div` 2
   case odd totPower of
     True  -> case zDrop half times of
-      (_,t):_         -> return t
-      _               -> Nothing
+      (_,t):_ -> return t
+      _       -> Nothing
     False -> case zDrop (half - 1) times of
       (1,t1):(_,t2):_ -> return $ average t1 t2
       (_,t ):_        -> return t
