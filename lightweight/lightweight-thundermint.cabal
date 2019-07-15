@@ -55,6 +55,10 @@ library
                    , LTM.LTM
                    , LTM.Types
 
+                   -- demos
+                   , LTM.SimpleDemo
+                   , LTM.KeyValueDemo
+
   -- Modules included in this library but not exported.
   -- other-modules:
 
