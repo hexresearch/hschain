@@ -171,23 +171,29 @@ transitions = BlockFold
 
 -- | Specification of generator of transactions
 data TxGenerator = TxGenerator
-  { genPrivateKeys :: V.Vector (PrivKey Alg)
+  { genPrivateKeys    :: V.Vector (PrivKey Alg)
     -- ^ Private keys for which we can generate transactions
-  , genDestinaions :: V.Vector (PublicKey Alg)
+  , genDestinaions    :: V.Vector (PublicKey Alg)
     -- ^ List of all addresses to which we can send money
-  , genDelay       :: Int
+  , genDelay          :: Int
     -- ^ Delay between invokations of generator
+  , genMaxMempoolSize :: Int
   }
 
 transactionGenerator
   :: MonadIO m
   => TxGenerator
+  -> Mempool m Alg Tx
   -> m CoinState
   -> (Tx -> m ())
   -> m a
-transactionGenerator gen coinState push = forever $ do
-  push =<< generateTransaction gen =<< coinState
+transactionGenerator gen mempool coinState push = forever $ do
+  size <- mempoolSize mempool
+  when (maxN > 0 && size < maxN) $
+    push =<< generateTransaction gen =<< coinState
   liftIO $ threadDelay $ genDelay gen * 1000
+  where
+    maxN = genMaxMempoolSize gen
 
 generateTransaction :: MonadIO m => TxGenerator -> CoinState -> m Tx
 generateTransaction TxGenerator{..} (CoinState utxo) = liftIO $ do
@@ -220,9 +226,10 @@ mintMockCoin
 mintMockCoin nodes CoinSpecification{..} =
   ( do delay <- coinGeneratorDelay
        return TxGenerator
-         { genPrivateKeys = V.fromList privK
-         , genDestinaions = V.fromList pubK
-         , genDelay       = delay
+         { genPrivateKeys    = V.fromList privK
+         , genDestinaions    = V.fromList pubK
+         , genDelay          = delay
+         , genMaxMempoolSize = coinMaxMempoolSize
          }
   , makeGenesis "MONIES" (Time 0) txs valSet
   )
@@ -297,7 +304,10 @@ executeNodeSpec (NetSpec{..} :*: coin@CoinSpecification{..}) = do
     Nothing  -> return []
     Just txG -> forM rnodes $ \(RunningNode{..}, _) -> do
       cursor <- getMempoolCursor rnodeMempool
-      return $ transactionGenerator txG (currentState rnodeState) (void . pushTransaction cursor)
+      return $ transactionGenerator txG
+        rnodeMempool
+        (currentState rnodeState)
+        (void . pushTransaction cursor)
   -- Actually run nodes
   lift   $ catchAbort $ runConcurrently $ (snd =<< rnodes) ++ txGens
   return $ fst <$> rnodes

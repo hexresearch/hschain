@@ -96,7 +96,10 @@ main = do
         Nothing  -> return []
         Just txG -> do
           cursor <- getMempoolCursor rnodeMempool
-          return [transactionGenerator txG (currentState rnodeState) (void . pushTransaction cursor)]
+          return [transactionGenerator txG
+                    rnodeMempool
+                    (currentState rnodeState)
+                    (void . pushTransaction cursor)]
       logOnException $ runConcurrently $ txGen ++ acts
 
 parser :: Parser Opts

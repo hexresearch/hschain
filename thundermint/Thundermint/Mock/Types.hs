@@ -122,6 +122,7 @@ data CoinSpecification = CoinSpecification
  , coinWallets        :: !Int         -- ^ Number of wallets in use
  , coinWalletsSeed    :: !Int         -- ^ Seed used to generate private keys for wallets
  , coinGeneratorDelay :: !(Maybe Int) -- ^ Delay between TX generation. Nothing means don't generate
+ , coinMaxMempoolSize :: !Int         -- ^ If mempool exceeds size new txs won't be generated
  }
  deriving (Generic,Show)
 
