@@ -49,6 +49,7 @@ import qualified Thundermint.P2P.Types as P2PT
 
 data Opts = Opts
   { cmdConfigPath :: [FilePath]
+  , optMaxH       :: Maybe Height
   }
 
 data NodeCfg = NodeCfg
@@ -91,7 +92,7 @@ main = do
     lift $ run $ do
       (RunningNode{..},acts) <- interpretSpec
         (nspec :*: cfg :*: bnet)
-        (maybe mempty callbackAbortAtH nodeMaxH)
+        (maybe mempty callbackAbortAtH (optMaxH <|> nodeMaxH))
       txGen <- case mtxGen of
         Nothing  -> return []
         Just txG -> do
@@ -104,6 +105,11 @@ main = do
 
 parser :: Parser Opts
 parser = do
+  optMaxH <- optional $ Height <$> option auto
+    (  metavar "N"
+    <> long "max-h"
+    <> help "Maximum height"
+    )
   cmdConfigPath <- some $ strArgument
     (  metavar "PATH"
     <> help  "Path to configuration"
