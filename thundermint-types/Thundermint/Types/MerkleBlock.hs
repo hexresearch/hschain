@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveFoldable       #-}
 {-# LANGUAGE DeriveGeneric        #-}
 {-# LANGUAGE FlexibleContexts     #-}
 {-# LANGUAGE LambdaCase           #-}
@@ -27,8 +28,8 @@ module Thundermint.Types.MerkleBlock
   , merkleProof
   ) where
 
-
 import Codec.Serialise
+import Data.Bits
 import GHC.Generics    (Generic)
 
 import Thundermint.Crypto
@@ -54,17 +55,9 @@ data MerkleBlockTree alg a = MerkleBlockTree
 data Node alg a
   = Branch (Hash alg) (Node alg a) (Node alg a)
   | Leaf   (Hash alg) a
-  deriving (Show, Generic)
+  deriving (Show, Foldable, Generic)
 
 
-
-instance Foldable (Node alg) where
-  foldr f acc (Leaf _ x)     = f x acc
-  foldr f acc (Branch _ l r) = foldr f (foldr f acc r) l
-
-  foldMap f x = case x of
-    Leaf _ a     -> f a
-    Branch _ l r -> foldMap f l `mappend` foldMap f r
 
 nullHash :: CryptoHash alg => Hash alg
 nullHash = hash (2:: Int)
@@ -84,18 +77,37 @@ createMerkleTree
   => [a]
   -> MerkleBlockTree alg a
 createMerkleTree []     = MerkleBlockTree nullRoot Nothing
-createMerkleTree tx = let leaves :: [Node alg a]= map  (\x -> Leaf ( computeLeafHash x) x) tx
-                          tree = go leaves
+createMerkleTree tx = let leaves :: [Node alg a]= (\x -> Leaf (computeLeafHash x) x) <$> tx
+                          tree = balance $ preBalance nPairs leaves
                       in MerkleBlockTree (MerkleBlockRoot (getHash tree)) (Just tree)
   where
-    go [b] = b
-    go hs  = go (combine hs)
+    -- In order to build a balanced tree we need to know numbrer of leaves
+    n = length tx
+    p = nextPow2 n
+    -- Number of pairs of nodes at the depth p. Rest of nodes will be
+    -- at the depth p-1
+    nPairs = (2*n - p) `div` 2
+    -- Group leaves which will appear at maximum depth
+    preBalance _ []       = []
+    preBalance _ [x]      = [x]  -- to suppress non-exhaustive pattern matching warning
+    preBalance 0 xs       = xs
+    preBalance size (x:y:xs) = Branch (hash (1::Int, [getHash x, getHash y]))  x y
+                          : preBalance (size - 1) xs
 
-    -- combine hashes bye pair and get hashes of next level of tree
-    combine []         = []
-    combine [x]        = [x]
-    combine (l:r:rest) = Branch (hash (1::Int, [getHash l, getHash r])) l r : (combine rest)
+    -- Now tree is perfectly balanced we can use simple recursive
+    -- algorithm to balance it perfectly
+    pair (x:y:xs) =  Branch (hash (1::Int, [getHash x, getHash y])) x y : pair xs
+    pair []       = []
+    pair [_]      = error "Odd-length list passed to pair algorithm"
+    --
+    balance []  = error "Empty list passed to balance"
+    balance [x] = x
+    balance xs  = balance $ pair xs
 
+
+-- | Find smallest power of 2 larger than number
+nextPow2 :: Int -> Int
+nextPow2 n = 1 `shiftL` (finiteBitSize n - countLeadingZeros n)
 
 -- | calculate Merkle root of given sequence
 -- to calculate merkle root hash we do not need explicit tree data structure
@@ -104,16 +116,30 @@ computeMerkleRoot
   => [a]
   -> Hash alg
 computeMerkleRoot []     = nullHash
-computeMerkleRoot tx = let hashes = map computeLeafHash tx
-                       in go hashes
+computeMerkleRoot tx = let leaves = map computeLeafHash tx
+                       in balance $ preBalance nPairs leaves
   where
-   go [h] = h
-   go hs  = go (combine hs)
+    -- In order to build a balanced tree we need to know numbrer of leaves
+    n = length tx
+    p = nextPow2 n
+    -- Number of pairs of nodes at the depth p. Rest of nodes will be
+    -- at the depth p-1
+    nPairs = (2*n - p) `div` 2
+    -- Group leaves which will appear at maximum depth
+    preBalance _ []          = []
+    preBalance _ [x]         = [x] -- to suppress non-exhaustive pattern matching warning
+    preBalance 0 xs          = xs
+    preBalance size (x:y:xs) = (hash (1::Int, [x, y])) : preBalance (size - 1) xs
 
-
-   combine []           = []
-   combine [x]          = [x]
-   combine (n1:n2:rest) = (hash (1::Int, [n1, n2])) : (combine rest)
+    -- Now tree is perfectly balanced we can use simple recursive
+    -- algorithm to balance it perfectly
+    pair (x:y:xs) = (hash (1::Int, [x,  y]))  : pair xs
+    pair []       = []
+    pair [_]      = error "Odd-length list passed to pair algorithm"
+    --
+    balance []  = error "Empty list passed to balance"
+    balance [x] = x
+    balance xs  = balance $ pair xs
 
 
 computeLeafHash
@@ -147,7 +173,7 @@ getHash (Leaf h _)     = h
 getHash (Branch h _ _) = h
 
 
-merkleProof :: CryptoHash alg => Hash alg -> [Either (Hash alg) (Hash alg)] -> Hash alg -> (Hash alg, Bool)
+merkleProof :: CryptoHash alg => Hash alg -> [Either (Hash alg) (Hash alg)] -> Hash alg -> ( Hash alg, Bool)
 merkleProof rootHash proofPath leafHash = (computeHash, computeHash == rootHash)
   where
     computeHash = foldl (\acc x -> case x of
@@ -170,7 +196,7 @@ isBalanced (Just tree) | go tree > 0 = True
                        | otherwise = False
   where
    go :: Node alg a -> Int
-   go (Leaf {}) = 0
+   go (Leaf {}) = 1
    go (Branch _ l r) | lH == (-1) = (-1)
                      | rH == (-1) = (-1)
                      | abs(lH - rH) > 1 = (-1)

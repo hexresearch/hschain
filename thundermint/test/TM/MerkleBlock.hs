@@ -66,13 +66,13 @@ instance Arbitrary BS where
 prop_MerkleBlockTree :: [BS] -> Property
 prop_MerkleBlockTree bs = property $
   and [ rootH == (computeMerkleRoot $ unWrap bs)
-      -- , isBalanced  tree
-      -- , isBalanced' tree
+      , isBalanced  tree
+      , isBalanced' tree
       ]
   where
     mTree   :: MerkleBlockTree SHA512 ByteString
     mTree = createMerkleTree $ unWrap bs
-    -- tree = merkleBlockTree  mTree
+    tree = merkleBlockTree  mTree
     rootH = rootHash . merkleBlockRoot $ mTree
     unWrap :: [BS] -> [ByteString]
     unWrap xs = nub [blob | BS blob <- xs]
