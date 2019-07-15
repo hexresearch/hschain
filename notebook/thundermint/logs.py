@@ -2,7 +2,9 @@
 """
 """
 
+import glob
 import json
+import os
 import numpy  as np
 import pandas as pd
 
@@ -76,9 +78,13 @@ class Log(object):
         return df
 
 
-def load_logs_files(prefix, names):
+def load_logs_files(prefix, names=None):
     dct = {}
-    for nm in names:
-        with open(prefix+"/"+nm) as f:
-            dct[nm] = Log(f)
+    if names is None:
+        files = glob.glob(prefix+"/*")
+    else:
+        files = [ prefix+"/"+nm for nm in names ]
+    for nm in sorted(files):
+        with open(nm) as f:
+            dct[os.path.basename(nm)] = Log(f)
     return dct
