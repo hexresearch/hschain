@@ -27,5 +27,6 @@
   "coinAridrop"        : 1000,
   "coinWallets"        : 1000,
   "coinWalletsSeed"    : 1337,
-  "coinGeneratorDelay" : 100
+  "coinGeneratorDelay" : 100,
+  "coinMaxMempoolSize" : 1000
 }
