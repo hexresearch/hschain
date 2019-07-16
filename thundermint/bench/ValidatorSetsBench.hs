@@ -13,11 +13,7 @@ type BenchValidatorIdx = ValidatorIdx ()
 
 benchValidatorSets :: Benchmark
 benchValidatorSets = bgroup "ValidatorISet"
-  [ bgroup "empty"
-    [ bench ("emptyValidatorISet "++show size) $ nf emptyValidatorISet size
-    | size <- [4,8,16,32,64,128,256]
-    ]
-  , bgroup "insert"
+  [ bgroup "insert"
     [ bench (show size ++ "-" ++ show count) $ nf insertIdxes (size, lst)
     | size <- [4,8,16,32,64,128,256]
     , let count = 1000
