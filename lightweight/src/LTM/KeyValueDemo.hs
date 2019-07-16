@@ -7,6 +7,9 @@
 
 module LTM.KeyValueDemo where
 
+import Control.Concurrent
+import Control.Concurrent.Chan
+
 import Control.Monad
 
 import qualified Data.ByteString as BS
@@ -194,6 +197,49 @@ demo n m = forM_ (take n $ run [] (map Right $ testInputs m m) $ testLTMMap 5) $
 
 performance :: Int -> Int -> Int -> IO ()
 performance numTxsPerBlock totalKeys numInserts = do
+  let outs = run [] (map Right $ testInputs totalKeys numInserts) $ testLTMMap numTxsPerBlock
+  go 0 outs
+  where
+    go n ((_, Left (NewHeight KVState{..})) : msgs)
+      | kvStateId == head testIds && Map.null kvStateState && n > 0 = putStrLn "done"
+      | kvStateId == head testIds && not (Map.null kvStateState) && n == 0 = go 1 msgs
+    go n (_:msgs) = go n msgs
+    go _ [] = error "end of messages?"
+
+threadInterpret :: LTM KVState
+                -> Map.Map (KVState PeerId) (Chan (InputMessage KVState))
+                -> Chan (InputMessage KVState))
+                -> Chan KVState -> IO ()
+threadInterpret ltm otherChans inputMessagesChan statesChan = loop False ltm
+  where
+    loop beenNonEmpty N = return ()
+    loop beenNonEmpty (I f) = do
+      i <- readChan inputMessagesChan
+      loop beenNonEmpty (f i)
+    loop beenNonEmpty (O (Left (NewHeight st)) p) = do
+      writeChain statesChan st
+      if currentEmpty && beenNonEmpty
+        then return ()
+        else loop (not currentEmpty) p
+    loop beenNonEmpty (O (Left msg@(them, _, _) p) = do
+      writeChan (Map.findWithDefault (error "no chan???") them otherChans) (Left msg)
+      loop beenNonEmpty p
+
+parallelRun :: Int -> IO (Chan KVState)
+parallelRun = do
+  statesChan <- newChan
+  chansProcessors <- Map.fromList $
+    forM (Map.toList $ testLTMMap numTxsPerBlock) $ \(id, processor) -> do
+      chan <- newChan
+      forkIO $ threadInterpret processor statesChan chan
+      return (id, (chan, processor))
+  let chans = Map.map fst chans
+  forM_ (Map.elems chansProcessors) $ forkIO $
+    \(ch, p) -> threadInterpret p chans ch statesChan
+  return statesChan
+
+parallelPerformance :: Int -> Int -> Int -> IO ()
+parallelPerformance numTxsPerBlock totalKeys numInserts = do
   let outs = run [] (map Right $ testInputs totalKeys numInserts) $ testLTMMap numTxsPerBlock
   go 0 outs
   where

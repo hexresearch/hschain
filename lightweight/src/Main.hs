@@ -9,7 +9,7 @@ main :: IO ()
 main = do
   start <- Clock.getTime Clock.Monotonic
   let nops = 1000000
-  KVD.performance 500 1000 nops
+  KVD.parallelPerformance 500 1000 nops
   end <- Clock.getTime Clock.Monotonic
   let dt = Clock.diffTimeSpec end start
       nanoseconds = Clock.toNanoSecs dt
