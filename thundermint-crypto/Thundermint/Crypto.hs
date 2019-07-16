@@ -691,4 +691,4 @@ verifyCborSignature pk a
 
 instance (Serialise key, Serialise a) => Serialise (Signed key 'Unverified alg a)
 instance (JSON.FromJSON key, JSON.FromJSON a) => JSON.FromJSON (Signed key 'Unverified alg a)
-instance (JSON.ToJSON   key, JSON.ToJSON   a) => JSON.ToJSON   (Signed key 'Unverified alg a)
+instance (JSON.ToJSON   key, JSON.ToJSON   a) => JSON.ToJSON   (Signed key sign        alg a)
