@@ -27,7 +27,7 @@ import Control.Monad.IO.Class
 import Control.Monad.STM
 import Prelude                      as P
 import qualified Data.List.NonEmpty as NE
-import qualified Data.Map           as Map
+import qualified Data.Map.Strict    as Map
 import qualified Data.Set           as Set
 
 import Thundermint.Blockchain.Internal.Engine.Types

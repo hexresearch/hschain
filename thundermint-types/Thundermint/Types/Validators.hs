@@ -47,7 +47,7 @@ import GHC.Generics (Generic, Generic1)
 import qualified Codec.Serialise       as CBOR
 import qualified Data.Aeson            as JSON
 import qualified Data.IntSet           as ISet
-import qualified Data.Map              as Map
+import qualified Data.Map.Strict       as Map
 import qualified Data.Map.Merge.Strict as Map
 import qualified Data.Vector           as V
 
