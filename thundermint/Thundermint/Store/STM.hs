@@ -20,8 +20,8 @@ import Data.List       (nub, sort)
 import Data.Maybe      (fromMaybe)
 import Data.Tuple      (swap)
 
-import qualified Data.IntMap as IMap
-import qualified Data.Map    as Map
+import qualified Data.IntMap.Strict as IMap
+import qualified Data.Map.Strict    as Map
 import qualified Data.Set    as Set
 
 import Thundermint.Crypto

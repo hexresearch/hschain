@@ -10,7 +10,7 @@ import Control.Concurrent.STM
 import Control.Monad          (when)
 import Control.Monad.Catch    (MonadMask, finally, uninterruptibleMask)
 import Control.Monad.IO.Class (MonadIO, liftIO)
-import Data.Map               (Map)
+import Data.Map.Strict        (Map)
 import Data.Monoid            ((<>))
 import Data.Set               (Set)
 import Katip                  (showLS)

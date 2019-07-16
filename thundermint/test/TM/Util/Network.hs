@@ -30,7 +30,7 @@ import Control.Retry
     (RetryPolicy, constantDelay, limitRetries, recovering, skipAsyncExceptions)
 
 import qualified Data.ByteString.Lazy as LBS
-import qualified Data.Map             as Map
+import qualified Data.Map.Strict      as Map
 
 import Data.Monoid    ((<>))
 import System.Timeout (timeout)

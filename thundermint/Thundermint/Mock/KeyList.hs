@@ -21,8 +21,8 @@ import qualified Data.ByteString.Base58 as Base58
 import           Data.Foldable          (toList)
 import           Data.List
 import           Data.Proxy
-import           Data.Map               (Map)
-import qualified Data.Map               as Map
+import           Data.Map.Strict        (Map)
+import qualified Data.Map.Strict      as Map
 import           System.Random
 
 import Thundermint.Blockchain.Internal.Engine.Types
