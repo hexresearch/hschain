@@ -96,7 +96,8 @@ data MessageRx ty alg a
   | RxTimeout   !Timeout
   | RxBlock     !(Block alg a)
   deriving (Show, Generic)
-instance (Serialise a, Crypto alg) => Serialise (MessageRx 'Unverified alg a)
+instance (Serialise   a, Crypto alg) => Serialise (MessageRx 'Unverified alg a)
+instance (JSON.ToJSON a, Crypto alg) => JSON.ToJSON (MessageRx ty alg a)
 
 unverifyMessageRx :: MessageRx 'Verified alg a -> MessageRx 'Unverified alg a
 unverifyMessageRx = \case

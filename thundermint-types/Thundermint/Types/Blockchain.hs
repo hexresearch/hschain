@@ -369,7 +369,9 @@ instance Serialise FullStep
 
 data Timeout = Timeout !Height !Round !Step
   deriving (Show,Eq,Ord,Generic)
-instance Serialise Timeout
+instance Serialise     Timeout
+instance JSON.ToJSON   Timeout
+instance JSON.FromJSON Timeout
 
 -- | Proposal for new block. Proposal include only hash of block and
 --   block itself is gossiped separately.
