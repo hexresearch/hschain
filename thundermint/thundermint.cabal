@@ -226,3 +226,5 @@ Benchmark thundermint-bench
   if !flag(android-impl)
     Build-Depends: cryptonite
   Other-modules:       ValidatorSetsBench
+                       MockCoin
+                       Crypto

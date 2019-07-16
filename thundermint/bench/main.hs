@@ -14,12 +14,17 @@ import Prelude
 
 
 import ValidatorSetsBench
-
+import qualified MockCoin
+import qualified Crypto
 --kB :: Int
 --kB = 1024
 
 main :: IO ()
-main = defaultMain [ benchValidatorSets ]
+main = defaultMain
+  [ benchValidatorSets
+  , MockCoin.benchmarks
+  , Crypto.benchmarks
+  ]
 {-
   !prk <- generatePrivKey
   let !pk = publicKey prk
