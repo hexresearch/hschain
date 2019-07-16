@@ -1,6 +1,7 @@
 { isProfile  ? false
 , isProd     ? false
 , isCoreLint ? false
+, isBench    ? false 
 , useSodium  ? true
 , ...
 }:
@@ -39,11 +40,12 @@ let
   };
   # Build internal package
   callInternal = hask: name: path: args: opts:
-    lintOverride (prodOverride (profileOverride (hask.callCabal2nixWithOptions name (ignoreStack path) opts args)))
+    benchOverride (lintOverride (prodOverride (profileOverride (hask.callCabal2nixWithOptions name (ignoreStack path) opts args))))
     ;
   lintOverride    = doIf isCoreLint hask.doCoreLint;
   prodOverride    = doIf isProd    (drv: hask.doPedantic (lib.doCheck drv));
   profileOverride = doIf isProfile hask.doProfile;
+  benchOverride   = doIf isBench   lib.doBenchmark;
   ignoreStack     = haskTools.ignoreSources ''
     /.stack-work
     '';
