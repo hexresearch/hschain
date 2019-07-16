@@ -9,7 +9,9 @@ module LTM.KeyValueDemo where
 
 import Control.Monad
 
-import qualified Data.Map as Map
+import qualified Data.ByteString as BS
+
+import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 
 import System.IO
@@ -23,7 +25,7 @@ import LTM.SP
 -- Testing key-value state with keys and values being Strings.
 --
 
-type TX = (String, Maybe String)
+type TX = (BS.ByteString, Maybe BS.ByteString)
 
 data KVMsg =
     KVProposal  (Block KVState)
@@ -32,25 +34,30 @@ data KVMsg =
   deriving (Eq, Ord, Show)
 
 data KVState = KVState
-  { kvStateHeight        :: Height
-  , kvStateRound         :: Round
-  , kvStateId            :: String
-  , kvStatePeers         :: [String]
-  , kvStateState         :: Map.Map String String
-  , kvStateWaitingTxs    :: [TX] -- key and value; Nothing means deletion
-  , kvStateVotesForBlock :: Map.Map (Maybe (Block KVState)) (Set.Set (PeerId KVState))
+  { kvStateHeight         :: !Height
+  , kvStateRound          :: !Round
+  , kvStateId             :: !String
+  , kvStatePeers          :: [String]
+  , kvStateState          :: !(Map.Map BS.ByteString BS.ByteString)
+  , kvStateWaitingTxs     :: [TX] -- key and value; Nothing means deletion
+  , kvStateVotesForBlock  :: !(Map.Map (Maybe (Block KVState)) (Maybe (Block KVState), Set.Set (PeerId KVState)))
+  , kvStateNumTxsPerBlock :: !Int
   } deriving Show
 
-emptyKVState :: String -> [String] -> KVState
-emptyKVState id allIds = KVState
-  { kvStateHeight        = 0
-  , kvStateRound         = 0
-  , kvStateId            = id
-  , kvStatePeers         = allIds
-  , kvStateState         = Map.empty
-  , kvStateWaitingTxs    = []
-  , kvStateVotesForBlock = Map.empty
+emptyKVState :: Int -> String -> [String] -> KVState
+emptyKVState numTxs id allIds = KVState
+  { kvStateHeight         = 0
+  , kvStateRound          = 0
+  , kvStateId             = id
+  , kvStatePeers          = allIds
+  , kvStateState          = Map.empty
+  , kvStateWaitingTxs     = []
+  , kvStateVotesForBlock  = Map.empty
+  , kvStateNumTxsPerBlock = numTxs
   }
+
+onlyHeader :: Block KVState -> Block KVState
+onlyHeader (pid, h, txs) = (pid, h, [])
 
 instance LTMState KVState where
   type PeerId KVState = String
@@ -68,7 +75,7 @@ instance LTMState KVState where
         , state { kvStateWaitingTxs = drop ntxs kvStateWaitingTxs })
     | otherwise = Nothing
     where
-      ntxs = 5
+      ntxs = kvStateNumTxsPerBlock
       n = length kvStatePeers
       ourIndex = length $ takeWhile (/= kvStateId) kvStatePeers
       block = (kvStateId, kvStateHeight, take ntxs kvStateWaitingTxs)
@@ -82,35 +89,47 @@ instance LTMState KVState where
 
   halfRoundTime _state = 100000
 
-  enoughVotes KVState{..} = sum (map Set.size $ Map.elems kvStateVotesForBlock) > threshold
+  enoughVotes KVState{..} = sum (map (Set.size . snd) $ Map.elems kvStateVotesForBlock) > threshold
     where
       peerCount = length kvStatePeers
       threshold = div (peerCount * 2) 3
 
   addSelfVote maybeBlock state@KVState{..} =
-    state { kvStateVotesForBlock = Map.insertWith Set.union maybeBlock (Set.singleton kvStateId) kvStateVotesForBlock }
+    state { kvStateVotesForBlock = Map.insertWith (\(mb, ss) (mb', ss') -> (mb, Set.union ss ss'))
+                                         (fmap onlyHeader maybeBlock) (maybeBlock, Set.singleton kvStateId) kvStateVotesForBlock }
 
-  addVote (Left (us, them, KVProposal block)) state@KVState {..}
-    = ([(them, us, KVPrevote (Just block)) | them <- kvStatePeers, them /= us]
-      , state { kvStateVotesForBlock = Map.insertWith Set.union (Just block) (Set.singleton them) kvStateVotesForBlock }
+  {-# INLINE addVote #-}
+  addVote (Left (us, them, KVProposal block)) state@KVState{..}
+    = {-# SCC addVoteProposal #-} ([(them, us, KVPrevote (Just block)) | them <- kvStatePeers, them /= us]
+      , state { kvStateVotesForBlock =
+                   Map.insertWith (\(mb, ss) (mb', ss') -> (mb, Set.union ss ss'))
+                       (Just $ onlyHeader block) (Just block, Set.singleton them) kvStateVotesForBlock }
       )
-  addVote (Left (us, them, KVPrevote maybeBlock)) state@KVState {..}
-    = ([], state { kvStateVotesForBlock = Map.insertWith Set.union maybeBlock (Set.singleton them) kvStateVotesForBlock })
-  addVote (Left (us, them, KVPrecommit maybeBlock)) state@KVState {..}
-    = ([], state { kvStateVotesForBlock = Map.insertWith Set.union maybeBlock (Set.singleton them) kvStateVotesForBlock })
-  addVote (Right sortaTransactions) state@KVState {..}
-    = ([], state { kvStateWaitingTxs = kvStateWaitingTxs ++ sortaTransactions })
+  addVote (Left (us, them, KVPrevote maybeBlock)) state@KVState{..}
+    = {-# SCC addVotePrevote #-} ([], state
+             { kvStateVotesForBlock =
+                   Map.insertWith (\(mb, ss) (mb', ss') -> (mb, Set.union ss ss'))
+                      (fmap onlyHeader maybeBlock) (maybeBlock, Set.singleton them) kvStateVotesForBlock })
+  addVote (Left (us, them, KVPrecommit maybeBlock)) state@KVState{..}
+    = {-# SCC addVotePrecommit #-} ([], state
+             { kvStateVotesForBlock =
+                   Map.insertWith (\(mb, ss) (mb', ss') -> (mb, Set.union ss ss'))
+                      (fmap onlyHeader maybeBlock) (maybeBlock, Set.singleton them) kvStateVotesForBlock
+             })
+  addVote (Right sortaTransactions) state@KVState{..}
+    = {-# SCC addVoteRight #-} ([], state { kvStateWaitingTxs = kvStateWaitingTxs ++ sortaTransactions })
 
-  getBlockConsent state@KVState{..} = head (Map.keys consent ++ [Nothing])
+  getBlockConsent state@KVState{..} = head $ map fst (Map.elems consent) ++ [Nothing]
     where
       peerCount = length kvStatePeers
       threshold = div (peerCount * 2) 3
-      consent = Map.filter ((>threshold) . Set.size) kvStateVotesForBlock
+      consent = Map.filter ((>threshold) . Set.size . snd) kvStateVotesForBlock
 
   clearVotes state = state { kvStateVotesForBlock = Map.empty }
 
   newRound state@KVState{..} = state { kvStateRound = kvStateRound + 1 }
 
+  {-# INLINE applyBlock #-}
   applyBlock state@KVState{..} (proposer, height, msgs) = state
     { kvStateHeight = kvStateHeight + 1
     , kvStateRound = 0
@@ -120,8 +139,8 @@ instance LTMState KVState where
 testIds :: [String]
 testIds = ["n-" ++ printf "%03d" (i + 1) | i <- [0 :: Int .. 3]]
 
-testLTMMap :: Map.Map String (LTM KVState)
-testLTMMap = Map.fromList [(i, lightweightThundermint $ emptyKVState i testIds) | i <- testIds]
+testLTMMap :: Int -> Map.Map String (LTM KVState)
+testLTMMap ntxs = Map.fromList [(i, lightweightThundermint $ emptyKVState ntxs i testIds) | i <- testIds]
 
 findSomeOuts processors = searchOut [] [] $ Map.toList processors
   where
@@ -160,15 +179,26 @@ run acc (msg : msgs) processors = case msg of
     where
       processor = Map.findWithDefault (error "no processor?") dest processors
 
-testInputs :: [(String, [TX])]
-testInputs = zip (cycle testIds) $ map (\x -> [x]) $ add++del
+testInputs :: Int -> Int -> [(String, [TX])]
+testInputs totalKeys numInserts =
+  Map.toList $ fmap reverse $ Map.fromListWith (++) $
+  zip (cycle testIds) $ map (\x -> [x]) $ add++del
   where
-    n = 20
-    keys = take n ["msg "++printf "%3d" i| i <- cycle [1 :: Int .. 7]]
-    add = zip keys (cycle (map (Just . show) [1..5]))
+    keys = take numInserts $ cycle [BS.pack $ map (fromIntegral . fromEnum) $ "msg "++printf "%3d" i| i <- cycle [1..totalKeys]]
+    add = zip keys (cycle (map (Just . BS.pack . map (fromIntegral . fromEnum) . ("key" ++) . show) [1..totalKeys]))
     del = zip keys (repeat Nothing)
 
-demo n = forM_ (take n $ run [] (map Right testInputs) testLTMMap) $ \msg -> case msg of
+demo n m = forM_ (take n $ run [] (map Right $ testInputs m m) $ testLTMMap 5) $ \msg -> case msg of
   (_, Left (NewHeight _)) -> putStrLn (show msg)
   _ -> return ()
 
+performance :: Int -> Int -> Int -> IO ()
+performance numTxsPerBlock totalKeys numInserts = do
+  let outs = run [] (map Right $ testInputs totalKeys numInserts) $ testLTMMap numTxsPerBlock
+  go 0 outs
+  where
+    go n ((_, Left (NewHeight KVState{..})) : msgs)
+      | kvStateId == head testIds && Map.null kvStateState && n > 0 = putStrLn "done"
+      | kvStateId == head testIds && not (Map.null kvStateState) && n == 0 = go 1 msgs
+    go n (_:msgs) = go n msgs
+    go _ [] = error "end of messages?"

@@ -55,10 +55,6 @@ library
                    , LTM.LTM
                    , LTM.Types
 
-                   -- demos
-                   , LTM.SimpleDemo
-                   , LTM.KeyValueDemo
-
   -- Modules included in this library but not exported.
   -- other-modules:
 
@@ -81,13 +77,18 @@ executable lightweight-thundermint
   main-is:             Main.hs
 
   -- Modules included in this executable, other than Main.
-  -- other-modules:
+  other-modules:       LTM.KeyValueDemo
+                     , LTM.SimpleDemo
 
   -- LANGUAGE extensions used by modules in this package.
   -- other-extensions:
 
   -- Other library packages from which modules are imported.
   build-depends:       base >=4.11.1.0
+                     , bytestring
+                     , clock
+                     , containers
+                     , lightweight-thundermint
 
   -- Directories containing source files.
   hs-source-dirs:      src

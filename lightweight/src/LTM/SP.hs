@@ -22,6 +22,7 @@ instance Functor (SP i) where
   fmap f (I g) = I $ fmap (fmap f) g
   fmap f (O o sp) = O (f o) (fmap f sp)
 
+{-
 instance Applicative (SP i) where
   pure = flip O N
   O f spF <*> spA = spF <*> spA <|> fmap f spA
@@ -103,26 +104,32 @@ above termP sp = case sp of
                            N -> empty
                            O o sp' -> withOutput o sp'
                            I g' -> wait g'
+-}
 
 type SPE i l a = SP i (Either l a)
 
 infixr 1 >>=^, >>^
 (>>=^) :: SPE i l a -> (a -> SPE i l b) -> SPE i l b
 O (Left l) sp >>=^ q = O (Left l) $ sp >>=^ q
-O (Right a) sp >>=^ q = (sp >>=^ q) <|> q a
+O (Right a) N >>=^ q = q a
+O (Right a) sp >>=^ q = error "alternative???" --(sp >>=^ q) <|> q a
 I f >>=^ q = I $ (>>=^ q) . f
 N >>=^ _ = N
 
 (>>^) :: SPE i l a -> SPE i l b -> SPE i l b
 a >>^ b = a >>=^ const b
 
+out :: o -> SP i (Either o ())
+out o = O (Left o) $ O (Right ()) N
+
+
 mapSPE :: (a -> SPE i l b) -> [a] -> SPE i l [b]
-mapSPE f [] = pure (Right [])
-mapSPE f (x:xs) = f x >>=^ \y -> mapSPE f xs >>=^ \ys -> pure (Right (y:ys))
+mapSPE f [] = O (Right []) N
+mapSPE f (x:xs) = f x >>=^ \y -> mapSPE f xs >>=^ \ys -> O (Right (y:ys)) N
 
 mapSPE_ :: (a -> SPE i l ()) -> [a] -> SPE i l ()
-mapSPE_ f [] = pure (Right ())
-mapSPE_ f (x:xs) = f x >>=^ \_ -> mapSPE_ f xs >>=^ \_ -> pure (Right ())
+mapSPE_ f [] = O (Right ()) N
+mapSPE_ f (x:xs) = f x >>=^ \_ -> mapSPE_ f xs >>=^ \_ -> O (Right ()) N
 
 forSPE :: [a] -> (a -> SPE i l b) -> SPE i l [b]
 forSPE = flip mapSPE
@@ -130,6 +137,10 @@ forSPE = flip mapSPE
 forSPE_ :: [a] -> (a -> SPE i l ()) -> SPE i l ()
 forSPE_ = flip mapSPE_
 
+input :: SP i i
+input = I $ flip O N
+
+{-
 newtype SPB i o a = SPB { runSPB :: SP i (Either o a)}
 
 instance Functor (SPB i o) where
@@ -151,9 +162,6 @@ instance Monad (SPB i o) where
     O (Right r) sp -> runSPB (q r) <|> runSPB (SPB sp >>= q)
     I f -> I $ runSPB . ((>>= q) . SPB) . f
 
-out :: o -> SP i (Either o ())
-out o = O (Left o) N <|> return (Right ())
-
 instance HasInput (SPB i o) i where
   input = SPB $ fmap Right input
 
@@ -162,3 +170,4 @@ takeApply xs (O o sp) = o : takeApply xs sp
 takeApply xs N = []
 takeApply [] _ = []
 takeApply (x:xs) (I f) = takeApply xs (f x)
+-}

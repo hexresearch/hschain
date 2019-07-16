@@ -2,7 +2,7 @@
 -- stream of events, hence "Lightweight ThunderMint".
 --
 
-{-# LANGUAGE DeriveAnyClass, DeriveFunctor, FlexibleContexts, GADTs #-}
+{-# LANGUAGE BangPatterns, DeriveAnyClass, DeriveFunctor, FlexibleContexts, GADTs #-}
 {-# LANGUAGE RecordWildCards, StandaloneDeriving #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UndecidableInstances #-}
@@ -98,7 +98,7 @@ lightweightThundermint :: LTMState state
                        -> LTM state
 lightweightThundermint = loop
   where
-    loop state =
+    loop !state =
       proposeReceive state
       >>=^ \(state, block) -> precommit state block
       >>=^ \state -> commit state
@@ -106,7 +106,7 @@ lightweightThundermint = loop
       >>=^ loop
 
 proposeReceive :: LTMState state => state -> LTMSP state (state, Maybe (Block state))
-proposeReceive state =
+proposeReceive !state =
   out (RequestTimeout h r PreVote $ halfRoundTime  state)
   >>^             propose state
   >>=^ \state' -> collect PreVote state'
@@ -120,7 +120,7 @@ proposeReceive state =
       Nothing -> returnR (clearVotes state)
 
 collect :: LTMState state => VotingStage -> state -> LTMSP state (state)
-collect vs state
+collect !vs !state
   | enoughVotes state = returnR (state)
   | otherwise = inputR
      >>=^ \msg -> case msg of
@@ -136,15 +136,15 @@ collect vs state
     (h, r) = getHeightRound state
 
 outMessage :: Height -> Round -> VotingStage -> OutputMessage state -> LTMSP state ()
-outMessage h r vs msg = out $ OutMessage h r vs msg
+outMessage !h !r !vs !msg = out $ OutMessage h r vs msg
 
 returnR :: a -> SP i (Either o a)
-returnR = return . Right
+returnR = flip O N . Right
 
 inputR :: SPE i o i
 inputR = fmap Right input
 
-precommit state block =
+precommit !state !block =
   out (RequestTimeout h r PreCommit $ halfRoundTime  state)
   >>^ forSPE_ (precommitMessages state) (out . OutMessage h r PreCommit)
   >>^ collect PreCommit (addSelfVote block $ clearVotes state)
@@ -152,7 +152,7 @@ precommit state block =
     (h, r) = getHeightRound state
 
 commit :: LTMState state => state ->  LTMSP state state
-commit state = case getBlockConsent state of
+commit !state = case getBlockConsent state of
   Just block -> let state' = applyBlock state block
                 in out (NewHeight state') >>^ returnR (clearVotes state')
   Nothing -> returnR (clearVotes $ newRound state)
