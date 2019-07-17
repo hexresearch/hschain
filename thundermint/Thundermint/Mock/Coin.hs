@@ -123,8 +123,6 @@ processDeposit tx@(Deposit pk nCoin) CoinState{..} =
 processTransaction :: Tx -> CoinState -> Maybe CoinState
 processTransaction Deposit{} _ = Nothing
 processTransaction transaction@(Send pubK sig txSend@TxSend{..}) CoinState{..} = do
-  -- Signature must be valid
-  guard $ verifyCborSignature pubK txSend sig
   -- Inputs and outputs are not null
   guard $ not $ null txInputs
   guard $ not $ null txOutputs
@@ -139,6 +137,9 @@ processTransaction transaction@(Send pubK sig txSend@TxSend{..}) CoinState{..} =
   guard (sum inputs == sum (map snd txOutputs))
   -- Update application state
   let txHash = hashBlob $ toStrict $ serialise transaction
+  -- Signature must be valid. Note signature check is expensive so
+  -- it's done at last moment
+  guard $ verifyCborSignature pubK txSend sig
   return CoinState
     { unspentOutputs =
         let spend txMap = foldl' (flip  Map.delete) txMap txInputs
