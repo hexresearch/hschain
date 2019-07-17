@@ -1,5 +1,7 @@
 {-# LANGUAGE DataKinds                  #-}
+{-# LANGUAGE DeriveAnyClass             #-}
 {-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE DerivingStrategies         #-}
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase                 #-}
@@ -73,8 +75,8 @@ type Alg = (Ed25519 :& SHA512)
 
 -- | Single transaction for transfer of coins
 data TxSend = TxSend
-  { txInputs  :: [(Hash Alg, Int)]
-  , txOutputs :: [(PublicKey Alg, Integer)]
+  { txInputs  :: [UTXO]
+  , txOutputs :: [Unspent]
   }
   deriving (Show, Eq, Ord, Generic)
 instance Serialise TxSend
@@ -94,29 +96,36 @@ data Tx
     --   1. All inputs must be owned by transaction issuer
     --   3. Inputs and outputs must be nonempty
     --   2. Sum of inputs must be equal to sum of outputs
-  deriving (Show, Eq, Ord, Generic)
-instance Serialise Tx
-instance NFData    Tx
-instance JSON.ToJSON   Tx
-instance JSON.FromJSON Tx
+  deriving stock    (Show, Eq, Ord, Generic)
+  deriving anyclass (Serialise, NFData, JSON.ToJSON, JSON.FromJSON)
+
+data UTXO = UTXO !Int !(Hash Alg)
+  deriving stock    (Show, Eq, Ord, Generic)
+  deriving anyclass (Serialise, NFData, JSON.ToJSON, JSON.FromJSON)
+
+data Unspent = Unspent !(PublicKey Alg) !Integer
+  deriving stock    (Show, Eq, Ord, Generic)
+  deriving anyclass (Serialise, NFData, JSON.ToJSON, JSON.FromJSON)
+
 
 -- | State of coins in program-digestible format
 --
 --   Really we'll need to keep in DB to persist it.
 newtype CoinState = CoinState
-  { unspentOutputs :: Map (Hash Alg, Int) (PublicKey Alg, Integer)
+  { unspentOutputs :: Map UTXO Unspent
     -- ^ Map of unspent outputs of transaction. It maps pair of
     --   transaction hash and output index to amount of coins stored
     --   there.
   }
-  deriving (Show, NFData, Generic, Serialise)
+  deriving stock   (Show,   Generic)
+  deriving newtype (NFData, Serialise)
 
 
 processDeposit :: Tx -> CoinState -> Maybe CoinState
 processDeposit Send{}                _             = Nothing
 processDeposit tx@(Deposit pk nCoin) CoinState{..} =
   return CoinState
-    { unspentOutputs = Map.insert (hash tx,0) (pk,nCoin) unspentOutputs
+    { unspentOutputs = Map.insert (UTXO 0 (hash tx)) (Unspent pk nCoin) unspentOutputs
     }
 
 
@@ -127,14 +136,14 @@ processTransaction transaction@(Send pubK sig txSend@TxSend{..}) CoinState{..} =
   guard $ not $ null txInputs
   guard $ not $ null txOutputs
   -- Outputs are all positive
-  forM_ txOutputs $ \(_,n) -> guard (n > 0)
+  forM_ txOutputs $ \(Unspent _ n) -> guard (n > 0)
   -- Inputs are owned Spend and generated amount match and transaction
   -- issuer have rights to funds
   inputs <- forM txInputs $ \i -> do
-    (pk,n) <- Map.lookup i unspentOutputs
+    Unspent pk n <- Map.lookup i unspentOutputs
     guard $ pk == pubK
     return n
-  guard (sum inputs == sum (map snd txOutputs))
+  guard $ sum inputs == sum [n | Unspent _ n <- txOutputs]
   -- Update application state
   let txHash = hashBlob $ toStrict $ serialise transaction
   -- Signature must be valid. Note signature check is expensive so
@@ -144,7 +153,7 @@ processTransaction transaction@(Send pubK sig txSend@TxSend{..}) CoinState{..} =
     { unspentOutputs =
         let spend txMap = foldl' (flip  Map.delete) txMap txInputs
             add   txMap = foldl'
-                            (\m (i,out) -> Map.insert (txHash,i) out m)
+                            (\m (i,out) -> Map.insert (UTXO i txHash) out m)
                             txMap ([0..] `zip` txOutputs)
         in add $ spend unspentOutputs
     }
@@ -204,12 +213,12 @@ generateTransaction TxGenerator{..} (CoinState utxo) = liftIO $ do
   amount <- randomRIO (0,20)
   let pubK   = publicKey privK
       inputs = findInputs amount [ (inp, n)
-                                 | (inp, (pk,n)) <- Map.toList utxo
+                                 | (inp, Unspent pk n) <- Map.toList utxo
                                  , pk == pubK
                                  ]
       tx     = TxSend { txInputs  = map fst inputs
-                      , txOutputs = [ (target, amount)
-                                    , (pubK  , sum (snd <$> inputs) - amount)
+                      , txOutputs = [ Unspent target   amount
+                                    , Unspent pubK   $ sum (snd <$> inputs) - amount
                                     ]
                       }
   return $ Send pubK (signBlob privK $ toStrict $ serialise tx) tx
@@ -282,7 +291,7 @@ interpretSpec p cb = do
     , acts
     )
 
-  
+
 executeNodeSpec
   :: (MonadIO m, MonadMask m, MonadFork m, MonadTrace m, MonadTMMonitoring m)
   => NetSpec NodeSpec :*: CoinSpecification
