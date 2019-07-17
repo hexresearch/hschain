@@ -76,6 +76,8 @@ executable lightweight-thundermint
   -- .hs or .lhs file containing the Main module.
   main-is:             Main.hs
 
+  ghc-options:         -threaded -rtsopts
+
   -- Modules included in this executable, other than Main.
   other-modules:       LTM.KeyValueDemo
                      , LTM.SimpleDemo
@@ -92,6 +94,7 @@ executable lightweight-thundermint
                      , clock
                      , containers
                      , lightweight-thundermint
+                     , stm
 
   -- Directories containing source files.
   hs-source-dirs:      src

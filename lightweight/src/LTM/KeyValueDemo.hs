@@ -7,8 +7,11 @@
 
 module LTM.KeyValueDemo where
 
-import Control.Concurrent
-import Control.Concurrent.Chan
+import qualified Control.Concurrent as CC
+import qualified Control.Concurrent.Chan as Chan
+import qualified Control.Concurrent.MVar as MVar
+
+import Control.Exception (catch, SomeException)
 
 import Control.Monad
 
@@ -23,6 +26,8 @@ import Text.Printf
 
 import LTM.LTM
 import LTM.SP
+
+import qualified Debug.Trace as DT
 
 --------------------------------------------------------------------------------
 -- Testing key-value state with keys and values being Strings.
@@ -133,10 +138,11 @@ instance LTMState KVState where
   newRound state@KVState{..} = state { kvStateRound = kvStateRound + 1 }
 
   {-# INLINE applyBlock #-}
-  applyBlock state@KVState{..} (proposer, height, msgs) = state
+  applyBlock state@KVState{..} (proposer, height, msgs) =
+    state
     { kvStateHeight = kvStateHeight + 1
     , kvStateRound = 0
-    , kvStateState = foldr (\(k,v) st -> Map.alter (const v) k st) kvStateState msgs
+    , kvStateState = foldl (\st (k,v) -> Map.alter (const v) k st) kvStateState msgs
     }
 
 testIds :: [String]
@@ -206,45 +212,55 @@ performance numTxsPerBlock totalKeys numInserts = do
     go n (_:msgs) = go n msgs
     go _ [] = error "end of messages?"
 
-threadInterpret :: LTM KVState
-                -> Map.Map (KVState PeerId) (Chan (InputMessage KVState))
-                -> Chan (InputMessage KVState))
-                -> Chan KVState -> IO ()
-threadInterpret ltm otherChans inputMessagesChan statesChan = loop False ltm
+threadInterpret :: String
+                -> LTM KVState
+                -> Map.Map (PeerId KVState) (Chan.Chan (LTMIn KVState))
+                -> Chan.Chan (LTMIn KVState)
+                -> Chan.Chan KVState
+                -> MVar.MVar Bool
+                -> IO ()
+threadInterpret ourId ltm otherChans inputMessagesChan statesChan stopVar = loop False ltm
   where
     loop beenNonEmpty N = return ()
     loop beenNonEmpty (I f) = do
-      i <- readChan inputMessagesChan
+      i <- Chan.readChan inputMessagesChan
       loop beenNonEmpty (f i)
     loop beenNonEmpty (O (Left (NewHeight st)) p) = do
-      writeChain statesChan st
-      if currentEmpty && beenNonEmpty
-        then return ()
-        else loop (not currentEmpty) p
-    loop beenNonEmpty (O (Left msg@(them, _, _) p) = do
-      writeChan (Map.findWithDefault (error "no chan???") them otherChans) (Left msg)
+      --Chan.writeChan statesChan st
+      let currentEmpty = Map.null (kvStateState st)
+      when (currentEmpty && beenNonEmpty) $ MVar.putMVar stopVar True
+      loop (not currentEmpty || beenNonEmpty) p
+    loop beenNonEmpty (O (Left (OutMessage h r vs msg@(them, _, _))) p) = do
+      Chan.writeChan (Map.findWithDefault (error "no chan???") them otherChans) (InMessage h r vs $ Left msg)
       loop beenNonEmpty p
+    loop beenNonEmpty (O (Left _) p) = loop beenNonEmpty p
 
-parallelRun :: Int -> IO (Chan KVState)
-parallelRun = do
-  statesChan <- newChan
-  chansProcessors <- Map.fromList $
+parallelRun :: Int -> Int -> Int -> IO (Chan.Chan KVState, MVar.MVar Bool)
+parallelRun numTxsPerBlock totalKeys numInserts = do
+  let inputs = testInputs totalKeys numInserts
+  stop <- MVar.newMVar False
+  statesChan <- Chan.newChan
+  chansProcessors <- liftM Map.fromList $
     forM (Map.toList $ testLTMMap numTxsPerBlock) $ \(id, processor) -> do
-      chan <- newChan
-      forkIO $ threadInterpret processor statesChan chan
+      chan <- Chan.newChan
+      forM_ (filter ((==id) . fst) inputs) $
+        \txs -> do
+          Chan.writeChan chan (InMessage 0 0 PreVote $ Right $ snd txs)
       return (id, (chan, processor))
-  let chans = Map.map fst chans
-  forM_ (Map.elems chansProcessors) $ forkIO $
-    \(ch, p) -> threadInterpret p chans ch statesChan
-  return statesChan
+  let chans = Map.map fst chansProcessors
+  forM_ (Map.toList chansProcessors) $
+    \(id, (ch, p)) ->
+      CC.forkIO $ threadInterpret id p chans ch statesChan stop
+  return (statesChan, stop)
+
+eReturn :: SomeException -> IO ()
+eReturn _ = return ()
 
 parallelPerformance :: Int -> Int -> Int -> IO ()
 parallelPerformance numTxsPerBlock totalKeys numInserts = do
-  let outs = run [] (map Right $ testInputs totalKeys numInserts) $ testLTMMap numTxsPerBlock
-  go 0 outs
+  (statesChan, stopVar) <- parallelRun numTxsPerBlock totalKeys numInserts
+  go stopVar
   where
-    go n ((_, Left (NewHeight KVState{..})) : msgs)
-      | kvStateId == head testIds && Map.null kvStateState && n > 0 = putStrLn "done"
-      | kvStateId == head testIds && not (Map.null kvStateState) && n == 0 = go 1 msgs
-    go n (_:msgs) = go n msgs
-    go _ [] = error "end of messages?"
+    go stopVar = do
+      MVar.takeMVar stopVar
+      return ()

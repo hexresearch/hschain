@@ -9,7 +9,9 @@ main :: IO ()
 main = do
   start <- Clock.getTime Clock.Monotonic
   let nops = 1000000
-  KVD.parallelPerformance 500 1000 nops
+      nkeys = 1000
+      txsPerBlock = 1000
+  KVD.parallelPerformance txsPerBlock nkeys nops
   end <- Clock.getTime Clock.Monotonic
   let dt = Clock.diffTimeSpec end start
       nanoseconds = Clock.toNanoSecs dt
@@ -17,3 +19,5 @@ main = do
   putStrLn $ "adding and deleting "++show nops++" took "++show seconds++" seconds, "++show (fromIntegral nops / seconds)++" operations per second."
 --  putStrLn "Key-value store demo, 200 messages:" >> KVD.demo 400 100
 --  putStrLn "Simple demo, 200 messages:" >> SD.demo 200
+
+t = main
