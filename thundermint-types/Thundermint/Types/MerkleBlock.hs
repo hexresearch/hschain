@@ -30,7 +30,9 @@ module Thundermint.Types.MerkleBlock
 
 import Codec.Serialise
 import Data.Bits
-import GHC.Generics    (Generic)
+
+import Data.Foldable (toList)
+import GHC.Generics  (Generic)
 
 import Thundermint.Crypto
 
@@ -38,8 +40,8 @@ import Thundermint.Crypto
 -- Data types
 ----------------------------------------------------------------
 
-data MerkleBlockRoot alg = MerkleBlockRoot
-  { rootHash :: !(Hash alg) }
+newtype MerkleBlockRoot alg = MerkleBlockRoot
+  { rootHash :: Hash alg }
   deriving (Show, Eq, Generic)
 instance Serialise (MerkleBlockRoot alg)
 
@@ -55,8 +57,10 @@ data MerkleBlockTree alg a = MerkleBlockTree
 data Node alg a
   = Branch (Hash alg) (Node alg a) (Node alg a)
   | Leaf   (Hash alg) a
-  deriving (Show, Foldable, Generic)
+  deriving (Show, Eq,  Foldable, Generic)
 
+merkleNodeHash :: Node alg a -> Hash alg
+merkleNodeHash = undefined
 
 
 nullHash :: CryptoHash alg => Hash alg
@@ -71,69 +75,26 @@ nullRoot  = MerkleBlockRoot nullHash
 -- Build tree, compute rooth hash
 ----------------------------------------------------------------
 
-
-createMerkleTree
-  :: forall alg a.  (CryptoHash alg, Serialise a)
-  => [a]
-  -> MerkleBlockTree alg a
-createMerkleTree []     = MerkleBlockTree nullRoot Nothing
-createMerkleTree tx = let leaves :: [Node alg a]= (\x -> Leaf (computeLeafHash x) x) <$> tx
-                          tree = balance $ preBalance nPairs leaves
-                      in MerkleBlockTree (MerkleBlockRoot (getHash tree)) (Just tree)
+-- |
+-- utility function to process list of items as balanced tree
+buildMerkleTree :: (a -> a -> a) -> [a] -> a
+buildMerkleTree f leaves = balance $ preBalance nPairs leaves
   where
     -- In order to build a balanced tree we need to know numbrer of leaves
-    n = length tx
-    p = nextPow2 n
-    -- Number of pairs of nodes at the depth p. Rest of nodes will be
-    -- at the depth p-1
-    nPairs = (2*n - p) `div` 2
-    -- Group leaves which will appear at maximum depth
-    preBalance _ []       = []
-    preBalance _ [x]      = [x]  -- to suppress non-exhaustive pattern matching warning
-    preBalance 0 xs       = xs
-    preBalance size (x:y:xs) = Branch (hash (1::Int, [getHash x, getHash y]))  x y
-                          : preBalance (size - 1) xs
-
-    -- Now tree is perfectly balanced we can use simple recursive
-    -- algorithm to balance it perfectly
-    pair (x:y:xs) =  Branch (hash (1::Int, [getHash x, getHash y])) x y : pair xs
-    pair []       = []
-    pair [_]      = error "Odd-length list passed to pair algorithm"
-    --
-    balance []  = error "Empty list passed to balance"
-    balance [x] = x
-    balance xs  = balance $ pair xs
-
-
--- | Find smallest power of 2 larger than number
-nextPow2 :: Int -> Int
-nextPow2 n = 1 `shiftL` (finiteBitSize n - countLeadingZeros n)
-
--- | calculate Merkle root of given sequence
--- to calculate merkle root hash we do not need explicit tree data structure
-computeMerkleRoot
-  :: (CryptoHash alg, Serialise a)
-  => [a]
-  -> Hash alg
-computeMerkleRoot []     = nullHash
-computeMerkleRoot tx = let leaves = map computeLeafHash tx
-                       in balance $ preBalance nPairs leaves
-  where
-    -- In order to build a balanced tree we need to know numbrer of leaves
-    n = length tx
+    n = length leaves
     p = nextPow2 n
     -- Number of pairs of nodes at the depth p. Rest of nodes will be
     -- at the depth p-1
     nPairs = (2*n - p) `div` 2
     -- Group leaves which will appear at maximum depth
     preBalance _ []          = []
-    preBalance _ [x]         = [x] -- to suppress non-exhaustive pattern matching warning
+    preBalance _ [x]         = [x]  -- to suppress non-exhaustive pattern matching warning
     preBalance 0 xs          = xs
-    preBalance size (x:y:xs) = (hash (1::Int, [x, y])) : preBalance (size - 1) xs
+    preBalance size (x:y:xs) = f x y : preBalance (size - 1) xs
 
     -- Now tree is perfectly balanced we can use simple recursive
     -- algorithm to balance it perfectly
-    pair (x:y:xs) = (hash (1::Int, [x,  y]))  : pair xs
+    pair (x:y:xs) =  f x y : pair xs
     pair []       = []
     pair [_]      = error "Odd-length list passed to pair algorithm"
     --
@@ -141,6 +102,51 @@ computeMerkleRoot tx = let leaves = map computeLeafHash tx
     balance [x] = x
     balance xs  = balance $ pair xs
 
+-- | Find smallest power of 2 larger than number
+nextPow2 :: Int -> Int
+nextPow2 n = 1 `shiftL` (finiteBitSize n - countLeadingZeros n)
+
+-- |
+-- create balanced merkle tree
+createMerkleTree
+  :: forall alg a. (CryptoHash alg, Serialise a)
+  => [a]
+  -> MerkleBlockTree alg a
+createMerkleTree []     = MerkleBlockTree nullRoot Nothing
+createMerkleTree tx = let leaves :: [Node alg a]= mkLeaf <$> tx
+                          tree = buildMerkleTree mkBranch leaves
+                      in MerkleBlockTree (MerkleBlockRoot (getHash tree)) (Just tree)
+
+-- | calculate Merkle root of given sequence
+-- to compute merkle root hash we do not need explicit tree data structure
+computeMerkleRoot
+  :: (CryptoHash alg, Serialise a)
+  => [a]
+  -> Hash alg
+computeMerkleRoot [] = nullHash
+computeMerkleRoot tx = let leaves = map computeLeafHash tx
+                       in buildMerkleTree concatHash leaves
+
+mkLeaf
+  :: (CryptoHash alg, Serialise a)
+  => a
+  -> Node alg a
+mkLeaf x = Leaf (computeLeafHash x) x
+
+mkBranch
+  :: (CryptoHash alg, Serialise a)
+  => Node alg a
+  -> Node alg a
+  -> Node alg a
+mkBranch x y = Branch (concatHash (getHash x) (getHash y)) x y
+
+
+concatHash
+  :: (CryptoHash alg)
+  => Hash alg
+  -> Hash alg
+  -> Hash alg
+concatHash x y = hash (1::Int, [x, y])
 
 computeLeafHash
   :: (CryptoHash alg, Serialise a)
@@ -149,8 +155,7 @@ computeLeafHash
 computeLeafHash a = hash (0::Int, a)
 
 treeLeaves :: (CryptoHash alg, Serialise a)  => Node alg a -> [a]
-treeLeaves (Leaf _ x)     = [x]
-treeLeaves (Branch _ l r) = treeLeaves l ++ treeLeaves r
+treeLeaves =  toList
 
 ----------------------------------------------------------------
 -- Merkel Proof
