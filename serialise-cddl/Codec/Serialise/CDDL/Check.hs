@@ -33,15 +33,44 @@ check ty x = case ty of
   Choice ts   -> any (flip check x) ts
 
 checkPrim :: Prim -> Term -> Bool
--- checkPrim p x | traceShow ("checkPrim",p,x) False = undefined
-checkPrim Int  TInt{} = True
-checkPrim UInt TInt{} = True
-checkPrim NInt TInt{} = True
-checkPrim Float16 THalf{} = True
-checkPrim Float32 TFloat{}     = True
-checkPrim Float64 TDouble{}    = True
--- FIXME:
-checkPrim _ _ = False
+checkPrim p t = case p of
+  Int -> case t of
+    TInt{} -> True
+    _      -> False
+  UInt -> case t of
+    TInt{} -> True
+    _      -> False
+  NInt -> case t of
+    TInt{} -> True
+    _       -> False
+  Float16 -> case t of
+    THalf{} -> True
+    _       -> False
+  Float32 -> case t of
+    TFloat{} -> True
+    _        -> False
+  Float64 -> case t of
+    TDouble{} -> True
+    _         -> False
+  Float -> case t of
+    THalf{}   -> True
+    TFloat{}  -> True
+    TDouble{} -> True
+    _         -> False
+  BStr -> case t of
+    TBytes{}  -> True
+    TBytesI{} -> True
+    _         -> False
+  TStr -> case t of
+    TString{}  -> True
+    TStringI{} -> True
+    _          -> False
+  Bool -> case t of
+    TBool{} -> True
+    _       -> False
+  Null -> case t of
+    TNull -> True
+    _     -> False
 
 checkLit :: Literal -> Term -> Bool
 -- checkLit p x | traceShow ("checkLit",p,x) False = undefined

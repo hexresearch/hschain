@@ -158,6 +158,7 @@ resolveTypename = \case
   "bytes"   -> Left BStr
   "tstr"    -> Left TStr
   "text"    -> Left TStr
+  "null"    -> Left Null
   i         -> Right i
 
 occur :: Parser Occur
