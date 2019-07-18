@@ -1,7 +1,7 @@
 { isProfile  ? false
 , isProd     ? false
 , isCoreLint ? false
-, isBench    ? false
+, isBench    ? true
 , useSodium  ? true
 , ghc        ? "ghc844"
 }:
