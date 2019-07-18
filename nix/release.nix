@@ -1,7 +1,7 @@
 { isProfile  ? false
 , isProd     ? false
 , isCoreLint ? false
-, isBench    ? false 
+, isBench    ? false
 , useSodium  ? true
 , ...
 }:
