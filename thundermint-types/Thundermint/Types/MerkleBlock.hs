@@ -24,8 +24,8 @@ module Thundermint.Types.MerkleBlock
   , isBalanced
   , isBalanced'
   -- * Merkle proof
-  , merklePath
-  , merkleProof
+  , merkleProofPath
+  , checkMerkleProof
   ) where
 
 import Codec.Serialise
@@ -58,10 +58,6 @@ data Node alg a
   = Branch (Hash alg) (Node alg a) (Node alg a)
   | Leaf   (Hash alg) a
   deriving (Show, Eq,  Foldable, Generic)
-
-merkleNodeHash :: Node alg a -> Hash alg
-merkleNodeHash = undefined
-
 
 nullHash :: CryptoHash alg => Hash alg
 nullHash = hash (2:: Int)
@@ -157,33 +153,48 @@ computeLeafHash a = hash (0::Int, a)
 treeLeaves :: (CryptoHash alg, Serialise a)  => Node alg a -> [a]
 treeLeaves =  toList
 
+getHash :: Node alg a -> Hash alg
+getHash (Leaf h _)     = h
+getHash (Branch h _ _) = h
+
 ----------------------------------------------------------------
 -- Merkel Proof
 ----------------------------------------------------------------
 
 -- |
+-- data type to capture of merkle proof path item hash and direction
+data MerkleProofPathItem alg
+  = BranchLeft (Hash alg)
+  | BranchRight (Hash alg)
+  deriving (Show, Eq,  Generic)
+
+
+-- |
+-- merkle proof path
+newtype MerkleProofPath alg = MerkleProofPath [MerkleProofPathItem alg]
+
+
+-- |
 -- return the path from leaf to root of branch if any
-merklePath :: (CryptoHash alg, Serialise a) => Maybe (Node alg a) -> Hash alg -> [Either (Hash alg) (Hash alg)]
-merklePath Nothing _ = []
-merklePath (Just tree) nodeHash = recur [] tree
+merkleProofPath :: (CryptoHash alg, Serialise a) => Maybe (Node alg a) -> Hash alg -> MerkleProofPath alg
+merkleProofPath Nothing _ = MerkleProofPath []
+merkleProofPath (Just tree) nodeHash = MerkleProofPath $ recur [] tree
   where
     recur acc (Leaf h _)
         | h == nodeHash = acc
         | otherwise = []
 
-    recur acc (Branch _ l r) = recur (Right (getHash r) : acc) l ++ recur (Left (getHash l) : acc) r
-
-getHash :: Node alg a -> Hash alg
-getHash (Leaf h _)     = h
-getHash (Branch h _ _) = h
+    recur acc (Branch _ l r) = recur (BranchRight (getHash r) : acc) l ++ recur (BranchLeft (getHash l) : acc) r
 
 
-merkleProof :: CryptoHash alg => Hash alg -> [Either (Hash alg) (Hash alg)] -> Hash alg -> ( Hash alg, Bool)
-merkleProof rootHash proofPath leafHash = (computeHash, computeHash == rootHash)
+-- |
+-- check proof of inclusion
+checkMerkleProof :: CryptoHash alg => Hash alg -> MerkleProofPath alg -> Hash alg -> Bool
+checkMerkleProof rootHash (MerkleProofPath proofPath) leafHash = computeHash == rootHash
   where
     computeHash = foldl (\acc x -> case x of
-                                   Left s  ->  hash (1::Int, [s, acc])
-                                   Right s ->  hash (1::Int, [acc, s])) leafHash proofPath
+                                   BranchLeft s  ->  concatHash s  acc
+                                   BranchRight s ->  concatHash acc s) leafHash proofPath
 
 
 
@@ -204,7 +215,7 @@ isBalanced (Just tree) | go tree > 0 = True
    go (Leaf {}) = 1
    go (Branch _ l r) | lH == (-1) = (-1)
                      | rH == (-1) = (-1)
-                     | abs(lH - rH) > 1 = (-1)
+                     | abs (lH - rH) > 1 = (-1)
                      | otherwise = 1 + (max lH rH)
        where
          lH = go l
