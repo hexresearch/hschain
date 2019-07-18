@@ -86,9 +86,9 @@ prop_MerkleProofCorrect (BS bs) = ioProperty $ do
   let leafBS = leaves !! index
       leafHash = (hash (0::Int, leafBS))
 
-      path = merklePath tree leafHash
+      path = merkleProofPath tree leafHash
 
-  return $ snd $ merkleProof rootH path leafHash
+  return $ checkMerkleProof rootH path leafHash
   where
     blockTree :: MerkleBlockTree SHA512 ByteString
     blockTree = createMerkleTree $ nub $ BS.group bs
