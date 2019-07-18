@@ -37,6 +37,7 @@ let
     thundermint-quickcheck = callInternal hsPkgs "thundermint" ../thundermint-quickcheck    {} "";
     thundermint-types      = callInternal hsPkgs "thundermint" ../thundermint-types         {} "";
     thundermint            = callInternal hsPkgs "thundermint" ../thundermint               {} "";
+    serialise-cddl         = callInternal hsPkgs "thundermint" ../serialise-cddl            {} "";
   };
   # Build internal package
   callInternal = hask: name: path: args: opts:
@@ -50,10 +51,23 @@ let
     /.stack-work
     '';
   #
-  release = {
-    inherit pkgs;
-    ghc844 = p: with p; [ thundermint-crypto thundermint-types thundermint-quickcheck thundermint ];
-    ghc865 = p: with p; [ thundermint-crypto thundermint-types thundermint-quickcheck thundermint ];
-    ghcjs  = p: with p; [ thundermint-crypto thundermint-types  ];
+  release = let
+    thundermintPkgAll = p: with p; [
+      serialise-cddl
+      thundermint-crypto
+      thundermint-types
+      thundermint-quickcheck
+      thundermint
+    ];
+    thundermintPkgJs = p: with p; [
+      thundermint-crypto
+      thundermint-types
+    ];
+    in
+    {
+      inherit pkgs;
+      ghc844 = thundermintPkgAll;
+      ghc865 = thundermintPkgAll;
+      ghcjs  = thundermintPkgJs;
     };
 in release
