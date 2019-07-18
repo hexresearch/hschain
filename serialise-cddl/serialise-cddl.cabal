@@ -16,9 +16,11 @@ Library
   Default-Language:    Haskell2010
   Build-Depends: base           >=4 && <5
                , serialise      >= 0.2
+               , bytestring
                , cborg
                , containers
                , transformers
+               , text           >=1
                , megaparsec
                , prettyprinter
                , lens
@@ -36,9 +38,11 @@ test-suite tests-cddl
   hs-source-dirs:   tests
   main-is:          Main.hs
   build-depends:    base >=4.5 && <5
-                  , cddl
-                  --
+                  , serialise-cddl
+                                    --
                   , megaparsec
+                  , bytestring
+                  , bytestring-arbitrary
                   , prettyprinter
                   , serialise
                   , tasty

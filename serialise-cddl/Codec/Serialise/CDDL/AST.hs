@@ -99,6 +99,7 @@ data Prim
   | Float
   | BStr
   | TStr
+  | Null
   deriving (Show,Eq)
 
 data Literal
@@ -263,6 +264,7 @@ instance Pretty Prim where
     Float   -> "float"
     BStr    -> "bstr"
     TStr    -> "tstr"
+    Null    -> "null"
 
 instance Pretty a => Pretty (Nm f a) where
   pretty (Nm a) = pretty a

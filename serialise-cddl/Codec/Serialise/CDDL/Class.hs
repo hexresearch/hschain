@@ -23,11 +23,16 @@ import Control.Lens hiding (rewrite)
 import Control.Monad
 import Control.Monad.Trans.State.Strict
 import Data.List
+import Data.Int
+import Data.Word
 import Data.Typeable
-import qualified Data.Map.Strict as Map
-import qualified Data.Set        as Set
+import qualified Data.Map.Strict      as Map
+import qualified Data.Set             as Set
+import qualified Data.Text            as T
+import qualified Data.ByteString      as BS
+import qualified Data.ByteString.Lazy as BL
 
-import GHC.Generics
+import GHC.Generics hiding (UInt)
 
 import Codec.Serialise.CDDL.AST
 
@@ -134,13 +139,44 @@ typeRepToVar = worker False
 -- Instances
 ----------------------------------------------------------------
 
+-- FIXME: ranges for fixed-size integers
 instance CDDL Int where
   cddlRecSchema _ = Inline $ Prim Int
+instance CDDL Int8 where
+  cddlRecSchema _ = Inline $ Prim Int
+instance CDDL Int16 where
+  cddlRecSchema _ = Inline $ Prim Int
+instance CDDL Int32 where
+  cddlRecSchema _ = Inline $ Prim Int
+instance CDDL Int64 where
+  cddlRecSchema _ = Inline $ Prim Int
+
+instance CDDL Word where
+  cddlRecSchema _ = Inline $ Prim UInt
+instance CDDL Word8 where
+  cddlRecSchema _ = Inline $ Prim UInt
+instance CDDL Word16 where
+  cddlRecSchema _ = Inline $ Prim UInt
+instance CDDL Word32 where
+  cddlRecSchema _ = Inline $ Prim UInt
+instance CDDL Word64 where
+  cddlRecSchema _ = Inline $ Prim UInt
+
 instance CDDL Float where
   cddlRecSchema _ = Inline $ Prim Float32
 instance CDDL Double where
   cddlRecSchema _ = Inline $ Prim Float64
 
+
+instance CDDL BS.ByteString where
+  cddlRecSchema _ = Inline $ Prim BStr
+instance CDDL BL.ByteString where
+  cddlRecSchema _ = Inline $ Prim BStr
+instance CDDL T.Text where
+  cddlRecSchema _ = Inline $ Prim TStr
+
+instance CDDL () where
+  cddlRecSchema _ = Inline $ Prim Null
 
 instance (CDDL a, CDDL b) => CDDL (a,b) where
   cddlRecSchema _ = Inline $ Array $ GrpSeq

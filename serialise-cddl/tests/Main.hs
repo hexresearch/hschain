@@ -2,11 +2,18 @@
 {-# LANGUAGE DeriveGeneric       #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications    #-}
+{-# OPTIONS_GHC -fno-warn-orphans #-}
 import Codec.Serialise
 import Data.Typeable
+import Data.Int
+import Data.Word
+import Data.ByteString.Arbitrary (fromABS)
 import Data.Text.Prettyprint.Doc
 import Data.Text.Prettyprint.Doc.Render.Text (renderStrict)
-import qualified Data.Text as T
+-- import Numeric.Natural
+import qualified Data.Text            as T
+import qualified Data.ByteString      as BS
+import qualified Data.ByteString.Lazy as BL
 import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Tasty.QuickCheck
@@ -29,8 +36,29 @@ main :: IO ()
 main = defaultMain $ testGroup "CDDL"
   [ testGroup "parser" testsParser
   , testGroup "schema roundtrip"
-    [ propRoundtripSchema @Int
-    , propRoundtripSchema @Float
+    -- Primitives
+    [ propRoundtripSchema @Float
+    , propRoundtripSchema @Double
+    , propRoundtripSchema @Int
+    , propRoundtripSchema @Int8
+    , propRoundtripSchema @Int16
+    , propRoundtripSchema @Int32
+    , propRoundtripSchema @Int64
+    , propRoundtripSchema @Word
+    , propRoundtripSchema @Word8
+    , propRoundtripSchema @Word16
+    , propRoundtripSchema @Word32
+    , propRoundtripSchema @Word64
+    -- , propRoundtripSchema @Bool
+    -- , propRoundtripSchema @Char
+    -- , propRoundtripSchema @Integer
+    -- , propRoundtripSchema @Natural
+    -- , propRoundtripSchema @Ordering
+    , propRoundtripSchema @()
+    , propRoundtripSchema @T.Text
+    , propRoundtripSchema @BS.ByteString
+    , propRoundtripSchema @BL.ByteString
+      -- Derived types
     , propRoundtripSchema @Foo0
     , propRoundtripSchema @Foo1
     , propRoundtripSchema @Foo2
@@ -39,8 +67,29 @@ main = defaultMain $ testGroup "CDDL"
     , propRoundtripSchema @(Bar2 Foo2)
     ]
   , testGroup "schema checks"
+    -- Primitives
     [ testSchemaWorks @Int
     , testSchemaWorks @Float
+    , testSchemaWorks @Int
+    , testSchemaWorks @Int8
+    , testSchemaWorks @Int16
+    , testSchemaWorks @Int32
+    , testSchemaWorks @Int64
+    , testSchemaWorks @Word
+    , testSchemaWorks @Word8
+    , testSchemaWorks @Word16
+    , testSchemaWorks @Word32
+    -- , testSchemaWorks @Word64
+    -- , testSchemaWorks @Bool
+    -- , testSchemaWorks @Char
+    -- , testSchemaWorks @Integer
+    -- , testSchemaWorks @Natural
+    -- , testSchemaWorks @Ordering
+    , testSchemaWorks @()
+    , testSchemaWorks @T.Text
+    , testSchemaWorks @BS.ByteString
+    , testSchemaWorks @BL.ByteString
+    -- Compound types
     , testSchemaWorks @[Int]
       -- Derived types
     , testSchemaWorks @Foo0
@@ -155,3 +204,13 @@ instance QC.Arbitrary Bar1 where
   arbitrary = QC.genericArbitrary
 instance QC.Arbitrary a => QC.Arbitrary (Bar2 a) where
   arbitrary = QC.genericArbitrary
+
+
+instance QC.Arbitrary BS.ByteString where
+  arbitrary = fromABS <$> arbitrary
+  shrink bs = BS.pack <$> shrink (BS.unpack bs)
+instance QC.Arbitrary BL.ByteString where
+  arbitrary = BL.fromStrict . fromABS <$> arbitrary
+
+instance QC.Arbitrary T.Text where
+  arbitrary = T.pack <$> arbitrary
