@@ -8,7 +8,8 @@ import Control.Monad.Trans.Maybe             (MaybeT(..))
 import Control.Monad.Trans.State.Strict as SS(StateT(..))
 import Control.Monad.Trans.State.Lazy   as SL(StateT(..))
 import Control.Monad.Trans.Except            (ExceptT(..))
-import Control.Monad.Trans.Identity          (IdentityT(..))
+import Control.Monad.Trans.Identity           (IdentityT(..))
+--import Control.Monad.Trans.RWS.Strict   as RWSTS     (RWST(..))
 import Data.Text       (Text)
 import Katip
 import Pipes
@@ -49,7 +50,6 @@ instance MonadLogger m => MonadLogger (IdentityT m) where
 instance MonadLogger m => MonadLogger (Proxy a b c d m) where
   logger sev str a = lift $ logger sev str a
   localNamespace fun = hoist (localNamespace fun)
-
 
 -- | Change logger's namespace
 setNamespace :: MonadLogger m => Namespace -> m a -> m a

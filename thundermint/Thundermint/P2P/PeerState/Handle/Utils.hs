@@ -1,13 +1,20 @@
+{-# LANGUAGE LambdaCase          #-}
+{-# LANGUAGE NamedFieldPuns      #-}
+{-# LANGUAGE RankNTypes          #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module Thundermint.P2P.PeerState.Handle.Utils where
 
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 
+import Control.Concurrent.STM   (atomically)
 import Control.Monad
 import Control.Monad.Catch      (MonadThrow)
 import Control.Monad.RWS.Strict
+import Lens.Micro.Mtl
 
+import Thundermint.Blockchain.Internal.Types
 import Thundermint.Crypto
 import Thundermint.Exceptions
 import Thundermint.Store
@@ -17,6 +24,8 @@ import Thundermint.Types.Validators
 import Thundermint.Control              (throwNothing)
 import Thundermint.Store.Internal.Query (MonadReadDB)
 
+import Thundermint.P2P.Internal.Types
+import Thundermint.P2P.PeerState.Monad
 import Thundermint.P2P.PeerState.Types
 
 advancePeer :: (CryptoSign alg, CryptoHash alg, Functor m, Monad m, MonadIO m, MonadThrow m, MonadReadDB m alg a)
@@ -54,3 +63,51 @@ advancePeer step@(FullStep h _ _) = do
                         }
              GT -> return $ wrap $ AheadState step
 
+type MessageHandler s alg a m =  HandlerCtx alg a m
+                              => GossipMsg alg a
+                              -> TransitionT s alg a m (SomeState alg a) -- ^ new `TransitionT'
+
+type AnnouncementHandler s alg a m =  HandlerCtx alg a m
+                                   => MessageTx alg a
+                                   -> TransitionT s alg a m (SomeState alg a) -- ^ new `TransitionT'
+
+type TimeoutHandler s alg a m =  (Wrapable s, HandlerCtx alg a m)
+                              => TransitionT s alg a m (SomeState alg a) -- ^ new `TransitionT'
+
+handlerGeneric :: (Wrapable s, HandlerCtx alg a m)
+               => MessageHandler s alg a m
+               -> AnnouncementHandler s alg a m
+               -> TimeoutHandler s alg a m
+               -> TimeoutHandler s alg a m
+               -> TimeoutHandler s alg a m
+               -> Event alg a -> TransitionT s alg a m (SomeState alg a)
+handlerGeneric
+  hanldlerGossipMsg
+  handlerAnnounncement
+  handlerVotesTimeout
+  handlerMempoolTimeout
+  handlerBlocksTimeout = \ case
+  EGossip m -> hanldlerGossipMsg m
+  EAnnouncement a -> handlerAnnounncement' a
+  EVotesTimeout -> handlerVotesTimeout
+  EMempoolTimeout -> handlerMempoolTimeout
+  EBlocksTimeout -> handlerBlocksTimeout
+  EAnnounceTimeout -> handlerAnnounceTimeout
+  where
+    handlerAnnounceTimeout :: TimeoutHandler s alg a m
+    handlerAnnounceTimeout = do
+      st <- view consensusSt >>= lift . liftIO . atomically
+      forM_ st $ \(h,TMState{smRound,smStep}) -> do
+        push2Gossip $ GossipAnn $ AnnStep $ FullStep h smRound smStep
+        case smStep of
+          StepAwaitCommit r -> push2Gossip $ GossipAnn $ AnnHasProposal h r
+          _                 -> return ()
+      currentState
+    handlerAnnounncement' e = do
+      s <- handlerAnnounncement e
+      case e of
+        TxAnn       a -> push2Gossip $ GossipAnn a
+        TxProposal  p -> push2Gossip $ GossipProposal  p
+        TxPreVote   v -> push2Gossip $ GossipPreVote   v
+        TxPreCommit v -> push2Gossip $ GossipPreCommit v
+      return s

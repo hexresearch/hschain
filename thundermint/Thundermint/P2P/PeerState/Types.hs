@@ -11,8 +11,9 @@
 
 module Thundermint.P2P.PeerState.Types where
 
-import Data.Map (Map)
-import Data.Set (Set)
+import Control.Concurrent.STM (STM)
+import Data.Map               (Map)
+import Data.Set               (Set)
 
 import Lens.Micro.TH
 
@@ -114,10 +115,19 @@ type instance InternalState Unknown = UnknownState
 
 data Command alg a = SendRX !(MessageRx 'Unverified alg a)
                    | Push2Mempool !(TX a)
+                   | Push2Gossip !(GossipMsg alg a)
                    | SendPEX !PexMessage
 
 data Event alg a = EGossip !(GossipMsg alg a)
+                 | EMempoolTimeout
+                 | EVotesTimeout
+                 | EBlocksTimeout
+                 | EAnnounceTimeout
+                 | EAnnouncement !(MessageTx alg a)
 
-data Config m alg a = Config {_proposalStorage :: !(ProposalStorage 'RO m alg a)}
---makeLenses ''Config
+data Config m alg a = Config { _propStorage :: !(ProposalStorage 'RO m alg a)
+                             , _mempCursor  :: !(MempoolCursor m alg (TX a))
+                             , _consensusSt :: !(STM (Maybe (Height, TMState alg a)))
+                             }
+makeLenses ''Config
 

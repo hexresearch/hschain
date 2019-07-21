@@ -6,26 +6,20 @@ module Thundermint.P2P.PeerState.Handle
  , handler
  ) where
 
-import Control.Monad.Catch      (MonadThrow)
-import Control.Monad.RWS.Strict
-
-import Thundermint.Crypto
-import Thundermint.Store.Internal.Query (MonadReadDB)
-
 import Thundermint.P2P.PeerState.Monad
 import Thundermint.P2P.PeerState.Types
 
-import qualified Thundermint.P2P.PeerState.Handle.Lagging as Lagging
+import qualified Thundermint.P2P.PeerState.Handle.Ahead   as Ahead
 import qualified Thundermint.P2P.PeerState.Handle.Current as Current
-import qualified Thundermint.P2P.PeerState.Handle.Ahead as Ahead
+import qualified Thundermint.P2P.PeerState.Handle.Lagging as Lagging
 import qualified Thundermint.P2P.PeerState.Handle.Unknown as Unknown
 
 
-handler :: (CryptoHash alg, CryptoSign alg, Monad m, MonadIO m, MonadReadDB m alg a, MonadThrow m)
-       => Config m alg a
-       -> SomeState alg a
-       -> Event alg a
-       -> m (SomeState alg a, [Command alg a])
+handler :: HandlerCtx alg a m
+        => Config m alg a
+        -> SomeState alg a
+        -> Event alg a
+        -> m (SomeState alg a, [Command alg a])
 handler config st event = case st of
   WrapState (Lagging s) -> select <$> runTransitionT (Lagging.handler event) config s
   WrapState (Current s) -> select <$> runTransitionT (Current.handler event) config s

@@ -86,6 +86,7 @@ Library
                   Thundermint.P2P.Consts
                   Thundermint.P2P.Network
                   Thundermint.P2P.PeerState
+                  Thundermint.P2P.PeerState.Timer
                   Thundermint.P2P.PeerState.Types
                   Thundermint.P2P.PeerState.Handle
                   Thundermint.P2P.PeerState.Handle.Lagging

@@ -11,6 +11,7 @@
 {-# LANGUAGE RankNTypes        #-}
 {-# LANGUAGE RecordWildCards   #-}
 {-# LANGUAGE ViewPatterns      #-}
+{-# LANGUAGE ScopedTypeVariables      #-}
 
 module TM.Gossip (tests) where
 
@@ -63,9 +64,11 @@ import TM.Util.Network
 --
 testRawGossipUnknown :: IO ()
 testRawGossipUnknown =
-    withGossipEnv $ \peerStateObj peerChans gossipCh _env -> do
+    withGossipEnv $ \_peerStateObj peerChans gossipCh _env mempool -> do
+        recvCh   <- liftIO newTChanIO
+        pexCh    <- liftIO newTChanIO
         runConcurrently
-            [ peerGossipVotes peerStateObj peerChans gossipCh
+            [ peerFSM peerChans pexCh gossipCh recvCh mempool
             , waitSec 1
             ]
         -- TODO проверить, что ничего не поменялось
@@ -76,13 +79,15 @@ testRawGossipUnknown =
 --
 testRawGossipLagging :: IO ()
 testRawGossipLagging =
-    withGossipEnv $ \peerStateObj peerChans gossipCh env@GossipEnv{..} -> do
+    withGossipEnv $ \peerStateObj peerChans gossipCh env@GossipEnv{..} mempool -> do
         addSomeBlocks env 10
         ourH  <- succ <$> queryRO blockchainHeight
         advancePeer peerStateObj (FullStep (pred ourH) (Round 0) StepNewHeight)
+        recvCh   <- liftIO newTChanIO
+        pexCh    <- liftIO newTChanIO
         -- Run peerGossipVotes
         catchTestError $ runConcurrently
-            [ peerGossipVotes peerStateObj peerChans gossipCh
+            [ peerFSM peerChans pexCh gossipCh recvCh mempool
             , waitForEvents envEventsQueue [(TepgvStarted, 1), (TepgvNewIter, 2), (TepgvLagging, 2)]
             , waitSec 5.0 >> throwM (TestError "Timeout!")
             ]
@@ -98,13 +103,15 @@ testRawGossipLagging =
 --
 testRawGossipAhead :: IO ()
 testRawGossipAhead =
-    withGossipEnv $ \peerStateObj peerChans gossipCh env@GossipEnv{..} -> do
+    withGossipEnv $ \peerStateObj peerChans gossipCh env@GossipEnv{..} mempool -> do
         addSomeBlocks env 10
         ourH  <- succ <$> queryRO blockchainHeight
         advancePeer peerStateObj (FullStep (succ ourH) (Round 0) StepNewHeight)
+        recvCh   <- liftIO newTChanIO
+        pexCh    <- liftIO newTChanIO
         -- Run peerGossipVotes
         catchTestError $ runConcurrently
-            [ peerGossipVotes peerStateObj peerChans gossipCh
+            [ peerFSM peerChans pexCh gossipCh recvCh mempool
             , waitForEvents envEventsQueue [(TepgvStarted, 1), (TepgvNewIter, 2), (TepgvAhead, 2)]
             , waitSec 5.0 >> throwM (TestError "Timeout!")
             ]
@@ -120,7 +127,7 @@ testRawGossipAhead =
 --
 testRawGossipCurrentSentProposal :: IO ()
 testRawGossipCurrentSentProposal = do
-    withGossipEnv $ \peerStateObj peerChans gossipCh env@GossipEnv{..} -> do
+    withGossipEnv $ \peerStateObj peerChans gossipCh env@GossipEnv{..} mempool -> do
         (_lastBlock, lastCommit) <- last <$> addSomeBlocks' env 10
         ourH  <- succ <$> queryRO blockchainHeight
         advancePeer peerStateObj (FullStep ourH (Round 0) StepNewHeight)
@@ -132,14 +139,16 @@ testRawGossipCurrentSentProposal = do
                                 , propBlockID = commitBlockID lastCommit
                                 }
         newTMState env ourH $ \tm -> tm { smProposals = Map.singleton (Round 0) (signValue currentNodeValIdx currentNodePrivKey proposal) }
+        recvCh   <- liftIO newTChanIO
+        pexCh    <- liftIO newTChanIO
         prePeerState <- (getPeerState peerStateObj >>= \case
                 Current cp -> return cp
                 _ -> liftIO $ assertFailure "Wrong initial state")
         -- Run peerGossipVotes
         buffer <- liftIO newTQueueIO
         catchTestError $ runConcurrently
-            [ peerGossipVotes peerStateObj peerChans gossipCh
-            , peerSend        peerStateObj peerChans gossipCh P2PConnection
+            [ peerFSM         peerChans pexCh gossipCh recvCh mempool
+            , peerSend        peerChans gossipCh P2PConnection
                 { send          = liftIO . atomically . writeTQueue buffer
                 , recv          = forever (return ())
                 , close         = return ()
@@ -166,7 +175,7 @@ testRawGossipCurrentSentProposal = do
 --
 internalTestRawGossipCurrentCurrent :: Bool -> Bool -> Bool -> IO ()
 internalTestRawGossipCurrentCurrent isTestingSendProposals isTestingSendPrevotes isTestingSendPrecommits =
-    withGossipEnv $ \peerStateObj peerChans gossipCh env@GossipEnv{..} -> do
+    withGossipEnv $ \peerStateObj peerChans gossipCh env@GossipEnv{..} mempool -> do
         -- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         -- Prepare state
         (_lastBlock, lastCommit) <- last <$> addSomeBlocks' env 10
@@ -204,9 +213,11 @@ internalTestRawGossipCurrentCurrent isTestingSendProposals isTestingSendPrevotes
         -- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         -- Run peerGossipVotes
         buffer <- liftIO newTQueueIO
+        recvCh <- liftIO newTChanIO
+        pexCh  <- liftIO newTChanIO
         catchTestError $ runConcurrently
-            [ peerGossipVotes peerStateObj peerChans gossipCh
-            , peerSend        peerStateObj peerChans gossipCh P2PConnection
+            [ peerFSM peerChans pexCh gossipCh recvCh mempool
+            , peerSend        peerChans gossipCh P2PConnection
                 { send          = liftIO . atomically . writeTQueue buffer
                 , recv          = forever (return ())
                 , close         = return ()
@@ -347,6 +358,7 @@ withGossipEnv
             -> PeerChans m TestAlg Mock.BData
             -> TBQueue (GossipMsg TestAlg Mock.BData)
             -> GossipEnv
+            -> MempoolCursor m TestAlg (TX Mock.BData)
             -> m ()
        )
     -> IO ()
@@ -359,8 +371,8 @@ withGossipEnv fun = do
             proposalStorage <- newSTMPropStorage
             peerStateObj <- newPeerStateObj (makeReadOnlyPS proposalStorage)
             -- let peerId = 0xDEADC0DE
-            let peerChanRx = \_ -> return ()
-            peerChanTx              <- liftIO $ newTChanIO
+            let peerChanRx = const $ return ()
+            peerChanTx              <- liftIO newTChanIO
             peerChanPex             <- liftIO newBroadcastTChanIO
             peerChanPexNewAddresses <- liftIO newTChanIO
             consensusState'         <- liftIO (newTVarIO Nothing)
@@ -371,10 +383,12 @@ withGossipEnv fun = do
                                       , ..
                                       }
             gossipCh <- liftIO $ newTBQueueIO 1000
+            (_bchState, logic) <- logicFromFold Mock.transitions
+            cursor   <- getMempoolCursor $ appMempool logic
             --
             let genv = GossipEnv dbValidatorSet eventsQueue consensusState'
             --
-            fun peerStateObj peerChans gossipCh genv
+            fun peerStateObj peerChans gossipCh genv cursor
 
 
 -- | Wait for events; fail if another event occurs.

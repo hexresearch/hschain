@@ -48,6 +48,7 @@ import Thundermint.Monitoring
 import Thundermint.P2P.Network
 import Thundermint.P2P.PeerState
 import Thundermint.P2P.Types
+import Thundermint.P2P.PeerState.Timer
 import Thundermint.Store
 import Thundermint.Types.Blockchain
 import Thundermint.Types.Validators
@@ -141,27 +142,56 @@ connectPeerTo cfg NetworkAPI{..} addr peerCh mempool peerRegistry =
 ----------------------------------------------------------------
 -- | Routine for receiving messages from peer
 peerFSM
-  :: ( MonadReadDB m alg a, MonadIO m, MonadMask m, MonadLogger m
+  :: ( MonadReadDB m alg a, MonadIO m, MonadMask m, MonadLogger m, MonadTrace m
      , Crypto alg, BlockData a)
   => PeerChans m alg a
   -> TChan PexMessage
-  -> P2PConnection
+  -> TBQueue (GossipMsg alg a)
+  -> TChan (Event alg a)
   -> MempoolCursor m alg (TX a)
-  -> m ()
-peerFSM PeerChans{..} peerExchangeCh P2PConnection{..} MempoolCursor{..} = logOnException $ do
+  -> m b
+peerFSM PeerChans{..} peerExchangeCh gossipCh recvCh m@MempoolCursor{..} = logOnException $ do
   logger InfoS "Starting routing for receiving messages" ()
-  (`fix` wrap UnknownState) $ \loop s -> recv >>= \case
-    Nothing  -> logger InfoS "Peer stopping since socket is closed" ()
-    Just bs  -> case deserialiseOrFail bs of
-      Left  e   -> logger ErrorS ("Deserialization error: " <> showLS e) ()
-      Right msg -> do
-        (s', cmds) <- handler (Config proposalStorage) s (EGossip msg)
+  ownPeerChanTx  <- liftIO $ atomically $ dupTChan peerChanTx
+  votesTO    <- newIO
+  mempoolTO  <- newIO
+  blocksTO   <- newIO
+  announceDelay <- newIO
+  -- TODO: Randomize timeouts
+  let resetVTO = reset votesTO (1e3 * gossipDelayVotes p2pConfig)
+      resetMTO = reset mempoolTO (1e3 * gossipDelayMempool p2pConfig)
+      resetBTO = reset blocksTO (1e3 * gossipDelayBlocks p2pConfig)
+      resetATO = reset announceDelay (1e6 * 10)
+  resetVTO
+  resetMTO
+  resetBTO
+  resetATO
+  (`fix` wrap UnknownState) $ \loop s -> do
+        event <- liftIO $ atomically (  (EVotesTimeout    <$ await votesTO)
+                                    <|> (EMempoolTimeout  <$ await mempoolTO )
+                                    <|> (EBlocksTimeout   <$ await blocksTO )
+                                    <|> (EAnnounceTimeout <$ await announceDelay )
+                                    <|>  readTChan recvCh
+                                    <|> (EAnnouncement <$> (readTChan ownPeerChanTx)))
+--                                    <|> (EGossip <$> (readTChan ownPeerChanTx >>= return . \case
+--                                                                                    TxAnn       a -> GossipAnn a
+--                                                                                    TxProposal  p -> GossipProposal  p
+--                                                                                    TxPreVote   v -> GossipPreVote   v
+--                                                                                    TxPreCommit v -> GossipPreCommit v)))
+        (s', cmds) <- handler (Config proposalStorage m consensusState) s event
+        case event of
+          EVotesTimeout -> resetVTO
+          EMempoolTimeout -> resetMTO
+          EBlocksTimeout  -> resetBTO
+          EAnnounceTimeout -> resetATO
+          _                -> return ()
         forM_ cmds $ \case
           SendRX rx         -> liftIO $ atomically $ peerChanRx rx -- FIXME: tickRecv
           Push2Mempool tx   -> void $ pushTransaction tx
           SendPEX pexMsg    -> liftIO $ atomically $ writeTChan peerExchangeCh pexMsg
+          Push2Gossip tx    -> liftIO $ atomically $ writeTBQueue gossipCh tx
+                                  --tickSend $ Logging.tx gossipCnts
         loop s'
-  return ()
 
 -- | Start interactions with peer. At this point connection is already
 --   established and peer is registered.
@@ -179,19 +209,15 @@ startPeer peerAddrTo peerCh@PeerChans{..} conn peerRegistry mempool = logOnExcep
   descendNamespace (T.pack (show peerAddrTo)) $ logOnException $ do
     logger InfoS "Starting peer" ()
     liftIO $ atomically $ writeTChan peerChanPexNewAddresses [peerAddrTo]
-    peerSt   <- newPeerStateObj proposalStorage
     gossipCh <- liftIO (newTBQueueIO 10)
     pexCh    <- liftIO newTChanIO
+    recvCh   <- liftIO newTChanIO
     cursor   <- getMempoolCursor mempool
     runConcurrently
-      [ descendNamespace "gspV" $ peerGossipVotes         peerSt peerCh gossipCh
-      , descendNamespace "gspB" $ peerGossipBlocks        peerSt peerCh gossipCh
-      , descendNamespace "gspM" $ peerGossipMempool       peerSt peerCh p2pConfig gossipCh cursor
-      , descendNamespace "recv" $ peerReceive             peerSt peerCh pexCh conn cursor
-      , descendNamespace "send" $ peerSend                peerSt peerCh gossipCh conn
+      [ descendNamespace "recv" $ peerReceive             peerCh recvCh conn
+      , descendNamespace "send" $ peerSend                peerCh gossipCh conn
       , descendNamespace "PEX"  $ peerGossipPeerExchange  peerCh peerRegistry pexCh gossipCh
-      , peerGossipAnnounce peerCh gossipCh
-      , descendNamespace "peerFSM" $ peerFSM peerCh pexCh conn cursor
+      , descendNamespace "peerFSM" $ peerFSM              peerCh pexCh gossipCh recvCh cursor
       ]
     logger InfoS "Stopping peer" ()
 
@@ -351,47 +377,18 @@ peerGossipBlocks peerObj PeerChans{..} gossipCh = logOnException $ do
 peerReceive
   :: ( MonadReadDB m alg a, MonadIO m, MonadMask m, MonadLogger m
      , Crypto alg, BlockData a)
-  => PeerStateObj m alg a
-  -> PeerChans m alg a
-  -> TChan PexMessage
+  => PeerChans m alg a
+  -> TChan (Event alg a)
   -> P2PConnection
-  -> MempoolCursor m alg (TX a)
   -> m ()
-peerReceive peerSt PeerChans{..} peerExchangeCh P2PConnection{..} MempoolCursor{..} = logOnException $ do
+peerReceive PeerChans{..} recvCh P2PConnection{..} = logOnException $ do
   logger InfoS "Starting routing for receiving messages" ()
   fix $ \loop -> recv >>= \case -- TODO поменять fix на forever, т.к. в последних версиях base они одни и те же
     Nothing  -> logger InfoS "Peer stopping since socket is closed" ()
     Just bs  -> case deserialiseOrFail bs of
       Left  e   -> logger ErrorS ("Deserialization error: " <> showLS e) ()
       Right msg -> do
-        -- logger DebugS ("Message received: " <> showGossipMsg msg) ()
-        case msg of
-          -- Forward to application and record that peer has
-          -- given vote/proposal/block
-          GossipPreVote   v -> do liftIO $ atomically $ peerChanRx $ RxPreVote v
-                                  tickRecv $ prevote gossipCnts
-                                  addPrevote peerSt v
-          GossipPreCommit v -> do liftIO $ atomically $ peerChanRx $ RxPreCommit v
-                                  tickRecv $ precommit gossipCnts
-                                  addPrecommit peerSt v
-          GossipProposal  p -> do liftIO $ atomically $ peerChanRx $ RxProposal p
-                                  tickRecv $ proposals gossipCnts
-                                  addProposal peerSt (propHeight (signedValue p))
-                                                     (propRound  (signedValue p))
-          GossipBlock     b -> do liftIO $ atomically $ peerChanRx $ RxBlock b
-                                  tickRecv $ blocks gossipCnts
-                                  addBlock peerSt b
-          GossipTx tx       -> do void $ pushTransaction tx
-                                  tickRecv $ Logging.tx gossipCnts
-          GossipPex pexmsg  -> do liftIO $ atomically $ writeTChan peerExchangeCh pexmsg
-                                  tickRecv $ pex gossipCnts
-          --
-          GossipAnn ann -> case ann of
-            AnnStep         s     -> advancePeer   peerSt s
-            AnnHasProposal  h r   -> addProposal   peerSt h r
-            AnnHasPreVote   h r i -> addPrevoteI   peerSt h r i
-            AnnHasPreCommit h r i -> addPrecommitI peerSt h r i
-            AnnHasBlock     h r   -> addBlockHR    peerSt h r
+        liftIO $ atomically $ writeTChan recvCh (EGossip msg)
         loop
 
 -- Infrequently announce our current state. This is needed if node was
@@ -418,42 +415,50 @@ peerGossipAnnounce PeerChans{..} gossipCh = logOnException $
 peerSend
   :: ( MonadReadDB m alg a, MonadMask m, MonadIO m,  MonadLogger m
      , Crypto alg, BlockData a)
-  => PeerStateObj m alg a
-  -> PeerChans m alg a
+  => PeerChans m alg a
   -> TBQueue (GossipMsg alg a)
   -> P2PConnection
   -> m x
-peerSend peerSt PeerChans{..} gossipCh P2PConnection{..} = logOnException $ do
+--peerSend peerSt PeerChans{..} gossipCh P2PConnection{..} = logOnException $ do
+--  logger InfoS "Starting routing for sending data" ()
+--  ownPeerChanTx  <- liftIO $ atomically $ dupTChan peerChanTx
+--  ownPeerChanPex <- liftIO $ atomically $ dupTChan peerChanPex
+--  forever $ do
+--    msg <- liftIO $ atomically $ asum
+--      [ readTChan ownPeerChanTx >>= return . \case
+--          TxAnn       a -> GossipAnn a
+--          TxProposal  p -> GossipProposal  p
+--          TxPreVote   v -> GossipPreVote   v
+--          TxPreCommit v -> GossipPreCommit v
+--      , readTBQueue gossipCh
+--      , GossipPex <$> readTChan ownPeerChanPex
+--      ]
+--    -- XXX Возможна ли тут гонка? Например, сообщение попало в другую
+--    --     ноду, та уже использует его, однако, TCP ACK с той ноды ещё
+--    --     не вернулся на текущую ноду и addBlock/advanceOurHeight ещё
+--    --     не успели вызваться.  Update state of peer when we advance
+--    --     to next height
+--    send $ serialise msg
+--    case msg of
+--      GossipBlock b                        -> addBlock peerSt b
+--      GossipAnn (AnnStep (FullStep h _ _)) -> advanceOurHeight peerSt h
+--      GossipProposal  prop -> do let p = signedValue prop
+--                                 addProposal peerSt (propHeight p) (propRound p)
+--                                 tickSend $ proposals gossipCnts
+--      GossipPreVote   v    -> do addPrevote peerSt v
+--                                 tickSend $ prevote gossipCnts
+--      GossipPreCommit v    -> do addPrecommit peerSt v
+--                                 tickSend $ precommit gossipCnts
+--      _                    -> return ()
+peerSend PeerChans{..} gossipCh P2PConnection{..} = logOnException $ do
   logger InfoS "Starting routing for sending data" ()
-  ownPeerChanTx  <- liftIO $ atomically $ dupTChan peerChanTx
   ownPeerChanPex <- liftIO $ atomically $ dupTChan peerChanPex
   forever $ do
-    msg <- liftIO $ atomically $ asum
-      [ readTChan ownPeerChanTx >>= return . \case
-          TxAnn       a -> GossipAnn a
-          TxProposal  p -> GossipProposal  p
-          TxPreVote   v -> GossipPreVote   v
-          TxPreCommit v -> GossipPreCommit v
-      , readTBQueue gossipCh
-      , GossipPex <$> readTChan ownPeerChanPex
-      ]
-    -- XXX Возможна ли тут гонка? Например, сообщение попало в другую
-    --     ноду, та уже использует его, однако, TCP ACK с той ноды ещё
-    --     не вернулся на текущую ноду и addBlock/advanceOurHeight ещё
-    --     не успели вызваться.  Update state of peer when we advance
-    --     to next height
-    send $ serialise msg
-    case msg of
-      GossipBlock b                        -> addBlock peerSt b
-      GossipAnn (AnnStep (FullStep h _ _)) -> advanceOurHeight peerSt h
-      GossipProposal  prop -> do let p = signedValue prop
-                                 addProposal peerSt (propHeight p) (propRound p)
-                                 tickSend $ proposals gossipCnts
-      GossipPreVote   v    -> do addPrevote peerSt v
-                                 tickSend $ prevote gossipCnts
-      GossipPreCommit v    -> do addPrecommit peerSt v
-                                 tickSend $ precommit gossipCnts
-      _                    -> return ()
+    msg <- liftIO $ atomically $ readTBQueue gossipCh
+                              <|> fmap GossipPex (readTChan ownPeerChanPex)
+    send $ serialise msg -- XXX Возможна ли тут гонка? Например, сообщение попало в другую ноду, та уже использует его,
+                         --     однако, TCP ACK с той ноды ещё не вернулся на текущую ноду и addBlock/advanceOurHeight
+                         --     ещё не успели вызваться.
 
 ----------------------------------------------------------------
 -- Peer exchange
@@ -597,5 +602,3 @@ peerGossipPeerExchange PeerChans{..} PeerRegistry{prConnected,prIsActive} pexCh 
         liftIO $ atomically $ writeTBQueue gossipCh (GossipPex PexPong)
         tickSend $ pex gossipCnts
     pong = return ()
-
-
