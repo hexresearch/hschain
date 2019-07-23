@@ -267,48 +267,6 @@ verifyMessageSignature AppLogic{..} HeightParameters{..} = forever $ do
 -- Concrete implementation of ConsensusMonad
 ----------------------------------------------------------------
 
--- | Analog of @ExceptT Err IO@
-newtype ConsensusM alg a m b = ConsensusM
-  { runConsesusM :: m (ConsensusResult alg a b) }
-  deriving (Functor)
-
-data ConsensusResult alg a b
-  = Success !b
-  | Tranquility
-  | Misdeed
-  | DoCommit  !(Commit alg a) !(TMState alg a)
-  deriving (Show,Functor)
-
-instance Monad m => Applicative (ConsensusM alg a m) where
-  pure  = return
-  (<*>) = ap
-
-instance Monad m => Monad (ConsensusM alg a m) where
-  return = ConsensusM . return . Success
-  ConsensusM m >>= f = ConsensusM $ m >>= \case
-    Success a     -> runConsesusM (f a)
-    Tranquility   -> return Tranquility
-    Misdeed       -> return Misdeed
-    DoCommit cm r -> return $ DoCommit cm r
-
-instance MonadIO m => MonadIO (ConsensusM alg a m) where
-  liftIO = ConsensusM . fmap Success . liftIO
-
-instance Monad m => ConsensusMonad (ConsensusM alg a m) where
-  tranquility = ConsensusM $ return Tranquility
-  misdeed     = ConsensusM $ return Misdeed
-  panic       = error
-
-instance MonadLogger m => MonadLogger (ConsensusM alg a m) where
-  logger s l a = lift $ logger s l a
-  localNamespace f (ConsensusM action) = ConsensusM $ localNamespace f action
-
-instance MonadTrans (ConsensusM alg a) where
-  lift = ConsensusM . fmap Success
-
-instance MonadThrow m => MonadThrow (ConsensusM alg a m) where
-  throwM = lift . throwM
-
 makeHeightParameters
   :: ( MonadDB m alg a
      , MonadIO m
