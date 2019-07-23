@@ -74,7 +74,7 @@ genesis :: Block Alg [Tx]
     }
    
 state :: CoinState
-Just state = processBlock transitions AlreadyChecked genesis (CoinState mempty)
+Just state = processBlock transitions AlreadyChecked genesis (CoinState mempty mempty)
 
 generateTxList :: Int -> IO [Tx]
 generateTxList n = replicateM n $ generateTransaction txGen state

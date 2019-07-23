@@ -18,6 +18,8 @@ module Thundermint.Mock.Coin (
   , Tx(..)
     -- * Pure state
   , CoinState(..)
+  , Unspent(..)
+  , UTXO(..)
   , transitions
     -- * Transaction generator
   , mintMockCoin
@@ -43,9 +45,11 @@ import Codec.Serialise      (Serialise,serialise)
 import qualified Data.Aeson as JSON
 import Data.ByteString.Lazy (toStrict)
 import Data.Foldable
-import Data.Map             (Map)
+import Data.Maybe
+import Data.Map             (Map,(!))
 import qualified Data.Vector      as V
 import qualified Data.Map.Strict  as Map
+import qualified Data.Set         as Set
 import System.Random   (randomRIO)
 import GHC.Generics    (Generic)
 
@@ -99,10 +103,12 @@ data Tx
   deriving stock    (Show, Eq, Ord, Generic)
   deriving anyclass (Serialise, NFData, JSON.ToJSON, JSON.FromJSON)
 
+-- | Pair of transaction hash and output number
 data UTXO = UTXO !Int !(Hash Alg)
   deriving stock    (Show, Eq, Ord, Generic)
   deriving anyclass (Serialise, NFData, JSON.ToJSON, JSON.FromJSON)
 
+-- | Pair of public key which could spend output and amount
 data Unspent = Unspent !(PublicKey Alg) !Integer
   deriving stock    (Show, Eq, Ord, Generic)
   deriving anyclass (Serialise, NFData, JSON.ToJSON, JSON.FromJSON)
@@ -111,22 +117,31 @@ data Unspent = Unspent !(PublicKey Alg) !Integer
 -- | State of coins in program-digestible format
 --
 --   Really we'll need to keep in DB to persist it.
-newtype CoinState = CoinState
-  { unspentOutputs :: Map UTXO Unspent
+data CoinState = CoinState
+  { unspentOutputs :: !(Map UTXO Unspent)
     -- ^ Map of unspent outputs of transaction. It maps pair of
     --   transaction hash and output index to amount of coins stored
     --   there.
+  , utxoLookup     :: !(Map (PublicKey Alg) (Set.Set UTXO))
+    -- ^ UTXO set partitioned by corresponding public key. Only needed
+    --   for efficient TX generation
   }
-  deriving stock   (Show,   Generic)
-  deriving newtype (NFData, Serialise)
+  deriving stock    (Show,   Generic)
+  deriving anyclass (NFData, Serialise)
 
 
 processDeposit :: Tx -> CoinState -> Maybe CoinState
 processDeposit Send{}                _             = Nothing
 processDeposit tx@(Deposit pk nCoin) CoinState{..} =
   return CoinState
-    { unspentOutputs = Map.insert (UTXO 0 (hash tx)) (Unspent pk nCoin) unspentOutputs
+    { unspentOutputs = Map.insert utxo (Unspent pk nCoin) unspentOutputs
+    , utxoLookup     = Map.alter (\case
+                                     Nothing -> Just (Set.singleton utxo)
+                                     Just s  -> Just (Set.insert utxo s)
+                                 ) pk utxoLookup
     }
+  where
+    utxo = UTXO 0 (hash tx)
 
 
 processTransaction :: Tx -> CoinState -> Maybe CoinState
@@ -145,7 +160,7 @@ processTransaction transaction@(Send pubK sig txSend@TxSend{..}) CoinState{..} =
     return n
   guard $ sum inputs == sum [n | Unspent _ n <- txOutputs]
   -- Update application state
-  let txHash = hashBlob $ toStrict $ serialise transaction
+  let txHash  = hashBlob $ toStrict $ serialise transaction
   -- Signature must be valid. Note signature check is expensive so
   -- it's done at last moment
   guard $ verifyCborSignature pubK txSend sig
@@ -156,6 +171,15 @@ processTransaction transaction@(Send pubK sig txSend@TxSend{..}) CoinState{..} =
                             (\m (i,out) -> Map.insert (UTXO i txHash) out m)
                             txMap ([0..] `zip` txOutputs)
         in add $ spend unspentOutputs
+    , utxoLookup =
+        let insert m (i,Unspent k _) = Map.alter
+              (\case
+                  Nothing -> Just $ Set.singleton (UTXO i txHash)
+                  Just s  -> Just $ Set.insert    (UTXO i txHash) s
+              ) k m
+            add    utxos = foldl' insert utxos ([0..] `zip` txOutputs)
+            remove utxos = foldl' (flip Set.delete) utxos txInputs
+        in add $ Map.adjust remove pubK utxoLookup
     }
 
 transitions :: BlockFold CoinState alg [Tx]
@@ -169,7 +193,7 @@ transitions = BlockFold
                                 Nothing -> selectTx c  tx
                                 Just c' -> t : selectTx c' tx
       in selectTx
-  , initialState        = CoinState Map.empty
+  , initialState        = CoinState Map.empty Map.empty
   }
   where
     process (Height 0) t s = processDeposit t s <|> processTransaction t s
@@ -207,15 +231,18 @@ transactionGenerator gen mempool coinState push = forever $ do
     maxN = genMaxMempoolSize gen
 
 generateTransaction :: MonadIO m => TxGenerator -> CoinState -> m Tx
-generateTransaction TxGenerator{..} (CoinState utxo) = liftIO $ do
+generateTransaction TxGenerator{..} CoinState{..} = liftIO $ do
   privK  <- selectFromVec genPrivateKeys
   target <- selectFromVec genDestinaions
   amount <- randomRIO (0,20)
-  let pubK   = publicKey privK
-      inputs = findInputs amount [ (inp, n)
-                                 | (inp, Unspent pk n) <- Map.toList utxo
-                                 , pk == pubK
-                                 ]
+  let pubK      = publicKey privK
+      allInputs = toList
+                $ fromMaybe Set.empty
+                $ pubK `Map.lookup` utxoLookup
+      inputs    = findInputs amount [ (utxo, n)
+                                    | utxo <- allInputs
+                                    , let Unspent _ n = unspentOutputs ! utxo
+                                    ]
       tx     = TxSend { txInputs  = map fst inputs
                       , txOutputs = [ Unspent target   amount
                                     , Unspent pubK   $ sum (snd <$> inputs) - amount

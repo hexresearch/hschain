@@ -10,6 +10,7 @@ import Control.Monad.Trans.Class
 import Control.Monad.Trans.Cont
 import Control.Monad.IO.Class
 import Data.Monoid      ((<>))
+import Data.Foldable    (toList)
 import Data.Traversable (forM)
 
 import qualified Data.Aeson            as JSON
@@ -89,8 +90,8 @@ runCoin file = do
     -- Check that amount of coins didn't change
     forM_ rnodes $ \n -> liftIO $ do
       let totalCoins = coinAridrop coin * fromIntegral (coinWallets coin)
-      Coin.CoinState utxos <- currentState $ Coin.rnodeState n
-      assertEqual "Coins must be preserved" totalCoins (sum $ snd <$> utxos)
+      Coin.CoinState utxos _ <- currentState $ Coin.rnodeState n
+      assertEqual "Coins must be preserved" totalCoins (sum [ c | Coin.Unspent _ c <- toList utxos])
 
 allEqual :: Eq a => [a] -> Bool
 allEqual []     = error "Empty list impossible!"
