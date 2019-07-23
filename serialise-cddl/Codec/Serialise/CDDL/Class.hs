@@ -1,3 +1,4 @@
+
 {-# LANGUAGE DefaultSignatures   #-}
 {-# LANGUAGE DeriveFunctor       #-}
 {-# LANGUAGE FlexibleContexts    #-}
@@ -19,7 +20,7 @@ module Codec.Serialise.CDDL.Class (
   ) where
 
 import Codec.Serialise
-import Control.Lens hiding (rewrite)
+import Control.Lens (_1,_2,use,(%=))
 import Control.Monad
 import Control.Monad.Trans.State.Strict
 import Data.List

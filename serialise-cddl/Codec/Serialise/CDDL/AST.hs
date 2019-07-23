@@ -188,14 +188,17 @@ newtype Rec f a = Rec (f a)
 resolveNames :: (Ord a) => SchemaCDDL Nm a -> TyExpr Rec a
 resolveNames SchemaCDDL{..} =
   case Map.lookup topLevel defs of
-    Just (BindTy r) -> r
+    Just (BindTy  r) -> r
+    Just (BindGrp _) -> error "resolveNames: top level ID refers to unknown type"
+    Nothing          -> error "resolveNames: top level ID unknown"
   where
     defs          = substAst substT substG <$> bindings
     substT (Nm v) = case Map.lookup v defs of
       Just (BindTy r) -> Rec r
+      _               -> error "resolveNames: unknown variable name"
     substG (Nm v) = case Map.lookup v defs of
       Just (BindGrp r) -> Rec r
-
+      _                -> error "resolveNames: unknown group name"
 
 
 ----------------------------------------------------------------
