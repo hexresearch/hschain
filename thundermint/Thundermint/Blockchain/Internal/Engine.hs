@@ -28,7 +28,7 @@ import           Data.Maybe    (fromMaybe)
 import           Data.Function
 import           Data.Monoid   ((<>))
 import Data.Text             (Text)
-import Pipes                 (Pipe,runEffect,yield,await,(>->))
+import Pipes                 (Pipe,Proxy,runEffect,yield,await,(>->))
 
 import Thundermint.Blockchain.Internal.Engine.Types
 import Thundermint.Blockchain.Internal.Algorithm
@@ -111,7 +111,10 @@ decideNewBlock
 decideNewBlock config appValidatorKey appLogic@AppLogic{..} appCall@AppCallbacks{..} appCh@AppChans{..} lastCommt = do
   -- Enter NEW HEIGHT and create initial state for consensus state
   -- machine
-  hParam <- makeHeightParameters config appValidatorKey appLogic appCall appCh
+  --
+  -- FIXME: we don't want duplication! (But pipes & producer does not unify)
+  hParam  <- makeHeightParameters config appValidatorKey appLogic appCall appCh
+  hParam0 <- makeHeightParameters config appValidatorKey appLogic appCall appCh
   -- Get rid of messages in WAL that are no longer needed and replay
   -- all messages stored there.
   walMessages <- fmap (fromMaybe [])
@@ -144,7 +147,7 @@ decideNewBlock config appValidatorKey appLogic@AppLogic{..} appCall@AppCallbacks
         -- Write message to WAL and handle it after that
         msg <- await
         _   <- lift $ queryRW $ writeToWAL (currentH hParam) (unverifyMessageRx msg)
-        res <- lift $ handleVerifiedMessage appPropStorage hParam tm msg
+        res <- handleVerifiedMessage appPropStorage hParam tm msg
         case res of
           Tranquility      -> msgHandlerLoop mCmt tm
           Misdeed          -> msgHandlerLoop mCmt tm
@@ -194,14 +197,14 @@ decideNewBlock config appValidatorKey appLogic@AppLogic{..} appCall@AppCallbacks
             bchStoreStore appBchState h st'
             appCommitCallback b
             return cmt
-  --
-  -- FIXME: encode that we cannot fail here!
-  tm0 <- runConsesusM (newHeight hParam lastCommt) >>= \case
-    Success t -> return t
-    _         -> throwM ImpossibleError
-  runEffect $ messageSrc
-          >-> verifyMessageSignature appLogic hParam
-          >-> msgHandlerLoop Nothing tm0
+  runEffect $ do
+    -- FIXME: encode that we cannot fail here!
+    tm0 <- runConsesusM (newHeight hParam0 lastCommt) >>= \case
+      Success t -> return t
+      _         -> throwM ImpossibleError
+    messageSrc
+      >-> verifyMessageSignature appLogic hParam
+      >-> msgHandlerLoop Nothing tm0
 
 
 
@@ -209,10 +212,10 @@ decideNewBlock config appValidatorKey appLogic@AppLogic{..} appCall@AppCallbacks
 handleVerifiedMessage
   :: (MonadLogger m, Crypto alg)
   => ProposalStorage 'RW m alg a
-  -> HeightParameters (ConsensusM alg a m) alg a
+  -> HeightParameters (ConsensusM alg a (Pipe x y m)) alg a
   -> TMState alg a
   -> MessageRx 'Verified alg a
-  -> m (ConsensusResult alg a (TMState alg a))
+  -> Pipe x y m (ConsensusResult alg a (TMState alg a))
 handleVerifiedMessage ProposalStorage{..} hParam tm = \case
   -- FIXME: check that proposal comes from correct proposer
   RxProposal  p -> runConsesusM $ tendermintTransition hParam (ProposalMsg  p) tm
@@ -220,7 +223,7 @@ handleVerifiedMessage ProposalStorage{..} hParam tm = \case
   RxPreCommit v -> runConsesusM $ tendermintTransition hParam (PreCommitMsg v) tm
   RxTimeout   t -> runConsesusM $ tendermintTransition hParam (TimeoutMsg   t) tm
   -- We update block storage
-  RxBlock     b -> do storePropBlock b
+  RxBlock     b -> do lift $ storePropBlock b
                       return (Success tm)
 
 -- Verify signature of message. If signature is not correct message is
@@ -279,7 +282,7 @@ makeHeightParameters
   -> AppLogic     m alg a
   -> AppCallbacks m alg a
   -> AppChans     m alg a
-  -> m (HeightParameters (ConsensusM alg a m) alg a)
+  -> m (HeightParameters (ConsensusM alg a (Proxy x x' y y' m)) alg a)
 makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{..} AppChans{..} = do
   let AppByzantine{..} = appByzantine
   h         <- queryRO $ blockchainHeight
@@ -307,20 +310,20 @@ makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{
       --        work (for some definition of work)
     , areWeProposers  = \r -> Just (proposerChoice r) == ourIndex
     , proposerForRound = proposerChoice
-    , readyCreateBlock = lift $ fromMaybe True <$> appCanCreateBlock h bchTime
-    --
+    , readyCreateBlock = lift $ lift $ fromMaybe True <$> appCanCreateBlock h bchTime
+    -- --
     , validateBlock = \bid -> do
         let nH = succ h
-        lift (retrievePropByID appPropStorage nH bid) >>= \case
+        lift (lift (retrievePropByID appPropStorage nH bid)) >>= \case
           UnknownBlock      -> return UnseenProposal
           InvalidBlock      -> return InvalidProposal
           GoodBlock{}       -> return GoodProposal
           UntestedBlock _ b -> do
-            let invalid = InvalidProposal <$ lift (setPropValidation appPropStorage bid Nothing)
-            inconsistencies <- lift $ checkProposedBlock nH b
+            let invalid = InvalidProposal <$ lift (lift (setPropValidation appPropStorage bid Nothing))
+            inconsistencies <- lift $ lift $ checkProposedBlock nH b
             st              <- throwNothingM BlockchainStateUnavalable
-                             $ lift $ bchStoreRetrieve appBchState h
-            mvalSet'        <- lift $ appValidationFun valSet b st
+                             $ lift $ lift $ bchStoreRetrieve appBchState h
+            mvalSet'        <- lift $ lift $ appValidationFun valSet b st
             if | not (null inconsistencies) -> do
                -- Block is not internally consistent
                    logger ErrorS "Proposed block has inconsistencies"
@@ -335,7 +338,7 @@ makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{
                | Just (valSet',st') <- mvalSet'
                , validatorSetSize valSet' > 0
                , blockValChange b == validatorsDifference valSet valSet'
-                 -> do lift $ setPropValidation appPropStorage bid $ Just (st',valSet')
+                 -> do lift $ lift $ setPropValidation appPropStorage bid $ Just (st',valSet')
                        return GoodProposal
                | otherwise
                  -> invalid
@@ -349,7 +352,7 @@ makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{
                               , propPOL       = lockInfo
                               , propBlockID   = bid
                               }
-          mBlock <- lift $ retrievePropByID appPropStorage h bid
+          mBlock <- lift $ lift $ retrievePropByID appPropStorage h bid
           logger InfoS ("Sending proposal" <> byzantineMark byzantineBroadcastProposal)
             (   sl "R"    r
             <>  sl "BID" (show bid)
@@ -406,7 +409,7 @@ makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{
     --
     , acceptBlock = \r bid -> do
         liftIO $ atomically $ writeTChan appChanTx $ AnnHasProposal (succ h) r
-        lift $ allowBlockID appPropStorage r bid
+        lift $ lift $ allowBlockID appPropStorage r bid
     --
     , announceHasPreVote   = \sv -> do
         let Vote{..} = signedValue   sv
@@ -419,11 +422,11 @@ makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{
         liftIO $ atomically $ writeTChan appChanTx $ AnnHasPreCommit voteHeight voteRound i
     --
     , announceStep    = liftIO . atomically . writeTChan appChanTx . AnnStep
-    , updateMetricsHR = \curH curR -> lift $ do
+    , updateMetricsHR = \curH curR -> lift $ lift $ do
         usingGauge prometheusHeight curH
         usingGauge prometheusRound  curR
     --
-    , createProposal = \r commit -> lift $ do
+    , createProposal = \r commit -> lift $ lift $ do
         lastBID  <- queryRO $ retrieveBlockID =<< blockchainHeight
         -- Calculate time for block.
         currentT <- case h of
@@ -487,8 +490,8 @@ makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{
     tryByzantine :: (Monad m)
                  => Maybe (a -> m (Maybe a))
                  -> a
-                 -> (a -> ConsensusM alg b m ())
-                 -> ConsensusM alg b m ()
+                 -> (a -> ConsensusM alg b (Proxy x x' y y' m) ())
+                 -> ConsensusM alg b (Proxy x x' y y' m) ()
     tryByzantine Nothing         arg action = action arg
     tryByzantine (Just modifier) arg action =
-        lift (modifier arg) >>= maybe (return ()) action
+        lift (lift (modifier arg)) >>= maybe (return ()) action
