@@ -148,9 +148,9 @@ JSON.deriveJSON JSON.defaultOptions
 -- | Description of state transition of
 data LogTransition = LogTransition
   { transition'H      :: !Height
-  , transition'R      :: !Round
+  , transition'oldR   :: !Round
   , transition'S      :: !Step
-  , transition'newR   :: !Round
+  , transition'R      :: !Round
   , transition'reason :: !LogTransitionReason
   }
 JSON.deriveJSON JSON.defaultOptions
