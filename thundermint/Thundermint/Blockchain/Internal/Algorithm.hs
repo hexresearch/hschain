@@ -306,17 +306,15 @@ tendermintTransition par@HeightParameters{..} msg sm@TMState{..} =
         --
         -- FIXME: specification is unclear about this point but go
         --        implementation advances unconditionally
-        EQ -> do
-          case smStep of
-            --
-            StepNewHeight     -> needNewBlock par sm >>= \case
-              True  -> enterPropose par smRound sm Reason'Timeout
-              False -> do scheduleTimeout $ Timeout currentH (Round 0) StepNewHeight
-                          return sm
-            StepProposal      -> enterPrevote   par smRound        sm Reason'Timeout
-            StepPrevote       -> enterPrecommit par smRound        sm Reason'Timeout
-            StepPrecommit     -> enterPropose   par (succ smRound) sm Reason'Timeout
-            StepAwaitCommit _ -> tranquility
+        EQ -> case smStep of
+          StepNewHeight     -> needNewBlock par sm >>= \case
+            True  -> enterPropose par smRound sm Reason'Timeout
+            False -> do scheduleTimeout $ Timeout currentH (Round 0) StepNewHeight
+                        return sm
+          StepProposal      -> enterPrevote   par smRound        sm Reason'Timeout
+          StepPrevote       -> enterPrecommit par smRound        sm Reason'Timeout
+          StepPrecommit     -> enterPropose   par (succ smRound) sm Reason'Timeout
+          StepAwaitCommit _ -> tranquility
       where
         t0 = Timeout currentH smRound smStep
 
