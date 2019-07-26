@@ -1,7 +1,7 @@
 #!/usr/bin/python
 """
 """
-
+import functools
 import glob
 import json
 import os
@@ -11,6 +11,10 @@ import pandas as pd
 # ================================================================
 # Loading logs
 # ================================================================
+
+def lazy(fun):
+    "Decorator for lazy fields in class"
+    return property(functools.lru_cache(maxsize=None)(fun))
 
 keys = set(['at','ns','data','msg','sev'])
 
@@ -44,38 +48,46 @@ class Log(object):
     """
 
     def __init__(self, iterable) :
-        """
-        """
-        # Load data
         df       = pd.DataFrame.from_records(gen_dicts(iterable), columns=keys)
         df['at'] = pd.to_datetime(df['at'])
-        #
-        self.df      = df
-        # self.net     = df[df['ns'] == 'net'].drop(['ns'], axis=1)
-        self.cons = df[df['ns'].apply(lambda ns: ns==["consensus"])].drop(['ns'], axis=1)
-        self.mempool = df[df['ns'].apply(lambda ns: ns == ['consensus','mempool'])].drop(['ns'], axis=1).copy()
-        self.mempool['size']      = self.mempool['data'].apply(lambda x: x['size'])
-        self.mempool['filtered']  = self.mempool['data'].apply(lambda x: x['filtered'])
-        self.mempool['added']     = self.mempool['data'].apply(lambda x: x['added'])
-        self.mempool['discarded'] = self.mempool['data'].apply(lambda x: x['discarded'])
+        self.df  = df
 
-    def commit_times(self):
-        df      = self.cons[self.cons['msg'] == "Entering new height ----------------"].copy()
-        df['H'] = df['data'].apply(lambda x : x['H'])
-        return df.drop(['data','sev','msg'], axis=1)
-
-    def commit_n_tx(self):
-        df = self.cons[self.cons['msg'] == "Actual commit"]
-        return pd.DataFrame({'H'  : df['data'].apply(lambda x : x['H']),
-                             'Ntx': df['data'].apply(lambda x : x['Ntx']),
-                             })
-
-    def gossip(self) :
-        net = self.net.copy()
-        net = net[net['msg'] == 'Gossip stats'].reset_index()
-        df  = pd.DataFrame.from_records(net['data'].values)
-        df['at'] = net['at']
+    @lazy
+    def cons(self):
+        "Consensus related logs"
+        df = self.df
+        df = df[df['ns'].apply(lambda ns: ns==["consensus"])].drop(['ns'], axis=1)
         return df
+
+    @lazy
+    def mempool(self):
+        "Raw mempool stats"
+        df = self.df
+        mempool = df[df['ns'].apply(lambda ns: ns == ['consensus','mempool'])].drop(['ns'], axis=1).copy()
+        mempool['size']      = mempool['data'].apply(lambda x: x['size'])
+        mempool['filtered']  = mempool['data'].apply(lambda x: x['filtered'])
+        mempool['added']     = mempool['data'].apply(lambda x: x['added'])
+        mempool['discarded'] = mempool['data'].apply(lambda x: x['discarded'])
+        return mempool
+
+    @lazy
+    def commit(self):
+        "Information about commit"
+        r     = self.df[self.df['msg'] == "Actual commit"]
+        at    = r['at']
+        h     = r['data'].apply(lambda x : x['H'])
+        ntx   = r['data'].apply(lambda x : x['Ntx'])
+        nsign = r['data'].apply(lambda x : x['nsign'])
+        return pd.DataFrame(data={'at':at,'H':h, 'Ntx':ntx, 'nsign':nsign})
+
+    @lazy
+    def round(self):
+        "Extract round information from data frame"
+        df = self.cons
+        df = df[df['msg'] == 'Entering propose']
+        H  = df['data'].apply(lambda x: x['H'])
+        R  = df['data'].apply(lambda x: x['R'])
+        return pd.DataFrame(data={'at':df['at'],'H':H, 'R':R})
 
 
 def load_logs_files(prefix, names=None):
