@@ -15,35 +15,6 @@ import numpy as np
 import pandas as pd
 import statsmodels.api as sm
 
-# ----------------------------------------------------------------
-# Extracting data from full data frame
-# ----------------------------------------------------------------
-
-def to_commit(d) :
-    r     = d[d['msg'] == "Actual commit"]
-    at    = r['at']
-    h     = r['data'].apply(lambda x : x['H'])
-    ntx   = r['data'].apply(lambda x : x['Ntx'])
-    nsign = r['data'].apply(lambda x : x['nsign'])
-    return pd.DataFrame(data={'at':at,'H':h, 'Ntx':ntx, 'nsign':nsign})
-
-def extract_round(df) :
-    """
-    Extract round information from data frame
-    """
-    df = df[df['msg'] == 'Entering propose']
-    H  = df['data'].apply(lambda x: x['H'])
-    R  = df['data'].apply(lambda x: x['R'])
-    return pd.DataFrame(data={'at':df['at'],'H':H, 'R':R})
-
-def extract_commit(df) :
-    """
-    Extract commit information from data frame
-    """
-    df = df[df['msg'] == 'Actual commit'].reset_index(drop=True)
-    df['H'] = df['data'].apply(lambda x: x['H'])
-    return df.drop(['data', 'host'], axis=1)
-
 
 ## ----------------------------------------------------------------
 ## Commit time related plots
@@ -53,8 +24,7 @@ class CommitData(object):
     "Prepare commit data into ready to plot form"
     def __init__(self, logs):
         # Clean data
-        dfs = {k : to_commit(d.cons) for k,d in logs.items()}
-        dfs = {k : d                 for k,d in dfs.items() if not d.empty}
+        dfs = {k : d.commit for k,d in logs.items() if not d.commit.empty}
         # Calculate relative time
         t0  = np.min([df['at'].values[0] for df in dfs.values() if len(df) > 0])
         for k, df in dfs.items() :
@@ -196,7 +166,7 @@ def plot_round(logs):
     """
     Plot round growth
     """
-    dfs = {k : extract_round(v.cons) for k,v in logs.items()}
+    dfs = {k : v.round for k,v in logs.items() if not v.round.empty}
     #
     fig,ax = figure_with_legend()
     plt.title("Round vs T")
