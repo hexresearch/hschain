@@ -17,6 +17,16 @@ def lazy(fun):
     return property(functools.lru_cache(maxsize=None)(fun))
 
 keys = set(['at','ns','data','msg','sev'])
+# Log keys
+keyNH     = "Entering new height ----------------"
+keyPrp    = "Entering propose"
+keyPV     = "Entering prevote"
+keyPC     = "Entering precommit"
+keyCmt    = "Decision to commit"
+keyDone   = "Actual commit"
+keyOrdSet = [keyNH, keyPrp, keyPV, keyPC, keyCmt, keyDone]
+keySet    = frozenset(keyOrdSet)
+
 
 def gen_dicts(itr):
     """
@@ -71,6 +81,23 @@ class Log(object):
         return mempool
 
     @lazy
+    def mempoolStat(self):
+        "Cleaned up mempool stats"
+        df   = self.mempool
+        dfA  = df[df['msg'] == 'Mempool after filtering']
+        dfB  = df[df['msg'] == 'Mempool before filtering']
+        datA = dfA['data'].apply(lambda x: x['filtered']).values
+        datB = dfB['data'].apply(lambda x: x['filtered']).values
+        #
+        fltT = (dfA['at'].values - dfB['at'].values).astype('timedelta64[ms]').astype(float)
+        return pd.DataFrame(data={
+            'fltT'    : fltT,
+            'filtered': datA-datB,
+            'sizeB'   : dfB['data'].apply(lambda x: x['size']).values,
+            'sizeA'   : dfA['data'].apply(lambda x: x['size']).values,
+        })
+
+    @lazy
     def commit(self):
         "Information about commit"
         r     = self.df[self.df['msg'] == "Actual commit"]
@@ -89,6 +116,16 @@ class Log(object):
         R  = df['data'].apply(lambda x: x['R'])
         return pd.DataFrame(data={'at':df['at'],'H':H, 'R':R})
 
+    @lazy
+    def stepsTime(self):
+        df = self.cons.copy()
+        df['H']  = df['data'].apply(lambda x: x.get('H'))
+        df       = df[df['H']>0]
+        df       = df[df['msg'].isin(keySet)]
+        deltaT   = (df['at'].values[1:] - df['at'].values[:-1]).astype('timedelta64[ms]')
+        df       = df[:-1]
+        df['dt'] = deltaT.copy()
+        return {k:v for k,v in df.groupby(['msg'])}
 
 def load_logs_files(prefix, names=None):
     dct = {}
