@@ -24,8 +24,9 @@ let
   };
   # Python packages
   pyp = pkgs.python3.withPackages (ps: with ps;
-    [ jupyter_core
+    [ jupyter_core            
       notebook
+      ipywidgets
       matplotlib
       numpy
       pandas
