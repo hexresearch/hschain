@@ -69,6 +69,27 @@ class Log(object):
         df = df[df['ns'].apply(lambda ns: ns==["consensus"])].drop(['ns'], axis=1)
         return df
 
+
+    @lazy
+    def consClean(self):
+        "Cleaned up consensus related logs"
+        df = self.cons.copy()
+        df['H'] = df['data'].apply(lambda x: x.get('H'))
+        df['R'] = df['data'].apply(lambda x: x.get('R'))
+        df      = df[df['msg'].isin(keySet)]
+        return df
+
+    @lazy
+    def stepsTime(self):
+        df = self.cons.copy()
+        df['H']  = df['data'].apply(lambda x: x.get('H'))
+        df       = df[df['H']>0]
+        df       = df[df['msg'].isin(keySet)]
+        deltaT   = (df['at'].values[1:] - df['at'].values[:-1]).astype('timedelta64[ms]')
+        df       = df[:-1]
+        df['dt'] = deltaT.copy()
+        return {k:v for k,v in df.groupby(['msg'])}
+
     @lazy
     def mempool(self):
         "Raw mempool stats"
@@ -115,17 +136,6 @@ class Log(object):
         H  = df['data'].apply(lambda x: x['H'])
         R  = df['data'].apply(lambda x: x['R'])
         return pd.DataFrame(data={'at':df['at'],'H':H, 'R':R})
-
-    @lazy
-    def stepsTime(self):
-        df = self.cons.copy()
-        df['H']  = df['data'].apply(lambda x: x.get('H'))
-        df       = df[df['H']>0]
-        df       = df[df['msg'].isin(keySet)]
-        deltaT   = (df['at'].values[1:] - df['at'].values[:-1]).astype('timedelta64[ms]')
-        df       = df[:-1]
-        df['dt'] = deltaT.copy()
-        return {k:v for k,v in df.groupby(['msg'])}
 
 def load_logs_files(prefix, names=None):
     dct = {}
