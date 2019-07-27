@@ -5,6 +5,7 @@ import functools
 import glob
 import json
 import os
+import enum
 import numpy  as np
 import pandas as pd
 
@@ -18,13 +19,18 @@ def lazy(fun):
 
 keys = set(['at','ns','data','msg','sev'])
 # Log keys
-keyNH     = "Entering new height ----------------"
-keyPrp    = "Entering propose"
-keyPV     = "Entering prevote"
-keyPC     = "Entering precommit"
-keyCmt    = "Decision to commit"
-keyDone   = "Actual commit"
-keyOrdSet = [keyNH, keyPrp, keyPV, keyPC, keyCmt, keyDone]
+
+@enum.unique
+class Step(enum.Enum):
+    "Steps of algorithm"
+    NewH      = "Entering new height ----------------"
+    Propose   = "Entering propose"
+    Prevote   = "Entering prevote"
+    Precommit = "Entering precommit"
+    Commit    = "Decision to commit"
+    Done      = "Actual commit"
+
+keyOrdSet = [k.value for k in Step]
 keySet    = frozenset(keyOrdSet)
 
 
