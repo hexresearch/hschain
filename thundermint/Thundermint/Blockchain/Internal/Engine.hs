@@ -201,14 +201,14 @@ decideNewBlock config appValidatorKey appLogic@AppLogic{..} appCall@AppCallbacks
   runEffect $ do
     -- FIXME: encode that we cannot fail here!
     tm0 <- (  runConsesusM (newHeight hParam0 lastCommt)
-          >-> handleEngineMessage (currentH hParam) config appCh
+          >-> handleEngineMessage hParam config appCh
            ) >>= \case
-      Success t -> return t
-      _         -> throwM ImpossibleError
+                    Success t -> return t
+                    _         -> throwM ImpossibleError
     messageSrc
       >-> verifyMessageSignature appLogic hParam
       >-> msgHandlerLoop Nothing tm0
-      >-> handleEngineMessage (currentH hParam) config appCh
+      >-> handleEngineMessage hParam config appCh
 
 
 -- Handle message and perform state transitions for both
@@ -268,12 +268,13 @@ verifyMessageSignature AppLogic{..} HeightParameters{..} = forever $ do
                           validatorPubKey <$> validatorByIndex vset a
 
 handleEngineMessage
-  :: (MonadIO m, MonadTMMonitoring m)
-  => Height
+  :: ( MonadIO m, MonadTMMonitoring m, MonadLogger m
+     , Crypto alg)
+  => HeightParameters n alg a
   -> ConsensusCfg
   -> AppChans m alg a
   -> Consumer (EngineMessage alg a) m r
-handleEngineMessage curH ConsensusCfg{..} AppChans{..} = forever $ await >>= \case
+handleEngineMessage HeightParameters{..} ConsensusCfg{..} AppChans{..} = forever $ await >>= \case
   -- Timeout
   EngTimeout t@(Timeout h (Round r) step) -> do
     liftIO $ void $ forkIO $ do
@@ -300,8 +301,58 @@ handleEngineMessage curH ConsensusCfg{..} AppChans{..} = forever $ await >>= \ca
     liftIO $ atomically $ writeTChan appChanTx $ AnnStep s
   --
   EngAcceptBlock r bid -> do
-    liftIO $ atomically $ writeTChan appChanTx $ AnnHasProposal curH r
+    liftIO $ atomically $ writeTChan appChanTx $ AnnHasProposal currentH r
     lift $ allowBlockID appPropStorage r bid
+  --
+  EngCastPropose r bid lockInfo ->
+    forM_ validatorKey $ \(PrivValidator pk, idx) -> do
+      t <- getCurrentTime
+      let prop = Proposal { propHeight    = currentH
+                          , propRound     = r
+                          , propTimestamp = t
+                          , propPOL       = lockInfo
+                          , propBlockID   = bid
+                          }
+      mBlock <- lift $ retrievePropByID appPropStorage (pred currentH) bid
+      logger InfoS "Sending proposal"
+        (   sl "R"    r
+        <>  sl "BID" (show bid)
+        )
+      liftIO $ atomically $ do
+        writeTQueue appChanRxInternal (RxProposal $ unverifySignature $ signValue idx pk prop)
+        case blockFromBlockValidation mBlock of
+          Just (_,b) -> writeTQueue appChanRxInternal (RxBlock b)
+          Nothing    -> return ()
+  --
+  EngCastPreVote r b ->
+    forM_ validatorKey $ \(PrivValidator pk, idx) -> do
+      t@(Time ti) <- getCurrentTime
+      let vote = Vote { voteHeight  = currentH
+                      , voteRound   = r
+                      , voteTime    = if t > currentTime then t else Time (ti + 1)
+                      , voteBlockID = b
+                      }
+      logger InfoS "Sending prevote"
+        (  sl "R"    r
+        <> sl "bid" (show b)
+        )
+      liftIO $ atomically $
+        writeTQueue appChanRxInternal $ RxPreVote $ unverifySignature $ signValue idx pk vote
+  --
+  EngCastPreCommit r b ->
+    forM_ validatorKey $ \(PrivValidator pk, idx) -> do
+      t <- getCurrentTime
+      let vote = Vote { voteHeight  = currentH
+                      , voteRound   = r
+                      , voteTime    = t
+                      , voteBlockID = b
+                      }
+      logger InfoS "Sending precommit"
+        (  sl "R" r
+        <> sl "bid" (show b)
+        )
+      liftIO $ atomically $
+        writeTQueue appChanRxInternal $ RxPreCommit $ unverifySignature $ signValue idx pk vote
 
 
 ----------------------------------------------------------------
@@ -382,59 +433,6 @@ makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{
                | otherwise
                  -> invalid
     --
-    , broadcastProposal = \r bid lockInfo ->
-        forM_ (liftA2 (,) appValidatorKey ourIndex) $ \(PrivValidator pk, idx) -> do
-          t <- getCurrentTime
-          let prop = Proposal { propHeight    = succ h
-                              , propRound     = r
-                              , propTimestamp = t
-                              , propPOL       = lockInfo
-                              , propBlockID   = bid
-                              }
-          mBlock <- lift $ lift $ retrievePropByID appPropStorage h bid
-          logger InfoS ("Sending proposal" <> byzantineMark byzantineBroadcastProposal)
-            (   sl "R"    r
-            <>  sl "BID" (show bid)
-            )
-          tryByzantine byzantineBroadcastProposal prop $ \prop' ->
-            liftIO $ atomically $ do
-              writeTQueue appChanRxInternal (RxProposal $ unverifySignature $ signValue idx pk prop')
-              case blockFromBlockValidation mBlock of
-                Just (_,b) -> writeTQueue appChanRxInternal (RxBlock b)
-                Nothing    -> return ()
-    --
-    , castPrevote     = \r b ->
-        forM_ (liftA2 (,) appValidatorKey ourIndex) $ \(PrivValidator pk, idx) -> do
-          t@(Time ti) <- getCurrentTime
-          let vote = Vote { voteHeight  = succ h
-                          , voteRound   = r
-                          , voteTime    = if t > bchTime then t else Time (ti + 1)
-                          , voteBlockID = b
-                          }
-          logger InfoS ("Sending prevote" <> byzantineMark byzantineCastPrevote)
-            (  sl "R"    r
-            <> sl "bid" (show b)
-            )
-          tryByzantine byzantineCastPrevote vote $ \vote' ->
-            liftIO $ atomically $
-              writeTQueue appChanRxInternal (RxPreVote $ unverifySignature $ signValue idx pk $ vote')
-    --
-    , castPrecommit   = \r b ->
-        forM_ (liftA2 (,) appValidatorKey ourIndex) $ \(PrivValidator pk, idx) -> do
-          t <- getCurrentTime
-          let vote = Vote { voteHeight  = succ h
-                          , voteRound   = r
-                          , voteTime    = t
-                          , voteBlockID = b
-                          }
-          logger InfoS ("Sending precommit" <> byzantineMark byzantineCastPrecommit)
-            (  sl "R" r
-            <> sl "bid" (show b)
-            )
-          tryByzantine byzantineCastPrecommit vote $ \vote' ->
-            liftIO $ atomically $
-              writeTQueue appChanRxInternal $ RxPreCommit $ unverifySignature $ signValue idx pk $ vote'
-    --
     , createProposal = \r commit -> lift $ lift $ do
         lastBID  <- queryRO $ retrieveBlockID =<< blockchainHeight
         -- Calculate time for block.
@@ -492,6 +490,7 @@ makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{
     , commitBlock     = \cm r -> ConsensusM $ return $ DoCommit cm r
     }
   where
+{-
     -- | Add marks for analyzing logs
     byzantineMark = maybe mempty (const " (byzantine!)")
     -- | If 'modifier' exists, modify 'arg' with it and run 'action' with modified argument;
@@ -504,3 +503,4 @@ makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{
     tryByzantine Nothing         arg action = action arg
     tryByzantine (Just modifier) arg action =
         lift (lift (modifier arg)) >>= maybe (return ()) action
+-}
