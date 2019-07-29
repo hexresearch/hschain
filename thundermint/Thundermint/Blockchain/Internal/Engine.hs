@@ -268,11 +268,12 @@ verifyMessageSignature AppLogic{..} HeightParameters{..} = forever $ do
                           validatorPubKey <$> validatorByIndex vset a
 
 handleEngineMessage
-  :: (MonadIO m)
+  :: (MonadIO m, MonadTMMonitoring m)
   => ConsensusCfg
   -> AppChans m alg a
   -> Consumer (EngineMessage alg a) m r
 handleEngineMessage ConsensusCfg{..} AppChans{..} = forever $ await >>= \case
+  -- Timeout
   EngTimeout t@(Timeout _ (Round r) step) ->
     liftIO $ void $ forkIO $ do
       let (baseT,delta) = case step of
@@ -283,7 +284,7 @@ handleEngineMessage ConsensusCfg{..} AppChans{..} = forever $ await >>= \case
             StepAwaitCommit _ -> (0, 0)
       threadDelay $ 1000 * (baseT + delta * fromIntegral r)
       atomically $ writeTQueue appChanRxInternal $ RxTimeout t
-  --
+  -- Announcements
   EngAnnPreVote sv -> do
     let Vote{..} = signedValue   sv
         i        = signedKeyInfo sv
@@ -294,6 +295,11 @@ handleEngineMessage ConsensusCfg{..} AppChans{..} = forever $ await >>= \case
     liftIO $ atomically $ writeTChan appChanTx $ AnnHasPreCommit voteHeight voteRound i
   EngAnnStep s ->
     liftIO $ atomically $ writeTChan appChanTx $ AnnStep s
+  -- Metrics
+  EngMetricsHR h r -> lift $ do
+    usingGauge prometheusHeight h
+    usingGauge prometheusRound  r
+
 
 ----------------------------------------------------------------
 -- Concrete implementation of ConsensusMonad
@@ -424,9 +430,6 @@ makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{
           tryByzantine byzantineCastPrecommit vote $ \vote' ->
             liftIO $ atomically $
               writeTQueue appChanRxInternal $ RxPreCommit $ unverifySignature $ signValue idx pk $ vote'
-    , updateMetricsHR = \curH curR -> lift $ lift $ do
-        usingGauge prometheusHeight curH
-        usingGauge prometheusRound  curR
     --
     , acceptBlock = \r bid -> do
         liftIO $ atomically $ writeTChan appChanTx $ AnnHasProposal (succ h) r
