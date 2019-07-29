@@ -75,7 +75,6 @@ class Log(object):
         df = df[df['ns'].apply(lambda ns: ns==["consensus"])].drop(['ns'], axis=1)
         return df
 
-
     @lazy
     def consClean(self):
         "Cleaned up consensus related logs"
@@ -84,6 +83,18 @@ class Log(object):
         df['R'] = df['data'].apply(lambda x: x.get('R'))
         df      = df[df['msg'].isin(keySet)]
         return df
+
+    @functools.lru_cache(maxsize=32)
+    def consStep(self, step):
+        """
+        Only returns individual for individuals steps (only R=0 is
+        returned where applicable
+        """
+        df = self.consClean
+        df = df[df['msg'] == step.value]
+        if step in [Step.Propose, Step.Prevote, Step.Precommit] :
+            df = df[df['R'] == 0]
+        return pd.DataFrame(index=df['H'].values, data={'at':df['at'].values })
 
     @lazy
     def stepsTime(self):
