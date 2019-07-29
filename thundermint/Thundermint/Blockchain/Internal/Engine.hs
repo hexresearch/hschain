@@ -283,6 +283,17 @@ handleEngineMessage ConsensusCfg{..} AppChans{..} = forever $ await >>= \case
             StepAwaitCommit _ -> (0, 0)
       threadDelay $ 1000 * (baseT + delta * fromIntegral r)
       atomically $ writeTQueue appChanRxInternal $ RxTimeout t
+  --
+  EngAnnPreVote sv -> do
+    let Vote{..} = signedValue   sv
+        i        = signedKeyInfo sv
+    liftIO $ atomically $ writeTChan appChanTx $ AnnHasPreVote voteHeight voteRound i
+  EngAnnPreCommit sv -> do
+    let Vote{..} = signedValue sv
+        i        = signedKeyInfo sv
+    liftIO $ atomically $ writeTChan appChanTx $ AnnHasPreCommit voteHeight voteRound i
+  EngAnnStep s ->
+    liftIO $ atomically $ writeTChan appChanTx $ AnnStep s
 
 ----------------------------------------------------------------
 -- Concrete implementation of ConsensusMonad
@@ -413,25 +424,13 @@ makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{
           tryByzantine byzantineCastPrecommit vote $ \vote' ->
             liftIO $ atomically $
               writeTQueue appChanRxInternal $ RxPreCommit $ unverifySignature $ signValue idx pk $ vote'
+    , updateMetricsHR = \curH curR -> lift $ lift $ do
+        usingGauge prometheusHeight curH
+        usingGauge prometheusRound  curR
     --
     , acceptBlock = \r bid -> do
         liftIO $ atomically $ writeTChan appChanTx $ AnnHasProposal (succ h) r
         lift $ lift $ allowBlockID appPropStorage r bid
-    --
-    , announceHasPreVote   = \sv -> do
-        let Vote{..} = signedValue   sv
-            i        = signedKeyInfo sv
-        liftIO $ atomically $ writeTChan appChanTx $ AnnHasPreVote voteHeight voteRound i
-    --
-    , announceHasPreCommit = \sv -> do
-        let Vote{..} = signedValue sv
-            i        = signedKeyInfo sv
-        liftIO $ atomically $ writeTChan appChanTx $ AnnHasPreCommit voteHeight voteRound i
-    --
-    , announceStep    = liftIO . atomically . writeTChan appChanTx . AnnStep
-    , updateMetricsHR = \curH curR -> lift $ lift $ do
-        usingGauge prometheusHeight curH
-        usingGauge prometheusRound  curR
     --
     , createProposal = \r commit -> lift $ lift $ do
         lastBID  <- queryRO $ retrieveBlockID =<< blockchainHeight
