@@ -201,14 +201,14 @@ decideNewBlock config appValidatorKey appLogic@AppLogic{..} appCall@AppCallbacks
   runEffect $ do
     -- FIXME: encode that we cannot fail here!
     tm0 <- (  runConsesusM (newHeight hParam0 lastCommt)
-          >-> handleEngineMessage config appCh
+          >-> handleEngineMessage (currentH hParam) config appCh
            ) >>= \case
       Success t -> return t
       _         -> throwM ImpossibleError
     messageSrc
       >-> verifyMessageSignature appLogic hParam
       >-> msgHandlerLoop Nothing tm0
-      >-> handleEngineMessage config appCh
+      >-> handleEngineMessage (currentH hParam) config appCh
 
 
 -- Handle message and perform state transitions for both
@@ -269,10 +269,11 @@ verifyMessageSignature AppLogic{..} HeightParameters{..} = forever $ do
 
 handleEngineMessage
   :: (MonadIO m, MonadTMMonitoring m)
-  => ConsensusCfg
+  => Height
+  -> ConsensusCfg
   -> AppChans m alg a
   -> Consumer (EngineMessage alg a) m r
-handleEngineMessage ConsensusCfg{..} AppChans{..} = forever $ await >>= \case
+handleEngineMessage curH ConsensusCfg{..} AppChans{..} = forever $ await >>= \case
   -- Timeout
   EngTimeout t@(Timeout h (Round r) step) -> do
     liftIO $ void $ forkIO $ do
@@ -297,6 +298,10 @@ handleEngineMessage ConsensusCfg{..} AppChans{..} = forever $ await >>= \case
     liftIO $ atomically $ writeTChan appChanTx $ AnnHasPreCommit voteHeight voteRound i
   EngAnnStep s ->
     liftIO $ atomically $ writeTChan appChanTx $ AnnStep s
+  --
+  EngAcceptBlock r bid -> do
+    liftIO $ atomically $ writeTChan appChanTx $ AnnHasProposal curH r
+    lift $ allowBlockID appPropStorage r bid
 
 
 ----------------------------------------------------------------
@@ -429,9 +434,6 @@ makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{
             liftIO $ atomically $
               writeTQueue appChanRxInternal $ RxPreCommit $ unverifySignature $ signValue idx pk $ vote'
     --
-    , acceptBlock = \r bid -> do
-        liftIO $ atomically $ writeTChan appChanTx $ AnnHasProposal (succ h) r
-        lift $ lift $ allowBlockID appPropStorage r bid
     --
     , createProposal = \r commit -> lift $ lift $ do
         lastBID  <- queryRO $ retrieveBlockID =<< blockchainHeight

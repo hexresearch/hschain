@@ -108,9 +108,6 @@ data HeightParameters (m :: * -> *) alg a = HeightParameters
   , castPrecommit        :: !(Round -> Maybe (BlockID alg a) -> m ())
     -- ^ Broadcast precommit for particular block ID in some round.
 
-  , acceptBlock          :: !(Round -> BlockID alg a -> m ())
-    -- ^ Callback to signal that given block from given round should
-    --   be accepted
   , createProposal       :: !(Round -> Maybe (Commit alg a) -> m (BlockID alg a))
     -- ^ Create new proposal block. Block itself should be stored
     --   elsewhere.
@@ -303,7 +300,7 @@ tendermintTransition par@HeightParameters{..} msg sm@TMState{..} =
       -- Add it to map of proposals
       | otherwise
         -> do logger InfoS "Got proposal" $ LogProposal propHeight propRound propBlockID
-              acceptBlock propRound propBlockID
+              lift $ yield $ EngAcceptBlock propRound propBlockID
               return sm { smProposals = Map.insert propRound p smProposals }
     ----------------------------------------------------------------
     PreVoteMsg v@(signedValue -> Vote{..})
@@ -416,7 +413,7 @@ checkTransitionPrecommit par@HeightParameters{..} r sm@(TMState{..})
   --        later moment they'll get
   | Just (Just bid) <- majority23at r smPrecommitsSet
     = do logger InfoS "Decision to commit" $ LogCommit currentH bid
-         acceptBlock r bid
+         lift $ yield $ EngAcceptBlock r bid
          commitBlock Commit{ commitBlockID    = bid
                            , commitPrecommits =  unverifySignature
                                              <$> NE.fromList (valuesAtR r smPrecommitsSet)
