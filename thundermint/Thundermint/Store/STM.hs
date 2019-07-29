@@ -44,9 +44,7 @@ newSTMPropStorage = fmap (hoistPropStorageRW liftIO) $ liftIO $ do
   varRMap <- newTVarIO Map.empty  -- Map of rounds to block IDs
   varBids <- newTVarIO Set.empty  -- Allowed block IDs
   return ProposalStorage
-    { currentHeight = readTVarIO varH
-    --
-    , advanceToHeight = \h -> atomically $ do
+    { advanceToHeight = \h -> atomically $ do
         h0 <- readTVar varH
         when (h /= h0) $ do writeTVar varH    h
                             writeTVar varPBlk Map.empty

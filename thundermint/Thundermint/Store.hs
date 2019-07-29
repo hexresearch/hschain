@@ -194,9 +194,7 @@ blockFromBlockValidation = \case
 
 -- | Storage for proposed blocks that are not commited yet.
 data ProposalStorage rw m alg a = ProposalStorage
-  { currentHeight      :: !(m Height)
-    -- ^ Height for which we store proposed blocks
-  , retrievePropByID   :: !(Height -> BlockID alg a -> m (BlockValidation alg a))
+  { retrievePropByID   :: !(Height -> BlockID alg a -> m (BlockValidation alg a))
     -- ^ Retrieve proposed block by its ID
   , retrievePropByR    :: !(Height -> Round -> m (BlockValidation alg a))
     -- ^ Retrieve proposed block by round number.
@@ -229,8 +227,7 @@ hoistPropStorageRW
   -> ProposalStorage 'RW m alg a
   -> ProposalStorage 'RW n alg a
 hoistPropStorageRW fun ProposalStorage{..} =
-  ProposalStorage { currentHeight      = fun currentHeight
-                  , retrievePropByID   = \h x -> fun (retrievePropByID h x)
+  ProposalStorage { retrievePropByID   = \h x -> fun (retrievePropByID h x)
                   , retrievePropByR    = \h x -> fun (retrievePropByR  h x)
                   , setPropValidation  = \b x -> fun (setPropValidation b x)
                   , advanceToHeight    = fun . advanceToHeight
@@ -243,8 +240,7 @@ hoistPropStorageRO
   -> ProposalStorage 'RO m alg a
   -> ProposalStorage 'RO n alg a
 hoistPropStorageRO fun ProposalStorage{..} =
-  ProposalStorage { currentHeight      = fun currentHeight
-                  , retrievePropByID   = \h x -> fun (retrievePropByID h x)
+  ProposalStorage { retrievePropByID   = \h x -> fun (retrievePropByID h x)
                   , retrievePropByR    = \h x -> fun (retrievePropByR  h x)
                   , ..
                   }
