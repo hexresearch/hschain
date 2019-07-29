@@ -103,14 +103,6 @@ data HeightParameters (m :: * -> *) alg a = HeightParameters
     -- ^ Proposer for given round
   , validateBlock        :: !(BlockID alg a -> m ProposalState)
     -- ^ Request validation of particular block
-
-  , broadcastProposal    :: !(Round -> BlockID alg a -> Maybe Round -> m ())
-    -- ^ Broadcast proposal for given round and block.
-  , castPrevote          :: !(Round -> Maybe (BlockID alg a) -> m ())
-    -- ^ Broadcast prevote for particular block ID in some round.
-  , castPrecommit        :: !(Round -> Maybe (BlockID alg a) -> m ())
-    -- ^ Broadcast precommit for particular block ID in some round.
-
   , createProposal       :: !(Round -> Maybe (Commit alg a) -> m (BlockID alg a))
     -- ^ Create new proposal block. Block itself should be stored
     --   elsewhere.
@@ -456,11 +448,11 @@ enterPropose HeightParameters{..} r sm@TMState{..} reason = do
     --
     -- If we're locked on block we MUST propose it
     Just (br,bid) -> do logger InfoS "Making POL proposal" $ LogProposal currentH smRound bid
-                        broadcastProposal r bid (Just br)
+                        lift $ yield $ EngCastPropose r bid (Just br)
     -- Otherwise we need to create new block from mempool
     Nothing      -> do bid <- createProposal r smLastCommit
                        logger InfoS "Making new proposal" $ LogProposal currentH smRound bid
-                       broadcastProposal r bid Nothing
+                       lift $ yield $ EngCastPropose r bid Nothing
   return sm { smRound = r
             , smStep  = StepProposal
             }
@@ -480,7 +472,7 @@ enterPrevote
 enterPrevote par@HeightParameters{..} r (unlockOnPrevote -> sm@TMState{..}) reason = do
   --
   logger InfoS "Entering prevote" $ LogTransition currentH smRound smStep r reason
-  castPrevote smRound =<< prevoteBlock
+  lift . yield . EngCastPreVote smRound =<< prevoteBlock
   --
   lift $ yield $ EngTimeout $ Timeout currentH r StepPrevote
   checkTransitionPrevote par r sm
@@ -559,7 +551,7 @@ enterPrecommit
   -> CNS x alg a m (TMState alg a)
 enterPrecommit par@HeightParameters{..} r sm@TMState{..} reason = do
   logger InfoS "Entering precommit" $ LogTransition currentH smRound smStep r reason
-  castPrecommit r precommitBlock
+  lift $ yield $ EngCastPreCommit r precommitBlock
   lift $ yield $ EngTimeout $ Timeout currentH r StepPrecommit
   checkTransitionPrecommit par r sm
     { smStep        = StepPrecommit
