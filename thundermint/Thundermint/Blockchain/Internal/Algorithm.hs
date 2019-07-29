@@ -54,6 +54,7 @@ import Thundermint.Crypto            ( Crypto, Signed, SignedState(..)
                                      , signedValue, signedKeyInfo
                                      )
 import Thundermint.Blockchain.Internal.Types
+import Thundermint.Blockchain.Internal.Engine.Types
 import Thundermint.Crypto            (unverifySignature)
 import Thundermint.Crypto.Containers
 import Thundermint.Logger
@@ -90,6 +91,8 @@ data HeightParameters (m :: * -> *) alg a = HeightParameters
   , oldValidatorSet      :: !(Maybe (ValidatorSet alg))
     -- ^ Validator set for previous height. It's used when collecting
     --   stragglers votes
+  , validatorKey         :: !(Maybe (PrivValidator alg, ValidatorIdx alg))
+    -- ^ Validator key and index in validator set for current round
   , areWeProposers       :: !(Round -> Bool)
     -- ^ Find address of proposer for given round.
   , readyCreateBlock     :: !(m Bool)
