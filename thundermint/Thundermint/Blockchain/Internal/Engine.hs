@@ -28,9 +28,10 @@ import           Data.Maybe    (fromMaybe)
 import           Data.Function
 import           Data.Monoid   ((<>))
 import Data.Text             (Text)
-import Pipes                 (Pipe,Proxy,runEffect,yield,await,(>->))
+import Pipes                 (Pipe,Consumer,Proxy,runEffect,yield,await,(>->))
 
 import Thundermint.Blockchain.Internal.Engine.Types
+import Thundermint.Blockchain.Internal.Types
 import Thundermint.Blockchain.Internal.Algorithm
 import Thundermint.Types.Blockchain
 import Thundermint.Control (throwNothing,throwNothingM)
@@ -199,23 +200,25 @@ decideNewBlock config appValidatorKey appLogic@AppLogic{..} appCall@AppCallbacks
             return cmt
   runEffect $ do
     -- FIXME: encode that we cannot fail here!
-    tm0 <- runConsesusM (newHeight hParam0 lastCommt) >>= \case
+    tm0 <- (  runConsesusM (newHeight hParam0 lastCommt)
+          >-> handleEngineMessage config appCh
+           ) >>= \case
       Success t -> return t
       _         -> throwM ImpossibleError
     messageSrc
       >-> verifyMessageSignature appLogic hParam
       >-> msgHandlerLoop Nothing tm0
-
+      >-> handleEngineMessage config appCh
 
 
 -- Handle message and perform state transitions for both
 handleVerifiedMessage
   :: (MonadLogger m, Crypto alg)
   => ProposalStorage 'RW m alg a
-  -> HeightParameters (ConsensusM alg a (Pipe x y m)) alg a
+  -> HeightParameters (ConsensusM alg a (Pipe x (EngineMessage alg a) m)) alg a
   -> TMState alg a
   -> MessageRx 'Verified alg a
-  -> Pipe x y m (ConsensusResult alg a (TMState alg a))
+  -> Pipe x (EngineMessage alg a) m (ConsensusResult alg a (TMState alg a))
 handleVerifiedMessage ProposalStorage{..} hParam tm = \case
   -- FIXME: check that proposal comes from correct proposer
   RxProposal  p -> runConsesusM $ tendermintTransition hParam (ProposalMsg  p) tm
@@ -264,7 +267,22 @@ verifyMessageSignature AppLogic{..} HeightParameters{..} = forever $ do
     pkLookup mvset a = do vset <- mvset
                           validatorPubKey <$> validatorByIndex vset a
 
-
+handleEngineMessage
+  :: (MonadIO m)
+  => ConsensusCfg
+  -> AppChans m alg a
+  -> Consumer (EngineMessage alg a) m r
+handleEngineMessage ConsensusCfg{..} AppChans{..} = forever $ await >>= \case
+  EngTimeout t@(Timeout _ (Round r) step) ->
+    liftIO $ void $ forkIO $ do
+      let (baseT,delta) = case step of
+            StepNewHeight     -> timeoutNewHeight
+            StepProposal      -> timeoutProposal
+            StepPrevote       -> timeoutPrevote
+            StepPrecommit     -> timeoutPrecommit
+            StepAwaitCommit _ -> (0, 0)
+      threadDelay $ 1000 * (baseT + delta * fromIntegral r)
+      atomically $ writeTQueue appChanRxInternal $ RxTimeout t
 
 ----------------------------------------------------------------
 -- Concrete implementation of ConsensusMonad
@@ -363,17 +381,6 @@ makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{
               case blockFromBlockValidation mBlock of
                 Just (_,b) -> writeTQueue appChanRxInternal (RxBlock b)
                 Nothing    -> return ()
-    --
-    , scheduleTimeout = \t@(Timeout _ (Round r) step) ->
-        liftIO $ void $ forkIO $ do
-          let (baseT,delta) = case step of
-                StepNewHeight     -> timeoutNewHeight
-                StepProposal      -> timeoutProposal
-                StepPrevote       -> timeoutPrevote
-                StepPrecommit     -> timeoutPrecommit
-                StepAwaitCommit _ -> (0, 0)
-          threadDelay $ 1000 * (baseT + delta * fromIntegral r)
-          atomically $ writeTQueue appChanRxInternal $ RxTimeout t
     --
     , castPrevote     = \r b ->
         forM_ (liftA2 (,) appValidatorKey ourIndex) $ \(PrivValidator pk, idx) -> do
