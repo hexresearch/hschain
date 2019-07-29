@@ -111,11 +111,6 @@ data HeightParameters (m :: * -> *) alg a = HeightParameters
   , acceptBlock          :: !(Round -> BlockID alg a -> m ())
     -- ^ Callback to signal that given block from given round should
     --   be accepted
-  , announceHasPreVote   :: !(Signed (ValidatorIdx alg) 'Verified alg (Vote 'PreVote alg a)   -> m ())
-    -- ^ Broadcast to peers announcement that we have given prevote
-  , announceHasPreCommit :: !(Signed (ValidatorIdx alg) 'Verified alg (Vote 'PreCommit alg a) -> m ())
-    -- ^ Broadcast to peers announcement that we have given precommit
-  , announceStep         :: !(FullStep -> m ())
   , updateMetricsHR      :: !(Height -> Round -> m ())
 
 
@@ -268,7 +263,7 @@ newHeight
 newHeight HeightParameters{..} lastCommit = do
   logger InfoS "Entering new height ----------------" (sl "H" currentH)
   lift $ yield $ EngTimeout $ Timeout  currentH (Round 0) StepNewHeight
-  announceStep $ FullStep currentH (Round 0) StepNewHeight
+  lift $ yield $ EngAnnStep $ FullStep currentH (Round 0) StepNewHeight
   updateMetricsHR currentH (Round 0)
   return TMState
     { smRound         = Round 0
@@ -457,8 +452,8 @@ enterPropose
 enterPropose HeightParameters{..} r sm@TMState{..} reason = do
   logger InfoS "Entering propose" $ LogTransition currentH smRound smStep r reason
   updateMetricsHR currentH smRound
-  lift $ yield $ EngTimeout $ Timeout currentH r StepProposal
-  announceStep    $ FullStep currentH r StepProposal
+  lift $ yield $ EngTimeout $ Timeout  currentH r StepProposal
+  lift $ yield $ EngAnnStep $ FullStep currentH r StepProposal
   -- If we're proposers we need to broadcast proposal. Otherwise we do
   -- nothing
   when (areWeProposers r) $ case smLockedBlock of
@@ -601,7 +596,7 @@ addPrevote
   -> TMState alg a
   -> CNS x alg a m (TMState alg a)
 addPrevote HeightParameters{..} v sm@TMState{..} = do
-  announceHasPreVote v
+  lift $ yield $ EngAnnPreVote v
   case addSignedValue (voteRound $ signedValue v) v smPrevotesSet of
     InsertOK votes   -> return sm { smPrevotesSet = votes }
     InsertDup        -> tranquility
@@ -616,7 +611,7 @@ addPrecommit
   -> TMState alg a
   -> CNS x alg a m (TMState alg a)
 addPrecommit HeightParameters{..} v sm@TMState{..} = do
-  announceHasPreCommit v
+  lift $ yield $ EngAnnPreCommit v
   case addSignedValue (voteRound $ signedValue v) v smPrecommitsSet of
     InsertOK votes   -> return sm { smPrecommitsSet = votes }
     InsertDup        -> tranquility
