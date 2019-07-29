@@ -434,7 +434,6 @@ makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{
             liftIO $ atomically $
               writeTQueue appChanRxInternal $ RxPreCommit $ unverifySignature $ signValue idx pk $ vote'
     --
-    --
     , createProposal = \r commit -> lift $ lift $ do
         lastBID  <- queryRO $ retrieveBlockID =<< blockchainHeight
         -- Calculate time for block.
