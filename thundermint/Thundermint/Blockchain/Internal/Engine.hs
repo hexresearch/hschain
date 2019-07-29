@@ -274,7 +274,7 @@ handleEngineMessage
   -> Consumer (EngineMessage alg a) m r
 handleEngineMessage ConsensusCfg{..} AppChans{..} = forever $ await >>= \case
   -- Timeout
-  EngTimeout t@(Timeout _ (Round r) step) ->
+  EngTimeout t@(Timeout h (Round r) step) -> do
     liftIO $ void $ forkIO $ do
       let (baseT,delta) = case step of
             StepNewHeight     -> timeoutNewHeight
@@ -284,6 +284,8 @@ handleEngineMessage ConsensusCfg{..} AppChans{..} = forever $ await >>= \case
             StepAwaitCommit _ -> (0, 0)
       threadDelay $ 1000 * (baseT + delta * fromIntegral r)
       atomically $ writeTQueue appChanRxInternal $ RxTimeout t
+    lift $ do usingGauge prometheusHeight h
+              usingGauge prometheusRound  (Round r)
   -- Announcements
   EngAnnPreVote sv -> do
     let Vote{..} = signedValue   sv
@@ -295,10 +297,6 @@ handleEngineMessage ConsensusCfg{..} AppChans{..} = forever $ await >>= \case
     liftIO $ atomically $ writeTChan appChanTx $ AnnHasPreCommit voteHeight voteRound i
   EngAnnStep s ->
     liftIO $ atomically $ writeTChan appChanTx $ AnnStep s
-  -- Metrics
-  EngMetricsHR h r -> lift $ do
-    usingGauge prometheusHeight h
-    usingGauge prometheusRound  r
 
 
 ----------------------------------------------------------------
