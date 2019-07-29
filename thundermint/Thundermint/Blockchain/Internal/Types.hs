@@ -95,7 +95,6 @@ data EngineMessage alg a
   | EngAnnPreVote   !(Signed (ValidatorIdx alg) 'Verified alg (Vote 'PreVote   alg a))
   | EngAnnPreCommit !(Signed (ValidatorIdx alg) 'Verified alg (Vote 'PreCommit alg a))
   | EngAnnStep      !FullStep
-  | EngMetricsHR    !Height !Round
   deriving (Show,Generic)
 
 -- | Message received by main application
