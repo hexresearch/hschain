@@ -111,9 +111,6 @@ data HeightParameters (m :: * -> *) alg a = HeightParameters
   , acceptBlock          :: !(Round -> BlockID alg a -> m ())
     -- ^ Callback to signal that given block from given round should
     --   be accepted
-  , updateMetricsHR      :: !(Height -> Round -> m ())
-
-
   , createProposal       :: !(Round -> Maybe (Commit alg a) -> m (BlockID alg a))
     -- ^ Create new proposal block. Block itself should be stored
     --   elsewhere.
@@ -264,7 +261,7 @@ newHeight HeightParameters{..} lastCommit = do
   logger InfoS "Entering new height ----------------" (sl "H" currentH)
   lift $ yield $ EngTimeout $ Timeout  currentH (Round 0) StepNewHeight
   lift $ yield $ EngAnnStep $ FullStep currentH (Round 0) StepNewHeight
-  updateMetricsHR currentH (Round 0)
+  lift $ yield $ EngMetricsHR currentH (Round 0)
   return TMState
     { smRound         = Round 0
     , smStep          = StepNewHeight
@@ -451,7 +448,7 @@ enterPropose
   -> CNS x alg a m (TMState alg a)
 enterPropose HeightParameters{..} r sm@TMState{..} reason = do
   logger InfoS "Entering propose" $ LogTransition currentH smRound smStep r reason
-  updateMetricsHR currentH smRound
+  lift $ yield $ EngMetricsHR currentH r
   lift $ yield $ EngTimeout $ Timeout  currentH r StepProposal
   lift $ yield $ EngAnnStep $ FullStep currentH r StepProposal
   -- If we're proposers we need to broadcast proposal. Otherwise we do
@@ -485,7 +482,7 @@ enterPrevote
 enterPrevote par@HeightParameters{..} r (unlockOnPrevote -> sm@TMState{..}) reason = do
   --
   logger InfoS "Entering prevote" $ LogTransition currentH smRound smStep r reason
-  updateMetricsHR currentH smRound
+  lift $ yield $ EngMetricsHR currentH r
   castPrevote smRound =<< prevoteBlock
   --
   lift $ yield $ EngTimeout $ Timeout currentH r StepPrevote
@@ -565,7 +562,7 @@ enterPrecommit
   -> CNS x alg a m (TMState alg a)
 enterPrecommit par@HeightParameters{..} r sm@TMState{..} reason = do
   logger InfoS "Entering precommit" $ LogTransition currentH smRound smStep r reason
-  updateMetricsHR currentH smRound
+  lift $ yield $ EngMetricsHR currentH smRound
   castPrecommit r precommitBlock
   lift $ yield $ EngTimeout $ Timeout currentH r StepPrecommit
   checkTransitionPrecommit par r sm
