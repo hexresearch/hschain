@@ -68,7 +68,6 @@ propSelfCheck = property $ do
         []   -> success
         errs -> mapM_ annotate errs >> failure
 
---   forM_ txsSets 
 propDuplicate :: Property
 propDuplicate = property $ do
   -- Parameters
@@ -78,5 +77,5 @@ propDuplicate = property $ do
   cursor      <- getMempoolCursor mempool
   mapM_ (pushTransaction cursor) txs
   -- TX should be in same order, positive, and duplicates should be removed
-  txs' <- peekNTransactions mempool Nothing
+  txs' <- peekNTransactions mempool
   unless (txs' == nub (filter (>0) txs)) failure
