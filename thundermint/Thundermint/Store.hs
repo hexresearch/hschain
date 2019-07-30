@@ -258,7 +258,7 @@ data MempoolCursor m alg tx = MempoolCursor
 -- | Mempool which is used for storing transactions before they're
 --   added into blockchain. Transactions are stored in FIFO manner
 data Mempool m alg tx = Mempool
-  { peekNTransactions :: !(Maybe Int -> m [tx])
+  { peekNTransactions :: !(m [tx])
     -- ^ Take up to N transactions from mempool. If Nothing is passed
     --   that all transactions will be returned. This operation does
     --   not alter mempool state
@@ -285,7 +285,7 @@ hoistMempoolCursor fun MempoolCursor{..} = MempoolCursor
 
 hoistMempool :: Functor n => (forall a. m a -> n a) -> Mempool m alg tx -> Mempool n alg tx
 hoistMempool fun Mempool{..} = Mempool
-  { peekNTransactions = fun . peekNTransactions
+  { peekNTransactions = fun peekNTransactions
   , filterMempool     = fun filterMempool
   , getMempoolCursor  = hoistMempoolCursor fun <$> fun getMempoolCursor
   , txInMempool       = fun . txInMempool
@@ -297,7 +297,7 @@ hoistMempool fun Mempool{..} = Mempool
 
 nullMempoolAny :: (Monad m) => Mempool m alg tx
 nullMempoolAny = Mempool
-  { peekNTransactions = const (return [])
+  { peekNTransactions = return []
   , filterMempool     = return ()
   , mempoolStats      = return $ MempoolInfo 0 0 0 0
   , mempoolSize       = return 0

@@ -87,11 +87,9 @@ newMempool validation = do
   varDiscarded <- liftIO $ newTVarIO 0
   varFiltered  <- liftIO $ newTVarIO 0
   return Mempool
-    { peekNTransactions = \mn -> do
+    { peekNTransactions = do
         fifo <- liftIO (readTVarIO varFIFO)
-        return $ case mn of
-          Nothing -> toList fifo
-          Just n  -> take n $ toList fifo
+        return $ toList fifo
     -- Filtering of transactions is tricky! Validation function is
     -- monadic so we cannot call it inside atomically block. And when
     -- we call it outside atomically block content of maps could change!
