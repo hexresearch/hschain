@@ -1,6 +1,7 @@
-{-# LANGUAGE DataKinds       #-}
-{-# LANGUAGE LambdaCase      #-}
-{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE DataKinds           #-}
+{-# LANGUAGE LambdaCase          #-}
+{-# LANGUAGE RecordWildCards     #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 -- |
 module Thundermint.Store.STM (
     newSTMPropStorage
@@ -21,8 +22,11 @@ import Data.Maybe      (fromMaybe)
 import Data.Tuple      (swap)
 
 import qualified Data.IntMap.Strict as IMap
+import           Data.IntMap.Strict   (IntMap)
 import qualified Data.Map.Strict    as Map
-import qualified Data.Set    as Set
+import           Data.Map.Strict      (Map)
+import qualified Data.Set           as Set
+import           Data.Set             (Set)
 
 import Thundermint.Crypto
 import Thundermint.Store
@@ -74,18 +78,18 @@ newSTMPropStorage = fmap (hoistPropStorageRW liftIO) $ liftIO $ do
     }
 
 newMempool
-  :: (Show tx, Ord tx, Serialise tx, Crypto alg, MonadIO m)
+  :: forall m alg tx. (Show tx, Ord tx, Serialise tx, Crypto alg, MonadIO m)
   => (tx -> m Bool)
   -> m (Mempool m alg tx)
 newMempool validation = do
-  varFIFO      <- liftIO $ newTVarIO IMap.empty
-  varRevMap    <- liftIO $ newTVarIO Map.empty
-  varTxSet     <- liftIO $ newTVarIO Set.empty
-  varMaxN      <- liftIO $ newTVarIO 0
+  varFIFO   :: TVar (IntMap tx)           <- liftIO $ newTVarIO IMap.empty
+  varRevMap :: TVar (Map tx Int)          <- liftIO $ newTVarIO Map.empty
+  varTxSet  :: TVar (Set (Hashed alg tx)) <- liftIO $ newTVarIO Set.empty
+  varMaxN   :: TVar Int                   <- liftIO $ newTVarIO 0
   -- Counters for tracking number of transactions
-  varAdded     <- liftIO $ newTVarIO 0
-  varDiscarded <- liftIO $ newTVarIO 0
-  varFiltered  <- liftIO $ newTVarIO 0
+  varAdded     :: TVar Int <- liftIO $ newTVarIO 0
+  varDiscarded :: TVar Int <- liftIO $ newTVarIO 0
+  varFiltered  :: TVar Int <- liftIO $ newTVarIO 0
   return Mempool
     { peekNTransactions = do
         fifo <- liftIO (readTVarIO varFIFO)
