@@ -8,6 +8,7 @@ module Thundermint.Store.STM (
   , newMempool
   ) where
 
+import Control.Applicative
 import Control.Concurrent.STM
 import Control.Monad
 import Control.Monad.IO.Class
@@ -141,24 +142,32 @@ newMempool validation = do
     , getMempoolCursor = liftIO $ atomically $ do
         varN <- newTVar 0
         return MempoolCursor
-          { pushTransaction = \tx -> validation tx >>= \case
-              False -> liftIO $ atomically $ do
-                modifyTVar' varAdded     succ
-                modifyTVar' varDiscarded succ
-                return Nothing
-              True  -> liftIO $ atomically $ do
-                rmap <- readTVar varRevMap
-                case tx `Map.notMember` rmap of
-                  True -> do
-                    let txHash = hashed tx
-                    modifyTVar' varAdded     succ
-                    n <- succ <$> readTVar varMaxN
-                    modifyTVar' varFIFO   $ IMap.insert n tx
-                    modifyTVar' varRevMap $ Map.insert tx n
-                    modifyTVar' varTxSet  $ Set.insert txHash
-                    writeTVar   varMaxN   $! n
-                    return $ Just txHash
-                  False -> return Nothing
+          { pushTransaction = \tx -> runMaybeT $ do
+              let discardSTM = do modifyTVar' varAdded     succ
+                                  modifyTVar' varDiscarded succ
+                  discard    = do liftIO $ atomically discardSTM
+                                  empty
+              -- Abort if tx is already in mempool
+              do revMap <- liftIO $ readTVarIO varRevMap
+                 when (tx `Map.member` revMap) discard
+              -- Validate TX
+              lift (validation tx) >>= \case
+                False -> discard
+                True  -> MaybeT $ liftIO $ atomically $ do
+                  -- Still it's possible that tx was added while we
+                  -- were checking its validity
+                  rmap <- readTVar varRevMap
+                  case tx `Map.notMember` rmap of
+                    False -> Nothing <$ discardSTM
+                    True  -> do
+                      let txHash = hashed tx
+                      modifyTVar' varAdded     succ
+                      n <- succ <$> readTVar varMaxN
+                      modifyTVar' varFIFO   $ IMap.insert n tx
+                      modifyTVar' varRevMap $ Map.insert tx n
+                      modifyTVar' varTxSet  $ Set.insert txHash
+                      writeTVar   varMaxN   $! n
+                      return $ Just txHash
             --
           , advanceCursor = liftIO $ atomically $ do
               fifo <- readTVar varFIFO
