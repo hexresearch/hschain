@@ -234,7 +234,7 @@ generateTransaction :: MonadIO m => TxGenerator -> CoinState -> m Tx
 generateTransaction TxGenerator{..} CoinState{..} = liftIO $ do
   privK  <- selectFromVec genPrivateKeys
   target <- selectFromVec genDestinaions
-  amount <- randomRIO (0,20)
+  amount <- randomRIO (1,20)
   let pubK      = publicKey privK
       allInputs = toList
                 $ fromMaybe Set.empty
@@ -243,11 +243,15 @@ generateTransaction TxGenerator{..} CoinState{..} = liftIO $ do
                                     | utxo <- allInputs
                                     , let Unspent _ n = unspentOutputs ! utxo
                                     ]
-      tx     = TxSend { txInputs  = map fst inputs
-                      , txOutputs = [ Unspent target   amount
-                                    , Unspent pubK   $ sum (snd <$> inputs) - amount
-                                    ]
-                      }
+      avail     = sum (snd <$> inputs)
+      change    = avail - amount
+      outs | change < 0 = [ Unspent target avail]
+           | otherwise  = [ Unspent target amount
+                          , Unspent pubK   change
+                          ]
+      tx = TxSend { txInputs  = map fst inputs
+                  , txOutputs = outs
+                  }
   return $ Send pubK (signBlob privK $ toStrict $ serialise tx) tx
 
 selectFromVec :: V.Vector a -> IO a
