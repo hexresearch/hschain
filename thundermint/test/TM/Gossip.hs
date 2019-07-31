@@ -264,14 +264,14 @@ currentNodeValIdx = ValidatorIdx 0
 data GossipEnv = GossipEnv
     { envValidatorSet :: ValidatorSet TestAlg
     , envEventsQueue  :: Chan TraceEvents
-    , envConsensus    :: TVar (Maybe (Height, TMState TestAlg TestBlock))
+    , envConsensus    :: TVar (Maybe (Height, TMState TestAlg Mock.BData))
     }
 
 
 -- | Add some test blocks to blockchain.
 --
 addSomeBlocks
-    :: (MonadIO m, MonadFail m, MonadDB m TestAlg TestBlock)
+    :: (MonadIO m, MonadFail m, MonadDB m TestAlg Mock.BData)
     => GossipEnv
     -> Int       -- ^ Number of blocks to add
     -> m ()
@@ -281,12 +281,12 @@ addSomeBlocks env blocksCount = void $ addSomeBlocks' env blocksCount
 -- | Add some test blocks to blockchain and return a list of these blocks & commits.
 --
 addSomeBlocks'
-    :: (MonadIO m, MonadFail m, MonadDB m TestAlg TestBlock)
+    :: (MonadIO m, MonadFail m, MonadDB m TestAlg Mock.BData)
     => GossipEnv
     -> Int -- ^ Number of blocks to add
-    -> m [(Block TestAlg TestBlock, Commit TestAlg TestBlock)]
+    -> m [(Block TestAlg Mock.BData, Commit TestAlg Mock.BData)]
 addSomeBlocks' GossipEnv{..} blocksCount =
-  mapM addOneBlock [ [(show i, 4433)] | i <- [1 .. blocksCount] ]
+  mapM addOneBlock [ Mock.BData [(show i, 4433)] | i <- [1 .. blocksCount] ]
   where
     addOneBlock tx = do
         t  <- getCurrentTime
@@ -325,10 +325,10 @@ addSomeBlocks' GossipEnv{..} blocksCount =
 -- | Prepare test environment and run callback in this environment with created objects.
 --
 withGossipEnv
-    :: (    forall m . (MonadDB m TestAlg TestBlock, MonadMask m, MonadIO m, MonadLogger m, MonadTrace m, MonadFork m, MonadFail m)
-            => PeerStateObj m TestAlg TestBlock
-            -> PeerChans m TestAlg TestBlock
-            -> TBQueue (GossipMsg TestAlg TestBlock)
+    :: (    forall m . (MonadDB m TestAlg Mock.BData, MonadMask m, MonadIO m, MonadLogger m, MonadTrace m, MonadFork m, MonadFail m)
+            => PeerStateObj m TestAlg Mock.BData
+            -> PeerChans m TestAlg Mock.BData
+            -> TBQueue (GossipMsg TestAlg Mock.BData)
             -> GossipEnv
             -> m ()
        )
@@ -382,7 +382,7 @@ waitForEvents queue events = liftIO $
 newTMState :: (MonadIO m)
            => GossipEnv
            -> Height
-           -> (TMState TestAlg TestBlock -> TMState TestAlg TestBlock) -- ^ Postprocessor of created TMState
+           -> (TMState TestAlg Mock.BData -> TMState TestAlg Mock.BData) -- ^ Postprocessor of created TMState
            -> m ()
 newTMState GossipEnv{..} h postProcess = do
     currentTime <- getCurrentTime

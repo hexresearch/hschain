@@ -1,17 +1,25 @@
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE DataKinds         #-}
-{-# LANGUAGE LambdaCase        #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards   #-}
-{-# LANGUAGE TupleSections     #-}
-{-# LANGUAGE TypeOperators     #-}
+{-# LANGUAGE DataKinds          #-}
+{-# LANGUAGE DeriveAnyClass     #-}
+{-# LANGUAGE DeriveGeneric      #-}
+{-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE FlexibleContexts   #-}
+{-# LANGUAGE LambdaCase         #-}
+{-# LANGUAGE OverloadedStrings  #-}
+{-# LANGUAGE RecordWildCards    #-}
+{-# LANGUAGE TupleSections      #-}
+{-# LANGUAGE TypeFamilies       #-}
+{-# LANGUAGE TypeOperators      #-}
 -- |
 module Thundermint.Mock.KeyVal (
     genesisBlock
   , transitions
   , executeSpec
+  , BData(..)
+  , Tx
+  , BState
   ) where
 
+import Codec.Serialise (Serialise)
 import Control.Monad
 import Control.Monad.Catch
 import Control.Monad.Trans.Cont
@@ -19,9 +27,12 @@ import Control.Monad.Trans.Class
 import Control.Monad.IO.Class
 import Data.Maybe
 import Data.List
-import Data.Map.Strict             (Map)
-import qualified Data.Map.Strict as Map
+import Data.Map.Strict                 (Map)
+import qualified Data.Aeson          as JSON
+import qualified Data.Map.Strict     as Map
+import qualified Data.HashMap.Strict as HM
 import System.Random   (randomRIO)
+import GHC.Generics    (Generic)
 
 import Thundermint.Blockchain.Internal.Engine.Types
 import Thundermint.Blockchain.Interpretation
@@ -45,24 +56,33 @@ import qualified Thundermint.P2P.Network as P2P
 --
 ----------------------------------------------------------------
 
-type Alg    = Ed25519 :& SHA512
-type Tx     = (String,Int)
-type BState = Map String Int
+type    Alg    = Ed25519 :& SHA512
+type    Tx     = (String,Int)
+type    BState = Map String Int
+newtype BData  = BData [(String,Int)]
+  deriving stock    (Show,Eq,Generic)
+  deriving anyclass (Serialise)
 
-genesisBlock :: ValidatorSet Alg -> Block Alg [Tx]
+instance BlockData BData where
+  type TX              BData = Tx
+  type BlockchainState BData = BState
+  blockTransactions (BData txs) = txs
+  logBlockData      (BData txs) = HM.singleton "Ntx" $ JSON.toJSON $ length txs
+
+genesisBlock :: ValidatorSet Alg -> Block Alg BData
 genesisBlock valSet
-  = makeGenesis "KV" (Time 0) [] valSet
+  = makeGenesis "KV" (Time 0) (BData []) valSet
 
-transitions :: BlockFold BState alg [Tx]
+transitions :: BlockFold BState alg BData
 transitions = BlockFold
   { processTx           = const $ const process
-  , processBlock        = \_ b s0 -> foldM (flip process) s0 (blockData b)
+  , processBlock        = \_ b s0 -> foldM (flip process) s0 (blockTransactions $  blockData b)
   , transactionsToBlock = \_ ->
       let selectTx _ []     = []
           selectTx c (t:tx) = case process t c of
                                 Nothing -> selectTx c  tx
                                 Just c' -> t : selectTx c' tx
-      in selectTx
+      in (fmap . fmap) BData selectTx
   , initialState        = Map.empty
   }
   where
@@ -80,14 +100,14 @@ process (k,v) m
 -------------------------------------------------------------------------------
 
 interpretSpec
-  :: ( MonadDB m Alg [Tx], MonadFork m, MonadMask m, MonadLogger m
+  :: ( MonadDB m Alg BData, MonadFork m, MonadMask m, MonadLogger m
      , MonadTrace m, MonadTMMonitoring m
      , Has x BlockchainNet
      , Has x NodeSpec
      , Has x (Configuration Example))
   => x
-  -> AppCallbacks m Alg [Tx]
-  -> m (RunningNode BState m Alg [Tx], [m ()])
+  -> AppCallbacks m Alg BData
+  -> m (RunningNode BState m Alg BData, [m ()])
 interpretSpec p cb = do
   conn     <- askConnectionRO
   bchState <- newBChState transitions
@@ -101,7 +121,7 @@ interpretSpec p cb = do
             st <- stateAtH bchState h
             let Just k = find (`Map.notMember` st) ["K_" ++ show (n :: Int) | n <- [1 ..]]
             i <- liftIO $ randomRIO (1,100)
-            return ([(k, i)], valset)
+            return (BData [(k, i)], valset)
         , appMempool         = nullMempoolAny
         }
   acts <- runNode (getT p :: Configuration Example) NodeDescription
@@ -122,7 +142,7 @@ interpretSpec p cb = do
 executeSpec
   :: (MonadIO m, MonadMask m, MonadFork m, MonadTrace m, MonadTMMonitoring m)
   => NetSpec NodeSpec
-  -> ContT r m [RunningNode BState m Alg [Tx]]
+  -> ContT r m [RunningNode BState m Alg BData]
 executeSpec NetSpec{..} = do
   -- Create mock network and allocate DB handles for nodes
   net       <- liftIO P2P.newMockNet
@@ -131,7 +151,8 @@ executeSpec NetSpec{..} = do
              $ netNodeList
   -- Start nodes
   rnodes    <- lift $ forM resources $ \(x, conn, logenv) -> do
-    let run = runLoggerT logenv . runDBT conn
+    let run :: DBT 'RW Alg BData (LoggerT m) x -> m x
+        run = runLoggerT logenv . runDBT conn
     (rn, acts) <- run $ interpretSpec (netNetCfg :*: x)
       (maybe mempty callbackAbortAtH netMaxH)
     return ( hoistRunningNode run rn

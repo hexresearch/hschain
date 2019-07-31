@@ -1,3 +1,4 @@
+{-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE DataKinds                  #-}
 {-# LANGUAGE DeriveAnyClass             #-}
 {-# LANGUAGE DeriveGeneric              #-}
@@ -47,9 +48,10 @@ import Data.ByteString.Lazy (toStrict)
 import Data.Foldable
 import Data.Maybe
 import Data.Map             (Map,(!))
-import qualified Data.Vector      as V
-import qualified Data.Map.Strict  as Map
-import qualified Data.Set         as Set
+import qualified Data.Vector         as V
+import qualified Data.Map.Strict     as Map
+import qualified Data.HashMap.Strict as HM
+import qualified Data.Set            as Set
 import System.Random   (randomRIO)
 import GHC.Generics    (Generic)
 
@@ -76,6 +78,17 @@ import qualified Thundermint.P2P.Network as P2P
 ----------------------------------------------------------------
 
 type Alg = (Ed25519 :& SHA512)
+
+newtype BData = BData [Tx]
+  deriving stock    (Show,Eq,Generic)
+  deriving anyclass (Serialise)
+
+instance BlockData BData where
+  type TX              BData = Tx
+  type BlockchainState BData = CoinState
+  blockTransactions (BData txs) = txs
+  logBlockData      (BData txs) = HM.singleton "Ntx" $ JSON.toJSON $ length txs
+
 
 -- | Single transaction for transfer of coins
 data TxSend = TxSend
@@ -182,17 +195,17 @@ processTransaction transaction@(Send pubK sig txSend@TxSend{..}) CoinState{..} =
         in add $ Map.adjust remove pubK utxoLookup
     }
 
-transitions :: BlockFold CoinState alg [Tx]
+transitions :: BlockFold CoinState alg BData
 transitions = BlockFold
   { processTx           = const process
   , processBlock        = \_ b s0 -> let h = headerHeight $ blockHeader b
-                                   in foldM (flip (process h)) s0 (blockData b)
+                                     in foldM (flip (process h)) s0 (blockTransactions $ blockData b)
   , transactionsToBlock = \_ ->
       let selectTx _ []     = []
           selectTx c (t:tx) = case processTransaction t c of
                                 Nothing -> selectTx c  tx
                                 Just c' -> t : selectTx c' tx
-      in selectTx
+      in (fmap . fmap) BData selectTx
   , initialState        = CoinState Map.empty Map.empty
   }
   where
@@ -264,7 +277,7 @@ mintMockCoin
   :: (Foldable f)
   => f (Validator Alg)
   -> CoinSpecification
-  -> (Maybe TxGenerator, Block Alg [Tx])
+  -> (Maybe TxGenerator, Block Alg BData)
 mintMockCoin nodes CoinSpecification{..} =
   ( do delay <- coinGeneratorDelay
        return TxGenerator
@@ -273,7 +286,7 @@ mintMockCoin nodes CoinSpecification{..} =
          , genDelay          = delay
          , genMaxMempoolSize = coinMaxMempoolSize
          }
-  , makeGenesis "MONIES" (Time 0) txs valSet
+  , makeGenesis "MONIES" (Time 0) (BData txs) valSet
   )
   where
     privK        = take coinWallets $ makePrivKeyStream coinWalletsSeed
@@ -297,14 +310,14 @@ findInputs tgt = go 0
 ----------------------------------------------------------------
 
 interpretSpec
-  :: ( MonadDB m Alg [Tx], MonadFork m, MonadMask m, MonadLogger m
+  :: ( MonadDB m Alg BData, MonadFork m, MonadMask m, MonadLogger m
      , MonadTrace m, MonadTMMonitoring m
      , Has x BlockchainNet
      , Has x NodeSpec
      , Has x (Configuration Example))
   => x
-  -> AppCallbacks m Alg [Tx]
-  -> m (RunningNode CoinState m Alg [Tx], [m ()])
+  -> AppCallbacks m Alg BData
+  -> m (RunningNode CoinState m Alg BData, [m ()])
 interpretSpec p cb = do
   conn              <- askConnectionRO
   (bchState, logic) <- logicFromFold transitions
@@ -326,7 +339,7 @@ interpretSpec p cb = do
 executeNodeSpec
   :: (MonadIO m, MonadMask m, MonadFork m, MonadTrace m, MonadTMMonitoring m)
   => NetSpec NodeSpec :*: CoinSpecification
-  -> ContT r m [RunningNode CoinState m Alg [Tx]]
+  -> ContT r m [RunningNode CoinState m Alg BData]
 executeNodeSpec (NetSpec{..} :*: coin@CoinSpecification{..}) = do
   -- Create mock network and allocate DB handles for nodes
   net       <- liftIO P2P.newMockNet
@@ -335,7 +348,8 @@ executeNodeSpec (NetSpec{..} :*: coin@CoinSpecification{..}) = do
              $ netNodeList
   -- Start nodes
   rnodes    <- lift $ forM resources $ \(x, conn, logenv) -> do
-    let run = runLoggerT logenv . runDBT conn
+    let run :: DBT 'RW Alg BData (LoggerT m) x -> m x
+        run = runLoggerT logenv . runDBT conn
     (rn, acts) <- run $ interpretSpec (netNetCfg :*: x)
       (maybe mempty callbackAbortAtH netMaxH)
     return ( hoistRunningNode run rn
