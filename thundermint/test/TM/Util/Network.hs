@@ -147,13 +147,11 @@ extraTestValidators = makePrivateValidators
   ]
 
 
-type TestBlock = [(String, Int)]
-
 type TestAlg = Ed25519 :& SHA512
 
-type TestMonad m = DBT 'RW TestAlg TestBlock (NoLogsT (TracerT m))
+type TestMonad m = DBT 'RW TestAlg Mock.BData (NoLogsT (TracerT m))
 
-type TestAppByzantine m = AppByzantine (TestMonad m) TestAlg TestBlock
+type TestAppByzantine m = AppByzantine (TestMonad m) TestAlg Mock.BData
 
 
 
@@ -162,7 +160,7 @@ data TestNetLinkDescription m = TestNetLinkDescription
     , ncTo            :: [Int]
     , ncByzantine     :: TestAppByzantine m
     , ncTraceCallback :: TraceEvents -> m ()
-    , ncAppCallbacks  :: AppCallbacks (TestMonad m) TestAlg TestBlock
+    , ncAppCallbacks  :: AppCallbacks (TestMonad m) TestAlg Mock.BData
     }
 
 
@@ -195,7 +193,7 @@ createTestNetwork descr = createTestNetworkWithConfig (defCfg :: Configuration E
 -- | Create fully connected network with byzantine behaviour
 --
 createGossipTestNetwork :: (MonadMask m, MonadFork m, MonadTMMonitoring m, MonadFail m)
-                        => [(TestAppByzantine m, AppCallbacks (TestMonad m) TestAlg TestBlock)]
+                        => [(TestAppByzantine m, AppCallbacks (TestMonad m) TestAlg Mock.BData)]
                         -> m ()
 createGossipTestNetwork byzs =
     let maxN = length byzs - 1
@@ -249,7 +247,7 @@ createTestNetworkWithValidatorsSetAndConfig validators cfg netDescr = do
     dbValidatorSet = makeValidatorSetFromPriv validators
     mkTestNode
       :: MockNet
-      -> ( Connection 'RW TestAlg TestBlock
+      -> ( Connection 'RW TestAlg Mock.BData
          , TestNetLinkDescription m
          , Maybe (PrivValidator TestAlg))
       -> m [m ()]

@@ -50,7 +50,6 @@ import           Control.Monad.IO.Class   (MonadIO(..))
 import qualified Data.Aeson               as JSON
 import           Data.Aeson               ((.=), (.:))
 import           Data.ByteString          (ByteString)
-import qualified Data.HashMap.Strict      as HM
 import           Data.Bits                ((.&.))
 import           Data.Coerce
 import           Data.Int
@@ -324,17 +323,14 @@ zDrop i ((n,x):xs)
 
 
 -- | Type class for data which could be put into block
-class (Serialise a, Serialise (TX a)) => BlockData a where
+class (Serialise a, Serialise (TX a), Serialise (BlockchainState a)) => BlockData a where
   -- | Transaction type of block
   type TX a
+  -- | State of blockchain
+  type BlockchainState a
   -- | Return list of transaction in block
   blockTransactions :: a -> [TX a]
   logBlockData      :: a -> JSON.Object
-
-instance (Serialise a) => BlockData [a] where
-  type TX [a] = a
-  blockTransactions = id
-  logBlockData      = HM.singleton "Ntx" . JSON.toJSON . length
 
 
 ----------------------------------------------------------------
