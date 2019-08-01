@@ -76,11 +76,11 @@ import qualified Thundermint.P2P.Network as P2P
 ----------------------------------------------------------------
 
 logicFromFold
-  :: (MonadDB m alg a, MonadMask m, MonadIO m
-     , BlockData a, Show (TX a), Ord (TX a), Crypto alg, Serialise st
+  :: ( MonadDB m alg a, MonadMask m, MonadIO m
+     , BlockData a, Show (TX a), Ord (TX a), Crypto alg
      )
-  => BlockFold st alg a
-  -> m (BChState m st, AppLogic m alg a)
+  => BlockFold alg a
+  -> m (BChState m (BlockchainState a), AppLogic m alg a)
 logicFromFold transitions@BlockFold{..} = do
   hChain   <- queryRO blockchainHeight
   bchState <- newBChState transitions
