@@ -195,7 +195,7 @@ processTransaction transaction@(Send pubK sig txSend@TxSend{..}) CoinState{..} =
         in add $ Map.adjust remove pubK utxoLookup
     }
 
-transitions :: BlockFold CoinState alg BData
+transitions :: BlockFold alg BData
 transitions = BlockFold
   { processTx           = const process
   , processBlock        = \_ b s0 -> let h = headerHeight $ blockHeader b

@@ -73,7 +73,7 @@ genesisBlock :: ValidatorSet Alg -> Block Alg BData
 genesisBlock valSet
   = makeGenesis "KV" (Time 0) (BData []) valSet
 
-transitions :: BlockFold BState alg BData
+transitions :: BlockFold alg BData
 transitions = BlockFold
   { processTx           = const $ const process
   , processBlock        = \_ b s0 -> foldM (flip process) s0 (blockTransactions $  blockData b)
