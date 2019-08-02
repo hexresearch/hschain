@@ -117,7 +117,8 @@ interpretSpec p cb = do
             st <- stateAtH bchState h
             return $ valset <$ processBlock transitions CheckSignature b st
         , appCommitQuery     = SimpleQuery $ \valset _ -> return valset
-        , appBlockGenerator  = \_ h _ _ _ valset -> do
+        , appBlockGenerator  = \valset b _ -> do
+            let h = headerHeight $ blockHeader b
             st <- stateAtH bchState h
             let Just k = find (`Map.notMember` st) ["K_" ++ show (n :: Int) | n <- [1 ..]]
             i <- liftIO $ randomRIO (1,100)

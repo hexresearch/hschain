@@ -98,8 +98,9 @@ logicFromFold transitions@BlockFold{..} = do
                          st <- stateAtH bchState h
                          return $ valset <$ processBlock CheckSignature b st
                      , appCommitQuery     = SimpleQuery $ \valset _ -> return valset
-                     , appBlockGenerator  = \txs h _ _ _ valset -> do
-                         st  <- stateAtH bchState h
+                     , appBlockGenerator  = \valset b txs -> do
+                         let h = headerHeight $ blockHeader b
+                         st <- stateAtH bchState h
                          return (transactionsToBlock h st txs, valset)
                      , appMempool         = mempool
                      }

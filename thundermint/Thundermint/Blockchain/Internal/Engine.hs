@@ -456,31 +456,42 @@ makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{
           _        -> case join $ liftA3 commitTime oldValSet (pure bchTime) commit of
             Just t  -> return t
             Nothing -> error "Corrupted commit. Cannot generate block"
-        txs              <- peekNTransactions appMempool
-        (bData, valSet') <- appBlockGenerator txs (succ h) currentT commit [] valSet
-        let valCh = validatorsDifference valSet valSet'
-            block = Block
-              { blockHeader     = Header
-                  { headerChainID        = headerChainID $ blockHeader genesis
-                  , headerHeight         = succ h
-                  , headerTime           = currentT
-                  , headerLastBlockID    = lastBID
-                  , headerValidatorsHash = hashed valSet
-                  , headerDataHash       = hashed bData
-                  , headerValChangeHash  = hashed valCh
-                  , headerLastCommitHash = hashed commit
-                  , headerEvidenceHash   = hashed []
-                  }
-              , blockData       = bData
-              , blockValChange  = valCh
+        -- Create dummy block in order to pass it to generator
+        let headerDummy = Header
+              { headerChainID        = headerChainID $ blockHeader genesis
+              , headerHeight         = succ h
+              , headerTime           = currentT
+              , headerLastBlockID    = lastBID
+              , headerValidatorsHash = hashed valSet
+              , headerDataHash       = Hashed $ Hash "" 
+              , headerValChangeHash  = hashed mempty
+              , headerLastCommitHash = hashed commit
+              , headerEvidenceHash   = hashed []
+              }
+            blockDummy = Block
+              { blockHeader     = headerDummy
+              , blockData       = error "Block data is not yet generated"
+              , blockValChange  = mempty
               , blockLastCommit = commit
               , blockEvidence   = []
+              }
+        -- Call block generator
+        (bData, valSet') <- appBlockGenerator valSet blockDummy
+                        =<< peekNTransactions appMempool
+        let valCh = validatorsDifference valSet valSet'
+            block = blockDummy
+              { blockHeader = headerDummy
+                  { headerDataHash      = hashed bData
+                  , headerValChangeHash = hashed valCh
+                  }
+              , blockData      = bData
+              , blockValChange = valCh
               }
             bid   = blockHash block
         allowBlockID   appPropStorage r bid
         storePropBlock appPropStorage block
         return bid
-
+    --
     , commitBlock     = \cm r -> ConsensusM $ return $ DoCommit cm r
     }
   where
