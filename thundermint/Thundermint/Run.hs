@@ -3,6 +3,7 @@
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE LambdaCase                 #-}
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE RecordWildCards            #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
@@ -23,6 +24,7 @@ module Thundermint.Run (
   , Abort(..)
   , Topology(..)
   , logicFromFold
+  , rewindBlockchainState
   , NodeDescription(..)
   , BlockchainNet(..)
   , runNode
@@ -76,35 +78,56 @@ import qualified Thundermint.P2P.Network as P2P
 ----------------------------------------------------------------
 
 logicFromFold
-  :: ( MonadDB m alg a, MonadMask m, MonadIO m
+  :: ( MonadDB m alg a, MonadMask m, MonadIO m, MonadLogger m
      , BlockData a, Show (TX a), Ord (TX a), Crypto alg
      )
   => BlockFold alg a
-  -> m (BChState m (BlockchainState a), AppLogic m alg a)
-logicFromFold transitions@BlockFold{..} = do
-  hChain   <- queryRO blockchainHeight
-  bchState <- newBChState transitions
-  _        <- stateAtH bchState (succ hChain)
+  -> m (BChStore m a, AppLogic m alg a)
+logicFromFold transiotions@BlockFold{..} = do
+  -- Create and rewind state
+  store <- newSTMBchStorage
+  rewindBlockchainState transiotions store
   -- Create mempool
   let checkTx tx = do
-        st <- currentState bchState
+        Just (h,st) <- bchCurrentState store
         -- FIXME: We need real height here!
-        return $ isJust $ processTx CheckSignature (Height 1) tx st
+        return $ isJust $ processTx CheckSignature h tx st
   mempool <- newMempool checkTx
   --
-  return ( bchState
-         , AppLogic { appValidationFun    = \valset b -> do
-                         let h = headerHeight $ blockHeader b
-                         st <- stateAtH bchState h
-                         return $ valset <$ processBlock CheckSignature b st
+  return ( store
+         , AppLogic { appValidationFun    = \valset b st ->
+                         return $ do st' <- processBlock CheckSignature b st
+                                     return (valset,st')
                      , appCommitQuery     = SimpleQuery $ \valset _ -> return valset
-                     , appBlockGenerator  = \valset b txs -> do
+                     , appBlockGenerator  = \valset b st txs -> do
                          let h = headerHeight $ blockHeader b
-                         st <- stateAtH bchState h
                          return (transactionsToBlock h st txs, valset)
                      , appMempool         = mempool
+                     , appBchState        = store
                      }
          )
+
+rewindBlockchainState
+  :: ( MonadReadDB m alg a, MonadIO m
+     , Crypto alg, Serialise a)
+  => BlockFold alg a
+  -> BChStore m a
+  -> m ()
+rewindBlockchainState BlockFold{..} store = do
+  hChain   <- queryRO blockchainHeight
+  (h0,st0) <- bchCurrentState store >>= \case
+    Nothing    -> return (Height 0, initialState)
+    Just (h,s) -> return (succ h  , s)
+  let rewind h st
+        | h > hChain = return ()
+        | otherwise  = do
+            -- FIXME:
+            Just b <- queryRO $ retrieveBlock h
+            let Just st' = processBlock CheckSignature b st
+            bchStoreStore store h st'
+            rewind (succ h) st
+  rewind h0 st0
+
 
 
 -- | Specification of node

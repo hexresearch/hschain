@@ -174,7 +174,12 @@ decideNewBlock config appValidatorKey appLogic@AppLogic{..} appCall@AppCallbacks
                 case r of
                   Nothing -> error "Cannot write commit into database"
                   Just () -> return ()
-            advanceToHeight appPropStorage . succ =<< queryRO blockchainHeight
+            let h = headerHeight $ blockHeader b
+            advanceToHeight appPropStorage (succ h)
+            -- FIXME: work duplication
+            Just st      <- bchStoreRetrieve appBchState (pred h)
+            Just (_,st') <- appValidationFun (validatorSet hParam) b st
+            bchStoreStore appBchState h st'
             appCommitCallback b
             return cmt
   --
@@ -338,7 +343,8 @@ makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{
           Nothing -> return UnseenProposal
           Just b  -> do
             inconsistencies <- lift $ checkProposedBlock nH b
-            mvalSet'        <- lift $ appValidationFun valSet b
+            Just st         <- lift $ bchStoreRetrieve appBchState h
+            mvalSet'        <- lift $ appValidationFun valSet b st
             if | not (null inconsistencies) -> do
                -- Block is not internally consistent
                    logger ErrorS "Proposed block has inconsistencies"
@@ -350,7 +356,7 @@ makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{
                | _:_ <- blockEvidence b -> return InvalidProposal
                -- Block is correct and validators change is correct as
                -- well
-               | Just valSet' <- mvalSet'
+               | Just (valSet',_) <- mvalSet'
                , validatorSetSize valSet' > 0
                , blockValChange b == validatorsDifference valSet valSet'
                  -> return GoodProposal
@@ -476,7 +482,8 @@ makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{
               , blockEvidence   = []
               }
         -- Call block generator
-        (bData, valSet') <- appBlockGenerator valSet blockDummy
+        Just st          <- bchStoreRetrieve appBchState h
+        (bData, valSet') <- appBlockGenerator valSet blockDummy st
                         =<< peekNTransactions appMempool
         let valCh = validatorsDifference valSet valSet'
             block = blockDummy

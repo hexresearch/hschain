@@ -173,11 +173,15 @@ data CommitCallback m alg a
 data AppLogic m alg a = AppLogic
   { appBlockGenerator   :: ValidatorSet alg
                         -> Block alg a
+                        -> BlockchainState a
                         -> [TX a]
-                        -> m (a, (ValidatorSet alg))
+                        -> m (a, ValidatorSet alg)
     -- ^ Generate fresh block for proposal. It's called each time we
     --   need to create new block for proposal
-  , appValidationFun    :: ValidatorSet alg -> Block alg a -> m (Maybe (ValidatorSet alg))
+  , appValidationFun    :: ValidatorSet alg
+                        -> Block alg a
+                        -> BlockchainState a
+                        -> m (Maybe (ValidatorSet alg, BlockchainState a))
     -- ^ Function for validation of proposed block data. It returns
     --   change of validators for given block if it's valid and
     --   @Nothing@ if it's not.
@@ -185,6 +189,8 @@ data AppLogic m alg a = AppLogic
     -- ^ Database query called after block commit in the same
     --   transaction
   , appMempool          :: Mempool m alg (TX a)
+    -- ^ Application mempool
+  , appBchState         :: BChStore m a
   }
 
 -- | User callbacks which have monoidal strcture
@@ -251,10 +257,11 @@ hoistCommitCallback fun (MixedQuery  f) = MixedQuery $ (fmap . fmap) (hoist fun)
 
 hoistAppLogic :: (Monad m, Functor n) => (forall x. m x -> n x) -> AppLogic m alg a -> AppLogic n alg a
 hoistAppLogic fun AppLogic{..} = AppLogic
-  { appBlockGenerator   = \v b tx -> fun $ appBlockGenerator v b tx
-  , appValidationFun    = \v b    -> fun $ appValidationFun v b
+  { appBlockGenerator   = \v b s tx -> fun $ appBlockGenerator v b s tx
+  , appValidationFun    = \v b s    -> fun $ appValidationFun  v b s
   , appCommitQuery      = hoistCommitCallback fun appCommitQuery
-  , appMempool          = hoistMempool fun appMempool
+  , appMempool          = hoistMempool        fun appMempool
+  , appBchState         = hoistBChStore       fun appBchState
   }
 
 hoistAppCallback :: (forall x. m x -> n x) -> AppCallbacks m alg a -> AppCallbacks n alg a

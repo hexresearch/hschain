@@ -69,17 +69,17 @@ instance DefaultConfig Example where
 -- Generating node specification
 ----------------------------------------------------------------
 
-data RunningNode s m alg a = RunningNode
-  { rnodeState   :: BChState m s
+data RunningNode m alg a = RunningNode
+  { rnodeState   :: BChStore m a
   , rnodeConn    :: Connection 'RO alg a
   , rnodeMempool :: Mempool m alg (TX a)
   }
 
 hoistRunningNode
   :: (Functor n)
-  => (forall x. m x -> n x) -> RunningNode s m alg a -> RunningNode s n alg a
+  => (forall x. m x -> n x) -> RunningNode m alg a -> RunningNode n alg a
 hoistRunningNode fun RunningNode{..} = RunningNode
-  { rnodeState   = hoistBChState fun rnodeState
+  { rnodeState   = hoistBChStore fun rnodeState
   , rnodeMempool = hoistMempool  fun rnodeMempool
   , ..
   }

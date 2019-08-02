@@ -317,7 +317,7 @@ interpretSpec
      , Has x (Configuration Example))
   => x
   -> AppCallbacks m Alg BData
-  -> m (RunningNode CoinState m Alg BData, [m ()])
+  -> m (RunningNode m Alg BData, [m ()])
 interpretSpec p cb = do
   conn              <- askConnectionRO
   (bchState, logic) <- logicFromFold transitions
@@ -339,7 +339,7 @@ interpretSpec p cb = do
 executeNodeSpec
   :: (MonadIO m, MonadMask m, MonadFork m, MonadTrace m, MonadTMMonitoring m)
   => NetSpec NodeSpec :*: CoinSpecification
-  -> ContT r m [RunningNode CoinState m Alg BData]
+  -> ContT r m [RunningNode m Alg BData]
 executeNodeSpec (NetSpec{..} :*: coin@CoinSpecification{..}) = do
   -- Create mock network and allocate DB handles for nodes
   net       <- liftIO P2P.newMockNet
@@ -362,7 +362,10 @@ executeNodeSpec (NetSpec{..} :*: coin@CoinSpecification{..}) = do
       cursor <- getMempoolCursor rnodeMempool
       return $ transactionGenerator txG
         rnodeMempool
-        (currentState rnodeState)
+        -- FIXME
+        (do Just (_,st) <- bchCurrentState rnodeState
+            return st
+        )
         (void . pushTransaction cursor)
   -- Actually run nodes
   lift   $ catchAbort $ runConcurrently $ (snd =<< rnodes) ++ txGens
