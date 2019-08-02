@@ -171,12 +171,9 @@ data CommitCallback m alg a
 --   underlying structure. It's expected that this structure will be
 --   generated from more specialized functions
 data AppLogic m alg a = AppLogic
-  { appBlockGenerator   :: [TX a]
-                        -> Height
-                        -> Time
-                        -> Maybe (Commit alg a)
-                        -> [ByzantineEvidence alg a]
-                        -> ValidatorSet alg
+  { appBlockGenerator   :: ValidatorSet alg
+                        -> Block alg a
+                        -> [TX a]
                         -> m (a, (ValidatorSet alg))
     -- ^ Generate fresh block for proposal. It's called each time we
     --   need to create new block for proposal
@@ -254,8 +251,8 @@ hoistCommitCallback fun (MixedQuery  f) = MixedQuery $ (fmap . fmap) (hoist fun)
 
 hoistAppLogic :: (Monad m, Functor n) => (forall x. m x -> n x) -> AppLogic m alg a -> AppLogic n alg a
 hoistAppLogic fun AppLogic{..} = AppLogic
-  { appBlockGenerator   = \tx h t c e v -> fun $ appBlockGenerator tx h t c e v
-  , appValidationFun    = \v b -> fun $ appValidationFun v b
+  { appBlockGenerator   = \v b tx -> fun $ appBlockGenerator v b tx
+  , appValidationFun    = \v b    -> fun $ appValidationFun v b
   , appCommitQuery      = hoistCommitCallback fun appCommitQuery
   , appMempool          = hoistMempool fun appMempool
   }
