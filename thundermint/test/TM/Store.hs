@@ -16,7 +16,6 @@ import Data.Traversable (forM)
 import qualified Data.Aeson            as JSON
 import qualified Data.ByteString.Char8 as BC8
 
-import           Thundermint.Blockchain.Interpretation
 import           Thundermint.Control
 import           Thundermint.Types.Blockchain
 import           Thundermint.Run
@@ -90,7 +89,7 @@ runCoin file = do
     -- Check that amount of coins didn't change
     forM_ rnodes $ \n -> liftIO $ do
       let totalCoins = coinAridrop coin * fromIntegral (coinWallets coin)
-      Coin.CoinState utxos _ <- currentState $ Coin.rnodeState n
+      Just (_, Coin.CoinState utxos _) <- bchCurrentState $ Coin.rnodeState n
       assertEqual "Coins must be preserved" totalCoins (sum [ c | Coin.Unspent _ c <- toList utxos])
 
 allEqual :: Eq a => [a] -> Bool

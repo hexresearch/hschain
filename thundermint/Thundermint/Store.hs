@@ -68,7 +68,10 @@ module Thundermint.Store (
   , hoistMempool
   , nullMempool
   , nullMempoolAny
-  -- * Blockchain invariants checkers
+    -- * Blockchain state
+  , BChStore(..)
+  , hoistBChStore
+    -- * Blockchain invariants checkers
   , BlockchainInconsistency
   , checkStorage
   , checkProposedBlock
@@ -311,6 +314,29 @@ nullMempoolAny = Mempool
 
 nullMempool :: (Monad m) => Mempool m alg ()
 nullMempool = nullMempoolAny
+
+
+----------------------------------------------------------------
+-- Blockchain state storage
+----------------------------------------------------------------
+
+-- | Storage for blockchain state.
+data BChStore m a = BChStore
+  { bchCurrentState  :: m (Maybe (Height, BlockchainState a))
+  -- ^ Height of value stored in state
+  , bchStoreRetrieve :: Height -> m (Maybe (BlockchainState a))
+  -- ^ Retrieve state for given height. It's generally not expected that  
+  , bchStoreStore    :: Height -> BlockchainState a -> m ()
+  -- ^ Put blockchain state at given height into store
+  }
+
+hoistBChStore :: (forall x. m x -> n x) -> BChStore m a -> BChStore n a
+hoistBChStore fun BChStore{..} = BChStore
+  { bchCurrentState  = fun   bchCurrentState
+  , bchStoreRetrieve = fun . bchStoreRetrieve
+  , bchStoreStore    = (fmap . fmap) fun bchStoreStore
+  }
+
 
 ----------------------------------------------------------------
 -- validate blockchain invariants

@@ -6,6 +6,7 @@
 module Thundermint.Store.STM (
     newSTMPropStorage
   , newMempool
+  , newSTMBchStorage
   ) where
 
 import Control.Applicative
@@ -215,4 +216,20 @@ newMempool validation = do
             | maxN < fromMaybe 0 maxKey
             ]
           ]
+    }
+
+-- | Create new storage for blockchain 
+newSTMBchStorage :: (MonadIO m) => m (BChStore m a)
+newSTMBchStorage = do
+  varSt <- liftIO $ newTVarIO Nothing
+  return BChStore
+    { bchCurrentState = liftIO (readTVarIO varSt)
+    --
+    , bchStoreRetrieve = \h -> 
+        liftIO (readTVarIO varSt) >>= \case
+          Just (h',s) | h == h' -> return (Just s)
+          _                     -> return Nothing
+    --
+    , bchStoreStore   = \h st ->
+        liftIO $ atomically $ writeTVar varSt $ Just (h,st)
     }

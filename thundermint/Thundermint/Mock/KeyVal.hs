@@ -47,6 +47,7 @@ import Thundermint.Mock.Types
 import Thundermint.Monitoring
 import Thundermint.Run
 import Thundermint.Store
+import Thundermint.Store.STM
 import Thundermint.Debug.Trace
 import Thundermint.Types.Validators (ValidatorSet)
 import qualified Thundermint.P2P.Network as P2P
@@ -107,23 +108,22 @@ interpretSpec
      , Has x (Configuration Example))
   => x
   -> AppCallbacks m Alg BData
-  -> m (RunningNode BState m Alg BData, [m ()])
+  -> m (RunningNode m Alg BData, [m ()])
 interpretSpec p cb = do
-  conn     <- askConnectionRO
-  bchState <- newBChState transitions
+  conn  <- askConnectionRO
+  store <- newSTMBchStorage
+  rewindBlockchainState transitions store
   let logic = AppLogic
-        { appValidationFun    = \valset b -> do
-            let h = headerHeight $ blockHeader b
-            st <- stateAtH bchState h
-            return $ valset <$ processBlock transitions CheckSignature b st
+        { appValidationFun    = \valset b st -> do
+            return $ do st' <- processBlock transitions CheckSignature b st
+                        return (valset,st')
         , appCommitQuery     = SimpleQuery $ \valset _ -> return valset
-        , appBlockGenerator  = \valset b _ -> do
-            let h = headerHeight $ blockHeader b
-            st <- stateAtH bchState h
+        , appBlockGenerator  = \valset _ st _ -> do
             let Just k = find (`Map.notMember` st) ["K_" ++ show (n :: Int) | n <- [1 ..]]
             i <- liftIO $ randomRIO (1,100)
             return (BData [(k, i)], valset)
         , appMempool         = nullMempoolAny
+        , appBchState        = store
         }
   acts <- runNode (getT p :: Configuration Example) NodeDescription
     { nodeValidationKey = p ^.. nspecPrivKey
@@ -132,7 +132,7 @@ interpretSpec p cb = do
     , nodeNetwork       = getT p
     }
   return
-    ( RunningNode { rnodeState   = bchState
+    ( RunningNode { rnodeState   = store
                   , rnodeConn    = conn
                   , rnodeMempool = appMempool logic
                   }
@@ -143,7 +143,7 @@ interpretSpec p cb = do
 executeSpec
   :: (MonadIO m, MonadMask m, MonadFork m, MonadTrace m, MonadTMMonitoring m)
   => NetSpec NodeSpec
-  -> ContT r m [RunningNode BState m Alg BData]
+  -> ContT r m [RunningNode m Alg BData]
 executeSpec NetSpec{..} = do
   -- Create mock network and allocate DB handles for nodes
   net       <- liftIO P2P.newMockNet
