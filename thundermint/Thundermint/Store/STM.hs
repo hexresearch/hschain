@@ -46,11 +46,6 @@ newSTMPropStorage = fmap (hoistPropStorageRW liftIO) $ liftIO $ do
   return ProposalStorage
     { currentHeight = readTVarIO varH
     --
-    , retrievePropByID = \height bid -> atomically $ do
-        h <- readTVar varH
-        if h == height then Map.lookup bid <$> readTVar varPBlk
-                       else return Nothing
-    --
     , advanceToHeight = \h -> atomically $ do
         h0 <- readTVar varH
         when (h /= h0) $ do writeTVar varH    h
@@ -58,25 +53,46 @@ newSTMPropStorage = fmap (hoistPropStorageRW liftIO) $ liftIO $ do
                             writeTVar varRMap Map.empty
                             writeTVar varBids Set.empty
     --
+    , setPropValidation = \bid flag -> atomically $ do
+        let setState = if flag then validate else invalidate
+            validate = \case
+              UntestedBlock _ b -> GoodBlock bid b
+              GoodBlock     _ b -> GoodBlock bid b
+              _ -> error "CANT HAPPEN"
+            invalidate = \case
+              UntestedBlock _ _ -> InvalidBlock
+              InvalidBlock      -> InvalidBlock
+              _ -> error "CANT HAPPEN"
+        modifyTVar' varPBlk $ Map.adjust setState bid
+    --
     , storePropBlock = \blk -> atomically $ do
         h <- readTVar varH
         when (headerHeight (blockHeader blk) == h) $ do
-          let bid = blockHash blk
+          let bid            = blockHash blk
+              update Nothing = Just $ UntestedBlock bid blk
+              update b       = b
           bids <- readTVar varBids
           when (bid `Set.member` bids) $
-            modifyTVar' varPBlk $ Map.insert bid blk
+            modifyTVar' varPBlk $ Map.alter update bid
     --
     , allowBlockID = \r bid -> atomically $ do
         modifyTVar' varRMap $ Map.insert r bid
         modifyTVar' varBids $ Set.insert bid
     --
+    , retrievePropByID = \h0 bid -> atomically $ do
+        h <- readTVar varH        
+        if h == h0 then fromMaybe UnknownBlock . Map.lookup bid <$> readTVar varPBlk
+                   else return UnknownBlock
+    --
     , retrievePropByR = \h r -> atomically $ do
         h0 <- readTVar varH
-        runMaybeT $ do
-          guard (h == h0)
-          Just bid <- fmap (Map.lookup r)   $ lift $ readTVar varRMap
-          Just b   <- fmap (Map.lookup bid) $ lift $ readTVar varPBlk
-          return (b,bid)
+        if h /= h0
+          then return UnknownBlock
+          else do rMap <- readTVar varRMap
+                  pBlk <- readTVar varPBlk
+                  case (`Map.lookup` pBlk) =<< (r `Map.lookup` rMap) of
+                    Nothing -> return UnknownBlock
+                    Just b  -> return b
     }
 
 newMempool
