@@ -56,6 +56,8 @@ module Thundermint.Store (
   , storeStateSnapshot
     -- * In memory store for proposals
   , Writable
+  , BlockValidation(..)
+  , blockFromBlockValidation
   , ProposalStorage(..)
   , hoistPropStorageRW
   , hoistPropStorageRO
@@ -171,16 +173,36 @@ type family Writable (rw :: Access) a where
   Writable 'RO a = ()
   Writable 'RW a = a
 
+-- | Status of block validation.
+data BlockValidation alg a
+  = UntestedBlock !(BlockID alg a) !(Block alg a)
+  -- ^ We haven't validated block yet
+  | UnknownBlock
+  -- ^ We haven't even seen block yet
+  | GoodBlock     !(BlockID alg a) !(Block alg a)
+  -- ^ Block is good
+  | InvalidBlock
+  -- ^ Block is invalid so there's no point in storing (and gossiping)
+  --   it.
+
+blockFromBlockValidation :: BlockValidation alg a -> Maybe (BlockID alg a, Block alg a)
+blockFromBlockValidation = \case
+  UntestedBlock bid b -> Just (bid, b)
+  GoodBlock     bid b -> Just (bid, b)
+  UnknownBlock        -> Nothing
+  InvalidBlock        -> Nothing
 
 -- | Storage for proposed blocks that are not commited yet.
 data ProposalStorage rw m alg a = ProposalStorage
   { currentHeight      :: !(m Height)
     -- ^ Height for which we store proposed blocks
-  , retrievePropByID   :: !(Height -> BlockID alg a -> m (Maybe (Block alg a)))
+  , retrievePropByID   :: !(Height -> BlockID alg a -> m (BlockValidation alg a))
     -- ^ Retrieve proposed block by its ID
-  , retrievePropByR    :: !(Height -> Round -> m (Maybe (Block alg a, BlockID alg a)))
+  , retrievePropByR    :: !(Height -> Round -> m (BlockValidation alg a))
     -- ^ Retrieve proposed block by round number.
 
+  , setPropValidation  :: !(Writable rw (BlockID alg a -> Bool -> m ()))
+    -- ^ Set whether block is valid or not.
   , advanceToHeight    :: !(Writable rw (Height -> m ()))
     -- ^ Advance to given height. If height is different from current
     --   all stored data is discarded
@@ -193,9 +215,10 @@ data ProposalStorage rw m alg a = ProposalStorage
 
 makeReadOnlyPS :: ProposalStorage rw m alg a -> ProposalStorage 'RO m alg a
 makeReadOnlyPS ProposalStorage{..} =
-  ProposalStorage { advanceToHeight = ()
-                  , storePropBlock  = ()
-                  , allowBlockID    = ()
+  ProposalStorage { advanceToHeight   = ()
+                  , storePropBlock    = ()
+                  , allowBlockID      = ()
+                  , setPropValidation = ()
                   , ..
                   }
 
@@ -207,6 +230,7 @@ hoistPropStorageRW fun ProposalStorage{..} =
   ProposalStorage { currentHeight      = fun currentHeight
                   , retrievePropByID   = \h x -> fun (retrievePropByID h x)
                   , retrievePropByR    = \h x -> fun (retrievePropByR  h x)
+                  , setPropValidation  = \b x -> fun (setPropValidation b x)
                   , advanceToHeight    = fun . advanceToHeight
                   , storePropBlock     = fun . storePropBlock
                   , allowBlockID       = \r bid -> fun (allowBlockID r bid)

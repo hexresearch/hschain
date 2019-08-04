@@ -317,7 +317,7 @@ peerGossipBlocks peerObj PeerChans{..} gossipCh = logOnException $ do
         mbid <- retrievePropByR proposalStorage h r
         case () of
            -- Peer has proposal but not block
-          _| Just (b,bid) <- mbid
+          _| Just (bid,b) <- blockFromBlockValidation mbid
            , r `Set.member` peerProposals p
            , not $ bid `Set.member` peerBlocks p
              -> do logger DebugS ("Gossip: " <> showLS bid) ()

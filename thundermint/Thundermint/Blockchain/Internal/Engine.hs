@@ -153,9 +153,11 @@ decideNewBlock config appValidatorKey appLogic@AppLogic{..} appCall@AppCallbacks
       --
       checkForCommit Nothing    tm = msgHandlerLoop Nothing tm
       checkForCommit (Just cmt) tm = do
-        lift (retrievePropByID appPropStorage (currentH hParam) (commitBlockID cmt)) >>= \case
-          Nothing -> msgHandlerLoop (Just cmt) tm
-          Just b  -> lift $ do
+        lift ( fmap blockFromBlockValidation
+             $ retrievePropByID appPropStorage (currentH hParam) (commitBlockID cmt)
+             ) >>= \case
+          Nothing    -> msgHandlerLoop (Just cmt) tm
+          Just (_,b) -> lift $ do
             logger InfoS "Actual commit" $ LogBlockInfo
               (currentH hParam)
               (blockData b)
@@ -340,8 +342,12 @@ makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{
     , validateBlock = \bid -> do
         let nH = succ h
         lift (retrievePropByID appPropStorage nH bid) >>= \case
-          Nothing -> return UnseenProposal
-          Just b  -> do
+          UnknownBlock      -> return UnseenProposal
+          InvalidBlock      -> return InvalidProposal
+          GoodBlock{}       -> return GoodProposal
+          UntestedBlock _ b -> do
+            let invalid = InvalidProposal <$ lift (setPropValidation appPropStorage bid False)
+                good    = GoodProposal    <$ lift (setPropValidation appPropStorage bid True)
             inconsistencies <- lift $ checkProposedBlock nH b
             Just st         <- lift $ bchStoreRetrieve appBchState h
             mvalSet'        <- lift $ appValidationFun valSet b st
@@ -351,17 +357,17 @@ makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{
                      (  sl "H" nH
                      <> sl "errors" (map show inconsistencies)
                      )
-                   return InvalidProposal
+                   invalid
                -- We don't put evidence into blocks yet so there shouldn't be any
-               | _:_ <- blockEvidence b -> return InvalidProposal
+               | _:_ <- blockEvidence b -> invalid
                -- Block is correct and validators change is correct as
                -- well
                | Just (valSet',_) <- mvalSet'
                , validatorSetSize valSet' > 0
                , blockValChange b == validatorsDifference valSet valSet'
-                 -> return GoodProposal
+                 -> good
                | otherwise
-                 -> return InvalidProposal
+                 -> invalid
     --
     , broadcastProposal = \r bid lockInfo ->
         forM_ (liftA2 (,) appValidatorKey ourIndex) $ \(PrivValidator pk, idx) -> do
@@ -381,8 +387,10 @@ makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{
             liftIO $ atomically $ do
               writeTQueue appChanRxInternal (RxProposal $ unverifySignature $ signValue idx pk prop')
               case mBlock of
-                Nothing -> return ()
-                Just b  -> writeTQueue appChanRxInternal (RxBlock b)
+                UntestedBlock _ b -> writeTQueue appChanRxInternal (RxBlock b)
+                GoodBlock     _ b -> writeTQueue appChanRxInternal (RxBlock b)
+                InvalidBlock      -> return ()
+                UnknownBlock      -> return ()
     --
     , scheduleTimeout = \t@(Timeout _ (Round r) step) ->
         liftIO $ void $ forkIO $ do
