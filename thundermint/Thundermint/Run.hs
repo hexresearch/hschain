@@ -83,15 +83,15 @@ logicFromFold
      )
   => BlockFold alg a
   -> m (BChStore m a, AppLogic m alg a)
-logicFromFold transiotions@BlockFold{..} = do
+logicFromFold transitions@BlockFold{..} = do
   -- Create and rewind state
-  store <- newSTMBchStorage
-  rewindBlockchainState transiotions store
+  store <- newSTMBchStorage initialState
+  rewindBlockchainState transitions store
   -- Create mempool
   let checkTx tx = do
-        Just (h,st) <- bchCurrentState store
+        (mh, st) <- bchCurrentState store
         -- FIXME: We need real height here!
-        return $ isJust $ processTx CheckSignature h tx st
+        return $ isJust $ processTx CheckSignature (fromMaybe (Height 0) mh) tx st
   mempool <- newMempool checkTx
   --
   return ( store
@@ -116,8 +116,8 @@ rewindBlockchainState
 rewindBlockchainState BlockFold{..} store = do
   hChain   <- queryRO blockchainHeight
   (h0,st0) <- bchCurrentState store >>= \case
-    Nothing    -> return (Height 0, initialState)
-    Just (h,s) -> return (succ h  , s)
+    (Nothing, s) -> return (Height 0, s)
+    (Just h,  s) -> return (succ h  , s)
   let rewind h st
         | h > hChain = return ()
         | otherwise  = do

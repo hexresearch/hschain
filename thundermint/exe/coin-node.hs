@@ -99,10 +99,7 @@ main = do
           cursor <- getMempoolCursor rnodeMempool
           return [transactionGenerator txG
                     rnodeMempool
-                    -- FIXME:
-                    (do Just (_,st) <- bchCurrentState rnodeState
-                        return st
-                    )
+                    (snd <$> bchCurrentState rnodeState)
                     (void . pushTransaction cursor)]
       logOnException $ runConcurrently $ txGen ++ acts
 
