@@ -89,7 +89,7 @@ runCoin file = do
     -- Check that amount of coins didn't change
     forM_ rnodes $ \n -> liftIO $ do
       let totalCoins = coinAridrop coin * fromIntegral (coinWallets coin)
-      Just (_, Coin.CoinState utxos _) <- bchCurrentState $ Coin.rnodeState n
+      (_, Coin.CoinState utxos _) <- bchCurrentState $ Coin.rnodeState n
       assertEqual "Coins must be preserved" totalCoins (sum [ c | Coin.Unspent _ c <- toList utxos])
 
 allEqual :: Eq a => [a] -> Bool

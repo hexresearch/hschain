@@ -111,7 +111,7 @@ interpretSpec
   -> m (RunningNode m Alg BData, [m ()])
 interpretSpec p cb = do
   conn  <- askConnectionRO
-  store <- newSTMBchStorage
+  store <- newSTMBchStorage $ initialState transitions
   rewindBlockchainState transitions store
   let logic = AppLogic
         { appValidationFun    = \valset b st -> do
