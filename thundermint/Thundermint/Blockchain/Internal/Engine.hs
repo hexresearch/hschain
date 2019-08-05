@@ -391,14 +391,14 @@ makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{
         in ValidatorIdx $! fromIntegral $ (h' + r) `mod` fromIntegral n
   --
   return HeightParameters
-    { currentH        = succ h
-    , currentTime     = bchTime
-    , validatorSet    = valSet
-    , oldValidatorSet = oldValSet
-    , validatorKey    = liftA2 (,) appValidatorKey ourIndex
+    { currentH         = succ h
+    , currentTime      = bchTime
+    , validatorSet     = valSet
+    , oldValidatorSet  = oldValSet
+    , validatorKey     = liftA2 (,) appValidatorKey ourIndex
       -- FIXME: this is some random algorithms that should probably
       --        work (for some definition of work)
-    , areWeProposers  = \r -> Just (proposerChoice r) == ourIndex
+    , areWeProposers   = \r -> Just (proposerChoice r) == ourIndex
     , proposerForRound = proposerChoice
     , readyCreateBlock = lift $ lift $ fromMaybe True <$> appCanCreateBlock h bchTime
     -- --
