@@ -321,7 +321,9 @@ handleEngineMessage HeightParameters{..} ConsensusCfg{..} AppByzantine{..} AppCh
         )
       tryByzantine byzantineBroadcastProposal prop $ \prop' ->
         liftIO $ atomically $ do
-          writeTQueue appChanRxInternal (RxProposal $ unverifySignature $ signValue idx pk prop')
+          let p = unverifySignature $ signValue idx pk prop'
+          writeTQueue appChanRxInternal $ RxProposal p
+          writeTChan  appChanTx         $ TxProposal p
           case blockFromBlockValidation mBlock of
             Just (_,b) -> writeTQueue appChanRxInternal (RxBlock b)
             Nothing    -> return ()
@@ -339,8 +341,10 @@ handleEngineMessage HeightParameters{..} ConsensusCfg{..} AppByzantine{..} AppCh
         <> sl "bid" (show b)
         )
       tryByzantine byzantineCastPrevote vote $ \vote' ->
-        liftIO $ atomically $
-          writeTQueue appChanRxInternal $ RxPreVote $ unverifySignature $ signValue idx pk vote'
+        liftIO $ atomically $ do
+          let v = unverifySignature $ signValue idx pk vote'
+          writeTChan  appChanTx         $ TxPreVote v
+          writeTQueue appChanRxInternal $ RxPreVote v 
   --
   EngCastPreCommit r b ->
     forM_ validatorKey $ \(PrivValidator pk, idx) -> do
@@ -355,8 +359,10 @@ handleEngineMessage HeightParameters{..} ConsensusCfg{..} AppByzantine{..} AppCh
         <> sl "bid" (show b)
         )
       tryByzantine byzantineCastPrecommit vote $ \vote' ->
-        liftIO $ atomically $
-          writeTQueue appChanRxInternal $ RxPreCommit $ unverifySignature $ signValue idx pk vote'
+        liftIO $ atomically $ do
+          let v = unverifySignature $ signValue idx pk vote'
+          writeTChan  appChanTx         $ TxPreCommit v
+          writeTQueue appChanRxInternal $ RxPreCommit v
 
 
 ----------------------------------------------------------------
