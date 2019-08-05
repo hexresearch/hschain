@@ -301,7 +301,7 @@ data AppChans m alg a = AppChans
     -- ^ Queue for sending messages by consensus engine to
     --   itself. Note that it's unbounded since we must not block when
     --   writing there.
-  , appChanTx      :: TChan (Announcement alg)
+  , appChanTx      :: TChan (MessageTx alg a)
     -- ^ TChan for broadcasting messages to the peers
   , appTMState     :: TVar  (Maybe (Height, TMState alg a))
     -- ^ Current state of consensus. It includes current height, state

@@ -23,7 +23,7 @@ import Prelude                hiding (round)
 
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Retry          (RetryPolicy, exponentialBackoff, limitRetries, recoverAll)
-import Data.Foldable          (toList)
+import Data.Foldable          (toList,asum)
 import Data.Function          (fix)
 import Katip                  (showLS, sl)
 import System.Random          (newStdGen, randomRIO)
@@ -412,9 +412,12 @@ peerSend peerAddrTo peerSt PeerChans{..} gossipCh P2PConnection{..} = logOnExcep
   ownPeerChanTx  <- liftIO $ atomically $ dupTChan peerChanTx
   ownPeerChanPex <- liftIO $ atomically $ dupTChan peerChanPex
   forever $ do
-    msg <- liftIO $ atomically $  fmap GossipAnn (readTChan ownPeerChanTx)
-                              <|> readTBQueue gossipCh
-                              <|> fmap GossipPex (readTChan ownPeerChanPex)
+    msg <- liftIO $ atomically $ asum
+      [ readTChan ownPeerChanTx >>= \case
+          TxAnn a -> return $ GossipAnn a
+      , readTBQueue gossipCh
+      , GossipPex <$> readTChan ownPeerChanPex
+      ]
     -- logger InfoS ("Send to (" <> showLS peerAddrTo <> "): " <> showGossipMsg msg) ()
     send $ serialise msg -- XXX Возможна ли тут гонка? Например, сообщение попало в другую ноду, та уже использует его,
                          --     однако, TCP ACK с той ноды ещё не вернулся на текущую ноду и addBlock/advanceOurHeight
