@@ -200,14 +200,14 @@ decideNewBlock config appValidatorKey appLogic@AppLogic{..} appCall@AppCallbacks
   runEffect $ do
     -- FIXME: encode that we cannot fail here!
     tm0 <- (  runConsesusM (newHeight hParam lastCommt)
-          >-> handleEngineMessage hParam config appCh
+          >-> handleEngineMessage hParam config appByzantine appCh
            ) >>= \case
                     Success t -> return t
                     _         -> throwM ImpossibleError
     messageSrc
-      >-> verifyMessageSignature appLogic hParam
+      >-> verifyMessageSignature appLogic appByzantine hParam
       >-> msgHandlerLoop Nothing tm0
-      >-> handleEngineMessage hParam config appCh
+      >-> handleEngineMessage hParam config appByzantine appCh
 
 
 -- Handle message and perform state transitions for both
@@ -232,10 +232,11 @@ handleVerifiedMessage ProposalStorage{..} hParam tm = \case
 -- simply discarded.
 verifyMessageSignature
   :: (MonadLogger m, Crypto alg)
-  => AppLogic m alg a
-  -> HeightParameters n alg a
+  => AppLogic         m alg a
+  -> AppByzantine     m alg a
+  -> HeightParameters m alg a
   -> Pipe (MessageRx 'Unverified alg a) (MessageRx 'Verified alg a) m r
-verifyMessageSignature AppLogic{..} HeightParameters{..} = forever $ do
+verifyMessageSignature AppLogic{..} AppByzantine{..} HeightParameters{..} = forever $ do
   await >>= \case
     RxPreVote   sv
       | h      == currentH -> verify "prevote"   RxPreVote   sv
@@ -271,9 +272,10 @@ handleEngineMessage
      , Crypto alg)
   => HeightParameters n alg a
   -> ConsensusCfg
+  -> AppByzantine m alg a
   -> AppChans m alg a
   -> Consumer (EngineMessage alg a) m r
-handleEngineMessage HeightParameters{..} ConsensusCfg{..} AppChans{..} = forever $ await >>= \case
+handleEngineMessage HeightParameters{..} ConsensusCfg{..} AppByzantine{..} AppChans{..} = forever $ await >>= \case
   -- Timeout
   EngTimeout t@(Timeout h (Round r) step) -> do
     liftIO $ void $ forkIO $ do
@@ -317,11 +319,12 @@ handleEngineMessage HeightParameters{..} ConsensusCfg{..} AppChans{..} = forever
         (   sl "R"    r
         <>  sl "BID" (show bid)
         )
-      liftIO $ atomically $ do
-        writeTQueue appChanRxInternal (RxProposal $ unverifySignature $ signValue idx pk prop)
-        case blockFromBlockValidation mBlock of
-          Just (_,b) -> writeTQueue appChanRxInternal (RxBlock b)
-          Nothing    -> return ()
+      tryByzantine byzantineBroadcastProposal prop $ \prop' ->
+        liftIO $ atomically $ do
+          writeTQueue appChanRxInternal (RxProposal $ unverifySignature $ signValue idx pk prop')
+          case blockFromBlockValidation mBlock of
+            Just (_,b) -> writeTQueue appChanRxInternal (RxBlock b)
+            Nothing    -> return ()
   --
   EngCastPreVote r b ->
     forM_ validatorKey $ \(PrivValidator pk, idx) -> do
@@ -335,8 +338,9 @@ handleEngineMessage HeightParameters{..} ConsensusCfg{..} AppChans{..} = forever
         (  sl "R"    r
         <> sl "bid" (show b)
         )
-      liftIO $ atomically $
-        writeTQueue appChanRxInternal $ RxPreVote $ unverifySignature $ signValue idx pk vote
+      tryByzantine byzantineCastPrevote vote $ \vote' ->
+        liftIO $ atomically $
+          writeTQueue appChanRxInternal $ RxPreVote $ unverifySignature $ signValue idx pk vote'
   --
   EngCastPreCommit r b ->
     forM_ validatorKey $ \(PrivValidator pk, idx) -> do
@@ -350,8 +354,9 @@ handleEngineMessage HeightParameters{..} ConsensusCfg{..} AppChans{..} = forever
         (  sl "R" r
         <> sl "bid" (show b)
         )
-      liftIO $ atomically $
-        writeTQueue appChanRxInternal $ RxPreCommit $ unverifySignature $ signValue idx pk vote
+      tryByzantine byzantineCastPrecommit vote $ \vote' ->
+        liftIO $ atomically $
+          writeTQueue appChanRxInternal $ RxPreCommit $ unverifySignature $ signValue idx pk vote'
 
 
 ----------------------------------------------------------------
@@ -484,18 +489,19 @@ makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{
         storePropBlock appPropStorage block
         return bid
     }
-  where
-{-
+
+    
     -- | Add marks for analyzing logs
-    byzantineMark = maybe mempty (const " (byzantine!)")
-    -- | If 'modifier' exists, modify 'arg' with it and run 'action' with modified argument;
-    --   else run 'action' with original argument.
-    tryByzantine :: (Monad m)
-                 => Maybe (a -> m (Maybe a))
-                 -> a
-                 -> (a -> ConsensusM alg b (Proxy x x' y y' m) ())
-                 -> ConsensusM alg b (Proxy x x' y y' m) ()
-    tryByzantine Nothing         arg action = action arg
-    tryByzantine (Just modifier) arg action =
-        lift (lift (modifier arg)) >>= maybe (return ()) action
--}
+-- byzantineMark = maybe mempty (const " (byzantine!)")
+
+-- | If 'modifier' exists, modify 'arg' with it and run 'action' with
+--   modified argument; else run 'action' with original argument.
+tryByzantine :: (Monad m)
+             => Maybe (a -> m (Maybe a))
+             -> a
+             -> (a -> Pipe x y m ())
+             -> Pipe x y m ()
+tryByzantine Nothing    a action = action a
+tryByzantine (Just fun) a action = lift (fun a) >>= mapM_ action
+
+
