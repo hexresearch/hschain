@@ -17,6 +17,7 @@ module Thundermint.Mock.Coin (
     Alg
   , TxSend(..)
   , Tx(..)
+  , BData(..)
     -- * Pure state
   , CoinState(..)
   , Unspent(..)
@@ -81,6 +82,7 @@ type Alg = (Ed25519 :& SHA512)
 
 newtype BData = BData [Tx]
   deriving stock    (Show,Eq,Generic)
+  deriving newtype  (NFData)
   deriving anyclass (Serialise)
 
 instance BlockData BData where

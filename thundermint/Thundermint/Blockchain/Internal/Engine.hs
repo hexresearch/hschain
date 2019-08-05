@@ -33,7 +33,7 @@ import Pipes                 (Pipe,runEffect,yield,await,(>->))
 import Thundermint.Blockchain.Internal.Engine.Types
 import Thundermint.Blockchain.Internal.Algorithm
 import Thundermint.Types.Blockchain
-import Thundermint.Control (throwNothing)
+import Thundermint.Control (throwNothing,throwNothingM)
 import Thundermint.Crypto
 import Thundermint.Exceptions
 import Thundermint.Logger
@@ -160,7 +160,9 @@ decideNewBlock config appValidatorKey appLogic@AppLogic{..} appCall@AppCallbacks
           InvalidBlock           -> error "Trying to commit invalid block!"
           GoodBlock _ b st' val' -> lift $ performCommit b st' val'
           UntestedBlock _ b      -> do
-            Just st <- lift $ bchStoreRetrieve appBchState $ currentH hParam
+            st <- throwNothingM BlockchainStateUnavalable
+                $ lift
+                $ bchStoreRetrieve appBchState $ currentH hParam
             lift (appValidationFun (validatorSet hParam) b st) >>= \case
               Nothing         -> error "Trying to commit invalid block!"
               Just (val',st') -> lift $ performCommit b st' val'
@@ -304,6 +306,8 @@ instance MonadLogger m => MonadLogger (ConsensusM alg a m) where
 instance MonadTrans (ConsensusM alg a) where
   lift = ConsensusM . fmap Success
 
+instance MonadThrow m => MonadThrow (ConsensusM alg a m) where
+  throwM = lift . throwM
 
 makeHeightParameters
   :: ( MonadDB m alg a
@@ -356,7 +360,8 @@ makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{
           UntestedBlock _ b -> do
             let invalid = InvalidProposal <$ lift (setPropValidation appPropStorage bid Nothing)
             inconsistencies <- lift $ checkProposedBlock nH b
-            Just st         <- lift $ bchStoreRetrieve appBchState h
+            st              <- throwNothingM BlockchainStateUnavalable
+                             $ lift $ bchStoreRetrieve appBchState h
             mvalSet'        <- lift $ appValidationFun valSet b st
             if | not (null inconsistencies) -> do
                -- Block is not internally consistent
@@ -496,7 +501,8 @@ makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{
               , blockEvidence   = []
               }
         -- Call block generator
-        Just st          <- bchStoreRetrieve appBchState h
+        st               <- throwNothingM BlockchainStateUnavalable
+                          $ bchStoreRetrieve appBchState h
         (bData, valSet') <- appBlockGenerator valSet blockDummy st
                         =<< peekNTransactions appMempool
         let valCh = validatorsDifference valSet valSet'

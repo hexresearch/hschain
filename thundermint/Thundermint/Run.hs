@@ -59,6 +59,7 @@ import Thundermint.Types
 import Thundermint.Crypto
 import Thundermint.Control
 import Thundermint.Debug.Trace
+import Thundermint.Exceptions
 import Thundermint.Logger
 import Thundermint.Mock.KeyList
 import Thundermint.Mock.Types
@@ -108,7 +109,7 @@ logicFromFold transitions@BlockFold{..} = do
          )
 
 rewindBlockchainState
-  :: ( MonadReadDB m alg a, MonadIO m
+  :: ( MonadReadDB m alg a, MonadIO m, MonadThrow m
      , Crypto alg, Serialise a)
   => BlockFold alg a
   -> BChStore m a
@@ -122,7 +123,7 @@ rewindBlockchainState BlockFold{..} store = do
         | h > hChain = return ()
         | otherwise  = do
             -- FIXME:
-            Just b <- queryRO $ retrieveBlock h
+            b <- throwNothingM (DBMissingBlock h) $ queryRO $ retrieveBlock h
             let Just st' = processBlock CheckSignature b st
             bchStoreStore store h st'
             rewind (succ h) st
