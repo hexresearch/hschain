@@ -40,6 +40,7 @@ Library
     Crypto.Bls.Signature
     Crypto.Bls.Threshold
     Crypto.Bls.Types
+    Crypto.Bls.Util
   Include-Dirs:
     /home/dima/bls/bls-signatures/src
     /home/dima/bls/bls-signatures/build/contrib/relic/include
@@ -71,6 +72,8 @@ Test-Suite bls-signatures-test
     , bls-signatures
     , HTF
     , vector
+    , bytestring
+    , extra
   Other-Modules:
     Tests.Signature
     Tests.Threshold

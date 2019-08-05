@@ -61,6 +61,8 @@ instance FromPtr PrivateKey where
 
 instance WithPtr PrivateKey where withPtr = withForeignPtr . unPrivateKey
 
+instance CSizeOf C'PrivateKey where cSizeOf _proxy = fromIntegral [C.pure| size_t { sizeof(bls::PrivateKey) }|]
+
 
 -- * PublicKey ----------------------------------------------------------------
 
@@ -76,6 +78,8 @@ instance FromPtr PublicKey where
     fromPtr = objFromPtr PublicKey deletePublicKey
 
 instance WithPtr PublicKey where withPtr = withForeignPtr . unPublicKey
+
+instance CSizeOf C'PublicKey where cSizeOf _proxy = fromIntegral [C.pure| size_t { sizeof(bls::PublicKey) }|]
 
 
 -- * Signature ----------------------------------------------------------------
@@ -93,6 +97,23 @@ instance FromPtr Signature where
 
 instance WithPtr Signature where withPtr = withForeignPtr . unSignature
 
+
+-- * InsecureSignature --------------------------------------------------------
+
+newtype InsecureSignature = InsecureSignature { unInsecureSignature :: ForeignPtr C'InsecureSignature }
+
+type instance C InsecureSignature = C'InsecureSignature
+
+mkFinalizer "deleteInsecureSignature" "bls::InsecureSignature" ''C'InsecureSignature
+
+mkPlacementNewInstance ''InsecureSignature
+
+instance FromPtr InsecureSignature where
+    fromPtr = objFromPtr InsecureSignature deleteInsecureSignature
+
+instance WithPtr InsecureSignature where withPtr = withForeignPtr . unInsecureSignature
+
+instance CSizeOf C'InsecureSignature where cSizeOf _proxy = fromIntegral [C.pure| size_t { sizeof(bls::InsecureSignature) }|]
 
 -- * AggregationInfo ----------------------------------------------------------
 
@@ -125,4 +146,9 @@ instance FromPtr Threshold where
 
 instance WithPtr Threshold where withPtr = withForeignPtr . unThreshold
 
-instance CSizeOf C'PublicKey where cSizeOf _proxy = fromIntegral [C.pure| int { sizeof(bls::PrivateKey) }|]
+
+-- * Hash256 ----------------------------------------------------------------
+
+newtype Hash256 = Hash256 { unHash256 :: ByteString } -- TODO use ShortByteString
+
+

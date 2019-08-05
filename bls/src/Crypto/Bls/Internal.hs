@@ -1,7 +1,7 @@
-{-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PolyKinds #-}
+{-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
 
 module Crypto.Bls.Internal where
@@ -23,21 +23,24 @@ import qualified Language.C.Inline.Cpp as C
 import qualified Language.C.Inline.Unsafe as CU
 import qualified Language.C.Types  as C
 
+
+data C'AggregationInfo
+data C'InsecureSignature
 data C'PrivateKey
 data C'PublicKey
 data C'Signature
-data C'AggregationInfo
 data C'Threshold
 
 
 blsTypesTable :: C.TypesTable
 blsTypesTable = M.fromList
-  [ ( C.TypeName "PrivateKey",      [t| C'PrivateKey      |] )
-  , ( C.TypeName "PublicKey",       [t| C'PublicKey       |] )
-  , ( C.TypeName "Signature",       [t| C'Signature       |] )
-  , ( C.TypeName "AggregationInfo", [t| C'AggregationInfo |] )
-  , ( C.TypeName "Threshold",       [t| C'Threshold       |] )
-  , ( C.TypeName "bool",            [t| C.CInt            |] )
+  [ ( C.TypeName "AggregationInfo",   [t| C'AggregationInfo   |] )
+  , ( C.TypeName "InsecureSignature", [t| C'InsecureSignature |] )
+  , ( C.TypeName "PrivateKey",        [t| C'PrivateKey        |] )
+  , ( C.TypeName "PublicKey",         [t| C'PublicKey         |] )
+  , ( C.TypeName "Signature",         [t| C'Signature         |] )
+  , ( C.TypeName "Threshold",         [t| C'Threshold         |] )
+  , ( C.TypeName "bool",              [t| C.CInt              |] )
   ]
 
 

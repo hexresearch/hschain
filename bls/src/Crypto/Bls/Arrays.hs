@@ -12,9 +12,11 @@ import Data.Proxy ( Proxy(..) )
 import Foreign.Marshal.Alloc ( allocaBytes )
 import Control.Exception (bracket_)
 import Data.Functor ( ($>) )
+import Foreign.C.Types (CSize)
 
 import Crypto.Bls.Types
 import Crypto.Bls.Internal
+
 
 -- | Perform an action with a temporary pointer to an array of values
 --
@@ -26,23 +28,23 @@ import Crypto.Bls.Internal
 --
 -- The pointer is not guaranteed to be usuable outside the scope of this
 -- function. The same warnings apply as for 'withForeignPtr'.
-withArrayPtr
+withArrayPtrLen
     :: forall a b
      . (WithPtr a, CSizeOf (C a), PlacementNew (C a))
     => V.Vector a
-    -> (Ptr (C a) -> IO b)
+    -> (Ptr (C a) -> CSize -> IO b)
        -- ^ Computation to perform on array.
     -> IO (Maybe b)
        -- ^ With empty input vector the action can not be applied and
        -- the result will be Nothing.
-withArrayPtr arr act
+withArrayPtrLen arr act
     | V.null arr = pure Nothing
     | otherwise =
         allocaBytes arraySize $ \arrPtr ->
           bracket_
             (V.foldM'_ copyNext arrPtr arr)
             (deconstructArray arrPtr )
-            (Just <$> act arrPtr)
+            (Just <$> act arrPtr (fromIntegral $ V.length arr))
   where
     elemSize = cSizeOf (Proxy :: Proxy (C a))
     arraySize = elemSize * V.length arr
@@ -65,3 +67,4 @@ withArrayPtr arr act
 
         end :: Ptr (C a)
         end = begin `plusPtr` arraySize
+

@@ -5,14 +5,18 @@ module Crypto.Bls.Threshold
     ( Threshold
     , create
     , verifySecretFragment
+    , aggregateUnitSigs
     ) where
 
 
+import Data.ByteString (ByteString)
+import Data.Maybe
 import Data.Vector (Vector)
 import Foreign.C.Types
 import Foreign.Marshal.Array
 import Foreign.Marshal.Utils (toBool)
 import Foreign.Ptr (Ptr)
+import qualified Data.ByteString as BS
 import qualified Data.Vector as V
 import qualified Language.C.Inline as C
 import qualified Language.C.Inline.Cpp as C
@@ -50,25 +54,11 @@ create t n =
                     secret_fragments.emplace_back(bls::PrivateKey::FromBN(b));
                 }
                 PrivateKey secret_key = Threshold::Create(commitments, secret_fragments, T, N);
-                // now copy to Haskell arrays
                 for(size_t i = 0; i < N; ++i)
                 {
                     $(PublicKey * * haskCommitment)[i]       = new PublicKey(commitments[i]);
                     $(PrivateKey * * haskSecretFragments)[i] = new PrivateKey(secret_fragments[i]);
                 }
-                //
-                // PublicKeys:
-                cout << "----- commitment:\n";
-                uint8_t pkbytes[bls::PublicKey::PUBLIC_KEY_SIZE];
-                for(size_t i = 0; i < N; ++i)
-                {
-                    cout << "PK " << i << " -------------------\n";
-                    $(PublicKey * * haskCommitment)[i]->Serialize(pkbytes);
-                    for (auto b: pkbytes) cout << "0x" << hex << (int)b << " ";
-                    cout << dec << "\n";
-                }
-                cout << "----- done\n";
-                // ok
                 return new PrivateKey(secret_key);
                 }|]
             commitment       <- peekArray n haskCommitment      >>= fmap V.fromList . mapM (fromPtr . pure)
@@ -89,34 +79,36 @@ verifySecretFragment :: Int
 verifySecretFragment player secretFragment commitment t =
     fmap (maybe False toBool) $
         withPtr secretFragment $ \ptrSecretFragment ->
-            withArrayPtr commitment $ \ptrCommitment ->
-                [C.block| bool {
-
-                    cout << "----- commitment 2:\n";
-                    uint8_t pkbytes[bls::PublicKey::PUBLIC_KEY_SIZE];
-                    for(size_t i = 0; i < $(int32_t c'commitmentLength); ++i)
-                    {
-                        cout << "PK " << i << " -------------------\n";
-                        $(PublicKey * ptrCommitment)[i].Serialize(pkbytes);
-                        for (auto b: pkbytes) cout << "0x" << hex << (int)b << " ";
-                        cout << dec << "\n";
-                    }
-                    cout << "----- done\n";
-
-
-                    return Threshold::VerifySecretFragment(
+            withArrayPtrLen commitment $ \ptrCommitment lenCommitment ->
+                [C.exp| bool {
+                    Threshold::VerifySecretFragment(
                           $(size_t c'player)
                         , *$(PrivateKey * ptrSecretFragment)
                         , std::vector<PublicKey>( $(PublicKey * ptrCommitment)
-                                                , $(PublicKey * ptrCommitment) + $(int32_t c'commitmentLength))
-                        , $(size_t c'T)
-                        );
-
+                                                , $(PublicKey * ptrCommitment) + $(size_t lenCommitment))
+                        , $(size_t c'T))
                 }|]
   where
     c'player           = fromIntegral player
     c'T                = fromIntegral t
-    c'commitmentLength = fromIntegral $ V.length commitment
 
 
-
+aggregateUnitSigs :: Vector InsecureSignature
+                  -> ByteString
+                  -> [Int]
+                  -> IO InsecureSignature
+aggregateUnitSigs sigs message players =
+    fmap (fromMaybe (error "empty sigs array")) $
+    withArrayLen (map fromIntegral players) $ \t ptrPlayers ->
+        let t' = fromIntegral t in
+        withArrayPtrLen sigs $ \ptrSigs lenSigs ->
+            fromPtr [C.exp| InsecureSignature * {
+                new InsecureSignature(Threshold::AggregateUnitSigs(
+                    std::vector<InsecureSignature>( $(InsecureSignature * ptrSigs)
+                                                  , $(InsecureSignature * ptrSigs) + $(size_t lenSigs)),
+                    (const uint8_t *)($bs-ptr:message),
+                    $bs-len:message,
+                    ($(size_t * ptrPlayers)),
+                    $(size_t t')
+                    ))
+            }|]
