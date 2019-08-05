@@ -53,17 +53,17 @@ newSTMPropStorage = fmap (hoistPropStorageRW liftIO) $ liftIO $ do
                             writeTVar varRMap Map.empty
                             writeTVar varBids Set.empty
     --
-    , setPropValidation = \bid flag -> atomically $ do
-        let setState = if flag then validate else invalidate
-            validate = \case
-              UntestedBlock _ b -> GoodBlock bid b
-              GoodBlock     _ b -> GoodBlock bid b
-              _ -> error "CANT HAPPEN"
-            invalidate = \case
-              UntestedBlock _ _ -> InvalidBlock
-              InvalidBlock      -> InvalidBlock
-              _ -> error "CANT HAPPEN"
-        modifyTVar' varPBlk $ Map.adjust setState bid
+    , setPropValidation = \bid mSt -> do
+        let action = atomically . modifyTVar' varPBlk . flip Map.adjust bid
+        case mSt of
+          Nothing -> action $ \case 
+            UntestedBlock _ _ -> InvalidBlock
+            InvalidBlock      -> InvalidBlock
+            _                 -> error "CANT HAPPEN"
+          Just (st,vals) -> action $ \case
+            UntestedBlock _ b -> GoodBlock bid b st vals
+            b@GoodBlock{}     -> b
+            _                 -> error "CANT HAPPEN"
     --
     , storePropBlock = \blk -> atomically $ do
         h <- readTVar varH

@@ -367,11 +367,10 @@ addBlockHR (PeerStateObj ProposalStorage{..} var) h r =
     Current p
       | FullStep hP _ _ <- peerStep p
       , h == hP
-        -> retrievePropByR h r >>= \case
-             UntestedBlock bid _ -> return $ Current p { peerBlocks = Set.insert bid (peerBlocks p) }
-             GoodBlock     bid _ -> return $ Current p { peerBlocks = Set.insert bid (peerBlocks p) }
-             UnknownBlock        -> return peer
-             InvalidBlock        -> return peer
+        -> do mBlk <- retrievePropByR h r
+              case blockFromBlockValidation mBlk of
+                Just (bid,_) -> return $ Current p { peerBlocks = Set.insert bid (peerBlocks p) }
+                Nothing        -> return peer
       | otherwise -> return peer
     Ahead _ -> return peer
     Unknown -> return peer

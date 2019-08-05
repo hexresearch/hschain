@@ -153,11 +153,19 @@ decideNewBlock config appValidatorKey appLogic@AppLogic{..} appCall@AppCallbacks
       --
       checkForCommit Nothing    tm = msgHandlerLoop Nothing tm
       checkForCommit (Just cmt) tm = do
-        lift ( fmap blockFromBlockValidation
-             $ retrievePropByID appPropStorage (currentH hParam) (commitBlockID cmt)
-             ) >>= \case
-          Nothing    -> msgHandlerLoop (Just cmt) tm
-          Just (_,b) -> lift $ do
+        mBlk <- lift
+              $ retrievePropByID appPropStorage (currentH hParam) (commitBlockID cmt)
+        case mBlk of
+          UnknownBlock           -> msgHandlerLoop (Just cmt) tm
+          InvalidBlock           -> error "Trying to commit invalid block!"
+          GoodBlock _ b st' val' -> lift $ performCommit b st' val'
+          UntestedBlock _ b      -> do
+            Just st <- lift $ bchStoreRetrieve appBchState $ currentH hParam
+            lift (appValidationFun (validatorSet hParam) b st) >>= \case
+              Nothing         -> error "Trying to commit invalid block!"
+              Just (val',st') -> lift $ performCommit b st' val'
+        where
+          performCommit b st' val' = do
             logger InfoS "Actual commit" $ LogBlockInfo
               (currentH hParam)
               (blockData b)
@@ -165,22 +173,22 @@ decideNewBlock config appValidatorKey appLogic@AppLogic{..} appCall@AppCallbacks
             case appCommitQuery of
               SimpleQuery callback -> do
                 r <- queryRW $ do storeCommit cmt b
-                                  storeValSet b =<< callback (validatorSet hParam) b
+                                  storeValSet b val'
+                                  callback (validatorSet hParam) b
                 case r of
                   Nothing -> error "Cannot write commit into database"
                   Just () -> return ()
               --
               MixedQuery callback -> do
                 r <- queryRWT $ do storeCommit cmt b
-                                   storeValSet b =<< callback (validatorSet hParam) b
+                                   storeValSet b val'
+                                   callback (validatorSet hParam) b
                 case r of
                   Nothing -> error "Cannot write commit into database"
                   Just () -> return ()
             let h = headerHeight $ blockHeader b
             advanceToHeight appPropStorage (succ h)
             -- FIXME: work duplication
-            Just st      <- bchStoreRetrieve appBchState (pred h)
-            Just (_,st') <- appValidationFun (validatorSet hParam) b st
             bchStoreStore appBchState h st'
             appCommitCallback b
             return cmt
@@ -346,8 +354,7 @@ makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{
           InvalidBlock      -> return InvalidProposal
           GoodBlock{}       -> return GoodProposal
           UntestedBlock _ b -> do
-            let invalid = InvalidProposal <$ lift (setPropValidation appPropStorage bid False)
-                good    = GoodProposal    <$ lift (setPropValidation appPropStorage bid True)
+            let invalid = InvalidProposal <$ lift (setPropValidation appPropStorage bid Nothing)
             inconsistencies <- lift $ checkProposedBlock nH b
             Just st         <- lift $ bchStoreRetrieve appBchState h
             mvalSet'        <- lift $ appValidationFun valSet b st
@@ -362,10 +369,11 @@ makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{
                | _:_ <- blockEvidence b -> invalid
                -- Block is correct and validators change is correct as
                -- well
-               | Just (valSet',_) <- mvalSet'
+               | Just (valSet',st') <- mvalSet'
                , validatorSetSize valSet' > 0
                , blockValChange b == validatorsDifference valSet valSet'
-                 -> good
+                 -> do lift $ setPropValidation appPropStorage bid $ Just (st',valSet')
+                       return GoodProposal
                | otherwise
                  -> invalid
     --
@@ -386,11 +394,9 @@ makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{
           tryByzantine byzantineBroadcastProposal prop $ \prop' ->
             liftIO $ atomically $ do
               writeTQueue appChanRxInternal (RxProposal $ unverifySignature $ signValue idx pk prop')
-              case mBlock of
-                UntestedBlock _ b -> writeTQueue appChanRxInternal (RxBlock b)
-                GoodBlock     _ b -> writeTQueue appChanRxInternal (RxBlock b)
-                InvalidBlock      -> return ()
-                UnknownBlock      -> return ()
+              case blockFromBlockValidation mBlock of
+                Just (_,b) -> writeTQueue appChanRxInternal (RxBlock b)
+                Nothing    -> return ()
     --
     , scheduleTimeout = \t@(Timeout _ (Round r) step) ->
         liftIO $ void $ forkIO $ do

@@ -98,7 +98,7 @@ logicFromFold transitions@BlockFold{..} = do
          , AppLogic { appValidationFun    = \valset b st ->
                          return $ do st' <- processBlock CheckSignature b st
                                      return (valset,st')
-                     , appCommitQuery     = SimpleQuery $ \valset _ -> return valset
+                     , appCommitQuery     = SimpleQuery $ \_ _ -> return ()
                      , appBlockGenerator  = \valset b st txs -> do
                          let h = headerHeight $ blockHeader b
                          return (transactionsToBlock h st txs, valset)

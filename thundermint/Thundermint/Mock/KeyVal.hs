@@ -117,7 +117,7 @@ interpretSpec p cb = do
         { appValidationFun    = \valset b st -> do
             return $ do st' <- processBlock transitions CheckSignature b st
                         return (valset,st')
-        , appCommitQuery     = SimpleQuery $ \valset _ -> return valset
+        , appCommitQuery     = SimpleQuery $ \_ _ -> return ()
         , appBlockGenerator  = \valset _ st _ -> do
             let Just k = find (`Map.notMember` st) ["K_" ++ show (n :: Int) | n <- [1 ..]]
             i <- liftIO $ randomRIO (1,100)
