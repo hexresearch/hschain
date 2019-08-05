@@ -208,7 +208,6 @@ peerGossipVotes peerObj PeerChans{..} gossipCh = logOnException $ do
              0 -> return ()
              n -> do i <- liftIO $ randomRIO (0,n-1)
                      let vote = unverifySignature $ toList unknown !! i
-                     addPrecommit peerObj vote
                      liftIO $ atomically $ writeTBQueue gossipCh $ GossipPreCommit vote
                      tickSend $ precommit gossipCnts
          Nothing -> return ()
@@ -225,9 +224,7 @@ peerGossipVotes peerObj PeerChans{..} gossipCh = logOnException $ do
           case () of
             _| not $ round `Set.member` peerProposals p
              , Just pr <- round `Map.lookup` smProposals tm
-               -> do let prop = signedValue pr
-                     addProposal peerObj (propHeight prop) (propRound prop)
-                     doGosip $ GossipProposal $ unverifySignature pr
+               -> do doGosip  $ GossipProposal $ unverifySignature pr
                      tickSend $ proposals gossipCnts
              | otherwise -> return ()
           -- Send prevotes
@@ -238,7 +235,6 @@ peerGossipVotes peerObj PeerChans{..} gossipCh = logOnException $ do
                -> do let n = IMap.size unknown
                      i <- liftIO $ randomRIO (0,n-1)
                      let vote = unverifySignature $ toList unknown !! i
-                     addPrevote peerObj vote
                      doGosip $ GossipPreVote vote
                      tickSend $ prevote gossipCnts
              | otherwise -> return ()
@@ -254,7 +250,6 @@ peerGossipVotes peerObj PeerChans{..} gossipCh = logOnException $ do
                -> do let n = IMap.size unknown
                      i <- liftIO $ randomRIO (0,n-1)
                      let vote = unverifySignature $ toList unknown !! i
-                     addPrecommit peerObj vote
                      doGosip $ GossipPreCommit vote
                      tickSend $ precommit gossipCnts
              | otherwise -> return ()
@@ -421,15 +416,20 @@ peerSend peerAddrTo peerSt PeerChans{..} gossipCh P2PConnection{..} = logOnExcep
       , readTBQueue gossipCh
       , GossipPex <$> readTChan ownPeerChanPex
       ]
-    -- logger InfoS ("Send to (" <> showLS peerAddrTo <> "): " <> showGossipMsg msg) ()
-    send $ serialise msg -- XXX Возможна ли тут гонка? Например, сообщение попало в другую ноду, та уже использует его,
-                         --     однако, TCP ACK с той ноды ещё не вернулся на текущую ноду и addBlock/advanceOurHeight
-                         --     ещё не успели вызваться.
-    -- Update state of peer when we advance to next height
+    -- XXX Возможна ли тут гонка? Например, сообщение попало в другую
+    --     ноду, та уже использует его, однако, TCP ACK с той ноды ещё
+    --     не вернулся на текущую ноду и addBlock/advanceOurHeight ещё
+    --     не успели вызваться.  Update state of peer when we advance
+    --     to next height
+    send $ serialise msg
     case msg of
       GossipBlock b                        -> addBlock peerSt b
       GossipAnn (AnnStep (FullStep h _ _)) -> advanceOurHeight peerSt h
-      _                                    -> return ()
+      GossipProposal  prop -> let p = signedValue prop
+                              in  addProposal  peerSt (propHeight p) (propRound p)
+      GossipPreVote   v    -> addPrevote   peerSt v
+      GossipPreCommit v    -> addPrecommit peerSt v
+      _                    -> return ()
 
 ----------------------------------------------------------------
 -- Peer exchange
