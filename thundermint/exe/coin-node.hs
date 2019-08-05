@@ -33,7 +33,6 @@ import Thundermint.Mock.Types
 import Thundermint.Run
 
 import Thundermint.Control
-import Thundermint.Blockchain.Interpretation
 import Thundermint.Store
 import Thundermint.Crypto         (PublicKey)
 import Thundermint.P2P            (generatePeerId)

@@ -29,6 +29,12 @@ data CorruptedDBError
   deriving stock    (Show)
   deriving anyclass (Exception)
 
+-- | Internal error in algorithm. Should never happen
+data InternalError
+  = BlockchainStateUnavalable
+  deriving stock    (Show)
+  deriving anyclass (Exception)
+
 -- | Exception which is thrown when impossible situation is reached
 data ImpossibleError = ImpossibleError
   deriving stock    (Show)

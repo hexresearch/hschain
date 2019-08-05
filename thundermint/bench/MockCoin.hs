@@ -44,7 +44,7 @@ benchmarks
                   , blockValChange  = mempty
                   , blockLastCommit = Nothing
                   , blockEvidence   = []
-                  } :: Block Alg [Tx])
+                  } :: Block Alg BData)
            state
          )
     | size <- [0, 1, 10, 100, 1000]
@@ -62,7 +62,7 @@ pubKeys :: [PublicKey Alg]
 pubKeys = publicKey <$> privKeys
 
 txGen   :: Thundermint.Mock.Coin.TxGenerator
-genesis :: Block Alg [Tx]
+genesis :: Block Alg BData
 (Just txGen,genesis) = mintMockCoin
   [ Validator k 1 | k <- take 4 pubKeys ]
   CoinSpecification
