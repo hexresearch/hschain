@@ -162,7 +162,7 @@ decideNewBlock config appValidatorKey appLogic@AppLogic{..} appCall@AppCallbacks
           UntestedBlock _ b      -> do
             st <- throwNothingM BlockchainStateUnavalable
                 $ lift
-                $ bchStoreRetrieve appBchState $ currentH hParam
+                $ bchStoreRetrieve appBchState $ pred (currentH hParam)
             lift (appValidationFun (validatorSet hParam) b st) >>= \case
               Nothing         -> error "Trying to commit invalid block!"
               Just (val',st') -> lift $ performCommit b st' val'
