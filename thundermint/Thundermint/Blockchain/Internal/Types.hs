@@ -124,6 +124,9 @@ unverifyMessageRx = \case
 
 data MessageTx alg a
   = TxAnn !(Announcement alg)
+  | TxPreVote   !(Signed (ValidatorIdx alg) 'Unverified alg (Vote 'PreVote   alg a))
+  | TxPreCommit !(Signed (ValidatorIdx alg) 'Unverified alg (Vote 'PreCommit alg a))
+  | TxProposal  !(Signed (ValidatorIdx alg) 'Unverified alg (Proposal alg a))
 
 -- | Messages which should be delivered to peers immediately. Those
 --   are control messages in gossip protocol. Actual proposals, votes

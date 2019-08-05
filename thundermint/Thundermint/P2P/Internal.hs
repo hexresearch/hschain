@@ -413,8 +413,11 @@ peerSend peerAddrTo peerSt PeerChans{..} gossipCh P2PConnection{..} = logOnExcep
   ownPeerChanPex <- liftIO $ atomically $ dupTChan peerChanPex
   forever $ do
     msg <- liftIO $ atomically $ asum
-      [ readTChan ownPeerChanTx >>= \case
-          TxAnn a -> return $ GossipAnn a
+      [ readTChan ownPeerChanTx >>= return . \case
+          TxAnn       a -> GossipAnn a
+          TxProposal  p -> GossipProposal  p
+          TxPreVote   v -> GossipPreVote   v
+          TxPreCommit v -> GossipPreCommit v
       , readTBQueue gossipCh
       , GossipPex <$> readTChan ownPeerChanPex
       ]
