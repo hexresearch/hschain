@@ -439,9 +439,7 @@ makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{
         currentT <- case h of
           -- For block at H=1 we in rather arbitrary manner take time
           -- of genesis + 1s
-          Height 0 -> do b <- throwNothing DBMissingGenesis <=< queryRO
-                            $ retrieveBlock (Height 0)
-                         let Time t = headerTime $ blockHeader b
+          Height 0 -> do let Time t = headerTime $ blockHeader genesis
                          return $! Time (t + 1000)
           -- Otherwise we take time from commit and if for some reason
           -- we can't we have corrupted commit for latest block and
