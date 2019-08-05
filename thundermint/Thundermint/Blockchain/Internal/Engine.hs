@@ -486,8 +486,6 @@ makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{
         allowBlockID   appPropStorage r bid
         storePropBlock appPropStorage block
         return bid
-    --
-    , commitBlock     = \cm r -> ConsensusM $ return $ DoCommit cm r
     }
   where
 {-

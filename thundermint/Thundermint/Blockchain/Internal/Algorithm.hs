@@ -106,8 +106,6 @@ data HeightParameters (m :: * -> *) alg a = HeightParameters
   , createProposal       :: !(Round -> Maybe (Commit alg a) -> m (BlockID alg a))
     -- ^ Create new proposal block. Block itself should be stored
     --   elsewhere.
-  , commitBlock          :: !(forall x. Commit alg a -> TMState alg a -> m x)
-    -- ^ We're done for this height. Commit block to blockchain
   }
 
 
@@ -221,6 +219,10 @@ instance MonadTrans (ConsensusM alg a) where
 
 instance MonadThrow m => MonadThrow (ConsensusM alg a m) where
   throwM = lift . throwM
+
+-- | We're done for this height. Commit block to blockchain
+commitBlock :: Monad m => Commit alg a -> TMState alg a -> ConsensusM alg a m x
+commitBlock cm r = ConsensusM $ return $ DoCommit cm r
 
 
 ----------------------------------------------------------------
