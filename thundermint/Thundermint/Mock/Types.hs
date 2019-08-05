@@ -31,7 +31,6 @@ import Thundermint.Crypto.Ed25519 (Ed25519)
 import Thundermint.Crypto.SHA     (SHA512)
 import Thundermint.Logger         (ScribeSpec)
 import Thundermint.Types
-import Thundermint.Blockchain.Interpretation
 import Thundermint.Store
 
 ----------------------------------------------------------------
