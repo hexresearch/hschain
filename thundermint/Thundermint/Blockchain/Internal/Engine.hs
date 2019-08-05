@@ -28,7 +28,7 @@ import           Data.Maybe    (fromMaybe)
 import           Data.Function
 import           Data.Monoid   ((<>))
 import Data.Text             (Text)
-import Pipes                 (Pipe,Consumer,Proxy,runEffect,yield,await,(>->))
+import Pipes                 (Pipe,Consumer,runEffect,yield,await,(>->))
 
 import Thundermint.Blockchain.Internal.Engine.Types
 import Thundermint.Blockchain.Internal.Types
@@ -114,8 +114,7 @@ decideNewBlock config appValidatorKey appLogic@AppLogic{..} appCall@AppCallbacks
   -- machine
   --
   -- FIXME: we don't want duplication! (But pipes & producer does not unify)
-  hParam  <- makeHeightParameters config appValidatorKey appLogic appCall appCh
-  hParam0 <- makeHeightParameters config appValidatorKey appLogic appCall appCh
+  hParam <- makeHeightParameters config appValidatorKey appLogic appCall appCh
   -- Get rid of messages in WAL that are no longer needed and replay
   -- all messages stored there.
   walMessages <- fmap (fromMaybe [])
@@ -200,7 +199,7 @@ decideNewBlock config appValidatorKey appLogic@AppLogic{..} appCall@AppCallbacks
             return cmt
   runEffect $ do
     -- FIXME: encode that we cannot fail here!
-    tm0 <- (  runConsesusM (newHeight hParam0 lastCommt)
+    tm0 <- (  runConsesusM (newHeight hParam lastCommt)
           >-> handleEngineMessage hParam config appCh
            ) >>= \case
                     Success t -> return t
@@ -215,7 +214,7 @@ decideNewBlock config appValidatorKey appLogic@AppLogic{..} appCall@AppCallbacks
 handleVerifiedMessage
   :: (MonadLogger m, Crypto alg)
   => ProposalStorage 'RW m alg a
-  -> HeightParameters (ConsensusM alg a (Pipe x (EngineMessage alg a) m)) alg a
+  -> HeightParameters m alg a
   -> TMState alg a
   -> MessageRx 'Verified alg a
   -> Pipe x (EngineMessage alg a) m (ConsensusResult alg a (TMState alg a))
@@ -371,7 +370,7 @@ makeHeightParameters
   -> AppLogic     m alg a
   -> AppCallbacks m alg a
   -> AppChans     m alg a
-  -> m (HeightParameters (ConsensusM alg a (Proxy x x' y y' m)) alg a)
+  -> m (HeightParameters m alg a)
 makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{..} AppChans{..} = do
   let AppByzantine{..} = appByzantine
   h         <- queryRO $ blockchainHeight
@@ -400,20 +399,20 @@ makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{
       --        work (for some definition of work)
     , areWeProposers   = \r -> Just (proposerChoice r) == ourIndex
     , proposerForRound = proposerChoice
-    , readyCreateBlock = lift $ lift $ fromMaybe True <$> appCanCreateBlock h bchTime
+    , readyCreateBlock = fromMaybe True <$> appCanCreateBlock h bchTime
     -- --
     , validateBlock = \bid -> do
         let nH = succ h
-        lift (lift (retrievePropByID appPropStorage nH bid)) >>= \case
+        retrievePropByID appPropStorage nH bid >>= \case
           UnknownBlock      -> return UnseenProposal
           InvalidBlock      -> return InvalidProposal
           GoodBlock{}       -> return GoodProposal
           UntestedBlock _ b -> do
-            let invalid = InvalidProposal <$ lift (lift (setPropValidation appPropStorage bid Nothing))
-            inconsistencies <- lift $ lift $ checkProposedBlock nH b
+            let invalid = InvalidProposal <$ setPropValidation appPropStorage bid Nothing
+            inconsistencies <- checkProposedBlock nH b
             st              <- throwNothingM BlockchainStateUnavalable
-                             $ lift $ lift $ bchStoreRetrieve appBchState h
-            mvalSet'        <- lift $ lift $ appValidationFun valSet b st
+                             $ bchStoreRetrieve appBchState h
+            mvalSet'        <- appValidationFun valSet b st
             if | not (null inconsistencies) -> do
                -- Block is not internally consistent
                    logger ErrorS "Proposed block has inconsistencies"
@@ -428,12 +427,12 @@ makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{
                | Just (valSet',st') <- mvalSet'
                , validatorSetSize valSet' > 0
                , blockValChange b == validatorsDifference valSet valSet'
-                 -> do lift $ lift $ setPropValidation appPropStorage bid $ Just (st',valSet')
+                 -> do setPropValidation appPropStorage bid $ Just (st',valSet')
                        return GoodProposal
                | otherwise
                  -> invalid
     --
-    , createProposal = \r commit -> lift $ lift $ do
+    , createProposal = \r commit -> do
         lastBID  <- queryRO $ retrieveBlockID =<< blockchainHeight
         -- Calculate time for block.
         currentT <- case h of
