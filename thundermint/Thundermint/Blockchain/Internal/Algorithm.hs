@@ -248,7 +248,7 @@ class Monad m => ConsensusMonad m where
 -- | Enter new height and create new state for state machine
 newHeight
   :: (MonadLogger m)
-  => HeightParameters (ConsensusM alg a (Proxy x x' () (EngineMessage alg a) m)) alg a
+  => HeightParameters m alg a
   -> Maybe (Commit alg a)
   -> (ConsensusM alg a (Proxy x x' () (EngineMessage alg a) m)) (TMState alg a)
 newHeight HeightParameters{..} lastCommit = do
@@ -273,7 +273,7 @@ newHeight HeightParameters{..} lastCommit = do
 --   update state and thus message should be send back to it
 tendermintTransition
   :: (Crypto alg, MonadLogger m)
-  => HeightParameters (CNS x alg a m) alg a  -- ^ Parameters for current height
+  => HeightParameters m alg a  -- ^ Parameters for current height
   -> Message alg a             -- ^ Message which causes state transition
   -> TMState alg a             -- ^ Initial state of state machine
   -> CNS x alg a m (TMState alg a)
@@ -355,20 +355,20 @@ tendermintTransition par@HeightParameters{..} msg sm@TMState{..} =
 -- Check whether we need to create new block or we should wait
 needNewBlock
   :: (Monad m)
-  => HeightParameters (CNS x alg a m) alg a
+  => HeightParameters m alg a
   -> TMState alg a
   -> CNS x alg a m Bool
 needNewBlock HeightParameters{..} TMState{..}
   -- We want to create first block signed by all validators as soon as
   -- possible
   | currentH == Height 1 = return True
-  | otherwise            = readyCreateBlock
+  | otherwise            = lift $ lift readyCreateBlock
 
 -- Check whether we need to perform any state transition after we
 -- received prevote
 checkTransitionPrevote
   :: (MonadLogger m, Crypto alg)
-  => HeightParameters (CNS x alg a m) alg a
+  => HeightParameters m alg a
   -> Round
   -> TMState alg a
   -> CNS x alg a m (TMState alg a)
@@ -392,7 +392,7 @@ checkTransitionPrevote par@HeightParameters{..} r sm@(TMState{..})
 -- received precommit
 checkTransitionPrecommit
   :: (MonadLogger m, Crypto alg)
-  => HeightParameters (CNS x alg a m) alg a
+  => HeightParameters m alg a
   -> Round
   -> TMState alg a
   -> CNS x alg a m (TMState alg a)
@@ -434,7 +434,7 @@ checkTransitionPrecommit par@HeightParameters{..} r sm@(TMState{..})
 -- Enter Propose stage and send required messages
 enterPropose
   :: (MonadLogger m)
-  => HeightParameters (CNS x alg a m) alg a
+  => HeightParameters m alg a
   -> Round
   -> TMState alg a
   -> LogTransitionReason
@@ -452,7 +452,7 @@ enterPropose HeightParameters{..} r sm@TMState{..} reason = do
     Just (br,bid) -> do logger InfoS "Making POL proposal" $ LogProposal currentH smRound bid
                         lift $ yield $ EngCastPropose r bid (Just br)
     -- Otherwise we need to create new block from mempool
-    Nothing      -> do bid <- createProposal r smLastCommit
+    Nothing      -> do bid <- lift $ lift $ createProposal r smLastCommit
                        logger InfoS "Making new proposal" $ LogProposal currentH smRound bid
                        lift $ yield $ EngCastPropose r bid Nothing
   return sm { smRound = r
@@ -466,7 +466,7 @@ enterPropose HeightParameters{..} r sm@TMState{..} reason = do
 --      PRECOMMIT
 enterPrevote
   :: (Crypto alg, MonadLogger m)
-  => HeightParameters (CNS x alg a m) alg a
+  => HeightParameters m alg a
   -> Round
   -> TMState alg a
   -> LogTransitionReason
@@ -474,7 +474,7 @@ enterPrevote
 enterPrevote par@HeightParameters{..} r (unlockOnPrevote -> sm@TMState{..}) reason = do
   --
   logger InfoS "Entering prevote" $ LogTransition currentH smRound smStep r reason
-  lift . yield . EngCastPreVote smRound =<< prevoteBlock
+  lift $ yield . EngCastPreVote smRound =<< lift prevoteBlock
   --
   lift $ yield $ EngTimeout $ Timeout currentH r StepPrevote
   checkTransitionPrevote par r sm
@@ -546,7 +546,7 @@ unlockOnPrevote sm@TMState{..}
 --   3. Check whether we need to make further state transitions.
 enterPrecommit
   :: (Crypto alg, MonadLogger m)
-  => HeightParameters (CNS x alg a m) alg a
+  => HeightParameters m alg a
   -> Round
   -> TMState alg a
   -> LogTransitionReason
@@ -578,7 +578,7 @@ enterPrecommit par@HeightParameters{..} r sm@TMState{..} reason = do
 
 addPrevote
   :: (Monad m)
-  => HeightParameters (CNS x alg a m) alg a
+  => HeightParameters m alg a
   -> Signed (ValidatorIdx alg) 'Verified alg (Vote 'PreVote alg a)
   -> TMState alg a
   -> CNS x alg a m (TMState alg a)
@@ -593,7 +593,7 @@ addPrevote HeightParameters{..} v sm@TMState{..} = do
 
 addPrecommit
   :: (Monad m)
-  => HeightParameters (CNS x alg a m) alg a
+  => HeightParameters m alg a
   -> Signed (ValidatorIdx alg) 'Verified alg (Vote 'PreCommit alg a)
   -> TMState alg a
   -> CNS x alg a m (TMState alg a)
