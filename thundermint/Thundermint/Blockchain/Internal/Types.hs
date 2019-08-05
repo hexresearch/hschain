@@ -7,6 +7,7 @@
 module Thundermint.Blockchain.Internal.Types (
     MessageRx(..)
   , unverifyMessageRx
+  , MessageTx(..)
   , EngineMessage(..)
   , Announcement(..)
     -- * Vote sets
@@ -121,6 +122,8 @@ unverifyMessageRx = \case
   RxTimeout   t -> RxTimeout   t
   RxBlock     b -> RxBlock     b
 
+data MessageTx alg a
+  = TxAnn !(Announcement alg)
 
 -- | Messages which should be delivered to peers immediately. Those
 --   are control messages in gossip protocol. Actual proposals, votes

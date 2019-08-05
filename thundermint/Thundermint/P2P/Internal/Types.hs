@@ -12,7 +12,7 @@ import Control.Concurrent.STM (STM, TChan)
 import GHC.Generics           (Generic)
 
 import Thundermint.Blockchain.Internal.Engine.Types (NetworkCfg)
-import Thundermint.Blockchain.Internal.Types        (Announcement, MessageRx, TMState)
+import Thundermint.Blockchain.Internal.Types        (Announcement, MessageTx, MessageRx, TMState)
 import Thundermint.Crypto                           (Crypto, Signed, SignedState(..))
 import Thundermint.P2P.Types                        (NetAddr)
 import Thundermint.Store                            (ProposalStorage)
@@ -61,7 +61,7 @@ instance Serialise PexMessage
 --
 -- | Connection handed to process controlling communication with peer
 data PeerChans m alg a = PeerChans
-  { peerChanTx              :: !(TChan (Announcement alg))
+  { peerChanTx              :: !(TChan (MessageTx alg a))
     -- ^ Broadcast channel for outgoing messages
   , peerChanPex             :: !(TChan PexMessage)
     -- ^ Broadcast channel for outgoing PEX messages

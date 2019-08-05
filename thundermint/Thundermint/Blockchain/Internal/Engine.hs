@@ -293,16 +293,16 @@ handleEngineMessage HeightParameters{..} ConsensusCfg{..} AppByzantine{..} AppCh
   EngAnnPreVote sv -> do
     let Vote{..} = signedValue   sv
         i        = signedKeyInfo sv
-    liftIO $ atomically $ writeTChan appChanTx $ AnnHasPreVote voteHeight voteRound i
+    liftIO $ atomically $ writeTChan appChanTx $ TxAnn $ AnnHasPreVote voteHeight voteRound i
   EngAnnPreCommit sv -> do
     let Vote{..} = signedValue sv
         i        = signedKeyInfo sv
-    liftIO $ atomically $ writeTChan appChanTx $ AnnHasPreCommit voteHeight voteRound i
+    liftIO $ atomically $ writeTChan appChanTx $ TxAnn $ AnnHasPreCommit voteHeight voteRound i
   EngAnnStep s ->
-    liftIO $ atomically $ writeTChan appChanTx $ AnnStep s
+    liftIO $ atomically $ writeTChan appChanTx $ TxAnn $ AnnStep s
   --
   EngAcceptBlock r bid -> do
-    liftIO $ atomically $ writeTChan appChanTx $ AnnHasProposal currentH r
+    liftIO $ atomically $ writeTChan appChanTx $ TxAnn $ AnnHasProposal currentH r
     lift $ allowBlockID appPropStorage r bid
   --
   EngCastPropose r bid lockInfo ->
