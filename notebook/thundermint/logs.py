@@ -87,7 +87,7 @@ class Log(object):
     @functools.lru_cache(maxsize=32)
     def consStep(self, step):
         """
-        Only returns individual for individuals steps (only R=0 is
+        Only returns entries for individuals steps (only R=0 is
         returned where applicable
         """
         df = self.consClean
@@ -98,6 +98,7 @@ class Log(object):
 
     @lazy
     def stepsTime(self):
+        "Compute duration of steps"
         df = self.cons.copy()
         df['H']  = df['data'].apply(lambda x: x.get('H'))
         df       = df[df['H']>0]
