@@ -5,6 +5,7 @@ import functools
 import glob
 import json
 import os
+import re
 import enum
 import numpy  as np
 import pandas as pd
@@ -179,5 +180,5 @@ def load_logs_files(prefix, names=None):
         files = [ prefix+"/"+nm for nm in names ]
     for nm in sorted(files):
         with open(nm) as f:
-            dct[os.path.basename(nm)] = Log(f)
+            dct[re.sub("\.\w+$","",os.path.basename(nm))] = Log(f)
     return dct
