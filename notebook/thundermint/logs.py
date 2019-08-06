@@ -192,6 +192,10 @@ class LogSet(dict):
             with open(nm) as f:
                 self[re.sub("\.\w+$","",os.path.basename(nm))] = Log(f)
 
+    def some(self):
+        for _,v in self.items():
+            return v
+
     @property
     @lazyField
     def fitTvsH(self):
