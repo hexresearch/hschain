@@ -168,6 +168,16 @@ class Log(object):
         return pd.DataFrame(data={'at':df['at'],'H':H, 'R':R})
 
     @lazy
+    def roundDistr(self):
+        "Caclculate distribution of rounds"
+        rs = np.bincount(self.round['R'])
+        # R > 0 are counted multiple time
+        for n in range(len(rs)):
+            for i in range(n):
+                rs[i] -= rs[n]
+        return rs
+
+    @lazy
     def gossip(self):
         df = self.df
         df = df[df['msg'] == 'Gossip stats']
