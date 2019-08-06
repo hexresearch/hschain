@@ -154,6 +154,22 @@ class Log(object):
         R  = df['data'].apply(lambda x: x['R'])
         return pd.DataFrame(data={'at':df['at'],'H':H, 'R':R})
 
+    @lazy
+    def gossip(self):
+        df = self.df
+        df = df[df['msg'] == 'Gossip stats']
+        r = pd.DataFrame.from_records(
+            df['data'].values,
+            columns=['TxP','RxPV','RxP','TxPV','TxTx','TxB',
+                     'TxPC','RxPex','RxB','RxTx','RxPC','TxPex'],)
+        at = df['at']
+        if len(at) > 0:
+            at = (at.values - at.values[0]).astype('timedelta64[ms]').astype('float')
+            at /= 1000
+        r['dt'] = at
+        return r
+
+
 def load_logs_files(prefix, names=None):
     dct = {}
     if names is None:
