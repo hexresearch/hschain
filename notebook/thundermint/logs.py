@@ -9,6 +9,7 @@ import re
 import enum
 import numpy  as np
 import pandas as pd
+import statsmodels.api as sm
 
 # ================================================================
 # Loading logs
@@ -17,6 +18,16 @@ import pandas as pd
 def lazy(fun):
     "Decorator for lazy fields in class"
     return property(functools.lru_cache(maxsize=None)(fun))
+
+def lazyField(f):
+    cache = None
+    def wrapper(self):
+        nonlocal cache
+        if cache is None:
+            cache = f(self)
+        return cache
+    return wrapper
+
 
 keys = set(['at','ns','data','msg','sev'])
 # Log keys
@@ -171,14 +182,34 @@ class Log(object):
         r['dt'] = at
         return r
 
+class LogSet(dict):
+    def __init__(self, prefix, names=None):
+        if names is None:
+            files = glob.glob(prefix+"/*")
+        else:
+            files = [ prefix+"/"+nm for nm in names ]
+        for nm in sorted(files):
+            with open(nm) as f:
+                self[re.sub("\.\w+$","",os.path.basename(nm))] = Log(f)
 
-def load_logs_files(prefix, names=None):
-    dct = {}
-    if names is None:
-        files = glob.glob(prefix+"/*")
-    else:
-        files = [ prefix+"/"+nm for nm in names ]
-    for nm in sorted(files):
-        with open(nm) as f:
-            dct[re.sub("\.\w+$","",os.path.basename(nm))] = Log(f)
-    return dct
+    @property
+    @lazyField
+    def fitTvsH(self):
+        "Linear fit of t(H)"
+        df = pd.concat([ d.commit[['at','H']] for _,d in self.items() ])
+        t0 = np.min(df['at'])
+        ts = (df['at'].dt.tz_localize(None) - t0).astype('timedelta64') / 1e9
+        hs = df['H']
+        return sm.OLS(ts, sm.add_constant(hs)).fit()
+
+    @property
+    @lazyField
+    def averageBlockSize(self):
+        "Compute average block size"
+        for k in self:
+            return np.average( self[k].commit['Ntx'] )
+
+    @property
+    def TPS(self):
+        "Calculate transactions per second"
+        return self.averageBlockSize / self.fitTvsH.params[1]
