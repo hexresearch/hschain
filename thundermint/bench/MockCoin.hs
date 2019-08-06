@@ -28,7 +28,7 @@ benchmarks
   , bgroup "react"
     [ env (transactionsToBlock transitions (Height 1) state <$> generateTxList size)
     $ bench (show size)
-    . nf (\b -> processBlock transitions CheckSignature
+    . nf (\(_,b) -> processBlock transitions CheckSignature
            (Block { blockData       = b
                   , blockHeader     = Header
                     { headerHeight         = Height 0
