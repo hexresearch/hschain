@@ -208,7 +208,6 @@ peerGossipVotes peerObj PeerChans{..} gossipCh = logOnException $ do
              n -> do i <- liftIO $ randomRIO (0,n-1)
                      let vote = unverifySignature $ toList unknown !! i
                      liftIO $ atomically $ writeTBQueue gossipCh $ GossipPreCommit vote
-                     tickSend $ precommit gossipCnts
          Nothing -> return ()
       --
       Current p -> trace (TePeerGossipVotes TepgvCurrent) >> liftIO (atomically consensusState) >>= \case
@@ -223,8 +222,7 @@ peerGossipVotes peerObj PeerChans{..} gossipCh = logOnException $ do
           case () of
             _| not $ round `Set.member` peerProposals p
              , Just pr <- round `Map.lookup` smProposals tm
-               -> do doGosip  $ GossipProposal $ unverifySignature pr
-                     tickSend $ proposals gossipCnts
+               -> doGosip $ GossipProposal $ unverifySignature pr
              | otherwise -> return ()
           -- Send prevotes
           case () of
@@ -235,7 +233,6 @@ peerGossipVotes peerObj PeerChans{..} gossipCh = logOnException $ do
                      i <- liftIO $ randomRIO (0,n-1)
                      let vote = unverifySignature $ toList unknown !! i
                      doGosip $ GossipPreVote vote
-                     tickSend $ prevote gossipCnts
              | otherwise -> return ()
              where
                peerPV = maybe IMap.empty (IMap.fromSet (const ()) . toSet)
@@ -250,7 +247,6 @@ peerGossipVotes peerObj PeerChans{..} gossipCh = logOnException $ do
                      i <- liftIO $ randomRIO (0,n-1)
                      let vote = unverifySignature $ toList unknown !! i
                      doGosip $ GossipPreCommit vote
-                     tickSend $ precommit gossipCnts
              | otherwise -> return ()
              where
                peerPC = maybe IMap.empty (IMap.fromSet (const ()) . toSet)
@@ -423,10 +419,13 @@ peerSend peerSt PeerChans{..} gossipCh P2PConnection{..} = logOnException $ do
     case msg of
       GossipBlock b                        -> addBlock peerSt b
       GossipAnn (AnnStep (FullStep h _ _)) -> advanceOurHeight peerSt h
-      GossipProposal  prop -> let p = signedValue prop
-                              in  addProposal  peerSt (propHeight p) (propRound p)
-      GossipPreVote   v    -> addPrevote   peerSt v
-      GossipPreCommit v    -> addPrecommit peerSt v
+      GossipProposal  prop -> do let p = signedValue prop
+                                 addProposal peerSt (propHeight p) (propRound p)
+                                 tickSend $ proposals gossipCnts
+      GossipPreVote   v    -> do addPrevote peerSt v
+                                 tickSend $ prevote gossipCnts
+      GossipPreCommit v    -> do addPrecommit peerSt v
+                                 tickSend $ precommit gossipCnts
       _                    -> return ()
 
 ----------------------------------------------------------------
