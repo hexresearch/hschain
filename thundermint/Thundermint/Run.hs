@@ -101,8 +101,9 @@ logicFromFold transitions@BlockFold{..} = do
                                      return (valset,st')
                      , appCommitQuery     = SimpleQuery $ \_ _ -> return ()
                      , appBlockGenerator  = \valset b st txs -> do
-                         let h = headerHeight $ blockHeader b
-                         return (transactionsToBlock h st txs, valset)
+                         let h       = headerHeight $ blockHeader b
+                             (st',a) = transactionsToBlock h st txs
+                         return (a, valset, st')
                      , appMempool         = mempool
                      , appBchState        = store
                      }

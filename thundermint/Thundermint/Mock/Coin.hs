@@ -203,11 +203,12 @@ transitions = BlockFold
   , processBlock        = \_ b s0 -> let h = headerHeight $ blockHeader b
                                      in foldM (flip (process h)) s0 (blockTransactions $ blockData b)
   , transactionsToBlock = \_ ->
-      let selectTx _ []     = []
+      let selectTx c []     = (c,[])
           selectTx c (t:tx) = case processTransaction t c of
                                 Nothing -> selectTx c  tx
-                                Just c' -> t : selectTx c' tx
-      in (fmap . fmap) BData selectTx
+                                Just c' -> let (c'', b  ) = selectTx c' tx
+                                           in  (c'', t:b)
+      in (fmap . fmap . fmap) BData selectTx
   , initialState        = CoinState Map.empty Map.empty
   }
   where

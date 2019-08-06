@@ -79,11 +79,12 @@ transitions = BlockFold
   { processTx           = const $ const process
   , processBlock        = \_ b s0 -> foldM (flip process) s0 (blockTransactions $  blockData b)
   , transactionsToBlock = \_ ->
-      let selectTx _ []     = []
+      let selectTx c []     = (c, [])
           selectTx c (t:tx) = case process t c of
-                                Nothing -> selectTx c  tx
-                                Just c' -> t : selectTx c' tx
-      in (fmap . fmap) BData selectTx
+                                Nothing -> selectTx c tx
+                                Just c' -> let (c'', b  ) = selectTx c' tx
+                                           in  (c'', t:b)
+      in (fmap . fmap . fmap) BData selectTx
   , initialState        = Map.empty
   }
   where
@@ -121,7 +122,7 @@ interpretSpec p cb = do
         , appBlockGenerator  = \valset _ st _ -> do
             let Just k = find (`Map.notMember` st) ["K_" ++ show (n :: Int) | n <- [1 ..]]
             i <- liftIO $ randomRIO (1,100)
-            return (BData [(k, i)], valset)
+            return (BData [(k, i)], valset, Map.insert k i st)
         , appMempool         = nullMempoolAny
         , appBchState        = store
         }

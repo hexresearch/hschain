@@ -477,10 +477,10 @@ makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{
               , blockEvidence   = []
               }
         -- Call block generator
-        st               <- throwNothingM BlockchainStateUnavalable
-                          $ bchStoreRetrieve appBchState h
-        (bData, valSet') <- appBlockGenerator valSet blockDummy st
-                        =<< peekNTransactions appMempool
+        st                  <- throwNothingM BlockchainStateUnavalable
+                             $ bchStoreRetrieve appBchState h
+        (bData,valSet',st') <- appBlockGenerator valSet blockDummy st
+                           =<< peekNTransactions appMempool
         let valCh = validatorsDifference valSet valSet'
             block = blockDummy
               { blockHeader = headerDummy
@@ -491,8 +491,9 @@ makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{
               , blockValChange = valCh
               }
             bid   = blockHash block
-        allowBlockID   appPropStorage r bid
-        storePropBlock appPropStorage block
+        allowBlockID      appPropStorage r bid
+        storePropBlock    appPropStorage block
+        setPropValidation appPropStorage bid (Just (st',valSet'))
         return bid
     }
 
@@ -509,5 +510,3 @@ tryByzantine :: (Monad m)
              -> Pipe x y m ()
 tryByzantine Nothing    a action = action a
 tryByzantine (Just fun) a action = lift (fun a) >>= mapM_ action
-
-

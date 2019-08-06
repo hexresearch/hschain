@@ -49,7 +49,7 @@ data BlockFold alg a = BlockFold
   , processBlock :: !(CheckSignature -> Block alg a -> BlockchainState a -> Maybe (BlockchainState a))
     -- ^ Try to process whole block. Here application should perform
     --   complete validation of block
-  , transactionsToBlock :: !(Height -> BlockchainState a -> [TX a] -> a)
+  , transactionsToBlock :: !(Height -> BlockchainState a -> [TX a] -> (BlockchainState a, a))
     -- ^ Create block at given height from list of transactions. Not
     --   input could contain invalid transaction and they must be
     --   filtered out so that block is valid.
