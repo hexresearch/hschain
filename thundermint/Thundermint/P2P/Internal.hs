@@ -150,7 +150,7 @@ peerFSM
   -> TChan (Event alg a)
   -> MempoolCursor m alg (TX a)
   -> m b
-peerFSM PeerChans{..} peerExchangeCh gossipCh recvCh m@MempoolCursor{..} = logOnException $ do
+peerFSM PeerChans{..} peerExchangeCh gossipCh recvCh cursor@MempoolCursor{..} = logOnException $ do
   logger InfoS "Starting routing for receiving messages" ()
   ownPeerChanTx  <- liftIO $ atomically $ dupTChan peerChanTx
   votesTO    <- newIO
@@ -167,18 +167,20 @@ peerFSM PeerChans{..} peerExchangeCh gossipCh recvCh m@MempoolCursor{..} = logOn
   resetBTO
   resetATO
   (`fix` wrap UnknownState) $ \loop s -> do
-        event <- liftIO $ atomically (  (EVotesTimeout    <$ await votesTO)
-                                    <|> (EMempoolTimeout  <$ await mempoolTO )
-                                    <|> (EBlocksTimeout   <$ await blocksTO )
-                                    <|> (EAnnounceTimeout <$ await announceDelay )
-                                    <|>  readTChan recvCh
-                                    <|> (EAnnouncement <$> (readTChan ownPeerChanTx)))
---                                    <|> (EGossip <$> (readTChan ownPeerChanTx >>= return . \case
+        event <- liftIO $ atomically $ asum
+          [ EVotesTimeout    <$ await votesTO
+          , EMempoolTimeout  <$ await mempoolTO
+          , EBlocksTimeout   <$ await blocksTO
+          , EAnnounceTimeout <$ await announceDelay
+          , readTChan recvCh
+          , EAnnouncement <$> readTChan ownPeerChanTx]
+--          <|> (EGossip <$> (readTChan ownPeerChanTx >>= return . \case
 --                                                                                    TxAnn       a -> GossipAnn a
 --                                                                                    TxProposal  p -> GossipProposal  p
 --                                                                                    TxPreVote   v -> GossipPreVote   v
 --                                                                                    TxPreCommit v -> GossipPreCommit v)))
-        (s', cmds) <- handler (Config proposalStorage m consensusState) s event
+        let config = Config proposalStorage cursor consensusState gossipCnts
+        (s', cmds) <- handler config s event
         case event of
           EVotesTimeout -> resetVTO
           EMempoolTimeout -> resetMTO

@@ -75,9 +75,8 @@ handlerVotesTimeout = do trace (TePeerGossipVotes TepgvAhead)
 
 handlerMempoolTimeout :: TimeoutHandler AheadState alg a m
 handlerMempoolTimeout = do
-    MempoolCursor{..} <- view mempCursor
-    lift advanceCursor >>= maybe (return ()) (push2Gossip . GossipTx)
-    currentState
+  advanceMempoolCursor
+  currentState
 ----------------------------------------------------------------
 
 handlerBlocksTimeout :: TimeoutHandler AheadState alg a m

@@ -22,6 +22,7 @@ import Thundermint.Store
 import Thundermint.Types.Blockchain
 import Thundermint.Types.Validators
 
+import Thundermint.P2P.Internal.Logging       (GossipCounters(..))
 import Thundermint.P2P.Internal.Types
 import Thundermint.P2P.PeerState.Handle.Utils
 import Thundermint.P2P.PeerState.Monad
@@ -132,7 +133,7 @@ handlerVotesTimeout = do
           let vote@(signedValue -> Vote{..}) = unverifySignature $ toList unknown !! i
           addPrecommit voteHeight voteRound $ signedKeyInfo vote
           push2Gossip $ GossipPreCommit vote
-          --tickSend $ precommit gossipCnts
+          tickSend precommit
   currentState
       --
 ----------------------------------------------------------------
@@ -151,6 +152,6 @@ handlerBlocksTimeout = do
               $ retrieveBlock h
     addBlock b
     push2Gossip $ GossipBlock b
-    --tickSend $ blocks gossipCnts
+    tickSend blocks
   currentState
 

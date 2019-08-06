@@ -24,6 +24,7 @@ import Thundermint.Types.Blockchain
 import Thundermint.Types.Validators
 
 import Thundermint.P2P.Internal.Types
+import Thundermint.P2P.Internal.Logging (GossipCounters(..))
 
 -- | State of peer which is lagging behind us. In this case we only
 --   interested in precommits which are part of commit justifying next
@@ -125,9 +126,10 @@ data Event alg a = EGossip !(GossipMsg alg a)
                  | EAnnounceTimeout
                  | EAnnouncement !(MessageTx alg a)
 
-data Config m alg a = Config { _propStorage :: !(ProposalStorage 'RO m alg a)
-                             , _mempCursor  :: !(MempoolCursor m alg (TX a))
-                             , _consensusSt :: !(STM (Maybe (Height, TMState alg a)))
+data Config m alg a = Config { _propStorage    :: !(ProposalStorage 'RO m alg a)
+                             , _mempCursor     :: !(MempoolCursor m alg (TX a))
+                             , _consensusSt    :: !(STM (Maybe (Height, TMState alg a)))
+                             , _gossipCounters :: !GossipCounters
                              }
 makeLenses ''Config
 

@@ -28,6 +28,7 @@ import Thundermint.Store
 import Thundermint.Types.Blockchain
 import Thundermint.Types.Validators
 
+import Thundermint.P2P.Internal.Logging (GossipCounters(..))
 import Thundermint.P2P.Internal.Types
 import Thundermint.P2P.PeerState.Monad
 import Thundermint.P2P.PeerState.Types
@@ -188,7 +189,7 @@ handlerVotesTimeout = do
           let prop = signedValue pr
           addProposal (propHeight prop) (propRound prop)
           doGosip $ GossipProposal $ unverifySignature pr
-          --tickSend $ proposals gossipCnts
+          tickSend proposals
       -- Send prevotes
       peerPV <- maybe IMap.empty (IMap.fromSet (const ()) . toSet)
               . Map.lookup r
@@ -201,7 +202,7 @@ handlerVotesTimeout = do
           let vote@(signedValue -> Vote{..}) = unverifySignature $ toList unknown !! i
           addPrevote voteHeight voteRound $ signedKeyInfo vote
           doGosip $ GossipPreVote vote
-          --tickSend $ prevote gossipCnts
+          tickSend prevote
       -- Send precommits
       peerPC <- maybe IMap.empty (IMap.fromSet (const ()) . toSet)
               . Map.lookup r
@@ -215,16 +216,15 @@ handlerVotesTimeout = do
                  let vote@(signedValue -> Vote{..}) = unverifySignature $ toList unknown !! i
                  addPrecommit voteHeight voteRound $ signedKeyInfo vote
                  doGosip $ GossipPreCommit vote
-               --  tickSend $ precommit gossipCnts
+                 tickSend precommit
          | otherwise -> return ()
   currentState
 ----------------------------------------------------------------
 
 handlerMempoolTimeout :: TimeoutHandler CurrentState alg a m
 handlerMempoolTimeout = do
-    MempoolCursor{..} <- view mempCursor
-    lift advanceCursor >>= maybe (return ()) (push2Gossip . GossipTx)
-    currentState
+  advanceMempoolCursor
+  currentState
 ----------------------------------------------------------------
 
 handlerBlocksTimeout :: TimeoutHandler CurrentState alg a m
@@ -240,6 +240,6 @@ handlerBlocksTimeout = do
         lift $ logger DebugS ("Gossip: " <> showLS bid) ()
         addBlock b
         push2Gossip $ GossipBlock b
-        --tickSend $ blocks gossipCnts
+        tickSend blocks
   currentState
 

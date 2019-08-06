@@ -1,6 +1,7 @@
 {-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE NamedFieldPuns      #-}
 {-# LANGUAGE RankNTypes          #-}
+{-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module Thundermint.P2P.PeerState.Handle.Utils where
@@ -24,6 +25,7 @@ import Thundermint.Types.Validators
 import Thundermint.Control              (throwNothing)
 import Thundermint.Store.Internal.Query (MonadReadDB)
 
+import Thundermint.P2P.Internal.Logging (GossipCounters(..))
 import Thundermint.P2P.Internal.Types
 import Thundermint.P2P.PeerState.Monad
 import Thundermint.P2P.PeerState.Types
@@ -63,16 +65,25 @@ advancePeer step@(FullStep h _ _) = do
                         }
              GT -> return $ wrap $ AheadState step
 
+advanceMempoolCursor :: (Wrapable s, HandlerCtx alg a m)
+                     => TransitionT s alg a m ()
+advanceMempoolCursor = do
+    MempoolCursor{..} <- view mempCursor
+    mTx <- lift advanceCursor
+    forM_ mTx $ \ tx' -> do
+      push2Gossip $ GossipTx tx'
+      tickSend tx
+
 type MessageHandler s alg a m =  HandlerCtx alg a m
                               => GossipMsg alg a
-                              -> TransitionT s alg a m (SomeState alg a) -- ^ new `TransitionT'
+                              -> TransitionT s alg a m (SomeState alg a)
 
 type AnnouncementHandler s alg a m =  HandlerCtx alg a m
                                    => MessageTx alg a
-                                   -> TransitionT s alg a m (SomeState alg a) -- ^ new `TransitionT'
+                                   -> TransitionT s alg a m (SomeState alg a)
 
 type TimeoutHandler s alg a m =  (Wrapable s, HandlerCtx alg a m)
-                              => TransitionT s alg a m (SomeState alg a) -- ^ new `TransitionT'
+                              => TransitionT s alg a m (SomeState alg a)
 
 handlerGeneric :: (Wrapable s, HandlerCtx alg a m)
                => MessageHandler s alg a m

@@ -10,8 +10,9 @@
 module Thundermint.P2P.PeerState.Monad where
 
 import Codec.Serialise          (Serialise)
-import Control.Monad.Catch      (MonadThrow)
+import Control.Monad.Catch      (MonadThrow, MonadMask)
 import Control.Monad.RWS.Strict
+import Lens.Micro.Mtl
 
 import Thundermint.Blockchain.Internal.Types
 import Thundermint.Crypto
@@ -20,7 +21,10 @@ import Thundermint.Debug.Trace
 import Thundermint.Store.Internal.Query      (MonadReadDB)
 
 import Thundermint.P2P.Internal.Types
+import Thundermint.P2P.Internal.Logging hiding (tx, tickRecv)
 import Thundermint.P2P.PeerState.Types
+
+import qualified Thundermint.P2P.Internal.Logging as Logging
 
 newtype TransitionT s alg a m r = TransitionT { unTransition :: RWST (Config m alg a) [Command alg a] (s alg a) m r }
   deriving ( Functor
@@ -46,7 +50,17 @@ instance MonadTrace m => MonadTrace (TransitionT s alg a m) where
 runTransitionT :: TransitionT s alg a m (SomeState alg a) -> Config m alg a -> s alg a -> m (SomeState alg a, s alg a, [Command alg a])
 runTransitionT = runRWST . unTransition
 
-type HandlerCtx alg a m = (Serialise a, CryptoHash alg, CryptoSign alg, Monad m, MonadIO m, MonadReadDB m alg a, MonadThrow m, MonadLogger m, MonadTrace m)
+type HandlerCtx alg a m = ( Serialise a
+                          , CryptoHash alg
+                          , CryptoSign alg
+                          , Monad m
+                          , MonadIO m
+                          , MonadReadDB m alg a
+                          , MonadThrow m
+                          , MonadLogger m
+                          , MonadTrace m
+                          , MonadMask m
+                          )
 
 -- | Handler of events.
 type Handler s alg a m =  HandlerCtx alg a m
@@ -56,14 +70,27 @@ type Handler s alg a m =  HandlerCtx alg a m
 currentState :: (Functor m, Monad m, Wrapable t) => TransitionT t alg a m (SomeState alg a)
 currentState = wrap <$> get
 
-resendGossip :: MonadWriter [Command alg a] m => GossipMsg alg a -> m ()
-resendGossip (GossipPreVote v  ) = tell [SendRX $ RxPreVote v]
-resendGossip (GossipPreCommit v) = tell [SendRX $ RxPreCommit v]
-resendGossip (GossipProposal  p) = tell [SendRX $ RxProposal p]
-resendGossip (GossipBlock     b) = tell [SendRX $ RxBlock b]
-resendGossip (GossipTx tx      ) = tell [Push2Mempool tx]
-resendGossip (GossipPex pexmsg ) = tell [SendPEX pexmsg]
+resendGossip :: (MonadReader (Config m alg1 a1) (t m2), MonadWriter [Command alg2 a2] (t m2), MonadTrans t, MonadMask m2, MonadIO m2)
+             => GossipMsg alg2 a2 -> t m2 ()
+resendGossip (GossipPreVote v  ) = tell [SendRX $ RxPreVote v] >> tickRecv prevote
+resendGossip (GossipPreCommit v) = tell [SendRX $ RxPreCommit v] >> tickRecv precommit
+resendGossip (GossipProposal  p) = tell [SendRX $ RxProposal p] >> tickRecv proposals
+resendGossip (GossipBlock     b) = tell [SendRX $ RxBlock b] >> tickRecv blocks
+resendGossip (GossipTx tx      ) = tell [Push2Mempool tx] >> tickRecv Logging.tx
+resendGossip (GossipPex pexmsg ) = tell [SendPEX pexmsg] >> tickRecv pex
 resendGossip _                   = return ()
+
+tickRecv :: (MonadReader (Config m alg a) (t m2), MonadTrans t, MonadMask m2, MonadIO m2)
+          => (GossipCounters -> Counter) -> t m2 ()
+tickRecv counter = do 
+  cnts <- view gossipCounters
+  lift $ Logging.tickRecv $ counter cnts
+
+tickSend :: (MonadReader (Config m alg a) (t m2), MonadTrans t, MonadMask m2, MonadIO m2)
+         => (GossipCounters -> Counter) -> t m2 ()
+tickSend counter = do 
+  cnts <- view gossipCounters
+  lift $ Logging.tickSend $ counter cnts
 
 push2Gossip :: MonadWriter [Command alg a] m
             => GossipMsg alg a -> m ()
