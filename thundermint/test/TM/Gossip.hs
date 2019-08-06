@@ -202,7 +202,7 @@ internalTestRawGossipCurrentCurrent isTestingSendProposals isTestingSendPrevotes
         -- Check sent messages
         liftIO $ do
             messages <- atomically $ flushTBQueue gossipCh
-            let expectedNumberOfMessages = sum $ map fromEnum [isTestingSendProposals, isTestingSendPrevotes, isTestingSendPrecommits]
+            let expectedNumberOfMessages = length $ filter id [isTestingSendProposals, isTestingSendPrevotes, isTestingSendPrecommits]
             assertEqual "" expectedNumberOfMessages (length messages)
             assertBool "" $ (if isTestingSendProposals then id else not) $ (flip any) messages $ \case
                     GossipProposal (signedValue -> sentProposal) -> proposal == sentProposal
