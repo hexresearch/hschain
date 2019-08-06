@@ -163,7 +163,7 @@ startPeer peerAddrTo peerCh@PeerChans{..} conn peerRegistry mempool = logOnExcep
     , descendNamespace "gspB" $ peerGossipBlocks        peerSt peerCh gossipCh
     , descendNamespace "gspM" $ peerGossipMempool       peerSt peerCh p2pConfig gossipCh cursor
     , descendNamespace "recv" $ peerReceive             peerSt peerCh pexCh conn cursor
-    , descendNamespace "send" $ peerSend                peerAddrTo peerSt peerCh gossipCh conn
+    , descendNamespace "send" $ peerSend                peerSt peerCh gossipCh conn
     , descendNamespace "PEX"  $ peerGossipPeerExchange  peerCh peerRegistry pexCh gossipCh
     , peerGossipAnnounce peerCh gossipCh
     ]
@@ -396,14 +396,13 @@ peerGossipAnnounce PeerChans{..} gossipCh = logOnException $
 peerSend
   :: ( MonadReadDB m alg a, MonadMask m, MonadIO m,  MonadLogger m
      , Crypto alg, BlockData a)
-  => NetAddr
-  -> PeerStateObj m alg a
+  => PeerStateObj m alg a
   -> PeerChans m alg a
   -> TBQueue (GossipMsg alg a)
   -> P2PConnection
   -> m x
-peerSend peerAddrTo peerSt PeerChans{..} gossipCh P2PConnection{..} = logOnException $ do
-  logger InfoS ("Starting routing for sending data to " <> showLS peerAddrTo) ()
+peerSend peerSt PeerChans{..} gossipCh P2PConnection{..} = logOnException $ do
+  logger InfoS "Starting routing for sending data" ()
   ownPeerChanTx  <- liftIO $ atomically $ dupTChan peerChanTx
   ownPeerChanPex <- liftIO $ atomically $ dupTChan peerChanPex
   forever $ do
