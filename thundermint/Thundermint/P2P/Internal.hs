@@ -85,14 +85,14 @@ acceptLoop cfg NetworkAPI{..} peerCh mempool peerRegistry = do
         (conn, addr') <- accept
         void $ flip forkFinally (const $ close conn) $ restore $ do
           let peerInfo = connectedPeer conn
-          logger InfoS ("Accept connection " <> showLS addr' <> ", peer info " <> showLS peerInfo) ("addr" `sl` show addr')
+          logger InfoS ("Accept connection " <> showLS addr' <> ", peer info " <> showLS peerInfo) (sl "addr" addr')
           let otherPeerId   = piPeerId   peerInfo
               otherPeerPort = piPeerPort peerInfo
               addr = normalizeNodeAddress addr' (Just $ fromIntegral otherPeerPort)
           trace $ TeNodeOtherTryConnect (show addr)
           logger DebugS "PreAccepted connection"
-                (  sl "addr"     (show addr )
-                <> sl "addr0"    (show addr')
+                (  sl "addr"     addr 
+                <> sl "addr0"    addr'
                 <> sl "peerId"   otherPeerId
                 <> sl "peerPort" otherPeerPort
                 )
@@ -100,7 +100,7 @@ acceptLoop cfg NetworkAPI{..} peerCh mempool peerRegistry = do
             logger DebugS "Self connection detected. Close connection" ()
           else
             catch (withPeer peerRegistry addr (CmAccept otherPeerId) $ do
-                  logger InfoS "Accepted connection" ("addr" `sl` show addr)
+                  logger InfoS "Accepted connection" (sl "addr" addr)
                   trace $ TeNodeOtherConnected (show addr)
                   startPeer addr peerCh conn peerRegistry mempool
                   ) (\e -> logger InfoS ("withPeer has thrown " <> showLS (e :: SomeException)) ())
@@ -122,16 +122,16 @@ connectPeerTo cfg NetworkAPI{..} addr peerCh mempool peerRegistry =
   -- Igrnore all exceptions to prevent apparing of error messages in stderr/stdout.
   void . flip forkFinally (const $ return ()) $
     recoverAll (retryPolicy cfg) $ const $ logOnException $ do
-      logger InfoS "Connecting to" (sl "addr" (show addr))
+      logger InfoS "Connecting to" (sl "addr" addr)
       trace (TeNodeConnectingTo (show addr))
       -- TODO : what first? "connection" or "withPeer" ?
       bracket (connect addr) (\c -> logClose >> close c) $ \conn -> do
         withPeer peerRegistry addr CmConnect $ do
-            logger InfoS "Successfully connected to" (sl "addr" (show addr))
+            logger InfoS "Successfully connected to" (sl "addr" addr)
             startPeer addr peerCh conn peerRegistry mempool
         logClose
   where
-    logClose = logger InfoS "Connection closed" (sl "addr" (show addr))
+    logClose = logger InfoS "Connection closed" (sl "addr" addr)
 
 ----------------------------------------------------------------
 -- Peer
