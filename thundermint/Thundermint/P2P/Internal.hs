@@ -91,7 +91,7 @@ acceptLoop cfg NetworkAPI{..} peerCh mempool peerRegistry = do
               addr = normalizeNodeAddress addr' (Just $ fromIntegral otherPeerPort)
           trace $ TeNodeOtherTryConnect (show addr)
           logger DebugS "PreAccepted connection"
-                (  sl "addr"     addr 
+                (  sl "addr"     addr
                 <> sl "addr0"    addr'
                 <> sl "peerId"   otherPeerId
                 <> sl "peerPort" otherPeerPort

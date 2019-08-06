@@ -14,9 +14,10 @@
 
 module TM.Gossip (tests) where
 
-
+import Codec.Serialise (deserialise)
 import Control.Concurrent.Chan
 import Control.Concurrent.STM.TBQueue
+import Control.Concurrent.STM.TQueue
 import Control.Concurrent.STM.TChan
 import Control.Concurrent.STM.TVar
 import Control.Monad
@@ -39,7 +40,9 @@ import Thundermint.Debug.Trace
 import Thundermint.Logger
 import Thundermint.Mock.Types
 import Thundermint.P2P
+import Thundermint.P2P.Internal
 import Thundermint.P2P.PeerState
+import Thundermint.P2P.Types
 import Thundermint.Run
 import Thundermint.Store
 import Thundermint.Store.Internal.BlockDB (storeCommit, storeValSet)
@@ -133,14 +136,21 @@ testRawGossipCurrentSentProposal = do
                 Current cp -> return cp
                 _ -> liftIO $ assertFailure "Wrong initial state")
         -- Run peerGossipVotes
+        buffer <- liftIO newTQueueIO
         catchTestError $ runConcurrently
             [ peerGossipVotes peerStateObj peerChans gossipCh
+            , peerSend        peerStateObj peerChans gossipCh P2PConnection
+                { send          = liftIO . atomically . writeTQueue buffer
+                , recv          = forever (return ())
+                , close         = return ()
+                , connectedPeer = PeerInfo (PeerId 100) 100 100
+                }
             , waitForEvents envEventsQueue [(TepgvStarted, 1), (TepgvNewIter, 2), (TepgvCurrent, 1)]
             , waitSec 5.0 >> throwM (TestError "Timeout!")
             ]
         -- Check proposal message sent
         liftIO $
-            atomically (tryReadTBQueue gossipCh) >>= \case
+            (fmap deserialise <$> atomically (tryReadTQueue buffer)) >>= \case
                 Just (GossipProposal (signedValue -> sentProposal)) ->
                     proposal @=? sentProposal
                 Nothing -> assertFailure "`gossipCh` does not contains any message!"
@@ -193,15 +203,22 @@ internalTestRawGossipCurrentCurrent isTestingSendProposals isTestingSendPrevotes
                 _ -> liftIO $ assertFailure "Wrong initial state")
         -- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         -- Run peerGossipVotes
+        buffer <- liftIO newTQueueIO
         catchTestError $ runConcurrently
             [ peerGossipVotes peerStateObj peerChans gossipCh
+            , peerSend        peerStateObj peerChans gossipCh P2PConnection
+                { send          = liftIO . atomically . writeTQueue buffer
+                , recv          = forever (return ())
+                , close         = return ()
+                , connectedPeer = PeerInfo (PeerId 100) 100 100
+                }
             , waitForEvents envEventsQueue [(TepgvStarted, 1), (TepgvNewIter, 2), (TepgvCurrent, 1)]
             , waitSec 5.0 >> throwM (TestError "Timeout!")
             ]
         -- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         -- Check sent messages
         liftIO $ do
-            messages <- atomically $ flushTBQueue gossipCh
+            messages <- fmap deserialise <$> atomically (flushTQueue buffer)
             let expectedNumberOfMessages = length $ filter id [isTestingSendProposals, isTestingSendPrevotes, isTestingSendPrecommits]
             assertEqual "" expectedNumberOfMessages (length messages)
             assertBool "" $ (if isTestingSendProposals then id else not) $ (flip any) messages $ \case
