@@ -25,15 +25,16 @@ class CommitData(object):
     def __init__(self, logs):
         # Clean data
         dfs = {k : d.commit for k,d in logs.items() if not d.commit.empty}
+        # Get summary stats
+        pts = pd.concat([d[['H','at']] for _,d in dfs.items()])
+        t0  = np.min(pts['at'])
+        ts  = (pts['at'].dt.tz_localize(None) - t0).astype('timedelta64') / 1e9
+        hs  = pts['H']
         # Calculate relative time
-        t0  = np.min([df['at'].values[0] for df in dfs.values() if len(df) > 0])
         for k, df in dfs.items() :
-            df['dt'] = (df['at'].dt.tz_localize(None) - t0).astype('timedelta64[ms]') / 1000
-        # Calculate linear fit
-        points   = pd.concat([d for _,d in dfs.items()])
-        hs       = points['H'].values
-        ts       = points['dt'].values
-        self.fit = sm.OLS(ts, sm.add_constant(hs), missing='drop').fit()
+            df['dt'] = (df['at'].dt.tz_localize(None) - t0).astype('timedelta64') / 1e9
+        self.fit = logs.fitTvsH
+        self.TPS = logs.TPS
         # Store precalculated data
         self.tMin = np.min(ts)
         self.tMax = np.max(ts)
@@ -113,7 +114,11 @@ class CommitData(object):
         plt.plot(df['H'] - 1, df['nsign'],'+')
 
     def add_title_h(self,s ):
-        plt.title("%s (%.03f s/block)" % (s,float(self.fit.params[1])))
+        plt.title("%s (%.03f s/block, %.f tps)" %
+                  (s,
+                   float(self.fit.params[1]),
+                   self.TPS
+                  ))
 
 # ----------------------------------------------------------------
 # Plotting routines
