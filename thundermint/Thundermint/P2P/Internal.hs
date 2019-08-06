@@ -102,8 +102,7 @@ acceptLoop cfg NetworkAPI{..} peerCh mempool peerRegistry = do
             catch (withPeer peerRegistry addr (CmAccept otherPeerId) $ do
                   logger InfoS "Accepted connection" ("addr" `sl` show addr)
                   trace $ TeNodeOtherConnected (show addr)
-                  descendNamespace (T.pack (show addr))
-                    $ startPeer addr peerCh conn peerRegistry mempool
+                  startPeer addr peerCh conn peerRegistry mempool
                   ) (\e -> logger InfoS ("withPeer has thrown " <> showLS (e :: SomeException)) ())
 
 
@@ -129,8 +128,7 @@ connectPeerTo cfg NetworkAPI{..} addr peerCh mempool peerRegistry =
       bracket (connect addr) (\c -> logClose >> close c) $ \conn -> do
         withPeer peerRegistry addr CmConnect $ do
             logger InfoS "Successfully connected to" (sl "addr" (show addr))
-            descendNamespace (T.pack (show addr))
-              $ startPeer addr peerCh conn peerRegistry mempool
+            startPeer addr peerCh conn peerRegistry mempool
         logClose
   where
     logClose = logger InfoS "Connection closed" (sl "addr" (show addr))
@@ -151,23 +149,24 @@ startPeer
   -> PeerRegistry
   -> Mempool m alg (TX a)
   -> m ()
-startPeer peerAddrTo peerCh@PeerChans{..} conn peerRegistry mempool = logOnException $ do
-  logger InfoS "Starting peer" ()
-  liftIO $ atomically $ writeTChan peerChanPexNewAddresses [peerAddrTo]
-  peerSt   <- newPeerStateObj proposalStorage
-  gossipCh <- liftIO (newTBQueueIO 10)
-  pexCh    <- liftIO newTChanIO
-  cursor   <- getMempoolCursor mempool
-  runConcurrently
-    [ descendNamespace "gspV" $ peerGossipVotes         peerSt peerCh gossipCh
-    , descendNamespace "gspB" $ peerGossipBlocks        peerSt peerCh gossipCh
-    , descendNamespace "gspM" $ peerGossipMempool       peerSt peerCh p2pConfig gossipCh cursor
-    , descendNamespace "recv" $ peerReceive             peerSt peerCh pexCh conn cursor
-    , descendNamespace "send" $ peerSend                peerSt peerCh gossipCh conn
-    , descendNamespace "PEX"  $ peerGossipPeerExchange  peerCh peerRegistry pexCh gossipCh
-    , peerGossipAnnounce peerCh gossipCh
-    ]
-  logger InfoS "Stopping peer" ()
+startPeer peerAddrTo peerCh@PeerChans{..} conn peerRegistry mempool =
+  descendNamespace (T.pack (show peerAddrTo)) $ logOnException $ do
+    logger InfoS "Starting peer" ()
+    liftIO $ atomically $ writeTChan peerChanPexNewAddresses [peerAddrTo]
+    peerSt   <- newPeerStateObj proposalStorage
+    gossipCh <- liftIO (newTBQueueIO 10)
+    pexCh    <- liftIO newTChanIO
+    cursor   <- getMempoolCursor mempool
+    runConcurrently
+      [ descendNamespace "gspV" $ peerGossipVotes         peerSt peerCh gossipCh
+      , descendNamespace "gspB" $ peerGossipBlocks        peerSt peerCh gossipCh
+      , descendNamespace "gspM" $ peerGossipMempool       peerSt peerCh p2pConfig gossipCh cursor
+      , descendNamespace "recv" $ peerReceive             peerSt peerCh pexCh conn cursor
+      , descendNamespace "send" $ peerSend                peerSt peerCh gossipCh conn
+      , descendNamespace "PEX"  $ peerGossipPeerExchange  peerCh peerRegistry pexCh gossipCh
+      , peerGossipAnnounce peerCh gossipCh
+      ]
+    logger InfoS "Stopping peer" ()
 
 
 -- | Gossip votes with given peer
