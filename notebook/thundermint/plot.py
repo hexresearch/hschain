@@ -183,6 +183,17 @@ def plot_round(logs):
     add_legend(ax)
     return fig
 
+def plot_round_distr(logs):
+    "Plot distribution of round numbers per figure"
+    dfs = {k : v.roundDistr for k,v in logs.items() if not v.round.empty}
+    n   = len(dfs)
+    fig,ax = figure_with_legend()
+    for i,(nm,rs) in enumerate(dfs.items()):
+        xs = np.asarray(range(len(rs)))
+        plt.bar(xs + i / n, rs, width=1/n, align='edge', label=nm)
+        print("%12s: <R> = %.2f" % (nm, np.average(xs, weights=rs)))
+    add_legend(ax)
+    return fig
 
 def plot_mempool_size(dfs):
     "Plot mempool size over time"
