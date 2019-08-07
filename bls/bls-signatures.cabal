@@ -79,3 +79,19 @@ Test-Suite bls-signatures-test
     Tests.Threshold
   --    Paths_xenochain_state
   -- Ghc-Options: -optl-static -optl-pthread
+
+
+Executable bls-example-threshold
+  Ghc-options:         -Wall -threaded -Wno-orphans -rtsopts "-with-rtsopts=-N -T -c -qn1"
+  Default-Language:    Haskell2010
+  Build-Depends:
+      base                 >=4.9 && <5
+    , async
+    , concurrent-barrier
+    , bls-signatures
+    , bytestring
+    , vector
+    , random-shuffle
+  hs-source-dirs:      examples
+  Main-is:             Threshold.hs
+
