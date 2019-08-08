@@ -28,6 +28,7 @@ module Thundermint.Store.Internal.Query (
   , basicQuery_
   , basicExecute
   , basicExecute_
+  , basicCacheGenesis
   , rollback
   , MonadQueryRW(..)
     -- * Database queries
@@ -58,8 +59,10 @@ import Control.Monad.Trans.State.Lazy   as SL(StateT(..))
 import Control.Monad.Trans.Except            (ExceptT(..))
 import Control.Monad.Trans.Identity          (IdentityT(..))
 import Data.Coerce
+import Data.IORef
 import qualified Database.SQLite.Simple           as SQL
 
+import Thundermint.Types.Blockchain
 import Thundermint.Control
 import Thundermint.Logger.Class
 
@@ -80,7 +83,10 @@ data Access = RO                -- ^ Read-only access
 --   inference for functions like @retrieveBlock@ where @alg@ & @a@
 --   appear only in return type and frequently couldn't be inferred
 --   without tags.
-data Connection (rw :: Access) alg a = Connection !Mutex !SQL.Connection
+data Connection (rw :: Access) alg a = Connection
+  !Mutex
+  !SQL.Connection
+  !(IORef (Maybe (Block alg a)))
 
 -- | Convert read-only or read-write connection to read-only one.
 connectionRO :: Connection rw alg a -> Connection 'RO alg a
@@ -94,17 +100,21 @@ openConnection db = liftIO $ do
   -- SQLite have support for retrying transactions in case database is
   -- busy. Here we switch ot on
   SQL.execute_ c "PRAGMA busy_timeout = 10"
-  return $! Connection m c
+  ref <- newIORef Nothing
+  return $! Connection m c ref
 
 -- | Close connection to database. Note that we can only close
 --   connection if we have read-write acces to it.
 closeConnection :: MonadIO m => Connection 'RW alg a -> m ()
-closeConnection (Connection _ c) = liftIO $ SQL.close c
+closeConnection = closeConnection'
+
+closeConnection' :: MonadIO m => Connection rw alg a -> m ()
+closeConnection' (Connection _ c _) = liftIO $ SQL.close c
 
 withConnection
   :: (MonadMask m, MonadIO m)
   => FilePath -> (Connection rw alg a -> m x) -> m x
-withConnection db = bracket (openConnection db) (closeConnection . coerce)
+withConnection db = bracket (openConnection db) closeConnection'
 
 
 ----------------------------------------------------------------
@@ -158,23 +168,23 @@ basicQuery1 sql param =
 
 basicQuery :: (MonadQueryRO m alg a, SQL.ToRow p, SQL.FromRow q) => SQL.Query -> p -> m [q]
 basicQuery sql p = liftQueryRO $ Query $ do
-  Connection _ conn <- asks connectionRO
+  Connection _ conn _ <- asks connectionRO
   liftIO $ SQL.query conn sql p
 
 basicQuery_ :: forall m alg a q. (MonadQueryRO m alg a, SQL.FromRow q) => SQL.Query -> m [q]
 basicQuery_ sql = liftQueryRO $ Query $ do
-  Connection _ conn <- asks connectionRO
+  Connection _ conn _ <- asks connectionRO
   liftIO $ SQL.query_ conn sql
 
 
 basicExecute :: (MonadQueryRW m alg a, SQL.ToRow p) => SQL.Query -> p -> m ()
 basicExecute sql param = liftQueryRW $ Query $ do
-  Connection _ conn <- ask
+  Connection _ conn _ <- ask
   liftIO $ SQL.execute conn sql param
 
 basicExecute_ :: (MonadQueryRW m alg a) => SQL.Query -> m ()
 basicExecute_ sql = liftQueryRW $ Query $ do
-  Connection _ conn <- ask
+  Connection _ conn _ <- ask
   liftIO $ SQL.execute_ conn sql
 
 -- | Roll back execution of transaction. It's executed as throwing
@@ -183,6 +193,14 @@ basicExecute_ sql = liftQueryRW $ Query $ do
 rollback :: (MonadQueryRW m alg a) => m x
 rollback = liftQueryRW $ Query $ throwM Rollback
 
+
+basicCacheGenesis :: Query 'RO alg a (Maybe (Block alg a)) -> Query 'RO alg a (Maybe (Block alg a))
+basicCacheGenesis (Query query) = Query $ do
+  Connection _ _ ref <- ask
+  liftIO (readIORef ref) >>= \case
+    Just b  -> return (Just b)
+    Nothing -> do b <- query
+                  liftIO $ b <$ atomicWriteIORef ref b
 
 
 instance MonadReadDB  m alg a => MonadReadDB  (IdentityT m) alg a where
@@ -370,7 +388,7 @@ runQueryWorker
   => Bool
   -> Connection rw alg a
   -> m x -> m (Maybe x)
-runQueryWorker isWrite (Connection mutex conn) sql = withMutex mutex $ uninterruptibleMask $ \restore -> do
+runQueryWorker isWrite (Connection mutex conn _) sql = withMutex mutex $ uninterruptibleMask $ \restore -> do
   -- This function is rather tricky to get right. We need to maintain
   -- following invariant: No matter what happens we MUST call either
   -- ROLLBACK or COMMIT after BEGIN TRANSACTION. Otherwise database
