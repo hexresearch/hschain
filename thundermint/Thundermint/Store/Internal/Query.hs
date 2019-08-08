@@ -84,9 +84,10 @@ data Access = RO                -- ^ Read-only access
 --   appear only in return type and frequently couldn't be inferred
 --   without tags.
 data Connection (rw :: Access) alg a = Connection
-  !Mutex
-  !SQL.Connection
-  !(IORef (Maybe (Block alg a)))
+  { connMutex    :: !Mutex
+  , connConn     :: !SQL.Connection
+  , connCacheGen :: !(IORef (Maybe (Block alg a)))
+  }
 
 -- | Convert read-only or read-write connection to read-only one.
 connectionRO :: Connection rw alg a -> Connection 'RO alg a
@@ -101,7 +102,10 @@ openConnection db = liftIO $ do
   -- busy. Here we switch ot on
   SQL.execute_ c "PRAGMA busy_timeout = 10"
   ref <- newIORef Nothing
-  return $! Connection m c ref
+  return $! Connection { connMutex    = m
+                       , connConn     = c
+                       , connCacheGen = ref
+                       }
 
 -- | Close connection to database. Note that we can only close
 --   connection if we have read-write acces to it.
@@ -109,7 +113,7 @@ closeConnection :: MonadIO m => Connection 'RW alg a -> m ()
 closeConnection = closeConnection'
 
 closeConnection' :: MonadIO m => Connection rw alg a -> m ()
-closeConnection' (Connection _ c _) = liftIO $ SQL.close c
+closeConnection' = liftIO . SQL.close . connConn
 
 withConnection
   :: (MonadMask m, MonadIO m)
@@ -168,23 +172,23 @@ basicQuery1 sql param =
 
 basicQuery :: (MonadQueryRO m alg a, SQL.ToRow p, SQL.FromRow q) => SQL.Query -> p -> m [q]
 basicQuery sql p = liftQueryRO $ Query $ do
-  Connection _ conn _ <- asks connectionRO
+  conn <- asks connConn
   liftIO $ SQL.query conn sql p
 
 basicQuery_ :: forall m alg a q. (MonadQueryRO m alg a, SQL.FromRow q) => SQL.Query -> m [q]
 basicQuery_ sql = liftQueryRO $ Query $ do
-  Connection _ conn _ <- asks connectionRO
+  conn <- asks connConn
   liftIO $ SQL.query_ conn sql
 
 
 basicExecute :: (MonadQueryRW m alg a, SQL.ToRow p) => SQL.Query -> p -> m ()
 basicExecute sql param = liftQueryRW $ Query $ do
-  Connection _ conn _ <- ask
+  conn <- asks connConn
   liftIO $ SQL.execute conn sql param
 
 basicExecute_ :: (MonadQueryRW m alg a) => SQL.Query -> m ()
 basicExecute_ sql = liftQueryRW $ Query $ do
-  Connection _ conn _ <- ask
+  conn <- asks connConn
   liftIO $ SQL.execute_ conn sql
 
 -- | Roll back execution of transaction. It's executed as throwing
@@ -196,7 +200,7 @@ rollback = liftQueryRW $ Query $ throwM Rollback
 
 basicCacheGenesis :: Query 'RO alg a (Maybe (Block alg a)) -> Query 'RO alg a (Maybe (Block alg a))
 basicCacheGenesis (Query query) = Query $ do
-  Connection _ _ ref <- ask
+  ref <- asks connCacheGen
   liftIO (readIORef ref) >>= \case
     Just b  -> return (Just b)
     Nothing -> do b <- query
@@ -388,7 +392,7 @@ runQueryWorker
   => Bool
   -> Connection rw alg a
   -> m x -> m (Maybe x)
-runQueryWorker isWrite (Connection mutex conn _) sql = withMutex mutex $ uninterruptibleMask $ \restore -> do
+runQueryWorker isWrite connection sql = withMutex mutex $ uninterruptibleMask $ \restore -> do
   -- This function is rather tricky to get right. We need to maintain
   -- following invariant: No matter what happens we MUST call either
   -- ROLLBACK or COMMIT after BEGIN TRANSACTION. Otherwise database
@@ -419,3 +423,5 @@ runQueryWorker isWrite (Connection mutex conn _) sql = withMutex mutex $ uninter
   where
     rollbackTx = liftIO $ SQL.execute_ conn "ROLLBACK"
     commitTx   = liftIO $ SQL.execute_ conn "COMMIT"
+    mutex      = connMutex connection
+    conn       = connConn  connection
