@@ -151,8 +151,11 @@ blockchainHeight =
 --
 --   Must return block for every height @0 <= h <= blockchainHeight@
 retrieveBlock :: (Serialise a, Crypto alg, MonadQueryRO m alg a) => Height -> m (Maybe (Block alg a))
-retrieveBlock h =
-  singleQ "SELECT block FROM thm_blockchain WHERE height = ?" (Only h)
+retrieveBlock h = liftQueryRO $ case h of
+  Height 0 -> basicCacheGenesis query
+  _        -> query
+  where
+    query = singleQ "SELECT block FROM thm_blockchain WHERE height = ?" (Only h)
 
 -- | Retrieve ID of block at given height. Must return same result
 --   as @fmap blockHash . retrieveBlock@ but implementation could
