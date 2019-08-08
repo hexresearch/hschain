@@ -9,6 +9,7 @@
 {-# LANGUAGE LambdaCase                 #-}
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
+{-# LANGUAGE TupleSections              #-}
 {-# LANGUAGE TypeFamilies               #-}
 {-# LANGUAGE UndecidableInstances       #-}
 -- |
@@ -29,6 +30,7 @@ module Thundermint.Store.Internal.Query (
   , basicExecute
   , basicExecute_
   , basicCacheGenesis
+  , basicCacheBlock
   , rollback
   , MonadQueryRW(..)
     -- * Database queries
@@ -47,6 +49,7 @@ module Thundermint.Store.Internal.Query (
   , queryRW
   ) where
 
+import Control.Monad
 import Control.Monad.Catch
 import qualified Control.Monad.Fail as Fail
 import Control.Monad.IO.Class
@@ -60,7 +63,8 @@ import Control.Monad.Trans.Except            (ExceptT(..))
 import Control.Monad.Trans.Identity          (IdentityT(..))
 import Data.Coerce
 import Data.IORef
-import qualified Database.SQLite.Simple           as SQL
+import qualified Data.Cache.LRU         as LRU
+import qualified Database.SQLite.Simple as SQL
 
 import Thundermint.Types.Blockchain
 import Thundermint.Control
@@ -87,6 +91,7 @@ data Connection (rw :: Access) alg a = Connection
   { connMutex    :: !Mutex
   , connConn     :: !SQL.Connection
   , connCacheGen :: !(IORef (Maybe (Block alg a)))
+  , connCacheBlk :: !(IORef (LRU.LRU Height (Block alg a)))
   }
 
 -- | Convert read-only or read-write connection to read-only one.
@@ -96,15 +101,17 @@ connectionRO = coerce
 -- | Open connection to database and set necessary pragmas
 openConnection :: MonadIO m => FilePath -> m (Connection rw alg a)
 openConnection db = liftIO $ do
-  m <- newMutex
-  c <- SQL.open db
+  m    <- newMutex
+  c    <- SQL.open db
+  refG <- newIORef Nothing
+  refB <- newIORef $ LRU.newLRU (Just 8)
   -- SQLite have support for retrying transactions in case database is
   -- busy. Here we switch ot on
   SQL.execute_ c "PRAGMA busy_timeout = 10"
-  ref <- newIORef Nothing
   return $! Connection { connMutex    = m
                        , connConn     = c
-                       , connCacheGen = ref
+                       , connCacheGen = refG
+                       , connCacheBlk = refB
                        }
 
 -- | Close connection to database. Note that we can only close
@@ -198,13 +205,27 @@ rollback :: (MonadQueryRW m alg a) => m x
 rollback = liftQueryRW $ Query $ throwM Rollback
 
 
-basicCacheGenesis :: Query 'RO alg a (Maybe (Block alg a)) -> Query 'RO alg a (Maybe (Block alg a))
+basicCacheGenesis
+  :: Query 'RO alg a (Maybe (Block alg a))
+  -> Query 'RO alg a (Maybe (Block alg a))
 basicCacheGenesis (Query query) = Query $ do
   ref <- asks connCacheGen
   liftIO (readIORef ref) >>= \case
     Just b  -> return (Just b)
     Nothing -> do b <- query
                   liftIO $ b <$ atomicWriteIORef ref b
+
+basicCacheBlock
+  :: (Height -> Query 'RO alg a (Maybe (Block alg a)))
+  ->  Height -> Query 'RO alg a (Maybe (Block alg a))
+basicCacheBlock query h = Query $ do
+  ref <- asks connCacheBlk
+  r   <- liftIO (atomicModifyIORef ref (LRU.lookup h))
+  case r of
+    Just _  -> return r
+    Nothing -> do mb <- unQuery $ query h
+                  liftIO $ forM_ mb $ \b -> atomicModifyIORef ref $ (,()) . LRU.insert h b
+                  return mb
 
 
 instance MonadReadDB  m alg a => MonadReadDB  (IdentityT m) alg a where
@@ -327,7 +348,7 @@ queryRWT q = flip runQueryRWT q =<< askConnectionRW
 
 -- | Query which doesn't allow any other effect except interaction
 --   with database.
-newtype Query rw alg a x = Query (ReaderT (Connection rw alg a) IO x)
+newtype Query rw alg a x = Query { unQuery :: ReaderT (Connection rw alg a) IO x }
   deriving newtype (Functor, Applicative)
 
 instance Monad (Query rm alg a) where
