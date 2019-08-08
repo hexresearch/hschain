@@ -1,18 +1,22 @@
-{-# LANGUAGE ApplicativeDo       #-}
-{-# LANGUAGE BangPatterns        #-}
-{-# LANGUAGE DataKinds           #-}
-{-# LANGUAGE DeriveGeneric       #-}
-{-# LANGUAGE LambdaCase          #-}
-{-# LANGUAGE OverloadedStrings   #-}
-{-# LANGUAGE RecordWildCards     #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE StandaloneDeriving  #-}
-{-# LANGUAGE TypeApplications    #-}
-{-# LANGUAGE TypeFamilies        #-}
-{-# LANGUAGE TypeOperators       #-}
+{-# LANGUAGE ApplicativeDo              #-}
+{-# LANGUAGE BangPatterns               #-}
+{-# LANGUAGE DataKinds                  #-}
+{-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE LambdaCase                 #-}
+{-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE RecordWildCards            #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
+{-# LANGUAGE StandaloneDeriving         #-}
+{-# LANGUAGE TypeApplications           #-}
+{-# LANGUAGE TypeFamilies               #-}
+{-# LANGUAGE TypeOperators              #-}
 import Control.Concurrent
 import Control.Monad
+import Control.Monad.Catch
+import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
+import Control.Monad.Trans.Reader
 import Control.Monad.Trans.Cont
 import Data.Aeson             (FromJSON)
 import Data.Monoid            ((<>))
@@ -21,7 +25,7 @@ import Data.Yaml.Config       (loadYamlSettings, requireEnv)
 import Options.Applicative
 
 import Network.Wai.Middleware.Prometheus
-import Prometheus
+import Prometheus   (register)
 import Prometheus.Metric.GHC
 import GHC.Generics (Generic)
 import qualified Network.Wai.Handler.Warp as Warp
@@ -34,10 +38,12 @@ import Thundermint.Run
 
 import Thundermint.Control
 import Thundermint.Store
+import Thundermint.Monitoring
 import Thundermint.Crypto         (PublicKey)
 import Thundermint.P2P            (generatePeerId)
 import Thundermint.P2P.Network    (newNetworkTcp)
 import Thundermint.Types
+import Thundermint.Debug.Trace
 
 import qualified Thundermint.P2P.Types as P2PT
 
@@ -45,6 +51,20 @@ import qualified Thundermint.P2P.Types as P2PT
 ----------------------------------------------------------------
 --
 ----------------------------------------------------------------
+
+newtype MonitorT m a = MonitorT (ReaderT PrometheusGauges m a)
+  deriving ( Functor,Applicative,Monad
+           , MonadIO,MonadMask,MonadThrow,MonadCatch
+           , MonadLogger,MonadFork,MonadTrace )
+
+instance MonadIO m =>  MonadTMMonitoring (MonitorT m) where
+  usingGauge  getter x = MonitorT $ flip setTGaugeNow x =<< asks getter
+  usingVector getter l x = MonitorT $ do
+    g <- asks getter
+    setTGVectorNow g l x
+
+runMonitorT :: PrometheusGauges -> MonitorT m a -> m a
+runMonitorT g (MonitorT m) = runReaderT m g
 
 data Opts = Opts
   { cmdConfigPath :: [FilePath]
@@ -80,7 +100,8 @@ main = do
     let (mtxGen, genesis) = mintMockCoin [ Validator v 1 | v <- validatorKeys] coin
     --- Allocate resources
     (_, conn, logenv) <- allocNode genesis nspec
-    let run = runLoggerT logenv . runDBT conn
+    gauges            <- standardMonitoring
+    let run = runMonitorT gauges . runLoggerT logenv . runDBT conn
     -- Create network
     peerId <- generatePeerId
     let peerInfo = P2PT.PeerInfo peerId nodePort 0
