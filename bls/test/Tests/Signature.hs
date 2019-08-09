@@ -11,6 +11,8 @@ import Data.ByteString.Builder as BS
 import Data.ByteString as BS
 import Data.ByteString.Lazy as BSL
 
+import qualified Data.Vector as V
+
 
 hexifyBs :: BS.ByteString -> BS.ByteString
 hexifyBs = BSL.toStrict . BS.toLazyByteString . BS.byteStringHex
@@ -33,3 +35,21 @@ test_pk = do
     -- putStrLn "END"
     print r
     return ()
+
+
+test_nofn :: IO ()
+test_nofn = do
+    let message = "Some test message"
+    sk1 <- fromSeed "abc"
+    sk2 <- fromSeed "def"
+    pk1 <- getPublicKey sk1
+    pk2 <- getPublicKey sk2
+    messageHash <- hash256 message
+    sig1 <- signInsecure sk1 message
+    sig2 <- signInsecure sk2 message
+    assertBool =<< verifyInsecure sig1 (V.singleton messageHash) (V.singleton pk1)
+    assertBool =<< verifyInsecure sig2 (V.singleton messageHash) (V.singleton pk2)
+    aggSig <- aggregateInsecureSignatures (V.fromList [sig1, sig2])
+    aggPk  <- aggregateInsecurePublicKey  (V.fromList [pk1,  pk2])
+    assertBool =<< verifyInsecure aggSig (V.singleton messageHash) (V.singleton aggPk)
+

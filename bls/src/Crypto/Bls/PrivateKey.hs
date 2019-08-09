@@ -12,12 +12,12 @@ module Crypto.Bls.PrivateKey
     ) where
 
 
-import Data.Maybe
 import Data.ByteString (ByteString)
+import Data.Maybe
 import Data.Vector (Vector)
 import qualified Data.ByteString as BS
-import qualified Data.Vector as V
 import qualified Data.ByteString.Internal as BS
+import qualified Data.Vector as V
 import qualified Language.C.Inline as C
 import qualified Language.C.Inline.Cpp as C
 
@@ -73,6 +73,7 @@ signInsecure pk msg = withPtr pk $ \pkptr -> fromPtr [C.exp|
 
 
 -- | Insecurely aggregate multiple private keys into one
+--
 aggregateInsecurePrivateKey :: Vector PrivateKey -> IO PrivateKey
 aggregateInsecurePrivateKey privateKeys =
     fmap (fromMaybe (error "aggregateInsecure with empty vector!")) $

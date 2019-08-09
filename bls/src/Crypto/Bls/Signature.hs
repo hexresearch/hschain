@@ -2,11 +2,14 @@
 {-# LANGUAGE QuasiQuotes #-}
 module Crypto.Bls.Signature
     ( Signature
+    , InsecureSignature
     , copy
     , unsafeSetAggregationInfo
     , setAggregationInfo
     , verify
     , verifyInsecure
+    , serializeInsecureSignature
+    , aggregateInsecureSignatures
     ) where
 
 
@@ -23,6 +26,8 @@ import Foreign.Marshal.Utils (toBool)
 import Foreign.C.String
 import qualified Language.C.Inline as C
 import qualified Language.C.Inline.Cpp as C
+import qualified Data.ByteString as BS
+import qualified Data.ByteString.Internal as BS
 
 import Crypto.Bls.Internal
 import Crypto.Bls.Types
@@ -111,3 +116,25 @@ verifyInsecure insecureSig hashes pubKeys =
                             , $(PublicKey * pubKeysPtr) + $(size_t pubKeysLen))
                         )
                 }|]
+
+
+insecureSignatureSize :: Int
+insecureSignatureSize = fromIntegral [C.pure| size_t { InsecureSignature::SIGNATURE_SIZE }|]
+
+
+serializeInsecureSignature :: InsecureSignature -> IO ByteString
+serializeInsecureSignature sig = withPtr sig $ \sigptr ->
+    BS.create insecureSignatureSize $ \sigbuffer ->
+        [C.exp| void { $(InsecureSignature * sigptr)->Serialize($(uint8_t * sigbuffer)) }|]
+
+
+aggregateInsecureSignatures :: Vector InsecureSignature -> IO InsecureSignature
+aggregateInsecureSignatures sigs =
+    fmap (fromMaybe (error "empty sigs array")) $
+    withArrayPtrLen sigs $ \sigsPtr sigsLen ->
+        let sigsLen' =  fromIntegral sigsLen in
+        fromPtr [C.exp| InsecureSignature * {
+            new InsecureSignature(InsecureSignature::Aggregate(
+                std::vector<InsecureSignature>( $(InsecureSignature * sigsPtr)
+                                              , $(InsecureSignature * sigsPtr) + $(size_t sigsLen))))
+            }|]
