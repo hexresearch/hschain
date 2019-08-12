@@ -123,7 +123,7 @@ interpretSpec p cb = do
             let Just k = find (`Map.notMember` st) ["K_" ++ show (n :: Int) | n <- [1 ..]]
             i <- liftIO $ randomRIO (1,100)
             return (BData [(k, i)], valset, Map.insert k i st)
-        , appMempool         = nullMempoolAny
+        , appMempool         = nullMempool
         , appBchState        = store
         }
   acts <- runNode (getT p :: Configuration Example) NodeDescription
