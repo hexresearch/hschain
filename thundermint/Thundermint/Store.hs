@@ -283,9 +283,8 @@ data MempoolCursor m alg tx = MempoolCursor
 --   added into blockchain. Transactions are stored in FIFO manner
 data Mempool m alg tx = Mempool
   { peekNTransactions :: !(m [tx])
-    -- ^ Take up to N transactions from mempool. If Nothing is passed
-    --   that all transactions will be returned. This operation does
-    --   not alter mempool state
+    -- ^ Return transactions in mempool as lazy list. This operation
+    --   does not alter mempool state
   , filterMempool     :: !(m ())
     -- ^ Remove transactions that are no longer valid from mempool
   , getMempoolCursor  :: !(m (MempoolCursor m alg tx))
