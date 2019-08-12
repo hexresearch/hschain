@@ -31,6 +31,7 @@ module Thundermint.Store.Internal.Query (
   , basicExecute_
   , basicCacheGenesis
   , basicCacheBlock
+  , basicPutCacheBlock
   , rollback
   , MonadQueryRW(..)
     -- * Database queries
@@ -226,6 +227,12 @@ basicCacheBlock query h = Query $ do
     Nothing -> do mb <- unQuery $ query h
                   liftIO $ forM_ mb $ \b -> atomicModifyIORef ref $ (,()) . LRU.insert h b
                   return mb
+
+basicPutCacheBlock :: Block alg a -> Query 'RW alg a ()
+basicPutCacheBlock b = Query $ do
+  let h = headerHeight $ blockHeader b
+  ref <- asks connCacheBlk
+  liftIO $ atomicModifyIORef ref $ (,()) . LRU.insert h b
 
 
 instance MonadReadDB  m alg a => MonadReadDB  (IdentityT m) alg a where

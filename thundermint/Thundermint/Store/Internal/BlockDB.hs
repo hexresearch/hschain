@@ -227,7 +227,7 @@ retrieveSavedState =
 storeCommit
   :: (Crypto alg, Serialise a, MonadQueryRW m alg a)
   => Commit alg a -> Block alg a -> m ()
-storeCommit cmt blk = do
+storeCommit cmt blk = liftQueryRW $ do
   let h = headerHeight $ blockHeader blk
       r = voteRound $ signedValue $ NE.head $ commitPrecommits cmt
   basicExecute "INSERT INTO thm_commits VALUES (?,?)" (h, serialise cmt)
@@ -237,6 +237,7 @@ storeCommit cmt blk = do
     , serialise (blockHash blk)
     , serialise blk
     )
+  basicPutCacheBlock blk
 
 -- | Write state snapshot into DB.
 -- @maybeSnapshot@ contains a serialized value of a state associated with the processed block.
