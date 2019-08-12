@@ -69,7 +69,6 @@ module Thundermint.Store (
   , hoistMempoolCursor
   , hoistMempool
   , nullMempool
-  , nullMempoolAny
     -- * Blockchain state
   , BChStore(..)
   , hoistBChStore
@@ -320,8 +319,8 @@ hoistMempool fun Mempool{..} = Mempool
   }
 
 
-nullMempoolAny :: (Monad m) => Mempool m alg tx
-nullMempoolAny = Mempool
+nullMempool :: (Monad m) => Mempool m alg tx
+nullMempool = Mempool
   { peekNTransactions = return []
   , filterMempool     = return ()
   , mempoolStats      = return $ MempoolInfo 0 0 0 0
@@ -333,9 +332,6 @@ nullMempoolAny = Mempool
       }
   , mempoolSelfTest   = return []
   }
-
-nullMempool :: (Monad m) => Mempool m alg ()
-nullMempool = nullMempoolAny
 
 
 ----------------------------------------------------------------
