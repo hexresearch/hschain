@@ -173,7 +173,7 @@ retrieveBlockID h =
 --   commit for genesis block (h=0)
 retrieveCommit :: (Serialise a, Crypto alg, MonadQueryRO m alg a) => Height -> m (Maybe (Commit alg a))
 retrieveCommit h = do
-  mb <- singleQ "SELECT block FROM thm_blockchain WHERE height = ?" (Only (succ h))
+  mb <- retrieveBlock $ succ h
   return $ blockLastCommit =<< mb
 
 -- | Retrieve round when commit was made.
