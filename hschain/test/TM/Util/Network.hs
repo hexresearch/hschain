@@ -209,24 +209,6 @@ createTestNetworkWithConfig
 createTestNetworkWithConfig = createTestNetworkWithValidatorsSetAndConfig testValidators
 
 
-{-
-createTestNetworkWithValidatorsSetAndConfig
-  :: forall m app . (MonadIO m, MonadMask m, MonadFork m, MonadTMMonitoring m, MonadFail m)
-  => Map.Map (Fingerprint (SHA256 :<<< SHA512) (Ed25519 :& SHA512)) (PrivValidator (Ed25519 :& SHA512))
-  -> Configuration app -> TestNetDescription m -> m ()
-createTestNetworkWithValidatorsSetAndConfig validatorsSet cfg desc = do
-    net  <- liftIO newMockNet
-    withMany (\descr cont -> withConnection ":memory:" (\c -> cont (c,descr))) desc $ \descrList -> do
-      acts <- mapM (mkTestNode net) descrList
-      runConcurrently $ join acts
-  where
-    mkTestNode
-      :: MockNet
-      -> (Connection 'RW (Ed25519 :& SHA512) [(String, NetAddr)], TestNetLinkDescription m)
-      -> m [m ()]
--}
-
-
 createTestNetworkWithValidatorsSetAndConfig
     :: forall m . (MonadIO m, MonadMask m, MonadFork m, MonadTMMonitoring m, MonadFail m)
     => Map.Map (Fingerprint (SHA256 :<<< SHA512) TestAlg) (PrivValidator TestAlg)
