@@ -193,7 +193,6 @@ decideNewBlock config appValidatorKey appLogic@AppLogic{..} appCall@AppCallbacks
                   Just () -> return ()
             let h = headerHeight $ blockHeader b
             advanceToHeight appPropStorage (succ h)
-            -- FIXME: work duplication
             bchStoreStore appBchState h st'
             appCommitCallback b
             return cmt
