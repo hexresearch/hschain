@@ -175,13 +175,13 @@ data AppLogic m alg a = AppLogic
                         -> Block alg a
                         -> BlockchainState a
                         -> [TX a]
-                        -> m (a, ValidatorSet alg, BlockchainState a)
+                        -> m (a, BChState alg a)
     -- ^ Generate fresh block for proposal. It's called each time we
     --   need to create new block for proposal
   , appValidationFun    :: ValidatorSet alg
                         -> Block alg a
                         -> BlockchainState a
-                        -> m (Maybe (ValidatorSet alg, BlockchainState a))
+                        -> m (Maybe (BChState alg a))
     -- ^ Function for validation of proposed block data. It returns
     --   change of validators for given block if it's valid and
     --   @Nothing@ if it's not.

@@ -62,8 +62,8 @@ newSTMPropStorage = fmap (hoistPropStorageRW liftIO) $ liftIO $ do
             UntestedBlock _ _ -> InvalidBlock
             InvalidBlock      -> InvalidBlock
             _                 -> error "CANT HAPPEN"
-          Just (st,vals) -> action $ \case
-            UntestedBlock _ b -> GoodBlock bid b st vals
+          Just bst -> action $ \case
+            UntestedBlock _ b -> GoodBlock bid b bst
             b@GoodBlock{}     -> b
             _                 -> error "CANT HAPPEN"
     --
