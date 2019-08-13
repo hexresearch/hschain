@@ -12,8 +12,22 @@
 
 -- | Contains helpers for network UTs
 module TM.Util.Network
-  ( module TM.Util.Network
-  , NetPair
+  ( NetPair
+  , TestAlg
+  -- * Timeouts
+  , withRetryTCP
+  , withRetryTLS
+  , withTimeOut
+  , withTimeoutRetry
+  -- *
+  , mkNodeDescription
+  , createGossipTestNetwork
+  , createTestNetworkWithConfig
+  , createTestNetwork
+  , testValidators
+  , delayedWrite
+  , skipNothings
+  , intToNetAddr
   ) where
 
 import Control.Concurrent (threadDelay)
@@ -33,8 +47,6 @@ import qualified Data.Map.Strict      as Map
 
 import Data.Monoid    ((<>))
 import System.Timeout (timeout)
-
-import Katip
 
 import qualified Network.Socket as Net
 
@@ -56,6 +68,10 @@ import HSChain.Store
 
 import TM.RealNetwork
 
+
+----------------------------------------------------------------
+--
+----------------------------------------------------------------
 
 shouldRetry :: Bool
 shouldRetry = True
@@ -120,7 +136,7 @@ withTimeOut abortMsg t act = timeout t act >>= \case
     Nothing -> E.throwIO $ AbortTest $ abortMsg <> " due to timeout"
 
 -- TODO объединить в один список, а лучше сделать бесконечный
-testValidators, extraTestValidators :: Map.Map (Fingerprint (SHA256 :<<< SHA512) TestAlg) (PrivValidator TestAlg)
+testValidators :: Map.Map (Fingerprint (SHA256 :<<< SHA512) TestAlg) (PrivValidator TestAlg)
 testValidators = makePrivateValidators
   [ "2K7bFuJXxKf5LqogvVRQjms2W26ZrjpvUjo5LdvPFa5Y"
   , "4NSWtMsEPgfTK25tCPWqNzVVze1dgMwcUFwS5WkSpjJL"
@@ -128,27 +144,11 @@ testValidators = makePrivateValidators
   , "D2fpHM1JA8trshiUW8XPvspsapUvPqVzSofaK1MGRySd"
   ]
 
-
-extraTestValidators = makePrivateValidators
-  [ "EiG2NbUV9ofWeyXcoCkJYvuyLEEQhyeWtGh5n9fcobQi"
-  , "CPSbRfUkV6QcUSBucJ6YN1zVm2h8ZMBNdBhm4Fwd46km"
-  , "GGy5NQVwQxuLBLewmgiDziMAbEN3tfNHetCFrF44n5uL"
-  , "ENf7S1yqKQyeBC59RJWgGB5qHA3GYzwaxHGx1MTXiyts"
-  , "EbG1Bo6NBPuYVT5u44epdjfbYiSaqLzhTWg7NghwDstp"
-  , "BtrJnk73h4WYxfiYJYuw85bhFUi2y6mYpxac2ChoUyHK"
-  , "4eWJ5jSzaBUjkP5kG7gJa3Ad9btjbXMVBxiMQq59M774"
-  , "E8Su8SBtP6F3UjwjSTmZbccD3U8B1amP5syyLyLUY732"
-  , "9ygyNr894jDvMoymQhdEsrnrxotXKfyKETUkH8qM2LCc"
-  , "9Yjk2NmuirUtf8b15jRSzHM5H7L2G1hoN6HTsRAJ8pCF"
-  ]
-
-
 type TestAlg = Ed25519 :& SHA512
 
 type TestMonad m = DBT 'RW TestAlg Mock.BData (NoLogsT (TracerT m))
 
 type TestAppByzantine m = AppByzantine (TestMonad m) TestAlg Mock.BData
-
 
 
 data TestNetLinkDescription m = TestNetLinkDescription
@@ -166,18 +166,8 @@ mkNodeDescription ncFrom ncTo ncTraceCallback =
         ncAppCallbacks = mempty
     in TestNetLinkDescription {..}
 
-
 type TestNetDescription m = [TestNetLinkDescription m]
 
-
-type TestNetNode = ()
-
-
-type TestNet = Map.Map Int TestNetNode
-
-
-toPair :: TestNetLinkDescription m -> (Int, [Int])
-toPair TestNetLinkDescription{..} = (ncFrom, ncTo)
 
 
 createTestNetwork :: (MonadMask m, MonadFork m, MonadTMMonitoring m, MonadFail m)
