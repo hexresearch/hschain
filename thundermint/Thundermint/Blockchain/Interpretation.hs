@@ -7,7 +7,8 @@
 -- Encoding of application-specific logic for blockchain
 module Thundermint.Blockchain.Interpretation (
     -- * Pure state
-    BlockFold(..)
+    BChLogic(..)
+  , Interpreter(..)
   ) where
 
 import Control.Concurrent.MVar
@@ -22,7 +23,19 @@ import Thundermint.Store
 import Thundermint.Types.Blockchain
 
 
+data BChLogic q alg a = BChLogic
+  { processTx     :: !(TX a -> q ())
+  , processBlock  :: !(Block alg a -> q ())
+  , generateBlock :: !(Block alg a -> [TX a] -> q a)
+  , initialState  :: !(BlockchainState a)
+  }
 
+newtype Interpreter q m alg a = Interpreter
+  { interpretBCh :: forall x. BChState alg a -> q x -> m (Maybe (x, BChState alg a))
+  }
+
+
+{-
 -- | Data structure which encapsulate interpretation of
 --   blockchain. Type parameters have following meaning:
 --
@@ -53,3 +66,4 @@ data BlockFold alg a = BlockFold
   , initialState :: !(BlockchainState a)
     -- ^ State of blockchain BEFORE genesis block.
   }
+-}

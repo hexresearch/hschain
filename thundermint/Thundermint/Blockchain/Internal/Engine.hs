@@ -159,18 +159,18 @@ decideNewBlock config appValidatorKey appLogic@AppLogic{..} appCall@AppCallbacks
         mBlk <- lift
               $ retrievePropByID appPropStorage (currentH hParam) (commitBlockID cmt)
         case mBlk of
-          UnknownBlock           -> msgHandlerLoop (Just cmt) tm
-          InvalidBlock           -> error "Trying to commit invalid block!"
-          GoodBlock _ b st' val' -> lift $ performCommit b st' val'
-          UntestedBlock _ b      -> do
+          UnknownBlock      -> msgHandlerLoop (Just cmt) tm
+          InvalidBlock      -> error "Trying to commit invalid block!"
+          GoodBlock _ b bst -> lift $ performCommit b bst
+          UntestedBlock _ b -> do
             st <- throwNothingM BlockchainStateUnavalable
                 $ lift
                 $ bchStoreRetrieve appBchState $ pred (currentH hParam)
             lift (appValidationFun (validatorSet hParam) b st) >>= \case
-              Nothing         -> error "Trying to commit invalid block!"
-              Just (val',st') -> lift $ performCommit b st' val'
+              Nothing  -> error "Trying to commit invalid block!"
+              Just bst -> lift $ performCommit b bst
         where
-          performCommit b st' val' = do
+          performCommit b (BChState st' val') = do
             let nTx = maybe 0 (length . commitPrecommits) (blockLastCommit b)
             logger InfoS "Actual commit" $ LogBlockInfo
               (currentH hParam)
@@ -436,10 +436,10 @@ makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{
                | _:_ <- blockEvidence b -> invalid
                -- Block is correct and validators change is correct as
                -- well
-               | Just (valSet',st') <- mvalSet'
-               , validatorSetSize valSet' > 0
-               , blockValChange b == validatorsDifference valSet valSet'
-                 -> do setPropValidation appPropStorage bid $ Just (st',valSet')
+               | Just bst <- mvalSet'
+               , validatorSetSize (bChValidatorSet bst) > 0
+               , blockValChange b == validatorsDifference valSet (bChValidatorSet bst)
+                 -> do setPropValidation appPropStorage bid $ Just bst
                        return GoodProposal
                | otherwise
                  -> invalid
@@ -478,11 +478,11 @@ makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{
               , blockEvidence   = []
               }
         -- Call block generator
-        st                  <- throwNothingM BlockchainStateUnavalable
-                             $ bchStoreRetrieve appBchState h
-        (bData,valSet',st') <- appBlockGenerator valSet blockDummy st
-                           =<< peekNTransactions appMempool
-        let valCh = validatorsDifference valSet valSet'
+        st          <- throwNothingM BlockchainStateUnavalable
+                     $ bchStoreRetrieve appBchState h
+        (bData,bst) <- appBlockGenerator valSet blockDummy st
+                   =<< peekNTransactions appMempool
+        let valCh = validatorsDifference valSet (bChValidatorSet bst)
             block = blockDummy
               { blockHeader = headerDummy
                   { headerDataHash      = hashed bData
@@ -494,7 +494,7 @@ makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{
             bid   = blockHash block
         allowBlockID      appPropStorage r bid
         storePropBlock    appPropStorage block
-        setPropValidation appPropStorage bid (Just (st',valSet'))
+        setPropValidation appPropStorage bid (Just bst)
         return bid
     }
 

@@ -12,7 +12,7 @@
 -- |
 module Thundermint.Mock.KeyVal (
     genesisBlock
-  , transitions
+  , interpretSpec
   , executeSpec
   , BData(..)
   , Tx
@@ -24,6 +24,7 @@ import Control.Monad
 import Control.Monad.Catch
 import Control.Monad.Trans.Cont
 import Control.Monad.Trans.Class
+import Control.Monad.Trans.State.Strict
 import Control.Monad.IO.Class
 import Data.Maybe
 import Data.List
@@ -74,22 +75,6 @@ genesisBlock :: ValidatorSet Alg -> Block Alg BData
 genesisBlock valSet
   = makeGenesis "KV" (Time 0) (BData []) valSet
 
-transitions :: BlockFold alg BData
-transitions = BlockFold
-  { processTx           = const $ const process
-  , processBlock        = \_ b s0 -> foldM (flip process) s0 (blockTransactions $  blockData b)
-  , transactionsToBlock = \_ ->
-      let selectTx c []     = (c, [])
-          selectTx c (t:tx) = case process t c of
-                                Nothing -> selectTx c tx
-                                Just c' -> let (c'', b  ) = selectTx c' tx
-                                           in  (c'', t:b)
-      in (fmap . fmap . fmap) BData selectTx
-  , initialState        = Map.empty
-  }
-  where
-
-
 process :: Tx -> BState -> Maybe BState
 process (k,v) m
   | k `Map.member` m = Nothing
@@ -112,17 +97,20 @@ interpretSpec
   -> m (RunningNode m Alg BData, [m ()])
 interpretSpec p cb = do
   conn  <- askConnectionRO
-  store <- newSTMBchStorage $ initialState transitions
-  rewindBlockchainState transitions store
+  store <- newSTMBchStorage mempty
+  rewindBlockchainState store $ \(BChState st valset) b -> return $ do
+    st' <- foldM (flip process) st (let BData tx = blockData b in tx)
+    return $ BChState st' valset
+  --
   let logic = AppLogic
         { appValidationFun    = \valset b st -> do
-            return $ do st' <- processBlock transitions CheckSignature b st
-                        return (valset,st')
+            return $ do st' <- foldM (flip process) st (let BData tx = blockData b in tx)
+                        return $ BChState st' valset
         , appCommitQuery     = SimpleQuery $ \_ _ -> return ()
         , appBlockGenerator  = \valset _ st _ -> do
             let Just k = find (`Map.notMember` st) ["K_" ++ show (n :: Int) | n <- [1 ..]]
             i <- liftIO $ randomRIO (1,100)
-            return (BData [(k, i)], valset, Map.insert k i st)
+            return (BData [(k, i)], BChState (Map.insert k i st) valset)
         , appMempool         = nullMempool
         , appBchState        = store
         }
