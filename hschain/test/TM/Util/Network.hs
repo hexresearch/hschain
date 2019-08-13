@@ -16,7 +16,6 @@ module TM.Util.Network
   , NetPair
   ) where
 
-
 import Control.Concurrent (threadDelay)
 
 import qualified Control.Concurrent.Async as Async
@@ -58,12 +57,9 @@ import HSChain.Store
 import TM.RealNetwork
 
 
-instance MonadLogger IO where
-  logger severity str extra = putStrLn $ "LOG: " ++ show severity ++ ": " ++ show str ++ "(" ++ show (toObject extra) ++ ")"
-  localNamespace _ act = act
-
 shouldRetry :: Bool
 shouldRetry = True
+
 retryPolicy :: RetryPolicy
 retryPolicy = constantDelay 500 <> limitRetries 20
 
