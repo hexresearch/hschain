@@ -171,10 +171,12 @@ decideNewBlock config appValidatorKey appLogic@AppLogic{..} appCall@AppCallbacks
               Just (val',st') -> lift $ performCommit b st' val'
         where
           performCommit b st' val' = do
+            let nTx = maybe 0 (length . commitPrecommits) (blockLastCommit b)
             logger InfoS "Actual commit" $ LogBlockInfo
               (currentH hParam)
               (blockData b)
-              (maybe 0 (length . commitPrecommits) (blockLastCommit b))
+              nTx
+            usingCounter prometheusNTx nTx
             case appCommitQuery of
               SimpleQuery callback -> do
                 r <- queryRW $ do storeCommit cmt b
