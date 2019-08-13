@@ -11,10 +11,12 @@ module Thundermint.Monitoring (
   , TGauge(..)
   , standardMonitoring
   , MonadTMMonitoring(..)
+  , addCounterNow
   , setTGaugeNow
   , setTGVectorNow
   ) where
 
+import Control.Monad
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
 import Data.Monoid ((<>))
@@ -42,6 +44,7 @@ data TGVector l a = TGVector (a -> Double) !(Vector l Gauge)
 data PrometheusGauges = PrometheusGauges
   { prometheusHeight           :: !(TGauge Height)
   , prometheusRound            :: !(TGauge Round)
+  , prometheusNTx              :: !Counter
   , prometheusNumPeers         :: !(TGauge Int)
   , prometheusMempoolSize      :: !(TGauge Int)
   , prometheusMempoolAdded     :: !(TGauge Int)
@@ -63,6 +66,9 @@ createMonitoring prefix = do
   prometheusRound       <- makeGauge (\(Round r) -> fromIntegral r)
     "blockchain_rounds_total"
     "Number of rounds to commit block"
+  prometheusNTx         <- makeCounter
+    "blockchain_n_tx"
+    "Number of commited transactions sing app start"
   prometheusNumPeers    <- makeGauge fromIntegral
     "peers_total"
     "Number of current connected peers"
@@ -89,6 +95,8 @@ createMonitoring prefix = do
     "Number of messages in incoming queue"
   return PrometheusGauges{..}
   where
+    makeCounter nm help = do
+      register $ counter $ Info (prefix <> "_" <> nm) help
     makeGauge f nm help = do
       g <- register $ gauge $ Info (prefix <> "_" <> nm) help
       return $ TGauge f g
@@ -102,8 +110,12 @@ createMonitoring prefix = do
 
 -- | Monad which supports monitoring of thundermint.
 class Monad m => MonadTMMonitoring m where
-  usingGauge  :: (PrometheusGauges -> TGauge a) -> a -> m ()
-  usingVector :: (Label l) => (PrometheusGauges -> TGVector l a) -> l -> a -> m ()
+  usingCounter :: (PrometheusGauges -> Counter) -> Int -> m ()
+  usingGauge   :: (PrometheusGauges -> TGauge a) -> a -> m ()
+  usingVector  :: (Label l) => (PrometheusGauges -> TGVector l a) -> l -> a -> m ()
+
+addCounterNow :: (MonadIO m) => Counter -> Int -> m ()
+addCounterNow cnt = void . runMonitorNowT . addCounter cnt . fromIntegral
 
 setTGaugeNow :: (MonadIO m) => TGauge a -> a ->  m ()
 setTGaugeNow (TGauge f g) x = runMonitorNowT $ setGauge g (f x)
@@ -122,21 +134,26 @@ instance MonadIO m => MonadMonitor (MonitorNowT m) where
 
 -- | IO doesn't have monitoring
 instance MonadTMMonitoring IO where
-  usingGauge  _ _   = return ()
-  usingVector _ _ _ = return ()
+  usingCounter _ _   = return ()
+  usingGauge   _ _   = return ()
+  usingVector  _ _ _ = return ()
 
 instance MonadTMMonitoring m => MonadTMMonitoring (LoggerT m) where
+  usingCounter f  = lift . usingCounter f 
   usingGauge  f   = lift . usingGauge  f
   usingVector f l = lift . usingVector f l
 
 instance MonadTMMonitoring m => MonadTMMonitoring (NoLogsT m) where
+  usingCounter f  = lift . usingCounter f 
   usingGauge  f   = lift . usingGauge  f
   usingVector f l = lift . usingVector f l
 
 instance MonadTMMonitoring m => MonadTMMonitoring (TracerT m) where
+  usingCounter f  = lift . usingCounter f 
   usingGauge  f   = lift . usingGauge  f
   usingVector f l = lift . usingVector f l
 
 instance MonadTMMonitoring m => MonadTMMonitoring (DBT rm alg a m) where
+  usingCounter f  = lift . usingCounter f 
   usingGauge  f   = lift . usingGauge  f
   usingVector f l = lift . usingVector f l
