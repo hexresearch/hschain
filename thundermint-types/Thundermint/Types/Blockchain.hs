@@ -330,6 +330,7 @@ class (Serialise a, Serialise (TX a), Serialise (BlockchainState a)) => BlockDat
   type BlockchainState a
   -- | Return list of transaction in block
   blockTransactions :: a -> [TX a]
+  -- | Collect information about block data for logging
   logBlockData      :: a -> JSON.Object
 
 
