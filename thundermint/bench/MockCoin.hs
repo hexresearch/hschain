@@ -26,27 +26,27 @@ benchmarks
     | size <- [0, 1, 10, 100, 1000]
     ]
   , bgroup "react"
-    [ env (transactionsToBlock transitions (Height 1) state <$> generateTxList size)
-    $ bench (show size)
-    . nf (\(_,b) -> processBlock transitions CheckSignature
-           (Block { blockData       = b
-                  , blockHeader     = Header
-                    { headerHeight         = Height 0
-                    , headerTime           = Time 0
-                    , headerChainID        = ""
-                    , headerLastBlockID    = Nothing
-                    , headerValidatorsHash = Hashed (Hash "")
-                    , headerDataHash       = Hashed (Hash "")
-                    , headerValChangeHash  = Hashed (Hash "")
-                    , headerLastCommitHash = Hashed (Hash "")
-                    , headerEvidenceHash   = Hashed (Hash "")
-                    }
-                  , blockValChange  = mempty
-                  , blockLastCommit = Nothing
-                  , blockEvidence   = []
-                  } :: Block Alg BData)
-           state
-         )
+    [ env (transactionsToBlock transitions (Height 1) state <$> generateTxList size) $ \(~(_,block)) ->
+        bench (show (length (blockTransactions block)) ++ " of " ++ show size) $
+        nf (\b -> processBlock transitions CheckSignature
+             (Block { blockData       = b
+                    , blockHeader     = Header
+                      { headerHeight         = Height 0
+                      , headerTime           = Time 0
+                      , headerChainID        = ""
+                      , headerLastBlockID    = Nothing
+                      , headerValidatorsHash = Hashed (Hash "")
+                      , headerDataHash       = Hashed (Hash "")
+                      , headerValChangeHash  = Hashed (Hash "")
+                      , headerLastCommitHash = Hashed (Hash "")
+                      , headerEvidenceHash   = Hashed (Hash "")
+                      }
+                    , blockValChange  = mempty
+                    , blockLastCommit = Nothing
+                    , blockEvidence   = []
+                    } :: Block Alg BData)
+             state
+           ) block
     | size <- [0, 1, 10, 100, 1000]
     ]
   ]
