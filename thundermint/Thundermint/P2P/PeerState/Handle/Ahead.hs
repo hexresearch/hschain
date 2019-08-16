@@ -1,8 +1,12 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs            #-}
+{-# LANGUAGE LambdaCase       #-}
 {-# LANGUAGE RecordWildCards  #-}
 
-module Thundermint.P2P.PeerState.Handle.Ahead ( handler ) where
+module Thundermint.P2P.PeerState.Handle.Ahead
+  ( handler
+  , issuedGossipHandler
+  ) where
 
 import Control.Monad.RWS.Strict
 
@@ -24,19 +28,22 @@ import qualified Data.Map.Strict as Map
 import qualified Data.Set        as Set
 
 
-handler :: Handler Ahead alg a m
+handler :: Handler Ahead Event alg a m
 handler =
   handlerGeneric
    handlerGossipMsg
-   handlerAnnouncement
    handlerVotesTimeout
    handlerMempoolTimeout
    handlerBlocksTimeout
 
+issuedGossipHandler :: Handler Ahead GossipMsg alg a m
+issuedGossipHandler =
+  issuedGossipHandlerGeneric
+    handlerGossipMsg
+    advanceOurHeignt
+
 handlerGossipMsg :: MessageHandler AheadState alg a m
-handlerGossipMsg gossipMsg = do
-  resendGossip gossipMsg
-  case gossipMsg of
+handlerGossipMsg = \case
     GossipAnn (AnnStep step@(FullStep h _ _)) -> do
       -- Don't go back.
       s@(FullStep h0 _ _) <- use aheadPeerStep
@@ -49,9 +56,8 @@ handlerGossipMsg gossipMsg = do
     _ -> currentState
 
 ----------------------------------------------------------------
-
-handlerAnnouncement :: AnnouncementHandler AheadState alg a m
-handlerAnnouncement (TxAnn (AnnStep (FullStep ourH _ _))) = do
+advanceOurHeignt :: AdvanceOurHeight AheadState alg a m
+advanceOurHeignt (FullStep ourH _ _) = do
   step@(FullStep h _ _) <- use aheadPeerStep
   if h == ourH then
         do vals <- throwNothing (DBMissingValSet h) <=< lift $ queryRO
@@ -65,7 +71,6 @@ handlerAnnouncement (TxAnn (AnnStep (FullStep ourH _ _))) = do
              , _peerBlocks     = Set.empty
              }
      else currentState
-handlerAnnouncement _ = currentState
 ----------------------------------------------------------------
 
 handlerVotesTimeout :: TimeoutHandler AheadState alg a m

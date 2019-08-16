@@ -1,10 +1,14 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs            #-}
 {-# LANGUAGE MultiWayIf       #-}
+{-# LANGUAGE LambdaCase       #-}
 {-# LANGUAGE RecordWildCards  #-}
 {-# LANGUAGE ViewPatterns     #-}
 
-module Thundermint.P2P.PeerState.Handle.Lagging ( handler ) where
+module Thundermint.P2P.PeerState.Handle.Lagging
+  ( handler
+  , issuedGossipHandler
+  ) where
 
 import Control.Monad
 import Control.Monad.RWS.Strict
@@ -32,19 +36,22 @@ import qualified Data.IntSet        as ISet
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Map.Strict    as Map
 
-handler :: Handler Lagging alg a m
+handler :: Handler Lagging Event alg a m
 handler =
   handlerGeneric
    handlerGossipMsg
-   handlerAnnouncement
    handlerVotesTimeout
    handlerMempoolTimeout
    handlerBlocksTimeout
 
+issuedGossipHandler :: Handler Lagging GossipMsg alg a m
+issuedGossipHandler =
+  issuedGossipHandlerGeneric
+    handlerGossipMsg
+    advanceOurHeight
+
 handlerGossipMsg :: MessageHandler LaggingState alg a m
-handlerGossipMsg gossipMsg = do
-  resendGossip gossipMsg
-  case gossipMsg of
+handlerGossipMsg = \case
     GossipPreCommit v@(signedValue -> Vote{..}) -> do
       addPrecommit voteHeight voteRound $ signedKeyInfo v
       currentState
@@ -103,14 +110,14 @@ addBlock b = do
       when (blockHash b == peerBid) $ lagPeerHasBlock .= True
 ----------------------------------------------------------------
 
-handlerAnnouncement :: AnnouncementHandler LaggingState alg a m
-handlerAnnouncement = const currentState
+advanceOurHeight :: AdvanceOurHeight LaggingState alg a m
+advanceOurHeight = const currentState
 ----------------------------------------------------------------
 
 handlerVotesTimeout :: TimeoutHandler LaggingState alg a m
 handlerVotesTimeout = do
   bchH      <- lift $ queryRO blockchainHeight
-  trace (TePeerGossipVotes TepgvNewIter)
+--  trace (TePeerGossipVotes TepgvNewIter)
   trace (TePeerGossipVotes TepgvLagging)
   (FullStep peerH _ _) <- use lagPeerStep
   mcmt <- lift $ queryRO $

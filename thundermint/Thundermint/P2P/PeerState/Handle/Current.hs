@@ -5,7 +5,10 @@
 {-# LANGUAGE RecordWildCards   #-}
 {-# LANGUAGE ViewPatterns      #-}
 
-module Thundermint.P2P.PeerState.Handle.Current ( handler ) where
+module Thundermint.P2P.PeerState.Handle.Current
+  ( handler
+  , issuedGossipHandler
+  ) where
 
 
 import Control.Concurrent.STM   (atomically)
@@ -39,18 +42,22 @@ import qualified Data.IntMap.Strict as IMap
 import qualified Data.Map.Strict    as Map
 import qualified Data.Set           as Set
 
-handler :: Handler Current alg a m
+handler :: Handler Current Event alg a m
 handler =
   handlerGeneric
    handlerGossipMsg
-   handlerAnnouncement
    handlerVotesTimeout
    handlerMempoolTimeout
    handlerBlocksTimeout
 
+issuedGossipHandler :: Handler Current GossipMsg alg a m
+issuedGossipHandler =
+  issuedGossipHandlerGeneric
+    handlerGossipMsg
+    advanceOurHeight
+
 handlerGossipMsg :: MessageHandler CurrentState alg a m
 handlerGossipMsg  gossipMsg = do
-  resendGossip gossipMsg
   case gossipMsg of
     GossipPreVote v@(signedValue -> Vote{..}) -> do
       addPrevote voteHeight voteRound $ signedKeyInfo v
@@ -140,10 +147,11 @@ addPrecommit h r idx = do
 addBlock :: (MonadState (CurrentState alg a) m, CryptoSign alg, CryptoHash alg)
          => Block alg a -> m ()
 addBlock b = peerBlocks %= Set.insert (blockHash b)
-----------------------------------------------------------------
 
-handlerAnnouncement :: AnnouncementHandler CurrentState alg a m
-handlerAnnouncement (TxAnn (AnnStep (FullStep ourH _ _))) = do
+----------------------------------------------------------------
+  --
+advanceOurHeight :: AdvanceOurHeight CurrentState alg a m
+advanceOurHeight (FullStep ourH _ _) = do
       -- Current peer may become lagging if we increase our height
   (FullStep h _ _) <- use peerStep
   if h < ourH then
@@ -164,14 +172,12 @@ handlerAnnouncement (TxAnn (AnnStep (FullStep ourH _ _))) = do
              , _lagPeerBlockID     = bid
              }
     else currentState
-handlerAnnouncement _ = currentState
 
 ----------------------------------------------------------------
 
 handlerVotesTimeout :: TimeoutHandler CurrentState alg a m
 handlerVotesTimeout = do
   bchH      <- lift $ queryRO blockchainHeight
-  trace (TePeerGossipVotes TepgvNewIter)
   trace (TePeerGossipVotes TepgvCurrent)
   st <- view consensusSt >>= lift . liftIO . atomically
   case st of

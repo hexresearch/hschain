@@ -17,6 +17,7 @@ import Lens.Micro.Mtl
 
 import Thundermint.Blockchain.Internal.Types
 import Thundermint.Crypto
+import Thundermint.Debug.Trace
 import Thundermint.Exceptions
 import Thundermint.Store
 import Thundermint.Types.Blockchain
@@ -82,25 +83,28 @@ type AnnouncementHandler s alg a m =  HandlerCtx alg a m
                                    => MessageTx alg a
                                    -> TransitionT s alg a m (SomeState alg a)
 
+type AdvanceOurHeight s alg a m =  HandlerCtx alg a m
+                                => FullStep
+                                -> TransitionT s alg a m (SomeState alg a)
+
 type TimeoutHandler s alg a m =  (Wrapable s, HandlerCtx alg a m)
                               => TransitionT s alg a m (SomeState alg a)
 
 handlerGeneric :: (Wrapable s, HandlerCtx alg a m)
                => MessageHandler s alg a m
-               -> AnnouncementHandler s alg a m
                -> TimeoutHandler s alg a m
                -> TimeoutHandler s alg a m
                -> TimeoutHandler s alg a m
-               -> Event alg a -> TransitionT s alg a m (SomeState alg a)
+               -> Event alg a
+               -> TransitionT s alg a m (SomeState alg a)
 handlerGeneric
   hanldlerGossipMsg
-  handlerAnnounncement
   handlerVotesTimeout
   handlerMempoolTimeout
   handlerBlocksTimeout = \ case
-  EGossip m -> hanldlerGossipMsg m
-  EAnnouncement a -> handlerAnnounncement' a
-  EVotesTimeout -> handlerVotesTimeout
+  EGossip m -> hanldlerGossipMsg' m
+  EAnnouncement a -> handlerAnnounncement a
+  EVotesTimeout -> handlerVotesTimeout'
   EMempoolTimeout -> handlerMempoolTimeout
   EBlocksTimeout -> handlerBlocksTimeout
   EAnnounceTimeout -> handlerAnnounceTimeout
@@ -114,11 +118,33 @@ handlerGeneric
           StepAwaitCommit r -> push2Gossip $ GossipAnn $ AnnHasProposal h r
           _                 -> return ()
       currentState
-    handlerAnnounncement' e = do
-      s <- handlerAnnounncement e
+    handlerAnnounncement e = do
       case e of
         TxAnn       a -> push2Gossip $ GossipAnn a
         TxProposal  p -> push2Gossip $ GossipProposal  p
         TxPreVote   v -> push2Gossip $ GossipPreVote   v
         TxPreCommit v -> push2Gossip $ GossipPreCommit v
-      return s
+      currentState
+    hanldlerGossipMsg' m = do
+      resendGossip m
+      hanldlerGossipMsg m
+    handlerVotesTimeout' = do
+      trace (TePeerGossipVotes TepgvNewIter)
+      handlerVotesTimeout
+
+issuedGossipHandlerGeneric :: (Wrapable s, HandlerCtx alg a m)
+         => MessageHandler s alg a m
+         -> AdvanceOurHeight s alg a m
+         -> GossipMsg alg a
+         -> TransitionT s alg a m (SomeState alg a)
+issuedGossipHandlerGeneric
+  handlerGossipMsg
+  advanceOurHeight
+  m = case m of
+          GossipProposal {}     -> handlerGossipMsg m
+          GossipPreVote {}      -> handlerGossipMsg m
+          GossipPreCommit {}    -> handlerGossipMsg m
+          GossipBlock {}        -> handlerGossipMsg m
+          GossipAnn (AnnStep s) -> advanceOurHeight s
+          _                     -> currentState
+

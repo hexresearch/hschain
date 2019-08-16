@@ -63,9 +63,9 @@ type HandlerCtx alg a m = ( Serialise a
                           )
 
 -- | Handler of events.
-type Handler s alg a m =  HandlerCtx alg a m
-                       => Event alg a -- ^ `Event' to handle
-                       -> TransitionT (InternalState s) alg a m (SomeState alg a) -- ^ new `TransitionT'
+type Handler s t alg a m =  HandlerCtx alg a m
+                         => t alg a -- ^ `Event' to handle
+                         -> TransitionT (InternalState s) alg a m (SomeState alg a) -- ^ new `TransitionT'
 
 currentState :: (Functor m, Monad m, Wrapable t) => TransitionT t alg a m (SomeState alg a)
 currentState = wrap <$> get

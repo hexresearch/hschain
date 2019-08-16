@@ -152,6 +152,7 @@ peerFSM
   -> m b
 peerFSM PeerChans{..} peerExchangeCh gossipCh recvCh cursor@MempoolCursor{..} = logOnException $ do
   logger InfoS "Starting routing for receiving messages" ()
+  trace (TePeerGossipVotes TepgvStarted)
   ownPeerChanTx  <- liftIO $ atomically $ dupTChan peerChanTx
   votesTO    <- newIO
   mempoolTO  <- newIO
