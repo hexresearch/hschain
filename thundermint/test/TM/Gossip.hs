@@ -42,7 +42,6 @@ import Thundermint.Logger
 import Thundermint.Mock.Types
 import Thundermint.P2P
 import Thundermint.P2P.Internal
-import Thundermint.P2P.PeerState
 import Thundermint.P2P.PeerState.Types (Event(..))
 import Thundermint.P2P.Types
 import Thundermint.Run

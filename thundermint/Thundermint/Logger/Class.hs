@@ -1,16 +1,14 @@
 -- |
 module Thundermint.Logger.Class where
 
-import Control.Monad.Trans.Class
 import Control.Monad.Trans.Reader
 import Control.Monad.Morph
 import Control.Monad.Trans.Maybe             (MaybeT(..))
 import Control.Monad.Trans.State.Strict as SS(StateT(..))
 import Control.Monad.Trans.State.Lazy   as SL(StateT(..))
 import Control.Monad.Trans.Except            (ExceptT(..))
-import Control.Monad.Trans.Identity           (IdentityT(..))
---import Control.Monad.Trans.RWS.Strict   as RWSTS     (RWST(..))
-import Data.Text       (Text)
+import Control.Monad.Trans.Identity          (IdentityT(..))
+import Data.Text                             (Text)
 import Katip
 import Pipes
 

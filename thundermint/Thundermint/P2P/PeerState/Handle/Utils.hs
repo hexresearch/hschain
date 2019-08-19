@@ -102,12 +102,12 @@ handlerGeneric
   handlerVotesTimeout
   handlerMempoolTimeout
   handlerBlocksTimeout = \ case
-  EGossip m -> hanldlerGossipMsg' m
-  EAnnouncement a -> handlerAnnounncement a
-  EVotesTimeout -> handlerVotesTimeout'
-  EMempoolTimeout -> handlerMempoolTimeout
-  EBlocksTimeout -> handlerBlocksTimeout
-  EAnnounceTimeout -> handlerAnnounceTimeout
+    EGossip m -> hanldlerGossipMsg' m
+    EAnnouncement a -> handlerAnnounncement a
+    EVotesTimeout -> handlerVotesTimeout'
+    EMempoolTimeout -> handlerMempoolTimeout
+    EBlocksTimeout -> handlerBlocksTimeout
+    EAnnounceTimeout -> handlerAnnounceTimeout
   where
     handlerAnnounceTimeout :: TimeoutHandler s alg a m
     handlerAnnounceTimeout = do
@@ -141,10 +141,10 @@ issuedGossipHandlerGeneric
   handlerGossipMsg
   advanceOurHeight
   m = case m of
-          GossipProposal {}     -> handlerGossipMsg m
-          GossipPreVote {}      -> handlerGossipMsg m
-          GossipPreCommit {}    -> handlerGossipMsg m
-          GossipBlock {}        -> handlerGossipMsg m
-          GossipAnn (AnnStep s) -> advanceOurHeight s
-          _                     -> currentState
+    GossipProposal {}     -> handlerGossipMsg m
+    GossipPreVote {}      -> handlerGossipMsg m
+    GossipPreCommit {}    -> handlerGossipMsg m
+    GossipBlock {}        -> handlerGossipMsg m
+    GossipAnn (AnnStep s) -> advanceOurHeight s
+    _                     -> currentState
 

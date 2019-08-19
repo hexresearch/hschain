@@ -22,7 +22,6 @@ import Thundermint.Types.Blockchain
 import Thundermint.Types.Validators
 
 import Thundermint.P2P.Internal.Logging
-import Thundermint.P2P.PeerState
 
 import qualified Katip
 
@@ -90,8 +89,3 @@ showGossipMsg (GossipAnn ann)     = "GossipAnn { " <> Katip.showLS ann <> " }"
 showGossipMsg (GossipTx _)        = "GossipTx {}"
 showGossipMsg (GossipPex p)       = "GossipPex { " <> Katip.showLS p <> " }"
 
-showPeerState :: PeerState alg a -> Katip.LogStr
-showPeerState (Lagging _) = "Lagging {}"
-showPeerState (Current _) = "Current {}"
-showPeerState (Ahead fs)  = "Ahead { " <> Katip.showLS fs <> " }"
-showPeerState Unknown     = "Unknown {}"

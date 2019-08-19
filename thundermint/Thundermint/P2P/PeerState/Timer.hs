@@ -15,11 +15,11 @@ data Timer = Timer { timerThread :: !(TMVar ThreadId)
                    , timerTMVar  :: !(TMVar ())
                    }
 
-new :: STM Timer
-new = Timer <$> newEmptyTMVar <*> newEmptyTMVar
+newTimer :: STM Timer
+newTimer = Timer <$> newEmptyTMVar <*> newEmptyTMVar
 
-newIO :: MonadIO m => m Timer
-newIO = liftIO $
+newTimerIO :: MonadIO m => m Timer
+newTimerIO = liftIO $
     Timer <$> newEmptyTMVarIO <*> newEmptyTMVarIO
 
 reset :: MonadIO m => Timer -> Int -> m ()

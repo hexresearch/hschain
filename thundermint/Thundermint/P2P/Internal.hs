@@ -23,16 +23,12 @@ import Prelude                hiding (round)
 
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Retry          (RetryPolicy, exponentialBackoff, limitRetries, recoverAll)
-import Data.Foldable          (toList,asum)
+import Data.Foldable          (asum)
 import Data.Function          (fix)
 import Katip                  (showLS, sl)
-import System.Random          (newStdGen, randomRIO)
+import System.Random          (newStdGen)
 import System.Random.Shuffle  (shuffle')
 
-import qualified Data.IntMap.Strict as IMap
-import qualified Data.IntSet        as ISet
-import qualified Data.List.NonEmpty as NE
-import qualified Data.Map.Strict    as Map
 import qualified Data.Set           as Set
 import qualified Data.Text          as T
 
@@ -40,18 +36,14 @@ import Thundermint.Blockchain.Internal.Engine.Types
 import Thundermint.Blockchain.Internal.Types
 import Thundermint.Control
 import Thundermint.Crypto
-import Thundermint.Crypto.Containers
 import Thundermint.Debug.Trace
-import Thundermint.Exceptions
 import Thundermint.Logger
 import Thundermint.Monitoring
 import Thundermint.P2P.Network
-import Thundermint.P2P.PeerState
 import Thundermint.P2P.Types
 import Thundermint.P2P.PeerState.Timer
 import Thundermint.Store
 import Thundermint.Types.Blockchain
-import Thundermint.Types.Validators
 import Thundermint.Utils
 
 import Thundermint.P2P.Internal.PeerRegistry
@@ -154,10 +146,10 @@ peerFSM PeerChans{..} peerExchangeCh gossipCh recvCh cursor@MempoolCursor{..} = 
   logger InfoS "Starting routing for receiving messages" ()
   trace (TePeerGossipVotes TepgvStarted)
   ownPeerChanTx  <- liftIO $ atomically $ dupTChan peerChanTx
-  votesTO    <- newIO
-  mempoolTO  <- newIO
-  blocksTO   <- newIO
-  announceDelay <- newIO
+  votesTO       <- newTimerIO
+  mempoolTO     <- newTimerIO
+  blocksTO      <- newTimerIO
+  announceDelay <- newTimerIO
   -- TODO: Randomize timeouts
   let resetVTO = reset votesTO (1e3 * gossipDelayVotes p2pConfig)
       resetMTO = reset mempoolTO (1e3 * gossipDelayMempool p2pConfig)
@@ -175,11 +167,7 @@ peerFSM PeerChans{..} peerExchangeCh gossipCh recvCh cursor@MempoolCursor{..} = 
           , EAnnounceTimeout <$ await announceDelay
           , readTChan recvCh
           , EAnnouncement <$> readTChan ownPeerChanTx]
---          <|> (EGossip <$> (readTChan ownPeerChanTx >>= return . \case
---                                                                                    TxAnn       a -> GossipAnn a
---                                                                                    TxProposal  p -> GossipProposal  p
---                                                                                    TxPreVote   v -> GossipPreVote   v
---                                                                                    TxPreCommit v -> GossipPreCommit v)))
+
         let config = Config proposalStorage cursor consensusState gossipCnts
         (s', cmds) <- handler config s event
         case event of
@@ -208,7 +196,7 @@ startPeer
   -> PeerRegistry
   -> Mempool m alg (TX a)
   -> m ()
-startPeer peerAddrTo peerCh@PeerChans{..} conn peerRegistry mempool = logOnException $ do
+startPeer peerAddrTo peerCh@PeerChans{..} conn peerRegistry mempool = logOnException $
   descendNamespace (T.pack (show peerAddrTo)) $ logOnException $ do
     logger InfoS "Starting peer" ()
     liftIO $ atomically $ writeTChan peerChanPexNewAddresses [peerAddrTo]
@@ -224,157 +212,6 @@ startPeer peerAddrTo peerCh@PeerChans{..} conn peerRegistry mempool = logOnExcep
       ]
     logger InfoS "Stopping peer" ()
 
-
--- | Gossip votes with given peer
-peerGossipVotes
-  :: ( MonadReadDB m alg a, MonadMask m, MonadIO m, MonadLogger m, MonadTrace m
-     , Crypto alg, Serialise a)
-  => PeerStateObj m alg a         -- ^ Current state of peer
-  -> PeerChans    m alg a         -- ^ Read-only access to
-  -> TBQueue (GossipMsg alg a)
-  -> m ()
-peerGossipVotes peerObj PeerChans{..} gossipCh = logOnException $ do
-  logger InfoS "Starting routine for gossiping votes" ()
-  trace (TePeerGossipVotes TepgvStarted)
-  forever $ do
-    bchH      <- queryRO blockchainHeight
-    peerState <- getPeerState peerObj
-    trace (TePeerGossipVotes TepgvNewIter)
-    case peerState of
-      --
-      Lagging p -> do
-        trace (TePeerGossipVotes TepgvLagging)
-        mcmt <- case lagPeerStep p of
-          FullStep peerH _ _
-            | peerH == bchH -> queryRO $ retrieveLocalCommit peerH
-            | otherwise     -> queryRO $ retrieveCommit      peerH
-        --
-        case mcmt of
-         Just cmt -> do
-           let cmtVotes  = Map.fromList [ (signedKeyInfo v, unverifySignature v)
-                                        | v <- NE.toList (commitPrecommits cmt) ]
-           let peerVotes = Map.fromList
-                         $ map (\x -> (ValidatorIdx x,()))
-                         $ ISet.toList
-                         $ getValidatorIntSet
-                         $ lagPeerPrecommits p
-               unknown   = Map.difference cmtVotes peerVotes
-           case Map.size unknown of
-             0 -> return ()
-             n -> do i <- liftIO $ randomRIO (0,n-1)
-                     let vote = unverifySignature $ toList unknown !! i
-                     liftIO $ atomically $ writeTBQueue gossipCh $ GossipPreCommit vote
-         Nothing -> return ()
-      --
-      Current p -> trace (TePeerGossipVotes TepgvCurrent) >> liftIO (atomically consensusState) >>= \case
-        Nothing                       -> return ()
-        Just (h',_) | h' /= succ bchH -> return ()
-        Just (_,tm)                   -> do
-          let FullStep _ round _ = peerStep p
-              doGosip            = liftIO . atomically . writeTBQueue gossipCh
-          let toSet = getValidatorIntSet
-
-          -- Send proposals
-          case () of
-            _| not $ round `Set.member` peerProposals p
-             , Just pr <- round `Map.lookup` smProposals tm
-               -> doGosip $ GossipProposal $ unverifySignature pr
-             | otherwise -> return ()
-          -- Send prevotes
-          case () of
-            _| Just localPV <- Map.lookup round $ toPlainMap $ smPrevotesSet tm
-             , unknown      <- IMap.difference localPV peerPV
-             , not (IMap.null unknown)
-               -> do let n = IMap.size unknown
-                     i <- liftIO $ randomRIO (0,n-1)
-                     let vote = unverifySignature $ toList unknown !! i
-                     doGosip $ GossipPreVote vote
-             | otherwise -> return ()
-             where
-               peerPV = maybe IMap.empty (IMap.fromSet (const ()) . toSet)
-                      $ Map.lookup round
-                      $ peerPrevotes p
-          -- Send precommits
-          case () of
-            _| Just localPC <- Map.lookup round $ toPlainMap $ smPrecommitsSet tm
-             , unknown      <- IMap.difference localPC peerPC
-             , not (IMap.null unknown)
-               -> do let n = IMap.size unknown
-                     i <- liftIO $ randomRIO (0,n-1)
-                     let vote = unverifySignature $ toList unknown !! i
-                     doGosip $ GossipPreCommit vote
-             | otherwise -> return ()
-             where
-               peerPC = maybe IMap.empty (IMap.fromSet (const ()) . toSet)
-                      $ Map.lookup round
-                      $ peerPrecommits p
-      Ahead   _ -> trace (TePeerGossipVotes TepgvAhead)   >> return ()
-      Unknown   -> trace (TePeerGossipVotes TepgvUnknown) >> return ()
-    waitSec (0.001 * fromIntegral (gossipDelayVotes p2pConfig))
-
-peerGossipMempool
-  :: ( MonadIO m, MonadFork m, MonadMask m, MonadLogger m
-     )
-  => PeerStateObj m alg a
-  -> PeerChans m alg a
-  -> NetworkCfg
-  -> TBQueue (GossipMsg alg a)
-  -> MempoolCursor m alg (TX a)
-  -> m x
-peerGossipMempool peerObj PeerChans{..} config gossipCh MempoolCursor{..} = logOnException $ do
-  logger InfoS "Starting routine for gossiping transactions" ()
-  forever $ do
-    getPeerState peerObj >>= \case
-      Current{} -> gossipTx
-      Ahead{}   -> gossipTx
-      _         -> return ()
-    waitSec (0.001 * fromIntegral (gossipDelayMempool config))
-  where
-    gossipTx = advanceCursor >>= \case
-      Just tx -> do liftIO $ atomically $ writeTBQueue gossipCh $ GossipTx tx
-                    tickSend $ Logging.tx gossipCnts
-      Nothing -> return ()
-
--- | Gossip blocks with given peer
-peerGossipBlocks
-  :: (MonadReadDB m alg a, MonadIO m, MonadMask m, MonadLogger m, Serialise a, Crypto alg)
-  => PeerStateObj m alg a       -- ^ Current state of peer
-  -> PeerChans m alg a          -- ^ Read-only access to
-  -> TBQueue (GossipMsg alg a)  -- ^ Network API
-  -> m x
-peerGossipBlocks peerObj PeerChans{..} gossipCh = logOnException $ do
-  logger InfoS "Starting routine for gossiping votes" ()
-  forever $ do
-    getPeerState peerObj >>= \case
-      --
-      Lagging p
-        | lagPeerHasProposal p
-        , not (lagPeerHasBlock p)
-          -> do let FullStep h _ _ = lagPeerStep p
-                -- FIXME: Partiality
-                b <- throwNothing (DBMissingBlock h) <=< queryRO
-                   $ retrieveBlock h
-                liftIO $ atomically $ writeTBQueue gossipCh $ GossipBlock b
-                tickSend $ blocks gossipCnts
-        | otherwise -> return ()
-      --
-      Current p -> do
-        let FullStep h r _ = peerStep p
-        mbid <- retrievePropByR proposalStorage h r
-        case () of
-           -- Peer has proposal but not block
-          _| Just (bid,b) <- blockFromBlockValidation mbid
-           , r `Set.member` peerProposals p
-           , not $ bid `Set.member` peerBlocks p
-             -> do logger DebugS ("Gossip: " <> showLS bid) ()
-                   liftIO $ atomically $ writeTBQueue gossipCh $ GossipBlock b
-                   tickSend $ blocks gossipCnts
-           --
-           | otherwise -> return ()
-      -- Nothing to do
-      Ahead _ -> return ()
-      Unknown -> return ()
-    waitSec (0.001 * fromIntegral (gossipDelayBlocks p2pConfig))
 
 -- | Routine for receiving messages from peer
 peerReceive
@@ -422,37 +259,6 @@ peerSend
   -> TBQueue (GossipMsg alg a)
   -> P2PConnection
   -> m x
---peerSend peerSt PeerChans{..} gossipCh P2PConnection{..} = logOnException $ do
---  logger InfoS "Starting routing for sending data" ()
---  ownPeerChanTx  <- liftIO $ atomically $ dupTChan peerChanTx
---  ownPeerChanPex <- liftIO $ atomically $ dupTChan peerChanPex
---  forever $ do
---    msg <- liftIO $ atomically $ asum
---      [ readTChan ownPeerChanTx >>= return . \case
---          TxAnn       a -> GossipAnn a
---          TxProposal  p -> GossipProposal  p
---          TxPreVote   v -> GossipPreVote   v
---          TxPreCommit v -> GossipPreCommit v
---      , readTBQueue gossipCh
---      , GossipPex <$> readTChan ownPeerChanPex
---      ]
---    -- XXX Возможна ли тут гонка? Например, сообщение попало в другую
---    --     ноду, та уже использует его, однако, TCP ACK с той ноды ещё
---    --     не вернулся на текущую ноду и addBlock/advanceOurHeight ещё
---    --     не успели вызваться.  Update state of peer when we advance
---    --     to next height
---    send $ serialise msg
---    case msg of
---      GossipBlock b                        -> addBlock peerSt b
---      GossipAnn (AnnStep (FullStep h _ _)) -> advanceOurHeight peerSt h
---      GossipProposal  prop -> do let p = signedValue prop
---                                 addProposal peerSt (propHeight p) (propRound p)
---                                 tickSend $ proposals gossipCnts
---      GossipPreVote   v    -> do addPrevote peerSt v
---                                 tickSend $ prevote gossipCnts
---      GossipPreCommit v    -> do addPrecommit peerSt v
---                                 tickSend $ precommit gossipCnts
---      _                    -> return ()
 peerSend PeerChans{..} gossipCh P2PConnection{..} = logOnException $ do
   logger InfoS "Starting routing for sending data" ()
   ownPeerChanPex <- liftIO $ atomically $ dupTChan peerChanPex
