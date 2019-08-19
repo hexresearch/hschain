@@ -4,9 +4,13 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 -- |
 module Thundermint.Store.STM (
+    -- * Proposal storage
     newSTMPropStorage
+    -- * Mempool
   , newMempool
+    -- * Blockchain state storge
   , newSTMBchStorage
+  , snapshotState
   ) where
 
 import Control.Applicative
@@ -232,6 +236,10 @@ newMempool validation = do
           ]
     }
 
+----------------------------------------------------------------
+-- Blockchain storage
+----------------------------------------------------------------
+
 -- | Create new storage for blockchain 
 newSTMBchStorage :: (MonadIO m) => BlockchainState a -> m (BChStore m a)
 newSTMBchStorage st0 = do
@@ -246,4 +254,22 @@ newSTMBchStorage st0 = do
     --
     , bchStoreStore   = \h st ->
         liftIO $ atomically $ writeTVar varSt $ (Just h, st)
+    }
+
+-- | Store complete snapshot of state every N
+snapshotState
+  :: (MonadIO m, MonadDB m alg a, BlockData a)
+  => Int           -- ^ Store snapshot every n height
+  -> BChStore m a  -- ^ Store to modify
+  -> m (BChStore m a)
+snapshotState everyN BChStore{..} = do
+  queryRO retrieveSavedState >>= mapM_ (\(h,s) -> bchStoreStore h s)
+  return BChStore
+    { bchStoreStore = \h@(Height n) st -> do
+        when (fromIntegral n `mod` everyN == 0) $
+          queryRW (storeStateSnapshot h st) >>= \case
+            Just () -> return ()
+            Nothing -> error "Cannot store snapshot"
+        bchStoreStore h st
+    , ..
     }
