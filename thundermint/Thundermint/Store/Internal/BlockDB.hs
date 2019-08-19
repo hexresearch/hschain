@@ -300,4 +300,4 @@ singleQWithParser resultsParser sql p =
   basicQuery sql p >>= \case
     [x] -> return (resultsParser x)
     _ -> error $ "SQL statement resulted in too many (>1) or zero result rows: " ++ show sql
-  where
+
