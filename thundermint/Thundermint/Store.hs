@@ -339,11 +339,11 @@ nullMempool = Mempool
 
 -- | Storage for blockchain state.
 data BChStore m a = BChStore
-  { bchCurrentState  :: m (Maybe Height, BlockchainState a)
+  { bchCurrentState  :: m (Maybe Height, InterpreterState a)
   -- ^ Height of value stored in state
-  , bchStoreRetrieve :: Height -> m (Maybe (BlockchainState a))
+  , bchStoreRetrieve :: Height -> m (Maybe (InterpreterState a))
   -- ^ Retrieve state for given height. It's generally not expected that  
-  , bchStoreStore    :: Height -> BlockchainState a -> m ()
+  , bchStoreStore    :: Height -> InterpreterState a -> m ()
   -- ^ Put blockchain state at given height into store
   }
 

@@ -88,8 +88,8 @@ newtype BData = BData [Tx]
   deriving anyclass (Serialise)
 
 instance BlockData BData where
-  type TX              BData = Tx
-  type BlockchainState BData = CoinState
+  type TX               BData = Tx
+  type InterpreterState BData = CoinState
   blockTransactions (BData txs) = txs
   logBlockData      (BData txs) = HM.singleton "Ntx" $ JSON.toJSON $ length txs
 
