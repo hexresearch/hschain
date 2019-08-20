@@ -27,7 +27,7 @@ data BChLogic q alg a = BChLogic
   { processTx     :: !(TX a -> q ())
   , processBlock  :: !(Block alg a -> q ())
   , generateBlock :: !(Block alg a -> [TX a] -> q a)
-  , initialState  :: !(BlockchainState a)
+  , initialState  :: !(InterpreterState a)
   }
 
 newtype Interpreter q m alg a = Interpreter

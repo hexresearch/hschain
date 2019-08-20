@@ -317,18 +317,22 @@ zDrop i ((n,x):xs)
 
 
 -- | Type class for data which could be put into block
-class (Serialise a, Serialise (TX a), Serialise (BlockchainState a)) => BlockData a where
+class ( Serialise a
+      , Serialise (TX a)
+      , Serialise (InterpreterState a)
+      ) => BlockData a where
   -- | Type of transaction used in blockchain
   type TX a
-  -- | State of blockchain
-  type BlockchainState a
+  -- | Part of state of blockchain defined by user. Complete state is
+  --   @BChState@
+  type InterpreterState a
   -- | Return list of transaction in block
   blockTransactions :: a -> [TX a]
   -- | Collect information about block data for logging
   logBlockData      :: a -> JSON.Object
 
 data BChState alg a = BChState
-  { blockchainState :: !(BlockchainState a)
+  { blockchainState :: !(InterpreterState a)
   , bChValidatorSet :: !(ValidatorSet alg)
   }
 
