@@ -240,7 +240,7 @@ verifyMessageSignature AppLogic{..} AppByzantine{..} HeightParameters{..} = fore
     verifyOld con sx = verifyAny oldValidatorSet     con sx
     verifyAny vset name con sx = case verifySignature (pkLookup vset) sx of
       Just sx' -> yield $ con sx'
-      Nothing  -> lift $ logger WarningS "Invalid signature"
+      Nothing  -> logger WarningS "Invalid signature"
         (  sl "name" (name::Text)
         <> sl "addr" (show (signedKeyInfo sx))
         )
