@@ -323,9 +323,9 @@ findInputs tgt = go 0
 runner :: Monad m => Interpreter (StateT CoinState Maybe) m Alg BData
 runner = Interpreter run
   where
-    run (BChState st vset) m = return $ do
+    run (BlockchainState st vset) m = return $ do
       (a,st') <- runStateT m st
-      return (a, BChState st' vset)
+      return (a, BlockchainState st' vset)
 
 interpretSpec
   :: ( MonadDB m Alg BData, MonadFork m, MonadMask m, MonadLogger m
