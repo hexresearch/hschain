@@ -70,7 +70,6 @@ import Thundermint.Store.STM
 import Thundermint.Monitoring
 import Thundermint.Utils
 import Thundermint.Control (MonadFork)
-import Thundermint.Types (CheckSignature(..))
 import qualified Thundermint.P2P.Network as P2P
 
 
@@ -119,7 +118,7 @@ makeAppLogic
   -> BChLogic    q   alg a
   -> Interpreter q m alg a
   -> m (AppLogic m alg a)
-makeAppLogic store logic@BChLogic{..} Interpreter{..} = do
+makeAppLogic store BChLogic{..} Interpreter{..} = do
   rewindBlockchainState store $ \bst b ->
     fmap snd <$> interpretBCh bst (processBlock b)
   -- Create mempool
@@ -136,7 +135,6 @@ makeAppLogic store logic@BChLogic{..} Interpreter{..} = do
     { appValidationFun  = \b bst -> (fmap . fmap) snd
                                   $ interpretBCh bst
                                   $ processBlock b
-    , appCommitQuery    = SimpleQuery $ \_ _ -> return ()
     , appBlockGenerator = \b bst txs -> fmap fromJust -- FIXME
                                       $ interpretBCh bst
                                       $ generateBlock b txs

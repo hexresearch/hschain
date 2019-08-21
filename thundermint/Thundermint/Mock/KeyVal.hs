@@ -104,7 +104,6 @@ interpretSpec p cb = do
         { appValidationFun    = \b (BlockchainState st valset) -> do
             return $ do st' <- foldM (flip process) st (let BData tx = blockData b in tx)
                         return $ BlockchainState st' valset
-        , appCommitQuery     = SimpleQuery $ \_ _ -> return ()
         , appBlockGenerator  = \_ (BlockchainState st valset) _ -> do
             let Just k = find (`Map.notMember` st) ["K_" ++ show (n :: Int) | n <- [1 ..]]
             i <- liftIO $ randomRIO (1,100)

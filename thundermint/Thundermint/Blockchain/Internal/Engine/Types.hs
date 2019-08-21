@@ -23,8 +23,6 @@ module Thundermint.Blockchain.Internal.Engine.Types (
   , hoistAppCallback
   , Validator(..)
   , PrivValidator(..)
-  , CommitCallback(..)
-  , hoistCommitCallback
   , AppByzantine(..)
   , hoistAppByzantine
   , noByz
@@ -38,7 +36,6 @@ module Thundermint.Blockchain.Internal.Engine.Types (
 
 import Control.Applicative
 import Control.Concurrent.STM
-import Control.Monad.Morph    (MFunctor(..))
 import Data.Aeson
 import Data.Coerce
 import Data.Monoid            (Any(..))
@@ -154,18 +151,6 @@ instance DefaultConfig app => FromJSON (Configuration app) where
 --
 ----------------------------------------------------------------
 
--- | Callback which is called right after block is commited to
---   database.
-data CommitCallback m alg a
-  = SimpleQuery !(ValidatorSet alg -> Block alg a -> Query 'RW alg a ())
-  -- ^ Query for updating user's state and to find out new set of
-  --   validators. It's evaluated in the same transaction as block
-  --   commit and thus atomic.
-  | MixedQuery  !(ValidatorSet alg -> Block alg a -> QueryT 'RW alg a m ())
-  -- ^ Query which allow to mixed database updates with other
-  --   actions. If @Query@ succeeds returned action is executed immediately
-
-
 -- | Collection of callbacks which implement actual logic of
 --   blockchain. This is most generic form which doesn't expose any
 --   underlying structure. It's expected that this structure will be
@@ -183,9 +168,6 @@ data AppLogic m alg a = AppLogic
     -- ^ Function for validation of proposed block data. It returns
     --   change of validators for given block if it's valid and
     --   @Nothing@ if it's not.
-  , appCommitQuery      :: CommitCallback m alg a
-    -- ^ Database query called after block commit in the same
-    --   transaction
   , appMempool          :: Mempool m alg (TX a)
     -- ^ Application mempool
   , appBchState         :: BChStore m a
@@ -245,19 +227,10 @@ seqappl Nothing   x         = x
 seqappl x         Nothing   = x
 seqappl (Just b1) (Just b2) = Just $ \arg -> b1 arg >>= maybe (return Nothing) b2
 
-
-hoistCommitCallback
-  :: (Monad m)
-  => (forall x. m x -> n x) -> CommitCallback m alg a -> CommitCallback n alg a
-hoistCommitCallback _   (SimpleQuery f) = SimpleQuery f
-hoistCommitCallback fun (MixedQuery  f) = MixedQuery $ (fmap . fmap) (hoist fun) f
-
-
 hoistAppLogic :: (Monad m, Functor n) => (forall x. m x -> n x) -> AppLogic m alg a -> AppLogic n alg a
 hoistAppLogic fun AppLogic{..} = AppLogic
   { appBlockGenerator   = (fmap . fmap . fmap) fun appBlockGenerator
   , appValidationFun    = (fmap . fmap)        fun appValidationFun
-  , appCommitQuery      = hoistCommitCallback  fun appCommitQuery
   , appMempool          = hoistMempool         fun appMempool
   , appBchState         = hoistBChStore        fun appBchState
   }
