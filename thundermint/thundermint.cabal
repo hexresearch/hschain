@@ -70,6 +70,7 @@ Library
                   Thundermint.Blockchain.Interpretation
                   Thundermint.Control
                   Thundermint.Crypto.Containers
+                  Thundermint.Data.CIntMap
                   Thundermint.Debug.Trace
                   Thundermint.Exceptions
                   Thundermint.Logger
