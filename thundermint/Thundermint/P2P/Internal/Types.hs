@@ -13,13 +13,12 @@ import GHC.Generics           (Generic)
 
 import Thundermint.Blockchain.Internal.Engine.Types (NetworkCfg)
 import Thundermint.Blockchain.Internal.Types        (Announcement, MessageTx, MessageRx, TMState)
-import Thundermint.Crypto                           (Crypto, Signed, SignedState(..))
+import Thundermint.Crypto                           (Crypto, SignedState(..))
 import Thundermint.P2P.Types                        (NetAddr)
 import Thundermint.Store                            (ProposalStorage)
 import Thundermint.Store.Internal.Query             (Access(..))
 
-import Thundermint.Types.Blockchain
-import Thundermint.Types.Validators
+import Thundermint.Types
 
 import Thundermint.P2P.Internal.Logging
 import Thundermint.P2P.PeerState

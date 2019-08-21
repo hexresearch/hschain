@@ -43,6 +43,14 @@ module Thundermint.Types.Blockchain (
   , VoteType(..)
   , Vote(..)
   , CheckSignature(..)
+    -- * Signed data
+  , Signed
+  , makeSigned
+  , signedValue
+  , signedKeyInfo
+  , signValue
+  , verifySignature
+  , unverifySignature
   ) where
 
 import           Codec.Serialise
@@ -54,6 +62,7 @@ import           Control.Monad.IO.Class   (MonadIO(..))
 import qualified Data.Aeson               as JSON
 import           Data.Aeson               ((.=), (.:))
 import           Data.ByteString          (ByteString)
+import           Data.ByteString.Lazy     (toStrict)
 import           Data.Bits                ((.&.))
 import           Data.Coerce
 import           Data.Int
@@ -441,6 +450,75 @@ decodeVote expectedTag = do
                 fail ("Invalid Vote tag, expected: " ++ show expectedTag
                       ++ ", actual: " ++ show tag)
         _ -> fail $ "Invalid Vote encoding"
+
+
+----------------------------------------------------------------
+-- Signed values
+----------------------------------------------------------------
+
+-- | Signed value. It contains value itself, signature, and
+--   information which could be used to indentify secret key which was
+--   used for signing. It could be public key, hash of public key
+--   (fingerprint) or anything else. Signature is computed for CBOR
+--   encoding of value.
+data Signed key (sign :: SignedState) alg a
+  = Signed !key !(Signature alg) !a
+  deriving stock (Generic, Eq, Show)
+
+instance (NFData a, NFData key) => NFData (Signed key sign alg a) where
+  rnf (Signed a s x) = rnf a `seq` rnf s `seq` rnf x
+
+-- | Obtain underlying value
+signedValue :: Signed key sign alg a -> a
+signedValue (Signed _ _ a) = a
+
+-- | Obtain information about key used for signing. It could be public
+--   key itself or any other information which allows to figure out
+--   which key should be used to verify signature.
+signedKeyInfo :: Signed key sign alg a -> key
+signedKeyInfo (Signed a _ _) = a
+
+-- | Make unverified signature
+makeSigned :: key -> Signature alg -> a -> Signed key 'Unverified alg a
+makeSigned = Signed
+
+-- | Sign value. Note that we can generate both verified and unverified
+--   values this way.
+signValue
+  :: (Serialise a, CryptoSign alg)
+  => key                        -- ^ Key identifier
+  -> PrivKey alg                -- ^ Key for signing
+  -> a                          -- ^ Value to sign
+  -> Signed key sign alg a
+signValue key privK a
+  = Signed key
+           (signBlob privK $ toStrict $ serialise a)
+           a
+
+-- | Verify signature. It return Nothing if verification fails for any
+--   reason. Note that since @Signed@ contain only fingerprint we need
+--   to supply function for looking up public keys.
+verifySignature
+  :: (Serialise a, CryptoSign alg)
+  => (key -> Maybe (PublicKey alg))
+     -- ^ Lookup function for public keys. If fingerprint is unknown (this
+     --   function returns Nothing) verification fails.
+  -> Signed key 'Unverified alg a
+     -- ^ Value for verifying signature
+  -> Maybe  (Signed key 'Verified alg a)
+verifySignature lookupKey (Signed addr signature a) = do
+  pubK <- lookupKey addr
+  guard $ verifyCborSignature pubK a signature
+  return $ Signed addr signature a
+
+-- | Strip verification tag
+unverifySignature :: Signed key ty alg a -> Signed key 'Unverified alg a
+unverifySignature = coerce
+
+instance (Serialise key, Serialise a) => Serialise (Signed key 'Unverified alg a)
+instance (JSON.FromJSON key, JSON.FromJSON a) => JSON.FromJSON (Signed key 'Unverified alg a)
+instance (JSON.ToJSON   key, JSON.ToJSON   a) => JSON.ToJSON   (Signed key sign        alg a)
+
 
 ----------------------------------------------------------------
 -- Helping application be faster.
