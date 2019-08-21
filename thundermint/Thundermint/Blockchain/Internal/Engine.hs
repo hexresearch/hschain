@@ -177,22 +177,11 @@ decideNewBlock config appValidatorKey appLogic@AppLogic{..} appCall@AppCallbacks
               (blockData b)
               nTx
             usingCounter prometheusNTx nTx
-            case appCommitQuery of
-              SimpleQuery callback -> do
-                r <- queryRW $ do storeCommit cmt b
-                                  storeValSet b val'
-                                  callback (validatorSet hParam) b
-                case r of
-                  Nothing -> error "Cannot write commit into database"
-                  Just () -> return ()
-              --
-              MixedQuery callback -> do
-                r <- queryRWT $ do storeCommit cmt b
-                                   storeValSet b val'
-                                   callback (validatorSet hParam) b
-                case r of
-                  Nothing -> error "Cannot write commit into database"
-                  Just () -> return ()
+            do r <- queryRW $ do storeCommit cmt b
+                                 storeValSet b val'
+               case r of
+                 Nothing -> error "Cannot write commit into database"
+                 Just () -> return ()
             let h = headerHeight $ blockHeader b
             advanceToHeight appPropStorage (succ h)
             bchStoreStore appBchState h st'
