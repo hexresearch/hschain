@@ -111,7 +111,7 @@ logicFromFold transitions@BlockFold{..} = do
 -}
 
 makeAppLogic
-  :: ( MonadDB m alg a, MonadMask m, MonadIO m, MonadLogger m
+  :: ( MonadDB m alg a, MonadMask m, MonadIO m
      , BlockData a, Show (TX a), Ord (TX a), Crypto alg
      )
   => BChStore m a
