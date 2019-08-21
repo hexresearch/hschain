@@ -13,6 +13,7 @@
 {-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE TemplateHaskell            #-}
 {-# LANGUAGE TypeFamilies               #-}
+{-# LANGUAGE UndecidableInstances       #-}
 -- |
 -- Data types for implementation of consensus algorithm
 module Thundermint.Types.Blockchain (
