@@ -335,6 +335,10 @@ data BlockchainState alg a = BlockchainState
   { blockchainState :: !(InterpreterState a)
   , bChValidatorSet :: !(ValidatorSet alg)
   }
+  deriving stock (Generic)
+instance ( NFData (InterpreterState a)
+         , NFData (PublicKey alg)
+         ) => NFData (BlockchainState alg a)
 
 
 ----------------------------------------------------------------
