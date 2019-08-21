@@ -223,7 +223,7 @@ seqappl Nothing   x         = x
 seqappl x         Nothing   = x
 seqappl (Just b1) (Just b2) = Just $ b1 >=> maybe (return Nothing) b2
 
-hoistAppLogic :: (Monad m, Functor n) => (forall x. m x -> n x) -> AppLogic m alg a -> AppLogic n alg a
+hoistAppLogic :: (Functor n) => (forall x. m x -> n x) -> AppLogic m alg a -> AppLogic n alg a
 hoistAppLogic fun AppLogic{..} = AppLogic
   { appBlockGenerator   = (fmap . fmap . fmap) fun appBlockGenerator
   , appValidationFun    = (fmap . fmap)        fun appValidationFun
