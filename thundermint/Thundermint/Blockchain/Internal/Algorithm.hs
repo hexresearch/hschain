@@ -64,11 +64,11 @@ import Thundermint.Types
 
 -- | Messages being sent to consensus engine
 data Message alg a
-  = ProposalMsg    !(Signed (ValidatorIdx alg) 'Verified alg (Proposal alg a))
+  = ProposalMsg    !(Signed 'Verified alg (Proposal alg a))
     -- ^ Incoming proposal
-  | PreVoteMsg     !(Signed (ValidatorIdx alg) 'Verified alg (Vote 'PreVote   alg a))
+  | PreVoteMsg     !(Signed 'Verified alg (Vote 'PreVote   alg a))
     -- ^ Incoming prevote
-  | PreCommitMsg   !(Signed (ValidatorIdx alg) 'Verified alg (Vote 'PreCommit alg a))
+  | PreCommitMsg   !(Signed 'Verified alg (Vote 'PreCommit alg a))
     -- ^ Incoming precommit
   | TimeoutMsg     !Timeout
     -- ^ Timeout
@@ -575,7 +575,7 @@ enterPrecommit par@HeightParameters{..} r sm@TMState{..} reason = do
 addPrevote
   :: (Monad m)
   => HeightParameters m alg a
-  -> Signed (ValidatorIdx alg) 'Verified alg (Vote 'PreVote alg a)
+  -> Signed 'Verified alg (Vote 'PreVote alg a)
   -> TMState alg a
   -> CNS x alg a m (TMState alg a)
 addPrevote HeightParameters{..} v sm@TMState{..} = do
@@ -590,7 +590,7 @@ addPrevote HeightParameters{..} v sm@TMState{..} = do
 addPrecommit
   :: (Monad m)
   => HeightParameters m alg a
-  -> Signed (ValidatorIdx alg) 'Verified alg (Vote 'PreCommit alg a)
+  -> Signed 'Verified alg (Vote 'PreCommit alg a)
   -> TMState alg a
   -> CNS x alg a m (TMState alg a)
 addPrecommit HeightParameters{..} v sm@TMState{..} = do

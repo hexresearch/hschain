@@ -46,7 +46,7 @@ instance CryptoSign alg => Arbitrary (Signature alg) where
   arbitrary = Signature <$> Arb.fastRandBs (signatureSize (Proxy @alg))
   shrink _ = []
 
-instance (CryptoSign alg, Arbitrary a, Arbitrary key) => Arbitrary (Signed key sign alg a) where
+instance (CryptoSign alg, Arbitrary a) => Arbitrary (Signed sign alg a) where
   arbitrary = genericArbitrary
   shrink = genericShrink
 

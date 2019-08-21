@@ -48,7 +48,7 @@ import           Thundermint.Data.CIntMap   (CIntMap)
 --   one value per signature is allowed. Lookup is supported both by
 --   values and by signer's fingerprint.
 data SignedSet ty alg a k = SignedSet
-  { vsetAddrMap    :: !(CIntMap (ValidatorIdx alg) (Signed (ValidatorIdx alg) ty alg a))
+  { vsetAddrMap    :: !(CIntMap (ValidatorIdx alg) (Signed ty alg a))
     -- Set of all votes
   , vsetValMap     :: !(Map k (VoteGroup alg))
     -- Reverse mapping from 
@@ -98,9 +98,9 @@ emptySignedSet = SignedSet CIMap.empty Map.empty 0
 -- | Insert value into set of votes
 insertSigned
   :: (Ord a, Ord k)
-  => Signed (ValidatorIdx alg) ty alg a
+  => Signed ty alg a
   -> SignedSet ty alg a k
-  -> InsertResult (Signed (ValidatorIdx alg) ty alg a) (SignedSet ty alg a k)
+  -> InsertResult (Signed ty alg a) (SignedSet ty alg a k)
 insertSigned sval SignedSet{..} =
   case validatorByIndex vsetValidators idx of
     -- We trying to insert value signed by unknown key
@@ -184,15 +184,15 @@ emptySignedSetMap = SignedSetMap Map.empty
 -- | Convert collection of signed values to plain map
 toPlainMap
   :: SignedSetMap r ty alg a k
-  -> Map r (CIntMap (ValidatorIdx alg) (Signed (ValidatorIdx alg) ty alg a))
+  -> Map r (CIntMap (ValidatorIdx alg) (Signed ty alg a))
 toPlainMap = fmap vsetAddrMap . vmapSubmaps
 
 addSignedValue
   :: (Ord r, Ord a, Ord k)
   => r
-  -> Signed (ValidatorIdx alg) ty alg a
+  -> Signed ty alg a
   -> SignedSetMap r ty alg a k
-  -> InsertResult (Signed (ValidatorIdx alg) ty alg a) (SignedSetMap r ty alg a k)
+  -> InsertResult (Signed ty alg a) (SignedSetMap r ty alg a k)
 addSignedValue r a sm@SignedSetMap{..} = do
   m <- insertSigned a
      $ fromMaybe (emptySignedSet vmapValidators vmapToKey vmapValueOk)
@@ -219,7 +219,7 @@ valuesAtR
   :: (Ord r)
   => r
   -> SignedSetMap r ty alg a k
-  -> [Signed (ValidatorIdx alg) ty alg a]
+  -> [Signed ty alg a]
 valuesAtR r SignedSetMap{..} =
   case Map.lookup r vmapSubmaps of
     Nothing            -> []

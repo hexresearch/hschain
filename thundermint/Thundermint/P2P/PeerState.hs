@@ -259,7 +259,7 @@ addProposal (PeerStateObj _ var) hProp rProp =
 -- | Add prevote to peer's state given vote itself
 addPrevote :: (MonadIO m, MonadMask m)
            => PeerStateObj m alg a
-           -> Signed (ValidatorIdx alg) ty alg (Vote 'PreVote alg a)
+           -> Signed ty alg (Vote 'PreVote alg a)
            -> m ()
 addPrevote peer sv@(signedValue -> Vote{..})
   = addPrevoteI peer voteHeight voteRound (signedKeyInfo sv)
@@ -297,7 +297,7 @@ addPrevoteI (PeerStateObj _ var) h r i =
 
 addPrecommit :: (MonadIO m, MonadMask m)
              => PeerStateObj m alg a
-             -> Signed (ValidatorIdx alg) ty alg (Vote 'PreCommit alg a)
+             -> Signed ty alg (Vote 'PreCommit alg a)
              -> m ()
 addPrecommit peer sv@(signedValue -> Vote{..})
   = addPrecommitI peer voteHeight voteRound (signedKeyInfo sv)
