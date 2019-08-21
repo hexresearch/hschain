@@ -267,8 +267,8 @@ handleEngineMessage HeightParameters{..} ConsensusCfg{..} AppByzantine{..} AppCh
             StepAwaitCommit _ -> (0, 0)
       threadDelay $ 1000 * (baseT + delta * fromIntegral r)
       atomically $ writeTQueue appChanRxInternal $ RxTimeout t
-    lift $ do usingGauge prometheusHeight h
-              usingGauge prometheusRound  (Round r)
+    usingGauge prometheusHeight h
+    usingGauge prometheusRound  (Round r)
   -- Announcements
   EngAnnPreVote sv -> do
     let Vote{..} = signedValue   sv
