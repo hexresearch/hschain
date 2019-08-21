@@ -25,7 +25,6 @@ module Thundermint.Blockchain.Internal.Engine.Types (
   , PrivValidator(..)
   , AppByzantine(..)
   , hoistAppByzantine
-  , noByz
     -- * Messages and channels
   , MessageRx(..)
   , unverifyMessageRx
@@ -214,10 +213,6 @@ instance Monad m => Semigroup (AppByzantine m alg a) where
 
 instance (Monad m) => Monoid (AppByzantine m alg a) where
     mempty = AppByzantine Nothing Nothing Nothing
-
-
-noByz :: (Monad m) => AppByzantine m alg a
-noByz = mempty
 
 seqappl :: (Monad m)
       => Maybe (a -> m (Maybe a))
