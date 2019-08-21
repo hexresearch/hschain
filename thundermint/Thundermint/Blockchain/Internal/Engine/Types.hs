@@ -35,6 +35,7 @@ module Thundermint.Blockchain.Internal.Engine.Types (
   ) where
 
 import Control.Applicative
+import Control.Monad
 import Control.Concurrent.STM
 import Data.Aeson
 import Data.Coerce
@@ -225,7 +226,7 @@ seqappl :: (Monad m)
 seqappl Nothing Nothing     = Nothing
 seqappl Nothing   x         = x
 seqappl x         Nothing   = x
-seqappl (Just b1) (Just b2) = Just $ \arg -> b1 arg >>= maybe (return Nothing) b2
+seqappl (Just b1) (Just b2) = Just $ b1 >=> maybe (return Nothing) b2
 
 hoistAppLogic :: (Monad m, Functor n) => (forall x. m x -> n x) -> AppLogic m alg a -> AppLogic n alg a
 hoistAppLogic fun AppLogic{..} = AppLogic
