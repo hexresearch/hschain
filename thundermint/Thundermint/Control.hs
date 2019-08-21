@@ -21,6 +21,8 @@ module Thundermint.Control (
   , MonadFork(..)
   , forkLinked
   , runConcurrently
+    -- * Contol
+  , iterateM
     -- * Generalized MVar-code
   , withMVarM
   , modifyMVarM
@@ -319,3 +321,7 @@ instance (a ~ x)   => HasCase (a :*: b) x 'True where
   getCase _ (a :*: _) = a
 instance (Has b x) => HasCase (a :*: b) x 'False where
   getCase _ (_ :*: b) = getT b
+
+
+iterateM :: (Monad m) => a -> (a -> m a) -> m b
+iterateM x0 f = let loop = f >=> loop in loop x0
