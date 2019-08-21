@@ -359,7 +359,6 @@ makeHeightParameters
      , MonadIO m
      , MonadThrow m
      , MonadLogger m
-     , MonadTMMonitoring m
      , Crypto alg, Serialise a)
   => ConsensusCfg
   -> Maybe (PrivValidator alg)
