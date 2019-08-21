@@ -45,7 +45,6 @@ module Thundermint.Types.Blockchain (
   , CheckSignature(..)
     -- * Signed data
   , Signed
-  , makeSigned
   , signedValue
   , signedKeyInfo
   , signValue
@@ -477,10 +476,6 @@ signedValue (Signed _ _ a) = a
 --   which key should be used to verify signature.
 signedKeyInfo :: Signed sign alg a -> ValidatorIdx alg
 signedKeyInfo (Signed a _ _) = a
-
--- | Make unverified signature
-makeSigned :: ValidatorIdx alg -> Signature alg -> a -> Signed 'Unverified alg a
-makeSigned = Signed
 
 -- | Sign value. Note that we can generate both verified and unverified
 --   values this way.
