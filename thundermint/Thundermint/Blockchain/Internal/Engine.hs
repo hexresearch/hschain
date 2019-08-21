@@ -170,7 +170,7 @@ decideNewBlock config appValidatorKey appLogic@AppLogic{..} appCall@AppCallbacks
               Nothing  -> error "Trying to commit invalid block!"
               Just bst -> lift $ performCommit b bst
         where
-          performCommit b (BChState st' val') = do
+          performCommit b (BlockchainState st' val') = do
             let nTx = maybe 0 (length . commitPrecommits) (blockLastCommit b)
             logger InfoS "Actual commit" $ LogBlockInfo
               (currentH hParam)

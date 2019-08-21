@@ -32,7 +32,7 @@ module Thundermint.Types.Blockchain (
   , commitTime
   , ByzantineEvidence(..)
   , BlockData(..)
-  , BChState(..)
+  , BlockchainState(..)
     -- * Data types for establishing consensus
   , Step(..)
   , FullStep(..)
@@ -324,14 +324,14 @@ class ( Serialise a
   -- | Type of transaction used in blockchain
   type TX a
   -- | Part of state of blockchain defined by user. Complete state is
-  --   @BChState@
+  --   @BlockchainState@
   type InterpreterState a
   -- | Return list of transaction in block
   blockTransactions :: a -> [TX a]
   -- | Collect information about block data for logging
   logBlockData      :: a -> JSON.Object
 
-data BChState alg a = BChState
+data BlockchainState alg a = BlockchainState
   { blockchainState :: !(InterpreterState a)
   , bChValidatorSet :: !(ValidatorSet alg)
   }

@@ -31,7 +31,10 @@ data BChLogic q alg a = BChLogic
   }
 
 newtype Interpreter q m alg a = Interpreter
-  { interpretBCh :: forall x. BChState alg a -> q x -> m (Maybe (x, BChState alg a))
+  { interpretBCh :: forall x.
+                    BlockchainState alg a
+                 -> q x
+                 -> m (Maybe (x, BlockchainState alg a))
   }
 
 

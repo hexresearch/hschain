@@ -129,16 +129,16 @@ makeAppLogic store logic@BChLogic{..} Interpreter{..} = do
           Nothing -> return emptyValidatorSet
           Just h  -> throwNothingM (DBMissingValSet (succ h))
                   $  queryRO $ retrieveValidatorSet (succ h)
-        isJust <$> interpretBCh (BChState st valSet) (processTx tx)
+        isJust <$> interpretBCh (BlockchainState st valSet) (processTx tx)
   mempool <- newMempool checkTx
   --
   return AppLogic
     { appValidationFun  = \vset b st -> (fmap . fmap) snd
-                                      $ interpretBCh (BChState st vset)
+                                      $ interpretBCh (BlockchainState st vset)
                                       $ processBlock b
     , appCommitQuery    = SimpleQuery $ \_ _ -> return ()
     , appBlockGenerator = \vset b st txs -> fmap fromJust -- FIXME
-                                          $ interpretBCh (BChState st vset)
+                                          $ interpretBCh (BlockchainState st vset)
                                           $ generateBlock b txs
     , appMempool        = mempool
     , appBchState       = store
@@ -149,7 +149,7 @@ rewindBlockchainState
   :: ( MonadReadDB m alg a, MonadIO m, MonadThrow m
      , Crypto alg, Serialise a)
   => BChStore m a
-  -> (BChState alg a -> Block alg a -> m (Maybe (BChState alg a)))
+  -> (BlockchainState alg a -> Block alg a -> m (Maybe (BlockchainState alg a)))
   -> m ()
 rewindBlockchainState store react = do
   hChain   <- queryRO blockchainHeight
@@ -166,8 +166,7 @@ rewindBlockchainState store react = do
       valSet   <- throwNothingM (DBMissingValSet (succ h))
                 $ queryRO $ retrieveValidatorSet (succ h)  
       bst      <- throwNothingM (ImpossibleError) -- ZZZXXXZZZ
-                $ react (BChState st valSet) blk
-                -- $ interpretBCh (BChState st valSet) (processBlock blk)
+                $ react (BlockchainState st valSet) blk
       let st' = blockchainState bst
       bchStoreStore store h st'
       return st'

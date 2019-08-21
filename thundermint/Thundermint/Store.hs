@@ -178,7 +178,7 @@ data BlockValidation alg a
   -- ^ We haven't validated block yet
   | UnknownBlock
   -- ^ We haven't even seen block yet
-  | GoodBlock     !(BlockID alg a) !(Block alg a) !(BChState alg a)
+  | GoodBlock     !(BlockID alg a) !(Block alg a) !(BlockchainState alg a)
   -- ^ Block is good. We also cache state and new validator set
   | InvalidBlock
   -- ^ Block is invalid so there's no point in storing (and gossiping)
@@ -199,7 +199,7 @@ data ProposalStorage rw m alg a = ProposalStorage
     -- ^ Retrieve proposed block by round number.
 
   , setPropValidation  :: !(Writable rw ( BlockID alg a
-                                       -> Maybe (BChState alg a)
+                                       -> Maybe (BlockchainState alg a)
                                        -> m ()))
     -- ^ Set whether block is valid or not.
   , advanceToHeight    :: !(Writable rw (Height -> m ()))

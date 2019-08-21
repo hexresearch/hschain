@@ -98,19 +98,19 @@ interpretSpec
 interpretSpec p cb = do
   conn  <- askConnectionRO
   store <- newSTMBchStorage mempty
-  rewindBlockchainState store $ \(BChState st valset) b -> return $ do
+  rewindBlockchainState store $ \(BlockchainState st valset) b -> return $ do
     st' <- foldM (flip process) st (let BData tx = blockData b in tx)
-    return $ BChState st' valset
+    return $ BlockchainState st' valset
   --
   let logic = AppLogic
         { appValidationFun    = \valset b st -> do
             return $ do st' <- foldM (flip process) st (let BData tx = blockData b in tx)
-                        return $ BChState st' valset
+                        return $ BlockchainState st' valset
         , appCommitQuery     = SimpleQuery $ \_ _ -> return ()
         , appBlockGenerator  = \valset _ st _ -> do
             let Just k = find (`Map.notMember` st) ["K_" ++ show (n :: Int) | n <- [1 ..]]
             i <- liftIO $ randomRIO (1,100)
-            return (BData [(k, i)], BChState (Map.insert k i st) valset)
+            return (BData [(k, i)], BlockchainState (Map.insert k i st) valset)
         , appMempool         = nullMempool
         , appBchState        = store
         }
