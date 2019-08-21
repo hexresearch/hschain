@@ -236,16 +236,15 @@ verifyMessageSignature AppLogic{..} AppByzantine{..} HeightParameters{..} = fore
     RxTimeout   t  -> yield $ RxTimeout t
     RxBlock     b  -> yield $ RxBlock   b
   where
-    verify    con sx = verifyAny (Just validatorSet) con sx
-    verifyOld con sx = verifyAny oldValidatorSet     con sx
-    verifyAny vset name con sx = case verifySignature (pkLookup vset) sx of
+    verify    con = verifyAny (Just validatorSet) con
+    verifyOld con = verifyAny oldValidatorSet     con
+    verifyAny mvset name con sx = case mvset >>= flip verifySignature sx of
       Just sx' -> yield $ con sx'
       Nothing  -> logger WarningS "Invalid signature"
         (  sl "name" (name::Text)
         <> sl "addr" (show (signedKeyInfo sx))
         )
-    pkLookup mvset a = do vset <- mvset
-                          validatorPubKey <$> validatorByIndex vset a
+
 
 handleEngineMessage
   :: ( MonadIO m, MonadTMMonitoring m, MonadLogger m

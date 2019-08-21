@@ -495,16 +495,15 @@ signValue key privK a
 --   to supply function for looking up public keys.
 verifySignature
   :: (Serialise a, CryptoSign alg)
-  => (ValidatorIdx alg -> Maybe (PublicKey alg))
-     -- ^ Lookup function for public keys. If fingerprint is unknown (this
-     --   function returns Nothing) verification fails.
+  => ValidatorSet alg
+     -- ^ Set of validators corresponding to signed value
   -> Signed 'Unverified alg a
      -- ^ Value for verifying signature
-  -> Maybe  (Signed 'Verified alg a)
-verifySignature lookupKey (Signed addr signature a) = do
-  pubK <- lookupKey addr
+  -> Maybe (Signed 'Verified alg a)
+verifySignature valSet val@(Signed idx signature a) = do
+  Validator pubK _ <- validatorByIndex valSet idx
   guard $ verifyCborSignature pubK a signature
-  return $ Signed addr signature a
+  return $ coerce val
 
 -- | Strip verification tag
 unverifySignature :: Signed ty alg a -> Signed 'Unverified alg a
