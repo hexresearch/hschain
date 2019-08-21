@@ -133,13 +133,13 @@ makeAppLogic store logic@BChLogic{..} Interpreter{..} = do
   mempool <- newMempool checkTx
   --
   return AppLogic
-    { appValidationFun  = \vset b st -> (fmap . fmap) snd
-                                      $ interpretBCh (BlockchainState st vset)
-                                      $ processBlock b
+    { appValidationFun  = \b bst -> (fmap . fmap) snd
+                                  $ interpretBCh bst
+                                  $ processBlock b
     , appCommitQuery    = SimpleQuery $ \_ _ -> return ()
-    , appBlockGenerator = \vset b st txs -> fmap fromJust -- FIXME
-                                          $ interpretBCh (BlockchainState st vset)
-                                          $ generateBlock b txs
+    , appBlockGenerator = \b bst txs -> fmap fromJust -- FIXME
+                                      $ interpretBCh bst
+                                      $ generateBlock b txs
     , appMempool        = mempool
     , appBchState       = store
     }

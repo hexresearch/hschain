@@ -171,16 +171,14 @@ data CommitCallback m alg a
 --   underlying structure. It's expected that this structure will be
 --   generated from more specialized functions
 data AppLogic m alg a = AppLogic
-  { appBlockGenerator   :: ValidatorSet alg
-                        -> Block alg a
-                        -> InterpreterState a
+  { appBlockGenerator   :: Block alg a
+                        -> BlockchainState alg a
                         -> [TX a]
                         -> m (a, BlockchainState alg a)
     -- ^ Generate fresh block for proposal. It's called each time we
     --   need to create new block for proposal
-  , appValidationFun    :: ValidatorSet alg
-                        -> Block alg a
-                        -> InterpreterState a
+  , appValidationFun    :: Block alg a
+                        -> BlockchainState alg a
                         -> m (Maybe (BlockchainState alg a))
     -- ^ Function for validation of proposed block data. It returns
     --   change of validators for given block if it's valid and
@@ -257,11 +255,11 @@ hoistCommitCallback fun (MixedQuery  f) = MixedQuery $ (fmap . fmap) (hoist fun)
 
 hoistAppLogic :: (Monad m, Functor n) => (forall x. m x -> n x) -> AppLogic m alg a -> AppLogic n alg a
 hoistAppLogic fun AppLogic{..} = AppLogic
-  { appBlockGenerator   = \v b s tx -> fun $ appBlockGenerator v b s tx
-  , appValidationFun    = \v b s    -> fun $ appValidationFun  v b s
-  , appCommitQuery      = hoistCommitCallback fun appCommitQuery
-  , appMempool          = hoistMempool        fun appMempool
-  , appBchState         = hoistBChStore       fun appBchState
+  { appBlockGenerator   = (fmap . fmap . fmap) fun appBlockGenerator
+  , appValidationFun    = (fmap . fmap)        fun appValidationFun
+  , appCommitQuery      = hoistCommitCallback  fun appCommitQuery
+  , appMempool          = hoistMempool         fun appMempool
+  , appBchState         = hoistBChStore        fun appBchState
   }
 
 hoistAppCallback :: (forall x. m x -> n x) -> AppCallbacks m alg a -> AppCallbacks n alg a

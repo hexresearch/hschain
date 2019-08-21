@@ -24,7 +24,6 @@ import Control.Monad
 import Control.Monad.Catch
 import Control.Monad.Trans.Cont
 import Control.Monad.Trans.Class
-import Control.Monad.Trans.State.Strict
 import Control.Monad.IO.Class
 import Data.Maybe
 import Data.List
@@ -36,7 +35,6 @@ import System.Random   (randomRIO)
 import GHC.Generics    (Generic)
 
 import Thundermint.Blockchain.Internal.Engine.Types
-import Thundermint.Blockchain.Interpretation
 import Thundermint.Types.Blockchain
 import Thundermint.Control
 import Thundermint.Crypto
@@ -103,11 +101,11 @@ interpretSpec p cb = do
     return $ BlockchainState st' valset
   --
   let logic = AppLogic
-        { appValidationFun    = \valset b st -> do
+        { appValidationFun    = \b (BlockchainState st valset) -> do
             return $ do st' <- foldM (flip process) st (let BData tx = blockData b in tx)
                         return $ BlockchainState st' valset
         , appCommitQuery     = SimpleQuery $ \_ _ -> return ()
-        , appBlockGenerator  = \valset _ st _ -> do
+        , appBlockGenerator  = \_ (BlockchainState st valset) _ -> do
             let Just k = find (`Map.notMember` st) ["K_" ++ show (n :: Int) | n <- [1 ..]]
             i <- liftIO $ randomRIO (1,100)
             return (BData [(k, i)], BlockchainState (Map.insert k i st) valset)
