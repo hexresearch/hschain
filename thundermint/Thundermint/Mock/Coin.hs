@@ -29,6 +29,7 @@ module Thundermint.Mock.Coin (
   , transactionGenerator
   , TxGenerator(..)
     -- * Interpretation
+  , runner
   , interpretSpec
   , RunningNode(..)
   , executeNodeSpec
