@@ -36,8 +36,7 @@ import           Data.Map.Strict      (Map)
 import qualified Data.Set           as Set
 import           Data.Set             (Set)
 
-import Thundermint.Crypto
-import Thundermint.Types.Validators
+import Thundermint.Types
 import qualified Thundermint.Data.CIntMap as CIMap
 import           Thundermint.Data.CIntMap   (CIntMap)
 

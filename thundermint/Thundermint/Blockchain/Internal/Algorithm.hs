@@ -50,16 +50,12 @@ import qualified Katip
 import Pipes
 import GHC.Generics
 
-import Thundermint.Crypto            ( Crypto, Signed, SignedState(..)
-                                     , signedValue, signedKeyInfo
-                                     )
+import Thundermint.Crypto            ( Crypto, SignedState(..) )
 import Thundermint.Blockchain.Internal.Types
 import Thundermint.Blockchain.Internal.Engine.Types
-import Thundermint.Crypto            (unverifySignature)
 import Thundermint.Crypto.Containers
 import Thundermint.Logger
-import Thundermint.Types.Blockchain
-import Thundermint.Types.Validators
+import Thundermint.Types
 
 
 ----------------------------------------------------------------
