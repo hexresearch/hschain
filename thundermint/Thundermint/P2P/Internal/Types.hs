@@ -30,9 +30,9 @@ import qualified Katip
 --   FIXME: We don't have good way to prevent DoS by spamming too much
 --          data
 data GossipMsg alg a
-  = GossipPreVote   !(Signed (ValidatorIdx alg) 'Unverified alg (Vote 'PreVote   alg a))
-  | GossipPreCommit !(Signed (ValidatorIdx alg) 'Unverified alg (Vote 'PreCommit alg a))
-  | GossipProposal  !(Signed (ValidatorIdx alg) 'Unverified alg (Proposal alg a))
+  = GossipPreVote   !(Signed 'Unverified alg (Vote 'PreVote   alg a))
+  | GossipPreCommit !(Signed 'Unverified alg (Vote 'PreCommit alg a))
+  | GossipProposal  !(Signed 'Unverified alg (Proposal alg a))
   | GossipBlock     !(Block alg a)
   | GossipAnn       !(Announcement alg)
   | GossipTx        !(TX a)

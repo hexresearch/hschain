@@ -258,15 +258,15 @@ instance CryptoHash alg => JSON.FromJSON (Header alg a) where
 
 -- | Evidence of byzantine behaviour by some node.
 data ByzantineEvidence alg a
-  = OutOfTurnProposal !(Signed (ValidatorIdx alg) 'Unverified alg (Proposal alg a))
+  = OutOfTurnProposal !(Signed 'Unverified alg (Proposal alg a))
     -- ^ Node made proposal out of turn
   | ConflictingPreVote
-      !(Signed (ValidatorIdx alg) 'Unverified alg (Vote 'PreVote alg a))
-      !(Signed (ValidatorIdx alg) 'Unverified alg (Vote 'PreVote alg a))
+      !(Signed 'Unverified alg (Vote 'PreVote alg a))
+      !(Signed 'Unverified alg (Vote 'PreVote alg a))
     -- ^ Node made conflicting prevotes in the same round
   | ConflictingPreCommit
-      !(Signed (ValidatorIdx alg) 'Unverified alg (Vote 'PreVote alg a))
-      !(Signed (ValidatorIdx alg) 'Unverified alg (Vote 'PreVote alg a))
+      !(Signed 'Unverified alg (Vote 'PreVote alg a))
+      !(Signed 'Unverified alg (Vote 'PreVote alg a))
     -- ^ Node made conflicting precommits in the same round
   deriving stock    (Show, Eq, Generic)
   deriving anyclass (NFData, Serialise, JSON.ToJSON, JSON.FromJSON)
@@ -276,7 +276,7 @@ data ByzantineEvidence alg a
 data Commit alg a = Commit
   { commitBlockID    :: !(BlockID alg a)
     -- ^ Block for which commit is done
-  , commitPrecommits :: !(NE.NonEmpty (Signed (ValidatorIdx alg) 'Unverified alg (Vote 'PreCommit alg a)))
+  , commitPrecommits :: !(NE.NonEmpty (Signed 'Unverified alg (Vote 'PreCommit alg a)))
     -- ^ List of precommits which justify commit
   }
   deriving stock    (Show, Eq, Generic)
@@ -461,35 +461,35 @@ decodeVote expectedTag = do
 --   used for signing. It could be public key, hash of public key
 --   (fingerprint) or anything else. Signature is computed for CBOR
 --   encoding of value.
-data Signed key (sign :: SignedState) alg a
-  = Signed !key !(Signature alg) !a
+data Signed (sign :: SignedState) alg a
+  = Signed !(ValidatorIdx alg) !(Signature alg) !a
   deriving stock (Generic, Eq, Show)
 
-instance (NFData a, NFData key) => NFData (Signed key sign alg a) where
+instance (NFData a) => NFData (Signed sign alg a) where
   rnf (Signed a s x) = rnf a `seq` rnf s `seq` rnf x
 
 -- | Obtain underlying value
-signedValue :: Signed key sign alg a -> a
+signedValue :: Signed sign alg a -> a
 signedValue (Signed _ _ a) = a
 
 -- | Obtain information about key used for signing. It could be public
 --   key itself or any other information which allows to figure out
 --   which key should be used to verify signature.
-signedKeyInfo :: Signed key sign alg a -> key
+signedKeyInfo :: Signed sign alg a -> ValidatorIdx alg
 signedKeyInfo (Signed a _ _) = a
 
 -- | Make unverified signature
-makeSigned :: key -> Signature alg -> a -> Signed key 'Unverified alg a
+makeSigned :: ValidatorIdx alg -> Signature alg -> a -> Signed 'Unverified alg a
 makeSigned = Signed
 
 -- | Sign value. Note that we can generate both verified and unverified
 --   values this way.
 signValue
   :: (Serialise a, CryptoSign alg)
-  => key                        -- ^ Key identifier
+  => ValidatorIdx alg           -- ^ Key identifier
   -> PrivKey alg                -- ^ Key for signing
   -> a                          -- ^ Value to sign
-  -> Signed key sign alg a
+  -> Signed sign alg a
 signValue key privK a
   = Signed key
            (signBlob privK $ toStrict $ serialise a)
@@ -500,24 +500,24 @@ signValue key privK a
 --   to supply function for looking up public keys.
 verifySignature
   :: (Serialise a, CryptoSign alg)
-  => (key -> Maybe (PublicKey alg))
+  => (ValidatorIdx alg -> Maybe (PublicKey alg))
      -- ^ Lookup function for public keys. If fingerprint is unknown (this
      --   function returns Nothing) verification fails.
-  -> Signed key 'Unverified alg a
+  -> Signed 'Unverified alg a
      -- ^ Value for verifying signature
-  -> Maybe  (Signed key 'Verified alg a)
+  -> Maybe  (Signed 'Verified alg a)
 verifySignature lookupKey (Signed addr signature a) = do
   pubK <- lookupKey addr
   guard $ verifyCborSignature pubK a signature
   return $ Signed addr signature a
 
 -- | Strip verification tag
-unverifySignature :: Signed key ty alg a -> Signed key 'Unverified alg a
+unverifySignature :: Signed ty alg a -> Signed 'Unverified alg a
 unverifySignature = coerce
 
-instance (Serialise key, Serialise a) => Serialise (Signed key 'Unverified alg a)
-instance (JSON.FromJSON key, JSON.FromJSON a) => JSON.FromJSON (Signed key 'Unverified alg a)
-instance (JSON.ToJSON   key, JSON.ToJSON   a) => JSON.ToJSON   (Signed key sign        alg a)
+instance (Serialise     a) => Serialise     (Signed 'Unverified alg a)
+instance (JSON.FromJSON a) => JSON.FromJSON (Signed 'Unverified alg a)
+instance (JSON.ToJSON   a) => JSON.ToJSON   (Signed sign        alg a)
 
 
 ----------------------------------------------------------------
