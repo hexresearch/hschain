@@ -93,8 +93,6 @@ data HeightParameters (m :: * -> *) alg a = HeightParameters
     --   stragglers votes
   , validatorKey         :: !(Maybe (PrivValidator alg, ValidatorIdx alg))
     -- ^ Validator key and index in validator set for current round
-  , areWeProposers       :: !(Round -> Bool)
-    -- ^ Find address of proposer for given round.
   , readyCreateBlock     :: !(m Bool)
     -- ^ Returns true if validator is ready to create new block. If
     --   false validator will stay in @NewHeight@ step until it
@@ -445,7 +443,7 @@ enterPropose HeightParameters{..} r sm@TMState{..} reason = do
   lift $ yield $ EngAnnStep $ FullStep currentH r StepProposal
   -- If we're proposers we need to broadcast proposal. Otherwise we do
   -- nothing
-  when (areWeProposers r) $ case smLockedBlock of
+  when areWeProposers $ case smLockedBlock of
     -- FIXME: take care of POL fields of proposal
     --
     -- If we're locked on block we MUST propose it
@@ -458,6 +456,8 @@ enterPropose HeightParameters{..} r sm@TMState{..} reason = do
   return sm { smRound = r
             , smStep  = StepProposal
             }
+  where
+    areWeProposers = Just (proposerForRound r) == fmap snd validatorKey
 
 -- Enter PREVOTE step. Upon entering it we:
 --
