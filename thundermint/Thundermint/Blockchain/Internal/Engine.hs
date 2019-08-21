@@ -166,7 +166,7 @@ decideNewBlock config appValidatorKey appLogic@AppLogic{..} appCall@AppCallbacks
             st <- throwNothingM BlockchainStateUnavalable
                 $ lift
                 $ bchStoreRetrieve appBchState $ pred (currentH hParam)
-            lift (appValidationFun (validatorSet hParam) b st) >>= \case
+            lift (appValidationFun b (BlockchainState st (validatorSet hParam))) >>= \case
               Nothing  -> error "Trying to commit invalid block!"
               Just bst -> lift $ performCommit b bst
         where
@@ -424,7 +424,7 @@ makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{
             inconsistencies <- checkProposedBlock nH b
             st              <- throwNothingM BlockchainStateUnavalable
                              $ bchStoreRetrieve appBchState h
-            mvalSet'        <- appValidationFun valSet b st
+            mvalSet'        <- appValidationFun b (BlockchainState st valSet)
             if | not (null inconsistencies) -> do
                -- Block is not internally consistent
                    logger ErrorS "Proposed block has inconsistencies"
@@ -480,7 +480,7 @@ makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{
         -- Call block generator
         st          <- throwNothingM BlockchainStateUnavalable
                      $ bchStoreRetrieve appBchState h
-        (bData,bst) <- appBlockGenerator valSet blockDummy st
+        (bData,bst) <- appBlockGenerator blockDummy (BlockchainState st valSet)
                    =<< peekNTransactions appMempool
         let valCh = validatorsDifference valSet (bChValidatorSet bst)
             block = blockDummy
