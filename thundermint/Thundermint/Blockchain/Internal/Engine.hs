@@ -393,7 +393,6 @@ makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{
     , validatorKey     = liftA2 (,) appValidatorKey ourIndex
       -- FIXME: this is some random algorithms that should probably
       --        work (for some definition of work)
-    , areWeProposers   = \r -> Just (proposerChoice r) == ourIndex
     , proposerForRound = proposerChoice
     , readyCreateBlock = fromMaybe True <$> appCanCreateBlock h bchTime
     -- --
