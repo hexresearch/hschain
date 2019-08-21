@@ -33,14 +33,13 @@ import           Data.List         (find)
 import           Data.Maybe        (fromMaybe)
 import qualified Data.Map.Strict    as Map
 import           Data.Map.Strict      (Map)
-import qualified Data.IntMap.Strict as IMap
-import           Data.IntMap.Strict   (IntMap)
 import qualified Data.Set           as Set
 import           Data.Set             (Set)
 
 import Thundermint.Crypto
 import Thundermint.Types.Validators
-
+import qualified Thundermint.Data.CIntMap as CIMap
+import           Thundermint.Data.CIntMap   (CIntMap)
 
 ----------------------------------------------------------------
 -- Set of signed values
@@ -50,7 +49,7 @@ import Thundermint.Types.Validators
 --   one value per signature is allowed. Lookup is supported both by
 --   values and by signer's fingerprint.
 data SignedSet ty alg a k = SignedSet
-  { vsetAddrMap    :: !(IntMap (Signed (ValidatorIdx alg) ty alg a))
+  { vsetAddrMap    :: !(CIntMap (ValidatorIdx alg) (Signed (ValidatorIdx alg) ty alg a))
     -- Set of all votes
   , vsetValMap     :: !(Map k (VoteGroup alg))
     -- Reverse mapping from 
@@ -95,7 +94,7 @@ emptySignedSet
   -> (a -> k)                   -- ^ Key for grouping votes
   -> (a -> Bool)                -- ^ Additional validation for vote
   -> SignedSet ty alg a k
-emptySignedSet = SignedSet IMap.empty Map.empty 0
+emptySignedSet = SignedSet CIMap.empty Map.empty 0
 
 -- | Insert value into set of votes
 insertSigned
@@ -104,35 +103,35 @@ insertSigned
   -> SignedSet ty alg a k
   -> InsertResult (Signed (ValidatorIdx alg) ty alg a) (SignedSet ty alg a k)
 insertSigned sval SignedSet{..} =
-  case validatorByIndex vsetValidators addr of
+  case validatorByIndex vsetValidators idx of
     -- We trying to insert value signed by unknown key
     Nothing -> InsertUnknown sval
     Just validator
       -- We already have value signed by that key
-      | Just v <- idx `IMap.lookup` vsetAddrMap -> if
+      | Just v <- idx `CIMap.lookup` vsetAddrMap -> if
            | signedValue v == val -> InsertDup
            | otherwise            -> InsertConflict sval
       -- OK insert value then
       | otherwise -> InsertOK SignedSet
-          { vsetAddrMap  = IMap.insert idx sval vsetAddrMap
+          { vsetAddrMap  = CIMap.insert idx sval vsetAddrMap
           , vsetAccPower = vsetAccPower + validatorVotingPower validator
           , vsetValMap   =
               let upd VoteGroup{..}
                     | vsetValueOK val = Just VoteGroup
                                         { accOK    = accOK + validatorVotingPower validator
-                                        , votersOK = Set.insert addr votersOK
+                                        , votersOK = Set.insert idx votersOK
                                         , ..
                                         }
                     | otherwise       = Just VoteGroup
                                         { accBad    = accBad + validatorVotingPower validator
-                                        , votersBad = Set.insert addr votersBad
+                                        , votersBad = Set.insert idx votersBad
                                         , ..
                                         }
               in Map.alter (upd . fromMaybe nullVote) k vsetValMap
           , ..
           }
   where
-    addr@(ValidatorIdx idx) = signedKeyInfo sval
+    idx      = signedKeyInfo sval
     val      = signedValue   sval
     k        = vsetToKey      val
     nullVote = VoteGroup 0 0 Set.empty Set.empty
@@ -186,7 +185,7 @@ emptySignedSetMap = SignedSetMap Map.empty
 -- | Convert collection of signed values to plain map
 toPlainMap
   :: SignedSetMap r ty alg a k
-  -> Map r (IntMap (Signed (ValidatorIdx alg) ty alg a))
+  -> Map r (CIntMap (ValidatorIdx alg) (Signed (ValidatorIdx alg) ty alg a))
 toPlainMap = fmap vsetAddrMap . vmapSubmaps
 
 addSignedValue

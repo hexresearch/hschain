@@ -29,7 +29,6 @@ import Katip                  (showLS, sl)
 import System.Random          (newStdGen, randomRIO)
 import System.Random.Shuffle  (shuffle')
 
-import qualified Data.IntMap.Strict as IMap
 import qualified Data.IntSet        as ISet
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Map.Strict    as Map
@@ -52,7 +51,7 @@ import Thundermint.Store
 import Thundermint.Types.Blockchain
 import Thundermint.Types.Validators
 import Thundermint.Utils
-
+import qualified Thundermint.Data.CIntMap as CIMap
 import Thundermint.P2P.Internal.PeerRegistry
 import Thundermint.P2P.Internal.Logging as Logging
 import Thundermint.P2P.Internal.Types
@@ -227,29 +226,29 @@ peerGossipVotes peerObj PeerChans{..} gossipCh = logOnException $ do
           -- Send prevotes
           case () of
             _| Just localPV <- Map.lookup round $ toPlainMap $ smPrevotesSet tm
-             , unknown      <- IMap.difference localPV peerPV
-             , not (IMap.null unknown)
-               -> do let n = IMap.size unknown
+             , unknown      <- CIMap.difference localPV peerPV
+             , not (CIMap.null unknown)
+               -> do let n = CIMap.size unknown
                      i <- liftIO $ randomRIO (0,n-1)
                      let vote = unverifySignature $ toList unknown !! i
                      doGosip $ GossipPreVote vote
              | otherwise -> return ()
              where
-               peerPV = maybe IMap.empty (IMap.fromSet (const ()) . toSet)
+               peerPV = maybe CIMap.empty (CIMap.fromSet (const ()) . toSet)
                       $ Map.lookup round
                       $ peerPrevotes p
           -- Send precommits
           case () of
             _| Just localPC <- Map.lookup round $ toPlainMap $ smPrecommitsSet tm
-             , unknown      <- IMap.difference localPC peerPC
-             , not (IMap.null unknown)
-               -> do let n = IMap.size unknown
+             , unknown      <- CIMap.difference localPC peerPC
+             , not (CIMap.null unknown)
+               -> do let n = CIMap.size unknown
                      i <- liftIO $ randomRIO (0,n-1)
                      let vote = unverifySignature $ toList unknown !! i
                      doGosip $ GossipPreCommit vote
              | otherwise -> return ()
              where
-               peerPC = maybe IMap.empty (IMap.fromSet (const ()) . toSet)
+               peerPC = maybe CIMap.empty (CIMap.fromSet (const ()) . toSet)
                       $ Map.lookup round
                       $ peerPrecommits p
       Ahead   _ -> trace (TePeerGossipVotes TepgvAhead)   >> return ()
