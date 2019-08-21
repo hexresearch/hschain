@@ -25,7 +25,6 @@ import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
 import           Data.Maybe    (fromMaybe)
-import           Data.Function
 import           Data.Monoid   ((<>))
 import Data.Text             (Text)
 import Pipes                 (Pipe,Consumer,runEffect,yield,await,(>->))
@@ -34,7 +33,7 @@ import Thundermint.Blockchain.Internal.Engine.Types
 import Thundermint.Blockchain.Internal.Types
 import Thundermint.Blockchain.Internal.Algorithm
 import Thundermint.Types.Blockchain
-import Thundermint.Control (throwNothing,throwNothingM)
+import Thundermint.Control (throwNothing,throwNothingM,iterateM)
 import Thundermint.Crypto
 import Thundermint.Exceptions
 import Thundermint.Logger
@@ -85,10 +84,8 @@ runApplication config appValidatorKey appSt@AppLogic{..} appCall appCh@AppChans{
   height <- queryRO $ blockchainHeight
   lastCm <- queryRO $ retrieveLocalCommit height
   advanceToHeight appPropStorage $ succ height
-  void $ flip fix lastCm $ \loop commit -> do
-    cm <- decideNewBlock config appValidatorKey appSt appCall appCh commit
-    loop (Just cm)
-
+  iterateM lastCm $ fmap Just
+                  . decideNewBlock config appValidatorKey appSt appCall appCh
 
 -- This function uses consensus algorithm to decide which block we're
 -- going to commit at current height, then stores it in database and
