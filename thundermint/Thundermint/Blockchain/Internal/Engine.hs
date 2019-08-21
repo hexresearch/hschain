@@ -480,10 +480,6 @@ makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{
         return bid
     }
 
-    
-    -- | Add marks for analyzing logs
--- byzantineMark = maybe mempty (const " (byzantine!)")
-
 -- | If 'modifier' exists, modify 'arg' with it and run 'action' with
 --   modified argument; else run 'action' with original argument.
 tryByzantine :: (Monad m)
