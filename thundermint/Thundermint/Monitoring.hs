@@ -1,8 +1,10 @@
+{-# LANGUAGE DefaultSignatures          #-}
 {-# LANGUAGE DeriveFunctor              #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE RankNTypes                 #-}
 {-# LANGUAGE RecordWildCards            #-}
+{-# LANGUAGE TypeFamilies               #-}
 -- |
 -- Abstract layer for distinguish Thundermint and some monitoring
 -- libraries, such as Prometheus
@@ -22,6 +24,7 @@ import Control.Monad.Trans.Class
 import Data.Monoid ((<>))
 import Data.Text                  (Text)
 import Numeric.Natural
+import Pipes       (Proxy)
 import Prometheus
 
 import Thundermint.Logger      (LoggerT(..),NoLogsT(..))
@@ -97,9 +100,12 @@ createMonitoring prefix = do
   where
     makeCounter nm help = do
       register $ counter $ Info (prefix <> "_" <> nm) help
+    --
+    makeGauge :: MonadIO m => (a -> Double) -> Text -> Text -> m (TGauge a)
     makeGauge f nm help = do
       g <- register $ gauge $ Info (prefix <> "_" <> nm) help
       return $ TGauge f g
+    --
     makeVector f label nm help = do
       v <- register $ vector label $ gauge $ Info (prefix <> "_" <> nm) help
       return $ TGVector f v
@@ -111,8 +117,19 @@ createMonitoring prefix = do
 -- | Monad which supports monitoring of thundermint.
 class Monad m => MonadTMMonitoring m where
   usingCounter :: (PrometheusGauges -> Counter) -> Int -> m ()
+  default usingCounter :: (m ~ t n, MonadTrans t, MonadTMMonitoring n)
+                       => (PrometheusGauges -> Counter) -> Int -> m ()
+  usingCounter f n = lift $ usingCounter f n
+  --
   usingGauge   :: (PrometheusGauges -> TGauge a) -> a -> m ()
+  default usingGauge :: (m ~ t n, MonadTrans t, MonadTMMonitoring n)
+                       => (PrometheusGauges -> TGauge a) -> a -> m ()
+  usingGauge f n = lift $ usingGauge f n
+  --
   usingVector  :: (Label l) => (PrometheusGauges -> TGVector l a) -> l -> a -> m ()
+  default usingVector :: (m ~ t n, MonadTrans t, MonadTMMonitoring n, Label l)
+                       => (PrometheusGauges -> TGVector l a) -> l -> a -> m ()
+  usingVector f l n = lift $ usingVector f l n
 
 addCounterNow :: (MonadIO m) => Counter -> Int -> m ()
 addCounterNow cnt = void . runMonitorNowT . addCounter cnt . fromIntegral
@@ -138,22 +155,8 @@ instance MonadTMMonitoring IO where
   usingGauge   _ _   = return ()
   usingVector  _ _ _ = return ()
 
-instance MonadTMMonitoring m => MonadTMMonitoring (LoggerT m) where
-  usingCounter f  = lift . usingCounter f 
-  usingGauge  f   = lift . usingGauge  f
-  usingVector f l = lift . usingVector f l
-
-instance MonadTMMonitoring m => MonadTMMonitoring (NoLogsT m) where
-  usingCounter f  = lift . usingCounter f 
-  usingGauge  f   = lift . usingGauge  f
-  usingVector f l = lift . usingVector f l
-
-instance MonadTMMonitoring m => MonadTMMonitoring (TracerT m) where
-  usingCounter f  = lift . usingCounter f 
-  usingGauge  f   = lift . usingGauge  f
-  usingVector f l = lift . usingVector f l
-
-instance MonadTMMonitoring m => MonadTMMonitoring (DBT rm alg a m) where
-  usingCounter f  = lift . usingCounter f 
-  usingGauge  f   = lift . usingGauge  f
-  usingVector f l = lift . usingVector f l
+instance MonadTMMonitoring m => MonadTMMonitoring (LoggerT m)
+instance MonadTMMonitoring m => MonadTMMonitoring (NoLogsT m)
+instance MonadTMMonitoring m => MonadTMMonitoring (TracerT m)
+instance MonadTMMonitoring m => MonadTMMonitoring (DBT rm alg a m)
+instance MonadTMMonitoring m => MonadTMMonitoring (Proxy a b c d m)
