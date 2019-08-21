@@ -172,19 +172,14 @@ decideNewBlock config appValidatorKey appLogic@AppLogic{..} appCall@AppCallbacks
         where
           performCommit b (BlockchainState st' val') = do
             let nTx = maybe 0 (length . commitPrecommits) (blockLastCommit b)
-            logger InfoS "Actual commit" $ LogBlockInfo
-              (currentH hParam)
-              (blockData b)
-              nTx
+                h   = headerHeight $ blockHeader b
+            logger InfoS "Actual commit" $ LogBlockInfo h (blockData b) nTx
             usingCounter prometheusNTx nTx
-            do r <- queryRW $ do storeCommit cmt b
-                                 storeValSet b val'
-               case r of
-                 Nothing -> error "Cannot write commit into database"
-                 Just () -> return ()
-            let h = headerHeight $ blockHeader b
+            throwNothing UnableToCommit <=< queryRW
+              $ do storeCommit cmt b
+                   storeValSet b val'
             advanceToHeight appPropStorage (succ h)
-            bchStoreStore appBchState h st'
+            bchStoreStore   appBchState h st'
             appCommitCallback b
             return cmt
   runEffect $ do
