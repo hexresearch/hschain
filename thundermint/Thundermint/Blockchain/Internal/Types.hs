@@ -37,9 +37,9 @@ import Thundermint.Types.Validators
 -- Vote sets
 ----------------------------------------------------------------
 
-type VoteSet ty alg a = SignedSet 'Verified alg (Vote ty alg a) (Maybe (BlockID alg a))
+type VoteSet ty alg a = SignedSet alg (Vote ty alg a) (Maybe (BlockID alg a))
 
-type HeightVoteSet ty alg a = SignedSetMap Round 'Verified alg (Vote ty alg a) (Maybe (BlockID alg a))
+type HeightVoteSet ty alg a = SignedSetMap Round alg (Vote ty alg a) (Maybe (BlockID alg a))
 
 -- | Create new empty vote set
 newVoteSet :: ValidatorSet alg -> Time -> VoteSet ty alg a
