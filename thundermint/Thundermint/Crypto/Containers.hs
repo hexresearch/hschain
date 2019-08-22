@@ -62,9 +62,7 @@ data SignedSet alg a k = SignedSet
 
 data VoteGroup alg = VoteGroup
   { accOK     :: !Integer             -- Accumulated weight of good votes
-  , accBad    :: !Integer             -- Accumulated weight of invalid votes
   , votersOK  :: !(Set (ValidatorIdx alg)) -- Set of voters with good votes
-  , votersBad :: !(Set (ValidatorIdx alg)) -- Set of voters with invalid votes
   }
 
 instance (Show a) => Show (SignedSet alg a k) where
@@ -121,13 +119,8 @@ insertSigned sval SignedSet{..} =
                     | vsetValueOK val = Just VoteGroup
                                         { accOK    = accOK + validatorVotingPower validator
                                         , votersOK = Set.insert idx votersOK
-                                        , ..
                                         }
-                    | otherwise       = Just VoteGroup
-                                        { accBad    = accBad + validatorVotingPower validator
-                                        , votersBad = Set.insert idx votersBad
-                                        , ..
-                                        }
+                    | otherwise       = Just VoteGroup{..}
               in Map.alter (upd . fromMaybe nullVote) k vsetValMap
           , ..
           }
@@ -135,7 +128,7 @@ insertSigned sval SignedSet{..} =
     idx      = signedKeyInfo sval
     val      = signedValue   sval
     k        = vsetToKey      val
-    nullVote = VoteGroup 0 0 Set.empty Set.empty
+    nullVote = VoteGroup 0 Set.empty
 
 -- | We have +2\/3 majority of votes return vote for
 majority23
