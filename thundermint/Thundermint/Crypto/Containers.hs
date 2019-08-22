@@ -5,6 +5,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase                 #-}
 {-# LANGUAGE MultiWayIf                 #-}
+{-# LANGUAGE NamedFieldPuns             #-}
 {-# LANGUAGE RecordWildCards            #-}
 {-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE UndecidableInstances       #-}
@@ -34,8 +35,6 @@ import           Data.List         (find)
 import           Data.Maybe        (fromMaybe)
 import qualified Data.Map.Strict    as Map
 import           Data.Map.Strict      (Map)
-import qualified Data.Set           as Set
-import           Data.Set             (Set)
 
 import Thundermint.Crypto (SignedState(..))
 import Thundermint.Types
@@ -61,8 +60,8 @@ data SignedSet alg a k = SignedSet
   }
 
 data VoteGroup alg = VoteGroup
-  { accOK     :: !Integer             -- Accumulated weight of good votes
-  , votersOK  :: !(Set (ValidatorIdx alg)) -- Set of voters with good votes
+  { accOK     :: !Integer         -- Accumulated weight of good votes
+  , votersOK  :: !(ValidatorISet) -- Set of voters with good votes
   }
 
 instance (Show a) => Show (SignedSet alg a k) where
@@ -105,7 +104,7 @@ insertSigned sval SignedSet{..} =
   case validatorByIndex vsetValidators idx of
     -- We trying to insert value signed by unknown key
     Nothing -> InsertUnknown sval
-    Just validator
+    Just Validator{validatorVotingPower}
       -- We already have value signed by that key
       | Just v <- idx `CIMap.lookup` vsetAddrMap -> if
            | signedValue v == val -> InsertDup
@@ -113,22 +112,22 @@ insertSigned sval SignedSet{..} =
       -- OK insert value then
       | otherwise -> InsertOK SignedSet
           { vsetAddrMap  = CIMap.insert idx sval vsetAddrMap
-          , vsetAccPower = vsetAccPower + validatorVotingPower validator
+          , vsetAccPower = vsetAccPower + validatorVotingPower
           , vsetValMap   =
               let upd VoteGroup{..}
-                    | vsetValueOK val = Just VoteGroup
-                                        { accOK    = accOK + validatorVotingPower validator
-                                        , votersOK = Set.insert idx votersOK
+                    | vsetValueOK val = VoteGroup
+                                        { accOK    = accOK + validatorVotingPower
+                                        , votersOK = insertValidatorIdx idx votersOK
                                         }
-                    | otherwise       = Just VoteGroup{..}
-              in Map.alter (upd . fromMaybe nullVote) k vsetValMap
+                    | otherwise       = VoteGroup{..}
+              in Map.alter (Just . upd . fromMaybe nullVote) k vsetValMap
           , ..
           }
   where
     idx      = signedKeyInfo sval
     val      = signedValue   sval
     k        = vsetToKey      val
-    nullVote = VoteGroup 0 Set.empty
+    nullVote = VoteGroup 0 $ emptyValidatorISet (validatorSetSize vsetValidators)
 
 -- | We have +2\/3 majority of votes return vote for
 majority23
