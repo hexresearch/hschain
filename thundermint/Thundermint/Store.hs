@@ -12,6 +12,7 @@
 {-# LANGUAGE RecordWildCards            #-}
 {-# LANGUAGE TemplateHaskell            #-}
 {-# LANGUAGE TypeFamilies               #-}
+{-# LANGUAGE ViewPatterns               #-}
 -- |
 -- Abstract API for storing of blockchain. Storage works as follows:
 --
@@ -580,8 +581,10 @@ commitInvariant mkErr h prevT bid valSet Commit{..} = do
     Nothing   -> tell [mkErr "Commit contains invalid signatures"]
     Just sigs -> do
       let mvoteSet = foldM
-            (flip insertSigned)
-            (newVoteSet valSet prevT)
+            (\vset v@(signedValue -> Vote{..}) ->
+               insertSigned v (voteTime > prevT) vset
+            )
+            (newVoteSet valSet)
             sigs
       case mvoteSet of
         InsertConflict _ -> tell [mkErr "Conflicting votes"]

@@ -189,12 +189,12 @@ internalTestRawGossipCurrentCurrent isTestingSendProposals isTestingSendPrevotes
                         tm { smProposals = Map.singleton (Round 0) (signValue currentNodeValIdx currentNodePrivKey proposal) }
                     else tm) .
             (\tm -> if isTestingSendPrevotes then
-                        case addSignedValue (Round 0) (signValue currentNodeValIdx currentNodePrivKey vote) (smPrevotesSet tm) of
+                        case addSignedValue (Round 0) (signValue currentNodeValIdx currentNodePrivKey vote) True (smPrevotesSet tm) of
                             InsertOK votes -> tm { smPrevotesSet = votes }
                             _ -> error "Can't insert votes"
                     else tm) .
             (\tm -> if isTestingSendPrecommits then
-                        case addSignedValue (Round 0) (signValue currentNodeValIdx currentNodePrivKey vote) (smPrecommitsSet tm) of
+                        case addSignedValue (Round 0) (signValue currentNodeValIdx currentNodePrivKey vote) True (smPrecommitsSet tm) of
                             InsertOK votes -> tm { smPrecommitsSet = votes }
                             _ -> error "Can't insert votes"
                     else tm)
@@ -402,8 +402,7 @@ newTMState :: (MonadIO m)
            -> (TMState TestAlg Mock.BData -> TMState TestAlg Mock.BData) -- ^ Postprocessor of created TMState
            -> m ()
 newTMState GossipEnv{..} h postProcess = do
-    currentTime <- getCurrentTime
-    let voteSet = newHeightVoteSet envValidatorSet currentTime
+    let voteSet = newHeightVoteSet envValidatorSet
     let tmState = postProcess $ TMState (Round 0) StepNewHeight Map.empty voteSet voteSet Nothing Nothing
     liftIO $ atomically $ writeTVar envConsensus (Just (h, tmState))
 

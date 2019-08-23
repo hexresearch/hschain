@@ -42,12 +42,12 @@ type VoteSet ty alg a = SignedSet alg (Vote ty alg a) (Maybe (BlockID alg a))
 type HeightVoteSet ty alg a = SignedSetMap Round alg (Vote ty alg a) (Maybe (BlockID alg a))
 
 -- | Create new empty vote set
-newVoteSet :: ValidatorSet alg -> Time -> VoteSet ty alg a
-newVoteSet valSet t = emptySignedSet valSet voteBlockID ((> t) . voteTime)
+newVoteSet :: ValidatorSet alg -> VoteSet ty alg a
+newVoteSet valSet = emptySignedSet valSet voteBlockID
 
 -- | Create new empty vote set
-newHeightVoteSet :: ValidatorSet alg -> Time -> HeightVoteSet ty alg a
-newHeightVoteSet valSet t = emptySignedSetMap valSet voteBlockID ((> t) . voteTime)
+newHeightVoteSet :: ValidatorSet alg -> HeightVoteSet ty alg a
+newHeightVoteSet valSet = emptySignedSetMap valSet voteBlockID
 
 ----------------------------------------------------------------
 -- State for of tendermint state machine

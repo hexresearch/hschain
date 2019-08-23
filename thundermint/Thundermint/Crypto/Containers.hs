@@ -56,7 +56,6 @@ data SignedSet alg a k = SignedSet
   , vsetAccPower   :: !Integer
   , vsetValidators :: !(ValidatorSet alg)
   , vsetToKey      :: !(a -> k)
-  , vsetValueOK    :: !(a -> Bool)
   }
 
 data VoteGroup alg = VoteGroup
@@ -90,7 +89,6 @@ instance Monad (InsertResult b) where
 emptySignedSet
   :: ValidatorSet alg           -- ^ Set of validators
   -> (a -> k)                   -- ^ Key for grouping votes
-  -> (a -> Bool)                -- ^ Additional validation for vote
   -> SignedSet alg a k
 emptySignedSet = SignedSet CIMap.empty Map.empty 0
 
@@ -98,9 +96,10 @@ emptySignedSet = SignedSet CIMap.empty Map.empty 0
 insertSigned
   :: (Ord a, Ord k)
   => Signed 'Verified alg a
+  -> Bool
   -> SignedSet alg a k
   -> InsertResult (Signed 'Verified alg a) (SignedSet alg a k)
-insertSigned sval SignedSet{..} =
+insertSigned sval insertOK SignedSet{..} =
   case validatorByIndex vsetValidators idx of
     -- We trying to insert value signed by unknown key
     Nothing -> InsertUnknown sval
@@ -113,23 +112,24 @@ insertSigned sval SignedSet{..} =
       | otherwise -> InsertOK SignedSet
           { vsetAddrMap  = CIMap.insert idx sval vsetAddrMap
           , vsetAccPower = vsetAccPower + validatorVotingPower
-          , vsetValMap   =
-              let upd VoteGroup{..}
-                    | vsetValueOK val = VoteGroup
-                                        { accOK    = accOK + validatorVotingPower
-                                        , votersOK = insertValidatorIdx idx votersOK
-                                        }
-                    | otherwise       = VoteGroup{..}
-              in Map.alter (Just . upd . fromMaybe nullVote) k vsetValMap
+          , vsetValMap   = if
+              | insertOK  -> Map.alter (Just . updateGrp . fromMaybe nullVote) k vsetValMap
+              | otherwise -> vsetValMap
           , ..
           }
+      where
+        updateGrp VoteGroup{..} = VoteGroup
+          { accOK    = accOK + validatorVotingPower
+          , votersOK = insertValidatorIdx idx votersOK
+          }
+        nullVote = VoteGroup 0 $ emptyValidatorISet (validatorSetSize vsetValidators)
   where
-    idx      = signedKeyInfo sval
-    val      = signedValue   sval
-    k        = vsetToKey      val
-    nullVote = VoteGroup 0 $ emptyValidatorISet (validatorSetSize vsetValidators)
+    idx = signedKeyInfo sval
+    val = signedValue   sval
+    k   = vsetToKey      val
 
--- | We have +2\/3 majority of votes return vote for
+
+-- | Returns whether we have +2\/3 majority of votes for some value.
 majority23
   :: SignedSet alg a k
   -> Maybe k
@@ -140,7 +140,8 @@ majority23 SignedSet{..} = do
     maj23 (_, VoteGroup{..}) = accOK >= quorum
     quorum = 2 * totalVotingPower vsetValidators `div` 3 + 1
 
--- | We have +2\/3 of votes which are distributed in any manner
+-- | Whether we have +2\/3 of votes in total which are distributed in
+--   any manner. They need not to vote for the same value.
 any23
   :: SignedSet alg a k
   -> Bool
@@ -162,7 +163,6 @@ data SignedSetMap r alg a k = SignedSetMap
   { vmapSubmaps    :: !(Map r (SignedSet alg a k))
   , vmapValidators :: !(ValidatorSet alg)
   , vmapToKey      :: !(a -> k)
-  , vmapValueOk    :: !(a -> Bool)
   }
 
 instance (Show a, Show r) => Show (SignedSetMap r alg a k) where
@@ -171,7 +171,6 @@ instance (Show a, Show r) => Show (SignedSetMap r alg a k) where
 emptySignedSetMap
   :: ValidatorSet alg
   -> (a -> k)
-  -> (a -> Bool)
   -> SignedSetMap r alg a k
 emptySignedSetMap = SignedSetMap Map.empty
 
@@ -185,11 +184,12 @@ addSignedValue
   :: (Ord r, Ord a, Ord k)
   => r
   -> Signed 'Verified alg a
+  -> Bool
   -> SignedSetMap r alg a k
   -> InsertResult (Signed 'Verified alg a) (SignedSetMap r alg a k)
-addSignedValue r a sm@SignedSetMap{..} = do
-  m <- insertSigned a
-     $ fromMaybe (emptySignedSet vmapValidators vmapToKey vmapValueOk)
+addSignedValue r a insertOK sm@SignedSetMap{..} = do
+  m <- insertSigned a insertOK
+     $ fromMaybe (emptySignedSet vmapValidators vmapToKey)
      $ Map.lookup r vmapSubmaps
   return sm { vmapSubmaps = Map.insert r m vmapSubmaps }
 
