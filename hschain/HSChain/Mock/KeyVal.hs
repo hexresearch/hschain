@@ -71,7 +71,7 @@ instance BlockData BData where
 
 genesisBlock :: ValidatorSet Alg -> Block Alg BData
 genesisBlock valSet
-  = makeGenesis "KV" (Time 0) (BData []) valSet
+  = makeGenesis (Time 0) (BData []) valSet
 
 process :: Tx -> BState -> Maybe BState
 process (k,v) m
