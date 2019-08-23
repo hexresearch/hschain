@@ -253,8 +253,8 @@ newHeight HeightParameters{..} lastCommit = do
     { smRound         = Round 0
     , smStep          = StepNewHeight
     , smProposals     = Map.empty
-    , smPrevotesSet   = newHeightVoteSet validatorSet currentTime
-    , smPrecommitsSet = newHeightVoteSet validatorSet currentTime
+    , smPrevotesSet   = newHeightVoteSet validatorSet
+    , smPrecommitsSet = newHeightVoteSet validatorSet
     , smLockedBlock   = Nothing
     , smLastCommit    = lastCommit
     }
@@ -578,9 +578,9 @@ addPrevote
   -> Signed 'Verified alg (Vote 'PreVote alg a)
   -> TMState alg a
   -> CNS x alg a m (TMState alg a)
-addPrevote HeightParameters{..} v sm@TMState{..} = do
+addPrevote HeightParameters{..} v@(signedValue -> Vote{..}) sm@TMState{..} = do
   lift $ yield $ EngAnnPreVote v
-  case addSignedValue (voteRound $ signedValue v) v smPrevotesSet of
+  case addSignedValue voteRound v (voteTime > currentTime) smPrevotesSet of
     InsertOK votes   -> return sm { smPrevotesSet = votes }
     InsertDup        -> tranquility
     InsertConflict _ -> misdeed
@@ -593,9 +593,9 @@ addPrecommit
   -> Signed 'Verified alg (Vote 'PreCommit alg a)
   -> TMState alg a
   -> CNS x alg a m (TMState alg a)
-addPrecommit HeightParameters{..} v sm@TMState{..} = do
+addPrecommit HeightParameters{..} v@(signedValue -> Vote{..}) sm@TMState{..} = do
   lift $ yield $ EngAnnPreCommit v
-  case addSignedValue (voteRound $ signedValue v) v smPrecommitsSet of
+  case addSignedValue voteRound v (voteTime > currentTime) smPrecommitsSet of
     InsertOK votes   -> return sm { smPrecommitsSet = votes }
     InsertDup        -> tranquility
     InsertConflict _ -> misdeed
