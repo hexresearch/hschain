@@ -3,10 +3,13 @@
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE DerivingStrategies         #-}
 {-# LANGUAGE FlexibleContexts           #-}
+{-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase                 #-}
+{-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE RecordWildCards            #-}
 {-# LANGUAGE StandaloneDeriving         #-}
+{-# LANGUAGE TypeFamilies               #-}
 {-# LANGUAGE UndecidableInstances       #-}
 -- |
 -- Data types for
@@ -52,6 +55,7 @@ import qualified Data.Map.Merge.Strict as Map
 import qualified Data.Vector           as V
 
 import Thundermint.Crypto
+import Thundermint.Types.Merklized
 
 
 ----------------------------------------------------------------
@@ -69,6 +73,9 @@ instance NFData (PublicKey alg) => NFData (Validator alg)
 deriving instance Eq   (PublicKey alg) => Eq   (Validator alg)
 deriving instance Ord  (PublicKey alg) => Ord  (Validator alg)
 
+instance (Crypto alg, alg' ~ alg) => MerkleValue alg (Validator alg) where
+  merkleHash = hash
+
 -- | Set of all known validators for given height
 data ValidatorSet alg = ValidatorSet
   { vsValidators :: !(V.Vector (Validator alg))
@@ -77,6 +84,9 @@ data ValidatorSet alg = ValidatorSet
   deriving (Generic, Show)
 instance NFData (PublicKey alg) => NFData (ValidatorSet alg)
 deriving instance Eq   (PublicKey alg) => Eq   (ValidatorSet alg)
+
+instance (Crypto alg, alg' ~ alg) => MerkleValue alg (ValidatorSet alg) where
+  merkleHash = hash
 
 emptyValidatorSet :: ValidatorSet alg
 emptyValidatorSet = ValidatorSet V.empty 0
