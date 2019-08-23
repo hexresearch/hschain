@@ -554,7 +554,7 @@ commitInvariant mkErr h bid valSet Commit{..} = do
     Nothing   -> tell [mkErr "Commit contains invalid signatures"]
     Just sigs -> do
       let mvoteSet = foldM
-            (\vset v@(signedValue -> Vote{..}) -> insertSigned v True vset)
+            (flip insertSigned)
             (newVoteSet valSet)
             sigs
       case mvoteSet of

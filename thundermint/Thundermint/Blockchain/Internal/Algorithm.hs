@@ -578,7 +578,7 @@ addPrevote
   -> CNS x alg a m (TMState alg a)
 addPrevote HeightParameters{..} v@(signedValue -> Vote{..}) sm@TMState{..} = do
   lift $ yield $ EngAnnPreVote v
-  case addSignedValue voteRound v True smPrevotesSet of
+  case addSignedValue voteRound v smPrevotesSet of
     InsertOK votes   -> return sm { smPrevotesSet = votes }
     InsertDup        -> tranquility
     InsertConflict _ -> misdeed
@@ -593,7 +593,7 @@ addPrecommit
   -> CNS x alg a m (TMState alg a)
 addPrecommit HeightParameters{..} v@(signedValue -> Vote{..}) sm@TMState{..} = do
   lift $ yield $ EngAnnPreCommit v
-  case addSignedValue voteRound v True smPrecommitsSet of
+  case addSignedValue voteRound v smPrecommitsSet of
     InsertOK votes   -> return sm { smPrecommitsSet = votes }
     InsertDup        -> tranquility
     InsertConflict _ -> misdeed
