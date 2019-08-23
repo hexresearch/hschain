@@ -312,7 +312,6 @@ addSomeBlocks' GossipEnv{..} blocksCount =
         let block = Block
                 { blockHeader = Header
                     { headerHeight         = succ h
-                    , headerTime           = t
                     , headerLastBlockID    = Nothing -- TODO get from previous block
                     , headerValidatorsHash = Hashed $ Hash ""
                     , headerDataHash       = hashed tx

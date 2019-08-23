@@ -298,7 +298,7 @@ mintMockCoin nodes CoinSpecification{..} =
          , genDelay          = delay
          , genMaxMempoolSize = coinMaxMempoolSize
          }
-  , makeGenesis (Time 0) (BData txs) valSet
+  , makeGenesis (BData txs) valSet
   )
   where
     privK        = take coinWallets $ makePrivKeyStream coinWalletsSeed

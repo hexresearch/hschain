@@ -425,12 +425,9 @@ checkStorage = queryRO $ execWriterT $ do
       --       block since we detected when checking for previous height
       mprevVset <- lift $ lift $ retrieveValidatorSet (pred h)
       prevBID   <- require [] $ retrieveBlockID (pred h)
-      prevB     <- require [] $ retrieveBlock   (pred h)
       --
-      lift $ blockInvariant
-        h (headerTime $ blockHeader prevB) prevBID (mprevVset,vset) block
-      lift $ commitInvariant (InvalidLocalCommit h)
-        h (headerTime $ blockHeader prevB) bid vset commit
+      lift $ blockInvariant h prevBID (mprevVset,vset) block
+      lift $ commitInvariant (InvalidLocalCommit h) h bid vset commit
 
 
 -- | Check that block proposed at given height is correct in sense all
@@ -441,13 +438,11 @@ checkProposedBlock
   -> Block alg a
   -> m [BlockchainInconsistency]
 checkProposedBlock h block = queryRO $ do
-  Just prevB   <- retrieveBlock        (pred h)
   Just prevBID <- retrieveBlockID      (pred h)
   Just vset    <- retrieveValidatorSet  h
   mprevVset    <- retrieveValidatorSet (pred h)
   execWriterT $ blockInvariant
     h
-    (headerTime $ blockHeader prevB)
     prevBID
     (mprevVset,vset)
     block
@@ -478,8 +473,6 @@ blockInvariant
   :: (Monad m, Crypto alg, Serialise a)
   => Height
   -- ^ Height of block
-  -> Time
-  -- ^ Time of previous block
   -> BlockID alg a
   -- ^ Block ID of previous block
   -> (Maybe (ValidatorSet alg), ValidatorSet alg)
@@ -487,21 +480,12 @@ blockInvariant
   -> Block alg a
   -- ^ Block to check
   -> WriterT [BlockchainInconsistency] m ()
-blockInvariant h _ _ _ _
+blockInvariant h _ _ _
   | h <= Height 0 = error "blockInvariant called with invalid parameters"
-blockInvariant h prevT prevBID (mprevValSet, valSet) block@Block{blockHeader=Header{..}, ..} = do
+blockInvariant h prevBID (mprevValSet, valSet) block@Block{blockHeader=Header{..}, ..} = do
   -- Block at height H has H in its header
   (headerHeight == h)
     `orElse` BlockHeightMismatch h
-  -- Block time is calculated correctly
-  case headerHeight of
-    Height 1 -> (headerTime > prevT) `orElse` BlockInvalidTime h
-    _        -> do let commitT = do vals <- mprevValSet
-                                    commitTime vals prevT =<< blockLastCommit
-                   case commitT of
-                     Nothing -> tell [BlockInvalidTime h]
-                     Just t  -> do (t == headerTime) `orElse` BlockInvalidTime h
-                                   (t >= prevT     ) `orElse` BlockInvalidTime h
   -- Previous block ID in header must match actual BID of previous
   -- block
   (headerLastBlockID == Just prevBID)
@@ -521,7 +505,7 @@ blockInvariant h prevT prevBID (mprevValSet, valSet) block@Block{blockHeader=Hea
     (_, Nothing       ) -> tell [BlockMissingLastCommit h]
     (_, Just commit   )
       | Just prevValSet <- mprevValSet
-        -> commitInvariant (InvalidCommit h) (pred h) prevT prevBID prevValSet commit
+        -> commitInvariant (InvalidCommit h) (pred h) prevBID prevValSet commit
       | otherwise
         -> tell [InvalidCommit h "Cannot validate commit"]
 
@@ -543,12 +527,11 @@ commitInvariant
   :: (Monad m, Crypto alg)
   => (String -> BlockchainInconsistency) -- Error constructor
   -> Height                              -- Height of block for
-  -> Time                                -- Time of previous block
   -> BlockID alg a
   -> ValidatorSet alg
   -> Commit alg a
   -> WriterT [BlockchainInconsistency] m ()
-commitInvariant mkErr h prevT bid valSet Commit{..} = do
+commitInvariant mkErr h bid valSet Commit{..} = do
   -- It must justify commit of correct block!
   (commitBlockID == bid)
     `orElse` mkErr "Commit is for wrong block"
@@ -571,9 +554,7 @@ commitInvariant mkErr h prevT bid valSet Commit{..} = do
     Nothing   -> tell [mkErr "Commit contains invalid signatures"]
     Just sigs -> do
       let mvoteSet = foldM
-            (\vset v@(signedValue -> Vote{..}) ->
-               insertSigned v (voteTime > prevT) vset
-            )
+            (\vset v@(signedValue -> Vote{..}) -> insertSigned v True vset)
             (newVoteSet valSet)
             sigs
       case mvoteSet of
