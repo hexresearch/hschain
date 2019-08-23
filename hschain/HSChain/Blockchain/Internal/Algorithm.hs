@@ -79,8 +79,6 @@ data Message alg a
 data HeightParameters (m :: * -> *) alg a = HeightParameters
   { currentH             :: !Height
     -- ^ Height we're on.
-  , currentTime          :: !Time
-    -- ^ Time of last block
   , validatorSet         :: !(ValidatorSet alg)
     -- ^ Validator set for current height
   , oldValidatorSet      :: !(Maybe (ValidatorSet alg))
@@ -571,7 +569,7 @@ addPrevote
   -> CNS x alg a m (TMState alg a)
 addPrevote HeightParameters{..} v@(signedValue -> Vote{..}) sm@TMState{..} = do
   lift $ yield $ EngAnnPreVote v
-  case addSignedValue voteRound v (voteTime > currentTime) smPrevotesSet of
+  case addSignedValue voteRound v True smPrevotesSet of
     InsertOK votes   -> return sm { smPrevotesSet = votes }
     InsertDup        -> tranquility
     InsertConflict u -> misdeed
@@ -587,7 +585,7 @@ addPrecommit
   -> CNS x alg a m (TMState alg a)
 addPrecommit HeightParameters{..} v@(signedValue -> Vote{..}) sm@TMState{..} = do
   lift $ yield $ EngAnnPreCommit v
-  case addSignedValue voteRound v (voteTime > currentTime) smPrecommitsSet of
+  case addSignedValue voteRound v True smPrecommitsSet of
     InsertOK votes   -> return sm { smPrecommitsSet = votes }
     InsertDup        -> tranquility
     InsertConflict u -> misdeed

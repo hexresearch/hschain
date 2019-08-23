@@ -304,10 +304,10 @@ handleEngineMessage HeightParameters{..} ConsensusCfg{..} AppByzantine{..} AppCh
   --
   EngCastPreVote r b ->
     forM_ validatorKey $ \(PrivValidator pk, idx) -> do
-      t@(Time ti) <- getCurrentTime
+      t <- getCurrentTime
       let vote = Vote { voteHeight  = currentH
                       , voteRound   = r
-                      , voteTime    = if t > currentTime then t else Time (ti + 1)
+                      , voteTime    = t
                       , voteBlockID = b
                       }
       logger InfoS "Sending prevote"
@@ -360,11 +360,6 @@ makeHeightParameters appValidatorKey AppLogic{..} AppCallbacks{..} AppChans{..} 
   valSet    <- throwNothing (DBMissingValSet (succ h)) <=< queryRO
              $ retrieveValidatorSet (succ h)
   oldValSet <- queryRO $ retrieveValidatorSet  h
-  genesis   <- throwNothing DBMissingGenesis <=< queryRO
-             $ retrieveBlock (Height 0)
-  bchTime   <- do b <- throwNothing (DBMissingBlock h) <=< queryRO
-                     $ retrieveBlock h
-                  return $! headerTime $ blockHeader b
   let ourIndex = indexByValidator valSet . publicKey . validatorPrivKey
              =<< appValidatorKey
   let proposerChoice (Round r) =
@@ -374,14 +369,13 @@ makeHeightParameters appValidatorKey AppLogic{..} AppCallbacks{..} AppChans{..} 
   --
   return HeightParameters
     { currentH         = succ h
-    , currentTime      = bchTime
     , validatorSet     = valSet
     , oldValidatorSet  = oldValSet
     , validatorKey     = liftA2 (,) appValidatorKey ourIndex
       -- FIXME: this is some random algorithms that should probably
       --        work (for some definition of work)
     , proposerForRound = proposerChoice
-    , readyCreateBlock = fromMaybe True <$> appCanCreateBlock h bchTime
+    , readyCreateBlock = fromMaybe True <$> appCanCreateBlock h
     -- --
     , validateBlock = \bid -> do
         let nH = succ h
@@ -416,22 +410,9 @@ makeHeightParameters appValidatorKey AppLogic{..} AppCallbacks{..} AppChans{..} 
     --
     , createProposal = \r commit -> do
         lastBID  <- queryRO $ retrieveBlockID =<< blockchainHeight
-        -- Calculate time for block.
-        currentT <- case h of
-          -- For block at H=1 we in rather arbitrary manner take time
-          -- of genesis + 1s
-          Height 0 -> do let Time t = headerTime $ blockHeader genesis
-                         return $! Time (t + 1000)
-          -- Otherwise we take time from commit and if for some reason
-          -- we can't we have corrupted commit for latest block and
-          -- can't continue anyway.
-          _        -> case join $ liftA3 commitTime oldValSet (pure bchTime) commit of
-            Just t  -> return t
-            Nothing -> error "Corrupted commit. Cannot generate block"
         -- Create dummy block in order to pass it to generator
         let headerDummy = Header
               { headerHeight         = succ h
-              , headerTime           = currentT
               , headerLastBlockID    = lastBID
               , headerValidatorsHash = hashed valSet
               , headerDataHash       = Hashed $ Hash "" 
