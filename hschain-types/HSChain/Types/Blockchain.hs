@@ -183,15 +183,13 @@ deriving instance (Eq (PublicKey alg), Eq a) => Eq     (Block alg a)
 --   is convenience function to create genesis block.
 makeGenesis
   :: (Crypto alg, Serialise a)
-  => ByteString                 -- ^ Text identifier of chain
-  -> Time                       -- ^ Time of genesis
+  => Time                       -- ^ Time of genesis
   -> a                          -- ^ Block data
   -> ValidatorSet alg           -- ^ Set of validators for block 1
   -> Block alg a
-makeGenesis chainID t dat valSet = Block
+makeGenesis t dat valSet = Block
   { blockHeader = Header
-      { headerChainID        = chainID
-      , headerHeight         = Height 0
+      { headerHeight         = Height 0
       , headerTime           = t
       , headerLastBlockID    = Nothing
       , headerValidatorsHash = hashed emptyValidatorSet
@@ -211,10 +209,7 @@ makeGenesis chainID t dat valSet = Block
 
 -- | Block header
 data Header alg a = Header
-  { headerChainID        :: !ByteString
-    -- ^ Identifier of chain we're working on. It should be same in
-    --   all blocks in blockchain
-  , headerHeight         :: !Height
+  { headerHeight         :: !Height
     -- ^ Height of block
   , headerTime           :: !Time
     -- ^ Time of block creation
@@ -237,8 +232,7 @@ data Header alg a = Header
 
 instance CryptoHash alg => JSON.ToJSON (Header alg a) where
   toJSON Header{..} =
-    JSON.object [ "headerChainID"        .= encodeBase58 headerChainID
-                , "headerHeight"         .= headerHeight
+    JSON.object [ "headerHeight"         .= headerHeight
                 , "headerTime"           .= headerTime
                 , "headerLastBlockID"    .= headerLastBlockID
                 , "headerValidatorsHash" .= headerValidatorsHash
@@ -250,7 +244,6 @@ instance CryptoHash alg => JSON.ToJSON (Header alg a) where
 
 instance CryptoHash alg => JSON.FromJSON (Header alg a) where
   parseJSON = JSON.withObject "Header" $ \o -> do
-    headerChainID        <- fromBase58 =<< o .: "headerChainID"
     headerHeight         <- o .: "headerHeight"
     headerTime           <- o .: "headerTime"
     headerLastBlockID    <- o .: "headerLastBlockID"
@@ -260,9 +253,6 @@ instance CryptoHash alg => JSON.FromJSON (Header alg a) where
     headerLastCommitHash <- o .: "headerLastCommitHash"
     headerEvidenceHash   <- o .: "headerEvidenceHash"
     return Header{..}
-    where
-      fromBase58 = maybe complain return . decodeBase58
-      complain   = fail "Incorrect Base58 encoding"
 
 -- | Evidence of byzantine behaviour by some node.
 data ByzantineEvidence alg a

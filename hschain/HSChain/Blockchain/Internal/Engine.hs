@@ -430,8 +430,7 @@ makeHeightParameters appValidatorKey AppLogic{..} AppCallbacks{..} AppChans{..} 
             Nothing -> error "Corrupted commit. Cannot generate block"
         -- Create dummy block in order to pass it to generator
         let headerDummy = Header
-              { headerChainID        = headerChainID $ blockHeader genesis
-              , headerHeight         = succ h
+              { headerHeight         = succ h
               , headerTime           = currentT
               , headerLastBlockID    = lastBID
               , headerValidatorsHash = hashed valSet
