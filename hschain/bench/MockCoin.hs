@@ -35,8 +35,6 @@ benchmarks
                 ( Block { blockData       = b
                         , blockHeader     = Header
                           { headerHeight         = Height 0
-                          , headerTime           = Time 0
-                          , headerChainID        = ""
                           , headerLastBlockID    = Nothing
                           , headerValidatorsHash = Hashed (Hash "")
                           , headerDataHash       = Hashed (Hash "")

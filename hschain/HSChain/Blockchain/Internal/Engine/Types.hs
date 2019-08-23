@@ -177,7 +177,7 @@ data AppLogic m alg a = AppLogic
 data AppCallbacks m alg a = AppCallbacks
   { appCommitCallback   :: Block alg a -> m ()
     -- ^ Function which is called after each commit.
-  , appCanCreateBlock   :: Height -> Time -> m (Maybe Bool)
+  , appCanCreateBlock   :: Height -> m (Maybe Bool)
     -- ^ Callback which is called to decide whether we ready to create
     --   new block or whether we should wait
   , appByzantine        :: AppByzantine m alg a
@@ -194,11 +194,11 @@ data AppByzantine m alg a = AppByzantine
 instance Monad m => Semigroup (AppCallbacks m alg a) where
   AppCallbacks f1 g1 b1 <> AppCallbacks f2 g2 b2 = AppCallbacks
     { appCommitCallback = liftA2 (*>) f1 f2
-    , appCanCreateBlock = (liftA2 . liftA2 . liftA2) (coerce ((<>) @(Maybe Any))) g1 g2
+    , appCanCreateBlock = (liftA2 . liftA2) (coerce ((<>) @(Maybe Any))) g1 g2
     , appByzantine      = b1 <> b2
     }
 instance Monad m => Monoid (AppCallbacks m alg a) where
-  mempty  = AppCallbacks (\_ -> pure ()) (\_ _ -> pure Nothing) mempty
+  mempty  = AppCallbacks (\_ -> pure ()) (\_ -> pure Nothing) mempty
 
 
 instance Monad m => Semigroup (AppByzantine m alg a) where
@@ -234,8 +234,8 @@ hoistAppLogic fun AppLogic{..} = AppLogic
 hoistAppCallback :: (forall x. m x -> n x) -> AppCallbacks m alg a -> AppCallbacks n alg a
 hoistAppCallback fun AppCallbacks{..} = AppCallbacks
   { appCommitCallback = fun . appCommitCallback
-  , appCanCreateBlock = \h t -> fun (appCanCreateBlock h t)
-  , appByzantine     = hoistAppByzantine fun appByzantine
+  , appCanCreateBlock = fun . appCanCreateBlock
+  , appByzantine      = hoistAppByzantine fun appByzantine
   }
 
 hoistAppByzantine :: (forall x. m x -> n x) -> AppByzantine m alg a -> AppByzantine n alg a
