@@ -98,7 +98,6 @@ import Data.Text                 (Text)
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Aeson         as JSON
 import qualified Data.Aeson.TH      as JSON
-import qualified Data.ByteString    as BS
 import GHC.Generics              (Generic)
 
 import Thundermint.Types.Blockchain
@@ -411,7 +410,6 @@ checkStorage
 checkStorage = queryRO $ execWriterT $ do
   maxH         <- lift $ blockchainHeight
   Just genesis <- lift $ retrieveBlock (Height 0)
-  let genesisChainId = headerChainID $ blockHeader genesis
   --
   forM_ [Height 0 .. maxH] $ \case
     Height 0 -> genesisBlockInvariant genesis
@@ -430,7 +428,7 @@ checkStorage = queryRO $ execWriterT $ do
       prevB     <- require [] $ retrieveBlock   (pred h)
       --
       lift $ blockInvariant
-        genesisChainId h (headerTime $ blockHeader prevB) prevBID (mprevVset,vset) block
+        h (headerTime $ blockHeader prevB) prevBID (mprevVset,vset) block
       lift $ commitInvariant (InvalidLocalCommit h)
         h (headerTime $ blockHeader prevB) bid vset commit
 
@@ -443,13 +441,11 @@ checkProposedBlock
   -> Block alg a
   -> m [BlockchainInconsistency]
 checkProposedBlock h block = queryRO $ do
-  Just genesis <- retrieveBlock        (Height 0)
   Just prevB   <- retrieveBlock        (pred h)
   Just prevBID <- retrieveBlockID      (pred h)
   Just vset    <- retrieveValidatorSet  h
   mprevVset    <- retrieveValidatorSet (pred h)
   execWriterT $ blockInvariant
-    (headerChainID $ blockHeader genesis)
     h
     (headerTime $ blockHeader prevB)
     prevBID
@@ -480,9 +476,7 @@ genesisBlockInvariant block@Block{blockHeader = Header{..}, ..} = do
 -- | Check invariant for block at height > 0
 blockInvariant
   :: (Monad m, Crypto alg, Serialise a)
-  => BS.ByteString
-  -- ^ Blockchain ID
-  -> Height
+  => Height
   -- ^ Height of block
   -> Time
   -- ^ Time of previous block
@@ -493,13 +487,9 @@ blockInvariant
   -> Block alg a
   -- ^ Block to check
   -> WriterT [BlockchainInconsistency] m ()
-blockInvariant _ h _ _ _ _
+blockInvariant h _ _ _ _
   | h <= Height 0 = error "blockInvariant called with invalid parameters"
-blockInvariant chainID h prevT prevBID (mprevValSet, valSet) block@Block{blockHeader=Header{..}, ..} = do
-  -- All blocks must have same chain ID, i.e. chain ID of
-  -- genesis block
-  (chainID == headerChainID)
-    `orElse` BlockWrongChainID h
+blockInvariant h prevT prevBID (mprevValSet, valSet) block@Block{blockHeader=Header{..}, ..} = do
   -- Block at height H has H in its header
   (headerHeight == h)
     `orElse` BlockHeightMismatch h

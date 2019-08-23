@@ -111,15 +111,7 @@ instance Arbitrary Round where
     shrink = genericShrink
 
 instance (CryptoHash alg, Arbitrary a) => Arbitrary (Header alg a) where
-  arbitrary = Header <$> Arb.fastRandBs 1024
-                     <*> arbitrary
-                     <*> arbitrary
-                     <*> arbitrary
-                     <*> arbitrary
-                     <*> arbitrary
-                     <*> arbitrary
-                     <*> arbitrary
-                     <*> arbitrary
+  arbitrary = genericArbitrary
 
 instance (CryptoSign alg, CryptoHash alg) => Arbitrary (Commit alg a) where
   arbitrary = Commit <$> arbitrary
