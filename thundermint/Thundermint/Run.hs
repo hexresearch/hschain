@@ -247,7 +247,7 @@ mempoolFilterCallback mempool = mempty
 -- | Callback which allow block creation only if mempool is not empty
 nonemptyMempoolCallback :: (Monad m) => Mempool m alg tx -> AppCallbacks m alg a
 nonemptyMempoolCallback mempool = mempty
-  { appCanCreateBlock = \_ _ -> do
+  { appCanCreateBlock = \_ -> do
       n <- mempoolSize mempool
       return $! Just $! n > 0
   }

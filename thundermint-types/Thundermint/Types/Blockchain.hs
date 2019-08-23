@@ -172,14 +172,12 @@ deriving instance (Eq (PublicKey alg), Eq a) => Eq     (Block alg a)
 --   is convenience function to create genesis block.
 makeGenesis
   :: (Crypto alg, Serialise a)
-  => Time                       -- ^ Time of genesis
-  -> a                          -- ^ Block data
+  => a                          -- ^ Block data
   -> ValidatorSet alg           -- ^ Set of validators for block 1
   -> Block alg a
-makeGenesis t dat valSet = Block
+makeGenesis dat valSet = Block
   { blockHeader = Header
       { headerHeight         = Height 0
-      , headerTime           = t
       , headerLastBlockID    = Nothing
       , headerValidatorsHash = hashed emptyValidatorSet
       , headerValChangeHash  = hashed delta
@@ -200,13 +198,10 @@ makeGenesis t dat valSet = Block
 data Header alg a = Header
   { headerHeight         :: !Height
     -- ^ Height of block
-  , headerTime           :: !Time
-    -- ^ Time of block creation
   , headerLastBlockID    :: !(Maybe (BlockID alg a))
     -- ^ Hash of previous block. Nothing iff block is a genesis block
   , headerValidatorsHash :: !(Hashed alg (ValidatorSet alg))
     -- ^ Hash of validators for current block.
-
   , headerDataHash       :: !(Hashed alg a)
     -- ^ Hash of block data
   , headerValChangeHash  :: !(Hashed alg (ValidatorChange alg))
