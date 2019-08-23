@@ -57,3 +57,4 @@ Library
                   Thundermint.Types.Blockchain
                   Thundermint.Types.Merkle
                   Thundermint.Types.MerkleBlock
+                  Thundermint.Types.Merklized
