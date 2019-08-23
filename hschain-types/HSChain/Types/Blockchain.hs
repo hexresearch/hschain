@@ -59,8 +59,6 @@ import           Control.DeepSeq
 import           Control.Monad
 import           Control.Monad.IO.Class   (MonadIO(..))
 import qualified Data.Aeson               as JSON
-import           Data.Aeson               ((.=), (.:))
-import           Data.ByteString          (ByteString)
 import           Data.ByteString.Lazy     (toStrict)
 import           Data.Bits                ((.&.))
 import           Data.Coerce
@@ -228,31 +226,7 @@ data Header alg a = Header
     -- ^ Hash of evidence of byzantine behavior
   }
   deriving stock    (Show, Eq, Generic)
-  deriving anyclass (NFData, Serialise)
-
-instance CryptoHash alg => JSON.ToJSON (Header alg a) where
-  toJSON Header{..} =
-    JSON.object [ "headerHeight"         .= headerHeight
-                , "headerTime"           .= headerTime
-                , "headerLastBlockID"    .= headerLastBlockID
-                , "headerValidatorsHash" .= headerValidatorsHash
-                , "headerDataHash"       .= headerDataHash
-                , "headerValChangeHash"  .= headerValChangeHash
-                , "headerLastCommitHash" .= headerLastCommitHash
-                , "headerEvidenceHash"   .= headerEvidenceHash
-                ]
-
-instance CryptoHash alg => JSON.FromJSON (Header alg a) where
-  parseJSON = JSON.withObject "Header" $ \o -> do
-    headerHeight         <- o .: "headerHeight"
-    headerTime           <- o .: "headerTime"
-    headerLastBlockID    <- o .: "headerLastBlockID"
-    headerValidatorsHash <- o .: "headerValidatorsHash"
-    headerDataHash       <- o .: "headerDataHash"
-    headerValChangeHash  <- o .: "headerValChangeHash"
-    headerLastCommitHash <- o .: "headerLastCommitHash"
-    headerEvidenceHash   <- o .: "headerEvidenceHash"
-    return Header{..}
+  deriving anyclass (NFData, Serialise, JSON.FromJSON, JSON.ToJSON)
 
 -- | Evidence of byzantine behaviour by some node.
 data ByzantineEvidence alg a
