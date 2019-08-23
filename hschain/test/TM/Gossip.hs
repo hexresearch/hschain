@@ -199,7 +199,8 @@ internalTestRawGossipCurrentCurrent isTestingSendProposals isTestingSendPrevotes
                                 , propPOL = Nothing
                                 , propBlockID = commitBlockID lastCommit
                                 }
-        let vote = Vote { voteHeight = ourH
+        let vote :: Vote tag TestAlg Mock.BData
+            vote = Vote { voteHeight = ourH
                         , voteRound = Round 0
                         , voteTime = currentTime
                         , voteBlockID = Just (commitBlockID lastCommit)
@@ -209,12 +210,12 @@ internalTestRawGossipCurrentCurrent isTestingSendProposals isTestingSendPrevotes
                         tm { smProposals = Map.singleton (Round 0) (signValue currentNodeValIdx currentNodePrivKey proposal) }
                     else tm) .
             (\tm -> if isTestingSendPrevotes then
-                        case addSignedValue (Round 0) (signValue currentNodeValIdx currentNodePrivKey vote) True (smPrevotesSet tm) of
+                        case addSignedValue (Round 0) (signValue currentNodeValIdx currentNodePrivKey vote) (smPrevotesSet tm) of
                             InsertOK votes -> tm { smPrevotesSet = votes }
                             _ -> error "Can't insert votes"
                     else tm) .
             (\tm -> if isTestingSendPrecommits then
-                        case addSignedValue (Round 0) (signValue currentNodeValIdx currentNodePrivKey $ coerce vote) True (smPrecommitsSet tm) of
+                        case addSignedValue (Round 0) (signValue currentNodeValIdx currentNodePrivKey vote) (smPrecommitsSet tm) of
                             InsertOK votes -> tm { smPrecommitsSet = votes }
                             _ -> error "Can't insert votes"
                     else tm)
