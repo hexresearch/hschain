@@ -96,10 +96,9 @@ emptySignedSet = SignedSet CIMap.empty Map.empty 0
 insertSigned
   :: (Ord a, Ord k)
   => Signed 'Verified alg a
-  -> Bool
   -> SignedSet alg a k
   -> InsertResult (Signed 'Verified alg a) (SignedSet alg a k)
-insertSigned sval insertOK SignedSet{..} =
+insertSigned sval SignedSet{..} =
   case validatorByIndex vsetValidators idx of
     -- We trying to insert value signed by unknown key
     Nothing -> InsertUnknown sval
@@ -112,9 +111,7 @@ insertSigned sval insertOK SignedSet{..} =
       | otherwise -> InsertOK SignedSet
           { vsetAddrMap  = CIMap.insert idx sval vsetAddrMap
           , vsetAccPower = vsetAccPower + validatorVotingPower
-          , vsetValMap   = if
-              | insertOK  -> Map.alter (Just . updateGrp . fromMaybe nullVote) k vsetValMap
-              | otherwise -> vsetValMap
+          , vsetValMap   = Map.alter (Just . updateGrp . fromMaybe nullVote) k vsetValMap
           , ..
           }
       where
@@ -184,11 +181,10 @@ addSignedValue
   :: (Ord r, Ord a, Ord k)
   => r
   -> Signed 'Verified alg a
-  -> Bool
   -> SignedSetMap r alg a k
   -> InsertResult (Signed 'Verified alg a) (SignedSetMap r alg a k)
-addSignedValue r a insertOK sm@SignedSetMap{..} = do
-  m <- insertSigned a insertOK
+addSignedValue r a sm@SignedSetMap{..} = do
+  m <- insertSigned a
      $ fromMaybe (emptySignedSet vmapValidators vmapToKey)
      $ Map.lookup r vmapSubmaps
   return sm { vmapSubmaps = Map.insert r m vmapSubmaps }
