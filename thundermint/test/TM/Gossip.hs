@@ -311,8 +311,7 @@ addSomeBlocks' GossipEnv{..} blocksCount =
         -- st <- stateAtH bchState (succ h) -- WTF?
         let block = Block
                 { blockHeader = Header
-                    { headerChainID        = "TEST"
-                    , headerHeight         = succ h
+                    { headerHeight         = succ h
                     , headerTime           = t
                     , headerLastBlockID    = Nothing -- TODO get from previous block
                     , headerValidatorsHash = Hashed $ Hash ""
