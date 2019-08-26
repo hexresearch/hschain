@@ -226,8 +226,8 @@ retrieveSavedState =
 -- | Write block and commit justifying it into persistent storage.
 storeCommit
   :: (Crypto alg, Serialise a, MonadQueryRW m alg a)
-  => Commit alg a -> Block alg a -> m ()
-storeCommit cmt blk = liftQueryRW $ do
+  => Commit alg a -> Block alg a -> ValidatorSet alg -> m ()
+storeCommit cmt blk vals = liftQueryRW $ do
   let h = headerHeight $ blockHeader blk
       r = voteRound $ signedValue $ NE.head $ commitPrecommits cmt
   basicExecute "INSERT INTO thm_commits VALUES (?,?)" (h, serialise cmt)
@@ -237,6 +237,8 @@ storeCommit cmt blk = liftQueryRW $ do
     , serialise (blockHash blk)
     , serialise blk
     )
+  basicExecute "INSERT INTO thm_validators VALUES (?,?)"
+    (succ h, serialise vals)
   basicPutCacheBlock blk
 
 -- | Write state snapshot into DB.
@@ -244,14 +246,6 @@ storeCommit cmt blk = liftQueryRW $ do
 storeStateSnapshot :: (Serialise s, MonadQueryRW m alg a) => Height -> s -> m ()
 storeStateSnapshot (Height h) state = do
   basicExecute "UPDATE state_snapshot SET height = ?, snapshot_blob = ?" (h, serialise state)
-
-
--- | Write validator set for next round into database
-storeValSet :: (Crypto alg, MonadQueryRW m alg a) => Block alg a -> ValidatorSet alg -> m ()
-storeValSet blk vals = do
-  let h = headerHeight $ blockHeader blk
-  basicExecute "INSERT INTO thm_validators VALUES (?,?)"
-    (succ h, serialise vals)
 
 -- | Add message to Write Ahead Log. Height parameter is height
 --   for which we're deciding block.

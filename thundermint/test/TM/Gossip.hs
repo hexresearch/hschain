@@ -45,7 +45,7 @@ import Thundermint.P2P.PeerState
 import Thundermint.P2P.Types
 import Thundermint.Run
 import Thundermint.Store
-import Thundermint.Store.Internal.BlockDB (storeCommit, storeValSet)
+import Thundermint.Store.Internal.BlockDB (storeCommit)
 import Thundermint.Store.STM
 import Thundermint.Types.Blockchain
 import Thundermint.Types.Validators
@@ -334,8 +334,7 @@ addSomeBlocks' GossipEnv{..} blocksCount =
                                       , voteTime    = t
                                       , voteBlockID = Just bid
                                       }]}
-        Just () <- queryRW $ storeCommit commit block
-        Just () <- queryRW $ storeValSet block envValidatorSet
+        Just () <- queryRW $ storeCommit commit block envValidatorSet
         return (block, commit)
 
 

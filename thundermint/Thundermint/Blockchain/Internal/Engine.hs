@@ -171,9 +171,7 @@ decideNewBlock config appValidatorKey appLogic@AppLogic{..} appCall@AppCallbacks
                 h   = headerHeight $ blockHeader b
             logger InfoS "Actual commit" $ LogBlockInfo h (blockData b) nTx
             usingCounter prometheusNTx nTx
-            throwNothing UnableToCommit <=< queryRW
-              $ do storeCommit cmt b
-                   storeValSet b val'
+            throwNothingM UnableToCommit $ queryRW (storeCommit cmt b val')
             advanceToHeight appPropStorage (succ h)
             bchStoreStore   appBchState h st'
             appCommitCallback b
