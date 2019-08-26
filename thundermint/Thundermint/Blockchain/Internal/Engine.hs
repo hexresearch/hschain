@@ -298,7 +298,7 @@ handleEngineMessage HeightParameters{..} ConsensusCfg{..} AppByzantine{..} AppCh
         )
       tryByzantine byzantineBroadcastProposal prop $ \prop' ->
         liftIO $ atomically $ do
-          let p = unverifySignature $ signValue idx pk prop'
+          let p = signValue idx pk prop'
           writeTQueue appChanRxInternal $ RxProposal p
           writeTChan  appChanTx         $ TxProposal p
           case blockFromBlockValidation mBlock of
@@ -319,7 +319,7 @@ handleEngineMessage HeightParameters{..} ConsensusCfg{..} AppByzantine{..} AppCh
         )
       tryByzantine byzantineCastPrevote vote $ \vote' ->
         liftIO $ atomically $ do
-          let v = unverifySignature $ signValue idx pk vote'
+          let v = signValue idx pk vote'
           writeTChan  appChanTx         $ TxPreVote v
           writeTQueue appChanRxInternal $ RxPreVote v 
   --
@@ -337,7 +337,7 @@ handleEngineMessage HeightParameters{..} ConsensusCfg{..} AppByzantine{..} AppCh
         )
       tryByzantine byzantineCastPrecommit vote $ \vote' ->
         liftIO $ atomically $ do
-          let v = unverifySignature $ signValue idx pk vote'
+          let v = signValue idx pk vote'
           writeTChan  appChanTx         $ TxPreCommit v
           writeTQueue appChanRxInternal $ RxPreCommit v
 
