@@ -123,7 +123,7 @@ unverifyMessageRx = \case
   RxBlock     b -> RxBlock     b
 
 data MessageTx alg a
-  = TxAnn !(Announcement alg)
+  = TxAnn       !(Announcement alg)
   | TxPreVote   !(Signed 'Unverified alg (Vote 'PreVote   alg a))
   | TxPreCommit !(Signed 'Unverified alg (Vote 'PreCommit alg a))
   | TxProposal  !(Signed 'Unverified alg (Proposal alg a))
