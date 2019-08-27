@@ -24,7 +24,6 @@ module Thundermint.Blockchain.Internal.Algorithm (
   , TMState(..)
   , HeightParameters(..)
     -- * State transitions
-  , ConsensusMonad(..)
   , ConsensusM(..)
   , ConsensusResult(..)
   , newHeight
@@ -199,10 +198,6 @@ instance Monad m => Monad (ConsensusM alg a m) where
 instance MonadIO m => MonadIO (ConsensusM alg a m) where
   liftIO = ConsensusM . fmap Success . liftIO
 
-instance Monad m => ConsensusMonad (ConsensusM alg a m) where
-  tranquility = ConsensusM $ return Tranquility
-  misdeed     = ConsensusM $ return Misdeed
-  panic       = error
 
 instance MonadLogger m => MonadLogger (ConsensusM alg a m) where
   logger s l a = lift $ logger s l a
@@ -225,19 +220,15 @@ commitBlock cm r = ConsensusM $ return $ DoCommit cm r
 
 type CNS x alg a m = ConsensusM alg a (Pipe x (EngineMessage alg a) m)
 
--- | Type class for monads encapsulating effects which could occur
---   when evaluating state transition for tendermint algorithm
-class Monad m => ConsensusMonad m where
-  -- | No change to state should happen. Abort execution. Note this is
-  --   not an error
-  tranquility :: m a
-  -- | We detected clearly malicious behavior from peer
-  --
-  --   FIXME: store malicious behavior as evidence.
-  misdeed :: m a
-  -- | Something went horribly wrong. Our implementation is buggy only
-  --   thing we can do is to die with honor
-  panic :: String -> m a
+-- | Message had no effect and was ignored. No change to state
+--   happened and execution is aborted.
+tranquility :: Monad m => ConsensusM alg a m x
+tranquility = ConsensusM $ return Tranquility
+
+-- | We detected clearly malicious behavior.
+misdeed :: Monad m => ConsensusM alg a m x
+misdeed = ConsensusM $ return Misdeed
+
 
 -- | Enter new height and create new state for state machine
 newHeight
@@ -328,7 +319,7 @@ tendermintTransition par@HeightParameters{..} msg sm@TMState{..} =
         -- It's timeout from previous steps. Ignore it
         LT -> tranquility
         -- Timeout from future. Must not happen
-        GT -> panic $ "Timeout from future: " ++ show (t,t0)
+        GT -> error $ "Timeout from future: " ++ show (t,t0)
         -- Update state accordingly. We unconditionally enter next step of
         -- round or next round.
         --
