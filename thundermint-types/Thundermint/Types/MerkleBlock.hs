@@ -1,8 +1,11 @@
-{-# LANGUAGE BangPatterns        #-}
-{-# LANGUAGE DeriveFoldable      #-}
-{-# LANGUAGE DeriveGeneric       #-}
-{-# LANGUAGE LambdaCase          #-}
-{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE BangPatterns          #-}
+{-# LANGUAGE DeriveFoldable        #-}
+{-# LANGUAGE DeriveGeneric         #-}
+{-# LANGUAGE FlexibleInstances     #-}
+{-# LANGUAGE LambdaCase            #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE ScopedTypeVariables   #-}
+{-# LANGUAGE TypeFamilies          #-}
 -- |
 module Thundermint.Types.MerkleBlock
   ( -- * Tree data types
@@ -26,6 +29,8 @@ import Data.Bits
 import GHC.Generics  (Generic)
 
 import Thundermint.Crypto
+import Thundermint.Types.Merklized
+
 
 ----------------------------------------------------------------
 -- Data types
@@ -48,9 +53,12 @@ data Node alg a
   deriving (Show, Foldable, Generic)
 
 
-getHash :: Node alg a -> Hash alg
-getHash (Leaf h _)     = h
-getHash (Branch h _ _) = h
+instance (CryptoHash alg, alg ~ alg') => MerkleValue alg' (MerkleBlockTree alg a) where
+  merkleHash = merkleBlockRoot
+
+instance (CryptoHash alg, alg ~ alg') => MerkleValue alg' (Node alg a) where
+  merkleHash (Leaf h _)     = h
+  merkleHash (Branch h _ _) = h
 
 
 ----------------------------------------------------------------
@@ -97,7 +105,7 @@ createMerkleTree
   => [a]                        -- ^ Leaves of tree
   -> MerkleBlockTree alg a
 createMerkleTree leaves = MerkleBlockTree
-  { merkleBlockRoot = hash (getHash <$> tree)
+  { merkleBlockRoot = merkleHash tree
   , merkleBlockTree = tree
   }
   where
@@ -121,7 +129,7 @@ mkLeaf :: (CryptoHash alg, Serialise a) => a -> Node alg a
 mkLeaf x = Leaf (computeLeafHash x) x
 
 mkBranch :: (CryptoHash alg, Serialise a) => Node alg a -> Node alg a -> Node alg a
-mkBranch x y = Branch (concatHash (getHash x) (getHash y)) x y
+mkBranch x y = Branch (concatHash (merkleHash x) (merkleHash y)) x y
 
 computeLeafHash :: (CryptoHash alg, Serialise a) => a -> Hash alg
 computeLeafHash a = hash (0::Int, a)
@@ -166,8 +174,8 @@ createMerkleProof (MerkleBlockTree _ mtree) a = do
   return $ MerkleProof a path
   where
     search (Leaf   _ b)   = [] <$ guard (a == b)
-    search (Branch _ b c) =  (Left  (getHash c):) <$> search b
-                         <|> (Right (getHash b):) <$> search c
+    search (Branch _ b c) =  (Left  (merkleHash c):) <$> search b
+                         <|> (Right (merkleHash b):) <$> search c
 
 
 
@@ -208,5 +216,5 @@ isConsistent (MerkleBlockTree rootH tree) =
   where
     check (Leaf   h a)   = do guard $ h == computeLeafHash a
                               return h
-    check (Branch h a b) = do guard $ h == concatHash (getHash a) (getHash b)
+    check (Branch h a b) = do guard $ h == concatHash (merkleHash a) (merkleHash b)
                               return h
