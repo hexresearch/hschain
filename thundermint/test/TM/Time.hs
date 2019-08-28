@@ -29,6 +29,12 @@ tests = testGroup "time"
                                       (Just 11)
   , testCase "median even 4" $ checkMedian [(1,10), (1,12), (1,15), (1,20)]
                                       (Just 13)
+  , testCase "No overflow odd"  $ checkMedian [ (1, maxBound - 3)
+                                              , (1, maxBound - 5)
+                                              ] (Just $ maxBound - 4)
+  , testCase "No overflow even" $ checkMedian [ (1, maxBound - 2)
+                                              , (1, maxBound - 4)
+                                              ] (Just $ maxBound - 3)
     -- Odd
   , testCase "median odd 1" $ checkMedian [(1,10), (1,12), (1, 13)]
                                 (Just 12)
