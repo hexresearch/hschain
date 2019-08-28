@@ -264,8 +264,8 @@ data ByzantineEvidence alg a
       !(Signed 'Unverified alg (Vote 'PreVote alg a))
     -- ^ Node made conflicting prevotes in the same round
   | ConflictingPreCommit
-      !(Signed 'Unverified alg (Vote 'PreVote alg a))
-      !(Signed 'Unverified alg (Vote 'PreVote alg a))
+      !(Signed 'Unverified alg (Vote 'PreCommit alg a))
+      !(Signed 'Unverified alg (Vote 'PreCommit alg a))
     -- ^ Node made conflicting precommits in the same round
   deriving stock    (Show, Eq, Generic)
   deriving anyclass (NFData, Serialise, JSON.ToJSON, JSON.FromJSON)

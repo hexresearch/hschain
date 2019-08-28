@@ -147,7 +147,7 @@ decideNewBlock config appValidatorKey appLogic@AppLogic{..} appCall@AppCallbacks
         res <- handleVerifiedMessage appPropStorage hParam tm msg
         case res of
           Tranquility      -> msgHandlerLoop mCmt tm
-          Misdeed          -> msgHandlerLoop mCmt tm
+          Misdeed  _       -> msgHandlerLoop mCmt tm
           Success  tm'     -> checkForCommit mCmt       tm'
           DoCommit cmt tm' -> checkForCommit (Just cmt) tm'
       --
