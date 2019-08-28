@@ -74,6 +74,7 @@ import qualified Database.SQLite.Simple.ToField   as SQL
 
 import Thundermint.Crypto
 import Thundermint.Types.Validators
+import Thundermint.Types.Merklized
 
 
 ----------------------------------------------------------------
@@ -113,6 +114,14 @@ getCurrentTime = do
 -- | Convert timestamp to UTCTime
 timeToUTC :: Time -> UTCTime
 timeToUTC (Time t) = posixSecondsToUTCTime (realToFrac t / 1000)
+
+
+instance CryptoHash alg => MerkleValue alg Height where
+  merkleHash = hash
+instance CryptoHash alg => MerkleValue alg Round where
+  merkleHash = hash
+instance CryptoHash alg => MerkleValue alg Time where
+  merkleHash = hash
 
 
 ----------------------------------------------------------------
