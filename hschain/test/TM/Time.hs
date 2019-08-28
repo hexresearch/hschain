@@ -16,6 +16,8 @@ import HSChain.Crypto.SHA     (SHA512)
 import HSChain.Mock.KeyList (privateKeyList)
 import HSChain.Types.Blockchain
 import HSChain.Types.Validators
+import HSChain.Types.BFTTime
+
 
 tests :: TestTree
 tests = testGroup "time"

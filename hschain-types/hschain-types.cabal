@@ -56,5 +56,6 @@ Library
                   HSChain.Types.Validators
                   HSChain.Types.Blockchain
                   HSChain.Types.Merkle
+                  HSChain.Types.BFTTime
                   HSChain.Types.MerkleBlock
                   HSChain.Types.Merklized
