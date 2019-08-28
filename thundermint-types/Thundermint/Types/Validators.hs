@@ -83,7 +83,8 @@ data ValidatorSet alg = ValidatorSet
   }
   deriving (Generic, Show)
 instance NFData (PublicKey alg) => NFData (ValidatorSet alg)
-deriving instance Eq   (PublicKey alg) => Eq   (ValidatorSet alg)
+deriving instance Eq   (PublicKey alg) => Eq  (ValidatorSet alg)
+deriving instance Ord  (PublicKey alg) => Ord (ValidatorSet alg)
 
 instance (Crypto alg, alg' ~ alg) => MerkleValue alg (ValidatorSet alg) where
   merkleHash = hash
