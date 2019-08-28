@@ -16,6 +16,8 @@ import Thundermint.Crypto.SHA     (SHA512)
 import Thundermint.Mock.KeyList (privateKeyList)
 import Thundermint.Types.Blockchain
 import Thundermint.Types.Validators
+import Thundermint.Types.BFTTime
+
 
 tests :: TestTree
 tests = testGroup "time"

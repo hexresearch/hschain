@@ -55,6 +55,7 @@ Library
                   Thundermint.Types.Network
                   Thundermint.Types.Validators
                   Thundermint.Types.Blockchain
+                  Thundermint.Types.BFTTime
                   Thundermint.Types.Merkle
                   Thundermint.Types.MerkleBlock
                   Thundermint.Types.Merklized
