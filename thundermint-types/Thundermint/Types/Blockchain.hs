@@ -30,7 +30,6 @@ module Thundermint.Types.Blockchain (
   , makeGenesis
   , Header(..)
   , Commit(..)
-  , commitTime
   , ByzantineEvidence(..)
   , BlockData(..)
   , BlockchainState(..)
@@ -60,13 +59,10 @@ import           Control.Monad
 import           Control.Monad.IO.Class   (MonadIO(..))
 import qualified Data.Aeson               as JSON
 import           Data.ByteString.Lazy     (toStrict)
-import           Data.Bits                ((.&.))
 import           Data.Coerce
 import           Data.Int
-import           Data.List                (sortBy)
 import qualified Data.List.NonEmpty       as NE
 import           Data.Monoid              ((<>))
-import           Data.Ord                 (comparing)
 import           Data.Time.Clock          (UTCTime)
 import           Data.Time.Clock.POSIX    (getPOSIXTime,posixSecondsToUTCTime)
 import           Data.Vector.Unboxed.Deriving
@@ -239,49 +235,6 @@ data Commit alg a = Commit
   }
   deriving stock    (Show, Eq, Generic)
   deriving anyclass (NFData, Serialise, JSON.ToJSON, JSON.FromJSON)
-
--- | Calculate time of commit as median of time of votes where votes
---   are weighted according to voting power of corresponding
---   validators.
-commitTime
-  :: ValidatorSet alg -- ^ Set of validators for commit
-  -> Time             -- ^ Time of previous block. Votes that aren't
-                      --   cast later that that are discarded.
-  -> Commit alg a     -- ^ Commit to calculate time
-  -> Maybe Time
-commitTime vset t0 Commit{..} = do
-  votes <- forM commitPrecommits $ \sv -> do
-    val <- validatorByIndex vset (signedKeyInfo sv)
-    return ( validatorVotingPower val
-           , signedValue sv
-           )
-  -- Here we discard invalid votes and calculate median time
-  let times    = sortBy (comparing snd)
-               $ [ (w,voteTime) | (w,Vote{..}) <- NE.toList votes
-                                , voteTime > t0
-                                , voteBlockID == Just commitBlockID
-                                ]
-      totPower = sum (fst <$> times)
-      half     = fromIntegral $ totPower `div` 2
-  case odd totPower of
-    True  -> case zDrop half times of
-      (_,t):_         -> return t
-      _               -> Nothing
-    False -> case zDrop (half - 1) times of
-      (1,t1):(_,t2):_ -> return $ average t1 t2
-      (_,t ):_        -> return t
-      _               -> Nothing
-
-
-average :: Time -> Time -> Time
-average (Time t1) (Time t2) = Time $ (t1 `div` 2) + (t2 `div` 2) + (t1 .&. t2 .&. 1)
-
-zDrop :: Integer -> [(Integer,a)] -> [(Integer,a)]
-zDrop _ [] = []
-zDrop 0 xs = xs
-zDrop i ((n,x):xs)
-  | i >= n    = zDrop (i - n) xs
-  | otherwise = (n-i, x) : xs
 
 
 -- | Type class for data which could be put into block
