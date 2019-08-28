@@ -179,7 +179,7 @@ newtype ConsensusM alg a m b = ConsensusM
 data ConsensusResult alg a b
   = Success !b
   | Tranquility
-  | Misdeed
+  | Misdeed   [ByzantineEvidence alg a]
   | DoCommit  !(Commit alg a) !(TMState alg a)
   deriving (Show,Functor)
 
@@ -192,7 +192,7 @@ instance Monad m => Monad (ConsensusM alg a m) where
   ConsensusM m >>= f = ConsensusM $ m >>= \case
     Success a     -> runConsesusM (f a)
     Tranquility   -> return Tranquility
-    Misdeed       -> return Misdeed
+    Misdeed  e    -> return $ Misdeed e
     DoCommit cm r -> return $ DoCommit cm r
 
 instance MonadIO m => MonadIO (ConsensusM alg a m) where
@@ -226,8 +226,8 @@ tranquility :: Monad m => ConsensusM alg a m x
 tranquility = ConsensusM $ return Tranquility
 
 -- | We detected clearly malicious behavior.
-misdeed :: Monad m => ConsensusM alg a m x
-misdeed = ConsensusM $ return Misdeed
+misdeed :: Monad m => [ByzantineEvidence alg a] -> ConsensusM alg a m x
+misdeed = ConsensusM . return . Misdeed
 
 
 -- | Enter new height and create new state for state machine
@@ -278,7 +278,7 @@ tendermintTransition par@HeightParameters{..} msg sm@TMState{..} =
         -> tranquility
       -- Node sending message out of order is clearly byzantine
       | signedKeyInfo p /= proposerForRound propRound
-        -> misdeed
+        -> misdeed [OutOfTurnProposal $ unverifySignature p]
       -- Add it to map of proposals
       | otherwise
         -> do logger InfoS "Got proposal" $ LogProposal propHeight propRound propBlockID
@@ -302,7 +302,7 @@ tendermintTransition par@HeightParameters{..} msg sm@TMState{..} =
       , voteRound       == r
         -> case voteBlockID of
              -- Virtuous node can either vote for same block or for NIL
-             Just bid | bid /= cmtID                  -> misdeed
+             Just bid | bid /= cmtID                   -> misdeed []
              -- Add vote while ignoring duplicates
              _        | v' `elem` commitPrecommits cmt -> tranquility
                       | otherwise                      -> return sm
@@ -574,7 +574,8 @@ addPrevote HeightParameters{..} v@(signedValue -> Vote{..}) sm@TMState{..} = do
   case addSignedValue voteRound v (voteTime > currentTime) smPrevotesSet of
     InsertOK votes   -> return sm { smPrevotesSet = votes }
     InsertDup        -> tranquility
-    InsertConflict _ -> misdeed
+    InsertConflict u -> misdeed
+                      [ ConflictingPreVote (unverifySignature v) (unverifySignature u)]
     -- NOTE: Couldn't happen since we reject votes signed by unknown keys
     InsertUnknown  _ -> error "addPrevote: Internal error"
 
@@ -589,6 +590,7 @@ addPrecommit HeightParameters{..} v@(signedValue -> Vote{..}) sm@TMState{..} = d
   case addSignedValue voteRound v (voteTime > currentTime) smPrecommitsSet of
     InsertOK votes   -> return sm { smPrecommitsSet = votes }
     InsertDup        -> tranquility
-    InsertConflict _ -> misdeed
+    InsertConflict u -> misdeed
+                      [ ConflictingPreCommit (unverifySignature v) (unverifySignature u)]
     -- NOTE: See addPrevote
     InsertUnknown  _ -> error "addPrecommit: Internal error"
