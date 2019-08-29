@@ -111,7 +111,7 @@ decideNewBlock config appValidatorKey appLogic@AppLogic{..} appCall@AppCallbacks
   -- machine
   --
   -- FIXME: we don't want duplication! (But pipes & producer does not unify)
-  hParam <- makeHeightParameters config appValidatorKey appLogic appCall appCh
+  hParam <- makeHeightParameters appValidatorKey appLogic appCall appCh
   -- Get rid of messages in WAL that are no longer needed and replay
   -- all messages stored there.
   walMessages <- fmap (fromMaybe [])
@@ -184,7 +184,7 @@ decideNewBlock config appValidatorKey appLogic@AppLogic{..} appCall@AppCallbacks
                     Success t -> return t
                     _         -> throwM ImpossibleError
     messageSrc
-      >-> verifyMessageSignature appLogic appByzantine hParam
+      >-> verifyMessageSignature hParam
       >-> msgHandlerLoop Nothing tm0
       >-> handleEngineMessage hParam config appByzantine appCh
 
@@ -210,11 +210,9 @@ handleVerifiedMessage ProposalStorage{..} hParam tm = \case
 -- simply discarded.
 verifyMessageSignature
   :: (MonadLogger m, Crypto alg)
-  => AppLogic         m alg a
-  -> AppByzantine     m alg a
-  -> HeightParameters m alg a
+  => HeightParameters m alg a
   -> Pipe (MessageRx 'Unverified alg a) (MessageRx 'Verified alg a) m r
-verifyMessageSignature AppLogic{..} AppByzantine{..} HeightParameters{..} = forever $ do
+verifyMessageSignature HeightParameters{..} = forever $ do
   await >>= \case
     RxPreVote   sv
       | h      == currentH -> verify "prevote"   RxPreVote   sv
@@ -352,13 +350,12 @@ makeHeightParameters
      , MonadThrow m
      , MonadLogger m
      , Crypto alg, Serialise a)
-  => ConsensusCfg
-  -> Maybe (PrivValidator alg)
+  => Maybe (PrivValidator alg)
   -> AppLogic     m alg a
   -> AppCallbacks m alg a
   -> AppChans     m alg a
   -> m (HeightParameters m alg a)
-makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{..} AppChans{..} = do
+makeHeightParameters appValidatorKey AppLogic{..} AppCallbacks{..} AppChans{..} = do
   let AppByzantine{..} = appByzantine
   h         <- queryRO $ blockchainHeight
   valSet    <- throwNothing (DBMissingValSet (succ h)) <=< queryRO
