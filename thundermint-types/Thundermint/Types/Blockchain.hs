@@ -279,6 +279,9 @@ data ByzantineEvidence alg a
   deriving stock    (Show, Eq, Generic)
   deriving anyclass (NFData, Serialise, JSON.ToJSON, JSON.FromJSON)
 
+instance (alg ~ alg', CryptoHash alg
+         ) => MerkleValue alg' (ByzantineEvidence alg a) where
+  merkleHash = hash
 
 -- | Data justifying commit
 data Commit alg a = Commit
