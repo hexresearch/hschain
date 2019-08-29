@@ -8,6 +8,7 @@
 {-# LANGUAGE LambdaCase                 #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE RecordWildCards            #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE TypeFamilies               #-}
 {-# LANGUAGE UndecidableInstances       #-}
@@ -68,7 +69,7 @@ data Validator alg = Validator
   , validatorVotingPower :: !Integer
   }
   deriving stock    (Generic, Show)
-  deriving anyclass (CBOR.Serialise)
+  deriving anyclass (CBOR.Serialise, JSON.ToJSON, JSON.FromJSON)
 instance NFData (PublicKey alg) => NFData (Validator alg)
 deriving instance Eq   (PublicKey alg) => Eq   (Validator alg)
 deriving instance Ord  (PublicKey alg) => Ord  (Validator alg)
@@ -104,6 +105,15 @@ instance (Crypto alg) => CBOR.Serialise (ValidatorSet alg) where
     where
       asList :: [a] -> [a]
       asList = id
+
+instance CryptoAsymmetric alg => JSON.ToJSON (ValidatorSet alg) where
+  toJSON    = JSON.toJSON . vsValidators
+instance Crypto alg => JSON.FromJSON (ValidatorSet alg) where
+  parseJSON o = do
+    vals <- JSON.parseJSON o
+    case makeValidatorSet (vals :: [Validator alg]) of
+      Right a -> return a
+      Left  e -> fail (show e)
 
 -- | Create set of validators. Return @Left (Just addr)@ if list
 --   contains multiple validators with same public keys, or @Left
