@@ -1,6 +1,8 @@
 {-# LANGUAGE CPP                        #-}
 {-# LANGUAGE DataKinds                  #-}
+{-# LANGUAGE DeriveAnyClass             #-}
 {-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE DerivingStrategies         #-}
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
@@ -11,6 +13,7 @@
 {-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE TemplateHaskell            #-}
 {-# LANGUAGE TypeFamilies               #-}
+{-# LANGUAGE UndecidableInstances       #-}
 -- |
 -- Data types for implementation of consensus algorithm
 module Thundermint.Types.Blockchain (
@@ -30,6 +33,7 @@ module Thundermint.Types.Blockchain (
   , commitTime
   , ByzantineEvidence(..)
   , BlockData(..)
+  , BlockchainState(..)
     -- * Data types for establishing consensus
   , Step(..)
   , FullStep(..)
@@ -39,6 +43,13 @@ module Thundermint.Types.Blockchain (
   , VoteType(..)
   , Vote(..)
   , CheckSignature(..)
+    -- * Signed data
+  , Signed
+  , signedValue
+  , signedKeyInfo
+  , signValue
+  , verifySignature
+  , unverifySignature
   ) where
 
 import           Codec.Serialise
@@ -50,6 +61,7 @@ import           Control.Monad.IO.Class   (MonadIO(..))
 import qualified Data.Aeson               as JSON
 import           Data.Aeson               ((.=), (.:))
 import           Data.ByteString          (ByteString)
+import           Data.ByteString.Lazy     (toStrict)
 import           Data.Bits                ((.&.))
 import           Data.Coerce
 import           Data.Int
@@ -84,15 +96,19 @@ import Thundermint.Types.Validators
 --   * Current height in consensus algorithm is height of block we're
 --     deciding on.
 newtype Height = Height Int64
-  deriving (Show, Read, Generic, Eq, Ord, NFData, Serialise, JSON.ToJSON, JSON.FromJSON, Enum)
+  deriving stock   (Show, Read, Generic, Eq, Ord)
+  deriving newtype (NFData, Serialise, JSON.ToJSON, JSON.FromJSON, Enum)
 
 -- | Voting round
 newtype Round = Round Int64
-  deriving (Show, Read, Generic, Eq, Ord, NFData, Serialise, JSON.ToJSON, JSON.FromJSON, Enum)
+  deriving stock   (Show, Read, Generic, Eq, Ord)
+  deriving newtype (NFData, Serialise, JSON.ToJSON, JSON.FromJSON, Enum)
 
 -- | Time in milliseconds since UNIX epoch.
 newtype Time = Time Int64
-  deriving (Show, Read, Generic, Eq, Ord, NFData, Serialise, JSON.ToJSON, JSON.FromJSON)
+  deriving stock   (Show, Read, Generic, Eq, Ord)
+  deriving newtype (NFData, Serialise, JSON.ToJSON, JSON.FromJSON, Enum)
+
 
 -- | Get current time
 getCurrentTime :: MonadIO m => m Time
@@ -111,11 +127,8 @@ timeToUTC (Time t) = posixSecondsToUTCTime (realToFrac t / 1000)
 
 -- | Block identified by hash
 data BlockID alg a = BlockID !(Hashed alg (Header alg a))
-  deriving (Show,Eq,Ord,Generic)
-instance NFData        (BlockID alg a)
-instance Serialise     (BlockID alg a)
-instance CryptoHash alg => JSON.ToJSON   (BlockID alg a)
-instance CryptoHash alg => JSON.FromJSON (BlockID alg a)
+  deriving stock    (Show, Eq, Ord, Generic)
+  deriving anyclass (NFData, Serialise, JSON.ToJSON, JSON.FromJSON)
 
 blockHash
   :: (Crypto alg)
@@ -152,13 +165,10 @@ data Block alg a = Block
   , blockEvidence   :: [ByzantineEvidence alg a]
     -- ^ Evidence of byzantine behavior by nodes.
   }
-  deriving (Show, Generic)
-
-instance (NFData a, NFData (PublicKey alg)) => NFData (Block alg a)
-deriving instance (Eq (PublicKey alg), Eq a) => Eq (Block alg a)
-instance (Crypto alg, Serialise     a) => Serialise     (Block alg a)
-instance (Crypto alg, JSON.FromJSON a) => JSON.FromJSON (Block alg a)
-instance (Crypto alg, JSON.ToJSON   a) => JSON.ToJSON   (Block alg a)
+  deriving stock    (Show, Generic)
+  deriving anyclass (Serialise, JSON.ToJSON, JSON.FromJSON)
+instance (NFData a, NFData (PublicKey alg))  => NFData (Block alg a)
+deriving instance (Eq (PublicKey alg), Eq a) => Eq     (Block alg a)
 
 -- | Genesis block has many field with predetermined content so this
 --   is convenience function to create genesis block.
@@ -213,9 +223,8 @@ data Header alg a = Header
   , headerEvidenceHash   :: !(Hashed alg [ByzantineEvidence alg a])
     -- ^ Hash of evidence of byzantine behavior
   }
-  deriving (Show, Eq, Generic)
-instance NFData    (Header alg a)
-instance Serialise (Header alg a)
+  deriving stock    (Show, Eq, Generic)
+  deriving anyclass (NFData, Serialise)
 
 instance CryptoHash alg => JSON.ToJSON (Header alg a) where
   toJSON Header{..} =
@@ -248,35 +257,29 @@ instance CryptoHash alg => JSON.FromJSON (Header alg a) where
 
 -- | Evidence of byzantine behaviour by some node.
 data ByzantineEvidence alg a
-  = OutOfTurnProposal !(Signed (ValidatorIdx alg) 'Unverified alg (Proposal alg a))
+  = OutOfTurnProposal !(Signed 'Unverified alg (Proposal alg a))
     -- ^ Node made proposal out of turn
   | ConflictingPreVote
-      !(Signed (ValidatorIdx alg) 'Unverified alg (Vote 'PreVote alg a))
-      !(Signed (ValidatorIdx alg) 'Unverified alg (Vote 'PreVote alg a))
+      !(Signed 'Unverified alg (Vote 'PreVote alg a))
+      !(Signed 'Unverified alg (Vote 'PreVote alg a))
     -- ^ Node made conflicting prevotes in the same round
   | ConflictingPreCommit
-      !(Signed (ValidatorIdx alg) 'Unverified alg (Vote 'PreVote alg a))
-      !(Signed (ValidatorIdx alg) 'Unverified alg (Vote 'PreVote alg a))
+      !(Signed 'Unverified alg (Vote 'PreVote alg a))
+      !(Signed 'Unverified alg (Vote 'PreVote alg a))
     -- ^ Node made conflicting precommits in the same round
-  deriving (Show, Eq, Generic)
-instance NFData        (ByzantineEvidence alg a)
-instance Serialise     (ByzantineEvidence alg a)
-instance CryptoHash alg => JSON.FromJSON (ByzantineEvidence alg a)
-instance CryptoHash alg => JSON.ToJSON   (ByzantineEvidence alg a)
+  deriving stock    (Show, Eq, Generic)
+  deriving anyclass (NFData, Serialise, JSON.ToJSON, JSON.FromJSON)
 
 
 -- | Data justifying commit
 data Commit alg a = Commit
   { commitBlockID    :: !(BlockID alg a)
     -- ^ Block for which commit is done
-  , commitPrecommits :: !(NE.NonEmpty (Signed (ValidatorIdx alg) 'Unverified alg (Vote 'PreCommit alg a)))
+  , commitPrecommits :: !(NE.NonEmpty (Signed 'Unverified alg (Vote 'PreCommit alg a)))
     -- ^ List of precommits which justify commit
   }
-  deriving (Show, Eq, Generic)
-instance NFData        (Commit alg a)
-instance Serialise     (Commit alg a)
-instance CryptoHash alg => JSON.FromJSON (Commit alg a)
-instance CryptoHash alg => JSON.ToJSON   (Commit alg a)
+  deriving stock    (Show, Eq, Generic)
+  deriving anyclass (NFData, Serialise, JSON.ToJSON, JSON.FromJSON)
 
 -- | Calculate time of commit as median of time of votes where votes
 --   are weighted according to voting power of corresponding
@@ -323,15 +326,28 @@ zDrop i ((n,x):xs)
 
 
 -- | Type class for data which could be put into block
-class (Serialise a, Serialise (TX a), Serialise (BlockchainState a)) => BlockData a where
-  -- | Transaction type of block
+class ( Serialise a
+      , Serialise (TX a)
+      , Serialise (InterpreterState a)
+      ) => BlockData a where
+  -- | Type of transaction used in blockchain
   type TX a
-  -- | State of blockchain
-  type BlockchainState a
+  -- | Part of state of blockchain defined by user. Complete state is
+  --   @BlockchainState@
+  type InterpreterState a
   -- | Return list of transaction in block
   blockTransactions :: a -> [TX a]
   -- | Collect information about block data for logging
   logBlockData      :: a -> JSON.Object
+
+data BlockchainState alg a = BlockchainState
+  { blockchainState :: !(InterpreterState a)
+  , bChValidatorSet :: !(ValidatorSet alg)
+  }
+  deriving stock (Generic)
+instance ( NFData (InterpreterState a)
+         , NFData (PublicKey alg)
+         ) => NFData (BlockchainState alg a)
 
 
 ----------------------------------------------------------------
@@ -355,20 +371,16 @@ data Step
     --   perform commit. Node could only stay in this state if it
     --   catching up and got all required precommits before getting
     --   block.
-  deriving (Show,Eq,Ord,Generic)
-instance Serialise     Step
-instance JSON.ToJSON   Step
-instance JSON.FromJSON Step
+  deriving stock    (Show, Eq, Ord, Generic)
+  deriving anyclass (NFData, Serialise, JSON.ToJSON, JSON.FromJSON)
 
 data FullStep = FullStep !Height !Round !Step
-  deriving (Show,Eq,Ord,Generic)
-instance Serialise FullStep
+  deriving stock    (Show, Eq, Ord, Generic)
+  deriving anyclass (NFData, Serialise)
 
 data Timeout = Timeout !Height !Round !Step
-  deriving (Show,Eq,Ord,Generic)
-instance Serialise     Timeout
-instance JSON.ToJSON   Timeout
-instance JSON.FromJSON Timeout
+  deriving stock    (Show, Eq, Ord, Generic)
+  deriving anyclass (NFData, Serialise, JSON.ToJSON, JSON.FromJSON)
 
 -- | Proposal for new block. Proposal include only hash of block and
 --   block itself is gossiped separately.
@@ -386,20 +398,16 @@ data Proposal alg a = Proposal
   , propBlockID   :: !(BlockID alg a)
     -- ^ Hash of proposed block
   }
-  deriving (Show, Eq, Generic)
-instance NFData        (Proposal alg a)
-instance Serialise     (Proposal alg a)
-instance CryptoHash alg => JSON.FromJSON (Proposal alg a)
-instance CryptoHash alg => JSON.ToJSON   (Proposal alg a)
+  deriving stock    (Show, Eq, Ord, Generic)
+  deriving anyclass (NFData, Serialise, JSON.ToJSON, JSON.FromJSON)
+
 
 -- | Type of vote. Used for type-tagging of votes
-data VoteType = PreVote
-              | PreCommit
-              deriving (Show,Eq,Generic)
-
-instance Serialise     VoteType
-instance JSON.FromJSON VoteType
-instance JSON.ToJSON   VoteType
+data VoteType
+  = PreVote
+  | PreCommit
+  deriving stock    (Show, Eq, Ord, Generic)
+  deriving anyclass (Serialise, JSON.FromJSON, JSON.ToJSON)
 
 -- | Single vote cast validator. Type of vote is determined by its
 --   type tag
@@ -409,9 +417,9 @@ data Vote (ty :: VoteType) alg a = Vote
   , voteTime    :: !Time
   , voteBlockID :: !(Maybe (BlockID alg a))
   }
-  deriving (Show,Eq,Ord,Generic)
+  deriving stock    (Show, Eq, Ord, Generic)
+  deriving anyclass (NFData, JSON.ToJSON, JSON.FromJSON)
 
-instance NFData (Vote ty alg a)
 instance Serialise (Vote 'PreVote alg a) where
     encode = encodeVote 0
     decode = decodeVote 0
@@ -419,10 +427,6 @@ instance Serialise (Vote 'PreVote alg a) where
 instance Serialise (Vote 'PreCommit alg a) where
     encode = encodeVote 1
     decode = decodeVote 1
-
-instance CryptoHash alg => JSON.FromJSON (Vote ty alg a)
-instance CryptoHash alg => JSON.ToJSON   (Vote ty alg a)
-
 
 
 encodeVote :: Word -> Vote ty alg a -> Encoding
@@ -446,23 +450,87 @@ decodeVote expectedTag = do
                       ++ ", actual: " ++ show tag)
         _ -> fail $ "Invalid Vote encoding"
 
+
+----------------------------------------------------------------
+-- Signed values
+----------------------------------------------------------------
+
+-- | Signed value. It contains value itself, signature, and
+--   information which could be used to indentify secret key which was
+--   used for signing. It could be public key, hash of public key
+--   (fingerprint) or anything else. Signature is computed for CBOR
+--   encoding of value.
+data Signed (sign :: SignedState) alg a
+  = Signed !(ValidatorIdx alg) !(Signature alg) !a
+  deriving stock (Generic, Eq, Show)
+
+instance (NFData a) => NFData (Signed sign alg a) where
+  rnf (Signed a s x) = rnf a `seq` rnf s `seq` rnf x
+
+-- | Obtain underlying value
+signedValue :: Signed sign alg a -> a
+signedValue (Signed _ _ a) = a
+
+-- | Obtain information about key used for signing. It could be public
+--   key itself or any other information which allows to figure out
+--   which key should be used to verify signature.
+signedKeyInfo :: Signed sign alg a -> ValidatorIdx alg
+signedKeyInfo (Signed a _ _) = a
+
+-- | Sign value. Note that we can generate both verified and unverified
+--   values this way.
+signValue
+  :: (Serialise a, CryptoSign alg)
+  => ValidatorIdx alg           -- ^ Key identifier
+  -> PrivKey alg                -- ^ Key for signing
+  -> a                          -- ^ Value to sign
+  -> Signed sign alg a
+signValue key privK a
+  = Signed key
+           (signBlob privK $ toStrict $ serialise a)
+           a
+
+-- | Verify signature. It return Nothing if verification fails for any
+--   reason. Note that since @Signed@ contain only fingerprint we need
+--   to supply function for looking up public keys.
+verifySignature
+  :: (Serialise a, CryptoSign alg)
+  => ValidatorSet alg
+     -- ^ Set of validators corresponding to signed value
+  -> Signed 'Unverified alg a
+     -- ^ Value for verifying signature
+  -> Maybe (Signed 'Verified alg a)
+verifySignature valSet val@(Signed idx signature a) = do
+  Validator pubK _ <- validatorByIndex valSet idx
+  guard $ verifyCborSignature pubK a signature
+  return $ coerce val
+
+-- | Strip verification tag
+unverifySignature :: Signed ty alg a -> Signed 'Unverified alg a
+unverifySignature = coerce
+
+instance (Serialise     a) => Serialise     (Signed 'Unverified alg a)
+instance (JSON.FromJSON a) => JSON.FromJSON (Signed 'Unverified alg a)
+instance (JSON.ToJSON   a) => JSON.ToJSON   (Signed sign        alg a)
+
+
 ----------------------------------------------------------------
 -- Helping application be faster.
 ----------------------------------------------------------------
 
 -- | Better signalling of the need to check signatures.
 data CheckSignature = CheckSignature | AlreadyChecked
-  deriving (Eq, Ord, Show)
+  deriving stock (Eq, Ord, Show)
 
 derivingUnbox "Time"   [t| Time   -> Int64 |] [| coerce |] [| coerce |]
 derivingUnbox "Height" [t| Height -> Int64 |] [| coerce |] [| coerce |]
 derivingUnbox "Round"  [t| Round  -> Int64 |] [| coerce |] [| coerce |]
 
 #ifdef INSTANCES_SQLITE
-deriving instance SQL.FromField Height
-deriving instance SQL.ToField   Height
-deriving instance SQL.FromField Round
-deriving instance SQL.ToField   Round
-deriving instance SQL.FromField Time
-deriving instance SQL.ToField   Time
+deriving newtype instance SQL.FromField Height
+deriving newtype instance SQL.ToField   Height
+deriving newtype instance SQL.FromField Round
+deriving newtype instance SQL.ToField   Round
+deriving newtype instance SQL.FromField Time
+deriving newtype instance SQL.ToField   Time
 #endif

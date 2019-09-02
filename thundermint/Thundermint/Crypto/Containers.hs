@@ -1,9 +1,11 @@
+{-# LANGUAGE DataKinds                  #-}
 {-# LANGUAGE DeriveFunctor              #-}
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase                 #-}
 {-# LANGUAGE MultiWayIf                 #-}
+{-# LANGUAGE NamedFieldPuns             #-}
 {-# LANGUAGE RecordWildCards            #-}
 {-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE UndecidableInstances       #-}
@@ -33,14 +35,11 @@ import           Data.List         (find)
 import           Data.Maybe        (fromMaybe)
 import qualified Data.Map.Strict    as Map
 import           Data.Map.Strict      (Map)
-import qualified Data.IntMap.Strict as IMap
-import           Data.IntMap.Strict   (IntMap)
-import qualified Data.Set           as Set
-import           Data.Set             (Set)
 
-import Thundermint.Crypto
-import Thundermint.Types.Validators
-
+import Thundermint.Crypto (SignedState(..))
+import Thundermint.Types
+import qualified Thundermint.Data.CIntMap as CIMap
+import           Thundermint.Data.CIntMap   (CIntMap)
 
 ----------------------------------------------------------------
 -- Set of signed values
@@ -49,25 +48,22 @@ import Thundermint.Types.Validators
 -- | Collection of signed values. It's intended to hold votes so only
 --   one value per signature is allowed. Lookup is supported both by
 --   values and by signer's fingerprint.
-data SignedSet ty alg a k = SignedSet
-  { vsetAddrMap    :: !(IntMap (Signed (ValidatorIdx alg) ty alg a))
+data SignedSet alg a k = SignedSet
+  { vsetAddrMap    :: !(CIntMap (ValidatorIdx alg) (Signed 'Verified alg a))
     -- Set of all votes
   , vsetValMap     :: !(Map k (VoteGroup alg))
     -- Reverse mapping from 
   , vsetAccPower   :: !Integer
   , vsetValidators :: !(ValidatorSet alg)
   , vsetToKey      :: !(a -> k)
-  , vsetValueOK    :: !(a -> Bool)
   }
 
 data VoteGroup alg = VoteGroup
-  { accOK     :: !Integer             -- Accumulated weight of good votes
-  , accBad    :: !Integer             -- Accumulated weight of invalid votes
-  , votersOK  :: !(Set (ValidatorIdx alg)) -- Set of voters with good votes
-  , votersBad :: !(Set (ValidatorIdx alg)) -- Set of voters with invalid votes
+  { accOK     :: !Integer         -- Accumulated weight of good votes
+  , votersOK  :: !(ValidatorISet) -- Set of voters with good votes
   }
 
-instance (Show a) => Show (SignedSet ty alg a k) where
+instance (Show a) => Show (SignedSet alg a k) where
   showsPrec n = showsPrec n . vsetAddrMap
 
 -- | Result of insertion into 'SignedSet'
@@ -93,53 +89,49 @@ instance Monad (InsertResult b) where
 emptySignedSet
   :: ValidatorSet alg           -- ^ Set of validators
   -> (a -> k)                   -- ^ Key for grouping votes
-  -> (a -> Bool)                -- ^ Additional validation for vote
-  -> SignedSet ty alg a k
-emptySignedSet = SignedSet IMap.empty Map.empty 0
+  -> SignedSet alg a k
+emptySignedSet = SignedSet CIMap.empty Map.empty 0
 
 -- | Insert value into set of votes
 insertSigned
   :: (Ord a, Ord k)
-  => Signed (ValidatorIdx alg) ty alg a
-  -> SignedSet ty alg a k
-  -> InsertResult (Signed (ValidatorIdx alg) ty alg a) (SignedSet ty alg a k)
-insertSigned sval SignedSet{..} =
-  case validatorByIndex vsetValidators addr of
+  => Signed 'Verified alg a
+  -> Bool
+  -> SignedSet alg a k
+  -> InsertResult (Signed 'Verified alg a) (SignedSet alg a k)
+insertSigned sval insertOK SignedSet{..} =
+  case validatorByIndex vsetValidators idx of
     -- We trying to insert value signed by unknown key
     Nothing -> InsertUnknown sval
-    Just validator
+    Just Validator{validatorVotingPower}
       -- We already have value signed by that key
-      | Just v <- idx `IMap.lookup` vsetAddrMap -> if
+      | Just v <- idx `CIMap.lookup` vsetAddrMap -> if
            | signedValue v == val -> InsertDup
            | otherwise            -> InsertConflict sval
       -- OK insert value then
       | otherwise -> InsertOK SignedSet
-          { vsetAddrMap  = IMap.insert idx sval vsetAddrMap
-          , vsetAccPower = vsetAccPower + validatorVotingPower validator
-          , vsetValMap   =
-              let upd VoteGroup{..}
-                    | vsetValueOK val = Just VoteGroup
-                                        { accOK    = accOK + validatorVotingPower validator
-                                        , votersOK = Set.insert addr votersOK
-                                        , ..
-                                        }
-                    | otherwise       = Just VoteGroup
-                                        { accBad    = accBad + validatorVotingPower validator
-                                        , votersBad = Set.insert addr votersBad
-                                        , ..
-                                        }
-              in Map.alter (upd . fromMaybe nullVote) k vsetValMap
+          { vsetAddrMap  = CIMap.insert idx sval vsetAddrMap
+          , vsetAccPower = vsetAccPower + validatorVotingPower
+          , vsetValMap   = if
+              | insertOK  -> Map.alter (Just . updateGrp . fromMaybe nullVote) k vsetValMap
+              | otherwise -> vsetValMap
           , ..
           }
+      where
+        updateGrp VoteGroup{..} = VoteGroup
+          { accOK    = accOK + validatorVotingPower
+          , votersOK = insertValidatorIdx idx votersOK
+          }
+        nullVote = VoteGroup 0 $ emptyValidatorISet (validatorSetSize vsetValidators)
   where
-    addr@(ValidatorIdx idx) = signedKeyInfo sval
-    val      = signedValue   sval
-    k        = vsetToKey      val
-    nullVote = VoteGroup 0 0 Set.empty Set.empty
+    idx = signedKeyInfo sval
+    val = signedValue   sval
+    k   = vsetToKey      val
 
--- | We have +2\/3 majority of votes return vote for
+
+-- | Returns whether we have +2\/3 majority of votes for some value.
 majority23
-  :: SignedSet ty alg a k
+  :: SignedSet alg a k
   -> Maybe k
 majority23 SignedSet{..} = do
   (k,_) <- find maj23 $ Map.toList vsetValMap
@@ -148,9 +140,10 @@ majority23 SignedSet{..} = do
     maj23 (_, VoteGroup{..}) = accOK >= quorum
     quorum = 2 * totalVotingPower vsetValidators `div` 3 + 1
 
--- | We have +2\/3 of votes which are distributed in any manner
+-- | Whether we have +2\/3 of votes in total which are distributed in
+--   any manner. They need not to vote for the same value.
 any23
-  :: SignedSet ty alg a k
+  :: SignedSet alg a k
   -> Bool
 any23 SignedSet{..}
   = vsetAccPower >= quorum
@@ -166,45 +159,44 @@ any23 SignedSet{..}
 
 -- | Map from @r@ to @SignedSet ty alg a@. It maintains invariant that
 --   all submaps have same distribution of voting power
-data SignedSetMap r ty alg a k = SignedSetMap
-  { vmapSubmaps    :: !(Map r (SignedSet ty alg a k))
+data SignedSetMap r alg a k = SignedSetMap
+  { vmapSubmaps    :: !(Map r (SignedSet alg a k))
   , vmapValidators :: !(ValidatorSet alg)
   , vmapToKey      :: !(a -> k)
-  , vmapValueOk    :: !(a -> Bool)
   }
 
-instance (Show a, Show r) => Show (SignedSetMap r ty alg a k) where
+instance (Show a, Show r) => Show (SignedSetMap r alg a k) where
   showsPrec n = showsPrec n . vmapSubmaps
 
 emptySignedSetMap
   :: ValidatorSet alg
   -> (a -> k)
-  -> (a -> Bool)
-  -> SignedSetMap r ty alg a k
+  -> SignedSetMap r alg a k
 emptySignedSetMap = SignedSetMap Map.empty
 
 -- | Convert collection of signed values to plain map
 toPlainMap
-  :: SignedSetMap r ty alg a k
-  -> Map r (IntMap (Signed (ValidatorIdx alg) ty alg a))
+  :: SignedSetMap r alg a k
+  -> Map r (CIntMap (ValidatorIdx alg) (Signed 'Verified alg a))
 toPlainMap = fmap vsetAddrMap . vmapSubmaps
 
 addSignedValue
   :: (Ord r, Ord a, Ord k)
   => r
-  -> Signed (ValidatorIdx alg) ty alg a
-  -> SignedSetMap r ty alg a k
-  -> InsertResult (Signed (ValidatorIdx alg) ty alg a) (SignedSetMap r ty alg a k)
-addSignedValue r a sm@SignedSetMap{..} = do
-  m <- insertSigned a
-     $ fromMaybe (emptySignedSet vmapValidators vmapToKey vmapValueOk)
+  -> Signed 'Verified alg a
+  -> Bool
+  -> SignedSetMap r alg a k
+  -> InsertResult (Signed 'Verified alg a) (SignedSetMap r alg a k)
+addSignedValue r a insertOK sm@SignedSetMap{..} = do
+  m <- insertSigned a insertOK
+     $ fromMaybe (emptySignedSet vmapValidators vmapToKey)
      $ Map.lookup r vmapSubmaps
   return sm { vmapSubmaps = Map.insert r m vmapSubmaps }
 
 majority23at
   :: (Ord r)
   => r
-  -> SignedSetMap r ty alg a k
+  -> SignedSetMap r alg a k
   -> Maybe k
 majority23at r SignedSetMap{..}
   = majority23 =<< Map.lookup r vmapSubmaps
@@ -212,7 +204,7 @@ majority23at r SignedSetMap{..}
 any23at
   :: (Ord r)
   => r
-  -> SignedSetMap r ty alg a k
+  -> SignedSetMap r alg a k
   -> Bool
 any23at r SignedSetMap{..}
   = maybe False any23 $ Map.lookup r vmapSubmaps
@@ -220,8 +212,8 @@ any23at r SignedSetMap{..}
 valuesAtR
   :: (Ord r)
   => r
-  -> SignedSetMap r ty alg a k
-  -> [Signed (ValidatorIdx alg) ty alg a]
+  -> SignedSetMap r alg a k
+  -> [Signed 'Verified alg a]
 valuesAtR r SignedSetMap{..} =
   case Map.lookup r vmapSubmaps of
     Nothing            -> []

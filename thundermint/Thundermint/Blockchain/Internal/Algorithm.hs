@@ -50,16 +50,12 @@ import qualified Katip
 import Pipes
 import GHC.Generics
 
-import Thundermint.Crypto            ( Crypto, Signed, SignedState(..)
-                                     , signedValue, signedKeyInfo
-                                     )
+import Thundermint.Crypto            ( Crypto, SignedState(..) )
 import Thundermint.Blockchain.Internal.Types
 import Thundermint.Blockchain.Internal.Engine.Types
-import Thundermint.Crypto            (unverifySignature)
 import Thundermint.Crypto.Containers
 import Thundermint.Logger
-import Thundermint.Types.Blockchain
-import Thundermint.Types.Validators
+import Thundermint.Types
 
 
 ----------------------------------------------------------------
@@ -68,11 +64,11 @@ import Thundermint.Types.Validators
 
 -- | Messages being sent to consensus engine
 data Message alg a
-  = ProposalMsg    !(Signed (ValidatorIdx alg) 'Verified alg (Proposal alg a))
+  = ProposalMsg    !(Signed 'Verified alg (Proposal alg a))
     -- ^ Incoming proposal
-  | PreVoteMsg     !(Signed (ValidatorIdx alg) 'Verified alg (Vote 'PreVote   alg a))
+  | PreVoteMsg     !(Signed 'Verified alg (Vote 'PreVote   alg a))
     -- ^ Incoming prevote
-  | PreCommitMsg   !(Signed (ValidatorIdx alg) 'Verified alg (Vote 'PreCommit alg a))
+  | PreCommitMsg   !(Signed 'Verified alg (Vote 'PreCommit alg a))
     -- ^ Incoming precommit
   | TimeoutMsg     !Timeout
     -- ^ Timeout
@@ -93,8 +89,6 @@ data HeightParameters (m :: * -> *) alg a = HeightParameters
     --   stragglers votes
   , validatorKey         :: !(Maybe (PrivValidator alg, ValidatorIdx alg))
     -- ^ Validator key and index in validator set for current round
-  , areWeProposers       :: !(Round -> Bool)
-    -- ^ Find address of proposer for given round.
   , readyCreateBlock     :: !(m Bool)
     -- ^ Returns true if validator is ready to create new block. If
     --   false validator will stay in @NewHeight@ step until it
@@ -259,8 +253,8 @@ newHeight HeightParameters{..} lastCommit = do
     { smRound         = Round 0
     , smStep          = StepNewHeight
     , smProposals     = Map.empty
-    , smPrevotesSet   = newHeightVoteSet validatorSet currentTime
-    , smPrecommitsSet = newHeightVoteSet validatorSet currentTime
+    , smPrevotesSet   = newHeightVoteSet validatorSet
+    , smPrecommitsSet = newHeightVoteSet validatorSet
     , smLockedBlock   = Nothing
     , smLastCommit    = lastCommit
     }
@@ -445,7 +439,7 @@ enterPropose HeightParameters{..} r sm@TMState{..} reason = do
   lift $ yield $ EngAnnStep $ FullStep currentH r StepProposal
   -- If we're proposers we need to broadcast proposal. Otherwise we do
   -- nothing
-  when (areWeProposers r) $ case smLockedBlock of
+  when areWeProposers $ case smLockedBlock of
     -- FIXME: take care of POL fields of proposal
     --
     -- If we're locked on block we MUST propose it
@@ -458,6 +452,8 @@ enterPropose HeightParameters{..} r sm@TMState{..} reason = do
   return sm { smRound = r
             , smStep  = StepProposal
             }
+  where
+    areWeProposers = Just (proposerForRound r) == fmap snd validatorKey
 
 -- Enter PREVOTE step. Upon entering it we:
 --
@@ -579,12 +575,12 @@ enterPrecommit par@HeightParameters{..} r sm@TMState{..} reason = do
 addPrevote
   :: (Monad m)
   => HeightParameters m alg a
-  -> Signed (ValidatorIdx alg) 'Verified alg (Vote 'PreVote alg a)
+  -> Signed 'Verified alg (Vote 'PreVote alg a)
   -> TMState alg a
   -> CNS x alg a m (TMState alg a)
-addPrevote HeightParameters{..} v sm@TMState{..} = do
+addPrevote HeightParameters{..} v@(signedValue -> Vote{..}) sm@TMState{..} = do
   lift $ yield $ EngAnnPreVote v
-  case addSignedValue (voteRound $ signedValue v) v smPrevotesSet of
+  case addSignedValue voteRound v (voteTime > currentTime) smPrevotesSet of
     InsertOK votes   -> return sm { smPrevotesSet = votes }
     InsertDup        -> tranquility
     InsertConflict _ -> misdeed
@@ -594,12 +590,12 @@ addPrevote HeightParameters{..} v sm@TMState{..} = do
 addPrecommit
   :: (Monad m)
   => HeightParameters m alg a
-  -> Signed (ValidatorIdx alg) 'Verified alg (Vote 'PreCommit alg a)
+  -> Signed 'Verified alg (Vote 'PreCommit alg a)
   -> TMState alg a
   -> CNS x alg a m (TMState alg a)
-addPrecommit HeightParameters{..} v sm@TMState{..} = do
+addPrecommit HeightParameters{..} v@(signedValue -> Vote{..}) sm@TMState{..} = do
   lift $ yield $ EngAnnPreCommit v
-  case addSignedValue (voteRound $ signedValue v) v smPrecommitsSet of
+  case addSignedValue voteRound v (voteTime > currentTime) smPrecommitsSet of
     InsertOK votes   -> return sm { smPrecommitsSet = votes }
     InsertDup        -> tranquility
     InsertConflict _ -> misdeed

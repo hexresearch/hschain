@@ -29,6 +29,7 @@ module Thundermint.Mock.Coin (
   , transactionGenerator
   , TxGenerator(..)
     -- * Interpretation
+  , runner
   , interpretSpec
   , RunningNode(..)
   , executeNodeSpec
@@ -41,6 +42,7 @@ import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Cont
+import Control.Monad.Trans.State.Strict
 import Control.Concurrent   (threadDelay)
 import Control.DeepSeq
 import Codec.Serialise      (Serialise,serialise)
@@ -68,6 +70,7 @@ import Thundermint.Debug.Trace
 import Thundermint.Logger
 import Thundermint.Run
 import Thundermint.Store
+import Thundermint.Store.STM
 import Thundermint.Mock.KeyList         (makePrivKeyStream)
 import Thundermint.Mock.Types
 import Thundermint.Monitoring
@@ -86,8 +89,8 @@ newtype BData = BData [Tx]
   deriving anyclass (Serialise)
 
 instance BlockData BData where
-  type TX              BData = Tx
-  type BlockchainState BData = CoinState
+  type TX               BData = Tx
+  type InterpreterState BData = CoinState
   blockTransactions (BData txs) = txs
   logBlockData      (BData txs) = HM.singleton "Ntx" $ JSON.toJSON $ length txs
 
@@ -197,21 +200,27 @@ processTransaction transaction@(Send pubK sig txSend@TxSend{..}) CoinState{..} =
         in add $ Map.adjust remove pubK utxoLookup
     }
 
-transitions :: BlockFold alg BData
-transitions = BlockFold
-  { processTx           = const process
-  , processBlock        = \_ b s0 -> let h = headerHeight $ blockHeader b
-                                     in foldM (flip (process h)) s0 (blockTransactions $ blockData b)
-  , transactionsToBlock = \_ ->
+transitions :: BChLogic (StateT CoinState Maybe) Alg BData
+transitions = BChLogic
+  { processTx     = \tx -> liftSt (process (Height 0) tx) -- FIXME
+      
+  , processBlock  = \b  ->
+      let h = headerHeight $ blockHeader b
+      in liftSt $ \s0 -> foldM (flip (process h)) s0 (blockTransactions $ blockData b)      
+  , generateBlock = \_ txs -> do
       let selectTx c []     = (c,[])
           selectTx c (t:tx) = case processTransaction t c of
                                 Nothing -> selectTx c  tx
                                 Just c' -> let (c'', b  ) = selectTx c' tx
                                            in  (c'', t:b)
-      in (fmap . fmap . fmap) BData selectTx
-  , initialState        = CoinState Map.empty Map.empty
+      c0 <- get
+      case selectTx c0 txs of
+        (c',b) -> BData b <$ put c'
+  , initialState  = CoinState mempty mempty
   }
   where
+    liftSt :: (s -> Maybe s) -> StateT s Maybe ()
+    liftSt fun = StateT $ fmap ((),) . fun
     process (Height 0) t s = processDeposit t s <|> processTransaction t s
     process _          t s = processTransaction t s
 
@@ -312,6 +321,13 @@ findInputs tgt = go 0
 -- Interpretation of coin
 ----------------------------------------------------------------
 
+runner :: Monad m => Interpreter (StateT CoinState Maybe) m Alg BData
+runner = Interpreter run
+  where
+    run (BlockchainState st vset) m = return $ do
+      (a,st') <- runStateT m st
+      return (a, BlockchainState st' vset)
+
 interpretSpec
   :: ( MonadDB m Alg BData, MonadFork m, MonadMask m, MonadLogger m
      , MonadTrace m, MonadTMMonitoring m
@@ -322,8 +338,9 @@ interpretSpec
   -> AppCallbacks m Alg BData
   -> m (RunningNode m Alg BData, [m ()])
 interpretSpec p cb = do
-  conn              <- askConnectionRO
-  (bchState, logic) <- logicFromFold transitions
+  conn  <- askConnectionRO
+  store <- newSTMBchStorage $ initialState transitions
+  logic <- makeAppLogic store transitions runner  
   acts <- runNode (getT p :: Configuration Example) NodeDescription
     { nodeValidationKey = p ^.. nspecPrivKey
     , nodeCallbacks     = cb <> nonemptyMempoolCallback (appMempool logic)
@@ -331,7 +348,7 @@ interpretSpec p cb = do
     , nodeNetwork       = getT p
     }
   return
-    ( RunningNode { rnodeState   = bchState
+    ( RunningNode { rnodeState   = store
                   , rnodeConn    = conn
                   , rnodeMempool = appMempool logic
                   }

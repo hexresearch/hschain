@@ -7,25 +7,28 @@
 -- Encoding of application-specific logic for blockchain
 module Thundermint.Blockchain.Interpretation (
     -- * Pure state
-    BlockFold(..)
-  , BChState(..)
-  , newBChState
-  , hoistBChState
+    BChLogic(..)
+  , Interpreter(..)
   ) where
 
-import Control.Concurrent.MVar
-import Control.Monad (when,(<=<))
-import Control.Monad.Catch
-import Control.Monad.IO.Class
-
-import Thundermint.Crypto
-import Thundermint.Control
-import Thundermint.Exceptions
-import Thundermint.Store
 import Thundermint.Types.Blockchain
 
+data BChLogic q alg a = BChLogic
+  { processTx     :: !(TX a -> q ())
+  , processBlock  :: !(Block alg a -> q ())
+  , generateBlock :: !(Block alg a -> [TX a] -> q a)
+  , initialState  :: !(InterpreterState a)
+  }
+
+newtype Interpreter q m alg a = Interpreter
+  { interpretBCh :: forall x.
+                    BlockchainState alg a
+                 -> q x
+                 -> m (Maybe (x, BlockchainState alg a))
+  }
 
 
+{-
 -- | Data structure which encapsulate interpretation of
 --   blockchain. Type parameters have following meaning:
 --
@@ -56,56 +59,4 @@ data BlockFold alg a = BlockFold
   , initialState :: !(BlockchainState a)
     -- ^ State of blockchain BEFORE genesis block.
   }
-
-
-----------------------------------------------------------------
--- State wrapper
-----------------------------------------------------------------
-
--- | Wrapper for obtaining state of blockchain. It's quite limited
---   calls must be done with in nondecreasing height.
-data BChState m s = BChState
-  { currentState :: m s
-  , stateAtH     :: Height -> m s
-  }
-
--- | Create block storage backed by MVar
-newBChState
-  :: (MonadMask m, MonadIO m, MonadDB m alg a, BlockData a, Crypto alg)
-  => BlockFold alg a             -- ^ Updating function
-  -> m (BChState m (BlockchainState a))
-newBChState BlockFold{..} = do
-  maybeState <- queryRO retrieveSavedState
-  state <- liftIO $ newMVar $ case maybeState of
-    Just (h, s) -> (h,        s)
-    _ ->           (Height 0, initialState)
-  let ensureHeight hBlk = do
-        (st,flt) <- modifyMVarM state $ \st@(h,s) ->
-          case h `compare` hBlk of
-            GT -> error "newBChState: invalid parameter"
-            EQ -> return (st, (s,False))
-            LT -> do b <- throwNothing (DBMissingBlock h) <=< queryRO
-                        $ retrieveBlock h
-                     let !checkSignature | succ h == hBlk = CheckSignature
-                                         | otherwise      = AlreadyChecked
-                     case processBlock checkSignature b s of
-                       Just st' -> do
-                         let h' = succ h
-                         let Height hToCheck = h
-                         when (mod hToCheck 200 == 0) $ do
-                            _ <- queryRW $ storeStateSnapshot h' st'
-                            return ()
-                         return ((h', st'), (st',True))
-                       Nothing  -> error "OOPS! Blockchain is not valid!!!"
-        case flt of
-          True  -> ensureHeight hBlk
-          False -> return st
-  return BChState
-    { currentState = withMVarM state (return . snd)
-    , stateAtH     = ensureHeight
-    }
-
-hoistBChState :: (forall a . m a -> n a) -> BChState m s -> BChState n s
-hoistBChState f BChState{..} = BChState
-  { currentState = f currentState
-  , stateAtH     = f . stateAtH }
+-}

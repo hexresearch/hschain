@@ -23,11 +23,8 @@ module Thundermint.Blockchain.Internal.Engine.Types (
   , hoistAppCallback
   , Validator(..)
   , PrivValidator(..)
-  , CommitCallback(..)
-  , hoistCommitCallback
   , AppByzantine(..)
   , hoistAppByzantine
-  , noByz
     -- * Messages and channels
   , MessageRx(..)
   , unverifyMessageRx
@@ -37,8 +34,8 @@ module Thundermint.Blockchain.Internal.Engine.Types (
   ) where
 
 import Control.Applicative
+import Control.Monad
 import Control.Concurrent.STM
-import Control.Monad.Morph    (MFunctor(..))
 import Data.Aeson
 import Data.Coerce
 import Data.Monoid            (Any(..))
@@ -154,40 +151,23 @@ instance DefaultConfig app => FromJSON (Configuration app) where
 --
 ----------------------------------------------------------------
 
--- | Callback which is called right after block is commited to
---   database.
-data CommitCallback m alg a
-  = SimpleQuery !(ValidatorSet alg -> Block alg a -> Query 'RW alg a ())
-  -- ^ Query for updating user's state and to find out new set of
-  --   validators. It's evaluated in the same transaction as block
-  --   commit and thus atomic.
-  | MixedQuery  !(ValidatorSet alg -> Block alg a -> QueryT 'RW alg a m ())
-  -- ^ Query which allow to mixed database updates with other
-  --   actions. If @Query@ succeeds returned action is executed immediately
-
-
 -- | Collection of callbacks which implement actual logic of
 --   blockchain. This is most generic form which doesn't expose any
 --   underlying structure. It's expected that this structure will be
 --   generated from more specialized functions
 data AppLogic m alg a = AppLogic
-  { appBlockGenerator   :: ValidatorSet alg
-                        -> Block alg a
-                        -> BlockchainState a
+  { appBlockGenerator   :: Block alg a
+                        -> BlockchainState alg a
                         -> [TX a]
-                        -> m (a, ValidatorSet alg, BlockchainState a)
+                        -> m (a, BlockchainState alg a)
     -- ^ Generate fresh block for proposal. It's called each time we
     --   need to create new block for proposal
-  , appValidationFun    :: ValidatorSet alg
-                        -> Block alg a
-                        -> BlockchainState a
-                        -> m (Maybe (ValidatorSet alg, BlockchainState a))
+  , appValidationFun    :: Block alg a
+                        -> BlockchainState alg a
+                        -> m (Maybe (BlockchainState alg a))
     -- ^ Function for validation of proposed block data. It returns
     --   change of validators for given block if it's valid and
     --   @Nothing@ if it's not.
-  , appCommitQuery      :: CommitCallback m alg a
-    -- ^ Database query called after block commit in the same
-    --   transaction
   , appMempool          :: Mempool m alg (TX a)
     -- ^ Application mempool
   , appBchState         :: BChStore m a
@@ -234,10 +214,6 @@ instance Monad m => Semigroup (AppByzantine m alg a) where
 instance (Monad m) => Monoid (AppByzantine m alg a) where
     mempty = AppByzantine Nothing Nothing Nothing
 
-
-noByz :: (Monad m) => AppByzantine m alg a
-noByz = mempty
-
 seqappl :: (Monad m)
       => Maybe (a -> m (Maybe a))
       -> Maybe (a -> m (Maybe a))
@@ -245,23 +221,14 @@ seqappl :: (Monad m)
 seqappl Nothing Nothing     = Nothing
 seqappl Nothing   x         = x
 seqappl x         Nothing   = x
-seqappl (Just b1) (Just b2) = Just $ \arg -> b1 arg >>= maybe (return Nothing) b2
+seqappl (Just b1) (Just b2) = Just $ b1 >=> maybe (return Nothing) b2
 
-
-hoistCommitCallback
-  :: (Monad m)
-  => (forall x. m x -> n x) -> CommitCallback m alg a -> CommitCallback n alg a
-hoistCommitCallback _   (SimpleQuery f) = SimpleQuery f
-hoistCommitCallback fun (MixedQuery  f) = MixedQuery $ (fmap . fmap) (hoist fun) f
-
-
-hoistAppLogic :: (Monad m, Functor n) => (forall x. m x -> n x) -> AppLogic m alg a -> AppLogic n alg a
+hoistAppLogic :: (Functor n) => (forall x. m x -> n x) -> AppLogic m alg a -> AppLogic n alg a
 hoistAppLogic fun AppLogic{..} = AppLogic
-  { appBlockGenerator   = \v b s tx -> fun $ appBlockGenerator v b s tx
-  , appValidationFun    = \v b s    -> fun $ appValidationFun  v b s
-  , appCommitQuery      = hoistCommitCallback fun appCommitQuery
-  , appMempool          = hoistMempool        fun appMempool
-  , appBchState         = hoistBChStore       fun appBchState
+  { appBlockGenerator   = (fmap . fmap . fmap) fun appBlockGenerator
+  , appValidationFun    = (fmap . fmap)        fun appValidationFun
+  , appMempool          = hoistMempool         fun appMempool
+  , appBchState         = hoistBChStore        fun appBchState
   }
 
 hoistAppCallback :: (forall x. m x -> n x) -> AppCallbacks m alg a -> AppCallbacks n alg a

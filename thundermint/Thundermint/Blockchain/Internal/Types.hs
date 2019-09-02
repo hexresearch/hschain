@@ -37,17 +37,17 @@ import Thundermint.Types.Validators
 -- Vote sets
 ----------------------------------------------------------------
 
-type VoteSet ty alg a = SignedSet 'Verified alg (Vote ty alg a) (Maybe (BlockID alg a))
+type VoteSet ty alg a = SignedSet alg (Vote ty alg a) (Maybe (BlockID alg a))
 
-type HeightVoteSet ty alg a = SignedSetMap Round 'Verified alg (Vote ty alg a) (Maybe (BlockID alg a))
-
--- | Create new empty vote set
-newVoteSet :: ValidatorSet alg -> Time -> VoteSet ty alg a
-newVoteSet valSet t = emptySignedSet valSet voteBlockID ((> t) . voteTime)
+type HeightVoteSet ty alg a = SignedSetMap Round alg (Vote ty alg a) (Maybe (BlockID alg a))
 
 -- | Create new empty vote set
-newHeightVoteSet :: ValidatorSet alg -> Time -> HeightVoteSet ty alg a
-newHeightVoteSet valSet t = emptySignedSetMap valSet voteBlockID ((> t) . voteTime)
+newVoteSet :: ValidatorSet alg -> VoteSet ty alg a
+newVoteSet valSet = emptySignedSet valSet voteBlockID
+
+-- | Create new empty vote set
+newHeightVoteSet :: ValidatorSet alg -> HeightVoteSet ty alg a
+newHeightVoteSet valSet = emptySignedSetMap valSet voteBlockID
 
 ----------------------------------------------------------------
 -- State for of tendermint state machine
@@ -72,7 +72,7 @@ data TMState alg a = TMState
     -- ^ Current round
   , smStep          :: !Step
     -- ^ Current step in the round
-  , smProposals     :: !(Map Round (Signed (ValidatorIdx alg) 'Verified alg (Proposal alg a)))
+  , smProposals     :: !(Map Round (Signed 'Verified alg (Proposal alg a)))
     -- ^ Proposal for current round
   , smPrevotesSet   :: !(HeightVoteSet 'PreVote alg a)
     -- ^ Set of all received valid prevotes
@@ -98,16 +98,16 @@ data EngineMessage alg a
   | EngCastPropose   !Round !(BlockID alg a) !(Maybe Round)
   | EngCastPreVote   !Round !(Maybe (BlockID alg a))
   | EngCastPreCommit !Round !(Maybe (BlockID alg a))
-  | EngAnnPreVote   !(Signed (ValidatorIdx alg) 'Verified alg (Vote 'PreVote   alg a))
-  | EngAnnPreCommit !(Signed (ValidatorIdx alg) 'Verified alg (Vote 'PreCommit alg a))
+  | EngAnnPreVote   !(Signed 'Verified alg (Vote 'PreVote   alg a))
+  | EngAnnPreCommit !(Signed 'Verified alg (Vote 'PreCommit alg a))
   | EngAnnStep      !FullStep
   deriving (Show,Generic)
 
 -- | Message received by main application
 data MessageRx ty alg a
-  = RxPreVote   !(Signed (ValidatorIdx alg) ty alg (Vote 'PreVote   alg a))
-  | RxPreCommit !(Signed (ValidatorIdx alg) ty alg (Vote 'PreCommit alg a))
-  | RxProposal  !(Signed (ValidatorIdx alg) ty alg (Proposal alg a))
+  = RxPreVote   !(Signed ty alg (Vote 'PreVote   alg a))
+  | RxPreCommit !(Signed ty alg (Vote 'PreCommit alg a))
+  | RxProposal  !(Signed ty alg (Proposal alg a))
   | RxTimeout   !Timeout
   | RxBlock     !(Block alg a)
   deriving (Show, Generic)
@@ -123,10 +123,10 @@ unverifyMessageRx = \case
   RxBlock     b -> RxBlock     b
 
 data MessageTx alg a
-  = TxAnn !(Announcement alg)
-  | TxPreVote   !(Signed (ValidatorIdx alg) 'Unverified alg (Vote 'PreVote   alg a))
-  | TxPreCommit !(Signed (ValidatorIdx alg) 'Unverified alg (Vote 'PreCommit alg a))
-  | TxProposal  !(Signed (ValidatorIdx alg) 'Unverified alg (Proposal alg a))
+  = TxAnn       !(Announcement alg)
+  | TxPreVote   !(Signed 'Unverified alg (Vote 'PreVote   alg a))
+  | TxPreCommit !(Signed 'Unverified alg (Vote 'PreCommit alg a))
+  | TxProposal  !(Signed 'Unverified alg (Proposal alg a))
 
 -- | Messages which should be delivered to peers immediately. Those
 --   are control messages in gossip protocol. Actual proposals, votes

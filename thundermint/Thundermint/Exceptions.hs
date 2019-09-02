@@ -29,9 +29,13 @@ data CorruptedDBError
   deriving stock    (Show)
   deriving anyclass (Exception)
 
--- | Internal error in algorithm. Should never happen
+-- | Internal error in algorithm. Should never happen. 
 data InternalError
   = BlockchainStateUnavalable
+  -- ^ Program is unsable to retrive blockchain state
+  | UnableToCommit
+  -- ^ Program fails to write block to disk due to invalid query
+  --   (write transaction was rolled back)
   deriving stock    (Show)
   deriving anyclass (Exception)
 

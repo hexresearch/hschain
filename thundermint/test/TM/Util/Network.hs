@@ -206,8 +206,8 @@ createGossipTestNetwork byzs =
 
 
 createTestNetworkWithConfig
-    :: forall m app . (MonadMask m, MonadFork m, MonadTMMonitoring m, MonadFail m)
-    => Configuration app
+    :: (MonadMask m, MonadFork m, MonadTMMonitoring m, MonadFail m)
+    => Configuration Example
     -> TestNetDescription m
     -> m ()
 createTestNetworkWithConfig = createTestNetworkWithValidatorsSetAndConfig testValidators
@@ -232,9 +232,9 @@ createTestNetworkWithValidatorsSetAndConfig validatorsSet cfg desc = do
 
 
 createTestNetworkWithValidatorsSetAndConfig
-    :: forall m app . (MonadIO m, MonadMask m, MonadFork m, MonadTMMonitoring m, MonadFail m)
+    :: forall m . (MonadIO m, MonadMask m, MonadFork m, MonadTMMonitoring m, MonadFail m)
     => Map.Map (Fingerprint (SHA256 :<<< SHA512) TestAlg) (PrivValidator TestAlg)
-    -> Configuration app
+    -> Configuration Example
     -> TestNetDescription m
     -> m ()
 createTestNetworkWithValidatorsSetAndConfig validators cfg netDescr = do
@@ -255,18 +255,34 @@ createTestNetworkWithValidatorsSetAndConfig validators cfg netDescr = do
         initDatabase conn (Mock.genesisBlock dbValidatorSet)
         --
         let run = runTracerT ncTraceCallback . runNoLogsT . runDBT conn
-        fmap (map run) $ run $ do
-            (_,logic) <- logicFromFold Mock.transitions
-            runNode cfg NodeDescription
-              { nodeValidationKey = validatorPK
-              , nodeCallbacks     = ncAppCallbacks
-                                 <> mempty { appByzantine = ncByzantine }
-              , nodeLogic         = logic
-              , nodeNetwork       = BlockchainNet
+        (_,actions) <- run $ Mock.interpretSpec
+          (   BlockchainNet
                 { bchNetwork        = createMockNode net (intToNetAddr ncFrom)
                 , bchInitialPeers   = map intToNetAddr ncTo
                 }
-              }
+          :*: NodeSpec
+                { nspecPrivKey = validatorPK
+                , nspecDbName  = Nothing
+                , nspecLogFile = []
+                }
+          :*: cfg
+          )
+          ( ncAppCallbacks
+         <> mempty { appByzantine = ncByzantine }
+          )
+        return $ run <$> actions
+            -- store <- newSTMBchStorage $ initialState Mock.transitions
+            -- logic <- makeAppLogic store Mock.transitions Mock.runner
+            -- runNode cfg NodeDescription
+            --   { nodeValidationKey = validatorPK
+            --   , nodeCallbacks     = ncAppCallbacks
+            --                      <> mempty { appByzantine = ncByzantine }
+            --   , nodeLogic         = logic
+            --   , nodeNetwork       = BlockchainNet
+            --     { bchNetwork        = createMockNode net (intToNetAddr ncFrom)
+            --     , bchInitialPeers   = map intToNetAddr ncTo
+            --     }
+            --   }
 
 
 -- | UDP may return Nothings for the message receive operation.

@@ -38,7 +38,7 @@ import Thundermint.P2P.PeerState.Types
 
 import Thundermint.P2P.PeerState.Handle.Utils
 
-import qualified Data.IntMap.Strict as IMap
+import qualified Thundermint.Data.CIntMap as CIMap
 import qualified Data.Map.Strict    as Map
 import qualified Data.Set           as Set
 
@@ -197,27 +197,27 @@ handlerVotesTimeout = do
           doGosip $ GossipProposal $ unverifySignature pr
           tickSend proposals
       -- Send prevotes
-      peerPV <- maybe IMap.empty (IMap.fromSet (const ()) . toSet)
+      peerPV <- maybe CIMap.empty (CIMap.fromSet (const ()) . toSet)
               . Map.lookup r
              <$> use peerPrevotes
       forM_ (Map.lookup r $ toPlainMap $ smPrevotesSet tm) $ \localPV -> do
-        let unknown = IMap.difference localPV peerPV
-        unless (IMap.null unknown) $ do
-          let n = IMap.size unknown
+        let unknown = CIMap.difference localPV peerPV
+        unless (CIMap.null unknown) $ do
+          let n = CIMap.size unknown
           i <- lift $ liftIO $ randomRIO (0,n-1)
           let vote@(signedValue -> Vote{..}) = unverifySignature $ toList unknown !! i
           addPrevote voteHeight voteRound $ signedKeyInfo vote
           doGosip $ GossipPreVote vote
           tickSend prevote
       -- Send precommits
-      peerPC <- maybe IMap.empty (IMap.fromSet (const ()) . toSet)
+      peerPC <- maybe CIMap.empty (CIMap.fromSet (const ()) . toSet)
               . Map.lookup r
             <$> use peerPrecommits
       case () of
         _| Just localPC <- Map.lookup r $ toPlainMap $ smPrecommitsSet tm
-         , unknown      <- IMap.difference localPC peerPC
-         , not (IMap.null unknown)
-           -> do let n = IMap.size unknown
+         , unknown      <- CIMap.difference localPC peerPC
+         , not (CIMap.null unknown)
+           -> do let n = CIMap.size unknown
                  i <- lift $ liftIO $ randomRIO (0,n-1)
                  let vote@(signedValue -> Vote{..}) = unverifySignature $ toList unknown !! i
                  addPrecommit voteHeight voteRound $ signedKeyInfo vote

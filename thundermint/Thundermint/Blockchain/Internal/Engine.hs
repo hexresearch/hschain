@@ -25,7 +25,6 @@ import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
 import           Data.Maybe    (fromMaybe)
-import           Data.Function
 import           Data.Monoid   ((<>))
 import Data.Text             (Text)
 import Pipes                 (Pipe,Consumer,runEffect,yield,await,(>->))
@@ -34,7 +33,7 @@ import Thundermint.Blockchain.Internal.Engine.Types
 import Thundermint.Blockchain.Internal.Types
 import Thundermint.Blockchain.Internal.Algorithm
 import Thundermint.Types.Blockchain
-import Thundermint.Control (throwNothing,throwNothingM)
+import Thundermint.Control (throwNothing,throwNothingM,iterateM)
 import Thundermint.Crypto
 import Thundermint.Exceptions
 import Thundermint.Logger
@@ -85,10 +84,8 @@ runApplication config appValidatorKey appSt@AppLogic{..} appCall appCh@AppChans{
   height <- queryRO $ blockchainHeight
   lastCm <- queryRO $ retrieveLocalCommit height
   advanceToHeight appPropStorage $ succ height
-  void $ flip fix lastCm $ \loop commit -> do
-    cm <- decideNewBlock config appValidatorKey appSt appCall appCh commit
-    loop (Just cm)
-
+  iterateM lastCm $ fmap Just
+                  . decideNewBlock config appValidatorKey appSt appCall appCh
 
 -- This function uses consensus algorithm to decide which block we're
 -- going to commit at current height, then stores it in database and
@@ -159,43 +156,24 @@ decideNewBlock config appValidatorKey appLogic@AppLogic{..} appCall@AppCallbacks
         mBlk <- lift
               $ retrievePropByID appPropStorage (currentH hParam) (commitBlockID cmt)
         case mBlk of
-          UnknownBlock           -> msgHandlerLoop (Just cmt) tm
-          InvalidBlock           -> error "Trying to commit invalid block!"
-          GoodBlock _ b st' val' -> lift $ performCommit b st' val'
-          UntestedBlock _ b      -> do
+          UnknownBlock      -> msgHandlerLoop (Just cmt) tm
+          InvalidBlock      -> error "Trying to commit invalid block!"
+          GoodBlock _ b bst -> lift $ performCommit b bst
+          UntestedBlock _ b -> lift $ do
             st <- throwNothingM BlockchainStateUnavalable
-                $ lift
                 $ bchStoreRetrieve appBchState $ pred (currentH hParam)
-            lift (appValidationFun (validatorSet hParam) b st) >>= \case
-              Nothing         -> error "Trying to commit invalid block!"
-              Just (val',st') -> lift $ performCommit b st' val'
+            appValidationFun b (BlockchainState st (validatorSet hParam)) >>= \case
+              Nothing  -> error "Trying to commit invalid block!"
+              Just bst -> performCommit b bst
         where
-          performCommit b st' val' = do
+          performCommit b (BlockchainState st' val') = do
             let nTx = maybe 0 (length . commitPrecommits) (blockLastCommit b)
-            logger InfoS "Actual commit" $ LogBlockInfo
-              (currentH hParam)
-              (blockData b)
-              nTx
+                h   = headerHeight $ blockHeader b
+            logger InfoS "Actual commit" $ LogBlockInfo h (blockData b) nTx
             usingCounter prometheusNTx nTx
-            case appCommitQuery of
-              SimpleQuery callback -> do
-                r <- queryRW $ do storeCommit cmt b
-                                  storeValSet b val'
-                                  callback (validatorSet hParam) b
-                case r of
-                  Nothing -> error "Cannot write commit into database"
-                  Just () -> return ()
-              --
-              MixedQuery callback -> do
-                r <- queryRWT $ do storeCommit cmt b
-                                   storeValSet b val'
-                                   callback (validatorSet hParam) b
-                case r of
-                  Nothing -> error "Cannot write commit into database"
-                  Just () -> return ()
-            let h = headerHeight $ blockHeader b
+            throwNothingM UnableToCommit $ queryRW (storeCommit cmt b val')
             advanceToHeight appPropStorage (succ h)
-            bchStoreStore appBchState h st'
+            bchStoreStore   appBchState h st'
             appCommitCallback b
             return cmt
   runEffect $ do
@@ -220,7 +198,6 @@ handleVerifiedMessage
   -> MessageRx 'Verified alg a
   -> Pipe x (EngineMessage alg a) m (ConsensusResult alg a (TMState alg a))
 handleVerifiedMessage ProposalStorage{..} hParam tm = \case
-  -- FIXME: check that proposal comes from correct proposer
   RxProposal  p -> runConsesusM $ tendermintTransition hParam (ProposalMsg  p) tm
   RxPreVote   v -> runConsesusM $ tendermintTransition hParam (PreVoteMsg   v) tm
   RxPreCommit v -> runConsesusM $ tendermintTransition hParam (PreCommitMsg v) tm
@@ -257,16 +234,15 @@ verifyMessageSignature AppLogic{..} AppByzantine{..} HeightParameters{..} = fore
     RxTimeout   t  -> yield $ RxTimeout t
     RxBlock     b  -> yield $ RxBlock   b
   where
-    verify    con sx = verifyAny (Just validatorSet) con sx
-    verifyOld con sx = verifyAny oldValidatorSet     con sx
-    verifyAny vset name con sx = case verifySignature (pkLookup vset) sx of
+    verify    con = verifyAny (Just validatorSet) con
+    verifyOld con = verifyAny oldValidatorSet     con
+    verifyAny mvset name con sx = case mvset >>= flip verifySignature sx of
       Just sx' -> yield $ con sx'
-      Nothing  -> lift $ logger WarningS "Invalid signature"
+      Nothing  -> logger WarningS "Invalid signature"
         (  sl "name" (name::Text)
         <> sl "addr" (show (signedKeyInfo sx))
         )
-    pkLookup mvset a = do vset <- mvset
-                          validatorPubKey <$> validatorByIndex vset a
+
 
 handleEngineMessage
   :: ( MonadIO m, MonadTMMonitoring m, MonadLogger m
@@ -288,8 +264,8 @@ handleEngineMessage HeightParameters{..} ConsensusCfg{..} AppByzantine{..} AppCh
             StepAwaitCommit _ -> (0, 0)
       threadDelay $ 1000 * (baseT + delta * fromIntegral r)
       atomically $ writeTQueue appChanRxInternal $ RxTimeout t
-    lift $ do usingGauge prometheusHeight h
-              usingGauge prometheusRound  (Round r)
+    usingGauge prometheusHeight h
+    usingGauge prometheusRound  (Round r)
   -- Announcements
   EngAnnPreVote sv -> do
     let Vote{..} = signedValue   sv
@@ -322,7 +298,7 @@ handleEngineMessage HeightParameters{..} ConsensusCfg{..} AppByzantine{..} AppCh
         )
       tryByzantine byzantineBroadcastProposal prop $ \prop' ->
         liftIO $ atomically $ do
-          let p = unverifySignature $ signValue idx pk prop'
+          let p = signValue idx pk prop'
           writeTQueue appChanRxInternal $ RxProposal p
           writeTChan  appChanTx         $ TxProposal p
           case blockFromBlockValidation mBlock of
@@ -343,7 +319,7 @@ handleEngineMessage HeightParameters{..} ConsensusCfg{..} AppByzantine{..} AppCh
         )
       tryByzantine byzantineCastPrevote vote $ \vote' ->
         liftIO $ atomically $ do
-          let v = unverifySignature $ signValue idx pk vote'
+          let v = signValue idx pk vote'
           writeTChan  appChanTx         $ TxPreVote v
           writeTQueue appChanRxInternal $ RxPreVote v 
   --
@@ -361,7 +337,7 @@ handleEngineMessage HeightParameters{..} ConsensusCfg{..} AppByzantine{..} AppCh
         )
       tryByzantine byzantineCastPrecommit vote $ \vote' ->
         liftIO $ atomically $ do
-          let v = unverifySignature $ signValue idx pk vote'
+          let v = signValue idx pk vote'
           writeTChan  appChanTx         $ TxPreCommit v
           writeTQueue appChanRxInternal $ RxPreCommit v
 
@@ -375,7 +351,6 @@ makeHeightParameters
      , MonadIO m
      , MonadThrow m
      , MonadLogger m
-     , MonadTMMonitoring m
      , Crypto alg, Serialise a)
   => ConsensusCfg
   -> Maybe (PrivValidator alg)
@@ -409,7 +384,6 @@ makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{
     , validatorKey     = liftA2 (,) appValidatorKey ourIndex
       -- FIXME: this is some random algorithms that should probably
       --        work (for some definition of work)
-    , areWeProposers   = \r -> Just (proposerChoice r) == ourIndex
     , proposerForRound = proposerChoice
     , readyCreateBlock = fromMaybe True <$> appCanCreateBlock h bchTime
     -- --
@@ -424,7 +398,7 @@ makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{
             inconsistencies <- checkProposedBlock nH b
             st              <- throwNothingM BlockchainStateUnavalable
                              $ bchStoreRetrieve appBchState h
-            mvalSet'        <- appValidationFun valSet b st
+            mvalSet'        <- appValidationFun b (BlockchainState st valSet)
             if | not (null inconsistencies) -> do
                -- Block is not internally consistent
                    logger ErrorS "Proposed block has inconsistencies"
@@ -436,10 +410,10 @@ makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{
                | _:_ <- blockEvidence b -> invalid
                -- Block is correct and validators change is correct as
                -- well
-               | Just (valSet',st') <- mvalSet'
-               , validatorSetSize valSet' > 0
-               , blockValChange b == validatorsDifference valSet valSet'
-                 -> do setPropValidation appPropStorage bid $ Just (st',valSet')
+               | Just bst <- mvalSet'
+               , validatorSetSize (bChValidatorSet bst) > 0
+               , blockValChange b == validatorsDifference valSet (bChValidatorSet bst)
+                 -> do setPropValidation appPropStorage bid $ Just bst
                        return GoodProposal
                | otherwise
                  -> invalid
@@ -478,11 +452,11 @@ makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{
               , blockEvidence   = []
               }
         -- Call block generator
-        st                  <- throwNothingM BlockchainStateUnavalable
-                             $ bchStoreRetrieve appBchState h
-        (bData,valSet',st') <- appBlockGenerator valSet blockDummy st
-                           =<< peekNTransactions appMempool
-        let valCh = validatorsDifference valSet valSet'
+        st          <- throwNothingM BlockchainStateUnavalable
+                     $ bchStoreRetrieve appBchState h
+        (bData,bst) <- appBlockGenerator blockDummy (BlockchainState st valSet)
+                   =<< peekNTransactions appMempool
+        let valCh = validatorsDifference valSet (bChValidatorSet bst)
             block = blockDummy
               { blockHeader = headerDummy
                   { headerDataHash      = hashed bData
@@ -494,13 +468,9 @@ makeHeightParameters ConsensusCfg{..} appValidatorKey AppLogic{..} AppCallbacks{
             bid   = blockHash block
         allowBlockID      appPropStorage r bid
         storePropBlock    appPropStorage block
-        setPropValidation appPropStorage bid (Just (st',valSet'))
+        setPropValidation appPropStorage bid (Just bst)
         return bid
     }
-
-    
-    -- | Add marks for analyzing logs
--- byzantineMark = maybe mempty (const " (byzantine!)")
 
 -- | If 'modifier' exists, modify 'arg' with it and run 'action' with
 --   modified argument; else run 'action' with original argument.

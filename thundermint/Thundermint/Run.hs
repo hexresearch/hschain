@@ -23,7 +23,7 @@ module Thundermint.Run (
     -- * New node code
   , Abort(..)
   , Topology(..)
-  , logicFromFold
+  , makeAppLogic
   , rewindBlockchainState
   , NodeDescription(..)
   , BlockchainNet(..)
@@ -46,7 +46,7 @@ import Control.Monad.Catch
 import Control.Monad.Trans.Cont
 import Control.Concurrent.STM         (atomically)
 import Control.Concurrent.STM.TBQueue (lengthTBQueue)
-import Data.Maybe      (isJust,fromMaybe)
+import Data.Maybe      (isJust,fromMaybe,fromJust)
 import qualified Data.Map.Strict as Map
 import Katip           (LogEnv)
 import System.Directory (createDirectoryIfMissing)
@@ -70,7 +70,6 @@ import Thundermint.Store.STM
 import Thundermint.Monitoring
 import Thundermint.Utils
 import Thundermint.Control (MonadFork)
-import Thundermint.Types (CheckSignature(..))
 import qualified Thundermint.P2P.Network as P2P
 
 
@@ -78,6 +77,7 @@ import qualified Thundermint.P2P.Network as P2P
 --
 ----------------------------------------------------------------
 
+{-
 logicFromFold
   :: ( MonadDB m alg a, MonadMask m, MonadIO m, MonadLogger m
      , BlockData a, Show (TX a), Ord (TX a), Crypto alg
@@ -108,29 +108,66 @@ logicFromFold transitions@BlockFold{..} = do
                      , appBchState        = store
                      }
          )
+-}
+
+makeAppLogic
+  :: ( MonadDB m alg a, MonadMask m, MonadIO m
+     , BlockData a, Show (TX a), Ord (TX a), Crypto alg
+     )
+  => BChStore m a
+  -> BChLogic    q   alg a
+  -> Interpreter q m alg a
+  -> m (AppLogic m alg a)
+makeAppLogic store BChLogic{..} Interpreter{..} = do
+  rewindBlockchainState store $ \bst b ->
+    fmap snd <$> interpretBCh bst (processBlock b)
+  -- Create mempool
+  let checkTx tx = do
+        (mH, st) <- bchCurrentState store
+        valSet <- case mH of
+          Nothing -> return emptyValidatorSet
+          Just h  -> throwNothingM (DBMissingValSet (succ h))
+                  $  queryRO $ retrieveValidatorSet (succ h)
+        isJust <$> interpretBCh (BlockchainState st valSet) (processTx tx)
+  mempool <- newMempool checkTx
+  --
+  return AppLogic
+    { appValidationFun  = \b bst -> (fmap . fmap) snd
+                                  $ interpretBCh bst
+                                  $ processBlock b
+    , appBlockGenerator = \b bst txs -> fmap fromJust -- FIXME
+                                      $ interpretBCh bst
+                                      $ generateBlock b txs
+    , appMempool        = mempool
+    , appBchState       = store
+    }
+
 
 rewindBlockchainState
   :: ( MonadReadDB m alg a, MonadIO m, MonadThrow m
      , Crypto alg, Serialise a)
-  => BlockFold alg a
-  -> BChStore m a
+  => BChStore m a
+  -> (BlockchainState alg a -> Block alg a -> m (Maybe (BlockchainState alg a)))
   -> m ()
-rewindBlockchainState BlockFold{..} store = do
+rewindBlockchainState store react = do
   hChain   <- queryRO blockchainHeight
   (h0,st0) <- bchCurrentState store >>= \case
     (Nothing, s) -> return (Height 0, s)
     (Just h,  s) -> return (succ h  , s)
-  let rewind h st
-        | h > hChain = return ()
-        | otherwise  = do
-            -- FIXME:
-            b <- throwNothingM (DBMissingBlock h) $ queryRO $ retrieveBlock h
-            let Just st' = processBlock CheckSignature b st
-            bchStoreStore store h st'
-            rewind (succ h) st
-  rewind h0 st0
-
-
+  void $ foldr (>=>) return
+    (interpretBlock <$> [h0 .. hChain])
+    st0
+  where
+    interpretBlock h st = do
+      blk      <- throwNothingM (DBMissingBlock h)
+                $ queryRO $ retrieveBlock h
+      valSet   <- throwNothingM (DBMissingValSet (succ h))
+                $ queryRO $ retrieveValidatorSet (succ h)  
+      bst      <- throwNothingM (ImpossibleError) -- ZZZXXXZZZ
+                $ react (BlockchainState st valSet) blk
+      let st' = blockchainState bst
+      bchStoreStore store h st'
+      return st'
 
 -- | Specification of node
 data NodeDescription m alg a = NodeDescription

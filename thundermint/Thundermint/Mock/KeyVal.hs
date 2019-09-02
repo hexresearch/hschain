@@ -12,7 +12,7 @@
 -- |
 module Thundermint.Mock.KeyVal (
     genesisBlock
-  , transitions
+  , interpretSpec
   , executeSpec
   , BData(..)
   , Tx
@@ -35,7 +35,6 @@ import System.Random   (randomRIO)
 import GHC.Generics    (Generic)
 
 import Thundermint.Blockchain.Internal.Engine.Types
-import Thundermint.Blockchain.Interpretation
 import Thundermint.Types.Blockchain
 import Thundermint.Control
 import Thundermint.Crypto
@@ -65,30 +64,14 @@ newtype BData  = BData [(String,Int)]
   deriving anyclass (Serialise)
 
 instance BlockData BData where
-  type TX              BData = Tx
-  type BlockchainState BData = BState
+  type TX               BData = Tx
+  type InterpreterState BData = BState
   blockTransactions (BData txs) = txs
   logBlockData      (BData txs) = HM.singleton "Ntx" $ JSON.toJSON $ length txs
 
 genesisBlock :: ValidatorSet Alg -> Block Alg BData
 genesisBlock valSet
   = makeGenesis "KV" (Time 0) (BData []) valSet
-
-transitions :: BlockFold alg BData
-transitions = BlockFold
-  { processTx           = const $ const process
-  , processBlock        = \_ b s0 -> foldM (flip process) s0 (blockTransactions $  blockData b)
-  , transactionsToBlock = \_ ->
-      let selectTx c []     = (c, [])
-          selectTx c (t:tx) = case process t c of
-                                Nothing -> selectTx c tx
-                                Just c' -> let (c'', b  ) = selectTx c' tx
-                                           in  (c'', t:b)
-      in (fmap . fmap . fmap) BData selectTx
-  , initialState        = Map.empty
-  }
-  where
-
 
 process :: Tx -> BState -> Maybe BState
 process (k,v) m
@@ -112,17 +95,19 @@ interpretSpec
   -> m (RunningNode m Alg BData, [m ()])
 interpretSpec p cb = do
   conn  <- askConnectionRO
-  store <- newSTMBchStorage $ initialState transitions
-  rewindBlockchainState transitions store
+  store <- newSTMBchStorage mempty
+  rewindBlockchainState store $ \(BlockchainState st valset) b -> return $ do
+    st' <- foldM (flip process) st (let BData tx = blockData b in tx)
+    return $ BlockchainState st' valset
+  --
   let logic = AppLogic
-        { appValidationFun    = \valset b st -> do
-            return $ do st' <- processBlock transitions CheckSignature b st
-                        return (valset,st')
-        , appCommitQuery     = SimpleQuery $ \_ _ -> return ()
-        , appBlockGenerator  = \valset _ st _ -> do
+        { appValidationFun    = \b (BlockchainState st valset) -> do
+            return $ do st' <- foldM (flip process) st (let BData tx = blockData b in tx)
+                        return $ BlockchainState st' valset
+        , appBlockGenerator  = \_ (BlockchainState st valset) _ -> do
             let Just k = find (`Map.notMember` st) ["K_" ++ show (n :: Int) | n <- [1 ..]]
             i <- liftIO $ randomRIO (1,100)
-            return (BData [(k, i)], valset, Map.insert k i st)
+            return (BData [(k, i)], BlockchainState (Map.insert k i st) valset)
         , appMempool         = nullMempool
         , appBchState        = store
         }

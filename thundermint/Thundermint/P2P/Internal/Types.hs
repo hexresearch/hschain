@@ -13,13 +13,12 @@ import GHC.Generics           (Generic)
 
 import Thundermint.Blockchain.Internal.Engine.Types (NetworkCfg)
 import Thundermint.Blockchain.Internal.Types        (Announcement, MessageTx, MessageRx, TMState)
-import Thundermint.Crypto                           (Crypto, Signed, SignedState(..))
+import Thundermint.Crypto                           (Crypto, SignedState(..))
 import Thundermint.P2P.Types                        (NetAddr)
 import Thundermint.Store                            (ProposalStorage)
 import Thundermint.Store.Internal.Query             (Access(..))
 
-import Thundermint.Types.Blockchain
-import Thundermint.Types.Validators
+import Thundermint.Types
 
 import Thundermint.P2P.Internal.Logging
 
@@ -31,9 +30,9 @@ import qualified Katip
 --   FIXME: We don't have good way to prevent DoS by spamming too much
 --          data
 data GossipMsg alg a
-  = GossipPreVote   !(Signed (ValidatorIdx alg) 'Unverified alg (Vote 'PreVote   alg a))
-  | GossipPreCommit !(Signed (ValidatorIdx alg) 'Unverified alg (Vote 'PreCommit alg a))
-  | GossipProposal  !(Signed (ValidatorIdx alg) 'Unverified alg (Proposal alg a))
+  = GossipPreVote   !(Signed 'Unverified alg (Vote 'PreVote   alg a))
+  | GossipPreCommit !(Signed 'Unverified alg (Vote 'PreCommit alg a))
+  | GossipProposal  !(Signed 'Unverified alg (Proposal alg a))
   | GossipBlock     !(Block alg a)
   | GossipAnn       !(Announcement alg)
   | GossipTx        !(TX a)

@@ -12,6 +12,7 @@
 {-# LANGUAGE RecordWildCards            #-}
 {-# LANGUAGE TemplateHaskell            #-}
 {-# LANGUAGE TypeFamilies               #-}
+{-# LANGUAGE ViewPatterns               #-}
 -- |
 -- Abstract API for storing of blockchain. Storage works as follows:
 --
@@ -178,7 +179,7 @@ data BlockValidation alg a
   -- ^ We haven't validated block yet
   | UnknownBlock
   -- ^ We haven't even seen block yet
-  | GoodBlock     !(BlockID alg a) !(Block alg a) !(BlockchainState a) !(ValidatorSet alg)
+  | GoodBlock     !(BlockID alg a) !(Block alg a) !(BlockchainState alg a)
   -- ^ Block is good. We also cache state and new validator set
   | InvalidBlock
   -- ^ Block is invalid so there's no point in storing (and gossiping)
@@ -186,10 +187,10 @@ data BlockValidation alg a
 
 blockFromBlockValidation :: BlockValidation alg a -> Maybe (BlockID alg a, Block alg a)
 blockFromBlockValidation = \case
-  UntestedBlock bid b     -> Just (bid, b)
-  GoodBlock     bid b _ _ -> Just (bid, b)
-  UnknownBlock            -> Nothing
-  InvalidBlock            -> Nothing
+  UntestedBlock bid b   -> Just (bid, b)
+  GoodBlock     bid b _ -> Just (bid, b)
+  UnknownBlock          -> Nothing
+  InvalidBlock          -> Nothing
 
 -- | Storage for proposed blocks that are not commited yet.
 data ProposalStorage rw m alg a = ProposalStorage
@@ -199,7 +200,7 @@ data ProposalStorage rw m alg a = ProposalStorage
     -- ^ Retrieve proposed block by round number.
 
   , setPropValidation  :: !(Writable rw ( BlockID alg a
-                                       -> Maybe (BlockchainState a, ValidatorSet alg)
+                                       -> Maybe (BlockchainState alg a)
                                        -> m ()))
     -- ^ Set whether block is valid or not.
   , advanceToHeight    :: !(Writable rw (Height -> m ()))
@@ -339,11 +340,11 @@ nullMempool = Mempool
 
 -- | Storage for blockchain state.
 data BChStore m a = BChStore
-  { bchCurrentState  :: m (Maybe Height, BlockchainState a)
+  { bchCurrentState  :: m (Maybe Height, InterpreterState a)
   -- ^ Height of value stored in state
-  , bchStoreRetrieve :: Height -> m (Maybe (BlockchainState a))
+  , bchStoreRetrieve :: Height -> m (Maybe (InterpreterState a))
   -- ^ Retrieve state for given height. It's generally not expected that  
-  , bchStoreStore    :: Height -> BlockchainState a -> m ()
+  , bchStoreStore    :: Height -> InterpreterState a -> m ()
   -- ^ Put blockchain state at given height into store
   }
 
@@ -575,14 +576,15 @@ commitInvariant mkErr h prevT bid valSet Commit{..} = do
   -- Commit has enough (+2/3) voting power, doesn't have votes
   -- from unknown validators, doesn't have duplicate votes, and
   -- vote goes for correct block
-  let verifiedPrecommits = forM commitPrecommits $ \v ->
-        verifySignature (fmap validatorPubKey . validatorByIndex valSet) v
+  let verifiedPrecommits = forM commitPrecommits $ verifySignature valSet
   case verifiedPrecommits of
     Nothing   -> tell [mkErr "Commit contains invalid signatures"]
     Just sigs -> do
       let mvoteSet = foldM
-            (flip insertSigned)
-            (newVoteSet valSet prevT)
+            (\vset v@(signedValue -> Vote{..}) ->
+               insertSigned v (voteTime > prevT) vset
+            )
+            (newVoteSet valSet)
             sigs
       case mvoteSet of
         InsertConflict _ -> tell [mkErr "Conflicting votes"]

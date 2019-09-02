@@ -50,7 +50,7 @@ import Thundermint.P2P.PeerState.Types
 import Thundermint.P2P.Types
 import Thundermint.Run
 import Thundermint.Store
-import Thundermint.Store.Internal.BlockDB (storeCommit, storeValSet)
+import Thundermint.Store.Internal.BlockDB (storeCommit)
 import Thundermint.Store.STM
 import Thundermint.Types.Blockchain
 import Thundermint.Types.Validators
@@ -209,12 +209,12 @@ internalTestRawGossipCurrentCurrent isTestingSendProposals isTestingSendPrevotes
                         tm { smProposals = Map.singleton (Round 0) (signValue currentNodeValIdx currentNodePrivKey proposal) }
                     else tm) .
             (\tm -> if isTestingSendPrevotes then
-                        case addSignedValue (Round 0) (signValue currentNodeValIdx currentNodePrivKey vote) (smPrevotesSet tm) of
+                        case addSignedValue (Round 0) (signValue currentNodeValIdx currentNodePrivKey vote) True (smPrevotesSet tm) of
                             InsertOK votes -> tm { smPrevotesSet = votes }
                             _ -> error "Can't insert votes"
                     else tm) .
             (\tm -> if isTestingSendPrecommits then
-                        case addSignedValue (Round 0) (signValue currentNodeValIdx currentNodePrivKey $ coerce vote) (smPrecommitsSet tm) of
+                        case addSignedValue (Round 0) (signValue currentNodeValIdx currentNodePrivKey $ coerce vote) True (smPrecommitsSet tm) of
                             InsertOK votes -> tm { smPrecommitsSet = votes }
                             _ -> error "Can't insert votes"
                     else tm)
@@ -351,8 +351,7 @@ addSomeBlocks' GossipEnv{..} blocksCount =
                                       , voteTime    = t
                                       , voteBlockID = Just bid
                                       }]}
-        Just () <- queryRW $ storeCommit commit block
-        Just () <- queryRW $ storeValSet block envValidatorSet
+        Just () <- queryRW $ storeCommit commit block envValidatorSet
         return (block, commit)
 
 
@@ -387,8 +386,7 @@ withGossipEnv fun = do
                                       , ..
                                       }
             gossipCh <- liftIO $ newTBQueueIO 1000
-            (_bchState, logic) <- logicFromFold Mock.transitions
-            cursor   <- getMempoolCursor $ appMempool logic
+            cursor   <- getMempoolCursor nullMempool
             --
             let genv = GossipEnv dbValidatorSet eventsQueue consensusState'
             --
@@ -420,8 +418,7 @@ newTMState :: (MonadIO m)
            -> (TMState TestAlg Mock.BData -> TMState TestAlg Mock.BData) -- ^ Postprocessor of created TMState
            -> m ()
 newTMState GossipEnv{..} h postProcess = do
-    currentTime <- getCurrentTime
-    let voteSet = newHeightVoteSet envValidatorSet currentTime
+    let voteSet = newHeightVoteSet envValidatorSet
         tmState = postProcess $ TMState (Round 0) StepNewHeight Map.empty voteSet (coerce voteSet) Nothing Nothing
     liftIO $ atomically $ writeTVar envConsensus (Just (h, tmState))
 

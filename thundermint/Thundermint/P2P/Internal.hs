@@ -46,7 +46,6 @@ import Thundermint.P2P.PeerState.Types
 import Thundermint.Store
 import Thundermint.Types.Blockchain
 import Thundermint.Utils
-
 import Thundermint.P2P.Internal.PeerRegistry
 import Thundermint.P2P.Internal.Logging as Logging
 import Thundermint.P2P.Internal.Types

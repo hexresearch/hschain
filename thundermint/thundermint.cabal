@@ -72,6 +72,7 @@ Library
                   Thundermint.Blockchain.Interpretation
                   Thundermint.Control
                   Thundermint.Crypto.Containers
+                  Thundermint.Data.CIntMap
                   Thundermint.Debug.Trace
                   Thundermint.Exceptions
                   Thundermint.Logger
@@ -205,6 +206,7 @@ Test-suite thundermint-tests
                        TM.Gossip
                        TM.Mempool
                        TM.Merkle
+                       TM.MerkleBlock
                        TM.MockNet
                        TM.Network
                        TM.NetworkTls

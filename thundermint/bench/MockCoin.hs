@@ -2,6 +2,7 @@
 -- |
 module MockCoin (benchmarks) where
 
+import Data.Functor.Identity
 import Control.Monad
 import Criterion.Main
 
@@ -22,34 +23,41 @@ benchmarks
   [ bgroup "create block"
     [ env (generateTxList size)
     $ bench (show size)
-    . nf (transactionsToBlock transitions (Height 1) state)
+    . nf makeBlock
     | size <- [0, 1, 10, 100, 1000]
     ]
   , bgroup "react"
-    [ env (transactionsToBlock transitions (Height 1) state <$> generateTxList size) $ \(~(_,block)) ->
-        bench (show (length (blockTransactions block)) ++ " of " ++ show size) $
-        nf (\b -> processBlock transitions CheckSignature
-             (Block { blockData       = b
-                    , blockHeader     = Header
-                      { headerHeight         = Height 0
-                      , headerTime           = Time 0
-                      , headerChainID        = ""
-                      , headerLastBlockID    = Nothing
-                      , headerValidatorsHash = Hashed (Hash "")
-                      , headerDataHash       = Hashed (Hash "")
-                      , headerValChangeHash  = Hashed (Hash "")
-                      , headerLastCommitHash = Hashed (Hash "")
-                      , headerEvidenceHash   = Hashed (Hash "")
-                      }
-                    , blockValChange  = mempty
-                    , blockLastCommit = Nothing
-                    , blockEvidence   = []
-                    } :: Block Alg BData)
-             state
-           ) block
+    [ env (makeBlock <$> generateTxList size) $ \( ~(Just (bdata,_)) ) ->
+        bench (show (length (blockTransactions bdata)) ++ " of " ++ show size) $
+        nf (\b -> runIdentity
+                $ interpretBCh runner state
+                $ processBlock transitions
+                ( Block { blockData       = b
+                        , blockHeader     = Header
+                          { headerHeight         = Height 0
+                          , headerTime           = Time 0
+                          , headerChainID        = ""
+                          , headerLastBlockID    = Nothing
+                          , headerValidatorsHash = Hashed (Hash "")
+                          , headerDataHash       = Hashed (Hash "")
+                          , headerValChangeHash  = Hashed (Hash "")
+                          , headerLastCommitHash = Hashed (Hash "")
+                          , headerEvidenceHash   = Hashed (Hash "")
+                          }
+                        , blockValChange  = mempty
+                        , blockLastCommit = Nothing
+                        , blockEvidence   = []
+                        } :: Block Alg BData
+                )
+           ) (bdata :: BData)
     | size <- [0, 1, 10, 100, 1000]
     ]
   ]
+  where
+    makeBlock = runIdentity
+              . interpretBCh runner state
+              . generateBlock transitions (error "We don't actually use block there")
+
 
 ----------------------------------------------------------------
 -- Wallets and initial state
@@ -73,9 +81,13 @@ genesis :: Block Alg BData
     , coinMaxMempoolSize = 1000
     }
    
-state :: CoinState
-Just state = processBlock transitions AlreadyChecked genesis (CoinState mempty mempty)
+state :: BlockchainState Alg BData
+Identity (Just ((), state))
+  = interpretBCh runner (BlockchainState (CoinState mempty mempty) emptyValidatorSet)
+  $ processBlock transitions genesis
 
 generateTxList :: Int -> IO [Tx]
-generateTxList n = replicateM n $ generateTransaction txGen state
-
+generateTxList n
+  = replicateM n
+  $ generateTransaction txGen
+  $ blockchainState state
