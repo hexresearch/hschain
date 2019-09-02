@@ -102,12 +102,13 @@ handlerGeneric
   handlerVotesTimeout
   handlerMempoolTimeout
   handlerBlocksTimeout = \ case
-    EGossip m -> hanldlerGossipMsg' m
-    EAnnouncement a -> handlerAnnounncement a
-    EVotesTimeout -> handlerVotesTimeout'
-    EMempoolTimeout -> handlerMempoolTimeout
-    EBlocksTimeout -> handlerBlocksTimeout
+    EGossip m        -> hanldlerGossipMsg' m
+    EAnnouncement a  -> handlerAnnounncement a
+    EVotesTimeout    -> handlerVotesTimeout'
+    EMempoolTimeout  -> handlerMempoolTimeout
+    EBlocksTimeout   -> handlerBlocksTimeout
     EAnnounceTimeout -> handlerAnnounceTimeout
+    EQuit            -> currentState
   where
     handlerAnnounceTimeout :: TimeoutHandler s alg a m
     handlerAnnounceTimeout = do

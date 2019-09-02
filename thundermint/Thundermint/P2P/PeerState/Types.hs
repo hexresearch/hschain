@@ -64,6 +64,7 @@ newtype AheadState alg a = AheadState { _aheadPeerStep :: FullStep }
 makeLenses ''AheadState
 
 data UnknownState alg a = UnknownState
+  deriving Show
 
 --
 -- | Existential wrapper for `State'.
@@ -71,6 +72,13 @@ data UnknownState alg a = UnknownState
 -- This is what's exposed to public API.
 data SomeState alg a where
     WrapState :: State s alg a -> SomeState alg a
+
+instance CryptoAsymmetric alg => Show (SomeState alg a) where
+  show = \case
+    WrapState (Current s) -> show s
+    WrapState (Lagging s) -> show s
+    WrapState (Ahead s)   -> show s
+    WrapState (Unknown s) -> show s
 
 -- | Running modes.
 data Mode = MLagging
@@ -125,6 +133,7 @@ data Event alg a = EGossip !(GossipMsg alg a)
                  | EBlocksTimeout
                  | EAnnounceTimeout
                  | EAnnouncement !(MessageTx alg a)
+                 | EQuit -- ^ Special event wich stops FSM
 
 data Config m alg a = Config { _propStorage    :: !(ProposalStorage 'RO m alg a)
                              , _mempCursor     :: !(MempoolCursor m alg (TX a))

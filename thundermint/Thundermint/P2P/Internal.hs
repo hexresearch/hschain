@@ -42,6 +42,7 @@ import Thundermint.Monitoring
 import Thundermint.P2P.Network
 import Thundermint.P2P.Types
 import Thundermint.P2P.PeerState.Timer
+import Thundermint.P2P.PeerState.Types
 import Thundermint.Store
 import Thundermint.Types.Blockchain
 import Thundermint.Utils
@@ -141,7 +142,7 @@ peerFSM
   -> TBQueue (GossipMsg alg a)
   -> TChan (Event alg a)
   -> MempoolCursor m alg (TX a)
-  -> m b
+  -> m (SomeState alg a)
 peerFSM PeerChans{..} peerExchangeCh gossipCh recvCh cursor@MempoolCursor{..} = logOnException $ do
   logger InfoS "Starting routing for receiving messages" ()
   trace (TePeerGossipVotes TepgvStarted)
@@ -182,7 +183,9 @@ peerFSM PeerChans{..} peerExchangeCh gossipCh recvCh cursor@MempoolCursor{..} = 
           SendPEX pexMsg    -> liftIO $ atomically $ writeTChan peerExchangeCh pexMsg
           Push2Gossip tx    -> liftIO $ atomically $ writeTBQueue gossipCh tx
                                   --tickSend $ Logging.tx gossipCnts
-        loop s'
+        case event of
+          EQuit -> return s'
+          _     -> loop s'
 
 -- | Start interactions with peer. At this point connection is already
 --   established and peer is registered.
@@ -208,7 +211,7 @@ startPeer peerAddrTo peerCh@PeerChans{..} conn peerRegistry mempool = logOnExcep
       [ descendNamespace "recv" $ peerReceive             peerCh recvCh conn
       , descendNamespace "send" $ peerSend                peerCh gossipCh conn
       , descendNamespace "PEX"  $ peerGossipPeerExchange  peerCh peerRegistry pexCh gossipCh
-      , descendNamespace "peerFSM" $ peerFSM              peerCh pexCh gossipCh recvCh cursor
+      , descendNamespace "peerFSM" $ void $ peerFSM              peerCh pexCh gossipCh recvCh cursor
       ]
     logger InfoS "Stopping peer" ()
 
