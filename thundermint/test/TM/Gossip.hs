@@ -11,6 +11,8 @@
 {-# LANGUAGE RankNTypes        #-}
 {-# LANGUAGE RecordWildCards   #-}
 {-# LANGUAGE ViewPatterns      #-}
+{-# LANGUAGE GADTs             #-}
+{-# LANGUAGE ScopedTypeVariables      #-}
 
 module TM.Gossip (tests) where
 
@@ -20,12 +22,15 @@ import Control.Concurrent.STM.TBQueue
 import Control.Concurrent.STM.TQueue
 import Control.Concurrent.STM.TChan
 import Control.Concurrent.STM.TVar
+import Control.Concurrent.MVar
 import Control.Monad
 import Control.Monad.Catch
 import Control.Monad.Fail
 import Control.Monad.Fix
 import Control.Monad.IO.Class
 import Control.Monad.STM
+import Data.Coerce
+import Lens.Micro
 import Prelude                      as P
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Map.Strict    as Map
@@ -41,7 +46,7 @@ import Thundermint.Logger
 import Thundermint.Mock.Types
 import Thundermint.P2P
 import Thundermint.P2P.Internal
-import Thundermint.P2P.PeerState
+import Thundermint.P2P.PeerState.Types
 import Thundermint.P2P.Types
 import Thundermint.Run
 import Thundermint.Store
@@ -63,9 +68,11 @@ import TM.Util.Network
 --
 testRawGossipUnknown :: IO ()
 testRawGossipUnknown =
-    withGossipEnv $ \peerStateObj peerChans gossipCh _env -> do
+    withGossipEnv $ \peerChans gossipCh _env mempool -> do
+        recvCh   <- liftIO newTChanIO
+        pexCh    <- liftIO newTChanIO
         runConcurrently
-            [ peerGossipVotes peerStateObj peerChans gossipCh
+            [ void $ peerFSM peerChans pexCh gossipCh recvCh mempool
             , waitSec 1
             ]
         -- TODO проверить, что ничего не поменялось
@@ -76,13 +83,17 @@ testRawGossipUnknown =
 --
 testRawGossipLagging :: IO ()
 testRawGossipLagging =
-    withGossipEnv $ \peerStateObj peerChans gossipCh env@GossipEnv{..} -> do
+    withGossipEnv $ \peerChans gossipCh env@GossipEnv{..} mempool -> do
         addSomeBlocks env 10
         ourH  <- succ <$> queryRO blockchainHeight
-        advancePeer peerStateObj (FullStep (pred ourH) (Round 0) StepNewHeight)
+        let step = FullStep (pred ourH) (Round 0) StepNewHeight
+        recvCh   <- liftIO newTChanIO
+        liftIO $ atomically $ 
+          writeTChan recvCh (EGossip $ GossipAnn $ AnnStep step)
+        pexCh    <- liftIO newTChanIO
         -- Run peerGossipVotes
         catchTestError $ runConcurrently
-            [ peerGossipVotes peerStateObj peerChans gossipCh
+            [ void $ peerFSM peerChans pexCh gossipCh recvCh mempool
             , waitForEvents envEventsQueue [(TepgvStarted, 1), (TepgvNewIter, 2), (TepgvLagging, 2)]
             , waitSec 5.0 >> throwM (TestError "Timeout!")
             ]
@@ -98,13 +109,17 @@ testRawGossipLagging =
 --
 testRawGossipAhead :: IO ()
 testRawGossipAhead =
-    withGossipEnv $ \peerStateObj peerChans gossipCh env@GossipEnv{..} -> do
+    withGossipEnv $ \peerChans gossipCh env@GossipEnv{..} mempool -> do
         addSomeBlocks env 10
         ourH  <- succ <$> queryRO blockchainHeight
-        advancePeer peerStateObj (FullStep (succ ourH) (Round 0) StepNewHeight)
+        let step = FullStep (succ ourH) (Round 0) StepNewHeight
+        recvCh   <- liftIO newTChanIO
+        liftIO $ atomically $ 
+          writeTChan recvCh (EGossip $ GossipAnn $ AnnStep step)
+        pexCh    <- liftIO newTChanIO
         -- Run peerGossipVotes
         catchTestError $ runConcurrently
-            [ peerGossipVotes peerStateObj peerChans gossipCh
+            [ void $ peerFSM peerChans pexCh gossipCh recvCh mempool
             , waitForEvents envEventsQueue [(TepgvStarted, 1), (TepgvNewIter, 2), (TepgvAhead, 2)]
             , waitSec 5.0 >> throwM (TestError "Timeout!")
             ]
@@ -120,10 +135,10 @@ testRawGossipAhead =
 --
 testRawGossipCurrentSentProposal :: IO ()
 testRawGossipCurrentSentProposal = do
-    withGossipEnv $ \peerStateObj peerChans gossipCh env@GossipEnv{..} -> do
+    withGossipEnv $ \peerChans gossipCh env@GossipEnv{..} mempool -> do
         (_lastBlock, lastCommit) <- last <$> addSomeBlocks' env 10
         ourH  <- succ <$> queryRO blockchainHeight
-        advancePeer peerStateObj (FullStep ourH (Round 0) StepNewHeight)
+        let step = FullStep ourH (Round 0) StepNewHeight
         currentTime <- getCurrentTime
         let proposal = Proposal { propHeight = ourH
                                 , propRound = Round 0
@@ -132,22 +147,27 @@ testRawGossipCurrentSentProposal = do
                                 , propBlockID = commitBlockID lastCommit
                                 }
         newTMState env ourH $ \tm -> tm { smProposals = Map.singleton (Round 0) (signValue currentNodeValIdx currentNodePrivKey proposal) }
-        prePeerState <- (getPeerState peerStateObj >>= \case
-                Current cp -> return cp
-                _ -> liftIO $ assertFailure "Wrong initial state")
+        recvCh   <- liftIO newTChanIO
+        liftIO $ atomically $ 
+          writeTChan recvCh (EGossip $ GossipAnn $ AnnStep step)
+        pexCh    <- liftIO newTChanIO
         -- Run peerGossipVotes
         buffer <- liftIO newTQueueIO
+        resState <- liftIO $ newMVar $ wrap UnknownState
         catchTestError $ runConcurrently
-            [ peerGossipVotes peerStateObj peerChans gossipCh
-            , peerSend        peerStateObj peerChans gossipCh P2PConnection
+            [ peerFSM         peerChans pexCh gossipCh recvCh mempool >>= liftIO . modifyMVar_ resState . const . return
+            , peerSend        peerChans gossipCh P2PConnection
                 { send          = liftIO . atomically . writeTQueue buffer
                 , recv          = forever (return ())
                 , close         = return ()
                 , connectedPeer = PeerInfo (PeerId 100) 100 100
                 }
-            , waitForEvents envEventsQueue [(TepgvStarted, 1), (TepgvNewIter, 2), (TepgvCurrent, 1)]
+            , do waitForEvents envEventsQueue [(TepgvStarted, 1), (TepgvNewIter, 2), (TepgvCurrent, 1)] 
+                 liftIO $ atomically $ writeTChan recvCh EQuit
+                 waitSec 0.1
             , waitSec 5.0 >> throwM (TestError "Timeout!")
             ]
+        
         -- Check proposal message sent
         liftIO $
             (fmap deserialise <$> atomically (tryReadTQueue buffer)) >>= \case
@@ -156,9 +176,9 @@ testRawGossipCurrentSentProposal = do
                 Nothing -> assertFailure "`gossipCh` does not contains any message!"
                 msg     -> assertFailure ("Wrong message: " ++ show msg)
         -- Check state has updated
-        getPeerState peerStateObj >>= liftIO . \case
-            Current p -> p @?= (prePeerState { peerProposals = Set.insert (Round 0) (peerProposals prePeerState) })
-            s         -> assertFailure ("Wrong state: " ++ show s)
+        liftIO $ withMVar resState $ \case
+          WrapState (Current ps) -> ps ^. peerProposals @?= Set.singleton (Round 0)
+          s                      -> assertFailure ("Wrong state: " ++ show s)
 
 
 -- | Auxiliary test function.
@@ -166,12 +186,12 @@ testRawGossipCurrentSentProposal = do
 --
 internalTestRawGossipCurrentCurrent :: Bool -> Bool -> Bool -> IO ()
 internalTestRawGossipCurrentCurrent isTestingSendProposals isTestingSendPrevotes isTestingSendPrecommits =
-    withGossipEnv $ \peerStateObj peerChans gossipCh env@GossipEnv{..} -> do
+    withGossipEnv $ \peerChans gossipCh env@GossipEnv{..} mempool -> do
         -- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         -- Prepare state
         (_lastBlock, lastCommit) <- last <$> addSomeBlocks' env 10
         ourH  <- succ <$> queryRO blockchainHeight
-        advancePeer peerStateObj (FullStep ourH (Round 0) StepNewHeight)
+        let step = FullStep ourH (Round 0) StepNewHeight
         currentTime <- getCurrentTime
         let proposal = Proposal { propHeight = ourH
                                 , propRound = Round 0
@@ -194,25 +214,29 @@ internalTestRawGossipCurrentCurrent isTestingSendProposals isTestingSendPrevotes
                             _ -> error "Can't insert votes"
                     else tm) .
             (\tm -> if isTestingSendPrecommits then
-                        case addSignedValue (Round 0) (signValue currentNodeValIdx currentNodePrivKey vote) True (smPrecommitsSet tm) of
+                        case addSignedValue (Round 0) (signValue currentNodeValIdx currentNodePrivKey $ coerce vote) True (smPrecommitsSet tm) of
                             InsertOK votes -> tm { smPrecommitsSet = votes }
                             _ -> error "Can't insert votes"
                     else tm)
-        prePeerState <- (getPeerState peerStateObj >>= \case
-                Current cp -> return cp
-                _ -> liftIO $ assertFailure "Wrong initial state")
         -- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         -- Run peerGossipVotes
         buffer <- liftIO newTQueueIO
+        recvCh <- liftIO newTChanIO
+        liftIO $ atomically $ 
+          writeTChan recvCh (EGossip $ GossipAnn $ AnnStep step)
+        pexCh  <- liftIO newTChanIO
+        resState <- liftIO $ newMVar $ wrap UnknownState
         catchTestError $ runConcurrently
-            [ peerGossipVotes peerStateObj peerChans gossipCh
-            , peerSend        peerStateObj peerChans gossipCh P2PConnection
+            [ peerFSM peerChans pexCh gossipCh recvCh mempool >>= liftIO . modifyMVar_ resState . const . return
+            , peerSend        peerChans gossipCh P2PConnection
                 { send          = liftIO . atomically . writeTQueue buffer
                 , recv          = forever (return ())
                 , close         = return ()
                 , connectedPeer = PeerInfo (PeerId 100) 100 100
                 }
-            , waitForEvents envEventsQueue [(TepgvStarted, 1), (TepgvNewIter, 2), (TepgvCurrent, 1)]
+            , do waitForEvents envEventsQueue [(TepgvStarted, 1), (TepgvNewIter, 2), (TepgvCurrent, 1)]
+                 liftIO $ atomically $ writeTChan recvCh EQuit
+                 waitSec 0.1
             , waitSec 5.0 >> throwM (TestError "Timeout!")
             ]
         -- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -228,23 +252,16 @@ internalTestRawGossipCurrentCurrent isTestingSendProposals isTestingSendPrevotes
                     GossipPreVote (signedValue -> sentPrevote) -> vote == sentPrevote
                     _ -> False
             assertBool "" $ (if isTestingSendPrecommits then id else not) $ (flip any) messages $ \case
-                    GossipPreCommit (signedValue -> sentPrecommit) -> vote == sentPrecommit
+                    GossipPreCommit (signedValue -> sentPrecommit) -> coerce vote == sentPrecommit
                     _ -> False
         -- Check final state
-        let expectedPeerState =
-                (\ps -> if isTestingSendProposals then
-                            (ps { peerProposals = Set.insert (Round 0) (peerProposals ps) })
-                        else ps) $
-                (\ps -> if isTestingSendPrevotes then
-                            (ps { peerPrevotes  = Map.insert (Round 0) (insertValidatorIdx (ValidatorIdx 0) (emptyValidatorISet 4 )) (peerPrevotes ps) })
-                        else ps) $
-                (\ps -> if isTestingSendPrecommits then
-                            (ps { peerPrecommits = Map.insert (Round 0) (insertValidatorIdx (ValidatorIdx 0) (emptyValidatorISet 4 )) (peerPrecommits ps) })
-                        else ps) $
-                prePeerState
-        getPeerState peerStateObj >>= liftIO . \case
-            Current ps -> ps @?= expectedPeerState
-            s          -> assertFailure ("Wrong state: " ++ show s)
+        liftIO $ withMVar resState $ \case
+          WrapState (Current ps) 
+            | isTestingSendProposals  -> ps ^. peerProposals @?= Set.singleton (Round 0)
+            | isTestingSendPrevotes   -> ps ^. peerPrevotes @?= Map.singleton (Round 0) (insertValidatorIdx (ValidatorIdx 0) (emptyValidatorISet 4 ))
+            | isTestingSendPrecommits -> ps ^. peerPrecommits @?= Map.singleton (Round 0) (insertValidatorIdx (ValidatorIdx 0) (emptyValidatorISet 4 ))
+            | otherwise               -> True @?= True
+          s                           -> assertFailure ("Wrong state: " ++ show s)
 
 
 -- | Testing all combinations of behaviour
@@ -342,10 +359,10 @@ addSomeBlocks' GossipEnv{..} blocksCount =
 --
 withGossipEnv
     :: (    forall m . (MonadDB m TestAlg Mock.BData, MonadMask m, MonadIO m, MonadLogger m, MonadTrace m, MonadFork m, MonadFail m)
-            => PeerStateObj m TestAlg Mock.BData
-            -> PeerChans m TestAlg Mock.BData
+            => PeerChans m TestAlg Mock.BData
             -> TBQueue (GossipMsg TestAlg Mock.BData)
             -> GossipEnv
+            -> MempoolCursor m TestAlg (TX Mock.BData)
             -> m ()
        )
     -> IO ()
@@ -356,10 +373,9 @@ withGossipEnv fun = do
         initDatabase conn (Mock.genesisBlock dbValidatorSet)
         runTracerT (writeChan eventsQueue) . runNoLogsT . runDBT conn $ do
             proposalStorage <- newSTMPropStorage
-            peerStateObj <- newPeerStateObj (makeReadOnlyPS proposalStorage)
             -- let peerId = 0xDEADC0DE
-            let peerChanRx = \_ -> return ()
-            peerChanTx              <- liftIO $ newTChanIO
+            let peerChanRx = const $ return ()
+            peerChanTx              <- liftIO newTChanIO
             peerChanPex             <- liftIO newBroadcastTChanIO
             peerChanPexNewAddresses <- liftIO newTChanIO
             consensusState'         <- liftIO (newTVarIO Nothing)
@@ -370,10 +386,11 @@ withGossipEnv fun = do
                                       , ..
                                       }
             gossipCh <- liftIO $ newTBQueueIO 1000
+            cursor   <- getMempoolCursor nullMempool
             --
             let genv = GossipEnv dbValidatorSet eventsQueue consensusState'
             --
-            fun peerStateObj peerChans gossipCh genv
+            fun peerChans gossipCh genv cursor
 
 
 -- | Wait for events; fail if another event occurs.
@@ -402,7 +419,7 @@ newTMState :: (MonadIO m)
            -> m ()
 newTMState GossipEnv{..} h postProcess = do
     let voteSet = newHeightVoteSet envValidatorSet
-    let tmState = postProcess $ TMState (Round 0) StepNewHeight Map.empty voteSet voteSet Nothing Nothing
+        tmState = postProcess $ TMState (Round 0) StepNewHeight Map.empty voteSet (coerce voteSet) Nothing Nothing
     liftIO $ atomically $ writeTVar envConsensus (Just (h, tmState))
 
 

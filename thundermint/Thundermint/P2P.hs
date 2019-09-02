@@ -15,7 +15,6 @@ module Thundermint.P2P (
   , sockAddrToNetAddr
   , generatePeerId
   -- * for tests only * --
-  , peerGossipVotes
   , PeerChans(..)
   , newPeerRegistry
   , newGossipCounters

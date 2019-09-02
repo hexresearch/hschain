@@ -21,9 +21,9 @@ import Thundermint.Store.Internal.Query             (Access(..))
 import Thundermint.Types
 
 import Thundermint.P2P.Internal.Logging
-import Thundermint.P2P.PeerState
 
 import qualified Katip
+
 
 -- | Messages which peers exchange with each other
 --
@@ -88,8 +88,3 @@ showGossipMsg (GossipAnn ann)     = "GossipAnn { " <> Katip.showLS ann <> " }"
 showGossipMsg (GossipTx _)        = "GossipTx {}"
 showGossipMsg (GossipPex p)       = "GossipPex { " <> Katip.showLS p <> " }"
 
-showPeerState :: PeerState alg a -> Katip.LogStr
-showPeerState (Lagging _) = "Lagging {}"
-showPeerState (Current _) = "Current {}"
-showPeerState (Ahead fs)  = "Ahead { " <> Katip.showLS fs <> " }"
-showPeerState Unknown     = "Unknown {}"
