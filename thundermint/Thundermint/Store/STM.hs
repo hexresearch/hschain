@@ -59,19 +59,19 @@ newSTMPropStorage = fmap (hoistPropStorageRW liftIO) $ liftIO $ do
         let action = atomically . modifyTVar' varPBlk . flip Map.adjust bid
         case mSt of
           Nothing -> action $ \case 
-            UntestedBlock _ _ -> InvalidBlock
-            InvalidBlock      -> InvalidBlock
-            _                 -> error "CANT HAPPEN"
+            UntestedBlock _ -> InvalidBlock
+            InvalidBlock    -> InvalidBlock
+            _               -> error "CANT HAPPEN"
           Just bst -> action $ \case
-            UntestedBlock _ b -> GoodBlock bid b bst
-            b@GoodBlock{}     -> b
-            _                 -> error "CANT HAPPEN"
+            UntestedBlock b -> GoodBlock b bst
+            b@GoodBlock{}   -> b
+            _               -> error "CANT HAPPEN"
     --
     , storePropBlock = \blk -> atomically $ do
         h <- readTVar varH
         when (headerHeight (blockHeader blk) == h) $ do
           let bid            = blockHash blk
-              update Nothing = Just $ UntestedBlock bid blk
+              update Nothing = Just $ UntestedBlock blk
               update b       = b
           bids <- readTVar varBids
           when (bid `Set.member` bids) $
@@ -89,12 +89,12 @@ newSTMPropStorage = fmap (hoistPropStorageRW liftIO) $ liftIO $ do
     , retrievePropByR = \h r -> atomically $ do
         h0 <- readTVar varH
         if h /= h0
-          then return UnknownBlock
+          then return Nothing
           else do rMap <- readTVar varRMap
                   pBlk <- readTVar varPBlk
-                  case (`Map.lookup` pBlk) =<< (r `Map.lookup` rMap) of
-                    Nothing -> return UnknownBlock
-                    Just b  -> return b
+                  return $ do bid <- r   `Map.lookup` rMap
+                              blk <- bid `Map.lookup` pBlk
+                              return (bid, blk)
     }
 
 newMempool
