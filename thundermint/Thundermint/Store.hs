@@ -175,28 +175,28 @@ type family Writable (rw :: Access) a where
 
 -- | Status of block validation.
 data BlockValidation alg a
-  = UntestedBlock !(BlockID alg a) !(Block alg a)
+  = UntestedBlock !(Block alg a)
   -- ^ We haven't validated block yet
   | UnknownBlock
   -- ^ We haven't even seen block yet
-  | GoodBlock     !(BlockID alg a) !(Block alg a) !(BlockchainState alg a)
+  | GoodBlock     !(Block alg a) !(BlockchainState alg a)
   -- ^ Block is good. We also cache state and new validator set
   | InvalidBlock
   -- ^ Block is invalid so there's no point in storing (and gossiping)
   --   it.
 
-blockFromBlockValidation :: BlockValidation alg a -> Maybe (BlockID alg a, Block alg a)
+blockFromBlockValidation :: BlockValidation alg a -> Maybe (Block alg a)
 blockFromBlockValidation = \case
-  UntestedBlock bid b   -> Just (bid, b)
-  GoodBlock     bid b _ -> Just (bid, b)
-  UnknownBlock          -> Nothing
-  InvalidBlock          -> Nothing
+  UntestedBlock b   -> Just b
+  GoodBlock     b _ -> Just b
+  UnknownBlock      -> Nothing
+  InvalidBlock      -> Nothing
 
 -- | Storage for proposed blocks that are not commited yet.
 data ProposalStorage rw m alg a = ProposalStorage
   { retrievePropByID   :: !(Height -> BlockID alg a -> m (BlockValidation alg a))
     -- ^ Retrieve proposed block by its ID
-  , retrievePropByR    :: !(Height -> Round -> m (BlockValidation alg a))
+  , retrievePropByR    :: !(Height -> Round -> m (Maybe (BlockID alg a, BlockValidation alg a)))
     -- ^ Retrieve proposed block by round number.
 
   , setPropValidation  :: !(Writable rw ( BlockID alg a

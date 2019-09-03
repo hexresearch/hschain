@@ -10,7 +10,6 @@ module Thundermint.P2P.PeerState.Handle.Current
   , issuedGossipHandler
   ) where
 
-
 import Control.Concurrent.STM   (atomically)
 import Control.Monad
 import Control.Monad.RWS.Strict
@@ -96,8 +95,8 @@ handlerGossipMsg  gossipMsg = do
         (FullStep hP _ _) <- use peerStep
         p <- view propStorage
         when ( h == hP ) $ do
-          res <- lift $ retrievePropByR p h r -- TODO: IO here!
-          forM_ (blockFromBlockValidation res) $ \(bid,_) ->
+          mbid <- lift $ retrievePropByR p h r -- TODO: IO here!
+          forM_ mbid $ \(bid,_) ->
             peerBlocks %= Set.insert bid
         currentState
 
@@ -239,8 +238,11 @@ handlerBlocksTimeout = do
   roundInProposals <- Set.member r <$> use peerProposals
   p <- view propStorage
   mbid <- lift $ retrievePropByR p h r
-  forM_ (blockFromBlockValidation mbid) $ \(bid,b) -> do
-     -- Peer has proposal but not block
+  let mBlk = do (bid, bVal) <- mbid
+                blk         <- blockFromBlockValidation bVal
+                return (bid,blk) 
+  forM_ mBlk $ \(bid,b) -> do
+      -- Peer has proposal but not block
       noBlockInState <- Set.notMember bid <$> use peerBlocks
       when (roundInProposals && noBlockInState) $ do
         lift $ logger DebugS ("Gossip: " <> showLS bid) ()
@@ -248,4 +250,3 @@ handlerBlocksTimeout = do
         push2Gossip $ GossipBlock b
         tickSend blocks
   currentState
-

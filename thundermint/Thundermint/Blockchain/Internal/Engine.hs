@@ -156,10 +156,10 @@ decideNewBlock config appValidatorKey appLogic@AppLogic{..} appCall@AppCallbacks
         mBlk <- lift
               $ retrievePropByID appPropStorage (currentH hParam) (commitBlockID cmt)
         case mBlk of
-          UnknownBlock      -> msgHandlerLoop (Just cmt) tm
-          InvalidBlock      -> error "Trying to commit invalid block!"
-          GoodBlock _ b bst -> lift $ performCommit b bst
-          UntestedBlock _ b -> lift $ do
+          UnknownBlock    -> msgHandlerLoop (Just cmt) tm
+          InvalidBlock    -> error "Trying to commit invalid block!"
+          GoodBlock b bst -> lift $ performCommit b bst
+          UntestedBlock b -> lift $ do
             st <- throwNothingM BlockchainStateUnavalable
                 $ bchStoreRetrieve appBchState $ pred (currentH hParam)
             appValidationFun b (BlockchainState st (validatorSet hParam)) >>= \case
@@ -300,8 +300,8 @@ handleEngineMessage HeightParameters{..} ConsensusCfg{..} AppByzantine{..} AppCh
           writeTQueue appChanRxInternal $ RxProposal p
           writeTChan  appChanTx         $ TxProposal p
           case blockFromBlockValidation mBlock of
-            Just (_,b) -> writeTQueue appChanRxInternal (RxBlock b)
-            Nothing    -> return ()
+            Just b  -> writeTQueue appChanRxInternal (RxBlock b)
+            Nothing -> return ()
   --
   EngCastPreVote r b ->
     forM_ validatorKey $ \(PrivValidator pk, idx) -> do
@@ -387,10 +387,10 @@ makeHeightParameters appValidatorKey AppLogic{..} AppCallbacks{..} AppChans{..} 
     , validateBlock = \bid -> do
         let nH = succ h
         retrievePropByID appPropStorage nH bid >>= \case
-          UnknownBlock      -> return UnseenProposal
-          InvalidBlock      -> return InvalidProposal
-          GoodBlock{}       -> return GoodProposal
-          UntestedBlock _ b -> do
+          UnknownBlock    -> return UnseenProposal
+          InvalidBlock    -> return InvalidProposal
+          GoodBlock{}     -> return GoodProposal
+          UntestedBlock b -> do
             let invalid = InvalidProposal <$ setPropValidation appPropStorage bid Nothing
             inconsistencies <- checkProposedBlock nH b
             st              <- throwNothingM BlockchainStateUnavalable
