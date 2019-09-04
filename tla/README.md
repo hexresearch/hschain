@@ -1,4 +1,4 @@
-TLA+ models for thundermint.
+TLA+ models for HSChain.
 
 ## Running
 

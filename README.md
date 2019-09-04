@@ -2,7 +2,7 @@
 
 [![Build Status](https://drone.hxr.dev/api/badges/hexresearch/thundermint/status.svg)](https://drone.hxr.dev/hexresearch/thundermint)
 
-Thundermint is a haskell implementation of tendermint bysantine consesus algorithm
+HSchain is a haskell implementation of tendermint bysantine consesus algorithm
 
 ## TLS
 

@@ -1,8 +1,8 @@
 packages:
-         thundermint
-         thundermint-crypto
-         thundermint-types
-         thundermint-quickcheck
+         hschain
+         hschain-crypto
+         hschain-types
+         hschain-quickcheck
          serialise-cddl
 
 -- Jailbreak bytestring-arbitrary
