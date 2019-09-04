@@ -111,7 +111,7 @@ decideNewBlock config appValidatorKey appLogic@AppLogic{..} appCall@AppCallbacks
   --
   -- FIXME: we don't want duplication! (But pipes & producer does not unify)
   hParam <- makeHeightParameters appValidatorKey appLogic appCall appCh
-  advanceToHeight appPropStorage $ currentH hParam
+  resetPropStorage appPropStorage $ currentH hParam
   -- Get rid of messages in WAL that are no longer needed and replay
   -- all messages stored there.
   walMessages <- fmap (fromMaybe [])

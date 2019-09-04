@@ -203,9 +203,9 @@ data ProposalStorage rw m alg a = ProposalStorage
                                        -> Maybe (BlockchainState alg a)
                                        -> m ()))
     -- ^ Set whether block is valid or not.
-  , advanceToHeight    :: !(Writable rw (Height -> m ()))
-    -- ^ Advance to given height. If height is different from current
-    --   all stored data is discarded
+  , resetPropStorage   :: !(Writable rw (Height -> m ()))
+    -- ^ Reset proposal storage and set it to expect blocks ith given
+    --   height.
   , allowBlockID       :: !(Writable rw (Round -> BlockID alg a -> m ()))
     -- ^ Mark block ID as one that we could accept
   , storePropBlock     :: !(Writable rw (Block alg a -> m ()))
@@ -215,7 +215,7 @@ data ProposalStorage rw m alg a = ProposalStorage
 
 makeReadOnlyPS :: ProposalStorage rw m alg a -> ProposalStorage 'RO m alg a
 makeReadOnlyPS ProposalStorage{..} =
-  ProposalStorage { advanceToHeight   = ()
+  ProposalStorage { resetPropStorage  = ()
                   , storePropBlock    = ()
                   , allowBlockID      = ()
                   , setPropValidation = ()
@@ -230,7 +230,7 @@ hoistPropStorageRW fun ProposalStorage{..} =
   ProposalStorage { retrievePropByID   = \h x -> fun (retrievePropByID h x)
                   , retrievePropByR    = \h x -> fun (retrievePropByR  h x)
                   , setPropValidation  = \b x -> fun (setPropValidation b x)
-                  , advanceToHeight    = fun . advanceToHeight
+                  , resetPropStorage   = fun . resetPropStorage
                   , storePropBlock     = fun . storePropBlock
                   , allowBlockID       = \r bid -> fun (allowBlockID r bid)
                   }
