@@ -83,7 +83,6 @@ runApplication config appValidatorKey appSt@AppLogic{..} appCall appCh@AppChans{
   logger InfoS "Starting consensus engine" ()
   height <- queryRO $ blockchainHeight
   lastCm <- queryRO $ retrieveLocalCommit height
-  advanceToHeight appPropStorage $ succ height
   iterateM lastCm $ fmap Just
                   . decideNewBlock config appValidatorKey appSt appCall appCh
 
@@ -112,6 +111,7 @@ decideNewBlock config appValidatorKey appLogic@AppLogic{..} appCall@AppCallbacks
   --
   -- FIXME: we don't want duplication! (But pipes & producer does not unify)
   hParam <- makeHeightParameters appValidatorKey appLogic appCall appCh
+  advanceToHeight appPropStorage $ currentH hParam
   -- Get rid of messages in WAL that are no longer needed and replay
   -- all messages stored there.
   walMessages <- fmap (fromMaybe [])
@@ -172,7 +172,6 @@ decideNewBlock config appValidatorKey appLogic@AppLogic{..} appCall@AppCallbacks
             logger InfoS "Actual commit" $ LogBlockInfo h (blockData b) nTx
             usingCounter prometheusNTx nTx
             throwNothingM UnableToCommit $ queryRW (storeCommit cmt b val')
-            advanceToHeight appPropStorage (succ h)
             bchStoreStore   appBchState h st'
             appCommitCallback b
             return cmt
