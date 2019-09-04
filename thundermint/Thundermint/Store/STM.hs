@@ -47,7 +47,7 @@ newSTMPropStorage = fmap (hoistPropStorageRW liftIO) $ liftIO $ do
   varPBlk <- newTVarIO Map.empty  -- Proposed blocks
   varRMap <- newTVarIO Map.empty  -- Map of rounds to block IDs
   return ProposalStorage
-    { advanceToHeight = \h -> atomically $ do
+    { resetPropStorage = \h -> atomically $ do
         writeTVar varH    h
         writeTVar varPBlk Map.empty
         writeTVar varRMap Map.empty
