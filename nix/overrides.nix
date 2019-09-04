@@ -9,9 +9,9 @@
   haskell = {
     katip-elasticsearch = { check = false; };
     #
-    thundermint-crypto = { haddock = false; };
-    thundermint-types  = { haddock = false; };
-    thundermint        = { haddock = false; };
+    hschain-crypto = { haddock = false; };
+    hschain-types  = { haddock = false; };
+    hschain        = { haddock = false; };
   };
   # Compiler specific overrides
   ghc865 = {

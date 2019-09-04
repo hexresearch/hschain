@@ -27,17 +27,17 @@ let
   overlay = self: super: {
     haskell = haskTools.interpret pkgs super {
       overrides = import ./overrides.nix;
-      release   = thundermintPackages;
+      release   = hschainPackages;
     };
   };
-  # Generate packages for thundermint
-  thundermintPackages = hsPkgs: {
-    thundermint-crypto = callInternal hsPkgs "thundermint" ../thundermint-crypto {}
+  # Generate packages for hschain
+  hschainPackages = hsPkgs: {
+    hschain-crypto = callInternal hsPkgs "hschain" ../hschain-crypto {}
       (if useSodium then "-flibsodium" else "-f-libsodium");
-    thundermint-quickcheck = callInternal hsPkgs "thundermint" ../thundermint-quickcheck    {} "";
-    thundermint-types      = callInternal hsPkgs "thundermint" ../thundermint-types         {} "";
-    thundermint            = callInternal hsPkgs "thundermint" ../thundermint               {} "";
-    serialise-cddl         = callInternal hsPkgs "thundermint" ../serialise-cddl            {} "";
+    hschain-quickcheck = callInternal hsPkgs "hschain" ../hschain-quickcheck    {} "";
+    hschain-types      = callInternal hsPkgs "hschain" ../hschain-types         {} "";
+    hschain            = callInternal hsPkgs "hschain" ../hschain               {} "";
+    serialise-cddl         = callInternal hsPkgs "hschain" ../serialise-cddl            {} "";
   };
   # Build internal package
   callInternal = hask: name: path: args: opts:
@@ -52,22 +52,22 @@ let
     '';
   #
   release = let
-    thundermintPkgAll = p: with p; [
+    hschainPkgAll = p: with p; [
       serialise-cddl
-      thundermint-crypto
-      thundermint-types
-      thundermint-quickcheck
-      thundermint
+      hschain-crypto
+      hschain-types
+      hschain-quickcheck
+      hschain
     ];
-    thundermintPkgJs = p: with p; [
-      thundermint-crypto
-      thundermint-types
+    hschainPkgJs = p: with p; [
+      hschain-crypto
+      hschain-types
     ];
     in
     {
       inherit pkgs;
-      ghc844 = thundermintPkgAll;
-      ghc865 = thundermintPkgAll;
-      ghcjs  = thundermintPkgJs;
+      ghc844 = hschainPkgAll;
+      ghc865 = hschainPkgAll;
+      ghcjs  = hschainPkgJs;
     };
 in release

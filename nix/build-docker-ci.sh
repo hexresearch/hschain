@@ -47,5 +47,5 @@ done
 
 if $publish; then
 docker login --password $DOCKER_PASSWORD --username $DOCKER_USERNAME registry.hxr.team
-docker push registry.hxr.team/thundermint-node:$tag
+docker push registry.hxr.team/hschain-node:$tag
 fi

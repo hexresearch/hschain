@@ -11,22 +11,22 @@ let
   pkgs = release.pkgs;
   lib = pkgs.haskell.lib;
 
-  thundermint-exe     = lib.overrideCabal
-    (lib.justStaticExecutables (lib.dontCheck pkgs.haskell.packages."${ghc}".thundermint)) (oldDerivation: { });
+  hschain-exe     = lib.overrideCabal
+    (lib.justStaticExecutables (lib.dontCheck pkgs.haskell.packages."${ghc}".hschain)) (oldDerivation: { });
 
-  thundermint-docker = pkgs.dockerTools.buildImage {
-    name = "${prefixName}thundermint-node";
+  hschain-docker = pkgs.dockerTools.buildImage {
+    name = "${prefixName}hschain-node";
     fromImageName = "scratch";
     tag = containerTag;
     created = "now";
-    contents = [thundermint-exe];
+    contents = [hschain-exe];
     config = {
        Entrypoint = [
-         "thundermint-coin-node"
+         "hschain-coin-node"
        ];
     };
   };
 in {
   inherit
-    thundermint-docker;
+    hschain-docker;
 }

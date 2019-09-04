@@ -22,7 +22,7 @@ in
     ];
     packages = release."${ghc}";
     # NOTE: this is workaround for problem with building
-    #       thundermint-types. Without this build fails
+    #       hschain-types. Without this build fails
     #       mysteriously. Note that build with nix-build is not
     #       affected.
     shellHook = ''

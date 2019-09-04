@@ -12,6 +12,6 @@ let
   pkgs    = release.pkgs;
 in
 pkgs.buildEnv {
-  name  = "thundermint";
+  name  = "hschain";
   paths = release."${ghc}" pkgs.haskell.packages."${ghc}";
 }

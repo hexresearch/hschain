@@ -1,0 +1,30 @@
+Name:           hschain-quickcheck
+Version:        0.1
+Synopsis:       Arbitraty instances for hschain
+Description:
+   Arbitraty instances for hschain
+
+Cabal-Version:  >= 1.10
+License:        AllRightsReserved
+License-File:   LICENSE
+Author:         Aleksey Khudyakov <alexey.skladnoy@gmail.com>
+Maintainer:     Aleksey Khudyakov <alexey.skladnoy@gmail.com>
+Homepage:       https://github.com/hexresearch/thundermint
+Category:       Data
+Build-Type:     Simple
+
+Library
+  Ghc-options:         -Wall
+  Default-Language:    Haskell2010
+  Build-Depends:       base              >=4.9 && <5
+                     , bytestring
+                     , containers
+                     , hschain-crypto
+                     , hschain-types
+                     , QuickCheck
+                     , bytestring-arbitrary
+                     , generic-arbitrary
+
+  Exposed-modules:
+                  HSChain.Arbitrary.Instances
+
