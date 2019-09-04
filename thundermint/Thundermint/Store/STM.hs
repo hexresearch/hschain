@@ -46,14 +46,11 @@ newSTMPropStorage = fmap (hoistPropStorageRW liftIO) $ liftIO $ do
   varH    <- newTVarIO (Height 0) -- Current height
   varPBlk <- newTVarIO Map.empty  -- Proposed blocks
   varRMap <- newTVarIO Map.empty  -- Map of rounds to block IDs
-  varBids <- newTVarIO Set.empty  -- Allowed block IDs
   return ProposalStorage
     { advanceToHeight = \h -> atomically $ do
-        h0 <- readTVar varH
-        when (h /= h0) $ do writeTVar varH    h
-                            writeTVar varPBlk Map.empty
-                            writeTVar varRMap Map.empty
-                            writeTVar varBids Set.empty
+        writeTVar varH    h
+        writeTVar varPBlk Map.empty
+        writeTVar varRMap Map.empty
     --
     , setPropValidation = \bid mSt -> do
         let action = atomically . modifyTVar' varPBlk . flip Map.adjust bid
@@ -69,20 +66,19 @@ newSTMPropStorage = fmap (hoistPropStorageRW liftIO) $ liftIO $ do
     --
     , storePropBlock = \blk -> atomically $ do
         h <- readTVar varH
-        when (headerHeight (blockHeader blk) == h) $ do
-          let bid            = blockHash blk
-              update Nothing = Just $ UntestedBlock blk
-              update b       = b
-          bids <- readTVar varBids
-          when (bid `Set.member` bids) $
-            modifyTVar' varPBlk $ Map.alter update bid
+        when (headerHeight (blockHeader blk) == h) $
+          modifyTVar' varPBlk $ flip Map.adjust (blockHash blk) $ \case
+            UnknownBlock -> UntestedBlock blk
+            b            -> b
     --
     , allowBlockID = \r bid -> atomically $ do
-        modifyTVar' varRMap $ Map.insert r bid
-        modifyTVar' varBids $ Set.insert bid
+        modifyTVar' varRMap $ Map.insert r   bid
+        modifyTVar' varPBlk $ flip Map.alter bid $ \case
+          Nothing -> Just UnknownBlock
+          Just b  -> Just b
     --
     , retrievePropByID = \h0 bid -> atomically $ do
-        h <- readTVar varH        
+        h <- readTVar varH
         if h == h0 then fromMaybe UnknownBlock . Map.lookup bid <$> readTVar varPBlk
                    else return UnknownBlock
     --
