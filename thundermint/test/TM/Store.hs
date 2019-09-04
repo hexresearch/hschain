@@ -1,4 +1,5 @@
 {-# LANGUAGE DataKinds           #-}
+{-# LANGUAGE NumDecimals         #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 module TM.Store ( tests) where
 
@@ -23,13 +24,14 @@ import           Thundermint.Store
 import qualified Thundermint.Mock.KeyVal as KeyVal
 import qualified Thundermint.Mock.Coin   as Coin
 import           Thundermint.Mock.Types
+import           TM.Util.Network (withTimeOut)
 
 
 tests :: TestTree
 tests = testGroup "generate blockchain and check on consistency"
   [ testGroup "blockhains"
-    [ testCase "key-val db" $ runKeyVal "./test-spec/simple-stm.json"
-    , testCase "Mock coin"  $ runCoin   "./test-spec/keyval-stm.json"
+    [ testCase "key-val db" $ withTimeOut "" 60e6 $ runKeyVal "./test-spec/simple-stm.json"
+    , testCase "Mock coin"  $ withTimeOut "" 60e6 $ runCoin   "./test-spec/keyval-stm.json"
     ]
   ]
 
