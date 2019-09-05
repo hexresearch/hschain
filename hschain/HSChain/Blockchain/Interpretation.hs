@@ -12,11 +12,13 @@ module HSChain.Blockchain.Interpretation (
   ) where
 
 import HSChain.Types.Blockchain
+import HSChain.Blockchain.Internal.Engine.Types
+
 
 data BChLogic q alg a = BChLogic
   { processTx     :: !(TX a -> q ())
   , processBlock  :: !(Block alg a -> q ())
-  , generateBlock :: !(Block alg a -> [TX a] -> q a)
+  , generateBlock :: !(NewBlock alg a -> [TX a] -> q a)
   , initialState  :: !(InterpreterState a)
   }
 

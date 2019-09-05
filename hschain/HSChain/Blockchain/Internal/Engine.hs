@@ -318,7 +318,7 @@ handleEngineMessage HeightParameters{..} ConsensusCfg{..} AppByzantine{..} AppCh
         liftIO $ atomically $ do
           let v = signValue idx pk vote'
           writeTChan  appChanTx         $ TxPreVote v
-          writeTQueue appChanRxInternal $ RxPreVote v 
+          writeTQueue appChanRxInternal $ RxPreVote v
   --
   EngCastPreCommit r b ->
     forM_ validatorKey $ \(PrivValidator pk, idx) -> do
@@ -355,7 +355,6 @@ makeHeightParameters
   -> AppChans     m alg a
   -> m (HeightParameters m alg a)
 makeHeightParameters appValidatorKey AppLogic{..} AppCallbacks{..} AppChans{..} = do
-  let AppByzantine{..} = appByzantine
   h         <- queryRO $ blockchainHeight
   valSet    <- throwNothing (DBMissingValSet (succ h)) <=< queryRO
              $ retrieveValidatorSet (succ h)
@@ -409,37 +408,34 @@ makeHeightParameters appValidatorKey AppLogic{..} AppCallbacks{..} AppChans{..} 
                  -> invalid
     --
     , createProposal = \r commit -> do
-        lastBID  <- queryRO $ retrieveBlockID =<< blockchainHeight
-        -- Create dummy block in order to pass it to generator
-        let headerDummy = Header
-              { headerHeight         = succ h
-              , headerLastBlockID    = lastBID
-              , headerValidatorsHash = hashed valSet
-              , headerDataHash       = Hashed $ Hash "" 
-              , headerValChangeHash  = hashed mempty
-              , headerLastCommitHash = hashed commit
-              , headerEvidenceHash   = hashed []
-              }
-            blockDummy = Block
-              { blockHeader     = headerDummy
-              , blockData       = error "Block data is not yet generated"
-              , blockValChange  = mempty
-              , blockLastCommit = commit
-              , blockEvidence   = []
-              }
+        lastBID <- throwNothing (DBMissingBlockID h) <=< queryRO
+                 $ retrieveBlockID h
         -- Call block generator
         st          <- throwNothingM BlockchainStateUnavalable
                      $ bchStoreRetrieve appBchState h
-        (bData,bst) <- appBlockGenerator blockDummy (BlockchainState st valSet)
-                   =<< peekNTransactions appMempool
+        (bData,bst) <- appBlockGenerator NewBlock
+          { newBlockHeight   = succ h
+          , newBlockLastBID  = lastBID
+          , newBlockCommit   = commit
+          , newBlockEvidence = []
+          , newBlockState    = BlockchainState st valSet
+          } =<< peekNTransactions appMempool
+        -- Assemble proper block
         let valCh = validatorsDifference valSet (bChValidatorSet bst)
-            block = blockDummy
-              { blockHeader = headerDummy
-                  { headerDataHash      = hashed bData
-                  , headerValChangeHash = hashed valCh
+            block = Block
+              { blockHeader = Header
+                  { headerHeight         = succ h
+                  , headerLastBlockID    = Just lastBID
+                  , headerValidatorsHash = hashed valSet
+                  , headerDataHash       = hashed bData
+                  , headerValChangeHash  = hashed valCh
+                  , headerLastCommitHash = hashed commit
+                  , headerEvidenceHash   = hashed []
                   }
-              , blockData      = bData
-              , blockValChange = valCh
+              , blockData       = bData
+              , blockValChange  = valCh
+              , blockLastCommit = commit
+              , blockEvidence   = []
               }
             bid   = blockHash block
         allowBlockID      appPropStorage r bid
