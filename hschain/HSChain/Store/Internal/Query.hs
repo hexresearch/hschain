@@ -356,7 +356,7 @@ queryRWT q = flip runQueryRWT q =<< askConnectionRW
 -- | Query which doesn't allow any other effect except interaction
 --   with database.
 newtype Query rw alg a x = Query { unQuery :: ReaderT (Connection rw alg a) IO x }
-  deriving newtype (Functor, Applicative)
+  deriving newtype (Functor, Applicative, MonadThrow)
 
 instance Monad (Query rm alg a) where
   return = Query . return
