@@ -81,9 +81,6 @@ data HeightParameters (m :: * -> *) alg a = HeightParameters
     -- ^ Height we're on.
   , validatorSet         :: !(ValidatorSet alg)
     -- ^ Validator set for current height
-  , oldValidatorSet      :: !(Maybe (ValidatorSet alg))
-    -- ^ Validator set for previous height. It's used when collecting
-    --   stragglers votes
   , validatorKey         :: !(Maybe (PrivValidator alg, ValidatorIdx alg))
     -- ^ Validator key and index in validator set for current round
   , readyCreateBlock     :: !(m Bool)

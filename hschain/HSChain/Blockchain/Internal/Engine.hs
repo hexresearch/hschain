@@ -110,7 +110,8 @@ decideNewBlock config appValidatorKey appLogic@AppLogic{..} appCall@AppCallbacks
   -- machine
   --
   -- FIXME: we don't want duplication! (But pipes & producer does not unify)
-  hParam <- makeHeightParameters appValidatorKey appLogic appCall appCh
+  hParam  <- makeHeightParameters appValidatorKey appLogic appCall appCh
+  oldVals <- queryRO $ retrieveValidatorSet =<< blockchainHeight
   resetPropStorage appPropStorage $ currentH hParam
   -- Get rid of messages in WAL that are no longer needed and replay
   -- all messages stored there.
@@ -183,7 +184,7 @@ decideNewBlock config appValidatorKey appLogic@AppLogic{..} appCall@AppCallbacks
                     Success t -> return t
                     _         -> throwM ImpossibleError
     messageSrc
-      >-> verifyMessageSignature hParam
+      >-> verifyMessageSignature oldVals hParam
       >-> msgHandlerLoop Nothing tm0
       >-> handleEngineMessage hParam config appByzantine appCh
 
@@ -209,9 +210,10 @@ handleVerifiedMessage ProposalStorage{..} hParam tm = \case
 -- simply discarded.
 verifyMessageSignature
   :: (MonadLogger m, Crypto alg)
-  => HeightParameters m alg a
+  => Maybe (ValidatorSet alg)
+  -> HeightParameters m alg a
   -> Pipe (MessageRx 'Unverified alg a) (MessageRx 'Verified alg a) m r
-verifyMessageSignature HeightParameters{..} = forever $ do
+verifyMessageSignature oldValSet HeightParameters{..} = forever $ do
   await >>= \case
     RxPreVote   sv
       | h      == currentH -> verify "prevote"   RxPreVote   sv
@@ -232,7 +234,7 @@ verifyMessageSignature HeightParameters{..} = forever $ do
     RxBlock     b  -> yield $ RxBlock   b
   where
     verify    con = verifyAny (Just validatorSet) con
-    verifyOld con = verifyAny oldValidatorSet     con
+    verifyOld con = verifyAny oldValSet           con
     verifyAny mvset name con sx = case mvset >>= flip verifySignature sx of
       Just sx' -> yield $ con sx'
       Nothing  -> logger WarningS "Invalid signature"
@@ -358,7 +360,6 @@ makeHeightParameters appValidatorKey AppLogic{..} AppCallbacks{..} AppChans{..} 
   h         <- queryRO $ blockchainHeight
   valSet    <- throwNothing (DBMissingValSet (succ h)) <=< queryRO
              $ retrieveValidatorSet (succ h)
-  oldValSet <- queryRO $ retrieveValidatorSet  h
   let ourIndex = indexByValidator valSet . publicKey . validatorPrivKey
              =<< appValidatorKey
   let proposerChoice (Round r) =
@@ -369,7 +370,6 @@ makeHeightParameters appValidatorKey AppLogic{..} AppCallbacks{..} AppChans{..} 
   return HeightParameters
     { currentH         = succ h
     , validatorSet     = valSet
-    , oldValidatorSet  = oldValSet
     , validatorKey     = liftA2 (,) appValidatorKey ourIndex
       -- FIXME: this is some random algorithms that should probably
       --        work (for some definition of work)
