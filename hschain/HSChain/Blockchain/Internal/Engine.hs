@@ -111,8 +111,13 @@ decideNewBlock config appValidatorKey appLogic@AppLogic{..} appCall@AppCallbacks
   --
   -- FIXME: we don't want duplication! (But pipes & producer does not unify)
   hParam  <- makeHeightParameters appValidatorKey appLogic appCall appCh
-  oldVals <- queryRO $ retrieveValidatorSet =<< blockchainHeight
   resetPropStorage appPropStorage $ currentH hParam
+  -- Query validator sets
+  (oldValSet,valSet) <- queryRO $ do
+    h         <- blockchainHeight
+    liftA2 (,)
+      (retrieveValidatorSet h)
+      (throwNothing (DBMissingValSet (succ h)) =<< retrieveValidatorSet (succ h))
   -- Get rid of messages in WAL that are no longer needed and replay
   -- all messages stored there.
   walMessages <- fmap (fromMaybe [])
@@ -163,7 +168,7 @@ decideNewBlock config appValidatorKey appLogic@AppLogic{..} appCall@AppCallbacks
           UntestedBlock b -> lift $ do
             st <- throwNothingM BlockchainStateUnavalable
                 $ bchStoreRetrieve appBchState $ pred (currentH hParam)
-            appValidationFun b (BlockchainState st (validatorSet hParam)) >>= \case
+            appValidationFun b (BlockchainState st valSet) >>= \case
               Nothing  -> error "Trying to commit invalid block!"
               Just bst -> performCommit b bst
         where
@@ -176,15 +181,16 @@ decideNewBlock config appValidatorKey appLogic@AppLogic{..} appCall@AppCallbacks
             bchStoreStore   appBchState h st'
             appCommitCallback b
             return cmt
+  --
   runEffect $ do
     -- FIXME: encode that we cannot fail here!
-    tm0 <- (  runConsesusM (newHeight hParam lastCommt)
+    tm0 <- (  runConsesusM (newHeight hParam valSet lastCommt)
           >-> handleEngineMessage hParam config appByzantine appCh
            ) >>= \case
                     Success t -> return t
                     _         -> throwM ImpossibleError
     messageSrc
-      >-> verifyMessageSignature oldVals hParam
+      >-> verifyMessageSignature oldValSet valSet hParam
       >-> msgHandlerLoop Nothing tm0
       >-> handleEngineMessage hParam config appByzantine appCh
 
@@ -211,9 +217,10 @@ handleVerifiedMessage ProposalStorage{..} hParam tm = \case
 verifyMessageSignature
   :: (MonadLogger m, Crypto alg)
   => Maybe (ValidatorSet alg)
+  -> ValidatorSet alg
   -> HeightParameters m alg a
   -> Pipe (MessageRx 'Unverified alg a) (MessageRx 'Verified alg a) m r
-verifyMessageSignature oldValSet HeightParameters{..} = forever $ do
+verifyMessageSignature oldValSet valSet HeightParameters{..} = forever $ do
   await >>= \case
     RxPreVote   sv
       | h      == currentH -> verify "prevote"   RxPreVote   sv
@@ -233,8 +240,8 @@ verifyMessageSignature oldValSet HeightParameters{..} = forever $ do
     RxTimeout   t  -> yield $ RxTimeout t
     RxBlock     b  -> yield $ RxBlock   b
   where
-    verify    con = verifyAny (Just validatorSet) con
-    verifyOld con = verifyAny oldValSet           con
+    verify    con = verifyAny (Just valSet) con
+    verifyOld con = verifyAny oldValSet     con
     verifyAny mvset name con sx = case mvset >>= flip verifySignature sx of
       Just sx' -> yield $ con sx'
       Nothing  -> logger WarningS "Invalid signature"
@@ -369,7 +376,6 @@ makeHeightParameters appValidatorKey AppLogic{..} AppCallbacks{..} AppChans{..} 
   --
   return HeightParameters
     { currentH         = succ h
-    , validatorSet     = valSet
     , validatorKey     = liftA2 (,) appValidatorKey ourIndex
       -- FIXME: this is some random algorithms that should probably
       --        work (for some definition of work)
