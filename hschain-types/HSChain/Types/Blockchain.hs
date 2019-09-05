@@ -145,7 +145,7 @@ data Block alg a = Block
   { blockHeader     :: !(Header alg a)
     -- ^ Block header it contains height, time of the block and hashes
     --   of all other block fields. @BlockId@ is calculated from header
-  , blockData       :: a
+  , blockData       :: !a
     -- ^ Payload of block. HSChain treats it completely opaque and
     --   rely on callback to do anything to it.
   , blockValChange  :: !(ValidatorChange alg)

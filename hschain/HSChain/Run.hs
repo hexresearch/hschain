@@ -135,9 +135,9 @@ makeAppLogic store BChLogic{..} Interpreter{..} = do
     { appValidationFun  = \b bst -> (fmap . fmap) snd
                                   $ interpretBCh bst
                                   $ processBlock b
-    , appBlockGenerator = \b bst txs -> fmap fromJust -- FIXME
-                                      $ interpretBCh bst
-                                      $ generateBlock b txs
+    , appBlockGenerator = \b txs -> fmap fromJust -- FIXME
+                                 $ interpretBCh (newBlockState b)
+                                 $ generateBlock b txs
     , appMempool        = mempool
     , appBchState       = store
     }

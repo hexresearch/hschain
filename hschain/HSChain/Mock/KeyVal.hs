@@ -104,8 +104,9 @@ interpretSpec p cb = do
         { appValidationFun    = \b (BlockchainState st valset) -> do
             return $ do st' <- foldM (flip process) st (let BData tx = blockData b in tx)
                         return $ BlockchainState st' valset
-        , appBlockGenerator  = \_ (BlockchainState st valset) _ -> do
-            let Just k = find (`Map.notMember` st) ["K_" ++ show (n :: Int) | n <- [1 ..]]
+        , appBlockGenerator  = \b _ -> do
+            let BlockchainState st valset = newBlockState b
+                Just k = find (`Map.notMember` st) ["K_" ++ show (n :: Int) | n <- [1 ..]]
             i <- liftIO $ randomRIO (1,100)
             return (BData [(k, i)], BlockchainState (Map.insert k i st) valset)
         , appMempool         = nullMempool

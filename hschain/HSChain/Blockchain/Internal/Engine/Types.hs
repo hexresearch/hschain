@@ -17,6 +17,7 @@ module HSChain.Blockchain.Internal.Engine.Types (
   , NetworkCfg(..)
   , DefaultConfig(..)
     -- * Application state
+  , NewBlock(..)
   , AppLogic(..)
   , hoistAppLogic
   , AppCallbacks(..)
@@ -151,13 +152,21 @@ instance DefaultConfig app => FromJSON (Configuration app) where
 --
 ----------------------------------------------------------------
 
+-- | Parameters supplied by consensus engine for block generation
+data NewBlock alg a = NewBlock
+  { newBlockHeight   :: !Height
+  , newBlockLastBID  :: !(BlockID alg a)
+  , newBlockCommit   :: !(Maybe (Commit alg a))
+  , newBlockEvidence :: ![ByzantineEvidence alg a]
+  , newBlockState    :: !(BlockchainState alg a)
+  }
+
 -- | Collection of callbacks which implement actual logic of
 --   blockchain. This is most generic form which doesn't expose any
 --   underlying structure. It's expected that this structure will be
 --   generated from more specialized functions
 data AppLogic m alg a = AppLogic
-  { appBlockGenerator   :: Block alg a
-                        -> BlockchainState alg a
+  { appBlockGenerator   :: NewBlock alg a
                         -> [TX a]
                         -> m (a, BlockchainState alg a)
     -- ^ Generate fresh block for proposal. It's called each time we
@@ -225,10 +234,10 @@ seqappl (Just b1) (Just b2) = Just $ b1 >=> maybe (return Nothing) b2
 
 hoistAppLogic :: (Functor n) => (forall x. m x -> n x) -> AppLogic m alg a -> AppLogic n alg a
 hoistAppLogic fun AppLogic{..} = AppLogic
-  { appBlockGenerator   = (fmap . fmap . fmap) fun appBlockGenerator
-  , appValidationFun    = (fmap . fmap)        fun appValidationFun
-  , appMempool          = hoistMempool         fun appMempool
-  , appBchState         = hoistBChStore        fun appBchState
+  { appBlockGenerator   = (fmap . fmap) fun appBlockGenerator
+  , appValidationFun    = (fmap . fmap) fun appValidationFun
+  , appMempool          = hoistMempool  fun appMempool
+  , appBchState         = hoistBChStore fun appBchState
   }
 
 hoistAppCallback :: (forall x. m x -> n x) -> AppCallbacks m alg a -> AppCallbacks n alg a
