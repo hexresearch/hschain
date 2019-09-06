@@ -37,24 +37,27 @@ module HSChain.Types.Validators (
   , ValidatorChange(..)
   , changeValidators
   , validatorsDifference
+    -- ** Proposer Selection
+  , indexByIntervalPoint
   ) where
 
 import Control.DeepSeq
 import Data.Foldable
 
 import Data.Coerce
-import Data.Ord     (comparing)
-import Data.List    (sortBy)
 import Data.IntSet  (IntSet)
+import Data.List    (sortBy)
 import Data.Map     (Map)
+import Data.Ord     (comparing)
 import GHC.Generics (Generic, Generic1)
 
-import qualified Codec.Serialise       as CBOR
-import qualified Data.Aeson            as JSON
-import qualified Data.IntSet           as ISet
-import qualified Data.Map.Strict       as Map
-import qualified Data.Map.Merge.Strict as Map
-import qualified Data.Vector           as V
+import qualified Codec.Serialise                 as CBOR
+import qualified Data.Aeson                      as JSON
+import qualified Data.IntervalMap.Generic.Strict as IM
+import qualified Data.IntSet                     as ISet
+import qualified Data.Map.Merge.Strict           as Map
+import qualified Data.Map.Strict                 as Map
+import qualified Data.Vector                     as V
 
 import HSChain.Crypto
 import HSChain.Types.Merklized
@@ -80,8 +83,9 @@ instance (Crypto alg, alg' ~ alg) => MerkleValue alg (Validator alg) where
 
 -- | Set of all known validators for given height
 data ValidatorSet alg = ValidatorSet
-  { vsValidators :: !(V.Vector (Validator alg))
-  , vsTotPower   :: !Integer
+  { vsValidators      :: !(V.Vector (Validator alg))
+  , vsTotPower        :: !Integer
+  , vsVotingIntervals :: IM.IntervalMap VotingPowerInterval (Validator alg)
   }
   deriving (Generic, Show)
 instance NFData (PublicKey alg) => NFData (ValidatorSet alg)
@@ -92,7 +96,7 @@ instance (Crypto alg, alg' ~ alg) => MerkleValue alg (ValidatorSet alg) where
   merkleHash = hash
 
 emptyValidatorSet :: ValidatorSet alg
-emptyValidatorSet = ValidatorSet V.empty 0
+emptyValidatorSet = ValidatorSet V.empty 0 IM.empty
 
 -- | Get list of all validators included into set
 asValidatorList :: ValidatorSet alg -> [Validator alg]
@@ -129,12 +133,19 @@ makeValidatorSet vals = do
   check vlist
   return ValidatorSet { vsValidators = V.fromList vlist
                       , vsTotPower   = sum $ map validatorVotingPower vlist
+                      , vsVotingIntervals = IM.fromList . go 0 . sortBy (comparing validatorVotingPower) $ toList vals
                       }
   where
     check (Validator k1 _ : rest@(Validator k2 _ : _))
       | k1 == k2  = Left k1
       | otherwise = check rest
     check _       = return ()
+
+    go _ []     = []
+    go s (x:xs) =
+        let v@(Validator _ vp) = x
+        in (VotingPowerInterval (s, vp + s), v) : go (s + vp) xs
+
 
 -- | Return total voting power of all validators
 totalVotingPower :: ValidatorSet alg -> Integer
@@ -147,7 +158,7 @@ validatorByIndex vs (ValidatorIdx i)
 
 -- | Get index of validator in set of validators
 indexByValidator :: (Eq (PublicKey alg)) => ValidatorSet alg -> PublicKey alg -> Maybe (ValidatorIdx alg)
-indexByValidator (ValidatorSet vs _) key
+indexByValidator (ValidatorSet vs _ _) key
   = coerce $ V.findIndex ((==key) . validatorPubKey) vs
 
 -- | Number of validators in set
@@ -209,18 +220,18 @@ deriving newtype instance NFData (PublicKey alg) => NFData (ValidatorChange alg)
 
 
 instance (Ord (PublicKey alg)) => Semigroup (ValidatorChange alg) where
-  ValidatorChange c1 <> ValidatorChange c2 = ValidatorChange (c2 <> c1) 
+  ValidatorChange c1 <> ValidatorChange c2 = ValidatorChange (c2 <> c1)
 
 instance (Ord (PublicKey alg)) => Monoid (ValidatorChange alg) where
   mempty  = ValidatorChange mempty
   mappend = (<>)
 
 
--- | Compute difference between sets of validators 
+-- | Compute difference between sets of validators
 validatorsDifference
   :: CryptoSign alg
   => ValidatorSet alg -> ValidatorSet alg -> ValidatorChange alg
-validatorsDifference (ValidatorSet vsOld _) (ValidatorSet vsNew _)
+validatorsDifference (ValidatorSet vsOld _ _) (ValidatorSet vsNew _ _)
   = ValidatorChange change
   where
     change = Map.merge
@@ -246,7 +257,7 @@ validatorsDifference (ValidatorSet vsOld _) (ValidatorSet vsNew _)
 changeValidators
   :: (Crypto alg)
   => ValidatorChange alg -> ValidatorSet alg -> Maybe (ValidatorSet alg)
-changeValidators (ValidatorChange delta) (ValidatorSet vset _)
+changeValidators (ValidatorChange delta) (ValidatorSet vset _ _)
   =   either (const Nothing) Just
   .   makeValidatorSet
   .   map (uncurry Validator)
@@ -269,3 +280,30 @@ changeValidators (ValidatorChange delta) (ValidatorSet vset _)
     --
     vmapOld = Map.fromList [ (k, p) | Validator k p <- toList vset ]
 
+
+
+
+----------------------------------------------------------------
+-- Proposer selection using PRNG helpers
+----------------------------------------------------------------
+
+-- | Voting power close open interval data type
+newtype VotingPowerInterval  = VotingPowerInterval (Integer,Integer)
+    deriving (Show, Ord, Eq, Generic)
+
+instance NFData VotingPowerInterval
+
+-- |
+instance IM.Interval VotingPowerInterval Integer where
+    lowerBound (VotingPowerInterval (a, _)) = a
+    upperBound (VotingPowerInterval (_, b)) = b
+    rightClosed _ = False
+
+
+-- | Get validator index by point inside the constructed interval based on its voting power
+indexByIntervalPoint :: (Eq (PublicKey alg)) => ValidatorSet alg -> Integer -> Maybe (ValidatorIdx alg)
+indexByIntervalPoint vs@(ValidatorSet _ _ intervalMap) point =
+    let list  = IM.elems $ intervalMap `IM.containing` point
+    in case list of
+         []                   -> Nothing
+         ((Validator pk _):_) -> indexByValidator vs pk
