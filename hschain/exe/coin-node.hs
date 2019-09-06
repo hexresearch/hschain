@@ -99,16 +99,16 @@ main = do
   -- Start node
   evalContT $ do
     let (mtxGen, genesis) = mintMockCoin [ Validator v 1 | v <- validatorKeys] coin
-    --- Allocate resources
-    (conn, logenv) <- allocNode genesis nspec
-    gauges         <- standardMonitoring
-    let run = runMonitorT gauges . runLoggerT logenv . runDBT conn
     -- Create network
     peerId <- generatePeerId
     let peerInfo = P2PT.PeerInfo peerId nodePort 0
         bnet     = BlockchainNet { bchNetwork      = newNetworkTcp peerInfo
                                  , bchInitialPeers = nodeSeeds
                                  }
+    --- Allocate resources
+    (conn, logenv) <- allocNode genesis nspec
+    gauges         <- standardMonitoring
+    let run = runMonitorT gauges . runLoggerT logenv . runDBT conn
     -- Actually run node
     lift $ run $ do
       (RunningNode{..},acts) <- interpretSpec
