@@ -284,8 +284,9 @@ allocNode
   -> x                          -- ^ Node parameters
   -> ContT r m (x,Connection 'RW alg a, LogEnv)
 allocNode genesis x = do
-  let dbname = fromMaybe "" $ x ^.. nspecDbName
   liftIO $ createDirectoryIfMissing True $ takeDirectory dbname
-  conn   <- ContT $ withDatabase (fromMaybe "" $ x ^.. nspecDbName) genesis
+  conn   <- ContT $ withDatabase dbname genesis
   logenv <- ContT $ withLogEnv "TM" "DEV" [ makeScribe s | s <- x ^.. nspecLogFile ]
   return (x,conn,logenv)
+  where
+    dbname = fromMaybe "" $ x ^.. nspecDbName
