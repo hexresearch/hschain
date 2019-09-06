@@ -363,11 +363,11 @@ executeNodeSpec
 executeNodeSpec (NetSpec{..} :*: coin@CoinSpecification{..}) = do
   -- Create mock network and allocate DB handles for nodes
   net       <- liftIO P2P.newMockNet
-  resources <- traverse (allocNode genesis)
+  resources <- traverse (\x -> do { r <- allocNode genesis x; return (x,r)})
              $ allocateMockNetAddrs net netTopology
              $ netNodeList
   -- Start nodes
-  rnodes    <- lift $ forM resources $ \(x, conn, logenv) -> do
+  rnodes    <- lift $ forM resources $ \(x, (conn, logenv)) -> do
     let run :: DBT 'RW Alg BData (LoggerT m) x -> m x
         run = runLoggerT logenv . runDBT conn
     (rn, acts) <- run $ interpretSpec (netNetCfg :*: x)

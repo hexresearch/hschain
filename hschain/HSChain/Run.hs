@@ -282,11 +282,11 @@ allocNode
      , Crypto alg, Serialise a, Eq a, Show a, Has x NodeSpec)
   => Block alg a                -- ^ Genesis block
   -> x                          -- ^ Node parameters
-  -> ContT r m (x,Connection 'RW alg a, LogEnv)
+  -> ContT r m (Connection 'RW alg a, LogEnv)
 allocNode genesis x = do
   liftIO $ createDirectoryIfMissing True $ takeDirectory dbname
   conn   <- ContT $ withDatabase dbname genesis
   logenv <- ContT $ withLogEnv "TM" "DEV" [ makeScribe s | s <- x ^.. nspecLogFile ]
-  return (x,conn,logenv)
+  return (conn,logenv)
   where
     dbname = fromMaybe "" $ x ^.. nspecDbName
