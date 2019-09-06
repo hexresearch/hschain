@@ -44,7 +44,8 @@ initializeBlockhainTables genesis = do
     \  ( height           INT  NOT NULL \
     \  , snapshot_blob    BLOB NOT NULL)"
   r <- basicQuery_ "SELECT height FROM state_snapshot"
-  when (null (r :: [[SQL.SQLData]])) $ basicExecute_ "INSERT INTO state_snapshot (height, snapshot_blob) VALUES (-1, X'')"
+  when (null (r :: [[SQL.SQLData]])) $
+    basicExecute_ "INSERT INTO state_snapshot (height, snapshot_blob) VALUES (-1, X'')"
   basicExecute_
     "CREATE TABLE IF NOT EXISTS thm_commits \
     \  ( height INT  NOT NULL UNIQUE \
