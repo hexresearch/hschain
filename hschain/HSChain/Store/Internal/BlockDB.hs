@@ -70,46 +70,36 @@ initializeBlockhainTables genesis = do
     \  , message BLOB NOT NULL \
     \  , UNIQUE(height,message))"
   -- Insert genesis block if needed
-  storedGen  <- basicQuery_ "SELECT block  FROM thm_blockchain WHERE height = 0"
-  storedVals <- basicQuery_ "SELECT valset FROM thm_validators WHERE height = 1"
+  storedGen  <- singleQ_ "SELECT block  FROM thm_blockchain WHERE height = 0"
+  storedVals <- singleQ_ "SELECT valset FROM thm_validators WHERE height = 1"
   let initialVals = case changeValidators (blockValChange genesis) emptyValidatorSet of
         Just v  -> v
         Nothing -> error "initializeBlockhainTables: cannot apply change of validators"
       checkResult = genCheck <> valCheck
       genCheck    = case storedGen of
-        []         -> []
-        [Only blk] -> case deserialiseOrFail blk of
-          Right genesis'
-            | genesis == genesis' -> []
-            | otherwise           ->
-                [ "Genesis blocks do not match:"
-                , "  stored: " ++ show genesis'
-                , "  expected: " ++ show genesis
-                ]
-          Left e -> [ "Deserialisation for genesis failed:"
-                    , "  " ++ show e
-                    ]
-        _        -> ["DB corruption. Multiple blocks at H=0"]
+        Nothing                 -> []
+        Just genesis'
+          | genesis == genesis' -> []
+          | otherwise           ->
+              [ "Genesis blocks do not match:"
+              , "  stored: " ++ show genesis'
+              , "  expected: " ++ show genesis
+              ]
       valCheck = case storedVals of
-        []        -> []
-        [Only vs] -> case deserialiseOrFail vs of
-          Right initialVals'
-            | initialVals == initialVals' -> []
-            | otherwise                   ->
+        Nothing                         -> []
+        Just initialVals'
+          | initialVals == initialVals' -> []
+          | otherwise                   ->
                 [ "Validators set are not equal:"
                 , "  stored:   " ++ show initialVals'
                 , "  expected: " ++ show initialVals
                 ]
-          Left e -> [ "Unable to deserialise validator set"
-                    , "  " ++ show e
-                    ]
-        _        -> ["DB corruption. Multiple validator sets at H=1"]
   if -- Initial validator set must not be empty
      | validatorSetSize initialVals == 0
        -> error "initializeBlockhainTables: Invalid genesis: empty validator set"
      -- Fresh DB without genesis block
-     | [] <- storedGen
-     , [] <- storedVals
+     | Nothing <- storedGen
+     , Nothing <- storedVals
        -> do basicExecute "INSERT INTO thm_blockchain VALUES (0,0,?,?)"
                ( serialise (blockHash genesis)
                , serialise genesis
@@ -120,8 +110,8 @@ initializeBlockhainTables genesis = do
      | _:_ <- checkResult
        -> error $ unlines $ "initializeBlockhainTables:" : checkResult
      -- Everything OK
-     | [_]  <- storedGen
-     , [_] <- storedVals
+     | Just _ <- storedGen
+     , Just _ <- storedVals
        -> return ()
      -- Error otherwise
      | otherwise
@@ -289,3 +279,12 @@ singleQWithParser resultsParser sql p =
     [x] -> return (resultsParser x)
     _ -> error $ "SQL statement resulted in too many (>1) or zero result rows: " ++ show sql
 
+singleQ_ :: (Serialise x, MonadQueryRO m alg a)
+         => SQL.Query -> m (Maybe x)
+singleQ_ sql =
+  basicQuery_ sql >>= \case
+    []        -> return Nothing
+    [Only bs] -> case deserialiseOrFail bs of
+      Right a -> return (Just a)
+      Left  e -> error ("CBOR encoding error: " ++ show e)
+    _         -> error "Impossible"
