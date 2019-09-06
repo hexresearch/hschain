@@ -100,8 +100,8 @@ main = do
   evalContT $ do
     let (mtxGen, genesis) = mintMockCoin [ Validator v 1 | v <- validatorKeys] coin
     --- Allocate resources
-    (_, conn, logenv) <- allocNode genesis nspec
-    gauges            <- standardMonitoring
+    (conn, logenv) <- allocNode genesis nspec
+    gauges         <- standardMonitoring
     let run = runMonitorT gauges . runLoggerT logenv . runDBT conn
     -- Create network
     peerId <- generatePeerId
