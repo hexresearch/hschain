@@ -27,7 +27,6 @@ module HSChain.Types.Blockchain (
   , BlockID(..)
   , blockHash
   , Block(..)
-  , makeGenesis
   , Header(..)
   , Commit(..)
   , ByzantineEvidence(..)
@@ -172,31 +171,6 @@ data Block alg a = Block
   deriving anyclass (Serialise, JSON.ToJSON, JSON.FromJSON)
 instance (NFData a, NFData (PublicKey alg))  => NFData (Block alg a)
 deriving instance (Eq (PublicKey alg), Eq a) => Eq     (Block alg a)
-
--- | Genesis block has many field with predetermined content so this
---   is convenience function to create genesis block.
-makeGenesis
-  :: (Crypto alg, Serialise a)
-  => a                          -- ^ Block data
-  -> ValidatorSet alg           -- ^ Set of validators for block 1
-  -> Block alg a
-makeGenesis dat valSet = Block
-  { blockHeader = Header
-      { headerHeight         = Height 0
-      , headerLastBlockID    = Nothing
-      , headerValidatorsHash = hashed emptyValidatorSet
-      , headerValChangeHash  = hashed delta
-      , headerDataHash       = hashed dat
-      , headerLastCommitHash = hashed Nothing
-      , headerEvidenceHash   = hashed []
-      }
-  , blockData       = dat
-  , blockValChange  = delta
-  , blockLastCommit = Nothing
-  , blockEvidence   = []
-  }
-  where
-    delta = validatorsDifference emptyValidatorSet valSet
 
 
 -- | Block header
