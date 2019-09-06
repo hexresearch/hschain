@@ -54,17 +54,10 @@ initializeBlockhainTables genesis = do
     "CREATE TABLE IF NOT EXISTS thm_validators \
     \  ( height INT  NOT NULL UNIQUE \
     \  , valset BLOB NOT NULL)"
-  -- Checkpoints for user state
-  basicExecute_
-    "CREATE TABLE IF NOT EXISTS thm_checkpoints \
-    \  ( tableName TEXT NOT NULL \
-    \  , height    INT  NOT NULL \
-    \  , ver       INT \
-    \  , UNIQUE (tableName, height))"
   -- WAL
   --
   -- ID field is used to keep order of messages. Primary key is
-  -- incremented automatically and any new key will be large than any
+  -- incremented automatically and any new key will be larger than any
   -- existing key
   --
   -- Note UNIQUE constraint. Receiving identical message at the same
