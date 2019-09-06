@@ -75,47 +75,36 @@ initializeBlockhainTables genesis = do
   let initialVals = case changeValidators (blockValChange genesis) emptyValidatorSet of
         Just v  -> v
         Nothing -> error "initializeBlockhainTables: cannot apply change of validators"
-      checkResult = genCheck <> valCheck
-      genCheck    = case storedGen of
-        Nothing                 -> []
-        Just genesis'
-          | genesis == genesis' -> []
-          | otherwise           ->
-              [ "Genesis blocks do not match:"
-              , "  stored: " ++ show genesis'
-              , "  expected: " ++ show genesis
-              ]
-      valCheck = case storedVals of
-        Nothing                         -> []
-        Just initialVals'
-          | initialVals == initialVals' -> []
-          | otherwise                   ->
-                [ "Validators set are not equal:"
-                , "  stored:   " ++ show initialVals'
-                , "  expected: " ++ show initialVals
-                ]
-  if -- Initial validator set must not be empty
-     | validatorSetSize initialVals == 0
-       -> error "initializeBlockhainTables: Invalid genesis: empty validator set"
-     -- Fresh DB without genesis block
-     | Nothing <- storedGen
-     , Nothing <- storedVals
-       -> do basicExecute "INSERT INTO thm_blockchain VALUES (0,0,?,?)"
-               ( serialise (blockHash genesis)
-               , serialise genesis
-               )
-             basicExecute "INSERT INTO thm_validators VALUES (1,?)"
-               (Only (serialise initialVals))
-     -- We have errors
-     | _:_ <- checkResult
-       -> error $ unlines $ "initializeBlockhainTables:" : checkResult
-     -- Everything OK
-     | Just _ <- storedGen
-     , Just _ <- storedVals
-       -> return ()
-     -- Error otherwise
-     | otherwise
-       -> error "initializeBlockhainTables: either only genesis or only validator set are present"
+  case (storedGen, storedVals) of
+    -- Fresh DB
+    (Nothing, Nothing) -> do
+      basicExecute "INSERT INTO thm_blockchain VALUES (0,0,?,?)"
+        ( serialise (blockHash genesis)
+        , serialise genesis
+        )
+      basicExecute "INSERT INTO thm_validators VALUES (1,?)"
+        (Only (serialise initialVals))
+    -- Otherwise check that stored and provided geneses match
+    (Just genesis', Just initialVals') ->
+      case checks of
+        [] -> return ()
+        _  -> error $ unlines $ "initializeBlockhainTables:" : concat checks
+      where
+        checks = [ [ "Genesis blocks do not match:"
+                   , "  stored: " ++ show genesis'
+                   , "  expected: " ++ show genesis
+                   ]
+                 | genesis /= genesis'
+                 ]
+                 ++
+                 [ [ "Validators set are not equal:"
+                   , "  stored:   " ++ show initialVals'
+                   , "  expected: " ++ show initialVals
+                   ]
+                 | initialVals /= initialVals'
+                 ]
+    --
+    (_,_) -> error "initializeBlockhainTables: database corruption"
 
 
 ----------------------------------------------------------------
