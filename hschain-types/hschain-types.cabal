@@ -44,6 +44,7 @@ Library
                      , vector
                      , vector-th-unbox
                      , unordered-containers >=0.2.5.0
+                     , IntervalMap >=0.6.1.1
   if arch(i386) || arch(x86_64)
     CPP-Options:   -DWORDS_LITTLEENDIAN
   if !impl(ghcjs) && !flag(android-impl)
