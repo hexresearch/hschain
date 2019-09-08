@@ -1,4 +1,4 @@
-# Thundermint
+# HSchain
 
 [![Build Status](https://drone.hxr.dev/api/badges/hexresearch/thundermint/status.svg)](https://drone.hxr.dev/hexresearch/thundermint)
 
