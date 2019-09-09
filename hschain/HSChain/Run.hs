@@ -199,8 +199,8 @@ runNode
   -> NodeDescription m alg a
   -> m [m ()]
 runNode cfg NodeDescription{..} = do
-  let appLogic@AppLogic{..} = nodeLogic
-      BlockchainNet{..}     = nodeNetwork
+  let AppLogic{..}      = nodeLogic
+      BlockchainNet{..} = nodeNetwork
       appCall = mempoolFilterCallback appMempool
              <> nodeCallbacks
   appCh <- newAppChans (cfgConsensus cfg)
@@ -208,7 +208,7 @@ runNode cfg NodeDescription{..} = do
     [ id $ descendNamespace "net"
          $ startPeerDispatcher (cfgNetwork cfg) bchNetwork bchInitialPeers appCh appMempool
     , id $ descendNamespace "consensus"
-         $ runApplication (cfgConsensus cfg) nodeValidationKey appLogic appCall appCh
+         $ runApplication (cfgConsensus cfg) nodeValidationKey nodeLogic appCall appCh
     , forever $ do
         MempoolInfo{..} <- mempoolStats appMempool
         usingGauge prometheusMempoolSize      mempool'size
