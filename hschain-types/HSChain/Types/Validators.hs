@@ -141,8 +141,16 @@ makeValidatorSet vals = do
       | otherwise = check rest
     check _       = return ()
 
-    valList = sortBy (comparing validatorVotingPower)
-             $ toList vals
+    valList = sortBy compareVal $ toList vals
+
+    compareVal val1 val2 =
+        let v1 = validatorVotingPower val1
+            v2 = validatorVotingPower val2
+        in case compare v1 v2 of
+          GT -> GT
+          LT -> LT
+          EQ -> compare (validatorPubKey val1) (validatorPubKey val2)
+
 
 -- | Return total voting power of all validators
 totalVotingPower :: ValidatorSet alg -> Integer
@@ -290,4 +298,6 @@ indexByIntervalPoint vs@(ValidatorSet _ _ intervalMap) point =
     case snd <$> Map.lookupLE point intervalMap of
       Nothing               -> Nothing
       Just (Validator pk _) -> indexByValidator vs pk
+
+
 
