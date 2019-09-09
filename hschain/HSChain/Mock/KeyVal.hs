@@ -96,9 +96,6 @@ interpretSpec
 interpretSpec p cb = do
   conn  <- askConnectionRO
   store <- newSTMBchStorage mempty
-  rewindBlockchainState store $ \(BlockchainState st valset) b -> return $ do
-    st' <- foldM (flip process) st (let BData tx = blockData b in tx)
-    return $ BlockchainState st' valset
   --
   let logic = AppLogic
         { appValidationFun    = \b (BlockchainState st valset) -> do

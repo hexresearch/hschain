@@ -3,6 +3,7 @@
 {-# LANGUAGE FlexibleContexts  #-}
 {-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE MultiWayIf        #-}
+{-# LANGUAGE NamedFieldPuns    #-}
 {-# LANGUAGE NumDecimals       #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
@@ -58,6 +59,31 @@ newAppChans ConsensusCfg{incomingQueueSize = sz} = do
   appPropStorage    <- newSTMPropStorage
   return AppChans{..}
 
+rewindBlockchainState
+  :: ( MonadReadDB m alg a, MonadIO m, MonadThrow m
+     , Crypto alg, Serialise a)
+  => AppLogic m alg a
+  -> m ()
+rewindBlockchainState AppLogic{appBchState,appValidationFun} = do
+  hChain   <- queryRO blockchainHeight
+  (h0,st0) <- bchCurrentState appBchState >>= \case
+    (Nothing, s) -> return (Height 0, s)
+    (Just h,  s) -> return (succ h  , s)
+  void $ foldr (>=>) return
+    (interpretBlock <$> [h0 .. hChain])
+    st0
+  where
+    interpretBlock h st = do
+      blk      <- throwNothingM (DBMissingBlock h)
+                $ queryRO $ retrieveBlock h
+      valSet   <- throwNothingM (DBMissingValSet (succ h))
+                $ queryRO $ retrieveValidatorSet (succ h)
+      bst      <- throwNothingM (ImpossibleError)
+                $ appValidationFun blk (BlockchainState st valSet)
+      let st' = blockchainState bst
+      bchStoreStore appBchState h st'
+      return st'
+
 -- | Main loop for application. Here we update state machine and
 --   blockchain in response to incoming messages.
 --
@@ -81,6 +107,7 @@ runApplication
   -> m ()
 runApplication config appValidatorKey appSt@AppLogic{..} appCall appCh@AppChans{..} = logOnException $ do
   logger InfoS "Starting consensus engine" ()
+  rewindBlockchainState appSt
   height <- queryRO $ blockchainHeight
   lastCm <- queryRO $ retrieveLocalCommit height
   iterateM lastCm $ fmap Just

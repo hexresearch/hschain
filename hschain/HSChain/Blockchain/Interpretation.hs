@@ -1,8 +1,4 @@
-{-# LANGUAGE BangPatterns    #-}
-{-# LANGUAGE DataKinds       #-}
-{-# LANGUAGE RankNTypes      #-}
-{-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE TypeFamilies    #-}
+{-# LANGUAGE RankNTypes #-}
 -- |
 -- Encoding of application-specific logic for blockchain
 module HSChain.Blockchain.Interpretation (
@@ -11,8 +7,8 @@ module HSChain.Blockchain.Interpretation (
   , Interpreter(..)
   ) where
 
-import HSChain.Types.Blockchain
 import HSChain.Blockchain.Internal.Engine.Types
+import HSChain.Types.Blockchain
 
 
 -- | Description of interpretation of blockchain state. Evaluation of

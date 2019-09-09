@@ -24,7 +24,6 @@ module HSChain.Run (
   , Abort(..)
   , Topology(..)
   , makeAppLogic
-  , rewindBlockchainState
   , NodeDescription(..)
   , BlockchainNet(..)
   , runNode
@@ -86,8 +85,6 @@ makeAppLogic
   -> Interpreter q m alg a
   -> m (AppLogic m alg a)
 makeAppLogic store BChLogic{..} Interpreter{..} = do
-  rewindBlockchainState store $ \bst b ->
-    fmap snd <$> interpretBCh bst (processBlock b)
   -- Create mempool
   let checkTx tx = do
         (mH, st) <- bchCurrentState store
@@ -109,31 +106,6 @@ makeAppLogic store BChLogic{..} Interpreter{..} = do
     , appBchState       = store
     }
 
-rewindBlockchainState
-  :: ( MonadReadDB m alg a, MonadIO m, MonadThrow m
-     , Crypto alg, Serialise a)
-  => BChStore m a
-  -> (BlockchainState alg a -> Block alg a -> m (Maybe (BlockchainState alg a)))
-  -> m ()
-rewindBlockchainState store react = do
-  hChain   <- queryRO blockchainHeight
-  (h0,st0) <- bchCurrentState store >>= \case
-    (Nothing, s) -> return (Height 0, s)
-    (Just h,  s) -> return (succ h  , s)
-  void $ foldr (>=>) return
-    (interpretBlock <$> [h0 .. hChain])
-    st0
-  where
-    interpretBlock h st = do
-      blk      <- throwNothingM (DBMissingBlock h)
-                $ queryRO $ retrieveBlock h
-      valSet   <- throwNothingM (DBMissingValSet (succ h))
-                $ queryRO $ retrieveValidatorSet (succ h)  
-      bst      <- throwNothingM (ImpossibleError) -- ZZZXXXZZZ
-                $ react (BlockchainState st valSet) blk
-      let st' = blockchainState bst
-      bchStoreStore store h st'
-      return st'
 
 -- | Specification of node
 data NodeDescription m alg a = NodeDescription
