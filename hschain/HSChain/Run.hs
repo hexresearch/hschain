@@ -172,13 +172,15 @@ rewindBlockchainState store react = do
 -- | Specification of node
 data NodeDescription m alg a = NodeDescription
   { nodeValidationKey :: !(Maybe (PrivValidator alg))
-    -- ^ Private key of validator
+    -- ^ Private key of validator.
   , nodeLogic         :: !(AppLogic m alg a)
     -- ^ Callbacks for validation of block, transaction and generation
-    --   of new block
+    --   of new block.
   , nodeCallbacks     :: !(AppCallbacks m alg a)
     -- ^ Callbacks with monoidal structure
   , nodeNetwork       :: !BlockchainNet
+    -- ^ Dictionary of functions to communicate with other nodes over
+    --   network.
   }
 
 -- | Specification of network
