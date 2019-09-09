@@ -84,7 +84,7 @@ instance (Crypto alg, alg' ~ alg) => MerkleValue alg (Validator alg) where
 data ValidatorSet alg = ValidatorSet
   { vsValidators      :: !(V.Vector (Validator alg))
   , vsTotPower        :: !Integer
-  , vsVotingIntervals :: !(Map.Map Integer (Validator alg))
+  , vsVotingIntervals :: !(Map.Map Integer (ValidatorIdx alg))
   }
   deriving (Generic, Show)
 instance NFData (PublicKey alg) => NFData (ValidatorSet alg)
@@ -133,24 +133,13 @@ makeValidatorSet vals = do
   check vlist
   return ValidatorSet { vsValidators = V.fromList vlist
                       , vsTotPower   = sum $ map validatorVotingPower vlist
-                      , vsVotingIntervals = Map.fromList $ scanl (+) 0 (validatorVotingPower <$> valList) `zip` valList
+                      , vsVotingIntervals = Map.fromList $ scanl (+) 0 (validatorVotingPower <$> vlist) `zip` (ValidatorIdx <$> [0..])
                       }
   where
     check (Validator k1 _ : rest@(Validator k2 _ : _))
       | k1 == k2  = Left k1
       | otherwise = check rest
     check _       = return ()
-
-    valList = sortBy compareVal $ toList vals
-
-    compareVal val1 val2 =
-        let v1 = validatorVotingPower val1
-            v2 = validatorVotingPower val2
-        in case compare v1 v2 of
-          GT -> GT
-          LT -> LT
-          EQ -> compare (validatorPubKey val1) (validatorPubKey val2)
-
 
 -- | Return total voting power of all validators
 totalVotingPower :: ValidatorSet alg -> Integer
@@ -294,10 +283,9 @@ changeValidators (ValidatorChange delta) (ValidatorSet vset _ _)
 
 -- | Get validator index by point inside the constructed interval based on its voting power
 indexByIntervalPoint :: (Eq (PublicKey alg)) => ValidatorSet alg -> Integer -> Maybe (ValidatorIdx alg)
-indexByIntervalPoint vs@(ValidatorSet _ _ intervalMap) point =
-    case snd <$> Map.lookupLE point intervalMap of
-      Nothing               -> Nothing
-      Just (Validator pk _) -> indexByValidator vs pk
+indexByIntervalPoint ValidatorSet{..} point
+    | point >= vsTotPower = Nothing
+    | otherwise = snd <$> Map.lookupLE point vsVotingIntervals
 
 
 
