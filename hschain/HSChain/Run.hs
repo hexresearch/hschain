@@ -77,39 +77,6 @@ import qualified HSChain.P2P.Network as P2P
 --
 ----------------------------------------------------------------
 
-{-
-logicFromFold
-  :: ( MonadDB m alg a, MonadMask m, MonadIO m, MonadLogger m
-     , BlockData a, Show (TX a), Ord (TX a), Crypto alg
-     )
-  => BlockFold alg a
-  -> m (BChStore m a, AppLogic m alg a)
-logicFromFold transitions@BlockFold{..} = do
-  -- Create and rewind state
-  store <- newSTMBchStorage initialState
-  rewindBlockchainState transitions store
-  -- Create mempool
-  let checkTx tx = do
-        (mh, st) <- bchCurrentState store
-        -- FIXME: We need real height here!
-        return $ isJust $ processTx CheckSignature (fromMaybe (Height 0) mh) tx st
-  mempool <- newMempool checkTx
-  --
-  return ( store
-         , AppLogic { appValidationFun    = \valset b st ->
-                         return $ do st' <- processBlock CheckSignature b st
-                                     return (valset,st')
-                     , appCommitQuery     = SimpleQuery $ \_ _ -> return ()
-                     , appBlockGenerator  = \valset b st txs -> do
-                         let h       = headerHeight $ blockHeader b
-                             (st',a) = transactionsToBlock h st txs
-                         return (a, valset, st')
-                     , appMempool         = mempool
-                     , appBchState        = store
-                     }
-         )
--}
-
 makeAppLogic
   :: ( MonadDB m alg a, MonadMask m, MonadIO m
      , BlockData a, Show (TX a), Ord (TX a), Crypto alg
@@ -141,7 +108,6 @@ makeAppLogic store BChLogic{..} Interpreter{..} = do
     , appMempool        = mempool
     , appBchState       = store
     }
-
 
 rewindBlockchainState
   :: ( MonadReadDB m alg a, MonadIO m, MonadThrow m
