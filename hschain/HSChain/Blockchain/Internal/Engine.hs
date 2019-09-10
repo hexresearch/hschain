@@ -75,10 +75,8 @@ rewindBlockchainState AppLogic{appBchState,appValidationFun} = do
     st0
   where
     interpretBlock h st = do
-      blk      <- throwNothingM (DBMissingBlock h)
-                $ queryRO $ retrieveBlock h
-      valSet   <- throwNothingM (DBMissingValSet (succ h))
-                $ queryRO $ retrieveValidatorSet (succ h)
+      blk      <- queryRO $ mustRetrieveBlock h
+      valSet   <- queryRO $ mustRetrieveValidatorSet (succ h)
       bst      <- throwNothingM (ImpossibleError)
                 $ appValidationFun blk (BlockchainState st valSet)
       let st' = blockchainState bst
@@ -141,9 +139,7 @@ decideNewBlock config appValidatorKey appLogic@AppLogic{..} appCall@AppCallbacks
   hParam  <- makeHeightParameters appValidatorKey appLogic appCall appCh
   resetPropStorage appPropStorage $ currentH hParam
   -- Query validator sets
-  valSet <- queryRO $ do
-    h <- blockchainHeight
-    throwNothing (DBMissingValSet (succ h)) =<< retrieveValidatorSet (succ h)
+  valSet <- queryRO $ mustRetrieveValidatorSet $ currentH hParam
   -- Main loop of message handler and message consumer. We process
   -- every message even after we decided to commit block. This is
   -- needed to
@@ -206,10 +202,9 @@ rxMessageSource
   -> Producer (MessageRx 'Verified alg a) m r
 rxMessageSource h AppChans{..} = do
   --
-  (oldValSet,valSet) <- lift $ queryRO $ do
-    liftA2 (,)
-      (retrieveValidatorSet (pred h))
-      (throwNothing (DBMissingValSet h) =<< retrieveValidatorSet h)
+  (oldValSet,valSet) <- lift $ queryRO $ liftA2 (,)
+    (retrieveValidatorSet (pred h))
+    (mustRetrieveValidatorSet h)
   let verify  = verifyMessageSignature oldValSet valSet h
   -- First we replay messages from WAL. This is very important and
   -- failure to do so may violate protocol safety and possibly
@@ -405,8 +400,7 @@ makeHeightParameters
   -> m (HeightParameters m alg a)
 makeHeightParameters appValidatorKey AppLogic{..} AppCallbacks{..} AppChans{..} = do
   h         <- queryRO $ blockchainHeight
-  valSet    <- throwNothing (DBMissingValSet (succ h)) <=< queryRO
-             $ retrieveValidatorSet (succ h)
+  valSet    <- queryRO $ mustRetrieveValidatorSet (succ h)
   let ourIndex = indexByValidator valSet . publicKey . validatorPrivKey
              =<< appValidatorKey
   let proposerChoice (Round r) =

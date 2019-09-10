@@ -8,13 +8,16 @@
 -- Data types for primary database. Namely storage of blocks, commits and validators
 module HSChain.Store.Internal.BlockDB where
 
-import Codec.Serialise (Serialise, serialise, deserialiseOrFail)
-import Control.Monad (when)
+import Codec.Serialise     (Serialise, serialise, deserialiseOrFail)
+import Control.Monad       (when)
+import Control.Monad.Catch (MonadThrow)
 import qualified Data.List.NonEmpty   as NE
 import qualified Data.ByteString.Lazy as LBS
 import qualified Database.SQLite.Simple           as SQL
 import           Database.SQLite.Simple             (Only(..))
 
+import HSChain.Control (throwNothing)
+import HSChain.Exceptions
 import HSChain.Types.Blockchain
 import HSChain.Blockchain.Internal.Types
 import HSChain.Crypto
@@ -179,7 +182,21 @@ retrieveValidatorSet :: (Crypto alg, MonadQueryRO m alg a) => Height -> m (Maybe
 retrieveValidatorSet h =
   singleQ "SELECT valset FROM thm_validators WHERE height = ?" (Only h)
 
--- |Retrieve height and state saved as snapshot.
+
+mustRetrieveBlock
+  :: (Serialise a, Crypto alg, MonadThrow m, MonadQueryRO m alg a)
+  => Height -> m (Block alg a)
+mustRetrieveBlock h
+  = throwNothing (DBMissingBlock h) =<< retrieveBlock h
+
+mustRetrieveValidatorSet
+  :: (Crypto alg, MonadQueryRO m alg a, MonadThrow m)
+  => Height -> m (ValidatorSet alg)
+mustRetrieveValidatorSet h
+  = throwNothing (DBMissingValSet h) =<< retrieveValidatorSet h
+
+
+-- | Retrieve height and state saved as snapshot.
 --
 retrieveSavedState :: Serialise s => Query 'RO alg a (Maybe (Height, s))
 retrieveSavedState =
