@@ -53,6 +53,8 @@ module HSChain.Store (
   , retrieveLocalCommit
   , retrieveCommitRound
   , retrieveValidatorSet
+  , mustRetrieveBlock
+  , mustRetrieveValidatorSet
   , retrieveSavedState
   , storeStateSnapshot
     -- * In memory store for proposals
