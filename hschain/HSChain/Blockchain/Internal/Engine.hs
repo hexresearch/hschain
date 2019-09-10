@@ -188,7 +188,7 @@ decideNewBlock config appValidatorKey appLogic@AppLogic{..} appCall@AppCallbacks
         --       timely manner
         readMsg = forever $ yield =<< atomicallyIO (  readTQueue  appChanRxInternal
                                                   <|> readTBQueue appChanRx)
-        verify  = verifyMessageSignature oldValSet valSet hParam
+        verify  = verifyMessageSignature oldValSet valSet $ currentH hParam
         -- First we replay messages from WAL. This is very important
         -- and failure to do so may violate protocol safety and
         -- possibly liveness.
@@ -245,24 +245,24 @@ verifyMessageSignature
   :: (MonadLogger m, Crypto alg)
   => Maybe (ValidatorSet alg)
   -> ValidatorSet alg
-  -> HeightParameters m alg a
+  -> Height
   -> Pipe (MessageRx 'Unverified alg a) (MessageRx 'Verified alg a) m r
-verifyMessageSignature oldValSet valSet HeightParameters{..} = forever $ do
+verifyMessageSignature oldValSet valSet height = forever $ do
   await >>= \case
     RxPreVote   sv
-      | h      == currentH -> verify "prevote"   RxPreVote   sv
-      | otherwise          -> return ()
+      | h      == height -> verify "prevote"   RxPreVote   sv
+      | otherwise        -> return ()
       where h = voteHeight $ signedValue sv
     RxPreCommit sv
       -- For messages from previous height we validate them against
       -- correct validator set
-      | h      == currentH -> verify    "precommit" RxPreCommit sv
-      | succ h == currentH -> verifyOld "precommit" RxPreCommit sv
-      | otherwise          -> return ()
+      | h      == height -> verify    "precommit" RxPreCommit sv
+      | succ h == height -> verifyOld "precommit" RxPreCommit sv
+      | otherwise        -> return ()
       where h = voteHeight $ signedValue sv
     RxProposal  sp
-      | h == currentH -> verify "proposal"  RxProposal  sp
-      | otherwise     -> return ()
+      | h == height -> verify "proposal"  RxProposal  sp
+      | otherwise   -> return ()
       where h = propHeight $ signedValue sp
     RxTimeout   t  -> yield $ RxTimeout t
     RxBlock     b  -> yield $ RxBlock   b
