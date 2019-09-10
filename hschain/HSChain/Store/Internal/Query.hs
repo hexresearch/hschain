@@ -8,6 +8,7 @@
 {-# LANGUAGE KindSignatures             #-}
 {-# LANGUAGE LambdaCase                 #-}
 {-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE RecordWildCards            #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE TupleSections              #-}
 {-# LANGUAGE TypeFamilies               #-}
@@ -102,18 +103,14 @@ connectionRO = coerce
 -- | Open connection to database and set necessary pragmas
 openConnection :: MonadIO m => FilePath -> m (Connection rw alg a)
 openConnection db = liftIO $ do
-  m    <- newMutex
-  c    <- SQL.open db
-  refG <- newIORef Nothing
-  refB <- newIORef $ LRU.newLRU (Just 8)
+  connMutex    <- newMutex
+  connConn     <- SQL.open db
+  connCacheGen <- newIORef Nothing
+  connCacheBlk <- newIORef $ LRU.newLRU (Just 8)
   -- SQLite have support for retrying transactions in case database is
   -- busy. Here we switch ot on
-  SQL.execute_ c "PRAGMA busy_timeout = 10"
-  return $! Connection { connMutex    = m
-                       , connConn     = c
-                       , connCacheGen = refG
-                       , connCacheBlk = refB
-                       }
+  SQL.execute_ connConn "PRAGMA busy_timeout = 10"
+  return $! Connection{..}
 
 -- | Close connection to database. Note that we can only close
 --   connection if we have read-write acces to it.
