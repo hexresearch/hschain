@@ -28,7 +28,7 @@ import Control.Monad.Trans.Class
 import           Data.Maybe    (fromMaybe)
 import           Data.Monoid   ((<>))
 import Data.Text             (Text)
-import Pipes                 (Pipe,Consumer,runEffect,yield,await,(>->))
+import Pipes                 (Pipe,Producer,Consumer,runEffect,yield,await,(>->))
 import qualified Pipes.Prelude as Pipes
 
 import HSChain.Blockchain.Internal.Engine.Types
@@ -141,11 +141,9 @@ decideNewBlock config appValidatorKey appLogic@AppLogic{..} appCall@AppCallbacks
   hParam  <- makeHeightParameters appValidatorKey appLogic appCall appCh
   resetPropStorage appPropStorage $ currentH hParam
   -- Query validator sets
-  (oldValSet,valSet) <- queryRO $ do
-    h         <- blockchainHeight
-    liftA2 (,)
-      (retrieveValidatorSet h)
-      (throwNothing (DBMissingValSet (succ h)) =<< retrieveValidatorSet (succ h))
+  valSet <- queryRO $ do
+    h <- blockchainHeight
+    throwNothing (DBMissingValSet (succ h)) =<< retrieveValidatorSet (succ h)
   -- Main loop of message handler and message consumer. We process
   -- every message even after we decided to commit block. This is
   -- needed to
@@ -183,30 +181,7 @@ decideNewBlock config appValidatorKey appLogic@AppLogic{..} appCall@AppCallbacks
   (cmt, block, bchSt) <- runEffect $ do
     tm0 <-  newHeight hParam valSet lastCommt
         >-> handleEngineMessage hParam config appByzantine appCh
-    let -- NOTE: We try to read internal messages first. This is
-        --       needed to ensure that timeouts are delivered in
-        --       timely manner
-        readMsg = forever $ yield =<< atomicallyIO (  readTQueue  appChanRxInternal
-                                                  <|> readTBQueue appChanRx)
-        verify  = verifyMessageSignature oldValSet valSet $ currentH hParam
-        -- First we replay messages from WAL. This is very important
-        -- and failure to do so may violate protocol safety and
-        -- possibly liveness.
-        --
-        -- Without WAL we're losing consensus state for current round
-        -- which mean loss of lock if we were locked on block.
-        source  = do
-          walMessages <- fmap (fromMaybe [])
-                       $ lift
-                       $ queryRW
-                       $ resetWAL (currentH hParam)
-                      *> readWAL  (currentH hParam)
-          forM_ walMessages yield
-            >-> verify
-          readMsg
-            >-> verify
-            >-> Pipes.chain (void . queryRW . writeToWAL (currentH hParam) . unverifyMessageRx)
-    source
+    rxMessageSource (currentH hParam) appCh
       >-> msgHandlerLoop Nothing tm0
       >-> handleEngineMessage hParam config appByzantine appCh
   -- Update metrics
@@ -220,6 +195,44 @@ decideNewBlock config appValidatorKey appLogic@AppLogic{..} appCall@AppCallbacks
   bchStoreStore appBchState (headerHeight $ blockHeader block) $ blockchainState bchSt
   appCommitCallback block
   return cmt
+
+-- Producer for MessageRx. First we replay WAL and then we read
+-- messages from channels.
+rxMessageSource
+  :: ( MonadIO m, MonadDB m alg a, MonadLogger m
+     , Crypto alg, BlockData a)
+  => Height
+  -> AppChans m alg a
+  -> Producer (MessageRx 'Verified alg a) m r
+rxMessageSource h AppChans{..} = do
+  --
+  (oldValSet,valSet) <- lift $ queryRO $ do
+    liftA2 (,)
+      (retrieveValidatorSet (pred h))
+      (throwNothing (DBMissingValSet h) =<< retrieveValidatorSet h)
+  let verify  = verifyMessageSignature oldValSet valSet h
+  -- First we replay messages from WAL. This is very important and
+  -- failure to do so may violate protocol safety and possibly
+  -- liveness.
+  --
+  -- Without WAL we're losing consensus state for current round which
+  -- mean loss of lock if we were locked on block.
+  walMessages <- fmap (fromMaybe [])
+               $ lift
+               $ queryRW
+               $ resetWAL h
+              *> readWAL  h
+  forM_ walMessages yield
+    >-> verify
+  readMsg
+    >-> verify
+    >-> Pipes.chain (void . queryRW . writeToWAL h . unverifyMessageRx)
+  where
+    -- NOTE: We try to read internal messages first. This is needed to
+    --       ensure that timeouts are delivered in timely manner
+    readMsg = forever $ yield =<< atomicallyIO (  readTQueue  appChanRxInternal
+                                              <|> readTBQueue appChanRx)
+
 
 
 -- Handle message and perform state transitions for both
