@@ -199,7 +199,7 @@ rxMessageSource
   -> Producer (MessageRx 'Verified alg a) m r
 rxMessageSource h AppChans{..} = do
   --
-  (oldValSet,valSet) <- lift $ queryRO $ liftA2 (,)
+  (oldValSet,valSet) <- queryRO $ liftA2 (,)
     (retrieveValidatorSet (pred h))
     (mustRetrieveValidatorSet h)
   let verify  = verifyMessageSignature oldValSet valSet h
@@ -210,10 +210,8 @@ rxMessageSource h AppChans{..} = do
   -- Without WAL we're losing consensus state for current round which
   -- mean loss of lock if we were locked on block.
   walMessages <- fmap (fromMaybe [])
-               $ lift
                $ queryRW
-               $ resetWAL h
-              *> readWAL  h
+               $ resetWAL h *> readWAL h
   forM_ walMessages yield
     >-> verify
   readMsg
