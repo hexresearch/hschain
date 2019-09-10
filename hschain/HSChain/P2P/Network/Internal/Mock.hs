@@ -12,6 +12,7 @@ import Control.Monad.IO.Class (liftIO)
 import qualified Data.ByteString.Lazy as LBS
 import qualified Data.Map.Strict      as Map
 
+import HSChain.Control (atomicallyIO)
 import HSChain.P2P.Types
 
 -- | Sockets for mock network
@@ -42,7 +43,7 @@ createMockNode
   -> NetAddr
   -> NetworkAPI
 createMockNode MockNet{..} addr = NetworkAPI
-  { listenOn = liftIO.atomically $ do
+  { listenOn = atomicallyIO $ do
       let key = addr
       -- Start listening on port
       do mListen <- readTVar mnetIncoming
@@ -50,12 +51,12 @@ createMockNode MockNet{..} addr = NetworkAPI
            Just  _ -> error "MockNet: already listening on port"
            Nothing -> writeTVar mnetIncoming $ Map.insert key [] mListen
       -- Stop listening and close all accepted sockets
-      let stopListening = liftIO.atomically $ do
+      let stopListening = atomicallyIO $ do
             mListen <- readTVar mnetIncoming
             forM_ (key `Map.lookup` mListen) $
               mapM_ (closeMockSocket . fst)
       -- Accept connection
-      let accept = liftIO.atomically $ do
+      let accept = atomicallyIO $ do
             mList <- readTVar mnetIncoming
             case key `Map.lookup` mList of
               Nothing     -> error "MockNet: cannot accept on closed socket"
@@ -66,7 +67,7 @@ createMockNode MockNet{..} addr = NetworkAPI
       return (stopListening, accept)
     --
   , connect = \loc -> do
-    liftIO.atomically $ do
+    atomicallyIO $ do
       chA <- newTChan
       chB <- newTChan
       v   <- newTVar True

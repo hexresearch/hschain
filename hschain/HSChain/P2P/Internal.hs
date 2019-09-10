@@ -145,7 +145,7 @@ peerFSM
 peerFSM PeerChans{..} peerExchangeCh gossipCh recvCh cursor@MempoolCursor{..} = logOnException $ do
   logger InfoS "Starting routing for receiving messages" ()
   trace (TePeerGossipVotes TepgvStarted)
-  ownPeerChanTx  <- liftIO $ atomically $ dupTChan peerChanTx
+  ownPeerChanTx  <- atomicallyIO $ dupTChan peerChanTx
   votesTO       <- newTimerIO
   mempoolTO     <- newTimerIO
   blocksTO      <- newTimerIO
@@ -160,7 +160,7 @@ peerFSM PeerChans{..} peerExchangeCh gossipCh recvCh cursor@MempoolCursor{..} = 
   resetBTO
   resetATO
   (`fix` wrap UnknownState) $ \loop s -> do
-        event <- liftIO $ atomically $ asum
+        event <- atomicallyIO $ asum
           [ EVotesTimeout    <$ await votesTO
           , EMempoolTimeout  <$ await mempoolTO
           , EBlocksTimeout   <$ await blocksTO
@@ -177,10 +177,10 @@ peerFSM PeerChans{..} peerExchangeCh gossipCh recvCh cursor@MempoolCursor{..} = 
           EAnnounceTimeout -> resetATO
           _                -> return ()
         forM_ cmds $ \case
-          SendRX rx         -> liftIO $ atomically $ peerChanRx rx -- FIXME: tickRecv
+          SendRX rx         -> atomicallyIO $ peerChanRx rx -- FIXME: tickRecv
           Push2Mempool tx   -> void $ pushTransaction tx
-          SendPEX pexMsg    -> liftIO $ atomically $ writeTChan peerExchangeCh pexMsg
-          Push2Gossip tx    -> liftIO $ atomically $ writeTBQueue gossipCh tx
+          SendPEX pexMsg    -> atomicallyIO $ writeTChan peerExchangeCh pexMsg
+          Push2Gossip tx    -> atomicallyIO $ writeTBQueue gossipCh tx
                                   --tickSend $ Logging.tx gossipCnts
         case event of
           EQuit -> return s'
@@ -201,7 +201,7 @@ startPeer
 startPeer peerAddrTo peerCh@PeerChans{..} conn peerRegistry mempool = logOnException $
   descendNamespace (T.pack (show peerAddrTo)) $ logOnException $ do
     logger InfoS "Starting peer" ()
-    liftIO $ atomically $ writeTChan peerChanPexNewAddresses [peerAddrTo]
+    atomicallyIO $ writeTChan peerChanPexNewAddresses [peerAddrTo]
     gossipCh <- liftIO (newTBQueueIO 10)
     pexCh    <- liftIO newTChanIO
     recvCh   <- liftIO newTChanIO
@@ -230,7 +230,7 @@ peerReceive PeerChans{..} recvCh P2PConnection{..} = logOnException $ do
     Just bs  -> case deserialiseOrFail bs of
       Left  e   -> logger ErrorS ("Deserialization error: " <> showLS e) ()
       Right msg -> do
-        liftIO $ atomically $ writeTChan recvCh (EGossip msg)
+        atomicallyIO $ writeTChan recvCh (EGossip msg)
         loop
 
 -- Infrequently announce our current state. This is needed if node was
@@ -244,7 +244,7 @@ peerGossipAnnounce
   -> m ()
 peerGossipAnnounce PeerChans{..} gossipCh = logOnException $
   forever $ do
-    liftIO $ atomically $ do
+    atomicallyIO $ do
       st <- consensusState
       forM_ st $ \(h,TMState{smRound,smStep}) -> do
         writeTBQueue gossipCh $ GossipAnn $ AnnStep $ FullStep h smRound smStep
@@ -263,9 +263,9 @@ peerSend
   -> m x
 peerSend PeerChans{..} gossipCh P2PConnection{..} = logOnException $ do
   logger InfoS "Starting routing for sending data" ()
-  ownPeerChanPex <- liftIO $ atomically $ dupTChan peerChanPex
+  ownPeerChanPex <- atomicallyIO $ dupTChan peerChanPex
   forever $ do
-    msg <- liftIO $ atomically $ readTBQueue gossipCh
+    msg <- atomicallyIO $ readTBQueue gossipCh
                               <|> fmap GossipPex (readTChan ownPeerChanPex)
     send $ serialise msg -- XXX Возможна ли тут гонка? Например, сообщение попало в другую ноду, та уже использует его,
                          --     однако, TCP ACK с той ноды ещё не вернулся на текущую ноду и addBlock/advanceOurHeight
@@ -294,9 +294,9 @@ peerPexNewAddressMonitor
   -> NetworkAPI
   -> m ()
 peerPexNewAddressMonitor peerChanPexNewAddresses PeerRegistry{..} NetworkAPI{..} = forever $ do
-  addrs' <- liftIO $ atomically $ readTChan peerChanPexNewAddresses
+  addrs' <- atomicallyIO $ readTChan peerChanPexNewAddresses
   addrs  <- fmap Set.fromList $ filterOutOwnAddresses $ map (`normalizeNodeAddress` Nothing) addrs'
-  liftIO $ atomically $ modifyTVar' prKnownAddreses (`Set.union` addrs)
+  atomicallyIO $ modifyTVar' prKnownAddreses (`Set.union` addrs)
 
 
 peerPexKnownCapacityMonitor
@@ -308,14 +308,14 @@ peerPexKnownCapacityMonitor
   -> m ()
 peerPexKnownCapacityMonitor PeerChans{..} PeerRegistry{..} minKnownConnections _maxKnownConnections = do
     logger InfoS "Start PEX known capacity monitor" ()
-    liftIO $ atomically $ readTVar prConnected >>= (check . not . Set.null) -- wait until some initial peers connect
+    atomicallyIO $ readTVar prConnected >>= (check . not . Set.null) -- wait until some initial peers connect
     logger DebugS "Some nodes connected" ()
     forever $ do
         currentKnowns <- liftIO (readTVarIO prKnownAddreses)
         if Set.size currentKnowns < minKnownConnections then do
             logger DebugS ("Too few known (" <> showLS (Set.size currentKnowns) <> ":" <> showLS currentKnowns <> ") conns (need "<>showLS minKnownConnections<>"); ask for more known connections") ()
             -- TODO firstly ask only last peers
-            liftIO $ atomically $ writeTChan peerChanPex PexMsgAskForMorePeers
+            atomicallyIO $ writeTChan peerChanPex PexMsgAskForMorePeers
             waitSec 1.0 -- TODO wait for new connections OR timeout (see https://stackoverflow.com/questions/22171895/using-tchan-with-timeout)
         else do
             logger DebugS ("Full of knowns conns (" <> showLS (Set.size currentKnowns) <> ")") ()
@@ -335,7 +335,7 @@ peerPexMonitor cfg net peerCh mempool peerRegistry@PeerRegistry{..} = do
     logger InfoS "Start PEX monitor" ()
     locAddrs <- getLocalAddresses
     logger DebugS ("Local addresses: " <> showLS locAddrs) ()
-    liftIO $ atomically $ readTVar prConnected >>= (check . not . Set.null) -- wait until some initial peers connect
+    atomicallyIO $ readTVar prConnected >>= (check . not . Set.null) -- wait until some initial peers connect
     logger DebugS "Some nodes connected" ()
     fix $ \nextLoop ->
         whenM (liftIO $ readTVarIO prIsActive) $ do
@@ -386,7 +386,7 @@ peerGossipPeerExchange
   -> TBQueue (GossipMsg alg a)
   -> m ()
 peerGossipPeerExchange PeerChans{..} PeerRegistry{prConnected,prIsActive} pexCh gossipCh = forever $
-    liftIO (atomically $ readTChan pexCh) >>= \case
+    atomicallyIO (readTChan pexCh) >>= \case
         PexMsgAskForMorePeers -> sendPeers
         PexMsgMorePeers addrs -> connectToAddrs addrs
         PexPing               -> ping
@@ -395,7 +395,7 @@ peerGossipPeerExchange PeerChans{..} PeerRegistry{prConnected,prIsActive} pexCh 
     sendPeers = do
         addrList' <- Set.toList <$> liftIO (readTVarIO prConnected)
         logger DebugS ("peerGossipPeerExchange: someone asks for other peers: we answer " <> showLS addrList') ()
-        isSomethingSent <- liftIO $ atomically $
+        isSomethingSent <- atomicallyIO $
             readTVar prIsActive >>= \case
                 False -> return False
                 True -> do
@@ -408,8 +408,8 @@ peerGossipPeerExchange PeerChans{..} PeerRegistry{prConnected,prIsActive} pexCh 
         when isSomethingSent $ tickSend $ pex gossipCnts
     connectToAddrs addrs = do
         logger DebugS ("peerGossipPeerExchange: some address received: " <> showLS addrs) ()
-        liftIO $ atomically $ writeTChan peerChanPexNewAddresses addrs
+        atomicallyIO $ writeTChan peerChanPexNewAddresses addrs
     ping = do
-        liftIO $ atomically $ writeTBQueue gossipCh (GossipPex PexPong)
+        atomicallyIO $ writeTBQueue gossipCh (GossipPex PexPong)
         tickSend $ pex gossipCnts
     pong = return ()

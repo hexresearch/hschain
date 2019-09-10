@@ -19,6 +19,7 @@ import qualified Data.Map.Strict           as Map
 import qualified Network.Socket            as Net
 import qualified Network.Socket.ByteString as NetBS
 
+import HSChain.Control  (atomicallyIO)
 import HSChain.P2P.Network.RealNetworkStub
 import HSChain.P2P.Types
 
@@ -60,7 +61,7 @@ newNetworkUdp ourPeerInfo = do
               flip (NetBS.sendAllTo sock) addr' $ LBS.toStrict $ CBOR.serialise (ourPeerInfo, mkAckPart)
   return $ (realNetworkStub ourPeerInfo)
     { listenOn = do
-        return (liftIO $ killThread tid, liftIO.atomically $ readTChan acceptChan)
+        return (liftIO $ killThread tid, atomicallyIO $ readTChan acceptChan)
       --
     , connect  = \addr -> liftIO $ do
         (peerChan, connection) <- atomically $ do
@@ -181,7 +182,7 @@ newUDPSocket ai = do
 closeConn :: (MonadIO m, Ord k)
           => k -> TVar (Map.Map k a) -> m ()
 closeConn addr tChans = do
-  liftIO . atomically $ do
+  atomicallyIO $ do
     chans <- readTVar tChans
     writeTVar tChans $ Map.delete addr chans
 
