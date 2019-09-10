@@ -29,6 +29,7 @@ import           Data.Maybe    (fromMaybe)
 import           Data.Monoid   ((<>))
 import Data.Text             (Text)
 import Pipes                 (Pipe,Consumer,runEffect,yield,await,(>->))
+import qualified Pipes.Prelude as Pipes
 
 import HSChain.Blockchain.Internal.Engine.Types
 import HSChain.Blockchain.Internal.Types
@@ -145,25 +146,6 @@ decideNewBlock config appValidatorKey appLogic@AppLogic{..} appCall@AppCallbacks
     liftA2 (,)
       (retrieveValidatorSet h)
       (throwNothing (DBMissingValSet (succ h)) =<< retrieveValidatorSet (succ h))
-  -- Get rid of messages in WAL that are no longer needed and replay
-  -- all messages stored there.
-  walMessages <- fmap (fromMaybe [])
-               $ queryRW
-               $ resetWAL (currentH hParam)
-              *> readWAL  (currentH hParam)
-  -- Producer of messages. First we replay messages from WAL. This is
-  -- very important and failure to do so may violate protocol
-  -- safety and possibly liveness.
-  --
-  -- Without WAL we losing consensus state for current round which
-  -- mean loss of lock on block if we were locked on it.
-  let messageSrc = do
-        forM_ walMessages yield
-        -- NOTE: We try to read internal messages first. This is
-        --       needed to ensure that timeouts are delivered in
-        --       timely manner
-        forever $ yield =<< liftIO (atomically $  readTQueue  appChanRxInternal
-                                              <|> readTBQueue appChanRx)
   -- Main loop of message handler and message consumer. We process
   -- every message even after we decided to commit block. This is
   -- needed to
@@ -176,7 +158,6 @@ decideNewBlock config appValidatorKey appLogic@AppLogic{..} appCall@AppCallbacks
         liftIO $ atomically $ writeTVar appTMState $ Just (currentH hParam , tm)
         -- Write message to WAL and handle it after that
         msg <- await
-        _   <- lift $ queryRW $ writeToWAL (currentH hParam) (unverifyMessageRx msg)
         res <- handleVerifiedMessage appPropStorage hParam tm msg
         case res of
           Tranquility      -> msgHandlerLoop mCmt tm
@@ -202,8 +183,30 @@ decideNewBlock config appValidatorKey appLogic@AppLogic{..} appCall@AppCallbacks
   (cmt, block, bchSt) <- runEffect $ do
     tm0 <-  newHeight hParam valSet lastCommt
         >-> handleEngineMessage hParam config appByzantine appCh
-    messageSrc
-      >-> verifyMessageSignature oldValSet valSet hParam
+    let -- NOTE: We try to read internal messages first. This is
+        --       needed to ensure that timeouts are delivered in
+        --       timely manner
+        readMsg = forever $ yield =<< liftIO (atomically $  readTQueue  appChanRxInternal
+                                                        <|> readTBQueue appChanRx)
+        verify  = verifyMessageSignature oldValSet valSet hParam
+        -- First we replay messages from WAL. This is very important
+        -- and failure to do so may violate protocol safety and
+        -- possibly liveness.
+        --
+        -- Without WAL we're losing consensus state for current round
+        -- which mean loss of lock if we were locked on block.
+        source  = do
+          walMessages <- fmap (fromMaybe [])
+                       $ lift
+                       $ queryRW
+                       $ resetWAL (currentH hParam)
+                      *> readWAL  (currentH hParam)
+          forM_ walMessages yield
+            >-> verify
+          readMsg
+            >-> verify
+            >-> Pipes.chain (void . queryRW . writeToWAL (currentH hParam) . unverifyMessageRx)
+    source
       >-> msgHandlerLoop Nothing tm0
       >-> handleEngineMessage hParam config appByzantine appCh
   -- Update metrics
