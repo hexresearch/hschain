@@ -140,42 +140,12 @@ decideNewBlock config appValidatorKey appLogic@AppLogic{..} appCall@AppCallbacks
   resetPropStorage appPropStorage $ currentH hParam
   -- Query validator sets
   valSet <- queryRO $ mustRetrieveValidatorSet $ currentH hParam
-  -- Main loop of message handler and message consumer. We process
-  -- every message even after we decided to commit block. This is
-  -- needed to
-  --
-  --  1. If we're catching up it's possible that we don't have block
-  --     we want to commit yet.
-  --  2. Collect stragglers precommits.
-  let msgHandlerLoop mCmt tm = do
-        -- Make current state of consensus available for gossip
-        atomicallyIO $ writeTVar appTMState $ Just (currentH hParam , tm)
-        await >>=  handleVerifiedMessage appPropStorage hParam tm >>= \case
-          Tranquility      -> msgHandlerLoop mCmt tm
-          Misdeed  _       -> msgHandlerLoop mCmt tm
-          Success  tm'     -> checkForCommit mCmt       tm'
-          DoCommit cmt tm' -> checkForCommit (Just cmt) tm'
-      --
-      checkForCommit Nothing    tm = msgHandlerLoop Nothing tm
-      checkForCommit (Just cmt) tm = do
-        mBlk <- lift
-              $ retrievePropByID appPropStorage (currentH hParam) (commitBlockID cmt)
-        case mBlk of
-          UnknownBlock    -> msgHandlerLoop (Just cmt) tm
-          InvalidBlock    -> error "Trying to commit invalid block!"
-          GoodBlock b bst -> return (cmt, b, bst)
-          UntestedBlock b -> lift $ do
-            st <- throwNothingM BlockchainStateUnavalable
-                $ bchStoreRetrieve appBchState $ pred (currentH hParam)
-            appValidationFun b (BlockchainState st valSet) >>= \case
-              Nothing  -> error "Trying to commit invalid block!"
-              Just bst -> return (cmt, b, bst)
   -- Run consensus engine
   (cmt, block, bchSt) <- runEffect $ do
     tm0 <-  newHeight hParam valSet lastCommt
         >-> handleEngineMessage hParam config appByzantine appCh
     rxMessageSource (currentH hParam) appCh
-      >-> msgHandlerLoop Nothing tm0
+      >-> msgHandlerLoop hParam appLogic appCh tm0
       >-> handleEngineMessage hParam config appByzantine appCh
   -- Update metrics
   do let nTx = maybe 0 (length . commitPrecommits) (blockLastCommit block)
@@ -223,6 +193,49 @@ rxMessageSource h AppChans{..} = do
     readMsg = forever $ yield =<< atomicallyIO (  readTQueue  appChanRxInternal
                                               <|> readTBQueue appChanRx)
 
+
+-- Main loop of message handler and message consumer. We process every
+-- message even after we decided to commit block. This is needed to
+--
+--  1. If we're catching up it's possible that we don't have block
+--     we want to commit yet.
+--  2. Collect stragglers precommits.
+msgHandlerLoop
+  :: ( MonadReadDB m alg a, MonadThrow m, MonadIO m, MonadLogger m
+     , Crypto alg)
+  => HeightParameters m alg a
+  -> AppLogic m alg a
+  -> AppChans m alg a
+  -> TMState alg a
+  -> Pipe (MessageRx 'Verified alg a) (EngineMessage alg a) m
+      (Commit alg a, Block alg a, BlockchainState alg a)
+msgHandlerLoop hParam AppLogic{..} AppChans{..} = mainLoop Nothing
+  where
+    height = currentH hParam
+    mainLoop mCmt tm = do
+      -- Make current state of consensus available for gossip
+      atomicallyIO $ writeTVar appTMState $ Just (height , tm)
+      await >>=  handleVerifiedMessage appPropStorage hParam tm >>= \case
+        Tranquility      -> mainLoop mCmt tm
+        Misdeed  _       -> mainLoop mCmt tm
+        Success  tm'     -> checkForCommit mCmt       tm'
+        DoCommit cmt tm' -> checkForCommit (Just cmt) tm'
+    --
+    checkForCommit Nothing    tm = mainLoop Nothing tm
+    checkForCommit (Just cmt) tm = do
+      mBlk <- lift
+            $ retrievePropByID appPropStorage height (commitBlockID cmt)
+      case mBlk of
+        UnknownBlock    -> mainLoop (Just cmt) tm
+        InvalidBlock    -> error "Trying to commit invalid block!"
+        GoodBlock b bst -> return (cmt, b, bst)
+        UntestedBlock b -> lift $ do
+          valSet <- queryRO $ mustRetrieveValidatorSet height
+          st     <- throwNothingM BlockchainStateUnavalable
+                  $ bchStoreRetrieve appBchState $ pred height
+          appValidationFun b (BlockchainState st valSet) >>= \case
+            Nothing  -> error "Trying to commit invalid block!"
+            Just bst -> return (cmt, b, bst)
 
 
 -- Handle message and perform state transitions for both
