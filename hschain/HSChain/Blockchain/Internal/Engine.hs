@@ -150,10 +150,7 @@ decideNewBlock config appValidatorKey appLogic@AppLogic{..} appCall@AppCallbacks
   let msgHandlerLoop mCmt tm = do
         -- Make current state of consensus available for gossip
         atomicallyIO $ writeTVar appTMState $ Just (currentH hParam , tm)
-        -- Write message to WAL and handle it after that
-        msg <- await
-        res <- handleVerifiedMessage appPropStorage hParam tm msg
-        case res of
+        await >>=  handleVerifiedMessage appPropStorage hParam tm >>= \case
           Tranquility      -> msgHandlerLoop mCmt tm
           Misdeed  _       -> msgHandlerLoop mCmt tm
           Success  tm'     -> checkForCommit mCmt       tm'
