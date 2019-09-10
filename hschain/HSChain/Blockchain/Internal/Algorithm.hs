@@ -229,11 +229,11 @@ newHeight
   => HeightParameters m alg a
   -> ValidatorSet alg
   -> Maybe (Commit alg a)
-  -> (ConsensusM alg a (Proxy x x' () (EngineMessage alg a) m)) (TMState alg a)
+  -> Producer (EngineMessage alg a) m (TMState alg a)
 newHeight HeightParameters{..} validatorSet lastCommit = do
   logger InfoS "Entering new height ----------------" (sl "H" currentH)
-  lift $ yield $ EngTimeout $ Timeout  currentH (Round 0) StepNewHeight
-  lift $ yield $ EngAnnStep $ FullStep currentH (Round 0) StepNewHeight
+  yield $ EngTimeout $ Timeout  currentH (Round 0) StepNewHeight
+  yield $ EngAnnStep $ FullStep currentH (Round 0) StepNewHeight
   return TMState
     { smRound         = Round 0
     , smStep          = StepNewHeight

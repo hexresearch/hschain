@@ -200,12 +200,8 @@ decideNewBlock config appValidatorKey appLogic@AppLogic{..} appCall@AppCallbacks
               Just bst -> return (cmt, b, bst)
   -- Run consensus engine
   (cmt, block, bchSt) <- runEffect $ do
-    -- FIXME: encode that we cannot fail here!
-    tm0 <- (  runConsesusM (newHeight hParam valSet lastCommt)
-          >-> handleEngineMessage hParam config appByzantine appCh
-           ) >>= \case
-                    Success t -> return t
-                    _         -> throwM ImpossibleError
+    tm0 <-  newHeight hParam valSet lastCommt
+        >-> handleEngineMessage hParam config appByzantine appCh
     messageSrc
       >-> verifyMessageSignature oldValSet valSet hParam
       >-> msgHandlerLoop Nothing tm0
