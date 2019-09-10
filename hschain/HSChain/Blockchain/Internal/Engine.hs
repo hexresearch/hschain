@@ -35,7 +35,7 @@ import HSChain.Blockchain.Internal.Engine.Types
 import HSChain.Blockchain.Internal.Types
 import HSChain.Blockchain.Internal.Algorithm
 import HSChain.Types.Blockchain
-import HSChain.Control (throwNothing,throwNothingM,iterateM)
+import HSChain.Control (throwNothing,throwNothingM,iterateM,atomicallyIO)
 import HSChain.Crypto
 import HSChain.Exceptions
 import HSChain.Logger
@@ -155,7 +155,7 @@ decideNewBlock config appValidatorKey appLogic@AppLogic{..} appCall@AppCallbacks
   --  2. Collect stragglers precommits.
   let msgHandlerLoop mCmt tm = do
         -- Make current state of consensus available for gossip
-        liftIO $ atomically $ writeTVar appTMState $ Just (currentH hParam , tm)
+        atomicallyIO $ writeTVar appTMState $ Just (currentH hParam , tm)
         -- Write message to WAL and handle it after that
         msg <- await
         res <- handleVerifiedMessage appPropStorage hParam tm msg
@@ -186,8 +186,8 @@ decideNewBlock config appValidatorKey appLogic@AppLogic{..} appCall@AppCallbacks
     let -- NOTE: We try to read internal messages first. This is
         --       needed to ensure that timeouts are delivered in
         --       timely manner
-        readMsg = forever $ yield =<< liftIO (atomically $  readTQueue  appChanRxInternal
-                                                        <|> readTBQueue appChanRx)
+        readMsg = forever $ yield =<< atomicallyIO (  readTQueue  appChanRxInternal
+                                                  <|> readTBQueue appChanRx)
         verify  = verifyMessageSignature oldValSet valSet hParam
         -- First we replay messages from WAL. This is very important
         -- and failure to do so may violate protocol safety and
@@ -303,16 +303,16 @@ handleEngineMessage HeightParameters{..} ConsensusCfg{..} AppByzantine{..} AppCh
   EngAnnPreVote sv -> do
     let Vote{..} = signedValue   sv
         i        = signedKeyInfo sv
-    liftIO $ atomically $ writeTChan appChanTx $ TxAnn $ AnnHasPreVote voteHeight voteRound i
+    atomicallyIO $ writeTChan appChanTx $ TxAnn $ AnnHasPreVote voteHeight voteRound i
   EngAnnPreCommit sv -> do
     let Vote{..} = signedValue sv
         i        = signedKeyInfo sv
-    liftIO $ atomically $ writeTChan appChanTx $ TxAnn $ AnnHasPreCommit voteHeight voteRound i
+    atomicallyIO $ writeTChan appChanTx $ TxAnn $ AnnHasPreCommit voteHeight voteRound i
   EngAnnStep s ->
-    liftIO $ atomically $ writeTChan appChanTx $ TxAnn $ AnnStep s
+    atomicallyIO $ writeTChan appChanTx $ TxAnn $ AnnStep s
   --
   EngAcceptBlock r bid -> do
-    liftIO $ atomically $ writeTChan appChanTx $ TxAnn $ AnnHasProposal currentH r
+    atomicallyIO $ writeTChan appChanTx $ TxAnn $ AnnHasProposal currentH r
     lift $ allowBlockID appPropStorage r bid
   --
   EngCastPropose r bid lockInfo ->
@@ -330,7 +330,7 @@ handleEngineMessage HeightParameters{..} ConsensusCfg{..} AppByzantine{..} AppCh
         <>  sl "BID" (show bid)
         )
       tryByzantine byzantineBroadcastProposal prop $ \prop' ->
-        liftIO $ atomically $ do
+        atomicallyIO $ do
           let p = signValue idx pk prop'
           writeTQueue appChanRxInternal $ RxProposal p
           writeTChan  appChanTx         $ TxProposal p
@@ -351,7 +351,7 @@ handleEngineMessage HeightParameters{..} ConsensusCfg{..} AppByzantine{..} AppCh
         <> sl "bid" (show b)
         )
       tryByzantine byzantineCastPrevote vote $ \vote' ->
-        liftIO $ atomically $ do
+        atomicallyIO $ do
           let v = signValue idx pk vote'
           writeTChan  appChanTx         $ TxPreVote v
           writeTQueue appChanRxInternal $ RxPreVote v
@@ -369,7 +369,7 @@ handleEngineMessage HeightParameters{..} ConsensusCfg{..} AppByzantine{..} AppCh
         <> sl "bid" (show b)
         )
       tryByzantine byzantineCastPrecommit vote $ \vote' ->
-        liftIO $ atomically $ do
+        atomicallyIO $ do
           let v = signValue idx pk vote'
           writeTChan  appChanTx         $ TxPreCommit v
           writeTQueue appChanRxInternal $ RxPreCommit v

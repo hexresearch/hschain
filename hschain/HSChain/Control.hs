@@ -23,6 +23,7 @@ module HSChain.Control (
   , runConcurrently
     -- * Contol
   , iterateM
+  , atomicallyIO
     -- * Generalized MVar-code
   , withMVarM
   , modifyMVarM
@@ -46,6 +47,7 @@ module HSChain.Control (
 
 import Control.Applicative
 import Control.Concurrent.MVar
+import Control.Concurrent.STM  (atomically,STM)
 import Control.Monad
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Cont   (ContT(..))
@@ -325,3 +327,6 @@ instance (Has b x) => HasCase (a :*: b) x 'False where
 
 iterateM :: (Monad m) => a -> (a -> m a) -> m b
 iterateM x0 f = let loop = f >=> loop in loop x0
+
+atomicallyIO :: MonadIO m => STM a -> m a
+atomicallyIO = liftIO . atomically
