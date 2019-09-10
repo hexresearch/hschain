@@ -67,6 +67,7 @@ import Data.Coerce
 import Data.IORef
 import qualified Data.Cache.LRU         as LRU
 import qualified Database.SQLite.Simple as SQL
+import Pipes (Proxy)
 
 import HSChain.Types.Blockchain
 import HSChain.Control
@@ -232,37 +233,38 @@ basicPutCacheBlock b = Query $ do
   liftIO $ atomicModifyIORef ref $ (,()) . LRU.insert h b
 
 
-instance MonadReadDB  m alg a => MonadReadDB  (IdentityT m) alg a where
-instance MonadDB      m alg a => MonadDB      (IdentityT m) alg a where
-instance MonadQueryRO m alg a => MonadQueryRO (IdentityT m) alg a where
-instance MonadQueryRW m alg a => MonadQueryRW (IdentityT m) alg a where
+instance MonadReadDB  m alg a => MonadReadDB  (IdentityT m) alg a
+instance MonadDB      m alg a => MonadDB      (IdentityT m) alg a
+instance MonadQueryRO m alg a => MonadQueryRO (IdentityT m) alg a
+instance MonadQueryRW m alg a => MonadQueryRW (IdentityT m) alg a
 
-instance MonadReadDB  m alg a => MonadReadDB  (MaybeT m) alg a where
-instance MonadDB      m alg a => MonadDB      (MaybeT m) alg a where
-instance MonadQueryRO m alg a => MonadQueryRO (MaybeT m) alg a where
-instance MonadQueryRW m alg a => MonadQueryRW (MaybeT m) alg a where
+instance MonadReadDB  m alg a => MonadReadDB  (MaybeT m) alg a
+instance MonadDB      m alg a => MonadDB      (MaybeT m) alg a
+instance MonadQueryRO m alg a => MonadQueryRO (MaybeT m) alg a
+instance MonadQueryRW m alg a => MonadQueryRW (MaybeT m) alg a
 
-instance MonadReadDB  m alg a => MonadReadDB  (ExceptT e m) alg a where
-instance MonadDB      m alg a => MonadDB      (ExceptT e m) alg a where
-instance MonadQueryRO m alg a => MonadQueryRO (ExceptT e m) alg a where
-instance MonadQueryRW m alg a => MonadQueryRW (ExceptT e m) alg a where
+instance MonadReadDB  m alg a => MonadReadDB  (ExceptT e m) alg a
+instance MonadDB      m alg a => MonadDB      (ExceptT e m) alg a
+instance MonadQueryRO m alg a => MonadQueryRO (ExceptT e m) alg a
+instance MonadQueryRW m alg a => MonadQueryRW (ExceptT e m) alg a
 
-instance MonadReadDB  m alg a => MonadReadDB  (ReaderT r m) alg a where
-instance MonadDB      m alg a => MonadDB      (ReaderT r m) alg a where
-instance MonadQueryRO m alg a => MonadQueryRO (ReaderT r m) alg a where
-instance MonadQueryRW m alg a => MonadQueryRW (ReaderT r m) alg a where
+instance MonadReadDB  m alg a => MonadReadDB  (ReaderT r m) alg a
+instance MonadDB      m alg a => MonadDB      (ReaderT r m) alg a
+instance MonadQueryRO m alg a => MonadQueryRO (ReaderT r m) alg a
+instance MonadQueryRW m alg a => MonadQueryRW (ReaderT r m) alg a
 
-instance MonadReadDB  m alg a => MonadReadDB  (SS.StateT s m) alg a where
-instance MonadDB      m alg a => MonadDB      (SS.StateT s m) alg a where
-instance MonadQueryRO m alg a => MonadQueryRO (SS.StateT s m) alg a where
-instance MonadQueryRW m alg a => MonadQueryRW (SS.StateT s m) alg a where
+instance MonadReadDB  m alg a => MonadReadDB  (SS.StateT s m) alg a
+instance MonadDB      m alg a => MonadDB      (SS.StateT s m) alg a
+instance MonadQueryRO m alg a => MonadQueryRO (SS.StateT s m) alg a
+instance MonadQueryRW m alg a => MonadQueryRW (SS.StateT s m) alg a
 
-instance MonadReadDB  m alg a => MonadReadDB  (SL.StateT s m) alg a where
-instance MonadDB      m alg a => MonadDB      (SL.StateT s m) alg a where
-instance MonadQueryRO m alg a => MonadQueryRO (SL.StateT s m) alg a where
-instance MonadQueryRW m alg a => MonadQueryRW (SL.StateT s m) alg a where
+instance MonadReadDB  m alg a => MonadReadDB  (SL.StateT s m) alg a
+instance MonadDB      m alg a => MonadDB      (SL.StateT s m) alg a
+instance MonadQueryRO m alg a => MonadQueryRO (SL.StateT s m) alg a
+instance MonadQueryRW m alg a => MonadQueryRW (SL.StateT s m) alg a
 
-
+instance MonadReadDB m alg a => MonadReadDB (Proxy x x' y y' m) alg a
+instance MonadDB     m alg a => MonadDB     (Proxy x x' y y' m) alg a
 
 ----------------------------------------------------------------
 -- Monad transformer
