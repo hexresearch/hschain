@@ -191,25 +191,15 @@ decideNewBlock config appValidatorKey appLogic@AppLogic{..} appCall@AppCallbacks
         case mBlk of
           UnknownBlock    -> msgHandlerLoop (Just cmt) tm
           InvalidBlock    -> error "Trying to commit invalid block!"
-          GoodBlock b bst -> lift $ performCommit b bst
+          GoodBlock b bst -> return (cmt, b, bst)
           UntestedBlock b -> lift $ do
             st <- throwNothingM BlockchainStateUnavalable
                 $ bchStoreRetrieve appBchState $ pred (currentH hParam)
             appValidationFun b (BlockchainState st valSet) >>= \case
               Nothing  -> error "Trying to commit invalid block!"
-              Just bst -> performCommit b bst
-        where
-          performCommit b (BlockchainState st' val') = do
-            let nTx = maybe 0 (length . commitPrecommits) (blockLastCommit b)
-                h   = headerHeight $ blockHeader b
-            logger InfoS "Actual commit" $ LogBlockInfo h (blockData b) nTx
-            usingCounter prometheusNTx nTx
-            throwNothingM UnableToCommit $ queryRW (storeCommit cmt b val')
-            bchStoreStore   appBchState h st'
-            appCommitCallback b
-            return cmt
-  --
-  runEffect $ do
+              Just bst -> return (cmt, b, bst)
+  -- Run consensus engine
+  (cmt, block, bchSt) <- runEffect $ do
     -- FIXME: encode that we cannot fail here!
     tm0 <- (  runConsesusM (newHeight hParam valSet lastCommt)
           >-> handleEngineMessage hParam config appByzantine appCh
@@ -220,6 +210,17 @@ decideNewBlock config appValidatorKey appLogic@AppLogic{..} appCall@AppCallbacks
       >-> verifyMessageSignature oldValSet valSet hParam
       >-> msgHandlerLoop Nothing tm0
       >-> handleEngineMessage hParam config appByzantine appCh
+  -- Update metrics
+  do let nTx = maybe 0 (length . commitPrecommits) (blockLastCommit block)
+         h   = headerHeight $ blockHeader block
+     logger InfoS "Actual commit" $ LogBlockInfo h (blockData block) nTx
+     usingCounter prometheusNTx nTx
+  -- We have decided which block we want to commit so let commit it
+  throwNothingM UnableToCommit $ queryRW
+    $ storeCommit cmt block (bChValidatorSet bchSt)
+  bchStoreStore appBchState (headerHeight $ blockHeader block) $ blockchainState bchSt
+  appCommitCallback block
+  return cmt
 
 
 -- Handle message and perform state transitions for both
