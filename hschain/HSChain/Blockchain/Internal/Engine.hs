@@ -138,13 +138,11 @@ decideNewBlock config appValidatorKey appLogic@AppLogic{..} appCall@AppCallbacks
   -- FIXME: we don't want duplication! (But pipes & producer does not unify)
   hParam  <- makeHeightParameters appValidatorKey appLogic appCall appCh
   resetPropStorage appPropStorage $ currentH hParam
-  -- Query validator sets
-  valSet <- queryRO $ mustRetrieveValidatorSet $ currentH hParam
   -- Run consensus engine
   (cmt, block, bchSt) <- runEffect $ do
-    tm0 <-  newHeight hParam valSet lastCommt
+    tm0 <-  newHeight hParam lastCommt
         >-> handleEngineMessage hParam config appByzantine appCh
-    rxMessageSource (currentH hParam) appCh
+    rxMessageSource hParam appCh
       >-> msgHandlerLoop hParam appLogic appCh tm0
       >-> handleEngineMessage hParam config appByzantine appCh
   -- Update metrics
@@ -164,15 +162,10 @@ decideNewBlock config appValidatorKey appLogic@AppLogic{..} appCall@AppCallbacks
 rxMessageSource
   :: ( MonadIO m, MonadDB m alg a, MonadLogger m
      , Crypto alg, BlockData a)
-  => Height
+  => HeightParameters m alg a
   -> AppChans m alg a
   -> Producer (MessageRx 'Verified alg a) m r
-rxMessageSource h AppChans{..} = do
-  --
-  (oldValSet,valSet) <- queryRO $ liftA2 (,)
-    (retrieveValidatorSet (pred h))
-    (mustRetrieveValidatorSet h)
-  let verify  = verifyMessageSignature oldValSet valSet h
+rxMessageSource HeightParameters{..} AppChans{..} = do
   -- First we replay messages from WAL. This is very important and
   -- failure to do so may violate protocol safety and possibly
   -- liveness.
@@ -181,13 +174,14 @@ rxMessageSource h AppChans{..} = do
   -- mean loss of lock if we were locked on block.
   walMessages <- fmap (fromMaybe [])
                $ queryRW
-               $ resetWAL h *> readWAL h
+               $ resetWAL currentH *> readWAL currentH
   forM_ walMessages yield
     >-> verify
   readMsg
     >-> verify
-    >-> Pipes.chain (void . queryRW . writeToWAL h . unverifyMessageRx)
+    >-> Pipes.chain (void . queryRW . writeToWAL currentH . unverifyMessageRx)
   where
+    verify  = verifyMessageSignature oldValidatorSet validatorSet currentH
     -- NOTE: We try to read internal messages first. This is needed to
     --       ensure that timeouts are delivered in timely manner
     readMsg = forever $ yield =<< atomicallyIO (  readTQueue  appChanRxInternal
@@ -408,7 +402,8 @@ makeHeightParameters
   -> m (HeightParameters m alg a)
 makeHeightParameters appValidatorKey AppLogic{..} AppCallbacks{..} AppChans{..} = do
   h         <- queryRO $ blockchainHeight
-  valSet    <- queryRO $ mustRetrieveValidatorSet (succ h)
+  oldValSet <- queryRO $ retrieveValidatorSet h
+  valSet    <- queryRO $ mustRetrieveValidatorSet $ succ h
   let ourIndex = indexByValidator valSet . publicKey . validatorPrivKey
              =<< appValidatorKey
   let proposerChoice (Round r) =
@@ -418,6 +413,8 @@ makeHeightParameters appValidatorKey AppLogic{..} AppCallbacks{..} AppChans{..} 
   --
   return HeightParameters
     { currentH         = succ h
+    , validatorSet     = valSet
+    , oldValidatorSet  = oldValSet
     , validatorKey     = liftA2 (,) appValidatorKey ourIndex
       -- FIXME: this is some random algorithms that should probably
       --        work (for some definition of work)

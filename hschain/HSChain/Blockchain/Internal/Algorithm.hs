@@ -79,6 +79,10 @@ data Message alg a
 data HeightParameters (m :: * -> *) alg a = HeightParameters
   { currentH             :: !Height
     -- ^ Height we're on.
+  , validatorSet :: !(ValidatorSet alg)
+    -- ^ Validator set for current height
+  , oldValidatorSet :: !(Maybe (ValidatorSet alg))
+    -- ^ Validator set for previous height
   , validatorKey         :: !(Maybe (PrivValidator alg, ValidatorIdx alg))
     -- ^ Validator key and index in validator set for current round
   , readyCreateBlock     :: !(m Bool)
@@ -227,10 +231,9 @@ misdeed = ConsensusM . return . Misdeed
 newHeight
   :: (MonadLogger m)
   => HeightParameters m alg a
-  -> ValidatorSet alg
   -> Maybe (Commit alg a)
   -> Producer (EngineMessage alg a) m (TMState alg a)
-newHeight HeightParameters{..} validatorSet lastCommit = do
+newHeight HeightParameters{..} lastCommit = do
   logger InfoS "Entering new height ----------------" (sl "H" currentH)
   yield $ EngTimeout $ Timeout  currentH (Round 0) StepNewHeight
   yield $ EngAnnStep $ FullStep currentH (Round 0) StepNewHeight
