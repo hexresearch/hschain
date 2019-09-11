@@ -207,7 +207,6 @@ Test-suite hschain-tests
                        TM.Merkle
                        TM.MerkleBlock
                        TM.Network
-                       TM.NetworkTls
                        TM.P2P
                        TM.RealNetwork
                        TM.Serialisation
