@@ -323,7 +323,7 @@ tendermintTransition par@HeightParameters{..} msg sm@TMState{..} =
         -- FIXME: specification is unclear about this point but go
         --        implementation advances unconditionally
         EQ -> case smStep of
-          StepNewHeight n   -> needNewBlock par sm >>= \case
+          StepNewHeight n   -> canCreate par sm >>= \case
             True  -> enterPropose par smRound sm Reason'Timeout
             False -> do lift $ yield $ EngTimeout $ Timeout currentH (Round 0) (StepNewHeight (n+1))
                         return sm
@@ -335,12 +335,12 @@ tendermintTransition par@HeightParameters{..} msg sm@TMState{..} =
         t0 = Timeout currentH smRound smStep
 
 -- Check whether we need to create new block or we should wait
-needNewBlock
+canCreate
   :: (Monad m)
   => HeightParameters m alg a
   -> TMState alg a
   -> CNS x alg a m Bool
-needNewBlock HeightParameters{..} TMState{..}
+canCreate HeightParameters{..} TMState{..}
   -- We want to create first block signed by all validators as soon as
   -- possible
   | currentH == Height 1 = return True
