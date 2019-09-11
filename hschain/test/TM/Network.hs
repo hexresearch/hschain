@@ -59,7 +59,7 @@ tests = testGroup "network test"
       , testCase "delayed write" $ mockNetPair >>= delayedWrite
       ]
     , testGroup "TCP"
-    $ let withRetryTCP = withRetry . realNetPair Nothing
+    $ let withRetryTCP addr action = withRetry $ realNetPair Nothing addr >>= action
       in [ testGroup group
            [ testCase "ping-pong"     $ withRetryTCP address pingPong
            , testCase "delayed write" $ withRetryTCP address delayedWrite

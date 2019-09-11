@@ -83,16 +83,17 @@ withRetryTLS :: MonadIO m
              => Net.HostName
              -> (NetPair -> IO a)
              -> m a
-withRetryTLS = withRetry . realTlsNetPair
+withRetryTLS h f = withRetry $ realTlsNetPair h >>= f
 
-withRetry :: MonadIO m => (IO NetPair) -> (NetPair -> IO a) -> m a
-withRetry newNetPair fun = do
-  liftIO $ recovering retryPolicy hs
-    (const $ newNetPair >>= fun)
-    where
-      -- | exceptions list to trigger the recovery logic
-      hs :: [a -> Handler IO Bool]
-      hs = [const $ Handler (\(_::E.IOException) -> return shouldRetry)]
+withRetry :: MonadIO m => IO a -> m a
+withRetry fun
+  = liftIO
+  $ recovering retryPolicy hs
+  $ \_ -> fun
+  where
+    -- | exceptions list to trigger the recovery logic
+    hs :: [a -> Handler IO Bool]
+    hs = [const $ Handler (\(_::E.IOException) -> return shouldRetry)]
 
 
 withTimeoutRetry
