@@ -38,6 +38,7 @@ data InternalError
   --   (write transaction was rolled back)
   | UnexpectedRollback
   -- ^ Transaction which shouldn't be rolled back was rolled back
+  | InvalidBlockInWAL
   deriving stock    (Show)
   deriving anyclass (Exception)
 

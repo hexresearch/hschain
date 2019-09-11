@@ -418,7 +418,11 @@ makeHeightParameters appValidatorKey AppLogic{..} AppCallbacks{..} AppChans{..} 
       --        work (for some definition of work)
     , proposerForRound = proposerChoice
     --
-    , readyCreateBlock = \_ -> fromMaybe True <$> appCanCreateBlock bchH
+    , readyCreateBlock = \n ->
+        queryRO (retrieveBlockReadyFromWAL currentH n) >>= \case
+          Nothing -> do b <- fromMaybe True <$> appCanCreateBlock bchH
+                        b <$ mustQueryRW (writeBlockReadyToWAL currentH n b)
+          Just b  -> return b
     --
     , validateBlock = \bid -> do
         retrievePropByID appPropStorage currentH bid >>= \case
@@ -451,36 +455,49 @@ makeHeightParameters appValidatorKey AppLogic{..} AppCallbacks{..} AppChans{..} 
                  -> invalid
     --
     , createProposal = \r commit -> do
-        lastBID <- throwNothing (DBMissingBlockID bchH) <=< queryRO
-                 $ retrieveBlockID bchH
-        -- Call block generator
-        st          <- throwNothingM BlockchainStateUnavalable
-                     $ bchStoreRetrieve appBchState bchH
-        (bData,bst) <- appBlockGenerator NewBlock
-          { newBlockHeight   = currentH
-          , newBlockLastBID  = lastBID
-          , newBlockCommit   = commit
-          , newBlockEvidence = []
-          , newBlockState    = BlockchainState st valSet
-          } =<< peekNTransactions appMempool
-        -- Assemble proper block
-        let valCh = validatorsDifference valSet (bChValidatorSet bst)
-            block = Block
-              { blockHeader = Header
-                  { headerHeight         = currentH
-                  , headerLastBlockID    = Just lastBID
-                  , headerValidatorsHash = hashed valSet
-                  , headerDataHash       = hashed bData
-                  , headerValChangeHash  = hashed valCh
-                  , headerLastCommitHash = hashed commit
-                  , headerEvidenceHash   = hashed []
+        -- Obtain block either from WAL or actually genrate it
+        (block,bst) <- queryRO (retrieveBlockFromWAL currentH r) >>= \case
+          Just b  -> do
+            st       <- throwNothingM BlockchainStateUnavalable
+                      $ bchStoreRetrieve appBchState bchH
+            mvalSet' <- appValidationFun b (BlockchainState st valSet)
+            case mvalSet' of
+              Nothing -> throwM InvalidBlockInWAL
+              Just s  -> return (b, s)
+          Nothing -> do
+            lastBID <- throwNothing (DBMissingBlockID bchH) <=< queryRO
+                     $ retrieveBlockID bchH
+            -- Call block generator
+            st          <- throwNothingM BlockchainStateUnavalable
+                         $ bchStoreRetrieve appBchState bchH
+            (bData,bst) <- appBlockGenerator NewBlock
+              { newBlockHeight   = currentH
+              , newBlockLastBID  = lastBID
+              , newBlockCommit   = commit
+              , newBlockEvidence = []
+              , newBlockState    = BlockchainState st valSet
+              } =<< peekNTransactions appMempool
+            -- Assemble proper block
+            let valCh = validatorsDifference valSet (bChValidatorSet bst)
+                block = Block
+                  { blockHeader = Header
+                      { headerHeight         = currentH
+                      , headerLastBlockID    = Just lastBID
+                      , headerValidatorsHash = hashed valSet
+                      , headerDataHash       = hashed bData
+                      , headerValChangeHash  = hashed valCh
+                      , headerLastCommitHash = hashed commit
+                      , headerEvidenceHash   = hashed []
+                      }
+                  , blockData       = bData
+                  , blockValChange  = valCh
+                  , blockLastCommit = commit
+                  , blockEvidence   = []
                   }
-              , blockData       = bData
-              , blockValChange  = valCh
-              , blockLastCommit = commit
-              , blockEvidence   = []
-              }
-            bid   = blockHash block
+            mustQueryRW $ writeBlockToWAL r block
+            return (block, bst)
+        --
+        let bid = blockHash block
         allowBlockID      appPropStorage r bid
         storePropBlock    appPropStorage block
         setPropValidation appPropStorage bid (Just bst)
