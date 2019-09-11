@@ -420,8 +420,9 @@ makeHeightParameters appValidatorKey AppLogic{..} AppCallbacks{..} AppChans{..} 
       -- FIXME: this is some random algorithms that should probably
       --        work (for some definition of work)
     , proposerForRound = proposerChoice
-    , readyCreateBlock = fromMaybe True <$> appCanCreateBlock h
-    -- --
+    --
+    , readyCreateBlock = \_ -> fromMaybe True <$> appCanCreateBlock h
+    --
     , validateBlock = \bid -> do
         let nH = succ h
         retrievePropByID appPropStorage nH bid >>= \case
