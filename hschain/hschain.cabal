@@ -206,7 +206,6 @@ Test-suite hschain-tests
                        TM.Mempool
                        TM.Merkle
                        TM.MerkleBlock
-                       TM.MockNet
                        TM.Network
                        TM.NetworkTls
                        TM.P2P
