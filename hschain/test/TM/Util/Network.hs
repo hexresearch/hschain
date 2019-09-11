@@ -15,7 +15,6 @@ module TM.Util.Network
   ( NetPair
   , TestAlg
   -- * Timeouts
-  , withRetryTLS
   , withRetry
   , withTimeOut
   , withTimeoutRetry
@@ -79,12 +78,6 @@ shouldRetry = True
 retryPolicy :: RetryPolicy
 retryPolicy = constantDelay 500 <> limitRetries 20
 
-withRetryTLS :: MonadIO m
-             => Net.HostName
-             -> (NetPair -> IO a)
-             -> m a
-withRetryTLS h f = withRetry $ realTlsNetPair h >>= f
-
 withRetry :: MonadIO m => IO a -> m a
 withRetry fun
   = liftIO
@@ -96,31 +89,26 @@ withRetry fun
     hs = [const $ Handler (\(_::E.IOException) -> return shouldRetry)]
 
 
-withTimeoutRetry
-  :: MonadIO m
-  => String
-  -> Int
-  -> IO a
-  -> m a
-withTimeoutRetry msg t fun
+withTimeoutRetry :: MonadIO m => Int -> IO a -> m a
+withTimeoutRetry t fun
   = liftIO
   $ recovering retryPolicy (skipAsyncExceptions ++ hs)
-  $ \_ -> withTimeOut msg t fun
+  $ \_ -> withTimeOut t fun
   where
     -- | exceptions list to trigger the recovery logic
     hs :: [a -> Handler IO Bool]
     hs = [const $ Handler (\(_::E.IOException) -> return shouldRetry)]
 
 -- | Exception for aborting the execution of test
-data AbortTest = AbortTest String
+data AbortTest = AbortTest
                  deriving Show
 
 instance Exception AbortTest
 
-withTimeOut :: String -> Int -> IO a -> IO a
-withTimeOut abortMsg t act = timeout t act >>= \case
+withTimeOut :: Int -> IO a -> IO a
+withTimeOut t act = timeout t act >>= \case
   Just n  -> pure n
-  Nothing -> E.throwIO $ AbortTest $ abortMsg <> " due to timeout"
+  Nothing -> E.throwIO AbortTest
 
 -- TODO объединить в один список, а лучше сделать бесконечный
 testValidators :: Map.Map (Fingerprint (SHA256 :<<< SHA512) TestAlg) (PrivValidator TestAlg)
