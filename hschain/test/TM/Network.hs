@@ -54,17 +54,18 @@ tests = testGroup "network test"
       -- TODO: Randomly generate addresses and check it is not isLocalAddress
     ]
   , testGroup "NetworkAPI"
-    [ testGroup "mock"
+    [ testGroup "MockNet"
       [ testCase "ping-pong"     $ mockNetPair >>= pingPong
       , testCase "delayed write" $ mockNetPair >>= delayedWrite
       ]
-    , testGroup "real"
-      [ testGroup group
-        [ testCase "ping-pong" $ withRetryTCP address pingPong
-        , testCase "delayed write" $ withRetryTCP address delayedWrite
-        ]
-      | (group, address) <- [("IPv4", "127.0.0.1"), ("IPv6", "::1")]
-      ]
+    , testGroup "TCP"
+    $ let withRetryTCP = withRetry . realNetPair Nothing
+      in [ testGroup group
+           [ testCase "ping-pong"     $ withRetryTCP address pingPong
+           , testCase "delayed write" $ withRetryTCP address delayedWrite
+           ]
+         | (group, address) <- [("IPv4", "127.0.0.1"), ("IPv6", "::1")]
+         ]
     , testGroup "real-udp"
       [ testGroup group $
         [ testCase "ping-pong"        $ withTimeoutRetry "ping-pong"        10e6 (newNetPair (Just Nothing)) pingPong
@@ -98,13 +99,14 @@ pingPong ((serverAddr, server), (_clientAddr, client)) = do
   ((),()) <- concurrently (runServer server) (runClient client)
   return ()
 
+
 -- | Ping pong test parametrized by message size.
 sizedPingPong :: Int
               -> Int
               -> NetPair
               -> IO ()
 sizedPingPong startPower endPower ((serverAddr, server), (_clientAddr, client)) = do
-  let powers = [startPower..endPower]
+  let powers = [startPower .. endPower]
       runServer NetworkAPI{..} = do
         bracket listenOn fst $ \(_,accept) ->
           bracket accept (close . fst) $ \(conn,_) -> do
