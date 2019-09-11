@@ -214,18 +214,6 @@ createTestNetworkWithValidatorsSetAndConfig validators cfg netDescr = do
          <> mempty { appByzantine = ncByzantine }
           )
         return $ run <$> actions
-            -- store <- newSTMBchStorage $ initialState Mock.transitions
-            -- logic <- makeAppLogic store Mock.transitions Mock.runner
-            -- runNode cfg NodeDescription
-            --   { nodeValidationKey = validatorPK
-            --   , nodeCallbacks     = ncAppCallbacks
-            --                      <> mempty { appByzantine = ncByzantine }
-            --   , nodeLogic         = logic
-            --   , nodeNetwork       = BlockchainNet
-            --     { bchNetwork        = createMockNode net (intToNetAddr ncFrom)
-            --     , bchInitialPeers   = map intToNetAddr ncTo
-            --     }
-            --   }
 
 
 -- | UDP may return Nothings for the message receive operation.
