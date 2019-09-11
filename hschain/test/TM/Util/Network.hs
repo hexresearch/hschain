@@ -106,14 +106,13 @@ withTimeoutRetry
   :: MonadIO m
   => String
   -> Int
-  -> (IO NetPair)
-  -> (NetPair -> IO a)
+  -> IO a
   -> m a
-withTimeoutRetry msg t newNetPair fun = do
+withTimeoutRetry msg t fun = do
   liftIO $ recovering retryPolicy (skipAsyncExceptions ++ hs)
     (const action)
     where
-      action = withTimeOut msg t (newNetPair >>= fun)
+      action = withTimeOut msg t fun
       -- | exceptions list to trigger the recovery logic
       hs :: [a -> Handler IO Bool]
       hs = [const $ Handler (\(_::E.IOException) -> return shouldRetry)]

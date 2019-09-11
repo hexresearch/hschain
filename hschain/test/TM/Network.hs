@@ -68,9 +68,12 @@ tests = testGroup "network test"
          ]
     , testGroup "real-udp"
       [ testGroup group $
-        [ testCase "ping-pong"        $ withTimeoutRetry "ping-pong"        10e6 (newNetPair (Just Nothing)) pingPong
-        , testCase "delayed write"    $ withTimeoutRetry "delayed wrote"    10e6 (newNetPair (Just Nothing)) delayedWrite
-        , testCase "sized ping pongs" $ withTimeoutRetry "sized ping pongs" 10e6 (newNetPair (Just $ Just $ 123 + v6)) (sizedPingPong 8 11)
+        [ testCase "ping-pong"        $ withTimeoutRetry "ping-pong"        10e6
+        $ newNetPair (Just Nothing) >>= pingPong
+        , testCase "delayed write"    $ withTimeoutRetry "delayed wrote"    10e6
+        $ newNetPair (Just Nothing) >>= delayedWrite
+        , testCase "sized ping pongs" $ withTimeoutRetry "sized ping pongs" 10e6
+        $ newNetPair (Just $ Just $ 123 + v6) >>= sizedPingPong 8 11
         ]
       | (group, newNetPair, v6) <- [ ("IPv4", (`realNetPair` "127.0.0.1"), 0)
                                    , ("IPv6", (`realNetPair`  "::1"), 1)]
