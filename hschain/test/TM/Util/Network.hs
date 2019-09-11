@@ -24,14 +24,9 @@ module TM.Util.Network
   , createTestNetworkWithConfig
   , createTestNetwork
   , testValidators
-  , delayedWrite
-  , skipNothings
   , intToNetAddr
   ) where
 
-import Control.Concurrent (threadDelay)
-
-import qualified Control.Concurrent.Async as Async
 import qualified Control.Exception        as E
 
 import Control.Monad
@@ -41,16 +36,12 @@ import Control.Monad.IO.Class
 import Control.Retry
     (RetryPolicy, constantDelay, limitRetries, recovering, skipAsyncExceptions)
 
-import qualified Data.ByteString.Lazy as LBS
 import qualified Data.Map.Strict      as Map
 
 import Data.Monoid    ((<>))
 import System.Timeout (timeout)
 
-import qualified Network.Socket as Net
-
 import qualified HSChain.Mock.KeyVal as Mock
-
 import HSChain.Blockchain.Internal.Engine.Types
 import HSChain.Control
 import HSChain.Crypto                           ((:&), Fingerprint, (:<<<))
@@ -214,37 +205,6 @@ createTestNetworkWithValidatorsSetAndConfig validators cfg netDescr = do
          <> mempty { appByzantine = ncByzantine }
           )
         return $ run <$> actions
-
-
--- | UDP may return Nothings for the message receive operation.
-skipNothings :: String -> (a -> IO (Maybe LBS.ByteString)) -> a -> IO LBS.ByteString
-skipNothings _lbl recv conn = do
-  mbMsg <- recv conn
-  case mbMsg of
-    Just msg -> return msg
-    Nothing  -> skipNothings _lbl recv conn
-
-
--- | Simple test to ensure that mock network works at all
-delayedWrite :: NetPair -> IO ()
-delayedWrite ((serverAddr, server), (_, client)) = do
-  let runServer NetworkAPI{..} =
-        bracket listenOn fst $ \(_,accept) ->
-          bracket accept (close . fst) $ \(conn,_) -> do
-            "A1" <- skipNothings "A1" recv conn
-            "A2" <- skipNothings "A2" recv conn
-            "A3" <- skipNothings "A3" recv conn
-            return ()
-  let runClient NetworkAPI{..} = do
-        threadDelay 10e3
-        bracket (connect serverAddr) close $ \conn -> do
-          send conn "A1"
-          threadDelay 30e3
-          send conn "A2"
-          threadDelay 30e3
-          send conn "A3"
-  ((),()) <- Async.concurrently (runServer server) (runClient client)
-  return ()
 
 intToNetAddr :: Int -> NetAddr
 intToNetAddr i = NetAddrV4 (fromIntegral i) 1122

@@ -10,11 +10,11 @@ module TM.Network (tests) where
 
 
 import Control.Concurrent.Async
-
 import Control.Concurrent (threadDelay)
 import Control.Monad      (forM_)
 import Data.Monoid        ((<>))
 import Data.String        (fromString)
+import qualified Data.ByteString.Lazy as LBS
 
 import Control.Exception as E
 
@@ -29,6 +29,10 @@ import Test.Tasty
 import Test.Tasty.HUnit
 import TM.RealNetwork
 import TM.Util.Network
+
+----------------------------------------------------------------
+-- Test tree
+----------------------------------------------------------------
 
 tests :: TestTree
 tests = testGroup "network test"
@@ -91,6 +95,39 @@ tests = testGroup "network test"
   ]
 
 
+----------------------------------------------------------------
+-- Tests implementations
+----------------------------------------------------------------
+
+-- | UDP may return Nothings for the message receive operation.
+skipNothings :: String -> (a -> IO (Maybe LBS.ByteString)) -> a -> IO LBS.ByteString
+skipNothings _lbl recv conn = do
+  mbMsg <- recv conn
+  case mbMsg of
+    Just msg -> return msg
+    Nothing  -> skipNothings _lbl recv conn
+
+
+-- | Simple test to ensure that mock network works at all
+delayedWrite :: NetPair -> IO ()
+delayedWrite ((serverAddr, server), (_, client)) = do
+  let runServer NetworkAPI{..} =
+        bracket listenOn fst $ \(_,accept) ->
+          bracket accept (close . fst) $ \(conn,_) -> do
+            "A1" <- skipNothings "A1" recv conn
+            "A2" <- skipNothings "A2" recv conn
+            "A3" <- skipNothings "A3" recv conn
+            return ()
+  let runClient NetworkAPI{..} = do
+        threadDelay 10e3
+        bracket (connect serverAddr) close $ \conn -> do
+          send conn "A1"
+          threadDelay 30e3
+          send conn "A2"
+          threadDelay 30e3
+          send conn "A3"
+  ((),()) <- concurrently (runServer server) (runClient client)
+  return ()
 
 
 -- | Simple test to ensure that mock network works at all
