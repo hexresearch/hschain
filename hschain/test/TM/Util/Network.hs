@@ -79,13 +79,6 @@ shouldRetry = True
 retryPolicy :: RetryPolicy
 retryPolicy = constantDelay 500 <> limitRetries 20
 
-withRetryUDP :: MonadIO m
-             => Maybe (Maybe Int)
-             -> Net.HostName
-             -> (NetPair -> IO a)
-             -> m a
-withRetryUDP useUDP = withRetry . (realNetPair useUDP)
-
 withRetryTLS :: MonadIO m
              => Net.HostName
              -> (NetPair -> IO a)
