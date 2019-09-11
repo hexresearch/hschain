@@ -68,25 +68,25 @@ tests = testGroup "network test"
          ]
     , testGroup "UDP"
       [ testGroup group $
-        [ testCase "ping-pong"        $ withTimeoutRetry "ping-pong"        10e6
-        $ newNetPair (Just Nothing) >>= pingPong
-        , testCase "delayed write"    $ withTimeoutRetry "delayed wrote"    10e6
-        $ newNetPair (Just Nothing) >>= delayedWrite
-        , testCase "sized ping pongs" $ withTimeoutRetry "sized ping pongs" 10e6
-        $ newNetPair (Just $ Just $ 123 + v6) >>= sizedPingPong 8 11
+        [ testCase "ping-pong"
+        $ withTimeoutRetry 10e6 $ newNetPair (Just Nothing) >>= pingPong
+        , testCase "delayed write"
+        $ withTimeoutRetry 10e6 $ newNetPair (Just Nothing) >>= delayedWrite
+        , testCase "sized ping pongs"
+        $ withTimeoutRetry 10e6 $ newNetPair (Just $ Just $ 123 + v6) >>= sizedPingPong 8 11
         ]
       | (group, newNetPair, v6) <- [ ("IPv4", (`realNetPair` "127.0.0.1"), 0)
                                    , ("IPv6", (`realNetPair`  "::1"), 1)]
       ]
     , testGroup "TLS"
-      [ testGroup group
-        [ testCase "ping-pong"        $ withRetryTLS address pingPong
-        , testCase "delayed write"    $ withRetryTLS address delayedWrite
-        , testCase "sized ping pongs" $ withRetryTLS address (sizedPingPong 8 11)
-        ]
-      | (group, address) <- [("IPv4", "127.0.0.1"), ("IPv6", "::1")]
-      ]
-
+    $ let withRetryTLS addr fun = withRetry $ realTlsNetPair addr >>= fun
+      in [ testGroup group
+           [ testCase "ping-pong"        $ withRetryTLS address pingPong
+           , testCase "delayed write"    $ withRetryTLS address delayedWrite
+           , testCase "sized ping pongs" $ withRetryTLS address (sizedPingPong 8 11)
+           ]
+         | (group, address) <- [("IPv4", "127.0.0.1"), ("IPv6", "::1")]
+         ]
     ]
   ]
 
