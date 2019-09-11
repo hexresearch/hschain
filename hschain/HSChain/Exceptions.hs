@@ -36,6 +36,8 @@ data InternalError
   | UnableToCommit
   -- ^ Program fails to write block to disk due to invalid query
   --   (write transaction was rolled back)
+  | UnexpectedRollback
+  -- ^ Transaction which shouldn't be rolled back was rolled back
   deriving stock    (Show)
   deriving anyclass (Exception)
 

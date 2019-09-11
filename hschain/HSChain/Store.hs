@@ -37,6 +37,7 @@ module HSChain.Store (
   , connectionRO
   , queryRO
   , queryRW
+  , mustQueryRW
   , queryROT
   , queryRWT
     -- ** Opening database

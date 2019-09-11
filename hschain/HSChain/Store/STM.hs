@@ -16,6 +16,7 @@ module HSChain.Store.STM (
 import Control.Applicative
 import Control.Concurrent.STM
 import Control.Monad
+import Control.Monad.Catch       (MonadThrow)
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Maybe
@@ -254,7 +255,7 @@ newSTMBchStorage st0 = do
 
 -- | Store complete snapshot of state every N
 snapshotState
-  :: (MonadIO m, MonadDB m alg a, BlockData a)
+  :: (MonadIO m, MonadDB m alg a, MonadThrow m, BlockData a)
   => Int           -- ^ Store snapshot every n height
   -> BChStore m a  -- ^ Store to modify
   -> m (BChStore m a)
@@ -263,9 +264,7 @@ snapshotState everyN BChStore{..} = do
   return BChStore
     { bchStoreStore = \h@(Height n) st -> do
         when (fromIntegral n `mod` everyN == 0) $
-          queryRW (storeStateSnapshot h st) >>= \case
-            Just () -> return ()
-            Nothing -> error "Cannot store snapshot"
+          mustQueryRW (storeStateSnapshot h st)
         bchStoreStore h st
     , ..
     }

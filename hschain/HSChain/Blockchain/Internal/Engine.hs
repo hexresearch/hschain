@@ -152,8 +152,7 @@ decideNewBlock config appValidatorKey appLogic@AppLogic{..} appCall@AppCallbacks
      logger InfoS "Actual commit" $ LogBlockInfo h (blockData block) nTx
      usingCounter prometheusNTx nTx
   -- We have decided which block we want to commit so let commit it
-  throwNothingM UnableToCommit $ queryRW
-    $ storeCommit cmt block (bChValidatorSet bchSt)
+  mustQueryRW $ storeCommit cmt block (bChValidatorSet bchSt)
   bchStoreStore appBchState (headerHeight $ blockHeader block) $ blockchainState bchSt
   appCommitCallback block
   return cmt
@@ -161,7 +160,7 @@ decideNewBlock config appValidatorKey appLogic@AppLogic{..} appCall@AppCallbacks
 -- Producer for MessageRx. First we replay WAL and then we read
 -- messages from channels.
 rxMessageSource
-  :: ( MonadIO m, MonadDB m alg a, MonadLogger m
+  :: ( MonadIO m, MonadDB m alg a, MonadLogger m, MonadThrow m
      , Crypto alg, BlockData a)
   => HeightParameters m alg a
   -> AppChans m alg a
@@ -173,14 +172,12 @@ rxMessageSource HeightParameters{..} AppChans{..} = do
   --
   -- Without WAL we're losing consensus state for current round which
   -- mean loss of lock if we were locked on block.
-  walMessages <- fmap (fromMaybe [])
-               $ queryRW
-               $ resetWAL currentH *> readWAL currentH
+  walMessages <- mustQueryRW $ resetWAL currentH *> readWAL currentH
   forM_ walMessages yield
     >-> verify
   readMsg
     >-> verify
-    >-> Pipes.chain (void . queryRW . writeToWAL currentH . unverifyMessageRx)
+    >-> Pipes.chain (mustQueryRW . writeToWAL currentH . unverifyMessageRx)
   where
     verify  = verifyMessageSignature oldValidatorSet validatorSet currentH
     -- NOTE: We try to read internal messages first. This is needed to

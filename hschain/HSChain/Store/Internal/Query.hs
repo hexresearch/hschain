@@ -49,6 +49,7 @@ module HSChain.Store.Internal.Query (
   , runQueryRW
   , queryRO
   , queryRW
+  , mustQueryRW
   ) where
 
 import Control.Monad
@@ -71,6 +72,7 @@ import Pipes (Proxy)
 
 import HSChain.Types.Blockchain
 import HSChain.Control
+import HSChain.Exceptions
 import HSChain.Logger.Class
 
 
@@ -408,6 +410,14 @@ queryRW
   => Query 'RW alg a x
   -> m (Maybe x)
 queryRW q = flip runQueryRW q =<< askConnectionRW
+
+
+mustQueryRW
+  :: (MonadDB m alg a, MonadThrow m, MonadIO m)
+  => Query 'RW alg a x
+  -> m x
+mustQueryRW q
+  = throwNothing UnexpectedRollback =<< flip runQueryRW q =<< askConnectionRW
 
 
 ----------------------------------------------------------------
