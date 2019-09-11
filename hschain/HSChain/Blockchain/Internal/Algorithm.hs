@@ -85,7 +85,7 @@ data HeightParameters (m :: * -> *) alg a = HeightParameters
     -- ^ Validator set for previous height
   , validatorKey         :: !(Maybe (PrivValidator alg, ValidatorIdx alg))
     -- ^ Validator key and index in validator set for current round
-  , readyCreateBlock     :: !(m Bool)
+  , readyCreateBlock     :: !(Int -> m Bool)
     -- ^ Returns true if validator is ready to create new block. If
     --   false validator will stay in @NewHeight@ step until it
     --   becomes true.
@@ -323,7 +323,7 @@ tendermintTransition par@HeightParameters{..} msg sm@TMState{..} =
         -- FIXME: specification is unclear about this point but go
         --        implementation advances unconditionally
         EQ -> case smStep of
-          StepNewHeight n   -> canCreate par sm >>= \case
+          StepNewHeight n   -> canCreate par sm n >>= \case
             True  -> enterPropose par smRound sm Reason'Timeout
             False -> do lift $ yield $ EngTimeout $ Timeout currentH (Round 0) (StepNewHeight (n+1))
                         return sm
@@ -339,12 +339,13 @@ canCreate
   :: (Monad m)
   => HeightParameters m alg a
   -> TMState alg a
+  -> Int
   -> CNS x alg a m Bool
-canCreate HeightParameters{..} TMState{..}
+canCreate HeightParameters{..} TMState{..} n
   -- We want to create first block signed by all validators as soon as
   -- possible
   | currentH == Height 1 = return True
-  | otherwise            = lift $ lift readyCreateBlock
+  | otherwise            = lift $ lift $ readyCreateBlock n
 
 -- Check whether we need to perform any state transition after we
 -- received prevote
