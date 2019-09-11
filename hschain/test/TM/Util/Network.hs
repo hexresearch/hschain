@@ -15,8 +15,8 @@ module TM.Util.Network
   ( NetPair
   , TestAlg
   -- * Timeouts
-  , withRetryTCP
   , withRetryTLS
+  , withRetry
   , withTimeOut
   , withTimeoutRetry
   -- *
@@ -78,12 +78,6 @@ shouldRetry = True
 
 retryPolicy :: RetryPolicy
 retryPolicy = constantDelay 500 <> limitRetries 20
-
-withRetryTCP :: MonadIO m
-             => Net.HostName
-             -> (NetPair -> IO a)
-             -> m a
-withRetryTCP = withRetry . realNetPair Nothing 
 
 withRetryUDP :: MonadIO m
              => Maybe (Maybe Int)
