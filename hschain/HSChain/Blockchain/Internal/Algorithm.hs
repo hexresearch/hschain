@@ -235,11 +235,11 @@ newHeight
   -> Producer (EngineMessage alg a) m (TMState alg a)
 newHeight HeightParameters{..} lastCommit = do
   logger InfoS "Entering new height ----------------" (sl "H" currentH)
-  yield $ EngTimeout $ Timeout  currentH (Round 0) StepNewHeight
-  yield $ EngAnnStep $ FullStep currentH (Round 0) StepNewHeight
+  yield $ EngTimeout $ Timeout  currentH (Round 0) (StepNewHeight 0)
+  yield $ EngAnnStep $ FullStep currentH (Round 0) (StepNewHeight 0)
   return TMState
     { smRound         = Round 0
-    , smStep          = StepNewHeight
+    , smStep          = StepNewHeight 0
     , smProposals     = Map.empty
     , smPrevotesSet   = newHeightVoteSet validatorSet
     , smPrecommitsSet = newHeightVoteSet validatorSet
@@ -292,7 +292,7 @@ tendermintTransition par@HeightParameters{..} msg sm@TMState{..} =
     ----------------------------------------------------------------
     PreCommitMsg v@(signedValue -> Vote{..})
       -- Collect stragglers precommits for inclusion of
-      | smStep == StepNewHeight
+      | StepNewHeight _                  <- smStep
       , Just cmt@(Commit cmtID voteList) <- smLastCommit
       , Vote{voteRound = r}              <- signedValue $ NE.head voteList
       , succ voteHeight == currentH
@@ -323,9 +323,9 @@ tendermintTransition par@HeightParameters{..} msg sm@TMState{..} =
         -- FIXME: specification is unclear about this point but go
         --        implementation advances unconditionally
         EQ -> case smStep of
-          StepNewHeight     -> needNewBlock par sm >>= \case
+          StepNewHeight n   -> needNewBlock par sm >>= \case
             True  -> enterPropose par smRound sm Reason'Timeout
-            False -> do lift $ yield $ EngTimeout $ Timeout currentH (Round 0) StepNewHeight
+            False -> do lift $ yield $ EngTimeout $ Timeout currentH (Round 0) (StepNewHeight (n+1))
                         return sm
           StepProposal      -> enterPrevote   par smRound        sm Reason'Timeout
           StepPrevote       -> enterPrecommit par smRound        sm Reason'Timeout

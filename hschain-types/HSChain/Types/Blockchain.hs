@@ -254,7 +254,7 @@ instance ( NFData (InterpreterState a)
 
 -- | Step of the algorithm
 data Step
-  = StepNewHeight
+  = StepNewHeight !Int
     -- ^ We have just entered new height and waiting for stragglers
     --   precommits for block
   | StepProposal
