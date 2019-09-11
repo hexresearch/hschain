@@ -27,7 +27,6 @@ import HSChain.P2P.Network.IpAddresses (isLocalAddress)
 import Test.QuickCheck
 import Test.Tasty
 import Test.Tasty.HUnit
-import TM.MockNet
 import TM.RealNetwork
 import TM.Util.Network
 
@@ -56,7 +55,7 @@ tests = testGroup "network test"
     ]
   , testGroup "NetworkAPI"
     [ testGroup "mock"
-      [ testCase "ping-pong" $ mockNetPair >>= pingPong
+      [ testCase "ping-pong"     $ mockNetPair >>= pingPong
       , testCase "delayed write" $ mockNetPair >>= delayedWrite
       ]
     , testGroup "real"
@@ -128,3 +127,19 @@ sizedPingPong startPower endPower ((serverAddr, server), (_clientAddr, client)) 
             assertEqual ("Ping-pong power " ++ show power) ("PONG_" <> msg) bs
   ((),()) <- concurrently (runServer server) (runClient client)
   return ()
+
+
+----------------------------------------------------------------
+-- Create network API
+----------------------------------------------------------------
+
+mockNetPair :: IO ( (NetAddr, NetworkAPI)
+                  , (NetAddr, NetworkAPI))
+mockNetPair = do
+  network <- newMockNet
+  return ( (a1, createMockNode network a1)
+         , (a2, createMockNode network a2)
+         )
+  where
+    a1 = NetAddrV4 40001 2222
+    a2 = NetAddrV4 10004 2222
