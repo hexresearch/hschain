@@ -17,7 +17,6 @@ module TM.Util.Network
   -- * Timeouts
   , withRetry
   , withTimeOut
-  , withTimeoutRetry
   -- *
   , mkNodeDescription
   , createGossipTestNetwork
@@ -75,18 +74,7 @@ withRetry fun
   $ recovering retryPolicy hs
   $ \_ -> fun
   where
-    -- | exceptions list to trigger the recovery logic
-    hs :: [a -> Handler IO Bool]
-    hs = [const $ Handler (\(_::E.IOException) -> return shouldRetry)]
-
-
-withTimeoutRetry :: MonadIO m => Int -> IO a -> m a
-withTimeoutRetry t fun
-  = liftIO
-  $ recovering retryPolicy (skipAsyncExceptions ++ hs)
-  $ \_ -> withTimeOut t fun
-  where
-    -- | exceptions list to trigger the recovery logic
+    -- exceptions list to trigger the recovery logic
     hs :: [a -> Handler IO Bool]
     hs = [const $ Handler (\(_::E.IOException) -> return shouldRetry)]
 
