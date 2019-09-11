@@ -303,9 +303,8 @@ data GossipEnv = GossipEnv
 
 
 -- | Add some test blocks to blockchain.
---
 addSomeBlocks
-    :: (MonadIO m, MonadFail m, MonadDB m TestAlg Mock.BData)
+    :: (MonadIO m, MonadFail m, MonadThrow m, MonadDB m TestAlg Mock.BData)
     => GossipEnv
     -> Int       -- ^ Number of blocks to add
     -> m ()
@@ -315,7 +314,7 @@ addSomeBlocks env blocksCount = void $ addSomeBlocks' env blocksCount
 -- | Add some test blocks to blockchain and return a list of these blocks & commits.
 --
 addSomeBlocks'
-    :: (MonadIO m, MonadFail m, MonadDB m TestAlg Mock.BData)
+    :: (MonadIO m, MonadFail m, MonadThrow m, MonadDB m TestAlg Mock.BData)
     => GossipEnv
     -> Int -- ^ Number of blocks to add
     -> m [(Block TestAlg Mock.BData, Commit TestAlg Mock.BData)]
@@ -349,7 +348,7 @@ addSomeBlocks' GossipEnv{..} blocksCount =
                                       , voteTime    = t
                                       , voteBlockID = Just bid
                                       }]}
-        Just () <- queryRW $ storeCommit commit block envValidatorSet
+        mustQueryRW $ storeCommit commit block envValidatorSet
         return (block, commit)
 
 
