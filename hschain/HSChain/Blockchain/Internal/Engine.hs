@@ -402,43 +402,42 @@ makeHeightParameters
   -> AppChans     m alg a
   -> m (HeightParameters m alg a)
 makeHeightParameters appValidatorKey AppLogic{..} AppCallbacks{..} AppChans{..} = do
-  h         <- queryRO $ blockchainHeight
-  oldValSet <- queryRO $ retrieveValidatorSet h
-  valSet    <- queryRO $ mustRetrieveValidatorSet $ succ h
+  bchH <- queryRO $ blockchainHeight
+  let currentH = succ bchH
+  oldValSet <- queryRO $ retrieveValidatorSet     bchH
+  valSet    <- queryRO $ mustRetrieveValidatorSet currentH
   let ourIndex = indexByValidator valSet . publicKey . validatorPrivKey
              =<< appValidatorKey
   let proposerChoice (Round r) =
-        let Height h' = h
+        let Height h' = currentH
             n         = validatorSetSize valSet
         in ValidatorIdx $! fromIntegral $ (h' + r) `mod` fromIntegral n
   --
   return HeightParameters
-    { currentH         = succ h
-    , validatorSet     = valSet
+    { validatorSet     = valSet
     , oldValidatorSet  = oldValSet
     , validatorKey     = liftA2 (,) appValidatorKey ourIndex
       -- FIXME: this is some random algorithms that should probably
       --        work (for some definition of work)
     , proposerForRound = proposerChoice
     --
-    , readyCreateBlock = \_ -> fromMaybe True <$> appCanCreateBlock h
+    , readyCreateBlock = \_ -> fromMaybe True <$> appCanCreateBlock bchH
     --
     , validateBlock = \bid -> do
-        let nH = succ h
-        retrievePropByID appPropStorage nH bid >>= \case
+        retrievePropByID appPropStorage currentH bid >>= \case
           UnknownBlock    -> return UnseenProposal
           InvalidBlock    -> return InvalidProposal
           GoodBlock{}     -> return GoodProposal
           UntestedBlock b -> do
             let invalid = InvalidProposal <$ setPropValidation appPropStorage bid Nothing
-            inconsistencies <- checkProposedBlock nH b
+            inconsistencies <- checkProposedBlock currentH b
             st              <- throwNothingM BlockchainStateUnavalable
-                             $ bchStoreRetrieve appBchState h
+                             $ bchStoreRetrieve appBchState bchH
             mvalSet'        <- appValidationFun b (BlockchainState st valSet)
             if | not (null inconsistencies) -> do
                -- Block is not internally consistent
                    logger ErrorS "Proposed block has inconsistencies"
-                     (  sl "H" nH
+                     (  sl "H" currentH
                      <> sl "errors" (map show inconsistencies)
                      )
                    invalid
@@ -455,13 +454,13 @@ makeHeightParameters appValidatorKey AppLogic{..} AppCallbacks{..} AppChans{..} 
                  -> invalid
     --
     , createProposal = \r commit -> do
-        lastBID <- throwNothing (DBMissingBlockID h) <=< queryRO
-                 $ retrieveBlockID h
+        lastBID <- throwNothing (DBMissingBlockID bchH) <=< queryRO
+                 $ retrieveBlockID bchH
         -- Call block generator
         st          <- throwNothingM BlockchainStateUnavalable
-                     $ bchStoreRetrieve appBchState h
+                     $ bchStoreRetrieve appBchState bchH
         (bData,bst) <- appBlockGenerator NewBlock
-          { newBlockHeight   = succ h
+          { newBlockHeight   = currentH
           , newBlockLastBID  = lastBID
           , newBlockCommit   = commit
           , newBlockEvidence = []
@@ -471,7 +470,7 @@ makeHeightParameters appValidatorKey AppLogic{..} AppCallbacks{..} AppChans{..} 
         let valCh = validatorsDifference valSet (bChValidatorSet bst)
             block = Block
               { blockHeader = Header
-                  { headerHeight         = succ h
+                  { headerHeight         = currentH
                   , headerLastBlockID    = Just lastBID
                   , headerValidatorsHash = hashed valSet
                   , headerDataHash       = hashed bData
@@ -489,6 +488,7 @@ makeHeightParameters appValidatorKey AppLogic{..} AppCallbacks{..} AppChans{..} 
         storePropBlock    appPropStorage block
         setPropValidation appPropStorage bid (Just bst)
         return bid
+    , ..
     }
 
 -- | If 'modifier' exists, modify 'arg' with it and run 'action' with
