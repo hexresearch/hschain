@@ -63,7 +63,7 @@ tests = testGroup "network test"
       , testCase "delayed write" $ mockNetPair >>= delayedWrite
       ]
     , testGroup "TCP"
-    $ let withRetryTCP addr action = withRetry $ realNetPair Nothing addr >>= action
+    $ let withRetryTCP addr fun = withTimeOut 10e6 $ withRetry $ realNetPair Nothing addr >>= fun
       in [ testGroup group
            [ testCase "ping-pong"     $ withRetryTCP address pingPong
            , testCase "delayed write" $ withRetryTCP address delayedWrite
@@ -71,17 +71,18 @@ tests = testGroup "network test"
          | (group, address) <- [("IPv4", "127.0.0.1"), ("IPv6", "::1")]
          ]
     , testGroup "UDP"
-      [ testGroup group $
-        [ testCase "ping-pong"
-        $ withTimeoutRetry 10e6 $ newNetPair (Just Nothing) >>= pingPong
-        , testCase "delayed write"
-        $ withTimeoutRetry 10e6 $ newNetPair (Just Nothing) >>= delayedWrite
-        , testCase "sized ping pongs"
-        $ withTimeoutRetry 10e6 $ newNetPair (Just $ Just $ 123 + v6) >>= sizedPingPong 8 11
-        ]
-      | (group, newNetPair, v6) <- [ ("IPv4", (`realNetPair` "127.0.0.1"), 0)
-                                   , ("IPv6", (`realNetPair`  "::1"), 1)]
-      ]
+    $ let withRetryUDP = withTimeOut 10e6 . withRetry
+      in [ testGroup group $
+           [ testCase "ping-pong"
+           $ withRetryUDP $ newNetPair (Just Nothing) >>= pingPong
+           , testCase "delayed write"
+           $ withRetryUDP $ newNetPair (Just Nothing) >>= delayedWrite
+           , testCase "sized ping pongs"
+           $ withRetryUDP $ newNetPair (Just $ Just $ 123 + v6) >>= sizedPingPong 8 11
+           ]
+         | (group, newNetPair, v6) <- [ ("IPv4", (`realNetPair` "127.0.0.1"), 0)
+                                      , ("IPv6", (`realNetPair`  "::1"), 1)]
+         ]
     , testGroup "TLS"
     $ let withRetryTLS addr fun = withRetry $ realTlsNetPair addr >>= fun
       in [ testGroup group
