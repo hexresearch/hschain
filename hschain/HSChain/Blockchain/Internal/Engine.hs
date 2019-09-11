@@ -140,11 +140,12 @@ decideNewBlock config appValidatorKey appLogic@AppLogic{..} appCall@AppCallbacks
   resetPropStorage appPropStorage $ currentH hParam
   -- Run consensus engine
   (cmt, block, bchSt) <- runEffect $ do
+    let sink = handleEngineMessage hParam config appByzantine appCh
     tm0 <-  newHeight hParam lastCommt
-        >-> handleEngineMessage hParam config appByzantine appCh
+        >-> sink
     rxMessageSource hParam appCh
-      >-> msgHandlerLoop hParam appLogic appCh tm0
-      >-> handleEngineMessage hParam config appByzantine appCh
+        >-> msgHandlerLoop hParam appLogic appCh tm0
+        >-> sink
   -- Update metrics
   do let nTx = maybe 0 (length . commitPrecommits) (blockLastCommit block)
          h   = headerHeight $ blockHeader block
