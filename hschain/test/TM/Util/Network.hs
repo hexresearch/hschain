@@ -102,14 +102,14 @@ withTimeoutRetry
   -> Int
   -> IO a
   -> m a
-withTimeoutRetry msg t fun = do
-  liftIO $ recovering retryPolicy (skipAsyncExceptions ++ hs)
-    (const action)
-    where
-      action = withTimeOut msg t fun
-      -- | exceptions list to trigger the recovery logic
-      hs :: [a -> Handler IO Bool]
-      hs = [const $ Handler (\(_::E.IOException) -> return shouldRetry)]
+withTimeoutRetry msg t fun
+  = liftIO
+  $ recovering retryPolicy (skipAsyncExceptions ++ hs)
+  $ \_ -> withTimeOut msg t fun
+  where
+    -- | exceptions list to trigger the recovery logic
+    hs :: [a -> Handler IO Bool]
+    hs = [const $ Handler (\(_::E.IOException) -> return shouldRetry)]
 
 -- | Exception for aborting the execution of test
 data AbortTest = AbortTest String
@@ -119,8 +119,8 @@ instance Exception AbortTest
 
 withTimeOut :: String -> Int -> IO a -> IO a
 withTimeOut abortMsg t act = timeout t act >>= \case
-    Just n  -> pure n
-    Nothing -> E.throwIO $ AbortTest $ abortMsg <> " due to timeout"
+  Just n  -> pure n
+  Nothing -> E.throwIO $ AbortTest $ abortMsg <> " due to timeout"
 
 -- TODO объединить в один список, а лучше сделать бесконечный
 testValidators :: Map.Map (Fingerprint (SHA256 :<<< SHA512) TestAlg) (PrivValidator TestAlg)
