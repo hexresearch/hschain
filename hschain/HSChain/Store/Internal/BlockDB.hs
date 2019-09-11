@@ -72,6 +72,18 @@ initializeBlockhainTables genesis = do
     \  , height  INTEGER NOT NULL \
     \  , message BLOB NOT NULL \
     \  , UNIQUE(height,message))"
+  basicExecute_
+    "CREATE TABLE IF NOT EXISTS thm_proposals \
+    \ ( height INTEGER NOT NULL \
+    \ , round  INTEGER NOT NULL \
+    \ , block  BLOB    NOT NULL \
+    \ , UNIQUE (height,round))"
+  basicExecute_
+    "CREATE TABLE IF NOT EXISTS thm_ready_block \
+    \ ( height  INTEGER NOT NULL \
+    \ , attempt INTEGER NOT NULL \
+    \ , result  BOOLEAN NOT NULL \
+    \ , UNIQUE (height, attempt))"
   -- Insert genesis block if needed
   storedGen  <- singleQ_ "SELECT block  FROM thm_blockchain WHERE height = 0"
   storedVals <- singleQ_ "SELECT valset FROM thm_validators WHERE height = 1"
@@ -237,6 +249,11 @@ storeStateSnapshot :: (Serialise s, MonadQueryRW m alg a) => Height -> s -> m ()
 storeStateSnapshot (Height h) state = do
   basicExecute "UPDATE state_snapshot SET height = ?, snapshot_blob = ?" (h, serialise state)
 
+
+----------------------------------------------------------------
+-- WAL
+----------------------------------------------------------------
+
 -- | Add message to Write Ahead Log. Height parameter is height
 --   for which we're deciding block.
 writeToWAL
@@ -245,11 +262,40 @@ writeToWAL
 writeToWAL h msg =
   basicExecute "INSERT OR IGNORE INTO thm_wal VALUES (NULL,?,?)" (h, serialise msg)
 
+writeBlockToWAL
+  :: (MonadQueryRW m alg a, Serialise a, Crypto alg)
+  => Round -> Block alg a -> m ()
+writeBlockToWAL r b = do
+  basicExecute "INSERT INTO thm_proposals VALUES (?,?,?)"
+    (h,r,serialise b)
+  where
+    h = headerHeight $ blockHeader b
+
+retrieveBlockFromWAL
+  :: (MonadQueryRO m alg a, Serialise a, Crypto alg)
+  => Height -> Round -> m (Maybe (Block alg a))
+retrieveBlockFromWAL h r =
+  singleQ "SELECT block FROM thm_proposals WHERE height = ? AND round = ?" (h,r)
+
+writeBlockReadyToWAL
+  :: (MonadQueryRW m alg a)
+  => Height -> Int -> Bool -> m ()
+writeBlockReadyToWAL h n can =
+  basicExecute "INSERT INTO thm_ready_block VALUES (?,?,?)" (h,n,can)
+
+retrieveBlockReadyFromWAL
+  :: (MonadQueryRO m alg a)
+  => Height -> Int -> m (Maybe Bool)
+retrieveBlockReadyFromWAL h n =
+  singleQ "SELECT result FROM thm_ready_block WHERE height = ? AND attempt = ?" (h,n)
+
 -- | Remove all entries from WAL which comes from height less than
 --   parameter.
 resetWAL :: (MonadQueryRW m alg a) => Height -> m ()
-resetWAL h =
-  basicExecute "DELETE FROM thm_wal WHERE height < ?" (Only h)
+resetWAL h = do
+  basicExecute "DELETE FROM thm_wal         WHERE height < ?" (Only h)
+  basicExecute "DELETE FROM thm_proposals   WHERE height < ?" (Only h)
+  basicExecute "DELETE FROM thm_ready_block WHERE height < ?" (Only h)
 
 -- | Get all parameters from WAL in order in which they were
 --   written
@@ -264,6 +310,9 @@ readWAL h = do
          | Only bs <- rows
          ]
 
+----------------------------------------------------------------
+-- Helpers
+----------------------------------------------------------------
 
 -- Query that returns 0 or 1 result which is CBOR-encoded value
 singleQ :: (SQL.ToRow p, Serialise x, MonadQueryRO m alg a)
