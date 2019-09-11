@@ -301,7 +301,7 @@ handleEngineMessage HeightParameters{..} ConsensusCfg{..} AppByzantine{..} AppCh
   EngTimeout t@(Timeout h (Round r) step) -> do
     liftIO $ void $ forkIO $ do
       let (baseT,delta) = case step of
-            StepNewHeight     -> timeoutNewHeight
+            StepNewHeight _   -> timeoutNewHeight
             StepProposal      -> timeoutProposal
             StepPrevote       -> timeoutPrevote
             StepPrecommit     -> timeoutPrecommit

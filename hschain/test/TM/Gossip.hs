@@ -86,7 +86,7 @@ testRawGossipLagging =
     withGossipEnv $ \peerChans gossipCh env@GossipEnv{..} mempool -> do
         addSomeBlocks env 10
         ourH  <- succ <$> queryRO blockchainHeight
-        let step = FullStep (pred ourH) (Round 0) StepNewHeight
+        let step = FullStep (pred ourH) (Round 0) (StepNewHeight 0)
         recvCh   <- liftIO newTChanIO
         liftIO $ atomically $ 
           writeTChan recvCh (EGossip $ GossipAnn $ AnnStep step)
@@ -112,7 +112,7 @@ testRawGossipAhead =
     withGossipEnv $ \peerChans gossipCh env@GossipEnv{..} mempool -> do
         addSomeBlocks env 10
         ourH  <- succ <$> queryRO blockchainHeight
-        let step = FullStep (succ ourH) (Round 0) StepNewHeight
+        let step = FullStep (succ ourH) (Round 0) (StepNewHeight 0)
         recvCh   <- liftIO newTChanIO
         liftIO $ atomically $ 
           writeTChan recvCh (EGossip $ GossipAnn $ AnnStep step)
@@ -138,7 +138,7 @@ testRawGossipCurrentSentProposal = do
     withGossipEnv $ \peerChans gossipCh env@GossipEnv{..} mempool -> do
         (_lastBlock, lastCommit) <- last <$> addSomeBlocks' env 10
         ourH  <- succ <$> queryRO blockchainHeight
-        let step = FullStep ourH (Round 0) StepNewHeight
+        let step = FullStep ourH (Round 0) (StepNewHeight 0)
         currentTime <- getCurrentTime
         let proposal = Proposal { propHeight = ourH
                                 , propRound = Round 0
@@ -186,12 +186,11 @@ testRawGossipCurrentSentProposal = do
 --
 internalTestRawGossipCurrentCurrent :: Bool -> Bool -> Bool -> IO ()
 internalTestRawGossipCurrentCurrent isTestingSendProposals isTestingSendPrevotes isTestingSendPrecommits =
-    withGossipEnv $ \peerChans gossipCh env@GossipEnv{..} mempool -> do
-        -- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    withGossipEnv $ \peerChans gossipCh env@GossipEnv{..} mempool -> do  
         -- Prepare state
         (_lastBlock, lastCommit) <- last <$> addSomeBlocks' env 10
         ourH  <- succ <$> queryRO blockchainHeight
-        let step = FullStep ourH (Round 0) StepNewHeight
+        let step = FullStep ourH (Round 0) (StepNewHeight 0)
         currentTime <- getCurrentTime
         let proposal = Proposal { propHeight = ourH
                                 , propRound = Round 0
@@ -418,7 +417,7 @@ newTMState :: (MonadIO m)
            -> m ()
 newTMState GossipEnv{..} h postProcess = do
     let voteSet = newHeightVoteSet envValidatorSet
-        tmState = postProcess $ TMState (Round 0) StepNewHeight Map.empty voteSet (coerce voteSet) Nothing Nothing
+        tmState = postProcess $ TMState (Round 0) (StepNewHeight 0) Map.empty voteSet (coerce voteSet) Nothing Nothing
     liftIO $ atomically $ writeTVar envConsensus (Just (h, tmState))
 
 
