@@ -13,6 +13,7 @@
 -- | Contains helpers for network UTs
 module TM.Util.Network
   ( TestAlg
+  , AbortTest(..)
   -- * Timeouts
   , withRetry
   , withTimeOut
