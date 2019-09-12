@@ -145,7 +145,7 @@ createTestNetworkWithConfig = createTestNetworkWithValidatorsSetAndConfig testVa
 
 
 createTestNetworkWithValidatorsSetAndConfig
-    :: forall m . (MonadIO m, MonadMask m, MonadFork m, MonadTMMonitoring m)
+    :: (MonadIO m, MonadMask m, MonadFork m, MonadTMMonitoring m)
     => [PrivValidator TestAlg]
     -> Configuration Example
     -> TestNetDescription m
@@ -159,7 +159,8 @@ createTestNetworkWithValidatorsSetAndConfig validators cfg netDescr = do
   where
     dbValidatorSet = makeValidatorSetFromPriv validators
     mkTestNode
-      :: MockNet
+      :: (MonadFork m, MonadMask m, MonadTMMonitoring m)
+      => MockNet
       -> ( Connection 'RW TestAlg Mock.BData
          , TestNetLinkDescription m
          , Maybe (PrivValidator TestAlg))
