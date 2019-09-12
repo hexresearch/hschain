@@ -16,9 +16,9 @@ import qualified TM.Validators
 main :: IO ()
 main = defaultMain $ testGroup "hschain"
   [ TM.Network.tests
+  , TM.Serialisation.tests
   , TM.P2P.tests
   , TM.Mempool.tests
-  , TM.Serialisation.tests
   , TM.Store.tests
   , TM.Time.tests
   , TM.Validators.tests
