@@ -108,19 +108,18 @@ data TestNetLinkDescription m = TestNetLinkDescription
 
 
 mkNodeDescription :: (Monad m) => Int -> [Int] -> (TraceEvents -> m ()) -> TestNetLinkDescription m
-mkNodeDescription ncFrom ncTo ncTraceCallback =
-    let ncByzantine   = mempty
-        ncAppCallbacks = mempty
-    in TestNetLinkDescription {..}
-
-type TestNetDescription m = [TestNetLinkDescription m]
-
+mkNodeDescription ncFrom ncTo ncTraceCallback = TestNetLinkDescription
+  { ncByzantine    = mempty
+  , ncAppCallbacks = mempty
+  , ..
+  }
 
 
-createTestNetwork :: (MonadMask m, MonadFork m, MonadTMMonitoring m)
-                  => TestNetDescription m
-                  -> m ()
-createTestNetwork descr = createTestNetworkWithConfig (defCfg :: Configuration Example) descr
+createTestNetwork
+  :: (MonadMask m, MonadFork m, MonadTMMonitoring m)
+  => [TestNetLinkDescription m]
+  -> m ()
+createTestNetwork = createTestNetworkWithConfig defCfg
 
 
 -- | Create fully connected network with byzantine behaviour
@@ -141,7 +140,7 @@ createGossipTestNetwork byzs =
 createTestNetworkWithConfig
     :: (MonadMask m, MonadFork m, MonadTMMonitoring m)
     => Configuration Example
-    -> TestNetDescription m
+    -> [TestNetLinkDescription m]
     -> m ()
 createTestNetworkWithConfig = createTestNetworkWithValidatorsSetAndConfig testValidators
 
@@ -150,7 +149,7 @@ createTestNetworkWithValidatorsSetAndConfig
     :: (MonadIO m, MonadMask m, MonadFork m, MonadTMMonitoring m)
     => [PrivValidator TestAlg]
     -> Configuration Example
-    -> TestNetDescription m
+    -> [TestNetLinkDescription m]
     -> m ()
 createTestNetworkWithValidatorsSetAndConfig validators cfg netDescr = do
     net <- liftIO newMockNet
