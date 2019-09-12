@@ -5,7 +5,6 @@
 {-# LANGUAGE OverloadedStrings     #-}
 {-# LANGUAGE RankNTypes            #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
-
 module TM.P2P (tests) where
 
 
@@ -29,6 +28,29 @@ import HSChain.Utils
 import TM.Util.Network
 import TM.Util.Tests
 
+----------------------------------------------------------------
+-- Test tree
+----------------------------------------------------------------
+
+tests :: TestTree
+tests = testGroup "P2P"
+  [ testGroup "simple tests"
+    [ testCase "require threaded runtime" testMultithread
+    , testCase "Peers must connect" testPeersMustConnect
+    , testCase "Peer registry must be filled" testPeerRegistryMustBeFilled
+    , testCase "Peers must ack and get addresses" testPeersMustAckAndGetAddresses
+    , testCase "Peers in big net must interconnects" testBigNetMustInterconnect
+    ]
+  ]
+
+
+----------------------------------------------------------------
+-- Tests implementation
+----------------------------------------------------------------
+
+testMultithread :: IO ()
+testMultithread =
+    assertBool "Test must be run multithreaded" (numCapabilities > 1)
 
 testPeersMustConnect :: IO ()
 testPeersMustConnect = do
@@ -51,11 +73,6 @@ testPeersMustConnect = do
     readIORef events3 >>= ([ TeNodeStarted
                            , TePeerRegistryChanged (Set.fromList ["1.0.0.0:1122","2.0.0.0:1122"])
                            ] @~<?)
-
-
-testMultithread :: IO ()
-testMultithread =
-    assertBool "Test must be run multithreaded" (numCapabilities > 1)
 
 
 testPeerRegistryMustBeFilled :: IO ()
@@ -162,15 +179,3 @@ testBigNetMustInterconnect = do
         , waitSec (fromIntegral netSize)
         ]
     readIORef ok >>= assertBool "All events must occur"
-
-
-tests :: TestTree
-tests = testGroup "p2p"
-    [ testGroup "simple tests" [
-          testCase "Tests must be multithreaded" testMultithread
-        , testCase "Peers must connect" testPeersMustConnect
-        , testCase "Peer registry must be filled" testPeerRegistryMustBeFilled
-        , testCase "Peers must ack and get addresses" testPeersMustAckAndGetAddresses
-        , testCase "Peers in big net must interconnects" testBigNetMustInterconnect
-        ]
-    ]
