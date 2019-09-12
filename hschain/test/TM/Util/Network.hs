@@ -60,7 +60,7 @@ import TM.RealNetwork
 
 
 ----------------------------------------------------------------
---
+-- Timeouts
 ----------------------------------------------------------------
 
 withRetry :: MonadIO m => IO a -> m a
@@ -83,6 +83,11 @@ withTimeOut :: Int -> IO a -> IO a
 withTimeOut t act = timeout t act >>= \case
   Just n  -> pure n
   Nothing -> E.throwIO AbortTest
+
+
+----------------------------------------------------------------
+-- Test networks
+----------------------------------------------------------------
 
 -- TODO объединить в один список, а лучше сделать бесконечный
 testValidators :: [PrivValidator TestAlg]
