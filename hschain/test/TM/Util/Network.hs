@@ -62,21 +62,15 @@ import TM.RealNetwork
 --
 ----------------------------------------------------------------
 
-shouldRetry :: Bool
-shouldRetry = True
-
-retryPolicy :: RetryPolicy
-retryPolicy = constantDelay 500 <> limitRetries 20
-
 withRetry :: MonadIO m => IO a -> m a
-withRetry fun
+withRetry
   = liftIO
-  $ recovering retryPolicy hs
-  $ \_ -> fun
+  . recovering (constantDelay 500 <> limitRetries 20) hs
+  . const
   where
     -- exceptions list to trigger the recovery logic
     hs :: [a -> Handler IO Bool]
-    hs = [const $ Handler (\(_::E.IOException) -> return shouldRetry)]
+    hs = [const $ Handler (\(_::E.IOException) -> return True)]
 
 -- | Exception for aborting the execution of test
 data AbortTest = AbortTest
