@@ -30,22 +30,18 @@ import qualified Control.Exception        as E
 
 import Control.Monad
 import Control.Monad.Catch
-import Control.Monad.Fail     (MonadFail)
 import Control.Monad.IO.Class
 import Control.Retry  (constantDelay, limitRetries, recovering)
 
-import qualified Data.Map.Strict      as Map
-
-import Data.Foldable  (toList)
 import Data.Monoid    ((<>))
 import System.Timeout (timeout)
 
 import qualified HSChain.Mock.KeyVal as Mock
 import HSChain.Blockchain.Internal.Engine.Types
 import HSChain.Control
-import HSChain.Crypto                           ((:&), Fingerprint, (:<<<))
+import HSChain.Crypto                           ((:&))
 import HSChain.Crypto.Ed25519                   (Ed25519)
-import HSChain.Crypto.SHA                       (SHA512,SHA256)
+import HSChain.Crypto.SHA                       (SHA512)
 import HSChain.Debug.Trace
 import HSChain.Logger
 import HSChain.Mock.Types
@@ -119,7 +115,7 @@ type TestNetDescription m = [TestNetLinkDescription m]
 
 
 
-createTestNetwork :: (MonadMask m, MonadFork m, MonadTMMonitoring m, MonadFail m)
+createTestNetwork :: (MonadMask m, MonadFork m, MonadTMMonitoring m)
                   => TestNetDescription m
                   -> m ()
 createTestNetwork descr = createTestNetworkWithConfig (defCfg :: Configuration Example) descr
@@ -127,7 +123,7 @@ createTestNetwork descr = createTestNetworkWithConfig (defCfg :: Configuration E
 
 -- | Create fully connected network with byzantine behaviour
 --
-createGossipTestNetwork :: (MonadMask m, MonadFork m, MonadTMMonitoring m, MonadFail m)
+createGossipTestNetwork :: (MonadMask m, MonadFork m, MonadTMMonitoring m)
                         => [(TestAppByzantine m, AppCallbacks (TestMonad m) TestAlg Mock.BData)]
                         -> m ()
 createGossipTestNetwork byzs =
@@ -141,7 +137,7 @@ createGossipTestNetwork byzs =
 
 
 createTestNetworkWithConfig
-    :: (MonadMask m, MonadFork m, MonadTMMonitoring m, MonadFail m)
+    :: (MonadMask m, MonadFork m, MonadTMMonitoring m)
     => Configuration Example
     -> TestNetDescription m
     -> m ()
@@ -149,7 +145,7 @@ createTestNetworkWithConfig = createTestNetworkWithValidatorsSetAndConfig testVa
 
 
 createTestNetworkWithValidatorsSetAndConfig
-    :: forall m . (MonadIO m, MonadMask m, MonadFork m, MonadTMMonitoring m, MonadFail m)
+    :: forall m . (MonadIO m, MonadMask m, MonadFork m, MonadTMMonitoring m)
     => [PrivValidator TestAlg]
     -> Configuration Example
     -> TestNetDescription m
