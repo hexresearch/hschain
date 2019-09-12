@@ -33,7 +33,7 @@ import Control.Monad.Catch
 import Control.Monad.Fail     (MonadFail)
 import Control.Monad.IO.Class
 import Control.Retry
-    (RetryPolicy, constantDelay, limitRetries, recovering, skipAsyncExceptions)
+    (RetryPolicy, constantDelay, limitRetries, recovering)
 
 import qualified Data.Map.Strict      as Map
 
