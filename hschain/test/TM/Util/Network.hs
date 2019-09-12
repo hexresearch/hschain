@@ -31,6 +31,8 @@ import qualified Control.Exception        as E
 import Control.Monad
 import Control.Monad.Catch
 import Control.Monad.IO.Class
+import Control.Monad.Trans.Class
+import Control.Monad.Trans.Cont
 import Control.Retry  (constantDelay, limitRetries, recovering)
 
 import Data.Monoid    ((<>))
@@ -153,9 +155,11 @@ createTestNetworkWithValidatorsSetAndConfig
 createTestNetworkWithValidatorsSetAndConfig validators cfg netDescr = do
     net <- liftIO newMockNet
     let vallist = map Just validators ++ repeat Nothing
-    withMany (\(ndescr, val) cont -> withConnection ":memory:" (\c -> cont (c,ndescr,val))) (zip netDescr vallist) $ \lst -> do
-      acts <- mapM (mkTestNode net) lst
-      catchAbort $ runConcurrently $ join acts
+    evalContT $ do
+      acts <- forM (netDescr `zip` vallist) $ \(ndescr, val) -> do
+        c <- ContT $ withConnection ":memory:"
+        lift $ mkTestNode net (c, ndescr, val)
+      lift $ catchAbort $ runConcurrently $ concat acts
   where
     dbValidatorSet = makeValidatorSetFromPriv validators
     mkTestNode
