@@ -15,15 +15,17 @@ import qualified TM.Validators
 
 main :: IO ()
 main = defaultMain $ testGroup "hschain"
+  -- Unit tests
   [ TM.Network.tests
   , TM.Serialisation.tests
+  , TM.Time.tests
+  , TM.Merkle.tests
+  , TM.MerkleBlock.tests
+  -- Integration tests
   , TM.P2P.tests
   , TM.Mempool.tests
   , TM.Store.tests
-  , TM.Time.tests
   , TM.Validators.tests
   , TM.Consensus.tests
   , TM.Gossip.tests
-  , TM.Merkle.tests
-  , TM.MerkleBlock.tests
   ]
