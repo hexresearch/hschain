@@ -15,7 +15,6 @@ module HSChain.Run (
   , dbtRO
   , runDBT
     -- * Validators
-  , makePrivateValidators
   , makeValidatorSetFromPriv
     -- * Network connectivity
   , connectAll2All

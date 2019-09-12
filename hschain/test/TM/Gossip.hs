@@ -286,7 +286,7 @@ testRawGossipCurrent8 = internalTestRawGossipCurrentCurrent True  True  True
 -- | Private key of current test node.
 --
 currentNodePrivKey :: PrivKey TestAlg
-currentNodePrivKey = validatorPrivKey $ snd $ head $ Map.toList testValidators
+currentNodePrivKey = validatorPrivKey $ head testValidators
 
 
 currentNodeValIdx :: ValidatorIdx TestAlg

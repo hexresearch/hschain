@@ -32,11 +32,11 @@ import Control.Monad
 import Control.Monad.Catch
 import Control.Monad.Fail     (MonadFail)
 import Control.Monad.IO.Class
-import Control.Retry
-    (RetryPolicy, constantDelay, limitRetries, recovering)
+import Control.Retry  (constantDelay, limitRetries, recovering)
 
 import qualified Data.Map.Strict      as Map
 
+import Data.Foldable  (toList)
 import Data.Monoid    ((<>))
 import System.Timeout (timeout)
 
@@ -49,6 +49,7 @@ import HSChain.Crypto.SHA                       (SHA512,SHA256)
 import HSChain.Debug.Trace
 import HSChain.Logger
 import HSChain.Mock.Types
+import HSChain.Mock.KeyList
 import HSChain.Monitoring
 import HSChain.P2P
 import HSChain.P2P.Network
@@ -84,13 +85,8 @@ withTimeOut t act = timeout t act >>= \case
   Nothing -> E.throwIO AbortTest
 
 -- TODO объединить в один список, а лучше сделать бесконечный
-testValidators :: Map.Map (Fingerprint (SHA256 :<<< SHA512) TestAlg) (PrivValidator TestAlg)
-testValidators = makePrivateValidators
-  [ "2K7bFuJXxKf5LqogvVRQjms2W26ZrjpvUjo5LdvPFa5Y"
-  , "4NSWtMsEPgfTK25tCPWqNzVVze1dgMwcUFwS5WkSpjJL"
-  , "3Fj8bZjKc53F2a87sQaFkrDas2d9gjzK57FmQwnNnSHS"
-  , "D2fpHM1JA8trshiUW8XPvspsapUvPqVzSofaK1MGRySd"
-  ]
+testValidators :: [PrivValidator TestAlg]
+testValidators = take 4 $ map PrivValidator $ makePrivKeyStream 1337
 
 type TestAlg = Ed25519 :& SHA512
 
@@ -149,13 +145,13 @@ createTestNetworkWithConfig = createTestNetworkWithValidatorsSetAndConfig testVa
 
 createTestNetworkWithValidatorsSetAndConfig
     :: forall m . (MonadIO m, MonadMask m, MonadFork m, MonadTMMonitoring m, MonadFail m)
-    => Map.Map (Fingerprint (SHA256 :<<< SHA512) TestAlg) (PrivValidator TestAlg)
+    => [PrivValidator TestAlg]
     -> Configuration Example
     -> TestNetDescription m
     -> m ()
 createTestNetworkWithValidatorsSetAndConfig validators cfg netDescr = do
     net <- liftIO newMockNet
-    let vallist = map (Just . snd) (Map.toList validators) ++ repeat Nothing
+    let vallist = map Just validators ++ repeat Nothing
     withMany (\(ndescr, val) cont -> withConnection ":memory:" (\c -> cont (c,ndescr,val))) (zip netDescr vallist) $ \lst -> do
       acts <- mapM (mkTestNode net) lst
       catchAbort $ runConcurrently $ join acts
