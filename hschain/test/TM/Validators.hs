@@ -52,11 +52,11 @@ type VSet = ValidatorSet (Ed25519 :& SHA512)
 
 tests :: TestTree
 tests = testGroup "validators"
-  [ testProperty "No change 1" $ \(vset :: VSet) ->
+  [ testProperty "valSet = valSet + mempty" $ \(vset :: VSet) ->
       Just vset == changeValidators mempty vset
-  , testProperty "No change 2" $ \(vset :: VSet) ->
+  , testProperty "mempty = valSet - valSet" $ \(vset :: VSet) ->
       mempty == validatorsDifference vset vset
-  , testProperty "Roundtrip" $ \(vsetOld :: VSet) vsetNew ->
+  , testProperty "val2 = val1 + (val2 - val1)" $ \(vsetOld :: VSet) vsetNew ->
       let diff = validatorsDifference vsetOld vsetNew
       in Just vsetNew == changeValidators diff vsetOld
   , testProperty "Compose" $ \(vset1 :: VSet) vset2 vset3 ->
