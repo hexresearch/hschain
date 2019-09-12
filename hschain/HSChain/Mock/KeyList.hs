@@ -6,7 +6,6 @@
 module HSChain.Mock.KeyList (
     -- * Private keys for testing
     privateKeyList
-  , makePrivateValidators
   , makeValidatorSetFromPriv
   , makePrivKeyStream
     -- * Connection in mock network
@@ -17,7 +16,6 @@ module HSChain.Mock.KeyList (
 import Data.Maybe
 
 import qualified Data.ByteString        as BS
-import qualified Data.ByteString.Base58 as Base58
 import           Data.Foldable          (toList)
 import           Data.List
 import           Data.Proxy
@@ -34,17 +32,6 @@ import HSChain.Types.Validators
 ----------------------------------------------------------------
 --
 ----------------------------------------------------------------
-
-
--- | Generate list of private validators
-makePrivateValidators
-  :: [BS.ByteString]
-  -> Map (Fingerprint (SHA256 :<<< SHA512) (Ed25519 :& SHA512)) (PrivValidator (Ed25519 :& SHA512))
-makePrivateValidators keys = Map.fromList
-  [ (fingerprint (publicKey pk) , PrivValidator pk)
-  | bs58 <- keys
-  , let pk = fromJust $ decodeFromBS =<< Base58.decodeBase58 Base58.bitcoinAlphabet bs58
-  ]
 
 -- | Create set of all known public validators from set of private
 --   validators
