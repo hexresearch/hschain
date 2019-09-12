@@ -12,8 +12,7 @@
 
 -- | Contains helpers for network UTs
 module TM.Util.Network
-  ( NetPair
-  , TestAlg
+  ( TestAlg
   -- * Timeouts
   , withRetry
   , withTimeOut
@@ -54,7 +53,6 @@ import HSChain.P2P.Network
 import HSChain.Run
 import HSChain.Store
 
-import TM.RealNetwork
 
 
 ----------------------------------------------------------------
