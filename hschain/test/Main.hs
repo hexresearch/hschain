@@ -21,9 +21,11 @@ main = defaultMain $ testGroup "hschain"
   , TM.Time.tests
   , TM.Merkle.tests
   , TM.MerkleBlock.tests
-  -- Integration tests
-  , TM.P2P.tests
+  -- Subsystems tests
   , TM.Mempool.tests
+  -- Integration tests
+  -- Unsorted stuff
+  , TM.P2P.tests
   , TM.Store.tests
   , TM.Validators.tests
   , TM.Consensus.tests
