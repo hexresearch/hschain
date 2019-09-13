@@ -94,13 +94,10 @@ type TestAlg = Ed25519 :& SHA512
 
 type TestMonad m = DBT 'RW TestAlg Mock.BData (NoLogsT (TracerT m))
 
-type TestAppByzantine m = AppByzantine (TestMonad m) TestAlg Mock.BData
-
 
 data TestNetLinkDescription m = TestNetLinkDescription
     { ncFrom          :: Int
     , ncTo            :: [Int]
-    , ncByzantine     :: TestAppByzantine m
     , ncTraceCallback :: TraceEvents -> m ()
     , ncAppCallbacks  :: AppCallbacks (TestMonad m) TestAlg Mock.BData
     }
@@ -108,8 +105,7 @@ data TestNetLinkDescription m = TestNetLinkDescription
 
 mkNodeDescription :: (Monad m) => Int -> [Int] -> (TraceEvents -> m ()) -> TestNetLinkDescription m
 mkNodeDescription ncFrom ncTo ncTraceCallback = TestNetLinkDescription
-  { ncByzantine    = mempty
-  , ncAppCallbacks = mempty
+  { ncAppCallbacks = mempty
   , ..
   }
 
@@ -124,15 +120,15 @@ createTestNetwork = createTestNetworkWithConfig defCfg
 -- | Create fully connected network with byzantine behaviour
 --
 createGossipTestNetwork :: (MonadMask m, MonadFork m, MonadTMMonitoring m)
-                        => [(TestAppByzantine m, AppCallbacks (TestMonad m) TestAlg Mock.BData)]
+                        => [AppCallbacks (TestMonad m) TestAlg Mock.BData]
                         -> m ()
 createGossipTestNetwork byzs =
     let maxN = length byzs - 1
     in createTestNetworkWithValidatorsSetAndConfig
         testValidators
         (defCfg :: Configuration Example)
-        [ (mkNodeDescription i [(i+1)..maxN] (\_ -> return ())) { ncByzantine = byz, ncAppCallbacks = appc }
-        | (i, (byz, appc)) <- zip [0..] byzs
+        [ (mkNodeDescription i [(i+1)..maxN] (\_ -> return ())) { ncAppCallbacks = appc }
+        | (i, appc) <- zip [0..] byzs
         ]
 
 
@@ -183,9 +179,7 @@ createTestNetworkWithValidatorsSetAndConfig validators cfg netDescr = do
                 }
           :*: cfg
           )
-          ( ncAppCallbacks
-         <> mempty { appByzantine = ncByzantine }
-          )
+          ncAppCallbacks 
         return $ run <$> actions
 
 intToNetAddr :: Int -> NetAddr
