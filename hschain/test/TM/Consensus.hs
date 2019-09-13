@@ -135,19 +135,21 @@ blockHeight :: Block alg a -> Height
 blockHeight = headerHeight . blockHeader
 
 
-byz :: (Monad m, Monoid b)
+byz :: (Monad m)
     => (Vote 'PreVote alg a -> m (Maybe (Vote 'PreVote alg a)))
-    -> (AppByzantine m alg a, b)
-byz byzc = (mempty { byzantineCastPrevote = Just $ byzc } , mempty)
+    -> AppCallbacks m alg a
+byz byzc = mempty
+  { appByzantine = mempty { byzantineCastPrevote = Just $ byzc }
+  }
 
 
-waitHeight :: (Monoid n, MonadIO m, MonadThrow m)
+waitHeight :: (MonadIO m, MonadThrow m)
            => Height
            -> IORef Height
-           -> (n, AppCallbacks m alg a)
-waitHeight h achievedHeightIORef =
-    (mempty, mempty { appCommitCallback = liftIO . writeIORef achievedHeightIORef . blockHeight }
-                       <> callbackAbortAtH h)
+           -> (AppCallbacks m alg a)
+waitHeight h achievedHeightIORef
+  =  mempty { appCommitCallback = liftIO . writeIORef achievedHeightIORef . blockHeight }
+  <> callbackAbortAtH h
 
 
 tests :: TestTree
