@@ -14,7 +14,7 @@
 {-# LANGUAGE GADTs             #-}
 {-# LANGUAGE ScopedTypeVariables      #-}
 
-module TM.Gossip (tests) where
+module TM.P2P.Gossip (tests) where
 
 import Codec.Serialise (deserialise)
 import Control.Concurrent.Chan
