@@ -202,6 +202,7 @@ Test-suite hschain-tests
   hs-source-dirs:      test
   Main-is:             Main.hs
   Other-modules:       TM.Consensus
+                       TM.Integration
                        TM.Mempool
                        TM.Merkle
                        TM.MerkleBlock
@@ -210,7 +211,6 @@ Test-suite hschain-tests
                        TM.P2P.PEX
                        TM.RealNetwork
                        TM.Serialisation
-                       TM.Store
                        TM.Time
                        TM.Util.Network
                        TM.Util.Tests

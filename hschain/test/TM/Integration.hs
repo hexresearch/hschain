@@ -1,7 +1,7 @@
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE NumDecimals         #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-module TM.Store ( tests) where
+module TM.Integration ( tests) where
 
 import Test.Tasty
 import Test.Tasty.HUnit
