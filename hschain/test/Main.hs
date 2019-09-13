@@ -9,7 +9,7 @@ import qualified TM.Network
 import qualified TM.P2P.Gossip
 import qualified TM.P2P.PEX
 import qualified TM.Serialisation
-import qualified TM.Store
+import qualified TM.Integration
 import qualified TM.Time
 import qualified TM.Validators
 
@@ -25,9 +25,9 @@ main = defaultMain $ testGroup "hschain"
   , TM.Mempool.tests
   , TM.P2P.PEX.tests
   , TM.P2P.Gossip.tests
-  -- Integration tests
-  -- Unsorted stuff
-  , TM.Store.tests
-  , TM.Validators.tests
   , TM.Consensus.tests
+  -- Integration tests
+  , TM.Integration.tests
+  -- Unsorted stuff
+  , TM.Validators.tests
   ]
