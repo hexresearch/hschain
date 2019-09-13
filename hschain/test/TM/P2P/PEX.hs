@@ -5,7 +5,7 @@
 {-# LANGUAGE OverloadedStrings     #-}
 {-# LANGUAGE RankNTypes            #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
-module TM.P2P (tests) where
+module TM.P2P.PEX (tests) where
 
 import Control.Monad
 import Control.Monad.Fix
