@@ -63,6 +63,25 @@ import Test.Tasty.HUnit
 import TM.Util.Network
 
 
+tests :: TestTree
+tests = testGroup "eigen-gossip"
+    [ testCase "unknown"              testRawGossipUnknown
+    , testCase "lagging"              testRawGossipLagging
+    , testCase "ahead"                testRawGossipAhead
+    , testGroup "current"
+        [ testCase "proposal"                      testRawGossipCurrentSentProposal
+        , testCase "nothing"                       testRawGossipCurrent1
+        , testCase "proposal"                      testRawGossipCurrent2
+        , testCase "prevotes"                      testRawGossipCurrent3
+        , testCase "precommits"                    testRawGossipCurrent4
+        , testCase "proposal,prevotes"             testRawGossipCurrent5
+        , testCase "proposal,precommits"           testRawGossipCurrent6
+        , testCase "precommits,prevotes"           testRawGossipCurrent7
+        , testCase "proposal,precommits,prevotes"  testRawGossipCurrent8
+        ]
+    ]
+
+
 -- | Test 'Unknown' branch of peerGossipVotes.
 --   Simple run and check that nothing changed.
 --
@@ -370,8 +389,6 @@ withGossipEnv fun = do
         initDatabase conn (Mock.genesisBlock dbValidatorSet)
         runTracerT (writeChan eventsQueue) . runNoLogsT . runDBT conn $ do
             proposalStorage <- newSTMPropStorage
-            -- let peerId = 0xDEADC0DE
-            let peerChanRx = const $ return ()
             peerChanTx              <- liftIO newTChanIO
             peerChanPex             <- liftIO newBroadcastTChanIO
             peerChanPexNewAddresses <- liftIO newTChanIO
@@ -380,6 +397,7 @@ withGossipEnv fun = do
             gossipCnts              <- newGossipCounters
             let peerChans = PeerChans { proposalStorage = makeReadOnlyPS proposalStorage
                                       , p2pConfig       = cfgNetwork (defCfg :: Configuration Example)
+                                      , peerChanRx      = const $ return ()
                                       , ..
                                       }
             gossipCh <- liftIO $ newTBQueueIO 1000
@@ -427,22 +445,3 @@ instance Exception TestError
 
 catchTestError :: MonadCatch m => m a -> m a
 catchTestError act = catch act (\err@(TestError _) -> P.fail $ show err)
-
-
-tests :: TestTree
-tests = testGroup "eigen-gossip"
-    [ testCase "unknown"              testRawGossipUnknown
-    , testCase "lagging"              testRawGossipLagging
-    , testCase "ahead"                testRawGossipAhead
-    , testGroup "current"
-        [ testCase "proposal"                      testRawGossipCurrentSentProposal
-        , testCase "nothing"                       testRawGossipCurrent1
-        , testCase "proposal"                      testRawGossipCurrent2
-        , testCase "prevotes"                      testRawGossipCurrent3
-        , testCase "precommits"                    testRawGossipCurrent4
-        , testCase "proposal,prevotes"             testRawGossipCurrent5
-        , testCase "proposal,precommits"           testRawGossipCurrent6
-        , testCase "precommits,prevotes"           testRawGossipCurrent7
-        , testCase "proposal,precommits,prevotes"  testRawGossipCurrent8
-        ]
-    ]
