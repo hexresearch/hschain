@@ -127,6 +127,7 @@ data MessageTx alg a
   | TxPreVote   !(Signed 'Unverified alg (Vote 'PreVote   alg a))
   | TxPreCommit !(Signed 'Unverified alg (Vote 'PreCommit alg a))
   | TxProposal  !(Signed 'Unverified alg (Proposal alg a))
+  deriving (Show)
 
 -- | Messages which should be delivered to peers immediately. Those
 --   are control messages in gossip protocol. Actual proposals, votes
