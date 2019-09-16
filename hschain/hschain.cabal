@@ -179,6 +179,7 @@ Test-suite hschain-tests
                      , bytestring        >=0.10
                      , containers
                      , exceptions
+                     , free
                      , microlens
                      , network
                      , random
