@@ -14,6 +14,7 @@
 module TM.Util.Network
   ( TestAlg
   , AbortTest(..)
+  , FastTest
   -- * Timeouts
   , withRetry
   , withTimeOut
@@ -184,3 +185,33 @@ createTestNetworkWithValidatorsSetAndConfig validators cfg netDescr = do
 
 intToNetAddr :: Int -> NetAddr
 intToNetAddr i = NetAddrV4 (fromIntegral i) 1122
+
+
+----------------------------------------------------------------
+--
+----------------------------------------------------------------
+
+data FastTest
+
+instance DefaultConfig FastTest where
+  defCfg = Configuration
+    { cfgConsensus         = ConsensusCfg
+      { timeoutNewHeight   = (1, 1)
+      , timeoutProposal    = (100, 100)
+      , timeoutPrevote     = (100, 100)
+      , timeoutPrecommit   = (100, 100)
+      , timeoutEmptyBlock  = 100
+      , incomingQueueSize  = 7
+      }
+    , cfgNetwork               = NetworkCfg
+      { gossipDelayVotes       = 25
+      , gossipDelayBlocks      = 25
+      , gossipDelayMempool     = 25
+      , pexMinConnections      = 3
+      , pexMaxConnections      = 20
+      , pexMinKnownConnections = 3
+      , pexMaxKnownConnections = 20
+      , reconnectionRetries    = 12
+      , reconnectionDelay      = 100
+      }
+    }
