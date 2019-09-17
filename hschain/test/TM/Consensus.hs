@@ -13,6 +13,7 @@ import Control.Monad.Trans.Free
 import Control.Monad.Trans.Class
 import Control.Monad.IO.Class
 import Data.Int
+import Data.IORef
 import Text.Printf
 
 import HSChain.Blockchain.Internal.Engine.Types
@@ -161,10 +162,13 @@ testConsensus k messages = withDatabase "" genesis $ \conn -> run conn $ do
 mkAppLogic :: MonadIO m => m (AppLogic m TestAlg BData)
 mkAppLogic = do
   store <- newSTMBchStorage mempty
+  cnt   <- liftIO $ newIORef 0
   return AppLogic
-    { appBlockGenerator = \b _ -> return ( BData [("K", 0)]
-                                         , newBlockState b
-                                         )
+    { appBlockGenerator = \b _ -> do i <- liftIO $ readIORef cnt
+                                     liftIO $ writeIORef cnt $! i + 1
+                                     return ( BData [("K2", i)]
+                                            , newBlockState b
+                                            )
     , appValidationFun  = \_   -> return . Just
     , appMempool        = nullMempool
     , appBchState       = store
