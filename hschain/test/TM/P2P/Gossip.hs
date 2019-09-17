@@ -111,7 +111,7 @@ testRawGossipLagging =
           writeTChan recvCh (EGossip $ GossipAnn $ AnnStep step)
         pexCh    <- liftIO newTChanIO
         -- Run peerGossipVotes
-        catchTestError $ runConcurrently
+        runConcurrently
             [ void $ peerFSM peerChans pexCh gossipCh recvCh mempool
             , waitForEvents envEventsQueue [(TepgvStarted, 1), (TepgvNewIter, 2), (TepgvLagging, 2)]
             , waitSec 5.0 >> throwM (TestError "Timeout!")
@@ -137,7 +137,7 @@ testRawGossipAhead =
           writeTChan recvCh (EGossip $ GossipAnn $ AnnStep step)
         pexCh    <- liftIO newTChanIO
         -- Run peerGossipVotes
-        catchTestError $ runConcurrently
+        runConcurrently
             [ void $ peerFSM peerChans pexCh gossipCh recvCh mempool
             , waitForEvents envEventsQueue [(TepgvStarted, 1), (TepgvNewIter, 2), (TepgvAhead, 2)]
             , waitSec 5.0 >> throwM (TestError "Timeout!")
@@ -173,7 +173,7 @@ testRawGossipCurrentSentProposal = do
         -- Run peerGossipVotes
         buffer <- liftIO newTQueueIO
         resState <- liftIO $ newMVar $ wrap UnknownState
-        catchTestError $ runConcurrently
+        runConcurrently
             [ peerFSM         peerChans pexCh gossipCh recvCh mempool >>= liftIO . modifyMVar_ resState . const . return
             , peerSend        peerChans gossipCh P2PConnection
                 { send          = liftIO . atomically . writeTQueue buffer
@@ -245,7 +245,7 @@ internalTestRawGossipCurrentCurrent isTestingSendProposals isTestingSendPrevotes
           writeTChan recvCh (EGossip $ GossipAnn $ AnnStep step)
         pexCh  <- liftIO newTChanIO
         resState <- liftIO $ newMVar $ wrap UnknownState
-        catchTestError $ runConcurrently
+        runConcurrently
             [ peerFSM peerChans pexCh gossipCh recvCh mempool >>= liftIO . modifyMVar_ resState . const . return
             , peerSend        peerChans gossipCh P2PConnection
                 { send          = liftIO . atomically . writeTQueue buffer
@@ -441,7 +441,3 @@ newTMState GossipEnv{..} h postProcess = do
 data TestError = TestError String
   deriving Show
 instance Exception TestError
-
-
-catchTestError :: MonadCatch m => m a -> m a
-catchTestError act = catch act (\err@(TestError _) -> P.fail $ show err)
