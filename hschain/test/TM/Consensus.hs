@@ -10,6 +10,7 @@ module TM.Consensus (tests) where
 
 import Control.Concurrent.STM
 import Control.Monad.Trans.Free
+import Control.Monad.Trans.Class
 import Control.Monad.IO.Class
 import Data.Int
 import Text.Printf
@@ -75,8 +76,8 @@ testConsensusNormal nPV nPC k = testConsensus k $ do
   () <- voteFor (pcBID bid) =<< expectPC
   precommit (Height 1) (Round 0) votersPC (Just bid)
   -- If we have issued enough PV & PC node will commit block
-  if | nPV >= 2 && nPC >= 2 -> expectStep 2 0 (StepNewHeight 0)
-     | nPC == 3             -> expectStep 2 0 (StepNewHeight 0)
+  if | nPV >= 2 && nPC >= 2 -> checkCommit bid
+     | nPC == 3             -> checkCommit bid
      | otherwise            -> expectStep 1 1 StepProposal
   where
     -- Proposer for H=1, R=0
@@ -87,6 +88,13 @@ testConsensusNormal nPV nPC k = testConsensus k $ do
     -- We need enough prevotes for engine to precommit block
     pcBID | nPV >= 2  = Just
           | otherwise = const Nothing
+    -- We have commited new block
+    checkCommit bid = do
+      expectStep 2 0 (StepNewHeight 0)
+      lift (queryRO (retrieveBlockID (Height 1))) >>= \case
+        Nothing                 -> error "testConsensusNormal: block is not commited"
+        Just bid' | bid /= bid' -> error "testConsensusNormal: incorrect block commited"
+                  | otherwise   -> return ()
 
 
 -- Vote is split between two block.
