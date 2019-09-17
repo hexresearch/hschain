@@ -265,11 +265,9 @@ peerSend PeerChans{..} gossipCh P2PConnection{..} = logOnException $ do
   logger InfoS "Starting routing for sending data" ()
   ownPeerChanPex <- atomicallyIO $ dupTChan peerChanPex
   forever $ do
-    msg <- atomicallyIO $ readTBQueue gossipCh
-                              <|> fmap GossipPex (readTChan ownPeerChanPex)
-    send $ serialise msg -- XXX Возможна ли тут гонка? Например, сообщение попало в другую ноду, та уже использует его,
-                         --     однако, TCP ACK с той ноды ещё не вернулся на текущую ноду и addBlock/advanceOurHeight
-                         --     ещё не успели вызваться.
+    msg <- atomicallyIO $  readTBQueue gossipCh
+                       <|> fmap GossipPex (readTChan ownPeerChanPex)
+    send $ serialise msg
 
 ----------------------------------------------------------------
 -- Peer exchange
