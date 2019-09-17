@@ -198,8 +198,8 @@ instance DefaultConfig FastTest where
     { cfgConsensus         = ConsensusCfg
       { timeoutNewHeight   = (1, 1)
       , timeoutProposal    = (100, 100)
-      , timeoutPrevote     = (100, 100)
-      , timeoutPrecommit   = (100, 100)
+      , timeoutPrevote     = (200, 100)
+      , timeoutPrecommit   = (200, 100)
       , timeoutEmptyBlock  = 100
       , incomingQueueSize  = 7
       }
