@@ -24,8 +24,6 @@ module HSChain.Blockchain.Internal.Engine.Types (
   , hoistAppCallback
   , Validator(..)
   , PrivValidator(..)
-  , AppByzantine(..)
-  , hoistAppByzantine
     -- * Messages and channels
   , MessageRx(..)
   , unverifyMessageRx
@@ -35,7 +33,6 @@ module HSChain.Blockchain.Internal.Engine.Types (
   ) where
 
 import Control.Applicative
-import Control.Monad
 import Control.Concurrent.STM
 import Data.Aeson
 import Data.Coerce
@@ -189,48 +186,15 @@ data AppCallbacks m alg a = AppCallbacks
   , appCanCreateBlock   :: Height -> m (Maybe Bool)
     -- ^ Callback which is called to decide whether we ready to create
     --   new block or whether we should wait
-  , appByzantine        :: AppByzantine m alg a
-    -- ^ Callbacks for insering byzantine behavior
   }
-
-data AppByzantine m alg a = AppByzantine
-  { byzantineBroadcastProposal :: Maybe (Proposal alg a        -> m (Maybe (Proposal alg a)))
-  , byzantineCastPrevote       :: Maybe (Vote 'PreVote alg a   -> m (Maybe (Vote 'PreVote alg a)))
-  , byzantineCastPrecommit     :: Maybe (Vote 'PreCommit alg a -> m (Maybe (Vote 'PreCommit alg a)))
-  }
-
 
 instance Monad m => Semigroup (AppCallbacks m alg a) where
-  AppCallbacks f1 g1 b1 <> AppCallbacks f2 g2 b2 = AppCallbacks
+  AppCallbacks f1 g1 <> AppCallbacks f2 g2 = AppCallbacks
     { appCommitCallback = liftA2 (*>) f1 f2
     , appCanCreateBlock = (liftA2 . liftA2) (coerce ((<>) @(Maybe Any))) g1 g2
-    , appByzantine      = b1 <> b2
     }
 instance Monad m => Monoid (AppCallbacks m alg a) where
-  mempty  = AppCallbacks (\_ -> pure ()) (\_ -> pure Nothing) mempty
-
-
-instance Monad m => Semigroup (AppByzantine m alg a) where
-  bc1 <> bc2 = AppByzantine
-    { byzantineBroadcastProposal = semiForField byzantineBroadcastProposal
-    , byzantineCastPrevote       = semiForField byzantineCastPrevote
-    , byzantineCastPrecommit     = semiForField byzantineCastPrecommit
-    }
-    where
-      semiForField f = f bc1 `seqappl` f bc2
-
-
-instance (Monad m) => Monoid (AppByzantine m alg a) where
-    mempty = AppByzantine Nothing Nothing Nothing
-
-seqappl :: (Monad m)
-      => Maybe (a -> m (Maybe a))
-      -> Maybe (a -> m (Maybe a))
-      -> Maybe (a -> m (Maybe a))
-seqappl Nothing Nothing     = Nothing
-seqappl Nothing   x         = x
-seqappl x         Nothing   = x
-seqappl (Just b1) (Just b2) = Just $ b1 >=> maybe (return Nothing) b2
+  mempty  = AppCallbacks (\_ -> pure ()) (\_ -> pure Nothing)
 
 hoistAppLogic :: (Functor n) => (forall x. m x -> n x) -> AppLogic m alg a -> AppLogic n alg a
 hoistAppLogic fun AppLogic{..} = AppLogic
@@ -244,15 +208,7 @@ hoistAppCallback :: (forall x. m x -> n x) -> AppCallbacks m alg a -> AppCallbac
 hoistAppCallback fun AppCallbacks{..} = AppCallbacks
   { appCommitCallback = fun . appCommitCallback
   , appCanCreateBlock = fun . appCanCreateBlock
-  , appByzantine      = hoistAppByzantine fun appByzantine
   }
-
-hoistAppByzantine :: (forall x. m x -> n x) -> AppByzantine m alg a -> AppByzantine n alg a
-hoistAppByzantine fun AppByzantine{..} = AppByzantine
-  { byzantineBroadcastProposal = (fmap . fmap) fun byzantineBroadcastProposal
-  , byzantineCastPrevote       = (fmap . fmap) fun byzantineCastPrevote
-  , byzantineCastPrecommit     = (fmap . fmap) fun byzantineCastPrecommit
-  }                                    
 
 -- | Our own validator
 newtype PrivValidator alg = PrivValidator

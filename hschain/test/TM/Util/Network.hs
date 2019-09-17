@@ -20,7 +20,6 @@ module TM.Util.Network
   , withTimeOut
   -- *
   , mkNodeDescription
-  , createGossipTestNetwork
   , createTestNetworkWithConfig
   , createTestNetwork
   , testValidators
@@ -117,29 +116,12 @@ createTestNetwork
   -> m ()
 createTestNetwork = createTestNetworkWithConfig defCfg
 
-
--- | Create fully connected network with byzantine behaviour
---
-createGossipTestNetwork :: (MonadMask m, MonadFork m, MonadTMMonitoring m)
-                        => [AppCallbacks (TestMonad m) TestAlg Mock.BData]
-                        -> m ()
-createGossipTestNetwork byzs =
-    let maxN = length byzs - 1
-    in createTestNetworkWithValidatorsSetAndConfig
-        testValidators
-        (defCfg :: Configuration Example)
-        [ (mkNodeDescription i [(i+1)..maxN] (\_ -> return ())) { ncAppCallbacks = appc }
-        | (i, appc) <- zip [0..] byzs
-        ]
-
-
 createTestNetworkWithConfig
     :: (MonadMask m, MonadFork m, MonadTMMonitoring m)
     => Configuration Example
     -> [TestNetLinkDescription m]
     -> m ()
 createTestNetworkWithConfig = createTestNetworkWithValidatorsSetAndConfig testValidators
-
 
 createTestNetworkWithValidatorsSetAndConfig
     :: (MonadIO m, MonadMask m, MonadFork m, MonadTMMonitoring m)

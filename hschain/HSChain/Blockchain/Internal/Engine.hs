@@ -140,7 +140,7 @@ decideNewBlock config appValidatorKey appLogic@AppLogic{..} appCall@AppCallbacks
   resetPropStorage appPropStorage $ currentH hParam
   -- Run consensus engine
   (cmt, block, bchSt) <- runEffect $ do
-    let sink = handleEngineMessage hParam config appByzantine appCh
+    let sink = handleEngineMessage hParam config appCh
     tm0 <-  newHeight hParam lastCommt
         >-> sink
     rxMessageSource hParam appCh
@@ -290,10 +290,9 @@ handleEngineMessage
      , Crypto alg)
   => HeightParameters n alg a
   -> ConsensusCfg
-  -> AppByzantine m alg a
   -> AppChans m alg a
   -> Consumer (EngineMessage alg a) m r
-handleEngineMessage HeightParameters{..} ConsensusCfg{..} AppByzantine{..} AppChans{..} = forever $ await >>= \case
+handleEngineMessage HeightParameters{..} ConsensusCfg{..} AppChans{..} = forever $ await >>= \case
   -- Timeout
   EngTimeout t@(Timeout h (Round r) step) -> do
     liftIO $ void $ forkIO $ do
@@ -337,14 +336,13 @@ handleEngineMessage HeightParameters{..} ConsensusCfg{..} AppByzantine{..} AppCh
         (   sl "R"    r
         <>  sl "BID" (show bid)
         )
-      tryByzantine byzantineBroadcastProposal prop $ \prop' ->
-        atomicallyIO $ do
-          let p = signValue idx pk prop'
-          writeTQueue appChanRxInternal $ RxProposal p
-          writeTChan  appChanTx         $ TxProposal p
-          case blockFromBlockValidation mBlock of
-            Just b  -> writeTQueue appChanRxInternal (RxBlock b)
-            Nothing -> return ()
+      atomicallyIO $ do
+        let p = signValue idx pk prop
+        writeTQueue appChanRxInternal $ RxProposal p
+        writeTChan  appChanTx         $ TxProposal p
+        case blockFromBlockValidation mBlock of
+          Just b  -> writeTQueue appChanRxInternal (RxBlock b)
+          Nothing -> return ()
   --
   EngCastPreVote r b ->
     forM_ validatorKey $ \(PrivValidator pk, idx) -> do
@@ -358,11 +356,10 @@ handleEngineMessage HeightParameters{..} ConsensusCfg{..} AppByzantine{..} AppCh
         (  sl "R"    r
         <> sl "bid" (show b)
         )
-      tryByzantine byzantineCastPrevote vote $ \vote' ->
-        atomicallyIO $ do
-          let v = signValue idx pk vote'
-          writeTChan  appChanTx         $ TxPreVote v
-          writeTQueue appChanRxInternal $ RxPreVote v
+      atomicallyIO $ do
+        let v = signValue idx pk vote
+        writeTChan  appChanTx         $ TxPreVote v
+        writeTQueue appChanRxInternal $ RxPreVote v
   --
   EngCastPreCommit r b ->
     forM_ validatorKey $ \(PrivValidator pk, idx) -> do
@@ -376,11 +373,10 @@ handleEngineMessage HeightParameters{..} ConsensusCfg{..} AppByzantine{..} AppCh
         (  sl "R" r
         <> sl "bid" (show b)
         )
-      tryByzantine byzantineCastPrecommit vote $ \vote' ->
-        atomicallyIO $ do
-          let v = signValue idx pk vote'
-          writeTChan  appChanTx         $ TxPreCommit v
-          writeTQueue appChanRxInternal $ RxPreCommit v
+      atomicallyIO $ do
+        let v = signValue idx pk vote
+        writeTChan  appChanTx         $ TxPreCommit v
+        writeTQueue appChanRxInternal $ RxPreCommit v
 
 
 ----------------------------------------------------------------
@@ -504,13 +500,3 @@ makeHeightParameters appValidatorKey AppLogic{..} AppCallbacks{..} AppChans{..} 
         return bid
     , ..
     }
-
--- | If 'modifier' exists, modify 'arg' with it and run 'action' with
---   modified argument; else run 'action' with original argument.
-tryByzantine :: (Monad m)
-             => Maybe (a -> m (Maybe a))
-             -> a
-             -> (a -> Pipe x y m ())
-             -> Pipe x y m ()
-tryByzantine Nothing    a action = action a
-tryByzantine (Just fun) a action = lift (fun a) >>= mapM_ action
