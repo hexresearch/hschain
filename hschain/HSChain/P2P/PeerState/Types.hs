@@ -122,18 +122,20 @@ type instance InternalState Current = CurrentState
 type instance InternalState Ahead   = AheadState
 type instance InternalState Unknown = UnknownState
 
-data Command alg a = SendRX !(MessageRx 'Unverified alg a)
-                   | Push2Mempool !(TX a)
-                   | Push2Gossip !(GossipMsg alg a)
-                   | SendPEX !PexMessage
+data Command alg a
+  = SendRX !(MessageRx 'Unverified alg a)
+  | Push2Mempool !(TX a)
+  | Push2Gossip !(GossipMsg alg a)
+  | SendPEX !PexMessage
 
-data Event alg a = EGossip !(GossipMsg alg a)
-                 | EMempoolTimeout
-                 | EVotesTimeout
-                 | EBlocksTimeout
-                 | EAnnounceTimeout
-                 | EAnnouncement !(MessageTx alg a)
-                 | EQuit -- ^ Special event wich stops FSM
+data Event alg a
+  = EGossip !(GossipMsg alg a)
+  | EMempoolTimeout
+  | EVotesTimeout
+  | EBlocksTimeout
+  | EAnnounceTimeout
+  | EAnnouncement !(MessageTx alg a)
+  | EQuit -- ^ Special event wich stops FSM
 
 data Config m alg a = Config { _propStorage    :: !(ProposalStorage 'RO m alg a)
                              , _mempCursor     :: !(MempoolCursor m alg (TX a))
