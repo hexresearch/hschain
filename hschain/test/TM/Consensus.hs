@@ -114,11 +114,12 @@ testConsensus :: PrivKey TestAlg -> Expect ConsensusM TestAlg BData () -> IO ()
 testConsensus k messages = withDatabase "" genesis $ \conn -> run conn $ do
   logic <- mkAppLogic
   chans <- newAppChans cfg
+  ch    <- atomicallyIO $ dupTChan $ appChanTx chans
   runConcurrently
     [ runApplication cfg
         (Just (PrivValidator k))
         logic mempty chans
-    , expect valSet chans messages
+    , expect valSet ch (appChanRx chans) messages
     ]
   where
     cfg = cfgConsensus (defCfg :: Configuration FastTest)
@@ -237,31 +238,31 @@ data ExpectF alg a x
 expect
   :: (MonadIO m, Crypto alg)
   => ValidatorSet alg
-  -> AppChans m alg a
+  -> TChan (MessageTx alg a)
+  -> TBQueue (MessageRx 'Unverified alg a)
   -> Expect m alg a ()
   -> m ()
-expect vals AppChans{..} expected = do
-  ch <- atomicallyIO $ dupTChan appChanTx
-  iterT (step ch) expected
+expect vals chTx chRx expected = do
+  iterT step expected
   where
-    step ch func = case func of
-      ExpectStep h r s next -> readMsg ch >>= \case
+    step func = case func of
+      ExpectStep h r s next -> readMsg >>= \case
         TxAnn (AnnStep (FullStep h' r' s'))
           | h == h'
           , r == r'
           , s == s' -> next
         m -> failure m func
-      ExpectProp next  -> readMsg ch >>= \case
+      ExpectProp next  -> readMsg >>= \case
         TxProposal sp  -> next $ signedValue sp
         m              -> failure m
-      ExpectPV   next  -> readMsg ch >>= \case
+      ExpectPV   next  -> readMsg >>= \case
         TxPreVote sv   -> next $ signedValue sv
         m              -> failure m
-      ExpectPC   next  -> readMsg ch >>= \case
+      ExpectPC   next  -> readMsg >>= \case
         TxPreCommit sv -> next $ signedValue sv
         m              -> failure m
       Reply msg next   -> do
-        atomicallyIO $ mapM_ (writeTBQueue appChanRx) msg
+        atomicallyIO $ mapM_ (writeTBQueue chRx) msg
         next
       GetValSet next   -> next vals
       where
@@ -271,11 +272,11 @@ expect vals AppChans{..} expected = do
                                     , "    " ++ show m
                                     ]
     --
-    readMsg ch = do
-      m <- liftIO $ atomically $ readTChan ch
+    readMsg = do
+      m <- liftIO $ atomically $ readTChan chTx
       case m of
         TxAnn AnnStep{} -> return m
-        TxAnn _         -> readMsg ch
+        TxAnn _         -> readMsg
         _               -> return m
     --
     expectedName = \case
