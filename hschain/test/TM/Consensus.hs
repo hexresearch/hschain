@@ -9,11 +9,12 @@
 module TM.Consensus (tests) where
 
 import Control.Concurrent.STM
-import Control.Monad.Trans.Free
-import Control.Monad.Trans.Class
+import Control.Monad
 import Control.Monad.IO.Class
-import Data.Int
+import Control.Monad.Trans.Class
+import Control.Monad.Trans.Free
 import Data.IORef
+import Data.Int
 import Text.Printf
 
 import HSChain.Blockchain.Internal.Engine.Types
@@ -50,6 +51,7 @@ tests = testGroup "eigen-consensus"
   , testCase "Split vote byz=1" $ testSplitVote 1
   , testCase "Split vote byz=2" $ testSplitVote 2
   , testCase "Split vote byz=3" $ testSplitVote 3
+  , testCase "WAL replay" testWalReplay
   ]
 
 ----------------------------------------------------------------
@@ -133,6 +135,43 @@ testSplitVote nByz = testConsensus k1 $ do
              | nByz == 3 = const (Just byzBID)
              | otherwise = const Nothing
 
+-- Test that we replay WAL correctly. Most of all that we don't
+-- generate different block!
+testWalReplay :: IO ()
+testWalReplay = withDatabase "" genesis $ \conn -> run conn $ do
+  bidRef          <- liftIO $ newIORef Nothing
+  -- First run
+  do (chTx, chRx, action) <- startConsensus k1
+     runConcurrently
+       [ action
+       , expect valSet chTx chRx $ do
+           ()  <- expectStep 1 0 (StepNewHeight 0)
+           ()  <- expectStep 1 0 StepProposal
+           bid <- propBlockID <$> expectProp
+           liftIO $ writeIORef bidRef $ Just bid
+           -- Prevote
+           () <- voteFor (Just bid) =<< expectPV
+           prevote (Height 1) (Round 0) keys (Just bid)
+           -- Precommit
+           () <- voteFor (Just bid) =<< expectPC
+           return ()
+       ]
+  -- Second run after crash
+  do (chTx, chRx, action) <- startConsensus k1
+     runConcurrently
+       [ action
+       , expect valSet chTx chRx $ do
+           ()  <- expectStep 1 0 (StepNewHeight 0)
+           ()  <- expectStep 1 0 StepProposal
+           bid <- propBlockID <$> expectProp
+           ()  <- voteFor (Just bid) =<< expectPV
+           ()  <- voteFor (Just bid) =<< expectPC
+           -- Check that we generate same block!
+           oldBid <- liftIO $ readIORef bidRef
+           when (oldBid /= Just bid) $ error "WAL replay: BID mismatch!"
+       ]
+  where
+    keys = [k2,k3,k4]
   
 ----------------------------------------------------------------
 -- Helpers for running tests
@@ -146,15 +185,23 @@ run c = runNoLogsT . runDBT c
 -- Simple test of consensus
 testConsensus :: PrivKey TestAlg -> Expect ConsensusM TestAlg BData () -> IO ()
 testConsensus k messages = withDatabase "" genesis $ \conn -> run conn $ do
+  (chTx, chRx, action) <- startConsensus k
+  runConcurrently
+    [ action
+    , expect valSet chTx chRx messages
+    ]
+
+startConsensus :: PrivKey TestAlg -> ConsensusM ( TChan   (MessageTx TestAlg BData)
+                                                , TBQueue (MessageRx 'Unverified TestAlg BData)
+                                                , ConsensusM ())
+startConsensus k = do
   logic <- mkAppLogic
   chans <- newAppChans cfg
   ch    <- atomicallyIO $ dupTChan $ appChanTx chans
-  runConcurrently
-    [ runApplication cfg
-        (Just (PrivValidator k))
-        logic mempty chans
-    , expect valSet ch (appChanRx chans) messages
-    ]
+  return ( ch
+         , appChanRx chans
+         , runApplication cfg (Just (PrivValidator k)) logic mempty chans
+         )
   where
     cfg = cfgConsensus (defCfg :: Configuration FastTest)
 
