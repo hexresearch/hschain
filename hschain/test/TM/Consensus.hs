@@ -1,3 +1,4 @@
+{-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE DataKinds       #-}
@@ -13,6 +14,7 @@ import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Data.Int
 import Data.IORef
+import Text.Printf
 
 import HSChain.Blockchain.Internal.Engine.Types
 import HSChain.Blockchain.Internal.Engine
@@ -40,18 +42,19 @@ import TM.Util.Network
 
 tests :: TestTree
 tests = testGroup "eigen-consensus"
-    [ testCase "Some byzantine 1" testConsensusLightByzantine1
-    , testCase "Some byzantine 2" testConsensusLightByzantine2
-    , testCase "Some byzantine 3" testConsensusLightByzantine3
-    , testCase "Some byzantine 4" testConsensusLightByzantine4
-    , testCase "Some byzantine 5" testConsensusLightByzantine5
-    , testCase "Some byzantine 6" testConsensusLightByzantine6
-
-    , testCase "Normal execution (P)"          testConsensusNormal1
-    , testCase "Normal execution (not P)"      testConsensusNormal2
-    , testCase "Will go to next round (p)"     testConsensusSilence1
-    , testCase "Will go to next round (not P)" testConsensusSilence2
+  [ testCase "Some byzantine 2" testConsensusLightByzantine2
+  , testCase "Some byzantine 3" testConsensusLightByzantine3
+  , testCase "Some byzantine 4" testConsensusLightByzantine4
+  , testCase "Some byzantine 5" testConsensusLightByzantine5
+  , testCase "Some byzantine 6" testConsensusLightByzantine6
+  , testGroup "Single round"
+    [ testCase (printf "key=%s PV=%i PC=%i" keyNm nPV nPC)
+    $ testConsensusNormal nPV nPC k
+    | (k,keyNm) <- [(k1,"k1"), (k2,"k2")]
+    , nPV       <- [0 .. 3]
+    , nPC       <- [0 .. 3]
     ]
+  ]
 
 ----------------------------------------------------------------
 -- Consensus tests
@@ -60,44 +63,37 @@ tests = testGroup "eigen-consensus"
 -- only single node. All communications from other nodes are hardcoded
 ----------------------------------------------------------------
 
-testConsensusNormal1 :: IO ()
-testConsensusNormal1 = testConsensus k1 $ do
-  ()                        <- expectStep 1 0 (StepNewHeight 0)
-  ()                        <- expectStep 1 0 StepProposal
-  Proposal{propBlockID=bid} <- expectProp
-  prevote (Height 1) (Round 0) [k2,k3,k4] (Just bid)
-  () <- voteFor (Just bid) =<< expectPV
-  precommit (Height 1) (Round 0) [k2,k3,k4] (Just bid)
-  () <- voteFor (Just bid) =<< expectPC
-  expectStep 2 0 (StepNewHeight 0)
-
-testConsensusNormal2 :: IO ()
-testConsensusNormal2 = testConsensus k2 $ do
+-- Test that engine behaves correctly for single round of consensus
+-- when provided with different number of votes
+testConsensusNormal :: Int -> Int -> PrivKey TestAlg -> IO ()
+testConsensusNormal nPV nPC k = testConsensus k $ do
+  -- Consensus enters new height and proposer
   ()  <- expectStep 1 0 (StepNewHeight 0)
   ()  <- expectStep 1 0 StepProposal
-  bid <- proposeBlock (Round 0) k1 block1
-  prevote (Height 1) (Round 0) [k1,k3,k4] (Just bid)
+  -- let consensus engine create proposal or we should do it ourselves
+  bid <- if | k == proposer -> propBlockID <$> expectProp
+            | otherwise     -> proposeBlock (Round 0) proposer block1
+  -- We prevote and wait for prevote from engine. It should prevote
+  -- valid block
   () <- voteFor (Just bid) =<< expectPV
-  precommit (Height 1) (Round 0) [k1,k3,k4] (Just bid)
-  () <- voteFor (Just bid) =<< expectPC
-  expectStep 2 0 (StepNewHeight 0)
+  prevote (Height 1) (Round 0) votersPV (Just bid)
+  -- We precommit and wait for precommit from engine
+  () <- voteFor (pcBID bid) =<< expectPC
+  precommit (Height 1) (Round 0) votersPC (Just bid)
+  -- If we have issued enough PV & PC node will commit block
+  if | nPV >= 2 && nPC >= 2 -> expectStep 2 0 (StepNewHeight 0)
+     | nPC == 3             -> expectStep 2 0 (StepNewHeight 0)
+     | otherwise            -> expectStep 1 1 StepProposal
+  where
+    -- Proposer for H=1, R=0
+    proposer = k1
+    -- Voters for prevote & precommit
+    votersPV = take nPV $ filter (/=k) privK
+    votersPC = take nPC $ filter (/=k) privK
+    -- We need enough prevotes for engine to precommit block
+    pcBID | nPV >= 2  = Just
+          | otherwise = const Nothing
 
-testConsensusSilence1 :: IO ()
-testConsensusSilence1 = testConsensus k1 $ do
-  expectStep 1 0 (StepNewHeight 0)
-  expectStep 1 0 StepProposal
-  _ <- expectProp
-  _ <- expectPV
-  _ <- expectPC
-  expectStep 1 1 StepProposal
-
-testConsensusSilence2 :: IO ()
-testConsensusSilence2 = testConsensus k2 $ do
-  expectStep 1 0 (StepNewHeight 0)
-  expectStep 1 0 StepProposal
-  _ <- expectPV
-  _ <- expectPC
-  expectStep 1 1 StepProposal
 
 
 ----------------------------------------------------------------
