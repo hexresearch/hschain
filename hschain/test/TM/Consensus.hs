@@ -1,19 +1,17 @@
-{-# LANGUAGE MultiWayIf #-}
+{-# LANGUAGE DataKinds        #-}
+{-# LANGUAGE DeriveFunctor    #-}
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE DeriveFunctor #-}
-{-# LANGUAGE DataKinds       #-}
-{-# LANGUAGE LambdaCase      #-}
-{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE LambdaCase       #-}
+{-# LANGUAGE MultiWayIf       #-}
+{-# LANGUAGE RecordWildCards  #-}
 -- | Tests for consensus
 --
 module TM.Consensus (tests) where
 
 import Control.Concurrent.STM
 import Control.Monad.Trans.Free
-import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Data.Int
-import Data.IORef
 import Text.Printf
 
 import HSChain.Blockchain.Internal.Engine.Types
@@ -24,9 +22,7 @@ import HSChain.Crypto
 import HSChain.Logger
 import HSChain.Store
 import HSChain.Store.STM
-import HSChain.Run
 import HSChain.Types
-import HSChain.Utils
 import HSChain.Mock.KeyList
 import HSChain.Mock.KeyVal  (BData(..))
 import HSChain.Mock.Types   (makeGenesis)
@@ -42,18 +38,16 @@ import TM.Util.Network
 
 tests :: TestTree
 tests = testGroup "eigen-consensus"
-  [ testCase "Some byzantine 2" testConsensusLightByzantine2
-  , testCase "Some byzantine 3" testConsensusLightByzantine3
-  , testCase "Some byzantine 4" testConsensusLightByzantine4
-  , testCase "Some byzantine 5" testConsensusLightByzantine5
-  , testCase "Some byzantine 6" testConsensusLightByzantine6
-  , testGroup "Single round"
+  [ testGroup "Single round"
     [ testCase (printf "key=%s PV=%i PC=%i" keyNm nPV nPC)
     $ testConsensusNormal nPV nPC k
     | (k,keyNm) <- [(k1,"k1"), (k2,"k2")]
     , nPV       <- [0 .. 3]
     , nPC       <- [0 .. 3]
     ]
+  , testCase "Split vote byz=1" $ testSplitVote 1
+  , testCase "Split vote byz=2" $ testSplitVote 2
+  , testCase "Split vote byz=3" $ testSplitVote 3
   ]
 
 ----------------------------------------------------------------
@@ -95,7 +89,42 @@ testConsensusNormal nPV nPC k = testConsensus k $ do
           | otherwise = const Nothing
 
 
+-- Vote is split between two block.
+--
+--  - Out engine proposes correct block and hones nodes work according
+--    to procol
+--  - Byzantinous nodes prevote and precommit another block.
+testSplitVote :: Int -> IO ()
+testSplitVote nByz = testConsensus k1 $ do
+  -- Consensus enters new height and proposes
+  ()  <- expectStep 1 0 (StepNewHeight 0)
+  ()  <- expectStep 1 0 StepProposal
+  bid <- propBlockID <$> expectProp
+  -- Prevote (split vote)
+  () <- voteFor (Just bid) =<< expectPV
+  prevote (Height 1) (Round 0) honestKeys (Just bid)
+  prevote (Height 1) (Round 0) byzKeys    (Just byzBID)
+  -- Precommit
+  () <- voteFor (honestPC bid) =<< expectPC
+  precommit (Height 1) (Round 0) honestKeys (honestPC bid)
+  precommit (Height 1) (Round 0) byzKeys    (Just byzBID)
+  -- Send byzantinous block once more. It was discarded earlise since
+  -- it wasn't proposed
+  reply [ RxBlock byzBlock ]
+  -- If there's 1 byz. node we commit. Go to other round otherwise
+  if | nByz <= 1 -> expectStep 2 0 (StepNewHeight 0)
+     | nByz == 3 -> expectStep 2 0 (StepNewHeight 0)
+     | otherwise -> expectStep 1 1 StepProposal
+  where
+    (byzKeys,honestKeys) = splitAt nByz [k2,k3,k4]
+    byzBlock             = block1'
+    byzBID               = blockHash byzBlock
+    -- Honest nodes will prevote block iff we have no more that 1 byz. node
+    honestPC | nByz <= 1 = Just
+             | nByz == 3 = const (Just byzBID)
+             | otherwise = const Nothing
 
+  
 ----------------------------------------------------------------
 -- Helpers for running tests
 ----------------------------------------------------------------
@@ -290,10 +319,10 @@ expect vals chTx chRx expected = do
 genesis :: Block TestAlg BData
 genesis = makeGenesis (BData []) valSet
 
-block1 :: Block TestAlg BData
-block1 = Block
+mintBlock :: Block TestAlg BData -> BData -> Block TestAlg BData
+mintBlock b dat = Block
   { blockHeader = Header
-      { headerHeight         = Height 1
+      { headerHeight         = succ $ headerHeight $ blockHeader b
       , headerLastBlockID    = Just $ blockHash genesis
       , headerValidatorsHash = hashed valSet
       , headerValChangeHash  = hashed mempty
@@ -306,8 +335,10 @@ block1 = Block
   , blockLastCommit = Nothing
   , blockEvidence   = []
   }
-  where
-    dat = BData [("K",100)]
+  
+block1, block1' :: Block TestAlg BData
+block1  = mintBlock genesis $ BData [("K",100)]
+block1' = mintBlock genesis $ BData [("K",101)]
 
 privK       :: [PrivKey TestAlg]
 k1,k2,k3,k4 :: PrivKey TestAlg
@@ -315,139 +346,3 @@ privK@[k1,k2,k3,k4] = take 4 $ makePrivKeyStream 1337
 
 valSet :: ValidatorSet TestAlg
 Right valSet = makeValidatorSet [Validator (publicKey k) 1 | k <- privK]
-
-----------------------------------------------------------------
--- Old consesnsus tests
-----------------------------------------------------------------
-
-
--- | В этом тесте одна из четырёх нод работает медленно
---   консенсус есть, БЧ растёт.
---
-testConsensusLightByzantine1 :: IO ()
-testConsensusLightByzantine1 = do
-    achievedHeight <- newIORef (Height 0)
-    runConcurrently
-        [ createGossipTestNetwork
-            [ byz $ \vote -> liftIO (waitSec 3.0) >> return (Just vote)
-            , mempty
-            , mempty
-            , waitHeight (Height 2) achievedHeight
-            ]
-        , waitSec 10
-        ]
-    readIORef achievedHeight >>= assertBool "Must achieve some height" . (>= Height 1)
-
-
--- | В этом тесте одна из четырёх нод работает медленно
---   консенсус есть, БЧ растёт.
---
-testConsensusLightByzantine2 :: IO ()
-testConsensusLightByzantine2 = do
-    achievedHeight <- newIORef (Height 0)
-    runConcurrently
-        [ createGossipTestNetwork
-            [ byz $ \_ -> return Nothing
-            , mempty
-            , mempty
-            , waitHeight (Height 2) achievedHeight
-            ]
-        , waitSec 10
-        ]
-    readIORef achievedHeight >>= assertBool "Must achieve some height" . (>= Height 1)
-
-
--- | В этом тесте одна из четырёх нод выдаёт неправильный голос;
---   консенсус есть, БЧ растёт.
---
-testConsensusLightByzantine3 :: IO ()
-testConsensusLightByzantine3 = do
-    achievedHeight <- newIORef (Height 0)
-    runConcurrently
-        [ createGossipTestNetwork
-            [ byz $ \vote -> return (Just $ vote { voteHeight = Height 555 })
-            , byz $ \vote -> return (Just $ vote { voteHeight = Height 666 })
-            , mempty
-            , waitHeight (Height 2) achievedHeight
-            ]
-        , waitSec 5
-        ]
-    readIORef achievedHeight >>= assertEqual "Must stay on initial height" (Height 0)
-
-
--- | В этом тесте две из четырёх нод работает медленно;
---   консенсуса не образуется и поэтому сеть остаётся на исходной высоте.
---
-testConsensusLightByzantine4 :: IO ()
-testConsensusLightByzantine4 = do
-    achievedHeight <- newIORef (Height 0)
-    runConcurrently
-        [ createGossipTestNetwork
-            [ byz $ \vote -> liftIO (waitSec 3.0) >> return (Just vote)
-            , byz $ \vote -> liftIO (waitSec 3.0) >> return (Just vote)
-            , mempty
-            , waitHeight (Height 2) achievedHeight
-            ]
-        , waitSec 5
-        ]
-    readIORef achievedHeight >>= assertEqual "Must stay on initial height" (Height 0)
-
-
--- | В этом тесте две из четырёх нод пропускают выдачу голоса;
---   консенсуса не образуется и поэтому сеть остаётся на исходной высоте.
---
-testConsensusLightByzantine5 :: IO ()
-testConsensusLightByzantine5 = do
-    achievedHeight <- newIORef (Height 0)
-    runConcurrently
-        [ createGossipTestNetwork
-            [ byz $ \_ -> return Nothing
-            , byz $ \_ -> return Nothing
-            , mempty
-            , waitHeight (Height 2) achievedHeight
-            ]
-        , waitSec 5
-        ]
-    readIORef achievedHeight >>= assertEqual "Must stay on initial height" (Height 0)
-
-
--- | В этом тесте две из четырёх нод выдают не тот голос;
---   консенсуса не образуется и поэтому сеть остаётся на исходной высоте.
---
-testConsensusLightByzantine6 :: IO ()
-testConsensusLightByzantine6 = do
-    achievedHeight <- newIORef (Height 0)
-    runConcurrently
-        [ createGossipTestNetwork
-            [ byz $ \vote -> return (Just $ vote { voteHeight = Height 555 })
-            , byz $ \vote -> return (Just $ vote { voteHeight = Height 666 })
-            , mempty
-            , waitHeight (Height 2) achievedHeight
-            ]
-        , waitSec 5
-        ]
-    readIORef achievedHeight >>= assertEqual "Must stay on initial height" (Height 0)
-
-
--- * Some useful utilities ------------------------
-
-
-blockHeight :: Block alg a -> Height
-blockHeight = headerHeight . blockHeader
-
-
-byz :: (Monad m)
-    => (Vote 'PreVote alg a -> m (Maybe (Vote 'PreVote alg a)))
-    -> AppCallbacks m alg a
-byz byzc = mempty
-  { appByzantine = mempty { byzantineCastPrevote = Just $ byzc }
-  }
-
-
-waitHeight :: (MonadIO m, MonadThrow m)
-           => Height
-           -> IORef Height
-           -> (AppCallbacks m alg a)
-waitHeight h achievedHeightIORef
-  =  mempty { appCommitCallback = liftIO . writeIORef achievedHeightIORef . blockHeight }
-  <> callbackAbortAtH h
