@@ -1,3 +1,4 @@
+{-# LANGUAGE DataKinds #-}
 -- | Tests for gossip.
 --
 -- These tests prepare environment, call functions from HSChain.P2P
@@ -25,6 +26,9 @@ import Control.Concurrent.STM.TVar
 import Control.Concurrent.MVar
 import Control.Monad
 import Control.Monad.Catch
+import Control.Monad.Trans.State.Strict
+import Control.Monad.Trans.Reader
+import Control.Monad.Trans.Class
 import Control.Monad.Fail
 import Control.Monad.Fix
 import Control.Monad.IO.Class
@@ -57,11 +61,16 @@ import HSChain.Types.Validators
 import HSChain.Utils
 import qualified HSChain.Mock.KeyVal as Mock
 
+import HSChain.P2P as P2P
+import           HSChain.P2P.Internal as P2P
+import qualified HSChain.P2P.PeerState.Types as P2P
+import qualified HSChain.P2P.PeerState.Handle as P2P (handler)
+
 import Test.Tasty
 import Test.Tasty.HUnit
 
 import TM.Util.Network
-
+import TM.Util.MockChain
 
 tests :: TestTree
 tests = testGroup "eigen-gossip"
@@ -79,8 +88,98 @@ tests = testGroup "eigen-gossip"
         , testCase "precommits,prevotes"           testRawGossipCurrent7
         , testCase "proposal,precommits,prevotes"  testRawGossipCurrent8
         ]
+    , testGroup "gossip-newstyle"
+      [ testCase "silent peer" testGossipUnknown
+      ]
     ]
 
+----------------------------------------------------------------
+-- Gossip tests
+----------------------------------------------------------------
+
+testGossipUnknown :: IO ()
+testGossipUnknown = withGossip 3 $ do
+  -- Must start from unknown state
+  get >>= \case
+    WrapState (Unknown _) -> return ()
+    _                     -> () <$ throwM (TestError "Should start from Unknown state")
+  -- Start consensus. We changed state. Peer is silent so it's still unknown
+  (s',cmd) <- step =<< startConsensus
+  get >>= \case
+    WrapState (Unknown _) -> return ()
+    _                     -> () <$ throwM (TestError "Should start from Unknown state")
+
+
+
+----------------------------------------------------------------
+-- Helpers
+----------------------------------------------------------------
+
+type GossipM alg a = DBT 'RW alg a (NoLogsT IO)
+type TestM   alg a = StateT  (P2P.SomeState alg a)
+                   ( ReaderT ( P2P.Config (GossipM alg a) alg a
+                             , TVar (Maybe (Height, TMState alg a)))
+                   ( GossipM alg a
+                   ))
+
+-- Start gossip FSM all alone
+withGossip :: Int -> TestM TestAlg Mock.BData x -> IO x
+withGossip n action = do
+  withDatabase "" genesis $ \conn -> runNoLogsT $ runDBT conn $ do
+    consensusState <- liftIO $ newTVarIO Nothing
+    gossipCnts     <- newGossipCounters
+    propStorage    <- newSTMPropStorage
+    cursor         <- getMempoolCursor nullMempool
+    let config = P2P.Config
+                   (makeReadOnlyPS propStorage)
+                   cursor
+                   (readTVar consensusState)
+                   gossipCnts
+    seedDatabase n
+    flip runReaderT (config, consensusState)
+      $ flip evalStateT (P2P.wrap P2P.UnknownState)
+      $ action
+
+
+
+mockchain :: [Block TestAlg Mock.BData]
+mockchain = tail $ scanl mintBlock genesis [Mock.BData [("K",i)] | i <- [100..]]
+
+-- Seed database with given number of blocks
+seedDatabase :: Int -> GossipM TestAlg Mock.BData ()
+seedDatabase n = do
+  mustQueryRW $ forM_ (take n $ mockchain `zip` (blockLastCommit <$> tail mockchain)) $ \(b,Just cmt) ->
+    storeCommit cmt b valSet
+
+
+-- Start "consensus engine"
+startConsensus :: TestM TestAlg Mock.BData (P2P.Event TestAlg Mock.BData)
+startConsensus = do
+  h     <- queryRO blockchainHeight
+  varSt <- lift $ asks snd
+  atomicallyIO $ writeTVar varSt (Just (succ h, TMState
+    { smRound         = Round 0
+    , smStep          = StepNewHeight 0
+    , smProposals     = mempty
+    , smPrevotesSet   = newHeightVoteSet valSet
+    , smPrecommitsSet = newHeightVoteSet valSet
+    , smLockedBlock   = Nothing
+    , smLastCommit    = Nothing
+    }))
+  return $ EAnnouncement $ TxAnn $ AnnStep $ FullStep (succ h) (Round 0) (StepNewHeight 0)
+
+-- Perform single step
+step :: (Crypto alg, BlockData a)
+     => Event alg a -> TestM alg a (P2P.SomeState alg a, [Command alg a])
+step e = do
+  cfg       <- lift $ asks fst
+  st        <- get
+  (st',cmd) <- lift $ lift $ P2P.handler cfg st e
+  put st'
+  return (st',cmd)
+
+
+----------------------------------------------------------------
 
 -- | Test 'Unknown' branch of peerGossipVotes.
 --   Simple run and check that nothing changed.
@@ -107,7 +206,7 @@ testRawGossipLagging =
         ourH  <- succ <$> queryRO blockchainHeight
         let step = FullStep (pred ourH) (Round 0) (StepNewHeight 0)
         recvCh   <- liftIO newTChanIO
-        liftIO $ atomically $ 
+        liftIO $ atomically $
           writeTChan recvCh (EGossip $ GossipAnn $ AnnStep step)
         pexCh    <- liftIO newTChanIO
         -- Run peerGossipVotes
@@ -133,7 +232,7 @@ testRawGossipAhead =
         ourH  <- succ <$> queryRO blockchainHeight
         let step = FullStep (succ ourH) (Round 0) (StepNewHeight 0)
         recvCh   <- liftIO newTChanIO
-        liftIO $ atomically $ 
+        liftIO $ atomically $
           writeTChan recvCh (EGossip $ GossipAnn $ AnnStep step)
         pexCh    <- liftIO newTChanIO
         -- Run peerGossipVotes
@@ -167,7 +266,7 @@ testRawGossipCurrentSentProposal = do
                                 }
         newTMState env ourH $ \tm -> tm { smProposals = Map.singleton (Round 0) (signValue currentNodeValIdx currentNodePrivKey proposal) }
         recvCh   <- liftIO newTChanIO
-        liftIO $ atomically $ 
+        liftIO $ atomically $
           writeTChan recvCh (EGossip $ GossipAnn $ AnnStep step)
         pexCh    <- liftIO newTChanIO
         -- Run peerGossipVotes
@@ -181,12 +280,12 @@ testRawGossipCurrentSentProposal = do
                 , close         = return ()
                 , connectedPeer = PeerInfo (PeerId 100) 100 100
                 }
-            , do waitForEvents envEventsQueue [(TepgvStarted, 1), (TepgvNewIter, 2), (TepgvCurrent, 1)] 
+            , do waitForEvents envEventsQueue [(TepgvStarted, 1), (TepgvNewIter, 2), (TepgvCurrent, 1)]
                  liftIO $ atomically $ writeTChan recvCh EQuit
                  waitSec 0.1
             , waitSec 5.0 >> throwM (TestError "Timeout!")
             ]
-        
+
         -- Check proposal message sent
         liftIO $
             (fmap deserialise <$> atomically (tryReadTQueue buffer)) >>= \case
@@ -205,7 +304,7 @@ testRawGossipCurrentSentProposal = do
 --
 internalTestRawGossipCurrentCurrent :: Bool -> Bool -> Bool -> IO ()
 internalTestRawGossipCurrentCurrent isTestingSendProposals isTestingSendPrevotes isTestingSendPrecommits =
-    withGossipEnv $ \peerChans gossipCh env@GossipEnv{..} mempool -> do  
+    withGossipEnv $ \peerChans gossipCh env@GossipEnv{..} mempool -> do
         -- Prepare state
         (_lastBlock, lastCommit) <- last <$> addSomeBlocks' env 10
         ourH  <- succ <$> queryRO blockchainHeight
@@ -241,7 +340,7 @@ internalTestRawGossipCurrentCurrent isTestingSendProposals isTestingSendPrevotes
         -- Run peerGossipVotes
         buffer <- liftIO newTQueueIO
         recvCh <- liftIO newTChanIO
-        liftIO $ atomically $ 
+        liftIO $ atomically $
           writeTChan recvCh (EGossip $ GossipAnn $ AnnStep step)
         pexCh  <- liftIO newTChanIO
         resState <- liftIO $ newMVar $ wrap UnknownState
@@ -275,7 +374,7 @@ internalTestRawGossipCurrentCurrent isTestingSendProposals isTestingSendPrevotes
                     _ -> False
         -- Check final state
         liftIO $ withMVar resState $ \case
-          WrapState (Current ps) 
+          WrapState (Current ps)
             | isTestingSendProposals  -> ps ^. peerProposals @?= Set.singleton (Round 0)
             | isTestingSendPrevotes   -> ps ^. peerPrevotes @?= Map.singleton (Round 0) (insertValidatorIdx (ValidatorIdx 0) (emptyValidatorISet 4 ))
             | isTestingSendPrecommits -> ps ^. peerPrecommits @?= Map.singleton (Round 0) (insertValidatorIdx (ValidatorIdx 0) (emptyValidatorISet 4 ))
