@@ -215,6 +215,7 @@ Test-suite hschain-tests
                        TM.Time
                        TM.Util.Network
                        TM.Util.Tests
+                       TM.Util.MockChain
                        TM.Validators
 
 -- Benchmarks

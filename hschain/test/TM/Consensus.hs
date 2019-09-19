@@ -26,14 +26,14 @@ import HSChain.Logger
 import HSChain.Store
 import HSChain.Store.STM
 import HSChain.Types
-import HSChain.Mock.KeyList
 import HSChain.Mock.KeyVal  (BData(..))
-import HSChain.Mock.Types   (makeGenesis)
 
 import Test.Tasty
 import Test.Tasty.HUnit
 
 import TM.Util.Network
+import TM.Util.MockChain
+
 
 ----------------------------------------------------------------
 -- Test tree
@@ -369,39 +369,3 @@ expect vals chTx chRx expected = do
       ExpectPV{}         -> "Prevote"
       ExpectPC{}         -> "Precommit"
       _                  -> "<shouldn't happen>"
-
-----------------------------------------------------------------
--- Constants
-----------------------------------------------------------------
-
--- Genesis block of BCh
-genesis :: Block TestAlg BData
-genesis = makeGenesis (BData []) valSet
-
-mintBlock :: Block TestAlg BData -> BData -> Block TestAlg BData
-mintBlock b dat = Block
-  { blockHeader = Header
-      { headerHeight         = succ $ headerHeight $ blockHeader b
-      , headerLastBlockID    = Just $ blockHash genesis
-      , headerValidatorsHash = hashed valSet
-      , headerValChangeHash  = hashed mempty
-      , headerDataHash       = hashed dat
-      , headerLastCommitHash = hashed Nothing
-      , headerEvidenceHash   = hashed []
-      }
-  , blockData       = dat
-  , blockValChange  = mempty
-  , blockLastCommit = Nothing
-  , blockEvidence   = []
-  }
-  
-block1, block1' :: Block TestAlg BData
-block1  = mintBlock genesis $ BData [("K",100)]
-block1' = mintBlock genesis $ BData [("K",101)]
-
-privK       :: [PrivKey TestAlg]
-k1,k2,k3,k4 :: PrivKey TestAlg
-privK@[k1,k2,k3,k4] = take 4 $ makePrivKeyStream 1337
-
-valSet :: ValidatorSet TestAlg
-Right valSet = makeValidatorSet [Validator (publicKey k) 1 | k <- privK]
