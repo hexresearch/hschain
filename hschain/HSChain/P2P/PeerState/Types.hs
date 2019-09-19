@@ -144,3 +144,6 @@ data Config m alg a = Config { _propStorage    :: !(ProposalStorage 'RO m alg a)
                              }
 makeLenses ''Config
 
+
+deriving instance (Show a, Crypto alg, Show (TX a)) => Show (Command alg a)
+deriving instance (Show a, Crypto alg, Show (TX a)) => Show (Event alg a)
