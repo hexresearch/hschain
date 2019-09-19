@@ -61,8 +61,6 @@ import HSChain.Types.Validators
 import HSChain.Utils
 import qualified HSChain.Mock.KeyVal as Mock
 
-import HSChain.P2P as P2P
-import           HSChain.P2P.Internal as P2P
 import qualified HSChain.P2P.PeerState.Types as P2P
 import qualified HSChain.P2P.PeerState.Handle as P2P (handler)
 
@@ -89,7 +87,10 @@ tests = testGroup "eigen-gossip"
         , testCase "proposal,precommits,prevotes"  testRawGossipCurrent8
         ]
     , testGroup "gossip-newstyle"
-      [ testCase "silent peer" testGossipUnknown
+      [ testCase "silent peer"     testGossipUnknown
+      , testCase "peer ahead"      testGossipAhead
+      , testCase "peer lagging"    testGossipLagging
+      , testCase "peer is current" testGossipCurrent
       ]
     ]
 
@@ -97,6 +98,7 @@ tests = testGroup "eigen-gossip"
 -- Gossip tests
 ----------------------------------------------------------------
 
+-- Peer is silent and its state remains unknown
 testGossipUnknown :: IO ()
 testGossipUnknown = withGossip 3 $ do
   -- Must start from unknown state
@@ -104,10 +106,73 @@ testGossipUnknown = withGossip 3 $ do
     WrapState (Unknown _) -> return ()
     _                     -> () <$ throwM (TestError "Should start from Unknown state")
   -- Start consensus. We changed state. Peer is silent so it's still unknown
-  (s',cmd) <- step =<< startConsensus
+  (_,cmds) <- step =<< startConsensus
   get >>= \case
     WrapState (Unknown _) -> return ()
     _                     -> () <$ throwM (TestError "Should start from Unknown state")
+  case cmds of
+    [Push2Gossip (GossipAnn (AnnStep (FullStep (Height 4) (Round 0) (StepNewHeight 0))))] -> return ()
+    _ -> error "Unexpected message"
+
+
+-- Peer is ahead of us
+testGossipAhead :: IO ()
+testGossipAhead = withGossip 3 $ do
+  _ <- step =<< startConsensus
+  (s',[]) <- step $ EGossip $ GossipAnn $ AnnStep $ FullStep (Height 100) (Round 0) (StepNewHeight 0)
+  case s' of
+    WrapState (Ahead _) -> return ()
+    _                   -> () <$ error "Should start from Unknown state"
+  -- We don't have anything to send
+  (_,[]) <- step EVotesTimeout
+  (_,[]) <- step EBlocksTimeout
+  return ()
+
+-- Peer is lagging
+testGossipLagging :: IO ()
+testGossipLagging = withGossip 3 $ do
+  _ <- step =<< startConsensus
+  -- Peer announce its state
+  do (st,[]) <- step $ EGossip $ GossipAnn $ AnnStep $ FullStep (Height 3) (Round 0) (StepNewHeight 0)
+     case st of
+       WrapState (Lagging _) -> return ()
+       _                     -> () <$ error "Peer should be lagging"
+  -- We should receive 4 votes
+  (_,[Push2Gossip (GossipPreCommit _)]) <- step EVotesTimeout
+  (_,[Push2Gossip (GossipPreCommit _)]) <- step EVotesTimeout
+  (_,[Push2Gossip (GossipPreCommit _)]) <- step EVotesTimeout
+  (_,[Push2Gossip (GossipPreCommit _)]) <- step EVotesTimeout
+  (s,[])                                <- step EVotesTimeout
+  liftIO $ print s
+  -- At this point peer has enough votes to commit block but FSM is
+  -- not smart enough to figure it on its own.
+  --
+  -- NOTE: subject to changes in the future
+  (_,[]) <- step EBlocksTimeout
+  -- When peer has enough precommits it announces that it has "proposal"
+  (_,[]) <- step $ EGossip $ GossipAnn $ AnnHasProposal (Height 3) (Round 0)
+  (_,[Push2Gossip (GossipBlock _)]) <- step EBlocksTimeout
+  -- Peer commits and advances to the same height as we
+  do (s',[]) <- step $ EGossip $ GossipAnn $ AnnStep $ FullStep (Height 4) (Round 0) (StepNewHeight 0)
+     case s' of
+       WrapState (Current _) -> return ()
+       _                     -> () <$ error "Peer should be lagging"
+
+
+-- Peer is current
+testGossipCurrent :: IO ()
+testGossipCurrent = withGossip 3 $ do
+  _ <- step =<< startConsensus
+  do (st,[]) <- step $ EGossip $ GossipAnn $ AnnStep $ FullStep (Height 4) (Round 0) (StepNewHeight 0)
+     case st of
+       WrapState (Current _) -> return ()
+       _                     -> () <$ error "Peer should be current"
+  -- FIXME: we don't test anything of substance here
+
+  -- where
+  --   block = mockchain !! 4
+  --   bid   = blockHash block
+  --   idx   = indexByValidator valSet (publicKey k1)
 
 
 
@@ -128,10 +193,10 @@ withGossip n action = do
   withDatabase "" genesis $ \conn -> runNoLogsT $ runDBT conn $ do
     consensusState <- liftIO $ newTVarIO Nothing
     gossipCnts     <- newGossipCounters
-    propStorage    <- newSTMPropStorage
+    props          <- newSTMPropStorage
     cursor         <- getMempoolCursor nullMempool
     let config = P2P.Config
-                   (makeReadOnlyPS propStorage)
+                   (makeReadOnlyPS props)
                    cursor
                    (readTVar consensusState)
                    gossipCnts
@@ -143,14 +208,17 @@ withGossip n action = do
 
 
 mockchain :: [Block TestAlg Mock.BData]
-mockchain = tail $ scanl mintBlock genesis [Mock.BData [("K",i)] | i <- [100..]]
+mockchain = scanl mintBlock genesis [Mock.BData [("K",i)] | i <- [100..]]
 
 -- Seed database with given number of blocks
 seedDatabase :: Int -> GossipM TestAlg Mock.BData ()
 seedDatabase n = do
-  mustQueryRW $ forM_ (take n $ mockchain `zip` (blockLastCommit <$> tail mockchain)) $ \(b,Just cmt) ->
+  mustQueryRW $ forM_ blockAndCmt $ \(b,Just cmt) ->
     storeCommit cmt b valSet
-
+  where
+    blockAndCmt = take n
+                $ tail
+                $ mockchain `zip` (blockLastCommit <$> tail mockchain)
 
 -- Start "consensus engine"
 startConsensus :: TestM TestAlg Mock.BData (P2P.Event TestAlg Mock.BData)
