@@ -18,9 +18,7 @@ import System.Random            (randomRIO)
 import Lens.Micro.Mtl
 
 import HSChain.Blockchain.Internal.Types
-import HSChain.Control
 import HSChain.Crypto
-import HSChain.Exceptions
 import HSChain.Store
 import HSChain.Types.Blockchain
 import HSChain.Types.Validators
@@ -152,8 +150,7 @@ handlerBlocksTimeout = do
   hasNoBlock <- not <$> use lagPeerHasBlock
   when (hasProp && hasNoBlock) $ do
     (FullStep h _ _) <- use lagPeerStep
-    b <- lift $ throwNothing (DBMissingBlock h) <=< queryRO
-              $ retrieveBlock h
+    b <- lift $ queryRO $ mustRetrieveBlock h
     addBlock b
     push2Gossip $ GossipBlock b
     tickSend blocks

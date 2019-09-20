@@ -10,7 +10,7 @@ module HSChain.Store.Internal.BlockDB where
 
 import Codec.Serialise     (Serialise, serialise, deserialiseOrFail)
 import Control.Monad       (when)
-import Control.Monad.Catch (MonadThrow)
+import Control.Monad.Catch (MonadThrow(..))
 import qualified Data.List.NonEmpty   as NE
 import qualified Data.ByteString.Lazy as LBS
 import qualified Database.SQLite.Simple           as SQL
@@ -152,6 +152,9 @@ retrieveBlockID :: (MonadQueryRO m alg a) => Height -> m (Maybe (BlockID alg a))
 retrieveBlockID h =
   singleQ "SELECT bid FROM thm_blockchain WHERE height = ?" (Only h)
 
+mustRetrieveBlockID :: (MonadThrow m, MonadQueryRO m alg a) => Height -> m (BlockID alg a)
+mustRetrieveBlockID h = throwNothing (DBMissingBlockID h) =<< retrieveBlockID h
+
 -- | Retrieve commit justifying commit of block at height
 --   @h@. Must return same result as @fmap blockLastCommit . retrieveBlock . next@
 --   but do it more efficiently.
@@ -165,11 +168,11 @@ retrieveCommit h = do
   return $ blockLastCommit =<< mb
 
 -- | Retrieve round when commit was made.
-retrieveCommitRound :: (MonadQueryRO m alg a) => Height -> m (Maybe Round)
-retrieveCommitRound h =
+mustRetrieveCommitRound :: (MonadThrow m, MonadQueryRO m alg a) => Height -> m Round
+mustRetrieveCommitRound h =
   basicQuery "SELECT round FROM thm_blockchain WHERE height = ?" (Only h) >>= \case
-    []       -> return Nothing
-    [Only r] -> return $! Just $ Round r
+    []       -> throwM $ DBMissingRound h
+    [Only r] -> return $! Round r
     _        -> error "Impossible"
 
 

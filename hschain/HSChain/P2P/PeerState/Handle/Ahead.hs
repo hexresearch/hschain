@@ -9,12 +9,9 @@ module HSChain.P2P.PeerState.Handle.Ahead
   ) where
 
 import Control.Monad.RWS.Strict
-
 import Lens.Micro.Mtl
 
 import HSChain.Blockchain.Internal.Types
-import HSChain.Control                   (throwNothing)
-import HSChain.Exceptions
 import HSChain.Store
 import HSChain.Types.Blockchain
 
@@ -59,8 +56,7 @@ advanceOurHeignt :: AdvanceOurHeight AheadState alg a m
 advanceOurHeignt (FullStep ourH _ _) = do
   step@(FullStep h _ _) <- use aheadPeerStep
   if h == ourH then
-        do vals <- throwNothing (DBMissingValSet h) <=< lift $ queryRO
-                 $ retrieveValidatorSet h
+        do vals <- lift $ queryRO $ mustRetrieveValidatorSet h
            return $ wrap $ CurrentState
              { _peerStep       = step
              , _peerValidators = vals
