@@ -1,13 +1,14 @@
-{-# LANGUAGE DataKinds          #-}
-{-# LANGUAGE FlexibleContexts   #-}
-{-# LANGUAGE GADTs              #-}
-{-# LANGUAGE InstanceSigs       #-}
-{-# LANGUAGE LambdaCase         #-}
-{-# LANGUAGE RankNTypes         #-}
-{-# LANGUAGE RecordWildCards    #-}
-{-# LANGUAGE StandaloneDeriving #-}
-{-# LANGUAGE TemplateHaskell    #-}
-{-# LANGUAGE TypeFamilies       #-}
+{-# LANGUAGE DataKinds            #-}
+{-# LANGUAGE FlexibleContexts     #-}
+{-# LANGUAGE GADTs                #-}
+{-# LANGUAGE InstanceSigs         #-}
+{-# LANGUAGE LambdaCase           #-}
+{-# LANGUAGE RankNTypes           #-}
+{-# LANGUAGE RecordWildCards      #-}
+{-# LANGUAGE StandaloneDeriving   #-}
+{-# LANGUAGE TemplateHaskell      #-}
+{-# LANGUAGE TypeFamilies         #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 module HSChain.P2P.PeerState.Types where
 
