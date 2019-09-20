@@ -141,7 +141,7 @@ peerFSM
   -> TBQueue (GossipMsg alg a)
   -> TChan (Event alg a)
   -> MempoolCursor m alg (TX a)
-  -> m (SomeState alg a)
+  -> m (State alg a)
 peerFSM PeerChans{..} peerExchangeCh gossipCh recvCh cursor@MempoolCursor{..} = logOnException $ do
   logger InfoS "Starting routing for receiving messages" ()
   trace (TePeerGossipVotes TepgvStarted)

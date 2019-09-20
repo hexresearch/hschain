@@ -22,15 +22,15 @@ import qualified HSChain.P2P.PeerState.Handle.Unknown as Unknown
 
 handler :: HandlerCtx alg a m
         => Config m alg a
-        -> SomeState alg a
+        -> State alg a
         -> Event alg a
-        -> m (SomeState alg a, [Command alg a])
+        -> m (State alg a, [Command alg a])
 handler config st event = do
   (st',cmds) <- case st of
-    WrapState (Lagging s) -> select <$> runTransitionT (Lagging.handler event) config s
-    WrapState (Current s) -> select <$> runTransitionT (Current.handler event) config s
-    WrapState (Ahead s)   -> select <$> runTransitionT (Ahead.handler event) config s
-    WrapState (Unknown s) -> select <$> runTransitionT (Unknown.handler event) config s
+    Lagging s -> select <$> runTransitionT (Lagging.handler event) config s
+    Current s -> select <$> runTransitionT (Current.handler event) config s
+    Ahead   s -> select <$> runTransitionT (Ahead.handler event) config s
+    Unknown s -> select <$> runTransitionT (Unknown.handler event) config s
   second (cmds <>) <$> do handleIssuedGossip config st' $ mapMaybe getPush2Gossip cmds
     where getPush2Gossip (Push2Gossip c) = Just c
           getPush2Gossip _               = Nothing
@@ -42,11 +42,11 @@ select (a, _, c) = (a, c)
 
 handleIssuedGossip :: HandlerCtx alg a m
                    => Config m alg a
-                   -> SomeState alg a
+                   -> State alg a
                    -> [GossipMsg alg a]
-                   -> m (SomeState alg a, [Command alg a])
+                   -> m (State alg a, [Command alg a])
 handleIssuedGossip config st = foldM (\ (s',cmds) msg -> second (cmds<>) <$> case s' of
-  WrapState (Lagging s) -> select <$> runTransitionT (Lagging.issuedGossipHandler msg) config s
-  WrapState (Current s) -> select <$> runTransitionT (Current.issuedGossipHandler msg) config s
-  WrapState (Ahead s)   -> select <$> runTransitionT (Ahead.issuedGossipHandler msg) config s
-  WrapState (Unknown s) -> select <$> runTransitionT (Unknown.issuedGossipHandler msg) config s ) (st,[])
+  Lagging s -> select <$> runTransitionT (Lagging.issuedGossipHandler msg) config s
+  Current s -> select <$> runTransitionT (Current.issuedGossipHandler msg) config s
+  Ahead   s -> select <$> runTransitionT (Ahead.issuedGossipHandler msg) config s
+  Unknown s -> select <$> runTransitionT (Unknown.issuedGossipHandler msg) config s ) (st,[])

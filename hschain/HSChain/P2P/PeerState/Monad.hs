@@ -44,7 +44,11 @@ instance MonadTrans (TransitionT s alg a) where
 --  localNamespace f (TransitionT action) = TransitionT $ localNamespace f $ lift $ action
 
 -- | Runs `TransitionT'.
-runTransitionT :: TransitionT s alg a m (SomeState alg a) -> Config m alg a -> s alg a -> m (SomeState alg a, s alg a, [Command alg a])
+runTransitionT
+  :: TransitionT s alg a m (State alg a)
+  -> Config m alg a
+  -> s alg a
+  -> m (State alg a, s alg a, [Command alg a])
 runTransitionT = runRWST . unTransition
 
 type HandlerCtx alg a m = ( Serialise a
@@ -61,9 +65,9 @@ type HandlerCtx alg a m = ( Serialise a
 -- | Handler of events.
 type Handler s t alg a m =  HandlerCtx alg a m
                          => t alg a -- ^ `Event' to handle
-                         -> TransitionT (InternalState s) alg a m (SomeState alg a) -- ^ new `TransitionT'
+                         -> TransitionT s alg a m (State alg a) -- ^ new `TransitionT'
 
-currentState :: (Functor m, Monad m, Wrapable t) => TransitionT t alg a m (SomeState alg a)
+currentState :: (Functor m, Monad m, Wrapable t) => TransitionT t alg a m (State alg a)
 currentState = wrap <$> get
 
 resendGossip :: ( MonadReader (Config n alg a) m

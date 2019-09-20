@@ -31,7 +31,7 @@ import HSChain.P2P.PeerState.Monad
 import HSChain.P2P.PeerState.Types
 
 advancePeer :: (CryptoSign alg, CryptoHash alg, Functor m, Monad m, MonadIO m, MonadThrow m, MonadReadDB m alg a)
-            => FullStep -> m (SomeState alg a)
+            => FullStep -> m (State alg a)
 advancePeer step@(FullStep h _ _) = do
            ourH <- succ <$> queryRO blockchainHeight
            case compare h ourH of
@@ -76,18 +76,18 @@ advanceMempoolCursor = do
 
 type MessageHandler s alg a m =  HandlerCtx alg a m
                               => GossipMsg alg a
-                              -> TransitionT s alg a m (SomeState alg a)
+                              -> TransitionT s alg a m (State alg a)
 
 type AnnouncementHandler s alg a m =  HandlerCtx alg a m
                                    => MessageTx alg a
-                                   -> TransitionT s alg a m (SomeState alg a)
+                                   -> TransitionT s alg a m (State alg a)
 
 type AdvanceOurHeight s alg a m =  HandlerCtx alg a m
                                 => FullStep
-                                -> TransitionT s alg a m (SomeState alg a)
+                                -> TransitionT s alg a m (State alg a)
 
 type TimeoutHandler s alg a m =  (Wrapable s, HandlerCtx alg a m)
-                              => TransitionT s alg a m (SomeState alg a)
+                              => TransitionT s alg a m (State alg a)
 
 handlerGeneric :: (Wrapable s, HandlerCtx alg a m)
                => MessageHandler s alg a m
@@ -95,7 +95,7 @@ handlerGeneric :: (Wrapable s, HandlerCtx alg a m)
                -> TimeoutHandler s alg a m
                -> TimeoutHandler s alg a m
                -> Event alg a
-               -> TransitionT s alg a m (SomeState alg a)
+               -> TransitionT s alg a m (State alg a)
 handlerGeneric
   hanldlerGossipMsg
   handlerVotesTimeout
@@ -131,7 +131,7 @@ issuedGossipHandlerGeneric :: (Wrapable s, HandlerCtx alg a m)
          => MessageHandler s alg a m
          -> AdvanceOurHeight s alg a m
          -> GossipMsg alg a
-         -> TransitionT s alg a m (SomeState alg a)
+         -> TransitionT s alg a m (State alg a)
 issuedGossipHandlerGeneric
   handlerGossipMsg
   advanceOurHeight
