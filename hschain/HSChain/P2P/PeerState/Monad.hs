@@ -29,6 +29,7 @@ newtype TransitionT s alg a m r = TransitionT { unTransition :: RWST (Config m a
   deriving ( Functor
            , Applicative
            , Monad
+           , MonadIO
            , MonadReader (Config m alg a)
            , MonadWriter [Command alg a]
            , MonadState (s alg a)
@@ -65,8 +66,11 @@ type Handler s t alg a m =  HandlerCtx alg a m
 currentState :: (Functor m, Monad m, Wrapable t) => TransitionT t alg a m (SomeState alg a)
 currentState = wrap <$> get
 
-resendGossip :: (MonadReader (Config m alg1 a1) (t m2), MonadWriter [Command alg2 a2] (t m2), MonadTrans t, MonadMask m2, MonadIO m2)
-             => GossipMsg alg2 a2 -> t m2 ()
+resendGossip :: ( MonadReader (Config n alg a) m
+                , MonadWriter [Command alg a]  m
+                , MonadIO m
+                )
+             => GossipMsg alg a -> m ()
 resendGossip (GossipPreVote v  ) = tell [SendRX $ RxPreVote v] >> tickRecv prevote
 resendGossip (GossipPreCommit v) = tell [SendRX $ RxPreCommit v] >> tickRecv precommit
 resendGossip (GossipProposal  p) = tell [SendRX $ RxProposal p] >> tickRecv proposals
@@ -75,17 +79,15 @@ resendGossip (GossipTx tx      ) = tell [Push2Mempool tx] >> tickRecv Logging.tx
 resendGossip (GossipPex pexmsg ) = tell [SendPEX pexmsg] >> tickRecv pex
 resendGossip _                   = return ()
 
-tickRecv :: (MonadReader (Config m alg a) (t m2), MonadTrans t, MonadMask m2, MonadIO m2)
-          => (GossipCounters -> Counter) -> t m2 ()
-tickRecv counter = do 
-  cnts <- view gossipCounters
-  lift $ Logging.tickRecv $ counter cnts
+tickRecv :: (MonadReader (Config n alg a) m, MonadIO m)
+         => (GossipCounters -> Counter) -> m ()
+tickRecv counter =
+  Logging.tickRecv . counter =<< view gossipCounters
 
-tickSend :: (MonadReader (Config m alg a) (t m2), MonadTrans t, MonadMask m2, MonadIO m2)
-         => (GossipCounters -> Counter) -> t m2 ()
-tickSend counter = do 
-  cnts <- view gossipCounters
-  lift $ Logging.tickSend $ counter cnts
+tickSend :: (MonadReader (Config n alg a) m, MonadIO m)
+         => (GossipCounters -> Counter) -> m ()
+tickSend counter =
+  Logging.tickSend . counter =<< view gossipCounters
 
 push2Gossip :: MonadWriter [Command alg a] m
             => GossipMsg alg a -> m ()
