@@ -35,9 +35,6 @@ advancePeer :: (CryptoSign alg, CryptoHash alg, Functor m, Monad m, MonadIO m, M
 advancePeer step@(FullStep h _ _) = do
            ourH <- succ <$> queryRO blockchainHeight
            case compare h ourH of
-             -- FIXME: valid storage MUST return valid answer in that
-             --        case but we should handle Nothing case properly
-             --        (panic)
              LT -> do vals <- throwNothing (DBMissingValSet  h) <=< queryRO
                             $ retrieveValidatorSet h
                       cmtR <- throwNothing (DBMissingRound   h) <=< queryRO
