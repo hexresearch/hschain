@@ -101,46 +101,42 @@ handlerGossipMsg  gossipMsg = do
 
 
 addProposal :: MonadState (CurrentState alg a) m
-                   => Height -> Round -> m ()
+            => Height -> Round -> m ()
 addProposal h r = do
   FullStep peerHeight _ _ <- use peerStep
   when (h == peerHeight) $
     peerProposals %= Set.insert r
 
 addPrevote :: MonadState (CurrentState alg a) m
-                   => Height -> Round -> ValidatorIdx alg -> m ()
+           => Height -> Round -> ValidatorIdx alg -> m ()
 addPrevote h r idx = do
-      (FullStep hPeer _ _) <- use peerStep
-      when (h == hPeer) $
-        modify ( \ p ->
-            p { _peerPrevotes = Map.alter
-                         (\case
-                             Nothing   -> Just
-                                        $ insertValidatorIdx idx
-                                        $ emptyValidatorISet
-                                        $ validatorSetSize
-                                        $ _peerValidators p
-                             Just iset -> Just
-                                        $ insertValidatorIdx idx iset
-                         ) r (_peerPrevotes p)
-               })
+  FullStep hPeer _ _ <- use peerStep
+  when (h == hPeer) $ do
+    vals <- use peerValidators
+    peerPrevotes %= Map.alter
+      (\case
+          Nothing   -> Just
+                     $ insertValidatorIdx idx
+                     $ emptyValidatorISet (validatorSetSize vals)
+          Just iset -> Just
+                     $ insertValidatorIdx idx iset
+      ) r
+
 
 addPrecommit :: MonadState (CurrentState alg a) m
-                   => Height -> Round -> ValidatorIdx alg -> m ()
+             => Height -> Round -> ValidatorIdx alg -> m ()
 addPrecommit h r idx = do
-      (FullStep hPeer _ _) <- use peerStep
-      when (h == hPeer) $
-        modify $ \ p -> p { _peerPrecommits = Map.alter
-                                   (\case
-                                       Nothing   -> Just
-                                                  $ insertValidatorIdx idx
-                                                  $ emptyValidatorISet
-                                                  $ validatorSetSize
-                                                  $ _peerValidators p
-                                       Just iset -> Just
-                                                  $ insertValidatorIdx idx iset
-                                   ) r (_peerPrecommits p)
-                          }
+  FullStep hPeer _ _ <- use peerStep
+  when (h == hPeer) $ do
+    vals <- use peerValidators
+    peerPrecommits %= Map.alter
+      (\case
+          Nothing   -> Just
+                     $ insertValidatorIdx idx
+                     $ emptyValidatorISet (validatorSetSize vals)
+          Just iset -> Just
+                     $ insertValidatorIdx idx iset
+      ) r
 
 addBlock :: (MonadState (CurrentState alg a) m, CryptoSign alg, CryptoHash alg)
          => Block alg a -> m ()
