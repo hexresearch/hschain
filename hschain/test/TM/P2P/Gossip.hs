@@ -95,8 +95,7 @@ testGossipLagging = withGossip 3 $ do
   (_,[Push2Gossip (GossipPreCommit _)]) <- step EVotesTimeout
   (_,[Push2Gossip (GossipPreCommit _)]) <- step EVotesTimeout
   (_,[Push2Gossip (GossipPreCommit _)]) <- step EVotesTimeout
-  (s,[])                                <- step EVotesTimeout
-  liftIO $ print s
+  (_,[])                                <- step EVotesTimeout
   -- At this point peer has enough votes to commit block but FSM is
   -- not smart enough to figure it on its own.
   --
