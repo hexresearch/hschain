@@ -25,7 +25,8 @@ import HSChain.P2P.PeerState.Types
 
 import qualified HSChain.P2P.Internal.Logging as Logging
 
-newtype TransitionT s alg a m r = TransitionT { unTransition :: RWST (Config m alg a) [Command alg a] (s alg a) m r }
+newtype TransitionT s alg a m r = TransitionT
+  { unTransition :: RWST (Config m alg a) [Command alg a] (s alg a) m r }
   deriving ( Functor
            , Applicative
            , Monad
@@ -45,11 +46,14 @@ instance MonadTrans (TransitionT s alg a) where
 
 -- | Runs `TransitionT'.
 runTransitionT
-  :: TransitionT s alg a m (State alg a)
+  :: Monad m
+  => TransitionT s alg a m (State alg a)
   -> Config m alg a
   -> s alg a
-  -> m (State alg a, s alg a, [Command alg a])
-runTransitionT = runRWST . unTransition
+  -> m (State alg a, [Command alg a])
+runTransitionT action cfg st = do
+  (r,_,acc) <- runRWST (unTransition action) cfg st
+  return (r,acc)
 
 type HandlerCtx alg a m = ( Serialise a
                           , CryptoHash alg
