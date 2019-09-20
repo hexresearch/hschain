@@ -52,7 +52,6 @@ module HSChain.Store (
   , retrieveBlockID
   , retrieveCommit
   , retrieveLocalCommit
-  , retrieveCommitRound
   , retrieveValidatorSet
   , mustRetrieveBlock
   , mustRetrieveValidatorSet

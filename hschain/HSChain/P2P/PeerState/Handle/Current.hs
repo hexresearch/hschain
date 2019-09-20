@@ -21,12 +21,11 @@ import System.Random            (randomRIO)
 import Lens.Micro.Mtl
 
 import HSChain.Blockchain.Internal.Types
-import HSChain.Control                   (throwNothing)
 import HSChain.Crypto
 import HSChain.Crypto.Containers         (toPlainMap)
-import HSChain.Exceptions
 import HSChain.Logger
 import HSChain.Store
+import HSChain.Store.Internal.BlockDB
 import HSChain.Types.Blockchain
 import HSChain.Types.Validators
 
@@ -142,12 +141,9 @@ advanceOurHeight (FullStep ourH _ _) = do
       -- Current peer may become lagging if we increase our height
   (FullStep h _ _) <- use peerStep
   if h < ourH then
-        do vals <- throwNothing (DBMissingValSet  h) <=< lift $ queryRO
-                 $ retrieveValidatorSet h
-           r    <- throwNothing (DBMissingRound   h) <=< lift $ queryRO
-                 $ retrieveCommitRound  h
-           bid  <- throwNothing (DBMissingBlockID h) <=< lift $ queryRO
-                 $ retrieveBlockID      h
+        do vals <- lift $ queryRO $ mustRetrieveValidatorSet h
+           r    <- lift $ queryRO $ mustRetrieveCommitRound  h
+           bid  <- lift $ queryRO $ mustRetrieveBlockID      h
            p <- get
            return $ wrap $ LaggingState
              { _lagPeerStep        = _peerStep p

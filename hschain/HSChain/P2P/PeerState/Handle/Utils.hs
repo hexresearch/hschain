@@ -17,12 +17,11 @@ import Lens.Micro.Mtl
 
 import HSChain.Blockchain.Internal.Types
 import HSChain.Crypto
-import HSChain.Exceptions
 import HSChain.Store
+import HSChain.Store.Internal.BlockDB
 import HSChain.Types.Blockchain
 import HSChain.Types.Validators
 
-import HSChain.Control              (throwNothing)
 import HSChain.Store.Internal.Query (MonadReadDB)
 
 import HSChain.P2P.Internal.Logging (GossipCounters(..))
@@ -35,12 +34,9 @@ advancePeer :: (CryptoSign alg, CryptoHash alg, Functor m, Monad m, MonadIO m, M
 advancePeer step@(FullStep h _ _) = do
            ourH <- succ <$> queryRO blockchainHeight
            case compare h ourH of
-             LT -> do vals <- throwNothing (DBMissingValSet  h) <=< queryRO
-                            $ retrieveValidatorSet h
-                      cmtR <- throwNothing (DBMissingRound   h) <=< queryRO
-                            $ retrieveCommitRound  h
-                      bid  <- throwNothing (DBMissingBlockID h) <=< queryRO
-                            $ retrieveBlockID      h
+             LT -> do vals <- queryRO $ mustRetrieveValidatorSet h
+                      cmtR <- queryRO $ mustRetrieveCommitRound  h
+                      bid  <- queryRO $ mustRetrieveBlockID      h
                       return $ wrap $ LaggingState
                         { _lagPeerStep        = step
                         , _lagPeerCommitR     = cmtR
@@ -50,8 +46,7 @@ advancePeer step@(FullStep h _ _) = do
                         , _lagPeerHasBlock    = False
                         , _lagPeerBlockID     = bid
                         }
-             EQ -> do vals <- throwNothing (DBMissingValSet h) <=< queryRO
-                            $ retrieveValidatorSet h
+             EQ -> do vals <- queryRO $ mustRetrieveValidatorSet h
                       return $ wrap $ CurrentState
                         { _peerStep       = step
                         , _peerValidators = vals
