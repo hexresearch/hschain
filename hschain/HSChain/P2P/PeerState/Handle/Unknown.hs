@@ -15,7 +15,7 @@ import HSChain.P2P.PeerState.Types
 
 import HSChain.P2P.PeerState.Handle.Utils
 
-handler :: Handler Unknown Event alg a m
+handler :: Handler UnknownState Event alg a m
 handler =
   handlerGeneric
    handlerGossipMsg
@@ -23,7 +23,7 @@ handler =
    handlerMempoolTimeout
    handlerBlocksTimeout
 
-issuedGossipHandler :: Handler Unknown GossipMsg alg a m
+issuedGossipHandler :: Handler UnknownState GossipMsg alg a m
 issuedGossipHandler =
   issuedGossipHandlerGeneric
     handlerGossipMsg

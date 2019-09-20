@@ -56,13 +56,10 @@ testGossipUnknown :: IO ()
 testGossipUnknown = withGossip 3 $ do
   -- Must start from unknown state
   get >>= \case
-    WrapState (Unknown _) -> return ()
-    _                     -> () <$ error "Should start from Unknown state"
+    Unknown _ -> return ()
+    _         -> error "Should start from Unknown state"
   -- Start consensus. We changed state. Peer is silent so it's still unknown
-  (_,cmds) <- step =<< startConsensus
-  get >>= \case
-    WrapState (Unknown _) -> return ()
-    _                     -> () <$ error "Should start from Unknown state"
+  (Unknown{},cmds) <- step =<< startConsensus
   case cmds of
     [Push2Gossip (GossipAnn (AnnStep (FullStep (Height 4) (Round 0) (StepNewHeight 0))))] -> return ()
     _ -> error "Unexpected message"
@@ -72,10 +69,7 @@ testGossipUnknown = withGossip 3 $ do
 testGossipAhead :: IO ()
 testGossipAhead = withGossip 3 $ do
   _ <- step =<< startConsensus
-  (s',[]) <- step $ EGossip $ GossipAnn $ AnnStep $ FullStep (Height 100) (Round 0) (StepNewHeight 0)
-  case s' of
-    WrapState (Ahead _) -> return ()
-    _                   -> () <$ error "Should start from Unknown state"
+  (Ahead{},[]) <- step $ EGossip $ GossipAnn $ AnnStep $ FullStep (Height 100) (Round 0) (StepNewHeight 0)
   -- We don't have anything to send
   (_,[]) <- step EVotesTimeout
   (_,[]) <- step EBlocksTimeout
@@ -86,10 +80,7 @@ testGossipLagging :: IO ()
 testGossipLagging = withGossip 3 $ do
   _ <- step =<< startConsensus
   -- Peer announce its state
-  do (st,[]) <- step $ EGossip $ GossipAnn $ AnnStep $ FullStep (Height 3) (Round 0) (StepNewHeight 0)
-     case st of
-       WrapState (Lagging _) -> return ()
-       _                     -> () <$ error "Peer should be lagging"
+  (Lagging{},[]) <- step $ EGossip $ GossipAnn $ AnnStep $ FullStep (Height 3) (Round 0) (StepNewHeight 0)
   -- We should receive 4 votes
   (_,[Push2Gossip (GossipPreCommit _)]) <- step EVotesTimeout
   (_,[Push2Gossip (GossipPreCommit _)]) <- step EVotesTimeout
@@ -105,26 +96,20 @@ testGossipLagging = withGossip 3 $ do
   (_,[]) <- step $ EGossip $ GossipAnn $ AnnHasProposal (Height 3) (Round 0)
   (_,[Push2Gossip (GossipBlock _)]) <- step EBlocksTimeout
   -- Peer commits and advances to the same height as we
-  do (s',[]) <- step $ EGossip $ GossipAnn $ AnnStep $ FullStep (Height 4) (Round 0) (StepNewHeight 0)
-     case s' of
-       WrapState (Current _) -> return ()
-       _                     -> () <$ error "Peer should be lagging"
-
+  (Current{},[]) <- step $ EGossip $ GossipAnn $ AnnStep $ FullStep (Height 4) (Round 0) (StepNewHeight 0)
+  return ()
 
 -- Peer is current
 testGossipCurrent :: IO ()
 testGossipCurrent = withGossip 3 $ do
   _ <- step =<< startConsensus
-  do (st,[]) <- step $ EGossip $ GossipAnn $ AnnStep $ FullStep (Height 4) (Round 0) (StepNewHeight 0)
-     case st of
-       WrapState (Current _) -> return ()
-       _                     -> () <$ error "Peer should be current"
+  (Current{},[]) <- step $ EGossip $ GossipAnn $ AnnStep $ FullStep (Height 4) (Round 0) (StepNewHeight 0)
   -- FIXME: we don't test anything of substance here
   -- where
   --   block = mockchain !! 4
   --   bid   = blockHash block
   --   idx   = indexByValidator valSet (publicKey k1)
-
+  return ()
 
 
 ----------------------------------------------------------------
@@ -132,7 +117,7 @@ testGossipCurrent = withGossip 3 $ do
 ----------------------------------------------------------------
 
 type GossipM alg a = DBT 'RW alg a (NoLogsT IO)
-type TestM   alg a = StateT  (P2P.SomeState alg a)
+type TestM   alg a = StateT  (P2P.State alg a)
                    ( ReaderT ( P2P.Config (GossipM alg a) alg a
                              , TVar (Maybe (Height, TMState alg a)))
                    ( GossipM alg a
@@ -189,7 +174,7 @@ startConsensus = do
 
 -- Perform single step
 step :: (Crypto alg, BlockData a)
-     => Event alg a -> TestM alg a (P2P.SomeState alg a, [Command alg a])
+     => Event alg a -> TestM alg a (P2P.State alg a, [Command alg a])
 step e = do
   cfg       <- lift $ asks fst
   st        <- get

@@ -40,7 +40,7 @@ import qualified HSChain.Data.CIntMap as CIMap
 import qualified Data.Map.Strict    as Map
 import qualified Data.Set           as Set
 
-handler :: Handler Current Event alg a m
+handler :: Handler CurrentState Event alg a m
 handler =
   handlerGeneric
    handlerGossipMsg
@@ -48,7 +48,7 @@ handler =
    handlerMempoolTimeout
    handlerBlocksTimeout
 
-issuedGossipHandler :: Handler Current GossipMsg alg a m
+issuedGossipHandler :: Handler CurrentState GossipMsg alg a m
 issuedGossipHandler =
   issuedGossipHandlerGeneric
     handlerGossipMsg

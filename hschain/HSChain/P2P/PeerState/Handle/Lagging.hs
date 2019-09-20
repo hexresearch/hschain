@@ -35,7 +35,7 @@ import qualified Data.IntSet        as ISet
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Map.Strict    as Map
 
-handler :: Handler Lagging Event alg a m
+handler :: Handler LaggingState Event alg a m
 handler =
   handlerGeneric
    handlerGossipMsg
@@ -43,7 +43,7 @@ handler =
    handlerMempoolTimeout
    handlerBlocksTimeout
 
-issuedGossipHandler :: Handler Lagging GossipMsg alg a m
+issuedGossipHandler :: Handler LaggingState GossipMsg alg a m
 issuedGossipHandler =
   issuedGossipHandlerGeneric
     handlerGossipMsg

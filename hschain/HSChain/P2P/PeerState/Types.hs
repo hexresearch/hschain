@@ -67,61 +67,27 @@ makeLenses ''AheadState
 data UnknownState alg a = UnknownState
   deriving Show
 
---
--- | Existential wrapper for `State'.
---
--- This is what's exposed to public API.
-data SomeState alg a where
-    WrapState :: State s alg a -> SomeState alg a
-
-instance CryptoAsymmetric alg => Show (SomeState alg a) where
-  show = \case
-    WrapState (Current s) -> show s
-    WrapState (Lagging s) -> show s
-    WrapState (Ahead s)   -> show s
-    WrapState (Unknown s) -> show s
-
--- | Running modes.
-data Mode = MLagging
-          | MCurrent
-          | MAhead
-          | MUnknown
-  deriving (Show, Eq)
-
-type Lagging = State 'MLagging
-type Current = State 'MCurrent
-type Ahead   = State 'MAhead
-type Unknown = State 'MUnknown
-
 -- | State of a peer.
-data State (s :: Mode) alg a where
-    Lagging :: LaggingState alg a -> State 'MLagging alg a
-    Current :: CurrentState alg a -> State 'MCurrent alg a
-    Ahead   :: AheadState alg a -> State 'MAhead alg a
-    Unknown :: UnknownState alg a -> State 'MUnknown alg a
+data State alg a where
+  Lagging :: LaggingState alg a -> State alg a
+  Current :: CurrentState alg a -> State alg a
+  Ahead   :: AheadState   alg a -> State alg a
+  Unknown :: UnknownState alg a -> State alg a
 
 class Wrapable s where
-    wrap :: s alg a -> SomeState alg a
+    wrap :: s alg a -> State alg a
 
 instance Wrapable LaggingState where
-    wrap s = WrapState $ Lagging s
+    wrap s = Lagging s
 
 instance Wrapable CurrentState where
-    wrap s = WrapState $ Current s
+    wrap s = Current s
 
 instance Wrapable AheadState where
-    wrap s = WrapState $ Ahead s
+    wrap s = Ahead s
 
 instance Wrapable UnknownState where
-    wrap s = WrapState $ Unknown s
-
--- | Type family mapping a `State' to the corresponding internal state
--- type.
-type family InternalState (s :: * -> * -> *) :: * -> * -> *
-type instance InternalState Lagging = LaggingState
-type instance InternalState Current = CurrentState
-type instance InternalState Ahead   = AheadState
-type instance InternalState Unknown = UnknownState
+    wrap = Unknown
 
 data Command alg a
   = SendRX !(MessageRx 'Unverified alg a)

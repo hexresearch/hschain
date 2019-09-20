@@ -27,7 +27,7 @@ import qualified Data.Map.Strict as Map
 import qualified Data.Set        as Set
 
 
-handler :: Handler Ahead Event alg a m
+handler :: Handler AheadState Event alg a m
 handler =
   handlerGeneric
    handlerGossipMsg
@@ -35,7 +35,7 @@ handler =
    handlerMempoolTimeout
    handlerBlocksTimeout
 
-issuedGossipHandler :: Handler Ahead GossipMsg alg a m
+issuedGossipHandler :: Handler AheadState GossipMsg alg a m
 issuedGossipHandler =
   issuedGossipHandlerGeneric
     handlerGossipMsg
