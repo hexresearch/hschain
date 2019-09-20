@@ -17,7 +17,6 @@ import Lens.Micro.Mtl
 
 import HSChain.Blockchain.Internal.Types
 import HSChain.Crypto
-import HSChain.Debug.Trace
 import HSChain.Exceptions
 import HSChain.Store
 import HSChain.Types.Blockchain
@@ -130,7 +129,6 @@ handlerGeneric
       resendGossip m
       hanldlerGossipMsg m
     handlerVotesTimeout' = do
-      trace (TePeerGossipVotes TepgvNewIter)
       handlerVotesTimeout
 
 issuedGossipHandlerGeneric :: (Wrapable s, HandlerCtx alg a m)

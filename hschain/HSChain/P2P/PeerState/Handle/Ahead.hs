@@ -14,7 +14,6 @@ import Lens.Micro.Mtl
 
 import HSChain.Blockchain.Internal.Types
 import HSChain.Control                   (throwNothing)
-import HSChain.Debug.Trace
 import HSChain.Exceptions
 import HSChain.Store
 import HSChain.Types.Blockchain
@@ -74,8 +73,8 @@ advanceOurHeignt (FullStep ourH _ _) = do
 ----------------------------------------------------------------
 
 handlerVotesTimeout :: TimeoutHandler AheadState alg a m
-handlerVotesTimeout = do trace (TePeerGossipVotes TepgvAhead)
-                         currentState
+handlerVotesTimeout = currentState
+
 ----------------------------------------------------------------
 
 handlerMempoolTimeout :: TimeoutHandler AheadState alg a m
