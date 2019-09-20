@@ -32,6 +32,7 @@ module HSChain.Types.Validators (
   , getValidatorIntSet
   , insertValidatorIdx
   , emptyValidatorISet
+  , emptyValidatorISetFromSize
     -- * Change of validator sets
   , ValidatorChange(..)
   , changeValidators
@@ -182,11 +183,13 @@ insertValidatorIdx (ValidatorIdx i) vset@(ValidatorISet n iset)
   | otherwise = ValidatorISet n (ISet.insert i iset)
 
 -- | Create empty validator set of given size
-emptyValidatorISet :: Int -> ValidatorISet
-emptyValidatorISet n
+emptyValidatorISet :: ValidatorSet alg -> ValidatorISet
+emptyValidatorISet valSet = ValidatorISet (validatorSetSize valSet) ISet.empty
+
+emptyValidatorISetFromSize :: Int -> ValidatorISet
+emptyValidatorISetFromSize n
   | n < 0     = error "Negative size"
   | otherwise = ValidatorISet n ISet.empty
-
 
 
 ----------------------------------------------------------------
