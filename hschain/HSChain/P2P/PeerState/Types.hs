@@ -135,7 +135,6 @@ data Event alg a
   | EBlocksTimeout
   | EAnnounceTimeout
   | EAnnouncement !(MessageTx alg a)
-  | EQuit -- ^ Special event wich stops FSM
 
 data Config m alg a = Config { _propStorage    :: !(ProposalStorage 'RO m alg a)
                              , _mempCursor     :: !(MempoolCursor m alg (TX a))
