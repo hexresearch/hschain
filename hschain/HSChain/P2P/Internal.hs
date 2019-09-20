@@ -159,7 +159,7 @@ peerFSM PeerChans{..} peerExchangeCh gossipCh recvCh cursor@MempoolCursor{..} = 
   resetMTO
   resetBTO
   resetATO
-  (`fix` wrap UnknownState) $ \loop s -> do
+  iterateM (wrap UnknownState) $ \s -> do
         event <- atomicallyIO $ asum
           [ EVotesTimeout    <$ await votesTO
           , EMempoolTimeout  <$ await mempoolTO
@@ -181,10 +181,7 @@ peerFSM PeerChans{..} peerExchangeCh gossipCh recvCh cursor@MempoolCursor{..} = 
           Push2Mempool tx   -> void $ pushTransaction tx
           SendPEX pexMsg    -> atomicallyIO $ writeTChan peerExchangeCh pexMsg
           Push2Gossip tx    -> atomicallyIO $ writeTBQueue gossipCh tx
-                                  --tickSend $ Logging.tx gossipCnts
-        case event of
-          EQuit -> return s'
-          _     -> loop s'
+        return s'
 
 -- | Start interactions with peer. At this point connection is already
 --   established and peer is registered.
