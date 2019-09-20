@@ -101,9 +101,10 @@ handlerGeneric
   handlerVotesTimeout
   handlerMempoolTimeout
   handlerBlocksTimeout = \ case
-    EGossip m        -> hanldlerGossipMsg' m
+    EGossip m        -> do resendGossip m
+                           hanldlerGossipMsg m
     EAnnouncement a  -> handlerAnnounncement a
-    EVotesTimeout    -> handlerVotesTimeout'
+    EVotesTimeout    -> handlerVotesTimeout
     EMempoolTimeout  -> handlerMempoolTimeout
     EBlocksTimeout   -> handlerBlocksTimeout
     EAnnounceTimeout -> handlerAnnounceTimeout
@@ -117,6 +118,7 @@ handlerGeneric
           StepAwaitCommit r -> push2Gossip $ GossipAnn $ AnnHasProposal h r
           _                 -> return ()
       currentState
+    --
     handlerAnnounncement e = do
       case e of
         TxAnn       a -> push2Gossip $ GossipAnn a
@@ -124,11 +126,6 @@ handlerGeneric
         TxPreVote   v -> push2Gossip $ GossipPreVote   v
         TxPreCommit v -> push2Gossip $ GossipPreCommit v
       currentState
-    hanldlerGossipMsg' m = do
-      resendGossip m
-      hanldlerGossipMsg m
-    handlerVotesTimeout' = do
-      handlerVotesTimeout
 
 issuedGossipHandlerGeneric :: (Wrapable s, HandlerCtx alg a m)
          => MessageHandler s alg a m
