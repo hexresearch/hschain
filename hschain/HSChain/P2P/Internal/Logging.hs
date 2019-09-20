@@ -5,7 +5,6 @@
 module HSChain.P2P.Internal.Logging where
 
 import Control.Concurrent     (MVar, newMVar, readMVar)
-import Control.Monad.Catch    (MonadMask)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import HSChain.Control    (modifyMVarM_)
 import HSChain.Logger
@@ -21,11 +20,11 @@ data Counter = Counter !(MVar Int) !(MVar Int)
 newCounter :: MonadIO m => m Counter
 newCounter = Counter <$> liftIO (newMVar 0) <*>liftIO (newMVar 0)
 
-tickSend :: (MonadMask m, MonadIO m) => Counter -> m ()
-tickSend (Counter s _) = modifyMVarM_ s (return . succ)
+tickSend :: (MonadIO m) => Counter -> m ()
+tickSend (Counter s _) = liftIO $ modifyMVarM_ s (return . succ)
 
-tickRecv :: (MonadMask m, MonadIO m) => Counter -> m ()
-tickRecv (Counter _ r) = modifyMVarM_ r (return . succ)
+tickRecv :: (MonadIO m) => Counter -> m ()
+tickRecv (Counter _ r) = liftIO $ modifyMVarM_ r (return . succ)
 
 readSend :: MonadIO m => Counter -> m Int
 readSend (Counter s _) = liftIO $ readMVar s
