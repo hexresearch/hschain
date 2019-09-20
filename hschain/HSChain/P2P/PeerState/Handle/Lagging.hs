@@ -20,7 +20,6 @@ import Lens.Micro.Mtl
 import HSChain.Blockchain.Internal.Types
 import HSChain.Control
 import HSChain.Crypto
-import HSChain.Debug.Trace
 import HSChain.Exceptions
 import HSChain.Store
 import HSChain.Types.Blockchain
@@ -117,8 +116,6 @@ advanceOurHeight = const currentState
 handlerVotesTimeout :: TimeoutHandler LaggingState alg a m
 handlerVotesTimeout = do
   bchH      <- lift $ queryRO blockchainHeight
---  trace (TePeerGossipVotes TepgvNewIter)
-  trace (TePeerGossipVotes TepgvLagging)
   (FullStep peerH _ _) <- use lagPeerStep
   mcmt <- lift $ queryRO $
     if peerH == bchH

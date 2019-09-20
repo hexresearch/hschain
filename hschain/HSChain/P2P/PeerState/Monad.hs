@@ -17,7 +17,6 @@ import Lens.Micro.Mtl
 import HSChain.Blockchain.Internal.Types
 import HSChain.Crypto
 import HSChain.Logger
-import HSChain.Debug.Trace
 import HSChain.Store.Internal.Query      (MonadReadDB)
 
 import HSChain.P2P.Internal.Types
@@ -43,9 +42,6 @@ instance MonadTrans (TransitionT s alg a) where
 --  logger s l a = lift $ logger s l a
 --  localNamespace f (TransitionT action) = TransitionT $ localNamespace f $ lift $ action
 
-instance MonadTrace m => MonadTrace (TransitionT s alg a m) where
-    trace = lift . trace
-
 -- | Runs `TransitionT'.
 runTransitionT :: TransitionT s alg a m (SomeState alg a) -> Config m alg a -> s alg a -> m (SomeState alg a, s alg a, [Command alg a])
 runTransitionT = runRWST . unTransition
@@ -58,7 +54,6 @@ type HandlerCtx alg a m = ( Serialise a
                           , MonadReadDB m alg a
                           , MonadThrow m
                           , MonadLogger m
-                          , MonadTrace m
                           , MonadMask m
                           )
 

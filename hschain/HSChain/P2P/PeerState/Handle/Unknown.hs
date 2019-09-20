@@ -9,7 +9,6 @@ module HSChain.P2P.PeerState.Handle.Unknown
 import Control.Monad.RWS.Strict
 
 import HSChain.Blockchain.Internal.Types
-import HSChain.Debug.Trace
 import HSChain.P2P.Internal.Types
 import HSChain.P2P.PeerState.Monad
 import HSChain.P2P.PeerState.Types
@@ -43,8 +42,8 @@ advanceOurHeight = const currentState
 ----------------------------------------------------------------
 
 handlerVotesTimeout :: TimeoutHandler UnknownState alg a m
-handlerVotesTimeout = do trace (TePeerGossipVotes TepgvUnknown)
-                         currentState
+handlerVotesTimeout = currentState
+
 ----------------------------------------------------------------
 
 handlerMempoolTimeout :: TimeoutHandler UnknownState alg a m

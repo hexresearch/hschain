@@ -23,7 +23,6 @@ import HSChain.Blockchain.Internal.Types
 import HSChain.Control                   (throwNothing)
 import HSChain.Crypto
 import HSChain.Crypto.Containers         (toPlainMap)
-import HSChain.Debug.Trace
 import HSChain.Exceptions
 import HSChain.Logger
 import HSChain.Store
@@ -176,8 +175,7 @@ advanceOurHeight (FullStep ourH _ _) = do
 
 handlerVotesTimeout :: TimeoutHandler CurrentState alg a m
 handlerVotesTimeout = do
-  bchH      <- lift $ queryRO blockchainHeight
-  trace (TePeerGossipVotes TepgvCurrent)
+  bchH <- lift $ queryRO blockchainHeight
   st <- view consensusSt >>= lift . liftIO . atomically
   case st of
     Nothing                       -> return ()
