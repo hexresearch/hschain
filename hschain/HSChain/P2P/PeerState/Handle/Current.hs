@@ -117,7 +117,7 @@ addPrevote h r idx = do
       (\case
           Nothing   -> Just
                      $ insertValidatorIdx idx
-                     $ emptyValidatorISet (validatorSetSize vals)
+                     $ emptyValidatorISet vals
           Just iset -> Just
                      $ insertValidatorIdx idx iset
       ) r
@@ -133,7 +133,7 @@ addPrecommit h r idx = do
       (\case
           Nothing   -> Just
                      $ insertValidatorIdx idx
-                     $ emptyValidatorISet (validatorSetSize vals)
+                     $ emptyValidatorISet vals
           Just iset -> Just
                      $ insertValidatorIdx idx iset
       ) r
@@ -160,7 +160,7 @@ advanceOurHeight (FullStep ourH _ _) = do
              { _lagPeerStep        = _peerStep p
              , _lagPeerCommitR     = r
              , _lagPeerValidators  = vals
-             , _lagPeerPrecommits  = emptyValidatorISet $ validatorSetSize vals
+             , _lagPeerPrecommits  = emptyValidatorISet vals
              , _lagPeerHasProposal = r   `Set.member` _peerProposals p
              , _lagPeerHasBlock    = bid `Set.member` _peerBlocks p
              , _lagPeerBlockID     = bid

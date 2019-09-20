@@ -29,4 +29,4 @@ generateIdxes from to count =
 insertIdxes :: (Int, VS.Vector BenchValidatorIdx) -> ValidatorISet
 insertIdxes (size, idxs) =
     -- VS.foldl' (flip insertValidatorIdx) (emptyValidatorISet size) idxs
-    VS.foldr' (insertValidatorIdx) (emptyValidatorISet size) idxs -- TODO перейти потом на foldl'
+    VS.foldr' (insertValidatorIdx) (emptyValidatorISetFromSize size) idxs -- TODO перейти потом на foldl'

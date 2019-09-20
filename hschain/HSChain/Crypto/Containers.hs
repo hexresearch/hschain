@@ -119,7 +119,7 @@ insertSigned sval SignedSet{..} =
           { accOK    = accOK + validatorVotingPower
           , votersOK = insertValidatorIdx idx votersOK
           }
-        nullVote = VoteGroup 0 $ emptyValidatorISet (validatorSetSize vsetValidators)
+        nullVote = VoteGroup 0 $ emptyValidatorISet vsetValidators
   where
     idx = signedKeyInfo sval
     val = signedValue   sval
