@@ -14,6 +14,7 @@ import Control.Concurrent.STM   (atomically)
 import Control.Monad
 import Control.Monad.RWS.Strict
 import Data.Foldable            (toList)
+import Data.Maybe
 import Katip                    (showLS)
 import System.Random            (randomRIO)
 
@@ -103,8 +104,8 @@ handlerGossipMsg  gossipMsg = do
 addProposal :: MonadState (CurrentState alg a) m
             => Height -> Round -> m ()
 addProposal h r = do
-  FullStep peerHeight _ _ <- use peerStep
-  when (h == peerHeight) $
+  FullStep hPeer _ _ <- use peerStep
+  when (h == hPeer) $
     peerProposals %= Set.insert r
 
 addPrevote :: MonadState (CurrentState alg a) m
@@ -113,14 +114,10 @@ addPrevote h r idx = do
   FullStep hPeer _ _ <- use peerStep
   when (h == hPeer) $ do
     vals <- use peerValidators
-    peerPrevotes %= Map.alter
-      (\case
-          Nothing   -> Just
-                     $ insertValidatorIdx idx
-                     $ emptyValidatorISet vals
-          Just iset -> Just
-                     $ insertValidatorIdx idx iset
-      ) r
+    peerPrevotes %= Map.alter ( Just
+                              . insertValidatorIdx idx
+                              . fromMaybe (emptyValidatorISet vals)
+                              ) r
 
 
 addPrecommit :: MonadState (CurrentState alg a) m
@@ -129,14 +126,10 @@ addPrecommit h r idx = do
   FullStep hPeer _ _ <- use peerStep
   when (h == hPeer) $ do
     vals <- use peerValidators
-    peerPrecommits %= Map.alter
-      (\case
-          Nothing   -> Just
-                     $ insertValidatorIdx idx
-                     $ emptyValidatorISet vals
-          Just iset -> Just
-                     $ insertValidatorIdx idx iset
-      ) r
+    peerPrecommits %= Map.alter ( Just
+                                . insertValidatorIdx idx
+                                . fromMaybe (emptyValidatorISet vals)
+                                ) r
 
 addBlock :: (MonadState (CurrentState alg a) m, CryptoSign alg, CryptoHash alg)
          => Block alg a -> m ()
