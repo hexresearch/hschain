@@ -103,8 +103,8 @@ handlerGossipMsg  gossipMsg = do
 addProposal :: MonadState (CurrentState alg a) m
                    => Height -> Round -> m ()
 addProposal h r = do
-  (FullStep peerHeihgt _ _) <- use peerStep
-  when (h == peerHeihgt) $
+  FullStep peerHeight _ _ <- use peerStep
+  when (h == peerHeight) $
     peerProposals %= Set.insert r
 
 addPrevote :: MonadState (CurrentState alg a) m
