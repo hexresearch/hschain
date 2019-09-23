@@ -10,7 +10,7 @@
 module HSChain.P2P.PeerState.Monad where
 
 import Codec.Serialise          (Serialise)
-import Control.Monad.Catch      (MonadThrow, MonadMask)
+import Control.Monad.Catch      (MonadThrow)
 import Control.Monad.RWS.Strict
 import Lens.Micro.Mtl
 
@@ -57,11 +57,9 @@ runTransitionT action cfg st = do
 
 type HandlerCtx alg a m = ( Serialise a
                           , Crypto alg
-                          , Monad m
                           , MonadIO m
                           , MonadReadDB m alg a
                           , MonadLogger m
-                          , MonadMask m
                           )
 
 -- | Handler of events.
