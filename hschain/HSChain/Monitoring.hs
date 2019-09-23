@@ -98,7 +98,7 @@ createMonitoring prefix = do
     "Number of messages in incoming queue"
   return PrometheusGauges{..}
   where
-    makeCounter nm help = do
+    makeCounter nm help =
       register $ counter $ Info (prefix <> "_" <> nm) help
     --
     makeGauge :: MonadIO m => (a -> Double) -> Text -> Text -> m (TGauge a)

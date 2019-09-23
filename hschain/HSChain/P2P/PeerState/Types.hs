@@ -78,13 +78,13 @@ class Wrapable s where
     wrap :: s alg a -> State alg a
 
 instance Wrapable LaggingState where
-    wrap s = Lagging s
+    wrap = Lagging
 
 instance Wrapable CurrentState where
-    wrap s = Current s
+    wrap = Current
 
 instance Wrapable AheadState where
-    wrap s = Ahead s
+    wrap = Ahead
 
 instance Wrapable UnknownState where
     wrap = Unknown

@@ -355,7 +355,7 @@ checkTransitionPrevote
   -> Round
   -> TMState alg a
   -> CNS x alg a m (TMState alg a)
-checkTransitionPrevote par@HeightParameters{..} r sm@(TMState{..})
+checkTransitionPrevote par@HeightParameters{..} r sm@TMState{..}
   --  * We have +2/3 prevotes for some later round (R+x)
   --  => goto Prevote(H,R+x)
   | r > smRound
@@ -379,7 +379,7 @@ checkTransitionPrecommit
   -> Round
   -> TMState alg a
   -> CNS x alg a m (TMState alg a)
-checkTransitionPrecommit par@HeightParameters{..} r sm@(TMState{..})
+checkTransitionPrecommit par@HeightParameters{..} r sm@TMState{..}
   --  * We have +2/3 precommits for particular block at some round
   --  => goto Commit(H,R)
   --
