@@ -90,7 +90,7 @@ handlerGossipMsg = \case
         addPrecommit h r i
         currentState
       AnnHasBlock     h r   -> do
-        (FullStep hP _ _) <- use peerStep
+        FullStep hP _ _ <- use peerStep
         p <- view propStorage
         when ( h == hP ) $ do
           mbid <- lift $ retrievePropByR p h r -- TODO: IO here!
@@ -165,20 +165,17 @@ handlerVotesTimeout = do
     Nothing                       -> return ()
     Just (h',_) | h' /= succ bchH -> return ()
     Just (_,tm)                   -> do
-      (FullStep _ r _) <- use peerStep
-      let doGosip            = push2Gossip
-      let toSet = getValidatorIntSet
+      FullStep _ r _ <- use peerStep
       noRoundInProposals <- Set.notMember r <$> use peerProposals
-
       -- Send proposals
       when noRoundInProposals $
         forM_ (r `Map.lookup` smProposals tm) $ \pr -> do
           let prop = signedValue pr
           addProposal (propHeight prop) (propRound prop)
-          doGosip $ GossipProposal $ unverifySignature pr
+          push2Gossip $ GossipProposal $ unverifySignature pr
           tickSend proposals
       -- Send prevotes
-      peerPV <- maybe CIMap.empty (CIMap.fromSet (const ()) . toSet)
+      peerPV <- maybe CIMap.empty (CIMap.fromSet (const ()) . getValidatorIntSet)
               . Map.lookup r
              <$> use peerPrevotes
       forM_ (Map.lookup r $ toPlainMap $ smPrevotesSet tm) $ \localPV -> do
@@ -188,10 +185,10 @@ handlerVotesTimeout = do
           i <- lift $ liftIO $ randomRIO (0,n-1)
           let vote@(signedValue -> Vote{..}) = unverifySignature $ toList unknown !! i
           addPrevote voteHeight voteRound $ signedKeyInfo vote
-          doGosip $ GossipPreVote vote
+          push2Gossip $ GossipPreVote vote
           tickSend prevote
       -- Send precommits
-      peerPC <- maybe CIMap.empty (CIMap.fromSet (const ()) . toSet)
+      peerPC <- maybe CIMap.empty (CIMap.fromSet (const ()) . getValidatorIntSet)
               . Map.lookup r
             <$> use peerPrecommits
       case () of
@@ -202,7 +199,7 @@ handlerVotesTimeout = do
                  i <- lift $ liftIO $ randomRIO (0,n-1)
                  let vote@(signedValue -> Vote{..}) = unverifySignature $ toList unknown !! i
                  addPrecommit voteHeight voteRound $ signedKeyInfo vote
-                 doGosip $ GossipPreCommit vote
+                 push2Gossip $ GossipPreCommit vote
                  tickSend precommit
          | otherwise -> return ()
   currentState
