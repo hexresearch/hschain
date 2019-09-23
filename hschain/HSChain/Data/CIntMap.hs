@@ -33,8 +33,7 @@ lookup :: forall k a. (Coercible k Int)
        => k -> CIntMap k a -> Maybe a
 lookup = coerce (IMap.lookup @a)
 
-difference :: forall k a b. (Coercible k Int)
-           => CIntMap k a -> CIntMap k b -> CIntMap k a
+difference :: forall k a b. CIntMap k a -> CIntMap k b -> CIntMap k a
 difference = coerce (IMap.difference @a @b)
 
 fromSet :: forall k a. (Coercible k Int)

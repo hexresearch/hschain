@@ -56,12 +56,10 @@ runTransitionT action cfg st = do
   return (r,acc)
 
 type HandlerCtx alg a m = ( Serialise a
-                          , CryptoHash alg
-                          , CryptoSign alg
+                          , Crypto alg
                           , Monad m
                           , MonadIO m
                           , MonadReadDB m alg a
-                          , MonadThrow m
                           , MonadLogger m
                           , MonadMask m
                           )
@@ -71,7 +69,7 @@ type Handler s t alg a m =  HandlerCtx alg a m
                          => t alg a -- ^ `Event' to handle
                          -> TransitionT s alg a m (State alg a) -- ^ new `TransitionT'
 
-currentState :: (Functor m, Monad m, Wrapable t) => TransitionT t alg a m (State alg a)
+currentState :: (Monad m, Wrapable t) => TransitionT t alg a m (State alg a)
 currentState = wrap <$> get
 
 resendGossip :: ( MonadReader (Config n alg a) m

@@ -374,7 +374,7 @@ peerPexCapacityDebugMonitor PeerRegistry{..} =
 
 
 peerGossipPeerExchange
-  :: ( MonadIO m, MonadFork m, MonadMask m, MonadLogger m)
+  :: ( MonadIO m, MonadFork m, MonadLogger m)
   => PeerChans m alg a
   -> PeerRegistry
   -> TChan PexMessage
