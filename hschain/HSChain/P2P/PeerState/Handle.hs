@@ -8,7 +8,6 @@ module HSChain.P2P.PeerState.Handle
 
 import Control.Monad (foldM)
 import Control.Arrow (second)
-import Data.Maybe    (mapMaybe)
 
 import HSChain.P2P.Internal.Types
 import HSChain.P2P.PeerState.Monad
@@ -29,11 +28,10 @@ handler config st event = do
   (st',cmds) <- case st of
     Lagging s -> runTransitionT (Lagging.handler event) config s
     Current s -> runTransitionT (Current.handler event) config s
-    Ahead   s -> runTransitionT (Ahead.handler event) config s
+    Ahead   s -> runTransitionT (Ahead.handler   event) config s
     Unknown s -> runTransitionT (Unknown.handler event) config s
-  second (cmds <>) <$> do handleIssuedGossip config st' $ mapMaybe getPush2Gossip cmds
-    where getPush2Gossip (Push2Gossip c) = Just c
-          getPush2Gossip _               = Nothing
+  second (cmds <>) <$> handleIssuedGossip config st' [ c | Push2Gossip c <- cmds ]
+
 
 handleIssuedGossip :: HandlerCtx alg a m
                    => Config m alg a
@@ -43,5 +41,5 @@ handleIssuedGossip :: HandlerCtx alg a m
 handleIssuedGossip config st = foldM (\ (s',cmds) msg -> second (cmds<>) <$> case s' of
   Lagging s -> runTransitionT (Lagging.issuedGossipHandler msg) config s
   Current s -> runTransitionT (Current.issuedGossipHandler msg) config s
-  Ahead   s -> runTransitionT (Ahead.issuedGossipHandler msg) config s
+  Ahead   s -> runTransitionT (Ahead.issuedGossipHandler   msg) config s
   Unknown s -> runTransitionT (Unknown.issuedGossipHandler msg) config s ) (st,[])
