@@ -1,13 +1,10 @@
 {-# LANGUAGE DataKinds                  #-}
 {-# LANGUAGE DeriveFunctor              #-}
-{-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE FlexibleContexts           #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase                 #-}
 {-# LANGUAGE MultiWayIf                 #-}
 {-# LANGUAGE NamedFieldPuns             #-}
 {-# LANGUAGE RecordWildCards            #-}
-{-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE UndecidableInstances       #-}
 -- |
 -- Data types for
@@ -59,8 +56,8 @@ data SignedSet alg a k = SignedSet
   }
 
 data VoteGroup alg = VoteGroup
-  { accOK     :: !Integer         -- Accumulated weight of good votes
-  , votersOK  :: !(ValidatorISet) -- Set of voters with good votes
+  { accOK     :: !Integer       -- Accumulated weight of good votes
+  , votersOK  :: !ValidatorISet -- Set of voters with good votes
   }
 
 instance (Show a) => Show (SignedSet alg a k) where

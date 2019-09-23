@@ -1,7 +1,6 @@
 {-# LANGUAGE DataKinds             #-}
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE FlexibleInstances     #-}
-{-# LANGUAGE KindSignatures        #-}
 {-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE MagicHash             #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
@@ -190,7 +189,7 @@ runConcurrently []      = return ()
 runConcurrently actions = do
   -- We communicate return status of thread via channel since we don't
   -- know a priory which will terminated first
-  ch <- liftIO $ Conc.newChan
+  ch <- liftIO Conc.newChan
   -- Run child threads. We wait until one of threads terminate and
   -- then kill all others.
   (r, tids) <- bracket

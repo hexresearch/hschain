@@ -1,8 +1,5 @@
 {-# LANGUAGE DataKinds                  #-}
-{-# LANGUAGE DeriveFunctor              #-}
-{-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE FlexibleContexts           #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase                 #-}
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE RecordWildCards            #-}
@@ -67,7 +64,6 @@ import HSChain.Store
 import HSChain.Store.STM
 import HSChain.Monitoring
 import HSChain.Utils
-import HSChain.Control (MonadFork)
 import qualified HSChain.P2P.Network as P2P
 
 
