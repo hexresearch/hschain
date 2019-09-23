@@ -60,6 +60,8 @@ data CurrentState alg a = CurrentState
 deriving instance Eq   (PublicKey alg) => Eq   (CurrentState alg a)
 makeLenses ''CurrentState
 
+-- | State of peer that's ahead of us. We can't send anything of use
+--   to it so we only track its step
 newtype AheadState alg a = AheadState { _aheadPeerStep :: FullStep }
   deriving (Show, Eq)
 makeLenses ''AheadState
