@@ -11,7 +11,6 @@ import qualified Data.Set as Set
 
 import Control.Concurrent.STM   (atomically)
 import Control.Monad
-import Control.Monad.Catch      (MonadThrow)
 import Control.Monad.RWS.Strict
 import Lens.Micro.Mtl
 
@@ -29,7 +28,7 @@ import HSChain.P2P.Internal.Types
 import HSChain.P2P.PeerState.Monad
 import HSChain.P2P.PeerState.Types
 
-advancePeer :: (CryptoSign alg, CryptoHash alg, Functor m, Monad m, MonadIO m, MonadThrow m, MonadReadDB m alg a)
+advancePeer :: (CryptoSign alg, CryptoHash alg, Monad m, MonadIO m, MonadReadDB m alg a)
             => FullStep -> m (State alg a)
 advancePeer step@(FullStep h _ _) = do
            ourH <- succ <$> queryRO blockchainHeight
@@ -57,7 +56,7 @@ advancePeer step@(FullStep h _ _) = do
                         }
              GT -> return $ wrap $ AheadState step
 
-advanceMempoolCursor :: (Wrapable s, HandlerCtx alg a m)
+advanceMempoolCursor :: (HandlerCtx alg a m)
                      => TransitionT s alg a m ()
 advanceMempoolCursor = do
     MempoolCursor{..} <- view mempCursor
