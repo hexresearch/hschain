@@ -55,8 +55,7 @@ issuedGossipHandler =
     advanceOurHeight
 
 handlerGossipMsg :: MessageHandler CurrentState alg a m
-handlerGossipMsg  gossipMsg = do
-  case gossipMsg of
+handlerGossipMsg = \case
     GossipPreVote v@(signedValue -> Vote{..}) -> do
       addPrevote voteHeight voteRound $ signedKeyInfo v
       currentState
