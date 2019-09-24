@@ -1,16 +1,21 @@
-{-# LANGUAGE FlexibleContexts     #-}
-{-# LANGUAGE FlexibleInstances    #-}
-{-# LANGUAGE GADTs                #-}
-{-# LANGUAGE KindSignatures       #-}
-{-# LANGUAGE LambdaCase           #-}
-{-# LANGUAGE OverloadedStrings    #-}
-{-# LANGUAGE RecordWildCards      #-}
-{-# LANGUAGE ScopedTypeVariables  #-}
-{-# LANGUAGE StandaloneDeriving   #-}
-{-# LANGUAGE TypeApplications     #-}
-{-# LANGUAGE TypeFamilies         #-}
-{-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE DeriveFunctor              #-}
+{-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE DerivingStrategies         #-}
+{-# LANGUAGE FlexibleContexts           #-}
+{-# LANGUAGE FlexibleInstances          #-}
+{-# LANGUAGE GADTs                      #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE KindSignatures             #-}
+{-# LANGUAGE LambdaCase                 #-}
+{-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE RecordWildCards            #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
+{-# LANGUAGE StandaloneDeriving         #-}
+{-# LANGUAGE TypeApplications           #-}
+{-# LANGUAGE TypeFamilies               #-}
+{-# LANGUAGE UndecidableInstances       #-}
 
+import qualified Codec.Serialise as CBOR
 import Control.Monad
 import qualified Data.ByteString         as BS
 import qualified Data.ByteArray          as BA
@@ -19,6 +24,8 @@ import qualified Crypto.ECC.Edwards25519 as Ed
 import qualified Crypto.Hash.Algorithms  as Hash
 import qualified Crypto.Hash             as Hash
 import Crypto.Error
+import GHC.Generics (Generic)
+
 
 ----------------------------------------------------------------
 -- Operations with elliptic curves
@@ -63,7 +70,20 @@ newtype Challenge = Challenge BS.ByteString
 
 deriving instance Show (ECPoint  Ed25519)
 deriving instance Show (ECScalar Ed25519)
-deriving instance Eq (ECPoint Ed25519)
+deriving instance Eq   (ECPoint Ed25519)
+instance CBOR.Serialise (ECPoint Ed25519) where
+  encode = undefined
+  decode = undefined
+
+generateChallenge :: IO Challenge
+generateChallenge = undefined
+
+xorChallenge :: Challenge -> Challenge -> Challenge
+xorChallenge = undefined
+
+fiatShamirCommitment :: (CBOR.Serialise a) => a -> Challenge
+fiatShamirCommitment = undefined
+
 ----------------------------------------------------------------
 -- Data types
 ----------------------------------------------------------------
@@ -76,8 +96,9 @@ data KeyPair a = KeyPair
   , publicKey :: PublicKey a
   }
 
-deriving instance Show (ECPoint a) => Show (PublicKey a)
-deriving instance Eq   (ECPoint a) => Eq   (PublicKey a)
+deriving stock   instance Show (ECPoint a) => Show (PublicKey a)
+deriving stock   instance Eq   (ECPoint a) => Eq   (PublicKey a)
+deriving newtype instance (CBOR.Serialise (ECPoint a)) => CBOR.Serialise (PublicKey a)
 
 generateSecretKey :: EC a => IO (Secret a)
 generateSecretKey = coerce generateScalar
@@ -97,16 +118,17 @@ generateKeyPair = do
 
 -- | Expression that should be proven
 data SigmaE k a
-  = SigmaDL k (PublicKey a)
+  = Leaf k a
     -- ^ Proof of possession of discrete logarithm of point at
     --   elliptic curve
   | AND k [SigmaE k a]
     -- ^ AND connective
   | OR  k [SigmaE k a]
+  deriving (Functor, Show)
 
 sexprAnn :: SigmaE k a -> k
 sexprAnn = \case
-  SigmaDL k _ -> k
+  Leaf k _ -> k
   AND     k _ -> k
   OR      k _ -> k
 
@@ -130,18 +152,18 @@ data ProofVar
   deriving (Show,Eq)
 
 -- Mark all nodes according to whether we can produce proof for them
-markTree :: (EC a, Eq (ECPoint a)) => Env a -> SigmaE () a -> SigmaE ProofVar a
+markTree :: (EC a, Eq (ECPoint a)) => Env a -> SigmaE () (PublicKey a) -> SigmaE ProofVar (PublicKey a)
 markTree (Env env) = check
   where
     -- Select nodes for which we could provide proof. We may mark more nodes that necessary
     check = \case
-      SigmaDL () k  -> SigmaDL (if k `elem` knownPK then Real else Simulated) k
-      AND     () es -> AND k es'
+      Leaf () k  -> Leaf (if k `elem` knownPK then Real else Simulated) k
+      AND  () es -> AND k es'
         where
           es'  = map check es
           k | all ((==Real) . sexprAnn) es' = Real
             | otherwise                     = Simulated
-      OR     () es -> OR k es'
+      OR   () es -> OR k es'
         where
           es'  = map check es
           k | any ((==Real) . sexprAnn) es' = Real
@@ -149,21 +171,81 @@ markTree (Env env) = check
     knownPK = publicKey <$> env
     -- Reduce proof so that OR node has only necessary number of real children
     clean expr = case expr of
-      SigmaDL{}        -> expr
+      Leaf{}           -> expr
       AND Simulated es -> AND Simulated $ markSim <$> es
       AND Real      es -> AND Real      $ clean   <$> es
       OR  Simulated es -> OR  Simulated $ markSim <$> es
       OR  Real      es -> OR  Real      $ splitOR es
     -- Mark all nodes as simulated
     markSim = \case
-      SigmaDL _ a  -> SigmaDL Simulated   a
-      AND     _ es -> AND     Simulated $ markSim <$> es
-      OR      _ es -> OR      Simulated $ markSim <$> es
+      Leaf _ a  -> Leaf Simulated   a
+      AND  _ es -> AND     Simulated $ markSim <$> es
+      OR   _ es -> OR      Simulated $ markSim <$> es
     -- Only leave one leaf of OR as real
     splitOR []     = error "Impossible"
     splitOR (e:es) = case sexprAnn e of
       Simulated -> markSim e : splitOR es
       Real      -> clean   e : fmap markSim es
+
+-- Genererate simalated proofs and commitments for real proofs
+generateCommitments
+  :: (EC a)
+  => SigmaE ProofVar (PublicKey a)
+  -> IO (SigmaE ProofVar (Either (PartialProof a) (ProofDL a)))
+generateCommitments = goReal
+  where
+    -- Go down expecting real node
+    goReal = \case
+      Leaf Real k -> do r <- generateScalar
+                        return $ Leaf Real $ Left $ PartialProof
+                          { pproofPK = k
+                          , pproofA  = fromGenerator r
+                          }
+      AND Real es -> AND Real <$> traverse goReal     es
+      OR  Real es -> OR  Real <$> traverse simulateOR es
+        where
+          simulateOR e = case sexprAnn e of
+            Real      -> goReal e
+            Simulated -> do ch <- generateChallenge
+                            goSim ch e
+      _ -> error "Simulated node!"
+    --
+    goSim ch = \case
+      Leaf Simulated k  -> Leaf Simulated . Right <$> simulateProofDL k ch
+      AND  Simulated es -> AND  Simulated <$> traverse (goSim ch) es
+      OR   Simulated es -> undefined
+      _ -> error "Real node"
+
+toFiatShamir
+  :: SigmaE k (Either (PartialProof a) (ProofDL a))
+  -> FiatShamir a
+toFiatShamir = \case
+  Leaf _ (Left  PartialProof{..}) -> FSDLog pproofPK pproofA
+  Leaf _ (Right ProofDL{..})      -> FSDLog publicK  commitmentA
+  AND  _ es -> FSAnd (toFiatShamir <$> es)
+  OR   _ es -> FSOr  (toFiatShamir <$> es)
+
+generateProofs
+  :: (EC a, CBOR.Serialise (ECPoint a))
+  => SigmaE ProofVar (Either (PartialProof a) (ProofDL a))
+  -> IO (SigmaE () (ProofDL a))
+generateProofs expr0 = goReal ch0 expr0
+  where
+    ch0 = fiatShamirCommitment $ toFiatShamir expr0
+    --
+    goReal ch = \case
+      Leaf Real      (Left PartialProof{..}) -> undefined -- Compute proof
+      Leaf Simulated (Right e)               -> return $ Leaf () e
+      AND  Real es -> AND () <$> traverse (goReal ch) es
+      AND  Simulated es -> undefined
+      OR   Real es -> undefined
+      OR   Simulated -> undefined
+
+-- Partial proof of possession of discrete logarithm
+data PartialProof a = PartialProof
+  { pproofPK :: PublicKey a
+  , pproofA  :: ECPoint   a
+  }
 
 -- | Proof of knowledge of discrete logarithm
 data ProofDL a = ProofDL
@@ -187,8 +269,10 @@ data FiatShamir a
   = FSDLog (PublicKey a) (ECPoint a)
   | FSAnd [FiatShamir a]
   | FSOr  [FiatShamir a]
+  deriving (Generic)
 
-
+instance ( CBOR.Serialise (ECPoint a)
+         ) => CBOR.Serialise (FiatShamir a)
 
 
 
