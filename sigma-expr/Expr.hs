@@ -1,3 +1,4 @@
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE DeriveFunctor              #-}
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE DerivingStrategies         #-}
@@ -14,15 +15,18 @@
 {-# LANGUAGE TypeApplications           #-}
 {-# LANGUAGE TypeFamilies               #-}
 {-# LANGUAGE UndecidableInstances       #-}
-
 import qualified Codec.Serialise as CBOR
 import Control.Monad
+import Data.Bits
+import Data.List (find)
 import qualified Data.ByteString         as BS
+import qualified Data.ByteString.Lazy    as BL
 import qualified Data.ByteArray          as BA
 import Data.Coerce
 import qualified Crypto.ECC.Edwards25519 as Ed
 import qualified Crypto.Hash.Algorithms  as Hash
 import qualified Crypto.Hash             as Hash
+import qualified Crypto.Random.Types     as RND
 import Crypto.Error
 import GHC.Generics (Generic)
 
@@ -33,15 +37,22 @@ import GHC.Generics (Generic)
 
 -- | Operations with elliptic curve
 class EC a where
-  data ECPoint  a
-  data ECScalar a
-  generateScalar :: IO (ECScalar a)
-  fromGenerator :: ECScalar a -> ECPoint a
-  fromChallenge :: Challenge  -> ECScalar a
+  data ECPoint   a
+  data ECScalar  a
+  data Challenge a
+  -- Challenge part
+  generateChallenge :: IO (Challenge a)
+  randomOracle      :: BS.ByteString -> Challenge a
+  xorChallenge      :: Challenge a -> Challenge a -> Challenge a
+
+  generateScalar    :: IO (ECScalar a)
+  fromGenerator     :: ECScalar  a -> ECPoint  a
+  fromChallenge     :: Challenge a -> ECScalar a
   (.+.)   :: ECScalar a -> ECScalar a -> ECScalar a
   (.*.)   :: ECScalar a -> ECScalar a -> ECScalar a
 
   (.*^)   :: ECScalar a -> ECPoint  a -> ECPoint  a
+  -- Group operations
   (^+^)   :: ECPoint  a -> ECPoint  a -> ECPoint  a
   negateP :: ECPoint a -> ECPoint a
 
@@ -49,13 +60,25 @@ class EC a where
 data Ed25519
 
 instance EC Ed25519 where
-  newtype ECPoint  Ed25519 = ECPoint25519  Ed.Point
-  newtype ECScalar Ed25519 = ECScalar25519 Ed.Scalar
-  generateScalar = coerce (Ed.scalarGenerate @IO)
-  fromGenerator  = coerce Ed.toPoint
+  newtype ECPoint   Ed25519 = ECPoint25519  Ed.Point
+  newtype ECScalar  Ed25519 = ECScalar25519 Ed.Scalar
+  newtype Challenge Ed25519 = ChallengeEd25519 BS.ByteString
+  generateChallenge = ChallengeEd25519 <$> RND.getRandomBytes 31
+  randomOracle
+    = ChallengeEd25519
+    . BS.take 31
+    . BA.convert
+    . Hash.hash @_ @Hash.SHA256
+  xorChallenge (ChallengeEd25519 a) (ChallengeEd25519 b)
+    = ChallengeEd25519
+    $ BS.pack
+    $ BS.zipWith xor a b
+
+  generateScalar    = coerce (Ed.scalarGenerate @IO)
+  fromGenerator     = coerce Ed.toPoint
   -- FIXME: We need to maintain that challenge is less than group
   --        module, right?
-  fromChallenge (Challenge bs) =
+  fromChallenge (ChallengeEd25519 bs) =
     case Ed.scalarDecodeLong $ BS.take 31 bs of
       CryptoPassed x -> ECScalar25519 x
       CryptoFailed e -> error (show e)
@@ -65,24 +88,19 @@ instance EC Ed25519 where
   (.*^)   = coerce Ed.pointMul
   negateP = coerce Ed.pointNegate
 
-newtype Challenge = Challenge BS.ByteString
-  deriving (Show)
 
-deriving instance Show (ECPoint  Ed25519)
-deriving instance Show (ECScalar Ed25519)
+
+deriving instance Show (ECPoint   Ed25519)
+deriving instance Show (ECScalar  Ed25519)
+deriving instance Show (Challenge Ed25519)
+deriving instance Show (Secret    Ed25519)
 deriving instance Eq   (ECPoint Ed25519)
 instance CBOR.Serialise (ECPoint Ed25519) where
-  encode = undefined
+  encode = CBOR.encode . id @BS.ByteString . Ed.pointEncode . coerce
   decode = undefined
 
-generateChallenge :: IO Challenge
-generateChallenge = undefined
-
-xorChallenge :: Challenge -> Challenge -> Challenge
-xorChallenge = undefined
-
-fiatShamirCommitment :: (CBOR.Serialise a) => a -> Challenge
-fiatShamirCommitment = undefined
+fiatShamirCommitment :: (EC a, CBOR.Serialise b) => b -> Challenge a
+fiatShamirCommitment = randomOracle . BL.toStrict . CBOR.serialise
 
 ----------------------------------------------------------------
 -- Data types
@@ -199,6 +217,7 @@ generateCommitments = goReal
       Leaf Real k -> do r <- generateScalar
                         return $ Leaf Real $ Left $ PartialProof
                           { pproofPK = k
+                          , pproofR  = r
                           , pproofA  = fromGenerator r
                           }
       AND Real es -> AND Real <$> traverse goReal     es
@@ -226,37 +245,56 @@ toFiatShamir = \case
   OR   _ es -> FSOr  (toFiatShamir <$> es)
 
 generateProofs
-  :: (EC a, CBOR.Serialise (ECPoint a))
-  => SigmaE ProofVar (Either (PartialProof a) (ProofDL a))
+  :: forall a. (EC a, Eq (ECPoint a), CBOR.Serialise (ECPoint a))
+  => Env a
+  -> SigmaE ProofVar (Either (PartialProof a) (ProofDL a))
   -> IO (SigmaE () (ProofDL a))
-generateProofs expr0 = goReal ch0 expr0
+generateProofs (Env env) expr0 = goReal ch0 expr0
   where
+    ch0 :: Challenge a
     ch0 = fiatShamirCommitment $ toFiatShamir expr0
     --
     goReal ch = \case
-      Leaf Real      (Left PartialProof{..}) -> undefined -- Compute proof
+      Leaf Real (Left PartialProof{..}) -> do
+        let e = fromChallenge ch
+            [Secret sk] = [ secretKey | KeyPair{..} <- env
+                                      , pproofPK == publicKey
+                                      ]
+            z = pproofR .+. (sk .*. e)
+        return $ Leaf () $ ProofDL { publicK     = pproofPK
+                                   , commitmentA = pproofA
+                                   , challengeE  = ch
+                                   , responceZ   = z
+                                   }
       Leaf Simulated (Right e)               -> return $ Leaf () e
-      AND  Real es -> AND () <$> traverse (goReal ch) es
+      AND  Real      es -> AND () <$> traverse (goReal ch) es
       AND  Simulated es -> undefined
-      OR   Real es -> undefined
-      OR   Simulated -> undefined
+      OR   Real      es -> undefined
+      OR   Simulated es -> undefined
 
 -- Partial proof of possession of discrete logarithm
 data PartialProof a = PartialProof
   { pproofPK :: PublicKey a
+  , pproofR  :: ECScalar  a
   , pproofA  :: ECPoint   a
   }
+deriving instance ( Show (ECPoint   a)
+                  , Show (Secret    a)
+                  , Show (ECScalar a)
+                  , Show (Challenge a)
+                  ) => Show (PartialProof a)
 
 -- | Proof of knowledge of discrete logarithm
 data ProofDL a = ProofDL
   { publicK     :: PublicKey a
-  , commitmentA :: ECPoint  a
-  , responceZ   :: ECScalar a
-  , challengeE  :: Challenge
+  , commitmentA :: ECPoint   a
+  , responceZ   :: ECScalar  a
+  , challengeE  :: Challenge a
   }
 
 deriving instance ( Show (ECPoint   a)
                   , Show (ECScalar  a)
+                  , Show (Challenge a)
                   ) => Show (ProofDL a)
 
 data SimTree a
@@ -284,7 +322,7 @@ instance ( CBOR.Serialise (ECPoint a)
 
 -- Simulate proof of posession of discrete logarithm for given
 -- challenge
-simulateProofDL :: EC a => PublicKey a -> Challenge -> IO (ProofDL a)
+simulateProofDL :: EC a => PublicKey a -> Challenge a -> IO (ProofDL a)
 simulateProofDL pk e = do
   z <- generateScalar
   return ProofDL
@@ -294,22 +332,44 @@ simulateProofDL pk e = do
     , challengeE  = e
     }
 
+
+verifyProof :: (EC a, CBOR.Serialise (ECPoint a)) => SigmaE () (ProofDL a)
+verifyProof = undefined
+
+
+
+go = do
+  kp :: KeyPair Ed25519 <- generateKeyPair
+  -- Expression to prove
+  let expr = Leaf () $ publicKey kp
+      env  = Env [kp]
+  print expr
+  -- Generating proof
+  let marked = markTree env expr
+  commited <- generateCommitments marked
+  proof    <- generateProofs env commited
+  --
+  print marked
+  print commited
+  print proof
+  return ()
+
 -- -- Generate proof of posession of discrete logarithm for given
 -- -- challenge
 -- generateProofDL :: EC a => KeyPair a -> Challenge -> IO (ProofDL a)
 -- ge
 
-go = do
-  kp :: KeyPair Ed25519 <- generateKeyPair
-  ProofDL{..} <- simulateProofDL (publicKey kp) (Challenge "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC")
-  --
-  let z = responceZ
-      a = commitmentA
-  print $ fromGenerator z == (a ^+^ (fromChallenge challengeE .*^ unPublicKey publicK))
+-- go = do
+--   kp :: KeyPair Ed25519 <- generateKeyPair
+--   ProofDL{..} <- simulateProofDL (publicKey kp) (Challenge "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC")
+--   --
+--   let z = responceZ
+--       a = commitmentA
+--   print $ fromGenerator z == (a ^+^ (fromChallenge challengeE .*^ unPublicKey publicK))
 
 
--- --   = Ed.toPoint responceZ == (unShare commitmentA `Ed.pointAdd` (e `Ed.pointMul` unShare publicK))
-  return ()
+-- -- --   = Ed.toPoint responceZ == (unShare commitmentA `Ed.pointAdd` (e `Ed.pointMul` unShare publicK))
+--   return ()
 -- generateProofDL :: EC a => [Env a] -> PublicKey a -> IO (ProofDL a)
 
 -- -- Generate proof of posession of discrete logarithm with given
