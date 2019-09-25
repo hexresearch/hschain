@@ -1,3 +1,4 @@
+{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE DeriveFunctor              #-}
 {-# LANGUAGE DeriveGeneric              #-}
@@ -30,6 +31,7 @@ import qualified Crypto.Random.Types     as RND
 import Crypto.Error
 import GHC.Generics (Generic)
 
+import Text.Groom
 
 ----------------------------------------------------------------
 -- Operations with elliptic curves
@@ -230,9 +232,12 @@ generateCommitments = goReal
       _ -> error "Simulated node!"
     --
     goSim ch = \case
-      Leaf Simulated k  -> Leaf Simulated . Right <$> simulateProofDL k ch
-      AND  Simulated es -> AND  Simulated <$> traverse (goSim ch) es
-      OR   Simulated es -> undefined
+      Leaf Simulated k      -> Leaf Simulated . Right <$> simulateProofDL k ch
+      AND  Simulated es     -> AND  Simulated <$> traverse (goSim ch) es
+      OR   Simulated []     -> error "Empty OR"
+      OR   Simulated (e:es) -> do esWithCh <- forM es $ \x -> (,x) <$> generateChallenge
+                                  let ch0 = foldl xorChallenge ch $ map fst esWithCh
+                                  OR Simulated <$> traverse (uncurry goSim) ((ch0,e) : esWithCh)
       _ -> error "Real node"
 
 toFiatShamir
@@ -269,7 +274,7 @@ generateProofs (Env env) expr0 = goReal ch0 expr0
       Leaf Simulated (Right e)               -> return $ Leaf () e
       AND  Real      es -> AND () <$> traverse (goReal ch) es
       AND  Simulated es -> undefined
-      OR   Real      es -> undefined
+      OR   Real      es -> OR  () <$> undefined
       OR   Simulated es -> undefined
 
 -- Partial proof of possession of discrete logarithm
@@ -332,111 +337,52 @@ simulateProofDL pk e = do
     , challengeE  = e
     }
 
+verifyProofDL :: (EC a, Eq (ECPoint a)) => ProofDL a -> Bool
+verifyProofDL ProofDL{..}
+  = fromGenerator responceZ == (commitmentA ^+^ (fromChallenge challengeE .*^ unPublicKey publicK))
+--   where
+--     -- Recompute challenge
+--     ch :: Hash.Digest Hash.SHA256
+--     ch = Hash.hashFinalize
+--        $ flip Hash.hashUpdate (Ed.pointEncode (unShare commitmentA) :: BA.Bytes)
+--        $ flip Hash.hashUpdate (Ed.pointEncode (unShare publicK)     :: BA.Bytes)
+--        $ Hash.hashInit
+--     CryptoPassed e = Ed.scalarDecodeLong $ BS.tail $ BA.convert ch
 
-verifyProof :: (EC a, CBOR.Serialise (ECPoint a)) => SigmaE () (ProofDL a)
-verifyProof = undefined
+verifyProof
+  :: (EC a, Eq (ECPoint a), CBOR.Serialise (ECPoint a))
+  => SigmaE () (ProofDL a) -> Bool
+-- FIXME: we don't verify that challenge comes from Fiat-Shamir oracle
+verifyProof = \case
+  Leaf () p  -> verifyProofDL p
+  OR   () es -> all verifyProof es
+  AND  () es -> all verifyProof es
 
 
 
 go = do
-  kp :: KeyPair Ed25519 <- generateKeyPair
+  kp1 :: KeyPair Ed25519 <- generateKeyPair
+  kp2 :: KeyPair Ed25519 <- generateKeyPair
+  kp3 :: KeyPair Ed25519 <- generateKeyPair
+  kp4 :: KeyPair Ed25519 <- generateKeyPair
   -- Expression to prove
-  let expr = Leaf () $ publicKey kp
-      env  = Env [kp]
-  print expr
+  let leaf = Leaf () . publicKey
+  let expr = OR () [ leaf kp1
+                    , leaf kp2
+                    ]
+      env  = Env [kp1,kp2,kp3]
   -- Generating proof
   let marked = markTree env expr
   commited <- generateCommitments marked
   proof    <- generateProofs env commited
   --
-  print marked
-  print commited
-  print proof
-  return ()
+  putStrLn $ groom expr
+  putStrLn ""
+  putStrLn $ groom marked
+  putStrLn ""
+  putStrLn $ groom commited
+  putStrLn ""
+  putStrLn $ groom proof
+  putStrLn ""
+  putStrLn $ groom $ verifyProof proof
 
--- -- Generate proof of posession of discrete logarithm for given
--- -- challenge
--- generateProofDL :: EC a => KeyPair a -> Challenge -> IO (ProofDL a)
--- ge
-
--- go = do
---   kp :: KeyPair Ed25519 <- generateKeyPair
---   ProofDL{..} <- simulateProofDL (publicKey kp) (Challenge "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC")
---   --
---   let z = responceZ
---       a = commitmentA
---   print $ fromGenerator z == (a ^+^ (fromChallenge challengeE .*^ unPublicKey publicK))
-
-
--- -- --   = Ed.toPoint responceZ == (unShare commitmentA `Ed.pointAdd` (e `Ed.pointMul` unShare publicK))
---   return ()
--- generateProofDL :: EC a => [Env a] -> PublicKey a -> IO (ProofDL a)
-
--- -- Generate proof of posession of discrete logarithm with given
--- -- challenge
--- generateProofDL :: KeyPair a -> Challenge -> IO (ProofDL a)
--- generateProofDL (KeyPair sk pk) ch = do
-
--- generateProof :: EC a => KeyPair a -> IO (ProofDL a)
--- generateProof (KeyPair sk pk) = do
---   -- Choose commitment
---   r <- generateScalar
---   let a = fromGenerator r
---   -- Compute challenge
---   let ch = undefined :: Challenge
---   -- let ch :: Hash.Digest Hash.SHA256
---       -- ch = undefined
---       e = fromChallenge ch
---       z = r .+. (unSecret sk .*. e)
---   return ProofDL
---     { publicK     = pk
---     , commitmentA = a
---     , responceZ   = z
---     }
--- --       ch = Hash.hashFinalize
--- --          $ flip Hash.hashUpdate (Ed.pointEncode a   :: BA.Bytes)
--- --          $ flip Hash.hashUpdate (Ed.pointEncode pub :: BA.Bytes)
--- --          $ Hash.hashInit
--- --   let CryptoPassed e = Ed.scalarDecodeLong $ BS.tail $ BA.convert ch
--- --       z              = r `Ed.scalarAdd` (w `Ed.scalarMul` e)
--- --   return ProofDL
--- --     { publicK     = Share pub
--- --     , commitmentA = Share a
--- --     , responceZ   = z
--- --     }
--- --   where
--- --     pub = Ed.toPoint w
-
-
--- -- -- | Secret possessed by prover
--- -- newtype Secret = Secret Ed.Scalar
-
--- -- -- | Value published by prover
--- -- newtype Share = Share { unShare :: Ed.Point }
-
--- -- -- | Proof of knowledge of discrete logarithm
--- -- data ProofDL = ProofDL
--- --   { publicK     :: Share        --
--- --   , commitmentA :: Share        --
--- --   , responceZ   :: Ed.Scalar
--- --   }
-
-
-
--- -- verifyProof :: ProofDL -> Bool
--- -- verifyProof ProofDL{..}
--- --   = Ed.toPoint responceZ == (unShare commitmentA `Ed.pointAdd` (e `Ed.pointMul` unShare publicK))
--- --   where
--- --     -- Recompute challenge
--- --     ch :: Hash.Digest Hash.SHA256
--- --     ch = Hash.hashFinalize
--- --        $ flip Hash.hashUpdate (Ed.pointEncode (unShare commitmentA) :: BA.Bytes)
--- --        $ flip Hash.hashUpdate (Ed.pointEncode (unShare publicK)     :: BA.Bytes)
--- --        $ Hash.hashInit
--- --     CryptoPassed e = Ed.scalarDecodeLong $ BS.tail $ BA.convert ch
-
-
--- -- go = do
--- --   sk <- Ed.scalarGenerate
--- --   proof <- generateProof (Secret sk)
--- --   print $ verifyProof proof
