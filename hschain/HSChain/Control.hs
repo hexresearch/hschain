@@ -178,8 +178,8 @@ forkLinked action io = do
 -- | Fork thread. Any exception except `AsyncException` in forked
 --   thread is forwarded to original thread. When parent thread dies
 --   child thread is killed too
-forkLinkedIO :: (MonadIO m, MonadMask m, MonadFork m)
-             => IO a              -- ^ Action to execute in forked thread
+forkLinkedIO :: (MonadIO m, MonadMask m)
+             => IO a             -- ^ Action to execute in forked thread
              -> m b              -- ^ What to do while thread executes
              -> m b
 forkLinkedIO action io = do
