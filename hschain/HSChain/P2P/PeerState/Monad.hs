@@ -1,9 +1,11 @@
 {-# LANGUAGE ConstraintKinds            #-}
 {-# LANGUAGE DataKinds                  #-}
 {-# LANGUAGE FlexibleContexts           #-}
+{-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GADTs                      #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE InstanceSigs               #-}
+{-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE RankNTypes                 #-}
 {-# LANGUAGE TypeFamilies               #-}
 
@@ -17,7 +19,7 @@ import Lens.Micro.Mtl
 import HSChain.Blockchain.Internal.Types
 import HSChain.Crypto
 import HSChain.Logger
-import HSChain.Store.Internal.Query      (MonadReadDB)
+import HSChain.Store.Internal.Query      (MonadReadDB(..))
 
 import HSChain.P2P.Internal.Types
 import HSChain.P2P.Internal.Logging hiding (tx, tickRecv)
@@ -38,6 +40,9 @@ newtype TransitionT s alg a m r = TransitionT
            , MonadState (s alg a)
            , MonadThrow
            )
+instance MonadReadDB m alg a => MonadReadDB (TransitionT s alg a m) alg a where
+  askConnectionRO = TransitionT $ lift askConnectionRO
+
 instance MonadTrans (TransitionT s alg a) where
   lift = TransitionT . lift
 
