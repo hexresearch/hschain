@@ -22,16 +22,6 @@ import HSChain.Control
 --        Data types a la carte
 
 
-data PeerGossipVotesTraceEvents
-    = TepgvStarted
-    | TepgvNewIter
-    | TepgvLagging
-    | TepgvCurrent
-    | TepgvAhead
-    | TepgvUnknown
-    deriving (Show, Ord, Eq)
-
-
 data TraceEvents
     = TeNodeStarted
     -- ^ Node is started
@@ -44,9 +34,6 @@ data TraceEvents
     | TeNodeOtherConnected !String
     -- ^ Other node connected successfully
     | TePeerRegistryChanged !(Set String)
-    -- *
-    | TePeerGossipVotes PeerGossipVotesTraceEvents
-    -- ^ Gossip votes controller started
     deriving (Show, Ord, Eq)
 
 class Monad m => MonadTrace m where
