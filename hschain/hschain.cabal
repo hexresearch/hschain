@@ -63,7 +63,6 @@ Library
                      , x509-store
                      , x509-system
                      , x509-validation
-                     , groom
 
   Exposed-modules:
                   HSChain.Blockchain.Internal.Algorithm
