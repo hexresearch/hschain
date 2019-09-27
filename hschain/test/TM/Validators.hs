@@ -17,7 +17,7 @@ module TM.Validators (tests) where
 -- import Control.Monad.Catch
 -- import Control.Monad.Fail
 -- import Control.Monad.IO.Class
-
+import Data.Maybe
 import qualified Data.Map.Strict as Map
 
 -- import GHC.Generics
@@ -52,38 +52,55 @@ type VSet = ValidatorSet (Ed25519 :& SHA512)
 
 tests :: TestTree
 tests = testGroup "validators"
-  [ testProperty "valSet = valSet + mempty" $ \(vset :: VSet) ->
-      Just vset == changeValidators mempty vset
-  , testProperty "mempty = valSet - valSet" $ \(vset :: VSet) ->
-      mempty == validatorsDifference vset vset
-  , testProperty "val2 = val1 + (val2 - val1)" $ \(vsetOld :: VSet) vsetNew ->
-      let diff = validatorsDifference vsetOld vsetNew
-      in Just vsetNew == changeValidators diff vsetOld
-  , testProperty "Compose" $ \(vset1 :: VSet) vset2 vset3 ->
-      let diff1 = validatorsDifference vset1 vset2
-          diff2 = validatorsDifference vset2 vset3
-      in id $ counterexample ("diff1 = " ++ show diff1)
-            $ counterexample ("diff2 = " ++ show diff2)
-            $ counterexample ("union = " ++ show (diff1 <> diff2))
-            $ Just vset3 == changeValidators (diff1 <> diff2) vset1
-    --
-  , testCase "Delete nonexistent" $ do
-      let Right vset = makeValidatorSet [Validator v1 1]
-          diff       = ValidatorChange $ Map.fromList [(v2,0)]
-      Just vset @=? changeValidators diff vset
-  , testCase "Attempt to make noop" $ do
-      let Right vset = makeValidatorSet [Validator v1 1]
-          diff       = ValidatorChange $ Map.fromList [(v1,1)]
-      Nothing @=? changeValidators diff vset
-  , testCase "Invalid voting power 1" $ do
-      let Right vset = makeValidatorSet [Validator v1 1]
-          diff       = ValidatorChange $ Map.fromList [(v1, -1)]
-      Nothing @=? changeValidators diff vset
-  , testCase "Invalid voting power 2" $ do
-      let Right vset = makeValidatorSet [Validator v1 1]
-          diff       = ValidatorChange $ Map.fromList [(v2, -1)]
-      Nothing @=? changeValidators diff vset
+  [ testGroup "validator change"
+    [ testProperty "valSet = valSet + mempty" $ \(vset :: VSet) ->
+        Just vset == changeValidators mempty vset
+    , testProperty "mempty = valSet - valSet" $ \(vset :: VSet) ->
+        mempty == validatorsDifference vset vset
+    , testProperty "val2 = val1 + (val2 - val1)" $ \(vsetOld :: VSet) vsetNew ->
+        let diff = validatorsDifference vsetOld vsetNew
+        in Just vsetNew == changeValidators diff vsetOld
+    , testProperty "Compose" $ \(vset1 :: VSet) vset2 vset3 ->
+        let diff1 = validatorsDifference vset1 vset2
+            diff2 = validatorsDifference vset2 vset3
+        in id $ counterexample ("diff1 = " ++ show diff1)
+              $ counterexample ("diff2 = " ++ show diff2)
+              $ counterexample ("union = " ++ show (diff1 <> diff2))
+              $ Just vset3 == changeValidators (diff1 <> diff2) vset1
+      --
+    , testCase "Delete nonexistent" $ do
+        let Right vset = makeValidatorSet [Validator v1 1]
+            diff       = ValidatorChange $ Map.fromList [(v2,0)]
+        Just vset @=? changeValidators diff vset
+    , testCase "Attempt to make noop" $ do
+        let Right vset = makeValidatorSet [Validator v1 1]
+            diff       = ValidatorChange $ Map.fromList [(v1,1)]
+        Nothing @=? changeValidators diff vset
+    , testCase "Invalid voting power 1" $ do
+        let Right vset = makeValidatorSet [Validator v1 1]
+            diff       = ValidatorChange $ Map.fromList [(v1, -1)]
+        Nothing @=? changeValidators diff vset
+    , testCase "Invalid voting power 2" $ do
+        let Right vset = makeValidatorSet [Validator v1 1]
+            diff       = ValidatorChange $ Map.fromList [(v2, -1)]
+        Nothing @=? changeValidators diff vset
+    ]
+  , testGroup "Valset indexing"
+    [ testProperty "Equidistribution" $ \(vset :: ValidatorSet Ed25519) ->
+        let idx = indexByIntervalPoint vset <$> [ 0 .. totalVotingPower vset - 1 ]
+        in counterexample (show idx)
+         $ and [ validatorVotingPower v == p
+               | (i,p) <- Map.toList
+                        $ Map.fromListWith (+) [ (fromJust i,1) | i <- idx ]
+               , let Just v = validatorByIndex vset i
+               ]
+    , testProperty "Invalid lookups 1" $ \(vset :: ValidatorSet Ed25519) ->
+        Nothing == indexByIntervalPoint vset (-1)
+    , testProperty "Invalid lookups 2" $ \(vset :: ValidatorSet Ed25519) ->
+        Nothing == indexByIntervalPoint vset (totalVotingPower vset)
+    ]
   ]
+
 
 v1,v2 :: PublicKey (Ed25519 :& SHA512)
 v1:v2:_ = map publicKey privateKeyList
