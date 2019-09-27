@@ -1,12 +1,12 @@
-{-# LANGUAGE DataKinds            #-}
-{-# LANGUAGE FlexibleContexts     #-}
-{-# LANGUAGE LambdaCase           #-}
-{-# LANGUAGE NamedFieldPuns       #-}
-{-# LANGUAGE NumDecimals          #-}
-{-# LANGUAGE OverloadedStrings    #-}
-{-# LANGUAGE RankNTypes           #-}
-{-# LANGUAGE RecordWildCards      #-}
-{-# LANGUAGE ScopedTypeVariables  #-}
+{-# LANGUAGE DataKinds           #-}
+{-# LANGUAGE FlexibleContexts    #-}
+{-# LANGUAGE LambdaCase          #-}
+{-# LANGUAGE NamedFieldPuns      #-}
+{-# LANGUAGE NumDecimals         #-}
+{-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE RankNTypes          #-}
+{-# LANGUAGE RecordWildCards     #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module HSChain.P2P.Internal
   ( module HSChain.P2P.Internal
@@ -19,6 +19,8 @@ import Control.Applicative
 import Control.Concurrent.STM
 import Control.Monad
 import Control.Monad.Catch
+import Control.Monad.Trans.Class
+import Control.Monad.Trans.Cont
 import Prelude                hiding (round)
 
 import Control.Monad.IO.Class (MonadIO, liftIO)
@@ -146,42 +148,26 @@ peerFSM PeerChans{..} peerExchangeCh gossipCh recvCh cursor@MempoolCursor{..} = 
   logger InfoS "Starting routing for receiving messages" ()
   trace (TePeerGossipVotes TepgvStarted)
   ownPeerChanTx <- atomicallyIO $ dupTChan peerChanTx
-  votesTO       <- newTimerIO
-  mempoolTO     <- newTimerIO
-  blocksTO      <- newTimerIO
-  announceDelay <- newTimerIO
-  -- TODO: Randomize timeouts
-  let resetVTO = reset votesTO (1e3 * gossipDelayVotes p2pConfig)
-      resetMTO = reset mempoolTO (1e3 * gossipDelayMempool p2pConfig)
-      resetBTO = reset blocksTO (1e3 * gossipDelayBlocks p2pConfig)
-      resetATO = reset announceDelay (1e6 * 10)
-  resetVTO
-  resetMTO
-  resetBTO
-  resetATO
-  iterateM (wrap UnknownState) $ \s -> do
-        event <- atomicallyIO $ asum
-          [ EVotesTimeout    <$ await votesTO
-          , EMempoolTimeout  <$ await mempoolTO
-          , EBlocksTimeout   <$ await blocksTO
-          , EAnnounceTimeout <$ await announceDelay
-          , readTChan recvCh
-          , EAnnouncement <$> readTChan ownPeerChanTx]
-
-        let config = Config proposalStorage cursor consensusState gossipCnts
-        (s', cmds) <- handler config s event
-        case event of
-          EVotesTimeout -> resetVTO
-          EMempoolTimeout -> resetMTO
-          EBlocksTimeout  -> resetBTO
-          EAnnounceTimeout -> resetATO
-          _                -> return ()
-        forM_ cmds $ \case
-          SendRX rx         -> atomicallyIO $ peerChanRx rx -- FIXME: tickRecv
-          Push2Mempool tx   -> void $ pushTransaction tx
-          SendPEX pexMsg    -> atomicallyIO $ writeTChan peerExchangeCh pexMsg
-          Push2Gossip tx    -> atomicallyIO $ writeTBQueue gossipCh tx
-        return s'
+  chTimeout     <- liftIO newTQueueIO
+  evalContT $ do
+    linkedTimer (gossipDelayVotes   p2pConfig) chTimeout EVotesTimeout
+    linkedTimer (gossipDelayMempool p2pConfig) chTimeout EMempoolTimeout
+    linkedTimer (gossipDelayBlocks  p2pConfig) chTimeout EBlocksTimeout
+    linkedTimer  10e3                          chTimeout EAnnounceTimeout
+    lift $ iterateM (wrap UnknownState) $ \s -> do
+      event <- atomicallyIO $ asum
+        [ readTQueue chTimeout
+        , readTChan recvCh
+        , EAnnouncement <$> readTChan ownPeerChanTx
+        ]
+      let config = Config proposalStorage cursor consensusState gossipCnts
+      (s', cmds) <- handler config s event
+      forM_ cmds $ \case
+        SendRX rx         -> atomicallyIO $ peerChanRx rx -- FIXME: tickRecv
+        Push2Mempool tx   -> void $ pushTransaction tx
+        SendPEX pexMsg    -> atomicallyIO $ writeTChan peerExchangeCh pexMsg
+        Push2Gossip tx    -> atomicallyIO $ writeTBQueue gossipCh tx
+      return s'
 
 -- | Start interactions with peer. At this point connection is already
 --   established and peer is registered.

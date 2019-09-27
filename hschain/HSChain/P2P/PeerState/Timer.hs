@@ -2,40 +2,25 @@
 
 module HSChain.P2P.PeerState.Timer where
 
-import Control.Monad(void, mapM_)
-
-import Control.Monad.IO.Class (MonadIO, liftIO)
-
+import Control.Monad
+import Control.Monad.Catch
+import Control.Monad.Trans.Cont
+import Control.Monad.IO.Class (MonadIO)
 import Control.Concurrent
 import Control.Concurrent.STM
 
--- NOTE This implementation isn't very safe
+import HSChain.Control
 
-data Timer = Timer { timerThread :: !(TMVar ThreadId)
-                   , timerTMVar  :: !(TMVar ())
-                   }
+-- | Perform action every N ms (plus some delay introduced
+--   by RTS)
+timerForever :: Int -> IO a -> IO b
+timerForever delay action = forever $ action >> threadDelay (1000*delay)
 
-newTimer :: STM Timer
-newTimer = Timer <$> newEmptyTMVar <*> newEmptyTMVar
+-- | Create thread which will be killed when main thread exits
+linkedTimedIO :: (MonadIO m, MonadMask m) => Int -> IO a -> ContT r m ()
+linkedTimedIO delay action = ContT $ \fun ->
+  forkLinkedIO (timerForever delay action) (fun ())
 
-newTimerIO :: MonadIO m => m Timer
-newTimerIO = liftIO $
-    Timer <$> newEmptyTMVarIO <*> newEmptyTMVarIO
 
-reset :: MonadIO m => Timer -> Int -> m ()
-reset t@Timer{..} i = liftIO $ do
-    cancel t
-
-    n <- forkIO $ do
-            threadDelay i
-            void $ atomically $ tryPutTMVar timerTMVar ()
-
-    atomically $ putTMVar timerThread n
-
-cancel :: MonadIO m => Timer -> m ()
-cancel Timer{..} = liftIO $ do
-    tid <- atomically $ tryTakeTMVar timerThread
-    mapM_ killThread tid
-
-await :: Timer -> STM ()
-await Timer{..} = takeTMVar timerTMVar
+linkedTimer :: (MonadIO m, MonadMask m) => Int -> TQueue a -> a -> ContT r m ()
+linkedTimer delay ch a = linkedTimedIO delay (atomically $ writeTQueue ch a)
