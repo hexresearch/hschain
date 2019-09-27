@@ -103,7 +103,7 @@ handlerGeneric
   where
     handlerAnnounceTimeout :: TimeoutHandler s alg a m
     handlerAnnounceTimeout = do
-      st <- view consensusSt >>= lift . liftIO . atomically
+      st <- view consensusSt >>= liftIO . atomically
       forM_ st $ \(h,TMState{smRound,smStep}) -> do
         push2Gossip $ GossipAnn $ AnnStep $ FullStep h smRound smStep
         case smStep of

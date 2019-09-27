@@ -113,9 +113,9 @@ advanceOurHeight = const currentState
 
 handlerVotesTimeout :: TimeoutHandler LaggingState alg a m
 handlerVotesTimeout = do
-  bchH      <- lift $ queryRO blockchainHeight
+  bchH      <- queryRO blockchainHeight
   (FullStep peerH _ _) <- use lagPeerStep
-  mcmt <- lift $ queryRO $
+  mcmt <- queryRO $
     if peerH == bchH
        then retrieveLocalCommit peerH
        else retrieveCommit      peerH
@@ -131,7 +131,7 @@ handlerVotesTimeout = do
      let unknown   = Map.difference cmtVotes peerVotes
          n         = Map.size unknown
      when (n>0) $
-       do i <- lift $ liftIO $ randomRIO (0,n-1) -- TODO: move RndGen to Config or state
+       do i <- liftIO $ randomRIO (0,n-1) -- TODO: move RndGen to Config or state
           let vote@(signedValue -> Vote{..}) = unverifySignature $ toList unknown !! i
           addPrecommit voteHeight voteRound $ signedKeyInfo vote
           push2Gossip $ GossipPreCommit vote
@@ -149,8 +149,8 @@ handlerBlocksTimeout = do
   hasProp    <- use lagPeerHasProposal
   hasNoBlock <- not <$> use lagPeerHasBlock
   when (hasProp && hasNoBlock) $ do
-    (FullStep h _ _) <- use lagPeerStep
-    b <- lift $ queryRO $ mustRetrieveBlock h
+    FullStep h _ _ <- use lagPeerStep
+    b <- queryRO $ mustRetrieveBlock h
     addBlock b
     push2Gossip $ GossipBlock b
     tickSend blocks
