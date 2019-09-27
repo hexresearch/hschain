@@ -66,7 +66,7 @@ handlerGossipMsg = \case
           -- If update don't change height only advance step of peer
           then if h0 == h
              then lagPeerStep .= step >> currentState
-             else lift $ advancePeer step -- TODO: IO read from DB
+             else advancePeer step -- TODO: IO read from DB
           else currentState
       AnnHasProposal  h r   -> do
         addProposal h r
