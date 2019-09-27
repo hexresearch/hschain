@@ -34,7 +34,6 @@ newtype TransitionT s alg a m r = TransitionT
            , MonadReader (Config m alg a)
            , MonadWriter [Command alg a]
            , MonadState (s alg a)
-           , MonadRWS (Config m alg a) [Command alg a] (s alg a)
            , MonadThrow
            )
 instance MonadTrans (TransitionT s alg a) where
