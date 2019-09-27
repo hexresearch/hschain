@@ -19,6 +19,7 @@ module HSChain.Control (
     -- *
   , MonadFork(..)
   , forkLinked
+  , forkLinkedIO
   , runConcurrently
     -- * Contol
   , iterateM
@@ -166,6 +167,29 @@ forkLinked action io = do
   bracket
     (forkWithUnmask $ \restore ->
          try (restore action) >>= \case
+          Right _ -> return ()
+          Left  e -> case fromException e of
+            Just (_ :: AsyncException) -> return ()
+            _                          -> liftIO $ throwTo tid e
+    )
+    (liftIO . killThread)
+    (const io)
+
+-- | Fork thread. Any exception except `AsyncException` in forked
+--   thread is forwarded to original thread. When parent thread dies
+--   child thread is killed too
+forkLinkedIO :: (MonadIO m, MonadMask m, MonadFork m)
+             => IO a              -- ^ Action to execute in forked thread
+             -> m b              -- ^ What to do while thread executes
+             -> m b
+forkLinkedIO action io = do
+  tid <- liftIO myThreadId
+  -- NOTE: Resource in bracket is acquired with asynchronous
+  --       exceptions masked so child thread inherits masked state and
+  --       needs to be explicitly unmasked
+  bracket
+    (liftIO $ forkWithUnmask $ \restore ->
+        try (restore action) >>= \case
           Right _ -> return ()
           Left  e -> case fromException e of
             Just (_ :: AsyncException) -> return ()
