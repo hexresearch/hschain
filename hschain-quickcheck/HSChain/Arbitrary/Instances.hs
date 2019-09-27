@@ -156,7 +156,7 @@ instance (Ord (PublicKey alg), Arbitrary (PublicKey alg)) => Arbitrary (Validato
       return (k,p)
     return $ ValidatorChange $ Map.fromList pairs
 
-instance (Eq (PublicKey alg), Crypto alg) => Arbitrary (ValidatorSet alg) where
+instance (Eq (PublicKey alg), CryptoSign alg) => Arbitrary (ValidatorSet alg) where
   arbitrary = do
     n     <- choose (0,10)
     pairs <- replicateM n arbitrary
