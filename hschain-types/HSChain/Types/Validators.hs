@@ -123,18 +123,21 @@ instance Crypto alg => JSON.FromJSON (ValidatorSet alg) where
 --   contains multiple validators with same public keys, or @Left
 --   Nothing@ if list is empty.
 makeValidatorSet
-  :: (Crypto alg, Foldable f)
+  :: (CryptoSign alg, Foldable f)
   => f (Validator alg)
   -> Either (PublicKey alg) (ValidatorSet alg)
 makeValidatorSet vals = do
   let vlist = sortBy (comparing validatorPubKey)
             $ toList vals
-
+      vvec  = V.fromList vlist
   check vlist
-  return ValidatorSet { vsValidators = V.fromList vlist
-                      , vsTotPower   = sum $ map validatorVotingPower vlist
-                      , vsVotingIntervals = Map.fromList $ scanl (+) 0 (validatorVotingPower <$> vlist) `zip` (ValidatorIdx <$> [0..])
-                      }
+  return ValidatorSet
+    { vsValidators      = vvec
+    , vsTotPower        = sum $ map validatorVotingPower vlist
+    , vsVotingIntervals = Map.fromList
+                        $ scanl (+) 0 (validatorVotingPower <$> vlist)
+                    `zip` (ValidatorIdx <$> [0 .. V.length vvec + 1])
+    }
   where
     check (Validator k1 _ : rest@(Validator k2 _ : _))
       | k1 == k2  = Left k1
@@ -249,7 +252,7 @@ validatorsDifference (ValidatorSet vsOld _ _) (ValidatorSet vsNew _ _)
 --    * Noop changes are disallowed. Primarily to ensure that won't
 --      end up storing useless data.
 changeValidators
-  :: (Crypto alg)
+  :: (CryptoSign alg)
   => ValidatorChange alg -> ValidatorSet alg -> Maybe (ValidatorSet alg)
 changeValidators (ValidatorChange delta) (ValidatorSet vset _ _)
   =   either (const Nothing) Just
@@ -283,9 +286,6 @@ changeValidators (ValidatorChange delta) (ValidatorSet vset _ _)
 
 -- | Get validator index by point inside the constructed interval based on its voting power
 indexByIntervalPoint :: (Eq (PublicKey alg)) => ValidatorSet alg -> Integer -> Maybe (ValidatorIdx alg)
-indexByIntervalPoint ValidatorSet{..} point
-    | point >= vsTotPower = Nothing
-    | otherwise = snd <$> Map.lookupLE point vsVotingIntervals
-
-
-
+indexByIntervalPoint ValidatorSet{..} x
+  | x >= vsTotPower = Nothing
+  | otherwise       = snd <$> Map.lookupLE x vsVotingIntervals
