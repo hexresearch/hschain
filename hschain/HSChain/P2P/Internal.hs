@@ -136,7 +136,7 @@ connectPeerTo cfg NetworkAPI{..} addr peerCh mempool peerRegistry =
 ----------------------------------------------------------------
 -- | Routine for receiving messages from peer
 peerFSM
-  :: ( MonadReadDB m alg a, MonadIO m, MonadMask m, MonadLogger m, MonadTrace m
+  :: ( MonadReadDB m alg a, MonadIO m, MonadMask m, MonadLogger m
      , Crypto alg, BlockData a)
   => PeerChans m alg a
   -> TChan PexMessage
@@ -146,7 +146,6 @@ peerFSM
   -> m (State alg a)
 peerFSM PeerChans{..} peerExchangeCh gossipCh recvCh cursor@MempoolCursor{..} = logOnException $ do
   logger InfoS "Starting routing for receiving messages" ()
-  trace (TePeerGossipVotes TepgvStarted)
   ownPeerChanTx <- atomicallyIO $ dupTChan peerChanTx
   chTimeout     <- liftIO newTQueueIO
   evalContT $ do
