@@ -78,7 +78,7 @@ handlerGossipMsg = \case
           -- If update don't change height only advance step of peer
           then if h0 == h
              then peerStep .= step >> currentState
-             else lift $ advancePeer step
+             else advancePeer step
           else currentState
       AnnHasProposal  h r   -> do
         addProposal h r
@@ -140,9 +140,9 @@ advanceOurHeight (FullStep ourH _ _) = do
       -- Current peer may become lagging if we increase our height
   (FullStep h _ _) <- use peerStep
   if h < ourH then
-        do vals <- lift $ queryRO $ mustRetrieveValidatorSet h
-           r    <- lift $ queryRO $ mustRetrieveCommitRound  h
-           bid  <- lift $ queryRO $ mustRetrieveBlockID      h
+        do vals <- queryRO $ mustRetrieveValidatorSet h
+           r    <- queryRO $ mustRetrieveCommitRound  h
+           bid  <- queryRO $ mustRetrieveBlockID      h
            p <- get
            return $ wrap $ LaggingState
              { _lagPeerStep        = _peerStep p
@@ -159,8 +159,8 @@ advanceOurHeight (FullStep ourH _ _) = do
 
 handlerVotesTimeout :: TimeoutHandler CurrentState alg a m
 handlerVotesTimeout = do
-  bchH <- lift $ queryRO blockchainHeight
-  st <- view consensusSt >>= lift . liftIO . atomically
+  bchH <- queryRO blockchainHeight
+  st <- view consensusSt >>= liftIO . atomically
   case st of
     Nothing                       -> return ()
     Just (h',_) | h' /= succ bchH -> return ()
@@ -182,7 +182,7 @@ handlerVotesTimeout = do
         let unknown = CIMap.difference localPV peerPV
         unless (CIMap.null unknown) $ do
           let n = CIMap.size unknown
-          i <- lift $ liftIO $ randomRIO (0,n-1)
+          i <- liftIO $ randomRIO (0,n-1)
           let vote@(signedValue -> Vote{..}) = unverifySignature $ toList unknown !! i
           addPrevote voteHeight voteRound $ signedKeyInfo vote
           push2Gossip $ GossipPreVote vote
@@ -196,7 +196,7 @@ handlerVotesTimeout = do
          , unknown      <- CIMap.difference localPC peerPC
          , not (CIMap.null unknown)
            -> do let n = CIMap.size unknown
-                 i <- lift $ liftIO $ randomRIO (0,n-1)
+                 i <- liftIO $ randomRIO (0,n-1)
                  let vote@(signedValue -> Vote{..}) = unverifySignature $ toList unknown !! i
                  addPrecommit voteHeight voteRound $ signedKeyInfo vote
                  push2Gossip $ GossipPreCommit vote

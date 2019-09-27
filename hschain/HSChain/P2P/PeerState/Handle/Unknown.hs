@@ -1,12 +1,11 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs            #-}
+{-# LANGUAGE LambdaCase       #-}
 
 module HSChain.P2P.PeerState.Handle.Unknown
   ( handler
   , issuedGossipHandler
   ) where
-
-import Control.Monad.RWS.Strict
 
 import HSChain.Blockchain.Internal.Types
 import HSChain.P2P.Internal.Types
@@ -30,10 +29,9 @@ issuedGossipHandler =
     advanceOurHeight
 
 handlerGossipMsg :: MessageHandler UnknownState alg a m
-handlerGossipMsg gossipMsg = do
-  case gossipMsg of
-    GossipAnn (AnnStep step) -> lift $ advancePeer step
-    _                        -> currentState
+handlerGossipMsg = \case
+  GossipAnn (AnnStep step) -> advancePeer step
+  _                        -> currentState
 
 ----------------------------------------------------------------
 
