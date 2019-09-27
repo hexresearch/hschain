@@ -25,6 +25,8 @@ import HSChain.P2P.PeerState.Types
 
 import qualified HSChain.P2P.Internal.Logging as Logging
 
+
+-- | Underlying monad for transitions of state for gossip
 newtype TransitionT s alg a m r = TransitionT
   { unTransition :: RWST (Config m alg a) [Command alg a] (s alg a) m r }
   deriving ( Functor
@@ -66,7 +68,8 @@ type Handler s t alg a m =  HandlerCtx alg a m
                          => t alg a -- ^ `Event' to handle
                          -> TransitionT s alg a m (State alg a) -- ^ new `TransitionT'
 
-currentState :: (Monad m, Wrapable t) => TransitionT t alg a m (State alg a)
+-- | Obtain current state wrapped as 'State'
+currentState :: (MonadState (s alg a) m, Wrapable s) => m (State alg a)
 currentState = wrap <$> get
 
 resendGossip :: ( MonadReader (Config n alg a) m
@@ -82,11 +85,14 @@ resendGossip (GossipTx tx      ) = tell [Push2Mempool tx] >> tickRecv Logging.tx
 resendGossip (GossipPex pexmsg ) = tell [SendPEX pexmsg] >> tickRecv pex
 resendGossip _                   = return ()
 
+
+-- | Increment receive counter
 tickRecv :: (MonadReader (Config n alg a) m, MonadIO m)
          => (GossipCounters -> Counter) -> m ()
 tickRecv counter =
   Logging.tickRecv . counter =<< view gossipCounters
 
+-- | Increment send counter
 tickSend :: (MonadReader (Config n alg a) m, MonadIO m)
          => (GossipCounters -> Counter) -> m ()
 tickSend counter =
