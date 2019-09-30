@@ -137,10 +137,13 @@ testSplitVote nByz = testConsensus k1 $ do
 
 -- Test that we replay WAL correctly. Most of all that we don't
 -- generate different block!
+--
+-- See #446 for more details
 testWalReplay :: IO ()
 testWalReplay = withDatabase "" genesis $ \conn -> run conn $ do
-  bidRef          <- liftIO $ newIORef Nothing
-  -- First run
+  bidRef <- liftIO $ newIORef Nothing
+  -- First run. We run consensus and then we abort execution of
+  -- consensus engine.
   do (chTx, chRx, action) <- startConsensus k1
      runConcurrently
        [ action
@@ -156,7 +159,8 @@ testWalReplay = withDatabase "" genesis $ \conn -> run conn $ do
            () <- voteFor (Just bid) =<< expectPC
            return ()
        ]
-  -- Second run after crash
+  -- Second run after crash. We should get same output from consensus
+  -- engine without sending any input.
   do (chTx, chRx, action) <- startConsensus k1
      runConcurrently
        [ action
