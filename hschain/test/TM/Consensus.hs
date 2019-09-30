@@ -346,7 +346,7 @@ expect vals (chTx, chRx) expected = do
           | h == h'
           , r == r'
           , s == s' -> next
-        m -> failure m func
+        m -> failure m
       ExpectProp next  -> readMsg >>= \case
         TxProposal sp  -> next $ signedValue sp
         m              -> failure m
