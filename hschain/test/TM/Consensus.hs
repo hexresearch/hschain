@@ -52,6 +52,10 @@ tests = testGroup "eigen-consensus"
   , testCase "Split vote byz=2" $ testSplitVote 2
   , testCase "Split vote byz=3" $ testSplitVote 3
   , testCase "WAL replay" testWalReplay
+  , testGroup "Locking"
+    [ testCase ("Key=" ++ nm) $ testLocking k
+    | (nm,k) <- [("k1",k1), ("k2",k2), ("k3",k3), ("k4",k4)]
+    ]
   ]
 
 ----------------------------------------------------------------
@@ -177,9 +181,57 @@ testWalReplay = withDatabase "" genesis $ \conn -> run conn $ do
   where
     keys = [k2,k3,k4]
 
+-- Test case which is used for illustration for necessity of locking
+-- in "Tendermint: byzantine fault tolerance in the age of
+-- blockchains", §3.2.3
+testLocking :: PrivKey TestAlg -> IO ()
+testLocking k = testConsensus k $ do
+  -- Consensus enters new height and block is proposed
+  ()  <- expectStep 1 0 (StepNewHeight 0)
+  ()  <- expectStep 1 0 StepProposal
+  bid <- if | k == proposer1 -> propBlockID <$> expectProp
+            | otherwise      -> proposeBlock (Round 0) proposer1 block1
+  -- PREVOTE
+  --
+  -- All validators except "A" get PoLCa
+  () <- voteFor (Just bid) =<< expectPV
+  when (k /= kA) $ do
+    prevote (Height 1) (Round 0) votersPV (Just bid)
+  -- PRECOMMIT
+  --
+  -- Only "D" gets precommits
+  () <- voteFor (if k == kA then Nothing else Just bid) =<< expectPC
+  when (k == kD) $ do
+    precommit (Height 1) (Round 0) votersPC (Just bid)
+    precommit (Height 1) (Round 0) [k1]     Nothing
+     -- "D" enters new height
+  if | k == kD   -> expectStep 2 0 (StepNewHeight 0)
+     -- "A,B,C" enter round 1
+     | otherwise -> do
+         expectStep 1 1 StepProposal
+         -- Proposer must be locked on previously proposed block for
+         -- which it precommitted
+         when (k == proposer2) $ do
+           p <- expectProp
+           unless (propBlockID p == bid && propPOL p == Just (Round 0))
+             $ error "Invalid POL"
+            -- "A" could vote whatever
+         if | k == kA   -> return ()
+            -- Other validators should vote for locked block even if
+            -- they didn't see proposal
+            | otherwise -> voteFor (Just bid) =<< expectPV
+  where
+    -- We name keys accordint to names in paper
+    kA = k1
+    kD = k4
+    --
+    proposer1 = k1
+    proposer2 = k2
+    --
+    votersPV = filter (/=k) privK
+    votersPC = filter (/=k1) $ filter (/=k) privK
 
 
-  
 ----------------------------------------------------------------
 -- Helpers for running tests
 ----------------------------------------------------------------
