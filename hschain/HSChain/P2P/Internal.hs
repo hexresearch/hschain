@@ -159,7 +159,6 @@ peerFSM PeerChans{..} peerExchangeCh gossipCh recvCh cursor@MempoolCursor{..} = 
         , readTChan recvCh
         , EAnnouncement <$> readTChan ownPeerChanTx
         ]
-      let config = Config proposalStorage cursor consensusState gossipCnts
       (s', cmds) <- handler config s event
       forM_ cmds $ \case
         SendRX rx         -> atomicallyIO $ peerChanRx rx -- FIXME: tickRecv
@@ -167,6 +166,9 @@ peerFSM PeerChans{..} peerExchangeCh gossipCh recvCh cursor@MempoolCursor{..} = 
         SendPEX pexMsg    -> atomicallyIO $ writeTChan peerExchangeCh pexMsg
         Push2Gossip tx    -> atomicallyIO $ writeTBQueue gossipCh tx
       return s'
+  where
+    config = Config proposalStorage cursor consensusState gossipCnts
+
 
 -- | Start interactions with peer. At this point connection is already
 --   established and peer is registered.
