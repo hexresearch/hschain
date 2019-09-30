@@ -144,10 +144,10 @@ testWalReplay = withDatabase "" genesis $ \conn -> run conn $ do
   bidRef <- liftIO $ newIORef Nothing
   -- First run. We run consensus and then we abort execution of
   -- consensus engine.
-  do (chTx, chRx, action) <- startConsensus k1
+  do (chans, action) <- startConsensus k1
      runConcurrently
        [ action
-       , expect valSet chTx chRx $ do
+       , expect valSet chans $ do
            ()  <- expectStep 1 0 (StepNewHeight 0)
            ()  <- expectStep 1 0 StepProposal
            bid <- propBlockID <$> expectProp
@@ -161,10 +161,10 @@ testWalReplay = withDatabase "" genesis $ \conn -> run conn $ do
        ]
   -- Second run after crash. We should get same output from consensus
   -- engine without sending any input.
-  do (chTx, chRx, action) <- startConsensus k1
+  do (chans, action) <- startConsensus k1
      runConcurrently
        [ action
-       , expect valSet chTx chRx $ do
+       , expect valSet chans $ do
            ()  <- expectStep 1 0 (StepNewHeight 0)
            ()  <- expectStep 1 0 StepProposal
            bid <- propBlockID <$> expectProp
@@ -176,6 +176,9 @@ testWalReplay = withDatabase "" genesis $ \conn -> run conn $ do
        ]
   where
     keys = [k2,k3,k4]
+
+
+
   
 ----------------------------------------------------------------
 -- Helpers for running tests
@@ -189,21 +192,24 @@ run c = runNoLogsT . runDBT c
 -- Simple test of consensus
 testConsensus :: PrivKey TestAlg -> Expect ConsensusM TestAlg BData () -> IO ()
 testConsensus k messages = withDatabase "" genesis $ \conn -> run conn $ do
-  (chTx, chRx, action) <- startConsensus k
+  (chans, action) <- startConsensus k
   runConcurrently
     [ action
-    , expect valSet chTx chRx messages
+    , expect valSet chans messages
     ]
 
-startConsensus :: PrivKey TestAlg -> ConsensusM ( TChan   (MessageTx TestAlg BData)
-                                                , TBQueue (MessageRx 'Unverified TestAlg BData)
-                                                , ConsensusM ())
+startConsensus :: PrivKey TestAlg -> ConsensusM ( ( TChan   (MessageTx TestAlg BData)
+                                                  , TBQueue (MessageRx 'Unverified TestAlg BData)
+                                                  )
+                                                , ConsensusM ()
+                                                )
 startConsensus k = do
   logic <- mkAppLogic
   chans <- newAppChans cfg
   ch    <- atomicallyIO $ dupTChan $ appChanTx chans
-  return ( ch
-         , appChanRx chans
+  return ( ( ch
+           , appChanRx chans
+           )
          , runApplication cfg (Just (PrivValidator k)) logic mempty chans
          )
   where
@@ -326,11 +332,12 @@ data ExpectF alg a x
 expect
   :: (MonadIO m, Crypto alg)
   => ValidatorSet alg
-  -> TChan (MessageTx alg a)
-  -> TBQueue (MessageRx 'Unverified alg a)
+  -> ( TChan (MessageTx alg a)
+     , TBQueue (MessageRx 'Unverified alg a)
+     )
   -> Expect m alg a ()
   -> m ()
-expect vals chTx chRx expected = do
+expect vals (chTx, chRx) expected = do
   iterT step expected
   where
     step func = case func of
