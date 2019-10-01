@@ -51,6 +51,8 @@ tests = testGroup "eigen-gossip"
   , testCase "peer lagging"    testGossipLagging
   , testCase "peer is current (1)" $ testGossipCurrent True
   , testCase "peer is current (2)" $ testGossipCurrent False
+  , testCase "POL (1)" $ testGossipPOL True
+  , testCase "POL (2)" $ testGossipPOL False
   ]
 
 ----------------------------------------------------------------
@@ -128,7 +130,7 @@ testGossipCurrent isRecvProp = withGossip 3 $ do
      (Current{},[SendRX (RxPreVote _)]) <- step $ EGossip $ GossipPreVote $ signValue i3 k3 vote
      (Current{},[SendRX (RxPreVote _)]) <- step $ EGossip $ GossipPreVote $ signValue i4 k4 vote
      (Current{},[Push2Gossip (GossipPreVote v1)]) <- step $ EVotesTimeout
-     (Current{},[Push2Gossip (GossipPreVote v2)]) <- step $ EVotesTimeout     
+     (Current{},[Push2Gossip (GossipPreVote v2)]) <- step $ EVotesTimeout
      liftIO $ sort [spv1,spv2] @=? sort [v1,v2]
   -- PRECOMMIT (same as prevote)
   do addPrecommit spc1
@@ -136,7 +138,7 @@ testGossipCurrent isRecvProp = withGossip 3 $ do
      (Current{},[SendRX (RxPreCommit _)]) <- step $ EGossip $ GossipPreCommit $ signValue i3 k3 vote
      (Current{},[SendRX (RxPreCommit _)]) <- step $ EGossip $ GossipPreCommit $ signValue i4 k4 vote
      (Current{},[Push2Gossip (GossipPreCommit v1)]) <- step $ EVotesTimeout
-     (Current{},[Push2Gossip (GossipPreCommit v2)]) <- step $ EVotesTimeout     
+     (Current{},[Push2Gossip (GossipPreCommit v2)]) <- step $ EVotesTimeout
      liftIO $ sort [spc1,spc2] @=? sort [v1,v2]
   where
     block = mockchain !! 4
@@ -158,6 +160,48 @@ testGossipCurrent isRecvProp = withGossip 3 $ do
     spv2 = signValue i2 k2 vote
     spc1 = signValue i1 k1 vote
     spc2 = signValue i2 k2 vote
+
+
+testGossipPOL :: Bool -> IO ()
+testGossipPOL isLocked = withGossip 3 $ do
+  _ <- step =<< startConsensus
+  (Current{},[]) <- step $ EGossip $ GossipAnn $ AnnStep $ FullStep (Height 4) (Round 0) (StepNewHeight 0)
+  (Current{},[]) <- step $ EGossip $ GossipAnn $ AnnStep $ FullStep (Height 4) (Round 1) StepProposal
+  when isLocked $ do
+    (Current{},[]) <- step $ EGossip $ GossipAnn $ AnnLock (Just (Round 0))
+    return ()
+  --
+  addPrevote voteR0
+  addPrevote voteR1
+  --
+  (Current{},txs) <- step EVotesTimeout
+  case isLocked of
+    True  | [ Push2Gossip (GossipPreVote v1)
+            , Push2Gossip (GossipPreVote v2)
+            ] <- txs
+          , sort [v1,v2] == sort [voteR1, voteR0]
+          -> return ()
+    False | [ Push2Gossip (GossipPreVote v) ] <- txs
+          , v == voteR1
+          -> return ()
+    _     -> error "Wrong vote set"
+
+  where
+    block   = mockchain !! 4
+    bid     = blockHash block
+    Just i1 = indexByValidator valSet (publicKey k1)
+    -- Proposals and votes
+    voteR0 = signValue i1 k1 Vote { voteHeight  = Height 4
+                                  , voteRound   = Round 0
+                                  , voteTime    = Time 0
+                                  , voteBlockID = Just bid
+                                  }
+    voteR1 = signValue i1 k1 Vote { voteHeight  = Height 4
+                                  , voteRound   = Round 1
+                                  , voteTime    = Time 0
+                                  , voteBlockID = Just bid
+                                  }
+
 
 
 ----------------------------------------------------------------
