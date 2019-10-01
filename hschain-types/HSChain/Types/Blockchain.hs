@@ -360,7 +360,7 @@ decodeVote expectedTag = do
 --   encoding of value.
 data Signed (sign :: SignedState) alg a
   = Signed !(ValidatorIdx alg) !(Signature alg) !a
-  deriving stock (Generic, Eq, Show)
+  deriving stock (Generic, Eq, Ord, Show)
 
 instance (NFData a) => NFData (Signed sign alg a) where
   rnf (Signed a s x) = rnf a `seq` rnf s `seq` rnf x
