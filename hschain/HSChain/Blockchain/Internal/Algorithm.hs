@@ -469,12 +469,13 @@ enterPrevote par@HeightParameters{..} r (unlockOnPrevote -> sm@TMState{..}) reas
   where
     prevoteBlock
       -- We're locked on block so we prevote it
-      | Just (_,bid) <- smLockedBlock      = return (Just bid)
+      | Just (_,bid) <- smLockedBlock = return (Just bid)
       -- We have proposal. Prevote it if it's good
       | Just (signedValue -> Proposal{..}) <- Map.lookup r smProposals =
           -- If proposal have proof of lock we must have proof
           -- of lock for same round and some block
           case propPOL of
+            Nothing    -> checkPrevoteBlock propBlockID
             Just lockR ->
               case majority23at lockR smPrevotesSet of
                 Just bid
@@ -484,19 +485,9 @@ enterPrevote par@HeightParameters{..} r (unlockOnPrevote -> sm@TMState{..}) reas
                       --  FIXME: Byzantine!
                       logger WarningS "BYZANTINE proposal POL BID does not match votes" ()
                       return Nothing
-                --
-                -- FIXME: Here we allow block even if we don't have
-                --        POL for the round it's locked on. We need to
-                --        do this because in order to perform that
-                --        check we need to gossip POL votes with
-                --        priority and we don't have support for that
-                --        yet
-                --
-                -- Nothing                               -> return Nothing
-                Nothing                               -> checkPrevoteBlock propBlockID
-            Nothing                                   -> checkPrevoteBlock propBlockID
+                Nothing -> return Nothing
       -- Proposal invalid or absent. Prevote NIL
-      | otherwise                          = return Nothing
+      | otherwise = return Nothing
     --
     checkPrevoteBlock bid = do
       valR <- validateBlock bid
@@ -540,6 +531,7 @@ enterPrecommit par@HeightParameters{..} r sm@TMState{..} reason = do
   logger InfoS "Entering precommit" $ LogTransition currentH smRound smStep r reason
   lift $ yield $ EngCastPreCommit r precommitBlock
   lift $ yield $ EngTimeout $ Timeout currentH r StepPrecommit
+  lift $ yield $ EngAnnLock $ fst <$> lock
   checkTransitionPrecommit par r sm
     { smStep        = StepPrecommit
     , smRound       = r

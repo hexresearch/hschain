@@ -55,6 +55,7 @@ data CurrentState alg a = CurrentState
   , _peerPrecommits :: !(Map Round ValidatorISet) -- ^ Peer's precommits
   , _peerProposals  :: !(Set Round)               -- ^ Set of proposals peer has
   , _peerBlocks     :: !(Set (BlockID alg a))     -- ^ Set of blocks for proposals
+  , _peerLock       :: !(Maybe Round)             -- ^ Round peer locked on
   }
   deriving Show
 deriving instance Eq   (PublicKey alg) => Eq   (CurrentState alg a)

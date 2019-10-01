@@ -82,6 +82,7 @@ handlerGossipMsg = \case
         when ( h == hP && r == peerCommitRound) $
           lagPeerHasBlock .= True
         currentState
+      AnnLock _ -> currentState
     _ -> currentState
 
 addProposal :: MonadState (LaggingState alg a) m

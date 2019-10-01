@@ -54,6 +54,7 @@ advancePeer step@(FullStep h _ _) = do
                         , _peerPrecommits = Map.empty
                         , _peerProposals  = Set.empty
                         , _peerBlocks     = Set.empty
+                        , _peerLock       = Nothing
                         }
              GT -> return $ wrap $ AheadState step
 

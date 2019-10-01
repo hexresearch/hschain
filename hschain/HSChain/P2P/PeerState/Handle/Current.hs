@@ -97,7 +97,9 @@ handlerGossipMsg = \case
           forM_ mbid $ \(bid,_) ->
             peerBlocks %= Set.insert bid
         currentState
-
+      AnnLock mr -> do
+        peerLock .= mr
+        currentState
 
 addProposal :: MonadState (CurrentState alg a) m
             => Height -> Round -> m ()
@@ -174,6 +176,22 @@ handlerVotesTimeout = do
           addProposal (propHeight prop) (propRound prop)
           push2Gossip $ GossipProposal $ unverifySignature pr
           tickSend proposals
+      -- Send prevotes for lock round
+      do use peerLock >>= \case
+           Nothing -> return ()
+           Just mr -> do
+             peerPV <- maybe CIMap.empty (CIMap.fromSet (const ()) . getValidatorIntSet)
+                     . Map.lookup r
+                    <$> use peerPrevotes
+             forM_ (Map.lookup mr $ toPlainMap $ smPrevotesSet tm) $ \localPV -> do
+               let unknown = CIMap.difference localPV peerPV
+               unless (CIMap.null unknown) $ do
+                 let n = CIMap.size unknown
+                 i <- lift $ liftIO $ randomRIO (0,n-1)
+                 let vote@(signedValue -> Vote{..}) = unverifySignature $ toList unknown !! i
+                 addPrevote voteHeight voteRound $ signedKeyInfo vote
+                 push2Gossip $ GossipPreVote vote
+                 tickSend prevote
       -- Send prevotes
       peerPV <- maybe CIMap.empty (CIMap.fromSet (const ()) . getValidatorIntSet)
               . Map.lookup r
