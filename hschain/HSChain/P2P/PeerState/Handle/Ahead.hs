@@ -64,6 +64,7 @@ advanceOurHeignt (FullStep ourH _ _) = do
              , _peerPrecommits = Map.empty
              , _peerProposals  = Set.empty
              , _peerBlocks     = Set.empty
+             , _peerLock       = Nothing
              }
      else currentState
 ----------------------------------------------------------------

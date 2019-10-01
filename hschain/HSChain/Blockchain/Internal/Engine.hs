@@ -317,6 +317,8 @@ handleEngineMessage HeightParameters{..} ConsensusCfg{..} AppChans{..} = forever
     atomicallyIO $ writeTChan appChanTx $ TxAnn $ AnnHasPreCommit voteHeight voteRound i
   EngAnnStep s ->
     atomicallyIO $ writeTChan appChanTx $ TxAnn $ AnnStep s
+  EngAnnLock r ->
+    atomicallyIO $ writeTChan appChanTx $ TxAnn $ AnnLock r
   --
   EngAcceptBlock r bid -> do
     atomicallyIO $ writeTChan appChanTx $ TxAnn $ AnnHasProposal currentH r

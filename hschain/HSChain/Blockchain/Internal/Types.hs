@@ -101,6 +101,7 @@ data EngineMessage alg a
   | EngAnnPreVote   !(Signed 'Verified alg (Vote 'PreVote   alg a))
   | EngAnnPreCommit !(Signed 'Verified alg (Vote 'PreCommit alg a))
   | EngAnnStep      !FullStep
+  | EngAnnLock      !(Maybe Round)
   deriving (Show,Generic)
 
 -- | Message received by main application
@@ -138,6 +139,7 @@ data Announcement alg
   | AnnHasBlock     !Height !Round
   | AnnHasPreVote   !Height !Round !(ValidatorIdx alg)
   | AnnHasPreCommit !Height !Round !(ValidatorIdx alg)
+  | AnnLock         !(Maybe Round)
   deriving (Show,Generic)
 instance Serialise (Announcement alg)
 
