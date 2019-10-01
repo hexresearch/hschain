@@ -10,7 +10,6 @@ module HSChain.P2P.PeerState.Handle.Current
   , issuedGossipHandler
   ) where
 
-import Control.Concurrent.STM   (atomically)
 import Control.Monad
 import Control.Monad.RWS.Strict
 import Data.Foldable            (toList)
@@ -21,6 +20,7 @@ import System.Random            (randomRIO)
 import Lens.Micro.Mtl
 
 import HSChain.Blockchain.Internal.Types
+import HSChain.Control                   (atomicallyIO)
 import HSChain.Crypto
 import HSChain.Crypto.Containers         (toPlainMap)
 import HSChain.Logger
@@ -160,7 +160,7 @@ advanceOurHeight (FullStep ourH _ _) = do
 handlerVotesTimeout :: TimeoutHandler CurrentState alg a m
 handlerVotesTimeout = do
   bchH <- queryRO blockchainHeight
-  st <- view consensusSt >>= liftIO . atomically
+  st <- atomicallyIO =<< view consensusSt
   case st of
     Nothing                       -> return ()
     Just (h',_) | h' /= succ bchH -> return ()
