@@ -177,34 +177,9 @@ handlerVotesTimeout = do
           push2Gossip $ GossipProposal $ unverifySignature pr
           tickSend proposals
       -- Send prevotes for lock round
-      do use peerLock >>= \case
-           Nothing -> return ()
-           Just mr -> do
-             peerPV <- maybe CIMap.empty (CIMap.fromSet (const ()) . getValidatorIntSet)
-                     . Map.lookup r
-                    <$> use peerPrevotes
-             forM_ (Map.lookup mr $ toPlainMap $ smPrevotesSet tm) $ \localPV -> do
-               let unknown = CIMap.difference localPV peerPV
-               unless (CIMap.null unknown) $ do
-                 let n = CIMap.size unknown
-                 i <- lift $ liftIO $ randomRIO (0,n-1)
-                 let vote@(signedValue -> Vote{..}) = unverifySignature $ toList unknown !! i
-                 addPrevote voteHeight voteRound $ signedKeyInfo vote
-                 push2Gossip $ GossipPreVote vote
-                 tickSend prevote
+      use peerLock >>= mapM_ (gossipPrevotes tm)
       -- Send prevotes
-      peerPV <- maybe CIMap.empty (CIMap.fromSet (const ()) . getValidatorIntSet)
-              . Map.lookup r
-             <$> use peerPrevotes
-      forM_ (Map.lookup r $ toPlainMap $ smPrevotesSet tm) $ \localPV -> do
-        let unknown = CIMap.difference localPV peerPV
-        unless (CIMap.null unknown) $ do
-          let n = CIMap.size unknown
-          i <- liftIO $ randomRIO (0,n-1)
-          let vote@(signedValue -> Vote{..}) = unverifySignature $ toList unknown !! i
-          addPrevote voteHeight voteRound $ signedKeyInfo vote
-          push2Gossip $ GossipPreVote vote
-          tickSend prevote
+      gossipPrevotes tm r
       -- Send precommits
       peerPC <- maybe CIMap.empty (CIMap.fromSet (const ()) . getValidatorIntSet)
               . Map.lookup r
@@ -221,6 +196,28 @@ handlerVotesTimeout = do
                  tickSend precommit
          | otherwise -> return ()
   currentState
+
+gossipPrevotes
+  :: ( MonadState  (CurrentState alg a) m
+     , MonadWriter [Command alg a] m
+     , MonadReader (Config n alg a) m
+     , MonadIO m
+     )
+  => TMState alg a -> Round -> m ()
+gossipPrevotes tm r = do
+  peerPV <- maybe CIMap.empty (CIMap.fromSet (const ()) . getValidatorIntSet)
+          . Map.lookup r
+         <$> use peerPrevotes
+  forM_ (Map.lookup r $ toPlainMap $ smPrevotesSet tm) $ \localPV -> do
+    let unknown = CIMap.difference localPV peerPV
+    unless (CIMap.null unknown) $ do
+      let n = CIMap.size unknown
+      i <- liftIO $ randomRIO (0,n-1)
+      let vote@(signedValue -> Vote{..}) = unverifySignature $ toList unknown !! i
+      addPrevote voteHeight voteRound $ signedKeyInfo vote
+      push2Gossip $ GossipPreVote vote
+      tickSend prevote
+
 ----------------------------------------------------------------
 
 handlerMempoolTimeout :: TimeoutHandler CurrentState alg a m
