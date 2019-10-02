@@ -136,7 +136,7 @@ decideNewBlock config appValidatorKey appLogic@AppLogic{..} appCall@AppCallbacks
   -- machine
   --
   -- FIXME: we don't want duplication! (But pipes & producer does not unify)
-  hParam  <- makeHeightParameters appValidatorKey appLogic appCall appCh
+  hParam  <- makeHeightParameters appValidatorKey appLogic appCall appPropStorage
   resetPropStorage appPropStorage $ currentH hParam
   -- Run consensus engine
   (cmt, block, bchSt) <- runEffect $ do
@@ -390,11 +390,11 @@ makeHeightParameters
      , MonadLogger m
      , Crypto alg, Serialise a)
   => Maybe (PrivValidator alg)
-  -> AppLogic     m alg a
-  -> AppCallbacks m alg a
-  -> AppChans     m alg a
+  -> AppLogic            m alg a
+  -> AppCallbacks        m alg a
+  -> ProposalStorage 'RW m alg a
   -> m (HeightParameters m alg a)
-makeHeightParameters appValidatorKey AppLogic{..} AppCallbacks{..} AppChans{..} = do
+makeHeightParameters appValidatorKey AppLogic{..} AppCallbacks{appCanCreateBlock} propStorage = do
   bchH <- queryRO $ blockchainHeight
   let currentH = succ bchH
   oldValSet <- queryRO $ retrieveValidatorSet     bchH
@@ -421,12 +421,12 @@ makeHeightParameters appValidatorKey AppLogic{..} AppCallbacks{..} AppChans{..} 
           Just b  -> return b
     --
     , validateBlock = \bid -> do
-        retrievePropByID appPropStorage currentH bid >>= \case
+        retrievePropByID propStorage currentH bid >>= \case
           UnknownBlock    -> return UnseenProposal
           InvalidBlock    -> return InvalidProposal
           GoodBlock{}     -> return GoodProposal
           UntestedBlock b -> do
-            let invalid = InvalidProposal <$ setPropValidation appPropStorage bid Nothing
+            let invalid = InvalidProposal <$ setPropValidation propStorage bid Nothing
             inconsistencies <- checkProposedBlock currentH b
             st              <- throwNothingM BlockchainStateUnavalable
                              $ bchStoreRetrieve appBchState bchH
@@ -445,7 +445,7 @@ makeHeightParameters appValidatorKey AppLogic{..} AppCallbacks{..} AppChans{..} 
                | Just bst <- mvalSet'
                , validatorSetSize (bChValidatorSet bst) > 0
                , blockValChange b == validatorsDifference valSet (bChValidatorSet bst)
-                 -> do setPropValidation appPropStorage bid $ Just bst
+                 -> do setPropValidation propStorage bid $ Just bst
                        return GoodProposal
                | otherwise
                  -> invalid
@@ -494,9 +494,9 @@ makeHeightParameters appValidatorKey AppLogic{..} AppCallbacks{..} AppChans{..} 
             return (block, bst)
         --
         let bid = blockHash block
-        allowBlockID      appPropStorage r bid
-        storePropBlock    appPropStorage block
-        setPropValidation appPropStorage bid (Just bst)
+        allowBlockID      propStorage r bid
+        storePropBlock    propStorage block
+        setPropValidation propStorage bid (Just bst)
         return bid
     , ..
     }
