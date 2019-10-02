@@ -281,6 +281,9 @@ mkAppLogic = do
     , appValidationFun  = \_   -> return . Just
     , appMempool        = nullMempool
     , appBchState       = store
+    , appProposerChoice = \vs (Height h) (Round r) ->
+        let n = validatorSetSize vs
+        in ValidatorIdx $! fromIntegral $ (h + r) `mod` fromIntegral n
     }
 
 

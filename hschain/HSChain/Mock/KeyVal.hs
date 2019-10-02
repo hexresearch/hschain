@@ -48,7 +48,7 @@ import HSChain.Run
 import HSChain.Store
 import HSChain.Store.STM
 import HSChain.Debug.Trace
-import HSChain.Types.Validators (ValidatorSet)
+import HSChain.Types.Validators
 import qualified HSChain.P2P.Network as P2P
 
 
@@ -108,6 +108,9 @@ interpretSpec p cb = do
             return (BData [(k, i)], BlockchainState (Map.insert k i st) valset)
         , appMempool         = nullMempool
         , appBchState        = store
+        , appProposerChoice = \vs (Height h) (Round r) ->
+            let n = validatorSetSize vs
+            in ValidatorIdx $! fromIntegral $ (h + r) `mod` fromIntegral n
         }
   acts <- runNode (getT p :: Configuration Example) NodeDescription
     { nodeValidationKey = p ^.. nspecPrivKey
