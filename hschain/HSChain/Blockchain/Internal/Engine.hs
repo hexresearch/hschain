@@ -401,10 +401,6 @@ makeHeightParameters appValidatorKey AppLogic{..} AppCallbacks{appCanCreateBlock
   valSet    <- queryRO $ mustRetrieveValidatorSet currentH
   let ourIndex = indexByValidator valSet . publicKey . validatorPrivKey
              =<< appValidatorKey
-  let proposerChoice (Round r) =
-        let Height h' = currentH
-            n         = validatorSetSize valSet
-        in ValidatorIdx $! fromIntegral $ (h' + r) `mod` fromIntegral n
   --
   return HeightParameters
     { validatorSet     = valSet
@@ -412,7 +408,7 @@ makeHeightParameters appValidatorKey AppLogic{..} AppCallbacks{appCanCreateBlock
     , validatorKey     = liftA2 (,) appValidatorKey ourIndex
       -- FIXME: this is some random algorithms that should probably
       --        work (for some definition of work)
-    , proposerForRound = proposerChoice
+    , proposerForRound = appProposerChoice valSet currentH
     --
     , readyCreateBlock = \n ->
         queryRO (retrieveBlockReadyFromWAL currentH n) >>= \case
