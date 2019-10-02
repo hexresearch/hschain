@@ -108,9 +108,7 @@ interpretSpec p cb = do
             return (BData [(k, i)], BlockchainState (Map.insert k i st) valset)
         , appMempool         = nullMempool
         , appBchState        = store
-        , appProposerChoice = \vs (Height h) (Round r) ->
-            let n = validatorSetSize vs
-            in ValidatorIdx $! fromIntegral $ (h + r) `mod` fromIntegral n
+        , appProposerChoice  = randomProposerSHA512
         }
   acts <- runNode (getT p :: Configuration Example) NodeDescription
     { nodeValidationKey = p ^.. nspecPrivKey
