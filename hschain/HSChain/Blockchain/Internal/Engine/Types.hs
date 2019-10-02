@@ -30,18 +30,24 @@ module HSChain.Blockchain.Internal.Engine.Types (
   , Announcement(..)
   , AppChans(..)
   , hoistAppChans
+    -- * Proposers
+  , randomProposerSHA512
   ) where
 
 import Control.Applicative
 import Control.Concurrent.STM
 import Data.Aeson
 import Data.Coerce
+import Data.Bits              (shiftL)
 import Data.Monoid            (Any(..))
+import Data.Maybe             (fromMaybe)
+import qualified Data.ByteString as BS
 import Numeric.Natural
 import GHC.Generics           (Generic)
 
 import HSChain.Blockchain.Internal.Types
 import HSChain.Crypto
+import HSChain.Crypto.SHA (SHA512)
 import HSChain.Store
 import HSChain.Types.Blockchain
 import HSChain.Types.Validators
@@ -252,3 +258,21 @@ hoistAppChans fun AppChans{..} = AppChans
   { appPropStorage   = hoistPropStorageRW fun appPropStorage
   , ..
   }
+
+
+
+-- | Select proposers using PRNG based on SHA512.
+randomProposerSHA512 :: Crypto alg => ValidatorSet alg -> Height -> Round -> ValidatorIdx alg
+randomProposerSHA512 valSet h r
+  = fromMaybe (error "randomProposerSHA512: invalid index")
+  $ indexByIntervalPoint valSet
+  $ fromInteger
+  -- NOTE: We just compute modulo total voting power. This gives
+  --       _biased_ results. But since range of SHA512 is enormous:
+  --       2^512 even for voting power on order 2^64 bias will be on
+  --       order 10^{-134} that is negligible
+  $ (`mod` totalVotingPower valSet)
+  -- Convert hash to integer. We interpret hash as LE integer
+  $ BS.foldr' (\w i -> (i `shiftL` 8) + fromIntegral  w) 0 bs
+  where
+    Hash bs = hash (valSet, h, r) :: Hash SHA512
