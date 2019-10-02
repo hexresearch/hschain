@@ -177,6 +177,7 @@ data AppLogic m alg a = AppLogic
   , appMempool          :: Mempool m alg (TX a)
     -- ^ Application mempool
   , appBchState         :: BChStore m a
+    -- ^ Store for the blockchain state
   }
 
 -- | User callbacks which have monoidal strcture
