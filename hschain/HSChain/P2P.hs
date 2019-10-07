@@ -88,17 +88,7 @@ startPeerDispatcher p2pConfig net addrs AppChans{..} mempool = logOnException $ 
          forever $ waitSec 0.1
     -- Peer connection monitor
     , descendNamespace "PEX" $
-      peerPexMonitor p2pConfig net peerCh mempool peerRegistry
-    -- Peer connection capacity monitor for debug purpose
-    , descendNamespace "PEX" $
-      peerPexCapacityDebugMonitor peerRegistry
-    -- Peer new addreses capacity monitor
-    , descendNamespace "PEX" $
-      peerPexKnownCapacityMonitor peerCh peerRegistry (pexMinKnownConnections p2pConfig) (pexMaxKnownConnections p2pConfig)
-    -- Listen for new raw node addresses; normalize it and put into prKnownAddreses
-    , descendNamespace "PEX" $
-      peerPexNewAddressMonitor peerChanPexNewAddresses peerRegistry net
-    -- Output gossip statistics to
+      pexFSM p2pConfig net peerCh mempool peerRegistry (pexMinKnownConnections p2pConfig) (pexMaxKnownConnections p2pConfig)
     , forever $ do
         logGossip gossipCnts
         waitSec 1.0
