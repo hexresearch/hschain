@@ -20,7 +20,7 @@ import Control.Concurrent.STM
 import Control.Monad
 import Control.Monad.Catch
 import Control.Monad.Trans.Class
-import Control.Monad.Trans.Cont
+import Control.Monad.Trans.Cont hiding (reset)
 import Prelude                hiding (round)
 
 import Control.Monad.IO.Class (MonadIO, liftIO)
@@ -35,7 +35,6 @@ import qualified Data.Set           as Set
 import qualified Data.Text          as T
 
 import HSChain.Blockchain.Internal.Engine.Types
-import HSChain.Blockchain.Internal.Types
 import HSChain.Control
 import HSChain.Debug.Trace
 import HSChain.Logger
@@ -46,7 +45,6 @@ import HSChain.P2P.PeerState.Timer
 import HSChain.P2P.PeerState.Types
 import HSChain.Store
 import HSChain.Types.Blockchain
-import HSChain.Utils
 import HSChain.P2P.Internal.PeerRegistry
 import HSChain.P2P.Internal.Logging as Logging
 import HSChain.P2P.Internal.Types
@@ -213,26 +211,6 @@ peerReceive recvCh P2PConnection{..} = logOnException $ do
       atomicallyIO $ writeTChan recvCh $! EGossip $ deserialise bs
       loop
 
--- Infrequently announce our current state. This is needed if node was
--- terminated when it got all necessary votes but don't have block
--- yet. On start it will quickly replay WAL, enter StepAwaitCommit and
--- will never change state and announce it.
-peerGossipAnnounce
-  :: (MonadIO m, MonadLogger m, MonadCatch m)
-  => PeerChans a
-  -> TBQueue (GossipMsg a)
-  -> m ()
-peerGossipAnnounce PeerChans{..} gossipCh = logOnException $
-  forever $ do
-    atomicallyIO $ do
-      st <- consensusState
-      forM_ st $ \(h,TMState{smRound,smStep}) -> do
-        writeTBQueue gossipCh $ GossipAnn $ AnnStep $ FullStep h smRound smStep
-        case smStep of
-          StepAwaitCommit r -> writeTBQueue gossipCh $ GossipAnn $ AnnHasProposal h r
-          _                 -> return ()
-    waitSec 10
-
 -- | Routine for actually sending data to peers
 peerSend
   :: ( MonadReadDB m a, MonadMask m, MonadIO m, MonadLogger m
@@ -265,95 +243,87 @@ whenM :: (Monad m) => m Bool -> m () -> m ()
 whenM predicate act = ifM predicate act (return ())
 
 
-peerPexNewAddressMonitor
-  :: (MonadIO m)
-  => TChan [NetAddr]
-  -> PeerRegistry
-  -> NetworkAPI
-  -> m ()
-peerPexNewAddressMonitor peerChanPexNewAddresses PeerRegistry{..} NetworkAPI{..} = forever $ do
-  addrs' <- atomicallyIO $ readTChan peerChanPexNewAddresses
-  addrs  <- fmap Set.fromList $ filterOutOwnAddresses $ map (`normalizeNodeAddress` Nothing) addrs'
-  atomicallyIO $ modifyTVar' prKnownAddreses (`Set.union` addrs)
+data PEXEvents = EPexDebugMonitor
+               | EPexNewAddrs [NetAddr]
+               | EPexCapacity
+               | EPexMonitor
 
+pexFSM :: (MonadLogger m, MonadMask m, MonadTMMonitoring m,
+           MonadFork m, MonadTrace m, MonadReadDB m a, BlockData a)
+          => NetworkCfg
+          -> NetworkAPI
+          -> PeerChans a
+          -> Mempool m (Alg a) (TX a)
+          -> PeerRegistry
+          -> Int
+          -> Int
+          -> m b
+pexFSM cfg net@NetworkAPI{..} peerCh@PeerChans{..} mempool peerRegistry@PeerRegistry{..} minKnownConnections _maxKnownConnections = do
+  logger InfoS "Start PEX FSM" ()
+  locAddrs <- getLocalAddresses
+  logger DebugS "Local addresses: " $ sl "addr" locAddrs
+  atomicallyIO $ readTVar prConnected >>= (check . not . Set.null) -- wait until some initial peers connect
+  logger DebugS "Some nodes connected" ()
 
-peerPexKnownCapacityMonitor
-  :: ( MonadIO m, MonadLogger m)
-  => PeerChans a
-  -> PeerRegistry
-  -> Int
-  -> Int
-  -> m ()
-peerPexKnownCapacityMonitor PeerChans{..} PeerRegistry{..} minKnownConnections _maxKnownConnections = do
-    logger InfoS "Start PEX known capacity monitor" ()
-    atomicallyIO $ readTVar prConnected >>= (check . not . Set.null) -- wait until some initial peers connect
-    logger DebugS "Some nodes connected" ()
-    forever $ do
-        currentKnowns <- liftIO (readTVarIO prKnownAddreses)
-        if Set.size currentKnowns < minKnownConnections then do
-            logger DebugS ("Too few known (" <> showLS (Set.size currentKnowns) <> ":" <> showLS currentKnowns <> ") conns (need "<>showLS minKnownConnections<>"); ask for more known connections") ()
-            -- TODO firstly ask only last peers
-            atomicallyIO $ writeTChan peerChanPex PexMsgAskForMorePeers
-            waitSec 1.0 -- TODO wait for new connections OR timeout (see https://stackoverflow.com/questions/22171895/using-tchan-with-timeout)
-        else do
-            logger DebugS ("Full of knowns conns (" <> showLS (Set.size currentKnowns) <> ")") ()
-            waitSec 10.0
+  chTimeout     <- liftIO newTQueueIO
+  capTO <- newTimerIO
+  monTO <- newTimerIO
+  reset capTO 1e3
+  reset monTO 1e3
+  evalContT $ do
+    linkedTimer 1e3 chTimeout EPexDebugMonitor
+    lift $ fix $ \loop -> do
+      event <- atomicallyIO $ asum
+        [ readTQueue chTimeout
+        , EPexNewAddrs <$> readTChan peerChanPexNewAddresses
+        , EPexCapacity <$ await capTO
+        , EPexMonitor <$ await monTO
+        ]
+      case event of
+        EPexDebugMonitor ->
+          liftIO (readTVarIO prIsActive) >>= \case
+            True  -> usingGauge prometheusNumPeers . Set.size =<< liftIO (readTVarIO prConnected)
+            False -> usingGauge prometheusNumPeers 0
+        EPexNewAddrs addrs' -> do
+          addrs  <- fmap Set.fromList
+                  $ filterOutOwnAddresses
+                  $ map (`normalizeNodeAddress` Nothing) addrs'
+          atomicallyIO $ modifyTVar' prKnownAddreses (`Set.union` addrs)
+        EPexCapacity -> do
+          currentKnowns <- liftIO (readTVarIO prKnownAddreses)
+          if Set.size currentKnowns < minKnownConnections then do
+              logger DebugS "Too few known connections need; ask for more known connections" $ sl "connections" currentKnowns <> sl "need" minKnownConnections
+              -- TODO firstly ask only last peers
+              atomicallyIO $ writeTChan peerChanPex PexMsgAskForMorePeers
+              reset capTO 1e3 -- TODO wait for new connections OR timeout (see https://stackoverflow.com/questions/22171895/using-tchan-with-timeout)
+          else do
+              logger DebugS "Full of knowns conns" $ sl "number" (Set.size currentKnowns)
+              reset capTO 10e3
+        EPexMonitor -> do
+          whenM (liftIO $ readTVarIO prIsActive) $ do
+              conns <- liftIO $ readTVarIO prConnected
+              let sizeConns = Set.size conns
+              if sizeConns < pexMinConnections cfg then do
+                  logger DebugS "Too few connections" $ sl "connections" conns
+                  knowns' <- liftIO $ readTVarIO prKnownAddreses
+                  let conns' = Set.map (`normalizeNodeAddress` Nothing) conns -- TODO нужно ли тут normalize?
+                      knowns = knowns' Set.\\ conns'
+                  if Set.null knowns then do
+                      logger WarningS "Too few connections and don't know other nodes!" $ sl "number" (Set.size conns)
+                      reset monTO 1e2
+                  else do
+                      logger DebugS "New peers: " $ sl "peers" knowns
+                      rndGen <- liftIO newStdGen
+                      let randKnowns = take (pexMaxConnections cfg - sizeConns)
+                                     $ shuffle' (Set.toList knowns) (Set.size knowns) rndGen
+                      logger DebugS "New rand knowns: " $ sl "peers" randKnowns
+                      forM_ randKnowns $ \addr -> connectPeerTo cfg net addr peerCh mempool peerRegistry
+                      reset monTO 1e3
+              else do
+                  logger InfoS "Full of connections" $ sl "connections" conns
+                  reset monTO 10e3
+      loop
 
-
-peerPexMonitor
-  :: ( MonadFork m, MonadMask m, MonadLogger m, MonadTrace m, MonadReadDB m a
-     , BlockData a)
-  => NetworkCfg
-  -> NetworkAPI
-  -> PeerChans a
-  -> Mempool m (Alg a) (TX a)
-  -> PeerRegistry
-  -> m ()
-peerPexMonitor cfg net peerCh mempool peerRegistry@PeerRegistry{..} = do
-    logger InfoS "Start PEX monitor" ()
-    locAddrs <- getLocalAddresses
-    logger DebugS ("Local addresses: " <> showLS locAddrs) ()
-    atomicallyIO $ readTVar prConnected >>= (check . not . Set.null) -- wait until some initial peers connect
-    logger DebugS "Some nodes connected" ()
-    fix $ \nextLoop ->
-        whenM (liftIO $ readTVarIO prIsActive) $ do
-            conns <- liftIO $ readTVarIO prConnected
-            let sizeConns = Set.size conns
-            if sizeConns < pexMinConnections cfg then do
-                logger DebugS ("Too few (" <> showLS (Set.size conns) <> " : " <> showLS conns <> ") connections") ()
-                knowns' <- liftIO $ readTVarIO prKnownAddreses
-                let conns' = Set.map (flip (normalizeNodeAddress net) Nothing) conns -- TODO нужно ли тут normalize?
-                    knowns = knowns' Set.\\ conns'
-                if Set.null knowns then do
-                    logger WarningS ("Too few (" <> showLS (Set.size conns) <> ") connections and don't know other nodes!") ()
-                    waitSec 0.1
-                else do
-                    logger DebugS ("New peers: " <> showLS knowns) ()
-                    rndGen <- liftIO newStdGen
-                    let randKnowns = take (pexMaxConnections cfg - sizeConns)
-                                   $ shuffle' (Set.toList knowns) (Set.size knowns) rndGen
-                    logger DebugS ("New rand knowns: " <> showLS randKnowns) ()
-                    forM_ randKnowns $ \addr -> connectPeerTo cfg net addr peerCh mempool peerRegistry
-                    waitSec 1.0
-            else do
-                logger InfoS ("Full of connections (" <> showLS (Set.size conns) <> " : " <>  showLS conns <> ")") ()
-                waitSec 10.0
-            nextLoop
-
-
--- | Watch number of connections and report it to monitoring system
---
-peerPexCapacityDebugMonitor
-  :: (MonadIO m, MonadTMMonitoring m)
-  => PeerRegistry
-  -> m ()
-peerPexCapacityDebugMonitor PeerRegistry{..} =
-  fix $ \loop -> do
-    liftIO (readTVarIO prIsActive) >>= \case
-      True  -> usingGauge prometheusNumPeers . Set.size =<< liftIO (readTVarIO prConnected)
-      False -> usingGauge prometheusNumPeers 0
-    waitSec 1.0
-    loop
 
 
 peerGossipPeerExchange
@@ -372,7 +342,7 @@ peerGossipPeerExchange PeerChans{..} PeerRegistry{prConnected,prIsActive} pexCh 
   where
     sendPeers = do
         addrList' <- Set.toList <$> liftIO (readTVarIO prConnected)
-        logger DebugS ("peerGossipPeerExchange: someone asks for other peers: we answer " <> showLS addrList') ()
+        logger DebugS "peerGossipPeerExchange: someone asks for other peers: we answer " $ sl "addrs" addrList'
         isSomethingSent <- atomicallyIO $
             readTVar prIsActive >>= \case
                 False -> return False
@@ -385,7 +355,7 @@ peerGossipPeerExchange PeerChans{..} PeerRegistry{prConnected,prIsActive} pexCh 
                         return True
         when isSomethingSent $ tickSend $ pex gossipCnts
     connectToAddrs addrs = do
-        logger DebugS ("peerGossipPeerExchange: some address received: " <> showLS addrs) ()
+        logger DebugS "peerGossipPeerExchange: some address received: " $ sl "addrs" addrs
         atomicallyIO $ writeTChan peerChanPexNewAddresses addrs
     ping = do
         atomicallyIO $ writeTBQueue gossipCh (GossipPex PexPong)
