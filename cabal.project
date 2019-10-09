@@ -1,4 +1,5 @@
 packages:
+         bls-signatures
          hschain
          hschain-crypto
          hschain-types

@@ -16,7 +16,6 @@ import Foreign.C.Types
 import Foreign.Marshal.Array
 import Foreign.Marshal.Utils (toBool)
 import Foreign.Ptr (Ptr)
-import qualified Data.ByteString as BS
 import qualified Data.Vector as V
 import qualified Language.C.Inline as C
 import qualified Language.C.Inline.Cpp as C

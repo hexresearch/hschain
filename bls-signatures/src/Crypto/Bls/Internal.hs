@@ -20,7 +20,6 @@ import qualified Data.Map as M
 import qualified Language.C.Inline as C
 import qualified Language.C.Inline.Context as C
 import qualified Language.C.Inline.Cpp as C
-import qualified Language.C.Inline.Unsafe as CU
 import qualified Language.C.Types  as C
 
 

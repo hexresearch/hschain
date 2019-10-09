@@ -53,3 +53,38 @@ test_nofn = do
     aggPk  <- aggregateInsecurePublicKey  (V.fromList [pk1,  pk2])
     assertBool =<< verifyInsecure aggSig (V.singleton messageHash) (V.singleton aggPk)
 
+
+test_nofnPrehashed :: IO ()
+test_nofnPrehashed = do
+    let message = "Some test message"
+    sk1 <- fromSeed "abc"
+    sk2 <- fromSeed "def"
+    pk1 <- getPublicKey sk1
+    pk2 <- getPublicKey sk2
+    messageHash <- hash256 message
+    sig1 <- signInsecurePrehashed sk1 messageHash
+    sig2 <- signInsecurePrehashed sk2 messageHash
+    assertBool =<< verifyInsecure sig1 (V.singleton messageHash) (V.singleton pk1)
+    assertBool =<< verifyInsecure sig2 (V.singleton messageHash) (V.singleton pk2)
+    aggSig <- aggregateInsecureSignatures (V.fromList [sig1, sig2])
+    aggPk  <- aggregateInsecurePublicKey  (V.fromList [pk1,  pk2])
+    assertBool =<< verifyInsecure aggSig (V.singleton messageHash) (V.singleton aggPk)
+
+
+
+test_nofn1 :: IO ()
+test_nofn1 = do
+    let message = "Some test message"
+    sk1 <- fromSeed "abc"
+    sk2 <- fromSeed "def"
+    pk1 <- getPublicKey sk1
+    pk2 <- getPublicKey sk2
+    messageHash <- hash256 message
+    sig1 <- signInsecurePrehashed sk1 messageHash
+    sig2 <- signInsecurePrehashed sk2 messageHash
+    assertBool =<< verifyInsecure1 sig1 messageHash pk1
+    assertBool =<< verifyInsecure1 sig2 messageHash pk2
+    aggSig <- aggregateInsecureSignatures (V.fromList [sig1, sig2])
+    aggPk  <- aggregateInsecurePublicKey  (V.fromList [pk1,  pk2])
+    assertBool =<< verifyInsecure1 aggSig messageHash aggPk
+

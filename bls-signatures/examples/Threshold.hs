@@ -23,12 +23,12 @@ import Crypto.Bls.Util
 
 -- | Number of players in the set
 numberOfPlayers :: Int
-numberOfPlayers = 4
+numberOfPlayers = 200
 
 
 -- | Number of signatures to sign
 numberOfSignatures :: Int
-numberOfSignatures = 3
+numberOfSignatures = 100
 
 
 data ChannelMessage = PublicFragment    PublicKey.PublicKey
@@ -69,7 +69,7 @@ player newRoundBarrier recv sends playerId = do
     pp $ "OK, ready for signing --------"
     --
     --
-    forM_ [0..1] $ \round -> do
+    forM_ [0..1000] $ \round -> do
         newRoundBarrier
         let p = putStrLnExcl playerId (Just $ "Round: " ++ show round)
             leaderId = round `mod` numberOfPlayers

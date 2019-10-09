@@ -7,7 +7,6 @@ module Crypto.Bls.AggregationInfo
 
 
 import Data.ByteString (ByteString)
-import qualified Data.ByteString as BS
 import qualified Language.C.Inline as C
 import qualified Language.C.Inline.Cpp as C
 

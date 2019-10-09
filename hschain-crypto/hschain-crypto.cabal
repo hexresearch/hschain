@@ -24,6 +24,11 @@ flag android-impl
   Default:     False
   Manual:      True
 
+flag libbls
+  Description: Use BLS library
+  Default:     True
+  Manual:      False
+
 Library
   Ghc-options:         -Wall
   Default-Language:    Haskell2010
@@ -56,6 +61,11 @@ Library
         Build-Depends:     cryptonite        >=0.25
                          , entropy           >=0.4
                          , memory            >=0.14.14
+    if flag(libbls)
+      hs-source-dirs:  bls .
+      exposed-modules: HSChain.Crypto.BLS
+      build-depends:     bls-signatures
+                       , entropy
   Exposed-modules:
                   HSChain.Crypto
                   HSChain.Crypto.Classes
@@ -88,3 +98,7 @@ Test-suite thundermint-crypto-tests
   hs-source-dirs:      test
   Main-is:             Main.hs
   Other-modules:       TM.Crypto
+                       TM.BLS
+  if flag(libbls)
+    Other-modules:     TM.BLS
+    build-depends:     bls-signatures

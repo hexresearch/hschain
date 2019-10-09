@@ -1,5 +1,6 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE RecordWildCards #-}
 module Crypto.Bls.PrivateKey
     ( PrivateKey
     , aggregateInsecurePrivateKey
@@ -9,17 +10,20 @@ module Crypto.Bls.PrivateKey
     , serializePrivateKey
     , sign
     , signInsecure
+    , signInsecurePrehashed
+    , deserializePrivateKey
+    , equalPrivateKey
     ) where
 
 
 import Data.ByteString (ByteString)
 import Data.Maybe
 import Data.Vector (Vector)
-import qualified Data.ByteString as BS
 import qualified Data.ByteString.Internal as BS
-import qualified Data.Vector as V
 import qualified Language.C.Inline as C
 import qualified Language.C.Inline.Cpp as C
+import Foreign.Marshal.Utils (toBool)
+import System.IO.Unsafe
 
 import Crypto.Bls.Internal
 import Crypto.Bls.Types
@@ -51,6 +55,13 @@ serializePrivateKey pk = withPtr pk $ \pkptr ->
         [C.exp| void { $(PrivateKey * pkptr)->Serialize($(uint8_t * pkbuffer)) }|]
 
 
+deserializePrivateKey :: ByteString -> IO PrivateKey -- TODO check size
+deserializePrivateKey bs = fromPtr [C.exp|
+    PrivateKey * {
+        new PrivateKey(PrivateKey::FromBytes((uint8_t const*)$bs-ptr:bs))
+    }|]
+
+
 getPublicKey :: PrivateKey -> IO PublicKey
 getPublicKey pk = withPtr pk $ \pkptr -> fromPtr [C.exp|
     PublicKey * {
@@ -71,6 +82,12 @@ signInsecure pk msg = withPtr pk $ \pkptr -> fromPtr [C.exp|
         new InsecureSignature($(PrivateKey* pkptr)->SignInsecure((uint8_t const*)$bs-ptr:msg, $bs-len:msg))
     }|]
 
+signInsecurePrehashed :: PrivateKey -> Hash256 -> IO InsecureSignature
+signInsecurePrehashed pk Hash256{..} = withPtr pk $ \pkptr -> fromPtr [C.exp|
+    InsecureSignature * {
+        new InsecureSignature($(PrivateKey* pkptr)->SignInsecurePrehashed((uint8_t const*)$bs-ptr:unHash256))
+    }|]
+
 
 -- | Insecurely aggregate multiple private keys into one
 --
@@ -83,4 +100,12 @@ aggregateInsecurePrivateKey privateKeys =
                     std::vector<PrivateKey>( $(PrivateKey * ptrPrivateKeys)
                                            , $(PrivateKey * ptrPrivateKeys) + $(size_t lenPrivateKeys))))
             }|]
+
+
+equalPrivateKey :: PrivateKey -> PrivateKey -> Bool
+equalPrivateKey pk1 pk2 = toBool $ unsafePerformIO $
+    withPtr pk1 $ \pk1ptr ->
+        withPtr pk2 $ \pk2ptr ->
+            [C.exp| bool { *$(PrivateKey* pk1ptr) == *$(PrivateKey* pk2ptr) } |]
+
 

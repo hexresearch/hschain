@@ -2,19 +2,22 @@
 {-# LANGUAGE QuasiQuotes #-}
 module Crypto.Bls.PublicKey
     ( PublicKey
+    , publicKeySize
     , serializePublicKey
+    , deserializePublicKey
     , aggregateInsecurePublicKey
+    , equalPublicKey
     ) where
 
 
 import Data.Maybe
 import Data.ByteString (ByteString)
-import qualified Data.ByteString as BS
 import qualified Language.C.Inline as C
 import qualified Language.C.Inline.Cpp as C
 import qualified Data.ByteString.Internal as BS
 import Data.Vector (Vector)
-import qualified Data.Vector as V
+import Foreign.Marshal.Utils (toBool)
+import System.IO.Unsafe
 
 import Crypto.Bls.Internal
 import Crypto.Bls.Types
@@ -36,6 +39,12 @@ serializePublicKey pk = withPtr pk $ \pkptr ->
         [C.exp| void { $(PublicKey * pkptr)->Serialize($(uint8_t * pkbuffer)) }|]
 
 
+deserializePublicKey :: ByteString -> IO PublicKey -- TODO check size
+deserializePublicKey bs = fromPtr [C.exp|
+    PublicKey * {
+        new PublicKey(PublicKey::FromBytes((uint8_t const*)$bs-ptr:bs))
+    }|]
+
 
 -- | Insecurely aggregate multiple private keys into one
 aggregateInsecurePublicKey :: Vector PublicKey -> IO PublicKey
@@ -47,3 +56,10 @@ aggregateInsecurePublicKey publicKeys =
                     std::vector<PublicKey>( $(PublicKey * ptrPublicKeys)
                                            , $(PublicKey * ptrPublicKeys) + $(size_t lenPublicKeys))))
             }|]
+
+
+equalPublicKey :: PublicKey -> PublicKey -> Bool
+equalPublicKey pubKey1 pubKey2 = toBool $ unsafePerformIO $
+    withPtr pubKey1 $ \pubKey1Ptr ->
+        withPtr pubKey2 $ \pubKey2Ptr ->
+            [C.exp| bool { *$(PublicKey* pubKey1Ptr) == *$(PublicKey* pubKey2Ptr) } |]

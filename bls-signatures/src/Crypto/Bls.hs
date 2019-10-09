@@ -4,6 +4,7 @@ module Crypto.Bls
     , module Crypto.Bls.PublicKey
     , module Crypto.Bls.Signature
     , module Crypto.Bls.Threshold
+    , module Crypto.Bls.Types
     , module Crypto.Bls.Util
     ) where
 
@@ -13,5 +14,6 @@ import Crypto.Bls.PrivateKey
 import Crypto.Bls.PublicKey
 import Crypto.Bls.Signature
 import Crypto.Bls.Threshold
+import Crypto.Bls.Types
 import Crypto.Bls.Util
 

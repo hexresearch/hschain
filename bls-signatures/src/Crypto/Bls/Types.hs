@@ -1,7 +1,8 @@
-{-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE QuasiQuotes #-}
-{-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE QuasiQuotes                #-}
+{-# LANGUAGE TemplateHaskell            #-}
+{-# LANGUAGE TypeFamilies               #-}
+{-# OPTIONS_GHC -Wno-orphans            #-}
 module Crypto.Bls.Types
     {- ( PrivateKey
     , PublicKey
@@ -9,18 +10,15 @@ module Crypto.Bls.Types
 
 import Foreign.ForeignPtr
 import Data.ByteString (ByteString)
-import qualified Data.ByteString as BS
 import qualified Language.C.Inline as C
-import qualified Language.C.Inline.Unsafe as CU
 import qualified Language.C.Inline.Cpp as C
-import qualified Language.C.Types  as C
-import qualified Language.C.Inline.Context as C
 
-import Control.Exception (mask_)
-import Foreign.ForeignPtr (ForeignPtr, newForeignPtr)
-import Foreign.Ptr (Ptr, FunPtr)
+import Foreign.ForeignPtr (ForeignPtr)
+import Foreign.Ptr (Ptr)
 
 import Crypto.Bls.Internal
+
+import Control.DeepSeq
 
 
 C.context blsCtx
@@ -150,5 +148,6 @@ instance WithPtr Threshold where withPtr = withForeignPtr . unThreshold
 -- * Hash256 ----------------------------------------------------------------
 
 newtype Hash256 = Hash256 { unHash256 :: ByteString } -- TODO use ShortByteString
+    deriving NFData
 
 

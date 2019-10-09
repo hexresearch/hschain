@@ -1,5 +1,6 @@
-{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE TemplateHaskell #-}
 module Crypto.Bls.Signature
     ( Signature
     , InsecureSignature
@@ -8,8 +9,11 @@ module Crypto.Bls.Signature
     , setAggregationInfo
     , verify
     , verifyInsecure
+    , verifyInsecure1
     , serializeInsecureSignature
     , aggregateInsecureSignatures
+    , deserializeInsecureSignature
+    , signatureSize
     ) where
 
 
@@ -17,16 +21,12 @@ import Data.Maybe
 import Data.Coerce
 import Data.Vector (Vector)
 import Data.ByteString (ByteString)
-import qualified Data.ByteString as BS
 import qualified Data.ByteString.Unsafe as BS
 import qualified Data.Vector as V
 import qualified Language.C.Inline as C
 import qualified Language.C.Inline.Cpp as C
 import Foreign.Marshal.Utils (toBool)
 import Foreign.C.String
-import qualified Language.C.Inline as C
-import qualified Language.C.Inline.Cpp as C
-import qualified Data.ByteString as BS
 import qualified Data.ByteString.Internal as BS
 
 import Crypto.Bls.Internal
@@ -40,6 +40,9 @@ C.include "bls.hpp"
 C.include "<vector>"
 C.using "namespace bls"
 
+
+signatureSize :: Int
+signatureSize = fromIntegral [C.pure| size_t { InsecureSignature::SIGNATURE_SIZE }|]
 
 
 -- | Create a deep copy of object
@@ -118,6 +121,17 @@ verifyInsecure insecureSig hashes pubKeys =
                 }|]
 
 
+verifyInsecure1 :: InsecureSignature -> Hash256 -> PublicKey -> IO Bool
+verifyInsecure1 insecureSig Hash256{..} pubKey =
+    withPtr insecureSig $ \insecureSigPtr ->
+        withPtr pubKey $ \pubKeyPtr -> fmap toBool $
+            [C.block| bool {
+                auto msgHash = (const uint8_t**)&($bs-ptr:unHash256);
+                return $(InsecureSignature * insecureSigPtr)->Verify(
+                    std::vector<const uint8_t*>(msgHash, msgHash + 1),
+                    std::vector<PublicKey>($(PublicKey * pubKeyPtr), $(PublicKey * pubKeyPtr) + 1));
+            }|]
+
 insecureSignatureSize :: Int
 insecureSignatureSize = fromIntegral [C.pure| size_t { InsecureSignature::SIGNATURE_SIZE }|]
 
@@ -128,11 +142,17 @@ serializeInsecureSignature sig = withPtr sig $ \sigptr ->
         [C.exp| void { $(InsecureSignature * sigptr)->Serialize($(uint8_t * sigbuffer)) }|]
 
 
+deserializeInsecureSignature :: ByteString -> IO InsecureSignature -- TODO add check size
+deserializeInsecureSignature bs = fromPtr [C.exp|
+    InsecureSignature * {
+        new InsecureSignature(InsecureSignature::FromBytes((uint8_t const*)$bs-ptr:bs))
+    }|]
+
+
 aggregateInsecureSignatures :: Vector InsecureSignature -> IO InsecureSignature
 aggregateInsecureSignatures sigs =
     fmap (fromMaybe (error "empty sigs array")) $
     withArrayPtrLen sigs $ \sigsPtr sigsLen ->
-        let sigsLen' =  fromIntegral sigsLen in
         fromPtr [C.exp| InsecureSignature * {
             new InsecureSignature(InsecureSignature::Aggregate(
                 std::vector<InsecureSignature>( $(InsecureSignature * sigsPtr)
