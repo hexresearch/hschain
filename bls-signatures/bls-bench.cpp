@@ -183,6 +183,7 @@ main()
                       82, 12, 62, 89, 110, 182, 9, 44, 20, 254, 22};
 
     /*
+
     bls::PrivateKey sk = bls::PrivateKey::FromSeed(seed, sizeof(seed));
     bls::PublicKey pk = sk.GetPublicKey();
 
@@ -218,15 +219,16 @@ main()
         cout << "Sign ok!" << endl;
     else
         cout << "Sign NOT ok!" << endl;
-    */
+         */
 
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
     // Benchmarking:
 
-    /*
     size_t const N = 10000;
     size_t const MESSAGE_SIZE = 1024;
+    size_t const AGG_N = 313;
+    size_t const NA = N / AGG_N;
 
     cout << "Generating keys..." << endl;
 
@@ -238,38 +240,74 @@ main()
     cout << "Generating test messages..." << endl;
     srand(1);
     vector<vector<uint8_t>> messages(N);
-    for(auto& msg: messages)
+    vector<vector<uint8_t>> hashes(N);
+    for(size_t i = 0; i < N; ++i)
     {
-        msg.resize(MESSAGE_SIZE);
+        vector<uint8_t> msg(MESSAGE_SIZE);
         for(auto& b: msg)
             b = rand();
+        messages[i] = msg;
+        hashes[i].resize(32);
+        bls::Util::Hash256(hashes[i].data(), msg.data(), msg.size());
     }
     cout << "    ok" << endl;
 
+    vector<bls::InsecureSignature> sigs;
+    {
+        cout << "Signing test messages..." << endl;
+        auto start = std::chrono::steady_clock::now();
+        for(size_t i = 0; i < N; ++i)
+        {
+            //sigs[i].reset(new bls::Signature(sk.Sign(messages[i].data(), MESSAGE_SIZE)));
+            sigs.emplace_back(sk.SignInsecurePrehashed(hashes[i].data()));
+        }
+        //...
+        auto finish = std::chrono::steady_clock::now();
+        auto how_ms = std::chrono::duration_cast<std::chrono::milliseconds>(finish - start);
+        auto how_us = std::chrono::duration_cast<std::chrono::microseconds>(finish - start);
+        cout << "Total: " << N << " runs in " << how_ms.count()
+             << " ms" << endl;
+        cout << "Avg: " << how_us.count() / N
+             << " us" << endl;
+        cout << "Avg: " << 1000000 / (how_us.count() / N)
+             << " signs per sec" << endl;
+    }
 
-    cout << "Signing test messages..." << endl;
-    vector<unique_ptr<bls::Signature>> sigs(N);
-    auto start = std::chrono::steady_clock::now();
-    for(size_t i = 0; i < N; ++i)
-        sigs[i].reset(new bls::Signature(sk.Sign(messages[i].data(), MESSAGE_SIZE)));
-    //...
-    auto finish = std::chrono::steady_clock::now();
-    auto how_ms = std::chrono::duration_cast<std::chrono::milliseconds>(finish - start);
-    auto how_us = std::chrono::duration_cast<std::chrono::microseconds>(finish - start);
-    cout << "Total: " << N << " runs in " << how_ms.count()
-         << " ms" << endl;
-    cout << "Avg: " << how_us.count() / N
-         << " us" << endl;
-    cout << "Avg: " << 1000000000 / (how_us.count() / N)
-         << " signs per sec" << endl;
+    vector<bls::InsecureSignature> aggsigs;
+    {
+        cout << "Aggregate signatures..." << endl;
+        auto start = std::chrono::steady_clock::now();
+        for(size_t i = 0; i < NA; ++i)
+        {
+            //sigs[i].reset(new bls::Signature(sk.Sign(messages[i].data(), MESSAGE_SIZE)));
+            auto somesigs = vector<bls::InsecureSignature>(sigs.begin() + i * AGG_N, sigs.begin() + (i + 1) * AGG_N);
+            aggsigs.emplace_back(bls::InsecureSignature(bls::InsecureSignature::Aggregate(somesigs)));
+        }
+        //...
+        auto finish = std::chrono::steady_clock::now();
+        auto how_ms = std::chrono::duration_cast<std::chrono::milliseconds>(finish - start);
+        auto how_us = std::chrono::duration_cast<std::chrono::microseconds>(finish - start);
+        cout << "Total: " << NA << " runs in " << how_ms.count()
+             << " ms" << endl;
+        cout << "Avg: " << how_us.count() / NA
+             << " us" << endl;
+        cout << "Avg: " << 1000000 / (how_us.count() / NA)
+             << " aggregations per sec" << endl;
+    }
 
-    */
+
+
+    // ~~~~~~~~~~~~
+    
+
+
 
 
     // THRESHOLD
 
 //    test_thresh(20, 30);
 
+    /*
     cout << "~~~~~~~~~~~~~~~\n";
 
     vector<bls::PublicKey>  commitment;
@@ -293,4 +331,5 @@ main()
         cout << "wrong\n";
 
     return 0;
+    */
 }
