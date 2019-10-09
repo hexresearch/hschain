@@ -2,17 +2,16 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-
 module Crypto.Bls.Arrays where
 
 
-import qualified Data.Vector as V
-import Foreign.Ptr (Ptr, plusPtr)
-import Data.Proxy ( Proxy(..) )
-import Foreign.Marshal.Alloc ( allocaBytes )
 import Control.Exception (bracket_)
 import Data.Functor ( ($>) )
+import Data.Proxy ( Proxy(..) )
 import Foreign.C.Types (CSize)
+import Foreign.Marshal.Alloc ( allocaBytes )
+import Foreign.Ptr (Ptr, plusPtr)
+import qualified Data.Vector as V
 
 import Crypto.Bls.Types
 import Crypto.Bls.Internal

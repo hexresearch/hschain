@@ -1,5 +1,5 @@
-{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE TemplateHaskell #-}
 module Crypto.Bls.PublicKey
     ( PublicKey
     , publicKeySize
@@ -10,18 +10,18 @@ module Crypto.Bls.PublicKey
     ) where
 
 
-import Data.Maybe
 import Data.ByteString (ByteString)
-import qualified Language.C.Inline as C
-import qualified Language.C.Inline.Cpp as C
-import qualified Data.ByteString.Internal as BS
+import Data.Maybe
 import Data.Vector (Vector)
 import Foreign.Marshal.Utils (toBool)
 import System.IO.Unsafe
+import qualified Data.ByteString.Internal as BS
+import qualified Language.C.Inline as C
+import qualified Language.C.Inline.Cpp as C
 
+import Crypto.Bls.Arrays
 import Crypto.Bls.Internal
 import Crypto.Bls.Types
-import Crypto.Bls.Arrays
 
 
 C.context blsCtx
@@ -63,3 +63,4 @@ equalPublicKey pubKey1 pubKey2 = toBool $ unsafePerformIO $
     withPtr pubKey1 $ \pubKey1Ptr ->
         withPtr pubKey2 $ \pubKey2Ptr ->
             [C.exp| bool { *$(PublicKey* pubKey1Ptr) == *$(PublicKey* pubKey2Ptr) } |]
+

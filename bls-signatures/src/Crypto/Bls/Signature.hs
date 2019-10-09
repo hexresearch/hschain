@@ -17,23 +17,23 @@ module Crypto.Bls.Signature
     ) where
 
 
-import Data.Maybe
-import Data.Coerce
-import Data.Vector (Vector)
 import Data.ByteString (ByteString)
+import Data.Coerce
+import Data.Maybe
+import Data.Vector (Vector)
+import Foreign.C.String
+import Foreign.Marshal.Utils (toBool)
+import qualified Data.ByteString.Internal as BS
 import qualified Data.ByteString.Unsafe as BS
 import qualified Data.Vector as V
+import qualified Data.Vector.Storable as VM
 import qualified Language.C.Inline as C
 import qualified Language.C.Inline.Cpp as C
-import Foreign.Marshal.Utils (toBool)
-import Foreign.C.String
-import qualified Data.ByteString.Internal as BS
 
+import Crypto.Bls.Arrays
 import Crypto.Bls.Internal
 import Crypto.Bls.Types
-import Crypto.Bls.Arrays
 
-import qualified Data.Vector.Storable as VM
 
 C.context blsCtx
 C.include "bls.hpp"
@@ -77,20 +77,6 @@ verify sig = fmap toBool $ withPtr sig $ \sigptr ->
 
 -- * Insecure signatures
 
-    {-
-
-
-                    ( std::vector<uint8_t*>
-                        ( $vec-ptr:chashes
-                        , $vec-ptr:chashes + $vec-len:chashes) 
-
-                    , std::vector<PublicKey>
-                        ( $(PublicKey * pubKeysPtr)
-                        , $(PublicKey * pubKeysPtr) + $(size_t pubKeysLen))
-
-                        -}
-
-
 -- TODO optimize it!
 withByteStringsVector :: Vector ByteString -> (VM.Vector CString -> IO a) -> IO a
 withByteStringsVector strs act = withByteStringsVector' (V.toList strs) []
@@ -100,7 +86,6 @@ withByteStringsVector strs act = withByteStringsVector' (V.toList strs) []
     withByteStringsVector' [] acc = act (VM.fromList (reverse acc))
     withByteStringsVector' (bs:bss) acc =
         BS.unsafeUseAsCString bs (\cs -> withByteStringsVector' bss (cs:acc))
-
 
 
 verifyInsecure :: InsecureSignature -> Vector Hash256 -> Vector PublicKey -> IO Bool
@@ -132,6 +117,7 @@ verifyInsecure1 insecureSig Hash256{..} pubKey =
                     std::vector<PublicKey>($(PublicKey * pubKeyPtr), $(PublicKey * pubKeyPtr) + 1));
             }|]
 
+
 insecureSignatureSize :: Int
 insecureSignatureSize = fromIntegral [C.pure| size_t { InsecureSignature::SIGNATURE_SIZE }|]
 
@@ -158,3 +144,4 @@ aggregateInsecureSignatures sigs =
                 std::vector<InsecureSignature>( $(InsecureSignature * sigsPtr)
                                               , $(InsecureSignature * sigsPtr) + $(size_t sigsLen))))
             }|]
+

@@ -1,6 +1,6 @@
-{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE TemplateHaskell #-}
 module Crypto.Bls.PrivateKey
     ( PrivateKey
     , aggregateInsecurePrivateKey
@@ -19,15 +19,15 @@ module Crypto.Bls.PrivateKey
 import Data.ByteString (ByteString)
 import Data.Maybe
 import Data.Vector (Vector)
+import Foreign.Marshal.Utils (toBool)
+import System.IO.Unsafe
 import qualified Data.ByteString.Internal as BS
 import qualified Language.C.Inline as C
 import qualified Language.C.Inline.Cpp as C
-import Foreign.Marshal.Utils (toBool)
-import System.IO.Unsafe
 
+import Crypto.Bls.Arrays
 import Crypto.Bls.Internal
 import Crypto.Bls.Types
-import Crypto.Bls.Arrays
 
 
 C.context blsCtx
@@ -107,5 +107,4 @@ equalPrivateKey pk1 pk2 = toBool $ unsafePerformIO $
     withPtr pk1 $ \pk1ptr ->
         withPtr pk2 $ \pk2ptr ->
             [C.exp| bool { *$(PrivateKey* pk1ptr) == *$(PrivateKey* pk2ptr) } |]
-
 

@@ -1,6 +1,6 @@
-{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TemplateHaskell #-}
 module Crypto.Bls.Threshold
     ( Threshold
     , create
@@ -111,3 +111,4 @@ aggregateUnitSigs sigs message players =
                     $(size_t t')
                     ))
             }|]
+

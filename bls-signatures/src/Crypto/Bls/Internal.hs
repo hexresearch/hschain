@@ -3,7 +3,6 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
-
 module Crypto.Bls.Internal where
 
 
@@ -49,8 +48,6 @@ blsCtx = C.cppCtx <> C.bsCtx <> C.vecCtx <> ctx
     ctx = mempty { C.ctxTypesTable = blsTypesTable }
 
 
-
-
 -- | Information about the storage requirements of values in C
 --
 -- This class assumes that the type @a@ is merely a symbol that corresponds with
@@ -59,7 +56,6 @@ class CSizeOf a where
     -- | Computes the storage requirements (in bytes) of values of
     -- type @a@ in C.
     cSizeOf :: proxy a -> Int
-
 
 
 objFromPtr :: (ForeignPtr c -> hask)  -- ^ Constructor from pointer
@@ -71,24 +67,10 @@ objFromPtr haskCons finalizer mkObjPtr = mask_ $ do
     haskCons <$> newForeignPtr finalizer objPtr
 
 
-
-
-
-
-
-
-
 -- | Equivalent type in C
 --
 -- Actually a proxy type in Haskell that stands for the equivalent type in C.
 type family C (a :: *) :: *
-
-
-
-
-
-
-
 
 
 -- | Copy source to destination using C++'s placement new feature
@@ -113,12 +95,6 @@ class PlacementNew a where
     placementDelete
         :: Ptr a
         -> IO ()
-
-
-
-
-
-
 
 
 {- | Generates a function that deletes a C++ object via @delete@.
@@ -187,3 +163,4 @@ mkPlacementNewInstance name =
       lamE [varP ptr] $
         quoteExp C.exp $
           "void { $(" <> typeName <> " * " <> nameBase ptr <> ")->~" <> typeName <> "() }"
+

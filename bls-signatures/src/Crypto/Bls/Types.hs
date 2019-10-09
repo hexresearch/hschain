@@ -8,17 +8,16 @@ module Crypto.Bls.Types
     , PublicKey
     ) -} where
 
-import Foreign.ForeignPtr
+
+import Control.DeepSeq
 import Data.ByteString (ByteString)
+import Foreign.ForeignPtr
+import Foreign.ForeignPtr (ForeignPtr)
+import Foreign.Ptr (Ptr)
 import qualified Language.C.Inline as C
 import qualified Language.C.Inline.Cpp as C
 
-import Foreign.ForeignPtr (ForeignPtr)
-import Foreign.Ptr (Ptr)
-
 import Crypto.Bls.Internal
-
-import Control.DeepSeq
 
 
 C.context blsCtx
