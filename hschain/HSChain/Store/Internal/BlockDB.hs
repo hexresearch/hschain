@@ -84,6 +84,14 @@ initializeBlockhainTables genesis = do
     \ , attempt INTEGER NOT NULL \
     \ , result  BOOLEAN NOT NULL \
     \ , UNIQUE (height, attempt))"
+  -- Byzantine evidence. We store every piece of evidence in this
+  -- table with second field indicating whether evidence is recorded
+  -- in blockchain
+  basicExecute_
+    "CREATE TABLE IF NOT EXISTS thm_evidence \
+    \  ( evidence  BLOB    NOT NULL \
+    \  , recorded  BOOLEAN NOT NULL \
+    \  , UNIQUE (evidence))"
   -- Insert genesis block if needed
   storedGen  <- singleQ_ "SELECT block  FROM thm_blockchain WHERE height = 0"
   storedVals <- singleQ_ "SELECT valset FROM thm_validators WHERE height = 1"
@@ -312,6 +320,37 @@ readWAL h = do
              Left  e -> error ("CBOR encoding error: " ++ show e)
          | Only bs <- rows
          ]
+
+----------------------------------------------------------------
+-- Evidence
+----------------------------------------------------------------
+
+-- | Store fresh evidence in database. Fresh means we just observed it.
+storeFreshEvidence
+  :: (Serialise a, Crypto alg, MonadQueryRW m alg a)
+  => ByzantineEvidence alg a -> m ()
+storeFreshEvidence ev = do
+  basicExecute "INSERT OR IGNORE INTO thm_evidence VALUES (?,?)" (serialise ev, False)
+
+-- | Store evidence from blockchain. That is valid evidence from
+--   commited block
+storeBlockchainEvidence
+  :: (Serialise a, Crypto alg, MonadQueryRW m alg a)
+  => ByzantineEvidence alg a -> m ()
+storeBlockchainEvidence ev = do
+  basicExecute "INSERT OR REPLACE INTO thm_evidence VALUES (?,?)" (serialise ev, True)
+
+-- | Check whether evidence is recorded. @Just True@ mens that it's
+--   already in blockchain
+evidenceRecordedState
+  :: (Serialise a, Crypto alg, MonadQueryRW m alg a)
+  => ByzantineEvidence alg a -> m (Maybe Bool)
+evidenceRecordedState e = do
+  basicQuery "SELECT recorded FROM thm_evidence WHERE evidence = ?" (Only (serialise e)) >>= \case
+    []       -> return Nothing
+    [Only x] -> return (Just x)
+    _        -> error "impossible"
+
 
 ----------------------------------------------------------------
 -- Helpers
