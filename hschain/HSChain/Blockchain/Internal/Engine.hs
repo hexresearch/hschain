@@ -306,6 +306,8 @@ handleEngineMessage HeightParameters{..} ConsensusCfg{..} AppChans{..} = forever
       atomically $ writeTQueue appChanRxInternal $ RxTimeout t
     usingGauge prometheusHeight h
     usingGauge prometheusRound  (Round r)
+  -- Misdeed
+  EngMisdeed _ -> return ()
   -- Announcements
   EngAnnPreVote sv -> do
     let Vote{..} = signedValue   sv
