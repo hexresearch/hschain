@@ -4,6 +4,7 @@
 module Crypto.Bls.PrivateKey
     ( PrivateKey
     , aggregateInsecurePrivateKey
+    , aggregateInsecurePrivateKeyList
     , fromSeed
     , getPublicKey
     , privateKeySize
@@ -22,8 +23,9 @@ import Data.Vector (Vector)
 import Foreign.Marshal.Utils (toBool)
 import System.IO.Unsafe
 import qualified Data.ByteString.Internal as BS
-import qualified Language.C.Inline as C
-import qualified Language.C.Inline.Cpp as C
+import qualified Data.Vector              as V
+import qualified Language.C.Inline        as C
+import qualified Language.C.Inline.Cpp    as C
 
 import Crypto.Bls.Arrays
 import Crypto.Bls.Internal
@@ -100,6 +102,10 @@ aggregateInsecurePrivateKey privateKeys =
                     std::vector<PrivateKey>( $(PrivateKey * ptrPrivateKeys)
                                            , $(PrivateKey * ptrPrivateKeys) + $(size_t lenPrivateKeys))))
             }|]
+
+
+aggregateInsecurePrivateKeyList :: [PrivateKey] -> IO PrivateKey
+aggregateInsecurePrivateKeyList = aggregateInsecurePrivateKey . V.fromList
 
 
 equalPrivateKey :: PrivateKey -> PrivateKey -> Bool

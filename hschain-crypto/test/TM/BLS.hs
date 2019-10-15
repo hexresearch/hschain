@@ -61,4 +61,19 @@ tests = testGroup "BLS"
         (not $ verifyBlobSignature pubKey wrongMsg sig) @? "Verify must not be passed"
     , testCase "read/show 4" $ do
         (read "Hash \"cmzQwNFTPXVA9A9tG8TYuFo5vuVN9tFUoNC6DZBW3BW\"") @?= (hashBlob "Am I too long to use in raw presentation?" :: Hash BLS)
+    , testCase "aggregate" $ do
+        let msg = "Abcdef"
+        (privKey1 :: PrivKey BLS) <- generatePrivKey
+        (privKey2 :: PrivKey BLS) <- generatePrivKey
+        (privKey3 :: PrivKey BLS) <- generatePrivKey
+        let pubKey1 = publicKey privKey1
+            pubKey2 = publicKey privKey2
+            pubKey3 = publicKey privKey3
+            sig1 = signBlob privKey1 msg
+            sig2 = signBlob privKey2 msg
+            sig3 = signBlob privKey3 msg
+            --
+            aggPk = aggregatePublicKeys [pubKey1, pubKey2, pubKey3]
+            aggSn = aggregateSignatures [sig1, sig2, sig3]
+        (verifyBlobSignature aggPk msg aggSn) @? "Verify must be passed"
     ]

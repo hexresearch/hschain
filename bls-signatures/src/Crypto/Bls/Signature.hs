@@ -12,6 +12,7 @@ module Crypto.Bls.Signature
     , verifyInsecure1
     , serializeInsecureSignature
     , aggregateInsecureSignatures
+    , aggregateInsecureSignaturesList
     , deserializeInsecureSignature
     , signatureSize
     ) where
@@ -24,11 +25,11 @@ import Data.Vector (Vector)
 import Foreign.C.String
 import Foreign.Marshal.Utils (toBool)
 import qualified Data.ByteString.Internal as BS
-import qualified Data.ByteString.Unsafe as BS
-import qualified Data.Vector as V
-import qualified Data.Vector.Storable as VM
-import qualified Language.C.Inline as C
-import qualified Language.C.Inline.Cpp as C
+import qualified Data.ByteString.Unsafe   as BS
+import qualified Data.Vector              as V
+import qualified Data.Vector.Storable     as VM
+import qualified Language.C.Inline        as C
+import qualified Language.C.Inline.Cpp    as C
 
 import Crypto.Bls.Arrays
 import Crypto.Bls.Internal
@@ -144,4 +145,8 @@ aggregateInsecureSignatures sigs =
                 std::vector<InsecureSignature>( $(InsecureSignature * sigsPtr)
                                               , $(InsecureSignature * sigsPtr) + $(size_t sigsLen))))
             }|]
+
+
+aggregateInsecureSignaturesList :: [InsecureSignature] -> IO InsecureSignature
+aggregateInsecureSignaturesList = aggregateInsecureSignatures . V.fromList
 

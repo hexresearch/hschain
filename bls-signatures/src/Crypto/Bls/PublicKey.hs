@@ -6,6 +6,7 @@ module Crypto.Bls.PublicKey
     , serializePublicKey
     , deserializePublicKey
     , aggregateInsecurePublicKey
+    , aggregateInsecurePublicKeyList
     , equalPublicKey
     ) where
 
@@ -18,6 +19,7 @@ import System.IO.Unsafe
 import qualified Data.ByteString.Internal as BS
 import qualified Language.C.Inline as C
 import qualified Language.C.Inline.Cpp as C
+import qualified Data.Vector as V
 
 import Crypto.Bls.Arrays
 import Crypto.Bls.Internal
@@ -56,6 +58,10 @@ aggregateInsecurePublicKey publicKeys =
                     std::vector<PublicKey>( $(PublicKey * ptrPublicKeys)
                                            , $(PublicKey * ptrPublicKeys) + $(size_t lenPublicKeys))))
             }|]
+
+-- | Insecurely aggregate multiple private keys into one
+aggregateInsecurePublicKeyList :: [PublicKey] -> IO PublicKey
+aggregateInsecurePublicKeyList = aggregateInsecurePublicKey . V.fromList
 
 
 equalPublicKey :: PublicKey -> PublicKey -> Bool
