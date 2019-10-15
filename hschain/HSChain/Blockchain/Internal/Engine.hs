@@ -209,7 +209,7 @@ msgHandlerLoop hParam AppLogic{..} AppChans{..} = mainLoop Nothing
       atomicallyIO $ writeTVar appTMState $ Just (height , tm)
       await >>=  handleVerifiedMessage appPropStorage hParam tm >>= \case
         Tranquility      -> mainLoop mCmt tm
-        Misdeed  _       -> mainLoop mCmt tm
+        Misdeed          -> mainLoop mCmt tm
         Success  tm'     -> checkForCommit mCmt       tm'
         DoCommit cmt tm' -> checkForCommit (Just cmt) tm'
     --
