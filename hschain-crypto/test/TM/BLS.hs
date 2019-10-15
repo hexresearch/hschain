@@ -76,4 +76,53 @@ tests = testGroup "BLS"
             aggPk = aggregatePublicKeys [pubKey1, pubKey2, pubKey3]
             aggSn = aggregateSignatures [sig1, sig2, sig3]
         (verifyBlobSignature aggPk msg aggSn) @? "Verify must be passed"
+    , testCase "aggregate - order unimportant" $ do
+        let msg = "Abcdef"
+        (privKey1 :: PrivKey BLS) <- generatePrivKey
+        (privKey2 :: PrivKey BLS) <- generatePrivKey
+        (privKey3 :: PrivKey BLS) <- generatePrivKey
+        let pubKey1 = publicKey privKey1
+            pubKey2 = publicKey privKey2
+            pubKey3 = publicKey privKey3
+            sig1 = signBlob privKey1 msg
+            sig2 = signBlob privKey2 msg
+            sig3 = signBlob privKey3 msg
+            --
+            aggPk = aggregatePublicKeys [pubKey3, pubKey2, pubKey1]
+            aggSn = aggregateSignatures [sig3, sig1, sig2]
+        (verifyBlobSignature aggPk msg aggSn) @? "Verify must be passed"
+    , testCase "aggregate - incorrect pk" $ do
+        let msg = "Abcdef"
+        (privKey1 :: PrivKey BLS) <- generatePrivKey
+        (privKey2 :: PrivKey BLS) <- generatePrivKey
+        (privKey3 :: PrivKey BLS) <- generatePrivKey
+        (privKey4 :: PrivKey BLS) <- generatePrivKey
+        let pubKey1  = publicKey privKey1
+            pubKey2  = publicKey privKey2
+            _pubKey3 = publicKey privKey3
+            incorrectPubKey4 = publicKey privKey4
+            sig1 = signBlob privKey1 msg
+            sig2 = signBlob privKey2 msg
+            sig3 = signBlob privKey3 msg
+            --
+            aggPk = aggregatePublicKeys [pubKey1, pubKey2, incorrectPubKey4]
+            aggSn = aggregateSignatures [sig1, sig2, sig3]
+        (not $ verifyBlobSignature aggPk msg aggSn) @? "Verify must not be passed"
+    , testCase "aggregate - incorrect sk" $ do
+        let msg = "Abcdef"
+            incorrectMsg = "ZYX"
+        (privKey1 :: PrivKey BLS) <- generatePrivKey
+        (privKey2 :: PrivKey BLS) <- generatePrivKey
+        (privKey3 :: PrivKey BLS) <- generatePrivKey
+        let pubKey1 = publicKey privKey1
+            pubKey2 = publicKey privKey2
+            pubKey3 = publicKey privKey3
+            sig1  = signBlob privKey1 msg
+            sig2  = signBlob privKey2 msg
+            _sig3 = signBlob privKey3 msg
+            incorrectSig4 = signBlob privKey3 incorrectMsg
+            --
+            aggPk = aggregatePublicKeys [pubKey1, pubKey2, pubKey3]
+            aggSn = aggregateSignatures [sig1, sig2, incorrectSig4]
+        (not $ verifyBlobSignature aggPk msg aggSn) @? "Verify must not be passed"
     ]
