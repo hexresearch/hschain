@@ -102,8 +102,8 @@ insertSigned sval SignedSet{..} =
     Just Validator{validatorVotingPower}
       -- We already have value signed by that key
       | Just v <- idx `CIMap.lookup` vsetAddrMap -> if
-           | signedValue v == val -> InsertDup
-           | otherwise            -> InsertConflict sval
+          | signedValue v == val -> InsertDup
+          | otherwise            -> InsertConflict v
       -- OK insert value then
       | otherwise -> InsertOK SignedSet
           { vsetAddrMap  = CIMap.insert idx sval vsetAddrMap
