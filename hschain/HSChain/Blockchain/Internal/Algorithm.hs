@@ -569,7 +569,7 @@ addPrevote HeightParameters{..} v@(signedValue -> Vote{..}) sm@TMState{..} = do
     InsertConflict u -> misdeed
                       [ ConflictingPreVote (unverifySignature v) (unverifySignature u)]
     -- NOTE: Couldn't happen since we reject votes signed by unknown keys
-    InsertUnknown  _ -> error "addPrevote: Internal error"
+    InsertUnknown    -> error "addPrevote: Internal error"
 
 addPrecommit
   :: (Monad m)
@@ -585,4 +585,4 @@ addPrecommit HeightParameters{..} v@(signedValue -> Vote{..}) sm@TMState{..} = d
     InsertConflict u -> misdeed
                       [ ConflictingPreCommit (unverifySignature v) (unverifySignature u)]
     -- NOTE: See addPrevote
-    InsertUnknown  _ -> error "addPrecommit: Internal error"
+    InsertUnknown    -> error "addPrecommit: Internal error"
