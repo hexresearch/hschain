@@ -286,8 +286,8 @@ verifyMessageSignature oldValSet valSet height = forever $ do
 
 
 handleEngineMessage
-  :: ( MonadIO m, MonadTMMonitoring m, MonadLogger m
-     , Crypto alg)
+  :: ( MonadIO m, MonadThrow m, MonadTMMonitoring m, MonadDB m alg a, MonadLogger m
+     , Crypto alg, Serialise a)
   => HeightParameters n alg a
   -> ConsensusCfg
   -> AppChans m alg a
@@ -307,7 +307,7 @@ handleEngineMessage HeightParameters{..} ConsensusCfg{..} AppChans{..} = forever
     usingGauge prometheusHeight h
     usingGauge prometheusRound  (Round r)
   -- Misdeed
-  EngMisdeed _ -> return ()
+  EngMisdeed e -> mustQueryRW $ storeFreshEvidence e
   -- Announcements
   EngAnnPreVote sv -> do
     let Vote{..} = signedValue   sv
