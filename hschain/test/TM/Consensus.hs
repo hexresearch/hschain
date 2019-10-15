@@ -10,6 +10,7 @@
 --
 module TM.Consensus (tests) where
 
+import Codec.Serialise (Serialise)
 import Control.Concurrent.STM
 import Control.Monad
 import Control.Monad.IO.Class
@@ -61,7 +62,8 @@ tests = testGroup "eigen-consensus"
     | (nm,k) <- [("k1",k1), ("k2",k2), ("k3",k3), ("k4",k4)]
     ]
   , testGroup "Evidence"
-    [ testCase "store immedieately" evidenceIsStoredImmediately
+    [ testCase "PV store immedieately" evidenceIsStoredImmediatelyPV
+    , testCase "PC store immedieately" evidenceIsStoredImmediatelyPC
     ]
   ]
 
@@ -239,8 +241,8 @@ testLocking k = testConsensus k $ do
     votersPC = filter (/=k1) $ filter (/=k) privK
 
 
-evidenceIsStoredImmediately :: IO ()
-evidenceIsStoredImmediately = testConsensus k1 $ do
+evidenceIsStoredImmediatelyPV :: IO ()
+evidenceIsStoredImmediatelyPV  = testConsensus k1 $ do
   -- Consensus enters new height and proposer
   ()  <- expectStep 1 0 (StepNewHeight 0)
   ()  <- expectStep 1 0 StepProposal
@@ -259,18 +261,55 @@ evidenceIsStoredImmediately = testConsensus k1 $ do
     basicQuery_ "SELECT evidence,recorded FROM thm_evidence"
   case ev of
     [(CBORed (ConflictingPreVote v1 v2), False)]
-      | byzIdx /= signedKeyInfo v1 || byzIdx /= signedKeyInfo v2
-        -> error "Wrong validator recorded"
-      | isNothing (verifySignature valSet v1) || isNothing (verifySignature valSet v2)
-        -> error "Bad signature"
-      | (voteBlockID . signedValue) v1 == (voteBlockID . signedValue) v2
-        -> error "Votes are same!"
-      | otherwise
-        -> return ()
+      | conflictingVotesOK v1 v2 -> return ()
     _ -> error $ unlines $ "Incorrect evidence: " : map show ev
   where
     bid' = blockHash block1'
+
+
+evidenceIsStoredImmediatelyPC :: IO ()
+evidenceIsStoredImmediatelyPC  = testConsensus k1 $ do
+  -- Consensus enters new height and proposer
+  ()  <- expectStep 1 0 (StepNewHeight 0)
+  ()  <- expectStep 1 0 StepProposal
+  bid <- propBlockID <$> expectProp
+  -- PREVOTE: k2,k3 vote normally. k4 votes for two blocks!
+  () <- voteFor (Just bid) =<< expectPV
+  prevote (Height 1) (Round 0) [k2,k3,k4] (Just bid)
+  -- PRECOMMIT: vote normally
+  () <- voteFor (Just bid) =<< expectPC
+  precommit (Height 1) (Round 0) [k4]       (Just bid')
+  precommit (Height 1) (Round 0) [k4,k3,k2] (Just bid)
+  -- CHECKPOINT: at this point we're sure that we have registered
+  expectStep 2 0 (StepNewHeight 0)
+  --
+  ev :: [(CBORed (ByzantineEvidence TestAlg BData), Bool)] <- lift $ queryRO $
+    basicQuery_ "SELECT evidence,recorded FROM thm_evidence"
+  case ev of
+    [(CBORed (ConflictingPreCommit v1 v2), False)]
+      | conflictingVotesOK v1 v2 -> return ()
+    _ -> error $ unlines $ "Incorrect evidence: " : map show ev
+  where
+    bid' = blockHash block1'
+
+
+conflictingVotesOK
+  :: (Serialise (Vote v TestAlg BData))
+  => Signed 'Unverified TestAlg (Vote v TestAlg BData)
+  -> Signed 'Unverified TestAlg (Vote v TestAlg BData)
+  -> Bool
+conflictingVotesOK v1 v2
+  | byzIdx /= signedKeyInfo v1 || byzIdx /= signedKeyInfo v2
+    = error "Wrong validator recorded"
+  | isNothing (verifySignature valSet v1) || isNothing (verifySignature valSet v2)
+    = error "Bad signature"
+  | (voteBlockID . signedValue) v1 == (voteBlockID . signedValue) v2
+    = error "Votes are same!"
+  | otherwise
+    = True
+  where
     Just byzIdx = indexByValidator valSet $ publicKey k4
+
 
 ----------------------------------------------------------------
 -- Helpers for running tests
