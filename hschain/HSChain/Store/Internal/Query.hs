@@ -48,8 +48,11 @@ module HSChain.Store.Internal.Query (
   , queryRO
   , queryRW
   , mustQueryRW
+    -- * sqlite-simple helpers
+  , CBORed(..)
   ) where
 
+import Codec.Serialise                (Serialise, deserialise, serialise)
 import Control.Monad
 import Control.Monad.Catch
 import qualified Control.Monad.Fail as Fail
@@ -64,8 +67,10 @@ import Control.Monad.Trans.Except            (ExceptT(..))
 import Control.Monad.Trans.Identity          (IdentityT(..))
 import Data.Coerce
 import Data.IORef
-import qualified Data.Cache.LRU         as LRU
-import qualified Database.SQLite.Simple as SQL
+import qualified Data.Cache.LRU                   as LRU
+import qualified Database.SQLite.Simple           as SQL
+import qualified Database.SQLite.Simple.ToField   as SQL
+import qualified Database.SQLite.Simple.FromField as SQL
 import Pipes (Proxy)
 
 import HSChain.Types.Blockchain
@@ -460,3 +465,15 @@ runQueryWorker isWrite connection sql = withMutex mutex $ uninterruptibleMask $ 
     commitTx   = liftIO $ SQL.execute_ conn "COMMIT"
     mutex      = connMutex connection
     conn       = connConn  connection
+
+
+-- | Newtype wrapper which provides CBOR-encoded To\/FromField
+--   instance for values
+newtype CBORed a = CBORed { unCBORed :: a }
+  deriving Show
+
+instance (Serialise a) => SQL.FromField (CBORed a) where
+  fromField f = CBORed . deserialise <$> SQL.fromField f
+
+instance (Serialise a) => SQL.ToField (CBORed a) where
+  toField (CBORed a) = SQL.toField (serialise a)
