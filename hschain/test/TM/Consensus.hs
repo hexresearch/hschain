@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE DataKinds        #-}
 {-# LANGUAGE DeriveFunctor    #-}
 {-# LANGUAGE FlexibleContexts #-}
@@ -15,6 +16,7 @@ import Control.Monad.Trans.Class
 import Control.Monad.Trans.Free
 import Data.IORef
 import Data.Int
+import Database.SQLite.Simple (Only(..))
 import Text.Printf
 
 import HSChain.Blockchain.Internal.Engine.Types
@@ -25,6 +27,7 @@ import HSChain.Crypto
 import HSChain.Logger
 import HSChain.Store
 import HSChain.Store.STM
+import HSChain.Store.Internal.Query
 import HSChain.Types
 import HSChain.Mock.KeyVal  (BData(..))
 
@@ -44,7 +47,7 @@ tests = testGroup "eigen-consensus"
   [ testGroup "Single round"
     [ testCase (printf "key=%s PV=%i PC=%i" keyNm nPV nPC)
     $ testConsensusNormal nPV nPC k
-    | (k,keyNm) <- [(k1,"k1"), (k2,"k2")]
+    | (k,keyNm) <- [(k1,"k1"::String), (k2,"k2")]
     , nPV       <- [0 .. 3]
     , nPC       <- [0 .. 3]
     ]
@@ -55,6 +58,9 @@ tests = testGroup "eigen-consensus"
   , testGroup "Locking"
     [ testCase ("Key=" ++ nm) $ testLocking k
     | (nm,k) <- [("k1",k1), ("k2",k2), ("k3",k3), ("k4",k4)]
+    ]
+  , testGroup "Evidence"
+    [ testCase "store immedieately" evidenceIsStoredImmediately
     ]
   ]
 
@@ -230,6 +236,28 @@ testLocking k = testConsensus k $ do
     --
     votersPV = filter (/=k) privK
     votersPC = filter (/=k1) $ filter (/=k) privK
+
+
+evidenceIsStoredImmediately :: IO ()
+evidenceIsStoredImmediately = testConsensus k1 $ do
+  -- Consensus enters new height and proposer
+  ()  <- expectStep 1 0 (StepNewHeight 0)
+  ()  <- expectStep 1 0 StepProposal
+  bid <- propBlockID <$> expectProp
+  -- PREVOTE: k2,k3 vote normally. k4 votes for two blocks!
+  () <- voteFor (Just bid) =<< expectPV
+  prevote (Height 1) (Round 0) [k2,k3,k4] (Just bid)
+  prevote (Height 1) (Round 0) [k4]       (Just bid')
+  -- PRECOMMIT: vote normally
+  () <- voteFor (Just bid) =<< expectPC
+  precommit (Height 1) (Round 0) [k2,k3,k4] (Just bid)
+  -- CHECKPOINT: at this point we're sure that we have registered
+  expectStep 2 0 (StepNewHeight 0)
+  lift (queryRO (basicQuery_ "SELECT recorded FROM thm_evidence")) >>= \case
+    [(Only False)] -> return ()
+    es             -> error $ "Incorrect evidence: " ++ show es
+  where
+    bid' = blockHash block1'
 
 
 ----------------------------------------------------------------
@@ -415,6 +443,7 @@ expect vals (chTx, chRx) expected = do
         atomicallyIO $ mapM_ (writeTBQueue chRx) msg
         next
       GetValSet next   -> next vals
+      -- AskConn   next   -> next conn
       where
         failure m = error $ unlines [ "Expected:"
                                     , "    " ++ expectedName func
