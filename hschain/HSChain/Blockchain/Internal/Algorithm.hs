@@ -223,8 +223,10 @@ tranquility :: Monad m => ConsensusM alg a m x
 tranquility = ConsensusM $ return Tranquility
 
 -- | We detected clearly malicious behavior.
-misdeed :: Monad m => [ByzantineEvidence alg a] -> ConsensusM alg a m x
-misdeed _ = ConsensusM $ return Misdeed
+misdeed :: Monad m => [ByzantineEvidence alg a] -> CNS x alg a m y
+misdeed es = do
+  lift $ mapM_ (yield . EngMisdeed) es
+  ConsensusM $ return Misdeed
 
 
 -- | Enter new height and create new state for state machine
