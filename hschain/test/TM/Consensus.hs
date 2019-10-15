@@ -62,8 +62,9 @@ tests = testGroup "eigen-consensus"
     | (nm,k) <- [("k1",k1), ("k2",k2), ("k3",k3), ("k4",k4)]
     ]
   , testGroup "Evidence"
-    [ testCase "PV store immedieately" evidenceIsStoredImmediatelyPV
-    , testCase "PC store immedieately" evidenceIsStoredImmediatelyPC
+    [ testCase "PV stored immedieately" evidenceIsStoredImmediatelyPV
+    , testCase "PC stored immedieately" evidenceIsStoredImmediatelyPC
+    , testCase "Prop stored immedieately" evidenceIsStoredImmediatelyProp
     ]
   ]
 
@@ -239,6 +240,30 @@ testLocking k = testConsensus k $ do
     --
     votersPV = filter (/=k) privK
     votersPC = filter (/=k1) $ filter (/=k) privK
+
+
+evidenceIsStoredImmediatelyProp :: IO ()
+evidenceIsStoredImmediatelyProp = testConsensus k1 $ do
+  -- Consensus enters new height and proposer
+  ()  <- expectStep 1 0 (StepNewHeight 0)
+  -- OUT OT TURN PROPOSAL
+  _   <- proposeBlock (Round 0) k4 block1
+  ()  <- expectStep 1 0 StepProposal
+  bid <- propBlockID <$> expectProp
+  -- PREVOTE
+  () <- voteFor (Just bid) =<< expectPV
+  prevote (Height 1) (Round 0) [k2,k3,k4] (Just bid)
+  -- PRECOMMIT
+  () <- voteFor (Just bid) =<< expectPC
+  precommit (Height 1) (Round 0) [k2,k3,k4] (Just bid)
+  -- CHECKPOINT: at this point we're sure that we have registered
+  expectStep 2 0 (StepNewHeight 0)
+  ev :: [(CBORed (ByzantineEvidence TestAlg BData), Bool)] <- lift $ queryRO $
+    basicQuery_ "SELECT evidence,recorded FROM thm_evidence"
+  case ev of
+    [(CBORed (OutOfTurnProposal _), False)]
+      -> return ()
+    _ -> error $ unlines $ "Incorrect evidence: " : map show ev
 
 
 evidenceIsStoredImmediatelyPV :: IO ()
