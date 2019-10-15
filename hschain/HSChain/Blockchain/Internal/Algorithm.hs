@@ -176,7 +176,7 @@ newtype ConsensusM alg a m b = ConsensusM
 data ConsensusResult alg a b
   = Success !b
   | Tranquility
-  | Misdeed   [ByzantineEvidence alg a]
+  | Misdeed
   | DoCommit  !(Commit alg a) !(TMState alg a)
   deriving (Show,Functor)
 
@@ -189,7 +189,7 @@ instance Monad m => Monad (ConsensusM alg a m) where
   ConsensusM m >>= f = ConsensusM $ m >>= \case
     Success a     -> runConsesusM (f a)
     Tranquility   -> return Tranquility
-    Misdeed  e    -> return $ Misdeed e
+    Misdeed       -> return Misdeed
     DoCommit cm r -> return $ DoCommit cm r
 
 instance MonadIO m => MonadIO (ConsensusM alg a m) where
@@ -224,7 +224,7 @@ tranquility = ConsensusM $ return Tranquility
 
 -- | We detected clearly malicious behavior.
 misdeed :: Monad m => [ByzantineEvidence alg a] -> ConsensusM alg a m x
-misdeed = ConsensusM . return . Misdeed
+misdeed _ = ConsensusM $ return Misdeed
 
 
 -- | Enter new height and create new state for state machine
