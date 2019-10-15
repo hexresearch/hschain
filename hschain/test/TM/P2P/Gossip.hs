@@ -284,7 +284,7 @@ addPrevote v = do
           InsertOK votes   -> votes
           InsertDup        -> error "InsertDup"
           InsertConflict _ -> error "InsertConflict"
-          InsertUnknown  _ -> error "InsertUnknown"
+          InsertUnknown    -> error "InsertUnknown"
     }
 
 addPrecommit
@@ -298,7 +298,7 @@ addPrecommit v = do
           InsertOK votes   -> votes
           InsertDup        -> error "InsertDup"
           InsertConflict _ -> error "InsertConflict"
-          InsertUnknown  _ -> error "InsertUnknown"
+          InsertUnknown    -> error "InsertUnknown"
     }
 
 -- Perform single step
