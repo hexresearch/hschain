@@ -1,10 +1,11 @@
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE DataKinds        #-}
-{-# LANGUAGE DeriveFunctor    #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE LambdaCase       #-}
-{-# LANGUAGE MultiWayIf       #-}
-{-# LANGUAGE RecordWildCards  #-}
+{-# LANGUAGE DataKinds           #-}
+{-# LANGUAGE DeriveFunctor       #-}
+{-# LANGUAGE FlexibleContexts    #-}
+{-# LANGUAGE LambdaCase          #-}
+{-# LANGUAGE MultiWayIf          #-}
+{-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE RecordWildCards     #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 -- | Tests for consensus
 --
 module TM.Consensus (tests) where
@@ -16,7 +17,7 @@ import Control.Monad.Trans.Class
 import Control.Monad.Trans.Free
 import Data.IORef
 import Data.Int
-import Database.SQLite.Simple (Only(..))
+import Data.Maybe
 import Text.Printf
 
 import HSChain.Blockchain.Internal.Engine.Types
@@ -253,12 +254,23 @@ evidenceIsStoredImmediately = testConsensus k1 $ do
   precommit (Height 1) (Round 0) [k2,k3,k4] (Just bid)
   -- CHECKPOINT: at this point we're sure that we have registered
   expectStep 2 0 (StepNewHeight 0)
-  lift (queryRO (basicQuery_ "SELECT recorded FROM thm_evidence")) >>= \case
-    [(Only False)] -> return ()
-    es             -> error $ "Incorrect evidence: " ++ show es
+  --
+  ev :: [(CBORed (ByzantineEvidence TestAlg BData), Bool)] <- lift $ queryRO $
+    basicQuery_ "SELECT evidence,recorded FROM thm_evidence"
+  case ev of
+    [(CBORed (ConflictingPreVote v1 v2), False)]
+      | byzIdx /= signedKeyInfo v1 || byzIdx /= signedKeyInfo v2
+        -> error "Wrong validator recorded"
+      | isNothing (verifySignature valSet v1) || isNothing (verifySignature valSet v2)
+        -> error "Bad signature"
+      | (voteBlockID . signedValue) v1 == (voteBlockID . signedValue) v2
+        -> error "Votes are same!"
+      | otherwise
+        -> return ()
+    _ -> error $ unlines $ "Incorrect evidence: " : map show ev
   where
     bid' = blockHash block1'
-
+    Just byzIdx = indexByValidator valSet $ publicKey k4
 
 ----------------------------------------------------------------
 -- Helpers for running tests
