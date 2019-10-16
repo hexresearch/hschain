@@ -480,6 +480,8 @@ makeHeightParameters appValidatorKey logic@AppLogic{..} AppCallbacks{appCanCreat
               , newBlockEvidence = []
               , newBlockState    = BlockchainState st valSet
               } =<< peekNTransactions appMempool
+            -- Get evidence
+            evidence <- queryRO retrieveUnrecordedEvidence
             -- Assemble proper block
             let valCh = validatorsDifference valSet (bChValidatorSet bst)
                 block = Block
@@ -490,12 +492,12 @@ makeHeightParameters appValidatorKey logic@AppLogic{..} AppCallbacks{appCanCreat
                       , headerDataHash       = hashed bData
                       , headerValChangeHash  = hashed valCh
                       , headerLastCommitHash = hashed commit
-                      , headerEvidenceHash   = hashed []
+                      , headerEvidenceHash   = hashed evidence
                       }
                   , blockData       = bData
                   , blockValChange  = valCh
                   , blockLastCommit = commit
-                  , blockEvidence   = []
+                  , blockEvidence   = evidence
                   }
             mustQueryRW $ writeBlockToWAL r block
             return (block, bst)

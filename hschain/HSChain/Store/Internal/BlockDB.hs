@@ -351,6 +351,14 @@ evidenceRecordedState e = do
     [Only x] -> return (Just x)
     _        -> error "impossible"
 
+-- | Retrieve all unrecorded evidence
+retrieveUnrecordedEvidence
+  :: (Serialise a, Crypto alg, MonadQueryRO m alg a)
+  => m [ByzantineEvidence alg a]
+retrieveUnrecordedEvidence = do
+  rs <- basicQuery_ "SELECT evidence FROM thm_evidence WHERE recorded = 0"
+  return $ unCBORed . fromOnly <$> rs
+
 
 ----------------------------------------------------------------
 -- Helpers
