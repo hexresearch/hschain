@@ -154,7 +154,9 @@ decideNewBlock config appValidatorKey appLogic@AppLogic{..} appCall@AppCallbacks
      logger InfoS "Actual commit" $ LogBlockInfo h (blockData block) nTx
      usingCounter prometheusNTx nTx
   -- We have decided which block we want to commit so let commit it
-  mustQueryRW $ storeCommit cmt block (bChValidatorSet bchSt)
+  mustQueryRW $ do
+    storeCommit cmt block (bChValidatorSet bchSt)
+    mapM_ storeBlockchainEvidence $ blockEvidence block
   bchStoreStore appBchState (headerHeight $ blockHeader block) $ blockchainState bchSt
   appCommitCallback block
   return cmt
