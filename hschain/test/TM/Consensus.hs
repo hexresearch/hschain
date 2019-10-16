@@ -254,79 +254,77 @@ testLocking k = testConsensus k $ do
 
 
 evidenceIsStoredImmediatelyProp :: IO ()
-evidenceIsStoredImmediatelyProp = testConsensus k1 $ do
-  -- Consensus enters new height and proposer
-  ()  <- expectStep 1 0 (StepNewHeight 0)
-  -- OUT OT TURN PROPOSAL
-  _   <- proposeBlock (Round 0) k4 block1
-  ()  <- expectStep 1 0 StepProposal
-  bid <- propBlockID <$> expectProp
-  -- PREVOTE
-  () <- voteFor (Just bid) =<< expectPV
-  prevote (Height 1) (Round 0) [k2,k3,k4] (Just bid)
-  -- PRECOMMIT
-  () <- voteFor (Just bid) =<< expectPC
-  precommit (Height 1) (Round 0) [k2,k3,k4] (Just bid)
-  -- CHECKPOINT: at this point we're sure that we have registered
-  expectStep 2 0 (StepNewHeight 0)
-  ev :: [(CBORed (ByzantineEvidence TestAlg BData), Bool)] <- lift $ queryRO $
+evidenceIsStoredImmediatelyProp = withEnvironment $ do
+  execConsensus k1 $ do
+    -- Consensus enters new height and proposer
+    ()  <- expectStep 1 0 (StepNewHeight 0)
+    -- OUT OT TURN PROPOSAL
+    _   <- proposeBlock (Round 0) k4 block1
+    ()  <- expectStep 1 0 StepProposal
+    bid <- propBlockID <$> expectProp
+    -- PREVOTE
+    () <- voteFor (Just bid) =<< expectPV
+    return ()
+  --
+  ev :: [(CBORed (ByzantineEvidence TestAlg BData), Bool)] <- queryRO $
     basicQuery_ "SELECT evidence,recorded FROM thm_evidence"
   case ev of
-    [(CBORed (OutOfTurnProposal _), False)]
-      -> return ()
-    _ -> error $ unlines $ "Incorrect evidence: " : map show ev
+      [(CBORed (OutOfTurnProposal _), False)]
+        -> return ()
+      _ -> error $ unlines $ "Incorrect evidence: " : map show ev
 
 
 evidenceIsStoredImmediatelyPV :: IO ()
-evidenceIsStoredImmediatelyPV  = testConsensus k1 $ do
-  -- Consensus enters new height and proposer
-  ()  <- expectStep 1 0 (StepNewHeight 0)
-  ()  <- expectStep 1 0 StepProposal
-  bid <- propBlockID <$> expectProp
-  -- PREVOTE: k2,k3 vote normally. k4 votes for two blocks!
-  () <- voteFor (Just bid) =<< expectPV
-  prevote (Height 1) (Round 0) [k2,k3,k4] (Just bid)
-  prevote (Height 1) (Round 0) [k4]       (Just bid')
-  -- PRECOMMIT: vote normally
-  () <- voteFor (Just bid) =<< expectPC
-  precommit (Height 1) (Round 0) [k2,k3,k4] (Just bid)
-  -- CHECKPOINT: at this point we're sure that we have registered
-  expectStep 2 0 (StepNewHeight 0)
-  --
-  ev :: [(CBORed (ByzantineEvidence TestAlg BData), Bool)] <- lift $ queryRO $
-    basicQuery_ "SELECT evidence,recorded FROM thm_evidence"
-  case ev of
+evidenceIsStoredImmediatelyPV = withEnvironment $ do
+  execConsensus k1 $ do
+    -- Consensus enters new height and proposer
+    ()  <- expectStep 1 0 (StepNewHeight 0)
+    ()  <- expectStep 1 0 StepProposal
+    bid <- propBlockID <$> expectProp
+    -- PREVOTE: k2,k3 vote normally. k4 votes for two blocks!
+    () <- voteFor (Just bid) =<< expectPV
+    prevote (Height 1) (Round 0) [k2,k3,k4] (Just bid)
+    prevote (Height 1) (Round 0) [k4]       (Just bid')
+    voteFor (Just bid) =<< expectPC
+    expectStep 1 1 StepProposal
+  ----------------
+  queryRO selectAllEvidence >>= \case
     [(CBORed (ConflictingPreVote v1 v2), False)]
       | conflictingVotesOK v1 v2 -> return ()
-    _ -> error $ unlines $ "Incorrect evidence: " : map show ev
+    ev -> error $ unlines $ "Incorrect evidence: " : map show ev
   where
     bid' = blockHash block1'
 
 
 evidenceIsStoredImmediatelyPC :: IO ()
-evidenceIsStoredImmediatelyPC  = testConsensus k1 $ do
-  -- Consensus enters new height and proposer
-  ()  <- expectStep 1 0 (StepNewHeight 0)
-  ()  <- expectStep 1 0 StepProposal
-  bid <- propBlockID <$> expectProp
-  -- PREVOTE: k2,k3 vote normally. k4 votes for two blocks!
-  () <- voteFor (Just bid) =<< expectPV
-  prevote (Height 1) (Round 0) [k2,k3,k4] (Just bid)
-  -- PRECOMMIT: vote normally
-  () <- voteFor (Just bid) =<< expectPC
-  precommit (Height 1) (Round 0) [k4]       (Just bid')
-  precommit (Height 1) (Round 0) [k4,k3,k2] (Just bid)
-  -- CHECKPOINT: at this point we're sure that we have registered
-  expectStep 2 0 (StepNewHeight 0)
-  --
-  ev :: [(CBORed (ByzantineEvidence TestAlg BData), Bool)] <- lift $ queryRO $
-    basicQuery_ "SELECT evidence,recorded FROM thm_evidence"
-  case ev of
+evidenceIsStoredImmediatelyPC = withEnvironment $ do
+  execConsensus k1 $ do
+    -- Consensus enters new height and proposer
+    ()  <- expectStep 1 0 (StepNewHeight 0)
+    ()  <- expectStep 1 0 StepProposal
+    bid <- propBlockID <$> expectProp
+    -- PREVOTE: k2,k3 vote normally. k4 votes for two blocks!
+    () <- voteFor (Just bid) =<< expectPV
+    prevote (Height 1) (Round 0) [k2,k3,k4] (Just bid)
+    -- PRECOMMIT: vote normally
+    () <- voteFor (Just bid) =<< expectPC
+    precommit (Height 1) (Round 0) [k4] (Just bid')
+    precommit (Height 1) (Round 0) [k4] (Just bid)
+    expectStep 1 1 StepProposal
+  ----------------
+  queryRO selectAllEvidence >>= \case
     [(CBORed (ConflictingPreCommit v1 v2), False)]
       | conflictingVotesOK v1 v2 -> return ()
-    _ -> error $ unlines $ "Incorrect evidence: " : map show ev
+    ev -> error $ unlines $ "Incorrect evidence: " : map show ev
   where
     bid' = blockHash block1'
+
+selectAllEvidence
+  :: MonadQueryRO m alg a
+  => m [(CBORed (ByzantineEvidence TestAlg BData), Bool)]
+selectAllEvidence
+  = basicQuery_ "SELECT evidence,recorded FROM thm_evidence"
+
 
 evidenceValidated
   :: Bool
