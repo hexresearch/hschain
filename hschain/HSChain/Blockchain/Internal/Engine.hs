@@ -26,8 +26,10 @@ import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
 import           Data.Maybe    (fromMaybe)
+import           Data.List     (nub)
 import           Data.Monoid   ((<>))
 import Data.Text             (Text)
+import Data.Function         (on)
 import Pipes                 (Pipe,Producer,Consumer,runEffect,yield,await,(>->))
 import qualified Pipes.Prelude as Pipes
 
@@ -398,7 +400,7 @@ makeHeightParameters
   -> AppCallbacks        m alg a
   -> ProposalStorage 'RW m alg a
   -> m (HeightParameters m alg a)
-makeHeightParameters appValidatorKey AppLogic{..} AppCallbacks{appCanCreateBlock} propStorage = do
+makeHeightParameters appValidatorKey logic@AppLogic{..} AppCallbacks{appCanCreateBlock} propStorage = do
   bchH <- queryRO $ blockchainHeight
   let currentH = succ bchH
   oldValSet <- queryRO $ retrieveValidatorSet     bchH
@@ -431,6 +433,8 @@ makeHeightParameters appValidatorKey AppLogic{..} AppCallbacks{appCanCreateBlock
             st              <- throwNothingM BlockchainStateUnavalable
                              $ bchStoreRetrieve appBchState bchH
             mvalSet'        <- appValidationFun b (BlockchainState st valSet)
+            evidenceState   <- queryRO $ mapM evidenceRecordedState (blockEvidence b)
+            evidenceOK      <- mapM (evidenceCorrect logic) (blockEvidence b)
             if | not (null inconsistencies) -> do
                -- Block is not internally consistent
                    logger ErrorS "Proposed block has inconsistencies"
@@ -438,8 +442,11 @@ makeHeightParameters appValidatorKey AppLogic{..} AppCallbacks{appCanCreateBlock
                      <> sl "errors" (map show inconsistencies)
                      )
                    invalid
-               -- We don't put evidence into blocks yet so there shouldn't be any
-               | _:_ <- blockEvidence b -> invalid
+               -- We don't allow evidence which was already
+               -- submitted. Neither we allow duplicate evidence
+               | any (==Just True) evidenceState          -> invalid
+               | nub (blockEvidence b) /= blockEvidence b -> invalid
+               | any not evidenceOK                       -> invalid
                -- Block is correct and validators change is correct as
                -- well
                | Just bst <- mvalSet'
@@ -500,3 +507,37 @@ makeHeightParameters appValidatorKey AppLogic{..} AppCallbacks{appCanCreateBlock
         return bid
     , ..
     }
+
+evidenceCorrect
+  :: (Crypto alg, MonadIO m, MonadReadDB m alg a)
+  => AppLogic m alg a -> ByzantineEvidence alg a -> m Bool
+evidenceCorrect AppLogic{appProposerChoice=choice} evidence = do
+  queryRO (retrieveValidatorSet h) >>= \case
+    -- We don't have validator set (vote from future)
+    Nothing   -> return False
+    Just vals -> return $ case evidence of
+      OutOfTurnProposal    p
+        | Nothing <- verifySignature vals p                   -> False
+        | choice vals propHeight propRound == signedKeyInfo p -> False
+        | otherwise                                           -> True
+        where
+          Proposal{..} = signedValue p
+      ConflictingPreVote   v1 v2
+        | ((/=) `on` voteHeight  . signedValue) v1 v2 -> False
+        | ((/=) `on` voteRound   . signedValue) v1 v2 -> False
+        | ((==) `on` voteBlockID . signedValue) v1 v2 -> False
+        | Nothing <- verifySignature vals v1          -> False
+        | Nothing <- verifySignature vals v2          -> False
+        | otherwise                                   -> True
+      ConflictingPreCommit v1 v2
+        | ((/=) `on` voteHeight  . signedValue) v1 v2 -> False
+        | ((/=) `on` voteRound   . signedValue) v1 v2 -> False
+        | ((==) `on` voteBlockID . signedValue) v1 v2 -> False
+        | Nothing <- verifySignature vals v1          -> False
+        | Nothing <- verifySignature vals v2          -> False
+        | otherwise                                   -> True
+  where
+    h = case evidence of
+          OutOfTurnProposal    p   -> propHeight (signedValue p)
+          ConflictingPreVote   v _ -> voteHeight (signedValue v)
+          ConflictingPreCommit v _ -> voteHeight (signedValue v)

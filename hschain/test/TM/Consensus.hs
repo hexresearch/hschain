@@ -4,6 +4,7 @@
 {-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE MultiWayIf          #-}
 {-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE RankNTypes          #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 -- | Tests for consensus
@@ -62,9 +63,25 @@ tests = testGroup "eigen-consensus"
     | (nm,k) <- [("k1",k1), ("k2",k2), ("k3",k3), ("k4",k4)]
     ]
   , testGroup "Evidence"
-    [ testCase "PV stored immedieately" evidenceIsStoredImmediatelyPV
-    , testCase "PC stored immedieately" evidenceIsStoredImmediatelyPC
+    [ testCase "PV stored immedieately"   evidenceIsStoredImmediatelyPV
+    , testCase "PC stored immedieately"   evidenceIsStoredImmediatelyPC
     , testCase "Prop stored immedieately" evidenceIsStoredImmediatelyProp
+    , testCase "Evidence (out of turn) BAD"  $ evidenceValidated False (evidenceOutOfTurn False)
+    , testCase "Evidence (out of turn) GOOD" $ evidenceValidated True  (evidenceOutOfTurn True)
+    , testGroup "PreVote validation"
+      [ testCase "Confict"   $ evidenceValidated True  $ conflictingVote      ConflictingPreVote
+      , testCase "Same vote" $ evidenceValidated False $ badConflictVoteSame  ConflictingPreVote
+      , testCase "Diff. R"   $ evidenceValidated False $ badConflictVoteDiffR ConflictingPreVote
+      , testCase "Diff. H"   $ evidenceValidated False $ badConflictVoteDiffH ConflictingPreVote
+      , testCase "Bad sign"  $ evidenceValidated False $ badConflictVoteSign  ConflictingPreVote
+      ]
+    , testGroup "PreCommit validation"
+      [ testCase "Confict"   $ evidenceValidated True  $  conflictingVote     ConflictingPreCommit
+      , testCase "Same vote" $ evidenceValidated False $ badConflictVoteSame  ConflictingPreCommit
+      , testCase "Diff. R"   $ evidenceValidated False $ badConflictVoteDiffR ConflictingPreCommit
+      , testCase "Diff. H"   $ evidenceValidated False $ badConflictVoteDiffH ConflictingPreCommit
+      , testCase "Bad sign"  $ evidenceValidated False $ badConflictVoteSign  ConflictingPreCommit
+      ]
     ]
   ]
 
@@ -317,6 +334,82 @@ evidenceIsStoredImmediatelyPC  = testConsensus k1 $ do
   where
     bid' = blockHash block1'
 
+evidenceValidated
+  :: Bool
+  -> ByzantineEvidence TestAlg BData
+  -> IO ()
+evidenceValidated ok ev = testConsensus k4 $ do
+  -- HEIGHT 1
+  do ()  <- expectStep 1 0 (StepNewHeight 0)
+     ()  <- expectStep 1 0 StepProposal
+     bid <- proposeBlock (Round 0) k1 (mockchain !! 1)
+     ()  <- voteFor (Just bid) =<< expectPV
+     prevote (Height 1) (Round 0) [k2,k3,k4] (Just bid)
+     ()  <- voteFor (Just bid) =<< expectPC
+     precommit (Height 1) (Round 0) [k2,k3] (Just bid)
+  -- HEIGHT 2
+  do expectStep 2 0 (StepNewHeight 0)
+     expectStep 2 0 StepProposal
+     --
+     bid <- proposeBlock (Round 0) k2 b
+     ()  <- voteFor (expectedBID bid) =<< expectPV
+     return ()
+  where
+    expectedBID | ok        = Just
+                | otherwise = const Nothing
+    b0 = mockchain !! 2
+    b  = b0 { blockEvidence = [ev]
+            , blockHeader   = (blockHeader b0) { headerEvidenceHash = hashed [ev] }
+            }
+
+-- Proposals made out of turn
+evidenceOutOfTurn :: Bool -> ByzantineEvidence TestAlg BData
+evidenceOutOfTurn ok
+  = OutOfTurnProposal
+  $ signValue i k1
+  $ Proposal (Height 1) r (Time 0) Nothing (blockHash block1)
+  where
+    r | ok        = Round 3
+      | otherwise = Round 0
+    Just i = indexByValidator valSet (publicKey k1)
+
+conflictingVote,badConflictVoteSame, badConflictVoteDiffR, badConflictVoteDiffH,badConflictVoteSign
+  :: (Serialise (Vote ty TestAlg BData))
+  => (forall alg a. Signed 'Unverified alg (Vote ty alg a)
+                 -> Signed 'Unverified alg (Vote ty alg a)
+                 -> ByzantineEvidence alg a)
+  -> ByzantineEvidence TestAlg BData
+-- Conflicting vote
+conflictingVote make = make v1 v2
+  where
+    Just i = indexByValidator valSet (publicKey k4)
+    v1     = signValue i k4 $ Vote (Height 1) (Round 0) (Time 0) (Just $ blockHash block1)
+    v2     = signValue i k4 $ Vote (Height 1) (Round 0) (Time 0) (Just $ blockHash block1')
+-- Conflicting votes are in fact same
+badConflictVoteSame make = make v1 v1
+  where
+    Just i = indexByValidator valSet (publicKey k4)
+    v1     = signValue i k4 $ Vote (Height 1) (Round 0) (Time 0) (Just $ blockHash block1)
+-- Different round
+badConflictVoteDiffR make = make v1 v2
+  where
+    Just i = indexByValidator valSet (publicKey k4)
+    v1     = signValue i k4 $ Vote (Height 1) (Round 0) (Time 0) (Just $ blockHash block1)
+    v2     = signValue i k4 $ Vote (Height 1) (Round 1) (Time 0) (Just $ blockHash block1')
+-- Different height
+badConflictVoteDiffH make = make v1 v2
+  where
+    Just i = indexByValidator valSet (publicKey k4)
+    v1     = signValue i k4 $ Vote (Height 1) (Round 0) (Time 0) (Just $ blockHash block1)
+    v2     = signValue i k4 $ Vote (Height 2) (Round 0) (Time 0) (Just $ blockHash block1')
+-- Invalid signature
+badConflictVoteSign make = make v1 v2
+  where
+    Just i = indexByValidator valSet (publicKey k4)
+    v1     = signValue i k3 $ Vote (Height 1) (Round 0) (Time 0) (Just $ blockHash block1)
+    v2     = signValue i k4 $ Vote (Height 1) (Round 0) (Time 0) (Just $ blockHash block1')
+
+
 
 conflictingVotesOK
   :: (Serialise (Vote v TestAlg BData))
@@ -379,7 +472,7 @@ mkAppLogic = do
   return AppLogic
     { appBlockGenerator = \b _ -> do i <- liftIO $ readIORef cnt
                                      liftIO $ writeIORef cnt $! i + 1
-                                     return ( BData [("K2", i)]
+                                     return ( BData [("K" ++ let Height h = newBlockHeight b in show h, i)]
                                             , newBlockState b
                                             )
     , appValidationFun  = \_   -> return . Just
