@@ -34,8 +34,11 @@ genesis :: Block TestAlg BData
 genesis = makeGenesis (BData []) valSet
 
 block1, block1' :: Block TestAlg BData
-block1  = mintBlock genesis $ BData [("K",100)]
-block1' = mintBlock genesis $ BData [("K",101)]
+block1  = mintBlock genesis $ BData [("K1",100)]
+block1' = mintBlock genesis $ BData [("K1",101)]
+
+mockchain :: [Block TestAlg BData]
+mockchain = scanl mintBlock genesis [BData [("K"++show i,i)] | i <- [100..]]
 
 ----------------------------------------------------------------
 -- Utils
