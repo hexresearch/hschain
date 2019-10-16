@@ -343,7 +343,7 @@ storeBlockchainEvidence ev = do
 -- | Check whether evidence is recorded. @Just True@ mens that it's
 --   already in blockchain
 evidenceRecordedState
-  :: (Serialise a, Crypto alg, MonadQueryRW m alg a)
+  :: (Serialise a, Crypto alg, MonadQueryRO m alg a)
   => ByzantineEvidence alg a -> m (Maybe Bool)
 evidenceRecordedState e = do
   basicQuery "SELECT recorded FROM thm_evidence WHERE evidence = ?" (Only (serialise e)) >>= \case
