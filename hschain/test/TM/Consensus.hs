@@ -173,40 +173,32 @@ testSplitVote nByz = testConsensus k1 $ do
 --
 -- See #446 for more details
 testWalReplay :: IO ()
-testWalReplay = withDatabase "" genesis $ \conn -> run conn $ do
+testWalReplay = withEnvironment $ do
   bidRef <- liftIO $ newIORef Nothing
   -- First run. We run consensus and then we abort execution of
   -- consensus engine.
-  do (chans, action) <- startConsensus k1
-     runConcurrently
-       [ action
-       , expect valSet chans $ do
-           ()  <- expectStep 1 0 (StepNewHeight 0)
-           ()  <- expectStep 1 0 StepProposal
-           bid <- propBlockID <$> expectProp
-           liftIO $ writeIORef bidRef $ Just bid
-           -- Prevote
-           () <- voteFor (Just bid) =<< expectPV
-           prevote (Height 1) (Round 0) keys (Just bid)
-           -- Precommit
-           () <- voteFor (Just bid) =<< expectPC
-           return ()
-       ]
+  execConsensus k1 $ do
+    ()  <- expectStep 1 0 (StepNewHeight 0)
+    ()  <- expectStep 1 0 StepProposal
+    bid <- propBlockID <$> expectProp
+    liftIO $ writeIORef bidRef $ Just bid
+    -- Prevote
+    () <- voteFor (Just bid) =<< expectPV
+    prevote (Height 1) (Round 0) keys (Just bid)
+    -- Precommit
+    () <- voteFor (Just bid) =<< expectPC
+    return ()
   -- Second run after crash. We should get same output from consensus
   -- engine without sending any input.
-  do (chans, action) <- startConsensus k1
-     runConcurrently
-       [ action
-       , expect valSet chans $ do
-           ()  <- expectStep 1 0 (StepNewHeight 0)
-           ()  <- expectStep 1 0 StepProposal
-           bid <- propBlockID <$> expectProp
-           ()  <- voteFor (Just bid) =<< expectPV
-           ()  <- voteFor (Just bid) =<< expectPC
-           -- Check that we generate same block!
-           oldBid <- liftIO $ readIORef bidRef
-           when (oldBid /= Just bid) $ error "WAL replay: BID mismatch!"
-       ]
+  execConsensus k1 $ do
+    ()  <- expectStep 1 0 (StepNewHeight 0)
+    ()  <- expectStep 1 0 StepProposal
+    bid <- propBlockID <$> expectProp
+    ()  <- voteFor (Just bid) =<< expectPV
+    ()  <- voteFor (Just bid) =<< expectPC
+    -- Check that we generate same block!
+    oldBid <- liftIO $ readIORef bidRef
+    when (oldBid /= Just bid) $ error "WAL replay: BID mismatch!"
   where
     keys = [k2,k3,k4]
 
@@ -375,7 +367,8 @@ evidenceOutOfTurn ok
       | otherwise = Round 0
     Just i = indexByValidator valSet (publicKey k1)
 
-conflictingVote,badConflictVoteSame, badConflictVoteDiffR, badConflictVoteDiffH,badConflictVoteSign
+conflictingVote,badConflictingvoteOrder,badConflictVoteSame, badConflictVoteDiffR,
+  badConflictVoteDiffH,badConflictVoteSign
   :: (Serialise (Vote ty TestAlg BData))
   => (forall alg a. Signed 'Unverified alg (Vote ty alg a)
                  -> Signed 'Unverified alg (Vote ty alg a)
@@ -446,14 +439,24 @@ type ConsensusM = DBT 'RW TestAlg BData (NoLogsT IO)
 run :: Connection 'RW alg a -> DBT 'RW alg a (NoLogsT IO) x -> IO x
 run c = runNoLogsT . runDBT c
 
--- Simple test of consensus
-testConsensus :: PrivKey TestAlg -> Expect ConsensusM TestAlg BData () -> IO ()
-testConsensus k messages = withDatabase "" genesis $ \conn -> run conn $ do
+
+withEnvironment :: DBT 'RW TestAlg BData (NoLogsT IO) x -> IO x
+withEnvironment act = withDatabase "" genesis $ \conn -> run conn act
+
+execConsensus
+  :: PrivKey TestAlg
+  -> Expect ConsensusM TestAlg BData ()
+  -> DBT 'RW TestAlg BData (NoLogsT IO) ()
+execConsensus k messages = do
   (chans, action) <- startConsensus k
   runConcurrently
     [ action
     , expect valSet chans messages
     ]
+
+-- Simple test of consensus
+testConsensus :: PrivKey TestAlg -> Expect ConsensusM TestAlg BData () -> IO ()
+testConsensus k messages = withEnvironment $ execConsensus k messages
 
 startConsensus :: PrivKey TestAlg -> ConsensusM ( ( TChan   (MessageTx TestAlg BData)
                                                   , TBQueue (MessageRx 'Unverified TestAlg BData)
