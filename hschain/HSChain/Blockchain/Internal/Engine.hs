@@ -526,6 +526,7 @@ evidenceCorrect AppLogic{appProposerChoice=choice} evidence = do
         | ((/=) `on` voteHeight  . signedValue) v1 v2 -> False
         | ((/=) `on` voteRound   . signedValue) v1 v2 -> False
         | ((==) `on` voteBlockID . signedValue) v1 v2 -> False
+        | v1 >= v2                                    -> False
         | Nothing <- verifySignature vals v1          -> False
         | Nothing <- verifySignature vals v2          -> False
         | otherwise                                   -> True
@@ -533,6 +534,7 @@ evidenceCorrect AppLogic{appProposerChoice=choice} evidence = do
         | ((/=) `on` voteHeight  . signedValue) v1 v2 -> False
         | ((/=) `on` voteRound   . signedValue) v1 v2 -> False
         | ((==) `on` voteBlockID . signedValue) v1 v2 -> False
+        | v1 >= v2                                    -> False
         | Nothing <- verifySignature vals v1          -> False
         | Nothing <- verifySignature vals v2          -> False
         | otherwise                                   -> True
