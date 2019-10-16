@@ -69,18 +69,20 @@ tests = testGroup "eigen-consensus"
     , testCase "Evidence (out of turn) BAD"  $ evidenceValidated False (evidenceOutOfTurn False)
     , testCase "Evidence (out of turn) GOOD" $ evidenceValidated True  (evidenceOutOfTurn True)
     , testGroup "PreVote validation"
-      [ testCase "Confict"   $ evidenceValidated True  $ conflictingVote      ConflictingPreVote
-      , testCase "Same vote" $ evidenceValidated False $ badConflictVoteSame  ConflictingPreVote
-      , testCase "Diff. R"   $ evidenceValidated False $ badConflictVoteDiffR ConflictingPreVote
-      , testCase "Diff. H"   $ evidenceValidated False $ badConflictVoteDiffH ConflictingPreVote
-      , testCase "Bad sign"  $ evidenceValidated False $ badConflictVoteSign  ConflictingPreVote
+      [ testCase "Confict"   $ evidenceValidated True  $ conflictingVote         ConflictingPreVote
+      , testCase "Order"     $ evidenceValidated False $ badConflictingvoteOrder ConflictingPreVote
+      , testCase "Same vote" $ evidenceValidated False $ badConflictVoteSame     ConflictingPreVote
+      , testCase "Diff. R"   $ evidenceValidated False $ badConflictVoteDiffR    ConflictingPreVote
+      , testCase "Diff. H"   $ evidenceValidated False $ badConflictVoteDiffH    ConflictingPreVote
+      , testCase "Bad sign"  $ evidenceValidated False $ badConflictVoteSign     ConflictingPreVote
       ]
     , testGroup "PreCommit validation"
-      [ testCase "Confict"   $ evidenceValidated True  $  conflictingVote     ConflictingPreCommit
-      , testCase "Same vote" $ evidenceValidated False $ badConflictVoteSame  ConflictingPreCommit
-      , testCase "Diff. R"   $ evidenceValidated False $ badConflictVoteDiffR ConflictingPreCommit
-      , testCase "Diff. H"   $ evidenceValidated False $ badConflictVoteDiffH ConflictingPreCommit
-      , testCase "Bad sign"  $ evidenceValidated False $ badConflictVoteSign  ConflictingPreCommit
+      [ testCase "Confict"   $ evidenceValidated True  $ conflictingVote         ConflictingPreCommit
+      , testCase "Order"     $ evidenceValidated False $ badConflictingvoteOrder ConflictingPreCommit
+      , testCase "Same vote" $ evidenceValidated False $ badConflictVoteSame     ConflictingPreCommit
+      , testCase "Diff. R"   $ evidenceValidated False $ badConflictVoteDiffR    ConflictingPreCommit
+      , testCase "Diff. H"   $ evidenceValidated False $ badConflictVoteDiffH    ConflictingPreCommit
+      , testCase "Bad sign"  $ evidenceValidated False $ badConflictVoteSign     ConflictingPreCommit
       ]
     ]
   ]
@@ -380,7 +382,13 @@ conflictingVote,badConflictVoteSame, badConflictVoteDiffR, badConflictVoteDiffH,
                  -> ByzantineEvidence alg a)
   -> ByzantineEvidence TestAlg BData
 -- Conflicting vote
-conflictingVote make = make v1 v2
+conflictingVote make = make (min v1 v2) (max v1 v2)
+  where
+    Just i = indexByValidator valSet (publicKey k4)
+    v1     = signValue i k4 $ Vote (Height 1) (Round 0) (Time 0) (Just $ blockHash block1)
+    v2     = signValue i k4 $ Vote (Height 1) (Round 0) (Time 0) (Just $ blockHash block1')
+-- Invalid order of votes
+badConflictingvoteOrder make = make (max v1 v2) (min v1 v2)
   where
     Just i = indexByValidator valSet (publicKey k4)
     v1     = signValue i k4 $ Vote (Height 1) (Round 0) (Time 0) (Just $ blockHash block1)
