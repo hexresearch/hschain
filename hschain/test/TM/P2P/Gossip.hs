@@ -234,10 +234,6 @@ withGossip n action = do
       $ action
 
 
-
-mockchain :: [Block TestAlg Mock.BData]
-mockchain = scanl mintBlock genesis [Mock.BData [("K",i)] | i <- [100..]]
-
 -- Seed database with given number of blocks
 seedDatabase :: Int -> GossipM TestAlg Mock.BData ()
 seedDatabase n = do
