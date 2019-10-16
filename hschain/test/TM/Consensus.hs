@@ -66,6 +66,7 @@ tests = testGroup "eigen-consensus"
     [ testCase "PV stored immedieately"   evidenceIsStoredImmediatelyPV
     , testCase "PC stored immedieately"   evidenceIsStoredImmediatelyPC
     , testCase "Prop stored immedieately" evidenceIsStoredImmediatelyProp
+    , testCase "Eidence is included in block" evidenceIsRecordedProp
     , testCase "Evidence (out of turn) BAD"  $ evidenceValidated False (evidenceOutOfTurn False)
     , testCase "Evidence (out of turn) GOOD" $ evidenceValidated True  (evidenceOutOfTurn True)
     , testGroup "PreVote validation"
@@ -319,6 +320,40 @@ evidenceIsStoredImmediatelyPC = withEnvironment $ do
   where
     bid' = blockHash block1'
 
+evidenceIsRecordedProp :: IO ()
+evidenceIsRecordedProp = withEnvironment $ do
+  execConsensus k2 $ do
+    -- Consensus enters new height and proposer
+    ()   <- expectStep 1 0 (StepNewHeight 0)
+    -- OUT OT TURN PROPOSAL
+    _    <- proposeBlock (Round 0) k4 block1
+    ()   <- expectStep 1 0 StepProposal
+    bid1 <- proposeBlock (Round 0) k1 (mockchain !! 1)
+    ()   <- voteFor (Just bid1) =<< expectPV
+    prevote   (Height 1) (Round 0) [k1,k3] (Just bid1)
+    ()   <- voteFor (Just bid1) =<< expectPC
+    precommit (Height 1) (Round 0) [k1,k3] (Just bid1)
+    -- HEIGHT 2
+    expectStep 2 0 (StepNewHeight 0)
+    expectStep 2 0 StepProposal
+    -- Check that block contain evidence
+    bid2   <- propBlockID <$> expectProp
+    Just b <- lookupBID (Height 2) bid2
+    case blockEvidence b of
+      [OutOfTurnProposal _] -> return ()
+      e                     -> error $ unlines $ map show e
+    ()   <- voteFor (Just bid2) =<< expectPV
+    prevote   (Height 2) (Round 0) [k1,k3] (Just bid2)
+    ()   <- voteFor (Just bid2) =<< expectPC
+    precommit (Height 2) (Round 0) [k1,k3] (Just bid2)
+    -- HEIGHT 3. Block with evidence is commited
+    expectStep 3 0 (StepNewHeight 0)
+    expectStep 3 0 StepProposal
+  --
+  queryRO selectAllEvidence >>= \case
+    [(CBORed (OutOfTurnProposal _), True)] -> return ()
+    ev -> error $ unlines $ "Incorrect evidence: " : map show ev
+
 selectAllEvidence
   :: MonadQueryRO m alg a
   => m [(CBORed (ByzantineEvidence TestAlg BData), Bool)]
@@ -446,21 +481,24 @@ execConsensus
   -> Expect ConsensusM TestAlg BData ()
   -> DBT 'RW TestAlg BData (NoLogsT IO) ()
 execConsensus k messages = do
-  (chans, action) <- startConsensus k
+  (chans, prop, action) <- startConsensus k
   runConcurrently
     [ action
-    , expect valSet chans messages
+    , expect valSet prop chans messages
     ]
 
 -- Simple test of consensus
 testConsensus :: PrivKey TestAlg -> Expect ConsensusM TestAlg BData () -> IO ()
 testConsensus k messages = withEnvironment $ execConsensus k messages
 
-startConsensus :: PrivKey TestAlg -> ConsensusM ( ( TChan   (MessageTx TestAlg BData)
-                                                  , TBQueue (MessageRx 'Unverified TestAlg BData)
-                                                  )
-                                                , ConsensusM ()
-                                                )
+startConsensus
+  :: PrivKey TestAlg
+  -> ConsensusM ( ( TChan   (MessageTx TestAlg BData)
+                  , TBQueue (MessageRx 'Unverified TestAlg BData)
+                  )
+                , ProposalStorage 'RW ConsensusM TestAlg BData
+                , ConsensusM ()
+                )
 startConsensus k = do
   logic <- mkAppLogic
   chans <- newAppChans cfg
@@ -468,6 +506,7 @@ startConsensus k = do
   return ( ( ch
            , appChanRx chans
            )
+         , appPropStorage chans
          , runApplication cfg (Just (PrivValidator k)) logic mempty chans
          )
   where
@@ -513,6 +552,9 @@ expectPC = wrap $ ExpectPC return
 
 reply :: Monad m => [MessageRx 'Unverified alg a] -> Expect m alg a ()
 reply msg = wrap $ Reply msg (return ())
+
+lookupBID :: Monad m => Height -> BlockID alg a -> Expect m alg a (Maybe (Block alg a))
+lookupBID h bid = wrap $ LookupBID h bid return
 
 prevote
   :: (Monad m, Crypto alg)
@@ -585,6 +627,7 @@ data ExpectF alg a x
   | ExpectPC   (Vote 'PreCommit alg a -> x)
   | Reply      [MessageRx 'Unverified alg a] x
   | GetValSet  (ValidatorSet alg -> x)
+  | LookupBID  Height (BlockID alg a) (Maybe (Block alg a) -> x)
   deriving (Functor)
 
 -- Read outbound messages from consensus engine and reply to it
@@ -593,12 +636,13 @@ data ExpectF alg a x
 expect
   :: (MonadIO m, Crypto alg)
   => ValidatorSet alg
+  -> ProposalStorage 'RW m alg a
   -> ( TChan (MessageTx alg a)
      , TBQueue (MessageRx 'Unverified alg a)
      )
   -> Expect m alg a ()
   -> m ()
-expect vals (chTx, chRx) expected = do
+expect vals prop (chTx, chRx) expected = do
   iterT step expected
   where
     step func = case func of
@@ -621,7 +665,8 @@ expect vals (chTx, chRx) expected = do
         atomicallyIO $ mapM_ (writeTBQueue chRx) msg
         next
       GetValSet next   -> next vals
-      -- AskConn   next   -> next conn
+      LookupBID h bid next ->
+        next . blockFromBlockValidation =<< retrievePropByID prop h bid
       where
         failure m = error $ unlines [ "Expected:"
                                     , "    " ++ expectedName func
