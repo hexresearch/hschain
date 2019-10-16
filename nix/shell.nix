@@ -19,6 +19,7 @@ in
     ];
     buildInputs = [
       pkgs.libsodium
+      pkgs.bls
     ];
     packages = release."${ghc}";
     # NOTE: this is workaround for problem with building
