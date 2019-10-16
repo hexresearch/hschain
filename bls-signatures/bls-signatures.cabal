@@ -20,7 +20,7 @@ Library
   -- other-modules:
   -- other-extensions:
   Build-Depends:
-      base >=4.12 && <5
+      base >=4.11 && <5
     , bytestring
     , inline-c
     , inline-c-cpp
