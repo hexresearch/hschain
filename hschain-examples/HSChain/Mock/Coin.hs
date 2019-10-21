@@ -69,6 +69,7 @@ import HSChain.Crypto.SHA
 import HSChain.Debug.Trace
 import HSChain.Logger
 import HSChain.Run
+import HSChain.Mock
 import HSChain.Store
 import HSChain.Store.STM
 import HSChain.Mock.KeyList         (makePrivKeyStream)

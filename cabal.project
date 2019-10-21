@@ -3,6 +3,7 @@ packages:
          hschain-crypto
          hschain-types
          hschain-quickcheck
+         hschain-examples
          serialise-cddl
 
 -- Jailbreak bytestring-arbitrary

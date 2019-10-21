@@ -45,6 +45,7 @@ import HSChain.Mock.KeyList
 import HSChain.Mock.Types
 import HSChain.Monitoring
 import HSChain.Run
+import HSChain.Mock
 import HSChain.Store
 import HSChain.Store.STM
 import HSChain.Debug.Trace
