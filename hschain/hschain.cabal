@@ -96,7 +96,6 @@ Library
                   HSChain.Store
                   HSChain.Store.STM
                   HSChain.Store.Internal.BlockDB
-                  HSChain.Store.Internal.Types
                   HSChain.Store.Internal.Query
                   HSChain.Store.Internal.Proposals
                   HSChain.Utils
