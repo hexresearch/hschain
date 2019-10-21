@@ -33,7 +33,7 @@ import Crypto.Bls.Types
 
 
 C.context blsCtx
-C.include "bls.hpp"
+C.include "chiabls/bls.hpp"
 C.include "<iostream>"
 C.using "namespace bls"
 C.using "namespace std"

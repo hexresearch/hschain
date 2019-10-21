@@ -15,7 +15,7 @@ import Crypto.Bls.Types
 
 
 C.context blsCtx
-C.include "bls.hpp"
+C.include "chiabls/bls.hpp"
 C.using "namespace bls"
 
 

@@ -42,10 +42,6 @@ Library
     Crypto.Bls.Threshold
     Crypto.Bls.Types
     Crypto.Bls.Util
-  Include-Dirs:
-    bls-signatures/src
-    bls-signatures/build/contrib/relic/include
-    bls-signatures/contrib/relic/include/
   CXX-Options: -std=c++11
   if os(darwin)
     Extra-Libraries: c++
