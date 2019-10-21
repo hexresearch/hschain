@@ -19,7 +19,6 @@ import qualified Data.ByteString.Char8 as BC8
 
 import           HSChain.Control
 import           HSChain.Types.Blockchain
-import           HSChain.Run
 import           HSChain.Store
 import qualified HSChain.Mock.KeyVal as KeyVal
 import qualified HSChain.Mock.Coin   as Coin
