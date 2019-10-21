@@ -189,7 +189,7 @@ mustRetrieveCommitRound h =
 --   commit for the last block but may choose to store earlier
 --   commits as well.
 --
---   Note that commits returned by this functions may to differ
+--   Note that commits returned by this functions may differ
 --   from ones returned by @retrieveCommit@ by set of votes since
 --   1) @retrieveCommit@ retrieve commit as seen by proposer not
 --   local node 2) each node collect straggler precommits for some
@@ -205,13 +205,16 @@ retrieveValidatorSet :: (Crypto alg, MonadQueryRO m alg a) => Height -> m (Maybe
 retrieveValidatorSet h =
   singleQ "SELECT valset FROM thm_validators WHERE height = ?" (Only h)
 
-
+-- | Same as 'retrieveBlock' but throws 'DBMissingBlock' if there's no
+--   such block in database.
 mustRetrieveBlock
   :: (Serialise a, Crypto alg, MonadThrow m, MonadQueryRO m alg a)
   => Height -> m (Block alg a)
 mustRetrieveBlock h
   = throwNothing (DBMissingBlock h) =<< retrieveBlock h
 
+-- | Same as 'retrieveValidatorSet' but throws 'DBMissingValSet' if
+--   there's no validator set in database.
 mustRetrieveValidatorSet
   :: (Crypto alg, MonadQueryRO m alg a, MonadThrow m)
   => Height -> m (ValidatorSet alg)
