@@ -13,39 +13,39 @@
 {-# LANGUAGE TypeFamilies               #-}
 {-# LANGUAGE ViewPatterns               #-}
 -- |
--- Abstract API for storing of blockchain. Storage works as follows:
---
---  * Blockchain is stored in some databases (on in memory for testing
---    purposes)
---
---  * Rounds' state is kept in memory so it will be lost in case of
---    crash but incoming messages are stored in write ahead log so
---    they could be replayed.
+-- This module provides API for working with persistent (blockchain)
+-- and no so persistent (mempool) storage.
 module HSChain.Store (
-    -- * Standard DB wrapper
-    DBT(..)
-  , dbtRO
-  , runDBT
-    -- * Monadic API for DB access
+    -- * Working with database
+    -- ** Connection
+    Connection
   , Access(..)
+  , connectionRO
   , MonadReadDB(..)
   , MonadDB(..)
-  , Query
-  , QueryT
-  , Connection
-  , connectionRO
   , queryRO
   , queryRW
   , mustQueryRW
   , queryROT
   , queryRWT
-    -- ** Opening database
+  , mustQueryRWT
+    -- ** Opening\/closing database
   , openConnection
   , closeConnection
   , withConnection
   , initDatabase
   , withDatabase
-    -- * Block storage
+    -- * Querying database
+    -- ** Query monads
+  , MonadQueryRO(..)
+  , MonadQueryRW(..)
+  , Query
+  , QueryT
+    -- ** Standard DB wrapper
+  , DBT(..)
+  , dbtRO
+  , runDBT
+    -- ** Standard API
   , blockchainHeight
   , retrieveBlock
   , retrieveBlockID
@@ -56,14 +56,6 @@ module HSChain.Store (
   , mustRetrieveValidatorSet
   , retrieveSavedState
   , storeStateSnapshot
-    -- * In memory store for proposals
-  , Writable
-  , BlockValidation(..)
-  , blockFromBlockValidation
-  , ProposalStorage(..)
-  , hoistPropStorageRW
-  , hoistPropStorageRO
-  , makeReadOnlyPS
     -- * Mempool
   , MempoolCursor(..)
   , Mempool(..)
@@ -78,6 +70,15 @@ module HSChain.Store (
   , BlockchainInconsistency
   , checkStorage
   , checkProposedBlock
+
+    -- * INTERNAL. In memory store for proposals
+  , Writable
+  , BlockValidation(..)
+  , blockFromBlockValidation
+  , ProposalStorage(..)
+  , hoistPropStorageRW
+  , hoistPropStorageRO
+  , makeReadOnlyPS
   ) where
 
 import qualified Katip
@@ -116,6 +117,8 @@ import HSChain.Types.Validators
 -- Monadic API for DB access
 ----------------------------------------------------------------
 
+-- | Monad transformer which provides 'MonadReadDB' and 'MonadDB'
+--   instances.
 newtype DBT rw alg a m x = DBT (ReaderT (Connection rw alg a) m x)
   deriving ( Functor, Applicative, Monad
            , MonadIO, MonadThrow, MonadCatch, MonadMask
@@ -128,6 +131,7 @@ instance MFunctor (DBT rw alg a) where
 instance MonadTrans (DBT rw alg a) where
   lift = DBT . lift
 
+-- | Lift monad which provides read-only access to read-write access.
 dbtRO :: DBT 'RO alg a m x -> DBT rw alg a m x
 dbtRO (DBT m) = DBT (withReaderT connectionRO m)
 
@@ -319,6 +323,9 @@ hoistMempool fun Mempool{..} = Mempool
   }
 
 
+-- | Mempool which does nothing. It doesn't contain any transactions
+--   and discard every transaction is pushed into it. Useful if one
+--   doesn't need any mempool.
 nullMempool :: (Monad m) => Mempool m alg tx
 nullMempool = Mempool
   { peekNTransactions = return []
@@ -343,7 +350,7 @@ data BChStore m a = BChStore
   { bchCurrentState  :: m (Maybe Height, InterpreterState a)
   -- ^ Height of value stored in state
   , bchStoreRetrieve :: Height -> m (Maybe (InterpreterState a))
-  -- ^ Retrieve state for given height. It's generally not expected that  
+  -- ^ Retrieve state for given height. It's generally not expected that
   , bchStoreStore    :: Height -> InterpreterState a -> m ()
   -- ^ Put blockchain state at given height into store
   }
