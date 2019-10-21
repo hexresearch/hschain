@@ -12,6 +12,9 @@
 {-# LANGUAGE TypeFamilies               #-}
 {-# LANGUAGE UndecidableInstances       #-}
 -- |
+-- Building blocks wrapping SQL queries into accessors functions. It's
+-- not internal per se but is quite low level and API doesn't provide
+-- many guarantees. Use with care.
 module HSChain.Store.Internal.Query (
     -- * Connection
     Connection(..)
