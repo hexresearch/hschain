@@ -8,19 +8,15 @@
 -- |
 -- Helper function for running mock network of HSChain nodes
 module HSChain.Run (
-    DBT(..)
-  , dbtRO
-  , runDBT
     -- * New node code
-  , makeAppLogic
+    makeAppLogic
   , NodeDescription(..)
   , BlockchainNet(..)
   , runNode
+  , DefaultConfig(..)
     -- * Standard callbacks
   , nonemptyMempoolCallback
   , mempoolFilterCallback
-    -- * Running nodes
-  , defCfg
   ) where
 
 import Control.Monad
@@ -51,13 +47,15 @@ import HSChain.Utils
 --
 ----------------------------------------------------------------
 
+-- | Create 'AppLogic' which should be then passed to 'runNode' from
+--   description of blockchain logic and storage of blockchain state.
 makeAppLogic
   :: ( MonadDB m alg a, MonadMask m, MonadIO m
      , BlockData a, Show (TX a), Ord (TX a), Crypto alg
      )
-  => BChStore m a
-  -> BChLogic    q   alg a
-  -> Interpreter q m alg a
+  => BChStore m a               -- ^ Storage for blockchain state
+  -> BChLogic    q   alg a      -- ^ Blockchain logic
+  -> Interpreter q m alg a      -- ^ Runner for logic
   -> m (AppLogic m alg a)
 makeAppLogic store BChLogic{..} Interpreter{..} = do
   -- Create mempool
@@ -104,13 +102,16 @@ data BlockchainNet = BlockchainNet
   }
 
 
--- | Create list of threads which should be executed in parallel.
+-- | Start node. Function returns list of monadic actions which then
+--   should be run concurrently, for example with
+--   'runConcurrently'. List of actions is returned in case when we
+--   need to run something else along them.
 runNode
   :: ( MonadDB m alg a, MonadMask m, MonadFork m, MonadLogger m, MonadTrace m, MonadTMMonitoring m
      , Crypto alg, BlockData a
      )
-  => Configuration app
-  -> NodeDescription m alg a
+  => Configuration app          -- ^ Timeouts for network and consensus
+  -> NodeDescription m alg a    -- ^ Description of node.
   -> m [m ()]
 runNode cfg NodeDescription{..} = do
   let AppLogic{..}      = nodeLogic

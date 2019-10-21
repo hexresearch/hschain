@@ -28,7 +28,6 @@ import HSChain.Crypto.Containers
 import HSChain.Logger
 import HSChain.P2P
 import HSChain.P2P.PeerState.Types
-import HSChain.Run
 import HSChain.Store
 import HSChain.Store.Internal.Proposals
 import HSChain.Store.Internal.BlockDB (storeCommit)
