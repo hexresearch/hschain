@@ -39,6 +39,7 @@ import HSChain.Run
 import HSChain.Control
 import HSChain.Store
 import HSChain.Monitoring
+import HSChain.Mock
 import HSChain.Crypto         (PublicKey)
 import HSChain.P2P            (generatePeerId)
 import HSChain.P2P.Network    (newNetworkTcp)
