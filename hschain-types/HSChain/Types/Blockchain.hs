@@ -291,8 +291,6 @@ data Proposal alg a = Proposal
     -- ^ Time of proposal
   , propPOL       :: !(Maybe Round)
     -- ^ Proof of Lock for proposal
-    --
-    -- FIXME: why it's needed? How should it be used?
   , propBlockID   :: !(BlockID alg a)
     -- ^ Hash of proposed block
   }
