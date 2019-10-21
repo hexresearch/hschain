@@ -3,9 +3,9 @@
 {-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE MultiWayIf          #-}
 {-# LANGUAGE OverloadedStrings   #-}
-
 -- |
--- Data types for primary database. Namely storage of blocks, commits and validators
+-- Queries for interacting with database. Ones that constitute public
+-- API are reexported from "HSChain.Store".
 module HSChain.Store.Internal.BlockDB where
 
 import Codec.Serialise     (Serialise, serialise, deserialiseOrFail)
