@@ -70,15 +70,6 @@ module HSChain.Store (
   , BlockchainInconsistency
   , checkStorage
   , checkProposedBlock
-
-    -- * INTERNAL. In memory store for proposals
-  , Writable
-  , BlockValidation(..)
-  , blockFromBlockValidation
-  , ProposalStorage(..)
-  , hoistPropStorageRW
-  , hoistPropStorageRO
-  , makeReadOnlyPS
   ) where
 
 import qualified Katip
@@ -170,87 +161,7 @@ initDatabase c genesis = do
 
 
 ----------------------------------------------------------------
--- Storage for consensus
-----------------------------------------------------------------
-
-type family Writable (rw :: Access) a where
-  Writable 'RO a = ()
-  Writable 'RW a = a
-
--- | Status of block validation.
-data BlockValidation alg a
-  = UntestedBlock !(Block alg a)
-  -- ^ We haven't validated block yet
-  | UnknownBlock
-  -- ^ We haven't even seen block yet
-  | GoodBlock     !(Block alg a) !(BlockchainState alg a)
-  -- ^ Block is good. We also cache state and new validator set
-  | InvalidBlock
-  -- ^ Block is invalid so there's no point in storing (and gossiping)
-  --   it.
-
-blockFromBlockValidation :: BlockValidation alg a -> Maybe (Block alg a)
-blockFromBlockValidation = \case
-  UntestedBlock b   -> Just b
-  GoodBlock     b _ -> Just b
-  UnknownBlock      -> Nothing
-  InvalidBlock      -> Nothing
-
--- | Storage for proposed blocks that are not commited yet.
-data ProposalStorage rw m alg a = ProposalStorage
-  { retrievePropByID   :: !(Height -> BlockID alg a -> m (BlockValidation alg a))
-    -- ^ Retrieve proposed block by its ID
-  , retrievePropByR    :: !(Height -> Round -> m (Maybe (BlockID alg a, BlockValidation alg a)))
-    -- ^ Retrieve proposed block by round number.
-
-  , setPropValidation  :: !(Writable rw ( BlockID alg a
-                                       -> Maybe (BlockchainState alg a)
-                                       -> m ()))
-    -- ^ Set whether block is valid or not.
-  , resetPropStorage   :: !(Writable rw (Height -> m ()))
-    -- ^ Reset proposal storage and set it to expect blocks ith given
-    --   height.
-  , allowBlockID       :: !(Writable rw (Round -> BlockID alg a -> m ()))
-    -- ^ Mark block ID as one that we could accept
-  , storePropBlock     :: !(Writable rw (Block alg a -> m ()))
-    -- ^ Store block proposed at given height. If height is different
-    --   from height we are at block is ignored.
-  }
-
-makeReadOnlyPS :: ProposalStorage rw m alg a -> ProposalStorage 'RO m alg a
-makeReadOnlyPS ProposalStorage{..} =
-  ProposalStorage { resetPropStorage  = ()
-                  , storePropBlock    = ()
-                  , allowBlockID      = ()
-                  , setPropValidation = ()
-                  , ..
-                  }
-
-hoistPropStorageRW
-  :: (forall x. m x -> n x)
-  -> ProposalStorage 'RW m alg a
-  -> ProposalStorage 'RW n alg a
-hoistPropStorageRW fun ProposalStorage{..} =
-  ProposalStorage { retrievePropByID   = \h x -> fun (retrievePropByID h x)
-                  , retrievePropByR    = \h x -> fun (retrievePropByR  h x)
-                  , setPropValidation  = \b x -> fun (setPropValidation b x)
-                  , resetPropStorage   = fun . resetPropStorage
-                  , storePropBlock     = fun . storePropBlock
-                  , allowBlockID       = \r bid -> fun (allowBlockID r bid)
-                  }
-
-hoistPropStorageRO
-  :: (forall x. m x -> n x)
-  -> ProposalStorage 'RO m alg a
-  -> ProposalStorage 'RO n alg a
-hoistPropStorageRO fun ProposalStorage{..} =
-  ProposalStorage { retrievePropByID   = \h x -> fun (retrievePropByID h x)
-                  , retrievePropByR    = \h x -> fun (retrievePropByR  h x)
-                  , ..
-                  }
-
-----------------------------------------------------------------
---
+-- Mempool
 ----------------------------------------------------------------
 
 -- | Statistics about mempool

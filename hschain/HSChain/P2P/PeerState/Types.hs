@@ -21,6 +21,7 @@ import Lens.Micro.TH
 import HSChain.Blockchain.Internal.Types
 import HSChain.Crypto
 import HSChain.Store
+import HSChain.Store.Internal.Proposals
 import HSChain.Types.Blockchain
 import HSChain.Types.Validators
 

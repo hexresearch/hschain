@@ -15,7 +15,7 @@ import HSChain.Blockchain.Internal.Engine.Types (NetworkCfg)
 import HSChain.Blockchain.Internal.Types        (Announcement, MessageTx, MessageRx, TMState)
 import HSChain.Crypto                           (Crypto, SignedState(..))
 import HSChain.P2P.Types                        (NetAddr)
-import HSChain.Store                            (ProposalStorage)
+import HSChain.Store.Internal.Proposals         (ProposalStorage)
 import HSChain.Store.Internal.Query             (Access(..))
 
 import HSChain.Types

@@ -42,8 +42,8 @@ import HSChain.Crypto
 import HSChain.Exceptions
 import HSChain.Logger
 import HSChain.Store
-import HSChain.Store.STM
 import HSChain.Store.Internal.BlockDB
+import HSChain.Store.Internal.Proposals
 import HSChain.Monitoring
 import HSChain.Types.Validators
 

@@ -25,6 +25,7 @@ import HSChain.Crypto
 import HSChain.Crypto.Containers         (toPlainMap)
 import HSChain.Logger
 import HSChain.Store
+import HSChain.Store.Internal.Proposals
 import HSChain.Store.Internal.BlockDB
 import HSChain.Types.Blockchain
 import HSChain.Types.Validators
@@ -39,6 +40,7 @@ import HSChain.P2P.PeerState.Handle.Utils
 import qualified HSChain.Data.CIntMap as CIMap
 import qualified Data.Map.Strict    as Map
 import qualified Data.Set           as Set
+
 
 handler :: Handler CurrentState Event alg a m
 handler =

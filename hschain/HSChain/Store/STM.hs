@@ -4,10 +4,8 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 -- |
 module HSChain.Store.STM (
-    -- * Proposal storage
-    newSTMPropStorage
     -- * Mempool
-  , newMempool
+    newMempool
     -- * Blockchain state storge
   , newSTMBchStorage
   , snapshotState
@@ -39,60 +37,6 @@ import HSChain.Crypto
 import HSChain.Store
 import HSChain.Types.Blockchain
 
-
-newSTMPropStorage
-  :: (Crypto alg, MonadIO m)
-  => m (ProposalStorage 'RW m alg a)
-newSTMPropStorage = fmap (hoistPropStorageRW liftIO) $ liftIO $ do
-  varH    <- newTVarIO (Height 0) -- Current height
-  varPBlk <- newTVarIO Map.empty  -- Proposed blocks
-  varRMap <- newTVarIO Map.empty  -- Map of rounds to block IDs
-  return ProposalStorage
-    { resetPropStorage = \h -> atomically $ do
-        writeTVar varH    h
-        writeTVar varPBlk Map.empty
-        writeTVar varRMap Map.empty
-    --
-    , setPropValidation = \bid mSt -> do
-        let action = atomically . modifyTVar' varPBlk . flip Map.adjust bid
-        case mSt of
-          Nothing -> action $ \case 
-            UntestedBlock _ -> InvalidBlock
-            InvalidBlock    -> InvalidBlock
-            _               -> error "CANT HAPPEN"
-          Just bst -> action $ \case
-            UntestedBlock b -> GoodBlock b bst
-            b@GoodBlock{}   -> b
-            _               -> error "CANT HAPPEN"
-    --
-    , storePropBlock = \blk -> atomically $ do
-        h <- readTVar varH
-        when (headerHeight (blockHeader blk) == h) $
-          modifyTVar' varPBlk $ flip Map.adjust (blockHash blk) $ \case
-            UnknownBlock -> UntestedBlock blk
-            b            -> b
-    --
-    , allowBlockID = \r bid -> atomically $ do
-        modifyTVar' varRMap $ Map.insert r   bid
-        modifyTVar' varPBlk $ flip Map.alter bid $ \case
-          Nothing -> Just UnknownBlock
-          Just b  -> Just b
-    --
-    , retrievePropByID = \h0 bid -> atomically $ do
-        h <- readTVar varH
-        if h == h0 then fromMaybe UnknownBlock . Map.lookup bid <$> readTVar varPBlk
-                   else return UnknownBlock
-    --
-    , retrievePropByR = \h r -> atomically $ do
-        h0 <- readTVar varH
-        if h /= h0
-          then return Nothing
-          else do rMap <- readTVar varRMap
-                  pBlk <- readTVar varPBlk
-                  return $ do bid <- r   `Map.lookup` rMap
-                              blk <- bid `Map.lookup` pBlk
-                              return (bid, blk)
-    }
 
 newMempool
   :: forall m alg tx. (Show tx, Ord tx, Serialise tx, Crypto alg, MonadIO m)
