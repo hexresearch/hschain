@@ -49,6 +49,7 @@ import HSChain.Blockchain.Internal.Types
 import HSChain.Crypto
 import HSChain.Crypto.SHA (SHA512)
 import HSChain.Store
+import HSChain.Store.Internal.Proposals
 import HSChain.Types.Blockchain
 import HSChain.Types.Validators
 

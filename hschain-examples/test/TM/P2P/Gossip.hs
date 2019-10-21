@@ -30,8 +30,8 @@ import HSChain.P2P
 import HSChain.P2P.PeerState.Types
 import HSChain.Run
 import HSChain.Store
+import HSChain.Store.Internal.Proposals
 import HSChain.Store.Internal.BlockDB (storeCommit)
-import HSChain.Store.STM
 import HSChain.Types
 import qualified HSChain.Mock.KeyVal as Mock
 

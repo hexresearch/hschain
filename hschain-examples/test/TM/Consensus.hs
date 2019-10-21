@@ -31,6 +31,7 @@ import HSChain.Logger
 import HSChain.Store
 import HSChain.Store.STM
 import HSChain.Store.Internal.Query
+import HSChain.Store.Internal.Proposals
 import HSChain.Types
 import HSChain.Mock.KeyVal  (BData(..))
 
