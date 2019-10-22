@@ -89,14 +89,20 @@ import Control.Monad.ST
 import Control.Monad.IO.Class
 
 import qualified Data.Aeson           as JSON
-import           Data.Data (Data)
+import           Data.Data               (Data)
 import           Data.ByteString.Lazy    (toStrict)
 import           Data.ByteString         (ByteString)
-import qualified Data.ByteString       as BS
+import qualified Data.ByteString          as BS
+import qualified Data.ByteString.Internal as BI
 import Data.Coerce
 import Data.Typeable (Proxy(..))
+import Data.Int
+import Data.Word
 import Text.Read
 import Text.ParserCombinators.ReadP
+import System.IO.Unsafe
+import Foreign.Ptr          (castPtr)
+import Foreign.Storable     (Storable(..))
 import GHC.TypeNats
 import GHC.Generics         (Generic,Generic1)
 
@@ -142,7 +148,7 @@ hashBlob bs = runST $ do
 
 -- | Type class which describes how value should be hashed
 class CryptoHashable a where
-  hashStep :: HashAccum alg s -> a -> ST s ()
+  hashStep :: CryptoHash alg => HashAccum alg s -> a -> ST s ()
 
 
 -- | Compute hash of value. It's first serialized using CBOR and then
@@ -163,7 +169,7 @@ instance (CryptoHash alg) => ByteRepr (Hashed alg a) where
   encodeToBS (Hashed h) = encodeToBS h
   decodeFromBS = fmap Hashed . decodeFromBS
 
-{-
+
 -- | Chaining of hash algorithms. For example @SHA256 :<<< SHA256@
 --   would mean applying SHA256 twice or @SHA256 :<<< SHA512@ will
 --   work as @sha256 . sha512@.
@@ -650,3 +656,25 @@ verifyCborSignature
   -> Bool
 verifyCborSignature pk a
   = verifyBlobSignature pk (toStrict $ serialise a)
+
+
+----------------------------------------------------------------
+-- CryptoHashable instances
+----------------------------------------------------------------
+
+instance CryptoHashable Int64  where hashStep = storableHashStep
+instance CryptoHashable Int32  where hashStep = storableHashStep
+instance CryptoHashable Int16  where hashStep = storableHashStep
+instance CryptoHashable Int8   where hashStep = storableHashStep
+instance CryptoHashable Word64 where hashStep = storableHashStep
+instance CryptoHashable Word32 where hashStep = storableHashStep
+instance CryptoHashable Word16 where hashStep = storableHashStep
+instance CryptoHashable Word8  where hashStep = storableHashStep
+
+
+storableHashStep :: (CryptoHash alg, Storable a) => HashAccum alg s -> a -> ST s ()
+{-# INLINE storableHashStep #-}
+storableHashStep s i
+  = updateHashAccum s
+  $ unsafePerformIO
+  $ BI.create (sizeOf i) (\p -> poke (castPtr p) i)
