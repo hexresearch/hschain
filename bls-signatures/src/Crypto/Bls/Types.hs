@@ -60,6 +60,9 @@ instance WithPtr PrivateKey where withPtr = withForeignPtr . unPrivateKey
 
 instance CSizeOf C'PrivateKey where cSizeOf _proxy = fromIntegral [C.pure| size_t { sizeof(bls::PrivateKey) }|]
 
+instance NFData PrivateKey where
+    rnf (PrivateKey ptr) = ptr `seq` ()
+
 
 -- * PublicKey ----------------------------------------------------------------
 
@@ -78,6 +81,9 @@ instance WithPtr PublicKey where withPtr = withForeignPtr . unPublicKey
 
 instance CSizeOf C'PublicKey where cSizeOf _proxy = fromIntegral [C.pure| size_t { sizeof(bls::PublicKey) }|]
 
+instance NFData PublicKey where
+    rnf (PublicKey ptr) = ptr `seq` ()
+
 
 -- * Signature ----------------------------------------------------------------
 
@@ -93,6 +99,9 @@ instance FromPtr Signature where
     fromPtr = objFromPtr Signature deleteSignature
 
 instance WithPtr Signature where withPtr = withForeignPtr . unSignature
+
+instance NFData Signature where
+    rnf (Signature ptr) = ptr `seq` ()
 
 
 -- * InsecureSignature --------------------------------------------------------
@@ -111,6 +120,9 @@ instance FromPtr InsecureSignature where
 instance WithPtr InsecureSignature where withPtr = withForeignPtr . unInsecureSignature
 
 instance CSizeOf C'InsecureSignature where cSizeOf _proxy = fromIntegral [C.pure| size_t { sizeof(bls::InsecureSignature) }|]
+
+instance NFData InsecureSignature where
+    rnf (InsecureSignature ptr) = ptr `seq` ()
 
 -- * AggregationInfo ----------------------------------------------------------
 

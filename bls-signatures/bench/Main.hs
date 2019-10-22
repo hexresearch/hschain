@@ -7,7 +7,6 @@ import Crypto.Bls
 
 import Data.ByteString as BS
 import qualified Data.Vector as V
-import Control.DeepSeq
 
 
 smallMessage1 :: BS.ByteString
@@ -47,9 +46,6 @@ hash = hash256
 
 benchSignInsecurePrehashed :: PrivateKey -> Hash256 -> IO InsecureSignature
 benchSignInsecurePrehashed = signInsecurePrehashed
-
-instance NFData InsecureSignature where
-    rnf (InsecureSignature ptr) = ptr `seq` ()
 
 benchVerifyInsecure :: PublicKey -> Hash256 -> InsecureSignature -> IO Bool
 benchVerifyInsecure pubKey msgHash sig =
