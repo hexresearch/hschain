@@ -21,12 +21,14 @@
 -- families
 module HSChain.Crypto (
     -- * Cryptographic hashes
-    CryptoHash(..)
-  , Hash(..)
+    Hash(..)
   , Hashed(..)
+  , CryptoHash(..)
+  , CryptoHashable(..)
+  , hashBlob
   , hash
   , hashed
-  , (:<<<)
+  -- , (:<<<)
     -- * HMAC
   , CryptoHMAC(..)
   , HMAC(..)
@@ -83,11 +85,13 @@ import qualified Codec.Serialise as CBOR
 import Control.Applicative
 import Control.DeepSeq
 import Control.Monad
+import Control.Monad.ST
 import Control.Monad.IO.Class
 
 import qualified Data.Aeson           as JSON
 import           Data.Data (Data)
 import           Data.ByteString.Lazy    (toStrict)
+import           Data.ByteString         (ByteString)
 import qualified Data.ByteString       as BS
 import Data.Coerce
 import Data.Typeable (Proxy(..))
@@ -108,29 +112,49 @@ newtype Hash alg = Hash BS.ByteString
   deriving stock   (Generic, Generic1)
   deriving newtype (Eq,Ord,Serialise,NFData)
 
--- | Compute hash of value. It's first serialized using CBOR and then
---   hash of encoded data is computed,
-hash :: (CryptoHash alg, Serialise a) => a -> Hash alg
-hash = hashBlob . toStrict . serialise
-
--- | Type-indexed set of crypto algorithms. It's not very principled
---   to push everything into singe type class.  But in order to keep
---   signatures sane it was done this way.
-class ( ByteReprSized (Hash alg)
-      ) => CryptoHash alg where
-  -- | Compute hash of sequence of bytes
-  hashBlob     :: BS.ByteString -> Hash alg
-
--- | Size of hash in bytes
-hashSize :: forall alg proxy i. (CryptoHash alg, Num i) => proxy alg -> i
-hashSize _ = fromIntegral $ natVal (Proxy @(ByteSize (Hash alg)))
-
 -- | Newtype wrapper with phantom type tag which show hash of which
 --   value is being calculated
 newtype Hashed alg a = Hashed (Hash alg)
   deriving stock   ( Show, Read, Generic, Generic1)
   deriving newtype ( Eq,Ord,NFData, Serialise
                    , JSON.FromJSON, JSON.ToJSON, JSON.ToJSONKey, JSON.FromJSONKey)
+
+-- | Algorithm for computing cryptographic hash. We expose fold
+--   structure of hash function. Folding is performed inside ST monad
+--   which allows to use mutable accumulators for performance.
+class (ByteReprSized (Hash alg)) => CryptoHash alg where
+  -- | Mutable accumulator for hash function
+  data HashAccum alg :: * -> *
+  -- | Create new empty hash accumulator
+  newHashAccum :: ST s (HashAccum alg s)
+  -- | Push chunk of data into accumulator.
+  updateHashAccum :: HashAccum alg s -> ByteString -> ST s ()
+  -- | Extract digest from accumulator
+  freezeHashAccum :: HashAccum alg s -> ST s (Hash alg)
+
+
+-- | Compute hash of bytestring
+hashBlob :: CryptoHash alg => ByteString -> Hash alg
+hashBlob bs = runST $ do
+  s <- newHashAccum
+  updateHashAccum s bs
+  freezeHashAccum s
+
+-- | Type class which describes how value should be hashed
+class CryptoHashable a where
+  hashStep :: HashAccum alg s -> a -> ST s ()
+
+
+-- | Compute hash of value. It's first serialized using CBOR and then
+--   hash of encoded data is computed,
+hash :: (CryptoHash alg, Serialise a) => a -> Hash alg
+hash = hashBlob . toStrict . serialise
+
+
+-- | Size of hash in bytes
+hashSize :: forall alg proxy i. (CryptoHash alg, Num i) => proxy alg -> i
+hashSize _ = fromIntegral $ natVal (Proxy @(ByteSize (Hash alg)))
+
 
 hashed :: (Crypto alg, Serialise a) => a -> Hashed alg a
 hashed = Hashed . hash
@@ -139,6 +163,7 @@ instance (CryptoHash alg) => ByteRepr (Hashed alg a) where
   encodeToBS (Hashed h) = encodeToBS h
   decodeFromBS = fmap Hashed . decodeFromBS
 
+{-
 -- | Chaining of hash algorithms. For example @SHA256 :<<< SHA256@
 --   would mean applying SHA256 twice or @SHA256 :<<< SHA512@ will
 --   work as @sha256 . sha512@.
@@ -151,7 +176,7 @@ instance (CryptoHash hashA, CryptoHash hashB) => CryptoHash (hashA :<<< hashB) w
   hashBlob bs = let Hash hB = hashBlob bs :: Hash hashB
                     Hash hA = hashBlob hB :: Hash hashA
                 in Hash hA
-
+-}
 
 ----------------------------------------
 
@@ -424,7 +449,11 @@ instance ByteReprSized (Hash hash) => ByteReprSized (Hash (sign :& hash)) where
   type ByteSize (Hash (sign :& hash)) = ByteSize (Hash hash)
 
 instance (CryptoHash hash) => CryptoHash (sign :& hash) where
-  hashBlob     = coerce (hashBlob @hash)
+  newtype HashAccum (sign :& hash) s = HashAccumBoth (HashAccum hash s)
+  newHashAccum    = coerce (newHashAccum    @hash)
+  updateHashAccum = coerce (updateHashAccum @hash)
+  freezeHashAccum = coerce (freezeHashAccum @hash)
+
 
 
 ----------------------------------------------------------------
