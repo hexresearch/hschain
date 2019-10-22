@@ -4,18 +4,13 @@
 module Tests.Signature (htf_thisModulesTests) where
 
 import Test.Framework
+import qualified Data.Vector as V
 
 import Crypto.Bls
 
-import Data.ByteString.Builder as BS
-import Data.ByteString as BS
-import Data.ByteString.Lazy as BSL
 
-import qualified Data.Vector as V
-
-
-hexifyBs :: BS.ByteString -> BS.ByteString
-hexifyBs = BSL.toStrict . BS.toLazyByteString . BS.byteStringHex
+-- hexifyBs :: BS.ByteString -> BS.ByteString
+-- hexifyBs = BSL.toStrict . BS.toLazyByteString . BS.byteStringHex
 
 
 test_pk :: IO ()

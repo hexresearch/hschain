@@ -16,9 +16,10 @@ import Crypto.Bls.Util
 import qualified Data.Vector as V
 
 
-import qualified Data.ByteString as BS
+import qualified Data.ByteString         as BS
+import qualified Data.ByteString.Char8   as BC8
 import qualified Data.ByteString.Builder as BS
-import qualified Data.ByteString.Lazy as BSL
+import qualified Data.ByteString.Lazy    as BSL
 
 
 hexifyBs :: BS.ByteString -> BS.ByteString
@@ -29,7 +30,7 @@ test_threshold_create_verify :: IO ()
 test_threshold_create_verify = do
     let t = 7
         n = 9
-    (secretKey, commi, secretFrags) <- Threshold.create t n
+    (_secretKey, commi, secretFrags) <- Threshold.create t n
     assertBool =<< allM (\i -> Threshold.verifySecretFragment (i + 1) (secretFrags V.! i) commi t) [0..(n - 1)]
 
 
@@ -50,7 +51,7 @@ test_threshold_create_sign_verify = do
         n = 4
     -- Every player creates keys and fragments
     frags <- replicateM n (Threshold.create t n)
-    let secretKeys  = V.fromList $ map fst3 frags
+    let _secretKeys = V.fromList $ map fst3 frags
         publicFrags = V.fromList $ map snd3 frags
         secretFrags = V.fromList $ map thr3 frags
     -- TODO
@@ -60,7 +61,7 @@ test_threshold_create_sign_verify = do
     -- Create master public key
     let masterPublicKeyFrags = V.map V.head publicFrags
     masterPublicKey <- aggregateInsecurePublicKey masterPublicKeyFrags
-    BS.putStrLn =<< (hexifyBs <$> (serializePublicKey masterPublicKey))
+    BC8.putStrLn =<< (hexifyBs <$> (serializePublicKey masterPublicKey))
 
     --
     let rcvdFrags = V.generate n $ \i -> V.map (V.! i) secretFrags
@@ -70,7 +71,7 @@ test_threshold_create_sign_verify = do
     putStrLn "--- Secret Shares ---------"
     (flip V.imapM_) secretShares $ \i ssh -> do
         putStr ("  Player "  <> show i <> ": ")
-        BS.putStrLn =<< (hexifyBs <$> (serializePrivateKey ssh))
+        BC8.putStrLn =<< (hexifyBs <$> (serializePrivateKey ssh))
 
 
     {-
@@ -93,7 +94,7 @@ test_threshold_create_sign_verify = do
     let message = ("My Test Message" :: BS.ByteString)
     hash <- hash256 message
     BS.putStr "Hash message: "
-    BS.putStrLn (hexifyBs $ unHash256 hash)
+    BC8.putStrLn (hexifyBs $ unHash256 hash)
 
     --
     sigU1 <- signInsecure (secretShares V.! 0) message
