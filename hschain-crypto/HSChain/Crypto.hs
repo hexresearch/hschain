@@ -28,7 +28,7 @@ module HSChain.Crypto (
   , hashBlob
   , hash
   , hashed
-  -- , (:<<<)
+  , (:<<<)
     -- * HMAC
   , CryptoHMAC(..)
   , HMAC(..)
@@ -173,10 +173,13 @@ instance ByteReprSized (Hash hashA) => ByteReprSized (Hash (hashA :<<< hashB)) w
   type ByteSize (Hash (hashA :<<< hashB)) = ByteSize (Hash hashA)
 
 instance (CryptoHash hashA, CryptoHash hashB) => CryptoHash (hashA :<<< hashB) where
-  hashBlob bs = let Hash hB = hashBlob bs :: Hash hashB
-                    Hash hA = hashBlob hB :: Hash hashA
-                in Hash hA
--}
+  newtype HashAccum (hashA :<<< hashB) s = HashAccumChain (HashAccum hashB s)
+  newHashAccum    = coerce (newHashAccum    @hashB)
+  updateHashAccum = coerce (updateHashAccum @hashB)
+  freezeHashAccum (HashAccumChain acc) = do
+    Hash h <- freezeHashAccum acc
+    return $! coerce (hashBlob h :: Hash hashA)
+
 
 ----------------------------------------
 
