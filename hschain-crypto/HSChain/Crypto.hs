@@ -120,9 +120,6 @@ class ( ByteReprSized (Hash alg)
       ) => CryptoHash alg where
   -- | Compute hash of sequence of bytes
   hashBlob     :: BS.ByteString -> Hash alg
-  -- | Compare hash with a bytestring safly
-  hashEquality :: Hash alg -> BS.ByteString -> Bool
-  hashEquality (Hash h) bs = h == bs
 
 -- | Size of hash in bytes
 hashSize :: forall alg proxy i. (CryptoHash alg, Num i) => proxy alg -> i
@@ -428,7 +425,6 @@ instance ByteReprSized (Hash hash) => ByteReprSized (Hash (sign :& hash)) where
 
 instance (CryptoHash hash) => CryptoHash (sign :& hash) where
   hashBlob     = coerce (hashBlob @hash)
-  hashEquality = coerce (hashEquality @hash)
 
 
 ----------------------------------------------------------------
