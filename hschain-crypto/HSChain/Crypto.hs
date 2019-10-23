@@ -93,6 +93,7 @@ import           Data.Data               (Data)
 import           Data.ByteString.Lazy    (toStrict)
 import           Data.ByteString         (ByteString)
 import qualified Data.ByteString          as BS
+import qualified Data.ByteString.Char8    as BC8
 import qualified Data.ByteString.Internal as BI
 import Data.Coerce
 import Data.Typeable (Proxy(..))
@@ -104,7 +105,8 @@ import System.IO.Unsafe
 import Foreign.Ptr          (castPtr)
 import Foreign.Storable     (Storable(..))
 import GHC.TypeNats
-import GHC.Generics         (Generic,Generic1)
+import GHC.Generics hiding (Constructor)
+import qualified GHC.Generics as GHC
 
 import HSChain.Crypto.Classes
 
@@ -662,6 +664,37 @@ verifyCborSignature pk a
 -- CryptoHashable instances
 ----------------------------------------------------------------
 
+-- | Data type prefix for defining 'CryptoHashable' instances.
+data DataType
+  = Tuple     !Word16
+  | Sequence  !Word32
+  | UserType  !ByteString
+  deriving (Show)
+
+-- | Constructor identifier for defining 'CryptoHashable' instances.
+data Constructor
+  = ConstructorIdx  !Int64
+  | ConstructorName !ByteString
+  deriving (Show)
+
+instance CryptoHashable DataType where
+  hashStep s = \case
+    Tuple    n  -> do hashStep s (0 :: Word16)
+                      hashStep s n
+    Sequence n  -> do hashStep s (1 :: Word16)
+                      hashStep s n
+    UserType bs -> do hashStep s (2 :: Word16)
+                      hashStep s bs
+                      hashStep s (0 :: Word8)
+
+instance CryptoHashable Constructor where
+  hashStep s = \case
+    ConstructorIdx  i  -> do hashStep s (0 :: Word16)
+                             hashStep s i
+    ConstructorName bs -> do hashStep s (1 :: Word16)
+                             hashStep s bs
+                             hashStep s (0 :: Word16)
+
 instance CryptoHashable Int64  where hashStep = storableHashStep
 instance CryptoHashable Int32  where hashStep = storableHashStep
 instance CryptoHashable Int16  where hashStep = storableHashStep
@@ -671,6 +704,8 @@ instance CryptoHashable Word32 where hashStep = storableHashStep
 instance CryptoHashable Word16 where hashStep = storableHashStep
 instance CryptoHashable Word8  where hashStep = storableHashStep
 
+instance CryptoHashable ByteString where
+  hashStep = updateHashAccum
 
 storableHashStep :: (CryptoHash alg, Storable a) => HashAccum alg s -> a -> ST s ()
 {-# INLINE storableHashStep #-}
@@ -678,3 +713,47 @@ storableHashStep s i
   = updateHashAccum s
   $ unsafePerformIO
   $ BI.create (sizeOf i) (\p -> poke (castPtr p) i)
+
+
+
+class GCryptoHashable f where
+  ghashStep :: CryptoHash alg => HashAccum alg s -> f a -> ST s ()
+
+instance (Datatype d, GCryptoHashable f) => GCryptoHashable (M1 D d f) where
+  ghashStep s x@(M1 f) = do
+    hashStep  s $ UserType $ BC8.pack $ datatypeName x
+    ghashStep s f
+
+instance (GHC.Constructor c, GCryptoHashable f) => GCryptoHashable (M1 C c f) where
+  ghashStep s x@(M1 f) = do
+    hashStep  s $ ConstructorName $ BC8.pack $ conName x
+    ghashStep s f
+
+instance (GCryptoHashable f) => GCryptoHashable (M1 S s f) where
+  ghashStep s (M1 f) = ghashStep s f
+
+instance (GCryptoHashable f, GCryptoHashable g) => GCryptoHashable (f :+: g) where
+  ghashStep s (L1 f) = ghashStep s f
+  ghashStep s (R1 g) = ghashStep s g
+
+instance (GCryptoHashable f, GCryptoHashable g) => GCryptoHashable (f :*: g) where
+  ghashStep s (f :*: g) = do ghashStep s f
+                             ghashStep s g
+
+instance GCryptoHashable U1 where
+  ghashStep _ _ = return ()
+
+instance CryptoHashable a => GCryptoHashable (K1 i a) where
+  ghashStep s (K1 a) = hashStep s a
+
+genericHashStep
+  :: (Generic a, GCryptoHashable (Rep a), CryptoHash alg)
+  => HashAccum alg s -> a -> ST s ()
+genericHashStep s a = ghashStep s (from a)
+
+
+data Foo
+  = Foo1 Int8
+  | Foo2 Int8 Int16 Int32
+  | Foo3
+  deriving (Generic,Show)
