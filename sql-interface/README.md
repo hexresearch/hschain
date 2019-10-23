@@ -56,3 +56,30 @@ to perform more complex quieries.
 
 These quieries must start with the statement "PRAGMA LOCAL QUERY;" and may contain
 anything base SQL engine allows.
+
+
+Build without Nix
+-----
+
+Assuming Ubuntu Linux, the machine must have unixodbc-dev and sqlite3-dev packages which
+are easy to install using apt: `sudo apt install unixodbc-dev sqlite3-dev`
+
+After that, go into sqliteodbc-0.9996 directory and issue
+`D=... ./configure --prefix=$D/usr --exec-prefix=$D/usr/bin && make && make install`
+
+The `D` environment variable is assigned to where your non-superuser accessible for write
+yet accessible from executable search path files can be located. I have `$HOME/usr` that mimicks
+`/usr` directory hierarchy and `$HOME/usr/bin` in PATH, it works well enough.
+
+The `make install` part does not attempt to create directories (is it a bug?) so your
+destination `$D/usr` must have `lib` directory.
+
+After that the `$D/usr/lib` folder will contain a bunch of libsqliteodbc*.so files.
+
+
+Build with Nix
+--------
+
+TBD - it is not clear we need that yet. Nixos forces everything into its environment
+and that might be a not a good thing.
+

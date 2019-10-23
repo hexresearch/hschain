@@ -2,5 +2,5 @@ sqliteodbc (0.9996-1) unstable; urgency=low
 
   * automatically recreated by configure
 
- -- Christian Werner <chw@ch-werner.de>  Sat, 24 Feb 2018 10:30:55 +0100
+ -- Christian Werner <chw@ch-werner.de>  Wed, 23 Oct 2019 16:07:01 +0300
 
