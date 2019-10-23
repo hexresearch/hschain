@@ -44,7 +44,7 @@ data Example
 instance DefaultConfig Example where
   defCfg = Configuration
     { cfgConsensus         = ConsensusCfg
-      { timeoutNewHeight   = (500, 500)
+      { timeoutNewHeight   = 500
       , timeoutProposal    = (500, 500)
       , timeoutPrevote     = (500, 500)
       , timeoutPrecommit   = (500, 500)

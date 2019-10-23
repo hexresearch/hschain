@@ -300,13 +300,14 @@ handleEngineMessage HeightParameters{..} ConsensusCfg{..} AppChans{..} = forever
   -- Timeout
   EngTimeout t@(Timeout h (Round r) step) -> do
     liftIO $ void $ forkIO $ do
-      let (baseT,delta) = case step of
+      let calcDelay (baseT, delta) = baseT + delta * fromIntegral r
+          delay = case step of
             StepNewHeight _   -> timeoutNewHeight
-            StepProposal      -> timeoutProposal
-            StepPrevote       -> timeoutPrevote
-            StepPrecommit     -> timeoutPrecommit
-            StepAwaitCommit _ -> (0, 0)
-      threadDelay $ 1000 * (baseT + delta * fromIntegral r)
+            StepProposal      -> calcDelay timeoutProposal
+            StepPrevote       -> calcDelay timeoutPrevote
+            StepPrecommit     -> calcDelay timeoutPrecommit
+            StepAwaitCommit _ -> 0
+      threadDelay $ 1000 * delay
       atomically $ writeTQueue appChanRxInternal $ RxTimeout t
     usingGauge prometheusHeight h
     usingGauge prometheusRound  (Round r)
