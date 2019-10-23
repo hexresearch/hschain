@@ -83,7 +83,7 @@ data Configuration app = Configuration
 --    should be same for all validating nodes in the network. Otherwise
 --    network risks divergence. All timeouts are measured in ms.
 data ConsensusCfg = ConsensusCfg
-  { timeoutNewHeight  :: !(Int,Int)
+  { timeoutNewHeight  :: !Int
     -- ^ Timeout for NEW HEIGHT phase
   , timeoutProposal   :: !(Int,Int)
     -- ^ Timeout and timeout increment for PROPOSE phase

@@ -178,7 +178,7 @@ data FastTest
 instance DefaultConfig FastTest where
   defCfg = Configuration
     { cfgConsensus         = ConsensusCfg
-      { timeoutNewHeight   = (1, 1)
+      { timeoutNewHeight   = 1
       , timeoutProposal    = (100, 100)
       , timeoutPrevote     = (200, 100)
       , timeoutPrecommit   = (200, 100)
