@@ -9,11 +9,15 @@
 -- Helper function for running mock network of HSChain nodes
 module HSChain.Run (
     -- * New node code
-    makeAppLogic
+    runNode
+  , makeAppLogic
   , NodeDescription(..)
   , BlockchainNet(..)
-  , runNode
+    -- ** Configuration and timeouts
   , DefaultConfig(..)
+  , Configuration(..)
+  , ConsensusCfg(..)
+  , NetworkCfg(..)
     -- * Standard callbacks
   , nonemptyMempoolCallback
   , mempoolFilterCallback
