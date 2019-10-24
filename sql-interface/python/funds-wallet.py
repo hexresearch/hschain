@@ -33,4 +33,4 @@ if __name__ == 'main':
   if len(args) < 1:
     args = ['help']
 
-  pro
+  wallet_main(args)
