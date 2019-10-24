@@ -1,5 +1,6 @@
 {-# LANGUAGE ConstraintKinds            #-}
 {-# LANGUAGE DataKinds                  #-}
+{-# LANGUAGE DefaultSignatures          #-}
 {-# LANGUAGE DeriveAnyClass             #-}
 {-# LANGUAGE DeriveDataTypeable         #-}
 {-# LANGUAGE DeriveGeneric              #-}
@@ -150,8 +151,13 @@ hashBlob bs = runST $ do
 
 -- | Type class which describes how value should be hashed
 class CryptoHashable a where
+  -- | This function describes how to compute hash of the data
+  --   type. For hierarchical records it's computed by default using
+  --   depth first traversal.
   hashStep :: CryptoHash alg => HashAccum alg s -> a -> ST s ()
-
+  default hashStep :: (CryptoHash alg, Generic a, GCryptoHashable (Rep a))
+                   => HashAccum alg s -> a -> ST s ()
+  hashStep = genericHashStep
 
 -- | Compute hash of value. It's first serialized using CBOR and then
 --   hash of encoded data is computed,
