@@ -811,6 +811,18 @@ instance (CryptoHashable a, CryptoHashable b) => CryptoHashable (Either a b) whe
               Right b -> do hashStep s $ ConstructorIdx 1
                             hashStep s b
 
+instance (CryptoHashable a, CryptoHashable b) => CryptoHashable (a, b) where
+  hashStep s (a,b) = do
+    hashStep s $ Tuple 2
+    hashStep s a
+    hashStep s b
+
+instance (CryptoHashable a, CryptoHashable b, CryptoHashable c) => CryptoHashable (a, b, c) where
+  hashStep s (a,b,c) = do
+    hashStep s $ Tuple 3
+    hashStep s a
+    hashStep s b
+    hashStep s c
 
 instance CryptoHashable (Hashed alg a) where
   hashStep s (Hashed h) = hashStep s h
