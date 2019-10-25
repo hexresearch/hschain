@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE BangPatterns          #-}
 {-# LANGUAGE DeriveFoldable        #-}
 {-# LANGUAGE DeriveGeneric         #-}
@@ -7,7 +8,8 @@
 {-# LANGUAGE ScopedTypeVariables   #-}
 {-# LANGUAGE TypeFamilies          #-}
 -- |
-module HSChain.Types.MerkleBlock
+module HSChain.Types.MerkleBlock where
+{-
   ( -- * Tree data types
     MerkleBlockTree(..)
     -- * Building tree
@@ -52,7 +54,20 @@ data Node alg a
   | Leaf   (Hash alg) a
   deriving (Show, Foldable, Generic)
 
+instance CryptoHashable (MerkleBlockTree alg a) where
+  hashStep s = hashStep s . merkleBlockRoot
 
+instance CryptoHashable a => CryptoHashable (Node alg a) where
+  hashStep s node = do
+    hashStep s $ UserType "Node"
+    -- FIXME: logic for caching of hash is unclear!
+    case node of
+      Branch _ a b -> do hashStep s $ ConstructorIdx 0
+                         hashStep s   a
+                         hashStep s   b
+      Leaf   _ a   -> do hashStep s $ ConstructorIdx 1
+                         hashStep s   a
+                           
 instance (CryptoHash alg, alg ~ alg') => MerkleValue alg' (MerkleBlockTree alg a) where
   merkleHash = merkleBlockRoot
 
@@ -131,12 +146,11 @@ mkLeaf x = Leaf (computeLeafHash x) x
 mkBranch :: (CryptoHash alg, Serialise a) => Node alg a -> Node alg a -> Node alg a
 mkBranch x y = Branch (concatHash (merkleHash x) (merkleHash y)) x y
 
-computeLeafHash :: (CryptoHash alg, Serialise a) => a -> Hash alg
+computeLeafHash :: (CryptoHash alg, CryptoHashable a) => a -> Hash alg
 computeLeafHash a = hash (0::Int, a)
 
 concatHash :: (CryptoHash alg) => Hash alg -> Hash alg -> Hash alg
 concatHash x y = hash (1::Int, x, y)
-
 
 
 ----------------------------------------------------------------
@@ -152,7 +166,7 @@ data MerkleProof alg a = MerkleProof
 
 -- | Check proof of inclusion
 checkMerkleProof
-  :: (Serialise a, CryptoHash alg)
+  :: (CryptoHashable a, CryptoHash alg)
   => Hash alg          -- ^ Root hash of Merkle Tree
   -> MerkleProof alg a -- ^ Proof
   -> Bool
@@ -205,11 +219,12 @@ isBalanced (MerkleBlockTree _ (Just tree))
 
 -- | Check whether all hashes in the tree are consistent
 isConsistent
-  :: forall alg a. (Serialise a, CryptoHash alg)
+  :: forall alg a. (CryptoHashable a, CryptoHash alg)
   => MerkleBlockTree alg a -> Bool
 isConsistent (MerkleBlockTree rootH tree) =
   case tree of
     Nothing -> rootH == hash (Nothing :: Maybe (Hash alg))
+
     Just tr -> case check tr of
       Nothing  -> False
       h@Just{} -> rootH == hash h
@@ -218,3 +233,4 @@ isConsistent (MerkleBlockTree rootH tree) =
                               return h
     check (Branch h a b) = do guard $ h == concatHash (merkleHash a) (merkleHash b)
                               return h
+-}
