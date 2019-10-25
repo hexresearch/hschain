@@ -49,6 +49,7 @@ import Data.IntSet  (IntSet)
 import Data.List    (sortBy)
 import Data.Map     (Map)
 import Data.Ord     (comparing)
+import Data.Word
 import GHC.Generics (Generic, Generic1)
 
 import qualified Codec.Serialise       as CBOR
@@ -59,7 +60,6 @@ import qualified Data.Map.Strict       as Map
 import qualified Data.Vector           as V
 
 import HSChain.Crypto
-import HSChain.Types.Merklized
 
 
 ----------------------------------------------------------------
@@ -69,7 +69,7 @@ import HSChain.Types.Merklized
 -- | Information about remote validator
 data Validator alg = Validator
   { validatorPubKey      :: !(PublicKey alg)
-  , validatorVotingPower :: !Integer
+  , validatorVotingPower :: !Word64
   }
   deriving stock    (Generic, Show)
   deriving anyclass (CBOR.Serialise, JSON.ToJSON, JSON.FromJSON)
@@ -77,22 +77,21 @@ instance NFData (PublicKey alg) => NFData (Validator alg)
 deriving instance Eq   (PublicKey alg) => Eq   (Validator alg)
 deriving instance Ord  (PublicKey alg) => Ord  (Validator alg)
 
-instance (Crypto alg, alg' ~ alg) => MerkleValue alg (Validator alg) where
-  merkleHash = hash
+instance CryptoHashable (Validator alg)
 
 -- | Set of all known validators for given height
 data ValidatorSet alg = ValidatorSet
   { vsValidators      :: !(V.Vector (Validator alg))
-  , vsTotPower        :: !Integer
-  , vsVotingIntervals :: !(Map.Map Integer (ValidatorIdx alg))
+  , vsTotPower        :: !Word64
+  , vsVotingIntervals :: !(Map.Map Word64 (ValidatorIdx alg))
   }
   deriving (Generic, Show)
 instance NFData (PublicKey alg) => NFData (ValidatorSet alg)
 deriving instance Eq   (PublicKey alg) => Eq  (ValidatorSet alg)
 deriving instance Ord  (PublicKey alg) => Ord (ValidatorSet alg)
 
-instance (Crypto alg, alg' ~ alg) => MerkleValue alg (ValidatorSet alg) where
-  merkleHash = hash
+instance CryptoHashable (ValidatorSet alg) where
+  hashStep s = hashStep s . V.toList . vsValidators
 
 emptyValidatorSet :: ValidatorSet alg
 emptyValidatorSet = ValidatorSet V.empty 0 Map.empty
@@ -145,7 +144,7 @@ makeValidatorSet vals = do
     check _       = return ()
 
 -- | Return total voting power of all validators
-totalVotingPower :: ValidatorSet alg -> Integer
+totalVotingPower :: ValidatorSet alg -> Word64
 totalVotingPower = vsTotPower
 
 -- | Get validator by its fingerprint
@@ -206,7 +205,7 @@ emptyValidatorISetFromSize n
 
 -- | Change of validators. If voting power of validator is changed to
 --   zero it's removed from set.
-newtype ValidatorChange alg = ValidatorChange (Map (PublicKey alg) Integer)
+newtype ValidatorChange alg = ValidatorChange (Map (PublicKey alg) Word64)
   deriving stock    (Show, Generic)
   deriving newtype  (JSON.ToJSON, JSON.FromJSON)
   deriving anyclass (CBOR.Serialise)
@@ -285,7 +284,7 @@ changeValidators (ValidatorChange delta) (ValidatorSet vset _ _)
 ----------------------------------------------------------------
 
 -- | Get validator index by point inside the constructed interval based on its voting power
-indexByIntervalPoint :: (Eq (PublicKey alg)) => ValidatorSet alg -> Integer -> Maybe (ValidatorIdx alg)
+indexByIntervalPoint :: (Eq (PublicKey alg)) => ValidatorSet alg -> Word64 -> Maybe (ValidatorIdx alg)
 indexByIntervalPoint ValidatorSet{..} x
   | x >= vsTotPower = Nothing
   | otherwise       = snd <$> Map.lookupLE x vsVotingIntervals
