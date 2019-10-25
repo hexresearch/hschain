@@ -4,6 +4,7 @@ packages:
          hschain-types
          hschain-quickcheck
          serialise-cddl
+         sql-interface/hschain-sql
 
 -- Jailbreak bytestring-arbitrary
 --   https://github.com/tsuraan/bytestring-arbitrary/issues/10
