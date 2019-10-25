@@ -10,6 +10,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE KindSignatures             #-}
 {-# LANGUAGE LambdaCase                 #-}
+{-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE TypeApplications           #-}
@@ -26,6 +27,7 @@ module HSChain.Crypto (
   , Hashed(..)
   , CryptoHash(..)
   , CryptoHashable(..)
+  , CryptoTypeHashable(..)
   , hashBlob
   , hash
   , hashed
@@ -149,7 +151,14 @@ hashBlob bs = runST $ do
   updateHashAccum s bs
   freezeHashAccum s
 
--- | Type class which describes how value should be hashed
+-- | Type class which describes how value should be hashed. We try to
+--   take care that different nonprimitive data types do not share
+--   representation so it's not possible to get two different values
+--   to share hash.
+--
+--   This type class allows to derive instances using 'Generic'
+--   deriving. Deriving uses both name of type and name of
+--   constructor.
 class CryptoHashable a where
   -- | This function describes how to compute hash of the data
   --   type. For hierarchical records it's computed by default using
@@ -158,6 +167,12 @@ class CryptoHashable a where
   default hashStep :: (CryptoHash alg, Generic a, GCryptoHashable (Rep a))
                    => HashAccum alg s -> a -> ST s ()
   hashStep = genericHashStep
+
+-- | Analog of 'CryptoHashable' where we may compute hash of type as
+--   opposed to hash of value.
+class CryptoTypeHashable a where
+  hashTypeStep :: CryptoHash alg => HashAccum alg s -> proxy a -> ST s ()
+
 
 -- | Compute hash of value. It's first serialized using CBOR and then
 --   hash of encoded data is computed,
@@ -672,9 +687,28 @@ verifyCborSignature pk a
 
 -- | Data type prefix for defining 'CryptoHashable' instances.
 data DataType
-  = Tuple     !Word16
-  | Sequence  !Word32
-  | UserType  !ByteString
+  -- Primitives
+  = ByteString                   -- ^ Value is a bytestring, i.e. sequence of bytes
+  | Text                         -- ^ Value is text
+  | PrimI8
+  | PrimI16
+  | PrimI32
+  | PrimI64
+  | PrimW8
+  | PrimW16
+  | PrimW32
+  | PrimW64
+
+  -- Structural data types composite types
+  | Tuple      !Word16           -- ^ Tuple of size N
+  | Sequence   !Word32           -- ^ Sequence of elements of same type with given length
+  | MaybeTy
+  | SumType    !Word16           -- ^ Tagged sum types with n constructors with 1 field each
+
+  --
+  | BaseType   !ByteString       -- ^ Data type defined in standard library
+  | CryptoType !ByteString       -- ^ Cryptography related data type
+  | UserType   !ByteString       -- ^ User defined type which is identified by name
   deriving (Show)
 
 -- | Constructor identifier for defining 'CryptoHashable' instances.
@@ -684,34 +718,119 @@ data Constructor
   deriving (Show)
 
 instance CryptoHashable DataType where
-  hashStep s = \case
-    Tuple    n  -> do hashStep s (0 :: Word16)
-                      hashStep s n
-    Sequence n  -> do hashStep s (1 :: Word16)
-                      hashStep s n
-    UserType bs -> do hashStep s (2 :: Word16)
-                      hashStep s bs
-                      hashStep s (0 :: Word8)
+  hashStep s dat = do
+    storableHashStep s $ typeID dat
+    case dat of
+      -- Primitives
+      ByteString    -> return ()
+      Text          -> return ()
+      PrimI8        -> return ()
+      PrimI16       -> return ()
+      PrimI32       -> return ()
+      PrimI64       -> return ()
+      PrimW8        -> return ()
+      PrimW16       -> return ()
+      PrimW32       -> return ()
+      PrimW64       -> return ()
+      -- Structures
+      Tuple    n    -> storableHashStep s n
+      Sequence n    -> storableHashStep s n
+      MaybeTy       -> return ()
+      SumType  n    -> storableHashStep s n
+      -- Composites
+      BaseType   bs -> hashByteString s bs
+      CryptoType bs -> hashByteString s bs
+      UserType   bs -> hashByteString s bs
+    where
+      typeID :: DataType -> Word16
+      typeID = \case
+        ByteString   -> 0
+        Text         -> 1
+        PrimI8       -> 2
+        PrimI16      -> 3
+        PrimI32      -> 4
+        PrimI64      -> 5
+        PrimW8       -> 6
+        PrimW16      -> 7
+        PrimW32      -> 8
+        PrimW64      -> 9
+        -- Structures
+        Tuple{}      -> 0x0100 + 0
+        Sequence{}   -> 0x0100 + 1
+        MaybeTy      -> 0x0100 + 2
+        SumType{}    -> 0x0100 + 4
+        -- More complicated
+        BaseType{}   -> 0x0200 + 0
+        CryptoType{} -> 0x0200 + 1
+        UserType{}   -> 0x0200 + 2
+
+
 
 instance CryptoHashable Constructor where
   hashStep s = \case
-    ConstructorIdx  i  -> do hashStep s (0 :: Word16)
-                             hashStep s i
-    ConstructorName bs -> do hashStep s (1 :: Word16)
-                             hashStep s bs
-                             hashStep s (0 :: Word16)
+    ConstructorIdx  i  -> do storableHashStep s (0 :: Word16)
+                             storableHashStep s i
+    ConstructorName bs -> do storableHashStep s (1 :: Word16)
+                             hashStep         s bs
 
-instance CryptoHashable Int64  where hashStep = storableHashStep
-instance CryptoHashable Int32  where hashStep = storableHashStep
-instance CryptoHashable Int16  where hashStep = storableHashStep
-instance CryptoHashable Int8   where hashStep = storableHashStep
-instance CryptoHashable Word64 where hashStep = storableHashStep
-instance CryptoHashable Word32 where hashStep = storableHashStep
-instance CryptoHashable Word16 where hashStep = storableHashStep
-instance CryptoHashable Word8  where hashStep = storableHashStep
+
+----------------------------------------
+-- Primitives
+
+instance CryptoHashable Int64  where hashStep s i = hashStep s PrimI64 >> storableHashStep s i
+instance CryptoHashable Int32  where hashStep s i = hashStep s PrimI32 >> storableHashStep s i
+instance CryptoHashable Int16  where hashStep s i = hashStep s PrimI16 >> storableHashStep s i
+instance CryptoHashable Int8   where hashStep s i = hashStep s PrimI8  >> storableHashStep s i
+instance CryptoHashable Word64 where hashStep s i = hashStep s PrimW64 >> storableHashStep s i
+instance CryptoHashable Word32 where hashStep s i = hashStep s PrimW32 >> storableHashStep s i
+instance CryptoHashable Word16 where hashStep s i = hashStep s PrimW16 >> storableHashStep s i
+instance CryptoHashable Word8  where hashStep s i = hashStep s PrimW8  >> storableHashStep s i
 
 instance CryptoHashable ByteString where
   hashStep = updateHashAccum
+
+----------------------------------------
+-- Normal data types
+
+instance CryptoHashable a => CryptoHashable [a] where
+  hashStep s xs = do hashStep s $ Sequence $ fromIntegral $ length xs
+                     mapM_ (hashStep s) xs
+
+instance CryptoHashable a => CryptoHashable (Maybe a) where
+  hashStep s m = do
+    hashStep s MaybeTy
+    case m of Just x  -> do hashStep s $ ConstructorIdx 0
+                            hashStep s x
+              Nothing -> do hashStep s $ ConstructorIdx 1
+
+instance (CryptoHashable a, CryptoHashable b) => CryptoHashable (Either a b) where
+  hashStep s m = do
+    hashStep s $ SumType 2
+    case m of Left  a -> do hashStep s $ ConstructorIdx 0
+                            hashStep s a
+              Right b -> do hashStep s $ ConstructorIdx 1
+                            hashStep s b
+
+
+instance CryptoHashable (Hashed alg a) where
+  hashStep s (Hashed h) = hashStep s h
+
+instance CryptoHashable (Fingerprint hash alg) where
+  hashStep s (Fingerprint h) = hashStep s h
+
+instance CryptoHashable (Hash alg) where
+  hashStep = undefined
+
+instance CryptoHashable (PublicKey alg) where
+  hashStep = undefined
+
+instance CryptoHashable (PrivKey alg) where
+  hashStep = undefined
+
+
+----------------------------------------------------------------
+-- Helpers
+----------------------------------------------------------------
 
 storableHashStep :: (CryptoHash alg, Storable a) => HashAccum alg s -> a -> ST s ()
 {-# INLINE storableHashStep #-}
@@ -720,7 +839,14 @@ storableHashStep s i
   $ unsafePerformIO
   $ BI.create (sizeOf i) (\p -> poke (castPtr p) i)
 
+hashByteString :: (CryptoHash alg) => HashAccum alg s -> ByteString -> ST s ()
+hashByteString s bs = do storableHashStep s (fromIntegral $ BS.length bs :: Word32)
+                         updateHashAccum  s bs
 
+
+----------------------------------------------------------------
+-- Generics for CryptoHashable
+----------------------------------------------------------------
 
 class GCryptoHashable f where
   ghashStep :: CryptoHash alg => HashAccum alg s -> f a -> ST s ()
@@ -756,10 +882,3 @@ genericHashStep
   :: (Generic a, GCryptoHashable (Rep a), CryptoHash alg)
   => HashAccum alg s -> a -> ST s ()
 genericHashStep s a = ghashStep s (from a)
-
-
-data Foo
-  = Foo1 Int8
-  | Foo2 Int8 Int16 Int32
-  | Foo3
-  deriving (Generic,Show)
