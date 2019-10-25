@@ -1,6 +1,7 @@
 {-# LANGUAGE DeriveGeneric        #-}
 {-# LANGUAGE FlexibleContexts     #-}
 {-# LANGUAGE LambdaCase           #-}
+{-# LANGUAGE OverloadedStrings    #-}
 {-# LANGUAGE RecordWildCards      #-}
 {-# LANGUAGE ScopedTypeVariables  #-}
 {-# LANGUAGE StandaloneDeriving   #-}
@@ -77,6 +78,19 @@ deriving instance (Show (f (MerkleNode alg f))) => Show (MerkleChild alg f)
 -- deriving instance (Eq   (f (MerkleNode alg f))) => Eq   (MerkleChild alg f)
 -- instance Serialise (f (MerkleNode alg f)) => Serialise (MerkleChild alg f)
 
+instance CryptoHashable (MerkleTree alg f)  where
+  hashStep s = hashStep s . merkleRoot
+instance CryptoHashable (MerkleRoot alg)    where
+instance CryptoHashable (MerkleNode alg f)  where
+  hashStep s node = do
+    hashStep s $ UserType "MerkleNode"
+    case node of
+      Branch xs -> do hashStep s $ ConstructorIdx 0
+                      hashStep s $ merkleNodeHash <$> xs
+      Leaf   bs -> do hashStep s $ ConstructorIdx 1
+                      hashStep s   bs
+instance CryptoHashable (MerkleChild alg f) where
+  hashStep s = hashStep s . merkleNodeHash
 
 ----------------------------------------------------------------
 -- Build tree
@@ -94,7 +108,7 @@ merklize chunkSize blob
       { merkleRoot = MerkleRoot
           { blobSize = fromIntegral $ BS.length blob
           , partSize = chunkSize
-          , rootHash = calculateNodeHash root
+          , rootHash = hash root
           }
       , merkleTree = root
       }
@@ -113,14 +127,9 @@ buildTree fanout nodes = buildTree fanout
 
 makeChild :: (CryptoHash alg) => MerkleNode alg Identity -> MerkleChild alg Identity
 makeChild node = MerkleChild
-  { merkleNodeHash = calculateNodeHash node
+  { merkleNodeHash = hash node
   , merkleChild    = Identity node
   }
-
-calculateNodeHash :: CryptoHash alg => MerkleNode alg Identity -> Hash alg
-calculateNodeHash = \case
-  Leaf   bs -> hash (0::Int, bs)
-  Branch xs -> hash (1::Int, merkleNodeHash <$> xs)
 
 data HashWrapper alg
   = HashBranch [Hash alg]
@@ -154,7 +163,7 @@ concatTree tree
 
 checkMerkleTree :: CryptoHash alg => MerkleTree alg Identity -> Bool
 checkMerkleTree MerkleTree{..}
-  =  calculateNodeHash merkleTree == rootHash merkleRoot
+  =  hash merkleTree == rootHash merkleRoot
   && checkNode  merkleTree
   && checkDepth 1 merkleTree
   where
@@ -165,7 +174,8 @@ checkMerkleTree MerkleTree{..}
     checkNode Leaf{}      = True
     checkNode (Branch ns) = all checkChild ns
     checkChild (MerkleChild h (Identity node))
-      =  h == calculateNodeHash node
+
+      =  h == hash node
       && checkNode node
 
 
