@@ -28,6 +28,8 @@ module HSChain.Crypto (
   , CryptoHash(..)
   , CryptoHashable(..)
   , CryptoTypeHashable(..)
+  , DataType(..)
+  , Constructor(..)
   , hashBlob
   , hash
   , hashed
@@ -176,8 +178,11 @@ class CryptoTypeHashable a where
 
 -- | Compute hash of value. It's first serialized using CBOR and then
 --   hash of encoded data is computed,
-hash :: (CryptoHash alg, Serialise a) => a -> Hash alg
-hash = hashBlob . toStrict . serialise
+hash :: (CryptoHash alg, CryptoHashable a) => a -> Hash alg
+hash a = runST $ do
+  s <- newHashAccum
+  hashStep s a
+  freezeHashAccum s
 
 
 -- | Size of hash in bytes
@@ -185,7 +190,7 @@ hashSize :: forall alg proxy i. (CryptoHash alg, Num i) => proxy alg -> i
 hashSize _ = fromIntegral $ natVal (Proxy @(ByteSize (Hash alg)))
 
 
-hashed :: (Crypto alg, Serialise a) => a -> Hashed alg a
+hashed :: (Crypto alg, CryptoHashable a) => a -> Hashed alg a
 hashed = Hashed . hash
 
 instance (CryptoHash alg) => ByteRepr (Hashed alg a) where
