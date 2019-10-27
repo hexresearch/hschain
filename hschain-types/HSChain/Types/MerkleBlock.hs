@@ -8,25 +8,26 @@
 {-# LANGUAGE ScopedTypeVariables   #-}
 {-# LANGUAGE TypeFamilies          #-}
 -- |
-module HSChain.Types.MerkleBlock
-  ( -- * Tree data types
-    MerkleBlockTree(..)
-    -- * Building tree
-  , createMerkleTree
-  , computeMerkleRoot
-    -- * Check tree
-  , isBalanced
-  , isConsistent
-    -- * Merkle proof
-  , MerkleProof(..)
-  , checkMerkleProof
-  , createMerkleProof
-  ) where
+module HSChain.Types.MerkleBlock where
+  -- ( -- * Tree data types
+  --   MerkleBlockTree(..)
+  --   -- * Building tree
+  -- , createMerkleTree
+  -- , computeMerkleRoot
+  --   -- * Check tree
+  -- , isBalanced
+  -- , isConsistent
+  --   -- * Merkle proof
+  -- , MerkleProof(..)
+  -- , checkMerkleProof
+  -- , createMerkleProof
+  -- ) where
 
 import Codec.Serialise
 import Control.Applicative
 import Control.Monad
 import Data.Bits
+import Data.Function
 import GHC.Generics  (Generic)
 
 import HSChain.Crypto
@@ -39,39 +40,30 @@ import HSChain.Types.Merklized
 
 -- | Binary Merkle tree. Constructors in this module generate
 --   perfectly balanced binary tree.
-data MerkleBlockTree alg a = MerkleBlockTree
-  { merkleBlockRoot :: !(Hash alg)
-  -- ^ Hash of complete tree
-  , merkleBlockTree :: !(Maybe (Node alg a))
-  -- ^ Tree itself
+newtype MerkleBlockTree alg a = MerkleBlockTree
+  { merkleBlockTree :: Merkled alg (Maybe (Node alg a))
   }
   deriving (Show, Foldable, Generic)
 
 -- | Single node of tree
 data Node alg a
-  = Branch (Hash alg) (Node alg a) (Node alg a)
-  | Leaf   (Hash alg) a
+  = Branch (Merkled alg (Node alg a)) (Merkled alg (Node alg a))
+  | Leaf   !a
   deriving (Show, Foldable, Generic)
 
-instance CryptoHashable (MerkleBlockTree alg a) where
-  hashStep s = hashStep s . merkleBlockRoot
+-- instance CryptoHashable (MerkleBlockTree alg a) where
+--   hashStep s = hashStep s . merkleBlockRoot
 
 instance CryptoHashable a => CryptoHashable (Node alg a) where
   hashStep s node = do
     hashStep s $ UserType "Node"
     case node of
-      Branch _ a b -> do hashStep s $ ConstructorIdx 0
-                         hashStep s   a
-                         hashStep s   b
-      Leaf   _ a   -> do hashStep s $ ConstructorIdx 1
-                         hashStep s   a
+      Branch a b -> do hashStep s $ ConstructorIdx 0
+                       hashStep s   a
+                       hashStep s   b
+      Leaf   a   -> do hashStep s $ ConstructorIdx 1
+                       hashStep s   a
                            
-instance (CryptoHash alg, alg ~ alg') => MerkleValue alg' (MerkleBlockTree alg a) where
-  merkleHash = merkleBlockRoot
-
-instance (CryptoHash alg, alg ~ alg') => MerkleValue alg' (Node alg a) where
-  merkleHash (Leaf h _)     = h
-  merkleHash (Branch h _ _) = h
 
 
 ----------------------------------------------------------------
@@ -95,7 +87,7 @@ buildMerkleTree f leaves = balance $ preBalance nPairs leaves
     preBalance _ _        = err "internal error in preBalance"
     -- Now tree is perfectly balanced we can use simple recursive
     -- algorithm to balance it perfectly
-    pair (x:y:xs) =  f x y : pair xs
+    pair (x:y:xs) = f x y : pair xs
     pair []       = []
     pair [_]      = err "Odd-length list passed to pair algorithm"
     --
@@ -117,38 +109,31 @@ createMerkleTree
   :: (CryptoHash alg, CryptoHashable a)
   => [a]                        -- ^ Leaves of tree
   -> MerkleBlockTree alg a
-createMerkleTree leaves = MerkleBlockTree
-  { merkleBlockRoot = merkleHash tree
-  , merkleBlockTree = tree
-  }
-  where
-    tree = case leaves of
-      [] -> Nothing
-      _  -> Just $ buildMerkleTree mkBranch $ mkLeaf <$> leaves
-
--- | Calculate Merkle root of given sequence without constructin
---   complete tree.
-computeMerkleRoot
-  :: forall alg a. (CryptoHash alg, CryptoHashable a)
-  => [a]
-  -> Hash alg
-computeMerkleRoot leaves
-  = (hash :: Maybe (Hash alg) -> Hash alg)
+createMerkleTree leaves
+  = MerkleBlockTree
+  $ merkled
   $ case leaves of
       [] -> Nothing
-      _  -> Just $ buildMerkleTree concatHash $ map computeLeafHash leaves
+      _  -> Just $ buildMerkleTree (Branch `on` merkled) $ Leaf <$> leaves
+
+-- FIXME: ZZZ
+-- -- | Calculate Merkle root of given sequence without constructin
+-- --   complete tree.
+-- computeMerkleRoot
+--   :: forall alg a. (CryptoHash alg, CryptoHashable a)
+--   => [a]
+--   -> Hash alg
+-- computeMerkleRoot leaves
+--   = (hash :: Maybe (Hash alg) -> Hash alg)
+--   $ case leaves of
+--       [] -> Nothing
+--       _  -> Just $ buildMerkleTree concatHash $ map computeLeafHash leaves
 
 mkLeaf :: (CryptoHash alg, CryptoHashable a) => a -> Node alg a
-mkLeaf x = Leaf (computeLeafHash x) x
+mkLeaf x = Leaf x
 
 mkBranch :: (CryptoHash alg, CryptoHashable a) => Node alg a -> Node alg a -> Node alg a
-mkBranch x y = Branch (concatHash (merkleHash x) (merkleHash y)) x y
-
-computeLeafHash :: (CryptoHash alg, CryptoHashable a) => a -> Hash alg
-computeLeafHash a = hash (0::Int, a)
-
-concatHash :: (CryptoHash alg) => Hash alg -> Hash alg -> Hash alg
-concatHash x y = hash (1::Int, x, y)
+mkBranch = undefined
 
 
 ----------------------------------------------------------------
@@ -169,10 +154,12 @@ checkMerkleProof
   -> MerkleProof alg a -- ^ Proof
   -> Bool
 checkMerkleProof rootH (MerkleProof a path)
-  = rootH == hash (Just (foldr step (computeLeafHash a) path))
-  where
-    step (Left  g) h = concatHash h g
-    step (Right g) h = concatHash g h
+  = undefined
+    -- FIXME: ZZZ
+  -- = rootH == hash (Just (foldr step (hash $ Leaf a) path))
+  -- where
+  --   step (Left  g) h = undefined -- concatHash h g
+  --   step (Right g) h = undefined -- concatHash g h
 
 
 -- | Create proof of inclusion. Implementation is rather inefficient
@@ -181,13 +168,13 @@ createMerkleProof
   => MerkleBlockTree alg a
   -> a
   -> Maybe (MerkleProof alg a)
-createMerkleProof (MerkleBlockTree _ mtree) a = do
-  path <- search =<< mtree
+createMerkleProof (MerkleBlockTree mtree) a = do
+  path <- search =<< merkleValue mtree
   return $ MerkleProof a path
   where
-    search (Leaf   _ b)   = [] <$ guard (a == b)
-    search (Branch _ b c) =  (Left  (merkleHash c):) <$> search b
-                         <|> (Right (merkleHash b):) <$> search c
+    search (Leaf   b)   = [] <$ guard (a == b)
+    search (Branch b c) =  (Left  (merkleHash c):) <$> search (merkleValue b)
+                       <|> (Right (merkleHash b):) <$> search (merkleValue c)
 
 
 
@@ -198,8 +185,8 @@ createMerkleProof (MerkleBlockTree _ mtree) a = do
 -- | Check whether Merkle tree is balanced and in canonical form:
 --   depth of leaves does not decrease.
 isBalanced :: MerkleBlockTree alg a -> Bool
-isBalanced (MerkleBlockTree _ Nothing)     = True
-isBalanced (MerkleBlockTree _ (Just tree))
+isBalanced (MerkleBlockTree (Merkled _ Nothing))     = True
+isBalanced (MerkleBlockTree (Merkled _(Just tree)))
   = isCanonical $ calcDepth (0::Int) tree []
   where
     -- Check that node depths are nonincreasing and don't differ more
@@ -212,23 +199,22 @@ isBalanced (MerkleBlockTree _ (Just tree))
         go [x]      = ok x
         go (x:y:ys) = ok x && x >= y && go (y:ys)
     -- Build list of node depths using diff lists
-    calcDepth !n Leaf{}         = (n :)
-    calcDepth !n (Branch _ a b) = calcDepth (n+1) a . calcDepth (n+1) b
+    calcDepth !n Leaf{}       = (n :)
+    calcDepth !n (Branch a b) = calcDepth (n+1) (merkleValue a)
+                              . calcDepth (n+1) (merkleValue b)
 
 -- | Check whether all hashes in the tree are consistent
 isConsistent
   :: forall alg a. (CryptoHashable a, CryptoHash alg)
   => MerkleBlockTree alg a -> Bool
-isConsistent (MerkleBlockTree rootH tree) =
-  case tree of
-    Nothing -> rootH == hash (Nothing :: Maybe (Hash alg))
-
-    Just tr -> case check tr of
-      Nothing  -> False
-      h@Just{} -> rootH == hash h
+isConsistent (MerkleBlockTree tree)
+  =  checkMerkled tree
+  && case merkleValue tree of
+       Nothing -> True
+       Just n  -> check n
   where
-    check (Leaf   h a)   = do guard $ h == computeLeafHash a
-                              return h
-    check (Branch h a b) = do guard $ h == concatHash (merkleHash a) (merkleHash b)
-                              return h
- 
+    check (Leaf _) = True
+    check (Branch a b) = checkMerkled a
+                      && checkMerkled b
+                      && check (merkleValue a)
+                      && check (merkleValue b)
