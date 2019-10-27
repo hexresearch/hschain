@@ -1,15 +1,14 @@
-{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE BangPatterns          #-}
 {-# LANGUAGE DeriveFoldable        #-}
 {-# LANGUAGE DeriveGeneric         #-}
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE OverloadedStrings     #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
 {-# LANGUAGE TypeFamilies          #-}
 -- |
-module HSChain.Types.MerkleBlock where
-{-
+module HSChain.Types.MerkleBlock
   ( -- * Tree data types
     MerkleBlockTree(..)
     -- * Building tree
@@ -60,7 +59,6 @@ instance CryptoHashable (MerkleBlockTree alg a) where
 instance CryptoHashable a => CryptoHashable (Node alg a) where
   hashStep s node = do
     hashStep s $ UserType "Node"
-    -- FIXME: logic for caching of hash is unclear!
     case node of
       Branch _ a b -> do hashStep s $ ConstructorIdx 0
                          hashStep s   a
@@ -116,7 +114,7 @@ nextPow2 n = 1 `shiftL` (finiteBitSize n - countLeadingZeros n)
 --   binary trees is number of leaves is not power of two) depth of
 --   leaves is nonincreasing.
 createMerkleTree
-  :: (CryptoHash alg, Serialise a)
+  :: (CryptoHash alg, CryptoHashable a)
   => [a]                        -- ^ Leaves of tree
   -> MerkleBlockTree alg a
 createMerkleTree leaves = MerkleBlockTree
@@ -131,7 +129,7 @@ createMerkleTree leaves = MerkleBlockTree
 -- | Calculate Merkle root of given sequence without constructin
 --   complete tree.
 computeMerkleRoot
-  :: forall alg a. (CryptoHash alg, Serialise a)
+  :: forall alg a. (CryptoHash alg, CryptoHashable a)
   => [a]
   -> Hash alg
 computeMerkleRoot leaves
@@ -140,10 +138,10 @@ computeMerkleRoot leaves
       [] -> Nothing
       _  -> Just $ buildMerkleTree concatHash $ map computeLeafHash leaves
 
-mkLeaf :: (CryptoHash alg, Serialise a) => a -> Node alg a
+mkLeaf :: (CryptoHash alg, CryptoHashable a) => a -> Node alg a
 mkLeaf x = Leaf (computeLeafHash x) x
 
-mkBranch :: (CryptoHash alg, Serialise a) => Node alg a -> Node alg a -> Node alg a
+mkBranch :: (CryptoHash alg, CryptoHashable a) => Node alg a -> Node alg a -> Node alg a
 mkBranch x y = Branch (concatHash (merkleHash x) (merkleHash y)) x y
 
 computeLeafHash :: (CryptoHash alg, CryptoHashable a) => a -> Hash alg
@@ -179,7 +177,7 @@ checkMerkleProof rootH (MerkleProof a path)
 
 -- | Create proof of inclusion. Implementation is rather inefficient
 createMerkleProof
-  :: (CryptoHash alg, Serialise a, Eq a)
+  :: (CryptoHash alg, CryptoHashable a, Eq a)
   => MerkleBlockTree alg a
   -> a
   -> Maybe (MerkleProof alg a)
@@ -233,4 +231,4 @@ isConsistent (MerkleBlockTree rootH tree) =
                               return h
     check (Branch h a b) = do guard $ h == concatHash (merkleHash a) (merkleHash b)
                               return h
--}
+ 
