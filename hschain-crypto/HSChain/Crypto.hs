@@ -855,6 +855,8 @@ instance CryptoHashable (PublicKey alg) where
 instance CryptoHashable (PrivKey alg) where
   hashStep = undefined
 
+instance CryptoHashable (Signature alg) where
+  hashStep = undefined
 
 ----------------------------------------------------------------
 -- Helpers
