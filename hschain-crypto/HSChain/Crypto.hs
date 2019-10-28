@@ -101,6 +101,8 @@ import qualified Data.ByteString          as BS
 import qualified Data.ByteString.Char8    as BC8
 import qualified Data.ByteString.Internal as BI
 import qualified Data.List.NonEmpty       as NE
+import qualified Data.Map.Strict          as Map
+import qualified Data.Set                 as Set
 import Data.Coerce
 import Data.Typeable (Proxy(..))
 import Data.Int
@@ -798,6 +800,8 @@ instance CryptoHashable Word where
   hashStep s i = hashStep s (fromIntegral i :: Word64)
 instance CryptoHashable Char where
   hashStep s = hashStep s . fromEnum
+instance CryptoHashable Integer where
+  hashStep = undefined
 
 instance CryptoHashable ByteString where
   hashStep = updateHashAccum
@@ -813,6 +817,12 @@ instance CryptoHashable a => CryptoHashable (NE.NonEmpty a) where
   hashStep s xs = do hashStep s $ Sequence $ fromIntegral $ length xs
                      mapM_ (hashStep s) xs
 
+instance (CryptoHashable k, CryptoHashable v) => CryptoHashable (Map.Map k v) where
+  -- FIXME: ZZZ
+  hashStep s = hashStep s . Map.toList
+instance (CryptoHashable a) => CryptoHashable (Set.Set a) where
+  -- FIXME: ZZZ
+  hashStep s = hashStep s . Set.toList
 
 instance CryptoHashable a => CryptoHashable (Maybe a) where
   hashStep s m = do

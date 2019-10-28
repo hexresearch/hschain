@@ -29,6 +29,7 @@ Library
   Default-Language:    Haskell2010
   Build-Depends:       base              >=4.9 && <5
                      , aeson
+                     , containers
                      , base58-bytestring >=0.1
                      , bytestring        >=0.10
                      , deepseq           >=1.4
