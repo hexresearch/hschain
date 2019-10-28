@@ -100,6 +100,7 @@ import           Data.ByteString         (ByteString)
 import qualified Data.ByteString          as BS
 import qualified Data.ByteString.Char8    as BC8
 import qualified Data.ByteString.Internal as BI
+import qualified Data.List.NonEmpty       as NE
 import Data.Coerce
 import Data.Typeable (Proxy(..))
 import Data.Int
@@ -800,6 +801,11 @@ instance CryptoHashable ByteString where
 instance CryptoHashable a => CryptoHashable [a] where
   hashStep s xs = do hashStep s $ Sequence $ fromIntegral $ length xs
                      mapM_ (hashStep s) xs
+
+instance CryptoHashable a => CryptoHashable (NE.NonEmpty a) where
+  hashStep s xs = do hashStep s $ Sequence $ fromIntegral $ length xs
+                     mapM_ (hashStep s) xs
+
 
 instance CryptoHashable a => CryptoHashable (Maybe a) where
   hashStep s m = do
