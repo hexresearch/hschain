@@ -1,20 +1,26 @@
+{-# LANGUAGE DeriveAnyClass        #-}
 {-# LANGUAGE DeriveFoldable        #-}
 {-# LANGUAGE DeriveFunctor         #-}
 {-# LANGUAGE DeriveGeneric         #-}
 {-# LANGUAGE DeriveTraversable     #-}
+{-# LANGUAGE DerivingStrategies    #-}
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
-
 {-# LANGUAGE TypeApplications      #-}
 -- |
 -- Type classes for working with heterogenoeus merkle trees that is
 -- trees which can contain values of different types.
 module HSChain.Types.Merklized where
 
+import Control.DeepSeq
 import qualified Codec.Serialise as CBOR
 import qualified Data.Aeson      as JSON
+import GHC.Generics (Generic)
+
 import HSChain.Crypto
+
+
 
 -- | Node of merkle tree. This data type has special 'CryptoHashable'
 --   instance which just passes raw hash bytestring to the hash
@@ -23,7 +29,8 @@ data Merkled alg a = Merkled
   { merkleHash  :: !(Hash alg)
   , merkleValue :: !a
   }
-  deriving (Show,Eq,Ord,Functor,Foldable)
+  deriving stock    (Show,Eq,Ord,Functor,Foldable,Generic)
+  deriving anyclass (NFData)
 
 instance (CryptoHash alg, CryptoHashable a, CBOR.Serialise a
          ) => CBOR.Serialise (Merkled alg a) where
