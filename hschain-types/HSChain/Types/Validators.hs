@@ -50,6 +50,7 @@ import Data.List    (sortBy)
 import Data.Map     (Map)
 import Data.Ord     (comparing)
 import Data.Word
+import Data.Int
 import GHC.Generics (Generic, Generic1)
 
 import qualified Codec.Serialise       as CBOR
@@ -172,7 +173,7 @@ validatorSetSize = V.length . vsValidators
 newtype ValidatorIdx alg = ValidatorIdx Int
   deriving stock    (Show, Eq, Ord, Generic, Generic1)
   deriving anyclass (NFData, CBOR.Serialise)
-  deriving newtype  (JSON.ToJSON, JSON.FromJSON, JSON.FromJSONKey, JSON.ToJSONKey)
+  deriving newtype  (JSON.ToJSON, JSON.FromJSON, JSON.FromJSONKey, JSON.ToJSONKey, CryptoHashable)
 
 -- | Set of validators where they are represented by their index.
 data ValidatorISet = ValidatorISet !Int !IntSet deriving (Show, Eq)
