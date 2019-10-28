@@ -50,7 +50,6 @@ import Data.List    (sortBy)
 import Data.Map     (Map)
 import Data.Ord     (comparing)
 import Data.Word
-import Data.Int
 import GHC.Generics (Generic, Generic1)
 
 import qualified Codec.Serialise       as CBOR
@@ -215,6 +214,8 @@ deriving newtype instance Eq     (PublicKey alg) => Eq     (ValidatorChange alg)
 deriving newtype instance Ord    (PublicKey alg) => Ord    (ValidatorChange alg)
 deriving newtype instance NFData (PublicKey alg) => NFData (ValidatorChange alg)
 
+instance CryptoHashable (ValidatorChange alg) where
+  hashStep s (ValidatorChange m) = hashStep s $ Map.toList m
 
 instance (Ord (PublicKey alg)) => Semigroup (ValidatorChange alg) where
   ValidatorChange c1 <> ValidatorChange c2 = ValidatorChange (c2 <> c1)
