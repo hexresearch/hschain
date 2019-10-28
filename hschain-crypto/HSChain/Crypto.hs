@@ -792,6 +792,11 @@ instance CryptoHashable Word32 where hashStep s i = hashStep s PrimW32 >> storab
 instance CryptoHashable Word16 where hashStep s i = hashStep s PrimW16 >> storableHashStep s i
 instance CryptoHashable Word8  where hashStep s i = hashStep s PrimW8  >> storableHashStep s i
 
+instance CryptoHashable Int where
+  hashStep s i = hashStep s (fromIntegral i :: Int64)
+instance CryptoHashable Word where
+  hashStep s i = hashStep s (fromIntegral i :: Word64)
+
 instance CryptoHashable ByteString where
   hashStep = updateHashAccum
 
