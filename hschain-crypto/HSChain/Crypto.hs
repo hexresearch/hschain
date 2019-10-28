@@ -796,6 +796,8 @@ instance CryptoHashable Int where
   hashStep s i = hashStep s (fromIntegral i :: Int64)
 instance CryptoHashable Word where
   hashStep s i = hashStep s (fromIntegral i :: Word64)
+instance CryptoHashable Char where
+  hashStep s = hashStep s . fromEnum
 
 instance CryptoHashable ByteString where
   hashStep = updateHashAccum
