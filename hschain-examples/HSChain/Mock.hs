@@ -1,11 +1,10 @@
+{-# LANGUAGE DataKinds         #-}
+{-# LANGUAGE FlexibleContexts  #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE TypeOperators     #-}
 -- |
 module HSChain.Mock where
 
-import Codec.Serialise
 import Control.Monad
 import Control.Monad.IO.Class
 import Control.Monad.Catch
@@ -51,7 +50,7 @@ allocateMockNetAddrs net topo nodes =
 -- | Allocate resources for node
 allocNode
   :: ( MonadIO m, MonadMask m
-     , Crypto alg, Serialise a, Eq a, Show a, Has x NodeSpec)
+     , Crypto alg, BlockData a, Eq a, Show a, Has x NodeSpec)
   => Block alg a                -- ^ Genesis block
   -> x                          -- ^ Node parameters
   -> ContT r m (Connection 'RW alg a, LogEnv)
@@ -68,5 +67,5 @@ allocNode genesis x = do
 callbackAbortAtH :: MonadThrow m => Height -> AppCallbacks m alg a
 callbackAbortAtH hMax = mempty
   { appCommitCallback = \b ->
-      when (headerHeight (blockHeader b) > hMax) $ throwM Abort
+      when (blockHeight b > hMax) $ throwM Abort
   }

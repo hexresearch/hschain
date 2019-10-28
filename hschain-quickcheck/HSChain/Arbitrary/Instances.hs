@@ -19,6 +19,7 @@ import Test.QuickCheck.Arbitrary.Generic
 import Test.QuickCheck.Gen
 
 import HSChain.Types
+import HSChain.Types.Merklized
 import HSChain.Crypto
 import HSChain.Types.Network (NetAddr(..))
 
@@ -96,6 +97,10 @@ instance StreamCypher cypher => Arbitrary (PubKeyBox key kdf cypher) where
 -- Blockchain inctances
 ----------------------------------------------------------------
 
+instance (CryptoHash alg, CryptoHashable a, Arbitrary a) => Arbitrary (Merkled alg a) where
+  arbitrary = merkled <$> arbitrary
+  shrink    = map merkled . shrink . merkleValue
+
 instance Arbitrary Height where
   arbitrary = Height <$> arbitrary
   shrink = genericShrink
@@ -109,9 +114,6 @@ instance Arbitrary Time where
 instance Arbitrary Round where
     arbitrary = Round <$> arbitrary
     shrink = genericShrink
-
-instance (CryptoHash alg, Arbitrary a) => Arbitrary (Header alg a) where
-  arbitrary = genericArbitrary
 
 instance (CryptoSign alg, CryptoHash alg) => Arbitrary (Commit alg a) where
   arbitrary = Commit <$> arbitrary
@@ -127,12 +129,17 @@ instance Arbitrary VoteType where
   arbitrary = genericArbitrary
   shrink = genericShrink
 
-instance (CryptoSign alg, CryptoHash alg, Arbitrary a, Arbitrary (PublicKey alg)) => Arbitrary (Block alg a) where
+instance ( Crypto alg
+         , CryptoHashable a
+         , Arbitrary a
+         ) => Arbitrary (Block alg a) where
   arbitrary = Block <$> arbitrary
                     <*> arbitrary
+                    <*> arbitrary
                     <*> resize 4 arbitrary
                     <*> arbitrary
                     <*> resize 4 arbitrary
+                    <*> arbitrary
   shrink = genericShrink
 
 instance (CryptoSign alg, CryptoHash alg) => Arbitrary (ByzantineEvidence alg a) where

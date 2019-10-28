@@ -59,6 +59,7 @@ import System.Random   (randomRIO)
 import GHC.Generics    (Generic)
 
 import HSChain.Types.Blockchain
+import HSChain.Types.Merklized
 import HSChain.Types.Validators
 import HSChain.Blockchain.Interpretation
 import HSChain.Blockchain.Internal.Engine.Types
@@ -87,7 +88,7 @@ type Alg = (Ed25519 :& SHA512)
 newtype BData = BData [Tx]
   deriving stock    (Show,Eq,Generic)
   deriving newtype  (NFData)
-  deriving anyclass (Serialise)
+  deriving anyclass (Serialise,CryptoHashable)
 
 instance BlockData BData where
   type TX               BData = Tx
@@ -101,11 +102,8 @@ data TxSend = TxSend
   { txInputs  :: [UTXO]
   , txOutputs :: [Unspent]
   }
-  deriving (Show, Eq, Ord, Generic)
-instance Serialise TxSend
-instance NFData    TxSend
-instance JSON.ToJSON   TxSend
-instance JSON.FromJSON TxSend
+  deriving stock    (Show, Eq, Ord, Generic)
+  deriving anyclass (Serialise, NFData, JSON.ToJSON, JSON.FromJSON, CryptoHashable)
 
 data Tx
   = Deposit !(PublicKey Alg) !Integer
@@ -120,17 +118,17 @@ data Tx
     --   3. Inputs and outputs must be nonempty
     --   2. Sum of inputs must be equal to sum of outputs
   deriving stock    (Show, Eq, Ord, Generic)
-  deriving anyclass (Serialise, NFData, JSON.ToJSON, JSON.FromJSON)
+  deriving anyclass (Serialise, NFData, JSON.ToJSON, JSON.FromJSON, CryptoHashable)
 
 -- | Pair of transaction hash and output number
 data UTXO = UTXO !Int !(Hash Alg)
   deriving stock    (Show, Eq, Ord, Generic)
-  deriving anyclass (Serialise, NFData, JSON.ToJSON, JSON.FromJSON)
+  deriving anyclass (Serialise, NFData, JSON.ToJSON, JSON.FromJSON, CryptoHashable)
 
 -- | Pair of public key which could spend output and amount
 data Unspent = Unspent !(PublicKey Alg) !Integer
   deriving stock    (Show, Eq, Ord, Generic)
-  deriving anyclass (Serialise, NFData, JSON.ToJSON, JSON.FromJSON)
+  deriving anyclass (Serialise, NFData, JSON.ToJSON, JSON.FromJSON, CryptoHashable)
 
 
 -- | State of coins in program-digestible format
@@ -146,7 +144,7 @@ data CoinState = CoinState
     --   for efficient TX generation
   }
   deriving stock    (Show,   Generic)
-  deriving anyclass (NFData, Serialise)
+  deriving anyclass (NFData, Serialise, CryptoHashable)
 
 
 processDeposit :: Tx -> CoinState -> Maybe CoinState
@@ -204,10 +202,9 @@ processTransaction transaction@(Send pubK sig txSend@TxSend{..}) CoinState{..} =
 transitions :: BChLogic (StateT CoinState Maybe) Alg BData
 transitions = BChLogic
   { processTx     = \tx -> liftSt (process (Height 0) tx) -- FIXME
-      
   , processBlock  = \b  ->
-      let h = headerHeight $ blockHeader b
-      in liftSt $ \s0 -> foldM (flip (process h)) s0 (blockTransactions $ blockData b)      
+      let h = blockHeight b
+      in liftSt $ \s0 -> foldM (flip (process h)) s0 (blockTransactions $ merkleValue $ blockData b)
   , generateBlock = \_ txs -> do
       let selectTx c []     = (c,[])
           selectTx c (t:tx) = case processTransaction t c of

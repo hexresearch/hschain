@@ -20,7 +20,6 @@ module HSChain.Mock.Types (
   , Example
   ) where
 
-import Codec.Serialise     (Serialise)
 import Control.Exception   (Exception)
 import Control.Monad.Catch (MonadCatch(..))
 import GHC.Generics (Generic)
@@ -28,11 +27,12 @@ import GHC.Generics (Generic)
 import qualified Data.Aeson as JSON
 
 import HSChain.Blockchain.Internal.Engine.Types
-import HSChain.Crypto         ((:&), Crypto, hashed)
+import HSChain.Crypto         ((:&), Crypto, CryptoHashable, hashed)
 import HSChain.Crypto.Ed25519 (Ed25519)
 import HSChain.Crypto.SHA     (SHA512)
 import HSChain.Logger         (ScribeSpec)
 import HSChain.Types
+import HSChain.Types.Merklized
 import HSChain.Store
 
 ----------------------------------------------------------------
@@ -67,24 +67,18 @@ instance DefaultConfig Example where
 -- | Genesis block has many field with predetermined content so this
 --   is convenience function to create genesis block.
 makeGenesis
-  :: (Crypto alg, Serialise a)
+  :: (Crypto alg, CryptoHashable a)
   => a                          -- ^ Block data
   -> ValidatorSet alg           -- ^ Set of validators for block 1
   -> Block alg a
 makeGenesis dat valSet = Block
-  { blockHeader = Header
-      { headerHeight         = Height 0
-      , headerLastBlockID    = Nothing
-      , headerValidatorsHash = hashed emptyValidatorSet
-      , headerValChangeHash  = hashed delta
-      , headerDataHash       = hashed dat
-      , headerLastCommitHash = hashed Nothing
-      , headerEvidenceHash   = hashed []
-      }
-  , blockData       = dat
-  , blockValChange  = delta
-  , blockLastCommit = Nothing
-  , blockEvidence   = []
+  { blockHeight         = Height 0
+  , blockPrevBlockID    = Nothing
+  , blockValidatorsHash = hashed emptyValidatorSet
+  , blockData           = merkled dat
+  , blockValChange      = merkled delta
+  , blockPrevCommit     = Nothing
+  , blockEvidence       = merkled []
   }
   where
     delta = validatorsDifference emptyValidatorSet valSet

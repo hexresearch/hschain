@@ -36,6 +36,7 @@ import GHC.Generics    (Generic)
 
 import HSChain.Blockchain.Internal.Engine.Types
 import HSChain.Types.Blockchain
+import HSChain.Types.Merklized
 import HSChain.Control
 import HSChain.Crypto
 import HSChain.Crypto.Ed25519
@@ -62,7 +63,7 @@ type    Tx     = (String,Int)
 type    BState = Map String Int
 newtype BData  = BData [(String,Int)]
   deriving stock    (Show,Eq,Generic)
-  deriving anyclass (Serialise)
+  deriving anyclass (Serialise,CryptoHashable)
 
 instance BlockData BData where
   type TX               BData = Tx
@@ -100,7 +101,7 @@ interpretSpec p cb = do
   --
   let logic = AppLogic
         { appValidationFun    = \b (BlockchainState st valset) -> do
-            return $ do st' <- foldM (flip process) st (let BData tx = blockData b in tx)
+            return $ do st' <- foldM (flip process) st (let BData tx = merkleValue $ blockData b in tx)
                         return $ BlockchainState st' valset
         , appBlockGenerator  = \b _ -> do
             let BlockchainState st valset = newBlockState b

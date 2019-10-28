@@ -240,7 +240,7 @@ peerGossipAnnounce PeerChans{..} gossipCh = logOnException $
 -- | Routine for actually sending data to peers
 peerSend
   :: ( MonadReadDB m alg a, MonadMask m, MonadIO m,  MonadLogger m
-     , Crypto alg, BlockData a)
+     , Crypto alg, BlockData a, CryptoHashable a)
   => PeerChans m alg a
   -> TBQueue (GossipMsg alg a)
   -> P2PConnection

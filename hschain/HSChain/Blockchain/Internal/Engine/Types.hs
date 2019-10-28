@@ -296,7 +296,7 @@ randomProposerSHA512 valSet h r
   --       _biased_ results. But since range of SHA512 is enormous:
   --       2^512 even for voting power on order 2^64 bias will be on
   --       order 10^{-134} that is negligible
-  $ (`mod` totalVotingPower valSet)
+  $ (`mod` fromIntegral (totalVotingPower valSet))
   -- Convert hash to integer. We interpret hash as LE integer
   $ BS.foldr' (\w i -> (i `shiftL` 8) + fromIntegral  w) 0 bs
   where

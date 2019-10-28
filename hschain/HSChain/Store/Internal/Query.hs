@@ -248,7 +248,7 @@ basicCacheBlock query h = Query $ do
 
 basicPutCacheBlock :: Block alg a -> Query 'RW alg a ()
 basicPutCacheBlock b = Query $ do
-  let h = headerHeight $ blockHeader b
+  let h = blockHeight b
   ref <- asks connCacheBlk
   liftIO $ atomicModifyIORef ref $ (,()) . LRU.insert h b
 

@@ -10,6 +10,7 @@
 {-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE RecordWildCards            #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE TemplateHaskell            #-}
 {-# LANGUAGE TypeFamilies               #-}
@@ -56,7 +57,6 @@ import           Control.DeepSeq
 import           Control.Monad
 import           Control.Monad.IO.Class   (MonadIO(..))
 import qualified Data.Aeson               as JSON
-import           Data.ByteString.Lazy     (toStrict)
 import           Data.Coerce
 import           Data.Int
 import qualified Data.List.NonEmpty       as NE
@@ -96,6 +96,7 @@ newtype Height = Height Int64
 newtype Round = Round Int64
   deriving stock   (Show, Read, Generic, Eq, Ord)
   deriving newtype (NFData, Serialise, JSON.ToJSON, JSON.FromJSON, Enum, CryptoHashable)
+
 
 -- | Time in milliseconds since UNIX epoch.
 newtype Time = Time Int64
@@ -140,9 +141,9 @@ data Block alg a = Block
     -- ^ Hash of previous block. Nothing iff block is a genesis block
   , blockValidatorsHash   :: !(Hashed alg (ValidatorSet alg))
     -- ^ Set of validators used to create this block.
-  , blockNewValidatorHash :: !(Hashed alg (ValidatorSet alg))
+  , blockValChange        :: !(Merkled alg (ValidatorChange alg))
     -- ^ Set of validators for the next block.
-  , blockPrevCommit       :: !(Merkled alg (Commit alg a))
+  , blockPrevCommit       :: !(Maybe(Merkled alg (Commit alg a)))
     -- ^ Commit for previous block. Nothing iff block is a genesis
     --   block or block at height 1.
   , blockEvidence         :: !(Merkled alg [ByzantineEvidence alg a])
@@ -187,6 +188,9 @@ data Commit alg a = Commit
 class ( Serialise a
       , Serialise (TX a)
       , Serialise (InterpreterState a)
+      , CryptoHashable a
+      , CryptoHashable (TX a)
+      , CryptoHashable (InterpreterState a)
       ) => BlockData a where
   -- | Type of transaction used in blockchain
   type TX a
@@ -352,15 +356,15 @@ signedKeyInfo (Signed a _ _) = a
 -- | Sign value. Note that we can generate both verified and unverified
 --   values this way.
 signValue
-  :: (Serialise a, CryptoSign alg)
+  :: forall sign alg a. (Crypto alg, CryptoHashable a)
   => ValidatorIdx alg           -- ^ Key identifier
   -> PrivKey alg                -- ^ Key for signing
   -> a                          -- ^ Value to sign
   -> Signed sign alg a
 signValue key privK a
-  = Signed key
-           (signBlob privK $ toStrict $ serialise a)
-           a
+  = Signed key (signBlob privK h) a
+  where
+    Hash h = hash a :: Hash alg
 
 -- | Verify signature. It return Nothing if verification fails for any
 --   reason. Note that since @Signed@ contain only fingerprint we need
