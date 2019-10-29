@@ -140,7 +140,6 @@ Test-suite hschain-tests
                        TM.P2P.PEX
                        TM.RealNetwork
                        TM.Serialisation
-                       TM.Time
                        TM.Util.Network
                        TM.Util.Tests
                        TM.Util.MockChain

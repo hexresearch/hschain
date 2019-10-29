@@ -69,6 +69,7 @@ Test-suite hschain-types-tests
   Default-Language:    Haskell2010
   Build-Depends:       base              >=4.9 && <5
                      , bytestring
+                     , random
                      , hschain-crypto
                      , hschain-types
                      , tasty             >=0.11
@@ -79,3 +80,4 @@ Test-suite hschain-types-tests
   Main-is:             Main.hs
   Other-modules:       TM.Merkle
                        TM.MerkleBlock
+                       TM.Time
