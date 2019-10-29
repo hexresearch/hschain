@@ -135,8 +135,6 @@ Test-suite hschain-tests
   Other-modules:       TM.Consensus
                        TM.Integration
                        TM.Mempool
-                       TM.Merkle
-                       TM.MerkleBlock
                        TM.Network
                        TM.P2P.Gossip
                        TM.P2P.PEX
