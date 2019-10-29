@@ -55,6 +55,9 @@ newtype MerkleNode f alg a = MerkleNode { getMerkleNode :: f alg a }
   deriving newtype IsMerkle
 
 
+merkleValue :: MerkleNode IdNode alg a -> a
+merkleValue (MerkleNode (IdNode _ a)) = a
+
 -- | Eq uses hash comparison as optimization
 instance (IsMerkle f) => Eq (MerkleNode f alg a) where
   (==) = (==) `on` merkleHash . getMerkleNode
