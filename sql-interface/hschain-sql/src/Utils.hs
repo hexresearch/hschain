@@ -1,5 +1,8 @@
 module Main where
 
+import Language.SQL.SimpleSQL.Dialect
+import Language.SQL.SimpleSQL.Parse
+
 import System.Environment (getArgs)
 import System.Exit (exitSuccess, exitFailure)
 

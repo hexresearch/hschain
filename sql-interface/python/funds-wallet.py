@@ -36,20 +36,26 @@ CREATE TABLE allowed_requests_params
 
 -- registering a wallet.
 INSERT INTO allowed_requests (request_id, request_text) VALUES
- ("add_wallet", "INSERT INTO WALLETS (pubkey_id, amount) VALUES (:pubkey_id, 0);");
+ ("add_wallet", "INSERT INTO WALLETS (pubkey_id, amount) VALUES (:user_id, 0);");
 INSERT INTO allowed_requests_params (request_id, request_param_name, request_param_type) VALUES
- ("add_wallet", "pubkey_id", "S");
+ ("add_wallet", "user_id", "S");
 
 -- moving funds between wallets.
 INSERT INTO allowed_requests (request_id, request_text) VALUES
  ("funds_transfer",
-  "UPDATE ...");
+  "UPDATE wallet
+    SET   amount = CASE
+             WHEN address = :user_id      THEN amount - :transfer_amount
+             WHEN address = :dest_user_id THEN amount - :transfer_amount
+          END
+    WHERE     (address = :user_id OR address = :dest_user_id)
+          AND :transfer_amount > 0;");
 INSERT INTO allowed_requests_params (request_id, request_param_name, request_param_type) VALUES
- ("funds_transfer", "from_pubkey_id", "S");
+ ("funds_transfer", "user_id", "S");
 INSERT INTO allowed_requests_params (request_id, request_param_name, request_param_type) VALUES
- ("funds_transfer", "to_pubkey_id", "S");
+ ("funds_transfer", "dest_user_id", "S");
 INSERT INTO allowed_requests_params (request_id, request_param_name, request_param_type) VALUES
- ("funds_transfer", "amount", "P");
+ ("funds_transfer", "transfer_amount", "P");
 """
 
   print (genesis)
