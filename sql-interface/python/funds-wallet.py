@@ -13,6 +13,43 @@ CREATE TABLE wallets
     , CONSTRAINT [unique wallet id] UNIQUE (pubkey_id)
     , CONSTRAINT [no overdraft] CHECK (amount >= 0)
     );
+
+INSERT INTO wallets (pubkey_id, amount) VALUES ("root", 1000000);
+
+-- these two tables below are special.
+
+-- special table - allowed requests.
+CREATE TABLE allowed_requests
+    ( request_id STRING PRIMARY KEY -- we expect hash here, for now any string would do.
+    , request_text STRING
+    );
+
+-- special table - parameters for requests.
+CREATE TABLE allowed_requests_params
+    ( request_id STRING
+    , request_param_name STRING
+    , request_param_type STRING
+    , CONSTRAINT UNIQUE (request_id, request_param_name)
+    , CONSTRAINT FOREIGN KEY (request_id) REFERENCES allowed_requests(request_id)
+    , CONSTRAINT CHECK (request_param_type = "S" OR request_param_type = "I" OR request_param_type = "P")
+    );
+
+-- registering a wallet.
+INSERT INTO allowed_requests (request_id, request_text) VALUES
+ ("add_wallet", "INSERT INTO WALLETS (pubkey_id, amount) VALUES (:pubkey_id, 0);");
+INSERT INTO allowed_requests_params (request_id, request_param_name, request_param_type) VALUES
+ ("add_wallet", "pubkey_id", "S");
+
+-- moving funds between wallets.
+INSERT INTO allowed_requests (request_id, request_text) VALUES
+ ("funds_transfer",
+  "UPDATE ...");
+INSERT INTO allowed_requests_params (request_id, request_param_name, request_param_type) VALUES
+ ("funds_transfer", "from_pubkey_id", "S");
+INSERT INTO allowed_requests_params (request_id, request_param_name, request_param_type) VALUES
+ ("funds_transfer", "to_pubkey_id", "S");
+INSERT INTO allowed_requests_params (request_id, request_param_name, request_param_type) VALUES
+ ("funds_transfer", "amount", "P");
 """
 
   print (genesis)
