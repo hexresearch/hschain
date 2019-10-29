@@ -193,7 +193,7 @@ hashSize :: forall alg proxy i. (CryptoHash alg, Num i) => proxy alg -> i
 hashSize _ = fromIntegral $ natVal (Proxy @(ByteSize (Hash alg)))
 
 
-hashed :: (Crypto alg, CryptoHashable a) => a -> Hashed alg a
+hashed :: (CryptoHash alg, CryptoHashable a) => a -> Hashed alg a
 hashed = Hashed . hash
 
 instance (CryptoHash alg) => ByteRepr (Hashed alg a) where
