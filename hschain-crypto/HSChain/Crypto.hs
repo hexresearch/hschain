@@ -100,6 +100,7 @@ import           Data.ByteString         (ByteString)
 import qualified Data.ByteString          as BS
 import qualified Data.ByteString.Char8    as BC8
 import qualified Data.ByteString.Internal as BI
+import qualified Data.ByteString.Lazy     as BL
 import qualified Data.List.NonEmpty       as NE
 import qualified Data.Map.Strict          as Map
 import qualified Data.Set                 as Set
@@ -800,11 +801,15 @@ instance CryptoHashable Word where
   hashStep s i = hashStep s (fromIntegral i :: Word64)
 instance CryptoHashable Char where
   hashStep s = hashStep s . fromEnum
+-- FIXME: ZZZ (placeholder)
 instance CryptoHashable Integer where
-  hashStep = undefined
+  hashStep s = hashStep s . CBOR.serialise  
 
 instance CryptoHashable ByteString where
   hashStep = updateHashAccum
+instance CryptoHashable BL.ByteString where
+  hashStep s bs = forM_ (BL.toChunks bs) $ updateHashAccum s
+  
 
 ----------------------------------------
 -- Normal data types

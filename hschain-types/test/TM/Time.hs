@@ -1,3 +1,4 @@
+
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications    #-}
@@ -7,6 +8,7 @@ module TM.Time (tests) where
 
 import Control.Monad
 import Data.Int
+import Data.Word
 import Data.List
 import Data.Proxy
 import qualified Data.ByteString    as BS
@@ -50,7 +52,7 @@ tests = testGroup "time"
                                 (Just 12)
   ]
 
-checkMedian :: [(Integer,Int64)] -> Maybe Int64 -> IO ()
+checkMedian :: [(Word64,Int64)] -> Maybe Int64 -> IO ()
 checkMedian wtimes expectedT = forM_ (permuteCommit commit) $ \cmt ->
   assertEqual
     (show $ voteTime . signedValue <$> commitPrecommits cmt)

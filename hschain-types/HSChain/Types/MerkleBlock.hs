@@ -1,3 +1,4 @@
+{-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE BangPatterns          #-}
 {-# LANGUAGE DeriveFoldable        #-}
 {-# LANGUAGE DeriveGeneric         #-}
@@ -49,6 +50,10 @@ data Node f alg a
            (MerkleNode f alg (Node f alg a))
   | Leaf   !a
   deriving (Show, Foldable, Generic)
+
+
+instance MerkleHash f => MerkleHash (MerkleBlockTree f) where
+  merkleHash = merkleHash . merkleBlockTree
 
 instance IsMerkle f => CryptoHashable (MerkleBlockTree f alg a) where
   hashStep s = hashStep s . merkleBlockTree
@@ -141,8 +146,8 @@ checkMerkleProof rootH (MerkleProof a path)
           $ foldr step (hashed (Leaf a)) path
     step :: Either (Hash alg) (Hash alg) -> Hashed alg (Node Hashed alg a) -> Hashed alg (Node Hashed alg a)
 
-    step (Left  g) h = hashed $ Branch (MerkleNode h) (MerkleNode (Hashed g))
-    step (Right g) h = hashed $ Branch (MerkleNode (Hashed g)) (MerkleNode h)
+    step (Left  (Hashed -> g)) h = hashed $ Branch (MerkleNode g) (MerkleNode h)
+    step (Right (Hashed -> g)) h = hashed $ Branch (MerkleNode h) (MerkleNode g)
 
 
 -- | Create proof of inclusion. Implementation is rather inefficient
@@ -165,28 +170,29 @@ createMerkleProof (MerkleBlockTree mtree) a = do
 -- Balance checker
 ----------------------------------------------------------------
 
--- FIXME: ZZZ
 
--- -- | Check whether Merkle tree is balanced and in canonical form:
--- --   depth of leaves does not decrease.
--- isBalanced :: MerkleBlockTree alg a -> Bool
--- isBalanced (MerkleBlockTree (Merkled _ Nothing))     = True
--- isBalanced (MerkleBlockTree (Merkled _(Just tree)))
---   = isCanonical $ calcDepth (0::Int) tree []
---   where
---     -- Check that node depths are nonincreasing and don't differ more
---     -- that 1 from first one (tree is balanced)
---     isCanonical []      = True
---     isCanonical (n0:xs) = go xs
---       where
---         ok x = x <= n0 && (n0-x) <= 1
---         go []       = True
---         go [x]      = ok x
---         go (x:y:ys) = ok x && x >= y && go (y:ys)
---     -- Build list of node depths using diff lists
---     calcDepth !n Leaf{}       = (n :)
---     calcDepth !n (Branch a b) = calcDepth (n+1) (merkleValue a)
---                               . calcDepth (n+1) (merkleValue b)
+-- | Check whether Merkle tree is balanced and in canonical form:
+--   depth of leaves does not decrease.
+isBalanced :: MerkleBlockTree IdNode alg a -> Bool
+isBalanced (MerkleBlockTree (MerkleNode (IdNode _ Nothing)))     = True
+isBalanced (MerkleBlockTree (MerkleNode (IdNode _ (Just tree))))
+  = isCanonical $ calcDepth (0::Int) tree []
+  where
+    -- Check that node depths are nonincreasing and don't differ more
+    -- that 1 from first one (tree is balanced)
+    isCanonical []      = True
+    isCanonical (n0:xs) = go xs
+      where
+        ok x = x <= n0 && (n0-x) <= 1
+        go []       = True
+        go [x]      = ok x
+        go (x:y:ys) = ok x && x >= y && go (y:ys)
+    -- Build list of node depths using diff lists
+    calcDepth !n Leaf{}       = (n :)
+    calcDepth !n (Branch a b) = calcDepth (n+1) (merkleValue a)
+                              . calcDepth (n+1) (merkleValue b)
+
+-- FIXME: ZZZ
 
 -- -- | Check whether all hashes in the tree are consistent
 -- isConsistent
