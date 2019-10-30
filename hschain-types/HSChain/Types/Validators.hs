@@ -73,11 +73,10 @@ data Validator alg = Validator
   }
   deriving stock    (Generic, Show)
   deriving anyclass (CBOR.Serialise, JSON.ToJSON, JSON.FromJSON)
-instance NFData (PublicKey alg) => NFData (Validator alg)
-deriving instance Eq   (PublicKey alg) => Eq   (Validator alg)
-deriving instance Ord  (PublicKey alg) => Ord  (Validator alg)
-
-instance CryptoHashable (Validator alg)
+deriving instance Eq   (PublicKey alg) => Eq  (Validator alg)
+deriving instance Ord  (PublicKey alg) => Ord (Validator alg)
+instance NFData   (PublicKey alg) => NFData         (Validator alg)
+instance ByteRepr (PublicKey alg) => CryptoHashable (Validator alg)
 
 -- | Set of all known validators for given height
 data ValidatorSet alg = ValidatorSet
@@ -86,11 +85,10 @@ data ValidatorSet alg = ValidatorSet
   , vsVotingIntervals :: !(Map.Map Word64 (ValidatorIdx alg))
   }
   deriving (Generic, Show)
-instance NFData (PublicKey alg) => NFData (ValidatorSet alg)
 deriving instance Eq   (PublicKey alg) => Eq  (ValidatorSet alg)
 deriving instance Ord  (PublicKey alg) => Ord (ValidatorSet alg)
-
-instance CryptoHashable (ValidatorSet alg) where
+instance NFData   (PublicKey alg) => NFData (ValidatorSet alg)
+instance ByteRepr (PublicKey alg) => CryptoHashable (ValidatorSet alg) where
   hashStep s = hashStep s . V.toList . vsValidators
 
 emptyValidatorSet :: ValidatorSet alg
@@ -214,7 +212,7 @@ deriving newtype instance Eq     (PublicKey alg) => Eq     (ValidatorChange alg)
 deriving newtype instance Ord    (PublicKey alg) => Ord    (ValidatorChange alg)
 deriving newtype instance NFData (PublicKey alg) => NFData (ValidatorChange alg)
 
-instance CryptoHashable (ValidatorChange alg) where
+instance ByteRepr (PublicKey alg) => CryptoHashable (ValidatorChange alg) where
   hashStep s (ValidatorChange m) = hashStep s $ Map.toList m
 
 instance (Ord (PublicKey alg)) => Semigroup (ValidatorChange alg) where

@@ -839,6 +839,9 @@ instance (CryptoHashable a, CryptoHashable b) => CryptoHashable (Either a b) whe
               Right b -> do hashStep s $ ConstructorIdx 1
                             hashStep s b
 
+instance CryptoHashable () where
+  hashStep s () = hashStep s $ Tuple 0
+
 instance (CryptoHashable a, CryptoHashable b) => CryptoHashable (a, b) where
   hashStep s (a,b) = do
     hashStep s $ Tuple 2
@@ -852,6 +855,7 @@ instance (CryptoHashable a, CryptoHashable b, CryptoHashable c) => CryptoHashabl
     hashStep s b
     hashStep s c
 
+-- FIXME: ZZZ (placeholder instances)
 instance CryptoHashable (Hashed alg a) where
   hashStep s (Hashed h) = hashStep s h
 
@@ -859,16 +863,17 @@ instance CryptoHashable (Fingerprint hash alg) where
   hashStep s (Fingerprint h) = hashStep s h
 
 instance CryptoHashable (Hash alg) where
-  hashStep = undefined
+  hashStep s = updateHashAccum s . encodeToBS
 
-instance CryptoHashable (PublicKey alg) where
-  hashStep = undefined
+instance ByteRepr (PublicKey alg) => CryptoHashable (PublicKey alg) where
+  hashStep s = updateHashAccum s . encodeToBS
 
-instance CryptoHashable (PrivKey alg) where
-  hashStep = undefined
+instance ByteRepr (PrivKey alg) => CryptoHashable (PrivKey alg) where
+  hashStep s = updateHashAccum s . encodeToBS
 
 instance CryptoHashable (Signature alg) where
-  hashStep = undefined
+  hashStep s = updateHashAccum s . encodeToBS
+
 
 ----------------------------------------------------------------
 -- Helpers
