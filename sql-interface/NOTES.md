@@ -12,6 +12,10 @@ getdsnattr() - get attribute from connection string.
 You may try to find where it is called to find a place
 where connection string is handled.
 
+As ODBC driver is built with driver manager (unixODBC), we should
+use SQLGetPrivateProfileString function and appropriate branch in
+`#ifdef ...WITHOUT_DRIVERMGR`.
+
 We add the following parameters:
 
  - "height_increment" - we require transactions to be included
@@ -21,3 +25,6 @@ We add the following parameters:
    of the blockchain.
  - "publickey" - public key identifier, ASCII string, base58 encoded.
  - "privatekey" - private key, base58 encoded.
+ - "consensus_nodes" - an IPv4/v6 address of a comma-separated consensus
+   node list to work with - post transaction and get updates.
+

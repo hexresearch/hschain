@@ -9564,6 +9564,7 @@ drvconnect(SQLHDBC dbc, SQLCHAR *dsn, SQLSMALLINT dsnLen)
     getdsnattr(buf, "nowchar", nwflag, sizeof (nwflag));
     getdsnattr(buf, "longnames", lnflag, sizeof (lnflag));
 #else
+#error "hschain: we are working without driver manager"
     SQLGetPrivateProfileString(buf, "timeout", "100000",
 			       busy, sizeof (busy), ODBC_INI);
     SQLGetPrivateProfileString(buf, "database", "",

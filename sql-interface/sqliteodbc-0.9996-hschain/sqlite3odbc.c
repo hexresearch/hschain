@@ -12551,6 +12551,10 @@ drvconnect(SQLHDBC dbc, SQLCHAR *dsn, SQLSMALLINT dsnLen, char *pwd,
     char sflag[32], spflag[32], ntflag[32], nwflag[32], biflag[32];
     char snflag[32], lnflag[32], ncflag[32], fkflag[32], jmode[32];
     char jdflag[32];
+    char height_increment[32];
+    char public_key[200];
+    char private_key[200];
+    char consensus_nodes[1000];
 #if defined(_WIN32) || defined(_WIN64)
     char oemcp[32];
 #endif
@@ -12599,6 +12603,7 @@ drvconnect(SQLHDBC dbc, SQLCHAR *dsn, SQLSMALLINT dsnLen, char *pwd,
     busy[0] = '\0';
     dbname[0] = '\0';
 #ifdef WITHOUT_DRIVERMGR
+#error "hschain: building without driver manager" // TODO
     getdsnattr(buf, "database", dbname, sizeof (dbname));
     if (dbname[0] == '\0') {
 	strncpy(dbname, buf, sizeof (dbname));
@@ -12670,7 +12675,29 @@ drvconnect(SQLHDBC dbc, SQLCHAR *dsn, SQLSMALLINT dsnLen, char *pwd,
 #endif
     SQLGetPrivateProfileString(buf, "bigint", "",
 			       biflag, sizeof (biflag), ODBC_INI);
+
+    // hschain related.
+    SQLGetPrivateProfileString(buf, "height_increment", "",
+			       height_increment, sizeof (height_increment), ODBC_INI);
+    SQLGetPrivateProfileString(buf, "publickey", "",
+			       public_key, sizeof (public_key), ODBC_INI);
+    SQLGetPrivateProfileString(buf, "privatekey", "",
+			       private_key, sizeof (private_key), ODBC_INI);
+    SQLGetPrivateProfileString(buf, "consensus_nodeы", "",
+			       consensus_nodes, sizeof (consensus_nodes), ODBC_INI);
+
 #endif
+
+    {
+        char* endp;
+        d->height_increment = (int) strtol(height_increment, &endp, 0);
+        if(*endp || d->height_increment < 1) {
+            d->height_increment = 10;
+        }
+        strncpy(d->public_key, public_key, sizeof(d->public_key) - 1);
+        strncpy(d->private_key, private_key, sizeof(d->private_key) - 1);
+        strncpy(d->consensus_nodes, consensus_nodes, sizeof(d->consensus_nodes) - 1);
+    }
     tracef[0] = '\0';
 #ifdef WITHOUT_DRIVERMGR
     getdsnattr(buf, "tracefile", tracef, sizeof (tracef));
@@ -18328,6 +18355,27 @@ setupdyncols(STMT *s, sqlite3_stmt *s3stmt, int *ncolsp)
 }
 
 /**
+ * Check whether transaction is for blockchain.
+ * If so, we change query somewhat - for real blockchain
+ * connectivity we put in there a empty text. For
+ * non-blockchain work we just skip the pragma.
+ * @param pquery pointer to a query under analysis
+ * @param pqueryLen pointer to a length of the query text
+ * @result non-zero if transaction is for blockchain.
+ */
+static int
+check_blockchain_pragma(SQLCHAR **pquery, SQLINTEGER *pqueryLen)
+{
+    size_t pragma_len = 24;
+    if (*pqueryLen >= pragma_len && 0 == strncasecmp("PRAGMA BLOCKCHAIN QUERY;", *pquery, pragma_len)) {
+        *pquery += pragma_len;
+        *pqueryLen -= pragma_len;
+        return 1;
+    }
+    return 0;
+}
+
+/**
  * Internal query preparation used by SQLPrepare() and SQLExecDirect().
  * @param stmt statement handle
  * @param query query string
@@ -18342,6 +18390,7 @@ drvprepare(SQLHSTMT stmt, SQLCHAR *query, SQLINTEGER queryLen)
     DBC *d;
     char *errp = NULL;
     SQLRETURN sret;
+    int blockchain_transaction;
 
     if (stmt == SQL_NULL_HSTMT) {
 	return SQL_INVALID_HANDLE;
@@ -18362,6 +18411,7 @@ noconn:
 	return sret;
     }
     freep(&s->query);
+    blockchain_transaction = check_blockchain_pragma(&query, &queryLen);
     s->query = (SQLCHAR *) fixupsql((char *) query, queryLen,
 				    (d->version >= 0x030805),
 				    &s->nparams, &s->isselect, &errp);

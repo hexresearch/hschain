@@ -45,6 +45,7 @@
 #include <sql.h>
 #include <sqlext.h>
 #include <time.h>
+#include <stdint.h>
 
 #include "sqlite3.h"
 #ifdef HAVE_IODBC
@@ -153,6 +154,10 @@ typedef struct dbc {
     DWORD owner;		/**< Current owner of CS or 0 */
     int xcelqrx;
 #endif
+    int height_increment;
+    uint8_t public_key[256]; /**< just a string, BTW. May switch to binary representation someday. */
+    uint8_t private_key[256];
+    char consensus_nodes[1024]; /**< a comma-separated list of PIv4/v6 address of consensus nodes to work for */
 } DBC;
 
 /**
