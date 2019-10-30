@@ -105,8 +105,9 @@ import qualified Data.List.NonEmpty       as NE
 import qualified Data.Map.Strict          as Map
 import qualified Data.Set                 as Set
 import Data.Coerce
-import Data.Typeable (Proxy(..))
+import Data.Functor.Classes
 import Data.Int
+import Data.Typeable (Proxy(..))
 import Data.Word
 import Text.Read
 import Text.ParserCombinators.ReadP
@@ -134,7 +135,15 @@ newtype Hash alg = Hash BS.ByteString
 newtype Hashed alg a = Hashed (Hash alg)
   deriving stock   ( Show, Read, Generic, Generic1)
   deriving newtype ( Eq,Ord,NFData, Serialise
-                   , JSON.FromJSON, JSON.ToJSON, JSON.ToJSONKey, JSON.FromJSONKey)
+                   , JSON.FromJSON, JSON.ToJSON, JSON.ToJSONKey, JSON.FromJSONKey
+                   , ByteRepr
+                   )
+
+instance Show1 (Hashed alg) where
+  liftShowsPrec _ _ = showsPrec
+instance Eq1 (Hashed alg) where
+  liftEq _ (Hashed h1) (Hashed h2) = h1 == h2
+
 
 -- | Algorithm for computing cryptographic hash. We expose fold
 --   structure of hash function. Folding is performed inside ST monad
@@ -197,9 +206,6 @@ hashSize _ = fromIntegral $ natVal (Proxy @(ByteSize (Hash alg)))
 hashed :: (CryptoHash alg, CryptoHashable a) => a -> Hashed alg a
 hashed = Hashed . hash
 
-instance (CryptoHash alg) => ByteRepr (Hashed alg a) where
-  encodeToBS (Hashed h) = encodeToBS h
-  decodeFromBS = fmap Hashed . decodeFromBS
 
 
 -- | Chaining of hash algorithms. For example @SHA256 :<<< SHA256@

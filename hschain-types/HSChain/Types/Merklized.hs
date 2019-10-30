@@ -89,16 +89,6 @@ data IdNode  alg a = IdNode  !(Hash alg) !a
 data OptNode alg a = OptNode !(Hash alg) !(Maybe a)
   deriving stock (Show,Eq,Ord,Generic)
 
-instance NFData1 (IdNode alg) where
-  liftRnf f (IdNode h a) = rnf h `seq` f a
-instance Show1 (IdNode alg) where
-  liftShowsPrec sh _ i (IdNode h a)
-    = showParen (i >= 11)
-    $ showString "IdNode "
-    . showParen True (shows h)
-    . showChar ' '
-    . sh 11 a
-
 
 instance MerkleHash IdNode where
   merkleHash (IdNode h _) = h
@@ -121,7 +111,23 @@ instance IsMerkle Hashed where
   toOptNode (Hashed h) = OptNode h Nothing
   fromOptNode = Just . Hashed . merkleHash
 
+instance NFData1 (IdNode alg) where
+  liftRnf f (IdNode h a) = rnf h `seq` f a
 
+instance Show1 (IdNode alg) where
+  liftShowsPrec sh _ i (IdNode h a)
+    = showParen (i >= 11)
+    $ showString "IdNode "
+    . showParen True (shows h)
+    . showChar ' '
+    . sh 11 a
+
+-- | We cheat by comparing only hashes
+instance Eq1 (IdNode alg) where
+  liftEq _ (IdNode h1 _) (IdNode h2 _) = h1 == h2
+
+instance Ord1 (IdNode alg) where
+  liftCompare f (IdNode _ a) (IdNode _ b) = f a b
 
 ----------------------------------------------------------------
 -- Serialization instances
