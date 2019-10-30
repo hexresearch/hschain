@@ -97,9 +97,11 @@ instance StreamCypher cypher => Arbitrary (PubKeyBox key kdf cypher) where
 -- Blockchain inctances
 ----------------------------------------------------------------
 
-instance (CryptoHash alg, CryptoHashable a, Arbitrary a) => Arbitrary (Merkled alg a) where
+instance (CryptoHash alg, CryptoHashable a, IsMerkle f, Arbitrary a) => Arbitrary (MerkleNode f alg a) where
   arbitrary = merkled <$> arbitrary
-  shrink    = map merkled . shrink . merkleValue
+  shrink a  = case toOptNode a of
+    OptNode _ Nothing  -> []
+    OptNode _ (Just x) -> merkled <$> shrink x
 
 instance Arbitrary Height where
   arbitrary = Height <$> arbitrary
@@ -130,9 +132,10 @@ instance Arbitrary VoteType where
   shrink = genericShrink
 
 instance ( Crypto alg
+         , IsMerkle f
          , CryptoHashable a
          , Arbitrary a
-         ) => Arbitrary (Block alg a) where
+         ) => Arbitrary (GBlock f alg a) where
   arbitrary = Block <$> arbitrary
                     <*> arbitrary
                     <*> arbitrary

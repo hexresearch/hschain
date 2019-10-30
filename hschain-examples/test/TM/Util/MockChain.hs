@@ -6,6 +6,7 @@ import qualified Data.List.NonEmpty as NE
 
 import HSChain.Crypto
 import HSChain.Types
+import HSChain.Types.Merklized
 import HSChain.Mock.KeyList
 import HSChain.Mock.KeyVal  (BData(..))
 import HSChain.Mock.Types   (makeGenesis)
@@ -46,22 +47,16 @@ mockchain = scanl mintBlock genesis [BData [("K"++show i,i)] | i <- [100..]]
 
 mintBlock :: Block TestAlg BData -> BData -> Block TestAlg BData
 mintBlock b dat  = Block
-  { blockHeader = Header
-      { headerHeight         = succ $ headerHeight $ blockHeader b
-      , headerLastBlockID    = Just bid
-      , headerValidatorsHash = hashed valSet
-      , headerValChangeHash  = hashed mempty
-      , headerDataHash       = hashed dat
-      , headerLastCommitHash = hashed commit
-      , headerEvidenceHash   = hashed []
-      }
-  , blockData       = dat
-  , blockValChange  = mempty
-  , blockLastCommit = commit
-  , blockEvidence   = []
+  { blockHeight         = succ hPrev
+  , blockPrevBlockID    = Just bid
+  , blockValidatorsHash = hashed valSet
+  , blockData           = merkled dat
+  , blockValChange      = merkled mempty
+  , blockPrevCommit     = merkled <$> commit
+  , blockEvidence       = merkled []
   }
   where
-    hPrev  = headerHeight (blockHeader b)
+    hPrev  = blockHeight b
     r      = Round 0
     bid    = blockHash b
     commit | hPrev == Height 0 = Nothing

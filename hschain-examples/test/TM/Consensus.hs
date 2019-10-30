@@ -33,6 +33,7 @@ import HSChain.Store.STM
 import HSChain.Store.Internal.Query
 import HSChain.Store.Internal.Proposals
 import HSChain.Types
+import HSChain.Types.Merklized
 import HSChain.Mock.KeyVal  (BData(..))
 
 import Test.Tasty
@@ -340,7 +341,7 @@ evidenceIsRecordedProp = withEnvironment $ do
     -- Check that block contain evidence
     bid2   <- propBlockID <$> expectProp
     Just b <- lookupBID (Height 2) bid2
-    case blockEvidence b of
+    case merkleValue $ blockEvidence b of
       [OutOfTurnProposal _] -> return ()
       e                     -> error $ unlines $ map show e
     ()   <- voteFor (Just bid2) =<< expectPV
@@ -386,9 +387,7 @@ evidenceValidated ok ev = testConsensus k4 $ do
     expectedBID | ok        = Just
                 | otherwise = const Nothing
     b0 = mockchain !! 2
-    b  = b0 { blockEvidence = [ev]
-            , blockHeader   = (blockHeader b0) { headerEvidenceHash = hashed [ev] }
-            }
+    b  = b0 { blockEvidence = merkled [ev] }
 
 -- Proposals made out of turn
 evidenceOutOfTurn :: Bool -> ByzantineEvidence TestAlg BData
@@ -403,7 +402,7 @@ evidenceOutOfTurn ok
 
 conflictingVote,badConflictingvoteOrder,badConflictVoteSame, badConflictVoteDiffR,
   badConflictVoteDiffH,badConflictVoteSign
-  :: (Serialise (Vote ty TestAlg BData))
+  :: (CryptoHashable (Vote ty TestAlg BData))
   => (forall alg a. Signed 'Unverified alg (Vote ty alg a)
                  -> Signed 'Unverified alg (Vote ty alg a)
                  -> ByzantineEvidence alg a)
@@ -595,7 +594,7 @@ proposeBlock r k b = do
   vals <- wrap $ GetValSet return
   reply [ let Just i = indexByValidator vals (publicKey k)
           in  RxProposal $ signValue i k
-                         $ Proposal (headerHeight (blockHeader b)) r (Time 0) Nothing bid
+                         $ Proposal (blockHeight b) r (Time 0) Nothing bid
         , RxBlock b
         ]
   return bid
