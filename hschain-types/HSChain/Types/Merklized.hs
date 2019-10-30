@@ -88,6 +88,9 @@ data IdNode  alg a = IdNode  !(Hash alg) !a
 data OptNode alg a = OptNode !(Hash alg) !(Maybe a)
   deriving stock (Show,Eq,Ord,Generic)
 
+instance NFData1 (IdNode alg) where
+  liftRnf f (IdNode h a) = rnf h `seq` f a
+
 instance IsMerkle IdNode where
   merkleHash (IdNode h _) = h
   merkled a = IdNode (hash a) a

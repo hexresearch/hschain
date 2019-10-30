@@ -27,7 +27,9 @@ module HSChain.Types.Blockchain (
     -- * Basic data types for blockchain
   , BlockID(..)
   , blockHash
-  , Block(..)
+  , GBlock(..)
+  , Block
+  , Header
   , Commit(..)
   , ByzantineEvidence(..)
   , BlockData(..)
@@ -59,6 +61,7 @@ import           Control.Monad.IO.Class   (MonadIO(..))
 import qualified Data.Aeson               as JSON
 import           Data.Coerce
 import           Data.Int
+import           Data.Functor.Classes
 import qualified Data.List.NonEmpty       as NE
 import           Data.Monoid              ((<>))
 import           Data.Time.Clock          (UTCTime)
@@ -133,29 +136,37 @@ blockHash
 blockHash = BlockID . hashed
 
 
+type Block  = GBlock IdNode
+type Header = GBlock Hashed
+
 -- | Block of blockchain.
-data Block alg a = Block
+data GBlock f alg a = Block
   { blockHeight           :: !Height
     -- ^ Height of a block
   , blockPrevBlockID      :: !(Maybe (BlockID alg a))
     -- ^ Hash of previous block. Nothing iff block is a genesis block
   , blockValidatorsHash   :: !(Hashed alg (ValidatorSet alg))
     -- ^ Set of validators used to create this block.
-  , blockValChange        :: !(Merkled alg (ValidatorChange alg))
+  , blockValChange        :: !(MerkleNode f alg (ValidatorChange alg))
     -- ^ Set of validators for the next block.
-  , blockPrevCommit       :: !(Maybe(Merkled alg (Commit alg a)))
+  , blockPrevCommit       :: !(Maybe (MerkleNode f alg (Commit alg a)))
     -- ^ Commit for previous block. Nothing iff block is a genesis
     --   block or block at height 1.
-  , blockEvidence         :: !(Merkled alg [ByzantineEvidence alg a])
+  , blockEvidence         :: !(MerkleNode f alg [ByzantineEvidence alg a])
     -- ^ Evidence of byzantine behavior by nodes.
-  , blockData             :: !(Merkled alg a)
+  , blockData             :: !(MerkleNode f alg a)
     -- ^ Payload of block. HSChain treats it completely opaque and
     --   rely on callback to do anything to it.
   }
   deriving stock    (Show, Generic)
-  deriving anyclass (Serialise, JSON.ToJSON, JSON.FromJSON, CryptoHashable)
-instance (NFData a, NFData (PublicKey alg))  => NFData (Block alg a)
-deriving instance (Eq (PublicKey alg), Eq a) => Eq     (Block alg a)
+  deriving anyclass (CryptoHashable)
+
+instance (Crypto alg, CryptoHashable a, Serialise     a, IsMerkle f) => Serialise     (GBlock f alg a)
+instance (Crypto alg, CryptoHashable a, JSON.FromJSON a, IsMerkle f) => JSON.FromJSON (GBlock f alg a)
+instance (Crypto alg, JSON.ToJSON a, IsMerkle f)                     => JSON.ToJSON   (GBlock f alg a)
+  -- deriving anyclass (Serialise, JSON.ToJSON, JSON.FromJSON, CryptoHashable)
+instance (NFData a, NFData1 (f alg), NFData (PublicKey alg)) => NFData (GBlock f alg a)
+deriving instance (Eq (PublicKey alg), IsMerkle f, Eq1 (f alg), Eq a) => Eq (GBlock f alg a)
 
 
 -- | Evidence of byzantine behaviour by some node.
