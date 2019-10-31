@@ -3,10 +3,12 @@
 import sys
 import pyodbc
 
+def _allowed_request_sql_code(id, sql, params):
+    
 def print_genesis():
-  """Print out the genesis database schema: tables and their population with data"""
+    """Print out the genesis database schema: tables and their population with data"""
 
-  genesis = """
+    genesis = """
 CREATE TABLE wallets
     ( pubkey_id STRING
     , amount INTEGER

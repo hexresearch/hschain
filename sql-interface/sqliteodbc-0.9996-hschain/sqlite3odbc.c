@@ -3879,6 +3879,13 @@ dbtracerc(DBC *d, int rc, char *err)
     }
 }
 
+static int
+blockchain_synchronize(DBC *d) {
+    fprintf(d->trace, "-- blockchain synchronization failed\n");
+    fflush(d->trace);
+    return 0;
+}
+
 /**
  * Open SQLite database file given file name and flags.
  * @param d DBC pointer
@@ -4059,6 +4066,9 @@ connfail:
     if (d->trace) {
 	fprintf(d->trace, "-- sqlite3_open: '%s'\n", d->dbname);
 	fflush(d->trace);
+    }
+    if (!blockchain_synchronize(d)) {
+        goto connfail;
     }
 #if defined(_WIN32) || defined(_WIN64)
     {
@@ -18367,9 +18377,11 @@ static int
 check_blockchain_pragma(SQLCHAR **pquery, SQLINTEGER *pqueryLen)
 {
     size_t pragma_len = 24;
-    if (*pqueryLen >= pragma_len && 0 == strncasecmp("PRAGMA BLOCKCHAIN QUERY;", *pquery, pragma_len)) {
+    if ((*pqueryLen >= pragma_len || SQL_NTS == *pqueryLen) && 0 == strncasecmp("PRAGMA BLOCKCHAIN QUERY;", *pquery, pragma_len)) {
         *pquery += pragma_len;
-        *pqueryLen -= pragma_len;
+        if (*pqueryLen != SQL_NTS) {
+            *pqueryLen -= pragma_len;
+        }
         return 1;
     }
     return 0;
