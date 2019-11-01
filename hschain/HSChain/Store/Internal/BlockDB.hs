@@ -30,11 +30,8 @@ import HSChain.Store.Internal.Query
 ----------------------------------------------------------------
 
 -- | Create tables for storing blockchain data
-initializeBlockhainTables
-  :: (Crypto alg, Serialise a, Eq a, MonadQueryRW m alg a, Show a)
-  => Block alg a                -- ^ Genesis block
-  -> m ()
-initializeBlockhainTables genesis = do
+initializeBlockhainTables :: (MonadQueryRW m alg a) => m ()
+initializeBlockhainTables = do
   -- Initialize tables for storage of blockchain
   basicExecute_
     "CREATE TABLE IF NOT EXISTS thm_blockchain \
@@ -92,6 +89,13 @@ initializeBlockhainTables genesis = do
     \  ( evidence  BLOB    NOT NULL \
     \  , recorded  BOOLEAN NOT NULL \
     \  , UNIQUE (evidence))"
+
+
+storeGenesis
+  :: (Crypto alg, Serialise a, Eq a, MonadQueryRW m alg a, Show a)
+  => Block alg a                -- ^ Genesis block
+  -> m ()
+storeGenesis genesis = do
   -- Insert genesis block if needed
   storedGen  <- singleQ_ "SELECT block  FROM thm_blockchain WHERE height = 0"
   storedVals <- singleQ_ "SELECT valset FROM thm_validators WHERE height = 1"

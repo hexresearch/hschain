@@ -1,7 +1,7 @@
+{-# LANGUAGE DataKinds         #-}
+{-# LANGUAGE FlexibleContexts  #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE TypeOperators     #-}
 -- |
 module HSChain.Mock where
 
@@ -52,12 +52,11 @@ allocateMockNetAddrs net topo nodes =
 allocNode
   :: ( MonadIO m, MonadMask m
      , Crypto alg, Serialise a, Eq a, Show a, Has x NodeSpec)
-  => Block alg a                -- ^ Genesis block
-  -> x                          -- ^ Node parameters
+  => x                          -- ^ Node parameters
   -> ContT r m (Connection 'RW alg a, LogEnv)
-allocNode genesis x = do
+allocNode x = do
   liftIO $ createDirectoryIfMissing True $ takeDirectory dbname
-  conn   <- ContT $ withDatabase dbname genesis
+  conn   <- ContT $ withDatabase dbname
   logenv <- ContT $ withLogEnv "TM" "DEV" [ makeScribe s | s <- x ^.. nspecLogFile ]
   return (conn,logenv)
   where

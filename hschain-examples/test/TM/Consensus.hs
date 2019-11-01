@@ -475,7 +475,7 @@ run c = runNoLogsT . runDBT c
 
 
 withEnvironment :: DBT 'RW TestAlg BData (NoLogsT IO) x -> IO x
-withEnvironment act = withDatabase "" genesis $ \conn -> run conn act
+withEnvironment act = withDatabase "" $ \conn -> run conn act
 
 execConsensus
   :: PrivKey TestAlg
@@ -508,7 +508,7 @@ startConsensus k = do
            , appChanRx chans
            )
          , appPropStorage chans
-         , runApplication cfg (Just (PrivValidator k)) logic mempty chans
+         , runApplication cfg (Just (PrivValidator k)) genesis logic mempty chans
          )
   where
     cfg = cfgConsensus (defCfg :: Configuration FastTest)
