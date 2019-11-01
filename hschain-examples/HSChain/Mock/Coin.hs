@@ -48,6 +48,7 @@ import Control.DeepSeq
 import Codec.Serialise      (Serialise,serialise)
 import qualified Data.Aeson as JSON
 import Data.ByteString.Lazy (toStrict)
+import Data.Functor.Identity
 import Data.Foldable
 import Data.Maybe
 import Data.Map             (Map,(!))
@@ -298,14 +299,22 @@ mintMockCoin nodes CoinSpecification{..} =
          , genDelay          = delay
          , genMaxMempoolSize = coinMaxMempoolSize
          }
-  , makeGenesis (BData txs) valSet
+  , genesis0 {
+      blockHeader = (blockHeader genesis0) {
+          headerStateHash = hashed $ blockchainState st
+          }
+      }
   )
   where
     privK        = take coinWallets $ makePrivKeyStream coinWalletsSeed
     pubK         = publicKey <$> privK
     Right valSet = makeValidatorSet nodes
     txs          = [ Deposit pk coinAridrop | pk <- pubK ]
-
+    -- Generate genesis with correct hash
+    genesis0     = makeGenesis (BData txs) (Hashed $ hash ()) valSet
+    Just ((),st) = runIdentity
+                 $ interpretBCh runner (BlockchainState (initialState transitions) valSet)
+                 $ processBlock transitions genesis0
 
 findInputs :: (Num i, Ord i) => i -> [(a,i)] -> [(a,i)]
 findInputs tgt = go 0

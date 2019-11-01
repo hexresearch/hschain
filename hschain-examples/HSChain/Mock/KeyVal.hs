@@ -14,6 +14,7 @@ module HSChain.Mock.KeyVal (
     genesisBlock
   , interpretSpec
   , executeSpec
+  , process
   , BData(..)
   , Tx
   , BState
@@ -72,7 +73,7 @@ instance BlockData BData where
 
 genesisBlock :: ValidatorSet Alg -> Block Alg BData
 genesisBlock valSet
-  = makeGenesis (BData []) valSet
+  = makeGenesis (BData []) (hashed mempty) valSet
 
 process :: Tx -> BState -> Maybe BState
 process (k,v) m

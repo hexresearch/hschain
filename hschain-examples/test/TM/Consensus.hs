@@ -1,3 +1,5 @@
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE DeriveFunctor       #-}
 {-# LANGUAGE FlexibleContexts    #-}
@@ -15,6 +17,7 @@ module TM.Consensus (tests) where
 import Codec.Serialise (Serialise)
 import Control.Concurrent.STM
 import Control.Monad
+import Control.Monad.Catch (MonadThrow,MonadCatch,MonadMask)
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Free
@@ -22,6 +25,7 @@ import Data.IORef
 import Data.Int
 import Data.Maybe
 import Text.Printf
+import Katip (toObject)
 
 import HSChain.Blockchain.Internal.Engine.Types
 import HSChain.Blockchain.Internal.Engine
@@ -29,12 +33,13 @@ import HSChain.Blockchain.Internal.Types
 import HSChain.Control
 import HSChain.Crypto
 import HSChain.Logger
+import HSChain.Monitoring
 import HSChain.Store
 import HSChain.Store.STM
 import HSChain.Store.Internal.Query
 import HSChain.Store.Internal.Proposals
 import HSChain.Types
-import HSChain.Mock.KeyVal  (BData(..))
+import HSChain.Mock.KeyVal  (BData(..),BState,process)
 
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -157,9 +162,9 @@ test2Blocks = testConsensus k4 $ do
      -- PREVOTE
      ()  <- voteFor (Just bid) =<< expectPV
      prevote (Height 2) (Round 0) [k1,k2] (Just bid)
-      -- PRECOMMIT
-     () <- voteFor (Just bid) =<< expectPC
-     precommit (Height 2) (Round 0) [k1,k2] (Just bid)
+     --  -- PRECOMMIT
+     -- () <- voteFor (Just bid) =<< expectPC
+     -- precommit (Height 2) (Round 0) [k1,k2] (Just bid)
 
 
 -- Vote is split between two block.
@@ -501,17 +506,30 @@ conflictingVotesOK v1 v2
 
 type ConsensusM = DBT 'RW TestAlg BData (NoLogsT IO)
 
-run :: Connection 'RW alg a -> DBT 'RW alg a (NoLogsT IO) x -> IO x
+run :: Connection 'RW TestAlg BData -> ConsensusM a -> IO a
 run c = runNoLogsT . runDBT c
 
+newtype StdoutLogT m a = StdoutLogT { runStdoutLogT :: m a }
+  deriving newtype ( Functor, Applicative, Monad, MonadIO
+                   , MonadThrow, MonadCatch, MonadMask
+                   , MonadFork, MonadTMMonitoring
+                   )
 
-withEnvironment :: DBT 'RW TestAlg BData (NoLogsT IO) x -> IO x
+instance MonadTrans StdoutLogT where
+  lift = StdoutLogT
+
+instance MonadIO m => MonadLogger (StdoutLogT m) where
+  logger _ msg a = liftIO $ do print msg
+                               print $ toObject a
+  localNamespace _ = id
+  
+withEnvironment :: ConsensusM x -> IO x
 withEnvironment act = withDatabase "" $ \conn -> run conn act
 
 execConsensus
   :: PrivKey TestAlg
   -> Expect ConsensusM TestAlg BData ()
-  -> DBT 'RW TestAlg BData (NoLogsT IO) ()
+  -> ConsensusM ()
 execConsensus k messages = do
   (chans, prop, action) <- startConsensus k
   runConcurrently
@@ -555,7 +573,9 @@ mkAppLogic = do
                                      return ( BData [("K" ++ let Height h = newBlockHeight b in show h, i)]
                                             , newBlockState b
                                             )
-    , appValidationFun  = \_   -> return . Just
+    , appValidationFun  = \b (BlockchainState st valset) -> do
+        return $ do st' <- foldM (flip process) st (let BData tx = blockData b in tx)
+                    return $ BlockchainState st' valset
     , appMempool        = nullMempool
     , appBchState       = store
     , appProposerChoice = proposerChoice

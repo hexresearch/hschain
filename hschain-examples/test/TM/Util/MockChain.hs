@@ -3,12 +3,13 @@
 module TM.Util.MockChain where
 
 import           Data.List (sortOn)
+import qualified Data.Map.Strict    as Map
 import qualified Data.List.NonEmpty as NE
 
 import HSChain.Crypto
 import HSChain.Types
 import HSChain.Mock.KeyList
-import HSChain.Mock.KeyVal  (BData(..),genesisBlock)
+import HSChain.Mock.KeyVal  (BData(..),BState,genesisBlock)
 
 import TM.Util.Network
 
@@ -34,18 +35,28 @@ genesis :: Block TestAlg BData
 genesis = genesisBlock valSet
 
 block1, block1' :: Block TestAlg BData
-block1  = mintBlock genesis $ BData [("K1",100)]
-block1' = mintBlock genesis $ BData [("K1",101)]
+block1  = mintFirstBlock $ BData [("K1",100)]
+block1' = mintFirstBlock $ BData [("K1",101)]
 
 mockchain :: [Block TestAlg BData]
-mockchain = scanl mintBlock genesis [BData [("K"++show i,i)] | i <- [100..]]
+mockchain
+  = fmap fst
+  $ scanl step (genesis,mempty) [BData [("K"++show i,i)] | i <- [100..]]
+  where
+    step (b,st) dat@(BData txs) = let st' = st <> Map.fromList txs
+                                  in ( mintBlock b st' dat, st' )
+
 
 ----------------------------------------------------------------
 -- Utils
 ----------------------------------------------------------------
 
-mintBlock :: Block TestAlg BData -> BData -> Block TestAlg BData
-mintBlock b dat  = Block
+mintFirstBlock :: BData -> Block TestAlg BData
+mintFirstBlock dat@(BData txs)
+  = mintBlock genesis (Map.fromList txs) dat
+
+mintBlock :: Block TestAlg BData -> BState -> BData -> Block TestAlg BData
+mintBlock b st dat  = Block
   { blockHeader = Header
       { headerHeight         = succ $ headerHeight $ blockHeader b
       , headerLastBlockID    = Just bid
@@ -54,6 +65,7 @@ mintBlock b dat  = Block
       , headerDataHash       = hashed dat
       , headerLastCommitHash = hashed commit
       , headerEvidenceHash   = hashed []
+      , headerStateHash      = hashed st
       }
   , blockData       = dat
   , blockValChange  = mempty

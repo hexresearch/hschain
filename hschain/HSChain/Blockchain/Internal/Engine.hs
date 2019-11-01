@@ -400,7 +400,7 @@ makeHeightParameters
      , MonadIO m
      , MonadThrow m
      , MonadLogger m
-     , Crypto alg, Serialise a)
+     , Crypto alg, BlockData a)
   => Maybe (PrivValidator alg)
   -> AppLogic            m alg a
   -> AppCallbacks        m alg a
@@ -456,6 +456,7 @@ makeHeightParameters appValidatorKey logic@AppLogic{..} AppCallbacks{appCanCreat
                -- Block is correct and validators change is correct as
                -- well
                | Just bst <- mvalSet'
+               , headerStateHash (blockHeader b) == hashed (blockchainState bst)
                , validatorSetSize (bChValidatorSet bst) > 0
                , blockValChange b == validatorsDifference valSet (bChValidatorSet bst)
                  -> do setPropValidation propStorage bid $ Just bst
@@ -499,6 +500,7 @@ makeHeightParameters appValidatorKey logic@AppLogic{..} AppCallbacks{appCanCreat
                       , headerValChangeHash  = hashed valCh
                       , headerLastCommitHash = hashed commit
                       , headerEvidenceHash   = hashed evidence
+                      , headerStateHash      = hashed $ blockchainState bst
                       }
                   , blockData       = bData
                   , blockValChange  = valCh
