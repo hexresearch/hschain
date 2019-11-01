@@ -446,7 +446,7 @@ badConflictVoteSign make = make v1 v2
 
 
 conflictingVotesOK
-  :: (Serialise (Vote v TestAlg BData))
+  :: (CryptoHashable (Vote v TestAlg BData))
   => Signed 'Unverified TestAlg (Vote v TestAlg BData)
   -> Signed 'Unverified TestAlg (Vote v TestAlg BData)
   -> Bool
