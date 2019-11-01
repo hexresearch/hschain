@@ -59,6 +59,7 @@ executable hschain-sql-utils
 
   -- Other library packages from which modules are imported.
   build-depends:       base
+                     , optparse-applicative
                      , simple-sql-parser
 
   -- Directories containing source files.
