@@ -89,6 +89,8 @@ makeAppLogic store BChLogic{..} Interpreter{..} = do
 data NodeDescription m alg a = NodeDescription
   { nodeValidationKey :: !(Maybe (PrivValidator alg))
     -- ^ Private key of validator.
+  , nodeGenesis       :: !(Block alg a)
+    -- ^ Genesis block of node
   , nodeLogic         :: !(AppLogic m alg a)
     -- ^ Callbacks for validation of block, transaction and generation
     --   of new block.
@@ -112,7 +114,7 @@ data BlockchainNet = BlockchainNet
 --   need to run something else along them.
 runNode
   :: ( MonadDB m alg a, MonadMask m, MonadFork m, MonadLogger m, MonadTrace m, MonadTMMonitoring m
-     , Crypto alg, BlockData a
+     , Crypto alg, BlockData a, Eq a, Show a
      )
   => Configuration app          -- ^ Timeouts for network and consensus
   -> NodeDescription m alg a    -- ^ Description of node.
@@ -127,7 +129,7 @@ runNode cfg NodeDescription{..} = do
     [ id $ descendNamespace "net"
          $ startPeerDispatcher (cfgNetwork cfg) bchNetwork bchInitialPeers appCh appMempool
     , id $ descendNamespace "consensus"
-         $ runApplication (cfgConsensus cfg) nodeValidationKey nodeLogic appCall appCh
+         $ runApplication (cfgConsensus cfg) nodeValidationKey nodeGenesis nodeLogic appCall appCh
     , forever $ do
         MempoolInfo{..} <- mempoolStats appMempool
         usingGauge prometheusMempoolSize      mempool'size

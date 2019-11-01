@@ -140,20 +140,18 @@ instance MonadIO m => MonadDB (DBT 'RW alg a m) alg a where
 withDatabase
   :: (MonadIO m, MonadMask m, Crypto alg, Serialise a, Eq a, Show a)
   => FilePath         -- ^ Path to the database
-  -> Block alg a      -- ^ Genesis block
   -> (Connection 'RW alg a -> m x) -> m x
-withDatabase path genesis cont
-  = withConnection path $ \c -> initDatabase c genesis >> cont c
+withDatabase path cont
+  = withConnection path $ \c -> initDatabase c >> cont c
 
 -- | Initialize all required tables in database.
 initDatabase
   :: (MonadIO m, Crypto alg, Serialise a, Eq a, Show a)
   => Connection 'RW alg a  -- ^ Opened connection to database
-  -> Block alg a           -- ^ Genesis block
   -> m ()
-initDatabase c genesis = do
+initDatabase c = do
   -- 2. Create tables for block
-  r <- runQueryRW c $ initializeBlockhainTables genesis
+  r <- runQueryRW c initializeBlockhainTables
   case r of
     -- FIXME: Resource leak!
     Nothing -> error "Cannot initialize tables!"

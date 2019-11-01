@@ -30,7 +30,7 @@ import HSChain.P2P
 import HSChain.P2P.PeerState.Types
 import HSChain.Store
 import HSChain.Store.Internal.Proposals
-import HSChain.Store.Internal.BlockDB (storeCommit)
+import HSChain.Store.Internal.BlockDB (storeCommit,storeGenesis)
 import HSChain.Types
 import qualified HSChain.Mock.KeyVal as Mock
 
@@ -217,7 +217,8 @@ type TestM   alg a = StateT  (P2P.State alg a)
 -- Start gossip FSM all alone
 withGossip :: Int -> TestM TestAlg Mock.BData x -> IO x
 withGossip n action = do
-  withDatabase "" genesis $ \conn -> runNoLogsT $ runDBT conn $ do
+  withDatabase "" $ \conn -> runNoLogsT $ runDBT conn $ do
+    mustQueryRW $ storeGenesis genesis
     consensusState <- liftIO $ newTVarIO Nothing
     gossipCnts     <- newGossipCounters
     props          <- newSTMPropStorage

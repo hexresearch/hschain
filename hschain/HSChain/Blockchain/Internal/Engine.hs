@@ -95,19 +95,22 @@ runApplication
      , MonadMask m
      , MonadLogger m
      , MonadTMMonitoring m
-     , Crypto alg, BlockData a)
+     , Crypto alg, BlockData a, Eq a, Show a)
   => ConsensusCfg
      -- ^ Configuration
   -> Maybe (PrivValidator alg)
      -- ^ Private key of validator
+  -> Block alg a
+     -- ^ Genesis block
   -> AppLogic m alg a
      -- ^ Get initial state of the application
   -> AppCallbacks m alg a
   -> AppChans m alg a
      -- ^ Channels for communication with peers
   -> m ()
-runApplication config appValidatorKey appSt@AppLogic{..} appCall appCh@AppChans{..} = logOnException $ do
+runApplication config appValidatorKey genesis appSt@AppLogic{..} appCall appCh@AppChans{..} = logOnException $ do
   logger InfoS "Starting consensus engine" ()
+  mustQueryRW $ storeGenesis genesis
   rewindBlockchainState appSt
   height <- queryRO $ blockchainHeight
   lastCm <- queryRO $ retrieveLocalCommit height
