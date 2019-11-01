@@ -86,14 +86,7 @@ tests = testGroup "validators"
         Nothing @=? changeValidators diff vset
     ]
   , testGroup "Valset indexing"
-    [ testProperty "Equidistribution" $ \(vset :: ValidatorSet Ed25519) ->
-        let idx = indexByIntervalPoint vset <$> [ 0 .. totalVotingPower vset - 1 ]
-        in counterexample (show idx)
-         $ and [ validatorVotingPower v == p
-               | (i,p) <- Map.toList
-                        $ Map.fromListWith (+) [ (fromJust i,1) | i <- idx ]
-               , let Just v = validatorByIndex vset i
-               ]
+    [ testProperty "Equidistribution" samplingEquidistribution
     , testProperty "Invalid lookups 1" $ \(vset :: ValidatorSet Ed25519) ->
         Nothing == indexByIntervalPoint vset (-1)
     , testProperty "Invalid lookups 2" $ \(vset :: ValidatorSet Ed25519) ->
@@ -104,6 +97,18 @@ tests = testGroup "validators"
 
 v1,v2 :: PublicKey (Ed25519 :& SHA512)
 v1:v2:_ = map publicKey privateKeyList
+
+samplingEquidistribution :: ValidatorSet Ed25519 -> Property
+samplingEquidistribution vset
+  = counterexample (show idx)
+  $ all isJust idx
+ && and [ validatorVotingPower v == p
+        | (i,p) <- Map.toList
+                 $ Map.fromListWith (+) [ (fromJust i, 1) | i <- idx ]
+        , let Just v = validatorByIndex vset i
+        ]
+  where
+    idx = indexByIntervalPoint vset <$> [ 0 .. totalVotingPower vset - 1 ]
 
 
 {-
