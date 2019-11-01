@@ -7,8 +7,7 @@ import qualified Data.List.NonEmpty as NE
 import HSChain.Crypto
 import HSChain.Types
 import HSChain.Mock.KeyList
-import HSChain.Mock.KeyVal  (BData(..))
-import HSChain.Mock.Types   (makeGenesis)
+import HSChain.Mock.KeyVal  (BData(..),genesisBlock)
 
 import TM.Util.Network
 
@@ -31,7 +30,7 @@ Right valSet = makeValidatorSet [Validator (publicKey k) 1 | k <- privK]
 
 -- | Genesis block of BCh
 genesis :: Block TestAlg BData
-genesis = makeGenesis (BData []) valSet
+genesis = genesisBlock valSet
 
 block1, block1' :: Block TestAlg BData
 block1  = mintBlock genesis $ BData [("K1",100)]
