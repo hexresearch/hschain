@@ -143,11 +143,10 @@ checkMerkleProof rootH (MerkleProof a path)
   where
     calcH = hash
           $ Just
-          $ foldr step (hashed (Leaf a)) path
-    step :: Either (Hash alg) (Hash alg) -> Hashed alg (Node Hashed alg a) -> Hashed alg (Node Hashed alg a)
-
-    step (Left  (Hashed -> g)) h = hashed $ Branch (MerkleNode g) (MerkleNode h)
-    step (Right (Hashed -> g)) h = hashed $ Branch (MerkleNode h) (MerkleNode g)
+          $ foldr step (Leaf a) path
+    step :: Either (Hash alg) (Hash alg) -> Node Hashed alg a -> Node Hashed alg a
+    step (Left  g) h = Branch (MerkleNode $ hashed h) (MerkleNode $ Hashed g)
+    step (Right g) h = Branch (MerkleNode $ Hashed g) (MerkleNode $ hashed h)
 
 
 -- | Create proof of inclusion. Implementation is rather inefficient
