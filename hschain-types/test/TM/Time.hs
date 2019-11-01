@@ -52,7 +52,7 @@ tests = testGroup "time"
                                 (Just 12)
   ]
 
-checkMedian :: [(Word64,Int64)] -> Maybe Int64 -> IO ()
+checkMedian :: [(Integer,Int64)] -> Maybe Int64 -> IO ()
 checkMedian wtimes expectedT = forM_ (permuteCommit commit) $ \cmt ->
   assertEqual
     (show $ voteTime . signedValue <$> commitPrecommits cmt)
