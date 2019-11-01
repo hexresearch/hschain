@@ -25,7 +25,7 @@ printWalletDemoTables = do
     , "CREATE TABLE "++walletDemoTableName
     , "  ( wallet_id STRING PRIMARY KEY"
     , "  , amount    INTEGER"
-    , "  , CONSTRAINT amount >= 0"
+    , "  , CONSTRAINT no_overdraft CHECK (amount >= 0)"
     , "  );"
     ] ++
     [ unwords
@@ -50,9 +50,9 @@ commandAction MandatorySystemTables =
     , "    ( request_id STRING"
     , "    , request_param_name STRING"
     , "    , request_param_type STRING"
-    , "    , CONSTRAINT UNIQUE (request_id, request_param_name)"
-    , "    , CONSTRAINT FOREIGN KEY (request_id) REFERENCES allowed_requests(request_id)"
-    , "    , CONSTRAINT CHECK (request_param_type = \"S\" OR request_param_type = \"I\" OR request_param_type = \"P\")"
+    , "    , CONSTRAINT unique_param_for_request UNIQUE (request_id, request_param_name)"
+    , "    , CONSTRAINT request_must_exist FOREIGN KEY (request_id) REFERENCES allowed_requests(request_id)"
+    , "    , CONSTRAINT correct_type CHECK (request_param_type = \"S\" OR request_param_type = \"I\" OR request_param_type = \"P\")"
     , "    );"
     ]
 commandAction (AddRequestCode req id params) = do
