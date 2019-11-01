@@ -69,7 +69,7 @@ import HSChain.Crypto
 -- | Information about remote validator
 data Validator alg = Validator
   { validatorPubKey      :: !(PublicKey alg)
-  , validatorVotingPower :: !Word64
+  , validatorVotingPower :: !Integer
   }
   deriving stock    (Generic, Show)
   deriving anyclass (CBOR.Serialise, JSON.ToJSON, JSON.FromJSON)
@@ -81,8 +81,8 @@ instance ByteRepr (PublicKey alg) => CryptoHashable (Validator alg)
 -- | Set of all known validators for given height
 data ValidatorSet alg = ValidatorSet
   { vsValidators      :: !(V.Vector (Validator alg))
-  , vsTotPower        :: !Word64
-  , vsVotingIntervals :: !(Map.Map Word64 (ValidatorIdx alg))
+  , vsTotPower        :: !Integer
+  , vsVotingIntervals :: !(Map.Map Integer (ValidatorIdx alg))
   }
   deriving (Generic, Show)
 deriving instance Eq   (PublicKey alg) => Eq  (ValidatorSet alg)
@@ -127,6 +127,9 @@ makeValidatorSet vals = do
   let vlist = sortBy (comparing validatorPubKey)
             $ toList vals
       vvec  = V.fromList vlist
+  forM_ vals $ \v -> case validatorVotingPower v of
+    p | p <= 0    -> Left $ validatorPubKey v
+      | otherwise -> return ()
   check vlist
   return ValidatorSet
     { vsValidators      = vvec
@@ -142,7 +145,7 @@ makeValidatorSet vals = do
     check _       = return ()
 
 -- | Return total voting power of all validators
-totalVotingPower :: ValidatorSet alg -> Word64
+totalVotingPower :: ValidatorSet alg -> Integer
 totalVotingPower = vsTotPower
 
 -- | Get validator by its fingerprint
@@ -203,7 +206,7 @@ emptyValidatorISetFromSize n
 
 -- | Change of validators. If voting power of validator is changed to
 --   zero it's removed from set.
-newtype ValidatorChange alg = ValidatorChange (Map (PublicKey alg) Word64)
+newtype ValidatorChange alg = ValidatorChange (Map (PublicKey alg) Integer)
   deriving stock    (Show, Generic)
   deriving newtype  (JSON.ToJSON, JSON.FromJSON)
   deriving anyclass (CBOR.Serialise)
@@ -284,7 +287,7 @@ changeValidators (ValidatorChange delta) (ValidatorSet vset _ _)
 ----------------------------------------------------------------
 
 -- | Get validator index by point inside the constructed interval based on its voting power
-indexByIntervalPoint :: (Eq (PublicKey alg)) => ValidatorSet alg -> Word64 -> Maybe (ValidatorIdx alg)
+indexByIntervalPoint :: (Eq (PublicKey alg)) => ValidatorSet alg -> Integer -> Maybe (ValidatorIdx alg)
 indexByIntervalPoint ValidatorSet{..} x
   | x >= vsTotPower = Nothing
   | otherwise       = snd <$> Map.lookupLE x vsVotingIntervals

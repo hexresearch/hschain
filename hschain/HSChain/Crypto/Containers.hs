@@ -51,13 +51,13 @@ data SignedSet alg a k = SignedSet
     -- Set of all votes
   , vsetValMap     :: !(Map k (VoteGroup alg))
     -- Reverse mapping from 
-  , vsetAccPower   :: !Word64
+  , vsetAccPower   :: !Integer
   , vsetValidators :: !(ValidatorSet alg)
   , vsetToKey      :: !(a -> k)
   }
 
 data VoteGroup alg = VoteGroup
-  { accOK     :: !Word64        -- Accumulated weight of good votes
+  { accOK     :: !Integer       -- Accumulated weight of good votes
   , votersOK  :: !ValidatorISet -- Set of voters with good votes
   }
 

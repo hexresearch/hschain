@@ -52,7 +52,7 @@ commitTime vset t0 Commit{..} = do
 average :: Time -> Time -> Time
 average (Time t1) (Time t2) = Time $ (t1 `div` 2) + (t2 `div` 2) + (t1 .&. t2 .&. 1)
 
-zDrop :: Word64 -> [(Word64,a)] -> [(Word64,a)]
+zDrop :: Integer -> [(Integer,a)] -> [(Integer,a)]
 zDrop _ [] = []
 zDrop 0 xs = xs
 zDrop i ((n,x):xs)
