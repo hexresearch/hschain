@@ -57,7 +57,11 @@ commandAction MandatorySystemTables =
     ]
 commandAction (AddRequestCode req id params) = do
   let sqlId = sqlStr id
-      sqlReq = sqlStr req
+      onlySpaces = map (\c -> if c < ' ' then ' ' else c) $ sqlStr req
+      oneSpace (' ':' ':cs) = oneSpace cs
+      oneSpace (c:cs) = c : oneSpace cs
+      oneSpace [] = []
+      sqlReq = oneSpace onlySpaces
   putStrLn $ unlines $
     [ "-- adding a request"
     , "INSERT INTO allowed_requests (request_id, request_text) VALUES ("++sqlReq++", "++sqlId++");"
@@ -77,7 +81,7 @@ commandAction (AddRequestCode req id params) = do
             , "    ("++sqlId++", "++show ptypeStr++", "++show pname++");"
             ]
     ]
-commandAction WalletDemo = do
+commandAction WalletDemoTables = do
   printWalletDemoTables
   commandAction MandatorySystemTables
   let req = unwords
@@ -103,13 +107,13 @@ data PType = IntParam | StringParam | PositiveParam
 data Command =
     MandatorySystemTables
   | AddRequestCode String String [(PType, String)]
-  | WalletDemo
+  | WalletDemoTables
 
 parseCommand :: Parser Command
 parseCommand = subparser
   $  command "mandatory-system-tables" (info (pure MandatorySystemTables) idm)
   <> command "add-request-code" (info (AddRequestCode <$> requestText <*> requestId <*> some typedParam) idm)
-  <> command "wallet-demo" (info (pure WalletDemo) idm)
+  <> command "wallet-demo-tables" (info (pure WalletDemoTables) idm)
   where
     requestText = strOption (long "request")
     requestId = strOption (long "id")

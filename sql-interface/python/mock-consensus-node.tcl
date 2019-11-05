@@ -7,17 +7,20 @@
 
 package require sqlite3
 
-proc main {argv0 args} {
-	if {[llength $args] != 2} {
-		puts "usage: $argv0 \"command to populate tables\""]
+proc main {argv0 argv} {
+	if {[llength $argv] != 2} {
+		puts "usage: $argv0 port-number \"command to populate tables\""
 		exit 1
 	}
-	lassign {port mandatory_tables_command} $args
+	lassign $argv port mandatory_tables_command
 	puts "getting mandatory tables content..."
 	set mandatory_tables [eval exec $mandatory_tables_command]
 	set databasefn "bububu.db"
 	file delete -force $databasefn
-	sqlite3 
+	sqlite3 database $databasefn -create yes
+	puts "database created"
+	database eval $mandatory_tables
+	puts "tables added."
 }
 
-main $argv0 $args
+main $argv0 $argv
