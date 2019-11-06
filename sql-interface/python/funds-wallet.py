@@ -1,66 +1,47 @@
 # wallets with funds.
 
+import os
 import sys
 import pyodbc
 
-def _allowed_request_sql_code(id, sql, params):
-    
-def print_genesis():
-    """Print out the genesis database schema: tables and their population with data"""
+def exit_failure(msg):
+  print (msg)
+  exit(1)
 
-    genesis = """
-CREATE TABLE wallets
-    ( pubkey_id STRING
-    , amount INTEGER
-    , CONSTRAINT [unique wallet id] UNIQUE (pubkey_id)
-    , CONSTRAINT [no overdraft] CHECK (amount >= 0)
-    );
+def arg_value(args, arg_name, env_variable, default_value):
+  """look for some named argument value in the command line arguments,
+environment variables (if env_variable is not None) and then assigning the default value.
 
-INSERT INTO wallets (pubkey_id, amount) VALUES ("root", 1000000);
+Report failure to obtain any value and exit."""
+  result_args = list()
+  arg_prefix = "--"+arg_name+"="
+  value = None
+  for x in args:
+    if value == None and x.startswith(arg_prefix):
+      value = x[len(arg_prefix):]
+    else:
+      result_args.append(x)
+  if value == None:
+    value = os.environ.get(env_variable, default_value) if env_variable != None else default_value
+  if value == None:
+    exit_vailure("unable to find value for "+arg_name+" in command line arguments and, possible, environment variables ("+env_variable+")")
+  return (result_args, value)
 
--- these two tables below are special.
+def find_driver_node_info(args):
+  """Look into command line arguments and envorinment variables for ODBC driver and consensus node(s) information"""
+  (args, node_info) = arg_value(args, "node-info", "HSCHAIN_NODE_INFO", None)
+  (args, driver_info) = arg_value(args, "driver-info", "HSCHAIN_DRIVER_INFO", None)
+  return (args, node_info, driver_info)
 
--- special table - allowed requests.
-CREATE TABLE allowed_requests
-    ( request_id STRING PRIMARY KEY -- we expect hash here, for now any string would do.
-    , request_text STRING
-    );
+def hschain_q(sql):
+  """append prefix that signals hschain query to driver"""
+  return "PRAGMA HSCHAIN QUERY;\n"+sql
 
--- special table - parameters for requests.
-CREATE TABLE allowed_requests_params
-    ( request_id STRING
-    , request_param_name STRING
-    , request_param_type STRING
-    , CONSTRAINT UNIQUE (request_id, request_param_name)
-    , CONSTRAINT FOREIGN KEY (request_id) REFERENCES allowed_requests(request_id)
-    , CONSTRAINT CHECK (request_param_type = "S" OR request_param_type = "I" OR request_param_type = "P")
-    );
-
--- registering a wallet.
-INSERT INTO allowed_requests (request_id, request_text) VALUES
- ("add_wallet", "INSERT INTO WALLETS (pubkey_id, amount) VALUES (:user_id, 0);");
-INSERT INTO allowed_requests_params (request_id, request_param_name, request_param_type) VALUES
- ("add_wallet", "user_id", "S");
-
--- moving funds between wallets.
-INSERT INTO allowed_requests (request_id, request_text) VALUES
- ("funds_transfer",
-  "UPDATE wallet
-    SET   amount = CASE
-             WHEN address = :user_id      THEN amount - :transfer_amount
-             WHEN address = :dest_user_id THEN amount - :transfer_amount
-          END
-    WHERE     (address = :user_id OR address = :dest_user_id)
-          AND :transfer_amount > 0;");
-INSERT INTO allowed_requests_params (request_id, request_param_name, request_param_type) VALUES
- ("funds_transfer", "user_id", "S");
-INSERT INTO allowed_requests_params (request_id, request_param_name, request_param_type) VALUES
- ("funds_transfer", "dest_user_id", "S");
-INSERT INTO allowed_requests_params (request_id, request_param_name, request_param_type) VALUES
- ("funds_transfer", "transfer_amount", "P");
-"""
-
-  print (genesis)
+def show_info(args, connection):
+  """show info about current state"""
+  cursor = connection.cursor()
+  cursor.execute(hschain_q(""))
+  print("synchronization is done")
 
 # main wallet function.
 def wallet_main(args):
@@ -74,7 +55,7 @@ def wallet_main(args):
   elif command == 'genesis':
     print_genesis()
   else:
-    connection = pyodbc.connect("Driver="+driver_info+";LocalDatabase=mirror.db;Node="+node_info()+";")
+    connection = pyodbc.connect("Driver="+driver_info+";LocalDatabase=mirror.db;Node="+node_info+";")
     if   command == 'info':
       show_info(args, connection)
     elif command == 'funds':
@@ -88,7 +69,7 @@ def wallet_main(args):
       exit(1)
     connection.close()
 
-if __name__ == 'main':
+if __name__ == '__main__':
   args = sys.argv[1:]
 
   if len(args) < 1:

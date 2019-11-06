@@ -3880,8 +3880,8 @@ dbtracerc(DBC *d, int rc, char *err)
 }
 
 static int
-blockchain_synchronize(DBC *d) {
-    fprintf(d->trace, "-- blockchain synchronization failed\n");
+hschain_synchronize(DBC *d) {
+    fprintf(d->trace, "-- hschain synchronization failed\n");
     fflush(d->trace);
     return 0;
 }
@@ -4067,7 +4067,7 @@ connfail:
 	fprintf(d->trace, "-- sqlite3_open: '%s'\n", d->dbname);
 	fflush(d->trace);
     }
-    if (!blockchain_synchronize(d)) {
+    if (!hschain_synchronize(d)) {
         goto connfail;
     }
 #if defined(_WIN32) || defined(_WIN64)
@@ -18365,7 +18365,7 @@ setupdyncols(STMT *s, sqlite3_stmt *s3stmt, int *ncolsp)
 }
 
 /**
- * Check whether transaction is for blockchain.
+ * Check whether transaction is for hschain.
  * If so, we change query somewhat - for real blockchain
  * connectivity we put in there a empty text. For
  * non-blockchain work we just skip the pragma.
@@ -18374,10 +18374,10 @@ setupdyncols(STMT *s, sqlite3_stmt *s3stmt, int *ncolsp)
  * @result non-zero if transaction is for blockchain.
  */
 static int
-check_blockchain_pragma(SQLCHAR **pquery, SQLINTEGER *pqueryLen)
+check_hschain_pragma(SQLCHAR **pquery, SQLINTEGER *pqueryLen)
 {
-    size_t pragma_len = 24;
-    if ((*pqueryLen >= pragma_len || SQL_NTS == *pqueryLen) && 0 == strncasecmp("PRAGMA BLOCKCHAIN QUERY;", *pquery, pragma_len)) {
+    size_t pragma_len = 21;
+    if ((*pqueryLen >= pragma_len || SQL_NTS == *pqueryLen) && 0 == strncasecmp("PRAGMA HSCHAIN QUERY;", *pquery, pragma_len)) {
         *pquery += pragma_len;
         if (*pqueryLen != SQL_NTS) {
             *pqueryLen -= pragma_len;
