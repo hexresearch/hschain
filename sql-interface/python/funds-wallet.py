@@ -55,7 +55,10 @@ def wallet_main(args):
   elif command == 'genesis':
     print_genesis()
   else:
-    connection = pyodbc.connect("Driver="+driver_info+";LocalDatabase=mirror.db;Node="+node_info+";")
+    connection_string = "Driver="+driver_info+";Database=mirror.db;tracefile=trace.log"
+    print (connection_string)
+    connection = pyodbc.connect(connection_string)
+    print("connected")
     if   command == 'info':
       show_info(args, connection)
     elif command == 'funds':

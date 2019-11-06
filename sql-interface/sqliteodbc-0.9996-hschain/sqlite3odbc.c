@@ -12569,6 +12569,8 @@ drvconnect(SQLHDBC dbc, SQLCHAR *dsn, SQLSMALLINT dsnLen, char *pwd,
     char oemcp[32];
 #endif
 
+printf("we are connecting!\n"); fflush(stdout);
+
     if (dbc == SQL_NULL_HDBC) {
 	return SQL_INVALID_HANDLE;
     }
@@ -18423,7 +18425,7 @@ noconn:
 	return sret;
     }
     freep(&s->query);
-    blockchain_transaction = check_blockchain_pragma(&query, &queryLen);
+    //blockchain_transaction = check_hschain_pragma(&query, &queryLen);
     s->query = (SQLCHAR *) fixupsql((char *) query, queryLen,
 				    (d->version >= 0x030805),
 				    &s->nparams, &s->isselect, &errp);
