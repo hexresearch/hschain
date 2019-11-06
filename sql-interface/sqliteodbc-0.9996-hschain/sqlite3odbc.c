@@ -3881,8 +3881,10 @@ dbtracerc(DBC *d, int rc, char *err)
 
 static int
 hschain_synchronize(DBC *d) {
-    fprintf(d->trace, "-- hschain synchronization failed\n");
-    fflush(d->trace);
+    if (d->trace) {
+	fprintf(d->trace, "-- hschain synchronization failed\n");
+	fflush(d->trace);
+    }
     return 0;
 }
 

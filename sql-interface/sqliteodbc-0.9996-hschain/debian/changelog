@@ -2,5 +2,5 @@ sqliteodbc (0.9996-hschain-1) unstable; urgency=low
 
   * automatically recreated by configure
 
- -- Christian Werner <chw@ch-werner.de>  Wed, 06 Nov 2019 15:12:47 +0300
+ -- Christian Werner <chw@ch-werner.de>  Wed, 06 Nov 2019 15:20:29 +0300
 
