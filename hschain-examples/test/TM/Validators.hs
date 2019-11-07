@@ -35,7 +35,7 @@ import HSChain.Crypto.SHA     (SHA512)
 -- import HSChain.Debug.Trace
 -- import HSChain.Logger
 -- import HSChain.Mock.Coin
-import HSChain.Mock.KeyList (privateKeyList)
+import HSChain.Mock.KeyList (makePrivKeyStream)
 -- import HSChain.Mock.Types
 -- import HSChain.Monitoring
 -- import HSChain.P2P.Network
@@ -103,7 +103,7 @@ tests = testGroup "validators"
 
 
 v1,v2 :: PublicKey (Ed25519 :& SHA512)
-v1:v2:_ = map publicKey privateKeyList
+v1:v2:_ = publicKey <$> makePrivKeyStream 1337
 
 
 {-
