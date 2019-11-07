@@ -154,6 +154,10 @@ typedef struct dbc {
     DWORD owner;		/**< Current owner of CS or 0 */
     int xcelqrx;
 #endif
+
+    // hschain additions.
+    int hschain_node_sockfd; /**< non-negative value means we have a connection */
+    int current_height;
     int height_increment;
     uint8_t public_key[256]; /**< just a string, BTW. May switch to binary representation someday. */
     uint8_t private_key[256];

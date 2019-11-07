@@ -26,5 +26,6 @@ We add the following parameters:
  - "publickey" - public key identifier, ASCII string, base58 encoded.
  - "privatekey" - private key, base58 encoded.
  - "consensus_nodes" - an IPv4/v6 address of a comma-separated consensus
-   node list to work with - post transaction and get updates.
+   node list (space separated pairs addr and port) to work with - post
+   transaction and get updates.
 

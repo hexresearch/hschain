@@ -22,6 +22,14 @@
 #undef  HAVE_SQLITE3CLOSEV2
 #endif
 
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netdb.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <string.h>
+
 #include "sqlite3odbc.h"
 
 #ifdef SQLITE_DYNLOAD
@@ -35,6 +43,7 @@ static void dls_fini(void);
 void dls_init(void);
 void dls_fini(void);
 #endif
+
 
 static struct dl_sqlite3_funcs {
     void (*activate_see)(const char *p0);
@@ -3879,10 +3888,81 @@ dbtracerc(DBC *d, int rc, char *err)
     }
 }
 
+
+static int
+connect_to_node(char*consensus_nodes, FILE*trace) {
+    int fd;
+    char temp[1024];
+    char*saveptr_addresses, *addresses_list = temp, *addr_pair;
+    strncpy(temp, consensus_nodes, sizeof(temp));
+    temp[sizeof(temp)-1] = 0;
+    while ( NULL != (addr_pair = strtok_r(addresses_list, ",", &saveptr_addresses))) {
+	char*addr;
+	char*port;
+	char*saveptr_pair;
+	struct addrinfo *resolved_list, *current_addr;
+	struct addrinfo hints;
+	addresses_list = NULL;
+	if (trace) {
+	    fprintf(trace, "-- hschain: about to split %s\n", addr_pair);
+	}
+	addr = strtok_r(addr_pair, " \t", &saveptr_pair);
+	if (addr == NULL) {
+	    continue;
+	}
+	port = strtok_r(NULL, " \t", &saveptr_pair);
+	if (port == NULL) {
+	    continue;
+	}
+	if (trace) {
+	    fprintf(trace, "-- hschain: getting addr info for %s, service %s\n", addr, port);
+	}
+	memset(&hints, 0, sizeof(struct addrinfo));
+	hints.ai_family = AF_UNSPEC;    /* Allow IPv4 or IPv6 */
+	hints.ai_socktype = SOCK_STREAM; /* TCP socket */
+	hints.ai_flags = 0;
+	hints.ai_protocol = 0;          /* Any protocol */
+	if (getaddrinfo(addr, port, &hints, &resolved_list) != 0) {
+	    continue;
+	}
+	if (trace) {
+	    fprintf(trace, "-- hschain: resolved, trying to connect\n");
+	}
+	for (current_addr = resolved_list; current_addr; current_addr = current_addr->ai_next) {
+	    fd = socket(current_addr->ai_family, current_addr->ai_socktype,
+			current_addr->ai_protocol);
+	    if (fd < 0) {
+		continue;
+	    }
+	    if (connect(fd, current_addr->ai_addr, current_addr->ai_addrlen) != -1) {
+		break;
+	    }
+	    close(fd);
+	    fd = -1;
+	}
+	freeaddrinfo(resolved_list);
+	if (fd >= 0) {
+	    return fd;
+	}
+    }
+    return -1;
+}
+
 static int
 hschain_synchronize(DBC *d) {
+    char* failure_reason = "unknown";
+    do {
+	if (d->hschain_node_sockfd < 0) {
+	    d->hschain_node_sockfd = connect_to_node(d->consensus_nodes, d->trace);
+	    if (d->hschain_node_sockfd < 0) {
+		failure_reason = "connect";
+		break;
+	    }
+	}
+	
+    } while(0);
     if (d->trace) {
-	fprintf(d->trace, "-- hschain synchronization failed\n");
+	fprintf(d->trace, "-- hschain synchronization failed (%s)\n", failure_reason);
 	fflush(d->trace);
     }
     return 0;
@@ -4068,9 +4148,6 @@ connfail:
     if (d->trace) {
 	fprintf(d->trace, "-- sqlite3_open: '%s'\n", d->dbname);
 	fflush(d->trace);
-    }
-    if (!hschain_synchronize(d)) {
-        goto connfail;
     }
 #if defined(_WIN32) || defined(_WIN64)
     {
@@ -12744,6 +12821,8 @@ printf("we are connecting!\n"); fflush(stdout);
     if (ret == SQL_SUCCESS) {
 	dbloadext(d, loadext);
     }
+    d->hschain_node_sockfd = -1; /**< mark as not opened */
+    d->current_local_height = -1; /**< so that server will answer us with all requests performed, including genesis*/
     return ret;
 }
 
@@ -18406,7 +18485,7 @@ drvprepare(SQLHSTMT stmt, SQLCHAR *query, SQLINTEGER queryLen)
     DBC *d;
     char *errp = NULL;
     SQLRETURN sret;
-    int blockchain_transaction;
+    int hschain_transaction;
 
     if (stmt == SQL_NULL_HSTMT) {
 	return SQL_INVALID_HANDLE;
@@ -18427,7 +18506,13 @@ noconn:
 	return sret;
     }
     freep(&s->query);
-    //blockchain_transaction = check_hschain_pragma(&query, &queryLen);
+    hschain_transaction = check_hschain_pragma(&query, &queryLen);
+    if (hschain_transaction) {
+	if (!hschain_synchronize(d)) {
+	    setstat(s, -1, "%s", "HY000", "hchain sync");
+	    return SQL_ERROR;
+	}
+    }
     s->query = (SQLCHAR *) fixupsql((char *) query, queryLen,
 				    (d->version >= 0x030805),
 				    &s->nparams, &s->isselect, &errp);
