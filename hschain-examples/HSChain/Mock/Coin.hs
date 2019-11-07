@@ -203,8 +203,7 @@ processTransaction transaction@(Send pubK sig txSend@TxSend{..}) CoinState{..} =
 
 transitions :: BChLogic (StateT CoinState Maybe) Alg BData
 transitions = BChLogic
-  { processTx     = \tx -> liftSt (process (Height 0) tx) -- FIXME
-      
+  { processTx     = liftSt . process (Height 1)
   , processBlock  = \b  ->
       let h = headerHeight $ blockHeader b
       in liftSt $ \s0 -> foldM (flip (process h)) s0 (blockTransactions $ blockData b)      
