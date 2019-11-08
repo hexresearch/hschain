@@ -96,19 +96,22 @@ runApplication
      , MonadMask m
      , MonadLogger m
      , MonadTMMonitoring m
-     , Crypto alg, BlockData a, CryptoHashable a)
+     , Crypto alg, BlockData a, CryptoHashable a, Eq a, Show a)
   => ConsensusCfg
      -- ^ Configuration
   -> Maybe (PrivValidator alg)
      -- ^ Private key of validator
+  -> Block alg a
+     -- ^ Genesis block
   -> AppLogic m alg a
      -- ^ Get initial state of the application
   -> AppCallbacks m alg a
   -> AppChans m alg a
      -- ^ Channels for communication with peers
   -> m ()
-runApplication config appValidatorKey appSt@AppLogic{..} appCall appCh@AppChans{..} = logOnException $ do
+runApplication config appValidatorKey genesis appSt@AppLogic{..} appCall appCh@AppChans{..} = logOnException $ do
   logger InfoS "Starting consensus engine" ()
+  mustQueryRW $ storeGenesis genesis
   rewindBlockchainState appSt
   height <- queryRO $ blockchainHeight
   lastCm <- queryRO $ retrieveLocalCommit height
@@ -398,7 +401,7 @@ makeHeightParameters
      , MonadIO m
      , MonadThrow m
      , MonadLogger m
-     , Crypto alg, Serialise a, CryptoHashable a)
+     , Crypto alg, BlockData a)
   => Maybe (PrivValidator alg)
   -> AppLogic            m alg a
   -> AppCallbacks        m alg a
@@ -454,6 +457,7 @@ makeHeightParameters appValidatorKey logic@AppLogic{..} AppCallbacks{appCanCreat
                -- Block is correct and validators change is correct as
                -- well
                | Just bst <- mvalSet'
+               , blockStateHash b == hashed (blockchainState bst)
                , validatorSetSize (bChValidatorSet bst) > 0
                , merkleValue (blockValChange b) == validatorsDifference valSet (bChValidatorSet bst)
                  -> do setPropValidation propStorage bid $ Just bst
@@ -496,6 +500,7 @@ makeHeightParameters appValidatorKey logic@AppLogic{..} AppCallbacks{appCanCreat
                   , blockPrevCommit     = merkled <$> commit
                   , blockEvidence       = merkled evidence
                   , blockData           = merkled bData
+                  , blockStateHash      = hashed $ blockchainState bst
                   }
             mustQueryRW $ writeBlockToWAL r block
             return (block, bst)

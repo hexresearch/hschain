@@ -157,6 +157,8 @@ data GBlock f alg a = Block
   , blockData             :: !(MerkleNode f alg a)
     -- ^ Payload of block. HSChain treats it completely opaque and
     --   rely on callback to do anything to it.
+  , blockStateHash        :: !(Hashed alg (InterpreterState a))
+    -- ^ Hash of state after evaluation of this block.
   }
   deriving stock    (Show, Generic)
   deriving anyclass (CryptoHashable)
@@ -167,6 +169,7 @@ instance (Crypto alg, JSON.ToJSON a, IsMerkle f)                     => JSON.ToJ
   -- deriving anyclass (Serialise, JSON.ToJSON, JSON.FromJSON, CryptoHashable)
 instance (NFData a, NFData1 (f alg), NFData (PublicKey alg)) => NFData (GBlock f alg a)
 deriving instance (Eq (PublicKey alg), IsMerkle f, Eq1 (f alg), Eq a) => Eq (GBlock f alg a)
+
 
 
 -- | Evidence of byzantine behaviour by some node.

@@ -27,7 +27,7 @@ import GHC.Generics (Generic)
 import qualified Data.Aeson as JSON
 
 import HSChain.Blockchain.Internal.Engine.Types
-import HSChain.Crypto         ((:&), Crypto, CryptoHashable, hashed)
+import HSChain.Crypto
 import HSChain.Crypto.Ed25519 (Ed25519)
 import HSChain.Crypto.SHA     (SHA512)
 import HSChain.Logger         (ScribeSpec)
@@ -69,9 +69,10 @@ instance DefaultConfig Example where
 makeGenesis
   :: (Crypto alg, CryptoHashable a)
   => a                          -- ^ Block data
+  -> Hashed alg (InterpreterState a)
   -> ValidatorSet alg           -- ^ Set of validators for block 1
   -> Block alg a
-makeGenesis dat valSet = Block
+makeGenesis dat stateHash valSet = Block
   { blockHeight         = Height 0
   , blockPrevBlockID    = Nothing
   , blockValidatorsHash = hashed emptyValidatorSet
@@ -79,6 +80,7 @@ makeGenesis dat valSet = Block
   , blockValChange      = merkled delta
   , blockPrevCommit     = Nothing
   , blockEvidence       = merkled []
+  , blockStateHash      = stateHash
   }
   where
     delta = validatorsDifference emptyValidatorSet valSet

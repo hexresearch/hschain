@@ -14,6 +14,7 @@ module HSChain.Mock.KeyVal (
     genesisBlock
   , interpretSpec
   , executeSpec
+  , process
   , BData(..)
   , Tx
   , BState
@@ -73,7 +74,7 @@ instance BlockData BData where
 
 genesisBlock :: ValidatorSet Alg -> Block Alg BData
 genesisBlock valSet
-  = makeGenesis (BData []) valSet
+  = makeGenesis (BData []) (hashed mempty) valSet
 
 process :: Tx -> BState -> Maybe BState
 process (k,v) m
@@ -92,10 +93,11 @@ interpretSpec
      , Has x BlockchainNet
      , Has x NodeSpec
      , Has x (Configuration Example))
-  => x
+  => Block Alg BData
+  -> x
   -> AppCallbacks m Alg BData
   -> m (RunningNode m Alg BData, [m ()])
-interpretSpec p cb = do
+interpretSpec genesis p cb = do
   conn  <- askConnectionRO
   store <- newSTMBchStorage mempty
   --
@@ -114,6 +116,7 @@ interpretSpec p cb = do
         }
   acts <- runNode (getT p :: Configuration Example) NodeDescription
     { nodeValidationKey = p ^.. nspecPrivKey
+    , nodeGenesis       = genesis
     , nodeCallbacks     = cb
     , nodeLogic         = logic
     , nodeNetwork       = getT p
@@ -134,14 +137,14 @@ executeSpec
 executeSpec NetSpec{..} = do
   -- Create mock network and allocate DB handles for nodes
   net       <- liftIO P2P.newMockNet
-  resources <- traverse (\x -> do { r <- allocNode genesis x; return (x,r) })
+  resources <- traverse (\x -> do { r <- allocNode x; return (x,r) })
              $ allocateMockNetAddrs net netTopology
              $ netNodeList
   -- Start nodes
   rnodes    <- lift $ forM resources $ \(x, (conn, logenv)) -> do
     let run :: DBT 'RW Alg BData (LoggerT m) x -> m x
         run = runLoggerT logenv . runDBT conn
-    (rn, acts) <- run $ interpretSpec (netNetCfg :*: x)
+    (rn, acts) <- run $ interpretSpec genesis (netNetCfg :*: x)
       (maybe mempty callbackAbortAtH netMaxH)
     return ( hoistRunningNode run rn
            , run <$> acts

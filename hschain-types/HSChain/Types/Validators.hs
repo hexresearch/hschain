@@ -49,7 +49,6 @@ import Data.IntSet  (IntSet)
 import Data.List    (sortBy)
 import Data.Map     (Map)
 import Data.Ord     (comparing)
-import Data.Word
 import GHC.Generics (Generic, Generic1)
 
 import qualified Codec.Serialise       as CBOR

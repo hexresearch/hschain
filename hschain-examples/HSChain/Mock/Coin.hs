@@ -48,6 +48,7 @@ import Control.DeepSeq
 import Codec.Serialise      (Serialise,serialise)
 import qualified Data.Aeson as JSON
 import Data.ByteString.Lazy (toStrict)
+import Data.Functor.Identity
 import Data.Foldable
 import Data.Maybe
 import Data.Map             (Map,(!))
@@ -201,7 +202,7 @@ processTransaction transaction@(Send pubK sig txSend@TxSend{..}) CoinState{..} =
 
 transitions :: BChLogic (StateT CoinState Maybe) Alg BData
 transitions = BChLogic
-  { processTx     = \tx -> liftSt (process (Height 0) tx) -- FIXME
+  { processTx     = liftSt . process (Height 1)
   , processBlock  = \b  ->
       let h = blockHeight b
       in liftSt $ \s0 -> foldM (flip (process h)) s0 (blockTransactions $ merkleValue $ blockData b)
@@ -296,14 +297,18 @@ mintMockCoin nodes CoinSpecification{..} =
          , genDelay          = delay
          , genMaxMempoolSize = coinMaxMempoolSize
          }
-  , makeGenesis (BData txs) valSet
+  , genesis0 { blockStateHash = hashed $ blockchainState st }
   )
   where
     privK        = take coinWallets $ makePrivKeyStream coinWalletsSeed
     pubK         = publicKey <$> privK
     Right valSet = makeValidatorSet nodes
     txs          = [ Deposit pk coinAridrop | pk <- pubK ]
-
+    -- Generate genesis with correct hash
+    genesis0     = makeGenesis (BData txs) (Hashed $ hash ()) valSet
+    Just ((),st) = runIdentity
+                 $ interpretBCh runner (BlockchainState (initialState transitions) valSet)
+                 $ processBlock transitions genesis0
 
 findInputs :: (Num i, Ord i) => i -> [(a,i)] -> [(a,i)]
 findInputs tgt = go 0
@@ -332,15 +337,17 @@ interpretSpec
      , Has x BlockchainNet
      , Has x NodeSpec
      , Has x (Configuration Example))
-  => x
+  => Block Alg BData
+  -> x
   -> AppCallbacks m Alg BData
   -> m (RunningNode m Alg BData, [m ()])
-interpretSpec p cb = do
+interpretSpec genesis p cb = do
   conn  <- askConnectionRO
   store <- newSTMBchStorage $ initialState transitions
   logic <- makeAppLogic store transitions runner  
   acts <- runNode (getT p :: Configuration Example) NodeDescription
     { nodeValidationKey = p ^.. nspecPrivKey
+    , nodeGenesis       = genesis
     , nodeCallbacks     = cb <> nonemptyMempoolCallback (appMempool logic)
     , nodeLogic         = logic
     , nodeNetwork       = getT p
@@ -361,14 +368,14 @@ executeNodeSpec
 executeNodeSpec (NetSpec{..} :*: coin@CoinSpecification{..}) = do
   -- Create mock network and allocate DB handles for nodes
   net       <- liftIO P2P.newMockNet
-  resources <- traverse (\x -> do { r <- allocNode genesis x; return (x,r)})
+  resources <- traverse (\x -> do { r <- allocNode x; return (x,r)})
              $ allocateMockNetAddrs net netTopology
              $ netNodeList
   -- Start nodes
   rnodes    <- lift $ forM resources $ \(x, (conn, logenv)) -> do
     let run :: DBT 'RW Alg BData (LoggerT m) x -> m x
         run = runLoggerT logenv . runDBT conn
-    (rn, acts) <- run $ interpretSpec (netNetCfg :*: x)
+    (rn, acts) <- run $ interpretSpec genesis (netNetCfg :*: x)
       (maybe mempty callbackAbortAtH netMaxH)
     return ( hoistRunningNode run rn
            , run <$> acts

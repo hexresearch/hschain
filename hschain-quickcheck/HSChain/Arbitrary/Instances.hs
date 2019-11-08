@@ -143,6 +143,7 @@ instance ( Crypto alg
                     <*> arbitrary
                     <*> resize 4 arbitrary
                     <*> arbitrary
+                    <*> arbitrary
   shrink = genericShrink
 
 instance (CryptoSign alg, CryptoHash alg) => Arbitrary (ByzantineEvidence alg a) where
