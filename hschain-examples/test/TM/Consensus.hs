@@ -7,6 +7,7 @@
 {-# LANGUAGE RankNTypes          #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE ViewPatterns        #-}
 -- | Tests for consensus
 --
 module TM.Consensus (tests) where
@@ -527,11 +528,18 @@ mkAppLogic = do
     , appValidationFun  = \_   -> return . Just
     , appMempool        = nullMempool
     , appBchState       = store
-    , appProposerChoice = \vs (Height h) (Round r) ->
-        let n = validatorSetSize vs
-        in ValidatorIdx $! fromIntegral $ (h + r) `mod` fromIntegral n
+    , appProposerChoice = proposerChoice
     }
 
+proposerChoice :: ValidatorSet alg -> Height -> Round -> ValidatorIdx alg
+proposerChoice (validatorSetSize -> n) (Height h) (Round r)
+  = ValidatorIdx $! fromIntegral $ (h + r) `mod` fromIntegral n
+
+proposerKey :: Height -> Round -> PrivKey TestAlg
+proposerKey h r = head [ k | k <- privK
+                           , publicKey k == validatorPubKey v ]
+  where
+    Just v = validatorByIndex valSet $ proposerChoice valSet h r
 
 ----------------------------------------------------------------
 -- High level API for interacting with consensus engine
