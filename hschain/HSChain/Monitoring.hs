@@ -21,6 +21,9 @@ module HSChain.Monitoring (
 import Control.Monad
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
+import Control.Monad.Trans.Reader
+import qualified Control.Monad.Trans.State.Strict as SS
+import qualified Control.Monad.Trans.State.Lazy   as SL
 import Data.Monoid ((<>))
 import Data.Text                  (Text)
 import Numeric.Natural
@@ -160,3 +163,6 @@ instance MonadTMMonitoring m => MonadTMMonitoring (NoLogsT m)
 instance MonadTMMonitoring m => MonadTMMonitoring (TracerT m)
 instance MonadTMMonitoring m => MonadTMMonitoring (DBT rm alg a m)
 instance MonadTMMonitoring m => MonadTMMonitoring (Proxy a b c d m)
+instance MonadTMMonitoring m => MonadTMMonitoring (ReaderT   r m)
+instance MonadTMMonitoring m => MonadTMMonitoring (SS.StateT s m)
+instance MonadTMMonitoring m => MonadTMMonitoring (SL.StateT s m)
