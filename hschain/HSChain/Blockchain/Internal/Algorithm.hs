@@ -482,7 +482,6 @@ enterPrevote par@HeightParameters{..} r (unlockOnPrevote -> sm@TMState{..}) reas
                   | lockR < propRound
                   , bid == Just propBlockID -> checkPrevoteBlock propBlockID
                   | otherwise               -> do
-                      --  FIXME: Byzantine!
                       logger WarningS "BYZANTINE proposal POL BID does not match votes" ()
                       return Nothing
                 Nothing -> return Nothing
