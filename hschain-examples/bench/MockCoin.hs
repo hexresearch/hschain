@@ -41,6 +41,7 @@ benchmarks
                           , headerValChangeHash  = Hashed (Hash "")
                           , headerLastCommitHash = Hashed (Hash "")
                           , headerEvidenceHash   = Hashed (Hash "")
+                          , headerStateHash      = Hashed (Hash "")
                           }
                         , blockValChange  = mempty
                         , blockLastCommit = Nothing
