@@ -120,8 +120,6 @@ runApplication config appValidatorKey genesis appSt@AppLogic{..} appCall appCh@A
 -- This function uses consensus algorithm to decide which block we're
 -- going to commit at current height, then stores it in database and
 -- returns commit.
---
--- FIXME: we should write block and last commit in transaction!
 decideNewBlock
   :: ( MonadDB m alg a
      , MonadIO m
@@ -139,8 +137,6 @@ decideNewBlock
 decideNewBlock config appValidatorKey appLogic@AppLogic{..} appCall@AppCallbacks{..} appCh@AppChans{..} lastCommt = do
   -- Enter NEW HEIGHT and create initial state for consensus state
   -- machine
-  --
-  -- FIXME: we don't want duplication! (But pipes & producer does not unify)
   hParam  <- makeHeightParameters appValidatorKey appLogic appCall appPropStorage
   resetPropStorage appPropStorage $ currentH hParam
   -- Run consensus engine
