@@ -414,8 +414,6 @@ makeHeightParameters appValidatorKey logic@AppLogic{..} AppCallbacks{appCanCreat
     { validatorSet     = valSet
     , oldValidatorSet  = oldValSet
     , validatorKey     = liftA2 (,) appValidatorKey ourIndex
-      -- FIXME: this is some random algorithms that should probably
-      --        work (for some definition of work)
     , proposerForRound = appProposerChoice valSet currentH
     --
     , readyCreateBlock = \n ->
