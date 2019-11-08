@@ -150,10 +150,8 @@ initDatabase
   => Connection 'RW alg a  -- ^ Opened connection to database
   -> m ()
 initDatabase c = do
-  -- 2. Create tables for block
   r <- runQueryRW c initializeBlockhainTables
   case r of
-    -- FIXME: Resource leak!
     Nothing -> error "Cannot initialize tables!"
     Just () -> return ()
 
