@@ -321,9 +321,6 @@ tendermintTransition par@HeightParameters{..} msg sm@TMState{..} =
         GT -> error $ "Timeout from future: " ++ show (t,t0)
         -- Update state accordingly. We unconditionally enter next step of
         -- round or next round.
-        --
-        -- FIXME: specification is unclear about this point but go
-        --        implementation advances unconditionally
         EQ -> case smStep of
           StepNewHeight n   -> canCreate par sm n >>= \case
             True  -> enterPropose par smRound sm Reason'Timeout
