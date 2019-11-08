@@ -431,8 +431,6 @@ enterPropose HeightParameters{..} r sm@TMState{..} reason = do
   -- If we're proposers we need to broadcast proposal. Otherwise we do
   -- nothing
   when areWeProposers $ case smLockedBlock of
-    -- FIXME: take care of POL fields of proposal
-    --
     -- If we're locked on block we MUST propose it
     Just (br,bid) -> do logger InfoS "Making POL proposal" $ LogProposal currentH smRound bid
                         lift $ yield $ EngCastPropose r bid (Just br)
