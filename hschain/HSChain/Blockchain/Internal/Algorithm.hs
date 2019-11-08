@@ -272,7 +272,7 @@ tendermintTransition par@HeightParameters{..} msg sm@TMState{..} =
       -- We have proposal already
       --
       -- FIXME: should we track double proposals? Tendermint
-      --        implementation have same question
+      --        implementation have same question (#313)
       | Just _ <- Map.lookup propRound smProposals
         -> tranquility
       -- Node sending message out of order is clearly byzantine
