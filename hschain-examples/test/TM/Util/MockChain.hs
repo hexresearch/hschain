@@ -2,6 +2,7 @@
 -- Data for mock blockchain used in tests for consensus and gossip
 module TM.Util.MockChain where
 
+import           Data.List (sortOn)
 import qualified Data.List.NonEmpty as NE
 
 import HSChain.Crypto
@@ -18,7 +19,7 @@ import TM.Util.Network
 
 privK       :: [PrivKey TestAlg]
 k1,k2,k3,k4 :: PrivKey TestAlg
-privK@[k1,k2,k3,k4] = take 4 $ makePrivKeyStream 1337
+privK@[k1,k2,k3,k4] = sortOn publicKey $ take 4 $ makePrivKeyStream 1337
 
 valSet :: ValidatorSet TestAlg
 Right valSet = makeValidatorSet [Validator (publicKey k) 1 | k <- privK]
