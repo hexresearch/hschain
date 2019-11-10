@@ -83,3 +83,16 @@ Build with Nix
 TBD - it is not clear we need that yet. Nixos forces everything into its environment
 and that might be a not a good thing.
 
+
+Troubleshooting
+---------
+
+You can put traces into, say, "tracefile.log" if you open connection with
+additional parameter "tracefile=tracefile.log".
+
+This way you can look into events happened and one particular string
+you should look for is "-- hschain synchronization failed (reason here)".
+
+The reasons are:
+
+  * "connect" - unable to connect to specified node ("consensus_nodes" parameter).

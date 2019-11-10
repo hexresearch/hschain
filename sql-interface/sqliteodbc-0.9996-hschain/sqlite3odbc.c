@@ -3948,8 +3948,24 @@ connect_to_node(char*consensus_nodes, FILE*trace) {
     return -1;
 }
 
+static void
+hschain_read_height(DBC* d) {
+    int rc;
+    sqlite3_stmt* stmt;
+    d->current_height = -1;
+    rc = sqlite3_prepare_v2(d->sqlite, "SELECT height FROM height;", -1, &stmt, 0);
+    if (rc != SQLITE_OK) {
+	return;
+    }
+    rc = sqlite3_step(stmt);
+    if (rc == SQLITE_ROW) {
+	d->current_height = sqlite3_column_int64(stmt, 0);
+    }
+    sqlite3_finalize(stmt);
+}
+
 static int
-hschain_synchronize(DBC *d) {
+hschain_synchronize(DBC* d) {
     char* failure_reason = "unknown";
     do {
 	if (d->hschain_node_sockfd < 0) {
@@ -3959,7 +3975,11 @@ hschain_synchronize(DBC *d) {
 		break;
 	    }
 	}
-	
+	hschain_read_height(d);
+	if (!hschain_obtain_difference(d)) {
+	    failure_reason = "sending sync request, parsing result or DB error";
+	    break;
+	}
     } while(0);
     if (d->trace) {
 	fprintf(d->trace, "-- hschain synchronization failed (%s)\n", failure_reason);
@@ -12822,7 +12842,7 @@ printf("we are connecting!\n"); fflush(stdout);
 	dbloadext(d, loadext);
     }
     d->hschain_node_sockfd = -1; /**< mark as not opened */
-    d->current_local_height = -1; /**< so that server will answer us with all requests performed, including genesis*/
+    d->current_height = -1; /**< so that server will answer us with all requests performed, including genesis */
     return ret;
 }
 
