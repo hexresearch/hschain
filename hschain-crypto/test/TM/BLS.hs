@@ -1,18 +1,21 @@
+{-# LANGUAGE CPP                 #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 module TM.BLS (tests) where
 
-
-import qualified Crypto.Bls as RawBls
 import HSChain.Crypto
-import HSChain.Crypto.BLS
-
 import Test.Tasty
 import Test.Tasty.HUnit
+
+#if USE_BLS
+import qualified Crypto.Bls as RawBls
+import HSChain.Crypto.BLS
+#endif
 
 
 tests :: TestTree
 tests = testGroup "BLS"
+#if USE_BLS
     [ testCase "sizes" $ do
         (publicKeySize (undefined :: PublicKey BLS)) @?= RawBls.publicKeySize
         (privKeySize   (undefined :: PrivKey   BLS)) @?= RawBls.privateKeySize
@@ -126,3 +129,6 @@ tests = testGroup "BLS"
             aggSn = aggregateSignatures [sig1, sig2, incorrectSig4]
         (not $ verifyBlobSignature aggPk msg aggSn) @? "Verify must not be passed"
     ]
+#else
+    []
+#endif
