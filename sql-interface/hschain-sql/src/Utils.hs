@@ -44,7 +44,8 @@ normalizeStatementString cs = reduceSpaces $ onlySpaces cs
     reduceSpaces cs = cs
 
 commandAction :: Command -> SQLGenMonad ()
-commandAction (MandatorySystemTables userTables) =
+commandAction (MandatorySystemTables userTables initialRequests) = do
+  addStatements userTables
   addStatements
     [ "-- special table - current height. keep it single-valued."
     , "CREATE TABLE height (height INTEGER);"
@@ -65,6 +66,7 @@ commandAction (MandatorySystemTables userTables) =
     , "    , CONSTRAINT correct_type CHECK (request_param_type = \"S\" OR request_param_type = \"I\" OR request_param_type = \"P\")"
     , "    );"
     ]
+    addStatements userRequests
 commandAction (AddRequestCode req id params) = do
   let sqlId = sqlStr id
       sqlReq = sqlStr $ normalizeStatementString req
@@ -87,6 +89,7 @@ commandAction (AddRequestCode req id params) = do
             , "    ("++sqlId++", "++show ptypeStr++", "++show pname++");"
             ]
     ]
+{-
 commandAction (WalletDemoTables serverSide) = do
   commandAction $ MandatorySystemTables $
     [ "-- funds available"
@@ -156,6 +159,7 @@ commandAction (WalletDemoTables serverSide) = do
               "(order, request_sql) VALUES ("++sqlStr req++", "++show order++");"
           | (req, order) <- zip printedBack [0..]
           ]
+-}
 
 main :: IO ()
 main = do
@@ -164,15 +168,13 @@ main = do
 
 data PType = IntParam | StringParam | PositiveParam
 data Command =
-    MandatorySystemTables [String]
+    MandatorySystemTables [String] [String]
   | AddRequestCode String String [(PType, String)]
-  | WalletDemoTables { serverTables :: Bool }
 
 parseCommand :: Parser Command
 parseCommand = subparser
-  $  command "mandatory-system-tables" (info (MandatorySystemTables <$> many sqlOption) idm)
+  $  command "mandatory-system-tables" (info (MandatorySystemTables <$> many (sqlOption "table") <*> many (sqlOption "request")) idm)
   <> command "add-request-code" (info (AddRequestCode <$> requestText <*> requestId <*> some typedParam) idm)
-  <> command "wallet-demo-tables" (info (WalletDemoTables <$> serverFlag) idm)
   where
     requestText = strOption (long "request")
     requestId = strOption (long "id")
@@ -182,6 +184,6 @@ parseCommand = subparser
           ((,) IntParam <$> strOption (long "int"))
       <|> ((,) StringParam <$> strOption (long "string"))
       <|> ((,) PositiveParam <$> strOption (long "positive"))
-    sqlOption = option (eitherReader tryToParseSQL) (long "sql")
+    sqlOption opt = option (eitherReader tryToParseSQL) (long opt)
     tryToParseSQL s = either (Left . show) (Right . const s) $
                         parseStatement sqlDialect "" Nothing s

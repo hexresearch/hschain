@@ -1,4 +1,42 @@
 #!/bin/bash
 
+set -euo pipefail
+IFS=$'\n\t'
+
+walletDemoTableName=funds
+
+create_populate_funds="-- funds available\
+CREATE TABLE $walletDemoTableName \
+  ( wallet_id STRING PRIMARY KEY \
+  , amount    INTEGER \
+  , CONSTRAINT no_overdraft CHECK (amount >= 0) \
+  ); \
+INSERT INTO $walletDemoTableName \
+        , "(wallet_id, amount) \
+        , "VALUES (\"u1\", 1000000); \
+INSERT INTO $walletDemoTableName \
+        , "(wallet_id, amount) \
+        , "VALUES (\"u2\", 1000000); \
+INSERT INTO $walletDemoTableName \
+        , "(wallet_id, amount) \
+        , "VALUES (\"u3\", 1000000); \
+INSERT INTO $walletDemoTableName \
+        , "(wallet_id, amount) \
+        , "VALUES (\"u4\", 1000000); \
+"
+
+request="\
+UPDATE $walletDemoTableName \
+SET amount = CASE \
+WHEN wallet_id = :user_id      THEN amount - :transfer_amount \
+WHEN address = :dest_user_id THEN amount - :transfer_amount \
+END \
+WHERE     (address = :user_id OR address = :dest_user_id) \
+AND :transfer_amount > 0;"
+params= $(cabal new-exec -- hschain-sql-utils add-request-code  req "transfer"
+      [ (PositiveParam, "transfer_amount")
+      , (StringParam,   "user_id")
+      ]
+
 tclsh mock-consensus-node.tcl 22222                            \
-        "cabal new-exec -- hschain-sql-utils wallet-demo-tables"
+        "cabal new-exec -- hschain-sql-utils mandatory-system-tables --sql "$request" $params"
