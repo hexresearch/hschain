@@ -8,76 +8,58 @@
 -- |
 -- Helper function for running mock network of HSChain nodes
 module HSChain.Run (
-    DBT(..)
-  , dbtRO
-  , runDBT
-    -- * Validators
-  , makeValidatorSetFromPriv
-    -- * Network connectivity
-  , connectAll2All
-  , connectRing
     -- * New node code
-  , Abort(..)
-  , Topology(..)
+    runNode
   , makeAppLogic
   , NodeDescription(..)
   , BlockchainNet(..)
-  , runNode
+    -- ** Configuration and timeouts
+  , DefaultConfig(..)
+  , Configuration(..)
+  , ConsensusCfg(..)
+  , NetworkCfg(..)
     -- * Standard callbacks
-  , callbackAbortAtH
   , nonemptyMempoolCallback
   , mempoolFilterCallback
-    -- * Running nodes
-  , defCfg
-    -- * Running mock network
-  , allocNode
-  , allocateMockNetAddrs
   ) where
 
-import Codec.Serialise
 import Control.Monad
 import Control.Monad.IO.Class
 import Control.Monad.Catch
-import Control.Monad.Trans.Cont
 import Control.Concurrent.STM         (atomically)
 import Control.Concurrent.STM.TBQueue (lengthTBQueue)
-import Data.Maybe      (isJust,fromMaybe,fromJust)
-import qualified Data.Map.Strict as Map
-import Katip           (LogEnv)
-import System.Directory (createDirectoryIfMissing)
-import System.FilePath  (takeDirectory)
+import Data.Maybe                     (isJust,fromJust)
 
 import HSChain.Blockchain.Internal.Engine
-import HSChain.Blockchain.Interpretation
 import HSChain.Blockchain.Internal.Engine.Types
-import HSChain.Types
-import HSChain.Crypto
+import HSChain.Blockchain.Interpretation
 import HSChain.Control
+import HSChain.Crypto
 import HSChain.Debug.Trace
 import HSChain.Exceptions
 import HSChain.Logger
-import HSChain.Mock.KeyList
-import HSChain.Mock.Types
+import HSChain.Monitoring
 import HSChain.P2P
 import HSChain.P2P.Network
 import HSChain.Store
 import HSChain.Store.STM
-import HSChain.Monitoring
+import HSChain.Types
 import HSChain.Utils
-import qualified HSChain.P2P.Network as P2P
 
 
 ----------------------------------------------------------------
 --
 ----------------------------------------------------------------
 
+-- | Create 'AppLogic' which should be then passed to 'runNode' from
+--   description of blockchain logic and storage of blockchain state.
 makeAppLogic
   :: ( MonadDB m alg a, MonadMask m, MonadIO m
      , BlockData a, Show (TX a), Ord (TX a), Crypto alg
      )
-  => BChStore m a
-  -> BChLogic    q   alg a
-  -> Interpreter q m alg a
+  => BChStore m a               -- ^ Storage for blockchain state
+  -> BChLogic    q   alg a      -- ^ Blockchain logic
+  -> Interpreter q m alg a      -- ^ Runner for logic
   -> m (AppLogic m alg a)
 makeAppLogic store BChLogic{..} Interpreter{..} = do
   -- Create mempool
@@ -107,6 +89,8 @@ makeAppLogic store BChLogic{..} Interpreter{..} = do
 data NodeDescription m alg a = NodeDescription
   { nodeValidationKey :: !(Maybe (PrivValidator alg))
     -- ^ Private key of validator.
+  , nodeGenesis       :: !(Block alg a)
+    -- ^ Genesis block of node
   , nodeLogic         :: !(AppLogic m alg a)
     -- ^ Callbacks for validation of block, transaction and generation
     --   of new block.
@@ -124,13 +108,16 @@ data BlockchainNet = BlockchainNet
   }
 
 
--- | Create list of threads which should be executed in parallel.
+-- | Start node. Function returns list of monadic actions which then
+--   should be run concurrently, for example with
+--   'runConcurrently'. List of actions is returned in case when we
+--   need to run something else along them.
 runNode
   :: ( MonadDB m alg a, MonadMask m, MonadFork m, MonadLogger m, MonadTrace m, MonadTMMonitoring m
-     , Crypto alg, BlockData a
+     , Crypto alg, BlockData a, Eq a, Show a
      )
-  => Configuration app
-  -> NodeDescription m alg a
+  => Configuration app          -- ^ Timeouts for network and consensus
+  -> NodeDescription m alg a    -- ^ Description of node.
   -> m [m ()]
 runNode cfg NodeDescription{..} = do
   let AppLogic{..}      = nodeLogic
@@ -142,7 +129,7 @@ runNode cfg NodeDescription{..} = do
     [ id $ descendNamespace "net"
          $ startPeerDispatcher (cfgNetwork cfg) bchNetwork bchInitialPeers appCh appMempool
     , id $ descendNamespace "consensus"
-         $ runApplication (cfgConsensus cfg) nodeValidationKey nodeLogic appCall appCh
+         $ runApplication (cfgConsensus cfg) nodeValidationKey nodeGenesis nodeLogic appCall appCh
     , forever $ do
         MempoolInfo{..} <- mempoolStats appMempool
         usingGauge prometheusMempoolSize      mempool'size
@@ -159,14 +146,6 @@ runNode cfg NodeDescription{..} = do
 ----------------------------------------------------------------
 -- Callbacks
 ----------------------------------------------------------------
-
--- | Callback which aborts execution when blockchain exceed given
---   height. It's done by throwing 'Abort'.
-callbackAbortAtH :: MonadThrow m => Height -> AppCallbacks m alg a
-callbackAbortAtH hMax = mempty
-  { appCommitCallback = \b ->
-      when (headerHeight (blockHeader b) > hMax) $ throwM Abort
-  }
 
 -- | Callback which removes from mempool all transactions which are
 --   not longer valid.
@@ -187,42 +166,3 @@ nonemptyMempoolCallback mempool = mempty
       n <- mempoolSize mempool
       return $! Just $! n > 0
   }
-
-
-----------------------------------------------------------------
--- Mock network utils
-----------------------------------------------------------------
-
--- | Allocate mock P2P connections for node
-allocateMockNetAddrs
-  :: P2P.MockNet                -- ^ Mock network
-  -> Topology                   -- ^ Nodes connection Interconnection
-  -> [a]                        -- ^ List of nodes
-  -> [BlockchainNet :*: a]
-allocateMockNetAddrs net topo nodes =
-  [ BlockchainNet { bchNetwork      = P2P.createMockNode net addr
-                  , bchInitialPeers = connections addresses addr
-                  } :*: n
-  | (addr, n) <- Map.toList addresses
-  ]
-  where
-    addresses   = Map.fromList $ [ NetAddrV4 i 1337 | i <- [0..]] `zip` nodes
-    connections = case topo of
-        Ring    -> connectRing
-        All2All -> connectAll2All
-
-
--- | Allocate resources for node
-allocNode
-  :: ( MonadIO m, MonadMask m
-     , Crypto alg, Serialise a, Eq a, Show a, Has x NodeSpec)
-  => Block alg a                -- ^ Genesis block
-  -> x                          -- ^ Node parameters
-  -> ContT r m (Connection 'RW alg a, LogEnv)
-allocNode genesis x = do
-  liftIO $ createDirectoryIfMissing True $ takeDirectory dbname
-  conn   <- ContT $ withDatabase dbname genesis
-  logenv <- ContT $ withLogEnv "TM" "DEV" [ makeScribe s | s <- x ^.. nspecLogFile ]
-  return (conn,logenv)
-  where
-    dbname = fromMaybe "" $ x ^.. nspecDbName

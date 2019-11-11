@@ -39,6 +39,7 @@ import HSChain.Run
 import HSChain.Control
 import HSChain.Store
 import HSChain.Monitoring
+import HSChain.Mock
 import HSChain.Crypto         (PublicKey)
 import HSChain.P2P            (generatePeerId)
 import HSChain.P2P.Network    (newNetworkTcp)
@@ -106,12 +107,12 @@ main = do
                                  , bchInitialPeers = nodeSeeds
                                  }
     --- Allocate resources
-    (conn, logenv) <- allocNode genesis nspec
+    (conn, logenv) <- allocNode nspec
     gauges         <- standardMonitoring
     let run = runMonitorT gauges . runLoggerT logenv . runDBT conn
     -- Actually run node
     lift $ run $ do
-      (RunningNode{..},acts) <- interpretSpec
+      (RunningNode{..},acts) <- interpretSpec genesis
         (nspec :*: cfg :*: bnet)
         (maybe mempty callbackAbortAtH (optMaxH <|> nodeMaxH))
       txGen <- case mtxGen of

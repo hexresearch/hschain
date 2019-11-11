@@ -98,6 +98,7 @@ data EngineMessage alg a
   | EngCastPropose   !Round !(BlockID alg a) !(Maybe Round)
   | EngCastPreVote   !Round !(Maybe (BlockID alg a))
   | EngCastPreCommit !Round !(Maybe (BlockID alg a))
+  | EngMisdeed       !(ByzantineEvidence alg a)
   | EngAnnPreVote   !(Signed 'Verified alg (Vote 'PreVote   alg a))
   | EngAnnPreCommit !(Signed 'Verified alg (Vote 'PreCommit alg a))
   | EngAnnStep      !FullStep

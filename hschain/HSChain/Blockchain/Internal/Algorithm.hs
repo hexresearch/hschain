@@ -176,7 +176,7 @@ newtype ConsensusM alg a m b = ConsensusM
 data ConsensusResult alg a b
   = Success !b
   | Tranquility
-  | Misdeed   [ByzantineEvidence alg a]
+  | Misdeed
   | DoCommit  !(Commit alg a) !(TMState alg a)
   deriving (Show,Functor)
 
@@ -189,7 +189,7 @@ instance Monad m => Monad (ConsensusM alg a m) where
   ConsensusM m >>= f = ConsensusM $ m >>= \case
     Success a     -> runConsesusM (f a)
     Tranquility   -> return Tranquility
-    Misdeed  e    -> return $ Misdeed e
+    Misdeed       -> return Misdeed
     DoCommit cm r -> return $ DoCommit cm r
 
 instance MonadIO m => MonadIO (ConsensusM alg a m) where
@@ -223,8 +223,10 @@ tranquility :: Monad m => ConsensusM alg a m x
 tranquility = ConsensusM $ return Tranquility
 
 -- | We detected clearly malicious behavior.
-misdeed :: Monad m => [ByzantineEvidence alg a] -> ConsensusM alg a m x
-misdeed = ConsensusM . return . Misdeed
+misdeed :: Monad m => [ByzantineEvidence alg a] -> CNS x alg a m y
+misdeed es = do
+  lift $ mapM_ (yield . EngMisdeed) es
+  ConsensusM $ return Misdeed
 
 
 -- | Enter new height and create new state for state machine
@@ -567,7 +569,7 @@ addPrevote HeightParameters{..} v@(signedValue -> Vote{..}) sm@TMState{..} = do
     InsertConflict u -> misdeed
                       [ ConflictingPreVote (unverifySignature v) (unverifySignature u)]
     -- NOTE: Couldn't happen since we reject votes signed by unknown keys
-    InsertUnknown  _ -> error "addPrevote: Internal error"
+    InsertUnknown    -> error "addPrevote: Internal error"
 
 addPrecommit
   :: (Monad m)
@@ -583,4 +585,4 @@ addPrecommit HeightParameters{..} v@(signedValue -> Vote{..}) sm@TMState{..} = d
     InsertConflict u -> misdeed
                       [ ConflictingPreCommit (unverifySignature v) (unverifySignature u)]
     -- NOTE: See addPrevote
-    InsertUnknown  _ -> error "addPrecommit: Internal error"
+    InsertUnknown    -> error "addPrecommit: Internal error"

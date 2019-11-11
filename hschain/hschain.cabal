@@ -79,10 +79,6 @@ Library
                   HSChain.Logger.Class
                   HSChain.Monitoring
                   HSChain.Run
-                  HSChain.Mock.Coin
-                  HSChain.Mock.KeyList
-                  HSChain.Mock.KeyVal
-                  HSChain.Mock.Types
                   HSChain.P2P
                   HSChain.P2P.Network
                   HSChain.P2P.PeerState.Timer
@@ -100,8 +96,8 @@ Library
                   HSChain.Store
                   HSChain.Store.STM
                   HSChain.Store.Internal.BlockDB
-                  HSChain.Store.Internal.Types
                   HSChain.Store.Internal.Query
+                  HSChain.Store.Internal.Proposals
                   HSChain.Utils
   Other-modules:
                   HSChain.P2P.Network.Parameters
@@ -114,129 +110,3 @@ Library
                   HSChain.P2P.Internal.PeerRegistry
                   HSChain.P2P.Internal.Types
                   HSChain.P2P.Internal.Logging
-
-Executable hschain-coin-node
-  Ghc-options:         -Wall -threaded -Wno-orphans -rtsopts "-with-rtsopts=-N -T -c -qn1"
-  Default-Language:    Haskell2010
-  Build-Depends:       base                 >=4.9 && <5
-                     , hschain
-                     , hschain-types
-                     , hschain-crypto
-                     , aeson
-                     , bytestring           >=0.10
-                     , data-default-class
-                     , exceptions
-                     , filepath
-                     , katip                ==0.7.0.0
-                     , network              >=2.6.0.0
-                     , network-simple       >=0.4.2
-                     , optparse-applicative >=0.14
-                     , prometheus-client
-                     , prometheus-metrics-ghc
-                     , transformers
-                     , wai-middleware-prometheus
-                     , warp
-                     , yaml
-                     , text
-                     , filepath
-                     , directory
-  hs-source-dirs:      exe
-  Main-is:             coin-node.hs
-
-Executable hschain-db
-  Ghc-options:         -Wall -threaded -Wno-orphans
-  Default-Language:    Haskell2010
-  Build-Depends:       base                 >=4.9 && <5
-                     , hschain
-                     , hschain-types
-                     , hschain-crypto
-                     , aeson
-                     , cborg                >=0.2
-                     , bytestring           >=0.10
-                     , containers           >=0.5.7
-                     , directory
-                     , filepath
-                     , optparse-applicative >=0.14
-                     , serialise
-                     , stm
-                     , text
-  hs-source-dirs:      exe
-  Main-is:             db-dump.hs
-
-
--- Test suite
-Test-suite hschain-tests
-  Type:                exitcode-stdio-1.0
-  Ghc-options:         -Wall -threaded -rtsopts "-with-rtsopts=-N -qn1"
-  Default-Language:    Haskell2010
-  Build-Depends:       base              >=4.9 && <5
-                     , hschain
-                     , hschain-crypto
-                     , hschain-types
-                     , hschain-quickcheck
-                     , aeson
-                     , async             >=2.2.1
-                     , bytestring        >=0.10
-                     , containers
-                     , exceptions
-                     , free
-                     , microlens
-                     , network
-                     , random
-                     , sqlite-simple
-                     , katip
-                     , serialise         >=0.2
-                     , stm               >=2.4
-                     , transformers
-                     , retry             >=0.7.6.2
-                     , text
-                     --
-                     , QuickCheck
-                     , bytestring-arbitrary
-                     , generic-arbitrary
-                     , hedgehog
-                     , hedgehog-quickcheck
-                     , tasty             >=0.11
-                     , tasty-hedgehog
-                     , tasty-quickcheck
-                     , tasty-hunit       >=0.10
-  hs-source-dirs:      test
-  Main-is:             Main.hs
-  Other-modules:       TM.Consensus
-                       TM.Integration
-                       TM.Mempool
-                       TM.Merkle
-                       TM.MerkleBlock
-                       TM.Network
-                       TM.P2P.Gossip
-                       TM.P2P.PEX
-                       TM.RealNetwork
-                       TM.Serialisation
-                       TM.Time
-                       TM.Util.Network
-                       TM.Util.Tests
-                       TM.Util.MockChain
-                       TM.Validators
-
--- Benchmarks
-Benchmark hschain-bench
-  Type:                exitcode-stdio-1.0
-  Ghc-options:         -threaded -O2 -Wall
-  hs-source-dirs:      bench
-  Default-Language:    Haskell2010
-  Main-is:             main.hs
-  Build-Depends:       base  >=4.9 && <5
-                     , bytestring >=0.10
-                     , criterion
-                     , deepseq
-                     , random
-                     , vector
-                     --
-                     , hschain
-                     , hschain-crypto
-                     , hschain-types
-  if !flag(android-impl)
-    Build-Depends: cryptonite
-  Other-modules:       ValidatorSetsBench
-                       MockCoin
-                       Crypto

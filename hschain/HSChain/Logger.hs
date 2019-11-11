@@ -1,5 +1,6 @@
 {-# LANGUAGE DeriveFunctor              #-}
 {-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE DerivingStrategies         #-}
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase                 #-}
@@ -15,12 +16,15 @@ module HSChain.Logger (
     MonadLogger(..)
   , setNamespace
   , descendNamespace
+    -- ** Monad transformers
   , LoggerT(..)
-  , NoLogsT(..)
   , runLoggerT
-  , logOnException
   , withLogEnv
   , newLogEnv
+  , NoLogsT(..)
+  , StdoutLogT(..)
+  , runStdoutLogT
+  , logOnException
     -- ** Scribe construction helpers
   , ScribeType(..)
   , ScribeSpec(..)
@@ -49,6 +53,8 @@ import Data.Aeson
 import Data.Aeson.TH
 import Data.IORef
 import Data.Text       (Text)
+import qualified Data.Text.Lazy as TL
+import           Data.Text.Lazy.Builder (toLazyText)
 import Data.Typeable
 import Data.Monoid     ((<>))
 import qualified Data.HashMap.Strict        as HM
@@ -103,9 +109,9 @@ instance MonadIO m => MonadLogger (LoggerT m) where
 -- | Mock logging. Useful for cases where constraints require logging
 --   but we don't need any
 newtype NoLogsT m a = NoLogsT { runNoLogsT :: m a }
-  deriving ( Functor, Applicative, Monad, MonadFail
-           , MonadIO, MonadThrow, MonadCatch, MonadMask
-           , MonadFork, MonadTrace)
+  deriving newtype ( Functor, Applicative, Monad, MonadFail
+                   , MonadIO, MonadThrow, MonadCatch, MonadMask
+                   , MonadFork, MonadTrace)
 
 instance MFunctor NoLogsT where
   hoist f (NoLogsT m) = NoLogsT (f m)
@@ -120,6 +126,35 @@ instance MonadTrans NoLogsT where
 instance MonadIO m => MonadLogger (NoLogsT m) where
   logger _ _ _ = return ()
   localNamespace _ a = a
+
+
+-- | Simple monad transformer for writing logs to stdout. Motly useful
+--   for debugging when one need to add remove some logging capability
+--   quickly.
+newtype StdoutLogT m a = StdoutLogT { unStdoutLogT :: ReaderT Namespace m a }
+  deriving newtype ( Functor, Applicative, Monad, MonadFail
+                   , MonadIO, MonadThrow, MonadCatch, MonadMask
+                   , MonadFork, MonadTrace
+                   )
+
+runStdoutLogT :: StdoutLogT m a -> m a
+runStdoutLogT = flip runReaderT mempty . unStdoutLogT
+
+instance MonadTrans StdoutLogT where
+  lift = StdoutLogT . lift
+
+instance MonadIO m => MonadLogger (StdoutLogT m) where
+  logger _ msg a = do
+    Namespace chunks <- StdoutLogT ask
+    liftIO $ putStr $ T.unpack $ case chunks of
+      [] -> ""
+      _  -> T.intercalate "." chunks
+    liftIO $ putStrLn $ TL.unpack $ toLazyText $ unLogStr msg
+    liftIO $ forM_ (HM.toList $ toObject a) $ \(k,v) -> do
+      putStr $ "  " ++ T.unpack k ++ " = "
+      print v
+  localNamespace f = StdoutLogT . local f . unStdoutLogT
+
 
 -- | Log exceptions at Error severity
 logOnException :: (MonadLogger m, MonadCatch m) => m a -> m a

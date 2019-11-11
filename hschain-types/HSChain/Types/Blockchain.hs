@@ -189,6 +189,7 @@ data Header alg a = Header
     -- ^ Hash of last commit
   , headerEvidenceHash   :: !(Hashed alg [ByzantineEvidence alg a])
     -- ^ Hash of evidence of byzantine behavior
+  , headerStateHash      :: !(Hashed alg (InterpreterState a))
   }
   deriving stock    (Show, Eq, Generic)
   deriving anyclass (NFData, Serialise, JSON.FromJSON, JSON.ToJSON)
@@ -291,8 +292,6 @@ data Proposal alg a = Proposal
     -- ^ Time of proposal
   , propPOL       :: !(Maybe Round)
     -- ^ Proof of Lock for proposal
-    --
-    -- FIXME: why it's needed? How should it be used?
   , propBlockID   :: !(BlockID alg a)
     -- ^ Hash of proposed block
   }

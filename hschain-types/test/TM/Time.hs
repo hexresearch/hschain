@@ -1,19 +1,23 @@
-{-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE TypeOperators   #-}
+{-# LANGUAGE RecordWildCards     #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications    #-}
+{-# LANGUAGE TypeOperators       #-}
 -- |
 module TM.Time (tests) where
 
 import Control.Monad
 import Data.Int
 import Data.List
+import Data.Proxy
+import qualified Data.ByteString    as BS
 import qualified Data.List.NonEmpty as NE
+import System.Random
 import Test.Tasty
 import Test.Tasty.HUnit
 
 import HSChain.Crypto
 import HSChain.Crypto.Ed25519 (Ed25519)
 import HSChain.Crypto.SHA     (SHA512)
-import HSChain.Mock.KeyList (privateKeyList)
 import HSChain.Types.Blockchain
 import HSChain.Types.Validators
 import HSChain.Types.BFTTime
@@ -81,3 +85,18 @@ permuteCommit Commit{..} =
 
 bid :: BlockID (Ed25519 :& SHA512) ()
 bid = BlockID (Hashed (hash ()))
+
+privateKeyList :: [PrivKey (Ed25519 :& SHA512)]
+privateKeyList = makePrivKeyStream 13337
+
+-- Sadly (code duplication. Same function is defined in hschain-examples)
+makePrivKeyStream :: forall alg. CryptoSign alg => Int -> [PrivKey alg]
+makePrivKeyStream seed
+  = unfoldr step
+  $ randoms (mkStdGen seed)
+  where
+    keySize     = privKeySize (Proxy @alg)
+    step stream = Just (k, stream')
+      where
+        Just k        = decodeFromBS $ BS.pack bs
+        (bs, stream') = splitAt keySize stream

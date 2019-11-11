@@ -3,9 +3,9 @@
 {-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE MultiWayIf          #-}
 {-# LANGUAGE OverloadedStrings   #-}
-
 -- |
--- Data types for primary database. Namely storage of blocks, commits and validators
+-- Queries for interacting with database. Ones that constitute public
+-- API are reexported from "HSChain.Store".
 module HSChain.Store.Internal.BlockDB where
 
 import Codec.Serialise     (Serialise, serialise, deserialiseOrFail)
@@ -30,11 +30,8 @@ import HSChain.Store.Internal.Query
 ----------------------------------------------------------------
 
 -- | Create tables for storing blockchain data
-initializeBlockhainTables
-  :: (Crypto alg, Serialise a, Eq a, MonadQueryRW m alg a, Show a)
-  => Block alg a                -- ^ Genesis block
-  -> m ()
-initializeBlockhainTables genesis = do
+initializeBlockhainTables :: (MonadQueryRW m alg a) => m ()
+initializeBlockhainTables = do
   -- Initialize tables for storage of blockchain
   basicExecute_
     "CREATE TABLE IF NOT EXISTS thm_blockchain \
@@ -84,6 +81,21 @@ initializeBlockhainTables genesis = do
     \ , attempt INTEGER NOT NULL \
     \ , result  BOOLEAN NOT NULL \
     \ , UNIQUE (height, attempt))"
+  -- Byzantine evidence. We store every piece of evidence in this
+  -- table with second field indicating whether evidence is recorded
+  -- in blockchain
+  basicExecute_
+    "CREATE TABLE IF NOT EXISTS thm_evidence \
+    \  ( evidence  BLOB    NOT NULL \
+    \  , recorded  BOOLEAN NOT NULL \
+    \  , UNIQUE (evidence))"
+
+
+storeGenesis
+  :: (Crypto alg, Serialise a, Eq a, MonadQueryRW m alg a, Show a)
+  => Block alg a                -- ^ Genesis block
+  -> m ()
+storeGenesis genesis = do
   -- Insert genesis block if needed
   storedGen  <- singleQ_ "SELECT block  FROM thm_blockchain WHERE height = 0"
   storedVals <- singleQ_ "SELECT valset FROM thm_validators WHERE height = 1"
@@ -181,7 +193,7 @@ mustRetrieveCommitRound h =
 --   commit for the last block but may choose to store earlier
 --   commits as well.
 --
---   Note that commits returned by this functions may to differ
+--   Note that commits returned by this functions may differ
 --   from ones returned by @retrieveCommit@ by set of votes since
 --   1) @retrieveCommit@ retrieve commit as seen by proposer not
 --   local node 2) each node collect straggler precommits for some
@@ -197,13 +209,16 @@ retrieveValidatorSet :: (Crypto alg, MonadQueryRO m alg a) => Height -> m (Maybe
 retrieveValidatorSet h =
   singleQ "SELECT valset FROM thm_validators WHERE height = ?" (Only h)
 
-
+-- | Same as 'retrieveBlock' but throws 'DBMissingBlock' if there's no
+--   such block in database.
 mustRetrieveBlock
   :: (Serialise a, Crypto alg, MonadThrow m, MonadQueryRO m alg a)
   => Height -> m (Block alg a)
 mustRetrieveBlock h
   = throwNothing (DBMissingBlock h) =<< retrieveBlock h
 
+-- | Same as 'retrieveValidatorSet' but throws 'DBMissingValSet' if
+--   there's no validator set in database.
 mustRetrieveValidatorSet
   :: (Crypto alg, MonadQueryRO m alg a, MonadThrow m)
   => Height -> m (ValidatorSet alg)
@@ -312,6 +327,45 @@ readWAL h = do
              Left  e -> error ("CBOR encoding error: " ++ show e)
          | Only bs <- rows
          ]
+
+----------------------------------------------------------------
+-- Evidence
+----------------------------------------------------------------
+
+-- | Store fresh evidence in database. Fresh means we just observed it.
+storeFreshEvidence
+  :: (Serialise a, Crypto alg, MonadQueryRW m alg a)
+  => ByzantineEvidence alg a -> m ()
+storeFreshEvidence ev = do
+  basicExecute "INSERT OR IGNORE INTO thm_evidence VALUES (?,?)" (serialise ev, False)
+
+-- | Store evidence from blockchain. That is valid evidence from
+--   commited block
+storeBlockchainEvidence
+  :: (Serialise a, Crypto alg, MonadQueryRW m alg a)
+  => ByzantineEvidence alg a -> m ()
+storeBlockchainEvidence ev = do
+  basicExecute "INSERT OR REPLACE INTO thm_evidence VALUES (?,?)" (serialise ev, True)
+
+-- | Check whether evidence is recorded. @Just True@ mens that it's
+--   already in blockchain
+evidenceRecordedState
+  :: (Serialise a, Crypto alg, MonadQueryRO m alg a)
+  => ByzantineEvidence alg a -> m (Maybe Bool)
+evidenceRecordedState e = do
+  basicQuery "SELECT recorded FROM thm_evidence WHERE evidence = ?" (Only (serialise e)) >>= \case
+    []       -> return Nothing
+    [Only x] -> return (Just x)
+    _        -> error "impossible"
+
+-- | Retrieve all unrecorded evidence
+retrieveUnrecordedEvidence
+  :: (Serialise a, Crypto alg, MonadQueryRO m alg a)
+  => m [ByzantineEvidence alg a]
+retrieveUnrecordedEvidence = do
+  rs <- basicQuery_ "SELECT evidence FROM thm_evidence WHERE recorded = 0"
+  return $ unCBORed . fromOnly <$> rs
+
 
 ----------------------------------------------------------------
 -- Helpers

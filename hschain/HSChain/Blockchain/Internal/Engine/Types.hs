@@ -49,6 +49,7 @@ import HSChain.Blockchain.Internal.Types
 import HSChain.Crypto
 import HSChain.Crypto.SHA (SHA512)
 import HSChain.Store
+import HSChain.Store.Internal.Proposals
 import HSChain.Types.Blockchain
 import HSChain.Types.Validators
 
@@ -57,22 +58,46 @@ import HSChain.Types.Validators
 -- Configuration
 ----------------------------------------------------------------
 
+-- | Configuration of consensus engine. it contains timeouts for
+--   consensus engine and parameters for network. Default parameters
+--   are provided by 'DefaultConfig' type class. @app@ is phantom type
+--   parameter which allows to have different defaults since different
+--   blockchains may need different defaults.
+--
+--   Default definition workds like that: empty JSON dictionary will
+--   deserialise to 'defCfg' and every field could be overriden by
+--   config. For example
+--
+--  > { network = { gossipDelayVotes = 10 } }
+--
+--   Will set field @gossipDelayVotes@ to 10 ms while keeping all
+--   other fields as they're defined in
 data Configuration app = Configuration
   { cfgConsensus :: !ConsensusCfg -- ^ Configuration for consensus. JSON key is "consensus\"
   , cfgNetwork   :: !NetworkCfg   -- ^ Configuration for network. JSON key is \"network\"
   }
   deriving (Show,Generic)
 
--- | Timeouts are given in pairs where first element is default
---   timeout and second is increment. Unit of measurements for time is
---   ms.
+-- | Timeout and timeouts increments for consensus engine. On each
+--    successive round timeout increased by increment. Note that they
+--    should be same for all validating nodes in the network. Otherwise
+--    network risks divergence. All timeouts are measured in ms.
 data ConsensusCfg = ConsensusCfg
-  { timeoutNewHeight  :: !(Int,Int)
+  { timeoutNewHeight  :: !Int
+    -- ^ Timeout for NEW HEIGHT phase
   , timeoutProposal   :: !(Int,Int)
+    -- ^ Timeout and timeout increment for PROPOSE phase
   , timeoutPrevote    :: !(Int,Int)
+    -- ^ Timeout and timeout increment for PREVOTE phase
   , timeoutPrecommit  :: !(Int,Int)
+    -- ^ Timeout and timeout increment for PRECOMMIT phase
   , timeoutEmptyBlock :: !Int
+    -- ^ Timeout between attempts to create block. Only used when
+    --   empty block creation is disabled.
   , incomingQueueSize :: !Natural
+    -- ^ Maximum queue size for incomiming messages. it's needed to
+    --   avoid situation when node is flooded with messages faster
+    --   that it's able to handle them. 10 is reasonable default.
   }
   deriving (Show,Generic)
 
@@ -90,7 +115,7 @@ data NetworkCfg = NetworkCfg
   }
   deriving (Show,Generic)
 
-
+-- | Default configuration for blockchain.
 class DefaultConfig app where
   defCfg :: Configuration app
 

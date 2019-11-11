@@ -28,10 +28,9 @@ import HSChain.Crypto.Containers
 import HSChain.Logger
 import HSChain.P2P
 import HSChain.P2P.PeerState.Types
-import HSChain.Run
 import HSChain.Store
-import HSChain.Store.Internal.BlockDB (storeCommit)
-import HSChain.Store.STM
+import HSChain.Store.Internal.Proposals
+import HSChain.Store.Internal.BlockDB (storeCommit,storeGenesis)
 import HSChain.Types
 import qualified HSChain.Mock.KeyVal as Mock
 
@@ -218,7 +217,8 @@ type TestM   alg a = StateT  (P2P.State alg a)
 -- Start gossip FSM all alone
 withGossip :: Int -> TestM TestAlg Mock.BData x -> IO x
 withGossip n action = do
-  withDatabase "" genesis $ \conn -> runNoLogsT $ runDBT conn $ do
+  withDatabase "" $ \conn -> runNoLogsT $ runDBT conn $ do
+    mustQueryRW $ storeGenesis genesis
     consensusState <- liftIO $ newTVarIO Nothing
     gossipCnts     <- newGossipCounters
     props          <- newSTMPropStorage
@@ -233,10 +233,6 @@ withGossip n action = do
       $ flip evalStateT (P2P.wrap P2P.UnknownState)
       $ action
 
-
-
-mockchain :: [Block TestAlg Mock.BData]
-mockchain = scanl mintBlock genesis [Mock.BData [("K",i)] | i <- [100..]]
 
 -- Seed database with given number of blocks
 seedDatabase :: Int -> GossipM TestAlg Mock.BData ()
@@ -284,7 +280,7 @@ addPrevote v = do
           InsertOK votes   -> votes
           InsertDup        -> error "InsertDup"
           InsertConflict _ -> error "InsertConflict"
-          InsertUnknown  _ -> error "InsertUnknown"
+          InsertUnknown    -> error "InsertUnknown"
     }
 
 addPrecommit
@@ -298,7 +294,7 @@ addPrecommit v = do
           InsertOK votes   -> votes
           InsertDup        -> error "InsertDup"
           InsertConflict _ -> error "InsertConflict"
-          InsertUnknown  _ -> error "InsertUnknown"
+          InsertUnknown    -> error "InsertUnknown"
     }
 
 -- Perform single step

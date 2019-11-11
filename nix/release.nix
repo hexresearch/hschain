@@ -40,6 +40,7 @@ let
     hschain-quickcheck = callInternal hsPkgs "hschain" ../hschain-quickcheck    {} "";
     hschain-types      = callInternal hsPkgs "hschain" ../hschain-types         {} "";
     hschain            = callInternal hsPkgs "hschain" ../hschain               {} "";
+    hschain-examples   = callInternal hsPkgs "hschain" ../hschain-examples      {} "";
     serialise-cddl     = callInternal hsPkgs "hschain" ../serialise-cddl        {} "";
   };
   # Build internal package
@@ -62,6 +63,7 @@ let
       hschain-types
       hschain-quickcheck
       hschain
+      hschain-examples
     ];
     hschainPkgJs = p: with p; [
       hschain-crypto

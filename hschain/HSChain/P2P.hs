@@ -40,6 +40,7 @@ import HSChain.Monitoring
 import HSChain.P2P.Network
 import HSChain.P2P.Types
 import HSChain.Store
+import HSChain.Store.Internal.Proposals
 import HSChain.Types.Blockchain
 import HSChain.Utils
 

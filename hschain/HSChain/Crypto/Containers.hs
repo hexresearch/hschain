@@ -68,7 +68,7 @@ data InsertResult b a
   = InsertOK       !a            -- ^ Insert is successful
   | InsertDup                    -- ^ Duplicate value. No change
   | InsertConflict !b            -- ^ Conflict during insertion
-  | InsertUnknown  !b            -- ^ Value is signed by unknown validator
+  | InsertUnknown                -- ^ Value is signed by unknown validator
   deriving (Show,Functor)
 
 instance Applicative (InsertResult b) where
@@ -80,7 +80,7 @@ instance Monad (InsertResult b) where
   InsertOK a       >>= f = f a
   InsertDup        >>= _ = InsertDup
   InsertConflict b >>= _ = InsertConflict b
-  InsertUnknown  b >>= _ = InsertUnknown  b
+  InsertUnknown    >>= _ = InsertUnknown
 
 -- | Create set of signed values
 emptySignedSet
@@ -98,12 +98,12 @@ insertSigned
 insertSigned sval SignedSet{..} =
   case validatorByIndex vsetValidators idx of
     -- We trying to insert value signed by unknown key
-    Nothing -> InsertUnknown sval
+    Nothing -> InsertUnknown
     Just Validator{validatorVotingPower}
       -- We already have value signed by that key
       | Just v <- idx `CIMap.lookup` vsetAddrMap -> if
-           | signedValue v == val -> InsertDup
-           | otherwise            -> InsertConflict sval
+          | signedValue v == val -> InsertDup
+          | otherwise            -> InsertConflict v
       -- OK insert value then
       | otherwise -> InsertOK SignedSet
           { vsetAddrMap  = CIMap.insert idx sval vsetAddrMap

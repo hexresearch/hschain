@@ -13,39 +13,39 @@
 {-# LANGUAGE TypeFamilies               #-}
 {-# LANGUAGE ViewPatterns               #-}
 -- |
--- Abstract API for storing of blockchain. Storage works as follows:
---
---  * Blockchain is stored in some databases (on in memory for testing
---    purposes)
---
---  * Rounds' state is kept in memory so it will be lost in case of
---    crash but incoming messages are stored in write ahead log so
---    they could be replayed.
+-- This module provides API for working with persistent (blockchain)
+-- and no so persistent (mempool) storage.
 module HSChain.Store (
-    -- * Standard DB wrapper
-    DBT(..)
-  , dbtRO
-  , runDBT
-    -- * Monadic API for DB access
+    -- * Working with database
+    -- ** Connection
+    Connection
   , Access(..)
+  , connectionRO
   , MonadReadDB(..)
   , MonadDB(..)
-  , Query
-  , QueryT
-  , Connection
-  , connectionRO
   , queryRO
   , queryRW
   , mustQueryRW
   , queryROT
   , queryRWT
-    -- ** Opening database
+  , mustQueryRWT
+    -- ** Opening\/closing database
   , openConnection
   , closeConnection
   , withConnection
   , initDatabase
   , withDatabase
-    -- * Block storage
+    -- * Querying database
+    -- ** Query monads
+  , MonadQueryRO(..)
+  , MonadQueryRW(..)
+  , Query
+  , QueryT
+    -- ** Standard DB wrapper
+  , DBT(..)
+  , dbtRO
+  , runDBT
+    -- ** Standard API
   , blockchainHeight
   , retrieveBlock
   , retrieveBlockID
@@ -56,14 +56,6 @@ module HSChain.Store (
   , mustRetrieveValidatorSet
   , retrieveSavedState
   , storeStateSnapshot
-    -- * In memory store for proposals
-  , Writable
-  , BlockValidation(..)
-  , blockFromBlockValidation
-  , ProposalStorage(..)
-  , hoistPropStorageRW
-  , hoistPropStorageRO
-  , makeReadOnlyPS
     -- * Mempool
   , MempoolCursor(..)
   , Mempool(..)
@@ -116,6 +108,8 @@ import HSChain.Types.Validators
 -- Monadic API for DB access
 ----------------------------------------------------------------
 
+-- | Monad transformer which provides 'MonadReadDB' and 'MonadDB'
+--   instances.
 newtype DBT rw alg a m x = DBT (ReaderT (Connection rw alg a) m x)
   deriving ( Functor, Applicative, Monad
            , MonadIO, MonadThrow, MonadCatch, MonadMask
@@ -128,6 +122,7 @@ instance MFunctor (DBT rw alg a) where
 instance MonadTrans (DBT rw alg a) where
   lift = DBT . lift
 
+-- | Lift monad which provides read-only access to read-write access.
 dbtRO :: DBT 'RO alg a m x -> DBT rw alg a m x
 dbtRO (DBT m) = DBT (withReaderT connectionRO m)
 
@@ -145,20 +140,18 @@ instance MonadIO m => MonadDB (DBT 'RW alg a m) alg a where
 withDatabase
   :: (MonadIO m, MonadMask m, Crypto alg, Serialise a, Eq a, Show a)
   => FilePath         -- ^ Path to the database
-  -> Block alg a      -- ^ Genesis block
   -> (Connection 'RW alg a -> m x) -> m x
-withDatabase path genesis cont
-  = withConnection path $ \c -> initDatabase c genesis >> cont c
+withDatabase path cont
+  = withConnection path $ \c -> initDatabase c >> cont c
 
 -- | Initialize all required tables in database.
 initDatabase
   :: (MonadIO m, Crypto alg, Serialise a, Eq a, Show a)
   => Connection 'RW alg a  -- ^ Opened connection to database
-  -> Block alg a           -- ^ Genesis block
   -> m ()
-initDatabase c genesis = do
+initDatabase c = do
   -- 2. Create tables for block
-  r <- runQueryRW c $ initializeBlockhainTables genesis
+  r <- runQueryRW c initializeBlockhainTables
   case r of
     -- FIXME: Resource leak!
     Nothing -> error "Cannot initialize tables!"
@@ -166,87 +159,7 @@ initDatabase c genesis = do
 
 
 ----------------------------------------------------------------
--- Storage for consensus
-----------------------------------------------------------------
-
-type family Writable (rw :: Access) a where
-  Writable 'RO a = ()
-  Writable 'RW a = a
-
--- | Status of block validation.
-data BlockValidation alg a
-  = UntestedBlock !(Block alg a)
-  -- ^ We haven't validated block yet
-  | UnknownBlock
-  -- ^ We haven't even seen block yet
-  | GoodBlock     !(Block alg a) !(BlockchainState alg a)
-  -- ^ Block is good. We also cache state and new validator set
-  | InvalidBlock
-  -- ^ Block is invalid so there's no point in storing (and gossiping)
-  --   it.
-
-blockFromBlockValidation :: BlockValidation alg a -> Maybe (Block alg a)
-blockFromBlockValidation = \case
-  UntestedBlock b   -> Just b
-  GoodBlock     b _ -> Just b
-  UnknownBlock      -> Nothing
-  InvalidBlock      -> Nothing
-
--- | Storage for proposed blocks that are not commited yet.
-data ProposalStorage rw m alg a = ProposalStorage
-  { retrievePropByID   :: !(Height -> BlockID alg a -> m (BlockValidation alg a))
-    -- ^ Retrieve proposed block by its ID
-  , retrievePropByR    :: !(Height -> Round -> m (Maybe (BlockID alg a, BlockValidation alg a)))
-    -- ^ Retrieve proposed block by round number.
-
-  , setPropValidation  :: !(Writable rw ( BlockID alg a
-                                       -> Maybe (BlockchainState alg a)
-                                       -> m ()))
-    -- ^ Set whether block is valid or not.
-  , resetPropStorage   :: !(Writable rw (Height -> m ()))
-    -- ^ Reset proposal storage and set it to expect blocks ith given
-    --   height.
-  , allowBlockID       :: !(Writable rw (Round -> BlockID alg a -> m ()))
-    -- ^ Mark block ID as one that we could accept
-  , storePropBlock     :: !(Writable rw (Block alg a -> m ()))
-    -- ^ Store block proposed at given height. If height is different
-    --   from height we are at block is ignored.
-  }
-
-makeReadOnlyPS :: ProposalStorage rw m alg a -> ProposalStorage 'RO m alg a
-makeReadOnlyPS ProposalStorage{..} =
-  ProposalStorage { resetPropStorage  = ()
-                  , storePropBlock    = ()
-                  , allowBlockID      = ()
-                  , setPropValidation = ()
-                  , ..
-                  }
-
-hoistPropStorageRW
-  :: (forall x. m x -> n x)
-  -> ProposalStorage 'RW m alg a
-  -> ProposalStorage 'RW n alg a
-hoistPropStorageRW fun ProposalStorage{..} =
-  ProposalStorage { retrievePropByID   = \h x -> fun (retrievePropByID h x)
-                  , retrievePropByR    = \h x -> fun (retrievePropByR  h x)
-                  , setPropValidation  = \b x -> fun (setPropValidation b x)
-                  , resetPropStorage   = fun . resetPropStorage
-                  , storePropBlock     = fun . storePropBlock
-                  , allowBlockID       = \r bid -> fun (allowBlockID r bid)
-                  }
-
-hoistPropStorageRO
-  :: (forall x. m x -> n x)
-  -> ProposalStorage 'RO m alg a
-  -> ProposalStorage 'RO n alg a
-hoistPropStorageRO fun ProposalStorage{..} =
-  ProposalStorage { retrievePropByID   = \h x -> fun (retrievePropByID h x)
-                  , retrievePropByR    = \h x -> fun (retrievePropByR  h x)
-                  , ..
-                  }
-
-----------------------------------------------------------------
---
+-- Mempool
 ----------------------------------------------------------------
 
 -- | Statistics about mempool
@@ -319,6 +232,9 @@ hoistMempool fun Mempool{..} = Mempool
   }
 
 
+-- | Mempool which does nothing. It doesn't contain any transactions
+--   and discard every transaction is pushed into it. Useful if one
+--   doesn't need any mempool.
 nullMempool :: (Monad m) => Mempool m alg tx
 nullMempool = Mempool
   { peekNTransactions = return []
@@ -343,7 +259,7 @@ data BChStore m a = BChStore
   { bchCurrentState  :: m (Maybe Height, InterpreterState a)
   -- ^ Height of value stored in state
   , bchStoreRetrieve :: Height -> m (Maybe (InterpreterState a))
-  -- ^ Retrieve state for given height. It's generally not expected that  
+  -- ^ Retrieve state for given height. It's generally not expected that
   , bchStoreStore    :: Height -> InterpreterState a -> m ()
   -- ^ Put blockchain state at given height into store
   }
@@ -561,7 +477,7 @@ commitInvariant mkErr h bid valSet Commit{..} = do
       case mvoteSet of
         InsertConflict _ -> tell [mkErr "Conflicting votes"]
         InsertDup        -> tell [mkErr "Duplicate votes"]
-        InsertUnknown  _ -> tell [mkErr "Votes from unknown source"]
+        InsertUnknown    -> tell [mkErr "Votes from unknown source"]
         InsertOK vset    -> case majority23 vset of
           Nothing        -> tell [mkErr "Commit doesn't have 2/3+ majority"]
           Just b
