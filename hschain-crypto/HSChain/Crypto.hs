@@ -48,6 +48,9 @@ module HSChain.Crypto (
   , Fingerprint(..)
   , fingerprint
   , CryptoSign(..)
+  , CryptoSignHashed(..)
+    -- * Aggregations API
+  , CryptoAggregabble(..)
     -- ** Diffie–Hellman key exchange
   , DHSecret
   , CryptoDH(..)
@@ -300,6 +303,7 @@ newtype Signature alg = Signature BS.ByteString
   deriving stock   (Generic, Generic1)
   deriving newtype (Eq, Ord, Serialise, NFData)
 
+
 class ( ByteReprSized (Signature   alg)
       , CryptoAsymmetric alg
       ) => CryptoSign alg where
@@ -307,6 +311,26 @@ class ( ByteReprSized (Signature   alg)
   signBlob            :: PrivKey   alg -> BS.ByteString -> Signature alg
   -- | Check that signature is correct
   verifyBlobSignature :: PublicKey alg -> BS.ByteString -> Signature alg -> Bool
+
+
+class ( ByteReprSized (Signature   alg)
+      , CryptoAsymmetric alg
+      ) => CryptoSignHashed alg where
+  -- | Sign hashed sequence of bytes
+  signHash            :: PrivKey   alg -> Hash alg -> Signature alg
+  -- | Check that signature is correct
+  verifyHashSignature :: PublicKey alg -> Hash alg -> Signature alg -> Bool
+
+
+-- Aggregate some objects in one
+class CryptoAggregabble alg where
+    type AggregatedPublicKey alg
+    type AggregatedPrivKey alg
+    type AggregatedSignature alg
+    aggregatePublicKeys :: [PublicKey alg] -> AggregatedPublicKey alg
+    aggregatePrivKeys   :: [PrivKey alg]   -> AggregatedPrivKey alg
+    aggregateSignatures :: [Signature alg] -> AggregatedSignature alg
+
 
 -- | Public key fingerprint (hash of public key)
 newtype Fingerprint hash alg = Fingerprint (Hashed hash (PublicKey alg))

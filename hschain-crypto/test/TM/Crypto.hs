@@ -1,4 +1,5 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE CPP                 #-}
 {-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -25,11 +26,16 @@ import HSChain.Crypto.SHA
 import HSChain.Crypto.Salsa20Poly1305
 import HSChain.Crypto.KDFNaCl
 
+#if USE_BLS
+import qualified Crypto.Bls as RawBls
+import HSChain.Crypto.BLS
+#endif
 
 tests :: TestTree
 tests = testGroup "Crypto"
   [ testsEd25519
   , testsCurve25519
+  , testsBLS
   , testsSHA
   , testSalsa20
   , testsNaClBox
@@ -44,8 +50,7 @@ testsEd25519 = testGroup "ed25519"
   $ do let privK = read "\"HsBRtVUZ8ewZq5giWZHwr8crJm1iTVNLQeeyQk1vEmM8\""  :: PrivKey   Ed25519
            pubK  = read "\"9xeYWVLneMHJHEtewZe9X4nKbLAYjFEHR98q9CyhSxQN\""  :: PublicKey Ed25519
            sign  = read
-             "Signature \
-             \\"3R3ShiGCBPZNaPhyAtfaVX3V23YPHQABDxNn2F6qPwFANj1gUCBic6oBLGpSBXqpq1ZCKekA95ociGfVEdKhZhU7\""
+             "Signature \"3R3ShiGCBPZNaPhyAtfaVX3V23YPHQABDxNn2F6qPwFANj1gUCBic6oBLGpSBXqpq1ZCKekA95ociGfVEdKhZhU7\""
            blob  = "ABCD"
        sign @=? signBlob privK blob
        assertBool "Signature check failed" $ verifyBlobSignature pubK blob sign
@@ -83,6 +88,43 @@ testsCurve25519 = testGroup "Curve25519"
        dh @=? diffieHelman (publicKey k2) k1
   ]
 
+testsBLS :: TestTree
+testsBLS = testGroup "BLS"
+#if USE_BLS
+  [ testGroup "Asymmetric" $ testsAsymmetricCrypto (Proxy @BLS)
+  , testGroup "Signatures" $ testsSignatureCrypto  (Proxy @BLS)
+  , testGroup "Hashes"     [ testHash (Proxy @BLS) "3vY84Vb3FUXnBxvjKQ6uGxrvRsMSm6nRHTT79bbGuzxh"]
+  , testGroup "BLS features"
+        [ testCase "sizes" $ do
+            (publicKeySize (undefined :: PublicKey BLS)) @?= RawBls.publicKeySize
+            (privKeySize   (undefined :: PrivKey   BLS)) @?= RawBls.privateKeySize
+            (signatureSize (undefined :: Signature BLS)) @?= RawBls.signatureSize
+            (hashSize      (undefined :: Hash BLS))      @?= RawBls.hashSize
+        , testCase "signatures for hash 1" $ do
+            (privKey :: PrivKey BLS) <- generatePrivKey
+            let msg = "Please, don't hash me!"
+                msgHash = hashBlob msg
+            let sig = signHash privKey msgHash
+            (verifyHashSignature (publicKey privKey) msgHash sig) @? "Verify must be passed"
+        , testCase "signatures for hash 2" $ do
+            (privKey :: PrivKey BLS) <- generatePrivKey
+            let msg = "I'm just a silly bytestring, why do you hash me?"
+                msgHash = hashBlob msg
+            let sig = signHash privKey msgHash
+            (verifyBlobSignature (publicKey privKey) msg sig) @? "Verify must be passed"
+        , testCase "signatures for hash 3" $ do
+            (privKey :: PrivKey BLS) <- generatePrivKey
+            let msg = "So... You try to hash me again..."
+                msgHash = hashBlob msg
+            let sig1 = signBlob privKey msg
+            let sig2 = signHash privKey msgHash
+            sig1 @?= sig2
+        -- TODO перенести сюда остальные тесты с точными значениями
+        ]
+  ]
+#else
+  []
+#endif
 
 testsNaClBox :: TestTree
 testsNaClBox = testGroup "Tests for NaCl box"
@@ -305,11 +347,9 @@ testsHMAC = testGroup "HMAC"
   , testHMAC @SHA256
     "8552e36de7567f917d99ce866a0b9837d1f2a892e4fc75eb74133c2d453a802f"
   , testHMAC @SHA384
-    "2d51b05e3cb71a55a010a6c7799a34e2c5422e11851497b591ed239ce92a1d6a\
-    \d36cc0990066c5b3d1aef16b73f69946"
+    "2d51b05e3cb71a55a010a6c7799a34e2c5422e11851497b591ed239ce92a1d6ad36cc0990066c5b3d1aef16b73f69946"
   , testHMAC @SHA512
-    "67d12aac1ce3b9fa4a707384c07731f30c68810b1d971b2550c2a8708e59ba5d\
-    \cd86c2664bde4eb3e0f653c40619bdff81fd18efeecdfea769f960ffba600e38"
+    "67d12aac1ce3b9fa4a707384c07731f30c68810b1d971b2550c2a8708e59ba5dcd86c2664bde4eb3e0f653c40619bdff81fd18efeecdfea769f960ffba600e38"
   ]
 
 testHMAC :: forall alg. (Typeable alg, CryptoHMAC alg)

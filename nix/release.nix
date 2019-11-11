@@ -25,6 +25,8 @@ let
   # ================================================================
   # Overlay for haskell packages
   overlay = self: super: {
+    # cabal2nix generates package name as bls so we're going with it
+    bls     = self.callPackage (import ./derivations/nix/bls.nix) {};
     haskell = haskTools.interpret pkgs super {
       overrides = import ./overrides.nix;
       release   = hschainPackages;
@@ -32,6 +34,7 @@ let
   };
   # Generate packages for hschain
   hschainPackages = hsPkgs: {
+    bls-signatures = callInternal hsPkgs "bls-signatures" ../bls-signatures {} "";
     hschain-crypto = callInternal hsPkgs "hschain" ../hschain-crypto {}
       (if useSodium then "-flibsodium" else "-f-libsodium");
     hschain-quickcheck = callInternal hsPkgs "hschain" ../hschain-quickcheck    {} "";
@@ -55,6 +58,7 @@ let
   release = let
     hschainPkgAll = p: with p; [
       serialise-cddl
+      bls-signatures
       hschain-crypto
       hschain-types
       hschain-quickcheck
