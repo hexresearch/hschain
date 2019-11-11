@@ -19,11 +19,11 @@ tests = testGroup "BLS"
         (signatureSize (undefined :: Signature BLS)) @?= RawBls.signatureSize
         (hashSize      (undefined :: Hash BLS))      @?= RawBls.hashSize
     , testCase "signatures verify 1" $ do
-        (privKey :: PrivKey BLS) <- generatePrivKey
-        let sig = signBlob privKey "Проверка"
-        (verifyBlobSignature (publicKey privKey) "Проверка" sig) @? "Verify must be passed"
+        privKey :: PrivKey BLS <- generatePrivKey
+        let sig = signBlob privKey "Check"
+        verifyBlobSignature (publicKey privKey) "Check" sig @? "Verify must be passed"
     , testCase "signatures verify 2" $ do
-        (privKey :: PrivKey BLS) <- generatePrivKey
+        privKey :: PrivKey BLS <- generatePrivKey
         let sig = signBlob privKey "Can it pass the verification?"
         (not $ verifyBlobSignature (publicKey privKey) "No, sorry" sig) @? "Verify can't be passed"
     , testCase "signatures for hash 1" $ do
