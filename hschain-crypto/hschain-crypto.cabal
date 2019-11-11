@@ -73,6 +73,7 @@ Library
   Exposed-modules:
                   HSChain.Crypto
                   HSChain.Crypto.Classes
+                  HSChain.Crypto.Classes.Hash
                   HSChain.Crypto.Curve25519
                   HSChain.Crypto.Ed25519
                   HSChain.Crypto.SHA
