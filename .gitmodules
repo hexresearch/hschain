@@ -1,3 +1,0 @@
-[submodule "bls-signatures"]
-	path = bls-signatures/bls-signatures
-	url = https://github.com/Chia-Network/bls-signatures/
