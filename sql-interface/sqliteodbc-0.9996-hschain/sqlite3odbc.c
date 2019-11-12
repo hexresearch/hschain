@@ -18528,6 +18528,10 @@ noconn:
     freep(&s->query);
     hschain_transaction = check_hschain_pragma(&query, &queryLen);
     if (hschain_transaction) {
+	if (!sqlite3_get_autocommit(d->sqlite3)) {
+	    setstat(s, -1, "%s", "HY000", "hschain query inside transaction");
+	    return SQL_ERROR;
+	}
 	if (!hschain_synchronize(d)) {
 	    setstat(s, -1, "%s", "HY000", "hchain sync");
 	    return SQL_ERROR;
