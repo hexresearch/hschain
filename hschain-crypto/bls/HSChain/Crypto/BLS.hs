@@ -9,6 +9,7 @@ module HSChain.Crypto.BLS where
 
 import Control.DeepSeq         (NFData(..))
 import Control.Monad.IO.Class
+import Data.ByteString         (ByteString)
 import Data.Data               (Data)
 import Data.Ord                (comparing)
 import System.Entropy
@@ -66,13 +67,15 @@ instance CryptoSignHashed BLS where
 
 
 instance CryptoSign BLS where
-    signBlob pk blob = signHash pk (hashBlob blob)
-    verifyBlobSignature pubK blob sig = verifyHashSignature pubK (hashBlob blob) sig
+    signBlob pk blob = signHash pk (hashBlobBLS blob)
+    verifyBlobSignature pubK blob sig = verifyHashSignature pubK (hashBlobBLS blob) sig
 
-
-instance CryptoHash BLS where
-    hashBlob = Hash . Bls.unHash256 . unsafePerformIO . Bls.hash256
-
+-- FIXME: decide what to do with BLS hashing
+--
+-- instance CryptoHash BLS where
+--     hashBlob = Hash . Bls.unHash256 . unsafePerformIO . Bls.hash256
+hashBlobBLS :: ByteString -> Hash BLS
+hashBlobBLS = Hash . Bls.unHash256 . unsafePerformIO . Bls.hash256
 
 instance Eq (PrivKey BLS) where
     (PrivKey pk1) == (PrivKey pk2) = Bls.equalPrivateKey pk1 pk2

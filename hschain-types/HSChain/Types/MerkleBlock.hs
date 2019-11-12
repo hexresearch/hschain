@@ -30,6 +30,7 @@ import Data.Function
 import GHC.Generics  (Generic)
 
 import HSChain.Crypto
+import HSChain.Crypto.Classes.Hash
 import HSChain.Types.Merklized
 
 
@@ -58,9 +59,9 @@ instance MerkleHash f => MerkleHash (MerkleBlockTree f) where
 instance IsMerkle f => CryptoHashable (MerkleBlockTree f alg a) where
   hashStep s = hashStep s . merkleBlockTree
 
-instance (IsMerkle f, CryptoHashable a) => CryptoHashable (Node f alg a) where
+instance (IsMerkle f, CryptoHash alg, CryptoHashable a) => CryptoHashable (Node f alg a) where
   hashStep s node = do
-    hashStep s $ UserType "Node"
+    hashStep s $ UserType "" "Node"
     case node of
       Branch a b -> do hashStep s $ ConstructorIdx 0
                        hashStep s   a

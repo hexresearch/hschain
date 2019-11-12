@@ -27,9 +27,6 @@ module HSChain.Crypto (
   , Hashed(..)
   , CryptoHash(..)
   , CryptoHashable(..)
-  , CryptoTypeHashable(..)
-  , DataType(..)
-  , Constructor(..)
   , hashBlob
   , hash
   , hashed
@@ -99,7 +96,6 @@ import qualified Data.Aeson           as JSON
 import           Data.Data               (Data)
 import           Data.ByteString.Lazy    (toStrict)
 import           Data.ByteString         (ByteString)
-import qualified Data.ByteString          as BS
 import Data.Coerce
 import Data.Typeable (Proxy(..))
 import Text.Read
@@ -128,7 +124,9 @@ instance (CryptoHash hashA, CryptoHash hashB) => CryptoHash (hashA :<<< hashB) w
   freezeHashAccum (HashAccumChain acc) = do
     Hash h <- freezeHashAccum acc
     return $! coerce (hashBlob h :: Hash hashA)
-
+  hashAlgorithmName = CryptoName $ bsA <> " <<< " <> bsB
+    where CryptoName bsA = hashAlgorithmName @hashA
+          CryptoName bsB = hashAlgorithmName @hashB
 
 ----------------------------------------------------------------
 -- Cryptographic hashes
@@ -142,10 +140,10 @@ newtype HMAC alg = HMAC (Hash alg)
 -- | Calculate Hash-based Message Authetication Code (HMAC) according
 --   to RFC2104
 class CryptoHash alg => CryptoHMAC alg where
-  hmac :: BS.ByteString
+  hmac :: ByteString
        -- ^ Key. Must be kept secret since leaking will allow attacker
        --   forge HMACs trivially
-       -> BS.ByteString
+       -> ByteString
        -- ^ Message for which HMAC is created
        -> HMAC alg
 
@@ -175,7 +173,7 @@ class ( ByteReprSized (PublicKey alg)
 
 
 -- | Signature
-newtype Signature alg = Signature BS.ByteString
+newtype Signature alg = Signature ByteString
   deriving stock   (Generic, Generic1)
   deriving newtype (Eq, Ord, Serialise, NFData)
 
@@ -184,9 +182,9 @@ class ( ByteReprSized (Signature   alg)
       , CryptoAsymmetric alg
       ) => CryptoSign alg where
   -- | Sign sequence of bytes
-  signBlob            :: PrivKey   alg -> BS.ByteString -> Signature alg
+  signBlob            :: PrivKey   alg -> ByteString -> Signature alg
   -- | Check that signature is correct
-  verifyBlobSignature :: PublicKey alg -> BS.ByteString -> Signature alg -> Bool
+  verifyBlobSignature :: PublicKey alg -> ByteString -> Signature alg -> Bool
 
 
 class ( ByteReprSized (Signature   alg)
@@ -397,10 +395,10 @@ instance ByteReprSized (Hash hash) => ByteReprSized (Hash (sign :& hash)) where
 
 instance (CryptoHash hash) => CryptoHash (sign :& hash) where
   newtype HashAccum (sign :& hash) s = HashAccumBoth (HashAccum hash s)
-  newHashAccum    = coerce (newHashAccum    @hash)
-  updateHashAccum = coerce (updateHashAccum @hash)
-  freezeHashAccum = coerce (freezeHashAccum @hash)
-
+  newHashAccum      = coerce (newHashAccum      @hash)
+  updateHashAccum   = coerce (updateHashAccum   @hash)
+  freezeHashAccum   = coerce (freezeHashAccum   @hash)
+  hashAlgorithmName = coerce (hashAlgorithmName @hash)
 
 
 ----------------------------------------------------------------
@@ -408,14 +406,14 @@ instance (CryptoHash hash) => CryptoHash (sign :& hash) where
 ----------------------------------------------------------------
 
 -- | Output of key derivation functions
-newtype KDFOutput alg = KDFOutput BS.ByteString
+newtype KDFOutput alg = KDFOutput ByteString
 
 -- | Type class for key derivation functions.
 class (ByteReprSized (KDFOutput alg)) => CryptoKDF alg where
   -- | Extra parameters such as nonce, number of iterations etc.
   type KDFParams alg
   -- | Generate random sequence of bytes
-  deriveKey :: KDFParams alg -> BS.ByteString -> KDFOutput alg
+  deriveKey :: KDFParams alg -> ByteString -> KDFOutput alg
 
 instance ByteRepr (KDFOutput alg) where
   encodeToBS (KDFOutput h) = encodeToBS h
@@ -447,10 +445,10 @@ class ( ByteReprSized (CypherKey       alg)
       , ByteReprSized (CypherNonce     alg)
       ) => StreamCypher alg where
   -- | Encrypt message. Note that same nonce MUST NOT be reused.
-  encryptMessage :: CypherKey alg -> CypherNonce alg -> BS.ByteString -> BS.ByteString
+  encryptMessage :: CypherKey alg -> CypherNonce alg -> ByteString -> ByteString
   -- | Decrypt message. If MAC verification fails (message was
   --   tampered with) decription returns @Nothing@
-  decryptMessage :: CypherKey alg -> CypherNonce alg -> BS.ByteString -> Maybe BS.ByteString
+  decryptMessage :: CypherKey alg -> CypherNonce alg -> ByteString -> Maybe ByteString
   -- | Generate random key using cryptographically secure RNG
   generateCypherKey :: MonadIO m => m (CypherKey alg)
   -- | Generate random nonce using cryptographically secure RNG
@@ -460,7 +458,7 @@ class ( ByteReprSized (CypherKey       alg)
 -- | Value encrypted with stream cypher. It should be created by
 --   'makeSecretBox' which takes care of generating nonce.
 data SecretBox alg = SecretBox
-  { secretBoxValue :: !BS.ByteString
+  { secretBoxValue :: !ByteString
   , secretBoxNonce :: !(CypherNonce alg)
   }
   deriving stock    (Show, Generic)
@@ -469,7 +467,7 @@ data SecretBox alg = SecretBox
 -- | Encrypt value and generate random nonce. This method should be
 --   used only if nonce is big enough for collision probability to be
 --   negligible.
-makeSecretBox :: (MonadIO m, StreamCypher alg) => CypherKey alg -> BS.ByteString -> m (SecretBox alg)
+makeSecretBox :: (MonadIO m, StreamCypher alg) => CypherKey alg -> ByteString -> m (SecretBox alg)
 makeSecretBox key msg = do
   nonce <- generateCypherNonce
   return $! SecretBox { secretBoxValue = encryptMessage key nonce msg
@@ -478,13 +476,13 @@ makeSecretBox key msg = do
 
 -- | Decrypt secretbox. It will return @Nothing@ if MAC verification
 --   fails. That mean either that message was encrypted.
-openSecretBox :: (StreamCypher alg) => CypherKey alg -> SecretBox alg -> Maybe BS.ByteString
+openSecretBox :: (StreamCypher alg) => CypherKey alg -> SecretBox alg -> Maybe ByteString
 openSecretBox key box = decryptMessage key (secretBoxNonce box) (secretBoxValue box)
 
 
 -- | Value ecrypted using public key cryptography
 data PubKeyBox key kdf cypher = PubKeyBox
-  { pubKeyBoxValue :: !BS.ByteString
+  { pubKeyBoxValue :: !ByteString
   , pubKeyNonce    :: !(CypherNonce cypher)
   }
 
@@ -497,7 +495,7 @@ makePubKeyBox
      )
   => PrivKey   key              -- ^ Our private key
   -> PublicKey key              -- ^ Public key of repicient or sender
-  -> BS.ByteString              -- ^ Clear text message
+  -> ByteString              -- ^ Clear text message
   -> m (PubKeyBox key kdf cypher)
 makePubKeyBox privK pubK msg = do
   let sharedSecret     = diffieHelman pubK privK
@@ -517,7 +515,7 @@ openPubKeyBox
   => PrivKey   key              -- ^ Our private key
   -> PublicKey key              -- ^ Public key of repicient or sender
   -> PubKeyBox key kdf cypher
-  -> Maybe BS.ByteString
+  -> Maybe ByteString
 openPubKeyBox privK pubK box = do
   let sharedSecret     = diffieHelman pubK privK
       KDFOutput kdf    = deriveKey () $ encodeToBS sharedSecret :: KDFOutput kdf
@@ -597,7 +595,8 @@ verifyCborSignature pk a
 
 
 
-instance CryptoHashable (Fingerprint hash alg) where
+-- FIXME: ZZZ
+instance CryptoHash hash => CryptoHashable (Fingerprint hash alg) where
   hashStep s (Fingerprint h) = hashStep s h
 
 instance ByteRepr (PublicKey alg) => CryptoHashable (PublicKey alg) where

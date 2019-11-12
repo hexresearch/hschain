@@ -20,7 +20,7 @@ tests = testGroup "BLS"
         (publicKeySize (undefined :: PublicKey BLS)) @?= RawBls.publicKeySize
         (privKeySize   (undefined :: PrivKey   BLS)) @?= RawBls.privateKeySize
         (signatureSize (undefined :: Signature BLS)) @?= RawBls.signatureSize
-        (hashSize      (undefined :: Hash BLS))      @?= RawBls.hashSize
+        -- (hashSize      (undefined :: Hash BLS))      @?= RawBls.hashSize
     , testCase "signatures verify 1" $ do
         privKey :: PrivKey BLS <- generatePrivKey
         let sig = signBlob privKey "Check"
@@ -32,19 +32,19 @@ tests = testGroup "BLS"
     , testCase "signatures for hash 1" $ do
         (privKey :: PrivKey BLS) <- generatePrivKey
         let msg = "Please, don't hash me!"
-            msgHash = hashBlob msg
+            msgHash = hashBlobBLS msg
         let sig = signHash privKey msgHash
         (verifyHashSignature (publicKey privKey) msgHash sig) @? "Verify must be passed"
     , testCase "signatures for hash 2" $ do
         (privKey :: PrivKey BLS) <- generatePrivKey
         let msg = "I'm just a silly bytestring, why do you hash me?"
-            msgHash = hashBlob msg
+            msgHash = hashBlobBLS msg
         let sig = signHash privKey msgHash
         (verifyBlobSignature (publicKey privKey) msg sig) @? "Verify must be passed"
     , testCase "signatures for hash 3" $ do
         (privKey :: PrivKey BLS) <- generatePrivKey
         let msg = "So... You try to hash me again?"
-            msgHash = hashBlob msg
+            msgHash = hashBlobBLS msg
         let sig1 = signBlob privKey msg
         let sig2 = signHash privKey msgHash
         sig1 @?= sig2
@@ -63,7 +63,7 @@ tests = testGroup "BLS"
         (verifyBlobSignature pubKey msg sig) @? "Verify must be passed"
         (not $ verifyBlobSignature pubKey wrongMsg sig) @? "Verify must not be passed"
     , testCase "read/show 4" $ do
-        (read "Hash \"cmzQwNFTPXVA9A9tG8TYuFo5vuVN9tFUoNC6DZBW3BW\"") @?= (hashBlob "Am I too long to use in raw presentation?" :: Hash BLS)
+        (read "Hash \"cmzQwNFTPXVA9A9tG8TYuFo5vuVN9tFUoNC6DZBW3BW\"") @?= (hashBlobBLS "Am I too long to use in raw presentation?" :: Hash BLS)
     , testCase "aggregate" $ do
         let msg = "Abcdef"
         (privKey1 :: PrivKey BLS) <- generatePrivKey

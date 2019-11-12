@@ -74,6 +74,7 @@ import qualified Database.SQLite.Simple.ToField   as SQL
 #endif
 
 import HSChain.Crypto
+import HSChain.Crypto.Classes.Hash
 import HSChain.Types.Validators
 import HSChain.Types.Merklized
 
@@ -302,17 +303,17 @@ instance Serialise (Vote 'PreCommit alg a) where
     encode = encodeVote 1
     decode = decodeVote 1
 
-instance (CryptoHashable (Vote 'PreVote alg a)) where
+instance (CryptoHash alg) => CryptoHashable (Vote 'PreVote alg a) where
   hashStep s Vote{..} = do
-    hashStep s $ UserType "Vote:PreVote"
+    hashStep s $ UserType "" "Vote@PreVote"
     hashStep s voteHeight
     hashStep s voteRound
     hashStep s voteTime
     hashStep s voteBlockID
 
-instance (CryptoHashable (Vote 'PreCommit alg a)) where
+instance (CryptoHash alg) => CryptoHashable (Vote 'PreCommit alg a) where
   hashStep s Vote{..} = do
-    hashStep s $ UserType "Vote:PreVote"
+    hashStep s $ UserType "" "Vote@PreCommit"
     hashStep s voteHeight
     hashStep s voteRound
     hashStep s voteTime

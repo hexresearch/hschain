@@ -2,6 +2,7 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE FlexibleInstances  #-}
 {-# LANGUAGE LambdaCase         #-}
+{-# LANGUAGE OverloadedStrings  #-}
 {-# LANGUAGE TypeFamilies       #-}
 -- |
 module HSChain.Crypto.SHA (
@@ -45,6 +46,7 @@ instance CryptoHash SHA1 where
     d <- readSTRef dec
     return $! Hash . BL.toStrict . SHA.bytestringDigest
            $  SHA.completeSha1Incremental d n
+  hashAlgorithmName = "hash:SHA1"
 
 instance CryptoHMAC SHA1 where
   hmac = defaultHMAC SHA.hmacSha1
@@ -73,6 +75,7 @@ instance CryptoHash SHA256 where
     d <- readSTRef dec
     return $! Hash . BL.toStrict . SHA.bytestringDigest
            $  SHA.completeSha256Incremental d n
+  hashAlgorithmName = "hash:SHA256"
 
 
 instance CryptoHMAC SHA256 where
@@ -102,6 +105,7 @@ instance CryptoHash SHA384 where
     d <- readSTRef dec
     return $! Hash . BL.toStrict . SHA.bytestringDigest
            $  SHA.completeSha384Incremental d n
+  hashAlgorithmName = "hash:SHA384"
 
 
 instance CryptoHMAC SHA384 where
@@ -131,6 +135,7 @@ instance CryptoHash SHA512 where
     d <- readSTRef dec
     return $! Hash . BL.toStrict . SHA.bytestringDigest
            $  SHA.completeSha512Incremental d n
+  hashAlgorithmName = "hash:SHA512"
 
 
 instance CryptoHMAC SHA512 where

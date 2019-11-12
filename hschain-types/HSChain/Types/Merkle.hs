@@ -32,6 +32,7 @@ import GHC.Generics    (Generic)
 import qualified Data.ByteString as BS
 
 import HSChain.Crypto
+import HSChain.Crypto.Classes.Hash
 
 
 ----------------------------------------------------------------
@@ -78,18 +79,18 @@ deriving instance (Show (f (MerkleNode alg f))) => Show (MerkleChild alg f)
 -- deriving instance (Eq   (f (MerkleNode alg f))) => Eq   (MerkleChild alg f)
 -- instance Serialise (f (MerkleNode alg f)) => Serialise (MerkleChild alg f)
 
-instance CryptoHashable (MerkleTree alg f)  where
+instance CryptoHash alg => CryptoHashable (MerkleTree alg f)  where
   hashStep s = hashStep s . merkleRoot
-instance CryptoHashable (MerkleRoot alg)    where
-instance CryptoHashable (MerkleNode alg f)  where
+instance CryptoHash alg => CryptoHashable (MerkleRoot alg)    where
+instance CryptoHash alg => CryptoHashable (MerkleNode alg f)  where
   hashStep s node = do
-    hashStep s $ UserType "MerkleNode"
+    hashStep s $ UserType "" "MerkleNode"
     case node of
       Branch xs -> do hashStep s $ ConstructorIdx 0
                       hashStep s $ merkleNodeHash <$> xs
       Leaf   bs -> do hashStep s $ ConstructorIdx 1
                       hashStep s   bs
-instance CryptoHashable (MerkleChild alg f) where
+instance CryptoHash alg => CryptoHashable (MerkleChild alg f) where
   hashStep s = hashStep s . merkleNodeHash
 
 ----------------------------------------------------------------

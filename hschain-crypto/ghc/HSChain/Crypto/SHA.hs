@@ -3,6 +3,7 @@
 {-# LANGUAGE DeriveDataTypeable         #-}
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE TypeApplications           #-}
@@ -43,7 +44,7 @@ instance CryptoHash SHA1 where
   newHashAccum                   = unsafeIOToPrim $ fmap AccSHA1 $ hashMutableInit
   updateHashAccum (AccSHA1 s) bs = unsafeIOToPrim $ hashMutableUpdate s bs
   freezeHashAccum (AccSHA1 s)    = Hash . convert <$> unsafeIOToPrim (hashMutableFinalize s)
-
+  hashAlgorithmName              = "hash:SHA1"
 instance CryptoHMAC SHA1 where
   hmac = defaultHMAC @Crypto.SHA1
 
@@ -60,7 +61,7 @@ instance CryptoHash SHA256 where
   newHashAccum                     = unsafeIOToPrim $ fmap AccSHA256 $ hashMutableInit
   updateHashAccum (AccSHA256 s) bs = unsafeIOToPrim $ hashMutableUpdate s bs
   freezeHashAccum (AccSHA256 s)    = Hash . convert <$> unsafeIOToPrim (hashMutableFinalize s)
-
+  hashAlgorithmName                = "hash:SHA256"
 
 instance CryptoHMAC SHA256 where
   hmac = defaultHMAC @Crypto.SHA256
@@ -78,6 +79,7 @@ instance CryptoHash SHA384 where
   newHashAccum                     = unsafeIOToPrim $ fmap AccSHA384 $ hashMutableInit
   updateHashAccum (AccSHA384 s) bs = unsafeIOToPrim $ hashMutableUpdate s bs
   freezeHashAccum (AccSHA384 s)    = Hash . convert <$> unsafeIOToPrim (hashMutableFinalize s)
+  hashAlgorithmName                = "hash:SHA384"
 
 instance CryptoHMAC SHA384 where
   hmac = defaultHMAC @Crypto.SHA384
@@ -95,7 +97,7 @@ instance CryptoHash SHA512 where
   newHashAccum                     = unsafeIOToPrim $ fmap AccSHA512 $ hashMutableInit
   updateHashAccum (AccSHA512 s) bs = unsafeIOToPrim $ hashMutableUpdate s bs
   freezeHashAccum (AccSHA512 s)    = Hash . convert <$> unsafeIOToPrim (hashMutableFinalize s)
-
+  hashAlgorithmName                = "hash:SHA512"
 
 instance CryptoHMAC SHA512 where
   hmac = defaultHMAC @Crypto.SHA512

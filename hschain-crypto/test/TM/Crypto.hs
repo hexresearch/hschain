@@ -93,29 +93,29 @@ testsBLS = testGroup "BLS"
 #if USE_BLS
   [ testGroup "Asymmetric" $ testsAsymmetricCrypto (Proxy @BLS)
   , testGroup "Signatures" $ testsSignatureCrypto  (Proxy @BLS)
-  , testGroup "Hashes"     [ testHash (Proxy @BLS) "3vY84Vb3FUXnBxvjKQ6uGxrvRsMSm6nRHTT79bbGuzxh"]
+  -- , testGroup "Hashes"     [ testHash (Proxy @BLS) "3vY84Vb3FUXnBxvjKQ6uGxrvRsMSm6nRHTT79bbGuzxh"]
   , testGroup "BLS features"
         [ testCase "sizes" $ do
             (publicKeySize (undefined :: PublicKey BLS)) @?= RawBls.publicKeySize
             (privKeySize   (undefined :: PrivKey   BLS)) @?= RawBls.privateKeySize
             (signatureSize (undefined :: Signature BLS)) @?= RawBls.signatureSize
-            (hashSize      (undefined :: Hash BLS))      @?= RawBls.hashSize
+            -- (hashSize      (undefined :: Hash BLS))      @?= RawBls.hashSize
         , testCase "signatures for hash 1" $ do
             (privKey :: PrivKey BLS) <- generatePrivKey
             let msg = "Please, don't hash me!"
-                msgHash = hashBlob msg
+                msgHash = hashBlobBLS msg
             let sig = signHash privKey msgHash
             (verifyHashSignature (publicKey privKey) msgHash sig) @? "Verify must be passed"
         , testCase "signatures for hash 2" $ do
             (privKey :: PrivKey BLS) <- generatePrivKey
             let msg = "I'm just a silly bytestring, why do you hash me?"
-                msgHash = hashBlob msg
+                msgHash = hashBlobBLS msg
             let sig = signHash privKey msgHash
             (verifyBlobSignature (publicKey privKey) msg sig) @? "Verify must be passed"
         , testCase "signatures for hash 3" $ do
             (privKey :: PrivKey BLS) <- generatePrivKey
             let msg = "So... You try to hash me again..."
-                msgHash = hashBlob msg
+                msgHash = hashBlobBLS msg
             let sig1 = signBlob privKey msg
             let sig2 = signHash privKey msgHash
             sig1 @?= sig2

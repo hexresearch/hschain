@@ -5,14 +5,35 @@
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase                 #-}
+{-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE TypeApplications           #-}
 {-# LANGUAGE TypeFamilies               #-}
 {-# LANGUAGE TypeOperators              #-}
 -- |
-module HSChain.Crypto.Classes.Hash where
+module HSChain.Crypto.Classes.Hash (
+    -- * Data types and API
+    Hash(..)
+  , Hashed(..)
+  , CryptoHash(..)
+  , hashBlob
+  , hashSize
+  , CryptoHashable(..)
+  , CryptoTypeHashable(..)
+  , hash
+  , hashed
+    -- * Hash API
+    -- $hash_encoding
+  , CryptoName(..)  
+  , DataType(..)
+  , Constructor(..)
+    -- ** Helpers
+  , storableHashStep
+    -- ** Generics derivation
+  , GCryptoHashable(..)
+  ) where
 
-import           Codec.Serialise   (Serialise, serialise)
+import           Codec.Serialise   (Serialise)
 import qualified Codec.Serialise as CBOR
 import Control.Applicative
 import Control.Monad.ST
@@ -29,6 +50,7 @@ import qualified Data.Map.Strict          as Map
 import qualified Data.Set                 as Set
 import qualified Data.List.NonEmpty       as NE
 import Data.Functor.Classes
+import Data.String
 import Data.Word
 import Data.Proxy
 import Data.Int
@@ -69,6 +91,11 @@ instance Eq1 (Hashed alg) where
   liftEq _ (Hashed h1) (Hashed h2) = h1 == h2
 
 
+-- | Name of cryptographic algorithm
+newtype CryptoName alg = CryptoName { getCryptoName :: ByteString }
+  deriving stock   (Show)
+  deriving newtype (IsString)
+
 -- | Algorithm for computing cryptographic hash. We expose fold
 --   structure of hash function. Folding is performed inside ST monad
 --   which allows to use mutable accumulators for performance.
@@ -81,7 +108,8 @@ class (ByteReprSized (Hash alg)) => CryptoHash alg where
   updateHashAccum :: HashAccum alg s -> ByteString -> ST s ()
   -- | Extract digest from accumulator
   freezeHashAccum :: HashAccum alg s -> ST s (Hash alg)
-
+  -- | Name of algorithm
+  hashAlgorithmName :: CryptoName alg
 
 -- | Compute hash of bytestring
 hashBlob :: CryptoHash alg => ByteString -> Hash alg
@@ -90,10 +118,20 @@ hashBlob bs = runST $ do
   updateHashAccum s bs
   freezeHashAccum s
 
--- | Type class which describes how value should be hashed. We try to
---   take care that different nonprimitive data types do not share
---   representation so it's not possible to get two different values
---   to share hash.
+-- | Type class which describes how value should be hashed. Goal of
+--   this type class is to separate hashing from serialization, allow
+--   more complicated hashing schemes (Merkle trees for example). In a
+--   sense this type class describes how to serialize value without
+--   way to deserialize it back.
+--
+--   API is typeclass based and tries satisfy conflicting
+--   requirements. First we want our encoding to be compact: we want
+--   to hash as little data as possible. Then for each type we have to
+--   chose between nominal and structural encoding. First is to ensure
+--   that two values of different types never hash to same value
+--   excluding possibility of hash collision. Second is to treat value
+--   as some generic structure for example list, vector should have to
+--   same value.
 --
 --   This type class allows to derive instances using 'Generic'
 --   deriving. Deriving uses both name of type and name of
@@ -126,7 +164,8 @@ hash a = runST $ do
 hashSize :: forall alg proxy i. (CryptoHash alg, Num i) => proxy alg -> i
 hashSize _ = fromIntegral $ natVal (Proxy @(ByteSize (Hash alg)))
 
-
+-- | Compute hash of value. Works same as 'hash' but keeps type of
+--   value as phantom parameter.
 hashed :: (CryptoHash alg, CryptoHashable a) => a -> Hashed alg a
 hashed = Hashed . hash
 
@@ -162,11 +201,23 @@ instance JSON.ToJSONKey   (Hash alg)
 -- CryptoHashable instances
 ----------------------------------------------------------------
 
--- | Data type prefix for defining 'CryptoHashable' instances.
+-- $hash_encoding
+--
+-- Encoding uses following structure.
+--
+--  1. Each data type is prefixed with type tag. In haskell code it's
+--     represented by 'DataType'
+--
+
+
+
+-- | Data type tag for instances of 'CryptoHashable'. Its instances
+--   just writes bare type tag. It
 data DataType
   -- Primitives
-  = ByteString                   -- ^ Value is a bytestring, i.e. sequence of bytes
-  | Text                         -- ^ Value is text
+  = PrimBytes !Word32
+  -- ^ Value is a bytestring, i.e. sequence of bytes. Field is length
+  --   of bytestring
   | PrimI8
   | PrimI16
   | PrimI32
@@ -175,17 +226,36 @@ data DataType
   | PrimW16
   | PrimW32
   | PrimW64
-
+  | PrimChar
   -- Structural data types composite types
-  | Tuple      !Word16           -- ^ Tuple of size N
-  | Sequence   !Word32           -- ^ Sequence of elements of same type with given length
-  | MaybeTy
-  | SumType    !Word16           -- ^ Tagged sum types with n constructors with 1 field each
+  | TyTuple    !Word16
+  -- ^ Tuple of size N
+  | TySequence !Word32
+  -- ^ Sequence of elements of same type with given length
+  | TyMap      !Word32
+  -- ^ Map. It's expected to be represented as sequence of pair. So
+  --   it's not very different from TySequence but elements need to
+  --   appear sorted by key
+  | TySet      !Word32
+  -- ^ Set of elements. Represented in the same way as TySequence but
+  --   elements should be sorted
+  | TyNothing
+  -- ^ Absense of value.
+  | TyJust
+  -- ^ Just a single value
+  | TyCrypto !ByteString
+  -- ^ Cryptography primitive. It's a null terminated bytestring which
+  --   describes which primitive is used and followed by conventional
+  --   serialization of primtitive as bytestring
+  | TyBase   !ByteString
+  -- ^ Type defined in starndard (base) or other libraries considered
+  --   standard
 
-  --
-  | BaseType   !ByteString       -- ^ Data type defined in standard library
-  | CryptoType !ByteString       -- ^ Cryptography related data type
-  | UserType   !ByteString       -- ^ User defined type which is identified by name
+  | UserType String String
+  -- ^ User defined type. In this case it's important to avoid
+  --   accidental clashes between different data types. Especially
+  --   when they are defined in different libaries. As such user type
+  --   is described by libary name and data type name.
   deriving (Show)
 
 -- | Constructor identifier for defining 'CryptoHashable' instances.
@@ -194,13 +264,13 @@ data Constructor
   | ConstructorName !ByteString
   deriving (Show)
 
+
 instance CryptoHashable DataType where
   hashStep s dat = do
-    storableHashStep s $ typeID dat
+    storableHashStep s $ dataTypeTag dat
     case dat of
       -- Primitives
-      ByteString    -> return ()
-      Text          -> return ()
+      PrimBytes n   -> storableHashStep s n
       PrimI8        -> return ()
       PrimI16       -> return ()
       PrimI32       -> return ()
@@ -209,38 +279,43 @@ instance CryptoHashable DataType where
       PrimW16       -> return ()
       PrimW32       -> return ()
       PrimW64       -> return ()
+      PrimChar      -> return ()
       -- Structures
-      Tuple    n    -> storableHashStep s n
-      Sequence n    -> storableHashStep s n
-      MaybeTy       -> return ()
-      SumType  n    -> storableHashStep s n
+      TyTuple    n    -> storableHashStep s n
+      TySequence n    -> storableHashStep s n
+      TyMap      n    -> storableHashStep s n
+      TySet      n    -> storableHashStep s n
+      TyNothing       -> return ()
+      TyJust          -> return ()
+      TyCrypto   bs   -> hashStep s bs
+      TyBase     bs   -> hashStep s bs
       -- Composites
-      BaseType   bs -> hashByteString s bs
-      CryptoType bs -> hashByteString s bs
-      UserType   bs -> hashByteString s bs
-    where
-      typeID :: DataType -> Word16
-      typeID = \case
-        ByteString   -> 0
-        Text         -> 1
-        PrimI8       -> 2
-        PrimI16      -> 3
-        PrimI32      -> 4
-        PrimI64      -> 5
-        PrimW8       -> 6
-        PrimW16      -> 7
-        PrimW32      -> 8
-        PrimW64      -> 9
-        -- Structures
-        Tuple{}      -> 0x0100 + 0
-        Sequence{}   -> 0x0100 + 1
-        MaybeTy      -> 0x0100 + 2
-        SumType{}    -> 0x0100 + 4
-        -- More complicated
-        BaseType{}   -> 0x0200 + 0
-        CryptoType{} -> 0x0200 + 1
-        UserType{}   -> 0x0200 + 2
+      UserType m n    -> do nullTerminatedString s m
+                            nullTerminatedString s n
 
+dataTypeTag :: DataType -> Word16
+dataTypeTag = \case
+  PrimBytes{}  -> 0
+  PrimI8       -> 1
+  PrimI16      -> 2
+  PrimI32      -> 3
+  PrimI64      -> 4
+  PrimW8       -> 5
+  PrimW16      -> 6
+  PrimW32      -> 7
+  PrimW64      -> 8
+  PrimChar     -> 9
+  -- Structures
+  TyTuple{}    -> 0x0100 + 0
+  TySequence{} -> 0x0100 + 1
+  TyMap{}      -> 0x0100 + 2
+  TySet{}      -> 0x0100 + 3
+  TyNothing    -> 0x0100 + 4
+  TyJust       -> 0x0100 + 5
+  TyCrypto{}   -> 0x0100 + 6
+  TyBase{}     -> 0x0100 + 7
+  --
+  UserType{}   -> 0x0200
 
 
 instance CryptoHashable Constructor where
@@ -267,79 +342,87 @@ instance CryptoHashable Int where
   hashStep s i = hashStep s (fromIntegral i :: Int64)
 instance CryptoHashable Word where
   hashStep s i = hashStep s (fromIntegral i :: Word64)
+
 instance CryptoHashable Char where
-  hashStep s = hashStep s . fromEnum
--- FIXME: ZZZ (placeholder)
+  hashStep s c = do
+    hashStep s PrimChar   
+    hashStep s (fromIntegral (fromEnum c) :: Word32)
+
+-- FIXME: ZZZ (placeholder) (Some variant of chunked encoding?)
 instance CryptoHashable Integer where
-  hashStep s = hashStep s . CBOR.serialise  
+  hashStep s = hashStep s . CBOR.serialise
 
 instance CryptoHashable ByteString where
-  hashStep = updateHashAccum
+  hashStep s bs = do hashStep s $ PrimBytes $ fromIntegral $ BS.length bs
+                     updateHashAccum s bs
 instance CryptoHashable BL.ByteString where
-  hashStep s bs = forM_ (BL.toChunks bs) $ updateHashAccum s
-  
+  hashStep s bs = do hashStep s $ PrimBytes $ fromIntegral $ BL.length bs
+                     forM_ (BL.toChunks bs) $ updateHashAccum s
+
 
 ----------------------------------------
 -- Normal data types
 
 instance CryptoHashable a => CryptoHashable [a] where
-  hashStep s xs = do hashStep s $ Sequence $ fromIntegral $ length xs
+  hashStep s xs = do hashStep s $ TySequence $ fromIntegral $ length xs
                      mapM_ (hashStep s) xs
 
 instance CryptoHashable a => CryptoHashable (NE.NonEmpty a) where
-  hashStep s xs = do hashStep s $ Sequence $ fromIntegral $ length xs
+  hashStep s xs = do hashStep s $ TySequence $ fromIntegral $ length xs
                      mapM_ (hashStep s) xs
 
 instance (CryptoHashable k, CryptoHashable v) => CryptoHashable (Map.Map k v) where
-  -- FIXME: ZZZ
-  hashStep s = hashStep s . Map.toList
+  hashStep s xs = do hashStep s $ TyMap $ fromIntegral $ length xs
+                     mapM_ (hashStep s) $ Map.toList xs
+
 instance (CryptoHashable a) => CryptoHashable (Set.Set a) where
-  -- FIXME: ZZZ
-  hashStep s = hashStep s . Set.toList
+  hashStep s xs = do hashStep s $ TySet $ fromIntegral $ length xs
+                     mapM_ (hashStep s) $ Set.toList xs
 
 instance CryptoHashable a => CryptoHashable (Maybe a) where
-  hashStep s m = do
-    hashStep s MaybeTy
-    case m of Just x  -> do hashStep s $ ConstructorIdx 0
-                            hashStep s x
-              Nothing -> do hashStep s $ ConstructorIdx 1
+  hashStep s Nothing  = do hashStep s TyNothing
+  hashStep s (Just a) = do hashStep s TyJust
+                           hashStep s a
 
 instance (CryptoHashable a, CryptoHashable b) => CryptoHashable (Either a b) where
   hashStep s m = do
-    hashStep s $ SumType 2
+    hashStep s $ TyBase "Either"
     case m of Left  a -> do hashStep s $ ConstructorIdx 0
                             hashStep s a
               Right b -> do hashStep s $ ConstructorIdx 1
                             hashStep s b
 
 instance CryptoHashable () where
-  hashStep s () = hashStep s $ Tuple 0
+  hashStep s () = hashStep s $ TyTuple 0
 
 instance (CryptoHashable a, CryptoHashable b) => CryptoHashable (a, b) where
   hashStep s (a,b) = do
-    hashStep s $ Tuple 2
+    hashStep s $ TyTuple 2
     hashStep s a
     hashStep s b
 
 instance (CryptoHashable a, CryptoHashable b, CryptoHashable c) => CryptoHashable (a, b, c) where
   hashStep s (a,b,c) = do
-    hashStep s $ Tuple 3
+    hashStep s $ TyTuple 3
     hashStep s a
     hashStep s b
     hashStep s c
 
--- FIXME: ZZZ (placeholder instances)
-instance CryptoHashable (Hashed alg a) where
-  hashStep s (Hashed h) = hashStep s h
-instance CryptoHashable (Hash alg) where
-  hashStep s = updateHashAccum s . encodeToBS
 
+instance CryptoHash alg => CryptoHashable (Hashed alg a) where
+  hashStep s (Hashed h) = hashStep s h
+  
+instance CryptoHash alg => CryptoHashable (Hash alg) where
+  hashStep s (Hash bs) = do
+    hashStep s $ TyCrypto $ getCryptoName (hashAlgorithmName @alg)
+    hashStep s bs 
 
 
 ----------------------------------------------------------------
 -- Helpers
 ----------------------------------------------------------------
 
+-- | Hash value using its 'Storable' instance
 storableHashStep :: (CryptoHash alg, Storable a) => HashAccum alg s -> a -> ST s ()
 {-# INLINE storableHashStep #-}
 storableHashStep s i
@@ -347,10 +430,11 @@ storableHashStep s i
   $ unsafePerformIO
   $ BI.create (sizeOf i) (\p -> poke (castPtr p) i)
 
-hashByteString :: (CryptoHash alg) => HashAccum alg s -> ByteString -> ST s ()
-hashByteString s bs = do storableHashStep s (fromIntegral $ BS.length bs :: Word32)
-                         updateHashAccum  s bs
-
+-- | Null terminated string
+nullTerminatedString :: (CryptoHash alg) => HashAccum alg s -> [Char] -> ST s ()
+nullTerminatedString s xs = do
+  forM_ xs (hashStep s)
+  hashStep s (toEnum 0 :: Char)
 
 ----------------------------------------------------------------
 -- Generics for CryptoHashable
@@ -361,7 +445,8 @@ class GCryptoHashable f where
 
 instance (Datatype d, GCryptoHashable f) => GCryptoHashable (M1 D d f) where
   ghashStep s x@(M1 f) = do
-    hashStep  s $ UserType $ BC8.pack $ datatypeName x
+    -- FIXME: nodule name
+    hashStep  s $ UserType "" $ datatypeName x
     ghashStep s f
 
 instance (GHC.Constructor c, GCryptoHashable f) => GCryptoHashable (M1 C c f) where
