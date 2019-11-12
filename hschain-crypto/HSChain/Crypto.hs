@@ -165,11 +165,10 @@ class ( ByteReprSized (PublicKey alg)
       , Ord (PublicKey alg)
       ) => CryptoAsymmetric alg where
   -- | Compute public key from  private key
-  publicKey       :: PrivKey   alg -> PublicKey alg
+  publicKey       :: PrivKey alg -> PublicKey alg
   -- | Generate new private key
   generatePrivKey :: MonadIO m => m (PrivKey alg)
-
-
+  asymmKeyAlgorithmName :: CryptoName alg
 
 
 -- | Signature
@@ -380,8 +379,10 @@ instance ByteReprSized (PrivKey sign) => ByteReprSized (PrivKey (sign :& hash)) 
   type ByteSize (PrivKey (sign :& hash)) = ByteSize (PrivKey sign)
 
 instance CryptoAsymmetric sign => CryptoAsymmetric (sign :& hash) where
-  publicKey       = coerce (publicKey @sign)
-  generatePrivKey = fmap PrivKeyU (generatePrivKey @sign)
+  publicKey             = coerce (publicKey @sign)
+  generatePrivKey       = fmap PrivKeyU (generatePrivKey @sign)
+  asymmKeyAlgorithmName = coerce (asymmKeyAlgorithmName @sign)
+
 
 instance ByteReprSized (Signature sign) => ByteReprSized (Signature (sign :& hash)) where
   type ByteSize (Signature (sign :& hash)) = ByteSize (Signature sign)
@@ -595,15 +596,25 @@ verifyCborSignature pk a
 
 
 
--- FIXME: ZZZ
-instance CryptoHash hash => CryptoHashable (Fingerprint hash alg) where
-  hashStep s (Fingerprint h) = hashStep s h
 
-instance ByteRepr (PublicKey alg) => CryptoHashable (PublicKey alg) where
-  hashStep s = updateHashAccum s . encodeToBS
+instance (CryptoAsymmetric alg, CryptoHash hash) => CryptoHashable (Fingerprint hash alg) where
+  hashStep s f = do
+    hashStep s $ CryFingerprint (getCryptoName (hashAlgorithmName     @hash))
+                                (getCryptoName (asymmKeyAlgorithmName @alg))
+    hashStep s $ encodeToBS f
 
-instance ByteRepr (PrivKey alg) => CryptoHashable (PrivKey alg) where
-  hashStep s = updateHashAccum s . encodeToBS
+instance CryptoAsymmetric alg => CryptoHashable (PublicKey alg) where
+  hashStep s k = do
+    hashStep s $ CryPublicKey $ getCryptoName (asymmKeyAlgorithmName @alg)
+    hashStep s $ encodeToBS k
 
-instance CryptoHashable (Signature alg) where
-  hashStep s = updateHashAccum s . encodeToBS
+instance CryptoAsymmetric alg => CryptoHashable (PrivKey alg) where
+  hashStep s k = do
+    hashStep s $ CryPrivateKey $ getCryptoName (asymmKeyAlgorithmName @alg)
+    hashStep s $ encodeToBS k
+
+instance CryptoAsymmetric alg => CryptoHashable (Signature alg) where
+  hashStep s k = do
+    hashStep s $ CrySignature $ getCryptoName (asymmKeyAlgorithmName @alg)
+    hashStep s $ encodeToBS k
+

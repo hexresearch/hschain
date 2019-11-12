@@ -405,7 +405,7 @@ unverifySignature = coerce
 instance (Serialise      a) => Serialise      (Signed 'Unverified alg a)
 instance (JSON.FromJSON  a) => JSON.FromJSON  (Signed 'Unverified alg a)
 instance (JSON.ToJSON    a) => JSON.ToJSON    (Signed sign        alg a)
-instance (CryptoHashable a) => CryptoHashable (Signed sign        alg a)
+instance (CryptoHashable a, CryptoAsymmetric alg) => CryptoHashable (Signed sign alg a)
 
 ----------------------------------------------------------------
 -- Helping application be faster.

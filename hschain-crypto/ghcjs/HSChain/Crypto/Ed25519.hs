@@ -1,6 +1,7 @@
 {-# LANGUAGE DataKinds            #-}
 {-# LANGUAGE FlexibleContexts     #-}
 {-# LANGUAGE FlexibleInstances    #-}
+{-# LANGUAGE OverloadedStrings    #-}
 {-# LANGUAGE TypeFamilies         #-}
 {-# LANGUAGE UndecidableInstances #-}
 module HSChain.Crypto.Ed25519 (
@@ -57,6 +58,7 @@ instance CryptoSign Ed25519 where
     $ js_sign_detached (bsToArray bs) (privK k)
   verifyBlobSignature (PublicKey pubKey) blob (Signature s)
     = js_sign_detached_verify (bsToArray blob) (bsToArray s) pubKey
+  asymmKeyAlgorithmName  = "Ed25519"
 
 instance Eq (PrivKey Ed25519) where
   PrivKey b1 _ _ == PrivKey b2 _ _ = b1 == b2

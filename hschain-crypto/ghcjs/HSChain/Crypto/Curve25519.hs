@@ -1,6 +1,7 @@
 {-# LANGUAGE DataKinds            #-}
 {-# LANGUAGE FlexibleContexts     #-}
 {-# LANGUAGE FlexibleInstances    #-}
+{-# LANGUAGE OverloadedStrings    #-}
 {-# LANGUAGE TypeFamilies         #-}
 {-# LANGUAGE UndecidableInstances #-}
 -- |
@@ -49,6 +50,7 @@ instance CryptoAsymmetric Curve25519 where
     case decodeFromBS $ arrayToBs arr of
       Just k  -> return k
       Nothing -> error "Curve25519: internal error. Cannot generate key"
+  asymmKeyAlgorithmName = "Curve25519"
 
 instance ByteReprSized (DHSecret Curve25519) where
   type ByteSize (DHSecret Curve25519) = 32

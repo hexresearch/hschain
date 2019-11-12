@@ -3,6 +3,7 @@
 {-# LANGUAGE DeriveDataTypeable         #-}
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE TypeApplications           #-}
 {-# LANGUAGE TypeFamilies               #-}
@@ -53,6 +54,8 @@ instance CryptoAsymmetric Curve25519 where
         Arr.alloc (fromIntegral crypto_box_PUBLICKEYBYTES) $ \pPub  ->
           check =<< crypto_box_keypair pPub pPriv
     return $! PrivKey priv (PublicKey pub)
+  asymmKeyAlgorithmName = "Curve25519"
+
 
 
 instance ByteReprSized (DHSecret Curve25519) where

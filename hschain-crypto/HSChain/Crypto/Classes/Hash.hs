@@ -243,10 +243,6 @@ data DataType
   -- ^ Absense of value.
   | TyJust
   -- ^ Just a single value
-  | TyCrypto !ByteString
-  -- ^ Cryptography primitive. It's a null terminated bytestring which
-  --   describes which primitive is used and followed by conventional
-  --   serialization of primtitive as bytestring
   | TyBase   !ByteString
   -- ^ Type defined in starndard (base) or other libraries considered
   --   standard
@@ -256,6 +252,14 @@ data DataType
   --   accidental clashes between different data types. Especially
   --   when they are defined in different libaries. As such user type
   --   is described by libary name and data type name.
+
+  | CryHash !ByteString
+  -- ^ Cryptography primitive. It's a bytestring which is followed by
+  --   conventional serialization of primtitive as bytestring
+  | CryFingerprint !ByteString !ByteString
+  | CryPublicKey   !ByteString
+  | CryPrivateKey  !ByteString
+  | CrySignature   !ByteString
   deriving (Show)
 
 -- | Constructor identifier for defining 'CryptoHashable' instances.
@@ -287,11 +291,16 @@ instance CryptoHashable DataType where
       TySet      n    -> storableHashStep s n
       TyNothing       -> return ()
       TyJust          -> return ()
-      TyCrypto   bs   -> hashStep s bs
       TyBase     bs   -> hashStep s bs
       -- Composites
       UserType m n    -> do nullTerminatedString s m
                             nullTerminatedString s n
+      -- Crypto primitives
+      CryHash        bs    -> hashStep s bs
+      CryFingerprint bH bK -> hashStep s bH >> hashStep s bK
+      CryPublicKey   bs    -> hashStep s bs
+      CryPrivateKey  bs    -> hashStep s bs
+      CrySignature   bs    -> hashStep s bs
 
 dataTypeTag :: DataType -> Word16
 dataTypeTag = \case
@@ -312,11 +321,15 @@ dataTypeTag = \case
   TySet{}      -> 0x0100 + 3
   TyNothing    -> 0x0100 + 4
   TyJust       -> 0x0100 + 5
-  TyCrypto{}   -> 0x0100 + 6
-  TyBase{}     -> 0x0100 + 7
+  TyBase{}     -> 0x0100 + 6
   --
   UserType{}   -> 0x0200
-
+  --
+  CryHash{}        -> 0x0300 + 0
+  CryFingerprint{} -> 0x0300 + 1
+  CryPublicKey{}   -> 0x0300 + 2
+  CryPrivateKey{}  -> 0x0300 + 3
+  CrySignature{}   -> 0x0300 + 4
 
 instance CryptoHashable Constructor where
   hashStep s = \case
@@ -414,7 +427,7 @@ instance CryptoHash alg => CryptoHashable (Hashed alg a) where
   
 instance CryptoHash alg => CryptoHashable (Hash alg) where
   hashStep s (Hash bs) = do
-    hashStep s $ TyCrypto $ getCryptoName (hashAlgorithmName @alg)
+    hashStep s $ CryHash $ getCryptoName (hashAlgorithmName @alg)
     hashStep s bs 
 
 

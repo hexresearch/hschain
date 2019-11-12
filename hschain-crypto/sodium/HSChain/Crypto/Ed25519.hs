@@ -1,8 +1,9 @@
-{-# LANGUAGE CApiFFI #-}
+{-# LANGUAGE CApiFFI                    #-}
 {-# LANGUAGE DataKinds                  #-}
-{-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE DeriveDataTypeable         #-}
+{-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE TypeApplications           #-}
 {-# LANGUAGE TypeFamilies               #-}
@@ -54,6 +55,7 @@ instance CryptoAsymmetric Ed25519 where
         Arr.alloc (fromIntegral crypto_sign_PUBLICKEYBYTES) $ \pPub  ->
           check =<< sodium_crypto_sign_keypair pPub pPriv
     return $! PrivKey priv (PublicKey pub)
+  asymmKeyAlgorithmName = "Ed25519"
 
 instance ByteReprSized (Signature Ed25519) where
   type ByteSize (Signature Ed25519) = 64
