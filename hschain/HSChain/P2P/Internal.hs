@@ -161,7 +161,7 @@ peerFSM PeerChans{..} peerExchangeCh gossipCh recvCh cursor@MempoolCursor{..} = 
         ]
       (s', cmds) <- handler config s event
       forM_ cmds $ \case
-        SendRX rx         -> atomicallyIO $ peerChanRx rx -- FIXME: tickRecv
+        SendRX rx         -> atomicallyIO $ peerChanRx rx
         Push2Mempool tx   -> void $ pushTransaction tx
         SendPEX pexMsg    -> atomicallyIO $ writeTChan peerExchangeCh pexMsg
         Push2Gossip tx    -> atomicallyIO $ writeTBQueue gossipCh tx
