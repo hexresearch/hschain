@@ -41,6 +41,8 @@ data InternalError
   -- ^ Transaction which shouldn't be rolled back was rolled back
   | InvalidBlockInWAL
   -- ^ Invalid block is stored in WAL
+  | CannotRewindState
+  -- ^ State transitions already record in blockchain are not valid.
   deriving stock    (Show)
   deriving anyclass (Exception)
 
@@ -49,11 +51,5 @@ data InternalError
 data CallbackError
   = InvalidBlockGenerated
   -- ^ Invalid block was generated.
-  deriving stock    (Show)
-  deriving anyclass (Exception)
-
-
--- | Exception which is thrown when impossible situation is reached
-data ImpossibleError = ImpossibleError
   deriving stock    (Show)
   deriving anyclass (Exception)

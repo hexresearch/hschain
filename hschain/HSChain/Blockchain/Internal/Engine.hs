@@ -79,7 +79,7 @@ rewindBlockchainState AppLogic{appBchState,appValidationFun} = do
     interpretBlock h st = do
       blk      <- queryRO $ mustRetrieveBlock h
       valSet   <- queryRO $ mustRetrieveValidatorSet (succ h)
-      bst      <- throwNothingM (ImpossibleError)
+      bst      <- throwNothingM CannotRewindState
                 $ appValidationFun blk (BlockchainState st valSet)
       let st' = blockchainState bst
       bchStoreStore appBchState h st'

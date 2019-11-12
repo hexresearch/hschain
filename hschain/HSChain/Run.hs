@@ -28,7 +28,7 @@ import Control.Monad.IO.Class
 import Control.Monad.Catch
 import Control.Concurrent.STM         (atomically)
 import Control.Concurrent.STM.TBQueue (lengthTBQueue)
-import Data.Maybe                     (isJust,fromJust)
+import Data.Maybe                     (isJust)
 
 import HSChain.Blockchain.Internal.Engine
 import HSChain.Blockchain.Internal.Engine.Types
@@ -76,9 +76,9 @@ makeAppLogic store BChLogic{..} Interpreter{..} = do
     { appValidationFun  = \b bst -> (fmap . fmap) snd
                                   $ interpretBCh bst
                                   $ processBlock b
-    , appBlockGenerator = \b txs -> do
-        mb <- interpretBCh (newBlockState b)
-            $ generateBlock b txs
+    , appBlockGenerator = \newB txs -> do
+        mb <- interpretBCh (newBlockState newB)
+            $ generateBlock newB txs
         case mb of
           Just b  -> return b
           Nothing -> throwM InvalidBlockGenerated
