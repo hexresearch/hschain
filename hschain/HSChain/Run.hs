@@ -76,9 +76,12 @@ makeAppLogic store BChLogic{..} Interpreter{..} = do
     { appValidationFun  = \b bst -> (fmap . fmap) snd
                                   $ interpretBCh bst
                                   $ processBlock b
-    , appBlockGenerator = \b txs -> fmap fromJust -- FIXME
-                                 $ interpretBCh (newBlockState b)
-                                 $ generateBlock b txs
+    , appBlockGenerator = \b txs -> do
+        mb <- interpretBCh (newBlockState b)
+            $ generateBlock b txs
+        case mb of
+          Just b  -> return b
+          Nothing -> throwM InvalidBlockGenerated
     , appMempool        = mempool
     , appBchState       = store
     , appProposerChoice = randomProposerSHA512
