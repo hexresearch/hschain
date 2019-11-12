@@ -54,6 +54,8 @@ commandAction (MandatorySystemTables userTables initialRequests) = do
     , "CREATE TABLE allowed_requests"
     , "    ( request_id STRING PRIMARY KEY -- we expect hash here, for now any string would do."
     , "    , request_text STRING"
+    , "    , CONSTRAINT non_empty_request_id CHECK (length(request_id) > 0)
+    , "    , CONSTRAINT non_empty_request_text CHECK (length(request_text) > 0)
     , "    );"
     , ""
     , "-- special table - parameters for requests."
