@@ -78,7 +78,7 @@ commandAction (MandatorySystemTables userTables initialRequests) = do
     , "CREATE TABLE serialized_requests"
     , "    ( height     INTEGER -- height for request"
     , "    , seq_index  INTEGER -- order inside the height"
-    , "    , request    STRING  -- the request. must be request_id for height >= 0 and SQK text for genesis."
+    , "    , request_id STRING  -- the request id"
     , "    , CONSTRAINT serialized_requests_primary_key PRIMARY KEY (height, seq_index)"
     , "    , CONSTRAINT must_have_request_id FOREIGN KEY (request_id) REFERENCES allowed_requests(request_id)"
     , "    );"

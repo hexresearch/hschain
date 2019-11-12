@@ -51,6 +51,11 @@ proc main {argv0 argv} {
 	file delete -force $databasefn
 	sqlite3 database $databasefn -create yes
 	puts "database created"
+puts "Evaluating:
+-------------------------
+$mandatory_tables
+-------------------------
+"
 	database eval $mandatory_tables
 	puts "tables added."
 	after 1000 ascend_action
