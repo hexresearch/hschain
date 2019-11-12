@@ -29,7 +29,8 @@ data CorruptedDBError
   deriving stock    (Show)
   deriving anyclass (Exception)
 
--- | Internal error in algorithm. Should never happen. 
+-- | Internal error in algorithm. Could only occure either because of
+--   bug or due to data corruption.
 data InternalError
   = BlockchainStateUnavalable
   -- ^ Program is unsable to retrive blockchain state
@@ -39,8 +40,18 @@ data InternalError
   | UnexpectedRollback
   -- ^ Transaction which shouldn't be rolled back was rolled back
   | InvalidBlockInWAL
+  -- ^ Invalid block is stored in WAL
   deriving stock    (Show)
   deriving anyclass (Exception)
+
+-- | Error generated due to user provided callback which violated some
+--   invariant
+data CallbackError
+  = InvalidBlockGenerated
+  -- ^ Invalid block was generated.
+  deriving stock    (Show)
+  deriving anyclass (Exception)
+
 
 -- | Exception which is thrown when impossible situation is reached
 data ImpossibleError = ImpossibleError
