@@ -47,8 +47,6 @@ makeLenses ''LaggingState
 -- | Peer which is at the same height as we. Here state is more
 --   complicated and somewhat redundant. Tendermint only tracks votes
 --   for peer's round. For algorithm simplicity we track
---
---   FIXME: simplify state along tern
 data CurrentState alg a = CurrentState
   { _peerStep       :: !FullStep                  -- ^ Step of peer
   , _peerValidators :: !(ValidatorSet alg)        -- ^
