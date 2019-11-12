@@ -14,7 +14,7 @@ import Options.Applicative
 
 -- |Safe string value escaping.
 sqlStr :: String -> String
-sqlStr = show . concatMap escape
+sqlStr s = '\'' : concatMap escape s ++ "'"
   where
     escape '\'' = "''"
     escape c = [c]
