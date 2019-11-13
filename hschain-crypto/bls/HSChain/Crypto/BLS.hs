@@ -1,9 +1,10 @@
-{-# LANGUAGE DataKinds                  #-}
-{-# LANGUAGE DeriveDataTypeable         #-}
-{-# LANGUAGE FlexibleContexts           #-}
-{-# LANGUAGE FlexibleInstances          #-}
-{-# LANGUAGE TypeFamilies               #-}
-{-# LANGUAGE UndecidableInstances       #-}
+{-# LANGUAGE DataKinds            #-}
+{-# LANGUAGE DeriveDataTypeable   #-}
+{-# LANGUAGE FlexibleContexts     #-}
+{-# LANGUAGE FlexibleInstances    #-}
+{-# LANGUAGE OverloadedStrings    #-}
+{-# LANGUAGE TypeFamilies         #-}
+{-# LANGUAGE UndecidableInstances #-}
 module HSChain.Crypto.BLS where
 
 
@@ -53,6 +54,7 @@ instance CryptoAggregabble BLS where
 instance CryptoAsymmetric BLS where
     publicKey (PrivKey privKey) = PublicKey $ unsafePerformIO $ Bls.getPublicKey privKey
     generatePrivKey = PrivKey <$> liftIO (getEntropy 32 >>= Bls.fromSeed)
+    asymmKeyAlgorithmName = "BLS"
 
 
 instance CryptoSignHashed BLS where
