@@ -36,7 +36,7 @@ import HSChain.Store.Internal.Query
 import HSChain.Store.Internal.Proposals
 import HSChain.Types
 import HSChain.Mock.KeyVal  (BData(..),process)
-import HSChain.Types.Merklized
+import HSChain.Types.Merkle.Types
 
 import Test.Tasty
 import Test.Tasty.HUnit

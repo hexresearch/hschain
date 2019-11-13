@@ -32,7 +32,7 @@ import HSChain.Crypto.Ed25519 (Ed25519)
 import HSChain.Crypto.SHA     (SHA512)
 import HSChain.Logger         (ScribeSpec)
 import HSChain.Types
-import HSChain.Types.Merklized
+import HSChain.Types.Merkle.Types
 import HSChain.Store
 
 ----------------------------------------------------------------

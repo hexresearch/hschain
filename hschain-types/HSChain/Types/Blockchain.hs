@@ -76,7 +76,7 @@ import qualified Database.SQLite.Simple.ToField   as SQL
 import HSChain.Crypto
 import HSChain.Crypto.Classes.Hash
 import HSChain.Types.Validators
-import HSChain.Types.Merklized
+import HSChain.Types.Merkle.Types
 
 
 ----------------------------------------------------------------

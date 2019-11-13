@@ -1,4 +1,3 @@
-{-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE BangPatterns          #-}
 {-# LANGUAGE DeriveFoldable        #-}
 {-# LANGUAGE DeriveGeneric         #-}
@@ -8,20 +7,19 @@
 {-# LANGUAGE OverloadedStrings     #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
 {-# LANGUAGE TypeFamilies          #-}
--- |
-module HSChain.Types.MerkleBlock where
-  -- ( -- * Tree data types
-  --   MerkleBlockTree(..)
-  --   -- * Building tree
-  -- , createMerkleTree
-  --   -- * Check tree
-  -- , isBalanced
-  -- , isConsistent
-  --   -- * Merkle proof
-  -- , MerkleProof(..)
-  -- , checkMerkleProof
-  -- , createMerkleProof
-  -- ) where
+{-# LANGUAGE ViewPatterns          #-}
+module HSChain.Types.Merkle.Tree
+  ( -- * Tree data types
+    MerkleBlockTree(..)
+    -- * Building tree
+  , createMerkleTree
+    -- * Check tree
+  , isBalanced
+    -- * Merkle proof
+  , MerkleProof(..)
+  , checkMerkleProof
+  , createMerkleProof
+  ) where
 
 import Control.Applicative
 import Control.Monad
@@ -31,15 +29,15 @@ import GHC.Generics  (Generic)
 
 import HSChain.Crypto
 import HSChain.Crypto.Classes.Hash
-import HSChain.Types.Merklized
+import HSChain.Types.Merkle.Types
 
 
 ----------------------------------------------------------------
 -- Data types
 ----------------------------------------------------------------
 
--- | Binary Merkle tree. Constructors in this module generate
---   perfectly balanced binary tree.
+-- | Balanced binary Merkle tree. Constructors in this module generate
+--   balanced binary tree.
 newtype MerkleBlockTree f alg a = MerkleBlockTree
   { merkleBlockTree :: MerkleNode f alg (Maybe (Node f alg a))
   }
@@ -191,21 +189,3 @@ isBalanced (MerkleBlockTree (MerkleNode (IdNode _ (Just tree))))
     calcDepth !n Leaf{}       = (n :)
     calcDepth !n (Branch a b) = calcDepth (n+1) (merkleValue a)
                               . calcDepth (n+1) (merkleValue b)
-
--- FIXME: ZZZ
-
--- -- | Check whether all hashes in the tree are consistent
--- isConsistent
---   :: forall alg a. (CryptoHashable a, CryptoHash alg)
---   => MerkleBlockTree IdNode alg a -> Bool
--- isConsistent (MerkleBlockTree tree)
---   =  checkMerkled tree
---   && case merkleValue tree of
---        Nothing -> True
---        Just n  -> check n
---   where
---     check (Leaf _) = True
---     check (Branch a b) = checkMerkled a
---                       && checkMerkled b
---                       && check (merkleValue a)
---                       && check (merkleValue b)

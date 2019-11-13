@@ -13,11 +13,13 @@
 -- |
 -- Type classes for working with heterogenoeus merkle trees that is
 -- trees which can contain values of different types.
-module HSChain.Types.Merklized (
+module HSChain.Types.Merkle.Types (
     -- * Type classes
     MerkleHash(..)
   , IsMerkle(..)
-    -- * Nde types
+    -- * Merkle node
+  , MerkleNode(..)
+    -- ** Concrete node instantiations
   , Hashed(..)
   , OptNode(..)
   , IdNode(..)

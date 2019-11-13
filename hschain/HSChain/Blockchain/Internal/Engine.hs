@@ -37,7 +37,7 @@ import HSChain.Blockchain.Internal.Engine.Types
 import HSChain.Blockchain.Internal.Types
 import HSChain.Blockchain.Internal.Algorithm
 import HSChain.Types.Blockchain
-import HSChain.Types.Merklized
+import HSChain.Types.Merkle.Types
 import HSChain.Control (throwNothing,throwNothingM,iterateM,atomicallyIO)
 import HSChain.Crypto
 import HSChain.Exceptions

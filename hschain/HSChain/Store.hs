@@ -94,7 +94,7 @@ import qualified Data.Aeson.TH      as JSON
 import GHC.Generics              (Generic)
 
 import HSChain.Types.Blockchain
-import HSChain.Types.Merklized
+import HSChain.Types.Merkle.Types
 import HSChain.Blockchain.Internal.Types
 import HSChain.Control                (MonadFork)
 import HSChain.Crypto

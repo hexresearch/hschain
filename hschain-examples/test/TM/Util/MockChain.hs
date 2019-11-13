@@ -8,7 +8,7 @@ import qualified Data.List.NonEmpty as NE
 
 import HSChain.Crypto
 import HSChain.Types
-import HSChain.Types.Merklized
+import HSChain.Types.Merkle.Types
 import HSChain.Mock.KeyList
 import HSChain.Mock.KeyVal  (BData(..),BState,genesisBlock)
 

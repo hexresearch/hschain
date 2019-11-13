@@ -6,7 +6,7 @@ import Test.Tasty.QuickCheck
 import HSChain.Crypto     (Hashed)
 import HSChain.Crypto.SHA (SHA512)
 import HSChain.Types.MerkleBlock
-import HSChain.Types.Merklized
+import HSChain.Types.Merkle.Types
 
 ----------------------------------------------------------------
 -- Data types

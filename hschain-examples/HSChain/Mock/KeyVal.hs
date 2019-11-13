@@ -37,7 +37,7 @@ import GHC.Generics    (Generic)
 
 import HSChain.Blockchain.Internal.Engine.Types
 import HSChain.Types.Blockchain
-import HSChain.Types.Merklized
+import HSChain.Types.Merkle.Types
 import HSChain.Control
 import HSChain.Crypto
 import HSChain.Crypto.Ed25519

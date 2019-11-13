@@ -8,7 +8,7 @@
 {-# LANGUAGE TypeApplications     #-}
 {-# LANGUAGE UndecidableInstances #-}
 -- |
-module HSChain.Types.Merkle (
+module HSChain.Types.Merkle.Block (
     -- * Tree data types
     MerkleRoot(..)
   , MerkleTree(..)

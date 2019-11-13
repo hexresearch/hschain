@@ -32,7 +32,7 @@ import HSChain.Store
 import HSChain.Store.Internal.Proposals
 import HSChain.Store.Internal.BlockDB (storeCommit,storeGenesis)
 import HSChain.Types
-import HSChain.Types.Merklized
+import HSChain.Types.Merkle.Types
 import qualified HSChain.Mock.KeyVal as Mock
 
 import qualified HSChain.P2P.PeerState.Types as P2P

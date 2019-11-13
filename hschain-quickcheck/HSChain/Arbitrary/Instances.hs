@@ -19,7 +19,7 @@ import Test.QuickCheck.Arbitrary.Generic
 import Test.QuickCheck.Gen
 
 import HSChain.Types
-import HSChain.Types.Merklized
+import HSChain.Types.Merkle.Types
 import HSChain.Crypto
 import HSChain.Types.Network (NetAddr(..))
 

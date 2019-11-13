@@ -19,7 +19,7 @@ import           Database.SQLite.Simple             (Only(..))
 import HSChain.Control (throwNothing)
 import HSChain.Exceptions
 import HSChain.Types.Blockchain
-import HSChain.Types.Merklized
+import HSChain.Types.Merkle.Types
 import HSChain.Blockchain.Internal.Types
 import HSChain.Crypto
 import HSChain.Types.Validators
