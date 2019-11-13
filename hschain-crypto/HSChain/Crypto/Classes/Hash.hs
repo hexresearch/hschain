@@ -389,7 +389,6 @@ instance CryptoHashable Integer where
       writeBit :: Bits a => Int -> Bool -> a -> a
       writeBit i True  x = setBit   x i
       writeBit i False x = clearBit x i
-      -- Constants
 
 
 instance CryptoHashable ByteString where
