@@ -1,7 +1,7 @@
 #!/usr/bin/tclsh8.5
 
 if {[llength $argv] < 2} {
-	error "usage: sendrecv.tcl addr port\n\nCopy stdin into socket and recv it until two consecutive newlines."
+	error "usage: sendrecv.tcl addr port\n\nCopy stdin into socket and recv it until two (or one) consecutive newlines."
 }
 lassign $argv addr port
 
@@ -19,10 +19,10 @@ while {$nl_count < 2} {
 	set l [gets $h]
 	if {[string length $l] > 0} {
 		set nl_count $first
-		set first 0
 	} else {
 		incr nl_count
 	}
+	set first 0
 	puts $l
 }
 

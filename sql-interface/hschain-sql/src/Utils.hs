@@ -54,8 +54,8 @@ commandAction (MandatorySystemTables userTables initialRequests) = do
     , "CREATE TABLE allowed_requests"
     , "    ( request_id STRING PRIMARY KEY -- we expect hash here, for now any string would do."
     , "    , request_text STRING"
-    , "    , CONSTRAINT non_empty_request_id CHECK (length(request_id) > 0)
-    , "    , CONSTRAINT non_empty_request_text CHECK (length(request_text) > 0)
+    , "    , CONSTRAINT non_empty_request_id CHECK (length(request_id) > 0)"
+    , "    , CONSTRAINT non_empty_request_text CHECK (length(request_text) > 0)"
     , "    );"
     , ""
     , "-- special table - parameters for requests."
@@ -69,6 +69,7 @@ commandAction (MandatorySystemTables userTables initialRequests) = do
     , "    );"
     ]
   addStatements initialRequests
+  ss <- get -- we do not need our internal tables exposed to the client.
   addStatements
     [ "-- special table that keeps genesis requests"
     , "CREATE TABLE serialized_genesis_requests"
@@ -96,7 +97,6 @@ commandAction (MandatorySystemTables userTables initialRequests) = do
     , "    , CONSTRAINT must_have_request FOREIGN KEY (height, seq_index, request_id) REFERENCES serialized_requests(height, seq_index, request_id)"
     , "    );"
     ]
-  ss <- get
   case parseStatements sqlDialect "" Nothing $ unlines ss of
     Left err -> error $ "internal error: error parsing combined statements: "++show err
     Right statements -> do
