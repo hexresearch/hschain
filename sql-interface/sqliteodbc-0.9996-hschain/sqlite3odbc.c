@@ -3948,6 +3948,9 @@ connect_to_node(char*consensus_nodes, FILE*trace) {
     return -1;
 }
 
+/**
+ * Read height from database.
+ */
 static void
 hschain_read_height(DBC* d) {
     int rc;
@@ -3962,6 +3965,39 @@ hschain_read_height(DBC* d) {
 	d->current_height = sqlite3_column_int64(stmt, 0);
     }
     sqlite3_finalize(stmt);
+}
+
+static int
+hschain_send_string(DBC*d, char*s) {
+    size_t len = strlen(s);
+    if (write(d->hschain_node_sockfd, s, len) < len) {
+	return 0;
+    }
+    return 1;
+}
+
+static int
+hschain_send_empty_request(DBC*d) {
+    char temp[500];
+    int temp_size = sizeof(temp);
+    int printed_count = snprintf(temp, temp_size, "%s\n%d\n\n", d->public_key, d->current_height);
+    if (printed_count >= temp_size) {
+	return 0;	// truncation.
+    }
+    if (!hschain_send_string(d, temp)) {
+	return 0;
+    }
+    return 1;
+}
+
+static int
+hschain_obtain_difference(DBC*d) {
+    char temp[4096];
+    size_t temp_size = 0, temp_ofs = 0;
+    if (!hschain_send_empty_request(d)) {
+	return 0;
+    }
+    return 0;
 }
 
 static int
@@ -3980,6 +4016,7 @@ hschain_synchronize(DBC* d) {
 	    failure_reason = "sending sync request, parsing result or DB error";
 	    break;
 	}
+	return 1;
     } while(0);
     if (d->trace) {
 	fprintf(d->trace, "-- hschain synchronization failed (%s)\n", failure_reason);
