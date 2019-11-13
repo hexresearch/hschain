@@ -66,6 +66,7 @@ import HSChain.Blockchain.Interpretation
 import HSChain.Blockchain.Internal.Engine.Types
 import HSChain.Control
 import HSChain.Crypto
+import HSChain.Crypto.Classes.Hash
 import HSChain.Crypto.Ed25519
 import HSChain.Crypto.SHA
 import HSChain.Debug.Trace
@@ -88,8 +89,8 @@ type Alg = (Ed25519 :& SHA512)
 
 newtype BData = BData [Tx]
   deriving stock    (Show,Eq,Generic)
-  deriving newtype  (NFData)
-  deriving anyclass (Serialise,CryptoHashable)
+  deriving newtype  (NFData,CryptoHashable)
+  deriving anyclass (Serialise)
 
 instance BlockData BData where
   type TX               BData = Tx
@@ -104,7 +105,7 @@ data TxSend = TxSend
   , txOutputs :: [Unspent]
   }
   deriving stock    (Show, Eq, Ord, Generic)
-  deriving anyclass (Serialise, NFData, JSON.ToJSON, JSON.FromJSON, CryptoHashable)
+  deriving anyclass (Serialise, NFData, JSON.ToJSON, JSON.FromJSON)
 
 data Tx
   = Deposit !(PublicKey Alg) !Integer
@@ -119,18 +120,17 @@ data Tx
     --   3. Inputs and outputs must be nonempty
     --   2. Sum of inputs must be equal to sum of outputs
   deriving stock    (Show, Eq, Ord, Generic)
-  deriving anyclass (Serialise, NFData, JSON.ToJSON, JSON.FromJSON, CryptoHashable)
+  deriving anyclass (Serialise, NFData, JSON.ToJSON, JSON.FromJSON)
 
 -- | Pair of transaction hash and output number
 data UTXO = UTXO !Int !(Hash Alg)
   deriving stock    (Show, Eq, Ord, Generic)
-  deriving anyclass (Serialise, NFData, JSON.ToJSON, JSON.FromJSON, CryptoHashable)
+  deriving anyclass (Serialise, NFData, JSON.ToJSON, JSON.FromJSON)
 
 -- | Pair of public key which could spend output and amount
 data Unspent = Unspent !(PublicKey Alg) !Integer
   deriving stock    (Show, Eq, Ord, Generic)
-  deriving anyclass (Serialise, NFData, JSON.ToJSON, JSON.FromJSON, CryptoHashable)
-
+  deriving anyclass (Serialise, NFData, JSON.ToJSON, JSON.FromJSON)
 
 -- | State of coins in program-digestible format
 --
@@ -145,7 +145,19 @@ data CoinState = CoinState
     --   for efficient TX generation
   }
   deriving stock    (Show,   Generic)
-  deriving anyclass (NFData, Serialise, CryptoHashable)
+  deriving anyclass (NFData, Serialise)
+
+instance CryptoHashable TxSend where
+  hashStep = genericHashStep "hschain"
+instance CryptoHashable Tx where
+  hashStep = genericHashStep "hschain"
+instance CryptoHashable UTXO where
+  hashStep = genericHashStep "hschain"
+instance CryptoHashable Unspent where
+  hashStep = genericHashStep "hschain"
+instance CryptoHashable CoinState where
+  hashStep = genericHashStep "hschain"
+
 
 
 processDeposit :: Tx -> CoinState -> Maybe CoinState

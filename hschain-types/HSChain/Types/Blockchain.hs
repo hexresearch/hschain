@@ -162,13 +162,13 @@ data GBlock f alg a = Block
     -- ^ Hash of state after evaluation of this block.
   }
   deriving stock    (Show, Generic)
-  deriving anyclass (CryptoHashable)
+instance (IsMerkle f, CryptoHash alg) => CryptoHashable (GBlock f alg a) where
+  hashStep = genericHashStep "hschain"
 
-instance (Crypto alg, CryptoHashable a, Serialise     a, IsMerkle f) => Serialise     (GBlock f alg a)
-instance (Crypto alg, CryptoHashable a, JSON.FromJSON a, IsMerkle f) => JSON.FromJSON (GBlock f alg a)
-instance (Crypto alg, JSON.ToJSON a, IsMerkle f)                     => JSON.ToJSON   (GBlock f alg a)
-  -- deriving anyclass (Serialise, JSON.ToJSON, JSON.FromJSON, CryptoHashable)
-instance (NFData a, NFData1 (f alg), NFData (PublicKey alg)) => NFData (GBlock f alg a)
+instance (Crypto alg, CryptoHashable a, Serialise     a, IsMerkle f)  => Serialise     (GBlock f alg a)
+instance (Crypto alg, CryptoHashable a, JSON.FromJSON a, IsMerkle f)  => JSON.FromJSON (GBlock f alg a)
+instance (Crypto alg, JSON.ToJSON a, IsMerkle f)                      => JSON.ToJSON   (GBlock f alg a)
+instance (NFData a, NFData1 (f alg), NFData (PublicKey alg))          => NFData (GBlock f alg a)
 deriving instance (Eq (PublicKey alg), IsMerkle f, Eq1 (f alg), Eq a) => Eq (GBlock f alg a)
 
 
@@ -186,7 +186,9 @@ data ByzantineEvidence alg a
       !(Signed 'Unverified alg (Vote 'PreCommit alg a))
     -- ^ Node made conflicting precommits in the same round
   deriving stock    (Show, Eq, Generic)
-  deriving anyclass (NFData, Serialise, JSON.ToJSON, JSON.FromJSON, CryptoHashable)
+  deriving anyclass (NFData, Serialise, JSON.ToJSON, JSON.FromJSON)
+instance (Crypto alg) => CryptoHashable (ByzantineEvidence alg a) where
+  hashStep = genericHashStep "hschain"
 
 -- | Data justifying commit
 data Commit alg a = Commit
@@ -196,7 +198,9 @@ data Commit alg a = Commit
     -- ^ List of precommits which justify commit
   }
   deriving stock    (Show, Eq, Generic)
-  deriving anyclass (NFData, Serialise, JSON.ToJSON, JSON.FromJSON, CryptoHashable)
+  deriving anyclass (NFData, Serialise, JSON.ToJSON, JSON.FromJSON)
+instance (Crypto alg) => CryptoHashable (Commit alg a) where
+  hashStep = genericHashStep "hschain"
 
 
 -- | Type class for data which could be put into block
@@ -274,8 +278,9 @@ data Proposal alg a = Proposal
     -- ^ Hash of proposed block
   }
   deriving stock    (Show, Eq, Ord, Generic)
-  deriving anyclass (NFData, Serialise, JSON.ToJSON, JSON.FromJSON, CryptoHashable)
-
+  deriving anyclass (NFData, Serialise, JSON.ToJSON, JSON.FromJSON)
+instance (CryptoHash alg) => CryptoHashable (Proposal alg a) where
+  hashStep = genericHashStep "hschain"
 
 -- | Type of vote. Used for type-tagging of votes
 data VoteType
@@ -405,7 +410,8 @@ unverifySignature = coerce
 instance (Serialise      a) => Serialise      (Signed 'Unverified alg a)
 instance (JSON.FromJSON  a) => JSON.FromJSON  (Signed 'Unverified alg a)
 instance (JSON.ToJSON    a) => JSON.ToJSON    (Signed sign        alg a)
-instance (CryptoHashable a, CryptoAsymmetric alg) => CryptoHashable (Signed sign alg a)
+instance (CryptoHashable a, CryptoAsymmetric alg) => CryptoHashable (Signed sign alg a) where
+  hashStep = genericHashStep "hschain"
 
 ----------------------------------------------------------------
 -- Helping application be faster.

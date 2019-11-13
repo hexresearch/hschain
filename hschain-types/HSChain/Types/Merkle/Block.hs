@@ -82,9 +82,10 @@ deriving instance (Show (f (MerkleNode alg f))) => Show (MerkleChild alg f)
 instance CryptoHash alg => CryptoHashable (MerkleTree alg f)  where
   hashStep s = hashStep s . merkleRoot
 instance CryptoHash alg => CryptoHashable (MerkleRoot alg)    where
+  hashStep = genericHashStep "hschain"
 instance CryptoHash alg => CryptoHashable (MerkleNode alg f)  where
   hashStep s node = do
-    hashStep s $ UserType "" "MerkleNode"
+    hashStep s $ UserType "hschain" "MerkleNode"
     case node of
       Branch xs -> do hashStep s $ ConstructorIdx 0
                       hashStep s $ merkleNodeHash <$> xs

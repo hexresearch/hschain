@@ -59,6 +59,7 @@ import qualified Data.Map.Strict       as Map
 import qualified Data.Vector           as V
 
 import HSChain.Crypto
+import HSChain.Crypto.Classes.Hash
 
 
 ----------------------------------------------------------------
@@ -74,8 +75,9 @@ data Validator alg = Validator
   deriving anyclass (CBOR.Serialise, JSON.ToJSON, JSON.FromJSON)
 deriving instance Eq   (PublicKey alg) => Eq  (Validator alg)
 deriving instance Ord  (PublicKey alg) => Ord (Validator alg)
-instance NFData   (PublicKey alg) => NFData         (Validator alg)
-instance CryptoAsymmetric alg     => CryptoHashable (Validator alg)
+instance NFData (PublicKey alg) => NFData (Validator alg)
+instance CryptoAsymmetric alg => CryptoHashable (Validator alg) where
+  hashStep = genericHashStep "hschain"
 
 -- | Set of all known validators for given height
 data ValidatorSet alg = ValidatorSet

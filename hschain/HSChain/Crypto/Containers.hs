@@ -30,7 +30,6 @@ import Control.Monad
 import           Data.Foldable
 import           Data.List         (find)
 import           Data.Maybe        (fromMaybe)
-import           Data.Word
 import qualified Data.Map.Strict    as Map
 import           Data.Map.Strict      (Map)
 

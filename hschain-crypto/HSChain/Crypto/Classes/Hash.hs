@@ -1,4 +1,3 @@
-{-# LANGUAGE DefaultSignatures          #-}
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE DerivingStrategies         #-}
 {-# LANGUAGE FlexibleContexts           #-}
@@ -31,6 +30,8 @@ module HSChain.Crypto.Classes.Hash (
   , storableHashStep
     -- ** Generics derivation
   , GCryptoHashable(..)
+  , genericHashStep
+  , genericHashStepTy
   ) where
 
 import Codec.Serialise   (Serialise)
@@ -141,9 +142,6 @@ class CryptoHashable a where
   --   type. For hierarchical records it's computed by default using
   --   depth first traversal.
   hashStep :: CryptoHash alg => HashAccum alg s -> a -> ST s ()
-  default hashStep :: (CryptoHash alg, Generic a, GCryptoHashable (Rep a))
-                   => HashAccum alg s -> a -> ST s ()
-  hashStep = genericHashStep
 
 -- | Analog of 'CryptoHashable' where we may compute hash of type as
 --   opposed to hash of value.
@@ -479,38 +477,82 @@ nullTerminatedString s xs = do
 -- Generics for CryptoHashable
 ----------------------------------------------------------------
 
+-- | Generic deriving for user-defined data types. All methods here
+--   require to pass library name manually. While generics provide
+--   package anem it's overly specific and includes for example
+--   verion. Thus it would be better to require package name from
+--   user.
 class GCryptoHashable f where
-  ghashStep :: CryptoHash alg => HashAccum alg s -> f a -> ST s ()
+  -- | Default implementation of 'CryptoHashable'.
+  ghashStepPkg
+    :: CryptoHash alg
+    => String          -- ^ Library name
+    -> HashAccum alg s
+    -> f a
+    -> ST s ()
+  -- | Same as 'genericHashStep' but allows to override type name as
+  --   well.
+  ghashStepPkgTy
+    :: CryptoHash alg
+    => String          -- ^ Library name
+    -> String          -- ^ Data type name
+    -> HashAccum alg s
+    -> f a
+    -> ST s ()
 
-instance (Datatype d, GCryptoHashable f) => GCryptoHashable (M1 D d f) where
-  ghashStep s x@(M1 f) = do
-    -- FIXME: nodule name
-    hashStep  s $ UserType "" $ datatypeName x
+-- | Generic implementation of 'CryptoHashable'
+genericHashStep
+  :: (Generic a, GCryptoHashable (Rep a), CryptoHash alg)
+  => String           -- ^ Library name
+  -> HashAccum alg s
+  -> a
+  -> ST s ()
+genericHashStep pkg s a = ghashStepPkg pkg s (from a)
+
+-- | Generic implementation of 'CryptoHashable' which allows to
+--   override data type name as well
+genericHashStepTy
+  :: (Generic a, GCryptoHashable (Rep a), CryptoHash alg)
+  => String           -- ^ Library name
+  -> String           -- ^ Data type name
+  -> HashAccum alg s
+  -> a
+  -> ST s ()
+genericHashStepTy pkg ty s a = ghashStepPkgTy pkg ty s (from a)
+
+
+
+
+instance (Datatype d, GCryptoHashableWorker f) => GCryptoHashable (M1 D d f) where
+  ghashStepPkg pkg s x@(M1 f) = do
+    hashStep  s $ UserType pkg $ datatypeName x
+    ghashStep s f
+  ghashStepPkgTy pkg con s (M1 f) = do
+    hashStep  s $ UserType pkg con
     ghashStep s f
 
-instance (GHC.Constructor c, GCryptoHashable f) => GCryptoHashable (M1 C c f) where
+
+class GCryptoHashableWorker f where
+  ghashStep :: (CryptoHash alg) => HashAccum alg s -> f a -> ST s ()
+
+instance (GHC.Constructor c, GCryptoHashableWorker f) => GCryptoHashableWorker (M1 C c f) where
   ghashStep s x@(M1 f) = do
     hashStep  s $ ConstructorName $ BC8.pack $ conName x
     ghashStep s f
 
-instance (GCryptoHashable f) => GCryptoHashable (M1 S s f) where
+instance (GCryptoHashableWorker f) => GCryptoHashableWorker (M1 S s f) where
   ghashStep s (M1 f) = ghashStep s f
 
-instance (GCryptoHashable f, GCryptoHashable g) => GCryptoHashable (f :+: g) where
+instance (GCryptoHashableWorker f, GCryptoHashableWorker g) => GCryptoHashableWorker (f :+: g) where
   ghashStep s (L1 f) = ghashStep s f
   ghashStep s (R1 g) = ghashStep s g
 
-instance (GCryptoHashable f, GCryptoHashable g) => GCryptoHashable (f :*: g) where
+instance (GCryptoHashableWorker f, GCryptoHashableWorker g) => GCryptoHashableWorker (f :*: g) where
   ghashStep s (f :*: g) = do ghashStep s f
                              ghashStep s g
 
-instance GCryptoHashable U1 where
+instance GCryptoHashableWorker U1 where
   ghashStep _ _ = return ()
 
-instance CryptoHashable a => GCryptoHashable (K1 i a) where
+instance CryptoHashable a => GCryptoHashableWorker (K1 i a) where
   ghashStep s (K1 a) = hashStep s a
-
-genericHashStep
-  :: (Generic a, GCryptoHashable (Rep a), CryptoHash alg)
-  => HashAccum alg s -> a -> ST s ()
-genericHashStep s a = ghashStep s (from a)
