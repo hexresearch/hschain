@@ -47,6 +47,7 @@ instance CryptoAsymmetric Ed25519 where
     case decodeFromBS $ arrayToBs arr of
       Just k  -> return k
       Nothing -> error "Ed25519: internal error. Cannot generate key"
+  asymmKeyAlgorithmName  = "Ed25519"
 
 instance ByteReprSized (Signature Ed25519) where
   type ByteSize (Signature Ed25519) = 64
@@ -58,7 +59,6 @@ instance CryptoSign Ed25519 where
     $ js_sign_detached (bsToArray bs) (privK k)
   verifyBlobSignature (PublicKey pubKey) blob (Signature s)
     = js_sign_detached_verify (bsToArray blob) (bsToArray s) pubKey
-  asymmKeyAlgorithmName  = "Ed25519"
 
 instance Eq (PrivKey Ed25519) where
   PrivKey b1 _ _ == PrivKey b2 _ _ = b1 == b2
