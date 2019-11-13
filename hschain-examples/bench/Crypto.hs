@@ -31,7 +31,7 @@ blob :: BS.ByteString
 blob = BS.replicate 40 33
 
 blobHash :: Hash BLS
-blobHash = hashBlob blob
+blobHash = hashBlobBLS blob
 
 sign :: Signature Ed25519
 sign = signBlob privK blob

@@ -12,6 +12,7 @@ import HSChain.Mock.Coin
 import HSChain.Mock.KeyList
 import HSChain.Mock.Types
 import HSChain.Types
+import HSChain.Types.Merkle.Types
 
 ----------------------------------------------------------------
 -- Benchmarks
@@ -32,21 +33,15 @@ benchmarks
         nf (\b -> runIdentity
                 $ interpretBCh runner state
                 $ processBlock transitions
-                ( Block { blockData       = b
-                        , blockHeader     = Header
-                          { headerHeight         = Height 0
-                          , headerLastBlockID    = Nothing
-                          , headerValidatorsHash = Hashed (Hash "")
-                          , headerDataHash       = Hashed (Hash "")
-                          , headerValChangeHash  = Hashed (Hash "")
-                          , headerLastCommitHash = Hashed (Hash "")
-                          , headerEvidenceHash   = Hashed (Hash "")
-                          , headerStateHash      = Hashed (Hash "")
-                          }
-                        , blockValChange  = mempty
-                        , blockLastCommit = Nothing
-                        , blockEvidence   = []
-                        } :: Block Alg BData
+                ( Block { blockHeight         = Height 0
+                        , blockPrevBlockID    = Nothing
+                        , blockValidatorsHash = hashed emptyValidatorSet
+                        , blockData           = merkled b
+                        , blockValChange      = merkled mempty
+                        , blockPrevCommit     = Nothing
+                        , blockEvidence       = merkled []
+                        , blockStateHash      = Hashed (Hash "")
+                        }
                 )
            ) (bdata :: BData)
     | size <- [0, 1, 10, 100, 1000]
