@@ -80,7 +80,7 @@ rewindBlockchainState AppLogic{appBchState,appValidationFun} = do
     interpretBlock h st = do
       blk      <- queryRO $ mustRetrieveBlock h
       valSet   <- queryRO $ mustRetrieveValidatorSet (succ h)
-      bst      <- throwNothingM (ImpossibleError)
+      bst      <- throwNothingM CannotRewindState
                 $ appValidationFun blk (BlockchainState st valSet)
       let st' = blockchainState bst
       bchStoreStore appBchState h st'
@@ -121,8 +121,6 @@ runApplication config appValidatorKey genesis appSt@AppLogic{..} appCall appCh@A
 -- This function uses consensus algorithm to decide which block we're
 -- going to commit at current height, then stores it in database and
 -- returns commit.
---
--- FIXME: we should write block and last commit in transaction!
 decideNewBlock
   :: ( MonadDB m alg a
      , MonadIO m
@@ -140,8 +138,6 @@ decideNewBlock
 decideNewBlock config appValidatorKey appLogic@AppLogic{..} appCall@AppCallbacks{..} appCh@AppChans{..} lastCommt = do
   -- Enter NEW HEIGHT and create initial state for consensus state
   -- machine
-  --
-  -- FIXME: we don't want duplication! (But pipes & producer does not unify)
   hParam  <- makeHeightParameters appValidatorKey appLogic appCall appPropStorage
   resetPropStorage appPropStorage $ currentH hParam
   -- Run consensus engine
@@ -419,8 +415,6 @@ makeHeightParameters appValidatorKey logic@AppLogic{..} AppCallbacks{appCanCreat
     { validatorSet     = valSet
     , oldValidatorSet  = oldValSet
     , validatorKey     = liftA2 (,) appValidatorKey ourIndex
-      -- FIXME: this is some random algorithms that should probably
-      --        work (for some definition of work)
     , proposerForRound = appProposerChoice valSet currentH
     --
     , readyCreateBlock = \n ->

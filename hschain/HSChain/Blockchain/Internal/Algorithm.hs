@@ -272,7 +272,7 @@ tendermintTransition par@HeightParameters{..} msg sm@TMState{..} =
       -- We have proposal already
       --
       -- FIXME: should we track double proposals? Tendermint
-      --        implementation have same question
+      --        implementation have same question (#313)
       | Just _ <- Map.lookup propRound smProposals
         -> tranquility
       -- Node sending message out of order is clearly byzantine
@@ -321,9 +321,6 @@ tendermintTransition par@HeightParameters{..} msg sm@TMState{..} =
         GT -> error $ "Timeout from future: " ++ show (t,t0)
         -- Update state accordingly. We unconditionally enter next step of
         -- round or next round.
-        --
-        -- FIXME: specification is unclear about this point but go
-        --        implementation advances unconditionally
         EQ -> case smStep of
           StepNewHeight n   -> canCreate par sm n >>= \case
             True  -> enterPropose par smRound sm Reason'Timeout
@@ -431,8 +428,6 @@ enterPropose HeightParameters{..} r sm@TMState{..} reason = do
   -- If we're proposers we need to broadcast proposal. Otherwise we do
   -- nothing
   when areWeProposers $ case smLockedBlock of
-    -- FIXME: take care of POL fields of proposal
-    --
     -- If we're locked on block we MUST propose it
     Just (br,bid) -> do logger InfoS "Making POL proposal" $ LogProposal currentH smRound bid
                         lift $ yield $ EngCastPropose r bid (Just br)
@@ -484,7 +479,6 @@ enterPrevote par@HeightParameters{..} r (unlockOnPrevote -> sm@TMState{..}) reas
                   | lockR < propRound
                   , bid == Just propBlockID -> checkPrevoteBlock propBlockID
                   | otherwise               -> do
-                      --  FIXME: Byzantine!
                       logger WarningS "BYZANTINE proposal POL BID does not match votes" ()
                       return Nothing
                 Nothing -> return Nothing
