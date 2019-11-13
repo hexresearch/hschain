@@ -33,8 +33,7 @@ module HSChain.Crypto.Classes.Hash (
   , GCryptoHashable(..)
   ) where
 
-import           Codec.Serialise   (Serialise)
-import qualified Codec.Serialise as CBOR
+import Codec.Serialise   (Serialise)
 import Control.Applicative
 import Control.Monad.ST
 import Control.Monad
@@ -49,6 +48,7 @@ import qualified Data.ByteString.Lazy     as BL
 import qualified Data.Map.Strict          as Map
 import qualified Data.Set                 as Set
 import qualified Data.List.NonEmpty       as NE
+import Data.Bits
 import Data.Functor.Classes
 import Data.String
 import Data.Word
@@ -362,9 +362,35 @@ instance CryptoHashable Char where
     hashStep s PrimChar
     hashStep s (fromIntegral (fromEnum c) :: Word32)
 
--- FIXME: ZZZ (placeholder) (Some variant of chunked encoding?)
 instance CryptoHashable Integer where
-  hashStep s = hashStep s . CBOR.serialise
+  hashStep s = start
+    where
+      -- We encode first chunk 30 bit of number
+      --  Bit 31 - 1 if there're more chunks
+      --  Bit 30 - sign
+      start n = do
+        storableHashStep s $ writeBit 31 (next /= 0)
+                           $ writeBit 30 (n < 0)
+                           $ (fromIntegral n' :: Word32)
+        when (next /= 0) $ istep next
+        where
+          n'   = abs n
+          next = n' `shiftR` 30
+      -- The we encode every subsequent 31 bit.
+      --
+      --  Bit 31 - 1 if there're more chunks
+      istep n = do
+        storableHashStep s $ writeBit 31 (next /= 0)
+                           $ (fromIntegral n :: Word32)
+        when (next /= 0) $ istep next
+        where
+          next = n `shiftR` 31
+      --
+      writeBit :: Bits a => Int -> Bool -> a -> a
+      writeBit i True  x = setBit   x i
+      writeBit i False x = clearBit x i
+      -- Constants
+
 
 instance CryptoHashable ByteString where
   hashStep s bs = do hashStep s $ PrimBytes $ fromIntegral $ BS.length bs
