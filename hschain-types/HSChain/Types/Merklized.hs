@@ -1,19 +1,32 @@
+{-# LANGUAGE DeriveAnyClass             #-}
+{-# LANGUAGE DeriveFoldable             #-}
+{-# LANGUAGE DeriveFunctor              #-}
+{-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE DeriveTraversable          #-}
+{-# LANGUAGE DerivingStrategies         #-}
+{-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE DeriveAnyClass        #-}
-{-# LANGUAGE DeriveFoldable        #-}
-{-# LANGUAGE DeriveFunctor         #-}
-{-# LANGUAGE DeriveGeneric         #-}
-{-# LANGUAGE DeriveTraversable     #-}
-{-# LANGUAGE DerivingStrategies    #-}
-{-# LANGUAGE FlexibleInstances     #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE ScopedTypeVariables   #-}
-{-# LANGUAGE StandaloneDeriving    #-}
-{-# LANGUAGE TypeApplications      #-}
+{-# LANGUAGE MultiParamTypeClasses      #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
+{-# LANGUAGE StandaloneDeriving         #-}
+{-# LANGUAGE TypeApplications           #-}
 -- |
 -- Type classes for working with heterogenoeus merkle trees that is
 -- trees which can contain values of different types.
-module HSChain.Types.Merklized where
+module HSChain.Types.Merklized (
+    -- * Type classes
+    MerkleHash(..)
+  , IsMerkle(..)
+    -- * Nde types
+  , Hashed(..)
+  , OptNode(..)
+  , IdNode(..)
+  , merkleValue
+    -- * Serialization helpers
+  , MerkleSerialize(..)
+  , toSerialisedRepr
+  , fromSerializedRepr
+  ) where
 
 import Control.DeepSeq
 import qualified Codec.Serialise as CBOR
@@ -29,6 +42,10 @@ import HSChain.Crypto
 -- Heterogeneous Merkle trees
 ----------------------------------------------------------------
 
+-- | Value identified by hash. It's expected that 'CryptoHashable' is
+--   compatible with this instance:
+--
+-- > hash a == hash (merkleHash a)
 class MerkleHash f where
   -- | Obtain cached hash of node.
   merkleHash  :: f alg a -> Hash alg
@@ -55,7 +72,7 @@ newtype MerkleNode f alg a = MerkleNode { getMerkleNode :: f alg a }
   deriving stock   Foldable
   deriving newtype (MerkleHash, IsMerkle)
 
-
+-- | Extract value from node of Merkle tree
 merkleValue :: MerkleNode IdNode alg a -> a
 merkleValue (MerkleNode (IdNode _ a)) = a
 

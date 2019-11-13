@@ -24,7 +24,7 @@ module HSChain.Crypto.Classes.Hash (
   , hashed
     -- * Hash API
     -- $hash_encoding
-  , CryptoName(..)  
+  , CryptoName(..)
   , DataType(..)
   , Constructor(..)
     -- ** Helpers
@@ -151,8 +151,7 @@ class CryptoTypeHashable a where
   hashTypeStep :: CryptoHash alg => HashAccum alg s -> proxy a -> ST s ()
 
 
--- | Compute hash of value. It's first serialized using CBOR and then
---   hash of encoded data is computed,
+-- | Compute hash of value using 'CryptoHashable'
 hash :: (CryptoHash alg, CryptoHashable a) => a -> Hash alg
 hash a = runST $ do
   s <- newHashAccum
@@ -218,15 +217,16 @@ data DataType
   = PrimBytes !Word32
   -- ^ Value is a bytestring, i.e. sequence of bytes. Field is length
   --   of bytestring
-  | PrimI8
-  | PrimI16
-  | PrimI32
-  | PrimI64
-  | PrimW8
-  | PrimW16
-  | PrimW32
-  | PrimW64
-  | PrimChar
+  | PrimI8                      -- ^ Signed 8-bit integer
+  | PrimI16                     -- ^ Signed 16-bit integer
+  | PrimI32                     -- ^ Signed 32-bit integer
+  | PrimI64                     -- ^ Signed 64-bit integer
+  | PrimW8                      -- ^ Unsigned 8-bit integer
+  | PrimW16                     -- ^ Unsigned 16-bit integer
+  | PrimW32                     -- ^ Unsigned 32-bit integer
+  | PrimW64                     -- ^ Unsigned 64-bit integer
+  | PrimChar                    -- ^ Char
+
   -- Structural data types composite types
   | TyTuple    !Word16
   -- ^ Tuple of size N
@@ -254,9 +254,10 @@ data DataType
   --   is described by libary name and data type name.
 
   | CryHash !ByteString
-  -- ^ Cryptography primitive. It's a bytestring which is followed by
-  --   conventional serialization of primtitive as bytestring
+  -- ^ Hash. It first write algorithm name, then hash itself
   | CryFingerprint !ByteString !ByteString
+  -- ^ Fingerprint of public key. It first writes hash algorithm name,
+  --   then nake of algorithms for asymmetric cryptography
   | CryPublicKey   !ByteString
   | CryPrivateKey  !ByteString
   | CrySignature   !ByteString
@@ -358,7 +359,7 @@ instance CryptoHashable Word where
 
 instance CryptoHashable Char where
   hashStep s c = do
-    hashStep s PrimChar   
+    hashStep s PrimChar
     hashStep s (fromIntegral (fromEnum c) :: Word32)
 
 -- FIXME: ZZZ (placeholder) (Some variant of chunked encoding?)
@@ -424,11 +425,11 @@ instance (CryptoHashable a, CryptoHashable b, CryptoHashable c) => CryptoHashabl
 
 instance CryptoHash alg => CryptoHashable (Hashed alg a) where
   hashStep s (Hashed h) = hashStep s h
-  
+
 instance CryptoHash alg => CryptoHashable (Hash alg) where
   hashStep s (Hash bs) = do
     hashStep s $ CryHash $ getCryptoName (hashAlgorithmName @alg)
-    hashStep s bs 
+    hashStep s bs
 
 
 ----------------------------------------------------------------
