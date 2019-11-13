@@ -1,4 +1,3 @@
-
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications    #-}
@@ -8,7 +7,6 @@ module TM.Time (tests) where
 
 import Control.Monad
 import Data.Int
-import Data.Word
 import Data.List
 import Data.Proxy
 import qualified Data.ByteString    as BS
