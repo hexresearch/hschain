@@ -9,7 +9,6 @@ import Control.Monad
 import Data.Bits
 import Data.List
 import Data.Ord
-import Data.Word
 import qualified Data.List.NonEmpty as NE
 
 import HSChain.Types.Blockchain
