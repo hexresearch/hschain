@@ -22,6 +22,7 @@ module HSChain.Types.Merkle.Tree
   ) where
 
 import Control.Applicative
+import Control.Category ((>>>))
 import Control.Monad
 import Data.Bits
 import Data.Function
@@ -172,9 +173,10 @@ createMerkleProof (MerkleBlockTree mtree) a = do
 -- | Check whether Merkle tree is balanced and in canonical form:
 --   depth of leaves does not decrease.
 isBalanced :: MerkleBlockTree IdNode alg a -> Bool
-isBalanced (MerkleBlockTree (MerkleNode (IdNode _ Nothing)))     = True
-isBalanced (MerkleBlockTree (MerkleNode (IdNode _ (Just tree))))
-  = isCanonical $ calcDepth (0::Int) tree []
+isBalanced =
+  merkleBlockTree >>> merkleValue >>> \case
+    Nothing   -> True
+    Just tree -> isCanonical $ calcDepth (0::Int) tree []
   where
     -- Check that node depths are nonincreasing and don't differ more
     -- that 1 from first one (tree is balanced)

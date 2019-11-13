@@ -21,9 +21,10 @@ module HSChain.Types.Merkle.Types (
   , MerkleNode(..)
     -- ** Concrete node instantiations
   , Hashed(..)
-  , OptNode(..)
-  , IdNode(..)
+  , OptNode
+  , IdNode
   , merkleValue
+  , merkleMaybeValue
     -- * Serialization helpers
   , MerkleSerialize(..)
   , toSerialisedRepr
@@ -77,6 +78,10 @@ newtype MerkleNode f alg a = MerkleNode { getMerkleNode :: f alg a }
 -- | Extract value from node of Merkle tree
 merkleValue :: MerkleNode IdNode alg a -> a
 merkleValue (MerkleNode (IdNode _ a)) = a
+
+merkleMaybeValue :: IsMerkle f => f alg a -> Maybe a
+merkleMaybeValue n = let OptNode _ a = toOptNode n in a
+
 
 -- | Eq uses hash comparison as optimization
 instance (IsMerkle f) => Eq (MerkleNode f alg a) where

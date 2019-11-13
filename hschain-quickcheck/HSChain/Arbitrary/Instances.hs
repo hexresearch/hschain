@@ -99,9 +99,9 @@ instance StreamCypher cypher => Arbitrary (PubKeyBox key kdf cypher) where
 
 instance (CryptoHash alg, CryptoHashable a, IsMerkle f, Arbitrary a) => Arbitrary (MerkleNode f alg a) where
   arbitrary = merkled <$> arbitrary
-  shrink a  = case toOptNode a of
-    OptNode _ Nothing  -> []
-    OptNode _ (Just x) -> merkled <$> shrink x
+  shrink a  = case merkleMaybeValue a of
+    Nothing -> []
+    Just x  -> merkled <$> shrink x
 
 instance Arbitrary Height where
   arbitrary = Height <$> arbitrary
