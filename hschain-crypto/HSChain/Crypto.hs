@@ -398,8 +398,9 @@ instance (CryptoHash hash) => CryptoHash (sign :& hash) where
   newtype HashAccum (sign :& hash) s = HashAccumBoth (HashAccum hash s)
   newHashAccum      = coerce (newHashAccum      @hash)
   updateHashAccum   = coerce (updateHashAccum   @hash)
-  freezeHashAccum   = coerce (freezeHashAccum   @hash)
   hashAlgorithmName = coerce (hashAlgorithmName @hash)
+  -- We use HashAccumBoth to suppress warning
+  freezeHashAccum (HashAccumBoth acc) = coerce (freezeHashAccum acc)
 
 
 ----------------------------------------------------------------
