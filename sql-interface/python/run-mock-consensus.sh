@@ -29,7 +29,7 @@ request="\
 UPDATE $walletDemoTableName \
 SET amount = CASE \
 WHEN wallet_id = :user_id      THEN amount - :transfer_amount \
-WHEN address = :dest_user_id THEN amount - :transfer_amount \
+WHEN address = :dest_user_id THEN amount + :transfer_amount \
 END \
 WHERE     (address = :user_id OR address = :dest_user_id) \
 AND :transfer_amount > 0;"

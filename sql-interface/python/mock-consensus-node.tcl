@@ -42,10 +42,13 @@ proc try_eval_request {zz_request_sql zz_request_params} {
 
 proc try_add_request {request_sql request_params} {
 	global current_requests
-	if {[catch {set ids_list [database eval {SELECT request_id FROM allowed_requests WHERE request_sql = :request_sql;}]}]} {
+	if {[catch {set ids_list [database eval {SELECT request_id FROM allowed_requests WHERE request_text = :request_sql;}]} reason]} {
+puts "WRONG SQL: $request_sql"
+puts "   REASON: $reason"
 		return
 	}
 	if {[llength $ids_list] != 1} {
+puts "WRONG IDS LIST LENGTH: [list $ids_list]"
 		return
 	}
 	puts "TODO: THE REAL THING NEEDS TO VALIDATE PARAMS!"
@@ -77,10 +80,11 @@ proc ascend_action {} {
 
 proc request_response {pubkey client_height request parameters} {
 	global current_requests requests_performed
+	try_add_request $request $parameters
 	set response [list [height]]
 	if {$client_height < 0} {
-		foreach request [database eval {SELECT request_sql FROM serialized_genesis_requests ORDER BY seq_index;}] {
-			lappend response $request
+		foreach genesis_request [database eval {SELECT request_sql FROM serialized_genesis_requests ORDER BY seq_index;}] {
+			lappend response $genesis_request
 			lappend response ""
 		}
 		set client_height 0
@@ -95,7 +99,6 @@ proc request_response {pubkey client_height request parameters} {
 			lappend response ""
 		}
 	}
-	try_add_request $request $parameters
 	return $response
 }
 
@@ -113,6 +116,7 @@ proc _accept_connection {socket address port} {
 				if {[string length $pubkey] < 1 || [string length $height] < 1} {
 					break
 				}
+puts "[thread::id]: pubkey $pubkey, height $height, request '$request'"
 				# clear parameters dictionary.
 				array unset parameters
 				array set parameters {}
