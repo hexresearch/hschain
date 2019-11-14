@@ -29,9 +29,27 @@ proc sql_str {str} {
 	return '$str'
 }
 
+proc try_eval_request {zz_request_sql zz_request_params} {
+	foreach {param value} $zz_request_params {
+		# good enough for mockup
+		set $param $value
+	}
+	if {[catch {database eval $zz_request_sql}]} {
+		return 0
+	}
+	return 1
+}
+
 proc try_add_request {request_sql request_params} {
 	global current_requests
-	database eval 
+	if {[catch {set ids_list [database eval {SELECT request_id FROM allowed_requests WHERE request_sql = :request_sql;}]}]} {
+		return
+	}
+	if {[llength $ids_list] != 1} {
+		return
+	}
+	puts "TODO: THE REAL THING NEEDS TO VALIDATE PARAMS!"
+	set request_id [lindex $ids_list 0]
 	# https://sqlite.org/lang_savepoint.html
 	database eval {SAVEPOINT savepoint_to_check_request;}
 	if {![try_eval_request $request_sql $request_params]} {
@@ -41,13 +59,20 @@ proc try_add_request {request_sql request_params} {
 		set seq_index [llength $current_requests]
 		set h [height]
 		lappend current_requests $request_sql $request_params
-		lappend current_requests "INSERT INTO serialized_requests (height, seq_index, request_id) VALUES ($h, $seq_index, [sql_str $request_id);"
+		lappend current_requests "INSERT INTO serialized_requests (height, seq_index, request_id) VALUES ($h, $seq_index, [sql_str $request_id]);"
+		foreach {param_name param_value} $request_params {
+			lappend current_requests "INSERT INTO serialized_requests_params (height, seq_index, request_id, request_param_name, request_param_value) VALUES ($h, $seq_index, [sql_str $request_id], [sql_str $param_name], [sql_str $param_value]);"
+		}
 	}
+}
+
+proc ascend_timeout {} {
+	return 10000
 }
 
 proc ascend_action {} {
 	new_height
-	after 1000 ascend_action
+	after [ascend_timeout] ascend_action
 }
 
 proc request_response {pubkey client_height request parameters} {
@@ -141,9 +166,12 @@ proc main {argv0 argv} {
 	file delete -force $databasefn
 	sqlite3 database $databasefn -create yes
 	puts "database created"
+	database eval {BEGIN TRANSACTION;}
 	database eval $mandatory_tables
+	database eval {COMMIT;}
 	puts "tables added."
-	after 1000 ascend_action
+	database eval {BEGIN TRANSACTION;}
+	after [ascend_timeout] ascend_action
 	puts "accepting connections."
 	socket -server accept_connection $port
 }

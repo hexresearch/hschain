@@ -36,7 +36,7 @@ AND :transfer_amount > 0;"
 
 add_transfer_request=$(cabal new-exec -- hschain-sql-utils add-request-code \
   --request "$request" --id "transfer" --positive transfer_amount \
-  --string user_id
+  --string user_id --string dest_user_id
   )
 
 tclsh8.6 mock-consensus-node.tcl 22222                            \
