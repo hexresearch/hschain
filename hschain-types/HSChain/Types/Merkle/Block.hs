@@ -85,7 +85,7 @@ instance CryptoHash alg => CryptoHashable (MerkleRoot alg)    where
   hashStep = genericHashStep "hschain"
 instance CryptoHash alg => CryptoHashable (MerkleNode alg f)  where
   hashStep s node = do
-    hashStep s $ UserType "hschain" "MerkleNode"
+    hashStep s $ UserType "hschain" "Merkle.Block.Node"
     case node of
       Branch xs -> do hashStep s $ ConstructorIdx 0
                       hashStep s $ merkleNodeHash <$> xs

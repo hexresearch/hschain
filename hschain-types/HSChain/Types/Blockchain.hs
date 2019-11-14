@@ -310,7 +310,7 @@ instance Serialise (Vote 'PreCommit alg a) where
 
 instance (CryptoHash alg) => CryptoHashable (Vote 'PreVote alg a) where
   hashStep s Vote{..} = do
-    hashStep s $ UserType "" "Vote@PreVote"
+    hashStep s $ UserType "hschain" "Vote@PreVote"
     hashStep s voteHeight
     hashStep s voteRound
     hashStep s voteTime
@@ -318,7 +318,7 @@ instance (CryptoHash alg) => CryptoHashable (Vote 'PreVote alg a) where
 
 instance (CryptoHash alg) => CryptoHashable (Vote 'PreCommit alg a) where
   hashStep s Vote{..} = do
-    hashStep s $ UserType "" "Vote@PreCommit"
+    hashStep s $ UserType "hschain" "Vote@PreCommit"
     hashStep s voteHeight
     hashStep s voteRound
     hashStep s voteTime

@@ -60,7 +60,7 @@ instance IsMerkle f => CryptoHashable (MerkleBlockTree f alg a) where
 
 instance (IsMerkle f, CryptoHash alg, CryptoHashable a) => CryptoHashable (Node f alg a) where
   hashStep s node = do
-    hashStep s $ UserType "" "Node"
+    hashStep s $ UserType "hschain" "Merkle.Tree.Node"
     case node of
       Branch a b -> do hashStep s $ ConstructorIdx 0
                        hashStep s   a
