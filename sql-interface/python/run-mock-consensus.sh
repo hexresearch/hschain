@@ -7,7 +7,7 @@ walletDemoTableName=funds
 
 create_populate_funds="-- funds available
 CREATE TABLE $walletDemoTableName
-  ( wallet_id STRING PRIMARY KEY
+  ( wallet_id TEXT PRIMARY KEY
   , amount    INTEGER
   , CONSTRAINT no_overdraft CHECK (amount >= 0)
   );
@@ -29,9 +29,9 @@ request="\
 UPDATE $walletDemoTableName \
 SET amount = CASE \
 WHEN wallet_id = :user_id      THEN amount - :transfer_amount \
-WHEN address = :dest_user_id THEN amount + :transfer_amount \
+WHEN wallet_id = :dest_user_id THEN amount + :transfer_amount \
 END \
-WHERE     (address = :user_id OR address = :dest_user_id) \
+WHERE     (wallet_id = :user_id OR wallet_id = :dest_user_id) \
 AND :transfer_amount > 0;"
 
 add_transfer_request=$(cabal new-exec -- hschain-sql-utils add-request-code \

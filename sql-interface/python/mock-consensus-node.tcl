@@ -34,7 +34,8 @@ proc try_eval_request {zz_request_sql zz_request_params} {
 		# good enough for mockup
 		set $param $value
 	}
-	if {[catch {database eval $zz_request_sql}]} {
+	if {[catch {database eval $zz_request_sql} zz_reason]} {
+puts "EVAL FAILED: $zz_reason"
 		return 0
 	}
 	return 1
@@ -58,6 +59,7 @@ puts "WRONG IDS LIST LENGTH: [list $ids_list]"
 	if {![try_eval_request $request_sql $request_params]} {
 		database eval {ROLLBACK TO savepoint_to_check_request;}
 	} else {
+puts "REQUEST PASS"
 		database eval {RELEASE savepoint_to_check_request;}
 		set seq_index [llength $current_requests]
 		set h [height]
