@@ -19,12 +19,59 @@ proc height {} {
 proc new_height {} {
 	global current_requests requests_performed
 	lappend requests_performed $current_requests
+	database eval {COMMIT;}
+	database eval {BEGIN TRANSACTION;}
 	set current_requests [list ]
+}
+
+proc sql_str {str} {
+	set str [string map {' ''} $str]
+	return '$str'
+}
+
+proc try_add_request {request_sql request_params} {
+	global current_requests
+	database eval 
+	# https://sqlite.org/lang_savepoint.html
+	database eval {SAVEPOINT savepoint_to_check_request;}
+	if {![try_eval_request $request_sql $request_params]} {
+		database eval {ROLLBACK TO savepoint_to_check_request;}
+	} else {
+		database eval {RELEASE savepoint_to_check_request;}
+		set seq_index [llength $current_requests]
+		set h [height]
+		lappend current_requests $request_sql $request_params
+		lappend current_requests "INSERT INTO serialized_requests (height, seq_index, request_id) VALUES ($h, $seq_index, [sql_str $request_id);"
+	}
 }
 
 proc ascend_action {} {
 	new_height
 	after 1000 ascend_action
+}
+
+proc request_response {pubkey client_height request parameters} {
+	global current_requests requests_performed
+	set response [list [height]]
+	if {$client_height < 0} {
+		foreach request [database eval {SELECT request_sql FROM serialized_genesis_requests ORDER BY seq_index;}] {
+			lappend response $request
+			lappend response ""
+		}
+		set client_height 0
+	}
+	foreach reqs_list [lrange $requests_performed 0 end] {
+		foreach {served_request served_request_params} $reqs_list {
+			lappend response $served_request
+			foreach {p v} $served_request_params {
+				lappend response $p
+				lappend response $v
+			}
+			lappend response ""
+		}
+	}
+	try_add_request $request $parameters
+	return $response
 }
 
 proc _accept_connection {socket address port} {
@@ -41,7 +88,6 @@ proc _accept_connection {socket address port} {
 				if {[string length $pubkey] < 1 || [string length $height] < 1} {
 					break
 				}
-puts "[thread::id]: got pubkey '$pubkey', height '$height' and request '$request'"
 				# clear parameters dictionary.
 				array unset parameters
 				array set parameters {}
@@ -61,7 +107,7 @@ puts "[thread::id]: got pubkey '$pubkey', height '$height' and request '$request
 					set response [list]
 				}
 				foreach r $response {
-					puts "[thread::id] sending: '$r'"
+					#puts "[thread::id] sending: '$r'"
 					puts $socket $r
 				}
 				puts $socket ""
@@ -76,17 +122,6 @@ puts "[thread::id]: got pubkey '$pubkey', height '$height' and request '$request
 	set our_id [thread::id]
 	thread::transfer $other_id $socket
 	thread::send -async $other_id "$thread_script\n\nread_requests $socket $our_id"
-}
-
-proc request_response {pubkey client_height request parameters} {
-	set response [list [height]]
-	if {$client_height < 0} {
-		foreach request [database eval {SELECT request_sql FROM serialized_genesis_requests ORDER BY seq_index;}] {
-			lappend response $request
-			lappend response ""
-		}
-	}
-	return $response
 }
 
 proc accept_connection {socket address port} {
