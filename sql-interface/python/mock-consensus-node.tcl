@@ -43,6 +43,10 @@ puts "EVAL FAILED: $zz_reason"
 
 proc try_add_request {request_sql request_params} {
 	global current_requests
+	if {[string length $request_sql] < 1} {
+puts "NO-OP REQUEST"
+		return
+	}
 	if {[catch {set ids_list [database eval {SELECT request_id FROM allowed_requests WHERE request_text = :request_sql;}]} reason]} {
 puts "WRONG SQL: $request_sql"
 puts "   REASON: $reason"
@@ -65,8 +69,10 @@ puts "REQUEST PASS"
 		set h [height]
 		lappend current_requests $request_sql $request_params
 		lappend current_requests "INSERT INTO serialized_requests (height, seq_index, request_id) VALUES ($h, $seq_index, [sql_str $request_id]);"
+		lappend current_requests [list ]
 		foreach {param_name param_value} $request_params {
 			lappend current_requests "INSERT INTO serialized_requests_params (height, seq_index, request_id, request_param_name, request_param_value) VALUES ($h, $seq_index, [sql_str $request_id], [sql_str $param_name], [sql_str $param_value]);"
+			lappend current_requests [list ]
 		}
 	}
 }
