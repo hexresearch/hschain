@@ -3980,7 +3980,7 @@ static int
 hschain_send_empty_request(DBC*d) {
     char temp[500];
     int temp_size = sizeof(temp);
-    int printed_count = snprintf(temp, temp_size, "%s\n%d\n\n", d->public_key, d->current_height);
+    int printed_count = snprintf(temp, temp_size, "%s\n%ld\n\n", d->public_key, d->current_height);
     if (printed_count >= temp_size) {
 	return 0;	// truncation.
     }
@@ -18558,14 +18558,9 @@ noconn:
     }
     s3stmt_end(s);
     s3stmt_drop(s);
-    sret = starttran(s);
-    if (sret != SQL_SUCCESS) {
-	return sret;
-    }
-    freep(&s->query);
     hschain_transaction = check_hschain_pragma(&query, &queryLen);
     if (hschain_transaction) {
-	if (!sqlite3_get_autocommit(d->sqlite3)) {
+	if (!sqlite3_get_autocommit(d->sqlite)) {
 	    setstat(s, -1, "%s", "HY000", "hschain query inside transaction");
 	    return SQL_ERROR;
 	}
@@ -18574,6 +18569,11 @@ noconn:
 	    return SQL_ERROR;
 	}
     }
+    sret = starttran(s);
+    if (sret != SQL_SUCCESS) {
+	return sret;
+    }
+    freep(&s->query);
     s->query = (SQLCHAR *) fixupsql((char *) query, queryLen,
 				    (d->version >= 0x030805),
 				    &s->nparams, &s->isselect, &errp);
