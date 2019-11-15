@@ -24,14 +24,15 @@ Report failure to obtain any value and exit."""
   if value == None:
     value = os.environ.get(env_variable, default_value) if env_variable != None else default_value
   if value == None:
-    exit_vailure("unable to find value for "+arg_name+" in command line arguments and, possible, environment variables ("+env_variable+")")
+    exit_failure("unable to find value for "+arg_name+" in command line arguments and, possible, environment variables ("+(env_variable if env_variable != None else "None specified")+")")
   return (result_args, value)
 
 def find_driver_node_info(args):
   """Look into command line arguments and envorinment variables for ODBC driver and consensus node(s) information"""
   (args, node_info) = arg_value(args, "node-info", "HSCHAIN_NODE_INFO", None)
   (args, driver_info) = arg_value(args, "driver-info", "HSCHAIN_DRIVER_INFO", None)
-  return (args, node_info, driver_info)
+  (args, pub_key) = arg_value(args, "public-key", "HSCHAIN_PUBLIC_KEY", None)
+  return (args, node_info, pub_key, driver_info)
 
 def hschain_q(sql):
   """append prefix that signals hschain query to driver"""
@@ -48,14 +49,18 @@ def wallet_main(args):
   assert len(args) > 0
   command = args[0]
   args = args[1:]
-  (args, node_info, driver_info) = find_driver_node_info(args)
+  (args, node_info, pub_key, driver_info) = find_driver_node_info(args)
   if command == 'help':
     print ('usage: python funds-wallet.py COMMAND COMMAND-ARGS')
     exit(1)
-  elif command == 'genesis':
-    print_genesis()
   else:
-    connection_string = "Driver="+driver_info+";Database=mirror.db;tracefile=trace.log"
+    connection_string = ";".join(
+      [ "Driver="+driver_info
+      , "consensus_nodes="+node_info
+      , "publickey="+pub_key
+      , "Database=mirror.db"
+      , "tracefile=trace.log"
+      ])
     print (connection_string)
     connection = pyodbc.connect(connection_string)
     print("connected")

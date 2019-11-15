@@ -111,6 +111,7 @@ proc request_response {pubkey client_height request parameters} {
 }
 
 proc _accept_connection {socket address port} {
+	puts "[thread::id]: accepted connection from $address, port $port"
 	set thread_script {
 	package require Thread
 	# the procedure that reads requests from specified socket

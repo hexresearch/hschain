@@ -3896,6 +3896,9 @@ connect_to_node(char*consensus_nodes, FILE*trace) {
     char*saveptr_addresses, *addresses_list = temp, *addr_pair;
     strncpy(temp, consensus_nodes, sizeof(temp));
     temp[sizeof(temp)-1] = 0;
+    if (trace) {
+	fprintf(trace, "-- hschain: connecting to list %s\n", temp);
+    }
     while ( NULL != (addr_pair = strtok_r(addresses_list, ",", &saveptr_addresses))) {
 	char*addr;
 	char*port;
@@ -3908,10 +3911,16 @@ connect_to_node(char*consensus_nodes, FILE*trace) {
 	}
 	addr = strtok_r(addr_pair, " \t", &saveptr_pair);
 	if (addr == NULL) {
+	    if (trace) {
+		fprintf(trace, "-- hschain: address is NULL\n", addr_pair);
+	    }
 	    continue;
 	}
 	port = strtok_r(NULL, " \t", &saveptr_pair);
 	if (port == NULL) {
+	    if (trace) {
+		fprintf(trace, "-- hschain: port is NULL\n", addr_pair);
+	    }
 	    continue;
 	}
 	if (trace) {
@@ -3973,6 +3982,7 @@ hschain_send_string(DBC*d, char*s) {
     if (write(d->hschain_node_sockfd, s, len) < len) {
 	return 0;
     }
+    fsync(d->hschain_node_sockfd);
     return 1;
 }
 
@@ -3982,9 +3992,17 @@ hschain_send_empty_request(DBC*d) {
     int temp_size = sizeof(temp);
     int printed_count = snprintf(temp, temp_size, "%s\n%ld\n\n", d->public_key, d->current_height);
     if (printed_count >= temp_size) {
+	if (d->trace) {
+	    fprintf(d->trace, "-- hschain empty request: truncated\n");
+	    fflush(d->trace);
+	}
 	return 0;	// truncation.
     }
     if (!hschain_send_string(d, temp)) {
+	if (d->trace) {
+	    fprintf(d->trace, "-- hschain empty request: unable to send string\n");
+	    fflush(d->trace);
+	}
 	return 0;
     }
     return 1;
@@ -3996,6 +4014,10 @@ hschain_obtain_difference(DBC*d) {
     size_t temp_size = 0, temp_ofs = 0;
     if (!hschain_send_empty_request(d)) {
 	return 0;
+    }
+    if (d->trace) {
+	fprintf(d->trace, "-- hschain: NOT YET DONE\n");
+	fflush(d->trace);
     }
     return 0;
 }
@@ -4244,6 +4266,10 @@ connfail:
 			    d, blob_import, 0, 0);
     sqlite3_create_function(d->sqlite, "blob_export", 2, SQLITE_UTF8,
 			    d, blob_export, 0, 0);
+    if (d->trace) {
+	fprintf(d->trace, "-- opened\n");
+	fflush(d->trace);
+    }
     return SQL_SUCCESS;
 }
 
@@ -12831,7 +12857,7 @@ printf("we are connecting!\n"); fflush(stdout);
 			       public_key, sizeof (public_key), ODBC_INI);
     SQLGetPrivateProfileString(buf, "privatekey", "",
 			       private_key, sizeof (private_key), ODBC_INI);
-    SQLGetPrivateProfileString(buf, "consensus_nodeы", "",
+    SQLGetPrivateProfileString(buf, "consensus_nodes", "",
 			       consensus_nodes, sizeof (consensus_nodes), ODBC_INI);
 
 #endif
@@ -12877,6 +12903,10 @@ printf("we are connecting!\n"); fflush(stdout);
 		  jmode, busy);
     if (ret == SQL_SUCCESS) {
 	dbloadext(d, loadext);
+    }
+    if (d->trace) {
+	fprintf(d->trace, "-- hschain: setting sockfd as not open\n");
+	fflush(d->trace);
     }
     d->hschain_node_sockfd = -1; /**< mark as not opened */
     d->current_height = -1; /**< so that server will answer us with all requests performed, including genesis */
@@ -13054,6 +13084,11 @@ drvdriverconnect(SQLHDBC dbc, SQLHWND hwnd,
     char sflag[32], spflag[32], ntflag[32], snflag[32], lnflag[32];
     char ncflag[32], nwflag[32], fkflag[32], jmode[32], biflag[32];
     char jdflag[32];
+    char height_increment[32];
+    char public_key[200];
+    char private_key[200];
+    char consensus_nodes[1000];
+
 
     if (dbc == SQL_NULL_HDBC) {
 	return SQL_INVALID_HANDLE;
@@ -13270,6 +13305,36 @@ drvdriverconnect(SQLHDBC dbc, SQLHWND hwnd,
     if (ret == SQL_SUCCESS) {
 	dbloadext(d, loadext);
     }
+    // hschain related.
+    getdsnattr(buf, "height_increment",
+			       height_increment, sizeof (height_increment));
+    getdsnattr(buf, "publickey",
+			       public_key, sizeof (public_key));
+    getdsnattr(buf, "privatekey",
+			       private_key, sizeof (private_key));
+    getdsnattr(buf, "consensus_nodes",
+			       consensus_nodes, sizeof (consensus_nodes));
+    if (d->trace) {
+	fprintf(d->trace, "-- hschain: consensus nodes list: %s, public key %s\n", consensus_nodes, public_key);
+	fflush(d->trace);
+    }
+
+    {
+        char* endp;
+        d->height_increment = (int) strtol(height_increment, &endp, 0);
+        if(*endp || d->height_increment < 1) {
+            d->height_increment = 10;
+        }
+        strncpy(d->public_key, public_key, sizeof(d->public_key) - 1);
+        strncpy(d->private_key, private_key, sizeof(d->private_key) - 1);
+        strncpy(d->consensus_nodes, consensus_nodes, sizeof(d->consensus_nodes) - 1);
+    }
+    if (d->trace) {
+	fprintf(d->trace, "-- hschain: setting sockfd as not open (driver connect), connection string %s\n", buf);
+	fflush(d->trace);
+    }
+    d->hschain_node_sockfd = -1; /**< mark as not opened */
+    d->current_height = -1; /**< so that server will answer us with all requests performed, including genesis */
     return ret;
 }
 #endif
