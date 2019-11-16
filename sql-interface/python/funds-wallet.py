@@ -8,7 +8,7 @@ def exit_failure(msg):
   print (msg)
   exit(1)
 
-def arg_value(args, arg_name, env_variable, default_value):
+def arg_value(args, arg_name, env_variable, default_value, conversion):
   """look for some named argument value in the command line arguments,
 environment variables (if env_variable is not None) and then assigning the default value.
 
@@ -18,20 +18,20 @@ Report failure to obtain any value and exit."""
   value = None
   for x in args:
     if value == None and x.startswith(arg_prefix):
-      value = x[len(arg_prefix):]
+      value = conversion(x[len(arg_prefix):])
     else:
       result_args.append(x)
   if value == None:
-    value = os.environ.get(env_variable, default_value) if env_variable != None else default_value
+    value = conversion(os.environ.get(env_variable, default_value)) if env_variable != None else default_value
   if value == None:
     exit_failure("unable to find value for "+arg_name+" in command line arguments and, possible, environment variables ("+(env_variable if env_variable != None else "None specified")+")")
   return (result_args, value)
 
 def find_driver_node_info(args):
   """Look into command line arguments and envorinment variables for ODBC driver and consensus node(s) information"""
-  (args, node_info) = arg_value(args, "node-info", "HSCHAIN_NODE_INFO", None)
-  (args, driver_info) = arg_value(args, "driver-info", "HSCHAIN_DRIVER_INFO", None)
-  (args, pub_key) = arg_value(args, "public-key", "HSCHAIN_PUBLIC_KEY", None)
+  (args, node_info) = arg_value(args, "node-info", "HSCHAIN_NODE_INFO", None, lambda x: x)
+  (args, driver_info) = arg_value(args, "driver-info", "HSCHAIN_DRIVER_INFO", None, lambda x: x)
+  (args, pub_key) = arg_value(args, "public-key", "HSCHAIN_PUBLIC_KEY", None, lambda x: x)
   return (args, node_info, pub_key, driver_info)
 
 def hschain_q(sql):
@@ -42,12 +42,19 @@ def show_info(pub_key, args, connection):
   """show info about current state"""
   cursor = connection.cursor()
   cursor.execute(hschain_q(""))
-  print("synchronization is done")
   cursor = connection.cursor()
   for x in cursor.execute("SELECT height FROM height;"):
     print("height: "+str(x[0]))
   for x in cursor.execute("SELECT amount FROM funds WHERE wallet_id = :user_id;", [pub_key]):
     print("amount: "+str(x[0]))
+
+def transfer(pub_key, args, connection):
+  """show info about current state"""
+  (args, amount) = arg_value(args, "amount", None, None, lambda x: int(x))
+  (args, dest) = arg_value(args, "to", None, None, lambda x: x)
+  cursor = connection.cursor()
+  cursor.execute(hschain_q("UPDATE funds SET amount = CASE WHEN wallet_id = :user_id THEN amount - :transfer_amount WHEN wallet_id = :dest_user_id THEN amount + :transfer_amount END WHERE (wallet_id = :user_id OR wallet_id = :dest_user_id) AND :transfer_amount > 0;")
+                , [pub_key, amount, dest])
 
 # main wallet function.
 def wallet_main(args):
@@ -66,7 +73,6 @@ def wallet_main(args):
       , "Database=mirror.db"
       , "tracefile=trace.log"
       ])
-    print (connection_string)
     connection = pyodbc.connect(connection_string)
     print("connected")
     if   command == 'info':
@@ -74,7 +80,7 @@ def wallet_main(args):
     elif command == 'funds':
       show_funds(args, connection)
     elif command == 'transfer':
-      transfer(args, connection)
+      transfer(pub_key, args, connection)
     elif command == 'operations':
       list_operations(args, connection)
     else:

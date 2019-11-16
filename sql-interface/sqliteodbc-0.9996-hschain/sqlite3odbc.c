@@ -2762,14 +2762,19 @@ errout:
     freep(&qz);
     *p = '\0';
     if (nparam) {
-	if (named_params_asciiz) {
+	if (named_params_asciiz[0] && np) {
+	    if (trace) {
+		fprintf(trace, "-- hschain: there are both named parameters and question marks. It may confuse driver\n");
+	    }
+	}
+	if (named_params_asciiz[0]) {
 	    int named_params_count, start;
 	    for ( start = 0, named_params_count = 0
 		; named_params_asciiz[start]
 		; start += strlen(&named_params_asciiz[start]) + 1, ++named_params_count) {
 		// nothing
 		if (trace) {
-		    fprintf(trace, "-- hschain: parameter: %s\n", &named_params_asciiz[start]);
+		    fprintf(trace, "-- hschain: parameter: %s, index %d\n", &named_params_asciiz[start], named_params_count);
 		}
 	    }
 	    *nparam = named_params_count;
