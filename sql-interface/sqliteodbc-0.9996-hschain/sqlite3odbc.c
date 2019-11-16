@@ -27,6 +27,7 @@
 #include <netdb.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <ctype.h>
 #include <unistd.h>
 #include <string.h>
 
@@ -2518,6 +2519,54 @@ checkddl(char *sql)
     return isddl;
 }
 
+// NOTE: O(num_params_in_SQL_query ^ 2). Luckily we seldom have that many parameters we need to worry about that.
+static void
+add_named_params_to_list( char*named_params_asciiz
+			, int named_params_asciiz_size
+			, char*after_colon, int* pident_length, FILE*trace) {
+    int ident_length;
+    int start;
+    for (ident_length=0;after_colon[ident_length];ident_length++) {
+	char c = after_colon[ident_length];
+	if (isalpha(c) || c == '_') {
+	    continue;
+	}
+	if (ident_length > 0 && isdigit(c)) {
+	    continue;
+	}
+	break;
+    }
+    *pident_length = ident_length;
+    if (ident_length < 1) {
+	if (trace) {
+	    fprintf(trace, "-- hschain: colon without identifier\n");
+	}
+	return ; // this is clearly an error and it will be dealt elsewhere.
+    }
+    for (start = 0; named_params_asciiz[start]; ) {
+	char* this_ident = &named_params_asciiz[start];
+	int thisl = strlen(this_ident);
+	if (trace) {
+	    fprintf(trace, "-- hschain: checking against %s\n", this_ident);
+	}
+	if (ident_length == thisl && 0 == sqlite3_strnicmp(this_ident, after_colon, ident_length)) {
+	    // found one.
+	    return;
+	}
+	start += thisl + 1; // skip string and EOS zero
+    }
+    if (named_params_asciiz_size < start + ident_length + 2) {
+	if (trace) {
+		fprintf(trace, "-- hschain: adding a parameter would overflow the list\n");
+	}
+	return ; // should err, BTW.
+    }
+    memcpy(&named_params_asciiz[start], after_colon, ident_length);
+    start += ident_length;
+    named_params_asciiz[start] = 0; // make it ASCIIZ
+    named_params_asciiz[start + 1] = 0; // add zero-length string at end.
+}
+
 /**
  * Fixup query string with optional parameter markers.
  * @param sql original query string
@@ -2531,10 +2580,13 @@ checkddl(char *sql)
 
 static char *
 fixupsql(char *sql, int sqlLen, int cte, int *nparam, int *isselect,
-	 char **errmsg)
+	 char **errmsg, FILE*trace)
 {
     char *q = sql, *qz = NULL, *p, *inq = NULL, *out;
+    char named_params_asciiz[4096];
     int np = 0, isddl = -1, size;
+
+    named_params_asciiz[0] = 0;
 
     if (errmsg) {
 	*errmsg = NULL;
@@ -2589,9 +2641,18 @@ errout:
 	    }
 	    break;
 	case ':': // a hack for sqlite3odbc to support named parameters. WE NEED THEM!!!
-	    *p++ = *q;
-	    if (!inq) {
-		np++;
+	    {
+		int ident_len;
+		if (trace) {
+		    fprintf(trace, "-- hschain: colon found: %s\n", q);
+		}
+		*p++ = *q;
+		if (!inq) {
+		    add_named_params_to_list(named_params_asciiz
+			    , sizeof(named_params_asciiz) - 1
+			    , q + 1, &ident_len, trace);
+		    np++;
+		}
 	    }
 	    break;
 	case ';':
@@ -2640,7 +2701,7 @@ errout:
 		    } else if (inq2 == NULL && *end == '{') {
 			char *nerr = 0, *nsql;
 
-			nsql = fixupsql(end, SQL_NTS, cte, 0, 0, &nerr);
+			nsql = fixupsql(end, SQL_NTS, cte, 0, 0, &nerr, trace);
 			if (nsql && !nerr) {
 			    strcpy(end, nsql);
 			} else {
@@ -2701,7 +2762,20 @@ errout:
     freep(&qz);
     *p = '\0';
     if (nparam) {
-	*nparam = np;
+	if (named_params_asciiz) {
+	    int named_params_count, start;
+	    for ( start = 0, named_params_count = 0
+		; named_params_asciiz[start]
+		; start += strlen(&named_params_asciiz[start]) + 1, ++named_params_count) {
+		// nothing
+		if (trace) {
+		    fprintf(trace, "-- hschain: parameter: %s\n", &named_params_asciiz[start]);
+		}
+	    }
+	    *nparam = named_params_count;
+	} else {
+	    *nparam = np;
+	}
     }
     if (isselect) {
 	if (isddl < 0) {
@@ -18749,7 +18823,7 @@ noconn:
     freep(&s->query);
     s->query = (SQLCHAR *) fixupsql((char *) query, queryLen,
 				    (d->version >= 0x030805),
-				    &s->nparams, &s->isselect, &errp);
+				    &s->nparams, &s->isselect, &errp, d->trace);
     if (!s->query) {
 	if (errp) {
 	    setstat(s, -1, "%s", (*s->ov3) ? "HY000" : "S1000", errp);
