@@ -165,6 +165,7 @@ puts "[thread::id]: pubkey $pubkey, height $height, request '$request'"
 }
 
 proc accept_connection {socket address port} {
+	fconfigure $socket -translation {auto lf}
 	puts "current threads running: [thread::names]"
 	after idle [list _accept_connection $socket $address $port]
 }
