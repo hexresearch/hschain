@@ -107,6 +107,8 @@ proc request_response {pubkey client_height request parameters} {
 			lappend response ""
 		}
 	}
+	lappend response "update height set height = [height];"
+	lappend response ""
 	return $response
 }
 

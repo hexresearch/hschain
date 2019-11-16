@@ -156,7 +156,7 @@ typedef struct dbc {
 #endif
 
     // hschain additions.
-    int hschain_node_sockfd; /**< non-negative value means we have a connection */
+    FILE* hschain_node; /**< non-negative value means we have a connection */
     int64_t current_height;
     int height_increment;
     uint8_t public_key[256]; /**< just a string, BTW. May switch to binary representation someday. */

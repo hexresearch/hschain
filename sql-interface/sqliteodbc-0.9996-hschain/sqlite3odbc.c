@@ -3889,7 +3889,7 @@ dbtracerc(DBC *d, int rc, char *err)
 }
 
 
-static int
+static FILE*
 connect_to_node(char*consensus_nodes, FILE*trace) {
     int fd;
     char temp[1024];
@@ -3912,14 +3912,14 @@ connect_to_node(char*consensus_nodes, FILE*trace) {
 	addr = strtok_r(addr_pair, " \t", &saveptr_pair);
 	if (addr == NULL) {
 	    if (trace) {
-		fprintf(trace, "-- hschain: address is NULL\n", addr_pair);
+		fprintf(trace, "-- hschain: address is NULL\n");
 	    }
 	    continue;
 	}
 	port = strtok_r(NULL, " \t", &saveptr_pair);
 	if (port == NULL) {
 	    if (trace) {
-		fprintf(trace, "-- hschain: port is NULL\n", addr_pair);
+		fprintf(trace, "-- hschain: port is NULL\n");
 	    }
 	    continue;
 	}
@@ -3951,10 +3951,11 @@ connect_to_node(char*consensus_nodes, FILE*trace) {
 	}
 	freeaddrinfo(resolved_list);
 	if (fd >= 0) {
-	    return fd;
+	    FILE* ret = fdopen(fd, "r+");
+	    return ret;
 	}
     }
-    return -1;
+    return NULL;
 }
 
 /**
@@ -3979,10 +3980,10 @@ hschain_read_height(DBC* d) {
 static int
 hschain_send_string(DBC*d, char*s) {
     size_t len = strlen(s);
-    if (write(d->hschain_node_sockfd, s, len) < len) {
+    if (fwrite(s, 1, len, d->hschain_node) < len) {
 	return 0;
     }
-    fsync(d->hschain_node_sockfd);
+    fflush(d->hschain_node);
     return 1;
 }
 
@@ -4009,26 +4010,127 @@ hschain_send_empty_request(DBC*d) {
 }
 
 static int
-hschain_obtain_difference(DBC*d) {
+hschain_safe_gets(char*s, size_t size, DBC*d) {
+    size_t read_size;
+    if (!fgets(s, size-1, d->hschain_node)) {
+	return 0;
+    }
+    read_size = strlen(s);
+    if (read_size < 1) {
+	return 0;
+    }
+    if ('\n' != s[read_size-1]) {
+	return 0;
+    }
+    s[read_size] = 0; // drop EOL, otherwise it will mess things somewhere.
+    return 1;
+}
+
+static int
+hschain_read_answer(DBC*d) {
     char temp[4096];
+    char value_buf[4096];
+    char *endp;
     size_t temp_size = 0, temp_ofs = 0;
+    int64_t current_height;
+    // reading height.
+    if (!hschain_safe_gets(temp, sizeof(temp)-1, d)) {
+	if (d->trace) {
+	    fprintf(d->trace, "-- hschain: unable to read height line\n");
+	}
+	return 0;
+    }
+    current_height = strtol(temp, &endp, 10);
+    if (*endp) {
+	if (d->trace) {
+	    fprintf(d->trace, "-- hschain: invalid height %s\n", temp);
+	}
+	return 0;
+    }
+    for(;;) {
+	sqlite3_stmt *prepared_stmt;
+	int result_code;
+	if (!hschain_safe_gets(temp, sizeof(temp)-1, d)) {
+	    if (d->trace) {
+		fprintf(d->trace, "-- hschain: unable to read request line\n");
+	    }
+	    return 0;
+	}
+	if (strlen(temp) < 1) {
+		// done with requests - received empty one.
+		break;
+	}
+	if (SQLITE_OK != sqlite3_prepare_v2(d->sqlite, temp, -1, &prepared_stmt, NULL)) {
+	    if (d->trace) {
+		fprintf(d->trace, "-- hschain: sqlite does not understand request: %s\n", temp);
+	    }
+	    return 0;
+	}
+	for(;;) {
+	    int param_index;
+	    if (!hschain_safe_gets(temp, sizeof(temp)-1, d)) {
+		if (d->trace) {
+		    fprintf(d->trace, "-- hschain: unable to read parameter name line\n");
+		}
+		sqlite3_finalize(prepared_stmt);
+		return 0;
+	    }
+	    if (strlen(temp) < 1) {
+		break;
+	    }
+	    if (!hschain_safe_gets(value_buf, sizeof(value_buf), d)) {
+		if (d->trace) {
+		    fprintf(d->trace, "-- hschain: unable to read parameter value line\n");
+		}
+		sqlite3_finalize(prepared_stmt);
+		return 0;
+	    }
+	    param_index = sqlite3_bind_parameter_index(prepared_stmt, temp);
+	    if (param_index < 1) {
+		if (d->trace) {
+		    fprintf(d->trace, "-- hschain: parameter %s is not in the statement\n", temp);
+		}
+		sqlite3_finalize(prepared_stmt);
+		return 0;
+	    }
+	    if (sqlite3_bind_text(prepared_stmt, param_index, value_buf, -1, SQLITE_TRANSIENT) != SQLITE_OK) {
+		if (d->trace) {
+		    fprintf(d->trace, "-- hschain: error binding parameter %s to %s\n", temp, value_buf);
+		}
+		sqlite3_finalize(prepared_stmt);
+		return 0;
+	    }
+	}
+	while ((result_code = sqlite3_step(prepared_stmt)) != SQLITE_DONE) {
+	    if (result_code != SQLITE_OK || result_code != SQLITE_ROW) {
+		if (d->trace) {
+		    fprintf(d->trace, "-- hschain: error stepping statement\n");
+		}
+		sqlite3_finalize(prepared_stmt);
+		return 0;
+	    }
+	}
+	sqlite3_finalize(prepared_stmt);
+    }
+    d->current_height = current_height;
+    return 1;
+}
+
+static int
+hschain_obtain_difference(DBC*d) {
     if (!hschain_send_empty_request(d)) {
 	return 0;
     }
-    if (d->trace) {
-	fprintf(d->trace, "-- hschain: NOT YET DONE\n");
-	fflush(d->trace);
-    }
-    return 0;
+    return hschain_read_answer(d);
 }
 
 static int
 hschain_synchronize(DBC* d) {
     char* failure_reason = "unknown";
     do {
-	if (d->hschain_node_sockfd < 0) {
-	    d->hschain_node_sockfd = connect_to_node(d->consensus_nodes, d->trace);
-	    if (d->hschain_node_sockfd < 0) {
+	if (NULL == d->hschain_node) {
+	    d->hschain_node = connect_to_node(d->consensus_nodes, d->trace);
+	    if (NULL == d->hschain_node) {
 		failure_reason = "connect";
 		break;
 	    }
@@ -12908,7 +13010,7 @@ printf("we are connecting!\n"); fflush(stdout);
 	fprintf(d->trace, "-- hschain: setting sockfd as not open\n");
 	fflush(d->trace);
     }
-    d->hschain_node_sockfd = -1; /**< mark as not opened */
+    d->hschain_node = NULL; /**< mark as not opened */
     d->current_height = -1; /**< so that server will answer us with all requests performed, including genesis */
     return ret;
 }
@@ -13333,7 +13435,7 @@ drvdriverconnect(SQLHDBC dbc, SQLHWND hwnd,
 	fprintf(d->trace, "-- hschain: setting sockfd as not open (driver connect), connection string %s\n", buf);
 	fflush(d->trace);
     }
-    d->hschain_node_sockfd = -1; /**< mark as not opened */
+    d->hschain_node = NULL; /**< mark as not opened */
     d->current_height = -1; /**< so that server will answer us with all requests performed, including genesis */
     return ret;
 }
