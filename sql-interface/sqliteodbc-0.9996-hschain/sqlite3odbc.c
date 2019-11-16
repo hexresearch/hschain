@@ -2588,6 +2588,12 @@ errout:
 		np++;
 	    }
 	    break;
+	case ':': // a hack for sqlite3odbc to support named parameters. WE NEED THEM!!!
+	    *p++ = *q;
+	    if (!inq) {
+		np++;
+	    }
+	    break;
 	case ';':
 	    if (!inq) {
 		if (isddl < 0) {
@@ -4022,9 +4028,7 @@ hschain_safe_gets(char*s, size_t size, DBC*d) {
     if ('\n' != s[read_size-1]) {
 	return 0;
     }
-fprintf(d->trace, "line before strip '%s', length %zu\n", s, strlen(s));
     s[read_size-1] = 0; // drop EOL, otherwise it will mess things somewhere.
-fprintf(d->trace, "line after strip '%s', length %zu\n", s, strlen(s));
     return 1;
 }
 

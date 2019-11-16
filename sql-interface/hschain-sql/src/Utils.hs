@@ -49,6 +49,7 @@ commandAction (MandatorySystemTables userTables initialRequests) = do
   addStatements $
     [ "-- special table - current height. keep it single-valued."
     , "CREATE TABLE height (height INTEGER);"
+    , "INSERT INTO height (height) VALUES (-1); -- not even genesis was read"
     , ""
     , "-- special table - allowed requests."
     , "CREATE TABLE allowed_requests"
@@ -69,15 +70,8 @@ commandAction (MandatorySystemTables userTables initialRequests) = do
     , "    );"
     ]
   addStatements initialRequests
-  ss <- get -- we do not need our internal tables exposed to the client.
   addStatements
-    [ "-- special table that keeps genesis requests"
-    , "CREATE TABLE serialized_genesis_requests"
-    , "    ( seq_index   INTEGER"
-    , "    , request_sql TEXT"
-    , "    );"
-    , ""
-    , "-- special table that keeps serialized requests"
+    [ "-- special table that keeps serialized requests"
     , "CREATE TABLE serialized_requests"
     , "    ( height     INTEGER -- height for request"
     , "    , seq_index  INTEGER -- order inside the height"
@@ -96,6 +90,15 @@ commandAction (MandatorySystemTables userTables initialRequests) = do
     , "    , CONSTRAINT serialized_requests_values_primary_key PRIMARY KEY (height, seq_index, request_param_name)"
     , "    , CONSTRAINT must_have_request FOREIGN KEY (height, seq_index, request_id) REFERENCES serialized_requests(height, seq_index, request_id)"
     , "    );"
+    ]
+  ss <- get -- we do not need our internal tables exposed to the client.
+  addStatements
+    [ "-- special table that keeps genesis requests"
+    , "CREATE TABLE serialized_genesis_requests"
+    , "    ( seq_index   INTEGER"
+    , "    , request_sql TEXT"
+    , "    );"
+    , ""
     ]
   case parseStatements sqlDialect "" Nothing $ unlines ss of
     Left err -> error $ "internal error: error parsing combined statements: "++show err

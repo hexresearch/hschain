@@ -38,11 +38,16 @@ def hschain_q(sql):
   """append prefix that signals hschain query to driver"""
   return "PRAGMA HSCHAIN QUERY;\n"+sql
 
-def show_info(args, connection):
+def show_info(pub_key, args, connection):
   """show info about current state"""
   cursor = connection.cursor()
   cursor.execute(hschain_q(""))
   print("synchronization is done")
+  cursor = connection.cursor()
+  for x in cursor.execute("SELECT height FROM height;"):
+    print("height: "+str(x[0]))
+  for x in cursor.execute("SELECT amount FROM funds WHERE wallet_id = :user_id;", [pub_key]):
+    print("amount: "+str(x[0]))
 
 # main wallet function.
 def wallet_main(args):
@@ -65,7 +70,7 @@ def wallet_main(args):
     connection = pyodbc.connect(connection_string)
     print("connected")
     if   command == 'info':
-      show_info(args, connection)
+      show_info(pub_key, args, connection)
     elif command == 'funds':
       show_funds(args, connection)
     elif command == 'transfer':
