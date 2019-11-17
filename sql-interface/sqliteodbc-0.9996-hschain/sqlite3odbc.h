@@ -300,6 +300,8 @@ typedef struct stmt {
     int one_tbl;		/**< Flag for single table (> 0) */
     int has_pk;			/**< Flag for primary key (> 0) */
     int has_rowid;		/**< Flag for ROWID (>= 0 or -1) */
+
+    int hschain_statement;	/**< Statement for hschain - we do not execute statement locally */
 } STMT;
 
 #endif

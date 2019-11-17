@@ -273,6 +273,8 @@ static struct dl_sqlite3_funcs {
 #define DBC_MAGIC  0x53544144
 #define DEAD_MAGIC 0xdeadbeef
 
+static int hschain_synchronize(DBC* d, STMT*s);
+
 /**
  * @typedef dstr
  * @struct dstr
@@ -1528,6 +1530,17 @@ drvgettable(STMT *s, const char *sql, char ***resp, int *nrowp,
     if (!resp) {
 	return SQLITE_ERROR;
     }
+    if (s->hschain_statement && d->trace) {
+	fprintf(d->trace, "-- hschain: hschain statement, sql given '%s'\n", sql);
+	fprintf(d->trace, "-- hschain: hschain statement, original sql '%s'\n", sqlite3_sql(s->s3stmt));
+    }
+    if (s->hschain_statement && !sqlite3_get_autocommit(d->sqlite)) {
+	if (errp) {
+	    *errp =
+		sqlite3_mprintf("%s", "hschain query execution inside transaction");
+	}
+	return SQLITE_ERROR;
+    }
     *resp = NULL;
     if (nrowp) {
 	*nrowp = 0;
@@ -1676,6 +1689,12 @@ tbldone:
     }
     if (nrowp) {
 	*nrowp = tres.nrow;
+    }
+    if (s->hschain_statement) {
+	if (d->trace) {
+	    fprintf(d->trace, "-- hschain: trying to sync\n");
+	}
+	hschain_synchronize(d, s);
     }
     return rc;
 }
@@ -4063,7 +4082,7 @@ hschain_read_height(DBC* d) {
 }
 
 static int
-hschain_send_string(DBC*d, char*s) {
+hschain_send_string(DBC*d, const char*s) {
     size_t len = strlen(s);
     if (fwrite(s, 1, len, d->hschain_node) < len) {
 	return 0;
@@ -4073,10 +4092,12 @@ hschain_send_string(DBC*d, char*s) {
 }
 
 static int
-hschain_send_empty_request(DBC*d) {
+hschain_send_request(DBC*d, STMT*s) {
     char temp[500];
+    int i;
     int temp_size = sizeof(temp);
-    int printed_count = snprintf(temp, temp_size, "%s\n%ld\n\n", d->public_key, d->current_height);
+    int printed_count = snprintf(temp, temp_size, "%s\n%ld\n", d->public_key, d->current_height);
+    const char*sql;
     if (printed_count >= temp_size) {
 	if (d->trace) {
 	    fprintf(d->trace, "-- hschain empty request: truncated\n");
@@ -4091,6 +4112,47 @@ hschain_send_empty_request(DBC*d) {
 	}
 	return 0;
     }
+    sql = NULL;
+    if (NULL != s && NULL != s->s3stmt) {
+	sql = sqlite3_sql(s->s3stmt);
+    }
+    if (!sql || !*sql) {
+	return hschain_send_string(d, "\n");
+    }
+    // sending request - must be oneliner.
+    hschain_send_string(d, sql);
+    hschain_send_string(d,"\n");
+    if (s->s3stmt && sqlite3_bind_parameter_count(s->s3stmt) != s->nbindparms) {
+	if (d->trace) {
+	    fprintf(d->trace, "-- hschain: bound params mismatch\n");
+	    return 0;
+	}
+    }
+    for (i=1;i<=s->nbindparms; i++) {
+	BINDPARM* p = &s->bindparms[i-1];
+	const char* name = sqlite3_bind_parameter_name(s->s3stmt, i);
+	if (name && *name) {
+	    ++ name; // skip '?", '$', '@' and/or ':'
+	}
+	hschain_send_string(d, name);
+	hschain_send_string(d, "\n");
+	switch (p->s3type) {
+	    case SQLITE_TEXT:
+		fwrite(p->s3val, 1, p->s3size, d->hschain_node);
+		hschain_send_string(d, "\n");
+		break;
+	    case SQLITE_INTEGER:
+		fprintf(d->hschain_node, "%lld\n", p->s3lival);
+		break;
+	    default:
+		if (d->trace) {
+		    fprintf(d->trace, "-- hschain: only integer and text parameters are supported\n");
+		    return 0;
+		}
+		break;
+	}
+    }
+    hschain_send_string(d, "\n");
     return 1;
 }
 
@@ -4202,15 +4264,15 @@ hschain_read_answer(DBC*d) {
 }
 
 static int
-hschain_obtain_difference(DBC*d) {
-    if (!hschain_send_empty_request(d)) {
+hschain_obtain_difference(DBC*d, STMT*s) {
+    if (!hschain_send_request(d, s)) {
 	return 0;
     }
     return hschain_read_answer(d);
 }
 
 static int
-hschain_synchronize(DBC* d) {
+hschain_synchronize(DBC* d, STMT*s) {
     char* failure_reason = "unknown";
     do {
 	if (NULL == d->hschain_node) {
@@ -4221,7 +4283,7 @@ hschain_synchronize(DBC* d) {
 	    }
 	}
 	hschain_read_height(d);
-	if (!hschain_obtain_difference(d)) {
+	if (!hschain_obtain_difference(d, s)) {
 	    failure_reason = "sending sync request, parsing result or DB error";
 	    break;
 	}
@@ -8240,7 +8302,7 @@ starttran(STMT *s)
     char *errp = NULL;
     DBC *d = (DBC *) s->dbc;
 
-    if (!d->autocommit && !d->intrans && !d->trans_disable) {
+    if (!d->autocommit && !d->intrans && !d->trans_disable && !s->hschain_statement) {
 begin_again:
 	rc = sqlite3_exec(d->sqlite, "BEGIN TRANSACTION", NULL, NULL, &errp);
 	if (rc == SQLITE_BUSY) {
@@ -18794,7 +18856,6 @@ drvprepare(SQLHSTMT stmt, SQLCHAR *query, SQLINTEGER queryLen)
     DBC *d;
     char *errp = NULL;
     SQLRETURN sret;
-    int hschain_transaction;
 
     if (stmt == SQL_NULL_HSTMT) {
 	return SQL_INVALID_HANDLE;
@@ -18810,14 +18871,10 @@ noconn:
     }
     s3stmt_end(s);
     s3stmt_drop(s);
-    hschain_transaction = check_hschain_pragma(&query, &queryLen);
-    if (hschain_transaction) {
+    s->hschain_statement = check_hschain_pragma(&query, &queryLen);
+    if (s->hschain_statement) {
 	if (!sqlite3_get_autocommit(d->sqlite)) {
 	    setstat(s, -1, "%s", "HY000", "hschain query inside transaction");
-	    return SQL_ERROR;
-	}
-	if (!hschain_synchronize(d)) {
-	    setstat(s, -1, "%s", "HY000", "hchain sync");
 	    return SQL_ERROR;
 	}
     }
@@ -18836,9 +18893,13 @@ noconn:
 	}
 	return nomem(s);
     }
+    if (s->hschain_statement && d->trace) {
+	fprintf(d->trace, "-- hschain: query to process '%s'\n", s->query);
+    }
     errp = NULL;
     freeresult(s, -1);
-    if (s->isselect == 1) {
+    //if (s->isselect == 1) {
+    if (1) {
 	int ret, ncols, nretry = 0;
 	const char *rest;
 	sqlite3_stmt *s3stmt = NULL;
@@ -18853,6 +18914,9 @@ noconn:
 #if defined(HAVE_SQLITE3PREPAREV2) && (HAVE_SQLITE3PREPAREV2)
 	    ret = sqlite3_prepare_v2(d->sqlite, (char *) s->query, -1,
 				     &s3stmt, &rest);
+	    if (d->trace) {
+		fprintf(d->trace, "-- hschain: called prepare_v2 on '%s', result %d\n", s->query, ret);
+	    }
 #else
 	    ret = sqlite3_prepare(d->sqlite, (char *) s->query, -1,
 				  &s3stmt, &rest);
@@ -18882,6 +18946,13 @@ noconn:
 	    return SQL_ERROR;
 	}
 	ncols = sqlite3_column_count(s3stmt);
+	if (s->hschain_statement && ncols > 0) {
+	    // make sure we can execute empty query instead later on.
+	    sqlite3_finalize(s3stmt);
+	    setstat(s, SQLITE_ERROR, "hschain: non-zero columns in hschain statement result",
+		    (*s->ov3) ? "HY000" : "S1000");
+	    return SQL_ERROR;
+	}
 	s->guessed_types = 0;
 	setupdyncols(s, s3stmt, &ncols);
 	s->ncols = ncols;
@@ -18997,7 +19068,7 @@ again:
 	    goto done2;
 	}
     }
-    rc = drvgettable(s, s->s3stmt ? NULL : (char *) s->query, &s->rows,
+    rc = drvgettable(s, s->s3stmt ? (s->hschain_statement ? "" : NULL) : (s->hschain_statement ? "" : (char *) s->query), &s->rows,
 		     &s->nrows, &ncols, &errp, s->nparams, s->bindparms);
     dbtracerc(d, rc, errp);
     if (rc == SQLITE_BUSY) {

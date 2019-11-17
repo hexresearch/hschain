@@ -36,7 +36,7 @@ def find_driver_node_info(args):
 
 def hschain_q(sql):
   """append prefix that signals hschain query to driver"""
-  return "PRAGMA HSCHAIN QUERY;\n"+sql
+  return "PRAGMA HSCHAIN QUERY;"+sql
 
 def show_info(pub_key, args, connection):
   """show info about current state"""
