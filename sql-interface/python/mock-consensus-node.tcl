@@ -57,6 +57,7 @@ puts "WRONG IDS LIST LENGTH: [list $ids_list]"
 		return
 	}
 	puts "TODO: THE REAL THING NEEDS TO VALIDATE PARAMS!"
+	puts "PARAMS: $request_params"
 	set request_id [lindex $ids_list 0]
 	# https://sqlite.org/lang_savepoint.html
 	database eval {SAVEPOINT savepoint_to_check_request;}
@@ -82,7 +83,10 @@ proc ascend_timeout {} {
 }
 
 proc ascend_action {} {
-	new_height
+	if {[catch new_height r]} {
+		puts "error in new_height: $r"
+	}
+	puts "new height [height]"
 	after [ascend_timeout] ascend_action
 }
 
@@ -147,7 +151,7 @@ puts "[thread::id]: pubkey $pubkey, height $height, request '$request'"
 					set response [list]
 				}
 				foreach r $response {
-					#puts "[thread::id] sending: '$r'"
+					puts "[thread::id] sending: '$r'"
 					puts $socket $r
 				}
 				puts $socket ""

@@ -1838,9 +1838,9 @@ freep(void *x)
  */
 
 static SQLRETURN
-nomem(STMT *s)
+nomem(STMT *s, int line)
 {
-    setstat(s, -1, "out of memory", (*s->ov3) ? "HY000" : "S1000");
+    setstat(s, -1, "out of memory line %d", (*s->ov3) ? "HY000" : "S1000", line);
     return SQL_ERROR;
 }
 
@@ -2622,7 +2622,7 @@ fixupsql(char *sql, int sqlLen, int cte, int *nparam, int *isselect,
 	size = strlen(sql) * 4;
     }
     size += sizeof (char *) - 1;
-    size &= ~(sizeof (char *) - 1);
+    //size &= ~(sizeof (char *) - 1);
     p = xmalloc(size);
     if (!p) {
 errout:
@@ -3816,7 +3816,7 @@ blob_import(sqlite3_context *ctx, int nargs, sqlite3_value **args)
 	if (wname) {
 	    f = fopen(wname, "rb");
 	} else {
-	    sqlite3_result_error(ctx, "out of memory", -1);
+	    sqlite3_result_error(ctx, "out of memory blob_import", -1);
 	    return;
 	}
 	uc_free(wname);
@@ -3835,7 +3835,7 @@ blob_import(sqlite3_context *ctx, int nargs, sqlite3_value **args)
 			    sqlite3_result_blob(ctx, p, n, sqlite3_free);
 			}
 		    } else {
-			sqlite3_result_error(ctx, "out of memory", -1);
+			sqlite3_result_error(ctx, "out of memory blob_import 2", -1);
 		    }
 		} else {
 		    sqlite3_result_error(ctx, "seek error", -1);
@@ -3892,7 +3892,7 @@ blob_export(sqlite3_context *ctx, int nargs, sqlite3_value **args)
 	    if (wname) {
 		f = fopen(wname, "wb");
 	    } else {
-		sqlite3_result_error(ctx, "out of memory", -1);
+		sqlite3_result_error(ctx, "out of memory blob_export", -1);
 		return;
 	    }
 	    uc_free(wname);
@@ -4122,13 +4122,13 @@ hschain_send_request(DBC*d, STMT*s) {
     // sending request - must be oneliner.
     hschain_send_string(d, sql);
     hschain_send_string(d,"\n");
-    if (s->s3stmt && sqlite3_bind_parameter_count(s->s3stmt) != s->nbindparms) {
+    if (s->s3stmt && sqlite3_bind_parameter_count(s->s3stmt) != s->nparams) {
 	if (d->trace) {
-	    fprintf(d->trace, "-- hschain: bound params mismatch\n");
+	    fprintf(d->trace, "-- hschain: bound params mismatch (request %d and bindparms %d)\n", sqlite3_bind_parameter_count(s->s3stmt), s->nparams);
 	    return 0;
 	}
     }
-    for (i=1;i<=s->nbindparms; i++) {
+    for (i=1;i<=s->nparams; i++) {
 	BINDPARM* p = &s->bindparms[i-1];
 	const char* name = sqlite3_bind_parameter_name(s->s3stmt, i);
 	if (name && *name) {
@@ -4152,8 +4152,7 @@ hschain_send_request(DBC*d, STMT*s) {
 		break;
 	}
     }
-    hschain_send_string(d, "\n");
-    return 1;
+    return hschain_send_string(d, "\n");
 }
 
 static int
@@ -4207,22 +4206,36 @@ hschain_read_answer(DBC*d) {
 		// done with requests - received empty one.
 		break;
 	}
+	if (d->trace) {
+	    fprintf(d->trace, "-- hschain: current request: %s\n", temp);
+	}
 	if (SQLITE_OK != sqlite3_prepare_v2(d->sqlite, temp, -1, &prepared_stmt, NULL)) {
 	    if (d->trace) {
 		fprintf(d->trace, "-- hschain: sqlite does not understand request: %s\n", temp);
 	    }
 	    return 0;
 	}
+	if (d->trace) {
+	    int i;
+	    fprintf(d->trace, "-- hschain: current request param count: %d\n", sqlite3_bind_parameter_count(prepared_stmt));
+	    for (i=1;i<=sqlite3_bind_parameter_count(prepared_stmt);i++) {
+		fprintf(d->trace, "-- hschain:      parameter [%d]: %s\n", i, sqlite3_bind_parameter_name(prepared_stmt, i));
+	    }
+	}
 	for(;;) {
 	    int param_index;
-	    if (!hschain_safe_gets(temp, sizeof(temp)-1, d)) {
+	    if (!hschain_safe_gets(temp+1, sizeof(temp)-2, d)) {
 		if (d->trace) {
 		    fprintf(d->trace, "-- hschain: unable to read parameter name line\n");
 		}
 		sqlite3_finalize(prepared_stmt);
 		return 0;
 	    }
-	    if (strlen(temp) < 1) {
+	    temp[0] = ':'; // XXX!!!
+	    if (d->trace) {
+		fprintf(d->trace, "-- hschain: parameter name %s\n", temp);
+	    }
+	    if (strlen(temp) < 2) {
 		break;
 	    }
 	    if (!hschain_safe_gets(value_buf, sizeof(value_buf), d)) {
@@ -4232,10 +4245,13 @@ hschain_read_answer(DBC*d) {
 		sqlite3_finalize(prepared_stmt);
 		return 0;
 	    }
+	    if (d->trace) {
+		fprintf(d->trace, "-- hschain: parameter value %s\n", value_buf);
+	    }
 	    param_index = sqlite3_bind_parameter_index(prepared_stmt, temp);
 	    if (param_index < 1) {
 		if (d->trace) {
-		    fprintf(d->trace, "-- hschain: parameter %s is not in the statement\n", temp);
+		    fprintf(d->trace, "-- hschain: parameter %s is not in the statement '%s'\n", temp, sqlite3_sql(prepared_stmt));
 		}
 		sqlite3_finalize(prepared_stmt);
 		return 0;
@@ -4274,6 +4290,10 @@ hschain_obtain_difference(DBC*d, STMT*s) {
 static int
 hschain_synchronize(DBC* d, STMT*s) {
     char* failure_reason = "unknown";
+    if (d->trace) {
+	fprintf(d->trace, "-- hschain: sync\n");
+	fflush(d->trace);
+    }
     do {
 	if (NULL == d->hschain_node) {
 	    d->hschain_node = connect_to_node(d->consensus_nodes, d->trace);
@@ -4352,7 +4372,7 @@ dbopen(DBC *d, char *name, int isu, char *dsn, char *sflag,
 	}
 	if (!uname) {
 	    rc = SQLITE_NOMEM;
-	    setstatd(d, rc, "out of memory", (*d->ov3) ? "HY000" : "S1000");
+	    setstatd(d, rc, "out of memory dbopen", (*d->ov3) ? "HY000" : "S1000");
 	    return SQL_ERROR;
 	}
     }
@@ -4400,7 +4420,7 @@ dbopen(DBC *d, char *name, int isu, char *dsn, char *sflag,
 
 	if (!wname) {
 	    rc = SQLITE_NOMEM;
-	    setstatd(d, rc, "out of memory", (*d->ov3) ? "HY000" : "S1000");
+	    setstatd(d, rc, "out of memory dbopen2", (*d->ov3) ? "HY000" : "S1000");
 	    return SQL_ERROR;
 	}
 	rc = sqlite3_open16(wname, &d->sqlite);
@@ -4746,7 +4766,7 @@ s3stmt_step(STMT *s)
 		sqlite3_finalize(s->s3stmt);
 		s->s3stmt = NULL;
 		d->cur_s3stmt = NULL;
-		return nomem(s);
+		return nomem(s, __LINE__);
 	    }
 	    p = (char *) (dyncols + ncols);
 #if defined(HAVE_SQLITE3COLUMNTABLENAME) && (HAVE_SQLITE3COLUMNTABLENAME)
@@ -5274,7 +5294,7 @@ seqerr:
 		freep(&p->parbuf);
 		p->parbuf = xmalloc(size);
 		if (!p->parbuf) {
-		    return nomem(s);
+		    return nomem(s, __LINE__);
 		}
 		p->param = p->parbuf;
 		memcpy(p->param, data, size);
@@ -5292,7 +5312,7 @@ seqerr:
 		if (type == SQL_C_WCHAR) {
 		    dp = uc_to_utf(data, len);
 		    if (!dp) {
-			return nomem(s);
+			return nomem(s,__LINE__);
 		    }
 		}
 #endif
@@ -5300,7 +5320,7 @@ seqerr:
 		if (*s->oemcp) {
 		    dp = wmb_to_utf(data, strlen (data));
 		    if (!dp) {
-			return nomem(s);
+			return nomem(s, __LINE__);
 		    }
 		}
 #endif
@@ -5311,7 +5331,7 @@ seqerr:
 		    if (dp != data) {
 			uc_free(dp);
 		    }
-		    return nomem(s);
+		    return nomem(s, __LINE__);
 		}
 		p->param = p->parbuf;
 		strcpy(p->param, dp);
@@ -5339,13 +5359,13 @@ seqerr:
 			int nlen;
 
 			if (!dp) {
-			    return nomem(s);
+			    return nomem(s, __LINE__);
 			}
 			nlen = strlen(dp);
 			np = xmalloc(nlen + 1);
 			if (!np) {
 			    uc_free(dp);
-			    return nomem(s);
+			    return nomem(s, __LINE__);
 			}
 			strcpy(np, dp);
 			uc_free(dp);
@@ -5371,7 +5391,7 @@ seqerr:
 			char *dp = wmb_to_utf(p->param, p->len);
 
 			if (!dp) {
-			    return nomem(s);
+			    return nomem(s, "drvputdata6");
 			}
 			if (p->param == p->parbuf) {
 			    freep(&p->parbuf);
@@ -5544,7 +5564,7 @@ setupparam(STMT *s, char *sql, int pnum)
 	    char *dp = uc_to_utf(p->param, p->max);
 
 	    if (!dp) {
-		return nomem(s);
+		return nomem(s, __LINE__);
 	    }
 	    if (p->param == p->parbuf) {
 		freep(&p->parbuf);
@@ -5571,7 +5591,7 @@ setupparam(STMT *s, char *sql, int pnum)
 		dp = xmalloc(p->len + 1);
 #endif
 		if (!dp) {
-		    return nomem(s);
+		    return nomem(s, __LINE__);
 		}
 #if defined(_WIN32) || defined(_WIN64)
 		if (*s->oemcp) {
@@ -5821,7 +5841,7 @@ drvbindparam(SQLHSTMT stmt, SQLUSMALLINT pnum, SQLSMALLINT iotype,
 				(pnum + 1) * sizeof (BINDPARM));
 	    if (!newparms) {
 outofmem:
-		return nomem(s);
+		return nomem(s, __LINE__);
 	    }
 	    s->bindparms = newparms;
 	    memset(&s->bindparms[s->nbindparms], 0,
@@ -6025,7 +6045,7 @@ setupparbuf(STMT *s, BINDPARM *p)
 	if (p->len >= 0) {
 	    p->parbuf = xmalloc(p->len + 2);
 	    if (!p->parbuf) {
-		return nomem(s);
+		return nomem(s, __LINE__);
 	    }
 	    p->param = p->parbuf;
 	} else {
@@ -6558,7 +6578,7 @@ doit:
 			  npatt ? "like" : "=", tname);
 #endif
     if (!sql) {
-	return nomem(s);
+	return nomem(s, __LINE__);
     }
     ret = starttran(s);
     if (ret != SQL_SUCCESS) {
@@ -6878,7 +6898,7 @@ drvprimarykeys(SQLHSTMT stmt,
     unescpat(tname);
     sql = sqlite3_mprintf("PRAGMA table_info(%Q)", tname);
     if (!sql) {
-	return nomem(s);
+	return nomem(s, __LINE__);
     }
     sret = starttran(s);
     if (sret != SQL_SUCCESS) {
@@ -6920,7 +6940,7 @@ drvprimarykeys(SQLHSTMT stmt,
 	sql = sqlite3_mprintf("PRAGMA index_list(%Q)", tname);
 	if (!sql) {
 	    sqlite3_free_table(rowp);
-	    return nomem(s);
+	    return nomem(s, __LINE__);
 	}
 	dbtraceapi(d, "sqlite3_get_table", sql);
 	ret = sqlite3_get_table(d->sqlite, sql, &rowp2, &nrows2, &ncols2,
@@ -6988,7 +7008,7 @@ drvprimarykeys(SQLHSTMT stmt,
 	s->nrows = 0;
 	sqlite3_free_table(rowp);
 	sqlite3_free_table(rowp2);
-	return nomem(s);
+	return nomem(s, __LINE__);
     }
     s->rows[0] = (char *) size;
     s->rows += 1;
@@ -7297,7 +7317,7 @@ drvspecialcolumns(SQLHSTMT stmt, SQLUSMALLINT id,
     }
     sql = sqlite3_mprintf("PRAGMA index_list(%Q)", tname);
     if (!sql) {
-	return nomem(s);
+	return nomem(s, __LINE__);
     }
     sret = starttran(s);
     if (sret != SQL_SUCCESS) {
@@ -7327,7 +7347,7 @@ doerr:
     }
     sql = sqlite3_mprintf("PRAGMA table_info(%Q)", tname);
     if (!sql) {
-	return nomem(s);
+	return nomem(s, __LINE__);
     }
     dbtraceapi(d, "sqlite3_get_table", sql);
     ret = sqlite3_get_table(d->sqlite, sql, &rowppp, &nnnrows, &nnncols,
@@ -7381,7 +7401,7 @@ nodata_but_rowid:
 	s->nrows = 0;
 	sqlite3_free_table(rowp);
 	sqlite3_free_table(rowppp);
-	return nomem(s);
+	return nomem(s, __LINE__);
     }
     s->rows[0] = (char *) size;
     s->rows += 1;
@@ -7823,7 +7843,7 @@ nodata:
 	s->rows = xmalloc((size + 1) * sizeof (char *));
 	if (!s->rows) {
 	    s->nrows = 0;
-	    return nomem(s);
+	    return nomem(s, __LINE__);
 	}
 	s->rows[0] = (char *) size;
 	s->rows += 1;
@@ -7967,7 +7987,7 @@ nodata:
 	s->rows = xmalloc((size + 1) * sizeof (char *));
 	if (!s->rows) {
 	    s->nrows = 0;
-	    return nomem(s);
+	    return nomem(s, __LINE__);
 	}
 	s->rows[0] = (char *) size;
 	s->rows += 1;
@@ -9668,7 +9688,7 @@ drvsetstmtattr(SQLHSTMT stmt, SQLINTEGER attr, SQLPOINTER val,
 	    if (uval > 1) {
 		rst = xmalloc(sizeof (SQLUSMALLINT) * uval);
 		if (!rst) {
-		    return nomem(s);
+		    return nomem(s, __LINE__);
 		}
 	    }
 	    if (s->row_status0 != &s->row_status1) {
@@ -9944,7 +9964,7 @@ drvsetstmtoption(SQLHSTMT stmt, SQLUSMALLINT opt, SQLUINTEGER param)
 	    if (param > 1) {
 		rst = xmalloc(sizeof (SQLUSMALLINT) * param);
 		if (!rst) {
-		    return nomem(s);
+		    return nomem(s, __LINE__);
 		}
 	    }
 	    if (s->row_status0 != &s->row_status1) {
@@ -10185,7 +10205,7 @@ setposbind(STMT *s, sqlite3_stmt *stmt, int i, int si, int rsi)
     case SQL_C_WCHAR:
 	cp = uc_to_utf((SQLWCHAR *) dp, *lp);
 	if (!cp) {
-	    return nomem(s);
+	    return nomem(s, __LINE__);
 	}
 	sqlite3_bind_text(stmt, si, cp, -1, SQLITE_TRANSIENT);
 	if (d->trace) {
@@ -10200,7 +10220,7 @@ setposbind(STMT *s, sqlite3_stmt *stmt, int i, int si, int rsi)
 	if (*s->oemcp) {
 	    cp = wmb_to_utf((char *) dp, *lp);
 	    if (!cp) {
-		return nomem(s);
+		return nomem(s, __LINE__);
 	    }
 	    sqlite3_bind_text(stmt, si, cp, -1, SQLITE_TRANSIENT);
 	    if (d->trace) {
@@ -10539,7 +10559,7 @@ drvsetpos(SQLHSTMT stmt, SQLSETPOSIROW row, SQLUSMALLINT op, SQLUSMALLINT lock)
 	sql = dsappend(sql, ")");
 	if (dserr(sql)) {
 	    dsfree(sql);
-	    return nomem(s);
+	    return nomem(s, __LINE__);
 	}
 #if defined(HAVE_SQLITE3PREPAREV2) && (HAVE_SQLITE3PREPAREV2)
 	dbtraceapi(d, "sqlite3_prepare_v2", dsval(sql));
@@ -10662,7 +10682,7 @@ rowoor:
 	}
 	if (dserr(sql)) {
 	    dsfree(sql);
-	    return nomem(s);
+	    return nomem(s, __LINE__);
 	}
 #if defined(HAVE_SQLITE3PREPAREV2) && (HAVE_SQLITE3PREPAREV2)
 	dbtraceapi(d, "sqlite3_prepare_v2", dsval(sql));
@@ -10750,7 +10770,7 @@ dstmterr:
 	}
 	if (dserr(sql)) {
 	    dsfree(sql);
-	    return nomem(s);
+	    return nomem(s, __LINE__);
 	}
 #if defined(HAVE_SQLITE3PREPAREV2) && (HAVE_SQLITE3PREPAREV2)
 	dbtraceapi(d, "sqlite3_prepare_v2", dsval(sql));
@@ -10894,7 +10914,7 @@ drvbulkoperations(SQLHSTMT stmt, SQLSMALLINT op)
 	sql = dsappend(sql, ")");
 	if (dserr(sql)) {
 	    dsfree(sql);
-	    return nomem(s);
+	    return nomem(s, __LINE__);
 	}
 #if defined(HAVE_SQLITE3PREPAREV2) && (HAVE_SQLITE3PREPAREV2)
 	dbtraceapi(d, "sqlite3_prepare_v2", dsval(sql));
@@ -11017,7 +11037,7 @@ istmterr:
 	sql = dsappend(sql, " = ?");
 	if (dserr(sql)) {
 	    dsfree(sql);
-	    return nomem(s);
+	    return nomem(s, __LINE__);
 	}
 #if defined(HAVE_SQLITE3PREPAREV2) && (HAVE_SQLITE3PREPAREV2)
 	dbtraceapi(d, "sqlite3_prepare_v2", dsval(sql));
@@ -11154,7 +11174,7 @@ istmterr:
 	sql = dsappend(sql, " = ?");
 	if (dserr(sql)) {
 	    dsfree(sql);
-	    return nomem(s);
+	    return nomem(s, __LINE__);
 	}
 #if defined(HAVE_SQLITE3PREPAREV2) && (HAVE_SQLITE3PREPAREV2)
 	dbtraceapi(d, "sqlite3_prepare_v2", dsval(sql));
@@ -13016,7 +13036,7 @@ printf("we are connecting!\n"); fflush(stdout);
 	char *cdsn = utf_to_wmb(buf, len);
 
 	if (!cdsn) {
-	    setstatd(d, -1, "out of memory", (*d->ov3) ? "HY000" : "S1000");
+	    setstatd(d, -1, "out of memory drvconnect", (*d->ov3) ? "HY000" : "S1000");
 	    return SQL_ERROR;
 	}
 	strcpy(buf, cdsn);
@@ -13217,7 +13237,7 @@ SQLConnectW(SQLHDBC dbc, SQLWCHAR *dsn, SQLSMALLINT dsnLen,
 	if (!dsna) {
 	    DBC *d = (DBC *) dbc;
 
-	    setstatd(d, -1, "out of memory", (*d->ov3) ? "HY000" : "S1000");
+	    setstatd(d, -1, "out of memory sqlconnectw", (*d->ov3) ? "HY000" : "S1000");
 	    ret = SQL_ERROR;
 	    goto done;
 	}
@@ -13227,7 +13247,7 @@ SQLConnectW(SQLHDBC dbc, SQLWCHAR *dsn, SQLSMALLINT dsnLen,
 	if (!pwda) {
 	    DBC *d = (DBC *) dbc;
 
-	    setstatd(d, -1, "out of memory", (*d->ov3) ? "HY000" : "S1000");
+	    setstatd(d, -1, "out of memory sqlconnectw 2", (*d->ov3) ? "HY000" : "S1000");
 	    ret = SQL_ERROR;
 	    goto done;
 	}
@@ -14226,7 +14246,7 @@ mkbindcols(STMT *s, int ncols)
 		xrealloc(s->bindcols, ncols * sizeof (BINDCOL));
 
 	    if (!bindcols) {
-		return nomem(s);
+		return nomem(s, __LINE__);
 	    }
 	    for (i = s->nbindcols; i < ncols; i++) {
 		bindcols[i].type = SQL_UNKNOWN_TYPE;
@@ -14242,7 +14262,7 @@ mkbindcols(STMT *s, int ncols)
     } else if (ncols > 0) {
 	s->bindcols = (BINDCOL *) xmalloc(ncols * sizeof (BINDCOL));
 	if (!s->bindcols) {
-	    return nomem(s);
+	    return nomem(s, __LINE__);
 	}
 	s->nbindcols = ncols;
 	unbindcols(s);
@@ -14514,7 +14534,7 @@ getrowdata(STMT *s, SQLUSMALLINT col, SQLSMALLINT otype,
 		dlen = dlen / 2;
 		s->bincache = bin = xmalloc(dlen + 1);
 		if (!bin) {
-		    return nomem(s);
+		    return nomem(s, __LINE__);
 		}
 		s->binlen = dlen;
 		memset(bin, 0, dlen);
@@ -14633,7 +14653,7 @@ converr:
 	    if (type == SQL_C_WCHAR) {
 		ucdata = uc_from_utf(cdata, dlen);
 		if (!ucdata) {
-		    return nomem(s);
+		    return nomem(s, __LINE__);
 		}
 		dlen = uc_strlen(ucdata) * sizeof (SQLWCHAR);
 	    }
@@ -14641,7 +14661,7 @@ converr:
 	    else if (*s->oemcp && type == SQL_C_CHAR) {
 		ucdata = (SQLWCHAR *) utf_to_wmb((char *) cdata, dlen);
 		if (!ucdata) {
-		    return nomem(s);
+		    return nomem(s, __LINE__);
 		}
 		cdata = (SQLCHAR *) ucdata;
 		dlen = strlen((char *) cdata);
@@ -15031,7 +15051,7 @@ drvtables(SQLHSTMT stmt,
 	s->rows = xmalloc(size * sizeof (char *));
 	if (!s->rows) {
 	    s->nrows = 0;
-	    return nomem(s);
+	    return nomem(s, __LINE__);
 	}
 	memset(s->rows, 0, sizeof (char *) * size);
 	s->ncols = asize;
@@ -15145,7 +15165,7 @@ doit:
 			  npatt ? "like" : "=", tname);
 #endif
     if (!sql) {
-	return nomem(s);
+	return nomem(s, __LINE__);
     }
     ret = starttran(s);
     if (ret != SQL_SUCCESS) {
@@ -15435,7 +15455,7 @@ drvcolumns(SQLHSTMT stmt,
 			  "(type = 'table' or type = 'view') "
 			  "and tbl_name %s %Q", npatt ? "like" : "=", tname);
     if (!sql) {
-	return nomem(s);
+	return nomem(s, __LINE__);
     }
     sret = starttran(s);
     if (sret != SQL_SUCCESS) {
@@ -15468,7 +15488,7 @@ drvcolumns(SQLHSTMT stmt,
 	sql = sqlite3_mprintf("PRAGMA table_info(%Q)", trows[i]);
 	if (!sql) {
 	    sqlite3_free_table(trows);
-	    return nomem(s);
+	    return nomem(s, __LINE__);
 	}
 	dbtraceapi(d, "sqlite3_get_table", sql);
 	ret = sqlite3_get_table(d->sqlite, sql, &rowp, &nrows, &ncols, &errp);
@@ -15520,7 +15540,7 @@ drvcolumns(SQLHSTMT stmt,
     if (!s->rows) {
 	s->nrows = 0;
 	sqlite3_free_table(trows);
-	return nomem(s);
+	return nomem(s, __LINE__);
     }
     s->rows[0] = (char *) size;
     s->rows += 1;
@@ -15531,7 +15551,7 @@ drvcolumns(SQLHSTMT stmt,
 	sql = sqlite3_mprintf("PRAGMA table_info(%Q)", trows[i]);
 	if (!sql) {
 	    sqlite3_free_table(trows);
-	    return nomem(s);
+	    return nomem(s, __LINE__);
 	}
 	dbtraceapi(d, "sqlite3_get_table", sql);
 	ret = sqlite3_get_table(d->sqlite, sql, &rowp, &nrows, &ncols, &errp);
@@ -16091,7 +16111,7 @@ drvgettypeinfo(SQLHSTMT stmt, SQLSMALLINT sqltype)
     s->rows = (char **) xmalloc(sizeof (char *) * (s->nrows + 1) * asize);
     if (!s->rows) {
 	s->nrows = 0;
-	return nomem(s);
+	return nomem(s, __LINE__);
     }
 #ifdef MEMORY_DEBUG
     s->rowfree = xfree__;
@@ -16412,7 +16432,7 @@ noipk:
     }
     sql = sqlite3_mprintf("PRAGMA index_list(%Q)", tname);
     if (!sql) {
-	return nomem(s);
+	return nomem(s, __LINE__);
     }
     dbtraceapi(d, "sqlite3_get_table", sql);
     ret = sqlite3_get_table(d->sqlite, sql, &rowp, &nrows, &ncols, &errp);
@@ -16471,7 +16491,7 @@ nodata:
     s->rows = xmalloc((size + 1) * sizeof (char *));
     if (!s->rows) {
 	s->nrows = 0;
-	return nomem(s);
+	return nomem(s, __LINE__);
     }
     s->rows[0] = (char *) size;
     s->rows += 1;
@@ -18891,7 +18911,7 @@ noconn:
 	    setstat(s, -1, "%s", (*s->ov3) ? "HY000" : "S1000", errp);
 	    return SQL_ERROR;
 	}
-	return nomem(s);
+	return nomem(s, __LINE__);
     }
     if (s->hschain_statement && d->trace) {
 	fprintf(d->trace, "-- hschain: query to process '%s'\n", s->query);
@@ -19352,7 +19372,15 @@ SQLExecDirectW(SQLHSTMT stmt, SQLWCHAR *query, SQLINTEGER queryLen)
     char *q = uc_to_utf_c(query, queryLen);
 
     HSTMT_LOCK(stmt);
+if (((STMT*) stmt)->dbc->trace) {
+    fprintf(((STMT*) stmt)->dbc->trace, "-- hschain: exec direct w %d!\n", queryLen);
+    fflush(((STMT*) stmt)->dbc->trace);
+}
     if (!q) {
+if (((STMT*) stmt)->dbc->trace) {
+    fprintf(((STMT*) stmt)->dbc->trace, "-- hschain: exec direct w query null!\n");
+    fflush(((STMT*) stmt)->dbc->trace);
+}
 	ret = nomem((STMT *) stmt);
 	goto done;
     }
@@ -20370,7 +20398,7 @@ SQLDriverConnectW(SQLHDBC dbc, SQLHWND hwnd,
 	if (!ci) {
 	    DBC *d = (DBC *) dbc;
 
-	    setstatd(d, -1, "out of memory", (*d->ov3) ? "HY000" : "S1000");
+	    setstatd(d, -1, "out of memory sqldriverconnectw", (*d->ov3) ? "HY000" : "S1000");
 	    HDBC_UNLOCK(dbc);
 	    return SQL_ERROR;
 	}

@@ -11,6 +11,7 @@ python funds-wallet.py info
 echo "doing the transfer"
 python funds-wallet.py transfer --to=u2 --amount=1
 echo "some sleep for transaction to clear"
+exit 1
 sleep 1
 python funds-wallet.py info
 sleep 1
