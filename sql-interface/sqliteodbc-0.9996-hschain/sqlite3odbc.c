@@ -4212,6 +4212,7 @@ hschain_read_answer(DBC*d) {
 	if (SQLITE_OK != sqlite3_prepare_v2(d->sqlite, temp, -1, &prepared_stmt, NULL)) {
 	    if (d->trace) {
 		fprintf(d->trace, "-- hschain: sqlite does not understand request: %s\n", temp);
+		fprintf(d->trace, "-- hschain: error message: %s\n", sqlite3_errmsg(d->sqlite));
 	    }
 	    return 0;
 	}

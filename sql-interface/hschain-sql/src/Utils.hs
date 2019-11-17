@@ -81,7 +81,7 @@ commandAction (MandatorySystemTables userTables initialRequests) = do
     , "    );"
     , ""
     , "-- special table that keeps actual parameter values for seriqlized requests"
-    , "CREATE TABLE serialized_requests_values"
+    , "CREATE TABLE serialized_requests_params"
     , "    ( height     INTEGER -- height for request"
     , "    , seq_index  INTEGER -- order inside the height"
     , "    , request_id TEXT  -- the text itself. must be request_id"
