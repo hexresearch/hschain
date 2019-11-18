@@ -124,5 +124,5 @@ Benchmark hschain-crypto-bench
                      , hschain-crypto
   Other-modules: Ben.Ed25519
   if flag(libbls)
-    Other-modules: Crypto
+    Other-modules: Ben.BLS
     cpp-options:   -DUSE_BLS
