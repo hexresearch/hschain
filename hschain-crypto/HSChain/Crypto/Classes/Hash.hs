@@ -423,18 +423,19 @@ instance (CryptoHashable a) => CryptoHashable (Set.Set a) where
 instance (CryptoHashable a) => CryptoHashable (VecV.Vector a) where
   hashStep s xs = do hashStep s $ TySequence $ fromIntegral $ VecV.length xs
                      VecV.mapM_ (hashStep s) xs
-
+  {-# INLINE hashStep #-}
 instance (CryptoHashable a, VecP.Prim a) => CryptoHashable (VecP.Vector a) where
   hashStep s xs = do hashStep s $ TySequence $ fromIntegral $ VecP.length xs
                      VecP.mapM_ (hashStep s) xs
-
+  {-# INLINE hashStep #-}
 instance (CryptoHashable a, VecU.Unbox a) => CryptoHashable (VecU.Vector a) where
   hashStep s xs = do hashStep s $ TySequence $ fromIntegral $ VecU.length xs
                      VecU.mapM_ (hashStep s) xs
-
+  {-# INLINE hashStep #-}
 instance (CryptoHashable a, VecS.Storable a) => CryptoHashable (VecS.Vector a) where
   hashStep s xs = do hashStep s $ TySequence $ fromIntegral $ VecS.length xs
                      VecS.mapM_ (hashStep s) xs
+  {-# INLINE hashStep #-}
 
 instance CryptoHashable a => CryptoHashable (Maybe a) where
   hashStep s Nothing  = do hashStep s TyNothing
