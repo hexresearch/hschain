@@ -49,6 +49,10 @@ import qualified Data.ByteString.Lazy     as BL
 import qualified Data.Map.Strict          as Map
 import qualified Data.Set                 as Set
 import qualified Data.List.NonEmpty       as NE
+import qualified Data.Vector              as VecV
+import qualified Data.Vector.Unboxed      as VecU
+import qualified Data.Vector.Storable     as VecS
+import qualified Data.Vector.Primitive    as VecP
 import Data.Bits
 import Data.Functor.Classes
 import Data.String
@@ -415,6 +419,22 @@ instance (CryptoHashable k, CryptoHashable v) => CryptoHashable (Map.Map k v) wh
 instance (CryptoHashable a) => CryptoHashable (Set.Set a) where
   hashStep s xs = do hashStep s $ TySet $ fromIntegral $ length xs
                      mapM_ (hashStep s) $ Set.toList xs
+
+instance (CryptoHashable a) => CryptoHashable (VecV.Vector a) where
+  hashStep s xs = do hashStep s $ TySequence $ fromIntegral $ VecV.length xs
+                     VecV.mapM_ (hashStep s) xs
+
+instance (CryptoHashable a, VecP.Prim a) => CryptoHashable (VecP.Vector a) where
+  hashStep s xs = do hashStep s $ TySequence $ fromIntegral $ VecP.length xs
+                     VecP.mapM_ (hashStep s) xs
+
+instance (CryptoHashable a, VecU.Unbox a) => CryptoHashable (VecU.Vector a) where
+  hashStep s xs = do hashStep s $ TySequence $ fromIntegral $ VecU.length xs
+                     VecU.mapM_ (hashStep s) xs
+
+instance (CryptoHashable a, VecS.Storable a) => CryptoHashable (VecS.Vector a) where
+  hashStep s xs = do hashStep s $ TySequence $ fromIntegral $ VecS.length xs
+                     VecS.mapM_ (hashStep s) xs
 
 instance CryptoHashable a => CryptoHashable (Maybe a) where
   hashStep s Nothing  = do hashStep s TyNothing
