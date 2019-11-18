@@ -34,12 +34,25 @@ let
       elasticsearch
       elasticsearch-dsl
     ]);
+  # tex for export of PDFs. PDF export doesn't work in fact. It drops
+  # all HTML output and plots. Only things that matter in fact!
+  #
+  # tex = pkgs.texlive.combine {
+  #   inherit (pkgs.texlive)
+  #     scheme-medium
+  #     adjustbox
+  #     collectbox
+  #     upquote
+  #     ucs
+  #     enumitem
+  #   ;
+  # };
 in
-  pkgs.stdenv.mkDerivation {
-    name        = "shell";
+  pkgs.mkShell {
     buildInputs = [
       pyp
       pkgs.haskell.packages.ghc844.splot
+      pkgs.pandoc
       ];
     #
     FONTCONFIG_FILE="${pkgs.fontconfig.out}/etc/fonts/fonts.conf";
