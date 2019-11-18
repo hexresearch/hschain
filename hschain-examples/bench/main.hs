@@ -3,7 +3,6 @@
 module Main where
 
 import Criterion.Main
-import Prelude
 
 --import Control.DeepSeq
 --import Control.Exception (evaluate)
@@ -15,7 +14,7 @@ import Prelude
 
 import ValidatorSetsBench
 import qualified MockCoin
-import qualified Crypto
+
 --kB :: Int
 --kB = 1024
 
@@ -23,7 +22,6 @@ main :: IO ()
 main = defaultMain
   [ benchValidatorSets
   , MockCoin.benchmarks
-  , Crypto.benchmarks
   ]
 {-
   !prk <- generatePrivKey
