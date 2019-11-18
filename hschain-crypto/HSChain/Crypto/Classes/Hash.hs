@@ -414,11 +414,11 @@ instance CryptoHashable a => CryptoHashable (NE.NonEmpty a) where
 
 instance (CryptoHashable k, CryptoHashable v) => CryptoHashable (Map.Map k v) where
   hashStep s xs = do hashStep s $ TyMap $ fromIntegral $ length xs
-                     mapM_ (hashStep s) $ Map.toList xs
+                     mapM_ (hashStep s) $ Map.toAscList xs
 
 instance (CryptoHashable a) => CryptoHashable (Set.Set a) where
   hashStep s xs = do hashStep s $ TySet $ fromIntegral $ length xs
-                     mapM_ (hashStep s) $ Set.toList xs
+                     mapM_ (hashStep s) $ Set.toAscList xs
 
 instance (CryptoHashable a) => CryptoHashable (VecV.Vector a) where
   hashStep s xs = do hashStep s $ TySequence $ fromIntegral $ VecV.length xs
