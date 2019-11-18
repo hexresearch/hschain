@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 -- |
-module Crypto (benchmarks) where
+module Ben.BLS (benchmarks) where
 
 import Criterion.Main
 import qualified Data.ByteString as BS
