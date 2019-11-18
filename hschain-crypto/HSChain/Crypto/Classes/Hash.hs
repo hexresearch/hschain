@@ -132,7 +132,7 @@ hashBlob bs = runST $ do
 --   API is typeclass based and tries satisfy conflicting
 --   requirements. First we want our encoding to be compact: we want
 --   to hash as little data as possible. Then for each type we have to
---   chose between nominal and structural encoding. First is to ensure
+--   choose between nominal and structural encoding. First is to ensure
 --   that two values of different types never hash to same value
 --   excluding possibility of hash collision. Second is to treat value
 --   as some generic structure for example list, vector should have to
@@ -378,7 +378,7 @@ instance CryptoHashable Integer where
         where
           n'   = abs n
           next = n' `shiftR` 30
-      -- The we encode every subsequent 31 bit.
+      -- Then we encode every subsequent 31 bit.
       --
       --  Bit 31 - 1 if there're more chunks
       istep n = do
