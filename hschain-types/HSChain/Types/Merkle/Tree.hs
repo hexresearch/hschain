@@ -55,18 +55,18 @@ data Node f alg a
 instance MerkleHash f => MerkleHash (MerkleBlockTree f) where
   merkleHash = merkleHash . merkleBlockTree
 
-instance IsMerkle f => CryptoHashable (MerkleBlockTree f alg a) where
-  hashStep s = hashStep s . merkleBlockTree
+instance (IsMerkle f, CryptoHash alg) => CryptoHashable (MerkleBlockTree f alg a) where
+  hashStep = hashStep . merkleBlockTree
 
 instance (IsMerkle f, CryptoHash alg, CryptoHashable a) => CryptoHashable (Node f alg a) where
-  hashStep s node = do
-    hashStep s $ UserType "hschain" "Merkle.Tree.Node"
-    case node of
-      Branch a b -> do hashStep s $ ConstructorIdx 0
-                       hashStep s   a
-                       hashStep s   b
-      Leaf   a   -> do hashStep s $ ConstructorIdx 1
-                       hashStep s   a
+  hashStep node
+    = hashStep (UserType "hschain" "Merkle.Tree.Node")
+   <> case node of
+        Branch a b -> hashStep (ConstructorIdx 0)
+                   <> hashStep a
+                   <> hashStep b
+        Leaf   a   -> hashStep (ConstructorIdx 1)
+                   <> hashStep a
                            
 
 

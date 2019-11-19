@@ -27,7 +27,6 @@ module HSChain.Crypto (
   , Hashed(..)
   , CryptoHash(..)
   , CryptoHashable(..)
-  , hashBlob
   , hash
   , hashed
   , (:<<<)
@@ -118,12 +117,12 @@ instance ByteReprSized (Hash hashA) => ByteReprSized (Hash (hashA :<<< hashB)) w
   type ByteSize (Hash (hashA :<<< hashB)) = ByteSize (Hash hashA)
 
 instance (CryptoHash hashA, CryptoHash hashB) => CryptoHash (hashA :<<< hashB) where
-  newtype HashAccum (hashA :<<< hashB) s = HashAccumChain (HashAccum hashB s)
-  newHashAccum    = coerce (newHashAccum    @hashB)
-  updateHashAccum = coerce (updateHashAccum @hashB)
-  freezeHashAccum (HashAccumChain acc) = do
-    Hash h <- freezeHashAccum acc
-    return $! coerce (hashBlob h :: Hash hashA)
+  hashBlob     bs = let Hash hB = hashBlob bs :: Hash hashB
+                        Hash hA = hashBlob hB :: Hash hashA
+                    in  Hash hA
+  hashLazyBlob bs = let Hash hB = hashLazyBlob bs :: Hash hashB
+                        Hash hA = hashBlob hB     :: Hash hashA
+                    in  Hash hA
   hashAlgorithmName = CryptoName $ bsA <> " <<< " <> bsB
     where CryptoName bsA = hashAlgorithmName @hashA
           CryptoName bsB = hashAlgorithmName @hashB
@@ -395,12 +394,10 @@ instance ByteReprSized (Hash hash) => ByteReprSized (Hash (sign :& hash)) where
   type ByteSize (Hash (sign :& hash)) = ByteSize (Hash hash)
 
 instance (CryptoHash hash) => CryptoHash (sign :& hash) where
-  newtype HashAccum (sign :& hash) s = HashAccumBoth (HashAccum hash s)
-  newHashAccum      = coerce (newHashAccum      @hash)
-  updateHashAccum   = coerce (updateHashAccum   @hash)
+  hashBlob          = coerce (hashBlob          @hash)
+  hashLazyBlob      = coerce (hashLazyBlob      @hash)
   hashAlgorithmName = coerce (hashAlgorithmName @hash)
-  -- We use HashAccumBoth to suppress warning
-  freezeHashAccum (HashAccumBoth acc) = coerce (freezeHashAccum acc)
+
 
 
 ----------------------------------------------------------------
@@ -599,23 +596,23 @@ verifyCborSignature pk a
 
 
 instance (CryptoAsymmetric alg, CryptoHash hash) => CryptoHashable (Fingerprint hash alg) where
-  hashStep s f = do
-    hashStep s $ CryFingerprint (getCryptoName (hashAlgorithmName     @hash))
-                                (getCryptoName (asymmKeyAlgorithmName @alg))
-    hashStep s $ encodeToBS f
+  hashStep f
+    = hashStep (CryFingerprint (getCryptoName (hashAlgorithmName     @hash))
+                               (getCryptoName (asymmKeyAlgorithmName @alg)))
+   <> hashStep (encodeToBS f)
 
 instance CryptoAsymmetric alg => CryptoHashable (PublicKey alg) where
-  hashStep s k = do
-    hashStep s $ CryPublicKey $ getCryptoName (asymmKeyAlgorithmName @alg)
-    hashStep s $ encodeToBS k
+  hashStep k
+    = hashStep (CryPublicKey $ getCryptoName (asymmKeyAlgorithmName @alg))
+   <> hashStep (encodeToBS k)
 
 instance CryptoAsymmetric alg => CryptoHashable (PrivKey alg) where
-  hashStep s k = do
-    hashStep s $ CryPrivateKey $ getCryptoName (asymmKeyAlgorithmName @alg)
-    hashStep s $ encodeToBS k
+  hashStep k
+    = hashStep (CryPrivateKey $ getCryptoName (asymmKeyAlgorithmName @alg))
+   <> hashStep (encodeToBS k)
 
 instance CryptoAsymmetric alg => CryptoHashable (Signature alg) where
-  hashStep s k = do
-    hashStep s $ CrySignature $ getCryptoName (asymmKeyAlgorithmName @alg)
-    hashStep s $ encodeToBS k
+  hashStep k
+    = hashStep (CrySignature $ getCryptoName (asymmKeyAlgorithmName @alg))
+   <> hashStep (encodeToBS k)
 

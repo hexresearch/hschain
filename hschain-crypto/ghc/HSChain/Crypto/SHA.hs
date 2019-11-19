@@ -18,12 +18,12 @@ module HSChain.Crypto.SHA (
   , SHA512
   ) where
 
-import Control.Monad.Primitive (unsafeIOToPrim)
 import Data.ByteArray          (convert)
 import Data.Data               (Data)
 import qualified Data.ByteString       as BS
+import qualified Data.ByteString.Lazy  as BL
 import qualified Crypto.Hash           as Crypto
-import Crypto.Hash.IO          (hashMutableInit,hashMutableUpdate,hashMutableFinalize,MutableContext)
+import Crypto.Hash          (Digest)
 import qualified Crypto.MAC.HMAC       as Crypto
 
 import HSChain.Crypto
@@ -40,11 +40,10 @@ instance ByteReprSized (Hash SHA1) where
   type ByteSize (Hash SHA1) = 20
 
 instance CryptoHash SHA1 where
-  newtype HashAccum SHA1 s = AccSHA1 (MutableContext Crypto.SHA1)
-  newHashAccum                   = unsafeIOToPrim $ fmap AccSHA1 $ hashMutableInit
-  updateHashAccum (AccSHA1 s) bs = unsafeIOToPrim $ hashMutableUpdate s bs
-  freezeHashAccum (AccSHA1 s)    = Hash . convert <$> unsafeIOToPrim (hashMutableFinalize s)
-  hashAlgorithmName              = "hash:SHA1"
+  hashBlob          = defaultHash @Crypto.SHA1
+  hashLazyBlob      = defaultLazyHash @Crypto.SHA1
+  hashAlgorithmName = "hash:SHA1"
+
 instance CryptoHMAC SHA1 where
   hmac = defaultHMAC @Crypto.SHA1
 
@@ -57,11 +56,9 @@ instance ByteReprSized (Hash SHA256) where
   type ByteSize (Hash SHA256) = 32
 
 instance CryptoHash SHA256 where
-  newtype HashAccum SHA256 s = AccSHA256 (MutableContext Crypto.SHA256)
-  newHashAccum                     = unsafeIOToPrim $ fmap AccSHA256 $ hashMutableInit
-  updateHashAccum (AccSHA256 s) bs = unsafeIOToPrim $ hashMutableUpdate s bs
-  freezeHashAccum (AccSHA256 s)    = Hash . convert <$> unsafeIOToPrim (hashMutableFinalize s)
-  hashAlgorithmName                = "hash:SHA256"
+  hashBlob          = defaultHash @Crypto.SHA256
+  hashLazyBlob      = defaultLazyHash @Crypto.SHA256
+  hashAlgorithmName = "hash:SHA256"
 
 instance CryptoHMAC SHA256 where
   hmac = defaultHMAC @Crypto.SHA256
@@ -75,11 +72,9 @@ instance ByteReprSized (Hash SHA384) where
   type ByteSize (Hash SHA384) = 48
 
 instance CryptoHash SHA384 where
-  newtype HashAccum SHA384 s = AccSHA384 (MutableContext Crypto.SHA384)
-  newHashAccum                     = unsafeIOToPrim $ fmap AccSHA384 $ hashMutableInit
-  updateHashAccum (AccSHA384 s) bs = unsafeIOToPrim $ hashMutableUpdate s bs
-  freezeHashAccum (AccSHA384 s)    = Hash . convert <$> unsafeIOToPrim (hashMutableFinalize s)
-  hashAlgorithmName                = "hash:SHA384"
+  hashBlob          = defaultHash @Crypto.SHA384
+  hashLazyBlob      = defaultLazyHash @Crypto.SHA384
+  hashAlgorithmName = "hash:SHA384"
 
 instance CryptoHMAC SHA384 where
   hmac = defaultHMAC @Crypto.SHA384
@@ -93,15 +88,23 @@ instance ByteReprSized (Hash SHA512) where
   type ByteSize (Hash SHA512) = 64
 
 instance CryptoHash SHA512 where
-  newtype HashAccum SHA512 s = AccSHA512 (MutableContext Crypto.SHA512)
-  newHashAccum                     = unsafeIOToPrim $ fmap AccSHA512 $ hashMutableInit
-  updateHashAccum (AccSHA512 s) bs = unsafeIOToPrim $ hashMutableUpdate s bs
-  freezeHashAccum (AccSHA512 s)    = Hash . convert <$> unsafeIOToPrim (hashMutableFinalize s)
-  hashAlgorithmName                = "hash:SHA512"
+  hashBlob          = defaultHash @Crypto.SHA512
+  hashLazyBlob      = defaultLazyHash @Crypto.SHA512
+  hashAlgorithmName = "hash:SHA512"
 
 instance CryptoHMAC SHA512 where
   hmac = defaultHMAC @Crypto.SHA512
 
+ 
+defaultHash
+  :: forall crypto alg. Crypto.HashAlgorithm crypto
+  => BS.ByteString -> Hash alg
+defaultHash = Hash . convert . id @(Digest crypto) . Crypto.hash
+
+defaultLazyHash
+  :: forall crypto alg. Crypto.HashAlgorithm crypto
+  => BL.ByteString -> Hash alg
+defaultLazyHash = Hash . convert . id @(Digest crypto) . Crypto.hashlazy
 
 
 defaultHMAC

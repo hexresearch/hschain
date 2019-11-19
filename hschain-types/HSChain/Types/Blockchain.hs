@@ -301,20 +301,20 @@ data Vote (ty :: VoteType) alg a = Vote
   deriving anyclass (NFData, JSON.ToJSON, JSON.FromJSON, Serialise)
 
 instance (CryptoHash alg) => CryptoHashable (Vote 'PreVote alg a) where
-  hashStep s Vote{..} = do
-    hashStep s $ UserType "hschain" "Vote@PreVote"
-    hashStep s voteHeight
-    hashStep s voteRound
-    hashStep s voteTime
-    hashStep s voteBlockID
+  hashStep Vote{..}
+    = hashStep (UserType "hschain" "Vote@PreVote")
+   <> hashStep voteHeight
+   <> hashStep voteRound
+   <> hashStep voteTime
+   <> hashStep voteBlockID
 
 instance (CryptoHash alg) => CryptoHashable (Vote 'PreCommit alg a) where
-  hashStep s Vote{..} = do
-    hashStep s $ UserType "hschain" "Vote@PreCommit"
-    hashStep s voteHeight
-    hashStep s voteRound
-    hashStep s voteTime
-    hashStep s voteBlockID
+  hashStep Vote{..}
+    = hashStep (UserType "hschain" "Vote@PreCommit")
+   <> hashStep voteHeight
+   <> hashStep voteRound
+   <> hashStep voteTime
+   <> hashStep voteBlockID
 
 
 ----------------------------------------------------------------

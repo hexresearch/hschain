@@ -97,9 +97,8 @@ instance (Show a, Show1 (f alg)) => Show (MerkleNode f alg a) where
 instance (NFData a, NFData1 (f alg)) => NFData (MerkleNode f alg a) where
   rnf = liftRnf rnf . getMerkleNode
 
-instance IsMerkle f => CryptoHashable (MerkleNode f alg a) where
-  hashStep s a = let Hash bs = merkleHash $ getMerkleNode a
-                 in updateHashAccum s bs
+instance (CryptoHash alg, IsMerkle f) => CryptoHashable (MerkleNode f alg a) where
+  hashStep = hashStep . merkleHash . getMerkleNode
 
 
 ----------------------------------------------------------------

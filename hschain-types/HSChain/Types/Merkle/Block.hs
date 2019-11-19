@@ -80,19 +80,19 @@ deriving instance (Show (f (MerkleNode alg f))) => Show (MerkleChild alg f)
 -- instance Serialise (f (MerkleNode alg f)) => Serialise (MerkleChild alg f)
 
 instance CryptoHash alg => CryptoHashable (MerkleTree alg f)  where
-  hashStep s = hashStep s . merkleRoot
+  hashStep = hashStep . merkleRoot
 instance CryptoHash alg => CryptoHashable (MerkleRoot alg)    where
   hashStep = genericHashStep "hschain"
 instance CryptoHash alg => CryptoHashable (MerkleNode alg f)  where
-  hashStep s node = do
-    hashStep s $ UserType "hschain" "Merkle.Block.Node"
-    case node of
-      Branch xs -> do hashStep s $ ConstructorIdx 0
-                      hashStep s $ merkleNodeHash <$> xs
-      Leaf   bs -> do hashStep s $ ConstructorIdx 1
-                      hashStep s   bs
+  hashStep node
+    = hashStep (UserType "hschain" "Merkle.Block.Node")
+   <> case node of
+        Branch xs -> hashStep (ConstructorIdx 0)
+                  <> hashStep (merkleNodeHash <$> xs)
+        Leaf   bs -> hashStep (ConstructorIdx 1)
+                  <> hashStep bs
 instance CryptoHash alg => CryptoHashable (MerkleChild alg f) where
-  hashStep s = hashStep s . merkleNodeHash
+  hashStep = hashStep . merkleNodeHash
 
 ----------------------------------------------------------------
 -- Build tree

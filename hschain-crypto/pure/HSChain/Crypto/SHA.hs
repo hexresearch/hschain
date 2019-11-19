@@ -12,9 +12,7 @@ module HSChain.Crypto.SHA (
   , SHA512
   ) where
 
-import Data.STRef
 import Data.Data       (Data)
-import Data.Binary.Get (Decoder(..))
 import qualified Data.ByteString      as BS
 import qualified Data.ByteString.Lazy as BL
 import qualified Data.Digest.Pure.SHA as SHA
@@ -30,22 +28,8 @@ instance ByteReprSized (Hash SHA1) where
   type ByteSize (Hash SHA1) = 20
 
 instance CryptoHash SHA1 where
-  data HashAccum SHA1 s = AccSHA1 !(STRef s Int) !(STRef s (Decoder SHA.SHA1State))
-  newHashAccum = do
-    cnt <- newSTRef 0
-    dec <- newSTRef SHA.sha1Incremental
-    return $! AccSHA1 cnt dec
-  updateHashAccum (AccSHA1 cnt dec) bs = do
-    modifySTRef' cnt (+ BS.length bs)
-    modifySTRef' dec $ \case
-      Partial cont -> cont (Just bs)
-      Fail{}       -> error "Fail constructor encountered"
-      Done{}       -> error "Done constructor encountered"
-  freezeHashAccum (AccSHA1 cnt dec) = do
-    n <- readSTRef cnt
-    d <- readSTRef dec
-    return $! Hash . BL.toStrict . SHA.bytestringDigest
-           $  SHA.completeSha1Incremental d n
+  hashBlob          = defaultHash     SHA.sha1
+  hashLazyBlob      = defaultLazyHash SHA.sha1 
   hashAlgorithmName = "hash:SHA1"
 
 instance CryptoHMAC SHA1 where
@@ -59,24 +43,9 @@ instance ByteReprSized (Hash SHA256) where
   type ByteSize (Hash SHA256) = 32
 
 instance CryptoHash SHA256 where
-  data HashAccum SHA256 s = AccSHA256 !(STRef s Int) !(STRef s (Decoder SHA.SHA256State))
-  newHashAccum = do
-    cnt <- newSTRef 0
-    dec <- newSTRef SHA.sha256Incremental
-    return $! AccSHA256 cnt dec
-  updateHashAccum (AccSHA256 cnt dec) bs = do
-    modifySTRef' cnt (+ BS.length bs)
-    modifySTRef' dec $ \case
-      Partial cont -> cont (Just bs)
-      Fail{}       -> error "Fail constructor encountered"
-      Done{}       -> error "Done constructor encountered"
-  freezeHashAccum (AccSHA256 cnt dec) = do
-    n <- readSTRef cnt
-    d <- readSTRef dec
-    return $! Hash . BL.toStrict . SHA.bytestringDigest
-           $  SHA.completeSha256Incremental d n
+  hashBlob          = defaultHash     SHA.sha256
+  hashLazyBlob      = defaultLazyHash SHA.sha256
   hashAlgorithmName = "hash:SHA256"
-
 
 instance CryptoHMAC SHA256 where
   hmac = defaultHMAC SHA.hmacSha256
@@ -89,24 +58,9 @@ instance ByteReprSized (Hash SHA384) where
   type ByteSize (Hash SHA384) = 48
 
 instance CryptoHash SHA384 where
-  data HashAccum SHA384 s = AccSHA384 !(STRef s Int) !(STRef s (Decoder SHA.SHA512State))
-  newHashAccum = do
-    cnt <- newSTRef 0
-    dec <- newSTRef SHA.sha384Incremental
-    return $! AccSHA384 cnt dec
-  updateHashAccum (AccSHA384 cnt dec) bs = do
-    modifySTRef' cnt (+ BS.length bs)
-    modifySTRef' dec $ \case
-      Partial cont -> cont (Just bs)
-      Fail{}       -> error "Fail constructor encountered"
-      Done{}       -> error "Done constructor encountered"
-  freezeHashAccum (AccSHA384 cnt dec) = do
-    n <- readSTRef cnt
-    d <- readSTRef dec
-    return $! Hash . BL.toStrict . SHA.bytestringDigest
-           $  SHA.completeSha384Incremental d n
+  hashBlob          = defaultHash     SHA.sha384
+  hashLazyBlob      = defaultLazyHash SHA.sha384
   hashAlgorithmName = "hash:SHA384"
-
 
 instance CryptoHMAC SHA384 where
   hmac = defaultHMAC SHA.hmacSha384
@@ -119,28 +73,21 @@ instance ByteReprSized (Hash SHA512) where
   type ByteSize (Hash SHA512) = 64
 
 instance CryptoHash SHA512 where
-  data HashAccum SHA512 s = AccSHA512 !(STRef s Int) !(STRef s (Decoder SHA.SHA512State))
-  newHashAccum = do
-    cnt <- newSTRef 0
-    dec <- newSTRef SHA.sha512Incremental
-    return $! AccSHA512 cnt dec
-  updateHashAccum (AccSHA512 cnt dec) bs = do
-    modifySTRef' cnt (+ BS.length bs)
-    modifySTRef' dec $ \case
-      Partial cont -> cont (Just bs)
-      Fail{}       -> error "Fail constructor encountered"
-      Done{}       -> error "Done constructor encountered"
-  freezeHashAccum (AccSHA512 cnt dec) = do
-    n <- readSTRef cnt
-    d <- readSTRef dec
-    return $! Hash . BL.toStrict . SHA.bytestringDigest
-           $  SHA.completeSha512Incremental d n
+  hashBlob          = defaultHash     SHA.sha512
+  hashLazyBlob      = defaultLazyHash SHA.sha512
   hashAlgorithmName = "hash:SHA512"
-
 
 instance CryptoHMAC SHA512 where
   hmac = defaultHMAC SHA.hmacSha512
 
+
+defaultHash :: (BL.ByteString -> SHA.Digest a) -> BS.ByteString -> Hash alg
+defaultHash hashFun
+  = Hash . BL.toStrict . SHA.bytestringDigest . hashFun . BL.fromStrict
+
+defaultLazyHash :: (BL.ByteString -> SHA.Digest a) -> BL.ByteString -> Hash alg
+defaultLazyHash hashFun
+  = Hash . BL.toStrict . SHA.bytestringDigest . hashFun
 
 defaultHMAC :: (BL.ByteString -> BL.ByteString -> SHA.Digest a)
             -> BS.ByteString -> BS.ByteString -> HMAC alg

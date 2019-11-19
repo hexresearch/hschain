@@ -15,7 +15,6 @@ module HSChain.Crypto.Classes.Hash (
     Hash(..)
   , Hashed(..)
   , CryptoHash(..)
-  , hashBlob
   , hashSize
   , CryptoHashable(..)
   , CryptoTypeHashable(..)
@@ -26,8 +25,6 @@ module HSChain.Crypto.Classes.Hash (
   , CryptoName(..)
   , DataType(..)
   , Constructor(..)
-    -- ** Helpers
-  , storableHashStep
     -- ** Generics derivation
   , GCryptoHashable(..)
   , genericHashStep
@@ -36,16 +33,15 @@ module HSChain.Crypto.Classes.Hash (
 
 import Codec.Serialise   (Serialise)
 import Control.Applicative
-import Control.Monad.ST
 import Control.Monad
 import Control.DeepSeq
 
 import qualified Data.Aeson               as JSON
 import           Data.ByteString            (ByteString)
-import qualified Data.ByteString.Internal as BI
 import qualified Data.ByteString          as BS
 import qualified Data.ByteString.Char8    as BC8
 import qualified Data.ByteString.Lazy     as BL
+import qualified Data.ByteString.Builder  as Bld
 import qualified Data.Map.Strict          as Map
 import qualified Data.Set                 as Set
 import qualified Data.List.NonEmpty       as NE
@@ -59,9 +55,6 @@ import Data.String
 import Data.Word
 import Data.Proxy
 import Data.Int
-import Foreign.Ptr          (castPtr)
-import Foreign.Storable     (Storable(..))
-import System.IO.Unsafe
 import Text.Read
 import Text.ParserCombinators.ReadP
 
@@ -105,23 +98,10 @@ newtype CryptoName alg = CryptoName { getCryptoName :: ByteString }
 --   structure of hash function. Folding is performed inside ST monad
 --   which allows to use mutable accumulators for performance.
 class (ByteReprSized (Hash alg)) => CryptoHash alg where
-  -- | Mutable accumulator for hash function
-  data HashAccum alg :: * -> *
-  -- | Create new empty hash accumulator
-  newHashAccum :: ST s (HashAccum alg s)
-  -- | Push chunk of data into accumulator.
-  updateHashAccum :: HashAccum alg s -> ByteString -> ST s ()
-  -- | Extract digest from accumulator
-  freezeHashAccum :: HashAccum alg s -> ST s (Hash alg)
+  hashBlob     :: BS.ByteString -> Hash alg
+  hashLazyBlob :: BL.ByteString -> Hash alg
   -- | Name of algorithm
   hashAlgorithmName :: CryptoName alg
-
--- | Compute hash of bytestring
-hashBlob :: CryptoHash alg => ByteString -> Hash alg
-hashBlob bs = runST $ do
-  s <- newHashAccum
-  updateHashAccum s bs
-  freezeHashAccum s
 
 -- | Type class which describes how value should be hashed. Goal of
 --   this type class is to separate hashing from serialization, allow
@@ -145,21 +125,17 @@ class CryptoHashable a where
   -- | This function describes how to compute hash of the data
   --   type. For hierarchical records it's computed by default using
   --   depth first traversal.
-  hashStep :: CryptoHash alg => HashAccum alg s -> a -> ST s ()
+  hashStep :: a -> Bld.Builder
 
 -- | Analog of 'CryptoHashable' where we may compute hash of type as
 --   opposed to hash of value.
 class CryptoTypeHashable a where
-  hashTypeStep :: CryptoHash alg => HashAccum alg s -> proxy a -> ST s ()
+  hashTypeStep :: proxy a -> Bld.Builder
 
 
 -- | Compute hash of value using 'CryptoHashable'
 hash :: (CryptoHash alg, CryptoHashable a) => a -> Hash alg
-hash a = runST $ do
-  s <- newHashAccum
-  hashStep s a
-  freezeHashAccum s
-
+hash = hashLazyBlob . Bld.toLazyByteString . hashStep
 
 -- | Size of hash in bytes
 hashSize :: forall alg proxy i. (CryptoHash alg, Num i) => proxy alg -> i
@@ -267,43 +243,43 @@ data DataType
 
 -- | Constructor identifier for defining 'CryptoHashable' instances.
 data Constructor
-  = ConstructorIdx  !Int64
+  = ConstructorIdx  !Word16
   | ConstructorName !ByteString
   deriving (Show)
 
 
 instance CryptoHashable DataType where
-  hashStep s dat = do
-    storableHashStep s $ dataTypeTag dat
-    case dat of
-      -- Primitives
-      PrimBytes n   -> storableHashStep s n
-      PrimI8        -> return ()
-      PrimI16       -> return ()
-      PrimI32       -> return ()
-      PrimI64       -> return ()
-      PrimW8        -> return ()
-      PrimW16       -> return ()
-      PrimW32       -> return ()
-      PrimW64       -> return ()
-      PrimChar      -> return ()
-      -- Structures
-      TyTuple    n    -> storableHashStep s n
-      TySequence n    -> storableHashStep s n
-      TyMap      n    -> storableHashStep s n
-      TySet      n    -> storableHashStep s n
-      TyNothing       -> return ()
-      TyJust          -> return ()
-      TyBase     bs   -> hashStep s bs
-      -- Composites
-      UserType m n    -> do nullTerminatedString s m
-                            nullTerminatedString s n
-      -- Crypto primitives
-      CryHash        bs    -> hashStep s bs
-      CryFingerprint bH bK -> hashStep s bH >> hashStep s bK
-      CryPublicKey   bs    -> hashStep s bs
-      CryPrivateKey  bs    -> hashStep s bs
-      CrySignature   bs    -> hashStep s bs
+  hashStep dat
+    = Bld.word16LE (dataTypeTag dat)
+   <> case dat of
+        -- Primitives
+        PrimBytes n   -> Bld.word32LE n
+        PrimI8        -> mempty
+        PrimI16       -> mempty
+        PrimI32       -> mempty
+        PrimI64       -> mempty
+        PrimW8        -> mempty
+        PrimW16       -> mempty
+        PrimW32       -> mempty
+        PrimW64       -> mempty
+        PrimChar      -> mempty
+        -- Structures
+        TyTuple    n    -> Bld.word16LE n
+        TySequence n    -> Bld.word32LE n
+        TyMap      n    -> Bld.word32LE n
+        TySet      n    -> Bld.word32LE n
+        TyNothing       -> mempty
+        TyJust          -> mempty
+        TyBase     bs   -> hashStep bs
+        -- Composites
+        UserType m n    -> nullTerminatedString m
+                        <> nullTerminatedString n
+        -- Crypto primitives
+        CryHash        bs    -> hashStep bs
+        CryFingerprint bH bK -> hashStep bH <> hashStep bK
+        CryPublicKey   bs    -> hashStep bs
+        CryPrivateKey  bs    -> hashStep bs
+        CrySignature   bs    -> hashStep bs
 
 dataTypeTag :: DataType -> Word16
 dataTypeTag = \case
@@ -335,56 +311,55 @@ dataTypeTag = \case
   CrySignature{}   -> 0x0300 + 4
 
 instance CryptoHashable Constructor where
-  hashStep s = \case
-    ConstructorIdx  i  -> do storableHashStep s (0 :: Word16)
-                             storableHashStep s i
-    ConstructorName bs -> do storableHashStep s (1 :: Word16)
-                             hashStep         s bs
+  hashStep = \case
+    ConstructorIdx  i  -> Bld.word16LE 0
+                       <> Bld.word16LE i
+    ConstructorName bs -> Bld.word16LE 1
+                       <> hashStep bs
 
 
 ----------------------------------------
 -- Primitives
 
-instance CryptoHashable Int64  where hashStep s i = hashStep s PrimI64 >> storableHashStep s i
-instance CryptoHashable Int32  where hashStep s i = hashStep s PrimI32 >> storableHashStep s i
-instance CryptoHashable Int16  where hashStep s i = hashStep s PrimI16 >> storableHashStep s i
-instance CryptoHashable Int8   where hashStep s i = hashStep s PrimI8  >> storableHashStep s i
-instance CryptoHashable Word64 where hashStep s i = hashStep s PrimW64 >> storableHashStep s i
-instance CryptoHashable Word32 where hashStep s i = hashStep s PrimW32 >> storableHashStep s i
-instance CryptoHashable Word16 where hashStep s i = hashStep s PrimW16 >> storableHashStep s i
-instance CryptoHashable Word8  where hashStep s i = hashStep s PrimW8  >> storableHashStep s i
+instance CryptoHashable Int64  where hashStep i = hashStep PrimI64 <> Bld.int64LE  i
+instance CryptoHashable Int32  where hashStep i = hashStep PrimI32 <> Bld.int32LE  i
+instance CryptoHashable Int16  where hashStep i = hashStep PrimI16 <> Bld.int16LE  i
+instance CryptoHashable Int8   where hashStep i = hashStep PrimI8  <> Bld.int8     i
+instance CryptoHashable Word64 where hashStep i = hashStep PrimW64 <> Bld.word64LE i
+instance CryptoHashable Word32 where hashStep i = hashStep PrimW32 <> Bld.word32LE i
+instance CryptoHashable Word16 where hashStep i = hashStep PrimW16 <> Bld.word16LE i
+instance CryptoHashable Word8  where hashStep i = hashStep PrimW8  <> Bld.word8    i
 
 instance CryptoHashable Int where
-  hashStep s i = hashStep s (fromIntegral i :: Int64)
+  hashStep i = hashStep (fromIntegral i :: Int64)
 instance CryptoHashable Word where
-  hashStep s i = hashStep s (fromIntegral i :: Word64)
+  hashStep i = hashStep (fromIntegral i :: Word64)
 
 instance CryptoHashable Char where
-  hashStep s c = do
-    hashStep s PrimChar
-    hashStep s (fromIntegral (fromEnum c) :: Word32)
+  hashStep c = hashStep PrimChar
+            <> Bld.word32LE (fromIntegral (fromEnum c))
 
 instance CryptoHashable Integer where
-  hashStep s = start
+  hashStep = start
     where
       -- We encode first chunk 30 bit of number
       --  Bit 31 - 1 if there're more chunks
       --  Bit 30 - sign
-      start n = do
-        storableHashStep s $ writeBit 31 (next /= 0)
-                           $ writeBit 30 (n < 0)
-                           $ (fromIntegral n' :: Word32)
-        when (next /= 0) $ istep next
+      start n
+        = (Bld.word32LE  $ writeBit 31 (next /= 0)
+                         $ writeBit 30 (n < 0)
+                         $ fromIntegral n')
+       <> if next /= 0 then istep next else mempty
         where
           n'   = abs n
           next = n' `shiftR` 30
       -- Then we encode every subsequent 31 bit.
       --
       --  Bit 31 - 1 if there're more chunks
-      istep n = do
-        storableHashStep s $ writeBit 31 (next /= 0)
-                           $ (fromIntegral n :: Word32)
-        when (next /= 0) $ istep next
+      istep n
+        = (Bld.word32LE $ writeBit 31 (next /= 0)
+                        $ fromIntegral n)
+       <> if next /= 0 then istep next else mempty
         where
           next = n `shiftR` 31
       --
@@ -394,105 +369,94 @@ instance CryptoHashable Integer where
 
 
 instance CryptoHashable ByteString where
-  hashStep s bs = do hashStep s $ PrimBytes $ fromIntegral $ BS.length bs
-                     updateHashAccum s bs
-instance CryptoHashable BL.ByteString where
-  hashStep s bs = do hashStep s $ PrimBytes $ fromIntegral $ BL.length bs
-                     forM_ (BL.toChunks bs) $ updateHashAccum s
+  hashStep bs = hashStep (PrimBytes $ fromIntegral $ BS.length bs)
+             <> Bld.byteString bs
 
+instance CryptoHashable BL.ByteString where
+  hashStep bs = hashStep (PrimBytes $ fromIntegral $ BL.length bs)
+             <> Bld.lazyByteString bs
 
 ----------------------------------------
 -- Normal data types
 
 instance CryptoHashable a => CryptoHashable [a] where
-  hashStep s xs = do hashStep s $ TySequence $ fromIntegral $ length xs
-                     mapM_ (hashStep s) xs
+  hashStep xs = hashStep (TySequence $ fromIntegral $ length xs)
+             <> foldMap hashStep xs
 
 instance CryptoHashable a => CryptoHashable (NE.NonEmpty a) where
-  hashStep s xs = do hashStep s $ TySequence $ fromIntegral $ length xs
-                     mapM_ (hashStep s) xs
+  hashStep xs = hashStep (TySequence $ fromIntegral $ length xs)
+             <> foldMap hashStep xs
 
 instance (CryptoHashable k, CryptoHashable v) => CryptoHashable (Map.Map k v) where
-  hashStep s xs = do hashStep s $ TyMap $ fromIntegral $ length xs
-                     mapM_ (hashStep s) $ Map.toAscList xs
+  hashStep xs = hashStep (TyMap $ fromIntegral $ length xs)
+             <> foldMap hashStep (Map.toAscList xs)
 
 instance (CryptoHashable a) => CryptoHashable (Set.Set a) where
-  hashStep s xs = do hashStep s $ TySet $ fromIntegral $ length xs
-                     mapM_ (hashStep s) $ Set.toAscList xs
+  hashStep xs = hashStep (TySet $ fromIntegral $ length xs)
+             <> foldMap hashStep (Set.toAscList xs)
 
 instance (CryptoHashable a) => CryptoHashable (VecV.Vector a) where
-  hashStep s xs = do hashStep s $ TySequence $ fromIntegral $ VecV.length xs
-                     VecV.mapM_ (hashStep s) xs
+  hashStep xs = hashStep (TySequence $ fromIntegral $ VecV.length xs)
+             <> VecV.foldl (\b x -> b <> hashStep x) mempty xs
   {-# INLINE hashStep #-}
 instance (CryptoHashable a, VecP.Prim a) => CryptoHashable (VecP.Vector a) where
-  hashStep s xs = do hashStep s $ TySequence $ fromIntegral $ VecP.length xs
-                     VecP.mapM_ (hashStep s) xs
+  hashStep xs = hashStep (TySequence $ fromIntegral $ VecP.length xs)
+             <> VecP.foldl (\b x -> b <> hashStep x) mempty xs
   {-# INLINE hashStep #-}
 instance (CryptoHashable a, VecU.Unbox a) => CryptoHashable (VecU.Vector a) where
-  hashStep s xs = do hashStep s $ TySequence $ fromIntegral $ VecU.length xs
-                     VecU.mapM_ (hashStep s) xs
+  hashStep xs = hashStep (TySequence $ fromIntegral $ VecU.length xs)
+             <> VecU.foldl (\b x -> b <> hashStep x) mempty xs
   {-# INLINE hashStep #-}
 instance (CryptoHashable a, VecS.Storable a) => CryptoHashable (VecS.Vector a) where
-  hashStep s xs = do hashStep s $ TySequence $ fromIntegral $ VecS.length xs
-                     VecS.mapM_ (hashStep s) xs
+  hashStep xs = hashStep (TySequence $ fromIntegral $ VecS.length xs)
+             <> VecS.foldl (\b x -> b <> hashStep x) mempty xs
   {-# INLINE hashStep #-}
 
 instance CryptoHashable a => CryptoHashable (Maybe a) where
-  hashStep s Nothing  = do hashStep s TyNothing
-  hashStep s (Just a) = do hashStep s TyJust
-                           hashStep s a
+  hashStep Nothing  = hashStep TyNothing
+  hashStep (Just a) = hashStep TyJust
+                   <> hashStep a
 
 instance (CryptoHashable a, CryptoHashable b) => CryptoHashable (Either a b) where
-  hashStep s m = do
-    hashStep s $ TyBase "Either"
-    case m of Left  a -> do hashStep s $ ConstructorIdx 0
-                            hashStep s a
-              Right b -> do hashStep s $ ConstructorIdx 1
-                            hashStep s b
+  hashStep m = hashStep (TyBase "Either")
+            <> case m of Left  a -> hashStep (ConstructorIdx 0)
+                                 <> hashStep a
+                         Right b -> hashStep (ConstructorIdx 1)
+                                 <> hashStep b
 
 instance CryptoHashable () where
-  hashStep s () = hashStep s $ TyTuple 0
+  hashStep () = hashStep $ TyTuple 0
 
 instance (CryptoHashable a, CryptoHashable b) => CryptoHashable (a, b) where
-  hashStep s (a,b) = do
-    hashStep s $ TyTuple 2
-    hashStep s a
-    hashStep s b
+  hashStep (a,b) = hashStep (TyTuple 2)
+                <> hashStep a
+                <> hashStep b
 
 instance (CryptoHashable a, CryptoHashable b, CryptoHashable c) => CryptoHashable (a, b, c) where
-  hashStep s (a,b,c) = do
-    hashStep s $ TyTuple 3
-    hashStep s a
-    hashStep s b
-    hashStep s c
+  hashStep (a,b,c) = hashStep (TyTuple 3)
+                  <> hashStep a
+                  <> hashStep b
+                  <> hashStep c
 
 
 instance CryptoHash alg => CryptoHashable (Hashed alg a) where
-  hashStep s (Hashed h) = hashStep s h
+  hashStep (Hashed h) = hashStep h
 
 instance CryptoHash alg => CryptoHashable (Hash alg) where
-  hashStep s (Hash bs) = do
-    hashStep s $ CryHash $ getCryptoName (hashAlgorithmName @alg)
-    hashStep s bs
+  hashStep (Hash bs) = hashStep (CryHash $ getCryptoName (hashAlgorithmName @alg))
+                    <> hashStep bs
 
 
 ----------------------------------------------------------------
 -- Helpers
 ----------------------------------------------------------------
 
--- | Hash value using its 'Storable' instance
-storableHashStep :: (CryptoHash alg, Storable a) => HashAccum alg s -> a -> ST s ()
-{-# INLINE storableHashStep #-}
-storableHashStep s i
-  = updateHashAccum s
-  $ unsafePerformIO
-  $ BI.create (sizeOf i) (\p -> poke (castPtr p) i)
-
 -- | Null terminated string
-nullTerminatedString :: (CryptoHash alg) => HashAccum alg s -> [Char] -> ST s ()
-nullTerminatedString s xs = do
-  forM_ xs (hashStep s)
-  hashStep s (toEnum 0 :: Char)
+nullTerminatedString :: [Char] -> Bld.Builder
+nullTerminatedString xs
+  = foldMap (Bld.word32LE . fromIntegral . fromEnum) xs
+ <> Bld.word8 0
+
 
 ----------------------------------------------------------------
 -- Generics for CryptoHashable
@@ -506,74 +470,66 @@ nullTerminatedString s xs = do
 class GCryptoHashable f where
   -- | Default implementation of 'CryptoHashable'.
   ghashStepPkg
-    :: CryptoHash alg
-    => String          -- ^ Library name
-    -> HashAccum alg s
+    :: String          -- ^ Library name
     -> f a
-    -> ST s ()
+    -> Bld.Builder
   -- | Same as 'genericHashStep' but allows to override type name as
   --   well.
   ghashStepPkgTy
-    :: CryptoHash alg
-    => String          -- ^ Library name
+    :: String          -- ^ Library name
     -> String          -- ^ Data type name
-    -> HashAccum alg s
     -> f a
-    -> ST s ()
+    -> Bld.Builder
 
 -- | Generic implementation of 'CryptoHashable'
 genericHashStep
-  :: (Generic a, GCryptoHashable (Rep a), CryptoHash alg)
+  :: (Generic a, GCryptoHashable (Rep a))
   => String           -- ^ Library name
-  -> HashAccum alg s
   -> a
-  -> ST s ()
-genericHashStep pkg s a = ghashStepPkg pkg s (from a)
+  -> Bld.Builder
+genericHashStep pkg a = ghashStepPkg pkg (from a)
 
 -- | Generic implementation of 'CryptoHashable' which allows to
 --   override data type name as well
 genericHashStepTy
-  :: (Generic a, GCryptoHashable (Rep a), CryptoHash alg)
+  :: (Generic a, GCryptoHashable (Rep a))
   => String           -- ^ Library name
   -> String           -- ^ Data type name
-  -> HashAccum alg s
   -> a
-  -> ST s ()
-genericHashStepTy pkg ty s a = ghashStepPkgTy pkg ty s (from a)
-
+  -> Bld.Builder
+genericHashStepTy pkg ty a = ghashStepPkgTy pkg ty (from a)
 
 
 
 instance (Datatype d, GCryptoHashableWorker f) => GCryptoHashable (M1 D d f) where
-  ghashStepPkg pkg s x@(M1 f) = do
-    hashStep  s $ UserType pkg $ datatypeName x
-    ghashStep s f
-  ghashStepPkgTy pkg con s (M1 f) = do
-    hashStep  s $ UserType pkg con
-    ghashStep s f
+  ghashStepPkg pkg x@(M1 f)
+    = hashStep (UserType pkg $ datatypeName x)
+   <> ghashStep f
+  ghashStepPkgTy pkg con (M1 f)
+    = hashStep (UserType pkg con)
+   <> ghashStep f
 
 
 class GCryptoHashableWorker f where
-  ghashStep :: (CryptoHash alg) => HashAccum alg s -> f a -> ST s ()
+  ghashStep :: f a -> Bld.Builder
 
 instance (GHC.Constructor c, GCryptoHashableWorker f) => GCryptoHashableWorker (M1 C c f) where
-  ghashStep s x@(M1 f) = do
-    hashStep  s $ ConstructorName $ BC8.pack $ conName x
-    ghashStep s f
+  ghashStep x@(M1 f)
+    = hashStep (ConstructorName $ BC8.pack $ conName x)
+   <> ghashStep f
 
 instance (GCryptoHashableWorker f) => GCryptoHashableWorker (M1 S s f) where
-  ghashStep s (M1 f) = ghashStep s f
+  ghashStep (M1 f) = ghashStep f
 
 instance (GCryptoHashableWorker f, GCryptoHashableWorker g) => GCryptoHashableWorker (f :+: g) where
-  ghashStep s (L1 f) = ghashStep s f
-  ghashStep s (R1 g) = ghashStep s g
+  ghashStep (L1 f) = ghashStep f
+  ghashStep (R1 g) = ghashStep g
 
 instance (GCryptoHashableWorker f, GCryptoHashableWorker g) => GCryptoHashableWorker (f :*: g) where
-  ghashStep s (f :*: g) = do ghashStep s f
-                             ghashStep s g
+  ghashStep (f :*: g) = ghashStep f <> ghashStep g
 
 instance GCryptoHashableWorker U1 where
-  ghashStep _ _ = return ()
+  ghashStep _ = mempty
 
 instance CryptoHashable a => GCryptoHashableWorker (K1 i a) where
-  ghashStep s (K1 a) = hashStep s a
+  ghashStep (K1 a) = hashStep a

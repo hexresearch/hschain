@@ -89,8 +89,8 @@ data ValidatorSet alg = ValidatorSet
 deriving instance Eq   (PublicKey alg) => Eq  (ValidatorSet alg)
 deriving instance Ord  (PublicKey alg) => Ord (ValidatorSet alg)
 instance NFData   (PublicKey alg) => NFData (ValidatorSet alg)
-instance CryptoAsymmetric alg     => CryptoHashable (ValidatorSet alg) where
-  hashStep s = hashStep s . V.toList . vsValidators
+instance Crypto alg => CryptoHashable (ValidatorSet alg) where
+  hashStep = hashStep . V.toList . vsValidators
 
 emptyValidatorSet :: ValidatorSet alg
 emptyValidatorSet = ValidatorSet V.empty 0 Map.empty
@@ -217,7 +217,7 @@ deriving newtype instance Ord    (PublicKey alg) => Ord    (ValidatorChange alg)
 deriving newtype instance NFData (PublicKey alg) => NFData (ValidatorChange alg)
 
 instance CryptoAsymmetric alg => CryptoHashable (ValidatorChange alg) where
-  hashStep s (ValidatorChange m) = hashStep s $ Map.toList m
+  hashStep (ValidatorChange m) = hashStep $ Map.toAscList m
 
 instance (Ord (PublicKey alg)) => Semigroup (ValidatorChange alg) where
   ValidatorChange c1 <> ValidatorChange c2 = ValidatorChange (c2 <> c1)
