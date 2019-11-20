@@ -49,12 +49,35 @@ def show_info(pub_key, args, connection):
     print("amount: "+str(x[0]))
 
 def transfer(pub_key, args, connection):
-  """show info about current state"""
+  """trasfer funds from one wallet to another"""
   (args, amount) = arg_value(args, "amount", None, None, lambda x: int(x))
   (args, dest) = arg_value(args, "to", None, None, lambda x: x)
   cursor = connection.cursor()
   cursor.execute(hschain_q("UPDATE funds SET amount = CASE WHEN wallet_id = :user_id THEN amount - :transfer_amount WHEN wallet_id = :dest_user_id THEN amount + :transfer_amount END WHERE (wallet_id = :user_id OR wallet_id = :dest_user_id) AND :transfer_amount > 0;")
                 , [pub_key, amount, dest])
+
+
+def operations(pub_key, args, connection):
+  """show operations related to our public key"""
+  cursor = connection.cursor()
+  query = """SELECT op.height, op_dest.request_param_value, op_amount.request_param_value
+  FROM serialized_requests AS op, serialized_requests_params as op_dest
+     , serialized_requests_params as op_amount
+     , serialized_requests_params as op_user
+  WHERE
+        op.request_id = 'transfer' AND op_dest.height = op.height
+    AND op_amount.height = op.height AND op_dest.seq_index = op.seq_index
+    AND op_amount.seq_index = op.seq_index
+    AND op_user.height = op.height AND op_user.seq_index = op.seq_index
+    AND op_user.request_param_value = :user_id
+    AND op_user.request_param_name = 'user_id'
+    AND op_amount.request_param_name = 'transfer_amount'
+    AND op_dest.request_param_name = 'dest_user_id'
+  ORDER BY op.height, op.seq_index
+  """
+  for x in cursor.execute(query, [pub_key]):
+    print("height: "+str(x[0]))
+    print("        transfer "+str(x[2])+" to "+str(x[1]))
 
 # main wallet function.
 def wallet_main(args):
@@ -82,7 +105,7 @@ def wallet_main(args):
     elif command == 'transfer':
       transfer(pub_key, args, connection)
     elif command == 'operations':
-      list_operations(args, connection)
+      operations(pub_key, args, connection)
     else:
       print ('invalid command, try python funds-wallet.py help')
       exit(1)
