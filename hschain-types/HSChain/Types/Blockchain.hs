@@ -298,7 +298,35 @@ data Vote (ty :: VoteType) alg a = Vote
   , voteBlockID :: !(Maybe (BlockID alg a))
   }
   deriving stock    (Show, Eq, Ord, Generic)
-  deriving anyclass (NFData, JSON.ToJSON, JSON.FromJSON, Serialise)
+  deriving anyclass (NFData, JSON.ToJSON, JSON.FromJSON)
+
+instance Serialise (Vote 'PreVote alg a) where
+  encode = encodeVote 0
+  decode = decodeVote 0
+
+instance Serialise (Vote 'PreCommit alg a) where
+  encode = encodeVote 1
+  decode = decodeVote 1
+
+encodeVote :: Word -> Vote ty alg a -> Encoding
+encodeVote tag Vote{..}
+  = encodeListLen 5
+ <> encodeWord tag
+ <> encode voteHeight
+ <> encode voteRound
+ <> encode voteTime
+ <> encode voteBlockID
+
+decodeVote :: Word -> Decoder s (Vote ty alg a)
+decodeVote expectedTag = do
+  len <- decodeListLen
+  tag <- decodeWord
+  case len of
+    5 | tag == expectedTag -> Vote <$> decode <*> decode <*> decode <*> decode
+      | otherwise -> fail ("Invalid Vote tag, expected: " ++ show expectedTag
+                           ++ ", actual: " ++ show tag)
+    _ -> fail $ "Invalid Vote encoding"
+
 
 instance (CryptoHash alg) => CryptoHashable (Vote 'PreVote alg a) where
   hashStep Vote{..}
