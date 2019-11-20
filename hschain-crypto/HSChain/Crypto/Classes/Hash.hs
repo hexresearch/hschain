@@ -340,28 +340,37 @@ instance CryptoHashable Char where
             <> Bld.word32LE (fromIntegral (fromEnum c))
 
 instance CryptoHashable Integer where
+  -- Integer is encoded in unsigned 63-bit chunks. Highest bit is
+  -- continuation bit which is set to 1 if there're more chunks and 0
+  -- otherwise. First chunk is only 62-bit since bit 62 is used to
+  -- store sign.
+  --
+  -- This is to ensure that value of different type couldn't hash to
+  -- same value.  Without continuation bit it's impossible to know how
+  -- many chunks we have and it's difficult to compute their number in
+  -- advance
   hashStep = start
     where
       -- We encode first chunk 30 bit of number
-      --  Bit 31 - 1 if there're more chunks
-      --  Bit 30 - sign
+      --  Bit 63 - 1 if there're more chunks
+      --  Bit 62 - sign
       start n
-        = (Bld.word32LE  $ writeBit 31 (next /= 0)
-                         $ writeBit 30 (n < 0)
+        = (Bld.word64LE  $ writeBit 63 (next /= 0)
+                         $ writeBit 62 (n < 0)
                          $ fromIntegral n')
        <> if next /= 0 then istep next else mempty
         where
           n'   = abs n
-          next = n' `shiftR` 30
+          next = n' `shiftR` 62
       -- Then we encode every subsequent 31 bit.
       --
       --  Bit 31 - 1 if there're more chunks
       istep n
-        = (Bld.word32LE $ writeBit 31 (next /= 0)
+        = (Bld.word64LE $ writeBit 63 (next /= 0)
                         $ fromIntegral n)
        <> if next /= 0 then istep next else mempty
         where
-          next = n `shiftR` 31
+          next = n `shiftR` 63
       --
       writeBit :: Bits a => Int -> Bool -> a -> a
       writeBit i True  x = setBit   x i
