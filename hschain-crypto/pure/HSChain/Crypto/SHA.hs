@@ -30,7 +30,7 @@ instance ByteReprSized (Hash SHA1) where
 instance CryptoHash SHA1 where
   hashBlob          = defaultHash     SHA.sha1
   hashLazyBlob      = defaultLazyHash SHA.sha1 
-  hashAlgorithmName = "hash:SHA1"
+  hashAlgorithmName = "SHA1"
 
 instance CryptoHMAC SHA1 where
   hmac = defaultHMAC SHA.hmacSha1
@@ -45,7 +45,7 @@ instance ByteReprSized (Hash SHA256) where
 instance CryptoHash SHA256 where
   hashBlob          = defaultHash     SHA.sha256
   hashLazyBlob      = defaultLazyHash SHA.sha256
-  hashAlgorithmName = "hash:SHA256"
+  hashAlgorithmName = "SHA256"
 
 instance CryptoHMAC SHA256 where
   hmac = defaultHMAC SHA.hmacSha256
@@ -60,7 +60,7 @@ instance ByteReprSized (Hash SHA384) where
 instance CryptoHash SHA384 where
   hashBlob          = defaultHash     SHA.sha384
   hashLazyBlob      = defaultLazyHash SHA.sha384
-  hashAlgorithmName = "hash:SHA384"
+  hashAlgorithmName = "SHA384"
 
 instance CryptoHMAC SHA384 where
   hmac = defaultHMAC SHA.hmacSha384
@@ -75,7 +75,7 @@ instance ByteReprSized (Hash SHA512) where
 instance CryptoHash SHA512 where
   hashBlob          = defaultHash     SHA.sha512
   hashLazyBlob      = defaultLazyHash SHA.sha512
-  hashAlgorithmName = "hash:SHA512"
+  hashAlgorithmName = "SHA512"
 
 instance CryptoHMAC SHA512 where
   hmac = defaultHMAC SHA.hmacSha512
