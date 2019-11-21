@@ -301,9 +301,9 @@ dataTypeTag = \case
   TyNothing    -> 0x0100 + 4
   TyJust       -> 0x0100 + 5
   TyBase{}     -> 0x0100 + 6
-  --
+  -- User defined data
   UserType{}   -> 0x0200
-  --
+  -- Crypto primitives
   CryHash{}        -> 0x0300 + 0
   CryFingerprint{} -> 0x0300 + 1
   CryPublicKey{}   -> 0x0300 + 2
@@ -330,11 +330,14 @@ instance CryptoHashable Word32 where hashStep i = hashStep PrimW32 <> Bld.word32
 instance CryptoHashable Word16 where hashStep i = hashStep PrimW16 <> Bld.word16LE i
 instance CryptoHashable Word8  where hashStep i = hashStep PrimW8  <> Bld.word8    i
 
+-- | Same as Int64
 instance CryptoHashable Int where
   hashStep i = hashStep (fromIntegral i :: Int64)
+-- | Same as Word64
 instance CryptoHashable Word where
   hashStep i = hashStep (fromIntegral i :: Word64)
 
+-- | 32-bit unicode code point
 instance CryptoHashable Char where
   hashStep c = hashStep PrimChar
             <> Bld.word32LE (fromIntegral (fromEnum c))
@@ -446,7 +449,6 @@ instance (CryptoHashable a, CryptoHashable b, CryptoHashable c) => CryptoHashabl
                   <> hashStep a
                   <> hashStep b
                   <> hashStep c
-
 
 instance CryptoHash alg => CryptoHashable (Hashed alg a) where
   hashStep (Hashed h) = hashStep h
