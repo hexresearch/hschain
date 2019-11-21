@@ -464,7 +464,7 @@ instance CryptoHash alg => CryptoHashable (Hash alg) where
 nullTerminatedString :: [Char] -> Bld.Builder
 nullTerminatedString xs
   = foldMap (Bld.word32LE . fromIntegral . fromEnum) xs
- <> Bld.word8 0
+ <> Bld.word32LE 0
 
 
 ----------------------------------------------------------------
