@@ -82,7 +82,54 @@ executable hschain-sql-node
   -- Other library packages from which modules are imported.
   build-depends:       base
                      , simple-sql-parser
-
+                     , hschain
+                     , hschain-crypto
+                     , hschain-types
+                     , aeson
+                     , base58-bytestring >=0.1
+                     , bytestring        >=0.10
+                     , containers        >=0.5.9
+                     , data-default-class
+                     , deepseq           >=1.4
+                     , directory
+                     , exceptions        >=0.8.3
+                     , filepath
+                     , lrucache          >=1.2
+                     , mmorph
+                     , microlens         >=0.4
+                     , microlens-mtl     >=0.1
+                     , microlens-th
+                     , mtl
+                     , network-info
+                     , pipes             >=4
+                     , prometheus-client
+                     , random
+                     , random-shuffle
+                     , retry             >=0.7.6.2
+                     , serialise         >=0.2
+                     , sqlite-simple
+                     , stm               >=2.5
+                     , text
+                     , transformers      >=0.5
+                     , vector
+                     , prometheus-client
+                     , prometheus-metrics-ghc
+                     , wai-middleware-prometheus
+                     , unordered-containers >=0.2.5.0
+                     --
+                     , katip              == 0.7.0.0
+                     , katip-elasticsearch
+                     , http-client-tls
+                     , bloodhound
+                     , network            >=2.6.0.0 && <2.9
+                     , tls                >=1.4.1
+                     , warp
+                     , x509
+                     , x509-store
+                     , x509-system
+                     , x509-validation
+                     , yaml
+ 
   -- Directories containing source files.
   hs-source-dirs:      src
 
