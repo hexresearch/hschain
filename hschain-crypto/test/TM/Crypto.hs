@@ -1,5 +1,4 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
-{-# LANGUAGE CPP                 #-}
 {-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -26,16 +25,11 @@ import HSChain.Crypto.SHA
 import HSChain.Crypto.Salsa20Poly1305
 import HSChain.Crypto.KDFNaCl
 
-#if USE_BLS
-import qualified Crypto.Bls as RawBls
-import HSChain.Crypto.BLS
-#endif
 
 tests :: TestTree
 tests = testGroup "Crypto"
   [ testsEd25519
   , testsCurve25519
-  , testsBLS
   , testsSHA
   , testSalsa20
   , testsNaClBox
@@ -87,44 +81,6 @@ testsCurve25519 = testGroup "Curve25519"
        dh @=? diffieHelman (publicKey k1) k2
        dh @=? diffieHelman (publicKey k2) k1
   ]
-
-testsBLS :: TestTree
-testsBLS = testGroup "BLS"
-#if USE_BLS
-  [ testGroup "Asymmetric" $ testsAsymmetricCrypto (Proxy @BLS)
-  , testGroup "Signatures" $ testsSignatureCrypto  (Proxy @BLS)
-  , testGroup "Hashes"     [ testHash (Proxy @BLS) "3vY84Vb3FUXnBxvjKQ6uGxrvRsMSm6nRHTT79bbGuzxh"]
-  , testGroup "BLS features"
-        [ testCase "sizes" $ do
-            (publicKeySize (undefined :: PublicKey BLS)) @?= RawBls.publicKeySize
-            (privKeySize   (undefined :: PrivKey   BLS)) @?= RawBls.privateKeySize
-            (signatureSize (undefined :: Signature BLS)) @?= RawBls.signatureSize
-            (hashSize      (undefined :: Hash BLS))      @?= RawBls.hashSize
-        , testCase "signatures for hash 1" $ do
-            (privKey :: PrivKey BLS) <- generatePrivKey
-            let msg = "Please, don't hash me!"
-                msgHash = hashBlob msg
-            let sig = signHash privKey msgHash
-            (verifyHashSignature (publicKey privKey) msgHash sig) @? "Verify must be passed"
-        , testCase "signatures for hash 2" $ do
-            (privKey :: PrivKey BLS) <- generatePrivKey
-            let msg = "I'm just a silly bytestring, why do you hash me?"
-                msgHash = hashBlob msg
-            let sig = signHash privKey msgHash
-            (verifyBlobSignature (publicKey privKey) msg sig) @? "Verify must be passed"
-        , testCase "signatures for hash 3" $ do
-            (privKey :: PrivKey BLS) <- generatePrivKey
-            let msg = "So... You try to hash me again..."
-                msgHash = hashBlob msg
-            let sig1 = signBlob privKey msg
-            let sig2 = signHash privKey msgHash
-            sig1 @?= sig2
-        -- TODO перенести сюда остальные тесты с точными значениями
-        ]
-  ]
-#else
-  []
-#endif
 
 testsNaClBox :: TestTree
 testsNaClBox = testGroup "Tests for NaCl box"
