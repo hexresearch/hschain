@@ -1,0 +1,67 @@
+Name:           hschain-crypto-bls
+Version:        0.1
+Synopsis:       Wrappers for BLS signature scheme
+Description:
+  BLS
+
+Cabal-Version:  >= 1.10
+License:        AllRightsReserved
+License-File:   LICENSE
+Author:         Aleksey Khudyakov <alexey.skladnoy@gmail.com>
+Maintainer:     Aleksey Khudyakov <alexey.skladnoy@gmail.com>
+Homepage:       https://github.com/hexresearch/thundermint
+Category:       Data
+Build-Type:     Simple
+
+
+Library
+  Ghc-options:         -Wall
+  Default-Language:    Haskell2010
+  Build-Depends:       base              >=4.9 && <5
+                     , hschain-crypto
+                     , bls-signatures
+                     --
+                     , deepseq           >=1.4
+                     , entropy           >=0.4
+  Exposed-modules:
+                  HSChain.Crypto.BLS
+
+Test-suite thundermint-crypto-bls-tests
+  Type:                exitcode-stdio-1.0
+  Ghc-options:         -Wall -threaded -rtsopts "-with-rtsopts=-N"
+  Default-Language:    Haskell2010
+  Build-Depends:       base              >=4.9 && <5
+                     , hschain-crypto
+                     , hschain-crypto-bls
+                     , aeson
+                     , bytestring        >=0.10
+                     , base16-bytestring
+                     , base64-bytestring
+                     , serialise         >=0.2
+                     , text
+                     --
+                     , tasty             >=0.12
+                     -- Contains fix for GHCJS
+                     , tasty-hunit       >=0.10.0.1
+                     , bls-signatures
+  hs-source-dirs:      tests
+  Main-is:             Main.hs
+  Other-modules:       TM.BLS
+
+
+Benchmark hschain-crypto-bls-bench
+  Type:                exitcode-stdio-1.0
+  Ghc-options:         -threaded -O2 -Wall
+  hs-source-dirs:      bench
+  Default-Language:    Haskell2010
+  Main-is:             main.hs
+  Build-Depends:       base  >=4.9 && <5
+                     , bytestring >=0.10
+                     , criterion
+                     , deepseq
+                     , random
+                     , vector
+                     --
+                     , hschain-crypto
+                     , hschain-crypto-bls
+  Other-modules: Ben.BLS
