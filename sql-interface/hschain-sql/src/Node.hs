@@ -17,6 +17,9 @@ import Control.Monad.State
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Reader
 import Control.Monad.Trans.Cont
+
+import Database.SQLite.Simple
+
 import Data.Aeson             (FromJSON)
 import Data.Monoid            ((<>))
 import Data.Word
@@ -128,4 +131,17 @@ data SQLiteState = SQLiteState
 -- ODBC extension API interface
 ----------------------------------------------------------------
 
+startODBCExtensionInterface :: Int -> String -> IO ()
+startODBCExtensionInterface port dbname = do
+  conn <- open dbname
+  sock <- socket AF_INET6 Stream (fromIntegral port)
+  listen sock 1
+  forkIO $ odbcExtensionInterface conn sock
+
+odbcExtensionInterface :: Connection -> Socket -> IO ()
+odbcExtensionInterface dbConn sock = do
+  (connSock, _) <- accept sock
+  catch (close connSock) $ do
+    return ()
+  odbcExtensionInterface dbConn sock
 

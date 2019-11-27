@@ -4308,12 +4308,16 @@ hschain_synchronize(DBC* d, STMT*s) {
 	    failure_reason = "sending sync request, parsing result or DB error";
 	    break;
 	}
+	fclose(d->hschain_node);
+	d->hschain_node = NULL;
 	return 1;
     } while(0);
     if (d->trace) {
 	fprintf(d->trace, "-- hschain synchronization failed (%s)\n", failure_reason);
 	fflush(d->trace);
     }
+    fclose(d->hschain_node);
+    d->hschain_node = NULL;
     return 0;
 }
 
