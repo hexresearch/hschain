@@ -24,11 +24,6 @@ flag android-impl
   Default:     False
   Manual:      True
 
-flag libbls
-  Description: Use BLS library (experimental)
-  Default:     True
-  Manual:      False
-
 Library
   Ghc-options:         -Wall
   Default-Language:    Haskell2010
@@ -64,11 +59,6 @@ Library
         Build-Depends:     cryptonite        >=0.25
                          , entropy           >=0.4
                          , memory            >=0.14.14
-    if flag(libbls) && !impl(ghcjs)
-      hs-source-dirs:  bls .
-      exposed-modules: HSChain.Crypto.BLS
-      build-depends:     bls-signatures
-                       , entropy
   Exposed-modules:
                   HSChain.Crypto
                   HSChain.Crypto.Classes
@@ -83,8 +73,6 @@ Library
 Test-suite thundermint-crypto-tests
   if impl(ghcjs)
     js-sources: js/nacl-fast.js
-  if flag(libbls) && !impl(ghcjs)
-    cpp-options: -DUSE_BLS
   --
   Type:                exitcode-stdio-1.0
   Ghc-options:         -Wall -threaded -rtsopts "-with-rtsopts=-N"
@@ -101,12 +89,9 @@ Test-suite thundermint-crypto-tests
                      , tasty             >=0.12
                      -- Contains fix for GHCJS
                      , tasty-hunit       >=0.10.0.1
-  if flag(libbls) && !impl(ghcjs)
-    build-depends:     bls-signatures
   hs-source-dirs:      test
   Main-is:             Main.hs
   Other-modules:       TM.Crypto
-                       TM.BLS
 
 
 Benchmark hschain-crypto-bench
@@ -128,6 +113,3 @@ Benchmark hschain-crypto-bench
                      , hschain-crypto
   Other-modules: Ben.Ed25519
                  Ben.Hash
-  if flag(libbls)
-    Other-modules: Ben.BLS
-    cpp-options:   -DUSE_BLS
