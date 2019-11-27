@@ -9,6 +9,7 @@ module HSChain.P2P.PeerState.Handle
 import Control.Monad (foldM)
 import Control.Arrow (second)
 
+import HSChain.Crypto (CryptoHashable)
 import HSChain.P2P.Internal.Types
 import HSChain.P2P.PeerState.Monad
 import HSChain.P2P.PeerState.Types
@@ -19,7 +20,7 @@ import qualified HSChain.P2P.PeerState.Handle.Lagging as Lagging
 import qualified HSChain.P2P.PeerState.Handle.Unknown as Unknown
 
 
-handler :: HandlerCtx alg a m
+handler :: (CryptoHashable a, HandlerCtx alg a m)
         => Config m alg a
         -> State alg a
         -> Event alg a

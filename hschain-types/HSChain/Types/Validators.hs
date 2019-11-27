@@ -59,7 +59,7 @@ import qualified Data.Map.Strict       as Map
 import qualified Data.Vector           as V
 
 import HSChain.Crypto
-import HSChain.Types.Merklized
+import HSChain.Crypto.Classes.Hash
 
 
 ----------------------------------------------------------------
@@ -73,12 +73,11 @@ data Validator alg = Validator
   }
   deriving stock    (Generic, Show)
   deriving anyclass (CBOR.Serialise, JSON.ToJSON, JSON.FromJSON)
+deriving instance Eq   (PublicKey alg) => Eq  (Validator alg)
+deriving instance Ord  (PublicKey alg) => Ord (Validator alg)
 instance NFData (PublicKey alg) => NFData (Validator alg)
-deriving instance Eq   (PublicKey alg) => Eq   (Validator alg)
-deriving instance Ord  (PublicKey alg) => Ord  (Validator alg)
-
-instance (Crypto alg, alg' ~ alg) => MerkleValue alg (Validator alg) where
-  merkleHash = hash
+instance CryptoAsymmetric alg => CryptoHashable (Validator alg) where
+  hashStep = genericHashStep "hschain"
 
 -- | Set of all known validators for given height
 data ValidatorSet alg = ValidatorSet
@@ -87,12 +86,11 @@ data ValidatorSet alg = ValidatorSet
   , vsVotingIntervals :: !(Map.Map Integer (ValidatorIdx alg))
   }
   deriving (Generic, Show)
-instance NFData (PublicKey alg) => NFData (ValidatorSet alg)
 deriving instance Eq   (PublicKey alg) => Eq  (ValidatorSet alg)
 deriving instance Ord  (PublicKey alg) => Ord (ValidatorSet alg)
-
-instance (Crypto alg, alg' ~ alg) => MerkleValue alg (ValidatorSet alg) where
-  merkleHash = hash
+instance NFData   (PublicKey alg) => NFData (ValidatorSet alg)
+instance Crypto alg => CryptoHashable (ValidatorSet alg) where
+  hashStep = hashStep . V.toList . vsValidators
 
 emptyValidatorSet :: ValidatorSet alg
 emptyValidatorSet = ValidatorSet V.empty 0 Map.empty
@@ -130,6 +128,9 @@ makeValidatorSet vals = do
   let vlist = sortBy (comparing validatorPubKey)
             $ toList vals
       vvec  = V.fromList vlist
+  forM_ vals $ \v -> case validatorVotingPower v of
+    p | p <= 0    -> Left $ validatorPubKey v
+      | otherwise -> return ()
   check vlist
   return ValidatorSet
     { vsValidators      = vvec
@@ -173,7 +174,7 @@ validatorSetSize = V.length . vsValidators
 newtype ValidatorIdx alg = ValidatorIdx Int
   deriving stock    (Show, Eq, Ord, Generic, Generic1)
   deriving anyclass (NFData, CBOR.Serialise)
-  deriving newtype  (JSON.ToJSON, JSON.FromJSON, JSON.FromJSONKey, JSON.ToJSONKey)
+  deriving newtype  (JSON.ToJSON, JSON.FromJSON, JSON.FromJSONKey, JSON.ToJSONKey, CryptoHashable)
 
 -- | Set of validators where they are represented by their index.
 data ValidatorISet = ValidatorISet !Int !IntSet deriving (Show, Eq)
@@ -215,6 +216,8 @@ deriving newtype instance Eq     (PublicKey alg) => Eq     (ValidatorChange alg)
 deriving newtype instance Ord    (PublicKey alg) => Ord    (ValidatorChange alg)
 deriving newtype instance NFData (PublicKey alg) => NFData (ValidatorChange alg)
 
+instance CryptoAsymmetric alg => CryptoHashable (ValidatorChange alg) where
+  hashStep (ValidatorChange m) = hashStep $ Map.toAscList m
 
 instance (Ord (PublicKey alg)) => Semigroup (ValidatorChange alg) where
   ValidatorChange c1 <> ValidatorChange c2 = ValidatorChange (c2 <> c1)
@@ -285,7 +288,7 @@ changeValidators (ValidatorChange delta) (ValidatorSet vset _ _)
 ----------------------------------------------------------------
 
 -- | Get validator index by point inside the constructed interval based on its voting power
-indexByIntervalPoint :: (Eq (PublicKey alg)) => ValidatorSet alg -> Integer -> Maybe (ValidatorIdx alg)
+indexByIntervalPoint :: ValidatorSet alg -> Integer -> Maybe (ValidatorIdx alg)
 indexByIntervalPoint ValidatorSet{..} x
   | x >= vsTotPower = Nothing
   | otherwise       = snd <$> Map.lookupLE x vsVotingIntervals

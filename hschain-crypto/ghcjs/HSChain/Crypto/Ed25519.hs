@@ -1,6 +1,7 @@
 {-# LANGUAGE DataKinds            #-}
 {-# LANGUAGE FlexibleContexts     #-}
 {-# LANGUAGE FlexibleInstances    #-}
+{-# LANGUAGE OverloadedStrings    #-}
 {-# LANGUAGE TypeFamilies         #-}
 {-# LANGUAGE UndecidableInstances #-}
 module HSChain.Crypto.Ed25519 (
@@ -46,6 +47,7 @@ instance CryptoAsymmetric Ed25519 where
     case decodeFromBS $ arrayToBs arr of
       Just k  -> return k
       Nothing -> error "Ed25519: internal error. Cannot generate key"
+  asymmKeyAlgorithmName  = "Ed25519"
 
 instance ByteReprSized (Signature Ed25519) where
   type ByteSize (Signature Ed25519) = 64
@@ -77,7 +79,7 @@ instance NFData (PrivKey Ed25519) where
 instance NFData (PublicKey Ed25519) where
   rnf k = k `seq` ()
 
-instance (Ord (PrivKey Ed25519)) => ByteRepr (PrivKey Ed25519) where
+instance ByteRepr (PrivKey Ed25519) where
   decodeFromBS        bs = do
     keypair <- nonNullJs $ js_nacl_sign_fromSeed $ bsToArray bs
     return PrivKey { pkBS  = bs
@@ -86,7 +88,7 @@ instance (Ord (PrivKey Ed25519)) => ByteRepr (PrivKey Ed25519) where
                    }
   encodeToBS = pkBS
 
-instance (Ord (PublicKey Ed25519)) => ByteRepr (PublicKey Ed25519) where
+instance ByteRepr (PublicKey Ed25519) where
   decodeFromBS        bs = do
     guard $ BS.length bs == 32
     return $! PublicKey $ bsToArray bs

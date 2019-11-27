@@ -21,6 +21,7 @@ Library
                      , hschain-crypto
                      , bls-signatures
                      --
+                     , bytestring        >=0.10
                      , deepseq           >=1.4
                      , entropy           >=0.4
   Exposed-modules:

@@ -13,7 +13,7 @@ import GHC.Generics           (Generic)
 
 import HSChain.Blockchain.Internal.Engine.Types (NetworkCfg)
 import HSChain.Blockchain.Internal.Types        (Announcement, MessageTx, MessageRx, TMState)
-import HSChain.Crypto                           (Crypto, SignedState(..))
+import HSChain.Crypto                           (Crypto, SignedState(..), CryptoHashable(..))
 import HSChain.P2P.Types                        (NetAddr)
 import HSChain.Store.Internal.Proposals         (ProposalStorage)
 import HSChain.Store.Internal.Query             (Access(..))
@@ -39,7 +39,7 @@ data GossipMsg alg a
   | GossipPex       !PexMessage
   deriving (Generic)
 deriving instance (Show a, Show (TX a), Crypto alg) => Show (GossipMsg alg a)
-instance (Serialise (TX a), Serialise a, Crypto alg) => Serialise (GossipMsg alg a)
+instance (Serialise (TX a), Serialise a, CryptoHashable a, Crypto alg) => Serialise (GossipMsg alg a)
 
 --
 -- | Peer exchage gossip sub-message

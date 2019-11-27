@@ -32,6 +32,7 @@ import HSChain.Store
 import HSChain.Store.Internal.Proposals
 import HSChain.Store.Internal.BlockDB (storeCommit,storeGenesis)
 import HSChain.Types
+import HSChain.Types.Merkle.Types
 import qualified HSChain.Mock.KeyVal as Mock
 
 import qualified HSChain.P2P.PeerState.Types as P2P
@@ -242,7 +243,7 @@ seedDatabase n = do
   where
     blockAndCmt = take n
                 $ tail
-                $ mockchain `zip` (blockLastCommit <$> tail mockchain)
+                $ mockchain `zip` (fmap merkleValue . blockPrevCommit <$> tail mockchain)
 
 -- Start "consensus engine"
 startConsensus :: TestM TestAlg Mock.BData (P2P.Event TestAlg Mock.BData)

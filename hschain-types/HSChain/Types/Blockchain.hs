@@ -10,6 +10,7 @@
 {-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE RecordWildCards            #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE TemplateHaskell            #-}
 {-# LANGUAGE TypeFamilies               #-}
@@ -26,8 +27,9 @@ module HSChain.Types.Blockchain (
     -- * Basic data types for blockchain
   , BlockID(..)
   , blockHash
-  , Block(..)
-  , Header(..)
+  , GBlock(..)
+  , Block
+  , Header
   , Commit(..)
   , ByzantineEvidence(..)
   , BlockData(..)
@@ -57,9 +59,9 @@ import           Control.DeepSeq
 import           Control.Monad
 import           Control.Monad.IO.Class   (MonadIO(..))
 import qualified Data.Aeson               as JSON
-import           Data.ByteString.Lazy     (toStrict)
 import           Data.Coerce
 import           Data.Int
+import           Data.Functor.Classes
 import qualified Data.List.NonEmpty       as NE
 import           Data.Monoid              ((<>))
 import           Data.Time.Clock          (UTCTime)
@@ -72,8 +74,9 @@ import qualified Database.SQLite.Simple.ToField   as SQL
 #endif
 
 import HSChain.Crypto
+import HSChain.Crypto.Classes.Hash
 import HSChain.Types.Validators
-import HSChain.Types.Merklized
+import HSChain.Types.Merkle.Types
 
 
 ----------------------------------------------------------------
@@ -91,17 +94,18 @@ import HSChain.Types.Merklized
 --     deciding on.
 newtype Height = Height Int64
   deriving stock   (Show, Read, Generic, Eq, Ord)
-  deriving newtype (NFData, Serialise, JSON.ToJSON, JSON.FromJSON, Enum)
+  deriving newtype (NFData, Serialise, JSON.ToJSON, JSON.FromJSON, Enum, CryptoHashable)
 
 -- | Voting round
 newtype Round = Round Int64
   deriving stock   (Show, Read, Generic, Eq, Ord)
-  deriving newtype (NFData, Serialise, JSON.ToJSON, JSON.FromJSON, Enum)
+  deriving newtype (NFData, Serialise, JSON.ToJSON, JSON.FromJSON, Enum, CryptoHashable)
+
 
 -- | Time in milliseconds since UNIX epoch.
 newtype Time = Time Int64
   deriving stock   (Show, Read, Generic, Eq, Ord)
-  deriving newtype (NFData, Serialise, JSON.ToJSON, JSON.FromJSON, Enum)
+  deriving newtype (NFData, Serialise, JSON.ToJSON, JSON.FromJSON, Enum, CryptoHashable)
 
 
 -- | Get current time
@@ -115,84 +119,59 @@ timeToUTC :: Time -> UTCTime
 timeToUTC (Time t) = posixSecondsToUTCTime (realToFrac t / 1000)
 
 
-instance CryptoHash alg => MerkleValue alg Height where
-  merkleHash = hash
-instance CryptoHash alg => MerkleValue alg Round where
-  merkleHash = hash
-instance CryptoHash alg => MerkleValue alg Time where
-  merkleHash = hash
-
 
 ----------------------------------------------------------------
 -- Blocks
 ----------------------------------------------------------------
 
 -- | Block identified by hash
-data BlockID alg a = BlockID !(Hashed alg (Header alg a))
+newtype BlockID alg a = BlockID (Hashed alg (Block alg a))
   deriving stock    (Show, Eq, Ord, Generic)
   deriving anyclass (NFData, Serialise, JSON.ToJSON, JSON.FromJSON)
+  deriving newtype  (CryptoHashable)
 
 blockHash
   :: (Crypto alg)
   => Block alg a
   -> BlockID alg a
-blockHash b = BlockID (hashed (blockHeader b))
+blockHash = BlockID . hashed
 
+
+type Block  = GBlock IdNode
+type Header = GBlock Hashed
 
 -- | Block of blockchain.
-data Block alg a = Block
-  { blockHeader     :: !(Header alg a)
-    -- ^ Block header it contains height, time of the block and hashes
-    --   of all other block fields. @BlockId@ is calculated from header
-  , blockData       :: !a
+data GBlock f alg a = Block
+  { blockHeight           :: !Height
+    -- ^ Height of a block
+  , blockPrevBlockID      :: !(Maybe (BlockID alg a))
+    -- ^ Hash of previous block. Nothing iff block is a genesis block
+  , blockValidatorsHash   :: !(Hashed alg (ValidatorSet alg))
+    -- ^ Set of validators used to create this block.
+  , blockValChange        :: !(MerkleNode f alg (ValidatorChange alg))
+    -- ^ Set of validators for the next block.
+  , blockPrevCommit       :: !(Maybe (MerkleNode f alg (Commit alg a)))
+    -- ^ Commit for previous block. Nothing iff block is a genesis
+    --   block or block at height 1.
+  , blockEvidence         :: !(MerkleNode f alg [ByzantineEvidence alg a])
+    -- ^ Evidence of byzantine behavior by nodes.
+  , blockData             :: !(MerkleNode f alg a)
     -- ^ Payload of block. HSChain treats it completely opaque and
     --   rely on callback to do anything to it.
-  , blockValChange  :: !(ValidatorChange alg)
-    -- ^ Changes in set of validators as result of block
-    --   evaluation. We store changes of validators in the block for
-    --
-    --    1. Audit. We record changes to validator set explicitly
-    --
-    --    2. Allow to verify blockchain integrity without interpreting
-    --       transactions. Since we know change of validators we can
-    --       infer validator set for next block. This is particularly
-    --       important for light clients
-    --
-    --   Note that we store changes since validators change
-    --   infrequently and storing same validator set again and again
-    --   is not economical.
-  , blockLastCommit :: !(Maybe (Commit alg a))
-    -- ^ Commit information for previous block. Nothing iff block
-    --   is a genesis block or block at height 1.
-  , blockEvidence   :: [ByzantineEvidence alg a]
-    -- ^ Evidence of byzantine behavior by nodes.
+  , blockStateHash        :: !(Hashed alg (InterpreterState a))
+    -- ^ Hash of state after evaluation of this block.
   }
   deriving stock    (Show, Generic)
-  deriving anyclass (Serialise, JSON.ToJSON, JSON.FromJSON)
-instance (NFData a, NFData (PublicKey alg))  => NFData (Block alg a)
-deriving instance (Eq (PublicKey alg), Eq a) => Eq     (Block alg a)
+instance (IsMerkle f, CryptoHash alg) => CryptoHashable (GBlock f alg a) where
+  hashStep = genericHashStep "hschain"
+
+instance (Crypto alg, CryptoHashable a, Serialise     a, IsMerkle f)  => Serialise     (GBlock f alg a)
+instance (Crypto alg, CryptoHashable a, JSON.FromJSON a, IsMerkle f)  => JSON.FromJSON (GBlock f alg a)
+instance (Crypto alg, JSON.ToJSON a, IsMerkle f)                      => JSON.ToJSON   (GBlock f alg a)
+instance (NFData a, NFData1 (f alg), NFData (PublicKey alg))          => NFData (GBlock f alg a)
+deriving instance (Eq (PublicKey alg), IsMerkle f, Eq1 (f alg), Eq a) => Eq (GBlock f alg a)
 
 
--- | Block header
-data Header alg a = Header
-  { headerHeight         :: !Height
-    -- ^ Height of block
-  , headerLastBlockID    :: !(Maybe (BlockID alg a))
-    -- ^ Hash of previous block. Nothing iff block is a genesis block
-  , headerValidatorsHash :: !(Hashed alg (ValidatorSet alg))
-    -- ^ Hash of validators for current block.
-  , headerDataHash       :: !(Hashed alg a)
-    -- ^ Hash of block data
-  , headerValChangeHash  :: !(Hashed alg (ValidatorChange alg))
-    -- ^ Hash of change in validators set.
-  , headerLastCommitHash :: !(Hashed alg (Maybe (Commit alg a)))
-    -- ^ Hash of last commit
-  , headerEvidenceHash   :: !(Hashed alg [ByzantineEvidence alg a])
-    -- ^ Hash of evidence of byzantine behavior
-  , headerStateHash      :: !(Hashed alg (InterpreterState a))
-  }
-  deriving stock    (Show, Eq, Generic)
-  deriving anyclass (NFData, Serialise, JSON.FromJSON, JSON.ToJSON)
 
 -- | Evidence of byzantine behaviour by some node.
 data ByzantineEvidence alg a
@@ -208,10 +187,8 @@ data ByzantineEvidence alg a
     -- ^ Node made conflicting precommits in the same round
   deriving stock    (Show, Eq, Generic)
   deriving anyclass (NFData, Serialise, JSON.ToJSON, JSON.FromJSON)
-
-instance (alg ~ alg', CryptoHash alg
-         ) => MerkleValue alg' (ByzantineEvidence alg a) where
-  merkleHash = hash
+instance (Crypto alg) => CryptoHashable (ByzantineEvidence alg a) where
+  hashStep = genericHashStep "hschain"
 
 -- | Data justifying commit
 data Commit alg a = Commit
@@ -222,12 +199,17 @@ data Commit alg a = Commit
   }
   deriving stock    (Show, Eq, Generic)
   deriving anyclass (NFData, Serialise, JSON.ToJSON, JSON.FromJSON)
+instance (Crypto alg) => CryptoHashable (Commit alg a) where
+  hashStep = genericHashStep "hschain"
 
 
 -- | Type class for data which could be put into block
 class ( Serialise a
       , Serialise (TX a)
       , Serialise (InterpreterState a)
+      , CryptoHashable a
+      , CryptoHashable (TX a)
+      , CryptoHashable (InterpreterState a)
       ) => BlockData a where
   -- | Type of transaction used in blockchain
   type TX a
@@ -297,7 +279,8 @@ data Proposal alg a = Proposal
   }
   deriving stock    (Show, Eq, Ord, Generic)
   deriving anyclass (NFData, Serialise, JSON.ToJSON, JSON.FromJSON)
-
+instance (CryptoHash alg) => CryptoHashable (Proposal alg a) where
+  hashStep = genericHashStep "hschain"
 
 -- | Type of vote. Used for type-tagging of votes
 data VoteType
@@ -318,34 +301,48 @@ data Vote (ty :: VoteType) alg a = Vote
   deriving anyclass (NFData, JSON.ToJSON, JSON.FromJSON)
 
 instance Serialise (Vote 'PreVote alg a) where
-    encode = encodeVote 0
-    decode = decodeVote 0
+  encode = encodeVote 0
+  decode = decodeVote 0
 
 instance Serialise (Vote 'PreCommit alg a) where
-    encode = encodeVote 1
-    decode = decodeVote 1
-
+  encode = encodeVote 1
+  decode = decodeVote 1
 
 encodeVote :: Word -> Vote ty alg a -> Encoding
-encodeVote tag Vote{..} =
-    encodeListLen 5 <>
-    encodeWord tag <>
-    encode voteHeight <>
-    encode voteRound <>
-    encode voteTime <>
-    encode voteBlockID
+encodeVote tag Vote{..}
+  = encodeListLen 5
+ <> encodeWord tag
+ <> encode voteHeight
+ <> encode voteRound
+ <> encode voteTime
+ <> encode voteBlockID
 
 decodeVote :: Word -> Decoder s (Vote ty alg a)
 decodeVote expectedTag = do
-    len <- decodeListLen
-    tag <- decodeWord
-    case len of
-        5 | tag == expectedTag ->
-                Vote <$> decode <*> decode <*> decode <*> decode
-          | otherwise ->
-                fail ("Invalid Vote tag, expected: " ++ show expectedTag
-                      ++ ", actual: " ++ show tag)
-        _ -> fail $ "Invalid Vote encoding"
+  len <- decodeListLen
+  tag <- decodeWord
+  case len of
+    5 | tag == expectedTag -> Vote <$> decode <*> decode <*> decode <*> decode
+      | otherwise -> fail ("Invalid Vote tag, expected: " ++ show expectedTag
+                           ++ ", actual: " ++ show tag)
+    _ -> fail $ "Invalid Vote encoding"
+
+
+instance (CryptoHash alg) => CryptoHashable (Vote 'PreVote alg a) where
+  hashStep Vote{..}
+    = hashStep (UserType "hschain" "Vote@PreVote")
+   <> hashStep voteHeight
+   <> hashStep voteRound
+   <> hashStep voteTime
+   <> hashStep voteBlockID
+
+instance (CryptoHash alg) => CryptoHashable (Vote 'PreCommit alg a) where
+  hashStep Vote{..}
+    = hashStep (UserType "hschain" "Vote@PreCommit")
+   <> hashStep voteHeight
+   <> hashStep voteRound
+   <> hashStep voteTime
+   <> hashStep voteBlockID
 
 
 ----------------------------------------------------------------
@@ -377,39 +374,42 @@ signedKeyInfo (Signed a _ _) = a
 -- | Sign value. Note that we can generate both verified and unverified
 --   values this way.
 signValue
-  :: (Serialise a, CryptoSign alg)
+  :: forall sign alg a. (Crypto alg, CryptoHashable a)
   => ValidatorIdx alg           -- ^ Key identifier
   -> PrivKey alg                -- ^ Key for signing
   -> a                          -- ^ Value to sign
   -> Signed sign alg a
 signValue key privK a
-  = Signed key
-           (signBlob privK $ toStrict $ serialise a)
-           a
+  = Signed key (signBlob privK h) a
+  where
+    Hash h = hash a :: Hash alg
 
 -- | Verify signature. It return Nothing if verification fails for any
 --   reason. Note that since @Signed@ contain only fingerprint we need
 --   to supply function for looking up public keys.
 verifySignature
-  :: (Serialise a, CryptoSign alg)
+  :: forall alg a. (Crypto alg, CryptoHashable a)
   => ValidatorSet alg
      -- ^ Set of validators corresponding to signed value
   -> Signed 'Unverified alg a
      -- ^ Value for verifying signature
   -> Maybe (Signed 'Verified alg a)
-verifySignature valSet val@(Signed idx signature a) = do
+verifySignature valSet val@(Signed idx sig a) = do
   Validator pubK _ <- validatorByIndex valSet idx
-  guard $ verifyCborSignature pubK a signature
+  guard $ verifyBlobSignature pubK h sig
   return $ coerce val
+  where
+    Hash h = hash a :: Hash alg
 
 -- | Strip verification tag
 unverifySignature :: Signed ty alg a -> Signed 'Unverified alg a
 unverifySignature = coerce
 
-instance (Serialise     a) => Serialise     (Signed 'Unverified alg a)
-instance (JSON.FromJSON a) => JSON.FromJSON (Signed 'Unverified alg a)
-instance (JSON.ToJSON   a) => JSON.ToJSON   (Signed sign        alg a)
-
+instance (Serialise      a) => Serialise      (Signed 'Unverified alg a)
+instance (JSON.FromJSON  a) => JSON.FromJSON  (Signed 'Unverified alg a)
+instance (JSON.ToJSON    a) => JSON.ToJSON    (Signed sign        alg a)
+instance (CryptoHashable a, CryptoAsymmetric alg) => CryptoHashable (Signed sign alg a) where
+  hashStep = genericHashStep "hschain"
 
 ----------------------------------------------------------------
 -- Helping application be faster.

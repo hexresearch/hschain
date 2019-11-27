@@ -173,7 +173,7 @@ peerFSM PeerChans{..} peerExchangeCh gossipCh recvCh cursor@MempoolCursor{..} = 
 -- | Start interactions with peer. At this point connection is already
 --   established and peer is registered.
 startPeer
-  :: ( MonadFork m, MonadMask m, MonadLogger m, MonadReadDB m alg a, MonadTrace m
+  :: ( MonadFork m, MonadMask m, MonadLogger m, MonadReadDB m alg a
      , BlockData a, Crypto alg)
   => NetAddr
   -> PeerChans m alg a       -- ^ Communication with main application

@@ -20,7 +20,7 @@ import HSChain.Crypto         ((:&))
 import HSChain.Crypto.Ed25519 (Ed25519)
 import HSChain.Crypto.SHA     (SHA512)
 
-import HSChain.Types.Merkle
+import HSChain.Types.Merkle.Block
 
 
 -- | Merkle tree tests

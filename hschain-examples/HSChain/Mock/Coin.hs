@@ -60,11 +60,13 @@ import System.Random   (randomRIO)
 import GHC.Generics    (Generic)
 
 import HSChain.Types.Blockchain
+import HSChain.Types.Merkle.Types
 import HSChain.Types.Validators
 import HSChain.Blockchain.Interpretation
 import HSChain.Blockchain.Internal.Engine.Types
 import HSChain.Control
 import HSChain.Crypto
+import HSChain.Crypto.Classes.Hash
 import HSChain.Crypto.Ed25519
 import HSChain.Crypto.SHA
 import HSChain.Debug.Trace
@@ -87,7 +89,7 @@ type Alg = (Ed25519 :& SHA512)
 
 newtype BData = BData [Tx]
   deriving stock    (Show,Eq,Generic)
-  deriving newtype  (NFData)
+  deriving newtype  (NFData,CryptoHashable)
   deriving anyclass (Serialise)
 
 instance BlockData BData where
@@ -102,11 +104,8 @@ data TxSend = TxSend
   { txInputs  :: [UTXO]
   , txOutputs :: [Unspent]
   }
-  deriving (Show, Eq, Ord, Generic)
-instance Serialise TxSend
-instance NFData    TxSend
-instance JSON.ToJSON   TxSend
-instance JSON.FromJSON TxSend
+  deriving stock    (Show, Eq, Ord, Generic)
+  deriving anyclass (Serialise, NFData, JSON.ToJSON, JSON.FromJSON)
 
 data Tx
   = Deposit !(PublicKey Alg) !Integer
@@ -133,7 +132,6 @@ data Unspent = Unspent !(PublicKey Alg) !Integer
   deriving stock    (Show, Eq, Ord, Generic)
   deriving anyclass (Serialise, NFData, JSON.ToJSON, JSON.FromJSON)
 
-
 -- | State of coins in program-digestible format
 --
 --   Really we'll need to keep in DB to persist it.
@@ -148,6 +146,18 @@ data CoinState = CoinState
   }
   deriving stock    (Show,   Generic)
   deriving anyclass (NFData, Serialise)
+
+instance CryptoHashable TxSend where
+  hashStep = genericHashStep "hschain"
+instance CryptoHashable Tx where
+  hashStep = genericHashStep "hschain"
+instance CryptoHashable UTXO where
+  hashStep = genericHashStep "hschain"
+instance CryptoHashable Unspent where
+  hashStep = genericHashStep "hschain"
+instance CryptoHashable CoinState where
+  hashStep = genericHashStep "hschain"
+
 
 
 processDeposit :: Tx -> CoinState -> Maybe CoinState
@@ -206,8 +216,8 @@ transitions :: BChLogic (StateT CoinState Maybe) Alg BData
 transitions = BChLogic
   { processTx     = liftSt . process (Height 1)
   , processBlock  = \b  ->
-      let h = headerHeight $ blockHeader b
-      in liftSt $ \s0 -> foldM (flip (process h)) s0 (blockTransactions $ blockData b)      
+      let h = blockHeight b
+      in liftSt $ \s0 -> foldM (flip (process h)) s0 (blockTransactions $ merkleValue $ blockData b)
   , generateBlock = \_ txs -> do
       let selectTx c []     = (c,[])
           selectTx c (t:tx) = case processTransaction t c of
@@ -299,11 +309,7 @@ mintMockCoin nodes CoinSpecification{..} =
          , genDelay          = delay
          , genMaxMempoolSize = coinMaxMempoolSize
          }
-  , genesis0 {
-      blockHeader = (blockHeader genesis0) {
-          headerStateHash = hashed $ blockchainState st
-          }
-      }
+  , genesis0 { blockStateHash = hashed $ blockchainState st }
   )
   where
     privK        = take coinWallets $ makePrivKeyStream coinWalletsSeed

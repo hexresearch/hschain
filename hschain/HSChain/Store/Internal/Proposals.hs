@@ -124,7 +124,7 @@ newSTMPropStorage = fmap (hoistPropStorageRW liftIO) $ liftIO $ do
     --
     , storePropBlock = \blk -> atomically $ do
         h <- readTVar varH
-        when (headerHeight (blockHeader blk) == h) $
+        when (blockHeight blk == h) $
           modifyTVar' varPBlk $ flip Map.adjust (blockHash blk) $ \case
             UnknownBlock -> UntestedBlock blk
             b            -> b

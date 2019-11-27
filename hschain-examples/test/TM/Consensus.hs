@@ -14,7 +14,6 @@
 --
 module TM.Consensus (tests) where
 
-import Codec.Serialise (Serialise)
 import Control.Concurrent.STM
 import Control.Monad
 import Control.Monad.IO.Class
@@ -37,6 +36,7 @@ import HSChain.Store.Internal.Query
 import HSChain.Store.Internal.Proposals
 import HSChain.Types
 import HSChain.Mock.KeyVal  (BData(..),process)
+import HSChain.Types.Merkle.Types
 
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -369,7 +369,7 @@ evidenceIsRecordedProp = withEnvironment $ do
        -- Check that block contain evidence
        bid    <- propBlockID <$> expectProp
        Just b <- lookupBID (Height 2) bid
-       case blockEvidence b of
+       case merkleValue $ blockEvidence b of
          [OutOfTurnProposal _] -> return ()
          e                     -> error $ unlines $ map show e
        ()   <- voteFor (Just bid) =<< expectPV
@@ -418,9 +418,7 @@ evidenceValidated ok ev = testConsensus k4 $ do
     expectedBID | ok        = Just
                 | otherwise = const Nothing
     b0 = mockchain !! 2
-    b  = b0 { blockEvidence = [ev]
-            , blockHeader   = (blockHeader b0) { headerEvidenceHash = hashed [ev] }
-            }
+    b  = b0 { blockEvidence = merkled [ev] }
 
 -- Proposals made out of turn
 evidenceOutOfTurn :: Bool -> ByzantineEvidence TestAlg BData
@@ -436,7 +434,7 @@ evidenceOutOfTurn ok
 
 conflictingVote,badConflictingvoteOrder,badConflictVoteSame, badConflictVoteDiffR,
   badConflictVoteDiffH,badConflictVoteSign
-  :: (Serialise (Vote ty TestAlg BData))
+  :: (CryptoHashable (Vote ty TestAlg BData))
   => (forall alg a. Signed 'Unverified alg (Vote ty alg a)
                  -> Signed 'Unverified alg (Vote ty alg a)
                  -> ByzantineEvidence alg a)
@@ -480,7 +478,7 @@ badConflictVoteSign make = make v1 v2
 
 
 conflictingVotesOK
-  :: (Serialise (Vote v TestAlg BData))
+  :: (CryptoHashable (Vote v TestAlg BData))
   => Signed 'Unverified TestAlg (Vote v TestAlg BData)
   -> Signed 'Unverified TestAlg (Vote v TestAlg BData)
   -> Bool
@@ -557,7 +555,7 @@ mkAppLogic = do
                                             , newBlockState b
                                             )
     , appValidationFun  = \b (BlockchainState st valset) -> do
-        return $ do st' <- foldM (flip process) st (let BData tx = blockData b in tx)
+        return $ do st' <- foldM (flip process) st (let BData tx = merkleValue $ blockData b in tx)
                     return $ BlockchainState st' valset
     , appMempool        = nullMempool
     , appBchState       = store
@@ -636,7 +634,7 @@ proposeBlock r k b = do
   vals <- wrap $ GetValSet return
   reply [ let Just i = indexByValidator vals (publicKey k)
           in  RxProposal $ signValue i k
-                         $ Proposal (headerHeight (blockHeader b)) r (Time 0) Nothing bid
+                         $ Proposal (blockHeight b) r (Time 0) Nothing bid
         , RxBlock b
         ]
   return bid

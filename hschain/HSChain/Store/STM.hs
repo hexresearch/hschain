@@ -19,13 +19,10 @@ import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Maybe
 import Data.Foldable
-import Text.Printf
-
-import Codec.Serialise (Serialise)
 import Data.List       (nub, sort)
 import Data.Maybe      (fromMaybe)
 import Data.Tuple      (swap)
-
+import Text.Printf
 import qualified Data.IntMap.Strict as IMap
 import           Data.IntMap.Strict   (IntMap)
 import qualified Data.Map.Strict    as Map
@@ -39,7 +36,7 @@ import HSChain.Types.Blockchain
 
 
 newMempool
-  :: forall m alg tx. (Show tx, Ord tx, Serialise tx, Crypto alg, MonadIO m)
+  :: forall m alg tx. (Show tx, Ord tx, Crypto alg, CryptoHashable tx, MonadIO m)
   => (tx -> m Bool)
   -> m (Mempool m alg tx)
 newMempool validation = do

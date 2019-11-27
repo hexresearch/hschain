@@ -1,4 +1,4 @@
-Name:           hschain-example
+Name:           hschain-examples
 Version:        0.1
 Synopsis:       Haskell reimplementation of tendermint protocol
 Description:
@@ -49,7 +49,7 @@ Executable hschain-coin-node
                      , hschain
                      , hschain-types
                      , hschain-crypto
-                     , hschain-example
+                     , hschain-examples
                      , aeson
                      , bytestring           >=0.10
                      , data-default-class
@@ -78,7 +78,7 @@ Executable hschain-db
                      , hschain
                      , hschain-types
                      , hschain-crypto
-                     , hschain-example
+                     , hschain-examples
                      , aeson
                      , cborg                >=0.2
                      , bytestring           >=0.10
@@ -103,7 +103,7 @@ Test-suite hschain-tests
                      , hschain-crypto
                      , hschain-types
                      , hschain-quickcheck
-                     , hschain-example
+                     , hschain-examples
                      , aeson
                      , async             >=2.2.1
                      , bytestring        >=0.10
@@ -161,7 +161,7 @@ Benchmark hschain-bench
                      , cryptonite
                      --
                      , hschain
-                     , hschain-example
+                     , hschain-examples
                      , hschain-crypto
                      , hschain-types
   Other-modules:       ValidatorSetsBench

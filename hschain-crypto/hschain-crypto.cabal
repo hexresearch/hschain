@@ -29,15 +29,18 @@ Library
   Default-Language:    Haskell2010
   Build-Depends:       base              >=4.9 && <5
                      , aeson
+                     , containers
                      , base58-bytestring >=0.1
                      , bytestring        >=0.10
                      , deepseq           >=1.4
                      , serialise         >=0.2
                      , text              >=1
+                     , primitive         >=0.6.2
+                     , vector
                      , SHA               >=1.6 && <2
                      , Lazy-Pbkdf2       >=3.1
   if impl(ghcjs)
-    hs-source-dirs: ghcjs .
+    hs-source-dirs: ghcjs pure .
     Build-depends:     ghcjs-prim
                      , ghcjs-base
                      , SHA               >=1.6 && <2
@@ -45,7 +48,7 @@ Library
                   HSChain.Crypto.NaCl
   else
     if flag(libsodium)
-      hs-source-dirs:  sodium .
+      hs-source-dirs:  sodium pure .
       extra-libraries: sodium
       Build-Depends: SHA               >=1.6 && <2
                    , memory            >=0.14.14
@@ -59,6 +62,7 @@ Library
   Exposed-modules:
                   HSChain.Crypto
                   HSChain.Crypto.Classes
+                  HSChain.Crypto.Classes.Hash
                   HSChain.Crypto.Curve25519
                   HSChain.Crypto.Ed25519
                   HSChain.Crypto.SHA

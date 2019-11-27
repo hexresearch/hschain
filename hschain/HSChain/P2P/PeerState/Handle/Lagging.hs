@@ -33,7 +33,7 @@ import qualified Data.IntSet        as ISet
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Map.Strict    as Map
 
-handler :: Handler LaggingState Event alg a m
+handler :: CryptoHashable a => Handler LaggingState Event alg a m
 handler =
   handlerGeneric
    handlerGossipMsg
@@ -112,7 +112,7 @@ advanceOurHeight :: AdvanceOurHeight LaggingState alg a m
 advanceOurHeight = const currentState
 ----------------------------------------------------------------
 
-handlerVotesTimeout :: TimeoutHandler LaggingState alg a m
+handlerVotesTimeout :: CryptoHashable a => TimeoutHandler LaggingState alg a m
 handlerVotesTimeout = do
   bchH      <- queryRO blockchainHeight
   (FullStep peerH _ _) <- use lagPeerStep
@@ -145,7 +145,7 @@ handlerMempoolTimeout :: TimeoutHandler LaggingState alg a m
 handlerMempoolTimeout = currentState
 ----------------------------------------------------------------
 
-handlerBlocksTimeout :: TimeoutHandler LaggingState alg a m
+handlerBlocksTimeout :: CryptoHashable a => TimeoutHandler LaggingState alg a m
 handlerBlocksTimeout = do
   hasProp    <- use lagPeerHasProposal
   hasNoBlock <- not <$> use lagPeerHasBlock

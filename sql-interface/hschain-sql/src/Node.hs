@@ -58,7 +58,8 @@ import Codec.Serialise      (Serialise,serialise)
 import HSChain.Control
 import HSChain.Store
 import HSChain.Monitoring
-import HSChain.Crypto         (PublicKey, (:&))
+import HSChain.Crypto         (PublicKey, CryptoHashable(..), (:&))
+import HSChain.Crypto.Classes.Hash (genericHashStep)
 import HSChain.Crypto.Ed25519
 import HSChain.Crypto.SHA
 import HSChain.P2P            (generatePeerId)
@@ -92,7 +93,7 @@ type Alg = (Ed25519 :& SHA512)
 
 newtype BData = BData [Transaction]
   deriving stock    (Show, Eq, Generic)
-  deriving newtype  (NFData)
+  deriving newtype  (NFData, CryptoHashable)
   deriving anyclass (Serialise)
 
 instance BlockData BData where
@@ -106,7 +107,7 @@ data Transaction = Transaction
   , transactionArguments  :: Map.Map String String
   }
   deriving stock    (Show, Eq, Generic)
-  deriving anyclass  (NFData)
+  deriving anyclass (NFData)
   deriving anyclass (Serialise)
 
 data SQLiteState = SQLiteState
@@ -114,4 +115,7 @@ data SQLiteState = SQLiteState
   deriving anyclass (NFData)
   deriving anyclass (Serialise)
 
-
+instance CryptoHashable Transaction where
+  hashStep = genericHashStep "hschain-sql"
+instance CryptoHashable SQLiteState where
+  hashStep = genericHashStep "hschain-sql"

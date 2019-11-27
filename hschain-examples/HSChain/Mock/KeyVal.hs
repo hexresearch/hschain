@@ -1,14 +1,15 @@
-{-# LANGUAGE DataKinds          #-}
-{-# LANGUAGE DeriveAnyClass     #-}
-{-# LANGUAGE DeriveGeneric      #-}
-{-# LANGUAGE DerivingStrategies #-}
-{-# LANGUAGE FlexibleContexts   #-}
-{-# LANGUAGE LambdaCase         #-}
-{-# LANGUAGE OverloadedStrings  #-}
-{-# LANGUAGE RecordWildCards    #-}
-{-# LANGUAGE TupleSections      #-}
-{-# LANGUAGE TypeFamilies       #-}
-{-# LANGUAGE TypeOperators      #-}
+{-# LANGUAGE DataKinds                  #-}
+{-# LANGUAGE DeriveAnyClass             #-}
+{-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE DerivingStrategies         #-}
+{-# LANGUAGE FlexibleContexts           #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE LambdaCase                 #-}
+{-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE RecordWildCards            #-}
+{-# LANGUAGE TupleSections              #-}
+{-# LANGUAGE TypeFamilies               #-}
+{-# LANGUAGE TypeOperators              #-}
 -- |
 module HSChain.Mock.KeyVal (
     genesisBlock
@@ -37,6 +38,7 @@ import GHC.Generics    (Generic)
 
 import HSChain.Blockchain.Internal.Engine.Types
 import HSChain.Types.Blockchain
+import HSChain.Types.Merkle.Types
 import HSChain.Control
 import HSChain.Crypto
 import HSChain.Crypto.Ed25519
@@ -64,6 +66,8 @@ type    BState = Map String Int
 newtype BData  = BData [(String,Int)]
   deriving stock    (Show,Eq,Generic)
   deriving anyclass (Serialise)
+  deriving newtype  (CryptoHashable)
+
 
 instance BlockData BData where
   type TX               BData = Tx
@@ -102,7 +106,7 @@ interpretSpec genesis p cb = do
   --
   let logic = AppLogic
         { appValidationFun    = \b (BlockchainState st valset) -> do
-            return $ do st' <- foldM (flip process) st (let BData tx = blockData b in tx)
+            return $ do st' <- foldM (flip process) st (let BData tx = merkleValue $ blockData b in tx)
                         return $ BlockchainState st' valset
         , appBlockGenerator  = \b _ -> do
             let BlockchainState st valset = newBlockState b

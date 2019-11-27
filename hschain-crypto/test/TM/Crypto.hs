@@ -53,7 +53,7 @@ testsEd25519 = testGroup "ed25519"
   $ do let k :: PrivKey Ed25519
            k = read "\"Cn6mra73QDNPkyf56Cfoxh9y9HDS8MREPw4GNcCxQb5Q\""
        read "\"5oxScYXwuzcCQRZ8QtUDzhxNdMx2g1nMabd4uPFPDdzi\"" @=? publicKey k
-  --
+
   , testCase "Fingerprint derivation is correct"
   $ do let k :: PrivKey Ed25519
            k = read "\"Cn6mra73QDNPkyf56Cfoxh9y9HDS8MREPw4GNcCxQb5Q\""

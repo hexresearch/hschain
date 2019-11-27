@@ -52,13 +52,13 @@ Library
       Build-Depends: sqlite-simple
   Exposed-modules:
                   HSChain.Types
+                  HSChain.Types.BFTTime
+                  HSChain.Types.Blockchain
+                  HSChain.Types.Merkle.Block
+                  HSChain.Types.Merkle.Tree
+                  HSChain.Types.Merkle.Types
                   HSChain.Types.Network
                   HSChain.Types.Validators
-                  HSChain.Types.Blockchain
-                  HSChain.Types.Merkle
-                  HSChain.Types.BFTTime
-                  HSChain.Types.MerkleBlock
-                  HSChain.Types.Merklized
 
 -- Test suite
 Test-suite hschain-types-tests

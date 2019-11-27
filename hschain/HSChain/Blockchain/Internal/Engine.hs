@@ -37,6 +37,7 @@ import HSChain.Blockchain.Internal.Engine.Types
 import HSChain.Blockchain.Internal.Types
 import HSChain.Blockchain.Internal.Algorithm
 import HSChain.Types.Blockchain
+import HSChain.Types.Merkle.Types
 import HSChain.Control (throwNothing,throwNothingM,iterateM,atomicallyIO)
 import HSChain.Crypto
 import HSChain.Exceptions
@@ -64,7 +65,7 @@ newAppChans ConsensusCfg{incomingQueueSize = sz} = do
 
 rewindBlockchainState
   :: ( MonadReadDB m alg a, MonadIO m, MonadThrow m
-     , Crypto alg, Serialise a)
+     , Crypto alg, Serialise a, CryptoHashable a)
   => AppLogic m alg a
   -> m ()
 rewindBlockchainState AppLogic{appBchState,appValidationFun} = do
@@ -148,15 +149,15 @@ decideNewBlock config appValidatorKey appLogic@AppLogic{..} appCall@AppCallbacks
         >-> msgHandlerLoop hParam appLogic appCh tm0
         >-> sink
   -- Update metrics
-  do let nTx = maybe 0 (length . commitPrecommits) (blockLastCommit block)
-         h   = headerHeight $ blockHeader block
-     logger InfoS "Actual commit" $ LogBlockInfo h (blockData block) nTx
+  do let nTx = maybe 0 (length . commitPrecommits . merkleValue) (blockPrevCommit block)
+         h   = blockHeight block
+     logger InfoS "Actual commit" $ LogBlockInfo h (merkleValue $ blockData block) nTx
      usingCounter prometheusNTx nTx
   -- We have decided which block we want to commit so let commit it
   mustQueryRW $ do
     storeCommit cmt block (bChValidatorSet bchSt)
-    mapM_ storeBlockchainEvidence $ blockEvidence block
-  bchStoreStore appBchState (headerHeight $ blockHeader block) $ blockchainState bchSt
+    mapM_ storeBlockchainEvidence $ merkleValue $ blockEvidence block
+  bchStoreStore appBchState (blockHeight block) $ blockchainState bchSt
   appCommitCallback block
   return cmt
 
@@ -290,7 +291,7 @@ verifyMessageSignature oldValSet valSet height = forever $ do
 
 handleEngineMessage
   :: ( MonadIO m, MonadThrow m, MonadTMMonitoring m, MonadDB m alg a, MonadLogger m
-     , Crypto alg, Serialise a)
+     , Crypto alg)
   => HeightParameters n alg a
   -> ConsensusCfg
   -> AppChans m alg a
@@ -433,8 +434,8 @@ makeHeightParameters appValidatorKey logic@AppLogic{..} AppCallbacks{appCanCreat
             st              <- throwNothingM BlockchainStateUnavalable
                              $ bchStoreRetrieve appBchState bchH
             mvalSet'        <- appValidationFun b (BlockchainState st valSet)
-            evidenceState   <- queryRO $ mapM evidenceRecordedState (blockEvidence b)
-            evidenceOK      <- mapM (evidenceCorrect logic) (blockEvidence b)
+            evidenceState   <- queryRO $ mapM evidenceRecordedState (merkleValue $ blockEvidence b)
+            evidenceOK      <- mapM (evidenceCorrect logic) (merkleValue $ blockEvidence b)
             if | not (null inconsistencies) -> do
                -- Block is not internally consistent
                    logger ErrorS "Proposed block has inconsistencies"
@@ -445,14 +446,14 @@ makeHeightParameters appValidatorKey logic@AppLogic{..} AppCallbacks{appCanCreat
                -- We don't allow evidence which was already
                -- submitted. Neither we allow duplicate evidence
                | any (==Just True) evidenceState          -> invalid
-               | nub (blockEvidence b) /= blockEvidence b -> invalid
+               | nub (merkleValue (blockEvidence b)) /= merkleValue (blockEvidence b) -> invalid
                | any not evidenceOK                       -> invalid
                -- Block is correct and validators change is correct as
                -- well
                | Just bst <- mvalSet'
-               , headerStateHash (blockHeader b) == hashed (blockchainState bst)
+               , blockStateHash b == hashed (blockchainState bst)
                , validatorSetSize (bChValidatorSet bst) > 0
-               , blockValChange b == validatorsDifference valSet (bChValidatorSet bst)
+               , merkleValue (blockValChange b) == validatorsDifference valSet (bChValidatorSet bst)
                  -> do setPropValidation propStorage bid $ Just bst
                        return GoodProposal
                | otherwise
@@ -486,20 +487,14 @@ makeHeightParameters appValidatorKey logic@AppLogic{..} AppCallbacks{appCanCreat
             -- Assemble proper block
             let valCh = validatorsDifference valSet (bChValidatorSet bst)
                 block = Block
-                  { blockHeader = Header
-                      { headerHeight         = currentH
-                      , headerLastBlockID    = Just lastBID
-                      , headerValidatorsHash = hashed valSet
-                      , headerDataHash       = hashed bData
-                      , headerValChangeHash  = hashed valCh
-                      , headerLastCommitHash = hashed commit
-                      , headerEvidenceHash   = hashed evidence
-                      , headerStateHash      = hashed $ blockchainState bst
-                      }
-                  , blockData       = bData
-                  , blockValChange  = valCh
-                  , blockLastCommit = commit
-                  , blockEvidence   = evidence
+                  { blockHeight         = currentH
+                  , blockPrevBlockID    = Just lastBID
+                  , blockValidatorsHash = hashed valSet
+                  , blockValChange      = merkled valCh
+                  , blockPrevCommit     = merkled <$> commit
+                  , blockEvidence       = merkled evidence
+                  , blockData           = merkled bData
+                  , blockStateHash      = hashed $ blockchainState bst
                   }
             mustQueryRW $ writeBlockToWAL r block
             return (block, bst)

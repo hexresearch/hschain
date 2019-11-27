@@ -94,6 +94,7 @@ import qualified Data.Aeson.TH      as JSON
 import GHC.Generics              (Generic)
 
 import HSChain.Types.Blockchain
+import HSChain.Types.Merkle.Types
 import HSChain.Blockchain.Internal.Types
 import HSChain.Control                (MonadFork)
 import HSChain.Crypto
@@ -138,7 +139,7 @@ instance MonadIO m => MonadDB (DBT 'RW alg a m) alg a where
 -- | Helper function which opens database, initializes it and ensures
 --   that it's closed on function exit
 withDatabase
-  :: (MonadIO m, MonadMask m, Crypto alg, Serialise a, Eq a, Show a)
+  :: (MonadIO m, MonadMask m)
   => FilePath         -- ^ Path to the database
   -> (Connection 'RW alg a -> m x) -> m x
 withDatabase path cont
@@ -146,7 +147,7 @@ withDatabase path cont
 
 -- | Initialize all required tables in database.
 initDatabase
-  :: (MonadIO m, Crypto alg, Serialise a, Eq a, Show a)
+  :: (MonadIO m)
   => Connection 'RW alg a  -- ^ Opened connection to database
   -> m ()
 initDatabase c = do
@@ -320,7 +321,7 @@ data BlockchainInconsistency
 
 -- | check storage against all consistency invariants
 checkStorage
-  :: (MonadReadDB m alg a, MonadIO m, Crypto alg, Serialise a)
+  :: (MonadReadDB m alg a, MonadIO m, Crypto alg, Serialise a, CryptoHashable a)
   => m [BlockchainInconsistency]
 checkStorage = queryRO $ execWriterT $ do
   maxH         <- lift $ blockchainHeight
@@ -348,7 +349,7 @@ checkStorage = queryRO $ execWriterT $ do
 -- | Check that block proposed at given height is correct in sense all
 --   blockchain invariants hold
 checkProposedBlock
-  :: (MonadReadDB m alg a, MonadIO m, Crypto alg, Serialise a)
+  :: (MonadReadDB m alg a, MonadIO m, Crypto alg)
   => Height
   -> Block alg a
   -> m [BlockchainInconsistency]
@@ -367,25 +368,24 @@ checkProposedBlock h block = queryRO $ do
 
 -- | Check invariants for genesis block
 genesisBlockInvariant
-  :: (Monad m, Crypto alg, Serialise a)
+  :: (Monad m)
   => Block alg a
   -> WriterT [BlockchainInconsistency] m ()
-genesisBlockInvariant block@Block{blockHeader = Header{..}, ..} = do
+genesisBlockInvariant Block{..} = do
   -- It must have height 0
-  (headerHeight == Height 0)
+  (blockHeight == Height 0)
     `orElse` BlockHeightMismatch (Height 0)
   -- Last commit it must be Nothing
-  isNothing blockLastCommit
+  isNothing blockPrevCommit
     `orElse` GenesisHasLastCommit
   -- Last block must be Nothing
-  isNothing headerLastBlockID
+  isNothing blockPrevBlockID
     `orElse` GenesisHasHeaderLastBlockID
-  --
-  headerHashesInvariant block
+
 
 -- | Check invariant for block at height > 0
 blockInvariant
-  :: (Monad m, Crypto alg, Serialise a)
+  :: (Monad m, Crypto alg)
   => Height
   -- ^ Height of block
   -> BlockID alg a
@@ -397,22 +397,19 @@ blockInvariant
   -> WriterT [BlockchainInconsistency] m ()
 blockInvariant h _ _ _
   | h <= Height 0 = error "blockInvariant called with invalid parameters"
-blockInvariant h prevBID (mprevValSet, valSet) block@Block{blockHeader=Header{..}, ..} = do
+blockInvariant h prevBID (mprevValSet, valSet) Block{..} = do
   -- Block at height H has H in its header
-  (headerHeight == h)
+  (blockHeight == h)
     `orElse` BlockHeightMismatch h
   -- Previous block ID in header must match actual BID of previous
   -- block
-  (headerLastBlockID == Just prevBID)
+  (blockPrevBlockID == Just prevBID)
     `orElse` BlockInvalidPrevBID h
   -- Validators' hash does not match correct one
-  (headerValidatorsHash == hashed valSet)
+  (blockValidatorsHash == hashed valSet)
     `orElse` BlockValidatorHashMismatch h
-  -- Hashes of block fields are correct
-  headerHashesInvariant block
-  -- Block time must be equal to commit time
   -- Validate commit of previous block
-  case (headerHeight, blockLastCommit) of
+  case (blockHeight, blockPrevCommit) of
     -- Last commit at H=1 must be Nothing
     (Height 1, Nothing) -> return ()
     (Height 1, Just _ ) -> tell [FirstBlockHasLastCommit]
@@ -420,23 +417,9 @@ blockInvariant h prevBID (mprevValSet, valSet) block@Block{blockHeader=Header{..
     (_, Nothing       ) -> tell [BlockMissingLastCommit h]
     (_, Just commit   )
       | Just prevValSet <- mprevValSet
-        -> commitInvariant (InvalidCommit h) (pred h) prevBID prevValSet commit
+        -> commitInvariant (InvalidCommit h) (pred h) prevBID prevValSet (merkleValue commit)
       | otherwise
         -> tell [InvalidCommit h "Cannot validate commit"]
-
-headerHashesInvariant
-  :: (Monad m, Crypto alg, Serialise a)
-  => Block alg a
-  -> WriterT [BlockchainInconsistency] m ()
-headerHashesInvariant Block{blockHeader=Header{..}, ..} = do
-  (headerDataHash == hashed blockData)
-    `orElse` HeaderHashMismatch headerHeight "Data"
-  (headerValChangeHash == hashed blockValChange)
-    `orElse` HeaderHashMismatch headerHeight "Validator change"
-  (headerLastCommitHash == hashed blockLastCommit)
-    `orElse` HeaderHashMismatch headerHeight "Commit hash"
-  (headerEvidenceHash == hashed blockEvidence)
-    `orElse` HeaderHashMismatch headerHeight "Evidence"
 
 commitInvariant
   :: (Monad m, Crypto alg)
