@@ -100,7 +100,7 @@ instance NFData (PrivKey Ed25519) where
   rnf x = x `seq` ()
 deriving instance NFData (PublicKey Ed25519)
 
-instance (Ord (PrivKey Ed25519)) => ByteRepr (PrivKey Ed25519) where
+instance ByteRepr (PrivKey Ed25519) where
   decodeFromBS bs
     | BS.length bs == 32 = Just $! unsafePerformIO $ do
         (pub,priv) <-
@@ -113,7 +113,7 @@ instance (Ord (PrivKey Ed25519)) => ByteRepr (PrivKey Ed25519) where
   encodeToBS (PrivKey bs _)
     = BS.take 32 $ Arr.convert bs
 
-instance (Ord (PublicKey Ed25519)) => ByteRepr (PublicKey Ed25519) where
+instance ByteRepr (PublicKey Ed25519) where
   decodeFromBS bs
     | BS.length bs == 32 = Just $ PublicKey bs
     | otherwise          = Nothing

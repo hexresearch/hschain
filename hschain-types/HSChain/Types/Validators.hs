@@ -288,7 +288,7 @@ changeValidators (ValidatorChange delta) (ValidatorSet vset _ _)
 ----------------------------------------------------------------
 
 -- | Get validator index by point inside the constructed interval based on its voting power
-indexByIntervalPoint :: (Eq (PublicKey alg)) => ValidatorSet alg -> Integer -> Maybe (ValidatorIdx alg)
+indexByIntervalPoint :: ValidatorSet alg -> Integer -> Maybe (ValidatorIdx alg)
 indexByIntervalPoint ValidatorSet{..} x
   | x >= vsTotPower = Nothing
   | otherwise       = snd <$> Map.lookupLE x vsVotingIntervals

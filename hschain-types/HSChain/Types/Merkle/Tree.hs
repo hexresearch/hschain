@@ -151,7 +151,7 @@ checkMerkleProof rootH (MerkleProof a path)
 
 -- | Create proof of inclusion. Implementation is rather inefficient
 createMerkleProof
-  :: (CryptoHash alg, CryptoHashable a, Eq a)
+  :: (Eq a)
   => MerkleBlockTree IdNode alg a
   -> a
   -> Maybe (MerkleProof alg a)

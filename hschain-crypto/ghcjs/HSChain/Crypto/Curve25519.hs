@@ -85,7 +85,7 @@ instance NFData (PublicKey Curve25519) where
   rnf k = k `seq` ()
 
 
-instance (Ord (PrivKey Curve25519)) => ByteRepr (PrivKey Curve25519) where
+instance ByteRepr (PrivKey Curve25519) where
   decodeFromBS bs = do
     keypair <- nonNullJs $ js_fromSecretKey $ bsToArray bs
     return PrivKey { pkBS  = bs
@@ -94,13 +94,13 @@ instance (Ord (PrivKey Curve25519)) => ByteRepr (PrivKey Curve25519) where
                    }
   encodeToBS = pkBS
 
-instance (Ord (PublicKey Curve25519)) => ByteRepr (PublicKey Curve25519) where
+instance ByteRepr (PublicKey Curve25519) where
   decodeFromBS        bs = do
     guard $ BS.length bs == 32
     return $! PublicKey $ bsToArray bs
   encodeToBS (PublicKey k) = arrayToBs k
 
-instance (Ord (PublicKey Curve25519)) => ByteRepr (DHSecret Curve25519) where
+instance ByteRepr (DHSecret Curve25519) where
   decodeFromBS        bs = do
     guard $ BS.length bs == 32
     return $! DHSecret $ bsToArray bs

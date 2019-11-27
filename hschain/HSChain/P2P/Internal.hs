@@ -173,7 +173,7 @@ peerFSM PeerChans{..} peerExchangeCh gossipCh recvCh cursor@MempoolCursor{..} = 
 -- | Start interactions with peer. At this point connection is already
 --   established and peer is registered.
 startPeer
-  :: ( MonadFork m, MonadMask m, MonadLogger m, MonadReadDB m alg a, MonadTrace m
+  :: ( MonadFork m, MonadMask m, MonadLogger m, MonadReadDB m alg a
      , BlockData a, Crypto alg)
   => NetAddr
   -> PeerChans m alg a       -- ^ Communication with main application
@@ -240,7 +240,7 @@ peerGossipAnnounce PeerChans{..} gossipCh = logOnException $
 -- | Routine for actually sending data to peers
 peerSend
   :: ( MonadReadDB m alg a, MonadMask m, MonadIO m,  MonadLogger m
-     , Crypto alg, BlockData a, CryptoHashable a)
+     , Crypto alg, BlockData a)
   => PeerChans m alg a
   -> TBQueue (GossipMsg alg a)
   -> P2PConnection

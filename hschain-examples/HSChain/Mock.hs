@@ -17,7 +17,6 @@ import System.FilePath  (takeDirectory)
 
 import HSChain.Blockchain.Internal.Engine.Types
 import HSChain.Control
-import HSChain.Crypto
 import HSChain.Logger
 import HSChain.Mock.KeyList
 import HSChain.Mock.Types
@@ -49,8 +48,7 @@ allocateMockNetAddrs net topo nodes =
 
 -- | Allocate resources for node
 allocNode
-  :: ( MonadIO m, MonadMask m
-     , Crypto alg, BlockData a, Eq a, Show a, Has x NodeSpec)
+  :: ( MonadIO m, MonadMask m, Has x NodeSpec)
   => x                          -- ^ Node parameters
   -> ContT r m (Connection 'RW alg a, LogEnv)
 allocNode x = do

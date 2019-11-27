@@ -96,7 +96,7 @@ runApplication
      , MonadMask m
      , MonadLogger m
      , MonadTMMonitoring m
-     , Crypto alg, BlockData a, CryptoHashable a, Eq a, Show a)
+     , Crypto alg, BlockData a, Eq a, Show a)
   => ConsensusCfg
      -- ^ Configuration
   -> Maybe (PrivValidator alg)
@@ -127,7 +127,7 @@ decideNewBlock
      , MonadMask m
      , MonadLogger m
      , MonadTMMonitoring m
-     , Crypto alg, BlockData a, CryptoHashable a)
+     , Crypto alg, BlockData a)
   => ConsensusCfg
   -> Maybe (PrivValidator alg)
   -> AppLogic     m alg a
@@ -165,7 +165,7 @@ decideNewBlock config appValidatorKey appLogic@AppLogic{..} appCall@AppCallbacks
 -- messages from channels.
 rxMessageSource
   :: ( MonadIO m, MonadDB m alg a, MonadLogger m, MonadThrow m
-     , Crypto alg, BlockData a, CryptoHashable a)
+     , Crypto alg, BlockData a)
   => HeightParameters m alg a
   -> AppChans m alg a
   -> Producer (MessageRx 'Verified alg a) m r
@@ -291,7 +291,7 @@ verifyMessageSignature oldValSet valSet height = forever $ do
 
 handleEngineMessage
   :: ( MonadIO m, MonadThrow m, MonadTMMonitoring m, MonadDB m alg a, MonadLogger m
-     , Crypto alg, Serialise a)
+     , Crypto alg)
   => HeightParameters n alg a
   -> ConsensusCfg
   -> AppChans m alg a

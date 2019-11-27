@@ -79,7 +79,7 @@ instance NFData (PrivKey Ed25519) where
 instance NFData (PublicKey Ed25519) where
   rnf k = k `seq` ()
 
-instance (Ord (PrivKey Ed25519)) => ByteRepr (PrivKey Ed25519) where
+instance ByteRepr (PrivKey Ed25519) where
   decodeFromBS        bs = do
     keypair <- nonNullJs $ js_nacl_sign_fromSeed $ bsToArray bs
     return PrivKey { pkBS  = bs
@@ -88,7 +88,7 @@ instance (Ord (PrivKey Ed25519)) => ByteRepr (PrivKey Ed25519) where
                    }
   encodeToBS = pkBS
 
-instance (Ord (PublicKey Ed25519)) => ByteRepr (PublicKey Ed25519) where
+instance ByteRepr (PublicKey Ed25519) where
   decodeFromBS        bs = do
     guard $ BS.length bs == 32
     return $! PublicKey $ bsToArray bs
