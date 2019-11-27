@@ -68,6 +68,8 @@ import HSChain.Debug.Trace
 
 import qualified HSChain.P2P.Types as P2PT
 
+import Network.Socket
+
 -- |Read config, get secret key, run node...
 runConsensusNode :: String -> String -> IO ()
 runConsensusNode configPath envVar = do
@@ -85,12 +87,12 @@ main = do
       exitFailure
 
 ----------------------------------------------------------------
--- Basic coin logic
+-- Basic logic
 ----------------------------------------------------------------
 
 type Alg = (Ed25519 :& SHA512)
 
-newtype BData = BData [Transaction]
+newtype BData = BData [Transaction] [Update]
   deriving stock    (Show, Eq, Generic)
   deriving newtype  (NFData)
   deriving anyclass (Serialise)
@@ -106,12 +108,24 @@ data Transaction = Transaction
   , transactionArguments  :: Map.Map String String
   }
   deriving stock    (Show, Eq, Generic)
-  deriving anyclass  (NFData)
+  deriving anyclass (NFData)
+  deriving anyclass (Serialise)
+
+data Update = Update
+  { updateRequest    :: String
+  }
+  deriving stock    (Show, Eq, Generic)
+  deriving anyclass (NFData)
   deriving anyclass (Serialise)
 
 data SQLiteState = SQLiteState
   deriving stock    (Show, Eq, Generic)
   deriving anyclass (NFData)
   deriving anyclass (Serialise)
+
+
+----------------------------------------------------------------
+-- ODBC extension API interface
+----------------------------------------------------------------
 
 
