@@ -37,6 +37,7 @@ let
     bls-signatures = callInternal hsPkgs "bls-signatures" ../bls-signatures {} "";
     hschain-crypto = callInternal hsPkgs "hschain" ../hschain-crypto {}
       (if useSodium then "-flibsodium" else "-f-libsodium");
+    hschain-crypto-bls = callInternal hsPkgs "hschain" ../hschain-crypto-bls    {} "";
     hschain-quickcheck = callInternal hsPkgs "hschain" ../hschain-quickcheck    {} "";
     hschain-types      = callInternal hsPkgs "hschain" ../hschain-types         {} "";
     hschain            = callInternal hsPkgs "hschain" ../hschain               {} "";
@@ -60,6 +61,7 @@ let
       serialise-cddl
       bls-signatures
       hschain-crypto
+      hschain-crypto-bls
       hschain-types
       hschain-quickcheck
       hschain

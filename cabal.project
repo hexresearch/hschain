@@ -2,6 +2,7 @@ packages:
          bls-signatures
          hschain
          hschain-crypto
+         hschain-crypto-bls
          hschain-types
          hschain-quickcheck
          hschain-examples

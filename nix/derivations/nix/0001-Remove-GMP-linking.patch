@@ -1,3 +1,12 @@
+From 6bcfc2c7c08b06adca9c0a8a6352a2cdb9e60836 Mon Sep 17 00:00:00 2001
+From: Alexey Khudyakov <alexey.skladnoy@gmail.com>
+Date: Wed, 27 Nov 2019 12:05:16 +0300
+Subject: [PATCH 1/2] Remove GMP linking
+
+---
+ src/CMakeLists.txt | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
 diff --git a/src/CMakeLists.txt b/src/CMakeLists.txt
 index 01d499f..2f035de 100644
 --- a/src/CMakeLists.txt
@@ -15,3 +24,6 @@ index 01d499f..2f035de 100644
  if (SODIUM_FOUND)
    list(APPEND LIBRARIES_TO_COMBINE COMMAND mkdir ${OPREFIX}sodium || true && cd ${OPREFIX}sodium &&  ${CMAKE_AR} -x ${SODIUM_NAME})
  endif()
+-- 
+2.23.0
+
