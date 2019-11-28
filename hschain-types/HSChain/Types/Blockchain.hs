@@ -146,7 +146,7 @@ data GBlock f alg a = Block
     -- ^ Height of a block
   , blockPrevBlockID      :: !(Maybe (BlockID alg a))
     -- ^ Hash of previous block. Nothing iff block is a genesis block
-  , blockValidatorsHash   :: !(Hashed alg (ValidatorSet alg))
+  , blockValidators       :: !(Hashed alg (ValidatorSet alg))
     -- ^ Set of validators used to create this block.
   , blockValChange        :: !(MerkleNode f alg (ValidatorChange alg))
     -- ^ Set of validators for the next block.

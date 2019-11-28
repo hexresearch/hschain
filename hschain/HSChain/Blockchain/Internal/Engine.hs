@@ -487,14 +487,14 @@ makeHeightParameters appValidatorKey logic@AppLogic{..} AppCallbacks{appCanCreat
             -- Assemble proper block
             let valCh = validatorsDifference valSet (bChValidatorSet bst)
                 block = Block
-                  { blockHeight         = currentH
-                  , blockPrevBlockID    = Just lastBID
-                  , blockValidatorsHash = hashed valSet
-                  , blockValChange      = merkled valCh
-                  , blockPrevCommit     = merkled <$> commit
-                  , blockEvidence       = merkled evidence
-                  , blockData           = merkled bData
-                  , blockStateHash      = hashed $ blockchainState bst
+                  { blockHeight      = currentH
+                  , blockPrevBlockID = Just lastBID
+                  , blockValidators  = hashed valSet
+                  , blockValChange   = merkled valCh
+                  , blockPrevCommit  = merkled <$> commit
+                  , blockEvidence    = merkled evidence
+                  , blockData        = merkled bData
+                  , blockStateHash   = hashed $ blockchainState bst
                   }
             mustQueryRW $ writeBlockToWAL r block
             return (block, bst)

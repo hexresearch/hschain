@@ -406,7 +406,7 @@ blockInvariant h prevBID (mprevValSet, valSet) Block{..} = do
   (blockPrevBlockID == Just prevBID)
     `orElse` BlockInvalidPrevBID h
   -- Validators' hash does not match correct one
-  (blockValidatorsHash == hashed valSet)
+  (blockValidators == hashed valSet)
     `orElse` BlockValidatorHashMismatch h
   -- Validate commit of previous block
   case (blockHeight, blockPrevCommit) of
