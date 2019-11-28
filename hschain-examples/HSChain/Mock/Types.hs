@@ -73,14 +73,14 @@ makeGenesis
   -> ValidatorSet alg           -- ^ Set of validators for block 1
   -> Block alg a
 makeGenesis dat stateHash valSet = Block
-  { blockHeight         = Height 0
-  , blockPrevBlockID    = Nothing
-  , blockValidatorsHash = hashed emptyValidatorSet
-  , blockData           = merkled dat
-  , blockValChange      = merkled delta
-  , blockPrevCommit     = Nothing
-  , blockEvidence       = merkled []
-  , blockStateHash      = stateHash
+  { blockHeight      = Height 0
+  , blockPrevBlockID = Nothing
+  , blockValidators  = hashed emptyValidatorSet
+  , blockData        = merkled dat
+  , blockValChange   = merkled delta
+  , blockPrevCommit  = Nothing
+  , blockEvidence    = merkled []
+  , blockStateHash   = stateHash
   }
   where
     delta = validatorsDifference emptyValidatorSet valSet

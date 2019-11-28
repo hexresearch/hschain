@@ -33,14 +33,14 @@ benchmarks
         nf (\b -> runIdentity
                 $ interpretBCh runner state
                 $ processBlock transitions
-                ( Block { blockHeight         = Height 0
-                        , blockPrevBlockID    = Nothing
-                        , blockValidatorsHash = hashed emptyValidatorSet
-                        , blockData           = merkled b
-                        , blockValChange      = merkled mempty
-                        , blockPrevCommit     = Nothing
-                        , blockEvidence       = merkled []
-                        , blockStateHash      = Hashed (Hash "")
+                ( Block { blockHeight      = Height 0
+                        , blockPrevBlockID = Nothing
+                        , blockValidators  = hashed emptyValidatorSet
+                        , blockData        = merkled b
+                        , blockValChange   = merkled mempty
+                        , blockPrevCommit  = Nothing
+                        , blockEvidence    = merkled []
+                        , blockStateHash   = Hashed (Hash "")
                         }
                 )
            ) (bdata :: BData)
