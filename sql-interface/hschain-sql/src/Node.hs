@@ -18,7 +18,7 @@ import Control.Monad.Trans.Class
 import Control.Monad.Trans.Reader
 import Control.Monad.Trans.Cont
 
-import Database.SQLite.Simple
+import qualified Database.SQLite.Simple as SQLite
 
 import Data.Aeson             (FromJSON)
 import Data.Monoid            ((<>))
@@ -42,7 +42,7 @@ import qualified Network.Wai.Handler.Warp as Warp
 
 import HSChain.Blockchain.Internal.Engine.Types
 import HSChain.Logger
-import HSChain.Mock.Types
+--import HSChain.Mock.Types
 import HSChain.Run
 
 import qualified Data.Aeson as JSON
@@ -73,6 +73,8 @@ import qualified HSChain.P2P.Types as P2PT
 
 import Network.Socket
 
+import System.IO
+
 -- |Read config, get secret key, run node...
 runConsensusNode :: String -> String -> IO ()
 runConsensusNode configPath envVar = do
@@ -95,16 +97,19 @@ main = do
 
 type Alg = (Ed25519 :& SHA512)
 
-newtype BData = BData [Transaction] [Update]
+data BData = BData
+  { bdataTransactions          :: [Transaction]
+  , bdataPostProcessingUpdates :: [Update]
+  }
   deriving stock    (Show, Eq, Generic)
-  deriving newtype  (NFData)
+  deriving anyclass (NFData)
   deriving anyclass (Serialise)
 
 instance BlockData BData where
   type TX               BData = Transaction
   type InterpreterState BData = SQLiteState
-  blockTransactions (BData txs) = txs
-  logBlockData      (BData txs) = HM.singleton "Ntx" $ JSON.toJSON $ length txs
+  blockTransactions (BData txs _) = txs
+  logBlockData      (BData txs upds) = HM.singleton "Ntx" $ JSON.toJSON $ length txs + length upds
 
 data Transaction = Transaction
   { transactionRequest    :: String
@@ -133,15 +138,50 @@ data SQLiteState = SQLiteState
 
 startODBCExtensionInterface :: Int -> String -> IO ()
 startODBCExtensionInterface port dbname = do
-  conn <- open dbname
+  db <- SQLite.open dbname
   sock <- socket AF_INET6 Stream (fromIntegral port)
   listen sock 1
-  forkIO $ odbcExtensionInterface conn sock
+  forkIO $ odbcExtensionInterface db sock
+  return ()
 
-odbcExtensionInterface :: Connection -> Socket -> IO ()
+odbcExtensionInterface :: SQLite.Connection -> Socket -> IO ()
 odbcExtensionInterface dbConn sock = do
-  (connSock, _) <- accept sock
-  catch (close connSock) $ do
+  flip finally (return ()) $ do
+    (connSock, _) <- accept sock
+    h <- socketToHandle connSock ReadWriteMode
+    flip finally (hClose h) $ do
+      pubKeyStr <- hGetLine h
+      otherHeight <- hGetLine h
+      request <- hGetLine h
+      params <- if null request then return [] else readParams h []
+      reportAnswer dbConn h otherHeight
+      return ()
     return ()
   odbcExtensionInterface dbConn sock
+  where
+    readParams h acc = do
+      paramName <- hGetLine h
+      if null paramName
+        then return acc
+        else do
+          value <- hGetLine h
+          readParams h ((paramName, value) : acc)
 
+reportAnswer :: SQLite.Connection -> Handle -> String -> IO ()
+reportAnswer conn h heightStr
+  | ((height, ""):_) <- reads heightStr = do
+    currentHeight <- readCurrentHeight
+    hPutStrLn h $ show currentHeight
+    if height < currentHeight
+      then do
+        putStrLn "reporting difference!"
+      else
+        return ()
+    hPutStrLn h ""
+    return ()
+  | otherwise = do
+    h <- readCurrentHeight
+    return ()
+  where
+    readCurrentHeight = do
+      return (-1000 :: Int)
