@@ -252,8 +252,8 @@ retrieveSavedState =
 -- | Write block and commit justifying it into persistent storage.
 storeCommit
   :: (Crypto alg, Serialise a, CryptoHashable a, MonadQueryRW m alg a)
-  => Commit alg a -> Block alg a -> ValidatorSet alg -> m ()
-storeCommit cmt blk vals = liftQueryRW $ do
+  => Commit alg a -> Block alg a -> m ()
+storeCommit cmt blk = liftQueryRW $ do
   let h = blockHeight blk
       r = voteRound $ signedValue $ NE.head $ commitPrecommits cmt
   basicExecute "INSERT INTO thm_commits VALUES (?,?)" (h, serialise cmt)
@@ -263,9 +263,14 @@ storeCommit cmt blk vals = liftQueryRW $ do
     , CBORed (blockHash blk)
     , CBORed  blk
     )
-  basicExecute "INSERT INTO thm_validators VALUES (?,?)"
-    (succ h, serialise vals)
   basicPutCacheBlock blk
+
+storeValSet
+  :: (Crypto alg, MonadQueryRW m alg a)
+  => Height -> ValidatorSet alg -> m ()
+storeValSet h vals =
+  basicExecute "INSERT INTO thm_validators VALUES (?,?)"
+    (h, serialise vals)
 
 -- | Write state snapshot into DB.
 -- @maybeSnapshot@ contains a serialized value of a state associated with the processed block.
