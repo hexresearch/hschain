@@ -30,7 +30,7 @@ import HSChain.P2P
 import HSChain.P2P.PeerState.Types
 import HSChain.Store
 import HSChain.Store.Internal.Proposals
-import HSChain.Store.Internal.BlockDB (storeCommit,storeGenesis)
+import HSChain.Store.Internal.BlockDB (storeCommit,storeGenesis,storeValSet)
 import HSChain.Types
 import HSChain.Types.Merkle.Types
 import qualified HSChain.Mock.KeyVal as Mock
@@ -238,8 +238,9 @@ withGossip n action = do
 -- Seed database with given number of blocks
 seedDatabase :: Int -> GossipM TestAlg Mock.BData ()
 seedDatabase n = do
-  mustQueryRW $ forM_ blockAndCmt $ \(b,Just cmt) ->
-    storeCommit cmt b valSet
+  mustQueryRW $ forM_ blockAndCmt $ \(b,Just cmt) -> do
+    storeCommit cmt b
+    storeValSet (succ $ blockHeight b) valSet
   where
     blockAndCmt = take n
                 $ tail
