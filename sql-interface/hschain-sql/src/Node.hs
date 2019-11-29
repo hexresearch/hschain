@@ -180,8 +180,42 @@ reportAnswer conn h heightStr
     hPutStrLn h ""
     return ()
   | otherwise = do
-    h <- readCurrentHeight
     return ()
   where
     readCurrentHeight = do
-      return (-1000 :: Int)
+      r <- SQLite.query conn "SELECT height FROM height;" ()
+      case r of
+        [SQLite.Only h] -> return (h :: Int)
+        _ -> return (-1000)
+    reportDifference currentHeight conn h = do
+      when (currentHeight < 0) $ do
+        -- reporting genesis.
+        return ()
+      -- reporting transactions happened after that height above.
+      let requestsList = unwords
+                   [ "SELECT sr.height, sr.seq_index, sr.request_id, ar.request_sql"
+                   , "FROM serialized_requests AS sr, allowed_requests AS ar"
+                   , "WHERE sr.request_id = ar.request_id AND sr.height > :height"
+                   , "ORDER BY sr.height, sr.seq_index;"
+                   ]
+      SQLite.foldNamed requestsList [":height" := currentHeight] () $ \(h, s, id, sql) -> do
+        hPutStrLn h sql
+        let paramsList = unwords
+                       [ "SELECT srp.name, srp.value"
+                       , "FROM serialized_requests_params AS srp"
+                       , "WHERE     srp.height = :height"
+                       , "      AND srp.seq_index = :index"
+                       , "      AND srp.request_id = :id"
+                       , "ORDER BY srp.name;"
+                       ]
+            paramsListParams =
+                       [ ":height" := (h :: Int)
+                       , ":index"  := (s :: Int)
+                       , ":id"     := (id :: String)
+                       ]
+        ps <- SQLite.queryNamed paramsList paramsListParams
+        forM_ ps $ \(name, value) -> do
+          hPutStrLn h name
+          hPutStrLn h value
+        hPutStrLn h ""
+      return ()
