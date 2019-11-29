@@ -22,6 +22,7 @@ import qualified Database.SQLite.Simple as SQLite
 
 import Data.Aeson             (FromJSON)
 import Data.Monoid            ((<>))
+import Data.String
 import Data.Word
 
 import System.Environment (getArgs)
@@ -136,16 +137,16 @@ data SQLiteState = SQLiteState
 -- ODBC extension API interface
 ----------------------------------------------------------------
 
-startODBCExtensionInterface :: Int -> String -> IO ()
-startODBCExtensionInterface port dbname = do
+startODBCExtensionInterface :: Mempool m Alg Transaction -> Int -> String -> IO ()
+startODBCExtensionInterface mempool port dbname = do
   db <- SQLite.open dbname
   sock <- socket AF_INET6 Stream (fromIntegral port)
   listen sock 1
-  forkIO $ odbcExtensionInterface db sock
+  forkIO $ odbcExtensionInterface mempool db sock
   return ()
 
-odbcExtensionInterface :: SQLite.Connection -> Socket -> IO ()
-odbcExtensionInterface dbConn sock = do
+odbcExtensionInterface :: Mempool m Alg Transaction -> SQLite.Connection -> Socket -> IO ()
+odbcExtensionInterface mempool dbConn sock = do
   flip finally (return ()) $ do
     (connSock, _) <- accept sock
     h <- socketToHandle connSock ReadWriteMode
@@ -157,7 +158,7 @@ odbcExtensionInterface dbConn sock = do
       reportAnswer dbConn h otherHeight
       return ()
     return ()
-  odbcExtensionInterface dbConn sock
+  odbcExtensionInterface mempool dbConn sock
   where
     readParams h acc = do
       paramName <- hGetLine h
@@ -174,7 +175,7 @@ reportAnswer conn h heightStr
     hPutStrLn h $ show currentHeight
     if height < currentHeight
       then do
-        putStrLn "reporting difference!"
+        reportDifference height
       else
         return ()
     hPutStrLn h ""
@@ -187,20 +188,23 @@ reportAnswer conn h heightStr
       case r of
         [SQLite.Only h] -> return (h :: Int)
         _ -> return (-1000)
-    reportDifference currentHeight conn h = do
+    reportDifference currentHeight = do
       when (currentHeight < 0) $ do
         -- reporting genesis.
+        SQLite.fold conn "SELECT request_sql FROM serialized_genesis_requests ORDER BY seq_index;" () () $ \() (SQLite.Only sql) -> do
+          hPutStrLn h sql
+          hPutStrLn h "" -- no parameters.
         return ()
       -- reporting transactions happened after that height above.
-      let requestsList = unwords
+      let requestsList = fromString $ unwords
                    [ "SELECT sr.height, sr.seq_index, sr.request_id, ar.request_sql"
                    , "FROM serialized_requests AS sr, allowed_requests AS ar"
                    , "WHERE sr.request_id = ar.request_id AND sr.height > :height"
                    , "ORDER BY sr.height, sr.seq_index;"
                    ]
-      SQLite.foldNamed requestsList [":height" := currentHeight] () $ \(h, s, id, sql) -> do
+      SQLite.foldNamed conn requestsList [":height" SQLite.:= currentHeight] () $ \() (rh, s, id, sql) -> do
         hPutStrLn h sql
-        let paramsList = unwords
+        let paramsList = fromString $ unwords
                        [ "SELECT srp.name, srp.value"
                        , "FROM serialized_requests_params AS srp"
                        , "WHERE     srp.height = :height"
@@ -209,13 +213,14 @@ reportAnswer conn h heightStr
                        , "ORDER BY srp.name;"
                        ]
             paramsListParams =
-                       [ ":height" := (h :: Int)
-                       , ":index"  := (s :: Int)
-                       , ":id"     := (id :: String)
+                       [ ":height" SQLite.:= (rh :: Int)
+                       , ":index"  SQLite.:= (s :: Int)
+                       , ":id"     SQLite.:= (id :: String)
                        ]
-        ps <- SQLite.queryNamed paramsList paramsListParams
+        ps <- SQLite.queryNamed conn paramsList paramsListParams
         forM_ ps $ \(name, value) -> do
           hPutStrLn h name
           hPutStrLn h value
-        hPutStrLn h ""
+        hPutStrLn h "" -- empty line as parameter name for a delimiter
       return ()
+
