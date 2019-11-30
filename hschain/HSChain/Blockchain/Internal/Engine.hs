@@ -64,11 +64,18 @@ newAppChans ConsensusCfg{incomingQueueSize = sz} = do
   return AppChans{..}
 
 rewindBlockchainState
-  :: ( MonadReadDB m alg a, MonadIO m, MonadThrow m
-     , Crypto alg, Serialise a, CryptoHashable a)
+  :: ( MonadDB m alg a, MonadIO m, MonadThrow m
+     , Crypto alg, BlockData a)
   => AppLogic m alg a
   -> m ()
 rewindBlockchainState AppLogic{appBchState,appValidationFun} = do
+  -- We need to generate validator set for H=1. We do so in somewhat
+  -- fragile way.
+  --
+  -- We only could have no validator set at H=1 when we just started
+  -- and only wrote genesis into database. So blockchain state must be
+  -- at initial state. Therefore we can write validator state during
+  -- evaluation of blocks.
   hChain   <- queryRO blockchainHeight
   (h0,st0) <- bchCurrentState appBchState >>= \case
     (Nothing, s) -> return (Height 0, s)
@@ -78,13 +85,25 @@ rewindBlockchainState AppLogic{appBchState,appValidationFun} = do
     st0
   where
     interpretBlock h st = do
-      blk      <- queryRO $ mustRetrieveBlock h
-      valSet   <- queryRO $ mustRetrieveValidatorSet (succ h)
-      bst      <- throwNothingM CannotRewindState
-                $ appValidationFun blk (BlockchainState st valSet)
-      let st' = blockchainState bst
-      bchStoreStore appBchState h st'
-      return st'
+      blk    <- queryRO $ mustRetrieveBlock        h
+      valSet <- queryRO $ mustRetrieveValidatorSet h
+      BlockchainState{..} <- throwNothingM CannotRewindState
+                           $ appValidationFun blk (BlockchainState st valSet)
+      -- Check validator set consistency
+      unless (hashed blockchainState == blockStateHash blk)
+        $ throwM $ InconsisnceWhenRewinding h "Hash state"
+      unless (hashed valSet          == blockValidators blk)
+        $ throwM $ InconsisnceWhenRewinding h "Validator set"
+      unless (hashed bChValidatorSet == blockNewValidators blk)
+        $ throwM $ InconsisnceWhenRewinding h "New validator set"
+      -- Write validator set at H=1 to database if needed
+      when (h == Height 0) $ do
+        queryRO (hasValidatorSet (Height 1)) >>= \case
+          True  -> return ()
+          False -> mustQueryRW $ storeValSet (Height 1) bChValidatorSet
+      -- Put new state into state storage
+      bchStoreStore appBchState h blockchainState
+      return blockchainState
 
 -- | Main loop for application. Here we update state machine and
 --   blockchain in response to incoming messages.
@@ -101,7 +120,7 @@ runApplication
      -- ^ Configuration
   -> Maybe (PrivValidator alg)
      -- ^ Private key of validator
-  -> Block alg a
+  -> (Block alg a, ValidatorSet alg)
      -- ^ Genesis block
   -> AppLogic m alg a
      -- ^ Get initial state of the application
@@ -109,10 +128,13 @@ runApplication
   -> AppChans m alg a
      -- ^ Channels for communication with peers
   -> m ()
-runApplication config appValidatorKey genesis appSt@AppLogic{..} appCall appCh@AppChans{..} = logOnException $ do
+runApplication config appValidatorKey (genesis,valSet) appSt appCall appCh = logOnException $ do
   logger InfoS "Starting consensus engine" ()
-  mustQueryRW $ storeGenesis genesis
+  -- Store genesis
+  mustQueryRW $ storeGenesis genesis valSet
+  -- Rewind state of blockcahin. At the same time we 
   rewindBlockchainState appSt
+  -- Now we can start consensus
   height <- queryRO $ blockchainHeight
   lastCm <- queryRO $ retrieveLocalCommit height
   iterateM lastCm $ fmap Just
@@ -452,9 +474,10 @@ makeHeightParameters appValidatorKey logic@AppLogic{..} AppCallbacks{appCanCreat
                -- Block is correct and validators change is correct as
                -- well
                | Just bst <- mvalSet'
+               , vals   <- bChValidatorSet bst
                , blockStateHash b == hashed (blockchainState bst)
-               , validatorSetSize (bChValidatorSet bst) > 0
-               , merkleValue (blockValChange b) == validatorsDifference valSet (bChValidatorSet bst)
+               , validatorSetSize vals > 0
+               , blockNewValidators b == hashed vals
                  -> do setPropValidation propStorage bid $ Just bst
                        return GoodProposal
                | otherwise
@@ -486,16 +509,15 @@ makeHeightParameters appValidatorKey logic@AppLogic{..} AppCallbacks{appCanCreat
             -- Get evidence
             evidence <- queryRO retrieveUnrecordedEvidence
             -- Assemble proper block
-            let valCh = validatorsDifference valSet (bChValidatorSet bst)
-                block = Block
-                  { blockHeight      = currentH
-                  , blockPrevBlockID = Just lastBID
-                  , blockValidators  = hashed valSet
-                  , blockValChange   = merkled valCh
-                  , blockPrevCommit  = merkled <$> commit
-                  , blockEvidence    = merkled evidence
-                  , blockData        = merkled bData
-                  , blockStateHash   = hashed $ blockchainState bst
+            let block = Block
+                  { blockHeight        = currentH
+                  , blockPrevBlockID   = Just lastBID
+                  , blockValidators    = hashed  valSet
+                  , blockNewValidators = merkled $ bChValidatorSet bst
+                  , blockPrevCommit    = merkled <$> commit
+                  , blockEvidence      = merkled evidence
+                  , blockData          = merkled bData
+                  , blockStateHash     = hashed $ blockchainState bst
                   }
             mustQueryRW $ writeBlockToWAL r block
             return (block, bst)

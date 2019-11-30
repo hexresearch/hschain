@@ -77,7 +77,7 @@ instance BlockData BData where
 
 genesisBlock :: ValidatorSet Alg -> Block Alg BData
 genesisBlock valSet
-  = makeGenesis (BData []) (hashed mempty) valSet
+  = makeGenesis (BData []) (hashed mempty) valSet valSet
 
 process :: Tx -> BState -> Maybe BState
 process (k,v) m
@@ -96,7 +96,7 @@ interpretSpec
      , Has x BlockchainNet
      , Has x NodeSpec
      , Has x (Configuration Example))
-  => Block Alg BData
+  => (Block Alg BData, ValidatorSet Alg)
   -> x
   -> AppCallbacks m Alg BData
   -> m (RunningNode m Alg BData, [m ()])
@@ -147,7 +147,7 @@ executeSpec NetSpec{..} = do
   rnodes    <- lift $ forM resources $ \(x, (conn, logenv)) -> do
     let run :: DBT 'RW Alg BData (LoggerT m) x -> m x
         run = runLoggerT logenv . runDBT conn
-    (rn, acts) <- run $ interpretSpec genesis (netNetCfg :*: x)
+    (rn, acts) <- run $ interpretSpec (genesis,valSet) (netNetCfg :*: x)
       (maybe mempty callbackAbortAtH netMaxH)
     return ( hoistRunningNode run rn
            , run <$> acts

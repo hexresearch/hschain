@@ -58,14 +58,14 @@ mintFirstBlock dat@(BData txs)
 
 mintBlock :: Block TestAlg BData -> BState -> BData -> Block TestAlg BData
 mintBlock b st dat = Block
-  { blockHeight      = succ hPrev
-  , blockPrevBlockID = Just bid
-  , blockValidators  = hashed valSet
-  , blockData        = merkled dat
-  , blockValChange   = merkled mempty
-  , blockPrevCommit  = merkled <$> commit
-  , blockEvidence    = merkled []
-  , blockStateHash   = hashed st
+  { blockHeight        = succ hPrev
+  , blockPrevBlockID   = Just bid
+  , blockValidators    = hashed valSet
+  , blockNewValidators = hashed valSet
+  , blockData          = merkled dat
+  , blockPrevCommit    = merkled <$> commit
+  , blockEvidence      = merkled []
+  , blockStateHash     = hashed st
   }
   where
     hPrev  = blockHeight b

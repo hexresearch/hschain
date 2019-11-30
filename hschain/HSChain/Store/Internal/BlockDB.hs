@@ -96,14 +96,13 @@ initializeBlockhainTables = do
 storeGenesis
   :: (Crypto alg, CryptoHashable a, MonadQueryRW m alg a, Serialise a, Eq a, Show a)
   => Block alg a                -- ^ Genesis block
+  -> ValidatorSet alg           -- ^ Validator set for block at H=0
   -> m ()
-storeGenesis genesis = do
+storeGenesis genesis valSet = do
   -- Insert genesis block if needed
   storedGen  <- singleQ_ "SELECT block  FROM thm_blockchain WHERE height = 0"
-  storedVals <- singleQ_ "SELECT valset FROM thm_validators WHERE height = 1"
-  let initialVals = case changeValidators (merkleValue $ blockValChange genesis) emptyValidatorSet of
-        Just v  -> v
-        Nothing -> error "initializeBlockhainTables: cannot apply change of validators"
+  storedVals <- singleQ_ "SELECT valset FROM thm_validators WHERE height = 0"
+  --
   case (storedGen, storedVals) of
     -- Fresh DB
     (Nothing, Nothing) -> do
@@ -111,8 +110,8 @@ storeGenesis genesis = do
         ( CBORed (blockHash genesis)
         , CBORed genesis
         )
-      basicExecute "INSERT INTO thm_validators VALUES (1,?)"
-        (Only (CBORed initialVals))
+      basicExecute "INSERT INTO thm_validators VALUES (0,?)"
+        (Only (CBORed valSet))
     -- Otherwise check that stored and provided geneses match
     (Just genesis', Just initialVals') ->
       case checks of
@@ -128,9 +127,9 @@ storeGenesis genesis = do
                  ++
                  [ [ "Validators set are not equal:"
                    , "  stored:   " ++ show initialVals'
-                   , "  expected: " ++ show initialVals
+                   , "  expected: " ++ show valSet
                    ]
-                 | initialVals /= initialVals'
+                 | valSet /= initialVals'
                  ]
     --
     (_,_) -> error "initializeBlockhainTables: database corruption"

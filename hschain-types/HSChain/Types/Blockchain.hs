@@ -148,7 +148,7 @@ data GBlock f alg a = Block
     -- ^ Hash of previous block. Nothing iff block is a genesis block
   , blockValidators       :: !(Hashed alg (ValidatorSet alg))
     -- ^ Set of validators used to create this block.
-  , blockValChange        :: !(MerkleNode f alg (ValidatorChange alg))
+  , blockNewValidators    :: !(Hashed alg (ValidatorSet alg))
     -- ^ Set of validators for the next block.
   , blockPrevCommit       :: !(Maybe (MerkleNode f alg (Commit alg a)))
     -- ^ Commit for previous block. Nothing iff block is a genesis

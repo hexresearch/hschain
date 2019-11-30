@@ -151,7 +151,7 @@ createTestNetworkWithValidatorsSetAndConfig validators cfg netDescr = do
         initDatabase conn
         --
         let run = runTracerT ncTraceCallback . runNoLogsT . runDBT conn
-        (_,actions) <- run $ Mock.interpretSpec genesis
+        (_,actions) <- run $ Mock.interpretSpec (genesis, dbValidatorSet)
           (   BlockchainNet
                 { bchNetwork        = createMockNode net (intToNetAddr ncFrom)
                 , bchInitialPeers   = map intToNetAddr ncTo

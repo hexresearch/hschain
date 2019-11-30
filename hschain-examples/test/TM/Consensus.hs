@@ -538,7 +538,7 @@ startConsensus k = do
            , appChanRx chans
            )
          , appPropStorage chans
-         , runApplication cfg (Just (PrivValidator k)) genesis logic mempty chans
+         , runApplication cfg (Just (PrivValidator k)) (genesis,valSet) logic mempty chans
          )
   where
     cfg = cfgConsensus (defCfg :: Configuration FastTest)
