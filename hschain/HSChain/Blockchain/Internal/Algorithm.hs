@@ -314,7 +314,7 @@ tendermintTransition par@HeightParameters{..} msg sm@TMState{..} =
         v' = unverifySignature v
     ----------------------------------------------------------------
     TimeoutMsg t ->
-      case compare t t0 of
+      case t `compare` t0 of
         -- It's timeout from previous steps. Ignore it
         LT -> tranquility
         -- Timeout from future. Must not happen
@@ -324,8 +324,9 @@ tendermintTransition par@HeightParameters{..} msg sm@TMState{..} =
         EQ -> case smStep of
           StepNewHeight n   -> canCreate par sm n >>= \case
             True  -> enterPropose par smRound sm Reason'Timeout
-            False -> do lift $ yield $ EngTimeout $ Timeout currentH (Round 0) (StepNewHeight (n+1))
-                        return sm
+            False -> do let step = StepNewHeight (n+1)
+                        lift $ yield $ EngTimeout $ Timeout currentH (Round 0) step
+                        return sm { smStep = step }
           StepProposal      -> enterPrevote   par smRound        sm Reason'Timeout
           StepPrevote       -> enterPrecommit par smRound        sm Reason'Timeout
           StepPrecommit     -> enterPropose   par (succ smRound) sm Reason'Timeout
