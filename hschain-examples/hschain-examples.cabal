@@ -108,6 +108,7 @@ Test-suite hschain-tests
                      , async             >=2.2.1
                      , bytestring        >=0.10
                      , containers
+                     , deepseq           >=1.4
                      , exceptions
                      , free
                      , microlens
