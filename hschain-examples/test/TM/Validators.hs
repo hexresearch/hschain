@@ -197,7 +197,7 @@ transitions = BChLogic
       Height 6 -> gen $ AddVal pk4 1
       Height 8 -> gen $ RmVal  pk1
       _        -> return Noop
-  , initialState  = emptyValidatorSet
+  , initialState  = valSet0
   }
   where
     gen tx = tx <$ process tx
@@ -230,7 +230,7 @@ interpretSpec
      , Has x BlockchainNet
      , Has x NodeSpec
      , Has x (Configuration Example))
-  => Block Alg Tx
+  => (Block Alg Tx, ValidatorSet Alg)
   -> x
   -> AppCallbacks m Alg Tx
   -> m (RunningNode m Alg Tx, [m ()])
@@ -275,7 +275,7 @@ executeNodeSpec NetSpec{..} resources = do
   rnodes    <- lift $ forM resources $ \(x, (conn, logenv)) -> do
     let run :: DBT 'RW Alg Tx (LoggerT m) x -> m x
         run = runLoggerT logenv . runDBT conn
-    (rn, acts) <- run $ interpretSpec genesis (netNetCfg :*: x)
+    (rn, acts) <- run $ interpretSpec (genesis,valSet0) (netNetCfg :*: x)
       (maybe mempty callbackAbortAtH netMaxH)
     return ( hoistRunningNode run rn
            , run <$> acts
@@ -284,4 +284,4 @@ executeNodeSpec NetSpec{..} resources = do
   lift   $ catchAbort $ runConcurrently $ snd =<< rnodes
   return $ fst <$> rnodes
   where
-    genesis = makeGenesis Noop (hashed emptyValidatorSet) valSet0
+    genesis = makeGenesis Noop (hashed valSet0) valSet0 valSet0

@@ -70,20 +70,19 @@ makeGenesis
   :: (Crypto alg, CryptoHashable a)
   => a                          -- ^ Block data
   -> Hashed alg (InterpreterState a)
-  -> ValidatorSet alg           -- ^ Set of validators for block 1
+  -> ValidatorSet alg           -- ^ Set of validators for H=0
+  -> ValidatorSet alg           -- ^ Set of validators for H=1
   -> Block alg a
-makeGenesis dat stateHash valSet = Block
-  { blockHeight      = Height 0
-  , blockPrevBlockID = Nothing
-  , blockValidators  = hashed emptyValidatorSet
-  , blockData        = merkled dat
-  , blockValChange   = merkled delta
-  , blockPrevCommit  = Nothing
-  , blockEvidence    = merkled []
-  , blockStateHash   = stateHash
+makeGenesis dat stateHash valSet0 valSet1 = Block
+  { blockHeight        = Height 0
+  , blockPrevBlockID   = Nothing
+  , blockValidators    = merkled valSet0
+  , blockNewValidators = merkled valSet1
+  , blockData          = merkled dat
+  , blockPrevCommit    = Nothing
+  , blockEvidence      = merkled []
+  , blockStateHash     = stateHash
   }
-  where
-    delta = validatorsDifference emptyValidatorSet valSet
 
 
 ----------------------------------------------------------------

@@ -33,14 +33,14 @@ benchmarks
         nf (\b -> runIdentity
                 $ interpretBCh runner state
                 $ processBlock transitions
-                ( Block { blockHeight      = Height 0
-                        , blockPrevBlockID = Nothing
-                        , blockValidators  = hashed emptyValidatorSet
-                        , blockData        = merkled b
-                        , blockValChange   = merkled mempty
-                        , blockPrevCommit  = Nothing
-                        , blockEvidence    = merkled []
-                        , blockStateHash   = Hashed (Hash "")
+                ( Block { blockHeight        = Height 0
+                        , blockPrevBlockID   = Nothing
+                        , blockValidators    = hashed emptyValidatorSet
+                        , blockNewValidators = hashed emptyValidatorSet
+                        , blockData          = merkled b
+                        , blockPrevCommit    = Nothing
+                        , blockEvidence      = merkled []
+                        , blockStateHash     = Hashed (Hash "")
                         }
                 )
            ) (bdata :: BData)
@@ -65,7 +65,7 @@ pubKeys = publicKey <$> privKeys
 
 txGen   :: HSChain.Mock.Coin.TxGenerator
 genesis :: Block Alg BData
-(Just txGen,genesis) = mintMockCoin
+(Just txGen,genesis,_) = mintMockCoin
   [ Validator k 1 | k <- take 4 pubKeys ]
   CoinSpecification
     { coinAridrop        = 1000

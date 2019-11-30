@@ -99,7 +99,7 @@ main = do
   startWebMonitoring $ fromIntegral nodePort + 1000
   -- Start node
   evalContT $ do
-    let (mtxGen, genesis) = mintMockCoin [ Validator v 1 | v <- validatorKeys] coin
+    let (mtxGen, genesis, valSet) = mintMockCoin [ Validator v 1 | v <- validatorKeys] coin
     -- Create network
     peerId <- generatePeerId
     let peerInfo = P2PT.PeerInfo peerId nodePort 0
@@ -112,7 +112,7 @@ main = do
     let run = runMonitorT gauges . runLoggerT logenv . runDBT conn
     -- Actually run node
     lift $ run $ do
-      (RunningNode{..},acts) <- interpretSpec genesis
+      (RunningNode{..},acts) <- interpretSpec (genesis, valSet)
         (nspec :*: cfg :*: bnet)
         (maybe mempty callbackAbortAtH (optMaxH <|> nodeMaxH))
       txGen <- case mtxGen of

@@ -4,6 +4,7 @@
 module HSChain.Exceptions where
 
 import Control.Exception
+import Data.Text (Text)
 import HSChain.Types.Blockchain
 
 
@@ -21,11 +22,12 @@ data NetworkError
 
 -- | Database is corruped
 data CorruptedDBError
-  = DBMissingValSet  !Height     -- ^ Validator set is missing
-  | DBMissingGenesis             -- ^ Genesis is missing
-  | DBMissingBlock   !Height     -- ^ Missing block
-  | DBMissingBlockID !Height     -- ^ Missing block ID
-  | DBMissingRound   !Height     -- ^ Missing commit round
+  = DBMissingValSet       !Height -- ^ Validator set is missing
+  | DBMissingGenesis              -- ^ Genesis is missing
+  | DBMissingBlock        !Height -- ^ Missing block
+  | DBMissingBlockID      !Height -- ^ Missing block ID
+  | DBMissingRound        !Height -- ^ Missing commit round
+  | DBInvalidValidatorSet !Height -- ^ Invalid validators set at given height
   deriving stock    (Show)
   deriving anyclass (Exception)
 
@@ -43,6 +45,8 @@ data InternalError
   -- ^ Invalid block is stored in WAL
   | CannotRewindState
   -- ^ State transitions already record in blockchain are not valid.
+  | InconsisnceWhenRewinding !Height !Text
+  -- ^ Incinsistency encountered when rewinding 
   deriving stock    (Show)
   deriving anyclass (Exception)
 

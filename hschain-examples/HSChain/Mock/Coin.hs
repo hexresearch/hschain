@@ -300,7 +300,7 @@ mintMockCoin
   :: (Foldable f)
   => f (Validator Alg)
   -> CoinSpecification
-  -> (Maybe TxGenerator, Block Alg BData)
+  -> (Maybe TxGenerator, Block Alg BData, ValidatorSet Alg)
 mintMockCoin nodes CoinSpecification{..} =
   ( do delay <- coinGeneratorDelay
        return TxGenerator
@@ -310,6 +310,7 @@ mintMockCoin nodes CoinSpecification{..} =
          , genMaxMempoolSize = coinMaxMempoolSize
          }
   , genesis0 { blockStateHash = hashed $ blockchainState st }
+  , valSet
   )
   where
     privK        = take coinWallets $ makePrivKeyStream coinWalletsSeed
@@ -317,7 +318,7 @@ mintMockCoin nodes CoinSpecification{..} =
     Right valSet = makeValidatorSet nodes
     txs          = [ Deposit pk coinAridrop | pk <- pubK ]
     -- Generate genesis with correct hash
-    genesis0     = makeGenesis (BData txs) (Hashed $ hash ()) valSet
+    genesis0     = makeGenesis (BData txs) (Hashed $ hash ()) valSet valSet
     Just ((),st) = runIdentity
                  $ interpretBCh runner (BlockchainState (initialState transitions) valSet)
                  $ processBlock transitions genesis0
@@ -349,7 +350,7 @@ interpretSpec
      , Has x BlockchainNet
      , Has x NodeSpec
      , Has x (Configuration Example))
-  => Block Alg BData
+  => (Block Alg BData, ValidatorSet Alg)
   -> x
   -> AppCallbacks m Alg BData
   -> m (RunningNode m Alg BData, [m ()])
@@ -387,7 +388,7 @@ executeNodeSpec (NetSpec{..} :*: coin@CoinSpecification{..}) = do
   rnodes    <- lift $ forM resources $ \(x, (conn, logenv)) -> do
     let run :: DBT 'RW Alg BData (LoggerT m) x -> m x
         run = runLoggerT logenv . runDBT conn
-    (rn, acts) <- run $ interpretSpec genesis (netNetCfg :*: x)
+    (rn, acts) <- run $ interpretSpec (genesis,valSet) (netNetCfg :*: x)
       (maybe mempty callbackAbortAtH netMaxH)
     return ( hoistRunningNode run rn
            , run <$> acts
@@ -405,6 +406,7 @@ executeNodeSpec (NetSpec{..} :*: coin@CoinSpecification{..}) = do
   lift   $ catchAbort $ runConcurrently $ (snd =<< rnodes) ++ txGens
   return $ fst <$> rnodes
   where
-    (mtxGen, genesis) = mintMockCoin [ Validator (publicKey k) 1
-                                     | Just (PrivValidator k) <- nspecPrivKey <$> netNodeList
-                                     ] coin
+    (mtxGen, genesis, valSet) = mintMockCoin
+      [ Validator (publicKey k) 1
+      | Just (PrivValidator k) <- nspecPrivKey <$> netNodeList
+      ] coin

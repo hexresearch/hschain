@@ -219,7 +219,7 @@ type TestM   alg a = StateT  (P2P.State alg a)
 withGossip :: Int -> TestM TestAlg Mock.BData x -> IO x
 withGossip n action = do
   withDatabase "" $ \conn -> runNoLogsT $ runDBT conn $ do
-    mustQueryRW $ storeGenesis genesis
+    mustQueryRW $ storeGenesis genesis valSet
     consensusState <- liftIO $ newTVarIO Nothing
     gossipCnts     <- newGossipCounters
     props          <- newSTMPropStorage
