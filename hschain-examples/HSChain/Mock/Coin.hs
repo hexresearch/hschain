@@ -85,7 +85,7 @@ import qualified HSChain.P2P.Network as P2P
 -- Basic coin logic
 ----------------------------------------------------------------
 
-type Alg = (Ed25519 :& SHA512)
+type Alg = Ed25519 :& SHA512
 
 newtype BData = BData [Tx]
   deriving stock    (Show,Eq,Generic)
