@@ -16,17 +16,14 @@ module TM.Validators (tests) where
 import Codec.Serialise
 import Control.DeepSeq
 import Control.Applicative
--- import Control.Concurrent.MVar
 import Control.Monad
 import Control.Monad.Trans.State.Strict
 import Control.Monad.Trans.Cont
 import Control.Monad.Trans.Class
 import Control.Monad.Catch
--- import Control.Monad.Fail
 import Control.Monad.IO.Class
 import Data.Maybe
 import qualified Data.Map.Strict as Map
-import Katip
 import GHC.Generics (Generic)
 
 import Test.Tasty
@@ -142,16 +139,16 @@ testValidatorChange = do
     -- Now test that we have correct validator sets for every height
     let conn = rnodeConn $ head nodes
     liftIO $ runDBT conn $ do
-      checkVals valSet0 (Height  1) 
-      checkVals valSet0 (Height  2) 
-      checkVals valSet0 (Height  3) 
-      checkVals valSet3 (Height  4) 
-      checkVals valSet3 (Height  5) 
-      checkVals valSet3 (Height  6) 
-      checkVals valSet6 (Height  7) 
-      checkVals valSet6 (Height  8) 
-      checkVals valSet6 (Height  9) 
-      checkVals valSet9 (Height 10) 
+      checkVals valSet0 (Height  1)
+      checkVals valSet0 (Height  2)
+      checkVals valSet0 (Height  3)
+      checkVals valSet3 (Height  4)
+      checkVals valSet3 (Height  5)
+      checkVals valSet3 (Height  6)
+      checkVals valSet6 (Height  7)
+      checkVals valSet6 (Height  8)
+      checkVals valSet8 (Height  9)
+      checkVals valSet8 (Height 10)
   where
     checkVals v0 h = do
       v <- queryRO $ mustRetrieveValidatorSet h
@@ -170,25 +167,22 @@ instance CryptoHashable Tx where
 
 instance BlockData Tx where
   type TX               Tx = Tx
-  type InterpreterState Tx = ()
+  type InterpreterState Tx = ValidatorSet Alg
   blockTransactions        = pure
   logBlockData             = mempty
 
 
-privK       :: [PrivKey Alg]
-k1,k2,k3,k4 ::  PrivKey Alg
-privK@[k1,k2,k3,k4] = take 4 $ makePrivKeyStream 1337
+privK :: [PrivKey Alg]
+privK = take 4 $ makePrivKeyStream 1337
 
 pk1,pk2,pk3,pk4 :: PublicKey Alg
 [pk1,pk2,pk3,pk4] = map publicKey privK
 
-valSet0,valSet3,valSet6,valSet9 :: ValidatorSet Alg
+valSet0,valSet3,valSet6,valSet8 :: ValidatorSet Alg
 Right valSet0 = makeValidatorSet [Validator k 1 | k <- [pk1,pk2        ]]
 Right valSet3 = makeValidatorSet [Validator k 1 | k <- [pk1,pk2,pk3    ]]
 Right valSet6 = makeValidatorSet [Validator k 1 | k <- [pk1,pk2,pk3,pk4]]
-Right valSet9 = makeValidatorSet [Validator k 1 | k <- [    pk2,pk3,pk4]]
--- Right valSet = makeValidatorSet [Validator k 1 | k <- [pk1]]
-
+Right valSet8 = makeValidatorSet [Validator k 1 | k <- [    pk2,pk3,pk4]]
 
 transitions :: BChLogic (StateT (ValidatorSet Alg) Maybe) Alg Tx
 transitions = BChLogic
@@ -197,28 +191,28 @@ transitions = BChLogic
   , generateBlock = \nb _ -> case newBlockHeight nb of
       Height 3 -> gen $ AddVal pk3 1
       Height 6 -> gen $ AddVal pk4 1
-      Height 9 -> gen $ RmVal  pk1
+      Height 8 -> gen $ RmVal  pk1
       _        -> return Noop
-  , initialState  = ()
+  , initialState  = emptyValidatorSet
   }
   where
-    gen tx = tx <$ process tx 
+    gen tx = tx <$ process tx
     -- We're permissive and allow remove nonexiting validator
     process Noop         = return ()
     process (AddVal k i) = modifyVal $ (Validator k i :)
                                      . filter ((/=k) . validatorPubKey)
     process (RmVal  k)   = modifyVal $ filter ((/=k) . validatorPubKey)
     --
-    modifyVal f = do 
+    modifyVal f = do
       vals <- get
       case makeValidatorSet $ f $ asValidatorList vals of
         Right v -> put v
         Left  _ -> empty
 
 runner :: Monad m => Interpreter (StateT (ValidatorSet Alg) Maybe) m Alg Tx
-runner = Interpreter $ \(BlockchainState () vset) m -> return $ do
+runner = Interpreter $ \(BlockchainState _ vset) m -> return $ do
   (a,vset') <- runStateT m vset
-  return (a, BlockchainState () vset')
+  return (a, BlockchainState vset' vset')
 
 
 
@@ -239,7 +233,7 @@ interpretSpec
 interpretSpec genesis p cb = do
   conn  <- askConnectionRO
   store <- newSTMBchStorage $ initialState transitions
-  logic <- makeAppLogic store transitions runner  
+  logic <- makeAppLogic store transitions runner
   acts  <- runNode (getT p :: Configuration Example) NodeDescription
     { nodeValidationKey = p ^.. nspecPrivKey
     , nodeGenesis       = genesis
@@ -278,4 +272,4 @@ executeNodeSpec NetSpec{..} = do
   lift   $ catchAbort $ runConcurrently $ snd =<< rnodes
   return $ fst <$> rnodes
   where
-    genesis = makeGenesis Noop (hashed ()) valSet0
+    genesis = makeGenesis Noop (hashed emptyValidatorSet) valSet0
