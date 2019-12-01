@@ -24,6 +24,7 @@ import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Data.Maybe
 import qualified Data.Map.Strict as Map
+import Katip (LogEnv)
 import GHC.Generics (Generic)
 
 import Test.Tasty
@@ -129,13 +130,10 @@ samplingEquidistribution vset
 testValidatorChange :: IO ()
 testValidatorChange = do
   evalContT $ do
-    nodes <- executeNodeSpec NetSpec
-      { netNodeList = [ NodeSpec (Just $ PrivValidator k) Nothing []
-                      | k <- privK]
-      , netTopology = All2All
-      , netNetCfg   = defCfg
-      , netMaxH     = Just $ Height 10
-      }
+    resources <- prepareResources spec
+    nodes     <- executeNodeSpec  spec resources
+    -- Execute nodes for second time!
+    _         <- executeNodeSpec  spec resources
     -- Now test that we have correct validator sets for every height
     let conn = rnodeConn $ head nodes
     liftIO $ runDBT conn $ do
@@ -153,6 +151,14 @@ testValidatorChange = do
     checkVals v0 h = do
       v <- queryRO $ mustRetrieveValidatorSet h
       liftIO $ assertEqual (show h) v0 v
+    --
+    spec = NetSpec
+      { netNodeList = [ NodeSpec (Just $ PrivValidator k) Nothing []
+                      | k <- privK]
+      , netTopology = All2All
+      , netNetCfg   = defCfg
+      , netMaxH     = Just $ Height 10
+      }
 
 type Alg = Ed25519 :& SHA512
 
@@ -249,16 +255,24 @@ interpretSpec genesis p cb = do
     , acts
     )
 
+
+prepareResources
+  :: (MonadIO m, MonadMask m)
+  => NetSpec NodeSpec -> ContT r m [(BlockchainNet :*: NodeSpec, (Connection 'RW alg a, LogEnv))]
+prepareResources NetSpec{..} = do
+  -- Create mock network and allocate DB handles for nodes
+  net <- liftIO P2P.newMockNet
+  traverse (\x -> do { r <- allocNode x; return (x,r)})
+    $ allocateMockNetAddrs net netTopology
+    $ netNodeList
+
+
 executeNodeSpec
   :: (MonadIO m, MonadMask m, MonadFork m, MonadTrace m, MonadTMMonitoring m)
   => NetSpec NodeSpec
+  -> [(BlockchainNet :*: NodeSpec, (Connection 'RW Alg Tx, LogEnv))]
   -> ContT r m [RunningNode m Alg Tx]
-executeNodeSpec NetSpec{..} = do
-  -- Create mock network and allocate DB handles for nodes
-  net       <- liftIO P2P.newMockNet
-  resources <- traverse (\x -> do { r <- allocNode x; return (x,r)})
-             $ allocateMockNetAddrs net netTopology
-             $ netNodeList
+executeNodeSpec NetSpec{..} resources = do
   -- Start nodes
   rnodes    <- lift $ forM resources $ \(x, (conn, logenv)) -> do
     let run :: DBT 'RW Alg Tx (LoggerT m) x -> m x
