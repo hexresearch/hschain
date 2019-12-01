@@ -14,6 +14,7 @@ import Control.Monad.Catch (MonadThrow(..))
 import qualified Data.List.NonEmpty   as NE
 import qualified Data.ByteString.Lazy as LBS
 import qualified Database.SQLite.Simple           as SQL
+import qualified Database.SQLite.Simple.FromField as SQL
 import           Database.SQLite.Simple             (Only(..))
 
 import HSChain.Control (throwNothing)
@@ -310,7 +311,7 @@ retrieveBlockReadyFromWAL
   :: (MonadQueryRO m alg a)
   => Height -> Int -> m (Maybe Bool)
 retrieveBlockReadyFromWAL h n =
-  singleQ "SELECT result FROM thm_ready_block WHERE height = ? AND attempt = ?" (h,n)
+  query1 "SELECT result FROM thm_ready_block WHERE height = ? AND attempt = ?" (h,n)
 
 -- | Remove all entries from WAL which comes from height less than
 --   parameter.
@@ -376,16 +377,31 @@ retrieveUnrecordedEvidence = do
 -- Helpers
 ----------------------------------------------------------------
 
+query1 :: (SQL.ToRow p, SQL.FromField x, MonadQueryRO m alg a)
+             => SQL.Query -> p -> m (Maybe x)
+query1 sql p =
+  basicQuery sql p >>= \case
+    []       -> return Nothing
+    [Only a] -> return (Just a)
+    _        -> error "Impossible"
+query1_ :: (SQL.FromField x, MonadQueryRO m alg a)
+        => SQL.Query -> m (Maybe x)
+query1_ sql =
+  basicQuery_ sql >>= \case
+    []       -> return Nothing
+    [Only a] -> return (Just a)
+    _        -> error "Impossible"
+
 -- Query that returns 0 or 1 result which is CBOR-encoded value
 singleQ :: (SQL.ToRow p, Serialise x, MonadQueryRO m alg a)
         => SQL.Query -> p -> m (Maybe x)
-singleQ sql p =
-  basicQuery sql p >>= \case
-    []        -> return Nothing
-    [Only bs] -> case deserialiseOrFail bs of
-      Right a -> return (Just a)
-      Left  e -> error ("CBOR encoding error: " ++ show e)
-    _         -> error "Impossible"
+singleQ sql p = (fmap . fmap) unCBORed
+              $ query1 sql p
+
+singleQ_ :: (Serialise x, MonadQueryRO m alg a)
+         => SQL.Query -> m (Maybe x)
+singleQ_ sql = (fmap . fmap) unCBORed
+             $ query1_ sql
 
 -- Query that returns results parsed from single row ().
 singleQWithParser
@@ -395,13 +411,3 @@ singleQWithParser resultsParser sql p =
   basicQuery sql p >>= \case
     [x] -> return (resultsParser x)
     _ -> error $ "SQL statement resulted in too many (>1) or zero result rows: " ++ show sql
-
-singleQ_ :: (Serialise x, MonadQueryRO m alg a)
-         => SQL.Query -> m (Maybe x)
-singleQ_ sql =
-  basicQuery_ sql >>= \case
-    []        -> return Nothing
-    [Only bs] -> case deserialiseOrFail bs of
-      Right a -> return (Just a)
-      Left  e -> error ("CBOR encoding error: " ++ show e)
-    _         -> error "Impossible"
