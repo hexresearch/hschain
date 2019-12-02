@@ -50,11 +50,15 @@ createMockNode MockNet{..} addr = NetworkAPI
          case key `Map.lookup` mListen of
            Just  _ -> error "MockNet: already listening on port"
            Nothing -> writeTVar mnetIncoming $ Map.insert key [] mListen
-      -- Stop listening and close all accepted sockets
+      -- Stop listening
+      --  1. Mark all incoming connections as inactive so that other
+      --     side of connection knows it.
+      --  2. Remove connection from mnetIncoming so it's possible to
+      --     start listening on same address again
       let stopListening = atomicallyIO $ do
             mListen <- readTVar mnetIncoming
-            forM_ (key `Map.lookup` mListen) $
-              mapM_ (closeMockSocket . fst)
+            forM_ (key `Map.lookup` mListen) $ mapM_ (closeMockSocket . fst)
+            modifyTVar' mnetIncoming $ Map.delete key
       -- Accept connection
       let accept = atomicallyIO $ do
             mList <- readTVar mnetIncoming
