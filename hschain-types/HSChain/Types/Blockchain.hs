@@ -203,7 +203,8 @@ instance (Crypto alg) => CryptoHashable (Commit alg a) where
   hashStep = genericHashStep "hschain"
 
 
--- | Type class for data which could be put into block
+-- | Type class for data which could be put into blockchain's
+--   block. Related types are defined as associated types
 class ( Serialise a
       , Serialise (TX a)
       , Serialise (InterpreterState a)
@@ -211,7 +212,9 @@ class ( Serialise a
       , CryptoHashable (TX a)
       , CryptoHashable (InterpreterState a)
       ) => BlockData a where
-  -- | Type of transaction used in blockchain
+  -- | Type of transaction used in blockchain. More precisely it's
+  --   type of transaction which is submitted by user and stored in
+  --   mempool.
   type TX a
   -- | Part of state of blockchain defined by user. Complete state is
   --   @BlockchainState@
