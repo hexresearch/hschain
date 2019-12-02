@@ -1,13 +1,13 @@
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE DeriveAnyClass      #-}
 {-# LANGUAGE DeriveGeneric       #-}
+{-# LANGUAGE DerivingStrategies  #-}
+{-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StandaloneDeriving  #-}
+{-# LANGUAGE TypeFamilies        #-}
 {-# LANGUAGE TypeOperators       #-}
 
 -- |
@@ -40,7 +40,6 @@ import HSChain.Crypto.Ed25519 (Ed25519)
 import HSChain.Crypto.SHA     (SHA512)
 import HSChain.Debug.Trace
 import HSChain.Logger
--- import HSChain.Mock.Coin
 import HSChain.Mock.KeyList (makePrivKeyStream)
 import HSChain.Mock.Types
 import HSChain.Mock
@@ -52,7 +51,6 @@ import HSChain.Types
 import HSChain.Types.Merkle.Types
 import HSChain.Arbitrary.Instances ()
 import qualified HSChain.P2P.Network as P2P
--- import TM.Util.Network
 
 
 type VSet = ValidatorSet (Ed25519 :& SHA512)
