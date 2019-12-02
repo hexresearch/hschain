@@ -17,7 +17,6 @@ module HSChain.Blockchain.Internal.Engine (
   , runApplication
   ) where
 
-import Codec.Serialise           (Serialise)
 import Control.Applicative
 import Control.Concurrent        (forkIO, threadDelay)
 import Control.Concurrent.STM
