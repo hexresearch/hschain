@@ -215,6 +215,11 @@ retrieveValidatorSet :: (Crypto alg, MonadQueryRO m alg a) => Height -> m (Maybe
 retrieveValidatorSet h =
   singleQ "SELECT valset FROM thm_validators WHERE height = ?" (Only h)
 
+hasValidatorSet :: (MonadQueryRO m alg a) => Height -> m Bool
+hasValidatorSet h = do
+  r <- basicQuery "SELECT 1 FROM thm_validators WHERE height = ?" (Only h)
+  return $! not $ null (r :: [Only Int])
+
 -- | Same as 'retrieveBlock' but throws 'DBMissingBlock' if there's no
 --   such block in database.
 mustRetrieveBlock
