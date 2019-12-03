@@ -65,10 +65,9 @@ makeAppLogic store BChLogic{..} Interpreter{..} = do
   -- Create mempool
   let checkTx tx = do
         (mH, st) <- bchCurrentState store
-        valSet <- case mH of
-          Nothing -> return emptyValidatorSet
-          Just h  -> throwNothingM (DBMissingValSet (succ h))
-                  $  queryRO $ retrieveValidatorSet (succ h)
+        valSet   <- queryRO $ mustRetrieveValidatorSet $ case mH of
+          Nothing -> Height 0
+          Just h  -> succ h
         isJust <$> interpretBCh (BlockchainState st valSet) (processTx tx)
   mempool <- newMempool checkTx
   --
