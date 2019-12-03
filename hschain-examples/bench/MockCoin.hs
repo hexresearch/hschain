@@ -7,7 +7,6 @@ import Control.Monad
 import Criterion.Main
 
 import HSChain.Crypto
-import HSChain.Blockchain.Interpretation
 import HSChain.Mock.Coin
 import HSChain.Mock.KeyList
 import HSChain.Mock.Types

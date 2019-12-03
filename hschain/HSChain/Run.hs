@@ -32,7 +32,6 @@ import Data.Maybe                     (isJust)
 
 import HSChain.Blockchain.Internal.Engine
 import HSChain.Blockchain.Internal.Engine.Types
-import HSChain.Blockchain.Interpretation
 import HSChain.Control
 import HSChain.Crypto
 import HSChain.Debug.Trace

@@ -9,6 +9,7 @@
 {-# LANGUAGE KindSignatures             #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE RankNTypes                 #-}
 {-# LANGUAGE RecordWildCards            #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE StandaloneDeriving         #-}
@@ -43,6 +44,10 @@ module HSChain.Types.Blockchain (
   , VoteType(..)
   , Vote(..)
   , CheckSignature(..)
+    -- * Blockchain logic
+  , NewBlock(..)
+  , BChLogic(..)
+  , Interpreter(..)
     -- * Signed data
   , Signed
   , signedValue
@@ -346,6 +351,46 @@ instance (CryptoHash alg) => CryptoHashable (Vote 'PreCommit alg a) where
    <> hashStep voteRound
    <> hashStep voteTime
    <> hashStep voteBlockID
+
+
+
+----------------------------------------------------------------
+-- Blockchain logic
+----------------------------------------------------------------
+
+-- | Parameters supplied by consensus engine for block generation
+data NewBlock alg a = NewBlock
+  { newBlockHeight   :: !Height
+  , newBlockLastBID  :: !(BlockID alg a)
+  , newBlockCommit   :: !(Maybe (Commit alg a))
+  , newBlockEvidence :: ![ByzantineEvidence alg a]
+  , newBlockState    :: !(BlockchainState alg a)
+  }
+
+-- | Description of interpretation of blockchain state. Evaluation of
+--   blocks and transactions are done in the monad @q@ which is
+--   assumed to provide access to current state of blockchain
+data BChLogic q alg a = BChLogic
+  { processTx     :: !(TX a -> q ())
+    -- ^ Process single transactions. Used only for validator of
+    --   transactions in mempool.
+  , processBlock  :: !(Block alg a -> q ())
+    -- ^ Process and validate complete block.
+  , generateBlock :: !(NewBlock alg a -> [TX a] -> q a)
+    -- ^ Generate block from list of transactions.
+  , initialState  :: !(InterpreterState a)
+    -- ^ Initial state of blockchain
+  }
+
+-- | Interpreter for mond in which evaluation of blockchain is
+--   performed
+newtype Interpreter q m alg a = Interpreter
+  { interpretBCh :: forall x.
+                    BlockchainState alg a
+                 -> q x
+                 -> m (Maybe (x, BlockchainState alg a))
+  }
+
 
 
 ----------------------------------------------------------------

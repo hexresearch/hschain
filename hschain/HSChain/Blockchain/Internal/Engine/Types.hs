@@ -180,15 +180,6 @@ instance DefaultConfig app => FromJSON (Configuration app) where
 --
 ----------------------------------------------------------------
 
--- | Parameters supplied by consensus engine for block generation
-data NewBlock alg a = NewBlock
-  { newBlockHeight   :: !Height
-  , newBlockLastBID  :: !(BlockID alg a)
-  , newBlockCommit   :: !(Maybe (Commit alg a))
-  , newBlockEvidence :: ![ByzantineEvidence alg a]
-  , newBlockState    :: !(BlockchainState alg a)
-  }
-
 -- | Collection of callbacks which implement actual logic of
 --   blockchain. This is most generic form which doesn't expose any
 --   underlying structure. It's expected that this structure will be
