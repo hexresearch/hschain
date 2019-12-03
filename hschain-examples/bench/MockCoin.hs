@@ -10,6 +10,7 @@ import HSChain.Crypto
 import HSChain.Mock.Coin
 import HSChain.Mock.KeyList
 import HSChain.Mock.Types
+import HSChain.Run
 import HSChain.Types
 import HSChain.Types.Merkle.Types
 

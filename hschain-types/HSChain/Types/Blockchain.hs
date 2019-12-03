@@ -9,7 +9,6 @@
 {-# LANGUAGE KindSignatures             #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE OverloadedStrings          #-}
-{-# LANGUAGE RankNTypes                 #-}
 {-# LANGUAGE RecordWildCards            #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE StandaloneDeriving         #-}
@@ -47,7 +46,6 @@ module HSChain.Types.Blockchain (
     -- * Blockchain logic
   , NewBlock(..)
   , BChLogic(..)
-  , Interpreter(..)
     -- * Signed data
   , Signed
   , signedValue
@@ -380,15 +378,6 @@ data BChLogic q alg a = BChLogic
     -- ^ Generate block from list of transactions.
   , initialState  :: !(InterpreterState a)
     -- ^ Initial state of blockchain
-  }
-
--- | Interpreter for mond in which evaluation of blockchain is
---   performed
-newtype Interpreter q m alg a = Interpreter
-  { interpretBCh :: forall x.
-                    BlockchainState alg a
-                 -> q x
-                 -> m (Maybe (x, BlockchainState alg a))
   }
 
 

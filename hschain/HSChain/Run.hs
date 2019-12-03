@@ -2,6 +2,7 @@
 {-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE RankNTypes          #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeOperators       #-}
@@ -13,6 +14,7 @@ module HSChain.Run (
   , makeAppLogic
   , NodeDescription(..)
   , BlockchainNet(..)
+  , Interpreter(..)
     -- ** Configuration and timeouts
   , DefaultConfig(..)
   , Configuration(..)
@@ -49,6 +51,15 @@ import HSChain.Utils
 ----------------------------------------------------------------
 --
 ----------------------------------------------------------------
+
+-- | Interpreter for mond in which evaluation of blockchain is
+--   performed
+newtype Interpreter q m alg a = Interpreter
+  { interpretBCh :: forall x.
+                    BlockchainState alg a
+                 -> q x
+                 -> m (Maybe (x, BlockchainState alg a))
+  }
 
 -- | Create 'AppLogic' which should be then passed to 'runNode' from
 --   description of blockchain logic and storage of blockchain state.
