@@ -62,7 +62,6 @@ import GHC.Generics    (Generic)
 import HSChain.Types.Blockchain
 import HSChain.Types.Merkle.Types
 import HSChain.Types.Validators
-import HSChain.Blockchain.Interpretation
 import HSChain.Blockchain.Internal.Engine.Types
 import HSChain.Control
 import HSChain.Crypto

@@ -32,7 +32,6 @@ import Test.Tasty.HUnit
 import Test.Tasty.QuickCheck
 
 import HSChain.Blockchain.Internal.Engine.Types
-import HSChain.Blockchain.Interpretation
 import HSChain.Control
 import HSChain.Crypto
 import HSChain.Crypto.Classes.Hash

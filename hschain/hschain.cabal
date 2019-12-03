@@ -69,7 +69,6 @@ Library
                   HSChain.Blockchain.Internal.Engine
                   HSChain.Blockchain.Internal.Engine.Types
                   HSChain.Blockchain.Internal.Types
-                  HSChain.Blockchain.Interpretation
                   HSChain.Control
                   HSChain.Crypto.Containers
                   HSChain.Data.CIntMap
