@@ -19,6 +19,7 @@ module HSChain.Blockchain.Internal.Engine.Types (
     -- * Application state
   , NewBlock(..)
   , AppLogic(..)
+  , AppStore(..)
   , hoistAppLogic
   , AppCallbacks(..)
   , hoistAppCallback
@@ -193,10 +194,13 @@ data AppLogic m alg a = AppLogic
   , appValidationFun    :: Block alg a
                         -> BlockchainState alg a
                         -> m (Maybe (BlockchainState alg a))
-    -- ^ Function for validation of proposed block data. It returns
-    --   change of validators for given block if it's valid and
-    --   @Nothing@ if it's not.
-  , appMempool          :: Mempool m alg (TX a)
+  -- ^ Function for validation of proposed block data. It returns
+  --   change of validators for given block if it's valid and
+  --   @Nothing@ if it's not.
+  }
+
+data AppStore m alg a = AppStore
+  { appMempool          :: Mempool m alg (TX a)
     -- ^ Application mempool
   , appBchState         :: BChStore m a
     -- ^ Store for the blockchain state
@@ -223,8 +227,6 @@ hoistAppLogic :: (Functor n) => (forall x. m x -> n x) -> AppLogic m alg a -> Ap
 hoistAppLogic fun AppLogic{..} = AppLogic
   { appBlockGenerator   = (fmap . fmap) fun appBlockGenerator
   , appValidationFun    = (fmap . fmap) fun appValidationFun
-  , appMempool          = hoistMempool  fun appMempool
-  , appBchState         = hoistBChStore fun appBchState
   , ..
   }
 

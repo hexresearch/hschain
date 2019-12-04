@@ -114,20 +114,23 @@ interpretSpec genesis p cb = do
                 Just k = find (`Map.notMember` st) ["K_" ++ show (n :: Int) | n <- [1 ..]]
             i <- liftIO $ randomRIO (1,100)
             return (BData [(k, i)], BlockchainState (Map.insert k i st) valset)
-        , appMempool         = nullMempool
-        , appBchState        = store
+        }
+      astore = AppStore
+        { appMempool  = nullMempool
+        , appBchState = store
         }
   acts <- runNode (getT p :: Configuration Example) NodeDescription
     { nodeValidationKey = p ^.. nspecPrivKey
     , nodeGenesis       = genesis
     , nodeCallbacks     = cb
     , nodeLogic         = logic
+    , nodeStore         = astore
     , nodeNetwork       = getT p
     }
   return
     ( RunningNode { rnodeState   = store
                   , rnodeConn    = conn
-                  , rnodeMempool = appMempool logic
+                  , rnodeMempool = appMempool astore
                   }
     , acts
     )

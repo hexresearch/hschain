@@ -236,18 +236,21 @@ interpretSpec
 interpretSpec genesis p cb = do
   conn  <- askConnectionRO
   store <- newSTMBchStorage $ initialState transitions
-  logic <- makeAppLogic store transitions runner
+  let astore = AppStore { appBchState = store
+                        , appMempool  = nullMempool
+                        }
   acts  <- runNode (getT p :: Configuration Example) NodeDescription
     { nodeValidationKey = p ^.. nspecPrivKey
     , nodeGenesis       = genesis
     , nodeCallbacks     = cb
-    , nodeLogic         = logic
+    , nodeLogic         = makeAppLogic transitions runner
+    , nodeStore         = astore
     , nodeNetwork       = getT p
     }
   return
     ( RunningNode { rnodeState   = store
                   , rnodeConn    = conn
-                  , rnodeMempool = appMempool logic
+                  , rnodeMempool = appMempool astore
                   }
     , acts
     )

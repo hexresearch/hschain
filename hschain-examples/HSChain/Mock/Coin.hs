@@ -354,20 +354,23 @@ interpretSpec
   -> AppCallbacks m Alg BData
   -> m (RunningNode m Alg BData, [m ()])
 interpretSpec genesis p cb = do
-  conn  <- askConnectionRO
-  store <- newSTMBchStorage $ initialState transitions
-  logic <- makeAppLogic store transitions runner  
+  conn    <- askConnectionRO
+  store   <- newSTMBchStorage $ initialState transitions
+  mempool <- makeMempool  store transitions runner
   acts <- runNode (getT p :: Configuration Example) NodeDescription
     { nodeValidationKey = p ^.. nspecPrivKey
     , nodeGenesis       = genesis
-    , nodeCallbacks     = cb <> nonemptyMempoolCallback (appMempool logic)
-    , nodeLogic         = logic
+    , nodeCallbacks     = cb <> nonemptyMempoolCallback mempool
+    , nodeLogic         = makeAppLogic transitions runner
+    , nodeStore         = AppStore { appBchState = store
+                                   , appMempool  = mempool
+                                   }
     , nodeNetwork       = getT p
     }
   return
     ( RunningNode { rnodeState   = store
                   , rnodeConn    = conn
-                  , rnodeMempool = appMempool logic
+                  , rnodeMempool = mempool
                   }
     , acts
     )

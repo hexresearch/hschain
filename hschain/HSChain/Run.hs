@@ -12,6 +12,7 @@ module HSChain.Run (
     -- * New node code
     runNode
   , makeAppLogic
+  , makeMempool
   , NodeDescription(..)
   , BlockchainNet(..)
   , Interpreter(..)
@@ -85,25 +86,20 @@ makeAppLogic
   :: ( MonadDB m alg a, MonadMask m, MonadIO m
      , BlockData a, Show (TX a), Ord (TX a), Crypto alg
      )
-  => BChStore m a               -- ^ Storage for blockchain state
-  -> BChLogic    q   alg a      -- ^ Blockchain logic
+  => BChLogic    q   alg a      -- ^ Blockchain logic
   -> Interpreter q m alg a      -- ^ Runner for logic
-  -> m (AppLogic m alg a)
-makeAppLogic store logic@BChLogic{..} interp@Interpreter{..} = do
-  mempool <- makeMempool store logic interp
-  return AppLogic
-    { appValidationFun  = \b bst -> (fmap . fmap) snd
-                                  $ interpretBCh bst
-                                  $ processBlock b
-    , appBlockGenerator = \newB txs -> do
-        mb <- interpretBCh (newBlockState newB)
-            $ generateBlock newB txs
-        case mb of
-          Just b  -> return b
-          Nothing -> throwM InvalidBlockGenerated
-    , appMempool        = mempool
-    , appBchState       = store
-    }
+  -> AppLogic m alg a
+makeAppLogic BChLogic{..} Interpreter{..} = AppLogic
+  { appValidationFun  = \b bst -> (fmap . fmap) snd
+                                $ interpretBCh bst
+                                $ processBlock b
+  , appBlockGenerator = \newB txs -> do
+      mb <- interpretBCh (newBlockState newB)
+          $ generateBlock newB txs
+      case mb of
+        Just b  -> return b
+        Nothing -> throwM InvalidBlockGenerated
+  }
 
 
 -- | Specification of node
@@ -115,6 +111,7 @@ data NodeDescription m alg a = NodeDescription
   , nodeLogic         :: !(AppLogic m alg a)
     -- ^ Callbacks for validation of block, transaction and generation
     --   of new block.
+  , nodeStore         :: !(AppStore m alg a)
   , nodeCallbacks     :: !(AppCallbacks m alg a)
     -- ^ Callbacks with monoidal structure
   , nodeNetwork       :: !BlockchainNet
@@ -142,6 +139,7 @@ runNode
   -> m [m ()]
 runNode cfg NodeDescription{..} = do
   let AppLogic{..}      = nodeLogic
+      AppStore{..}      = nodeStore
       BlockchainNet{..} = nodeNetwork
       appCall = mempoolFilterCallback appMempool
              <> nodeCallbacks
@@ -150,7 +148,7 @@ runNode cfg NodeDescription{..} = do
     [ id $ descendNamespace "net"
          $ startPeerDispatcher (cfgNetwork cfg) bchNetwork bchInitialPeers appCh appMempool
     , id $ descendNamespace "consensus"
-         $ runApplication (cfgConsensus cfg) nodeValidationKey nodeGenesis nodeLogic appCall appCh
+         $ runApplication (cfgConsensus cfg) nodeValidationKey nodeGenesis nodeLogic nodeStore appCall appCh
     , forever $ do
         MempoolInfo{..} <- mempoolStats appMempool
         usingGauge prometheusMempoolSize      mempool'size
