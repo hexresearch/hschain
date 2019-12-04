@@ -101,6 +101,7 @@ instance BlockData BData where
   type InterpreterState BData = SQLiteState
   blockTransactions (BData txs) = txs
   logBlockData      (BData txs) = HM.singleton "Ntx" $ JSON.toJSON $ length txs
+  proposerSelection             = ProposerSelection randomProposerSHA512
 
 data Transaction = Transaction
   { transactionRequest    :: String

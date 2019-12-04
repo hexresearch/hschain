@@ -96,7 +96,7 @@ instance BlockData BData where
   type InterpreterState BData = CoinState
   blockTransactions (BData txs) = txs
   logBlockData      (BData txs) = HM.singleton "Ntx" $ JSON.toJSON $ length txs
-
+  proposerSelection             = ProposerSelection randomProposerSHA512
 
 -- | Single transaction for transfer of coins
 data TxSend = TxSend

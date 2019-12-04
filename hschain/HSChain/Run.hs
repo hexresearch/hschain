@@ -103,7 +103,6 @@ makeAppLogic store logic@BChLogic{..} interp@Interpreter{..} = do
           Nothing -> throwM InvalidBlockGenerated
     , appMempool        = mempool
     , appBchState       = store
-    , appProposerChoice = randomProposerSHA512
     }
 
 

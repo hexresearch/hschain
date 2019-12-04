@@ -1,13 +1,15 @@
-{-# LANGUAGE DataKinds         #-}
-{-# LANGUAGE DeriveFunctor     #-}
-{-# LANGUAGE FlexibleContexts  #-}
-{-# LANGUAGE LambdaCase        #-}
-{-# LANGUAGE MultiWayIf        #-}
-{-# LANGUAGE NamedFieldPuns    #-}
-{-# LANGUAGE NumDecimals       #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards   #-}
-{-# LANGUAGE TupleSections     #-}
+{-# LANGUAGE DataKinds           #-}
+{-# LANGUAGE DeriveFunctor       #-}
+{-# LANGUAGE FlexibleContexts    #-}
+{-# LANGUAGE LambdaCase          #-}
+{-# LANGUAGE MultiWayIf          #-}
+{-# LANGUAGE NamedFieldPuns      #-}
+{-# LANGUAGE NumDecimals         #-}
+{-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE RecordWildCards     #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TupleSections       #-}
+{-# LANGUAGE TypeApplications    #-}
 -- |
 -- Core of blockchain application. This module provides function which
 -- continuously updates blockchain using consensus algorithm and
@@ -415,7 +417,8 @@ handleEngineMessage HeightParameters{..} ConsensusCfg{..} AppChans{..} = forever
 ----------------------------------------------------------------
 
 makeHeightParameters
-  :: ( MonadDB m alg a
+  :: forall m alg a.
+     ( MonadDB m alg a
      , MonadIO m
      , MonadThrow m
      , MonadLogger m
@@ -425,7 +428,7 @@ makeHeightParameters
   -> AppCallbacks        m alg a
   -> ProposalStorage 'RW m alg a
   -> m (HeightParameters m alg a)
-makeHeightParameters appValidatorKey logic@AppLogic{..} AppCallbacks{appCanCreateBlock} propStorage = do
+makeHeightParameters appValidatorKey AppLogic{..} AppCallbacks{appCanCreateBlock} propStorage = do
   bchH <- queryRO $ blockchainHeight
   let currentH = succ bchH
   oldValSet <- queryRO $ retrieveValidatorSet     bchH
@@ -437,7 +440,7 @@ makeHeightParameters appValidatorKey logic@AppLogic{..} AppCallbacks{appCanCreat
     { validatorSet     = valSet
     , oldValidatorSet  = oldValSet
     , validatorKey     = liftA2 (,) appValidatorKey ourIndex
-    , proposerForRound = appProposerChoice valSet currentH
+    , proposerForRound = selectProposer (proposerSelection @a @alg) valSet currentH
     --
     , readyCreateBlock = \n ->
         queryRO (retrieveBlockReadyFromWAL currentH n) >>= \case
@@ -457,7 +460,7 @@ makeHeightParameters appValidatorKey logic@AppLogic{..} AppCallbacks{appCanCreat
                              $ bchStoreRetrieve appBchState bchH
             mvalSet'        <- appValidationFun b (BlockchainState st valSet)
             evidenceState   <- queryRO $ mapM evidenceRecordedState (merkleValue $ blockEvidence b)
-            evidenceOK      <- mapM (evidenceCorrect logic) (merkleValue $ blockEvidence b)
+            evidenceOK      <- mapM evidenceCorrect (merkleValue $ blockEvidence b)
             if | not (null inconsistencies) -> do
                -- Block is not internally consistent
                    logger ErrorS "Proposed block has inconsistencies"
@@ -530,9 +533,9 @@ makeHeightParameters appValidatorKey logic@AppLogic{..} AppCallbacks{appCanCreat
     }
 
 evidenceCorrect
-  :: (Crypto alg, MonadIO m, MonadReadDB m alg a)
-  => AppLogic m alg a -> ByzantineEvidence alg a -> m Bool
-evidenceCorrect AppLogic{appProposerChoice=choice} evidence = do
+  :: forall m alg a. (Crypto alg, BlockData a, MonadIO m, MonadReadDB m alg a)
+  => ByzantineEvidence alg a -> m Bool
+evidenceCorrect evidence = do
   queryRO (retrieveValidatorSet h) >>= \case
     -- We don't have validator set (vote from future)
     Nothing   -> return False
@@ -542,6 +545,7 @@ evidenceCorrect AppLogic{appProposerChoice=choice} evidence = do
         | choice vals propHeight propRound == signedKeyInfo p -> False
         | otherwise                                           -> True
         where
+          choice       = selectProposer (proposerSelection @a @alg)
           Proposal{..} = signedValue p
       ConflictingPreVote   v1 v2
         | ((/=) `on` voteHeight  . signedValue) v1 v2 -> False

@@ -200,8 +200,6 @@ data AppLogic m alg a = AppLogic
     -- ^ Application mempool
   , appBchState         :: BChStore m a
     -- ^ Store for the blockchain state
-  , appProposerChoice   :: ValidatorSet alg -> Height -> Round -> ValidatorIdx alg
-    -- ^ Choice function for proposer
   }
 
 -- | User callbacks which have monoidal strcture

@@ -74,6 +74,7 @@ instance BlockData BData where
   type InterpreterState BData = BState
   blockTransactions (BData txs) = txs
   logBlockData      (BData txs) = HM.singleton "Ntx" $ JSON.toJSON $ length txs
+  proposerSelection             = ProposerSelection randomProposerSHA512
 
 genesisBlock :: ValidatorSet Alg -> Block Alg BData
 genesisBlock valSet
@@ -115,7 +116,6 @@ interpretSpec genesis p cb = do
             return (BData [(k, i)], BlockchainState (Map.insert k i st) valset)
         , appMempool         = nullMempool
         , appBchState        = store
-        , appProposerChoice  = randomProposerSHA512
         }
   acts <- runNode (getT p :: Configuration Example) NodeDescription
     { nodeValidationKey = p ^.. nspecPrivKey

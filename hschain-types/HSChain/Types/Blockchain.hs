@@ -32,6 +32,7 @@ module HSChain.Types.Blockchain (
   , Header
   , Commit(..)
   , ByzantineEvidence(..)
+  , ProposerSelection(..)
   , BlockData(..)
   , BlockchainState(..)
     -- * Data types for establishing consensus
@@ -206,6 +207,13 @@ instance (Crypto alg) => CryptoHashable (Commit alg a) where
   hashStep = genericHashStep "hschain"
 
 
+-- | Newtype wrapper for function on how to compute selection of
+--   proposer. We need this wrapper in order to allow to dispatch over
+--   block data type since it only enters via non-injective type family
+newtype ProposerSelection alg a = ProposerSelection
+  { selectProposer :: ValidatorSet alg -> Height -> Round -> ValidatorIdx alg
+  }
+
 -- | Type class for data which could be put into blockchain's
 --   block. Related types are defined as associated types
 class ( Serialise a
@@ -226,7 +234,11 @@ class ( Serialise a
   blockTransactions :: a -> [TX a]
   -- | Collect information about block data for logging
   logBlockData      :: a -> JSON.Object
+  -- | Describe how to select proposer for given height and round.
+  proposerSelection :: Crypto alg => ProposerSelection alg a
 
+-- | Full state of blockchain. That is it's pair of user defined state
+--   and
 data BlockchainState alg a = BlockchainState
   { blockchainState :: !(InterpreterState a)
   , bChValidatorSet :: !(ValidatorSet alg)
