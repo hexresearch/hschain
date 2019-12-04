@@ -85,6 +85,7 @@ executable hschain-sql-node
                      , hschain
                      , hschain-crypto
                      , hschain-types
+                     , hschain-example
                      , aeson
                      , base58-bytestring >=0.1
                      , bytestring        >=0.10
@@ -122,6 +123,7 @@ executable hschain-sql-node
                      , http-client-tls
                      , bloodhound
                      , network            >=2.6.0.0 && <2.9
+                     , utf8-string
                      , tls                >=1.4.1
                      , warp
                      , x509

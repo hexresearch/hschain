@@ -48,6 +48,8 @@ import HSChain.Run
 
 import qualified Data.Aeson as JSON
 import Data.ByteString.Lazy (toStrict)
+import qualified Data.ByteString as BS
+import qualified Data.ByteString.UTF8 as UTF8
 import Data.Foldable
 import Data.Maybe
 import Data.Map             (Map,(!))
@@ -69,6 +71,7 @@ import HSChain.P2P            (generatePeerId)
 import HSChain.P2P.Network    (newNetworkTcp)
 import HSChain.Types
 import HSChain.Debug.Trace
+import HSChain.Mock.Types     (Example)
 
 import qualified HSChain.P2P.Types as P2PT
 
@@ -76,10 +79,13 @@ import Network.Socket
 
 import System.IO
 
+
 -- |Read config, get secret key, run node...
 runConsensusNode :: String -> String -> IO ()
 runConsensusNode configPath envVar = do
-  
+  nspec@NodeSpec{} :*: NodeCfg{..} :*: (cfg :: Configuration Example)
+    <- loadYamlSettings [reverse configPath] [] requireEnv
+  let genesis = error "genesis generation"
   return ()
 
 -- |Main program.
@@ -113,15 +119,15 @@ instance BlockData BData where
   logBlockData      (BData txs upds) = HM.singleton "Ntx" $ JSON.toJSON $ length txs + length upds
 
 data Transaction = Transaction
-  { transactionRequest    :: String
-  , transactionArguments  :: Map.Map String String
+  { transactionRequest    :: BS.ByteString
+  , transactionArguments  :: Map.Map BS.ByteString BS.ByteString
   }
   deriving stock    (Show, Eq, Generic)
   deriving anyclass (NFData)
   deriving anyclass (Serialise)
 
 data Update = Update
-  { updateRequest    :: String
+  { updateRequest    :: BS.ByteString
   }
   deriving stock    (Show, Eq, Generic)
   deriving anyclass (NFData)
@@ -131,6 +137,40 @@ data SQLiteState = SQLiteState
   deriving stock    (Show, Eq, Generic)
   deriving anyclass (NFData)
   deriving anyclass (Serialise)
+
+data NodeSpec = NodeSpec
+  { nodeSpecLogSpec    :: [ScribeSpec]
+  }
+  deriving (Show, Generic)
+
+instance JSON.ToJSON NodeSpec
+instance JSON.FromJSON NodeSpec
+
+data NodeCfg = NodeCfg
+  { nodeCfgValidatorKeys :: [PublicKey Alg]
+  , nodeCfgPort          :: Word16
+  , nodeCfgSeeds         :: [P2PT.NetAddr]
+  }
+  deriving (Show,Generic)
+instance FromJSON NodeCfg
+
+----------------------------------------------------------------
+-- |Signatures
+--
+-- We use homegrown textual encoding of signatures for transactions
+-- which are text, essentially.
+--
+-- Text is split in lines (NL as separator, text must end in NL)
+-- and first three lines are:
+--   1. public key used to verify signature
+--   2. signature (see definition of @Alg@ above) of the following text and
+--   3. salt - any string would do, but remember that we deduplicate
+--      transactions on salts alone.
+--
+-- All other lines of text are left intact and bear no significance
+-- for signature creation/validation.
+--
+----------------------------------------------------------------
 
 
 ----------------------------------------------------------------
@@ -151,26 +191,31 @@ odbcExtensionInterface mempool dbConn sock = do
     (connSock, _) <- accept sock
     h <- socketToHandle connSock ReadWriteMode
     flip finally (hClose h) $ do
-      pubKeyStr <- hGetLine h
-      otherHeight <- hGetLine h
-      request <- hGetLine h
-      params <- if null request then return [] else readParams h []
+      pubKeyStr <- BS.hGetLine h
+      otherHeight <- BS.hGetLine h
+      salt <- BS.hGetLine h
+      (request, params) <- if BS.null salt
+                   then return (BS.empty, [])
+                   else do
+                          rq <- BS.hGetLine h
+                          ps <- readParams h []
+                          return (rq, ps)
       reportAnswer dbConn h otherHeight
       return ()
     return ()
   odbcExtensionInterface mempool dbConn sock
   where
     readParams h acc = do
-      paramName <- hGetLine h
-      if null paramName
+      paramName <- BS.hGetLine h
+      if BS.null paramName
         then return acc
         else do
-          value <- hGetLine h
+          value <- BS.hGetLine h
           readParams h ((paramName, value) : acc)
 
-reportAnswer :: SQLite.Connection -> Handle -> String -> IO ()
+reportAnswer :: SQLite.Connection -> Handle -> BS.ByteString -> IO ()
 reportAnswer conn h heightStr
-  | ((height, ""):_) <- reads heightStr = do
+  | ((height, ""):_) <- reads (UTF8.toString heightStr) = do
     currentHeight <- readCurrentHeight
     hPutStrLn h $ show currentHeight
     if height < currentHeight
