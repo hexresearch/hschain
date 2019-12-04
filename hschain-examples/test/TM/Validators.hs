@@ -173,7 +173,7 @@ instance BlockData Tx where
   type InterpreterState Tx = ValidatorSet Alg
   blockTransactions        = pure
   logBlockData             = mempty
-
+  proposerSelection        = ProposerSelection randomProposerSHA512
 
 privK :: [PrivKey Alg]
 privK = take 4 $ makePrivKeyStream 1337
