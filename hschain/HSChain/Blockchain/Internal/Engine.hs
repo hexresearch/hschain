@@ -67,9 +67,10 @@ newAppChans ConsensusCfg{incomingQueueSize = sz} = do
 rewindBlockchainState
   :: ( MonadDB m alg a, MonadIO m, MonadThrow m
      , Crypto alg, BlockData a)
-  => AppLogic m alg a
+  => AppStore m alg a
+  -> AppLogic m alg a
   -> m ()
-rewindBlockchainState AppLogic{appBchState,appValidationFun} = do
+rewindBlockchainState AppStore{..} AppLogic{..} = do
   -- We need to generate validator set for H=1. We do so in somewhat
   -- fragile way.
   --
@@ -125,21 +126,22 @@ runApplication
      -- ^ Genesis block
   -> AppLogic m alg a
      -- ^ Get initial state of the application
+  -> AppStore m alg a
   -> AppCallbacks m alg a
   -> AppChans m alg a
      -- ^ Channels for communication with peers
   -> m ()
-runApplication config appValidatorKey (genesis,valSet) appSt appCall appCh = logOnException $ do
+runApplication config appValidatorKey (genesis,valSet) appLogic appStore appCall appCh = logOnException $ do
   logger InfoS "Starting consensus engine" ()
   -- Store genesis
   mustQueryRW $ storeGenesis genesis valSet
   -- Rewind state of blockcahin. At the same time we 
-  rewindBlockchainState appSt
+  rewindBlockchainState appStore appLogic
   -- Now we can start consensus
   height <- queryRO $ blockchainHeight
   lastCm <- queryRO $ retrieveLocalCommit height
   iterateM lastCm $ fmap Just
-                  . decideNewBlock config appValidatorKey appSt appCall appCh
+                  . decideNewBlock config appValidatorKey appLogic appStore appCall appCh
 
 -- This function uses consensus algorithm to decide which block we're
 -- going to commit at current height, then stores it in database and
@@ -154,14 +156,17 @@ decideNewBlock
   => ConsensusCfg
   -> Maybe (PrivValidator alg)
   -> AppLogic     m alg a
+  -> AppStore     m alg a
   -> AppCallbacks m alg a
   -> AppChans     m alg a
   -> Maybe (Commit alg a)
   -> m (Commit alg a)
-decideNewBlock config appValidatorKey appLogic@AppLogic{..} appCall@AppCallbacks{..} appCh@AppChans{..} lastCommt = do
+decideNewBlock config appValidatorKey
+               appLogic@AppLogic{..} appStore@AppStore{..}
+               appCall@AppCallbacks{..} appCh@AppChans{..} lastCommt = do
   -- Enter NEW HEIGHT and create initial state for consensus state
   -- machine
-  hParam  <- makeHeightParameters appValidatorKey appLogic appCall appPropStorage
+  hParam  <- makeHeightParameters appValidatorKey appLogic appStore appCall appPropStorage
   resetPropStorage appPropStorage $ currentH hParam
   -- Run consensus engine
   (cmt, block, bchSt) <- runEffect $ do
@@ -169,7 +174,7 @@ decideNewBlock config appValidatorKey appLogic@AppLogic{..} appCall@AppCallbacks
     tm0 <-  newHeight hParam lastCommt
         >-> sink
     rxMessageSource hParam appCh
-        >-> msgHandlerLoop hParam appLogic appCh tm0
+        >-> msgHandlerLoop hParam appLogic appStore appCh tm0
         >-> sink
   -- Update metrics
   do let nTx = maybe 0 (length . commitPrecommits . merkleValue) (blockPrevCommit block)
@@ -225,11 +230,12 @@ msgHandlerLoop
      , Crypto alg)
   => HeightParameters m alg a
   -> AppLogic m alg a
+  -> AppStore m alg a
   -> AppChans m alg a
   -> TMState alg a
   -> Pipe (MessageRx 'Verified alg a) (EngineMessage alg a) m
       (Commit alg a, Block alg a, BlockchainState alg a)
-msgHandlerLoop hParam AppLogic{..} AppChans{..} = mainLoop Nothing
+msgHandlerLoop hParam AppLogic{..} AppStore{..} AppChans{..} = mainLoop Nothing
   where
     height = currentH hParam
     mainLoop mCmt tm = do
@@ -425,10 +431,11 @@ makeHeightParameters
      , Crypto alg, BlockData a)
   => Maybe (PrivValidator alg)
   -> AppLogic            m alg a
+  -> AppStore            m alg a
   -> AppCallbacks        m alg a
   -> ProposalStorage 'RW m alg a
   -> m (HeightParameters m alg a)
-makeHeightParameters appValidatorKey AppLogic{..} AppCallbacks{appCanCreateBlock} propStorage = do
+makeHeightParameters appValidatorKey AppLogic{..} AppStore{..} AppCallbacks{appCanCreateBlock} propStorage = do
   bchH <- queryRO $ blockchainHeight
   let currentH = succ bchH
   oldValSet <- queryRO $ retrieveValidatorSet     bchH

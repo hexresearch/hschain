@@ -538,11 +538,13 @@ startConsensus k = do
   logic <- mkAppLogic
   chans <- newAppChans cfg
   ch    <- atomicallyIO $ dupTChan $ appChanTx chans
+  store <- newSTMBchStorage mempty
   return ( ( ch
            , appChanRx chans
            )
          , appPropStorage chans
-         , runApplication cfg (Just (PrivValidator k)) (genesis,valSet) logic mempty chans
+         , runApplication cfg (Just (PrivValidator k)) (genesis,valSet)
+             logic (AppStore nullMempool store) mempty chans
          )
   where
     cfg = cfgConsensus (defCfg :: Configuration FastTest)
@@ -550,7 +552,6 @@ startConsensus k = do
 -- Create default application logic
 mkAppLogic :: MonadIO m => m (AppLogic m TestAlg BData)
 mkAppLogic = do
-  store <- newSTMBchStorage mempty
   cnt   <- liftIO $ newIORef 0
   return AppLogic
     { appBlockGenerator = \b _ -> do i <- liftIO $ readIORef cnt
@@ -561,8 +562,6 @@ mkAppLogic = do
     , appValidationFun  = \b (BlockchainState st valset) -> do
         return $ do st' <- foldM (flip process) st (let BData tx = merkleValue $ blockData b in tx)
                     return $ BlockchainState st' valset
-    , appMempool        = nullMempool
-    , appBchState       = store
     }
 
 proposerChoice :: Crypto alg => ValidatorSet alg -> Height -> Round -> ValidatorIdx alg
