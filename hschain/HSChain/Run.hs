@@ -61,6 +61,24 @@ newtype Interpreter q m alg a = Interpreter
                  -> m (Maybe (x, BlockchainState alg a))
   }
 
+
+-- | Create default mempool which checks transactions against current
+--   state
+makeMempool
+  :: (MonadIO m, MonadReadDB m alg a, Ord (TX a), Show (TX a), Crypto alg, BlockData a)
+  => BChStore m a
+  -> BChLogic q   alg a
+  -> Interpreter q m alg a
+  -> m (Mempool m alg (TX a))
+makeMempool store BChLogic{..} Interpreter{..} =
+  newMempool $ \tx -> do
+    (mH, st) <- bchCurrentState store
+    valSet   <- queryRO $ mustRetrieveValidatorSet $ case mH of
+      Nothing -> Height 0
+      Just h  -> succ h
+    isJust <$> interpretBCh (BlockchainState st valSet) (processTx tx)
+
+
 -- | Create 'AppLogic' which should be then passed to 'runNode' from
 --   description of blockchain logic and storage of blockchain state.
 makeAppLogic
@@ -71,16 +89,8 @@ makeAppLogic
   -> BChLogic    q   alg a      -- ^ Blockchain logic
   -> Interpreter q m alg a      -- ^ Runner for logic
   -> m (AppLogic m alg a)
-makeAppLogic store BChLogic{..} Interpreter{..} = do
-  -- Create mempool
-  let checkTx tx = do
-        (mH, st) <- bchCurrentState store
-        valSet   <- queryRO $ mustRetrieveValidatorSet $ case mH of
-          Nothing -> Height 0
-          Just h  -> succ h
-        isJust <$> interpretBCh (BlockchainState st valSet) (processTx tx)
-  mempool <- newMempool checkTx
-  --
+makeAppLogic store logic@BChLogic{..} interp@Interpreter{..} = do
+  mempool <- makeMempool store logic interp
   return AppLogic
     { appValidationFun  = \b bst -> (fmap . fmap) snd
                                   $ interpretBCh bst
