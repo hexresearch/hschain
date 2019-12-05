@@ -28,11 +28,6 @@ import Data.Word
 import System.Environment (getArgs)
 import System.Exit (exitSuccess, exitFailure)
 
-import Language.SQL.SimpleSQL.Dialect
-import Language.SQL.SimpleSQL.Parse
-import Language.SQL.SimpleSQL.Pretty
-import Language.SQL.SimpleSQL.Syntax
-
 import Data.Yaml.Config       (loadYamlSettings, requireEnv)
 
 import Network.Wai.Middleware.Prometheus
@@ -64,7 +59,7 @@ import Codec.Serialise      (Serialise,serialise)
 import HSChain.Control
 import HSChain.Store
 import HSChain.Monitoring
-import HSChain.Crypto         (PublicKey, (:&))
+import HSChain.Crypto
 import HSChain.Crypto.Ed25519
 import HSChain.Crypto.SHA
 import HSChain.P2P            (generatePeerId)
@@ -78,6 +73,8 @@ import qualified HSChain.P2P.Types as P2PT
 import Network.Socket
 
 import System.IO
+
+import HSChain.SQL
 
 
 -- |Read config, get secret key, run node...
@@ -150,27 +147,26 @@ data NodeCfg = NodeCfg
   { nodeCfgValidatorKeys :: [PublicKey Alg]
   , nodeCfgPort          :: Word16
   , nodeCfgSeeds         :: [P2PT.NetAddr]
+  , nodeCfgGenesisPath   :: String
   }
   deriving (Show,Generic)
 instance FromJSON NodeCfg
 
 ----------------------------------------------------------------
--- |Signatures
---
--- We use homegrown textual encoding of signatures for transactions
--- which are text, essentially.
---
--- Text is split in lines (NL as separator, text must end in NL)
--- and first three lines are:
---   1. public key used to verify signature
---   2. signature (see definition of @Alg@ above) of the following text and
---   3. salt - any string would do, but remember that we deduplicate
---      transactions on salts alone.
---
--- All other lines of text are left intact and bear no significance
--- for signature creation/validation.
+-- Genesis block.
 --
 ----------------------------------------------------------------
+
+readGenesisBlock :: String -> IO BData
+readGenesisBlock filename = do
+  text <- BS.readFile filename
+  let ls = BS.split (fromIntegral $ fromEnum '\n') text
+  case ls of
+    (publickey : signature : salt : updates) -> do
+      if checkTextualSignature publickey signature salt updates
+        then return $ BData [] $ map Update updates
+        else error $ "failed to verify signature on genesis file "++show filename++"."
+    _ -> error $ "malformed genesis file "++ show filename ++ " (must have at least three."
 
 
 ----------------------------------------------------------------

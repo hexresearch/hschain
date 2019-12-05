@@ -52,7 +52,7 @@ executable hschain-sql-utils
   main-is:             Utils.hs
 
   -- Modules included in this executable, other than Main.
-  -- other-modules:
+  other-modules:       HSChain.SQL
 
   -- LANGUAGE extensions used by modules in this package.
   -- other-extensions:
@@ -74,7 +74,7 @@ executable hschain-sql-node
   main-is:             Node.hs
 
   -- Modules included in this executable, other than Main.
-  -- other-modules:
+  other-modules:       HSChain.SQL
 
   -- LANGUAGE extensions used by modules in this package.
   -- other-extensions:

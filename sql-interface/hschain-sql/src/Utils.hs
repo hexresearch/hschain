@@ -5,43 +5,12 @@ import Control.Monad.State
 
 import System.Exit (exitSuccess, exitFailure)
 
-import Language.SQL.SimpleSQL.Dialect
-import Language.SQL.SimpleSQL.Parse
-import Language.SQL.SimpleSQL.Pretty
-import Language.SQL.SimpleSQL.Syntax
-
 import Options.Applicative
 
--- |Safe string value escaping.
-sqlStr :: String -> String
-sqlStr s = '\'' : concatMap escape s ++ "'"
-  where
-    escape '\'' = "''"
-    escape c = [c]
+import HSChain.SQL
 
 walletDemoTableName :: String
 walletDemoTableName = "wallet"
-
-type SQLGenMonad a = StateT [String] IO a
-
-sqlDialect :: Dialect
-sqlDialect = ansi2011
-
-addStatements :: [String] -> SQLGenMonad ()
-addStatements [] = return ()
-addStatements ss = do
-  let txt = unlines ss
-  case parseStatements sqlDialect "" Nothing $ unlines ss of
-    Left err -> error $ "internal error: statements parsing failure: " ++ show err++ "\nstatements:\n--------------\n" ++ unlines ss ++"--------------"
-    Right _ -> modify $ \ssPrev  -> ssPrev ++ ss
-
-normalizeStatementString :: String -> String
-normalizeStatementString cs = reduceSpaces $ onlySpaces cs
-  where
-    onlySpaces = map (\c -> if c < ' ' then ' ' else c)
-    reduceSpaces (' ':' ':cs) = reduceSpaces $ ' ':cs
-    reduceSpaces (c:cs) = c : reduceSpaces cs
-    reduceSpaces cs = cs
 
 commandAction :: Command -> SQLGenMonad ()
 commandAction (MandatorySystemTables userTables initialRequests) = do
