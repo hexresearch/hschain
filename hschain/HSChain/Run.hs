@@ -112,6 +112,7 @@ data NodeDescription m alg a = NodeDescription
     -- ^ Callbacks for validation of block, transaction and generation
     --   of new block.
   , nodeStore         :: !(AppStore m alg a)
+    -- ^ Storage for state of blockchain.
   , nodeCallbacks     :: !(AppCallbacks m alg a)
     -- ^ Callbacks with monoidal structure
   , nodeNetwork       :: !BlockchainNet
