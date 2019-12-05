@@ -80,6 +80,7 @@ mkGenesisBlock :: ValidatorSet Alg -> Genesis Alg BData
 mkGenesisBlock valSet = Genesis
   { genesisBlock  = makeGenesis (BData []) (hashed mempty) valSet valSet
   , genesisValSet = valSet
+  , genesisState  = mempty
   }
 
 process :: Tx -> BState -> Maybe BState

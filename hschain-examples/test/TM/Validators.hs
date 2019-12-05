@@ -196,7 +196,6 @@ transitions = BChLogic
       Height 6 -> gen $ AddVal pk4 1
       Height 8 -> gen $ RmVal  pk1
       _        -> return Noop
-  , initialState  = valSet0
   }
   where
     gen tx = tx <$ process tx
@@ -235,7 +234,7 @@ interpretSpec
   -> m (RunningNode m Alg Tx, [m ()])
 interpretSpec genesis p cb = do
   conn  <- askConnectionRO
-  store <- newSTMBchStorage $ initialState transitions
+  store <- newSTMBchStorage $ genesisState genesis
   let astore = AppStore { appBchState = store
                         , appMempool  = nullMempool
                         }
@@ -278,7 +277,10 @@ executeNodeSpec NetSpec{..} resources = do
     let run :: DBT 'RW Alg Tx (LoggerT m) x -> m x
         run = runLoggerT logenv . runDBT conn
     (rn, acts) <- run $ interpretSpec
-      (Genesis genesis valSet0)
+      Genesis { genesisBlock  = genesis
+              , genesisValSet = valSet0
+              , genesisState  = valSet0
+              }
       (netNetCfg :*: x)
       (maybe mempty callbackAbortAtH netMaxH)
     return ( hoistRunningNode run rn
