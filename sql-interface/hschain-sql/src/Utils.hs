@@ -13,7 +13,7 @@ walletDemoTableName :: String
 walletDemoTableName = "wallet"
 
 commandAction :: Command -> SQLGenMonad ()
-commandAction (MandatorySystemTables userTables initialRequests) = do
+commandAction (MandatorySystemTables userTables initialRequests keyRoles) = do
   addStatements userTables
   addStatements $
     [ "-- special table - current height. keep it single-valued."
@@ -60,6 +60,17 @@ commandAction (MandatorySystemTables userTables initialRequests) = do
     , "    , CONSTRAINT must_have_request FOREIGN KEY (height, seq_index, request_id) REFERENCES serialized_requests(height, seq_index, request_id)"
     , "    );"
     ]
+  addStatements
+    [ "-- special table of roles of public keys"
+    , "CREATE TABLE public_key_role"
+    , "    ( public_key    TEXT NOT NULL"
+    , "    , role          TEXT NOT NULL"
+    , "    , CONSTRAINT role_of_key PRIMARY KEY (public_key, role)"
+    , "    );"
+    ]
+  forM_ keyRoles $ \(key, role) -> do
+    addStatements
+      [ "INSERT INTO public_key_role (public_key, role) VALUES ("++sqlStr key++", "++sqlStr role++");"]
   ss <- get -- we do not need our internal tables exposed to the client.
   addStatements
     [ "-- special table that keeps genesis requests"
@@ -69,11 +80,11 @@ commandAction (MandatorySystemTables userTables initialRequests) = do
     , "    );"
     , ""
     ]
-  case parseStatements sqlDialect "" Nothing $ unlines ss of
+  case parseSQLStatements $ unlines ss of
     Left err -> error $ "internal error: error parsing combined statements: "++show err
     Right statements -> do
       let printedBack = map normalizeStatementString $
-                            map (prettyStatement sqlDialect) statements
+                            map prettySQLStatement statements
       addStatements
         [ "INSERT INTO serialized_genesis_requests " ++
           "(request_sql, seq_index) VALUES ("++sqlStr req++", "++show seqIndex++");"
@@ -109,12 +120,16 @@ main = do
 
 data PType = IntParam | StringParam | PositiveParam
 data Command =
-    MandatorySystemTables [String] [String]
+    MandatorySystemTables [String] [String] [(String, String)]
   | AddRequestCode String String [(PType, String)]
 
 parseCommand :: Parser Command
 parseCommand = subparser
-  $  command "mandatory-system-tables" (info (MandatorySystemTables <$> many (sqlOption "table") <*> many (sqlOption "request")) idm)
+  $  command "mandatory-system-tables"
+    (info (MandatorySystemTables
+        <$> many (sqlOption "table")
+        <*> many (sqlOption "request")
+        <*> many (option (eitherReader keyRoleParser) (long "key-role"))) idm)
   <> command "add-request-code" (info (AddRequestCode <$> requestText <*> requestId <*> some typedParam) idm)
   where
     requestText = strOption (long "request")
@@ -127,4 +142,11 @@ parseCommand = subparser
     sqlOption opt = option (eitherReader tryToParseSQL) (long opt)
     tryToParseSQL s = either (Left . (++s) . (++ "\n--------------\n") . show)
                         (Right . const s) $
-                        parseStatements sqlDialect "" Nothing s
+                        parseSQLStatements s
+    keyRoleParser s
+        | length key < 1 = Left "format of key-role argument must be PUBLICKEY:ROLE"
+        | length role < 1 = Left "role must not be empty"
+        | otherwise = Right (key, role)
+      where
+        (key, role) = span (==':') s
+

@@ -74,3 +74,15 @@ checkTextualSignature :: BS.ByteString -> BS.ByteString
                        -> Bool
 checkTextualSignature publickey signature salt textLines = True
 
+-- |Parse an SQL statement.
+parseSQLStatement :: String -> Either String Statement
+parseSQLStatement = either (Left . show) (Right . id) . parseStatement sqlDialect "" Nothing
+
+-- |Parse some SQL statements, at least one must be present.
+parseSQLStatements :: String -> Either String [Statement]
+parseSQLStatements = either (Left . show) (Right . id) . parseStatements sqlDialect "" Nothing
+
+-- |Pretty print an SQL statement.
+prettySQLStatement :: Statement -> String
+prettySQLStatement s = prettyStatement sqlDialect s
+
