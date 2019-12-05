@@ -373,13 +373,27 @@ instance (CryptoHash alg) => CryptoHashable (Vote 'PreCommit alg a) where
 --   block and validator set
 data Genesis alg a = Genesis
   { genesisBlock  :: !(Block alg a)
+    -- ^ Genesis block
   , genesisValSet :: !(ValidatorSet alg)
+    -- ^ Validator set for genesis block. It could be changed after
+    --   evaluation of block. It could be empty if validators are
+    --   specified in a block
+  , genesisState  :: !(InterpreterState a)
+    -- ^ Initial state of blockchain. Before evaluation of genesis
+    --   block.
   }
-  deriving stock    (Show, Generic)
-  deriving anyclass (Serialise, JSON.FromJSON, JSON.ToJSON)
+  deriving stock    (Generic)
 
-deriving stock    instance (Eq a, Eq (PublicKey alg)) => Eq (Genesis alg a)
-deriving anyclass instance (NFData a, NFData (PublicKey alg)) => NFData (Genesis alg a)
+deriving stock    instance (Eq a, Eq (PublicKey alg), Eq (InterpreterState a)
+                           ) => Eq (Genesis alg a)
+deriving anyclass instance (NFData a, NFData (PublicKey alg), NFData (InterpreterState a)
+                           ) => NFData (Genesis alg a)
+deriving anyclass instance (Crypto alg, CryptoHashable a, JSON.ToJSON a, JSON.ToJSON (InterpreterState a)
+                           ) => JSON.ToJSON (Genesis alg a)
+deriving anyclass instance (Crypto alg, CryptoHashable a, JSON.FromJSON a, JSON.FromJSON (InterpreterState a)
+                           ) => JSON.FromJSON (Genesis alg a)
+deriving anyclass instance (Crypto alg, CryptoHashable a, Serialise (InterpreterState a), Serialise a
+                           ) => Serialise (Genesis alg a)
 
 -- | Parameters supplied by consensus engine for block generation
 data NewBlock alg a = NewBlock
@@ -401,8 +415,6 @@ data BChLogic q alg a = BChLogic
     -- ^ Process and validate complete block.
   , generateBlock :: !(NewBlock alg a -> [TX a] -> q a)
     -- ^ Generate block from list of transactions.
-  , initialState  :: !(InterpreterState a)
-    -- ^ Initial state of blockchain
   }
 
 

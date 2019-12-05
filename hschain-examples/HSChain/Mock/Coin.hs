@@ -226,7 +226,6 @@ transitions = BChLogic
       c0 <- get
       case selectTx c0 txs of
         (c',b) -> BData b <$ put c'
-  , initialState  = CoinState mempty mempty
   }
   where
     liftSt :: (s -> Maybe s) -> StateT s Maybe ()
@@ -311,6 +310,7 @@ mintMockCoin nodes CoinSpecification{..} =
   , Genesis
     { genesisBlock  = genesis0 { blockStateHash = hashed $ blockchainState st }
     , genesisValSet = valSet
+    , genesisState  = state0
     }
   )
   where
@@ -319,9 +319,10 @@ mintMockCoin nodes CoinSpecification{..} =
     Right valSet = makeValidatorSet nodes
     txs          = [ Deposit pk coinAridrop | pk <- pubK ]
     -- Generate genesis with correct hash
+    state0       = CoinState mempty mempty
     genesis0     = makeGenesis (BData txs) (Hashed $ hash ()) valSet valSet
     Just ((),st) = runIdentity
-                 $ interpretBCh runner (BlockchainState (initialState transitions) valSet)
+                 $ interpretBCh runner (BlockchainState state0 valSet)
                  $ processBlock transitions genesis0
 
 findInputs :: (Num i, Ord i) => i -> [(a,i)] -> [(a,i)]
@@ -357,7 +358,7 @@ interpretSpec
   -> m (RunningNode m Alg BData, [m ()])
 interpretSpec genesis p cb = do
   conn    <- askConnectionRO
-  store   <- newSTMBchStorage $ initialState transitions
+  store   <- newSTMBchStorage $ genesisState genesis
   mempool <- makeMempool  store transitions runner
   acts <- runNode (getT p :: Configuration Example) NodeDescription
     { nodeValidationKey = p ^.. nspecPrivKey
