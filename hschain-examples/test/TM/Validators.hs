@@ -229,7 +229,7 @@ interpretSpec
      , Has x BlockchainNet
      , Has x NodeSpec
      , Has x (Configuration Example))
-  => (Block Alg Tx, ValidatorSet Alg)
+  => Genesis Alg Tx
   -> x
   -> AppCallbacks m Alg Tx
   -> m (RunningNode m Alg Tx, [m ()])
@@ -277,7 +277,9 @@ executeNodeSpec NetSpec{..} resources = do
   rnodes    <- lift $ forM resources $ \(x, (conn, logenv)) -> do
     let run :: DBT 'RW Alg Tx (LoggerT m) x -> m x
         run = runLoggerT logenv . runDBT conn
-    (rn, acts) <- run $ interpretSpec (genesis,valSet0) (netNetCfg :*: x)
+    (rn, acts) <- run $ interpretSpec
+      (Genesis genesis valSet0)
+      (netNetCfg :*: x)
       (maybe mempty callbackAbortAtH netMaxH)
     return ( hoistRunningNode run rn
            , run <$> acts

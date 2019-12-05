@@ -12,7 +12,7 @@
 {-# LANGUAGE TypeOperators              #-}
 -- |
 module HSChain.Mock.KeyVal (
-    genesisBlock
+    mkGenesisBlock
   , interpretSpec
   , executeSpec
   , process
@@ -76,9 +76,11 @@ instance BlockData BData where
   logBlockData      (BData txs) = HM.singleton "Ntx" $ JSON.toJSON $ length txs
   proposerSelection             = ProposerSelection randomProposerSHA512
 
-genesisBlock :: ValidatorSet Alg -> Block Alg BData
-genesisBlock valSet
-  = makeGenesis (BData []) (hashed mempty) valSet valSet
+mkGenesisBlock :: ValidatorSet Alg -> Genesis Alg BData
+mkGenesisBlock valSet = Genesis
+  { genesisBlock  = makeGenesis (BData []) (hashed mempty) valSet valSet
+  , genesisValSet = valSet
+  }
 
 process :: Tx -> BState -> Maybe BState
 process (k,v) m
@@ -97,7 +99,7 @@ interpretSpec
      , Has x BlockchainNet
      , Has x NodeSpec
      , Has x (Configuration Example))
-  => (Block Alg BData, ValidatorSet Alg)
+  => Genesis Alg BData
   -> x
   -> AppCallbacks m Alg BData
   -> m (RunningNode m Alg BData, [m ()])
@@ -150,7 +152,7 @@ executeSpec NetSpec{..} = do
   rnodes    <- lift $ forM resources $ \(x, (conn, logenv)) -> do
     let run :: DBT 'RW Alg BData (LoggerT m) x -> m x
         run = runLoggerT logenv . runDBT conn
-    (rn, acts) <- run $ interpretSpec (genesis,valSet) (netNetCfg :*: x)
+    (rn, acts) <- run $ interpretSpec genesis (netNetCfg :*: x)
       (maybe mempty callbackAbortAtH netMaxH)
     return ( hoistRunningNode run rn
            , run <$> acts
@@ -160,4 +162,4 @@ executeSpec NetSpec{..} = do
   return $ fst <$> rnodes
   where
     valSet  = makeValidatorSetFromPriv $ catMaybes [ x ^.. nspecPrivKey | x <- netNodeList ]
-    genesis = genesisBlock valSet
+    genesis = mkGenesisBlock valSet

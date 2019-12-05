@@ -45,6 +45,7 @@ module HSChain.Types.Blockchain (
   , Vote(..)
   , CheckSignature(..)
     -- * Blockchain logic
+  , Genesis(..)
   , NewBlock(..)
   , BChLogic(..)
     -- * Signed data
@@ -367,6 +368,18 @@ instance (CryptoHash alg) => CryptoHashable (Vote 'PreCommit alg a) where
 ----------------------------------------------------------------
 -- Blockchain logic
 ----------------------------------------------------------------
+
+-- | Complete description of genesis of blockchain which includes both
+--   block and validator set
+data Genesis alg a = Genesis
+  { genesisBlock  :: !(Block alg a)
+  , genesisValSet :: !(ValidatorSet alg)
+  }
+  deriving stock    (Show, Generic)
+  deriving anyclass (Serialise, JSON.FromJSON, JSON.ToJSON)
+
+deriving stock    instance (Eq a, Eq (PublicKey alg)) => Eq (Genesis alg a)
+deriving anyclass instance (NFData a, NFData (PublicKey alg)) => NFData (Genesis alg a)
 
 -- | Parameters supplied by consensus engine for block generation
 data NewBlock alg a = NewBlock
