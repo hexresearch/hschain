@@ -1,8 +1,9 @@
-{-# LANGUAGE DataKinds           #-}
-{-# LANGUAGE FlexibleContexts    #-}
-{-# LANGUAGE LambdaCase          #-}
-{-# LANGUAGE MultiWayIf          #-}
-{-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE DataKinds         #-}
+{-# LANGUAGE FlexibleContexts  #-}
+{-# LANGUAGE LambdaCase        #-}
+{-# LANGUAGE MultiWayIf        #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards   #-}
 -- |
 -- Queries for interacting with database. Ones that constitute public
 -- API are reexported from "HSChain.Store".
@@ -95,10 +96,9 @@ initializeBlockhainTables = do
 
 storeGenesis
   :: (Crypto alg, CryptoHashable a, MonadQueryRW m alg a, Serialise a, Eq a, Show a)
-  => Block alg a                -- ^ Genesis block
-  -> ValidatorSet alg           -- ^ Validator set for block at H=0
+  => Genesis alg a                -- ^ Genesis block
   -> m ()
-storeGenesis genesis valSet = do
+storeGenesis Genesis{..} = do
   -- Insert genesis block if needed
   storedGen  <- singleQ_ "SELECT block  FROM thm_blockchain WHERE height = 0"
   storedVals <- singleQ_ "SELECT valset FROM thm_validators WHERE height = 0"
@@ -107,11 +107,11 @@ storeGenesis genesis valSet = do
     -- Fresh DB
     (Nothing, Nothing) -> do
       basicExecute "INSERT INTO thm_blockchain VALUES (0,0,?,?)"
-        ( CBORed (blockHash genesis)
-        , CBORed genesis
+        ( CBORed (blockHash genesisBlock)
+        , CBORed genesisBlock
         )
       basicExecute "INSERT INTO thm_validators VALUES (0,?)"
-        (Only (CBORed valSet))
+        (Only (CBORed genesisValSet))
     -- Otherwise check that stored and provided geneses match
     (Just genesis', Just initialVals') ->
       case checks of
@@ -120,16 +120,16 @@ storeGenesis genesis valSet = do
       where
         checks = [ [ "Genesis blocks do not match:"
                    , "  stored: " ++ show genesis'
-                   , "  expected: " ++ show genesis
+                   , "  expected: " ++ show genesisBlock
                    ]
-                 | genesis /= genesis'
+                 | genesisBlock /= genesis'
                  ]
                  ++
                  [ [ "Validators set are not equal:"
                    , "  stored:   " ++ show initialVals'
-                   , "  expected: " ++ show valSet
+                   , "  expected: " ++ show genesisValSet
                    ]
-                 | valSet /= initialVals'
+                 | genesisValSet /= initialVals'
                  ]
     --
     (_,_) -> error "initializeBlockhainTables: database corruption"

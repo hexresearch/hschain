@@ -106,7 +106,7 @@ makeAppLogic BChLogic{..} Interpreter{..} = AppLogic
 data NodeDescription m alg a = NodeDescription
   { nodeValidationKey :: !(Maybe (PrivValidator alg))
     -- ^ Private key of validator.
-  , nodeGenesis       :: !(Block alg a, ValidatorSet alg)
+  , nodeGenesis       :: !(Genesis alg a)
     -- ^ Genesis block of node
   , nodeLogic         :: !(AppLogic m alg a)
     -- ^ Callbacks for validation of block, transaction and generation

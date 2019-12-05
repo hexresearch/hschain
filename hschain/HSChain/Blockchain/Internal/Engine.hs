@@ -122,7 +122,7 @@ runApplication
      -- ^ Configuration
   -> Maybe (PrivValidator alg)
      -- ^ Private key of validator
-  -> (Block alg a, ValidatorSet alg)
+  -> Genesis alg a
      -- ^ Genesis block
   -> AppLogic m alg a
      -- ^ Get initial state of the application
@@ -131,10 +131,10 @@ runApplication
   -> AppChans m alg a
      -- ^ Channels for communication with peers
   -> m ()
-runApplication config appValidatorKey (genesis,valSet) appLogic appStore appCall appCh = logOnException $ do
+runApplication config appValidatorKey genesis appLogic appStore appCall appCh = logOnException $ do
   logger InfoS "Starting consensus engine" ()
   -- Store genesis
-  mustQueryRW $ storeGenesis genesis valSet
+  mustQueryRW $ storeGenesis genesis
   -- Rewind state of blockcahin. At the same time we 
   rewindBlockchainState appStore appLogic
   -- Now we can start consensus

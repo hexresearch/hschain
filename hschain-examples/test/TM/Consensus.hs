@@ -543,7 +543,7 @@ startConsensus k = do
            , appChanRx chans
            )
          , appPropStorage chans
-         , runApplication cfg (Just (PrivValidator k)) (genesis,valSet)
+         , runApplication cfg (Just (PrivValidator k)) genesis
              logic (AppStore nullMempool store) mempty chans
          )
   where

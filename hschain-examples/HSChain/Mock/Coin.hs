@@ -299,7 +299,7 @@ mintMockCoin
   :: (Foldable f)
   => f (Validator Alg)
   -> CoinSpecification
-  -> (Maybe TxGenerator, Block Alg BData, ValidatorSet Alg)
+  -> (Maybe TxGenerator, Genesis Alg BData)
 mintMockCoin nodes CoinSpecification{..} =
   ( do delay <- coinGeneratorDelay
        return TxGenerator
@@ -308,8 +308,10 @@ mintMockCoin nodes CoinSpecification{..} =
          , genDelay          = delay
          , genMaxMempoolSize = coinMaxMempoolSize
          }
-  , genesis0 { blockStateHash = hashed $ blockchainState st }
-  , valSet
+  , Genesis
+    { genesisBlock  = genesis0 { blockStateHash = hashed $ blockchainState st }
+    , genesisValSet = valSet
+    }
   )
   where
     privK        = take coinWallets $ makePrivKeyStream coinWalletsSeed
@@ -349,7 +351,7 @@ interpretSpec
      , Has x BlockchainNet
      , Has x NodeSpec
      , Has x (Configuration Example))
-  => (Block Alg BData, ValidatorSet Alg)
+  => Genesis Alg BData
   -> x
   -> AppCallbacks m Alg BData
   -> m (RunningNode m Alg BData, [m ()])
@@ -390,7 +392,7 @@ executeNodeSpec (NetSpec{..} :*: coin@CoinSpecification{..}) = do
   rnodes    <- lift $ forM resources $ \(x, (conn, logenv)) -> do
     let run :: DBT 'RW Alg BData (LoggerT m) x -> m x
         run = runLoggerT logenv . runDBT conn
-    (rn, acts) <- run $ interpretSpec (genesis,valSet) (netNetCfg :*: x)
+    (rn, acts) <- run $ interpretSpec genesis (netNetCfg :*: x)
       (maybe mempty callbackAbortAtH netMaxH)
     return ( hoistRunningNode run rn
            , run <$> acts
@@ -408,7 +410,7 @@ executeNodeSpec (NetSpec{..} :*: coin@CoinSpecification{..}) = do
   lift   $ catchAbort $ runConcurrently $ (snd =<< rnodes) ++ txGens
   return $ fst <$> rnodes
   where
-    (mtxGen, genesis, valSet) = mintMockCoin
+    (mtxGen, genesis) = mintMockCoin
       [ Validator (publicKey k) 1
       | Just (PrivValidator k) <- nspecPrivKey <$> netNodeList
       ] coin

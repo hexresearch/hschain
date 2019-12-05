@@ -64,8 +64,8 @@ pubKeys :: [PublicKey Alg]
 pubKeys = publicKey <$> privKeys
 
 txGen   :: HSChain.Mock.Coin.TxGenerator
-genesis :: Block Alg BData
-(Just txGen,genesis,_) = mintMockCoin
+genesis :: Genesis Alg BData
+(Just txGen,genesis) = mintMockCoin
   [ Validator k 1 | k <- take 4 pubKeys ]
   CoinSpecification
     { coinAridrop        = 1000
@@ -78,7 +78,8 @@ genesis :: Block Alg BData
 state :: BlockchainState Alg BData
 Identity (Just ((), state))
   = interpretBCh runner (BlockchainState (CoinState mempty mempty) emptyValidatorSet)
-  $ processBlock transitions genesis
+  $ processBlock transitions
+  $ genesisBlock genesis
 
 generateTxList :: Int -> IO [Tx]
 generateTxList n
