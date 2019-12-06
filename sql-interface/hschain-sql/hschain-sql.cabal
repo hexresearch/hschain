@@ -60,9 +60,11 @@ executable hschain-sql-utils
   -- Other library packages from which modules are imported.
   build-depends:       base
                      , bytestring
+                     , hschain-crypto
                      , mtl
                      , optparse-applicative
                      , simple-sql-parser
+                     , text
 
   -- Directories containing source files.
   hs-source-dirs:      src

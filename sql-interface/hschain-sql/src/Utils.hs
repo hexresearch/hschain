@@ -3,6 +3,8 @@ module Main where
 import Control.Monad
 import Control.Monad.State
 
+import qualified Data.Text as Text
+
 import System.Environment
 import System.Exit (exitSuccess, exitFailure)
 
@@ -10,6 +12,9 @@ import System.IO
 
 import Options.Applicative
 
+import HSChain.Crypto
+import HSChain.Crypto.Ed25519
+import HSChain.Crypto.SHA
 import HSChain.SQL
 
 walletDemoTableName :: String
@@ -124,8 +129,18 @@ main = do
       hPutStrLn stderr "XXX signing operation produces correct format and that's it! XXX"
       env <- getEnvironment
       case lookup envVarName env of
-        Just key -> do
-          error "TDB"
+        Just key -> case decodeBase58 $ Text.pack key of
+          Just sk -> do
+            let pk = publicKey sk :: PublicKey Ed25519
+            putStrLn $ show pk
+            putStrLn "XXX SIGNATURE XXX"
+            putStrLn "XXX SALT STRING HERE XXX"
+            -- copy input to output, not adding any extra new lines (thus putStr).
+            text <- getContents
+            putStr text
+          Nothing -> do
+            hPutStrLn stderr $ show envVarName ++ " does not contain valid secret key."
+            exitFailure
         Nothing -> do
           hPutStrLn stderr $ "environment variable "++show envVarName++" is not set or exported."
           exitFailure
