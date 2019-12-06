@@ -78,8 +78,8 @@ import HSChain.SQL
 
 
 -- |Read config, get secret key, run node...
-runConsensusNode :: String -> String -> IO ()
-runConsensusNode configPath envVar = do
+runConsensusNode :: String -> String -> String -> IO ()
+runConsensusNode genesisPath configPath envVar = do
   nspec@NodeSpec{} :*: NodeCfg{..} :*: (cfg :: Configuration Example)
     <- loadYamlSettings [reverse configPath] [] requireEnv
   let genesis = error "genesis generation"
@@ -90,7 +90,7 @@ main :: IO ()
 main = do
   args <- getArgs
   case args of
-    [filePath, envVarName] -> runConsensusNode filePath envVarName
+    [genesisPath, configPath, envVarName] -> runConsensusNode genesisPath filePath envVarName
     _ -> do
       putStrLn "usage: hschain-sql-node path-to-config private-key-env-var-name"
       exitFailure
@@ -148,6 +148,7 @@ data NodeCfg = NodeCfg
   , nodeCfgPort          :: Word16
   , nodeCfgSeeds         :: [P2PT.NetAddr]
   , nodeCfgGenesisPath   :: String
+  , nodeCfgAPIPort       :: Word16
   }
   deriving (Show,Generic)
 instance FromJSON NodeCfg

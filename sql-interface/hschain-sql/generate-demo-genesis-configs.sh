@@ -11,7 +11,7 @@
 
 
 set -euo pipefail
-IFS=$'\n\t'
+IFS=$'\n\t '
 
 export XXX_privkey_main="DDVdAh2uvFhxDSKkaccZqAgjvcZncKH773Ep7MAdiUrY" # XXX private key!
 pubkey_main="Hp1jkgqzvpbKDFVPiewHM9167tdYznjq2q9Z3Wsg33xy"
@@ -27,7 +27,6 @@ pubkey_val3="kUJgAbAwNyVRw21nwveTZgdk2daEUN1iUYaEjz5DhZo"
 
 XXX_privkey_val4="BmGxrLVzU4xeRrjWp4ij3CgY5Kt2u2p12S46NwnUZq48" # XXX private key!
 pubkey_val4="2saS5ng5xX7B9KQgsyqwwmkhgEnFSYfTaQ4YnigaHpoA"
-
 
 walletDemoTableName=funds
 
@@ -83,6 +82,36 @@ cabal new-exec -- hschain-sql-utils normalize <qex-genesis-unsigned.txt \
 	| tee qex-genesis-unsigned-normalized.txt \
 	| cabal new-exec -- hschain-sql-utils sign --secret-key-env-var XXX_privkey_main >qex-genesis.txt
 
+echo ""
 echo "qex-genesis.txt is written"
 echo ""
 echo "Also check qex-genesis-unsigned.txt and qex-genesis-unsigned-normalized.txt"
+
+mkdir -p config
+
+for i in 1 2 3 4; do
+	pubkname=pubkey_val$i
+	XXX_privkname=XXX_privkey_val$i
+	config_fname="config/local$i.yaml"
+	echo "nodeSeeds:"               >$config_fname
+	echo "  - \"127.0.0.1:40001\"" >>$config_fname
+	echo "  - \"127.0.0.1:40002\"" >>$config_fname
+	echo "  - \"127.0.0.1:40003\"" >>$config_fname
+	echo "  - \"127.0.0.1:40004\"" >>$config_fname
+	echo "nodePort: 4000$i"        >>$config_fname
+	echo "nspecPrivKey: \"${!XXX_privkname}\""     >>$config_fname
+	echo "nspecLogFile:"                      >>$config_fname
+	echo "  - type      : "ScribeJSON""       >>$config_fname
+	echo "    path      : "logs/node-$i.log"" >>$config_fname
+	echo "    severity  : "Debug""            >>$config_fname
+	echo "    verbosity : "V2""               >>$config_fname
+	echo "nspecDbName: "db/node-$i.db""       >>$config_fname
+done
+
+mkdir -p db
+
+echo ""
+echo "wrote configs:"
+ls config/*
+echo ""
+echo "Validator keys are in the genesis generated above."
