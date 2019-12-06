@@ -79,6 +79,10 @@ cabal new-exec -- hschain-sql-utils mandatory-system-tables \
 	--key-role "$pubkey_val4:VALIDATOR" \
 	>qex-genesis-unsigned.txt
 
-cabal new-exec -- hschain-sql-utils sign --secret-key-env-var XXX_privkey_main <qex-genesis-unsigned.txt >qex-genesis.txt
+cabal new-exec -- hschain-sql-utils normalize <qex-genesis-unsigned.txt \
+	| tee qex-genesis-unsigned-normalized.txt \
+	| cabal new-exec -- hschain-sql-utils sign --secret-key-env-var XXX_privkey_main >qex-genesis.txt
 
 echo "qex-genesis.txt is written"
+echo ""
+echo "Also check qex-genesis-unsigned.txt and qex-genesis-unsigned-normalized.txt"

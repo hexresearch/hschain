@@ -125,6 +125,17 @@ main :: IO ()
 main = do
   cmd <- execParser (info (parseCommand <**> helper) idm)
   case cmd of
+    Normalize -> do
+      text <- getContents
+      case parseSQLStatements text of
+        Left err -> do
+          hPutStrLn stderr $ "error parsing input as SQL statements: "++show err
+          exitFailure
+        Right statements -> do
+         forM_ statements $ \st -> do
+            let str = normalizeStatementString $
+                             prettySQLStatement st
+            putStrLn str
     Sign envVarName -> do
       hPutStrLn stderr "XXX signing operation produces correct format and that's it! XXX"
       env <- getEnvironment
@@ -132,7 +143,7 @@ main = do
         Just key -> case decodeBase58 $ Text.pack key of
           Just sk -> do
             let pk = publicKey sk :: PublicKey Ed25519
-            putStrLn $ show pk
+            putStrLn $ Text.unpack $ encodeBase58 pk
             putStrLn "XXX SIGNATURE XXX"
             putStrLn "XXX SALT STRING HERE XXX"
             -- copy input to output, not adding any extra new lines (thus putStr).
@@ -154,6 +165,7 @@ data SQLGenCommand =
 data Command =
     SQLGen SQLGenCommand
   | Sign String
+  | Normalize
 
 parseCommand :: Parser Command
 parseCommand = subparser
@@ -164,6 +176,7 @@ parseCommand = subparser
         <*> many (option (eitherReader keyRoleParser) (long "key-role")))) idm)
   <> command "add-request-code" (info (SQLGen <$> (AddRequestCode <$> requestText <*> requestId <*> some typedParam)) idm)
   <> command "sign" (info (Sign <$> keyEnvVar) idm)
+  <> command "normalize" (info (pure Normalize) idm)
   where
     requestText = strOption (long "request")
     requestId = strOption (long "id")
@@ -181,7 +194,8 @@ parseCommand = subparser
         | length role < 1 = Left $ show s ++ " bad role: role must not be empty"
         | otherwise = Right (key, role)
       where
-        (key, role) = span (/=':') s
+        (key, colonRole) = span (/=':') s
+        role = drop 1 colonRole
 
     keyEnvVar = strOption (long "secret-key-env-var")
 
