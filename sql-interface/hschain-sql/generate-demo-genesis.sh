@@ -77,7 +77,8 @@ cabal new-exec -- hschain-sql-utils mandatory-system-tables \
 	--key-role "$pubkey_val2:VALIDATOR" \
 	--key-role "$pubkey_val3:VALIDATOR" \
 	--key-role "$pubkey_val4:VALIDATOR" \
-	--sign-key-env-var XXX_privkey_main \
-	>dex-genesis.txt
+	>qex-genesis-unsigned.txt
 
-echo "dex-genesis.txt is written"
+cabal new-exec -- hschain-sql-utils sign --secret-key-env-var XXX_privkey_main <qex-genesis-unsigned.txt >qex-genesis.txt
+
+echo "qex-genesis.txt is written"

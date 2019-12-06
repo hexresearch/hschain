@@ -3,7 +3,10 @@ module Main where
 import Control.Monad
 import Control.Monad.State
 
+import System.Environment
 import System.Exit (exitSuccess, exitFailure)
+
+import System.IO
 
 import Options.Applicative
 
@@ -12,7 +15,7 @@ import HSChain.SQL
 walletDemoTableName :: String
 walletDemoTableName = "wallet"
 
-commandAction :: Command -> SQLGenMonad ()
+commandAction :: SQLGenCommand -> SQLGenMonad ()
 commandAction (MandatorySystemTables userTables initialRequests keyRoles) = do
   addStatements userTables
   addStatements $
@@ -116,21 +119,36 @@ commandAction (AddRequestCode req id params) = do
 main :: IO ()
 main = do
   cmd <- execParser (info (parseCommand <**> helper) idm)
-  (>>= mapM_ putStrLn) $ flip execStateT [] $ commandAction cmd
+  case cmd of
+    Sign envVarName -> do
+      hPutStrLn stderr "XXX signing operation produces correct format and that's it! XXX"
+      env <- getEnvironment
+      case lookup envVarName env of
+        Just key -> do
+          error "TDB"
+        Nothing -> do
+          hPutStrLn stderr $ "environment variable "++show envVarName++" is not set or exported."
+          exitFailure
+    SQLGen genCmd -> (>>= mapM_ putStrLn) $ flip execStateT [] $ commandAction genCmd
 
 data PType = IntParam | StringParam | PositiveParam
-data Command =
+data SQLGenCommand =
     MandatorySystemTables [String] [String] [(String, String)]
   | AddRequestCode String String [(PType, String)]
+
+data Command =
+    SQLGen SQLGenCommand
+  | Sign String
 
 parseCommand :: Parser Command
 parseCommand = subparser
   $  command "mandatory-system-tables"
-    (info (MandatorySystemTables
+    (info (SQLGen <$> (MandatorySystemTables
         <$> many (sqlOption "table")
         <*> many (sqlOption "request")
-        <*> many (option (eitherReader keyRoleParser) (long "key-role"))) idm)
-  <> command "add-request-code" (info (AddRequestCode <$> requestText <*> requestId <*> some typedParam) idm)
+        <*> many (option (eitherReader keyRoleParser) (long "key-role")))) idm)
+  <> command "add-request-code" (info (SQLGen <$> (AddRequestCode <$> requestText <*> requestId <*> some typedParam)) idm)
+  <> command "sign" (info (Sign <$> keyEnvVar) idm)
   where
     requestText = strOption (long "request")
     requestId = strOption (long "id")
@@ -144,9 +162,11 @@ parseCommand = subparser
                         (Right . const s) $
                         parseSQLStatements s
     keyRoleParser s
-        | length key < 1 = Left "format of key-role argument must be PUBLICKEY:ROLE"
-        | length role < 1 = Left "role must not be empty"
+        | length key < 1 = Left $ show s ++ " bad format: format of key-role argument must be PUBLICKEY:ROLE"
+        | length role < 1 = Left $ show s ++ " bad role: role must not be empty"
         | otherwise = Right (key, role)
       where
-        (key, role) = span (==':') s
+        (key, role) = span (/=':') s
+
+    keyEnvVar = strOption (long "secret-key-env-var")
 
