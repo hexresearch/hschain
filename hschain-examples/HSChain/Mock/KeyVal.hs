@@ -16,16 +16,19 @@ module HSChain.Mock.KeyVal (
   , interpretSpec
   , executeSpec
   , process
+  , keyValLogic
   , BData(..)
   , Tx
   , BState
   ) where
 
 import Codec.Serialise (Serialise)
+import Control.Applicative
 import Control.Monad
 import Control.Monad.Catch
 import Control.Monad.Trans.Cont
 import Control.Monad.Trans.Class
+import Control.Monad.Trans.Maybe
 import Control.Monad.IO.Class
 import Data.Maybe
 import Data.List
@@ -77,10 +80,10 @@ instance BlockData BData where
   proposerSelection             = ProposerSelection randomProposerSHA512
 
 mkGenesisBlock :: ValidatorSet Alg -> Genesis Alg BData
-mkGenesisBlock valSet = Genesis
-  { genesisBlock  = makeGenesis (BData []) (hashed mempty) valSet valSet
-  , genesisValSet = valSet
-  , genesisState  = mempty
+mkGenesisBlock valSet = BChEval
+  { bchValue        = makeGenesis (BData []) (hashed mempty) valSet valSet
+  , validatorSet    = valSet
+  , blockchainState = mempty
   }
 
 process :: Tx -> BState -> Maybe BState
@@ -108,17 +111,7 @@ interpretSpec genesis p cb = do
   conn  <- askConnectionRO
   store <- newSTMBchStorage mempty
   --
-  let logic = AppLogic
-        { appValidationFun    = \b (BlockchainState st valset) -> do
-            return $ do st' <- foldM (flip process) st (let BData tx = merkleValue $ blockData b in tx)
-                        return $ BlockchainState st' valset
-        , appBlockGenerator  = \b _ -> do
-            let BlockchainState st valset = newBlockState b
-                Just k = find (`Map.notMember` st) ["K_" ++ show (n :: Int) | n <- [1 ..]]
-            i <- liftIO $ randomRIO (1,100)
-            return (BData [(k, i)], BlockchainState (Map.insert k i st) valset)
-        }
-      astore = AppStore
+  let astore = AppStore
         { appMempool  = nullMempool
         , appBchState = store
         }
@@ -126,7 +119,7 @@ interpretSpec genesis p cb = do
     { nodeValidationKey = p ^.. nspecPrivKey
     , nodeGenesis       = genesis
     , nodeCallbacks     = cb
-    , nodeLogic         = logic
+    , nodeLogic         = keyValLogic
     , nodeStore         = astore
     , nodeNetwork       = getT p
     }
@@ -137,6 +130,25 @@ interpretSpec genesis p cb = do
                   }
     , acts
     )
+
+keyValLogic :: MonadIO m => BChLogic (MaybeT m) Alg BData
+keyValLogic = BChLogic
+  { processTx     = \_ -> empty
+  , processBlock  = \BChEval{..} -> MaybeT $ return $ do
+      st <- foldM (flip process) blockchainState
+          $ blockTransactions $ merkleValue $ blockData bchValue
+      return BChEval { bchValue        = ()
+                     , blockchainState = st
+                     , ..
+                     }
+  , generateBlock = \NewBlock{..} _ -> do
+      let Just k = find (`Map.notMember` newBlockState) ["K_" ++ show (n :: Int) | n <- [1 ..]]
+      i <- liftIO $ randomRIO (1,100)
+      return BChEval { bchValue        = BData [(k, i)]
+                     , validatorSet    = newBlockValSet
+                     , blockchainState = Map.insert k i newBlockState
+                     }
+  }
 
 
 executeSpec

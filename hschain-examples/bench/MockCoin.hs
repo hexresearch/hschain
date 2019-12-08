@@ -2,7 +2,7 @@
 -- |
 module MockCoin (benchmarks) where
 
-import Data.Functor.Identity
+import Data.Maybe
 import Control.Monad
 import Criterion.Main
 
@@ -10,7 +10,6 @@ import HSChain.Crypto
 import HSChain.Mock.Coin
 import HSChain.Mock.KeyList
 import HSChain.Mock.Types
-import HSChain.Run
 import HSChain.Types
 import HSChain.Types.Merkle.Types
 
@@ -28,28 +27,24 @@ benchmarks
     | size <- [0, 1, 10, 100, 1000]
     ]
   , bgroup "react"
-    [ env (makeBlock <$> generateTxList size) $ \( ~(Just (bdata,_)) ) ->
-        bench (show (length (blockTransactions bdata)) ++ " of " ++ show size) $
-        nf (\b -> runIdentity
-                $ interpretBCh runner state
-                $ processBlock transitions
-                ( Block { blockHeight        = Height 0
-                        , blockPrevBlockID   = Nothing
-                        , blockValidators    = hashed emptyValidatorSet
-                        , blockNewValidators = hashed emptyValidatorSet
-                        , blockData          = merkled b
-                        , blockPrevCommit    = Nothing
-                        , blockEvidence      = merkled []
-                        , blockStateHash     = Hashed (Hash "")
-                        }
-                )
-           ) (bdata :: BData)
+    [ env (makeBlock <$> generateTxList size) $ \bdata ->
+        bench (show (length (blockTransactions (bchValue bdata))) ++ " of " ++ show size) $
+        nf (\dat -> let b = Block { blockHeight        = Height 0
+                                  , blockPrevBlockID   = Nothing
+                                  , blockValidators    = hashed emptyValidatorSet
+                                  , blockNewValidators = hashed emptyValidatorSet
+                                  , blockData          = merkled $ bchValue dat
+                                  , blockPrevCommit    = Nothing
+                                  , blockEvidence      = merkled []
+                                  , blockStateHash     = Hashed (Hash "")
+                                  }
+                    in processBlock transitions $ b <$ bdata
+           ) bdata
     | size <- [0, 1, 10, 100, 1000]
     ]
   ]
   where
-    makeBlock = runIdentity
-              . interpretBCh runner state
+    makeBlock = fromJust
               . generateBlock transitions (error "We don't actually use block there")
 
 
@@ -74,12 +69,9 @@ genesis :: Genesis Alg BData
     , coinGeneratorDelay = Just 0
     , coinMaxMempoolSize = 1000
     }
-   
-state :: BlockchainState Alg BData
-Identity (Just ((), state))
-  = interpretBCh runner (BlockchainState (CoinState mempty mempty) emptyValidatorSet)
-  $ processBlock transitions
-  $ genesisBlock genesis
+
+state :: EvaluationResult Alg BData
+Just state = processBlock transitions genesis
 
 generateTxList :: Int -> IO [Tx]
 generateTxList n

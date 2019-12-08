@@ -35,7 +35,7 @@ import HSChain.Store.STM
 import HSChain.Store.Internal.Query
 import HSChain.Store.Internal.Proposals
 import HSChain.Types
-import HSChain.Mock.KeyVal  (BData(..),process)
+import HSChain.Mock.KeyVal  (BData(..),keyValLogic)
 import HSChain.Types.Merkle.Types
 
 import Test.Tasty
@@ -535,7 +535,6 @@ startConsensus
                 , ConsensusM ()
                 )
 startConsensus k = do
-  logic <- mkAppLogic
   chans <- newAppChans cfg
   ch    <- atomicallyIO $ dupTChan $ appChanTx chans
   store <- newSTMBchStorage mempty
@@ -544,25 +543,10 @@ startConsensus k = do
            )
          , appPropStorage chans
          , runApplication cfg (Just (PrivValidator k)) genesis
-             logic (AppStore nullMempool store) mempty chans
+             keyValLogic (AppStore nullMempool store) mempty chans
          )
   where
     cfg = cfgConsensus (defCfg :: Configuration FastTest)
-
--- Create default application logic
-mkAppLogic :: MonadIO m => m (AppLogic m TestAlg BData)
-mkAppLogic = do
-  cnt   <- liftIO $ newIORef 0
-  return AppLogic
-    { appBlockGenerator = \b _ -> do i <- liftIO $ readIORef cnt
-                                     liftIO $ writeIORef cnt $! i + 1
-                                     return ( BData [("K" ++ let Height h = newBlockHeight b in show h, i)]
-                                            , newBlockState b
-                                            )
-    , appValidationFun  = \b (BlockchainState st valset) -> do
-        return $ do st' <- foldM (flip process) st (let BData tx = merkleValue $ blockData b in tx)
-                    return $ BlockchainState st' valset
-    }
 
 proposerChoice :: Crypto alg => ValidatorSet alg -> Height -> Round -> ValidatorIdx alg
 proposerChoice = randomProposerSHA512

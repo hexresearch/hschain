@@ -1,6 +1,7 @@
 {-# LANGUAGE CPP                        #-}
 {-# LANGUAGE DataKinds                  #-}
 {-# LANGUAGE DeriveAnyClass             #-}
+{-# LANGUAGE DeriveFunctor              #-}
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE DerivingStrategies         #-}
 {-# LANGUAGE FlexibleContexts           #-}
@@ -9,6 +10,7 @@
 {-# LANGUAGE KindSignatures             #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE RankNTypes                 #-}
 {-# LANGUAGE RecordWildCards            #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE StandaloneDeriving         #-}
@@ -34,7 +36,6 @@ module HSChain.Types.Blockchain (
   , ByzantineEvidence(..)
   , ProposerSelection(..)
   , BlockData(..)
-  , BlockchainState(..)
     -- * Data types for establishing consensus
   , Step(..)
   , FullStep(..)
@@ -45,9 +46,18 @@ module HSChain.Types.Blockchain (
   , Vote(..)
   , CheckSignature(..)
     -- * Blockchain logic
-  , Genesis(..)
+    -- ** Evaluation context
+  , BChEval(..)
+  , Genesis
+  , BlockValidation
+  , ValidatedBlock
+  , EvaluationResult
+  , ProposedBlock
+  , TxValidation
+    -- ** Logic of blockchain
   , NewBlock(..)
   , BChLogic(..)
+  , hoistBChLogic
     -- * Signed data
   , Signed
   , signedValue
@@ -238,17 +248,6 @@ class ( Serialise a
   -- | Describe how to select proposer for given height and round.
   proposerSelection :: Crypto alg => ProposerSelection alg a
 
--- | Full state of blockchain. That is it's pair of user defined state
---   and
-data BlockchainState alg a = BlockchainState
-  { blockchainState :: !(InterpreterState a)
-  , bChValidatorSet :: !(ValidatorSet alg)
-  }
-  deriving stock (Generic)
-instance ( NFData (InterpreterState a)
-         , NFData (PublicKey alg)
-         ) => NFData (BlockchainState alg a)
-
 
 ----------------------------------------------------------------
 -- Data types for establishing consensus
@@ -369,31 +368,55 @@ instance (CryptoHash alg) => CryptoHashable (Vote 'PreCommit alg a) where
 -- Blockchain logic
 ----------------------------------------------------------------
 
--- | Complete description of genesis of blockchain which includes both
---   block and validator set
-data Genesis alg a = Genesis
-  { genesisBlock  :: !(Block alg a)
-    -- ^ Genesis block
-  , genesisValSet :: !(ValidatorSet alg)
-    -- ^ Validator set for genesis block. It could be changed after
-    --   evaluation of block. It could be empty if validators are
-    --   specified in a block
-  , genesisState  :: !(InterpreterState a)
-    -- ^ Initial state of blockchain. Before evaluation of genesis
-    --   block.
+-- | Context for evaluation for blockchain. It's simply triple of
+--   blockchain state, set of validators and something else.
+data BChEval alg a x = BChEval
+  { bchValue        :: !x
+  , validatorSet    :: !(ValidatorSet alg)
+  , blockchainState :: !(InterpreterState a)
   }
-  deriving stock    (Generic)
+  deriving stock (Generic, Functor)
 
-deriving stock    instance (Eq a, Eq (PublicKey alg), Eq (InterpreterState a)
-                           ) => Eq (Genesis alg a)
-deriving anyclass instance (NFData a, NFData (PublicKey alg), NFData (InterpreterState a)
-                           ) => NFData (Genesis alg a)
-deriving anyclass instance (Crypto alg, CryptoHashable a, JSON.ToJSON a, JSON.ToJSON (InterpreterState a)
-                           ) => JSON.ToJSON (Genesis alg a)
-deriving anyclass instance (Crypto alg, CryptoHashable a, JSON.FromJSON a, JSON.FromJSON (InterpreterState a)
-                           ) => JSON.FromJSON (Genesis alg a)
-deriving anyclass instance (Crypto alg, CryptoHashable a, Serialise (InterpreterState a), Serialise a
-                           ) => Serialise (Genesis alg a)
+-- | Blockchain genesis. That is block at H=0, validator set for that
+--   block and initial state.
+type Genesis         alg a = BChEval alg a (Block alg a)
+
+-- | Same as genesis but is used for validation of blocks at
+--   H>0. Created as documentation. Validator set and state correspond to state 
+type BlockValidation alg a = BChEval alg a (Block alg a)
+
+-- | Block which is already validated. It uses same type as
+--   'BlockValidation' but validator set and state correspons to the
+--   state _after_ evaluation.
+type ValidatedBlock alg a = BChEval alg a (Block alg a)
+
+-- | Result of block evaluation. We don't have any information beyond.
+type EvaluationResult alg a = BChEval alg a ()
+
+-- | Block proposal returned by callback. Note that block itself is
+--   assmebled by consensus engine so we return only block payload.
+type ProposedBlock   alg a = BChEval alg a a
+
+-- | Transaction which is to be validated against current state of
+--   blockchain.
+type TxValidation    alg a = BChEval alg a (TX a)
+
+
+
+
+deriving stock    instance (Show x, Crypto alg, Show (PublicKey alg), Show (InterpreterState a)
+                           ) => Show (BChEval alg a x)
+deriving stock    instance (Eq x, Eq (PublicKey alg), Eq (InterpreterState a)
+                           ) => Eq (BChEval alg a x)
+deriving anyclass instance (NFData x, NFData (PublicKey alg), NFData (InterpreterState a)
+                           ) => NFData (BChEval alg a x)
+deriving anyclass instance (Crypto alg, JSON.ToJSON x, JSON.ToJSON (InterpreterState a)
+                           ) => JSON.ToJSON (BChEval alg a x)
+deriving anyclass instance (Crypto alg, JSON.FromJSON x, JSON.FromJSON (InterpreterState a)
+                           ) => JSON.FromJSON (BChEval alg a x)
+deriving anyclass instance (Crypto alg, Serialise x, Serialise (InterpreterState a)
+                           ) => Serialise (BChEval alg a x)
+
 
 -- | Parameters supplied by consensus engine for block generation
 data NewBlock alg a = NewBlock
@@ -401,23 +424,29 @@ data NewBlock alg a = NewBlock
   , newBlockLastBID  :: !(BlockID alg a)
   , newBlockCommit   :: !(Maybe (Commit alg a))
   , newBlockEvidence :: ![ByzantineEvidence alg a]
-  , newBlockState    :: !(BlockchainState alg a)
+  , newBlockState    :: !(InterpreterState a)
+  , newBlockValSet   :: !(ValidatorSet alg)
   }
 
 -- | Description of interpretation of blockchain state. Evaluation of
 --   blocks and transactions are done in the monad @q@ which is
 --   assumed to provide access to current state of blockchain
-data BChLogic q alg a = BChLogic
-  { processTx     :: !(TX a -> q ())
+data BChLogic m alg a = BChLogic
+  { processTx     :: TxValidation alg a -> m ()
     -- ^ Process single transactions. Used only for validator of
     --   transactions in mempool.
-  , processBlock  :: !(Block alg a -> q ())
+  , processBlock  :: BlockValidation alg a -> m (EvaluationResult alg a)
     -- ^ Process and validate complete block.
-  , generateBlock :: !(NewBlock alg a -> [TX a] -> q a)
+  , generateBlock :: NewBlock alg a -> [TX a] -> m (ProposedBlock alg a)
     -- ^ Generate block from list of transactions.
   }
 
-
+hoistBChLogic :: (forall x. m x -> n x) -> BChLogic m alg a -> BChLogic n alg a
+hoistBChLogic fun BChLogic{..} = BChLogic
+  { processTx     = fmap fun processTx
+  , processBlock  = fmap fun processBlock
+  , generateBlock = (fmap . fmap) fun generateBlock
+  }
 
 ----------------------------------------------------------------
 -- Signed values
