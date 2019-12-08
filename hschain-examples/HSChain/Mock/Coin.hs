@@ -42,13 +42,12 @@ import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Cont
-import Control.Monad.Trans.State.Strict
+import Control.Monad.Trans.Maybe
 import Control.Concurrent   (threadDelay)
 import Control.DeepSeq
 import Codec.Serialise      (Serialise,serialise)
 import qualified Data.Aeson as JSON
 import Data.ByteString.Lazy (toStrict)
-import Data.Functor.Identity
 import Data.Foldable
 import Data.Maybe
 import Data.Map             (Map,(!))
@@ -211,25 +210,32 @@ processTransaction transaction@(Send pubK sig txSend@TxSend{..}) CoinState{..} =
         in add $ Map.adjust remove pubK utxoLookup
     }
 
-transitions :: BChLogic (StateT CoinState Maybe) Alg BData
+transitions :: BChLogic Maybe Alg BData
 transitions = BChLogic
-  { processTx     = liftSt . process (Height 1)
-  , processBlock  = \b  ->
-      let h = blockHeight b
-      in liftSt $ \s0 -> foldM (flip (process h)) s0 (blockTransactions $ merkleValue $ blockData b)
-  , generateBlock = \_ txs -> do
+  { processTx     = \BChEval{..} -> void $ process (Height 1) bchValue blockchainState
+  --
+  , processBlock  = \BChEval{..} -> do
+      let h    = blockHeight bchValue
+          step = flip $ process h
+      st <- foldM step blockchainState $ blockTransactions $ merkleValue $ blockData bchValue
+      return BChEval { bchValue        = ()
+                     , blockchainState = st
+                     , ..
+                     }
+  --
+  , generateBlock = \NewBlock{..} txs -> do
       let selectTx c []     = (c,[])
           selectTx c (t:tx) = case processTransaction t c of
                                 Nothing -> selectTx c  tx
                                 Just c' -> let (c'', b  ) = selectTx c' tx
                                            in  (c'', t:b)
-      c0 <- get
-      case selectTx c0 txs of
-        (c',b) -> BData b <$ put c'
+      let (st', dat) = selectTx newBlockState txs
+      return BChEval { bchValue        = BData dat
+                     , validatorSet    = newBlockValSet
+                     , blockchainState = st'
+                     }
   }
   where
-    liftSt :: (s -> Maybe s) -> StateT s Maybe ()
-    liftSt fun = StateT $ fmap ((),) . fun
     process (Height 0) t s = processDeposit t s <|> processTransaction t s
     process _          t s = processTransaction t s
 
@@ -307,10 +313,10 @@ mintMockCoin nodes CoinSpecification{..} =
          , genDelay          = delay
          , genMaxMempoolSize = coinMaxMempoolSize
          }
-  , Genesis
-    { genesisBlock  = genesis0 { blockStateHash = hashed $ blockchainState st }
-    , genesisValSet = valSet
-    , genesisState  = state0
+  , BChEval
+    { bchValue        = genesis0 { blockStateHash = hashed st }
+    , validatorSet    = valSet
+    , blockchainState = state0
     }
   )
   where
@@ -321,9 +327,12 @@ mintMockCoin nodes CoinSpecification{..} =
     -- Generate genesis with correct hash
     state0       = CoinState mempty mempty
     genesis0     = makeGenesis (BData txs) (Hashed $ hash ()) valSet valSet
-    Just ((),st) = runIdentity
-                 $ interpretBCh runner (BlockchainState state0 valSet)
-                 $ processBlock transitions genesis0
+    Just BChEval{blockchainState=st}
+      = processBlock transitions BChEval
+        { bchValue        = genesis0
+        , validatorSet    = valSet
+        , blockchainState = state0
+        }
 
 findInputs :: (Num i, Ord i) => i -> [(a,i)] -> [(a,i)]
 findInputs tgt = go 0
@@ -339,12 +348,8 @@ findInputs tgt = go 0
 -- Interpretation of coin
 ----------------------------------------------------------------
 
-runner :: Monad m => Interpreter (StateT CoinState Maybe) m Alg BData
-runner = Interpreter run
-  where
-    run (BlockchainState st vset) m = return $ do
-      (a,st') <- runStateT m st
-      return (a, BlockchainState st' vset)
+runner :: Monad m => Interpreter Maybe m Alg BData
+runner = Interpreter (MaybeT . return)
 
 interpretSpec
   :: ( MonadDB m Alg BData, MonadFork m, MonadMask m, MonadLogger m
@@ -358,13 +363,13 @@ interpretSpec
   -> m (RunningNode m Alg BData, [m ()])
 interpretSpec genesis p cb = do
   conn    <- askConnectionRO
-  store   <- newSTMBchStorage $ genesisState genesis
-  mempool <- makeMempool  store transitions runner
+  store   <- newSTMBchStorage $ blockchainState genesis
+  mempool <- makeMempool store logic
   acts <- runNode (getT p :: Configuration Example) NodeDescription
     { nodeValidationKey = p ^.. nspecPrivKey
     , nodeGenesis       = genesis
     , nodeCallbacks     = cb <> nonemptyMempoolCallback mempool
-    , nodeLogic         = makeAppLogic transitions runner
+    , nodeLogic         = logic
     , nodeStore         = AppStore { appBchState = store
                                    , appMempool  = mempool
                                    }
@@ -377,7 +382,8 @@ interpretSpec genesis p cb = do
                   }
     , acts
     )
-
+  where
+    logic = makeAppLogic transitions runner
 
 executeNodeSpec
   :: (MonadIO m, MonadMask m, MonadFork m, MonadTrace m, MonadTMMonitoring m)

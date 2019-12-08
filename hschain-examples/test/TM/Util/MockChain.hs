@@ -42,7 +42,7 @@ block1' = mintFirstBlock $ BData [("K1",101)]
 mockchain :: [Block TestAlg BData]
 mockchain
   = fmap fst
-  $ scanl step (genesisBlock genesis,mempty)
+  $ scanl step (bchValue genesis,mempty)
     [BData [("K"++show i,i)] | i <- [100..]]
   where
     step (b,st) dat@(BData txs) = let st' = st <> Map.fromList txs
@@ -55,7 +55,7 @@ mockchain
 
 mintFirstBlock :: BData -> Block TestAlg BData
 mintFirstBlock dat@(BData txs)
-  = mintBlock (genesisBlock genesis) (Map.fromList txs) dat
+  = mintBlock (bchValue genesis) (Map.fromList txs) dat
 
 mintBlock :: Block TestAlg BData -> BState -> BData -> Block TestAlg BData
 mintBlock b st dat = Block

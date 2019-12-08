@@ -29,6 +29,7 @@ module HSChain.Run (
 import Control.Monad
 import Control.Monad.IO.Class
 import Control.Monad.Catch
+import Control.Monad.Trans.Maybe
 import Control.Concurrent.STM         (atomically)
 import Control.Concurrent.STM.TBQueue (lengthTBQueue)
 import Data.Maybe                     (isJust)
@@ -38,7 +39,6 @@ import HSChain.Blockchain.Internal.Engine.Types
 import HSChain.Control
 import HSChain.Crypto
 import HSChain.Debug.Trace
-import HSChain.Exceptions
 import HSChain.Logger
 import HSChain.Monitoring
 import HSChain.P2P
@@ -56,10 +56,7 @@ import HSChain.Utils
 -- | Interpreter for mond in which evaluation of blockchain is
 --   performed
 newtype Interpreter q m alg a = Interpreter
-  { interpretBCh :: forall x.
-                    BlockchainState alg a
-                 -> q x
-                 -> m (Maybe (x, BlockchainState alg a))
+  { interpretBCh :: forall x. q x -> MaybeT m x
   }
 
 
@@ -68,16 +65,22 @@ newtype Interpreter q m alg a = Interpreter
 makeMempool
   :: (MonadIO m, MonadReadDB m alg a, Ord (TX a), Show (TX a), Crypto alg, BlockData a)
   => BChStore m a
-  -> BChLogic q   alg a
-  -> Interpreter q m alg a
+  -> AppLogic m alg a
   -> m (Mempool m alg (TX a))
-makeMempool store BChLogic{..} Interpreter{..} =
+makeMempool store BChLogic{..} =
   newMempool $ \tx -> do
     (mH, st) <- bchCurrentState store
-    valSet   <- queryRO $ mustRetrieveValidatorSet $ case mH of
+    mvalSet  <- queryRO $ retrieveValidatorSet $ case mH of
       Nothing -> Height 0
       Just h  -> succ h
-    isJust <$> interpretBCh (BlockchainState st valSet) (processTx tx)
+    case mvalSet of
+      Nothing -> return False
+      Just vs -> fmap isJust
+               $ runMaybeT
+               $ processTx BChEval { bchValue        = tx
+                                   , blockchainState = st
+                                   , validatorSet    = vs
+                                   }
 
 
 -- | Create 'AppLogic' which should be then passed to 'runNode' from
@@ -89,18 +92,7 @@ makeAppLogic
   => BChLogic    q   alg a      -- ^ Blockchain logic
   -> Interpreter q m alg a      -- ^ Runner for logic
   -> AppLogic m alg a
-makeAppLogic BChLogic{..} Interpreter{..} = AppLogic
-  { appValidationFun  = \b bst -> (fmap . fmap) snd
-                                $ interpretBCh bst
-                                $ processBlock b
-  , appBlockGenerator = \newB txs -> do
-      mb <- interpretBCh (newBlockState newB)
-          $ generateBlock newB txs
-      case mb of
-        Just b  -> return b
-        Nothing -> throwM InvalidBlockGenerated
-  }
-
+makeAppLogic logic Interpreter{..} = hoistBChLogic interpretBCh logic
 
 -- | Specification of node
 data NodeDescription m alg a = NodeDescription
@@ -139,7 +131,7 @@ runNode
   -> NodeDescription m alg a    -- ^ Description of node.
   -> m [m ()]
 runNode cfg NodeDescription{..} = do
-  let AppLogic{..}      = nodeLogic
+  let BChLogic{..}      = nodeLogic
       AppStore{..}      = nodeStore
       BlockchainNet{..} = nodeNetwork
       appCall = mempoolFilterCallback appMempool

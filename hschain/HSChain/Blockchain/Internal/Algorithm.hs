@@ -79,7 +79,7 @@ data Message alg a
 data HeightParameters (m :: * -> *) alg a = HeightParameters
   { currentH             :: !Height
     -- ^ Height we're on.
-  , validatorSet :: !(ValidatorSet alg)
+  , hValidatorSet :: !(ValidatorSet alg)
     -- ^ Validator set for current height
   , oldValidatorSet :: !(Maybe (ValidatorSet alg))
     -- ^ Validator set for previous height
@@ -243,8 +243,8 @@ newHeight HeightParameters{..} lastCommit = do
     { smRound         = Round 0
     , smStep          = StepNewHeight 0
     , smProposals     = Map.empty
-    , smPrevotesSet   = newHeightVoteSet validatorSet
-    , smPrecommitsSet = newHeightVoteSet validatorSet
+    , smPrevotesSet   = newHeightVoteSet hValidatorSet
+    , smPrecommitsSet = newHeightVoteSet hValidatorSet
     , smLockedBlock   = Nothing
     , smLastCommit    = lastCommit
     }

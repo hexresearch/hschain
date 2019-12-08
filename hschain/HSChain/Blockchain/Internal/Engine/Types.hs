@@ -20,7 +20,6 @@ module HSChain.Blockchain.Internal.Engine.Types (
   , NewBlock(..)
   , AppLogic(..)
   , AppStore(..)
-  , hoistAppLogic
   , AppCallbacks(..)
   , hoistAppCallback
   , Validator(..)
@@ -37,6 +36,7 @@ module HSChain.Blockchain.Internal.Engine.Types (
 
 import Control.Applicative
 import Control.Concurrent.STM
+import Control.Monad.Trans.Maybe
 import Data.Aeson
 import Data.Coerce
 import Data.Bits              (shiftL)
@@ -181,23 +181,7 @@ instance DefaultConfig app => FromJSON (Configuration app) where
 --
 ----------------------------------------------------------------
 
--- | Collection of callbacks which implement actual logic of
---   blockchain. This is most generic form which doesn't expose any
---   underlying structure. It's expected that this structure will be
---   generated from more specialized functions
-data AppLogic m alg a = AppLogic
-  { appBlockGenerator   :: NewBlock alg a
-                        -> [TX a]
-                        -> m (a, BlockchainState alg a)
-    -- ^ Generate fresh block for proposal. It's called each time we
-    --   need to create new block for proposal
-  , appValidationFun    :: Block alg a
-                        -> BlockchainState alg a
-                        -> m (Maybe (BlockchainState alg a))
-  -- ^ Function for validation of proposed block data. It returns
-  --   change of validators for given block if it's valid and
-  --   @Nothing@ if it's not.
-  }
+type AppLogic m = BChLogic (MaybeT m)
 
 data AppStore m alg a = AppStore
   { appMempool          :: Mempool m alg (TX a)
@@ -222,13 +206,6 @@ instance Monad m => Semigroup (AppCallbacks m alg a) where
     }
 instance Monad m => Monoid (AppCallbacks m alg a) where
   mempty  = AppCallbacks (\_ -> pure ()) (\_ -> pure Nothing)
-
-hoistAppLogic :: (Functor n) => (forall x. m x -> n x) -> AppLogic m alg a -> AppLogic n alg a
-hoistAppLogic fun AppLogic{..} = AppLogic
-  { appBlockGenerator   = (fmap . fmap) fun appBlockGenerator
-  , appValidationFun    = (fmap . fmap) fun appValidationFun
-  , ..
-  }
 
 hoistAppCallback :: (forall x. m x -> n x) -> AppCallbacks m alg a -> AppCallbacks n alg a
 hoistAppCallback fun AppCallbacks{..} = AppCallbacks

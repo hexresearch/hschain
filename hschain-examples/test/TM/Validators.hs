@@ -17,9 +17,9 @@ import Codec.Serialise
 import Control.DeepSeq
 import Control.Applicative
 import Control.Monad
-import Control.Monad.Trans.State.Strict
 import Control.Monad.Trans.Cont
 import Control.Monad.Trans.Class
+import Control.Monad.Trans.Maybe
 import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Data.Maybe
@@ -187,34 +187,37 @@ Right valSet3 = makeValidatorSet [Validator k 1 | k <- [pk1,pk2,pk3    ]]
 Right valSet6 = makeValidatorSet [Validator k 1 | k <- [pk1,pk2,pk3,pk4]]
 Right valSet8 = makeValidatorSet [Validator k 1 | k <- [    pk2,pk3,pk4]]
 
-transitions :: BChLogic (StateT (ValidatorSet Alg) Maybe) Alg Tx
+transitions :: BChLogic Maybe Alg Tx
 transitions = BChLogic
-  { processTx     = process
-  , processBlock  = process . merkleValue . blockData
-  , generateBlock = \nb _ -> case newBlockHeight nb of
-      Height 3 -> gen $ AddVal pk3 1
-      Height 6 -> gen $ AddVal pk4 1
-      Height 8 -> gen $ RmVal  pk1
-      _        -> return Noop
+  { processTx     = \_ -> empty
+  --
+  , processBlock  = \BChEval{..} -> fmap (() <$)
+                                  $ gen validatorSet $ merkleValue $ blockData bchValue
+  --
+  , generateBlock = \NewBlock{..} _ -> case newBlockHeight of
+      Height 3 -> gen newBlockValSet $ AddVal pk3 1
+      Height 6 -> gen newBlockValSet $ AddVal pk4 1
+      Height 8 -> gen newBlockValSet $ RmVal  pk1
+      _        -> gen newBlockValSet $ Noop
   }
   where
-    gen tx = tx <$ process tx
+    gen vals tx = do
+      let adjustment = process tx
+      valSet' <- case makeValidatorSet $ adjustment $ asValidatorList vals of
+                   Right v -> return v
+                   Left  _ -> empty
+      return BChEval { bchValue        = tx
+                     , blockchainState = valSet'
+                     , validatorSet    = valSet'
+                     }
     -- We're permissive and allow remove nonexiting validator
-    process Noop         = return ()
-    process (AddVal k i) = modifyVal $ (Validator k i :)
-                                     . filter ((/=k) . validatorPubKey)
-    process (RmVal  k)   = modifyVal $ filter ((/=k) . validatorPubKey)
-    --
-    modifyVal f = do
-      vals <- get
-      case makeValidatorSet $ f $ asValidatorList vals of
-        Right v -> put v
-        Left  _ -> empty
+    process Noop         = id
+    process (AddVal k i) = (Validator k i :)
+                         . filter ((/=k) . validatorPubKey)
+    process (RmVal  k)   = filter ((/=k) . validatorPubKey)
 
-runner :: Monad m => Interpreter (StateT (ValidatorSet Alg) Maybe) m Alg Tx
-runner = Interpreter $ \(BlockchainState _ vset) m -> return $ do
-  (a,vset') <- runStateT m vset
-  return (a, BlockchainState vset' vset')
+runner :: Monad m => Interpreter Maybe m Alg Tx
+runner = Interpreter $ MaybeT . return
 
 
 
@@ -234,7 +237,7 @@ interpretSpec
   -> m (RunningNode m Alg Tx, [m ()])
 interpretSpec genesis p cb = do
   conn  <- askConnectionRO
-  store <- newSTMBchStorage $ genesisState genesis
+  store <- newSTMBchStorage $ blockchainState genesis
   let astore = AppStore { appBchState = store
                         , appMempool  = nullMempool
                         }
@@ -277,9 +280,9 @@ executeNodeSpec NetSpec{..} resources = do
     let run :: DBT 'RW Alg Tx (LoggerT m) x -> m x
         run = runLoggerT logenv . runDBT conn
     (rn, acts) <- run $ interpretSpec
-      Genesis { genesisBlock  = genesis
-              , genesisValSet = valSet0
-              , genesisState  = valSet0
+      BChEval { bchValue        = genesis
+              , validatorSet    = valSet0
+              , blockchainState = valSet0
               }
       (netNetCfg :*: x)
       (maybe mempty callbackAbortAtH netMaxH)

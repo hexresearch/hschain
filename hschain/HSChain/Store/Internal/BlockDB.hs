@@ -27,7 +27,6 @@ import HSChain.Crypto
 import HSChain.Types.Validators
 import HSChain.Store.Internal.Query
 
-
 ----------------------------------------------------------------
 --
 ----------------------------------------------------------------
@@ -98,7 +97,7 @@ storeGenesis
   :: (Crypto alg, CryptoHashable a, MonadQueryRW m alg a, Serialise a, Eq a, Show a)
   => Genesis alg a                -- ^ Genesis block
   -> m ()
-storeGenesis Genesis{..} = do
+storeGenesis BChEval{..} = do
   -- Insert genesis block if needed
   storedGen  <- singleQ_ "SELECT block  FROM thm_blockchain WHERE height = 0"
   storedVals <- singleQ_ "SELECT valset FROM thm_validators WHERE height = 0"
@@ -107,11 +106,11 @@ storeGenesis Genesis{..} = do
     -- Fresh DB
     (Nothing, Nothing) -> do
       basicExecute "INSERT INTO thm_blockchain VALUES (0,0,?,?)"
-        ( CBORed (blockHash genesisBlock)
-        , CBORed genesisBlock
+        ( CBORed (blockHash bchValue)
+        , CBORed bchValue
         )
       basicExecute "INSERT INTO thm_validators VALUES (0,?)"
-        (Only (CBORed genesisValSet))
+        (Only (CBORed validatorSet))
     -- Otherwise check that stored and provided geneses match
     (Just genesis', Just initialVals') ->
       case checks of
@@ -120,16 +119,16 @@ storeGenesis Genesis{..} = do
       where
         checks = [ [ "Genesis blocks do not match:"
                    , "  stored: " ++ show genesis'
-                   , "  expected: " ++ show genesisBlock
+                   , "  expected: " ++ show bchValue
                    ]
-                 | genesisBlock /= genesis'
+                 | bchValue /= genesis'
                  ]
                  ++
                  [ [ "Validators set are not equal:"
                    , "  stored:   " ++ show initialVals'
-                   , "  expected: " ++ show genesisValSet
+                   , "  expected: " ++ show validatorSet
                    ]
-                 | genesisValSet /= initialVals'
+                 | validatorSet /= initialVals'
                  ]
     --
     (_,_) -> error "initializeBlockhainTables: database corruption"

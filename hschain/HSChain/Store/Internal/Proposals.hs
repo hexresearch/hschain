@@ -25,33 +25,33 @@ type family Writable (rw :: Access) a where
   Writable 'RW a = a
 
 -- | Status of block validation.
-data BlockValidation alg a
+data BlockValState alg a
   = UntestedBlock !(Block alg a)
   -- ^ We haven't validated block yet
   | UnknownBlock
   -- ^ We haven't even seen block yet
-  | GoodBlock     !(Block alg a) !(BlockchainState alg a)
+  | GoodBlock     !(ValidatedBlock alg a)
   -- ^ Block is good. We also cache state and new validator set
   | InvalidBlock
   -- ^ Block is invalid so there's no point in storing (and gossiping)
   --   it.
 
-blockFromBlockValidation :: BlockValidation alg a -> Maybe (Block alg a)
+blockFromBlockValidation :: BlockValState alg a -> Maybe (Block alg a)
 blockFromBlockValidation = \case
-  UntestedBlock b   -> Just b
-  GoodBlock     b _ -> Just b
-  UnknownBlock      -> Nothing
-  InvalidBlock      -> Nothing
+  UntestedBlock b -> Just b
+  GoodBlock     b -> Just $ bchValue b
+  UnknownBlock    -> Nothing
+  InvalidBlock    -> Nothing
 
 -- | Storage for proposed blocks that are not commited yet.
 data ProposalStorage rw m alg a = ProposalStorage
-  { retrievePropByID   :: !(Height -> BlockID alg a -> m (BlockValidation alg a))
+  { retrievePropByID   :: !(Height -> BlockID alg a -> m (BlockValState alg a))
     -- ^ Retrieve proposed block by its ID
-  , retrievePropByR    :: !(Height -> Round -> m (Maybe (BlockID alg a, BlockValidation alg a)))
+  , retrievePropByR    :: !(Height -> Round -> m (Maybe (BlockID alg a, BlockValState alg a)))
     -- ^ Retrieve proposed block by round number.
 
   , setPropValidation  :: !(Writable rw ( BlockID alg a
-                                       -> Maybe (BlockchainState alg a)
+                                       -> Maybe (EvaluationResult alg a)
                                        -> m ()))
     -- ^ Set whether block is valid or not.
   , resetPropStorage   :: !(Writable rw (Height -> m ()))
@@ -117,8 +117,8 @@ newSTMPropStorage = fmap (hoistPropStorageRW liftIO) $ liftIO $ do
             UntestedBlock _ -> InvalidBlock
             InvalidBlock    -> InvalidBlock
             _               -> error "CANT HAPPEN"
-          Just bst -> action $ \case
-            UntestedBlock b -> GoodBlock b bst
+          Just st -> action $ \case
+            UntestedBlock b -> GoodBlock st { bchValue = b }
             b@GoodBlock{}   -> b
             _               -> error "CANT HAPPEN"
     --
