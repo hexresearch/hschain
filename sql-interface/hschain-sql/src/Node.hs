@@ -31,7 +31,7 @@ import System.Exit (exitSuccess, exitFailure)
 import Data.Yaml.Config       (loadYamlSettings, requireEnv)
 
 import Network.Wai.Middleware.Prometheus
-import Prometheus   (register)
+import Prometheus   (register, runMonitorT)
 import Prometheus.Metric.GHC
 import GHC.Generics (Generic)
 import qualified Network.Wai.Handler.Warp as Warp
@@ -83,6 +83,34 @@ runConsensusNode genesisPath configPath envVar = do
   nspec@NodeSpec{} :*: NodeCfg{..} :*: (cfg :: Configuration Example)
     <- loadYamlSettings [reverse configPath] [] requireEnv
   let genesis = error "genesis generation"
+  startWebMonitoring $ fromIntegral nodePort + 1000
+  -- Start node
+  evalContT $ do
+    let (mtxGen, genesis) = mintMockCoin [ Validator v 1 | v <- validatorKeys] coin
+    -- Create network
+    peerId <- generatePeerId
+    let peerInfo = P2PT.PeerInfo peerId nodePort 0
+        bnet     = BlockchainNet { bchNetwork      = newNetworkTcp peerInfo
+                                 , bchInitialPeers = nodeCfgSeeds
+                                 }
+    --- Allocate resources
+    (conn, logenv) <- allocNode nspec
+    gauges         <- standardMonitoring
+    let run = runMonitorT gauges . runLoggerT logenv . runDBT conn
+    -- Actually run node
+    lift $ run $ do
+      (RunningNode{..},acts) <- interpretSpec genesis
+        (nspec :*: cfg :*: bnet)
+        (mempty)
+      txGen <- case mtxGen of
+        Nothing  -> return []
+        Just txG -> do
+          cursor <- getMempoolCursor rnodeMempool
+          return [transactionGenerator txG
+                    rnodeMempool
+                    (snd <$> bchCurrentState rnodeState)
+                    (void . pushTransaction cursor)]
+      logOnException $ runConcurrently $ txGen ++ acts
   return ()
 
 -- |Main program.
@@ -90,7 +118,7 @@ main :: IO ()
 main = do
   args <- getArgs
   case args of
-    [genesisPath, configPath, envVarName] -> runConsensusNode genesisPath filePath envVarName
+    [genesisPath, configPath, envVarName] -> runConsensusNode genesisPath configPath envVarName
     _ -> do
       putStrLn "usage: hschain-sql-node path-to-config private-key-env-var-name"
       exitFailure
@@ -152,6 +180,12 @@ data NodeCfg = NodeCfg
   }
   deriving (Show,Generic)
 instance FromJSON NodeCfg
+
+data RunningNode m alg a = RunningNode
+  { rnodeState   :: BChStore m a
+  , rnodeConn    :: Connection 'RO alg a
+  , rnodeMempool :: Mempool m alg (TX a)
+  }
 
 ----------------------------------------------------------------
 -- Genesis block.

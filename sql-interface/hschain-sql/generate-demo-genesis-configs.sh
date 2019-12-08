@@ -99,6 +99,7 @@ for i in 1 2 3 4; do
 	echo "  - \"127.0.0.1:40003\"" >>$config_fname
 	echo "  - \"127.0.0.1:40004\"" >>$config_fname
 	echo "nodePort: 4000$i"        >>$config_fname
+	echo "nodeAPIPort: 5000$i"     >>$config_fname
 	echo "nspecPrivKey: \"${!XXX_privkname}\""     >>$config_fname
 	echo "nspecLogFile:"                      >>$config_fname
 	echo "  - type      : "ScribeJSON""       >>$config_fname
