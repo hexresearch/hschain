@@ -1,6 +1,6 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TemplateHaskell #-}
-module Crypto.Bls.Util
+module Crypto.Bls.CPP.Util
     ( hash256
     , hashSize
     ) where
@@ -11,8 +11,8 @@ import qualified Data.ByteString.Internal as BS
 import qualified Language.C.Inline as C
 import qualified Language.C.Inline.Cpp as C
 
-import Crypto.Bls.Internal
-import Crypto.Bls.Types
+import Crypto.Bls.CPP.Internal
+import Crypto.Bls.CPP.Types
 
 
 C.context blsCtx

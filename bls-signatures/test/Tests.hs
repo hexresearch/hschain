@@ -1,12 +1,15 @@
-{-# OPTIONS_GHC -F -pgmF htfpp #-}
-{-# OPTIONS_GHC -fno-warn-unused-top-binds #-} -- Какие-то непонятные проблемы с Test.Framework
 module Main where
 
-import Test.Framework
+import Test.Tasty
 
-import {-@ HTF_TESTS @-} Tests.Signature
-import {-@ HTF_TESTS @-} Tests.Threshold
+-- import {-@ HTF_TESTS @-} Tests.Signature
+-- import {-@ HTF_TESTS @-} Tests.Threshold
+import Tests.PrivateKeys
+
+import Crypto.Bls as Bls
 
 main :: IO ()
-main = htfMain htf_importedTests
+main = do
+    Bls.initBls
+    defaultMain $ testGroup "BLS tests" [ testBls ]
 

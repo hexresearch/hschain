@@ -1,6 +1,6 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE QuasiQuotes #-}
-module Crypto.Bls.AggregationInfo
+module Crypto.Bls.CPP.AggregationInfo
     ( AggregationInfo
     , fromMsg
     ) where
@@ -10,8 +10,8 @@ import Data.ByteString (ByteString)
 import qualified Language.C.Inline as C
 import qualified Language.C.Inline.Cpp as C
 
-import Crypto.Bls.Internal
-import Crypto.Bls.Types
+import Crypto.Bls.CPP.Internal
+import Crypto.Bls.CPP.Types
 
 
 C.context blsCtx

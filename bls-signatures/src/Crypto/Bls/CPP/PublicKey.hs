@@ -1,6 +1,6 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TemplateHaskell #-}
-module Crypto.Bls.PublicKey
+module Crypto.Bls.CPP.PublicKey
     ( PublicKey
     , publicKeySize
     , serializePublicKey
@@ -21,9 +21,9 @@ import qualified Language.C.Inline as C
 import qualified Language.C.Inline.Cpp as C
 import qualified Data.Vector as V
 
-import Crypto.Bls.Arrays
-import Crypto.Bls.Internal
-import Crypto.Bls.Types
+import Crypto.Bls.CPP.Arrays
+import Crypto.Bls.CPP.Internal
+import Crypto.Bls.CPP.Types
 
 
 C.context blsCtx

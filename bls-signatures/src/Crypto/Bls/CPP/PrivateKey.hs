@@ -1,7 +1,7 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TemplateHaskell #-}
-module Crypto.Bls.PrivateKey
+module Crypto.Bls.CPP.PrivateKey
     ( PrivateKey
     , aggregateInsecurePrivateKey
     , aggregateInsecurePrivateKeyList
@@ -27,9 +27,9 @@ import qualified Data.Vector              as V
 import qualified Language.C.Inline        as C
 import qualified Language.C.Inline.Cpp    as C
 
-import Crypto.Bls.Arrays
-import Crypto.Bls.Internal
-import Crypto.Bls.Types
+import Crypto.Bls.CPP.Arrays
+import Crypto.Bls.CPP.Internal
+import Crypto.Bls.CPP.Types
 
 
 C.context blsCtx

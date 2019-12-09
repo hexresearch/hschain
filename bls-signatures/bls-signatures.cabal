@@ -30,26 +30,43 @@ Library
     , deepseq
   Hs-Source-Dirs:      src
   Default-Language:    Haskell2010
-  Other-Modules:
-    Crypto.Bls.Internal
-    Crypto.Bls.Arrays
   Exposed-Modules:
     Crypto.Bls
-    Crypto.Bls.AggregationInfo
-    Crypto.Bls.PrivateKey
-    Crypto.Bls.PublicKey
-    Crypto.Bls.Signature
-    Crypto.Bls.Threshold
-    Crypto.Bls.Types
-    Crypto.Bls.Util
-  CXX-Options: -std=c++11
-  if os(darwin)
-    Extra-Libraries: c++
-    Ld-Options: -Wl,-keep_dwarf_unwind
+  if impl(ghcjs)
+      Other-Modules:
+        --Crypto.Bls.JavaScript.Internal
+        --Crypto.Bls.JavaScript.Arrays
+        --Crypto.Bls.JavaScript.AggregationInfo
+        Crypto.Bls.JavaScript.Common
+        Crypto.Bls.JavaScript.PrivateKey
+        Crypto.Bls.JavaScript.PublicKey
+        Crypto.Bls.JavaScript.Signature
+        --Crypto.Bls.JavaScript.PublicKey
+        --Crypto.Bls.JavaScript.Signature
+        --Crypto.Bls.JavaScript.Threshold
+        --Crypto.Bls.JavaScript.Types
+        --Crypto.Bls.JavaScript.Util
+      Build-Depends:
+          base       >=4.9 && <5
+        , ghcjs-base -any
   else
-    Extra-Libraries: stdc++ bls
-  GHC-Options: -Wall -fwarn-incomplete-patterns 
-
+      Other-Modules:
+        Crypto.Bls.CPP.Internal
+        Crypto.Bls.CPP.Arrays
+        Crypto.Bls.CPP.AggregationInfo
+        Crypto.Bls.CPP.PrivateKey
+        Crypto.Bls.CPP.PublicKey
+        Crypto.Bls.CPP.Signature
+        Crypto.Bls.CPP.Threshold
+        Crypto.Bls.CPP.Types
+        Crypto.Bls.CPP.Util
+      CXX-Options: -std=c++11
+      if os(darwin)
+        Extra-Libraries: c++
+        Ld-Options: -Wl,-keep_dwarf_unwind
+      else
+        Extra-Libraries: stdc++ bls
+  GHC-Options: -Wall -fwarn-incomplete-patterns
 
 
 Test-Suite bls-signatures-test
@@ -62,13 +79,15 @@ Test-Suite bls-signatures-test
   Build-Depends:
       base >=4.7 && <5
     , bls-signatures
-    , HTF
     , vector
     , bytestring
     , extra
+    , tasty
+    , tasty-hunit
   Other-Modules:
-    Tests.Signature
-    Tests.Threshold
+    -- Tests.Signature
+    -- Tests.Threshold
+    Tests.PrivateKeys
   --    Paths_xenochain_state
   -- Ghc-Options: -optl-static -optl-pthread
 

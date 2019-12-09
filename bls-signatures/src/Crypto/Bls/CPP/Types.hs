@@ -3,7 +3,7 @@
 {-# LANGUAGE TemplateHaskell            #-}
 {-# LANGUAGE TypeFamilies               #-}
 {-# OPTIONS_GHC -Wno-orphans            #-}
-module Crypto.Bls.Types
+module Crypto.Bls.CPP.Types
     {- ( PrivateKey
     , PublicKey
     ) -} where
@@ -17,7 +17,7 @@ import Foreign.Ptr (Ptr)
 import qualified Language.C.Inline as C
 import qualified Language.C.Inline.Cpp as C
 
-import Crypto.Bls.Internal
+import Crypto.Bls.CPP.Internal
 
 
 C.context blsCtx

@@ -5,21 +5,17 @@ module Tests.Threshold (htf_thisModulesTests) where
 
 import Test.Framework
 
+    {-
+
 import Control.Monad
 import Control.Monad.Extra
-import Crypto.Bls.PrivateKey as PrivateKey
-import Crypto.Bls.PublicKey as PublicKey
-import Crypto.Bls.Threshold as Threshold
-import Crypto.Bls.Signature as Signature
-import Crypto.Bls.Types
-import Crypto.Bls.Util
-import qualified Data.Vector as V
-
-
 import qualified Data.ByteString         as BS
 import qualified Data.ByteString.Char8   as BC8
 import qualified Data.ByteString.Builder as BS
 import qualified Data.ByteString.Lazy    as BSL
+import qualified Data.Vector as V
+
+import Crypto.Bls as Bls
 
 
 hexifyBs :: BS.ByteString -> BS.ByteString
@@ -30,8 +26,8 @@ test_threshold_create_verify :: IO ()
 test_threshold_create_verify = do
     let t = 7
         n = 9
-    (_secretKey, commi, secretFrags) <- Threshold.create t n
-    assertBool =<< allM (\i -> Threshold.verifySecretFragment (i + 1) (secretFrags V.! i) commi t) [0..(n - 1)]
+    (_secretKey, commi, secretFrags) <- Bls.create t n
+    assertBool =<< allM (\i -> Bls.verifySecretFragment (i + 1) (secretFrags V.! i) commi t) [0..(n - 1)]
 
 
 fst3 :: (a, b, c) -> a
@@ -50,13 +46,13 @@ test_threshold_create_sign_verify = do
     let t = 2
         n = 4
     -- Every player creates keys and fragments
-    frags <- replicateM n (Threshold.create t n)
+    frags <- replicateM n (Bls.create t n)
     let _secretKeys = V.fromList $ map fst3 frags
         publicFrags = V.fromList $ map snd3 frags
         secretFrags = V.fromList $ map thr3 frags
     -- TODO
-    -- assertBool =<< allM (\i -> Threshold.verifySecretFragment (i + 1) (secretFrags V.! i) commi t) [0..(n - 1)]
-    
+    -- assertBool =<< allM (\i -> Bls.verifySecretFragment (i + 1) (secretFrags V.! i) commi t) [0..(n - 1)]
+
 
     -- Create master public key
     let masterPublicKeyFrags = V.map V.head publicFrags
@@ -138,9 +134,10 @@ test_threshold_create_sign_verify = do
     // и проверяют их
     for(size_t player_source = 1; player_source <= N; ++player_source) // NB: смотри индексы!
         for(size_t player_target = 1; player_target <= N; ++player_target) // NB: смотри индексы!
-            assert(bls::Threshold::VerifySecretFragment(
+            assert(bls::Bls::VerifySecretFragment(
                         player_target,
                         p_secretFragments[player_source-1][player_target-1], p_commitments[player_source-1], T));
                         -}
 
 
+-}

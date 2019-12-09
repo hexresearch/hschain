@@ -3,7 +3,7 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
-module Crypto.Bls.Internal where
+module Crypto.Bls.CPP.Internal where
 
 
 -- NB: Partially copied from haskell-opencv

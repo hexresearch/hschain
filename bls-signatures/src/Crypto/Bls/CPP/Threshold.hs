@@ -1,7 +1,7 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell #-}
-module Crypto.Bls.Threshold
+module Crypto.Bls.CPP.Threshold
     ( Threshold
     , create
     , verifySecretFragment
@@ -20,9 +20,9 @@ import qualified Data.Vector as V
 import qualified Language.C.Inline as C
 import qualified Language.C.Inline.Cpp as C
 
-import Crypto.Bls.Arrays
-import Crypto.Bls.Internal
-import Crypto.Bls.Types
+import Crypto.Bls.CPP.Arrays
+import Crypto.Bls.CPP.Internal
+import Crypto.Bls.CPP.Types
 
 
 C.context blsCtx
