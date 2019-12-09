@@ -1,6 +1,7 @@
 {-# LANGUAGE ApplicativeDo, BangPatterns, DataKinds
            , DeriveGeneric, DerivingStrategies
-           , DeriveAnyClass, GeneralizedNewtypeDeriving
+           , DeriveAnyClass, FlexibleContexts
+           , GeneralizedNewtypeDeriving
            , LambdaCase, OverloadedStrings
            , RecordWildCards, ScopedTypeVariables
            , StandaloneDeriving, TypeApplications
@@ -27,6 +28,7 @@ import Data.Word
 
 import System.Environment (getArgs)
 import System.Exit (exitSuccess, exitFailure)
+import System.FilePath
 
 import Data.Yaml.Config       (loadYamlSettings, requireEnv)
 
@@ -38,7 +40,6 @@ import qualified Network.Wai.Handler.Warp as Warp
 
 import HSChain.Blockchain.Internal.Engine.Types
 import HSChain.Logger
---import HSChain.Mock.Types
 import HSChain.Run
 
 import qualified Data.Aeson as JSON
@@ -72,10 +73,12 @@ import qualified HSChain.P2P.Types as P2PT
 
 import Network.Socket
 
+import System.Directory
 import System.IO
 
-import HSChain.SQL
+import Katip (LogEnv)
 
+import HSChain.SQL
 
 -- |Read config, get secret key, run node...
 runConsensusNode :: String -> String -> String -> IO ()
@@ -83,13 +86,12 @@ runConsensusNode genesisPath configPath envVar = do
   nspec@NodeSpec{} :*: NodeCfg{..} :*: (cfg :: Configuration Example)
     <- loadYamlSettings [reverse configPath] [] requireEnv
   let genesis = error "genesis generation"
-  startWebMonitoring $ fromIntegral nodePort + 1000
+  startWebMonitoring $ fromIntegral nodeCfgPort + 1000
   -- Start node
   evalContT $ do
-    let (mtxGen, genesis) = mintMockCoin [ Validator v 1 | v <- validatorKeys] coin
     -- Create network
     peerId <- generatePeerId
-    let peerInfo = P2PT.PeerInfo peerId nodePort 0
+    let peerInfo = P2PT.PeerInfo peerId nodeCfgPort 0
         bnet     = BlockchainNet { bchNetwork      = newNetworkTcp peerInfo
                                  , bchInitialPeers = nodeCfgSeeds
                                  }
@@ -122,6 +124,34 @@ main = do
     _ -> do
       putStrLn "usage: hschain-sql-node path-to-config private-key-env-var-name"
       exitFailure
+
+----------------------------------------------------------------
+-- Monitoring and other goodies
+----------------------------------------------------------------
+
+startWebMonitoring :: Warp.Port -> IO ()
+startWebMonitoring port = do
+    void $ register ghcMetrics
+    void $ forkIO
+         $ Warp.run port
+         $ prometheus def
+                      { prometheusInstrumentPrometheus = False }
+                      metricsApp
+
+-- | Allocate resources for node
+allocNode
+  :: ( MonadIO m, MonadMask m
+     , Crypto alg, Serialise a, Eq a, Show a, Has x NodeSpec)
+  => x                          -- ^ Node parameters
+  -> ContT r m (Connection 'RW alg a, LogEnv)
+allocNode x = do
+  liftIO $ createDirectoryIfMissing True $ takeDirectory dbname
+  conn   <- ContT $ withDatabase dbname
+  logenv <- ContT $ withLogEnv "TM" "DEV" [ makeScribe s | s <- x ^.. nodeSpecLogFile ]
+  return (conn,logenv)
+  where
+    dbname = fromMaybe "" $ x ^.. nodeSpecDBName
+
 
 ----------------------------------------------------------------
 -- Basic logic
@@ -164,7 +194,8 @@ data SQLiteState = SQLiteState
   deriving anyclass (Serialise)
 
 data NodeSpec = NodeSpec
-  { nodeSpecLogSpec    :: [ScribeSpec]
+  { nodeSpecDBName     :: Maybe String
+  , nodeSpecLogFile    :: [ScribeSpec]
   }
   deriving (Show, Generic)
 
@@ -299,4 +330,5 @@ reportAnswer conn h heightStr
           hPutStrLn h value
         hPutStrLn h "" -- empty line as parameter name for a delimiter
       return ()
+
 
