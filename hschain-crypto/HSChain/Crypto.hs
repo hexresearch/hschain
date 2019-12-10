@@ -83,7 +83,6 @@ module HSChain.Crypto (
   , decodeBase58
     -- * Serialization and signatures
   , SignedState(..)
-  , verifyCborSignature
   ) where
 
 import Codec.Serialise (Serialise, serialise)
@@ -594,17 +593,6 @@ instance StreamCypher alg => JSON.ToJSONKey   (CypherNonce alg)
 --   serialization
 data SignedState = Verified
                  | Unverified
-
--- | Verify signature of value. Signature is verified for CBOR
---   encoding of object
-verifyCborSignature
-  :: (Serialise a, CryptoSign alg)
-  => PublicKey alg
-  -> a
-  -> Signature alg
-  -> Bool
-verifyCborSignature pk a
-  = verifyBlobSignature pk (toStrict $ serialise a)
 
 
 

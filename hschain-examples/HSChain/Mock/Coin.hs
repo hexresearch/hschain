@@ -191,7 +191,7 @@ processTransaction transaction@(Send pubK sig txSend@TxSend{..}) CoinState{..} =
   let txHash  = hashBlob $ toStrict $ serialise transaction
   -- Signature must be valid. Note signature check is expensive so
   -- it's done at last moment
-  guard $ verifyCborSignature pubK txSend sig
+  guard $ verifySignatureHashed pubK txSend sig
   return CoinState
     { unspentOutputs =
         let spend txMap = foldl' (flip  Map.delete) txMap txInputs
@@ -292,7 +292,7 @@ generateTransaction TxGenerator{..} CoinState{..} = liftIO $ do
       tx = TxSend { txInputs  = map fst inputs
                   , txOutputs = outs
                   }
-  return $ Send pubK (signBlob privK $ toStrict $ serialise tx) tx
+  return $ Send pubK (signHashed privK tx) tx
 
 selectFromVec :: V.Vector a -> IO a
 selectFromVec v = do
