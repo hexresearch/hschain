@@ -1,4 +1,3 @@
-{-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE DataKinds                  #-}
 {-# LANGUAGE DeriveAnyClass             #-}
 {-# LANGUAGE DeriveGeneric              #-}
@@ -10,9 +9,14 @@
 {-# LANGUAGE RankNTypes                 #-}
 {-# LANGUAGE RecordWildCards            #-}
 {-# LANGUAGE TupleSections              #-}
+{-# LANGUAGE TypeFamilies               #-}
 {-# LANGUAGE TypeOperators              #-}
 -- |
--- Simple coin for experimenting with blockchain
+-- Very simple UTXO coin intended for demonstration of hschain. As a
+-- demonstration it doesn't have any sort of economics nor in form of
+-- block reward, nor in form of transaction fee. Spend scripts are
+-- primitive as well. All that's possible is to send money to owner of
+-- private key
 module HSChain.Mock.Coin (
     Alg
   , TxSend(..)
@@ -22,7 +26,7 @@ module HSChain.Mock.Coin (
   , CoinState(..)
   , Unspent(..)
   , UTXO(..)
-  , transitions
+  , coinLogic
     -- * Transaction generator
   , mintMockCoin
   , generateTransaction
@@ -45,9 +49,8 @@ import Control.Monad.Trans.Cont
 import Control.Monad.Trans.Maybe
 import Control.Concurrent   (threadDelay)
 import Control.DeepSeq
-import Codec.Serialise      (Serialise,serialise)
+import Codec.Serialise      (Serialise)
 import qualified Data.Aeson as JSON
-import Data.ByteString.Lazy (toStrict)
 import Data.Foldable
 import Data.Maybe
 import Data.Map             (Map,(!))
@@ -83,8 +86,15 @@ import qualified HSChain.P2P.Network as P2P
 -- Basic coin logic
 ----------------------------------------------------------------
 
+-- | Cryptographic algorithms we're using. Note that we using same
+--   cryptography for both validators and transactions but don't have
+--   to.
 type Alg = Ed25519 :& SHA512
 
+
+-- | Block data. It's simply newtype wrapper over list of
+--   transactions. Newtype is needed in order to define 'BlockData'
+--   instance.
 newtype BData = BData [Tx]
   deriving stock    (Show,Eq,Generic)
   deriving newtype  (NFData,CryptoHashable)
@@ -97,18 +107,13 @@ instance BlockData BData where
   logBlockData      (BData txs) = HM.singleton "Ntx" $ JSON.toJSON $ length txs
   proposerSelection             = ProposerSelection randomProposerSHA512
 
--- | Single transaction for transfer of coins
-data TxSend = TxSend
-  { txInputs  :: [UTXO]
-  , txOutputs :: [Unspent]
-  }
-  deriving stock    (Show, Eq, Ord, Generic)
-  deriving anyclass (Serialise, NFData, JSON.ToJSON, JSON.FromJSON)
-
+-- | Single transaction. We have two different transaction one to add
+--   money to account ex nihilo and one to transfer money between
+--   accounts.
 data Tx
   = Deposit !(PublicKey Alg) !Integer
     -- ^ Deposit tokens to given key. Could only appear in genesis
-    --   block
+    --   block (H=0)
   | Send !(PublicKey Alg) !(Signature Alg) !TxSend
     -- ^ Send coins to other addresses. Transaction must obey
     --   following invariants:
@@ -120,19 +125,26 @@ data Tx
   deriving stock    (Show, Eq, Ord, Generic)
   deriving anyclass (Serialise, NFData, JSON.ToJSON, JSON.FromJSON)
 
--- | Pair of transaction hash and output number
-data UTXO = UTXO !Int !(Hash Alg)
+-- | Single transaction for transfer of coins.
+data TxSend = TxSend
+  { txInputs  :: [UTXO]         -- ^ List of inputs that are spent in this TX
+  , txOutputs :: [Unspent]      -- ^ List of outputs of this TX
+  }
   deriving stock    (Show, Eq, Ord, Generic)
   deriving anyclass (Serialise, NFData, JSON.ToJSON, JSON.FromJSON)
 
--- | Pair of public key which could spend output and amount
+-- | Pair of transaction hash and output number
+data UTXO = UTXO !Int !(Hashed Alg Tx)
+  deriving stock    (Show, Eq, Ord, Generic)
+  deriving anyclass (Serialise, NFData, JSON.ToJSON, JSON.FromJSON)
+
+-- | Unspent coins belonging to some private key. It's identified by
+--   public key and unspent amount.
 data Unspent = Unspent !(PublicKey Alg) !Integer
   deriving stock    (Show, Eq, Ord, Generic)
   deriving anyclass (Serialise, NFData, JSON.ToJSON, JSON.FromJSON)
 
 -- | State of coins in program-digestible format
---
---   Really we'll need to keep in DB to persist it.
 data CoinState = CoinState
   { unspentOutputs :: !(Map UTXO Unspent)
     -- ^ Map of unspent outputs of transaction. It maps pair of
@@ -158,6 +170,8 @@ instance CryptoHashable CoinState where
 
 
 
+-- | Process deposit transaction. Should only be called for
+--   transactions from genesis block
 processDeposit :: Tx -> CoinState -> Maybe CoinState
 processDeposit Send{}                _             = Nothing
 processDeposit tx@(Deposit pk nCoin) CoinState{..} =
@@ -169,9 +183,9 @@ processDeposit tx@(Deposit pk nCoin) CoinState{..} =
                                  ) pk utxoLookup
     }
   where
-    utxo = UTXO 0 (hash tx)
+    utxo = UTXO 0 (hashed tx)
 
-
+-- | Process money movement transaction
 processTransaction :: Tx -> CoinState -> Maybe CoinState
 processTransaction Deposit{} _ = Nothing
 processTransaction transaction@(Send pubK sig txSend@TxSend{..}) CoinState{..} = do
@@ -187,11 +201,11 @@ processTransaction transaction@(Send pubK sig txSend@TxSend{..}) CoinState{..} =
     guard $ pk == pubK
     return n
   guard $ sum inputs == sum [n | Unspent _ n <- txOutputs]
-  -- Update application state
-  let txHash  = hashBlob $ toStrict $ serialise transaction
   -- Signature must be valid. Note signature check is expensive so
   -- it's done at last moment
   guard $ verifySignatureHashed pubK txSend sig
+  -- Update application state
+  let txHash  = hashed transaction
   return CoinState
     { unspentOutputs =
         let spend txMap = foldl' (flip  Map.delete) txMap txInputs
@@ -210,8 +224,10 @@ processTransaction transaction@(Send pubK sig txSend@TxSend{..}) CoinState{..} =
         in add $ Map.adjust remove pubK utxoLookup
     }
 
-transitions :: BChLogic Maybe Alg BData
-transitions = BChLogic
+-- | Complete description of blockchain logic. Since we keep all state
+--   in memory we simply use @Maybe@ to track failures
+coinLogic :: BChLogic Maybe Alg BData
+coinLogic = BChLogic
   { processTx     = \BChEval{..} -> void $ process (Height 1) bchValue blockchainState
   --
   , processBlock  = \BChEval{..} -> do
@@ -328,7 +344,7 @@ mintMockCoin nodes CoinSpecification{..} =
     state0       = CoinState mempty mempty
     genesis0     = makeGenesis (BData txs) (Hashed $ hash ()) valSet valSet
     Just BChEval{blockchainState=st}
-      = processBlock transitions BChEval
+      = processBlock coinLogic BChEval
         { bchValue        = genesis0
         , validatorSet    = valSet
         , blockchainState = state0
@@ -383,7 +399,7 @@ interpretSpec genesis p cb = do
     , acts
     )
   where
-    logic = makeAppLogic transitions runner
+    logic = makeAppLogic coinLogic runner
 
 executeNodeSpec
   :: (MonadIO m, MonadMask m, MonadFork m, MonadTrace m, MonadTMMonitoring m)

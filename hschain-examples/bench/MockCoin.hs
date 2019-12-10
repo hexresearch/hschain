@@ -38,14 +38,14 @@ benchmarks
                                   , blockEvidence      = merkled []
                                   , blockStateHash     = Hashed (Hash "")
                                   }
-                    in processBlock transitions $ b <$ bdata
+                    in processBlock coinLogic $ b <$ bdata
            ) bdata
     | size <- [0, 1, 10, 100, 1000]
     ]
   ]
   where
     makeBlock = fromJust
-              . generateBlock transitions (error "We don't actually use block there")
+              . generateBlock coinLogic (error "We don't actually use block there")
 
 
 ----------------------------------------------------------------
@@ -71,7 +71,7 @@ genesis :: Genesis Alg BData
     }
 
 state :: EvaluationResult Alg BData
-Just state = processBlock transitions genesis
+Just state = processBlock coinLogic genesis
 
 generateTxList :: Int -> IO [Tx]
 generateTxList n
