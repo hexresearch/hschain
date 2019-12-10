@@ -24,9 +24,10 @@ import qualified Database.SQLite.Simple as SQLite
 import Data.Aeson             (FromJSON)
 import Data.Monoid            ((<>))
 import Data.String
+import qualified Data.Text as Text
 import Data.Word
 
-import System.Environment (getArgs)
+import System.Environment (getArgs, getEnv)
 import System.Exit (exitSuccess, exitFailure)
 import System.FilePath
 
@@ -57,6 +58,7 @@ import qualified Data.Set            as Set
 import Control.DeepSeq
 import Codec.Serialise      (Serialise,serialise)
 
+import HSChain.Blockchain.Interpretation
 import HSChain.Control
 import HSChain.Store
 import HSChain.Monitoring
@@ -85,7 +87,12 @@ runConsensusNode :: String -> String -> String -> IO ()
 runConsensusNode genesisPath configPath envVar = do
   nspec@NodeSpec{} :*: NodeCfg{..} :*: (cfg :: Configuration Example)
     <- loadYamlSettings [reverse configPath] [] requireEnv
-  let genesis = error "genesis generation"
+  genesis <- readGenesisBlock genesisPath
+  ourPrivateKey <- do
+    str <- getEnv envVar
+    case decodeBase58 $ Text.pack str of
+      Just k -> return k
+      Nothing -> error $ "Environment variable "++show envVar++" does not contain base58-decodable value of validator's private key"
   startWebMonitoring $ fromIntegral nodeCfgPort + 1000
   -- Start node
   evalContT $ do
@@ -98,21 +105,19 @@ runConsensusNode genesisPath configPath envVar = do
     --- Allocate resources
     (conn, logenv) <- allocNode nspec
     gauges         <- standardMonitoring
-    let run = runMonitorT gauges . runLoggerT logenv . runDBT conn
+    let run = const $ return ()--runMonitorT gauges . runLoggerT logenv . runDBT conn
     -- Actually run node
     lift $ run $ do
-      (RunningNode{..},acts) <- interpretSpec genesis
+      (RunningNode{..},acts) <- interpretSpec ourPrivateKey genesis
         (nspec :*: cfg :*: bnet)
         (mempty)
-      txGen <- case mtxGen of
-        Nothing  -> return []
-        Just txG -> do
-          cursor <- getMempoolCursor rnodeMempool
-          return [transactionGenerator txG
+      cursor <- getMempoolCursor rnodeMempool
+      let txGen = do
+            transactionGenerator txG
                     rnodeMempool
                     (snd <$> bchCurrentState rnodeState)
-                    (void . pushTransaction cursor)]
-      logOnException $ runConcurrently $ txGen ++ acts
+                    (void . pushTransaction cursor)
+      logOnException $ runConcurrently $ txGen : acts
   return ()
 
 -- |Main program.
@@ -217,6 +222,44 @@ data RunningNode m alg a = RunningNode
   , rnodeConn    :: Connection 'RO alg a
   , rnodeMempool :: Mempool m alg (TX a)
   }
+
+interpretSpec
+  :: ( MonadDB m Alg BData, MonadFork m, MonadMask m, MonadLogger m
+     , MonadTrace m, MonadTMMonitoring m
+     , Has x BlockchainNet
+     , Has x (Configuration Example))
+  => PrivValidator Alg
+  -> Block Alg BData
+  -> x
+  -> AppCallbacks m Alg BData
+  -> m (RunningNode m Alg BData, [m ()])
+interpretSpec privateKey genesis p cb = do
+  conn  <- askConnectionRO
+  transitions <- createTransitions
+  store <- newSTMBchStorage $ initialState transitions
+  logic <- makeAppLogic store transitions runner
+  acts <- runNode (getT p :: Configuration Example) NodeDescription
+    { nodeValidationKey = Just privateKey
+    , nodeGenesis       = genesis
+    , nodeCallbacks     = cb <> nonemptyMempoolCallback (appMempool logic)
+    , nodeLogic         = logic
+    , nodeNetwork       = getT p
+    }
+  return
+    ( RunningNode { rnodeState   = store
+                  , rnodeConn    = conn
+                  , rnodeMempool = appMempool logic
+                  }
+    , acts
+    )
+
+createTransitions = return $ BChLogic
+  { processTx     = error "processTX is called! I am not sure we should use it."
+  , processBlock  = error "process block"
+  , generateBlock = error "generate block"
+  , initialState  = SQLiteState
+  }
+
 
 ----------------------------------------------------------------
 -- Genesis block.
