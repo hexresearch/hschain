@@ -18,7 +18,7 @@ module HSChain.Blockchain.Internal.Engine.Types (
   , DefaultConfig(..)
     -- * Application state
   , NewBlock(..)
-  , AppLogic(..)
+  , AppLogic
   , AppStore(..)
   , AppCallbacks(..)
   , hoistAppCallback
