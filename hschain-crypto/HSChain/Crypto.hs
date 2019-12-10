@@ -44,6 +44,8 @@ module HSChain.Crypto (
   , Fingerprint(..)
   , fingerprint
   , CryptoSign(..)
+  , signHashed
+  , verifySignatureHashed
   , CryptoSignHashed(..)
     -- * Aggregations API
   , CryptoAggregabble(..)
@@ -184,6 +186,18 @@ class ( ByteReprSized (Signature   alg)
   -- | Check that signature is correct
   verifyBlobSignature :: PublicKey alg -> ByteString -> Signature alg -> Bool
 
+
+signHashed :: forall alg a. (Crypto alg, CryptoHashable a)
+           => PrivKey alg -> a -> Signature alg
+signHashed pk a = signBlob pk bs
+  where
+    Hash bs = hash a :: Hash alg
+
+verifySignatureHashed :: forall alg a. (Crypto alg, CryptoHashable a)
+           => PublicKey alg -> a -> Signature alg -> Bool
+verifySignatureHashed pk a = verifyBlobSignature pk bs
+  where
+    Hash bs = hash a :: Hash alg
 
 class ( ByteReprSized (Signature   alg)
       , CryptoAsymmetric alg

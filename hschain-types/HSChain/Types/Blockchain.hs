@@ -477,21 +477,18 @@ signedKeyInfo (Signed a _ _) = a
 -- | Sign value. Note that we can generate both verified and unverified
 --   values this way.
 signValue
-  :: forall sign alg a. (Crypto alg, CryptoHashable a)
+  :: (Crypto alg, CryptoHashable a)
   => ValidatorIdx alg           -- ^ Key identifier
   -> PrivKey alg                -- ^ Key for signing
   -> a                          -- ^ Value to sign
   -> Signed sign alg a
-signValue key privK a
-  = Signed key (signBlob privK h) a
-  where
-    Hash h = hash a :: Hash alg
+signValue key privK a = Signed key (signHashed privK a) a
 
 -- | Verify signature. It return Nothing if verification fails for any
 --   reason. Note that since @Signed@ contain only fingerprint we need
 --   to supply function for looking up public keys.
 verifySignature
-  :: forall alg a. (Crypto alg, CryptoHashable a)
+  :: (Crypto alg, CryptoHashable a)
   => ValidatorSet alg
      -- ^ Set of validators corresponding to signed value
   -> Signed 'Unverified alg a
@@ -499,10 +496,8 @@ verifySignature
   -> Maybe (Signed 'Verified alg a)
 verifySignature valSet val@(Signed idx sig a) = do
   Validator pubK _ <- validatorByIndex valSet idx
-  guard $ verifyBlobSignature pubK h sig
+  guard  $ verifySignatureHashed pubK a sig
   return $ coerce val
-  where
-    Hash h = hash a :: Hash alg
 
 -- | Strip verification tag
 unverifySignature :: Signed ty alg a -> Signed 'Unverified alg a
