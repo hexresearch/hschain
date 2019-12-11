@@ -3,7 +3,7 @@ module Crypto.Bls.JavaScript.PrivateKey
     , privateKeyFromSeed
     , privateKeyGetPublicKey
     , privateKeySerialize
-    , privateKeyFromBytes
+    , privateKeyDeserialize
     , privateKeyEq
     ) where
 
@@ -49,8 +49,8 @@ privateKeyFromSeed :: ByteString -> PrivateKey
 privateKeyFromSeed seed = PrivateKey $ js_fromSeed (getJsVal blsModule) (bs2arr seed)
 
 
-privateKeyFromBytes :: ByteString -> PrivateKey
-privateKeyFromBytes bytes = PrivateKey $ js_fromBytes (getJsVal blsModule) (bs2arr bytes) (BS.length bytes)
+privateKeyDeserialize :: ByteString -> PrivateKey
+privateKeyDeserialize bytes = PrivateKey $ js_fromBytes (getJsVal blsModule) (bs2arr bytes) (BS.length bytes)
 
 
 -- TODO export `operator==()` to JavaScript and use it

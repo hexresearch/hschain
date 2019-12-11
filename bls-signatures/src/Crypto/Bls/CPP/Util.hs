@@ -3,6 +3,7 @@
 module Crypto.Bls.CPP.Util
     ( hash256
     , hashSize
+    , hash256serialize
     ) where
 
 
@@ -10,6 +11,7 @@ import Data.ByteString (ByteString)
 import qualified Data.ByteString.Internal as BS
 import qualified Language.C.Inline as C
 import qualified Language.C.Inline.Cpp as C
+import System.IO.Unsafe
 
 import Crypto.Bls.CPP.Internal
 import Crypto.Bls.CPP.Types
@@ -26,6 +28,10 @@ hashSize :: Int
 hashSize = 32 -- TODO get from sources!
 
 
-hash256 :: ByteString -> IO Hash256
-hash256 message = fmap Hash256 $ BS.create hashSize $ \hashbuffer ->
+hash256 :: ByteString -> Hash256
+hash256 message = Hash256 $ unsafePerformIO $ BS.create hashSize $ \hashbuffer ->
     [C.exp| void { Util::Hash256($(uint8_t * hashbuffer), (uint8_t const*)$bs-ptr:message, $bs-len:message) }|]
+
+
+hash256serialize :: Hash256 -> ByteString
+hash256serialize (Hash256 bs) = bs

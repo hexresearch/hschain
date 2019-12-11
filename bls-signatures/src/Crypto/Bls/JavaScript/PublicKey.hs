@@ -3,7 +3,7 @@ module Crypto.Bls.JavaScript.PublicKey
     , publicKeyGetFingerprint
     , publicKeyInsecureAggregate
     , publicKeySerialize
-    , publicKeyFromBytes
+    , publicKeyDeserialize
     , publicKeyEq
     ) where
 
@@ -15,7 +15,6 @@ import JavaScript.Array
 
 import Crypto.Bls.JavaScript.Common
 import JavaScript.TypedArray as A
-import qualified Data.ByteString as BS
 
 -- * --------------------------------------------------------------------------
 
@@ -50,8 +49,8 @@ publicKeyGetFingerprint (PublicKey jspk) = js_getFingerprint jspk
 publicKeyInsecureAggregate :: [PublicKey] -> PublicKey
 publicKeyInsecureAggregate pks = PublicKey $ js_aggregateInsecure (getJsVal blsModule) (fromList $ map getJsVal pks)
 
-publicKeyFromBytes :: ByteString -> PublicKey
-publicKeyFromBytes bytes = PublicKey $ js_publicKeyFromBytes (getJsVal blsModule) (bs2arr bytes)
+publicKeyDeserialize :: ByteString -> PublicKey
+publicKeyDeserialize bytes = PublicKey $ js_publicKeyFromBytes (getJsVal blsModule) (bs2arr bytes)
 
 
 -- TODO export `operator==()` to JavaScript and use it

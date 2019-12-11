@@ -3,23 +3,25 @@
 module Crypto.Bls.CPP.PublicKey
     ( PublicKey
     , publicKeySize
-    , serializePublicKey
-    , deserializePublicKey
-    , aggregateInsecurePublicKey
-    , aggregateInsecurePublicKeyList
-    , equalPublicKey
+    , publicKeySerialize
+    , publicKeyDeserialize
+    , publicKeyGetFingerprint
+    , publicKeyInsecureAggregateVec
+    , publicKeyInsecureAggregate
+    , publicKeyEq
     ) where
 
 
 import Data.ByteString (ByteString)
+import Data.Word
 import Data.Maybe
 import Data.Vector (Vector)
 import Foreign.Marshal.Utils (toBool)
 import System.IO.Unsafe
 import qualified Data.ByteString.Internal as BS
+import qualified Data.Vector as V
 import qualified Language.C.Inline as C
 import qualified Language.C.Inline.Cpp as C
-import qualified Data.Vector as V
 
 import Crypto.Bls.CPP.Arrays
 import Crypto.Bls.CPP.Internal
@@ -35,37 +37,44 @@ publicKeySize :: Int
 publicKeySize = fromIntegral [C.pure| size_t { PublicKey::PUBLIC_KEY_SIZE }|]
 
 
-serializePublicKey :: PublicKey -> IO ByteString
-serializePublicKey pk = withPtr pk $ \pkptr ->
+publicKeySerialize :: PublicKey -> ByteString
+publicKeySerialize pk = unsafePerformIO $ withPtr pk $ \pkptr ->
     BS.create publicKeySize $ \pkbuffer ->
         [C.exp| void { $(PublicKey * pkptr)->Serialize($(uint8_t * pkbuffer)) }|]
 
 
-deserializePublicKey :: ByteString -> IO PublicKey -- TODO check size
-deserializePublicKey bs = fromPtr [C.exp|
+publicKeyDeserialize :: ByteString -> PublicKey -- TODO check size
+publicKeyDeserialize bs = unsafePerformIO $ fromPtr [C.exp|
     PublicKey * {
         new PublicKey(PublicKey::FromBytes((uint8_t const*)$bs-ptr:bs))
     }|]
 
 
--- | Insecurely aggregate multiple private keys into one
-aggregateInsecurePublicKey :: Vector PublicKey -> IO PublicKey
-aggregateInsecurePublicKey publicKeys =
-    fmap (fromMaybe (error "aggregateInsecure with empty vector!")) $
-        withArrayPtrLen publicKeys $ \ptrPublicKeys lenPublicKeys ->
-            fromPtr [C.exp| PublicKey * {
-                new PublicKey(PublicKey::AggregateInsecure(
-                    std::vector<PublicKey>( $(PublicKey * ptrPublicKeys)
-                                           , $(PublicKey * ptrPublicKeys) + $(size_t lenPublicKeys))))
-            }|]
+publicKeyGetFingerprint :: PublicKey -> Word32
+publicKeyGetFingerprint pk = fromIntegral $ unsafePerformIO $ withPtr pk $ \pkPtr ->
+    [C.exp| uint32_t { $(PublicKey* pkPtr)->GetFingerprint() }|]
+
 
 -- | Insecurely aggregate multiple private keys into one
-aggregateInsecurePublicKeyList :: [PublicKey] -> IO PublicKey
-aggregateInsecurePublicKeyList = aggregateInsecurePublicKey . V.fromList
+publicKeyInsecureAggregateVec :: Vector PublicKey -> PublicKey
+publicKeyInsecureAggregateVec publicKeys =
+    fromMaybe (error "aggregateInsecure with empty vector!") $
+    unsafePerformIO $
+    withArrayPtrLen publicKeys $ \ptrPublicKeys lenPublicKeys ->
+        fromPtr [C.exp| PublicKey * {
+            new PublicKey(PublicKey::AggregateInsecure(
+                std::vector<PublicKey>( $(PublicKey * ptrPublicKeys)
+                                       , $(PublicKey * ptrPublicKeys) + $(size_t lenPublicKeys))))
+        }|]
 
 
-equalPublicKey :: PublicKey -> PublicKey -> Bool
-equalPublicKey pubKey1 pubKey2 = toBool $ unsafePerformIO $
+-- | Insecurely aggregate multiple private keys into one
+publicKeyInsecureAggregate :: [PublicKey] -> PublicKey
+publicKeyInsecureAggregate = publicKeyInsecureAggregateVec . V.fromList
+
+
+publicKeyEq :: PublicKey -> PublicKey -> Bool
+publicKeyEq pubKey1 pubKey2 = toBool $ unsafePerformIO $
     withPtr pubKey1 $ \pubKey1Ptr ->
         withPtr pubKey2 $ \pubKey2Ptr ->
             [C.exp| bool { *$(PublicKey* pubKey1Ptr) == *$(PublicKey* pubKey2Ptr) } |]

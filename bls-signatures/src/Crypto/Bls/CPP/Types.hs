@@ -3,10 +3,7 @@
 {-# LANGUAGE TemplateHaskell            #-}
 {-# LANGUAGE TypeFamilies               #-}
 {-# OPTIONS_GHC -Wno-orphans            #-}
-module Crypto.Bls.CPP.Types
-    {- ( PrivateKey
-    , PublicKey
-    ) -} where
+module Crypto.Bls.CPP.Types where
 
 
 import Control.DeepSeq

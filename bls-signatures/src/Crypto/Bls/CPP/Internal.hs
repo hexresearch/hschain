@@ -163,4 +163,3 @@ mkPlacementNewInstance name =
       lamE [varP ptr] $
         quoteExp C.exp $
           "void { $(" <> typeName <> " * " <> nameBase ptr <> ")->~" <> typeName <> "() }"
-

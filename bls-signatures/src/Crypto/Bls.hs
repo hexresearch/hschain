@@ -1,61 +1,47 @@
 {-# LANGUAGE CPP #-}
 module Crypto.Bls
-    (
-#ifdef __GHCJS__
-      PrivateKey
+    ( PrivateKey
     , PublicKey
     , Signature
     , InsecureSignature
+    , Hash256
     , initBls
     , hash256
+    , hash256serialize
     , privateKeyFromSeed
     , privateKeyGetPublicKey
     , privateKeySerialize
-    , privateKeyFromBytes
+    , privateKeyDeserialize
     , privateKeyEq
     , publicKeyGetFingerprint
     , publicKeyInsecureAggregate
     , publicKeySerialize
-    , publicKeyFromBytes
+    , publicKeyDeserialize
     , publicKeyEq
     , insecureSignatureAggregate
     , insecureSignatureEq
-    , insecureSignatureFromBytes
+    , insecureSignatureDeserialize
     , insecureSignatureSerialize
     , insecureSignatureVerify
     , signInsecure
     , signatureEq
-    , signatureFromBytes
+    , signatureDeserialize
     , signatureSerialize
-#else
-      module Crypto.Bls.CPP.AggregationInfo
-    , module Crypto.Bls.CPP.PrivateKey
-    , module Crypto.Bls.CPP.PublicKey
-    , module Crypto.Bls.CPP.Signature
-    , module Crypto.Bls.CPP.Threshold
-    , module Crypto.Bls.CPP.Types
-    , module Crypto.Bls.CPP.Util
-#endif
     )
     where
 
 
 #ifdef __GHCJS__
 
---import Crypto.Bls.AggregationInfo
 import Crypto.Bls.JavaScript.Common
 import Crypto.Bls.JavaScript.PrivateKey
 import Crypto.Bls.JavaScript.PublicKey
 import Crypto.Bls.JavaScript.Signature
---import Crypto.Bls.PublicKey
---import Crypto.Bls.Signature
---import Crypto.Bls.Threshold
---import Crypto.Bls.Types
---import Crypto.Bls.Util
 
 #else
 
 import Crypto.Bls.CPP.AggregationInfo
+import Crypto.Bls.CPP.Init
 import Crypto.Bls.CPP.PrivateKey
 import Crypto.Bls.CPP.PublicKey
 import Crypto.Bls.CPP.Signature

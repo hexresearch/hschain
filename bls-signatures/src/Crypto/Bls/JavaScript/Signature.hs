@@ -3,12 +3,12 @@ module Crypto.Bls.JavaScript.Signature
     , InsecureSignature(..)
     , insecureSignatureAggregate
     , insecureSignatureEq
-    , insecureSignatureFromBytes
+    , insecureSignatureDeserialize
     , insecureSignatureSerialize
     , insecureSignatureVerify
     , signInsecure
     , signatureEq
-    , signatureFromBytes
+    , signatureDeserialize
     , signatureSerialize
     ) where
 
@@ -69,8 +69,8 @@ signInsecure :: PrivateKey -> ByteString -> InsecureSignature
 signInsecure (PrivateKey jspk) msg = InsecureSignature $ js_signInsecure jspk (bs2arr msg)
 
 
-insecureSignatureVerify :: InsecureSignature -> [ByteString] -> [PublicKey] -> Bool
-insecureSignatureVerify insig hashes publicKeys = js_insecureVerify (getJsVal insig) (fromList $ map (jsval . bs2arr) hashes) (fromList $ map getJsVal publicKeys)
+insecureSignatureVerify :: InsecureSignature -> [Hash256] -> [PublicKey] -> Bool
+insecureSignatureVerify insig hashes publicKeys = js_insecureVerify (getJsVal insig) (fromList $ map (jsval . bs2arr . unHash) hashes) (fromList $ map getJsVal publicKeys)
 
 
 -- TODO export `operator==()` to JavaScript and use it
@@ -83,10 +83,10 @@ insecureSignatureEq :: InsecureSignature -> InsecureSignature -> Bool
 insecureSignatureEq isig1 isig2 = insecureSignatureSerialize isig1 == insecureSignatureSerialize isig2
 
 
-insecureSignatureFromBytes :: ByteString -> InsecureSignature
-insecureSignatureFromBytes bytes = InsecureSignature $ js_insecureSignatureFromBytes (getJsVal blsModule) (bs2arr bytes)
+insecureSignatureDeserialize :: ByteString -> InsecureSignature
+insecureSignatureDeserialize bytes = InsecureSignature $ js_insecureSignatureFromBytes (getJsVal blsModule) (bs2arr bytes)
 
 
-signatureFromBytes :: ByteString -> Signature
-signatureFromBytes bytes = Signature $ js_signatureFromBytes (getJsVal blsModule) (bs2arr bytes)
+signatureDeserialize :: ByteString -> Signature
+signatureDeserialize bytes = Signature $ js_signatureFromBytes (getJsVal blsModule) (bs2arr bytes)
 

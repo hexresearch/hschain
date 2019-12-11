@@ -2,43 +2,18 @@ module Crypto.Bls.JavaScript.Common where
 
 
 import Control.Concurrent.MVar
-import GHCJS.Types
-import Data.Char
-import Data.Word
-
---import qualified Data.JSString
---import Data.Coerce
----- import Data.JSString.Internal.Type
-
 import Data.ByteString (ByteString)
---import qualified Data.ByteString as BS
-
---import GHCJS.Foreign
--- import GHCJS.Marshal
---import GHCJS.Marshal.Pure
---import JavaScript.Object.Internal as O
-
---import JavaScript.Object
-
---import qualified GHCJS.Types    as T
---import qualified GHCJS.Foreign  as F
-import qualified GHCJS.Foreign.Callback  as F
-import qualified GHCJS.Types
-
-import JavaScript.TypedArray as A
-import GHCJS.Buffer as BUF
-
-
-import qualified Data.ByteString.Builder as BS
-import qualified Data.ByteString.Lazy    as BSL
-import qualified Data.ByteString         as BS
-
-import System.IO.Unsafe
 import Data.IORef
+import GHCJS.Buffer as BUF
+import GHCJS.Types
+import JavaScript.TypedArray as A
+import System.IO.Unsafe
+import qualified Data.ByteString as BS
+import qualified GHCJS.Foreign.Callback as F
 
 
-foreign import javascript unsafe "console.log($1)"
-    js_consolelog :: JSVal -> IO ()
+-- foreign import javascript unsafe "console.log($1)"
+--     js_consolelog :: JSVal -> IO ()
 
 foreign import javascript "($1).serialize()"
     js_serialize :: JSVal -> Uint8Array
@@ -49,11 +24,16 @@ foreign import javascript unsafe "require('blsjs')().then($1)"
 foreign import javascript "crypto_.createHash('sha256').update($1).digest()"
     js_hash256 :: Uint8Array -> Uint8Array
 
-foreign import javascript "console.log(($1).serialize().toString())"
-    js_serializeStr :: JSVal -> JSVal -- TODO JSString!
 
-hash256 :: ByteString -> ByteString
-hash256 = arr2bs . js_hash256 . bs2arr
+newtype Hash256 = Hash256 { unHash :: ByteString }
+
+
+hash256 :: ByteString -> Hash256
+hash256 = Hash256 . arr2bs . js_hash256 . bs2arr
+
+
+hash256serialize :: Hash256 -> ByteString
+hash256serialize (Hash256 bs) = bs
 
 
 -- TODO взять реализацию из NaCL, bsToArray / arrayToBs
