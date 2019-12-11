@@ -91,7 +91,7 @@ runConsensusNode genesisPath configPath envVar = do
   ourPrivateKey <- do
     str <- getEnv envVar
     case decodeBase58 $ Text.pack str of
-      Just k -> return k
+      Just k -> return $ PrivValidator k
       Nothing -> error $ "Environment variable "++show envVar++" does not contain base58-decodable value of validator's private key"
   startWebMonitoring $ fromIntegral nodeCfgPort + 1000
   -- Start node
