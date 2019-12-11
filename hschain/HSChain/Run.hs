@@ -92,7 +92,7 @@ makeAppLogic
   => BChLogic    q   alg a      -- ^ Blockchain logic
   -> Interpreter q m alg a      -- ^ Runner for logic
   -> AppLogic m alg a
-makeAppLogic logic Interpreter{..} = hoistBChLogic interpretBCh logic
+makeAppLogic logic Interpreter{..} = hoistDict interpretBCh logic
 
 -- | Specification of node
 data NodeDescription m alg a = NodeDescription

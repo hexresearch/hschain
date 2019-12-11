@@ -21,7 +21,6 @@ module HSChain.Blockchain.Internal.Engine.Types (
   , AppLogic
   , AppStore(..)
   , AppCallbacks(..)
-  , hoistAppCallback
   , Validator(..)
   , PrivValidator(..)
     -- * Messages and channels
@@ -29,7 +28,6 @@ module HSChain.Blockchain.Internal.Engine.Types (
   , unverifyMessageRx
   , Announcement(..)
   , AppChans(..)
-  , hoistAppChans
     -- * Proposers
   , randomProposerSHA512
   ) where
@@ -207,11 +205,11 @@ instance Monad m => Semigroup (AppCallbacks m alg a) where
 instance Monad m => Monoid (AppCallbacks m alg a) where
   mempty  = AppCallbacks (\_ -> pure ()) (\_ -> pure Nothing)
 
-hoistAppCallback :: (forall x. m x -> n x) -> AppCallbacks m alg a -> AppCallbacks n alg a
-hoistAppCallback fun AppCallbacks{..} = AppCallbacks
-  { appCommitCallback = fun . appCommitCallback
-  , appCanCreateBlock = fun . appCanCreateBlock
-  }
+instance HoistDict AppCallbacks where
+  hoistDict fun AppCallbacks{..} = AppCallbacks
+    { appCommitCallback = fun . appCommitCallback
+    , appCanCreateBlock = fun . appCanCreateBlock
+    }
 
 -- | Our own validator
 newtype PrivValidator alg = PrivValidator
@@ -246,11 +244,11 @@ data AppChans m alg a = AppChans
     -- ^ Storage for proposed blocks
   }
 
-hoistAppChans :: (forall x. m x -> n x) -> AppChans m alg a -> AppChans n alg a
-hoistAppChans fun AppChans{..} = AppChans
-  { appPropStorage   = hoistPropStorageRW fun appPropStorage
-  , ..
-  }
+instance HoistDict AppChans where
+  hoistDict fun AppChans{..} = AppChans
+    { appPropStorage = hoistDict fun appPropStorage
+    , ..
+    }
 
 
 

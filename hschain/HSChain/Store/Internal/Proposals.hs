@@ -1,4 +1,5 @@
 {-# LANGUAGE DataKinds           #-}
+{-# LANGUAGE FlexibleInstances   #-}
 {-# LANGUAGE KindSignatures      #-}
 {-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE RankNTypes          #-}
@@ -73,34 +74,28 @@ makeReadOnlyPS ProposalStorage{..} =
                   , ..
                   }
 
-hoistPropStorageRW
-  :: (forall x. m x -> n x)
-  -> ProposalStorage 'RW m alg a
-  -> ProposalStorage 'RW n alg a
-hoistPropStorageRW fun ProposalStorage{..} =
-  ProposalStorage { retrievePropByID   = \h x -> fun (retrievePropByID h x)
-                  , retrievePropByR    = \h x -> fun (retrievePropByR  h x)
-                  , setPropValidation  = \b x -> fun (setPropValidation b x)
-                  , resetPropStorage   = fun . resetPropStorage
-                  , storePropBlock     = fun . storePropBlock
-                  , allowBlockID       = \r bid -> fun (allowBlockID r bid)
-                  }
+instance HoistDict (ProposalStorage 'RW) where
+  hoistDict fun ProposalStorage{..} = ProposalStorage
+    { retrievePropByID   = \h x -> fun (retrievePropByID h x)
+    , retrievePropByR    = \h x -> fun (retrievePropByR  h x)
+    , setPropValidation  = \b x -> fun (setPropValidation b x)
+    , resetPropStorage   = fun . resetPropStorage
+    , storePropBlock     = fun . storePropBlock
+    , allowBlockID       = \r bid -> fun (allowBlockID r bid)
+    }
 
-hoistPropStorageRO
-  :: (forall x. m x -> n x)
-  -> ProposalStorage 'RO m alg a
-  -> ProposalStorage 'RO n alg a
-hoistPropStorageRO fun ProposalStorage{..} =
-  ProposalStorage { retrievePropByID   = \h x -> fun (retrievePropByID h x)
-                  , retrievePropByR    = \h x -> fun (retrievePropByR  h x)
-                  , ..
-                  }
+instance HoistDict (ProposalStorage 'RO) where
+  hoistDict fun ProposalStorage{..} = ProposalStorage
+    { retrievePropByID   = \h x -> fun (retrievePropByID h x)
+    , retrievePropByR    = \h x -> fun (retrievePropByR  h x)
+    , ..
+    }
 
 
 newSTMPropStorage
   :: (Crypto alg, MonadIO m)
   => m (ProposalStorage 'RW m alg a)
-newSTMPropStorage = fmap (hoistPropStorageRW liftIO) $ liftIO $ do
+newSTMPropStorage = fmap (hoistDict liftIO) $ liftIO $ do
   varH    <- newTVarIO (Height 0) -- Current height
   varPBlk <- newTVarIO Map.empty  -- Proposed blocks
   varRMap <- newTVarIO Map.empty  -- Map of rounds to block IDs
