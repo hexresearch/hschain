@@ -19,7 +19,7 @@ import Control.Applicative
 import Control.Monad
 import Control.Monad.Trans.Cont
 import Control.Monad.Trans.Class
-import Control.Monad.Trans.Maybe
+import Control.Monad.Trans.Except
 import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Data.Maybe
@@ -168,9 +168,14 @@ data Tx = AddVal !(PublicKey Alg) !Integer
 instance CryptoHashable Tx where
   hashStep = genericHashStep "hschain"
 
+data ValErr = ValErr
+  deriving stock    (Show)
+  deriving anyclass (Exception)
+
 instance BlockData Tx where
-  type TX               Tx = Tx
+  type TX              Tx = Tx
   type BlockchainState Tx = ValidatorSet Alg
+  type BChError        Tx = ValErr
   blockTransactions        = pure
   logBlockData             = mempty
   proposerSelection        = ProposerSelection randomProposerSHA512
@@ -217,8 +222,7 @@ transitions = BChLogic
     process (RmVal  k)   = filter ((/=k) . validatorPubKey)
 
 runner :: Monad m => Interpreter Maybe m Alg Tx
-runner = Interpreter $ MaybeT . return
-
+runner = Interpreter $ ExceptT . return . maybe (Left ValErr) Right
 
 
 ----------------------------------------------------------------

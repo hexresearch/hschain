@@ -72,6 +72,7 @@ import           Codec.Serialise
 import           Codec.Serialise.Decoding
 import           Codec.Serialise.Encoding
 import           Control.DeepSeq
+import           Control.Exception        (Exception)
 import           Control.Monad
 import           Control.Monad.IO.Class   (MonadIO(..))
 import qualified Data.Aeson               as JSON
@@ -234,6 +235,7 @@ class ( Serialise a
       , CryptoHashable a
       , CryptoHashable (TX a)
       , CryptoHashable (BlockchainState a)
+      , Exception      (BChError a)
       ) => BlockData a where
   -- | Type of transaction used in blockchain. More precisely it's
   --   type of transaction which is submitted by user and stored in
@@ -242,6 +244,8 @@ class ( Serialise a
   -- | Part of state of blockchain defined by user. Set of validators
   --   is passed separately as part of 'BChEval'.
   type BlockchainState a
+  -- | Reason or rejection of transaction\/block.
+  type BChError a
   -- | Return list of transaction in block
   blockTransactions :: a -> [TX a]
   -- | Collect information about block data for logging

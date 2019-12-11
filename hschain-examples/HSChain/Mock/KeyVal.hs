@@ -15,7 +15,6 @@ module HSChain.Mock.KeyVal (
     mkGenesisBlock
   , interpretSpec
   , executeSpec
-  , process
   , keyValLogic
   , BData(..)
   , Tx
@@ -23,12 +22,11 @@ module HSChain.Mock.KeyVal (
   ) where
 
 import Codec.Serialise (Serialise)
-import Control.Applicative
 import Control.Monad
 import Control.Monad.Catch
 import Control.Monad.Trans.Cont
 import Control.Monad.Trans.Class
-import Control.Monad.Trans.Maybe
+import Control.Monad.Trans.Except
 import Control.Monad.IO.Class
 import Data.Maybe
 import Data.List
@@ -72,9 +70,14 @@ newtype BData  = BData [(String,Int)]
   deriving newtype  (CryptoHashable)
 
 
+data KeyValError = KeyValError String
+  deriving stock    (Show) 
+  deriving anyclass (Exception)
+
 instance BlockData BData where
-  type TX               BData = Tx
+  type TX              BData = Tx
   type BlockchainState BData = BState
+  type BChError        BData = KeyValError
   blockTransactions (BData txs) = txs
   logBlockData      (BData txs) = HM.singleton "Ntx" $ JSON.toJSON $ length txs
   proposerSelection             = ProposerSelection randomProposerSHA512
@@ -85,12 +88,6 @@ mkGenesisBlock valSet = BChEval
   , validatorSet    = valSet
   , blockchainState = mempty
   }
-
-process :: Tx -> BState -> Maybe BState
-process (k,v) m
-  | k `Map.member` m = Nothing
-  | otherwise        = Just $ Map.insert k v m
-
 
 
 -------------------------------------------------------------------------------
@@ -131,16 +128,20 @@ interpretSpec genesis p cb = do
     , acts
     )
 
-keyValLogic :: MonadIO m => BChLogic (MaybeT m) Alg BData
+keyValLogic :: MonadIO m => BChLogic (ExceptT KeyValError m) Alg BData
 keyValLogic = BChLogic
-  { processTx     = \_ -> empty
-  , processBlock  = \BChEval{..} -> MaybeT $ return $ do
+  -- We don't use mempool here so we can just use trivial handler for
+  -- transactions
+  { processTx     = \_ -> throwE $ KeyValError ""
+  --
+  , processBlock  = \BChEval{..} -> ExceptT $ return $ do
       st <- foldM (flip process) blockchainState
           $ blockTransactions $ merkleValue $ blockData bchValue
       return BChEval { bchValue        = ()
                      , blockchainState = st
                      , ..
                      }
+  --
   , generateBlock = \NewBlock{..} _ -> do
       let Just k = find (`Map.notMember` newBlockState) ["K_" ++ show (n :: Int) | n <- [1 ..]]
       i <- liftIO $ randomRIO (1,100)
@@ -149,6 +150,12 @@ keyValLogic = BChLogic
                      , blockchainState = Map.insert k i newBlockState
                      }
   }
+  where
+    process :: Tx -> BState -> Either KeyValError BState
+    process (k,v) m
+      | k `Map.member` m = Left  $ KeyValError k
+      | otherwise        = Right $! Map.insert k v m
+
 
 
 executeSpec

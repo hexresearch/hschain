@@ -39,14 +39,13 @@ module HSChain.Mock.Coin (
   , executeNodeSpec
   ) where
 
-import Control.Applicative
 import Control.Monad
 
 import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Cont
-import Control.Monad.Trans.Maybe
+import Control.Monad.Trans.Except
 import Control.Concurrent   (threadDelay)
 import Control.DeepSeq
 import Codec.Serialise      (Serialise)
@@ -91,6 +90,12 @@ import qualified HSChain.P2P.Network as P2P
 --   to.
 type Alg = Ed25519 :& SHA512
 
+data CoinError
+  = DepositAtWrongH
+  | UnexpectedSend
+  | CoinError String
+  deriving stock    (Show,Generic)
+  deriving anyclass (Exception,NFData)
 
 -- | Block data. It's simply newtype wrapper over list of
 --   transactions. Newtype is needed in order to define 'BlockData'
@@ -101,8 +106,9 @@ newtype BData = BData [Tx]
   deriving anyclass (Serialise)
 
 instance BlockData BData where
-  type TX               BData = Tx
+  type TX              BData = Tx
   type BlockchainState BData = CoinState
+  type BChError        BData = CoinError
   blockTransactions (BData txs) = txs
   logBlockData      (BData txs) = HM.singleton "Ntx" $ JSON.toJSON $ length txs
   proposerSelection             = ProposerSelection randomProposerSHA512
@@ -172,8 +178,8 @@ instance CryptoHashable CoinState where
 
 -- | Process deposit transaction. Should only be called for
 --   transactions from genesis block
-processDeposit :: Tx -> CoinState -> Maybe CoinState
-processDeposit Send{}                _             = Nothing
+processDeposit :: Tx -> CoinState -> Either CoinError CoinState
+processDeposit Send{}                _             = Left UnexpectedSend
 processDeposit tx@(Deposit pk nCoin) CoinState{..} =
   return CoinState
     { unspentOutputs = Map.insert utxo (Unspent pk nCoin) unspentOutputs
@@ -186,24 +192,29 @@ processDeposit tx@(Deposit pk nCoin) CoinState{..} =
     utxo = UTXO 0 (hashed tx)
 
 -- | Process money movement transaction
-processTransaction :: Tx -> CoinState -> Maybe CoinState
-processTransaction Deposit{} _ = Nothing
+processTransaction :: Tx -> CoinState -> Either CoinError CoinState
+processTransaction Deposit{} _ = Left DepositAtWrongH
 processTransaction transaction@(Send pubK sig txSend@TxSend{..}) CoinState{..} = do
   -- Inputs and outputs are not null
-  guard $ not $ null txInputs
-  guard $ not $ null txOutputs
+  when (null txInputs)  $ Left $ CoinError "Empty input  list"
+  when (null txOutputs) $ Left $ CoinError "Empty output list"
   -- Outputs are all positive
-  forM_ txOutputs $ \(Unspent _ n) -> guard (n > 0)
+  forM_ txOutputs $ \(Unspent _ n) ->
+    unless (n > 0) $ Left $ CoinError "Negative output"
   -- Inputs are owned Spend and generated amount match and transaction
   -- issuer have rights to funds
   inputs <- forM txInputs $ \i -> do
-    Unspent pk n <- Map.lookup i unspentOutputs
-    guard $ pk == pubK
+    Unspent pk n <- case Map.lookup i unspentOutputs of
+      Just x  -> return x
+      Nothing -> Left $ CoinError "Unknown input"
+    unless (pk == pubK) $ Left $ CoinError "Mismatch of publick keys"
     return n
-  guard $ sum inputs == sum [n | Unspent _ n <- txOutputs]
+  unless (sum inputs == sum [n | Unspent _ n <- txOutputs])
+    $ Left $ CoinError "Missmatch between inputs and outputs"
   -- Signature must be valid. Note signature check is expensive so
   -- it's done at last moment
-  guard $ verifySignatureHashed pubK txSend sig
+  unless (verifySignatureHashed pubK txSend sig)
+    $ Left $ CoinError "Invalid signature"
   -- Update application state
   let txHash  = hashed transaction
   return CoinState
@@ -226,7 +237,7 @@ processTransaction transaction@(Send pubK sig txSend@TxSend{..}) CoinState{..} =
 
 -- | Complete description of blockchain logic. Since we keep all state
 --   in memory we simply use @Maybe@ to track failures
-coinLogic :: BChLogic Maybe Alg BData
+coinLogic :: BChLogic (Either CoinError) Alg BData
 coinLogic = BChLogic
   { processTx     = \BChEval{..} -> void $ process (Height 1) bchValue blockchainState
   --
@@ -242,9 +253,9 @@ coinLogic = BChLogic
   , generateBlock = \NewBlock{..} txs -> do
       let selectTx c []     = (c,[])
           selectTx c (t:tx) = case processTransaction t c of
-                                Nothing -> selectTx c  tx
-                                Just c' -> let (c'', b  ) = selectTx c' tx
-                                           in  (c'', t:b)
+                                Left  _  -> selectTx c  tx
+                                Right c' -> let (c'', b  ) = selectTx c' tx
+                                            in  (c'', t:b)
       let (st', dat) = selectTx newBlockState txs
       return BChEval { bchValue        = BData dat
                      , validatorSet    = newBlockValSet
@@ -252,7 +263,9 @@ coinLogic = BChLogic
                      }
   }
   where
-    process (Height 0) t s = processDeposit t s <|> processTransaction t s
+    process (Height 0) t s = case processDeposit t s of
+      Right x -> Right x
+      Left  _ -> processTransaction t s
     process _          t s = processTransaction t s
 
 
@@ -343,7 +356,7 @@ mintMockCoin nodes CoinSpecification{..} =
     -- Generate genesis with correct hash
     state0       = CoinState mempty mempty
     genesis0     = makeGenesis (BData txs) (Hashed $ hash ()) valSet valSet
-    Just BChEval{blockchainState=st}
+    Right BChEval{blockchainState=st}
       = processBlock coinLogic BChEval
         { bchValue        = genesis0
         , validatorSet    = valSet
@@ -364,8 +377,8 @@ findInputs tgt = go 0
 -- Interpretation of coin
 ----------------------------------------------------------------
 
-runner :: Monad m => Interpreter Maybe m Alg BData
-runner = Interpreter (MaybeT . return)
+runner :: Monad m => Interpreter (Either CoinError) m Alg BData
+runner = Interpreter (ExceptT . return)
 
 interpretSpec
   :: ( MonadDB m Alg BData, MonadFork m, MonadMask m, MonadLogger m

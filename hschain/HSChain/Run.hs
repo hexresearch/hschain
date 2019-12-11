@@ -29,10 +29,10 @@ module HSChain.Run (
 import Control.Monad
 import Control.Monad.IO.Class
 import Control.Monad.Catch
-import Control.Monad.Trans.Maybe
+import Control.Monad.Trans.Except
 import Control.Concurrent.STM         (atomically)
 import Control.Concurrent.STM.TBQueue (lengthTBQueue)
-import Data.Maybe                     (isJust)
+import Data.Either                    (isRight)
 
 import HSChain.Blockchain.Internal.Engine
 import HSChain.Blockchain.Internal.Engine.Types
@@ -56,7 +56,7 @@ import HSChain.Utils
 -- | Interpreter for mond in which evaluation of blockchain is
 --   performed
 newtype Interpreter q m alg a = Interpreter
-  { interpretBCh :: forall x. q x -> MaybeT m x
+  { interpretBCh :: forall x. q x -> ExceptT (BChError a) m x
   }
 
 
@@ -75,8 +75,8 @@ makeMempool store BChLogic{..} =
       Just h  -> succ h
     case mvalSet of
       Nothing -> return False
-      Just vs -> fmap isJust
-               $ runMaybeT
+      Just vs -> fmap isRight
+               $ runExceptT
                $ processTx BChEval { bchValue        = tx
                                    , blockchainState = st
                                    , validatorSet    = vs
