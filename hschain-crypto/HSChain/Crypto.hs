@@ -85,7 +85,7 @@ module HSChain.Crypto (
   , SignedState(..)
   ) where
 
-import Codec.Serialise (Serialise, serialise)
+import Codec.Serialise (Serialise)
 import qualified Codec.Serialise as CBOR
 import Control.Applicative
 import Control.DeepSeq
@@ -94,7 +94,6 @@ import Control.Monad.IO.Class
 
 import qualified Data.Aeson           as JSON
 import           Data.Data               (Data)
-import           Data.ByteString.Lazy    (toStrict)
 import           Data.ByteString         (ByteString)
 import Data.Coerce
 import Data.Typeable (Proxy(..))
