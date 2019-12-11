@@ -26,7 +26,7 @@ import Control.Monad
 import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
-import Control.Monad.Trans.Maybe
+import Control.Monad.Trans.Except
 import           Data.Maybe    (fromMaybe)
 import           Data.List     (nub)
 import           Data.Monoid   ((<>))
@@ -40,7 +40,7 @@ import HSChain.Blockchain.Internal.Types
 import HSChain.Blockchain.Internal.Algorithm
 import HSChain.Types.Blockchain
 import HSChain.Types.Merkle.Types
-import HSChain.Control (throwNothing,throwNothingM,iterateM,atomicallyIO)
+import HSChain.Control (throwNothing,throwNothingM,throwLeftM,throwLeft,iterateM,atomicallyIO)
 import HSChain.Crypto
 import HSChain.Exceptions
 import HSChain.Logger
@@ -91,8 +91,9 @@ rewindBlockchainState AppStore{..} BChLogic{..} = do
       blk    <- queryRO $ mustRetrieveBlock        h
       valSet <- queryRO $ mustRetrieveValidatorSet h
       BChEval{..}
-        <- throwNothingM CannotRewindState
-         $ runMaybeT
+        <- throwLeftM
+         $ runExceptT
+         $ withExceptT CannotRewindState
          $ processBlock BChEval { bchValue        = blk
                                 , validatorSet    = valSet
                                 , blockchainState = st
@@ -234,7 +235,7 @@ rxMessageSource HeightParameters{..} AppChans{..} = do
 --  2. Collect stragglers precommits.
 msgHandlerLoop
   :: ( MonadReadDB m alg a, MonadThrow m, MonadIO m, MonadLogger m
-     , Crypto alg)
+     , Crypto alg, Exception (BChError a))
   => HeightParameters m alg a
   -> AppLogic m alg a
   -> AppStore m alg a
@@ -266,14 +267,14 @@ msgHandlerLoop hParam BChLogic{..} AppStore{..} AppChans{..} = mainLoop Nothing
           valSet <- queryRO $ mustRetrieveValidatorSet height
           st     <- throwNothingM BlockchainStateUnavalable
                   $ bchStoreRetrieve appBchState $ pred height
-          res    <- runMaybeT
+          bst    <- throwLeftM
+                  $ runExceptT
+                  $ withExceptT TryingToCommitInvalidBlock
                   $ processBlock BChEval { bchValue         = b
                                          , validatorSet    = valSet
                                          , blockchainState = st
                                          }
-          case res of
-            Nothing  -> error "Trying to commit invalid block!"
-            Just bst -> return (cmt, b <$ bst)
+          return (cmt, b <$ bst)
 
 
 -- Handle message and perform state transitions for both
@@ -477,7 +478,7 @@ makeHeightParameters appValidatorKey BChLogic{..} AppStore{..} AppCallbacks{appC
             inconsistencies <- checkProposedBlock currentH b
             st              <- throwNothingM BlockchainStateUnavalable
                              $ bchStoreRetrieve appBchState bchH
-            mvalSet'        <- runMaybeT
+            mvalSet'        <- runExceptT
                              $ processBlock BChEval { bchValue        =  b
                                                     , validatorSet    = valSet
                                                     , blockchainState = st
@@ -498,8 +499,8 @@ makeHeightParameters appValidatorKey BChLogic{..} AppStore{..} AppCallbacks{appC
                | any not evidenceOK                       -> invalid
                -- Block is correct and validators change is correct as
                -- well
-               | Just bst <- mvalSet'
-               , vals     <- validatorSet bst
+               | Right bst <- mvalSet'
+               , vals      <- validatorSet bst
                , blockStateHash b == hashed (blockchainState bst)
                , validatorSetSize vals > 0
                , blockNewValidators b == hashed vals
@@ -514,8 +515,9 @@ makeHeightParameters appValidatorKey BChLogic{..} AppStore{..} AppCallbacks{appC
           Just b  -> do
             st  <- throwNothingM BlockchainStateUnavalable
                  $ bchStoreRetrieve appBchState bchH
-            res <- throwNothingM InvalidBlockInWAL
-                 $ runMaybeT
+            res <- throwLeftM
+                 $ runExceptT
+                 $ withExceptT InvalidBlockInWAL
                  $ processBlock BChEval { bchValue        = b
                                         , validatorSet    = valSet
                                         , blockchainState = st
@@ -529,8 +531,9 @@ makeHeightParameters appValidatorKey BChLogic{..} AppStore{..} AppCallbacks{appC
             st <- throwNothingM BlockchainStateUnavalable
                 $ bchStoreRetrieve appBchState bchH
             res@BChEval{..}
-              <- throwNothing InvalidBlockInWAL -- FIXME
-             =<< runMaybeT
+              <- throwLeft
+             =<< runExceptT
+               . withExceptT InvalidBlockGenerated
                . generateBlock NewBlock { newBlockHeight   = currentH
                                         , newBlockLastBID  = lastBID
                                         , newBlockCommit   = commit

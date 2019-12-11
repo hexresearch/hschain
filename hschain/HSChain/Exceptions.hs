@@ -1,5 +1,7 @@
-{-# LANGUAGE DeriveAnyClass     #-}
-{-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE DeriveAnyClass            #-}
+{-# LANGUAGE DerivingStrategies        #-}
+{-# LANGUAGE ExistentialQuantification #-}
 -- |
 module HSChain.Exceptions where
 
@@ -41,19 +43,19 @@ data InternalError
   --   (write transaction was rolled back)
   | UnexpectedRollback
   -- ^ Transaction which shouldn't be rolled back was rolled back
-  | InvalidBlockInWAL
+  | forall a. Exception a => InvalidBlockInWAL !a
   -- ^ Invalid block is stored in WAL
-  | CannotRewindState
+  | forall a. Exception a => InvalidBlockGenerated !a
+  -- ^ Genration of block ended in failure
+  | forall a. Exception a => CannotRewindState !a
   -- ^ State transitions already record in blockchain are not valid.
+  | forall a. Exception a => TryingToCommitInvalidBlock !a
+  -- ^ Engine tries to commit invalid block. That it we have commit
+  --   for block that doesn't pass validation. That could happen due
+  --   to bug in validation code or due to byzantine behavior of +2\/3
+  --   validators
   | InconsisnceWhenRewinding !Height !Text
-  -- ^ Incinsistency encountered when rewinding 
-  deriving stock    (Show)
-  deriving anyclass (Exception)
+  -- ^ Incinsistency encountered when rewinding
 
--- | Error generated due to user provided callback which violated some
---   invariant
-data CallbackError
-  = InvalidBlockGenerated
-  -- ^ Invalid block was generated.
-  deriving stock    (Show)
-  deriving anyclass (Exception)
+deriving stock    instance Show      InternalError
+deriving anyclass instance Exception InternalError

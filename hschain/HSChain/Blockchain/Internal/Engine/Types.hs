@@ -34,7 +34,7 @@ module HSChain.Blockchain.Internal.Engine.Types (
 
 import Control.Applicative
 import Control.Concurrent.STM
-import Control.Monad.Trans.Maybe
+import Control.Monad.Trans.Except
 import Data.Aeson
 import Data.Coerce
 import Data.Bits              (shiftL)
@@ -179,7 +179,7 @@ instance DefaultConfig app => FromJSON (Configuration app) where
 --
 ----------------------------------------------------------------
 
-type AppLogic m = BChLogic (MaybeT m)
+type AppLogic m alg a = BChLogic (ExceptT (BChError a) m) alg a
 
 data AppStore m alg a = AppStore
   { appMempool          :: Mempool m alg (TX a)

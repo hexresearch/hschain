@@ -91,14 +91,19 @@ main = do
 
 type Alg = (Ed25519 :& SHA512)
 
+data Err = Err
+  deriving stock    (Show)
+  deriving anyclass (Exception)
+
 newtype BData = BData [Transaction]
   deriving stock    (Show, Eq, Generic)
   deriving newtype  (NFData, CryptoHashable)
   deriving anyclass (Serialise)
 
 instance BlockData BData where
-  type TX               BData = Transaction
+  type TX              BData = Transaction
   type BlockchainState BData = SQLiteState
+  type BChError        BData = Err
   blockTransactions (BData txs) = txs
   logBlockData      (BData txs) = HM.singleton "Ntx" $ JSON.toJSON $ length txs
   proposerSelection             = ProposerSelection randomProposerSHA512

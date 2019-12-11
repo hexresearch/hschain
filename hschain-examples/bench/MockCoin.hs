@@ -2,7 +2,7 @@
 -- |
 module MockCoin (benchmarks) where
 
-import Data.Maybe
+import Data.Either (fromRight)
 import Control.Monad
 import Criterion.Main
 
@@ -44,7 +44,7 @@ benchmarks
     ]
   ]
   where
-    makeBlock = fromJust
+    makeBlock = fromRight (error "Block shall be generated")
               . generateBlock coinLogic (error "We don't actually use block there")
 
 
@@ -71,7 +71,7 @@ genesis :: Genesis Alg BData
     }
 
 state :: EvaluationResult Alg BData
-Just state = processBlock coinLogic genesis
+Right state = processBlock coinLogic genesis
 
 generateTxList :: Int -> IO [Tx]
 generateTxList n
