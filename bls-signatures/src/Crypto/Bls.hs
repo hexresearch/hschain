@@ -2,11 +2,31 @@
 module Crypto.Bls
     (
 #ifdef __GHCJS__
-    -- TODO ограничить экспорт функций
-      module Crypto.Bls.JavaScript.Common
-    , module Crypto.Bls.JavaScript.Signature
-    , module Crypto.Bls.JavaScript.PublicKey
-    , module Crypto.Bls.JavaScript.PrivateKey
+      PrivateKey
+    , PublicKey
+    , Signature
+    , InsecureSignature
+    , initBls
+    , hash256
+    , privateKeyFromSeed
+    , privateKeyGetPublicKey
+    , privateKeySerialize
+    , privateKeyFromBytes
+    , privateKeyEq
+    , publicKeyGetFingerprint
+    , publicKeyInsecureAggregate
+    , publicKeySerialize
+    , publicKeyFromBytes
+    , publicKeyEq
+    , insecureSignatureAggregate
+    , insecureSignatureEq
+    , insecureSignatureFromBytes
+    , insecureSignatureSerialize
+    , insecureSignatureVerify
+    , signInsecure
+    , signatureEq
+    , signatureFromBytes
+    , signatureSerialize
 #else
       module Crypto.Bls.CPP.AggregationInfo
     , module Crypto.Bls.CPP.PrivateKey
@@ -24,9 +44,9 @@ module Crypto.Bls
 
 --import Crypto.Bls.AggregationInfo
 import Crypto.Bls.JavaScript.Common
+import Crypto.Bls.JavaScript.PrivateKey
 import Crypto.Bls.JavaScript.PublicKey
 import Crypto.Bls.JavaScript.Signature
-import Crypto.Bls.JavaScript.PrivateKey
 --import Crypto.Bls.PublicKey
 --import Crypto.Bls.Signature
 --import Crypto.Bls.Threshold
