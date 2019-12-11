@@ -1,12 +1,11 @@
 module Main where
 
-import Test.Tasty
-
--- import {-@ HTF_TESTS @-} Tests.Signature
--- import {-@ HTF_TESTS @-} Tests.Threshold
-import Tests.PrivateKeys
 
 import Crypto.Bls as Bls
+import Test.Tasty
+
+import Tests.Bls
+
 
 main :: IO ()
 main = do

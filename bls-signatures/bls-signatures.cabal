@@ -87,7 +87,7 @@ Test-Suite bls-signatures-test
   Other-Modules:
     -- Tests.Signature
     -- Tests.Threshold
-    Tests.PrivateKeys
+    Tests.Bls
   --    Paths_xenochain_state
   -- Ghc-Options: -optl-static -optl-pthread
 

@@ -3,6 +3,8 @@ module Crypto.Bls.JavaScript.PrivateKey
     , fromSeed
     , getPublicKey
     , serializePrivateKey
+    , privateKeyFromBytes
+    , privateKeyEq
     ) where
 
 
@@ -36,19 +38,26 @@ import Crypto.Bls.JavaScript.Common
 import Crypto.Bls.JavaScript.PublicKey
 
 
--- TODO: add finalizer to PrivateKey: it must be `.delete()` after it was used.
+foreign import javascript "($1).PrivateKey.fromSeed($2)"
+    js_privateKeyFromSeed :: JSVal -> Uint8Array -> JSVal
+
+
+foreign import javascript "($1).PrivateKey.fromBytes($2, $3)"
+    js_privateKeyFromBytes :: JSVal -> Uint8Array -> Int -> JSVal
+
+foreign import javascript "($1).getPublicKey()"
+    js_getPublicKey :: JSVal -> JSVal
+
+
+-- * --------------------------------------------------------------------------
+
 newtype PrivateKey = PrivateKey JSVal
 
 
 instance IsJSVal' PrivateKey where jsval' (PrivateKey j) = j
 
-foreign import javascript "($1).PrivateKey.fromSeed($2)" js_privateKeyFromSeed :: JSVal -> Uint8Array -> JSVal
--- foreign import javascript unsafe "seed = $2; console.log('-- SEED ----'); console.log(seed.toString()); ($1).PrivateKey.fromSeed($2)" js_privateKeyFromSeed :: JSVal -> Uint8Array -> IO JSVal
 
-
--- foreign import javascript "($1).serialize()" js_serialize :: JSVal -> Uint8Array
-
-foreign import javascript "($1).getPublicKey()" js_getPublicKey :: JSVal -> JSVal
+-- * --------------------------------------------------------------------------
 
 
 getPublicKey :: PrivateKey -> PublicKey
@@ -61,4 +70,13 @@ serializePrivateKey (PrivateKey jspk) = arr2bs $ js_serialize jspk
 
 fromSeed :: ByteString -> PrivateKey
 fromSeed seed = PrivateKey $ js_privateKeyFromSeed (getJsVal blsModule) (bs2arr seed)
+
+
+privateKeyFromBytes :: ByteString -> PrivateKey
+privateKeyFromBytes bytes = PrivateKey $ js_privateKeyFromBytes (getJsVal blsModule) (bs2arr bytes) (BS.length bytes)
+
+
+-- TODO export `operator==()` to JavaScript and use it
+privateKeyEq :: PrivateKey -> PrivateKey -> Bool
+privateKeyEq pk1 pk2 = serializePrivateKey pk1 == serializePrivateKey pk2
 

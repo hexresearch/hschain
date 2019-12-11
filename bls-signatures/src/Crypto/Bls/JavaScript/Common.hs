@@ -3,7 +3,8 @@ module Crypto.Bls.JavaScript.Common where
 
 import Control.Concurrent.MVar
 import GHCJS.Types
---import Data.Word
+import Data.Char
+import Data.Word
 
 --import qualified Data.JSString
 --import Data.Coerce
@@ -120,7 +121,4 @@ initBls = do
     writeIORef blsModuleRef blsm
     -- TODO set up BLS value in JavaScript, not in haskell.
 
-
-hexify :: ByteString -> ByteString
-hexify = BSL.toStrict . BS.toLazyByteString . BS.byteStringHex
 
