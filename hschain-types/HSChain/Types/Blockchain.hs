@@ -57,7 +57,8 @@ module HSChain.Types.Blockchain (
     -- ** Logic of blockchain
   , NewBlock(..)
   , BChLogic(..)
-  , hoistBChLogic
+    -- ** Type class for hoisting function
+  , HoistDict(..)
     -- * Signed data
   , Signed
   , signedValue
@@ -441,12 +442,17 @@ data BChLogic m alg a = BChLogic
     -- ^ Generate block from list of transactions.
   }
 
-hoistBChLogic :: (forall x. m x -> n x) -> BChLogic m alg a -> BChLogic n alg a
-hoistBChLogic fun BChLogic{..} = BChLogic
-  { processTx     = fmap fun processTx
-  , processBlock  = fmap fun processBlock
-  , generateBlock = (fmap . fmap) fun generateBlock
-  }
+-- | Apply natural transformation to data type. Just a type class for
+--   dictionaries of functions with common kind.
+class HoistDict dct where
+  hoistDict :: (forall x. m x -> n x) -> dct m alg a -> dct n alg a
+
+instance HoistDict BChLogic where
+  hoistDict fun BChLogic{..} = BChLogic
+    { processTx     = fmap fun processTx
+    , processBlock  = fmap fun processBlock
+    , generateBlock = (fmap . fmap) fun generateBlock
+    }
 
 ----------------------------------------------------------------
 -- Signed values
