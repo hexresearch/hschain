@@ -102,7 +102,7 @@ newtype BData = BData [Tx]
 
 instance BlockData BData where
   type TX               BData = Tx
-  type InterpreterState BData = CoinState
+  type BlockchainState BData = CoinState
   blockTransactions (BData txs) = txs
   logBlockData      (BData txs) = HM.singleton "Ntx" $ JSON.toJSON $ length txs
   proposerSelection             = ProposerSelection randomProposerSHA512

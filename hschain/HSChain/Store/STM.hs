@@ -179,7 +179,7 @@ newMempool validation = do
 ----------------------------------------------------------------
 
 -- | Create new storage for blockchain 
-newSTMBchStorage :: (MonadIO m) => InterpreterState a -> m (BChStore m a)
+newSTMBchStorage :: (MonadIO m) => BlockchainState a -> m (BChStore m a)
 newSTMBchStorage st0 = do
   varSt <- liftIO $ newTVarIO (Nothing, st0)
   return BChStore

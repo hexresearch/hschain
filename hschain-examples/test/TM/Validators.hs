@@ -170,7 +170,7 @@ instance CryptoHashable Tx where
 
 instance BlockData Tx where
   type TX               Tx = Tx
-  type InterpreterState Tx = ValidatorSet Alg
+  type BlockchainState Tx = ValidatorSet Alg
   blockTransactions        = pure
   logBlockData             = mempty
   proposerSelection        = ProposerSelection randomProposerSHA512
