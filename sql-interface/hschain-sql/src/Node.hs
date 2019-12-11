@@ -113,10 +113,11 @@ runConsensusNode genesisPath configPath envVar = do
         (mempty)
       cursor <- getMempoolCursor rnodeMempool
       let txGen = do
-            transactionGenerator txG
-                    rnodeMempool
-                    (snd <$> bchCurrentState rnodeState)
-                    (void . pushTransaction cursor)
+            return ()
+            --transactionGenerator txG
+            --        rnodeMempool
+            --        (snd <$> bchCurrentState rnodeState)
+            --        (void . pushTransaction cursor)
       logOnException $ runConcurrently $ txGen : acts
   return ()
 
@@ -266,14 +267,26 @@ createTransitions = return $ BChLogic
 --
 ----------------------------------------------------------------
 
-readGenesisBlock :: String -> IO BData
+readGenesisBlock :: String -> IO (Block Alg BData)
 readGenesisBlock filename = do
   text <- BS.readFile filename
   let ls = BS.split (fromIntegral $ fromEnum '\n') text
   case ls of
     (publickey : signature : salt : updates) -> do
       if checkTextualSignature publickey signature salt updates
-        then return $ BData [] $ map Update updates
+        then do
+             let genesisValSet = error "validator set from genesis"
+                 genesisValSetHash = hashed genesisValSet
+                 valChange = validatorsDifference emptyValidatorSet genesisValSet
+                 valChangeHash = hashed valChange
+                 bData = BData [] $ map Update updates
+                 bDataHash = hashed bData
+             return $ Block
+               (Header (Height 0) Nothing genesisValSetHash bDataHash valChangeHash (hashed Nothing) (hashed []) (hashed SQLiteState))
+               bData
+               valChange
+               Nothing
+               []
         else error $ "failed to verify signature on genesis file "++show filename++"."
     _ -> error $ "malformed genesis file "++ show filename ++ " (must have at least three."
 
