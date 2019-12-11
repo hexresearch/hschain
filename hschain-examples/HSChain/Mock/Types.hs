@@ -69,7 +69,7 @@ instance DefaultConfig Example where
 makeGenesis
   :: (Crypto alg, CryptoHashable a)
   => a                          -- ^ Block data
-  -> Hashed alg (InterpreterState a)
+  -> Hashed alg (BlockchainState a)
   -> ValidatorSet alg           -- ^ Set of validators for H=0
   -> ValidatorSet alg           -- ^ Set of validators for H=1
   -> Block alg a

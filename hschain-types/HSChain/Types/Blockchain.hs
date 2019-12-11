@@ -174,7 +174,7 @@ data GBlock f alg a = Block
   , blockData             :: !(MerkleNode f alg a)
     -- ^ Payload of block. HSChain treats it completely opaque and
     --   rely on callback to do anything to it.
-  , blockStateHash        :: !(Hashed alg (InterpreterState a))
+  , blockStateHash        :: !(Hashed alg (BlockchainState a))
     -- ^ Hash of state after evaluation of this block.
   }
   deriving stock    (Show, Generic)
@@ -230,18 +230,18 @@ newtype ProposerSelection alg a = ProposerSelection
 --   block. Related types are defined as associated types
 class ( Serialise a
       , Serialise (TX a)
-      , Serialise (InterpreterState a)
+      , Serialise (BlockchainState a)
       , CryptoHashable a
       , CryptoHashable (TX a)
-      , CryptoHashable (InterpreterState a)
+      , CryptoHashable (BlockchainState a)
       ) => BlockData a where
   -- | Type of transaction used in blockchain. More precisely it's
   --   type of transaction which is submitted by user and stored in
   --   mempool.
   type TX a
-  -- | Part of state of blockchain defined by user. Complete state is
-  --   @BlockchainState@
-  type InterpreterState a
+  -- | Part of state of blockchain defined by user. Set of validators
+  --   is passed separately as part of 'BChEval'.
+  type BlockchainState a
   -- | Return list of transaction in block
   blockTransactions :: a -> [TX a]
   -- | Collect information about block data for logging
@@ -374,7 +374,7 @@ instance (CryptoHash alg) => CryptoHashable (Vote 'PreCommit alg a) where
 data BChEval alg a x = BChEval
   { bchValue        :: !x
   , validatorSet    :: !(ValidatorSet alg)
-  , blockchainState :: !(InterpreterState a)
+  , blockchainState :: !(BlockchainState a)
   }
   deriving stock (Generic, Functor)
 
@@ -405,17 +405,17 @@ type TxValidation    alg a = BChEval alg a (TX a)
 
 
 
-deriving stock    instance (Show x, Crypto alg, Show (PublicKey alg), Show (InterpreterState a)
+deriving stock    instance (Show x, Crypto alg, Show (PublicKey alg), Show (BlockchainState a)
                            ) => Show (BChEval alg a x)
-deriving stock    instance (Eq x, Eq (PublicKey alg), Eq (InterpreterState a)
+deriving stock    instance (Eq x, Eq (PublicKey alg), Eq (BlockchainState a)
                            ) => Eq (BChEval alg a x)
-deriving anyclass instance (NFData x, NFData (PublicKey alg), NFData (InterpreterState a)
+deriving anyclass instance (NFData x, NFData (PublicKey alg), NFData (BlockchainState a)
                            ) => NFData (BChEval alg a x)
-deriving anyclass instance (Crypto alg, JSON.ToJSON x, JSON.ToJSON (InterpreterState a)
+deriving anyclass instance (Crypto alg, JSON.ToJSON x, JSON.ToJSON (BlockchainState a)
                            ) => JSON.ToJSON (BChEval alg a x)
-deriving anyclass instance (Crypto alg, JSON.FromJSON x, JSON.FromJSON (InterpreterState a)
+deriving anyclass instance (Crypto alg, JSON.FromJSON x, JSON.FromJSON (BlockchainState a)
                            ) => JSON.FromJSON (BChEval alg a x)
-deriving anyclass instance (Crypto alg, Serialise x, Serialise (InterpreterState a)
+deriving anyclass instance (Crypto alg, Serialise x, Serialise (BlockchainState a)
                            ) => Serialise (BChEval alg a x)
 
 
@@ -425,7 +425,7 @@ data NewBlock alg a = NewBlock
   , newBlockLastBID  :: !(BlockID alg a)
   , newBlockCommit   :: !(Maybe (Commit alg a))
   , newBlockEvidence :: ![ByzantineEvidence alg a]
-  , newBlockState    :: !(InterpreterState a)
+  , newBlockState    :: !(BlockchainState a)
   , newBlockValSet   :: !(ValidatorSet alg)
   }
 
