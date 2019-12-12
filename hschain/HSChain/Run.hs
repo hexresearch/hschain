@@ -5,6 +5,7 @@
 {-# LANGUAGE RankNTypes          #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications    #-}
 {-# LANGUAGE TypeOperators       #-}
 -- |
 -- Helper function for running mock network of HSChain nodes
@@ -35,7 +36,6 @@ import Data.Either                    (isRight)
 import HSChain.Blockchain.Internal.Engine
 import HSChain.Blockchain.Internal.Engine.Types
 import HSChain.Control
-import HSChain.Crypto
 import HSChain.Debug.Trace
 import HSChain.Logger
 import HSChain.Monitoring
@@ -54,11 +54,11 @@ import HSChain.Utils
 -- | Create default mempool which checks transactions against current
 --   state
 makeMempool
-  :: (MonadIO m, MonadReadDB m a, Ord (TX a), Show (TX a), Crypto alg, BlockData a)
+  :: forall m a. (MonadIO m, MonadReadDB m a, Ord (TX a), Show (TX a), BlockData a)
   => BChStore m a
-  -> AppLogic m a
-  -> m (Mempool m alg (TX a))
-makeMempool store BChLogic{..} =
+  -> (forall x. BChMonad a x -> ExceptT (BChError a) m x)
+  -> m (Mempool m (Alg a) (TX a))
+makeMempool store runner =
   newMempool $ \tx -> do
     (mH, st) <- bchCurrentState store
     mvalSet  <- queryRO $ retrieveValidatorSet $ case mH of
@@ -72,6 +72,8 @@ makeMempool store BChLogic{..} =
                                    , blockchainState = st
                                    , validatorSet    = vs
                                    }
+  where
+    BChLogic{..} = hoistDict runner (bchLogic @a)
 
 -- | Specification of node
 data NodeDescription m a = NodeDescription

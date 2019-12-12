@@ -390,7 +390,7 @@ interpretSpec
 interpretSpec genesis p cb = do
   conn    <- askConnectionRO
   store   <- newSTMBchStorage $ blockchainState genesis
-  mempool <- makeMempool store $ hoistDict (ExceptT . return) bchLogic
+  mempool <- makeMempool store (ExceptT . return)
   acts <- runNode (getT p :: Configuration Example) NodeDescription
     { nodeValidationKey = p ^.. nspecPrivKey
     , nodeGenesis       = genesis
