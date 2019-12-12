@@ -117,12 +117,12 @@ instance Arbitrary Round where
     arbitrary = Round <$> arbitrary
     shrink = genericShrink
 
-instance (CryptoSign alg, CryptoHash alg) => Arbitrary (Commit alg a) where
+instance (Crypto (Alg a)) => Arbitrary (Commit a) where
   arbitrary = Commit <$> arbitrary
                      <*> ((NE.:|) <$> arbitrary <*> resize 3 arbitrary)
 
 
-instance (CryptoHash alg) => Arbitrary (BlockID alg a) where
+instance (CryptoHash (Alg a)) => Arbitrary (BlockID a) where
   arbitrary = BlockID <$> arbitrary
   shrink = genericShrink
 
@@ -131,11 +131,11 @@ instance Arbitrary VoteType where
   arbitrary = genericArbitrary
   shrink = genericShrink
 
-instance ( Crypto alg
+instance ( Crypto (Alg a)
          , IsMerkle f
          , CryptoHashable a
          , Arbitrary a
-         ) => Arbitrary (GBlock f alg a) where
+         ) => Arbitrary (GBlock f a) where
   arbitrary = Block <$> arbitrary
                     <*> arbitrary
                     <*> arbitrary
@@ -146,15 +146,15 @@ instance ( Crypto alg
                     <*> arbitrary
   shrink = genericShrink
 
-instance (CryptoSign alg, CryptoHash alg) => Arbitrary (ByzantineEvidence alg a) where
+instance (Crypto (Alg a)) => Arbitrary (ByzantineEvidence a) where
   arbitrary = genericArbitrary
   shrink = genericShrink
 
-instance (CryptoHash alg) => Arbitrary (Vote ty alg a) where
+instance (CryptoHash (Alg a)) => Arbitrary (Vote ty a) where
   arbitrary = genericArbitrary
   shrink = genericShrink
 
-instance (CryptoHash alg) => Arbitrary (Proposal alg a) where
+instance (CryptoHash (Alg a)) => Arbitrary (Proposal a) where
   arbitrary = genericArbitrary
   shrink = genericShrink
 

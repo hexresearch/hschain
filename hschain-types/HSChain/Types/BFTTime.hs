@@ -19,10 +19,10 @@ import HSChain.Types.Validators
 --   are weighted according to voting power of corresponding
 --   validators.
 commitTime
-  :: ValidatorSet alg -- ^ Set of validators for commit
-  -> Time             -- ^ Time of previous block. Votes that aren't
-                      --   cast later that that are discarded.
-  -> Commit alg a     -- ^ Commit to calculate time
+  :: ValidatorSet (Alg a) -- ^ Set of validators for commit
+  -> Time                 -- ^ Time of previous block. Votes that aren't
+                          --   cast later that that are discarded.
+  -> Commit a             -- ^ Commit to calculate time
   -> Maybe Time
 commitTime vset t0 Commit{..} = do
   votes <- forM commitPrecommits $ \sv -> do

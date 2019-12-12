@@ -33,7 +33,7 @@ import qualified Data.IntSet        as ISet
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Map.Strict    as Map
 
-handler :: CryptoHashable a => Handler LaggingState Event alg a m
+handler :: CryptoHashable a => Handler LaggingState Event a m
 handler =
   handlerGeneric
    handlerGossipMsg
@@ -41,13 +41,13 @@ handler =
    handlerMempoolTimeout
    handlerBlocksTimeout
 
-issuedGossipHandler :: Handler LaggingState GossipMsg alg a m
+issuedGossipHandler :: Handler LaggingState GossipMsg a m
 issuedGossipHandler =
   issuedGossipHandlerGeneric
     handlerGossipMsg
     advanceOurHeight
 
-handlerGossipMsg :: MessageHandler LaggingState alg a m
+handlerGossipMsg :: MessageHandler LaggingState a m
 handlerGossipMsg = \case
     GossipPreCommit v@(signedValue -> Vote{..}) -> do
       addPrecommit voteHeight voteRound $ signedKeyInfo v
@@ -85,7 +85,7 @@ handlerGossipMsg = \case
       AnnLock _ -> currentState
     _ -> currentState
 
-addProposal :: MonadState (LaggingState alg a) m
+addProposal :: MonadState (LaggingState a) m
                    => Height -> Round -> m ()
 addProposal h r = do
       (FullStep peerHeihgt _ _) <- use lagPeerStep
@@ -93,7 +93,7 @@ addProposal h r = do
       when (h == peerHeihgt && r == peerRound) $
          lagPeerHasProposal .= True
 
-addPrecommit :: MonadState (LaggingState alg a) m
+addPrecommit :: MonadState (LaggingState a) m
                    => Height -> Round -> ValidatorIdx alg -> m ()
 addPrecommit h r idx = do
       (FullStep hPeer _ _) <- use lagPeerStep
@@ -101,18 +101,18 @@ addPrecommit h r idx = do
       when (h == hPeer && r == peerRound) $
         lagPeerPrecommits %= insertValidatorIdx idx
 
-addBlock :: (MonadState (LaggingState alg a) m, CryptoHash alg, CryptoSign alg)
-         => Block alg a -> m ()
+addBlock :: (MonadState (LaggingState a) m, Crypto (Alg a))
+         => Block a -> m ()
 addBlock b = do
       peerBid <- use lagPeerBlockID
       when (blockHash b == peerBid) $ lagPeerHasBlock .= True
 ----------------------------------------------------------------
 
-advanceOurHeight :: AdvanceOurHeight LaggingState alg a m
+advanceOurHeight :: AdvanceOurHeight LaggingState a m
 advanceOurHeight = const currentState
 ----------------------------------------------------------------
 
-handlerVotesTimeout :: CryptoHashable a => TimeoutHandler LaggingState alg a m
+handlerVotesTimeout :: CryptoHashable a => TimeoutHandler LaggingState a m
 handlerVotesTimeout = do
   bchH      <- queryRO blockchainHeight
   (FullStep peerH _ _) <- use lagPeerStep
@@ -141,11 +141,11 @@ handlerVotesTimeout = do
       --
 ----------------------------------------------------------------
 
-handlerMempoolTimeout :: TimeoutHandler LaggingState alg a m
+handlerMempoolTimeout :: TimeoutHandler LaggingState a m
 handlerMempoolTimeout = currentState
 ----------------------------------------------------------------
 
-handlerBlocksTimeout :: CryptoHashable a => TimeoutHandler LaggingState alg a m
+handlerBlocksTimeout :: CryptoHashable a => TimeoutHandler LaggingState a m
 handlerBlocksTimeout = do
   hasProp    <- use lagPeerHasProposal
   hasNoBlock <- not <$> use lagPeerHasBlock

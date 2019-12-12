@@ -25,6 +25,7 @@ Library
                      , bytestring           >=0.10
                      , containers           >=0.5.9
                      , deepseq              >=1.4
+                     , mmorph
                      , exceptions           >=0.8.3
                      , random
                      , serialise            >=0.2
@@ -72,6 +73,7 @@ Executable hschain-coin-node
   Main-is:             coin-node.hs
 
 Executable hschain-db
+  Buildable: False
   Ghc-options:         -Wall -threaded -Wno-orphans
   Default-Language:    Haskell2010
   Build-Depends:       base                 >=4.9 && <5

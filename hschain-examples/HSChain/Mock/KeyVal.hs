@@ -28,6 +28,7 @@ import Control.Monad.Trans.Cont
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Except
 import Control.Monad.IO.Class
+import Control.Monad.Morph
 import Data.Maybe
 import Data.List
 import Data.Map.Strict                 (Map)
@@ -61,13 +62,12 @@ import qualified HSChain.P2P.Network as P2P
 --
 ----------------------------------------------------------------
 
-type    Alg    = Ed25519 :& SHA512
 type    Tx     = (String,Int)
 type    BState = Map String Int
 newtype BData  = BData [(String,Int)]
   deriving stock    (Show,Eq,Generic)
   deriving anyclass (Serialise)
-  deriving newtype  (CryptoHashable)
+  deriving newtype  (CryptoHashable, JSON.ToJSON, JSON.FromJSON)
 
 
 data KeyValError = KeyValError String
@@ -78,11 +78,14 @@ instance BlockData BData where
   type TX              BData = Tx
   type BlockchainState BData = BState
   type BChError        BData = KeyValError
+  type Alg             BData = Ed25519 :& SHA512
+  type BChMonad        BData = ExceptT KeyValError IO
   blockTransactions (BData txs) = txs
   logBlockData      (BData txs) = HM.singleton "Ntx" $ JSON.toJSON $ length txs
   proposerSelection             = ProposerSelection randomProposerSHA512
+  bchLogic                      = keyValLogic
 
-mkGenesisBlock :: ValidatorSet Alg -> Genesis Alg BData
+mkGenesisBlock :: ValidatorSet (Alg BData) -> Genesis BData
 mkGenesisBlock valSet = BChEval
   { bchValue        = makeGenesis (BData []) (hashed mempty) valSet valSet
   , validatorSet    = valSet
@@ -95,15 +98,15 @@ mkGenesisBlock valSet = BChEval
 -------------------------------------------------------------------------------
 
 interpretSpec
-  :: ( MonadDB m Alg BData, MonadFork m, MonadMask m, MonadLogger m
+  :: ( MonadDB m BData, MonadFork m, MonadMask m, MonadLogger m
      , MonadTrace m, MonadTMMonitoring m
      , Has x BlockchainNet
      , Has x NodeSpec
      , Has x (Configuration Example))
-  => Genesis Alg BData
+  => Genesis BData
   -> x
-  -> AppCallbacks m Alg BData
-  -> m (RunningNode m Alg BData, [m ()])
+  -> AppCallbacks m BData
+  -> m (RunningNode m BData, [m ()])
 interpretSpec genesis p cb = do
   conn  <- askConnectionRO
   store <- newSTMBchStorage mempty
@@ -116,7 +119,7 @@ interpretSpec genesis p cb = do
     { nodeValidationKey = p ^.. nspecPrivKey
     , nodeGenesis       = genesis
     , nodeCallbacks     = cb
-    , nodeLogic         = keyValLogic
+    , nodeRunner        = Interpreter (hoist liftIO)
     , nodeStore         = astore
     , nodeNetwork       = getT p
     }
@@ -128,7 +131,7 @@ interpretSpec genesis p cb = do
     , acts
     )
 
-keyValLogic :: MonadIO m => BChLogic (ExceptT KeyValError m) Alg BData
+keyValLogic :: MonadIO m => BChLogic (ExceptT KeyValError m) BData
 keyValLogic = BChLogic
   -- We don't use mempool here so we can just use trivial handler for
   -- transactions
@@ -161,7 +164,7 @@ keyValLogic = BChLogic
 executeSpec
   :: (MonadIO m, MonadMask m, MonadFork m, MonadTrace m, MonadTMMonitoring m)
   => NetSpec NodeSpec
-  -> ContT r m [RunningNode m Alg BData]
+  -> ContT r m [RunningNode m BData]
 executeSpec NetSpec{..} = do
   -- Create mock network and allocate DB handles for nodes
   net       <- liftIO P2P.newMockNet
@@ -170,7 +173,7 @@ executeSpec NetSpec{..} = do
              $ netNodeList
   -- Start nodes
   rnodes    <- lift $ forM resources $ \(x, (conn, logenv)) -> do
-    let run :: DBT 'RW Alg BData (LoggerT m) x -> m x
+    let run :: DBT 'RW BData (LoggerT m) x -> m x
         run = runLoggerT logenv . runDBT conn
     (rn, acts) <- run $ interpretSpec genesis (netNetCfg :*: x)
       (maybe mempty callbackAbortAtH netMaxH)

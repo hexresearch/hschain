@@ -40,9 +40,8 @@ import qualified HSChain.P2P.PeerState.Handle as P2P (handler)
 
 import Test.Tasty
 import Test.Tasty.HUnit
-
-import TM.Util.Network
 import TM.Util.MockChain
+
 
 tests :: TestTree
 tests = testGroup "eigen-gossip"
@@ -208,15 +207,15 @@ testGossipPOL isLocked = withGossip 3 $ do
 -- Helpers
 ----------------------------------------------------------------
 
-type GossipM alg a = DBT 'RW alg a (NoLogsT IO)
-type TestM   alg a = StateT  (P2P.State alg a)
-                   ( ReaderT ( P2P.Config (GossipM alg a) alg a
-                             , TVar (Maybe (Height, TMState alg a)))
-                   ( GossipM alg a
-                   ))
+type GossipM a = DBT 'RW a (NoLogsT IO)
+type TestM   a = StateT  (P2P.State a)
+                 ( ReaderT ( P2P.Config (GossipM a) a
+                           , TVar (Maybe (Height, TMState a)))
+                 ( GossipM a
+                 ))
 
 -- Start gossip FSM all alone
-withGossip :: Int -> TestM TestAlg Mock.BData x -> IO x
+withGossip :: Int -> TestM Mock.BData x -> IO x
 withGossip n action = do
   withDatabase "" $ \conn -> runNoLogsT $ runDBT conn $ do
     mustQueryRW $ storeGenesis genesis
@@ -234,7 +233,7 @@ withGossip n action = do
 
 
 -- Seed database with given number of blocks
-seedDatabase :: Int -> GossipM TestAlg Mock.BData ()
+seedDatabase :: Int -> GossipM Mock.BData ()
 seedDatabase n = do
   mustQueryRW $ forM_ blockAndCmt $ \(b,Just cmt) -> do
     storeCommit cmt b
@@ -245,7 +244,7 @@ seedDatabase n = do
                 $ mockchain `zip` (fmap merkleValue . blockPrevCommit <$> tail mockchain)
 
 -- Start "consensus engine"
-startConsensus :: TestM TestAlg Mock.BData (P2P.Event TestAlg Mock.BData)
+startConsensus :: TestM Mock.BData (P2P.Event Mock.BData)
 startConsensus = do
   h     <- queryRO blockchainHeight
   varSt <- lift $ asks snd
@@ -262,8 +261,8 @@ startConsensus = do
   return $ EAnnouncement $ TxAnn $ AnnStep $ FullStep (succ h) (Round 0) (StepNewHeight 0)
 
 addProposal
-  :: Signed 'Unverified TestAlg (Proposal TestAlg Mock.BData)
-  -> TestM TestAlg Mock.BData ()
+  :: Signed 'Unverified (Alg Mock.BData) (Proposal Mock.BData)
+  -> TestM Mock.BData ()
 addProposal p = do
   varSt <- lift $ asks snd
   atomicallyIO $ modifyTVar' varSt $ fmap $ second $ \tm -> tm
@@ -271,8 +270,8 @@ addProposal p = do
     }
 
 addPrevote
-  :: Signed 'Unverified TestAlg (Vote 'PreVote TestAlg Mock.BData)
-  -> TestM TestAlg Mock.BData ()
+  :: Signed 'Unverified (Alg Mock.BData) (Vote 'PreVote Mock.BData)
+  -> TestM Mock.BData ()
 addPrevote v = do
   varSt <- lift $ asks snd
   atomicallyIO $ modifyTVar' varSt $ fmap $ second $ \tm -> tm
@@ -285,8 +284,8 @@ addPrevote v = do
     }
 
 addPrecommit
-  :: Signed 'Unverified TestAlg (Vote 'PreCommit TestAlg Mock.BData)
-  -> TestM TestAlg Mock.BData ()
+  :: Signed 'Unverified (Alg Mock.BData) (Vote 'PreCommit Mock.BData)
+  -> TestM Mock.BData ()
 addPrecommit v = do
   varSt <- lift $ asks snd
   atomicallyIO $ modifyTVar' varSt $ fmap $ second $ \tm -> tm
@@ -299,8 +298,8 @@ addPrecommit v = do
     }
 
 -- Perform single step
-step :: (Crypto alg, BlockData a)
-     => Event alg a -> TestM alg a (P2P.State alg a, [Command alg a])
+step :: (BlockData a)
+     => Event a -> TestM a (P2P.State a, [Command a])
 step e = do
   cfg       <- lift $ asks fst
   st        <- get

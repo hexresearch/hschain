@@ -18,6 +18,7 @@ import Lens.Micro.Mtl
 
 import HSChain.Blockchain.Internal.Types
 import HSChain.Crypto
+import HSChain.Types
 import HSChain.Logger
 import HSChain.Store.Internal.Query      (MonadReadDB(..))
 
@@ -29,59 +30,59 @@ import qualified HSChain.P2P.Internal.Logging as Logging
 
 
 -- | Underlying monad for transitions of state for gossip
-newtype TransitionT s alg a m r = TransitionT
-  { unTransition :: RWST (Config m alg a) [Command alg a] (s alg a) m r }
+newtype TransitionT s a m r = TransitionT
+  { unTransition :: RWST (Config m a) [Command a] (s a) m r }
   deriving ( Functor
            , Applicative
            , Monad
            , MonadIO
-           , MonadReader (Config m alg a)
-           , MonadWriter [Command alg a]
-           , MonadState (s alg a)
+           , MonadReader (Config m a)
+           , MonadWriter [Command a]
+           , MonadState (s a)
            , MonadThrow
            )
-instance MonadReadDB m alg a => MonadReadDB (TransitionT s alg a m) alg a where
+instance MonadReadDB m a => MonadReadDB (TransitionT s a m) a where
   askConnectionRO = TransitionT $ lift askConnectionRO
 
-instance MonadTrans (TransitionT s alg a) where
+instance MonadTrans (TransitionT s a) where
   lift = TransitionT . lift
 
---instance MonadLogger m => MonadLogger (TransitionT s alg a m) where
+--instance MonadLogger m => MonadLogger (TransitionT s a m) where
 --  logger s l a = lift $ logger s l a
 --  localNamespace f (TransitionT action) = TransitionT $ localNamespace f $ lift $ action
 
 -- | Runs `TransitionT'.
 runTransitionT
   :: Monad m
-  => TransitionT s alg a m (State alg a)
-  -> Config m alg a
-  -> s alg a
-  -> m (State alg a, [Command alg a])
+  => TransitionT s a m (State a)
+  -> Config m a
+  -> s a
+  -> m (State a, [Command a])
 runTransitionT action cfg st = do
   (r,_,acc) <- runRWST (unTransition action) cfg st
   return (r,acc)
 
-type HandlerCtx alg a m = ( Serialise a
-                          , Crypto alg
-                          , MonadIO m
-                          , MonadReadDB m alg a
-                          , MonadLogger m
-                          )
+type HandlerCtx a m = ( Serialise a
+                      , Crypto (Alg a)
+                      , MonadIO m
+                      , MonadReadDB m a
+                      , MonadLogger m
+                      )
 
 -- | Handler of events.
-type Handler s t alg a m =  HandlerCtx alg a m
-                         => t alg a -- ^ `Event' to handle
-                         -> TransitionT s alg a m (State alg a) -- ^ new `TransitionT'
+type Handler s t a m =  HandlerCtx a m
+                         => t a -- ^ `Event' to handle
+                         -> TransitionT s a m (State a) -- ^ new `TransitionT'
 
 -- | Obtain current state wrapped as 'State'
-currentState :: (MonadState (s alg a) m, Wrapable s) => m (State alg a)
+currentState :: (MonadState (s a) m, Wrapable s) => m (State a)
 currentState = wrap <$> get
 
-resendGossip :: ( MonadReader (Config n alg a) m
-                , MonadWriter [Command alg a]  m
+resendGossip :: ( MonadReader (Config n a) m
+                , MonadWriter [Command a]  m
                 , MonadIO m
                 )
-             => GossipMsg alg a -> m ()
+             => GossipMsg a -> m ()
 resendGossip (GossipPreVote v  ) = tell [SendRX $ RxPreVote v] >> tickRecv prevote
 resendGossip (GossipPreCommit v) = tell [SendRX $ RxPreCommit v] >> tickRecv precommit
 resendGossip (GossipProposal  p) = tell [SendRX $ RxProposal p] >> tickRecv proposals
@@ -92,17 +93,17 @@ resendGossip _                   = return ()
 
 
 -- | Increment receive counter
-tickRecv :: (MonadReader (Config n alg a) m, MonadIO m)
+tickRecv :: (MonadReader (Config n a) m, MonadIO m)
          => (GossipCounters -> Counter) -> m ()
 tickRecv counter =
   Logging.tickRecv . counter =<< view gossipCounters
 
 -- | Increment send counter
-tickSend :: (MonadReader (Config n alg a) m, MonadIO m)
+tickSend :: (MonadReader (Config n a) m, MonadIO m)
          => (GossipCounters -> Counter) -> m ()
 tickSend counter =
   Logging.tickSend . counter =<< view gossipCounters
 
-push2Gossip :: MonadWriter [Command alg a] m
-            => GossipMsg alg a -> m ()
+push2Gossip :: MonadWriter [Command a] m
+            => GossipMsg a -> m ()
 push2Gossip msg = tell [Push2Gossip msg]

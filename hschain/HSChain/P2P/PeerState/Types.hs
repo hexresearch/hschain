@@ -1,4 +1,5 @@
 {-# LANGUAGE DataKinds            #-}
+{-# LANGUAGE DerivingStrategies   #-}
 {-# LANGUAGE FlexibleContexts     #-}
 {-# LANGUAGE GADTs                #-}
 {-# LANGUAGE InstanceSigs         #-}
@@ -30,52 +31,52 @@ import HSChain.P2P.Internal.Logging (GossipCounters(..))
 --   interested in precommits which are part of commit justifying next
 --   block and whether it have proposal for commit round and block for
 --   that round.
-data LaggingState alg a = LaggingState
-  { _lagPeerStep        :: !FullStep              -- ^ Step of peer
-  , _lagPeerCommitR     :: !Round                 -- ^ Round when block was commited
-  , _lagPeerValidators  :: !(ValidatorSet alg)    -- ^ Set of validators for peer's height
-  , _lagPeerPrecommits  :: !ValidatorISet         -- ^ Precommits that peer have
-  , _lagPeerHasProposal :: !Bool                  -- ^ Whether peer have proposal
-  , _lagPeerHasBlock    :: !Bool                  -- ^ Whether peer have block
-  , _lagPeerBlockID     :: !(BlockID alg a)       -- ^ ID of commited block
+data LaggingState a = LaggingState
+  { _lagPeerStep        :: !FullStep               -- ^ Step of peer
+  , _lagPeerCommitR     :: !Round                  -- ^ Round when block was commited
+  , _lagPeerValidators  :: !(ValidatorSet (Alg a)) -- ^ Set of validators for peer's height
+  , _lagPeerPrecommits  :: !ValidatorISet          -- ^ Precommits that peer have
+  , _lagPeerHasProposal :: !Bool                   -- ^ Whether peer have proposal
+  , _lagPeerHasBlock    :: !Bool                   -- ^ Whether peer have block
+  , _lagPeerBlockID     :: !(BlockID a)            -- ^ ID of commited block
   }
-  deriving Show
+deriving stock instance (Crypto (Alg a)) => Show (LaggingState a)
 makeLenses ''LaggingState
 
 -- | Peer which is at the same height as we. Here state is more
 --   complicated and somewhat redundant. Tendermint only tracks votes
 --   for peer's round. For algorithm simplicity we track
-data CurrentState alg a = CurrentState
+data CurrentState a = CurrentState
   { _peerStep       :: !FullStep                  -- ^ Step of peer
-  , _peerValidators :: !(ValidatorSet alg)        -- ^
+  , _peerValidators :: !(ValidatorSet (Alg a))    -- ^
   , _peerPrevotes   :: !(Map Round ValidatorISet) -- ^ Peer's prevotes
   , _peerPrecommits :: !(Map Round ValidatorISet) -- ^ Peer's precommits
   , _peerProposals  :: !(Set Round)               -- ^ Set of proposals peer has
-  , _peerBlocks     :: !(Set (BlockID alg a))     -- ^ Set of blocks for proposals
+  , _peerBlocks     :: !(Set (BlockID a))         -- ^ Set of blocks for proposals
   , _peerLock       :: !(Maybe Round)             -- ^ Round peer locked on
   }
-  deriving Show
-deriving instance Eq   (PublicKey alg) => Eq   (CurrentState alg a)
+deriving stock instance (Crypto (Alg a)) => Show (CurrentState a)
+deriving stock instance Eq (PublicKey (Alg a)) => Eq (CurrentState a)
 makeLenses ''CurrentState
 
 -- | State of peer that's ahead of us. We can't send anything of use
 --   to it so we only track its step
-newtype AheadState alg a = AheadState { _aheadPeerStep :: FullStep }
+newtype AheadState a = AheadState { _aheadPeerStep :: FullStep }
   deriving (Show, Eq)
 makeLenses ''AheadState
 
-data UnknownState alg a = UnknownState
+data UnknownState a = UnknownState
   deriving Show
 
 -- | State of a peer.
-data State alg a where
-  Lagging :: LaggingState alg a -> State alg a
-  Current :: CurrentState alg a -> State alg a
-  Ahead   :: AheadState   alg a -> State alg a
-  Unknown :: UnknownState alg a -> State alg a
+data State a where
+  Lagging :: LaggingState a -> State a
+  Current :: CurrentState a -> State a
+  Ahead   :: AheadState   a -> State a
+  Unknown :: UnknownState a -> State a
 
 class Wrapable s where
-    wrap :: s alg a -> State alg a
+    wrap :: s a -> State a
 
 instance Wrapable LaggingState where
     wrap = Lagging
@@ -89,27 +90,27 @@ instance Wrapable AheadState where
 instance Wrapable UnknownState where
     wrap = Unknown
 
-data Command alg a
-  = SendRX !(MessageRx 'Unverified alg a)
+data Command a
+  = SendRX !(MessageRx 'Unverified a)
   | Push2Mempool !(TX a)
-  | Push2Gossip !(GossipMsg alg a)
+  | Push2Gossip !(GossipMsg a)
   | SendPEX !PexMessage
 
-data Event alg a
-  = EGossip !(GossipMsg alg a)
+data Event a
+  = EGossip !(GossipMsg a)
   | EMempoolTimeout
   | EVotesTimeout
   | EBlocksTimeout
   | EAnnounceTimeout
-  | EAnnouncement !(MessageTx alg a)
+  | EAnnouncement !(MessageTx a)
 
-data Config m alg a = Config
-  { _mempCursor     :: !(MempoolCursor m alg (TX a))
-  , _consensusSt    :: !(STM (Maybe (Height, TMState alg a)))
+data Config m a = Config
+  { _mempCursor     :: !(MempoolCursor m (Alg a) (TX a))
+  , _consensusSt    :: !(STM (Maybe (Height, TMState a)))
   , _gossipCounters :: !GossipCounters
   }
 makeLenses ''Config
 
 
-deriving instance (Show a, Crypto alg, Show (TX a)) => Show (Command alg a)
-deriving instance (Show a, Crypto alg, Show (TX a)) => Show (Event alg a)
+deriving stock instance (Show a, Crypto (Alg a), Show (TX a)) => Show (Command a)
+deriving stock instance (Show a, Crypto (Alg a), Show (TX a)) => Show (Event a)

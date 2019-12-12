@@ -19,11 +19,11 @@ import TM.Util.Network
 -- Validators for mockchain
 ----------------------------------------------------------------
 
-privK       :: [PrivKey TestAlg]
-k1,k2,k3,k4 :: PrivKey TestAlg
+privK       :: [PrivKey (Alg BData)]
+k1,k2,k3,k4 :: PrivKey (Alg BData)
 privK@[k1,k2,k3,k4] = sortOn publicKey $ take 4 $ makePrivKeyStream 1337
 
-valSet :: ValidatorSet TestAlg
+valSet :: ValidatorSet (Alg BData)
 Right valSet = makeValidatorSet [Validator (publicKey k) 1 | k <- privK]
 
 
@@ -32,14 +32,14 @@ Right valSet = makeValidatorSet [Validator (publicKey k) 1 | k <- privK]
 ----------------------------------------------------------------
 
 -- | Genesis block of BCh
-genesis :: Genesis TestAlg BData
+genesis :: Genesis BData
 genesis = mkGenesisBlock valSet
 
-block1, block1' :: Block TestAlg BData
+block1, block1' :: Block BData
 block1  = mintFirstBlock $ BData [("K1",100)]
 block1' = mintFirstBlock $ BData [("K1",101)]
 
-mockchain :: [Block TestAlg BData]
+mockchain :: [Block BData]
 mockchain
   = fmap fst
   $ scanl step (bchValue genesis,mempty)
@@ -53,11 +53,11 @@ mockchain
 -- Utils
 ----------------------------------------------------------------
 
-mintFirstBlock :: BData -> Block TestAlg BData
+mintFirstBlock :: BData -> Block BData
 mintFirstBlock dat@(BData txs)
   = mintBlock (bchValue genesis) (Map.fromList txs) dat
 
-mintBlock :: Block TestAlg BData -> BState -> BData -> Block TestAlg BData
+mintBlock :: Block BData -> BState -> BData -> Block BData
 mintBlock b st dat = Block
   { blockHeight        = succ hPrev
   , blockPrevBlockID   = Just bid

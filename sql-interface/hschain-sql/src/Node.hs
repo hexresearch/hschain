@@ -89,8 +89,6 @@ main = do
 -- Basic coin logic
 ----------------------------------------------------------------
 
-type Alg = (Ed25519 :& SHA512)
-
 data Err = Err
   deriving stock    (Show)
   deriving anyclass (Exception)
@@ -104,6 +102,7 @@ instance BlockData BData where
   type TX              BData = Transaction
   type BlockchainState BData = SQLiteState
   type BChError        BData = Err
+  type Alg             BData = Ed25519 :& SHA512  
   blockTransactions (BData txs) = txs
   logBlockData      (BData txs) = HM.singleton "Ntx" $ JSON.toJSON $ length txs
   proposerSelection             = ProposerSelection randomProposerSHA512

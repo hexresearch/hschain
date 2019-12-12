@@ -85,11 +85,6 @@ import qualified HSChain.P2P.Network as P2P
 -- Basic coin logic
 ----------------------------------------------------------------
 
--- | Cryptographic algorithms we're using. Note that we using same
---   cryptography for both validators and transactions but don't have
---   to.
-type Alg = Ed25519 :& SHA512
-
 data CoinError
   = DepositAtWrongH
   | UnexpectedSend
@@ -109,6 +104,12 @@ instance BlockData BData where
   type TX              BData = Tx
   type BlockchainState BData = CoinState
   type BChError        BData = CoinError
+  type BChMonad        BData = Either CoinError
+  -- | Cryptographic algorithms we're using. Note that we using same
+  --   cryptography for both validators and transactions but don't have
+  --   to.
+  type Alg             BData = Ed25519 :& SHA512
+  bchLogic = coinLogic
   blockTransactions (BData txs) = txs
   logBlockData      (BData txs) = HM.singleton "Ntx" $ JSON.toJSON $ length txs
   proposerSelection             = ProposerSelection randomProposerSHA512
@@ -117,10 +118,10 @@ instance BlockData BData where
 --   money to account ex nihilo and one to transfer money between
 --   accounts.
 data Tx
-  = Deposit !(PublicKey Alg) !Integer
+  = Deposit !(PublicKey (Alg BData)) !Integer
     -- ^ Deposit tokens to given key. Could only appear in genesis
     --   block (H=0)
-  | Send !(PublicKey Alg) !(Signature Alg) !TxSend
+  | Send !(PublicKey (Alg BData)) !(Signature (Alg BData)) !TxSend
     -- ^ Send coins to other addresses. Transaction must obey
     --   following invariants:
     --
@@ -140,13 +141,13 @@ data TxSend = TxSend
   deriving anyclass (Serialise, NFData, JSON.ToJSON, JSON.FromJSON)
 
 -- | Pair of transaction hash and output number
-data UTXO = UTXO !Int !(Hashed Alg Tx)
+data UTXO = UTXO !Int !(Hashed (Alg BData) Tx)
   deriving stock    (Show, Eq, Ord, Generic)
   deriving anyclass (Serialise, NFData, JSON.ToJSON, JSON.FromJSON)
 
 -- | Unspent coins belonging to some private key. It's identified by
 --   public key and unspent amount.
-data Unspent = Unspent !(PublicKey Alg) !Integer
+data Unspent = Unspent !(PublicKey (Alg BData)) !Integer
   deriving stock    (Show, Eq, Ord, Generic)
   deriving anyclass (Serialise, NFData, JSON.ToJSON, JSON.FromJSON)
 
@@ -156,7 +157,7 @@ data CoinState = CoinState
     -- ^ Map of unspent outputs of transaction. It maps pair of
     --   transaction hash and output index to amount of coins stored
     --   there.
-  , utxoLookup     :: !(Map (PublicKey Alg) (Set.Set UTXO))
+  , utxoLookup     :: !(Map (PublicKey (Alg BData)) (Set.Set UTXO))
     -- ^ UTXO set partitioned by corresponding public key. Only needed
     --   for efficient TX generation
   }
@@ -237,7 +238,7 @@ processTransaction transaction@(Send pubK sig txSend@TxSend{..}) CoinState{..} =
 
 -- | Complete description of blockchain logic. Since we keep all state
 --   in memory we simply use @Maybe@ to track failures
-coinLogic :: BChLogic (Either CoinError) Alg BData
+coinLogic :: BChLogic (Either CoinError) BData
 coinLogic = BChLogic
   { processTx     = \BChEval{..} -> void $ process (Height 1) bchValue blockchainState
   --
@@ -275,9 +276,9 @@ coinLogic = BChLogic
 
 -- | Specification of generator of transactions
 data TxGenerator = TxGenerator
-  { genPrivateKeys    :: V.Vector (PrivKey Alg)
+  { genPrivateKeys    :: V.Vector (PrivKey (Alg BData))
     -- ^ Private keys for which we can generate transactions
-  , genDestinaions    :: V.Vector (PublicKey Alg)
+  , genDestinaions    :: V.Vector (PublicKey (Alg BData))
     -- ^ List of all addresses to which we can send money
   , genDelay          :: Int
     -- ^ Delay between invokations of generator
@@ -287,7 +288,7 @@ data TxGenerator = TxGenerator
 transactionGenerator
   :: MonadIO m
   => TxGenerator
-  -> Mempool m Alg Tx
+  -> Mempool m (Alg BData) Tx
   -> m CoinState
   -> (Tx -> m ())
   -> m a
@@ -331,9 +332,9 @@ selectFromVec v = do
 
 mintMockCoin
   :: (Foldable f)
-  => f (Validator Alg)
+  => f (Validator (Alg BData))
   -> CoinSpecification
-  -> (Maybe TxGenerator, Genesis Alg BData)
+  -> (Maybe TxGenerator, Genesis BData)
 mintMockCoin nodes CoinSpecification{..} =
   ( do delay <- coinGeneratorDelay
        return TxGenerator
@@ -377,19 +378,19 @@ findInputs tgt = go 0
 -- Interpretation of coin
 ----------------------------------------------------------------
 
-runner :: Monad m => Interpreter (Either CoinError) m Alg BData
+runner :: Monad m => Interpreter m BData
 runner = Interpreter (ExceptT . return)
 
 interpretSpec
-  :: ( MonadDB m Alg BData, MonadFork m, MonadMask m, MonadLogger m
+  :: ( MonadDB m BData, MonadFork m, MonadMask m, MonadLogger m
      , MonadTrace m, MonadTMMonitoring m
      , Has x BlockchainNet
      , Has x NodeSpec
      , Has x (Configuration Example))
-  => Genesis Alg BData
+  => Genesis BData
   -> x
-  -> AppCallbacks m Alg BData
-  -> m (RunningNode m Alg BData, [m ()])
+  -> AppCallbacks m BData
+  -> m (RunningNode m BData, [m ()])
 interpretSpec genesis p cb = do
   conn    <- askConnectionRO
   store   <- newSTMBchStorage $ blockchainState genesis
@@ -398,7 +399,7 @@ interpretSpec genesis p cb = do
     { nodeValidationKey = p ^.. nspecPrivKey
     , nodeGenesis       = genesis
     , nodeCallbacks     = cb <> nonemptyMempoolCallback mempool
-    , nodeLogic         = logic
+    , nodeRunner        = Interpreter $ either throwE return
     , nodeStore         = AppStore { appBchState = store
                                    , appMempool  = mempool
                                    }
@@ -417,7 +418,7 @@ interpretSpec genesis p cb = do
 executeNodeSpec
   :: (MonadIO m, MonadMask m, MonadFork m, MonadTrace m, MonadTMMonitoring m)
   => NetSpec NodeSpec :*: CoinSpecification
-  -> ContT r m [RunningNode m Alg BData]
+  -> ContT r m [RunningNode m BData]
 executeNodeSpec (NetSpec{..} :*: coin@CoinSpecification{..}) = do
   -- Create mock network and allocate DB handles for nodes
   net       <- liftIO P2P.newMockNet
@@ -426,7 +427,7 @@ executeNodeSpec (NetSpec{..} :*: coin@CoinSpecification{..}) = do
              $ netNodeList
   -- Start nodes
   rnodes    <- lift $ forM resources $ \(x, (conn, logenv)) -> do
-    let run :: DBT 'RW Alg BData (LoggerT m) x -> m x
+    let run :: DBT 'RW BData (LoggerT m) x -> m x
         run = runLoggerT logenv . runDBT conn
     (rn, acts) <- run $ interpretSpec genesis (netNetCfg :*: x)
       (maybe mempty callbackAbortAtH netMaxH)

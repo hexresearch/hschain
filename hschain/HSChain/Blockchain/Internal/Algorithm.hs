@@ -63,12 +63,12 @@ import HSChain.Types
 ----------------------------------------------------------------
 
 -- | Messages being sent to consensus engine
-data Message alg a
-  = ProposalMsg    !(Signed 'Verified alg (Proposal alg a))
+data Message a
+  = ProposalMsg    !(Signed 'Verified (Alg a) (Proposal a))
     -- ^ Incoming proposal
-  | PreVoteMsg     !(Signed 'Verified alg (Vote 'PreVote   alg a))
+  | PreVoteMsg     !(Signed 'Verified (Alg a) (Vote 'PreVote   a))
     -- ^ Incoming prevote
-  | PreCommitMsg   !(Signed 'Verified alg (Vote 'PreCommit alg a))
+  | PreCommitMsg   !(Signed 'Verified (Alg a) (Vote 'PreCommit a))
     -- ^ Incoming precommit
   | TimeoutMsg     !Timeout
     -- ^ Timeout
@@ -77,26 +77,26 @@ data Message alg a
 -- | Set of parameters and callbacks for consensus algorithm for given
 --   height. These parameters are constant while we're deciding on
 --   next block.
-data HeightParameters (m :: * -> *) alg a = HeightParameters
+data HeightParameters (m :: * -> *) a = HeightParameters
   { currentH         :: !Height
     -- ^ Height we're on.
-  , hValidatorSet    :: !(ValidatorSet alg)
+  , hValidatorSet    :: !(ValidatorSet (Alg a))
     -- ^ Validator set for current height
-  , oldValidatorSet  :: !(ValidatorSet alg)
+  , oldValidatorSet  :: !(ValidatorSet (Alg a))
     -- ^ Validator set for previous height
-  , validatorKey     :: !(Maybe (PrivValidator alg, ValidatorIdx alg))
+  , validatorKey     :: !(Maybe (PrivValidator (Alg a), ValidatorIdx (Alg a)))
     -- ^ Validator key and index in validator set for current round
   , readyCreateBlock :: !(Int -> m Bool)
     -- ^ Returns true if validator is ready to create new block. If
     --   false validator will stay in @NewHeight@ step until it
     --   becomes true.
-  , proposerForRound :: !(Round -> ValidatorIdx alg)
+  , proposerForRound :: !(Round -> ValidatorIdx (Alg a))
     -- ^ Proposer for given round
-  , validateBlock    :: !(Props alg a -> BlockID alg a -> m ( Props alg a -> Props alg a
-                                                            , ProposalState))
+  , validateBlock    :: !(Props a -> BlockID a -> m ( Props a -> Props a
+                                                    , ProposalState))
     -- ^ Request validation of particular block
-  , createProposal   :: !(Round -> Maybe (Commit alg a) -> m ( Props alg a -> Props alg a
-                                                             , BlockID alg a))
+  , createProposal   :: !(Round -> Maybe (Commit a) -> m ( Props a -> Props a
+                                                         , BlockID a))
     -- ^ Create new proposal block. Block itself should be stored
     --   elsewhere.
   }
@@ -140,54 +140,54 @@ instance Katip.LogItem  LogTransition where
   payloadKeys _        _ = Katip.AllKeys
 
 -- | Description of proposal
-data LogProposal alg a = LogProposal
+data LogProposal a = LogProposal
   { proposal'H   :: !Height
   , proposal'R   :: !Round
-  , proposal'bid :: !(BlockID alg a)
+  , proposal'bid :: !(BlockID a)
   }
 
 
-instance Katip.ToObject (LogProposal alg a) where
+instance Katip.ToObject (LogProposal a) where
   toObject p = HM.fromList [ ("H",   JSON.toJSON (proposal'H p))
                            , ("R",   JSON.toJSON (proposal'R p))
                            , ("bid", JSON.toJSON $ let BlockID hash = proposal'bid p
                                                    in hash
                              )]
-instance Katip.LogItem (LogProposal alg a) where
+instance Katip.LogItem (LogProposal a) where
   payloadKeys Katip.V0 _ = Katip.SomeKeys ["H","R"]
   payloadKeys _        _ = Katip.AllKeys
 
 -- | Description of commit
-data LogCommit alg a = LogCommit
+data LogCommit a = LogCommit
   { commit'H   :: !Height
-  , commit'bid :: !(BlockID alg a)
+  , commit'bid :: !(BlockID a)
   }
-instance Katip.ToObject (LogCommit alg a) where
+instance Katip.ToObject (LogCommit a) where
   toObject p = HM.fromList [ ("H",   JSON.toJSON (commit'H p))
                            , ("bid", JSON.toJSON $ let BlockID hash = commit'bid p
                                                    in hash
                              )]
-instance Katip.LogItem (LogCommit alg a) where
+instance Katip.LogItem (LogCommit a) where
   payloadKeys _ _ = Katip.AllKeys
 
 
 -- | Analog of @ExceptT Err IO@
-newtype ConsensusM alg a m b = ConsensusM
-  { runConsesusM :: m (ConsensusResult alg a b) }
+newtype ConsensusM a m b = ConsensusM
+  { runConsesusM :: m (ConsensusResult a b) }
   deriving (Functor)
 
-data ConsensusResult alg a b
+data ConsensusResult a b
   = Success !b
   | Tranquility
   | Misdeed
-  | DoCommit  !(Commit alg a) !(TMState alg a)
+  | DoCommit  !(Commit a) !(TMState a)
   deriving (Functor)
 
-instance Monad m => Applicative (ConsensusM alg a m) where
+instance Monad m => Applicative (ConsensusM a m) where
   pure  = return
   (<*>) = ap
 
-instance Monad m => Monad (ConsensusM alg a m) where
+instance Monad m => Monad (ConsensusM a m) where
   return = ConsensusM . return . Success
   ConsensusM m >>= f = ConsensusM $ m >>= \case
     Success a     -> runConsesusM (f a)
@@ -195,22 +195,22 @@ instance Monad m => Monad (ConsensusM alg a m) where
     Misdeed       -> return Misdeed
     DoCommit cm r -> return $ DoCommit cm r
 
-instance MonadIO m => MonadIO (ConsensusM alg a m) where
+instance MonadIO m => MonadIO (ConsensusM a m) where
   liftIO = ConsensusM . fmap Success . liftIO
 
 
-instance MonadLogger m => MonadLogger (ConsensusM alg a m) where
+instance MonadLogger m => MonadLogger (ConsensusM a m) where
   logger s l a = lift $ logger s l a
   localNamespace f (ConsensusM action) = ConsensusM $ localNamespace f action
 
-instance MonadTrans (ConsensusM alg a) where
+instance MonadTrans (ConsensusM a) where
   lift = ConsensusM . fmap Success
 
-instance MonadThrow m => MonadThrow (ConsensusM alg a m) where
+instance MonadThrow m => MonadThrow (ConsensusM a m) where
   throwM = lift . throwM
 
 -- | We're done for this height. Commit block to blockchain
-commitBlock :: Monad m => Commit alg a -> TMState alg a -> ConsensusM alg a m x
+commitBlock :: Monad m => Commit a -> TMState a -> ConsensusM a m x
 commitBlock cm r = ConsensusM $ return $ DoCommit cm r
 
 
@@ -218,15 +218,15 @@ commitBlock cm r = ConsensusM $ return $ DoCommit cm r
 -- Consensus
 ----------------------------------------------------------------
 
-type CNS x alg a m = ConsensusM alg a (Pipe x (EngineMessage alg a) m)
+type CNS x a m = ConsensusM a (Pipe x (EngineMessage a) m)
 
 -- | Message had no effect and was ignored. No change to state
 --   happened and execution is aborted.
-tranquility :: Monad m => ConsensusM alg a m x
+tranquility :: Monad m => ConsensusM a m x
 tranquility = ConsensusM $ return Tranquility
 
 -- | We detected clearly malicious behavior.
-misdeed :: Monad m => [ByzantineEvidence alg a] -> CNS x alg a m y
+misdeed :: Monad m => [ByzantineEvidence a] -> CNS x a m y
 misdeed es = do
   lift $ mapM_ (yield . EngMisdeed) es
   ConsensusM $ return Misdeed
@@ -235,9 +235,9 @@ misdeed es = do
 -- | Enter new height and create new state for state machine
 newHeight
   :: (MonadLogger m)
-  => HeightParameters m alg a
-  -> Maybe (Commit alg a)
-  -> Producer (EngineMessage alg a) m (TMState alg a)
+  => HeightParameters m a
+  -> Maybe (Commit a)
+  -> Producer (EngineMessage a) m (TMState a)
 newHeight HeightParameters{..} lastCommit = do
   logger InfoS "Entering new height ----------------" (sl "H" currentH)
   yield $ EngTimeout $ Timeout  currentH (Round 0) (StepNewHeight 0)
@@ -260,11 +260,11 @@ newHeight HeightParameters{..} lastCommit = do
 --   Note that when state machine sends vote or proposal it does not
 --   update state and thus message should be send back to it
 tendermintTransition
-  :: (Crypto alg, MonadLogger m)
-  => HeightParameters m alg a  -- ^ Parameters for current height
-  -> Message alg a             -- ^ Message which causes state transition
-  -> TMState alg a             -- ^ Initial state of state machine
-  -> CNS x alg a m (TMState alg a)
+  :: (Crypto (Alg a), MonadLogger m)
+  => HeightParameters m a  -- ^ Parameters for current height
+  -> Message a             -- ^ Message which causes state transition
+  -> TMState a             -- ^ Initial state of state machine
+  -> CNS x a m (TMState a)
 tendermintTransition par@HeightParameters{..} msg sm@TMState{..} =
   case msg of
     -- Receiving proposal by itself does not entail state transition.
@@ -343,10 +343,10 @@ tendermintTransition par@HeightParameters{..} msg sm@TMState{..} =
 -- Check whether we need to create new block or we should wait
 canCreate
   :: (Monad m)
-  => HeightParameters m alg a
-  -> TMState alg a
+  => HeightParameters m a
+  -> TMState a
   -> Int
-  -> CNS x alg a m Bool
+  -> CNS x a m Bool
 canCreate HeightParameters{..} TMState{..} n
   -- We want to create first block signed by all validators as soon as
   -- possible
@@ -356,11 +356,11 @@ canCreate HeightParameters{..} TMState{..} n
 -- Check whether we need to perform any state transition after we
 -- received prevote
 checkTransitionPrevote
-  :: (MonadLogger m, Crypto alg)
-  => HeightParameters m alg a
+  :: (MonadLogger m, Crypto (Alg a))
+  => HeightParameters m a
   -> Round
-  -> TMState alg a
-  -> CNS x alg a m (TMState alg a)
+  -> TMState a
+  -> CNS x a m (TMState a)
 checkTransitionPrevote par@HeightParameters{..} r sm@TMState{..}
   --  * We have +2/3 prevotes for some later round (R+x)
   --  => goto Prevote(H,R+x)
@@ -380,11 +380,11 @@ checkTransitionPrevote par@HeightParameters{..} r sm@TMState{..}
 -- Check whether we need to perform any state transition after we
 -- received precommit
 checkTransitionPrecommit
-  :: (MonadLogger m, Crypto alg)
-  => HeightParameters m alg a
+  :: (MonadLogger m, Crypto (Alg a))
+  => HeightParameters m a
   -> Round
-  -> TMState alg a
-  -> CNS x alg a m (TMState alg a)
+  -> TMState a
+  -> CNS x a m (TMState a)
 checkTransitionPrecommit par@HeightParameters{..} r sm@TMState{..}
   --  * We have +2/3 precommits for particular block at some round
   --  => goto Commit(H,R)
@@ -425,11 +425,11 @@ checkTransitionPrecommit par@HeightParameters{..} r sm@TMState{..}
 -- Enter Propose stage and send required messages
 enterPropose
   :: (MonadLogger m)
-  => HeightParameters m alg a
+  => HeightParameters m a
   -> Round
-  -> TMState alg a
+  -> TMState a
   -> LogTransitionReason
-  -> CNS x alg a m (TMState alg a)
+  -> CNS x a m (TMState a)
 enterPropose HeightParameters{..} r sm@TMState{..} reason = do
   logger InfoS "Entering propose" $ LogTransition currentH smRound smStep r reason
   lift $ yield $ EngTimeout $ Timeout  currentH r StepProposal
@@ -463,12 +463,12 @@ enterPropose HeightParameters{..} r sm@TMState{..} reason = do
 --   2. Call checkTransitionPrevote to check whether we need to go to
 --      PRECOMMIT
 enterPrevote
-  :: (Crypto alg, MonadLogger m)
-  => HeightParameters m alg a
+  :: (Crypto (Alg a), MonadLogger m)
+  => HeightParameters m a
   -> Round
-  -> TMState alg a
+  -> TMState a
   -> LogTransitionReason
-  -> CNS x alg a m (TMState alg a)
+  -> CNS x a m (TMState a)
 enterPrevote par@HeightParameters{..} r (unlockOnPrevote -> sm@TMState{..}) reason = do
   --
   logger InfoS "Entering prevote" $ LogTransition currentH smRound smStep r reason
@@ -515,8 +515,8 @@ enterPrevote par@HeightParameters{..} r (unlockOnPrevote -> sm@TMState{..}) reas
 --   * We're already locked
 --   * We have polka for round R: lock.R < R < current.R
 unlockOnPrevote
-  :: TMState alg a
-  -> TMState alg a
+  :: TMState a
+  -> TMState a
 unlockOnPrevote sm@TMState{..}
   | Just (lockR, _) <- smLockedBlock
   , hasAnyPolka lockR
@@ -535,12 +535,12 @@ unlockOnPrevote sm@TMState{..}
 --   2. Broadcast precommit vote
 --   3. Check whether we need to make further state transitions.
 enterPrecommit
-  :: (Crypto alg, MonadLogger m)
-  => HeightParameters m alg a
+  :: (Crypto (Alg a), MonadLogger m)
+  => HeightParameters m a
   -> Round
-  -> TMState alg a
+  -> TMState a
   -> LogTransitionReason
-  -> CNS x alg a m (TMState alg a)
+  -> CNS x a m (TMState a)
 enterPrecommit par@HeightParameters{..} r sm@TMState{..} reason = do
   logger InfoS "Entering precommit" $ LogTransition currentH smRound smStep r reason
   lift $ yield $ EngCastPreCommit r precommitBlock
@@ -569,10 +569,10 @@ enterPrecommit par@HeightParameters{..} r sm@TMState{..} reason = do
 
 addPrevote
   :: (Monad m)
-  => HeightParameters m alg a
-  -> Signed 'Verified alg (Vote 'PreVote alg a)
-  -> TMState alg a
-  -> CNS x alg a m (TMState alg a)
+  => HeightParameters m a
+  -> Signed 'Verified (Alg a) (Vote 'PreVote a)
+  -> TMState a
+  -> CNS x a m (TMState a)
 addPrevote HeightParameters{..} v@(signedValue -> Vote{..}) sm@TMState{..} = do
   lift $ yield $ EngAnnPreVote v
   case addSignedValue voteRound v smPrevotesSet of
@@ -585,10 +585,10 @@ addPrevote HeightParameters{..} v@(signedValue -> Vote{..}) sm@TMState{..} = do
 
 addPrecommit
   :: (Monad m)
-  => HeightParameters m alg a
-  -> Signed 'Verified alg (Vote 'PreCommit alg a)
-  -> TMState alg a
-  -> CNS x alg a m (TMState alg a)
+  => HeightParameters m a
+  -> Signed 'Verified (Alg a) (Vote 'PreCommit a)
+  -> TMState a
+  -> CNS x a m (TMState a)
 addPrecommit HeightParameters{..} v@(signedValue -> Vote{..}) sm@TMState{..} = do
   lift $ yield $ EngAnnPreCommit v
   case addSignedValue voteRound v smPrecommitsSet of

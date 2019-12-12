@@ -1,11 +1,17 @@
+{-# LANGUAGE DeriveAnyClass      #-}
+{-# LANGUAGE DeriveGeneric       #-}
+{-# LANGUAGE DerivingStrategies  #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications    #-}
+{-# LANGUAGE TypeFamilies        #-}
 {-# LANGUAGE TypeOperators       #-}
 -- |
 module TM.Time (tests) where
 
+import Codec.Serialise (Serialise)
 import Control.Monad
+import Control.Exception
 import Data.Int
 import Data.List
 import Data.Proxy
@@ -14,10 +20,12 @@ import qualified Data.List.NonEmpty as NE
 import System.Random
 import Test.Tasty
 import Test.Tasty.HUnit
+import GHC.Generics (Generic)
 
 import HSChain.Crypto
 import HSChain.Crypto.Ed25519 (Ed25519)
 import HSChain.Crypto.SHA     (SHA512)
+import HSChain.Crypto.Classes.Hash
 import HSChain.Types.Blockchain
 import HSChain.Types.Validators
 import HSChain.Types.BFTTime
@@ -75,7 +83,7 @@ checkMedian wtimes expectedT = forM_ (permuteCommit commit) $ \cmt ->
           ]
       }
 
-permuteCommit :: Commit alg a -> [Commit alg a]
+permuteCommit :: Commit a -> [Commit a]
 permuteCommit Commit{..} =
   [ Commit { commitPrecommits = pc
            , ..
@@ -83,10 +91,34 @@ permuteCommit Commit{..} =
   | pc <- NE.fromList <$> permutations (NE.toList commitPrecommits)
   ]
 
-bid :: BlockID (Ed25519 :& SHA512) ()
-bid = BlockID (Hashed (hash ()))
 
-privateKeyList :: [PrivKey (Ed25519 :& SHA512)]
+data BData = BData
+  deriving stock    (Show,Eq,Generic)
+  deriving anyclass (Serialise)
+
+instance CryptoHashable BData where
+  hashStep = genericHashStep "hschain-tests"
+
+data Err = Err
+  deriving stock (Show)
+  deriving anyclass (Exception)
+
+instance BlockData BData where
+  type TX              BData = ()
+  type BlockchainState BData = ()
+  type BChError        BData = Err
+  type Alg             BData = Ed25519 :& SHA512
+  type BChMonad        BData = Maybe
+  blockTransactions _ = []
+  logBlockData      _ = mempty
+  proposerSelection   = error "proposerSelection is unused"
+  bchLogic            = error "bchLogic is unused"
+
+
+bid :: BlockID BData
+bid = BlockID (Hashed (hash BData))
+
+privateKeyList :: [PrivKey (Alg BData)]
 privateKeyList = makePrivKeyStream 13337
 
 -- Sadly (code duplication. Same function is defined in hschain-examples)

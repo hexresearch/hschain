@@ -111,28 +111,28 @@ import HSChain.Types.Validators
 
 -- | Monad transformer which provides 'MonadReadDB' and 'MonadDB'
 --   instances.
-newtype DBT rw alg a m x = DBT (ReaderT (Connection rw alg a) m x)
+newtype DBT rw a m x = DBT (ReaderT (Connection rw a) m x)
   deriving ( Functor, Applicative, Monad
            , MonadIO, MonadThrow, MonadCatch, MonadMask
            , MonadFork, MonadLogger, MonadTrace, MonadFail
            )
 
-instance MFunctor (DBT rw alg a) where
+instance MFunctor (DBT rw a) where
   hoist f (DBT m) = DBT $ hoist f m
 
-instance MonadTrans (DBT rw alg a) where
+instance MonadTrans (DBT rw a) where
   lift = DBT . lift
 
 -- | Lift monad which provides read-only access to read-write access.
-dbtRO :: DBT 'RO alg a m x -> DBT rw alg a m x
+dbtRO :: DBT 'RO a m x -> DBT rw a m x
 dbtRO (DBT m) = DBT (withReaderT connectionRO m)
 
-runDBT :: Connection rw alg a -> DBT rw alg a m x -> m x
+runDBT :: Connection rw a -> DBT rw a m x -> m x
 runDBT c (DBT m) = runReaderT m c
 
-instance MonadIO m => MonadReadDB (DBT rw alg a m) alg a where
+instance MonadIO m => MonadReadDB (DBT rw a m) a where
   askConnectionRO = connectionRO <$> DBT ask
-instance MonadIO m => MonadDB (DBT 'RW alg a m) alg a where
+instance MonadIO m => MonadDB (DBT 'RW a m) a where
   askConnectionRW = DBT ask
 
 
@@ -141,14 +141,14 @@ instance MonadIO m => MonadDB (DBT 'RW alg a m) alg a where
 withDatabase
   :: (MonadIO m, MonadMask m)
   => FilePath         -- ^ Path to the database
-  -> (Connection 'RW alg a -> m x) -> m x
+  -> (Connection 'RW a -> m x) -> m x
 withDatabase path cont
   = withConnection path $ \c -> initDatabase c >> cont c
 
 -- | Initialize all required tables in database.
 initDatabase
   :: (MonadIO m)
-  => Connection 'RW alg a  -- ^ Opened connection to database
+  => Connection 'RW a  -- ^ Opened connection to database
   -> m ()
 initDatabase c = do
   r <- runQueryRW c initializeBlockhainTables
@@ -321,7 +321,7 @@ data BlockchainInconsistency
 
 -- | check storage against all consistency invariants
 checkStorage
-  :: (MonadReadDB m alg a, MonadIO m, Crypto alg, Serialise a, CryptoHashable a)
+  :: (MonadReadDB m a, MonadIO m, Crypto (Alg a), Serialise a, CryptoHashable a)
   => m [BlockchainInconsistency]
 checkStorage = queryRO $ execWriterT $ do
   maxH         <- lift $ blockchainHeight
@@ -349,9 +349,9 @@ checkStorage = queryRO $ execWriterT $ do
 -- | Check that block proposed at given height is correct in sense all
 --   blockchain invariants hold
 checkProposedBlock
-  :: (MonadReadDB m alg a, MonadIO m, Crypto alg)
+  :: (MonadReadDB m a, MonadIO m, Crypto (Alg a))
   => Height
-  -> Block alg a
+  -> Block a
   -> m [BlockchainInconsistency]
 checkProposedBlock h block = queryRO $ do
   Just prevBID <- retrieveBlockID      (pred h)
@@ -369,7 +369,7 @@ checkProposedBlock h block = queryRO $ do
 -- | Check invariants for genesis block
 genesisBlockInvariant
   :: (Monad m)
-  => Block alg a
+  => Block a
   -> WriterT [BlockchainInconsistency] m ()
 genesisBlockInvariant Block{..} = do
   -- It must have height 0
@@ -385,14 +385,14 @@ genesisBlockInvariant Block{..} = do
 
 -- | Check invariant for block at height > 0
 blockInvariant
-  :: (Monad m, Crypto alg)
+  :: (Monad m, Crypto (Alg a))
   => Height
   -- ^ Height of block
-  -> BlockID alg a
+  -> BlockID a
   -- ^ Block ID of previous block
-  -> (Maybe (ValidatorSet alg), ValidatorSet alg)
+  -> (Maybe (ValidatorSet (Alg a)), ValidatorSet (Alg a))
   -- ^ Validator set for previous and current height
-  -> Block alg a
+  -> Block a
   -- ^ Block to check
   -> WriterT [BlockchainInconsistency] m ()
 blockInvariant h _ _ _
@@ -422,12 +422,12 @@ blockInvariant h prevBID (mprevValSet, valSet) Block{..} = do
         -> tell [InvalidCommit h "Cannot validate commit"]
 
 commitInvariant
-  :: (Monad m, Crypto alg)
+  :: (Monad m, Crypto (Alg a))
   => (String -> BlockchainInconsistency) -- Error constructor
   -> Height                              -- Height of block for
-  -> BlockID alg a
-  -> ValidatorSet alg
-  -> Commit alg a
+  -> BlockID a
+  -> ValidatorSet (Alg a)
+  -> Commit a
   -> WriterT [BlockchainInconsistency] m ()
 commitInvariant mkErr h bid valSet Commit{..} = do
   -- It must justify commit of correct block!

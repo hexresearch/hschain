@@ -55,17 +55,17 @@ import HSChain.Utils
 
 -- | Interpreter for mond in which evaluation of blockchain is
 --   performed
-newtype Interpreter q m alg a = Interpreter
-  { interpretBCh :: forall x. q x -> ExceptT (BChError a) m x
+newtype Interpreter m a = Interpreter
+  { interpretBCh :: forall x. BChMonad a x -> ExceptT (BChError a) m x
   }
 
 
 -- | Create default mempool which checks transactions against current
 --   state
 makeMempool
-  :: (MonadIO m, MonadReadDB m alg a, Ord (TX a), Show (TX a), Crypto alg, BlockData a)
+  :: (MonadIO m, MonadReadDB m a, Ord (TX a), Show (TX a), Crypto alg, BlockData a)
   => BChStore m a
-  -> AppLogic m alg a
+  -> AppLogic m a
   -> m (Mempool m alg (TX a))
 makeMempool store BChLogic{..} =
   newMempool $ \tx -> do
@@ -86,23 +86,22 @@ makeMempool store BChLogic{..} =
 -- | Create 'AppLogic' which should be then passed to 'runNode' from
 --   description of blockchain logic and storage of blockchain state.
 makeAppLogic
-  :: BChLogic    q   alg a      -- ^ Blockchain logic
-  -> Interpreter q m alg a      -- ^ Runner for logic
-  -> AppLogic m alg a
+  :: BChLogic (BChMonad a) a -- ^ Blockchain logic
+  -> Interpreter m a         -- ^ Runner for logic
+  -> AppLogic m a
 makeAppLogic logic Interpreter{..} = hoistDict interpretBCh logic
 
 -- | Specification of node
-data NodeDescription m alg a = NodeDescription
-  { nodeValidationKey :: !(Maybe (PrivValidator alg))
+data NodeDescription m a = NodeDescription
+  { nodeValidationKey :: !(Maybe (PrivValidator (Alg a)))
     -- ^ Private key of validator.
-  , nodeGenesis       :: !(Genesis alg a)
+  , nodeGenesis       :: !(Genesis a)
     -- ^ Genesis block of node
-  , nodeLogic         :: !(AppLogic m alg a)
-    -- ^ Callbacks for validation of block, transaction and generation
-    --   of new block.
-  , nodeStore         :: !(AppStore m alg a)
+  , nodeRunner        :: !(Interpreter m a)
+    -- ^ Function for evaluation of blockchain transitions
+  , nodeStore         :: !(AppStore m a)
     -- ^ Storage for state of blockchain.
-  , nodeCallbacks     :: !(AppCallbacks m alg a)
+  , nodeCallbacks     :: !(AppCallbacks m a)
     -- ^ Callbacks with monoidal structure
   , nodeNetwork       :: !BlockchainNet
     -- ^ Dictionary of functions to communicate with other nodes over
@@ -121,16 +120,16 @@ data BlockchainNet = BlockchainNet
 --   'runConcurrently'. List of actions is returned in case when we
 --   need to run something else along them.
 runNode
-  :: ( MonadDB m alg a, MonadMask m, MonadFork m, MonadLogger m, MonadTrace m, MonadTMMonitoring m
-     , Crypto alg, BlockData a, Eq a, Show a
+  :: ( MonadDB m a, MonadMask m, MonadFork m, MonadLogger m, MonadTrace m, MonadTMMonitoring m
+     , BlockData a, Eq a, Show a
      )
   => Configuration app          -- ^ Timeouts for network and consensus
-  -> NodeDescription m alg a    -- ^ Description of node.
+  -> NodeDescription m a    -- ^ Description of node.
   -> m [m ()]
 runNode cfg NodeDescription{..} = do
-  let BChLogic{..}      = nodeLogic
-      AppStore{..}      = nodeStore
-      BlockchainNet{..} = nodeNetwork
+  let logic@BChLogic{..} = makeAppLogic bchLogic nodeRunner
+      AppStore{..}       = nodeStore
+      BlockchainNet{..}  = nodeNetwork
       appCall = mempoolFilterCallback appMempool
              <> nodeCallbacks
   appCh <- newAppChans (cfgConsensus cfg)
@@ -138,7 +137,7 @@ runNode cfg NodeDescription{..} = do
     [ id $ descendNamespace "net"
          $ startPeerDispatcher (cfgNetwork cfg) bchNetwork bchInitialPeers appCh appMempool
     , id $ descendNamespace "consensus"
-         $ runApplication (cfgConsensus cfg) nodeValidationKey nodeGenesis nodeLogic nodeStore appCall appCh
+         $ runApplication (cfgConsensus cfg) nodeValidationKey nodeGenesis logic nodeStore appCall appCh
     , forever $ do
         MempoolInfo{..} <- mempoolStats appMempool
         usingGauge prometheusMempoolSize      mempool'size
@@ -158,7 +157,7 @@ runNode cfg NodeDescription{..} = do
 
 -- | Callback which removes from mempool all transactions which are
 --   not longer valid.
-mempoolFilterCallback :: (MonadLogger m) => Mempool m alg tx -> AppCallbacks m alg a
+mempoolFilterCallback :: (MonadLogger m) => Mempool m alg tx -> AppCallbacks m a
 mempoolFilterCallback mempool = mempty
   { appCommitCallback = \_ -> descendNamespace "mempool" $ do
       do before <- mempoolStats mempool
@@ -169,7 +168,7 @@ mempoolFilterCallback mempool = mempty
   }
 
 -- | Callback which allow block creation only if mempool is not empty
-nonemptyMempoolCallback :: (Monad m) => Mempool m alg tx -> AppCallbacks m alg a
+nonemptyMempoolCallback :: (Monad m) => Mempool m alg tx -> AppCallbacks m a
 nonemptyMempoolCallback mempool = mempty
   { appCanCreateBlock = \_ -> do
       n <- mempoolSize mempool

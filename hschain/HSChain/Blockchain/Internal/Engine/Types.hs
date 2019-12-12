@@ -178,30 +178,30 @@ instance DefaultConfig app => FromJSON (Configuration app) where
 --
 ----------------------------------------------------------------
 
-type AppLogic m alg a = BChLogic (ExceptT (BChError a) m) alg a
+type AppLogic m a = BChLogic (ExceptT (BChError a) m) a
 
-data AppStore m alg a = AppStore
-  { appMempool          :: Mempool m alg (TX a)
+data AppStore m a = AppStore
+  { appMempool          :: Mempool m (Alg a) (TX a)
     -- ^ Application mempool
   , appBchState         :: BChStore m a
     -- ^ Store for the blockchain state
   }
 
 -- | User callbacks which have monoidal strcture
-data AppCallbacks m alg a = AppCallbacks
-  { appCommitCallback   :: Block alg a -> m ()
+data AppCallbacks m a = AppCallbacks
+  { appCommitCallback   :: Block a -> m ()
     -- ^ Function which is called after each commit.
   , appCanCreateBlock   :: Height -> m (Maybe Bool)
     -- ^ Callback which is called to decide whether we ready to create
     --   new block or whether we should wait
   }
 
-instance Monad m => Semigroup (AppCallbacks m alg a) where
+instance Monad m => Semigroup (AppCallbacks m a) where
   AppCallbacks f1 g1 <> AppCallbacks f2 g2 = AppCallbacks
     { appCommitCallback = liftA2 (*>) f1 f2
     , appCanCreateBlock = (liftA2 . liftA2) (coerce ((<>) @(Maybe Any))) g1 g2
     }
-instance Monad m => Monoid (AppCallbacks m alg a) where
+instance Monad m => Monoid (AppCallbacks m a) where
   mempty  = AppCallbacks (\_ -> pure ()) (\_ -> pure Nothing)
 
 instance HoistDict AppCallbacks where
@@ -225,17 +225,17 @@ instance Crypto alg => ToJSON   (PrivValidator alg) where
 
 
 -- | Application connection to outer world
-data AppChans alg a = AppChans
-  { appChanRx         :: TBQueue (MessageRx 'Unverified alg a)
+data AppChans a = AppChans
+  { appChanRx         :: TBQueue (MessageRx 'Unverified a)
     -- ^ Queue for receiving messages related to consensus protocol
     --   from peers.
-  , appChanRxInternal :: TQueue (MessageRx 'Unverified alg a)
+  , appChanRxInternal :: TQueue (MessageRx 'Unverified a)
     -- ^ Queue for sending messages by consensus engine to
     --   itself. Note that it's unbounded since we must not block when
     --   writing there.
-  , appChanTx      :: TChan (MessageTx alg a)
+  , appChanTx      :: TChan (MessageTx a)
     -- ^ TChan for broadcasting messages to the peers
-  , appTMState     :: TVar  (Maybe (Height, TMState alg a))
+  , appTMState     :: TVar  (Maybe (Height, TMState a))
     -- ^ Current state of consensus. It includes current height, state
     --   machine status and known blocks which should be exposed in
     --   read-only manner for gossip with peers.

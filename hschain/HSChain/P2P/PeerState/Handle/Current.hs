@@ -42,7 +42,7 @@ import qualified Data.Map.Strict    as Map
 import qualified Data.Set           as Set
 
 
-handler :: Handler CurrentState Event alg a m
+handler :: Handler CurrentState Event a m
 handler =
   handlerGeneric
    handlerGossipMsg
@@ -50,13 +50,13 @@ handler =
    handlerMempoolTimeout
    handlerBlocksTimeout
 
-issuedGossipHandler :: Handler CurrentState GossipMsg alg a m
+issuedGossipHandler :: Handler CurrentState GossipMsg a m
 issuedGossipHandler =
   issuedGossipHandlerGeneric
     handlerGossipMsg
     advanceOurHeight
 
-handlerGossipMsg :: MessageHandler CurrentState alg a m
+handlerGossipMsg :: MessageHandler CurrentState a m
 handlerGossipMsg = \case
     GossipPreVote v@(signedValue -> Vote{..}) -> do
       addPrevote voteHeight voteRound $ signedKeyInfo v
@@ -104,14 +104,14 @@ handlerGossipMsg = \case
         peerLock .= mr
         currentState
 
-addProposal :: MonadState (CurrentState alg a) m
+addProposal :: MonadState (CurrentState a) m
             => Height -> Round -> m ()
 addProposal h r = do
   FullStep hPeer _ _ <- use peerStep
   when (h == hPeer) $
     peerProposals %= Set.insert r
 
-addPrevote :: MonadState (CurrentState alg a) m
+addPrevote :: MonadState (CurrentState a) m
            => Height -> Round -> ValidatorIdx alg -> m ()
 addPrevote h r idx = do
   FullStep hPeer _ _ <- use peerStep
@@ -123,7 +123,7 @@ addPrevote h r idx = do
                               ) r
 
 
-addPrecommit :: MonadState (CurrentState alg a) m
+addPrecommit :: MonadState (CurrentState a) m
              => Height -> Round -> ValidatorIdx alg -> m ()
 addPrecommit h r idx = do
   FullStep hPeer _ _ <- use peerStep
@@ -134,13 +134,13 @@ addPrecommit h r idx = do
                                 . fromMaybe (emptyValidatorISet vals)
                                 ) r
 
-addBlock :: (MonadState (CurrentState alg a) m, CryptoSign alg, CryptoHash alg)
-         => Block alg a -> m ()
+addBlock :: (MonadState (CurrentState a) m, Crypto (Alg a))
+         => Block a -> m ()
 addBlock b = peerBlocks %= Set.insert (blockHash b)
 
 ----------------------------------------------------------------
   --
-advanceOurHeight :: AdvanceOurHeight CurrentState alg a m
+advanceOurHeight :: AdvanceOurHeight CurrentState a m
 advanceOurHeight (FullStep ourH _ _) = do
       -- Current peer may become lagging if we increase our height
   (FullStep h _ _) <- use peerStep
@@ -162,7 +162,7 @@ advanceOurHeight (FullStep ourH _ _) = do
 
 ----------------------------------------------------------------
 
-handlerVotesTimeout :: TimeoutHandler CurrentState alg a m
+handlerVotesTimeout :: TimeoutHandler CurrentState a m
 handlerVotesTimeout = do
   bchH <- queryRO blockchainHeight
   st <- atomicallyIO =<< view consensusSt
@@ -201,12 +201,12 @@ handlerVotesTimeout = do
   currentState
 
 gossipPrevotes
-  :: ( MonadState  (CurrentState alg a) m
-     , MonadWriter [Command alg a] m
-     , MonadReader (Config n alg a) m
+  :: ( MonadState  (CurrentState a) m
+     , MonadWriter [Command a] m
+     , MonadReader (Config n a) m
      , MonadIO m
      )
-  => TMState alg a -> Round -> m ()
+  => TMState a -> Round -> m ()
 gossipPrevotes tm r = do
   peerPV <- maybe CIMap.empty (CIMap.fromSet (const ()) . getValidatorIntSet)
           . Map.lookup r
@@ -223,13 +223,13 @@ gossipPrevotes tm r = do
 
 ----------------------------------------------------------------
 
-handlerMempoolTimeout :: TimeoutHandler CurrentState alg a m
+handlerMempoolTimeout :: TimeoutHandler CurrentState a m
 handlerMempoolTimeout = do
   advanceMempoolCursor
   currentState
 ----------------------------------------------------------------
 
-handlerBlocksTimeout :: TimeoutHandler CurrentState alg a m
+handlerBlocksTimeout :: TimeoutHandler CurrentState a m
 handlerBlocksTimeout = do
   mstate <- atomicallyIO =<< view consensusSt
   forM_ mstate $ \(hSt,st) -> do

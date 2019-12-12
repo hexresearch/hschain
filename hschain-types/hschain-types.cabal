@@ -72,6 +72,7 @@ Test-suite hschain-types-tests
   Build-Depends:       base              >=4.9 && <5
                      , bytestring
                      , random
+                     , serialise
                      , hschain-crypto
                      , hschain-types
                      , tasty             >=0.11

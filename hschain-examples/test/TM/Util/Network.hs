@@ -12,8 +12,7 @@
 
 -- | Contains helpers for network UTs
 module TM.Util.Network
-  ( TestAlg
-  , AbortTest(..)
+  ( AbortTest(..)
   , FastTest
   -- * Timeouts
   , withRetry
@@ -39,6 +38,7 @@ import Data.Monoid    ((<>))
 import System.Timeout (timeout)
 
 import qualified HSChain.Mock.KeyVal as Mock
+import           HSChain.Mock.KeyVal   (BData)
 import HSChain.Blockchain.Internal.Engine.Types
 import HSChain.Control
 import HSChain.Crypto                           ((:&))
@@ -51,6 +51,7 @@ import HSChain.Mock.KeyList
 import HSChain.Monitoring
 import HSChain.P2P
 import HSChain.P2P.Network
+import HSChain.Types.Blockchain
 import HSChain.Run
 import HSChain.Store
 
@@ -87,19 +88,18 @@ withTimeOut t act = timeout t act >>= \case
 ----------------------------------------------------------------
 
 -- TODO объединить в один список, а лучше сделать бесконечный
-testValidators :: [PrivValidator TestAlg]
+testValidators :: [PrivValidator (Alg BData)]
 testValidators = take 4 $ map PrivValidator $ makePrivKeyStream 1337
 
-type TestAlg = Ed25519 :& SHA512
 
-type TestMonad m = DBT 'RW TestAlg Mock.BData (NoLogsT (TracerT m))
+type TestMonad m = DBT 'RW BData (NoLogsT (TracerT m))
 
 
 data TestNetLinkDescription m = TestNetLinkDescription
     { ncFrom          :: Int
     , ncTo            :: [Int]
     , ncTraceCallback :: TraceEvents -> m ()
-    , ncAppCallbacks  :: AppCallbacks (TestMonad m) TestAlg Mock.BData
+    , ncAppCallbacks  :: AppCallbacks (TestMonad m) BData
     }
 
 
@@ -125,7 +125,7 @@ createTestNetworkWithConfig = createTestNetworkWithValidatorsSetAndConfig testVa
 
 createTestNetworkWithValidatorsSetAndConfig
     :: (MonadIO m, MonadMask m, MonadFork m, MonadTMMonitoring m)
-    => [PrivValidator TestAlg]
+    => [PrivValidator (Alg BData)]
     -> Configuration Example
     -> [TestNetLinkDescription m]
     -> m ()
@@ -142,9 +142,10 @@ createTestNetworkWithValidatorsSetAndConfig validators cfg netDescr = do
     mkTestNode
       :: (MonadFork m, MonadMask m, MonadTMMonitoring m)
       => MockNet
-      -> ( Connection 'RW TestAlg Mock.BData
+      -> ( Connection 'RW BData
          , TestNetLinkDescription m
-         , Maybe (PrivValidator TestAlg))
+         , Maybe (PrivValidator (Alg BData))
+         )
       -> m [m ()]
     mkTestNode net (conn, TestNetLinkDescription{..}, validatorPK) = do
         let genesis = Mock.mkGenesisBlock dbValidatorSet

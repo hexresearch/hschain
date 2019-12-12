@@ -27,17 +27,17 @@ import qualified Katip
 --
 --   FIXME: We don't have good way to prevent DoS by spamming too much
 --          data
-data GossipMsg alg a
-  = GossipPreVote   !(Signed 'Unverified alg (Vote 'PreVote   alg a))
-  | GossipPreCommit !(Signed 'Unverified alg (Vote 'PreCommit alg a))
-  | GossipProposal  !(Signed 'Unverified alg (Proposal alg a))
-  | GossipBlock     !(Block alg a)
-  | GossipAnn       !(Announcement alg)
+data GossipMsg a
+  = GossipPreVote   !(Signed 'Unverified (Alg a) (Vote 'PreVote   a))
+  | GossipPreCommit !(Signed 'Unverified (Alg a) (Vote 'PreCommit a))
+  | GossipProposal  !(Signed 'Unverified (Alg a) (Proposal a))
+  | GossipBlock     !(Block a)
+  | GossipAnn       !(Announcement (Alg a))
   | GossipTx        !(TX a)
   | GossipPex       !PexMessage
   deriving (Generic)
-deriving instance (Show a, Show (TX a), Crypto alg) => Show (GossipMsg alg a)
-instance (Serialise (TX a), Serialise a, CryptoHashable a, Crypto alg) => Serialise (GossipMsg alg a)
+deriving instance (Show a, Show (TX a), Crypto (Alg a)) => Show (GossipMsg a)
+instance (Serialise (TX a), Serialise a, CryptoHashable a, Crypto (Alg a)) => Serialise (GossipMsg a)
 
 --
 -- | Peer exchage gossip sub-message
@@ -57,16 +57,16 @@ instance Serialise PexMessage
 
 --
 -- | Connection handed to process controlling communication with peer
-data PeerChans alg a = PeerChans
-  { peerChanTx              :: !(TChan (MessageTx alg a))
+data PeerChans a = PeerChans
+  { peerChanTx              :: !(TChan (MessageTx a))
     -- ^ Broadcast channel for outgoing messages
   , peerChanPex             :: !(TChan PexMessage)
     -- ^ Broadcast channel for outgoing PEX messages
   , peerChanPexNewAddresses :: !(TChan [NetAddr])
     -- ^ Channel for new addreses
-  , peerChanRx              :: !(MessageRx 'Unverified alg a -> STM ())
+  , peerChanRx              :: !(MessageRx 'Unverified a -> STM ())
     -- ^ STM action for sending message to main application
-  , consensusState          :: !(STM (Maybe (Height, TMState alg a)))   -- TODO try strict Maybe and Tuple
+  , consensusState          :: !(STM (Maybe (Height, TMState a)))   -- TODO try strict Maybe and Tuple
     -- ^ Read only access to current state of consensus state machine
   , p2pConfig               :: !NetworkCfg
 
@@ -75,7 +75,7 @@ data PeerChans alg a = PeerChans
 
 -- | Dump GossipMsg without (Show) constraints
 --
-showGossipMsg :: GossipMsg alg a -> Katip.LogStr
+showGossipMsg :: GossipMsg a -> Katip.LogStr
 showGossipMsg (GossipPreVote _)   = "GossipPreVote {}"
 showGossipMsg (GossipPreCommit _) = "GossipPreCommit {}"
 showGossipMsg (GossipProposal _)  = "GossipProposal {}"

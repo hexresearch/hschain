@@ -1,7 +1,10 @@
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE DataKinds           #-}
+{-# LANGUAGE DerivingStrategies  #-}
 {-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE StandaloneDeriving  #-}
 {-# LANGUAGE TypeApplications    #-}
 {-# LANGUAGE TypeFamilies        #-}
 {-# LANGUAGE TypeOperators       #-}
@@ -23,6 +26,7 @@ import HSChain.Crypto.Ed25519 (Ed25519)
 import HSChain.Crypto.SHA     (SHA512)
 import HSChain.Types.Blockchain
 import HSChain.P2P.Types      (NetAddr)
+import HSChain.Mock.KeyVal    (BData(..))
 
 import HSChain.Arbitrary.Instances ()
 
@@ -39,13 +43,13 @@ tests =
                                 (prop_CBOR_roundtrip @a)
       in testGroup "CBOR"
          [ testGroup "roundtrip"
-           [ run @(Block  TestCryptoAlg Int)
-           , run @(Header TestCryptoAlg Int)
-           , run @(Commit TestCryptoAlg Int)
-           , run @(ByzantineEvidence TestCryptoAlg Int)
-           , run @(Proposal TestCryptoAlg Int)
-           , run @(Vote 'PreVote   TestCryptoAlg Int)
-           , run @(Vote 'PreCommit TestCryptoAlg Int)
+           [ run @(Block  BData)
+           , run @(Header BData)
+           , run @(Commit BData)
+           , run @(ByzantineEvidence BData)
+           , run @(Proposal BData)
+           , run @(Vote 'PreVote   BData)
+           , run @(Vote 'PreCommit BData)
            , run @Height
            , run @Round
            , run @Time
@@ -66,13 +70,13 @@ tests =
           run = testProperty (show (typeRep (Proxy @a)))
                                 (prop_JSON_roundtrip @a)
       in testGroup "JSON"
-         [ run @(Block  TestCryptoAlg Int)
-         , run @(Header TestCryptoAlg Int)
-         , run @(Commit TestCryptoAlg Int)
-         , run @(ByzantineEvidence TestCryptoAlg Int)
-         , run @(Proposal TestCryptoAlg Int)
-         , run @(Vote 'PreVote   TestCryptoAlg Int)
-         , run @(Vote 'PreCommit TestCryptoAlg Int)
+         [ run @(Block  BData)
+         , run @(Header BData)
+         , run @(Commit BData)
+         , run @(ByzantineEvidence BData)
+         , run @(Proposal BData)
+         , run @(Vote 'PreVote   BData)
+         , run @(Vote 'PreCommit BData)
          , run @Height
          , run @Round
          , run @Time
@@ -96,9 +100,9 @@ tests =
 -- Tests
 ----------------------------------------------------------------
 
-type TestCryptoAlg = Ed25519 :& SHA512
-type TestVote ty   = Vote ty TestCryptoAlg String
+type TestVote ty   = Vote ty BData
 
+deriving newtype instance Arbitrary BData
 
 
 -- Votes of one type can't be deserialized as other

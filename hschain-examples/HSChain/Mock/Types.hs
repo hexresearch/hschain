@@ -1,5 +1,6 @@
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE DeriveGeneric       #-}
+{-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE RankNTypes          #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -67,12 +68,12 @@ instance DefaultConfig Example where
 -- | Genesis block has many field with predetermined content so this
 --   is convenience function to create genesis block.
 makeGenesis
-  :: (Crypto alg, CryptoHashable a)
+  :: (Crypto (Alg a), CryptoHashable a)
   => a                          -- ^ Block data
-  -> Hashed alg (BlockchainState a)
-  -> ValidatorSet alg           -- ^ Set of validators for H=0
-  -> ValidatorSet alg           -- ^ Set of validators for H=1
-  -> Block alg a
+  -> Hashed (Alg a) (BlockchainState a)
+  -> ValidatorSet (Alg a)           -- ^ Set of validators for H=0
+  -> ValidatorSet (Alg a)           -- ^ Set of validators for H=1
+  -> Block a
 makeGenesis dat stateHash valSet0 valSet1 = Block
   { blockHeight        = Height 0
   , blockPrevBlockID   = Nothing
@@ -89,15 +90,15 @@ makeGenesis dat stateHash valSet0 valSet1 = Block
 -- Generating node specification
 ----------------------------------------------------------------
 
-data RunningNode m alg a = RunningNode
+data RunningNode m a = RunningNode
   { rnodeState   :: BChStore m a
-  , rnodeConn    :: Connection 'RO alg a
-  , rnodeMempool :: Mempool m alg (TX a)
+  , rnodeConn    :: Connection 'RO a
+  , rnodeMempool :: Mempool m (Alg a) (TX a)
   }
 
 hoistRunningNode
   :: (Functor n)
-  => (forall x. m x -> n x) -> RunningNode m alg a -> RunningNode n alg a
+  => (forall x. m x -> n x) -> RunningNode m a -> RunningNode n a
 hoistRunningNode fun RunningNode{..} = RunningNode
   { rnodeState   = hoistBChStore fun rnodeState
   , rnodeMempool = hoistMempool  fun rnodeMempool

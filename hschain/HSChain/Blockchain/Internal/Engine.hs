@@ -56,7 +56,7 @@ import Katip (Severity(..), sl)
 --
 ----------------------------------------------------------------
 
-newAppChans :: (MonadIO m) => ConsensusCfg -> m (AppChans alg a)
+newAppChans :: (MonadIO m) => ConsensusCfg -> m (AppChans a)
 newAppChans ConsensusCfg{incomingQueueSize = sz} = do
   appChanRx         <- liftIO $ newTBQueueIO sz
   appChanRxInternal <- liftIO   newTQueueIO
@@ -65,10 +65,10 @@ newAppChans ConsensusCfg{incomingQueueSize = sz} = do
   return AppChans{..}
 
 rewindBlockchainState
-  :: ( MonadDB m alg a, MonadIO m, MonadThrow m
-     , Crypto alg, BlockData a)
-  => AppStore m alg a
-  -> AppLogic m alg a
+  :: ( MonadDB m a, MonadIO m, MonadThrow m
+     , Crypto (Alg a), BlockData a)
+  => AppStore m a
+  -> AppLogic m a
   -> m ()
 rewindBlockchainState AppStore{..} BChLogic{..} = do
   -- We need to generate validator set for H=1. We do so in somewhat
@@ -117,23 +117,23 @@ rewindBlockchainState AppStore{..} BChLogic{..} = do
 --
 --   * INVARIANT: Only this function can write to blockchain
 runApplication
-  :: ( MonadDB m alg a
+  :: ( MonadDB m a
      , MonadIO m
      , MonadMask m
      , MonadLogger m
      , MonadTMMonitoring m
-     , Crypto alg, BlockData a, Eq a, Show a)
+     , BlockData a, Eq a, Show a)
   => ConsensusCfg
      -- ^ Configuration
-  -> Maybe (PrivValidator alg)
+  -> Maybe (PrivValidator (Alg a))
      -- ^ Private key of validator
-  -> Genesis alg a
+  -> Genesis a
      -- ^ Genesis block
-  -> AppLogic m alg a
+  -> AppLogic m a
      -- ^ Get initial state of the application
-  -> AppStore m alg a
-  -> AppCallbacks m alg a
-  -> AppChans  alg a
+  -> AppStore m a
+  -> AppCallbacks m a
+  -> AppChans a
      -- ^ Channels for communication with peers
   -> m ()
 runApplication config appValidatorKey genesis appLogic appStore appCall appCh = logOnException $ do
@@ -152,20 +152,20 @@ runApplication config appValidatorKey genesis appLogic appStore appCall appCh = 
 -- going to commit at current height, then stores it in database and
 -- returns commit.
 decideNewBlock
-  :: ( MonadDB m alg a
+  :: ( MonadDB m a
      , MonadIO m
      , MonadMask m
      , MonadLogger m
      , MonadTMMonitoring m
-     , Crypto alg, BlockData a)
+     , Crypto (Alg a), BlockData a)
   => ConsensusCfg
-  -> Maybe (PrivValidator alg)
-  -> AppLogic     m alg a
-  -> AppStore     m alg a
-  -> AppCallbacks m alg a
-  -> AppChans       alg a
-  -> Maybe (Commit alg a)
-  -> m (Commit alg a)
+  -> Maybe (PrivValidator (Alg a))
+  -> AppLogic     m a
+  -> AppStore     m a
+  -> AppCallbacks m a
+  -> AppChans       a
+  -> Maybe (Commit a)
+  -> m (Commit a)
 decideNewBlock config appValidatorKey
                appLogic@BChLogic{..} appStore@AppStore{..}
                appCall@AppCallbacks{..} appCh@AppChans{..} lastCommt = do
@@ -198,11 +198,11 @@ decideNewBlock config appValidatorKey
 -- Producer for MessageRx. First we replay WAL and then we read
 -- messages from channels.
 rxMessageSource
-  :: ( MonadIO m, MonadDB m alg a, MonadLogger m, MonadThrow m
-     , Crypto alg, BlockData a)
-  => HeightParameters m alg a
-  -> AppChans alg a
-  -> Producer (MessageRx 'Verified alg a) m r
+  :: ( MonadIO m, MonadDB m a, MonadLogger m, MonadThrow m
+     , Crypto (Alg a), BlockData a)
+  => HeightParameters m a
+  -> AppChans a
+  -> Producer (MessageRx 'Verified a) m r
 rxMessageSource HeightParameters{..} AppChans{..} = do
   -- First we replay messages from WAL. This is very important and
   -- failure to do so may violate protocol safety and possibly
@@ -231,15 +231,15 @@ rxMessageSource HeightParameters{..} AppChans{..} = do
 --     we want to commit yet.
 --  2. Collect stragglers precommits.
 msgHandlerLoop
-  :: ( MonadReadDB m alg a, MonadThrow m, MonadIO m, MonadLogger m
-     , Crypto alg, Exception (BChError a))
-  => HeightParameters m alg a
-  -> AppLogic m alg a
-  -> AppStore m alg a
-  -> AppChans   alg a
-  -> TMState alg a
-  -> Pipe (MessageRx 'Verified alg a) (EngineMessage alg a) m
-      (Commit alg a, ValidatedBlock alg a)
+  :: ( MonadReadDB m a, MonadThrow m, MonadIO m, MonadLogger m
+     , Crypto (Alg a), Exception (BChError a))
+  => HeightParameters m a
+  -> AppLogic m a
+  -> AppStore m a
+  -> AppChans   a
+  -> TMState a
+  -> Pipe (MessageRx 'Verified a) (EngineMessage a) m
+      (Commit a, ValidatedBlock a)
 msgHandlerLoop hParam BChLogic{..} AppStore{..} AppChans{..} = mainLoop Nothing
   where
     height = currentH hParam
@@ -274,11 +274,11 @@ msgHandlerLoop hParam BChLogic{..} AppStore{..} AppChans{..} = mainLoop Nothing
 
 -- Handle message and perform state transitions for both
 handleVerifiedMessage
-  :: (MonadLogger m, Crypto alg)
-  => HeightParameters m alg a
-  -> TMState alg a
-  -> MessageRx 'Verified alg a
-  -> Pipe x (EngineMessage alg a) m (ConsensusResult alg a (TMState alg a))
+  :: (MonadLogger m, Crypto (Alg a))
+  => HeightParameters m a
+  -> TMState a
+  -> MessageRx 'Verified a
+  -> Pipe x (EngineMessage a) m (ConsensusResult a (TMState a))
 handleVerifiedMessage hParam tm = \case
   RxProposal  p -> runConsesusM $ tendermintTransition hParam (ProposalMsg  p) tm
   RxPreVote   v -> runConsesusM $ tendermintTransition hParam (PreVoteMsg   v) tm
@@ -290,11 +290,11 @@ handleVerifiedMessage hParam tm = \case
 -- Verify signature of message. If signature is not correct message is
 -- simply discarded.
 verifyMessageSignature
-  :: (MonadLogger m, Crypto alg)
-  => ValidatorSet alg
-  -> ValidatorSet alg
+  :: (MonadLogger m, Crypto (Alg a))
+  => ValidatorSet (Alg a)
+  -> ValidatorSet (Alg a)
   -> Height
-  -> Pipe (MessageRx 'Unverified alg a) (MessageRx 'Verified alg a) m r
+  -> Pipe (MessageRx 'Unverified a) (MessageRx 'Verified a) m r
 verifyMessageSignature oldValSet valSet height = forever $ do
   await >>= \case
     RxPreVote   sv
@@ -326,12 +326,12 @@ verifyMessageSignature oldValSet valSet height = forever $ do
 
 
 handleEngineMessage
-  :: ( MonadIO m, MonadThrow m, MonadTMMonitoring m, MonadDB m alg a, MonadLogger m
-     , Crypto alg)
-  => HeightParameters n alg a
+  :: ( MonadIO m, MonadThrow m, MonadTMMonitoring m, MonadDB m a, MonadLogger m
+     , Crypto (Alg a))
+  => HeightParameters n a
   -> ConsensusCfg
-  -> AppChans alg a
-  -> Consumer (EngineMessage alg a) m r
+  -> AppChans a
+  -> Consumer (EngineMessage a) m r
 handleEngineMessage HeightParameters{..} ConsensusCfg{..} AppChans{..} = forever $ await >>= \case
   -- Timeout
   EngTimeout t@(Timeout h (Round r) step) -> do
@@ -420,17 +420,17 @@ handleEngineMessage HeightParameters{..} ConsensusCfg{..} AppChans{..} = forever
 ----------------------------------------------------------------
 
 makeHeightParameters
-  :: forall m alg a.
-     ( MonadDB m alg a
+  :: forall m a.
+     ( MonadDB m a
      , MonadIO m
      , MonadThrow m
      , MonadLogger m
-     , Crypto alg, BlockData a)
-  => Maybe (PrivValidator alg)
-  -> AppLogic            m alg a
-  -> AppStore            m alg a
-  -> AppCallbacks        m alg a
-  -> m (HeightParameters m alg a)
+     , Crypto (Alg a), BlockData a)
+  => Maybe (PrivValidator (Alg a))
+  -> AppLogic            m a
+  -> AppStore            m a
+  -> AppCallbacks        m a
+  -> m (HeightParameters m a)
 makeHeightParameters appValidatorKey BChLogic{..} AppStore{..} AppCallbacks{appCanCreateBlock} = do
   bchH <- queryRO $ blockchainHeight
   let currentH = succ bchH
@@ -443,7 +443,7 @@ makeHeightParameters appValidatorKey BChLogic{..} AppStore{..} AppCallbacks{appC
     { hValidatorSet    = valSet
     , oldValidatorSet  = oldValSet
     , validatorKey     = liftA2 (,) appValidatorKey ourIndex
-    , proposerForRound = selectProposer (proposerSelection @a @alg) valSet currentH
+    , proposerForRound = selectProposer (proposerSelection @a) valSet currentH
     --
     , readyCreateBlock = \n ->
         queryRO (retrieveBlockReadyFromWAL currentH n) >>= \case
@@ -554,8 +554,8 @@ makeHeightParameters appValidatorKey BChLogic{..} AppStore{..} AppCallbacks{appC
     }
 
 evidenceCorrect
-  :: forall m alg a. (Crypto alg, BlockData a, MonadIO m, MonadReadDB m alg a)
-  => ByzantineEvidence alg a -> m Bool
+  :: forall m a. (Crypto (Alg a), BlockData a, MonadIO m, MonadReadDB m a)
+  => ByzantineEvidence a -> m Bool
 evidenceCorrect evidence = do
   queryRO (retrieveValidatorSet h) >>= \case
     -- We don't have validator set (vote from future)
@@ -566,7 +566,7 @@ evidenceCorrect evidence = do
         | choice vals propHeight propRound == signedKeyInfo p -> False
         | otherwise                                           -> True
         where
-          choice       = selectProposer (proposerSelection @a @alg)
+          choice       = selectProposer (proposerSelection @a)
           Proposal{..} = signedValue p
       ConflictingPreVote   v1 v2
         | ((/=) `on` voteHeight  . signedValue) v1 v2 -> False
