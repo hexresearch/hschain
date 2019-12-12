@@ -52,14 +52,14 @@ benchmarks
 -- Wallets and initial state
 ----------------------------------------------------------------
 
-privKeys :: [PrivKey Alg]
+privKeys :: [PrivKey (Alg BData)]
 privKeys = take 1000 $ makePrivKeyStream 1337
 
-pubKeys :: [PublicKey Alg]
+pubKeys :: [PublicKey (Alg BData)]
 pubKeys = publicKey <$> privKeys
 
 txGen   :: HSChain.Mock.Coin.TxGenerator
-genesis :: Genesis Alg BData
+genesis :: Genesis BData
 (Just txGen,genesis) = mintMockCoin
   [ Validator k 1 | k <- take 4 pubKeys ]
   CoinSpecification
@@ -70,7 +70,7 @@ genesis :: Genesis Alg BData
     , coinMaxMempoolSize = 1000
     }
 
-state :: EvaluationResult Alg BData
+state :: EvaluationResult BData
 Right state = processBlock coinLogic genesis
 
 generateTxList :: Int -> IO [Tx]

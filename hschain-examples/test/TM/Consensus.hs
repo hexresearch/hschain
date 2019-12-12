@@ -105,7 +105,7 @@ tests = testGroup "eigen-consensus"
 
 -- Test that engine behaves correctly for single round of consensus
 -- when provided with different number of votes
-testConsensusNormal :: Int -> Int -> PrivKey TestAlg -> IO ()
+testConsensusNormal :: Int -> Int -> PrivKey (Alg BData) -> IO ()
 testConsensusNormal nPV nPC k = testConsensus k $ do
   -- Consensus enters new height and proposer
   ()  <- expectStep 1 0 (StepNewHeight 0)
@@ -243,7 +243,7 @@ testWalReplay = withEnvironment $ do
 -- Test case which is used for illustration for necessity of locking
 -- in "Tendermint: byzantine fault tolerance in the age of
 -- blockchains", §3.2.3
-testLocking :: PrivKey TestAlg -> IO ()
+testLocking :: PrivKey (Alg BData) -> IO ()
 testLocking k = testConsensus k $ do
   -- Consensus enters new height and block is proposed
   ()  <- expectStep 1 0 (StepNewHeight 0)
@@ -304,7 +304,7 @@ evidenceIsStoredImmediatelyProp = withEnvironment $ do
     () <- voteFor (Just bid) =<< expectPV
     return ()
   --
-  ev :: [(CBORed (ByzantineEvidence TestAlg BData), Bool)] <- queryRO $
+  ev :: [(CBORed (ByzantineEvidence BData), Bool)] <- queryRO $
     basicQuery_ "SELECT evidence,recorded FROM thm_evidence"
   case ev of
       [(CBORed (OutOfTurnProposal _), False)]
@@ -390,15 +390,15 @@ evidenceIsRecordedProp = withEnvironment $ do
     otherK = take 2 $ filter (/=proposerH2R0) privK
 
 selectAllEvidence
-  :: MonadQueryRO m alg a
-  => m [(CBORed (ByzantineEvidence TestAlg BData), Bool)]
+  :: MonadQueryRO m a
+  => m [(CBORed (ByzantineEvidence BData), Bool)]
 selectAllEvidence
   = basicQuery_ "SELECT evidence,recorded FROM thm_evidence"
 
 
 evidenceValidated
   :: Bool
-  -> ByzantineEvidence TestAlg BData
+  -> ByzantineEvidence BData
   -> IO ()
 evidenceValidated ok ev = testConsensus k4 $ do
   -- HEIGHT 1
@@ -423,7 +423,7 @@ evidenceValidated ok ev = testConsensus k4 $ do
     b  = b0 { blockEvidence = merkled [ev] }
 
 -- Proposals made out of turn
-evidenceOutOfTurn :: Bool -> ByzantineEvidence TestAlg BData
+evidenceOutOfTurn :: Bool -> ByzantineEvidence BData
 evidenceOutOfTurn ok
   = OutOfTurnProposal
   $ signValue i k
@@ -436,11 +436,11 @@ evidenceOutOfTurn ok
 
 conflictingVote,badConflictingvoteOrder,badConflictVoteSame, badConflictVoteDiffR,
   badConflictVoteDiffH,badConflictVoteSign
-  :: (CryptoHashable (Vote ty TestAlg BData))
-  => (forall alg a. Signed 'Unverified alg (Vote ty alg a)
-                 -> Signed 'Unverified alg (Vote ty alg a)
-                 -> ByzantineEvidence alg a)
-  -> ByzantineEvidence TestAlg BData
+  :: (CryptoHashable (Vote ty BData))
+  => (forall a. Signed 'Unverified (Alg a) (Vote ty a)
+             -> Signed 'Unverified (Alg a) (Vote ty a)
+             -> ByzantineEvidence a)
+  -> ByzantineEvidence BData
 -- Conflicting vote
 conflictingVote make = make (min v1 v2) (max v1 v2)
   where
@@ -480,9 +480,9 @@ badConflictVoteSign make = make v1 v2
 
 
 conflictingVotesOK
-  :: (CryptoHashable (Vote v TestAlg BData))
-  => Signed 'Unverified TestAlg (Vote v TestAlg BData)
-  -> Signed 'Unverified TestAlg (Vote v TestAlg BData)
+  :: (CryptoHashable (Vote v BData))
+  => Signed 'Unverified (Alg BData) (Vote v BData)
+  -> Signed 'Unverified (Alg BData) (Vote v BData)
   -> Bool
 conflictingVotesOK v1 v2
   | byzIdx /= signedKeyInfo v1 || byzIdx /= signedKeyInfo v2
@@ -501,17 +501,17 @@ conflictingVotesOK v1 v2
 -- Helpers for running tests
 ----------------------------------------------------------------
 
-type ConsensusM = DBT 'RW TestAlg BData (NoLogsT IO)
+type ConsensusM = DBT 'RW BData (NoLogsT IO)
 
-run :: Connection 'RW TestAlg BData -> ConsensusM a -> IO a
+run :: Connection 'RW BData -> ConsensusM a -> IO a
 run c = runNoLogsT . runDBT c
 
 withEnvironment :: ConsensusM x -> IO x
 withEnvironment act = withDatabase "" $ \conn -> run conn act
 
 execConsensus
-  :: PrivKey TestAlg
-  -> Expect ConsensusM TestAlg BData ()
+  :: PrivKey (Alg BData)
+  -> Expect ConsensusM BData ()
   -> ConsensusM ()
 execConsensus k messages = do
   (chans, action) <- startConsensus k
@@ -521,13 +521,13 @@ execConsensus k messages = do
     ]
 
 -- Simple test of consensus
-testConsensus :: PrivKey TestAlg -> Expect ConsensusM TestAlg BData () -> IO ()
+testConsensus :: PrivKey (Alg BData) -> Expect ConsensusM BData () -> IO ()
 testConsensus k messages = withEnvironment $ execConsensus k messages
 
 startConsensus
-  :: PrivKey TestAlg
-  -> ConsensusM ( ( TChan   (MessageTx TestAlg BData)
-                  , TBQueue (MessageRx 'Unverified TestAlg BData)
+  :: PrivKey (Alg BData)
+  -> ConsensusM ( ( TChan   (MessageTx BData)
+                  , TBQueue (MessageRx 'Unverified BData)
                   )
                 , ConsensusM ()
                 )
@@ -547,48 +547,48 @@ startConsensus k = do
 proposerChoice :: Crypto alg => ValidatorSet alg -> Height -> Round -> ValidatorIdx alg
 proposerChoice = randomProposerSHA512
 
-proposerKey :: Height -> Round -> PrivKey TestAlg
+proposerKey :: Height -> Round -> PrivKey (Alg BData)
 proposerKey h r = head [ k | k <- privK
                            , publicKey k == validatorPubKey v
                            ]
   where    
     Just v = validatorByIndex valSet $ proposerChoice valSet h r
 
-proposerH1R0,proposerH2R0 :: PrivKey TestAlg
+proposerH1R0,proposerH2R0 :: PrivKey (Alg BData)
 proposerH1R0 = proposerKey (Height 1) (Round 0)
 proposerH2R0 = proposerKey (Height 2) (Round 0)
 
-othersH1R0 :: [PrivKey TestAlg]
+othersH1R0 :: [PrivKey (Alg BData)]
 othersH1R0 = filter (/=proposerH1R0) privK
 
 ----------------------------------------------------------------
 -- High level API for interacting with consensus engine
 ----------------------------------------------------------------
 
-type Expect m alg a = FreeT (ExpectF alg a) m
+type Expect m a = FreeT (ExpectF a) m
 
-expectStep :: Monad m => Int64 -> Int64 -> Step -> Expect m alg a ()
+expectStep :: Monad m => Int64 -> Int64 -> Step -> Expect m a ()
 expectStep h r s = wrap $ ExpectStep (Height h) (Round r) s (return ())
 
-expectProp :: Monad m => Expect m alg a (Proposal alg a)
+expectProp :: Monad m => Expect m a (Proposal a)
 expectProp = wrap $ ExpectProp return
 
-expectPV :: Monad m => Expect m alg a (Vote 'PreVote alg a)
+expectPV :: Monad m => Expect m a (Vote 'PreVote a)
 expectPV = wrap $ ExpectPV return
 
-expectPC :: Monad m => Expect m alg a (Vote 'PreCommit alg a)
+expectPC :: Monad m => Expect m a (Vote 'PreCommit a)
 expectPC = wrap $ ExpectPC return
 
-reply :: Monad m => [MessageRx 'Unverified alg a] -> Expect m alg a ()
+reply :: Monad m => [MessageRx 'Unverified a] -> Expect m a ()
 reply msg = wrap $ Reply msg (return ())
 
 prevote
-  :: (Monad m, Crypto alg)
+  :: (Monad m, Crypto (Alg a))
   => Height
   -> Round
-  -> [PrivKey alg]
-  -> Maybe (BlockID alg a)
-  -> Expect m alg a()
+  -> [PrivKey (Alg a)]
+  -> Maybe (BlockID a)
+  -> Expect m a ()
 prevote h r keys mbid = do
   vals <- wrap $ GetValSet return
   reply [ RxPreVote $ signValue i k $ Vote h r (Time 0) mbid
@@ -597,12 +597,12 @@ prevote h r keys mbid = do
         ]
 
 precommit
-  :: (Monad m, Crypto alg)
+  :: (Monad m, Crypto (Alg a))
   => Height
   -> Round
-  -> [PrivKey alg]
-  -> Maybe (BlockID alg a)
-  -> Expect m alg a()
+  -> [PrivKey (Alg a)]
+  -> Maybe (BlockID a)
+  -> Expect m a()
 precommit h r keys mbid = do
   vals <- wrap $ GetValSet return
   reply [ RxPreCommit $ signValue i k $ Vote h r (Time 0) mbid
@@ -611,11 +611,11 @@ precommit h r keys mbid = do
         ]
 
 proposeBlock
-  :: (Monad m, Crypto alg)
+  :: (Monad m, Crypto (Alg a))
   => Round
-  -> PrivKey alg
-  -> Block alg a
-  -> Expect m alg a (BlockID alg a)
+  -> PrivKey (Alg a)
+  -> Block  a
+  -> Expect m a (BlockID a)
 proposeBlock r k b = do
   vals <- wrap $ GetValSet return
   reply [ let Just i = indexByValidator vals (publicKey k)
@@ -628,8 +628,8 @@ proposeBlock r k b = do
     bid = blockHash b
 
 voteFor
-  :: forall m ty alg a. (Typeable ty, Monad m)
-  => (Maybe (BlockID alg a)) -> Vote ty alg a -> m ()
+  :: forall m ty a. (Typeable ty, Monad m)
+  => (Maybe (BlockID a)) -> Vote ty a -> m ()
 voteFor mbid v
   | mbid == voteBlockID v = return ()
   | otherwise             = error $ unlines
@@ -650,13 +650,13 @@ voteFor mbid v
 
 -- What message do we expect from consensus engine and how should we
 -- react to it.
-data ExpectF alg a x
+data ExpectF a x
   = ExpectStep Height Round Step x
-  | ExpectProp (Proposal        alg a -> x)
-  | ExpectPV   (Vote 'PreVote   alg a -> x)
-  | ExpectPC   (Vote 'PreCommit alg a -> x)
-  | Reply      [MessageRx 'Unverified alg a] x
-  | GetValSet  (ValidatorSet alg -> x)
+  | ExpectProp (Proposal        a -> x)
+  | ExpectPV   (Vote 'PreVote   a -> x)
+  | ExpectPC   (Vote 'PreCommit a -> x)
+  | Reply      [MessageRx 'Unverified a] x
+  | GetValSet  (ValidatorSet (Alg a) -> x)
   deriving (Functor)
 
 -- Read outbound messages from consensus engine and reply to it
@@ -664,11 +664,11 @@ data ExpectF alg a x
 -- exception
 expect
   :: (MonadIO m)
-  => ValidatorSet alg
-  -> ( TChan   (MessageTx alg a)
-     , TBQueue (MessageRx 'Unverified alg a)
+  => ValidatorSet (Alg a)
+  -> ( TChan (MessageTx a)
+     , TBQueue (MessageRx 'Unverified a)
      )
-  -> Expect m alg a ()
+  -> Expect m a ()
   -> m ()
 expect vals (chTx, chRx) expected = do
   iterT step expected

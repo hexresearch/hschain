@@ -24,7 +24,7 @@ import qualified Data.Map.Strict as Map
 import qualified Data.Set        as Set
 
 
-handler :: Handler AheadState Event alg a m
+handler :: Handler AheadState Event a m
 handler =
   handlerGeneric
    handlerGossipMsg
@@ -32,13 +32,13 @@ handler =
    handlerMempoolTimeout
    handlerBlocksTimeout
 
-issuedGossipHandler :: Handler AheadState GossipMsg alg a m
+issuedGossipHandler :: Handler AheadState GossipMsg a m
 issuedGossipHandler =
   issuedGossipHandlerGeneric
     handlerGossipMsg
     advanceOurHeignt
 
-handlerGossipMsg :: MessageHandler AheadState alg a m
+handlerGossipMsg :: MessageHandler AheadState a m
 handlerGossipMsg = \case
     GossipAnn (AnnStep step@(FullStep h _ _)) -> do
       -- Don't go back.
@@ -52,7 +52,7 @@ handlerGossipMsg = \case
     _ -> currentState
 
 ----------------------------------------------------------------
-advanceOurHeignt :: AdvanceOurHeight AheadState alg a m
+advanceOurHeignt :: AdvanceOurHeight AheadState a m
 advanceOurHeignt (FullStep ourH _ _) = do
   step@(FullStep h _ _) <- use aheadPeerStep
   if h == ourH then
@@ -69,17 +69,17 @@ advanceOurHeignt (FullStep ourH _ _) = do
      else currentState
 ----------------------------------------------------------------
 
-handlerVotesTimeout :: TimeoutHandler AheadState alg a m
+handlerVotesTimeout :: TimeoutHandler AheadState a m
 handlerVotesTimeout = currentState
 
 ----------------------------------------------------------------
 
-handlerMempoolTimeout :: TimeoutHandler AheadState alg a m
+handlerMempoolTimeout :: TimeoutHandler AheadState a m
 handlerMempoolTimeout = do
   advanceMempoolCursor
   currentState
 ----------------------------------------------------------------
 
-handlerBlocksTimeout :: TimeoutHandler AheadState alg a m
+handlerBlocksTimeout :: TimeoutHandler AheadState a m
 handlerBlocksTimeout = currentState
 

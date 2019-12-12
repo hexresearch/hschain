@@ -50,7 +50,7 @@ allocateMockNetAddrs net topo nodes =
 allocNode
   :: ( MonadIO m, MonadMask m, Has x NodeSpec)
   => x                          -- ^ Node parameters
-  -> ContT r m (Connection 'RW alg a, LogEnv)
+  -> ContT r m (Connection 'RW a, LogEnv)
 allocNode x = do
   liftIO $ createDirectoryIfMissing True $ takeDirectory dbname
   conn   <- ContT $ withDatabase dbname
@@ -61,7 +61,7 @@ allocNode x = do
 
 -- | Callback which aborts execution when blockchain exceed given
 --   height. It's done by throwing 'Abort'.
-callbackAbortAtH :: MonadThrow m => Height -> AppCallbacks m alg a
+callbackAbortAtH :: MonadThrow m => Height -> AppCallbacks m a
 callbackAbortAtH hMax = mempty
   { appCommitCallback = \b ->
       when (blockHeight b > hMax) $ throwM Abort

@@ -1,4 +1,5 @@
 {-# LANGUAGE DataKinds           #-}
+{-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE FlexibleInstances   #-}
 {-# LANGUAGE KindSignatures      #-}
 {-# LANGUAGE LambdaCase          #-}
@@ -19,18 +20,18 @@ import HSChain.Types.Blockchain
 
 
 -- | Status of block validation.
-data BlockValState alg a
-  = UntestedBlock !(Block alg a)
+data BlockValState a
+  = UntestedBlock !(Block a)
   -- ^ We haven't validated block yet
   | UnknownBlock
   -- ^ We haven't even seen block yet
-  | GoodBlock     !(ValidatedBlock alg a)
+  | GoodBlock     !(ValidatedBlock a)
   -- ^ Block is good. We also cache state and new validator set
   | InvalidBlock
   -- ^ Block is invalid so there's no point in storing (and gossiping)
   --   it.
 
-blockFromBlockValidation :: BlockValState alg a -> Maybe (Block alg a)
+blockFromBlockValidation :: BlockValState a -> Maybe (Block a)
 blockFromBlockValidation = \case
   UntestedBlock b -> Just b
   GoodBlock     b -> Just $ bchValue b
@@ -38,25 +39,25 @@ blockFromBlockValidation = \case
   InvalidBlock    -> Nothing
 
 
-data Props alg a = Props
-  { propsBIDmap   :: !(Map (BlockID alg a) (BlockValState alg a))
-  , propsRoundMap :: !(Map Round (BlockID alg a))
+data Props a = Props
+  { propsBIDmap   :: !(Map (BlockID a) (BlockValState a))
+  , propsRoundMap :: !(Map Round (BlockID a))
   }
 
-emptyProps :: Props alg a
+emptyProps :: Props a
 emptyProps = Props mempty mempty
 
-proposalByBID :: Props alg a -> BlockID alg a -> BlockValState alg a
+proposalByBID :: Props a -> BlockID a -> BlockValState a
 proposalByBID Props{..} bid
   = fromMaybe UnknownBlock
   $ bid `Map.lookup` propsBIDmap
 
-proposalByR :: Props alg a -> Round -> Maybe (BlockID alg a, BlockValState alg a)
+proposalByR :: Props a -> Round -> Maybe (BlockID a, BlockValState a)
 proposalByR ps@Props{..} r = do
   bid <- r   `Map.lookup` propsRoundMap
   return (bid, proposalByBID ps bid)
 
-setProposalValidation :: BlockID alg a -> Maybe (EvaluationResult alg a) -> Props alg a -> Props alg a
+setProposalValidation :: BlockID a -> Maybe (EvaluationResult a) -> Props a -> Props a
 setProposalValidation bid mst Props{..} = Props
   { propsBIDmap = Map.adjust update bid propsBIDmap
   , ..
@@ -73,7 +74,7 @@ setProposalValidation bid mst Props{..} = Props
         _               -> error "CANT HAPPEN"
 
 
-acceptBlockID :: Round -> BlockID alg a -> Props alg a -> Props alg a
+acceptBlockID :: Round -> BlockID a -> Props a -> Props a
 acceptBlockID r bid Props{..} = Props
   { propsRoundMap = Map.insert r bid propsRoundMap
   -- NOTE: We can already have block with given BID in map. It could
@@ -84,7 +85,7 @@ acceptBlockID r bid Props{..} = Props
                               ) bid propsBIDmap
   }
 
-addBlockToProps :: (Crypto alg) => Block alg a -> Props alg a -> Props alg a
+addBlockToProps :: (Crypto (Alg a)) => Block a -> Props a -> Props a
 addBlockToProps blk Props{..} = Props
   { propsBIDmap = Map.adjust (\case
                                  UnknownBlock -> UntestedBlock blk

@@ -74,7 +74,7 @@ data Opts = Opts
   }
 
 data NodeCfg = NodeCfg
-  { validatorKeys :: [PublicKey Alg]
+  { validatorKeys :: [PublicKey (Alg BData)]
   , nodePort      :: Word16
   , nodeSeeds     :: [P2PT.NetAddr]
   , nodeMaxH      :: Maybe Height

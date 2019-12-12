@@ -20,11 +20,11 @@ import qualified HSChain.P2P.PeerState.Handle.Lagging as Lagging
 import qualified HSChain.P2P.PeerState.Handle.Unknown as Unknown
 
 
-handler :: (CryptoHashable a, HandlerCtx alg a m)
-        => Config m alg a
-        -> State alg a
-        -> Event alg a
-        -> m (State alg a, [Command alg a])
+handler :: (CryptoHashable a, HandlerCtx a m)
+        => Config m a
+        -> State a
+        -> Event a
+        -> m (State a, [Command a])
 handler config st event = do
   (st',cmds) <- case st of
     Lagging s -> runTransitionT (Lagging.handler event) config s
@@ -34,11 +34,11 @@ handler config st event = do
   second (cmds <>) <$> handleIssuedGossip config st' [ c | Push2Gossip c <- cmds ]
 
 
-handleIssuedGossip :: HandlerCtx alg a m
-                   => Config m alg a
-                   -> State alg a
-                   -> [GossipMsg alg a]
-                   -> m (State alg a, [Command alg a])
+handleIssuedGossip :: HandlerCtx a m
+                   => Config m a
+                   -> State a
+                   -> [GossipMsg a]
+                   -> m (State a, [Command a])
 handleIssuedGossip config st = foldM (\ (s',cmds) msg -> second (cmds<>) <$> case s' of
   Lagging s -> runTransitionT (Lagging.issuedGossipHandler msg) config s
   Current s -> runTransitionT (Current.issuedGossipHandler msg) config s

@@ -157,10 +157,9 @@ testValidatorChange = do
       , netMaxH     = Just $ Height 10
       }
 
-type Alg = Ed25519 :& SHA512
 
-data Tx = AddVal !(PublicKey Alg) !Integer
-        | RmVal  !(PublicKey Alg)
+data Tx = AddVal !(PublicKey (Alg Tx)) !Integer
+        | RmVal  !(PublicKey (Alg Tx))
         | Noop
   deriving stock    (Show,Eq,Ord,Generic)
   deriving anyclass (NFData,Serialise)
@@ -174,25 +173,28 @@ data ValErr = ValErr
 
 instance BlockData Tx where
   type TX              Tx = Tx
-  type BlockchainState Tx = ValidatorSet Alg
+  type BlockchainState Tx = ValidatorSet (Ed25519 :& SHA512)
   type BChError        Tx = ValErr
-  blockTransactions        = pure
-  logBlockData             = mempty
-  proposerSelection        = ProposerSelection randomProposerSHA512
+  type BChMonad        Tx = Maybe
+  type Alg             Tx = Ed25519 :& SHA512
+  blockTransactions       = pure
+  bchLogic                = transitions
+  logBlockData            = mempty
+  proposerSelection       = ProposerSelection randomProposerSHA512
 
-privK :: [PrivKey Alg]
+privK :: [PrivKey (Alg Tx)]
 privK = take 4 $ makePrivKeyStream 1337
 
-pk1,pk2,pk3,pk4 :: PublicKey Alg
+pk1,pk2,pk3,pk4 :: PublicKey (Alg Tx)
 [pk1,pk2,pk3,pk4] = map publicKey privK
 
-valSet0,valSet3,valSet6,valSet8 :: ValidatorSet Alg
+valSet0,valSet3,valSet6,valSet8 :: ValidatorSet (Alg Tx)
 Right valSet0 = makeValidatorSet [Validator k 1 | k <- [pk1,pk2        ]]
 Right valSet3 = makeValidatorSet [Validator k 1 | k <- [pk1,pk2,pk3    ]]
 Right valSet6 = makeValidatorSet [Validator k 1 | k <- [pk1,pk2,pk3,pk4]]
 Right valSet8 = makeValidatorSet [Validator k 1 | k <- [    pk2,pk3,pk4]]
 
-transitions :: BChLogic Maybe Alg Tx
+transitions :: BChLogic Maybe Tx
 transitions = BChLogic
   { processTx     = \_ -> empty
   --
@@ -221,8 +223,6 @@ transitions = BChLogic
                          . filter ((/=k) . validatorPubKey)
     process (RmVal  k)   = filter ((/=k) . validatorPubKey)
 
-runner :: Monad m => Interpreter Maybe m Alg Tx
-runner = Interpreter $ ExceptT . return . maybe (Left ValErr) Right
 
 
 ----------------------------------------------------------------
@@ -230,15 +230,15 @@ runner = Interpreter $ ExceptT . return . maybe (Left ValErr) Right
 ----------------------------------------------------------------
 
 interpretSpec
-  :: ( MonadDB m Alg Tx, MonadFork m, MonadMask m, MonadLogger m
+  :: ( MonadDB m Tx, MonadFork m, MonadMask m, MonadLogger m
      , MonadTrace m, MonadTMMonitoring m
      , Has x BlockchainNet
      , Has x NodeSpec
      , Has x (Configuration Example))
-  => Genesis Alg Tx
+  => Genesis Tx
   -> x
-  -> AppCallbacks m Alg Tx
-  -> m (RunningNode m Alg Tx, [m ()])
+  -> AppCallbacks m Tx
+  -> m (RunningNode m Tx, [m ()])
 interpretSpec genesis p cb = do
   conn  <- askConnectionRO
   store <- newSTMBchStorage $ blockchainState genesis
@@ -249,7 +249,8 @@ interpretSpec genesis p cb = do
     { nodeValidationKey = p ^.. nspecPrivKey
     , nodeGenesis       = genesis
     , nodeCallbacks     = cb
-    , nodeLogic         = makeAppLogic transitions runner
+    , nodeRunner        = Interpreter $ ExceptT . return . maybe (Left ValErr) Right
+
     , nodeStore         = astore
     , nodeNetwork       = getT p
     }
@@ -264,7 +265,7 @@ interpretSpec genesis p cb = do
 
 prepareResources
   :: (MonadIO m, MonadMask m)
-  => NetSpec NodeSpec -> ContT r m [(BlockchainNet :*: NodeSpec, (Connection 'RW alg a, LogEnv))]
+  => NetSpec NodeSpec -> ContT r m [(BlockchainNet :*: NodeSpec, (Connection 'RW a, LogEnv))]
 prepareResources NetSpec{..} = do
   -- Create mock network and allocate DB handles for nodes
   net <- liftIO P2P.newMockNet
@@ -276,12 +277,12 @@ prepareResources NetSpec{..} = do
 executeNodeSpec
   :: (MonadIO m, MonadMask m, MonadFork m, MonadTrace m, MonadTMMonitoring m)
   => NetSpec NodeSpec
-  -> [(BlockchainNet :*: NodeSpec, (Connection 'RW Alg Tx, LogEnv))]
-  -> ContT r m [RunningNode m Alg Tx]
+  -> [(BlockchainNet :*: NodeSpec, (Connection 'RW Tx, LogEnv))]
+  -> ContT r m [RunningNode m Tx]
 executeNodeSpec NetSpec{..} resources = do
   -- Start nodes
   rnodes    <- lift $ forM resources $ \(x, (conn, logenv)) -> do
-    let run :: DBT 'RW Alg Tx (LoggerT m) x -> m x
+    let run :: DBT 'RW Tx (LoggerT m) x -> m x
         run = runLoggerT logenv . runDBT conn
     (rn, acts) <- run $ interpretSpec
       BChEval { bchValue        = genesis

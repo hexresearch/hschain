@@ -1,7 +1,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs            #-}
 {-# LANGUAGE LambdaCase       #-}
-
 module HSChain.P2P.PeerState.Handle.Unknown
   ( handler
   , issuedGossipHandler
@@ -14,7 +13,7 @@ import HSChain.P2P.PeerState.Types
 
 import HSChain.P2P.PeerState.Handle.Utils
 
-handler :: Handler UnknownState Event alg a m
+handler :: Handler UnknownState Event a m
 handler =
   handlerGeneric
    handlerGossipMsg
@@ -22,32 +21,32 @@ handler =
    handlerMempoolTimeout
    handlerBlocksTimeout
 
-issuedGossipHandler :: Handler UnknownState GossipMsg alg a m
+issuedGossipHandler :: Handler UnknownState GossipMsg a m
 issuedGossipHandler =
   issuedGossipHandlerGeneric
     handlerGossipMsg
     advanceOurHeight
 
-handlerGossipMsg :: MessageHandler UnknownState alg a m
+handlerGossipMsg :: MessageHandler UnknownState a m
 handlerGossipMsg = \case
   GossipAnn (AnnStep step) -> advancePeer step
   _                        -> currentState
 
 ----------------------------------------------------------------
 
-advanceOurHeight :: AdvanceOurHeight UnknownState alg a m
+advanceOurHeight :: AdvanceOurHeight UnknownState a m
 advanceOurHeight = const currentState
 ----------------------------------------------------------------
 
-handlerVotesTimeout :: TimeoutHandler UnknownState alg a m
+handlerVotesTimeout :: TimeoutHandler UnknownState a m
 handlerVotesTimeout = currentState
 
 ----------------------------------------------------------------
 
-handlerMempoolTimeout :: TimeoutHandler UnknownState alg a m
+handlerMempoolTimeout :: TimeoutHandler UnknownState a m
 handlerMempoolTimeout = currentState
 ----------------------------------------------------------------
 
-handlerBlocksTimeout :: TimeoutHandler UnknownState alg a m
+handlerBlocksTimeout :: TimeoutHandler UnknownState a m
 handlerBlocksTimeout = currentState
 
