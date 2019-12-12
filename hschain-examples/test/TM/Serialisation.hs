@@ -21,9 +21,6 @@ import Test.QuickCheck.Arbitrary
 import Test.Tasty
 import Test.Tasty.QuickCheck
 
-import HSChain.Crypto         ((:&))
-import HSChain.Crypto.Ed25519 (Ed25519)
-import HSChain.Crypto.SHA     (SHA512)
 import HSChain.Types.Blockchain
 import HSChain.P2P.Types      (NetAddr)
 import HSChain.Mock.KeyVal    (BData(..))

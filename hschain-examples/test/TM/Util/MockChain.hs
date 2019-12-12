@@ -12,8 +12,6 @@ import HSChain.Types.Merkle.Types
 import HSChain.Mock.KeyList
 import HSChain.Mock.KeyVal  (BData(..),BState,mkGenesisBlock)
 
-import TM.Util.Network
-
 
 ----------------------------------------------------------------
 -- Validators for mockchain

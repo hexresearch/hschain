@@ -41,9 +41,6 @@ import qualified HSChain.Mock.KeyVal as Mock
 import           HSChain.Mock.KeyVal   (BData)
 import HSChain.Blockchain.Internal.Engine.Types
 import HSChain.Control
-import HSChain.Crypto                           ((:&))
-import HSChain.Crypto.Ed25519                   (Ed25519)
-import HSChain.Crypto.SHA                       (SHA512)
 import HSChain.Debug.Trace
 import HSChain.Logger
 import HSChain.Mock.Types
