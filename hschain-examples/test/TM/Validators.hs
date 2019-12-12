@@ -249,7 +249,7 @@ interpretSpec genesis p cb = do
     { nodeValidationKey = p ^.. nspecPrivKey
     , nodeGenesis       = genesis
     , nodeCallbacks     = cb
-    , nodeRunner        = Interpreter $ ExceptT . return . maybe (Left ValErr) Right
+    , nodeRunner        = maybe (throwE ValErr) return
 
     , nodeStore         = astore
     , nodeNetwork       = getT p

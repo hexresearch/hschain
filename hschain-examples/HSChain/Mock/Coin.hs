@@ -33,7 +33,6 @@ module HSChain.Mock.Coin (
   , transactionGenerator
   , TxGenerator(..)
     -- * Interpretation
-  , runner
   , interpretSpec
   , RunningNode(..)
   , executeNodeSpec
@@ -378,9 +377,6 @@ findInputs tgt = go 0
 -- Interpretation of coin
 ----------------------------------------------------------------
 
-runner :: Monad m => Interpreter m BData
-runner = Interpreter (ExceptT . return)
-
 interpretSpec
   :: ( MonadDB m BData, MonadFork m, MonadMask m, MonadLogger m
      , MonadTrace m, MonadTMMonitoring m
@@ -394,12 +390,12 @@ interpretSpec
 interpretSpec genesis p cb = do
   conn    <- askConnectionRO
   store   <- newSTMBchStorage $ blockchainState genesis
-  mempool <- makeMempool store logic
+  mempool <- makeMempool store $ hoistDict (ExceptT . return) bchLogic
   acts <- runNode (getT p :: Configuration Example) NodeDescription
     { nodeValidationKey = p ^.. nspecPrivKey
     , nodeGenesis       = genesis
     , nodeCallbacks     = cb <> nonemptyMempoolCallback mempool
-    , nodeRunner        = Interpreter $ either throwE return
+    , nodeRunner        = ExceptT . return
     , nodeStore         = AppStore { appBchState = store
                                    , appMempool  = mempool
                                    }
@@ -412,8 +408,6 @@ interpretSpec genesis p cb = do
                   }
     , acts
     )
-  where
-    logic = makeAppLogic coinLogic runner
 
 executeNodeSpec
   :: (MonadIO m, MonadMask m, MonadFork m, MonadTrace m, MonadTMMonitoring m)

@@ -11,11 +11,9 @@
 module HSChain.Run (
     -- * New node code
     runNode
-  , makeAppLogic
   , makeMempool
   , NodeDescription(..)
   , BlockchainNet(..)
-  , Interpreter(..)
     -- ** Configuration and timeouts
   , DefaultConfig(..)
   , Configuration(..)
@@ -53,13 +51,6 @@ import HSChain.Utils
 --
 ----------------------------------------------------------------
 
--- | Interpreter for mond in which evaluation of blockchain is
---   performed
-newtype Interpreter m a = Interpreter
-  { interpretBCh :: forall x. BChMonad a x -> ExceptT (BChError a) m x
-  }
-
-
 -- | Create default mempool which checks transactions against current
 --   state
 makeMempool
@@ -82,22 +73,13 @@ makeMempool store BChLogic{..} =
                                    , validatorSet    = vs
                                    }
 
-
--- | Create 'AppLogic' which should be then passed to 'runNode' from
---   description of blockchain logic and storage of blockchain state.
-makeAppLogic
-  :: BChLogic (BChMonad a) a -- ^ Blockchain logic
-  -> Interpreter m a         -- ^ Runner for logic
-  -> AppLogic m a
-makeAppLogic logic Interpreter{..} = hoistDict interpretBCh logic
-
 -- | Specification of node
 data NodeDescription m a = NodeDescription
   { nodeValidationKey :: !(Maybe (PrivValidator (Alg a)))
     -- ^ Private key of validator.
   , nodeGenesis       :: !(Genesis a)
     -- ^ Genesis block of node
-  , nodeRunner        :: !(Interpreter m a)
+  , nodeRunner        :: !(forall x. BChMonad a x -> ExceptT (BChError a) m x)
     -- ^ Function for evaluation of blockchain transitions
   , nodeStore         :: !(AppStore m a)
     -- ^ Storage for state of blockchain.
@@ -127,7 +109,7 @@ runNode
   -> NodeDescription m a    -- ^ Description of node.
   -> m [m ()]
 runNode cfg NodeDescription{..} = do
-  let logic@BChLogic{..} = makeAppLogic bchLogic nodeRunner
+  let logic@BChLogic{..} = hoistDict nodeRunner bchLogic
       AppStore{..}       = nodeStore
       BlockchainNet{..}  = nodeNetwork
       appCall = mempoolFilterCallback appMempool
