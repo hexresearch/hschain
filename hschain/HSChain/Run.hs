@@ -86,10 +86,7 @@ makeMempool store BChLogic{..} =
 -- | Create 'AppLogic' which should be then passed to 'runNode' from
 --   description of blockchain logic and storage of blockchain state.
 makeAppLogic
-  :: ( MonadDB m alg a, MonadMask m, MonadIO m
-     , BlockData a, Show (TX a), Ord (TX a), Crypto alg
-     )
-  => BChLogic    q   alg a      -- ^ Blockchain logic
+  :: BChLogic    q   alg a      -- ^ Blockchain logic
   -> Interpreter q m alg a      -- ^ Runner for logic
   -> AppLogic m alg a
 makeAppLogic logic Interpreter{..} = hoistDict interpretBCh logic
