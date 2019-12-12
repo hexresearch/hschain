@@ -119,7 +119,7 @@ interpretSpec genesis p cb = do
     { nodeValidationKey = p ^.. nspecPrivKey
     , nodeGenesis       = genesis
     , nodeCallbacks     = cb
-    , nodeRunner        = Interpreter (hoist liftIO)
+    , nodeRunner        = hoist liftIO
     , nodeStore         = astore
     , nodeNetwork       = getT p
     }
