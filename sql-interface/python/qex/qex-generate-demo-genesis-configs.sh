@@ -75,9 +75,24 @@ INSERT INTO $walletDemoTableName
 INSERT INTO $walletDemoTableName
             (wallet_id, amount, asset_name)
             VALUES ('$pubkey6', 1000000000000000, 'buble');
+
+CREATE TABLE sell_bids
+  ( height        INTEGER NOT NULL
+  , seq_index     INTEGER NOT NULL -- order of bids placed at same height.
+  , wallet_id     TEXT NOT NULL
+  , asset_name    TEXT NOT NULL -- selling this
+  , amount        INTEGER NOT NULL
+  , purchase_asset_name TEXT NOT NULL -- purchasing that
+  , purchase_amount INTEGER NOT NULL
+  , CONSTRAINT height_seq_index_ordering PRIMARY KEY (height, seq_index)
+  , CONSTRAINT selling_valid_asset FOREIGN KEY (asset_name) REFERENCES allowed_assets (asset_name)
+  , CONSTRAINT purchasing_valid_asset FOREIGN KEY (purchase_asset_name) REFERENCES allowed_assets (asset_name)
+  , CONSTRAINT selling_valid_amount CHECK (amount > 0)
+  , CONSTRAINT purchasing_valid_amount CHECK (purchase_amount > 0)
+  );
 "
 
-request="\
+transfer_request="\
 UPDATE $walletDemoTableName \
 SET amount = CASE \
 WHEN wallet_id = :user_id      THEN amount - :transfer_amount \
@@ -88,7 +103,7 @@ AND :transfer_amount > 0
 AND :asset_name == asset_name;"
 
 add_transfer_request=$(cabal new-exec -- hschain-sql-utils add-request-code \
-  --request "$request" --id "transfer" --positive transfer_amount \
+  --request "$transfer_request" --id "transfer" --positive transfer_amount \
   --string user_id --string dest_user_id --string asset_name
   )
 

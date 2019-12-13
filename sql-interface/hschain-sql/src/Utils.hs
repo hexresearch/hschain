@@ -59,7 +59,7 @@ commandAction (MandatorySystemTables userTables initialRequests keyRoles) = do
     , "    , salt       TEXT    NOT NULL -- salt for request"
     , "    , CONSTRAINT serialized_requests_primary_key PRIMARY KEY (height, seq_index)"
     , "    , CONSTRAINT must_have_request_id FOREIGN KEY (request_id) REFERENCES allowed_requests(request_id)"
-    , "    , CONSTRAINT salts_are_unique UNIQUE salt"
+    , "    , CONSTRAINT salts_are_unique UNIQUE (salt)"
     , "    );"
     , ""
     , "-- special table that keeps actual parameter values for seriqlized requests"
