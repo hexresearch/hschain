@@ -25,45 +25,50 @@ commandAction (MandatorySystemTables userTables initialRequests keyRoles) = do
   addStatements userTables
   addStatements $
     [ "-- special table - current height. keep it single-valued."
-    , "CREATE TABLE height (height INTEGER);"
+    , "CREATE TABLE height (height INTEGER NOT NULL);"
     , "INSERT INTO height (height) VALUES (-1); -- not even genesis was read"
     , ""
     , "-- special table - allowed requests."
     , "CREATE TABLE allowed_requests"
-    , "    ( request_id TEXT PRIMARY KEY -- we expect hash here, for now any string would do."
-    , "    , request_text TEXT"
+    , "    ( request_id TEXT PRIMARY KEY NOT NULL-- we expect hash here, for now any string would do."
+    , "    , request_text TEXT NOT NULL"
     , "    , CONSTRAINT non_empty_request_id CHECK (length(request_id) > 0)"
     , "    , CONSTRAINT non_empty_request_text CHECK (length(request_text) > 0)"
     , "    );"
     , ""
     , "-- special table - parameters for requests."
     , "CREATE TABLE allowed_requests_params"
-    , "    ( request_id TEXT"
-    , "    , request_param_name TEXT"
-    , "    , request_param_type TEXT"
+    , "    ( request_id TEXT NOT NULL"
+    , "    , request_param_name TEXT NOT NULL"
+    , "    , request_param_type TEXT NOT NULL"
     , "    , CONSTRAINT unique_param_for_request UNIQUE (request_id, request_param_name)"
     , "    , CONSTRAINT request_must_exist FOREIGN KEY (request_id) REFERENCES allowed_requests(request_id)"
     , "    , CONSTRAINT correct_type CHECK (request_param_type = 'S' OR request_param_type = 'I' OR request_param_type = 'P')"
     , "    );"
+    , "CREATE TABLE postprocessing_requests"
+    , "     ( request_id TEXT NOT NULL UNIQUE"
+    , "     , request_text TEXT NOT NULL);"
     ]
   addStatements initialRequests
   addStatements
     [ "-- special table that keeps serialized requests"
     , "CREATE TABLE serialized_requests"
-    , "    ( height     INTEGER -- height for request"
-    , "    , seq_index  INTEGER -- order inside the height"
-    , "    , request_id TEXT  -- the request id"
+    , "    ( height     INTEGER NOT NULL -- height for request"
+    , "    , seq_index  INTEGER NOT NULL -- order inside the height"
+    , "    , request_id TEXT    NOT NULL -- the request id"
+    , "    , salt       TEXT    NOT NULL -- salt for request"
     , "    , CONSTRAINT serialized_requests_primary_key PRIMARY KEY (height, seq_index)"
     , "    , CONSTRAINT must_have_request_id FOREIGN KEY (request_id) REFERENCES allowed_requests(request_id)"
+    , "    , CONSTRAINT salts_are_unique UNIQUE salt"
     , "    );"
     , ""
     , "-- special table that keeps actual parameter values for seriqlized requests"
     , "CREATE TABLE serialized_requests_params"
-    , "    ( height     INTEGER -- height for request"
-    , "    , seq_index  INTEGER -- order inside the height"
-    , "    , request_id TEXT  -- the text itself. must be request_id"
-    , "    , request_param_name  TEXT -- name of the parameter"
-    , "    , request_param_value TEXT -- and value of the parameter, interpreted according to the type from allowed_requests_params table"
+    , "    ( height     INTEGER NOT NULL -- height for request"
+    , "    , seq_index  INTEGER NOT NULL -- order inside the height"
+    , "    , request_id TEXT    NOT NULL -- the text itself. must be request_id"
+    , "    , request_param_name  TEXT NOT NULL -- name of the parameter"
+    , "    , request_param_value TEXT NOT NULL -- and value of the parameter, interpreted according to the type from allowed_requests_params table"
     , "    , CONSTRAINT serialized_requests_values_primary_key PRIMARY KEY (height, seq_index, request_param_name)"
     , "    , CONSTRAINT must_have_request FOREIGN KEY (height, seq_index, request_id) REFERENCES serialized_requests(height, seq_index, request_id)"
     , "    );"
@@ -98,7 +103,16 @@ commandAction (MandatorySystemTables userTables initialRequests keyRoles) = do
           "(request_sql, seq_index) VALUES ("++sqlStr req++", "++show seqIndex++");"
         | (req, seqIndex) <- zip printedBack [0..]
         ]
-commandAction (AddRequestCode req id params) = do
+commandAction (AddRequestCode True req id params)
+  | null params = do
+    addStatements
+      [ "-- adding a postprocessing request"
+      , "INSERT INTO postprocessing_requests"
+      , "  (request_id, request_text)"
+      , "  VALUES ("++sqlStr (normalizeStatementString req)++", "++sqlStr id++");"
+      ]
+  | otherwise = error $ "postprocessing request must not have params"
+commandAction (AddRequestCode False req id params) = do
   let sqlId = sqlStr id
       sqlReq = sqlStr $ normalizeStatementString req
   addStatements $
@@ -160,7 +174,7 @@ main = do
 data PType = IntParam | StringParam | PositiveParam
 data SQLGenCommand =
     MandatorySystemTables [String] [String] [(String, String)]
-  | AddRequestCode String String [(PType, String)]
+  | AddRequestCode Bool String String [(PType, String)]
 
 data Command =
     SQLGen SQLGenCommand
@@ -174,12 +188,13 @@ parseCommand = subparser
         <$> many (sqlOption "table")
         <*> many (sqlOption "request")
         <*> many (option (eitherReader keyRoleParser) (long "key-role")))) idm)
-  <> command "add-request-code" (info (SQLGen <$> (AddRequestCode <$> requestText <*> requestId <*> some typedParam)) idm)
+  <> command "add-request-code" (info (SQLGen <$> (AddRequestCode <$> postprocessing <*> requestText <*> requestId <*> some typedParam)) idm)
   <> command "sign" (info (Sign <$> keyEnvVar) idm)
   <> command "normalize" (info (pure Normalize) idm)
   where
     requestText = strOption (long "request")
     requestId = strOption (long "id")
+    postprocessing = switch (long "postprocessing-request")
     typedParam :: Parser (PType, String)
     typedParam =
           ((,) IntParam <$> strOption (long "int"))
