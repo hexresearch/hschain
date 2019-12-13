@@ -76,9 +76,25 @@ INSERT INTO $walletDemoTableName
             (wallet_id, amount, asset_name)
             VALUES ('$pubkey6', 1000000000000000, 'buble');
 
-CREATE TABLE sell_bids
+CREATE TABLE bids
   ( height        INTEGER NOT NULL
   , seq_index     INTEGER NOT NULL -- order of bids placed at same height.
+  , salt          TEXT NOT NULL -- identifier
+  , wallet_id     TEXT NOT NULL
+  , asset_name    TEXT NOT NULL -- purchasing this
+  , amount        INTEGER NOT NULL
+  , sell_asset_name TEXT NOT NULL -- selling that
+  , sell_amount INTEGER NOT NULL
+  , CONSTRAINT height_seq_index_ordering PRIMARY KEY (height, seq_index)
+  , CONSTRAINT purchasing_valid_asset FOREIGN KEY (asset_name) REFERENCES allowed_assets (asset_name)
+  , CONSTRAINT selling_valid_asset FOREIGN KEY (sell_asset_name) REFERENCES allowed_assets (asset_name)
+  , CONSTRAINT selling_valid_amount CHECK (amount > 0)
+  , CONSTRAINT purchasing_valid_amount CHECK (purchase_amount > 0)
+  );
+CREATE TABLE asks
+  ( height        INTEGER NOT NULL
+  , seq_index     INTEGER NOT NULL -- order of asks placed at same height.
+  , salt          TEXT NOT NULL -- identifier
   , wallet_id     TEXT NOT NULL
   , asset_name    TEXT NOT NULL -- selling this
   , amount        INTEGER NOT NULL
