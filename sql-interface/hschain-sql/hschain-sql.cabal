@@ -64,6 +64,7 @@ executable hschain-sql-utils
                      , mtl
                      , optparse-applicative
                      , simple-sql-parser
+                     , stm
                      , text
 
   -- Directories containing source files.

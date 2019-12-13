@@ -18,6 +18,8 @@ import Control.Monad.State
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Reader
 import Control.Monad.Trans.Cont
+import Control.Concurrent.STM
+import Control.Concurrent.STM.TChan
 
 import qualified Database.SQLite.Simple as SQLite
 
@@ -85,6 +87,7 @@ import HSChain.SQL
 -- |Read config, get secret key, run node...
 runConsensusNode :: String -> String -> String -> IO ()
 runConsensusNode genesisPath configPath envVar = do
+  txChan <- atomically newTChan
   nspec@NodeSpec{} :*: NodeCfg{..} :*: (cfg :: Configuration Example)
     <- loadYamlSettings [reverse configPath] [] requireEnv
   genesis <- readGenesisBlock genesisPath
@@ -105,20 +108,18 @@ runConsensusNode genesisPath configPath envVar = do
     --- Allocate resources
     (conn, logenv) <- allocNode nspec
     gauges         <- standardMonitoring
-    let run = const $ return ()--runMonitorT gauges . runLoggerT logenv . runDBT conn
+    let run = runMonitorT gauges . runLoggerT logenv . runDBT conn
     -- Actually run node
     lift $ run $ do
       (RunningNode{..},acts) <- interpretSpec ourPrivateKey genesis
         (nspec :*: cfg :*: bnet)
         (mempty)
       cursor <- getMempoolCursor rnodeMempool
-      let txGen = do
-            return ()
-            --transactionGenerator txG
-            --        rnodeMempool
-            --        (snd <$> bchCurrentState rnodeState)
-            --        (void . pushTransaction cursor)
-      logOnException $ runConcurrently $ txGen : acts
+      let txRecv = do
+            tx <- liftIO $ atomically $ readTChan txChan
+            pushTransaction cursor tx
+            txRecv
+      logOnException $ runConcurrently $ txRecv : acts
   return ()
 
 -- |Main program.
@@ -146,10 +147,9 @@ startWebMonitoring port = do
 
 -- | Allocate resources for node
 allocNode
-  :: ( MonadIO m, MonadMask m
-     , Crypto alg, Serialise a, Eq a, Show a, Has x NodeSpec)
+  :: (MonadIO m, Has x NodeSpec)
   => x                          -- ^ Node parameters
-  -> ContT r m (Connection 'RW alg a, LogEnv)
+  -> ContT r m (Connection 'RW Alg BData, LogEnv)
 allocNode x = do
   liftIO $ createDirectoryIfMissing True $ takeDirectory dbname
   conn   <- ContT $ withDatabase dbname
@@ -219,7 +219,7 @@ data NodeCfg = NodeCfg
 instance FromJSON NodeCfg
 
 data RunningNode m alg a = RunningNode
-  { rnodeState   :: BChStore m a
+  { rnodeState   :: SQLiteState
   , rnodeConn    :: Connection 'RO alg a
   , rnodeMempool :: Mempool m alg (TX a)
   }
@@ -237,7 +237,7 @@ interpretSpec
 interpretSpec privateKey genesis p cb = do
   conn  <- askConnectionRO
   transitions <- createTransitions
-  store <- newSTMBchStorage $ initialState transitions
+  let store = SQLiteState
   logic <- makeAppLogic store transitions runner
   acts <- runNode (getT p :: Configuration Example) NodeDescription
     { nodeValidationKey = Just privateKey
@@ -253,6 +253,13 @@ interpretSpec privateKey genesis p cb = do
                   }
     , acts
     )
+
+runner :: Monad m => Interpreter (StateT SQLiteState Maybe) m Alg BData
+runner = Interpreter run
+  where
+    run (BlockchainState st vset) m = return $ do
+      (a,st') <- runStateT m st
+      return (a, BlockchainState st' vset)
 
 createTransitions = return $ BChLogic
   { processTx     = error "processTX is called! I am not sure we should use it."
@@ -295,16 +302,18 @@ readGenesisBlock filename = do
 -- ODBC extension API interface
 ----------------------------------------------------------------
 
-startODBCExtensionInterface :: Mempool m Alg Transaction -> Int -> String -> IO ()
-startODBCExtensionInterface mempool port dbname = do
+startODBCExtensionInterface :: TChan Transaction -> Int -> String -> IO ()
+startODBCExtensionInterface receiver port dbname = do
   db <- SQLite.open dbname
   sock <- socket AF_INET6 Stream (fromIntegral port)
   listen sock 1
-  forkIO $ odbcExtensionInterface mempool db sock
+  forkIO $ odbcExtensionInterface receiver db sock
   return ()
 
-odbcExtensionInterface :: Mempool m Alg Transaction -> SQLite.Connection -> Socket -> IO ()
-odbcExtensionInterface mempool dbConn sock = do
+odbcExtensionInterface :: TChan Transaction
+                       -> SQLite.Connection
+                       -> Socket -> m ()
+odbcExtensionInterface recv dbConn sock = do
   flip finally (return ()) $ do
     (connSock, _) <- accept sock
     h <- socketToHandle connSock ReadWriteMode
