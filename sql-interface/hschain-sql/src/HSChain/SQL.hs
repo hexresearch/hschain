@@ -5,10 +5,12 @@ import Control.Monad.State
 
 import qualified Data.ByteString as BS
 
-import Language.SQL.SimpleSQL.Dialect
-import Language.SQL.SimpleSQL.Parse
-import Language.SQL.SimpleSQL.Pretty
-import Language.SQL.SimpleSQL.Syntax
+import qualified Data.Text.Lazy as Text
+
+import Database.HsSqlPpp.Dialect
+import Database.HsSqlPpp.Parse
+import Database.HsSqlPpp.Pretty
+import Database.HsSqlPpp.Syntax
 
 
 ----------------------------------------------------------------
@@ -28,14 +30,14 @@ type SQLGenMonad a = StateT [String] IO a
 -- |SQL dialect of choice - for compatibility reasons we do not use
 -- any vendor-specific dialect.
 sqlDialect :: Dialect
-sqlDialect = ansi2011
+sqlDialect = ansiDialect
 
 -- |Add statements into code generation state after validating them.
 addStatements :: [String] -> SQLGenMonad ()
 addStatements [] = return ()
 addStatements ss = do
   let txt = unlines ss
-  case parseStatements sqlDialect "" Nothing $ unlines ss of
+  case parseStatements (ParseFlags sqlDialect) "" Nothing $ Text.pack $ unlines ss of
     Left err -> error $ "internal error: statements parsing failure: " ++ show err++ "\nstatements:\n--------------\n" ++ unlines ss ++"--------------"
     Right _ -> modify $ \ssPrev  -> ssPrev ++ ss
 
@@ -76,13 +78,20 @@ checkTextualSignature publickey signature salt textLines = True
 
 -- |Parse an SQL statement.
 parseSQLStatement :: String -> Either String Statement
-parseSQLStatement = either (Left . show) (Right . id) . parseStatement sqlDialect "" Nothing
+parseSQLStatement = either (Left . show) (chk) .
+  parseStatements (ParseFlags sqlDialect) "" Nothing . Text.pack
+  where
+    chk [s] = Right s
+    chk [] = Left "no statements encountered"
+    chk ss = Left "too many statements (one required)"
 
 -- |Parse some SQL statements, at least one must be present.
 parseSQLStatements :: String -> Either String [Statement]
-parseSQLStatements = either (Left . show) (Right . id) . parseStatements sqlDialect "" Nothing
+parseSQLStatements = either (Left . show) (Right . id) .
+  parseStatements (ParseFlags sqlDialect) "" Nothing . Text.pack
 
 -- |Pretty print an SQL statement.
 prettySQLStatement :: Statement -> String
-prettySQLStatement s = prettyStatement sqlDialect s
+prettySQLStatement s = Text.unpack $
+  prettyStatements (PrettyFlags sqlDialect) [s]
 

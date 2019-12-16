@@ -63,7 +63,7 @@ executable hschain-sql-utils
                      , hschain-crypto
                      , mtl
                      , optparse-applicative
-                     , simple-sql-parser
+                     , hssqlppp
                      , stm
                      , text
 
