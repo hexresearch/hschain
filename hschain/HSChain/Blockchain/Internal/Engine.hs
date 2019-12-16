@@ -524,7 +524,6 @@ makeHeightParameters appValidatorKey BChLogic{..} AppStore{..} AppCallbacks{appC
                                         , blockchainState = st
                                         }
             return $ b <$ res
-              -- Just s  -> return (b, s)
           Nothing -> do
             lastBID <- throwNothing (DBMissingBlockID bchH) <=< queryRO
                      $ retrieveBlockID bchH
@@ -562,7 +561,7 @@ makeHeightParameters appValidatorKey BChLogic{..} AppStore{..} AppCallbacks{appC
         let bid = blockHash bchValue
         allowBlockID      propStorage r bid
         storePropBlock    propStorage bchValue
-        setPropValidation propStorage bid (Just $ () <$ res) -- () <$ res)
+        setPropValidation propStorage bid (Just $ () <$ res)
         return bid
     , ..
     }
