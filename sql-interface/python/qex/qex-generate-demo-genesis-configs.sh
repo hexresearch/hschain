@@ -126,11 +126,29 @@ INSERT INTO orders \
     AND :sell_amount > 0 \
     AND :purchase_amount > 0; \
 "
+add_post_order_request_code=$(cabal new-exec -- hschain-sql-utils add-request-code \
+  --request "$post_order_request" --id "post_order" --positive sell_amount \
+  --positive purchase_amount --string salt \
+  --string user_id --string sell_asset_name --string purchase_asset_name
+  )
+
+remove_order_request="\
+DELETE FROM orders \
+  WHERE \
+        wallet_id = :user_id \
+    AND salt = :salt; \
+"
+add_remove_order_request_code=$(cabal new-exec -- hschain-sql-utils add-request-code \
+  --request "$remove_order_request" --id "remove_order" \
+  --string user_id --string salt
+  )
 
 
 cabal new-exec -- hschain-sql-utils mandatory-system-tables \
 	--table "$create_populate_funds" \
 	--request "$add_transfer_request_code" \
+	--request "$add_post_order_request_code" \
+	--request "$add_remove_order_request_code" \
 	--key-role "$pubkey_main:MAIN" \
 	--key-role "$pubkey_val1:VALIDATOR" \
 	--key-role "$pubkey_val2:VALIDATOR" \
