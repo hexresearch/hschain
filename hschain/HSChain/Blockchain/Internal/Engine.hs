@@ -91,8 +91,7 @@ rewindBlockchainState AppStore{..} BChLogic{..} = do
       blk    <- queryRO $ mustRetrieveBlock        h
       valSet <- queryRO $ mustRetrieveValidatorSet h
       BChEval{..}
-        <- throwLeftM
-         $ runExceptT
+        <- throwLeftM . runExceptT
          $ withExceptT CannotRewindState
          $ processBlock BChEval { bchValue        = blk
                                 , validatorSet    = valSet
