@@ -95,7 +95,7 @@ CREATE TABLE orders
   , CONSTRAINT selling_valid_amount CHECK (sell_amount > 0)
   , CONSTRAINT purchasing_valid_amount CHECK (purchase_amount > 0)
   );
-CREATE UNIQUE INDEX index_orders_by_height_seq ON orders (height, seq_index);
+CREATE INDEX index_orders_by_height_seq ON orders (height, seq_index);
 "
 
 transfer_request="\
