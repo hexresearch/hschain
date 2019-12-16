@@ -80,6 +80,31 @@ def operations(pub_key, args, connection):
     print("height: "+str(x[0]))
     print("        transfer "+str(x[2])+" to "+str(x[1]))
 
+def internal_validate_asset_name(connection, asset_name):
+  cursor = connection.cursor()
+  r = cursor.execute("SELECT COUNT(*) from allowed_assets WHERE asset_name = :asset_name;", [asset_name])
+  for x in r:
+    if x[0]<1:
+      exit_failure("invalid asset name "+asset_name)
+    return
+  exit_failure("internal error in determining validity of asset "+asset_name);
+
+def post_order(pub_key, args, connection):
+  (args, sell_amount) = arg_value(args, "sell-amount", None, None, lambda x: int(x))
+  if sell_amount <= 0:
+    exit_failure("invalid sell amount: "+str(sell_amount))
+  (args, sell_asset) = arg_value(args, "sell-asset", None, None, lambda x: x)
+  internal_validate_asset_name(connection, sell_asset)
+  (args, purchase_amount) = arg_value(args, "purchase-amount", None, None, lambda x: int(x))
+  if purchase_amount <= 0:
+    exit_failure("invalid purchase amount: "+str(purchase_amount));
+  (args, purchase_asset) = arg_value(args, "purchase-asset", None, None, lambda x: x)
+  internal_validate_asset_name(connection, purchase_asset)
+  salt = datetime.now()..strftime("%d-%b-%Y (%H:%M:%S.%f)")+"/"+pub_key
+  cursor = connection.cursor()
+  cursor.execute(hschain_q("INSERT INTO orders ( height, seq_index, salt, wallet_id, sell_asset_name , sell_amount, purchase_asset_name, purchase_amount) SELECT current_height.height, seq_index = seq_index + 1, :salt, :user_id , :sell_asset, :sell_amount, :purchase_asset, :purchase_amount FROM height as current_height, allowed_assets, funds WHERE allowed_assets.asset_name = :sell_asset AND allowed_assets.asset_name = :purchase_asset AND :sell_amount > 0 AND :purchase_amount > 0;"), [salt, user_id, sell_asset, sell_amount, purchase_asset, purchase_amount])
+  print ("order posted. order ID: "+salt)
+
 # main wallet function.
 def wallet_main(args):
   assert len(args) > 0
@@ -104,6 +129,10 @@ def wallet_main(args):
     elif command == 'funds':
       show_funds(args, connection)
     elif command == 'transfer':
+      transfer(pub_key, args, connection)
+    elif command == 'post-order':
+      transfer(pub_key, args, connection)
+    elif command == 'remove-order':
       transfer(pub_key, args, connection)
     elif command == 'operations':
       operations(pub_key, args, connection)

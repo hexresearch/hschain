@@ -46,7 +46,8 @@ addStatements ss = do
 -- This effectively makes single-line statement from possible
 -- multiline pretty-printed one.
 normalizeStatementString :: String -> String
-normalizeStatementString cs = reduceSpaces $ onlySpaces cs
+normalizeStatementString cs = reverse $
+  dropWhile (<=' ') $ reverse $ dropWhile (<=' ') $ reduceSpaces $ onlySpaces cs
   where
     onlySpaces = map (\c -> if c < ' ' then ' ' else c)
     reduceSpaces (' ':' ':cs) = reduceSpaces $ ' ':cs
