@@ -44,6 +44,8 @@ INSERT INTO allowed_assets
   ( asset_name) VALUES ('bollar');
 INSERT INTO allowed_assets
   ( asset_name) VALUES ('buble');
+INSERT INTO allowed_assets
+  ( asset_name) VALUES ('brank');
 
 CREATE TABLE $walletDemoTableName
   ( wallet_id   TEXT NOT NULL PRIMARY KEY
@@ -56,7 +58,7 @@ CREATE TABLE $walletDemoTableName
   );
 INSERT INTO $walletDemoTableName
             (wallet_id, amount, asset_name)
-            VALUES ('$pubkey_main', 1000000000000000, 'bollar');
+            VALUES ('$pubkey_main', 1000000000000000, 'brank');
 INSERT INTO $walletDemoTableName
             (wallet_id, amount, asset_name)
             VALUES ('$pubkey_val1', 1000000000000000, 'bollar');
@@ -76,36 +78,24 @@ INSERT INTO $walletDemoTableName
             (wallet_id, amount, asset_name)
             VALUES ('$pubkey6', 1000000000000000, 'buble');
 
-CREATE TABLE bids
-  ( height        INTEGER NOT NULL
-  , seq_index     INTEGER NOT NULL -- order of bids placed at same height.
-  , salt          TEXT NOT NULL -- identifier
-  , wallet_id     TEXT NOT NULL
-  , asset_name    TEXT NOT NULL -- purchasing this
-  , amount        INTEGER NOT NULL
-  , sell_asset_name TEXT NOT NULL -- selling that
-  , sell_amount INTEGER NOT NULL
-  , CONSTRAINT height_seq_index_ordering PRIMARY KEY (height, seq_index)
-  , CONSTRAINT purchasing_valid_asset FOREIGN KEY (asset_name) REFERENCES allowed_assets (asset_name)
-  , CONSTRAINT selling_valid_asset FOREIGN KEY (sell_asset_name) REFERENCES allowed_assets (asset_name)
-  , CONSTRAINT selling_valid_amount CHECK (amount > 0)
-  , CONSTRAINT purchasing_valid_amount CHECK (purchase_amount > 0)
-  );
-CREATE TABLE asks
-  ( height        INTEGER NOT NULL
-  , seq_index     INTEGER NOT NULL -- order of asks placed at same height.
-  , salt          TEXT NOT NULL -- identifier
-  , wallet_id     TEXT NOT NULL
-  , asset_name    TEXT NOT NULL -- selling this
-  , amount        INTEGER NOT NULL
-  , purchase_asset_name TEXT NOT NULL -- purchasing that
-  , purchase_amount INTEGER NOT NULL
-  , CONSTRAINT height_seq_index_ordering PRIMARY KEY (height, seq_index)
-  , CONSTRAINT selling_valid_asset FOREIGN KEY (asset_name) REFERENCES allowed_assets (asset_name)
+-- sell one thing purchasing other.
+-- for example, sell 107 bollars for 103 bubles.
+CREATE TABLE orders
+  ( height              INTEGER NOT NULL
+  , seq_index           INTEGER NOT NULL -- order of bids placed at same height.
+  , salt                TEXT NOT NULL -- identifier
+  , wallet_id           TEXT NOT NULL
+  , sell_asset_name     TEXT NOT NULL -- purchasing this
+  , sell_amount         INTEGER NOT NULL
+  , purchase_asset_name TEXT NOT NULL -- selling that
+  , purchase_amount     INTEGER NOT NULL
+  , CONSTRAINT salt_unique UNIQUE (salt)
   , CONSTRAINT purchasing_valid_asset FOREIGN KEY (purchase_asset_name) REFERENCES allowed_assets (asset_name)
-  , CONSTRAINT selling_valid_amount CHECK (amount > 0)
+  , CONSTRAINT selling_valid_asset FOREIGN KEY (sell_asset_name) REFERENCES allowed_assets (asset_name)
+  , CONSTRAINT selling_valid_amount CHECK (sell_amount > 0)
   , CONSTRAINT purchasing_valid_amount CHECK (purchase_amount > 0)
   );
+CREATE UNIQUE INDEX index_orders_by_height_seq ON orders (height, seq_index);
 "
 
 transfer_request="\
@@ -118,15 +108,29 @@ WHERE     (wallet_id = :user_id OR wallet_id = :dest_user_id) \
 AND :transfer_amount > 0
 AND :asset_name == asset_name;"
 
-add_transfer_request=$(cabal new-exec -- hschain-sql-utils add-request-code \
+add_transfer_request_code=$(cabal new-exec -- hschain-sql-utils add-request-code \
   --request "$transfer_request" --id "transfer" --positive transfer_amount \
   --string user_id --string dest_user_id --string asset_name
   )
 
+post_order_request="\
+INSERT INTO orders \
+  ( height, seq_index, salt, wallet_id, sell_asset_name \
+  , sell_amount, purchase_asset_name, purchase_amount) \
+  SELECT current_height.height, seq_index = seq_index + 1, :salt, :user_id \
+       , :sell_asset, :sell_amount, :purchase_asset, :purchase_amount \
+  FROM height as current_height, allowed_assets, $walletDemoTableName \
+  WHERE \
+        allowed_assets.asset_name = :sell_asset \
+    AND allowed_assets.asset_name = :purchase_asset \
+    AND :sell_amount > 0 \
+    AND :purchase_amount > 0; \
+"
+
 
 cabal new-exec -- hschain-sql-utils mandatory-system-tables \
 	--table "$create_populate_funds" \
-	--request "$add_transfer_request" \
+	--request "$add_transfer_request_code" \
 	--key-role "$pubkey_main:MAIN" \
 	--key-role "$pubkey_val1:VALIDATOR" \
 	--key-role "$pubkey_val2:VALIDATOR" \
