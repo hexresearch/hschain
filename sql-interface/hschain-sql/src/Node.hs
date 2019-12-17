@@ -97,18 +97,19 @@ runConsensusNode genesisPath configPath envVar = do
       Just k -> return $ PrivValidator k
       Nothing -> error $ "Environment variable "++show envVar++" does not contain base58-decodable value of validator's private key"
   startWebMonitoring $ fromIntegral nodeCfgPort + 1000
+  peerId <- generatePeerId
+  gauges         <- standardMonitoring
   -- Start node
   evalContT $ do
     -- Create network
-    peerId <- generatePeerId
     let peerInfo = P2PT.PeerInfo peerId nodeCfgPort 0
         bnet     = BlockchainNet { bchNetwork      = newNetworkTcp peerInfo
                                  , bchInitialPeers = nodeCfgSeeds
                                  }
     --- Allocate resources
     (conn, logenv) <- allocNode nspec
-    gauges         <- standardMonitoring
     let run = runMonitorT gauges . runLoggerT logenv . runDBT conn
+        --run = runMonitorT undefined . runLoggerT undefined . runDBT undefined
     -- Actually run node
     lift $ run $ do
       (RunningNode{..},acts) <- interpretSpec ourPrivateKey genesis
@@ -120,7 +121,7 @@ runConsensusNode genesisPath configPath envVar = do
             pushTransaction cursor tx
             txRecv
       logOnException $ runConcurrently $ txRecv : acts
-  return ()
+  --return ()
 
 -- |Main program.
 main :: IO ()
@@ -219,7 +220,7 @@ data NodeCfg = NodeCfg
 instance FromJSON NodeCfg
 
 data RunningNode m alg a = RunningNode
-  { rnodeState   :: SQLiteState
+  { rnodeState   :: BChStore m BData
   , rnodeConn    :: Connection 'RO alg a
   , rnodeMempool :: Mempool m alg (TX a)
   }
@@ -237,7 +238,8 @@ interpretSpec
 interpretSpec privateKey genesis p cb = do
   conn  <- askConnectionRO
   transitions <- createTransitions
-  let store = SQLiteState
+  --let store = undefined --SQLiteState
+  store <- newSTMBChStore _a _b
   logic <- makeAppLogic store transitions runner
   acts <- runNode (getT p :: Configuration Example) NodeDescription
     { nodeValidationKey = Just privateKey
@@ -312,7 +314,7 @@ startODBCExtensionInterface receiver port dbname = do
 
 odbcExtensionInterface :: TChan Transaction
                        -> SQLite.Connection
-                       -> Socket -> m ()
+                       -> Socket -> IO ()
 odbcExtensionInterface recv dbConn sock = do
   flip finally (return ()) $ do
     (connSock, _) <- accept sock
@@ -330,7 +332,7 @@ odbcExtensionInterface recv dbConn sock = do
       reportAnswer dbConn h otherHeight
       return ()
     return ()
-  odbcExtensionInterface mempool dbConn sock
+  odbcExtensionInterface recv dbConn sock
   where
     readParams h acc = do
       paramName <- BS.hGetLine h

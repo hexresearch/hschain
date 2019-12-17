@@ -62,10 +62,11 @@ AND :asset_name == asset_name;")
 def operations(pub_key, args, connection):
   """show operations related to our public key"""
   cursor = connection.cursor()
-  query = """SELECT op.height, op_dest.request_param_value, op_amount.request_param_value
+  query = """SELECT op.height, op_dest.request_param_value, op_amount.request_param_value, op_asset.request_param_value
   FROM serialized_requests AS op, serialized_requests_params as op_dest
      , serialized_requests_params as op_amount
      , serialized_requests_params as op_user
+     , serialized_requests_params as op_asset
   WHERE
         op.request_id = 'transfer' AND op_dest.height = op.height
     AND op_amount.height = op.height AND op_dest.seq_index = op.seq_index
@@ -75,11 +76,12 @@ def operations(pub_key, args, connection):
     AND op_user.request_param_name = 'user_id'
     AND op_amount.request_param_name = 'transfer_amount'
     AND op_dest.request_param_name = 'dest_user_id'
+    AND op_asset.height = op.height AND op_asset.seq_index = op.seq_index
   ORDER BY op.height, op.seq_index
   """
   for x in cursor.execute(query, [pub_key]):
     print("height: "+str(x[0]))
-    print("        transfer "+str(x[2])+" to "+str(x[1]))
+    print("        transfer of "+str(x[3])+" "+str(x[2])+" to "+str(x[1]))
 
 def internal_validate_asset_name(connection, asset_name):
   cursor = connection.cursor()
@@ -106,8 +108,8 @@ def post_order(pub_key, args, connection):
   cursor.execute(hschain_q("INSERT INTO orders ( height, seq_index, salt, wallet_id, sell_asset_name , sell_amount, purchase_asset_name, purchase_amount) SELECT current_height.height, seq_index = seq_index + 1, :salt, :user_id , :sell_asset, :sell_amount, :purchase_asset, :purchase_amount FROM height as current_height, allowed_assets, funds WHERE allowed_assets.asset_name = :sell_asset AND allowed_assets.asset_name = :purchase_asset AND :sell_amount > 0 AND :purchase_amount > 0;"), [salt, user_id, sell_asset, sell_amount, purchase_asset, purchase_amount])
   print ("order posted. order ID: "+salt)
 
-# main wallet function.
-def wallet_main(args):
+# main function.
+def qex_main(args):
   assert len(args) > 0
   command = args[0]
   args = args[1:]
@@ -148,4 +150,4 @@ if __name__ == '__main__':
   if len(args) < 1:
     args = ['help']
 
-  wallet_main(args)
+  qex_main(args)

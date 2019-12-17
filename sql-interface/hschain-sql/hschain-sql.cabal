@@ -85,7 +85,7 @@ executable hschain-sql-node
 
   -- Other library packages from which modules are imported.
   build-depends:       base
-                     , simple-sql-parser
+                     , hssqlppp
                      , hschain
                      , hschain-crypto
                      , hschain-types
