@@ -474,12 +474,11 @@ makeHeightParameters appValidatorKey BChLogic{..} AppStore{..} AppCallbacks{appC
           InvalidBlock    -> return InvalidProposal
           GoodBlock{}     -> return GoodProposal
           UntestedBlock b -> do
-            let invalid = InvalidProposal <$ setPropValidation propStorage bid Nothing
             inconsistencies <- checkProposedBlock currentH b
             st              <- throwNothingM BlockchainStateUnavalable
                              $ bchStoreRetrieve appBchState bchH
             mvalSet'        <- runExceptT
-                             $ processBlock BChEval { bchValue        =  b
+                             $ processBlock BChEval { bchValue        = b
                                                     , validatorSet    = valSet
                                                     , blockchainState = st
                                                     }
@@ -508,6 +507,8 @@ makeHeightParameters appValidatorKey BChLogic{..} AppStore{..} AppCallbacks{appC
                        return GoodProposal
                | otherwise
                  -> invalid
+               where
+                 invalid = InvalidProposal <$ setPropValidation propStorage bid Nothing
     --
     , createProposal = \r commit -> do
         -- Obtain block either from WAL or actually genrate it
