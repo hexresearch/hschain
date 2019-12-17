@@ -1,15 +1,16 @@
+{-# LANGUAGE DataKinds                  #-}
+{-# LANGUAGE DeriveFunctor              #-}
+{-# LANGUAGE DerivingStrategies         #-}
+{-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE DerivingStrategies #-}
-{-# LANGUAGE DataKinds           #-}
-{-# LANGUAGE DeriveFunctor       #-}
-{-# LANGUAGE FlexibleContexts    #-}
-{-# LANGUAGE LambdaCase          #-}
-{-# LANGUAGE MultiWayIf          #-}
-{-# LANGUAGE OverloadedStrings   #-}
-{-# LANGUAGE RankNTypes          #-}
-{-# LANGUAGE RecordWildCards     #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE ViewPatterns        #-}
+{-# LANGUAGE LambdaCase                 #-}
+{-# LANGUAGE MultiWayIf                 #-}
+{-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE RankNTypes                 #-}
+{-# LANGUAGE RecordWildCards            #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
+{-# LANGUAGE TypeApplications           #-}
+{-# LANGUAGE ViewPatterns               #-}
 -- | Tests for consensus
 --
 module TM.Consensus (tests) where
@@ -22,6 +23,7 @@ import Control.Monad.Trans.Free
 import Data.IORef
 import Data.Int
 import Data.Maybe
+import Data.Typeable
 import Text.Printf
 
 import HSChain.Blockchain.Internal.Engine.Types
@@ -624,7 +626,9 @@ proposeBlock r k b = do
   where
     bid = blockHash b
 
-voteFor :: Monad m => (Maybe (BlockID alg a)) -> Vote ty alg a -> m ()
+voteFor
+  :: forall m ty alg a. (Typeable ty, Monad m)
+  => (Maybe (BlockID alg a)) -> Vote ty alg a -> m ()
 voteFor mbid v
   | mbid == voteBlockID v = return ()
   | otherwise             = error $ unlines
@@ -632,6 +636,8 @@ voteFor mbid v
                             , "    " ++ show mbid
                             , "Got:"
                             , "    " ++ show (voteBlockID v)
+                            , "Type:"
+                            , "    " ++ show (typeRep (Proxy @ty))
                             ]
 
 
