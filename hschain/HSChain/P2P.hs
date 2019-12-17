@@ -40,7 +40,6 @@ import HSChain.Monitoring
 import HSChain.P2P.Network
 import HSChain.P2P.Types
 import HSChain.Store
-import HSChain.Store.Internal.Proposals
 import HSChain.Types.Blockchain
 import HSChain.Utils
 
@@ -61,7 +60,7 @@ startPeerDispatcher
   => NetworkCfg
   -> NetworkAPI               -- ^ API for networking
   -> [NetAddr]                -- ^ Set of initial addresses to connect
-  -> AppChans m alg a         -- ^ Channels for communication with main application
+  -> AppChans alg a           -- ^ Channels for communication with main application
   -> Mempool m alg (TX a)
   -> m ()
 startPeerDispatcher p2pConfig net addrs AppChans{..} mempool = logOnException $ do
@@ -75,7 +74,6 @@ startPeerDispatcher p2pConfig net addrs AppChans{..} mempool = logOnException $ 
   let peerCh = PeerChans { peerChanTx      = appChanTx
                          , peerChanPex     = peerChanPex
                          , peerChanRx      = writeTBQueue appChanRx
-                         , proposalStorage = makeReadOnlyPS appPropStorage
                          , consensusState  = readTVar appTMState
                          , ..
                          }

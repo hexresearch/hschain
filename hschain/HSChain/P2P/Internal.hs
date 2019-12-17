@@ -68,7 +68,7 @@ acceptLoop
      , BlockData a, Crypto alg)
   => NetworkCfg
   -> NetworkAPI
-  -> PeerChans m alg a
+  -> PeerChans alg a
   -> Mempool m alg (TX a)
   -> PeerRegistry
   -> m ()
@@ -112,7 +112,7 @@ connectPeerTo
   => NetworkCfg
   -> NetworkAPI
   -> NetAddr
-  -> PeerChans m alg a
+  -> PeerChans alg a
   -> Mempool m alg (TX a)
   -> PeerRegistry
   -> m ()
@@ -138,7 +138,7 @@ connectPeerTo cfg NetworkAPI{..} addr peerCh mempool peerRegistry =
 peerFSM
   :: ( MonadReadDB m alg a, MonadIO m, MonadMask m, MonadLogger m
      , Crypto alg, BlockData a)
-  => PeerChans m alg a
+  => PeerChans alg a
   -> TChan PexMessage
   -> TBQueue (GossipMsg alg a)
   -> TChan (Event alg a)
@@ -167,7 +167,7 @@ peerFSM PeerChans{..} peerExchangeCh gossipCh recvCh cursor@MempoolCursor{..} = 
         Push2Gossip tx    -> atomicallyIO $ writeTBQueue gossipCh tx
       return s'
   where
-    config = Config proposalStorage cursor consensusState gossipCnts
+    config = Config cursor consensusState gossipCnts
 
 
 -- | Start interactions with peer. At this point connection is already
@@ -176,9 +176,9 @@ startPeer
   :: ( MonadFork m, MonadMask m, MonadLogger m, MonadReadDB m alg a
      , BlockData a, Crypto alg)
   => NetAddr
-  -> PeerChans m alg a       -- ^ Communication with main application
-                             --   and peer dispatcher
-  -> P2PConnection           -- ^ Functions for interaction with network
+  -> PeerChans alg a       -- ^ Communication with main application
+                           --   and peer dispatcher
+  -> P2PConnection         -- ^ Functions for interaction with network
   -> PeerRegistry
   -> Mempool m alg (TX a)
   -> m ()
@@ -203,7 +203,7 @@ startPeer peerAddrTo peerCh@PeerChans{..} conn peerRegistry mempool = logOnExcep
 peerReceive
   :: ( MonadReadDB m alg a, MonadIO m, MonadMask m, MonadLogger m
      , Crypto alg, BlockData a)
-  => PeerChans m alg a
+  => PeerChans alg a
   -> TChan (Event alg a)
   -> P2PConnection
   -> m ()
@@ -223,7 +223,7 @@ peerReceive PeerChans{..} recvCh P2PConnection{..} = logOnException $ do
 -- will never change state and announce it.
 peerGossipAnnounce
   :: (MonadIO m, MonadLogger m, MonadCatch m)
-  => PeerChans m alg a
+  => PeerChans alg a
   -> TBQueue (GossipMsg alg a)
   -> m ()
 peerGossipAnnounce PeerChans{..} gossipCh = logOnException $
@@ -241,7 +241,7 @@ peerGossipAnnounce PeerChans{..} gossipCh = logOnException $
 peerSend
   :: ( MonadReadDB m alg a, MonadMask m, MonadIO m,  MonadLogger m
      , Crypto alg, BlockData a)
-  => PeerChans m alg a
+  => PeerChans alg a
   -> TBQueue (GossipMsg alg a)
   -> P2PConnection
   -> m x
@@ -283,7 +283,7 @@ peerPexNewAddressMonitor peerChanPexNewAddresses PeerRegistry{..} NetworkAPI{..}
 
 peerPexKnownCapacityMonitor
   :: ( MonadIO m, MonadLogger m)
-  => PeerChans m alg a
+  => PeerChans alg a
   -> PeerRegistry
   -> Int
   -> Int
@@ -309,7 +309,7 @@ peerPexMonitor
      , BlockData a, Crypto alg)
   => NetworkCfg
   -> NetworkAPI
-  -> PeerChans m alg a
+  -> PeerChans alg a
   -> Mempool m alg (TX a)
   -> PeerRegistry
   -> m ()
@@ -362,7 +362,7 @@ peerPexCapacityDebugMonitor PeerRegistry{..} =
 
 peerGossipPeerExchange
   :: ( MonadIO m, MonadFork m, MonadLogger m)
-  => PeerChans m alg a
+  => PeerChans alg a
   -> PeerRegistry
   -> TChan PexMessage
   -> TBQueue (GossipMsg alg a)

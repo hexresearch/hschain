@@ -33,7 +33,6 @@ import HSChain.Logger
 import HSChain.Store
 import HSChain.Store.STM
 import HSChain.Store.Internal.Query
-import HSChain.Store.Internal.Proposals
 import HSChain.Types
 import HSChain.Mock.KeyVal  (BData(..),keyValLogic)
 import HSChain.Types.Merkle.Types
@@ -369,17 +368,13 @@ evidenceIsRecordedProp = withEnvironment $ do
        ()  <- voteFor (Just bid) =<< expectPC
        precommit (Height 1) (Round 0) otherK (Just bid)
     -- H=2
-    do () <- expectStep 2 0 (StepNewHeight 0)
-       () <- expectStep 2 0 StepProposal
+    do ()  <- expectStep 2 0 (StepNewHeight 0)
+       ()  <- expectStep 2 0 StepProposal
        -- Check that block contain evidence
-       bid    <- propBlockID <$> expectProp
-       Just b <- lookupBID (Height 2) bid
-       case merkleValue $ blockEvidence b of
-         [OutOfTurnProposal _] -> return ()
-         e                     -> error $ unlines $ "Evidence:" : map show e
-       ()   <- voteFor (Just bid) =<< expectPV
+       bid <- propBlockID <$> expectProp
+       ()  <- voteFor (Just bid) =<< expectPV
        prevote   (Height 2) (Round 0) otherK (Just bid)
-       ()   <- voteFor (Just bid) =<< expectPC
+       ()  <- voteFor (Just bid) =<< expectPC
        precommit (Height 2) (Round 0) otherK (Just bid)
     -- H=3. Block with evidence is commited
     expectStep 3 0 (StepNewHeight 0)
@@ -516,10 +511,10 @@ execConsensus
   -> Expect ConsensusM TestAlg BData ()
   -> ConsensusM ()
 execConsensus k messages = do
-  (chans, prop, action) <- startConsensus k
+  (chans, action) <- startConsensus k
   runConcurrently
     [ action
-    , expect valSet prop chans messages
+    , expect valSet chans messages
     ]
 
 -- Simple test of consensus
@@ -531,7 +526,6 @@ startConsensus
   -> ConsensusM ( ( TChan   (MessageTx TestAlg BData)
                   , TBQueue (MessageRx 'Unverified TestAlg BData)
                   )
-                , ProposalStorage 'RW ConsensusM TestAlg BData
                 , ConsensusM ()
                 )
 startConsensus k = do
@@ -541,7 +535,6 @@ startConsensus k = do
   return ( ( ch
            , appChanRx chans
            )
-         , appPropStorage chans
          , runApplication cfg (Just (PrivValidator k)) genesis
              keyValLogic (AppStore nullMempool store) mempty chans
          )
@@ -585,9 +578,6 @@ expectPC = wrap $ ExpectPC return
 
 reply :: Monad m => [MessageRx 'Unverified alg a] -> Expect m alg a ()
 reply msg = wrap $ Reply msg (return ())
-
-lookupBID :: Monad m => Height -> BlockID alg a -> Expect m alg a (Maybe (Block alg a))
-lookupBID h bid = wrap $ LookupBID h bid return
 
 prevote
   :: (Monad m, Crypto alg)
@@ -660,7 +650,6 @@ data ExpectF alg a x
   | ExpectPC   (Vote 'PreCommit alg a -> x)
   | Reply      [MessageRx 'Unverified alg a] x
   | GetValSet  (ValidatorSet alg -> x)
-  | LookupBID  Height (BlockID alg a) (Maybe (Block alg a) -> x)
   deriving (Functor)
 
 -- Read outbound messages from consensus engine and reply to it
@@ -669,13 +658,12 @@ data ExpectF alg a x
 expect
   :: (MonadIO m, Crypto alg)
   => ValidatorSet alg
-  -> ProposalStorage 'RW m alg a
-  -> ( TChan (MessageTx alg a)
+  -> ( TChan   (MessageTx alg a)
      , TBQueue (MessageRx 'Unverified alg a)
      )
   -> Expect m alg a ()
   -> m ()
-expect vals prop (chTx, chRx) expected = do
+expect vals (chTx, chRx) expected = do
   iterT step expected
   where
     step func = case func of
@@ -698,8 +686,6 @@ expect vals prop (chTx, chRx) expected = do
         atomicallyIO $ mapM_ (writeTBQueue chRx) msg
         next
       GetValSet next   -> next vals
-      LookupBID h bid next ->
-        next . blockFromBlockValidation =<< retrievePropByID prop h bid
       where
         failure m = error $ unlines [ "Expected:"
                                     , "    " ++ expectedName func

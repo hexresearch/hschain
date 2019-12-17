@@ -56,13 +56,12 @@ import Katip (Severity(..), sl)
 --
 ----------------------------------------------------------------
 
-newAppChans :: (MonadIO m, Crypto alg) => ConsensusCfg -> m (AppChans m alg a)
+newAppChans :: (MonadIO m, Crypto alg) => ConsensusCfg -> m (AppChans alg a)
 newAppChans ConsensusCfg{incomingQueueSize = sz} = do
   appChanRx         <- liftIO $ newTBQueueIO sz
   appChanRxInternal <- liftIO   newTQueueIO
   appChanTx         <- liftIO   newBroadcastTChanIO
   appTMState        <- liftIO $ newTVarIO Nothing
-  appPropStorage    <- newSTMPropStorage
   return AppChans{..}
 
 rewindBlockchainState
@@ -134,7 +133,7 @@ runApplication
      -- ^ Get initial state of the application
   -> AppStore m alg a
   -> AppCallbacks m alg a
-  -> AppChans m alg a
+  -> AppChans  alg a
      -- ^ Channels for communication with peers
   -> m ()
 runApplication config appValidatorKey genesis appLogic appStore appCall appCh = logOnException $ do
@@ -164,7 +163,7 @@ decideNewBlock
   -> AppLogic     m alg a
   -> AppStore     m alg a
   -> AppCallbacks m alg a
-  -> AppChans     m alg a
+  -> AppChans       alg a
   -> Maybe (Commit alg a)
   -> m (Commit alg a)
 decideNewBlock config appValidatorKey
@@ -172,8 +171,7 @@ decideNewBlock config appValidatorKey
                appCall@AppCallbacks{..} appCh@AppChans{..} lastCommt = do
   -- Enter NEW HEIGHT and create initial state for consensus state
   -- machine
-  hParam  <- makeHeightParameters appValidatorKey appLogic appStore appCall appPropStorage
-  resetPropStorage appPropStorage $ currentH hParam
+  hParam  <- makeHeightParameters appValidatorKey appLogic appStore appCall
   -- Run consensus engine
   (cmt, BChEval{..}) <- runEffect $ do
     let sink = handleEngineMessage hParam config appCh
@@ -203,7 +201,7 @@ rxMessageSource
   :: ( MonadIO m, MonadDB m alg a, MonadLogger m, MonadThrow m
      , Crypto alg, BlockData a)
   => HeightParameters m alg a
-  -> AppChans m alg a
+  -> AppChans alg a
   -> Producer (MessageRx 'Verified alg a) m r
 rxMessageSource HeightParameters{..} AppChans{..} = do
   -- First we replay messages from WAL. This is very important and
@@ -238,7 +236,7 @@ msgHandlerLoop
   => HeightParameters m alg a
   -> AppLogic m alg a
   -> AppStore m alg a
-  -> AppChans m alg a
+  -> AppChans   alg a
   -> TMState alg a
   -> Pipe (MessageRx 'Verified alg a) (EngineMessage alg a) m
       (Commit alg a, ValidatedBlock alg a)
@@ -248,17 +246,15 @@ msgHandlerLoop hParam BChLogic{..} AppStore{..} AppChans{..} = mainLoop Nothing
     mainLoop mCmt tm = do
       -- Make current state of consensus available for gossip
       atomicallyIO $ writeTVar appTMState $ Just (height , tm)
-      await >>=  handleVerifiedMessage appPropStorage hParam tm >>= \case
+      await >>= handleVerifiedMessage hParam tm >>= \case
         Tranquility      -> mainLoop mCmt tm
         Misdeed          -> mainLoop mCmt tm
         Success  tm'     -> checkForCommit mCmt       tm'
         DoCommit cmt tm' -> checkForCommit (Just cmt) tm'
     --
     checkForCommit Nothing    tm = mainLoop Nothing tm
-    checkForCommit (Just cmt) tm = do
-      mBlk <- lift
-            $ retrievePropByID appPropStorage height (commitBlockID cmt)
-      case mBlk of
+    checkForCommit (Just cmt) tm =
+      case proposalByBID (smProposedBlocks tm) (commitBlockID cmt) of
         UnknownBlock    -> mainLoop (Just cmt) tm
         InvalidBlock    -> error "Trying to commit invalid block!"
         GoodBlock     b -> return (cmt, b)
@@ -279,19 +275,17 @@ msgHandlerLoop hParam BChLogic{..} AppStore{..} AppChans{..} = mainLoop Nothing
 -- Handle message and perform state transitions for both
 handleVerifiedMessage
   :: (MonadLogger m, Crypto alg)
-  => ProposalStorage 'RW m alg a
-  -> HeightParameters m alg a
+  => HeightParameters m alg a
   -> TMState alg a
   -> MessageRx 'Verified alg a
   -> Pipe x (EngineMessage alg a) m (ConsensusResult alg a (TMState alg a))
-handleVerifiedMessage ProposalStorage{..} hParam tm = \case
+handleVerifiedMessage hParam tm = \case
   RxProposal  p -> runConsesusM $ tendermintTransition hParam (ProposalMsg  p) tm
   RxPreVote   v -> runConsesusM $ tendermintTransition hParam (PreVoteMsg   v) tm
   RxPreCommit v -> runConsesusM $ tendermintTransition hParam (PreCommitMsg v) tm
   RxTimeout   t -> runConsesusM $ tendermintTransition hParam (TimeoutMsg   t) tm
   -- We update block storage
-  RxBlock     b -> do lift $ storePropBlock b
-                      return (Success tm)
+  RxBlock     b -> return $ Success $ tm { smProposedBlocks = addBlockToProps (smProposedBlocks tm) b }
 
 -- Verify signature of message. If signature is not correct message is
 -- simply discarded.
@@ -336,7 +330,7 @@ handleEngineMessage
      , Crypto alg)
   => HeightParameters n alg a
   -> ConsensusCfg
-  -> AppChans m alg a
+  -> AppChans alg a
   -> Consumer (EngineMessage alg a) m r
 handleEngineMessage HeightParameters{..} ConsensusCfg{..} AppChans{..} = forever $ await >>= \case
   -- Timeout
@@ -364,14 +358,9 @@ handleEngineMessage HeightParameters{..} ConsensusCfg{..} AppChans{..} = forever
     let Vote{..} = signedValue sv
         i        = signedKeyInfo sv
     atomicallyIO $ writeTChan appChanTx $ TxAnn $ AnnHasPreCommit voteHeight voteRound i
-  EngAnnStep s ->
-    atomicallyIO $ writeTChan appChanTx $ TxAnn $ AnnStep s
-  EngAnnLock r ->
-    atomicallyIO $ writeTChan appChanTx $ TxAnn $ AnnLock r
-  --
-  EngAcceptBlock r bid -> do
-    atomicallyIO $ writeTChan appChanTx $ TxAnn $ AnnHasProposal currentH r
-    lift $ allowBlockID appPropStorage r bid
+  EngAnnStep     s -> atomicallyIO $ writeTChan appChanTx $ TxAnn $ AnnStep s
+  EngAnnLock     r -> atomicallyIO $ writeTChan appChanTx $ TxAnn $ AnnLock r
+  EngAnnProposal r -> atomicallyIO $ writeTChan appChanTx $ TxAnn $ AnnHasProposal currentH r
   --
   EngCastPropose r bid lockInfo ->
     forM_ validatorKey $ \(PrivValidator pk, idx) -> do
@@ -382,7 +371,6 @@ handleEngineMessage HeightParameters{..} ConsensusCfg{..} AppChans{..} = forever
                           , propPOL       = lockInfo
                           , propBlockID   = bid
                           }
-      mBlock <- lift $ retrievePropByID appPropStorage (pred currentH) bid
       logger InfoS "Sending proposal"
         (   sl "R"    r
         <>  sl "BID" (show bid)
@@ -391,9 +379,6 @@ handleEngineMessage HeightParameters{..} ConsensusCfg{..} AppChans{..} = forever
         let p = signValue idx pk prop
         writeTQueue appChanRxInternal $ RxProposal p
         writeTChan  appChanTx         $ TxProposal p
-        case blockFromBlockValidation mBlock of
-          Just b  -> writeTQueue appChanRxInternal (RxBlock b)
-          Nothing -> return ()
   --
   EngCastPreVote r b ->
     forM_ validatorKey $ \(PrivValidator pk, idx) -> do
@@ -445,9 +430,8 @@ makeHeightParameters
   -> AppLogic            m alg a
   -> AppStore            m alg a
   -> AppCallbacks        m alg a
-  -> ProposalStorage 'RW m alg a
   -> m (HeightParameters m alg a)
-makeHeightParameters appValidatorKey BChLogic{..} AppStore{..} AppCallbacks{appCanCreateBlock} propStorage = do
+makeHeightParameters appValidatorKey BChLogic{..} AppStore{..} AppCallbacks{appCanCreateBlock} = do
   bchH <- queryRO $ blockchainHeight
   let currentH = succ bchH
   oldValSet <- queryRO $ mustRetrieveValidatorSet bchH
@@ -467,11 +451,11 @@ makeHeightParameters appValidatorKey BChLogic{..} AppStore{..} AppCallbacks{appC
                         b <$ mustQueryRW (writeBlockReadyToWAL currentH n b)
           Just b  -> return b
     --
-    , validateBlock = \bid -> do
-        retrievePropByID propStorage currentH bid >>= \case
-          UnknownBlock    -> return UnseenProposal
-          InvalidBlock    -> return InvalidProposal
-          GoodBlock{}     -> return GoodProposal
+    , validateBlock = \props bid ->
+        case proposalByBID props bid of
+          UnknownBlock    -> return (id, UnseenProposal)
+          InvalidBlock    -> return (id, InvalidProposal)
+          GoodBlock{}     -> return (id, GoodProposal)
           UntestedBlock b -> do
             inconsistencies <- checkProposedBlock currentH b
             st              <- throwNothingM BlockchainStateUnavalable
@@ -502,12 +486,15 @@ makeHeightParameters appValidatorKey BChLogic{..} AppStore{..} AppCallbacks{appC
                , blockStateHash b == hashed (blockchainState bst)
                , validatorSetSize vals > 0
                , blockNewValidators b == hashed vals
-                 -> do setPropValidation propStorage bid $ Just bst
-                       return GoodProposal
+                 -> return ( \p -> setProposalValidation p bid (Just bst)
+                           , GoodProposal
+                           )
                | otherwise
                  -> invalid
                where
-                 invalid = InvalidProposal <$ setPropValidation propStorage bid Nothing
+                 invalid = return ( \p -> setProposalValidation p bid Nothing
+                                  , InvalidProposal
+                                  )
     --
     , createProposal = \r commit -> do
         -- Obtain block either from WAL or actually genrate it
@@ -558,10 +545,11 @@ makeHeightParameters appValidatorKey BChLogic{..} AppStore{..} AppCallbacks{appC
             return $ block <$ res
         --
         let bid = blockHash bchValue
-        allowBlockID      propStorage r bid
-        storePropBlock    propStorage bchValue
-        setPropValidation propStorage bid (Just $ () <$ res)
-        return bid
+        return ( (\p -> setProposalValidation p bid (Just $ () <$ res))
+               . (\p -> addBlockToProps p bchValue)
+               . (\p -> acceptBlockID p r bid)
+               , bid
+               )
     , ..
     }
 

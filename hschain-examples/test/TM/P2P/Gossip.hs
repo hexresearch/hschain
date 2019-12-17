@@ -222,10 +222,8 @@ withGossip n action = do
     mustQueryRW $ storeGenesis genesis
     consensusState <- liftIO $ newTVarIO Nothing
     gossipCnts     <- newGossipCounters
-    props          <- newSTMPropStorage
     cursor         <- getMempoolCursor nullMempool
     let config = P2P.Config
-                   (makeReadOnlyPS props)
                    cursor
                    (readTVar consensusState)
                    gossipCnts
@@ -252,13 +250,14 @@ startConsensus = do
   h     <- queryRO blockchainHeight
   varSt <- lift $ asks snd
   atomicallyIO $ writeTVar varSt (Just (succ h, TMState
-    { smRound         = Round 0
-    , smStep          = StepNewHeight 0
-    , smProposals     = mempty
-    , smPrevotesSet   = newHeightVoteSet valSet
-    , smPrecommitsSet = newHeightVoteSet valSet
-    , smLockedBlock   = Nothing
-    , smLastCommit    = Nothing
+    { smRound          = Round 0
+    , smStep           = StepNewHeight 0
+    , smProposals      = mempty
+    , smProposedBlocks = emptyProps
+    , smPrevotesSet    = newHeightVoteSet valSet
+    , smPrecommitsSet  = newHeightVoteSet valSet
+    , smLockedBlock    = Nothing
+    , smLastCommit     = Nothing
     }))
   return $ EAnnouncement $ TxAnn $ AnnStep $ FullStep (succ h) (Round 0) (StepNewHeight 0)
 

@@ -92,12 +92,13 @@ handlerGossipMsg = \case
         addPrecommit h r i
         currentState
       AnnHasBlock     h r   -> do
-        FullStep hP _ _ <- use peerStep
-        p <- view propStorage
-        when ( h == hP ) $ do
-          mbid <- lift $ retrievePropByR p h r -- TODO: IO here!
-          forM_ mbid $ \(bid,_) ->
-            peerBlocks %= Set.insert bid
+        FullStep hPeer _ _ <- use peerStep
+        when ( h == hPeer ) $ do
+          mstate <- atomicallyIO =<< view consensusSt
+          forM_ mstate $ \(hSt, st) ->
+            when (hPeer == hSt) $ do
+              forM_ (proposalByR (smProposedBlocks st) r) $ \(bid,_) ->
+                peerBlocks %= Set.insert bid
         currentState
       AnnLock mr -> do
         peerLock .= mr
@@ -230,19 +231,20 @@ handlerMempoolTimeout = do
 
 handlerBlocksTimeout :: TimeoutHandler CurrentState alg a m
 handlerBlocksTimeout = do
-  (FullStep h r _) <- use peerStep
-  roundInProposals <- Set.member r <$> use peerProposals
-  p <- view propStorage
-  mbid <- lift $ retrievePropByR p h r
-  let mBlk = do (bid, bVal) <- mbid
-                blk         <- blockFromBlockValidation bVal
-                return (bid,blk) 
-  forM_ mBlk $ \(bid,b) -> do
-      -- Peer has proposal but not block
-      noBlockInState <- Set.notMember bid <$> use peerBlocks
-      when (roundInProposals && noBlockInState) $ do
-        lift $ logger DebugS ("Gossip: " <> showLS bid) ()
-        addBlock b
-        push2Gossip $ GossipBlock b
-        tickSend blocks
+  mstate <- atomicallyIO =<< view consensusSt
+  forM_ mstate $ \(hSt,st) -> do
+    FullStep h r _ <- use peerStep
+    when (h == hSt) $ do
+      roundInProposals <- Set.member r <$> use peerProposals
+      let mBlk = do (bid, bVal) <- proposalByR (smProposedBlocks st) r
+                    blk         <- blockFromBlockValidation bVal
+                    return (bid,blk)
+      forM_ mBlk $ \(bid,b) -> do
+        -- Peer has proposal but not block
+        noBlockInState <- Set.notMember bid <$> use peerBlocks
+        when (roundInProposals && noBlockInState) $ do
+          lift $ logger DebugS ("Gossip: " <> showLS bid) ()
+          addBlock b
+          push2Gossip $ GossipBlock b
+          tickSend blocks
   currentState
