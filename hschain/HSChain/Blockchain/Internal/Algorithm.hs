@@ -286,7 +286,9 @@ tendermintTransition par@HeightParameters{..} msg sm@TMState{..} =
       | otherwise
         -> do logger InfoS "Got proposal" $ LogProposal propHeight propRound propBlockID
               lift $ yield $ EngAnnProposal propRound
-              return sm { smProposals = Map.insert propRound p smProposals }
+              return sm { smProposals      = Map.insert propRound p smProposals
+                        , smProposedBlocks = acceptBlockID smProposedBlocks propRound propBlockID
+                        }
     ----------------------------------------------------------------
     PreVoteMsg v@(signedValue -> Vote{..})
       -- Only accept votes with current height
@@ -402,7 +404,9 @@ checkTransitionPrecommit par@HeightParameters{..} r sm@TMState{..}
                            , commitPrecommits =  unverifySignature
                                              <$> NE.fromList (valuesAtR r smPrecommitsSet)
                            }
-                     sm { smStep = StepAwaitCommit r }
+                     sm { smStep           = StepAwaitCommit r
+                        , smProposedBlocks = acceptBlockID smProposedBlocks r bid
+                        }
   --  * We have +2/3 precommits for nil at current round
   --  * We are at Precommit step [FIXME?]
   --  => goto Propose(H,R+1)
