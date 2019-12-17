@@ -36,7 +36,7 @@ import System.FilePath
 import Data.Yaml.Config       (loadYamlSettings, requireEnv)
 
 import Network.Wai.Middleware.Prometheus
-import Prometheus   (register, runMonitorT)
+import Prometheus (register, runMonitorT)
 import Prometheus.Metric.GHC
 import GHC.Generics (Generic)
 import qualified Network.Wai.Handler.Warp as Warp
@@ -63,6 +63,7 @@ import Codec.Serialise      (Serialise,serialise)
 import HSChain.Blockchain.Interpretation
 import HSChain.Control
 import HSChain.Store
+import HSChain.Store.STM
 import HSChain.Monitoring
 import HSChain.Crypto
 import HSChain.Crypto.Ed25519
@@ -108,7 +109,7 @@ runConsensusNode genesisPath configPath envVar = do
                                  }
     --- Allocate resources
     (conn, logenv) <- allocNode nspec
-    let run = runMonitorT gauges . runLoggerT logenv . runDBT conn
+    let run = runMonitorTWithGauges gauges . runLoggerT logenv . runDBT conn
         --run = runMonitorT undefined . runLoggerT undefined . runDBT undefined
     -- Actually run node
     lift $ run $ do
@@ -148,7 +149,7 @@ startWebMonitoring port = do
 
 -- | Allocate resources for node
 allocNode
-  :: (MonadIO m, Has x NodeSpec)
+  :: (MonadIO m, MonadMask m, Has x NodeSpec)
   => x                          -- ^ Node parameters
   -> ContT r m (Connection 'RW Alg BData, LogEnv)
 allocNode x = do
@@ -239,7 +240,7 @@ interpretSpec privateKey genesis p cb = do
   conn  <- askConnectionRO
   transitions <- createTransitions
   --let store = undefined --SQLiteState
-  store <- newSTMBChStore _a _b
+  store <- newSTMBchStorage $ initialState transitions
   logic <- makeAppLogic store transitions runner
   acts <- runNode (getT p :: Configuration Example) NodeDescription
     { nodeValidationKey = Just privateKey
@@ -263,6 +264,7 @@ runner = Interpreter run
       (a,st') <- runStateT m st
       return (a, BlockchainState st' vset)
 
+createTransitions :: Monad m => m (BChLogic m Alg BData)
 createTransitions = return $ BChLogic
   { processTx     = error "processTX is called! I am not sure we should use it."
   , processBlock  = error "process block"
@@ -270,6 +272,20 @@ createTransitions = return $ BChLogic
   , initialState  = SQLiteState
   }
 
+newtype MonitorT m a = MonitorT (ReaderT PrometheusGauges m a)
+  deriving ( Functor,Applicative,Monad
+           , MonadIO,MonadMask,MonadThrow,MonadCatch
+           , MonadLogger,MonadFork,MonadTrace )
+
+instance MonadIO m =>  MonadTMMonitoring (MonitorT m) where
+  usingCounter getter n   = MonitorT $ flip addCounterNow n =<< asks getter
+  usingGauge   getter x   = MonitorT $ flip setTGaugeNow x =<< asks getter
+  usingVector  getter l x = MonitorT $ do
+    g <- asks getter
+    setTGVectorNow g l x
+
+runMonitorTWithGauges :: PrometheusGauges -> MonitorT m a -> m a
+runMonitorTWithGauges g (MonitorT m) = runReaderT m g
 
 ----------------------------------------------------------------
 -- Genesis block.
