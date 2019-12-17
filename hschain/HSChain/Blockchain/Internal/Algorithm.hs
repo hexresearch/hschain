@@ -54,6 +54,7 @@ import HSChain.Blockchain.Internal.Types
 import HSChain.Blockchain.Internal.Engine.Types
 import HSChain.Crypto.Containers
 import HSChain.Logger
+import HSChain.Store.Internal.Proposals
 import HSChain.Types
 
 
@@ -91,9 +92,11 @@ data HeightParameters (m :: * -> *) alg a = HeightParameters
     --   becomes true.
   , proposerForRound :: !(Round -> ValidatorIdx alg)
     -- ^ Proposer for given round
-  , validateBlock    :: !(BlockID alg a -> m ProposalState)
+  , validateBlock    :: !(Props alg a -> BlockID alg a -> m ( Props alg a -> Props alg a
+                                                            , ProposalState))
     -- ^ Request validation of particular block
-  , createProposal   :: !(Round -> Maybe (Commit alg a) -> m (BlockID alg a))
+  , createProposal   :: !(Round -> Maybe (Commit alg a) -> m ( Props alg a -> Props alg a
+                                                             , BlockID alg a))
     -- ^ Create new proposal block. Block itself should be stored
     --   elsewhere.
   }
@@ -178,7 +181,7 @@ data ConsensusResult alg a b
   | Tranquility
   | Misdeed
   | DoCommit  !(Commit alg a) !(TMState alg a)
-  deriving (Show,Functor)
+  deriving (Functor)
 
 instance Monad m => Applicative (ConsensusM alg a m) where
   pure  = return
@@ -240,13 +243,14 @@ newHeight HeightParameters{..} lastCommit = do
   yield $ EngTimeout $ Timeout  currentH (Round 0) (StepNewHeight 0)
   yield $ EngAnnStep $ FullStep currentH (Round 0) (StepNewHeight 0)
   return TMState
-    { smRound         = Round 0
-    , smStep          = StepNewHeight 0
-    , smProposals     = Map.empty
-    , smPrevotesSet   = newHeightVoteSet hValidatorSet
-    , smPrecommitsSet = newHeightVoteSet hValidatorSet
-    , smLockedBlock   = Nothing
-    , smLastCommit    = lastCommit
+    { smRound          = Round 0
+    , smStep           = StepNewHeight 0
+    , smProposals      = Map.empty
+    , smProposedBlocks = emptyProps
+    , smPrevotesSet    = newHeightVoteSet hValidatorSet
+    , smPrecommitsSet  = newHeightVoteSet hValidatorSet
+    , smLockedBlock    = Nothing
+    , smLastCommit     = lastCommit
     }
 
 -- | Transition rule for tendermint state machine. State is passed
@@ -281,7 +285,7 @@ tendermintTransition par@HeightParameters{..} msg sm@TMState{..} =
       -- Add it to map of proposals
       | otherwise
         -> do logger InfoS "Got proposal" $ LogProposal propHeight propRound propBlockID
-              lift $ yield $ EngAcceptBlock propRound propBlockID
+              lift $ yield $ EngAnnProposal propRound
               return sm { smProposals = Map.insert propRound p smProposals }
     ----------------------------------------------------------------
     PreVoteMsg v@(signedValue -> Vote{..})
@@ -393,7 +397,7 @@ checkTransitionPrecommit par@HeightParameters{..} r sm@TMState{..}
   --        later moment they'll get
   | Just (Just bid) <- majority23at r smPrecommitsSet
     = do logger InfoS "Decision to commit" $ LogCommit currentH bid
-         lift $ yield $ EngAcceptBlock r bid
+         lift $ yield $ EngAnnProposal r
          commitBlock Commit{ commitBlockID    = bid
                            , commitPrecommits =  unverifySignature
                                              <$> NE.fromList (valuesAtR r smPrecommitsSet)
@@ -428,16 +432,23 @@ enterPropose HeightParameters{..} r sm@TMState{..} reason = do
   lift $ yield $ EngAnnStep $ FullStep currentH r StepProposal
   -- If we're proposers we need to broadcast proposal. Otherwise we do
   -- nothing
-  when areWeProposers $ case smLockedBlock of
+  propUpdate <- case (areWeProposers, smLockedBlock) of    
     -- If we're locked on block we MUST propose it
-    Just (br,bid) -> do logger InfoS "Making POL proposal" $ LogProposal currentH smRound bid
-                        lift $ yield $ EngCastPropose r bid (Just br)
+    (True, Just (br,bid)) -> do
+      logger InfoS "Making POL proposal" $ LogProposal currentH smRound bid
+      lift $ yield $ EngCastPropose r bid (Just br)
+      return $ \p -> acceptBlockID p r bid
     -- Otherwise we need to create new block from mempool
-    Nothing      -> do bid <- lift $ lift $ createProposal r smLastCommit
-                       logger InfoS "Making new proposal" $ LogProposal currentH smRound bid
-                       lift $ yield $ EngCastPropose r bid Nothing
-  return sm { smRound = r
-            , smStep  = StepProposal
+    (True, Nothing) -> do
+      (upd,bid) <- lift $ lift $ createProposal r smLastCommit
+      logger InfoS "Making new proposal" $ LogProposal currentH smRound bid
+      lift $ yield $ EngCastPropose r bid Nothing
+      return upd
+    -- We aren't proposers. Do nothing
+    _ -> return id
+  return sm { smRound          = r
+            , smStep           = StepProposal
+            , smProposedBlocks = propUpdate smProposedBlocks
             }
   where
     areWeProposers = Just (proposerForRound r) == fmap snd validatorKey
@@ -457,17 +468,19 @@ enterPrevote
 enterPrevote par@HeightParameters{..} r (unlockOnPrevote -> sm@TMState{..}) reason = do
   --
   logger InfoS "Entering prevote" $ LogTransition currentH smRound smStep r reason
-  lift $ yield . EngCastPreVote smRound =<< lift prevoteBlock
+  (updateProp, bid) <- lift $ lift prevoteBlock
+  lift $ yield $ EngCastPreVote smRound bid
   --
   lift $ yield $ EngTimeout $ Timeout currentH r StepPrevote
   checkTransitionPrevote par r sm
-    { smRound = r
-    , smStep  = StepPrevote
+    { smRound          = r
+    , smStep           = StepPrevote
+    , smProposedBlocks = updateProp smProposedBlocks
     }
   where
     prevoteBlock
       -- We're locked on block so we prevote it
-      | Just (_,bid) <- smLockedBlock = return (Just bid)
+      | Just (_,bid) <- smLockedBlock = return (id, Just bid)
       -- We have proposal. Prevote it if it's good
       | Just (signedValue -> Proposal{..}) <- Map.lookup r smProposals =
           -- If proposal have proof of lock we must have proof
@@ -481,18 +494,18 @@ enterPrevote par@HeightParameters{..} r (unlockOnPrevote -> sm@TMState{..}) reas
                   , bid == Just propBlockID -> checkPrevoteBlock propBlockID
                   | otherwise               -> do
                       logger WarningS "BYZANTINE proposal POL BID does not match votes" ()
-                      return Nothing
-                Nothing -> return Nothing
+                      return (id, Nothing)
+                Nothing -> return (id, Nothing)
       -- Proposal invalid or absent. Prevote NIL
-      | otherwise = return Nothing
+      | otherwise = return (id, Nothing)
     --
     checkPrevoteBlock bid = do
-      valR <- validateBlock bid
+      (upd,valR) <- validateBlock smProposedBlocks bid
       logger InfoS "Block validation for prevote" valR
       case valR of
-        GoodProposal    -> return (Just bid)
-        InvalidProposal -> return Nothing
-        UnseenProposal  -> return Nothing
+        GoodProposal    -> return (upd, Just bid)
+        InvalidProposal -> return (upd, Nothing)
+        UnseenProposal  -> return (upd, Nothing)
 
 -- Unlock upon entering prevote which happens if:
 --   * We're already locked

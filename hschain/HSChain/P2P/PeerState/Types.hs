@@ -9,7 +9,6 @@
 {-# LANGUAGE TemplateHaskell      #-}
 {-# LANGUAGE TypeFamilies         #-}
 {-# LANGUAGE UndecidableInstances #-}
-
 module HSChain.P2P.PeerState.Types where
 
 import Control.Concurrent.STM (STM)
@@ -21,7 +20,6 @@ import Lens.Micro.TH
 import HSChain.Blockchain.Internal.Types
 import HSChain.Crypto
 import HSChain.Store
-import HSChain.Store.Internal.Proposals
 import HSChain.Types.Blockchain
 import HSChain.Types.Validators
 
@@ -105,11 +103,11 @@ data Event alg a
   | EAnnounceTimeout
   | EAnnouncement !(MessageTx alg a)
 
-data Config m alg a = Config { _propStorage    :: !(ProposalStorage 'RO m alg a)
-                             , _mempCursor     :: !(MempoolCursor m alg (TX a))
-                             , _consensusSt    :: !(STM (Maybe (Height, TMState alg a)))
-                             , _gossipCounters :: !GossipCounters
-                             }
+data Config m alg a = Config
+  { _mempCursor     :: !(MempoolCursor m alg (TX a))
+  , _consensusSt    :: !(STM (Maybe (Height, TMState alg a)))
+  , _gossipCounters :: !GossipCounters
+  }
 makeLenses ''Config
 
 

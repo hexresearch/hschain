@@ -48,7 +48,6 @@ import HSChain.Blockchain.Internal.Types
 import HSChain.Crypto
 import HSChain.Crypto.SHA (SHA512)
 import HSChain.Store
-import HSChain.Store.Internal.Proposals
 import HSChain.Types.Blockchain
 import HSChain.Types.Validators
 
@@ -226,7 +225,7 @@ instance Crypto alg => ToJSON   (PrivValidator alg) where
 
 
 -- | Application connection to outer world
-data AppChans m alg a = AppChans
+data AppChans alg a = AppChans
   { appChanRx         :: TBQueue (MessageRx 'Unverified alg a)
     -- ^ Queue for receiving messages related to consensus protocol
     --   from peers.
@@ -240,16 +239,7 @@ data AppChans m alg a = AppChans
     -- ^ Current state of consensus. It includes current height, state
     --   machine status and known blocks which should be exposed in
     --   read-only manner for gossip with peers.
-  , appPropStorage :: ProposalStorage 'RW m alg a
-    -- ^ Storage for proposed blocks
   }
-
-instance HoistDict AppChans where
-  hoistDict fun AppChans{..} = AppChans
-    { appPropStorage = hoistDict fun appPropStorage
-    , ..
-    }
-
 
 
 -- | Select proposers using PRNG based on SHA512.
