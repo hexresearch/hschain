@@ -54,8 +54,9 @@ def transfer(pub_key, args, connection):
   (args, asset) = arg_value(args, "asset", None, None, lambda x: int(x))
   (args, dest) = arg_value(args, "to", None, None, lambda x: x)
   cursor = connection.cursor()
-  cursor.execute(hschain_q("UPDATE funds SET amount = CASE WHEN wallet_id = :user_id THEN amount - :transfer_amount WHEN wallet_id = :dest_user_id THEN amount + :transfer_amount END WHERE (wallet_id = :user_id OR wallet_id = :dest_user_id) AND :transfer_amount > 0;")
-                , [pub_key, amount, dest])
+  cursor.execute(hschain_q("UPDATE funds SET amount = CASE WHEN wallet_id = :user_id      THEN amount - :transfer_amount WHEN wallet_id = :dest_user_id THEN amount + :transfer_amount END WHERE     (wallet_id = :user_id OR wallet_id = :dest_user_id) AND :transfer_amount > 0
+AND :asset_name == asset_name;")
+                , [pub_key, amount, dest, asset])
 
 
 def operations(pub_key, args, connection):
