@@ -77,23 +77,23 @@ data Message alg a
 --   height. These parameters are constant while we're deciding on
 --   next block.
 data HeightParameters (m :: * -> *) alg a = HeightParameters
-  { currentH             :: !Height
+  { currentH         :: !Height
     -- ^ Height we're on.
-  , hValidatorSet :: !(ValidatorSet alg)
+  , hValidatorSet    :: !(ValidatorSet alg)
     -- ^ Validator set for current height
-  , oldValidatorSet :: !(ValidatorSet alg)
+  , oldValidatorSet  :: !(ValidatorSet alg)
     -- ^ Validator set for previous height
-  , validatorKey         :: !(Maybe (PrivValidator alg, ValidatorIdx alg))
+  , validatorKey     :: !(Maybe (PrivValidator alg, ValidatorIdx alg))
     -- ^ Validator key and index in validator set for current round
-  , readyCreateBlock     :: !(Int -> m Bool)
+  , readyCreateBlock :: !(Int -> m Bool)
     -- ^ Returns true if validator is ready to create new block. If
     --   false validator will stay in @NewHeight@ step until it
     --   becomes true.
-  , proposerForRound     :: !(Round -> ValidatorIdx alg)
+  , proposerForRound :: !(Round -> ValidatorIdx alg)
     -- ^ Proposer for given round
-  , validateBlock        :: !(BlockID alg a -> m ProposalState)
+  , validateBlock    :: !(BlockID alg a -> m ProposalState)
     -- ^ Request validation of particular block
-  , createProposal       :: !(Round -> Maybe (Commit alg a) -> m (BlockID alg a))
+  , createProposal   :: !(Round -> Maybe (Commit alg a) -> m (BlockID alg a))
     -- ^ Create new proposal block. Block itself should be stored
     --   elsewhere.
   }
