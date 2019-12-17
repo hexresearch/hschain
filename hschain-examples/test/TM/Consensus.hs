@@ -55,7 +55,9 @@ tests = testGroup "eigen-consensus"
   [ testGroup "Single round"
     [ testCase (printf "key=%s PV=%i PC=%i" keyNm nPV nPC)
     $ testConsensusNormal nPV nPC k
-    | (k,keyNm) <- [(k1,"k1"::String), (k2,"k2")]
+    | (k,keyNm) <- [ (proposerH1R0,"k1"::String)
+                   , ( head $ filter (/=proposerH1R0) privK
+                     ,"k2")]
     , nPV       <- [0 .. 3]
     , nPC       <- [0 .. 3]
     ]
@@ -109,8 +111,8 @@ testConsensusNormal nPV nPC k = testConsensus k $ do
   ()  <- expectStep 1 0 (StepNewHeight 0)
   ()  <- expectStep 1 0 StepProposal
   -- let consensus engine create proposal or we should do it ourselves
-  bid <- if | k == proposer -> propBlockID <$> expectProp
-            | otherwise     -> proposeBlock (Round 0) proposer block1
+  bid <- if | k == proposerH1R0 -> propBlockID <$> expectProp
+            | otherwise         -> proposeBlock (Round 0) proposerH1R0 block1
   -- We prevote and wait for prevote from engine. It should prevote
   -- valid block
   () <- voteFor (Just bid) =<< expectPV
@@ -123,7 +125,6 @@ testConsensusNormal nPV nPC k = testConsensus k $ do
      | nPC == 3             -> checkCommit bid
      | otherwise            -> expectStep 1 1 StepProposal
   where
-    proposer = proposerKey (Height 1) (Round 0)
     -- Voters for prevote & precommit
     votersPV = take nPV $ filter (/=k) privK
     votersPC = take nPC $ filter (/=k) privK
