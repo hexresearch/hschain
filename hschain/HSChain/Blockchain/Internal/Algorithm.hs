@@ -81,7 +81,7 @@ data HeightParameters (m :: * -> *) alg a = HeightParameters
     -- ^ Height we're on.
   , hValidatorSet :: !(ValidatorSet alg)
     -- ^ Validator set for current height
-  , oldValidatorSet :: !(Maybe (ValidatorSet alg))
+  , oldValidatorSet :: !(ValidatorSet alg)
     -- ^ Validator set for previous height
   , validatorKey         :: !(Maybe (PrivValidator alg, ValidatorIdx alg))
     -- ^ Validator key and index in validator set for current round

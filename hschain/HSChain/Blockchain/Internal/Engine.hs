@@ -298,7 +298,7 @@ handleVerifiedMessage ProposalStorage{..} hParam tm = \case
 -- simply discarded.
 verifyMessageSignature
   :: (MonadLogger m, Crypto alg)
-  => Maybe (ValidatorSet alg)
+  => ValidatorSet alg
   -> ValidatorSet alg
   -> Height
   -> Pipe (MessageRx 'Unverified alg a) (MessageRx 'Verified alg a) m r
@@ -322,9 +322,9 @@ verifyMessageSignature oldValSet valSet height = forever $ do
     RxTimeout   t  -> yield $ RxTimeout t
     RxBlock     b  -> yield $ RxBlock   b
   where
-    verify    con = verifyAny (Just valSet) con
-    verifyOld con = verifyAny oldValSet     con
-    verifyAny mvset name con sx = case mvset >>= flip verifySignature sx of
+    verify    con = verifyAny valSet    con
+    verifyOld con = verifyAny oldValSet con
+    verifyAny vset name con sx = case verifySignature vset sx of
       Just sx' -> yield $ con sx'
       Nothing  -> logger WarningS "Invalid signature"
         (  sl "name" (name::Text)
@@ -451,7 +451,7 @@ makeHeightParameters
 makeHeightParameters appValidatorKey BChLogic{..} AppStore{..} AppCallbacks{appCanCreateBlock} propStorage = do
   bchH <- queryRO $ blockchainHeight
   let currentH = succ bchH
-  oldValSet <- queryRO $ retrieveValidatorSet     bchH
+  oldValSet <- queryRO $ mustRetrieveValidatorSet bchH
   valSet    <- queryRO $ mustRetrieveValidatorSet currentH
   let ourIndex = indexByValidator valSet . publicKey . validatorPrivKey
              =<< appValidatorKey
