@@ -224,7 +224,7 @@ interpretSpec p idx cb = do
   acts <- runNode (getT p :: Configuration Example) NodeDescription
     { nodeValidationKey = Just $ PrivValidator $ fst $ getConst (dioUserKeys @tag) V.! idx
     , nodeGenesis       = genesis
-    , nodeCallbacks     = cb <> nonemptyMempoolCallback mempool
+    , nodeCallbacks     = cb
     , nodeRunner        = run
     , nodeStore         = AppStore { appBchState = store
                                    , appMempool  = mempool
