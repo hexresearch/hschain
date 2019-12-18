@@ -84,13 +84,6 @@ import qualified HSChain.P2P.Network as P2P
 -- Basic coin logic
 ----------------------------------------------------------------
 
-data CoinError
-  = DepositAtWrongH
-  | UnexpectedSend
-  | CoinError String
-  deriving stock    (Show,Generic)
-  deriving anyclass (Exception,NFData)
-
 -- | Block data. It's simply newtype wrapper over list of
 --   transactions. Newtype is needed in order to define 'BlockData'
 --   instance.
@@ -99,19 +92,24 @@ newtype BData = BData [Tx]
   deriving newtype  (NFData,CryptoHashable)
   deriving anyclass (Serialise)
 
+-- | Error in coin transaction processing
+data CoinError
+  = DepositAtWrongH
+  | UnexpectedSend
+  | CoinError String
+  deriving stock    (Show,Generic)
+  deriving anyclass (Exception,NFData)
+
 instance BlockData BData where
   type TX              BData = Tx
   type BlockchainState BData = CoinState
   type BChError        BData = CoinError
   type BChMonad        BData = Either CoinError
-  -- | Cryptographic algorithms we're using. Note that we using same
-  --   cryptography for both validators and transactions but don't have
-  --   to.
   type Alg             BData = Ed25519 :& SHA512
-  bchLogic = coinLogic
+  bchLogic                      = coinLogic
+  proposerSelection             = ProposerSelection randomProposerSHA512
   blockTransactions (BData txs) = txs
   logBlockData      (BData txs) = HM.singleton "Ntx" $ JSON.toJSON $ length txs
-  proposerSelection             = ProposerSelection randomProposerSHA512
 
 -- | Single transaction. We have two different transaction one to add
 --   money to account ex nihilo and one to transfer money between
