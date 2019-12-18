@@ -101,7 +101,7 @@ interpretSpec genesis p cb = do
   store <- newSTMBchStorage mempty
   --
   let logic = AppLogic
-        { appValidationFun    = \b (BlockchainState st valset) -> do
+        { appValidationFun    = \_ck b (BlockchainState st valset) -> do
             return $ do st' <- foldM (flip process) st (let BData tx = blockData b in tx)
                         return $ BlockchainState st' valset
         , appBlockGenerator  = \b _ -> do

@@ -80,7 +80,7 @@ rewindBlockchainState AppLogic{appBchState,appValidationFun} = do
       blk      <- queryRO $ mustRetrieveBlock h
       valSet   <- queryRO $ mustRetrieveValidatorSet (succ h)
       bst      <- throwNothingM CannotRewindState
-                $ appValidationFun blk (BlockchainState st valSet)
+                $ appValidationFun FullCheck blk (BlockchainState st valSet)
       let st' = blockchainState bst
       bchStoreStore appBchState h st'
       return st'
@@ -228,7 +228,7 @@ msgHandlerLoop hParam AppLogic{..} AppChans{..} = mainLoop Nothing
           valSet <- queryRO $ mustRetrieveValidatorSet height
           st     <- throwNothingM BlockchainStateUnavalable
                   $ bchStoreRetrieve appBchState $ pred height
-          appValidationFun b (BlockchainState st valSet) >>= \case
+          appValidationFun PreliminaryCheck b (BlockchainState st valSet) >>= \case
             Nothing  -> error "Trying to commit invalid block!"
             Just bst -> return (cmt, b, bst)
 
@@ -432,7 +432,7 @@ makeHeightParameters appValidatorKey logic@AppLogic{..} AppCallbacks{appCanCreat
             inconsistencies <- checkProposedBlock currentH b
             st              <- throwNothingM BlockchainStateUnavalable
                              $ bchStoreRetrieve appBchState bchH
-            mvalSet'        <- appValidationFun b (BlockchainState st valSet)
+            mvalSet'        <- appValidationFun PreliminaryCheck b (BlockchainState st valSet)
             evidenceState   <- queryRO $ mapM evidenceRecordedState (blockEvidence b)
             evidenceOK      <- mapM (evidenceCorrect logic) (blockEvidence b)
             if | not (null inconsistencies) -> do
@@ -464,7 +464,7 @@ makeHeightParameters appValidatorKey logic@AppLogic{..} AppCallbacks{appCanCreat
           Just b  -> do
             st       <- throwNothingM BlockchainStateUnavalable
                       $ bchStoreRetrieve appBchState bchH
-            mvalSet' <- appValidationFun b (BlockchainState st valSet)
+            mvalSet' <- appValidationFun PreliminaryCheck b (BlockchainState st valSet)
             case mvalSet' of
               Nothing -> throwM InvalidBlockInWAL
               Just s  -> return (b, s)

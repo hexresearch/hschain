@@ -73,7 +73,7 @@ makeAppLogic store BChLogic{..} Interpreter{..} = do
   mempool <- newMempool checkTx
   --
   return AppLogic
-    { appValidationFun  = \b bst -> (fmap . fmap) snd
+    { appValidationFun  = \_ck b bst -> (fmap . fmap) snd
                                   $ interpretBCh bst
                                   $ processBlock b
     , appBlockGenerator = \newB txs -> do

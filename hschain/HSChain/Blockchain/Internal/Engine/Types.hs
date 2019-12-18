@@ -18,6 +18,7 @@ module HSChain.Blockchain.Internal.Engine.Types (
   , DefaultConfig(..)
     -- * Application state
   , NewBlock(..)
+  , CheckKind(..)
   , AppLogic(..)
   , hoistAppLogic
   , AppCallbacks(..)
@@ -238,7 +239,7 @@ instance Monad m => Monoid (AppCallbacks m alg a) where
 hoistAppLogic :: (Functor n) => (forall x. m x -> n x) -> AppLogic m alg a -> AppLogic n alg a
 hoistAppLogic fun AppLogic{..} = AppLogic
   { appBlockGenerator   = (fmap . fmap) fun appBlockGenerator
-  , appValidationFun    = (fmap . fmap) fun appValidationFun
+  , appValidationFun    = \kind -> (fmap . fmap) fun (appValidationFun kind)
   , appMempool          = hoistMempool  fun appMempool
   , appBchState         = hoistBChStore fun appBchState
   , ..
