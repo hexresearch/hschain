@@ -1,7 +1,6 @@
 {-# LANGUAGE ApplicativeDo, BangPatterns, DataKinds
-           , DeriveGeneric, DerivingStrategies
-           , DeriveAnyClass, FlexibleContexts
-           , GeneralizedNewtypeDeriving
+           , DeriveGeneric, DerivingStrategies, DeriveAnyClass
+           , FlexibleContexts, GeneralizedNewtypeDeriving
            , LambdaCase, OverloadedStrings
            , RecordWildCards, ScopedTypeVariables
            , StandaloneDeriving, TypeApplications
@@ -185,7 +184,7 @@ data Transaction = Transaction
   { transactionRequest    :: BS.ByteString
   , transactionArguments  :: Map.Map BS.ByteString BS.ByteString
   }
-  deriving stock    (Show, Eq, Generic)
+  deriving stock    (Show, Eq, Ord, Generic)
   deriving anyclass (NFData)
   deriving anyclass (Serialise)
 
@@ -257,12 +256,11 @@ interpretSpec privateKey genesis p cb = do
     , acts
     )
 
-runner :: Monad m => Interpreter (StateT SQLiteState Maybe) m Alg BData
+runner :: Monad m => Interpreter m m Alg BData
 runner = Interpreter run
   where
     run (BlockchainState st vset) m = return $ do
-      (a,st') <- runStateT m st
-      return (a, BlockchainState st' vset)
+      return (undefined, BlockchainState st vset)
 
 createTransitions :: Monad m => m (BChLogic m Alg BData)
 createTransitions = return $ BChLogic
@@ -273,9 +271,9 @@ createTransitions = return $ BChLogic
   }
 
 newtype MonitorT m a = MonitorT (ReaderT PrometheusGauges m a)
-  deriving ( Functor,Applicative,Monad
-           , MonadIO,MonadMask,MonadThrow,MonadCatch
-           , MonadLogger,MonadFork,MonadTrace )
+  deriving newtype ( Functor, Applicative, Monad
+                   , MonadIO, MonadMask, MonadThrow, MonadCatch
+                   , MonadLogger, MonadFork, MonadTrace )
 
 instance MonadIO m =>  MonadTMMonitoring (MonitorT m) where
   usingCounter getter n   = MonitorT $ flip addCounterNow n =<< asks getter
