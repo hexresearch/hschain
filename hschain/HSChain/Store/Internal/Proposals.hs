@@ -56,8 +56,8 @@ proposalByR ps@Props{..} r = do
   bid <- r   `Map.lookup` propsRoundMap
   return (bid, proposalByBID ps bid)
 
-setProposalValidation :: Props alg a -> BlockID alg a -> Maybe (EvaluationResult alg a) -> Props alg a
-setProposalValidation Props{..} bid mst = Props
+setProposalValidation :: BlockID alg a -> Maybe (EvaluationResult alg a) -> Props alg a -> Props alg a
+setProposalValidation bid mst Props{..} = Props
   { propsBIDmap = Map.adjust update bid propsBIDmap
   , ..
   }
@@ -73,8 +73,8 @@ setProposalValidation Props{..} bid mst = Props
         _               -> error "CANT HAPPEN"
 
 
-acceptBlockID :: Props alg a -> Round -> BlockID alg a -> Props alg a
-acceptBlockID Props{..} r bid = Props
+acceptBlockID :: Round -> BlockID alg a -> Props alg a -> Props alg a
+acceptBlockID r bid Props{..} = Props
   { propsRoundMap = Map.insert r bid propsRoundMap
   -- NOTE: We can already have block with given BID in map. It could
   --       be reproposed in another round.
@@ -84,8 +84,8 @@ acceptBlockID Props{..} r bid = Props
                               ) bid propsBIDmap
   }
 
-addBlockToProps :: (Crypto alg) => Props alg a -> Block alg a -> Props alg a
-addBlockToProps Props{..} blk = Props
+addBlockToProps :: (Crypto alg) => Block alg a -> Props alg a -> Props alg a
+addBlockToProps blk Props{..} = Props
   { propsBIDmap = Map.adjust (\case
                                  UnknownBlock -> UntestedBlock blk
                                  b            -> b

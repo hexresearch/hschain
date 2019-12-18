@@ -285,7 +285,7 @@ handleVerifiedMessage hParam tm = \case
   RxPreCommit v -> runConsesusM $ tendermintTransition hParam (PreCommitMsg v) tm
   RxTimeout   t -> runConsesusM $ tendermintTransition hParam (TimeoutMsg   t) tm
   -- We update block storage
-  RxBlock     b -> return $ Success $ tm { smProposedBlocks = addBlockToProps (smProposedBlocks tm) b }
+  RxBlock     b -> return $ Success $ tm { smProposedBlocks = addBlockToProps b (smProposedBlocks tm) }
 
 -- Verify signature of message. If signature is not correct message is
 -- simply discarded.
@@ -486,13 +486,13 @@ makeHeightParameters appValidatorKey BChLogic{..} AppStore{..} AppCallbacks{appC
                , blockStateHash b == hashed (blockchainState bst)
                , validatorSetSize vals > 0
                , blockNewValidators b == hashed vals
-                 -> return ( \p -> setProposalValidation p bid (Just bst)
+                 -> return ( setProposalValidation bid (Just bst)
                            , GoodProposal
                            )
                | otherwise
                  -> invalid
                where
-                 invalid = return ( \p -> setProposalValidation p bid Nothing
+                 invalid = return ( setProposalValidation bid Nothing
                                   , InvalidProposal
                                   )
     --
@@ -545,9 +545,9 @@ makeHeightParameters appValidatorKey BChLogic{..} AppStore{..} AppCallbacks{appC
             return $ block <$ res
         --
         let bid = blockHash bchValue
-        return ( (\p -> setProposalValidation p bid (Just $ () <$ res))
-               . (\p -> addBlockToProps p bchValue)
-               . (\p -> acceptBlockID p r bid)
+        return ( setProposalValidation bid (Just $ () <$ res)
+               . addBlockToProps bchValue
+               . acceptBlockID r bid
                , bid
                )
     , ..
