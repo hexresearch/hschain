@@ -441,7 +441,7 @@ enterPropose HeightParameters{..} r sm@TMState{..} reason = do
     (True, Just (br,bid)) -> do
       logger InfoS "Making POL proposal" $ LogProposal currentH smRound bid
       lift $ yield $ EngCastPropose r bid (Just br)
-      return $ acceptBlockID r bid
+      return id
     -- Otherwise we need to create new block from mempool
     (True, Nothing) -> do
       (upd,bid) <- lift $ lift $ createProposal r smLastCommit
