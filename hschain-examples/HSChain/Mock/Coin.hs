@@ -239,7 +239,7 @@ processTransaction transaction@(Send pubK sig txSend@TxSend{..}) CoinState{..} =
 --   in memory we simply use @Maybe@ to track failures
 coinLogic :: BChLogic (Either CoinError) BData
 coinLogic = BChLogic
-  { processTx     = \BChEval{..} -> void $ process (Height 1) bchValue blockchainState
+  { processTx     = \BChEval{..} -> void $ processTransaction bchValue blockchainState
   --
   , processBlock  = \BChEval{..} -> do
       let h    = blockHeight bchValue
