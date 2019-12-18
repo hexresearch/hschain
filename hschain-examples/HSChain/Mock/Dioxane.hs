@@ -1,3 +1,4 @@
+{-# LANGUAGE DataKinds                  #-}
 {-# LANGUAGE DeriveAnyClass             #-}
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE DerivingStrategies         #-}
@@ -17,17 +18,20 @@ module HSChain.Mock.Dioxane where
 
 import Codec.Serialise      (Serialise)
 import Control.Applicative
+import Control.Arrow        ((&&&))
 import Control.DeepSeq      (NFData)
 import Control.Exception    (Exception)
 import Control.Monad
 import Control.Monad.Catch
 import Control.Monad.Trans.Except
+import Data.Proxy
 import qualified Data.Aeson          as JSON
 import qualified Data.HashMap.Strict as HM
 import qualified Data.Map.Strict     as Map
 import qualified Data.Vector         as V
 import Control.Lens hiding ((^..))
 
+import GHC.TypeLits
 import GHC.Generics (Generic)
 
 import HSChain.Blockchain.Internal.Engine.Types
@@ -39,6 +43,7 @@ import HSChain.Crypto.SHA
 import HSChain.Debug.Trace
 import HSChain.Logger
 import HSChain.Mock.Types
+import HSChain.Mock.KeyList
 import HSChain.Monitoring
 import HSChain.Run
 import HSChain.Store
@@ -117,6 +122,17 @@ class Dio a where
                                           ))
   dioInitialBalance :: Tagged a Integer
   dioValidators     :: Tagged a Int
+
+data DioTag (keys :: Nat) (vals :: Nat)
+
+instance (KnownNat keys, KnownNat vals) => Dio (DioTag keys vals) where
+  dioUserKeys       = Const
+                    $ V.fromList
+                    $ take (fromIntegral (natVal (Proxy @keys)))
+                    $ map (id &&& publicKey)
+                    $ makePrivKeyStream 1337
+  dioInitialBalance = Const 1000000
+  dioValidators     = Const $ fromIntegral $ natVal (Proxy @vals)
 
 dioGenesis :: forall tag. Dio tag => Genesis (BData tag)
 dioGenesis = BChEval
