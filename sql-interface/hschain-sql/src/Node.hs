@@ -59,7 +59,6 @@ import qualified Data.Set            as Set
 import Control.DeepSeq
 import Codec.Serialise      (Serialise,serialise)
 
-import HSChain.Blockchain.Interpretation
 import HSChain.Control
 import HSChain.Store
 import HSChain.Store.STM

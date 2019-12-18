@@ -87,15 +87,6 @@ rewindBlockchainState AppStore{..} BChLogic{..} = do
     st0
   where
     interpretBlock h st = do
-<<<<<<< HEAD
-      blk      <- queryRO $ mustRetrieveBlock h
-      valSet   <- queryRO $ mustRetrieveValidatorSet (succ h)
-      bst      <- throwNothingM CannotRewindState
-                $ appValidationFun FullCheck blk (BlockchainState st valSet)
-      let st' = blockchainState bst
-      bchStoreStore appBchState h st'
-      return st'
-=======
       blk    <- queryRO $ mustRetrieveBlock        h
       valSet <- queryRO $ mustRetrieveValidatorSet h
       BChEval{..}
@@ -120,7 +111,6 @@ rewindBlockchainState AppStore{..} BChLogic{..} = do
       -- Put new state into state storage
       bchStoreStore appBchState h blockchainState
       return blockchainState
->>>>>>> afbf6654de396affca16b5c27431d1f77685f92d
 
 -- | Main loop for application. Here we update state machine and
 --   blockchain in response to incoming messages.
@@ -272,11 +262,6 @@ msgHandlerLoop hParam BChLogic{..} AppStore{..} AppChans{..} = mainLoop Nothing
           valSet <- queryRO $ mustRetrieveValidatorSet height
           st     <- throwNothingM BlockchainStateUnavalable
                   $ bchStoreRetrieve appBchState $ pred height
-<<<<<<< HEAD
-          appValidationFun PreliminaryCheck b (BlockchainState st valSet) >>= \case
-            Nothing  -> error "Trying to commit invalid block!"
-            Just bst -> return (cmt, b, bst)
-=======
           bst    <- throwLeftM
                   $ runExceptT
                   $ withExceptT TryingToCommitInvalidBlock
@@ -285,7 +270,6 @@ msgHandlerLoop hParam BChLogic{..} AppStore{..} AppChans{..} = mainLoop Nothing
                                          , blockchainState = st
                                          }
           return (cmt, b <$ bst)
->>>>>>> afbf6654de396affca16b5c27431d1f77685f92d
 
 
 -- Handle message and perform state transitions for both
@@ -476,11 +460,6 @@ makeHeightParameters appValidatorKey BChLogic{..} AppStore{..} AppCallbacks{appC
             inconsistencies <- checkProposedBlock currentH b
             st              <- throwNothingM BlockchainStateUnavalable
                              $ bchStoreRetrieve appBchState bchH
-<<<<<<< HEAD
-            mvalSet'        <- appValidationFun PreliminaryCheck b (BlockchainState st valSet)
-            evidenceState   <- queryRO $ mapM evidenceRecordedState (blockEvidence b)
-            evidenceOK      <- mapM (evidenceCorrect logic) (blockEvidence b)
-=======
             mvalSet'        <- runExceptT
                              $ processBlock BChEval { bchValue        = b
                                                     , validatorSet    = valSet
@@ -488,7 +467,6 @@ makeHeightParameters appValidatorKey BChLogic{..} AppStore{..} AppCallbacks{appC
                                                     }
             evidenceState   <- queryRO $ mapM evidenceRecordedState (merkleValue $ blockEvidence b)
             evidenceOK      <- mapM evidenceCorrect (merkleValue $ blockEvidence b)
->>>>>>> afbf6654de396affca16b5c27431d1f77685f92d
             if | not (null inconsistencies) -> do
                -- Block is not internally consistent
                    logger ErrorS "Proposed block has inconsistencies"
@@ -522,14 +500,6 @@ makeHeightParameters appValidatorKey BChLogic{..} AppStore{..} AppCallbacks{appC
         -- Obtain block either from WAL or actually genrate it
         res@BChEval{..} <- queryRO (retrieveBlockFromWAL currentH r) >>= \case
           Just b  -> do
-<<<<<<< HEAD
-            st       <- throwNothingM BlockchainStateUnavalable
-                      $ bchStoreRetrieve appBchState bchH
-            mvalSet' <- appValidationFun PreliminaryCheck b (BlockchainState st valSet)
-            case mvalSet' of
-              Nothing -> throwM InvalidBlockInWAL
-              Just s  -> return (b, s)
-=======
             st  <- throwNothingM BlockchainStateUnavalable
                  $ bchStoreRetrieve appBchState bchH
             res <- throwLeftM
@@ -540,7 +510,6 @@ makeHeightParameters appValidatorKey BChLogic{..} AppStore{..} AppCallbacks{appC
                                         , blockchainState = st
                                         }
             return $ b <$ res
->>>>>>> afbf6654de396affca16b5c27431d1f77685f92d
           Nothing -> do
             lastBID <- throwNothing (DBMissingBlockID bchH) <=< queryRO
                      $ retrieveBlockID bchH

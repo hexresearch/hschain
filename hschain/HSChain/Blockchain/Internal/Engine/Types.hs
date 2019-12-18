@@ -20,8 +20,6 @@ module HSChain.Blockchain.Internal.Engine.Types (
   , NewBlock(..)
   , CheckKind(..)
   , AppLogic
-  , hoistAppLogic
-  , AppLogic
   , AppStore(..)
   , AppCallbacks(..)
   , Validator(..)

@@ -89,7 +89,7 @@ executable hschain-sql-node
                      , hschain
                      , hschain-crypto
                      , hschain-types
-                     , hschain-example
+                     , hschain-examples
                      , aeson
                      , base58-bytestring >=0.1
                      , bytestring        >=0.10
