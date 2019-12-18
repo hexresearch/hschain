@@ -29,7 +29,7 @@ import qualified Data.Aeson          as JSON
 import qualified Data.HashMap.Strict as HM
 import qualified Data.Map.Strict     as Map
 import qualified Data.Vector         as V
-import Control.Lens hiding ((^..))
+import Control.Lens
 
 import GHC.TypeLits
 import GHC.Generics (Generic)
@@ -208,20 +208,21 @@ process Tx{..} st = do
 ----------------------------------------------------------------
 
 interpretSpec
-  :: ( MonadDB m (BData tag), MonadFork m, MonadMask m, MonadLogger m
+  :: forall m x tag.
+     ( MonadDB m (BData tag), MonadFork m, MonadMask m, MonadLogger m
      , MonadTrace m, MonadTMMonitoring m, Dio tag
      , Has x BlockchainNet
-     , Has x NodeSpec
      , Has x (Configuration Example))
   => x
+  -> Int
   -> AppCallbacks m (BData tag)
   -> m (RunningNode m (BData tag), [m ()])
-interpretSpec p cb = do
+interpretSpec p idx cb = do
   conn    <- askConnectionRO
   store   <- newSTMBchStorage $ blockchainState genesis
   mempool <- makeMempool store run
   acts <- runNode (getT p :: Configuration Example) NodeDescription
-    { nodeValidationKey = p ^.. nspecPrivKey
+    { nodeValidationKey = Just $ PrivValidator $ fst $ getConst (dioUserKeys @tag) V.! idx
     , nodeGenesis       = genesis
     , nodeCallbacks     = cb <> nonemptyMempoolCallback mempool
     , nodeRunner        = run
