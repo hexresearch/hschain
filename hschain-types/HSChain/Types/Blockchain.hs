@@ -251,15 +251,19 @@ class ( Serialise a
   type BChError a
   -- | Monad used for evaluation of blockchain
   type BChMonad a :: * -> *
+  -- | Crypto algorithms used by blockchain validators. Not that
+  --   transactions doesn't necessarily need not to use same
+  --   cryptography.
   type Alg a  
-    
-  bchLogic :: BChLogic (BChMonad a) a
+  -- | Logic of blockchain. It describes how to process block and
+  --   validate transactions in mempool and how to generate new blocks.
+  bchLogic          :: BChLogic (BChMonad a) a
+  -- | Describe how to select proposer for given height and round.
+  proposerSelection :: ProposerSelection a
   -- | Return list of transaction in block
   blockTransactions :: a -> [TX a]
   -- | Collect information about block data for logging
   logBlockData      :: a -> JSON.Object
-  -- | Describe how to select proposer for given height and round.
-  proposerSelection :: ProposerSelection a
 
 
 ----------------------------------------------------------------
