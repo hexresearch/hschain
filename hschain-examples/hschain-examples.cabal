@@ -25,6 +25,7 @@ Library
                      , bytestring           >=0.10
                      , containers           >=0.5.9
                      , deepseq              >=1.4
+                     , lens
                      , mmorph
                      , exceptions           >=0.8.3
                      , random
@@ -39,6 +40,7 @@ Library
   Exposed-modules:
                   HSChain.Mock
                   HSChain.Mock.Coin
+                  HSChain.Mock.Dioxane
                   HSChain.Mock.KeyList
                   HSChain.Mock.KeyVal
                   HSChain.Mock.Types

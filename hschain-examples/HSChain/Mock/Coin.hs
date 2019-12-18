@@ -39,7 +39,6 @@ module HSChain.Mock.Coin (
   ) where
 
 import Control.Monad
-
 import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
