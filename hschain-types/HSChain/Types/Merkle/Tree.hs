@@ -7,7 +7,6 @@
 {-# LANGUAGE OverloadedStrings     #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
 {-# LANGUAGE TypeFamilies          #-}
-{-# LANGUAGE ViewPatterns          #-}
 module HSChain.Types.Merkle.Tree
   ( -- * Tree data types
     MerkleBlockTree(..)

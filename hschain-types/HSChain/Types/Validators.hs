@@ -1,5 +1,4 @@
 {-# LANGUAGE DeriveAnyClass             #-}
-{-# LANGUAGE DeriveFunctor              #-}
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE DerivingStrategies         #-}
 {-# LANGUAGE FlexibleContexts           #-}
@@ -46,7 +45,7 @@ import Data.Foldable
 
 import Data.Coerce
 import Data.IntSet  (IntSet)
-import Data.List    (sortBy)
+import Data.List    (sortOn)
 import Data.Map     (Map)
 import Data.Ord     (comparing)
 import GHC.Generics (Generic, Generic1)
@@ -125,7 +124,7 @@ makeValidatorSet
   => f (Validator alg)
   -> Either (PublicKey alg) (ValidatorSet alg)
 makeValidatorSet vals = do
-  let vlist = sortBy (comparing validatorPubKey)
+  let vlist = sortOn validatorPubKey
             $ toList vals
       vvec  = V.fromList vlist
   forM_ vals $ \v -> case validatorVotingPower v of

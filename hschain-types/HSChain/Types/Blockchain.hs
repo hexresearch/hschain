@@ -7,7 +7,6 @@
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE KindSignatures             #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE RankNTypes                 #-}
@@ -360,7 +359,7 @@ decodeVote expectedTag = do
     5 | tag == expectedTag -> Vote <$> decode <*> decode <*> decode <*> decode
       | otherwise -> fail ("Invalid Vote tag, expected: " ++ show expectedTag
                            ++ ", actual: " ++ show tag)
-    _ -> fail $ "Invalid Vote encoding"
+    _ -> fail "Invalid Vote encoding"
 
 
 instance (CryptoHash (Alg a)) => CryptoHashable (Vote 'PreVote a) where

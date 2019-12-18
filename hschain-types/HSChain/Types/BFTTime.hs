@@ -31,7 +31,7 @@ commitTime vset t0 Commit{..} = do
            , signedValue sv
            )
   -- Here we discard invalid votes and calculate median time
-  let times    = sortBy (comparing snd)
+  let times    = sortOn snd
                $ [ (w,voteTime) | (w,Vote{..}) <- NE.toList votes
                                 , voteTime > t0
                                 , voteBlockID == Just commitBlockID
