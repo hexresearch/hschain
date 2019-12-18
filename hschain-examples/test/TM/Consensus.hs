@@ -1,20 +1,20 @@
+{-# LANGUAGE DataKinds                  #-}
+{-# LANGUAGE DeriveFunctor              #-}
+{-# LANGUAGE DerivingStrategies         #-}
+{-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE DerivingStrategies #-}
-{-# LANGUAGE DataKinds           #-}
-{-# LANGUAGE DeriveFunctor       #-}
-{-# LANGUAGE FlexibleContexts    #-}
-{-# LANGUAGE LambdaCase          #-}
-{-# LANGUAGE MultiWayIf          #-}
-{-# LANGUAGE OverloadedStrings   #-}
-{-# LANGUAGE RankNTypes          #-}
-{-# LANGUAGE RecordWildCards     #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE ViewPatterns        #-}
+{-# LANGUAGE LambdaCase                 #-}
+{-# LANGUAGE MultiWayIf                 #-}
+{-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE RankNTypes                 #-}
+{-# LANGUAGE RecordWildCards            #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
+{-# LANGUAGE TypeApplications           #-}
+{-# LANGUAGE ViewPatterns               #-}
 -- | Tests for consensus
 --
 module TM.Consensus (tests) where
 
-import Codec.Serialise (Serialise)
 import Control.Concurrent.STM
 import Control.Monad
 import Control.Monad.IO.Class
@@ -23,6 +23,7 @@ import Control.Monad.Trans.Free
 import Data.IORef
 import Data.Int
 import Data.Maybe
+import Data.Typeable
 import Text.Printf
 
 import HSChain.Blockchain.Internal.Engine.Types
@@ -34,9 +35,9 @@ import HSChain.Logger
 import HSChain.Store
 import HSChain.Store.STM
 import HSChain.Store.Internal.Query
-import HSChain.Store.Internal.Proposals
 import HSChain.Types
-import HSChain.Mock.KeyVal  (BData(..),process)
+import HSChain.Mock.KeyVal  (BData(..),keyValLogic)
+import HSChain.Types.Merkle.Types
 
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -54,7 +55,9 @@ tests = testGroup "eigen-consensus"
   [ testGroup "Single round"
     [ testCase (printf "key=%s PV=%i PC=%i" keyNm nPV nPC)
     $ testConsensusNormal nPV nPC k
-    | (k,keyNm) <- [(k1,"k1"::String), (k2,"k2")]
+    | (k,keyNm) <- [ (proposerH1R0,"k1"::String)
+                   , ( head $ filter (/=proposerH1R0) privK
+                     ,"k2")]
     , nPV       <- [0 .. 3]
     , nPC       <- [0 .. 3]
     ]
@@ -108,8 +111,8 @@ testConsensusNormal nPV nPC k = testConsensus k $ do
   ()  <- expectStep 1 0 (StepNewHeight 0)
   ()  <- expectStep 1 0 StepProposal
   -- let consensus engine create proposal or we should do it ourselves
-  bid <- if | k == proposer -> propBlockID <$> expectProp
-            | otherwise     -> proposeBlock (Round 0) proposer block1
+  bid <- if | k == proposerH1R0 -> propBlockID <$> expectProp
+            | otherwise         -> proposeBlock (Round 0) proposerH1R0 block1
   -- We prevote and wait for prevote from engine. It should prevote
   -- valid block
   () <- voteFor (Just bid) =<< expectPV
@@ -122,7 +125,6 @@ testConsensusNormal nPV nPC k = testConsensus k $ do
      | nPC == 3             -> checkCommit bid
      | otherwise            -> expectStep 1 1 StepProposal
   where
-    proposer = proposerKey (Height 1) (Round 0)
     -- Voters for prevote & precommit
     votersPV = take nPV $ filter (/=k) privK
     votersPC = take nPC $ filter (/=k) privK
@@ -145,7 +147,7 @@ test2Blocks = testConsensus k4 $ do
   -- H=1
   do ()  <- expectStep 1 0 (StepNewHeight 0)
      ()  <- expectStep 1 0 StepProposal
-     bid <- proposeBlock (Round 0) k2 $ mockchain !! 1
+     bid <- proposeBlock (Round 0) k_H1 $ mockchain !! 1
      -- PREVOTE
      ()  <- voteFor (Just bid) =<< expectPV
      prevote (Height 1) (Round 0) [k1,k2] (Just bid)
@@ -155,14 +157,16 @@ test2Blocks = testConsensus k4 $ do
   -- H=2
   do ()  <- expectStep 2 0 (StepNewHeight 0)
      ()  <- expectStep 2 0 StepProposal
-     bid <- proposeBlock (Round 0) k3 $ mockchain !! 2
+     bid <- proposeBlock (Round 0) k_H2 $ mockchain !! 2
      -- PREVOTE
      ()  <- voteFor (Just bid) =<< expectPV
      prevote (Height 2) (Round 0) [k1,k2] (Just bid)
      --  -- PRECOMMIT
      -- () <- voteFor (Just bid) =<< expectPC
      -- precommit (Height 2) (Round 0) [k1,k2] (Just bid)
-
+  where
+    k_H1 = proposerKey (Height 1) (Round 0)
+    k_H2 = proposerKey (Height 2) (Round 0)
 
 -- Vote is split between two block.
 --
@@ -170,7 +174,7 @@ test2Blocks = testConsensus k4 $ do
 --    to procol
 --  - Byzantinous nodes prevote and precommit another block.
 testSplitVote :: Int -> IO ()
-testSplitVote nByz = testConsensus k2 $ do
+testSplitVote nByz = testConsensus thisK $ do
   -- Consensus enters new height and proposes
   ()  <- expectStep 1 0 (StepNewHeight 0)
   ()  <- expectStep 1 0 StepProposal
@@ -191,7 +195,9 @@ testSplitVote nByz = testConsensus k2 $ do
      | nByz == 3 -> expectStep 2 0 (StepNewHeight 0)
      | otherwise -> expectStep 1 1 StepProposal
   where
-    (byzKeys,honestKeys) = splitAt nByz [k1,k3,k4]
+    thisK                = proposerKey (Height 1) (Round 0)
+    otherK               = filter (/=thisK) privK
+    (byzKeys,honestKeys) = splitAt nByz otherK
     byzBlock             = block1'
     byzBID               = blockHash byzBlock
     -- Honest nodes will prevote block iff we have no more that 1 byz. node
@@ -208,7 +214,7 @@ testWalReplay = withEnvironment $ do
   bidRef <- liftIO $ newIORef Nothing
   -- First run. We run consensus and then we abort execution of
   -- consensus engine.
-  execConsensus k2 $ do
+  execConsensus thisK $ do
     ()  <- expectStep 1 0 (StepNewHeight 0)
     ()  <- expectStep 1 0 StepProposal
     bid <- propBlockID <$> expectProp
@@ -221,7 +227,7 @@ testWalReplay = withEnvironment $ do
     return ()
   -- Second run after crash. We should get same output from consensus
   -- engine without sending any input.
-  execConsensus k2 $ do
+  execConsensus thisK $ do
     ()  <- expectStep 1 0 (StepNewHeight 0)
     ()  <- expectStep 1 0 StepProposal
     bid <- propBlockID <$> expectProp
@@ -231,7 +237,8 @@ testWalReplay = withEnvironment $ do
     oldBid <- liftIO $ readIORef bidRef
     when (oldBid /= Just bid) $ error "WAL replay: BID mismatch!"
   where
-    keys = [k1,k3,k4]
+    thisK = proposerKey (Height 1) (Round 0)
+    keys  = filter (/=thisK) privK
 
 -- Test case which is used for illustration for necessity of locking
 -- in "Tendermint: byzantine fault tolerance in the age of
@@ -277,8 +284,8 @@ testLocking k = testConsensus k $ do
     kA = k1
     kD = k4
     --
-    proposer1 = k2
-    proposer2 = k3
+    proposer1 = proposerKey (Height 1) (Round 0)
+    proposer2 = proposerKey (Height 2) (Round 0)
     --
     votersPV = filter (/=k) privK
     votersPC = filter (/=k1) $ filter (/=k) privK
@@ -286,7 +293,7 @@ testLocking k = testConsensus k $ do
 
 evidenceIsStoredImmediatelyProp :: IO ()
 evidenceIsStoredImmediatelyProp = withEnvironment $ do
-  execConsensus k2 $ do
+  execConsensus proposerH1R0 $ do
     -- Consensus enters new height and proposer
     ()  <- expectStep 1 0 (StepNewHeight 0)
     -- OUT OT TURN PROPOSAL
@@ -307,14 +314,14 @@ evidenceIsStoredImmediatelyProp = withEnvironment $ do
 
 evidenceIsStoredImmediatelyPV :: IO ()
 evidenceIsStoredImmediatelyPV = withEnvironment $ do
-  execConsensus k2 $ do
+  execConsensus proposerH1R0 $ do
     -- Consensus enters new height and proposer
     ()  <- expectStep 1 0 (StepNewHeight 0)
     ()  <- expectStep 1 0 StepProposal
     bid <- propBlockID <$> expectProp
     -- PREVOTE: k2,k3 vote normally. k4 votes for two blocks!
     () <- voteFor (Just bid) =<< expectPV
-    prevote (Height 1) (Round 0) [k1,k3,k4] (Just bid)
+    prevote (Height 1) (Round 0) othersH1R0 (Just bid)
     prevote (Height 1) (Round 0) [k4]       (Just bid')
     voteFor (Just bid) =<< expectPC
     expectStep 1 1 StepProposal
@@ -329,14 +336,14 @@ evidenceIsStoredImmediatelyPV = withEnvironment $ do
 
 evidenceIsStoredImmediatelyPC :: IO ()
 evidenceIsStoredImmediatelyPC = withEnvironment $ do
-  execConsensus k2 $ do
+  execConsensus proposerH1R0 $ do
     -- Consensus enters new height and proposer
     ()  <- expectStep 1 0 (StepNewHeight 0)
     ()  <- expectStep 1 0 StepProposal
     bid <- propBlockID <$> expectProp
     -- PREVOTE: k2,k3 vote normally. k4 votes for two blocks!
     () <- voteFor (Just bid) =<< expectPV
-    prevote (Height 1) (Round 0) [k1,k3,k4] (Just bid)
+    prevote (Height 1) (Round 0) othersH1R0 (Just bid)
     -- PRECOMMIT: vote normally
     () <- voteFor (Just bid) =<< expectPC
     precommit (Height 1) (Round 0) [k4] (Just bid')
@@ -352,29 +359,25 @@ evidenceIsStoredImmediatelyPC = withEnvironment $ do
 
 evidenceIsRecordedProp :: IO ()
 evidenceIsRecordedProp = withEnvironment $ do
-  execConsensus k $ do
+  execConsensus proposerH2R0 $ do
     -- H=1
     do ()   <- expectStep 1 0 (StepNewHeight 0)
        -- OUT OT TURN PROPOSAL
-       _   <- proposeBlock (Round 0) k4 block1
        ()  <- expectStep 1 0 StepProposal
-       bid <- proposeBlock (Round 0) (proposerKey (Height 1) (Round 0)) (mockchain !! 1)
+       _   <- proposeBlock (Round 1) k4 block1
+       bid <- propBlockID <$> expectProp
        ()  <- voteFor (Just bid) =<< expectPV
        prevote   (Height 1) (Round 0) otherK (Just bid)
        ()  <- voteFor (Just bid) =<< expectPC
        precommit (Height 1) (Round 0) otherK (Just bid)
     -- H=2
-    do () <- expectStep 2 0 (StepNewHeight 0)
-       () <- expectStep 2 0 StepProposal
+    do ()  <- expectStep 2 0 (StepNewHeight 0)
+       ()  <- expectStep 2 0 StepProposal
        -- Check that block contain evidence
-       bid    <- propBlockID <$> expectProp
-       Just b <- lookupBID (Height 2) bid
-       case blockEvidence b of
-         [OutOfTurnProposal _] -> return ()
-         e                     -> error $ unlines $ map show e
-       ()   <- voteFor (Just bid) =<< expectPV
+       bid <- propBlockID <$> expectProp
+       ()  <- voteFor (Just bid) =<< expectPV
        prevote   (Height 2) (Round 0) otherK (Just bid)
-       ()   <- voteFor (Just bid) =<< expectPC
+       ()  <- voteFor (Just bid) =<< expectPC
        precommit (Height 2) (Round 0) otherK (Just bid)
     -- H=3. Block with evidence is commited
     expectStep 3 0 (StepNewHeight 0)
@@ -384,8 +387,7 @@ evidenceIsRecordedProp = withEnvironment $ do
     [(CBORed (OutOfTurnProposal _), True)] -> return ()
     ev -> error $ unlines $ "Incorrect evidence: " : map show ev
   where
-    k      = proposerKey (Height 2) (Round 0)
-    otherK = take 2 $ filter (/=k) privK
+    otherK = take 2 $ filter (/=proposerH2R0) privK
 
 selectAllEvidence
   :: MonadQueryRO m alg a
@@ -402,7 +404,7 @@ evidenceValidated ok ev = testConsensus k4 $ do
   -- HEIGHT 1
   do ()  <- expectStep 1 0 (StepNewHeight 0)
      ()  <- expectStep 1 0 StepProposal
-     bid <- proposeBlock (Round 0) k2 (mockchain !! 1)
+     bid <- proposeBlock (Round 0) proposerH1R0 (mockchain !! 1)     
      ()  <- voteFor (Just bid) =<< expectPV
      prevote (Height 1) (Round 0) [k2,k3] (Just bid)
      ()  <- voteFor (Just bid) =<< expectPC
@@ -411,16 +413,14 @@ evidenceValidated ok ev = testConsensus k4 $ do
   do expectStep 2 0 (StepNewHeight 0)
      expectStep 2 0 StepProposal
      --
-     bid <- proposeBlock (Round 0) k3 b
+     bid <- proposeBlock (Round 0) proposerH2R0 b
      ()  <- voteFor (expectedBID bid) =<< expectPV
      return ()
   where
     expectedBID | ok        = Just
                 | otherwise = const Nothing
     b0 = mockchain !! 2
-    b  = b0 { blockEvidence = [ev]
-            , blockHeader   = (blockHeader b0) { headerEvidenceHash = hashed [ev] }
-            }
+    b  = b0 { blockEvidence = merkled [ev] }
 
 -- Proposals made out of turn
 evidenceOutOfTurn :: Bool -> ByzantineEvidence TestAlg BData
@@ -429,14 +429,14 @@ evidenceOutOfTurn ok
   $ signValue i k
   $ Proposal (Height 1) r (Time 0) Nothing (blockHash block1)
   where
-    k = k2
-    r | ok        = Round 3
+    k = proposerH1R0
+    r | ok        = Round 5
       | otherwise = Round 0
     Just i = indexByValidator valSet (publicKey k)
 
 conflictingVote,badConflictingvoteOrder,badConflictVoteSame, badConflictVoteDiffR,
   badConflictVoteDiffH,badConflictVoteSign
-  :: (Serialise (Vote ty TestAlg BData))
+  :: (CryptoHashable (Vote ty TestAlg BData))
   => (forall alg a. Signed 'Unverified alg (Vote ty alg a)
                  -> Signed 'Unverified alg (Vote ty alg a)
                  -> ByzantineEvidence alg a)
@@ -480,7 +480,7 @@ badConflictVoteSign make = make v1 v2
 
 
 conflictingVotesOK
-  :: (Serialise (Vote v TestAlg BData))
+  :: (CryptoHashable (Vote v TestAlg BData))
   => Signed 'Unverified TestAlg (Vote v TestAlg BData)
   -> Signed 'Unverified TestAlg (Vote v TestAlg BData)
   -> Bool
@@ -514,10 +514,10 @@ execConsensus
   -> Expect ConsensusM TestAlg BData ()
   -> ConsensusM ()
 execConsensus k messages = do
-  (chans, prop, action) <- startConsensus k
+  (chans, action) <- startConsensus k
   runConcurrently
     [ action
-    , expect valSet prop chans messages
+    , expect valSet chans messages
     ]
 
 -- Simple test of consensus
@@ -529,50 +529,37 @@ startConsensus
   -> ConsensusM ( ( TChan   (MessageTx TestAlg BData)
                   , TBQueue (MessageRx 'Unverified TestAlg BData)
                   )
-                , ProposalStorage 'RW ConsensusM TestAlg BData
                 , ConsensusM ()
                 )
 startConsensus k = do
-  logic <- mkAppLogic
   chans <- newAppChans cfg
   ch    <- atomicallyIO $ dupTChan $ appChanTx chans
+  store <- newSTMBchStorage mempty
   return ( ( ch
            , appChanRx chans
            )
-         , appPropStorage chans
-         , runApplication cfg (Just (PrivValidator k)) genesis logic mempty chans
+         , runApplication cfg (Just (PrivValidator k)) genesis
+             keyValLogic (AppStore nullMempool store) mempty chans
          )
   where
     cfg = cfgConsensus (defCfg :: Configuration FastTest)
 
--- Create default application logic
-mkAppLogic :: MonadIO m => m (AppLogic m TestAlg BData)
-mkAppLogic = do
-  store <- newSTMBchStorage mempty
-  cnt   <- liftIO $ newIORef 0
-  return AppLogic
-    { appBlockGenerator = \b _ -> do i <- liftIO $ readIORef cnt
-                                     liftIO $ writeIORef cnt $! i + 1
-                                     return ( BData [("K" ++ let Height h = newBlockHeight b in show h, i)]
-                                            , newBlockState b
-                                            )
-    , appValidationFun  = \b (BlockchainState st valset) -> do
-        return $ do st' <- foldM (flip process) st (let BData tx = blockData b in tx)
-                    return $ BlockchainState st' valset
-    , appMempool        = nullMempool
-    , appBchState       = store
-    , appProposerChoice = proposerChoice
-    }
-
-proposerChoice :: ValidatorSet alg -> Height -> Round -> ValidatorIdx alg
-proposerChoice (validatorSetSize -> n) (Height h) (Round r)
-  = ValidatorIdx $! fromIntegral $ (h + r) `mod` fromIntegral n
+proposerChoice :: Crypto alg => ValidatorSet alg -> Height -> Round -> ValidatorIdx alg
+proposerChoice = randomProposerSHA512
 
 proposerKey :: Height -> Round -> PrivKey TestAlg
 proposerKey h r = head [ k | k <- privK
-                           , publicKey k == validatorPubKey v ]
-  where
+                           , publicKey k == validatorPubKey v
+                           ]
+  where    
     Just v = validatorByIndex valSet $ proposerChoice valSet h r
+
+proposerH1R0,proposerH2R0 :: PrivKey TestAlg
+proposerH1R0 = proposerKey (Height 1) (Round 0)
+proposerH2R0 = proposerKey (Height 2) (Round 0)
+
+othersH1R0 :: [PrivKey TestAlg]
+othersH1R0 = filter (/=proposerH1R0) privK
 
 ----------------------------------------------------------------
 -- High level API for interacting with consensus engine
@@ -594,9 +581,6 @@ expectPC = wrap $ ExpectPC return
 
 reply :: Monad m => [MessageRx 'Unverified alg a] -> Expect m alg a ()
 reply msg = wrap $ Reply msg (return ())
-
-lookupBID :: Monad m => Height -> BlockID alg a -> Expect m alg a (Maybe (Block alg a))
-lookupBID h bid = wrap $ LookupBID h bid return
 
 prevote
   :: (Monad m, Crypto alg)
@@ -636,14 +620,16 @@ proposeBlock r k b = do
   vals <- wrap $ GetValSet return
   reply [ let Just i = indexByValidator vals (publicKey k)
           in  RxProposal $ signValue i k
-                         $ Proposal (headerHeight (blockHeader b)) r (Time 0) Nothing bid
+                         $ Proposal (blockHeight b) r (Time 0) Nothing bid
         , RxBlock b
         ]
   return bid
   where
     bid = blockHash b
 
-voteFor :: Monad m => (Maybe (BlockID alg a)) -> Vote ty alg a -> m ()
+voteFor
+  :: forall m ty alg a. (Typeable ty, Monad m)
+  => (Maybe (BlockID alg a)) -> Vote ty alg a -> m ()
 voteFor mbid v
   | mbid == voteBlockID v = return ()
   | otherwise             = error $ unlines
@@ -651,6 +637,8 @@ voteFor mbid v
                             , "    " ++ show mbid
                             , "Got:"
                             , "    " ++ show (voteBlockID v)
+                            , "Type:"
+                            , "    " ++ show (typeRep (Proxy @ty))
                             ]
 
 
@@ -669,22 +657,20 @@ data ExpectF alg a x
   | ExpectPC   (Vote 'PreCommit alg a -> x)
   | Reply      [MessageRx 'Unverified alg a] x
   | GetValSet  (ValidatorSet alg -> x)
-  | LookupBID  Height (BlockID alg a) (Maybe (Block alg a) -> x)
   deriving (Functor)
 
 -- Read outbound messages from consensus engine and reply to it
 -- according to instructions. Unexpeceted messages will result in
 -- exception
 expect
-  :: (MonadIO m, Crypto alg)
+  :: (MonadIO m)
   => ValidatorSet alg
-  -> ProposalStorage 'RW m alg a
-  -> ( TChan (MessageTx alg a)
+  -> ( TChan   (MessageTx alg a)
      , TBQueue (MessageRx 'Unverified alg a)
      )
   -> Expect m alg a ()
   -> m ()
-expect vals prop (chTx, chRx) expected = do
+expect vals (chTx, chRx) expected = do
   iterT step expected
   where
     step func = case func of
@@ -707,8 +693,6 @@ expect vals prop (chTx, chRx) expected = do
         atomicallyIO $ mapM_ (writeTBQueue chRx) msg
         next
       GetValSet next   -> next vals
-      LookupBID h bid next ->
-        next . blockFromBlockValidation =<< retrievePropByID prop h bid
       where
         failure m = error $ unlines [ "Expected:"
                                     , "    " ++ expectedName func

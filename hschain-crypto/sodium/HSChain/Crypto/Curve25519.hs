@@ -3,6 +3,7 @@
 {-# LANGUAGE DeriveDataTypeable         #-}
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE TypeApplications           #-}
 {-# LANGUAGE TypeFamilies               #-}
@@ -53,6 +54,8 @@ instance CryptoAsymmetric Curve25519 where
         Arr.alloc (fromIntegral crypto_box_PUBLICKEYBYTES) $ \pPub  ->
           check =<< crypto_box_keypair pPub pPriv
     return $! PrivKey priv (PublicKey pub)
+  asymmKeyAlgorithmName = "Curve25519"
+
 
 
 instance ByteReprSized (DHSecret Curve25519) where
@@ -88,7 +91,7 @@ instance NFData (PrivKey Curve25519) where
 deriving instance NFData (PublicKey Curve25519)
 deriving instance NFData (DHSecret  Curve25519)
 
-instance (Ord (PrivKey Curve25519)) => ByteRepr (PrivKey Curve25519) where
+instance ByteRepr (PrivKey Curve25519) where
   decodeFromBS bs
     | BS.length bs == 32 = Just $! unsafePerformIO $ do
         let priv = Arr.convert bs
@@ -100,7 +103,7 @@ instance (Ord (PrivKey Curve25519)) => ByteRepr (PrivKey Curve25519) where
   --
   encodeToBS (PrivKey bs _) = Arr.convert bs
 
-instance (Ord (PublicKey Curve25519)) => ByteRepr (PublicKey Curve25519) where
+instance ByteRepr (PublicKey Curve25519) where
   decodeFromBS bs
     | BS.length bs == 32 = Just $ PublicKey bs
     | otherwise          = Nothing

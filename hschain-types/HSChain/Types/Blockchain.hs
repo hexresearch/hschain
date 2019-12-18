@@ -1,6 +1,7 @@
 {-# LANGUAGE CPP                        #-}
 {-# LANGUAGE DataKinds                  #-}
 {-# LANGUAGE DeriveAnyClass             #-}
+{-# LANGUAGE DeriveFunctor              #-}
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE DerivingStrategies         #-}
 {-# LANGUAGE FlexibleContexts           #-}
@@ -9,7 +10,9 @@
 {-# LANGUAGE KindSignatures             #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE RankNTypes                 #-}
 {-# LANGUAGE RecordWildCards            #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE TemplateHaskell            #-}
 {-# LANGUAGE TypeFamilies               #-}
@@ -26,12 +29,13 @@ module HSChain.Types.Blockchain (
     -- * Basic data types for blockchain
   , BlockID(..)
   , blockHash
-  , Block(..)
-  , Header(..)
+  , GBlock(..)
+  , Block
+  , Header
   , Commit(..)
   , ByzantineEvidence(..)
+  , ProposerSelection(..)
   , BlockData(..)
-  , BlockchainState(..)
     -- * Data types for establishing consensus
   , Step(..)
   , FullStep(..)
@@ -41,6 +45,20 @@ module HSChain.Types.Blockchain (
   , VoteType(..)
   , Vote(..)
   , CheckSignature(..)
+    -- * Blockchain logic
+    -- ** Evaluation context
+  , BChEval(..)
+  , Genesis
+  , BlockValidation
+  , ValidatedBlock
+  , EvaluationResult
+  , ProposedBlock
+  , TxValidation
+    -- ** Logic of blockchain
+  , NewBlock(..)
+  , BChLogic(..)
+    -- ** Type class for hoisting function
+  , HoistDict(..)
     -- * Signed data
   , Signed
   , signedValue
@@ -54,12 +72,13 @@ import           Codec.Serialise
 import           Codec.Serialise.Decoding
 import           Codec.Serialise.Encoding
 import           Control.DeepSeq
+import           Control.Exception        (Exception)
 import           Control.Monad
 import           Control.Monad.IO.Class   (MonadIO(..))
 import qualified Data.Aeson               as JSON
-import           Data.ByteString.Lazy     (toStrict)
 import           Data.Coerce
 import           Data.Int
+import           Data.Functor.Classes
 import qualified Data.List.NonEmpty       as NE
 import           Data.Monoid              ((<>))
 import           Data.Time.Clock          (UTCTime)
@@ -72,8 +91,9 @@ import qualified Database.SQLite.Simple.ToField   as SQL
 #endif
 
 import HSChain.Crypto
+import HSChain.Crypto.Classes.Hash
 import HSChain.Types.Validators
-import HSChain.Types.Merklized
+import HSChain.Types.Merkle.Types
 
 
 ----------------------------------------------------------------
@@ -91,17 +111,18 @@ import HSChain.Types.Merklized
 --     deciding on.
 newtype Height = Height Int64
   deriving stock   (Show, Read, Generic, Eq, Ord)
-  deriving newtype (NFData, Serialise, JSON.ToJSON, JSON.FromJSON, Enum)
+  deriving newtype (NFData, Serialise, JSON.ToJSON, JSON.FromJSON, Enum, CryptoHashable)
 
 -- | Voting round
 newtype Round = Round Int64
   deriving stock   (Show, Read, Generic, Eq, Ord)
-  deriving newtype (NFData, Serialise, JSON.ToJSON, JSON.FromJSON, Enum)
+  deriving newtype (NFData, Serialise, JSON.ToJSON, JSON.FromJSON, Enum, CryptoHashable)
+
 
 -- | Time in milliseconds since UNIX epoch.
 newtype Time = Time Int64
   deriving stock   (Show, Read, Generic, Eq, Ord)
-  deriving newtype (NFData, Serialise, JSON.ToJSON, JSON.FromJSON, Enum)
+  deriving newtype (NFData, Serialise, JSON.ToJSON, JSON.FromJSON, Enum, CryptoHashable)
 
 
 -- | Get current time
@@ -115,84 +136,59 @@ timeToUTC :: Time -> UTCTime
 timeToUTC (Time t) = posixSecondsToUTCTime (realToFrac t / 1000)
 
 
-instance CryptoHash alg => MerkleValue alg Height where
-  merkleHash = hash
-instance CryptoHash alg => MerkleValue alg Round where
-  merkleHash = hash
-instance CryptoHash alg => MerkleValue alg Time where
-  merkleHash = hash
-
 
 ----------------------------------------------------------------
 -- Blocks
 ----------------------------------------------------------------
 
 -- | Block identified by hash
-data BlockID alg a = BlockID !(Hashed alg (Header alg a))
+newtype BlockID alg a = BlockID (Hashed alg (Block alg a))
   deriving stock    (Show, Eq, Ord, Generic)
   deriving anyclass (NFData, Serialise, JSON.ToJSON, JSON.FromJSON)
+  deriving newtype  (CryptoHashable)
 
 blockHash
   :: (Crypto alg)
   => Block alg a
   -> BlockID alg a
-blockHash b = BlockID (hashed (blockHeader b))
+blockHash = BlockID . hashed
 
+
+type Block  = GBlock IdNode
+type Header = GBlock Hashed
 
 -- | Block of blockchain.
-data Block alg a = Block
-  { blockHeader     :: !(Header alg a)
-    -- ^ Block header it contains height, time of the block and hashes
-    --   of all other block fields. @BlockId@ is calculated from header
-  , blockData       :: !a
+data GBlock f alg a = Block
+  { blockHeight           :: !Height
+    -- ^ Height of a block
+  , blockPrevBlockID      :: !(Maybe (BlockID alg a))
+    -- ^ Hash of previous block. Nothing iff block is a genesis block
+  , blockValidators       :: !(Hashed alg (ValidatorSet alg))
+    -- ^ Set of validators used to create this block.
+  , blockNewValidators    :: !(Hashed alg (ValidatorSet alg))
+    -- ^ Set of validators for the next block.
+  , blockPrevCommit       :: !(Maybe (MerkleNode f alg (Commit alg a)))
+    -- ^ Commit for previous block. Nothing iff block is a genesis
+    --   block or block at height 1.
+  , blockEvidence         :: !(MerkleNode f alg [ByzantineEvidence alg a])
+    -- ^ Evidence of byzantine behavior by nodes.
+  , blockData             :: !(MerkleNode f alg a)
     -- ^ Payload of block. HSChain treats it completely opaque and
     --   rely on callback to do anything to it.
-  , blockValChange  :: !(ValidatorChange alg)
-    -- ^ Changes in set of validators as result of block
-    --   evaluation. We store changes of validators in the block for
-    --
-    --    1. Audit. We record changes to validator set explicitly
-    --
-    --    2. Allow to verify blockchain integrity without interpreting
-    --       transactions. Since we know change of validators we can
-    --       infer validator set for next block. This is particularly
-    --       important for light clients
-    --
-    --   Note that we store changes since validators change
-    --   infrequently and storing same validator set again and again
-    --   is not economical.
-  , blockLastCommit :: !(Maybe (Commit alg a))
-    -- ^ Commit information for previous block. Nothing iff block
-    --   is a genesis block or block at height 1.
-  , blockEvidence   :: [ByzantineEvidence alg a]
-    -- ^ Evidence of byzantine behavior by nodes.
+  , blockStateHash        :: !(Hashed alg (BlockchainState a))
+    -- ^ Hash of state after evaluation of this block.
   }
   deriving stock    (Show, Generic)
-  deriving anyclass (Serialise, JSON.ToJSON, JSON.FromJSON)
-instance (NFData a, NFData (PublicKey alg))  => NFData (Block alg a)
-deriving instance (Eq (PublicKey alg), Eq a) => Eq     (Block alg a)
+instance (IsMerkle f, CryptoHash alg) => CryptoHashable (GBlock f alg a) where
+  hashStep = genericHashStep "hschain"
+
+instance (Crypto alg, CryptoHashable a, Serialise     a, IsMerkle f)  => Serialise     (GBlock f alg a)
+instance (Crypto alg, CryptoHashable a, JSON.FromJSON a, IsMerkle f)  => JSON.FromJSON (GBlock f alg a)
+instance (Crypto alg, JSON.ToJSON a, IsMerkle f)                      => JSON.ToJSON   (GBlock f alg a)
+instance (NFData a, NFData1 (f alg), NFData (PublicKey alg))          => NFData (GBlock f alg a)
+deriving instance (Eq (PublicKey alg), IsMerkle f, Eq1 (f alg), Eq a) => Eq (GBlock f alg a)
 
 
--- | Block header
-data Header alg a = Header
-  { headerHeight         :: !Height
-    -- ^ Height of block
-  , headerLastBlockID    :: !(Maybe (BlockID alg a))
-    -- ^ Hash of previous block. Nothing iff block is a genesis block
-  , headerValidatorsHash :: !(Hashed alg (ValidatorSet alg))
-    -- ^ Hash of validators for current block.
-  , headerDataHash       :: !(Hashed alg a)
-    -- ^ Hash of block data
-  , headerValChangeHash  :: !(Hashed alg (ValidatorChange alg))
-    -- ^ Hash of change in validators set.
-  , headerLastCommitHash :: !(Hashed alg (Maybe (Commit alg a)))
-    -- ^ Hash of last commit
-  , headerEvidenceHash   :: !(Hashed alg [ByzantineEvidence alg a])
-    -- ^ Hash of evidence of byzantine behavior
-  , headerStateHash      :: !(Hashed alg (InterpreterState a))
-  }
-  deriving stock    (Show, Eq, Generic)
-  deriving anyclass (NFData, Serialise, JSON.FromJSON, JSON.ToJSON)
 
 -- | Evidence of byzantine behaviour by some node.
 data ByzantineEvidence alg a
@@ -208,10 +204,8 @@ data ByzantineEvidence alg a
     -- ^ Node made conflicting precommits in the same round
   deriving stock    (Show, Eq, Generic)
   deriving anyclass (NFData, Serialise, JSON.ToJSON, JSON.FromJSON)
-
-instance (alg ~ alg', CryptoHash alg
-         ) => MerkleValue alg' (ByzantineEvidence alg a) where
-  merkleHash = hash
+instance (Crypto alg) => CryptoHashable (ByzantineEvidence alg a) where
+  hashStep = genericHashStep "hschain"
 
 -- | Data justifying commit
 data Commit alg a = Commit
@@ -222,31 +216,42 @@ data Commit alg a = Commit
   }
   deriving stock    (Show, Eq, Generic)
   deriving anyclass (NFData, Serialise, JSON.ToJSON, JSON.FromJSON)
+instance (Crypto alg) => CryptoHashable (Commit alg a) where
+  hashStep = genericHashStep "hschain"
 
 
--- | Type class for data which could be put into block
+-- | Newtype wrapper for function on how to compute selection of
+--   proposer. We need this wrapper in order to allow to dispatch over
+--   block data type since it only enters via non-injective type family
+newtype ProposerSelection alg a = ProposerSelection
+  { selectProposer :: ValidatorSet alg -> Height -> Round -> ValidatorIdx alg
+  }
+
+-- | Type class for data which could be put into blockchain's
+--   block. Related types are defined as associated types
 class ( Serialise a
       , Serialise (TX a)
-      , Serialise (InterpreterState a)
+      , Serialise (BlockchainState a)
+      , CryptoHashable a
+      , CryptoHashable (TX a)
+      , CryptoHashable (BlockchainState a)
+      , Exception      (BChError a)
       ) => BlockData a where
-  -- | Type of transaction used in blockchain
+  -- | Type of transaction used in blockchain. More precisely it's
+  --   type of transaction which is submitted by user and stored in
+  --   mempool.
   type TX a
-  -- | Part of state of blockchain defined by user. Complete state is
-  --   @BlockchainState@
-  type InterpreterState a
+  -- | Part of state of blockchain defined by user. Set of validators
+  --   is passed separately as part of 'BChEval'.
+  type BlockchainState a
+  -- | Reason or rejection of transaction\/block.
+  type BChError a
   -- | Return list of transaction in block
   blockTransactions :: a -> [TX a]
   -- | Collect information about block data for logging
   logBlockData      :: a -> JSON.Object
-
-data BlockchainState alg a = BlockchainState
-  { blockchainState :: !(InterpreterState a)
-  , bChValidatorSet :: !(ValidatorSet alg)
-  }
-  deriving stock (Generic)
-instance ( NFData (InterpreterState a)
-         , NFData (PublicKey alg)
-         ) => NFData (BlockchainState alg a)
+  -- | Describe how to select proposer for given height and round.
+  proposerSelection :: Crypto alg => ProposerSelection alg a
 
 
 ----------------------------------------------------------------
@@ -297,7 +302,8 @@ data Proposal alg a = Proposal
   }
   deriving stock    (Show, Eq, Ord, Generic)
   deriving anyclass (NFData, Serialise, JSON.ToJSON, JSON.FromJSON)
-
+instance (CryptoHash alg) => CryptoHashable (Proposal alg a) where
+  hashStep = genericHashStep "hschain"
 
 -- | Type of vote. Used for type-tagging of votes
 data VoteType
@@ -318,35 +324,139 @@ data Vote (ty :: VoteType) alg a = Vote
   deriving anyclass (NFData, JSON.ToJSON, JSON.FromJSON)
 
 instance Serialise (Vote 'PreVote alg a) where
-    encode = encodeVote 0
-    decode = decodeVote 0
+  encode = encodeVote 0
+  decode = decodeVote 0
 
 instance Serialise (Vote 'PreCommit alg a) where
-    encode = encodeVote 1
-    decode = decodeVote 1
-
+  encode = encodeVote 1
+  decode = decodeVote 1
 
 encodeVote :: Word -> Vote ty alg a -> Encoding
-encodeVote tag Vote{..} =
-    encodeListLen 5 <>
-    encodeWord tag <>
-    encode voteHeight <>
-    encode voteRound <>
-    encode voteTime <>
-    encode voteBlockID
+encodeVote tag Vote{..}
+  = encodeListLen 5
+ <> encodeWord tag
+ <> encode voteHeight
+ <> encode voteRound
+ <> encode voteTime
+ <> encode voteBlockID
 
 decodeVote :: Word -> Decoder s (Vote ty alg a)
 decodeVote expectedTag = do
-    len <- decodeListLen
-    tag <- decodeWord
-    case len of
-        5 | tag == expectedTag ->
-                Vote <$> decode <*> decode <*> decode <*> decode
-          | otherwise ->
-                fail ("Invalid Vote tag, expected: " ++ show expectedTag
-                      ++ ", actual: " ++ show tag)
-        _ -> fail $ "Invalid Vote encoding"
+  len <- decodeListLen
+  tag <- decodeWord
+  case len of
+    5 | tag == expectedTag -> Vote <$> decode <*> decode <*> decode <*> decode
+      | otherwise -> fail ("Invalid Vote tag, expected: " ++ show expectedTag
+                           ++ ", actual: " ++ show tag)
+    _ -> fail $ "Invalid Vote encoding"
 
+
+instance (CryptoHash alg) => CryptoHashable (Vote 'PreVote alg a) where
+  hashStep Vote{..}
+    = hashStep (UserType "hschain" "Vote@PreVote")
+   <> hashStep voteHeight
+   <> hashStep voteRound
+   <> hashStep voteTime
+   <> hashStep voteBlockID
+
+instance (CryptoHash alg) => CryptoHashable (Vote 'PreCommit alg a) where
+  hashStep Vote{..}
+    = hashStep (UserType "hschain" "Vote@PreCommit")
+   <> hashStep voteHeight
+   <> hashStep voteRound
+   <> hashStep voteTime
+   <> hashStep voteBlockID
+
+
+
+----------------------------------------------------------------
+-- Blockchain logic
+----------------------------------------------------------------
+
+-- | Context for evaluation for blockchain. It's simply triple of
+--   blockchain state, set of validators and something else.
+data BChEval alg a x = BChEval
+  { bchValue        :: !x
+  , validatorSet    :: !(ValidatorSet alg)
+  , blockchainState :: !(BlockchainState a)
+  }
+  deriving stock (Generic, Functor)
+
+-- | Blockchain genesis. That is block at H=0, validator set for that
+--   block and initial state.
+type Genesis         alg a = BChEval alg a (Block alg a)
+
+-- | Same as genesis but is used for validation of blocks at
+--   H>0. Created as documentation. Validator set and state correspond to state 
+type BlockValidation alg a = BChEval alg a (Block alg a)
+
+-- | Block which is already validated. It uses same type as
+--   'BlockValidation' but validator set and state correspons to the
+--   state _after_ evaluation.
+type ValidatedBlock alg a = BChEval alg a (Block alg a)
+
+-- | Result of block evaluation. We don't have any information beyond.
+type EvaluationResult alg a = BChEval alg a ()
+
+-- | Block proposal returned by callback. Note that block itself is
+--   assmebled by consensus engine so we return only block payload.
+type ProposedBlock   alg a = BChEval alg a a
+
+-- | Transaction which is to be validated against current state of
+--   blockchain.
+type TxValidation    alg a = BChEval alg a (TX a)
+
+
+
+
+deriving stock    instance (Show x, Crypto alg, Show (PublicKey alg), Show (BlockchainState a)
+                           ) => Show (BChEval alg a x)
+deriving stock    instance (Eq x, Eq (PublicKey alg), Eq (BlockchainState a)
+                           ) => Eq (BChEval alg a x)
+deriving anyclass instance (NFData x, NFData (PublicKey alg), NFData (BlockchainState a)
+                           ) => NFData (BChEval alg a x)
+deriving anyclass instance (Crypto alg, JSON.ToJSON x, JSON.ToJSON (BlockchainState a)
+                           ) => JSON.ToJSON (BChEval alg a x)
+deriving anyclass instance (Crypto alg, JSON.FromJSON x, JSON.FromJSON (BlockchainState a)
+                           ) => JSON.FromJSON (BChEval alg a x)
+deriving anyclass instance (Crypto alg, Serialise x, Serialise (BlockchainState a)
+                           ) => Serialise (BChEval alg a x)
+
+
+-- | Parameters supplied by consensus engine for block generation
+data NewBlock alg a = NewBlock
+  { newBlockHeight   :: !Height
+  , newBlockLastBID  :: !(BlockID alg a)
+  , newBlockCommit   :: !(Maybe (Commit alg a))
+  , newBlockEvidence :: ![ByzantineEvidence alg a]
+  , newBlockState    :: !(BlockchainState a)
+  , newBlockValSet   :: !(ValidatorSet alg)
+  }
+
+-- | Description of interpretation of blockchain state. Evaluation of
+--   blocks and transactions are done in the monad @q@ which is
+--   assumed to provide access to current state of blockchain
+data BChLogic m alg a = BChLogic
+  { processTx     :: TxValidation alg a -> m ()
+    -- ^ Process single transactions. Used only for validator of
+    --   transactions in mempool.
+  , processBlock  :: BlockValidation alg a -> m (EvaluationResult alg a)
+    -- ^ Process and validate complete block.
+  , generateBlock :: NewBlock alg a -> [TX a] -> m (ProposedBlock alg a)
+    -- ^ Generate block from list of transactions.
+  }
+
+-- | Apply natural transformation to data type. Just a type class for
+--   dictionaries of functions with common kind.
+class HoistDict dct where
+  hoistDict :: (forall x. m x -> n x) -> dct m alg a -> dct n alg a
+
+instance HoistDict BChLogic where
+  hoistDict fun BChLogic{..} = BChLogic
+    { processTx     = fmap fun processTx
+    , processBlock  = fmap fun processBlock
+    , generateBlock = (fmap . fmap) fun generateBlock
+    }
 
 ----------------------------------------------------------------
 -- Signed values
@@ -377,39 +487,37 @@ signedKeyInfo (Signed a _ _) = a
 -- | Sign value. Note that we can generate both verified and unverified
 --   values this way.
 signValue
-  :: (Serialise a, CryptoSign alg)
+  :: (Crypto alg, CryptoHashable a)
   => ValidatorIdx alg           -- ^ Key identifier
   -> PrivKey alg                -- ^ Key for signing
   -> a                          -- ^ Value to sign
   -> Signed sign alg a
-signValue key privK a
-  = Signed key
-           (signBlob privK $ toStrict $ serialise a)
-           a
+signValue key privK a = Signed key (signHashed privK a) a
 
 -- | Verify signature. It return Nothing if verification fails for any
 --   reason. Note that since @Signed@ contain only fingerprint we need
 --   to supply function for looking up public keys.
 verifySignature
-  :: (Serialise a, CryptoSign alg)
+  :: (Crypto alg, CryptoHashable a)
   => ValidatorSet alg
      -- ^ Set of validators corresponding to signed value
   -> Signed 'Unverified alg a
      -- ^ Value for verifying signature
   -> Maybe (Signed 'Verified alg a)
-verifySignature valSet val@(Signed idx signature a) = do
+verifySignature valSet val@(Signed idx sig a) = do
   Validator pubK _ <- validatorByIndex valSet idx
-  guard $ verifyCborSignature pubK a signature
+  guard  $ verifySignatureHashed pubK a sig
   return $ coerce val
 
 -- | Strip verification tag
 unverifySignature :: Signed ty alg a -> Signed 'Unverified alg a
 unverifySignature = coerce
 
-instance (Serialise     a) => Serialise     (Signed 'Unverified alg a)
-instance (JSON.FromJSON a) => JSON.FromJSON (Signed 'Unverified alg a)
-instance (JSON.ToJSON   a) => JSON.ToJSON   (Signed sign        alg a)
-
+instance (Serialise      a) => Serialise      (Signed 'Unverified alg a)
+instance (JSON.FromJSON  a) => JSON.FromJSON  (Signed 'Unverified alg a)
+instance (JSON.ToJSON    a) => JSON.ToJSON    (Signed sign        alg a)
+instance (CryptoHashable a, CryptoAsymmetric alg) => CryptoHashable (Signed sign alg a) where
+  hashStep = genericHashStep "hschain"
 
 ----------------------------------------------------------------
 -- Helping application be faster.

@@ -8,8 +8,9 @@ import qualified Data.List.NonEmpty as NE
 
 import HSChain.Crypto
 import HSChain.Types
+import HSChain.Types.Merkle.Types
 import HSChain.Mock.KeyList
-import HSChain.Mock.KeyVal  (BData(..),BState,genesisBlock)
+import HSChain.Mock.KeyVal  (BData(..),BState,mkGenesisBlock)
 
 import TM.Util.Network
 
@@ -31,8 +32,8 @@ Right valSet = makeValidatorSet [Validator (publicKey k) 1 | k <- privK]
 ----------------------------------------------------------------
 
 -- | Genesis block of BCh
-genesis :: Block TestAlg BData
-genesis = genesisBlock valSet
+genesis :: Genesis TestAlg BData
+genesis = mkGenesisBlock valSet
 
 block1, block1' :: Block TestAlg BData
 block1  = mintFirstBlock $ BData [("K1",100)]
@@ -41,7 +42,8 @@ block1' = mintFirstBlock $ BData [("K1",101)]
 mockchain :: [Block TestAlg BData]
 mockchain
   = fmap fst
-  $ scanl step (genesis,mempty) [BData [("K"++show i,i)] | i <- [100..]]
+  $ scanl step (bchValue genesis,mempty)
+    [BData [("K"++show i,i)] | i <- [100..]]
   where
     step (b,st) dat@(BData txs) = let st' = st <> Map.fromList txs
                                   in ( mintBlock b st' dat, st' )
@@ -53,27 +55,21 @@ mockchain
 
 mintFirstBlock :: BData -> Block TestAlg BData
 mintFirstBlock dat@(BData txs)
-  = mintBlock genesis (Map.fromList txs) dat
+  = mintBlock (bchValue genesis) (Map.fromList txs) dat
 
 mintBlock :: Block TestAlg BData -> BState -> BData -> Block TestAlg BData
-mintBlock b st dat  = Block
-  { blockHeader = Header
-      { headerHeight         = succ $ headerHeight $ blockHeader b
-      , headerLastBlockID    = Just bid
-      , headerValidatorsHash = hashed valSet
-      , headerValChangeHash  = hashed mempty
-      , headerDataHash       = hashed dat
-      , headerLastCommitHash = hashed commit
-      , headerEvidenceHash   = hashed []
-      , headerStateHash      = hashed st
-      }
-  , blockData       = dat
-  , blockValChange  = mempty
-  , blockLastCommit = commit
-  , blockEvidence   = []
+mintBlock b st dat = Block
+  { blockHeight        = succ hPrev
+  , blockPrevBlockID   = Just bid
+  , blockValidators    = hashed valSet
+  , blockNewValidators = hashed valSet
+  , blockData          = merkled dat
+  , blockPrevCommit    = merkled <$> commit
+  , blockEvidence      = merkled []
+  , blockStateHash     = hashed st
   }
   where
-    hPrev  = headerHeight (blockHeader b)
+    hPrev  = blockHeight b
     r      = Round 0
     bid    = blockHash b
     commit | hPrev == Height 0 = Nothing

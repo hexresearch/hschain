@@ -13,10 +13,8 @@ import GHC.Generics           (Generic)
 
 import HSChain.Blockchain.Internal.Engine.Types (NetworkCfg)
 import HSChain.Blockchain.Internal.Types        (Announcement, MessageTx, MessageRx, TMState)
-import HSChain.Crypto                           (Crypto, SignedState(..))
+import HSChain.Crypto                           (Crypto, SignedState(..), CryptoHashable(..))
 import HSChain.P2P.Types                        (NetAddr)
-import HSChain.Store.Internal.Proposals         (ProposalStorage)
-import HSChain.Store.Internal.Query             (Access(..))
 
 import HSChain.Types
 
@@ -39,7 +37,7 @@ data GossipMsg alg a
   | GossipPex       !PexMessage
   deriving (Generic)
 deriving instance (Show a, Show (TX a), Crypto alg) => Show (GossipMsg alg a)
-instance (Serialise (TX a), Serialise a, Crypto alg) => Serialise (GossipMsg alg a)
+instance (Serialise (TX a), Serialise a, CryptoHashable a, Crypto alg) => Serialise (GossipMsg alg a)
 
 --
 -- | Peer exchage gossip sub-message
@@ -59,7 +57,7 @@ instance Serialise PexMessage
 
 --
 -- | Connection handed to process controlling communication with peer
-data PeerChans m alg a = PeerChans
+data PeerChans alg a = PeerChans
   { peerChanTx              :: !(TChan (MessageTx alg a))
     -- ^ Broadcast channel for outgoing messages
   , peerChanPex             :: !(TChan PexMessage)
@@ -68,8 +66,6 @@ data PeerChans m alg a = PeerChans
     -- ^ Channel for new addreses
   , peerChanRx              :: !(MessageRx 'Unverified alg a -> STM ())
     -- ^ STM action for sending message to main application
-  , proposalStorage         :: !(ProposalStorage 'RO m alg a)
-    -- ^ Read only access to storage of proposals
   , consensusState          :: !(STM (Maybe (Height, TMState alg a)))   -- TODO try strict Maybe and Tuple
     -- ^ Read only access to current state of consensus state machine
   , p2pConfig               :: !NetworkCfg

@@ -20,7 +20,6 @@ module HSChain.Mock.Types (
   , Example
   ) where
 
-import Codec.Serialise     (Serialise)
 import Control.Exception   (Exception)
 import Control.Monad.Catch (MonadCatch(..))
 import GHC.Generics (Generic)
@@ -33,6 +32,7 @@ import HSChain.Crypto.Ed25519 (Ed25519)
 import HSChain.Crypto.SHA     (SHA512)
 import HSChain.Logger         (ScribeSpec)
 import HSChain.Types
+import HSChain.Types.Merkle.Types
 import HSChain.Store
 
 ----------------------------------------------------------------
@@ -67,29 +67,22 @@ instance DefaultConfig Example where
 -- | Genesis block has many field with predetermined content so this
 --   is convenience function to create genesis block.
 makeGenesis
-  :: (Crypto alg, Serialise a)
+  :: (Crypto alg, CryptoHashable a)
   => a                          -- ^ Block data
-  -> Hashed alg (InterpreterState a)
-  -> ValidatorSet alg           -- ^ Set of validators for block 1
+  -> Hashed alg (BlockchainState a)
+  -> ValidatorSet alg           -- ^ Set of validators for H=0
+  -> ValidatorSet alg           -- ^ Set of validators for H=1
   -> Block alg a
-makeGenesis dat stateHash valSet = Block
-  { blockHeader = Header
-      { headerHeight         = Height 0
-      , headerLastBlockID    = Nothing
-      , headerValidatorsHash = hashed emptyValidatorSet
-      , headerValChangeHash  = hashed delta
-      , headerDataHash       = hashed dat
-      , headerLastCommitHash = hashed Nothing
-      , headerEvidenceHash   = hashed []
-      , headerStateHash      = stateHash
-      }
-  , blockData       = dat
-  , blockValChange  = delta
-  , blockLastCommit = Nothing
-  , blockEvidence   = []
+makeGenesis dat stateHash valSet0 valSet1 = Block
+  { blockHeight        = Height 0
+  , blockPrevBlockID   = Nothing
+  , blockValidators    = merkled valSet0
+  , blockNewValidators = merkled valSet1
+  , blockData          = merkled dat
+  , blockPrevCommit    = Nothing
+  , blockEvidence      = merkled []
+  , blockStateHash     = stateHash
   }
-  where
-    delta = validatorsDifference emptyValidatorSet valSet
 
 
 ----------------------------------------------------------------

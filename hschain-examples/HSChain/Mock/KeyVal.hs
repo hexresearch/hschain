@@ -1,20 +1,21 @@
-{-# LANGUAGE DataKinds          #-}
-{-# LANGUAGE DeriveAnyClass     #-}
-{-# LANGUAGE DeriveGeneric      #-}
-{-# LANGUAGE DerivingStrategies #-}
-{-# LANGUAGE FlexibleContexts   #-}
-{-# LANGUAGE LambdaCase         #-}
-{-# LANGUAGE OverloadedStrings  #-}
-{-# LANGUAGE RecordWildCards    #-}
-{-# LANGUAGE TupleSections      #-}
-{-# LANGUAGE TypeFamilies       #-}
-{-# LANGUAGE TypeOperators      #-}
+{-# LANGUAGE DataKinds                  #-}
+{-# LANGUAGE DeriveAnyClass             #-}
+{-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE DerivingStrategies         #-}
+{-# LANGUAGE FlexibleContexts           #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE LambdaCase                 #-}
+{-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE RecordWildCards            #-}
+{-# LANGUAGE TupleSections              #-}
+{-# LANGUAGE TypeFamilies               #-}
+{-# LANGUAGE TypeOperators              #-}
 -- |
 module HSChain.Mock.KeyVal (
-    genesisBlock
+    mkGenesisBlock
   , interpretSpec
   , executeSpec
-  , process
+  , keyValLogic
   , BData(..)
   , Tx
   , BState
@@ -25,6 +26,7 @@ import Control.Monad
 import Control.Monad.Catch
 import Control.Monad.Trans.Cont
 import Control.Monad.Trans.Class
+import Control.Monad.Trans.Except
 import Control.Monad.IO.Class
 import Data.Maybe
 import Data.List
@@ -37,6 +39,7 @@ import GHC.Generics    (Generic)
 
 import HSChain.Blockchain.Internal.Engine.Types
 import HSChain.Types.Blockchain
+import HSChain.Types.Merkle.Types
 import HSChain.Control
 import HSChain.Crypto
 import HSChain.Crypto.Ed25519
@@ -64,22 +67,27 @@ type    BState = Map String Int
 newtype BData  = BData [(String,Int)]
   deriving stock    (Show,Eq,Generic)
   deriving anyclass (Serialise)
+  deriving newtype  (CryptoHashable)
+
+
+data KeyValError = KeyValError String
+  deriving stock    (Show) 
+  deriving anyclass (Exception)
 
 instance BlockData BData where
-  type TX               BData = Tx
-  type InterpreterState BData = BState
+  type TX              BData = Tx
+  type BlockchainState BData = BState
+  type BChError        BData = KeyValError
   blockTransactions (BData txs) = txs
   logBlockData      (BData txs) = HM.singleton "Ntx" $ JSON.toJSON $ length txs
+  proposerSelection             = ProposerSelection randomProposerSHA512
 
-genesisBlock :: ValidatorSet Alg -> Block Alg BData
-genesisBlock valSet
-  = makeGenesis (BData []) (hashed mempty) valSet
-
-process :: Tx -> BState -> Maybe BState
-process (k,v) m
-  | k `Map.member` m = Nothing
-  | otherwise        = Just $ Map.insert k v m
-
+mkGenesisBlock :: ValidatorSet Alg -> Genesis Alg BData
+mkGenesisBlock valSet = BChEval
+  { bchValue        = makeGenesis (BData []) (hashed mempty) valSet valSet
+  , validatorSet    = valSet
+  , blockchainState = mempty
+  }
 
 
 -------------------------------------------------------------------------------
@@ -92,7 +100,7 @@ interpretSpec
      , Has x BlockchainNet
      , Has x NodeSpec
      , Has x (Configuration Example))
-  => Block Alg BData
+  => Genesis Alg BData
   -> x
   -> AppCallbacks m Alg BData
   -> m (RunningNode m Alg BData, [m ()])
@@ -100,33 +108,54 @@ interpretSpec genesis p cb = do
   conn  <- askConnectionRO
   store <- newSTMBchStorage mempty
   --
-  let logic = AppLogic
-        { appValidationFun    = \_ck b (BlockchainState st valset) -> do
-            return $ do st' <- foldM (flip process) st (let BData tx = blockData b in tx)
-                        return $ BlockchainState st' valset
-        , appBlockGenerator  = \b _ -> do
-            let BlockchainState st valset = newBlockState b
-                Just k = find (`Map.notMember` st) ["K_" ++ show (n :: Int) | n <- [1 ..]]
-            i <- liftIO $ randomRIO (1,100)
-            return (BData [(k, i)], BlockchainState (Map.insert k i st) valset)
-        , appMempool         = nullMempool
-        , appBchState        = store
-        , appProposerChoice  = randomProposerSHA512
+  let astore = AppStore
+        { appMempool  = nullMempool
+        , appBchState = store
         }
   acts <- runNode (getT p :: Configuration Example) NodeDescription
     { nodeValidationKey = p ^.. nspecPrivKey
     , nodeGenesis       = genesis
     , nodeCallbacks     = cb
-    , nodeLogic         = logic
+    , nodeLogic         = keyValLogic
+    , nodeStore         = astore
     , nodeNetwork       = getT p
     }
   return
     ( RunningNode { rnodeState   = store
                   , rnodeConn    = conn
-                  , rnodeMempool = appMempool logic
+                  , rnodeMempool = appMempool astore
                   }
     , acts
     )
+
+keyValLogic :: MonadIO m => BChLogic (ExceptT KeyValError m) Alg BData
+keyValLogic = BChLogic
+  -- We don't use mempool here so we can just use trivial handler for
+  -- transactions
+  { processTx     = \_ -> throwE $ KeyValError ""
+  --
+  , processBlock  = \BChEval{..} -> ExceptT $ return $ do
+      st <- foldM (flip process) blockchainState
+          $ blockTransactions $ merkleValue $ blockData bchValue
+      return BChEval { bchValue        = ()
+                     , blockchainState = st
+                     , ..
+                     }
+  --
+  , generateBlock = \NewBlock{..} _ -> do
+      let Just k = find (`Map.notMember` newBlockState) ["K_" ++ show (n :: Int) | n <- [1 ..]]
+      i <- liftIO $ randomRIO (1,100)
+      return BChEval { bchValue        = BData [(k, i)]
+                     , validatorSet    = newBlockValSet
+                     , blockchainState = Map.insert k i newBlockState
+                     }
+  }
+  where
+    process :: Tx -> BState -> Either KeyValError BState
+    process (k,v) m
+      | k `Map.member` m = Left  $ KeyValError k
+      | otherwise        = Right $! Map.insert k v m
+
 
 
 executeSpec
@@ -153,4 +182,4 @@ executeSpec NetSpec{..} = do
   return $ fst <$> rnodes
   where
     valSet  = makeValidatorSetFromPriv $ catMaybes [ x ^.. nspecPrivKey | x <- netNodeList ]
-    genesis = genesisBlock valSet
+    genesis = mkGenesisBlock valSet

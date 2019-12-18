@@ -64,7 +64,8 @@ import HSChain.Control
 import HSChain.Store
 import HSChain.Store.STM
 import HSChain.Monitoring
-import HSChain.Crypto
+import HSChain.Crypto         (PublicKey, CryptoHashable(..), (:&))
+import HSChain.Crypto.Classes.Hash (genericHashStep)
 import HSChain.Crypto.Ed25519
 import HSChain.Crypto.SHA
 import HSChain.P2P            (generatePeerId)
@@ -178,7 +179,11 @@ instance BlockData BData where
   type TX               BData = Transaction
   type InterpreterState BData = SQLiteState
   blockTransactions (BData txs _) = txs
+  proposerSelection             = ProposerSelection randomProposerSHA512
   logBlockData      (BData txs upds) = HM.singleton "Ntx" $ JSON.toJSON $ length txs + length upds
+data Err = Err
+  deriving stock    (Show)
+  deriving anyclass (Exception)
 
 data Transaction = Transaction
   { transactionRequest    :: BS.ByteString
@@ -413,3 +418,7 @@ reportAnswer conn h heightStr
       return ()
 
 
+instance CryptoHashable Transaction where
+  hashStep = genericHashStep "hschain-sql"
+instance CryptoHashable SQLiteState where
+  hashStep = genericHashStep "hschain-sql"

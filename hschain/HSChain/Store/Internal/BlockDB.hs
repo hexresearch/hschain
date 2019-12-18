@@ -1,8 +1,9 @@
-{-# LANGUAGE DataKinds           #-}
-{-# LANGUAGE FlexibleContexts    #-}
-{-# LANGUAGE LambdaCase          #-}
-{-# LANGUAGE MultiWayIf          #-}
-{-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE DataKinds         #-}
+{-# LANGUAGE FlexibleContexts  #-}
+{-# LANGUAGE LambdaCase        #-}
+{-# LANGUAGE MultiWayIf        #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards   #-}
 -- |
 -- Queries for interacting with database. Ones that constitute public
 -- API are reexported from "HSChain.Store".
@@ -14,16 +15,17 @@ import Control.Monad.Catch (MonadThrow(..))
 import qualified Data.List.NonEmpty   as NE
 import qualified Data.ByteString.Lazy as LBS
 import qualified Database.SQLite.Simple           as SQL
+import qualified Database.SQLite.Simple.FromField as SQL
 import           Database.SQLite.Simple             (Only(..))
 
 import HSChain.Control (throwNothing)
 import HSChain.Exceptions
 import HSChain.Types.Blockchain
+import HSChain.Types.Merkle.Types
 import HSChain.Blockchain.Internal.Types
 import HSChain.Crypto
 import HSChain.Types.Validators
 import HSChain.Store.Internal.Query
-
 
 ----------------------------------------------------------------
 --
@@ -92,25 +94,23 @@ initializeBlockhainTables = do
 
 
 storeGenesis
-  :: (Crypto alg, Serialise a, Eq a, MonadQueryRW m alg a, Show a)
-  => Block alg a                -- ^ Genesis block
+  :: (Crypto alg, CryptoHashable a, MonadQueryRW m alg a, Serialise a, Eq a, Show a)
+  => Genesis alg a                -- ^ Genesis block
   -> m ()
-storeGenesis genesis = do
+storeGenesis BChEval{..} = do
   -- Insert genesis block if needed
   storedGen  <- singleQ_ "SELECT block  FROM thm_blockchain WHERE height = 0"
-  storedVals <- singleQ_ "SELECT valset FROM thm_validators WHERE height = 1"
-  let initialVals = case changeValidators (blockValChange genesis) emptyValidatorSet of
-        Just v  -> v
-        Nothing -> error "initializeBlockhainTables: cannot apply change of validators"
+  storedVals <- singleQ_ "SELECT valset FROM thm_validators WHERE height = 0"
+  --
   case (storedGen, storedVals) of
     -- Fresh DB
     (Nothing, Nothing) -> do
       basicExecute "INSERT INTO thm_blockchain VALUES (0,0,?,?)"
-        ( serialise (blockHash genesis)
-        , serialise genesis
+        ( CBORed (blockHash bchValue)
+        , CBORed bchValue
         )
-      basicExecute "INSERT INTO thm_validators VALUES (1,?)"
-        (Only (serialise initialVals))
+      basicExecute "INSERT INTO thm_validators VALUES (0,?)"
+        (Only (CBORed validatorSet))
     -- Otherwise check that stored and provided geneses match
     (Just genesis', Just initialVals') ->
       case checks of
@@ -119,16 +119,16 @@ storeGenesis genesis = do
       where
         checks = [ [ "Genesis blocks do not match:"
                    , "  stored: " ++ show genesis'
-                   , "  expected: " ++ show genesis
+                   , "  expected: " ++ show bchValue
                    ]
-                 | genesis /= genesis'
+                 | bchValue /= genesis'
                  ]
                  ++
                  [ [ "Validators set are not equal:"
                    , "  stored:   " ++ show initialVals'
-                   , "  expected: " ++ show initialVals
+                   , "  expected: " ++ show validatorSet
                    ]
-                 | initialVals /= initialVals'
+                 | validatorSet /= initialVals'
                  ]
     --
     (_,_) -> error "initializeBlockhainTables: database corruption"
@@ -150,7 +150,9 @@ blockchainHeight =
 -- | Retrieve block at given height.
 --
 --   Must return block for every height @0 <= h <= blockchainHeight@
-retrieveBlock :: (Serialise a, Crypto alg, MonadQueryRO m alg a) => Height -> m (Maybe (Block alg a))
+retrieveBlock
+  :: (Serialise a, CryptoHashable a, Crypto alg, MonadQueryRO m alg a)
+  => Height -> m (Maybe (Block alg a))
 retrieveBlock height = liftQueryRO $ case height of
   Height 0 -> basicCacheGenesis $ query height
   _        -> basicCacheBlock     query height
@@ -174,10 +176,12 @@ mustRetrieveBlockID h = throwNothing (DBMissingBlockID h) =<< retrieveBlockID h
 --   Note that this method returns @Nothing@ for last block since
 --   its commit is not persisted in blockchain yet and there's no
 --   commit for genesis block (h=0)
-retrieveCommit :: (Serialise a, Crypto alg, MonadQueryRO m alg a) => Height -> m (Maybe (Commit alg a))
+retrieveCommit
+  :: (Serialise a, CryptoHashable a, Crypto alg, MonadQueryRO m alg a)
+  => Height -> m (Maybe (Commit alg a))
 retrieveCommit h = do
   mb <- retrieveBlock $ succ h
-  return $ blockLastCommit =<< mb
+  return $ fmap merkleValue . blockPrevCommit =<< mb
 
 -- | Retrieve round when commit was made.
 mustRetrieveCommitRound :: (MonadThrow m, MonadQueryRO m alg a) => Height -> m Round
@@ -209,10 +213,15 @@ retrieveValidatorSet :: (Crypto alg, MonadQueryRO m alg a) => Height -> m (Maybe
 retrieveValidatorSet h =
   singleQ "SELECT valset FROM thm_validators WHERE height = ?" (Only h)
 
+hasValidatorSet :: (MonadQueryRO m alg a) => Height -> m Bool
+hasValidatorSet h = do
+  r <- basicQuery "SELECT 1 FROM thm_validators WHERE height = ?" (Only h)
+  return $! not $ null (r :: [Only Int])
+
 -- | Same as 'retrieveBlock' but throws 'DBMissingBlock' if there's no
 --   such block in database.
 mustRetrieveBlock
-  :: (Serialise a, Crypto alg, MonadThrow m, MonadQueryRO m alg a)
+  :: (Serialise a, CryptoHashable a, Crypto alg, MonadThrow m, MonadQueryRO m alg a)
   => Height -> m (Block alg a)
 mustRetrieveBlock h
   = throwNothing (DBMissingBlock h) =<< retrieveBlock h
@@ -245,21 +254,26 @@ retrieveSavedState =
 
 -- | Write block and commit justifying it into persistent storage.
 storeCommit
-  :: (Crypto alg, Serialise a, MonadQueryRW m alg a)
-  => Commit alg a -> Block alg a -> ValidatorSet alg -> m ()
-storeCommit cmt blk vals = liftQueryRW $ do
-  let h = headerHeight $ blockHeader blk
+  :: (Crypto alg, Serialise a, CryptoHashable a, MonadQueryRW m alg a)
+  => Commit alg a -> Block alg a -> m ()
+storeCommit cmt blk = liftQueryRW $ do
+  let h = blockHeight blk
       r = voteRound $ signedValue $ NE.head $ commitPrecommits cmt
   basicExecute "INSERT INTO thm_commits VALUES (?,?)" (h, serialise cmt)
   basicExecute "INSERT INTO thm_blockchain VALUES (?,?,?,?)"
     ( h
     , r
-    , serialise (blockHash blk)
-    , serialise blk
+    , CBORed (blockHash blk)
+    , CBORed  blk
     )
-  basicExecute "INSERT INTO thm_validators VALUES (?,?)"
-    (succ h, serialise vals)
   basicPutCacheBlock blk
+
+storeValSet
+  :: (Crypto alg, MonadQueryRW m alg a)
+  => Height -> ValidatorSet alg -> m ()
+storeValSet h vals =
+  basicExecute "INSERT INTO thm_validators VALUES (?,?)"
+    (h, serialise vals)
 
 -- | Write state snapshot into DB.
 -- @maybeSnapshot@ contains a serialized value of a state associated with the processed block.
@@ -275,22 +289,22 @@ storeStateSnapshot (Height h) state = do
 -- | Add message to Write Ahead Log. Height parameter is height
 --   for which we're deciding block.
 writeToWAL
-  :: (Serialise a, Crypto alg, MonadQueryRW m alg a)
+  :: (Serialise a, CryptoHashable a, Crypto alg, MonadQueryRW m alg a)
   => Height -> MessageRx 'Unverified alg a -> m ()
 writeToWAL h msg =
   basicExecute "INSERT OR IGNORE INTO thm_wal VALUES (NULL,?,?)" (h, serialise msg)
 
 writeBlockToWAL
-  :: (MonadQueryRW m alg a, Serialise a, Crypto alg)
+  :: (MonadQueryRW m alg a, Serialise a, CryptoHashable a, Crypto alg)
   => Round -> Block alg a -> m ()
 writeBlockToWAL r b = do
   basicExecute "INSERT INTO thm_proposals VALUES (?,?,?)"
     (h,r,serialise b)
   where
-    h = headerHeight $ blockHeader b
+    h = blockHeight b
 
 retrieveBlockFromWAL
-  :: (MonadQueryRO m alg a, Serialise a, Crypto alg)
+  :: (MonadQueryRO m alg a, Serialise a, CryptoHashable a,  Crypto alg)
   => Height -> Round -> m (Maybe (Block alg a))
 retrieveBlockFromWAL h r =
   singleQ "SELECT block FROM thm_proposals WHERE height = ? AND round = ?" (h,r)
@@ -305,7 +319,7 @@ retrieveBlockReadyFromWAL
   :: (MonadQueryRO m alg a)
   => Height -> Int -> m (Maybe Bool)
 retrieveBlockReadyFromWAL h n =
-  singleQ "SELECT result FROM thm_ready_block WHERE height = ? AND attempt = ?" (h,n)
+  query1 "SELECT result FROM thm_ready_block WHERE height = ? AND attempt = ?" (h,n)
 
 -- | Remove all entries from WAL which comes from height less than
 --   parameter.
@@ -318,7 +332,7 @@ resetWAL h = do
 -- | Get all parameters from WAL in order in which they were
 --   written
 readWAL
-  :: (Serialise a, Crypto alg, MonadQueryRO m alg a)
+  :: (Serialise a, CryptoHashable a, Crypto alg, MonadQueryRO m alg a)
   => Height -> m [MessageRx 'Unverified alg a]
 readWAL h = do
   rows <- basicQuery "SELECT message FROM thm_wal WHERE height = ? ORDER BY id" (Only h)
@@ -334,7 +348,7 @@ readWAL h = do
 
 -- | Store fresh evidence in database. Fresh means we just observed it.
 storeFreshEvidence
-  :: (Serialise a, Crypto alg, MonadQueryRW m alg a)
+  :: (MonadQueryRW m alg a)
   => ByzantineEvidence alg a -> m ()
 storeFreshEvidence ev = do
   basicExecute "INSERT OR IGNORE INTO thm_evidence VALUES (?,?)" (serialise ev, False)
@@ -342,7 +356,7 @@ storeFreshEvidence ev = do
 -- | Store evidence from blockchain. That is valid evidence from
 --   commited block
 storeBlockchainEvidence
-  :: (Serialise a, Crypto alg, MonadQueryRW m alg a)
+  :: (MonadQueryRW m alg a)
   => ByzantineEvidence alg a -> m ()
 storeBlockchainEvidence ev = do
   basicExecute "INSERT OR REPLACE INTO thm_evidence VALUES (?,?)" (serialise ev, True)
@@ -350,7 +364,7 @@ storeBlockchainEvidence ev = do
 -- | Check whether evidence is recorded. @Just True@ mens that it's
 --   already in blockchain
 evidenceRecordedState
-  :: (Serialise a, Crypto alg, MonadQueryRO m alg a)
+  :: (MonadQueryRO m alg a)
   => ByzantineEvidence alg a -> m (Maybe Bool)
 evidenceRecordedState e = do
   basicQuery "SELECT recorded FROM thm_evidence WHERE evidence = ?" (Only (serialise e)) >>= \case
@@ -360,7 +374,7 @@ evidenceRecordedState e = do
 
 -- | Retrieve all unrecorded evidence
 retrieveUnrecordedEvidence
-  :: (Serialise a, Crypto alg, MonadQueryRO m alg a)
+  :: (MonadQueryRO m alg a)
   => m [ByzantineEvidence alg a]
 retrieveUnrecordedEvidence = do
   rs <- basicQuery_ "SELECT evidence FROM thm_evidence WHERE recorded = 0"
@@ -371,16 +385,31 @@ retrieveUnrecordedEvidence = do
 -- Helpers
 ----------------------------------------------------------------
 
+query1 :: (SQL.ToRow p, SQL.FromField x, MonadQueryRO m alg a)
+             => SQL.Query -> p -> m (Maybe x)
+query1 sql p =
+  basicQuery sql p >>= \case
+    []       -> return Nothing
+    [Only a] -> return (Just a)
+    _        -> error "Impossible"
+query1_ :: (SQL.FromField x, MonadQueryRO m alg a)
+        => SQL.Query -> m (Maybe x)
+query1_ sql =
+  basicQuery_ sql >>= \case
+    []       -> return Nothing
+    [Only a] -> return (Just a)
+    _        -> error "Impossible"
+
 -- Query that returns 0 or 1 result which is CBOR-encoded value
 singleQ :: (SQL.ToRow p, Serialise x, MonadQueryRO m alg a)
         => SQL.Query -> p -> m (Maybe x)
-singleQ sql p =
-  basicQuery sql p >>= \case
-    []        -> return Nothing
-    [Only bs] -> case deserialiseOrFail bs of
-      Right a -> return (Just a)
-      Left  e -> error ("CBOR encoding error: " ++ show e)
-    _         -> error "Impossible"
+singleQ sql p = (fmap . fmap) unCBORed
+              $ query1 sql p
+
+singleQ_ :: (Serialise x, MonadQueryRO m alg a)
+         => SQL.Query -> m (Maybe x)
+singleQ_ sql = (fmap . fmap) unCBORed
+             $ query1_ sql
 
 -- Query that returns results parsed from single row ().
 singleQWithParser
@@ -390,13 +419,3 @@ singleQWithParser resultsParser sql p =
   basicQuery sql p >>= \case
     [x] -> return (resultsParser x)
     _ -> error $ "SQL statement resulted in too many (>1) or zero result rows: " ++ show sql
-
-singleQ_ :: (Serialise x, MonadQueryRO m alg a)
-         => SQL.Query -> m (Maybe x)
-singleQ_ sql =
-  basicQuery_ sql >>= \case
-    []        -> return Nothing
-    [Only bs] -> case deserialiseOrFail bs of
-      Right a -> return (Just a)
-      Left  e -> error ("CBOR encoding error: " ++ show e)
-    _         -> error "Impossible"

@@ -19,10 +19,11 @@ module HSChain.Blockchain.Internal.Engine.Types (
     -- * Application state
   , NewBlock(..)
   , CheckKind(..)
-  , AppLogic(..)
+  , AppLogic
   , hoistAppLogic
+  , AppLogic
+  , AppStore(..)
   , AppCallbacks(..)
-  , hoistAppCallback
   , Validator(..)
   , PrivValidator(..)
     -- * Messages and channels
@@ -30,13 +31,13 @@ module HSChain.Blockchain.Internal.Engine.Types (
   , unverifyMessageRx
   , Announcement(..)
   , AppChans(..)
-  , hoistAppChans
     -- * Proposers
   , randomProposerSHA512
   ) where
 
 import Control.Applicative
 import Control.Concurrent.STM
+import Control.Monad.Trans.Except
 import Data.Aeson
 import Data.Coerce
 import Data.Bits              (shiftL)
@@ -50,7 +51,6 @@ import HSChain.Blockchain.Internal.Types
 import HSChain.Crypto
 import HSChain.Crypto.SHA (SHA512)
 import HSChain.Store
-import HSChain.Store.Internal.Proposals
 import HSChain.Types.Blockchain
 import HSChain.Types.Validators
 
@@ -181,42 +181,18 @@ instance DefaultConfig app => FromJSON (Configuration app) where
 --
 ----------------------------------------------------------------
 
--- | Parameters supplied by consensus engine for block generation
-data NewBlock alg a = NewBlock
-  { newBlockHeight   :: !Height
-  , newBlockLastBID  :: !(BlockID alg a)
-  , newBlockCommit   :: !(Maybe (Commit alg a))
-  , newBlockEvidence :: ![ByzantineEvidence alg a]
-  , newBlockState    :: !(BlockchainState alg a)
-  }
+type AppLogic m alg a = BChLogic (ExceptT (BChError a) m) alg a
 
 -- |What to do - preliminary check (state will be dropped out) or full check
 -- (state will be kept)?
 data CheckKind = FullCheck | PreliminaryCheck
   deriving (Eq, Ord, Show)
--- | Collection of callbacks which implement actual logic of
---   blockchain. This is most generic form which doesn't expose any
---   underlying structure. It's expected that this structure will be
---   generated from more specialized functions
-data AppLogic m alg a = AppLogic
-  { appBlockGenerator   :: NewBlock alg a
-                        -> [TX a]
-                        -> m (a, BlockchainState alg a)
-    -- ^ Generate fresh block for proposal. It's called each time we
-    --   need to create new block for proposal
-  , appValidationFun    :: CheckKind
-                        -> Block alg a
-                        -> BlockchainState alg a
-                        -> m (Maybe (BlockchainState alg a))
-    -- ^ Function for validation of proposed block data. It returns
-    --   change of validators for given block if it's valid and
-    --   @Nothing@ if it's not.
-  , appMempool          :: Mempool m alg (TX a)
+
+data AppStore m alg a = AppStore
+  { appMempool          :: Mempool m alg (TX a)
     -- ^ Application mempool
   , appBchState         :: BChStore m a
     -- ^ Store for the blockchain state
-  , appProposerChoice   :: ValidatorSet alg -> Height -> Round -> ValidatorIdx alg
-    -- ^ Choice function for proposer
   }
 
 -- | User callbacks which have monoidal strcture
@@ -236,20 +212,11 @@ instance Monad m => Semigroup (AppCallbacks m alg a) where
 instance Monad m => Monoid (AppCallbacks m alg a) where
   mempty  = AppCallbacks (\_ -> pure ()) (\_ -> pure Nothing)
 
-hoistAppLogic :: (Functor n) => (forall x. m x -> n x) -> AppLogic m alg a -> AppLogic n alg a
-hoistAppLogic fun AppLogic{..} = AppLogic
-  { appBlockGenerator   = (fmap . fmap) fun appBlockGenerator
-  , appValidationFun    = \kind -> (fmap . fmap) fun (appValidationFun kind)
-  , appMempool          = hoistMempool  fun appMempool
-  , appBchState         = hoistBChStore fun appBchState
-  , ..
-  }
-
-hoistAppCallback :: (forall x. m x -> n x) -> AppCallbacks m alg a -> AppCallbacks n alg a
-hoistAppCallback fun AppCallbacks{..} = AppCallbacks
-  { appCommitCallback = fun . appCommitCallback
-  , appCanCreateBlock = fun . appCanCreateBlock
-  }
+instance HoistDict AppCallbacks where
+  hoistDict fun AppCallbacks{..} = AppCallbacks
+    { appCommitCallback = fun . appCommitCallback
+    , appCanCreateBlock = fun . appCanCreateBlock
+    }
 
 -- | Our own validator
 newtype PrivValidator alg = PrivValidator
@@ -266,7 +233,7 @@ instance Crypto alg => ToJSON   (PrivValidator alg) where
 
 
 -- | Application connection to outer world
-data AppChans m alg a = AppChans
+data AppChans alg a = AppChans
   { appChanRx         :: TBQueue (MessageRx 'Unverified alg a)
     -- ^ Queue for receiving messages related to consensus protocol
     --   from peers.
@@ -280,16 +247,7 @@ data AppChans m alg a = AppChans
     -- ^ Current state of consensus. It includes current height, state
     --   machine status and known blocks which should be exposed in
     --   read-only manner for gossip with peers.
-  , appPropStorage :: ProposalStorage 'RW m alg a
-    -- ^ Storage for proposed blocks
   }
-
-hoistAppChans :: (forall x. m x -> n x) -> AppChans m alg a -> AppChans n alg a
-hoistAppChans fun AppChans{..} = AppChans
-  { appPropStorage   = hoistPropStorageRW fun appPropStorage
-  , ..
-  }
-
 
 
 -- | Select proposers using PRNG based on SHA512.
@@ -302,7 +260,7 @@ randomProposerSHA512 valSet h r
   --       _biased_ results. But since range of SHA512 is enormous:
   --       2^512 even for voting power on order 2^64 bias will be on
   --       order 10^{-134} that is negligible
-  $ (`mod` totalVotingPower valSet)
+  $ (`mod` fromIntegral (totalVotingPower valSet))
   -- Convert hash to integer. We interpret hash as LE integer
   $ BS.foldr' (\w i -> (i `shiftL` 8) + fromIntegral  w) 0 bs
   where

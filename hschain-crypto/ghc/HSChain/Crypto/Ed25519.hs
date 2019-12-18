@@ -1,7 +1,8 @@
 {-# LANGUAGE DataKinds                  #-}
-{-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE DeriveDataTypeable         #-}
+{-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE TypeApplications           #-}
 {-# LANGUAGE TypeFamilies               #-}
@@ -46,6 +47,7 @@ instance CryptoAsymmetric Ed25519 where
     case Ed.secretKey bs of
       CryptoPassed k -> return $! PrivKey k
       CryptoFailed e -> error (show e)
+  asymmKeyAlgorithmName = "Ed25519"
 
 instance ByteReprSized (Signature Ed25519) where
   type ByteSize (Signature Ed25519) = 64

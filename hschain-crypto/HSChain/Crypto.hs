@@ -1,5 +1,6 @@
 {-# LANGUAGE ConstraintKinds            #-}
 {-# LANGUAGE DataKinds                  #-}
+{-# LANGUAGE DefaultSignatures          #-}
 {-# LANGUAGE DeriveAnyClass             #-}
 {-# LANGUAGE DeriveDataTypeable         #-}
 {-# LANGUAGE DeriveGeneric              #-}
@@ -9,6 +10,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE KindSignatures             #-}
 {-# LANGUAGE LambdaCase                 #-}
+{-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE TypeApplications           #-}
@@ -21,9 +23,10 @@
 -- families
 module HSChain.Crypto (
     -- * Cryptographic hashes
-    CryptoHash(..)
-  , Hash(..)
+    Hash(..)
   , Hashed(..)
+  , CryptoHash(..)
+  , CryptoHashable(..)
   , hash
   , hashed
   , (:<<<)
@@ -41,6 +44,8 @@ module HSChain.Crypto (
   , Fingerprint(..)
   , fingerprint
   , CryptoSign(..)
+  , signHashed
+  , verifySignatureHashed
   , CryptoSignHashed(..)
     -- * Aggregations API
   , CryptoAggregabble(..)
@@ -78,10 +83,9 @@ module HSChain.Crypto (
   , decodeBase58
     -- * Serialization and signatures
   , SignedState(..)
-  , verifyCborSignature
   ) where
 
-import Codec.Serialise (Serialise, serialise)
+import Codec.Serialise (Serialise)
 import qualified Codec.Serialise as CBOR
 import Control.Applicative
 import Control.DeepSeq
@@ -89,61 +93,20 @@ import Control.Monad
 import Control.Monad.IO.Class
 
 import qualified Data.Aeson           as JSON
-import           Data.Data (Data)
-import           Data.ByteString.Lazy    (toStrict)
-import qualified Data.ByteString       as BS
+import           Data.Data               (Data)
+import           Data.ByteString         (ByteString)
 import Data.Coerce
 import Data.Typeable (Proxy(..))
 import Text.Read
 import Text.ParserCombinators.ReadP
 import GHC.TypeNats
-import GHC.Generics         (Generic,Generic1)
+import GHC.Generics (Generic,Generic1)
 
 import HSChain.Crypto.Classes
+import HSChain.Crypto.Classes.Hash
 
 
-----------------------------------------------------------------
--- Cryptographic hashes
-----------------------------------------------------------------
 
--- | Cryptographic hash of some value
-newtype Hash alg = Hash BS.ByteString
-  deriving stock   (Generic, Generic1)
-  deriving newtype (Eq,Ord,Serialise,NFData)
-
--- | Compute hash of value. It's first serialized using CBOR and then
---   hash of encoded data is computed,
-hash :: (CryptoHash alg, Serialise a) => a -> Hash alg
-hash = hashBlob . toStrict . serialise
-
--- | Type-indexed set of crypto algorithms. It's not very principled
---   to push everything into singe type class.  But in order to keep
---   signatures sane it was done this way.
-class ( ByteReprSized (Hash alg)
-      ) => CryptoHash alg where
-  -- | Compute hash of sequence of bytes
-  hashBlob     :: BS.ByteString -> Hash alg
-  -- | Compare hash with a bytestring safly
-  hashEquality :: Hash alg -> BS.ByteString -> Bool
-  hashEquality (Hash h) bs = h == bs
-
--- | Size of hash in bytes
-hashSize :: forall alg proxy i. (CryptoHash alg, Num i) => proxy alg -> i
-hashSize _ = fromIntegral $ natVal (Proxy @(ByteSize (Hash alg)))
-
--- | Newtype wrapper with phantom type tag which show hash of which
---   value is being calculated
-newtype Hashed alg a = Hashed (Hash alg)
-  deriving stock   ( Show, Read, Generic, Generic1)
-  deriving newtype ( Eq,Ord,NFData, Serialise
-                   , JSON.FromJSON, JSON.ToJSON, JSON.ToJSONKey, JSON.FromJSONKey)
-
-hashed :: (Crypto alg, Serialise a) => a -> Hashed alg a
-hashed = Hashed . hash
-
-instance (CryptoHash alg) => ByteRepr (Hashed alg a) where
-  encodeToBS (Hashed h) = encodeToBS h
-  decodeFromBS = fmap Hashed . decodeFromBS
 
 -- | Chaining of hash algorithms. For example @SHA256 :<<< SHA256@
 --   would mean applying SHA256 twice or @SHA256 :<<< SHA512@ will
@@ -154,36 +117,15 @@ instance ByteReprSized (Hash hashA) => ByteReprSized (Hash (hashA :<<< hashB)) w
   type ByteSize (Hash (hashA :<<< hashB)) = ByteSize (Hash hashA)
 
 instance (CryptoHash hashA, CryptoHash hashB) => CryptoHash (hashA :<<< hashB) where
-  hashBlob bs = let Hash hB = hashBlob bs :: Hash hashB
-                    Hash hA = hashBlob hB :: Hash hashA
-                in Hash hA
-
-
-----------------------------------------
-
-instance ByteRepr (Hash alg) where
-  decodeFromBS         = Just . Hash
-  encodeToBS (Hash bs) = bs
-
-instance Show (Hash alg) where
-  showsPrec n h
-    = showParen (n > 10)
-    $ showString "Hash " . shows (encodeBSBase58 $ encodeToBS h)
-
-instance Read (Hash alg) where
-  readPrec = do void $ lift $ string "Hash" >> some (char ' ')
-                val <- readPrecBSBase58
-                case decodeFromBS val of
-                  Nothing -> fail "Incorrect bytestring representation of Hash"
-                  Just h  -> return h
-
-instance JSON.ToJSON   (Hash alg) where
-  toJSON    = defaultToJSON
-instance JSON.FromJSON (Hash alg) where
-  parseJSON = defaultParseJSON "Hash"
-instance JSON.FromJSONKey (Hash alg)
-instance JSON.ToJSONKey   (Hash alg)
-
+  hashBlob     bs = let Hash hB = hashBlob bs :: Hash hashB
+                        Hash hA = hashBlob hB :: Hash hashA
+                    in  Hash hA
+  hashLazyBlob bs = let Hash hB = hashLazyBlob bs :: Hash hashB
+                        Hash hA = hashBlob hB     :: Hash hashA
+                    in  Hash hA
+  hashAlgorithmName = CryptoName $ bsA <> " <<< " <> bsB
+    where CryptoName bsA = hashAlgorithmName @hashA
+          CryptoName bsB = hashAlgorithmName @hashB
 
 ----------------------------------------------------------------
 -- Cryptographic hashes
@@ -197,10 +139,10 @@ newtype HMAC alg = HMAC (Hash alg)
 -- | Calculate Hash-based Message Authetication Code (HMAC) according
 --   to RFC2104
 class CryptoHash alg => CryptoHMAC alg where
-  hmac :: BS.ByteString
+  hmac :: ByteString
        -- ^ Key. Must be kept secret since leaking will allow attacker
        --   forge HMACs trivially
-       -> BS.ByteString
+       -> ByteString
        -- ^ Message for which HMAC is created
        -> HMAC alg
 
@@ -222,15 +164,14 @@ class ( ByteReprSized (PublicKey alg)
       , Ord (PublicKey alg)
       ) => CryptoAsymmetric alg where
   -- | Compute public key from  private key
-  publicKey       :: PrivKey   alg -> PublicKey alg
+  publicKey       :: PrivKey alg -> PublicKey alg
   -- | Generate new private key
   generatePrivKey :: MonadIO m => m (PrivKey alg)
-
-
+  asymmKeyAlgorithmName :: CryptoName alg
 
 
 -- | Signature
-newtype Signature alg = Signature BS.ByteString
+newtype Signature alg = Signature ByteString
   deriving stock   (Generic, Generic1)
   deriving newtype (Eq, Ord, Serialise, NFData)
 
@@ -239,10 +180,22 @@ class ( ByteReprSized (Signature   alg)
       , CryptoAsymmetric alg
       ) => CryptoSign alg where
   -- | Sign sequence of bytes
-  signBlob            :: PrivKey   alg -> BS.ByteString -> Signature alg
+  signBlob            :: PrivKey   alg -> ByteString -> Signature alg
   -- | Check that signature is correct
-  verifyBlobSignature :: PublicKey alg -> BS.ByteString -> Signature alg -> Bool
+  verifyBlobSignature :: PublicKey alg -> ByteString -> Signature alg -> Bool
 
+
+signHashed :: forall alg a. (Crypto alg, CryptoHashable a)
+           => PrivKey alg -> a -> Signature alg
+signHashed pk a = signBlob pk bs
+  where
+    Hash bs = hash a :: Hash alg
+
+verifySignatureHashed :: forall alg a. (Crypto alg, CryptoHashable a)
+           => PublicKey alg -> a -> Signature alg -> Bool
+verifySignatureHashed pk a = verifyBlobSignature pk bs
+  where
+    Hash bs = hash a :: Hash alg
 
 class ( ByteReprSized (Signature   alg)
       , CryptoAsymmetric alg
@@ -437,8 +390,10 @@ instance ByteReprSized (PrivKey sign) => ByteReprSized (PrivKey (sign :& hash)) 
   type ByteSize (PrivKey (sign :& hash)) = ByteSize (PrivKey sign)
 
 instance CryptoAsymmetric sign => CryptoAsymmetric (sign :& hash) where
-  publicKey       = coerce (publicKey @sign)
-  generatePrivKey = fmap PrivKeyU (generatePrivKey @sign)
+  publicKey             = coerce (publicKey @sign)
+  generatePrivKey       = fmap PrivKeyU (generatePrivKey @sign)
+  asymmKeyAlgorithmName = coerce (asymmKeyAlgorithmName @sign)
+
 
 instance ByteReprSized (Signature sign) => ByteReprSized (Signature (sign :& hash)) where
   type ByteSize (Signature (sign :& hash)) = ByteSize (Signature sign)
@@ -451,8 +406,10 @@ instance ByteReprSized (Hash hash) => ByteReprSized (Hash (sign :& hash)) where
   type ByteSize (Hash (sign :& hash)) = ByteSize (Hash hash)
 
 instance (CryptoHash hash) => CryptoHash (sign :& hash) where
-  hashBlob     = coerce (hashBlob @hash)
-  hashEquality = coerce (hashEquality @hash)
+  hashBlob          = coerce (hashBlob          @hash)
+  hashLazyBlob      = coerce (hashLazyBlob      @hash)
+  hashAlgorithmName = coerce (hashAlgorithmName @hash)
+
 
 
 ----------------------------------------------------------------
@@ -460,14 +417,14 @@ instance (CryptoHash hash) => CryptoHash (sign :& hash) where
 ----------------------------------------------------------------
 
 -- | Output of key derivation functions
-newtype KDFOutput alg = KDFOutput BS.ByteString
+newtype KDFOutput alg = KDFOutput ByteString
 
 -- | Type class for key derivation functions.
 class (ByteReprSized (KDFOutput alg)) => CryptoKDF alg where
   -- | Extra parameters such as nonce, number of iterations etc.
   type KDFParams alg
   -- | Generate random sequence of bytes
-  deriveKey :: KDFParams alg -> BS.ByteString -> KDFOutput alg
+  deriveKey :: KDFParams alg -> ByteString -> KDFOutput alg
 
 instance ByteRepr (KDFOutput alg) where
   encodeToBS (KDFOutput h) = encodeToBS h
@@ -499,10 +456,10 @@ class ( ByteReprSized (CypherKey       alg)
       , ByteReprSized (CypherNonce     alg)
       ) => StreamCypher alg where
   -- | Encrypt message. Note that same nonce MUST NOT be reused.
-  encryptMessage :: CypherKey alg -> CypherNonce alg -> BS.ByteString -> BS.ByteString
+  encryptMessage :: CypherKey alg -> CypherNonce alg -> ByteString -> ByteString
   -- | Decrypt message. If MAC verification fails (message was
   --   tampered with) decription returns @Nothing@
-  decryptMessage :: CypherKey alg -> CypherNonce alg -> BS.ByteString -> Maybe BS.ByteString
+  decryptMessage :: CypherKey alg -> CypherNonce alg -> ByteString -> Maybe ByteString
   -- | Generate random key using cryptographically secure RNG
   generateCypherKey :: MonadIO m => m (CypherKey alg)
   -- | Generate random nonce using cryptographically secure RNG
@@ -512,7 +469,7 @@ class ( ByteReprSized (CypherKey       alg)
 -- | Value encrypted with stream cypher. It should be created by
 --   'makeSecretBox' which takes care of generating nonce.
 data SecretBox alg = SecretBox
-  { secretBoxValue :: !BS.ByteString
+  { secretBoxValue :: !ByteString
   , secretBoxNonce :: !(CypherNonce alg)
   }
   deriving stock    (Show, Generic)
@@ -521,7 +478,7 @@ data SecretBox alg = SecretBox
 -- | Encrypt value and generate random nonce. This method should be
 --   used only if nonce is big enough for collision probability to be
 --   negligible.
-makeSecretBox :: (MonadIO m, StreamCypher alg) => CypherKey alg -> BS.ByteString -> m (SecretBox alg)
+makeSecretBox :: (MonadIO m, StreamCypher alg) => CypherKey alg -> ByteString -> m (SecretBox alg)
 makeSecretBox key msg = do
   nonce <- generateCypherNonce
   return $! SecretBox { secretBoxValue = encryptMessage key nonce msg
@@ -530,13 +487,13 @@ makeSecretBox key msg = do
 
 -- | Decrypt secretbox. It will return @Nothing@ if MAC verification
 --   fails. That mean either that message was encrypted.
-openSecretBox :: (StreamCypher alg) => CypherKey alg -> SecretBox alg -> Maybe BS.ByteString
+openSecretBox :: (StreamCypher alg) => CypherKey alg -> SecretBox alg -> Maybe ByteString
 openSecretBox key box = decryptMessage key (secretBoxNonce box) (secretBoxValue box)
 
 
 -- | Value ecrypted using public key cryptography
 data PubKeyBox key kdf cypher = PubKeyBox
-  { pubKeyBoxValue :: !BS.ByteString
+  { pubKeyBoxValue :: !ByteString
   , pubKeyNonce    :: !(CypherNonce cypher)
   }
 
@@ -549,7 +506,7 @@ makePubKeyBox
      )
   => PrivKey   key              -- ^ Our private key
   -> PublicKey key              -- ^ Public key of repicient or sender
-  -> BS.ByteString              -- ^ Clear text message
+  -> ByteString              -- ^ Clear text message
   -> m (PubKeyBox key kdf cypher)
 makePubKeyBox privK pubK msg = do
   let sharedSecret     = diffieHelman pubK privK
@@ -569,7 +526,7 @@ openPubKeyBox
   => PrivKey   key              -- ^ Our private key
   -> PublicKey key              -- ^ Public key of repicient or sender
   -> PubKeyBox key kdf cypher
-  -> Maybe BS.ByteString
+  -> Maybe ByteString
 openPubKeyBox privK pubK box = do
   let sharedSecret     = diffieHelman pubK privK
       KDFOutput kdf    = deriveKey () $ encodeToBS sharedSecret :: KDFOutput kdf
@@ -636,13 +593,27 @@ instance StreamCypher alg => JSON.ToJSONKey   (CypherNonce alg)
 data SignedState = Verified
                  | Unverified
 
--- | Verify signature of value. Signature is verified for CBOR
---   encoding of object
-verifyCborSignature
-  :: (Serialise a, CryptoSign alg)
-  => PublicKey alg
-  -> a
-  -> Signature alg
-  -> Bool
-verifyCborSignature pk a
-  = verifyBlobSignature pk (toStrict $ serialise a)
+
+
+
+instance (CryptoAsymmetric alg, CryptoHash hash) => CryptoHashable (Fingerprint hash alg) where
+  hashStep f
+    = hashStep (CryFingerprint (getCryptoName (hashAlgorithmName     @hash))
+                               (getCryptoName (asymmKeyAlgorithmName @alg)))
+   <> hashStep (encodeToBS f)
+
+instance CryptoAsymmetric alg => CryptoHashable (PublicKey alg) where
+  hashStep k
+    = hashStep (CryPublicKey $ getCryptoName (asymmKeyAlgorithmName @alg))
+   <> hashStep (encodeToBS k)
+
+instance CryptoAsymmetric alg => CryptoHashable (PrivKey alg) where
+  hashStep k
+    = hashStep (CryPrivateKey $ getCryptoName (asymmKeyAlgorithmName @alg))
+   <> hashStep (encodeToBS k)
+
+instance CryptoAsymmetric alg => CryptoHashable (Signature alg) where
+  hashStep k
+    = hashStep (CrySignature $ getCryptoName (asymmKeyAlgorithmName @alg))
+   <> hashStep (encodeToBS k)
+

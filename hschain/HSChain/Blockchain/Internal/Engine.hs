@@ -1,13 +1,15 @@
-{-# LANGUAGE DataKinds         #-}
-{-# LANGUAGE DeriveFunctor     #-}
-{-# LANGUAGE FlexibleContexts  #-}
-{-# LANGUAGE LambdaCase        #-}
-{-# LANGUAGE MultiWayIf        #-}
-{-# LANGUAGE NamedFieldPuns    #-}
-{-# LANGUAGE NumDecimals       #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards   #-}
-{-# LANGUAGE TupleSections     #-}
+{-# LANGUAGE DataKinds           #-}
+{-# LANGUAGE DeriveFunctor       #-}
+{-# LANGUAGE FlexibleContexts    #-}
+{-# LANGUAGE LambdaCase          #-}
+{-# LANGUAGE MultiWayIf          #-}
+{-# LANGUAGE NamedFieldPuns      #-}
+{-# LANGUAGE NumDecimals         #-}
+{-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE RecordWildCards     #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TupleSections       #-}
+{-# LANGUAGE TypeApplications    #-}
 -- |
 -- Core of blockchain application. This module provides function which
 -- continuously updates blockchain using consensus algorithm and
@@ -17,7 +19,6 @@ module HSChain.Blockchain.Internal.Engine (
   , runApplication
   ) where
 
-import Codec.Serialise           (Serialise)
 import Control.Applicative
 import Control.Concurrent        (forkIO, threadDelay)
 import Control.Concurrent.STM
@@ -25,6 +26,7 @@ import Control.Monad
 import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
+import Control.Monad.Trans.Except
 import           Data.Maybe    (fromMaybe)
 import           Data.List     (nub)
 import           Data.Monoid   ((<>))
@@ -37,7 +39,8 @@ import HSChain.Blockchain.Internal.Engine.Types
 import HSChain.Blockchain.Internal.Types
 import HSChain.Blockchain.Internal.Algorithm
 import HSChain.Types.Blockchain
-import HSChain.Control (throwNothing,throwNothingM,iterateM,atomicallyIO)
+import HSChain.Types.Merkle.Types
+import HSChain.Control (throwNothing,throwNothingM,throwLeftM,throwLeft,iterateM,atomicallyIO)
 import HSChain.Crypto
 import HSChain.Exceptions
 import HSChain.Logger
@@ -53,21 +56,28 @@ import Katip (Severity(..), sl)
 --
 ----------------------------------------------------------------
 
-newAppChans :: (MonadIO m, Crypto alg) => ConsensusCfg -> m (AppChans m alg a)
+newAppChans :: (MonadIO m) => ConsensusCfg -> m (AppChans alg a)
 newAppChans ConsensusCfg{incomingQueueSize = sz} = do
   appChanRx         <- liftIO $ newTBQueueIO sz
   appChanRxInternal <- liftIO   newTQueueIO
   appChanTx         <- liftIO   newBroadcastTChanIO
   appTMState        <- liftIO $ newTVarIO Nothing
-  appPropStorage    <- newSTMPropStorage
   return AppChans{..}
 
 rewindBlockchainState
-  :: ( MonadReadDB m alg a, MonadIO m, MonadThrow m
-     , Crypto alg, Serialise a)
-  => AppLogic m alg a
+  :: ( MonadDB m alg a, MonadIO m, MonadThrow m
+     , Crypto alg, BlockData a)
+  => AppStore m alg a
+  -> AppLogic m alg a
   -> m ()
-rewindBlockchainState AppLogic{appBchState,appValidationFun} = do
+rewindBlockchainState AppStore{..} BChLogic{..} = do
+  -- We need to generate validator set for H=1. We do so in somewhat
+  -- fragile way.
+  --
+  -- We only could have no validator set at H=1 when we just started
+  -- and only wrote genesis into database. So blockchain state must be
+  -- at initial state. Therefore we can write validator state during
+  -- evaluation of blocks.
   hChain   <- queryRO blockchainHeight
   (h0,st0) <- bchCurrentState appBchState >>= \case
     (Nothing, s) -> return (Height 0, s)
@@ -77,6 +87,7 @@ rewindBlockchainState AppLogic{appBchState,appValidationFun} = do
     st0
   where
     interpretBlock h st = do
+<<<<<<< HEAD
       blk      <- queryRO $ mustRetrieveBlock h
       valSet   <- queryRO $ mustRetrieveValidatorSet (succ h)
       bst      <- throwNothingM CannotRewindState
@@ -84,6 +95,32 @@ rewindBlockchainState AppLogic{appBchState,appValidationFun} = do
       let st' = blockchainState bst
       bchStoreStore appBchState h st'
       return st'
+=======
+      blk    <- queryRO $ mustRetrieveBlock        h
+      valSet <- queryRO $ mustRetrieveValidatorSet h
+      BChEval{..}
+        <- throwLeftM . runExceptT
+         $ withExceptT CannotRewindState
+         $ processBlock BChEval { bchValue        = blk
+                                , validatorSet    = valSet
+                                , blockchainState = st
+                                }
+      -- Check validator set consistency
+      unless (hashed blockchainState == blockStateHash blk)
+        $ throwM $ InconsisnceWhenRewinding h "Hash state"
+      unless (hashed valSet          == blockValidators blk)
+        $ throwM $ InconsisnceWhenRewinding h "Validator set"
+      unless (hashed validatorSet    == blockNewValidators blk)
+        $ throwM $ InconsisnceWhenRewinding h "New validator set"
+      -- Write validator set at H=1 to database if needed
+      when (h == Height 0) $ do
+        queryRO (hasValidatorSet (Height 1)) >>= \case
+          True  -> return ()
+          False -> mustQueryRW $ storeValSet (Height 1) validatorSet
+      -- Put new state into state storage
+      bchStoreStore appBchState h blockchainState
+      return blockchainState
+>>>>>>> afbf6654de396affca16b5c27431d1f77685f92d
 
 -- | Main loop for application. Here we update state machine and
 --   blockchain in response to incoming messages.
@@ -100,22 +137,26 @@ runApplication
      -- ^ Configuration
   -> Maybe (PrivValidator alg)
      -- ^ Private key of validator
-  -> Block alg a
+  -> Genesis alg a
      -- ^ Genesis block
   -> AppLogic m alg a
      -- ^ Get initial state of the application
+  -> AppStore m alg a
   -> AppCallbacks m alg a
-  -> AppChans m alg a
+  -> AppChans  alg a
      -- ^ Channels for communication with peers
   -> m ()
-runApplication config appValidatorKey genesis appSt@AppLogic{..} appCall appCh@AppChans{..} = logOnException $ do
+runApplication config appValidatorKey genesis appLogic appStore appCall appCh = logOnException $ do
   logger InfoS "Starting consensus engine" ()
+  -- Store genesis
   mustQueryRW $ storeGenesis genesis
-  rewindBlockchainState appSt
+  -- Rewind state of blockcahin. At the same time we 
+  rewindBlockchainState appStore appLogic
+  -- Now we can start consensus
   height <- queryRO $ blockchainHeight
   lastCm <- queryRO $ retrieveLocalCommit height
   iterateM lastCm $ fmap Just
-                  . decideNewBlock config appValidatorKey appSt appCall appCh
+                  . decideNewBlock config appValidatorKey appLogic appStore appCall appCh
 
 -- This function uses consensus algorithm to decide which block we're
 -- going to commit at current height, then stores it in database and
@@ -130,34 +171,38 @@ decideNewBlock
   => ConsensusCfg
   -> Maybe (PrivValidator alg)
   -> AppLogic     m alg a
+  -> AppStore     m alg a
   -> AppCallbacks m alg a
-  -> AppChans     m alg a
+  -> AppChans       alg a
   -> Maybe (Commit alg a)
   -> m (Commit alg a)
-decideNewBlock config appValidatorKey appLogic@AppLogic{..} appCall@AppCallbacks{..} appCh@AppChans{..} lastCommt = do
+decideNewBlock config appValidatorKey
+               appLogic@BChLogic{..} appStore@AppStore{..}
+               appCall@AppCallbacks{..} appCh@AppChans{..} lastCommt = do
   -- Enter NEW HEIGHT and create initial state for consensus state
   -- machine
-  hParam  <- makeHeightParameters appValidatorKey appLogic appCall appPropStorage
-  resetPropStorage appPropStorage $ currentH hParam
+  hParam  <- makeHeightParameters appValidatorKey appLogic appStore appCall
   -- Run consensus engine
-  (cmt, block, bchSt) <- runEffect $ do
+  (cmt, BChEval{..}) <- runEffect $ do
     let sink = handleEngineMessage hParam config appCh
     tm0 <-  newHeight hParam lastCommt
         >-> sink
     rxMessageSource hParam appCh
-        >-> msgHandlerLoop hParam appLogic appCh tm0
+        >-> msgHandlerLoop hParam appLogic appStore appCh tm0
         >-> sink
   -- Update metrics
-  do let nTx = maybe 0 (length . commitPrecommits) (blockLastCommit block)
-         h   = headerHeight $ blockHeader block
-     logger InfoS "Actual commit" $ LogBlockInfo h (blockData block) nTx
+  do let nTx = maybe 0 (length . commitPrecommits . merkleValue) (blockPrevCommit bchValue)
+         h   = blockHeight bchValue
+     logger InfoS "Actual commit" $ LogBlockInfo h (merkleValue $ blockData bchValue) nTx
      usingCounter prometheusNTx nTx
   -- We have decided which block we want to commit so let commit it
-  mustQueryRW $ do
-    storeCommit cmt block (bChValidatorSet bchSt)
-    mapM_ storeBlockchainEvidence $ blockEvidence block
-  bchStoreStore appBchState (headerHeight $ blockHeader block) $ blockchainState bchSt
-  appCommitCallback block
+  do let h = blockHeight bchValue
+     mustQueryRW $ do
+       storeCommit cmt      bchValue
+       storeValSet (succ h) validatorSet
+       mapM_ storeBlockchainEvidence $ merkleValue $ blockEvidence bchValue
+     bchStoreStore appBchState h blockchainState
+     appCommitCallback bchValue
   return cmt
 
 -- Producer for MessageRx. First we replay WAL and then we read
@@ -166,7 +211,7 @@ rxMessageSource
   :: ( MonadIO m, MonadDB m alg a, MonadLogger m, MonadThrow m
      , Crypto alg, BlockData a)
   => HeightParameters m alg a
-  -> AppChans m alg a
+  -> AppChans alg a
   -> Producer (MessageRx 'Verified alg a) m r
 rxMessageSource HeightParameters{..} AppChans{..} = do
   -- First we replay messages from WAL. This is very important and
@@ -182,7 +227,7 @@ rxMessageSource HeightParameters{..} AppChans{..} = do
     >-> verify
     >-> Pipes.chain (mustQueryRW . writeToWAL currentH . unverifyMessageRx)
   where
-    verify  = verifyMessageSignature oldValidatorSet validatorSet currentH
+    verify  = verifyMessageSignature oldValidatorSet hValidatorSet currentH
     -- NOTE: We try to read internal messages first. This is needed to
     --       ensure that timeouts are delivered in timely manner
     readMsg = forever $ yield =<< atomicallyIO (  readTQueue  appChanRxInternal
@@ -197,64 +242,72 @@ rxMessageSource HeightParameters{..} AppChans{..} = do
 --  2. Collect stragglers precommits.
 msgHandlerLoop
   :: ( MonadReadDB m alg a, MonadThrow m, MonadIO m, MonadLogger m
-     , Crypto alg)
+     , Crypto alg, Exception (BChError a))
   => HeightParameters m alg a
   -> AppLogic m alg a
-  -> AppChans m alg a
+  -> AppStore m alg a
+  -> AppChans   alg a
   -> TMState alg a
   -> Pipe (MessageRx 'Verified alg a) (EngineMessage alg a) m
-      (Commit alg a, Block alg a, BlockchainState alg a)
-msgHandlerLoop hParam AppLogic{..} AppChans{..} = mainLoop Nothing
+      (Commit alg a, ValidatedBlock alg a)
+msgHandlerLoop hParam BChLogic{..} AppStore{..} AppChans{..} = mainLoop Nothing
   where
     height = currentH hParam
     mainLoop mCmt tm = do
       -- Make current state of consensus available for gossip
       atomicallyIO $ writeTVar appTMState $ Just (height , tm)
-      await >>=  handleVerifiedMessage appPropStorage hParam tm >>= \case
+      await >>= handleVerifiedMessage hParam tm >>= \case
         Tranquility      -> mainLoop mCmt tm
         Misdeed          -> mainLoop mCmt tm
         Success  tm'     -> checkForCommit mCmt       tm'
         DoCommit cmt tm' -> checkForCommit (Just cmt) tm'
     --
     checkForCommit Nothing    tm = mainLoop Nothing tm
-    checkForCommit (Just cmt) tm = do
-      mBlk <- lift
-            $ retrievePropByID appPropStorage height (commitBlockID cmt)
-      case mBlk of
+    checkForCommit (Just cmt) tm =
+      case proposalByBID (smProposedBlocks tm) (commitBlockID cmt) of
         UnknownBlock    -> mainLoop (Just cmt) tm
         InvalidBlock    -> error "Trying to commit invalid block!"
-        GoodBlock b bst -> return (cmt, b, bst)
+        GoodBlock     b -> return (cmt, b)
         UntestedBlock b -> lift $ do
           valSet <- queryRO $ mustRetrieveValidatorSet height
           st     <- throwNothingM BlockchainStateUnavalable
                   $ bchStoreRetrieve appBchState $ pred height
+<<<<<<< HEAD
           appValidationFun PreliminaryCheck b (BlockchainState st valSet) >>= \case
             Nothing  -> error "Trying to commit invalid block!"
             Just bst -> return (cmt, b, bst)
+=======
+          bst    <- throwLeftM
+                  $ runExceptT
+                  $ withExceptT TryingToCommitInvalidBlock
+                  $ processBlock BChEval { bchValue         = b
+                                         , validatorSet    = valSet
+                                         , blockchainState = st
+                                         }
+          return (cmt, b <$ bst)
+>>>>>>> afbf6654de396affca16b5c27431d1f77685f92d
 
 
 -- Handle message and perform state transitions for both
 handleVerifiedMessage
   :: (MonadLogger m, Crypto alg)
-  => ProposalStorage 'RW m alg a
-  -> HeightParameters m alg a
+  => HeightParameters m alg a
   -> TMState alg a
   -> MessageRx 'Verified alg a
   -> Pipe x (EngineMessage alg a) m (ConsensusResult alg a (TMState alg a))
-handleVerifiedMessage ProposalStorage{..} hParam tm = \case
+handleVerifiedMessage hParam tm = \case
   RxProposal  p -> runConsesusM $ tendermintTransition hParam (ProposalMsg  p) tm
   RxPreVote   v -> runConsesusM $ tendermintTransition hParam (PreVoteMsg   v) tm
   RxPreCommit v -> runConsesusM $ tendermintTransition hParam (PreCommitMsg v) tm
   RxTimeout   t -> runConsesusM $ tendermintTransition hParam (TimeoutMsg   t) tm
   -- We update block storage
-  RxBlock     b -> do lift $ storePropBlock b
-                      return (Success tm)
+  RxBlock     b -> return $ Success $ tm { smProposedBlocks = addBlockToProps b (smProposedBlocks tm) }
 
 -- Verify signature of message. If signature is not correct message is
 -- simply discarded.
 verifyMessageSignature
   :: (MonadLogger m, Crypto alg)
-  => Maybe (ValidatorSet alg)
+  => ValidatorSet alg
   -> ValidatorSet alg
   -> Height
   -> Pipe (MessageRx 'Unverified alg a) (MessageRx 'Verified alg a) m r
@@ -278,9 +331,9 @@ verifyMessageSignature oldValSet valSet height = forever $ do
     RxTimeout   t  -> yield $ RxTimeout t
     RxBlock     b  -> yield $ RxBlock   b
   where
-    verify    con = verifyAny (Just valSet) con
-    verifyOld con = verifyAny oldValSet     con
-    verifyAny mvset name con sx = case mvset >>= flip verifySignature sx of
+    verify    con = verifyAny valSet    con
+    verifyOld con = verifyAny oldValSet con
+    verifyAny vset name con sx = case verifySignature vset sx of
       Just sx' -> yield $ con sx'
       Nothing  -> logger WarningS "Invalid signature"
         (  sl "name" (name::Text)
@@ -290,10 +343,10 @@ verifyMessageSignature oldValSet valSet height = forever $ do
 
 handleEngineMessage
   :: ( MonadIO m, MonadThrow m, MonadTMMonitoring m, MonadDB m alg a, MonadLogger m
-     , Crypto alg, Serialise a)
+     , Crypto alg)
   => HeightParameters n alg a
   -> ConsensusCfg
-  -> AppChans m alg a
+  -> AppChans alg a
   -> Consumer (EngineMessage alg a) m r
 handleEngineMessage HeightParameters{..} ConsensusCfg{..} AppChans{..} = forever $ await >>= \case
   -- Timeout
@@ -321,14 +374,9 @@ handleEngineMessage HeightParameters{..} ConsensusCfg{..} AppChans{..} = forever
     let Vote{..} = signedValue sv
         i        = signedKeyInfo sv
     atomicallyIO $ writeTChan appChanTx $ TxAnn $ AnnHasPreCommit voteHeight voteRound i
-  EngAnnStep s ->
-    atomicallyIO $ writeTChan appChanTx $ TxAnn $ AnnStep s
-  EngAnnLock r ->
-    atomicallyIO $ writeTChan appChanTx $ TxAnn $ AnnLock r
-  --
-  EngAcceptBlock r bid -> do
-    atomicallyIO $ writeTChan appChanTx $ TxAnn $ AnnHasProposal currentH r
-    lift $ allowBlockID appPropStorage r bid
+  EngAnnStep     s -> atomicallyIO $ writeTChan appChanTx $ TxAnn $ AnnStep s
+  EngAnnLock     r -> atomicallyIO $ writeTChan appChanTx $ TxAnn $ AnnLock r
+  EngAnnProposal r -> atomicallyIO $ writeTChan appChanTx $ TxAnn $ AnnHasProposal currentH r
   --
   EngCastPropose r bid lockInfo ->
     forM_ validatorKey $ \(PrivValidator pk, idx) -> do
@@ -339,7 +387,6 @@ handleEngineMessage HeightParameters{..} ConsensusCfg{..} AppChans{..} = forever
                           , propPOL       = lockInfo
                           , propBlockID   = bid
                           }
-      mBlock <- lift $ retrievePropByID appPropStorage (pred currentH) bid
       logger InfoS "Sending proposal"
         (   sl "R"    r
         <>  sl "BID" (show bid)
@@ -348,9 +395,6 @@ handleEngineMessage HeightParameters{..} ConsensusCfg{..} AppChans{..} = forever
         let p = signValue idx pk prop
         writeTQueue appChanRxInternal $ RxProposal p
         writeTChan  appChanTx         $ TxProposal p
-        case blockFromBlockValidation mBlock of
-          Just b  -> writeTQueue appChanRxInternal (RxBlock b)
-          Nothing -> return ()
   --
   EngCastPreVote r b ->
     forM_ validatorKey $ \(PrivValidator pk, idx) -> do
@@ -392,29 +436,30 @@ handleEngineMessage HeightParameters{..} ConsensusCfg{..} AppChans{..} = forever
 ----------------------------------------------------------------
 
 makeHeightParameters
-  :: ( MonadDB m alg a
+  :: forall m alg a.
+     ( MonadDB m alg a
      , MonadIO m
      , MonadThrow m
      , MonadLogger m
      , Crypto alg, BlockData a)
   => Maybe (PrivValidator alg)
   -> AppLogic            m alg a
+  -> AppStore            m alg a
   -> AppCallbacks        m alg a
-  -> ProposalStorage 'RW m alg a
   -> m (HeightParameters m alg a)
-makeHeightParameters appValidatorKey logic@AppLogic{..} AppCallbacks{appCanCreateBlock} propStorage = do
+makeHeightParameters appValidatorKey BChLogic{..} AppStore{..} AppCallbacks{appCanCreateBlock} = do
   bchH <- queryRO $ blockchainHeight
   let currentH = succ bchH
-  oldValSet <- queryRO $ retrieveValidatorSet     bchH
+  oldValSet <- queryRO $ mustRetrieveValidatorSet bchH
   valSet    <- queryRO $ mustRetrieveValidatorSet currentH
   let ourIndex = indexByValidator valSet . publicKey . validatorPrivKey
              =<< appValidatorKey
   --
   return HeightParameters
-    { validatorSet     = valSet
+    { hValidatorSet    = valSet
     , oldValidatorSet  = oldValSet
     , validatorKey     = liftA2 (,) appValidatorKey ourIndex
-    , proposerForRound = appProposerChoice valSet currentH
+    , proposerForRound = selectProposer (proposerSelection @a @alg) valSet currentH
     --
     , readyCreateBlock = \n ->
         queryRO (retrieveBlockReadyFromWAL currentH n) >>= \case
@@ -422,19 +467,28 @@ makeHeightParameters appValidatorKey logic@AppLogic{..} AppCallbacks{appCanCreat
                         b <$ mustQueryRW (writeBlockReadyToWAL currentH n b)
           Just b  -> return b
     --
-    , validateBlock = \bid -> do
-        retrievePropByID propStorage currentH bid >>= \case
-          UnknownBlock    -> return UnseenProposal
-          InvalidBlock    -> return InvalidProposal
-          GoodBlock{}     -> return GoodProposal
+    , validateBlock = \props bid ->
+        case proposalByBID props bid of
+          UnknownBlock    -> return (id, UnseenProposal)
+          InvalidBlock    -> return (id, InvalidProposal)
+          GoodBlock{}     -> return (id, GoodProposal)
           UntestedBlock b -> do
-            let invalid = InvalidProposal <$ setPropValidation propStorage bid Nothing
             inconsistencies <- checkProposedBlock currentH b
             st              <- throwNothingM BlockchainStateUnavalable
                              $ bchStoreRetrieve appBchState bchH
+<<<<<<< HEAD
             mvalSet'        <- appValidationFun PreliminaryCheck b (BlockchainState st valSet)
             evidenceState   <- queryRO $ mapM evidenceRecordedState (blockEvidence b)
             evidenceOK      <- mapM (evidenceCorrect logic) (blockEvidence b)
+=======
+            mvalSet'        <- runExceptT
+                             $ processBlock BChEval { bchValue        = b
+                                                    , validatorSet    = valSet
+                                                    , blockchainState = st
+                                                    }
+            evidenceState   <- queryRO $ mapM evidenceRecordedState (merkleValue $ blockEvidence b)
+            evidenceOK      <- mapM evidenceCorrect (merkleValue $ blockEvidence b)
+>>>>>>> afbf6654de396affca16b5c27431d1f77685f92d
             if | not (null inconsistencies) -> do
                -- Block is not internally consistent
                    logger ErrorS "Proposed block has inconsistencies"
@@ -445,77 +499,95 @@ makeHeightParameters appValidatorKey logic@AppLogic{..} AppCallbacks{appCanCreat
                -- We don't allow evidence which was already
                -- submitted. Neither we allow duplicate evidence
                | any (==Just True) evidenceState          -> invalid
-               | nub (blockEvidence b) /= blockEvidence b -> invalid
+               | nub (merkleValue (blockEvidence b)) /= merkleValue (blockEvidence b) -> invalid
                | any not evidenceOK                       -> invalid
                -- Block is correct and validators change is correct as
                -- well
-               | Just bst <- mvalSet'
-               , headerStateHash (blockHeader b) == hashed (blockchainState bst)
-               , validatorSetSize (bChValidatorSet bst) > 0
-               , blockValChange b == validatorsDifference valSet (bChValidatorSet bst)
-                 -> do setPropValidation propStorage bid $ Just bst
-                       return GoodProposal
+               | Right bst <- mvalSet'
+               , vals      <- validatorSet bst
+               , blockStateHash b == hashed (blockchainState bst)
+               , validatorSetSize vals > 0
+               , blockNewValidators b == hashed vals
+                 -> return ( setProposalValidation bid (Just bst)
+                           , GoodProposal
+                           )
                | otherwise
                  -> invalid
+               where
+                 invalid = return ( setProposalValidation bid Nothing
+                                  , InvalidProposal
+                                  )
     --
     , createProposal = \r commit -> do
         -- Obtain block either from WAL or actually genrate it
-        (block,bst) <- queryRO (retrieveBlockFromWAL currentH r) >>= \case
+        res@BChEval{..} <- queryRO (retrieveBlockFromWAL currentH r) >>= \case
           Just b  -> do
+<<<<<<< HEAD
             st       <- throwNothingM BlockchainStateUnavalable
                       $ bchStoreRetrieve appBchState bchH
             mvalSet' <- appValidationFun PreliminaryCheck b (BlockchainState st valSet)
             case mvalSet' of
               Nothing -> throwM InvalidBlockInWAL
               Just s  -> return (b, s)
+=======
+            st  <- throwNothingM BlockchainStateUnavalable
+                 $ bchStoreRetrieve appBchState bchH
+            res <- throwLeftM
+                 $ runExceptT
+                 $ withExceptT InvalidBlockInWAL
+                 $ processBlock BChEval { bchValue        = b
+                                        , validatorSet    = valSet
+                                        , blockchainState = st
+                                        }
+            return $ b <$ res
+>>>>>>> afbf6654de396affca16b5c27431d1f77685f92d
           Nothing -> do
             lastBID <- throwNothing (DBMissingBlockID bchH) <=< queryRO
                      $ retrieveBlockID bchH
             -- Call block generator
-            st          <- throwNothingM BlockchainStateUnavalable
-                         $ bchStoreRetrieve appBchState bchH
-            (bData,bst) <- appBlockGenerator NewBlock
-              { newBlockHeight   = currentH
-              , newBlockLastBID  = lastBID
-              , newBlockCommit   = commit
-              , newBlockEvidence = []
-              , newBlockState    = BlockchainState st valSet
-              } =<< peekNTransactions appMempool
+            st <- throwNothingM BlockchainStateUnavalable
+                $ bchStoreRetrieve appBchState bchH
+            res@BChEval{..}
+              <- throwLeft
+             =<< runExceptT
+               . withExceptT InvalidBlockGenerated
+               . generateBlock NewBlock { newBlockHeight   = currentH
+                                        , newBlockLastBID  = lastBID
+                                        , newBlockCommit   = commit
+                                        , newBlockEvidence = []
+                                        , newBlockState    = st
+                                        , newBlockValSet   = valSet
+                                        }
+             =<< peekNTransactions appMempool
             -- Get evidence
             evidence <- queryRO retrieveUnrecordedEvidence
             -- Assemble proper block
-            let valCh = validatorsDifference valSet (bChValidatorSet bst)
-                block = Block
-                  { blockHeader = Header
-                      { headerHeight         = currentH
-                      , headerLastBlockID    = Just lastBID
-                      , headerValidatorsHash = hashed valSet
-                      , headerDataHash       = hashed bData
-                      , headerValChangeHash  = hashed valCh
-                      , headerLastCommitHash = hashed commit
-                      , headerEvidenceHash   = hashed evidence
-                      , headerStateHash      = hashed $ blockchainState bst
-                      }
-                  , blockData       = bData
-                  , blockValChange  = valCh
-                  , blockLastCommit = commit
-                  , blockEvidence   = evidence
+            let block = Block
+                  { blockHeight        = currentH
+                  , blockPrevBlockID   = Just lastBID
+                  , blockValidators    = hashed  valSet
+                  , blockNewValidators = merkled $ validatorSet
+                  , blockPrevCommit    = merkled <$> commit
+                  , blockEvidence      = merkled evidence
+                  , blockData          = merkled bchValue
+                  , blockStateHash     = hashed $ blockchainState
                   }
             mustQueryRW $ writeBlockToWAL r block
-            return (block, bst)
+            return $ block <$ res
         --
-        let bid = blockHash block
-        allowBlockID      propStorage r bid
-        storePropBlock    propStorage block
-        setPropValidation propStorage bid (Just bst)
-        return bid
+        let bid = blockHash bchValue
+        return ( setProposalValidation bid (Just $ () <$ res)
+               . addBlockToProps bchValue
+               . acceptBlockID r bid
+               , bid
+               )
     , ..
     }
 
 evidenceCorrect
-  :: (Crypto alg, MonadIO m, MonadReadDB m alg a)
-  => AppLogic m alg a -> ByzantineEvidence alg a -> m Bool
-evidenceCorrect AppLogic{appProposerChoice=choice} evidence = do
+  :: forall m alg a. (Crypto alg, BlockData a, MonadIO m, MonadReadDB m alg a)
+  => ByzantineEvidence alg a -> m Bool
+evidenceCorrect evidence = do
   queryRO (retrieveValidatorSet h) >>= \case
     -- We don't have validator set (vote from future)
     Nothing   -> return False
@@ -525,6 +597,7 @@ evidenceCorrect AppLogic{appProposerChoice=choice} evidence = do
         | choice vals propHeight propRound == signedKeyInfo p -> False
         | otherwise                                           -> True
         where
+          choice       = selectProposer (proposerSelection @a @alg)
           Proposal{..} = signedValue p
       ConflictingPreVote   v1 v2
         | ((/=) `on` voteHeight  . signedValue) v1 v2 -> False

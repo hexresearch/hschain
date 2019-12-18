@@ -1,7 +1,8 @@
 {-# LANGUAGE DataKinds                  #-}
-{-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE DeriveDataTypeable         #-}
+{-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE TypeApplications           #-}
 {-# LANGUAGE TypeFamilies               #-}
@@ -47,6 +48,7 @@ instance CryptoAsymmetric Curve25519 where
     case C25519.secretKey bs of
       CryptoPassed k -> return $! PrivKey k
       CryptoFailed e -> error (show e)
+  asymmKeyAlgorithmName  = "Curve25519"
 
 instance ByteReprSized (DHSecret Curve25519) where
   type ByteSize (DHSecret Curve25519) = 32

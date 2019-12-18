@@ -1,8 +1,9 @@
-{-# LANGUAGE CApiFFI #-}
+{-# LANGUAGE CApiFFI                    #-}
 {-# LANGUAGE DataKinds                  #-}
-{-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE DeriveDataTypeable         #-}
+{-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE TypeApplications           #-}
 {-# LANGUAGE TypeFamilies               #-}
@@ -54,6 +55,7 @@ instance CryptoAsymmetric Ed25519 where
         Arr.alloc (fromIntegral crypto_sign_PUBLICKEYBYTES) $ \pPub  ->
           check =<< sodium_crypto_sign_keypair pPub pPriv
     return $! PrivKey priv (PublicKey pub)
+  asymmKeyAlgorithmName = "Ed25519"
 
 instance ByteReprSized (Signature Ed25519) where
   type ByteSize (Signature Ed25519) = 64
@@ -98,7 +100,7 @@ instance NFData (PrivKey Ed25519) where
   rnf x = x `seq` ()
 deriving instance NFData (PublicKey Ed25519)
 
-instance (Ord (PrivKey Ed25519)) => ByteRepr (PrivKey Ed25519) where
+instance ByteRepr (PrivKey Ed25519) where
   decodeFromBS bs
     | BS.length bs == 32 = Just $! unsafePerformIO $ do
         (pub,priv) <-
@@ -111,7 +113,7 @@ instance (Ord (PrivKey Ed25519)) => ByteRepr (PrivKey Ed25519) where
   encodeToBS (PrivKey bs _)
     = BS.take 32 $ Arr.convert bs
 
-instance (Ord (PublicKey Ed25519)) => ByteRepr (PublicKey Ed25519) where
+instance ByteRepr (PublicKey Ed25519) where
   decodeFromBS bs
     | BS.length bs == 32 = Just $ PublicKey bs
     | otherwise          = Nothing

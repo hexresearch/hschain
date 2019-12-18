@@ -30,8 +30,9 @@ import HSChain.P2P
 import HSChain.P2P.PeerState.Types
 import HSChain.Store
 import HSChain.Store.Internal.Proposals
-import HSChain.Store.Internal.BlockDB (storeCommit,storeGenesis)
+import HSChain.Store.Internal.BlockDB (storeCommit,storeGenesis,storeValSet)
 import HSChain.Types
+import HSChain.Types.Merkle.Types
 import qualified HSChain.Mock.KeyVal as Mock
 
 import qualified HSChain.P2P.PeerState.Types as P2P
@@ -221,10 +222,8 @@ withGossip n action = do
     mustQueryRW $ storeGenesis genesis
     consensusState <- liftIO $ newTVarIO Nothing
     gossipCnts     <- newGossipCounters
-    props          <- newSTMPropStorage
     cursor         <- getMempoolCursor nullMempool
     let config = P2P.Config
-                   (makeReadOnlyPS props)
                    cursor
                    (readTVar consensusState)
                    gossipCnts
@@ -237,12 +236,13 @@ withGossip n action = do
 -- Seed database with given number of blocks
 seedDatabase :: Int -> GossipM TestAlg Mock.BData ()
 seedDatabase n = do
-  mustQueryRW $ forM_ blockAndCmt $ \(b,Just cmt) ->
-    storeCommit cmt b valSet
+  mustQueryRW $ forM_ blockAndCmt $ \(b,Just cmt) -> do
+    storeCommit cmt b
+    storeValSet (succ $ blockHeight b) valSet
   where
     blockAndCmt = take n
                 $ tail
-                $ mockchain `zip` (blockLastCommit <$> tail mockchain)
+                $ mockchain `zip` (fmap merkleValue . blockPrevCommit <$> tail mockchain)
 
 -- Start "consensus engine"
 startConsensus :: TestM TestAlg Mock.BData (P2P.Event TestAlg Mock.BData)
@@ -250,13 +250,14 @@ startConsensus = do
   h     <- queryRO blockchainHeight
   varSt <- lift $ asks snd
   atomicallyIO $ writeTVar varSt (Just (succ h, TMState
-    { smRound         = Round 0
-    , smStep          = StepNewHeight 0
-    , smProposals     = mempty
-    , smPrevotesSet   = newHeightVoteSet valSet
-    , smPrecommitsSet = newHeightVoteSet valSet
-    , smLockedBlock   = Nothing
-    , smLastCommit    = Nothing
+    { smRound          = Round 0
+    , smStep           = StepNewHeight 0
+    , smProposals      = mempty
+    , smProposedBlocks = emptyProps
+    , smPrevotesSet    = newHeightVoteSet valSet
+    , smPrecommitsSet  = newHeightVoteSet valSet
+    , smLockedBlock    = Nothing
+    , smLastCommit     = Nothing
     }))
   return $ EAnnouncement $ TxAnn $ AnnStep $ FullStep (succ h) (Round 0) (StepNewHeight 0)
 

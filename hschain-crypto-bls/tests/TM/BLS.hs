@@ -32,29 +32,27 @@ testsBLS :: TestTree
 testsBLS = testGroup "BLS"
   [ testGroup "Asymmetric" $ testsAsymmetricCrypto (Proxy @BLS)
   , testGroup "Signatures" $ testsSignatureCrypto  (Proxy @BLS)
-  , testGroup "Hashes"     [ testHash (Proxy @BLS) "3vY84Vb3FUXnBxvjKQ6uGxrvRsMSm6nRHTT79bbGuzxh"]
   , testGroup "BLS features"
         [ testCase "sizes" $ do
             (publicKeySize (undefined :: PublicKey BLS)) @?= RawBls.publicKeySize
             (privKeySize   (undefined :: PrivKey   BLS)) @?= RawBls.privateKeySize
             (signatureSize (undefined :: Signature BLS)) @?= RawBls.signatureSize
-            (hashSize      (undefined :: Hash BLS))      @?= RawBls.hashSize
         , testCase "signatures for hash 1" $ do
             (privKey :: PrivKey BLS) <- generatePrivKey
             let msg = "Please, don't hash me!"
-                msgHash = hashBlob msg
+                msgHash = hashBlobBLS msg
             let sig = signHash privKey msgHash
             (verifyHashSignature (publicKey privKey) msgHash sig) @? "Verify must be passed"
         , testCase "signatures for hash 2" $ do
             (privKey :: PrivKey BLS) <- generatePrivKey
             let msg = "I'm just a silly bytestring, why do you hash me?"
-                msgHash = hashBlob msg
+                msgHash = hashBlobBLS msg
             let sig = signHash privKey msgHash
             (verifyBlobSignature (publicKey privKey) msg sig) @? "Verify must be passed"
         , testCase "signatures for hash 3" $ do
             (privKey :: PrivKey BLS) <- generatePrivKey
             let msg = "So... You try to hash me again..."
-                msgHash = hashBlob msg
+                msgHash = hashBlobBLS msg
             let sig1 = signBlob privKey msg
             let sig2 = signHash privKey msgHash
             sig1 @?= sig2
@@ -69,7 +67,6 @@ testsBLS' = testGroup "BLS'"
         (publicKeySize (undefined :: PublicKey BLS)) @?= RawBls.publicKeySize
         (privKeySize   (undefined :: PrivKey   BLS)) @?= RawBls.privateKeySize
         (signatureSize (undefined :: Signature BLS)) @?= RawBls.signatureSize
-        (hashSize      (undefined :: Hash BLS))      @?= RawBls.hashSize
     , testCase "signatures verify 1" $ do
         privKey :: PrivKey BLS <- generatePrivKey
         let sig = signBlob privKey "Check"
@@ -81,19 +78,19 @@ testsBLS' = testGroup "BLS'"
     , testCase "signatures for hash 1" $ do
         privKey :: PrivKey BLS <- generatePrivKey
         let msg = "Please, don't hash me!"
-            msgHash = hashBlob msg
+            msgHash = hashBlobBLS msg
         let sig = signHash privKey msgHash
         (verifyHashSignature (publicKey privKey) msgHash sig) @? "Verify must be passed"
     , testCase "signatures for hash 2" $ do
         privKey :: PrivKey BLS <- generatePrivKey
         let msg = "I'm just a silly bytestring, why do you hash me?"
-            msgHash = hashBlob msg
+            msgHash = hashBlobBLS msg
         let sig = signHash privKey msgHash
         (verifyBlobSignature (publicKey privKey) msg sig) @? "Verify must be passed"
     , testCase "signatures for hash 3" $ do
         privKey :: PrivKey BLS <- generatePrivKey
         let msg = "So... You try to hash me again?"
-            msgHash = hashBlob msg
+            msgHash = hashBlobBLS msg
         let sig1 = signBlob privKey msg
         let sig2 = signHash privKey msgHash
         sig1 @?= sig2
@@ -112,7 +109,7 @@ testsBLS' = testGroup "BLS'"
         (verifyBlobSignature pubKey msg sig) @? "Verify must be passed"
         (not $ verifyBlobSignature pubKey wrongMsg sig) @? "Verify must not be passed"
     , testCase "read/show 4" $ do
-        (read "Hash \"cmzQwNFTPXVA9A9tG8TYuFo5vuVN9tFUoNC6DZBW3BW\"") @?= (hashBlob "Am I too long to use in raw presentation?" :: Hash BLS)
+        (read "Hash \"cmzQwNFTPXVA9A9tG8TYuFo5vuVN9tFUoNC6DZBW3BW\"") @?= (hashBlobBLS "Am I too long to use in raw presentation?" :: Hash BLS)
     , testCase "aggregate" $ do
         let msg = "Abcdef"
         privKey1 :: PrivKey BLS <- generatePrivKey
@@ -226,28 +223,6 @@ testsSignatureCrypto tag =
   $ do sign <- generateIO @(Signature   alg)
        BS.length (encodeToBS sign) @=? signatureSize   tag
   ]
-
-
-testHash :: forall alg. (Typeable alg, CryptoHash alg) => Proxy alg -> T.Text -> TestTree
-testHash p base58 = testGroup (show (typeRep p))
-  [ testHashReadShow p
-  , testHashSize     p
-  , testCase "Hash algorithm is correct"
-  $ do let h = hashBlob "ABCDF" :: Hash alg
-       decodeBase58 base58 @=? Just h
-  ]
-
-testHashReadShow :: forall alg. (Typeable alg, CryptoHash alg) => Proxy alg -> TestTree
-testHashReadShow p
-  = testCase ("read . show = id @ Hash " ++ show (typeRep p))
-  $ do let x = hashBlob "ABCD" :: Hash alg
-       x @=? (read . show) x
-
-testHashSize :: forall alg. (Typeable alg, CryptoHash alg) => Proxy alg -> TestTree
-testHashSize p
-  = testCase ("Size of Hash " ++ show (typeRep p) ++ " is correct")
-  $ do let Hash bs = hashBlob "ABCD" :: Hash alg
-       BS.length bs @=? hashSize p
 
 
 testsStdIntances
