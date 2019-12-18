@@ -56,7 +56,7 @@ import Katip (Severity(..), sl)
 --
 ----------------------------------------------------------------
 
-newAppChans :: (MonadIO m, Crypto alg) => ConsensusCfg -> m (AppChans alg a)
+newAppChans :: (MonadIO m) => ConsensusCfg -> m (AppChans alg a)
 newAppChans ConsensusCfg{incomingQueueSize = sz} = do
   appChanRx         <- liftIO $ newTBQueueIO sz
   appChanRxInternal <- liftIO   newTQueueIO
