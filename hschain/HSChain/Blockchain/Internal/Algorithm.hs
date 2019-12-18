@@ -287,7 +287,7 @@ tendermintTransition par@HeightParameters{..} msg sm@TMState{..} =
         -> do logger InfoS "Got proposal" $ LogProposal propHeight propRound propBlockID
               lift $ yield $ EngAnnProposal propRound
               return sm { smProposals      = Map.insert propRound p smProposals
-                        , smProposedBlocks = acceptBlockID smProposedBlocks propRound propBlockID
+                        , smProposedBlocks = acceptBlockID propRound propBlockID smProposedBlocks
                         }
     ----------------------------------------------------------------
     PreVoteMsg v@(signedValue -> Vote{..})
@@ -405,7 +405,7 @@ checkTransitionPrecommit par@HeightParameters{..} r sm@TMState{..}
                                              <$> NE.fromList (valuesAtR r smPrecommitsSet)
                            }
                      sm { smStep           = StepAwaitCommit r
-                        , smProposedBlocks = acceptBlockID smProposedBlocks r bid
+                        , smProposedBlocks = acceptBlockID r bid smProposedBlocks
                         }
   --  * We have +2/3 precommits for nil at current round
   --  * We are at Precommit step [FIXME?]
@@ -441,7 +441,7 @@ enterPropose HeightParameters{..} r sm@TMState{..} reason = do
     (True, Just (br,bid)) -> do
       logger InfoS "Making POL proposal" $ LogProposal currentH smRound bid
       lift $ yield $ EngCastPropose r bid (Just br)
-      return $ \p -> acceptBlockID p r bid
+      return $ acceptBlockID r bid
     -- Otherwise we need to create new block from mempool
     (True, Nothing) -> do
       (upd,bid) <- lift $ lift $ createProposal r smLastCommit
