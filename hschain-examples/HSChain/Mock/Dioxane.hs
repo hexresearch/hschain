@@ -58,7 +58,7 @@ import HSChain.Types.Merkle.Types
 
 newtype BData tag = BData [Tx]
   deriving stock    (Show,Eq,Generic)
-  deriving newtype  (NFData,CryptoHashable)
+  deriving newtype  (NFData,CryptoHashable,JSON.ToJSON,JSON.FromJSON)
   deriving anyclass (Serialise)
 
 data Tx = Tx
