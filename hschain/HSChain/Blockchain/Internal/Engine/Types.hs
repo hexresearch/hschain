@@ -189,6 +189,10 @@ data NewBlock alg a = NewBlock
   , newBlockState    :: !(BlockchainState alg a)
   }
 
+-- |What to do - preliminary check (state will be dropped out) or full check
+-- (state will be kept)?
+data CheckKind = FullCheck | PreliminaryCheck
+  deriving (Eq, Ord, Show)
 -- | Collection of callbacks which implement actual logic of
 --   blockchain. This is most generic form which doesn't expose any
 --   underlying structure. It's expected that this structure will be
@@ -199,7 +203,8 @@ data AppLogic m alg a = AppLogic
                         -> m (a, BlockchainState alg a)
     -- ^ Generate fresh block for proposal. It's called each time we
     --   need to create new block for proposal
-  , appValidationFun    :: Block alg a
+  , appValidationFun    :: CheckKind
+                        -> Block alg a
                         -> BlockchainState alg a
                         -> m (Maybe (BlockchainState alg a))
     -- ^ Function for validation of proposed block data. It returns
