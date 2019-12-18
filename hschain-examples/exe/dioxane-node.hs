@@ -48,10 +48,10 @@ data Opts = Opts
   }
 
 data NodeCfg = NodeCfg
-  { validatorKeys :: [PublicKey (Alg BD)]
-  , nodePort      :: Word16
+  { nodePort      :: Word16
   , nodeSeeds     :: [P2PT.NetAddr]
   , nodeMaxH      :: Maybe Height
+  , nodeIdx       :: Int
   }
   deriving (Show,Generic)
 instance FromJSON NodeCfg
@@ -82,8 +82,9 @@ main = do
     (conn, logenv) <- allocNode nspec
     let run = runLoggerT logenv . runDBT conn
     lift $ run $ do
-      (RunningNode{..},acts) <- interpretSpec @_ @Tag
+      (RunningNode{..},acts) <- interpretSpec @_ @_ @Tag
         (nspec :*: cfg :*: bnet)
+        nodeIdx
         (maybe mempty callbackAbortAtH (optMaxH <|> nodeMaxH))
       logOnException $ runConcurrently acts
 
