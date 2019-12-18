@@ -88,7 +88,7 @@ import qualified HSChain.P2P.Network as P2P
 --   instance.
 newtype BData = BData [Tx]
   deriving stock    (Show,Eq,Generic)
-  deriving newtype  (NFData,CryptoHashable)
+  deriving newtype  (NFData,CryptoHashable,JSON.ToJSON,JSON.FromJSON)
   deriving anyclass (Serialise)
 
 -- | Error in coin transaction processing
