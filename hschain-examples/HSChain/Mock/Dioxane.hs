@@ -213,11 +213,10 @@ interpretSpec
      , Has x BlockchainNet
      , Has x NodeSpec
      , Has x (Configuration Example))
-  => Genesis (BData tag)
-  -> x
+  => x
   -> AppCallbacks m (BData tag)
   -> m (RunningNode m (BData tag), [m ()])
-interpretSpec genesis p cb = do
+interpretSpec p cb = do
   conn    <- askConnectionRO
   store   <- newSTMBchStorage $ blockchainState genesis
   mempool <- makeMempool store run
@@ -239,4 +238,5 @@ interpretSpec genesis p cb = do
     , acts
     )
   where
-    run = maybe (throwE DioError) return
+    run     = maybe (throwE DioError) return
+    genesis = dioGenesis
