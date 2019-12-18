@@ -192,7 +192,7 @@ process Tx{..} st = do
   ufrom  <- st ^. userMap . at txFrom
   _      <- st ^. userMap . at txTo
   -- Nonce is correct & and we have funds
-  guard $ txNonce == ufrom^.userNonce + 1
+  guard $ txNonce == ufrom^.userNonce
   guard $ ufrom^.userBalance >= txAmount
   return
     $! st
