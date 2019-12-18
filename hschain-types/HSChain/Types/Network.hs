@@ -62,7 +62,7 @@ tupleToHostAddress6 :: (Word16, Word16, Word16, Word16,
                         Word16, Word16, Word16, Word16) -> HostAddress6
 tupleToHostAddress6 (w7, w6, w5, w4, w3, w2, w1, w0) =
     let add :: Word16 -> Word16 -> Word32
-        high `add` low = (fromIntegral high `shiftL` 16) .|. (fromIntegral low)
+        high `add` low = (fromIntegral high `shiftL` 16) .|. fromIntegral low
     in (w7 `add` w6, w5 `add` w4, w3 `add` w2, w1 `add` w0)
 
 data NetAddr = NetAddrV4 !HostAddress  !Word16
@@ -113,5 +113,5 @@ instance JSON.FromJSON NetAddr where
     _                 -> fail $ "can't parse net addr from " ++ show str
     where
       str = Text.unpack text
-  parseJSON _ = fail $ "NetAddr parsing expects String"
+  parseJSON _ = fail "NetAddr parsing expects String"
 
