@@ -663,7 +663,7 @@ data ExpectF alg a x
 -- according to instructions. Unexpeceted messages will result in
 -- exception
 expect
-  :: (MonadIO m, Crypto alg)
+  :: (MonadIO m)
   => ValidatorSet alg
   -> ( TChan   (MessageTx alg a)
      , TBQueue (MessageRx 'Unverified alg a)
