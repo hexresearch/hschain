@@ -445,7 +445,7 @@ enterPropose HeightParameters{..} r sm@TMState{..} reason = do
     -- Otherwise we need to create new block from mempool
     (True, Nothing) -> do
       (upd,bid) <- lift $ lift $ createProposal r smLastCommit
-      logger InfoS "Making new proposal" $ LogProposal currentH smRound bid
+      logger InfoS "Making new proposal" $ LogProposal currentH r bid
       lift $ yield $ EngCastPropose r bid Nothing
       return upd
     -- We aren't proposers. Do nothing
