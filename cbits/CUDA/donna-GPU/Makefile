@@ -1,6 +1,20 @@
-all: test
-	./test
+all: test-cuda
+	./test-cuda
 
-test: test.c ed25519.h ed25519.c test-ticks.h ed25519-donna.h ed25519-donna-portable.h ed25519-donna-portable-identify.h curve25519-donna-helpers.h modm-donna-64bit.h ed25519-donna-basepoint-table.h ed25519-donna-64bit-tables.h
-	gcc -o test -O3 -DED25519_NO_INLINE_ASM -DED25519_CUSTOMRANDOM -DED25519_REFHASH test.c ed25519.c randombytes-custom-stupid.c
+HEADERS = curve25519-donna-64bit.h         ed25519-donna-portable-identify.h \
+curve25519-donna-helpers.h       ed25519.h \
+ed25519-donna-64bit-tables.h     ed25519-hash.h \
+ed25519-donna-64bit-x86.h        ed25519-randombytes-custom.h \
+ed25519-donna-basepoint-table.h  ed25519-randombytes.h \
+ed25519-donna-batchverify.h      modm-donna-64bit.h \
+ed25519-donna.h                  regression.h \
+ed25519-donna-impl-base.h        test-ticks.h \
+ed25519-donna-portable.h
+
+
+test: test.c ed25519.c $(HEADERS)
+	gcc -o test -O3 -DED25519_NO_INLINE_ASM -DED25519_CUSTOMRANDOM -DED25519_REFHASH test.c ed25519.c
+
+test-cuda: test-cuda.cu ed25519.cu $(HEADERS)
+	nvcc -o test-cuda -O3 -DED25519_NO_INLINE_ASM -DED25519_CUSTOMRANDOM -DED25519_REFHASH test-cuda.cu ed25519.cu
 

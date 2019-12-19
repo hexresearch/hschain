@@ -2,6 +2,8 @@
 	conversions
 */
 
+#include <stdlib.h>
+
 DONNA_INLINE static void
 ge25519_p1p1_to_partial(ge25519 *r, const ge25519_p1p1 *p) {
 	curve25519_mul(r->x, p->x, p->t);
@@ -279,12 +281,14 @@ ge25519_double_scalarmult_vartime(ge25519 *r, const ge25519 *p1, const bignum256
 
 		if (slide1[i]) {
 			ge25519_p1p1_to_full(r, &t);
-			ge25519_pnielsadd_p1p1(&t, r, &pre1[abs(slide1[i]) / 2], (unsigned char)slide1[i] >> 7);
+			ge25519_pnielsadd_p1p1(&t, r, &pre1[
+					(slide1[i] < 0 ? -slide1[i] : slide1[i]) / 2
+			], (unsigned char)slide1[i] >> 7);
 		}
 
 		if (slide2[i]) {
 			ge25519_p1p1_to_full(r, &t);
-			ge25519_nielsadd2_p1p1(&t, r, &ge25519_niels_sliding_multiples[abs(slide2[i]) / 2], (unsigned char)slide2[i] >> 7);
+			ge25519_nielsadd2_p1p1(&t, r, &ge25519_niels_sliding_multiples[(slide2[i] < 0 ? -slide2[i] : slide2[i]) / 2], (unsigned char)slide2[i] >> 7);
 		}
 
 		ge25519_p1p1_to_partial(r, &t);
