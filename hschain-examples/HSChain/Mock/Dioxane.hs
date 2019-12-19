@@ -25,6 +25,7 @@ import Control.Monad
 import Control.Monad.Catch
 import Control.Monad.Trans.Except
 import Data.Proxy
+import Data.Int
 import qualified Data.Aeson          as JSON
 import qualified Data.HashMap.Strict as HM
 import qualified Data.Map.Strict     as Map
@@ -64,8 +65,8 @@ newtype BData tag = BData [Tx]
 data Tx = Tx
   { txFrom   :: !(PublicKey (Ed25519 :& SHA512))
   , txTo     :: !(PublicKey (Ed25519 :& SHA512))
-  , txNonce  :: !Int
-  , txAmount :: !Integer
+  , txNonce  :: !Int64
+  , txAmount :: !Int64
   }
   deriving stock    (Show, Eq, Ord, Generic)
   deriving anyclass (Serialise, NFData, JSON.ToJSON, JSON.FromJSON)
@@ -81,8 +82,8 @@ data DioState = DioState
   deriving anyclass (NFData, Serialise)
 
 data UserState = UserState
-  { _userNonce   :: !Int
-  , _userBalance :: !Integer
+  { _userNonce   :: !Int64
+  , _userBalance :: !Int64
   }
   deriving stock    (Show,   Generic)
   deriving anyclass (NFData, Serialise)
@@ -120,8 +121,8 @@ class Dio a where
   dioUserKeys       :: Tagged a (V.Vector ( PrivKey   (Ed25519 :& SHA512)
                                           , PublicKey (Ed25519 :& SHA512)
                                           ))
-  dioInitialBalance :: Tagged a Integer
-  dioValidators     :: Tagged a Int
+  dioInitialBalance :: Tagged a Int64
+  dioValidators     :: Tagged a Int64
 
 data DioTag (keys :: Nat) (vals :: Nat)
 
@@ -152,7 +153,7 @@ dioGenesis = BChEval
     nVals = getConst (dioValidators     @tag)
     keys  = getConst (dioUserKeys       @tag)
     Right valSet = makeValidatorSet $  (\(_,k) -> Validator k 1)
-                                   <$> V.take nVals keys
+                                   <$> V.take (fromIntegral nVals) keys
 
 
 dioLogic :: forall tag. Dio tag => BChLogic Maybe (BData tag)
