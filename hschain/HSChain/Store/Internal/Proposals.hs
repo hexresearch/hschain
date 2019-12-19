@@ -67,11 +67,13 @@ setProposalValidation bid mst Props{..} = Props
       Nothing -> \case
         UntestedBlock _ -> InvalidBlock
         InvalidBlock    -> InvalidBlock
-        _               -> error "CANT HAPPEN"
+        GoodBlock{}     -> error "CANT HAPPEN: Marking good as bad"
+        UnknownBlock{}  -> error "CANT HAPPEN: Marking unseen as bad"
       Just bst -> \case
         UntestedBlock b -> GoodBlock (b <$ bst)
         b@GoodBlock{}   -> b
-        _               -> error "CANT HAPPEN"
+        UnknownBlock    -> error "CANT HAPPEN: Marking unseen as good"
+        InvalidBlock    -> error "CANT HAPPEN: Marking bad as good"
 
 
 acceptBlockID :: Round -> BlockID a -> Props a -> Props a
