@@ -39,7 +39,7 @@ import qualified HSChain.P2P.Types as P2PT
 --
 ----------------------------------------------------------------
 
-type Tag = DioTag 1000 4
+type Tag = DioTag 10000 4
 type BD  = BData Tag
 
 data Opts = Opts
