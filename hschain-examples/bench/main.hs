@@ -14,6 +14,7 @@ import Criterion.Main
 
 import ValidatorSetsBench
 import qualified MockCoin
+import qualified Dioxane
 
 --kB :: Int
 --kB = 1024
@@ -22,6 +23,7 @@ main :: IO ()
 main = defaultMain
   [ benchValidatorSets
   , MockCoin.benchmarks
+  , Dioxane.benchmarks
   ]
 {-
   !prk <- generatePrivKey
