@@ -221,21 +221,20 @@ interpretSpec
 interpretSpec p idx cb = do
   conn    <- askConnectionRO
   store   <- newSTMBchStorage $ blockchainState genesis
-  mempool <- makeMempool store run
   acts <- runNode (getT p :: Configuration Example) NodeDescription
     { nodeValidationKey = Just $ PrivValidator $ fst $ getConst (dioUserKeys @tag) V.! idx
     , nodeGenesis       = genesis
     , nodeCallbacks     = cb
     , nodeRunner        = run
     , nodeStore         = AppStore { appBchState = store
-                                   , appMempool  = mempool
+                                   , appMempool  = nullMempool
                                    }
     , nodeNetwork       = getT p
     }
   return
     ( RunningNode { rnodeState   = store
                   , rnodeConn    = conn
-                  , rnodeMempool = mempool
+                  , rnodeMempool = nullMempool
                   }
     , acts
     )
