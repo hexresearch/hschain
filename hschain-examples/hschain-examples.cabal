@@ -200,3 +200,4 @@ Benchmark hschain-bench
                      , hschain-types
   Other-modules:       ValidatorSetsBench
                        MockCoin
+                       Dioxane
