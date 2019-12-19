@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns               #-}
 {-# LANGUAGE DataKinds                  #-}
 {-# LANGUAGE DefaultSignatures          #-}
 {-# LANGUAGE DerivingStrategies         #-}
@@ -231,7 +232,7 @@ basicCacheGenesis (Query query) = Query $ do
   ref <- asks connCacheGen
   liftIO (readIORef ref) >>= \case
     Just b  -> return (Just b)
-    Nothing -> do b <- query
+    Nothing -> do !b <- query
                   liftIO $ b <$ atomicWriteIORef ref b
 
 basicCacheBlock
@@ -239,18 +240,18 @@ basicCacheBlock
   ->  Height -> Query 'RO a (Maybe (Block a))
 basicCacheBlock query h = Query $ do
   ref <- asks connCacheBlk
-  r   <- liftIO (atomicModifyIORef ref (LRU.lookup h))
+  r   <- liftIO (atomicModifyIORef' ref (LRU.lookup h))
   case r of
     Just _  -> return r
     Nothing -> do mb <- unQuery $ query h
-                  liftIO $ forM_ mb $ \b -> atomicModifyIORef ref $ (,()) . LRU.insert h b
+                  liftIO $ forM_ mb $ \b -> atomicModifyIORef' ref $ (,()) . LRU.insert h b
                   return mb
 
 basicPutCacheBlock :: Block a -> Query 'RW a ()
 basicPutCacheBlock b = Query $ do
   let h = blockHeight b
   ref <- asks connCacheBlk
-  liftIO $ atomicModifyIORef ref $ (,()) . LRU.insert h b
+  liftIO $ atomicModifyIORef' ref $ (,()) . LRU.insert h b
 
 
 instance MonadReadDB  m a => MonadReadDB  (IdentityT m) a
