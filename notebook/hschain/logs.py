@@ -85,15 +85,15 @@ class Log(object):
         "Consensus related logs"
         df = self.df
         df = df[df['ns'].apply(lambda ns: ns==["consensus"])].drop(['ns'], axis=1)
+        df['H'] = df['data'].apply(lambda x: x.get('H')).fillna(method='ffill')
+        df['R'] = df['data'].apply(lambda x: x.get('R'))
         return df
 
     @lazy
     def consClean(self):
         "Cleaned up consensus related logs"
         df = self.cons.copy()
-        df['H'] = df['data'].apply(lambda x: x.get('H'))
-        df['R'] = df['data'].apply(lambda x: x.get('R'))
-        df      = df[df['msg'].isin(keySet)]
+        df = df[df['msg'].isin(keySet)]
         return df
 
     @functools.lru_cache(maxsize=32)
