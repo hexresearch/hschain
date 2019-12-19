@@ -49,6 +49,9 @@ class CommitData(object):
             ys = df['H']
             ax.plot(xs, ys, '+', label=k)
         self.add_title_h("Height vs time")
+        p  = self.fit.params
+        hs = np.asarray([ np.min(df['H']), np.max(df['H'])])
+        ax.plot( hs * p[1] + p[0], hs, '-', color='gray', lw=0.5)
         plt.xlabel("time")
         plt.ylabel("H")
 
