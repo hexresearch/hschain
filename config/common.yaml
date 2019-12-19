@@ -4,8 +4,8 @@ nodeSeeds:
   - "127.0.0.1:40003"
   - "127.0.0.1:40004"
 consensus:
-  timeoutNewHeight  : 100
-  timeoutProposal   : [500,100]
+  timeoutNewHeight  : 50
+  timeoutProposal   : [400,100]
   timeoutPrevote    : [500,100]
   timeoutPrecommit  : [500,100]
 #  timeoutEmptyBlock : !Int
