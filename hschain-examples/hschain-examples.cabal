@@ -46,7 +46,7 @@ Library
                   HSChain.Mock.Types
 
 Executable hschain-coin-node
-  Ghc-options:         -Wall -threaded -Wno-orphans -rtsopts "-with-rtsopts=-N -T -c -qn1"
+  Ghc-options:         -Wall -threaded -Wno-orphans -rtsopts "-with-rtsopts=-N -T -qn1"
   Default-Language:    Haskell2010
   Build-Depends:       base                 >=4.9 && <5
                      , hschain
@@ -75,7 +75,7 @@ Executable hschain-coin-node
   Main-is:             coin-node.hs
 
 Executable hschain-dioxane-node
-  Ghc-options:         -Wall -threaded -Wno-orphans -rtsopts "-with-rtsopts=-N -T -c -qn1"
+  Ghc-options:         -Wall -threaded -Wno-orphans -rtsopts "-with-rtsopts=-N -T -qn1"
   Default-Language:    Haskell2010
   Build-Depends:       base                 >=4.9 && <5
                      , hschain
