@@ -147,7 +147,13 @@ test_main_CUDA(void) {
 	printf("%.0f ticks to verify 1024 signatures on CPU\n", (double)ticks);
         int block_size = 256;
         int num_blocks = (1024 + block_size - 1) / block_size;
+	for (i = 0; i < 1024; i++) {
+		lengths[i] = i;
+	}
+	ticks = get_ticks();
         ed25519_sign_open_kernel<<<num_blocks,block_size>>>(dataset, lengths, results, 1024);
+	ticks = get_ticks() - ticks;
+	printf("%.0f ticks to verify 1024 signatures on GPU\n", (double)ticks);
 
 }
 
