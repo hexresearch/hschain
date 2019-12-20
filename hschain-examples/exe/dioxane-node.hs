@@ -11,11 +11,13 @@
 {-# LANGUAGE TypeApplications           #-}
 {-# LANGUAGE TypeFamilies               #-}
 {-# LANGUAGE TypeOperators              #-}
+import Control.Arrow ((&&&))
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Cont
 import Data.Aeson             (FromJSON)
 import Data.Monoid            ((<>))
 import Data.Word
+import qualified Data.Vector as V
 import Data.Yaml.Config       (loadYamlSettings, requireEnv)
 import Options.Applicative
 import GHC.Generics (Generic)
@@ -28,19 +30,33 @@ import HSChain.Run
 import HSChain.Control
 import HSChain.Store
 import HSChain.Mock
-import HSChain.Crypto         (PublicKey)
+import HSChain.Mock.KeyList
+import HSChain.Crypto         (publicKey)
 import HSChain.P2P            (generatePeerId)
 import HSChain.P2P.Network    (newNetworkTcp)
 import HSChain.Types
 
 import qualified HSChain.P2P.Types as P2PT
 
+import Debug.Trace
+
+
 ----------------------------------------------------------------
 --
 ----------------------------------------------------------------
 
-type Tag = DioTag 10000 4
-type BD  = BData Tag
+data DioTag
+
+instance Dio DioTag where
+  dioDict = DioDict
+    { dioUserKeys       = V.fromList
+                        $ take 10000
+                        $ map (id &&& publicKey)
+                        $ makePrivKeyStream 1337
+    , dioInitialBalance = 1000000
+    , dioValidators     = 4
+    }
+
 
 data Opts = Opts
   { cmdConfigPath :: [FilePath]
@@ -82,7 +98,7 @@ main = do
     (conn, logenv) <- allocNode nspec
     let run = runLoggerT logenv . runDBT conn
     lift $ run $ do
-      (RunningNode{..},acts) <- interpretSpec @_ @_ @Tag
+      (RunningNode{..},acts) <- interpretSpec @_ @_ @DioTag
         (nspec :*: cfg :*: bnet)
         nodeIdx
         (maybe mempty callbackAbortAtH (optMaxH <|> nodeMaxH))
