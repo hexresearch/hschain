@@ -388,8 +388,8 @@ instance (CryptoHash (Alg a)) => CryptoHashable (Vote 'PreCommit a) where
 --   blockchain state, set of validators and something else.
 data BChEval a x = BChEval
   { bchValue        :: !x
-  , validatorSet    :: !(ValidatorSet (Alg a))
-  , blockchainState :: !(BlockchainState a)
+  , validatorSet    :: !(MerkleNode IdNode (Alg a) (ValidatorSet (Alg a)))
+  , blockchainState :: !(MerkleNode IdNode (Alg a) (BlockchainState a))
   }
   deriving stock (Generic, Functor)
 
@@ -428,9 +428,15 @@ deriving anyclass instance (NFData x, NFData (PublicKey (Alg a)), NFData (Blockc
                            ) => NFData (BChEval a x)
 deriving anyclass instance (Crypto (Alg a), JSON.ToJSON x, JSON.ToJSON (BlockchainState a)
                            ) => JSON.ToJSON (BChEval a x)
-deriving anyclass instance (Crypto (Alg a), JSON.FromJSON x, JSON.FromJSON (BlockchainState a)
+deriving anyclass instance (Crypto (Alg a)
+                           , JSON.FromJSON x
+                           , JSON.FromJSON  (BlockchainState a)
+                           , CryptoHashable (BlockchainState a)
                            ) => JSON.FromJSON (BChEval a x)
-deriving anyclass instance (Crypto (Alg a), Serialise x, Serialise (BlockchainState a)
+deriving anyclass instance ( Crypto (Alg a)
+                           , Serialise x
+                           , Serialise      (BlockchainState a)
+                           , CryptoHashable (BlockchainState a)
                            ) => Serialise (BChEval a x)
 
 
@@ -440,7 +446,7 @@ data NewBlock a = NewBlock
   , newBlockLastBID  :: !(BlockID a)
   , newBlockCommit   :: !(Maybe (Commit a))
   , newBlockEvidence :: ![ByzantineEvidence a]
-  , newBlockState    :: !(BlockchainState a)
+  , newBlockState    :: !(MerkleNode IdNode (Alg a) (BlockchainState a))
   , newBlockValSet   :: !(ValidatorSet (Alg a))
   }
 

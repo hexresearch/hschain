@@ -93,21 +93,21 @@ rewindBlockchainState AppStore{..} BChLogic{..} = do
         <- throwLeftM . runExceptT
          $ withExceptT CannotRewindState
          $ processBlock BChEval { bchValue        = blk
-                                , validatorSet    = valSet
+                                , validatorSet    = merkled valSet
                                 , blockchainState = st
                                 }
       -- Check validator set consistency
-      unless (hashed blockchainState == blockStateHash blk)
+      unless (merkleHashed blockchainState == blockStateHash blk)
         $ throwM $ InconsisnceWhenRewinding h "Hash state"
-      unless (hashed valSet          == blockValidators blk)
+      unless (hashed valSet                == blockValidators blk)
         $ throwM $ InconsisnceWhenRewinding h "Validator set"
-      unless (hashed validatorSet    == blockNewValidators blk)
+      unless (merkleHashed validatorSet    == blockNewValidators blk)
         $ throwM $ InconsisnceWhenRewinding h "New validator set"
       -- Write validator set at H=1 to database if needed
       when (h == Height 0) $ do
         queryRO (hasValidatorSet (Height 1)) >>= \case
           True  -> return ()
-          False -> mustQueryRW $ storeValSet (Height 1) validatorSet
+          False -> mustQueryRW $ storeValSet (Height 1) (merkleValue validatorSet)
       -- Put new state into state storage
       bchStoreStore appBchState h blockchainState
       return blockchainState
@@ -189,7 +189,7 @@ decideNewBlock config appValidatorKey
   do let h = blockHeight bchValue
      mustQueryRW $ do
        storeCommit cmt      bchValue
-       storeValSet (succ h) validatorSet
+       storeValSet (succ h) (merkleValue validatorSet)
        mapM_ storeBlockchainEvidence $ merkleValue $ blockEvidence bchValue
      bchStoreStore appBchState h blockchainState
      appCommitCallback bchValue
@@ -265,8 +265,8 @@ msgHandlerLoop hParam BChLogic{..} AppStore{..} AppChans{..} = mainLoop Nothing
           bst    <- throwLeftM
                   $ runExceptT
                   $ withExceptT TryingToCommitInvalidBlock
-                  $ processBlock BChEval { bchValue         = b
-                                         , validatorSet    = valSet
+                  $ processBlock BChEval { bchValue        = b
+                                         , validatorSet    = merkled valSet
                                          , blockchainState = st
                                          }
           return (cmt, b <$ bst)
@@ -462,7 +462,7 @@ makeHeightParameters appValidatorKey BChLogic{..} AppStore{..} AppCallbacks{appC
                              $ bchStoreRetrieve appBchState bchH
             mvalSet'        <- runExceptT
                              $ processBlock BChEval { bchValue        = b
-                                                    , validatorSet    = valSet
+                                                    , validatorSet    = merkled valSet
                                                     , blockchainState = st
                                                     }
             evidenceState   <- queryRO $ mapM evidenceRecordedState (merkleValue $ blockEvidence b)
@@ -483,9 +483,9 @@ makeHeightParameters appValidatorKey BChLogic{..} AppStore{..} AppCallbacks{appC
                -- well
                | Right bst <- mvalSet'
                , vals      <- validatorSet bst
-               , blockStateHash b == hashed (blockchainState bst)
-               , validatorSetSize vals > 0
-               , blockNewValidators b == hashed vals
+               , blockStateHash b == merkleHashed (blockchainState bst)
+               , validatorSetSize (merkleValue vals) > 0
+               , blockNewValidators b == merkleHashed vals
                  -> return ( setProposalValidation bid (Just bst)
                            , GoodProposal
                            )
@@ -506,7 +506,7 @@ makeHeightParameters appValidatorKey BChLogic{..} AppStore{..} AppCallbacks{appC
                  $ runExceptT
                  $ withExceptT InvalidBlockInWAL
                  $ processBlock BChEval { bchValue        = b
-                                        , validatorSet    = valSet
+                                        , validatorSet    = merkled valSet
                                         , blockchainState = st
                                         }
             return $ b <$ res
@@ -535,11 +535,11 @@ makeHeightParameters appValidatorKey BChLogic{..} AppStore{..} AppCallbacks{appC
                   { blockHeight        = currentH
                   , blockPrevBlockID   = Just lastBID
                   , blockValidators    = hashed  valSet
-                  , blockNewValidators = merkled $ validatorSet
+                  , blockNewValidators = merkleHashed validatorSet
                   , blockPrevCommit    = merkled <$> commit
                   , blockEvidence      = merkled evidence
                   , blockData          = merkled bchValue
-                  , blockStateHash     = hashed $ blockchainState
+                  , blockStateHash     = merkleHashed blockchainState
                   }
             mustQueryRW $ writeBlockToWAL r block
             return $ block <$ res

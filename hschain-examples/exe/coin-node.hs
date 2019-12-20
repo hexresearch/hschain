@@ -44,6 +44,7 @@ import HSChain.Crypto         (PublicKey)
 import HSChain.P2P            (generatePeerId)
 import HSChain.P2P.Network    (newNetworkTcp)
 import HSChain.Types
+import HSChain.Types.Merkle.Types
 import HSChain.Debug.Trace
 
 import qualified HSChain.P2P.Types as P2PT
@@ -121,7 +122,7 @@ main = do
           cursor <- getMempoolCursor rnodeMempool
           return [transactionGenerator txG
                     rnodeMempool
-                    (snd <$> bchCurrentState rnodeState)
+                    (merkleValue . snd <$> bchCurrentState rnodeState)
                     (void . pushTransaction cursor)]
       logOnException $ runConcurrently $ txGen ++ acts
 

@@ -236,14 +236,14 @@ processTransaction transaction@(Send pubK sig txSend@TxSend{..}) CoinState{..} =
 --   in memory we simply use @Maybe@ to track failures
 coinLogic :: BChLogic (Either CoinError) BData
 coinLogic = BChLogic
-  { processTx     = \BChEval{..} -> void $ processTransaction bchValue blockchainState
+  { processTx     = \BChEval{..} -> void $ processTransaction bchValue (merkleValue blockchainState)
   --
   , processBlock  = \BChEval{..} -> do
       let h    = blockHeight bchValue
           step = flip $ process h
-      st <- foldM step blockchainState $ blockTransactions $ merkleValue $ blockData bchValue
+      st <- foldM step (merkleValue blockchainState) $ blockTransactions $ merkleValue $ blockData bchValue
       return BChEval { bchValue        = ()
-                     , blockchainState = st
+                     , blockchainState = merkled st
                      , ..
                      }
   --
@@ -253,10 +253,10 @@ coinLogic = BChLogic
                                 Left  _  -> selectTx c  tx
                                 Right c' -> let (c'', b  ) = selectTx c' tx
                                             in  (c'', t:b)
-      let (st', dat) = selectTx newBlockState txs
+      let (st', dat) = selectTx (merkleValue newBlockState) txs
       return BChEval { bchValue        = BData dat
-                     , validatorSet    = newBlockValSet
-                     , blockchainState = st'
+                     , validatorSet    = merkled newBlockValSet
+                     , blockchainState = merkled st'
                      }
   }
   where
@@ -340,9 +340,9 @@ mintMockCoin nodes CoinSpecification{..} =
          , genMaxMempoolSize = coinMaxMempoolSize
          }
   , BChEval
-    { bchValue        = genesis0 { blockStateHash = hashed st }
-    , validatorSet    = valSet
-    , blockchainState = state0
+    { bchValue        = genesis0 { blockStateHash = merkleHashed st }
+    , validatorSet    = merkled valSet
+    , blockchainState = merkled state0
     }
   )
   where
@@ -356,8 +356,8 @@ mintMockCoin nodes CoinSpecification{..} =
     Right BChEval{blockchainState=st}
       = processBlock coinLogic BChEval
         { bchValue        = genesis0
-        , validatorSet    = valSet
-        , blockchainState = state0
+        , validatorSet    = merkled valSet
+        , blockchainState = merkled state0
         }
 
 findInputs :: (Num i, Ord i) => i -> [(a,i)] -> [(a,i)]
@@ -386,7 +386,7 @@ interpretSpec
   -> m (RunningNode m BData, [m ()])
 interpretSpec genesis p cb = do
   conn    <- askConnectionRO
-  store   <- newSTMBchStorage $ blockchainState genesis
+  store   <- newSTMBchStorage $ merkleValue $ blockchainState genesis
   mempool <- makeMempool store (ExceptT . return)
   acts <- runNode (getT p :: Configuration Example) NodeDescription
     { nodeValidationKey = p ^.. nspecPrivKey
@@ -432,7 +432,7 @@ executeNodeSpec (NetSpec{..} :*: coin@CoinSpecification{..}) = do
       cursor <- getMempoolCursor rnodeMempool
       return $ transactionGenerator txG
         rnodeMempool
-        (snd <$> bchCurrentState rnodeState)
+        (merkleValue . snd <$> bchCurrentState rnodeState)
         (void . pushTransaction cursor)
   -- Actually run nodes
   lift   $ catchAbort $ runConcurrently $ (snd =<< rnodes) ++ txGens
