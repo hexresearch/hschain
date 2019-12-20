@@ -21,6 +21,7 @@ module HSChain.Types.Merkle.Types (
   , OptNode
   , IdNode
   , merkleValue
+  , merkleHash
   , merkleMaybeValue
     -- * Serialization helpers
   , MerkleSerialize(..)
@@ -48,7 +49,7 @@ import HSChain.Crypto
 -- > hash a == hash (merkleHash a)
 class MerkleHash f where
   -- | Obtain cached hash of node.
-  merkleHash  :: f alg a -> Hash alg
+  merkleHashed :: f alg a -> Hashed alg a
 
 -- | Type class for nodes of Merkle tree. It contains operations that
 --   are common for all variants of nodes whether they contain actual
@@ -79,6 +80,8 @@ merkleValue (MerkleNode (IdNode _ a)) = a
 merkleMaybeValue :: IsMerkle f => f alg a -> Maybe a
 merkleMaybeValue n = let OptNode _ a = toOptNode n in a
 
+merkleHash :: MerkleHash f => f alg a -> Hash alg
+merkleHash f = let Hashed h = merkleHashed f in h
 
 -- | Eq uses hash comparison as optimization
 instance (IsMerkle f) => Eq (MerkleNode f alg a) where
@@ -103,32 +106,32 @@ instance (CryptoHash alg, IsMerkle f) => CryptoHashable (MerkleNode f alg a) whe
 ----------------------------------------------------------------
 
 
-data IdNode  alg a = IdNode  !(Hash alg) !a
-  deriving stock (Show,Eq,Ord,Foldable,Generic)
+data IdNode  alg a = IdNode  !(Hashed alg a) !a
+  deriving stock (Show,Eq,Ord,Generic)
 
-data OptNode alg a = OptNode !(Hash alg) !(Maybe a)
+data OptNode alg a = OptNode !(Hashed alg a) !(Maybe a)
   deriving stock (Show,Eq,Ord,Generic)
 
 
 instance MerkleHash IdNode where
-  merkleHash (IdNode h _) = h
+  merkleHashed (IdNode h _) = h
 instance IsMerkle IdNode where
-  merkled a = IdNode (hash a) a
+  merkled a = IdNode (hashed a) a
   toOptNode   (IdNode  h a) = OptNode h (Just a)
   fromOptNode (OptNode h a) = IdNode  h <$> a
 
 instance MerkleHash OptNode where
-  merkleHash (OptNode h _) = h
+  merkleHashed (OptNode h _) = h
 instance IsMerkle OptNode where
-  merkled a = OptNode (hash a) (Just a)
+  merkled a = OptNode (hashed a) (Just a)
   toOptNode   = id
   fromOptNode = Just
 
 instance MerkleHash Hashed where
-  merkleHash (Hashed h) = h
+  merkleHashed = id
 instance IsMerkle Hashed where
   merkled = hashed
-  toOptNode (Hashed h) = OptNode h Nothing
+  toOptNode h = OptNode h Nothing
   fromOptNode = Just . Hashed . merkleHash
 
 instance NFData1 (IdNode alg) where
@@ -144,7 +147,7 @@ instance Show1 (IdNode alg) where
 
 -- | We cheat by comparing only hashes
 instance Eq1 (IdNode alg) where
-  liftEq _ (IdNode h1 _) (IdNode h2 _) = h1 == h2
+  liftEq f (IdNode _ a) (IdNode _ b) = f a b
 
 instance Ord1 (IdNode alg) where
   liftCompare f (IdNode _ a) (IdNode _ b) = f a b
@@ -156,7 +159,7 @@ instance Ord1 (IdNode alg) where
 -- | Data type which is used to derive serializaion
 data MerkleSerialize alg a
   = MerkleValue a
-  | MerkleHash  (Hash alg)
+  | MerkleHash  (Hashed alg a)
   deriving stock    (Show,Eq,Ord,Generic)
   deriving anyclass (CBOR.Serialise, JSON.FromJSON, JSON.ToJSON)
 
