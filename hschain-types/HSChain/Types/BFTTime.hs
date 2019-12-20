@@ -8,7 +8,6 @@ module HSChain.Types.BFTTime (
 import Control.Monad
 import Data.Bits
 import Data.List
-import Data.Ord
 import qualified Data.List.NonEmpty as NE
 
 import HSChain.Types.Blockchain
