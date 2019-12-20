@@ -5,6 +5,8 @@
 #define HASH_BLOCK_SIZE 128
 #define HASH_DIGEST_SIZE 64
 
+#include "ed-cuda.h"
+
 typedef struct sha512_state_t {
 	uint64_t H[8];
 	uint64_t T[2];
@@ -14,7 +16,7 @@ typedef struct sha512_state_t {
 
 typedef sha512_state ed25519_hash_context;
 
-static const uint64_t sha512_constants[80] = {
+static EDCONSTANT const uint64_t sha512_constants[80] = {
 	0x428a2f98d728ae22ull, 0x7137449123ef65cdull, 0xb5c0fbcfec4d3b2full, 0xe9b5dba58189dbbcull,
 	0x3956c25bf348b538ull, 0x59f111f1b605d019ull, 0x923f82a4af194f9bull, 0xab1c5ed5da6d8118ull,
 	0xd807aa98a3030242ull, 0x12835b0145706fbeull, 0x243185be4ee4b28cull, 0x550c7dc3d5ffb4e2ull,
@@ -37,13 +39,13 @@ static const uint64_t sha512_constants[80] = {
 	0x4cc5d4becb3e42b6ull, 0x597f299cfc657e2aull, 0x5fcb6fab3ad6faecull, 0x6c44198c4a475817ull
 };
 
-static uint64_t
+static EDHOSTDEVICE uint64_t
 sha512_ROTR64(uint64_t x, int k) {
 	return (x >> k) | (x << (64 - k));
 }
 
 static uint64_t
-sha512_LOAD64_BE(const uint8_t *p) {
+EDHOSTDEVICE sha512_LOAD64_BE(const uint8_t *p) {
 	return 
 		((uint64_t)p[0] << 56) |
 		((uint64_t)p[1] << 48) |
@@ -56,7 +58,7 @@ sha512_LOAD64_BE(const uint8_t *p) {
 }
 
 static void
-sha512_STORE64_BE(uint8_t *p, uint64_t v) {
+EDHOSTDEVICE sha512_STORE64_BE(uint8_t *p, uint64_t v) {
 	p[0] = (uint8_t)(v >> 56);
 	p[1] = (uint8_t)(v >> 48);
 	p[2] = (uint8_t)(v >> 40);
@@ -88,7 +90,7 @@ sha512_STORE64_BE(uint8_t *p, uint64_t v) {
 	r[0] = t0 + t1;
 
 static void
-sha512_blocks(sha512_state *S, const uint8_t *in, size_t blocks) {
+EDHOSTDEVICE sha512_blocks(sha512_state *S, const uint8_t *in, size_t blocks) {
 	uint64_t r[8], w[80], t0, t1;
 	size_t i;
 
@@ -106,7 +108,7 @@ sha512_blocks(sha512_state *S, const uint8_t *in, size_t blocks) {
 }
 
 static void
-ed25519_hash_init(sha512_state *S) {
+EDHOSTDEVICE ed25519_hash_init(sha512_state *S) {
 	S->H[0] = 0x6a09e667f3bcc908ull;
 	S->H[1] = 0xbb67ae8584caa73bull;
 	S->H[2] = 0x3c6ef372fe94f82bull;
@@ -121,7 +123,7 @@ ed25519_hash_init(sha512_state *S) {
 }
 
 static void
-ed25519_hash_update(sha512_state *S, const uint8_t *in, size_t inlen) {
+EDHOSTDEVICE ed25519_hash_update(sha512_state *S, const uint8_t *in, size_t inlen) {
 	size_t blocks, want;
 
 	/* handle the previous data */
@@ -151,7 +153,7 @@ ed25519_hash_update(sha512_state *S, const uint8_t *in, size_t inlen) {
 }
 
 static void
-ed25519_hash_final(sha512_state *S, uint8_t *hash) {
+EDHOSTDEVICE ed25519_hash_final(sha512_state *S, uint8_t *hash) {
 	uint64_t t0 = S->T[0] + (S->leftover * 8), t1 = S->T[1];
 
 	S->buffer[S->leftover] = 0x80;
@@ -178,7 +180,7 @@ ed25519_hash_final(sha512_state *S, uint8_t *hash) {
 }
 
 static void
-ed25519_hash(uint8_t *hash, const uint8_t *in, size_t inlen) {
+EDHOSTDEVICE ed25519_hash(uint8_t *hash, const uint8_t *in, size_t inlen) {
 	ed25519_hash_context ctx;
 	ed25519_hash_init(&ctx);
 	ed25519_hash_update(&ctx, in, inlen);

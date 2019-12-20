@@ -12,13 +12,15 @@
 	mu = floor( b^(k*2) / m ) = 0xfffffffffffffffffffffffffffffffeb2106215d086329a7ed9ce5a30a2c131b
 */
 
+#include "ed-cuda.h"
+
 #define bignum256modm_bits_per_limb 56
 #define bignum256modm_limb_size 5
 
 typedef uint64_t bignum256modm_element_t;
 typedef bignum256modm_element_t bignum256modm[5];
 
-static const bignum256modm modm_m = {
+const EDCONSTANT bignum256modm modm_m = {
 	0x12631a5cf5d3ed, 
 	0xf9dea2f79cd658, 
 	0x000000000014de, 
@@ -26,7 +28,7 @@ static const bignum256modm modm_m = {
 	0x00000010000000
 };
 
-static const bignum256modm modm_mu = {
+static const EDCONSTANT bignum256modm modm_mu = {
 	0x9ce5a30a2c131b,
 	0x215d086329a7ed,
 	0xffffffffeb2106,
@@ -35,12 +37,12 @@ static const bignum256modm modm_mu = {
 };
 
 static bignum256modm_element_t
-lt_modm(bignum256modm_element_t a, bignum256modm_element_t b) {
+EDHOSTDEVICE lt_modm(bignum256modm_element_t a, bignum256modm_element_t b) {
 	return (a - b) >> 63;
 }
 
 static void
-reduce256_modm(bignum256modm r) {
+EDHOSTDEVICE reduce256_modm(bignum256modm r) {
 	bignum256modm t;
 	bignum256modm_element_t b = 0, pb, mask;
 
@@ -63,7 +65,7 @@ reduce256_modm(bignum256modm r) {
 }
 
 static void
-barrett_reduce256_modm(bignum256modm r, const bignum256modm q1, const bignum256modm r1) {
+EDHOSTDEVICE barrett_reduce256_modm(bignum256modm r, const bignum256modm q1, const bignum256modm r1) {
 	bignum256modm q3, r2;
 	uint128_t c, mul;
 	bignum256modm_element_t f, b, pb;
@@ -108,7 +110,7 @@ barrett_reduce256_modm(bignum256modm r, const bignum256modm q1, const bignum256m
 
 
 static void
-add256_modm(bignum256modm r, const bignum256modm x, const bignum256modm y) {
+EDHOSTDEVICE add256_modm(bignum256modm r, const bignum256modm x, const bignum256modm y) {
 	bignum256modm_element_t c;
 
 	c  = x[0] + y[0]; r[0] = c & 0xffffffffffffff; c >>= 56;
@@ -121,7 +123,7 @@ add256_modm(bignum256modm r, const bignum256modm x, const bignum256modm y) {
 }
 
 static void
-mul256_modm(bignum256modm r, const bignum256modm x, const bignum256modm y) {
+EDHOSTDEVICE mul256_modm(bignum256modm r, const bignum256modm x, const bignum256modm y) {
 	bignum256modm q1, r1;
 	uint128_t c, mul;
 	bignum256modm_element_t f;
@@ -149,7 +151,7 @@ mul256_modm(bignum256modm r, const bignum256modm x, const bignum256modm y) {
 	barrett_reduce256_modm(r, q1, r1);
 }
 
-static void
+static EDHOSTDEVICE void
 expand256_modm(bignum256modm out, const unsigned char *in, size_t len) {
 	unsigned char work[64] = {0};
 	bignum256modm_element_t x[16];

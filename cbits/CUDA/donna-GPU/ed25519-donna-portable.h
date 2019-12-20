@@ -1,4 +1,5 @@
 #include "ed25519-donna-portable-identify.h"
+#include "ed-cuda.h"
 
 #define mul32x32_64(a,b) (((uint64_t)(a))*(b))
 
@@ -44,8 +45,39 @@
 		#define add128_64(a,b) { uint64_t p = a.lo; a.lo += b; a.hi += (a.lo < p); }
 		#define lo128(a) (a.lo)
 		#define hi128(a) (a.hi)
+	#elif defined(ED25519_FORCE_NON_NATIVE_UINT128)
+		#define HAVE_UINT128
+		typedef struct uint128_t {
+			uint64_t lo, hi;
+		} uint128_t;
+                static uint64_t EDHOSTDEVICE _umul128(uint64_t a, uint64_t b, uint64_t* hi) {
+			uint64_t la = a & ((1ULL << 32) - 1);
+			uint64_t lb = b & ((1ULL << 32) - 1);
+			uint64_t ha = a >> 32;
+			uint64_t hb = b >> 32;
+			uint64_t ll = la * lb;
+			uint64_t lh = la * hb + lb * ha;
+			uint64_t r = ll + (lh << 32);
+			*hi = ha * hb + (lh >> 32) + (r < ll);
+			return r;
+		}
+		#define mul64x64_128(out,a,b) out.lo = _umul128(a,b,&out.hi);
+		static uint64_t EDHOSTDEVICE __shiftright128(uint64_t lo, uint64_t hi, int shift) {
+			return (lo >> shift) | (hi << (64 - shift));
+		}
+		#define shr128_pair(out,hi,lo,shift) out = __shiftright128(lo, hi, shift);
+		static uint64_t EDHOSTDEVICE __shiftleft128(uint64_t lo, uint64_t hi, int shift) {
+			return (hi << shift) | (lo >> (64 - shift));
+		}
+		#define shl128_pair(out,hi,lo,shift) out = __shiftleft128(lo, hi, shift);
+		#define shr128(out,in,shift) shr128_pair(out, in.hi, in.lo, shift)
+		#define shl128(out,in,shift) shl128_pair(out, in.hi, in.lo, shift)
+		#define add128(a,b) { uint64_t p = a.lo; a.lo += b.lo; a.hi += b.hi + (a.lo < p); }
+		#define add128_64(a,b) { uint64_t p = a.lo; a.lo += b; a.hi += (a.lo < p); }
+		#define lo128(a) (a.lo)
+		#define hi128(a) (a.hi)
 	#elif defined(COMPILER_GCC) && !defined(HAVE_NATIVE_UINT128)
-		#if defined(__SIZEOF_INT128__)
+		#if defined(__SIZEOF_INT128__
 			#define HAVE_NATIVE_UINT128
 			typedef unsigned __int128 uint128_t;
 		#elif (COMPILER_GCC >= 40400)

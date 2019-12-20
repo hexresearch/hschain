@@ -16,12 +16,12 @@ ed25519-donna-basepoint-table.h  ed25519-randombytes.h \
 ed25519-donna-batchverify.h      modm-donna-64bit.h \
 ed25519-donna.h                  regression.h \
 ed25519-donna-impl-base.h        test-ticks.h \
-ed25519-donna-portable.h
+ed25519-donna-portable.h         ed-cuda.h
 
 
 test: test.c ed25519.c $(HEADERS)
 	gcc -o test -O3 -DED25519_NO_INLINE_ASM -DED25519_CUSTOMRANDOM -DED25519_REFHASH test.c ed25519.c
 
 test-cuda: test-cuda.cu ed25519.cu $(HEADERS)
-	nvcc -o test-cuda -O3 -DED25519_NO_INLINE_ASM -DED25519_CUSTOMRANDOM -DED25519_REFHASH test-cuda.cu ed25519.cu
+	nvcc -o test-cuda -O3 -DED25519_FORCE_NON_NATIVE_UINT128 -DED25519_NO_INLINE_ASM -DED25519_CUSTOMRANDOM -DED25519_REFHASH test-cuda.cu
 

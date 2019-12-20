@@ -31,7 +31,7 @@ ed25519_extsk(hash_512bits extsk, const ed25519_secret_key sk) {
 	extsk[31] |= 64;
 }
 
-static void
+static void EDHOSTDEVICE
 ed25519_hram(hash_512bits hram, const ed25519_signature RS, const ed25519_public_key pk, const unsigned char *m, size_t mlen) {
 	ed25519_hash_context ctx;
 	ed25519_hash_init(&ctx);
@@ -90,7 +90,7 @@ ED25519_FN(ed25519_sign) (const unsigned char *m, size_t mlen, const ed25519_sec
 	contract256_modm(RS + 32, S);
 }
 
-int
+int EDHOSTDEVICE
 ED25519_FN(ed25519_sign_open) (const unsigned char *m, size_t mlen, const ed25519_public_key pk, const ed25519_signature RS) {
 	ge25519 ALIGN(16) R, A;
 	hash_512bits hash;
