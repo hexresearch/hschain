@@ -88,8 +88,8 @@ instance BlockData BData where
 mkGenesisBlock :: ValidatorSet (Alg BData) -> Genesis BData
 mkGenesisBlock valSet = BChEval
   { bchValue        = makeGenesis (BData []) (hashed mempty) valSet valSet
-  , validatorSet    = valSet
-  , blockchainState = mempty
+  , validatorSet    = merkled valSet
+  , blockchainState = merkled mempty
   }
 
 
@@ -138,19 +138,20 @@ keyValLogic = BChLogic
   { processTx     = \_ -> throwE $ KeyValError ""
   --
   , processBlock  = \BChEval{..} -> ExceptT $ return $ do
-      st <- foldM (flip process) blockchainState
+      st <- foldM (flip process) (merkleValue blockchainState)
           $ blockTransactions $ merkleValue $ blockData bchValue
       return BChEval { bchValue        = ()
-                     , blockchainState = st
+                     , blockchainState = merkled st
                      , ..
                      }
   --
   , generateBlock = \NewBlock{..} _ -> do
-      let Just k = find (`Map.notMember` newBlockState) ["K_" ++ show (n :: Int) | n <- [1 ..]]
+      let Just k = find (`Map.notMember` merkleValue newBlockState)
+                   ["K_" ++ show (n :: Int) | n <- [1 ..]]
       i <- liftIO $ randomRIO (1,100)
       return BChEval { bchValue        = BData [(k, i)]
-                     , validatorSet    = newBlockValSet
-                     , blockchainState = Map.insert k i newBlockState
+                     , validatorSet    = merkled newBlockValSet
+                     , blockchainState = merkled $ Map.insert k i $ merkleValue newBlockState
                      }
   }
   where

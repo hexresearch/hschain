@@ -138,8 +138,8 @@ instance (KnownNat keys, KnownNat vals) => Dio (DioTag keys vals) where
 dioGenesis :: forall tag. Dio tag => Genesis (BData tag)
 dioGenesis = BChEval
   { bchValue        = makeGenesis (BData []) (hashed state0) valSet valSet
-  , validatorSet    = valSet
-  , blockchainState = state0
+  , validatorSet    = merkled valSet
+  , blockchainState = merkled state0
   }
   where
     state0 = DioState
@@ -161,10 +161,10 @@ dioLogic = BChLogic
   { processTx     = const empty
   --
   , processBlock  = \BChEval{..} -> do
-      st <- foldM (flip process) blockchainState
+      st <- foldM (flip process) (merkleValue blockchainState)
           $ blockTransactions $ merkleValue $ blockData bchValue
       return BChEval { bchValue        = ()
-                     , blockchainState = st
+                     , blockchainState = merkled st
                      , ..
                      }
   -- We generate one transaction for every key. And since we move
@@ -180,9 +180,10 @@ dioLogic = BChLogic
                                 }
                            | (_,pk) <- V.toList keys
                            ]
-        , validatorSet    = newBlockValSet
-        , blockchainState = newBlockState
-                          & userMap . each . userNonce %~ succ
+        , validatorSet    = merkled newBlockValSet
+        , blockchainState = merkled
+                          $ userMap . each . userNonce %~ succ
+                          $ merkleValue newBlockState
         }
   }
 
@@ -220,7 +221,7 @@ interpretSpec
   -> m (RunningNode m (BData tag), [m ()])
 interpretSpec p idx cb = do
   conn    <- askConnectionRO
-  store   <- newSTMBchStorage $ blockchainState genesis
+  store   <- newSTMBchStorage $ merkleValue $ blockchainState genesis
   acts <- runNode (getT p :: Configuration Example) NodeDescription
     { nodeValidationKey = Just $ PrivValidator $ fst $ getConst (dioUserKeys @tag) V.! idx
     , nodeGenesis       = genesis

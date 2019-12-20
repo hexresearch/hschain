@@ -1,6 +1,7 @@
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE NumDecimals         #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE ViewPatterns        #-}
 module TM.Integration ( tests) where
 
 import Test.Tasty
@@ -23,6 +24,7 @@ import           HSChain.Store
 import qualified HSChain.Mock.KeyVal as KeyVal
 import qualified HSChain.Mock.Coin   as Coin
 import           HSChain.Mock.Types
+import           HSChain.Types.Merkle.Types
 import           TM.Util.Network (withTimeOut)
 
 
@@ -90,7 +92,7 @@ runCoin file = do
     -- Check that amount of coins didn't change
     forM_ rnodes $ \n -> liftIO $ do
       let totalCoins = coinAridrop coin * fromIntegral (coinWallets coin)
-      (_, Coin.CoinState utxos _) <- bchCurrentState $ Coin.rnodeState n
+      (_, merkleValue -> Coin.CoinState utxos _) <- bchCurrentState $ Coin.rnodeState n
       assertEqual "Coins must be preserved" totalCoins (sum [ c | Coin.Unspent _ c <- toList utxos])
 
 allEqual :: Eq a => [a] -> Bool
