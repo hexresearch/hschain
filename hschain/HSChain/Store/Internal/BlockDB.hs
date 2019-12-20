@@ -273,7 +273,7 @@ storeValSet
   => Height -> ValidatorSet alg -> m ()
 storeValSet h vals =
   basicExecute "INSERT INTO thm_validators VALUES (?,?)"
-    (h, serialise vals)
+    (h, CBORed vals)
 
 -- | Write state snapshot into DB.
 -- @maybeSnapshot@ contains a serialized value of a state associated with the processed block.
