@@ -51,9 +51,6 @@ data Node f alg a
   deriving (Show, Foldable, Generic)
 
 
-instance MerkleHash f => MerkleHash (MerkleBlockTree f) where
-  merkleHash = merkleHash . merkleBlockTree
-
 instance (IsMerkle f, CryptoHash alg) => CryptoHashable (MerkleBlockTree f alg a) where
   hashStep = hashStep . merkleBlockTree
 
