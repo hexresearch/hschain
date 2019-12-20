@@ -28,6 +28,7 @@ Library
                      , lens
                      , mmorph
                      , exceptions           >=0.8.3
+                     , parallel
                      , random
                      , serialise            >=0.2
                      , stm                  >=2.5
@@ -96,6 +97,7 @@ Executable hschain-dioxane-node
                      , transformers
                      , wai-middleware-prometheus
                      , warp
+                     , vector
                      , yaml
                      , text
                      , filepath

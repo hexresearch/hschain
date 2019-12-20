@@ -18,13 +18,12 @@ module HSChain.Mock.Dioxane where
 
 import Codec.Serialise      (Serialise)
 import Control.Applicative
-import Control.Arrow        ((&&&))
 import Control.DeepSeq      (NFData)
 import Control.Exception    (Exception)
 import Control.Monad
 import Control.Monad.Catch
 import Control.Monad.Trans.Except
-import Data.Proxy
+import Control.Parallel.Strategies
 import Data.Int
 import qualified Data.Aeson          as JSON
 import qualified Data.HashMap.Strict as HM
@@ -32,7 +31,6 @@ import qualified Data.Map.Strict     as Map
 import qualified Data.Vector         as V
 import Control.Lens
 
-import GHC.TypeLits
 import GHC.Generics (Generic)
 
 import HSChain.Blockchain.Internal.Engine.Types
@@ -44,7 +42,6 @@ import HSChain.Crypto.SHA
 import HSChain.Debug.Trace
 import HSChain.Logger
 import HSChain.Mock.Types
-import HSChain.Mock.KeyList
 import HSChain.Monitoring
 import HSChain.Run
 import HSChain.Store
@@ -63,6 +60,13 @@ newtype BData tag = BData [Tx]
   deriving anyclass (Serialise)
 
 data Tx = Tx
+  { txSig  :: !(Signature (Ed25519 :& SHA512))
+  , txBody :: !TxBody
+  }
+  deriving stock    (Show, Eq, Ord, Generic)
+  deriving anyclass (Serialise, NFData, JSON.ToJSON, JSON.FromJSON)
+
+data TxBody = TxBody
   { txFrom   :: !(PublicKey (Ed25519 :& SHA512))
   , txTo     :: !(PublicKey (Ed25519 :& SHA512))
   , txNonce  :: !Int64
@@ -90,6 +94,8 @@ data UserState = UserState
 
 instance CryptoHashable Tx where
   hashStep = genericHashStep "hschain.dioxane"
+instance CryptoHashable TxBody where
+  hashStep = genericHashStep "hschain.dioxane"
 instance CryptoHashable DioState where
   hashStep = genericHashStep "hschain.dioxane"
 instance CryptoHashable UserState where
@@ -115,25 +121,16 @@ instance Dio tag => BlockData (BData tag) where
 -- Logic
 ----------------------------------------------------------------
 
-type Tagged a b = Const b a
-
 class Dio a where
-  dioUserKeys       :: Tagged a (V.Vector ( PrivKey   (Ed25519 :& SHA512)
-                                          , PublicKey (Ed25519 :& SHA512)
-                                          ))
-  dioInitialBalance :: Tagged a Int64
-  dioValidators     :: Tagged a Int64
+  dioDict :: DioDict a
 
-data DioTag (keys :: Nat) (vals :: Nat)
-
-instance (KnownNat keys, KnownNat vals) => Dio (DioTag keys vals) where
-  dioUserKeys       = Const
-                    $ V.fromList
-                    $ take (fromIntegral (natVal (Proxy @keys)))
-                    $ map (id &&& publicKey)
-                    $ makePrivKeyStream 1337
-  dioInitialBalance = Const 1000000
-  dioValidators     = Const $ fromIntegral $ natVal (Proxy @vals)
+data DioDict a = DioDict
+  { dioUserKeys       :: V.Vector ( PrivKey   (Ed25519 :& SHA512)
+                                  , PublicKey (Ed25519 :& SHA512)
+                                  )
+  , dioInitialBalance :: Int64
+  , dioValidators     :: Int64
+  }
 
 dioGenesis :: forall tag. Dio tag => Genesis (BData tag)
 dioGenesis = BChEval
@@ -142,16 +139,17 @@ dioGenesis = BChEval
   , blockchainState = merkled state0
   }
   where
-    state0 = DioState
+    state0  = DioState
       { _userMap = Map.fromList [ (k, UserState { _userNonce   = 0
                                                 , _userBalance = bal
                                                 })
                                 | (_,k) <- V.toList keys
                                 ]
       }
-    bal   = getConst (dioInitialBalance @tag)
-    nVals = getConst (dioValidators     @tag)
-    keys  = getConst (dioUserKeys       @tag)
+    DioDict{..} = dioDict @tag
+    bal         = dioInitialBalance
+    nVals       = dioValidators
+    keys        = dioUserKeys
     Right valSet = makeValidatorSet $  (\(_,k) -> Validator k 1)
                                    <$> V.take (fromIntegral nVals) keys
 
@@ -163,6 +161,11 @@ dioLogic = BChLogic
   , processBlock  = \BChEval{..} -> do
       st <- foldM (flip process) (merkleValue blockchainState)
           $ blockTransactions $ merkleValue $ blockData bchValue
+      guard $ and
+            $ parMap rseq
+              (\(Tx sig tx) -> verifySignatureHashed (txFrom tx) tx sig)
+              (blockTransactions $ merkleValue $ blockData bchValue)
+
       return BChEval { bchValue        = ()
                      , blockchainState = merkled st
                      , ..
@@ -171,26 +174,33 @@ dioLogic = BChLogic
   -- money from one account to another it's quite simple to update state
   , generateBlock = \NewBlock{..} _ -> do
       let nonce = let Height h = newBlockHeight in fromIntegral h - 1
-          keys  = getConst (dioUserKeys @tag)
-      return $ BChEval
-        { bchValue = BData [ Tx { txTo     = pk
-                                , txFrom   = pk
-                                , txNonce  = nonce
-                                , txAmount = 1
-                                }
-                           | (_,pk) <- V.toList keys
-                           ]
+          keys  = dioUserKeys
+      return $! BChEval
+        { bchValue = BData
+                   $ parMap rseq
+                     (\(sk,pk) -> let body = TxBody
+                                        { txTo     = pk
+                                        , txFrom   = pk
+                                        , txNonce  = nonce
+                                        , txAmount = 1
+                                        }
+                                  in Tx { txSig  = signHashed sk body
+                                        , txBody = body
+                                        }
+                     )
+                     (V.toList keys)
         , validatorSet    = merkled newBlockValSet
         , blockchainState = merkled
                           $ userMap . each . userNonce %~ succ
                           $ merkleValue newBlockState
         }
   }
-
+  where
+    DioDict{..} = dioDict @tag
 
 
 process :: Tx -> DioState -> Maybe DioState
-process Tx{..} st = do
+process Tx{txBody=TxBody{..}} st = do
   ufrom  <- st ^. userMap . at txFrom
   _      <- st ^. userMap . at txTo
   -- Nonce is correct & and we have funds
@@ -223,7 +233,7 @@ interpretSpec p idx cb = do
   conn    <- askConnectionRO
   store   <- newSTMBchStorage $ merkleValue $ blockchainState genesis
   acts <- runNode (getT p :: Configuration Example) NodeDescription
-    { nodeValidationKey = Just $ PrivValidator $ fst $ getConst (dioUserKeys @tag) V.! idx
+    { nodeValidationKey = Just $ PrivValidator $ fst $ dioUserKeys dioD V.! idx
     , nodeGenesis       = genesis
     , nodeCallbacks     = cb
     , nodeRunner        = run
@@ -242,3 +252,4 @@ interpretSpec p idx cb = do
   where
     run     = maybe (throwE DioError) return
     genesis = dioGenesis
+    dioD    = dioDict @tag
