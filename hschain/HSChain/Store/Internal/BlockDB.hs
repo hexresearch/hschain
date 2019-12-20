@@ -110,7 +110,7 @@ storeGenesis BChEval{..} = do
         , CBORed bchValue
         )
       basicExecute "INSERT INTO thm_validators VALUES (0,?)"
-        (Only (CBORed validatorSet))
+        (Only (CBORed (merkleValue validatorSet)))
     -- Otherwise check that stored and provided geneses match
     (Just genesis', Just initialVals') ->
       case checks of
@@ -126,9 +126,9 @@ storeGenesis BChEval{..} = do
                  ++
                  [ [ "Validators set are not equal:"
                    , "  stored:   " ++ show initialVals'
-                   , "  expected: " ++ show validatorSet
+                   , "  expected: " ++ show (merkleValue validatorSet)
                    ]
-                 | validatorSet /= initialVals'
+                 | merkleValue validatorSet /= initialVals'
                  ]
     --
     (_,_) -> error "initializeBlockhainTables: database corruption"

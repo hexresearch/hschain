@@ -44,6 +44,7 @@ import HSChain.P2P.Network
 import HSChain.Store
 import HSChain.Store.STM
 import HSChain.Types
+import HSChain.Types.Merkle.Types
 import HSChain.Utils
 
 
@@ -70,7 +71,7 @@ makeMempool store runner =
                $ runExceptT
                $ processTx BChEval { bchValue        = tx
                                    , blockchainState = st
-                                   , validatorSet    = vs
+                                   , validatorSet    = merkled vs
                                    }
   where
     BChLogic{..} = hoistDict runner (bchLogic @a)

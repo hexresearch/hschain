@@ -199,7 +199,8 @@ transitions = BChLogic
   { processTx     = \_ -> empty
   --
   , processBlock  = \BChEval{..} -> fmap (() <$)
-                                  $ gen validatorSet $ merkleValue $ blockData bchValue
+                                  $ gen (merkleValue validatorSet)
+                                  $ merkleValue $ blockData bchValue
   --
   , generateBlock = \NewBlock{..} _ -> case newBlockHeight of
       Height 3 -> gen newBlockValSet $ AddVal pk3 1
@@ -214,8 +215,8 @@ transitions = BChLogic
                    Right v -> return v
                    Left  _ -> empty
       return BChEval { bchValue        = tx
-                     , blockchainState = valSet'
-                     , validatorSet    = valSet'
+                     , blockchainState = merkled valSet'
+                     , validatorSet    = merkled valSet'
                      }
     -- We're permissive and allow remove nonexiting validator
     process Noop         = id
@@ -241,7 +242,7 @@ interpretSpec
   -> m (RunningNode m Tx, [m ()])
 interpretSpec genesis p cb = do
   conn  <- askConnectionRO
-  store <- newSTMBchStorage $ blockchainState genesis
+  store <- newSTMBchStorage $ merkleValue $ blockchainState genesis
   let astore = AppStore { appBchState = store
                         , appMempool  = nullMempool
                         }
@@ -286,8 +287,8 @@ executeNodeSpec NetSpec{..} resources = do
         run = runLoggerT logenv . runDBT conn
     (rn, acts) <- run $ interpretSpec
       BChEval { bchValue        = genesis
-              , validatorSet    = valSet0
-              , blockchainState = valSet0
+              , validatorSet    = merkled valSet0
+              , blockchainState = merkled valSet0
               }
       (netNetCfg :*: x)
       (maybe mempty callbackAbortAtH netMaxH)

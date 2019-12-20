@@ -1,4 +1,5 @@
 {-# LANGUAGE DataKinds           #-}
+{-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -33,6 +34,7 @@ import           Data.Set             (Set)
 import HSChain.Crypto
 import HSChain.Store
 import HSChain.Types.Blockchain
+import HSChain.Types.Merkle.Types
 
 
 newMempool
@@ -179,9 +181,11 @@ newMempool validation = do
 ----------------------------------------------------------------
 
 -- | Create new storage for blockchain 
-newSTMBchStorage :: (MonadIO m) => BlockchainState a -> m (BChStore m a)
+newSTMBchStorage
+  :: (MonadIO m, CryptoHash (Alg a), CryptoHashable (BlockchainState a))
+  => BlockchainState a -> m (BChStore m a)
 newSTMBchStorage st0 = do
-  varSt <- liftIO $ newTVarIO (Nothing, st0)
+  varSt <- liftIO $ newTVarIO (Nothing, merkled st0)
   return BChStore
     { bchCurrentState = liftIO (readTVarIO varSt)
     --
