@@ -2,7 +2,7 @@
 
 #define HAVE_GE25519_SCALARMULT_BASE_CHOOSE_NIELS
 
-DONNA_NOINLINE static void
+DONNA_NOINLINE static void EDHOSTDEVICE
 ge25519_scalarmult_base_choose_niels(ge25519_niels *t, const uint8_t table[256][96], uint32_t pos, signed char b) {
 	int64_t breg = (int64_t)b;
 	uint64_t sign = (uint64_t)breg >> 63;

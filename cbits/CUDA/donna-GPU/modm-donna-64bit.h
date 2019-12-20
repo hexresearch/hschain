@@ -204,7 +204,7 @@ expand_raw256_modm(bignum256modm out, const unsigned char in[32]) {
 	out[4] = ((x[ 3] >> 32)                ) & 0x000000ffffffff;
 }
 
-static void
+static void EDHOSTDEVICE
 contract256_modm(unsigned char out[32], const bignum256modm in) {
 	U64TO8_LE(out +  0, (in[0]      ) | (in[1] << 56));
 	U64TO8_LE(out +  8, (in[1] >>  8) | (in[2] << 48));
@@ -212,7 +212,7 @@ contract256_modm(unsigned char out[32], const bignum256modm in) {
 	U64TO8_LE(out + 24, (in[3] >> 24) | (in[4] << 32));
 }
 
-static void
+static void EDHOSTDEVICE
 contract256_window4_modm(signed char r[64], const bignum256modm in) {
 	char carry;
 	signed char *quads = r;
@@ -239,7 +239,7 @@ contract256_window4_modm(signed char r[64], const bignum256modm in) {
 	r[63] += carry;
 }
 
-static void
+static void EDHOSTDEVICE
 contract256_slidingwindow_modm(signed char r[256], const bignum256modm s, int windowsize) {
 	int i,j,k,b;
 	int m = (1 << (windowsize - 1)) - 1, soplen = 256;
@@ -286,7 +286,7 @@ contract256_slidingwindow_modm(signed char r[256], const bignum256modm s, int wi
 */
 
 /* out = a - b, a must be larger than b */
-static void
+static void EDHOSTDEVICE
 sub256_modm_batch(bignum256modm out, const bignum256modm a, const bignum256modm b, size_t limbsize) {
 	size_t i = 0;
 	bignum256modm_element_t carry = 0;
@@ -302,7 +302,7 @@ sub256_modm_batch(bignum256modm out, const bignum256modm a, const bignum256modm 
 
 
 /* is a < b */
-static int
+static int EDHOSTDEVICE
 lt256_modm_batch(const bignum256modm a, const bignum256modm b, size_t limbsize) {
 	size_t i = 0;
 	bignum256modm_element_t t, carry = 0;
@@ -317,7 +317,7 @@ lt256_modm_batch(const bignum256modm a, const bignum256modm b, size_t limbsize) 
 }
 
 /* is a <= b */
-static int
+static int EDHOSTDEVICE
 lte256_modm_batch(const bignum256modm a, const bignum256modm b, size_t limbsize) {
 	size_t i = 0;
 	bignum256modm_element_t t, carry = 0;
@@ -332,7 +332,7 @@ lte256_modm_batch(const bignum256modm a, const bignum256modm b, size_t limbsize)
 }
 
 /* is a == 0 */
-static int
+static int EDHOSTDEVICE
 iszero256_modm_batch(const bignum256modm a) {
 	size_t i;
 	for (i = 0; i < 5; i++)
@@ -342,7 +342,7 @@ iszero256_modm_batch(const bignum256modm a) {
 }
 
 /* is a == 1 */
-static int
+static int EDHOSTDEVICE
 isone256_modm_batch(const bignum256modm a) {
 	size_t i;
 	for (i = 0; i < 5; i++)
@@ -352,7 +352,7 @@ isone256_modm_batch(const bignum256modm a) {
 }
 
 /* can a fit in to (at most) 128 bits */
-static int
+static int EDHOSTDEVICE
 isatmost128bits256_modm_batch(const bignum256modm a) {
 	uint64_t mask =
 		((a[4]                   )  | /*  32 */

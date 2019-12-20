@@ -4,14 +4,14 @@
 
 #include <stdlib.h>
 
-DONNA_INLINE static void
+DONNA_INLINE static void EDHOSTDEVICE
 ge25519_p1p1_to_partial(ge25519 *r, const ge25519_p1p1 *p) {
 	curve25519_mul(r->x, p->x, p->t);
 	curve25519_mul(r->y, p->y, p->z);
 	curve25519_mul(r->z, p->z, p->t); 
 }
 
-DONNA_INLINE static void
+DONNA_INLINE static void EDHOSTDEVICE
 ge25519_p1p1_to_full(ge25519 *r, const ge25519_p1p1 *p) {
 	curve25519_mul(r->x, p->x, p->t);
 	curve25519_mul(r->y, p->y, p->z);
@@ -19,7 +19,7 @@ ge25519_p1p1_to_full(ge25519 *r, const ge25519_p1p1 *p) {
 	curve25519_mul(r->t, p->x, p->y); 
 }
 
-static void
+static void EDHOSTDEVICE
 ge25519_full_to_pniels(ge25519_pniels *p, const ge25519 *r) {
 	curve25519_sub(p->ysubx, r->y, r->x);
 	curve25519_add(p->xaddy, r->y, r->x);
@@ -31,7 +31,7 @@ ge25519_full_to_pniels(ge25519_pniels *p, const ge25519 *r) {
 	adding & doubling
 */
 
-static void
+static void EDHOSTDEVICE
 ge25519_add_p1p1(ge25519_p1p1 *r, const ge25519 *p, const ge25519 *q) {
 	bignum25519 a,b,c,d,t,u;
 
@@ -52,7 +52,7 @@ ge25519_add_p1p1(ge25519_p1p1 *r, const ge25519 *p, const ge25519 *q) {
 }
 
 
-static void
+static void EDHOSTDEVICE
 ge25519_double_p1p1(ge25519_p1p1 *r, const ge25519 *p) {
 	bignum25519 a,b,c;
 
@@ -68,7 +68,7 @@ ge25519_double_p1p1(ge25519_p1p1 *r, const ge25519 *p) {
 	curve25519_sub_after_basic(r->t, c, r->z);
 }
 
-static void
+static void EDHOSTDEVICE
 ge25519_nielsadd2_p1p1(ge25519_p1p1 *r, const ge25519 *p, const ge25519_niels *q, unsigned char signbit) {
 	const bignum25519 *qb = (const bignum25519 *)q;
 	bignum25519 *rb = (bignum25519 *)r;
@@ -87,7 +87,7 @@ ge25519_nielsadd2_p1p1(ge25519_p1p1 *r, const ge25519 *p, const ge25519_niels *q
 	curve25519_sub(rb[2+(signbit^1)], rb[2+(signbit^1)], c); /* t for +, z for - */
 }
 
-static void
+static void EDHOSTDEVICE
 ge25519_pnielsadd_p1p1(ge25519_p1p1 *r, const ge25519 *p, const ge25519_pniels *q, unsigned char signbit) {
 	const bignum25519 *qb = (const bignum25519 *)q;
 	bignum25519 *rb = (bignum25519 *)r;
@@ -107,28 +107,28 @@ ge25519_pnielsadd_p1p1(ge25519_p1p1 *r, const ge25519 *p, const ge25519_pniels *
 	curve25519_sub(rb[2+(signbit^1)], rb[2+(signbit^1)], c); /* t for +, z for - */
 }
 
-static void
+static void EDHOSTDEVICE
 ge25519_double_partial(ge25519 *r, const ge25519 *p) {
 	ge25519_p1p1 t;
 	ge25519_double_p1p1(&t, p);
 	ge25519_p1p1_to_partial(r, &t);
 }
 
-static void
+static void EDHOSTDEVICE
 ge25519_double(ge25519 *r, const ge25519 *p) {
 	ge25519_p1p1 t;
 	ge25519_double_p1p1(&t, p);
 	ge25519_p1p1_to_full(r, &t);
 }
 
-static void
+static void EDHOSTDEVICE
 ge25519_add(ge25519 *r, const ge25519 *p,  const ge25519 *q) {
 	ge25519_p1p1 t;
 	ge25519_add_p1p1(&t, p, q);
 	ge25519_p1p1_to_full(r, &t);
 }
 
-static void
+static void EDHOSTDEVICE
 ge25519_nielsadd2(ge25519 *r, const ge25519_niels *q) {
 	bignum25519 a,b,c,e,f,g,h;
 
@@ -148,7 +148,7 @@ ge25519_nielsadd2(ge25519 *r, const ge25519_niels *q) {
 	curve25519_mul(r->t, e, h);
 }
 
-static void
+static void EDHOSTDEVICE
 ge25519_pnielsadd(ge25519_pniels *r, const ge25519 *p, const ge25519_pniels *q) {
 	bignum25519 a,b,c,x,y,z,t;
 
@@ -178,7 +178,7 @@ ge25519_pnielsadd(ge25519_pniels *r, const ge25519 *p, const ge25519_pniels *q) 
 	pack & unpack
 */
 
-static void
+static void EDHOSTDEVICE
 ge25519_pack(unsigned char r[32], const ge25519 *p) {
 	bignum25519 tx, ty, zi;
 	unsigned char parity[32];
@@ -190,7 +190,7 @@ ge25519_pack(unsigned char r[32], const ge25519 *p) {
 	r[31] ^= ((parity[0] & 1) << 7);
 }
 
-static int
+static int EDHOSTDEVICE
 ge25519_unpack_negative_vartime(ge25519 *r, const unsigned char p[32]) {
 	static const unsigned char zero[32] = {0};
 	static const bignum25519 one = {1};
@@ -251,7 +251,7 @@ ge25519_unpack_negative_vartime(ge25519 *r, const unsigned char p[32]) {
 #define S2_TABLE_SIZE (1<<(S2_SWINDOWSIZE-2))
 
 /* computes [s1]p1 + [s2]basepoint */
-static void 
+static void EDHOSTDEVICE
 ge25519_double_scalarmult_vartime(ge25519 *r, const ge25519 *p1, const bignum256modm s1, const bignum256modm s2) {
 	signed char slide1[256], slide2[256];
 	ge25519_pniels pre1[S1_TABLE_SIZE];
@@ -299,7 +299,7 @@ ge25519_double_scalarmult_vartime(ge25519 *r, const ge25519 *p1, const bignum256
 
 #if !defined(HAVE_GE25519_SCALARMULT_BASE_CHOOSE_NIELS)
 
-static uint32_t
+static uint32_t EDHOSTDEVICE
 ge25519_windowb_equal(uint32_t b, uint32_t c) {
 	return ((b ^ c) - 1) >> 31;
 }

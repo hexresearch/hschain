@@ -8,12 +8,12 @@
 
 typedef uint64_t bignum25519[5];
 
-static const uint64_t reduce_mask_40 = ((uint64_t)1 << 40) - 1;
-static const uint64_t reduce_mask_51 = ((uint64_t)1 << 51) - 1;
-static const uint64_t reduce_mask_56 = ((uint64_t)1 << 56) - 1;
+static const EDCONSTANT uint64_t reduce_mask_40 = ((uint64_t)1 << 40) - 1;
+static const EDCONSTANT uint64_t reduce_mask_51 = ((uint64_t)1 << 51) - 1;
+static const EDCONSTANT uint64_t reduce_mask_56 = ((uint64_t)1 << 56) - 1;
 
 /* out = in */
-DONNA_INLINE static void
+DONNA_INLINE EDHOSTDEVICE static void
 curve25519_copy(bignum25519 out, const bignum25519 in) {
 	out[0] = in[0];
 	out[1] = in[1];
@@ -23,7 +23,7 @@ curve25519_copy(bignum25519 out, const bignum25519 in) {
 }
 
 /* out = a + b */
-DONNA_INLINE static void
+DONNA_INLINE EDHOSTDEVICE static void
 curve25519_add(bignum25519 out, const bignum25519 a, const bignum25519 b) {
 	out[0] = a[0] + b[0];
 	out[1] = a[1] + b[1];
@@ -33,7 +33,7 @@ curve25519_add(bignum25519 out, const bignum25519 a, const bignum25519 b) {
 }
 
 /* out = a + b, where a and/or b are the result of a basic op (add,sub) */
-DONNA_INLINE static void
+DONNA_INLINE static void EDHOSTDEVICE
 curve25519_add_after_basic(bignum25519 out, const bignum25519 a, const bignum25519 b) {
 	out[0] = a[0] + b[0];
 	out[1] = a[1] + b[1];
@@ -42,7 +42,7 @@ curve25519_add_after_basic(bignum25519 out, const bignum25519 a, const bignum255
 	out[4] = a[4] + b[4];
 }
 
-DONNA_INLINE static void
+DONNA_INLINE static void EDHOSTDEVICE
 curve25519_add_reduce(bignum25519 out, const bignum25519 a, const bignum25519 b) {
 	uint64_t c;
 	out[0] = a[0] + b[0]    ; c = (out[0] >> 51); out[0] &= reduce_mask_51;
@@ -60,7 +60,7 @@ static const uint64_t fourP0     = 0x1fffffffffffb4;
 static const uint64_t fourP1234  = 0x1ffffffffffffc;
 
 /* out = a - b */
-DONNA_INLINE static void
+DONNA_INLINE static void EDHOSTDEVICE
 curve25519_sub(bignum25519 out, const bignum25519 a, const bignum25519 b) {
 	out[0] = a[0] + twoP0    - b[0];
 	out[1] = a[1] + twoP1234 - b[1];
@@ -70,7 +70,7 @@ curve25519_sub(bignum25519 out, const bignum25519 a, const bignum25519 b) {
 }
 
 /* out = a - b, where a and/or b are the result of a basic op (add,sub) */
-DONNA_INLINE static void
+DONNA_INLINE static void EDHOSTDEVICE
 curve25519_sub_after_basic(bignum25519 out, const bignum25519 a, const bignum25519 b) {
 	out[0] = a[0] + fourP0    - b[0];
 	out[1] = a[1] + fourP1234 - b[1];
@@ -79,7 +79,7 @@ curve25519_sub_after_basic(bignum25519 out, const bignum25519 a, const bignum255
 	out[4] = a[4] + fourP1234 - b[4];
 }
 
-DONNA_INLINE static void
+DONNA_INLINE static void EDHOSTDEVICE
 curve25519_sub_reduce(bignum25519 out, const bignum25519 a, const bignum25519 b) {
 	uint64_t c;
 	out[0] = a[0] + fourP0    - b[0]    ; c = (out[0] >> 51); out[0] &= reduce_mask_51;
@@ -91,7 +91,7 @@ curve25519_sub_reduce(bignum25519 out, const bignum25519 a, const bignum25519 b)
 }
 
 /* out = -a */
-DONNA_INLINE static void
+DONNA_INLINE static void EDHOSTDEVICE
 curve25519_neg(bignum25519 out, const bignum25519 a) {
 	uint64_t c;
 	out[0] = twoP0    - a[0]    ; c = (out[0] >> 51); out[0] &= reduce_mask_51;
@@ -103,7 +103,7 @@ curve25519_neg(bignum25519 out, const bignum25519 a) {
 }
 
 /* out = a * b */
-DONNA_INLINE static void
+DONNA_INLINE static void EDHOSTDEVICE
 curve25519_mul(bignum25519 out, const bignum25519 in2, const bignum25519 in) {
 #if !defined(HAVE_NATIVE_UINT128)
 	uint128_t mul;
@@ -170,13 +170,13 @@ curve25519_mul(bignum25519 out, const bignum25519 in2, const bignum25519 in) {
 	out[4] = r4;
 }
 
-DONNA_NOINLINE static void
+DONNA_NOINLINE static void EDHOSTDEVICE
 curve25519_mul_noinline(bignum25519 out, const bignum25519 in2, const bignum25519 in) {
 	curve25519_mul(out, in2, in);
 }
 
 /* out = in^(2 * count) */
-DONNA_NOINLINE static void
+DONNA_NOINLINE static void EDHOSTDEVICE
 curve25519_square_times(bignum25519 out, const bignum25519 in, uint64_t count) {
 #if !defined(HAVE_NATIVE_UINT128)
 	uint128_t mul;
@@ -233,7 +233,7 @@ curve25519_square_times(bignum25519 out, const bignum25519 in, uint64_t count) {
 	out[4] = r4;
 }
 
-DONNA_INLINE static void
+DONNA_INLINE static void EDHOSTDEVICE
 curve25519_square(bignum25519 out, const bignum25519 in) {
 #if !defined(HAVE_NATIVE_UINT128)
 	uint128_t mul;
@@ -284,7 +284,7 @@ curve25519_square(bignum25519 out, const bignum25519 in) {
 }
 
 /* Take a little-endian, 32-byte number and expand it into polynomial form */
-DONNA_INLINE static void
+DONNA_INLINE static void EDHOSTDEVICE
 curve25519_expand(bignum25519 out, const unsigned char *in) {
 	static const union { uint8_t b[2]; uint16_t s; } endian_check = {{1,0}};
 	uint64_t x0,x1,x2,x3;
@@ -321,7 +321,7 @@ curve25519_expand(bignum25519 out, const unsigned char *in) {
 /* Take a fully reduced polynomial form number and contract it into a
  * little-endian, 32-byte array
  */
-DONNA_INLINE static void
+DONNA_INLINE static void EDHOSTDEVICE
 curve25519_contract(unsigned char *out, const bignum25519 input) {
 	uint64_t t[5];
 	uint64_t f, i;
@@ -375,7 +375,7 @@ curve25519_contract(unsigned char *out, const bignum25519 input) {
 #if !defined(ED25519_GCC_64BIT_CHOOSE)
 
 /* out = (flag) ? in : out */
-DONNA_INLINE static void
+DONNA_INLINE static void EDHOSTDEVICE
 curve25519_move_conditional_bytes(uint8_t out[96], const uint8_t in[96], uint64_t flag) {
 	const uint64_t nb = flag - 1, b = ~nb;
 	const uint64_t *inq = (const uint64_t *)in;
@@ -395,7 +395,7 @@ curve25519_move_conditional_bytes(uint8_t out[96], const uint8_t in[96], uint64_
 }
 
 /* if (iswap) swap(a, b) */
-DONNA_INLINE static void
+DONNA_INLINE static void EDHOSTDEVICE
 curve25519_swap_conditional(bignum25519 a, bignum25519 b, uint64_t iswap) {
 	const uint64_t swap = (uint64_t)(-(int64_t)iswap);
 	uint64_t x0,x1,x2,x3,x4;

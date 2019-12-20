@@ -63,7 +63,7 @@ typedef unsigned char hash_512bits[64];
 /*
 	Timing safe memory compare
 */
-static int
+static int EDHOSTDEVICE
 ed25519_verify(const unsigned char *x, const unsigned char *y, size_t len) {
 	size_t differentbits = 0;
 	while (len--)
