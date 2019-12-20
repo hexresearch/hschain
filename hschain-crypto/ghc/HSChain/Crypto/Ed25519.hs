@@ -15,10 +15,12 @@ module HSChain.Crypto.Ed25519 (
 import Control.Monad.IO.Class
 import Control.DeepSeq       (NFData(..))
 import Crypto.Error          (CryptoFailable(..), throwCryptoError)
-import Data.ByteArray        (convert)
+import Data.ByteArray        (convert, ByteArrayAccess(..))
+import Data.ByteString.Internal (memcmp)
 import Data.Data             (Data)
 import Data.Ord              (comparing)
 import System.Entropy        (getEntropy)
+import System.IO.Unsafe      (unsafePerformIO)
 
 import qualified Crypto.PubKey.Ed25519    as Ed
 
@@ -71,7 +73,14 @@ deriving instance Eq (PublicKey Ed25519)
 instance Ord (PrivKey Ed25519) where
   compare = comparing encodeToBS
 instance Ord (PublicKey Ed25519) where
-  compare = comparing encodeToBS
+  compare pk@(PublicKey k1) (PublicKey k2) =
+    unsafePerformIO $
+      withByteArray k1 $ \pk1 ->
+        withByteArray k2 $ \pk2 -> do
+          r <- memcmp pk1 pk2 (publicKeySize pk)
+          return $ if r < 0 then LT -- NB: according to `man memcmp`, it returns negative, zero or positive (not necessary -1, 0, 1)
+                   else if r > 0 then GT
+                   else EQ
 
 deriving instance NFData (PrivKey   Ed25519)
 deriving instance NFData (PublicKey Ed25519)
