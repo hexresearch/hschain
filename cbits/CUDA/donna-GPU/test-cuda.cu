@@ -120,7 +120,7 @@ typedef enum batch_test_t {
 } batch_test;
 
 void EDKERNEL
-ed25519_sign_open_kernel(test_data_t* data, int* msg_size, unsigned char* result, int N) {
+ed25519_sign_open_kernel(test_data* data, int* msg_size, unsigned char* result, int N) {
 	int i = threadIdx.x + blockIdx.x * blockDim.x;
 	if (i>= N) {
 		return ;
@@ -134,8 +134,9 @@ test_main_CUDA(void) {
 	ed25519_public_key pk;
 	ed25519_signature sig;
 	unsigned char forge[1024] = {'x'};
-	unsigned char results[1024];
-	int lengths[1024];
+	unsigned char results[1024], *gpu_results;
+	int* lengths;
+	test_data* gpu_test_data;
 	curved25519_key csk[2] = {{255}};
 	uint64_t ticks, pkticks = maxticks, signticks = maxticks, openticks = maxticks, curvedticks = maxticks;
 
@@ -147,11 +148,15 @@ test_main_CUDA(void) {
 	printf("%.0f ticks to verify 1024 signatures on CPU\n", (double)ticks);
         int block_size = 256;
         int num_blocks = (1024 + block_size - 1) / block_size;
+	cudaMallocManaged(&lengths, sizeof(*lengths) * 1024);
 	for (i = 0; i < 1024; i++) {
 		lengths[i] = i;
 	}
+	cudaMallocManaged(&gpu_test_data, sizeof(dataset));
+	cudaMallocManaged(&gpu_results, sizeof(*gpu_results) * 1024);
 	ticks = get_ticks();
-        ed25519_sign_open_kernel<<<num_blocks,block_size>>>(dataset, lengths, results, 1024);
+	memcpy(gpu_test_data, dataset, sizeof(dataset));
+        ed25519_sign_open_kernel<<<num_blocks,block_size>>>(gpu_test_data, lengths, gpu_results, 1024);
 	ticks = get_ticks() - ticks;
 	printf("%.0f ticks to verify 1024 signatures on GPU\n", (double)ticks);
 
