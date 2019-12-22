@@ -159,6 +159,11 @@ test_main_CUDA(void) {
         ed25519_sign_open_kernel<<<num_blocks,block_size>>>(gpu_test_data, lengths, gpu_results, 1024);
 	ticks = get_ticks() - ticks;
 	printf("%.0f ticks to verify 1024 signatures on GPU\n", (double)ticks);
+	for (i = 0;i < 1024;i ++) {
+		if (gpu_results[i] != results[i]) {
+			printf("difference %d/%d at %d\n", gpu_results[i], results[i], i);
+		}
+	}
 
 }
 
