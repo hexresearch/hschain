@@ -103,18 +103,26 @@ ED25519_FN(ed25519_sign_open) (const unsigned char *m, size_t mlen, const ed2551
 
 	/* hram = H(R,A,m) */
 	ed25519_hram(hash, RS, pk, m, mlen);
+
+	EDSYNCHRONIZE;
+
 //printf("@ %s:%d\n", __FILE__, __LINE__);
 	expand256_modm(hram, hash, 64);
+
+	EDSYNCHRONIZE;
 //printf("@ %s:%d\n", __FILE__, __LINE__);
 
 	/* S */
 	expand256_modm(S, RS + 32, 32);
+	EDSYNCHRONIZE;
 //printf("@ %s:%d\n", __FILE__, __LINE__);
 
 	/* SB - H(R,A,m)A */
 	ge25519_double_scalarmult_vartime(&R, &A, hram, S);
+	EDSYNCHRONIZE;
 //printf("@ %s:%d\n", __FILE__, __LINE__);
 	ge25519_pack(checkR, &R);
+	EDSYNCHRONIZE;
 //printf("@ %s:%d\n", __FILE__, __LINE__);
 
 	/* check that R = SB - H(R,A,m)A */
