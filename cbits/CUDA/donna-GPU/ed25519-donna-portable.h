@@ -137,7 +137,7 @@ static inline uint32_t U8TO32_LE(const unsigned char *p) {
 	 ((uint32_t)(p[3]) << 24));
 }
 #else
-static inline uint64_t U8TO64_LE(const unsigned char *p) {
+static EDHOSTDEVICE inline uint64_t U8TO64_LE(const unsigned char *p) {
 	return
 	(((uint64_t)(p[0])      ) |
 	 ((uint64_t)(p[1]) <<  8) |
@@ -149,7 +149,7 @@ static inline uint64_t U8TO64_LE(const unsigned char *p) {
 	 ((uint64_t)(p[7]) << 56));
 }
 
-static inline void U64TO8_LE(unsigned char *p, const uint64_t v) {
+static EDHOSTDEVICE inline void U64TO8_LE(unsigned char *p, const uint64_t v) {
 	p[0] = (unsigned char)(v      );
 	p[1] = (unsigned char)(v >>  8);
 	p[2] = (unsigned char)(v >> 16);

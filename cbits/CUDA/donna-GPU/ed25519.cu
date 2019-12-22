@@ -96,23 +96,31 @@ ED25519_FN(ed25519_sign_open) (const unsigned char *m, size_t mlen, const ed2551
 	hash_512bits hash;
 	bignum256modm hram, S;
 	unsigned char checkR[32];
+	int r;
 
 	if ((RS[63] & 224) || !ge25519_unpack_negative_vartime(&A, pk))
 		return -1;
 
 	/* hram = H(R,A,m) */
 	ed25519_hram(hash, RS, pk, m, mlen);
+//printf("@ %s:%d\n", __FILE__, __LINE__);
 	expand256_modm(hram, hash, 64);
+//printf("@ %s:%d\n", __FILE__, __LINE__);
 
 	/* S */
 	expand256_modm(S, RS + 32, 32);
+//printf("@ %s:%d\n", __FILE__, __LINE__);
 
 	/* SB - H(R,A,m)A */
 	ge25519_double_scalarmult_vartime(&R, &A, hram, S);
+//printf("@ %s:%d\n", __FILE__, __LINE__);
 	ge25519_pack(checkR, &R);
+//printf("@ %s:%d\n", __FILE__, __LINE__);
 
 	/* check that R = SB - H(R,A,m)A */
-	return ed25519_verify(RS, checkR, 32) ? 0 : -1;
+	r = ed25519_verify(RS, checkR, 32) ? 0 : -1;
+//printf("@ %s:%d, r %d\n", __FILE__, __LINE__, r);
+	return r;
 }
 
 #include "ed25519-donna-batchverify.h"

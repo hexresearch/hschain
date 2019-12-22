@@ -122,10 +122,17 @@ typedef enum batch_test_t {
 void EDKERNEL
 ed25519_sign_open_kernel(test_data* data, int* msg_size, unsigned char* result, int N) {
 	int i = threadIdx.x + blockIdx.x * blockDim.x;
+	int r;
 	if (i>= N) {
 		return ;
 	}
-	result[i] = ed25519_sign_open((unsigned char*)data[i].m, msg_size[i], data[i].pk, data[i].sig);
+	printf("threadIdx.x %d threadIdx.y %d threadIdx.z %d\n",threadIdx.x, threadIdx.y, threadIdx.z);
+	printf("blockIdx.x %d blockIdx.y %d blockIdx.z %d\n",blockIdx.x, blockIdx.y, blockIdx.z);
+	printf("blockDim.x %d blockDim.y %d blockDim.z %d\n",blockDim.x, blockDim.y, blockDim.z);
+	//printf("GPU at %d\n", i);
+	r = ed25519_sign_open((unsigned char*)data[i].m, msg_size[i], data[i].pk, data[i].sig);
+	printf("GPU result at %d is %d\n", i, r);
+	//result[i] = r;
 }
 
 static void
@@ -148,20 +155,23 @@ test_main_CUDA(void) {
 	printf("%.0f ticks to verify 1024 signatures on CPU\n", (double)ticks);
         int block_size = 256;
         int num_blocks = (1024 + block_size - 1) / block_size;
-	cudaMallocManaged(&lengths, sizeof(*lengths) * 1024);
+	CUCHK(cudaMallocManaged(&lengths, sizeof(*lengths) * 1024));
 	for (i = 0; i < 1024; i++) {
 		lengths[i] = i;
 	}
-	cudaMallocManaged(&gpu_test_data, sizeof(dataset));
-	cudaMallocManaged(&gpu_results, sizeof(*gpu_results) * 1024);
+	CUCHK(cudaMallocManaged(&gpu_test_data, sizeof(dataset)));
+	CUCHK(cudaMallocManaged(&gpu_results, sizeof(*gpu_results) * 1024));
+	memset(gpu_results, 111, sizeof(*gpu_results) * 1024);
 	ticks = get_ticks();
 	memcpy(gpu_test_data, dataset, sizeof(dataset));
         ed25519_sign_open_kernel<<<num_blocks,block_size>>>(gpu_test_data, lengths, gpu_results, 1024);
+	CUCHK(cudaDeviceSynchronize());
 	ticks = get_ticks() - ticks;
 	printf("%.0f ticks to verify 1024 signatures on GPU\n", (double)ticks);
 	for (i = 0;i < 1024;i ++) {
 		if (gpu_results[i] != results[i]) {
 			printf("difference %d/%d at %d\n", gpu_results[i], results[i], i);
+			break;
 		}
 	}
 
