@@ -58,8 +58,16 @@ test_data dataset[] = {
 #include "regression.h"
 };
 
-int interesting_dataset_msglen[1024];
-test_data interesting_dataset[1024];
+/* test data with much shorter messages */
+#define MAX_MESSAGE_LEN (160)
+typedef struct short_test_data_t {
+	unsigned char sk[32], pk[32], sig[64];
+	char m[MAX_MESSAGE_LEN];
+} short_test_data;
+
+#define MESSAGES_UNDER_TEST (16384)
+int interesting_dataset_msglen[MESSAGES_UNDER_TEST];
+short_test_data interesting_dataset[MESSAGES_UNDER_TEST];
 
 /* result of the curve25519 scalarmult ((|255| * basepoint) * basepoint)... 1024 times */
 const curved25519_key curved25519_expected = {
@@ -123,12 +131,20 @@ typedef enum batch_test_t {
 } batch_test;
 
 void EDKERNEL
-ed25519_sign_open_kernel(test_data* data, int* msg_size, unsigned char* result, int N) {
+ed25519_sign_open_kernel(short_test_data* data, int* msg_size, unsigned char* result, int N) {
 	int i = threadIdx.x + blockIdx.x * blockDim.x;
 	int r;
 	if (i>= N) {
 		return ;
 	}
+#if 0
+	if (i < 2) {
+# define PP(bb) printf("%d: " #bb " xyz: %d %d %d\n", i, bb.x, bb.y, bb.z)
+		PP(threadIdx);
+		PP(blockIdx);
+		PP(blockDim);
+	}
+#endif
 	//printf("GPU at %d\n", i);
 	r = ed25519_sign_open((unsigned char*)data[i].m, msg_size[i], data[i].pk, data[i].sig);
 	//printf("GPU result at %d is %d\n", i, r);
@@ -137,51 +153,56 @@ ed25519_sign_open_kernel(test_data* data, int* msg_size, unsigned char* result, 
 
 static void
 test_main_CUDA(void) {
-	int i,j, res;
+	int i, j, N = 50, res;
 	ed25519_public_key pk;
 	ed25519_signature sig;
 	unsigned char forge[1024] = {'x'};
-	unsigned char results[1024], *gpu_results;
+	unsigned char results[MESSAGES_UNDER_TEST], *gpu_results;
 	int* lengths;
-	test_data* gpu_test_data;
+	short_test_data* gpu_test_data;
 	curved25519_key csk[2] = {{255}};
 	uint64_t ticks, pkticks = maxticks, signticks = maxticks, openticks = maxticks, curvedticks = maxticks;
 
-	for (i=0, j = 64;i<1024; i++) {
+	for (i=0, j = 64;i<MESSAGES_UNDER_TEST; i++) {
 		memcpy(&interesting_dataset[i], &dataset[j], sizeof(interesting_dataset[i]));
 		interesting_dataset_msglen[i] = j;
 		j ++;
-		if (j > 160) {
+		if (j > MAX_MESSAGE_LEN) {
 			j = 64;
 		}
 	}
 	ticks = get_ticks();
-	for (i = 0; i < 1024; i++) {
-		results[i] = ed25519_sign_open((unsigned char *)interesting_dataset[i].m, interesting_dataset_msglen[i], interesting_dataset[i].pk, interesting_dataset[i].sig);
-	}
-	ticks = get_ticks() - ticks;
-	printf("%.0f ticks to verify 1024 signatures on CPU, data set size %zu\n", (double)ticks, sizeof(dataset));
-
-	int block_size = 64;
-        int num_blocks = (1024 + block_size - 1) / block_size;
-	CUCHK(cudaMallocManaged(&lengths, sizeof(*lengths) * 1024));
-	memcpy(lengths, interesting_dataset_msglen, sizeof(*lengths) * 1024);
-
-	CUCHK(cudaMallocManaged(&gpu_test_data, sizeof(dataset)));
-	CUCHK(cudaMallocManaged(&gpu_results, sizeof(*gpu_results) * 1024));
-	memset(gpu_results, 111, sizeof(*gpu_results) * 1024);
-	ticks = get_ticks();
-	memcpy(gpu_test_data, interesting_dataset, sizeof(interesting_dataset));
-        ed25519_sign_open_kernel<<<num_blocks,block_size>>>(gpu_test_data, lengths, gpu_results, 1024);
-	CUCHK(cudaDeviceSynchronize());
-	ticks = get_ticks() - ticks;
-	printf("%.0f ticks to verify 1024 signatures on GPU\n", (double)ticks);
-	for (i = 0;i < 1024;i ++) {
-		if (gpu_results[i] != results[i]) {
-			printf("difference %d/%d at %d\n", gpu_results[i], results[i], i);
-			break;
+	for (j=0;j<N;j++) {
+		for (i = 0; i < MESSAGES_UNDER_TEST; i++) {
+			results[i] = ed25519_sign_open((unsigned char *)interesting_dataset[i].m, interesting_dataset_msglen[i], interesting_dataset[i].pk, interesting_dataset[i].sig);
 		}
 	}
+	ticks = get_ticks() - ticks;
+	printf("%.0f ticks to verify %d * %d signatures on CPU, data set size %zu, one message time %.0f\n", (double)ticks, MESSAGES_UNDER_TEST, N, sizeof(interesting_dataset), ((double)ticks)/(N * MESSAGES_UNDER_TEST));
+
+	int block_size = 256;
+        int num_blocks = (MESSAGES_UNDER_TEST + (block_size) - 1) / (block_size);
+	CUCHK(cudaMallocManaged(&lengths, sizeof(*lengths) * MESSAGES_UNDER_TEST));
+	memcpy(lengths, interesting_dataset_msglen, sizeof(*lengths) * MESSAGES_UNDER_TEST);
+
+	CUCHK(cudaMallocManaged(&gpu_test_data, sizeof(interesting_dataset)));
+	CUCHK(cudaMallocManaged(&gpu_results, sizeof(*gpu_results) * MESSAGES_UNDER_TEST));
+	memset(gpu_results, 111, sizeof(*gpu_results) * MESSAGES_UNDER_TEST);
+	ticks = get_ticks();
+	for (j=0;j<N;j++) {
+		CUCHK(cudaMemcpy(gpu_test_data, interesting_dataset, sizeof(interesting_dataset), cudaMemcpyHostToDevice));
+	        ed25519_sign_open_kernel<<<num_blocks,block_size>>>(gpu_test_data, lengths, gpu_results, MESSAGES_UNDER_TEST);
+		CUCHK(cudaPeekAtLastError());
+		CUCHK(cudaDeviceSynchronize());
+		for (i = 0;i < MESSAGES_UNDER_TEST;i ++) {
+			if (gpu_results[i] != results[i]) {
+				printf("difference %d/%d at %d\n", gpu_results[i], results[i], i);
+				break;
+			}
+		}
+	}
+	ticks = get_ticks() - ticks;
+	printf("%.0f ticks to verify %d * %d signatures on GPU, %.0f ticks per message\n", (double)ticks, MESSAGES_UNDER_TEST, N, ((double)ticks)/(MESSAGES_UNDER_TEST * N));
 
 }
 
