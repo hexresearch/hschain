@@ -77,7 +77,7 @@ data DioTag
 instance Dio DioTag where
   dioDict = DioDict
     { dioUserKeys       = V.fromList
-                        $ take 10
+                        $ take 5000
                         $ map (id &&& publicKey)
                         $ makePrivKeyStream 1337
     , dioInitialBalance = 1000000
