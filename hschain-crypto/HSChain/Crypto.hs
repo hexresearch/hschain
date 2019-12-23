@@ -187,12 +187,14 @@ class ( ByteReprSized (Signature   alg)
 
 signHashed :: forall alg a. (Crypto alg, CryptoHashable a)
            => PrivKey alg -> a -> Signature alg
+{-# INLINABLE signHashed #-}
 signHashed pk a = signBlob pk bs
   where
     Hash bs = hash a :: Hash alg
 
 verifySignatureHashed :: forall alg a. (Crypto alg, CryptoHashable a)
            => PublicKey alg -> a -> Signature alg -> Bool
+{-# INLINABLE verifySignatureHashed #-}
 verifySignatureHashed pk a = verifyBlobSignature pk bs
   where
     Hash bs = hash a :: Hash alg
