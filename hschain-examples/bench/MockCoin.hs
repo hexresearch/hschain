@@ -77,4 +77,5 @@ generateTxList :: Int -> IO [Tx]
 generateTxList n
   = replicateM n
   $ generateTransaction txGen
+  $ merkleValue
   $ blockchainState state
