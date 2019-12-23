@@ -41,7 +41,8 @@ import           Data.ByteString            (ByteString)
 import qualified Data.ByteString          as BS
 import qualified Data.ByteString.Char8    as BC8
 import qualified Data.ByteString.Lazy     as BL
-import qualified Data.ByteString.Builder  as Bld
+import qualified Data.ByteString.Builder       as Bld
+import qualified Data.ByteString.Builder.Extra as Bld
 import qualified Data.Map.Strict          as Map
 import qualified Data.Set                 as Set
 import qualified Data.List.NonEmpty       as NE
@@ -135,7 +136,10 @@ class CryptoTypeHashable a where
 
 -- | Compute hash of value using 'CryptoHashable'
 hash :: (CryptoHash alg, CryptoHashable a) => a -> Hash alg
-hash = hashLazyBlob . Bld.toLazyByteString . hashStep
+{-# INLINABLE hash #-}
+hash = hashLazyBlob
+     . Bld.toLazyByteStringWith (Bld.untrimmedStrategy 4096 4096) mempty
+     . hashStep
 
 -- | Size of hash in bytes
 hashSize :: forall alg proxy i. (CryptoHash alg, Num i) => proxy alg -> i
