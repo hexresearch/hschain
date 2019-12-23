@@ -106,10 +106,10 @@ instance (CryptoHash alg, IsMerkle f) => CryptoHashable (MerkleNode f alg a) whe
 ----------------------------------------------------------------
 
 
-data IdNode  alg a = IdNode  !(Hashed alg a) !a
+data IdNode  alg a = IdNode  (Hashed alg a) !a
   deriving stock (Show,Eq,Ord,Generic)
 
-data OptNode alg a = OptNode !(Hashed alg a) !(Maybe a)
+data OptNode alg a = OptNode (Hashed alg a) !(Maybe a)
   deriving stock (Show,Eq,Ord,Generic)
 
 
