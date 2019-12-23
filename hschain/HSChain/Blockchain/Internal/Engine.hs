@@ -181,10 +181,10 @@ decideNewBlock config appValidatorKey
         >-> msgHandlerLoop hParam appLogic appStore appCh tm0
         >-> sink
   -- Update metrics
-  do let nTx = maybe 0 (length . commitPrecommits . merkleValue) (blockPrevCommit bchValue)
-         h   = blockHeight bchValue
-     logger InfoS "Actual commit" $ LogBlockInfo h (merkleValue $ blockData bchValue) nTx
-     usingCounter prometheusNTx nTx
+  do let nSign = maybe 0 (length . commitPrecommits . merkleValue) (blockPrevCommit bchValue)
+         h     = blockHeight bchValue
+     logger InfoS "Actual commit" $ LogBlockInfo h (merkleValue $ blockData bchValue) nSign
+     usingCounter prometheusNTx $ blockNTx $ merkleValue $ blockData bchValue
   -- We have decided which block we want to commit so let commit it
   do let h = blockHeight bchValue
      mustQueryRW $ do
