@@ -3,10 +3,13 @@
 -- |
 module Dioxane (benchmarks) where
 
+import Control.Arrow ((&&&))
 import Criterion.Main
+import qualified Data.Vector as V
 
 import HSChain.Crypto
 import HSChain.Mock.Dioxane
+import HSChain.Mock.KeyList
 import HSChain.Types
 import HSChain.Types.Merkle.Types
 
@@ -20,18 +23,39 @@ benchmarks
                        block    = Block
                          { blockHeight        = Height 1
                          , blockPrevBlockID   = Nothing
-                         , blockValidators    = hashed $ validatorSet genesis
-                         , blockNewValidators = hashed $ validatorSet genesis
+                         , blockValidators    = merkleHashed $ validatorSet genesis
+                         , blockNewValidators = merkleHashed $ validatorSet genesis
                          , blockPrevCommit    = Nothing
                          , blockEvidence      = merkled []
                          , blockData          = merkled $ bchValue dat
-                         , blockStateHash     = merkled $ blockchainState genesis
+                         , blockStateHash     = merkleHashed $ blockchainState genesis
                          }
                     in block <$ genesis
                    )
   ]
 
-type Tag = DioTag 10000 4
+----------------------------------------------------------------
+--
+----------------------------------------------------------------
+
+data Tag
+
+instance Dio Tag where
+  dioDict = DioDict
+    { dioUserKeys       = V.fromList
+                        $ take 10000
+                        $ map (id &&& publicKey)
+                        $ makePrivKeyStream 1337
+    , dioInitialBalance = 1000000
+    , dioValidators     = 4
+    }
+
+----------------------------------------------------------------
+-- Constants
+----------------------------------------------------------------
+
+genesis :: Genesis (BData Tag)
+genesis = dioGenesis
 
 newBlock :: NewBlock (BData Tag)
 newBlock = NewBlock
@@ -40,11 +64,8 @@ newBlock = NewBlock
   , newBlockCommit   = Nothing
   , newBlockEvidence = []
   , newBlockState    = blockchainState genesis
-  , newBlockValSet   = validatorSet    genesis
+  , newBlockValSet   = merkleValue $ validatorSet genesis
   }
-
-genesis :: Genesis (BData Tag)
-genesis = dioGenesis
 
 dioGenerate :: NewBlock (BData Tag) -> Maybe (ProposedBlock (BData Tag))
 dioGenerate nb = generateBlock bchLogic nb []
