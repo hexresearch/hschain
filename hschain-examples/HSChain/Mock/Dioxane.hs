@@ -159,13 +159,16 @@ dioLogic = BChLogic
   { processTx     = const empty
   --
   , processBlock  = \BChEval{..} -> do
-      st <- foldM (flip process) (merkleValue blockchainState)
-          $ blockTransactions $ merkleValue $ blockData bchValue
-      guard $ and
-            $ parMap rseq
-              (\(Tx sig tx) -> verifySignatureHashed (txFrom tx) tx sig)
-              (blockTransactions $ merkleValue $ blockData bchValue)
-
+      let sigCheck = guard
+                   $ and
+                   $ parMap rseq
+                     (\(Tx sig tx) -> verifySignatureHashed (txFrom tx) tx sig)
+                     (blockTransactions $ merkleValue $ blockData bchValue)
+      let update   = foldM (flip process) (merkleValue blockchainState)
+                   $ blockTransactions $ merkleValue $ blockData bchValue
+      st <- uncurry (>>)
+          $ withStrategy (evalTuple2 rpar rpar)
+          $ (sigCheck, update)
       return BChEval { bchValue        = ()
                      , blockchainState = merkled st
                      , ..
