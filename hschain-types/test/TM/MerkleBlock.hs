@@ -32,7 +32,7 @@ prop_MerkleBlockTree leaves
 -- Computation with different wrappers give same result
 prop_computeMerkleOpt :: [Integer] -> Bool
 prop_computeMerkleOpt leaves
-  = merkleHash t1 == merkleHash t2
+  = merkleBlockTreeHash t1 == merkleBlockTreeHash t2
   where
     t1 = createMerkleTree leaves :: MerkleBlockTree IdNode  SHA512 Integer
     t2 = createMerkleTree leaves :: MerkleBlockTree OptNode SHA512 Integer
@@ -40,9 +40,9 @@ prop_computeMerkleOpt leaves
 -- Computation with different wrappers give same result
 prop_computeMerkleHashed :: [Integer] -> Bool
 prop_computeMerkleHashed leaves
-  = merkleHash t1 == merkleHash t2
+  = merkleBlockTreeHash t1 == merkleBlockTreeHash t2
   where
-    t1 = createMerkleTree leaves :: MerkleBlockTree IdNode  SHA512 Integer
+    t1 = createMerkleTree leaves :: MerkleBlockTree IdNode SHA512 Integer
     t2 = createMerkleTree leaves :: MerkleBlockTree Hashed SHA512 Integer
 
   
@@ -50,7 +50,7 @@ prop_computeMerkleHashed leaves
 prop_MerkleProofCorrect :: [Integer] -> Property
 prop_MerkleProofCorrect leaves
   = property
-  $ and [ maybe False (checkMerkleProof (merkleHash tree)) p
+  $ and [ maybe False (checkMerkleProof (merkleBlockTreeHash tree)) p
         | p <- proofs
         ]
   where
