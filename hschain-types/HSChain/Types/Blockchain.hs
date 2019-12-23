@@ -261,6 +261,9 @@ class ( Serialise a
   proposerSelection :: ProposerSelection a
   -- | Return list of transaction in block
   blockTransactions :: a -> [TX a]
+  -- | Number of transactions in block
+  blockNTx          :: a -> Int
+  blockNTx = length . blockTransactions
   -- | Collect information about block data for logging
   logBlockData      :: a -> JSON.Object
 
