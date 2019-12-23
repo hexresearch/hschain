@@ -74,7 +74,7 @@ createMonitoring prefix = do
     "Number of rounds to commit block"
   prometheusNTx         <- makeCounter
     "blockchain_n_tx"
-    "Number of commited transactions sing app start"
+    "Number of committed transactions since app start"
   prometheusNumPeers    <- makeGauge fromIntegral
     "peers_total"
     "Number of current connected peers"
