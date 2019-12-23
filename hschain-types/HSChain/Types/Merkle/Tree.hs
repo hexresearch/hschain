@@ -10,6 +10,7 @@
 module HSChain.Types.Merkle.Tree
   ( -- * Tree data types
     MerkleBlockTree(..)
+  , merkleBlockTreeHash
     -- * Building tree
   , createMerkleTree
     -- * Check tree
@@ -42,6 +43,9 @@ newtype MerkleBlockTree f alg a = MerkleBlockTree
   { merkleBlockTree :: MerkleNode f alg (Maybe (Node f alg a))
   }
   deriving (Show, Foldable, Generic)
+
+merkleBlockTreeHash :: (MerkleHash f) => MerkleBlockTree f alg a -> Hash alg
+merkleBlockTreeHash = merkleHash . merkleBlockTree
 
 -- | Single node of tree
 data Node f alg a
