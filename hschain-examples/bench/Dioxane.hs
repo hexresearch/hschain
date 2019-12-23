@@ -3,9 +3,11 @@
 -- |
 module Dioxane (benchmarks) where
 
+import Codec.Serialise
 import Control.Arrow ((&&&))
 import Criterion.Main
-import qualified Data.Vector as V
+import qualified Data.ByteString.Lazy as BL
+import qualified Data.Vector          as V
 
 import HSChain.Crypto
 import HSChain.Mock.Dioxane
@@ -17,21 +19,10 @@ import HSChain.Types.Merkle.Types
 benchmarks :: Benchmark
 benchmarks
   = bgroup "Dioxane"
-  [ bench "generate" $ nf dioGenerate newBlock
-  , bench "process"
-  $ nf dioProcess (let Just dat = dioGenerate newBlock
-                       block    = Block
-                         { blockHeight        = Height 1
-                         , blockPrevBlockID   = Nothing
-                         , blockValidators    = merkleHashed $ validatorSet genesis
-                         , blockNewValidators = merkleHashed $ validatorSet genesis
-                         , blockPrevCommit    = Nothing
-                         , blockEvidence      = merkled []
-                         , blockData          = merkled $ bchValue dat
-                         , blockStateHash     = merkleHashed $ blockchainState genesis
-                         }
-                    in block <$ genesis
-                   )
+  [ bench "generate"    $ nf dioGenerate newBlock
+  , bench "process"     $ nf dioProcess (block1 <$ genesis)
+  , bench "serialize"   $ nf serialise block1
+  , bench "deserialize" $ nf (deserialise :: BL.ByteString -> Block (BData Tag)) (serialise block1)
   ]
 
 ----------------------------------------------------------------
@@ -66,6 +57,19 @@ newBlock = NewBlock
   , newBlockState    = blockchainState genesis
   , newBlockValSet   = merkleValue $ validatorSet genesis
   }
+
+block1 :: Block (BData Tag)
+block1 = Block
+  { blockHeight        = Height 1
+  , blockPrevBlockID   = Nothing
+  , blockValidators    = merkleHashed $ validatorSet genesis
+  , blockNewValidators = merkleHashed $ validatorSet genesis
+  , blockPrevCommit    = Nothing
+  , blockEvidence      = merkled []
+  , blockData          = merkled $ bchValue dat
+  , blockStateHash     = merkleHashed $ blockchainState genesis
+  }
+  where Just dat = dioGenerate newBlock
 
 dioGenerate :: NewBlock (BData Tag) -> Maybe (ProposedBlock (BData Tag))
 dioGenerate nb = generateBlock bchLogic nb []
