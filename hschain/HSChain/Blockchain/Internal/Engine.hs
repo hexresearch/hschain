@@ -502,8 +502,7 @@ makeHeightParameters appValidatorKey BChLogic{..} AppStore{..} AppCallbacks{appC
           Just b  -> do
             st  <- throwNothingM BlockchainStateUnavalable
                  $ bchStoreRetrieve appBchState bchH
-            res <- throwLeftM
-                 $ runExceptT
+            res <- throwLeft <=< runExceptT
                  $ withExceptT InvalidBlockInWAL
                  $ processBlock BChEval { bchValue        = b
                                         , validatorSet    = merkled valSet
