@@ -534,7 +534,7 @@ startConsensus
 startConsensus k = do
   chans <- newAppChans cfg
   ch    <- atomicallyIO $ dupTChan $ appChanTx chans
-  store <- newSTMBchStorage mempty
+  store <- newSTMBchStorage $ merkled mempty
   return ( ( ch
            , appChanRx chans
            )

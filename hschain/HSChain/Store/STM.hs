@@ -182,10 +182,10 @@ newMempool validation = do
 
 -- | Create new storage for blockchain 
 newSTMBchStorage
-  :: (MonadIO m, CryptoHash (Alg a), CryptoHashable (BlockchainState a))
-  => BlockchainState a -> m (BChStore m a)
+  :: (MonadIO m)
+  => MerkleNode IdNode (Alg a) (BlockchainState a) -> m (BChStore m a)
 newSTMBchStorage st0 = do
-  varSt <- liftIO $ newTVarIO (Nothing, merkled st0)
+  varSt <- liftIO $ newTVarIO (Nothing, st0)
   return BChStore
     { bchCurrentState = liftIO (readTVarIO varSt)
     --
