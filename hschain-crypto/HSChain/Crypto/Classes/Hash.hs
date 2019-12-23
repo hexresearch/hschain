@@ -512,8 +512,8 @@ genericHashStep
   => String           -- ^ Library name
   -> a
   -> Bld.Builder
-genericHashStep pkg a = ghashStepPkg pkg (from a)
-{-# INLINABLE genericHashStep #-}
+genericHashStep pkg = ghashStepPkg pkg . from
+{-# INLINE genericHashStep #-}
 
 -- | Generic implementation of 'CryptoHashable' which allows to
 --   override data type name as well
@@ -523,8 +523,8 @@ genericHashStepTy
   -> String           -- ^ Data type name
   -> a
   -> Bld.Builder
-genericHashStepTy pkg ty a = ghashStepPkgTy pkg ty (from a)
-{-# INLINABLE genericHashStepTy #-}
+genericHashStepTy pkg ty = ghashStepPkgTy pkg ty . from
+{-# INLINE genericHashStepTy #-}
 
 
 
