@@ -394,18 +394,22 @@ instance CryptoHashable BL.ByteString where
 instance CryptoHashable a => CryptoHashable [a] where
   hashStep xs = hashStep (TySequence $ fromIntegral $ length xs)
              <> foldMap hashStep xs
+  {-# INLINABLE hashStep #-}
 
 instance CryptoHashable a => CryptoHashable (NE.NonEmpty a) where
   hashStep xs = hashStep (TySequence $ fromIntegral $ length xs)
              <> foldMap hashStep xs
+  {-# INLINABLE hashStep #-}
 
 instance (CryptoHashable k, CryptoHashable v) => CryptoHashable (Map.Map k v) where
   hashStep xs = hashStep (TyMap $ fromIntegral $ length xs)
              <> foldMap hashStep (Map.toAscList xs)
+  {-# INLINABLE hashStep #-}
 
 instance (CryptoHashable a) => CryptoHashable (Set.Set a) where
   hashStep xs = hashStep (TySet $ fromIntegral $ length xs)
              <> foldMap hashStep (Set.toAscList xs)
+  {-# INLINABLE hashStep #-}
 
 instance (CryptoHashable a) => CryptoHashable (VecV.Vector a) where
   hashStep xs = hashStep (TySequence $ fromIntegral $ VecV.length xs)
@@ -428,6 +432,7 @@ instance CryptoHashable a => CryptoHashable (Maybe a) where
   hashStep Nothing  = hashStep TyNothing
   hashStep (Just a) = hashStep TyJust
                    <> hashStep a
+  {-# INLINABLE hashStep #-}
 
 instance (CryptoHashable a, CryptoHashable b) => CryptoHashable (Either a b) where
   hashStep m = hashStep (TyBase "Either")
@@ -435,6 +440,7 @@ instance (CryptoHashable a, CryptoHashable b) => CryptoHashable (Either a b) whe
                                  <> hashStep a
                          Right b -> hashStep (ConstructorIdx 1)
                                  <> hashStep b
+  {-# INLINABLE hashStep #-}
 
 instance CryptoHashable () where
   hashStep () = hashStep $ TyTuple 0
@@ -443,19 +449,23 @@ instance (CryptoHashable a, CryptoHashable b) => CryptoHashable (a, b) where
   hashStep (a,b) = hashStep (TyTuple 2)
                 <> hashStep a
                 <> hashStep b
+  {-# INLINABLE hashStep #-}
 
 instance (CryptoHashable a, CryptoHashable b, CryptoHashable c) => CryptoHashable (a, b, c) where
   hashStep (a,b,c) = hashStep (TyTuple 3)
                   <> hashStep a
                   <> hashStep b
                   <> hashStep c
+  {-# INLINABLE hashStep #-}
 
 instance CryptoHash alg => CryptoHashable (Hashed alg a) where
   hashStep (Hashed h) = hashStep h
+  {-# INLINABLE hashStep #-}
 
 instance CryptoHash alg => CryptoHashable (Hash alg) where
   hashStep (Hash bs) = hashStep (CryHash $ getCryptoName (hashAlgorithmName @alg))
                     <> hashStep bs
+  {-# INLINABLE hashStep #-}
 
 
 ----------------------------------------------------------------
@@ -499,6 +509,7 @@ genericHashStep
   -> a
   -> Bld.Builder
 genericHashStep pkg a = ghashStepPkg pkg (from a)
+{-# INLINABLE genericHashStep #-}
 
 -- | Generic implementation of 'CryptoHashable' which allows to
 --   override data type name as well
@@ -509,6 +520,7 @@ genericHashStepTy
   -> a
   -> Bld.Builder
 genericHashStepTy pkg ty a = ghashStepPkgTy pkg ty (from a)
+{-# INLINABLE genericHashStepTy #-}
 
 
 
