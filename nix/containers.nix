@@ -2,7 +2,7 @@
 , isProfile ? false
 , containerTag ? "latest"
 , prefixName ? ""
-, ghc        ? "ghc844"
+, ghc        ? "ghc865"
 , ...}:
 let
   release = import ./release.nix { inherit
