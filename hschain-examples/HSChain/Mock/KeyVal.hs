@@ -109,7 +109,7 @@ interpretSpec
   -> m (RunningNode m BData, [m ()])
 interpretSpec genesis p cb = do
   conn  <- askConnectionRO
-  store <- newSTMBchStorage mempty
+  store <- newSTMBchStorage $ merkled mempty
   --
   let astore = AppStore
         { appMempool  = nullMempool

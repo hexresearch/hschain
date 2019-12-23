@@ -231,7 +231,7 @@ interpretSpec
   -> m (RunningNode m (BData tag), [m ()])
 interpretSpec p idx cb = do
   conn    <- askConnectionRO
-  store   <- newSTMBchStorage $ merkleValue $ blockchainState genesis
+  store   <- newSTMBchStorage $ blockchainState genesis
   acts <- runNode (getT p :: Configuration Example) NodeDescription
     { nodeValidationKey = Just $ PrivValidator $ fst $ dioUserKeys dioD V.! idx
     , nodeGenesis       = genesis
