@@ -4,9 +4,11 @@ nodeSeeds:
   - "127.0.0.1:40003"
   - "127.0.0.1:40004"
 consensus:
-  timeoutNewHeight  : 25
-  timeoutProposal   : [330,100]
+  timeoutNewHeight  : 0
+  timeoutProposal   : [125,100]
   timeoutPrevote    : [500,300]
   timeoutPrecommit  : [500,300]
 #  timeoutEmptyBlock : !Int
 #  incomingQueueSize : !Natural
+network:
+  gossipDelayBlocks : 5
