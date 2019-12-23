@@ -10,12 +10,12 @@ module HSChain.P2P.PeerState.Handle.Utils where
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 
-import Control.Concurrent.STM   (atomically)
 import Control.Monad
 import Control.Monad.RWS.Strict
 import Lens.Micro.Mtl
 
 import HSChain.Blockchain.Internal.Types
+import HSChain.Control (atomicallyIO)
 import HSChain.Crypto
 import HSChain.Store
 import HSChain.Store.Internal.BlockDB
@@ -104,7 +104,7 @@ handlerGeneric
   where
     handlerAnnounceTimeout :: TimeoutHandler s a m
     handlerAnnounceTimeout = do
-      st <- view consensusSt >>= liftIO . atomically
+      st <- atomicallyIO =<< view consensusSt
       forM_ st $ \(h,TMState{smRound,smStep}) -> do
         push2Gossip $ GossipAnn $ AnnStep $ FullStep h smRound smStep
         case smStep of
