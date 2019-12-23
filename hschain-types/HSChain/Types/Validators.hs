@@ -47,7 +47,6 @@ import Data.Coerce
 import Data.IntSet  (IntSet)
 import Data.List    (sortOn)
 import Data.Map     (Map)
-import Data.Ord     (comparing)
 import GHC.Generics (Generic, Generic1)
 
 import qualified Codec.Serialise       as CBOR
