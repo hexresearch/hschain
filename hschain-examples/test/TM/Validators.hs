@@ -242,7 +242,7 @@ interpretSpec
   -> m (RunningNode m Tx, [m ()])
 interpretSpec genesis p cb = do
   conn  <- askConnectionRO
-  store <- newSTMBchStorage $ merkleValue $ blockchainState genesis
+  store <- newSTMBchStorage $ blockchainState genesis
   let astore = AppStore { appBchState = store
                         , appMempool  = nullMempool
                         }

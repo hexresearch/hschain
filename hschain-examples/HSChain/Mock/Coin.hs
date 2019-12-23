@@ -386,7 +386,7 @@ interpretSpec
   -> m (RunningNode m BData, [m ()])
 interpretSpec genesis p cb = do
   conn    <- askConnectionRO
-  store   <- newSTMBchStorage $ merkleValue $ blockchainState genesis
+  store   <- newSTMBchStorage $ blockchainState genesis
   mempool <- makeMempool store (ExceptT . return)
   acts <- runNode (getT p :: Configuration Example) NodeDescription
     { nodeValidationKey = p ^.. nspecPrivKey
