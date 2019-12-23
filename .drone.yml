@@ -141,6 +141,7 @@ volumes:
 trigger:
   branch:
   - master
+  - master
   cron:
     exclude:
     - nightly
