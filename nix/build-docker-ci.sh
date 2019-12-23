@@ -21,10 +21,10 @@ if [[ -n "${gittag// }" ]]; then
     gitTagArg="--arg gitTag \"\\\"$gittag\\\"\""
     echo "Publish with $gittag"
 else
-  if [[ "$gitbranch" == "master" && "$gitevent" != "pull_request" ]]; then
-  tag="latest"
+  if [[ "$gitevent" != "pull_request" ]]; then
+  tag="$gitbranch"
   publish="true"
-  echo "Publish with latest"
+  echo "Publish with $gitbranch"
   else
     tag="latest"
     echo "Not publish"
@@ -47,5 +47,5 @@ done
 
 if $publish; then
 docker login --password $DOCKER_PASSWORD --username $DOCKER_USERNAME registry.hxr.team
-docker push registry.hxr.team/hschain-node:$tag
+docker push registry.hxr.team/hschain:$tag
 fi

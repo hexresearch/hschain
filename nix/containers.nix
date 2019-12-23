@@ -11,20 +11,16 @@ let
   pkgs = release.pkgs;
   lib = pkgs.haskell.lib;
 
-  hschain-exe     = lib.overrideCabal
+  hschain-exe = lib.overrideCabal
     (lib.justStaticExecutables (lib.dontCheck pkgs.haskell.packages."${ghc}".hschain)) (oldDerivation: { });
 
   hschain-docker = pkgs.dockerTools.buildImage {
-    name = "${prefixName}hschain-node";
+    name = "${prefixName}hschain";
     fromImageName = "scratch";
     tag = containerTag;
     created = "now";
     contents = [hschain-exe];
-    config = {
-       Entrypoint = [
-         "hschain-coin-node"
-       ];
-    };
+    config = {};
   };
 in {
   inherit
