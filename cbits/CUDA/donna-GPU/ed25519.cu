@@ -90,6 +90,55 @@ ED25519_FN(ed25519_sign) (const unsigned char *m, size_t mlen, const ed25519_sec
 	contract256_modm(RS + 32, S);
 }
 
+void EDDEVICE
+ED25519_FN(ed25519_sign_open_unpack_A) (const ed25519_public_key pk, ge25519* A, const ed25519_signature RS, char* result) {
+	if ((RS[63] & 224) || !ge25519_unpack_negative_vartime(A, pk)) {
+		*result = -1;;
+	} else {
+		*result = 0;
+	}
+
+}
+void EDDEVICE
+ED25519_FN(ed25519_sign_open_hram) (char* result, const unsigned char* m, size_t mlen, const ed25519_public_key pk, const ed25519_signature RS, hash_512bits hash) {
+	if (*result) {
+		return ;
+	}
+        ed25519_hram(hash, RS, pk, m, mlen);
+}
+void EDDEVICE
+ED25519_FN(ed25519_sign_open_up_to_double_vartime) (char* result, hash_512bits hash, const ed25519_signature RS, ge25519* R, ge25519* A) {
+	bignum256modm hram, S;
+	if (*result) {
+		return ;
+	}
+	expand256_modm(hram, hash, 64);
+
+//printf("@ %s:%d\n", __FILE__, __LINE__);
+
+        /* S */
+        expand256_modm(S, RS + 32, 32);
+//printf("@ %s:%d\n", __FILE__, __LINE__);
+
+        /* SB - H(R,A,m)A */
+        ge25519_double_scalarmult_vartime(R, A, hram, S);
+
+}
+void EDDEVICE
+ED25519_FN(ed25519_sign_open_pack_verify) (char* result, const unsigned char* m, size_t mlen, const ed25519_public_key pk, const ed25519_signature RS, ge25519* R) {
+        unsigned char checkR[32];
+
+	if (*result) {
+		return;
+	}
+	ge25519_pack(checkR, R);
+//printf("@ %s:%d\n", __FILE__, __LINE__);
+
+        /* check that R = SB - H(R,A,m)A */
+        *result = ed25519_verify(RS, checkR, 32) ? 0 : -1;
+//printf("@ %s:%d, r %d\n", __FILE__, __LINE__, r);
+
+}
 int EDHOSTDEVICE
 ED25519_FN(ed25519_sign_open) (const unsigned char *m, size_t mlen, const ed25519_public_key pk, const ed25519_signature RS) {
 	ge25519 ALIGN(16) R, A;

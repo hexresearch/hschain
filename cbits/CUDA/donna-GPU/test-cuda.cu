@@ -190,7 +190,8 @@ test_main_CUDA(void) {
 	memset(gpu_results, 111, sizeof(*gpu_results) * MESSAGES_UNDER_TEST);
 	ticks = get_ticks();
 	for (j=0;j<N;j++) {
-		CUCHK(cudaMemcpy(gpu_test_data, interesting_dataset, sizeof(interesting_dataset), cudaMemcpyHostToDevice));
+		//CUCHK(cudaMemcpy(gpu_test_data, interesting_dataset, sizeof(interesting_dataset), cudaMemcpyHostToDevice));
+		memcpy(gpu_test_data, interesting_dataset, sizeof(interesting_dataset));
 	        ed25519_sign_open_kernel<<<num_blocks,block_size>>>(gpu_test_data, lengths, gpu_results, MESSAGES_UNDER_TEST);
 		CUCHK(cudaPeekAtLastError());
 		CUCHK(cudaDeviceSynchronize());
