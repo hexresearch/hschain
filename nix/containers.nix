@@ -16,7 +16,7 @@ let
 
   hschain-docker = pkgs.dockerTools.buildImage {
     name = "${prefixName}hschain";
-    fromImageName = "alpine";
+    fromImageName = "scratch";
     tag = containerTag;
     created = "now";
     contents = [hschain-exe];
