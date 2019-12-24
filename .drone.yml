@@ -142,7 +142,6 @@ trigger:
   branch:
   - master
   - 16ktps
-  - ci-dioxane
   cron:
     exclude:
     - nightly
