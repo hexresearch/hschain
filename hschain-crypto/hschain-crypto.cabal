@@ -16,7 +16,7 @@ Build-Type:     Simple
 
 flag libsodium
   Description: Use libsodium for cryptography
-  Default:     True
+  Default:     False
   Manual:      True
 
 flag android-impl
