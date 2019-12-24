@@ -59,10 +59,11 @@ test_data dataset[] = {
 };
 
 /* test data with much shorter messages */
-#define MAX_MESSAGE_LEN (160)
+#define MIN_MESSAGE_LEN (135)
+#define MAX_MESSAGE_LEN (144)
 typedef struct short_test_data_t {
 	unsigned char sk[32], pk[32], sig[64];
-	char m[MAX_MESSAGE_LEN];
+	char m[((MAX_MESSAGE_LEN + 16 - 1)/16) * 16];
 } short_test_data;
 
 #define MESSAGES_UNDER_TEST (16384)
@@ -163,12 +164,12 @@ test_main_CUDA(void) {
 	curved25519_key csk[2] = {{255}};
 	uint64_t ticks, pkticks = maxticks, signticks = maxticks, openticks = maxticks, curvedticks = maxticks;
 
-	for (i=0, j = 64;i<MESSAGES_UNDER_TEST; i++) {
+	for (i=0, j = MIN_MESSAGE_LEN;i<MESSAGES_UNDER_TEST; i++) {
 		memcpy(&interesting_dataset[i], &dataset[j], sizeof(interesting_dataset[i]));
 		interesting_dataset_msglen[i] = j;
 		j ++;
 		if (j > MAX_MESSAGE_LEN) {
-			j = 64;
+			j = MIN_MESSAGE_LEN;
 		}
 	}
 	ticks = get_ticks();
