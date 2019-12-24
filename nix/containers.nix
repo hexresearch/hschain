@@ -12,7 +12,7 @@ let
   lib = pkgs.haskell.lib;
 
   hschain-exe = lib.overrideCabal
-    (lib.justStaticExecutables (lib.dontCheck pkgs.haskell.packages."${ghc}".hschain)) (oldDerivation: { });
+    (lib.justStaticExecutables (lib.dontCheck pkgs.haskell.packages."${ghc}".hschain-examples)) (oldDerivation: { });
 
   hschain-docker = pkgs.dockerTools.buildImage {
     name = "${prefixName}hschain";
