@@ -54,21 +54,23 @@ import HSChain.Types.Merkle.Types
 -- Basic coin logic
 ----------------------------------------------------------------
 
+type DioAlg = Ed25519 :& SHA512
+
 newtype BData tag = BData [Tx]
   deriving stock    (Show,Eq,Generic)
   deriving newtype  (NFData,CryptoHashable,JSON.ToJSON,JSON.FromJSON)
   deriving anyclass (Serialise)
 
 data Tx = Tx
-  { txSig  :: !(Signature (Ed25519 :& SHA512))
+  { txSig  :: !(Signature DioAlg)
   , txBody :: !TxBody
   }
   deriving stock    (Show, Eq, Ord, Generic)
   deriving anyclass (Serialise, NFData, JSON.ToJSON, JSON.FromJSON)
 
 data TxBody = TxBody
-  { txFrom   :: !(PublicKey (Ed25519 :& SHA512))
-  , txTo     :: !(PublicKey (Ed25519 :& SHA512))
+  { txFrom   :: !(PublicKey DioAlg)
+  , txTo     :: !(PublicKey DioAlg)
   , txNonce  :: !Int64
   , txAmount :: !Int64
   }
@@ -80,7 +82,7 @@ data DioError = DioError
   deriving anyclass (Exception,NFData)
 
 data DioState = DioState
-  { _userMap :: Map.Map (PublicKey (Ed25519 :& SHA512)) UserState
+  { _userMap :: Map.Map (PublicKey DioAlg) UserState
   }
   deriving stock    (Show,   Generic)
   deriving anyclass (NFData, Serialise)
@@ -110,7 +112,7 @@ instance Dio tag => BlockData (BData tag) where
   type BlockchainState (BData tag) = DioState
   type BChError        (BData tag) = DioError
   type BChMonad        (BData tag) = Maybe
-  type Alg             (BData tag) = Ed25519 :& SHA512
+  type Alg             (BData tag) = DioAlg
   bchLogic                      = dioLogic
   proposerSelection             = ProposerSelection randomProposerSHA512
   blockTransactions (BData txs) = txs
@@ -125,8 +127,8 @@ class Dio a where
   dioDict :: DioDict a
 
 data DioDict a = DioDict
-  { dioUserKeys       :: V.Vector ( PrivKey   (Ed25519 :& SHA512)
-                                  , PublicKey (Ed25519 :& SHA512)
+  { dioUserKeys       :: V.Vector ( PrivKey   DioAlg
+                                  , PublicKey DioAlg
                                   )
   , dioInitialBalance :: Int64
   , dioValidators     :: Int64
