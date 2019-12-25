@@ -55,6 +55,7 @@ let
   ignoreStack     = haskTools.ignoreSources ''
     /.stack-work
     '';
+  doFast = hask.addBuildFlags ["--ghc-option=-O2"];
   #
   release = let
     hschainPkgAll = p: with p; [
