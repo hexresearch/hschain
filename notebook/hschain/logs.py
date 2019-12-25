@@ -211,7 +211,7 @@ class LogSet(dict):
     def fitTvsH(self):
         "Linear fit of t(H)"
         df = pd.concat([ d.commit[['at','H']] for _,d in self.items() ])
-        t0 = np.min(df['at'])
+        t0 = np.min(df['at']).tz_localize(None)
         ts = (df['at'].dt.tz_localize(None) - t0).astype('timedelta64') / 1e9
         hs = df['H']
         return sm.OLS(ts, sm.add_constant(hs)).fit()

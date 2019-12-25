@@ -27,8 +27,8 @@ class CommitData(object):
         dfs = {k : d.commit for k,d in logs.items() if not d.commit.empty}
         # Get summary stats
         pts = pd.concat([d[['H','at']] for _,d in dfs.items()])
-        t0  = np.min(pts['at'])
-        ts  = (pts['at'].dt.tz_localize(None) - t0).astype('timedelta64') / 1e9
+        t0  = np.min(pts['at']).tz_localize(None)
+        ts  = (pts['at'].dt.tz_localize(None) - t0).astype('timedelta64[ms]') / 1e9
         hs  = pts['H']
         # Calculate relative time
         for k, df in dfs.items() :
