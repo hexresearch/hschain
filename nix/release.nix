@@ -46,7 +46,7 @@ let
   };
   # Build internal package
   callInternal = hask: name: path: args: opts:
-    benchOverride (lintOverride (prodOverride (profileOverride (hask.callCabal2nixWithOptions name (ignoreStack path) opts args))))
+    doFast (benchOverride (lintOverride (prodOverride (profileOverride (hask.callCabal2nixWithOptions name (ignoreStack path) opts args)))))
     ;
   lintOverride    = doIf isCoreLint hask.doCoreLint;
   prodOverride    = doIf isProd    (drv: hask.doPedantic (lib.doCheck drv));
