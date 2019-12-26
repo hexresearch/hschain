@@ -37,6 +37,21 @@ build.sh
 ```
 Note that if project directory contains `.ghc.environment.*` files created by new-style cabal commands build will fail.
 
+## Build with `docker` 
+
+Docker image https://github.com/phadej/docker-ghc can be used to build project.
+
+Executables are compatable with Ubuntu 18.04.
+
+Steps to build:
+
+* Download docker image: `docker pull phadej/ghc:8.6.5-bionic`
+* Login into: `docker run -it --rm --mount type=bind,src=$PWD,target=/project --workdir /project phadej/ghc:8.6.5-bionic /bin/bash --login`
+* Now in image:
+** Update cabal db: `cabal new-update`
+** Build exe: `cabal new-build hschain-dioxane-node --flags="-libsodium"`. Note turned off flag `libsodium`, so it is not need to install `libsodium` library in image.
+** Last output of `cabal` will contain path to built executable.
+
 ## Run dev environment with `nix`
 
 ```
