@@ -48,9 +48,9 @@ Steps to build:
 * Download docker image: `docker pull phadej/ghc:8.6.5-bionic`
 * Login into: `docker run -it --rm --mount type=bind,src=$PWD,target=/project --workdir /project phadej/ghc:8.6.5-bionic /bin/bash --login`
 * Now in image:
-** Update cabal db: `cabal new-update`
-** Build exe: `cabal new-build hschain-dioxane-node --flags="-libsodium"`. Note turned off flag `libsodium`, so it is not need to install `libsodium` library in image.
-** Last output of `cabal` will contain path to built executable.
+    * Update cabal db: `cabal new-update`
+    * Build exe: `cabal new-build hschain-dioxane-node --flags="-libsodium"`. Note turned off flag `libsodium`, so it is not need to install `libsodium` library in image.
+    * Last output of `cabal` will contain path to built executable.
 
 ## Run dev environment with `nix`
 
