@@ -68,7 +68,7 @@ handlerGossipMsg = \case
       addProposal propHeight propRound
       currentState
     GossipBlock b -> do
-      addBlock b
+      addBlock (blockHash b)
       currentState
     GossipTx {} -> currentState
     GossipPex {} -> currentState
@@ -135,15 +135,15 @@ addPrecommit h r idx = do
                                 ) r
 
 addBlock :: (MonadState (CurrentState a) m, Crypto (Alg a))
-         => Block a -> m ()
-addBlock b = peerBlocks %= Set.insert (blockHash b)
+         => BlockID a -> m ()
+addBlock bid = peerBlocks %= Set.insert bid
 
 ----------------------------------------------------------------
-  --
+
 advanceOurHeight :: AdvanceOurHeight CurrentState a m
 advanceOurHeight (FullStep ourH _ _) = do
-      -- Current peer may become lagging if we increase our height
-  (FullStep h _ _) <- use peerStep
+  -- Current peer may become lagging if we increase our height
+  FullStep h _ _ <- use peerStep
   if h < ourH then
         do vals <- queryRO $ mustRetrieveValidatorSet h
            r    <- queryRO $ mustRetrieveCommitRound  h
@@ -244,7 +244,7 @@ handlerBlocksTimeout = do
         noBlockInState <- Set.notMember bid <$> use peerBlocks
         when (roundInProposals && noBlockInState) $ do
           lift $ logger DebugS ("Gossip: " <> showLS bid) ()
-          addBlock b
+          addBlock bid
           push2Gossip $ GossipBlock b
           tickSend blocks
   currentState
