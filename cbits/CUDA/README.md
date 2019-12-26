@@ -53,6 +53,8 @@ It is highly divergent because it has a for loop with condition with "else" part
 
 All it does is bit manipulation. Basically, it extracts progressively bigger integer values (2 bits, 3 bits, etc) from expanded 256-bit value and sees whether it needs to increment or decrement this bigger 256 bit value.
 
+The sums of bits values computed then used in the variable time scalar multiplication and are used as indices into some tables.
+
 Recommendation:
 
-- both GPU and general: rewrite it with direct bit manipulation instead of expansion and then contraction - instead of for loop over some bytes one will have 4 or less 64-bit additions. Also, the divergent execution will be less frequent.
+- GPU: probably, fixed time scalar multiplicatin can be better here; I cannot assess changes right now.

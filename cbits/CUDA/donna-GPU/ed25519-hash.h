@@ -88,17 +88,6 @@ EDHOSTDEVICE sha512_STORE64_BE(uint8_t *p, uint64_t v) {
 	r[2] = r[1]; \
 	r[1] = r[0]; \
 	r[0] = t0 + t1;
-#define STEPAH(i,A,B,C,D,E,F,G,H) \
-	t1 = S0(A) + Maj(A, B, C); \
-	t0 = H + S1(E) + Ch(E, F, G) + sha512_constants[i] + w[i]; \
-	H = G; \
-	G = F; \
-	F = E; \
-	E = D + t0; \
-	D = C; \
-	C = B; \
-	B = A; \
-	A = t0 + t1;
 
 static void
 EDHOSTDEVICE sha512_blocks(sha512_state *S, const uint8_t *in, size_t blocks) {
@@ -110,21 +99,7 @@ EDHOSTDEVICE sha512_blocks(sha512_state *S, const uint8_t *in, size_t blocks) {
 	while (blocks--) {
 		for (i =  0; i < 16; i++) { w[i] = W0(in, i); }
 		for (i = 16; i < 80; i++) { w[i] = W1(i); }
-		//for (i =  0; i < 80; i++) { STEP(i); }
-		{ // not a loop body.
-			uint64_t A=r[0],B=r[1],C=r[2],D=r[3],E=r[4],F=r[5],G=r[6],H=r[7];
-			for (i = 0; i < 80; i += 8) {
-				STEPAH(i+0, A, B, C, D, E, F, G, H);
-				STEPAH(i+1, A, B, C, D, E, F, G, H);
-				STEPAH(i+2, A, B, C, D, E, F, G, H);
-				STEPAH(i+3, A, B, C, D, E, F, G, H);
-				STEPAH(i+4, A, B, C, D, E, F, G, H);
-				STEPAH(i+5, A, B, C, D, E, F, G, H);
-				STEPAH(i+6, A, B, C, D, E, F, G, H);
-				STEPAH(i+7, A, B, C, D, E, F, G, H);
-			}
-			r[0]=A;r[1]=B;r[2]=C;r[3]=D;r[4]=E;r[5]=F;r[6]=G;r[7]=H;
-		}
+		for (i =  0; i < 80; i++) { STEP(i); }
 		for (i =  0; i <  8; i++) { S->H[i] += r[i]; }
 		S->T[0] += HASH_BLOCK_SIZE * 8;
 		S->T[1] += (!S->T[0]) ? 1 : 0;

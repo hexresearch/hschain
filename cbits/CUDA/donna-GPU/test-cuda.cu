@@ -154,7 +154,7 @@ ed25519_sign_open_kernel(short_test_data* data, int* msg_size, unsigned char* re
 
 static void
 test_main_CUDA(void) {
-	int i, j, N = 50, res;
+	int i, j, N = 5, res;
 	ed25519_public_key pk;
 	ed25519_signature sig;
 	unsigned char forge[1024] = {'x'};
