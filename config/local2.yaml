@@ -1,8 +1,0 @@
-nodePort: 40002
-nodeIdx:  1
-nspecLogFile:
-  - type      : "ScribeJSON"
-    path      : "logs/node-2.log"
-    severity  : "Debug"
-    verbosity : "V2"
-nspecDbName: "db/db2"
