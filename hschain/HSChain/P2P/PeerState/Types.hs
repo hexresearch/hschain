@@ -97,7 +97,7 @@ data Command a
   | SendPEX !PexMessage
 
 data Event a
-  = EGossip !(GossipMsg a)
+  = EGossip !(GossipMsg a)      -- ^ Gossip received from peer
   | EMempoolTimeout
   | EVotesTimeout
   | EBlocksTimeout
