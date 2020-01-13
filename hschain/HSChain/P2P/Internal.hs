@@ -208,13 +208,11 @@ peerReceive
   -> m ()
 peerReceive PeerChans{..} recvCh P2PConnection{..} = logOnException $ do
   logger InfoS "Starting routing for receiving messages" ()
-  fix $ \loop -> recv >>= \case -- TODO поменять fix на forever, т.к. в последних версиях base они одни и те же
+  fix $ \loop -> recv >>= \case
     Nothing  -> logger InfoS "Peer stopping since socket is closed" ()
-    Just bs  -> case deserialiseOrFail bs of
-      Left  e   -> logger ErrorS ("Deserialization error: " <> showLS e) ()
-      Right msg -> do
-        atomicallyIO $ writeTChan recvCh (EGossip msg)
-        loop
+    Just bs  -> do
+      atomicallyIO $ writeTChan recvCh $! EGossip $ deserialise bs
+      loop
 
 -- Infrequently announce our current state. This is needed if node was
 -- terminated when it got all necessary votes but don't have block
