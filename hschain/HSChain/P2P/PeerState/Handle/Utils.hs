@@ -32,31 +32,31 @@ import HSChain.P2P.PeerState.Types
 advancePeer :: (Crypto (Alg a), Monad m, MonadIO m, MonadReadDB m a)
             => FullStep -> m (State a)
 advancePeer step@(FullStep h _ _) = do
-           ourH <- succ <$> queryRO blockchainHeight
-           case compare h ourH of
-             LT -> do vals <- queryRO $ mustRetrieveValidatorSet h
-                      cmtR <- queryRO $ mustRetrieveCommitRound  h
-                      bid  <- queryRO $ mustRetrieveBlockID      h
-                      return $ wrap $ LaggingState
-                        { _lagPeerStep        = step
-                        , _lagPeerCommitR     = cmtR
-                        , _lagPeerValidators  = vals
-                        , _lagPeerPrecommits  = emptyValidatorISet vals
-                        , _lagPeerHasProposal = False
-                        , _lagPeerHasBlock    = False
-                        , _lagPeerBlockID     = bid
-                        }
-             EQ -> do vals <- queryRO $ mustRetrieveValidatorSet h
-                      return $ wrap $ CurrentState
-                        { _peerStep       = step
-                        , _peerValidators = vals
-                        , _peerPrevotes   = Map.empty
-                        , _peerPrecommits = Map.empty
-                        , _peerProposals  = Set.empty
-                        , _peerBlocks     = Set.empty
-                        , _peerLock       = Nothing
-                        }
-             GT -> return $ wrap $ AheadState step
+  ourH <- succ <$> queryRO blockchainHeight
+  case compare h ourH of
+    LT -> do vals <- queryRO $ mustRetrieveValidatorSet h
+             cmtR <- queryRO $ mustRetrieveCommitRound  h
+             bid  <- queryRO $ mustRetrieveBlockID      h
+             return $ wrap $ LaggingState
+               { _lagPeerStep        = step
+               , _lagPeerCommitR     = cmtR
+               , _lagPeerValidators  = vals
+               , _lagPeerPrecommits  = emptyValidatorISet vals
+               , _lagPeerHasProposal = False
+               , _lagPeerHasBlock    = False
+               , _lagPeerBlockID     = bid
+               }
+    EQ -> do vals <- queryRO $ mustRetrieveValidatorSet h
+             return $ wrap $ CurrentState
+               { _peerStep       = step
+               , _peerValidators = vals
+               , _peerPrevotes   = Map.empty
+               , _peerPrecommits = Map.empty
+               , _peerProposals  = Set.empty
+               , _peerBlocks     = Set.empty
+               , _peerLock       = Nothing
+               }
+    GT -> return $ wrap $ AheadState step
 
 advanceMempoolCursor :: (HandlerCtx a m)
                      => TransitionT s a m ()

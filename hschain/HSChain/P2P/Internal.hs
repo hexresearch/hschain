@@ -193,7 +193,7 @@ startPeer peerAddrTo peerCh@PeerChans{..} conn peerRegistry mempool = logOnExcep
       [ descendNamespace "recv" $ peerReceive             peerCh recvCh conn
       , descendNamespace "send" $ peerSend                peerCh gossipCh conn
       , descendNamespace "PEX"  $ peerGossipPeerExchange  peerCh peerRegistry pexCh gossipCh
-      , descendNamespace "peerFSM" $ void $ peerFSM              peerCh pexCh gossipCh recvCh cursor
+      , descendNamespace "peerFSM" $ void $ peerFSM       peerCh pexCh gossipCh recvCh cursor
       ]
     logger InfoS "Stopping peer" ()
 

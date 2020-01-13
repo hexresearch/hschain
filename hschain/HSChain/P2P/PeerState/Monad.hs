@@ -70,9 +70,9 @@ type HandlerCtx a m = ( Serialise a
                       )
 
 -- | Handler of events.
-type Handler s t a m =  HandlerCtx a m
-                         => t a -- ^ `Event' to handle
-                         -> TransitionT s a m (State a) -- ^ new `TransitionT'
+type Handler s t a m = HandlerCtx a m
+                    => t a -- ^ `Event' to handle
+                    -> TransitionT s a m (State a) -- ^ new `TransitionT'
 
 -- | Obtain current state wrapped as 'State'
 currentState :: (MonadState (s a) m, Wrapable s) => m (State a)
