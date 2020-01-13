@@ -1,6 +1,7 @@
 {-# LANGUAGE FlexibleContexts  #-}
 {-# LANGUAGE GADTs             #-}
 {-# LANGUAGE LambdaCase        #-}
+{-# LANGUAGE MultiWayIf        #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 {-# LANGUAGE ViewPatterns      #-}
@@ -71,12 +72,10 @@ handlerGossipMsg = \case
       AnnStep step@(FullStep h _ _) -> do
         -- Don't go back.
         s@(FullStep h0 _ _) <- use peerStep
-        if step > s
-          -- If update don't change height only advance step of peer
-          then if h0 == h
-             then peerStep .= step
-             else advancePeer step
-          else return ()
+        if | h    > h0 -> advancePeer step
+           -- If update don't change height only advance step of peer
+           | step > s  -> peerStep .= step
+           | otherwise -> return ()
       AnnHasProposal  h r   -> addProposal h r
       AnnHasPreVote   h r i -> addPrevote h r i
       AnnHasPreCommit h r i -> addPrecommit h r i
