@@ -260,7 +260,9 @@ ge25519_double_scalarmult_vartime(ge25519 *r, const ge25519 *p1, const bignum256
 	int32_t i;
 
 	contract256_slidingwindow_modm(slide1, s1, S1_SWINDOWSIZE);
+	EDSYNCHRONIZE;
 	contract256_slidingwindow_modm(slide2, s2, S2_SWINDOWSIZE);
+	EDSYNCHRONIZE;
 
 	ge25519_double(&d1, p1);
 	ge25519_full_to_pniels(pre1, p1);
@@ -275,6 +277,7 @@ ge25519_double_scalarmult_vartime(ge25519 *r, const ge25519 *p1, const bignum256
 	i = 255;
 	while ((i >= 0) && !(slide1[i] | slide2[i]))
 		i--;
+	EDSYNCHRONIZE;
 
 	for (; i >= 0; i--) {
 		ge25519_double_p1p1(&t, r);
@@ -285,13 +288,16 @@ ge25519_double_scalarmult_vartime(ge25519 *r, const ge25519 *p1, const bignum256
 					(slide1[i] < 0 ? -slide1[i] : slide1[i]) / 2
 			], (unsigned char)slide1[i] >> 7);
 		}
+		EDSYNCHRONIZE;
 
 		if (slide2[i]) {
 			ge25519_p1p1_to_full(r, &t);
 			ge25519_nielsadd2_p1p1(&t, r, &ge25519_niels_sliding_multiples[(slide2[i] < 0 ? -slide2[i] : slide2[i]) / 2], (unsigned char)slide2[i] >> 7);
 		}
+		EDSYNCHRONIZE;
 
 		ge25519_p1p1_to_partial(r, &t);
+		EDSYNCHRONIZE;
 	}
 }
 

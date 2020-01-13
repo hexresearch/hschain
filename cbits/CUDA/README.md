@@ -7,15 +7,26 @@ The original source code is in donna-orig directory and our code in donna-GPU.
 
 The purpose of the experiment was to investigate feasibility and speed of GPU implementation of Ed25519 signature verification.
 
-
 Results
 =======
 
 The donna-GPU directory contains Makefile which can be used to test speed of the CUDA version. It is as easy as running ``make`` command.
 
-We are able to achieve speed of ~89000 CPU ticks per message on the 2.8GHz i7 and 1050 TI CUDA card. That translates to ~32us per message.
+We are able to achieve speed of ~89000 CPU ticks per message on the 2.8GHz i7 and 1050 TI CUDA card. That translates to ~32us per message. About two times faster than optimized CPU version.
 
 CUDA version is 9.1.
+
+CUDA 10 and 1080 card allowed for **12x speedup over unoptimzied** CPU implementation. It translates into **about five times speed up over optimized** CPU implementation.
+
+
+Probably venue of investigation
+-------------------------------
+
+All ed25519 implementations use variable time code in a non-splittable way.
+
+But there is a Curve25519 implementation that looks like it does not use variable time code: https://github.com/jedisct1/libhydrogen
+
+It may be worth considering it for crypto for GPU.
 
 
 Main bottleneck
@@ -42,7 +53,7 @@ I tried to mitigate it with ``__syncthreads()`` after SHA512 computation, but I 
 The recommendations:
 
 - GPU: either move into separate kernel or make sure divergent execution does not continue into verification code;
-- general: optimize C code so that it does not use array.
+- general: optimize C code so that it does not use array (tried to no avail).
 
 Contraction of polynomials
 -------------------------
@@ -58,3 +69,4 @@ The sums of bits values computed then used in the variable time scalar multiplic
 Recommendation:
 
 - GPU: probably, fixed time scalar multiplicatin can be better here; I cannot assess changes right now.
+
