@@ -7,7 +7,6 @@ packages:
          hschain-quickcheck
          hschain-examples
          serialise-cddl
-         sql-interface/hschain-sql
 
 -- Jailbreak bytestring-arbitrary
 --   https://github.com/tsuraan/bytestring-arbitrary/issues/10
