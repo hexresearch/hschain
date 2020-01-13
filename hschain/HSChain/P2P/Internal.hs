@@ -190,7 +190,7 @@ startPeer peerAddrTo peerCh@PeerChans{..} conn peerRegistry mempool = logOnExcep
     recvCh   <- liftIO newTChanIO
     cursor   <- getMempoolCursor mempool
     runConcurrently
-      [ descendNamespace "recv" $ peerReceive             peerCh recvCh conn
+      [ descendNamespace "recv" $ peerReceive             recvCh conn
       , descendNamespace "send" $ peerSend                peerCh gossipCh conn
       , descendNamespace "PEX"  $ peerGossipPeerExchange  peerCh peerRegistry pexCh gossipCh
       , descendNamespace "peerFSM" $ void $ peerFSM       peerCh pexCh gossipCh recvCh cursor
@@ -202,11 +202,10 @@ startPeer peerAddrTo peerCh@PeerChans{..} conn peerRegistry mempool = logOnExcep
 peerReceive
   :: ( MonadReadDB m a, MonadIO m, MonadMask m, MonadLogger m
      , BlockData a)
-  => PeerChans a
-  -> TChan (Event a)
+  => TChan (Event a)
   -> P2PConnection
   -> m ()
-peerReceive PeerChans{..} recvCh P2PConnection{..} = logOnException $ do
+peerReceive recvCh P2PConnection{..} = logOnException $ do
   logger InfoS "Starting routing for receiving messages" ()
   fix $ \loop -> recv >>= \case
     Nothing  -> logger InfoS "Peer stopping since socket is closed" ()
