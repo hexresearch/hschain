@@ -46,40 +46,39 @@ handlerGossipMsg = \case
       if step > s
         -- If update don't change height only advance step of peer
         then if h0 == h
-          then aheadPeerStep .= step >> currentState
-          else lift $ advancePeer step
-        else currentState
-    _ -> currentState
+          then aheadPeerStep .= step
+          else advancePeer step
+        else return ()
+    _ -> return ()
 
 ----------------------------------------------------------------
 advanceOurHeignt :: AdvanceOurHeight AheadState a m
 advanceOurHeignt (FullStep ourH _ _) = do
   step@(FullStep h _ _) <- use aheadPeerStep
-  if h == ourH then
-        do vals <- lift $ queryRO $ mustRetrieveValidatorSet h
-           return $ wrap $ CurrentState
-             { _peerStep       = step
-             , _peerValidators = vals
-             , _peerPrevotes   = Map.empty
-             , _peerPrecommits = Map.empty
-             , _peerProposals  = Set.empty
-             , _peerBlocks     = Set.empty
-             , _peerLock       = Nothing
-             }
-     else currentState
+  when (h == ourH) $ do
+    vals <- lift $ queryRO $ mustRetrieveValidatorSet h
+    setFinalState $ wrap $ CurrentState
+      { _peerStep       = step
+      , _peerValidators = vals
+      , _peerPrevotes   = Map.empty
+      , _peerPrecommits = Map.empty
+      , _peerProposals  = Set.empty
+      , _peerBlocks     = Set.empty
+      , _peerLock       = Nothing
+      }
+
 ----------------------------------------------------------------
 
 handlerVotesTimeout :: TimeoutHandler AheadState a m
-handlerVotesTimeout = currentState
+handlerVotesTimeout = return ()
 
 ----------------------------------------------------------------
 
 handlerMempoolTimeout :: TimeoutHandler AheadState a m
-handlerMempoolTimeout = do
-  advanceMempoolCursor
-  currentState
+handlerMempoolTimeout = advanceMempoolCursor
+
 ----------------------------------------------------------------
 
 handlerBlocksTimeout :: TimeoutHandler AheadState a m
-handlerBlocksTimeout = currentState
+handlerBlocksTimeout = return ()
 

@@ -30,23 +30,23 @@ issuedGossipHandler =
 handlerGossipMsg :: MessageHandler UnknownState a m
 handlerGossipMsg = \case
   GossipAnn (AnnStep step) -> advancePeer step
-  _                        -> currentState
+  _                        -> return ()
 
 ----------------------------------------------------------------
 
 advanceOurHeight :: AdvanceOurHeight UnknownState a m
-advanceOurHeight = const currentState
+advanceOurHeight _ = return ()
 ----------------------------------------------------------------
 
 handlerVotesTimeout :: TimeoutHandler UnknownState a m
-handlerVotesTimeout = currentState
+handlerVotesTimeout = return ()
 
 ----------------------------------------------------------------
 
 handlerMempoolTimeout :: TimeoutHandler UnknownState a m
-handlerMempoolTimeout = currentState
+handlerMempoolTimeout = return ()
 ----------------------------------------------------------------
 
 handlerBlocksTimeout :: TimeoutHandler UnknownState a m
-handlerBlocksTimeout = currentState
+handlerBlocksTimeout = return ()
 

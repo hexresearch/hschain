@@ -51,13 +51,9 @@ handlerGossipMsg :: MessageHandler LaggingState a m
 handlerGossipMsg = \case
     GossipPreCommit v@(signedValue -> Vote{..}) -> do
       addPrecommit voteHeight voteRound $ signedKeyInfo v
-      currentState
     GossipProposal (signedValue -> Proposal{..}) -> do
       addProposal propHeight propRound
-      currentState
-    GossipBlock b -> do
-      addBlock b
-      currentState
+    GossipBlock b -> addBlock b
     GossipAnn ann -> case ann of
       AnnStep step@(FullStep h _ _) -> do
         -- Don't go back.
@@ -65,25 +61,19 @@ handlerGossipMsg = \case
         if step > s
           -- If update don't change height only advance step of peer
           then if h0 == h
-             then lagPeerStep .= step >> currentState
+             then lagPeerStep .= step 
              else advancePeer step -- TODO: IO read from DB
-          else currentState
-      AnnHasProposal  h r   -> do
-        addProposal h r
-        currentState
-      AnnHasPreVote   {} ->
-        currentState
-      AnnHasPreCommit h r i -> do
-        addPrecommit h r i
-        currentState
+          else return ()
+      AnnLock{}             -> return ()
+      AnnHasProposal  h r   -> addProposal h r
+      AnnHasPreVote   {}    -> return ()
+      AnnHasPreCommit h r i -> addPrecommit h r i
       AnnHasBlock     h r   -> do
-        (FullStep hP _ _) <- use lagPeerStep
+        FullStep hP _ _ <- use lagPeerStep
         peerCommitRound <- use lagPeerCommitR
         when ( h == hP && r == peerCommitRound) $
           lagPeerHasBlock .= True
-        currentState
-      AnnLock _ -> currentState
-    _ -> currentState
+    _ -> return ()
 
 addProposal :: MonadState (LaggingState a) m
                    => Height -> Round -> m ()
@@ -109,7 +99,7 @@ addBlock b = do
 ----------------------------------------------------------------
 
 advanceOurHeight :: AdvanceOurHeight LaggingState a m
-advanceOurHeight = const currentState
+advanceOurHeight _ = return ()
 ----------------------------------------------------------------
 
 handlerVotesTimeout :: CryptoHashable a => TimeoutHandler LaggingState a m
@@ -137,12 +127,11 @@ handlerVotesTimeout = do
           addPrecommit voteHeight voteRound $ signedKeyInfo vote
           push2Gossip $ GossipPreCommit vote
           tickSend precommit
-  currentState
-      --
+
 ----------------------------------------------------------------
 
 handlerMempoolTimeout :: TimeoutHandler LaggingState a m
-handlerMempoolTimeout = currentState
+handlerMempoolTimeout = return ()
 ----------------------------------------------------------------
 
 handlerBlocksTimeout :: CryptoHashable a => TimeoutHandler LaggingState a m
@@ -155,5 +144,4 @@ handlerBlocksTimeout = do
     addBlock b
     push2Gossip $ GossipBlock b
     tickSend blocks
-  currentState
 

@@ -7,6 +7,7 @@
 {-# LANGUAGE InstanceSigs               #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE RankNTypes                 #-}
+{-# LANGUAGE TupleSections              #-}
 {-# LANGUAGE TypeFamilies               #-}
 
 module HSChain.P2P.PeerState.Monad where
@@ -14,6 +15,7 @@ module HSChain.P2P.PeerState.Monad where
 import Codec.Serialise          (Serialise)
 import Control.Monad.Catch      (MonadThrow)
 import Control.Monad.RWS.Strict
+import Data.Maybe
 import Lens.Micro.Mtl
 
 import HSChain.Blockchain.Internal.Types
@@ -31,32 +33,41 @@ import qualified HSChain.P2P.Internal.Logging as Logging
 
 -- | Underlying monad for transitions of state for gossip
 newtype TransitionT s a m r = TransitionT
-  { unTransition :: RWST (Config m a) [Command a] (s a) m r }
+  { unTransition :: RWST (Config m a) [Command a] (s a, Maybe (State a)) m r }
   deriving ( Functor
            , Applicative
            , Monad
            , MonadIO
            , MonadReader (Config m a)
            , MonadWriter [Command a]
-           , MonadState (s a)
            , MonadThrow
            )
 instance MonadReadDB m a => MonadReadDB (TransitionT s a m) a where
   askConnectionRO = TransitionT $ lift askConnectionRO
 
+instance Monad m => MonadState (s a) (TransitionT s a m) where
+  state f = TransitionT $ state $ \(s,fini) -> (,fini) <$> f s
+
 instance MonadTrans (TransitionT s a) where
   lift = TransitionT . lift
 
+setFinalState :: Monad m => State a -> TransitionT s a m ()
+setFinalState st = TransitionT $
+  modify' $ \(s,_) -> (s, Just st)
+
+
 -- | Runs `TransitionT'.
 runTransitionT
-  :: Monad m
-  => TransitionT s a m (State a)
+  :: (Wrapable s, Monad m)
+  => TransitionT s a m ()
   -> Config m a
   -> s a
   -> m (State a, [Command a])
 runTransitionT action cfg st = do
-  (r,_,acc) <- runRWST (unTransition action) cfg st
-  return (r,acc)
+  ((),(s,mFini),acc) <- runRWST (unTransition action) cfg (st,Nothing)
+  return ( fromMaybe (wrap s) mFini
+         , acc
+         )
 
 type HandlerCtx a m = ( Serialise a
                       , Crypto (Alg a)
@@ -68,11 +79,8 @@ type HandlerCtx a m = ( Serialise a
 -- | Handler of events.
 type Handler s t a m = HandlerCtx a m
                     => t a -- ^ `Event' to handle
-                    -> TransitionT s a m (State a) -- ^ new `TransitionT'
+                    -> TransitionT s a m () -- ^ new `TransitionT'
 
--- | Obtain current state wrapped as 'State'
-currentState :: (MonadState (s a) m, Wrapable s) => m (State a)
-currentState = wrap <$> get
 
 resendGossip :: ( MonadReader (Config n a) m
                 , MonadWriter [Command a]  m
