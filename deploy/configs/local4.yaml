@@ -1,0 +1,7 @@
+nodePort: 40004
+nodeIdx:  3
+nspecLogFile:
+  - type      : "ScribeJSON"
+    path      : "logs/node-4.log"
+    severity  : "Debug"
+    verbosity : "V2"

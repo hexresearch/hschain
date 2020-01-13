@@ -1,0 +1,26 @@
+---
+
+- hosts: all
+  become: yes
+  gather_facts: no
+
+  tasks:
+
+  - name: Add user
+    user:
+      name: "{{ github_user }}"
+      group: "users"
+      groups: "sudo"
+      shell: /bin/bash
+
+  - name: Set authorized keys taken from github
+    when: github_user is defined
+    authorized_key:
+      user: "{{ github_user }}"
+      key: "https://github.com/{{ github_user }}.keys"
+
+  - name: Ensure root sudoers
+    lineinfile:
+      path: "/etc/sudoers.d/sudo"
+      line: "%sudo ALL=(ALL:ALL) NOPASSWD:ALL"
+      create: yes
