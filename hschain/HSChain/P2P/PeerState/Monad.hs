@@ -47,10 +47,6 @@ instance MonadReadDB m a => MonadReadDB (TransitionT s a m) a where
 instance MonadTrans (TransitionT s a) where
   lift = TransitionT . lift
 
---instance MonadLogger m => MonadLogger (TransitionT s a m) where
---  logger s l a = lift $ logger s l a
---  localNamespace f (TransitionT action) = TransitionT $ localNamespace f $ lift $ action
-
 -- | Runs `TransitionT'.
 runTransitionT
   :: Monad m
