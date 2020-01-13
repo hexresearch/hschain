@@ -60,18 +60,13 @@ handlerGossipMsg :: MessageHandler CurrentState a m
 handlerGossipMsg = \case
     GossipPreVote v@(signedValue -> Vote{..}) -> do
       addPrevote voteHeight voteRound $ signedKeyInfo v
-      currentState
     GossipPreCommit v@(signedValue -> Vote{..}) -> do
       addPrecommit voteHeight voteRound $ signedKeyInfo v
-      currentState
     GossipProposal (signedValue -> Proposal{..}) -> do
       addProposal propHeight propRound
-      currentState
-    GossipBlock b -> do
-      addBlock (blockHash b)
-      currentState
-    GossipTx {} -> currentState
-    GossipPex {} -> currentState
+    GossipBlock b -> addBlock (blockHash b)
+    GossipTx{}    -> return ()
+    GossipPex{}   -> return ()
     GossipAnn ann -> case ann of
       AnnStep step@(FullStep h _ _) -> do
         -- Don't go back.
@@ -79,18 +74,12 @@ handlerGossipMsg = \case
         if step > s
           -- If update don't change height only advance step of peer
           then if h0 == h
-             then peerStep .= step >> currentState
+             then peerStep .= step
              else advancePeer step
-          else currentState
-      AnnHasProposal  h r   -> do
-        addProposal h r
-        currentState
-      AnnHasPreVote   h r i -> do
-        addPrevote h r i
-        currentState
-      AnnHasPreCommit h r i -> do
-        addPrecommit h r i
-        currentState
+          else return ()
+      AnnHasProposal  h r   -> addProposal h r
+      AnnHasPreVote   h r i -> addPrevote h r i
+      AnnHasPreCommit h r i -> addPrecommit h r i
       AnnHasBlock     h r   -> do
         FullStep hPeer _ _ <- use peerStep
         when ( h == hPeer ) $ do
@@ -99,10 +88,8 @@ handlerGossipMsg = \case
             when (hPeer == hSt) $ do
               forM_ (proposalByR (smProposedBlocks st) r) $ \(bid,_) ->
                 peerBlocks %= Set.insert bid
-        currentState
-      AnnLock mr -> do
-        peerLock .= mr
-        currentState
+      AnnLock mr -> peerLock .= mr
+
 
 addProposal :: MonadState (CurrentState a) m
             => Height -> Round -> m ()
@@ -144,21 +131,20 @@ advanceOurHeight :: AdvanceOurHeight CurrentState a m
 advanceOurHeight (FullStep ourH _ _) = do
   -- Current peer may become lagging if we increase our height
   FullStep h _ _ <- use peerStep
-  if h < ourH then
-        do vals <- queryRO $ mustRetrieveValidatorSet h
-           r    <- queryRO $ mustRetrieveCommitRound  h
-           bid  <- queryRO $ mustRetrieveBlockID      h
-           p <- get
-           return $ wrap $ LaggingState
-             { _lagPeerStep        = _peerStep p
-             , _lagPeerCommitR     = r
-             , _lagPeerValidators  = vals
-             , _lagPeerPrecommits  = emptyValidatorISet vals
-             , _lagPeerHasProposal = r   `Set.member` _peerProposals p
-             , _lagPeerHasBlock    = bid `Set.member` _peerBlocks p
-             , _lagPeerBlockID     = bid
-             }
-    else currentState
+  when (h < ourH) $ do
+    vals <- queryRO $ mustRetrieveValidatorSet h
+    r    <- queryRO $ mustRetrieveCommitRound  h
+    bid  <- queryRO $ mustRetrieveBlockID      h
+    p <- get
+    setFinalState $ wrap $ LaggingState
+      { _lagPeerStep        = _peerStep p
+      , _lagPeerCommitR     = r
+      , _lagPeerValidators  = vals
+      , _lagPeerPrecommits  = emptyValidatorISet vals
+      , _lagPeerHasProposal = r   `Set.member` _peerProposals p
+      , _lagPeerHasBlock    = bid `Set.member` _peerBlocks p
+      , _lagPeerBlockID     = bid
+      }
 
 ----------------------------------------------------------------
 
@@ -198,7 +184,6 @@ handlerVotesTimeout = do
                  push2Gossip $ GossipPreCommit vote
                  tickSend precommit
          | otherwise -> return ()
-  currentState
 
 gossipPrevotes
   :: ( MonadState  (CurrentState a) m
@@ -224,9 +209,8 @@ gossipPrevotes tm r = do
 ----------------------------------------------------------------
 
 handlerMempoolTimeout :: TimeoutHandler CurrentState a m
-handlerMempoolTimeout = do
-  advanceMempoolCursor
-  currentState
+handlerMempoolTimeout = advanceMempoolCursor
+
 ----------------------------------------------------------------
 
 handlerBlocksTimeout :: TimeoutHandler CurrentState a m
@@ -247,4 +231,3 @@ handlerBlocksTimeout = do
           addBlock bid
           push2Gossip $ GossipBlock b
           tickSend blocks
-  currentState

@@ -30,14 +30,14 @@ import HSChain.P2P.PeerState.Monad
 import HSChain.P2P.PeerState.Types
 
 advancePeer :: (Crypto (Alg a), Monad m, MonadIO m, MonadReadDB m a)
-            => FullStep -> m (State a)
+            => FullStep -> TransitionT s a m ()
 advancePeer step@(FullStep h _ _) = do
   ourH <- succ <$> queryRO blockchainHeight
   case compare h ourH of
     LT -> do vals <- queryRO $ mustRetrieveValidatorSet h
              cmtR <- queryRO $ mustRetrieveCommitRound  h
              bid  <- queryRO $ mustRetrieveBlockID      h
-             return $ wrap $ LaggingState
+             setFinalState $ wrap $ LaggingState
                { _lagPeerStep        = step
                , _lagPeerCommitR     = cmtR
                , _lagPeerValidators  = vals
@@ -47,7 +47,7 @@ advancePeer step@(FullStep h _ _) = do
                , _lagPeerBlockID     = bid
                }
     EQ -> do vals <- queryRO $ mustRetrieveValidatorSet h
-             return $ wrap $ CurrentState
+             setFinalState $ wrap $ CurrentState
                { _peerStep       = step
                , _peerValidators = vals
                , _peerPrevotes   = Map.empty
@@ -56,7 +56,7 @@ advancePeer step@(FullStep h _ _) = do
                , _peerBlocks     = Set.empty
                , _peerLock       = Nothing
                }
-    GT -> return $ wrap $ AheadState step
+    GT -> setFinalState $ wrap $ AheadState step
 
 advanceMempoolCursor :: (HandlerCtx a m)
                      => TransitionT s a m ()
@@ -69,18 +69,18 @@ advanceMempoolCursor = do
 
 type MessageHandler s a m =  HandlerCtx a m
                           => GossipMsg a
-                          -> TransitionT s a m (State a)
+                          -> TransitionT s a m ()
 
 type AnnouncementHandler s a m =  HandlerCtx a m
                                => MessageTx a
-                               -> TransitionT s a m (State a)
+                               -> TransitionT s a m ()
 
 type AdvanceOurHeight s a m =  HandlerCtx a m
                             => FullStep
-                            -> TransitionT s a m (State a)
+                            -> TransitionT s a m ()
 
 type TimeoutHandler s a m = (Wrapable s, HandlerCtx a m)
-                         => TransitionT s a m (State a)
+                         => TransitionT s a m ()
 
 handlerGeneric :: (Wrapable s, HandlerCtx a m)
                => MessageHandler s a m
@@ -88,7 +88,7 @@ handlerGeneric :: (Wrapable s, HandlerCtx a m)
                -> TimeoutHandler s a m
                -> TimeoutHandler s a m
                -> Event a
-               -> TransitionT s a m (State a)
+               -> TransitionT s a m ()
 handlerGeneric
   hanldlerGossipMsg
   handlerVotesTimeout
@@ -110,21 +110,19 @@ handlerGeneric
         case smStep of
           StepAwaitCommit r -> push2Gossip $ GossipAnn $ AnnHasProposal h r
           _                 -> return ()
-      currentState
     --
-    handlerAnnounncement e = do
+    handlerAnnounncement e =
       case e of
         TxAnn       a -> push2Gossip $ GossipAnn a
         TxProposal  p -> push2Gossip $ GossipProposal  p
         TxPreVote   v -> push2Gossip $ GossipPreVote   v
         TxPreCommit v -> push2Gossip $ GossipPreCommit v
-      currentState
 
 issuedGossipHandlerGeneric :: (Wrapable s, HandlerCtx a m)
          => MessageHandler s a m
          -> AdvanceOurHeight s a m
          -> GossipMsg a
-         -> TransitionT s a m (State a)
+         -> TransitionT s a m ()
 issuedGossipHandlerGeneric
   handlerGossipMsg
   advanceOurHeight
@@ -134,5 +132,5 @@ issuedGossipHandlerGeneric
     GossipPreCommit {}    -> handlerGossipMsg m
     GossipBlock {}        -> handlerGossipMsg m
     GossipAnn (AnnStep s) -> advanceOurHeight s
-    _                     -> currentState
+    _                     -> return ()
 
