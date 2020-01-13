@@ -1,7 +1,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs            #-}
-{-# LANGUAGE MultiWayIf       #-}
 {-# LANGUAGE LambdaCase       #-}
+{-# LANGUAGE MultiWayIf       #-}
 {-# LANGUAGE RecordWildCards  #-}
 {-# LANGUAGE ViewPatterns     #-}
 
@@ -58,12 +58,10 @@ handlerGossipMsg = \case
       AnnStep step@(FullStep h _ _) -> do
         -- Don't go back.
         s@(FullStep h0 _ _) <- use lagPeerStep
-        if step > s
-          -- If update don't change height only advance step of peer
-          then if h0 == h
-             then lagPeerStep .= step 
-             else advancePeer step -- TODO: IO read from DB
-          else return ()
+        if | h    > h0 -> advancePeer step
+           -- If update don't change height only advance step of peer
+           | step > s  -> lagPeerStep .= step
+           | otherwise -> return ()
       AnnLock{}             -> return ()
       AnnHasProposal  h r   -> addProposal h r
       AnnHasPreVote   {}    -> return ()
