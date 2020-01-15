@@ -127,23 +127,27 @@ addBlock bid = peerBlocks %= Set.insert bid
 ----------------------------------------------------------------
 
 advanceOurHeight :: AdvanceOurHeight CurrentState a m
-advanceOurHeight (FullStep ourH _ _) = do
-  -- Current peer may become lagging if we increase our height
-  FullStep h _ _ <- use peerStep
-  when (h < ourH) $ do
-    vals <- queryRO $ mustRetrieveValidatorSet h
-    r    <- queryRO $ mustRetrieveCommitRound  h
-    bid  <- queryRO $ mustRetrieveBlockID      h
-    p <- get
-    setFinalState $ wrap $ LaggingState
-      { _lagPeerStep        = _peerStep p
-      , _lagPeerCommitR     = r
-      , _lagPeerValidators  = vals
-      , _lagPeerPrecommits  = emptyValidatorISet vals
-      , _lagPeerHasProposal = r   `Set.member` _peerProposals p
-      , _lagPeerHasBlock    = bid `Set.member` _peerBlocks p
-      , _lagPeerBlockID     = bid
-      }
+advanceOurHeight (FullStep ourH _ _) = setFinalState advance
+  where
+    advance p
+      -- When our height advances peer couldn't become Ahed
+      | h >= ourH = return $ wrap p
+      -- Otherwise it becomes lagging
+      | otherwise = do
+          vals <- queryRO $ mustRetrieveValidatorSet h
+          r    <- queryRO $ mustRetrieveCommitRound  h
+          bid  <- queryRO $ mustRetrieveBlockID      h
+          return $ wrap $ LaggingState
+            { _lagPeerStep        = _peerStep p
+            , _lagPeerCommitR     = r
+            , _lagPeerValidators  = vals
+            , _lagPeerPrecommits  = emptyValidatorISet vals
+            , _lagPeerHasProposal = r   `Set.member` _peerProposals p
+            , _lagPeerHasBlock    = bid `Set.member` _peerBlocks p
+            , _lagPeerBlockID     = bid
+            }
+      where
+        FullStep h _ _ = _peerStep p
 
 ----------------------------------------------------------------
 
