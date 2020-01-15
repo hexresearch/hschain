@@ -15,7 +15,6 @@ module HSChain.P2P.PeerState.Monad where
 import Codec.Serialise          (Serialise)
 import Control.Monad.Catch      (MonadThrow)
 import Control.Monad.RWS.Strict
-import Data.Maybe
 import Lens.Micro.Mtl
 
 import HSChain.Blockchain.Internal.Types
@@ -65,8 +64,8 @@ runTransitionT
   -> m (State a, [Command a])
 runTransitionT action cfg st = do
   ((),(s,fini),acc) <- runRWST (unTransition action) cfg (st, return . wrap)
-  st <- fini s 
-  return ( st, acc )
+  st' <- fini s
+  return (st', acc )
 
 type HandlerCtx a m = ( Serialise a
                       , Crypto (Alg a)
