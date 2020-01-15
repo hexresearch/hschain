@@ -8,6 +8,7 @@ module HSChain.P2P.PeerState.Handle.Ahead
   , issuedGossipHandler
   ) where
 
+import Control.Monad
 import Lens.Micro.Mtl
 
 import HSChain.Blockchain.Internal.Types
@@ -39,15 +40,10 @@ issuedGossipHandler =
 
 handlerGossip :: MessageHandler AheadState a m
 handlerGossip = \case
-    GossipAnn (AnnStep step@(FullStep h _ _)) -> do
-      -- Don't go back.
-      s@(FullStep h0 _ _) <- use aheadPeerStep
-      if step > s
-        -- If update don't change height only advance step of peer
-        then if h0 == h
-          then aheadPeerStep .= step
-          else advancePeer step
-        else return ()
+    GossipAnn (AnnStep step) -> do
+      s <- use aheadPeerStep
+      -- If peer is ahead of us and advances it could only remain ahed
+      when (step > s) $ aheadPeerStep .= step
     _ -> return ()
 
 ----------------------------------------------------------------
