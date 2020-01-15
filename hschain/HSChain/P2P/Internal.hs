@@ -128,9 +128,11 @@ connectPeerTo cfg NetworkAPI{..} addr peerCh mempool peerRegistry =
   where
     logClose = logger InfoS "Connection closed" (sl "addr" addr)
 
+
 ----------------------------------------------------------------
 -- Peer
 ----------------------------------------------------------------
+
 -- | Routine for receiving messages from peer
 peerFSM
   :: ( MonadReadDB m a, MonadIO m, MonadMask m, MonadLogger m
