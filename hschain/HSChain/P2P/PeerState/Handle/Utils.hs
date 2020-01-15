@@ -31,13 +31,13 @@ import HSChain.P2P.PeerState.Types
 
 advancePeer :: (Crypto (Alg a), Monad m, MonadIO m, MonadReadDB m a)
             => FullStep -> TransitionT s a m ()
-advancePeer step@(FullStep h _ _) = do
+advancePeer step@(FullStep h _ _) = setFinalState $ \_ -> do
   ourH <- succ <$> queryRO blockchainHeight
   case compare h ourH of
     LT -> do vals <- queryRO $ mustRetrieveValidatorSet h
              cmtR <- queryRO $ mustRetrieveCommitRound  h
              bid  <- queryRO $ mustRetrieveBlockID      h
-             setFinalState $ wrap $ LaggingState
+             return $ wrap $ LaggingState
                { _lagPeerStep        = step
                , _lagPeerCommitR     = cmtR
                , _lagPeerValidators  = vals
@@ -47,7 +47,7 @@ advancePeer step@(FullStep h _ _) = do
                , _lagPeerBlockID     = bid
                }
     EQ -> do vals <- queryRO $ mustRetrieveValidatorSet h
-             setFinalState $ wrap $ CurrentState
+             return $ wrap $ CurrentState
                { _peerStep       = step
                , _peerValidators = vals
                , _peerPrevotes   = Map.empty
@@ -56,7 +56,7 @@ advancePeer step@(FullStep h _ _) = do
                , _peerBlocks     = Set.empty
                , _peerLock       = Nothing
                }
-    GT -> setFinalState $ wrap $ AheadState step
+    GT -> return $ wrap $ AheadState step
 
 advanceMempoolCursor :: (HandlerCtx a m)
                      => TransitionT s a m ()

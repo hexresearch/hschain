@@ -8,7 +8,6 @@ module HSChain.P2P.PeerState.Handle.Ahead
   , issuedGossipHandler
   ) where
 
-import Control.Monad.RWS.Strict
 import Lens.Micro.Mtl
 
 import HSChain.Blockchain.Internal.Types
@@ -53,19 +52,24 @@ handlerGossipMsg = \case
 
 ----------------------------------------------------------------
 advanceOurHeignt :: AdvanceOurHeight AheadState a m
-advanceOurHeignt (FullStep ourH _ _) = do
-  step@(FullStep h _ _) <- use aheadPeerStep
-  when (h == ourH) $ do
-    vals <- lift $ queryRO $ mustRetrieveValidatorSet h
-    setFinalState $ wrap $ CurrentState
-      { _peerStep       = step
-      , _peerValidators = vals
-      , _peerPrevotes   = Map.empty
-      , _peerPrecommits = Map.empty
-      , _peerProposals  = Set.empty
-      , _peerBlocks     = Set.empty
-      , _peerLock       = Nothing
-      }
+advanceOurHeignt (FullStep ourH _ _) = setFinalState advance
+  where
+    advance p
+      | h == ourH = do
+          vals <- queryRO $ mustRetrieveValidatorSet h
+          return $ wrap $ CurrentState
+            { _peerStep       = step
+            , _peerValidators = vals
+            , _peerPrevotes   = Map.empty
+            , _peerPrecommits = Map.empty
+            , _peerProposals  = Set.empty
+            , _peerBlocks     = Set.empty
+            , _peerLock       = Nothing
+            }
+      | otherwise = return $ wrap p
+      where
+        step@(FullStep h _ _) = _aheadPeerStep p
+
 
 ----------------------------------------------------------------
 

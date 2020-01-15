@@ -33,7 +33,7 @@ import qualified HSChain.P2P.Internal.Logging as Logging
 
 -- | Underlying monad for transitions of state for gossip
 newtype TransitionT s a m r = TransitionT
-  { unTransition :: RWST (Config m a) [Command a] (s a, Maybe (State a)) m r }
+  { unTransition :: RWST (Config m a) [Command a] (s a, s a -> m (State a)) m r }
   deriving ( Functor
            , Applicative
            , Monad
@@ -51,9 +51,9 @@ instance Monad m => MonadState (s a) (TransitionT s a m) where
 instance MonadTrans (TransitionT s a) where
   lift = TransitionT . lift
 
-setFinalState :: Monad m => State a -> TransitionT s a m ()
+setFinalState :: Monad m => (s a -> m (State a)) -> TransitionT s a m ()
 setFinalState st = TransitionT $
-  modify' $ \(s,_) -> (s, Just st)
+  modify' $ \(s,_) -> (s, st)
 
 
 -- | Runs `TransitionT'.
@@ -64,10 +64,9 @@ runTransitionT
   -> s a
   -> m (State a, [Command a])
 runTransitionT action cfg st = do
-  ((),(s,mFini),acc) <- runRWST (unTransition action) cfg (st,Nothing)
-  return ( fromMaybe (wrap s) mFini
-         , acc
-         )
+  ((),(s,fini),acc) <- runRWST (unTransition action) cfg (st, return . wrap)
+  st <- fini s 
+  return ( st, acc )
 
 type HandlerCtx a m = ( Serialise a
                       , Crypto (Alg a)
