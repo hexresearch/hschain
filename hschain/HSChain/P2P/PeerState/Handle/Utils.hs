@@ -112,8 +112,7 @@ handlerGeneric HandlerDict{..} = \ case
           StepAwaitCommit r -> push2Gossip $ GossipAnn $ AnnHasProposal h r
           _                 -> return ()
     --
-    handlerAnnounncement e =
-      case e of
+    handlerAnnounncement = \case
         TxAnn       a -> push2Gossip $ GossipAnn a
         TxProposal  p -> push2Gossip $ GossipProposal  p
         TxPreVote   v -> push2Gossip $ GossipPreVote   v
