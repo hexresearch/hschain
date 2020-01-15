@@ -132,5 +132,7 @@ issuedGossipHandlerGeneric
     GossipPreCommit {}    -> handlerGossipMsg m
     GossipBlock {}        -> handlerGossipMsg m
     GossipAnn (AnnStep s) -> advanceOurHeight s
-    _                     -> return ()
+    GossipAnn _           -> return ()
+    GossipTx{}            -> return ()
+    GossipPex{}           -> return ()
 
