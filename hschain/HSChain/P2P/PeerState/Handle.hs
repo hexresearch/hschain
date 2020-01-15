@@ -13,7 +13,7 @@ import HSChain.Crypto (CryptoHashable)
 import HSChain.P2P.Internal.Types
 import HSChain.P2P.PeerState.Monad
 import HSChain.P2P.PeerState.Types
-
+import HSChain.P2P.PeerState.Handle.Utils (handlerGeneric)
 import qualified HSChain.P2P.PeerState.Handle.Ahead   as Ahead
 import qualified HSChain.P2P.PeerState.Handle.Current as Current
 import qualified HSChain.P2P.PeerState.Handle.Lagging as Lagging
@@ -27,10 +27,10 @@ handler :: (CryptoHashable a, HandlerCtx a m)
         -> m (State a, [Command a])
 handler config st event = do
   (st',cmds) <- case st of
-    Lagging s -> runTransitionT (Lagging.handler event) config s
-    Current s -> runTransitionT (Current.handler event) config s
-    Ahead   s -> runTransitionT (Ahead.handler   event) config s
-    Unknown s -> runTransitionT (Unknown.handler event) config s
+    Lagging s -> runTransitionT (handlerGeneric Lagging.handler event) config s
+    Current s -> runTransitionT (handlerGeneric Current.handler event) config s
+    Ahead   s -> runTransitionT (handlerGeneric Ahead.handler   event) config s
+    Unknown s -> runTransitionT (handlerGeneric Unknown.handler event) config s
   second (cmds <>) <$> handleIssuedGossip config st' [ c | Push2Gossip c <- cmds ]
 
 
