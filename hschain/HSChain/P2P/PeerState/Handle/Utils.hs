@@ -84,6 +84,7 @@ type TimeoutHandler s a m = (Wrapable s, HandlerCtx a m)
 
 data HandlerDict s a m = HandlerDict
   { handlerGossipMsg      :: GossipMsg a -> TransitionT s a m ()
+    -- ^ Handler for incoming gossip
   , handlerVotesTimeout   :: TransitionT s a m ()
   , handlerMempoolTimeout :: TransitionT s a m ()
   , handlerBlocksTimeout  :: TransitionT s a m ()
