@@ -10,25 +10,24 @@ import HSChain.Blockchain.Internal.Types
 import HSChain.P2P.Internal.Types
 import HSChain.P2P.PeerState.Monad
 import HSChain.P2P.PeerState.Types
-
 import HSChain.P2P.PeerState.Handle.Utils
 
-handler :: Handler UnknownState Event a m
-handler =
-  handlerGeneric
-   handlerGossipMsg
-   handlerVotesTimeout
-   handlerMempoolTimeout
-   handlerBlocksTimeout
+handler :: (HandlerCtx a m) => HandlerDict UnknownState a m
+handler = HandlerDict
+  { handlerGossipMsg      = handlerGossip
+  , handlerVotesTimeout   = return ()
+  , handlerMempoolTimeout = return ()
+  , handlerBlocksTimeout  = return ()
+  }
 
 issuedGossipHandler :: Handler UnknownState GossipMsg a m
 issuedGossipHandler =
   issuedGossipHandlerGeneric
-    handlerGossipMsg
+    handlerGossip
     advanceOurHeight
 
-handlerGossipMsg :: MessageHandler UnknownState a m
-handlerGossipMsg = \case
+handlerGossip :: MessageHandler UnknownState a m
+handlerGossip = \case
   GossipAnn (AnnStep step) -> advancePeer step
   _                        -> return ()
 
@@ -36,17 +35,3 @@ handlerGossipMsg = \case
 
 advanceOurHeight :: AdvanceOurHeight UnknownState a m
 advanceOurHeight _ = return ()
-----------------------------------------------------------------
-
-handlerVotesTimeout :: TimeoutHandler UnknownState a m
-handlerVotesTimeout = return ()
-
-----------------------------------------------------------------
-
-handlerMempoolTimeout :: TimeoutHandler UnknownState a m
-handlerMempoolTimeout = return ()
-----------------------------------------------------------------
-
-handlerBlocksTimeout :: TimeoutHandler UnknownState a m
-handlerBlocksTimeout = return ()
-

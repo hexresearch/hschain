@@ -23,22 +23,22 @@ import qualified Data.Map.Strict as Map
 import qualified Data.Set        as Set
 
 
-handler :: Handler AheadState Event a m
-handler =
-  handlerGeneric
-   handlerGossipMsg
-   handlerVotesTimeout
-   handlerMempoolTimeout
-   handlerBlocksTimeout
+handler :: HandlerCtx a m => HandlerDict AheadState a m
+handler = HandlerDict
+  { handlerGossipMsg      = handlerGossip
+  , handlerVotesTimeout   = handlerVotesTimeoutMsg
+  , handlerMempoolTimeout = handlerMempoolTimeoutMsg
+  , handlerBlocksTimeout  = handlerBlocksTimeoutMsg
+  }
 
 issuedGossipHandler :: Handler AheadState GossipMsg a m
 issuedGossipHandler =
   issuedGossipHandlerGeneric
-    handlerGossipMsg
+    handlerGossip
     advanceOurHeignt
 
-handlerGossipMsg :: MessageHandler AheadState a m
-handlerGossipMsg = \case
+handlerGossip :: MessageHandler AheadState a m
+handlerGossip = \case
     GossipAnn (AnnStep step@(FullStep h _ _)) -> do
       -- Don't go back.
       s@(FullStep h0 _ _) <- use aheadPeerStep
@@ -73,16 +73,16 @@ advanceOurHeignt (FullStep ourH _ _) = setFinalState advance
 
 ----------------------------------------------------------------
 
-handlerVotesTimeout :: TimeoutHandler AheadState a m
-handlerVotesTimeout = return ()
+handlerVotesTimeoutMsg :: TimeoutHandler AheadState a m
+handlerVotesTimeoutMsg = return ()
 
 ----------------------------------------------------------------
 
-handlerMempoolTimeout :: TimeoutHandler AheadState a m
-handlerMempoolTimeout = advanceMempoolCursor
+handlerMempoolTimeoutMsg :: TimeoutHandler AheadState a m
+handlerMempoolTimeoutMsg = advanceMempoolCursor
 
 ----------------------------------------------------------------
 
-handlerBlocksTimeout :: TimeoutHandler AheadState a m
-handlerBlocksTimeout = return ()
+handlerBlocksTimeoutMsg :: TimeoutHandler AheadState a m
+handlerBlocksTimeoutMsg = return ()
 

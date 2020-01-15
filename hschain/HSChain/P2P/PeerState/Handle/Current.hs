@@ -43,22 +43,22 @@ import qualified Data.Map.Strict    as Map
 import qualified Data.Set           as Set
 
 
-handler :: Handler CurrentState Event a m
-handler =
-  handlerGeneric
-   handlerGossipMsg
-   handlerVotesTimeout
-   handlerMempoolTimeout
-   handlerBlocksTimeout
+handler :: HandlerCtx a m => HandlerDict CurrentState a m
+handler = HandlerDict
+  { handlerGossipMsg      = handlerGossip
+  , handlerVotesTimeout   = handlerVotesTimeoutMsg
+  , handlerMempoolTimeout = handlerMempoolTimeoutMsg
+  , handlerBlocksTimeout  = handlerBlocksTimeoutMsg
+  }
 
 issuedGossipHandler :: Handler CurrentState GossipMsg a m
 issuedGossipHandler =
   issuedGossipHandlerGeneric
-    handlerGossipMsg
+    handlerGossip
     advanceOurHeight
 
-handlerGossipMsg :: MessageHandler CurrentState a m
-handlerGossipMsg = \case
+handlerGossip :: MessageHandler CurrentState a m
+handlerGossip = \case
     GossipPreVote v@(signedValue -> Vote{..}) -> do
       addPrevote voteHeight voteRound $ signedKeyInfo v
     GossipPreCommit v@(signedValue -> Vote{..}) -> do
@@ -151,8 +151,8 @@ advanceOurHeight (FullStep ourH _ _) = setFinalState advance
 
 ----------------------------------------------------------------
 
-handlerVotesTimeout :: TimeoutHandler CurrentState a m
-handlerVotesTimeout = do
+handlerVotesTimeoutMsg :: TimeoutHandler CurrentState a m
+handlerVotesTimeoutMsg = do
   bchH <- queryRO blockchainHeight
   st <- atomicallyIO =<< view consensusSt
   case st of
@@ -211,13 +211,13 @@ gossipPrevotes tm r = do
 
 ----------------------------------------------------------------
 
-handlerMempoolTimeout :: TimeoutHandler CurrentState a m
-handlerMempoolTimeout = advanceMempoolCursor
+handlerMempoolTimeoutMsg :: TimeoutHandler CurrentState a m
+handlerMempoolTimeoutMsg = advanceMempoolCursor
 
 ----------------------------------------------------------------
 
-handlerBlocksTimeout :: TimeoutHandler CurrentState a m
-handlerBlocksTimeout = do
+handlerBlocksTimeoutMsg :: TimeoutHandler CurrentState a m
+handlerBlocksTimeoutMsg = do
   mstate <- atomicallyIO =<< view consensusSt
   forM_ mstate $ \(hSt,st) -> do
     FullStep h r _ <- use peerStep

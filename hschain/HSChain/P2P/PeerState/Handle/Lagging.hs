@@ -33,22 +33,22 @@ import qualified Data.IntSet        as ISet
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Map.Strict    as Map
 
-handler :: CryptoHashable a => Handler LaggingState Event a m
-handler =
-  handlerGeneric
-   handlerGossipMsg
-   handlerVotesTimeout
-   handlerMempoolTimeout
-   handlerBlocksTimeout
+handler :: (CryptoHashable a, HandlerCtx a m) => HandlerDict LaggingState a m
+handler = HandlerDict
+  { handlerGossipMsg      = handlerGossip
+  , handlerVotesTimeout   = handlerVotesTimeoutMsg
+  , handlerMempoolTimeout = handlerMempoolTimeoutMsg
+  , handlerBlocksTimeout  = handlerBlocksTimeoutMsg
+  }
 
 issuedGossipHandler :: Handler LaggingState GossipMsg a m
 issuedGossipHandler =
   issuedGossipHandlerGeneric
-    handlerGossipMsg
+    handlerGossip
     advanceOurHeight
 
-handlerGossipMsg :: MessageHandler LaggingState a m
-handlerGossipMsg = \case
+handlerGossip :: MessageHandler LaggingState a m
+handlerGossip = \case
     GossipPreCommit v@(signedValue -> Vote{..}) -> do
       addPrecommit voteHeight voteRound $ signedKeyInfo v
     GossipProposal (signedValue -> Proposal{..}) -> do
@@ -100,8 +100,8 @@ advanceOurHeight :: AdvanceOurHeight LaggingState a m
 advanceOurHeight _ = return ()
 ----------------------------------------------------------------
 
-handlerVotesTimeout :: CryptoHashable a => TimeoutHandler LaggingState a m
-handlerVotesTimeout = do
+handlerVotesTimeoutMsg :: CryptoHashable a => TimeoutHandler LaggingState a m
+handlerVotesTimeoutMsg = do
   bchH      <- queryRO blockchainHeight
   (FullStep peerH _ _) <- use lagPeerStep
   mcmt <- queryRO $
@@ -128,12 +128,12 @@ handlerVotesTimeout = do
 
 ----------------------------------------------------------------
 
-handlerMempoolTimeout :: TimeoutHandler LaggingState a m
-handlerMempoolTimeout = return ()
+handlerMempoolTimeoutMsg :: TimeoutHandler LaggingState a m
+handlerMempoolTimeoutMsg = return ()
 ----------------------------------------------------------------
 
-handlerBlocksTimeout :: CryptoHashable a => TimeoutHandler LaggingState a m
-handlerBlocksTimeout = do
+handlerBlocksTimeoutMsg :: CryptoHashable a => TimeoutHandler LaggingState a m
+handlerBlocksTimeoutMsg = do
   hasProp    <- use lagPeerHasProposal
   hasNoBlock <- not <$> use lagPeerHasBlock
   when (hasProp && hasNoBlock) $ do

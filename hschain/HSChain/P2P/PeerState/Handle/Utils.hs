@@ -82,20 +82,20 @@ type AdvanceOurHeight s a m =  HandlerCtx a m
 type TimeoutHandler s a m = (Wrapable s, HandlerCtx a m)
                          => TransitionT s a m ()
 
+data HandlerDict s a m = HandlerDict
+  { handlerGossipMsg      :: GossipMsg a -> TransitionT s a m ()
+  , handlerVotesTimeout   :: TransitionT s a m ()
+  , handlerMempoolTimeout :: TransitionT s a m ()
+  , handlerBlocksTimeout  :: TransitionT s a m ()
+  }
+
 handlerGeneric :: (Wrapable s, HandlerCtx a m)
-               => MessageHandler s a m
-               -> TimeoutHandler s a m
-               -> TimeoutHandler s a m
-               -> TimeoutHandler s a m
+               => HandlerDict s a m
                -> Event a
                -> TransitionT s a m ()
-handlerGeneric
-  hanldlerGossipMsg
-  handlerVotesTimeout
-  handlerMempoolTimeout
-  handlerBlocksTimeout = \ case
+handlerGeneric HandlerDict{..} = \ case
     EGossip m        -> do resendGossip m
-                           hanldlerGossipMsg m
+                           handlerGossipMsg m
     EAnnouncement a  -> handlerAnnounncement a
     EVotesTimeout    -> handlerVotesTimeout
     EMempoolTimeout  -> handlerMempoolTimeout
