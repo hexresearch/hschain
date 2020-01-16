@@ -34,13 +34,13 @@ handler config st event = do
   second (cmds <>) <$> handleIssuedGossip config st' [ c | Push2Gossip c <- cmds ]
 
 
-handleIssuedGossip :: HandlerCtx a m
+handleIssuedGossip :: (CryptoHashable a, HandlerCtx a m)
                    => Config m a
                    -> State a
                    -> [GossipMsg a]
                    -> m (State a, [Command a])
 handleIssuedGossip config st = foldM (\ (s',cmds) msg -> second (cmds<>) <$> case s' of
-  Lagging s -> runTransitionT (issuedGossipHandlerGeneric Lagging.issuedGossipHandler msg) config s
-  Current s -> runTransitionT (issuedGossipHandlerGeneric Current.issuedGossipHandler msg) config s
-  Ahead   s -> runTransitionT (issuedGossipHandlerGeneric Ahead.issuedGossipHandler   msg) config s
-  Unknown s -> runTransitionT (issuedGossipHandlerGeneric Unknown.issuedGossipHandler msg) config s ) (st,[])
+  Lagging s -> runTransitionT (issuedGossipHandlerGeneric Lagging.handler msg) config s
+  Current s -> runTransitionT (issuedGossipHandlerGeneric Current.handler msg) config s
+  Ahead   s -> runTransitionT (issuedGossipHandlerGeneric Ahead.handler   msg) config s
+  Unknown s -> runTransitionT (issuedGossipHandlerGeneric Unknown.handler msg) config s ) (st,[])
