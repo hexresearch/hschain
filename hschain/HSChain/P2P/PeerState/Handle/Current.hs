@@ -8,7 +8,6 @@
 
 module HSChain.P2P.PeerState.Handle.Current
   ( handler
-  , issuedGossipHandler
   ) where
 
 import Control.Monad
@@ -46,15 +45,10 @@ import qualified Data.Set           as Set
 handler :: HandlerCtx a m => HandlerDict CurrentState a m
 handler = HandlerDict
   { handlerGossipMsg      = handlerGossip
+  , advanceOurHeight      = advanceOurHeightWrk
   , handlerVotesTimeout   = handlerVotesTimeoutMsg
   , handlerMempoolTimeout = handlerMempoolTimeoutMsg
   , handlerBlocksTimeout  = handlerBlocksTimeoutMsg
-  }
-
-issuedGossipHandler :: (HandlerCtx a m) => IssuedDict CurrentState a m
-issuedGossipHandler = IssuedDict
-  { handlerIssuedGossip = handlerGossip
-  , advanceOurHeight    = advanceOurHeightWrk
   }
 
 handlerGossip :: MessageHandler CurrentState a m

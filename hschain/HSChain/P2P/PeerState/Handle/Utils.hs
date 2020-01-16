@@ -84,15 +84,17 @@ type TimeoutHandler s a m = (Wrapable s, HandlerCtx a m)
 
 data HandlerDict s a m = HandlerDict
   { handlerGossipMsg      :: GossipMsg a -> TransitionT s a m ()
-    -- ^ Handler for incoming gossip
+    -- ^ Handler for incoming /and/ outgoing gossip. We handle both
+    --   identically except for 'AnnStep'. This function handles
+    --   incoming gossip.
+  , advanceOurHeight      :: FullStep -> TransitionT s a m ()
+    -- ^ Handler for outgoing 'AnnStep'
   , handlerVotesTimeout   :: TransitionT s a m ()
+    -- ^ Handler for votes timeout
   , handlerMempoolTimeout :: TransitionT s a m ()
+    -- ^ Handler for mempool timout
   , handlerBlocksTimeout  :: TransitionT s a m ()
-  }
-
-data IssuedDict s a m = IssuedDict
-  { handlerIssuedGossip :: GossipMsg a -> TransitionT s a m ()
-  , advanceOurHeight    :: FullStep    -> TransitionT s a m ()
+    -- ^ Handler for block propagation timeout
   }
 
 handlerGeneric :: (Wrapable s, HandlerCtx a m)
@@ -123,15 +125,16 @@ handlerGeneric HandlerDict{..} = \ case
         TxPreVote   v -> push2Gossip $ GossipPreVote   v
         TxPreCommit v -> push2Gossip $ GossipPreCommit v
 
-issuedGossipHandlerGeneric :: (Wrapable s, HandlerCtx a m)
-         => IssuedDict s a m
-         -> GossipMsg a
-         -> TransitionT s a m ()
-issuedGossipHandlerGeneric IssuedDict{..} m = case m of
-    GossipProposal {}     -> handlerIssuedGossip m
-    GossipPreVote {}      -> handlerIssuedGossip m
-    GossipPreCommit {}    -> handlerIssuedGossip m
-    GossipBlock {}        -> handlerIssuedGossip m
+issuedGossipHandlerGeneric
+  :: (Wrapable s, HandlerCtx a m)
+  => HandlerDict s a m
+  -> GossipMsg a
+  -> TransitionT s a m ()
+issuedGossipHandlerGeneric HandlerDict{..} m = case m of
+    GossipProposal {}     -> handlerGossipMsg m
+    GossipPreVote {}      -> handlerGossipMsg m
+    GossipPreCommit {}    -> handlerGossipMsg m
+    GossipBlock {}        -> handlerGossipMsg m
     GossipAnn (AnnStep s) -> advanceOurHeight s
     GossipAnn _           -> return ()
     GossipTx{}            -> return ()

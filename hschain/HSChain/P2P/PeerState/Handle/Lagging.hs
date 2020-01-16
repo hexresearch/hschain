@@ -7,7 +7,6 @@
 
 module HSChain.P2P.PeerState.Handle.Lagging
   ( handler
-  , issuedGossipHandler
   ) where
 
 import Control.Monad
@@ -36,15 +35,10 @@ import qualified Data.Map.Strict    as Map
 handler :: (CryptoHashable a, HandlerCtx a m) => HandlerDict LaggingState a m
 handler = HandlerDict
   { handlerGossipMsg      = handlerGossip
+  , advanceOurHeight      = \_ -> return ()
   , handlerVotesTimeout   = handlerVotesTimeoutMsg
   , handlerMempoolTimeout = handlerMempoolTimeoutMsg
   , handlerBlocksTimeout  = handlerBlocksTimeoutMsg
-  }
-
-issuedGossipHandler :: (HandlerCtx a m) => IssuedDict LaggingState a m
-issuedGossipHandler = IssuedDict
-  { handlerIssuedGossip = handlerGossip
-  , advanceOurHeight    = \_ -> return ()
   }
 
 handlerGossip :: MessageHandler LaggingState a m
