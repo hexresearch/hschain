@@ -20,18 +20,13 @@ handler = HandlerDict
   , handlerBlocksTimeout  = return ()
   }
 
-issuedGossipHandler :: Handler UnknownState GossipMsg a m
-issuedGossipHandler =
-  issuedGossipHandlerGeneric
-    handlerGossip
-    advanceOurHeight
+issuedGossipHandler :: (HandlerCtx a m) => IssuedDict UnknownState a m
+issuedGossipHandler = IssuedDict
+  { handlerIssuedGossip = handlerGossip
+  , advanceOurHeight    = \_ -> return ()
+  }
 
 handlerGossip :: MessageHandler UnknownState a m
 handlerGossip = \case
   GossipAnn (AnnStep step) -> advancePeer step
   _                        -> return ()
-
-----------------------------------------------------------------
-
-advanceOurHeight :: AdvanceOurHeight UnknownState a m
-advanceOurHeight _ = return ()

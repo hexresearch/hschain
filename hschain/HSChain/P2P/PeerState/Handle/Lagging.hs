@@ -41,11 +41,11 @@ handler = HandlerDict
   , handlerBlocksTimeout  = handlerBlocksTimeoutMsg
   }
 
-issuedGossipHandler :: Handler LaggingState GossipMsg a m
-issuedGossipHandler =
-  issuedGossipHandlerGeneric
-    handlerGossip
-    advanceOurHeight
+issuedGossipHandler :: (HandlerCtx a m) => IssuedDict LaggingState a m
+issuedGossipHandler = IssuedDict
+  { handlerIssuedGossip = handlerGossip
+  , advanceOurHeight    = \_ -> return ()
+  }
 
 handlerGossip :: MessageHandler LaggingState a m
 handlerGossip = \case
@@ -94,10 +94,7 @@ addBlock :: (MonadState (LaggingState a) m, Crypto (Alg a))
 addBlock b = do
       peerBid <- use lagPeerBlockID
       when (blockHash b == peerBid) $ lagPeerHasBlock .= True
-----------------------------------------------------------------
 
-advanceOurHeight :: AdvanceOurHeight LaggingState a m
-advanceOurHeight _ = return ()
 ----------------------------------------------------------------
 
 handlerVotesTimeoutMsg :: CryptoHashable a => TimeoutHandler LaggingState a m

@@ -90,6 +90,11 @@ data HandlerDict s a m = HandlerDict
   , handlerBlocksTimeout  :: TransitionT s a m ()
   }
 
+data IssuedDict s a m = IssuedDict
+  { handlerIssuedGossip :: GossipMsg a -> TransitionT s a m ()
+  , advanceOurHeight    :: FullStep    -> TransitionT s a m ()
+  }
+
 handlerGeneric :: (Wrapable s, HandlerCtx a m)
                => HandlerDict s a m
                -> Event a
@@ -119,18 +124,14 @@ handlerGeneric HandlerDict{..} = \ case
         TxPreCommit v -> push2Gossip $ GossipPreCommit v
 
 issuedGossipHandlerGeneric :: (Wrapable s, HandlerCtx a m)
-         => MessageHandler s a m
-         -> AdvanceOurHeight s a m
+         => IssuedDict s a m
          -> GossipMsg a
          -> TransitionT s a m ()
-issuedGossipHandlerGeneric
-  handlerGossipMsg
-  advanceOurHeight
-  m = case m of
-    GossipProposal {}     -> handlerGossipMsg m
-    GossipPreVote {}      -> handlerGossipMsg m
-    GossipPreCommit {}    -> handlerGossipMsg m
-    GossipBlock {}        -> handlerGossipMsg m
+issuedGossipHandlerGeneric IssuedDict{..} m = case m of
+    GossipProposal {}     -> handlerIssuedGossip m
+    GossipPreVote {}      -> handlerIssuedGossip m
+    GossipPreCommit {}    -> handlerIssuedGossip m
+    GossipBlock {}        -> handlerIssuedGossip m
     GossipAnn (AnnStep s) -> advanceOurHeight s
     GossipAnn _           -> return ()
     GossipTx{}            -> return ()
