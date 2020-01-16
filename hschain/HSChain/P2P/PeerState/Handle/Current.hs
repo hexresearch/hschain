@@ -51,11 +51,11 @@ handler = HandlerDict
   , handlerBlocksTimeout  = handlerBlocksTimeoutMsg
   }
 
-issuedGossipHandler :: Handler CurrentState GossipMsg a m
-issuedGossipHandler =
-  issuedGossipHandlerGeneric
-    handlerGossip
-    advanceOurHeight
+issuedGossipHandler :: (HandlerCtx a m) => IssuedDict CurrentState a m
+issuedGossipHandler = IssuedDict
+  { handlerIssuedGossip = handlerGossip
+  , advanceOurHeight    = advanceOurHeightWrk
+  }
 
 handlerGossip :: MessageHandler CurrentState a m
 handlerGossip = \case
@@ -126,8 +126,8 @@ addBlock bid = peerBlocks %= Set.insert bid
 
 ----------------------------------------------------------------
 
-advanceOurHeight :: AdvanceOurHeight CurrentState a m
-advanceOurHeight (FullStep ourH _ _) = setFinalState advance
+advanceOurHeightWrk :: AdvanceOurHeight CurrentState a m
+advanceOurHeightWrk (FullStep ourH _ _) = setFinalState advance
   where
     advance p
       -- When our height advances peer couldn't become Ahed

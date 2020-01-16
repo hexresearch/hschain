@@ -32,11 +32,11 @@ handler = HandlerDict
   , handlerBlocksTimeout  = handlerBlocksTimeoutMsg
   }
 
-issuedGossipHandler :: Handler AheadState GossipMsg a m
-issuedGossipHandler =
-  issuedGossipHandlerGeneric
-    handlerGossip
-    advanceOurHeignt
+issuedGossipHandler :: HandlerCtx a m => IssuedDict AheadState a m
+issuedGossipHandler = IssuedDict
+  { handlerIssuedGossip = handlerGossip
+  , advanceOurHeight    = advanceOurHeightWrk
+  }
 
 handlerGossip :: MessageHandler AheadState a m
 handlerGossip = \case
@@ -47,8 +47,8 @@ handlerGossip = \case
     _ -> return ()
 
 ----------------------------------------------------------------
-advanceOurHeignt :: AdvanceOurHeight AheadState a m
-advanceOurHeignt (FullStep ourH _ _) = setFinalState advance
+advanceOurHeightWrk :: AdvanceOurHeight AheadState a m
+advanceOurHeightWrk (FullStep ourH _ _) = setFinalState advance
   where
     advance p
       | h == ourH = do

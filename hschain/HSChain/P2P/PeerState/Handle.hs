@@ -13,7 +13,7 @@ import HSChain.Crypto (CryptoHashable)
 import HSChain.P2P.Internal.Types
 import HSChain.P2P.PeerState.Monad
 import HSChain.P2P.PeerState.Types
-import HSChain.P2P.PeerState.Handle.Utils (handlerGeneric)
+import HSChain.P2P.PeerState.Handle.Utils (handlerGeneric,issuedGossipHandlerGeneric)
 import qualified HSChain.P2P.PeerState.Handle.Ahead   as Ahead
 import qualified HSChain.P2P.PeerState.Handle.Current as Current
 import qualified HSChain.P2P.PeerState.Handle.Lagging as Lagging
@@ -40,7 +40,7 @@ handleIssuedGossip :: HandlerCtx a m
                    -> [GossipMsg a]
                    -> m (State a, [Command a])
 handleIssuedGossip config st = foldM (\ (s',cmds) msg -> second (cmds<>) <$> case s' of
-  Lagging s -> runTransitionT (Lagging.issuedGossipHandler msg) config s
-  Current s -> runTransitionT (Current.issuedGossipHandler msg) config s
-  Ahead   s -> runTransitionT (Ahead.issuedGossipHandler   msg) config s
-  Unknown s -> runTransitionT (Unknown.issuedGossipHandler msg) config s ) (st,[])
+  Lagging s -> runTransitionT (issuedGossipHandlerGeneric Lagging.issuedGossipHandler msg) config s
+  Current s -> runTransitionT (issuedGossipHandlerGeneric Current.issuedGossipHandler msg) config s
+  Ahead   s -> runTransitionT (issuedGossipHandlerGeneric Ahead.issuedGossipHandler   msg) config s
+  Unknown s -> runTransitionT (issuedGossipHandlerGeneric Unknown.issuedGossipHandler msg) config s ) (st,[])
