@@ -109,21 +109,6 @@ handlerGeneric HandlerDict{..} = \ case
     EMempoolTimeout  -> handlerMempoolTimeout
     EBlocksTimeout   -> handlerBlocksTimeout
     EAnnounceTimeout -> handlerAnnounceTimeout
-  where
-    handlerAnnounceTimeout :: TimeoutHandler s a m
-    handlerAnnounceTimeout = do
-      st <- atomicallyIO =<< view consensusSt
-      forM_ st $ \(h,TMState{smRound,smStep}) -> do
-        push2Gossip $ GossipAnn $ AnnStep $ FullStep h smRound smStep
-        case smStep of
-          StepAwaitCommit r -> push2Gossip $ GossipAnn $ AnnHasProposal h r
-          _                 -> return ()
-    --
-    handlerAnnounncement = \case
-        TxAnn       a -> push2Gossip $ GossipAnn a
-        TxProposal  p -> push2Gossip $ GossipProposal  p
-        TxPreVote   v -> push2Gossip $ GossipPreVote   v
-        TxPreCommit v -> push2Gossip $ GossipPreCommit v
 
 issuedGossipHandlerGeneric
   :: (Wrapable s, HandlerCtx a m)
@@ -140,3 +125,19 @@ issuedGossipHandlerGeneric HandlerDict{..} m = case m of
     GossipTx{}            -> return ()
     GossipPex{}           -> return ()
 
+
+handlerAnnounceTimeout :: TimeoutHandler s a m
+handlerAnnounceTimeout = do
+  st <- atomicallyIO =<< view consensusSt
+  forM_ st $ \(h,TMState{smRound,smStep}) -> do
+    push2Gossip $ GossipAnn $ AnnStep $ FullStep h smRound smStep
+    case smStep of
+      StepAwaitCommit r -> push2Gossip $ GossipAnn $ AnnHasProposal h r
+      _                 -> return ()
+
+handlerAnnounncement :: AnnouncementHandler s a m
+handlerAnnounncement = \case
+    TxAnn       a -> push2Gossip $ GossipAnn a
+    TxProposal  p -> push2Gossip $ GossipProposal  p
+    TxPreVote   v -> push2Gossip $ GossipPreVote   v
+    TxPreCommit v -> push2Gossip $ GossipPreCommit v
