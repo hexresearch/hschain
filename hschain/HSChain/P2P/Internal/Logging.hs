@@ -4,9 +4,8 @@
 
 module HSChain.P2P.Internal.Logging where
 
-import Control.Concurrent     (MVar, newMVar, readMVar)
 import Control.Monad.IO.Class (MonadIO, liftIO)
-import HSChain.Control    (modifyMVarM_)
+import Data.IORef
 import HSChain.Logger
 import HSChain.Monitoring
 
@@ -15,22 +14,22 @@ import qualified Data.Aeson.TH as JSON
 import qualified Katip
 
 -- | Counter for counting send/receive event
-data Counter = Counter !(MVar Int) !(MVar Int)
+data Counter = Counter !(IORef Int) !(IORef Int)
 
 newCounter :: MonadIO m => m Counter
-newCounter = Counter <$> liftIO (newMVar 0) <*>liftIO (newMVar 0)
+newCounter = Counter <$> liftIO (newIORef 0) <*> liftIO (newIORef 0)
 
 tickSend :: (MonadIO m) => Counter -> m ()
-tickSend (Counter s _) = liftIO $ modifyMVarM_ s (return . succ)
+tickSend (Counter s _) = liftIO $ atomicModifyIORef' s (\n -> (n+1, ()))
 
 tickRecv :: (MonadIO m) => Counter -> m ()
-tickRecv (Counter _ r) = liftIO $ modifyMVarM_ r (return . succ)
+tickRecv (Counter _ r) = liftIO $ atomicModifyIORef' r (\n -> (n+1, ()))
 
 readSend :: MonadIO m => Counter -> m Int
-readSend (Counter s _) = liftIO $ readMVar s
+readSend (Counter s _) = liftIO $ readIORef s
 
 readRecv :: MonadIO m => Counter -> m Int
-readRecv (Counter _ r) = liftIO $ readMVar r
+readRecv (Counter _ r) = liftIO $ readIORef r
 
 ----------------------------------------------------------------
 -- Data types
