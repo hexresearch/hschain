@@ -220,12 +220,10 @@ withGossip n action = do
   withDatabase "" $ \conn -> runNoLogsT $ runDBT conn $ do
     mustQueryRW $ storeGenesis genesis
     consensusState <- liftIO $ newTVarIO Nothing
-    gossipCnts     <- newGossipCounters
     cursor         <- getMempoolCursor nullMempool
     let config = P2P.Config
                    cursor
                    (readTVar consensusState)
-                   gossipCnts
     seedDatabase n
     flip runReaderT (config, consensusState)
       $ flip evalStateT (P2P.wrap P2P.UnknownState)
