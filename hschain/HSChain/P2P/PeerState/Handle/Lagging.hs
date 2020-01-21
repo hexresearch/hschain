@@ -36,7 +36,7 @@ handler = HandlerDict
   { handlerGossipMsg      = handlerGossip
   , advanceOurHeight      = \_ -> return ()
   , handlerVotesTimeout   = handlerVotesTimeoutMsg
-  , handlerMempoolTimeout = handlerMempoolTimeoutMsg
+  , handlerMempoolTimeout = return ()
   , handlerBlocksTimeout  = handlerBlocksTimeoutMsg
   }
 
@@ -115,10 +115,6 @@ handlerVotesTimeoutMsg = do
           addPrecommit voteHeight voteRound $ signedKeyInfo vote
           push2Gossip $ GossipPreCommit vote
 
-----------------------------------------------------------------
-
-handlerMempoolTimeoutMsg :: TimeoutHandler LaggingState a m
-handlerMempoolTimeoutMsg = return ()
 ----------------------------------------------------------------
 
 handlerBlocksTimeoutMsg :: CryptoHashable a => TimeoutHandler LaggingState a m
