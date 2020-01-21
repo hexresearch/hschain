@@ -46,7 +46,7 @@ handler = HandlerDict
   { handlerGossipMsg      = handlerGossip
   , advanceOurHeight      = advanceOurHeightWrk
   , handlerVotesTimeout   = handlerVotesTimeoutMsg
-  , handlerMempoolTimeout = handlerMempoolTimeoutMsg
+  , handlerMempoolTimeout = advanceMempoolCursor
   , handlerBlocksTimeout  = handlerBlocksTimeoutMsg
   }
 
@@ -198,11 +198,6 @@ gossipPrevotes tm r = do
       let vote@(signedValue -> Vote{..}) = unverifySignature $ toList unknown !! i
       addPrevote voteHeight voteRound $ signedKeyInfo vote
       push2Gossip $ GossipPreVote vote
-
-----------------------------------------------------------------
-
-handlerMempoolTimeoutMsg :: TimeoutHandler CurrentState a m
-handlerMempoolTimeoutMsg = advanceMempoolCursor
 
 ----------------------------------------------------------------
 
