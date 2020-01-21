@@ -36,7 +36,6 @@ handler = HandlerDict
   { handlerGossipMsg      = handlerGossip
   , advanceOurHeight      = \_ -> return ()
   , handlerVotesTimeout   = handlerVotesTimeoutMsg
-  , handlerMempoolTimeout = return ()
   , handlerBlocksTimeout  = handlerBlocksTimeoutMsg
   }
 

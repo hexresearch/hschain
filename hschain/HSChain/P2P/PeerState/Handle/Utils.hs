@@ -89,8 +89,6 @@ data HandlerDict s a m = HandlerDict
     -- ^ Handler for outgoing 'AnnStep'
   , handlerVotesTimeout   :: TransitionT s a m ()
     -- ^ Handler for votes timeout
-  , handlerMempoolTimeout :: TransitionT s a m ()
-    -- ^ Handler for mempool timout
   , handlerBlocksTimeout  :: TransitionT s a m ()
     -- ^ Handler for block propagation timeout
   }
@@ -104,7 +102,7 @@ handlerGeneric HandlerDict{..} = \ case
                            handlerGossipMsg m
     EAnnouncement a  -> handlerAnnounncement a
     EVotesTimeout    -> handlerVotesTimeout
-    EMempoolTimeout  -> handlerMempoolTimeout
+    EMempoolTimeout  -> advanceMempoolCursor
     EBlocksTimeout   -> handlerBlocksTimeout
     EAnnounceTimeout -> handlerAnnounceTimeout
 
