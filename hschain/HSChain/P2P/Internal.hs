@@ -166,7 +166,7 @@ peerFSM PeerChans{..} peerExchangeCh gossipCh recvCh cursor@MempoolCursor{..} = 
         Push2Gossip tx    -> atomicallyIO $ writeTBQueue gossipCh tx
       return s'
   where
-    config = Config cursor consensusState gossipCnts
+    config = Config cursor consensusState
 
 
 -- | Start interactions with peer. At this point connection is already
@@ -190,7 +190,7 @@ startPeer peerAddrTo peerCh@PeerChans{..} conn peerRegistry mempool = logOnExcep
     recvCh   <- liftIO newTChanIO
     cursor   <- getMempoolCursor mempool
     runConcurrently
-      [ descendNamespace "recv" $ peerReceive             recvCh conn
+      [ descendNamespace "recv" $ peerReceive             peerCh recvCh conn
       , descendNamespace "send" $ peerSend                peerCh gossipCh conn
       , descendNamespace "PEX"  $ peerGossipPeerExchange  peerCh peerRegistry pexCh gossipCh
       , descendNamespace "peerFSM" $ void $ peerFSM       peerCh pexCh gossipCh recvCh cursor
@@ -202,15 +202,19 @@ startPeer peerAddrTo peerCh@PeerChans{..} conn peerRegistry mempool = logOnExcep
 peerReceive
   :: ( MonadReadDB m a, MonadIO m, MonadMask m, MonadLogger m
      , BlockData a)
-  => TChan (Event a)
+  => PeerChans a
+  -> TChan (Event a)
   -> P2PConnection
   -> m ()
-peerReceive recvCh P2PConnection{..} = logOnException $ do
+peerReceive PeerChans{gossipCnts} recvCh P2PConnection{..} = logOnException $ do
   logger InfoS "Starting routing for receiving messages" ()
   fix $ \loop -> recv >>= \case
     Nothing  -> logger InfoS "Peer stopping since socket is closed" ()
     Just bs  -> do
-      atomicallyIO $ writeTChan recvCh $! EGossip $ deserialise bs
+      let msg    = deserialise bs
+          tick f = tickRecv $ f gossipCnts
+      atomicallyIO $ writeTChan recvCh $! EGossip msg
+      countGossip gossipCnts tickRecv msg
       loop
 
 -- | Routine for actually sending data to peers
@@ -218,7 +222,7 @@ peerSend
   :: ( MonadReadDB m a, MonadMask m, MonadIO m, MonadLogger m
      , BlockData a)
   => PeerChans a
-  -> TBQueue (GossipMsg a)
+  -> TBQueue (GossipMsg a)  
   -> P2PConnection
   -> m x
 peerSend PeerChans{..} gossipCh P2PConnection{..} = logOnException $ do
@@ -226,8 +230,21 @@ peerSend PeerChans{..} gossipCh P2PConnection{..} = logOnException $ do
   ownPeerChanPex <- atomicallyIO $ dupTChan peerChanPex
   forever $ do
     msg <- atomicallyIO $  readTBQueue gossipCh
-                       <|> fmap GossipPex (readTChan ownPeerChanPex)
+                       <|> fmap GossipPex (readTChan ownPeerChanPex)    
     send $ serialise msg
+    countGossip gossipCnts tickSend msg
+
+countGossip :: MonadIO m => Logging.GossipCounters -> (Counter -> m ()) -> GossipMsg a -> m ()
+countGossip counters ticker = \case
+  GossipPreVote{}   -> tick Logging.prevote
+  GossipPreCommit{} -> tick Logging.precommit
+  GossipProposal{}  -> tick Logging.proposals
+  GossipBlock{}     -> tick Logging.blocks
+  GossipAnn{}       -> return ()
+  GossipTx{}        -> tick Logging.tx
+  GossipPex{}       -> tick Logging.pex
+  where
+    tick f = ticker $ f counters
 
 ----------------------------------------------------------------
 -- Peer exchange

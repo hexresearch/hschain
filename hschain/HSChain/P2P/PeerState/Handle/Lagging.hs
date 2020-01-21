@@ -115,7 +115,6 @@ handlerVotesTimeoutMsg = do
           let vote@(signedValue -> Vote{..}) = unverifySignature $ toList unknown !! i
           addPrecommit voteHeight voteRound $ signedKeyInfo vote
           push2Gossip $ GossipPreCommit vote
-          tickSend precommit
 
 ----------------------------------------------------------------
 
@@ -132,5 +131,3 @@ handlerBlocksTimeoutMsg = do
     b <- queryRO $ mustRetrieveBlock h
     addBlock b
     push2Gossip $ GossipBlock b
-    tickSend blocks
-

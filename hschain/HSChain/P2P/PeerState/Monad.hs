@@ -80,31 +80,18 @@ type Handler s t a m = HandlerCtx a m
                     -> TransitionT s a m () -- ^ new `TransitionT'
 
 
-resendGossip :: ( MonadReader (Config n a) m
-                , MonadWriter [Command a]  m
+resendGossip :: ( MonadWriter [Command a]  m
                 , MonadIO m
                 )
              => GossipMsg a -> m ()
-resendGossip (GossipPreVote v  ) = tell [SendRX $ RxPreVote v] >> tickRecv prevote
-resendGossip (GossipPreCommit v) = tell [SendRX $ RxPreCommit v] >> tickRecv precommit
-resendGossip (GossipProposal  p) = tell [SendRX $ RxProposal p] >> tickRecv proposals
-resendGossip (GossipBlock     b) = tell [SendRX $ RxBlock b] >> tickRecv blocks
-resendGossip (GossipTx tx      ) = tell [Push2Mempool tx] >> tickRecv Logging.tx
-resendGossip (GossipPex pexmsg ) = tell [SendPEX pexmsg] >> tickRecv pex
+resendGossip (GossipPreVote v  ) = tell [SendRX $ RxPreVote v]
+resendGossip (GossipPreCommit v) = tell [SendRX $ RxPreCommit v]
+resendGossip (GossipProposal  p) = tell [SendRX $ RxProposal p]
+resendGossip (GossipBlock     b) = tell [SendRX $ RxBlock b]
+resendGossip (GossipTx tx      ) = tell [Push2Mempool tx]
+resendGossip (GossipPex pexmsg ) = tell [SendPEX pexmsg]
 resendGossip _                   = return ()
 
-
--- | Increment receive counter
-tickRecv :: (MonadReader (Config n a) m, MonadIO m)
-         => (GossipCounters -> Counter) -> m ()
-tickRecv counter =
-  Logging.tickRecv . counter =<< view gossipCounters
-
--- | Increment send counter
-tickSend :: (MonadReader (Config n a) m, MonadIO m)
-         => (GossipCounters -> Counter) -> m ()
-tickSend counter =
-  Logging.tickSend . counter =<< view gossipCounters
 
 push2Gossip :: MonadWriter [Command a] m
             => GossipMsg a -> m ()
