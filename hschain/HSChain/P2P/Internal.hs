@@ -152,12 +152,13 @@ peerFSM PeerChans{..} peerExchangeCh gossipCh recvCh cursor@MempoolCursor{..} = 
     linkedTimer (gossipDelayBlocks  p2pConfig) chTimeout EBlocksTimeout
     linkedTimer  10e3                          chTimeout EAnnounceTimeout
     lift $ iterateM (wrap UnknownState) $ \s -> do
-      event <- atomicallyIO $ asum
-        [ readTQueue chTimeout
-        , readTChan recvCh
-        , EAnnouncement <$> readTChan ownPeerChanTx
-        ]
-      (s', cmds) <- handler config s event
+      (s', cmds)
+        <- join
+         $ atomicallyIO
+         $ asum [ handler config s <$> readTQueue chTimeout
+                , handler config s <$> readTChan  recvCh
+                , handler config s . EAnnouncement <$> readTChan ownPeerChanTx
+                ]
       forM_ cmds $ \case
         SendRX rx         -> atomicallyIO $ peerChanRx rx
         Push2Mempool tx   -> void $ pushTransaction tx
