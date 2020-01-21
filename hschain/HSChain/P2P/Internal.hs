@@ -211,8 +211,7 @@ peerReceive PeerChans{gossipCnts} recvCh P2PConnection{..} = logOnException $ do
   fix $ \loop -> recv >>= \case
     Nothing  -> logger InfoS "Peer stopping since socket is closed" ()
     Just bs  -> do
-      let msg    = deserialise bs
-          tick f = tickRecv $ f gossipCnts
+      let msg = deserialise bs
       atomicallyIO $ writeTChan recvCh $! EGossip msg
       countGossip gossipCnts tickRecv msg
       loop
