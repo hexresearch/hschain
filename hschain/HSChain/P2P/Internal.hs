@@ -50,7 +50,6 @@ import HSChain.P2P.Internal.Logging as Logging
 import HSChain.P2P.Internal.Types
 
 import HSChain.P2P.PeerState.Handle
-  (Command(..), Event(..), wrap, UnknownState(..), Config(..), handler)
 
 --
 -- Connect/accept
