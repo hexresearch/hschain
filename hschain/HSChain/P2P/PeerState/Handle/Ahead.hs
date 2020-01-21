@@ -27,9 +27,9 @@ handler :: HandlerCtx a m => HandlerDict AheadState a m
 handler = HandlerDict
   { handlerGossipMsg      = handlerGossip
   , advanceOurHeight      = advanceOurHeightWrk
-  , handlerVotesTimeout   = handlerVotesTimeoutMsg
-  , handlerMempoolTimeout = handlerMempoolTimeoutMsg
-  , handlerBlocksTimeout  = handlerBlocksTimeoutMsg
+  , handlerVotesTimeout   = return ()
+  , handlerMempoolTimeout = advanceMempoolCursor
+  , handlerBlocksTimeout  = return ()
   }
 
 handlerGossip :: MessageHandler AheadState a m
@@ -59,20 +59,4 @@ advanceOurHeightWrk (FullStep ourH _ _) = setFinalState advance
       | otherwise = return $ wrap p
       where
         step@(FullStep h _ _) = _aheadPeerStep p
-
-
-----------------------------------------------------------------
-
-handlerVotesTimeoutMsg :: TimeoutHandler AheadState a m
-handlerVotesTimeoutMsg = return ()
-
-----------------------------------------------------------------
-
-handlerMempoolTimeoutMsg :: TimeoutHandler AheadState a m
-handlerMempoolTimeoutMsg = advanceMempoolCursor
-
-----------------------------------------------------------------
-
-handlerBlocksTimeoutMsg :: TimeoutHandler AheadState a m
-handlerBlocksTimeoutMsg = return ()
 
