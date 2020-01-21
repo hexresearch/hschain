@@ -63,9 +63,8 @@ advanceMempoolCursor :: (HandlerCtx a m)
 advanceMempoolCursor = do
     MempoolCursor{..} <- view mempCursor
     mTx <- lift advanceCursor
-    forM_ mTx $ \ tx' -> do
-      push2Gossip $ GossipTx tx'
-      tickSend tx
+    forM_ mTx $ push2Gossip . GossipTx
+
 
 type MessageHandler s a m =  HandlerCtx a m
                           => GossipMsg a

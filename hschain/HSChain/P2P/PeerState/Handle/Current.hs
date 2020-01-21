@@ -161,7 +161,6 @@ handlerVotesTimeoutMsg = do
           let prop = signedValue pr
           addProposal (propHeight prop) (propRound prop)
           push2Gossip $ GossipProposal $ unverifySignature pr
-          tickSend proposals
       -- Send prevotes for lock round
       use peerLock >>= mapM_ (gossipPrevotes tm)
       -- Send prevotes
@@ -179,7 +178,6 @@ handlerVotesTimeoutMsg = do
                  let vote@(signedValue -> Vote{..}) = unverifySignature $ toList unknown !! i
                  addPrecommit voteHeight voteRound $ signedKeyInfo vote
                  push2Gossip $ GossipPreCommit vote
-                 tickSend precommit
          | otherwise -> return ()
 
 gossipPrevotes
@@ -201,7 +199,6 @@ gossipPrevotes tm r = do
       let vote@(signedValue -> Vote{..}) = unverifySignature $ toList unknown !! i
       addPrevote voteHeight voteRound $ signedKeyInfo vote
       push2Gossip $ GossipPreVote vote
-      tickSend prevote
 
 ----------------------------------------------------------------
 
@@ -227,4 +224,3 @@ handlerBlocksTimeoutMsg = do
           lift $ logger DebugS ("Gossip: " <> showLS bid) ()
           addBlock bid
           push2Gossip $ GossipBlock b
-          tickSend blocks

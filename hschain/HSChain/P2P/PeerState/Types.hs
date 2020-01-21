@@ -107,7 +107,6 @@ data Event a
 data Config m a = Config
   { _mempCursor     :: !(MempoolCursor m (Alg a) (TX a))
   , _consensusSt    :: !(STM (Maybe (Height, TMState a)))
-  , _gossipCounters :: !GossipCounters
   }
 makeLenses ''Config
 
