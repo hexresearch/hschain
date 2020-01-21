@@ -68,16 +68,16 @@ handlerGossip = \case
 addProposal :: MonadState (LaggingState a) m
                    => Height -> Round -> m ()
 addProposal h r = do
-      (FullStep peerHeihgt _ _) <- use lagPeerStep
-      peerRound                 <- use lagPeerCommitR
+      FullStep peerHeihgt _ _ <- use lagPeerStep
+      peerRound               <- use lagPeerCommitR
       when (h == peerHeihgt && r == peerRound) $
          lagPeerHasProposal .= True
 
 addPrecommit :: MonadState (LaggingState a) m
                    => Height -> Round -> ValidatorIdx alg -> m ()
 addPrecommit h r idx = do
-      (FullStep hPeer _ _) <- use lagPeerStep
-      peerRound            <- use lagPeerCommitR
+      FullStep hPeer _ _ <- use lagPeerStep
+      peerRound           <- use lagPeerCommitR
       when (h == hPeer && r == peerRound) $
         lagPeerPrecommits %= insertValidatorIdx idx
 
@@ -92,7 +92,7 @@ addBlock b = do
 handlerVotesTimeoutMsg :: CryptoHashable a => TimeoutHandler LaggingState a m
 handlerVotesTimeoutMsg = do
   bchH      <- queryRO blockchainHeight
-  (FullStep peerH _ _) <- use lagPeerStep
+  FullStep peerH _ _ <- use lagPeerStep
   mcmt <- queryRO $
     if peerH == bchH
        then retrieveLocalCommit peerH
