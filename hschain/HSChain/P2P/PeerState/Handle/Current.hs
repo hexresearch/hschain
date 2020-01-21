@@ -30,7 +30,6 @@ import HSChain.Store.Internal.BlockDB
 import HSChain.Types.Blockchain
 import HSChain.Types.Validators
 
-import HSChain.P2P.Internal.Logging (GossipCounters(..))
 import HSChain.P2P.Internal.Types
 import HSChain.P2P.PeerState.Monad
 import HSChain.P2P.PeerState.Types

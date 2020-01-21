@@ -15,7 +15,6 @@ module HSChain.P2P.PeerState.Monad where
 import Codec.Serialise          (Serialise)
 import Control.Monad.Catch      (MonadThrow)
 import Control.Monad.RWS.Strict
-import Lens.Micro.Mtl
 
 import HSChain.Blockchain.Internal.Types
 import HSChain.Crypto
@@ -24,10 +23,8 @@ import HSChain.Logger
 import HSChain.Store.Internal.Query      (MonadReadDB(..))
 
 import HSChain.P2P.Internal.Types
-import HSChain.P2P.Internal.Logging hiding (tx, tickRecv)
 import HSChain.P2P.PeerState.Types
 
-import qualified HSChain.P2P.Internal.Logging as Logging
 
 
 -- | Underlying monad for transitions of state for gossip

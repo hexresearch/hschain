@@ -23,9 +23,8 @@ import HSChain.Crypto
 import HSChain.Store
 import HSChain.Types.Blockchain
 import HSChain.Types.Validators
-
 import HSChain.P2P.Internal.Types
-import HSChain.P2P.Internal.Logging (GossipCounters(..))
+
 
 -- | State of peer which is lagging behind us. In this case we only
 --   interested in precommits which are part of commit justifying next
