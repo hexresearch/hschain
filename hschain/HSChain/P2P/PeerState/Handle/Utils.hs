@@ -98,8 +98,6 @@ handlerGeneric :: (Wrapable s, HandlerCtx a m)
                -> Event a
                -> TransitionT s a m ()
 handlerGeneric HandlerDict{..} = \ case
-    EGossip m        -> do resendGossip m
-                           handlerGossipMsg m
     EVotesTimeout    -> handlerVotesTimeout
     EMempoolTimeout  -> advanceMempoolCursor
     EBlocksTimeout   -> handlerBlocksTimeout

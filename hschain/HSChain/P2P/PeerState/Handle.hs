@@ -5,6 +5,7 @@ module HSChain.P2P.PeerState.Handle
  ( module HSChain.P2P.PeerState.Types
  , handler
  , handlerTx
+ , handlerGossip
  ) where
 
 import Control.Monad (foldM)
@@ -15,7 +16,8 @@ import HSChain.Blockchain.Internal.Types
 import HSChain.P2P.Internal.Types
 import HSChain.P2P.PeerState.Monad
 import HSChain.P2P.PeerState.Types
-import HSChain.P2P.PeerState.Handle.Utils (handlerGeneric,issuedGossipHandlerGeneric,handlerAnnounncement)
+import HSChain.P2P.PeerState.Handle.Utils (handlerGeneric,issuedGossipHandlerGeneric,
+                                           handlerAnnounncement,HandlerDict(..))
 import qualified HSChain.P2P.PeerState.Handle.Ahead   as Ahead
 import qualified HSChain.P2P.PeerState.Handle.Current as Current
 import qualified HSChain.P2P.PeerState.Handle.Lagging as Lagging
@@ -49,7 +51,22 @@ handlerTx config st event = do
     Unknown s -> runTransitionT (handlerAnnounncement event) config s
   second (cmds <>) <$> handleIssuedGossip config st' [ c | Push2Gossip c <- cmds ]
 
-
+handlerGossip
+  :: (CryptoHashable a, HandlerCtx a m)
+  => Config m a
+  -> State a
+  -> GossipMsg a
+  -> m (State a, [Command a])
+handlerGossip config st event = do
+  (st',cmds) <- case st of
+    Lagging s -> runTransitionT (handlerG Lagging.handler event) config s
+    Current s -> runTransitionT (handlerG Current.handler event) config s
+    Ahead   s -> runTransitionT (handlerG Ahead.handler   event) config s
+    Unknown s -> runTransitionT (handlerG Unknown.handler event) config s
+  second (cmds <>) <$> handleIssuedGossip config st' [ c | Push2Gossip c <- cmds ]
+  where
+    handlerG dct m = do resendGossip m
+                        handlerGossipMsg dct m
 
 handleIssuedGossip :: (CryptoHashable a, HandlerCtx a m)
                    => Config m a
