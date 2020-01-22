@@ -181,7 +181,6 @@ handlerVotesTimeoutMsg = do
 gossipPrevotes
   :: ( MonadState  (CurrentState a) m
      , MonadWriter [Command a] m
-     , MonadReader (Config n a) m
      , MonadIO m
      )
   => TMState a -> Round -> m ()

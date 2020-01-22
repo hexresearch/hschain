@@ -29,12 +29,12 @@ import HSChain.P2P.PeerState.Types
 
 -- | Underlying monad for transitions of state for gossip
 newtype TransitionT s a m r = TransitionT
-  { unTransition :: RWST (Config m a) [Command a] (s a, s a -> m (State a)) m r }
+  { unTransition :: RWST (Config a) [Command a] (s a, s a -> m (State a)) m r }
   deriving ( Functor
            , Applicative
            , Monad
            , MonadIO
-           , MonadReader (Config m a)
+           , MonadReader (Config a)
            , MonadWriter [Command a]
            , MonadThrow
            )
@@ -56,7 +56,7 @@ setFinalState st = TransitionT $
 runTransitionT
   :: (Wrapable s, Monad m)
   => TransitionT s a m ()
-  -> Config m a
+  -> Config a
   -> s a
   -> m (State a, [Command a])
 runTransitionT action cfg st = do

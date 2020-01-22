@@ -25,9 +25,9 @@ import qualified HSChain.P2P.PeerState.Handle.Unknown as Unknown
 
 
 handler :: (CryptoHashable a, HandlerCtx a m)
-        => Config m a
+        => Config a
         -> State a
-        -> GossipTimeout a
+        -> GossipTimeout
         -> m (State a, [Command a])
 handler config st event = do
   (st',cmds) <- case st of
@@ -39,7 +39,7 @@ handler config st event = do
 
 handlerTx
   :: (CryptoHashable a, HandlerCtx a m)
-  => Config m a
+  => Config a
   -> State a
   -> MessageTx a
   -> m (State a, [Command a])
@@ -55,7 +55,7 @@ handlerTx config st msgTx = do
 
 handlerGossip
   :: (CryptoHashable a, HandlerCtx a m)
-  => Config m a
+  => Config a
   -> State a
   -> GossipMsg a
   -> m (State a, [Command a])
@@ -71,7 +71,7 @@ handlerGossip config st event = do
                         handlerGossipMsg dct m
 
 handleIssuedGossip :: (CryptoHashable a, HandlerCtx a m)
-                   => Config m a
+                   => Config a
                    -> State a
                    -> [GossipMsg a]
                    -> m (State a, [Command a])

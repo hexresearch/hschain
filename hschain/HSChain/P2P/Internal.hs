@@ -142,22 +142,27 @@ peerFSM
   -> TChan (GossipMsg a)
   -> MempoolCursor m (Alg a) (TX a)
   -> m (State a)
-peerFSM PeerChans{..} peerExchangeCh gossipCh recvCh cursor@MempoolCursor{..} = logOnException $ do
+peerFSM PeerChans{..} peerExchangeCh gossipCh recvCh MempoolCursor{..} = logOnException $ do
   logger InfoS "Starting routing for receiving messages" ()
   ownPeerChanTx <- atomicallyIO $ dupTChan peerChanTx
   chTimeout     <- liftIO newTQueueIO
+  chMempool     <- liftIO newTQueueIO
   evalContT $ do
     linkedTimer (gossipDelayVotes   p2pConfig) chTimeout EVotesTimeout
-    linkedTimer (gossipDelayMempool p2pConfig) chTimeout EMempoolTimeout
+    linkedTimer (gossipDelayMempool p2pConfig) chMempool ()
     linkedTimer (gossipDelayBlocks  p2pConfig) chTimeout EBlocksTimeout
     linkedTimer  10e3                          chTimeout EAnnounceTimeout
     lift $ iterateM (wrap UnknownState) $ \s -> do
       (s', cmds)
         <- join
          $ atomicallyIO
-         $ asum [ handler config s <$> readTQueue chTimeout
+         $ asum [ (\() -> do mtx <- advanceCursor
+                             forM_ mtx $ atomicallyIO . writeTBQueue gossipCh . GossipTx
+                             return (s, [])
+                  ) <$> readTQueue chMempool
+                , handler       config s <$> readTQueue chTimeout
                 , handlerGossip config s <$> readTChan  recvCh
-                , handlerTx config s <$> readTChan ownPeerChanTx
+                , handlerTx     config s <$> readTChan  ownPeerChanTx
                 ]
       forM_ cmds $ \case
         SendRX rx         -> atomicallyIO $ peerChanRx rx
@@ -166,7 +171,7 @@ peerFSM PeerChans{..} peerExchangeCh gossipCh recvCh cursor@MempoolCursor{..} = 
         Push2Gossip tx    -> atomicallyIO $ writeTBQueue gossipCh tx
       return s'
   where
-    config = Config cursor consensusState
+    config = Config consensusState
 
 
 -- | Start interactions with peer. At this point connection is already
