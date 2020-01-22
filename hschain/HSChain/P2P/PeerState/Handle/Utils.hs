@@ -127,10 +127,3 @@ handlerAnnounceTimeout = do
     case smStep of
       StepAwaitCommit r -> push2Gossip $ GossipAnn $ AnnHasProposal h r
       _                 -> return ()
-
-handlerAnnounncement :: AnnouncementHandler s a m
-handlerAnnounncement = \case
-    TxAnn       a -> push2Gossip $ GossipAnn a
-    TxProposal  p -> push2Gossip $ GossipProposal  p
-    TxPreVote   v -> push2Gossip $ GossipPreVote   v
-    TxPreCommit v -> push2Gossip $ GossipPreCommit v

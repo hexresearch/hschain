@@ -17,7 +17,7 @@ import HSChain.P2P.Internal.Types
 import HSChain.P2P.PeerState.Monad
 import HSChain.P2P.PeerState.Types
 import HSChain.P2P.PeerState.Handle.Utils (handlerGeneric,issuedGossipHandlerGeneric,
-                                           handlerAnnounncement,HandlerDict(..))
+                                           HandlerDict(..))
 import qualified HSChain.P2P.PeerState.Handle.Ahead   as Ahead
 import qualified HSChain.P2P.PeerState.Handle.Current as Current
 import qualified HSChain.P2P.PeerState.Handle.Lagging as Lagging
@@ -43,13 +43,15 @@ handlerTx
   -> State a
   -> MessageTx a
   -> m (State a, [Command a])
-handlerTx config st event = do
-  (st',cmds) <- case st of
-    Lagging s -> runTransitionT (handlerAnnounncement event) config s
-    Current s -> runTransitionT (handlerAnnounncement event) config s
-    Ahead   s -> runTransitionT (handlerAnnounncement event) config s
-    Unknown s -> runTransitionT (handlerAnnounncement event) config s
-  second (cmds <>) <$> handleIssuedGossip config st' [ c | Push2Gossip c <- cmds ]
+handlerTx config st msgTx = do
+  second (Push2Gossip msgGsp :) <$> handleIssuedGossip config st [ msgGsp ]
+  where
+    msgGsp = case msgTx of
+      TxAnn       a -> GossipAnn       a
+      TxProposal  p -> GossipProposal  p
+      TxPreVote   v -> GossipPreVote   v
+      TxPreCommit v -> GossipPreCommit v
+
 
 handlerGossip
   :: (CryptoHashable a, HandlerCtx a m)
