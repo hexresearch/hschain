@@ -139,7 +139,7 @@ peerFSM
   => PeerChans a
   -> TChan PexMessage
   -> TBQueue (GossipMsg a)
-  -> TChan (Event a)
+  -> TChan (GossipMsg a)
   -> MempoolCursor m (Alg a) (TX a)
   -> m (State a)
 peerFSM PeerChans{..} peerExchangeCh gossipCh recvCh cursor@MempoolCursor{..} = logOnException $ do
@@ -156,7 +156,7 @@ peerFSM PeerChans{..} peerExchangeCh gossipCh recvCh cursor@MempoolCursor{..} = 
         <- join
          $ atomicallyIO
          $ asum [ handler config s <$> readTQueue chTimeout
-                , handler config s <$> readTChan  recvCh
+                , handlerGossip config s <$> readTChan  recvCh
                 , handlerTx config s <$> readTChan ownPeerChanTx
                 ]
       forM_ cmds $ \case
@@ -203,7 +203,7 @@ peerReceive
   :: ( MonadReadDB m a, MonadIO m, MonadMask m, MonadLogger m
      , BlockData a)
   => PeerChans a
-  -> TChan (Event a)
+  -> TChan (GossipMsg a)
   -> P2PConnection
   -> m ()
 peerReceive PeerChans{gossipCnts} recvCh P2PConnection{..} = logOnException $ do
@@ -212,7 +212,7 @@ peerReceive PeerChans{gossipCnts} recvCh P2PConnection{..} = logOnException $ do
     Nothing  -> logger InfoS "Peer stopping since socket is closed" ()
     Just bs  -> do
       let msg = deserialise bs
-      atomicallyIO $ writeTChan recvCh $! EGossip msg
+      atomicallyIO $ writeTChan recvCh msg
       countGossip gossipCnts tickRecv msg
       loop
 
