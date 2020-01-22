@@ -14,6 +14,7 @@ import Control.Monad.RWS.Strict
 import Data.Foldable            (toList)
 import System.Random            (randomRIO)
 
+import Lens.Micro
 import Lens.Micro.Mtl
 
 import HSChain.Blockchain.Internal.Types
@@ -31,42 +32,49 @@ import qualified Data.IntSet        as ISet
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Map.Strict    as Map
 
-handler :: (CryptoHashable a, HandlerCtx a m) => HandlerDict LaggingState a m
+handler :: (BlockData a, HandlerCtx a m) => HandlerDict LaggingState a m
 handler = HandlerDict
-  { handlerGossipMsg      = handlerGossip
-  , advanceOurHeight      = \_ -> return ()
-  , handlerVotesTimeout   = handlerVotesTimeoutMsg
-  , handlerBlocksTimeout  = handlerBlocksTimeoutMsg
+  { handlerGossipMsg        = handlerGossip
+  , advanceOurHeight        = \_ -> return ()
+  , handlerProposalTimeout  = \_ _ -> return []
+  , handlerPrevoteTimeout   = \_ _ -> return []
+  , handlerPrecommitTimeout = handlerVotesTimeoutMsg
+  , handlerBlocksTimeout    = handlerBlocksTimeoutMsg
   }
 
-handlerGossip :: MessageHandler LaggingState a m
-handlerGossip = \case
-    GossipPreCommit v@(signedValue -> Vote{..}) -> do
-      addPrecommit voteHeight voteRound $ signedKeyInfo v
-    GossipProposal (signedValue -> Proposal{..}) -> do
-      addProposal propHeight propRound
-    GossipBlock b -> addBlock b
-    GossipAnn ann -> case ann of
-      AnnStep step@(FullStep h _ _) -> do
-        -- Don't go back.
-        s@(FullStep h0 _ _) <- use lagPeerStep
-        if | h    > h0 -> advancePeer step
-           -- If update don't change height only advance step of peer
-           | step > s  -> lagPeerStep .= step
-           | otherwise -> return ()
-      AnnLock{}             -> return ()
-      AnnHasProposal  h r   -> addProposal h r
-      AnnHasPreVote   {}    -> return ()
-      AnnHasPreCommit h r i -> addPrecommit h r i
-      AnnHasBlock     h r   -> do
-        FullStep hP _ _ <- use lagPeerStep
-        peerCommitRound <- use lagPeerCommitR
-        when ( h == hP && r == peerCommitRound) $
-          lagPeerHasBlock .= True
-    _ -> return ()
+handlerGossip
+  :: (MonadIO m, MonadReadDB m a, BlockData a)
+  => Config a -> GossipMsg a -> TransitionT LaggingState a m ()
+handlerGossip _ = \case
+  GossipPreVote   _ ->
+    return ()
+  GossipPreCommit v@(signedValue -> Vote{..}) -> do
+    addPrecommit voteHeight voteRound $ signedKeyInfo v
+  GossipProposal (signedValue -> Proposal{..}) -> do
+    addProposal propHeight propRound
+  GossipBlock b -> addBlock b
+  GossipAnn ann -> case ann of
+    AnnStep step@(FullStep h _ _) -> do
+      -- Don't go back.
+      s@(FullStep h0 _ _) <- use lagPeerStep
+      if | h    > h0 -> advancePeer step
+         -- If update don't change height only advance step of peer
+         | step > s  -> lagPeerStep .= step
+         | otherwise -> return ()
+    AnnLock{}             -> return ()
+    AnnHasProposal  h r   -> addProposal h r
+    AnnHasPreVote   {}    -> return ()
+    AnnHasPreCommit h r i -> addPrecommit h r i
+    AnnHasBlock     h r   -> do
+      FullStep hP _ _ <- use lagPeerStep
+      peerCommitRound <- use lagPeerCommitR
+      when ( h == hP && r == peerCommitRound) $
+        lagPeerHasBlock .= True
+  GossipTx{}  -> return ()
+  GossipPex{} -> return ()
 
 addProposal :: MonadState (LaggingState a) m
-                   => Height -> Round -> m ()
+            => Height -> Round -> m ()
 addProposal h r = do
       FullStep peerHeihgt _ _ <- use lagPeerStep
       peerRound               <- use lagPeerCommitR
@@ -74,7 +82,7 @@ addProposal h r = do
          lagPeerHasProposal .= True
 
 addPrecommit :: MonadState (LaggingState a) m
-                   => Height -> Round -> ValidatorIdx alg -> m ()
+             => Height -> Round -> ValidatorIdx alg -> m ()
 addPrecommit h r idx = do
       FullStep hPeer _ _ <- use lagPeerStep
       peerRound           <- use lagPeerCommitR
@@ -89,39 +97,46 @@ addBlock b = do
 
 ----------------------------------------------------------------
 
-handlerVotesTimeoutMsg :: CryptoHashable a => TimeoutHandler LaggingState a m
-handlerVotesTimeoutMsg = do
-  bchH      <- queryRO blockchainHeight
-  FullStep peerH _ _ <- use lagPeerStep
+handlerVotesTimeoutMsg
+  :: (MonadIO m, MonadReadDB m a, BlockData a)
+  => Config a -> LaggingState a -> m [GossipMsg a]
+handlerVotesTimeoutMsg _ st = do
+  bchH <- queryRO blockchainHeight
   mcmt <- queryRO $
     if peerH == bchH
        then retrieveLocalCommit peerH
        else retrieveCommit      peerH
-  --
-  forM_ mcmt $ \cmt -> do
-     let cmtVotes  = Map.fromList [ (signedKeyInfo v, unverifySignature v)
-                                  | v <- NE.toList (commitPrecommits cmt) ]
-     peerVotes <- Map.fromList
-                . map (\x -> (ValidatorIdx x,()))
-                . ISet.toList
-                . getValidatorIntSet
-              <$> use lagPeerPrecommits
-     let unknown   = Map.difference cmtVotes peerVotes
-         n         = Map.size unknown
-     when (n>0) $
-       do i <- liftIO $ randomRIO (0,n-1) -- TODO: move RndGen to Config or state
-          let vote@(signedValue -> Vote{..}) = unverifySignature $ toList unknown !! i
-          addPrecommit voteHeight voteRound $ signedKeyInfo vote
-          push2Gossip $ GossipPreCommit vote
+  case mcmt of
+    Nothing  -> return []
+    Just cmt -> do
+      let cmtVotes  = Map.fromList [ (signedKeyInfo v, unverifySignature v)
+                                   | v <- NE.toList (commitPrecommits cmt) ]
+          peerVotes = Map.fromList
+                    $ map (\x -> (ValidatorIdx x,()))
+                    $ ISet.toList
+                    $ getValidatorIntSet
+                    $ st ^. lagPeerPrecommits
+          unknown   = Map.difference cmtVotes peerVotes
+          n         = Map.size unknown
+      if | n > 0     -> do i <- liftIO $ randomRIO (0,n-1) -- TODO: move RndGen to Config or state
+                           let vote@(signedValue -> Vote{..}) = unverifySignature $ toList unknown !! i
+                           return [GossipPreCommit vote]
+         | otherwise -> return []
+  where
+    FullStep peerH _ _ = st ^. lagPeerStep
+
 
 ----------------------------------------------------------------
 
-handlerBlocksTimeoutMsg :: CryptoHashable a => TimeoutHandler LaggingState a m
-handlerBlocksTimeoutMsg = do
-  hasProp    <- use lagPeerHasProposal
-  hasNoBlock <- not <$> use lagPeerHasBlock
-  when (hasProp && hasNoBlock) $ do
-    FullStep h _ _ <- use lagPeerStep
-    b <- queryRO $ mustRetrieveBlock h
-    addBlock b
-    push2Gossip $ GossipBlock b
+handlerBlocksTimeoutMsg
+  :: (MonadIO m, MonadReadDB m a, BlockData a)
+  => Config a -> LaggingState a -> m [GossipMsg a]
+handlerBlocksTimeoutMsg _ st
+  | st ^. lagPeerHasProposal
+  , not $ st ^. lagPeerHasBlock
+    = do b <- queryRO $ mustRetrieveBlock h
+         return [GossipBlock b]
+  | otherwise
+    = return []
+  where
+    FullStep h _ _ = st ^. lagPeerStep

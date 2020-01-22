@@ -95,9 +95,11 @@ data Command a
   | SendPEX !PexMessage
 
 data GossipTimeout
-  = EVotesTimeout
-  | EBlocksTimeout
-  | EAnnounceTimeout
+  = TimeoutProposal
+  | TimeoutPrevote
+  | TimeoutPrecommit
+  | TimeoutBlock
+  | TimeoutAnnounce
   deriving Show
 
 data Config a = Config

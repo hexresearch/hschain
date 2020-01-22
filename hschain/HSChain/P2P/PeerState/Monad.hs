@@ -12,9 +12,11 @@
 
 module HSChain.P2P.PeerState.Monad where
 
-import Codec.Serialise          (Serialise)
-import Control.Monad.Catch      (MonadThrow)
-import Control.Monad.RWS.Strict
+import Codec.Serialise            (Serialise)
+import Control.Monad.Catch        (MonadThrow)
+import Control.Monad.IO.Class
+import Control.Monad.Trans.Class
+import Control.Monad.State.Strict (StateT(..),execStateT,MonadState(..),modify')
 
 import HSChain.Blockchain.Internal.Types
 import HSChain.Crypto
@@ -29,13 +31,11 @@ import HSChain.P2P.PeerState.Types
 
 -- | Underlying monad for transitions of state for gossip
 newtype TransitionT s a m r = TransitionT
-  { unTransition :: RWST (Config a) [Command a] (s a, s a -> m (State a)) m r }
+  { unTransition :: StateT (s a, s a -> m (State a)) m r }
   deriving ( Functor
            , Applicative
            , Monad
            , MonadIO
-           , MonadReader (Config a)
-           , MonadWriter [Command a]
            , MonadThrow
            )
 instance MonadReadDB m a => MonadReadDB (TransitionT s a m) a where
@@ -56,13 +56,13 @@ setFinalState st = TransitionT $
 runTransitionT
   :: (Wrapable s, Monad m)
   => TransitionT s a m ()
-  -> Config a
   -> s a
-  -> m (State a, [Command a])
-runTransitionT action cfg st = do
-  ((),(s,fini),acc) <- runRWST (unTransition action) cfg (st, return . wrap)
-  st' <- fini s
-  return (st', acc )
+  -> m (State a)
+runTransitionT action st = do
+  (s,fini) <- execStateT (unTransition action) (st, return . wrap)
+  fini s
+
+
 
 type HandlerCtx a m = ( Serialise a
                       , Crypto (Alg a)
@@ -75,18 +75,3 @@ type HandlerCtx a m = ( Serialise a
 type Handler s t a m = HandlerCtx a m
                     => t a -- ^ `Event' to handle
                     -> TransitionT s a m () -- ^ new `TransitionT'
-
-
-resendGossip :: ( MonadWriter [Command a] m) => GossipMsg a -> m ()
-resendGossip (GossipPreVote v  ) = tell [SendRX $ RxPreVote v]
-resendGossip (GossipPreCommit v) = tell [SendRX $ RxPreCommit v]
-resendGossip (GossipProposal  p) = tell [SendRX $ RxProposal p]
-resendGossip (GossipBlock     b) = tell [SendRX $ RxBlock b]
-resendGossip (GossipTx tx      ) = tell [Push2Mempool tx]
-resendGossip (GossipPex pexmsg ) = tell [SendPEX pexmsg]
-resendGossip _                   = return ()
-
-
-push2Gossip :: MonadWriter [Command a] m
-            => GossipMsg a -> m ()
-push2Gossip msg = tell [Push2Gossip msg]

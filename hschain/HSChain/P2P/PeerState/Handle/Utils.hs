@@ -74,48 +74,14 @@ type TimeoutHandler s a m = HandlerCtx a m
                          => TransitionT s a m ()
 
 data HandlerDict s a m = HandlerDict
-  { handlerGossipMsg      :: GossipMsg a -> TransitionT s a m ()
+  { handlerGossipMsg        :: Config a -> GossipMsg a -> TransitionT s a m ()
     -- ^ Handler for incoming /and/ outgoing gossip. We handle both
     --   identically except for 'AnnStep'. This function handles
     --   incoming gossip.
-  , advanceOurHeight      :: FullStep -> TransitionT s a m ()
+  , advanceOurHeight        :: FullStep -> TransitionT s a m ()
     -- ^ Handler for outgoing 'AnnStep'
-  , handlerVotesTimeout   :: TransitionT s a m ()
-    -- ^ Handler for votes timeout
-  , handlerBlocksTimeout  :: TransitionT s a m ()
-    -- ^ Handler for block propagation timeout
+  , handlerProposalTimeout  :: Config a -> s a -> m [GossipMsg a]
+  , handlerPrevoteTimeout   :: Config a -> s a -> m [GossipMsg a]
+  , handlerPrecommitTimeout :: Config a -> s a -> m [GossipMsg a]
+  , handlerBlocksTimeout    :: Config a -> s a -> m [GossipMsg a]
   }
-
-handlerGeneric :: (HandlerCtx a m)
-               => HandlerDict s a m
-               -> GossipTimeout
-               -> TransitionT s a m ()
-handlerGeneric HandlerDict{..} = \ case
-    EVotesTimeout    -> handlerVotesTimeout
-    EBlocksTimeout   -> handlerBlocksTimeout
-    EAnnounceTimeout -> handlerAnnounceTimeout
-
-issuedGossipHandlerGeneric
-  :: (HandlerCtx a m)
-  => HandlerDict s a m
-  -> GossipMsg a
-  -> TransitionT s a m ()
-issuedGossipHandlerGeneric HandlerDict{..} m = case m of
-    GossipProposal {}     -> handlerGossipMsg m
-    GossipPreVote {}      -> handlerGossipMsg m
-    GossipPreCommit {}    -> handlerGossipMsg m
-    GossipBlock {}        -> handlerGossipMsg m
-    GossipAnn (AnnStep s) -> advanceOurHeight s
-    GossipAnn _           -> return ()
-    GossipTx{}            -> return ()
-    GossipPex{}           -> return ()
-
-
-handlerAnnounceTimeout :: TimeoutHandler s a m
-handlerAnnounceTimeout = do
-  st <- atomicallyIO =<< view consensusSt
-  forM_ st $ \(h,TMState{smRound,smStep}) -> do
-    push2Gossip $ GossipAnn $ AnnStep $ FullStep h smRound smStep
-    case smStep of
-      StepAwaitCommit r -> push2Gossip $ GossipAnn $ AnnHasProposal h r
-      _                 -> return ()
