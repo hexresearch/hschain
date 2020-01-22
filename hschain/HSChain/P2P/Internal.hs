@@ -148,10 +148,12 @@ peerFSM PeerChans{..} peerExchangeCh gossipCh recvCh MempoolCursor{..} = logOnEx
   chTimeout     <- liftIO newTQueueIO
   chMempool     <- liftIO newTQueueIO
   evalContT $ do
-    linkedTimer (gossipDelayVotes   p2pConfig) chTimeout EVotesTimeout
     linkedTimer (gossipDelayMempool p2pConfig) chMempool ()
-    linkedTimer (gossipDelayBlocks  p2pConfig) chTimeout EBlocksTimeout
-    linkedTimer  10e3                          chTimeout EAnnounceTimeout
+    linkedTimer (gossipDelayVotes   p2pConfig) chTimeout TimeoutProposal
+    linkedTimer (gossipDelayVotes   p2pConfig) chTimeout TimeoutPrevote
+    linkedTimer (gossipDelayVotes   p2pConfig) chTimeout TimeoutPrecommit
+    linkedTimer (gossipDelayBlocks  p2pConfig) chTimeout TimeoutBlock
+    linkedTimer  10e3                          chTimeout TimeoutAnnounce
     lift $ iterateM (wrap UnknownState) $ \s -> do
       (s', cmds)
         <- join
@@ -160,9 +162,9 @@ peerFSM PeerChans{..} peerExchangeCh gossipCh recvCh MempoolCursor{..} = logOnEx
                              forM_ mtx $ atomicallyIO . writeTBQueue gossipCh . GossipTx
                              return (s, [])
                   ) <$> readTQueue chMempool
-                , handler       config s <$> readTQueue chTimeout
-                , handlerGossip config s <$> readTChan  recvCh
-                , handlerTx     config s <$> readTChan  ownPeerChanTx
+                , handlerTimeout config s <$> readTQueue chTimeout
+                , handlerGossip  config s <$> readTChan  recvCh
+                , handlerTx      config s <$> readTChan  ownPeerChanTx
                 ]
       forM_ cmds $ \case
         SendRX rx         -> atomicallyIO $ peerChanRx rx

@@ -8,6 +8,7 @@ module HSChain.P2P.PeerState.Handle.Ahead
   ) where
 
 import Control.Monad
+import Lens.Micro
 import Lens.Micro.Mtl
 
 import HSChain.Blockchain.Internal.Types
@@ -25,19 +26,23 @@ import qualified Data.Set        as Set
 
 handler :: HandlerCtx a m => HandlerDict AheadState a m
 handler = HandlerDict
-  { handlerGossipMsg      = handlerGossip
-  , advanceOurHeight      = advanceOurHeightWrk
-  , handlerVotesTimeout   = return ()
-  , handlerBlocksTimeout  = return ()
+  { handlerGossipMsg        = handlerGossip
+  , advanceOurHeight        = advanceOurHeightWrk
+  , handlerProposalTimeout  = \_ _ -> return []
+  , handlerPrevoteTimeout   = \_ _ -> return []
+  , handlerPrecommitTimeout = \_ _ -> return []
+  , handlerBlocksTimeout    = \_ _ -> return []
   }
 
-handlerGossip :: MessageHandler AheadState a m
-handlerGossip = \case
-    GossipAnn (AnnStep step) -> do
-      s <- use aheadPeerStep
-      -- If peer is ahead of us and advances it could only remain ahed
-      when (step > s) $ aheadPeerStep .= step
-    _ -> return ()
+handlerGossip
+  :: (Monad m)
+  => Config a -> GossipMsg a -> TransitionT AheadState a m ()
+handlerGossip cfg = \case
+  GossipAnn (AnnStep step) -> do
+    s <- use aheadPeerStep
+    when (step > s) $ aheadPeerStep .= step
+  _ -> return ()
+
 
 ----------------------------------------------------------------
 advanceOurHeightWrk :: AdvanceOurHeight AheadState a m
