@@ -57,13 +57,6 @@ advancePeer step@(FullStep h _ _) = setFinalState $ \_ -> do
                }
     GT -> return $ wrap $ AheadState step
 
-advanceMempoolCursor :: (HandlerCtx a m)
-                     => TransitionT s a m ()
-advanceMempoolCursor = do
-    MempoolCursor{..} <- view mempCursor
-    mTx <- lift advanceCursor
-    forM_ mTx $ push2Gossip . GossipTx
-
 
 type MessageHandler s a m =  HandlerCtx a m
                           => GossipMsg a
@@ -95,11 +88,10 @@ data HandlerDict s a m = HandlerDict
 
 handlerGeneric :: (Wrapable s, HandlerCtx a m)
                => HandlerDict s a m
-               -> GossipTimeout a
+               -> GossipTimeout
                -> TransitionT s a m ()
 handlerGeneric HandlerDict{..} = \ case
     EVotesTimeout    -> handlerVotesTimeout
-    EMempoolTimeout  -> advanceMempoolCursor
     EBlocksTimeout   -> handlerBlocksTimeout
     EAnnounceTimeout -> handlerAnnounceTimeout
 

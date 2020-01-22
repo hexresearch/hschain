@@ -20,7 +20,6 @@ import Lens.Micro.TH
 
 import HSChain.Blockchain.Internal.Types
 import HSChain.Crypto
-import HSChain.Store
 import HSChain.Types.Blockchain
 import HSChain.Types.Validators
 import HSChain.P2P.Internal.Types
@@ -95,16 +94,14 @@ data Command a
   | Push2Gossip !(GossipMsg a)
   | SendPEX !PexMessage
 
-data GossipTimeout a
-  = EMempoolTimeout
-  | EVotesTimeout
+data GossipTimeout
+  = EVotesTimeout
   | EBlocksTimeout
   | EAnnounceTimeout
   deriving Show
 
-data Config m a = Config
-  { _mempCursor     :: !(MempoolCursor m (Alg a) (TX a))
-  , _consensusSt    :: !(STM (Maybe (Height, TMState a)))
+data Config a = Config
+  { _consensusSt    :: !(STM (Maybe (Height, TMState a)))
   }
 makeLenses ''Config
 
