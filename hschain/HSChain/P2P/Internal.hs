@@ -157,7 +157,7 @@ peerFSM PeerChans{..} peerExchangeCh gossipCh recvCh cursor@MempoolCursor{..} = 
          $ atomicallyIO
          $ asum [ handler config s <$> readTQueue chTimeout
                 , handler config s <$> readTChan  recvCh
-                , handler config s . EAnnouncement <$> readTChan ownPeerChanTx
+                , handlerTx config s <$> readTChan ownPeerChanTx
                 ]
       forM_ cmds $ \case
         SendRX rx         -> atomicallyIO $ peerChanRx rx

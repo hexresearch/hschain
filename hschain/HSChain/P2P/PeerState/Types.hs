@@ -101,7 +101,6 @@ data Event a
   | EVotesTimeout
   | EBlocksTimeout
   | EAnnounceTimeout
-  | EAnnouncement !(MessageTx a)
 
 data Config m a = Config
   { _mempCursor     :: !(MempoolCursor m (Alg a) (TX a))
