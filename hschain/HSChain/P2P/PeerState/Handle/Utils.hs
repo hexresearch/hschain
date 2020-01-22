@@ -95,7 +95,7 @@ data HandlerDict s a m = HandlerDict
 
 handlerGeneric :: (Wrapable s, HandlerCtx a m)
                => HandlerDict s a m
-               -> Event a
+               -> GossipTimeout a
                -> TransitionT s a m ()
 handlerGeneric HandlerDict{..} = \ case
     EVotesTimeout    -> handlerVotesTimeout
