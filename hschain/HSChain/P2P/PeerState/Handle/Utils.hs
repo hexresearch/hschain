@@ -70,7 +70,7 @@ type AdvanceOurHeight s a m =  HandlerCtx a m
                             => FullStep
                             -> TransitionT s a m ()
 
-type TimeoutHandler s a m = (Wrapable s, HandlerCtx a m)
+type TimeoutHandler s a m = HandlerCtx a m
                          => TransitionT s a m ()
 
 data HandlerDict s a m = HandlerDict
@@ -86,7 +86,7 @@ data HandlerDict s a m = HandlerDict
     -- ^ Handler for block propagation timeout
   }
 
-handlerGeneric :: (Wrapable s, HandlerCtx a m)
+handlerGeneric :: (HandlerCtx a m)
                => HandlerDict s a m
                -> GossipTimeout
                -> TransitionT s a m ()
@@ -96,7 +96,7 @@ handlerGeneric HandlerDict{..} = \ case
     EAnnounceTimeout -> handlerAnnounceTimeout
 
 issuedGossipHandlerGeneric
-  :: (Wrapable s, HandlerCtx a m)
+  :: (HandlerCtx a m)
   => HandlerDict s a m
   -> GossipMsg a
   -> TransitionT s a m ()
