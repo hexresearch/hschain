@@ -100,7 +100,6 @@ handlerGeneric :: (Wrapable s, HandlerCtx a m)
 handlerGeneric HandlerDict{..} = \ case
     EGossip m        -> do resendGossip m
                            handlerGossipMsg m
-    EAnnouncement a  -> handlerAnnounncement a
     EVotesTimeout    -> handlerVotesTimeout
     EMempoolTimeout  -> advanceMempoolCursor
     EBlocksTimeout   -> handlerBlocksTimeout
