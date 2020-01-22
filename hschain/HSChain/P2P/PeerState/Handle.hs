@@ -27,7 +27,7 @@ import qualified HSChain.P2P.PeerState.Handle.Unknown as Unknown
 handler :: (CryptoHashable a, HandlerCtx a m)
         => Config m a
         -> State a
-        -> Event a
+        -> GossipTimeout a
         -> m (State a, [Command a])
 handler config st event = do
   (st',cmds) <- case st of

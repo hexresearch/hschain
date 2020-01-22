@@ -95,11 +95,12 @@ data Command a
   | Push2Gossip !(GossipMsg a)
   | SendPEX !PexMessage
 
-data Event a
+data GossipTimeout a
   = EMempoolTimeout
   | EVotesTimeout
   | EBlocksTimeout
   | EAnnounceTimeout
+  deriving Show
 
 data Config m a = Config
   { _mempCursor     :: !(MempoolCursor m (Alg a) (TX a))
@@ -107,6 +108,5 @@ data Config m a = Config
   }
 makeLenses ''Config
 
-
 deriving stock instance (Show a, Crypto (Alg a), Show (TX a)) => Show (Command a)
-deriving stock instance (Show a, Crypto (Alg a), Show (TX a)) => Show (Event a)
+
