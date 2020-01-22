@@ -77,10 +77,7 @@ type Handler s t a m = HandlerCtx a m
                     -> TransitionT s a m () -- ^ new `TransitionT'
 
 
-resendGossip :: ( MonadWriter [Command a]  m
-                , MonadIO m
-                )
-             => GossipMsg a -> m ()
+resendGossip :: ( MonadWriter [Command a] m) => GossipMsg a -> m ()
 resendGossip (GossipPreVote v  ) = tell [SendRX $ RxPreVote v]
 resendGossip (GossipPreCommit v) = tell [SendRX $ RxPreCommit v]
 resendGossip (GossipProposal  p) = tell [SendRX $ RxProposal p]
