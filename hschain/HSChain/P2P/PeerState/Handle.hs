@@ -102,12 +102,8 @@ handleIssuedGossip
   -> State a
   -> GossipMsg a
   -> m (State a)
-handleIssuedGossip cfg st msg = do
-  case st of
-    Lagging s -> runTransitionT (issuedGossipHandlerGeneric cfg Lagging.handler msg) s
-    Current s -> runTransitionT (issuedGossipHandlerGeneric cfg Current.handler msg) s
-    Ahead   s -> runTransitionT (issuedGossipHandlerGeneric cfg Ahead.handler   msg) s
-    Unknown s -> runTransitionT (issuedGossipHandlerGeneric cfg Unknown.handler msg) s
+handleIssuedGossip cfg st msg =
+  dispatch st $ \dct -> issuedGossipHandlerGeneric cfg dct msg
 
 issuedGossipHandlerGeneric
   :: (HandlerCtx a m)
@@ -136,15 +132,28 @@ handlerGossip
   -> State a
   -> GossipMsg a
   -> m (State a, [Command a])
-handlerGossip cfg st msg = do
-  st' <- handleIssuedGossip cfg st msg
+handlerGossip cfg st m = do
+  st' <- dispatch st $ \dct -> handlerGossipMsg dct cfg m
   return (st', msgRx)
   where
-    msgRx = case msg of
-      (GossipPreVote   v) -> [SendRX $ RxPreVote   v]
-      (GossipPreCommit v) -> [SendRX $ RxPreCommit v]
-      (GossipProposal  p) -> [SendRX $ RxProposal  p]
-      (GossipBlock     b) -> [SendRX $ RxBlock     b]
-      (GossipTx tx      ) -> [Push2Mempool tx]
-      (GossipPex pexmsg ) -> [SendPEX pexmsg]
-      _                   -> []
+    msgRx = case m of
+      GossipPreVote   v -> [SendRX $ RxPreVote   v]
+      GossipPreCommit v -> [SendRX $ RxPreCommit v]
+      GossipProposal  p -> [SendRX $ RxProposal  p]
+      GossipBlock     b -> [SendRX $ RxBlock     b]
+      GossipTx tx       -> [Push2Mempool tx]
+      GossipPex pexmsg  -> [SendPEX pexmsg]
+      GossipAnn{}       -> []
+
+
+dispatch
+  :: (BlockData a, HandlerCtx a m)
+  => State a
+  -> (forall s. HandlerDict s a m -> TransitionT s a m ())
+  -> m (State a)
+dispatch st fun =
+  case st of
+    Lagging s -> runTransitionT (fun Lagging.handler) s
+    Current s -> runTransitionT (fun Current.handler) s
+    Ahead   s -> runTransitionT (fun Ahead.handler  ) s
+    Unknown s -> runTransitionT (fun Unknown.handler) s
