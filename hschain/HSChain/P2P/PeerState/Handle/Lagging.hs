@@ -34,18 +34,18 @@ import qualified Data.Map.Strict    as Map
 
 handler :: (BlockData a, HandlerCtx a m) => HandlerDict LaggingState a m
 handler = HandlerDict
-  { handlerGossipMsg        = handlerGossip
+  { handlerGossipMsg        = const handlerGossip
   , advanceOurHeight        = \_ -> return ()
   , handlerProposalTimeout  = \_ _ -> return []
   , handlerPrevoteTimeout   = \_ _ -> return []
-  , handlerPrecommitTimeout = handlerVotesTimeoutMsg
-  , handlerBlocksTimeout    = handlerBlocksTimeoutMsg
+  , handlerPrecommitTimeout = const handlerVotesTimeoutMsg
+  , handlerBlocksTimeout    = const handlerBlocksTimeoutMsg
   }
 
 handlerGossip
   :: (MonadIO m, MonadReadDB m a, BlockData a)
-  => Config a -> GossipMsg a -> TransitionT LaggingState a m ()
-handlerGossip _ = \case
+  => GossipMsg a -> TransitionT LaggingState a m ()
+handlerGossip = \case
   GossipPreVote   _ ->
     return ()
   GossipPreCommit v@(signedValue -> Vote{..}) -> do
@@ -99,8 +99,8 @@ addBlock b = do
 
 handlerVotesTimeoutMsg
   :: (MonadIO m, MonadReadDB m a, BlockData a)
-  => Config a -> LaggingState a -> m [GossipMsg a]
-handlerVotesTimeoutMsg _ st = do
+  => LaggingState a -> m [GossipMsg a]
+handlerVotesTimeoutMsg st = do
   bchH <- queryRO blockchainHeight
   mcmt <- queryRO $
     if peerH == bchH
@@ -130,8 +130,8 @@ handlerVotesTimeoutMsg _ st = do
 
 handlerBlocksTimeoutMsg
   :: (MonadIO m, MonadReadDB m a, BlockData a)
-  => Config a -> LaggingState a -> m [GossipMsg a]
-handlerBlocksTimeoutMsg _ st
+  => LaggingState a -> m [GossipMsg a]
+handlerBlocksTimeoutMsg st
   | st ^. lagPeerHasProposal
   , not $ st ^. lagPeerHasBlock
     = do b <- queryRO $ mustRetrieveBlock h

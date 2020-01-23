@@ -18,13 +18,11 @@ import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
 import Control.Monad.State.Strict (StateT(..),execStateT,MonadState(..),modify')
 
-import HSChain.Blockchain.Internal.Types
 import HSChain.Crypto
 import HSChain.Types
 import HSChain.Logger
 import HSChain.Store.Internal.Query      (MonadReadDB(..))
 
-import HSChain.P2P.Internal.Types
 import HSChain.P2P.PeerState.Types
 
 
