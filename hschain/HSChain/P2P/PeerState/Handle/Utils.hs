@@ -12,7 +12,6 @@ import qualified Data.Set as Set
 
 import Control.Monad.State.Strict
 
-import HSChain.Blockchain.Internal.Types
 import HSChain.Crypto
 import HSChain.Store
 import HSChain.Store.Internal.BlockDB
@@ -25,6 +24,7 @@ import HSChain.P2P.Internal.Types
 import HSChain.P2P.PeerState.Monad
 import HSChain.P2P.PeerState.Types
 
+-- | Unconditionally generate fresh state for peer. Shoudl only be called when we 
 advancePeer :: (Crypto (Alg a), Monad m, MonadIO m, MonadReadDB m a)
             => FullStep -> TransitionT s a m ()
 advancePeer step@(FullStep h _ _) = setFinalState $ \_ -> do
@@ -55,26 +55,11 @@ advancePeer step@(FullStep h _ _) = setFinalState $ \_ -> do
     GT -> return $ wrap $ AheadState step
 
 
-type MessageHandler s a m =  HandlerCtx a m
-                          => GossipMsg a
-                          -> TransitionT s a m ()
-
-type AnnouncementHandler s a m =  HandlerCtx a m
-                               => MessageTx a
-                               -> TransitionT s a m ()
-
-type AdvanceOurHeight s a m =  HandlerCtx a m
-                            => FullStep
-                            -> TransitionT s a m ()
-
-type TimeoutHandler s a m = HandlerCtx a m
-                         => TransitionT s a m ()
-
+-- | Dictionary of handlers for messages for each state of peer.
 data HandlerDict s a m = HandlerDict
   { handlerGossipMsg        :: Config a -> GossipMsg a -> TransitionT s a m ()
-    -- ^ Handler for incoming /and/ outgoing gossip. We handle both
-    --   identically except for 'AnnStep'. This function handles
-    --   incoming gossip.
+    -- ^ Handler for incoming gossip. It's used for outgoing gossip as
+    -- well with minor modifications.
   , advanceOurHeight        :: FullStep -> TransitionT s a m ()
     -- ^ Handler for outgoing 'AnnStep'
   , handlerProposalTimeout  :: Config a -> s a -> m [GossipMsg a]

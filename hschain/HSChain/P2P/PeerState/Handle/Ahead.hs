@@ -44,7 +44,7 @@ handlerGossip = \case
 
 
 ----------------------------------------------------------------
-advanceOurHeightWrk :: AdvanceOurHeight AheadState a m
+advanceOurHeightWrk :: (HandlerCtx a m) => FullStep -> TransitionT AheadState a m ()
 advanceOurHeightWrk (FullStep ourH _ _) = setFinalState advance
   where
     advance p

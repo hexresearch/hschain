@@ -33,6 +33,8 @@ import qualified HSChain.P2P.PeerState.Handle.Unknown as Unknown
 -- Handler of timeouts
 ----------------------------------------------------------------
 
+-- | Handler for timeout messages which means we need to generate new
+--   gossip messages to send to peers.
 handlerTimeout
   :: (BlockData a, HandlerCtx a m)
   => Config a
@@ -48,7 +50,7 @@ handlerTimeout cfg st msg = do
   st' <- foldM (handleIssuedGossip cfg) st gossip
   return (st', Push2Gossip <$> gossip)
 
--- | Generate gossip messages to be sent to peer.
+-- Generate gossip messages to be sent to peer.
 generateGossip :: (HandlerCtx a m)
                => Config a
                -> HandlerDict s a m
@@ -64,6 +66,9 @@ generateGossip cfg dict st = \case
   where
     call f = f dict cfg st
 
+-- In order to avoid deadlocks we periodically send current state to
+-- our peers. We also send out that we have proposal whenever we have
+-- commit already and waiting for block.
 handlerAnnounceTimeout :: (MonadIO m) => Config a -> m [GossipMsg a]
 handlerAnnounceTimeout cfg = do
   st <- atomicallyIO $ view consensusSt cfg
@@ -80,6 +85,7 @@ handlerAnnounceTimeout cfg = do
 -- Handling of messages from consensus
 ----------------------------------------------------------------
 
+-- | Handler for messages coming from consensus engine
 handlerTx
   :: (BlockData a, HandlerCtx a m)
   => Config a
@@ -96,36 +102,33 @@ handlerTx cfg st msgTx = do
       TxPreVote   v -> GossipPreVote   v
       TxPreCommit v -> GossipPreCommit v
 
+-- Handler for issued gossip. It works same as handler for incoming
+-- gossip except for AnnStep since we need to change /our/ state
+-- instead of peer's state
 handleIssuedGossip
   :: (BlockData a, HandlerCtx a m)
   => Config a
   -> State a
   -> GossipMsg a
   -> m (State a)
-handleIssuedGossip cfg st msg =
-  dispatch st $ \dct -> issuedGossipHandlerGeneric cfg dct msg
-
-issuedGossipHandlerGeneric
-  :: (HandlerCtx a m)
-  => Config a
-  -> HandlerDict s a m
-  -> GossipMsg a
-  -> TransitionT s a m ()
-issuedGossipHandlerGeneric cfg HandlerDict{..} m = case m of
-  GossipProposal {}     -> handlerGossipMsg cfg m
-  GossipPreVote {}      -> handlerGossipMsg cfg m
-  GossipPreCommit {}    -> handlerGossipMsg cfg m
-  GossipBlock {}        -> handlerGossipMsg cfg m
-  GossipAnn (AnnStep s) -> advanceOurHeight s
-  GossipAnn _           -> return ()
-  GossipTx{}            -> return ()
-  GossipPex{}           -> return ()
+handleIssuedGossip cfg st msg
+  = dispatch st
+  $ \dct -> case msg of
+              GossipProposal {}     -> handlerGossipMsg dct cfg msg
+              GossipPreVote {}      -> handlerGossipMsg dct cfg msg
+              GossipPreCommit {}    -> handlerGossipMsg dct cfg msg
+              GossipBlock {}        -> handlerGossipMsg dct cfg msg
+              GossipAnn (AnnStep s) -> advanceOurHeight dct s
+              GossipAnn _           -> return ()
+              GossipTx{}            -> return ()
+              GossipPex{}           -> return ()
 
 
 ----------------------------------------------------------------
 -- Handler for incoming gossip
 ----------------------------------------------------------------
 
+-- | Handler for gossip coming from peer.
 handlerGossip
   :: (BlockData a, HandlerCtx a m)
   => Config a

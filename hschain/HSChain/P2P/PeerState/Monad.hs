@@ -27,7 +27,11 @@ import HSChain.P2P.PeerState.Types
 
 
 
--- | Underlying monad for transitions of state for gossip
+-- | Transitions of peer's state during the gossip. It's state monad
+--   for lagging\/current\/ahesd state together with final
+--   callback which describes how to convert that state to
+--   'State'. It's required since we may change type of state in
+--   reaction to gossip.
 newtype TransitionT s a m r = TransitionT
   { unTransition :: StateT (s a, s a -> m (State a)) m r }
   deriving ( Functor
@@ -45,12 +49,13 @@ instance Monad m => MonadState (s a) (TransitionT s a m) where
 instance MonadTrans (TransitionT s a) where
   lift = TransitionT . lift
 
+-- | Set finaliser callback.
 setFinalState :: Monad m => (s a -> m (State a)) -> TransitionT s a m ()
 setFinalState st = TransitionT $
   modify' $ \(s,_) -> (s, st)
 
 
--- | Runs `TransitionT'.
+-- | Runs 'TransitionT'.
 runTransitionT
   :: (Wrapable s, Monad m)
   => TransitionT s a m ()
@@ -61,15 +66,9 @@ runTransitionT action st = do
   fini s
 
 
-
 type HandlerCtx a m = ( Serialise a
                       , Crypto (Alg a)
                       , MonadIO m
                       , MonadReadDB m a
                       , MonadLogger m
                       )
-
--- | Handler of events.
-type Handler s t a m = HandlerCtx a m
-                    => t a -- ^ `Event' to handle
-                    -> TransitionT s a m () -- ^ new `TransitionT'
