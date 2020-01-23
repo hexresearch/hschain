@@ -10,12 +10,9 @@ module HSChain.P2P.PeerState.Handle.Utils where
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 
-import Control.Monad
-import Control.Monad.RWS.Strict
-import Lens.Micro.Mtl
+import Control.Monad.State.Strict
 
 import HSChain.Blockchain.Internal.Types
-import HSChain.Control (atomicallyIO)
 import HSChain.Crypto
 import HSChain.Store
 import HSChain.Store.Internal.BlockDB

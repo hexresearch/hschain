@@ -8,7 +8,6 @@ module HSChain.P2P.PeerState.Handle.Ahead
   ) where
 
 import Control.Monad
-import Lens.Micro
 import Lens.Micro.Mtl
 
 import HSChain.Blockchain.Internal.Types
@@ -26,7 +25,7 @@ import qualified Data.Set        as Set
 
 handler :: HandlerCtx a m => HandlerDict AheadState a m
 handler = HandlerDict
-  { handlerGossipMsg        = handlerGossip
+  { handlerGossipMsg        = const handlerGossip
   , advanceOurHeight        = advanceOurHeightWrk
   , handlerProposalTimeout  = \_ _ -> return []
   , handlerPrevoteTimeout   = \_ _ -> return []
@@ -36,8 +35,8 @@ handler = HandlerDict
 
 handlerGossip
   :: (Monad m)
-  => Config a -> GossipMsg a -> TransitionT AheadState a m ()
-handlerGossip cfg = \case
+  => GossipMsg a -> TransitionT AheadState a m ()
+handlerGossip = \case
   GossipAnn (AnnStep step) -> do
     s <- use aheadPeerStep
     when (step > s) $ aheadPeerStep .= step
