@@ -13,7 +13,7 @@ import HSChain.P2P.PeerState.Handle.Utils
 
 handler :: (HandlerCtx a m) => HandlerDict UnknownState a m
 handler = HandlerDict
-  { handlerGossipMsg        = \_   -> handlerGossip
+  { handlerGossipMsg        = const handlerGossip
   , advanceOurHeight        = \_   -> return ()
   , handlerProposalTimeout  = \_ _ -> return []
   , handlerPrevoteTimeout   = \_ _ -> return []
@@ -21,7 +21,9 @@ handler = HandlerDict
   , handlerBlocksTimeout    = \_ _ -> return []
   }
 
-handlerGossip :: MessageHandler UnknownState a m
+handlerGossip
+  :: (HandlerCtx a m)
+  => GossipMsg a -> TransitionT UnknownState a m ()
 handlerGossip = \case
   GossipAnn (AnnStep step) -> advancePeer step
   _                        -> return ()

@@ -121,7 +121,7 @@ addBlock bid = peerBlocks %= Set.insert bid
 
 ----------------------------------------------------------------
 
-advanceOurHeightWrk :: AdvanceOurHeight CurrentState a m
+advanceOurHeightWrk :: (HandlerCtx a m) => FullStep -> TransitionT CurrentState a m ()
 advanceOurHeightWrk (FullStep ourH _ _) = setFinalState advance
   where
     advance p
