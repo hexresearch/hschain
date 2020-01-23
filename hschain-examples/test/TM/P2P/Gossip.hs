@@ -35,8 +35,8 @@ import HSChain.Types
 import HSChain.Types.Merkle.Types
 import qualified HSChain.Mock.KeyVal as Mock
 
-import qualified HSChain.P2P.PeerState.Types as P2P
-import qualified HSChain.P2P.PeerState.Handle as P2P (handler)
+import qualified HSChain.P2P.PeerState.Types  as P2P
+import qualified HSChain.P2P.PeerState.Handle as P2P
 
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -76,10 +76,13 @@ testGossipUnknown = withGossip 3 $ do
 testGossipAhead :: IO ()
 testGossipAhead = withGossip 3 $ do
   _ <- step =<< startConsensus
+  -- (Ahead{},[]) <-
   (Ahead{},[]) <- step $ EGossip $ GossipAnn $ AnnStep $ FullStep (Height 100) (Round 0) (StepNewHeight 0)
   -- We don't have anything to send
-  (_,[]) <- step EVotesTimeout
-  (_,[]) <- step EBlocksTimeout
+  (_,[]) <- step $ ETimeout TimeoutProposal
+  (_,[]) <- step $ ETimeout TimeoutPrevote
+  (_,[]) <- step $ ETimeout TimeoutPrecommit
+  (_,[]) <- step $ ETimeout TimeoutBlock
   return ()
 
 -- Peer is lagging
@@ -89,19 +92,21 @@ testGossipLagging = withGossip 3 $ do
   -- Peer announce its state
   (Lagging{},[]) <- step $ EGossip $ GossipAnn $ AnnStep $ FullStep (Height 3) (Round 0) (StepNewHeight 0)
   -- We should receive 4 votes
-  (_,[Push2Gossip (GossipPreCommit _)]) <- step EVotesTimeout
-  (_,[Push2Gossip (GossipPreCommit _)]) <- step EVotesTimeout
-  (_,[Push2Gossip (GossipPreCommit _)]) <- step EVotesTimeout
-  (_,[Push2Gossip (GossipPreCommit _)]) <- step EVotesTimeout
-  (_,[])                                <- step EVotesTimeout
+  (_,[Push2Gossip (GossipPreCommit _)]) <- step $ ETimeout TimeoutPrecommit
+  (_,[Push2Gossip (GossipPreCommit _)]) <- step $ ETimeout TimeoutPrecommit
+  (_,[Push2Gossip (GossipPreCommit _)]) <- step $ ETimeout TimeoutPrecommit
+  (_,[Push2Gossip (GossipPreCommit _)]) <- step $ ETimeout TimeoutPrecommit
+  (_,[])                                <- step $ ETimeout TimeoutPrecommit
+  (_,[])                                <- step $ ETimeout TimeoutProposal
+  (_,[])                                <- step $ ETimeout TimeoutPrevote
   -- At this point peer has enough votes to commit block but FSM is
   -- not smart enough to figure it on its own.
   --
   -- NOTE: subject to changes in the future
-  (_,[]) <- step EBlocksTimeout
+  (_,[]) <- step $ ETimeout TimeoutBlock
   -- When peer has enough precommits it announces that it has "proposal"
   (_,[]) <- step $ EGossip $ GossipAnn $ AnnHasProposal (Height 3) (Round 0)
-  (_,[Push2Gossip (GossipBlock _)]) <- step EBlocksTimeout
+  (_,[Push2Gossip (GossipBlock _)]) <- step $ ETimeout TimeoutBlock
   -- Peer commits and advances to the same height as we
   (Current{},[]) <- step $ EGossip $ GossipAnn $ AnnStep $ FullStep (Height 4) (Round 0) (StepNewHeight 0)
   return ()
@@ -118,7 +123,7 @@ testGossipCurrent isRecvProp = withGossip 3 $ do
                 liftIO $ prop @=? prop'
     -- Either proposer or gets proposal from peer
     False -> do addProposal prop
-                (Current{}, [Push2Gossip (GossipProposal prop')]) <- step $ EVotesTimeout
+                (Current{}, [Push2Gossip (GossipProposal prop')]) <- step $ ETimeout TimeoutProposal
                 liftIO $ prop @=? prop'
   -- PREVOTE.
   --
@@ -128,16 +133,16 @@ testGossipCurrent isRecvProp = withGossip 3 $ do
      addPrevote spv2
      (Current{},[SendRX (RxPreVote _)]) <- step $ EGossip $ GossipPreVote $ signValue i3 k3 vote
      (Current{},[SendRX (RxPreVote _)]) <- step $ EGossip $ GossipPreVote $ signValue i4 k4 vote
-     (Current{},[Push2Gossip (GossipPreVote v1)]) <- step $ EVotesTimeout
-     (Current{},[Push2Gossip (GossipPreVote v2)]) <- step $ EVotesTimeout
+     (Current{},[Push2Gossip (GossipPreVote v1)]) <- step $ ETimeout TimeoutPrevote
+     (Current{},[Push2Gossip (GossipPreVote v2)]) <- step $ ETimeout TimeoutPrevote
      liftIO $ sort [spv1,spv2] @=? sort [v1,v2]
   -- PRECOMMIT (same as prevote)
   do addPrecommit spc1
      addPrecommit spc2
      (Current{},[SendRX (RxPreCommit _)]) <- step $ EGossip $ GossipPreCommit $ signValue i3 k3 vote
      (Current{},[SendRX (RxPreCommit _)]) <- step $ EGossip $ GossipPreCommit $ signValue i4 k4 vote
-     (Current{},[Push2Gossip (GossipPreCommit v1)]) <- step $ EVotesTimeout
-     (Current{},[Push2Gossip (GossipPreCommit v2)]) <- step $ EVotesTimeout
+     (Current{},[Push2Gossip (GossipPreCommit v1)]) <- step $ ETimeout TimeoutPrecommit 
+     (Current{},[Push2Gossip (GossipPreCommit v2)]) <- step $ ETimeout TimeoutPrecommit
      liftIO $ sort [spc1,spc2] @=? sort [v1,v2]
   where
     block = mockchain !! 4
@@ -166,19 +171,19 @@ testGossipPOL isLocked = withGossip 3 $ do
   _ <- step =<< startConsensus
   (Current{},[]) <- step $ EGossip $ GossipAnn $ AnnStep $ FullStep (Height 4) (Round 0) (StepNewHeight 0)
   (Current{},[]) <- step $ EGossip $ GossipAnn $ AnnStep $ FullStep (Height 4) (Round 1) StepProposal
+  -- Optionally peer announce that it's locked on R=0
   when isLocked $ do
     (Current{},[]) <- step $ EGossip $ GossipAnn $ AnnLock (Just (Round 0))
     return ()
   --
   addPrevote voteR0
   addPrevote voteR1
-  --
-  (Current{},txs) <- step EVotesTimeout
+  -- When peer is locked we first gossip lock round votes
+  (Current{},txs) <- step $ ETimeout TimeoutPrevote
   case isLocked of
-    True  | [ Push2Gossip (GossipPreVote v1)
-            , Push2Gossip (GossipPreVote v2)
+    True  | [ Push2Gossip (GossipPreVote v)
             ] <- txs
-          , sort [v1,v2] == sort [voteR1, voteR0]
+          , v == voteR0
           -> return ()
     False | [ Push2Gossip (GossipPreVote v) ] <- txs
           , v == voteR1
@@ -207,9 +212,13 @@ testGossipPOL isLocked = withGossip 3 $ do
 -- Helpers
 ----------------------------------------------------------------
 
+data Event a = ETX     (MessageTx a)
+             | EGossip (GossipMsg a)
+             | ETimeout GossipTimeout
+
 type GossipM a = DBT 'RW a (NoLogsT IO)
 type TestM   a = StateT  (P2P.State a)
-                 ( ReaderT ( P2P.Config (GossipM a) a
+                 ( ReaderT ( P2P.Config a
                            , TVar (Maybe (Height, TMState a)))
                  ( GossipM a
                  ))
@@ -220,10 +229,7 @@ withGossip n action = do
   withDatabase "" $ \conn -> runNoLogsT $ runDBT conn $ do
     mustQueryRW $ storeGenesis genesis
     consensusState <- liftIO $ newTVarIO Nothing
-    cursor         <- getMempoolCursor nullMempool
-    let config = P2P.Config
-                   cursor
-                   (readTVar consensusState)
+    let config = P2P.Config (readTVar consensusState)
     seedDatabase n
     flip runReaderT (config, consensusState)
       $ flip evalStateT (P2P.wrap P2P.UnknownState)
@@ -242,7 +248,7 @@ seedDatabase n = do
                 $ mockchain `zip` (fmap merkleValue . blockPrevCommit <$> tail mockchain)
 
 -- Start "consensus engine"
-startConsensus :: TestM Mock.BData (P2P.Event Mock.BData)
+startConsensus :: TestM Mock.BData (Event Mock.BData)
 startConsensus = do
   h     <- queryRO blockchainHeight
   varSt <- lift $ asks snd
@@ -256,7 +262,7 @@ startConsensus = do
     , smLockedBlock    = Nothing
     , smLastCommit     = Nothing
     }))
-  return $ EAnnouncement $ TxAnn $ AnnStep $ FullStep (succ h) (Round 0) (StepNewHeight 0)
+  return $ ETX $ TxAnn $ AnnStep $ FullStep (succ h) (Round 0) (StepNewHeight 0)
 
 addProposal
   :: Signed 'Unverified (Alg Mock.BData) (Proposal Mock.BData)
@@ -301,9 +307,9 @@ step :: (BlockData a)
 step e = do
   cfg       <- lift $ asks fst
   st        <- get
-  (st',cmd) <- lift $ lift $ P2P.handler cfg st e
+  (st',cmd) <- lift $ lift $ case e of
+    ETX      m -> P2P.handlerTx      cfg st m
+    EGossip  m -> P2P.handlerGossip  cfg st m
+    ETimeout m -> P2P.handlerTimeout cfg st m
   put st'
   return (st',cmd)
-
--- (@=?) :: (Show a, Eq a, Monad m) => a -> a -> m ()
--- x0 @=? x = unless (x0 == x) $ error $ show x
