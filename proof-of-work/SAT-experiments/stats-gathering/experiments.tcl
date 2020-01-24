@@ -3,31 +3,39 @@
 # Running experiments for SAT as PoW
 
 proc k {} { return 3 }
-proc nvars_low {} { return 300 }
-proc nvars_high {} { return 1000 }
-proc nvars_step {} { return 10 }
-proc nclauses_low {nvars} { expr {int($nvars * 4.2)} }
-proc nclauses_high {nvars} { expr {int($nvars * 4.7)} }
+proc nvars_low {} { return 256 }
+proc nvars_high {} { return 1024 }
+proc nvars_step {} { return 16 }
+proc nclauses_low {nvars} { expr {int($nvars * 4.30)} }
+proc nclauses_high {nvars} { expr {int($nvars * 4.40)} }
 proc experiment_tries {} { return 100 }
 
-proc parse_picosat_result {result} {
+proc parse_picosat_result {tracefile result} {
 	set solve_time -1
-	set satisfiable -1
+	set num_solutions -1
 	set seed {}
+	set mb_allocated -1
 	foreach line [split $result "\n"] {
 		#puts "line: '$line'"
 		if {[regexp {c ([0-9]+[.][0-9]+) seconds in library} $line _ time_seconds]} {
 			set solve_time $time_seconds
-		} elseif {[regexp {s SAT} $line]} {
-			set satisfiable 1
-		} elseif {[regexp {s UNSAT} $line]} {
-			set satisfiable 0
-		} elseif {[regexp {generator seed ([0-9]+)} $line seed_reported]} {
+		} elseif {[regexp {s SOLUTIONS ([0-9]+)} $line _ num_solutions]} {
+			# nothing.
+		} elseif {[regexp {generator seed ([0-9]+)} $line _ seed_reported]} {
 			set seed $seed_reported
+		} elseif {[regexp { (.*) MB maximally allocated} $line _ max_MB]} {
+			# nothing.
 		}
 	}
-	if {$satisfiable < 0 } {
+	if {$num_solutions < 0 } {
 		error "haven't found result line"
+	}
+	if {$num_solutions == 0} {
+		set tracelines [lindex [exec wc -l $tracefile] 0]
+		set tracewords [lindex [exec wc -w $tracefile] 0]
+	} else {
+		set tracelines -1
+		set tracewords -1
 	}
 	if {$solve_time < 0} {
 		error "haven't found solution time"
@@ -35,12 +43,14 @@ proc parse_picosat_result {result} {
 	if {[string length $seed] < 1} {
 		error "haven't seen a seed"
 	}
-	return [list picosat_satisfiable $satisfiable picosat_time $solve_time]
+	return [list picosat_num_solutions $num_solutions picosat_time $solve_time picosat_trace_words $tracewords picosat_trace_lines $tracelines picosat_max_MB $max_MB]
 }
 
 proc run_solver {solver cnf seed} {
 	switch -- $solver {
-		picosat { return [parse_picosat_result [exec bash -c "tee picosat-input.cnf | picosat -v -s $seed -n | tee picosat.log || true" << $cnf]] }
+		picosat {
+			set tracefile picosat-trace-file
+			return [parse_picosat_result $tracefile [exec bash -c "tee picosat-input.cnf | picosat -v -s $seed -n --all | tee picosat.log || true" << $cnf]] }
 		minisat { error "don't know how to handle minisat run" }
 		sadical { error "don't know how to handle sadical run" }
 		default { error "unknown solver type to run: $solver" }
@@ -75,6 +85,9 @@ proc run_for_nvars {nvars} {
 	set high [nclauses_high $nvars]
 	set low [nclauses_low $nvars]
 	set total 100
+	if {$total > $high - $low} {
+		set total [expr {$high - $low}]
+	}
 	for {set nci 0} {$nci <= $total} {incr nci} {
 		set nclauses [expr {($high-$low)*$nci/$total + $low}]
 		set max_cnfi 20
