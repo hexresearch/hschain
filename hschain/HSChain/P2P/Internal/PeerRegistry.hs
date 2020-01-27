@@ -40,11 +40,14 @@ data PeerRegistry = PeerRegistry
 
 -- | Create new empty and active registry
 newPeerRegistry :: MonadIO m => PeerId -> m PeerRegistry
-newPeerRegistry pid = PeerRegistry
-               <$> liftIO (newTVarIO Map.empty)
-               <*> liftIO (newTVarIO Set.empty)
-               <*> liftIO (newTVarIO Set.empty)
-               <*> return pid
+newPeerRegistry pid = do
+  prTidMap        <- liftIO (newTVarIO Map.empty)
+  prConnected     <- liftIO (newTVarIO Set.empty)
+  prKnownAddreses <- liftIO (newTVarIO Set.empty)
+  return PeerRegistry{ prPeerId = pid
+                     , ..
+                     }
+
 
 -- | Register peer using current thread ID. If we already have
 --   registered peer with given address do nothing
