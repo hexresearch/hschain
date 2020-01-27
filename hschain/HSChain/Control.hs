@@ -13,6 +13,7 @@
 module HSChain.Control (
     -- *
     MonadFork(..)
+  , forkFinally
   , forkLinked
   , forkLinkedIO
   , runConcurrently
@@ -62,18 +63,21 @@ import qualified Control.Concurrent as Conc
 -- | Type class for monads which could be forked
 class MonadIO m => MonadFork m where
   fork           :: m () -> m ThreadId
-  forkFinally    :: m a -> (Either SomeException a -> m ()) -> m ThreadId
   forkWithUnmask :: ((forall a. m a -> m a) -> m ()) -> m ThreadId
+
+forkFinally
+  :: (MonadFork m, MonadMask m)
+  => m a -> (Either SomeException a -> m ()) -> m ThreadId
+forkFinally action fini =
+  mask $ \restore ->
+    fork $ try (restore action) >>= fini
 
 instance MonadFork IO where
   fork           = Conc.forkIO
-  forkFinally    = Conc.forkFinally
   forkWithUnmask = Conc.forkIOWithUnmask
 
 instance MonadFork m => MonadFork (ReaderT r m) where
   fork (ReaderT action) = ReaderT $ fork . action
-  forkFinally (ReaderT action) fini = ReaderT $ \r ->
-    forkFinally (action r) (\e -> runReaderT (fini e) r)
   forkWithUnmask cont = ReaderT $ \r -> forkWithUnmask $ \restore ->
     runReaderT (cont (liftF restore)) r
     where
@@ -82,9 +86,6 @@ instance MonadFork m => MonadFork (ReaderT r m) where
 instance MonadFork m => MonadFork (SS.StateT s m) where
   fork action = SS.StateT $ \s -> do
     tid <- fork $ SS.evalStateT action s
-    return (tid,s)
-  forkFinally action fini = SS.StateT $ \s -> do
-    tid <- forkFinally (SS.evalStateT action s) (flip SS.evalStateT s . fini)
     return (tid,s)
   forkWithUnmask cont = SS.StateT $ \s -> do
     tid <- forkWithUnmask $ \restore ->
@@ -96,9 +97,6 @@ instance MonadFork m => MonadFork (SS.StateT s m) where
 instance MonadFork m => MonadFork (SL.StateT s m) where
   fork action = SL.StateT $ \s -> do
     tid <- fork $ SL.evalStateT action s
-    return (tid,s)
-  forkFinally action fini = SL.StateT $ \s -> do
-    tid <- forkFinally (SL.evalStateT action s) (flip SL.evalStateT s . fini)
     return (tid,s)
   forkWithUnmask cont = SL.StateT $ \s -> do
     tid <- forkWithUnmask $ \restore ->
