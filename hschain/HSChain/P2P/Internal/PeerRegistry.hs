@@ -4,9 +4,9 @@
 
 module HSChain.P2P.Internal.PeerRegistry where
 
-import Control.Concurrent     (ThreadId, killThread, myThreadId)
+import Control.Concurrent     (ThreadId, myThreadId)
 import Control.Concurrent.STM
-    (TVar, atomically, modifyTVar', newTVarIO, readTVar, retry, writeTVar)
+    (TVar, atomically, modifyTVar', newTVarIO, readTVar, retry)
 import Control.Monad          (when)
 import Control.Monad.Catch    (MonadMask, finally, uninterruptibleMask)
 import Control.Monad.IO.Class (MonadIO, liftIO)
