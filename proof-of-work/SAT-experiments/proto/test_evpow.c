@@ -5,6 +5,7 @@
  *  - time to find a refutation and/or solution
  */
 
+#include <time.h>
 #include <stdio.h>
 #include <stdarg.h>
 
@@ -50,14 +51,24 @@ timed_solve( uint8_t* prefix
            , int complexity_shift
            , uint16_t complexity_mantissa
 	   , uint32_t milliseconds_allowance
+	   , uint32_t attempts_allowed
            ) {
+	clock_t start = clock();
+	int32_t attempts_count;
+	int r = evpow_solve(prefix, prefix_size, answer, solution_hash, complexity_shift, complexity_mantissa, milliseconds_allowance, attempts_allowed, & attempts_count);
+	clock_t end = clock();
+	int64_t diff = end - start;
+	int64_t milliseconds = (diff * 1000 + CLOCKS_PER_SEC - 1) / CLOCKS_PER_SEC;
+	printf("answer found %d, complexity shift %3d, mantissa %04x, time %ld (ms), attempts %d\n", r, complexity_shift, complexity_mantissa, milliseconds, attempts_allowed);
+	fflush(stdout);
+	return 0;
 } /* timed_solve */
 
 static void
 test_evpow_logic(void) {
 	test_rec_t testrec;
 	fill_some_bytes(testrec.some_bytes);
-	if (!evpow_solve(testrec.some_bytes, sizeof(testrec.some_bytes), testrec.answer, testrec.hash, 1,0xffff, 30000, 300000)) {
+	if (!timed_solve(testrec.some_bytes, sizeof(testrec.some_bytes), testrec.answer, testrec.hash, 1,0xffff, 30000, 300000)) {
 		failure("unable to find answer for initial puzzle");
 	}
 } /* test_evpow_logic */

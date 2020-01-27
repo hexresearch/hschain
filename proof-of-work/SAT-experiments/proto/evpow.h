@@ -9,7 +9,11 @@
 #include <stdint.h>
 
 /* bits per puzzle answer, also hints at number of variables used */
-#define	EVPOW_ANSWER_BITS (512)
+#define	EVPOW_ANSWER_BITS (256)
+
+#if (EVPOW_ANSWER_BITS) >= 32768
+#   error "For such a big answer we have to update inner workings of problem generation (go up from 15 bits per variable index)"
+#endif
 
 /* bytes per puzzle answer */
 #define EVPOW_ANSWER_BYTES (EVPOW_ANSWER_BITS / 8)
@@ -25,6 +29,7 @@ typedef uint8_t evpow_answer[EVPOW_ANSWER_BYTES];
 #else
 #   error "cannot compute number of clauses for current EVPOW_K"
 #endif
+
 
 #define EVPOW_HASH_TYPE_SHA256
 
@@ -84,6 +89,7 @@ evpow_solve( uint8_t* prefix
 	   , uint16_t complexity_mantissa
 	   , int32_t milliseconds_allowance // zero or negative value means exhaustive search within attempts limit
 	   , int32_t attempts_allowed // zero or negative value means exhaustive search within time limit
+	   , int32_t* attempts_done
 	   );
 
 
