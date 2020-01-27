@@ -36,8 +36,6 @@ data PeerRegistry = PeerRegistry
       -- ^ New addresses to connect
     , prPeerId        :: !PeerId
       -- ^ Unique peer id for controlling simultaneous connections
-    , prIsActive      :: !(TVar Bool)
-      -- ^ `False` when close all connections
     }
 
 -- | Create new empty and active registry
@@ -47,12 +45,9 @@ newPeerRegistry pid = PeerRegistry
                <*> liftIO (newTVarIO Set.empty)
                <*> liftIO (newTVarIO Set.empty)
                <*> return pid
-               <*> liftIO (newTVarIO True)
 
 -- | Register peer using current thread ID. If we already have
 --   registered peer with given address do nothing
---   NOTE: we need to track activity of registry to avoid possibility of
---         successful registration after call to reapPeers
 withPeer :: (MonadMask m, MonadLogger m, MonadIO m, MonadTrace m)
          => PeerRegistry -> NetAddr -> ConnectMode -> m () -> m ()
 withPeer PeerRegistry{..} addr connMode action = do
@@ -73,9 +68,7 @@ withPeer PeerRegistry{..} addr connMode action = do
   where
     tracePRChange addrs = trace $ TePeerRegistryChanged (Set.map show addrs)
     -- Add peer to registry and return whether it was success
-    registerPeer tid = readTVar prIsActive >>= \case
-      False -> return (False, Set.empty)
-      True  -> do
+    registerPeer tid = do
         addrs <- readTVar prConnected
         if addr `Set.member` addrs then
           case connMode of
@@ -97,22 +90,11 @@ withPeer PeerRegistry{..} addr connMode action = do
           addrs' <- readTVar prConnected
           return (True, addrs')
     -- Remove peer from registry
-    unregisterPeer tid = readTVar prIsActive >>= \case
-      False -> return Set.empty
-      True  -> do tids <- readTVar prTidMap
+    unregisterPeer tid = do
+                  tids <- readTVar prTidMap
                   case tid `Map.lookup` tids of
                     Nothing -> return Set.empty
                     Just a  -> do modifyTVar' prTidMap    $ Map.delete tid
                                   modifyTVar' prConnected $ Set.delete a
                                   readTVar prConnected
     logUnregister = logger DebugS ("withPeer: unregister " <> showLS addr) ()
-
-
--- Kill all registered threads
-reapPeers :: MonadIO m => PeerRegistry -> m ()
-reapPeers PeerRegistry{..} = liftIO $ do
-  tids <- atomically $ do
-    writeTVar prIsActive False
-    readTVar prTidMap
-  mapM_ killThread $ Map.keys tids
-

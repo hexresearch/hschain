@@ -72,33 +72,36 @@ acceptLoop
 acceptLoop cfg NetworkAPI{..} peerCh mempool peerRegistry = do
   logger InfoS "Starting accept loop" ()
   recoverAll (retryPolicy cfg) $ const $ logOnException $
-    bracket listenOn fst $ \(_,accept) -> forever $
-      -- We accept connection, create new thread and put it into
-      -- registry. If we already have connection from that peer we close
-      -- connection immediately
+    bracket listenOn fst $ \(_,accept) -> forever $ do
+      -- We accept connection and create new thread which is manager
+      -- by shepherd
       mask $ \restore -> do
         (conn, addr') <- accept
-        void $ flip forkFinally (const $ close conn) $ restore $ do
-          let peerInfo = connectedPeer conn
-          logger InfoS ("Accept connection " <> showLS addr' <> ", peer info " <> showLS peerInfo) (sl "addr" addr')
-          let otherPeerId   = piPeerId   peerInfo
-              otherPeerPort = piPeerPort peerInfo
-              addr = normalizeNodeAddress addr' (Just $ fromIntegral otherPeerPort)
-          trace $ TeNodeOtherTryConnect (show addr)
-          logger DebugS "PreAccepted connection"
-                (  sl "addr"     addr
-                <> sl "addr0"    addr'
-                <> sl "peerId"   otherPeerId
-                <> sl "peerPort" otherPeerPort
-                )
-          if otherPeerId == prPeerId peerRegistry then
-            logger DebugS "Self connection detected. Close connection" ()
-          else
-            catch (withPeer peerRegistry addr (CmAccept otherPeerId) $ do
-                  logger InfoS "Accepted connection" (sl "addr" addr)
-                  trace $ TeNodeOtherConnected (show addr)
-                  startPeer addr peerCh conn peerRegistry mempool
-                  ) (\e -> logger InfoS ("withPeer has thrown " <> showLS (e :: SomeException)) ())
+        newSheepFinally (peerShepherd peerCh)
+          (restore $ peerThread conn addr')
+          (close conn)
+  where
+    peerThread conn addr' = do
+      let peerInfo = connectedPeer conn
+      logger InfoS ("Accept connection " <> showLS addr' <> ", peer info " <> showLS peerInfo) (sl "addr" addr')
+      let otherPeerId   = piPeerId   peerInfo
+          otherPeerPort = piPeerPort peerInfo
+          addr = normalizeNodeAddress addr' (Just $ fromIntegral otherPeerPort)
+      trace $ TeNodeOtherTryConnect (show addr)
+      logger DebugS "PreAccepted connection"
+            (  sl "addr"     addr
+            <> sl "addr0"    addr'
+            <> sl "peerId"   otherPeerId
+            <> sl "peerPort" otherPeerPort
+            )
+      if otherPeerId == prPeerId peerRegistry then
+        logger DebugS "Self connection detected. Close connection" ()
+      else
+        catch (withPeer peerRegistry addr (CmAccept otherPeerId) $ do
+              logger InfoS "Accepted connection" (sl "addr" addr)
+              trace $ TeNodeOtherConnected (show addr)
+              startPeer addr peerCh conn peerRegistry mempool
+              ) (\e -> logger InfoS ("withPeer has thrown " <> showLS (e :: SomeException)) ())
 
 
 -- Initiate connection to remote host and register peer
@@ -115,8 +118,7 @@ connectPeerTo
   -> m ()
 connectPeerTo cfg NetworkAPI{..} addr peerCh mempool peerRegistry =
   -- Igrnore all exceptions to prevent apparing of error messages in stderr/stdout.
-  void . flip forkFinally (const $ return ()) $
-    recoverAll (retryPolicy cfg) $ const $ logOnException $ do
+  newSheep (peerShepherd peerCh) $ logOnException $ do
       logger InfoS "Connecting to" (sl "addr" addr)
       trace (TeNodeConnectingTo (show addr))
       -- TODO : what first? "connection" or "withPeer" ?
@@ -313,9 +315,7 @@ pexFSM cfg net@NetworkAPI{..} peerCh@PeerChans{..} mempool peerRegistry@PeerRegi
         ]
       case event of
         EPexDebugMonitor ->
-          liftIO (readTVarIO prIsActive) >>= \case
-            True  -> usingGauge prometheusNumPeers . Set.size =<< liftIO (readTVarIO prConnected)
-            False -> usingGauge prometheusNumPeers 0
+          usingGauge prometheusNumPeers . Set.size =<< liftIO (readTVarIO prConnected)
         EPexNewAddrs addrs' -> do
           addrs  <- fmap Set.fromList
                   $ Ip.filterOutOwnAddresses (piPeerPort ourPeerInfo)
@@ -332,7 +332,6 @@ pexFSM cfg net@NetworkAPI{..} peerCh@PeerChans{..} mempool peerRegistry@PeerRegi
               logger DebugS "Full of knowns conns" $ sl "number" (Set.size currentKnowns)
               reset capTO 10e3
         EPexMonitor -> do
-          whenM (liftIO $ readTVarIO prIsActive) $ do
               conns <- liftIO $ readTVarIO prConnected
               let sizeConns = Set.size conns
               if sizeConns < pexMinConnections cfg then do
@@ -365,7 +364,7 @@ peerGossipPeerExchange
   -> TChan PexMessage
   -> TBQueue (GossipMsg a)
   -> m ()
-peerGossipPeerExchange PeerChans{..} PeerRegistry{prConnected,prIsActive} pexCh gossipCh = forever $
+peerGossipPeerExchange PeerChans{..} PeerRegistry{prConnected} pexCh gossipCh = forever $
     atomicallyIO (readTChan pexCh) >>= \case
         PexMsgAskForMorePeers -> sendPeers
         PexMsgMorePeers addrs -> connectToAddrs addrs
@@ -375,10 +374,7 @@ peerGossipPeerExchange PeerChans{..} PeerRegistry{prConnected,prIsActive} pexCh 
     sendPeers = do
         addrList' <- Set.toList <$> liftIO (readTVarIO prConnected)
         logger DebugS "peerGossipPeerExchange: someone asks for other peers: we answer " $ sl "addrs" addrList'
-        isSomethingSent <- atomicallyIO $
-            readTVar prIsActive >>= \case
-                False -> return False
-                True -> do
+        isSomethingSent <- atomicallyIO $ do
                     addrList <- Set.toList <$> readTVar prConnected
                     if null addrList then
                         return False
