@@ -70,29 +70,30 @@ startPeerDispatcher p2pConfig net addrs AppChans{..} mempool = logOnException $ 
   peerChanPex             <- liftIO newBroadcastTChanIO
   peerChanPexNewAddresses <- liftIO newTChanIO
   gossipCnts              <- newGossipCounters
-  let peerCh = PeerChans { peerChanTx      = appChanTx
-                         , peerChanPex     = peerChanPex
-                         , peerChanRx      = writeTBQueue appChanRx
-                         , consensusState  = readTVar appTMState
-                         , ..
-                         }
-  -- Accepting connection is managed by separate linked thread and
-  -- this thread manages initiating connections
-  flip finally (uninterruptibleMask_ $ reapPeers peerRegistry) $ runConcurrently
-    [ acceptLoop p2pConfig net peerCh mempool peerRegistry
-     -- FIXME: we should manage requests for peers and connecting to
-     --        new peers here
-    , do waitSec 0.1
-         forM_ addrs $ \a ->
-             connectPeerTo p2pConfig net a peerCh mempool peerRegistry
-         forever $ waitSec 0.1
-    -- Peer connection monitor
-    , descendNamespace "PEX" $
-      pexFSM p2pConfig net peerCh mempool peerRegistry (pexMinKnownConnections p2pConfig) (pexMaxKnownConnections p2pConfig)
-    , forever $ do
-        logGossip gossipCnts
-        waitSec 1.0
-    ]
+  withShepherd $ \peerShepherd -> do
+    let peerCh = PeerChans { peerChanTx      = appChanTx
+                           , peerChanPex     = peerChanPex
+                           , peerChanRx      = writeTBQueue appChanRx
+                           , consensusState  = readTVar appTMState
+                           , ..
+                           }
+    -- Accepting connection is managed by separate linked thread and
+    -- this thread manages initiating connections
+    flip finally (uninterruptibleMask_ $ reapPeers peerRegistry) $ runConcurrently
+      [ acceptLoop p2pConfig net peerCh mempool peerRegistry
+       -- FIXME: we should manage requests for peers and connecting to
+       --        new peers here
+      , do waitSec 0.1
+           forM_ addrs $ \a ->
+               connectPeerTo p2pConfig net a peerCh mempool peerRegistry
+           forever $ waitSec 0.1
+      -- Peer connection monitor
+      , descendNamespace "PEX" $
+        pexFSM p2pConfig net peerCh mempool peerRegistry (pexMinKnownConnections p2pConfig) (pexMaxKnownConnections p2pConfig)
+      , forever $ do
+          logGossip gossipCnts
+          waitSec 1.0
+      ]
 
 
 -- | Generate "unique" peer id for current session.

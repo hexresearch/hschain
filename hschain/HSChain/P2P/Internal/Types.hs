@@ -11,13 +11,12 @@ import Codec.Serialise        (Serialise)
 import Control.Concurrent.STM (STM, TChan)
 import GHC.Generics           (Generic)
 
+import HSChain.Control                          (Shepherd)
 import HSChain.Blockchain.Internal.Engine.Types (NetworkCfg)
 import HSChain.Blockchain.Internal.Types        (Announcement, MessageTx, MessageRx, TMState)
 import HSChain.Crypto                           (Crypto, SignedState(..), CryptoHashable(..))
 import HSChain.P2P.Types                        (NetAddr)
-
 import HSChain.Types
-
 import HSChain.P2P.Internal.Logging
 
 import qualified Katip
@@ -69,7 +68,7 @@ data PeerChans a = PeerChans
   , consensusState          :: !(STM (Maybe (Height, TMState a)))   -- TODO try strict Maybe and Tuple
     -- ^ Read only access to current state of consensus state machine
   , p2pConfig               :: !NetworkCfg
-
+  , peerShepherd            :: !Shepherd
   , gossipCnts              :: !GossipCounters
   }
 
