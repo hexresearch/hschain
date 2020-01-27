@@ -171,6 +171,8 @@ runConcurrently actions = do
   -- Run child threads. We wait until one of threads terminate and
   -- then kill all others.
   (r, tids) <- bracket
+    -- Acquisution is done under mask and fork doesn't block so we're
+    -- couldn't be interrupted here
     (forM actions $ \f -> forkWithUnmask $ \restore -> do
         try (restore f) >>= liftIO . \case
           Right _ -> Conc.writeChan ch (Right ())
