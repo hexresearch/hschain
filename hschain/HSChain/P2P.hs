@@ -24,7 +24,7 @@ module HSChain.P2P (
 import Control.Concurrent.STM
 
 import Control.Monad          (forM_, forever)
-import Control.Monad.Catch    (MonadMask, finally, uninterruptibleMask_)
+import Control.Monad.Catch    (MonadMask)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Monoid            ((<>))
 import Katip                  (showLS)
@@ -79,7 +79,7 @@ startPeerDispatcher p2pConfig net addrs AppChans{..} mempool = logOnException $ 
                            }
     -- Accepting connection is managed by separate linked thread and
     -- this thread manages initiating connections
-    flip finally (uninterruptibleMask_ $ reapPeers peerRegistry) $ runConcurrently
+    runConcurrently
       [ acceptLoop p2pConfig net peerCh mempool peerRegistry
        -- FIXME: we should manage requests for peers and connecting to
        --        new peers here
