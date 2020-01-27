@@ -120,7 +120,7 @@ forkLinked action io = do
   --       needs to be explicitly unmasked
   bracket
     (forkWithUnmask $ \restore ->
-         try (restore action) >>= \case
+        try (restore action) >>= \case
           Right _ -> return ()
           Left  e -> case fromException e of
             Just (_ :: AsyncException) -> return ()
