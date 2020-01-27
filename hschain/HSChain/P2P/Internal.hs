@@ -109,14 +109,13 @@ connectPeerTo
   :: ( MonadFork m, MonadMask m, MonadLogger m, MonadTrace m, MonadReadDB m a
      , BlockData a
      )
-  => NetworkCfg
-  -> NetworkAPI
+  => NetworkAPI
   -> NetAddr
   -> PeerChans a
   -> Mempool m (Alg a) (TX a)
   -> PeerRegistry
   -> m ()
-connectPeerTo cfg NetworkAPI{..} addr peerCh mempool peerRegistry =
+connectPeerTo NetworkAPI{..} addr peerCh mempool peerRegistry =
   -- Igrnore all exceptions to prevent apparing of error messages in stderr/stdout.
   newSheep (peerShepherd peerCh) $ logOnException $ do
       logger InfoS "Connecting to" (sl "addr" addr)
@@ -348,7 +347,7 @@ pexFSM cfg net@NetworkAPI{..} peerCh@PeerChans{..} mempool peerRegistry@PeerRegi
                       let randKnowns = take (pexMaxConnections cfg - sizeConns)
                                      $ shuffle' (Set.toList knowns) (Set.size knowns) rndGen
                       logger DebugS "New rand knowns: " $ sl "peers" randKnowns
-                      forM_ randKnowns $ \addr -> connectPeerTo cfg net addr peerCh mempool peerRegistry
+                      forM_ randKnowns $ \addr -> connectPeerTo net addr peerCh mempool peerRegistry
                       reset monTO 1e3
               else do
                   logger InfoS "Full of connections" $ sl "connections" conns

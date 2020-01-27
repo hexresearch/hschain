@@ -85,7 +85,7 @@ startPeerDispatcher p2pConfig net addrs AppChans{..} mempool = logOnException $ 
        --        new peers here
       , do waitSec 0.1
            forM_ addrs $ \a ->
-               connectPeerTo p2pConfig net a peerCh mempool peerRegistry
+               connectPeerTo net a peerCh mempool peerRegistry
            forever $ waitSec 0.1
       -- Peer connection monitor
       , descendNamespace "PEX" $
