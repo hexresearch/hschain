@@ -13,7 +13,7 @@ import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Map.Strict        (Map)
 import Data.Monoid            ((<>))
 import Data.Set               (Set)
-import Katip                  (showLS)
+import Katip                  (showLS,sl)
 
 import qualified Data.Map.Strict as Map
 import qualified Data.Set        as Set
@@ -57,12 +57,15 @@ withPeer :: (MonadMask m, MonadLogger m, MonadIO m, MonadTrace m)
          => PeerRegistry -> NetAddr -> ConnectMode -> m () -> m ()
 withPeer PeerRegistry{..} addr connMode action = do
   tid <- liftIO myThreadId
-  logger DebugS ("withPeer: addr = " <> showLS addr <> ": peerId = " <> showLS prPeerId <> ", connMode = " <> showLS connMode <> ", tid: " <> showLS tid) ()
+  logger DebugS "withPeer"
+    (  "addr"     `sl` addr
+    <> "peerID"   `sl` prPeerId
+    <> "connMode" `sl` show connMode
+    )
   -- NOTE: we need uninterruptibleMask since we STM operation are
   --       blocking and they must not be interrupted
   uninterruptibleMask $ \restore -> do
-    r@(ok, addrs) <- liftIO $ atomically $ registerPeer tid
-    logger DebugS ("withPeer: result: " <> showLS r) ()
+    (ok, addrs) <- liftIO $ atomically $ registerPeer tid
     when ok $
         restore (tracePRChange addrs >> action)
         `finally`
