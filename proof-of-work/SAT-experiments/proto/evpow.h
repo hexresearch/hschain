@@ -14,6 +14,8 @@
 /* bytes per puzzle answer */
 #define EVPOW_ANSWER_BYTES (EVPOW_ANSWER_BITS / 8)
 
+typedef uint8_t evpow_answer[EVPOW_ANSWER_BYTES];
+
 /* number of literals per clause */
 #define EVPOW_K (4)
 
@@ -24,11 +26,15 @@
 #   error "cannot compute number of clauses for current EVPOW_K"
 #endif
 
-#define EVPOW_HASH_TYPE_SHA256d
+#define EVPOW_HASH_TYPE_SHA256
 
-#if !defined(EVPOW_HASH_TYPE_SHA256d)
+#if defined(EVPOW_HASH_TYPE_SHA256)
+#   define EVPOW_HASH_BYTES	(32)
+#else
 #   error "at least one type of hashing must be defined."
 #endif
+
+typedef uint8_t evpow_hash [EVPOW_HASH_BYTES];
 
 
 /**
@@ -76,6 +82,8 @@ evpow_solve( uint8_t* prefix
 	   , uint8_t* solution_hash
 	   , int complexity_shift
 	   , uint16_t complexity_mantissa
+	   , int32_t milliseconds_allowance // zero or negative value means exhaustive search within attempts limit
+	   , int32_t attempts_allowed // zero or negative value means exhaustive search within time limit
 	   );
 
 
