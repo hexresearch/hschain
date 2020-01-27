@@ -17,6 +17,11 @@ module HSChain.Control (
   , forkLinked
   , forkLinkedIO
   , runConcurrently
+    -- * Shepherd
+  , Shepherd
+  , withShepherd
+  , newSheep
+  , newSheepFinally
     -- * Contol
   , iterateM
   , atomicallyIO
@@ -40,16 +45,17 @@ module HSChain.Control (
   ) where
 
 import Control.Concurrent.MVar
-import Control.Concurrent.STM  (atomically,STM)
+import Control.Concurrent.STM
 import Control.Monad
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Reader
 import qualified Control.Monad.Trans.State.Strict as SS
 import qualified Control.Monad.Trans.State.Lazy   as SL
 import qualified Data.Aeson                       as JSON
+import qualified Data.Map.Strict                  as Map
 import Control.Concurrent  (ThreadId, killThread, myThreadId, throwTo)
 import Control.Exception   (AsyncException, Exception(..), SomeException(..))
-import Control.Monad.Catch (MonadMask, MonadThrow, bracket, mask, onException, throwM, try)
+import Control.Monad.Catch (MonadMask, MonadThrow, bracket, mask, onException, throwM, try, finally)
 import Data.Type.Equality
 import GHC.Exts              (Proxy#,proxy#)
 
@@ -194,6 +200,66 @@ runConcurrently actions = do
     Left  e  -> throwM e
 
 
+----------------------------------------------------------------
+-- Dynamic thread pools
+----------------------------------------------------------------
+
+-- | Opaque handler for threads. It could be used to create new
+--   threads using either 'newSheep' or 'newSheepFinally'
+data Shepherd = Shepherd (TVar (Map.Map ThreadId (MVar ())))
+
+-- | Create shepherd object that will ensure that 
+withShepherd :: (MonadMask m, MonadIO m) => (Shepherd -> m a) -> m a
+withShepherd
+  = bracket (liftIO $ Shepherd <$> newTVarIO Map.empty)
+            (liftIO . cleanup)
+  where
+    -- Cleanup routine which:
+    --  1. Ensures that no thread left running
+    --  2. We continue execution only after all threads terminated
+    cleanup (Shepherd tv) = do
+      children <- readTVarIO tv
+      -- Kill children
+      sacrifice $ Map.keys children
+      -- Wait until all threads terminate
+      forM_ children takeMVar
+    -- Sacrifice all threads from herd to gods of program
+    -- stability. Weq need to take to special care to ensure that
+    -- _all_ threads are terminated. Despite being run under mask we
+    -- can receive asynchronous exception when calling killThread.  If
+    -- we do we receive exception we continue to kill remaining
+    -- children in separate thread.
+    sacrifice []          = return ()
+    sacrifice tAll@(t:ts) = do
+      killThread t `onException` Conc.forkIO (mapM_ killThread tAll)
+      sacrifice ts
+
+-- | Create new thread which will be terminated when we exit
+--   corresponding 'withShepherd' block
+newSheep
+  :: (MonadFork m, MonadIO m, MonadMask m)
+  => Shepherd -> m () -> m ()
+newSheep shepherd action = do
+  lock <- liftIO newEmptyMVar
+  mask $ \restore -> do
+    tid <- fork $ restore action `finally` liftIO (putMVar lock ())
+    liftIO $ addSheep shepherd tid lock
+
+-- | Create new thread which will be terminated when we exit
+--   corresponding 'withShepherd' block. Finalizer action will be
+--   called in any case
+newSheepFinally
+  :: (MonadFork m, MonadIO m, MonadMask m)
+  => Shepherd -> m () -> m () -> m ()
+newSheepFinally shepherd action fini = do
+  lock <- liftIO newEmptyMVar
+  mask $ \restore -> do
+    tid <- fork $ (restore action `finally` fini) `finally` liftIO (putMVar lock ())
+    liftIO $ addSheep shepherd tid lock
+
+addSheep :: Shepherd -> ThreadId -> MVar () -> IO ()
+addSheep (Shepherd tv) tid lock = do
+  atomically $ modifyTVar' tv $ Map.insert tid lock
 
 ----------------------------------------------------------------
 -- MVars
