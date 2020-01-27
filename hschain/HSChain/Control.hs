@@ -12,12 +12,7 @@
 -- |
 module HSChain.Control (
     -- *
-    FunctorF(..)
-  , FloatOut(..)
-  , foldF
-  , traverseF_
-    -- *
-  , MonadFork(..)
+    MonadFork(..)
   , forkLinked
   , forkLinkedIO
   , runConcurrently
@@ -37,20 +32,16 @@ module HSChain.Control (
   , throwNothingM
   , throwLeft
   , throwLeftM
-    -- * Generalized bracket
-  , withMany
     -- * Products with lookup by type
   , (:*:)(..)
   , Has(..)
   , (^..)
   ) where
 
-import Control.Applicative
 import Control.Concurrent.MVar
 import Control.Concurrent.STM  (atomically,STM)
 import Control.Monad
 import Control.Monad.IO.Class
-import Control.Monad.Trans.Cont   (ContT(..))
 import Control.Monad.Trans.Reader
 import qualified Control.Monad.Trans.State.Strict as SS
 import qualified Control.Monad.Trans.State.Lazy   as SL
@@ -58,46 +49,11 @@ import qualified Data.Aeson                       as JSON
 import Control.Concurrent  (ThreadId, killThread, myThreadId, throwTo)
 import Control.Exception   (AsyncException, Exception(..), SomeException(..))
 import Control.Monad.Catch (MonadMask, MonadThrow, bracket, mask, onException, throwM, try)
-import Data.Functor.Compose
-import Data.Functor.Identity
 import Data.Type.Equality
-import Data.Typeable         (Proxy(..))
 import GHC.Exts              (Proxy#,proxy#)
 
 import qualified Control.Concurrent as Conc
 
-----------------------------------------------------------------
---
-----------------------------------------------------------------
-
-class FunctorF k where
-  fmapF :: (forall a. f a -> g a) -> k f -> k g
-
-class FunctorF k => FloatOut k where
-  -- | Sequence outer layer of effects in container
-  floatOut    :: Applicative f => k (f `Compose` g) -> f (k g)
-  -- | Sequence effects inside container
-  floatEffect :: Applicative f => k f -> f ()
-  floatEffect = void . floatOut . fmapF (Compose . fmap Identity)
-  -- | Traverse container using effectful function and discard result
-  --   of traversal
-  traverseEff :: Applicative f => (forall a. g a -> f ()) -> k g -> f ()
-  traverseEff f = void . floatOut . fmapF (Compose . fmap Const . f)
-
-foldF :: (Monoid m, FloatOut k) => (forall a. f a -> m) -> k f -> m
-foldF f = getConst . traverseEff (Const . f)
-
-traverseF_ :: (FloatOut k, Applicative f) => (forall a. g a -> f a) -> k g -> f ()
-traverseF_ f = floatEffect . fmapF f
-
-
-instance FunctorF Proxy where
-  fmapF _ Proxy = Proxy
-
-instance FloatOut Proxy where
-  floatOut      Proxy = pure Proxy
-  floatEffect   Proxy = pure ()
-  traverseEff _ Proxy = pure ()
 
 ----------------------------------------------------------------
 --
@@ -287,14 +243,6 @@ withMutex (Mutex m) action = do
 ----------------------------------------------------------------
 --
 ----------------------------------------------------------------
-
--- | Convert some @withResource@ function to work with multiple
---   resources at once
-withMany
-  :: (Traversable t)
-  => (a   -> (b   -> m r) -> m r)
-  -> (t a -> (t b -> m r) -> m r)
-withMany run = runContT . traverse (ContT . run)
 
 throwNothing :: (Exception e, MonadThrow m) => e -> Maybe a -> m a
 throwNothing e = maybe (throwM e) pure
