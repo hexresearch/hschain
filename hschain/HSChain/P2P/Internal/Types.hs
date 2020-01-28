@@ -1,14 +1,18 @@
-{-# LANGUAGE DataKinds            #-}
-{-# LANGUAGE DeriveGeneric        #-}
-{-# LANGUAGE FlexibleContexts     #-}
-{-# LANGUAGE OverloadedStrings    #-}
-{-# LANGUAGE StandaloneDeriving   #-}
-{-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE DataKinds                  #-}
+{-# LANGUAGE DeriveAnyClass             #-}
+{-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE DerivingStrategies         #-}
+{-# LANGUAGE FlexibleContexts           #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE StandaloneDeriving         #-}
+{-# LANGUAGE UndecidableInstances       #-}
 
 module HSChain.P2P.Internal.Types where
 
 import Codec.Serialise        (Serialise)
 import Control.Concurrent.STM (STM, TChan)
+import Data.Word
 import GHC.Generics           (Generic)
 
 import HSChain.Control                          (Shepherd)
@@ -20,6 +24,20 @@ import HSChain.Types
 import HSChain.P2P.Internal.Logging
 
 import qualified Katip
+
+-- | Random nonce which is used to detect self-connections
+newtype GossipNonce = GossipNonce Word64
+  deriving newtype (Show,Eq,Ord,Serialise)
+
+-- | Message sent by node initiating connection
+data GossipHello = GossipHello !GossipNonce !Word16
+  deriving stock    (Show,Eq,Generic)
+  deriving anyclass (Serialise)
+
+-- | Message sent as reply to GossipHello
+data GossipAck = GossipAck
+  deriving stock    (Show,Eq,Generic)
+  deriving anyclass (Serialise)
 
 
 -- | Messages which peers exchange with each other
