@@ -27,6 +27,7 @@ import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Retry          (RetryPolicy, exponentialBackoff, limitRetries, recoverAll)
 import Data.Foldable          (asum)
 import Data.Function          (fix)
+import Data.Word
 import Katip                  (showLS, sl)
 import System.Random          (newStdGen)
 import System.Random.Shuffle  (shuffle')
@@ -392,3 +393,10 @@ peerGossipPeerExchange PeerChans{..} PeerRegistry{prConnected,prIsActive} pexCh 
         atomicallyIO $ writeTBQueue gossipCh (GossipPex PexPong)
         tickSend $ pex gossipCnts
     pong = return ()
+
+normalizeNodeAddress :: NetAddr -> Maybe Word16 -> NetAddr
+normalizeNodeAddress = flip setPort . Ip.normalizeNetAddr
+  where
+    setPort Nothing a = a
+    setPort (Just port) (NetAddrV4 ha _) = NetAddrV4 ha $ fromIntegral port
+    setPort (Just port) (NetAddrV6 ha _) = NetAddrV6 ha $ fromIntegral port
