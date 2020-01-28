@@ -53,7 +53,6 @@ import HSChain.Run
 import HSChain.Mock
 import HSChain.Store
 import HSChain.Store.STM
-import HSChain.Debug.Trace
 import HSChain.Types.Validators
 import qualified HSChain.P2P.Network as P2P
 
@@ -99,7 +98,7 @@ mkGenesisBlock valSet = BChEval
 
 interpretSpec
   :: ( MonadDB m BData, MonadFork m, MonadMask m, MonadLogger m
-     , MonadTrace m, MonadTMMonitoring m
+     , MonadTMMonitoring m
      , Has x BlockchainNet
      , Has x NodeSpec
      , Has x (Configuration Example))
@@ -163,7 +162,7 @@ keyValLogic = BChLogic
 
 
 executeSpec
-  :: (MonadIO m, MonadMask m, MonadFork m, MonadTrace m, MonadTMMonitoring m)
+  :: (MonadIO m, MonadMask m, MonadFork m, MonadTMMonitoring m)
   => NetSpec NodeSpec
   -> ContT r m [RunningNode m BData]
 executeSpec NetSpec{..} = do

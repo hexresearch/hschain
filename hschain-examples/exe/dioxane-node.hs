@@ -36,7 +36,6 @@ import GHC.Generics (Generic)
 import HSChain.Blockchain.Internal.Engine.Types
 import HSChain.Control
 import HSChain.Crypto         (publicKey)
-import HSChain.Debug.Trace
 import HSChain.Logger
 import HSChain.Mock
 import HSChain.Mock.Dioxane
@@ -59,7 +58,7 @@ import qualified HSChain.P2P.Types as P2PT
 newtype MonitorT m a = MonitorT (ReaderT PrometheusGauges m a)
   deriving ( Functor,Applicative,Monad
            , MonadIO,MonadMask,MonadThrow,MonadCatch
-           , MonadLogger,MonadFork,MonadTrace )
+           , MonadLogger,MonadFork)
 
 instance MonadIO m =>  MonadTMMonitoring (MonitorT m) where
   usingCounter getter n   = MonitorT $ flip addCounterNow n =<< asks getter

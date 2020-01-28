@@ -32,7 +32,6 @@ import Prometheus
 
 import HSChain.Logger      (LoggerT(..),NoLogsT(..),StdoutLogT(..))
 import HSChain.Store       (DBT(..))
-import HSChain.Debug.Trace (TracerT(..))
 import HSChain.Types.Blockchain
 
 ----------------------------------------------------------------
@@ -161,7 +160,6 @@ instance MonadTMMonitoring IO where
 instance MonadTMMonitoring m => MonadTMMonitoring (LoggerT    m)
 instance MonadTMMonitoring m => MonadTMMonitoring (NoLogsT    m)
 instance MonadTMMonitoring m => MonadTMMonitoring (StdoutLogT m)
-instance MonadTMMonitoring m => MonadTMMonitoring (TracerT    m)
 instance MonadTMMonitoring m => MonadTMMonitoring (DBT rm a m)
 instance MonadTMMonitoring m => MonadTMMonitoring (Proxy a b c d m)
 instance MonadTMMonitoring m => MonadTMMonitoring (ReaderT   r m)

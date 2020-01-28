@@ -41,7 +41,6 @@ import qualified HSChain.Mock.KeyVal as Mock
 import           HSChain.Mock.KeyVal   (BData)
 import HSChain.Blockchain.Internal.Engine.Types
 import HSChain.Control
-import HSChain.Debug.Trace
 import HSChain.Logger
 import HSChain.Mock.Types
 import HSChain.Mock.KeyList
@@ -89,19 +88,18 @@ testValidators :: [PrivValidator (Alg BData)]
 testValidators = take 4 $ map PrivValidator $ makePrivKeyStream 1337
 
 
-type TestMonad m = DBT 'RW BData (NoLogsT (TracerT m))
+type TestMonad m = DBT 'RW BData (NoLogsT m)
 
 
 data TestNetLinkDescription m = TestNetLinkDescription
     { ncFrom          :: Int
     , ncTo            :: [Int]
-    , ncTraceCallback :: TraceEvents -> m ()
     , ncAppCallbacks  :: AppCallbacks (TestMonad m) BData
     }
 
 
-mkNodeDescription :: (Monad m) => Int -> [Int] -> (TraceEvents -> m ()) -> TestNetLinkDescription m
-mkNodeDescription ncFrom ncTo ncTraceCallback = TestNetLinkDescription
+mkNodeDescription :: (Monad m) => Int -> [Int] -> TestNetLinkDescription m
+mkNodeDescription ncFrom ncTo = TestNetLinkDescription
   { ncAppCallbacks = mempty
   , ..
   }
@@ -148,7 +146,7 @@ createTestNetworkWithValidatorsSetAndConfig validators cfg netDescr = do
         let genesis = Mock.mkGenesisBlock dbValidatorSet
         initDatabase conn
         --
-        let run = runTracerT ncTraceCallback . runNoLogsT . runDBT conn
+        let run = runNoLogsT . runDBT conn
         (_,actions) <- run $ Mock.interpretSpec genesis
           (   BlockchainNet
                 { bchNetwork        = createMockNode net (intToNetAddr ncFrom)
