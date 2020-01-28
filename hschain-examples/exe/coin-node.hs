@@ -45,7 +45,6 @@ import HSChain.P2P            (generatePeerId)
 import HSChain.P2P.Network    (newNetworkTcp)
 import HSChain.Types
 import HSChain.Types.Merkle.Types
-import HSChain.Debug.Trace
 
 import qualified HSChain.P2P.Types as P2PT
 
@@ -57,7 +56,7 @@ import qualified HSChain.P2P.Types as P2PT
 newtype MonitorT m a = MonitorT (ReaderT PrometheusGauges m a)
   deriving ( Functor,Applicative,Monad
            , MonadIO,MonadMask,MonadThrow,MonadCatch
-           , MonadLogger,MonadFork,MonadTrace )
+           , MonadLogger,MonadFork )
 
 instance MonadIO m =>  MonadTMMonitoring (MonitorT m) where
   usingCounter getter n   = MonitorT $ flip addCounterNow n =<< asks getter

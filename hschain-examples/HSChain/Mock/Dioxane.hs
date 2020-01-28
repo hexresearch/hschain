@@ -39,7 +39,6 @@ import HSChain.Crypto
 import HSChain.Crypto.Classes.Hash
 import HSChain.Crypto.Ed25519
 import HSChain.Crypto.SHA
-import HSChain.Debug.Trace
 import HSChain.Logger
 import HSChain.Mock.Types
 import HSChain.Monitoring
@@ -227,7 +226,7 @@ process Tx{txBody=TxBody{..}} st = do
 interpretSpec
   :: forall m x tag.
      ( MonadDB m (BData tag), MonadFork m, MonadMask m, MonadLogger m
-     , MonadTrace m, MonadTMMonitoring m, Dio tag
+     , MonadTMMonitoring m, Dio tag
      , Has x BlockchainNet
      , Has x (Configuration Example))
   => x

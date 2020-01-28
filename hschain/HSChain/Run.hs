@@ -36,7 +36,6 @@ import Data.Either                    (isRight)
 import HSChain.Blockchain.Internal.Engine
 import HSChain.Blockchain.Internal.Engine.Types
 import HSChain.Control
-import HSChain.Debug.Trace
 import HSChain.Logger
 import HSChain.Monitoring
 import HSChain.P2P
@@ -105,7 +104,7 @@ data BlockchainNet = BlockchainNet
 --   'runConcurrently'. List of actions is returned in case when we
 --   need to run something else along them.
 runNode
-  :: ( MonadDB m a, MonadMask m, MonadFork m, MonadLogger m, MonadTrace m, MonadTMMonitoring m
+  :: ( MonadDB m a, MonadMask m, MonadFork m, MonadLogger m, MonadTMMonitoring m
      , BlockData a, Eq a, Show a
      )
   => Configuration app          -- ^ Timeouts for network and consensus

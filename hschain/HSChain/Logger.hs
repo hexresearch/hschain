@@ -71,7 +71,6 @@ import Katip.Scribes.ElasticSearch
 
 import HSChain.Control
 import HSChain.Types.Blockchain
-import HSChain.Debug.Trace
 import HSChain.Logger.Class
 import HSChain.Store.Internal.Query (MonadReadDB(..), MonadDB(..))
 
@@ -84,7 +83,7 @@ import HSChain.Store.Internal.Query (MonadReadDB(..), MonadDB(..))
 newtype LoggerT m a = LoggerT (ReaderT (Namespace, LogEnv) m a)
   deriving ( Functor, Applicative, Monad
            , MonadIO, MonadThrow, MonadCatch, MonadMask, MonadTrans
-           , MonadFork, MonadTrace, MonadFail)
+           , MonadFork, MonadFail)
 
 instance MFunctor LoggerT where
   hoist f (LoggerT m) = LoggerT (hoist f m)
@@ -109,7 +108,7 @@ instance MonadIO m => MonadLogger (LoggerT m) where
 newtype NoLogsT m a = NoLogsT { runNoLogsT :: m a }
   deriving newtype ( Functor, Applicative, Monad, MonadFail
                    , MonadIO, MonadThrow, MonadCatch, MonadMask
-                   , MonadFork, MonadTrace)
+                   , MonadFork)
 
 instance MFunctor NoLogsT where
   hoist f (NoLogsT m) = NoLogsT (f m)
@@ -130,7 +129,7 @@ instance MonadIO m => MonadLogger (NoLogsT m) where
 newtype StdoutLogT m a = StdoutLogT { unStdoutLogT :: ReaderT Namespace m a }
   deriving newtype ( Functor, Applicative, Monad, MonadFail
                    , MonadIO, MonadThrow, MonadCatch, MonadMask
-                   , MonadFork, MonadTrace
+                   , MonadFork
                    )
 
 runStdoutLogT :: StdoutLogT m a -> m a

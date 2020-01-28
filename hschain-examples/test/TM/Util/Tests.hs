@@ -7,13 +7,9 @@
 
 module TM.Util.Tests where
 
-
 import           Control.Monad
-import           Data.IORef
 import           Data.Set   (Set)
 import qualified Data.Set as Set
-
-import           HSChain.Debug.Trace
 
 import           Test.Tasty.HUnit
 
@@ -45,7 +41,3 @@ infix 1 @~<?
       -> Set a
       -> Assertion
 expected @~<? actual = assertSubset "" (Set.fromList expected) actual
-
-
-collectEvents :: IORef (Set TraceEvents) -> TraceEvents -> IO ()
-collectEvents events event = atomicModifyIORef events (\s -> (Set.insert event s, ()))

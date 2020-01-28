@@ -18,7 +18,6 @@ import Katip                  (showLS,sl)
 import qualified Data.Map.Strict as Map
 import qualified Data.Set        as Set
 
-import HSChain.Debug.Trace
 import HSChain.Logger
 import HSChain.P2P.Types
 
@@ -51,7 +50,7 @@ newPeerRegistry pid = do
 
 -- | Register peer using current thread ID. If we already have
 --   registered peer with given address do nothing
-withPeer :: (MonadMask m, MonadLogger m, MonadIO m, MonadTrace m)
+withPeer :: (MonadMask m, MonadLogger m, MonadIO m)
          => PeerRegistry -> NetAddr -> ConnectMode -> m () -> m ()
 withPeer PeerRegistry{..} addr connMode action = do
   tid <- liftIO myThreadId
@@ -63,19 +62,18 @@ withPeer PeerRegistry{..} addr connMode action = do
   -- NOTE: we need uninterruptibleMask since we STM operation are
   --       blocking and they must not be interrupted
   uninterruptibleMask $ \restore -> do
-    (ok, addrs) <- liftIO $ atomically $ registerPeer tid
+    ok <- liftIO $ atomically $ registerPeer tid
     when ok $
-        restore (tracePRChange addrs >> action)
+        restore action
         `finally`
-        (logUnregister >> liftIO (atomically (unregisterPeer tid)) >>= tracePRChange)
+        (logUnregister >> liftIO (atomically (unregisterPeer tid)))
   where
-    tracePRChange addrs = trace $ TePeerRegistryChanged (Set.map show addrs)
     -- Add peer to registry and return whether it was success
     registerPeer tid = do
         addrs <- readTVar prConnected
         if addr `Set.member` addrs then
           case connMode of
-            CmConnect -> return (False, addrs)
+            CmConnect -> return False
             CmAccept otherPeerId ->
               -- Something terrible happened: mutual connection!
               -- So we compare peerId-s: lesser let greater have connection.
@@ -86,12 +84,11 @@ withPeer PeerRegistry{..} addr connMode action = do
               else
                 -- Deny connection on this size
                 -- (for releasing addr from addrs on other side).
-                return (False, addrs)
+                return False
         else do
           modifyTVar' prTidMap    $ Map.insert tid addr
           modifyTVar' prConnected $ Set.insert addr
-          addrs' <- readTVar prConnected
-          return (True, addrs')
+          return True
     -- Remove peer from registry
     unregisterPeer tid = do
                   tids <- readTVar prTidMap

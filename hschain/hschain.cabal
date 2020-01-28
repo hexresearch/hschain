@@ -72,7 +72,6 @@ Library
                   HSChain.Control
                   HSChain.Crypto.Containers
                   HSChain.Data.CIntMap
-                  HSChain.Debug.Trace
                   HSChain.Exceptions
                   HSChain.Logger
                   HSChain.Logger.Class

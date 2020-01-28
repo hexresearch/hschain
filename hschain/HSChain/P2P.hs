@@ -33,7 +33,6 @@ import System.Random          (randomIO)
 
 import HSChain.Blockchain.Internal.Engine.Types
 import HSChain.Control
-import HSChain.Debug.Trace
 import HSChain.Logger
 import HSChain.Monitoring
 import HSChain.P2P.Network
@@ -54,7 +53,7 @@ import HSChain.P2P.Internal.Logging
 --   from remote nodes, initiating connections to them, tracking state
 --   of nodes and gossip.
 startPeerDispatcher
-  :: ( MonadMask m, MonadFork m, MonadLogger m, MonadTrace m, MonadReadDB m a, MonadTMMonitoring m
+  :: ( MonadMask m, MonadFork m, MonadLogger m, MonadReadDB m a, MonadTMMonitoring m
      , BlockData a)
   => NetworkCfg
   -> NetworkAPI               -- ^ API for networking
@@ -65,7 +64,6 @@ startPeerDispatcher
 startPeerDispatcher p2pConfig net addrs AppChans{..} mempool = logOnException $ do
   let PeerInfo peerId _ _ = ourPeerInfo net
   logger InfoS ("Starting peer dispatcher: addrs = " <> showLS addrs <> ", PeerId = " <> showLS peerId) ()
-  trace TeNodeStarted
   peerRegistry            <- newPeerRegistry peerId
   peerChanPex             <- liftIO newBroadcastTChanIO
   peerChanPexNewAddresses <- liftIO newTChanIO

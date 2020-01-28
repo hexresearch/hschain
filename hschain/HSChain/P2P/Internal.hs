@@ -37,7 +37,6 @@ import qualified Data.Text          as T
 
 import HSChain.Blockchain.Internal.Engine.Types
 import HSChain.Control
-import HSChain.Debug.Trace
 import HSChain.Logger
 import HSChain.Monitoring
 import HSChain.P2P.Network
@@ -61,7 +60,7 @@ retryPolicy NetworkCfg{..} = exponentialBackoff (reconnectionDelay * 1000)
                           <> limitRetries reconnectionRetries
 -- Thread which accepts connections from remote nodes
 acceptLoop
-  :: ( MonadFork m, MonadMask m, MonadLogger m, MonadTrace m, MonadReadDB m a
+  :: ( MonadFork m, MonadMask m, MonadLogger m, MonadReadDB m a
      , BlockData a)
   => NetworkCfg
   -> NetworkAPI
@@ -87,7 +86,6 @@ acceptLoop cfg NetworkAPI{..} peerCh mempool peerRegistry = do
       let otherPeerId   = piPeerId   peerInfo
           otherPeerPort = piPeerPort peerInfo
           addr = normalizeNodeAddress addr' (Just $ fromIntegral otherPeerPort)
-      trace $ TeNodeOtherTryConnect (show addr)
       logger DebugS "PreAccepted connection"
             (  sl "addr"     addr
             <> sl "addr0"    addr'
@@ -99,14 +97,13 @@ acceptLoop cfg NetworkAPI{..} peerCh mempool peerRegistry = do
       else
         catch (withPeer peerRegistry addr (CmAccept otherPeerId) $ do
               logger InfoS "Accepted connection" (sl "addr" addr)
-              trace $ TeNodeOtherConnected (show addr)
               startPeer addr peerCh conn peerRegistry mempool
               ) (\e -> logger InfoS ("withPeer has thrown " <> showLS (e :: SomeException)) ())
 
 
 -- Initiate connection to remote host and register peer
 connectPeerTo
-  :: ( MonadFork m, MonadMask m, MonadLogger m, MonadTrace m, MonadReadDB m a
+  :: ( MonadFork m, MonadMask m, MonadLogger m, MonadReadDB m a
      , BlockData a
      )
   => NetworkAPI
@@ -119,7 +116,6 @@ connectPeerTo NetworkAPI{..} addr peerCh mempool peerRegistry =
   -- Igrnore all exceptions to prevent apparing of error messages in stderr/stdout.
   newSheep (peerShepherd peerCh) $ logOnException $ do
       logger InfoS "Connecting to" (sl "addr" addr)
-      trace (TeNodeConnectingTo (show addr))
       -- TODO : what first? "connection" or "withPeer" ?
       bracket (connect addr) (\c -> logClose >> close c) $ \conn -> do
         withPeer peerRegistry addr CmConnect $ do
@@ -282,7 +278,7 @@ data PEXEvents = EPexDebugMonitor
                -- to known peers when it is nesessary
 
 pexFSM :: (MonadLogger m, MonadMask m, MonadTMMonitoring m,
-           MonadFork m, MonadTrace m, MonadReadDB m a, BlockData a)
+           MonadFork m, MonadReadDB m a, BlockData a)
           => NetworkCfg
           -> NetworkAPI
           -> PeerChans a
