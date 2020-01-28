@@ -41,7 +41,6 @@ import HSChain.Store
 import HSChain.Monitoring
 import HSChain.Mock
 import HSChain.Crypto         (PublicKey)
-import HSChain.P2P            (generatePeerId)
 import HSChain.P2P.Network    (newNetworkTcp)
 import HSChain.Types
 import HSChain.Types.Merkle.Types
@@ -101,8 +100,7 @@ main = do
   evalContT $ do
     let (mtxGen, genesis) = mintMockCoin [ Validator v 1 | v <- validatorKeys] coin
     -- Create network
-    peerId <- generatePeerId
-    let peerInfo = P2PT.PeerInfo peerId nodePort 0
+    let peerInfo = P2PT.PeerInfo nodePort 0
         bnet     = BlockchainNet { bchNetwork      = newNetworkTcp peerInfo
                                  , bchInitialPeers = nodeSeeds
                                  }

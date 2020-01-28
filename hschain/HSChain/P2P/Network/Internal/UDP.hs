@@ -67,7 +67,7 @@ newNetworkUdp ourPeerInfo = do
         (peerChan, connection) <- atomically $ do
           (_, (peerChan, frontVar, receivedFrontsVar)) <- findOrCreateRecvTuple tChans addr
           return ( peerChan
-                 , applyConn ourPeerInfo (PeerInfo (PeerId 0) 0 0)
+                 , applyConn ourPeerInfo (PeerInfo 0 0)
                      sock addr frontVar receivedFrontsVar peerChan tChans
                  )
         otherPeerInfo <- retryN 20 $ do

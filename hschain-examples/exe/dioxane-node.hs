@@ -42,7 +42,6 @@ import HSChain.Mock.Dioxane
 import HSChain.Mock.KeyList
 import HSChain.Mock.Types
 import HSChain.Monitoring
-import HSChain.P2P            (generatePeerId)
 import HSChain.P2P.Network    (newNetworkTcp)
 import HSChain.Run
 import HSChain.Store
@@ -116,8 +115,7 @@ main = do
   -- Start node
   evalContT $ do
     -- Create network
-    peerId <- generatePeerId
-    let peerInfo = P2PT.PeerInfo peerId nodePort 0
+    let peerInfo = P2PT.PeerInfo nodePort 0
         bnet     = BlockchainNet { bchNetwork      = newNetworkTcp peerInfo
                                  , bchInitialPeers = nodeSeeds
                                  }
