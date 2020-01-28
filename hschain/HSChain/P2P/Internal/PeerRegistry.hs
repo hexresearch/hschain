@@ -6,9 +6,8 @@ module HSChain.P2P.Internal.PeerRegistry where
 
 import Control.Concurrent     (ThreadId, myThreadId)
 import Control.Concurrent.STM
-    (TVar, atomically, modifyTVar', newTVarIO, readTVar, retry)
 import Control.Monad          (when)
-import Control.Monad.Catch    (MonadMask, finally, uninterruptibleMask)
+import Control.Monad.Catch    (MonadMask, finally, mask)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Map.Strict        (Map)
 import Data.Monoid            ((<>))
@@ -18,8 +17,14 @@ import Katip                  (showLS,sl)
 import qualified Data.Map.Strict as Map
 import qualified Data.Set        as Set
 
+import HSChain.Control (atomicallyIO)
 import HSChain.Logger
 import HSChain.P2P.Types
+
+
+----------------------------------------------------------------
+-- Peer registry
+----------------------------------------------------------------
 
 data ConnectMode = CmAccept !PeerId
                  | CmConnect
@@ -51,50 +56,34 @@ newPeerRegistry pid = do
 -- | Register peer using current thread ID. If we already have
 --   registered peer with given address do nothing
 withPeer :: (MonadMask m, MonadLogger m, MonadIO m)
-         => PeerRegistry -> NetAddr -> ConnectMode -> m () -> m ()
-withPeer PeerRegistry{..} addr connMode action = do
+         => PeerRegistry -> NetAddr -> m () -> m ()
+withPeer PeerRegistry{..} addr action = do
   tid <- liftIO myThreadId
   logger DebugS "withPeer"
     (  "addr"     `sl` addr
     <> "peerID"   `sl` prPeerId
-    <> "connMode" `sl` show connMode
     )
-  -- NOTE: we need uninterruptibleMask since we STM operation are
-  --       blocking and they must not be interrupted
-  uninterruptibleMask $ \restore -> do
-    ok <- liftIO $ atomically $ registerPeer tid
-    when ok $
-        restore action
-        `finally`
-        (logUnregister >> liftIO (atomically (unregisterPeer tid)))
+  mask $ \restore -> do
+    ok <- atomicallyIO $ registerPeer tid
+    restore action
+      `finally`
+      atomicallyIO (unregisterPeer tid)
   where
     -- Add peer to registry and return whether it was success
     registerPeer tid = do
-        addrs <- readTVar prConnected
-        if addr `Set.member` addrs then
-          case connMode of
-            CmConnect -> return False
-            CmAccept otherPeerId ->
-              -- Something terrible happened: mutual connection!
-              -- So we compare peerId-s: lesser let greater have connection.
-              if prPeerId > otherPeerId then
-                -- Wait for closing connection on other side
-                -- and release addr from addrs.
-                retry
-              else
-                -- Deny connection on this size
-                -- (for releasing addr from addrs on other side).
-                return False
-        else do
+      addrs <- readTVar prConnected
+      case addr `Set.member` addrs of
+        True  -> throwSTM ConnectionLoop
+        False -> do
           modifyTVar' prTidMap    $ Map.insert tid addr
           modifyTVar' prConnected $ Set.insert addr
-          return True
     -- Remove peer from registry
     unregisterPeer tid = do
-                  tids <- readTVar prTidMap
-                  case tid `Map.lookup` tids of
-                    Nothing -> return Set.empty
-                    Just a  -> do modifyTVar' prTidMap    $ Map.delete tid
-                                  modifyTVar' prConnected $ Set.delete a
-                                  readTVar prConnected
-    logUnregister = logger DebugS ("withPeer: unregister " <> showLS addr) ()
+      tids <- readTVar prTidMap
+      case tid `Map.lookup` tids of
+        Nothing -> return ()
+        Just a  -> do modifyTVar' prTidMap    $ Map.delete tid
+                      modifyTVar' prConnected $ Set.delete a
+                      return ()
+
+    -- logUnregister = logger DebugS ("withPeer: unregister " <> showLS addr) ()

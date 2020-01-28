@@ -20,6 +20,7 @@ data NetworkError
   | NoAddressAvailable          -- ^ 
   | CantReverseLookipHostname   -- ^
   | ConnectionClosed            -- ^
+  | ConnectionLoop
   deriving stock    (Show)
   deriving anyclass (Exception)
 

@@ -11,11 +11,16 @@
 module HSChain.P2P.Internal.Types where
 
 import Codec.Serialise        (Serialise)
-import Control.Concurrent.STM (STM, TChan)
+import Control.Concurrent.STM
+import Control.Monad.Catch
+import Control.Monad.IO.Class
 import Data.Word
+import Data.Set               (Set)
+import qualified Data.Set        as Set
+import System.Random          (randomIO)
 import GHC.Generics           (Generic)
 
-import HSChain.Control                          (Shepherd)
+import HSChain.Control                          (Shepherd,atomicallyIO)
 import HSChain.Blockchain.Internal.Engine.Types (NetworkCfg)
 import HSChain.Blockchain.Internal.Types        (Announcement, MessageTx, MessageRx, TMState)
 import HSChain.Crypto                           (Crypto, SignedState(..), CryptoHashable(..))
@@ -87,6 +92,7 @@ data PeerChans a = PeerChans
     -- ^ Read only access to current state of consensus state machine
   , p2pConfig               :: !NetworkCfg
   , peerShepherd            :: !Shepherd
+  , peerNonceSet            :: !NonceSet
   , gossipCnts              :: !GossipCounters
   }
 
@@ -101,3 +107,29 @@ showGossipMsg (GossipAnn ann)     = "GossipAnn { " <> Katip.showLS ann <> " }"
 showGossipMsg (GossipTx _)        = "GossipTx {}"
 showGossipMsg (GossipPex p)       = "GossipPex { " <> Katip.showLS p <> " }"
 
+----------------------------------------------------------------
+-- Storage for nonces
+----------------------------------------------------------------
+
+newtype NonceSet = NonceSet (TVar (Set GossipNonce))
+
+newNonceSet :: MonadIO m => m NonceSet
+newNonceSet = NonceSet <$> liftIO (newTVarIO mempty)
+
+withGossipNonce
+  :: (MonadIO m, MonadMask m)
+  => NonceSet
+  -> (GossipNonce -> m a)
+  -> m a
+withGossipNonce (NonceSet tvNonces) action = do
+  nonce <- GossipNonce <$> liftIO randomIO
+  let ini  = do atomicallyIO $ modifyTVar' tvNonces $ Set.insert nonce
+                return nonce
+      fini = atomicallyIO . modifyTVar' tvNonces . Set.delete
+  bracket ini fini action
+
+-- | Returns true if nonce is among
+isSelfConnection :: MonadIO m => NonceSet -> GossipNonce -> m Bool
+isSelfConnection (NonceSet tvNonces) nonce = do
+  nonceSet <- liftIO $ readTVarIO tvNonces
+  return $! nonce `Set.member` nonceSet
