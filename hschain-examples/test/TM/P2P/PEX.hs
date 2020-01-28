@@ -7,26 +7,26 @@
 {-# LANGUAGE ScopedTypeVariables   #-}
 module TM.P2P.PEX (tests) where
 
-import Control.Monad
-import Control.Monad.Fix
-import Control.Exception
-import Data.IORef
-import Data.List
-import Data.Set (Set)
-import GHC.Conc
-import qualified Data.Set as Set
+-- import Control.Monad
+-- import Control.Monad.Fix
+-- import Control.Exception
+-- import Data.IORef
+-- import Data.List
+-- import Data.Set (Set)
+-- import GHC.Conc
+-- import qualified Data.Set as Set
 
 import Test.Tasty
-import Test.Tasty.HUnit
+-- import Test.Tasty.HUnit
 
-import HSChain.Blockchain.Internal.Engine.Types
-import HSChain.Control
-import HSChain.Debug.Trace
-import HSChain.Mock.Types
-import HSChain.Utils
+-- import HSChain.Blockchain.Internal.Engine.Types
+-- import HSChain.Control
+-- import HSChain.Debug.Trace
+-- import HSChain.Mock.Types
+-- import HSChain.Utils
 
-import TM.Util.Network
-import TM.Util.Tests
+-- import TM.Util.Network
+-- import TM.Util.Tests
 
 ----------------------------------------------------------------
 -- Test tree
@@ -34,6 +34,9 @@ import TM.Util.Tests
 
 tests :: TestTree
 tests = testGroup "P2P"
+  [
+  ]
+{-
   [ testGroup "simple tests"
     [ testCase "require threaded runtime" testMultithread
     , testCase "Peers must connect" testPeersMustConnect
@@ -165,3 +168,4 @@ andM [] = return True
 andM (p:ps) = p >>= \case
         True  -> andM ps
         False -> return False
+-}
