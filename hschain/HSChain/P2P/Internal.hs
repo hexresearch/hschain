@@ -66,9 +66,8 @@ acceptLoop
   -> NetworkAPI
   -> PeerChans a
   -> Mempool m (Alg a) (TX a)
-  -> PeerRegistry
   -> m ()
-acceptLoop cfg NetworkAPI{..} peerCh mempool peerRegistry = do
+acceptLoop cfg NetworkAPI{..} peerCh mempool = do
   logger InfoS "Starting accept loop" ()
   recoverAll (retryPolicy cfg) $ const $ logOnException $
     bracket listenOn fst $ \(_,accept) -> forever $ do
@@ -89,8 +88,8 @@ acceptLoop cfg NetworkAPI{..} peerCh mempool peerRegistry = do
         False -> return ()
       send conn $ serialise $ GossipAck
       -- Handshake is complete. Accept connection
-      withPeer peerRegistry (normalizeNodeAddress addr port) $
-        startPeer addr peerCh conn peerRegistry mempool
+      withPeer (peerRegistry peerCh) (normalizeNodeAddress addr port) $
+        startPeer addr peerCh conn mempool
 
 
 -- Initiate connection to remote host and register peer
@@ -102,9 +101,8 @@ connectPeerTo
   -> NetAddr
   -> PeerChans a
   -> Mempool m (Alg a) (TX a)
-  -> PeerRegistry
   -> m ()
-connectPeerTo NetworkAPI{..} addr peerCh mempool peerRegistry =
+connectPeerTo NetworkAPI{..} addr peerCh mempool =
   -- Igrnore all exceptions to prevent apparing of error messages in stderr/stdout.
   newSheep (peerShepherd peerCh) $ logOnException $ do
     bracket (connect addr) close $ \conn -> do
@@ -114,8 +112,8 @@ connectPeerTo NetworkAPI{..} addr peerCh mempool peerRegistry =
         GossipAck <- deserialise <$> recv conn
         return ()
       -- Start peer
-      withPeer peerRegistry addr $ do
-        startPeer addr peerCh conn peerRegistry mempool
+      withPeer (peerRegistry peerCh) addr $ do
+        startPeer addr peerCh conn mempool
 
 
 ----------------------------------------------------------------
@@ -175,10 +173,9 @@ startPeer
   -> PeerChans a           -- ^ Communication with main application
                            --   and peer dispatcher
   -> P2PConnection         -- ^ Functions for interaction with network
-  -> PeerRegistry
   -> Mempool m (Alg a) (TX a)
   -> m ()
-startPeer peerAddrTo peerCh@PeerChans{..} conn peerRegistry mempool = logOnException $
+startPeer peerAddrTo peerCh@PeerChans{..} conn mempool = logOnException $
   descendNamespace (T.pack (show peerAddrTo)) $ logOnException $ do
     logger InfoS "Starting peer" ()
     atomicallyIO $ writeTChan peerChanPexNewAddresses [peerAddrTo]
@@ -189,7 +186,7 @@ startPeer peerAddrTo peerCh@PeerChans{..} conn peerRegistry mempool = logOnExcep
     runConcurrently
       [ descendNamespace "recv" $ peerReceive             peerCh recvCh conn
       , descendNamespace "send" $ peerSend                peerCh gossipCh conn
-      , descendNamespace "PEX"  $ peerGossipPeerExchange  peerCh peerRegistry pexCh gossipCh
+      , descendNamespace "PEX"  $ peerGossipPeerExchange  peerCh pexCh gossipCh
       , descendNamespace "peerFSM" $ void $ peerFSM       peerCh pexCh gossipCh recvCh cursor
       ]
     logger InfoS "Stopping peer" ()
@@ -274,15 +271,14 @@ pexFSM :: (MonadLogger m, MonadMask m, MonadTMMonitoring m,
           -> NetworkAPI
           -> PeerChans a
           -> Mempool m (Alg a) (TX a)
-          -> PeerRegistry
           -> Int
           -> Int
           -> m b
-pexFSM cfg net@NetworkAPI{..} peerCh@PeerChans{..} mempool peerRegistry@PeerRegistry{..} minKnownConnections _maxKnownConnections = do
+pexFSM cfg net@NetworkAPI{..} peerCh@PeerChans{..} mempool minKnownConnections _maxKnownConnections = do
   logger InfoS "Start PEX FSM" ()
   locAddrs <- getLocalAddresses
   logger DebugS "Local addresses: " $ sl "addr" locAddrs
-  atomicallyIO $ readTVar prConnected >>= (check . not . Set.null) -- wait until some initial peers connect
+  atomicallyIO $ readTVar (prConnected peerRegistry) >>= (check . not . Set.null) -- wait until some initial peers connect
   logger DebugS "Some nodes connected" ()
 
   chTimeout     <- liftIO newTQueueIO
@@ -301,14 +297,14 @@ pexFSM cfg net@NetworkAPI{..} peerCh@PeerChans{..} mempool peerRegistry@PeerRegi
         ]
       case event of
         EPexDebugMonitor ->
-          usingGauge prometheusNumPeers . Set.size =<< liftIO (readTVarIO prConnected)
+          usingGauge prometheusNumPeers . Set.size =<< liftIO (readTVarIO (prConnected peerRegistry))
         EPexNewAddrs addrs' -> do
           addrs  <- fmap Set.fromList
                   $ Ip.filterOutOwnAddresses (piPeerPort ourPeerInfo)
                   $ map Ip.normalizeNetAddr addrs'
-          atomicallyIO $ modifyTVar' prKnownAddreses (`Set.union` addrs)
+          atomicallyIO $ modifyTVar' (prKnownAddreses peerRegistry) (`Set.union` addrs)
         EPexCapacity -> do
-          currentKnowns <- liftIO (readTVarIO prKnownAddreses)
+          currentKnowns <- liftIO $ readTVarIO $ prKnownAddreses peerRegistry
           if Set.size currentKnowns < minKnownConnections then do
               logger DebugS "Too few known connections need; ask for more known connections" $ sl "connections" currentKnowns <> sl "need" minKnownConnections
               -- TODO firstly ask only last peers
@@ -318,11 +314,11 @@ pexFSM cfg net@NetworkAPI{..} peerCh@PeerChans{..} mempool peerRegistry@PeerRegi
               logger DebugS "Full of knowns conns" $ sl "number" (Set.size currentKnowns)
               reset capTO 10e3
         EPexMonitor -> do
-              conns <- liftIO $ readTVarIO prConnected
+              conns <- liftIO $ readTVarIO $ prConnected peerRegistry
               let sizeConns = Set.size conns
               if sizeConns < pexMinConnections cfg then do
                   logger DebugS "Too few connections" $ sl "connections" conns
-                  knowns' <- liftIO $ readTVarIO prKnownAddreses
+                  knowns' <- liftIO $ readTVarIO $ prKnownAddreses peerRegistry
                   let conns' = Set.map (Ip.normalizeNetAddr) conns -- TODO нужно ли тут normalize?
                       knowns = knowns' Set.\\ conns'
                   if Set.null knowns then do
@@ -334,7 +330,7 @@ pexFSM cfg net@NetworkAPI{..} peerCh@PeerChans{..} mempool peerRegistry@PeerRegi
                       let randKnowns = take (pexMaxConnections cfg - sizeConns)
                                      $ shuffle' (Set.toList knowns) (Set.size knowns) rndGen
                       logger DebugS "New rand knowns: " $ sl "peers" randKnowns
-                      forM_ randKnowns $ \addr -> connectPeerTo net addr peerCh mempool peerRegistry
+                      forM_ randKnowns $ \addr -> connectPeerTo net addr peerCh mempool
                       reset monTO 1e3
               else do
                   logger InfoS "Full of connections" $ sl "connections" conns
@@ -346,11 +342,10 @@ pexFSM cfg net@NetworkAPI{..} peerCh@PeerChans{..} mempool peerRegistry@PeerRegi
 peerGossipPeerExchange
   :: ( MonadIO m, MonadFork m, MonadLogger m)
   => PeerChans a
-  -> PeerRegistry
   -> TChan PexMessage
   -> TBQueue (GossipMsg a)
   -> m ()
-peerGossipPeerExchange PeerChans{..} PeerRegistry{prConnected} pexCh gossipCh = forever $
+peerGossipPeerExchange PeerChans{..} pexCh gossipCh = forever $
     atomicallyIO (readTChan pexCh) >>= \case
         PexMsgAskForMorePeers -> sendPeers
         PexMsgMorePeers addrs -> connectToAddrs addrs
@@ -358,10 +353,11 @@ peerGossipPeerExchange PeerChans{..} PeerRegistry{prConnected} pexCh gossipCh = 
         PexPong               -> pong
   where
     sendPeers = do
-        addrList' <- Set.toList <$> liftIO (readTVarIO prConnected)
-        logger DebugS "peerGossipPeerExchange: someone asks for other peers: we answer " $ sl "addrs" addrList'
+        addrList' <- Set.toList <$> liftIO (readTVarIO (prConnected peerRegistry))
+        logger DebugS "peerGossipPeerExchange: someone asks for other peers: we answer "
+          $ sl "addrs" addrList'
         isSomethingSent <- atomicallyIO $ do
-                    addrList <- Set.toList <$> readTVar prConnected
+                    addrList <- Set.toList <$> readTVar (prConnected peerRegistry)
                     if null addrList then
                         return False
                     else do

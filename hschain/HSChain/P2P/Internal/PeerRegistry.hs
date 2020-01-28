@@ -17,7 +17,8 @@ import qualified Data.Set        as Set
 
 import HSChain.Control (atomicallyIO)
 import HSChain.Logger
-import HSChain.P2P.Types
+import HSChain.Types.Network
+import HSChain.Exceptions
 
 
 ----------------------------------------------------------------
