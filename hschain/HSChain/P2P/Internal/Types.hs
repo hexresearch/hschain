@@ -96,16 +96,6 @@ data PeerChans a = PeerChans
   , gossipCnts              :: !GossipCounters
   }
 
--- | Dump GossipMsg without (Show) constraints
---
-showGossipMsg :: GossipMsg a -> Katip.LogStr
-showGossipMsg (GossipPreVote _)   = "GossipPreVote {}"
-showGossipMsg (GossipPreCommit _) = "GossipPreCommit {}"
-showGossipMsg (GossipProposal _)  = "GossipProposal {}"
-showGossipMsg (GossipBlock _)     = "GossipBlock {}"
-showGossipMsg (GossipAnn ann)     = "GossipAnn { " <> Katip.showLS ann <> " }"
-showGossipMsg (GossipTx _)        = "GossipTx {}"
-showGossipMsg (GossipPex p)       = "GossipPex { " <> Katip.showLS p <> " }"
 
 ----------------------------------------------------------------
 -- Storage for nonces
