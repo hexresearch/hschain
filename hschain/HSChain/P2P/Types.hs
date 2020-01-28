@@ -101,8 +101,8 @@ data NetworkAPI = NetworkAPI
 data P2PConnection = P2PConnection
   { send          :: !(forall m. (MonadIO m) => LBS.ByteString -> m ())
     -- ^ Send data
-  , recv          :: !(forall m. (MonadIO m) => m (Maybe LBS.ByteString))
-    -- ^ Receive data
+  , recv          :: !(forall m. (MonadIO m) => m LBS.ByteString)
+    -- ^ Receive data. Will throw exception if connection is closed
   , close         :: !(forall m. (MonadIO m) => m ())
     -- ^ Close socket
   , connectedPeer :: !PeerInfo

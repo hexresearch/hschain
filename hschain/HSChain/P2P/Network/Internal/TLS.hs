@@ -147,20 +147,23 @@ applyConn context = do
     tlsClose ctx = silentBye ctx `E.catch` \(_ :: E.IOException) -> pure ()
 
     tlsRecv :: MonadIO m
-            => TLS.Context -> I.IORef ByteString -> m (Maybe LBS.ByteString)
+            => TLS.Context -> I.IORef ByteString -> m LBS.ByteString
     tlsRecv ctx ref = liftIO $ do
       -- FIXME: This function is not threadsafe. It is not a problem, because 
       -- P2PConnection is not used concurrently now. To fix that this function
       -- call should be exclusive. 
       b0 <- I.readIORef ref
       (mHeader, headerLeftover) <- recvAll ctx b0 headerSize
-      join.join <$> do
+      res <- do
         forM mHeader $ \ header ->
           forM (decodeWord16BE header) $ \ n -> do
             (result,leftover) <- recvAll ctx headerLeftover $ fromIntegral n
             I.writeIORef ref leftover
             return result
-            
+      case join $ join res of
+        Nothing -> throwM ConnectionClosed
+        Just a  -> return a
+
     tlsSend :: MonadIO m
             => TLS.Context -> LBS.ByteString -> m ()
     tlsSend ctx = TLS.sendData ctx . BB.toLazyByteString . toFrame

@@ -105,7 +105,7 @@ applyConn ourPeerInfo otherPeerInfo sock addr frontVar receivedFrontsVar peerCha
 receiveAction
   :: TVar (Map.Map Word8 [(Word32, LBS.ByteString)])
   -> TChan (PeerInfo, (Word8, Word32, LBS.ByteString))
-  -> IO (Maybe LBS.ByteString)
+  -> IO LBS.ByteString
 receiveAction frontsVar peerChan = do
   message <- atomically $ do
     (_, (front, ofs, chunk)) <- readTChan peerChan
@@ -114,7 +114,7 @@ receiveAction frontsVar peerChan = do
     writeTVar frontsVar newFronts
     return message
   if LBS.null message then receiveAction frontsVar peerChan
-                      else return $! Just $! LBS.copy message
+                      else return $! LBS.copy message
 
 sendSplitted :: PeerInfo -> TVar Word8 -> Net.Socket -> NetAddr -> LBS.ByteString -> IO ()
 sendSplitted ourPeerInfo frontVar sock addr msg = do
