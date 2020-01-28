@@ -70,15 +70,15 @@ sendBS sock =  \s -> NetLBS.sendAll sock (BB.toLazyByteString $ toFrame s)
                                    hexLen = BB.word32BE len
                                in (hexLen <> BB.lazyByteString msg)
 
-recvBS :: Net.Socket -> IO (Maybe LBS.ByteString)
+recvBS :: Net.Socket -> IO LBS.ByteString
 recvBS sock = do
   header <- recvAll sock headerSize
   if LBS.null header
-  then return Nothing
+  then throwM ConnectionClosed
   else let len = decodeWord16BE header
        in case len of
-            Just n  -> Just <$> recvAll sock (fromIntegral n)
-            Nothing -> return Nothing
+            Just n  -> recvAll sock (fromIntegral n)
+            Nothing -> throwM ConnectionClosed
 
 
 -- | helper function read given length of bytes

@@ -213,13 +213,12 @@ peerReceive
   -> m ()
 peerReceive PeerChans{gossipCnts} recvCh P2PConnection{..} = logOnException $ do
   logger InfoS "Starting routing for receiving messages" ()
-  fix $ \loop -> recv >>= \case
-    Nothing  -> logger InfoS "Peer stopping since socket is closed" ()
-    Just bs  -> do
-      let msg = deserialise bs
-      atomicallyIO $ writeTChan recvCh msg
-      countGossip gossipCnts tickRecv msg
-      loop
+  forever $ do
+    bs <- recv
+    let msg = deserialise bs
+    atomicallyIO $ writeTChan recvCh msg
+    countGossip gossipCnts tickRecv msg
+
 
 -- | Routine for actually sending data to peers
 peerSend

@@ -7,6 +7,7 @@ module HSChain.P2P.Network.Internal.Mock where
 import Control.Concurrent.STM
 
 import Control.Monad          (forM_)
+import Control.Monad.Catch
 import Control.Monad.IO.Class (liftIO)
 
 import qualified Data.ByteString.Lazy as LBS
@@ -103,7 +104,9 @@ createMockNode MockNet{..} addr = NetworkAPI
     --
   recvBS MockSocket{..} = atomically $
       readTVar msckActive >>= \case
-        False -> tryReadTChan msckRecv
-        True  -> Just <$> readTChan msckRecv
+        False -> tryReadTChan msckRecv >>= \case
+          Just m  -> return m
+          Nothing -> throwM ConnectionClosed
+        True  -> readTChan msckRecv
     --
   close = atomically . closeMockSocket
