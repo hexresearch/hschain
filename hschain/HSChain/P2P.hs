@@ -75,16 +75,16 @@ startPeerDispatcher p2pConfig net addrs AppChans{..} mempool = logOnException $ 
     -- Accepting connection is managed by separate linked thread and
     -- this thread manages initiating connections
     runConcurrently
-      [ acceptLoop p2pConfig net peerCh mempool peerRegistry
+      [ acceptLoop p2pConfig net peerCh mempool
        -- FIXME: we should manage requests for peers and connecting to
        --        new peers here
       , do waitSec 0.1
            forM_ addrs $ \a ->
-               connectPeerTo net a peerCh mempool peerRegistry
+               connectPeerTo net a peerCh mempool
            forever $ waitSec 0.1
       -- Peer connection monitor
       , descendNamespace "PEX" $
-        pexFSM p2pConfig net peerCh mempool peerRegistry (pexMinKnownConnections p2pConfig) (pexMaxKnownConnections p2pConfig)
+        pexFSM p2pConfig net peerCh mempool (pexMinKnownConnections p2pConfig) (pexMaxKnownConnections p2pConfig)
       , forever $ do
           logGossip gossipCnts
           waitSec 1.0

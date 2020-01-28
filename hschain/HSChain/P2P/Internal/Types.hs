@@ -27,8 +27,9 @@ import HSChain.Crypto                           (Crypto, SignedState(..), Crypto
 import HSChain.P2P.Types                        (NetAddr)
 import HSChain.Types
 import HSChain.P2P.Internal.Logging
-
+import HSChain.P2P.Internal.PeerRegistry
 import qualified Katip
+
 
 -- | Random nonce which is used to detect self-connections
 newtype GossipNonce = GossipNonce Word64
@@ -93,6 +94,7 @@ data PeerChans a = PeerChans
   , p2pConfig               :: !NetworkCfg
   , peerShepherd            :: !Shepherd
   , peerNonceSet            :: !NonceSet
+  , peerRegistry            :: !PeerRegistry
   , gossipCnts              :: !GossipCounters
   }
 
