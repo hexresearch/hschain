@@ -353,8 +353,6 @@ peerGossipPeerExchange PeerChans{..} pexCh gossipCh = forever $
     atomicallyIO (readTChan pexCh) >>= \case
         PexMsgAskForMorePeers -> sendPeers
         PexMsgMorePeers addrs -> connectToAddrs addrs
-        PexPing               -> ping
-        PexPong               -> pong
   where
     sendPeers = do
         addrList' <- Set.toList <$> liftIO (readTVarIO (prConnected peerRegistry))
@@ -371,10 +369,6 @@ peerGossipPeerExchange PeerChans{..} pexCh gossipCh = forever $
     connectToAddrs addrs = do
         logger DebugS "peerGossipPeerExchange: some address received: " $ sl "addrs" addrs
         atomicallyIO $ writeTChan peerChanPexNewAddresses addrs
-    ping = do
-        atomicallyIO $ writeTBQueue gossipCh (GossipPex PexPong)
-        tickSend $ pex gossipCnts
-    pong = return ()
 
 normalizeNodeAddress :: NetAddr -> Word16 -> NetAddr
 normalizeNodeAddress = flip setPort . Ip.normalizeNetAddr
