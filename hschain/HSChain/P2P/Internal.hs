@@ -75,30 +75,22 @@ acceptLoop cfg NetworkAPI{..} peerCh mempool peerRegistry = do
       -- We accept connection and create new thread which is manager
       -- by shepherd
       mask $ \restore -> do
-        (conn, addr') <- accept
+        (conn, addr) <- accept
         newSheepFinally (peerShepherd peerCh)
-          (restore $ peerThread conn addr')
+          (restore $ peerThread conn addr)
           (close conn)
   where
-    peerThread conn addr' = do
-      let peerInfo = connectedPeer conn
-      logger InfoS ("Accept connection " <> showLS addr' <> ", peer info " <> showLS peerInfo) (sl "addr" addr')
-      let otherPeerId   = piPeerId   peerInfo
-          otherPeerPort = piPeerPort peerInfo
-          addr = normalizeNodeAddress addr' (Just $ fromIntegral otherPeerPort)
-      logger DebugS "PreAccepted connection"
-            (  sl "addr"     addr
-            <> sl "addr0"    addr'
-            <> sl "peerId"   otherPeerId
-            <> sl "peerPort" otherPeerPort
-            )
-      if otherPeerId == prPeerId peerRegistry then
-        logger DebugS "Self connection detected. Close connection" ()
-      else
-        catch (withPeer peerRegistry addr (CmAccept otherPeerId) $ do
-              logger InfoS "Accepted connection" (sl "addr" addr)
-              startPeer addr peerCh conn peerRegistry mempool
-              ) (\e -> logger InfoS ("withPeer has thrown " <> showLS (e :: SomeException)) ())
+    peerThread conn addr = logOnException $ do
+      -- Expect GossipHello from peer
+      GossipHello nonce port <- deserialise <$> recv conn
+      -- Check nonce for self-connection and send reply
+      isSelfConnection (peerNonceSet peerCh) nonce >>= \case
+        True  -> error "Self-connection"
+        False -> return ()
+      send conn $ serialise $ GossipAck
+      -- Handshake is complete. Accept connection
+      withPeer peerRegistry (normalizeNodeAddress addr port) $
+        startPeer addr peerCh conn peerRegistry mempool
 
 
 -- Initiate connection to remote host and register peer
@@ -115,15 +107,15 @@ connectPeerTo
 connectPeerTo NetworkAPI{..} addr peerCh mempool peerRegistry =
   -- Igrnore all exceptions to prevent apparing of error messages in stderr/stdout.
   newSheep (peerShepherd peerCh) $ logOnException $ do
-      logger InfoS "Connecting to" (sl "addr" addr)
-      -- TODO : what first? "connection" or "withPeer" ?
-      bracket (connect addr) (\c -> logClose >> close c) $ \conn -> do
-        withPeer peerRegistry addr CmConnect $ do
-            logger InfoS "Successfully connected to" (sl "addr" addr)
-            startPeer addr peerCh conn peerRegistry mempool
-        logClose
-  where
-    logClose = logger InfoS "Connection closed" (sl "addr" addr)
+    bracket (connect addr) close $ \conn -> do
+      -- Perform handshake
+      withGossipNonce (peerNonceSet peerCh) $ \nonce -> do
+        send conn $ serialise $ GossipHello nonce (piPeerPort ourPeerInfo)
+        GossipAck <- deserialise <$> recv conn
+        return ()
+      -- Start peer
+      withPeer peerRegistry addr $ do
+        startPeer addr peerCh conn peerRegistry mempool
 
 
 ----------------------------------------------------------------
@@ -225,7 +217,7 @@ peerSend
   :: ( MonadReadDB m a, MonadMask m, MonadIO m, MonadLogger m
      , BlockData a)
   => PeerChans a
-  -> TBQueue (GossipMsg a)  
+  -> TBQueue (GossipMsg a)
   -> P2PConnection
   -> m x
 peerSend PeerChans{..} gossipCh P2PConnection{..} = logOnException $ do
@@ -233,7 +225,7 @@ peerSend PeerChans{..} gossipCh P2PConnection{..} = logOnException $ do
   ownPeerChanPex <- atomicallyIO $ dupTChan peerChanPex
   forever $ do
     msg <- atomicallyIO $  readTBQueue gossipCh
-                       <|> fmap GossipPex (readTChan ownPeerChanPex)    
+                       <|> fmap GossipPex (readTChan ownPeerChanPex)
     send $ serialise msg
     countGossip gossipCnts tickSend msg
 
@@ -313,7 +305,7 @@ pexFSM cfg net@NetworkAPI{..} peerCh@PeerChans{..} mempool peerRegistry@PeerRegi
         EPexNewAddrs addrs' -> do
           addrs  <- fmap Set.fromList
                   $ Ip.filterOutOwnAddresses (piPeerPort ourPeerInfo)
-                  $ map (`normalizeNodeAddress` Nothing) addrs'
+                  $ map Ip.normalizeNetAddr addrs'
           atomicallyIO $ modifyTVar' prKnownAddreses (`Set.union` addrs)
         EPexCapacity -> do
           currentKnowns <- liftIO (readTVarIO prKnownAddreses)
@@ -331,7 +323,7 @@ pexFSM cfg net@NetworkAPI{..} peerCh@PeerChans{..} mempool peerRegistry@PeerRegi
               if sizeConns < pexMinConnections cfg then do
                   logger DebugS "Too few connections" $ sl "connections" conns
                   knowns' <- liftIO $ readTVarIO prKnownAddreses
-                  let conns' = Set.map (`normalizeNodeAddress` Nothing) conns -- TODO нужно ли тут normalize?
+                  let conns' = Set.map (Ip.normalizeNetAddr) conns -- TODO нужно ли тут normalize?
                       knowns = knowns' Set.\\ conns'
                   if Set.null knowns then do
                       logger WarningS "Too few connections and don't know other nodes!" $ sl "number" (Set.size conns)
@@ -384,9 +376,8 @@ peerGossipPeerExchange PeerChans{..} PeerRegistry{prConnected} pexCh gossipCh = 
         tickSend $ pex gossipCnts
     pong = return ()
 
-normalizeNodeAddress :: NetAddr -> Maybe Word16 -> NetAddr
+normalizeNodeAddress :: NetAddr -> Word16 -> NetAddr
 normalizeNodeAddress = flip setPort . Ip.normalizeNetAddr
   where
-    setPort Nothing a = a
-    setPort (Just port) (NetAddrV4 ha _) = NetAddrV4 ha $ fromIntegral port
-    setPort (Just port) (NetAddrV6 ha _) = NetAddrV6 ha $ fromIntegral port
+    setPort port (NetAddrV4 ha _) = NetAddrV4 ha $ fromIntegral port
+    setPort port (NetAddrV6 ha _) = NetAddrV6 ha $ fromIntegral port
