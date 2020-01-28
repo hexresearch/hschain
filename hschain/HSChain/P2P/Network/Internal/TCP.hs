@@ -61,7 +61,7 @@ accept sock = do
          )
 
 applyConn :: Net.Socket -> P2PConnection
-applyConn conn = P2PConnection (liftIO . sendBS conn) (liftIO $ recvBS conn) (liftIO $ Net.close conn) defPeerInfo
+applyConn conn = P2PConnection (liftIO . sendBS conn) (liftIO $ recvBS conn) (liftIO $ Net.close conn) (PeerInfo 0 0)
 
 sendBS :: Net.Socket -> LBS.ByteString -> IO ()
 sendBS sock =  \s -> NetLBS.sendAll sock (BB.toLazyByteString $ toFrame s)

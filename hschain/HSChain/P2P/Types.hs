@@ -15,9 +15,7 @@ module HSChain.P2P.Types (
   , P2PConnection(..)
   , NetworkError(..)
   , NetworkPort
-  , PeerId(..)
   , PeerInfo(..)
-  , defPeerInfo
     -- *
   , tcpHints
   , tcpListenHints
@@ -44,15 +42,8 @@ import HSChain.Types.Network
 ----------------------------------------------------------------
 --
 ----------------------------------------------------------------
-
-newtype PeerId = PeerId Word64
-  deriving newtype (Show, Read, Eq, Ord, Serialise, JSON.ToJSON, JSON.FromJSON)
-
-
 data PeerInfo = PeerInfo
-    { piPeerId        :: !PeerId
-    -- ^ An ID to identify the machine
-    , piPeerPort      :: !Word16
+    { piPeerPort      :: !Word16
     -- ^ Original listening port of the machine of the peer.
     , piPeerSchemeVer :: !Word16
     -- ^ The scheme encoding version. It is not possible tp decode
@@ -60,9 +51,6 @@ data PeerInfo = PeerInfo
     }
     deriving stock    (Show, Generic)
     deriving anyclass (Serialise)
-
-defPeerInfo :: PeerInfo
-defPeerInfo = PeerInfo (PeerId 0) 0 0
 
 ----------------------------------------------------------------
 --

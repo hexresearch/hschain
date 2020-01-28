@@ -13,7 +13,6 @@ module HSChain.P2P (
   , NetAddr(..)
   , netAddrToSockAddr
   , sockAddrToNetAddr
-  , generatePeerId
   -- * for tests only * --
   , PeerChans(..)
   , newPeerRegistry
@@ -25,11 +24,9 @@ import Control.Concurrent.STM
 
 import Control.Monad          (forM_, forever)
 import Control.Monad.Catch    (MonadMask)
-import Control.Monad.IO.Class (MonadIO, liftIO)
+import Control.Monad.IO.Class (liftIO)
 import Data.Monoid            ((<>))
 import Katip                  (showLS)
-import System.Random          (randomIO)
-
 
 import HSChain.Blockchain.Internal.Engine.Types
 import HSChain.Control
@@ -62,9 +59,8 @@ startPeerDispatcher
   -> Mempool m (Alg a) (TX a)
   -> m ()
 startPeerDispatcher p2pConfig net addrs AppChans{..} mempool = logOnException $ do
-  let PeerInfo peerId _ _ = ourPeerInfo net
-  logger InfoS ("Starting peer dispatcher: addrs = " <> showLS addrs <> ", PeerId = " <> showLS peerId) ()
-  peerRegistry            <- newPeerRegistry peerId
+  logger InfoS ("Starting peer dispatcher: addrs = " <> showLS addrs) ()
+  peerRegistry            <- newPeerRegistry
   peerChanPex             <- liftIO newBroadcastTChanIO
   peerChanPexNewAddresses <- liftIO newTChanIO
   peerNonceSet            <- newNonceSet
@@ -94,11 +90,6 @@ startPeerDispatcher p2pConfig net addrs AppChans{..} mempool = logOnException $ 
           waitSec 1.0
       ]
 
-
--- | Generate "unique" peer id for current session.
---
-generatePeerId :: (MonadIO m) => m PeerId
-generatePeerId = PeerId <$> liftIO randomIO
 
 
 

@@ -91,12 +91,10 @@ createMockNode MockNet{..} addr = NetworkAPI
         Just xs -> writeTVar mnetIncoming $ Map.insert loc (xs ++ [(sockFrom,addr)]) cmap
       return $ applyConn loc sockTo
   , listenPort = 0
-  , ourPeerInfo = mkPeerInfoFromAddr addr
+  , ourPeerInfo = PeerInfo 0 0
   }
  where
-  mkPeerInfoFromAddr (NetAddrV4 ha _) = PeerInfo (PeerId (fromIntegral ha)) 0 0
-  mkPeerInfoFromAddr _                = error "IPv6 addr in mkPeerInfoFromAddr"
-  applyConn otherAddr conn = P2PConnection (liftIO . sendBS conn) (liftIO $ recvBS conn) (liftIO $ close conn) (mkPeerInfoFromAddr otherAddr)
+  applyConn otherAddr conn = P2PConnection (liftIO . sendBS conn) (liftIO $ recvBS conn) (liftIO $ close conn) (PeerInfo 0 0)
   sendBS MockSocket{..} bs = atomically $
       readTVar msckActive >>= \case
         False -> error "MockNet: Cannot write to closed socket"

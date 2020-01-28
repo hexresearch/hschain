@@ -6,13 +6,11 @@ module HSChain.P2P.Internal.PeerRegistry where
 
 import Control.Concurrent     (ThreadId, myThreadId)
 import Control.Concurrent.STM
-import Control.Monad          (when)
 import Control.Monad.Catch    (MonadMask, finally, mask)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Map.Strict        (Map)
-import Data.Monoid            ((<>))
 import Data.Set               (Set)
-import Katip                  (showLS,sl)
+import Katip                  (sl)
 
 import qualified Data.Map.Strict as Map
 import qualified Data.Set        as Set
@@ -26,10 +24,6 @@ import HSChain.P2P.Types
 -- Peer registry
 ----------------------------------------------------------------
 
-data ConnectMode = CmAccept !PeerId
-                 | CmConnect
-                 deriving Show
-
 -- Set of currently running peers
 data PeerRegistry = PeerRegistry
     { prTidMap        :: !(TVar (Map ThreadId NetAddr))
@@ -38,19 +32,15 @@ data PeerRegistry = PeerRegistry
       -- ^ Connected addresses
     , prKnownAddreses :: !(TVar (Set NetAddr))
       -- ^ New addresses to connect
-    , prPeerId        :: !PeerId
-      -- ^ Unique peer id for controlling simultaneous connections
     }
 
 -- | Create new empty and active registry
-newPeerRegistry :: MonadIO m => PeerId -> m PeerRegistry
-newPeerRegistry pid = do
+newPeerRegistry :: MonadIO m => m PeerRegistry
+newPeerRegistry = do
   prTidMap        <- liftIO (newTVarIO Map.empty)
   prConnected     <- liftIO (newTVarIO Set.empty)
   prKnownAddreses <- liftIO (newTVarIO Set.empty)
-  return PeerRegistry{ prPeerId = pid
-                     , ..
-                     }
+  return PeerRegistry{..}
 
 
 -- | Register peer using current thread ID. If we already have
@@ -59,12 +49,9 @@ withPeer :: (MonadMask m, MonadLogger m, MonadIO m)
          => PeerRegistry -> NetAddr -> m () -> m ()
 withPeer PeerRegistry{..} addr action = do
   tid <- liftIO myThreadId
-  logger DebugS "withPeer"
-    (  "addr"     `sl` addr
-    <> "peerID"   `sl` prPeerId
-    )
+  logger DebugS "withPeer" ("addr" `sl` addr)
   mask $ \restore -> do
-    ok <- atomicallyIO $ registerPeer tid
+    atomicallyIO $ registerPeer tid
     restore action
       `finally`
       atomicallyIO (unregisterPeer tid)
