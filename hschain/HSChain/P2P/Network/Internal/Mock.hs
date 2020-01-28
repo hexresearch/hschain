@@ -89,7 +89,6 @@ createMockNode MockNet{..} addr = NetworkAPI
         Nothing -> error "MockNet: Cannot connect to closed socket"
         Just xs -> writeTVar mnetIncoming $ Map.insert loc (xs ++ [(sockFrom,addr)]) cmap
       return $ applyConn loc sockTo
-  , normalizeNodeAddress = const
   , listenPort = 0
   , ourPeerInfo = mkPeerInfoFromAddr addr
   }
