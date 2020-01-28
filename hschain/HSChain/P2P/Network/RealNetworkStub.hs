@@ -12,7 +12,6 @@ realNetworkStub :: PeerInfo -> NetworkAPI
 realNetworkStub peerInfo = NetworkAPI
   { listenOn = undefined
   , connect  = undefined
-  , filterOutOwnAddresses = Ip.filterOutOwnAddresses (piPeerPort peerInfo)
   , normalizeNodeAddress  = flip setPort
                           . Ip.normalizeNetAddr
   , listenPort            = fromIntegral $ piPeerPort peerInfo

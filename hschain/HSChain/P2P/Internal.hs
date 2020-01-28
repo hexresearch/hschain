@@ -48,8 +48,8 @@ import HSChain.Types.Blockchain
 import HSChain.P2P.Internal.PeerRegistry
 import HSChain.P2P.Internal.Logging as Logging
 import HSChain.P2P.Internal.Types
-
 import HSChain.P2P.PeerState.Handle
+import qualified HSChain.P2P.Network.IpAddresses as Ip
 
 --
 -- Connect/accept
@@ -317,7 +317,7 @@ pexFSM cfg net@NetworkAPI{..} peerCh@PeerChans{..} mempool peerRegistry@PeerRegi
             False -> usingGauge prometheusNumPeers 0
         EPexNewAddrs addrs' -> do
           addrs  <- fmap Set.fromList
-                  $ filterOutOwnAddresses
+                  $ Ip.filterOutOwnAddresses (piPeerPort ourPeerInfo)
                   $ map (`normalizeNodeAddress` Nothing) addrs'
           atomicallyIO $ modifyTVar' prKnownAddreses (`Set.union` addrs)
         EPexCapacity -> do
