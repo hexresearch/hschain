@@ -70,10 +70,6 @@ data PexMessage
   -- ^ Peer need yet connections to peers
   | PexMsgMorePeers ![NetAddr]
   -- ^ Some addresses of other connected peers
-  | PexPing
-  -- ^ Message to estimate connection speed between peers
-  | PexPong
-  -- ^ Answer for Ping
   deriving (Show, Generic)
 
 instance Serialise PexMessage
