@@ -306,10 +306,13 @@ pexFSM cfg net@NetworkAPI{..} peerCh@PeerChans{..} mempool minKnownConnections _
         EPexCapacity -> do
           currentKnowns <- liftIO $ readTVarIO $ prKnownAddreses peerRegistry
           if Set.size currentKnowns < minKnownConnections then do
-              logger DebugS "Too few known connections need; ask for more known connections" $ sl "connections" currentKnowns <> sl "need" minKnownConnections
+              logger DebugS "Too few known connections need; ask for more known connections"
+                $ sl "connections" currentKnowns <> sl "need" minKnownConnections
               -- TODO firstly ask only last peers
               atomicallyIO $ writeTChan peerChanPex PexMsgAskForMorePeers
-              reset capTO 1e3 -- TODO wait for new connections OR timeout (see https://stackoverflow.com/questions/22171895/using-tchan-with-timeout)
+              -- TODO wait for new connections OR timeout
+              --      (see https://stackoverflow.com/questions/22171895/using-tchan-with-timeout)
+              reset capTO 1e3
           else do
               logger DebugS "Full of knowns conns" $ sl "number" (Set.size currentKnowns)
               reset capTO 10e3
@@ -322,7 +325,8 @@ pexFSM cfg net@NetworkAPI{..} peerCh@PeerChans{..} mempool minKnownConnections _
                   let conns' = Set.map (Ip.normalizeNetAddr) conns -- TODO нужно ли тут normalize?
                       knowns = knowns' Set.\\ conns'
                   if Set.null knowns then do
-                      logger WarningS "Too few connections and don't know other nodes!" $ sl "number" (Set.size conns)
+                      logger WarningS "Too few connections and don't know other nodes!"
+                        $ sl "number" (Set.size conns)
                       reset monTO 1e2
                   else do
                       logger DebugS "New peers: " $ sl "peers" knowns
