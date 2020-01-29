@@ -8,6 +8,7 @@ module HSChain.P2P.Internal.PeerRegistry
   , knownAddresses
   , connectedAddresses
   , addAddresses
+  , listenKnownAddrUpdates
   ) where
 
 import Control.Concurrent     (ThreadId, myThreadId)
@@ -39,14 +40,18 @@ data PeerRegistry = PeerRegistry
     -- ^ Connected addresses
   , prKnownAddreses :: !(TVar (Set NetAddr))
     -- ^ New addresses to connect
+  , prKnownUpdates  :: !(TChan (Set NetAddr))
+    -- ^ Broadcast channel which allows to track updates of known set
+    --   of addresses
   }
 
 -- | Create new empty and active registry
 newPeerRegistry :: MonadIO m => m PeerRegistry
-newPeerRegistry = do
-  prTidMap        <- liftIO (newTVarIO Map.empty)
-  prConnected     <- liftIO (newTVarIO Set.empty)
-  prKnownAddreses <- liftIO (newTVarIO Set.empty)
+newPeerRegistry = liftIO $ do
+  prTidMap        <- newTVarIO Map.empty
+  prConnected     <- newTVarIO Set.empty
+  prKnownAddreses <- newTVarIO Set.empty
+  prKnownUpdates  <- newBroadcastTChanIO
   return PeerRegistry{..}
 
 -- | Return set of known addresses
@@ -59,8 +64,16 @@ connectedAddresses = liftIO . readTVarIO . prConnected
 
 -- | Add more addresses to the registry
 addAddresses :: PeerRegistry -> [NetAddr] -> STM ()
-addAddresses PeerRegistry{..} addrs =
+addAddresses PeerRegistry{..} addrs = do
   modifyTVar' prKnownAddreses (<> Set.fromList addrs)
+  writeTChan prKnownUpdates =<< readTVar prKnownAddreses
+
+-- | Return STM action which will return result whenever set of known
+--   addresses changes
+listenKnownAddrUpdates :: PeerRegistry -> STM (STM (Set NetAddr))
+listenKnownAddrUpdates PeerRegistry{..} = do
+  ch <- dupTChan prKnownUpdates
+  return $ readTChan ch
 
 -- | Register peer using current thread ID. Peer will be unregistered
 --   on exit from this function.
