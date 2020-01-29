@@ -1,8 +1,12 @@
 import Test.Tasty
+import Test.Tasty.HUnit
+
+import Crypto.Bls
 
 import qualified TM.BLS
 
+
 main :: IO ()
-main = defaultMain $ testGroup "test suite"
-  [ TM.BLS.tests
-  ]
+main = do
+    initBls
+    defaultMain $ testGroup "BLS test suite" [ TM.BLS.tests ]
