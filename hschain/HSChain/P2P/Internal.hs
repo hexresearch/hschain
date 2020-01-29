@@ -282,9 +282,8 @@ pexFSM :: (MonadLogger m, MonadMask m, MonadTMMonitoring m,
           -> PeerChans a
           -> Mempool m (Alg a) (TX a)
           -> Int
-          -> Int
           -> m b
-pexFSM cfg net@NetworkAPI{..} peerCh@PeerChans{..} mempool minKnownConnections _maxKnownConnections = do
+pexFSM cfg net@NetworkAPI{..} peerCh@PeerChans{..} mempool minKnownConnections = do
   logger InfoS "Start PEX FSM" ()
   locAddrs <- getLocalAddresses
   logger DebugS "Local addresses: " $ sl "addr" locAddrs
