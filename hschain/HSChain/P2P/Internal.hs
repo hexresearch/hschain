@@ -306,10 +306,9 @@ pexFSM cfg net@NetworkAPI{..} peerCh@PeerChans{..} mempool minKnownConnections =
       case event of
         EPexDebugMonitor ->
           usingGauge prometheusNumPeers . Set.size =<< connectedAddresses peerRegistry
-        EPexNewAddrs addrs' -> do
-          addrs <- Ip.filterOutOwnAddresses (piPeerPort ourPeerInfo)
-                 $ map Ip.normalizeNetAddr addrs'
-          atomicallyIO $ addAddresses peerRegistry addrs
+        EPexNewAddrs addrs -> atomicallyIO
+                            $ addAddresses peerRegistry
+                            $ map Ip.normalizeNetAddr addrs
         EPexCapacity -> do
           currentKnowns <- knownAddresses peerRegistry
           if Set.size currentKnowns < minKnownConnections then do
