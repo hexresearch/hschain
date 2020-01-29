@@ -70,6 +70,9 @@ static int
 under_complexity_threshold(uint8_t* hash, int complexity_shift, uint16_t complexity_mantissa) {
 	int i;
 	int bytes_zero = complexity_shift / 8;
+	int shift_within_byte = complexity_shift % 8;
+	int byte_index = SHA256_DIGEST_LENGTH - 1 - (complexity_shift + 16 + 7) / 8;
+	uint32_t accum;
 #if 01
 	printf("full hash as integer:");
 	for (i = SHA256_DIGEST_LENGTH - 1; i >= 0; i --) {
@@ -84,7 +87,23 @@ under_complexity_threshold(uint8_t* hash, int complexity_shift, uint16_t complex
 		}
 	}
 	printf("checking mantissa\n");
-	return 0;
+	accum = 0;
+	if (byte_index + 2 >=0 && byte_index + 2 < SHA256_DIGEST_LENGTH) {
+		accum |= hash[byte_index + 2];
+	}
+	accum <<= 8;
+	if (byte_index + 1 >= 0 && byte_index + 1 < SHA256_DIGEST_LENGTH) {
+		accum |= hash[byte_index + 1];
+	}
+	accum <<= 8;
+	if (byte_index     >= 0) {
+		accum |= hash[byte_index];
+	}
+	// now accum has three hash bytes around what we will compare to mantissa.
+	accum >>= (8 - shift_within_byte) % 8;
+
+	// compare mantissas.
+	return accum <= complexity_mantissa;
 } /* under_complexity_threshold */
 
 static int

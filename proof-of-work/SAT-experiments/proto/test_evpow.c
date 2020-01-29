@@ -61,7 +61,7 @@ timed_solve( uint8_t* prefix
 	int64_t milliseconds = (diff * 1000 + CLOCKS_PER_SEC - 1) / CLOCKS_PER_SEC;
 	printf("answer found %d, complexity shift %3d, mantissa %04x, time %ld (ms), attempts %d\n", r, complexity_shift, complexity_mantissa, milliseconds, attempts_allowed);
 	fflush(stdout);
-	return 0;
+	return r;
 } /* timed_solve */
 
 static void
