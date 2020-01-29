@@ -1,35 +1,39 @@
 {-# LANGUAGE CPP #-}
 module Crypto.Bls
-    ( PrivateKey
+    ( Hash256(..)
+    , InsecureSignature
+    , PrivateKey
     , PublicKey
     , Signature
-    , InsecureSignature
-    , Hash256
     , initBls
     , hash256
     , hash256serialize
-    , privateKeyFromSeed
-    , privateKeyGetPublicKey
-    , privateKeySerialize
+    , insecureSignatureAggregate
+    , insecureSignatureDeserialize
+    , insecureSignatureEq
+    , insecureSignatureSerialize
+    , insecureSignatureVerify
     , privateKeyDeserialize
     , privateKeyEq
+    , privateKeyFromSeed
+    , privateKeyGetPublicKey
+    , privateKeyInsecureAggregate
+    , privateKeySerialize
+    , privateKeySizeGet
+    , publicKeyDeserialize
+    , publicKeyEq
     , publicKeyGetFingerprint
     , publicKeyInsecureAggregate
     , publicKeySerialize
-    , publicKeyDeserialize
-    , publicKeyEq
-    , insecureSignatureAggregate
-    , insecureSignatureEq
-    , insecureSignatureDeserialize
-    , insecureSignatureSerialize
-    , insecureSignatureVerify
+    , publicKeySizeGet
     , signInsecure
-    , signatureEq
+    , signInsecurePrehashed
     , signatureDeserialize
+    , signatureEq
     , signatureSerialize
+    , signatureSizeGet
     )
     where
-
 
 #ifdef __GHCJS__
 

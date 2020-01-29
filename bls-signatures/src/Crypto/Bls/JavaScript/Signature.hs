@@ -2,14 +2,16 @@ module Crypto.Bls.JavaScript.Signature
     ( Signature(..)
     , InsecureSignature(..)
     , insecureSignatureAggregate
-    , insecureSignatureEq
     , insecureSignatureDeserialize
+    , insecureSignatureEq
     , insecureSignatureSerialize
     , insecureSignatureVerify
     , signInsecure
-    , signatureEq
+    , signInsecurePrehashed
     , signatureDeserialize
+    , signatureEq
     , signatureSerialize
+    , signatureSizeGet
     ) where
 
 
@@ -32,11 +34,17 @@ foreign import javascript "($1).verify($2, $3)"
 foreign import javascript "($1).signInsecure($2)"
     js_signInsecure :: JSVal -> Uint8Array -> JSVal
 
+foreign import javascript "($1).signPrehashed($2)"
+    js_signPrehashed :: JSVal -> Uint8Array -> JSVal
+
 foreign import javascript "($1).InsecureSignature.fromBytes($2)"
     js_insecureSignatureFromBytes :: JSVal -> Uint8Array -> JSVal
 
 foreign import javascript "($1).Signature.fromBytes($2)"
     js_signatureFromBytes :: JSVal -> Uint8Array -> JSVal
+
+foreign import javascript "($1).Signature.SIGNATURE_SIZE"
+    js_signatureSize :: JSVal -> Int
 
 -- * --------------------------------------------------------------------------
 
@@ -69,8 +77,15 @@ signInsecure :: PrivateKey -> ByteString -> InsecureSignature
 signInsecure (PrivateKey jspk) msg = InsecureSignature $ js_signInsecure jspk (bs2arr msg)
 
 
+signInsecurePrehashed :: PrivateKey -> Hash256 -> InsecureSignature
+signInsecurePrehashed (PrivateKey jspk) (Hash256 hash) = InsecureSignature $ js_signPrehashed jspk (bs2arr hash)
+
+
 insecureSignatureVerify :: InsecureSignature -> [Hash256] -> [PublicKey] -> Bool
-insecureSignatureVerify insig hashes publicKeys = js_insecureVerify (getJsVal insig) (fromList $ map (jsval . bs2arr . unHash) hashes) (fromList $ map getJsVal publicKeys)
+insecureSignatureVerify insig hashes publicKeys =
+    js_insecureVerify (getJsVal insig)
+                      (fromList $ map (jsval . bs2arr . unHash256) hashes)
+                      (fromList $ map getJsVal publicKeys)
 
 
 -- TODO export `operator==()` to JavaScript and use it
@@ -83,10 +98,14 @@ insecureSignatureEq :: InsecureSignature -> InsecureSignature -> Bool
 insecureSignatureEq isig1 isig2 = insecureSignatureSerialize isig1 == insecureSignatureSerialize isig2
 
 
-insecureSignatureDeserialize :: ByteString -> InsecureSignature
-insecureSignatureDeserialize bytes = InsecureSignature $ js_insecureSignatureFromBytes (getJsVal blsModule) (bs2arr bytes)
+insecureSignatureDeserialize :: ByteString -> Maybe InsecureSignature
+insecureSignatureDeserialize bytes = Just $ InsecureSignature $ js_insecureSignatureFromBytes (getJsVal blsModule) (bs2arr bytes)  -- TODO Catch errors!
 
 
 signatureDeserialize :: ByteString -> Signature
 signatureDeserialize bytes = Signature $ js_signatureFromBytes (getJsVal blsModule) (bs2arr bytes)
+
+
+signatureSizeGet :: Int
+signatureSizeGet = js_signatureSize (getJsVal blsModule)
 

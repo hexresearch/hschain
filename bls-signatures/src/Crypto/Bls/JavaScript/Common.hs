@@ -25,7 +25,8 @@ foreign import javascript "crypto_.createHash('sha256').update($1).digest()"
     js_hash256 :: Uint8Array -> Uint8Array
 
 
-newtype Hash256 = Hash256 { unHash :: ByteString }
+-- TODO вынести в отдельный модуль
+newtype Hash256 = Hash256 { unHash256 :: ByteString }
 
 
 hash256 :: ByteString -> Hash256
