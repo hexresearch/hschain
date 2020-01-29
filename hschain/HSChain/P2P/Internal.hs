@@ -143,7 +143,6 @@ startPeer peerAddrTo peerCh@PeerChans{..} conn mempool = logOnException $
       , descendNamespace "FSM"     $ peerFSM       peerCh gossipCh recvCh cursor
       , descendNamespace "mempool" $ mempoolThread p2pConfig gossipCh cursor
       ]
-    logger InfoS "Stopping peer" ()
 
 
 -- | Routine for receiving messages from peer
