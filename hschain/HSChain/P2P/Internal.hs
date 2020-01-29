@@ -193,7 +193,7 @@ handlePexMessage PeerChans{..} gossipCh = \case
   -- Peer ask for more addresses. Reply with list of peers we're
   -- connected to. They're known good
   PexMsgAskForMorePeers -> do
-    addrs <- Set.toList <$> liftIO (readTVarIO (prConnected peerRegistry))
+    addrs <- Set.toList <$> connectedAddresses peerRegistry
     unless (null addrs) $
       atomicallyIO $ writeTBQueue gossipCh $ GossipPex $ PexMsgMorePeers addrs
   -- Forward message to main PEX engine
@@ -288,7 +288,6 @@ pexFSM cfg net@NetworkAPI{..} peerCh@PeerChans{..} mempool minKnownConnections _
   logger InfoS "Start PEX FSM" ()
   locAddrs <- getLocalAddresses
   logger DebugS "Local addresses: " $ sl "addr" locAddrs
-  atomicallyIO $ readTVar (prConnected peerRegistry) >>= (check . not . Set.null) -- wait until some initial peers connect
   logger DebugS "Some nodes connected" ()
 
   chTimeout     <- liftIO newTQueueIO
@@ -307,14 +306,13 @@ pexFSM cfg net@NetworkAPI{..} peerCh@PeerChans{..} mempool minKnownConnections _
         ]
       case event of
         EPexDebugMonitor ->
-          usingGauge prometheusNumPeers . Set.size =<< liftIO (readTVarIO (prConnected peerRegistry))
+          usingGauge prometheusNumPeers . Set.size =<< connectedAddresses peerRegistry
         EPexNewAddrs addrs' -> do
-          addrs  <- fmap Set.fromList
-                  $ Ip.filterOutOwnAddresses (piPeerPort ourPeerInfo)
-                  $ map Ip.normalizeNetAddr addrs'
-          atomicallyIO $ modifyTVar' (prKnownAddreses peerRegistry) (`Set.union` addrs)
+          addrs <- Ip.filterOutOwnAddresses (piPeerPort ourPeerInfo)
+                 $ map Ip.normalizeNetAddr addrs'
+          atomicallyIO $ addAddresses peerRegistry addrs
         EPexCapacity -> do
-          currentKnowns <- liftIO $ readTVarIO $ prKnownAddreses peerRegistry
+          currentKnowns <- knownAddresses peerRegistry
           if Set.size currentKnowns < minKnownConnections then do
               logger DebugS "Too few known connections need; ask for more known connections"
                 $ sl "connections" currentKnowns <> sl "need" minKnownConnections
@@ -327,11 +325,11 @@ pexFSM cfg net@NetworkAPI{..} peerCh@PeerChans{..} mempool minKnownConnections _
               logger DebugS "Full of knowns conns" $ sl "number" (Set.size currentKnowns)
               reset capTO 10e3
         EPexMonitor -> do
-              conns <- liftIO $ readTVarIO $ prConnected peerRegistry
+              conns <- connectedAddresses peerRegistry
               let sizeConns = Set.size conns
               if sizeConns < pexMinConnections cfg then do
                   logger DebugS "Too few connections" $ sl "connections" conns
-                  knowns' <- liftIO $ readTVarIO $ prKnownAddreses peerRegistry
+                  knowns' <- knownAddresses peerRegistry
                   let conns' = Set.map (Ip.normalizeNetAddr) conns -- TODO нужно ли тут normalize?
                       knowns = knowns' Set.\\ conns'
                   if Set.null knowns then do
