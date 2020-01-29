@@ -81,6 +81,7 @@ startPeerDispatcher p2pConfig net addrs AppChans{..} mempool = logOnException $ 
       -- Peer connection monitor
       , descendNamespace "PEX" $
         pexFSM p2pConfig net peerCh mempool (pexMinKnownConnections p2pConfig)
+      , pexMonitoring peerRegistry
       ]
 
 
