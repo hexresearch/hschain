@@ -48,6 +48,7 @@ import HSChain.Types.Blockchain
 import HSChain.P2P.Internal.PeerRegistry
 import HSChain.P2P.Internal.Types
 import HSChain.P2P.PeerState.Handle
+import HSChain.Utils
 import qualified HSChain.P2P.Network.IpAddresses as Ip
 
 --
@@ -264,15 +265,14 @@ whenM predicate act = ifM predicate act (return ())
 
 
 -- | Events for PEX state machine
-data PEXEvents = EPexDebugMonitor
-               -- ^ triggers issuing of the number of connected peers via prometeus
-               | EPexNewAddrs [NetAddr]
-               -- ^ triggers when new peers addresses come
-               | EPexCapacity
-               -- ^ triggers requesting of known peers when ones are not enought
-               | EPexMonitor
-               -- ^ triggers check of peers connections and opening of new connections
-               -- to known peers when it is nesessary
+data PEXEvents
+  = EPexNewAddrs [NetAddr]
+  -- ^ triggers when new peers addresses come
+  | EPexCapacity
+  -- ^ triggers requesting of known peers when ones are not enought
+  | EPexMonitor
+  -- ^ triggers check of peers connections and opening of new connections
+  -- to known peers when it is nesessary
 
 pexFSM :: (MonadLogger m, MonadMask m, MonadTMMonitoring m,
            MonadFork m, MonadReadDB m a, BlockData a)
@@ -287,24 +287,17 @@ pexFSM cfg net@NetworkAPI{..} peerCh@PeerChans{..} mempool minKnownConnections =
   locAddrs <- getLocalAddresses
   logger DebugS "Local addresses: " $ sl "addr" locAddrs
   logger DebugS "Some nodes connected" ()
-
-  chTimeout     <- liftIO newTQueueIO
   capTO <- newTimerIO
   monTO <- newTimerIO
   reset capTO 1e3
   reset monTO 1e3
-  evalContT $ do
-    linkedTimer 1e3 chTimeout EPexDebugMonitor
-    lift $ forever $ do
+  forever $ do
       event <- atomicallyIO $ asum
-        [ readTQueue chTimeout
-        , EPexNewAddrs <$> readTChan peerChanPexNewAddresses
+        [ EPexNewAddrs <$> readTChan peerChanPexNewAddresses
         , EPexCapacity <$ await capTO
         , EPexMonitor <$ await monTO
         ]
       case event of
-        EPexDebugMonitor ->
-          usingGauge prometheusNumPeers . Set.size =<< connectedAddresses peerRegistry
         EPexNewAddrs addrs -> atomicallyIO
                             $ addAddresses peerRegistry
                             $ map Ip.normalizeNetAddr addrs
@@ -345,6 +338,11 @@ pexFSM cfg net@NetworkAPI{..} peerCh@PeerChans{..} mempool minKnownConnections =
                   logger InfoS "Full of connections" $ sl "connections" conns
                   reset monTO 10e3
 
+pexMonitoring :: (MonadTMMonitoring m, MonadIO m) => PeerRegistry -> m a
+pexMonitoring peerRegistry = forever $ do
+  usingGauge prometheusNumPeers   . Set.size =<< connectedAddresses peerRegistry
+  usingGauge prometheusKnownAddrs . Set.size =<< knownAddresses     peerRegistry
+  waitSec 10
 
 normalizeNodeAddress :: NetAddr -> Word16 -> NetAddr
 normalizeNodeAddress = flip setPort . Ip.normalizeNetAddr

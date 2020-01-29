@@ -48,6 +48,7 @@ data PrometheusGauges = PrometheusGauges
   , prometheusRound            :: !(TGauge Round)
   , prometheusNTx              :: !Counter
   , prometheusNumPeers         :: !(TGauge Int)
+  , prometheusKnownAddrs       :: !(TGauge Int)
   , prometheusMempoolSize      :: !(TGauge Int)
   , prometheusMempoolAdded     :: !(TGauge Int)
   , prometheusMempoolDiscarded :: !(TGauge Int)
@@ -74,6 +75,9 @@ createMonitoring prefix = do
   prometheusNumPeers    <- makeGauge fromIntegral
     "peers_total"
     "Number of current connected peers"
+  prometheusKnownAddrs  <- makeGauge fromIntegral
+    "peers_known"
+    "Number of known peer addresses"
   -- Mempool
   prometheusMempoolSize <- makeGauge fromIntegral
     "mempool_size_total"
