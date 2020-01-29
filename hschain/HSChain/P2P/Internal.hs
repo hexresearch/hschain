@@ -139,9 +139,10 @@ startPeer peerAddrTo peerCh@PeerChans{..} conn mempool = logOnException $
     recvCh   <- liftIO newTChanIO
     cursor   <- getMempoolCursor mempool
     runConcurrently
-      [ descendNamespace "recv" $ peerReceive recvCh conn
-      , descendNamespace "send" $ peerSend    peerCh gossipCh conn
-      , descendNamespace "FSM"  $ peerFSM     peerCh gossipCh recvCh cursor
+      [ descendNamespace "recv"    $ peerReceive   recvCh conn
+      , descendNamespace "send"    $ peerSend      peerCh gossipCh conn
+      , descendNamespace "FSM"     $ peerFSM       peerCh gossipCh recvCh cursor
+      , descendNamespace "mempool" $ mempoolThread p2pConfig gossipCh cursor
       ]
     logger InfoS "Stopping peer" ()
 
@@ -159,9 +160,7 @@ peerFSM peerCh@PeerChans{..} gossipCh recvCh MempoolCursor{..} = logOnException 
   logger InfoS "Starting routing for receiving messages" ()
   ownPeerChanTx <- atomicallyIO $ dupTChan peerChanTx
   chTimeout     <- liftIO newTQueueIO
-  chMempool     <- liftIO newTQueueIO
   evalContT $ do
-    linkedTimer (gossipDelayMempool p2pConfig) chMempool ()
     linkedTimer (gossipDelayVotes   p2pConfig) chTimeout TimeoutProposal
     linkedTimer (gossipDelayVotes   p2pConfig) chTimeout TimeoutPrevote
     linkedTimer (gossipDelayVotes   p2pConfig) chTimeout TimeoutPrecommit
@@ -171,11 +170,7 @@ peerFSM peerCh@PeerChans{..} gossipCh recvCh MempoolCursor{..} = logOnException 
       (s', cmds)
         <- join
          $ atomicallyIO
-         $ asum [ (\() -> do mtx <- advanceCursor
-                             forM_ mtx $ atomicallyIO . writeTBQueue gossipCh . GossipTx
-                             return (s, [])
-                  ) <$> readTQueue chMempool
-                , handlerTimeout config s <$> readTQueue chTimeout
+         $ asum [ handlerTimeout config s <$> readTQueue chTimeout
                 , handlerGossip  config s <$> readTChan  recvCh
                 , handlerTx      config s <$> readTChan  ownPeerChanTx
                 ]
@@ -199,6 +194,19 @@ handlePexMessage PeerChans{..} gossipCh = \case
   -- Forward message to main PEX engine
   PexMsgMorePeers addrs -> do
     atomicallyIO $ writeTChan peerChanPexNewAddresses addrs
+
+-- | Very simple generator of mempool gossip
+mempoolThread
+  :: (MonadLogger m, MonadCatch m, MonadIO m)
+  => NetworkCfg
+  -> TBQueue (GossipMsg a)
+  -> MempoolCursor m alg (TX a)
+  -> m b
+mempoolThread NetworkCfg{..} gossipCh MempoolCursor{..} =
+  logOnException $ forever $ do
+    waitMSec gossipDelayMempool
+    mapM_ (atomicallyIO . writeTBQueue gossipCh . GossipTx)
+      =<< advanceCursor
 
 
 -- | Routine for receiving messages from peer
