@@ -294,38 +294,32 @@ pexFSM cfg net@NetworkAPI{..} peerCh@PeerChans{..} mempool minKnownConnections =
   forever $ do
       event <- atomicallyIO $ asum
         [ EPexNewAddrs <$> readTChan peerChanPexNewAddresses
-        , EPexCapacity <$ await capTO
-        , EPexMonitor <$ await monTO
+        , EPexCapacity <$  await capTO
+        , EPexMonitor  <$  await monTO
         ]
       case event of
+        -- We got new addresses
         EPexNewAddrs addrs -> atomicallyIO
                             $ addAddresses peerRegistry
                             $ map Ip.normalizeNetAddr addrs
+        -- Request peers if we don't have enough
         EPexCapacity -> do
-          currentKnowns <- knownAddresses peerRegistry
-          if Set.size currentKnowns < minKnownConnections then do
-              logger DebugS "Too few known connections need; ask for more known connections"
-                $ sl "connections" currentKnowns <> sl "need" minKnownConnections
-              -- TODO firstly ask only last peers
+          known <- knownAddresses peerRegistry
+          if Set.size known < minKnownConnections then do
               atomicallyIO $ writeTChan peerChanPex PexMsgAskForMorePeers
-              -- TODO wait for new connections OR timeout
-              --      (see https://stackoverflow.com/questions/22171895/using-tchan-with-timeout)
               reset capTO 1e3
           else do
-              logger DebugS "Full of knowns conns" $ sl "number" (Set.size currentKnowns)
               reset capTO 10e3
+        -- Check if we have enough active connections
         EPexMonitor -> do
               conns <- connectedAddresses peerRegistry
               let sizeConns = Set.size conns
               if sizeConns < pexMinConnections cfg then do
                   logger DebugS "Too few connections" $ sl "connections" conns
                   knowns' <- knownAddresses peerRegistry
-                  let conns' = Set.map (Ip.normalizeNetAddr) conns -- TODO нужно ли тут normalize?
-                      knowns = knowns' Set.\\ conns'
+                  let knowns = knowns' Set.\\ conns
                   if Set.null knowns then do
-                      logger WarningS "Too few connections and don't know other nodes!"
-                        $ sl "number" (Set.size conns)
-                      reset monTO 1e2
+                      reset monTO 0.1e3
                   else do
                       logger DebugS "New peers: " $ sl "peers" knowns
                       rndGen <- liftIO newStdGen
