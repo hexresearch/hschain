@@ -92,6 +92,18 @@ evpow_solve( uint8_t* prefix
 	   , int32_t* attempts_done
 	   );
 
+/**
+ * Check the valitity of puzzle.
+ */
+int
+evpow_check( uint8_t* prefix
+	   , size_t prefix_size
+	   , uint8_t* answer
+	   , uint8_t* hash_to_compare
+	   , int complexity_shift
+	   , uint16_t complexity_mantissa
+	   );
+
 
 #endif /* __ERGVEIN_POW_H */
 
