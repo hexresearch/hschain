@@ -120,6 +120,34 @@ connectPeerTo NetworkAPI{..} addr peerCh mempool =
 -- Peer
 ----------------------------------------------------------------
 
+-- | Start interactions with peer. At this point connection is already
+--   established and peer is registered.
+startPeer
+  :: ( MonadFork m, MonadMask m, MonadLogger m, MonadReadDB m a, MonadTMMonitoring m
+     , BlockData a)
+  => NetAddr
+  -> PeerChans a           -- ^ Communication with main application
+                           --   and peer dispatcher
+  -> P2PConnection         -- ^ Functions for interaction with network
+  -> Mempool m (Alg a) (TX a)
+  -> m ()
+startPeer peerAddrTo peerCh@PeerChans{..} conn mempool = logOnException $
+  descendNamespace (T.pack (show peerAddrTo)) $ logOnException $ do
+    logger InfoS "Starting peer" ()
+    atomicallyIO $ writeTChan peerChanPexNewAddresses [peerAddrTo]
+    gossipCh <- liftIO (newTBQueueIO 10)
+    pexCh    <- liftIO newTChanIO
+    recvCh   <- liftIO newTChanIO
+    cursor   <- getMempoolCursor mempool
+    runConcurrently
+      [ descendNamespace "recv" $ peerReceive             recvCh conn
+      , descendNamespace "send" $ peerSend                peerCh gossipCh conn
+      , descendNamespace "PEX"  $ peerGossipPeerExchange  peerCh pexCh gossipCh
+      , descendNamespace "peerFSM" $ void $ peerFSM       peerCh pexCh gossipCh recvCh cursor
+      ]
+    logger InfoS "Stopping peer" ()
+
+
 -- | Routine for receiving messages from peer
 peerFSM
   :: ( MonadReadDB m a, MonadIO m, MonadMask m, MonadLogger m
@@ -162,34 +190,6 @@ peerFSM PeerChans{..} peerExchangeCh gossipCh recvCh MempoolCursor{..} = logOnEx
       return s'
   where
     config = Config consensusState
-
-
--- | Start interactions with peer. At this point connection is already
---   established and peer is registered.
-startPeer
-  :: ( MonadFork m, MonadMask m, MonadLogger m, MonadReadDB m a, MonadTMMonitoring m
-     , BlockData a)
-  => NetAddr
-  -> PeerChans a           -- ^ Communication with main application
-                           --   and peer dispatcher
-  -> P2PConnection         -- ^ Functions for interaction with network
-  -> Mempool m (Alg a) (TX a)
-  -> m ()
-startPeer peerAddrTo peerCh@PeerChans{..} conn mempool = logOnException $
-  descendNamespace (T.pack (show peerAddrTo)) $ logOnException $ do
-    logger InfoS "Starting peer" ()
-    atomicallyIO $ writeTChan peerChanPexNewAddresses [peerAddrTo]
-    gossipCh <- liftIO (newTBQueueIO 10)
-    pexCh    <- liftIO newTChanIO
-    recvCh   <- liftIO newTChanIO
-    cursor   <- getMempoolCursor mempool
-    runConcurrently
-      [ descendNamespace "recv" $ peerReceive             recvCh conn
-      , descendNamespace "send" $ peerSend                peerCh gossipCh conn
-      , descendNamespace "PEX"  $ peerGossipPeerExchange  peerCh pexCh gossipCh
-      , descendNamespace "peerFSM" $ void $ peerFSM       peerCh pexCh gossipCh recvCh cursor
-      ]
-    logger InfoS "Stopping peer" ()
 
 
 -- | Routine for receiving messages from peer
