@@ -25,7 +25,7 @@ typedef uint8_t evpow_answer[EVPOW_ANSWER_BYTES];
 
 /* number of clauses per puzzle, depends on EVPOW_K */
 #if EVPOW_K == 4
-#define EVPOW_CLAUSES_COUNT (((837)*EVPOW_ANSWER_BITS + 99)/100) /* it is about 9.9 for 4SAT */
+#define EVPOW_CLAUSES_COUNT (((801)*EVPOW_ANSWER_BITS + 99)/100) /* it is about 9.9 for 4SAT */
 #else
 #   error "cannot compute number of clauses for current EVPOW_K"
 #endif

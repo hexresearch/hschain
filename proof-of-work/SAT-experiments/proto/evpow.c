@@ -17,6 +17,48 @@ check_clock(void*p) {
 	return clock() > *clk;
 } /* check_clock */
 
+#if EVPOW_K > 16
+#   error "Algorithm in its current version won't work properly for such a big K (k=4..6 are good choices)"
+#endif
+static void
+create_clause(SHA256_CTX* hash_ctx_for_clause, int clause, int* clause_literals) {
+	uint8_t buffer[4];
+	uint8_t clause_hash[SHA256_DIGEST_LENGTH];
+	int literal_index;
+	buffer[0] = clause >>  0;
+	buffer[1] = clause >>  8;
+	buffer[2] = clause >> 16;
+	buffer[3] = clause >> 24;
+	SHA256_Update(hash_ctx_for_clause, buffer, sizeof(buffer));
+	SHA256_Final(clause_hash, hash_ctx_for_clause);
+	for (literal_index = 0; literal_index < EVPOW_K; literal_index ++) {
+		uint16_t vplow  = clause_hash[literal_index * 2 + 0];
+		uint16_t vphigh = clause_hash[literal_index * 2 + 1];
+		uint16_t variable_polarity = (vphigh << 8) | vplow;
+		int variable_index = ((variable_polarity / 2) % EVPOW_ANSWER_BITS) + 1;
+		int assign_true = variable_polarity % 2;
+		int literal;
+		// and here we try to find a free variable index that is not used in clause.
+		// otherwise we can get reduced clause (with variables less than K) and
+		// trivial clause (where x and ~x are both present).
+		// Both reduce complexity of the problem.
+		while (1) {
+			int check_index;
+			for (check_index = 0; check_index < literal_index; check_index ++) {
+				if (abs(clause_literals[check_index]) == variable_index) {
+					break;
+				}
+			}
+			if (check_index >= literal_index) {
+				break;
+			}
+			printf("found repeated literal\n");
+			variable_index = (variable_index % EVPOW_ANSWER_BITS) + 1; // we put it into range [1,EVPOW_ANSWER_BITS]
+		}
+		literal = assign_true ? variable_index : -variable_index;
+		clause_literals[literal_index] = literal;
+	}
+} /* create_clause */
 static void
 create_instance(uint8_t* prefix_hash, PicoSAT* solver) {
 	int clause;
@@ -26,28 +68,15 @@ create_instance(uint8_t* prefix_hash, PicoSAT* solver) {
 	SHA256_Update(&ctx_after_hash, prefix_hash, SHA256_DIGEST_LENGTH);
 	for (clause = 0; clause < EVPOW_CLAUSES_COUNT; clause++) {
 		SHA256_CTX hash_ctx_for_clause = ctx_after_hash;
-		uint8_t buffer[4];
-		uint8_t clause_hash[SHA256_DIGEST_LENGTH];
-		buffer[0] = clause >>  0;
-		buffer[1] = clause >>  8;
-		buffer[2] = clause >> 16;
-		buffer[3] = clause >> 24;
-		SHA256_Update(&hash_ctx_for_clause, buffer, sizeof(buffer));
-		SHA256_Final(clause_hash, &hash_ctx_for_clause);
-#if EVPOW_K > 16
-#   error "Algorithm in its current version won't work properly for such a big K (k=4..6 are good choices)"
-#endif
+		int literals[EVPOW_K];
+		create_clause(&hash_ctx_for_clause, clause, literals);
+		printf("clause:");
 		for (literal_index = 0; literal_index < EVPOW_K; literal_index ++) {
-			uint16_t vplow  = clause_hash[literal_index * 2 + 0];
-			uint16_t vphigh = clause_hash[literal_index * 2 + 1];
-			uint16_t variable_polarity = (vphigh << 8) | vplow;
-			// variables for clauses are numbered 1..EVPOW_ANSWER_BITS.
-			// bits are numberef 0..EVPOW_ANSWER_BITS-1.
-			int variable = ((variable_polarity >> 1) % EVPOW_ANSWER_BITS) + 1;
-			int literal = (variable_polarity & 1) ? variable : -variable;
-			picosat_add(solver, literal);
+			printf(" %d", literals[literal_index]);
+			picosat_add(solver, literals[literal_index]);
 		}
-		picosat_add(solver, 0); // close the current clause.
+		printf("\n");
+		picosat_add(solver, 0); // close clause.
 	}
 	printf("clauses added %d\n", picosat_added_original_clauses(solver));
 } /* create_instance */
@@ -115,7 +144,7 @@ find_answer(SHA256_CTX* context_after_prefix, uint8_t* answer, uint8_t* full_has
 		int status;
 		int i;
 	       	status = picosat_sat(solver, -1);
-		printf("decisions made %lu, propagations made %lu\n", picosat_decisions(solver), picosat_propagations(solver));
+		printf("decisions made %llu, propagations made %llu\n", picosat_decisions(solver), picosat_propagations(solver));
 		if (status != PICOSAT_SATISFIABLE) {
 			break;
 		}
