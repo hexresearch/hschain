@@ -1,8 +1,14 @@
 {-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
-
-module HSChain.P2P.Internal.PeerRegistry where
+module HSChain.P2P.Internal.PeerRegistry
+  ( PeerRegistry
+  , newPeerRegistry
+  , withPeer
+  , knownAddresses
+  , connectedAddresses
+  , addAddresses
+  ) where
 
 import Control.Concurrent     (ThreadId, myThreadId)
 import Control.Concurrent.STM
@@ -25,15 +31,15 @@ import HSChain.Exceptions
 -- Peer registry
 ----------------------------------------------------------------
 
--- Set of currently running peers
+-- | Data structure that tracks set of known and connected peers
 data PeerRegistry = PeerRegistry
-    { prTidMap        :: !(TVar (Map ThreadId NetAddr))
-      -- ^ Threads that process connection to address
-    , prConnected     :: !(TVar (Set NetAddr))
-      -- ^ Connected addresses
-    , prKnownAddreses :: !(TVar (Set NetAddr))
-      -- ^ New addresses to connect
-    }
+  { prTidMap        :: !(TVar (Map ThreadId NetAddr))
+    -- ^ Threads that process connection to address
+  , prConnected     :: !(TVar (Set NetAddr))
+    -- ^ Connected addresses
+  , prKnownAddreses :: !(TVar (Set NetAddr))
+    -- ^ New addresses to connect
+  }
 
 -- | Create new empty and active registry
 newPeerRegistry :: MonadIO m => m PeerRegistry
@@ -43,6 +49,15 @@ newPeerRegistry = do
   prKnownAddreses <- liftIO (newTVarIO Set.empty)
   return PeerRegistry{..}
 
+knownAddresses :: MonadIO m => PeerRegistry -> m (Set NetAddr)
+knownAddresses = liftIO . readTVarIO . prKnownAddreses
+
+connectedAddresses :: MonadIO m => PeerRegistry -> m (Set NetAddr)
+connectedAddresses = liftIO . readTVarIO . prConnected
+
+addAddresses :: PeerRegistry -> [NetAddr] -> STM ()
+addAddresses PeerRegistry{..} addrs =
+  modifyTVar' prKnownAddreses (<> Set.fromList addrs)
 
 -- | Register peer using current thread ID. If we already have
 --   registered peer with given address do nothing
