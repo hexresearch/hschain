@@ -134,7 +134,6 @@ startPeer
 startPeer peerAddrTo peerCh@PeerChans{..} conn mempool = logOnException $
   descendNamespace (T.pack (show peerAddrTo)) $ logOnException $ do
     logger InfoS "Starting peer" ()
-    atomicallyIO $ writeTChan peerChanPexNewAddresses [peerAddrTo]
     gossipCh <- liftIO (newTBQueueIO 10)
     recvCh   <- liftIO newTChanIO
     cursor   <- getMempoolCursor mempool
@@ -192,8 +191,10 @@ handlePexMessage PeerChans{..} gossipCh = \case
     unless (null addrs) $
       atomicallyIO $ writeTBQueue gossipCh $ GossipPex $ PexMsgMorePeers addrs
   -- Forward message to main PEX engine
-  PexMsgMorePeers addrs -> do
-    atomicallyIO $ writeTChan peerChanPexNewAddresses addrs
+  PexMsgMorePeers addrs -> atomicallyIO
+                         $ addAddresses peerRegistry
+                         $ map Ip.normalizeNetAddr addrs
+
 
 -- | Very simple generator of mempool gossip
 mempoolThread
@@ -274,9 +275,7 @@ whenM predicate act = ifM predicate act (return ())
 
 -- | Events for PEX state machine
 data PEXEvents
-  = EPexNewAddrs [NetAddr]
-  -- ^ triggers when new peers addresses come
-  | EPexCapacity
+  = EPexCapacity
   -- ^ triggers requesting of known peers when ones are not enought
   | EPexMonitor
   -- ^ triggers check of peers connections and opening of new connections
@@ -301,15 +300,10 @@ pexFSM cfg net@NetworkAPI{..} peerCh@PeerChans{..} mempool minKnownConnections =
   reset monTO 1e3
   forever $ do
       event <- atomicallyIO $ asum
-        [ EPexNewAddrs <$> readTChan peerChanPexNewAddresses
-        , EPexCapacity <$  await capTO
+        [ EPexCapacity <$  await capTO
         , EPexMonitor  <$  await monTO
         ]
       case event of
-        -- We got new addresses
-        EPexNewAddrs addrs -> atomicallyIO
-                            $ addAddresses peerRegistry
-                            $ map Ip.normalizeNetAddr addrs
         -- Request peers if we don't have enough
         EPexCapacity -> do
           known <- knownAddresses peerRegistry
