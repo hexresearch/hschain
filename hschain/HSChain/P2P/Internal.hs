@@ -26,9 +26,10 @@ import Prelude                hiding (round)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Retry          (RetryPolicy, exponentialBackoff, limitRetries, recoverAll)
 import Data.Foldable          (asum)
+import Data.Text              (Text)
 import Data.Function          (fix)
 import Data.Word
-import Katip                  (showLS, sl)
+import Katip                  (sl)
 import System.Random          (newStdGen)
 import System.Random.Shuffle  (shuffle')
 
@@ -46,7 +47,6 @@ import HSChain.P2P.PeerState.Types
 import HSChain.Store
 import HSChain.Types.Blockchain
 import HSChain.P2P.Internal.PeerRegistry
-import HSChain.P2P.Internal.Logging as Logging
 import HSChain.P2P.Internal.Types
 import HSChain.P2P.PeerState.Handle
 import qualified HSChain.P2P.Network.IpAddresses as Ip
@@ -60,7 +60,7 @@ retryPolicy NetworkCfg{..} = exponentialBackoff (reconnectionDelay * 1000)
                           <> limitRetries reconnectionRetries
 -- Thread which accepts connections from remote nodes
 acceptLoop
-  :: ( MonadFork m, MonadMask m, MonadLogger m, MonadReadDB m a
+  :: ( MonadFork m, MonadMask m, MonadLogger m, MonadReadDB m a, MonadTMMonitoring m
      , BlockData a)
   => NetworkCfg
   -> NetworkAPI
@@ -94,7 +94,7 @@ acceptLoop cfg NetworkAPI{..} peerCh mempool = do
 
 -- Initiate connection to remote host and register peer
 connectPeerTo
-  :: ( MonadFork m, MonadMask m, MonadLogger m, MonadReadDB m a
+  :: ( MonadFork m, MonadMask m, MonadLogger m, MonadReadDB m a, MonadTMMonitoring m
      , BlockData a
      )
   => NetworkAPI
@@ -167,7 +167,7 @@ peerFSM PeerChans{..} peerExchangeCh gossipCh recvCh MempoolCursor{..} = logOnEx
 -- | Start interactions with peer. At this point connection is already
 --   established and peer is registered.
 startPeer
-  :: ( MonadFork m, MonadMask m, MonadLogger m, MonadReadDB m a
+  :: ( MonadFork m, MonadMask m, MonadLogger m, MonadReadDB m a, MonadTMMonitoring m
      , BlockData a)
   => NetAddr
   -> PeerChans a           -- ^ Communication with main application
@@ -184,7 +184,7 @@ startPeer peerAddrTo peerCh@PeerChans{..} conn mempool = logOnException $
     recvCh   <- liftIO newTChanIO
     cursor   <- getMempoolCursor mempool
     runConcurrently
-      [ descendNamespace "recv" $ peerReceive             peerCh recvCh conn
+      [ descendNamespace "recv" $ peerReceive             recvCh conn
       , descendNamespace "send" $ peerSend                peerCh gossipCh conn
       , descendNamespace "PEX"  $ peerGossipPeerExchange  peerCh pexCh gossipCh
       , descendNamespace "peerFSM" $ void $ peerFSM       peerCh pexCh gossipCh recvCh cursor
@@ -194,24 +194,23 @@ startPeer peerAddrTo peerCh@PeerChans{..} conn mempool = logOnException $
 
 -- | Routine for receiving messages from peer
 peerReceive
-  :: ( MonadReadDB m a, MonadIO m, MonadMask m, MonadLogger m
+  :: ( MonadReadDB m a, MonadIO m, MonadMask m, MonadLogger m, MonadTMMonitoring m
      , BlockData a)
-  => PeerChans a
-  -> TChan (GossipMsg a)
+  => TChan (GossipMsg a)
   -> P2PConnection
   -> m ()
-peerReceive PeerChans{gossipCnts} recvCh P2PConnection{..} = logOnException $ do
+peerReceive recvCh P2PConnection{..} = logOnException $ do
   logger InfoS "Starting routing for receiving messages" ()
   forever $ do
     bs <- recv
     let msg = deserialise bs
     atomicallyIO $ writeTChan recvCh msg
-    countGossip gossipCnts tickRecv msg
+    countGossip "RX" msg
 
 
 -- | Routine for actually sending data to peers
 peerSend
-  :: ( MonadReadDB m a, MonadMask m, MonadIO m, MonadLogger m
+  :: ( MonadReadDB m a, MonadMask m, MonadIO m, MonadLogger m, MonadTMMonitoring m
      , BlockData a)
   => PeerChans a
   -> TBQueue (GossipMsg a)
@@ -224,19 +223,21 @@ peerSend PeerChans{..} gossipCh P2PConnection{..} = logOnException $ do
     msg <- atomicallyIO $  readTBQueue gossipCh
                        <|> fmap GossipPex (readTChan ownPeerChanPex)
     send $ serialise msg
-    countGossip gossipCnts tickSend msg
+    countGossip "TX" msg
 
-countGossip :: MonadIO m => Logging.GossipCounters -> (Counter -> m ()) -> GossipMsg a -> m ()
-countGossip counters ticker = \case
-  GossipPreVote{}   -> tick Logging.prevote
-  GossipPreCommit{} -> tick Logging.precommit
-  GossipProposal{}  -> tick Logging.proposals
-  GossipBlock{}     -> tick Logging.blocks
+countGossip
+  :: (MonadIO m, MonadTMMonitoring m)
+  => Text -> GossipMsg a -> m ()
+countGossip dir = \case
+  GossipPreVote{}   -> tick "PV"
+  GossipPreCommit{} -> tick "PC"
+  GossipProposal{}  -> tick "Prop"
+  GossipBlock{}     -> tick "Blk"
   GossipAnn{}       -> return ()
-  GossipTx{}        -> tick Logging.tx
-  GossipPex{}       -> tick Logging.pex
+  GossipTx{}        -> tick "TX"
+  GossipPex{}       -> tick "PEX"
   where
-    tick f = ticker $ f counters
+    tick l = usingVector prometheusGossip (dir,l)
 
 ----------------------------------------------------------------
 -- Peer exchange
@@ -358,14 +359,10 @@ peerGossipPeerExchange PeerChans{..} pexCh gossipCh = forever $
         addrList' <- Set.toList <$> liftIO (readTVarIO (prConnected peerRegistry))
         logger DebugS "peerGossipPeerExchange: someone asks for other peers: we answer "
           $ sl "addrs" addrList'
-        isSomethingSent <- atomicallyIO $ do
-                    addrList <- Set.toList <$> readTVar (prConnected peerRegistry)
-                    if null addrList then
-                        return False
-                    else do
-                        writeTBQueue gossipCh (GossipPex (PexMsgMorePeers addrList)) -- TODO send only for requesting node!!!
-                        return True
-        when isSomethingSent $ tickSend $ pex gossipCnts
+        atomicallyIO $ do
+           addrList <- Set.toList <$> readTVar (prConnected peerRegistry)
+           unless (null addrList) $
+             writeTBQueue gossipCh (GossipPex (PexMsgMorePeers addrList)) -- TODO send only for requesting node!!!
     connectToAddrs addrs = do
         logger DebugS "peerGossipPeerExchange: some address received: " $ sl "addrs" addrs
         atomicallyIO $ writeTChan peerChanPexNewAddresses addrs

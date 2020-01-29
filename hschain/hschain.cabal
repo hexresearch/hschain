@@ -107,4 +107,3 @@ Library
                   HSChain.P2P.Network.RealNetworkStub
                   HSChain.P2P.Internal.PeerRegistry
                   HSChain.P2P.Internal.Types
-                  HSChain.P2P.Internal.Logging

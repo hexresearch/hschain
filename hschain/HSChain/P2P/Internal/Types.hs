@@ -26,7 +26,6 @@ import HSChain.Blockchain.Internal.Types        (Announcement, MessageTx, Messag
 import HSChain.Crypto                           (Crypto, SignedState(..), CryptoHashable(..))
 import HSChain.P2P.Types                        (NetAddr)
 import HSChain.Types
-import HSChain.P2P.Internal.Logging
 import HSChain.P2P.Internal.PeerRegistry
 import qualified Katip
 
@@ -91,7 +90,6 @@ data PeerChans a = PeerChans
   , peerShepherd            :: !Shepherd
   , peerNonceSet            :: !NonceSet
   , peerRegistry            :: !PeerRegistry
-  , gossipCnts              :: !GossipCounters
   }
 
 
