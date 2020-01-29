@@ -9,14 +9,12 @@
 -- Mock P2P
 module HSChain.P2P (
     startPeerDispatcher
-  , LogGossip(..)
   , NetAddr(..)
   , netAddrToSockAddr
   , sockAddrToNetAddr
   -- * for tests only * --
   , PeerChans(..)
   , newPeerRegistry
-  , newGossipCounters
   , GossipMsg(..)
   ) where
 
@@ -39,7 +37,6 @@ import HSChain.Types.Blockchain
 import HSChain.Utils
 
 import HSChain.P2P.Internal
-import HSChain.P2P.Internal.Logging
 
 
 ----------------------------------------------------------------
@@ -64,7 +61,6 @@ startPeerDispatcher p2pConfig net addrs AppChans{..} mempool = logOnException $ 
   peerChanPex             <- liftIO newBroadcastTChanIO
   peerChanPexNewAddresses <- liftIO newTChanIO
   peerNonceSet            <- newNonceSet
-  gossipCnts              <- newGossipCounters
   withShepherd $ \peerShepherd -> do
     let peerCh = PeerChans { peerChanTx      = appChanTx
                            , peerChanPex     = peerChanPex
@@ -85,9 +81,6 @@ startPeerDispatcher p2pConfig net addrs AppChans{..} mempool = logOnException $ 
       -- Peer connection monitor
       , descendNamespace "PEX" $
         pexFSM p2pConfig net peerCh mempool (pexMinKnownConnections p2pConfig) (pexMaxKnownConnections p2pConfig)
-      , forever $ do
-          logGossip gossipCnts
-          waitSec 1.0
       ]
 
 
