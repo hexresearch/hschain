@@ -27,7 +27,6 @@ import HSChain.Crypto                           (Crypto, SignedState(..), Crypto
 import HSChain.P2P.Types                        (NetAddr)
 import HSChain.Types
 import HSChain.P2P.Internal.PeerRegistry
-import qualified Katip
 
 
 -- | Random nonce which is used to detect self-connections
