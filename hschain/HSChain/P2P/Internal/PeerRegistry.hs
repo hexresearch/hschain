@@ -49,18 +49,28 @@ newPeerRegistry = do
   prKnownAddreses <- liftIO (newTVarIO Set.empty)
   return PeerRegistry{..}
 
+-- | Return set of known addresses
 knownAddresses :: MonadIO m => PeerRegistry -> m (Set NetAddr)
 knownAddresses = liftIO . readTVarIO . prKnownAddreses
 
+-- | Return set of addresses to which we're connected
 connectedAddresses :: MonadIO m => PeerRegistry -> m (Set NetAddr)
 connectedAddresses = liftIO . readTVarIO . prConnected
 
+-- | Add more addresses to the registry
 addAddresses :: PeerRegistry -> [NetAddr] -> STM ()
 addAddresses PeerRegistry{..} addrs =
   modifyTVar' prKnownAddreses (<> Set.fromList addrs)
 
--- | Register peer using current thread ID. If we already have
---   registered peer with given address do nothing
+-- | Register peer using current thread ID. Peer will be unregistered
+--   on exit from this function.
+--
+--   This function will throw if we're alredy connected to this peer.
+--   It only poses minor problem if both nodes try to connect to each
+--   other simultaneously. In this case it's possible that both will
+--   detect duplicate connection and will close connection from their
+--   side. It doesn't considered big problem since nodes will try to
+--   connect this or another node later.
 withPeer :: (MonadMask m, MonadLogger m, MonadIO m)
          => PeerRegistry -> NetAddr -> m () -> m ()
 withPeer PeerRegistry{..} addr action = do
@@ -72,7 +82,7 @@ withPeer PeerRegistry{..} addr action = do
       `finally`
       atomicallyIO (unregisterPeer tid)
   where
-    -- Add peer to registry and return whether it was success
+    -- Add peer to registry while detecting duplicate connections
     registerPeer tid = do
       addrs <- readTVar prConnected
       case addr `Set.member` addrs of
@@ -87,6 +97,3 @@ withPeer PeerRegistry{..} addr action = do
         Nothing -> return ()
         Just a  -> do modifyTVar' prTidMap    $ Map.delete tid
                       modifyTVar' prConnected $ Set.delete a
-                      return ()
-
-    -- logUnregister = logger DebugS ("withPeer: unregister " <> showLS addr) ()
