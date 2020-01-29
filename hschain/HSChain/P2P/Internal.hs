@@ -136,14 +136,12 @@ startPeer peerAddrTo peerCh@PeerChans{..} conn mempool = logOnException $
     logger InfoS "Starting peer" ()
     atomicallyIO $ writeTChan peerChanPexNewAddresses [peerAddrTo]
     gossipCh <- liftIO (newTBQueueIO 10)
-    pexCh    <- liftIO newTChanIO
     recvCh   <- liftIO newTChanIO
     cursor   <- getMempoolCursor mempool
     runConcurrently
-      [ descendNamespace "recv" $ peerReceive             recvCh conn
-      , descendNamespace "send" $ peerSend                peerCh gossipCh conn
-      , descendNamespace "PEX"  $ peerGossipPeerExchange  peerCh pexCh gossipCh
-      , descendNamespace "peerFSM" $ void $ peerFSM       peerCh pexCh gossipCh recvCh cursor
+      [ descendNamespace "recv" $ peerReceive recvCh conn
+      , descendNamespace "send" $ peerSend    peerCh gossipCh conn
+      , descendNamespace "FSM"  $ peerFSM     peerCh gossipCh recvCh cursor
       ]
     logger InfoS "Stopping peer" ()
 
@@ -153,12 +151,11 @@ peerFSM
   :: ( MonadReadDB m a, MonadIO m, MonadMask m, MonadLogger m
      , BlockData a)
   => PeerChans a
-  -> TChan PexMessage
   -> TBQueue (GossipMsg a)
   -> TChan (GossipMsg a)
   -> MempoolCursor m (Alg a) (TX a)
-  -> m (State a)
-peerFSM PeerChans{..} peerExchangeCh gossipCh recvCh MempoolCursor{..} = logOnException $ do
+  -> m ()
+peerFSM peerCh@PeerChans{..} gossipCh recvCh MempoolCursor{..} = logOnException $ do
   logger InfoS "Starting routing for receiving messages" ()
   ownPeerChanTx <- atomicallyIO $ dupTChan peerChanTx
   chTimeout     <- liftIO newTQueueIO
@@ -183,13 +180,25 @@ peerFSM PeerChans{..} peerExchangeCh gossipCh recvCh MempoolCursor{..} = logOnEx
                 , handlerTx      config s <$> readTChan  ownPeerChanTx
                 ]
       forM_ cmds $ \case
-        SendRX rx         -> atomicallyIO $ peerChanRx rx
-        Push2Mempool tx   -> void $ pushTransaction tx
-        SendPEX pexMsg    -> atomicallyIO $ writeTChan peerExchangeCh pexMsg
-        Push2Gossip tx    -> atomicallyIO $ writeTBQueue gossipCh tx
+        SendRX rx       -> atomicallyIO $ peerChanRx rx
+        Push2Mempool tx -> void $ pushTransaction tx
+        Push2Gossip  tx -> atomicallyIO $ writeTBQueue gossipCh tx
+        SendPEX pex     -> handlePexMessage peerCh gossipCh pex
       return s'
   where
     config = Config consensusState
+
+handlePexMessage :: MonadIO m => PeerChans a -> TBQueue (GossipMsg a) -> PexMessage -> m ()
+handlePexMessage PeerChans{..} gossipCh = \case
+  -- Peer ask for more addresses. Reply with list of peers we're
+  -- connected to. They're known good
+  PexMsgAskForMorePeers -> do
+    addrs <- Set.toList <$> liftIO (readTVarIO (prConnected peerRegistry))
+    unless (null addrs) $
+      atomicallyIO $ writeTBQueue gossipCh $ GossipPex $ PexMsgMorePeers addrs
+  -- Forward message to main PEX engine
+  PexMsgMorePeers addrs -> do
+    atomicallyIO $ writeTChan peerChanPexNewAddresses addrs
 
 
 -- | Routine for receiving messages from peer
@@ -342,30 +351,6 @@ pexFSM cfg net@NetworkAPI{..} peerCh@PeerChans{..} mempool minKnownConnections _
                   reset monTO 10e3
       loop
 
-
-
-peerGossipPeerExchange
-  :: ( MonadIO m, MonadFork m, MonadLogger m)
-  => PeerChans a
-  -> TChan PexMessage
-  -> TBQueue (GossipMsg a)
-  -> m ()
-peerGossipPeerExchange PeerChans{..} pexCh gossipCh = forever $
-    atomicallyIO (readTChan pexCh) >>= \case
-        PexMsgAskForMorePeers -> sendPeers
-        PexMsgMorePeers addrs -> connectToAddrs addrs
-  where
-    sendPeers = do
-        addrList' <- Set.toList <$> liftIO (readTVarIO (prConnected peerRegistry))
-        logger DebugS "peerGossipPeerExchange: someone asks for other peers: we answer "
-          $ sl "addrs" addrList'
-        atomicallyIO $ do
-           addrList <- Set.toList <$> readTVar (prConnected peerRegistry)
-           unless (null addrList) $
-             writeTBQueue gossipCh (GossipPex (PexMsgMorePeers addrList)) -- TODO send only for requesting node!!!
-    connectToAddrs addrs = do
-        logger DebugS "peerGossipPeerExchange: some address received: " $ sl "addrs" addrs
-        atomicallyIO $ writeTChan peerChanPexNewAddresses addrs
 
 normalizeNodeAddress :: NetAddr -> Word16 -> NetAddr
 normalizeNodeAddress = flip setPort . Ip.normalizeNetAddr
