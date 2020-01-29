@@ -57,10 +57,9 @@ startPeerDispatcher
   -> m ()
 startPeerDispatcher p2pConfig net addrs AppChans{..} mempool = logOnException $ do
   logger InfoS ("Starting peer dispatcher: addrs = " <> showLS addrs) ()
-  peerRegistry            <- newPeerRegistry
-  peerChanPex             <- liftIO newBroadcastTChanIO
-  peerChanPexNewAddresses <- liftIO newTChanIO
-  peerNonceSet            <- newNonceSet
+  peerRegistry <- newPeerRegistry
+  peerChanPex  <- liftIO newBroadcastTChanIO
+  peerNonceSet <- newNonceSet
   withShepherd $ \peerShepherd -> do
     let peerCh = PeerChans { peerChanTx      = appChanTx
                            , peerChanPex     = peerChanPex

@@ -81,8 +81,6 @@ data PeerChans a = PeerChans
     -- ^ STM action for sending message to main application
   , peerChanPex             :: !(TChan PexMessage)
     -- ^ Broadcast channel for outgoing PEX messages
-  , peerChanPexNewAddresses :: !(TChan [NetAddr])
-    -- ^ Channel for new addreses
   , consensusState          :: !(STM (Maybe (Height, TMState a)))   -- TODO try strict Maybe and Tuple
     -- ^ Read only access to current state of consensus state machine
   , p2pConfig               :: !NetworkCfg
