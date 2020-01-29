@@ -27,7 +27,6 @@ import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Retry          (RetryPolicy, exponentialBackoff, limitRetries, recoverAll)
 import Data.Foldable          (asum)
 import Data.Text              (Text)
-import Data.Function          (fix)
 import Data.Word
 import Katip                  (sl)
 import System.Random          (newStdGen)
@@ -296,7 +295,7 @@ pexFSM cfg net@NetworkAPI{..} peerCh@PeerChans{..} mempool minKnownConnections =
   reset monTO 1e3
   evalContT $ do
     linkedTimer 1e3 chTimeout EPexDebugMonitor
-    lift $ fix $ \loop -> do
+    lift $ forever $ do
       event <- atomicallyIO $ asum
         [ readTQueue chTimeout
         , EPexNewAddrs <$> readTChan peerChanPexNewAddresses
@@ -345,7 +344,6 @@ pexFSM cfg net@NetworkAPI{..} peerCh@PeerChans{..} mempool minKnownConnections =
               else do
                   logger InfoS "Full of connections" $ sl "connections" conns
                   reset monTO 10e3
-      loop
 
 
 normalizeNodeAddress :: NetAddr -> Word16 -> NetAddr
