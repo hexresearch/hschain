@@ -32,6 +32,17 @@ module Crypto.Bls
     , signatureEq
     , signatureSerialize
     , signatureSizeGet
+#ifdef __GHCJS__
+    -- TODO: add bindings for aggregation info / threshold
+#else
+    -- Additional imports from C++
+    , AggregationInfo
+    , Threshold
+    , aggregationInfoFromMsg
+    , thresholdCreate
+    , thresholdVerifySecretFragment
+    , thresholdAggregateUnitSigs
+#endif
     )
     where
 

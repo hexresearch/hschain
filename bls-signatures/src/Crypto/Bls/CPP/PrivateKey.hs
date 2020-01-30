@@ -1,19 +1,15 @@
-{-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE QuasiQuotes     #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TemplateHaskell #-}
 module Crypto.Bls.CPP.PrivateKey
     ( PrivateKey
-    , aggregateInsecurePrivateKey
-    , aggregateInsecurePrivateKeyList
-    , privateKeyFromSeed
-    , privateKeyGetPublicKey
-    , privateKeySize
-    , privateKeySerialize
-    , sign
-    , signInsecure
-    , signInsecurePrehashed
     , privateKeyDeserialize
     , privateKeyEq
+    , privateKeyFromSeed
+    , privateKeyGetPublicKey
+    , privateKeyInsecureAggregate
+    , privateKeySerialize
+    , privateKeySizeGet
     ) where
 
 
@@ -31,6 +27,7 @@ import Crypto.Bls.CPP.Arrays
 import Crypto.Bls.CPP.Internal
 import Crypto.Bls.CPP.Types
 
+
 C.context blsCtx
 C.include "chiabls/bls.hpp"
 C.include "<iostream>"
@@ -38,74 +35,12 @@ C.using "namespace bls"
 C.using "namespace std"
 
 
-
-privateKeyFromSeed :: ByteString -> PrivateKey
-privateKeyFromSeed seed = unsafePerformIO $ fromPtr [C.exp|
-    PrivateKey * {
-        new PrivateKey(PrivateKey::FromSeed((uint8_t const*)$bs-ptr:seed, $bs-len:seed))
-    }|]
-
-
-privateKeySize :: Int
-privateKeySize = fromIntegral [C.pure| size_t { PrivateKey::PRIVATE_KEY_SIZE }|]
-
-
-privateKeySerialize :: PrivateKey -> ByteString
-privateKeySerialize pk = unsafePerformIO $ withPtr pk $ \pkptr ->
-    BS.create privateKeySize $ \pkbuffer ->
-        [C.exp| void { $(PrivateKey * pkptr)->Serialize($(uint8_t * pkbuffer)) }|]
-
-
-privateKeyDeserialize :: ByteString -> PrivateKey -- TODO check size
-privateKeyDeserialize bs = unsafePerformIO $ fromPtr [C.exp|
+privateKeyDeserialize :: ByteString -> Maybe PrivateKey -- TODO check size
+privateKeyDeserialize bs = Just $ unsafePerformIO $ fromPtr [C.exp|
     PrivateKey * {
         new PrivateKey(PrivateKey::FromBytes((uint8_t const*)$bs-ptr:bs))
     }|]
 
-
-privateKeyGetPublicKey :: PrivateKey -> PublicKey
-privateKeyGetPublicKey pk = unsafePerformIO $ withPtr pk $ \pkptr -> fromPtr [C.exp|
-    PublicKey * {
-        new PublicKey($(PrivateKey* pkptr)->GetPublicKey())
-    }|]
-
-
-sign :: PrivateKey -> ByteString -> IO Signature
-sign pk msg = withPtr pk $ \pkptr -> fromPtr [C.exp|
-    Signature * {
-        new Signature($(PrivateKey* pkptr)->Sign((uint8_t const*)$bs-ptr:msg, $bs-len:msg))
-    }|]
-
-
-signInsecure :: PrivateKey -> ByteString -> InsecureSignature
-signInsecure pk msg = unsafePerformIO $ withPtr pk $ \pkptr -> fromPtr [C.exp|
-    InsecureSignature * {
-        new InsecureSignature($(PrivateKey* pkptr)->SignInsecure((uint8_t const*)$bs-ptr:msg, $bs-len:msg))
-    }|]
-
-
-signInsecurePrehashed :: PrivateKey -> Hash256 -> IO InsecureSignature
-signInsecurePrehashed pk Hash256{..} = withPtr pk $ \pkptr -> fromPtr [C.exp|
-    InsecureSignature * {
-        new InsecureSignature($(PrivateKey* pkptr)->SignInsecurePrehashed((uint8_t const*)$bs-ptr:unHash256))
-    }|]
-
-
--- | Insecurely aggregate multiple private keys into one
---
-aggregateInsecurePrivateKey :: Vector PrivateKey -> IO PrivateKey
-aggregateInsecurePrivateKey privateKeys =
-    fmap (fromMaybe (error "aggregateInsecure with empty vector!")) $
-        withArrayPtrLen privateKeys $ \ptrPrivateKeys lenPrivateKeys ->
-            fromPtr [C.exp| PrivateKey * {
-                new PrivateKey(PrivateKey::AggregateInsecure(
-                    std::vector<PrivateKey>( $(PrivateKey * ptrPrivateKeys)
-                                           , $(PrivateKey * ptrPrivateKeys) + $(size_t lenPrivateKeys))))
-            }|]
-
-
-aggregateInsecurePrivateKeyList :: [PrivateKey] -> IO PrivateKey
-aggregateInsecurePrivateKeyList = aggregateInsecurePrivateKey . V.fromList
 
 privateKeyEq :: PrivateKey -> PrivateKey -> Bool
 privateKeyEq pk1 pk2 = not $ toBool $ unsafePerformIO $
@@ -126,3 +61,45 @@ privateKeyEq pk1 pk2 = not $ toBool $ unsafePerformIO $
                 return (x + 1);
             } |]
             -}
+
+
+privateKeyFromSeed :: ByteString -> PrivateKey
+privateKeyFromSeed seed = unsafePerformIO $ fromPtr [C.exp|
+    PrivateKey * {
+        new PrivateKey(PrivateKey::FromSeed((uint8_t const*)$bs-ptr:seed, $bs-len:seed))
+    }|]
+
+
+privateKeyGetPublicKey :: PrivateKey -> PublicKey
+privateKeyGetPublicKey pk = unsafePerformIO $ withPtr pk $ \pkptr -> fromPtr [C.exp|
+    PublicKey * {
+        new PublicKey($(PrivateKey* pkptr)->GetPublicKey())
+    }|]
+
+
+-- | Insecurely aggregate multiple private keys into one
+--
+privateKeyInsecureAggregateVector :: Vector PrivateKey -> PrivateKey
+privateKeyInsecureAggregateVector privateKeys = unsafePerformIO $
+    fmap (fromMaybe (error "aggregateInsecure with empty vector!")) $
+        withArrayPtrLen privateKeys $ \ptrPrivateKeys lenPrivateKeys ->
+            fromPtr [C.exp| PrivateKey * {
+                new PrivateKey(PrivateKey::AggregateInsecure(
+                    std::vector<PrivateKey>( $(PrivateKey * ptrPrivateKeys)
+                                           , $(PrivateKey * ptrPrivateKeys) + $(size_t lenPrivateKeys))))
+            }|]
+
+
+privateKeyInsecureAggregate :: [PrivateKey] -> PrivateKey
+privateKeyInsecureAggregate = privateKeyInsecureAggregateVector . V.fromList
+
+
+privateKeySerialize :: PrivateKey -> ByteString
+privateKeySerialize pk = unsafePerformIO $ withPtr pk $ \pkptr ->
+    BS.create privateKeySizeGet $ \pkbuffer ->
+        [C.exp| void { $(PrivateKey * pkptr)->Serialize($(uint8_t * pkbuffer)) }|]
+
+
+privateKeySizeGet :: Int
+privateKeySizeGet = fromIntegral [C.pure| size_t { PrivateKey::PRIVATE_KEY_SIZE }|]
+

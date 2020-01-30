@@ -4,21 +4,23 @@
 module Crypto.Bls.CPP.Signature
     ( Signature
     , InsecureSignature
-    , copy
-    , unsafeSetAggregationInfo
-    , setAggregationInfo
-    , verify
-    , insecureSignatureVerifyVec
-    , insecureSignatureVerify
-    , insecureSignatureSerialize
     , insecureSignatureAggregate
-    , insecureSignatureAggregateVec
     , insecureSignatureDeserialize
-    , signatureSize
-    , signatureSerialize
-    , signatureDeserialize
     , insecureSignatureEq
+    , insecureSignatureSerialize
+    , insecureSignatureVerify
+    , signInsecure
+    , signInsecurePrehashed
+    , signatureDeserialize
     , signatureEq
+    , signatureSerialize
+    , signatureSizeGet
+    --
+    , copy
+    , setAggregationInfo
+    , signSecure
+    , signatureVerify
+    , unsafeSetAggregationInfo
     ) where
 
 
@@ -47,51 +49,40 @@ C.include "<vector>"
 C.using "namespace bls"
 
 
-signatureSize :: Int
-signatureSize = fromIntegral [C.pure| size_t { InsecureSignature::SIGNATURE_SIZE }|]
+insecureSignatureAggregateVec :: Vector InsecureSignature -> InsecureSignature
+insecureSignatureAggregateVec sigs =
+    fromMaybe (error "empty sigs array") $
+    unsafePerformIO $
+    withArrayPtrLen sigs $ \sigsPtr sigsLen ->
+        fromPtr [C.exp| InsecureSignature * {
+            new InsecureSignature(InsecureSignature::Aggregate(
+                std::vector<InsecureSignature>( $(InsecureSignature * sigsPtr)
+                                              , $(InsecureSignature * sigsPtr) + $(size_t sigsLen))))
+            }|]
 
 
--- | Create a deep copy of object
---
-copy :: Signature -> IO Signature
-copy sig = withPtr sig $ \sigptr -> fromPtr [C.exp|
-    Signature * {
-        new Signature(*$(Signature* sigptr))
+insecureSignatureAggregate :: [InsecureSignature] -> InsecureSignature
+insecureSignatureAggregate = insecureSignatureAggregateVec . V.fromList
+
+
+insecureSignatureDeserialize :: ByteString -> Maybe InsecureSignature -- TODO add check size
+insecureSignatureDeserialize bs = Just $ unsafePerformIO $ fromPtr [C.exp|
+    InsecureSignature * {
+        new InsecureSignature(InsecureSignature::FromBytes((uint8_t const*)$bs-ptr:bs))
     }|]
 
 
-unsafeSetAggregationInfo :: Signature -> AggregationInfo -> IO ()
-unsafeSetAggregationInfo sig ai =
-    withPtr sig $ \sigptr ->
-    withPtr ai $ \aiptr -> [C.block|
-        void {
-            $(Signature* sigptr)->SetAggregationInfo(*$(AggregationInfo* aiptr));
-        }|]
+insecureSignatureEq :: InsecureSignature -> InsecureSignature -> Bool
+insecureSignatureEq isig1 isig2 = toBool $ unsafePerformIO $
+    withPtr isig1 $ \isig1ptr ->
+        withPtr isig2 $ \isig2ptr ->
+            [C.exp| bool { *$(InsecureSignature* isig1ptr) == *$(InsecureSignature* isig2ptr) } |]
 
 
-setAggregationInfo :: Signature -> AggregationInfo -> IO Signature
-setAggregationInfo sig ai = do
-    sig' <- copy sig
-    unsafeSetAggregationInfo sig' ai
-    return sig'
-
-
-verify :: Signature -> IO Bool
-verify sig = fmap toBool $ withPtr sig $ \sigptr ->
-    [C.exp| bool { $(Signature* sigptr)->Verify() } |]
-
-
--- * Insecure signatures
-
--- TODO optimize it!
-withByteStringsVector :: Vector ByteString -> (VM.Vector CString -> IO a) -> IO a
-withByteStringsVector strs act = withByteStringsVector' (V.toList strs) []
-  where
-    -- TODO using folds? or 'construct'?
-    -- withByteStringsVector' :: [ByteString] -> [CString] -> IO a
-    withByteStringsVector' [] acc = act (VM.fromList (reverse acc))
-    withByteStringsVector' (bs:bss) acc =
-        BS.unsafeUseAsCString bs (\cs -> withByteStringsVector' bss (cs:acc))
+insecureSignatureSerialize :: InsecureSignature -> ByteString
+insecureSignatureSerialize sig = unsafePerformIO $ withPtr sig $ \sigptr ->
+    BS.create insecureSignatureSizeGet $ \sigbuffer ->
+        [C.exp| void { $(InsecureSignature * sigptr)->Serialize($(uint8_t * sigbuffer)) }|]
 
 
 insecureSignatureVerifyVec :: InsecureSignature -> Vector Hash256 -> Vector PublicKey -> Bool
@@ -129,27 +120,19 @@ insecureSignatureVerify isig hashes pks = insecureSignatureVerifyVec isig (V.fro
 --            }|]
 
 
-insecureSignatureSize :: Int
-insecureSignatureSize = fromIntegral [C.pure| size_t { InsecureSignature::SIGNATURE_SIZE }|]
 
-
-insecureSignatureSerialize :: InsecureSignature -> ByteString
-insecureSignatureSerialize sig = unsafePerformIO $ withPtr sig $ \sigptr ->
-    BS.create insecureSignatureSize $ \sigbuffer ->
-        [C.exp| void { $(InsecureSignature * sigptr)->Serialize($(uint8_t * sigbuffer)) }|]
-
-
-insecureSignatureDeserialize :: ByteString -> InsecureSignature -- TODO add check size
-insecureSignatureDeserialize bs = unsafePerformIO $ fromPtr [C.exp|
+signInsecure :: PrivateKey -> ByteString -> InsecureSignature
+signInsecure pk msg = unsafePerformIO $ withPtr pk $ \pkptr -> fromPtr [C.exp|
     InsecureSignature * {
-        new InsecureSignature(InsecureSignature::FromBytes((uint8_t const*)$bs-ptr:bs))
+        new InsecureSignature($(PrivateKey* pkptr)->SignInsecure((uint8_t const*)$bs-ptr:msg, $bs-len:msg))
     }|]
 
 
-signatureSerialize :: Signature -> ByteString
-signatureSerialize sig = unsafePerformIO $ withPtr sig $ \sigptr ->
-    BS.create signatureSize $ \sigbuffer ->
-        [C.exp| void { $(Signature * sigptr)->Serialize($(uint8_t * sigbuffer)) }|]
+signInsecurePrehashed :: PrivateKey -> Hash256 -> InsecureSignature
+signInsecurePrehashed pk Hash256{..} = unsafePerformIO $ withPtr pk $ \pkptr -> fromPtr [C.exp|
+    InsecureSignature * {
+        new InsecureSignature($(PrivateKey* pkptr)->SignInsecurePrehashed((uint8_t const*)$bs-ptr:unHash256))
+    }|]
 
 
 signatureDeserialize :: ByteString -> Signature -- TODO add check size
@@ -159,32 +142,75 @@ signatureDeserialize bs = unsafePerformIO $ fromPtr [C.exp|
     }|]
 
 
-insecureSignatureAggregateVec :: Vector InsecureSignature -> InsecureSignature
-insecureSignatureAggregateVec sigs =
-    fromMaybe (error "empty sigs array") $
-    unsafePerformIO $
-    withArrayPtrLen sigs $ \sigsPtr sigsLen ->
-        fromPtr [C.exp| InsecureSignature * {
-            new InsecureSignature(InsecureSignature::Aggregate(
-                std::vector<InsecureSignature>( $(InsecureSignature * sigsPtr)
-                                              , $(InsecureSignature * sigsPtr) + $(size_t sigsLen))))
-            }|]
-
-
-insecureSignatureAggregate :: [InsecureSignature] -> InsecureSignature
-insecureSignatureAggregate = insecureSignatureAggregateVec . V.fromList
-
-
-insecureSignatureEq :: InsecureSignature -> InsecureSignature -> Bool
-insecureSignatureEq isig1 isig2 = toBool $ unsafePerformIO $
-    withPtr isig1 $ \isig1ptr ->
-        withPtr isig2 $ \isig2ptr ->
-            [C.exp| bool { *$(InsecureSignature* isig1ptr) == *$(InsecureSignature* isig2ptr) } |]
-
-
 signatureEq :: Signature -> Signature -> Bool
 signatureEq sig1 sig2 = toBool $ unsafePerformIO $
     withPtr sig1 $ \sig1ptr ->
         withPtr sig2 $ \sig2ptr ->
             [C.exp| bool { *$(Signature* sig1ptr) == *$(Signature* sig2ptr) } |]
+
+
+signatureSerialize :: Signature -> ByteString
+signatureSerialize sig = unsafePerformIO $ withPtr sig $ \sigptr ->
+    BS.create signatureSizeGet $ \sigbuffer ->
+        [C.exp| void { $(Signature * sigptr)->Serialize($(uint8_t * sigbuffer)) }|]
+
+
+signatureSizeGet :: Int
+signatureSizeGet = fromIntegral [C.pure| size_t { InsecureSignature::SIGNATURE_SIZE }|]
+
+
+-- * --------------------------------------------------------------------------
+
+
+-- | Create a deep copy of object
+--
+copy :: Signature -> IO Signature
+copy sig = withPtr sig $ \sigptr -> fromPtr [C.exp|
+    Signature * {
+        new Signature(*$(Signature* sigptr))
+    }|]
+
+
+setAggregationInfo :: Signature -> AggregationInfo -> IO Signature
+setAggregationInfo sig ai = do
+    sig' <- copy sig
+    unsafeSetAggregationInfo sig' ai
+    return sig'
+
+
+signSecure :: PrivateKey -> ByteString -> IO Signature
+signSecure pk msg = withPtr pk $ \pkptr -> fromPtr [C.exp|
+    Signature * {
+        new Signature($(PrivateKey* pkptr)->Sign((uint8_t const*)$bs-ptr:msg, $bs-len:msg))
+    }|]
+
+
+signatureVerify :: Signature -> Bool
+signatureVerify sig = unsafePerformIO $ fmap toBool $ withPtr sig $ \sigptr ->
+    [C.exp| bool { $(Signature* sigptr)->Verify() } |]
+
+
+unsafeSetAggregationInfo :: Signature -> AggregationInfo -> IO ()
+unsafeSetAggregationInfo sig ai =
+    withPtr sig $ \sigptr ->
+    withPtr ai $ \aiptr -> [C.block|
+        void {
+            $(Signature* sigptr)->SetAggregationInfo(*$(AggregationInfo* aiptr));
+        }|]
+
+
+-- TODO optimize it!
+withByteStringsVector :: Vector ByteString -> (VM.Vector CString -> IO a) -> IO a
+withByteStringsVector strs act = withByteStringsVector' (V.toList strs) []
+  where
+    -- TODO using folds? or 'construct'?
+    -- withByteStringsVector' :: [ByteString] -> [CString] -> IO a
+    withByteStringsVector' [] acc = act (VM.fromList (reverse acc))
+    withByteStringsVector' (bs:bss) acc =
+        BS.unsafeUseAsCString bs (\cs -> withByteStringsVector' bss (cs:acc))
+
+
+insecureSignatureSizeGet :: Int
+insecureSignatureSizeGet = fromIntegral [C.pure| size_t { InsecureSignature::SIGNATURE_SIZE }|]
+
 

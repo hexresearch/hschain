@@ -1,14 +1,13 @@
-{-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE QuasiQuotes     #-}
 {-# LANGUAGE TemplateHaskell #-}
 module Crypto.Bls.CPP.PublicKey
     ( PublicKey
-    , publicKeySize
-    , publicKeySerialize
     , publicKeyDeserialize
-    , publicKeyGetFingerprint
-    , publicKeyInsecureAggregateVec
-    , publicKeyInsecureAggregate
     , publicKeyEq
+    , publicKeyGetFingerprint
+    , publicKeyInsecureAggregate
+    , publicKeySerialize
+    , publicKeySizeGet
     ) where
 
 
@@ -33,21 +32,18 @@ C.include "chiabls/bls.hpp"
 C.using "namespace bls"
 
 
-publicKeySize :: Int
-publicKeySize = fromIntegral [C.pure| size_t { PublicKey::PUBLIC_KEY_SIZE }|]
-
-
-publicKeySerialize :: PublicKey -> ByteString
-publicKeySerialize pk = unsafePerformIO $ withPtr pk $ \pkptr ->
-    BS.create publicKeySize $ \pkbuffer ->
-        [C.exp| void { $(PublicKey * pkptr)->Serialize($(uint8_t * pkbuffer)) }|]
-
-
-publicKeyDeserialize :: ByteString -> PublicKey -- TODO check size
-publicKeyDeserialize bs = unsafePerformIO $ fromPtr [C.exp|
+publicKeyDeserialize :: ByteString -> Maybe PublicKey -- TODO check size
+publicKeyDeserialize bs = Just $ unsafePerformIO $ fromPtr [C.exp|
     PublicKey * {
         new PublicKey(PublicKey::FromBytes((uint8_t const*)$bs-ptr:bs))
     }|]
+
+
+publicKeyEq :: PublicKey -> PublicKey -> Bool
+publicKeyEq pubKey1 pubKey2 = toBool $ unsafePerformIO $
+    withPtr pubKey1 $ \pubKey1Ptr ->
+        withPtr pubKey2 $ \pubKey2Ptr ->
+            [C.exp| bool { *$(PublicKey* pubKey1Ptr) == *$(PublicKey* pubKey2Ptr) } |]
 
 
 publicKeyGetFingerprint :: PublicKey -> Word32
@@ -73,9 +69,12 @@ publicKeyInsecureAggregate :: [PublicKey] -> PublicKey
 publicKeyInsecureAggregate = publicKeyInsecureAggregateVec . V.fromList
 
 
-publicKeyEq :: PublicKey -> PublicKey -> Bool
-publicKeyEq pubKey1 pubKey2 = toBool $ unsafePerformIO $
-    withPtr pubKey1 $ \pubKey1Ptr ->
-        withPtr pubKey2 $ \pubKey2Ptr ->
-            [C.exp| bool { *$(PublicKey* pubKey1Ptr) == *$(PublicKey* pubKey2Ptr) } |]
+publicKeySerialize :: PublicKey -> ByteString
+publicKeySerialize pk = unsafePerformIO $ withPtr pk $ \pkptr ->
+    BS.create publicKeySizeGet $ \pkbuffer ->
+        [C.exp| void { $(PublicKey * pkptr)->Serialize($(uint8_t * pkbuffer)) }|]
+
+
+publicKeySizeGet :: Int
+publicKeySizeGet = fromIntegral [C.pure| size_t { PublicKey::PUBLIC_KEY_SIZE }|]
 

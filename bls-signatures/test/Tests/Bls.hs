@@ -3,12 +3,13 @@
 module Tests.Bls (testBls) where
 
 
+import Data.ByteString (ByteString)
 import Data.Char
 import Data.Word
+import qualified Data.ByteString         as BS
 import qualified Data.ByteString.Builder as BS
 import qualified Data.ByteString.Lazy    as BSL
-import qualified Data.ByteString         as BS
-import Data.ByteString (ByteString)
+
 import Test.Tasty
 import Test.Tasty.HUnit
 
