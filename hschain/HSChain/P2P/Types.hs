@@ -27,11 +27,9 @@ import Codec.Serialise
 import Control.Exception      (throwIO)
 import Control.Monad.Catch    (MonadMask, MonadThrow)
 import Control.Monad.IO.Class (MonadIO(..))
-import Data.Word              (Word16, Word64)
+import Data.Word              (Word16)
 import GHC.Generics           (Generic)
-import GHC.Read               (Read(..))
 
-import qualified Data.Aeson           as JSON
 import qualified Data.ByteString.Lazy as LBS
 import qualified Network.Socket       as Net
 
