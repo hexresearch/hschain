@@ -58,11 +58,11 @@ newtype MonitorT m a = MonitorT (ReaderT PrometheusGauges m a)
            , MonadLogger,MonadFork )
 
 instance MonadIO m =>  MonadTMMonitoring (MonitorT m) where
-  usingCounter getter n   = MonitorT $ flip addCounterNow n =<< asks getter
-  usingGauge   getter x   = MonitorT $ flip setTGaugeNow x =<< asks getter
-  usingVector  getter l x = MonitorT $ do
+  usingCounter getter n = MonitorT $ flip addCounterNow n =<< asks getter
+  usingGauge   getter x = MonitorT $ flip setTGaugeNow x =<< asks getter
+  usingVector  getter l = MonitorT $ do
     g <- asks getter
-    setTGVectorNow g l x
+    incTCVectorNow g l
 
 runMonitorT :: PrometheusGauges -> MonitorT m a -> m a
 runMonitorT g (MonitorT m) = runReaderT m g
