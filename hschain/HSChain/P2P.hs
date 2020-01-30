@@ -22,7 +22,6 @@ import Control.Concurrent.STM
 
 import Control.Monad          (forM_, forever)
 import Control.Monad.Catch    (MonadMask)
-import Control.Monad.IO.Class (liftIO)
 import Data.Monoid            ((<>))
 import Katip                  (showLS)
 
@@ -58,11 +57,9 @@ startPeerDispatcher
 startPeerDispatcher p2pConfig net addrs AppChans{..} mempool = logOnException $ do
   logger InfoS ("Starting peer dispatcher: addrs = " <> showLS addrs) ()
   peerRegistry <- newPeerRegistry
-  peerChanPex  <- liftIO newBroadcastTChanIO
   peerNonceSet <- newNonceSet
   withShepherd $ \peerShepherd -> do
     let peerCh = PeerChans { peerChanTx      = appChanTx
-                           , peerChanPex     = peerChanPex
                            , peerChanRx      = writeTBQueue appChanRx
                            , consensusState  = readTVar appTMState
                            , ..
@@ -79,7 +76,7 @@ startPeerDispatcher p2pConfig net addrs AppChans{..} mempool = logOnException $ 
            forever $ waitSec 0.1
       -- Peer connection monitor
       , descendNamespace "PEX" $
-        pexFSM p2pConfig net peerCh mempool (pexMinKnownConnections p2pConfig)
+        pexFSM p2pConfig net peerCh mempool
       , pexMonitoring peerRegistry
       ]
 
