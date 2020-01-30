@@ -13,7 +13,7 @@
 static int
 check_clock(void*p) {
 	clock_t* clk = (clock_t*)p;
-	printf("checking clock (%d ms remains)\n", ((*clk - clock()) * 1000 + CLOCKS_PER_SEC - 1)/CLOCKS_PER_SEC);
+	printf("checking clock (%ld ms remains)\n", ((*clk - clock()) * 1000 + CLOCKS_PER_SEC - 1)/CLOCKS_PER_SEC);
 	return clock() > *clk;
 } /* check_clock */
 
@@ -87,11 +87,15 @@ extract_solution_answer(PicoSAT* solver, uint8_t* answer) {
 	for (i = 0; i < EVPOW_ANSWER_BYTES; i ++) {
 		answer[i] = 0;
 	}
+	printf("answer (least significant bit first):");
 	for (i = 0; i < EVPOW_ANSWER_BITS; i ++) {
 		int lit = i + 1;
 		int is_true = picosat_deref(solver, lit) > 0; // 1 means "true", -1 means "false" and 0 is unknown (must not be).
 		answer[i / 8] |= is_true << (i % 8);
+		if (0 == (i % 8)) { printf(" "); }
+		printf("%d", is_true);
 	}
+	printf("\n");
 } /* extract_solution_answer */
 
 // hash is treated as little-endian integer of SHA256_DIGEST_LENGTH*8 bits.

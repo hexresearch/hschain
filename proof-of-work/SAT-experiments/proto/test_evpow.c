@@ -68,7 +68,7 @@ static void
 test_evpow_logic(void) {
 	test_rec_t testrec;
 	fill_some_bytes(testrec.some_bytes);
-	if (!timed_solve(testrec.some_bytes, sizeof(testrec.some_bytes), testrec.answer, testrec.hash, 1,0xffff, 100000, 300000)) {
+	if (!timed_solve(testrec.some_bytes, sizeof(testrec.some_bytes), testrec.answer, testrec.hash, 4,0xffff, 100000, 300000)) {
 		failure("unable to find answer for initial puzzle");
 	}
 } /* test_evpow_logic */
