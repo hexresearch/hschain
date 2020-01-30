@@ -6,6 +6,7 @@ module HSChain.P2P.Internal.PeerRegistry
   , newPeerRegistry
   , withPeer
   , knownAddresses
+  , knownAddressesSTM
   , connectedAddresses
   , addAddresses
   , listenKnownAddrUpdates
@@ -57,6 +58,10 @@ newPeerRegistry = liftIO $ do
 -- | Return set of known addresses
 knownAddresses :: MonadIO m => PeerRegistry -> m (Set NetAddr)
 knownAddresses = liftIO . readTVarIO . prKnownAddreses
+
+-- | Return set of known addresses
+knownAddressesSTM :: PeerRegistry -> STM (Set NetAddr)
+knownAddressesSTM = readTVar . prKnownAddreses
 
 -- | Return set of addresses to which we're connected
 connectedAddresses :: MonadIO m => PeerRegistry -> m (Set NetAddr)

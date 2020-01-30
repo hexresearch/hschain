@@ -79,8 +79,6 @@ data PeerChans a = PeerChans
     -- ^ Broadcast channel for outgoing messages
   , peerChanRx              :: !(MessageRx 'Unverified a -> STM ())
     -- ^ STM action for sending message to main application
-  , peerChanPex             :: !(TChan PexMessage)
-    -- ^ Broadcast channel for outgoing PEX messages
   , consensusState          :: !(STM (Maybe (Height, TMState a)))   -- TODO try strict Maybe and Tuple
     -- ^ Read only access to current state of consensus state machine
   , p2pConfig               :: !NetworkCfg

@@ -142,6 +142,7 @@ startPeer peerAddrTo peerCh@PeerChans{..} conn mempool = logOnException $
       , descendNamespace "send"    $ peerSend      peerCh gossipCh conn
       , descendNamespace "FSM"     $ peerFSM       peerCh gossipCh recvCh cursor
       , descendNamespace "mempool" $ mempoolThread p2pConfig gossipCh cursor
+      , descendNamespace "PEX"     $ pexCapacityThread peerRegistry p2pConfig gossipCh
       ]
 
 
@@ -208,6 +209,28 @@ mempoolThread NetworkCfg{..} gossipCh MempoolCursor{..} =
     mapM_ (atomicallyIO . writeTBQueue gossipCh . GossipTx)
       =<< advanceCursor
 
+-- | Thread for PEX interaction with peer.
+--
+--   NOTE: At the moment we only do asking about more addresses using
+--         very simple logic. Implementing more complicated logic will
+--         likely require turning this function into state machine and
+pexCapacityThread
+  :: MonadIO m
+  => PeerRegistry -> NetworkCfg -> TBQueue (GossipMsg a) -> m b
+pexCapacityThread peerRegistry NetworkCfg{..} gossipCh = do
+  -- Ask peer immediately for peers if we don't have enough
+  atomicallyIO nonEnough
+  askForMore
+  forever $ do
+    waitSec 15
+    atomicallyIO nonEnough
+    askForMore
+  where
+    -- STM action to check whether we have enough peers.
+    nonEnough = do addrs <- knownAddressesSTM peerRegistry
+                   when (Set.size addrs > pexMinKnownConnections) retry
+    --
+    askForMore = atomicallyIO $ writeTBQueue gossipCh $ GossipPex PexMsgAskForMorePeers
 
 -- | Routine for receiving messages from peer
 peerReceive
@@ -235,10 +258,8 @@ peerSend
   -> m x
 peerSend PeerChans{..} gossipCh P2PConnection{..} = logOnException $ do
   logger InfoS "Starting routing for sending data" ()
-  ownPeerChanPex <- atomicallyIO $ dupTChan peerChanPex
   forever $ do
-    msg <- atomicallyIO $  readTBQueue gossipCh
-                       <|> fmap GossipPex (readTChan ownPeerChanPex)
+    msg <- atomicallyIO $ readTBQueue gossipCh
     send $ serialise msg
     countGossip "TX" msg
 
@@ -274,9 +295,7 @@ whenM predicate act = ifM predicate act (return ())
 
 -- | Events for PEX state machine
 data PEXEvents
-  = EPexCapacity
-  -- ^ triggers requesting of known peers when ones are not enought
-  | EPexMonitor
+  = EPexMonitor
   -- ^ triggers check of peers connections and opening of new connections
   -- to known peers when it is nesessary
 
@@ -286,31 +305,17 @@ pexFSM :: (MonadLogger m, MonadMask m, MonadTMMonitoring m,
           -> NetworkAPI
           -> PeerChans a
           -> Mempool m (Alg a) (TX a)
-          -> Int
           -> m b
-pexFSM cfg net@NetworkAPI{..} peerCh@PeerChans{..} mempool minKnownConnections = do
+pexFSM cfg net@NetworkAPI{..} peerCh@PeerChans{..} mempool = do
   logger InfoS "Start PEX FSM" ()
   locAddrs <- getLocalAddresses
   logger DebugS "Local addresses: " $ sl "addr" locAddrs
   logger DebugS "Some nodes connected" ()
-  capTO <- newTimerIO
   monTO <- newTimerIO
-  reset capTO 1e3
   reset monTO 1e3
   forever $ do
-      event <- atomicallyIO $ asum
-        [ EPexCapacity <$  await capTO
-        , EPexMonitor  <$  await monTO
-        ]
+      event <- atomicallyIO $ EPexMonitor  <$  await monTO
       case event of
-        -- Request peers if we don't have enough
-        EPexCapacity -> do
-          known <- knownAddresses peerRegistry
-          if Set.size known < minKnownConnections then do
-              atomicallyIO $ writeTChan peerChanPex PexMsgAskForMorePeers
-              reset capTO 1e3
-          else do
-              reset capTO 10e3
         -- Check if we have enough active connections
         EPexMonitor -> do
               conns <- connectedAddresses peerRegistry
