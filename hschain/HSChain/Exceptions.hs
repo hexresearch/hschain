@@ -21,6 +21,7 @@ data NetworkError
   | CantReverseLookipHostname   -- ^
   | ConnectionClosed            -- ^
   | ConnectionLoop
+  | SelfConnection
   deriving stock    (Show)
   deriving anyclass (Exception)
 
