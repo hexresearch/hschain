@@ -141,7 +141,6 @@ applyConn context = do
      P2PConnection (tlsSend context)
                    (tlsRecv context ref)
                    (liftIO $ tlsClose context)
-                   (PeerInfo 0 0)
   where 
     tlsClose :: TLS.Context -> IO ()
     tlsClose ctx = silentBye ctx `E.catch` \(_ :: E.IOException) -> pure ()

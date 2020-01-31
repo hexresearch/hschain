@@ -10,7 +10,6 @@ import Data.Word              (Word32, Word8)
 import Control.Monad          (forM_, forever, when)
 import Control.Monad.IO.Class (liftIO, MonadIO)
 import Data.Bits              (complement)
-import System.Timeout         (timeout)
 import Control.Concurrent     (forkFinally, killThread, threadDelay)
 
 import qualified Codec.Serialise           as CBOR
@@ -55,7 +54,7 @@ newNetworkUdp ourPeerInfo = do
             atomically $ do
               (found, (recvChan, frontVar, receivedFrontsVar)) <- findOrCreateRecvTuple tChans addr
               when (not found) $ writeTChan acceptChan
-                (applyConn ourPeerInfo otherPeerInfo sock addr frontVar receivedFrontsVar recvChan tChans, addr)
+                (applyConn ourPeerInfo sock addr frontVar receivedFrontsVar recvChan tChans, addr)
               writeTChan recvChan (otherPeerInfo, (front, ofs, payload))
             when connectPacket $ do
               flip (NetBS.sendAllTo sock) addr' $ LBS.toStrict $ CBOR.serialise (ourPeerInfo, mkAckPart)
@@ -64,30 +63,16 @@ newNetworkUdp ourPeerInfo = do
         return (liftIO $ killThread tid, atomicallyIO $ readTChan acceptChan)
       --
     , connect  = \addr -> liftIO $ do
-        (peerChan, connection) <- atomically $ do
+        atomically $ do
           (_, (peerChan, frontVar, receivedFrontsVar)) <- findOrCreateRecvTuple tChans addr
-          return ( peerChan
-                 , applyConn ourPeerInfo (PeerInfo 0 0)
+          return $ applyConn ourPeerInfo
                      sock addr frontVar receivedFrontsVar peerChan tChans
-                 )
-        otherPeerInfo <- retryN 20 $ do
-          flip (NetBS.sendAllTo sock) (netAddrToSockAddr addr)
-            $ LBS.toStrict $ CBOR.serialise (ourPeerInfo, mkConnectPart)
-          maybeInfoPayload <- timeout 500000 $ atomically $ readTChan peerChan
-          case maybeInfoPayload of
-            Nothing -> return Nothing
-            Just pkt@(peerInfo, packet) -> do
-              let special = isConnectPart packet || isAckPart packet
-              when (not special) $ atomically $ writeTChan peerChan pkt
-              return $ Just peerInfo
-        return $ connection { connectedPeer = otherPeerInfo }
     }
  where
 
 
 applyConn
   :: PeerInfo
-  -> PeerInfo
   -> Net.Socket
   -> NetAddr
   -> TVar  Word8
@@ -95,11 +80,10 @@ applyConn
   -> TChan (PeerInfo, (Word8, Word32, LBS.ByteString))
   -> TVar  (Map.Map NetAddr a)
   -> P2PConnection
-applyConn ourPeerInfo otherPeerInfo sock addr frontVar receivedFrontsVar peerChan tChans = P2PConnection
+applyConn ourPeerInfo sock addr frontVar receivedFrontsVar peerChan tChans = P2PConnection
   { send          = liftIO . sendSplitted ourPeerInfo frontVar sock addr
   , recv          = liftIO $ receiveAction receivedFrontsVar peerChan
   , close         = closeConn addr tChans
-  , connectedPeer = otherPeerInfo
   }
 
 receiveAction
@@ -131,13 +115,11 @@ sendSplitted ourPeerInfo frontVar sock addr msg = do
     sleeps = cycle (replicate 12 False ++ [True])
 
 
-mkConnectPart,mkAckPart :: (Word8, Word32, LBS.ByteString)
-mkConnectPart = (255, complement 0, LBS.empty)
-mkAckPart     = (255, complement 1, LBS.empty)
+mkAckPart :: (Word8, Word32, LBS.ByteString)
+mkAckPart = (255, complement 1, LBS.empty)
 
-isConnectPart, isAckPart :: (Word8, Word32, LBS.ByteString) -> Bool
+isConnectPart :: (Word8, Word32, LBS.ByteString) -> Bool
 isConnectPart (front, ofs, payload) = front == 255 && ofs == complement 0 && LBS.null payload
-isAckPart     (front, ofs, payload) = front == 255 && ofs == complement 1 && LBS.null payload
 
 
 splitToChunks :: LBS.ByteString -> [(Word32, LBS.ByteString)]
@@ -231,14 +213,3 @@ pruneFront fronts
     -- shorter delta indicate where oldest front was.
     maxMinDelta = maxFront - minFront
     minMaxDelta = minFront - maxFront
-
-retryN
-  :: Int
-  -> IO (Maybe a)
-  -> IO a
-retryN n action = loop n
-  where
-    loop 0 = error "timeout waiting for 'UDP connection' (actually, peerinfo exchange)."
-    loop k = action >>= \case
-      Just a  -> return a
-      Nothing -> loop (k - 1)

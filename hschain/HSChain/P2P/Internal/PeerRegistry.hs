@@ -9,9 +9,9 @@ module HSChain.P2P.Internal.PeerRegistry
   , knownAddressesSTM
   , connectedAddresses
   , connectedAddressesSTM
+  , selfAddresses
   , addAddresses
   , addSelfAddress
-  , listenKnownAddrUpdates
   ) where
 
 import Control.Concurrent     (ThreadId, myThreadId)
@@ -45,9 +45,6 @@ data PeerRegistry = PeerRegistry
     -- ^ New addresses to connect
   , prSelfAddresses :: !(TVar (Set NetAddr))
     -- ^ Set of our addresses.
-  , prKnownUpdates  :: !(TChan (Set NetAddr))
-    -- ^ Broadcast channel which allows to track updates of known set
-    --   of addresses
   }
 
 -- | Create new empty and active registry
@@ -57,7 +54,6 @@ newPeerRegistry = liftIO $ do
   prConnected     <- newTVarIO Set.empty
   prKnownAddreses <- newTVarIO Set.empty
   prSelfAddresses <- newTVarIO Set.empty
-  prKnownUpdates  <- newBroadcastTChanIO
   return PeerRegistry{..}
 
 -- | Return set of known addresses
@@ -76,23 +72,19 @@ connectedAddresses = liftIO . readTVarIO . prConnected
 connectedAddressesSTM :: PeerRegistry -> STM (Set NetAddr)
 connectedAddressesSTM = readTVar . prConnected
 
+-- | Set of our own addresses
+selfAddresses :: MonadIO m => PeerRegistry -> m (Set NetAddr)
+selfAddresses = liftIO . readTVarIO . prSelfAddresses
+
 -- | Add more addresses to the registry
 addAddresses :: PeerRegistry -> [NetAddr] -> STM ()
 addAddresses PeerRegistry{..} addrs = do
   modifyTVar' prKnownAddreses (<> Set.fromList addrs)
-  writeTChan prKnownUpdates =<< readTVar prKnownAddreses
 
 addSelfAddress :: MonadIO m => PeerRegistry -> NetAddr -> m ()
 addSelfAddress PeerRegistry{..} addr
   = atomicallyIO
   $ modifyTVar' prSelfAddresses $ Set.insert addr
-
--- | Return STM action which will return result whenever set of known
---   addresses changes
-listenKnownAddrUpdates :: PeerRegistry -> STM (STM (Set NetAddr))
-listenKnownAddrUpdates PeerRegistry{..} = do
-  ch <- dupTChan prKnownUpdates
-  return $ readTChan ch
 
 -- | Register peer using current thread ID. Peer will be unregistered
 --   on exit from this function.
