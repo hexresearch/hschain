@@ -8,6 +8,7 @@ module HSChain.P2P.Internal.PeerRegistry
   , knownAddresses
   , knownAddressesSTM
   , connectedAddresses
+  , connectedAddressesSTM
   , addAddresses
   , listenKnownAddrUpdates
   ) where
@@ -66,6 +67,10 @@ knownAddressesSTM = readTVar . prKnownAddreses
 -- | Return set of addresses to which we're connected
 connectedAddresses :: MonadIO m => PeerRegistry -> m (Set NetAddr)
 connectedAddresses = liftIO . readTVarIO . prConnected
+
+-- | Return set of addresses to which we're connected
+connectedAddressesSTM :: PeerRegistry -> STM (Set NetAddr)
+connectedAddressesSTM = readTVar . prConnected
 
 -- | Add more addresses to the registry
 addAddresses :: PeerRegistry -> [NetAddr] -> STM ()

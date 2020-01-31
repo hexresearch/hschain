@@ -26,6 +26,7 @@ import Prelude                hiding (round)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Retry          (RetryPolicy, exponentialBackoff, limitRetries, recoverAll)
 import Data.Foldable          (asum)
+import Data.Set               ((\\))
 import Data.Text              (Text)
 import Data.Word
 import Katip                  (sl)
@@ -228,7 +229,7 @@ pexCapacityThread peerRegistry NetworkCfg{..} gossipCh = do
   where
     -- STM action to check whether we have enough peers.
     nonEnough = do addrs <- knownAddressesSTM peerRegistry
-                   when (Set.size addrs > pexMinKnownConnections) retry
+                   check $ Set.size addrs < pexMinKnownConnections
     --
     askForMore = atomicallyIO $ writeTBQueue gossipCh $ GossipPex PexMsgAskForMorePeers
 
@@ -307,36 +308,26 @@ pexFSM :: (MonadLogger m, MonadMask m, MonadTMMonitoring m,
           -> Mempool m (Alg a) (TX a)
           -> m b
 pexFSM cfg net@NetworkAPI{..} peerCh@PeerChans{..} mempool = do
-  logger InfoS "Start PEX FSM" ()
-  locAddrs <- getLocalAddresses
-  logger DebugS "Local addresses: " $ sl "addr" locAddrs
-  logger DebugS "Some nodes connected" ()
-  monTO <- newTimerIO
-  reset monTO 1e3
+  -- Start by connecting to peers
   forever $ do
-      event <- atomicallyIO $ EPexMonitor  <$  await monTO
-      case event of
-        -- Check if we have enough active connections
-        EPexMonitor -> do
-              conns <- connectedAddresses peerRegistry
-              let sizeConns = Set.size conns
-              if sizeConns < pexMinConnections cfg then do
-                  logger DebugS "Too few connections" $ sl "connections" conns
-                  knowns' <- knownAddresses peerRegistry
-                  let knowns = knowns' Set.\\ conns
-                  if Set.null knowns then do
-                      reset monTO 0.1e3
-                  else do
-                      logger DebugS "New peers: " $ sl "peers" knowns
-                      rndGen <- liftIO newStdGen
-                      let randKnowns = take (pexMaxConnections cfg - sizeConns)
-                                     $ shuffle' (Set.toList knowns) (Set.size knowns) rndGen
-                      logger DebugS "New rand knowns: " $ sl "peers" randKnowns
-                      forM_ randKnowns $ \addr -> connectPeerTo net addr peerCh mempool
-                      reset monTO 1e3
-              else do
-                  logger InfoS "Full of connections" $ sl "connections" conns
-                  reset monTO 10e3
+    atomicallyIO nonEnough
+    doConnect
+    waitSec 3
+  where
+    -- Only succeed if we don't have enough connections
+    nonEnough = do
+      conns <- connectedAddressesSTM peerRegistry
+      check $ Set.size conns >= pexMinConnections p2pConfig
+    -- Connect to random peer
+    doConnect = do
+      conns  <- connectedAddresses peerRegistry
+      known  <- knownAddresses     peerRegistry
+      rndGen <- liftIO newStdGen
+      let candidates = known \\ conns
+          toConn     = take (pexMaxConnections cfg - Set.size conns)
+                     $ shuffle' (Set.toList candidates) (Set.size candidates) rndGen
+      forM_ toConn $ \addr -> connectPeerTo net addr peerCh mempool
+
 
 pexMonitoring :: (MonadTMMonitoring m, MonadIO m) => PeerRegistry -> m a
 pexMonitoring peerRegistry = forever $ do
