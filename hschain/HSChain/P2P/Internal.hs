@@ -318,7 +318,7 @@ pexFSM cfg net@NetworkAPI{..} peerCh@PeerChans{..} mempool = do
     -- Only succeed if we don't have enough connections
     nonEnough = do
       conns <- connectedAddressesSTM peerRegistry
-      check $ Set.size conns >= pexMinConnections p2pConfig
+      check $ Set.size conns < pexMinConnections p2pConfig
     -- Connect to random peer
     doConnect = do
       conns  <- connectedAddresses peerRegistry
