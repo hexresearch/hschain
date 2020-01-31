@@ -10,6 +10,7 @@ module HSChain.P2P.Internal.PeerRegistry
   , connectedAddresses
   , connectedAddressesSTM
   , addAddresses
+  , addSelfAddress
   , listenKnownAddrUpdates
   ) where
 
@@ -42,6 +43,8 @@ data PeerRegistry = PeerRegistry
     -- ^ Connected addresses
   , prKnownAddreses :: !(TVar (Set NetAddr))
     -- ^ New addresses to connect
+  , prSelfAddresses :: !(TVar (Set NetAddr))
+    -- ^ Set of our addresses.
   , prKnownUpdates  :: !(TChan (Set NetAddr))
     -- ^ Broadcast channel which allows to track updates of known set
     --   of addresses
@@ -53,6 +56,7 @@ newPeerRegistry = liftIO $ do
   prTidMap        <- newTVarIO Map.empty
   prConnected     <- newTVarIO Set.empty
   prKnownAddreses <- newTVarIO Set.empty
+  prSelfAddresses <- newTVarIO Set.empty
   prKnownUpdates  <- newBroadcastTChanIO
   return PeerRegistry{..}
 
@@ -77,6 +81,11 @@ addAddresses :: PeerRegistry -> [NetAddr] -> STM ()
 addAddresses PeerRegistry{..} addrs = do
   modifyTVar' prKnownAddreses (<> Set.fromList addrs)
   writeTChan prKnownUpdates =<< readTVar prKnownAddreses
+
+addSelfAddress :: MonadIO m => PeerRegistry -> NetAddr -> m ()
+addSelfAddress PeerRegistry{..} addr
+  = atomicallyIO
+  $ modifyTVar' prSelfAddresses $ Set.insert addr
 
 -- | Return STM action which will return result whenever set of known
 --   addresses changes
