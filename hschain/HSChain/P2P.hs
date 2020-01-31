@@ -58,6 +58,7 @@ startPeerDispatcher p2pConfig net addrs AppChans{..} mempool = logOnException $ 
   logger InfoS ("Starting peer dispatcher: addrs = " <> showLS addrs) ()
   peerRegistry <- newPeerRegistry
   peerNonceSet <- newNonceSet
+  atomicallyIO $ addAddresses peerRegistry addrs
   withShepherd $ \peerShepherd -> do
     let peerCh = PeerChans { peerChanTx      = appChanTx
                            , peerChanRx      = writeTBQueue appChanRx
@@ -68,15 +69,8 @@ startPeerDispatcher p2pConfig net addrs AppChans{..} mempool = logOnException $ 
     -- this thread manages initiating connections
     runConcurrently
       [ acceptLoop p2pConfig net peerCh mempool
-       -- FIXME: we should manage requests for peers and connecting to
-       --        new peers here
-      , do waitSec 0.1
-           forM_ addrs $ \a ->
-               connectPeerTo net a peerCh mempool
-           forever $ waitSec 0.1
       -- Peer connection monitor
-      , descendNamespace "PEX" $
-        pexFSM p2pConfig net peerCh mempool
+      , descendNamespace "PEX" $ pexFSM p2pConfig net peerCh mempool
       , pexMonitoring peerRegistry
       ]
 
