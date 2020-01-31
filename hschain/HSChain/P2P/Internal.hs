@@ -81,6 +81,7 @@ acceptLoop cfg NetworkAPI{..} peerCh mempool = do
           (close conn)
   where
     peerThread conn addr = logOnException $ do
+      logger DebugS "Acceped peer" (sl "addr" addr)
       -- Expect GossipHello from peer
       GossipHello nonce port <- deserialise <$> recv conn
       -- Check nonce for self-connection and send reply
@@ -88,6 +89,7 @@ acceptLoop cfg NetworkAPI{..} peerCh mempool = do
         True  -> throwM SelfConnection
         False -> return ()
       send conn $ serialise $ GossipAck
+      logger DebugS "Accept: handshake complete" (sl "addr" addr)
       -- Handshake is complete. Accept connection
       withPeer (peerRegistry peerCh) (normalizeNodeAddress addr port) $
         startPeer addr peerCh conn mempool
@@ -104,8 +106,9 @@ connectPeerTo
   -> Mempool m (Alg a) (TX a)
   -> m ()
 connectPeerTo NetworkAPI{..} addr peerCh mempool =
-  -- Igrnore all exceptions to prevent apparing of error messages in stderr/stdout.
+  -- Ignore all exceptions to prevent apparing of error messages in stderr/stdout.
   newSheep (peerShepherd peerCh) $ logOnException $ do
+    logger DebugS "connectPeerTo" $ sl "addr" addr
     bracket (connect addr) close $ \conn -> do
       -- Perform handshake
       withGossipNonce (peerNonceSet peerCh) $ \nonce -> do
@@ -157,7 +160,6 @@ peerFSM
   -> MempoolCursor m (Alg a) (TX a)
   -> m ()
 peerFSM peerCh@PeerChans{..} gossipCh recvCh MempoolCursor{..} = logOnException $ do
-  logger InfoS "Starting routing for receiving messages" ()
   ownPeerChanTx <- atomicallyIO $ dupTChan peerChanTx
   chTimeout     <- liftIO newTQueueIO
   evalContT $ do
@@ -241,7 +243,6 @@ peerReceive
   -> P2PConnection
   -> m ()
 peerReceive recvCh P2PConnection{..} = logOnException $ do
-  logger InfoS "Starting routing for receiving messages" ()
   forever $ do
     bs <- recv
     let msg = deserialise bs
@@ -258,7 +259,6 @@ peerSend
   -> P2PConnection
   -> m x
 peerSend PeerChans{..} gossipCh P2PConnection{..} = logOnException $ do
-  logger InfoS "Starting routing for sending data" ()
   forever $ do
     msg <- atomicallyIO $ readTBQueue gossipCh
     send $ serialise msg
