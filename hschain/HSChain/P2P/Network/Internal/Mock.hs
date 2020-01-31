@@ -91,10 +91,14 @@ createMockNode MockNet{..} addr = NetworkAPI
         Just xs -> writeTVar mnetIncoming $ Map.insert loc (xs ++ [(sockFrom,addr)]) cmap
       return $ applyConn sockTo
   , listenPort = 0
-  , ourPeerInfo = PeerInfo 0 0
+  , ourPeerInfo = PeerInfo port 0
   }
  where
-  applyConn conn = P2PConnection (liftIO . sendBS conn) (liftIO $ recvBS conn) (liftIO $ close conn) (PeerInfo 0 0)
+  applyConn conn = P2PConnection
+    { send          = liftIO . sendBS conn
+    , recv          = liftIO $ recvBS conn
+    , close         = atomicallyIO $ closeMockSocket conn
+    }
   sendBS MockSocket{..} bs = atomically $
       readTVar msckActive >>= \case
         False -> error "MockNet: Cannot write to closed socket"
@@ -106,5 +110,6 @@ createMockNode MockNet{..} addr = NetworkAPI
           Just m  -> return m
           Nothing -> throwM ConnectionClosed
         True  -> readTChan msckRecv
-    --
-  close = atomically . closeMockSocket
+  port = case addr of
+    NetAddrV4 _ p -> p
+    NetAddrV6 _ p -> p

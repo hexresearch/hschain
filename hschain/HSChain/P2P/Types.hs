@@ -90,8 +90,6 @@ data P2PConnection = P2PConnection
   , recv          :: !(forall m. (MonadIO m) => m LBS.ByteString)
     -- ^ Receive data. Will throw exception if connection is closed
   , close         :: !(forall m. (MonadIO m) => m ())
-    -- ^ Close socket
-  , connectedPeer :: !PeerInfo
   }
 
 

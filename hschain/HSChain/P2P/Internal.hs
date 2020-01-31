@@ -323,8 +323,14 @@ pexFSM cfg net@NetworkAPI{..} peerCh@PeerChans{..} mempool = do
     doConnect = do
       conns  <- connectedAddresses peerRegistry
       known  <- knownAddresses     peerRegistry
+      self   <- selfAddresses      peerRegistry
+      logger DebugS "Trying to connect"
+        (  sl "conns" conns
+        <> sl "known" known
+        <> sl "self"  self
+        )
       rndGen <- liftIO newStdGen
-      let candidates = known \\ conns
+      let candidates = (known \\ conns) \\ self
           toConn     = take (pexMaxConnections cfg - Set.size conns)
                      $ shuffle' (Set.toList candidates) (Set.size candidates) rndGen
       forM_ toConn $ \addr -> connectPeerTo net addr peerCh mempool
