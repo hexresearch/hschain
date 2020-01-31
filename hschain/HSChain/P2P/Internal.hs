@@ -84,7 +84,7 @@ acceptLoop cfg NetworkAPI{..} peerCh mempool = do
       GossipHello nonce port <- deserialise <$> recv conn
       -- Check nonce for self-connection and send reply
       isSelfConnection (peerNonceSet peerCh) nonce >>= \case
-        True  -> error "Self-connection"
+        True  -> throwM SelfConnection
         False -> return ()
       send conn $ serialise $ GossipAck
       -- Handshake is complete. Accept connection
