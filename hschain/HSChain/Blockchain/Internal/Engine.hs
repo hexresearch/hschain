@@ -16,6 +16,7 @@
 -- communicates with outside world using STM channels.
 module HSChain.Blockchain.Internal.Engine (
     newAppChans
+  , initializeBlockchain
   , runApplication
   ) where
 
@@ -112,6 +113,18 @@ rewindBlockchainState AppStore{..} BChLogic{..} = do
       bchStoreStore appBchState h blockchainState
       return blockchainState
 
+-- | Initialize blockchain: if we initialize fresh blockchain, compute
+--   validator set for H=1 and
+initializeBlockchain
+  :: (MonadDB m a, MonadThrow m, MonadIO m, BlockData a, Show a, Eq a)
+  => Genesis a
+  -> AppLogic m a
+  -> AppStore m a
+  -> m ()
+initializeBlockchain genesis appLogic appStore  = do
+  mustQueryRW $ storeGenesis genesis
+  rewindBlockchainState appStore appLogic
+
 -- | Main loop for application. Here we update state machine and
 --   blockchain in response to incoming messages.
 --
@@ -127,8 +140,6 @@ runApplication
      -- ^ Configuration
   -> Maybe (PrivValidator (Alg a))
      -- ^ Private key of validator
-  -> Genesis a
-     -- ^ Genesis block
   -> AppLogic m a
      -- ^ Get initial state of the application
   -> AppStore m a
@@ -136,12 +147,8 @@ runApplication
   -> AppChans a
      -- ^ Channels for communication with peers
   -> m ()
-runApplication config appValidatorKey genesis appLogic appStore appCall appCh = logOnException $ do
+runApplication config appValidatorKey appLogic appStore appCall appCh = logOnException $ do
   logger InfoS "Starting consensus engine" ()
-  -- Store genesis
-  mustQueryRW $ storeGenesis genesis
-  -- Rewind state of blockcahin. At the same time we 
-  rewindBlockchainState appStore appLogic
   -- Now we can start consensus
   height <- queryRO $ blockchainHeight
   lastCm <- queryRO $ retrieveLocalCommit height

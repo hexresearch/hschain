@@ -535,11 +535,13 @@ startConsensus k = do
   chans <- newAppChans cfg
   ch    <- atomicallyIO $ dupTChan $ appChanTx chans
   store <- newSTMBchStorage $ merkled mempty
+  let appStore = AppStore nullMempool store
+  initializeBlockchain genesis keyValLogic appStore
   return ( ( ch
            , appChanRx chans
            )
-         , runApplication cfg (Just (PrivValidator k)) genesis
-             keyValLogic (AppStore nullMempool store) mempty chans
+         , runApplication cfg (Just (PrivValidator k))
+             keyValLogic appStore mempty chans
          )
   where
     cfg = cfgConsensus (defCfg :: Configuration FastTest)
