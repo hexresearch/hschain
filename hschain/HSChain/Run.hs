@@ -117,11 +117,12 @@ runNode cfg NodeDescription{..} = do
       appCall = mempoolFilterCallback appMempool
              <> nodeCallbacks
   appCh <- newAppChans (cfgConsensus cfg)
+  initializeBlockchain nodeGenesis logic nodeStore
   return
     [ id $ descendNamespace "net"
          $ startPeerDispatcher (cfgNetwork cfg) bchNetwork bchInitialPeers appCh appMempool
     , id $ descendNamespace "consensus"
-         $ runApplication (cfgConsensus cfg) nodeValidationKey nodeGenesis logic nodeStore appCall appCh
+         $ runApplication (cfgConsensus cfg) nodeValidationKey logic nodeStore appCall appCh
     , forever $ do
         MempoolInfo{..} <- mempoolStats appMempool
         usingGauge prometheusMempoolSize      mempool'size
