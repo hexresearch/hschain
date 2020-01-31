@@ -84,16 +84,17 @@ acceptLoop cfg NetworkAPI{..} peerCh mempool = do
       logger DebugS "Acceped peer" (sl "addr" addr)
       -- Expect GossipHello from peer
       GossipHello nonce port <- deserialise <$> recv conn
+      let normAddr = normalizeNodeAddress addr port
       -- Check nonce for self-connection and send reply
       isSelfConnection (peerNonceSet peerCh) nonce >>= \case
-        True  -> throwM SelfConnection
+        True  -> do addSelfAddress (peerRegistry peerCh) normAddr
+                    throwM SelfConnection
         False -> return ()
       send conn $ serialise $ GossipAck
       logger DebugS "Accept: handshake complete" (sl "addr" addr)
       -- Handshake is complete. Accept connection
-      withPeer (peerRegistry peerCh) (normalizeNodeAddress addr port) $
+      withPeer (peerRegistry peerCh) normAddr $
         startPeer addr peerCh conn mempool
-
 
 -- Initiate connection to remote host and register peer
 connectPeerTo
