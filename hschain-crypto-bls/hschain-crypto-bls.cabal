@@ -34,20 +34,20 @@ Test-suite thundermint-crypto-bls-tests
   Build-Depends:       base              >=4.9 && <5
                      , hschain-crypto
                      , hschain-crypto-bls
+                     , bls-signatures
                      , aeson
                      , bytestring        >=0.10
-                     , base16-bytestring
-                     , base64-bytestring
                      , serialise         >=0.2
                      , text
                      --
                      , tasty             >=0.12
                      -- Contains fix for GHCJS
                      , tasty-hunit       >=0.10.0.1
-                     , bls-signatures
   hs-source-dirs:      tests
   Main-is:             Main.hs
   Other-modules:       TM.BLS
+  if impl(ghcjs)
+      Build-Depends: ghcjs-base -any
 
 
 Benchmark hschain-crypto-bls-bench

@@ -19,12 +19,9 @@ Library
   Build-Depends:
       base >=4.11 && <5
     , bytestring
-    , inline-c
-    , inline-c-cpp
     , containers
-    , template-haskell
-    , vector
     , deepseq
+    , vector
   Hs-Source-Dirs:      src
   Default-Language:    Haskell2010
   Exposed-Modules:
@@ -36,9 +33,12 @@ Library
         Crypto.Bls.JavaScript.PublicKey
         Crypto.Bls.JavaScript.Signature
       Build-Depends:
-          base       >=4.9 && <5
-        , ghcjs-base -any
+        ghcjs-base -any
   else
+      Build-Depends:
+          inline-c
+        , inline-c-cpp
+        , template-haskell
       Other-Modules:
         Crypto.Bls.CPP.AggregationInfo
         Crypto.Bls.CPP.Arrays
