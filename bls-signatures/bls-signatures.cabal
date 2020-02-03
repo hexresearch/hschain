@@ -107,21 +107,4 @@ Benchmark bls-bench
                      , bls-signatures
                      --
                      , bytestring >=0.10
-                     , deepseq
                      , criterion
-                     , bytestring
-                     , inline-c
-                     , inline-c-cpp
-                     , containers
-                     , template-haskell
-                     , vector
-                     --, deepseq
-                     --, random
-                     --, vector
-                     ----
-                     --, thundermint
-                     --, thundermint-crypto
-                     --, thundermint-types
-  --Other-modules:       ValidatorSetsBench
-  --                     MockCoin
-  --                     Crypto
