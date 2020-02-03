@@ -20,9 +20,7 @@ module HSChain.P2P (
 
 import Control.Concurrent.STM
 
-import Control.Monad          (forM_, forever)
 import Control.Monad.Catch    (MonadMask)
-import Data.Monoid            ((<>))
 import Katip                  (sl)
 
 import HSChain.Blockchain.Internal.Engine.Types
@@ -33,7 +31,6 @@ import HSChain.P2P.Network
 import HSChain.P2P.Types
 import HSChain.Store
 import HSChain.Types.Blockchain
-import HSChain.Utils
 
 import HSChain.P2P.Internal
 

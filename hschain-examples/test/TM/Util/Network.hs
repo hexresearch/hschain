@@ -24,29 +24,19 @@ module TM.Util.Network
 
 import qualified Control.Exception        as E
 
-import Control.Monad
 import Control.Monad.Catch
 import Control.Monad.IO.Class
-import Control.Monad.Trans.Class
-import Control.Monad.Trans.Cont
 import Control.Retry  (constantDelay, limitRetries, recovering)
 
 import Data.Monoid    ((<>))
 import System.Timeout (timeout)
 
-import qualified HSChain.Mock.KeyVal as Mock
-import           HSChain.Mock.KeyVal   (BData)
+import HSChain.Mock.KeyVal   (BData)
 import HSChain.Blockchain.Internal.Engine.Types
-import HSChain.Control
-import HSChain.Logger
-import HSChain.Mock.Types
 import HSChain.Mock.KeyList
-import HSChain.Monitoring
 import HSChain.P2P
-import HSChain.P2P.Network
 import HSChain.Types.Blockchain
-import HSChain.Run
-import HSChain.Store
+
 
 
 
