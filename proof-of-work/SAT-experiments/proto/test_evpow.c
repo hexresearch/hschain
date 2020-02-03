@@ -71,6 +71,9 @@ test_evpow_logic(void) {
 	if (!timed_solve(testrec.some_bytes, sizeof(testrec.some_bytes), testrec.answer, testrec.hash, 4,0xffff, 100000, 300000)) {
 		failure("unable to find answer for initial puzzle");
 	}
+	if (!evpow_check( testrec.some_bytes, sizeof(testrec.some_bytes), testrec.answer, testrec.hash, 4,0xffff)) {
+		failure("block is not valid!");
+	}
 } /* test_evpow_logic */
 
 int main(void) {

@@ -2,6 +2,7 @@
  *
  */
 
+#include <string.h>
 #include <time.h>
 
 #include <openssl/sha.h>
@@ -59,6 +60,7 @@ create_clause(SHA256_CTX* hash_ctx_for_clause, int clause, int* clause_literals)
 		clause_literals[literal_index] = literal;
 	}
 } /* create_clause */
+
 static void
 create_instance(uint8_t* prefix_hash, PicoSAT* solver) {
 	int clause;
@@ -140,7 +142,7 @@ under_complexity_threshold(uint8_t* hash, int complexity_shift, uint16_t complex
 } /* under_complexity_threshold */
 
 static int
-find_answer(SHA256_CTX* context_after_prefix, uint8_t* answer, uint8_t* full_hash, int complexity_shift, uint16_t complexity_mantissa, PicoSAT* solver, int32_t find_attempts, int32_t* attempts_count) {
+find_answer(SHA256_CTX* context_after_prefix, uint8_t* answer, uint8_t* full_hash, int complexity_shift, uint16_t complexity_mantissa, PicoSAT* solver, int32_t attempts_count, int32_t* attempts_done) {
 	int attempts = 0;
 	while (attempts_count <= 0 || attempts < attempts_count) {
 		SHA256_CTX full_hash_context;
@@ -162,6 +164,7 @@ find_answer(SHA256_CTX* context_after_prefix, uint8_t* answer, uint8_t* full_has
 			return 1; // and everything is in place - answer filled, hash computed.
 		}
 		attempts ++;
+		*attempts_done ++;
 
 		// here we form a clause that blocks current assignment.
 		// For current satisfying assignment, say, x1 and !x2 we add
@@ -231,4 +234,73 @@ evpow_solve( uint8_t* prefix
 	picosat_reset(solver);
 	return r;
 } /* evpow_solve */
+
+int
+evpow_check( uint8_t* prefix
+           , size_t prefix_size
+           , uint8_t* answer
+           , uint8_t* hash_to_compare
+           , int complexity_shift
+           , uint16_t complexity_mantissa
+           ) {
+	SHA256_CTX partial_ctx, full_ctx, ctx_after_hash;
+	uint8_t hash[SHA256_DIGEST_LENGTH];
+	int clause;
+	// fastest first - rarity compliance check.
+	if (!under_complexity_threshold(hash_to_compare, complexity_shift, complexity_mantissa)) {
+		printf("NOT RARE ENOUGH!\n");
+		return 0;
+	}
+	SHA256_Init(&partial_ctx);
+	SHA256_Update(&partial_ctx, prefix, prefix_size);
+	full_ctx = partial_ctx;
+	SHA256_Update(&full_ctx, answer, EVPOW_ANSWER_BYTES);
+	SHA256_Final(hash, &full_ctx);
+	// second fastest second - hashes are equal.
+	if (0 != memcmp(hash, hash_to_compare, SHA256_DIGEST_LENGTH)) {
+		printf("HASH MISMATCH!\n");
+		return 0;
+	}
+	// slowest one last - does answer really answer the puzzle?
+	SHA256_Final(hash, &partial_ctx);
+	SHA256_Init(&ctx_after_hash);
+	SHA256_Update(&ctx_after_hash, hash, SHA256_DIGEST_LENGTH);
+	{
+		int i;
+		printf("answer to check against:");
+		for (i=0;i<EVPOW_ANSWER_BITS;i++) {
+			int bit = (answer[i/8] >> (i%8))&1;
+			printf("%s%d",(i % 8) == 0? " ": "", bit);
+		}
+		printf("\n");
+	}
+	for (clause = 0; clause < EVPOW_CLAUSES_COUNT; clause ++) {
+		SHA256_CTX hash_ctx_for_clause = ctx_after_hash;
+		int literals[EVPOW_K];
+		int literal_index;
+		create_clause(&hash_ctx_for_clause, clause, literals);
+#if 0
+		printf("clause:");
+		for (literal_index = 0; literal_index < EVPOW_K; literal_index ++) {
+			printf(" %d", literals[literal_index]);
+		}
+		printf("\n");
+#endif
+		for (literal_index = 0; literal_index < EVPOW_K; literal_index ++) {
+			int literal = literals[literal_index];
+			int positive = literal > 0;
+			int variable = abs(literal) - 1;
+			int flag = (answer[variable / 8] & (1 << (variable % 8)));
+			if ((flag == 0) == (positive == 0)) {
+				// at least one satisfying literal satisfies complete clause.
+				break;
+			}
+		}
+		if (literal_index >= EVPOW_K) {
+			printf("ANSWER DOES NOT ANSWER!\n");
+			return 0;
+		}
+	}
+	return 1;
+} /* evpow_check */
 
