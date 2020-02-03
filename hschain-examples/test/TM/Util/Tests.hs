@@ -32,12 +32,3 @@ infix 1 @<?
       -> Set a
       -> Assertion
 expected @<? actual = assertSubset "" expected actual
-
-
-infix 1 @~<?
-
-(@~<?) :: (Ord a, Show a, HasCallStack)
-      => [a]
-      -> Set a
-      -> Assertion
-expected @~<? actual = assertSubset "" (Set.fromList expected) actual
