@@ -74,6 +74,19 @@ test_evpow_logic(void) {
 	if (!evpow_check( testrec.some_bytes, sizeof(testrec.some_bytes), testrec.answer, testrec.hash, 4,0xffff)) {
 		failure("block is not valid!");
 	}
+	if (evpow_check( testrec.some_bytes, sizeof(testrec.some_bytes), testrec.answer, testrec.hash, 200,0xffff)) {
+		failure("block is valid for obscene complexity!");
+	}
+	testrec.some_bytes[0] ^= 1;
+	if (evpow_check( testrec.some_bytes, sizeof(testrec.some_bytes), testrec.answer, testrec.hash, 4,0xffff)) {
+		failure("block with modified prefix passes test");
+	}
+	testrec.some_bytes[0] ^= 1;
+	testrec.hash[7] ^= 1;
+	if (evpow_check( testrec.some_bytes, sizeof(testrec.some_bytes), testrec.answer, testrec.hash, 4,0xffff)) {
+		failure("block with modified hash passes test");
+	}
+	testrec.hash[7] ^= 1;
 } /* test_evpow_logic */
 
 int main(void) {
