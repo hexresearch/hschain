@@ -177,8 +177,8 @@ testBigNetMustInterconnect netSize = do
         andM [ hasSubset (mkExpected (i `delete` [0 .. netSize - 1])) <$> readPEX e
              | (i,e) <- zip [0..] events
              ] >>= flip unless (waitSec 0.1 >> next)
-      , waitSec (fromIntegral netSize) >> throwIO AbortTest
-      ]
+    , waitSec (fromIntegral netSize) >> throwIO AbortTest
+    ]
 
 
 
@@ -200,7 +200,7 @@ mkExpected idxs
        )
      ]]
 
-
+-- Read list of networking-related log entries
 readPEX :: IORef [(Namespace, Text, Object)] -> IO [(Text, Object)]
 readPEX ref
   = mapMaybe (\(ns,msg,o) -> do
@@ -334,11 +334,4 @@ instance MonadIO m => MonadLogger (IORefLogT m) where
     liftIO $ modifyIORef' ref (( namespace
                                , toLazyText $ unLogStr msg
                                , toObject a) :)
-    -- liftIO $ putStr $ T.unpack $ case chunks of
-    --   [] -> ""
-    --   _  -> T.intercalate "." chunks
-    -- liftIO $ putStrLn $ TL.unpack $ toLazyText $ unLogStr msg
-    -- liftIO $ forM_ (HM.toList $ toObject a) $ \(k,v) -> do
-    --   putStr $ "  " ++ T.unpack k ++ " = "
-    --   print v
   localNamespace f = IORefLogT . local (first f) . unIORefLogT
