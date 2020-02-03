@@ -187,30 +187,21 @@ andM (p:ps) = p >>= \case
 
 type TestMonad m = DBT 'RW BData (NoLogsT m)
 
-data TestNetLinkDescription m = TestNetLinkDescription
-    { ncFrom          :: Int
-    , ncTo            :: [Int]
-    , ncAppCallbacks  :: AppCallbacks (TestMonad m) BData
-    }
-
-
-mkNodeDescription :: (Monad m) => Int -> [Int] -> TestNetLinkDescription m
-mkNodeDescription ncFrom ncTo = TestNetLinkDescription
-  { ncAppCallbacks = mempty
-  , ..
+data TestNetLinkDescription = TestNetLinkDescription
+  { ncFrom          :: Int
+  , ncTo            :: [Int]
   }
-
 
 createTestNetwork
   :: (MonadMask m, MonadFork m, MonadTMMonitoring m)
-  => [TestNetLinkDescription m]
+  => [TestNetLinkDescription]
   -> m ()
 createTestNetwork = createTestNetworkWithConfig defCfg
 
 createTestNetworkWithConfig
     :: (MonadMask m, MonadFork m, MonadTMMonitoring m)
     => Configuration Example
-    -> [TestNetLinkDescription m]
+    -> [TestNetLinkDescription]
     -> m ()
 createTestNetworkWithConfig = createTestNetworkWithValidatorsSetAndConfig testValidators
 
@@ -218,7 +209,7 @@ createTestNetworkWithValidatorsSetAndConfig
     :: (MonadIO m, MonadMask m, MonadFork m, MonadTMMonitoring m)
     => [PrivValidator (Alg BData)]
     -> Configuration Example
-    -> [TestNetLinkDescription m]
+    -> [TestNetLinkDescription]
     -> m ()
 createTestNetworkWithValidatorsSetAndConfig validators cfg netDescr = do
     net <- liftIO newMockNet
@@ -234,7 +225,7 @@ createTestNetworkWithValidatorsSetAndConfig validators cfg netDescr = do
       :: (MonadFork m, MonadMask m, MonadTMMonitoring m)
       => MockNet
       -> ( Connection 'RW BData
-         , TestNetLinkDescription m
+         , TestNetLinkDescription
          , Maybe (PrivValidator (Alg BData))
          )
       -> m [m ()]
@@ -255,5 +246,5 @@ createTestNetworkWithValidatorsSetAndConfig validators cfg netDescr = do
                 }
           :*: cfg
           )
-          ncAppCallbacks 
+          mempty
         return $ run <$> actions
