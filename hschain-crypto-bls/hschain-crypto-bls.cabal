@@ -63,6 +63,7 @@ Benchmark hschain-crypto-bls-bench
                      , random
                      , vector
                      --
+                     , bls-signatures
                      , hschain-crypto
                      , hschain-crypto-bls
   Other-modules: Ben.BLS
