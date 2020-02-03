@@ -112,6 +112,8 @@ instance DefaultConfig FastTest where
       , pexMaxConnections      = 20
       , pexMinKnownConnections = 3
       , pexMaxKnownConnections = 20
+      , pexConnectionDelay     = 50
+      , pexAskPeersDelay       = 50
       , reconnectionRetries    = 12
       , reconnectionDelay      = 100
       }

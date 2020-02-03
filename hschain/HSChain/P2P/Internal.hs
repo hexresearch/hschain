@@ -221,14 +221,14 @@ mempoolThread NetworkCfg{..} gossipCh MempoolCursor{..} =
 --         very simple logic. Implementing more complicated logic will
 --         likely require turning this function into state machine and
 pexCapacityThread
-  :: MonadIO m
+  :: (MonadIO m, MonadLogger m)
   => PeerRegistry -> NetworkCfg -> TBQueue (GossipMsg a) -> m b
 pexCapacityThread peerRegistry NetworkCfg{..} gossipCh = do
   -- Ask peer immediately for peers if we don't have enough
   atomicallyIO nonEnough
   askForMore
   forever $ do
-    waitSec 15
+    waitMSec pexAskPeersDelay
     atomicallyIO nonEnough
     askForMore
   where
@@ -303,19 +303,20 @@ data PEXEvents
   -- ^ triggers check of peers connections and opening of new connections
   -- to known peers when it is nesessary
 
-pexFSM :: (MonadLogger m, MonadMask m, MonadTMMonitoring m,
-           MonadFork m, MonadReadDB m a, BlockData a)
-          => NetworkCfg
-          -> NetworkAPI
-          -> PeerChans a
-          -> Mempool m (Alg a) (TX a)
-          -> m b
+pexFSM
+  :: (MonadLogger m, MonadMask m, MonadTMMonitoring m
+     , MonadFork m, MonadReadDB m a, BlockData a)
+  => NetworkCfg
+  -> NetworkAPI
+  -> PeerChans a
+  -> Mempool m (Alg a) (TX a)
+  -> m b
 pexFSM cfg net@NetworkAPI{..} peerCh@PeerChans{..} mempool = do
   -- Start by connecting to peers
   forever $ do
     atomicallyIO nonEnough
     doConnect
-    waitSec 3
+    waitMSec $ pexConnectionDelay p2pConfig
   where
     -- Only succeed if we don't have enough connections
     nonEnough = do
