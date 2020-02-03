@@ -58,6 +58,9 @@ Benchmark hschain-crypto-bls-bench
   Main-is:             main.hs
   Build-Depends:       base  >=4.9 && <5
                      , bytestring >=0.10
+                     -- NB:
+                     -- 'criterion' is not compatable with GHCjs,
+                     -- 'hyperion' is pure Haskell, but outdated
                      , criterion
                      , deepseq
                      , random
