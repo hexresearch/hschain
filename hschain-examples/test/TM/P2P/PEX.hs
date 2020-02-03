@@ -213,14 +213,16 @@ createTestNetworkWithValidatorsSetAndConfig
     -> m ()
 createTestNetworkWithValidatorsSetAndConfig validators cfg netDescr = do
     net <- liftIO newMockNet
-    let vallist = map Just validators ++ repeat Nothing
     evalContT $ do
       acts <- forM (netDescr `zip` vallist) $ \(ndescr, val) -> do
         c <- ContT $ withConnection ":memory:"
         lift $ mkTestNode net (c, ndescr, val)
       lift $ catchAbort $ runConcurrently $ concat acts
   where
+    vallist        = map Just validators ++ repeat Nothing
     dbValidatorSet = makeValidatorSetFromPriv validators
+    genesis        = Mock.mkGenesisBlock dbValidatorSet
+    --
     mkTestNode
       :: (MonadFork m, MonadMask m, MonadTMMonitoring m)
       => MockNet
@@ -230,9 +232,7 @@ createTestNetworkWithValidatorsSetAndConfig validators cfg netDescr = do
          )
       -> m [m ()]
     mkTestNode net (conn, TestNetLinkDescription{..}, validatorPK) = do
-        let genesis = Mock.mkGenesisBlock dbValidatorSet
         initDatabase conn
-        --
         let run = runNoLogsT . runDBT conn
         (_,actions) <- run $ Mock.interpretSpec genesis
           (   BlockchainNet
