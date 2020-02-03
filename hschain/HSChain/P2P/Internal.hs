@@ -236,7 +236,9 @@ pexCapacityThread peerRegistry NetworkCfg{..} gossipCh = do
     nonEnough = do addrs <- knownAddressesSTM peerRegistry
                    check $ Set.size addrs < pexMinKnownConnections
     --
-    askForMore = atomicallyIO $ writeTBQueue gossipCh $ GossipPex PexMsgAskForMorePeers
+    askForMore = do
+      logger DebugS "Asking for more peers" ()
+      atomicallyIO $ writeTBQueue gossipCh $ GossipPex PexMsgAskForMorePeers
 
 -- | Routine for receiving messages from peer
 peerReceive
