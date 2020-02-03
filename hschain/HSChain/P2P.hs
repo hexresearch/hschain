@@ -23,7 +23,7 @@ import Control.Concurrent.STM
 import Control.Monad          (forM_, forever)
 import Control.Monad.Catch    (MonadMask)
 import Data.Monoid            ((<>))
-import Katip                  (showLS)
+import Katip                  (sl)
 
 import HSChain.Blockchain.Internal.Engine.Types
 import HSChain.Control
@@ -55,7 +55,8 @@ startPeerDispatcher
   -> Mempool m (Alg a) (TX a)
   -> m ()
 startPeerDispatcher p2pConfig net addrs AppChans{..} mempool = logOnException $ do
-  logger InfoS ("Starting peer dispatcher: addrs = " <> showLS addrs) ()
+  logger InfoS "Starting peer dispatcher"
+    (sl "seed" addrs)
   peerRegistry <- newPeerRegistry
   peerNonceSet <- newNonceSet
   atomicallyIO $ addAddresses peerRegistry addrs
@@ -73,7 +74,3 @@ startPeerDispatcher p2pConfig net addrs AppChans{..} mempool = logOnException $ 
       , descendNamespace "PEX" $ pexFSM p2pConfig net peerCh mempool
       , pexMonitoring peerRegistry
       ]
-
-
-
-

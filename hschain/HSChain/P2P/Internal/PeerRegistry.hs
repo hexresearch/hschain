@@ -99,10 +99,11 @@ withPeer :: (MonadMask m, MonadLogger m, MonadIO m)
          => PeerRegistry -> NetAddr -> m () -> m ()
 withPeer PeerRegistry{..} addr action = do
   tid <- liftIO myThreadId
-  logger DebugS "withPeer" ("addr" `sl` addr)
   mask $ \restore -> do
-    atomicallyIO $ registerPeer tid
-    restore action
+    conns <- atomicallyIO $ registerPeer tid
+    restore (do logger DebugS "peer registry update" (sl "conns" conns)
+                action
+            )
       `finally`
       atomicallyIO (unregisterPeer tid)
   where
@@ -114,6 +115,7 @@ withPeer PeerRegistry{..} addr action = do
         False -> do
           modifyTVar' prTidMap    $ Map.insert tid addr
           modifyTVar' prConnected $ Set.insert addr
+          readTVar prConnected
     -- Remove peer from registry
     unregisterPeer tid = do
       tids <- readTVar prTidMap

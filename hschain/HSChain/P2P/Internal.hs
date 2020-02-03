@@ -69,7 +69,7 @@ acceptLoop
   -> Mempool m (Alg a) (TX a)
   -> m ()
 acceptLoop cfg NetworkAPI{..} peerCh mempool = do
-  logger InfoS "Starting accept loop" ()
+  logger DebugS "Starting accept loop" ()
   recoverAll (retryPolicy cfg) $ const $ logOnException $
     bracket listenOn fst $ \(_,accept) -> forever $ do
       -- We accept connection and create new thread which is manager
@@ -81,7 +81,7 @@ acceptLoop cfg NetworkAPI{..} peerCh mempool = do
           (close conn)
   where
     peerThread conn addr = logOnException $ do
-      logger DebugS "Acceped peer" (sl "addr" addr)
+      logger DebugS "Preacceped peer" (sl "addr" addr)
       -- Expect GossipHello from peer
       GossipHello nonce port <- deserialise <$> recv conn
       let normAddr = normalizeNodeAddress addr port
@@ -91,7 +91,7 @@ acceptLoop cfg NetworkAPI{..} peerCh mempool = do
                     throwM SelfConnection
         False -> return ()
       send conn $ serialise $ GossipAck
-      logger DebugS "Accept: handshake complete" (sl "addr" addr)
+      logger DebugS "Accepted peer" (sl "addr" addr <> sl "norm" normAddr)
       -- Handshake is complete. Accept connection
       withPeer (peerRegistry peerCh) normAddr $
         startPeer addr peerCh conn mempool
@@ -109,7 +109,7 @@ connectPeerTo
 connectPeerTo NetworkAPI{..} addr peerCh mempool =
   -- Ignore all exceptions to prevent apparing of error messages in stderr/stdout.
   newSheep (peerShepherd peerCh) $ logOnException $ do
-    logger DebugS "connectPeerTo" $ sl "addr" addr
+    logger DebugS "Connecting to" $ sl "addr" addr
     bracket (connect addr) close $ \conn -> do
       -- Perform handshake
       withGossipNonce (peerNonceSet peerCh) $ \nonce -> do
