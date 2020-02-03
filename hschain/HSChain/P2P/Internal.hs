@@ -336,10 +336,11 @@ pexFSM cfg net@NetworkAPI{..} peerCh@PeerChans{..} mempool = do
         )
       rndGen <- liftIO newStdGen
       let candidates = (known \\ conns) \\ self
-          toConn     = take (pexMaxConnections cfg - Set.size conns)
-                     $ shuffle' (Set.toList candidates) (Set.size candidates) rndGen
-      forM_ toConn $ \addr -> connectPeerTo net addr peerCh mempool
-
+      -- NOTE: shuffle hangs when given empty list as input
+      when (Set.size candidates > 0) $ do
+        let toConn = take (pexMaxConnections cfg - Set.size conns)
+                   $ shuffle' (Set.toList candidates) (Set.size candidates) rndGen
+        forM_ toConn $ \addr -> connectPeerTo net addr peerCh mempool
 
 pexMonitoring :: (MonadTMMonitoring m, MonadIO m) => PeerRegistry -> m a
 pexMonitoring peerRegistry = forever $ do
