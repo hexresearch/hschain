@@ -186,7 +186,9 @@ peerFSM peerCh@PeerChans{..} gossipCh recvCh MempoolCursor{..} = logOnException 
   where
     config = Config consensusState
 
-handlePexMessage :: MonadIO m => PeerChans a -> TBQueue (GossipMsg a) -> PexMessage -> m ()
+handlePexMessage
+  :: (MonadIO m, MonadLogger m)
+  => PeerChans a -> TBQueue (GossipMsg a) -> PexMessage -> m ()
 handlePexMessage PeerChans{..} gossipCh = \case
   -- Peer ask for more addresses. Reply with list of peers we're
   -- connected to. They're known good
@@ -195,10 +197,10 @@ handlePexMessage PeerChans{..} gossipCh = \case
     unless (null addrs) $
       atomicallyIO $ writeTBQueue gossipCh $ GossipPex $ PexMsgMorePeers addrs
   -- Forward message to main PEX engine
-  PexMsgMorePeers addrs -> atomicallyIO
-                         $ addAddresses peerRegistry
-                         $ map Ip.normalizeNetAddr addrs
-
+  PexMsgMorePeers addrs -> do
+    let normAddrs = map Ip.normalizeNetAddr addrs
+    logger DebugS "Adding addresses" (sl "addrs" normAddrs)
+    atomicallyIO $ addAddresses peerRegistry normAddrs
 
 -- | Very simple generator of mempool gossip
 mempoolThread
