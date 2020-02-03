@@ -1,32 +1,49 @@
+{-# LANGUAGE DataKinds           #-}
+{-# LANGUAGE LambdaCase          #-}
+{-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE RankNTypes          #-}
+{-# LANGUAGE RecordWildCards     #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 -- | Tests for peer exchange
 --
-{-# LANGUAGE DataKinds             #-}
-{-# LANGUAGE LambdaCase            #-}
-{-# LANGUAGE OverloadedStrings     #-}
-{-# LANGUAGE RankNTypes            #-}
-{-# LANGUAGE ScopedTypeVariables   #-}
 module TM.P2P.PEX (tests) where
 
--- import Control.Monad
--- import Control.Monad.Fix
--- import Control.Exception
--- import Data.IORef
--- import Data.List
--- import Data.Set (Set)
--- import GHC.Conc
--- import qualified Data.Set as Set
+import Control.Monad
+import Control.Monad.Fix
+import Control.Monad.Catch
+import Control.Monad.IO.Class
+import Control.Monad.Trans.Class
+import Control.Monad.Trans.Cont
+import Control.Exception
+import Data.IORef
+import Data.List
+import Data.Set (Set)
+import GHC.Conc
+import qualified Data.Set as Set
 
 import Test.Tasty
--- import Test.Tasty.HUnit
+import Test.Tasty.HUnit
 
--- import HSChain.Blockchain.Internal.Engine.Types
--- import HSChain.Control
--- import HSChain.Debug.Trace
--- import HSChain.Mock.Types
--- import HSChain.Utils
+import HSChain.Blockchain.Internal.Engine.Types
+import HSChain.Control
+import HSChain.Mock.Types
+import HSChain.Utils
+import qualified HSChain.Mock.KeyVal as Mock
+import           HSChain.Mock.KeyVal   (BData)
+import HSChain.Blockchain.Internal.Engine.Types
+import HSChain.Control
+import HSChain.Logger
+import HSChain.Mock.Types
+import HSChain.Mock.KeyList
+import HSChain.Monitoring
+import HSChain.P2P
+import HSChain.P2P.Network
+import HSChain.Types.Blockchain
+import HSChain.Run
+import HSChain.Store
 
--- import TM.Util.Network
--- import TM.Util.Tests
+import TM.Util.Network
+import TM.Util.Tests
 
 ----------------------------------------------------------------
 -- Test tree
@@ -34,14 +51,11 @@ import Test.Tasty
 
 tests :: TestTree
 tests = testGroup "P2P"
-  [
-  ]
-{-
   [ testGroup "simple tests"
     [ testCase "require threaded runtime" testMultithread
-    , testCase "Peers must connect" testPeersMustConnect
-    , testCase "Peers must ack and get addresses" testPeersMustAckAndGetAddresses
-    , testCase "Peers in big net must interconnects" $ testBigNetMustInterconnect 20
+    -- , testCase "Peers must connect" testPeersMustConnect
+    -- , testCase "Peers must ack and get addresses" testPeersMustAckAndGetAddresses
+    -- , testCase "Peers in big net must interconnects" $ testBigNetMustInterconnect 20
     ]
   ]
 
@@ -53,7 +67,7 @@ tests = testGroup "P2P"
 testMultithread :: IO ()
 testMultithread =
     assertBool "Test must be run multithreaded" (numCapabilities > 1)
-
+{-
 -- Peers in fully connected network must connect to each other.
 --
 --   * All other peer should be in peer registry
@@ -169,3 +183,77 @@ andM (p:ps) = p >>= \case
         True  -> andM ps
         False -> return False
 -}
+
+
+type TestMonad m = DBT 'RW BData (NoLogsT m)
+
+data TestNetLinkDescription m = TestNetLinkDescription
+    { ncFrom          :: Int
+    , ncTo            :: [Int]
+    , ncAppCallbacks  :: AppCallbacks (TestMonad m) BData
+    }
+
+
+mkNodeDescription :: (Monad m) => Int -> [Int] -> TestNetLinkDescription m
+mkNodeDescription ncFrom ncTo = TestNetLinkDescription
+  { ncAppCallbacks = mempty
+  , ..
+  }
+
+
+createTestNetwork
+  :: (MonadMask m, MonadFork m, MonadTMMonitoring m)
+  => [TestNetLinkDescription m]
+  -> m ()
+createTestNetwork = createTestNetworkWithConfig defCfg
+
+createTestNetworkWithConfig
+    :: (MonadMask m, MonadFork m, MonadTMMonitoring m)
+    => Configuration Example
+    -> [TestNetLinkDescription m]
+    -> m ()
+createTestNetworkWithConfig = createTestNetworkWithValidatorsSetAndConfig testValidators
+
+createTestNetworkWithValidatorsSetAndConfig
+    :: (MonadIO m, MonadMask m, MonadFork m, MonadTMMonitoring m)
+    => [PrivValidator (Alg BData)]
+    -> Configuration Example
+    -> [TestNetLinkDescription m]
+    -> m ()
+createTestNetworkWithValidatorsSetAndConfig validators cfg netDescr = do
+    net <- liftIO newMockNet
+    let vallist = map Just validators ++ repeat Nothing
+    evalContT $ do
+      acts <- forM (netDescr `zip` vallist) $ \(ndescr, val) -> do
+        c <- ContT $ withConnection ":memory:"
+        lift $ mkTestNode net (c, ndescr, val)
+      lift $ catchAbort $ runConcurrently $ concat acts
+  where
+    dbValidatorSet = makeValidatorSetFromPriv validators
+    mkTestNode
+      :: (MonadFork m, MonadMask m, MonadTMMonitoring m)
+      => MockNet
+      -> ( Connection 'RW BData
+         , TestNetLinkDescription m
+         , Maybe (PrivValidator (Alg BData))
+         )
+      -> m [m ()]
+    mkTestNode net (conn, TestNetLinkDescription{..}, validatorPK) = do
+        let genesis = Mock.mkGenesisBlock dbValidatorSet
+        initDatabase conn
+        --
+        let run = runNoLogsT . runDBT conn
+        (_,actions) <- run $ Mock.interpretSpec genesis
+          (   BlockchainNet
+                { bchNetwork        = createMockNode net (intToNetAddr ncFrom)
+                , bchInitialPeers   = map intToNetAddr ncTo
+                }
+          :*: NodeSpec
+                { nspecPrivKey = validatorPK
+                , nspecDbName  = Nothing
+                , nspecLogFile = []
+                }
+          :*: cfg
+          )
+          ncAppCallbacks 
+        return $ run <$> actions

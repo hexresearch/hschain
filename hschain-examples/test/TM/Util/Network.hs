@@ -18,9 +18,6 @@ module TM.Util.Network
   , withRetry
   , withTimeOut
   -- *
-  , mkNodeDescription
-  , createTestNetworkWithConfig
-  , createTestNetwork
   , testValidators
   , intToNetAddr
   ) where
@@ -86,81 +83,6 @@ withTimeOut t act = timeout t act >>= \case
 -- TODO объединить в один список, а лучше сделать бесконечный
 testValidators :: [PrivValidator (Alg BData)]
 testValidators = take 4 $ map PrivValidator $ makePrivKeyStream 1337
-
-
-type TestMonad m = DBT 'RW BData (NoLogsT m)
-
-
-data TestNetLinkDescription m = TestNetLinkDescription
-    { ncFrom          :: Int
-    , ncTo            :: [Int]
-    , ncAppCallbacks  :: AppCallbacks (TestMonad m) BData
-    }
-
-
-mkNodeDescription :: (Monad m) => Int -> [Int] -> TestNetLinkDescription m
-mkNodeDescription ncFrom ncTo = TestNetLinkDescription
-  { ncAppCallbacks = mempty
-  , ..
-  }
-
-
-createTestNetwork
-  :: (MonadMask m, MonadFork m, MonadTMMonitoring m)
-  => [TestNetLinkDescription m]
-  -> m ()
-createTestNetwork = createTestNetworkWithConfig defCfg
-
-createTestNetworkWithConfig
-    :: (MonadMask m, MonadFork m, MonadTMMonitoring m)
-    => Configuration Example
-    -> [TestNetLinkDescription m]
-    -> m ()
-createTestNetworkWithConfig = createTestNetworkWithValidatorsSetAndConfig testValidators
-
-createTestNetworkWithValidatorsSetAndConfig
-    :: (MonadIO m, MonadMask m, MonadFork m, MonadTMMonitoring m)
-    => [PrivValidator (Alg BData)]
-    -> Configuration Example
-    -> [TestNetLinkDescription m]
-    -> m ()
-createTestNetworkWithValidatorsSetAndConfig validators cfg netDescr = do
-    net <- liftIO newMockNet
-    let vallist = map Just validators ++ repeat Nothing
-    evalContT $ do
-      acts <- forM (netDescr `zip` vallist) $ \(ndescr, val) -> do
-        c <- ContT $ withConnection ":memory:"
-        lift $ mkTestNode net (c, ndescr, val)
-      lift $ catchAbort $ runConcurrently $ concat acts
-  where
-    dbValidatorSet = makeValidatorSetFromPriv validators
-    mkTestNode
-      :: (MonadFork m, MonadMask m, MonadTMMonitoring m)
-      => MockNet
-      -> ( Connection 'RW BData
-         , TestNetLinkDescription m
-         , Maybe (PrivValidator (Alg BData))
-         )
-      -> m [m ()]
-    mkTestNode net (conn, TestNetLinkDescription{..}, validatorPK) = do
-        let genesis = Mock.mkGenesisBlock dbValidatorSet
-        initDatabase conn
-        --
-        let run = runNoLogsT . runDBT conn
-        (_,actions) <- run $ Mock.interpretSpec genesis
-          (   BlockchainNet
-                { bchNetwork        = createMockNode net (intToNetAddr ncFrom)
-                , bchInitialPeers   = map intToNetAddr ncTo
-                }
-          :*: NodeSpec
-                { nspecPrivKey = validatorPK
-                , nspecDbName  = Nothing
-                , nspecLogFile = []
-                }
-          :*: cfg
-          )
-          ncAppCallbacks 
-        return $ run <$> actions
 
 intToNetAddr :: Int -> NetAddr
 intToNetAddr i = NetAddrV4 (fromIntegral i) 1122
