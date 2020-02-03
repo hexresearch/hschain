@@ -23,6 +23,7 @@ import Control.Monad.Trans.Cont
 import Control.Monad.Trans.Reader
 import Control.Exception
 import Data.Aeson (Value(..),Object)
+import Data.Bool
 import Data.IORef
 import Data.List
 import Data.Maybe
@@ -186,10 +187,7 @@ testBigNetMustInterconnect netSize = do
 ----------------------------------------------------------------
 
 andM :: Monad m => [m Bool] -> m Bool
-andM [] = return True
-andM (p:ps) = p >>= \case
-        True  -> andM ps
-        False -> return False
+andM = foldr (\p m -> bool (return False) m =<< p) (return True)
 
 -- Create list of expected events for the 
 mkExpected :: [Int] -> [[(Text, Object)]]
