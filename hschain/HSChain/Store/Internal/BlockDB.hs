@@ -7,7 +7,41 @@
 -- |
 -- Queries for interacting with database. Ones that constitute public
 -- API are reexported from "HSChain.Store".
-module HSChain.Store.Internal.BlockDB where
+module HSChain.Store.Internal.BlockDB
+  ( initializeBlockhainTables
+  , storeGenesis
+    -- * Fetching data
+  , blockchainHeight
+  , mustRetrieveCommitRound
+  , retrieveBlockID
+  , mustRetrieveBlockID
+  , retrieveBlock
+  , mustRetrieveBlock
+  , retrieveValidatorSet
+  , hasValidatorSet
+  , mustRetrieveValidatorSet
+  , retrieveCommit
+  , retrieveLocalCommit
+    -- * Storing blockchain
+  , storeCommit
+  , storeValSet
+    -- * Evidence
+  , storeFreshEvidence
+  , storeBlockchainEvidence
+  , evidenceRecordedState
+  , retrieveUnrecordedEvidence
+    -- * WAL
+  , resetWAL
+  , writeToWAL
+  , readWAL
+  , writeBlockReadyToWAL
+  , retrieveBlockReadyFromWAL
+  , writeBlockToWAL
+  , retrieveBlockFromWAL
+    -- * State snapshots
+  , storeStateSnapshot
+  , retrieveSavedState
+  ) where
 
 import Codec.Serialise     (Serialise, serialise, deserialiseOrFail)
 import Control.Monad       (when)
