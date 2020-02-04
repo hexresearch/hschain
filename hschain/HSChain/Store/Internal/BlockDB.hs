@@ -76,13 +76,6 @@ initializeBlockhainTables = do
     \  , bid    BLOB NOT NULL \
     \  , block  BLOB NOT NULL)"
   basicExecute_
-    "CREATE TABLE IF NOT EXISTS state_snapshot \
-    \  ( height           INT  NOT NULL \
-    \  , snapshot_blob    BLOB NOT NULL)"
-  r <- basicQuery_ "SELECT height FROM state_snapshot"
-  when (null (r :: [[SQL.SQLData]])) $
-    basicExecute_ "INSERT INTO state_snapshot (height, snapshot_blob) VALUES (-1, X'')"
-  basicExecute_
     "CREATE TABLE IF NOT EXISTS thm_commits \
     \  ( height INT  NOT NULL UNIQUE \
     \  , cmt    BLOB NOT NULL)"
@@ -90,7 +83,20 @@ initializeBlockhainTables = do
     "CREATE TABLE IF NOT EXISTS thm_validators \
     \  ( height INT  NOT NULL UNIQUE \
     \  , valset BLOB NOT NULL)"
+  -- Snapshots of blockchain state
+  basicExecute_
+    "CREATE TABLE IF NOT EXISTS state_snapshot \
+    \  ( height           INT  NOT NULL \
+    \  , snapshot_blob    BLOB NOT NULL)"
+  r <- basicQuery_ "SELECT height FROM state_snapshot"
+  when (null (r :: [[SQL.SQLData]])) $
+    basicExecute_ "INSERT INTO state_snapshot (height, snapshot_blob) VALUES (-1, X'')"
   -- WAL
+  --
+  -- For PBFT we need to record all received messages which will be
+  -- replayed if node crashes. We also need to store proposed blocks
+  -- and results of ready-to-create-block check in order to replay
+  -- deterministically.
   --
   -- ID field is used to keep order of messages. Primary key is
   -- incremented automatically and any new key will be larger than any
@@ -98,7 +104,7 @@ initializeBlockhainTables = do
   --
   -- Note UNIQUE constraint. Receiving identical message at the same
   -- height is noop so there's no point in storing them. Performance
-  -- gains are massive since writing to disk is slow, no SLOW.
+  -- gains are massive since disk IO is _slow_.
   basicExecute_
     "CREATE TABLE IF NOT EXISTS thm_wal \
     \  ( id      INTEGER PRIMARY KEY \
@@ -117,9 +123,9 @@ initializeBlockhainTables = do
     \ , attempt INTEGER NOT NULL \
     \ , result  BOOLEAN NOT NULL \
     \ , UNIQUE (height, attempt))"
-  -- Byzantine evidence. We store every piece of evidence in this
-  -- table with second field indicating whether evidence is recorded
-  -- in blockchain
+  -- Evidence of byzantine behavior. We store every piece of evidence
+  -- in this table with second field indicating whether evidence is
+  -- recorded in blockchain or not
   basicExecute_
     "CREATE TABLE IF NOT EXISTS thm_evidence \
     \  ( evidence  BLOB    NOT NULL \
