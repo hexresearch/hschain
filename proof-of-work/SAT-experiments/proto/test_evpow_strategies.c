@@ -43,9 +43,11 @@ energy_expenditure_performance_for_advised_parameters(FILE* report) {
 		int found_count = 0;
 		printf("fixed bits count %d\n", fixed_bits_count);
 		for (fixed_bits = 0; fixed_bits < (1 << fixed_bits_count); fixed_bits ++) {
+			char fn[100];
 			clock_t start = clock();
 			clock_t end, delta;
 			int64_t milliseconds;
+			sprintf(fn, "count-%02d-bits-%08x-dump.cnf", fixed_bits_count, fixed_bits);
 			int found = evpow_solve
 				   ( testrec.some_bytes
 			           , sizeof(testrec.some_bytes)
@@ -59,6 +61,7 @@ energy_expenditure_performance_for_advised_parameters(FILE* report) {
 			           , NULL
 			           , fixed_bits_count     // you may spawn several parallel attempts to solve the puzzle with some bits fixed (up to 32 bits)
 			           , fixed_bits      // to what value these bits are fixed
+				   , fn
            			   );
 			end = clock();
 			found_answer[fixed_bits] = found;

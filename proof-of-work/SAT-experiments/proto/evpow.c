@@ -115,16 +115,16 @@ extract_solution_answer(PicoSAT* solver, uint8_t* answer) {
 	for (i = 0; i < EVPOW_ANSWER_BYTES; i ++) {
 		answer[i] = 0;
 	}
-#if 0
-	printf("answer (least significant bit first):");
+#if 01
+	//printf("answer (least significant bit first):");
 	for (i = 0; i < EVPOW_ANSWER_BITS; i ++) {
 		int lit = i + 1;
 		int is_true = picosat_deref(solver, lit) > 0; // 1 means "true", -1 means "false" and 0 is unknown (must not be).
 		answer[i / 8] |= is_true << (i % 8);
-		if (0 == (i % 8)) { printf(" "); }
-		printf("%d", is_true);
+		//if (0 == (i % 8)) { printf(" "); }
+		//printf("%d", is_true);
 	}
-	printf("\n");
+	//printf("\n");
 #endif
 } /* extract_solution_answer */
 
@@ -134,7 +134,7 @@ under_complexity_threshold(uint8_t* hash, int complexity_shift, uint16_t complex
 	int i;
 	int bytes_zero = complexity_shift / 8;
 	int shift_within_byte = complexity_shift % 8;
-	int byte_index = SHA256_DIGEST_LENGTH - 1 - (complexity_shift + 16 + 7) / 8;
+	int byte_index = SHA256_DIGEST_LENGTH - (complexity_shift + 16 + 7) / 8;
 	uint32_t accum;
 #if 0
 	printf("full hash as integer:");
@@ -181,7 +181,7 @@ find_answer(SHA256_CTX* context_after_prefix, uint8_t* answer, uint8_t* full_has
 		end_time = last_time + (milliseconds_allowance * CLOCKS_PER_SEC + 999)/1000;
 		picosat_set_interrupt(solver, (void*)&end_time, check_clock);
 	}
-
+	//printf("complexity shift %d, mantissa %04x\n", complexity_shift, complexity_mantissa);
 	while (attempts_count <= 0 || attempts < attempts_count) {
 		SHA256_CTX full_hash_context;
 		// obtain a solution.
@@ -189,12 +189,14 @@ find_answer(SHA256_CTX* context_after_prefix, uint8_t* answer, uint8_t* full_has
 		int i;
 	       	status = picosat_sat(solver, -1);
 		//printf("decisions made %llu, propagations made %llu\n", picosat_decisions(solver), picosat_propagations(solver));
+		//printf("status %d\n", status);
 		if (status != PICOSAT_SATISFIABLE) {
 			break;
 		} else {
 			clock_t curr_time = clock();
 			//printf("solution found in %ld ms\n", ((curr_time - last_time) * 1000 + CLOCKS_PER_SEC - 1)/CLOCKS_PER_SEC);
 			last_time = curr_time;
+			//printf("."); fflush(stdout);
 		}
 		// extract a solution into the answer.
 		extract_solution_answer(solver, answer);
@@ -206,7 +208,9 @@ find_answer(SHA256_CTX* context_after_prefix, uint8_t* answer, uint8_t* full_has
 			return 1; // and everything is in place - answer filled, hash computed.
 		}
 		attempts ++;
-		*attempts_done ++;
+		if (attempts_done) {
+			*attempts_done ++;
+		}
 
 		// here we form a clause that blocks current assignment.
 		// For current satisfying assignment, say, x1 and !x2 we add
@@ -214,11 +218,11 @@ find_answer(SHA256_CTX* context_after_prefix, uint8_t* answer, uint8_t* full_has
 		// or x2 to true, or both will be assigned to different values.
 		for (i = 0; i < EVPOW_ANSWER_BITS; i ++) {
 			int variable = i + 1;
-			if ((answer [i / 8] & (1 << (i % 8))) == 0) {
-				picosat_add(solver, variable);
-			} else {
-				picosat_add(solver, -variable);
+			int literal = variable;
+			if ((answer [i / 8] & (1 << (i % 8))) != 0) {
+				literal = -variable;
 			}
+			picosat_add(solver, literal);
 		}
 		picosat_add(solver, 0); // finalize clause addition. we are ready for another picosat_sat() call.
 	}
@@ -238,6 +242,7 @@ evpow_solve( uint8_t* prefix
 	   , int32_t* attempts_done
 	   , int fixed_bits_count
 	   , uint32_t fixed_bits
+	   , char* cnf_fn
 ) {
 	SHA256_CTX prefix_hash_context;
 	SHA256_CTX intermediate_prefix_hash_context;
@@ -265,6 +270,16 @@ evpow_solve( uint8_t* prefix
 
 	// Create instance and feed it to solver.
 	create_instance(prefix_hash, solver, clauses_count, fixed_bits_count, fixed_bits);
+
+	if (cnf_fn) {
+		FILE* f=fopen(cnf_fn, "w");
+		if (f) {
+			picosat_print(solver, f);
+			fclose(f);
+		} else {
+			printf("unable to create CNF file %s\n", cnf_fn);
+		}
+	}
 
 	// find solution if we can.
 	r = find_answer(&prefix_hash_context, answer, solution_hash, milliseconds_allowance, complexity_shift, complexity_mantissa, solver, attempts_allowed, attempts_done);

@@ -25,7 +25,7 @@ typedef uint8_t evpow_answer[EVPOW_ANSWER_BYTES];
 
 /* number of clauses per puzzle, depends on EVPOW_K */
 #if EVPOW_K == 4
-#define EVPOW_ADVISED_CLAUSES_COUNT (((801)*EVPOW_ANSWER_BITS + 99)/100) /* phase transition is at about 9.9 for 4SAT */
+#define EVPOW_ADVISED_CLAUSES_COUNT (((900)*EVPOW_ANSWER_BITS + 99)/100) /* phase transition is at about 9.9 for 4SAT */
 #else
 #   error "cannot compute number of clauses for current EVPOW_K"
 #endif
@@ -93,6 +93,7 @@ evpow_solve( uint8_t* prefix
 	   , int32_t* attempts_done
 	   , int fixed_bits_count     // you may spawn several parallel attempts to solve the puzzle with some bits fixed (up to 32 bits)
 	   , uint32_t fixed_bits      // to what value these bits are fixed
+	   , char* cnf_fn // where to dump CNF if needed.
 	   );
 
 /**
