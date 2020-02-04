@@ -14,7 +14,7 @@
 static int
 check_clock(void*p) {
 	clock_t* clk = (clock_t*)p;
-	printf("checking clock (%ld ms remains)\n", ((*clk - clock()) * 1000 + CLOCKS_PER_SEC - 1)/CLOCKS_PER_SEC);
+	//printf("checking clock (%ld ms remains)\n", ((*clk - clock()) * 1000 + CLOCKS_PER_SEC - 1)/CLOCKS_PER_SEC);
 	return clock() > *clk;
 } /* check_clock */
 
@@ -22,15 +22,9 @@ check_clock(void*p) {
 #   error "Algorithm in its current version won't work properly for such a big K (k=4..6 are good choices)"
 #endif
 static void
-create_clause(SHA256_CTX* hash_ctx_for_clause, int clause, int* clause_literals) {
-	uint8_t buffer[4];
+create_clause(SHA256_CTX* hash_ctx_for_clause, int clause, int* clause_literals, int last_clause) {
 	uint8_t clause_hash[SHA256_DIGEST_LENGTH];
 	int literal_index;
-	buffer[0] = clause >>  0;
-	buffer[1] = clause >>  8;
-	buffer[2] = clause >> 16;
-	buffer[3] = clause >> 24;
-	SHA256_Update(hash_ctx_for_clause, buffer, sizeof(buffer));
 	SHA256_Final(clause_hash, hash_ctx_for_clause);
 	for (literal_index = 0; literal_index < EVPOW_K; literal_index ++) {
 		uint16_t vplow  = clause_hash[literal_index * 2 + 0];
@@ -59,19 +53,22 @@ create_clause(SHA256_CTX* hash_ctx_for_clause, int clause, int* clause_literals)
 		literal = assign_true ? variable_index : -variable_index;
 		clause_literals[literal_index] = literal;
 	}
+	if (!last_clause) {
+		SHA256_Init(hash_ctx_for_clause);
+		SHA256_Update(hash_ctx_for_clause, clause_hash, sizeof(clause_hash));
+	}
 } /* create_clause */
 
 static void
-create_instance(uint8_t* prefix_hash, PicoSAT* solver) {
+create_instance(uint8_t* prefix_hash, PicoSAT* solver, int clauses_count) {
 	int clause;
 	int literal_index;
 	SHA256_CTX ctx_after_hash;
 	SHA256_Init(&ctx_after_hash);
 	SHA256_Update(&ctx_after_hash, prefix_hash, SHA256_DIGEST_LENGTH);
-	for (clause = 0; clause < EVPOW_CLAUSES_COUNT; clause++) {
-		SHA256_CTX hash_ctx_for_clause = ctx_after_hash;
+	for (clause = 0; clause < clauses_count; clause++) {
 		int literals[EVPOW_K];
-		create_clause(&hash_ctx_for_clause, clause, literals);
+		create_clause(&ctx_after_hash, clause, literals, clause == clauses_count - 1);
 		printf("clause:");
 		for (literal_index = 0; literal_index < EVPOW_K; literal_index ++) {
 			printf(" %d", literals[literal_index]);
@@ -142,8 +139,18 @@ under_complexity_threshold(uint8_t* hash, int complexity_shift, uint16_t complex
 } /* under_complexity_threshold */
 
 static int
-find_answer(SHA256_CTX* context_after_prefix, uint8_t* answer, uint8_t* full_hash, int complexity_shift, uint16_t complexity_mantissa, PicoSAT* solver, int32_t attempts_count, int32_t* attempts_done) {
+find_answer(SHA256_CTX* context_after_prefix, uint8_t* answer, uint8_t* full_hash, int milliseconds_allowance, int complexity_shift, uint16_t complexity_mantissa, PicoSAT* solver, int32_t attempts_count, int32_t* attempts_done) {
 	int attempts = 0;
+	clock_t end_time;
+	clock_t last_time;
+
+	// configure timeout - it will include time to generate problem.
+	last_time = clock();
+	if (milliseconds_allowance > 0) {
+		end_time = last_time + (milliseconds_allowance * CLOCKS_PER_SEC + 999)/1000;
+		picosat_set_interrupt(solver, (void*)&end_time, check_clock);
+	}
+
 	while (attempts_count <= 0 || attempts < attempts_count) {
 		SHA256_CTX full_hash_context;
 		// obtain a solution.
@@ -153,6 +160,10 @@ find_answer(SHA256_CTX* context_after_prefix, uint8_t* answer, uint8_t* full_has
 		printf("decisions made %llu, propagations made %llu\n", picosat_decisions(solver), picosat_propagations(solver));
 		if (status != PICOSAT_SATISFIABLE) {
 			break;
+		} else {
+			clock_t curr_time = clock();
+			printf("solution found in %ld ms\n", ((last_time - curr_time) * 1000 + CLOCKS_PER_SEC - 1)/CLOCKS_PER_SEC);
+			last_time = curr_time;
 		}
 		// extract a solution into the answer.
 		extract_solution_answer(solver, answer);
@@ -188,16 +199,18 @@ evpow_solve( uint8_t* prefix
 	   , size_t prefix_size
 	   , uint8_t* answer
 	   , uint8_t* solution_hash
+	   , int clauses_count
 	   , int complexity_shift
 	   , uint16_t complexity_mantissa
 	   , int32_t milliseconds_allowance
 	   , int32_t attempts_allowed
 	   , int32_t* attempts_done
+	   , int fixed_bits_count
+	   , uint32_t fixed_bits
 ) {
 	SHA256_CTX prefix_hash_context;
 	SHA256_CTX intermediate_prefix_hash_context;
 	uint8_t prefix_hash[SHA256_DIGEST_LENGTH];
-	clock_t end_time;
 	PicoSAT* solver;
 	int r;
 
@@ -219,17 +232,11 @@ evpow_solve( uint8_t* prefix
 	}
 	picosat_set_seed(solver, 1); // get predictable results.
 
-	// configure timeout - it will include time to generate problem.
-	if (milliseconds_allowance > 0) {
-		end_time = clock() + (milliseconds_allowance * CLOCKS_PER_SEC + 999)/1000;
-		picosat_set_interrupt(solver, (void*)&end_time, check_clock);
-	}
-
 	// Create instance and feed it to solver.
-	create_instance(prefix_hash, solver);
+	create_instance(prefix_hash, solver, clauses_count);
 
 	// find solution if we can.
-	r = find_answer(&prefix_hash_context, answer, solution_hash, complexity_shift, complexity_mantissa, solver, attempts_allowed, attempts_done);
+	r = find_answer(&prefix_hash_context, answer, solution_hash, milliseconds_allowance, complexity_shift, complexity_mantissa, solver, attempts_allowed, attempts_done);
 
 	picosat_reset(solver);
 	return r;
@@ -240,6 +247,7 @@ evpow_check( uint8_t* prefix
            , size_t prefix_size
            , uint8_t* answer
            , uint8_t* hash_to_compare
+	   , int clauses_count
            , int complexity_shift
            , uint16_t complexity_mantissa
            ) {
@@ -274,11 +282,10 @@ evpow_check( uint8_t* prefix
 		}
 		printf("\n");
 	}
-	for (clause = 0; clause < EVPOW_CLAUSES_COUNT; clause ++) {
-		SHA256_CTX hash_ctx_for_clause = ctx_after_hash;
+	for (clause = 0; clause < clauses_count; clause ++) {
 		int literals[EVPOW_K];
 		int literal_index;
-		create_clause(&hash_ctx_for_clause, clause, literals);
+		create_clause(&ctx_after_hash, clause, literals, clause == clauses_count - 1);
 #if 0
 		printf("clause:");
 		for (literal_index = 0; literal_index < EVPOW_K; literal_index ++) {

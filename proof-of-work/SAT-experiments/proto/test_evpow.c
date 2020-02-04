@@ -48,14 +48,17 @@ timed_solve( uint8_t* prefix
            , size_t prefix_size
            , uint8_t* answer
            , uint8_t* solution_hash
+	   , int clauses_count
            , int complexity_shift
            , uint16_t complexity_mantissa
 	   , uint32_t milliseconds_allowance
 	   , uint32_t attempts_allowed
+	   , int fixed_bits_count
+	   , uint32_t fixed_bits
            ) {
 	clock_t start = clock();
 	int32_t attempts_count;
-	int r = evpow_solve(prefix, prefix_size, answer, solution_hash, complexity_shift, complexity_mantissa, milliseconds_allowance, attempts_allowed, & attempts_count);
+	int r = evpow_solve(prefix, prefix_size, answer, solution_hash, complexity_shift, clauses_count, complexity_mantissa, milliseconds_allowance, attempts_allowed, & attempts_count, fixed_bits_count, fixed_bits);
 	clock_t end = clock();
 	int64_t diff = end - start;
 	int64_t milliseconds = (diff * 1000 + CLOCKS_PER_SEC - 1) / CLOCKS_PER_SEC;
@@ -68,22 +71,22 @@ static void
 test_evpow_logic(void) {
 	test_rec_t testrec;
 	fill_some_bytes(testrec.some_bytes);
-	if (!timed_solve(testrec.some_bytes, sizeof(testrec.some_bytes), testrec.answer, testrec.hash, 4,0xffff, 100000, 300000)) {
+	if (!timed_solve(testrec.some_bytes, sizeof(testrec.some_bytes), testrec.answer, testrec.hash, EVPOW_ADVISED_CLAUSES_COUNT, 4,0xffff, 100000, 300000, 0, 0)) {
 		failure("unable to find answer for initial puzzle");
 	}
-	if (!evpow_check( testrec.some_bytes, sizeof(testrec.some_bytes), testrec.answer, testrec.hash, 4,0xffff)) {
+	if (!evpow_check( testrec.some_bytes, sizeof(testrec.some_bytes), testrec.answer, testrec.hash, EVPOW_ADVISED_CLAUSES_COUNT, 4,0xffff)) {
 		failure("block is not valid!");
 	}
-	if (evpow_check( testrec.some_bytes, sizeof(testrec.some_bytes), testrec.answer, testrec.hash, 200,0xffff)) {
+	if (evpow_check( testrec.some_bytes, sizeof(testrec.some_bytes), testrec.answer, testrec.hash, EVPOW_ADVISED_CLAUSES_COUNT, 200,0xffff)) {
 		failure("block is valid for obscene complexity!");
 	}
 	testrec.some_bytes[0] ^= 1;
-	if (evpow_check( testrec.some_bytes, sizeof(testrec.some_bytes), testrec.answer, testrec.hash, 4,0xffff)) {
+	if (evpow_check( testrec.some_bytes, sizeof(testrec.some_bytes), testrec.answer, testrec.hash, EVPOW_ADVISED_CLAUSES_COUNT, 4,0xffff)) {
 		failure("block with modified prefix passes test");
 	}
 	testrec.some_bytes[0] ^= 1;
 	testrec.hash[7] ^= 1;
-	if (evpow_check( testrec.some_bytes, sizeof(testrec.some_bytes), testrec.answer, testrec.hash, 4,0xffff)) {
+	if (evpow_check( testrec.some_bytes, sizeof(testrec.some_bytes), testrec.answer, testrec.hash, EVPOW_ADVISED_CLAUSES_COUNT, 4,0xffff)) {
 		failure("block with modified hash passes test");
 	}
 	testrec.hash[7] ^= 1;
