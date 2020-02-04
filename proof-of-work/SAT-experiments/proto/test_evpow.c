@@ -58,7 +58,7 @@ timed_solve( uint8_t* prefix
            ) {
 	clock_t start = clock();
 	int32_t attempts_count;
-	int r = evpow_solve(prefix, prefix_size, answer, solution_hash, complexity_shift, clauses_count, complexity_mantissa, milliseconds_allowance, attempts_allowed, & attempts_count, fixed_bits_count, fixed_bits);
+	int r = evpow_solve(prefix, prefix_size, answer, solution_hash, clauses_count, complexity_shift, complexity_mantissa, milliseconds_allowance, attempts_allowed, & attempts_count, fixed_bits_count, fixed_bits);
 	clock_t end = clock();
 	int64_t diff = end - start;
 	int64_t milliseconds = (diff * 1000 + CLOCKS_PER_SEC - 1) / CLOCKS_PER_SEC;
