@@ -4,6 +4,7 @@
 
 #include <time.h>
 #include <stdio.h>
+#include <string.h>
 
 #include "evpow.h"
 
@@ -40,6 +41,7 @@ energy_expenditure_performance_for_advised_parameters(FILE* report) {
 		uint32_t fixed_bits;
 		int64_t min_answer_time = 1000000000; // 1e6 seconds - much more that 100 seconds of time allowed.
 		int found_count = 0;
+		printf("fixed bits count %d\n", fixed_bits_count);
 		for (fixed_bits = 0; fixed_bits < (1 << fixed_bits_count); fixed_bits ++) {
 			clock_t start = clock();
 			clock_t end, delta;
@@ -66,6 +68,7 @@ energy_expenditure_performance_for_advised_parameters(FILE* report) {
 			if (found && milliseconds < min_answer_time) {
 				min_answer_time = milliseconds;
 			}
+			printf("bits %04x: %s in %ld milliseconds\n", fixed_bits, found ? "found" : "not found", milliseconds);
 		}
 		int64_t sum_time = 0;
 		for (fixed_bits = 0; fixed_bits < (1 << fixed_bits_count); fixed_bits ++) {
@@ -75,7 +78,7 @@ energy_expenditure_performance_for_advised_parameters(FILE* report) {
 			}
 			sum_time += ms;
 		}
-		fprintf(report, "fixed bits count %d, summary search time %ld (ms)\n", fixed_bits_count, sum_time);
+		fprintf(report, "fixed bits count %d, summary search time %ld (ms), number of branches with answer %d, minimum time to answer %ld\n", fixed_bits_count, sum_time, found_count, min_answer_time);
 		fflush(report);
 	}
 } /* energy_expenditure_performance_for_advised_parameters */
