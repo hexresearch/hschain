@@ -49,7 +49,6 @@ module HSChain.Store (
   , blockchainHeight
   , retrieveBlock
   , retrieveBlockID
-  , retrieveCommit
   , retrieveLocalCommit
   , retrieveValidatorSet
   , mustRetrieveBlock
