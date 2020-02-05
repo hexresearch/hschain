@@ -23,6 +23,7 @@ module HSChain.Types.Merkle.Types (
   , merkleValue
   , merkleHash
   , merkleMaybeValue
+  , toHashedNode
     -- * Serialization helpers
   , MerkleSerialize(..)
   , toSerialisedRepr
@@ -82,6 +83,9 @@ merkleMaybeValue n = let OptNode _ a = toOptNode n in a
 
 merkleHash :: MerkleHash f => f alg a -> Hash alg
 merkleHash f = let Hashed h = merkleHashed f in h
+
+toHashedNode :: MerkleHash f => MerkleNode f alg a -> MerkleNode Hashed alg a
+toHashedNode (MerkleNode f) = MerkleNode $ merkleHashed f
 
 -- | Eq uses hash comparison as optimization
 instance (IsMerkle f) => Eq (MerkleNode f alg a) where

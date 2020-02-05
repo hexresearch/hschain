@@ -31,6 +31,7 @@ module HSChain.Types.Blockchain (
   , GBlock(..)
   , Block
   , Header
+  , toHeader
   , Commit(..)
   , ByzantineEvidence(..)
   , ProposerSelection(..)
@@ -181,6 +182,14 @@ data GBlock f a = Block
   deriving stock    (Generic)
 instance (IsMerkle f, CryptoHash (Alg a)) => CryptoHashable (GBlock f a) where
   hashStep = genericHashStep "hschain"
+
+toHeader :: MerkleHash f => GBlock f a -> Header a
+toHeader Block{..} = Block
+  { blockData       = toHashedNode     blockData
+  , blockPrevCommit = toHashedNode <$> blockPrevCommit
+  , blockEvidence   = toHashedNode     blockEvidence
+  , ..
+  }
 
 instance (Crypto (Alg a), CryptoHashable a, Serialise     a, IsMerkle f)  => Serialise     (GBlock f a)
 instance (Crypto (Alg a), CryptoHashable a, JSON.FromJSON a, IsMerkle f)  => JSON.FromJSON (GBlock f a)
