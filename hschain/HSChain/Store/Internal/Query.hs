@@ -27,6 +27,7 @@ module HSChain.Store.Internal.Query (
   , MonadDB(..)
     -- * MonadQuery
   , MonadQueryRO(..)
+  , basicLastInsertRowId
   , basicQuery
   , basicQuery1
   , basicQuery_
@@ -72,6 +73,7 @@ import Control.Monad.Trans.Except            (ExceptT(..))
 import Control.Monad.Trans.Identity          (IdentityT(..))
 import Data.Coerce
 import Data.IORef
+import Data.Int
 import qualified Data.Cache.LRU                   as LRU
 import qualified Database.SQLite.Simple           as SQL
 import qualified Database.SQLite.Simple.ToField   as SQL
@@ -196,6 +198,11 @@ basicQuery1 sql param =
     []  -> return Nothing
     [x] -> return $ Just x
     _   -> error "Impossible"
+
+basicLastInsertRowId :: Query 'RW a Int64
+basicLastInsertRowId = Query $ do
+  conn <- asks connConn
+  liftIO $ SQL.lastInsertRowId conn
 
 basicQuery :: (MonadQueryRO m a, SQL.ToRow p, SQL.FromRow q) => SQL.Query -> p -> m [q]
 basicQuery sql p = liftQueryRO $ Query $ do
