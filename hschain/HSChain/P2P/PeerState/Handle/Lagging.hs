@@ -101,12 +101,7 @@ handlerVotesTimeoutMsg
   :: (MonadIO m, MonadReadDB m a, BlockData a)
   => LaggingState a -> m [GossipMsg a]
 handlerVotesTimeoutMsg st = do
-  bchH <- queryRO blockchainHeight
-  mcmt <- queryRO $
-    if peerH == bchH
-       then retrieveLocalCommit peerH
-       else retrieveCommit      peerH
-  case mcmt of
+  queryRO (retrieveLocalCommit peerH) >>= \case
     Nothing  -> return []
     Just cmt -> do
       let cmtVotes  = Map.fromList [ (signedKeyInfo v, unverifySignature v)

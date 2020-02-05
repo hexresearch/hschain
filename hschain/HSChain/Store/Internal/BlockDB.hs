@@ -20,7 +20,6 @@ module HSChain.Store.Internal.BlockDB
   , retrieveValidatorSet
   , hasValidatorSet
   , mustRetrieveValidatorSet
-  , retrieveCommit
   , retrieveLocalCommit
     -- * Storing blockchain
   , storeCommit
@@ -208,20 +207,6 @@ retrieveBlockID h =
 
 mustRetrieveBlockID :: (MonadThrow m, MonadQueryRO m a) => Height -> m (BlockID a)
 mustRetrieveBlockID h = throwNothing (DBMissingBlockID h) =<< retrieveBlockID h
-
--- | Retrieve commit justifying commit of block at height
---   @h@. Must return same result as @fmap blockLastCommit . retrieveBlock . next@
---   but do it more efficiently.
---
---   Note that this method returns @Nothing@ for last block since
---   its commit is not persisted in blockchain yet and there's no
---   commit for genesis block (h=0)
-retrieveCommit
-  :: (Serialise a, CryptoHashable a, Crypto (Alg a), MonadQueryRO m a)
-  => Height -> m (Maybe (Commit a))
-retrieveCommit h = do
-  mb <- retrieveBlock $ succ h
-  return $ fmap merkleValue . blockPrevCommit =<< mb
 
 -- | Retrieve round when commit was made.
 mustRetrieveCommitRound :: (MonadThrow m, MonadQueryRO m a) => Height -> m Round
