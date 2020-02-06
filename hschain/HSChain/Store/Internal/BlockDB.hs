@@ -1,9 +1,10 @@
-{-# LANGUAGE DataKinds         #-}
-{-# LANGUAGE FlexibleContexts  #-}
-{-# LANGUAGE LambdaCase        #-}
-{-# LANGUAGE MultiWayIf        #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards   #-}
+{-# LANGUAGE DataKinds           #-}
+{-# LANGUAGE FlexibleContexts    #-}
+{-# LANGUAGE LambdaCase          #-}
+{-# LANGUAGE MultiWayIf          #-}
+{-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE RecordWildCards     #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 -- |
 -- Queries for interacting with database. Ones that constitute public
 -- API are reexported from "HSChain.Store".
@@ -16,6 +17,7 @@ module HSChain.Store.Internal.BlockDB
   , retrieveBlockID
   , mustRetrieveBlockID
   , retrieveBlock
+  , retrieveHeader
   , mustRetrieveBlock
   , retrieveValidatorSet
   , hasValidatorSet
@@ -43,8 +45,9 @@ module HSChain.Store.Internal.BlockDB
   ) where
 
 import Codec.Serialise     (Serialise, serialise, deserialiseOrFail)
-import Control.Monad       (when)
+import Control.Monad       (when,(<=<))
 import Control.Monad.Catch (MonadThrow(..))
+import Data.Int
 import qualified Data.List.NonEmpty   as NE
 import qualified Data.ByteString.Lazy as LBS
 import qualified Database.SQLite.Simple           as SQL
@@ -67,21 +70,30 @@ import HSChain.Store.Internal.Query
 -- | Create tables for storing blockchain data
 initializeBlockhainTables :: (MonadQueryRW m a) => m ()
 initializeBlockhainTables = do
-  -- Initialize tables for storage of blockchain
+  -- Content addressable storage.
+  --
+  -- ID is used as primary key in order to make it possible to create
+  -- foreign keys
+  basicExecute_
+    "CREATE TABLE IF NOT EXISTS thm_cas \
+    \ ( id   INTEGER PRIMARY KEY  \
+    \ , hash BLOB NOT NULL UNIQUE \
+    \ , blob BLOB NOT NULL )"
+  -- Tables for blockchain data. Tables contains only references to
+  -- CAS store
   basicExecute_
     "CREATE TABLE IF NOT EXISTS thm_blockchain \
-    \  ( height INT NOT NULL UNIQUE \
-    \  , round  INT NOT NULL  \
-    \  , bid    BLOB NOT NULL \
-    \  , block  BLOB NOT NULL)"
-  basicExecute_
-    "CREATE TABLE IF NOT EXISTS thm_commits \
-    \  ( height INT  NOT NULL UNIQUE \
-    \  , cmt    BLOB NOT NULL)"
+    \ ( height    INTEGER NOT NULL UNIQUE \
+    \ , round     INTEGER NOT NULL \
+    \ , blockref  INTEGER NOT NULL \
+    \ , commitref INTEGER \
+    \ , FOREIGN KEY (blockref)  REFERENCES thm_cas(id) \
+    \ , FOREIGN KEY (commitref) REFERENCES thm_cas(id))"
   basicExecute_
     "CREATE TABLE IF NOT EXISTS thm_validators \
-    \  ( height INT  NOT NULL UNIQUE \
-    \  , valset BLOB NOT NULL)"
+    \  ( height INTEGER NOT NULL UNIQUE \
+    \  , valref INTEGER NOT NULL\
+    \  , FOREIGN KEY (valref) REFERENCES thm_cas(id))"
   -- Snapshots of blockchain state
   basicExecute_
     "CREATE TABLE IF NOT EXISTS state_snapshot \
@@ -138,18 +150,14 @@ storeGenesis
   -> m ()
 storeGenesis BChEval{..} = do
   -- Insert genesis block if needed
-  storedGen  <- singleQ_ "SELECT block  FROM thm_blockchain WHERE height = 0"
-  storedVals <- singleQ_ "SELECT valset FROM thm_validators WHERE height = 0"
+  storedGen  <- retrieveBlock        (Height 0)
+  storedVals <- retrieveValidatorSet (Height 0)
   --
   case (storedGen, storedVals) of
     -- Fresh DB
     (Nothing, Nothing) -> do
-      basicExecute "INSERT INTO thm_blockchain VALUES (0,0,?,?)"
-        ( CBORed (blockHash bchValue)
-        , CBORed bchValue
-        )
-      basicExecute "INSERT INTO thm_validators VALUES (0,?)"
-        (Only (CBORed (merkleValue validatorSet)))
+      storeCommitWrk Nothing    bchValue
+      storeValSet   (Height 0) (merkleValue validatorSet)
     -- Otherwise check that stored and provided geneses match
     (Just genesis', Just initialVals') ->
       case checks of
@@ -174,6 +182,54 @@ storeGenesis BChEval{..} = do
 
 
 ----------------------------------------------------------------
+-- Low-level CAS API
+----------------------------------------------------------------
+
+storeBlob
+  :: (Serialise b)
+  => MerkleNode IdNode (Alg a) b
+  -> Query 'RW a Int64
+storeBlob x = do
+  basicQuery "SELECT id FROM thm_cas WHERE hash = ?" (Only (CBORed h)) >>= \case
+    []       -> do basicExecute "INSERT INTO thm_cas VALUES (NULL,?,?)"
+                     (CBORed h, CBORed v)
+                   basicLastInsertRowId
+    [Only i] -> return i
+    _        -> error "Impossible"
+  where
+    h = merkleHash  x
+    v = merkleValue x
+
+retrieveBlobByHash
+  :: (Serialise b, CryptoHashable b, CryptoHash (Alg a))
+  => MerkleNode Hashed (Alg a) b
+  -> Query 'RO a (Maybe (MerkleNode IdNode (Alg a) b))
+retrieveBlobByHash x = do
+  r <- singleQ "SELECT blob FROM thm_cas WHERE hash = ?" (Only $ CBORed $ merkleHashed x)
+  return $ merkled <$> r
+
+mustRetrieveBlobByHash
+  :: (Serialise b, CryptoHashable b, CryptoHash (Alg a))
+  => MerkleNode Hashed (Alg a) b
+  -> Query 'RO a (MerkleNode IdNode (Alg a) b)
+mustRetrieveBlobByHash = throwNothing DBMissingBlob <=< retrieveBlobByHash
+
+retrieveBlobByID
+  :: (Serialise b, CryptoHashable b, CryptoHash (Alg a))
+  => Int64
+  -> Query 'RO a (Maybe (MerkleNode IdNode (Alg a) b))
+retrieveBlobByID i = do
+  r <- singleQ "SELECT blob FROM thm_cas WHERE id = ?" (Only i)
+  return $ merkled <$> r
+
+mustRetrieveBlobByID
+  :: (Serialise b, CryptoHashable b, CryptoHash (Alg a))
+  => Int64
+  -> Query 'RO a (MerkleNode IdNode (Alg a) b)
+mustRetrieveBlobByID = throwNothing DBMissingBlob <=< retrieveBlobByID
+
+
+----------------------------------------------------------------
 -- Public API
 ----------------------------------------------------------------
 
@@ -185,28 +241,54 @@ blockchainHeight =
     [Only h] -> return h
     _        -> error "Impossible"
 
+-- | Retrieve ID of block at given height. Must return same result
+--   as @fmap blockHash . retrieveBlock@ but implementation could
+--   do that more efficiently.
+retrieveBlockID :: (MonadQueryRO m a) => Height -> m (Maybe (BlockID a))
+retrieveBlockID h
+  = fmap (fmap BlockID)
+  $ singleQ "SELECT hash \
+            \  FROM thm_blockchain \
+            \  JOIN thm_cas ON blockref = id \
+            \ WHERE height = ?" (Only h)
+
+mustRetrieveBlockID :: (MonadThrow m, MonadQueryRO m a) => Height -> m (BlockID a)
+mustRetrieveBlockID h = throwNothing (DBMissingBlockID h) =<< retrieveBlockID h
+
+-- | Retrieve only block header for block at given height
+retrieveHeader
+  :: (Serialise a, CryptoHashable a, Crypto (Alg a), MonadQueryRO m a)
+  => Height -> m (Maybe (Header a))
+retrieveHeader h =
+  singleQ "SELECT blob \
+          \  FROM thm_blockchain \
+          \  JOIN thm_cas ON blockref = id \
+          \ WHERE height = ?" (Only h)
 
 -- | Retrieve block at given height.
---
---   Must return block for every height @0 <= h <= blockchainHeight@
 retrieveBlock
-  :: (Serialise a, CryptoHashable a, Crypto (Alg a), MonadQueryRO m a)
+  :: forall m a. (Serialise a, CryptoHashable a, Crypto (Alg a), MonadQueryRO m a)
   => Height -> m (Maybe (Block a))
 retrieveBlock height = liftQueryRO $ case height of
   Height 0 -> basicCacheGenesis $ query height
   _        -> basicCacheBlock     query height
   where
-    query = singleQ "SELECT block FROM thm_blockchain WHERE height = ?" . Only
-
--- | Retrieve ID of block at given height. Must return same result
---   as @fmap blockHash . retrieveBlock@ but implementation could
---   do that more efficiently.
-retrieveBlockID :: (MonadQueryRO m a) => Height -> m (Maybe (BlockID a))
-retrieveBlockID h =
-  singleQ "SELECT bid FROM thm_blockchain WHERE height = ?" (Only h)
-
-mustRetrieveBlockID :: (MonadThrow m, MonadQueryRO m a) => Height -> m (BlockID a)
-mustRetrieveBlockID h = throwNothing (DBMissingBlockID h) =<< retrieveBlockID h
+    -- We now need to fetch every field that is abbreviated here
+    query :: Height -> Query 'RO a (Maybe (Block a))
+    query h =
+      basicQuery "SELECT blockref FROM thm_blockchain WHERE height = ?" (Only h) >>= \case
+        [] -> return Nothing
+        -- All references values MUST be in database
+        [Only i] -> do
+          header :: Header a <- merkleValue <$> mustRetrieveBlobByID i
+          ev  <- mustRetrieveBlobByHash $ blockEvidence header
+          dat <- mustRetrieveBlobByHash $ blockData     header
+          cmt <- mapM mustRetrieveBlobByHash $ blockPrevCommit header
+          return $ Just $ header { blockEvidence   = ev
+                                 , blockData       = dat
+                                 , blockPrevCommit = cmt
+                                 }
+        _ -> error "Impossible"
 
 -- | Retrieve round when commit was made.
 mustRetrieveCommitRound :: (MonadThrow m, MonadQueryRO m a) => Height -> m Round
@@ -229,14 +311,20 @@ mustRetrieveCommitRound h =
 --   time interval after commit.
 retrieveLocalCommit :: (MonadQueryRO m a) => Height -> m (Maybe (Commit a))
 retrieveLocalCommit h =
-  singleQ "SELECT cmt FROM thm_commits WHERE height = ?" (Only h)
+  singleQ "SELECT blob \
+          \  FROM thm_blockchain \
+          \  JOIN thm_cas ON commitref = id \
+          \ WHERE height = ?" (Only h)
 
 -- | Retrieve set of validators for given round.
 --
 --   Must return validator set for every @0 < h <= blockchainHeight + 1@
 retrieveValidatorSet :: (Crypto (Alg a), MonadQueryRO m a) => Height -> m (Maybe (ValidatorSet (Alg a)))
 retrieveValidatorSet h =
-  singleQ "SELECT valset FROM thm_validators WHERE height = ?" (Only h)
+  singleQ "SELECT blob \
+          \  FROM thm_validators \
+          \  JOIN thm_cas ON valref = id \
+          \ WHERE height = ?" (Only h)
 
 hasValidatorSet :: (MonadQueryRO m a) => Height -> m Bool
 hasValidatorSet h = do
@@ -260,8 +348,13 @@ mustRetrieveValidatorSet h
   = throwNothing (DBMissingValSet h) =<< retrieveValidatorSet h
 
 
+
+
+----------------------------------------------------------------
+-- State snapshots
+----------------------------------------------------------------
+
 -- | Retrieve height and state saved as snapshot.
---
 retrieveSavedState :: Serialise s => Query 'RO a (Maybe (Height, s))
 retrieveSavedState =
   singleQWithParser parse "SELECT height, snapshot_blob FROM state_snapshot" ()
@@ -272,6 +365,12 @@ retrieveSavedState =
       | otherwise = Nothing
     parse _ = Nothing
 
+-- | Write state snapshot into DB. @maybeSnapshot@ contains a
+--  serialized value of a state associated with the processed block.
+storeStateSnapshot :: (Serialise s, MonadQueryRW m a) => Height -> s -> m ()
+storeStateSnapshot (Height h) state = do
+  basicExecute "UPDATE state_snapshot SET height = ?, snapshot_blob = ?" (h, serialise state)
+
 
 ----------------------------------------------------------------
 -- Writing to DB
@@ -281,30 +380,31 @@ retrieveSavedState =
 storeCommit
   :: (Crypto (Alg a), Serialise a, CryptoHashable a, MonadQueryRW m a)
   => Commit a -> Block a -> m ()
-storeCommit cmt blk = liftQueryRW $ do
+storeCommit = storeCommitWrk . Just
+
+storeCommitWrk
+  :: (Crypto (Alg a), Serialise a, CryptoHashable a, MonadQueryRW m a)
+  => Maybe (Commit a) -> Block a -> m ()
+storeCommitWrk mcmt blk = liftQueryRW $ do
   let h = blockHeight blk
-      r = voteRound $ signedValue $ NE.head $ commitPrecommits cmt
-  basicExecute "INSERT INTO thm_commits VALUES (?,?)" (h, serialise cmt)
+      r = case mcmt of
+        Just cmt -> voteRound $ signedValue $ NE.head $ commitPrecommits cmt
+        Nothing  -> Round 0
+  _     <- storeBlob $ blockEvidence blk
+  _     <- storeBlob $ blockData     blk
+  _     <- mapM_ storeBlob $ blockPrevCommit blk
+  iBlk  <- storeBlob $ merkled $ toHeader blk
+  miCmt <- mapM (storeBlob . merkled) mcmt
   basicExecute "INSERT INTO thm_blockchain VALUES (?,?,?,?)"
-    ( h
-    , r
-    , CBORed (blockHash blk)
-    , CBORed  blk
-    )
+    ( h, r, iBlk, miCmt )
   basicPutCacheBlock blk
 
 storeValSet
-  :: (Crypto alg, MonadQueryRW m a)
-  => Height -> ValidatorSet alg -> m ()
-storeValSet h vals =
-  basicExecute "INSERT INTO thm_validators VALUES (?,?)"
-    (h, CBORed vals)
-
--- | Write state snapshot into DB.
--- @maybeSnapshot@ contains a serialized value of a state associated with the processed block.
-storeStateSnapshot :: (Serialise s, MonadQueryRW m a) => Height -> s -> m ()
-storeStateSnapshot (Height h) state = do
-  basicExecute "UPDATE state_snapshot SET height = ?, snapshot_blob = ?" (h, serialise state)
+  :: (Crypto (Alg a), MonadQueryRW m a)
+  => Height -> ValidatorSet (Alg a) -> m ()
+storeValSet h vals = liftQueryRW $ do
+  i <- storeBlob $ merkled vals
+  basicExecute "INSERT INTO thm_validators VALUES (?,?)" (h, i)
 
 
 ----------------------------------------------------------------
@@ -367,6 +467,7 @@ readWAL h = do
          | Only bs <- rows
          ]
 
+
 ----------------------------------------------------------------
 -- Evidence
 ----------------------------------------------------------------
@@ -417,24 +518,12 @@ query1 sql p =
     []       -> return Nothing
     [Only a] -> return (Just a)
     _        -> error "Impossible"
-query1_ :: (SQL.FromField x, MonadQueryRO m a)
-        => SQL.Query -> m (Maybe x)
-query1_ sql =
-  basicQuery_ sql >>= \case
-    []       -> return Nothing
-    [Only a] -> return (Just a)
-    _        -> error "Impossible"
 
 -- Query that returns 0 or 1 result which is CBOR-encoded value
 singleQ :: (SQL.ToRow p, Serialise x, MonadQueryRO m a)
         => SQL.Query -> p -> m (Maybe x)
 singleQ sql p = (fmap . fmap) unCBORed
               $ query1 sql p
-
-singleQ_ :: (Serialise x, MonadQueryRO m a)
-         => SQL.Query -> m (Maybe x)
-singleQ_ sql = (fmap . fmap) unCBORed
-             $ query1_ sql
 
 -- Query that returns results parsed from single row ().
 singleQWithParser
