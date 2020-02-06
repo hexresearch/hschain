@@ -44,6 +44,7 @@ import qualified Data.ByteString.Lazy     as BL
 import qualified Data.ByteString.Builder       as Bld
 import qualified Data.ByteString.Builder.Extra as Bld
 import qualified Data.Map.Strict          as Map
+import qualified Data.Sequence            as Seq
 import qualified Data.Set                 as Set
 import qualified Data.List.NonEmpty       as NE
 import qualified Data.Vector              as VecV
@@ -406,6 +407,11 @@ instance CryptoHashable BL.ByteString where
 
 instance CryptoHashable a => CryptoHashable [a] where
   hashStep xs = hashStep (TySequence $ fromIntegral $ length xs)
+             <> foldMap hashStep xs
+  {-# INLINABLE hashStep #-}
+
+instance CryptoHashable a => CryptoHashable (Seq.Seq a) where
+  hashStep xs = hashStep (TySequence $ fromIntegral $ Seq.length xs)
              <> foldMap hashStep xs
   {-# INLINABLE hashStep #-}
 
