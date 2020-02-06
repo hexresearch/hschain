@@ -43,6 +43,7 @@ import HSChain.Types.Blockchain
 import HSChain.Types.Merkle.Types
 import HSChain.Control
 import HSChain.Crypto
+import HSChain.Crypto.Classes.Hash
 import HSChain.Crypto.Ed25519
 import HSChain.Crypto.SHA
 import HSChain.Logger
@@ -67,8 +68,9 @@ type    BState = Map String Int
 newtype BData  = BData [(String,Int)]
   deriving stock    (Show,Eq,Generic)
   deriving anyclass (Serialise)
-  deriving newtype  (CryptoHashable, JSON.ToJSON, JSON.FromJSON)
-
+  deriving newtype  (JSON.ToJSON, JSON.FromJSON)
+instance CryptoHashable BData where
+  hashStep = genericHashStep "hschain-examples"
 
 data KeyValError = KeyValError String
   deriving stock    (Show) 
