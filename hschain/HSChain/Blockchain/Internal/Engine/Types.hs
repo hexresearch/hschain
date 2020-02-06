@@ -229,10 +229,6 @@ data AppChans a = AppChans
   { appChanRx         :: TBQueue (MessageRx 'Unverified a)
     -- ^ Queue for receiving messages related to consensus protocol
     --   from peers.
-  , appChanRxInternal :: TQueue (MessageRx 'Unverified a)
-    -- ^ Queue for sending messages by consensus engine to
-    --   itself. Note that it's unbounded since we must not block when
-    --   writing there.
   , appChanTx      :: TChan (MessageTx a)
     -- ^ TChan for broadcasting messages to the peers
   , appTMState     :: TVar  (Maybe (Height, TMState a))
