@@ -19,7 +19,7 @@ yals.o: yals.c yals.h yils.h makefile
 config.o: config.c config.h cflags.h yils.h makefile
 	$(CC) $(CFLAGS) $(CFLAGS) -c config.c
 config.h: VERSION yals.c yals.h yils.h main.c
-	rm -f $@; ./mkconfig.sh >$@
+	rm -f $@; bash ./mkconfig.sh >$@
 cflags.h: makefile
 	rm -f $@
 	echo '#define YALS_CC "$(shell $(CC) --version|head -1)"' >>$@

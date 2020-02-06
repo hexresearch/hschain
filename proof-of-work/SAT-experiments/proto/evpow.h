@@ -21,11 +21,13 @@
 typedef uint8_t evpow_answer[EVPOW_ANSWER_BYTES];
 
 /* number of literals per clause */
-#define EVPOW_K (4)
+#define EVPOW_K (5)
 
 /* number of clauses per puzzle, depends on EVPOW_K */
 #if EVPOW_K == 4
-#define EVPOW_ADVISED_CLAUSES_COUNT (((1010)*EVPOW_ANSWER_BITS + 99)/100) /* phase transition is at about 9.9 for 4SAT */
+#define EVPOW_ADVISED_CLAUSES_COUNT (((1020)*EVPOW_ANSWER_BITS + 99)/100) /* phase transition is at about 9.9 for 4SAT */
+#elif EVPOW_K == 5
+#define EVPOW_ADVISED_CLAUSES_COUNT (((2050)*EVPOW_ANSWER_BITS + 99)/100) /* phase transition is at about 9.9 for 4SAT */
 #else
 #   error "cannot compute number of clauses for current EVPOW_K"
 #endif

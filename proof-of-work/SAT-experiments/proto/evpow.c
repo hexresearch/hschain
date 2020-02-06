@@ -7,9 +7,32 @@
 
 #include <openssl/sha.h>
 
+#include "evpow.h"
+
+#if 0
 #include "picosat.h"
 
-#include "evpow.h"
+typedef PicoSAT Solver;
+#define solver_new picosat_create
+#define solver_delete picosat_reset
+
+#define SOLVER_SATISFIABLE PICOSAT_SATISFIABLE
+
+#else
+#include "yals.h"
+
+typedef Yals Solver;
+#define solver_new yals_new
+#define solver_set_interrupt(s, d, i) ((void)0)
+#define solver_delete yals_del
+#define solver_add yals_add
+#define solver_sat(a,b) yals_sat(a)
+#define solver_deref yals_deref
+#define solver_set_seed yals_srand
+#define solver_print(s,f) fprintf(f, "not CNF dump for YalSAT\n")
+#define SOLVER_SATISFIABLE (10)
+
+#endif
 
 static int
 check_clock(void*p) {
@@ -60,12 +83,21 @@ create_clause(SHA256_CTX* hash_ctx_for_clause, int clause, int* clause_literals,
 } /* create_clause */
 
 static void
-create_instance(uint8_t* prefix_hash, PicoSAT* solver, int clauses_count, int fixed_bits_count, uint32_t fixed_bits) {
+create_instance(uint8_t* prefix_hash, Solver* solver, int clauses_count, int fixed_bits_count, uint32_t fixed_bits) {
 	int clause;
 	int literal_index;
 	SHA256_CTX ctx_after_hash;
 	SHA256_Init(&ctx_after_hash);
 	SHA256_Update(&ctx_after_hash, prefix_hash, SHA256_DIGEST_LENGTH);
+	for (literal_index = 0; literal_index < fixed_bits_count; literal_index ++) {
+		int variable = literal_index + 1;
+		int literal = variable;
+		if ((fixed_bits & (1 << literal_index)) == 0) {
+			literal = - literal;
+		}
+		solver_add(solver, literal);
+		solver_add(solver, 0);
+	}
 	for (clause = 0; clause < clauses_count; clause++) {
 		int literals[EVPOW_K];
 		create_clause(&ctx_after_hash, clause, literals, clause == clauses_count - 1);
@@ -78,6 +110,7 @@ create_instance(uint8_t* prefix_hash, PicoSAT* solver, int clauses_count, int fi
 		printf("\n");
 #endif
 		int num_literals_remain = EVPOW_K;
+#if 0
 		if (fixed_bits_count > 0) {
 			num_literals_remain = 0;
 			for (literal_index = 0; literal_index < EVPOW_K; literal_index++) {
@@ -99,18 +132,19 @@ create_instance(uint8_t* prefix_hash, PicoSAT* solver, int clauses_count, int fi
 				}
 			}
 		}
+#endif
 		if (num_literals_remain >= 0) { // not trivial.
 			for (literal_index = 0; literal_index < num_literals_remain; literal_index ++) {
-				picosat_add(solver, literals[literal_index]);
+				solver_add(solver, literals[literal_index]);
 			}
-			picosat_add(solver, 0); // close clause.
+			solver_add(solver, 0); // close clause.
 		}
 	}
-	printf("clauses added %d\n", picosat_added_original_clauses(solver));
+	//printf("clauses added %d\n", picosat_added_original_clauses(solver));
 } /* create_instance */
 
 static void
-extract_solution_answer(PicoSAT* solver, uint8_t* answer) {
+extract_solution_answer(Solver* solver, uint8_t* answer) {
 	int i;
 	for (i = 0; i < EVPOW_ANSWER_BYTES; i ++) {
 		answer[i] = 0;
@@ -119,7 +153,7 @@ extract_solution_answer(PicoSAT* solver, uint8_t* answer) {
 	//printf("answer (least significant bit first):");
 	for (i = 0; i < EVPOW_ANSWER_BITS; i ++) {
 		int lit = i + 1;
-		int is_true = picosat_deref(solver, lit) > 0; // 1 means "true", -1 means "false" and 0 is unknown (must not be).
+		int is_true = solver_deref(solver, lit) > 0; // 1 means "true", -1 means "false" and 0 is unknown (must not be).
 		answer[i / 8] |= is_true << (i % 8);
 		//if (0 == (i % 8)) { printf(" "); }
 		//printf("%d", is_true);
@@ -170,7 +204,7 @@ under_complexity_threshold(uint8_t* hash, int complexity_shift, uint16_t complex
 } /* under_complexity_threshold */
 
 static int
-find_answer(SHA256_CTX* context_after_prefix, uint8_t* answer, uint8_t* full_hash, int milliseconds_allowance, int complexity_shift, uint16_t complexity_mantissa, PicoSAT* solver, int32_t attempts_count, int32_t* attempts_done) {
+find_answer(SHA256_CTX* context_after_prefix, uint8_t* answer, uint8_t* full_hash, int milliseconds_allowance, int complexity_shift, uint16_t complexity_mantissa, Solver* solver, int32_t attempts_count, int32_t* attempts_done) {
 	int attempts = 0;
 	clock_t end_time;
 	clock_t last_time;
@@ -179,7 +213,7 @@ find_answer(SHA256_CTX* context_after_prefix, uint8_t* answer, uint8_t* full_has
 	last_time = clock();
 	if (milliseconds_allowance > 0) {
 		end_time = last_time + (milliseconds_allowance * CLOCKS_PER_SEC + 999)/1000;
-		picosat_set_interrupt(solver, (void*)&end_time, check_clock);
+		solver_set_interrupt(solver, (void*)&end_time, check_clock);
 	}
 	//printf("complexity shift %d, mantissa %04x\n", complexity_shift, complexity_mantissa);
 	while (attempts_count <= 0 || attempts < attempts_count) {
@@ -187,10 +221,10 @@ find_answer(SHA256_CTX* context_after_prefix, uint8_t* answer, uint8_t* full_has
 		// obtain a solution.
 		int status;
 		int i;
-	       	status = picosat_sat(solver, -1);
+	       	status = solver_sat(solver, -1);
 		//printf("decisions made %llu, propagations made %llu\n", picosat_decisions(solver), picosat_propagations(solver));
 		//printf("status %d\n", status);
-		if (status != PICOSAT_SATISFIABLE) {
+		if (status != SOLVER_SATISFIABLE) {
 			break;
 		} else {
 			clock_t curr_time = clock();
@@ -222,9 +256,9 @@ find_answer(SHA256_CTX* context_after_prefix, uint8_t* answer, uint8_t* full_has
 			if ((answer [i / 8] & (1 << (i % 8))) != 0) {
 				literal = -variable;
 			}
-			picosat_add(solver, literal);
+			solver_add(solver, literal);
 		}
-		picosat_add(solver, 0); // finalize clause addition. we are ready for another picosat_sat() call.
+		solver_add(solver, 0); // finalize clause addition. we are ready for another solver_sat() call.
 	}
 	return 0;
 } /* find_answer */
@@ -247,7 +281,7 @@ evpow_solve( uint8_t* prefix
 	SHA256_CTX prefix_hash_context;
 	SHA256_CTX intermediate_prefix_hash_context;
 	uint8_t prefix_hash[SHA256_DIGEST_LENGTH];
-	PicoSAT* solver;
+	Solver* solver;
 	int r;
 
 	// Compute hash of prefix.
@@ -262,11 +296,11 @@ evpow_solve( uint8_t* prefix
 	}
 
 	// Create and configure picosat instance.
-	solver = picosat_init();
+	solver = solver_new();
 	if (!solver) {
 		return 0;
 	}
-	picosat_set_seed(solver, 1); // get predictable results.
+	solver_set_seed(solver, 1); // get predictable results.
 
 	// Create instance and feed it to solver.
 	create_instance(prefix_hash, solver, clauses_count, fixed_bits_count, fixed_bits);
@@ -274,7 +308,7 @@ evpow_solve( uint8_t* prefix
 	if (cnf_fn) {
 		FILE* f=fopen(cnf_fn, "w");
 		if (f) {
-			picosat_print(solver, f);
+			solver_print(solver, f);
 			fclose(f);
 		} else {
 			printf("unable to create CNF file %s\n", cnf_fn);
@@ -284,7 +318,7 @@ evpow_solve( uint8_t* prefix
 	// find solution if we can.
 	r = find_answer(&prefix_hash_context, answer, solution_hash, milliseconds_allowance, complexity_shift, complexity_mantissa, solver, attempts_allowed, attempts_done);
 
-	picosat_reset(solver);
+	solver_delete(solver);
 	return r;
 } /* evpow_solve */
 

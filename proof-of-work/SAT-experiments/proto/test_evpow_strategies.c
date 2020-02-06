@@ -15,7 +15,7 @@ typedef struct test_rec_s {
         evpow_hash      hash;
 } test_rec_t;
 
-#define MAX_FIXED_BITS (16)
+#define MAX_FIXED_BITS (10)
 #define MAX_NUMBER_OF_SEARCHES (1 << MAX_FIXED_BITS)
 
 /**
@@ -56,7 +56,7 @@ energy_expenditure_performance_for_advised_parameters(FILE* report) {
 			           , EVPOW_ADVISED_CLAUSES_COUNT
 			           , 4
 			           , 0xffff
-			           , 100000
+			           , 10
 			           , -1
 			           , NULL
 			           , fixed_bits_count     // you may spawn several parallel attempts to solve the puzzle with some bits fixed (up to 32 bits)
