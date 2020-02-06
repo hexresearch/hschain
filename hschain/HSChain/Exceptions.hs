@@ -30,6 +30,7 @@ data CorruptedDBError
   | DBMissingBlockID      !Height -- ^ Missing block ID
   | DBMissingRound        !Height -- ^ Missing commit round
   | DBInvalidValidatorSet !Height -- ^ Invalid validators set at given height
+  | DBMissingBlob
   deriving stock    (Show)
   deriving anyclass (Exception)
 
