@@ -51,6 +51,8 @@ import qualified Data.Vector              as VecV
 import qualified Data.Vector.Unboxed      as VecU
 import qualified Data.Vector.Storable     as VecS
 import qualified Data.Vector.Primitive    as VecP
+import qualified Data.Text                as T
+import qualified Data.Text.Lazy           as TL
 import Data.Bits
 import Data.Functor.Classes
 import Data.String
@@ -401,6 +403,14 @@ instance CryptoHashable ByteString where
 instance CryptoHashable BL.ByteString where
   hashStep bs = hashStep (PrimBytes $ fromIntegral $ BL.length bs)
              <> Bld.lazyByteString bs
+
+instance CryptoHashable T.Text where
+  hashStep ts = hashStep (TySequence $ fromIntegral $ T.length ts)
+             <> T.foldr  (\c b -> hashStep c <> b) mempty ts
+
+instance CryptoHashable TL.Text where
+  hashStep ts = hashStep (TySequence $ fromIntegral $ TL.length ts)
+             <> TL.foldr  (\c b -> hashStep c <> b) mempty ts
 
 ----------------------------------------
 -- Normal data types
