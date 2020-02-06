@@ -9,27 +9,105 @@
 
 #include "evpow.h"
 
-#if 0
+#if 01
 #include "picosat.h"
 
 typedef PicoSAT Solver;
-#define solver_new picosat_create
+#define solver_new picosat_init
 #define solver_delete picosat_reset
+#define solver_print picosat_print
+#define solver_add picosat_add
+#define solver_sat picosat_sat
+#define solver_deref picosat_deref
+#define solver_set_interrupt picosat_set_interrupt
+#define solver_set_seed picosat_set_seed
 
 #define SOLVER_SATISFIABLE PICOSAT_SATISFIABLE
 
 #else
 #include "yals.h"
 
-typedef Yals Solver;
-#define solver_new yals_new
+typedef struct solver_s {
+	Yals*    inner_solver;
+	int      seed;
+	int*     literals_added;
+	int      literals_added_count;
+	int      literals_added_capacity;
+} Solver;
+Solver* solver_new(void) {
+	Solver* solver = malloc(sizeof(*solver));
+	if (!solver) {
+		printf("unable to allocate solver\n");
+		exit(1);
+	}
+	solver->inner_solver = NULL;
+	solver->seed = 0;
+	solver->literals_added_count = 0;
+	solver->literals_added_capacity = 16384;
+	solver->literals_added = malloc(solver->literals_added_capacity * sizeof(*solver->literals_added));
+	if (!solver->literals_added) {
+		printf("unable to allocate literals cache\n");
+		exit(1);
+	}
+	return solver;
+} /* solver_new */
+void solver_delete(Solver*solver) {
+	if (!solver) { return ; }
+	if (solver->inner_solver) {
+		yals_del(solver->inner_solver);
+	}
+	if (solver->literals_added) {
+		free(solver->literals_added);
+	}
+	free(solver);
+} /* solver_delete */
 #define solver_set_interrupt(s, d, i) ((void)0)
-#define solver_delete yals_del
-#define solver_add yals_add
-#define solver_sat(a,b) yals_sat(a)
-#define solver_deref yals_deref
-#define solver_set_seed yals_srand
-#define solver_print(s,f) fprintf(f, "not CNF dump for YalSAT\n")
+void solver_add(Solver*solver, int literal) {
+	if (solver->literals_added_count >= solver->literals_added_capacity) {
+		solver->literals_added_capacity *= 2;
+		solver->literals_added = reaalloc(solver->literals_added, solver->literals_added_capacity * sizeof(*solver->literals_added));
+		if (!solver->literals_added) {
+			printf("unable to realloc added literals cache\n");
+			exit(1);
+		}
+	}
+	soiver->literals_added[solver->literals_added_count] = literal;
+	solver->literals_added_count ++;
+} /* solver_add */
+void solver_sat(Solver* solver, int decision_limit_unused) {
+	int i;
+	(void)decision_limit_unused;
+	if (solver->inner_solver) {
+		yals_del(solver->inner_solver);
+	}
+	solver->inner_solver = yals_new();
+	yals_srand(solver->inner_solver, solver->seed);
+	solver->seed ++; // choose some other value than last call.
+        for (i=0;i<solver->literals_added_count; i++) {
+		yals_add(solver->inner_solver, solver->literals_added);
+	}
+	return yals_sat(solver->inner_solver);
+} /* solver_sat */
+#define solver_deref(solver, lit) yals_deref(solver->inner_solver, lit)
+void solver_set_seed(Solver*solver, int seed) {
+	solver->seed = seed;
+} /* solver_set_seed */
+void solver_print(Solver*solver, FILE*f) {
+	int i, maxvar = 0, clause_count = 0;
+	for (i=0;i<solver->literals_added_count;i++) {
+		int var = abs(solver->literals_added[i]);
+		clause_count += var == 0 ? 1 : 0;
+		maxlit = var > maxlit ? var : maxlit;
+	}
+	fprintf(f, "p cnf %d %d\n", maxvar, clause_count);
+	for (i=0;i<solver->literals_added_count;i++) {
+		fprintf(f, " %d", solver->literals_added[i]);
+		if (!solver->literals_added[i]) {
+			fprintf(f, "\n");
+		}
+	}
+} /* solver_print */
+
 #define SOLVER_SATISFIABLE (10)
 
 #endif
