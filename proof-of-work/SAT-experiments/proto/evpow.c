@@ -9,7 +9,7 @@
 
 #include "evpow.h"
 
-#if 01
+#if 0
 #include "picosat.h"
 
 typedef PicoSAT Solver;
@@ -65,27 +65,39 @@ void solver_delete(Solver*solver) {
 void solver_add(Solver*solver, int literal) {
 	if (solver->literals_added_count >= solver->literals_added_capacity) {
 		solver->literals_added_capacity *= 2;
-		solver->literals_added = reaalloc(solver->literals_added, solver->literals_added_capacity * sizeof(*solver->literals_added));
+		solver->literals_added = realloc(solver->literals_added, solver->literals_added_capacity * sizeof(*solver->literals_added));
 		if (!solver->literals_added) {
 			printf("unable to realloc added literals cache\n");
 			exit(1);
 		}
 	}
-	soiver->literals_added[solver->literals_added_count] = literal;
+	solver->literals_added[solver->literals_added_count] = literal;
 	solver->literals_added_count ++;
 } /* solver_add */
-void solver_sat(Solver* solver, int decision_limit_unused) {
+int solver_sat(Solver* solver, int decision_limit_unused) {
 	int i;
 	(void)decision_limit_unused;
-	if (solver->inner_solver) {
-		yals_del(solver->inner_solver);
-	}
+	Yals* old_solver = solver->inner_solver;
 	solver->inner_solver = yals_new();
+	if (old_solver) {
+		// we have run solve process before, copy old solution into new.
+		int i;
+		for (i = 0; i < EVPOW_ANSWER_BITS; i++) {
+			int lit = i + 1;
+			int phase = yals_deref(old_solver, lit);
+			if (phase <= 0) {
+				lit = -lit;
+			}
+			yals_setphase(solver->inner_solver, lit);
+		}
+		yals_del(old_solver);
+	}
 	yals_srand(solver->inner_solver, solver->seed);
 	solver->seed ++; // choose some other value than last call.
         for (i=0;i<solver->literals_added_count; i++) {
-		yals_add(solver->inner_solver, solver->literals_added);
+		yals_add(solver->inner_solver, solver->literals_added[i]);
 	}
+	yals_setflipslimit(solver->inner_solver, 2500000); // we have typical speed of about 2.5e6 flips/sec.
 	return yals_sat(solver->inner_solver);
 } /* solver_sat */
 #define solver_deref(solver, lit) yals_deref(solver->inner_solver, lit)
@@ -97,7 +109,7 @@ void solver_print(Solver*solver, FILE*f) {
 	for (i=0;i<solver->literals_added_count;i++) {
 		int var = abs(solver->literals_added[i]);
 		clause_count += var == 0 ? 1 : 0;
-		maxlit = var > maxlit ? var : maxlit;
+		maxvar = var > maxvar ? var : maxvar;
 	}
 	fprintf(f, "p cnf %d %d\n", maxvar, clause_count);
 	for (i=0;i<solver->literals_added_count;i++) {

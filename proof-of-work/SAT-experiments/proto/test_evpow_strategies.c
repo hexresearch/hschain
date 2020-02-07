@@ -15,7 +15,8 @@ typedef struct test_rec_s {
         evpow_hash      hash;
 } test_rec_t;
 
-#define MAX_FIXED_BITS (10)
+#define MIN_FIXED_BITS (7)
+#define MAX_FIXED_BITS (8)
 #define MAX_NUMBER_OF_SEARCHES (1 << MAX_FIXED_BITS)
 
 /**
@@ -32,57 +33,62 @@ void
 energy_expenditure_performance_for_advised_parameters(FILE* report) {
 	int64_t search_time[MAX_NUMBER_OF_SEARCHES];
 	int found_answer[MAX_NUMBER_OF_SEARCHES];
-	int fixed_bits_count;
+	int fixed_bits_count, complexity_shift;
 	test_rec_t testrec;
 	memset(&testrec, 0, sizeof(testrec));
 	testrec.some_bytes[0] = 123;
 	testrec.some_bytes[1] = 222; // for something fancier than just zeroes.
-	for (fixed_bits_count = 0; fixed_bits_count < MAX_FIXED_BITS; fixed_bits_count ++) {
-		uint32_t fixed_bits;
-		int64_t min_answer_time = 1000000000; // 1e6 seconds - much more that 100 seconds of time allowed.
-		int found_count = 0;
-		printf("fixed bits count %d\n", fixed_bits_count);
-		for (fixed_bits = 0; fixed_bits < (1 << fixed_bits_count); fixed_bits ++) {
-			char fn[100];
-			clock_t start = clock();
-			clock_t end, delta;
-			int64_t milliseconds;
-			sprintf(fn, "count-%02d-bits-%08x-dump.cnf", fixed_bits_count, fixed_bits);
-			int found = evpow_solve
-				   ( testrec.some_bytes
-			           , sizeof(testrec.some_bytes)
-			           , testrec.answer
-			           , testrec.hash
-			           , EVPOW_ADVISED_CLAUSES_COUNT
-			           , 4
-			           , 0xffff
-			           , 10
-			           , -1
-			           , NULL
-			           , fixed_bits_count     // you may spawn several parallel attempts to solve the puzzle with some bits fixed (up to 32 bits)
-			           , fixed_bits      // to what value these bits are fixed
-				   , fn
-           			   );
-			end = clock();
-			found_answer[fixed_bits] = found;
-			milliseconds = ((end - start) * 1000 + CLOCKS_PER_SEC - 1) / CLOCKS_PER_SEC;
-			search_time[fixed_bits] = milliseconds;
-			found_count += found ? 1 : 0;
-			if (found && milliseconds < min_answer_time) {
-				min_answer_time = milliseconds;
+	for (complexity_shift = 4; complexity_shift < 10; complexity_shift ++) {
+		for (fixed_bits_count = MIN_FIXED_BITS; fixed_bits_count < MAX_FIXED_BITS; fixed_bits_count ++) {
+			uint32_t fixed_bits;
+			int64_t min_answer_time = 1000000000; // 1e6 seconds - much more that 100 seconds of time allowed.
+			int found_count = 0;
+			printf("fixed bits count %d, complexity shift %d\n", fixed_bits_count, complexity_shift);
+			for (fixed_bits = 0; fixed_bits < (1 << fixed_bits_count); fixed_bits ++) {
+				char fn[100];
+				clock_t start = clock();
+				clock_t end, delta;
+				int64_t milliseconds;
+				sprintf(fn, "count-%02d-bits-%08x-dump.cnf", fixed_bits_count, fixed_bits);
+				int found = evpow_solve
+					   ( testrec.some_bytes
+				           , sizeof(testrec.some_bytes)
+			        	   , testrec.answer
+				           , testrec.hash
+				           , EVPOW_ADVISED_CLAUSES_COUNT
+				           , 4
+				           , 0xffff
+			        	   , 10
+				           , -1
+				           , NULL
+				           , fixed_bits_count     // you may spawn several parallel attempts to solve the puzzle with some bits fixed (up to 32 bits)
+				           , fixed_bits      // to what value these bits are fixed
+					   , fn
+           				   );
+				end = clock();
+				found_answer[fixed_bits] = found;
+				milliseconds = ((end - start) * 1000 + CLOCKS_PER_SEC - 1) / CLOCKS_PER_SEC;
+				search_time[fixed_bits] = milliseconds;
+				found_count += found ? 1 : 0;
+				if (found && milliseconds < min_answer_time) {
+					min_answer_time = milliseconds;
+				}
+				printf("bits %04x: %s in %ld milliseconds\n", fixed_bits, found ? "found" : "not found", milliseconds);
 			}
-			printf("bits %04x: %s in %ld milliseconds\n", fixed_bits, found ? "found" : "not found", milliseconds);
-		}
-		int64_t sum_time = 0;
-		for (fixed_bits = 0; fixed_bits < (1 << fixed_bits_count); fixed_bits ++) {
-			int64_t ms = search_time[fixed_bits];
-			if (ms > min_answer_time) { // we think we can stop stale searches immediately. good enough.
-				ms = min_answer_time;
+			int64_t sum_time = 0;
+			for (fixed_bits = 0; fixed_bits < (1 << fixed_bits_count); fixed_bits ++) {
+				int64_t ms = search_time[fixed_bits];
+				if (ms > min_answer_time) {
+					// we think we can stop stale searches immediately. good enough.
+					// also note that we can find no answer faster than minimum time
+					// needed for an answer.
+					ms = min_answer_time;
+				}
+				sum_time += ms;
 			}
-			sum_time += ms;
+			fprintf(report, "complexity shift %d, fixed bits count %d, summary search time %ld (ms), number of branches with answer %d, minimum time to answer %ld\n", complexity_shift, fixed_bits_count, sum_time, found_count, min_answer_time);
+			fflush(report);
 		}
-		fprintf(report, "fixed bits count %d, summary search time %ld (ms), number of branches with answer %d, minimum time to answer %ld\n", fixed_bits_count, sum_time, found_count, min_answer_time);
-		fflush(report);
 	}
 } /* energy_expenditure_performance_for_advised_parameters */
 
@@ -93,6 +99,9 @@ main(void) {
 		printf("unable to open a report file\n");
 		return 1;
 	}
+        setvbuf(stdout, NULL, _IONBF, 0);
+        setvbuf(stderr, NULL, _IONBF, 0);
 	energy_expenditure_performance_for_advised_parameters(report);
 	return 0;
 } /* main */
+
