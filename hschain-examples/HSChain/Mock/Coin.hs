@@ -88,8 +88,10 @@ import qualified HSChain.P2P.Network as P2P
 --   instance.
 newtype BData = BData [Tx]
   deriving stock    (Show,Eq,Generic)
-  deriving newtype  (NFData,CryptoHashable,JSON.ToJSON,JSON.FromJSON)
+  deriving newtype  (NFData,JSON.ToJSON,JSON.FromJSON)
   deriving anyclass (Serialise)
+instance CryptoHashable BData where
+  hashStep = genericHashStep "hschain-examples"
 
 -- | Error in coin transaction processing
 data CoinError
