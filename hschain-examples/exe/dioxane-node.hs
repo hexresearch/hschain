@@ -36,14 +36,12 @@ import GHC.Generics (Generic)
 import HSChain.Blockchain.Internal.Engine.Types
 import HSChain.Control
 import HSChain.Crypto         (publicKey)
-import HSChain.Debug.Trace
 import HSChain.Logger
 import HSChain.Mock
 import HSChain.Mock.Dioxane
 import HSChain.Mock.KeyList
 import HSChain.Mock.Types
 import HSChain.Monitoring
-import HSChain.P2P            (generatePeerId)
 import HSChain.P2P.Network    (newNetworkTcp)
 import HSChain.Run
 import HSChain.Store
@@ -59,14 +57,14 @@ import qualified HSChain.P2P.Types as P2PT
 newtype MonitorT m a = MonitorT (ReaderT PrometheusGauges m a)
   deriving ( Functor,Applicative,Monad
            , MonadIO,MonadMask,MonadThrow,MonadCatch
-           , MonadLogger,MonadFork,MonadTrace )
+           , MonadLogger,MonadFork)
 
 instance MonadIO m =>  MonadTMMonitoring (MonitorT m) where
-  usingCounter getter n   = MonitorT $ flip addCounterNow n =<< asks getter
-  usingGauge   getter x   = MonitorT $ flip setTGaugeNow x =<< asks getter
-  usingVector  getter l x = MonitorT $ do
+  usingCounter getter n = MonitorT $ flip addCounterNow n =<< asks getter
+  usingGauge   getter x = MonitorT $ flip setTGaugeNow x =<< asks getter
+  usingVector  getter l = MonitorT $ do
     g <- asks getter
-    setTGVectorNow g l x
+    incTCVectorNow g l
 
 runMonitorT :: PrometheusGauges -> MonitorT m a -> m a
 runMonitorT g (MonitorT m) = runReaderT m g
@@ -117,8 +115,7 @@ main = do
   -- Start node
   evalContT $ do
     -- Create network
-    peerId <- generatePeerId
-    let peerInfo = P2PT.PeerInfo peerId nodePort 0
+    let peerInfo = P2PT.PeerInfo nodePort 0
         bnet     = BlockchainNet { bchNetwork      = newNetworkTcp peerInfo
                                  , bchInitialPeers = nodeSeeds
                                  }

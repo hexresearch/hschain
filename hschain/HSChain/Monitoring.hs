@@ -15,7 +15,7 @@ module HSChain.Monitoring (
   , MonadTMMonitoring(..)
   , addCounterNow
   , setTGaugeNow
-  , setTGVectorNow
+  , incTCVectorNow
   ) where
 
 import Control.Monad
@@ -32,7 +32,6 @@ import Prometheus
 
 import HSChain.Logger      (LoggerT(..),NoLogsT(..),StdoutLogT(..))
 import HSChain.Store       (DBT(..))
-import HSChain.Debug.Trace (TracerT(..))
 import HSChain.Types.Blockchain
 
 ----------------------------------------------------------------
@@ -42,9 +41,6 @@ import HSChain.Types.Blockchain
 -- | Prometheus gauge to which values of given type could e written
 data TGauge a = TGauge (a -> Double) !Gauge
 
--- | Prometheus vector of gauges
-data TGVector l a = TGVector (a -> Double) !(Vector l Gauge)
-
 -- | Collection of metrics for monitoring. This is dictionary of
 --   functions which should be called to update
 data PrometheusGauges = PrometheusGauges
@@ -52,11 +48,12 @@ data PrometheusGauges = PrometheusGauges
   , prometheusRound            :: !(TGauge Round)
   , prometheusNTx              :: !Counter
   , prometheusNumPeers         :: !(TGauge Int)
+  , prometheusKnownAddrs       :: !(TGauge Int)
   , prometheusMempoolSize      :: !(TGauge Int)
   , prometheusMempoolAdded     :: !(TGauge Int)
   , prometheusMempoolDiscarded :: !(TGauge Int)
   , prometheusMempoolFiltered  :: !(TGauge Int)
-  , prometheusGossip           :: !(TGVector (Text,Text) Int)
+  , prometheusGossip           :: !(Vector (Text,Text) Counter)
   , prometheusMsgQueue         :: !(TGauge   Natural)
   }
 
@@ -78,6 +75,9 @@ createMonitoring prefix = do
   prometheusNumPeers    <- makeGauge fromIntegral
     "peers_total"
     "Number of current connected peers"
+  prometheusKnownAddrs  <- makeGauge fromIntegral
+    "peers_known"
+    "Number of known peer addresses"
   -- Mempool
   prometheusMempoolSize <- makeGauge fromIntegral
     "mempool_size_total"
@@ -92,7 +92,7 @@ createMonitoring prefix = do
     "mempool_filtered_total"
     "Number of transactions which were removed after being added"
   -- Gossip
-  prometheusGossip <- makeVector fromIntegral ("dir","type")
+  prometheusGossip <- makeVector ("dir","type")
     "gossip_total"
     "Gossip statistics"
   --
@@ -109,9 +109,8 @@ createMonitoring prefix = do
       g <- register $ gauge $ Info (prefix <> "_" <> nm) help
       return $ TGauge f g
     --
-    makeVector f label nm help = do
-      v <- register $ vector label $ gauge $ Info (prefix <> "_" <> nm) help
-      return $ TGVector f v
+    makeVector label nm help = do
+      register $ vector label $ counter $ Info (prefix <> "_" <> nm) help
 
 ----------------------------------------------------------------
 -- Monadic API
@@ -126,13 +125,13 @@ class Monad m => MonadTMMonitoring m where
   --
   usingGauge   :: (PrometheusGauges -> TGauge a) -> a -> m ()
   default usingGauge :: (m ~ t n, MonadTrans t, MonadTMMonitoring n)
-                       => (PrometheusGauges -> TGauge a) -> a -> m ()
+                     => (PrometheusGauges -> TGauge a) -> a -> m ()
   usingGauge f n = lift $ usingGauge f n
   --
-  usingVector  :: (Label l) => (PrometheusGauges -> TGVector l a) -> l -> a -> m ()
+  usingVector  :: (Label l) => (PrometheusGauges -> Vector l Counter) -> l -> m ()
   default usingVector :: (m ~ t n, MonadTrans t, MonadTMMonitoring n, Label l)
-                       => (PrometheusGauges -> TGVector l a) -> l -> a -> m ()
-  usingVector f l n = lift $ usingVector f l n
+                      => (PrometheusGauges -> Vector l Counter) -> l -> m ()
+  usingVector f l = lift $ usingVector f l
 
 addCounterNow :: (MonadIO m) => Counter -> Int -> m ()
 addCounterNow cnt = void . runMonitorNowT . addCounter cnt . fromIntegral
@@ -140,9 +139,9 @@ addCounterNow cnt = void . runMonitorNowT . addCounter cnt . fromIntegral
 setTGaugeNow :: (MonadIO m) => TGauge a -> a ->  m ()
 setTGaugeNow (TGauge f g) x = runMonitorNowT $ setGauge g (f x)
 
-setTGVectorNow :: (Label l, MonadIO m) => TGVector l a -> l -> a -> m ()
-setTGVectorNow (TGVector f v) l x = runMonitorNowT $
-  withLabel v l (\g -> setGauge g (f x))
+incTCVectorNow :: (Label l, MonadIO m) => Vector l Counter -> l -> m ()
+incTCVectorNow v l = runMonitorNowT $
+  withLabel v l incCounter
 
 
 newtype MonitorNowT m a = MonitorNowT { runMonitorNowT :: m a }
@@ -154,14 +153,13 @@ instance MonadIO m => MonadMonitor (MonitorNowT m) where
 
 -- | IO doesn't have monitoring
 instance MonadTMMonitoring IO where
-  usingCounter _ _   = return ()
-  usingGauge   _ _   = return ()
-  usingVector  _ _ _ = return ()
+  usingCounter _ _ = return ()
+  usingGauge   _ _ = return ()
+  usingVector  _ _ = return ()
 
 instance MonadTMMonitoring m => MonadTMMonitoring (LoggerT    m)
 instance MonadTMMonitoring m => MonadTMMonitoring (NoLogsT    m)
 instance MonadTMMonitoring m => MonadTMMonitoring (StdoutLogT m)
-instance MonadTMMonitoring m => MonadTMMonitoring (TracerT    m)
 instance MonadTMMonitoring m => MonadTMMonitoring (DBT rm a m)
 instance MonadTMMonitoring m => MonadTMMonitoring (Proxy a b c d m)
 instance MonadTMMonitoring m => MonadTMMonitoring (ReaderT   r m)

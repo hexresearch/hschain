@@ -98,7 +98,6 @@ import HSChain.Blockchain.Internal.Types
 import HSChain.Control                (MonadFork)
 import HSChain.Crypto
 import HSChain.Crypto.Containers
-import HSChain.Debug.Trace
 import HSChain.Logger                 (MonadLogger)
 import HSChain.Store.Internal.Query
 import HSChain.Store.Internal.BlockDB
@@ -113,7 +112,7 @@ import HSChain.Types.Validators
 newtype DBT rw a m x = DBT (ReaderT (Connection rw a) m x)
   deriving ( Functor, Applicative, Monad
            , MonadIO, MonadThrow, MonadCatch, MonadMask
-           , MonadFork, MonadLogger, MonadTrace, MonadFail
+           , MonadFork, MonadLogger, MonadFail
            )
 
 instance MFunctor (DBT rw a) where

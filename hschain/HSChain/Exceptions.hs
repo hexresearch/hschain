@@ -16,9 +16,12 @@ import HSChain.Types.Blockchain
 
 -- | Some network error.
 data NetworkError
-  = ConnectionTimedOut
-  | NoAddressAvailable
-  | CantReverseLookipHostname
+  = ConnectionTimedOut          -- ^ Connection timed out
+  | NoAddressAvailable          -- ^ 
+  | CantReverseLookipHostname   -- ^
+  | ConnectionClosed            -- ^
+  | ConnectionLoop
+  | SelfConnection
   deriving stock    (Show)
   deriving anyclass (Exception)
 

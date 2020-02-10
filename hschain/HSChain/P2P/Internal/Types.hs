@@ -1,26 +1,47 @@
-{-# LANGUAGE DataKinds            #-}
-{-# LANGUAGE DeriveGeneric        #-}
-{-# LANGUAGE FlexibleContexts     #-}
-{-# LANGUAGE OverloadedStrings    #-}
-{-# LANGUAGE StandaloneDeriving   #-}
-{-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE DataKinds                  #-}
+{-# LANGUAGE DeriveAnyClass             #-}
+{-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE DerivingStrategies         #-}
+{-# LANGUAGE FlexibleContexts           #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE StandaloneDeriving         #-}
+{-# LANGUAGE UndecidableInstances       #-}
 
 module HSChain.P2P.Internal.Types where
 
 import Codec.Serialise        (Serialise)
-import Control.Concurrent.STM (STM, TChan)
+import Control.Concurrent.STM
+import Control.Monad.Catch
+import Control.Monad.IO.Class
+import Data.Word
+import Data.Set               (Set)
+import qualified Data.Set        as Set
+import System.Random          (randomIO)
 import GHC.Generics           (Generic)
 
+import HSChain.Control                          (Shepherd,atomicallyIO)
 import HSChain.Blockchain.Internal.Engine.Types (NetworkCfg)
 import HSChain.Blockchain.Internal.Types        (Announcement, MessageTx, MessageRx, TMState)
 import HSChain.Crypto                           (Crypto, SignedState(..), CryptoHashable(..))
 import HSChain.P2P.Types                        (NetAddr)
-
 import HSChain.Types
+import HSChain.P2P.Internal.PeerRegistry
 
-import HSChain.P2P.Internal.Logging
 
-import qualified Katip
+-- | Random nonce which is used to detect self-connections
+newtype GossipNonce = GossipNonce Word64
+  deriving newtype (Show,Eq,Ord,Serialise)
+
+-- | Message sent by node initiating connection
+data GossipHello = GossipHello !GossipNonce !Word16
+  deriving stock    (Show,Eq,Generic)
+  deriving anyclass (Serialise)
+
+-- | Message sent as reply to GossipHello
+data GossipAck = GossipAck
+  deriving stock    (Show,Eq,Generic)
+  deriving anyclass (Serialise)
 
 
 -- | Messages which peers exchange with each other
@@ -47,10 +68,6 @@ data PexMessage
   -- ^ Peer need yet connections to peers
   | PexMsgMorePeers ![NetAddr]
   -- ^ Some addresses of other connected peers
-  | PexPing
-  -- ^ Message to estimate connection speed between peers
-  | PexPong
-  -- ^ Answer for Ping
   deriving (Show, Generic)
 
 instance Serialise PexMessage
@@ -60,27 +77,40 @@ instance Serialise PexMessage
 data PeerChans a = PeerChans
   { peerChanTx              :: !(TChan (MessageTx a))
     -- ^ Broadcast channel for outgoing messages
-  , peerChanPex             :: !(TChan PexMessage)
-    -- ^ Broadcast channel for outgoing PEX messages
-  , peerChanPexNewAddresses :: !(TChan [NetAddr])
-    -- ^ Channel for new addreses
   , peerChanRx              :: !(MessageRx 'Unverified a -> STM ())
     -- ^ STM action for sending message to main application
   , consensusState          :: !(STM (Maybe (Height, TMState a)))   -- TODO try strict Maybe and Tuple
     -- ^ Read only access to current state of consensus state machine
   , p2pConfig               :: !NetworkCfg
-
-  , gossipCnts              :: !GossipCounters
+  , peerShepherd            :: !Shepherd
+  , peerNonceSet            :: !NonceSet
+  , peerRegistry            :: !PeerRegistry
   }
 
--- | Dump GossipMsg without (Show) constraints
---
-showGossipMsg :: GossipMsg a -> Katip.LogStr
-showGossipMsg (GossipPreVote _)   = "GossipPreVote {}"
-showGossipMsg (GossipPreCommit _) = "GossipPreCommit {}"
-showGossipMsg (GossipProposal _)  = "GossipProposal {}"
-showGossipMsg (GossipBlock _)     = "GossipBlock {}"
-showGossipMsg (GossipAnn ann)     = "GossipAnn { " <> Katip.showLS ann <> " }"
-showGossipMsg (GossipTx _)        = "GossipTx {}"
-showGossipMsg (GossipPex p)       = "GossipPex { " <> Katip.showLS p <> " }"
 
+----------------------------------------------------------------
+-- Storage for nonces
+----------------------------------------------------------------
+
+newtype NonceSet = NonceSet (TVar (Set GossipNonce))
+
+newNonceSet :: MonadIO m => m NonceSet
+newNonceSet = NonceSet <$> liftIO (newTVarIO mempty)
+
+withGossipNonce
+  :: (MonadIO m, MonadMask m)
+  => NonceSet
+  -> (GossipNonce -> m a)
+  -> m a
+withGossipNonce (NonceSet tvNonces) action = do
+  nonce <- GossipNonce <$> liftIO randomIO
+  let ini  = do atomicallyIO $ modifyTVar' tvNonces $ Set.insert nonce
+                return nonce
+      fini = atomicallyIO . modifyTVar' tvNonces . Set.delete
+  bracket ini fini action
+
+-- | Returns true if nonce is among
+isSelfConnection :: MonadIO m => NonceSet -> GossipNonce -> m Bool
+isSelfConnection (NonceSet tvNonces) nonce = do
+  nonceSet <- liftIO $ readTVarIO tvNonces
+  return $! nonce `Set.member` nonceSet

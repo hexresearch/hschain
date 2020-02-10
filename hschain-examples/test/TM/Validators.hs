@@ -37,7 +37,6 @@ import HSChain.Crypto
 import HSChain.Crypto.Classes.Hash
 import HSChain.Crypto.Ed25519 (Ed25519)
 import HSChain.Crypto.SHA     (SHA512)
-import HSChain.Debug.Trace
 import HSChain.Logger
 import HSChain.Mock.KeyList (makePrivKeyStream)
 import HSChain.Mock.Types
@@ -232,7 +231,7 @@ transitions = BChLogic
 
 interpretSpec
   :: ( MonadDB m Tx, MonadFork m, MonadMask m, MonadLogger m
-     , MonadTrace m, MonadTMMonitoring m
+     , MonadTMMonitoring m
      , Has x BlockchainNet
      , Has x NodeSpec
      , Has x (Configuration Example))
@@ -276,7 +275,7 @@ prepareResources NetSpec{..} = do
 
 
 executeNodeSpec
-  :: (MonadIO m, MonadMask m, MonadFork m, MonadTrace m, MonadTMMonitoring m)
+  :: (MonadIO m, MonadMask m, MonadFork m,  MonadTMMonitoring m)
   => NetSpec NodeSpec
   -> [(BlockchainNet :*: NodeSpec, (Connection 'RW Tx, LogEnv))]
   -> ContT r m [RunningNode m Tx]

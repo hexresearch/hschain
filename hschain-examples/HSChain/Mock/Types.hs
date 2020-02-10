@@ -60,6 +60,8 @@ instance DefaultConfig Example where
       , pexMaxConnections      = 20
       , pexMinKnownConnections = 3
       , pexMaxKnownConnections = 20
+      , pexConnectionDelay     = 3000
+      , pexAskPeersDelay       = 10000
       , reconnectionRetries    = 12
       , reconnectionDelay      = 100
       }

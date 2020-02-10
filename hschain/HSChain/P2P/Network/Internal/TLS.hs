@@ -57,7 +57,7 @@ newNetworkTls creds ourPeerInfo = (realNetworkStub ourPeerInfo)
         _ | Just a <- find isIPv6addr addrs -> return a
           | a:_    <- addrs                 -> return a
           | otherwise                       -> throwM NoAddressAvailable
-      liftIO $ listenerTls ourPeerInfo creds addr
+      liftIO $ listenerTls creds addr
   --
   , connect  = \addr -> do
       let port = getNetAddrPort addr
@@ -68,7 +68,7 @@ newNetworkTls creds ourPeerInfo = (realNetworkStub ourPeerInfo)
         liftIO $ throwNothingM ConnectionTimedOut
                $ timeout 10e6
                $ Net.connect sock sockAddr
-        connectTls ourPeerInfo creds hostName port sock addr
+        connectTls creds hostName port sock
   }
   where
     serviceName = show $ piPeerPort ourPeerInfo
@@ -76,40 +76,37 @@ newNetworkTls creds ourPeerInfo = (realNetworkStub ourPeerInfo)
 
 listenerTls
   :: (MonadIO m, MonadMask m)
-  => PeerInfo
-  -> TLS.Credential
+  => TLS.Credential
   -> Net.AddrInfo
   -> IO (m (), m (P2PConnection, NetAddr))
-listenerTls selfPI creds addr =
+listenerTls creds addr =
   bracketOnError (newSocket addr) Net.close $ \sock -> do
     when (isIPv6addr addr) $
       Net.setSocketOption sock Net.IPv6Only 0
     Net.bind sock (Net.addrAddress addr)
     Net.listen sock 5
     return ( liftIO $ Net.close sock
-           , acceptTls selfPI creds sock
+           , acceptTls creds sock
            )
 
 connectTls :: MonadIO m
-           => PeerInfo
-           -> TLS.Credential
+           => TLS.Credential
            -> Net.HostName
            -> Word16
            -> Net.Socket
-           -> NetAddr
            -> m P2PConnection
-connectTls selfPI creds host port sock addr = liftIO $ do
+connectTls creds host port sock = liftIO $ do
   store <- getSystemCertificateStore
   ctx   <- TLS.contextNew sock
          $ mkClientParams host (show port) creds store
   TLS.handshake ctx
   TLS.contextHookSetLogging ctx getLogging
-  applyConn ctx selfPI addr
+  applyConn ctx
 
 
 acceptTls :: (MonadMask m, MonadIO m)
-          => PeerInfo -> TLS.Credential -> Net.Socket -> m (P2PConnection, NetAddr)
-acceptTls selfPI creds sock =
+          => TLS.Credential -> Net.Socket -> m (P2PConnection, NetAddr)
+acceptTls creds sock =
     bracketOnError
         (liftIO $ Net.accept sock)
         (\(s,_) -> liftIO $ Net.close s)
@@ -119,7 +116,7 @@ acceptTls selfPI creds sock =
            liftIO $ TLS.contextHookSetLogging ctx getLogging
            TLS.handshake ctx
            let netAddr = sockAddrToNetAddr addr
-           cnn <- liftIO $ applyConn ctx selfPI netAddr
+           cnn <- liftIO $ applyConn ctx
            return (cnn, netAddr)
        )
 
@@ -137,35 +134,35 @@ silentBye ctx =
         _ -> E.throwIO e
 
 applyConn :: TLS.Context
-          -> PeerInfo
-          -> NetAddr
           -> IO P2PConnection
-applyConn context selfPI addr = do
+applyConn context = do
   ref <- liftIO $ I.newIORef ""
-  initialPeerExchange selfPI addr $
+  return $
      P2PConnection (tlsSend context)
                    (tlsRecv context ref)
                    (liftIO $ tlsClose context)
-                   (PeerInfo (PeerId 0) 0 0)
   where 
     tlsClose :: TLS.Context -> IO ()
     tlsClose ctx = silentBye ctx `E.catch` \(_ :: E.IOException) -> pure ()
 
     tlsRecv :: MonadIO m
-            => TLS.Context -> I.IORef ByteString -> m (Maybe LBS.ByteString)
+            => TLS.Context -> I.IORef ByteString -> m LBS.ByteString
     tlsRecv ctx ref = liftIO $ do
       -- FIXME: This function is not threadsafe. It is not a problem, because 
       -- P2PConnection is not used concurrently now. To fix that this function
       -- call should be exclusive. 
       b0 <- I.readIORef ref
       (mHeader, headerLeftover) <- recvAll ctx b0 headerSize
-      join.join <$> do
+      res <- do
         forM mHeader $ \ header ->
           forM (decodeWord16BE header) $ \ n -> do
             (result,leftover) <- recvAll ctx headerLeftover $ fromIntegral n
             I.writeIORef ref leftover
             return result
-            
+      case join $ join res of
+        Nothing -> throwM ConnectionClosed
+        Just a  -> return a
+
     tlsSend :: MonadIO m
             => TLS.Context -> LBS.ByteString -> m ()
     tlsSend ctx = TLS.sendData ctx . BB.toLazyByteString . toFrame

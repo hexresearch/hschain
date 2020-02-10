@@ -72,7 +72,6 @@ Library
                   HSChain.Control
                   HSChain.Crypto.Containers
                   HSChain.Data.CIntMap
-                  HSChain.Debug.Trace
                   HSChain.Exceptions
                   HSChain.Logger
                   HSChain.Logger.Class
@@ -108,4 +107,3 @@ Library
                   HSChain.P2P.Network.RealNetworkStub
                   HSChain.P2P.Internal.PeerRegistry
                   HSChain.P2P.Internal.Types
-                  HSChain.P2P.Internal.Logging

@@ -67,7 +67,6 @@ import HSChain.Crypto
 import HSChain.Crypto.Classes.Hash
 import HSChain.Crypto.Ed25519
 import HSChain.Crypto.SHA
-import HSChain.Debug.Trace
 import HSChain.Logger
 import HSChain.Run
 import HSChain.Mock
@@ -378,7 +377,7 @@ findInputs tgt = go 0
 
 interpretSpec
   :: ( MonadDB m BData, MonadFork m, MonadMask m, MonadLogger m
-     , MonadTrace m, MonadTMMonitoring m
+     , MonadTMMonitoring m
      , Has x BlockchainNet
      , Has x NodeSpec
      , Has x (Configuration Example))
@@ -409,7 +408,7 @@ interpretSpec genesis p cb = do
     )
 
 executeNodeSpec
-  :: (MonadIO m, MonadMask m, MonadFork m, MonadTrace m, MonadTMMonitoring m)
+  :: (MonadIO m, MonadMask m, MonadFork m, MonadTMMonitoring m)
   => NetSpec NodeSpec :*: CoinSpecification
   -> ContT r m [RunningNode m BData]
 executeNodeSpec (NetSpec{..} :*: coin@CoinSpecification{..}) = do

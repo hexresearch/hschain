@@ -7,6 +7,7 @@ module HSChain.P2P.Network.Internal.Mock where
 import Control.Concurrent.STM
 
 import Control.Monad          (forM_)
+import Control.Monad.Catch
 import Control.Monad.IO.Class (liftIO)
 
 import qualified Data.ByteString.Lazy as LBS
@@ -67,7 +68,7 @@ createMockNode MockNet{..} addr = NetworkAPI
               Just []     -> retry
               Just ((conn,addr'):xs) -> do
                 writeTVar mnetIncoming $ Map.insert key xs mList
-                return (applyConn addr' conn, addr')
+                return (applyConn conn, addr')
       return (stopListening, accept)
     --
   , connect = \loc -> do
@@ -88,16 +89,16 @@ createMockNode MockNet{..} addr = NetworkAPI
       case loc `Map.lookup` cmap of
         Nothing -> error "MockNet: Cannot connect to closed socket"
         Just xs -> writeTVar mnetIncoming $ Map.insert loc (xs ++ [(sockFrom,addr)]) cmap
-      return $ applyConn loc sockTo
-  , filterOutOwnAddresses = return . filter (addr /=)
-  , normalizeNodeAddress = const
+      return $ applyConn sockTo
   , listenPort = 0
-  , ourPeerInfo = mkPeerInfoFromAddr addr
+  , ourPeerInfo = PeerInfo port 0
   }
  where
-  mkPeerInfoFromAddr (NetAddrV4 ha _) = PeerInfo (PeerId (fromIntegral ha)) 0 0
-  mkPeerInfoFromAddr _                = error "IPv6 addr in mkPeerInfoFromAddr"
-  applyConn otherAddr conn = P2PConnection (liftIO . sendBS conn) (liftIO $ recvBS conn) (liftIO $ close conn) (mkPeerInfoFromAddr otherAddr)
+  applyConn conn = P2PConnection
+    { send          = liftIO . sendBS conn
+    , recv          = liftIO $ recvBS conn
+    , close         = atomicallyIO $ closeMockSocket conn
+    }
   sendBS MockSocket{..} bs = atomically $
       readTVar msckActive >>= \case
         False -> error "MockNet: Cannot write to closed socket"
@@ -105,7 +106,10 @@ createMockNode MockNet{..} addr = NetworkAPI
     --
   recvBS MockSocket{..} = atomically $
       readTVar msckActive >>= \case
-        False -> tryReadTChan msckRecv
-        True  -> Just <$> readTChan msckRecv
-    --
-  close = atomically . closeMockSocket
+        False -> tryReadTChan msckRecv >>= \case
+          Just m  -> return m
+          Nothing -> throwM ConnectionClosed
+        True  -> readTChan msckRecv
+  port = case addr of
+    NetAddrV4 _ p -> p
+    NetAddrV6 _ p -> p

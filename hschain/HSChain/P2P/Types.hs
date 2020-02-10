@@ -15,9 +15,7 @@ module HSChain.P2P.Types (
   , P2PConnection(..)
   , NetworkError(..)
   , NetworkPort
-  , PeerId(..)
   , PeerInfo(..)
-  , defPeerInfo
     -- *
   , tcpHints
   , tcpListenHints
@@ -29,11 +27,9 @@ import Codec.Serialise
 import Control.Exception      (throwIO)
 import Control.Monad.Catch    (MonadMask, MonadThrow)
 import Control.Monad.IO.Class (MonadIO(..))
-import Data.Word              (Word16, Word64)
+import Data.Word              (Word16)
 import GHC.Generics           (Generic)
-import GHC.Read               (Read(..))
 
-import qualified Data.Aeson           as JSON
 import qualified Data.ByteString.Lazy as LBS
 import qualified Network.Socket       as Net
 
@@ -44,15 +40,8 @@ import HSChain.Types.Network
 ----------------------------------------------------------------
 --
 ----------------------------------------------------------------
-
-newtype PeerId = PeerId Word64
-  deriving newtype (Show, Read, Eq, Ord, Serialise, JSON.ToJSON, JSON.FromJSON)
-
-
 data PeerInfo = PeerInfo
-    { piPeerId        :: !PeerId
-    -- ^ An ID to identify the machine
-    , piPeerPort      :: !Word16
+    { piPeerPort      :: !Word16
     -- ^ Original listening port of the machine of the peer.
     , piPeerSchemeVer :: !Word16
     -- ^ The scheme encoding version. It is not possible tp decode
@@ -60,9 +49,6 @@ data PeerInfo = PeerInfo
     }
     deriving stock    (Show, Generic)
     deriving anyclass (Serialise)
-
-defPeerInfo :: PeerInfo
-defPeerInfo = PeerInfo (PeerId 0) 0 0
 
 ----------------------------------------------------------------
 --
@@ -92,10 +78,6 @@ data NetworkAPI = NetworkAPI
   , connect  :: !(forall m. (MonadIO m, MonadThrow m, MonadMask m)
              => NetAddr -> m P2PConnection)
     -- ^ Connect to remote address
-  , filterOutOwnAddresses :: !(forall m. (MonadIO m) => [NetAddr] -> m [NetAddr])
-    -- ^ Filter out local addresses of node. Batch processing for speed.
-  , normalizeNodeAddress :: !(NetAddr -> Maybe NetworkPort -> NetAddr)
-    -- ^ Normalize address, for example, convert '20.15.10.20:24431' to '20.15.10.20:50000'
   , listenPort :: !NetworkPort
     -- ^ Listen port.
   , ourPeerInfo :: !PeerInfo
@@ -105,11 +87,9 @@ data NetworkAPI = NetworkAPI
 data P2PConnection = P2PConnection
   { send          :: !(forall m. (MonadIO m) => LBS.ByteString -> m ())
     -- ^ Send data
-  , recv          :: !(forall m. (MonadIO m) => m (Maybe LBS.ByteString))
-    -- ^ Receive data
+  , recv          :: !(forall m. (MonadIO m) => m LBS.ByteString)
+    -- ^ Receive data. Will throw exception if connection is closed
   , close         :: !(forall m. (MonadIO m) => m ())
-    -- ^ Close socket
-  , connectedPeer :: !PeerInfo
   }
 
 

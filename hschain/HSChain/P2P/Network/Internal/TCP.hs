@@ -37,7 +37,7 @@ newNetworkTcp selfPeerInfo = (realNetworkStub selfPeerInfo)
           Net.setSocketOption sock Net.IPv6Only 0
         Net.bind sock (Net.addrAddress addr)
         Net.listen sock 5
-        return (liftIO $ Net.close sock, accept selfPeerInfo sock)
+        return (liftIO $ Net.close sock, accept sock)
   --
   , connect  = \addr -> do
       (addrInfo,sockAddr,_) <- netAddrToAddrInfo addr
@@ -47,21 +47,21 @@ newNetworkTcp selfPeerInfo = (realNetworkStub selfPeerInfo)
         liftIO $ throwNothingM ConnectionTimedOut
                $ timeout tenSec
                $ Net.connect sock sockAddr
-        initialPeerExchange selfPeerInfo addr $ applyConn sock
+        return $ applyConn sock
   }
  where
   serviceName = show $ piPeerPort selfPeerInfo
 
 accept :: (MonadIO m)
-       => PeerInfo -> Net.Socket -> m (P2PConnection, NetAddr)
-accept selfPeerInfo sock = do
+       => Net.Socket -> m (P2PConnection, NetAddr)
+accept sock = do
   (conn, addr) <- liftIO $ Net.accept sock
-  let netAddr = sockAddrToNetAddr addr
-  p2pConn <- initialPeerExchange selfPeerInfo netAddr $ applyConn conn
-  return (p2pConn, netAddr)
+  return ( applyConn conn
+         , sockAddrToNetAddr addr
+         )
 
 applyConn :: Net.Socket -> P2PConnection
-applyConn conn = P2PConnection (liftIO . sendBS conn) (liftIO $ recvBS conn) (liftIO $ Net.close conn) defPeerInfo
+applyConn conn = P2PConnection (liftIO . sendBS conn) (liftIO $ recvBS conn) (liftIO $ Net.close conn)
 
 sendBS :: Net.Socket -> LBS.ByteString -> IO ()
 sendBS sock =  \s -> NetLBS.sendAll sock (BB.toLazyByteString $ toFrame s)
@@ -70,15 +70,15 @@ sendBS sock =  \s -> NetLBS.sendAll sock (BB.toLazyByteString $ toFrame s)
                                    hexLen = BB.word32BE len
                                in (hexLen <> BB.lazyByteString msg)
 
-recvBS :: Net.Socket -> IO (Maybe LBS.ByteString)
+recvBS :: Net.Socket -> IO LBS.ByteString
 recvBS sock = do
   header <- recvAll sock headerSize
   if LBS.null header
-  then return Nothing
+  then throwM ConnectionClosed
   else let len = decodeWord16BE header
        in case len of
-            Just n  -> Just <$> recvAll sock (fromIntegral n)
-            Nothing -> return Nothing
+            Just n  -> recvAll sock (fromIntegral n)
+            Nothing -> throwM ConnectionClosed
 
 
 -- | helper function read given length of bytes

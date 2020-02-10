@@ -108,6 +108,8 @@ data NetworkCfg = NetworkCfg
   , pexMaxConnections      :: !Int
   , pexMinKnownConnections :: !Int
   , pexMaxKnownConnections :: !Int
+  , pexConnectionDelay     :: !Int
+  , pexAskPeersDelay       :: !Int
   , reconnectionRetries    :: !Int -- ^ Number of retries before abandoning reconnection attempts
   , reconnectionDelay      :: !Int -- ^ Initial delay between attempting to reconnect
   }
@@ -154,6 +156,8 @@ instance DefaultConfig app => FromJSON (Configuration app) where
         pexMaxC <- field "pexMaxConnections"      pexMaxConnections       o
         pexMinK <- field "pexMinKnownConnections" pexMinKnownConnections  o
         pexMaxK <- field "pexMaxKnownConnections" pexMaxKnownConnections  o
+        pexD    <- field "pexConnectionDelay"     pexConnectionDelay      o
+        pexAskD <- field "pexAskPeersDelay"       pexAskPeersDelay        o
         rR      <- field "reconnectionRetries"    reconnectionRetries     o
         rB      <- field "reconnectionDelay"      reconnectionDelay       o
         return NetworkCfg { gossipDelayVotes       = gV
@@ -163,6 +167,8 @@ instance DefaultConfig app => FromJSON (Configuration app) where
                           , pexMaxConnections      = pexMaxC
                           , pexMinKnownConnections = pexMinK
                           , pexMaxKnownConnections = pexMaxK
+                          , pexConnectionDelay     = pexD
+                          , pexAskPeersDelay       = pexAskD
                           , reconnectionRetries    = rR
                           , reconnectionDelay      = rB
                           }

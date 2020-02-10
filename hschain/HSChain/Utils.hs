@@ -1,18 +1,20 @@
 -- | Some small but useful functions
---
-{-# LANGUAGE CPP #-}
 module HSChain.Utils
-   ( -- * PeerId encode/decode
-     -- * Timings
-     waitSec
-   ) where
+  ( waitSec
+  , waitMSec
+  ) where
 
 
 import Control.Concurrent (threadDelay)
 import Control.Monad.IO.Class
 
 
--- | Wait a few seconds
---
+-- | Thread delay in parameter expressed in seconds
 waitSec :: (MonadIO m) => Double -> m ()
 waitSec sec = liftIO $ threadDelay $ round $ 1e6 * sec
+{-# INLINE waitSec #-}
+
+-- | Thread delay in parameter expressed in milliseconds
+waitMSec :: (MonadIO m, Integral a) => a -> m ()
+waitMSec ms = liftIO $ threadDelay $ fromIntegral $ 1000 * ms
+{-# INLINE waitMSec #-}
