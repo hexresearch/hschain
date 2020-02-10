@@ -241,7 +241,7 @@ seedDatabase :: Int -> GossipM Mock.BData ()
 seedDatabase n = do
   mustQueryRW $ forM_ blockAndCmt $ \(b,Just cmt) -> do
     storeCommit cmt b
-    storeValSet (succ $ blockHeight b) valSet
+    storeValSet (succ $ blockHeight b) (merkled valSet)
   where
     blockAndCmt = take n
                 $ tail

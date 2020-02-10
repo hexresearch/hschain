@@ -157,7 +157,7 @@ storeGenesis BChEval{..} = do
     -- Fresh DB
     (Nothing, Nothing) -> do
       storeCommitWrk Nothing    bchValue
-      storeValSet   (Height 0) (merkleValue validatorSet)
+      storeValSet   (Height 0)  validatorSet
     -- Otherwise check that stored and provided geneses match
     (Just genesis', Just initialVals') ->
       case checks of
@@ -401,9 +401,9 @@ storeCommitWrk mcmt blk = liftQueryRW $ do
 
 storeValSet
   :: (Crypto (Alg a), MonadQueryRW m a)
-  => Height -> ValidatorSet (Alg a) -> m ()
+  => Height -> MerkleNode IdNode (Alg a) (ValidatorSet (Alg a)) -> m ()
 storeValSet h vals = liftQueryRW $ do
-  i <- storeBlob $ merkled vals
+  i <- storeBlob vals
   basicExecute "INSERT INTO thm_validators VALUES (?,?)" (h, i)
 
 

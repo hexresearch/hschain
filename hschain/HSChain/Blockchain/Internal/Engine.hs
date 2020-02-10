@@ -107,7 +107,7 @@ rewindBlockchainState AppStore{..} BChLogic{..} = do
       when (h == Height 0) $ do
         queryRO (hasValidatorSet (Height 1)) >>= \case
           True  -> return ()
-          False -> mustQueryRW $ storeValSet (Height 1) (merkleValue validatorSet)
+          False -> mustQueryRW $ storeValSet (Height 1) validatorSet
       -- Put new state into state storage
       bchStoreStore appBchState h blockchainState
       return blockchainState
@@ -189,7 +189,7 @@ decideNewBlock config appValidatorKey
   do let h = blockHeight bchValue
      mustQueryRW $ do
        storeCommit cmt      bchValue
-       storeValSet (succ h) (merkleValue validatorSet)
+       storeValSet (succ h) validatorSet
        mapM_ storeBlockchainEvidence $ merkleValue $ blockEvidence bchValue
      bchStoreStore appBchState h blockchainState
      appCommitCallback bchValue
