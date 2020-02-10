@@ -67,7 +67,6 @@ startPeerDispatcher p2pConfig net addrs AppChans{..} mempool = logOnException $ 
     -- this thread manages initiating connections
     runConcurrently
       [ acceptLoop p2pConfig net peerCh mempool
-      -- Peer connection monitor
-      , descendNamespace "PEX" $ pexFSM p2pConfig net peerCh mempool
+      , pexFSM     p2pConfig net peerCh mempool
       , pexMonitoring peerRegistry
       ]

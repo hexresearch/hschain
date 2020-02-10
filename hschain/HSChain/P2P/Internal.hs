@@ -313,7 +313,7 @@ pexFSM
   -> PeerChans a
   -> Mempool m (Alg a) (TX a)
   -> m b
-pexFSM cfg net@NetworkAPI{..} peerCh@PeerChans{..} mempool = do
+pexFSM cfg net@NetworkAPI{..} peerCh@PeerChans{..} mempool = descendNamespace "PEX" $ do
   -- Start by connecting to peers
   forever $ do
     atomicallyIO nonEnough
