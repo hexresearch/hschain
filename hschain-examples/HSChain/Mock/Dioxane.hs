@@ -58,8 +58,10 @@ type DioAlg = Ed25519 :& SHA512
 
 newtype BData tag = BData [Tx]
   deriving stock    (Show,Eq,Generic)
-  deriving newtype  (NFData,CryptoHashable,JSON.ToJSON,JSON.FromJSON)
+  deriving newtype  (NFData,JSON.ToJSON,JSON.FromJSON)
   deriving anyclass (Serialise)
+instance CryptoHashable (BData tag) where
+  hashStep = genericHashStep "hschain-examples"
 
 data Tx = Tx
   { txSig  :: !(Signature DioAlg)

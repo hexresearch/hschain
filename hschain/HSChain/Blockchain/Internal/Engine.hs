@@ -59,7 +59,6 @@ import Katip (Severity(..), sl)
 newAppChans :: (MonadIO m) => ConsensusCfg -> m (AppChans a)
 newAppChans ConsensusCfg{incomingQueueSize = sz} = do
   appChanRx         <- liftIO $ newTBQueueIO sz
-  appChanRxInternal <- liftIO   newTQueueIO
   appChanTx         <- liftIO   newBroadcastTChanIO
   appTMState        <- liftIO $ newTVarIO Nothing
   return AppChans{..}
@@ -143,10 +142,11 @@ runApplication config appValidatorKey genesis appLogic appStore appCall appCh = 
   -- Rewind state of blockcahin. At the same time we 
   rewindBlockchainState appStore appLogic
   -- Now we can start consensus
+  appChanRxInternal <- liftIO newTQueueIO
   height <- queryRO $ blockchainHeight
   lastCm <- queryRO $ retrieveLocalCommit height
   iterateM lastCm $ fmap Just
-                  . decideNewBlock config appValidatorKey appLogic appStore appCall appCh
+                  . decideNewBlock config appValidatorKey appLogic appStore appCall appCh appChanRxInternal
 
 -- This function uses consensus algorithm to decide which block we're
 -- going to commit at current height, then stores it in database and
@@ -164,20 +164,21 @@ decideNewBlock
   -> AppStore     m a
   -> AppCallbacks m a
   -> AppChans       a
+  -> TQueue (MessageRx 'Unverified a)
   -> Maybe (Commit a)
   -> m (Commit a)
 decideNewBlock config appValidatorKey
                appLogic@BChLogic{..} appStore@AppStore{..}
-               appCall@AppCallbacks{..} appCh@AppChans{..} lastCommt = do
+               appCall@AppCallbacks{..} appCh@AppChans{..} appChanRxInternal lastCommt = do
   -- Enter NEW HEIGHT and create initial state for consensus state
   -- machine
   hParam  <- makeHeightParameters appValidatorKey appLogic appStore appCall
   -- Run consensus engine
   (cmt, BChEval{..}) <- runEffect $ do
-    let sink = handleEngineMessage hParam config appCh
+    let sink = handleEngineMessage hParam config appCh appChanRxInternal
     tm0 <-  newHeight hParam lastCommt
         >-> sink
-    rxMessageSource hParam appCh
+    rxMessageSource hParam appCh appChanRxInternal
         >-> msgHandlerLoop hParam appLogic appStore appCh tm0
         >-> sink
   -- Update metrics
@@ -202,8 +203,9 @@ rxMessageSource
      , Crypto (Alg a), BlockData a)
   => HeightParameters m a
   -> AppChans a
+  -> TQueue (MessageRx 'Unverified a)
   -> Producer (MessageRx 'Verified a) m r
-rxMessageSource HeightParameters{..} AppChans{..} = do
+rxMessageSource HeightParameters{..} AppChans{..} appChanRxInternal = do
   -- First we replay messages from WAL. This is very important and
   -- failure to do so may violate protocol safety and possibly
   -- liveness.
@@ -331,8 +333,9 @@ handleEngineMessage
   => HeightParameters n a
   -> ConsensusCfg
   -> AppChans a
+  -> TQueue (MessageRx 'Unverified a)
   -> Consumer (EngineMessage a) m r
-handleEngineMessage HeightParameters{..} ConsensusCfg{..} AppChans{..} = forever $ await >>= \case
+handleEngineMessage HeightParameters{..} ConsensusCfg{..} AppChans{..} appChanRxInternal = forever $ await >>= \case
   -- Timeout
   EngTimeout t@(Timeout h (Round r) step) -> do
     liftIO $ void $ forkIO $ do
