@@ -299,12 +299,6 @@ whenM :: (Monad m) => m Bool -> m () -> m ()
 whenM predicate act = ifM predicate act (return ())
 
 
--- | Events for PEX state machine
-data PEXEvents
-  = EPexMonitor
-  -- ^ triggers check of peers connections and opening of new connections
-  -- to known peers when it is nesessary
-
 pexFSM
   :: (MonadLogger m, MonadMask m, MonadTMMonitoring m
      , MonadFork m, MonadReadDB m a, BlockData a)
