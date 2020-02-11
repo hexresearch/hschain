@@ -9,7 +9,19 @@
 {-# LANGUAGE TypeFamilies        #-}
 -- |
 -- In-memory proposal storage
-module HSChain.Store.Internal.Proposals where
+module HSChain.Store.Internal.Proposals
+  ( Props
+  , BlockValState(..)
+    -- * Construction and update
+  , emptyProps
+  , acceptBlockID
+  , addBlockToProps
+  , setProposalValidation
+    -- * Lookup
+  , proposalByR
+  , proposalByBID
+  , blockFromBlockValidation
+  ) where
 
 import Data.Maybe             (fromMaybe)
 import qualified Data.Map.Strict as Map
