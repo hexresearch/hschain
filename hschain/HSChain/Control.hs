@@ -170,6 +170,7 @@ runConcurrently
   => [m ()]              -- ^ Functions to run
   -> m ()
 runConcurrently []      = return ()
+runConcurrently [act]   = act
 runConcurrently actions = do
   -- We communicate return status of thread via channel since we don't
   -- know a priory which will terminated first
