@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns        #-}
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE LambdaCase          #-}
@@ -250,7 +251,7 @@ peerReceive
 peerReceive recvCh P2PConnection{..} = logOnException $ do
   forever $ do
     bs <- recv
-    let msg = deserialise bs
+    let !msg = deserialise bs
     atomicallyIO $ writeTChan recvCh msg
     countGossip "RX" msg
 
