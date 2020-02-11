@@ -186,12 +186,17 @@ runConcurrently actions = do
             Just (_ :: AsyncException) -> Conc.writeChan ch (Right ())
             _                          -> Conc.writeChan ch (Left  e)
     )
-    (liftIO . mapM killThread)
+    -- throwTo and therefore killThread block and as such could be
+    -- interrupted and leave threads behind. In order to avoid this
+    -- and to parallelise killing we create threads per killThread
+    (liftIO . mapM (Conc.forkIO . killThread))
+    -- Wait until one of threads completes execution.
     (\tids -> do r <- liftIO $ Conc.readChan ch
                  return (r,tids)
     )
   -- Wait until all other threads terminate. We can be killed by async
-  -- exceptions here. But so be it
+  -- exceptions here. But it doesn't matter at this point since we
+  -- sent black mark to every child thread
   case tids of
     []   -> return ()
     _:ts -> liftIO $ forM_ ts $ const $ Conc.readChan ch
