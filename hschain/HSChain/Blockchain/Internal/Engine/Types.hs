@@ -232,12 +232,12 @@ instance Crypto alg => ToJSON   (PrivValidator alg) where
 
 -- | Application connection to outer world
 data AppChans a = AppChans
-  { appChanRx         :: TBQueue (MessageRx 'Unverified a)
+  { appChanRx  :: TBQueue (MessageRx 'Unverified a)
     -- ^ Queue for receiving messages related to consensus protocol
     --   from peers.
-  , appChanTx      :: TChan (MessageTx a)
+  , appChanTx  :: TChan (MessageTx a)
     -- ^ TChan for broadcasting messages to the peers
-  , appTMState     :: TVar  (Maybe (Height, TMState a))
+  , appTMState :: TVar  (Maybe (Height, TMState a))
     -- ^ Current state of consensus. It includes current height, state
     --   machine status and known blocks which should be exposed in
     --   read-only manner for gossip with peers.

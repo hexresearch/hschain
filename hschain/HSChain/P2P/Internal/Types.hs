@@ -68,9 +68,8 @@ data PexMessage
   -- ^ Peer need yet connections to peers
   | PexMsgMorePeers ![NetAddr]
   -- ^ Some addresses of other connected peers
-  deriving (Show, Generic)
-
-instance Serialise PexMessage
+  deriving stock    (Show, Generic)
+  deriving anyclass (Serialise)
 
 --
 -- | Connection handed to process controlling communication with peer

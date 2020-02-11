@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns        #-}
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE LambdaCase          #-}
@@ -250,7 +251,7 @@ peerReceive
 peerReceive recvCh P2PConnection{..} = logOnException $ do
   forever $ do
     bs <- recv
-    let msg = deserialise bs
+    let !msg = deserialise bs
     atomicallyIO $ writeTChan recvCh msg
     countGossip "RX" msg
 
@@ -287,24 +288,6 @@ countGossip dir = \case
 -- Peer exchange
 ----------------------------------------------------------------
 
-
-ifM :: (Monad m) => m Bool -> m a -> m a -> m a
-ifM predicate thenAct elseAct =
-    predicate >>= \case
-        True  -> thenAct
-        False -> elseAct
-
-
-whenM :: (Monad m) => m Bool -> m () -> m ()
-whenM predicate act = ifM predicate act (return ())
-
-
--- | Events for PEX state machine
-data PEXEvents
-  = EPexMonitor
-  -- ^ triggers check of peers connections and opening of new connections
-  -- to known peers when it is nesessary
-
 pexFSM
   :: (MonadLogger m, MonadMask m, MonadTMMonitoring m
      , MonadFork m, MonadReadDB m a, BlockData a)
@@ -313,7 +296,7 @@ pexFSM
   -> PeerChans a
   -> Mempool m (Alg a) (TX a)
   -> m b
-pexFSM cfg net@NetworkAPI{..} peerCh@PeerChans{..} mempool = do
+pexFSM cfg net@NetworkAPI{..} peerCh@PeerChans{..} mempool = descendNamespace "PEX" $ do
   -- Start by connecting to peers
   forever $ do
     atomicallyIO nonEnough

@@ -107,8 +107,8 @@ runNode
   :: ( MonadDB m a, MonadMask m, MonadFork m, MonadLogger m, MonadTMMonitoring m
      , BlockData a, Eq a, Show a
      )
-  => Configuration app          -- ^ Timeouts for network and consensus
-  -> NodeDescription m a    -- ^ Description of node.
+  => Configuration app         -- ^ Timeouts for network and consensus
+  -> NodeDescription m a       -- ^ Description of node.
   -> m [m ()]
 runNode cfg NodeDescription{..} = do
   let logic@BChLogic{..} = hoistDict nodeRunner bchLogic
