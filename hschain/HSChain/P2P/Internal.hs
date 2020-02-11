@@ -287,18 +287,6 @@ countGossip dir = \case
 -- Peer exchange
 ----------------------------------------------------------------
 
-
-ifM :: (Monad m) => m Bool -> m a -> m a -> m a
-ifM predicate thenAct elseAct =
-    predicate >>= \case
-        True  -> thenAct
-        False -> elseAct
-
-
-whenM :: (Monad m) => m Bool -> m () -> m ()
-whenM predicate act = ifM predicate act (return ())
-
-
 pexFSM
   :: (MonadLogger m, MonadMask m, MonadTMMonitoring m
      , MonadFork m, MonadReadDB m a, BlockData a)
