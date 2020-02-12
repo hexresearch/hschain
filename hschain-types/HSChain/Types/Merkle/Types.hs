@@ -8,8 +8,9 @@
 {-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
 -- |
--- Type classes for working with heterogenoeus merkle trees that is
--- trees which can contain values of different types.
+-- Type classes for working with heterogenoeus merkle trees where we
+-- can nodes which have attached hash and could be abbreviated to hash
+-- only.
 module HSChain.Types.Merkle.Types (
     -- * Type classes
     MerkleHash(..)
@@ -44,13 +45,17 @@ import HSChain.Crypto
 -- Heterogeneous Merkle trees
 ----------------------------------------------------------------
 
--- | Value identified by hash. It's expected that 'CryptoHashable' is
---   compatible with this instance:
+-- | Node of merkle tree. Every such node could be reduced to only
+--   hash that is 'Hashed'.
+--
+--   It's expected that 'CryptoHashable' instance uses only hash
+--   value that is:
 --
 -- > hash a == hash (merkleHash a)
 class MerkleHash f where
   -- | Obtain cached hash of node.
   merkleHashed :: f alg a -> Hashed alg a
+
 
 -- | Type class for nodes of Merkle tree. It contains operations that
 --   are common for all variants of nodes whether they contain actual
@@ -78,9 +83,11 @@ newtype MerkleNode f alg a = MerkleNode { getMerkleNode :: f alg a }
 merkleValue :: MerkleNode IdNode alg a -> a
 merkleValue (MerkleNode (IdNode _ a)) = a
 
+-- | Extract value from any type of node of Merkle tree.
 merkleMaybeValue :: IsMerkle f => f alg a -> Maybe a
 merkleMaybeValue n = let OptNode _ a = toOptNode n in a
 
+-- | Extract hash corresponding to node
 merkleHash :: MerkleHash f => f alg a -> Hash alg
 merkleHash f = let Hashed h = merkleHashed f in h
 
@@ -109,10 +116,15 @@ instance (CryptoHash alg, IsMerkle f) => CryptoHashable (MerkleNode f alg a) whe
 -- Types for nodes
 ----------------------------------------------------------------
 
-
+-- | Node that contains actual value alognside with hash. It's
+--   expected to be used primarily as type parameter to 'MerkleNode':
+--   @MerkleNode IdNode@
 data IdNode  alg a = IdNode  (Hashed alg a) !a
   deriving stock (Show,Eq,Ord,Generic)
 
+-- | Node that /may/ contain value alognside with hash. It's
+--   expected to be used primarily as type parameter to 'MerkleNode':
+--   @MerkleNode OptNode@
 data OptNode alg a = OptNode (Hashed alg a) !(Maybe a)
   deriving stock (Show,Eq,Ord,Generic)
 
