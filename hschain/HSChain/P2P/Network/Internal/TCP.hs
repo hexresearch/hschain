@@ -18,13 +18,12 @@ import qualified Network.Socket.ByteString.Lazy as NetLBS
 
 import HSChain.Control
 import HSChain.P2P.Network.Internal.Utils
-import HSChain.P2P.Network.RealNetworkStub
 import HSChain.P2P.Types
 
 
 -- | API implementation for real tcp network
 newNetworkTcp :: Word16 -> NetworkAPI
-newNetworkTcp selfPeerInfo = (realNetworkStub selfPeerInfo)
+newNetworkTcp selfPeerInfo = NetworkAPI
   { listenOn = do
       addrs <- liftIO $ Net.getAddrInfo (Just tcpListenHints) Nothing (Just serviceName)
       addr  <- if
@@ -48,6 +47,7 @@ newNetworkTcp selfPeerInfo = (realNetworkStub selfPeerInfo)
                $ timeout tenSec
                $ Net.connect sock sockAddr
         return $ applyConn sock
+  , listenPort = fromIntegral selfPeerInfo
   }
  where
   serviceName = show selfPeerInfo

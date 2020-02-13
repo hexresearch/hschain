@@ -39,7 +39,6 @@ import qualified Network.TLS             as TLS
 
 import HSChain.Control
 import HSChain.P2P.Network.Parameters
-import HSChain.P2P.Network.RealNetworkStub
 import HSChain.P2P.Network.Internal.Utils
 import HSChain.P2P.Network.IpAddresses     (getNetAddrPort)
 import HSChain.P2P.Types
@@ -50,7 +49,7 @@ import HSChain.P2P.Types
 ----------------------------------------------------------------
 
 newNetworkTls :: TLS.Credential -> Word16 -> NetworkAPI
-newNetworkTls creds ourPeerInfo = (realNetworkStub ourPeerInfo)
+newNetworkTls creds ourPeerInfo = NetworkAPI
   { listenOn = do
       addrs <- liftIO $ Net.getAddrInfo (Just tcpListenHints) Nothing (Just serviceName)
       addr  <- case () of
@@ -69,6 +68,7 @@ newNetworkTls creds ourPeerInfo = (realNetworkStub ourPeerInfo)
                $ timeout 10e6
                $ Net.connect sock sockAddr
         connectTls creds hostName port sock
+  , listenPort = fromIntegral ourPeerInfo
   }
   where
     serviceName = show ourPeerInfo

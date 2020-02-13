@@ -20,7 +20,6 @@ import qualified Network.Socket            as Net
 import qualified Network.Socket.ByteString as NetBS
 
 import HSChain.Control  (atomicallyIO)
-import HSChain.P2P.Network.RealNetworkStub
 import HSChain.P2P.Types
 
 import qualified HSChain.P2P.Network.IpAddresses as Ip
@@ -59,7 +58,7 @@ newNetworkUdp ourPeerInfo = do
               writeTChan recvChan (otherPeerInfo, (front, ofs, payload))
             when connectPacket $ do
               flip (NetBS.sendAllTo sock) addr' $ LBS.toStrict $ CBOR.serialise (ourPeerInfo, mkAckPart)
-  return $ (realNetworkStub ourPeerInfo)
+  return NetworkAPI
     { listenOn = do
         return (liftIO $ killThread tid, atomicallyIO $ readTChan acceptChan)
       --
@@ -68,6 +67,8 @@ newNetworkUdp ourPeerInfo = do
           (_, (peerChan, frontVar, receivedFrontsVar)) <- findOrCreateRecvTuple tChans addr
           return $ applyConn ourPeerInfo
                      sock addr frontVar receivedFrontsVar peerChan tChans
+      --
+    , listenPort = fromIntegral ourPeerInfo
     }
  where
 

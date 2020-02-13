@@ -104,6 +104,5 @@ Library
                   HSChain.P2P.Network.Internal.UDP
                   HSChain.P2P.Network.Internal.Mock
                   HSChain.P2P.Network.Internal.Utils
-                  HSChain.P2P.Network.RealNetworkStub
                   HSChain.P2P.Internal.PeerRegistry
                   HSChain.P2P.Internal.Types
