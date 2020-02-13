@@ -29,11 +29,10 @@ realNetPair udpPortSpec host = do
         port1 = concat ["3", suffix]
         port2 = concat ["4", suffix]
         realNet p = if not useUDP
-          then return (newNetworkTcp peerInfoForOurPort)
-          else newNetworkUdp peerInfoForOurPort
+          then return (newNetworkTcp port)
+          else newNetworkUdp port
           where
             port = read p
-            peerInfoForOurPort = PeerInfo port 0
         hints = Net.defaultHints  { Net.addrSocketType = if useUDP then Net.Datagram else Net.Stream }
     addr1:_ <- Net.getAddrInfo (Just hints) (Just host) (Just port1)
     addr2:_ <- Net.getAddrInfo (Just hints) (Just host) (Just port2)
@@ -54,9 +53,8 @@ realTlsNetPair  host = do
     port1 <- (+32000) <$> randomRIO (1, 999)
     port2 <- (+33000) <$> randomRIO (1, 999)
     let credential = getCredentialFromBuffer certificatePem keyPem
-        toPeerInfo p = PeerInfo p 0
-        server = newNetworkTls credential $ toPeerInfo port1
-        client = newNetworkTls credential $ toPeerInfo port2
+        server = newNetworkTls credential port1
+        client = newNetworkTls credential port2
         hints  = Net.defaultHints  { Net.addrSocketType = Net.Stream }
     addr1:_ <- Net.getAddrInfo (Just hints) (Just host) (Just (show port1))
     addr2:_ <- Net.getAddrInfo (Just hints) (Just host) (Just (show port2))
