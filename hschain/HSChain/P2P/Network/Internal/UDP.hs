@@ -9,7 +9,6 @@ import Control.Concurrent.STM
 import Data.Word              (Word32, Word8)
 import Control.Monad          (forM_, forever, when)
 import Control.Monad.IO.Class (liftIO, MonadIO)
-import Data.Bits              (complement)
 import Data.Word
 import Control.Concurrent     (forkFinally, killThread, threadDelay)
 
@@ -50,14 +49,11 @@ newNetworkUdp ourPeerInfo = do
           -- silently dropping the packet.
           Left _ -> return ()
           Right (otherPeerInfo, (front, ofs, payload)) -> do
-            let connectPacket = isConnectPart (front, ofs, payload)
             atomically $ do
               (found, (recvChan, frontVar, receivedFrontsVar)) <- findOrCreateRecvTuple tChans addr
               when (not found) $ writeTChan acceptChan
                 (applyConn ourPeerInfo sock addr frontVar receivedFrontsVar recvChan tChans, addr)
               writeTChan recvChan (otherPeerInfo, (front, ofs, payload))
-            when connectPacket $ do
-              flip (NetBS.sendAllTo sock) addr' $ LBS.toStrict $ CBOR.serialise (ourPeerInfo, mkAckPart)
   return NetworkAPI
     { listenOn = do
         return ( liftIO $ killThread tid
@@ -117,14 +113,6 @@ sendSplitted ourPeerInfo frontVar sock addr msg = do
   where
     splitChunks = splitToChunks msg
     sleeps = cycle (replicate 12 False ++ [True])
-
-
-mkAckPart :: (Word8, Word32, LBS.ByteString)
-mkAckPart = (255, complement 1, LBS.empty)
-
-isConnectPart :: (Word8, Word32, LBS.ByteString) -> Bool
-isConnectPart (front, ofs, payload) = front == 255 && ofs == complement 0 && LBS.null payload
-
 
 splitToChunks :: LBS.ByteString -> [(Word32, LBS.ByteString)]
 splitToChunks s
