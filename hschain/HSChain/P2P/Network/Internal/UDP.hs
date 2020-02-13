@@ -60,7 +60,9 @@ newNetworkUdp ourPeerInfo = do
               flip (NetBS.sendAllTo sock) addr' $ LBS.toStrict $ CBOR.serialise (ourPeerInfo, mkAckPart)
   return NetworkAPI
     { listenOn = do
-        return (liftIO $ killThread tid, atomicallyIO $ readTChan acceptChan)
+        return ( liftIO $ killThread tid
+               , atomicallyIO $ readTChan acceptChan
+               )
       --
     , connect  = \addr -> liftIO $ do
         atomically $ do
@@ -152,8 +154,9 @@ findOrCreateRecvTuple tChans addr = do
       writeTVar tChans $ Map.insert addr fullInfo chans
       return (False, fullInfo)
 
+-- should prevent in-kernel UDP splitting/reassembling most of the time.
 chunkSize :: Word32
-chunkSize = 1400 :: Word32 -- should prevent in-kernel UDP splitting/reassembling most of the time.
+chunkSize = 1400
 
 newUDPSocket :: Net.AddrInfo -> IO Net.Socket
 newUDPSocket ai = do
