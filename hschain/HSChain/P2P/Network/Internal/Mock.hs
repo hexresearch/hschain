@@ -91,7 +91,7 @@ createMockNode MockNet{..} addr = NetworkAPI
         Just xs -> writeTVar mnetIncoming $ Map.insert loc (xs ++ [(sockFrom,addr)]) cmap
       return $ applyConn sockTo
   , listenPort = 0
-  , ourPeerInfo = PeerInfo port 0
+  , ourPeerInfo = PeerInfo port
   }
  where
   applyConn conn = P2PConnection

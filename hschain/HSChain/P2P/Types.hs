@@ -43,9 +43,6 @@ import HSChain.Types.Network
 data PeerInfo = PeerInfo
     { piPeerPort      :: !Word16
     -- ^ Original listening port of the machine of the peer.
-    , piPeerSchemeVer :: !Word16
-    -- ^ The scheme encoding version. It is not possible tp decode
-    --   values safely between two different versions.
     }
     deriving stock    (Show, Generic)
     deriving anyclass (Serialise)
