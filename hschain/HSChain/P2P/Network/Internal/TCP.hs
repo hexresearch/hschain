@@ -8,7 +8,7 @@ import Control.Monad.Catch    (bracketOnError, throwM)
 import Control.Monad.IO.Class (liftIO, MonadIO)
 import Data.List              (find)
 import Data.Monoid            ((<>))
-import Data.Word              (Word32)
+import Data.Word
 import System.Timeout         (timeout)
 
 import qualified Data.ByteString.Builder        as BB
@@ -23,7 +23,7 @@ import HSChain.P2P.Types
 
 
 -- | API implementation for real tcp network
-newNetworkTcp :: PeerInfo -> NetworkAPI
+newNetworkTcp :: Word16 -> NetworkAPI
 newNetworkTcp selfPeerInfo = (realNetworkStub selfPeerInfo)
   { listenOn = do
       addrs <- liftIO $ Net.getAddrInfo (Just tcpListenHints) Nothing (Just serviceName)
@@ -50,7 +50,7 @@ newNetworkTcp selfPeerInfo = (realNetworkStub selfPeerInfo)
         return $ applyConn sock
   }
  where
-  serviceName = show $ piPeerPort selfPeerInfo
+  serviceName = show selfPeerInfo
 
 accept :: (MonadIO m)
        => Net.Socket -> m (P2PConnection, NetAddr)

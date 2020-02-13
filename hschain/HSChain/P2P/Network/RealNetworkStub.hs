@@ -4,12 +4,12 @@ module HSChain.P2P.Network.RealNetworkStub
       realNetworkStub
     ) where
 
+import Data.Word
 import HSChain.P2P.Types
 
-realNetworkStub :: PeerInfo -> NetworkAPI
-realNetworkStub peerInfo = NetworkAPI
+realNetworkStub :: Word16 -> NetworkAPI
+realNetworkStub port = NetworkAPI
   { listenOn    = undefined
   , connect     = undefined
-  , listenPort  = fromIntegral $ piPeerPort peerInfo
-  , ourPeerInfo = peerInfo
+  , listenPort  = fromIntegral port
   }

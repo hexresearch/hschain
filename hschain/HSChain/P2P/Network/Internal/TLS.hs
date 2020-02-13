@@ -49,7 +49,7 @@ import HSChain.P2P.Types
 --
 ----------------------------------------------------------------
 
-newNetworkTls :: TLS.Credential -> PeerInfo -> NetworkAPI
+newNetworkTls :: TLS.Credential -> Word16 -> NetworkAPI
 newNetworkTls creds ourPeerInfo = (realNetworkStub ourPeerInfo)
   { listenOn = do
       addrs <- liftIO $ Net.getAddrInfo (Just tcpListenHints) Nothing (Just serviceName)
@@ -71,7 +71,7 @@ newNetworkTls creds ourPeerInfo = (realNetworkStub ourPeerInfo)
         connectTls creds hostName port sock
   }
   where
-    serviceName = show $ piPeerPort ourPeerInfo
+    serviceName = show ourPeerInfo
 
 
 listenerTls

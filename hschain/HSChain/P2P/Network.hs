@@ -14,8 +14,6 @@ module HSChain.P2P.Network (
   , MockNet
   , newMockNet
   , createMockNode
-    -- * Local address detection
-  , PeerInfo(..)
   ) where
 
 import HSChain.P2P.Network.Internal.TLS

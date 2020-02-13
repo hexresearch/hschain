@@ -114,7 +114,7 @@ connectPeerTo NetworkAPI{..} addr peerCh mempool =
     bracket (connect addr) close $ \conn -> do
       -- Perform handshake
       withGossipNonce (peerNonceSet peerCh) $ \nonce -> do
-        send conn $ serialise $ GossipHello nonce (piPeerPort ourPeerInfo)
+        send conn $ serialise $ GossipHello nonce $ fromIntegral listenPort
         GossipAck <- deserialise <$> recv conn
         return ()
       -- Start peer

@@ -15,7 +15,6 @@ module HSChain.P2P.Types (
   , P2PConnection(..)
   , NetworkError(..)
   , NetworkPort
-  , PeerInfo(..)
     -- *
   , tcpHints
   , tcpListenHints
@@ -23,29 +22,15 @@ module HSChain.P2P.Types (
   , netAddrToAddrInfo
   ) where
 
-import Codec.Serialise
 import Control.Exception      (throwIO)
 import Control.Monad.Catch    (MonadMask, MonadThrow)
 import Control.Monad.IO.Class (MonadIO(..))
-import Data.Word              (Word16)
-import GHC.Generics           (Generic)
-
 import qualified Data.ByteString.Lazy as LBS
 import qualified Network.Socket       as Net
 
 import HSChain.Exceptions
 import HSChain.Types.Network
 
-
-----------------------------------------------------------------
---
-----------------------------------------------------------------
-data PeerInfo = PeerInfo
-    { piPeerPort      :: !Word16
-    -- ^ Original listening port of the machine of the peer.
-    }
-    deriving stock    (Show, Generic)
-    deriving anyclass (Serialise)
 
 ----------------------------------------------------------------
 --
@@ -77,8 +62,6 @@ data NetworkAPI = NetworkAPI
     -- ^ Connect to remote address
   , listenPort :: !NetworkPort
     -- ^ Listen port.
-  , ourPeerInfo :: !PeerInfo
-    -- ^ peer info for easy reference.
   }
 
 data P2PConnection = P2PConnection

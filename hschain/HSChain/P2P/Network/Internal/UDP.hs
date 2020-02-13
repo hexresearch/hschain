@@ -10,6 +10,7 @@ import Data.Word              (Word32, Word8)
 import Control.Monad          (forM_, forever, when)
 import Control.Monad.IO.Class (liftIO, MonadIO)
 import Data.Bits              (complement)
+import Data.Word
 import Control.Concurrent     (forkFinally, killThread, threadDelay)
 
 import qualified Codec.Serialise           as CBOR
@@ -25,13 +26,13 @@ import HSChain.P2P.Types
 import qualified HSChain.P2P.Network.IpAddresses as Ip
 
 -- | API implementation example for real udp network
-newNetworkUdp :: PeerInfo -> IO NetworkAPI
+newNetworkUdp :: Word16 -> IO NetworkAPI
 newNetworkUdp ourPeerInfo = do
   -- FIXME: prolly HostName fits better than SockAddr
   tChans      <- newTVarIO Map.empty
   acceptChan  <- newTChanIO :: IO (TChan (P2PConnection, NetAddr))
   addrInfo':_ <- Net.getAddrInfo (Just udpHints) Nothing
-    (Just $ show $ piPeerPort ourPeerInfo)
+    (Just $ show ourPeerInfo)
   let changeToWildcard Net.AddrInfo{..} = Net.AddrInfo
         { Net.addrAddress = case addrAddress of
             Net.SockAddrInet6 p f h s
@@ -72,12 +73,12 @@ newNetworkUdp ourPeerInfo = do
 
 
 applyConn
-  :: PeerInfo
+  :: Word16
   -> Net.Socket
   -> NetAddr
   -> TVar  Word8
   -> TVar  (Map.Map Word8 [(Word32, LBS.ByteString)])
-  -> TChan (PeerInfo, (Word8, Word32, LBS.ByteString))
+  -> TChan (Word16, (Word8, Word32, LBS.ByteString))
   -> TVar  (Map.Map NetAddr a)
   -> P2PConnection
 applyConn ourPeerInfo sock addr frontVar receivedFrontsVar peerChan tChans = P2PConnection
@@ -88,7 +89,7 @@ applyConn ourPeerInfo sock addr frontVar receivedFrontsVar peerChan tChans = P2P
 
 receiveAction
   :: TVar (Map.Map Word8 [(Word32, LBS.ByteString)])
-  -> TChan (PeerInfo, (Word8, Word32, LBS.ByteString))
+  -> TChan (Word16, (Word8, Word32, LBS.ByteString))
   -> IO LBS.ByteString
 receiveAction frontsVar peerChan = do
   message <- atomically $ do
@@ -100,7 +101,7 @@ receiveAction frontsVar peerChan = do
   if LBS.null message then receiveAction frontsVar peerChan
                       else return $! LBS.copy message
 
-sendSplitted :: PeerInfo -> TVar Word8 -> Net.Socket -> NetAddr -> LBS.ByteString -> IO ()
+sendSplitted :: Word16 -> TVar Word8 -> Net.Socket -> NetAddr -> LBS.ByteString -> IO ()
 sendSplitted ourPeerInfo frontVar sock addr msg = do
   front <- atomically $ do -- slightly overkill, but in line with other's code.
     i <- readTVar frontVar
