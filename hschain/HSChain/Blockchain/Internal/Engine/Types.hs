@@ -17,7 +17,6 @@ module HSChain.Blockchain.Internal.Engine.Types (
   , NetworkCfg(..)
   , DefaultConfig(..)
     -- * Application state
-  , NewBlock(..)
   , AppLogic
   , AppStore(..)
   , AppCallbacks(..)
