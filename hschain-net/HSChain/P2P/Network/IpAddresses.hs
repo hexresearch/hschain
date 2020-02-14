@@ -17,7 +17,7 @@ import Data.Word
 import qualified Network.Info   as Net
 import qualified Network.Socket as Net
 
-import HSChain.Types.Network
+import HSChain.Network.Types
 
 
 defaultPort :: Word16

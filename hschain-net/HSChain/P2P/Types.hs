@@ -28,7 +28,7 @@ import Control.Monad.IO.Class (MonadIO(..))
 import qualified Data.ByteString.Lazy as LBS
 import qualified Network.Socket       as Net
 
-import HSChain.Types.Network
+import HSChain.Network.Types
 
 
 ----------------------------------------------------------------

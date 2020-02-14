@@ -20,7 +20,7 @@ import Control.Exception as E
 import qualified Network.Socket as Net
 
 import HSChain.P2P.Network
-import HSChain.Types.Network
+import HSChain.Network.Types
 import HSChain.P2P.Network.IpAddresses (isLocalAddress,getLocalAddresses)
 
 import Test.QuickCheck

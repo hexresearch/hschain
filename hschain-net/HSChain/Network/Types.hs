@@ -1,7 +1,7 @@
 {-# LANGUAGE CPP           #-}
 {-# LANGUAGE DeriveGeneric #-}
 
-module HSChain.Types.Network where
+module HSChain.Network.Types where
 
 import Codec.Serialise
 import Control.Applicative

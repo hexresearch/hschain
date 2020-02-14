@@ -42,7 +42,7 @@ Library
                   HSChain.P2P.Types
                   HSChain.P2P.Network
                   HSChain.P2P.Network.IpAddresses
-                  HSChain.Types.Network
+                  HSChain.Network.Types
   Other-modules:
                   HSChain.P2P.Network.Parameters
                   HSChain.P2P.Network.Internal.TLS

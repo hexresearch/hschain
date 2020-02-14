@@ -21,7 +21,7 @@ import Test.QuickCheck.Gen
 import HSChain.Types
 import HSChain.Types.Merkle.Types
 import HSChain.Crypto
-import HSChain.Types.Network (NetAddr(..))
+import HSChain.Network.Types (NetAddr(..))
 
 import qualified Data.Map.Strict           as Map
 import qualified Data.ByteString           as BS
