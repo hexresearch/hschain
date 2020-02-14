@@ -46,8 +46,7 @@ import HSChain.P2P.Network    (newNetworkTcp)
 import HSChain.Run
 import HSChain.Store
 import HSChain.Types
-
-import qualified HSChain.P2P.Types as P2PT
+import HSChain.Network.Types (NetAddr)
 
 
 ----------------------------------------------------------------
@@ -90,7 +89,7 @@ data Opts = Opts
 
 data NodeCfg = NodeCfg
   { nodePort      :: Word16
-  , nodeSeeds     :: [P2PT.NetAddr]
+  , nodeSeeds     :: [NetAddr]
   , nodeMaxH      :: Maybe Height
   , nodeIdx       :: Int
   }

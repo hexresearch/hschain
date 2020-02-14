@@ -40,7 +40,9 @@ import qualified Network.TLS             as TLS
 import HSChain.P2P.Network.Parameters
 import HSChain.P2P.Network.Internal.Utils
 import HSChain.P2P.Network.IpAddresses     (getNetAddrPort)
-import HSChain.P2P.Types
+import HSChain.Network.Internal
+import HSChain.Network.Types
+
 
 
 ----------------------------------------------------------------

@@ -19,7 +19,7 @@ import qualified Network.Socket  as Net
 import System.Random
 import System.Timeout
 
-import HSChain.P2P.Types
+import HSChain.Network.Types
 import HSChain.P2P.Network
 
 

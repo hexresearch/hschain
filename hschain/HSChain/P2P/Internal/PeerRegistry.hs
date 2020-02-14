@@ -28,7 +28,6 @@ import qualified Data.Set        as Set
 import HSChain.Control (atomicallyIO)
 import HSChain.Logger
 import HSChain.Network.Types
-import HSChain.P2P.Types (NetworkError(..))
 
 
 ----------------------------------------------------------------

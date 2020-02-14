@@ -42,7 +42,7 @@ import HSChain.Control
 import HSChain.Logger
 import HSChain.Monitoring
 import HSChain.P2P.Network
-import HSChain.P2P.Types
+import HSChain.Network.Types
 import HSChain.P2P.PeerState.Timer
 import HSChain.P2P.PeerState.Types
 import HSChain.Store

@@ -13,7 +13,7 @@ import Control.Monad.IO.Class (liftIO)
 import qualified Data.ByteString.Lazy as LBS
 import qualified Data.Map.Strict      as Map
 
-import HSChain.P2P.Types
+import HSChain.Network.Types
 
 
 -- | Sockets for mock network

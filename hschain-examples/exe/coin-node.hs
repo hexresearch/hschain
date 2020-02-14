@@ -44,8 +44,7 @@ import HSChain.Crypto         (PublicKey)
 import HSChain.P2P.Network    (newNetworkTcp)
 import HSChain.Types
 import HSChain.Types.Merkle.Types
-
-import qualified HSChain.P2P.Types as P2PT
+import HSChain.Network.Types  (NetAddr)
 
 
 ----------------------------------------------------------------
@@ -75,7 +74,7 @@ data Opts = Opts
 data NodeCfg = NodeCfg
   { validatorKeys :: [PublicKey (Alg BData)]
   , nodePort      :: Word16
-  , nodeSeeds     :: [P2PT.NetAddr]
+  , nodeSeeds     :: [NetAddr]
   , nodeMaxH      :: Maybe Height
   }
   deriving (Show,Generic)

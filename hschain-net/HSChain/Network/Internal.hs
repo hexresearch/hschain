@@ -7,22 +7,14 @@
 {-# LANGUAGE ScopedTypeVariables        #-}
 -- |
 -- Abstract API for network which support
-module HSChain.P2P.Types (
-    NetworkAPI(..)
-  , NetAddr(..)
-  , sockAddrToNetAddr
-  , netAddrToSockAddr
-  , P2PConnection(..)
-  , NetworkError(..)
-  , NetworkPort
-    -- *
-  , tcpHints
+module HSChain.Network.Internal (
+    tcpHints
   , tcpListenHints
   , udpHints
   , netAddrToAddrInfo
   ) where
 
-import Control.Exception      (throwIO,Exception)
+import Control.Exception      (throwIO)
 import Control.Monad.IO.Class (MonadIO(..))
 import qualified Network.Socket       as Net
 

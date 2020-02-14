@@ -18,8 +18,8 @@ import qualified Data.Map.Strict           as Map
 import qualified Network.Socket            as Net
 import qualified Network.Socket.ByteString as NetBS
 
-import HSChain.P2P.Types
-
+import HSChain.Network.Internal
+import HSChain.Network.Types
 import qualified HSChain.P2P.Network.IpAddresses as Ip
 
 -- | API implementation example for real udp network

@@ -17,7 +17,8 @@ import qualified Network.Socket                 as Net
 import qualified Network.Socket.ByteString.Lazy as NetLBS
 
 import HSChain.P2P.Network.Internal.Utils
-import HSChain.P2P.Types
+import HSChain.Network.Internal
+import HSChain.Network.Types
 
 
 -- | API implementation for real tcp network

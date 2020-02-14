@@ -20,5 +20,4 @@ import HSChain.P2P.Network.Internal.TLS
 import HSChain.P2P.Network.Internal.TCP
 import HSChain.P2P.Network.Internal.UDP
 import HSChain.P2P.Network.Internal.Mock
-import HSChain.P2P.Types
-
+import HSChain.Network.Types
