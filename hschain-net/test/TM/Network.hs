@@ -3,8 +3,6 @@
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# OPTIONS_GHC -fno-warn-unused-top-binds #-} {- allow useful top functions for GHCi -}
-
-
 -- |
 module TM.Network (tests) where
 
@@ -17,17 +15,14 @@ import Data.String        (fromString)
 
 import Control.Exception as E
 
-import qualified Network.Socket as Net
-
 import HSChain.P2P.Network
 import HSChain.Network.Types
 import HSChain.P2P.Network.IpAddresses (isLocalAddress,getLocalAddresses)
 
-import Test.QuickCheck
 import Test.Tasty
 import Test.Tasty.HUnit
 import TM.RealNetwork
--- import TM.Util.Network
+
 
 ----------------------------------------------------------------
 -- Test tree
@@ -35,21 +30,7 @@ import TM.RealNetwork
 
 tests :: TestTree
 tests = testGroup "network test"
-  [ testGroup "NetAddr"
-    [ testCase "tupleToHostAddress" $ do
-        a <- generate arbitrary
-        Net.tupleToHostAddress a @=? tupleToHostAddress a
-    , testCase "hostAddressToTuple" $ do
-        a <- generate arbitrary
-        Net.hostAddressToTuple a @=? hostAddressToTuple a
-    , testCase "tupleToHostAddress6" $ do
-        a <- generate arbitrary
-        Net.tupleToHostAddress6 a @=? tupleToHostAddress6 a
-    , testCase "hostAddress6ToTuple" $ do
-        a <- generate arbitrary
-        Net.hostAddress6ToTuple a @=? hostAddress6ToTuple a
-    ]
-  , testGroup "local addresses detection"
+  [ testGroup "local addresses detection"
     [ testCase "all locals must be local"
     $ getLocalAddresses >>= (fmap and . mapM isLocalAddress) >>= (@? "Must be local")
     , testCase "loopback is local"
