@@ -75,7 +75,7 @@ import HSChain.Store.STM
 import HSChain.Mock.KeyList         (makePrivKeyStream)
 import HSChain.Mock.Types
 import HSChain.Monitoring
-import qualified HSChain.P2P.Network.Internal.Mock as P2P
+import qualified HSChain.Network.Mock as P2P
 
 
 ----------------------------------------------------------------

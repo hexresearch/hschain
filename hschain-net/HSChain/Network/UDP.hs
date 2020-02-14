@@ -1,7 +1,7 @@
 {-# LANGUAGE BangPatterns    #-}
 {-# LANGUAGE LambdaCase      #-}
 {-# LANGUAGE RecordWildCards #-}
-module HSChain.P2P.Network.Internal.UDP 
+module HSChain.Network.UDP 
   ( newNetworkUdp
   ) where
 
@@ -21,7 +21,7 @@ import qualified Network.Socket.ByteString as NetBS
 
 import HSChain.Network.Internal
 import HSChain.Network.Types
-import qualified HSChain.P2P.Network.IpAddresses as Ip
+import qualified HSChain.Network.IpAddresses as Ip
 
 -- | API implementation example for real udp network
 newNetworkUdp :: Word16 -> IO NetworkAPI

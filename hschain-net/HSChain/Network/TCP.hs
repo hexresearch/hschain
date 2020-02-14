@@ -1,6 +1,6 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiWayIf #-}
-module HSChain.P2P.Network.Internal.TCP
+module HSChain.Network.TCP
   ( newNetworkTcp
   ) where
 
@@ -17,7 +17,7 @@ import qualified Data.ByteString.Lazy           as LBS
 import qualified Network.Socket                 as Net
 import qualified Network.Socket.ByteString.Lazy as NetLBS
 
-import HSChain.P2P.Network.Internal.Utils
+import HSChain.Network.Utils
 import HSChain.Network.Internal
 import HSChain.Network.Types
 

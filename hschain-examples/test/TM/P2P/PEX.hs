@@ -50,7 +50,7 @@ import HSChain.Control
 import HSChain.Logger
 import HSChain.Mock.KeyList
 import HSChain.Monitoring
-import HSChain.P2P.Network.Internal.Mock
+import HSChain.Network.Mock
 import HSChain.Types.Blockchain
 import HSChain.Run
 import HSChain.Store

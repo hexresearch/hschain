@@ -48,7 +48,7 @@ import HSChain.Store.STM
 import HSChain.Types
 import HSChain.Types.Merkle.Types
 import HSChain.Arbitrary.Instances ()
-import qualified HSChain.P2P.Network.Internal.Mock as P2P
+import qualified HSChain.Network.Mock as P2P
 
 
 type VSet = ValidatorSet (Ed25519 :& SHA512)

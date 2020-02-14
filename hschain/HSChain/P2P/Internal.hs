@@ -50,7 +50,7 @@ import HSChain.P2P.Internal.PeerRegistry
 import HSChain.P2P.Internal.Types
 import HSChain.P2P.PeerState.Handle
 import HSChain.Utils
-import qualified HSChain.P2P.Network.IpAddresses as Ip
+import qualified HSChain.Network.IpAddresses as Ip
 
 --
 -- Connect/accept

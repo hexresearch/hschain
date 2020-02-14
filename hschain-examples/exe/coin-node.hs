@@ -41,7 +41,7 @@ import HSChain.Store
 import HSChain.Monitoring
 import HSChain.Mock
 import HSChain.Crypto         (PublicKey)
-import HSChain.P2P.Network.Internal.TCP    (newNetworkTcp)
+import HSChain.Network.TCP    (newNetworkTcp)
 import HSChain.Types
 import HSChain.Types.Merkle.Types
 import HSChain.Network.Types  (NetAddr)

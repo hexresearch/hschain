@@ -2,7 +2,7 @@
 {-# LANGUAGE RecordWildCards #-}
 -- | Functions for manipulating IP addresses
 --
-module HSChain.P2P.Network.IpAddresses (
+module HSChain.Network.IpAddresses (
     filterOutOwnAddresses
   , getLocalAddresses
   , isLocalAddress

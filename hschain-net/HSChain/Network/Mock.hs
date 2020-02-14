@@ -1,7 +1,7 @@
 {-# LANGUAGE LambdaCase      #-}
 {-# LANGUAGE RankNTypes      #-}
 {-# LANGUAGE RecordWildCards #-}
-module HSChain.P2P.Network.Internal.Mock
+module HSChain.Network.Mock
   ( MockNet
   , newMockNet
   , createMockNode

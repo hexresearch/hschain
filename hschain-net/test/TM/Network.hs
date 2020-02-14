@@ -16,8 +16,8 @@ import Data.String        (fromString)
 import Control.Exception as E
 
 import HSChain.Network.Types
-import HSChain.P2P.Network.IpAddresses (isLocalAddress,getLocalAddresses)
-import HSChain.P2P.Network.Internal.Mock
+import HSChain.Network.IpAddresses (isLocalAddress,getLocalAddresses)
+import HSChain.Network.Mock
 
 import Test.Tasty
 import Test.Tasty.HUnit

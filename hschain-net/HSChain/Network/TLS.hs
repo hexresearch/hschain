@@ -5,7 +5,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 -- |
 -- Abstract API for network which support
-module HSChain.P2P.Network.Internal.TLS (
+module HSChain.Network.TLS (
     -- * Real tls network
     newNetworkTls
   , getCredential
@@ -37,9 +37,9 @@ import qualified GHC.IO.Exception        as Eg
 import qualified Network.Socket          as Net
 import qualified Network.TLS             as TLS
 
-import HSChain.P2P.Network.Parameters
-import HSChain.P2P.Network.Internal.Utils
-import HSChain.P2P.Network.IpAddresses     (getNetAddrPort)
+import HSChain.Network.Parameters
+import HSChain.Network.Utils
+import HSChain.Network.IpAddresses     (getNetAddrPort)
 import HSChain.Network.Internal
 import HSChain.Network.Types
 

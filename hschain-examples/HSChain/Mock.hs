@@ -24,7 +24,7 @@ import HSChain.P2P
 import HSChain.Run
 import HSChain.Store
 import HSChain.Types
-import qualified HSChain.P2P.Network.Internal.Mock as P2P
+import qualified HSChain.Network.Mock as P2P
 
 -- | Allocate mock P2P connections for node
 allocateMockNetAddrs

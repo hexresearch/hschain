@@ -3,7 +3,7 @@
 {-# LANGUAGE RecordWildCards   #-}
 -- |
 -- Abstract API for network which support
-module HSChain.P2P.Network.Parameters
+module HSChain.Network.Parameters
     ( mkClientParams
     , mkServerParams
     , getCredential
