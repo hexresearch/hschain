@@ -140,6 +140,7 @@ Test-suite hschain-tests
                      , hschain
                      , hschain-crypto
                      , hschain-types
+                     , hschain-net
                      , hschain-quickcheck
                      , hschain-examples
                      , aeson
@@ -177,10 +178,8 @@ Test-suite hschain-tests
   Other-modules:       TM.Consensus
                        TM.Integration
                        TM.Mempool
-                       TM.Network
                        TM.P2P.Gossip
                        TM.P2P.PEX
-                       TM.RealNetwork
                        TM.Serialisation
                        TM.Util.Network
                        TM.Util.Tests

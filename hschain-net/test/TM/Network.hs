@@ -27,7 +27,7 @@ import Test.QuickCheck
 import Test.Tasty
 import Test.Tasty.HUnit
 import TM.RealNetwork
-import TM.Util.Network
+-- import TM.Util.Network
 
 ----------------------------------------------------------------
 -- Test tree

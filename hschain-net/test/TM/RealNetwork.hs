@@ -1,17 +1,27 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE LambdaCase          #-}
+{-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 -- |
-module TM.RealNetwork ( realNetPair
-                      , realTlsNetPair
-                      , NetPair ) where
+module TM.RealNetwork
+  ( realNetPair
+  , realTlsNetPair
+  , NetPair
+  , withTimeOut
+  , withRetry
+  ) where
 
+import Control.Exception (IOException)
+import Control.Monad.Catch
+import Control.Monad.IO.Class
+import Control.Retry  (constantDelay, limitRetries, recovering)
+import qualified Data.ByteString as BS
+import qualified Network.Socket  as Net
 import System.Random
+import System.Timeout
 
-import HSChain.P2P
 import HSChain.P2P.Types
 import HSChain.P2P.Network
 
-import qualified Data.ByteString as BS
-import qualified Network.Socket  as Net
 
 ----------------------------------------------------------------
 
@@ -123,3 +133,24 @@ keyPem = BS.concat
          ,"yUChI0ywz8ml3Jku4Cdxsf0Cgm0hFOoDGBPZhU9iPjV5VuHxUfVjn6xZZfb+9/gp\n"
          ,"5TzSwQ4wWFTULMrkeSakQc21R3p9fgSE0/xSfrfxibn+GCtyhbkYFQ==\n"
          ,"-----END RSA PRIVATE KEY-----" ]
+
+withRetry :: MonadIO m => IO a -> m a
+withRetry
+  = liftIO
+  . recovering (constantDelay 500 <> limitRetries 20) hs
+  . const
+  where
+    -- exceptions list to trigger the recovery logic
+    hs :: [a -> Handler IO Bool]
+    hs = [const $ Handler (\(_::IOException) -> return True)]
+
+-- | Exception for aborting the execution of test
+data AbortTest = AbortTest
+                 deriving Show
+
+instance Exception AbortTest
+
+withTimeOut :: Int -> IO a -> IO a
+withTimeOut t act = timeout t act >>= \case
+  Just n  -> pure n
+  Nothing -> throwM AbortTest
