@@ -2,7 +2,9 @@
 {-# LANGUAGE RankNTypes      #-}
 {-# LANGUAGE RecordWildCards #-}
 module HSChain.P2P.Network.Internal.Mock
-  ( newMockNet
+  ( MockNet
+  , newMockNet
+  , createMockNode
   ) where
 
 import Control.Concurrent.STM

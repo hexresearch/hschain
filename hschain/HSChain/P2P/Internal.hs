@@ -41,7 +41,6 @@ import HSChain.Blockchain.Internal.Engine.Types
 import HSChain.Control
 import HSChain.Logger
 import HSChain.Monitoring
-import HSChain.P2P.Network
 import HSChain.Network.Types
 import HSChain.P2P.PeerState.Timer
 import HSChain.P2P.PeerState.Types

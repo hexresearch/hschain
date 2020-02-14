@@ -20,7 +20,9 @@ import System.Random
 import System.Timeout
 
 import HSChain.Network.Types
-import HSChain.P2P.Network
+import HSChain.P2P.Network.Internal.TCP
+import HSChain.P2P.Network.Internal.TLS
+import HSChain.P2P.Network.Internal.UDP
 
 
 ----------------------------------------------------------------

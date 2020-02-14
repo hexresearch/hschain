@@ -42,7 +42,7 @@ import HSChain.Mock.Dioxane
 import HSChain.Mock.KeyList
 import HSChain.Mock.Types
 import HSChain.Monitoring
-import HSChain.P2P.Network    (newNetworkTcp)
+import HSChain.P2P.Network.Internal.TCP (newNetworkTcp)
 import HSChain.Run
 import HSChain.Store
 import HSChain.Types

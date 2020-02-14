@@ -37,16 +37,15 @@ Library
                      , x509-system
                      , x509-validation
   Exposed-modules:
-                  HSChain.P2P.Network
                   HSChain.P2P.Network.IpAddresses
                   HSChain.Network.Types
-  Other-modules:
-                  HSChain.Network.Internal
-                  HSChain.P2P.Network.Parameters
                   HSChain.P2P.Network.Internal.TLS
                   HSChain.P2P.Network.Internal.TCP
                   HSChain.P2P.Network.Internal.UDP
                   HSChain.P2P.Network.Internal.Mock
+  Other-modules:
+                  HSChain.Network.Internal
+                  HSChain.P2P.Network.Parameters
                   HSChain.P2P.Network.Internal.Utils
 
 
