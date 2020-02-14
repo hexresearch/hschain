@@ -1,5 +1,6 @@
-{-# LANGUAGE CPP           #-}
-{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveAnyClass     #-}
+{-# LANGUAGE DeriveGeneric      #-}
+{-# LANGUAGE DerivingStrategies #-}
 module HSChain.Network.Types where
 
 import Codec.Serialise
@@ -21,10 +22,13 @@ import Network.Socket ( hostAddressToTuple,  tupleToHostAddress
                       )
 
 
+-- | Network address. It's distinct from adrress from @network@
+--   package in that it only support IP and could be serialised.
 data NetAddr
   = NetAddrV4 !HostAddress  !Word16
   | NetAddrV6 !HostAddress6 !Word16
-  deriving (Eq, Ord, Generic)
+  deriving stock    (Eq, Ord, Generic)
+  deriving anyclass (Serialise)
 
 instance Show NetAddr where
   show (NetAddrV4 ha p) = let (a,b,c,d) = hostAddressToTuple ha
@@ -61,7 +65,6 @@ instance Read NetAddr where
       digit :: Integral i => ReadP.ReadP i
       digit = fromInteger . read <$> ReadP.munch1 isDigit
 
-instance Serialise NetAddr
 instance JSON.ToJSON   NetAddr where
   toJSON netAddr = JSON.String $ Text.pack $ show netAddr
 instance JSON.FromJSON NetAddr where

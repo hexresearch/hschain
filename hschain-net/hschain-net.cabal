@@ -36,8 +36,6 @@ Library
                      , x509-store
                      , x509-system
                      , x509-validation
-  if arch(i386) || arch(x86_64)
-    CPP-Options:   -DWORDS_LITTLEENDIAN
   Exposed-modules:
                   HSChain.P2P.Types
                   HSChain.P2P.Network
