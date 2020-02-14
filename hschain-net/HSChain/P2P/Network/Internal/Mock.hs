@@ -1,8 +1,9 @@
 {-# LANGUAGE LambdaCase      #-}
 {-# LANGUAGE RankNTypes      #-}
 {-# LANGUAGE RecordWildCards #-}
-
-module HSChain.P2P.Network.Internal.Mock where
+module HSChain.P2P.Network.Internal.Mock
+  ( newMockNet
+  ) where
 
 import Control.Concurrent.STM
 

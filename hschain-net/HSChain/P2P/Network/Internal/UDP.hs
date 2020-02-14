@@ -2,7 +2,8 @@
 {-# LANGUAGE LambdaCase      #-}
 {-# LANGUAGE RecordWildCards #-}
 module HSChain.P2P.Network.Internal.UDP 
-  ( newNetworkUdp ) where
+  ( newNetworkUdp
+  ) where
 
 import Control.Concurrent.STM
 

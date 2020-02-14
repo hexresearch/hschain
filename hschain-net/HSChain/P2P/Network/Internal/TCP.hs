@@ -1,7 +1,8 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiWayIf #-}
-module HSChain.P2P.Network.Internal.TCP 
-  ( newNetworkTcp ) where
+module HSChain.P2P.Network.Internal.TCP
+  ( newNetworkTcp
+  ) where
 
 import Control.Monad          (when)
 import Control.Monad.Catch    (bracketOnError, throwM)
