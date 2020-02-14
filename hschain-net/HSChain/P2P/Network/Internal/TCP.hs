@@ -16,7 +16,6 @@ import qualified Data.ByteString.Lazy           as LBS
 import qualified Network.Socket                 as Net
 import qualified Network.Socket.ByteString.Lazy as NetLBS
 
-import HSChain.Control
 import HSChain.P2P.Network.Internal.Utils
 import HSChain.P2P.Types
 
@@ -43,9 +42,8 @@ newNetworkTcp selfPeerInfo = NetworkAPI
       bracketOnError (newSocket addrInfo) (liftIO . Net.close) $ \sock -> do
         let tenSec = 10000000
         -- Waits for connection for 10 sec and throws `ConnectionTimedOut` exception
-        liftIO $ throwNothingM ConnectionTimedOut
-               $ timeout tenSec
-               $ Net.connect sock sockAddr
+        liftIO $ maybe (throwM ConnectionTimedOut) return
+             =<< timeout tenSec (Net.connect sock sockAddr)
         return $ applyConn sock
   , listenPort = fromIntegral selfPeerInfo
   }

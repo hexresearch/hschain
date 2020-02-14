@@ -18,7 +18,6 @@ import qualified Data.Map.Strict           as Map
 import qualified Network.Socket            as Net
 import qualified Network.Socket.ByteString as NetBS
 
-import HSChain.Control  (atomicallyIO)
 import HSChain.P2P.Types
 
 import qualified HSChain.P2P.Network.IpAddresses as Ip
@@ -57,7 +56,7 @@ newNetworkUdp ourPeerInfo = do
   return NetworkAPI
     { listenOn = do
         return ( liftIO $ killThread tid
-               , atomicallyIO $ readTChan acceptChan
+               , liftIO $ atomically $ readTChan acceptChan
                )
       --
     , connect  = \addr -> liftIO $ do
@@ -156,8 +155,7 @@ newUDPSocket ai = do
 
 closeConn :: (MonadIO m, Ord k)
           => k -> TVar (Map.Map k a) -> m ()
-closeConn addr tChans = do
-  atomicallyIO $ do
+closeConn addr tChans = liftIO $ atomically $ do
     chans <- readTVar tChans
     writeTVar tChans $ Map.delete addr chans
 

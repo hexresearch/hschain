@@ -22,13 +22,12 @@ module HSChain.P2P.Types (
   , netAddrToAddrInfo
   ) where
 
-import Control.Exception      (throwIO)
+import Control.Exception      (throwIO,Exception)
 import Control.Monad.Catch    (MonadMask, MonadThrow)
 import Control.Monad.IO.Class (MonadIO(..))
 import qualified Data.ByteString.Lazy as LBS
 import qualified Network.Socket       as Net
 
-import HSChain.Exceptions
 import HSChain.Types.Network
 
 
@@ -105,3 +104,14 @@ netAddrToAddrInfo addr = liftIO $ do
   return (ai,sockAddr,hostName)
   where
     sockAddr = netAddrToSockAddr addr
+
+-- | Some network error.
+data NetworkError
+  = ConnectionTimedOut          -- ^ Connection timed out
+  | NoAddressAvailable          -- ^ 
+  | CantReverseLookipHostname   -- ^
+  | ConnectionClosed            -- ^
+  | ConnectionLoop
+  | SelfConnection
+  deriving stock    (Show)
+  deriving anyclass (Exception)

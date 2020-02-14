@@ -100,8 +100,7 @@ main = do
   evalContT $ do
     let (mtxGen, genesis) = mintMockCoin [ Validator v 1 | v <- validatorKeys] coin
     -- Create network
-    let peerInfo = P2PT.PeerInfo nodePort 0
-        bnet     = BlockchainNet { bchNetwork      = newNetworkTcp peerInfo
+    let bnet     = BlockchainNet { bchNetwork      = newNetworkTcp nodePort
                                  , bchInitialPeers = nodeSeeds
                                  }
     --- Allocate resources

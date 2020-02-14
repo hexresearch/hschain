@@ -13,8 +13,8 @@ import Control.Monad.IO.Class (liftIO)
 import qualified Data.ByteString.Lazy as LBS
 import qualified Data.Map.Strict      as Map
 
-import HSChain.Control (atomicallyIO)
 import HSChain.P2P.Types
+
 
 -- | Sockets for mock network
 data MockSocket = MockSocket
@@ -44,7 +44,7 @@ createMockNode
   -> NetAddr
   -> NetworkAPI
 createMockNode MockNet{..} addr = NetworkAPI
-  { listenOn = atomicallyIO $ do
+  { listenOn = liftIO $ atomically $ do
       let key = addr
       -- Start listening on port
       do mListen <- readTVar mnetIncoming
@@ -56,12 +56,12 @@ createMockNode MockNet{..} addr = NetworkAPI
       --     side of connection knows it.
       --  2. Remove connection from mnetIncoming so it's possible to
       --     start listening on same address again
-      let stopListening = atomicallyIO $ do
+      let stopListening = liftIO $ atomically $ do
             mListen <- readTVar mnetIncoming
             forM_ (key `Map.lookup` mListen) $ mapM_ (closeMockSocket . fst)
             modifyTVar' mnetIncoming $ Map.delete key
       -- Accept connection
-      let accept = atomicallyIO $ do
+      let accept = liftIO $ atomically $ do
             mList <- readTVar mnetIncoming
             case key `Map.lookup` mList of
               Nothing     -> error "MockNet: cannot accept on closed socket"
@@ -71,8 +71,7 @@ createMockNode MockNet{..} addr = NetworkAPI
                 return (applyConn conn, addr')
       return (stopListening, accept)
     --
-  , connect = \loc -> do
-    atomicallyIO $ do
+  , connect = \loc -> liftIO $ atomically $ do
       chA <- newTChan
       chB <- newTChan
       v   <- newTVar True
@@ -96,7 +95,7 @@ createMockNode MockNet{..} addr = NetworkAPI
   applyConn conn = P2PConnection
     { send          = liftIO . sendBS conn
     , recv          = liftIO $ recvBS conn
-    , close         = atomicallyIO $ closeMockSocket conn
+    , close         = liftIO $ atomically $ closeMockSocket conn
     }
   sendBS MockSocket{..} bs = atomically $
       readTVar msckActive >>= \case

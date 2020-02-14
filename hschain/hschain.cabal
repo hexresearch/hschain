@@ -24,6 +24,7 @@ Library
   Build-Depends:       base              >=4.9 && <5
                      , hschain-crypto
                      , hschain-types
+                     , hschain-net
                      , aeson
                      , base58-bytestring >=0.1
                      , bytestring        >=0.10
@@ -78,7 +79,6 @@ Library
                   HSChain.Monitoring
                   HSChain.Run
                   HSChain.P2P
-                  HSChain.P2P.Network
                   HSChain.P2P.PeerState.Timer
                   HSChain.P2P.PeerState.Types
                   HSChain.P2P.PeerState.Handle
@@ -88,8 +88,6 @@ Library
                   HSChain.P2P.PeerState.Handle.Unknown
                   HSChain.P2P.PeerState.Handle.Utils
                   HSChain.P2P.PeerState.Monad
-                  HSChain.P2P.Types
-                  HSChain.P2P.Network.IpAddresses
                   HSChain.P2P.Internal
                   HSChain.Store
                   HSChain.Store.STM
@@ -98,11 +96,5 @@ Library
                   HSChain.Store.Internal.Proposals
                   HSChain.Utils
   Other-modules:
-                  HSChain.P2P.Network.Parameters
-                  HSChain.P2P.Network.Internal.TLS
-                  HSChain.P2P.Network.Internal.TCP
-                  HSChain.P2P.Network.Internal.UDP
-                  HSChain.P2P.Network.Internal.Mock
-                  HSChain.P2P.Network.Internal.Utils
                   HSChain.P2P.Internal.PeerRegistry
                   HSChain.P2P.Internal.Types

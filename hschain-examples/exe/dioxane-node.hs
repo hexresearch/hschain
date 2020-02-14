@@ -115,8 +115,7 @@ main = do
   -- Start node
   evalContT $ do
     -- Create network
-    let peerInfo = P2PT.PeerInfo nodePort 0
-        bnet     = BlockchainNet { bchNetwork      = newNetworkTcp peerInfo
+    let bnet     = BlockchainNet { bchNetwork      = newNetworkTcp nodePort
                                  , bchInitialPeers = nodeSeeds
                                  }
     --

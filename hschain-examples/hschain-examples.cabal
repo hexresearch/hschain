@@ -20,6 +20,7 @@ Library
                      , hschain-crypto
                      , hschain-types
                      , hschain
+                     , hschain-net
                        --
                      , aeson
                      , bytestring           >=0.10
@@ -51,6 +52,7 @@ Executable hschain-coin-node
   Default-Language:    Haskell2010
   Build-Depends:       base                 >=4.9 && <5
                      , hschain
+                     , hschain-net
                      , hschain-types
                      , hschain-crypto
                      , hschain-examples
@@ -80,6 +82,7 @@ Executable hschain-dioxane-node
   Default-Language:    Haskell2010
   Build-Depends:       base                 >=4.9 && <5
                      , hschain
+                     , hschain-net
                      , hschain-types
                      , hschain-crypto
                      , hschain-examples

@@ -37,7 +37,6 @@ import qualified GHC.IO.Exception        as Eg
 import qualified Network.Socket          as Net
 import qualified Network.TLS             as TLS
 
-import HSChain.Control
 import HSChain.P2P.Network.Parameters
 import HSChain.P2P.Network.Internal.Utils
 import HSChain.P2P.Network.IpAddresses     (getNetAddrPort)
@@ -61,12 +60,11 @@ newNetworkTls creds ourPeerInfo = NetworkAPI
   , connect  = \addr -> do
       let port = getNetAddrPort addr
       (addrInfo,sockAddr,mhostName) <- netAddrToAddrInfo addr
-      hostName <- throwNothing CantReverseLookipHostname mhostName
+      hostName <- maybe (throwM CantReverseLookipHostname) return mhostName
       bracketOnError (newSocket addrInfo) (liftIO . Net.close) $ \ sock -> do
         -- Waits for connection for 10 sec and throws `ConnectionTimedOut` exception
-        liftIO $ throwNothingM ConnectionTimedOut
-               $ timeout 10e6
-               $ Net.connect sock sockAddr
+        liftIO $ maybe (throwM ConnectionTimedOut) return
+             =<< timeout 10e6 (Net.connect sock sockAddr)
         connectTls creds hostName port sock
   , listenPort = fromIntegral ourPeerInfo
   }

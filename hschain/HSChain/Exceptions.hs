@@ -14,17 +14,6 @@ import HSChain.Types.Blockchain
 --
 ----------------------------------------------------------------
 
--- | Some network error.
-data NetworkError
-  = ConnectionTimedOut          -- ^ Connection timed out
-  | NoAddressAvailable          -- ^ 
-  | CantReverseLookipHostname   -- ^
-  | ConnectionClosed            -- ^
-  | ConnectionLoop
-  | SelfConnection
-  deriving stock    (Show)
-  deriving anyclass (Exception)
-
 -- | Database is corruped
 data CorruptedDBError
   = DBMissingValSet       !Height -- ^ Validator set is missing

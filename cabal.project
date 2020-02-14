@@ -4,6 +4,7 @@ packages:
          hschain-crypto
          hschain-crypto-bls
          hschain-types
+         hschain-net
          hschain-quickcheck
          hschain-examples
          serialise-cddl
