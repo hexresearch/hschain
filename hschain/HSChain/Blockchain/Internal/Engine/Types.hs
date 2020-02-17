@@ -1,13 +1,15 @@
-{-# LANGUAGE DataKinds            #-}
-{-# LANGUAGE DeriveGeneric        #-}
-{-# LANGUAGE FlexibleContexts     #-}
-{-# LANGUAGE LambdaCase           #-}
-{-# LANGUAGE OverloadedStrings    #-}
-{-# LANGUAGE RankNTypes           #-}
-{-# LANGUAGE RecordWildCards      #-}
-{-# LANGUAGE ScopedTypeVariables  #-}
-{-# LANGUAGE TypeApplications     #-}
-{-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE DataKinds                  #-}
+{-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE DerivingStrategies         #-}
+{-# LANGUAGE FlexibleContexts           #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE LambdaCase                 #-}
+{-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE RankNTypes                 #-}
+{-# LANGUAGE RecordWildCards            #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
+{-# LANGUAGE TypeApplications           #-}
+{-# LANGUAGE UndecidableInstances       #-}
 -- |
 -- Data types for storage of blockchain
 module HSChain.Blockchain.Internal.Engine.Types (
@@ -219,15 +221,7 @@ instance HoistDict AppCallbacks where
 newtype PrivValidator alg = PrivValidator
   { validatorPrivKey  :: PrivKey alg
   }
-
-instance Crypto alg => Show (PrivValidator alg) where
-  show (PrivValidator k) = show k
-
-instance Crypto alg => FromJSON (PrivValidator alg) where
-  parseJSON = fmap PrivValidator . parseJSON
-instance Crypto alg => ToJSON   (PrivValidator alg) where
-  toJSON = toJSON . validatorPrivKey
-
+  deriving newtype (Show, ToJSON, FromJSON)
 
 -- | Application connection to outer world
 data AppChans a = AppChans
