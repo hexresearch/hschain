@@ -75,7 +75,7 @@ testValidators :: [PrivValidator (Alg BData)]
 testValidators = take 4 $ map PrivValidator $ makePrivKeyStream 1337
 
 intToNetAddr :: Int -> NetAddr
-intToNetAddr i = NetAddrV4 (fromIntegral i) 1122
+intToNetAddr i = NetAddrV4 (fromIntegral i) 0
 
 
 ----------------------------------------------------------------

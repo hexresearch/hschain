@@ -97,11 +97,11 @@ testPeersMustConnect = do
     , waitSec 0.5
     ]
   readPEX events1 >>= isSubset "Node 1"
-    [[ ("peer registry update",  [("conns", Array [ "2.0.0.0:1122", "3.0.0.0:1122"])]) ]]
+    [[ ("peer registry update",  [("conns", Array [ "2.0.0.0:0", "3.0.0.0:0"])]) ]]
   readPEX events2 >>= isSubset "Node 2"
-    [[ ("peer registry update", [("conns",Array [ "1.0.0.0:1122", "3.0.0.0:1122"])]) ]]
+    [[ ("peer registry update", [("conns",Array [ "1.0.0.0:0", "3.0.0.0:0"])]) ]]
   readPEX events3 >>= isSubset "Node 3"
-    [[ ("peer registry update",  [("conns",Array ["1.0.0.0:1122", "2.0.0.0:1122"])]) ]]
+    [[ ("peer registry update",  [("conns",Array ["1.0.0.0:0", "2.0.0.0:0"])]) ]]
 
 
 -- In network with initial star topology all peers must connect to
