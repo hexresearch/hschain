@@ -21,18 +21,27 @@ typedef PicoSAT Solver;
 #define solver_deref picosat_deref
 #define solver_set_interrupt picosat_set_interrupt
 #define solver_set_seed picosat_set_seed
+#define solver_set_attempts(solver, attempts) ((void)0)
 
 #define SOLVER_SATISFIABLE PICOSAT_SATISFIABLE
 
 #else
 #include "yals.h"
 
+#define MAX_RUNS (256)
+int64_t runs_counts[MAX_RUNS];
+clock_t runs_clocks[MAX_RUNS];
+
 typedef struct solver_s {
 	Yals*    inner_solver;
+	int32_t  attempts_allowed;
 	int      seed;
+	int      runs;
 	int*     literals_added;
 	int      literals_added_count;
 	int      literals_added_capacity;
+	void*    interrupt_check_data;
+	int      (*interrupt)(void*);
 } Solver;
 Solver* solver_new(void) {
 	Solver* solver = malloc(sizeof(*solver));
@@ -42,15 +51,21 @@ Solver* solver_new(void) {
 	}
 	solver->inner_solver = NULL;
 	solver->seed = 0;
+	solver->runs = 0;
 	solver->literals_added_count = 0;
 	solver->literals_added_capacity = 16384;
 	solver->literals_added = malloc(solver->literals_added_capacity * sizeof(*solver->literals_added));
+	solver->attempts_allowed = 25000000; // 10 seconds for YalSAT speed of 2.5M flips/second.
 	if (!solver->literals_added) {
 		printf("unable to allocate literals cache\n");
 		exit(1);
 	}
+	solver->interrupt = NULL;
 	return solver;
 } /* solver_new */
+void solver_set_attempts(Solver*solver, int32_t attempts_allowed) {
+	solver->attempts_allowed = attempts_allowed;
+} /* solver_set_attempts */
 void solver_delete(Solver*solver) {
 	if (!solver) { return ; }
 	if (solver->inner_solver) {
@@ -61,7 +76,10 @@ void solver_delete(Solver*solver) {
 	}
 	free(solver);
 } /* solver_delete */
-#define solver_set_interrupt(s, d, i) ((void)0)
+void solver_set_interrupt(Solver* solver,void* interrupt_data,int (*interrupt)(void*)) {
+	solver->interrupt_check_data = interrupt_data;
+	solver->interrupt = interrupt;
+} /* solver_set_interrupt */
 void solver_add(Solver*solver, int literal) {
 	if (solver->literals_added_count >= solver->literals_added_capacity) {
 		solver->literals_added_capacity *= 2;
@@ -76,8 +94,11 @@ void solver_add(Solver*solver, int literal) {
 } /* solver_add */
 int solver_sat(Solver* solver, int decision_limit_unused) {
 	int i;
-	(void)decision_limit_unused;
 	Yals* old_solver = solver->inner_solver;
+	if (solver->interrupt && solver->interrupt(solver->interrupt_check_data)) {
+		return 0;
+	}
+	(void)decision_limit_unused;
 	solver->inner_solver = yals_new();
 	if (old_solver) {
 		// we have run solve process before, copy old solution into new.
@@ -92,13 +113,26 @@ int solver_sat(Solver* solver, int decision_limit_unused) {
 		}
 		yals_del(old_solver);
 	}
+	if (solver->interrupt) {
+		yals_seterm(solver->inner_solver, solver->interrupt, solver->interrupt_check_data);
+	}
 	yals_srand(solver->inner_solver, solver->seed);
 	solver->seed ++; // choose some other value than last call.
         for (i=0;i<solver->literals_added_count; i++) {
 		yals_add(solver->inner_solver, solver->literals_added[i]);
 	}
-	yals_setflipslimit(solver->inner_solver, 2500000); // we have typical speed of about 2.5e6 flips/sec.
-	return yals_sat(solver->inner_solver);
+	yals_setflipslimit(solver->inner_solver, solver->attempts_allowed);
+	clock_t start_time = clock();
+	int result = yals_sat(solver->inner_solver);
+	clock_t end_time = clock();
+	int current_run = solver->runs;
+	if (current_run >= MAX_RUNS) {
+		current_run = MAX_RUNS - 1;
+	}
+	solver->runs ++;
+	runs_counts[current_run] ++;
+	runs_clocks[current_run] += end_time-start_time;
+	return result;
 } /* solver_sat */
 #define solver_deref(solver, lit) yals_deref(solver->inner_solver, lit)
 void solver_set_seed(Solver*solver, int seed) {
@@ -173,7 +207,7 @@ create_clause(SHA256_CTX* hash_ctx_for_clause, int clause, int* clause_literals,
 } /* create_clause */
 
 static void
-create_instance(uint8_t* prefix_hash, Solver* solver, int clauses_count, int fixed_bits_count, uint32_t fixed_bits) {
+create_instance(uint8_t* prefix_hash, Solver* solver, int clauses_count, int fixed_bits_count, uint64_t fixed_bits) {
 	int clause;
 	int literal_index;
 	SHA256_CTX ctx_after_hash;
@@ -294,8 +328,7 @@ under_complexity_threshold(uint8_t* hash, int complexity_shift, uint16_t complex
 } /* under_complexity_threshold */
 
 static int
-find_answer(SHA256_CTX* context_after_prefix, uint8_t* answer, uint8_t* full_hash, int milliseconds_allowance, int complexity_shift, uint16_t complexity_mantissa, Solver* solver, int32_t attempts_count, int32_t* attempts_done) {
-	int attempts = 0;
+find_answer(SHA256_CTX* context_after_prefix, uint8_t* answer, uint8_t* full_hash, int milliseconds_allowance, int complexity_shift, uint16_t complexity_mantissa, Solver* solver) {
 	clock_t end_time;
 	clock_t last_time;
 
@@ -306,7 +339,7 @@ find_answer(SHA256_CTX* context_after_prefix, uint8_t* answer, uint8_t* full_has
 		solver_set_interrupt(solver, (void*)&end_time, check_clock);
 	}
 	//printf("complexity shift %d, mantissa %04x\n", complexity_shift, complexity_mantissa);
-	while (attempts_count <= 0 || attempts < attempts_count) {
+	while (1) {
 		SHA256_CTX full_hash_context;
 		// obtain a solution.
 		int status;
@@ -329,11 +362,8 @@ find_answer(SHA256_CTX* context_after_prefix, uint8_t* answer, uint8_t* full_has
 		SHA256_Update(&full_hash_context, answer, EVPOW_ANSWER_BYTES);
 		SHA256_Final(full_hash, &full_hash_context);
 		if (under_complexity_threshold(full_hash, complexity_shift, complexity_mantissa)) {
+			//printf("FOUND!\n");
 			return 1; // and everything is in place - answer filled, hash computed.
-		}
-		attempts ++;
-		if (attempts_done) {
-			*attempts_done ++;
 		}
 
 		// here we form a clause that blocks current assignment.
@@ -363,9 +393,8 @@ evpow_solve( uint8_t* prefix
 	   , uint16_t complexity_mantissa
 	   , int32_t milliseconds_allowance
 	   , int32_t attempts_allowed
-	   , int32_t* attempts_done
 	   , int fixed_bits_count
-	   , uint32_t fixed_bits
+	   , uint64_t fixed_bits
 	   , char* cnf_fn
 ) {
 	SHA256_CTX prefix_hash_context;
@@ -380,17 +409,15 @@ evpow_solve( uint8_t* prefix
 	intermediate_prefix_hash_context = prefix_hash_context;
 	SHA256_Final(prefix_hash, &intermediate_prefix_hash_context);
 
-	// clear reporting when asked.
-	if (attempts_done) {
-		*attempts_done = 0;
-	}
-
-	// Create and configure picosat instance.
+	// Create and configure solver instance.
 	solver = solver_new();
 	if (!solver) {
 		return 0;
 	}
 	solver_set_seed(solver, 1); // get predictable results.
+	if (attempts_allowed > 0) {
+		solver_set_attempts(solver, attempts_allowed);
+	}
 
 	// Create instance and feed it to solver.
 	create_instance(prefix_hash, solver, clauses_count, fixed_bits_count, fixed_bits);
@@ -406,7 +433,7 @@ evpow_solve( uint8_t* prefix
 	}
 
 	// find solution if we can.
-	r = find_answer(&prefix_hash_context, answer, solution_hash, milliseconds_allowance, complexity_shift, complexity_mantissa, solver, attempts_allowed, attempts_done);
+	r = find_answer(&prefix_hash_context, answer, solution_hash, milliseconds_allowance, complexity_shift, complexity_mantissa, solver);
 
 	solver_delete(solver);
 	return r;
@@ -480,4 +507,17 @@ evpow_check( uint8_t* prefix
 	}
 	return 1;
 } /* evpow_check */
+
+void evpow_display_stats(int clear) {
+	int i;
+	printf("EVPOW stats:\n");
+	printf("average time for runs with various solutions already found:\n");
+	for(i=0;i<MAX_RUNS;i++) {
+		printf("   %4d solutions before: %5ld entries, average time %g ms\n", i, runs_counts[i], ((double)runs_clocks[i])*1000.0/(runs_counts[i] + 1e-20)/CLOCKS_PER_SEC);
+		if (clear) {
+			runs_counts[i] = 0;
+			runs_clocks[i] = 0;
+		}
+	}
+} /* evpow_display_stats */
 
