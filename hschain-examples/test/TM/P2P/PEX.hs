@@ -97,29 +97,12 @@ testPeersMustConnect = do
     , waitSec 0.5
     ]
   readPEX events1 >>= isSubset "Node 1"
-    [ [ ("Connecting to",  [("addr",  "3.0.0.0:1122")])
-      , ("Connecting to",  [("addr",  "2.0.0.0:1122")])
-      ]
-    , [ ("peer registry update",  [("conns", Array [ "2.0.0.0:1122", "3.0.0.0:1122"])])
-      ]
-    ]
+    [[ ("peer registry update",  [("conns", Array [ "2.0.0.0:1122", "3.0.0.0:1122"])]) ]]
   readPEX events2 >>= isSubset "Node 2"
-    [ [ ("Connecting to"   ,  [("addr", "3.0.0.0:1122")])
-      , ("Preacceped peer" ,  [("addr", "1.0.0.0:1122")])
-      , ("Accepted peer"   ,  [("addr", "1.0.0.0:1122"),("norm", "1.0.0.0:1122")])
-      ]
-    , [ ("peer registry update", [("conns",Array [ "1.0.0.0:1122", "3.0.0.0:1122"])])
-      ]
-    ]
+    [[ ("peer registry update", [("conns",Array [ "1.0.0.0:1122", "3.0.0.0:1122"])]) ]]
   readPEX events3 >>= isSubset "Node 3"
-    [ [ ("Preacceped peer" ,  [("addr", "2.0.0.0:1122")])
-      , ("Accepted peer"   ,  [("addr", "2.0.0.0:1122"),("norm", "2.0.0.0:1122")])
-      , ("Preacceped peer" ,  [("addr", "1.0.0.0:1122")])
-      , ("Accepted peer"   ,  [("addr", "1.0.0.0:1122"),("norm", "1.0.0.0:1122")])
-      ]
-    , [ ("peer registry update",  [("conns",Array ["1.0.0.0:1122", "2.0.0.0:1122"])])
-      ]
-    ]
+    [[ ("peer registry update",  [("conns",Array ["1.0.0.0:1122", "2.0.0.0:1122"])]) ]]
+
 
 -- In network with initial star topology all peers must connect to
 -- each other. Initially only node 1 knows others' nodes addresses
