@@ -1,17 +1,29 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE LambdaCase          #-}
+{-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 -- |
-module TM.RealNetwork ( realNetPair
-                      , realTlsNetPair
-                      , NetPair ) where
+module TM.RealNetwork
+  ( realNetPair
+  , realTlsNetPair
+  , NetPair
+  , withTimeOut
+  , withRetry
+  ) where
 
-import System.Random
-
-import HSChain.P2P
-import HSChain.P2P.Types
-import HSChain.P2P.Network
-
+import Control.Exception (IOException)
+import Control.Monad.Catch
+import Control.Monad.IO.Class
+import Control.Retry  (constantDelay, limitRetries, recovering)
 import qualified Data.ByteString as BS
 import qualified Network.Socket  as Net
+import System.Random
+import System.Timeout
+
+import HSChain.Network.Types
+import HSChain.Network.TCP
+import HSChain.Network.TLS
+import HSChain.Network.UDP
+
 
 ----------------------------------------------------------------
 
@@ -29,11 +41,10 @@ realNetPair udpPortSpec host = do
         port1 = concat ["3", suffix]
         port2 = concat ["4", suffix]
         realNet p = if not useUDP
-          then return (newNetworkTcp peerInfoForOurPort)
-          else newNetworkUdp peerInfoForOurPort
+          then return (newNetworkTcp port)
+          else newNetworkUdp port
           where
             port = read p
-            peerInfoForOurPort = PeerInfo port 0
         hints = Net.defaultHints  { Net.addrSocketType = if useUDP then Net.Datagram else Net.Stream }
     addr1:_ <- Net.getAddrInfo (Just hints) (Just host) (Just port1)
     addr2:_ <- Net.getAddrInfo (Just hints) (Just host) (Just port2)
@@ -54,9 +65,8 @@ realTlsNetPair  host = do
     port1 <- (+32000) <$> randomRIO (1, 999)
     port2 <- (+33000) <$> randomRIO (1, 999)
     let credential = getCredentialFromBuffer certificatePem keyPem
-        toPeerInfo p = PeerInfo p 0
-        server = newNetworkTls credential $ toPeerInfo port1
-        client = newNetworkTls credential $ toPeerInfo port2
+        server = newNetworkTls credential port1
+        client = newNetworkTls credential port2
         hints  = Net.defaultHints  { Net.addrSocketType = Net.Stream }
     addr1:_ <- Net.getAddrInfo (Just hints) (Just host) (Just (show port1))
     addr2:_ <- Net.getAddrInfo (Just hints) (Just host) (Just (show port2))
@@ -125,3 +135,24 @@ keyPem = BS.concat
          ,"yUChI0ywz8ml3Jku4Cdxsf0Cgm0hFOoDGBPZhU9iPjV5VuHxUfVjn6xZZfb+9/gp\n"
          ,"5TzSwQ4wWFTULMrkeSakQc21R3p9fgSE0/xSfrfxibn+GCtyhbkYFQ==\n"
          ,"-----END RSA PRIVATE KEY-----" ]
+
+withRetry :: MonadIO m => IO a -> m a
+withRetry
+  = liftIO
+  . recovering (constantDelay 500 <> limitRetries 20) hs
+  . const
+  where
+    -- exceptions list to trigger the recovery logic
+    hs :: [a -> Handler IO Bool]
+    hs = [const $ Handler (\(_::IOException) -> return True)]
+
+-- | Exception for aborting the execution of test
+data AbortTest = AbortTest
+                 deriving Show
+
+instance Exception AbortTest
+
+withTimeOut :: Int -> IO a -> IO a
+withTimeOut t act = timeout t act >>= \case
+  Just n  -> pure n
+  Nothing -> throwM AbortTest

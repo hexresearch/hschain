@@ -23,7 +23,7 @@ import Test.Tasty
 import Test.Tasty.QuickCheck
 
 import HSChain.Types.Blockchain
-import HSChain.P2P.Types      (NetAddr)
+import HSChain.Network.Types  (NetAddr)
 import HSChain.Mock.KeyVal    (BData(..))
 
 import HSChain.Arbitrary.Instances ()

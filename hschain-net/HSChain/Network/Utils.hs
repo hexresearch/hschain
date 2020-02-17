@@ -1,6 +1,6 @@
 {-# LANGUAGE RecordWildCards #-}
 
-module HSChain.P2P.Network.Internal.Utils where
+module HSChain.Network.Utils where
 
 import Control.Monad.IO.Class ( MonadIO, liftIO )
 import Data.Bits              ( unsafeShiftL )

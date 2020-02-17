@@ -1,14 +1,15 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiWayIf #-}
-module HSChain.P2P.Network.Internal.TCP 
-  ( newNetworkTcp ) where
+module HSChain.Network.TCP
+  ( newNetworkTcp
+  ) where
 
 import Control.Monad          (when)
 import Control.Monad.Catch    (bracketOnError, throwM)
 import Control.Monad.IO.Class (liftIO, MonadIO)
 import Data.List              (find)
 import Data.Monoid            ((<>))
-import Data.Word              (Word32)
+import Data.Word
 import System.Timeout         (timeout)
 
 import qualified Data.ByteString.Builder        as BB
@@ -16,15 +17,14 @@ import qualified Data.ByteString.Lazy           as LBS
 import qualified Network.Socket                 as Net
 import qualified Network.Socket.ByteString.Lazy as NetLBS
 
-import HSChain.Control
-import HSChain.P2P.Network.Internal.Utils
-import HSChain.P2P.Network.RealNetworkStub
-import HSChain.P2P.Types
+import HSChain.Network.Utils
+import HSChain.Network.Internal
+import HSChain.Network.Types
 
 
 -- | API implementation for real tcp network
-newNetworkTcp :: PeerInfo -> NetworkAPI
-newNetworkTcp selfPeerInfo = (realNetworkStub selfPeerInfo)
+newNetworkTcp :: Word16 -> NetworkAPI
+newNetworkTcp selfPeerInfo = NetworkAPI
   { listenOn = do
       addrs <- liftIO $ Net.getAddrInfo (Just tcpListenHints) Nothing (Just serviceName)
       addr  <- if
@@ -44,13 +44,13 @@ newNetworkTcp selfPeerInfo = (realNetworkStub selfPeerInfo)
       bracketOnError (newSocket addrInfo) (liftIO . Net.close) $ \sock -> do
         let tenSec = 10000000
         -- Waits for connection for 10 sec and throws `ConnectionTimedOut` exception
-        liftIO $ throwNothingM ConnectionTimedOut
-               $ timeout tenSec
-               $ Net.connect sock sockAddr
+        liftIO $ maybe (throwM ConnectionTimedOut) return
+             =<< timeout tenSec (Net.connect sock sockAddr)
         return $ applyConn sock
+  , listenPort = fromIntegral selfPeerInfo
   }
  where
-  serviceName = show $ piPeerPort selfPeerInfo
+  serviceName = show selfPeerInfo
 
 accept :: (MonadIO m)
        => Net.Socket -> m (P2PConnection, NetAddr)

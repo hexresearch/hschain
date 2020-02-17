@@ -41,8 +41,7 @@ import HSChain.Blockchain.Internal.Engine.Types
 import HSChain.Control
 import HSChain.Logger
 import HSChain.Monitoring
-import HSChain.P2P.Network
-import HSChain.P2P.Types
+import HSChain.Network.Types
 import HSChain.P2P.PeerState.Timer
 import HSChain.P2P.PeerState.Types
 import HSChain.Store
@@ -51,7 +50,7 @@ import HSChain.P2P.Internal.PeerRegistry
 import HSChain.P2P.Internal.Types
 import HSChain.P2P.PeerState.Handle
 import HSChain.Utils
-import qualified HSChain.P2P.Network.IpAddresses as Ip
+import qualified HSChain.Network.IpAddresses as Ip
 
 --
 -- Connect/accept
@@ -114,7 +113,7 @@ connectPeerTo NetworkAPI{..} addr peerCh mempool =
     bracket (connect addr) close $ \conn -> do
       -- Perform handshake
       withGossipNonce (peerNonceSet peerCh) $ \nonce -> do
-        send conn $ serialise $ GossipHello nonce (piPeerPort ourPeerInfo)
+        send conn $ serialise $ GossipHello nonce $ fromIntegral listenPort
         GossipAck <- deserialise <$> recv conn
         return ()
       -- Start peer

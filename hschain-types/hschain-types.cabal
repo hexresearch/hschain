@@ -44,8 +44,6 @@ Library
                      , vector
                      , vector-th-unbox
                      , unordered-containers >=0.2.5.0
-  if arch(i386) || arch(x86_64)
-    CPP-Options:   -DWORDS_LITTLEENDIAN
   if !impl(ghcjs) && !flag(android-impl)
     if flag(sqlite-instances)
       CPP-Options:   -DINSTANCES_SQLITE
@@ -57,7 +55,6 @@ Library
                   HSChain.Types.Merkle.Block
                   HSChain.Types.Merkle.Tree
                   HSChain.Types.Merkle.Types
-                  HSChain.Types.Network
                   HSChain.Types.Validators
 
 -- Test suite

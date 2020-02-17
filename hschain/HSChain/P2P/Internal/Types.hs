@@ -24,7 +24,7 @@ import HSChain.Control                          (Shepherd,atomicallyIO)
 import HSChain.Blockchain.Internal.Engine.Types (NetworkCfg)
 import HSChain.Blockchain.Internal.Types        (Announcement, MessageTx, MessageRx, TMState)
 import HSChain.Crypto                           (Crypto, SignedState(..), CryptoHashable(..))
-import HSChain.P2P.Types                        (NetAddr)
+import HSChain.Network.Types                    (NetAddr)
 import HSChain.Types
 import HSChain.P2P.Internal.PeerRegistry
 

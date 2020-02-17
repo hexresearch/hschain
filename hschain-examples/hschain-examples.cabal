@@ -20,6 +20,7 @@ Library
                      , hschain-crypto
                      , hschain-types
                      , hschain
+                     , hschain-net
                        --
                      , aeson
                      , bytestring           >=0.10
@@ -51,6 +52,7 @@ Executable hschain-coin-node
   Default-Language:    Haskell2010
   Build-Depends:       base                 >=4.9 && <5
                      , hschain
+                     , hschain-net
                      , hschain-types
                      , hschain-crypto
                      , hschain-examples
@@ -80,6 +82,7 @@ Executable hschain-dioxane-node
   Default-Language:    Haskell2010
   Build-Depends:       base                 >=4.9 && <5
                      , hschain
+                     , hschain-net
                      , hschain-types
                      , hschain-crypto
                      , hschain-examples
@@ -137,6 +140,7 @@ Test-suite hschain-tests
                      , hschain
                      , hschain-crypto
                      , hschain-types
+                     , hschain-net
                      , hschain-quickcheck
                      , hschain-examples
                      , aeson
@@ -174,10 +178,8 @@ Test-suite hschain-tests
   Other-modules:       TM.Consensus
                        TM.Integration
                        TM.Mempool
-                       TM.Network
                        TM.P2P.Gossip
                        TM.P2P.PEX
-                       TM.RealNetwork
                        TM.Serialisation
                        TM.Util.Network
                        TM.Util.Tests

@@ -27,11 +27,9 @@ import HSChain.Blockchain.Internal.Engine.Types
 import HSChain.Control
 import HSChain.Logger
 import HSChain.Monitoring
-import HSChain.P2P.Network
-import HSChain.P2P.Types
+import HSChain.Network.Types
 import HSChain.Store
 import HSChain.Types.Blockchain
-
 import HSChain.P2P.Internal
 
 

@@ -293,13 +293,16 @@ testLocking k = testConsensus k $ do
 
 evidenceIsStoredImmediatelyProp :: IO ()
 evidenceIsStoredImmediatelyProp = withEnvironment $ do
-  execConsensus proposerH1R0 $ do
+  execConsensus (head othersH1R0) $ do
     -- Consensus enters new height and proposer
     ()  <- expectStep 1 0 (StepNewHeight 0)
-    -- OUT OT TURN PROPOSAL
-    _   <- proposeBlock (Round 0) k4 block1
+    -- OUT OT TURN PROPOSAL.
+    --
+    -- Then generate correct proposal. Order is
+    -- important since otherwise we'll just ignore proposal
+    _   <- proposeBlock (Round 0) k4           block1
+    bid <- proposeBlock (Round 0) proposerH1R0 block1
     ()  <- expectStep 1 0 StepProposal
-    bid <- propBlockID <$> expectProp
     -- PREVOTE
     () <- voteFor (Just bid) =<< expectPV
     return ()

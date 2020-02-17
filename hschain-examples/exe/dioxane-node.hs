@@ -42,12 +42,11 @@ import HSChain.Mock.Dioxane
 import HSChain.Mock.KeyList
 import HSChain.Mock.Types
 import HSChain.Monitoring
-import HSChain.P2P.Network    (newNetworkTcp)
+import HSChain.Network.TCP (newNetworkTcp)
 import HSChain.Run
 import HSChain.Store
 import HSChain.Types
-
-import qualified HSChain.P2P.Types as P2PT
+import HSChain.Network.Types (NetAddr)
 
 
 ----------------------------------------------------------------
@@ -90,7 +89,7 @@ data Opts = Opts
 
 data NodeCfg = NodeCfg
   { nodePort      :: Word16
-  , nodeSeeds     :: [P2PT.NetAddr]
+  , nodeSeeds     :: [NetAddr]
   , nodeMaxH      :: Maybe Height
   , nodeIdx       :: Int
   }
@@ -115,8 +114,7 @@ main = do
   -- Start node
   evalContT $ do
     -- Create network
-    let peerInfo = P2PT.PeerInfo nodePort 0
-        bnet     = BlockchainNet { bchNetwork      = newNetworkTcp peerInfo
+    let bnet     = BlockchainNet { bchNetwork      = newNetworkTcp nodePort
                                  , bchInitialPeers = nodeSeeds
                                  }
     --

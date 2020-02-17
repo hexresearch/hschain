@@ -55,7 +55,7 @@ import HSChain.Mock
 import HSChain.Store
 import HSChain.Store.STM
 import HSChain.Types.Validators
-import qualified HSChain.P2P.Network as P2P
+import qualified HSChain.Network.Mock as P2P
 
 
 ----------------------------------------------------------------
