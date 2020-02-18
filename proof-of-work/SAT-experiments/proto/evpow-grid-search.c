@@ -27,7 +27,7 @@ double
 measure_average_solution_time
 	( int complexity_shift, uint16_t complexity_mantissa, test_rec_t* sample
 	, int64_t search_time_ms
-	, int64_t flips
+	, int64_t attempts_allowed
 	) {
 	int found = 0;
 	int i, num_samples = 100;
@@ -36,10 +36,10 @@ measure_average_solution_time
 		while(!found) {
 			next_sample(sample);
 			found = evpow_solve
-				( testrec.some_bytes
-        	                , sizeof(testrec.some_bytes)
-                	        , testrec.answer
-	                        , testrec.hash
+				( sample->some_bytes
+        	                , sizeof(sample->some_bytes)
+                	        , sample->answer
+	                        , sample->hash
         	                , EVPOW_ADVISED_CLAUSES_COUNT
                 	        , complexity_shift
 	                        , complexity_mantissa
@@ -56,83 +56,97 @@ measure_average_solution_time
 	return ((double)start - end)*1000.0/CLOCKS_PER_SEC/num_samples;
 } /* measure_average_solution_time */
 
+#define ARGS \
+	ARG(complexity_shift, int, 9) \
+	ARG(complexity_mantissa, uint16_t, 0xc000) \
+	ARG(search_time_ms, int64_t, 2000) \
+	ARG(attempts_allowed, uint64_t, 250000 * 2) \
+	ARG(nonce, uint64_t, 0xdeadbeef600df00dULL) \
+	ARG(break_power, double, 2.0) \
+	/* done with args */
+
 void
-grid_search(FILE* report) {
+usage(char*arg) {
+	printf("incorrect argument %s\n\nusage:\n", arg);
+#define ARG(n, ty, v) printf("  --" #n ": type " #ty ", value " #v "\n");
+	ARGS
+#undef  ARG
+	printf("\nplease note that you can use dash instead of underscore in switch names\n");
+	exit(1);
+} /* usage */
+
+int
+match_arg(char**parg, char*match) {
+	char* arg = *parg;
+	if (arg[0] != '-' || arg[1] != '-') {
+		return 0;
+	}
+	arg += 2;
+	while (*match && *arg) {
+		char c = *match;
+		char ac = *arg;
+		int equal = c == ac;
+		if (!equal && (c != '_' || ac != '-')) {
+			return 0;
+		}
+		match ++;
+		arg ++;
+	}
+	if (*arg != '=') {
+		return 0;
+	}
+	*parg = arg + 1; // past equal sign.
+	return 1;
+} /* match_arg */
+
+double
+parse_double(char*val) {
+	char* endptr;
+	double r = strtod(val, &endptr);
+	if (!*val || *endptr) {
+		printf("not a double: '%s'\n", val);
+		exit(1);
+	}
+} /* parse_double */
+
+void
+grid_search(int argc, char**argv) {
 	test_rec_t testrec;
-	int complexity_shift = 9;
-	uint16_t complexity_mantissa = 0xc000; // shift and this mantissa would give us approx 1 min of solution search time.
-	int64_t mantissa_multiplier = 0x0eac0c6e7;
-	int64_t search_time_low = 500;
-	int64_t search_time_high = 
-	int64_t attempts_allowed = 2*250000; // about 250000 flips per one tenths of a second - 0.2 seconds to look for solution.
+	int i;
+#define ARG(n, ty, val) ty n = val;
+	ARGS
+#undef ARG
 	memset(&testrec, 0, sizeof(testrec));
 	testrec.some_bytes[0] = 123;
 	testrec.some_bytes[1] = 222; // for something fancier than just zeroes.
-	while (1) {
-		clock_t total_time = 0;
-		clock_t two_hours = 2*60*60*CLOCKS_PER_SEC;
-		int samples = 0;
-		int failed_tries = 0;
-		while (total_time < two_hours && samples < 100) {
-			samples ++;
-			int found = 0;
-			clock_t start = clock();
-			while (!found) {
-				int carry, i;
-				printf("sample %d\n", samples);
-				// generating data for another sample.
-				for (i = 0, carry = 0;i < sizeof(testrec.some_bytes);i++) {
-					int r = testrec.some_bytes[i] + (i + 1) * 2 + 1 + carry;
-					carry = r >> 8;
-					testrec.some_bytes[i] = r & 255;
-				}
-				found = evpow_solve
-					   ( testrec.some_bytes
-				           , sizeof(testrec.some_bytes)
-			        	   , testrec.answer
-				           , testrec.hash
-				           , EVPOW_ADVISED_CLAUSES_COUNT
-				           , complexity_shift
-				           , complexity_mantissa
-	        			   , 2000
-				           , attempts_allowed
-				           , 0
-				           , 0
-					   , NULL
-	           			   );
-				failed_tries += found == 0;
-
-			}
-			clock_t delta = clock() - start;
-			total_time += delta;
+	testrec.some_bytes[2] = nonce >>  0;
+	testrec.some_bytes[3] = nonce >>  8;
+	testrec.some_bytes[4] = nonce >> 16;
+	testrec.some_bytes[5] = nonce >> 24;
+	testrec.some_bytes[6] = nonce >> 32;
+	testrec.some_bytes[7] = nonce >> 40;
+	testrec.some_bytes[8] = nonce >> 48;
+	testrec.some_bytes[9] = nonce >> 56;
+	for (i = 1; i < argc; i++) {
+		char* a = argv[i];
+		if (a[0] != '-' || a[1] != '-') {
+			usage(a);
 		}
-		double total_time_sec = total_time /((double) CLOCKS_PER_SEC);
-		double secs_per_sample = total_time_sec / samples;
-		fprintf(report, "complexity shift %3d, mantissa %04x: total time %10.4g sec, time per sample solution %10.4g sec, success percentage %6.2g\n", complexity_shift, complexity_mantissa, total_time_sec, secs_per_sample, 100.0 * samples / ((double)(failed_tries + samples)));
-		fflush(report);
-		if (total_time > two_hours * 3 / 2) {
-			break;
+#define ARG(n, ty, v) else if (match_arg(&a, #n)) { n = parse_##ty(a); }
+		ARGS
+#undef  ARG
+		else {
+			usage(argv[i]);
 		}
-		uint64_t next_complexity = complexity_mantissa * mantissa_multiplier;
-		if (next_complexity < (1ULL << 47)) {
-			complexity_shift ++;
-			next_complexity = next_complexity * 2 + 1;
-		}
-		complexity_mantissa = next_complexity >> 32;
 	}
-} /* */
+} /* grid_search */
 
 
 int
-main(void) {
-	FILE* report = fopen("grid-search-report.txt", "w");
-	if (!report) {
-		printf("unable to open a report file\n");
-		return 1;
-	}
+main(int argc, char**argv) {
         setvbuf(stdout, NULL, _IONBF, 0);
         setvbuf(stderr, NULL, _IONBF, 0);
-	grid_search(report);
+	grid_search(argc, argv);
 	return 0;
 } /* main */
 
