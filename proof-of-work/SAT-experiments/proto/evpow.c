@@ -328,7 +328,7 @@ under_complexity_threshold(uint8_t* hash, int complexity_shift, uint16_t complex
 } /* under_complexity_threshold */
 
 static int
-find_answer(SHA256_CTX* context_after_prefix, uint8_t* answer, uint8_t* full_hash, int milliseconds_allowance, int complexity_shift, uint16_t complexity_mantissa, Solver* solver) {
+find_answer(SHA256_CTX* context_after_prefix, uint8_t* answer, uint8_t* full_hash, int milliseconds_allowance, int complexity_shift, uint16_t complexity_mantissa, Solver* solver, double* first_result_ms) {
 	clock_t end_time;
 	clock_t last_time;
 
@@ -347,14 +347,17 @@ find_answer(SHA256_CTX* context_after_prefix, uint8_t* answer, uint8_t* full_has
 	       	status = solver_sat(solver, -1);
 		//printf("decisions made %llu, propagations made %llu\n", picosat_decisions(solver), picosat_propagations(solver));
 		//printf("status %d\n", status);
+		clock_t curr_time = clock();
+		if (first_result_ms) {
+			*first_result_ms = (1000.0 * (curr_time - last_time))/CLOCKS_PER_SEC;
+			first_result_ms = NULL; // use it as a flag to not store other results.
+		}
 		if (status != SOLVER_SATISFIABLE) {
 			break;
-		} else {
-			clock_t curr_time = clock();
-			//printf("solution found in %ld ms\n", ((curr_time - last_time) * 1000 + CLOCKS_PER_SEC - 1)/CLOCKS_PER_SEC);
-			last_time = curr_time;
-			//printf("."); fflush(stdout);
 		}
+		//printf("solution found in %ld ms\n", ((curr_time - last_time) * 1000 + CLOCKS_PER_SEC - 1)/CLOCKS_PER_SEC);
+		last_time = curr_time;
+		//printf("."); fflush(stdout);
 		// extract a solution into the answer.
 		extract_solution_answer(solver, answer);
 		// compute full hash.
@@ -396,6 +399,7 @@ evpow_solve( uint8_t* prefix
 	   , int fixed_bits_count
 	   , uint64_t fixed_bits
 	   , char* cnf_fn
+	   , double* first_result_ms
 ) {
 	SHA256_CTX prefix_hash_context;
 	SHA256_CTX intermediate_prefix_hash_context;
@@ -433,7 +437,7 @@ evpow_solve( uint8_t* prefix
 	}
 
 	// find solution if we can.
-	r = find_answer(&prefix_hash_context, answer, solution_hash, milliseconds_allowance, complexity_shift, complexity_mantissa, solver);
+	r = find_answer(&prefix_hash_context, answer, solution_hash, milliseconds_allowance, complexity_shift, complexity_mantissa, solver, first_result_ms);
 
 	solver_delete(solver);
 	return r;

@@ -63,6 +63,7 @@ energy_expenditure_performance_for_advised_parameters(FILE* report) {
 				           , fixed_bits_count     // you may spawn several parallel attempts to solve the puzzle with some bits fixed (up to 32 bits)
 				           , fixed_bits      // to what value these bits are fixed
 					   , fn
+					   , NULL
            				   );
 				end = clock();
 				found_answer[fixed_bits] = found;
@@ -131,6 +132,7 @@ find_complexity_drop(FILE* report) {
 		           , 0
 		           , 0
 			   , NULL
+			   , NULL
            		   );
 		delta = clock() - start;
 		if (!found) {
@@ -163,6 +165,7 @@ find_complexity_drop(FILE* report) {
 			           , attempts_allowed
 			           , fixed_bits_count
 		        	   , fixed_bits
+				   , NULL
 				   , NULL
         	   		   );
 			delta = clock () - start;
@@ -226,6 +229,7 @@ measure_time_to_solution_for_diff_complexities(FILE* report) {
 				           , attempts_allowed
 				           , 0
 				           , 0
+					   , NULL
 					   , NULL
 	           			   );
 				failed_tries += found == 0;

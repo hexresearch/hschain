@@ -25,25 +25,27 @@ next_sample(test_rec_t* sample) {
 	}
 } /* next_sample */
 
-double
-measure_average_solution_time
-	( int complexity_shift, uint16_t complexity_mantissa, test_rec_t* sample
+void
+print_average_solution_time
+	( int complexity_shift, uint16_t complexity_mantissa, int clauses_count, test_rec_t* sample
 	, int64_t search_time_ms
 	, int64_t attempts_allowed
 	, int num_samples
 	) {
 	int found;
-	int i;
+	int i, tries = 0;
+	double first_attempts_time_sum = 0.0;
 	clock_t start = clock(), end;
 	for (i = 0; i < num_samples; i ++) {
-		do {	
+		do {
+			double first_result_time_this_try;
 			next_sample(sample);
 			found = evpow_solve
 				( sample->some_bytes
         	                , sizeof(sample->some_bytes)
                 	        , sample->answer
 	                        , sample->hash
-        	                , EVPOW_ADVISED_CLAUSES_COUNT
+        	                , clauses_count
                 	        , complexity_shift
 	                        , complexity_mantissa
         	                , search_time_ms
@@ -51,29 +53,39 @@ measure_average_solution_time
 	                        , 0
         	                , 0
                 	        , NULL
+				, &first_result_time_this_try
 	                        );
+			tries ++;
+			first_attempts_time_sum += first_result_time_this_try;
 			printf("%c", found ? '+' : '-');
 		} while(!found);
 	}
 	end = clock();
 	printf("\n");
-	return ((double)end - start)*1000.0/CLOCKS_PER_SEC/num_samples;
-} /* measure_average_solution_time */
+	printf("%.5g %.5g\n", ((double)end - start)*1000.0/CLOCKS_PER_SEC/num_samples
+			, first_attempts_time_sum/tries);
+} /* print_average_solution_time */
 
 #define ARGS \
 	ARG(complexity_shift, int, 7) \
 	ARG(complexity_mantissa, uint16_t, 0xc000) \
+	ARG(clauses_count, int, EVPOW_ADVISED_CLAUSES_COUNT) \
 	ARG(search_time_ms, int64_t, 2000) \
 	ARG(attempts_allowed, uint64_t, 250000 * 2) \
 	ARG(num_samples, int, 100) \
 	ARG(nonce, uint64_t, 0xdeadbeef600df00dULL) \
 	ARG(break_power, double, 2.0) \
 	/* done with args */
+#define int_format "%d"
+#define uint16_t_format "0x%04x"
+#define uint64_t_format "%lu"
+#define int64_t_format "%ld"
+#define double_format "%g"
 
 void
 usage(char*arg) {
 	printf("incorrect argument %s\n\nusage:\n", arg);
-#define ARG(n, ty, v) printf("  --" #n ": type " #ty ", value " #v "\n");
+#define ARG(n, ty, v) printf("  --" #n ": type " #ty ", value " #v " (" ty##_format ")\n", (ty) v);
 	ARGS
 #undef  ARG
 	printf("\nplease note that you can use dash instead of underscore in switch names\n");
@@ -159,13 +171,12 @@ parse_measure(int argc, char**argv) {
 	testrec.some_bytes[7] = nonce >> 40;
 	testrec.some_bytes[8] = nonce >> 48;
 	testrec.some_bytes[9] = nonce >> 56;
-	printf("%g\n", measure_average_solution_time
-			( complexity_shift, complexity_mantissa, &testrec
+	print_average_solution_time
+			( complexity_shift, complexity_mantissa, clauses_count, &testrec
 			, search_time_ms
 			, attempts_allowed
 			, num_samples
-			)
-		);
+			);
 } /* parse_measure */
 
 
