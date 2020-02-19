@@ -25,6 +25,7 @@ Library
                      , hschain-crypto
                      , hschain-types
                      , hschain-net
+                     , hschain-merkle
                      , aeson
                      , base58-bytestring >=0.1
                      , bytestring        >=0.10

@@ -31,6 +31,7 @@ Library
   Default-Language:    Haskell2010
   Build-Depends:       base              >=4.9 && <5
                      , hschain-crypto
+                     , hschain-merkle
                      , aeson
                      , async             >=2.2.1
                      , base58-bytestring >=0.1
@@ -52,9 +53,6 @@ Library
                   HSChain.Types
                   HSChain.Types.BFTTime
                   HSChain.Types.Blockchain
-                  HSChain.Types.Merkle.Block
-                  HSChain.Types.Merkle.Tree
-                  HSChain.Types.Merkle.Types
                   HSChain.Types.Validators
 
 -- Test suite
@@ -72,6 +70,7 @@ Test-suite hschain-types-tests
                      , serialise
                      , hschain-crypto
                      , hschain-types
+                     , hschain-merkle
                      , tasty             >=0.11
                      , tasty-hunit       >=0.10
                      , tasty-quickcheck

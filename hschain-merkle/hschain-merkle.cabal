@@ -1,0 +1,39 @@
+Name:           hschain-merkle
+Version:        0.1
+Synopsis:       Merkle trees support for HSChain
+Description:
+  Package contains definitions for different variants of Merkle trees:
+  binary, heteropgenous, etc.
+  
+Cabal-Version:  >= 1.10
+License:        AllRightsReserved
+License-File:   LICENSE
+Author:         Aleksey Khudyakov <alexey.skladnoy@gmail.com>
+Maintainer:     Aleksey Khudyakov <alexey.skladnoy@gmail.com>
+Homepage:       https://github.com/hexresearch/hschain
+Category:       Data
+Build-Type:     Simple
+
+
+Library
+  Ghc-options:         -Wall
+  Default-Language:    Haskell2010
+  Build-Depends:       base              >=4.9 && <5
+                     , hschain-crypto
+                     , aeson
+                     , async             >=2.2.1
+                     , base58-bytestring >=0.1
+                     , bytestring        >=0.10
+                     , containers        >=0.5.9
+                     , data-default-class
+                     , deepseq           >=1.4
+                     , serialise         >=0.2
+                     , text
+                     , time
+                     , vector
+                     , vector-th-unbox
+                     , unordered-containers >=0.2.5.0
+  Exposed-modules:
+                  HSChain.Types.Merkle.Block
+                  HSChain.Types.Merkle.Tree
+                  HSChain.Types.Merkle.Types
