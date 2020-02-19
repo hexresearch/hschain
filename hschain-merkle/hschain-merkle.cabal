@@ -4,7 +4,7 @@ Synopsis:       Merkle trees support for HSChain
 Description:
   Package contains definitions for different variants of Merkle trees:
   binary, heteropgenous, etc.
-  
+
 Cabal-Version:  >= 1.10
 License:        AllRightsReserved
 License-File:   LICENSE
@@ -37,3 +37,27 @@ Library
                   HSChain.Types.Merkle.Block
                   HSChain.Types.Merkle.Tree
                   HSChain.Types.Merkle.Types
+
+-- Test suite
+Test-suite hschain-merkle-tests
+  if impl(ghcjs)
+    js-sources: ../hschain-crypto/js/nacl-fast.js
+  --
+  Type:                exitcode-stdio-1.0
+  Ghc-options:         -Wall -threaded -rtsopts "-with-rtsopts=-N -qn1"
+  Default-Language:    Haskell2010
+  Build-Depends:       base              >=4.9 && <5
+                     , hschain-crypto
+                     , hschain-merkle
+                     --
+                     , bytestring
+                     , random
+                     , serialise
+                     , tasty             >=0.11
+                     , tasty-hunit       >=0.10
+                     , tasty-quickcheck
+                     , QuickCheck
+  hs-source-dirs:      test
+  Main-is:             Main.hs
+  Other-modules:       TM.Merkle
+                       TM.MerkleBlock

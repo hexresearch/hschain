@@ -77,6 +77,4 @@ Test-suite hschain-types-tests
                      , QuickCheck
   hs-source-dirs:      test
   Main-is:             Main.hs
-  Other-modules:       TM.Merkle
-                       TM.MerkleBlock
-                       TM.Time
+  Other-modules:       TM.Time
