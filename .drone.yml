@@ -129,6 +129,7 @@ steps:
 
       build time is {{buildtime build.started}}
   when:
+    event: push
     status:
     - success
     - failure
@@ -219,6 +220,7 @@ steps:
 
       build time is {{buildtime build.started}}
   when:
+    event: push
     status:
     - success
     - failure
