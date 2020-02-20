@@ -44,7 +44,7 @@ newtype MerkleBlockTree f alg a = MerkleBlockTree
   }
   deriving (Show, Foldable, Generic)
 
-merkleBlockTreeHash :: (MerkleHash f) => MerkleBlockTree f alg a -> Hash alg
+merkleBlockTreeHash :: (IsMerkle f) => MerkleBlockTree f alg a -> Hash alg
 merkleBlockTreeHash = merkleHash . merkleBlockTree
 
 -- | Single node of tree

@@ -13,18 +13,17 @@
 -- only.
 module HSChain.Types.Merkle.Types (
     -- * Type classes
-    MerkleHash(..)
-  , IsMerkle(..)
-    -- * Merkle node
+    IsMerkle(..)
+    -- * Node of Merkle tree
   , MerkleNode(..)
-    -- ** Concrete node instantiations
-  , Hashed(..)
-  , OptNode
-  , IdNode
   , merkleValue
   , merkleHash
   , merkleMaybeValue
   , toHashedNode
+    -- ** Concrete node instantiations
+  , Hashed(..)
+  , OptNode
+  , IdNode
     -- * Serialization helpers
   , MerkleSerialize(..)
   , toSerialisedRepr
@@ -45,22 +44,21 @@ import HSChain.Crypto
 -- Heterogeneous Merkle trees
 ----------------------------------------------------------------
 
--- | Node of merkle tree. Every such node could be reduced to only
---   hash that is 'Hashed'.
+-- | Type class for nodes of Merkle tree. Basically it's hash of value
+--   and value itself which could be absent. There're three cases:
+--   value is guaranteed to be present ('IdNode'), mayb or mayb not be
+--   present ('OptNode') or only hash ('Hashed').
 --
---   It's expected that 'CryptoHashable' instance uses only hash
---   value that is:
+--   These data types are not supposed to be used by itself instead
+--   'MerkleNode' should be used.
 --
--- > hash a == hash (merkleHash a)
-class MerkleHash f where
+--   Instances should have instance of 'CryptoHashable' and only use
+--   hash of value for calculating hash of node:
+--
+--   > hash a == hash (merkleHash a)
+class IsMerkle f where
   -- | Obtain cached hash of node.
   merkleHashed :: f alg a -> Hashed alg a
-
-
--- | Type class for nodes of Merkle tree. It contains operations that
---   are common for all variants of nodes whether they contain actual
---   value or not.
-class MerkleHash f => IsMerkle f where
   -- | Create node from bare value
   merkled     :: (CryptoHash alg, CryptoHashable a) => a -> f alg a
   -- | Convert to node with optional value
@@ -77,7 +75,7 @@ class MerkleHash f => IsMerkle f where
 -- > MerkleNode Hashed   - node that hash only hash
 newtype MerkleNode f alg a = MerkleNode { getMerkleNode :: f alg a }
   deriving stock   Foldable
-  deriving newtype (MerkleHash, IsMerkle)
+  deriving newtype (IsMerkle)
 
 -- | Extract value from node of Merkle tree
 merkleValue :: MerkleNode IdNode alg a -> a
@@ -88,10 +86,10 @@ merkleMaybeValue :: IsMerkle f => f alg a -> Maybe a
 merkleMaybeValue n = let OptNode _ a = toOptNode n in a
 
 -- | Extract hash corresponding to node
-merkleHash :: MerkleHash f => f alg a -> Hash alg
+merkleHash :: IsMerkle f => f alg a -> Hash alg
 merkleHash f = let Hashed h = merkleHashed f in h
 
-toHashedNode :: MerkleHash f => MerkleNode f alg a -> MerkleNode Hashed alg a
+toHashedNode :: IsMerkle f => MerkleNode f alg a -> MerkleNode Hashed alg a
 toHashedNode (MerkleNode f) = MerkleNode $ merkleHashed f
 
 -- | Eq uses hash comparison as optimization
@@ -129,23 +127,20 @@ data OptNode alg a = OptNode (Hashed alg a) !(Maybe a)
   deriving stock (Show,Eq,Ord,Generic)
 
 
-instance MerkleHash IdNode where
-  merkleHashed (IdNode h _) = h
 instance IsMerkle IdNode where
+  merkleHashed (IdNode h _) = h
   merkled a = IdNode (hashed a) a
   toOptNode   (IdNode  h a) = OptNode h (Just a)
   fromOptNode (OptNode h a) = IdNode  h <$> a
 
-instance MerkleHash OptNode where
-  merkleHashed (OptNode h _) = h
 instance IsMerkle OptNode where
+  merkleHashed (OptNode h _) = h
   merkled a = OptNode (hashed a) (Just a)
   toOptNode   = id
   fromOptNode = Just
 
-instance MerkleHash Hashed where
-  merkleHashed = id
 instance IsMerkle Hashed where
+  merkleHashed = id
   merkled = hashed
   toOptNode h = OptNode h Nothing
   fromOptNode = Just . Hashed . merkleHash
