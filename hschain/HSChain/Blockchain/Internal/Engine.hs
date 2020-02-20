@@ -98,11 +98,14 @@ rewindBlockchainState AppStore{..} BChLogic{..} = do
                                 }
       -- Check validator set consistency
       unless (merkleHashed blockchainState == blockStateHash blk)
-        $ throwM $ InconsisnceWhenRewinding h "Hash state"
-      unless (hashed valSet                == blockValidators blk)
-        $ throwM $ InconsisnceWhenRewinding h "Validator set"
+        $ throwM $ InconsistenceWhenRewinding h
+          "Hash of calculated state doesn't match hash in block"
+      unless (hashed valSet == blockValidators blk)
+        $ throwM $ InconsistenceWhenRewinding h
+          "Validator set doesn't match validator set stored in block"
       unless (merkleHashed validatorSet    == blockNewValidators blk)
-        $ throwM $ InconsisnceWhenRewinding h "New validator set"
+        $ throwM $ InconsistenceWhenRewinding h
+          "New validator set doesn't match validator set stored in block"
       -- Write validator set at H=1 to database if needed
       when (h == Height 0) $ do
         queryRO (hasValidatorSet (Height 1)) >>= \case

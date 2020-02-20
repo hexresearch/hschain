@@ -1,12 +1,13 @@
-{-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE DeriveAnyClass            #-}
 {-# LANGUAGE DerivingStrategies        #-}
 {-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE LambdaCase                #-}
+{-# LANGUAGE StandaloneDeriving        #-}
 -- |
 module HSChain.Exceptions where
 
 import Control.Exception
-import Data.Text (Text)
+import Data.Text (Text,unpack)
 import HSChain.Types.Blockchain
 
 
@@ -47,8 +48,36 @@ data InternalError
   --   for block that doesn't pass validation. That could happen due
   --   to bug in validation code or due to byzantine behavior of +2\/3
   --   validators
-  | InconsisnceWhenRewinding !Height !Text
+  | InconsistenceWhenRewinding !Height !Text
   -- ^ Incinsistency encountered when rewinding
 
-deriving stock    instance Show      InternalError
-deriving anyclass instance Exception InternalError
+deriving stock instance Show InternalError
+
+instance Exception InternalError where
+  displayException = \case
+    BlockchainStateUnavalable -> "BlockchainStateUnavalable :: InternalError"
+    UnableToCommit            -> "UnableToCommit :: InternalError"
+    UnexpectedRollback        -> "UnexpectedRollback :: InternalError"
+    InvalidBlockInWAL e -> unlines
+      [ "InvalidBlockInWAL :: InternalError"
+      , displayException e
+      ]
+    InvalidBlockGenerated e -> unlines
+      [ "InvalidBlockGenerated :: InternalError"
+      , displayException e
+      ]
+    CannotRewindState e -> unlines
+      [ "CannotRewindState :: InternalError"
+      , displayException e
+      ]
+    TryingToCommitInvalidBlock e -> unlines
+      [ "TryingToCommitInvalidBlock :: InternalError"
+      , displayException e
+      ]
+    InconsistenceWhenRewinding h t -> unlines
+      [ "InconsistenceWhenRewinding :: InternalError"
+      , "  H of block that caused problem:"
+      , "    " ++ show h
+      , "  Problem:"
+      , "    " ++ unpack t
+      ]
