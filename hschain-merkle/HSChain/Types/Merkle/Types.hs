@@ -68,7 +68,8 @@ class IsMerkle f where
 
 
 -- | Newtype wrapper for nodes of Merkle trees. It's used to provide
---   necessary instances and to
+--   serialization instance and ensure that data encoded as one node
+--   could be decoded as another node e.g. (IdNode → OptNode)
 --
 -- > MerkleNode IdNode   - node that always have value
 -- > MerkleNode OptNode  - node that optionally has hash in it
