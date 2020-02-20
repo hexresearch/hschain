@@ -17,7 +17,6 @@ Library
   Ghc-options:         -Wall
   Default-Language:    Haskell2010
   Build-Depends:       base               >=4.9 && <5
-                     , hschain-types
                      --
                      , aeson
                      , bytestring         >=0.10
@@ -56,32 +55,16 @@ Test-suite hschain-net-tests
   Default-Language:    Haskell2010
   Build-Depends:       base              >=4.9 && <5
                      , hschain-net
---                      , aeson
+                     --
+                     , aeson
                      , async             >=2.2.1
                      , bytestring        >=0.10
---                      , containers
---                      , deepseq           >=1.4
                      , exceptions
---                      , free
---                      , microlens
                      , network
                      , random
---                      , sqlite-simple
---                      , katip
---                      , serialise         >=0.2
---                      , stm               >=2.4
---                      , transformers
+                     , serialise         >=0.2
                      , retry             >=0.7.6.2
---                      , text
---                      , unordered-containers
---                      , hashable
---                      , vector
---                      --
                      , QuickCheck
---                      , bytestring-arbitrary
---                      , generic-arbitrary
---                      , hedgehog
---                      , hedgehog-quickcheck
                      , tasty             >=0.11
                      , tasty-quickcheck
                      , tasty-hunit       >=0.10
@@ -89,14 +72,4 @@ Test-suite hschain-net-tests
   Main-is:             Main.hs
   Other-modules:       TM.Network
                        TM.RealNetwork
---                        TM.Integration
---                        TM.Mempool
---                        TM.Network
---                        TM.P2P.Gossip
---                        TM.P2P.PEX
---                        TM.RealNetwork
---                        TM.Serialisation
---                        TM.Util.Network
---                        TM.Util.Tests
---                        TM.Util.MockChain
---                        TM.Validators
+                       TM.Serialisation
