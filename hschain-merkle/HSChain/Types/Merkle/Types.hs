@@ -156,7 +156,6 @@ instance Show1 (IdNode alg) where
     . showChar ' '
     . sh 11 a
 
--- | We cheat by comparing only hashes
 instance Eq1 (IdNode alg) where
   liftEq f (IdNode _ a) (IdNode _ b) = f a b
 
