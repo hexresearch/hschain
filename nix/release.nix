@@ -40,6 +40,7 @@ let
     hschain-crypto-bls = callInternal hsPkgs "hschain" ../hschain-crypto-bls    {} "";
     hschain-quickcheck = callInternal hsPkgs "hschain" ../hschain-quickcheck    {} "";
     hschain-types      = callInternal hsPkgs "hschain" ../hschain-types         {} "";
+    hschain-merkle     = callInternal hsPkgs "hschain" ../hschain-merkle        {} "";
     hschain-net        = callInternal hsPkgs "hschain" ../hschain-net           {} "";
     hschain            = callInternal hsPkgs "hschain" ../hschain               {} "";
     hschain-examples   = callInternal hsPkgs "hschain" ../hschain-examples      {} "";
