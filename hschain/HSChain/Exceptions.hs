@@ -2,14 +2,15 @@
 {-# LANGUAGE DerivingStrategies        #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE LambdaCase                #-}
+{-# LANGUAGE RecordWildCards           #-}
 {-# LANGUAGE StandaloneDeriving        #-}
 -- |
 module HSChain.Exceptions where
 
 import Control.Exception
-import Data.Text (Text,unpack)
+import Data.Text       (Text,unpack)
 import HSChain.Types.Blockchain
-
+import HSChain.Crypto  (Hash,CryptoHash)
 
 ----------------------------------------------------------------
 --
@@ -48,10 +49,18 @@ data InternalError
   --   for block that doesn't pass validation. That could happen due
   --   to bug in validation code or due to byzantine behavior of +2\/3
   --   validators
-  | InconsistenceWhenRewinding !Height !Text
+  | forall alg. CryptoHash alg => InconsistenceWhenRewinding !Height !Text !(Mismatch (Hash alg))
   -- ^ Incinsistency encountered when rewinding
-
 deriving stock instance Show InternalError
+
+-- | Data type which is used to display mismatch between expected
+--   value and actual value.
+data Mismatch a = Mismatch
+  { expectedValue :: !a
+  , actualValue   :: !a
+  }
+  deriving stock Show
+
 
 instance Exception InternalError where
   displayException = \case
@@ -74,10 +83,14 @@ instance Exception InternalError where
       [ "TryingToCommitInvalidBlock :: InternalError"
       , displayException e
       ]
-    InconsistenceWhenRewinding h t -> unlines
+    InconsistenceWhenRewinding h t Mismatch{..} -> unlines
       [ "InconsistenceWhenRewinding :: InternalError"
       , "  H of block that caused problem:"
       , "    " ++ show h
       , "  Problem:"
       , "    " ++ unpack t
+      , "  Expected hash (one that stored in block):"
+      , "    " ++ show expectedValue
+      , "  Hash of computed value:"
+      , "    " ++ show actualValue
       ]
