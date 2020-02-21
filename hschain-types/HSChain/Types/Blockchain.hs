@@ -183,7 +183,7 @@ data GBlock f a = Block
 instance (IsMerkle f, CryptoHash (Alg a)) => CryptoHashable (GBlock f a) where
   hashStep = genericHashStep "hschain"
 
-toHeader :: MerkleHash f => GBlock f a -> Header a
+toHeader :: IsMerkle f => GBlock f a-> Header a
 toHeader Block{..} = Block
   { blockData       = toHashedNode     blockData
   , blockPrevCommit = toHashedNode <$> blockPrevCommit
