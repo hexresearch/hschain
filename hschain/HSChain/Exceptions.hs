@@ -1,14 +1,16 @@
-{-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE DeriveAnyClass            #-}
 {-# LANGUAGE DerivingStrategies        #-}
 {-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE LambdaCase                #-}
+{-# LANGUAGE RecordWildCards           #-}
+{-# LANGUAGE StandaloneDeriving        #-}
 -- |
 module HSChain.Exceptions where
 
 import Control.Exception
-import Data.Text (Text)
+import Data.Text       (Text,unpack)
 import HSChain.Types.Blockchain
-
+import HSChain.Crypto  (Hash,CryptoHash)
 
 ----------------------------------------------------------------
 --
@@ -47,8 +49,48 @@ data InternalError
   --   for block that doesn't pass validation. That could happen due
   --   to bug in validation code or due to byzantine behavior of +2\/3
   --   validators
-  | InconsisnceWhenRewinding !Height !Text
+  | forall alg. CryptoHash alg => InconsistenceWhenRewinding !Height !Text !(Mismatch (Hash alg))
   -- ^ Incinsistency encountered when rewinding
+deriving stock instance Show InternalError
 
-deriving stock    instance Show      InternalError
-deriving anyclass instance Exception InternalError
+-- | Data type which is used to display mismatch between expected
+--   value and actual value.
+data Mismatch a = Mismatch
+  { expectedValue :: !a
+  , actualValue   :: !a
+  }
+  deriving stock Show
+
+
+instance Exception InternalError where
+  displayException = \case
+    BlockchainStateUnavalable -> "BlockchainStateUnavalable :: InternalError"
+    UnableToCommit            -> "UnableToCommit :: InternalError"
+    UnexpectedRollback        -> "UnexpectedRollback :: InternalError"
+    InvalidBlockInWAL e -> unlines
+      [ "InvalidBlockInWAL :: InternalError"
+      , displayException e
+      ]
+    InvalidBlockGenerated e -> unlines
+      [ "InvalidBlockGenerated :: InternalError"
+      , displayException e
+      ]
+    CannotRewindState e -> unlines
+      [ "CannotRewindState :: InternalError"
+      , displayException e
+      ]
+    TryingToCommitInvalidBlock e -> unlines
+      [ "TryingToCommitInvalidBlock :: InternalError"
+      , displayException e
+      ]
+    InconsistenceWhenRewinding h t Mismatch{..} -> unlines
+      [ "InconsistenceWhenRewinding :: InternalError"
+      , "  H of block that caused problem:"
+      , "    " ++ show h
+      , "  Problem:"
+      , "    " ++ unpack t
+      , "  Expected hash (one that stored in block):"
+      , "    " ++ show expectedValue
+      , "  Hash of computed value:"
+      , "    " ++ show actualValue
+      ]
