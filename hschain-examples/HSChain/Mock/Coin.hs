@@ -53,7 +53,6 @@ import Data.Maybe
 import Data.Map             (Map,(!))
 import qualified Data.Vector         as V
 import qualified Data.Map.Strict     as Map
-import qualified Data.HashMap.Strict as HM
 import qualified Data.Set            as Set
 import System.Random   (randomRIO)
 import GHC.Generics    (Generic)
@@ -108,8 +107,6 @@ instance BlockData BData where
   type Alg             BData = Ed25519 :& SHA512
   bchLogic                      = coinLogic
   proposerSelection             = ProposerSelection randomProposerSHA512
-  blockTransactions (BData txs) = txs
-  logBlockData      (BData txs) = HM.singleton "Ntx" $ JSON.toJSON $ length txs
 
 -- | Single transaction. We have two different transaction one to add
 --   money to account ex nihilo and one to transfer money between
@@ -242,7 +239,9 @@ coinLogic = BChLogic
   , processBlock  = \BChEval{..} -> do
       let h    = blockHeight bchValue
           step = flip $ process h
-      st <- foldM step (merkleValue blockchainState) $ blockTransactions $ merkleValue $ blockData bchValue
+      st <- foldM step (merkleValue blockchainState)
+          $ let BData txs = merkleValue $ blockData bchValue
+            in txs
       return BChEval { bchValue        = ()
                      , blockchainState = merkled st
                      , ..

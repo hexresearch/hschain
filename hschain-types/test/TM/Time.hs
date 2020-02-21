@@ -109,8 +109,6 @@ instance BlockData BData where
   type BChError        BData = Err
   type Alg             BData = Ed25519 :& SHA512
   type BChMonad        BData = Maybe
-  blockTransactions _ = []
-  logBlockData      _ = mempty
   proposerSelection   = error "proposerSelection is unused"
   bchLogic            = error "bchLogic is unused"
 

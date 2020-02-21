@@ -176,9 +176,7 @@ instance BlockData Tx where
   type BChError        Tx = ValErr
   type BChMonad        Tx = Maybe
   type Alg             Tx = Ed25519 :& SHA512
-  blockTransactions       = pure
   bchLogic                = transitions
-  logBlockData            = mempty
   proposerSelection       = ProposerSelection randomProposerSHA512
 
 privK :: [PrivKey (Alg Tx)]

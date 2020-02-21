@@ -268,13 +268,6 @@ class ( Serialise a
   bchLogic          :: BChLogic (BChMonad a) a
   -- | Describe how to select proposer for given height and round.
   proposerSelection :: ProposerSelection a
-  -- | Return list of transaction in block
-  blockTransactions :: a -> [TX a]
-  -- | Number of transactions in block
-  blockNTx          :: a -> Int
-  blockNTx = length . blockTransactions
-  -- | Collect information about block data for logging
-  logBlockData      :: a -> JSON.Object
 
 
 ----------------------------------------------------------------

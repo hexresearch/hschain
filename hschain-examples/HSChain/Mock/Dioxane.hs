@@ -26,7 +26,6 @@ import Control.Monad.Trans.Except
 import Control.Parallel.Strategies
 import Data.Int
 import qualified Data.Aeson          as JSON
-import qualified Data.HashMap.Strict as HM
 import qualified Data.Map.Strict     as Map
 import qualified Data.Vector         as V
 import Control.Lens
@@ -116,8 +115,6 @@ instance Dio tag => BlockData (BData tag) where
   type Alg             (BData tag) = DioAlg
   bchLogic                      = dioLogic
   proposerSelection             = ProposerSelection randomProposerSHA512
-  blockTransactions (BData txs) = txs
-  logBlockData      (BData txs) = HM.singleton "Ntx" $ JSON.toJSON $ length txs
 
 
 ----------------------------------------------------------------
@@ -166,9 +163,13 @@ dioLogic = BChLogic
                    $ and
                    $ parMap rseq
                      (\(Tx sig tx) -> verifySignatureHashed (txFrom tx) tx sig)
-                     (blockTransactions $ merkleValue $ blockData bchValue)
+                     (let BData txs = merkleValue $ blockData bchValue
+                      in txs
+                     )
       let update   = foldM (flip process) (merkleValue blockchainState)
-                   $ blockTransactions $ merkleValue $ blockData bchValue
+                   $ (let BData txs = merkleValue $ blockData bchValue
+                      in txs
+                     )
       st <- uncurry (>>)
           $ withStrategy (evalTuple2 rpar rpar)
           $ (sigCheck, update)
