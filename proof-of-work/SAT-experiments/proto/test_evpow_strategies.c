@@ -60,6 +60,7 @@ energy_expenditure_performance_for_advised_parameters(FILE* report) {
 				           , 0xffff
 			        	   , 30000
 				           , -1
+					   , -1
 				           , fixed_bits_count     // you may spawn several parallel attempts to solve the puzzle with some bits fixed (up to 32 bits)
 				           , fixed_bits      // to what value these bits are fixed
 					   , fn
@@ -129,6 +130,7 @@ find_complexity_drop(FILE* report) {
 		           , 0xffff
 	        	   , 2000
 		           , attempts_allowed
+			   , 100000
 		           , 0
 		           , 0
 			   , NULL
@@ -163,6 +165,7 @@ find_complexity_drop(FILE* report) {
 			           , 0xffff
 	        		   , 2000
 			           , attempts_allowed
+				   , 100000
 			           , fixed_bits_count
 		        	   , fixed_bits
 				   , NULL
@@ -227,6 +230,7 @@ measure_time_to_solution_for_diff_complexities(FILE* report) {
 				           , complexity_mantissa
 	        			   , 2000
 				           , attempts_allowed
+					   , 100000
 				           , 0
 				           , 0
 					   , NULL

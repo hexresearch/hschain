@@ -22,6 +22,7 @@ typedef PicoSAT Solver;
 #define solver_set_interrupt picosat_set_interrupt
 #define solver_set_seed picosat_set_seed
 #define solver_set_attempts(solver, attempts) ((void)0)
+#define solver_set_attempts_between_restarts(solve, attempts) ((void)0)
 
 #define SOLVER_SATISFIABLE PICOSAT_SATISFIABLE
 
@@ -35,6 +36,7 @@ clock_t runs_clocks[MAX_RUNS];
 typedef struct solver_s {
 	Yals*    inner_solver;
 	int32_t  attempts_allowed;
+	int32_t  attempts_between_restarts;
 	int      seed;
 	int      runs;
 	int*     literals_added;
@@ -56,6 +58,7 @@ Solver* solver_new(void) {
 	solver->literals_added_capacity = 16384;
 	solver->literals_added = malloc(solver->literals_added_capacity * sizeof(*solver->literals_added));
 	solver->attempts_allowed = 25000000; // 10 seconds for YalSAT speed of 2.5M flips/second.
+	solver->attempts_between_restarts = 100000;
 	if (!solver->literals_added) {
 		printf("unable to allocate literals cache\n");
 		exit(1);
@@ -66,6 +69,9 @@ Solver* solver_new(void) {
 void solver_set_attempts(Solver*solver, int32_t attempts_allowed) {
 	solver->attempts_allowed = attempts_allowed;
 } /* solver_set_attempts */
+void solver_set_attempts_between_restarts(Solver*solver, int32_t attempts_between_restarts) {
+	solver->attempts_between_restarts = attempts_between_restarts;
+} /* solver_set_attempts_between_restarts */
 void solver_delete(Solver*solver) {
 	if (!solver) { return ; }
 	if (solver->inner_solver) {
@@ -117,6 +123,8 @@ int solver_sat(Solver* solver, int decision_limit_unused) {
 		yals_seterm(solver->inner_solver, solver->interrupt, solver->interrupt_check_data);
 	}
 	yals_srand(solver->inner_solver, solver->seed);
+	//yals_setopt(solver->inner_solver, "pick", 1);
+	yals_setopt(solver->inner_solver, "restart", solver->attempts_between_restarts);
 	solver->seed ++; // choose some other value than last call.
         for (i=0;i<solver->literals_added_count; i++) {
 		yals_add(solver->inner_solver, solver->literals_added[i]);
@@ -396,6 +404,7 @@ evpow_solve( uint8_t* prefix
 	   , uint16_t complexity_mantissa
 	   , int32_t milliseconds_allowance
 	   , int32_t attempts_allowed
+	   , int32_t attempts_between_restarts
 	   , int fixed_bits_count
 	   , uint64_t fixed_bits
 	   , char* cnf_fn
@@ -421,6 +430,10 @@ evpow_solve( uint8_t* prefix
 	solver_set_seed(solver, 1); // get predictable results.
 	if (attempts_allowed > 0) {
 		solver_set_attempts(solver, attempts_allowed);
+	}
+
+	if (attempts_between_restarts > 0) {
+		solver_set_attempts_between_restarts(solver, attempts_between_restarts);
 	}
 
 	// Create instance and feed it to solver.

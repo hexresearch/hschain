@@ -92,6 +92,7 @@ evpow_solve( uint8_t* prefix
 	   , uint16_t complexity_mantissa
 	   , int32_t milliseconds_allowance // zero or negative value means exhaustive search within attempts limit
 	   , int32_t attempts_allowed // zero or negative value means exhaustive search within time limit
+	   , int attempts_between_restarts // if not succeed at this number of flips, restart with new assignment.
 	   , int fixed_bits_count     // you may spawn several parallel attempts to solve the puzzle with some bits fixed (up to 32 bits)
 	   , uint64_t fixed_bits      // to what value these bits are fixed
 	   , char* cnf_fn // where to dump CNF if needed. can be NUL.

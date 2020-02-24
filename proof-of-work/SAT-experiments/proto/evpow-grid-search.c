@@ -15,6 +15,23 @@ typedef struct test_rec_s {
         evpow_hash      hash;
 } test_rec_t;
 
+#define ARGS \
+	ARG(complexity_shift, int, 7) \
+	ARG(complexity_mantissa, uint16_t, 0xc000) \
+	ARG(clauses_count, int, EVPOW_ADVISED_CLAUSES_COUNT) \
+	ARG(search_time_ms, int64_t, 2000) \
+	ARG(attempts_allowed, uint64_t, 250000 * 2) \
+	ARG(attempts_between_restarts, int, 100000) \
+	ARG(num_samples, int, 100) \
+	ARG(nonce, uint64_t, 0xdeadbeef600df00dULL) \
+	ARG(break_power, double, 2.0) \
+	/* done with args */
+#define int_format "%d"
+#define uint16_t_format "0x%04x"
+#define uint64_t_format "%lu"
+#define int64_t_format "%ld"
+#define double_format "%g"
+
 void
 next_sample(test_rec_t* sample) {
 	int i, carry;
@@ -30,6 +47,7 @@ print_average_solution_time
 	( int complexity_shift, uint16_t complexity_mantissa, int clauses_count, test_rec_t* sample
 	, int64_t search_time_ms
 	, int64_t attempts_allowed
+	, int attempts_between_restarts
 	, int num_samples
 	) {
 	int found;
@@ -50,6 +68,7 @@ print_average_solution_time
 	                        , complexity_mantissa
         	                , search_time_ms
                 	        , attempts_allowed
+				, attempts_between_restarts
 	                        , 0
         	                , 0
                 	        , NULL
@@ -65,22 +84,6 @@ print_average_solution_time
 	printf("%.5g %.5g\n", ((double)end - start)*1000.0/CLOCKS_PER_SEC/num_samples
 			, first_attempts_time_sum/tries);
 } /* print_average_solution_time */
-
-#define ARGS \
-	ARG(complexity_shift, int, 7) \
-	ARG(complexity_mantissa, uint16_t, 0xc000) \
-	ARG(clauses_count, int, EVPOW_ADVISED_CLAUSES_COUNT) \
-	ARG(search_time_ms, int64_t, 2000) \
-	ARG(attempts_allowed, uint64_t, 250000 * 2) \
-	ARG(num_samples, int, 100) \
-	ARG(nonce, uint64_t, 0xdeadbeef600df00dULL) \
-	ARG(break_power, double, 2.0) \
-	/* done with args */
-#define int_format "%d"
-#define uint16_t_format "0x%04x"
-#define uint64_t_format "%lu"
-#define int64_t_format "%ld"
-#define double_format "%g"
 
 void
 usage(char*arg) {
@@ -171,10 +174,14 @@ parse_measure(int argc, char**argv) {
 	testrec.some_bytes[7] = nonce >> 40;
 	testrec.some_bytes[8] = nonce >> 48;
 	testrec.some_bytes[9] = nonce >> 56;
+#define ARG(p, ty, _) printf(#p ": " ty##_format "\n", p);
+	ARGS
+#undef  ARG
 	print_average_solution_time
 			( complexity_shift, complexity_mantissa, clauses_count, &testrec
 			, search_time_ms
 			, attempts_allowed
+			, attempts_between_restarts
 			, num_samples
 			);
 } /* parse_measure */
