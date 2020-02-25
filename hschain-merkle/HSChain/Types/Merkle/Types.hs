@@ -119,14 +119,15 @@ instance (CryptoHash alg, IsMerkle f) => CryptoHashable (MerkleNode f alg a) whe
 --   expected to be used primarily as type parameter to 'MerkleNode':
 --   @MerkleNode IdNode@
 data IdNode  alg a = IdNode  (Hashed alg a) !a
-  deriving stock (Show,Eq,Ord,Generic)
+  deriving stock    (Show,Eq,Ord,Generic)
+  deriving anyclass (NFData)
 
 -- | Node that /may/ contain value alognside with hash. It's
 --   expected to be used primarily as type parameter to 'MerkleNode':
 --   @MerkleNode OptNode@
 data OptNode alg a = OptNode (Hashed alg a) !(Maybe a)
-  deriving stock (Show,Eq,Ord,Generic)
-
+  deriving stock    (Show,Eq,Ord,Generic)
+  deriving anyclass (NFData)
 
 instance IsMerkle IdNode where
   merkleHashed (IdNode h _) = h
