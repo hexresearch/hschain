@@ -34,7 +34,6 @@ import Data.List
 import Data.Map.Strict                 (Map)
 import qualified Data.Aeson          as JSON
 import qualified Data.Map.Strict     as Map
-import qualified Data.HashMap.Strict as HM
 import System.Random   (randomRIO)
 import GHC.Generics    (Generic)
 
@@ -81,8 +80,6 @@ instance BlockData BData where
   type BChError        BData = KeyValError
   type Alg             BData = Ed25519 :& SHA512
   type BChMonad        BData = ExceptT KeyValError IO
-  blockTransactions (BData txs) = txs
-  logBlockData      (BData txs) = HM.singleton "Ntx" $ JSON.toJSON $ length txs
   proposerSelection             = ProposerSelection randomProposerSHA512
   bchLogic                      = keyValLogic
 
@@ -140,7 +137,8 @@ keyValLogic = BChLogic
   --
   , processBlock  = \BChEval{..} -> ExceptT $ return $ do
       st <- foldM (flip process) (merkleValue blockchainState)
-          $ blockTransactions $ merkleValue $ blockData bchValue
+          $ let BData txs = merkleValue $ blockData bchValue
+            in txs
       return BChEval { bchValue        = ()
                      , blockchainState = merkled st
                      , ..

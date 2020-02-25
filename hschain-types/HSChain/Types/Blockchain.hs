@@ -95,6 +95,15 @@ import HSChain.Crypto.Classes.Hash
 import HSChain.Types.Validators
 import HSChain.Types.Merkle.Types
 
+----------------------------------------------------------------
+--
+----------------------------------------------------------------
+
+-- | Apply natural transformation to data type. Just a type class for
+--   dictionaries of functions with common kind.
+class HoistDict dct where
+  hoistDict :: (forall x. m x -> n x) -> dct m a -> dct n a
+
 
 ----------------------------------------------------------------
 -- Primitives
@@ -191,10 +200,10 @@ toHeader Block{..} = Block
   , ..
   }
 
-instance (Crypto (Alg a), CryptoHashable a, Serialise     a, IsMerkle f)  => Serialise     (GBlock f a)
-instance (Crypto (Alg a), CryptoHashable a, JSON.FromJSON a, IsMerkle f)  => JSON.FromJSON (GBlock f a)
-instance (Crypto (Alg a), JSON.ToJSON a, IsMerkle f)                      => JSON.ToJSON   (GBlock f a)
-instance (NFData a, NFData1 (f (Alg a)), NFData (PublicKey (Alg a)))      => NFData (GBlock f a)
+instance (IsMerkle f, Crypto (Alg a), CryptoHashable a, Serialise     a) => Serialise     (GBlock f a)
+instance (IsMerkle f, Crypto (Alg a), CryptoHashable a, JSON.FromJSON a) => JSON.FromJSON (GBlock f a)
+instance (IsMerkle f, Crypto (Alg a),                   JSON.ToJSON   a) => JSON.ToJSON   (GBlock f a)
+instance (NFData a, NFData1 (f (Alg a)), NFData (PublicKey (Alg a)))     => NFData (GBlock f a)
 deriving instance (CryptoHash (Alg a), Show1 (f (Alg a)), Show a) => Show (GBlock f a)
 deriving instance (Eq (PublicKey (Alg a)), IsMerkle f, Eq1 (f (Alg a)), Eq a) => Eq (GBlock f a)
 
@@ -259,7 +268,7 @@ class ( Serialise a
   type BChError a
   -- | Monad used for evaluation of blockchain
   type BChMonad a :: * -> *
-  -- | Crypto algorithms used by blockchain validators. Not that
+  -- | Crypto algorithms used by blockchain validators. Note that
   --   transactions doesn't necessarily need not to use same
   --   cryptography.
   type Alg a  
@@ -268,13 +277,6 @@ class ( Serialise a
   bchLogic          :: BChLogic (BChMonad a) a
   -- | Describe how to select proposer for given height and round.
   proposerSelection :: ProposerSelection a
-  -- | Return list of transaction in block
-  blockTransactions :: a -> [TX a]
-  -- | Number of transactions in block
-  blockNTx          :: a -> Int
-  blockNTx = length . blockTransactions
-  -- | Collect information about block data for logging
-  logBlockData      :: a -> JSON.Object
 
 
 ----------------------------------------------------------------
@@ -474,11 +476,6 @@ data BChLogic m a = BChLogic
   , generateBlock :: NewBlock a -> [TX a] -> m (ProposedBlock a)
     -- ^ Generate block from list of transactions.
   }
-
--- | Apply natural transformation to data type. Just a type class for
---   dictionaries of functions with common kind.
-class HoistDict dct where
-  hoistDict :: (forall x. m x -> n x) -> dct m a -> dct n a
 
 instance HoistDict BChLogic where
   hoistDict fun BChLogic{..} = BChLogic

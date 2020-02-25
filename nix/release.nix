@@ -66,6 +66,7 @@ let
       hschain-crypto
       hschain-crypto-bls
       hschain-types
+      hschain-merkle
       hschain-quickcheck
       hschain-net
       hschain
@@ -74,6 +75,7 @@ let
     hschainPkgJs = p: with p; [
       hschain-crypto
       hschain-types
+      hschain-merkle
     ];
     in
     {
