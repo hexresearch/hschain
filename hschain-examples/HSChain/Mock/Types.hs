@@ -102,8 +102,8 @@ hoistRunningNode
   :: (Functor n)
   => (forall x. m x -> n x) -> RunningNode m a -> RunningNode n a
 hoistRunningNode fun RunningNode{..} = RunningNode
-  { rnodeState   = hoistBChStore fun rnodeState
-  , rnodeMempool = hoistMempool  fun rnodeMempool
+  { rnodeState   = hoistDict    fun rnodeState
+  , rnodeMempool = hoistMempool fun rnodeMempool
   , ..
   }
 

@@ -64,7 +64,6 @@ module HSChain.Store (
   , nullMempool
     -- * Blockchain state
   , BChStore(..)
-  , hoistBChStore
     -- * Blockchain invariants checkers
   , BlockchainInconsistency
   , checkStorage
@@ -261,12 +260,12 @@ data BChStore m a = BChStore
   -- ^ Put blockchain state at given height into store
   }
 
-hoistBChStore :: (forall x. m x -> n x) -> BChStore m a -> BChStore n a
-hoistBChStore fun BChStore{..} = BChStore
-  { bchCurrentState  = fun   bchCurrentState
-  , bchStoreRetrieve = fun . bchStoreRetrieve
-  , bchStoreStore    = (fmap . fmap) fun bchStoreStore
-  }
+instance HoistDict BChStore where
+  hoistDict fun BChStore{..} = BChStore
+    { bchCurrentState  = fun   bchCurrentState
+    , bchStoreRetrieve = fun . bchStoreRetrieve
+    , bchStoreStore    = (fmap . fmap) fun bchStoreStore
+    }
 
 
 ----------------------------------------------------------------
