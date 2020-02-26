@@ -116,10 +116,10 @@ rewindBlockchainState AppStore{..} BChLogic{..} = do
                       "New validator set doesn't match validator set stored in block"
                       Mismatch{..}
       -- Write validator set at H=1 to database if needed
-      when (h == Height 0) $ do
-        queryRO (hasValidatorSet (Height 1)) >>= \case
+      when (h == Height 0) $ mustQueryRW $ do
+        hasValidatorSet (Height 1) >>= \case
           True  -> return ()
-          False -> mustQueryRW $ storeValSet (Height 1) validatorSet
+          False -> storeValSet (Height 1) validatorSet
       -- Put new state into state storage
       bchStoreStore appBchState h blockchainState
       return blockchainState
