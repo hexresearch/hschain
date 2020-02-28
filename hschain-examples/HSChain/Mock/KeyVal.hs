@@ -34,6 +34,7 @@ import Data.List
 import Data.Map.Strict                 (Map)
 import qualified Data.Aeson          as JSON
 import qualified Data.Map.Strict     as Map
+import qualified Data.HashMap.Strict as HM
 import System.Random   (randomRIO)
 import GHC.Generics    (Generic)
 
@@ -80,8 +81,10 @@ instance BlockData BData where
   type BChError        BData = KeyValError
   type Alg             BData = Ed25519 :& SHA512
   type BChMonad        BData = ExceptT KeyValError IO
-  proposerSelection             = ProposerSelection randomProposerSHA512
-  bchLogic                      = keyValLogic
+  proposerSelection        = ProposerSelection randomProposerSHA512
+  bchLogic                 = keyValLogic
+  logBlockData (BData txs) = HM.singleton "Ntx" $ JSON.toJSON $ length txs
+
 
 mkGenesisBlock :: ValidatorSet (Alg BData) -> Genesis BData
 mkGenesisBlock valSet = BChEval
