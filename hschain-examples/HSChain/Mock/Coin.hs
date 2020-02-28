@@ -54,6 +54,7 @@ import Data.Map             (Map,(!))
 import qualified Data.Vector         as V
 import qualified Data.Map.Strict     as Map
 import qualified Data.Set            as Set
+import qualified Data.HashMap.Strict as HM
 import System.Random   (randomRIO)
 import GHC.Generics    (Generic)
 
@@ -105,8 +106,9 @@ instance BlockData BData where
   type BChError        BData = CoinError
   type BChMonad        BData = Either CoinError
   type Alg             BData = Ed25519 :& SHA512
-  bchLogic                      = coinLogic
-  proposerSelection             = ProposerSelection randomProposerSHA512
+  bchLogic                 = coinLogic
+  proposerSelection        = ProposerSelection randomProposerSHA512
+  logBlockData (BData txs) = HM.singleton "Ntx" $ JSON.toJSON $ length txs
 
 -- | Single transaction. We have two different transaction one to add
 --   money to account ex nihilo and one to transfer money between
