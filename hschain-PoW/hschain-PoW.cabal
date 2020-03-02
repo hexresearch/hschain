@@ -1,4 +1,4 @@
-Name:           hschain
+Name:           hschain-PoW
 Version:        0.1
 Synopsis:       Haskell implementation of PoW consensus
 Description:
@@ -20,7 +20,6 @@ Library
   Default-Language:    Haskell2010
   Build-Depends:       base              >=4.9 && <5
                      , hschain-crypto
-                     , hschain-types
                      , hschain-net
                      , hschain-merkle
                      , aeson
@@ -32,23 +31,20 @@ Library
                      , directory
                      , exceptions        >=0.8.3
                      , filepath
-                     , lrucache          >=1.2
                      , mmorph
                      , microlens         >=0.4
                      , microlens-mtl     >=0.1
                      , microlens-th
                      , mtl
-                     , network-info
                      , pipes             >=4
                      , prometheus-client
-                     , random
-                     , random-shuffle
-                     , retry             >=0.7.6.2
                      , serialise         >=0.2
                      , sqlite-simple
                      , stm               >=2.5
                      , text
+                     , time
                      , transformers      >=0.5
                      , vector
                      , unordered-containers >=0.2.5.0
   Exposed-modules:
+                HSChain.PoW.Types

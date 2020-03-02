@@ -5,6 +5,7 @@ packages:
          hschain-crypto-bls
          hschain-merkle
          hschain-types
+         hschain-PoW
          hschain-net
          hschain-quickcheck
          hschain-examples

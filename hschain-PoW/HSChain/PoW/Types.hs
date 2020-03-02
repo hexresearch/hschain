@@ -1,0 +1,97 @@
+{-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE DerivingStrategies         #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE PolyKinds                  #-}
+{-# LANGUAGE QuantifiedConstraints      #-}
+-- |
+-- Basic data types for PoW blockchain
+module HSChain.PoW.Types where
+
+import Control.DeepSeq
+import Control.Monad.IO.Class
+import Data.ByteString          (ByteString)
+import Data.Time.Clock          (UTCTime)
+import Data.Time.Clock.POSIX    (getPOSIXTime,posixSecondsToUTCTime)
+import Data.Int
+import qualified Data.Aeson      as JSON
+import qualified Codec.Serialise as CBOR
+import GHC.Generics (Generic)
+
+import HSChain.Crypto
+-- import HSChain.Crypto.Classes.Hash
+import HSChain.Types.Merkle.Types
+
+----------------------------------------------------------------
+-- Primitives
+----------------------------------------------------------------
+
+-- | Height of block in blockchain. That is 
+newtype Height = Height Int64
+  deriving stock   (Show, Read, Generic, Eq, Ord)
+  deriving newtype (NFData, CBOR.Serialise, JSON.ToJSON, JSON.FromJSON, Enum, CryptoHashable)
+
+-- | Time in milliseconds since UNIX epoch.
+newtype Time = Time Int64
+  deriving stock   (Show, Read, Generic, Eq, Ord)
+  deriving newtype (NFData, CBOR.Serialise, JSON.ToJSON, JSON.FromJSON, Enum, CryptoHashable)
+
+
+-- | Get current time
+getCurrentTime :: MonadIO m => m Time
+getCurrentTime = do
+  t <- liftIO getPOSIXTime
+  return $! Time $ round $ 1000 * t
+
+-- | Convert timestamp to UTCTime
+timeToUTC :: Time -> UTCTime
+timeToUTC (Time t) = posixSecondsToUTCTime (realToFrac t / 1000)
+
+
+----------------------------------------------------------------
+-- Block
+----------------------------------------------------------------
+
+
+newtype BlockID b = BlockID ByteString
+  deriving newtype (Eq,CBOR.Serialise)
+
+
+-- | Generic block. This is just spine of blockchain, that is height
+--   of block, hash of previous block and
+data GBlock b f = GBlock
+  { blockHeight :: !Height
+  , prevBlock   :: !(Maybe (BlockID b))
+  , blockData   :: !(b f)
+  }
+  deriving (Generic)
+
+type Header b = GBlock b Hashed
+type Block  b = GBlock b IdNode
+
+-- | Core of blockchain implementation. 
+class BlockData b where
+  blockID :: IsMerkle f => GBlock b f -> BlockID b
+
+
+
+----------------------------------------
+-- instances
+----------------------------------------
+
+instance JSON.FromJSON (BlockID b) where
+  parseJSON = undefined
+
+instance JSON.ToJSON (BlockID b) where
+  toJSON = undefined
+
+instance ( IsMerkle f
+         , forall g. IsMerkle g => CBOR.Serialise (b g)
+         ) => CBOR.Serialise (GBlock b f)
+
+instance ( IsMerkle f
+         , forall g. IsMerkle g => JSON.ToJSON (b g)
+         ) => JSON.ToJSON (GBlock b f)
+
+instance ( IsMerkle f
+         , forall g. IsMerkle g => JSON.FromJSON (b g)
+         ) => JSON.FromJSON (GBlock b f)
