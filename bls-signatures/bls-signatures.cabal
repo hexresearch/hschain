@@ -16,40 +16,47 @@ extra-source-files:  CHANGELOG.md
 cabal-version:       >=1.10
 
 Library
-  -- exposed-modules:
-  -- other-modules:
-  -- other-extensions:
   Build-Depends:
       base >=4.11 && <5
     , bytestring
-    , inline-c
-    , inline-c-cpp
     , containers
-    , template-haskell
-    , vector
     , deepseq
+    , vector
   Hs-Source-Dirs:      src
   Default-Language:    Haskell2010
-  Other-Modules:
-    Crypto.Bls.Internal
-    Crypto.Bls.Arrays
   Exposed-Modules:
     Crypto.Bls
-    Crypto.Bls.AggregationInfo
-    Crypto.Bls.PrivateKey
-    Crypto.Bls.PublicKey
-    Crypto.Bls.Signature
-    Crypto.Bls.Threshold
-    Crypto.Bls.Types
-    Crypto.Bls.Util
-  CXX-Options: -std=c++11
-  if os(darwin)
-    Extra-Libraries: c++
-    Ld-Options: -Wl,-keep_dwarf_unwind
+  if impl(ghcjs)
+      Other-Modules:
+        Crypto.Bls.JavaScript.Common
+        Crypto.Bls.JavaScript.PrivateKey
+        Crypto.Bls.JavaScript.PublicKey
+        Crypto.Bls.JavaScript.Signature
+      Build-Depends:
+        ghcjs-base -any
   else
-    Extra-Libraries: stdc++ bls
-  GHC-Options: -Wall -fwarn-incomplete-patterns 
-
+      Build-Depends:
+          inline-c
+        , inline-c-cpp
+        , template-haskell
+      Other-Modules:
+        Crypto.Bls.CPP.AggregationInfo
+        Crypto.Bls.CPP.Arrays
+        Crypto.Bls.CPP.Init
+        Crypto.Bls.CPP.Internal
+        Crypto.Bls.CPP.PrivateKey
+        Crypto.Bls.CPP.PublicKey
+        Crypto.Bls.CPP.Signature
+        Crypto.Bls.CPP.Threshold
+        Crypto.Bls.CPP.Types
+        Crypto.Bls.CPP.Util
+      CXX-Options: -std=c++11
+      if os(darwin)
+        Extra-Libraries: c++
+        Ld-Options: -Wl,-keep_dwarf_unwind
+      else
+        Extra-Libraries: stdc++ bls
+  GHC-Options: -Wall -fwarn-incomplete-patterns
 
 
 Test-Suite bls-signatures-test
@@ -62,13 +69,15 @@ Test-Suite bls-signatures-test
   Build-Depends:
       base >=4.7 && <5
     , bls-signatures
-    , HTF
     , vector
     , bytestring
     , extra
+    , tasty
+    , tasty-hunit
   Other-Modules:
-    Tests.Signature
-    Tests.Threshold
+    -- Tests.Signature
+    -- Tests.Threshold
+    Tests.Bls
   --    Paths_xenochain_state
   -- Ghc-Options: -optl-static -optl-pthread
 
@@ -98,21 +107,4 @@ Benchmark bls-bench
                      , bls-signatures
                      --
                      , bytestring >=0.10
-                     , deepseq
                      , criterion
-                     , bytestring
-                     , inline-c
-                     , inline-c-cpp
-                     , containers
-                     , template-haskell
-                     , vector
-                     --, deepseq
-                     --, random
-                     --, vector
-                     ----
-                     --, thundermint
-                     --, thundermint-crypto
-                     --, thundermint-types
-  --Other-modules:       ValidatorSetsBench
-  --                     MockCoin
-  --                     Crypto

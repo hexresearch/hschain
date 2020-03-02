@@ -12,15 +12,15 @@ import Control.DeepSeq         (NFData(..))
 import Control.Monad.IO.Class
 import Data.ByteString         (ByteString)
 import Data.Data               (Data)
+import Data.Maybe
 import Data.Ord                (comparing)
 import System.Entropy
-import System.IO.Unsafe
 
 import qualified Crypto.Bls as Bls
 import HSChain.Crypto
 
 
-data BLS     deriving (Data)
+data BLS deriving (Data)
 
 newtype instance PrivKey   BLS = PrivKey   Bls.PrivateKey
 newtype instance PublicKey BLS = PublicKey Bls.PublicKey
@@ -41,50 +41,55 @@ instance CryptoAggregabble BLS where
     type AggregatedPrivKey BLS   = PrivKey BLS
     type AggregatedSignature BLS = Signature BLS
     aggregatePublicKeys keys =
-        PublicKey $ unsafePerformIO $ Bls.aggregateInsecurePublicKeyList (map (\(PublicKey pk) -> pk) keys)
+        PublicKey
+            $ Bls.publicKeyInsecureAggregate
+            $ map (\(PublicKey pk) -> pk) keys
     aggregatePrivKeys keys =
-        PrivKey   $ unsafePerformIO $ Bls.aggregateInsecurePrivateKeyList (map (\(PrivKey pk) -> pk) keys)
+        PrivKey
+            $ Bls.privateKeyInsecureAggregate
+            $ map (\(PrivKey pk) -> pk) keys
     aggregateSignatures sigs =
-        Signature $ unsafePerformIO $
-            mapM (\(Signature sig) -> Bls.deserializeInsecureSignature sig) sigs
-            >>= Bls.aggregateInsecureSignaturesList
-            >>= Bls.serializeInsecureSignature
+        Signature
+            $ Bls.insecureSignatureSerialize
+            $ Bls.insecureSignatureAggregate
+            $ map (\(Signature sig) -> fromJust $ Bls.insecureSignatureDeserialize sig) sigs
 
 
 instance CryptoAsymmetric BLS where
-    publicKey (PrivKey privKey) = PublicKey $ unsafePerformIO $ Bls.getPublicKey privKey
-    generatePrivKey = PrivKey <$> liftIO (getEntropy 32 >>= Bls.fromSeed)
+    publicKey (PrivKey privKey) = PublicKey $ Bls.privateKeyGetPublicKey privKey
+    generatePrivKey = PrivKey <$> liftIO (Bls.privateKeyFromSeed <$> (getEntropy 32))
     asymmKeyAlgorithmName = "BLS"
 
 
 instance CryptoSignHashed BLS where
-    signHash (PrivKey privKey) (Hash hashbs) = Signature $
-        unsafePerformIO $
-            Bls.signInsecurePrehashed privKey (Bls.Hash256 hashbs)
-            >>= Bls.serializeInsecureSignature
+    signHash (PrivKey privKey) (Hash hashbs) =
+        Signature $ Bls.insecureSignatureSerialize
+                  $ Bls.signInsecurePrehashed privKey (Bls.Hash256 hashbs)
     verifyHashSignature (PublicKey pubKey) (Hash hashbs) (Signature bssig) =
-        unsafePerformIO $ do
-            sig <- Bls.deserializeInsecureSignature bssig
-            Bls.verifyInsecure1 sig (Bls.Hash256 hashbs) pubKey
+        let sig = fromJust $ Bls.insecureSignatureDeserialize bssig
+        in Bls.insecureSignatureVerify sig [Bls.Hash256 hashbs] [pubKey]
 
 
 instance CryptoSign BLS where
     signBlob pk blob = signHash pk (hashBlobBLS blob)
     verifyBlobSignature pubK blob sig = verifyHashSignature pubK (hashBlobBLS blob) sig
 
+
 -- FIXME: decide what to do with BLS hashing
 --
 -- instance CryptoHash BLS where
 --     hashBlob = Hash . Bls.unHash256 . unsafePerformIO . Bls.hash256
 hashBlobBLS :: ByteString -> Hash BLS
-hashBlobBLS = Hash . Bls.unHash256 . unsafePerformIO . Bls.hash256
+hashBlobBLS = Hash . Bls.unHash256 . Bls.hash256
+
 
 instance Eq (PrivKey BLS) where
-    (PrivKey pk1) == (PrivKey pk2) = Bls.equalPrivateKey pk1 pk2
+    (PrivKey pk1) == (PrivKey pk2) = Bls.privateKeyEq pk1 pk2
 
 
 instance Eq (PublicKey BLS) where
-    (PublicKey pk1) == (PublicKey pk2) = Bls.equalPublicKey pk1 pk2
+    (PublicKey pk1) == (PublicKey pk2) = Bls.publicKeyEq pk1 pk2
+
 
 instance Ord (PrivKey BLS) where
   compare = comparing encodeToBS
@@ -102,11 +107,11 @@ instance NFData (PublicKey BLS) where
 
 
 instance (Ord (PrivKey BLS)) => ByteRepr (PrivKey BLS) where
-    decodeFromBS bs = unsafePerformIO $ (Just . PrivKey) <$> Bls.deserializePrivateKey bs
-    encodeToBS (PrivKey privKey) = unsafePerformIO $ Bls.serializePrivateKey privKey
+    decodeFromBS bs = PrivKey <$> Bls.privateKeyDeserialize bs
+    encodeToBS (PrivKey privKey) = Bls.privateKeySerialize privKey
 
 
 instance (Ord (PublicKey BLS)) => ByteRepr (PublicKey BLS) where
-    decodeFromBS bs = unsafePerformIO $ (Just . PublicKey) <$> Bls.deserializePublicKey bs
-    encodeToBS (PublicKey pubKey) = unsafePerformIO $ Bls.serializePublicKey pubKey
+    decodeFromBS bs = PublicKey <$> Bls.publicKeyDeserialize bs
+    encodeToBS (PublicKey pubKey) = Bls.publicKeySerialize pubKey
 

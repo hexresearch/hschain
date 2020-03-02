@@ -1,12 +1,12 @@
+{-# LANGUAGE BangPatterns        #-}
+{-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE OverloadedStrings #-}
 import Criterion.Main
 
 
 import Crypto.Bls
 
 import Data.ByteString as BS
-import qualified Data.Vector as V
 
 
 smallMessage1 :: BS.ByteString
@@ -40,64 +40,60 @@ mkMsg :: Int -> BS.ByteString
 mkMsg sz = fst $ BS.unfoldrN sz (\i -> Just (i, i + 3)) 1
 
 
-hash :: BS.ByteString -> IO Hash256
+hash :: BS.ByteString -> Hash256
 hash = hash256
 
 
-benchSignInsecurePrehashed :: PrivateKey -> Hash256 -> IO InsecureSignature
+benchSignInsecurePrehashed :: PrivateKey -> Hash256 -> InsecureSignature
 benchSignInsecurePrehashed = signInsecurePrehashed
 
-benchVerifyInsecure :: PublicKey -> Hash256 -> InsecureSignature -> IO Bool
+
+benchVerifyInsecure :: PublicKey -> Hash256 -> InsecureSignature -> Bool
 benchVerifyInsecure pubKey msgHash sig =
-    verifyInsecure sig (V.singleton msgHash) (V.singleton pubKey)
+    insecureSignatureVerify sig [msgHash] [pubKey]
 
-benchVerifyInsecure1 :: PublicKey -> Hash256 -> InsecureSignature -> IO Bool
-benchVerifyInsecure1 pubKey msgHash sig =
-    verifyInsecure1 sig msgHash pubKey
 
-benchSig :: BS.ByteString -> IO Bool
-benchSig message = do
-    sk1 <- fromSeed "abc"
-    sk2 <- fromSeed "def"
-    pk1 <- getPublicKey sk1
-    pk2 <- getPublicKey sk2
-    messageHash <- hash256 message
-    sig1 <- signInsecure sk1 message
-    sig2 <- signInsecure sk2 message
-    b1 <- verifyInsecure sig1 (V.singleton messageHash) (V.singleton pk1)
-    b2 <- verifyInsecure sig2 (V.singleton messageHash) (V.singleton pk2)
-    aggSig <- aggregateInsecureSignatures (V.fromList [sig1, sig2])
-    aggPk  <- aggregateInsecurePublicKey  (V.fromList [pk1,  pk2])
-    b3 <- verifyInsecure aggSig (V.singleton messageHash) (V.singleton aggPk)
-    --
-    return $! b1 && b2 && b3
+benchSig :: BS.ByteString -> Bool
+benchSig message =
+    let sk1 = privateKeyFromSeed "abc"
+        sk2 = privateKeyFromSeed "def"
+        pk1 = privateKeyGetPublicKey sk1
+        pk2 = privateKeyGetPublicKey sk2
+        messageHash = hash256 message
+        sig1 = signInsecure sk1 message
+        sig2 = signInsecure sk2 message
+        b1 = insecureSignatureVerify sig1 [messageHash] [pk1]
+        b2 = insecureSignatureVerify sig2 [messageHash] [pk2]
+        aggSig = insecureSignatureAggregate [sig1, sig2]
+        aggPk  = publicKeyInsecureAggregate [pk1,  pk2]
+        b3 = insecureSignatureVerify aggSig [messageHash] [aggPk]
+    in (b1 && b2 && b3)
 
 
 -- Our benchmark harness.
 main :: IO ()
 main = do
-    privKey <- fromSeed "abc"
-    pubKey  <- getPublicKey privKey
-    msgHash <- hash256 bigMessage2
-    sig     <- signInsecurePrehashed privKey msgHash
+    let !privKey = privateKeyFromSeed "abc"
+        !pubKey = privateKeyGetPublicKey privKey
+        !msgHash = hash256 bigMessage2
+        !sig     = signInsecurePrehashed privKey msgHash
     defaultMain
         [
-          bgroup "hash" [ bench "small 1"  $ nfIO (hash smallMessage1)
-                        , bench "small 2"  $ nfIO (hash smallMessage2)
-                        , bench "small 3"  $ nfIO (hash smallMessage3)
-                        , bench "medium 1" $ nfIO (hash mediumMessage1)
-                        , bench "medium 2" $ nfIO (hash mediumMessage2)
-                        , bench "medium 3" $ nfIO (hash mediumMessage3)
-                        , bench "big 1"    $ nfIO (hash bigMessage1)
-                        , bench "big 2"    $ nfIO (hash bigMessage2)
-                        , bench "big 3"    $ nfIO (hash bigMessage3)
+          bgroup "hash" [ bench "small 1"  $ nf hash smallMessage1
+                        , bench "small 2"  $ nf hash smallMessage2
+                        , bench "small 3"  $ nf hash smallMessage3
+                        , bench "medium 1" $ nf hash mediumMessage1
+                        , bench "medium 2" $ nf hash mediumMessage2
+                        , bench "medium 3" $ nf hash mediumMessage3
+                        , bench "big 1"    $ nf hash bigMessage1
+                        , bench "big 2"    $ nf hash bigMessage2
+                        , bench "big 3"    $ nf hash bigMessage3
                         ]
-        , bgroup "sig"  [ bench "1"  $ nfIO (benchSig smallMessage1)
-                        , bench "2"  $ nfIO (benchSig mediumMessage1)
-                        , bench "3"  $ nfIO (benchSig bigMessage1)
+        , bgroup "sig"  [ bench "1"  $ nf benchSig smallMessage1
+                        , bench "2"  $ nf benchSig mediumMessage1
+                        , bench "3"  $ nf benchSig bigMessage1
                         ]
-        , bgroup "sig"  [ bench "sign"   $ nfIO (benchSignInsecurePrehashed privKey msgHash)
-                        , bench "verify" $ nfIO (benchVerifyInsecure pubKey msgHash sig)
-                        , bench "verify1" $ nfIO (benchVerifyInsecure1 pubKey msgHash sig)
+        , bgroup "sig"  [ bench "sign"   $ nf (uncurry benchSignInsecurePrehashed) (privKey, msgHash)
+                        , bench "verify" $ nf (\(p, m, s) -> benchVerifyInsecure p m s) (pubKey, msgHash, sig)
                         ]
         ]

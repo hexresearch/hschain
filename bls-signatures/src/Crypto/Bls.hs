@@ -1,19 +1,68 @@
+{-# LANGUAGE CPP #-}
 module Crypto.Bls
-    ( module Crypto.Bls.AggregationInfo
-    , module Crypto.Bls.PrivateKey
-    , module Crypto.Bls.PublicKey
-    , module Crypto.Bls.Signature
-    , module Crypto.Bls.Threshold
-    , module Crypto.Bls.Types
-    , module Crypto.Bls.Util
-    ) where
+    ( Hash256(..)
+    , InsecureSignature
+    , PrivateKey
+    , PublicKey
+    , Signature
+    , initBls
+    , hash256
+    , hash256serialize
+    , insecureSignatureAggregate
+    , insecureSignatureDeserialize
+    , insecureSignatureEq
+    , insecureSignatureSerialize
+    , insecureSignatureVerify
+    , privateKeyDeserialize
+    , privateKeyEq
+    , privateKeyFromSeed
+    , privateKeyGetPublicKey
+    , privateKeyInsecureAggregate
+    , privateKeySerialize
+    , privateKeySizeGet
+    , publicKeyDeserialize
+    , publicKeyEq
+    , publicKeyGetFingerprint
+    , publicKeyInsecureAggregate
+    , publicKeySerialize
+    , publicKeySizeGet
+    , signInsecure
+    , signInsecurePrehashed
+    , signatureDeserialize
+    , signatureEq
+    , signatureSerialize
+    , signatureSizeGet
+#ifdef __GHCJS__
+    -- TODO: add bindings for aggregation info / threshold
+#else
+    -- Additional imports from C++
+    , AggregationInfo
+    , Threshold
+    , aggregationInfoFromMsg
+    , thresholdCreate
+    , thresholdVerifySecretFragment
+    , thresholdAggregateUnitSigs
+#endif
+    )
+    where
 
+#ifdef __GHCJS__
 
-import Crypto.Bls.AggregationInfo
-import Crypto.Bls.PrivateKey
-import Crypto.Bls.PublicKey
-import Crypto.Bls.Signature
-import Crypto.Bls.Threshold
-import Crypto.Bls.Types
-import Crypto.Bls.Util
+import Crypto.Bls.JavaScript.Common
+import Crypto.Bls.JavaScript.PrivateKey
+import Crypto.Bls.JavaScript.PublicKey
+import Crypto.Bls.JavaScript.Signature
+
+#else
+
+import Crypto.Bls.CPP.AggregationInfo
+import Crypto.Bls.CPP.Init
+import Crypto.Bls.CPP.PrivateKey
+import Crypto.Bls.CPP.PublicKey
+import Crypto.Bls.CPP.Signature
+import Crypto.Bls.CPP.Threshold
+import Crypto.Bls.CPP.Types
+import Crypto.Bls.CPP.Util
+
+#endif
 

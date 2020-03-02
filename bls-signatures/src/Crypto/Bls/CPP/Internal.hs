@@ -3,7 +3,7 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
-module Crypto.Bls.Internal where
+module Crypto.Bls.CPP.Internal where
 
 
 -- NB: Partially copied from haskell-opencv
@@ -163,4 +163,3 @@ mkPlacementNewInstance name =
       lamE [varP ptr] $
         quoteExp C.exp $
           "void { $(" <> typeName <> " * " <> nameBase ptr <> ")->~" <> typeName <> "() }"
-

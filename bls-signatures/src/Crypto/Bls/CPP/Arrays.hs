@@ -2,7 +2,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-module Crypto.Bls.Arrays where
+module Crypto.Bls.CPP.Arrays where
 
 
 import Control.Exception (bracket_)
@@ -13,8 +13,8 @@ import Foreign.Marshal.Alloc ( allocaBytes )
 import Foreign.Ptr (Ptr, plusPtr)
 import qualified Data.Vector as V
 
-import Crypto.Bls.Types
-import Crypto.Bls.Internal
+import Crypto.Bls.CPP.Types
+import Crypto.Bls.CPP.Internal
 
 
 -- | Perform an action with a temporary pointer to an array of values

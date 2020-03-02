@@ -1,11 +1,11 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell #-}
-module Crypto.Bls.Threshold
+module Crypto.Bls.CPP.Threshold
     ( Threshold
-    , create
-    , verifySecretFragment
-    , aggregateUnitSigs
+    , thresholdCreate
+    , thresholdVerifySecretFragment
+    , thresholdAggregateUnitSigs
     ) where
 
 
@@ -20,9 +20,9 @@ import qualified Data.Vector as V
 import qualified Language.C.Inline as C
 import qualified Language.C.Inline.Cpp as C
 
-import Crypto.Bls.Arrays
-import Crypto.Bls.Internal
-import Crypto.Bls.Types
+import Crypto.Bls.CPP.Arrays
+import Crypto.Bls.CPP.Internal
+import Crypto.Bls.CPP.Types
 
 
 C.context blsCtx
@@ -33,10 +33,10 @@ C.using "namespace bls"
 C.using "namespace std"
 
 
-create :: Int
+thresholdCreate :: Int
        -> Int
        -> IO (PrivateKey, Vector PublicKey, Vector PrivateKey)
-create t n =
+thresholdCreate t n =
     allocaArray n $ \(haskCommitment :: Ptr (Ptr C'PublicKey)) ->
         allocaArray n $ \(haskSecretFragments :: Ptr (Ptr C'PrivateKey)) -> do
             secretKey <- fromPtr [C.block| PrivateKey * {
@@ -70,12 +70,12 @@ create t n =
     ni = fromIntegral n
 
 
-verifySecretFragment :: Int
-                     -> PrivateKey
-                     -> Vector PublicKey
-                     -> Int
-                     -> IO Bool
-verifySecretFragment player secretFragment commitment t =
+thresholdVerifySecretFragment :: Int
+                              -> PrivateKey
+                              -> Vector PublicKey
+                              -> Int
+                              -> IO Bool
+thresholdVerifySecretFragment player secretFragment commitment t =
     fmap (maybe False toBool) $
         withPtr secretFragment $ \ptrSecretFragment ->
             withArrayPtrLen commitment $ \ptrCommitment lenCommitment ->
@@ -92,11 +92,11 @@ verifySecretFragment player secretFragment commitment t =
     c'T                = fromIntegral t
 
 
-aggregateUnitSigs :: Vector InsecureSignature
-                  -> ByteString
-                  -> [Int]
-                  -> IO InsecureSignature
-aggregateUnitSigs sigs message players =
+thresholdAggregateUnitSigs :: Vector InsecureSignature
+                           -> ByteString
+                           -> [Int]
+                           -> IO InsecureSignature
+thresholdAggregateUnitSigs sigs message players =
     fmap (fromMaybe (error "empty sigs array")) $
     withArrayLen (map fromIntegral players) $ \t ptrPlayers ->
         let t' = fromIntegral t in
