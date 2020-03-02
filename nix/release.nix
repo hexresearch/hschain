@@ -43,6 +43,7 @@ let
     hschain-types      = callInternal hsPkgs "hschain" ../hschain-types         {} "";
     hschain-merkle     = callInternal hsPkgs "hschain" ../hschain-merkle        {} "";
     hschain-net        = callInternal hsPkgs "hschain" ../hschain-net           {} "";
+    hschain-PoW        = callInternal hsPkgs "hschain" ../hschain-PoW           {} "";
     hschain            = callInternal hsPkgs "hschain" ../hschain               {} "";
     hschain-examples   = callInternal hsPkgs "hschain" ../hschain-examples      {} "";
     serialise-cddl     = callInternal hsPkgs "hschain" ../serialise-cddl        {} "";
@@ -70,6 +71,7 @@ let
       hschain-merkle
       hschain-quickcheck
       hschain-net
+      hschain-PoW
       hschain
       hschain-examples
     ];
