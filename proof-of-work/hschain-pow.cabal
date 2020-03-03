@@ -72,6 +72,8 @@ library
   -- C bits:
   c-sources:           cbits/evpow.h cbits/evpow.c
 
+  include-dirs:      cbits/yalsat
+
 
 executable hschain-pow-cli
   -- .hs or .lhs file containing the Main module.

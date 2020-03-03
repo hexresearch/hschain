@@ -438,16 +438,6 @@ evpow_solve( uint8_t* prefix
 	// Create instance and feed it to solver.
 	create_instance(prefix_hash, solver, clauses_count, fixed_bits_count, fixed_bits);
 
-	if (cnf_fn) {
-		FILE* f=fopen(cnf_fn, "w");
-		if (f) {
-			solver_print(solver, f);
-			fclose(f);
-		} else {
-			printf("unable to create CNF file %s\n", cnf_fn);
-		}
-	}
-
 	// find solution if we can.
 	r = find_answer(&prefix_hash_context, answer, solution_hash, milliseconds_allowance, complexity_shift, complexity_mantissa, solver, first_result_ms);
 
