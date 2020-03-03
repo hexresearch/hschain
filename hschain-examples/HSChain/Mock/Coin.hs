@@ -53,8 +53,8 @@ import Data.Maybe
 import Data.Map             (Map,(!))
 import qualified Data.Vector         as V
 import qualified Data.Map.Strict     as Map
-import qualified Data.HashMap.Strict as HM
 import qualified Data.Set            as Set
+import qualified Data.HashMap.Strict as HM
 import System.Random   (randomRIO)
 import GHC.Generics    (Generic)
 
@@ -67,7 +67,6 @@ import HSChain.Crypto
 import HSChain.Crypto.Classes.Hash
 import HSChain.Crypto.Ed25519
 import HSChain.Crypto.SHA
-import HSChain.Debug.Trace
 import HSChain.Logger
 import HSChain.Run
 import HSChain.Mock
@@ -76,7 +75,7 @@ import HSChain.Store.STM
 import HSChain.Mock.KeyList         (makePrivKeyStream)
 import HSChain.Mock.Types
 import HSChain.Monitoring
-import qualified HSChain.P2P.Network as P2P
+import qualified HSChain.Network.Mock as P2P
 
 
 ----------------------------------------------------------------
@@ -88,8 +87,10 @@ import qualified HSChain.P2P.Network as P2P
 --   instance.
 newtype BData = BData [Tx]
   deriving stock    (Show,Eq,Generic)
-  deriving newtype  (NFData,CryptoHashable,JSON.ToJSON,JSON.FromJSON)
+  deriving newtype  (NFData,JSON.ToJSON,JSON.FromJSON)
   deriving anyclass (Serialise)
+instance CryptoHashable BData where
+  hashStep = genericHashStep "hschain-examples"
 
 -- | Error in coin transaction processing
 data CoinError
@@ -105,10 +106,9 @@ instance BlockData BData where
   type BChError        BData = CoinError
   type BChMonad        BData = Either CoinError
   type Alg             BData = Ed25519 :& SHA512
-  bchLogic                      = coinLogic
-  proposerSelection             = ProposerSelection randomProposerSHA512
-  blockTransactions (BData txs) = txs
-  logBlockData      (BData txs) = HM.singleton "Ntx" $ JSON.toJSON $ length txs
+  bchLogic                 = coinLogic
+  proposerSelection        = ProposerSelection randomProposerSHA512
+  logBlockData (BData txs) = HM.singleton "Ntx" $ JSON.toJSON $ length txs
 
 -- | Single transaction. We have two different transaction one to add
 --   money to account ex nihilo and one to transfer money between
@@ -241,7 +241,9 @@ coinLogic = BChLogic
   , processBlock  = \BChEval{..} -> do
       let h    = blockHeight bchValue
           step = flip $ process h
-      st <- foldM step (merkleValue blockchainState) $ blockTransactions $ merkleValue $ blockData bchValue
+      st <- foldM step (merkleValue blockchainState)
+          $ let BData txs = merkleValue $ blockData bchValue
+            in txs
       return BChEval { bchValue        = ()
                      , blockchainState = merkled st
                      , ..
@@ -376,7 +378,7 @@ findInputs tgt = go 0
 
 interpretSpec
   :: ( MonadDB m BData, MonadFork m, MonadMask m, MonadLogger m
-     , MonadTrace m, MonadTMMonitoring m
+     , MonadTMMonitoring m
      , Has x BlockchainNet
      , Has x NodeSpec
      , Has x (Configuration Example))
@@ -407,7 +409,7 @@ interpretSpec genesis p cb = do
     )
 
 executeNodeSpec
-  :: (MonadIO m, MonadMask m, MonadFork m, MonadTrace m, MonadTMMonitoring m)
+  :: (MonadIO m, MonadMask m, MonadFork m, MonadTMMonitoring m)
   => NetSpec NodeSpec :*: CoinSpecification
   -> ContT r m [RunningNode m BData]
 executeNodeSpec (NetSpec{..} :*: coin@CoinSpecification{..}) = do

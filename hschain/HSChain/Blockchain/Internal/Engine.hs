@@ -16,6 +16,7 @@
 -- communicates with outside world using STM channels.
 module HSChain.Blockchain.Internal.Engine (
     newAppChans
+  , initializeBlockchain
   , runApplication
   ) where
 
@@ -59,7 +60,6 @@ import Katip (Severity(..), sl)
 newAppChans :: (MonadIO m) => ConsensusCfg -> m (AppChans a)
 newAppChans ConsensusCfg{incomingQueueSize = sz} = do
   appChanRx         <- liftIO $ newTBQueueIO sz
-  appChanRxInternal <- liftIO   newTQueueIO
   appChanTx         <- liftIO   newBroadcastTChanIO
   appTMState        <- liftIO $ newTVarIO Nothing
   return AppChans{..}
@@ -97,20 +97,44 @@ rewindBlockchainState AppStore{..} BChLogic{..} = do
                                 , blockchainState = st
                                 }
       -- Check validator set consistency
-      unless (merkleHashed blockchainState == blockStateHash blk)
-        $ throwM $ InconsisnceWhenRewinding h "Hash state"
-      unless (hashed valSet                == blockValidators blk)
-        $ throwM $ InconsisnceWhenRewinding h "Validator set"
-      unless (merkleHashed validatorSet    == blockNewValidators blk)
-        $ throwM $ InconsisnceWhenRewinding h "New validator set"
+      do let Hashed expectedValue = blockStateHash blk
+             Hashed actualValue   = merkleHashed blockchainState
+         unless (expectedValue == actualValue)
+           $ throwM $ InconsistenceWhenRewinding h
+                      "Hash of calculated state doesn't match hash in block"
+                      Mismatch{..}
+      do let Hashed expectedValue = blockValidators blk
+             Hashed actualValue   = hashed valSet
+         unless (expectedValue == actualValue)
+           $ throwM $ InconsistenceWhenRewinding h
+                      "Validator set doesn't match validator set stored in block"
+                      Mismatch{..}
+      do let Hashed expectedValue = blockNewValidators blk
+             Hashed actualValue   = merkleHashed validatorSet
+         unless (expectedValue == actualValue)
+           $ throwM $ InconsistenceWhenRewinding h
+                      "New validator set doesn't match validator set stored in block"
+                      Mismatch{..}
       -- Write validator set at H=1 to database if needed
-      when (h == Height 0) $ do
-        queryRO (hasValidatorSet (Height 1)) >>= \case
+      when (h == Height 0) $ mustQueryRW $ do
+        hasValidatorSet (Height 1) >>= \case
           True  -> return ()
-          False -> mustQueryRW $ storeValSet (Height 1) (merkleValue validatorSet)
+          False -> storeValSet (Height 1) validatorSet
       -- Put new state into state storage
       bchStoreStore appBchState h blockchainState
       return blockchainState
+
+-- | Initialize blockchain: if we initialize fresh blockchain, compute
+--   validator set for H=1 and
+initializeBlockchain
+  :: (MonadDB m a, MonadThrow m, MonadIO m, BlockData a, Show a, Eq a)
+  => Genesis a
+  -> AppLogic m a
+  -> AppStore m a
+  -> m ()
+initializeBlockchain genesis appLogic appStore  = do
+  mustQueryRW $ storeGenesis genesis
+  rewindBlockchainState appStore appLogic
 
 -- | Main loop for application. Here we update state machine and
 --   blockchain in response to incoming messages.
@@ -127,8 +151,6 @@ runApplication
      -- ^ Configuration
   -> Maybe (PrivValidator (Alg a))
      -- ^ Private key of validator
-  -> Genesis a
-     -- ^ Genesis block
   -> AppLogic m a
      -- ^ Get initial state of the application
   -> AppStore m a
@@ -136,17 +158,14 @@ runApplication
   -> AppChans a
      -- ^ Channels for communication with peers
   -> m ()
-runApplication config appValidatorKey genesis appLogic appStore appCall appCh = logOnException $ do
+runApplication config appValidatorKey appLogic appStore appCall appCh = logOnException $ do
   logger InfoS "Starting consensus engine" ()
-  -- Store genesis
-  mustQueryRW $ storeGenesis genesis
-  -- Rewind state of blockcahin. At the same time we 
-  rewindBlockchainState appStore appLogic
   -- Now we can start consensus
+  appChanRxInternal <- liftIO newTQueueIO
   height <- queryRO $ blockchainHeight
   lastCm <- queryRO $ retrieveLocalCommit height
   iterateM lastCm $ fmap Just
-                  . decideNewBlock config appValidatorKey appLogic appStore appCall appCh
+                  . decideNewBlock config appValidatorKey appLogic appStore appCall appCh appChanRxInternal
 
 -- This function uses consensus algorithm to decide which block we're
 -- going to commit at current height, then stores it in database and
@@ -164,32 +183,32 @@ decideNewBlock
   -> AppStore     m a
   -> AppCallbacks m a
   -> AppChans       a
+  -> TQueue (MessageRx 'Unverified a)
   -> Maybe (Commit a)
   -> m (Commit a)
 decideNewBlock config appValidatorKey
                appLogic@BChLogic{..} appStore@AppStore{..}
-               appCall@AppCallbacks{..} appCh@AppChans{..} lastCommt = do
+               appCall@AppCallbacks{..} appCh@AppChans{..} appChanRxInternal lastCommt = do
   -- Enter NEW HEIGHT and create initial state for consensus state
   -- machine
   hParam  <- makeHeightParameters appValidatorKey appLogic appStore appCall
   -- Run consensus engine
   (cmt, BChEval{..}) <- runEffect $ do
-    let sink = handleEngineMessage hParam config appCh
+    let sink = handleEngineMessage hParam config appCh appChanRxInternal
     tm0 <-  newHeight hParam lastCommt
         >-> sink
-    rxMessageSource hParam appCh
+    rxMessageSource hParam appCh appChanRxInternal
         >-> msgHandlerLoop hParam appLogic appStore appCh tm0
         >-> sink
   -- Update metrics
   do let nSign = maybe 0 (length . commitPrecommits . merkleValue) (blockPrevCommit bchValue)
          h     = blockHeight bchValue
      logger InfoS "Actual commit" $ LogBlockInfo h (merkleValue $ blockData bchValue) nSign
-     usingCounter prometheusNTx $ blockNTx $ merkleValue $ blockData bchValue
   -- We have decided which block we want to commit so let commit it
   do let h = blockHeight bchValue
      mustQueryRW $ do
        storeCommit cmt      bchValue
-       storeValSet (succ h) (merkleValue validatorSet)
+       storeValSet (succ h) validatorSet
        mapM_ storeBlockchainEvidence $ merkleValue $ blockEvidence bchValue
      bchStoreStore appBchState h blockchainState
      appCommitCallback bchValue
@@ -202,8 +221,9 @@ rxMessageSource
      , Crypto (Alg a), BlockData a)
   => HeightParameters m a
   -> AppChans a
+  -> TQueue (MessageRx 'Unverified a)
   -> Producer (MessageRx 'Verified a) m r
-rxMessageSource HeightParameters{..} AppChans{..} = do
+rxMessageSource HeightParameters{..} AppChans{..} appChanRxInternal = do
   -- First we replay messages from WAL. This is very important and
   -- failure to do so may violate protocol safety and possibly
   -- liveness.
@@ -331,8 +351,9 @@ handleEngineMessage
   => HeightParameters n a
   -> ConsensusCfg
   -> AppChans a
+  -> TQueue (MessageRx 'Unverified a)
   -> Consumer (EngineMessage a) m r
-handleEngineMessage HeightParameters{..} ConsensusCfg{..} AppChans{..} = forever $ await >>= \case
+handleEngineMessage HeightParameters{..} ConsensusCfg{..} AppChans{..} appChanRxInternal = forever $ await >>= \case
   -- Timeout
   EngTimeout t@(Timeout h (Round r) step) -> do
     liftIO $ void $ forkIO $ do

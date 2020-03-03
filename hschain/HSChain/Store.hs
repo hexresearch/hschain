@@ -49,7 +49,6 @@ module HSChain.Store (
   , blockchainHeight
   , retrieveBlock
   , retrieveBlockID
-  , retrieveCommit
   , retrieveLocalCommit
   , retrieveValidatorSet
   , mustRetrieveBlock
@@ -65,7 +64,6 @@ module HSChain.Store (
   , nullMempool
     -- * Blockchain state
   , BChStore(..)
-  , hoistBChStore
     -- * Blockchain invariants checkers
   , BlockchainInconsistency
   , checkStorage
@@ -99,7 +97,6 @@ import HSChain.Blockchain.Internal.Types
 import HSChain.Control                (MonadFork)
 import HSChain.Crypto
 import HSChain.Crypto.Containers
-import HSChain.Debug.Trace
 import HSChain.Logger                 (MonadLogger)
 import HSChain.Store.Internal.Query
 import HSChain.Store.Internal.BlockDB
@@ -114,7 +111,7 @@ import HSChain.Types.Validators
 newtype DBT rw a m x = DBT (ReaderT (Connection rw a) m x)
   deriving ( Functor, Applicative, Monad
            , MonadIO, MonadThrow, MonadCatch, MonadMask
-           , MonadFork, MonadLogger, MonadTrace, MonadFail
+           , MonadFork, MonadLogger, MonadFail
            )
 
 instance MFunctor (DBT rw a) where
@@ -263,12 +260,12 @@ data BChStore m a = BChStore
   -- ^ Put blockchain state at given height into store
   }
 
-hoistBChStore :: (forall x. m x -> n x) -> BChStore m a -> BChStore n a
-hoistBChStore fun BChStore{..} = BChStore
-  { bchCurrentState  = fun   bchCurrentState
-  , bchStoreRetrieve = fun . bchStoreRetrieve
-  , bchStoreStore    = (fmap . fmap) fun bchStoreStore
-  }
+instance HoistDict BChStore where
+  hoistDict fun BChStore{..} = BChStore
+    { bchCurrentState  = fun   bchCurrentState
+    , bchStoreRetrieve = fun . bchStoreRetrieve
+    , bchStoreStore    = (fmap . fmap) fun bchStoreStore
+    }
 
 
 ----------------------------------------------------------------

@@ -26,9 +26,9 @@ import Control.Monad.Trans.Except
 import Control.Parallel.Strategies
 import Data.Int
 import qualified Data.Aeson          as JSON
-import qualified Data.HashMap.Strict as HM
 import qualified Data.Map.Strict     as Map
 import qualified Data.Vector         as V
+import qualified Data.HashMap.Strict as HM
 import Control.Lens
 
 import GHC.Generics (Generic)
@@ -39,7 +39,6 @@ import HSChain.Crypto
 import HSChain.Crypto.Classes.Hash
 import HSChain.Crypto.Ed25519
 import HSChain.Crypto.SHA
-import HSChain.Debug.Trace
 import HSChain.Logger
 import HSChain.Mock.Types
 import HSChain.Monitoring
@@ -58,8 +57,10 @@ type DioAlg = Ed25519 :& SHA512
 
 newtype BData tag = BData [Tx]
   deriving stock    (Show,Eq,Generic)
-  deriving newtype  (NFData,CryptoHashable,JSON.ToJSON,JSON.FromJSON)
+  deriving newtype  (NFData,JSON.ToJSON,JSON.FromJSON)
   deriving anyclass (Serialise)
+instance CryptoHashable (BData tag) where
+  hashStep = genericHashStep "hschain-examples"
 
 data Tx = Tx
   { txSig  :: !(Signature DioAlg)
@@ -113,10 +114,9 @@ instance Dio tag => BlockData (BData tag) where
   type BChError        (BData tag) = DioError
   type BChMonad        (BData tag) = Maybe
   type Alg             (BData tag) = DioAlg
-  bchLogic                      = dioLogic
-  proposerSelection             = ProposerSelection randomProposerSHA512
-  blockTransactions (BData txs) = txs
-  logBlockData      (BData txs) = HM.singleton "Ntx" $ JSON.toJSON $ length txs
+  bchLogic                 = dioLogic
+  proposerSelection        = ProposerSelection randomProposerSHA512
+  logBlockData (BData txs) = HM.singleton "Ntx" $ JSON.toJSON $ length txs
 
 
 ----------------------------------------------------------------
@@ -165,9 +165,13 @@ dioLogic = BChLogic
                    $ and
                    $ parMap rseq
                      (\(Tx sig tx) -> verifySignatureHashed (txFrom tx) tx sig)
-                     (blockTransactions $ merkleValue $ blockData bchValue)
+                     (let BData txs = merkleValue $ blockData bchValue
+                      in txs
+                     )
       let update   = foldM (flip process) (merkleValue blockchainState)
-                   $ blockTransactions $ merkleValue $ blockData bchValue
+                   $ (let BData txs = merkleValue $ blockData bchValue
+                      in txs
+                     )
       st <- uncurry (>>)
           $ withStrategy (evalTuple2 rpar rpar)
           $ (sigCheck, update)
@@ -227,7 +231,7 @@ process Tx{txBody=TxBody{..}} st = do
 interpretSpec
   :: forall m x tag.
      ( MonadDB m (BData tag), MonadFork m, MonadMask m, MonadLogger m
-     , MonadTrace m, MonadTMMonitoring m, Dio tag
+     , MonadTMMonitoring m, Dio tag
      , Has x BlockchainNet
      , Has x (Configuration Example))
   => x

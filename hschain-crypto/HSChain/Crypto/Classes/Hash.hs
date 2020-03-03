@@ -44,12 +44,15 @@ import qualified Data.ByteString.Lazy     as BL
 import qualified Data.ByteString.Builder       as Bld
 import qualified Data.ByteString.Builder.Extra as Bld
 import qualified Data.Map.Strict          as Map
+import qualified Data.Sequence            as Seq
 import qualified Data.Set                 as Set
 import qualified Data.List.NonEmpty       as NE
 import qualified Data.Vector              as VecV
 import qualified Data.Vector.Unboxed      as VecU
 import qualified Data.Vector.Storable     as VecS
 import qualified Data.Vector.Primitive    as VecP
+import qualified Data.Text                as T
+import qualified Data.Text.Lazy           as TL
 import Data.Bits
 import Data.Functor.Classes
 import Data.String
@@ -208,7 +211,8 @@ data DataType
   | PrimW32                     -- ^ Unsigned 32-bit integer
   | PrimW64                     -- ^ Unsigned 64-bit integer
   | PrimChar                    -- ^ Char
-
+  | PrimTruth
+  | PrimFalse
   -- Structural data types composite types
   | TyTuple    !Word16
   -- ^ Tuple of size N
@@ -267,6 +271,8 @@ instance CryptoHashable DataType where
         PrimW32       -> mempty
         PrimW64       -> mempty
         PrimChar      -> mempty
+        PrimTruth     -> mempty
+        PrimFalse     -> mempty
         -- Structures
         TyTuple    n    -> Bld.word16LE n
         TySequence n    -> Bld.word32LE n
@@ -297,6 +303,8 @@ dataTypeTag = \case
   PrimW32      -> 7
   PrimW64      -> 8
   PrimChar     -> 9
+  PrimTruth    -> 10
+  PrimFalse    -> 11
   -- Structures
   TyTuple{}    -> 0x0100 + 0
   TySequence{} -> 0x0100 + 1
@@ -334,10 +342,14 @@ instance CryptoHashable Word32 where hashStep i = hashStep PrimW32 <> Bld.word32
 instance CryptoHashable Word16 where hashStep i = hashStep PrimW16 <> Bld.word16LE i
 instance CryptoHashable Word8  where hashStep i = hashStep PrimW8  <> Bld.word8    i
 
--- | Same as Int64
+instance CryptoHashable Bool where
+  hashStep True  = hashStep PrimTruth
+  hashStep False = hashStep PrimFalse
+
+-- | Same as 'Int64'
 instance CryptoHashable Int where
   hashStep i = hashStep (fromIntegral i :: Int64)
--- | Same as Word64
+-- | Same as 'Word64'
 instance CryptoHashable Word where
   hashStep i = hashStep (fromIntegral i :: Word64)
 
@@ -392,11 +404,24 @@ instance CryptoHashable BL.ByteString where
   hashStep bs = hashStep (PrimBytes $ fromIntegral $ BL.length bs)
              <> Bld.lazyByteString bs
 
+instance CryptoHashable T.Text where
+  hashStep ts = hashStep (TySequence $ fromIntegral $ T.length ts)
+             <> T.foldr  (\c b -> hashStep c <> b) mempty ts
+
+instance CryptoHashable TL.Text where
+  hashStep ts = hashStep (TySequence $ fromIntegral $ TL.length ts)
+             <> TL.foldr  (\c b -> hashStep c <> b) mempty ts
+
 ----------------------------------------
 -- Normal data types
 
 instance CryptoHashable a => CryptoHashable [a] where
   hashStep xs = hashStep (TySequence $ fromIntegral $ length xs)
+             <> foldMap hashStep xs
+  {-# INLINABLE hashStep #-}
+
+instance CryptoHashable a => CryptoHashable (Seq.Seq a) where
+  hashStep xs = hashStep (TySequence $ fromIntegral $ Seq.length xs)
              <> foldMap hashStep xs
   {-# INLINABLE hashStep #-}
 

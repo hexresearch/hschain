@@ -20,12 +20,10 @@ import Lens.Micro.TH
 
 import HSChain.Blockchain.Internal.Types
 import HSChain.Crypto
-import HSChain.Store
 import HSChain.Types.Blockchain
 import HSChain.Types.Validators
-
 import HSChain.P2P.Internal.Types
-import HSChain.P2P.Internal.Logging (GossipCounters(..))
+
 
 -- | State of peer which is lagging behind us. In this case we only
 --   interested in precommits which are part of commit justifying next
@@ -96,21 +94,18 @@ data Command a
   | Push2Gossip !(GossipMsg a)
   | SendPEX !PexMessage
 
-data Event a
-  = EGossip !(GossipMsg a)      -- ^ Gossip received from peer
-  | EMempoolTimeout
-  | EVotesTimeout
-  | EBlocksTimeout
-  | EAnnounceTimeout
-  | EAnnouncement !(MessageTx a)
+data GossipTimeout
+  = TimeoutProposal
+  | TimeoutPrevote
+  | TimeoutPrecommit
+  | TimeoutBlock
+  | TimeoutAnnounce
+  deriving Show
 
-data Config m a = Config
-  { _mempCursor     :: !(MempoolCursor m (Alg a) (TX a))
-  , _consensusSt    :: !(STM (Maybe (Height, TMState a)))
-  , _gossipCounters :: !GossipCounters
+data Config a = Config
+  { _consensusSt    :: !(STM (Maybe (Height, TMState a)))
   }
 makeLenses ''Config
 
-
 deriving stock instance (Show a, Crypto (Alg a), Show (TX a)) => Show (Command a)
-deriving stock instance (Show a, Crypto (Alg a), Show (TX a)) => Show (Event a)
+

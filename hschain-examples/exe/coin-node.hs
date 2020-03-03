@@ -41,13 +41,10 @@ import HSChain.Store
 import HSChain.Monitoring
 import HSChain.Mock
 import HSChain.Crypto         (PublicKey)
-import HSChain.P2P            (generatePeerId)
-import HSChain.P2P.Network    (newNetworkTcp)
+import HSChain.Network.TCP    (newNetworkTcp)
 import HSChain.Types
 import HSChain.Types.Merkle.Types
-import HSChain.Debug.Trace
-
-import qualified HSChain.P2P.Types as P2PT
+import HSChain.Network.Types  (NetAddr)
 
 
 ----------------------------------------------------------------
@@ -57,14 +54,14 @@ import qualified HSChain.P2P.Types as P2PT
 newtype MonitorT m a = MonitorT (ReaderT PrometheusGauges m a)
   deriving ( Functor,Applicative,Monad
            , MonadIO,MonadMask,MonadThrow,MonadCatch
-           , MonadLogger,MonadFork,MonadTrace )
+           , MonadLogger,MonadFork )
 
 instance MonadIO m =>  MonadTMMonitoring (MonitorT m) where
-  usingCounter getter n   = MonitorT $ flip addCounterNow n =<< asks getter
-  usingGauge   getter x   = MonitorT $ flip setTGaugeNow x =<< asks getter
-  usingVector  getter l x = MonitorT $ do
+  usingCounter getter n = MonitorT $ flip addCounterNow n =<< asks getter
+  usingGauge   getter x = MonitorT $ flip setTGaugeNow x =<< asks getter
+  usingVector  getter l = MonitorT $ do
     g <- asks getter
-    setTGVectorNow g l x
+    incTCVectorNow g l
 
 runMonitorT :: PrometheusGauges -> MonitorT m a -> m a
 runMonitorT g (MonitorT m) = runReaderT m g
@@ -77,7 +74,7 @@ data Opts = Opts
 data NodeCfg = NodeCfg
   { validatorKeys :: [PublicKey (Alg BData)]
   , nodePort      :: Word16
-  , nodeSeeds     :: [P2PT.NetAddr]
+  , nodeSeeds     :: [NetAddr]
   , nodeMaxH      :: Maybe Height
   }
   deriving (Show,Generic)
@@ -102,9 +99,7 @@ main = do
   evalContT $ do
     let (mtxGen, genesis) = mintMockCoin [ Validator v 1 | v <- validatorKeys] coin
     -- Create network
-    peerId <- generatePeerId
-    let peerInfo = P2PT.PeerInfo peerId nodePort 0
-        bnet     = BlockchainNet { bchNetwork      = newNetworkTcp peerInfo
+    let bnet     = BlockchainNet { bchNetwork      = newNetworkTcp nodePort
                                  , bchInitialPeers = nodeSeeds
                                  }
     --- Allocate resources

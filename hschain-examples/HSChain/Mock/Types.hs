@@ -60,6 +60,8 @@ instance DefaultConfig Example where
       , pexMaxConnections      = 20
       , pexMinKnownConnections = 3
       , pexMaxKnownConnections = 20
+      , pexConnectionDelay     = 3000
+      , pexAskPeersDelay       = 10000
       , reconnectionRetries    = 12
       , reconnectionDelay      = 100
       }
@@ -100,8 +102,8 @@ hoistRunningNode
   :: (Functor n)
   => (forall x. m x -> n x) -> RunningNode m a -> RunningNode n a
 hoistRunningNode fun RunningNode{..} = RunningNode
-  { rnodeState   = hoistBChStore fun rnodeState
-  , rnodeMempool = hoistMempool  fun rnodeMempool
+  { rnodeState   = hoistDict    fun rnodeState
+  , rnodeMempool = hoistMempool fun rnodeMempool
   , ..
   }
 

@@ -23,7 +23,6 @@ import Test.Tasty
 import Test.Tasty.QuickCheck
 
 import HSChain.Types.Blockchain
-import HSChain.P2P.Types      (NetAddr)
 import HSChain.Mock.KeyVal    (BData(..))
 
 import HSChain.Arbitrary.Instances ()
@@ -51,7 +50,6 @@ tests =
            , run @Height
            , run @Round
            , run @Time
-           , run @NetAddr
            ]
          , testGroup "Vote"
            [ testProperty "serialize result for prevote and precommit differs"
@@ -78,7 +76,6 @@ tests =
          , run @Height
          , run @Round
          , run @Time
-         , run @NetAddr
          ]
     , let run :: forall a. (Arbitrary a, Typeable a, Eq a, Show a, Read a)
               => TestTree
@@ -88,9 +85,6 @@ tests =
          [ run @Height
          , run @Round
          , run @Time
-         , run @NetAddr
-         , testProperty "NetAddr tcp://" $ \(a :: NetAddr) ->
-             a == (read . ("tcp://"++) . show) a
          ]
     ]
 

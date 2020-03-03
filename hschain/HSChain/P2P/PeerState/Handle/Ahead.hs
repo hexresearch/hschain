@@ -5,10 +5,9 @@
 
 module HSChain.P2P.PeerState.Handle.Ahead
   ( handler
-  , issuedGossipHandler
   ) where
 
-import Control.Monad.RWS.Strict
+import Control.Monad
 import Lens.Micro.Mtl
 
 import HSChain.Blockchain.Internal.Types
@@ -24,62 +23,43 @@ import qualified Data.Map.Strict as Map
 import qualified Data.Set        as Set
 
 
-handler :: Handler AheadState Event a m
-handler =
-  handlerGeneric
-   handlerGossipMsg
-   handlerVotesTimeout
-   handlerMempoolTimeout
-   handlerBlocksTimeout
+handler :: HandlerCtx a m => HandlerDict AheadState a m
+handler = HandlerDict
+  { handlerGossipMsg        = const handlerGossip
+  , advanceOurHeight        = advanceOurHeightWrk
+  , handlerProposalTimeout  = \_ _ -> return []
+  , handlerPrevoteTimeout   = \_ _ -> return []
+  , handlerPrecommitTimeout = \_ _ -> return []
+  , handlerBlocksTimeout    = \_ _ -> return []
+  }
 
-issuedGossipHandler :: Handler AheadState GossipMsg a m
-issuedGossipHandler =
-  issuedGossipHandlerGeneric
-    handlerGossipMsg
-    advanceOurHeignt
+handlerGossip
+  :: (Monad m)
+  => GossipMsg a -> TransitionT AheadState a m ()
+handlerGossip = \case
+  GossipAnn (AnnStep step) -> do
+    s <- use aheadPeerStep
+    when (step > s) $ aheadPeerStep .= step
+  _ -> return ()
 
-handlerGossipMsg :: MessageHandler AheadState a m
-handlerGossipMsg = \case
-    GossipAnn (AnnStep step@(FullStep h _ _)) -> do
-      -- Don't go back.
-      s@(FullStep h0 _ _) <- use aheadPeerStep
-      if step > s
-        -- If update don't change height only advance step of peer
-        then if h0 == h
-          then aheadPeerStep .= step >> currentState
-          else lift $ advancePeer step
-        else currentState
-    _ -> currentState
 
 ----------------------------------------------------------------
-advanceOurHeignt :: AdvanceOurHeight AheadState a m
-advanceOurHeignt (FullStep ourH _ _) = do
-  step@(FullStep h _ _) <- use aheadPeerStep
-  if h == ourH then
-        do vals <- lift $ queryRO $ mustRetrieveValidatorSet h
-           return $ wrap $ CurrentState
-             { _peerStep       = step
-             , _peerValidators = vals
-             , _peerPrevotes   = Map.empty
-             , _peerPrecommits = Map.empty
-             , _peerProposals  = Set.empty
-             , _peerBlocks     = Set.empty
-             , _peerLock       = Nothing
-             }
-     else currentState
-----------------------------------------------------------------
-
-handlerVotesTimeout :: TimeoutHandler AheadState a m
-handlerVotesTimeout = currentState
-
-----------------------------------------------------------------
-
-handlerMempoolTimeout :: TimeoutHandler AheadState a m
-handlerMempoolTimeout = do
-  advanceMempoolCursor
-  currentState
-----------------------------------------------------------------
-
-handlerBlocksTimeout :: TimeoutHandler AheadState a m
-handlerBlocksTimeout = currentState
+advanceOurHeightWrk :: (HandlerCtx a m) => FullStep -> TransitionT AheadState a m ()
+advanceOurHeightWrk (FullStep ourH _ _) = setFinalState advance
+  where
+    advance p
+      | h == ourH = do
+          vals <- queryRO $ mustRetrieveValidatorSet h
+          return $ wrap $ CurrentState
+            { _peerStep       = step
+            , _peerValidators = vals
+            , _peerPrevotes   = Map.empty
+            , _peerPrecommits = Map.empty
+            , _peerProposals  = Set.empty
+            , _peerBlocks     = Set.empty
+            , _peerLock       = Nothing
+            }
+      | otherwise = return $ wrap p
+      where
+        step@(FullStep h _ _) = _aheadPeerStep p
 

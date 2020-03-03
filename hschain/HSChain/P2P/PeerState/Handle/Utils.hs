@@ -10,12 +10,8 @@ module HSChain.P2P.PeerState.Handle.Utils where
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 
-import Control.Monad
-import Control.Monad.RWS.Strict
-import Lens.Micro.Mtl
+import Control.Monad.State.Strict
 
-import HSChain.Blockchain.Internal.Types
-import HSChain.Control (atomicallyIO)
 import HSChain.Crypto
 import HSChain.Store
 import HSChain.Store.Internal.BlockDB
@@ -24,14 +20,14 @@ import HSChain.Types.Validators
 
 import HSChain.Store.Internal.Query (MonadReadDB)
 
-import HSChain.P2P.Internal.Logging (GossipCounters(..))
 import HSChain.P2P.Internal.Types
 import HSChain.P2P.PeerState.Monad
 import HSChain.P2P.PeerState.Types
 
+-- | Unconditionally generate fresh state for peer. Shoudl only be called when we 
 advancePeer :: (Crypto (Alg a), Monad m, MonadIO m, MonadReadDB m a)
-            => FullStep -> m (State a)
-advancePeer step@(FullStep h _ _) = do
+            => FullStep -> TransitionT s a m ()
+advancePeer step@(FullStep h _ _) = setFinalState $ \_ -> do
   ourH <- succ <$> queryRO blockchainHeight
   case compare h ourH of
     LT -> do vals <- queryRO $ mustRetrieveValidatorSet h
@@ -58,81 +54,16 @@ advancePeer step@(FullStep h _ _) = do
                }
     GT -> return $ wrap $ AheadState step
 
-advanceMempoolCursor :: (HandlerCtx a m)
-                     => TransitionT s a m ()
-advanceMempoolCursor = do
-    MempoolCursor{..} <- view mempCursor
-    mTx <- lift advanceCursor
-    forM_ mTx $ \ tx' -> do
-      push2Gossip $ GossipTx tx'
-      tickSend tx
 
-type MessageHandler s a m =  HandlerCtx a m
-                          => GossipMsg a
-                          -> TransitionT s a m (State a)
-
-type AnnouncementHandler s a m =  HandlerCtx a m
-                               => MessageTx a
-                               -> TransitionT s a m (State a)
-
-type AdvanceOurHeight s a m =  HandlerCtx a m
-                            => FullStep
-                            -> TransitionT s a m (State a)
-
-type TimeoutHandler s a m = (Wrapable s, HandlerCtx a m)
-                         => TransitionT s a m (State a)
-
-handlerGeneric :: (Wrapable s, HandlerCtx a m)
-               => MessageHandler s a m
-               -> TimeoutHandler s a m
-               -> TimeoutHandler s a m
-               -> TimeoutHandler s a m
-               -> Event a
-               -> TransitionT s a m (State a)
-handlerGeneric
-  hanldlerGossipMsg
-  handlerVotesTimeout
-  handlerMempoolTimeout
-  handlerBlocksTimeout = \ case
-    EGossip m        -> do resendGossip m
-                           hanldlerGossipMsg m
-    EAnnouncement a  -> handlerAnnounncement a
-    EVotesTimeout    -> handlerVotesTimeout
-    EMempoolTimeout  -> handlerMempoolTimeout
-    EBlocksTimeout   -> handlerBlocksTimeout
-    EAnnounceTimeout -> handlerAnnounceTimeout
-  where
-    handlerAnnounceTimeout :: TimeoutHandler s a m
-    handlerAnnounceTimeout = do
-      st <- atomicallyIO =<< view consensusSt
-      forM_ st $ \(h,TMState{smRound,smStep}) -> do
-        push2Gossip $ GossipAnn $ AnnStep $ FullStep h smRound smStep
-        case smStep of
-          StepAwaitCommit r -> push2Gossip $ GossipAnn $ AnnHasProposal h r
-          _                 -> return ()
-      currentState
-    --
-    handlerAnnounncement e = do
-      case e of
-        TxAnn       a -> push2Gossip $ GossipAnn a
-        TxProposal  p -> push2Gossip $ GossipProposal  p
-        TxPreVote   v -> push2Gossip $ GossipPreVote   v
-        TxPreCommit v -> push2Gossip $ GossipPreCommit v
-      currentState
-
-issuedGossipHandlerGeneric :: (Wrapable s, HandlerCtx a m)
-         => MessageHandler s a m
-         -> AdvanceOurHeight s a m
-         -> GossipMsg a
-         -> TransitionT s a m (State a)
-issuedGossipHandlerGeneric
-  handlerGossipMsg
-  advanceOurHeight
-  m = case m of
-    GossipProposal {}     -> handlerGossipMsg m
-    GossipPreVote {}      -> handlerGossipMsg m
-    GossipPreCommit {}    -> handlerGossipMsg m
-    GossipBlock {}        -> handlerGossipMsg m
-    GossipAnn (AnnStep s) -> advanceOurHeight s
-    _                     -> currentState
-
+-- | Dictionary of handlers for messages for each state of peer.
+data HandlerDict s a m = HandlerDict
+  { handlerGossipMsg        :: Config a -> GossipMsg a -> TransitionT s a m ()
+    -- ^ Handler for incoming gossip. It's used for outgoing gossip as
+    -- well with minor modifications.
+  , advanceOurHeight        :: FullStep -> TransitionT s a m ()
+    -- ^ Handler for outgoing 'AnnStep'
+  , handlerProposalTimeout  :: Config a -> s a -> m [GossipMsg a]
+  , handlerPrevoteTimeout   :: Config a -> s a -> m [GossipMsg a]
+  , handlerPrecommitTimeout :: Config a -> s a -> m [GossipMsg a]
+  , handlerBlocksTimeout    :: Config a -> s a -> m [GossipMsg a]
+  }

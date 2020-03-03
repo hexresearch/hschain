@@ -3,50 +3,27 @@
 {-# LANGUAGE LambdaCase       #-}
 module HSChain.P2P.PeerState.Handle.Unknown
   ( handler
-  , issuedGossipHandler
   ) where
 
 import HSChain.Blockchain.Internal.Types
 import HSChain.P2P.Internal.Types
 import HSChain.P2P.PeerState.Monad
 import HSChain.P2P.PeerState.Types
-
 import HSChain.P2P.PeerState.Handle.Utils
 
-handler :: Handler UnknownState Event a m
-handler =
-  handlerGeneric
-   handlerGossipMsg
-   handlerVotesTimeout
-   handlerMempoolTimeout
-   handlerBlocksTimeout
+handler :: (HandlerCtx a m) => HandlerDict UnknownState a m
+handler = HandlerDict
+  { handlerGossipMsg        = const handlerGossip
+  , advanceOurHeight        = \_   -> return ()
+  , handlerProposalTimeout  = \_ _ -> return []
+  , handlerPrevoteTimeout   = \_ _ -> return []
+  , handlerPrecommitTimeout = \_ _ -> return []
+  , handlerBlocksTimeout    = \_ _ -> return []
+  }
 
-issuedGossipHandler :: Handler UnknownState GossipMsg a m
-issuedGossipHandler =
-  issuedGossipHandlerGeneric
-    handlerGossipMsg
-    advanceOurHeight
-
-handlerGossipMsg :: MessageHandler UnknownState a m
-handlerGossipMsg = \case
+handlerGossip
+  :: (HandlerCtx a m)
+  => GossipMsg a -> TransitionT UnknownState a m ()
+handlerGossip = \case
   GossipAnn (AnnStep step) -> advancePeer step
-  _                        -> currentState
-
-----------------------------------------------------------------
-
-advanceOurHeight :: AdvanceOurHeight UnknownState a m
-advanceOurHeight = const currentState
-----------------------------------------------------------------
-
-handlerVotesTimeout :: TimeoutHandler UnknownState a m
-handlerVotesTimeout = currentState
-
-----------------------------------------------------------------
-
-handlerMempoolTimeout :: TimeoutHandler UnknownState a m
-handlerMempoolTimeout = currentState
-----------------------------------------------------------------
-
-handlerBlocksTimeout :: TimeoutHandler UnknownState a m
-handlerBlocksTimeout = currentState
-
+  _                        -> return ()

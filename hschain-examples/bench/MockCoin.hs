@@ -28,7 +28,7 @@ benchmarks
     ]
   , bgroup "react"
     [ env (makeBlock <$> generateTxList size) $ \bdata ->
-        bench (show (length (blockTransactions (bchValue bdata))) ++ " of " ++ show size) $
+        bench (show (length (let BData txs = bchValue bdata in txs)) ++ " of " ++ show size) $
         nf (\dat -> let b = Block { blockHeight        = Height 0
                                   , blockPrevBlockID   = Nothing
                                   , blockValidators    = hashed emptyValidatorSet

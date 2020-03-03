@@ -1,13 +1,15 @@
-{-# LANGUAGE DataKinds            #-}
-{-# LANGUAGE DeriveGeneric        #-}
-{-# LANGUAGE FlexibleContexts     #-}
-{-# LANGUAGE LambdaCase           #-}
-{-# LANGUAGE OverloadedStrings    #-}
-{-# LANGUAGE RankNTypes           #-}
-{-# LANGUAGE RecordWildCards      #-}
-{-# LANGUAGE ScopedTypeVariables  #-}
-{-# LANGUAGE TypeApplications     #-}
-{-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE DataKinds                  #-}
+{-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE DerivingStrategies         #-}
+{-# LANGUAGE FlexibleContexts           #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE LambdaCase                 #-}
+{-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE RankNTypes                 #-}
+{-# LANGUAGE RecordWildCards            #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
+{-# LANGUAGE TypeApplications           #-}
+{-# LANGUAGE UndecidableInstances       #-}
 -- |
 -- Data types for storage of blockchain
 module HSChain.Blockchain.Internal.Engine.Types (
@@ -17,7 +19,6 @@ module HSChain.Blockchain.Internal.Engine.Types (
   , NetworkCfg(..)
   , DefaultConfig(..)
     -- * Application state
-  , NewBlock(..)
   , AppLogic
   , AppStore(..)
   , AppCallbacks(..)
@@ -108,6 +109,8 @@ data NetworkCfg = NetworkCfg
   , pexMaxConnections      :: !Int
   , pexMinKnownConnections :: !Int
   , pexMaxKnownConnections :: !Int
+  , pexConnectionDelay     :: !Int
+  , pexAskPeersDelay       :: !Int
   , reconnectionRetries    :: !Int -- ^ Number of retries before abandoning reconnection attempts
   , reconnectionDelay      :: !Int -- ^ Initial delay between attempting to reconnect
   }
@@ -154,6 +157,8 @@ instance DefaultConfig app => FromJSON (Configuration app) where
         pexMaxC <- field "pexMaxConnections"      pexMaxConnections       o
         pexMinK <- field "pexMinKnownConnections" pexMinKnownConnections  o
         pexMaxK <- field "pexMaxKnownConnections" pexMaxKnownConnections  o
+        pexD    <- field "pexConnectionDelay"     pexConnectionDelay      o
+        pexAskD <- field "pexAskPeersDelay"       pexAskPeersDelay        o
         rR      <- field "reconnectionRetries"    reconnectionRetries     o
         rB      <- field "reconnectionDelay"      reconnectionDelay       o
         return NetworkCfg { gossipDelayVotes       = gV
@@ -163,6 +168,8 @@ instance DefaultConfig app => FromJSON (Configuration app) where
                           , pexMaxConnections      = pexMaxC
                           , pexMinKnownConnections = pexMinK
                           , pexMaxKnownConnections = pexMaxK
+                          , pexConnectionDelay     = pexD
+                          , pexAskPeersDelay       = pexAskD
                           , reconnectionRetries    = rR
                           , reconnectionDelay      = rB
                           }
@@ -214,28 +221,16 @@ instance HoistDict AppCallbacks where
 newtype PrivValidator alg = PrivValidator
   { validatorPrivKey  :: PrivKey alg
   }
-
-instance Crypto alg => Show (PrivValidator alg) where
-  show (PrivValidator k) = show k
-
-instance Crypto alg => FromJSON (PrivValidator alg) where
-  parseJSON = fmap PrivValidator . parseJSON
-instance Crypto alg => ToJSON   (PrivValidator alg) where
-  toJSON = toJSON . validatorPrivKey
-
+  deriving newtype (Show, ToJSON, FromJSON)
 
 -- | Application connection to outer world
 data AppChans a = AppChans
-  { appChanRx         :: TBQueue (MessageRx 'Unverified a)
+  { appChanRx  :: TBQueue (MessageRx 'Unverified a)
     -- ^ Queue for receiving messages related to consensus protocol
     --   from peers.
-  , appChanRxInternal :: TQueue (MessageRx 'Unverified a)
-    -- ^ Queue for sending messages by consensus engine to
-    --   itself. Note that it's unbounded since we must not block when
-    --   writing there.
-  , appChanTx      :: TChan (MessageTx a)
+  , appChanTx  :: TChan (MessageTx a)
     -- ^ TChan for broadcasting messages to the peers
-  , appTMState     :: TVar  (Maybe (Height, TMState a))
+  , appTMState :: TVar  (Maybe (Height, TMState a))
     -- ^ Current state of consensus. It includes current height, state
     --   machine status and known blocks which should be exposed in
     --   read-only manner for gossip with peers.

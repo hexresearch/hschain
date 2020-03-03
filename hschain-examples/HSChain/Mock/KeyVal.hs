@@ -43,6 +43,7 @@ import HSChain.Types.Blockchain
 import HSChain.Types.Merkle.Types
 import HSChain.Control
 import HSChain.Crypto
+import HSChain.Crypto.Classes.Hash
 import HSChain.Crypto.Ed25519
 import HSChain.Crypto.SHA
 import HSChain.Logger
@@ -53,9 +54,8 @@ import HSChain.Run
 import HSChain.Mock
 import HSChain.Store
 import HSChain.Store.STM
-import HSChain.Debug.Trace
 import HSChain.Types.Validators
-import qualified HSChain.P2P.Network as P2P
+import qualified HSChain.Network.Mock as P2P
 
 
 ----------------------------------------------------------------
@@ -67,8 +67,9 @@ type    BState = Map String Int
 newtype BData  = BData [(String,Int)]
   deriving stock    (Show,Eq,Generic)
   deriving anyclass (Serialise)
-  deriving newtype  (CryptoHashable, JSON.ToJSON, JSON.FromJSON)
-
+  deriving newtype  (JSON.ToJSON, JSON.FromJSON)
+instance CryptoHashable BData where
+  hashStep = genericHashStep "hschain-examples"
 
 data KeyValError = KeyValError String
   deriving stock    (Show) 
@@ -80,10 +81,10 @@ instance BlockData BData where
   type BChError        BData = KeyValError
   type Alg             BData = Ed25519 :& SHA512
   type BChMonad        BData = ExceptT KeyValError IO
-  blockTransactions (BData txs) = txs
-  logBlockData      (BData txs) = HM.singleton "Ntx" $ JSON.toJSON $ length txs
-  proposerSelection             = ProposerSelection randomProposerSHA512
-  bchLogic                      = keyValLogic
+  proposerSelection        = ProposerSelection randomProposerSHA512
+  bchLogic                 = keyValLogic
+  logBlockData (BData txs) = HM.singleton "Ntx" $ JSON.toJSON $ length txs
+
 
 mkGenesisBlock :: ValidatorSet (Alg BData) -> Genesis BData
 mkGenesisBlock valSet = BChEval
@@ -99,7 +100,7 @@ mkGenesisBlock valSet = BChEval
 
 interpretSpec
   :: ( MonadDB m BData, MonadFork m, MonadMask m, MonadLogger m
-     , MonadTrace m, MonadTMMonitoring m
+     , MonadTMMonitoring m
      , Has x BlockchainNet
      , Has x NodeSpec
      , Has x (Configuration Example))
@@ -139,7 +140,8 @@ keyValLogic = BChLogic
   --
   , processBlock  = \BChEval{..} -> ExceptT $ return $ do
       st <- foldM (flip process) (merkleValue blockchainState)
-          $ blockTransactions $ merkleValue $ blockData bchValue
+          $ let BData txs = merkleValue $ blockData bchValue
+            in txs
       return BChEval { bchValue        = ()
                      , blockchainState = merkled st
                      , ..
@@ -163,7 +165,7 @@ keyValLogic = BChLogic
 
 
 executeSpec
-  :: (MonadIO m, MonadMask m, MonadFork m, MonadTrace m, MonadTMMonitoring m)
+  :: (MonadIO m, MonadMask m, MonadFork m, MonadTMMonitoring m)
   => NetSpec NodeSpec
   -> ContT r m [RunningNode m BData]
 executeSpec NetSpec{..} = do
