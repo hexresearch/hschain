@@ -1,8 +1,10 @@
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE DerivingStrategies         #-}
+{-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE PolyKinds                  #-}
 {-# LANGUAGE QuantifiedConstraints      #-}
+{-# LANGUAGE TypeFamilies               #-}
 -- |
 -- Basic data types for PoW blockchain
 module HSChain.PoW.Types where
@@ -26,7 +28,7 @@ import HSChain.Types.Merkle.Types
 ----------------------------------------------------------------
 
 -- | Height of block in blockchain. That is 
-newtype Height = Height Int64
+newtype Height = Height Int32
   deriving stock   (Show, Read, Generic, Eq, Ord)
   deriving newtype (NFData, CBOR.Serialise, JSON.ToJSON, JSON.FromJSON, Enum, CryptoHashable)
 
@@ -51,9 +53,22 @@ timeToUTC (Time t) = posixSecondsToUTCTime (realToFrac t / 1000)
 -- Block
 ----------------------------------------------------------------
 
+-- | Core of blockchain implementation.
+class ( Ord (Work b)
+      , Monoid (Work b)
+      ) => BlockData b where
+  -- | ID of block. Usually it should be just a hash but we want to
+  --   leave some representation leeway for implementations. 
+  data BlockID b
+  -- | Measure of work performed for creation of block or chain of
+  --   blocks. Monoid instance should represent addition
+  data Work b
+  -- | Compute block ID out of block using only header.
+  blockID :: IsMerkle f => GBlock b f -> BlockID b
+  -- | Context free validation of header. It's mostly sanity check on
+  --   header. 
+  validateHeader :: Header b -> Bool
 
-newtype BlockID b = BlockID ByteString
-  deriving newtype (Eq,CBOR.Serialise)
 
 
 -- | Generic block. This is just spine of blockchain, that is height
@@ -68,9 +83,6 @@ data GBlock b f = GBlock
 type Header b = GBlock b Hashed
 type Block  b = GBlock b IdNode
 
--- | Core of blockchain implementation. 
-class BlockData b where
-  blockID :: IsMerkle f => GBlock b f -> BlockID b
 
 
 
@@ -85,6 +97,7 @@ instance JSON.ToJSON (BlockID b) where
   toJSON = undefined
 
 instance ( IsMerkle f
+         , CBOR.Serialise (BlockID b)
          , forall g. IsMerkle g => CBOR.Serialise (b g)
          ) => CBOR.Serialise (GBlock b f)
 

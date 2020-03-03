@@ -48,3 +48,4 @@ Library
                      , unordered-containers >=0.2.5.0
   Exposed-modules:
                 HSChain.PoW.Types
+                HSChain.PoW.Consensus
