@@ -111,7 +111,5 @@ evpow_check( uint8_t* prefix
 	   , uint16_t complexity_mantissa
 	   );
 
-void
-
 #endif /* __ERGVEIN_POW_H */
 
