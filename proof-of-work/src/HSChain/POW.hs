@@ -10,6 +10,7 @@
 module HSChain.POW
   ( solve
   , check
+  , POWConfig(..)
   ) where
 
 import Data.ByteString (ByteString)

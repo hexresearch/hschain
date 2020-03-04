@@ -1,4 +1,72 @@
 module Main where
 
+import Data.ByteString (ByteString)
+import qualified Data.ByteString as B
+
+import qualified Data.List as List
+
+import Data.Word
+
+import System.Exit
+
+import Text.Printf
+
+import Options.Applicative
+
+import HSChain.POW
+
+data PrintOpt = PrintText | PrintHex
+  deriving (Show)
+
+data Command =
+    FindAnswer ByteString Int Word16 PrintOpt
+  | CheckBlock ByteString Int Word16
+  deriving (Show)
+
+parser :: Parser Command
+parser = subparser
+  (  command "find" (info findAnswerParser $ header "find an answer")
+  <> command "check" (info checkAnswerParser $ header "checking an answer")
+  )
+  where
+    findAnswerParser = FindAnswer
+                     <$> parseByteString <*> parseShift <*> parseMantissa <*> parsePrint
+    checkAnswerParser = CheckBlock <$> parseByteString <*> parseShift <*> parseMantissa
+    parsePrint = flag' PrintText (short 'T' <> long "print-as-text")
+               <|> flag' PrintHex (short 'H' <> long "print-as-hex")
+    parseByteString = parseAsText <|> parseAsHex
+    parseAsText = undefined
+    parseAsHex = undefined
+    parseShift = option (maybeReader parseInt) (long "shift" <> short 's')
+    parseInt :: (Num a, Read a) => String -> Maybe a
+    parseInt s = case reads s of
+                   ((i,""):_) -> Just i
+                   _ -> Nothing
+    parseMantissa = option (maybeReader parseInt) (long "mantissa" <> short 'm')
+
 main :: IO ()
-main = putStrLn "Hello, Haskell!"
+main = do
+  cmd <- execParser $ info parser mempty
+  case cmd of
+    FindAnswer prefix shift mantissa print -> do
+      let config = POWConfig
+                 { powCfgComplexityShift     = shift
+                 , powCfgComplexityMantissa  = mantissa
+                 }
+      r <- solve [prefix] config
+      case r of
+        Nothing -> putStrLn "failed to find answer" >> exitFailure
+        Just (answer, hash) -> case print of
+          PrintText -> do
+            putStrLn $ "complete header: "++show completeBlock
+          PrintHex -> do
+            putStrLn $ "complete header: "++
+                     List.intercalate " "
+                          (map (printf "%02x") $ B.unpack completeBlock)
+            putStrLn $ "complete header hash: "++
+                     List.intercalate " "
+                          (map (printf "%02x") $ B.unpack hash)
+          where
+            completeBlock = B.concat [prefix, answer]
+    CheckBlock withAnswer shift mantissa -> do
+      putStrLn "checking full puzzle"
