@@ -5,6 +5,7 @@ import qualified Data.ByteString as B
 
 import qualified Data.List as List
 
+import Data.String
 import Data.Word
 
 import System.Exit
@@ -14,6 +15,8 @@ import Text.Printf
 import Options.Applicative
 
 import HSChain.POW
+
+import Debug.Trace
 
 data PrintOpt = PrintText | PrintHex
   deriving (Show)
@@ -35,8 +38,17 @@ parser = subparser
     parsePrint = flag' PrintText (short 'T' <> long "print-as-text")
                <|> flag' PrintHex (short 'H' <> long "print-as-hex")
     parseByteString = parseAsText <|> parseAsHex
-    parseAsText = undefined
-    parseAsHex = undefined
+    parseAsText = option (maybeReader bytestringFromString) (long "prefix-text")
+    parseAsHex = option (maybeReader bytestringFromHex) (long "prefix-hex")
+    bytestringFromString s = case reads s of
+                               ((bs,""):_) -> Just $ fromString bs
+                               _ -> Nothing
+    bytestringFromHex s = fmap B.pack $ rd (words s)
+      where
+        rd [] = Just []
+        rd (w:ws) = case reads $ "0x"++w of
+          ((byte, ""):_) -> fmap (byte:) $ rd ws
+          _ -> Nothing
     parseShift = option (maybeReader parseInt) (long "shift" <> short 's')
     parseInt :: (Num a, Read a) => String -> Maybe a
     parseInt s = case reads s of
@@ -49,7 +61,7 @@ main = do
   cmd <- execParser $ info parser mempty
   case cmd of
     FindAnswer prefix shift mantissa print -> do
-      let config = POWConfig
+      let config = defaultPOWConfig
                  { powCfgComplexityShift     = shift
                  , powCfgComplexityMantissa  = mantissa
                  }
@@ -70,3 +82,4 @@ main = do
             completeBlock = B.concat [prefix, answer]
     CheckBlock withAnswer shift mantissa -> do
       putStrLn "checking full puzzle"
+

@@ -11,6 +11,7 @@ module HSChain.POW
   ( solve
   , check
   , POWConfig(..)
+  , defaultPOWConfig
   ) where
 
 import Data.ByteString (ByteString)
@@ -58,6 +59,17 @@ data POWConfig = POWConfig
   }
   deriving (Show)
 
+-- |Configuration of POW - default values.
+defaultPOWConfig = POWConfig
+  { powCfgClausesCount             = 5
+  , powCfgAttemptsBetweenRestarts  = 10000
+  , powCfgAttemptsToSearch         = 500000
+  , powCfgMillisecondsToSearch     = 2000
+  , powCfgComplexityMantissa       = 0xffff
+  , powCfgComplexityShift          = 0
+  }
+
+-- |Solve the puzzle.
 solve :: [ByteString] -- ^Parts of header to concatenate
       -> POWConfig -- ^Configuration of POW algorithm
       -> IO (Maybe (ByteString, ByteString)) -- ^Returns a "puzzle answer" part of the header and final hash, if found.
