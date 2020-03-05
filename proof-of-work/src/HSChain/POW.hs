@@ -65,9 +65,9 @@ data POWConfig = POWConfig
 
 -- |Configuration of POW - default values.
 defaultPOWConfig = POWConfig
-  { powCfgClausesCount             = 5
+  { powCfgClausesCount             = 5250
   , powCfgAttemptsBetweenRestarts  = 10000
-  , powCfgAttemptsToSearch         = 500000
+  , powCfgAttemptsToSearch         = 2500000
   , powCfgMillisecondsToSearch     = 2000
   , powCfgComplexityMantissa       = 0xffff
   , powCfgComplexityShift          = 0

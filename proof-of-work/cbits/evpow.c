@@ -237,7 +237,6 @@ create_instance(uint8_t* prefix_hash, Solver* solver, int clauses_count, int fix
 		printf("clause:");
 		for (literal_index = 0; literal_index < EVPOW_K; literal_index ++) {
 			printf(" %d", literals[literal_index]);
-			picosat_add(solver, literals[literal_index]);
 		}
 		printf("\n");
 #endif
@@ -417,9 +416,30 @@ evpow_solve( uint8_t* prefix
 
 	// Compute hash of prefix.
 	SHA256_Init(&prefix_hash_context);
+
+#if 0
+{ int i;
+	printf("prefix (%zu):", prefix_size);
+	for (i=0;i<prefix_size;i++) {
+		printf(" %02x", prefix[i]);
+	}
+	printf("\n");
+}
+#endif
+
 	SHA256_Update(&prefix_hash_context, prefix, prefix_size);
 	intermediate_prefix_hash_context = prefix_hash_context;
 	SHA256_Final(prefix_hash, &intermediate_prefix_hash_context);
+
+#if 0
+{ int i;
+	printf("prefix hash:");
+	for (i=0;i<sizeof(prefix_hash);i++) {
+		printf(" %02x", prefix_hash[i]);
+	}
+	printf("\n");
+}
+#endif
 
 	// Create and configure solver instance.
 	solver = solver_new();
