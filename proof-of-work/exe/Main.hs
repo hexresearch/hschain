@@ -23,7 +23,7 @@ data PrintOpt = PrintText | PrintHex
 
 data Command =
     FindAnswer ByteString Int Word16 PrintOpt
-  | CheckBlock ByteString Int Word16
+  | CheckBlock ByteString ByteString Int Word16
   deriving (Show)
 
 parser :: Parser Command
@@ -34,12 +34,13 @@ parser = subparser
   where
     findAnswerParser = FindAnswer
                      <$> parseByteString <*> parseShift <*> parseMantissa <*> parsePrint
-    checkAnswerParser = CheckBlock <$> parseByteString <*> parseShift <*> parseMantissa
+    checkAnswerParser = CheckBlock <$> parseByteString <*> parseHash <*> parseShift <*> parseMantissa
     parsePrint = flag' PrintText (short 'T' <> long "print-as-text")
                <|> flag' PrintHex (short 'H' <> long "print-as-hex")
     parseByteString = parseAsText <|> parseAsHex
     parseAsText = option (maybeReader bytestringFromString) (long "prefix-text")
     parseAsHex = option (maybeReader bytestringFromHex) (long "prefix-hex")
+    parseHash = option (maybeReader bytestringFromHex) (long "hash-hex")
     bytestringFromString s = case reads s of
                                ((bs,""):_) -> Just $ fromString bs
                                _ -> Nothing
@@ -80,6 +81,10 @@ main = do
                           (map (printf "%02x") $ B.unpack hash)
           where
             completeBlock = B.concat [prefix, answer]
-    CheckBlock withAnswer shift mantissa -> do
-      putStrLn "checking full puzzle"
+    CheckBlock withAnswer hash shift mantissa -> do
+      r <- check withAnswer hash $ defaultPOWConfig
+                                     { powCfgComplexityShift = shift
+                                     , powCfgComplexityMantissa = mantissa
+                                     }
+      putStrLn $ "check result: "++show r
 

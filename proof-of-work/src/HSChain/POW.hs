@@ -103,5 +103,17 @@ solve headerParts POWConfig{..} = B.useAsCStringLen completeHeader $ \(ptr', len
     completeHeader = B.concat headerParts
 
 check :: ByteString -> ByteString -> POWConfig -> IO Bool
-check headerWithAnswer hashOfHeader POWConfig{..} = error "check!"
+check headerWithAnswer hashOfHeader POWConfig{..} =
+  B.useAsCStringLen headerWithAnswer $ \(hdr, hdrLen) ->
+    if hdrLen < answerSize
+      then return False
+      else B.useAsCStringLen hashOfHeader $ \(hash,hashLen) -> do
+        if hashLen /= hashSize
+          then return False
+          else do
+            let prefixSize = hdrLen - answerSize
+                answer = plusPtr hdr prefixSize
+            fmap (/= 0) $ evpow_check
+              (castPtr hdr) (fromIntegral prefixSize) (castPtr answer) (castPtr hash)
+              powCfgClausesCount powCfgComplexityShift powCfgComplexityMantissa
 
