@@ -476,6 +476,7 @@ evpow_check( uint8_t* prefix
 	SHA256_Final(hash, &partial_ctx);
 	SHA256_Init(&ctx_after_hash);
 	SHA256_Update(&ctx_after_hash, hash, SHA256_DIGEST_LENGTH);
+#if 0
 	{
 		int i;
 		printf("answer to check against:");
@@ -485,6 +486,7 @@ evpow_check( uint8_t* prefix
 		}
 		printf("\n");
 	}
+#endif
 	for (clause = 0; clause < clauses_count; clause ++) {
 		int literals[EVPOW_K];
 		int literal_index;
