@@ -21,6 +21,10 @@ import Data.Word
 
 import Foreign
 import Foreign.C.Types
+import Foreign.Marshal.Alloc (allocaBytes)
+
+foreign import capi "evpow.h value EVPOW_ANSWER_BYTES" answerSize :: Int
+foreign import capi "evpow.h value EVPOW_HASH_BYTES" hashSize :: Int
 
 foreign import ccall "evpow_solve"
         evpow_solve :: Ptr Word8    -- ^Header prefix, base for puzzle construction.
@@ -74,23 +78,30 @@ solve :: [ByteString] -- ^Parts of header to concatenate
       -> POWConfig -- ^Configuration of POW algorithm
       -> IO (Maybe (ByteString, ByteString)) -- ^Returns a "puzzle answer" part of the header and final hash, if found.
 solve headerParts POWConfig{..} = B.useAsCStringLen completeHeader $ \(ptr', len) -> do
-  answer <- return nullPtr
-  completeHash <- return nullPtr
-  let ptr = castPtr ptr'
-  r <- evpow_solve
-         ptr (fromIntegral len)
-         answer completeHash
-         powCfgClausesCount
-         powCfgComplexityShift
-         powCfgComplexityMantissa
-         powCfgMillisecondsToSearch
-         powCfgAttemptsToSearch
-         powCfgAttemptsBetweenRestarts
-         0 0 -- fixed bits
-         nullPtr
-  if r /= 0 then return (Just (error "answer", error "hash")) else return Nothing
+  allocaBytes (answerSize + hashSize) $ \answerAndHash -> do
+    let answer = answerAndHash
+        completeHash = plusPtr answerAndHash answerSize
+    let ptr = castPtr ptr'
+    r <- evpow_solve
+           ptr (fromIntegral len)
+           answer completeHash
+           powCfgClausesCount
+           powCfgComplexityShift
+           powCfgComplexityMantissa
+           powCfgMillisecondsToSearch
+           powCfgAttemptsToSearch
+           powCfgAttemptsBetweenRestarts
+           0 0 -- fixed bits
+           nullPtr
+    if r /= 0
+      then do
+             answerBS <- B.packCStringLen (castPtr answer, answerSize)
+             hashBS <- B.packCStringLen (castPtr completeHash, hashSize)
+             return (Just (answerBS, hashBS))
+      else return Nothing
   where
     completeHeader = B.concat headerParts
 
 check :: ByteString -> ByteString -> POWConfig -> IO Bool
 check headerWithAnswer hashOfHeader POWConfig{..} = error "check!"
+

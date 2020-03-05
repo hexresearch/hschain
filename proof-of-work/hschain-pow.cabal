@@ -72,7 +72,7 @@ library
   -- C bits:
   c-sources:           cbits/evpow.h cbits/evpow.c cbits/yalsat/yals.c
 
-  include-dirs:      cbits/yalsat
+  include-dirs:        cbits cbits/yalsat
 
 
 executable hschain-pow-cli
