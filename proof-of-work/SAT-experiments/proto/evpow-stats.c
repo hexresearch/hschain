@@ -15,6 +15,8 @@ typedef struct test_rec_s {
         evpow_hash      hash;
 } test_rec_t;
 
+typedef char* str;
+
 #define ARGS \
 	ARG(complexity_shift, int, 7) \
 	ARG(complexity_mantissa, uint16_t, 0xc000) \
@@ -25,12 +27,14 @@ typedef struct test_rec_s {
 	ARG(num_samples, int, 100) \
 	ARG(nonce, uint64_t, 0xdeadbeef600df00dULL) \
 	ARG(break_power, double, 2.0) \
+	ARG(stats_fname, str, NULL) \
 	/* done with args */
 #define int_format "%d"
 #define uint16_t_format "0x%04x"
 #define uint64_t_format "%lu"
 #define int64_t_format "%ld"
 #define double_format "%g"
+#define str_format "%s"
 
 void
 next_sample(test_rec_t* sample) {
@@ -49,12 +53,14 @@ print_average_solution_time
 	, int64_t attempts_allowed
 	, int attempts_between_restarts
 	, int num_samples
+	, double* stats
 	) {
 	int found;
 	int i, tries = 0;
 	double first_attempts_time_sum = 0.0;
 	clock_t start = clock(), end;
 	for (i = 0; i < num_samples; i ++) {
+		clock_t mine_start = clock();
 		do {
 			double first_result_time_this_try;
 			next_sample(sample);
@@ -78,6 +84,10 @@ print_average_solution_time
 			first_attempts_time_sum += first_result_time_this_try;
 			printf("%c", found ? '+' : '-');
 		} while(!found);
+		clock_t mine_end = clock();
+		if (stats) {
+			stats[i] = (mine_end-mine_start)*1000.0/CLOCKS_PER_SEC;
+		}
 	}
 	end = clock();
 	printf("\n");
@@ -144,10 +154,32 @@ parse_int(char*val) {
 	return r;
 } /* parse_int */
 
+char*
+parse_str(char*val) {
+	if (val && !*val) {
+		return NULL;
+	}
+	return val;
+} /* parse_str */
+
+static int
+compare_doubles(const void*pa, const void*pb) {
+	double a = *((double*)pa);
+	double b = *((double*)pb);
+	if (a > b) {
+		return 1;
+	} else if (a < b) {
+		return -1;
+	} else {
+		return 0;
+	}
+} /* compare_doubles */
+
 void
 parse_measure(int argc, char**argv) {
 	test_rec_t testrec;
 	int i;
+	double* stats = NULL;
 #define ARG(n, ty, val) ty n = val;
 	ARGS
 #undef ARG
@@ -174,6 +206,16 @@ parse_measure(int argc, char**argv) {
 	testrec.some_bytes[7] = nonce >> 40;
 	testrec.some_bytes[8] = nonce >> 48;
 	testrec.some_bytes[9] = nonce >> 56;
+	if (stats_fname) {
+		stats = malloc(sizeof(*stats) * num_samples);
+		if (!stats) {
+			printf("unable to allocate stats array of %d samples.\n", num_samples);
+			exit(1);
+		}
+		for (i=0;i<num_samples;i++) {
+			stats[i] = 0;
+		}
+	}
 #define ARG(p, ty, _) printf(#p ": " ty##_format "\n", p);
 	ARGS
 #undef  ARG
@@ -183,7 +225,20 @@ parse_measure(int argc, char**argv) {
 			, attempts_allowed
 			, attempts_between_restarts
 			, num_samples
+			, stats
 			);
+	if (stats_fname) {
+		FILE* statsf = fopen(stats_fname, "w");
+		if (!statsf) {
+			printf("unable to open %s\n", stats_fname);
+			exit(1);
+		}
+		qsort(stats, num_samples, sizeof(*stats), compare_doubles);
+		for (i=0;i<num_samples;i++) {
+			fprintf(statsf, "%g\n", stats[i]);
+		}
+		fclose(statsf);
+	}
 } /* parse_measure */
 
 
