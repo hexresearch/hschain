@@ -49,3 +49,4 @@ Library
   Exposed-modules:
                 HSChain.PoW.Types
                 HSChain.PoW.Consensus
+                HSChain.Examples.Simple
