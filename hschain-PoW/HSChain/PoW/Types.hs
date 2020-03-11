@@ -20,7 +20,7 @@ import qualified Codec.Serialise as CBOR
 import GHC.Generics (Generic)
 
 import HSChain.Crypto
--- import HSChain.Crypto.Classes.Hash
+import HSChain.Crypto.Classes.Hash
 import HSChain.Types.Merkle.Types
 
 ----------------------------------------------------------------
@@ -56,6 +56,7 @@ timeToUTC (Time t) = posixSecondsToUTCTime (realToFrac t / 1000)
 -- | Core of blockchain implementation.
 class ( Ord (Work b)
       , Monoid (Work b)
+      , Ord (BlockID b)
       ) => BlockData b where
   -- | ID of block. Usually it should be just a hash but we want to
   --   leave some representation leeway for implementations. 
@@ -68,7 +69,7 @@ class ( Ord (Work b)
   -- | Context free validation of header. It's mostly sanity check on
   --   header. 
   validateHeader :: Header b -> Bool
-
+  blockWork :: GBlock b f -> Work b
 
 
 -- | Generic block. This is just spine of blockchain, that is height
@@ -79,6 +80,12 @@ data GBlock b f = GBlock
   , blockData   :: !(b f)
   }
   deriving (Generic)
+
+instance ( forall g. IsMerkle g => CryptoHashable (b g)
+         , IsMerkle f
+         , CryptoHashable (BlockID b)
+         ) => CryptoHashable (GBlock b f) where
+  hashStep = genericHashStep "hschain"
 
 type Header b = GBlock b Hashed
 type Block  b = GBlock b IdNode
