@@ -31,6 +31,8 @@ Library
                      , directory
                      , exceptions        >=0.8.3
                      , filepath
+                     , katip
+                     , lrucache
                      , mmorph
                      , microlens         >=0.4
                      , microlens-mtl     >=0.1
@@ -50,3 +52,10 @@ Library
                 HSChain.PoW.Types
                 HSChain.PoW.Consensus
                 HSChain.Examples.Simple
+                HSChain.PoW.Control
+                HSChain.PoW.Logger
+                HSChain.PoW.Logger.Class
+                HSChain.PoW.Store
+                --HSChain.PoW.Store.STM - commented out because it contains only mempool
+                HSChain.PoW.Store.Internal.Query
+                HSChain.PoW.Store.Internal.BlockDB

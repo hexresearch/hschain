@@ -8,7 +8,7 @@
 -- |
 -- Queries for interacting with database. Ones that constitute public
 -- API are reexported from "HSChain.Store".
-module HSChain.Store.Internal.BlockDB
+module HSChain.PoW.Store.Internal.BlockDB
   ( initializeBlockhainTables
   , storeGenesis
     -- * Fetching data
@@ -61,7 +61,7 @@ import HSChain.Types.Merkle.Types
 import HSChain.Blockchain.Internal.Types
 import HSChain.Crypto
 import HSChain.Types.Validators
-import HSChain.Store.Internal.Query
+import HSChain.PoW.Store.Internal.Query
 
 ----------------------------------------------------------------
 --

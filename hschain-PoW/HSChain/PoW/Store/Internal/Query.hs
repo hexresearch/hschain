@@ -16,7 +16,7 @@
 -- Building blocks wrapping SQL queries into accessors functions. It's
 -- not internal per se but is quite low level and API doesn't provide
 -- many guarantees. Use with care.
-module HSChain.Store.Internal.Query (
+module HSChain.PoW.Store.Internal.Query (
     -- * Connection
     Connection(..)
   , connectionRO
@@ -80,10 +80,10 @@ import qualified Database.SQLite.Simple.ToField   as SQL
 import qualified Database.SQLite.Simple.FromField as SQL
 import Pipes (Proxy)
 
-import HSChain.Types.Blockchain
-import HSChain.Control
-import HSChain.Exceptions
-import HSChain.Logger.Class
+import HSChain.PoW.Types
+import HSChain.PoW.Control
+--import HSChain.Exceptions
+import HSChain.PoW.Logger.Class
 
 
 ----------------------------------------------------------------
@@ -331,17 +331,21 @@ instance Exception Rollback
 instance MonadTrans (QueryT rr a) where
   lift = QueryT
 
-instance (MonadIO m, MonadThrow m, MonadReadDB m a) => MonadQueryRO (QueryT rw a m) a where
+instance (MonadIO m, MonadThrow m{-, MonadReadDB m a-}) => MonadQueryRO (QueryT rw a m) a where
+{-
   liftQueryRO (Query action) = QueryT $ do
     -- NOTE: coercion is needed since we need to implement for both
     --       QueryT 'RO/'RW
     liftIO . runReaderT action . coerce =<< askConnectionRO
+-}
 
 instance (MonadIO m, MonadThrow m, MonadDB m a) => MonadQueryRW (QueryT 'RW a m) a where
+{-
   liftQueryRW (Query action) = QueryT $ do
     -- NOTE: coercion is needed since we need to implement for both
     --       Query 'RO/'RW
     liftIO . runReaderT action . coerce =<< askConnectionRW
+-}
 
 -- | Run read-only query. Note that read-only couldn't be rolled back
 --  so they always succeed

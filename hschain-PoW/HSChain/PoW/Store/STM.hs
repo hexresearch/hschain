@@ -4,7 +4,7 @@
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 -- |
-module HSChain.Store.STM (
+module HSChain.Store.PoW.STM (
     -- * Mempool
     newMempool
     -- * Blockchain state storge
@@ -32,7 +32,7 @@ import qualified Data.Set           as Set
 import           Data.Set             (Set)
 
 import HSChain.Crypto
-import HSChain.Store
+import HSChain.PoW.Store
 import HSChain.Types.Blockchain
 import HSChain.Types.Merkle.Types
 
