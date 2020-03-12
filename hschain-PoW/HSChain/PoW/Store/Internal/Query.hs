@@ -154,9 +154,9 @@ withConnection db = bracket (openConnection db) closeConnection'
 class Monad m => MonadReadDB m a | m -> a where
   askConnectionRO :: m (Connection 'RO a)
   --
-  default askConnectionRO :: (m ~ t f, MonadReadDB f a, MonadTrans t)
-                          => m (Connection 'RO a)
-  askConnectionRO = lift askConnectionRO
+  --default askConnectionRO :: (m ~ t f, MonadReadDB f a, MonadTrans t)
+  --                        => m (Connection 'RO a)
+  --askConnectionRO = lift askConnectionRO
 
 -- | Monad which provides access to read-write connection to
 --   database. It's half-internal API since user code shouldn't write
@@ -166,9 +166,9 @@ class Monad m => MonadReadDB m a | m -> a where
 class MonadReadDB m a => MonadDB m a | m -> a where
   askConnectionRW :: m (Connection 'RW a)
   --
-  default askConnectionRW :: (m ~ t f, MonadDB f a, MonadTrans t)
-                          => m (Connection 'RW a)
-  askConnectionRW = lift askConnectionRW
+  --default askConnectionRW :: (m ~ t f, MonadDB f a, MonadTrans t)
+  --                        => m (Connection 'RW a)
+  --askConnectionRW = lift askConnectionRW
 
 -- | Monad which allows to perform read-only queries. API is just thin
 --   wrappers about @sqlite-simple@ functions thus they shouldn't be
@@ -176,18 +176,18 @@ class MonadReadDB m a => MonadDB m a | m -> a where
 class Monad m => MonadQueryRO m a | m -> a where
   liftQueryRO :: Query 'RO a x -> m x
   --
-  default liftQueryRO :: (m ~ t f, MonadQueryRO f a, MonadTrans t)
-                      => Query 'RO a x -> m x
-  liftQueryRO = lift . liftQueryRO
+  --default liftQueryRO :: (m ~ t f, MonadQueryRO f a, MonadTrans t)
+  --                    => Query 'RO a x -> m x
+  --liftQueryRO = lift . liftQueryRO
 
 -- | Monad which can perform read-write queries. @basic*RW@ functions
 --   are same as @RO@ variants and intended to be used as
 class (MonadQueryRO m a) => MonadQueryRW m a | m -> a where
   liftQueryRW :: Query rw a x -> m x
   --
-  default liftQueryRW :: (m ~ t f, MonadQueryRW f a, MonadTrans t)
-                      => Query rw a x -> m x
-  liftQueryRW = lift . liftQueryRW
+  --default liftQueryRW :: (m ~ t f, MonadQueryRW f a, MonadTrans t)
+  --                    => Query rw a x -> m x
+  --liftQueryRW = lift . liftQueryRW
 
 basicQuery1 :: (SQL.ToRow row, SQL.FromRow x, MonadQueryRO m a)
   => SQL.Query             -- ^ SQL query
@@ -332,20 +332,16 @@ instance MonadTrans (QueryT rr a) where
   lift = QueryT
 
 instance (MonadIO m, MonadThrow m{-, MonadReadDB m a-}) => MonadQueryRO (QueryT rw a m) a where
-{-
-  liftQueryRO (Query action) = QueryT $ do
-    -- NOTE: coercion is needed since we need to implement for both
-    --       QueryT 'RO/'RW
-    liftIO . runReaderT action . coerce =<< askConnectionRO
--}
+  --liftQueryRO (Query action) = QueryT $ do
+  --  -- NOTE: coercion is needed since we need to implement for both
+  --  --       QueryT 'RO/'RW
+  --  liftIO . runReaderT action . coerce =<< askConnectionRO
 
-instance (MonadIO m, MonadThrow m, MonadDB m a) => MonadQueryRW (QueryT 'RW a m) a where
-{-
-  liftQueryRW (Query action) = QueryT $ do
-    -- NOTE: coercion is needed since we need to implement for both
-    --       Query 'RO/'RW
-    liftIO . runReaderT action . coerce =<< askConnectionRW
--}
+instance (MonadIO m, MonadThrow m{-, MonadDB m a-}) => MonadQueryRW (QueryT 'RW a m) a where
+  --liftQueryRW (Query action) = QueryT $ do
+  --  -- NOTE: coercion is needed since we need to implement for both
+  --  --       Query 'RO/'RW
+  --  liftIO . runReaderT action . coerce =<< askConnectionRW
 
 -- | Run read-only query. Note that read-only couldn't be rolled back
 --  so they always succeed
@@ -395,7 +391,7 @@ mustQueryRWT q = throwNothing UnexpectedRollback =<< flip runQueryRWT q =<< askC
 
 -- | Query which doesn't allow any other effect except interaction
 --   with database.
-newtype Query rw a x = Query { unQuery :: ReaderT (Connection rw a) IO x }
+newtype Query rw (a :: *) x = Query { unQuery :: ReaderT (Connection rw a) IO x }
   deriving newtype (Functor, Applicative, MonadThrow)
 
 instance Monad (Query rm a) where
