@@ -47,24 +47,24 @@ module HSChain.PoW.Store (
   , runDBT
   ) where
 
-import Control.Monad             ((<=<), foldM, forM, unless)
+--import Control.Monad             ((<=<), foldM, forM, unless)
 import Control.Monad.Catch       (MonadMask,MonadThrow,MonadCatch)
 import Control.Monad.Fail        (MonadFail)
 import Control.Monad.Morph       (MFunctor(..))
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
-import Control.Monad.Trans.Except
+--import Control.Monad.Trans.Except
 import Control.Monad.Trans.Reader
-import Control.Monad.Trans.Writer
+--import Control.Monad.Trans.Writer
 
-import Data.Foldable             (forM_)
-import Data.Maybe                (isNothing, maybe)
-import Data.Text                 (Text)
-import qualified Data.List.NonEmpty as NE
-import GHC.Generics              (Generic)
+--import Data.Foldable             (forM_)
+--import Data.Maybe                (isNothing, maybe)
+--import Data.Text                 (Text)
+--import qualified Data.List.NonEmpty as NE
+--import GHC.Generics              (Generic)
 
 import HSChain.PoW.Control                (MonadFork)
-import HSChain.Crypto
+--import HSChain.Crypto
 --import HSChain.Crypto.Containers
 import HSChain.PoW.Logger                 (MonadLogger)
 import HSChain.PoW.Store.Internal.Query

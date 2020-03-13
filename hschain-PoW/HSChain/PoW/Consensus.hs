@@ -2,9 +2,9 @@
 -- |
 module HSChain.PoW.Consensus where
 
-import Data.List.NonEmpty (NonEmpty)
+--import Data.List.NonEmpty (NonEmpty)
 import Data.Map           (Map)
-import qualified Data.Map.Strict as Map
+--import qualified Data.Map.Strict as Map
 
 import HSChain.Crypto (Hashed)
 import HSChain.PoW.Types
