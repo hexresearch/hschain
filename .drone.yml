@@ -39,7 +39,7 @@ steps:
   - "echo -n \"$${NIX_CACHE_SIGNING_KEY}\" > \"$${HOME}/nix-cache-key.sec\""
   - "chmod 400 \"$${HOME}/nix-cache-key.sec\""
   - cd nix
-  - ./build-ci.sh --argstr ghc ghc844  --arg useSodium false  --arg isBench true
+  - ./build-ci.sh --argstr ghc ghc865  --arg useSodium false  --arg isBench true
 
 - name: build-thundermint-ghcjs
   image: nixos/nix
