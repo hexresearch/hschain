@@ -38,10 +38,6 @@ module HSChain.PoW.Control (
   , throwNothingM
   , throwLeft
   , throwLeftM
-    -- * Products with lookup by type
-  , (:*:)(..)
-  , Has(..)
-  , (^..)
   ) where
 
 import Control.Concurrent.MVar
@@ -51,13 +47,10 @@ import Control.Monad.IO.Class
 import Control.Monad.Trans.Reader
 import qualified Control.Monad.Trans.State.Strict as SS
 import qualified Control.Monad.Trans.State.Lazy   as SL
-import qualified Data.Aeson                       as JSON
 import qualified Data.Map.Strict                  as Map
 import Control.Concurrent  (ThreadId, killThread, myThreadId, throwTo)
 import Control.Exception   (AsyncException, Exception(..), SomeException(..))
 import Control.Monad.Catch (MonadMask, MonadThrow, bracket, mask, onException, throwM, try, finally)
-import Data.Type.Equality
-import GHC.Exts              (Proxy#,proxy#)
 
 import qualified Control.Concurrent as Conc
 
