@@ -11,7 +11,7 @@ module HSChain.PoW.Types where
 
 import Control.DeepSeq
 import Control.Monad.IO.Class
-import Data.ByteString          (ByteString)
+--import Data.ByteString          (ByteString)
 import Data.Time.Clock          (UTCTime)
 import Data.Time.Clock.POSIX    (getPOSIXTime,posixSecondsToUTCTime)
 import Data.Int

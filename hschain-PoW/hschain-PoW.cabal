@@ -24,6 +24,7 @@ Library
                      , hschain-merkle
                      , aeson
                      , base58-bytestring >=0.1
+                     , bloodhound
                      , bytestring        >=0.10
                      , containers        >=0.5.9
                      , data-default-class
@@ -31,6 +32,10 @@ Library
                      , directory
                      , exceptions        >=0.8.3
                      , filepath
+                     , http-client-tls
+                     , katip
+                     , katip-elasticsearch
+                     , lrucache
                      , mmorph
                      , microlens         >=0.4
                      , microlens-mtl     >=0.1
@@ -50,3 +55,11 @@ Library
                 HSChain.PoW.Types
                 HSChain.PoW.Consensus
                 HSChain.Examples.Simple
+                HSChain.PoW.Control
+                HSChain.PoW.Exceptions
+                HSChain.PoW.Logger
+                HSChain.PoW.Logger.Class
+                HSChain.PoW.Store
+                --HSChain.PoW.Store.STM - commented out because it contains only mempool
+                HSChain.PoW.Store.Internal.Query
+                HSChain.PoW.Store.Internal.BlockDB
