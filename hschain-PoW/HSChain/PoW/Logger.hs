@@ -10,6 +10,7 @@
 {-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE TemplateHaskell            #-}
 {-# LANGUAGE UndecidableInstances       #-}
+{-# LANGUAGE KindSignatures             #-}
 -- |
 -- Logger
 module HSChain.PoW.Logger (
@@ -69,9 +70,9 @@ import Network.HTTP.Client.TLS
 import Database.V5.Bloodhound
 import Katip.Scribes.ElasticSearch
 
---import HSChain.Control
---import HSChain.Types.Blockchain
-import HSChain.Logger.Class
+import HSChain.PoW.Control
+import HSChain.PoW.Types
+import HSChain.PoW.Logger.Class
 import HSChain.PoW.Store.Internal.Query (MonadReadDB(..), MonadDB(..))
 
 
@@ -314,14 +315,15 @@ makeEsUrlScribe serverPath index sev verb = do
 ----------------------------------------------------------------
 
 -- | Wrapper for log data for logging purposes
-data LogBlockInfo a = LogBlockInfo !Height !a !Int
+data LogBlockInfo (a :: (* -> * -> *) -> *) = LogBlockInfo !Height {-!(Block a)-} !Int
 
 instance BlockData a => ToObject (LogBlockInfo a) where
-  toObject (LogBlockInfo (Height h) a ns)
+  toObject (LogBlockInfo (Height h) ns)
     = HM.insert "H"     (toJSON h)
     $ HM.insert "nsign" (toJSON ns)
-    $ logBlockData a
+    $ HM.singleton "blockData" (toJSON ("not imlemented" :: String))
 
 instance BlockData a => LogItem (LogBlockInfo a) where
   payloadKeys Katip.V0 _ = Katip.SomeKeys ["H"]
   payloadKeys _        _ = Katip.AllKeys
+

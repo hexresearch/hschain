@@ -45,29 +45,6 @@ module HSChain.PoW.Store (
   , DBT(..)
   , dbtRO
   , runDBT
-    -- ** Standard API
-  , blockchainHeight
-  , retrieveBlock
-  , retrieveBlockID
-  , retrieveLocalCommit
-  , retrieveValidatorSet
-  , mustRetrieveBlock
-  , mustRetrieveValidatorSet
-  , retrieveSavedState
-  , storeStateSnapshot
-    -- * Mempool
-  , MempoolCursor(..)
-  , Mempool(..)
-  , MempoolInfo(..)
-  , hoistMempoolCursor
-  , hoistMempool
-  , nullMempool
-    -- * Blockchain state
-  , BChStore(..)
-    -- * Blockchain invariants checkers
-  , BlockchainInconsistency
-  , checkStorage
-  , checkProposedBlock
   ) where
 
 import Control.Monad             ((<=<), foldM, forM, unless)
@@ -86,10 +63,10 @@ import Data.Text                 (Text)
 import qualified Data.List.NonEmpty as NE
 import GHC.Generics              (Generic)
 
-import HSChain.Control                (MonadFork)
+import HSChain.PoW.Control                (MonadFork)
 import HSChain.Crypto
-import HSChain.Crypto.Containers
-import HSChain.Logger                 (MonadLogger)
+--import HSChain.Crypto.Containers
+import HSChain.PoW.Logger                 (MonadLogger)
 import HSChain.PoW.Store.Internal.Query
 import HSChain.PoW.Store.Internal.BlockDB
 
@@ -139,7 +116,7 @@ initDatabase
   => Connection 'RW a  -- ^ Opened connection to database
   -> m ()
 initDatabase c = do
-  r <- runQueryRW c initializeBlockhainTables
+  r <- runQueryRW c initializeBlockchainTables
   case r of
     Nothing -> error "Cannot initialize tables!"
     Just () -> return ()
