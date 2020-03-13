@@ -69,6 +69,7 @@ class ( Ord (Work b)
   -- | Context free validation of header. It's mostly sanity check on
   --   header. 
   validateHeader :: Header b -> Bool
+  validateBlock  :: Block  b -> Bool
   blockWork :: GBlock b f -> Work b
 
 
