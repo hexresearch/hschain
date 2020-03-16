@@ -13,6 +13,8 @@ module HSChain.PoW.Store.Internal.BlockDB
   ( initializeBlockchainTables
   , storeBlock
   , retrieveBlock
+  , storeState
+  , retrieveState
   ) where
 
 import Codec.Serialise     (Serialise, serialise, deserialiseOrFail)
@@ -21,7 +23,7 @@ import Control.Exception
 --import Control.Monad.Catch (MonadThrow(..))
 --import Data.Int
 --import qualified Data.List.NonEmpty   as NE
---import qualified Data.ByteString.Lazy as LBS
+import qualified Data.ByteString.Lazy as LBS
 import qualified Database.SQLite.Simple           as SQL
 import qualified Database.SQLite.Simple.FromField as SQL
 import           Database.SQLite.Simple             (Only(..))
@@ -60,7 +62,9 @@ initializeBlockchainTables = do
   -- It is tied to one of the blocks in the chain, actually.
   basicExecute_ $
     "CREATE TABLE IF NOT EXISTS current_state \
-    \ ( snapshot BLOB NOT NULL ) -- SELECT COUNT(*) must be 1 at all times."
+    \ ( identifier INTEGER PRIMARY KEY -- must be 1 at all times \
+    \ , snapshot   BLOB NOT NULL ) -- SELECT COUNT(*) must be 1 at all times."
+  
 
 storeBlock :: (Serialise (BlockID b), Serialise (Block b), BlockData b, MonadQueryRW m b)
            => Block b
@@ -79,6 +83,24 @@ retrieveBlock blockId = do
     Just b -> case deserialiseOrFail b of
                 Right blk -> return $ Just blk
                 Left _err -> throw DBInvalidBlock
+
+-- | Retrieve height and state saved as snapshot.
+retrieveState :: Serialise s => Query 'RO a (Maybe s)
+retrieveState =
+  singleQWithParser parse "SELECT snapshot FROM current_state WHERE identifier = 1" ()
+  where
+    parse [SQL.SQLBlob s]
+      | Right r <- deserialiseOrFail (LBS.fromStrict s) = Just (r)
+      | otherwise = Nothing
+    parse _ = Nothing
+
+-- | Write state snapshot into DB. @maybeSnapshot@ contains a
+--  serialized value of a state associated with the processed block.
+storeState :: (Serialise s, MonadQueryRW m a) => s -> m ()
+storeState state = do
+  basicExecute
+    "UPDATE OR INSERT state_snapshot SET identifier = 1, snapshot_blob = ?"
+     (Only $ CBORed state)
 
 
 ----------------------------------------------------------------
@@ -99,6 +121,14 @@ singleQ :: (SQL.ToRow p, Serialise x, MonadQueryRO m a)
 singleQ sql p = (fmap . fmap) unCBORed
               $ query1 sql p
 
+-- Query that returns results parsed from single row ().
+singleQWithParser
+  :: (SQL.ToRow p, MonadQueryRO m a)
+  => ([SQL.SQLData] -> Maybe x) -> SQL.Query -> p -> m (Maybe x)
+singleQWithParser resultsParser sql p =
+  basicQuery sql p >>= \case
+    [x] -> return (resultsParser x)
+    _ -> error $ "SQL statement resulted in too many (>1) or zero result rows: " ++ show sql
 
 {-
 ----------------------------------------------------------------
