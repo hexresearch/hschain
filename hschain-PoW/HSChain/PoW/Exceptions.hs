@@ -18,13 +18,8 @@ import HSChain.Crypto  (Hash,CryptoHash)
 
 -- | Database is corruped
 data CorruptedDBError
-  = DBMissingValSet       !Height -- ^ Validator set is missing
-  | DBMissingGenesis              -- ^ Genesis is missing
-  | DBMissingBlock        !Height -- ^ Missing block
-  | DBMissingBlockID      !Height -- ^ Missing block ID
-  | DBMissingRound        !Height -- ^ Missing commit round
-  | DBInvalidValidatorSet !Height -- ^ Invalid validators set at given height
-  | DBMissingBlob
+  = DBMissingGenesis              -- ^ Genesis is missing
+  | DBInvalidBlock                -- ^ Unable to deserialise the block.
   deriving stock    (Show)
   deriving anyclass (Exception)
 

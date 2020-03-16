@@ -1,4 +1,5 @@
 {-# LANGUAGE DataKinds           #-}
+{-# LANGUAGE MonoLocalBinds      #-}
 {-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE MultiWayIf          #-}
@@ -10,21 +11,24 @@
 -- API are reexported from "HSChain.Store".
 module HSChain.PoW.Store.Internal.BlockDB
   ( initializeBlockchainTables
+  , storeBlock
+  , retrieveBlock
   ) where
 
---import Codec.Serialise     (Serialise, serialise, deserialiseOrFail)
+import Codec.Serialise     (Serialise, serialise, deserialiseOrFail)
+import Control.Exception
 --import Control.Monad       (when,(<=<))
 --import Control.Monad.Catch (MonadThrow(..))
 --import Data.Int
 --import qualified Data.List.NonEmpty   as NE
 --import qualified Data.ByteString.Lazy as LBS
---import qualified Database.SQLite.Simple           as SQL
---import qualified Database.SQLite.Simple.FromField as SQL
---import           Database.SQLite.Simple             (Only(..))
+import qualified Database.SQLite.Simple           as SQL
+import qualified Database.SQLite.Simple.FromField as SQL
+import           Database.SQLite.Simple             (Only(..))
 
 --import HSChain.PoW.Control (throwNothing)
---import HSChain.PoW.Exceptions
---import HSChain.PoW.Types
+import HSChain.PoW.Exceptions
+import HSChain.PoW.Types
 --import HSChain.Types.Merkle.Types
 --import HSChain.Blockchain.Internal.Types
 --import HSChain.Crypto
@@ -33,87 +37,68 @@ import HSChain.PoW.Store.Internal.Query
 
 -- | Create tables for storing blockchain data
 initializeBlockchainTables :: (MonadQueryRW m a) => m ()
-initializeBlockchainTables = return ()
-{-
-----------------------------------------------------------------
---
-----------------------------------------------------------------
-
--- | Create tables for storing blockchain data
-initializeBlockhainTables :: (MonadQueryRW m a) => m ()
-initializeBlockhainTables = do
+initializeBlockchainTables = do
   -- Content addressable storage.
   --
   -- ID is used as primary key in order to make it possible to create
   -- foreign keys
-  basicExecute_
-    "CREATE TABLE IF NOT EXISTS thm_cas \
-    \ ( id   INTEGER PRIMARY KEY  \
-    \ , hash BLOB NOT NULL UNIQUE \
-    \ , blob BLOB NOT NULL )"
-  -- Tables for blockchain data. Tables contains only references to
-  -- CAS store
-  basicExecute_
-    "CREATE TABLE IF NOT EXISTS thm_blockchain \
-    \ ( height    INTEGER NOT NULL UNIQUE \
-    \ , round     INTEGER NOT NULL \
-    \ , blockref  INTEGER NOT NULL \
-    \ , commitref INTEGER \
-    \ , FOREIGN KEY (blockref)  REFERENCES thm_cas(id) \
-    \ , FOREIGN KEY (commitref) REFERENCES thm_cas(id))"
-  basicExecute_
-    "CREATE TABLE IF NOT EXISTS thm_validators \
-    \  ( height INTEGER NOT NULL UNIQUE \
-    \  , valref INTEGER NOT NULL\
-    \  , FOREIGN KEY (valref) REFERENCES thm_cas(id))"
-  -- Snapshots of blockchain state
-  basicExecute_
-    "CREATE TABLE IF NOT EXISTS state_snapshot \
-    \  ( height           INT  NOT NULL \
-    \  , snapshot_blob    BLOB NOT NULL)"
-  r <- basicQuery_ "SELECT height FROM state_snapshot"
-  when (null (r :: [[SQL.SQLData]])) $
-    basicExecute_ "INSERT INTO state_snapshot (height, snapshot_blob) VALUES (-1, X'')"
-  -- WAL
+  basicExecute_ $
+      "CREATE TABLE IF NOT EXISTS blocks \
+      \ ( block_id   BLOB PRIMARY KEY  \
+      \ , block_blob BLOB NOT NULL )"
+
+  -- Storage for genesis block.
   --
-  -- For PBFT we need to record all received messages which will be
-  -- replayed if node crashes. We also need to store proposed blocks
-  -- and results of ready-to-create-block check in order to replay
-  -- deterministically.
+  -- That is a special case of block, must be single one.
+  basicExecute_ $
+      "CREATE TABLE IF NOT EXISTS genesis_block \
+      \ ( block_id   BLOB PRIMARY KEY -- can be used for join purposes. \
+      \ , block_blob BLOB NOT NULL )"
+
+  -- The state of the blockchain. It is opaque for storage.
   --
-  -- ID field is used to keep order of messages. Primary key is
-  -- incremented automatically and any new key will be larger than any
-  -- existing key
-  --
-  -- Note UNIQUE constraint. Receiving identical message at the same
-  -- height is noop so there's no point in storing them. Performance
-  -- gains are massive since disk IO is _slow_.
-  basicExecute_
-    "CREATE TABLE IF NOT EXISTS thm_wal \
-    \  ( id      INTEGER PRIMARY KEY \
-    \  , height  INTEGER NOT NULL \
-    \  , message BLOB NOT NULL \
-    \  , UNIQUE(height,message))"
-  basicExecute_
-    "CREATE TABLE IF NOT EXISTS thm_proposals \
-    \ ( height INTEGER NOT NULL \
-    \ , round  INTEGER NOT NULL \
-    \ , block  BLOB    NOT NULL \
-    \ , UNIQUE (height,round))"
-  basicExecute_
-    "CREATE TABLE IF NOT EXISTS thm_ready_block \
-    \ ( height  INTEGER NOT NULL \
-    \ , attempt INTEGER NOT NULL \
-    \ , result  BOOLEAN NOT NULL \
-    \ , UNIQUE (height, attempt))"
-  -- Evidence of byzantine behavior. We store every piece of evidence
-  -- in this table with second field indicating whether evidence is
-  -- recorded in blockchain or not
-  basicExecute_
-    "CREATE TABLE IF NOT EXISTS thm_evidence \
-    \  ( evidence  BLOB    NOT NULL \
-    \  , recorded  BOOLEAN NOT NULL \
-    \  , UNIQUE (evidence))"
+  -- It is tied to one of the blocks in the chain, actually.
+  basicExecute_ $
+    "CREATE TABLE IF NOT EXISTS current_state \
+    \ ( snapshot BLOB NOT NULL ) -- SELECT COUNT(*) must be 1 at all times."
+
+storeBlock :: (BlockData b, MonadQueryRW m b) => Block b -> m ()
+storeBlock _blk = do return ()
+
+retrieveBlock :: (Serialise (BlockID b), Serialise (Block b), MonadQueryRO m b)
+              => BlockID b -> m (Maybe (Block b))
+retrieveBlock blockId = do
+  r <- singleQ "SELECT blob FROM thm_cas WHERE id = ?" (Only $ serialise blockId)
+  case r of
+    Nothing -> return Nothing
+    Just b -> case deserialiseOrFail b of
+                Right blk -> return $ Just blk
+                Left _err -> throw DBInvalidBlock
+
+
+----------------------------------------------------------------
+-- Helpers
+----------------------------------------------------------------
+
+query1 :: (SQL.ToRow p, SQL.FromField x, MonadQueryRO m a)
+             => SQL.Query -> p -> m (Maybe x)
+query1 sql p =
+  basicQuery sql p >>= \case
+    []       -> return Nothing
+    [Only a] -> return (Just a)
+    _        -> error "Impossible"
+
+-- Query that returns 0 or 1 result which is CBOR-encoded value
+singleQ :: (SQL.ToRow p, Serialise x, MonadQueryRO m a)
+        => SQL.Query -> p -> m (Maybe x)
+singleQ sql p = (fmap . fmap) unCBORed
+              $ query1 sql p
+
+
+{-
+----------------------------------------------------------------
+--
+----------------------------------------------------------------
 
 
 storeGenesis
@@ -276,24 +261,6 @@ resetWAL h = do
   basicExecute "DELETE FROM thm_proposals   WHERE height < ?" (Only h)
   basicExecute "DELETE FROM thm_ready_block WHERE height < ?" (Only h)
 
-
-----------------------------------------------------------------
--- Helpers
-----------------------------------------------------------------
-
-query1 :: (SQL.ToRow p, SQL.FromField x, MonadQueryRO m a)
-             => SQL.Query -> p -> m (Maybe x)
-query1 sql p =
-  basicQuery sql p >>= \case
-    []       -> return Nothing
-    [Only a] -> return (Just a)
-    _        -> error "Impossible"
-
--- Query that returns 0 or 1 result which is CBOR-encoded value
-singleQ :: (SQL.ToRow p, Serialise x, MonadQueryRO m a)
-        => SQL.Query -> p -> m (Maybe x)
-singleQ sql p = (fmap . fmap) unCBORed
-              $ query1 sql p
 
 -- Query that returns results parsed from single row ().
 singleQWithParser
