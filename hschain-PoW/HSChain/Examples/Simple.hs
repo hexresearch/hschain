@@ -41,4 +41,5 @@ instance BlockData KV where
   --
   blockID b = let Hashed h = hashed b in KV'BID h
   validateHeader _ = True
+  validateBlock  _ = True
   blockWork      _ = KV'Work 1
