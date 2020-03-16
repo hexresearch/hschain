@@ -1,24 +1,38 @@
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE LambdaCase       #-}
-{-# LANGUAGE MultiWayIf       #-}
-{-# LANGUAGE PolyKinds        #-}
-{-# LANGUAGE RecordWildCards  #-}
-{-# LANGUAGE TemplateHaskell  #-}
+{-# LANGUAGE FlexibleContexts     #-}
+{-# LANGUAGE LambdaCase           #-}
+{-# LANGUAGE MultiWayIf           #-}
+{-# LANGUAGE PolyKinds            #-}
+{-# LANGUAGE RecordWildCards      #-}
+{-# LANGUAGE StandaloneDeriving   #-}
+{-# LANGUAGE TemplateHaskell      #-}
+{-# LANGUAGE UndecidableInstances #-}
 -- |
 module HSChain.PoW.Consensus
   ( -- * Block index
-    BlockIndex
+    BlockIndex(..)
+  , BH(..)
   , insertIdx
   , lookupIdx
+  , blockIndexFromGenesis
   , traverseBlockIndex
   , traverseBlockIndexM
     -- *
   , StateView(..)
   , BlockDB(..)
   , Consensus(..)
+  , blockIndex
+  , bestHead
+  , candidateHeads
+  , badBlocks
+  , requiredBlocks
+  , blockDB
+    --
+  , consensusGenesis
   , Head(..)
   , processHeader
   , processBlock
+  , HeaderError(..)
+  , BlockError(..)
   ) where
 
 import Control.Category ((>>>))
@@ -38,6 +52,7 @@ import Lens.Micro
 import Lens.Micro.Mtl
 import Lens.Micro.TH
 
+import HSChain.Types.Merkle.Types
 import HSChain.Crypto (Hashed)
 import HSChain.PoW.Types
 
@@ -92,6 +107,19 @@ traverseBlockIndexM rollback update = go
       Just b' -> b'
       Nothing -> error "Internal error"
 
+blockIndexFromGenesis :: (IsMerkle f, BlockData b) => GBlock b f -> BlockIndex b
+blockIndexFromGenesis genesis
+  | blockHeight genesis /= Height 0 = error "Genesis must be H=0"
+  | otherwise                       = BlockIndex $ Map.singleton bid bh
+  where
+    bid = blockID genesis
+    bh  = BH { bhHeight   = Height 0
+             , bhBID      = bid
+             , bhWork     = blockWork genesis
+             , bhPrevious = Nothing
+             , bhData     = merkleMap merkleHashed $ blockData genesis
+             }
+
 lookupIdx :: (Ord (BlockID b)) => BlockID b -> BlockIndex b -> Maybe (BH b)
 lookupIdx bid (BlockIndex idx) = Map.lookup bid idx
 
@@ -108,6 +136,8 @@ data BH b = BH
   , bhPrevious :: !(Maybe (BH b)) --
   , bhData     :: !(b Hashed)     --
   }
+
+deriving instance (Show (Work b), Show (BlockID b), Show (b Hashed)) => Show (BH b)
 
 instance BlockData b => Eq (BH b) where
   a == b = bhBID a == bhBID b
@@ -170,6 +200,24 @@ data Consensus m b = Consensus
   , _blockDB        :: BlockDB m b
   }
 
+consensusGenesis
+  :: (Monad m, BlockData b)
+  => Block b
+  -> StateView m b
+  -> BlockDB   m b
+  -> Consensus m b
+consensusGenesis genesis sview db = Consensus
+  { _blockIndex     = idx
+  , _bestHead       = (bh, sview)
+  , _candidateHeads = []
+  , _badBlocks      = Set.empty
+  , _requiredBlocks = Set.empty
+  , _blockDB        = db
+  }
+  where
+    bid = blockID genesis
+    idx = blockIndexFromGenesis genesis
+    Just bh = lookupIdx bid idx
 
 -- | Candidate head of blockchain. We maintain both head and sequence
 --   of blocks which are not reachable. Head should be also viable
@@ -183,7 +231,6 @@ data Head b = Head
   { bchHead    :: BH b
   , bchMissing :: Seq (BH b)
   }
-
 
 makeLenses ''Consensus
 
@@ -201,10 +248,12 @@ data HeaderError
     -- ^ We don't have parent block
   | ErrH'ValidationFailure
   | ErrH'BadParent
+  deriving (Show,Eq)
 
 data BlockError
   = ErrB'UnknownBlock
   | ErrB'InvalidBlock
+  deriving (Show,Eq)
 
 
 ----------------------------------------------------------------
@@ -295,11 +344,13 @@ growNewHead bh = do
   bad        <- use badBlocks
   missing    <- use requiredBlocks
   --
-  let updates = traverseBlockIndex (const id) (<|) best bh Empty
+  let updates   = traverseBlockIndex (const id) (flip (|>)) best bh Empty
+      exclude b = b /= bh
+               && bhBID b `Set.notMember` missing
   case Seq.dropWhileL (\b -> bhBID b `Set.notMember` bad) updates of
     Empty -> return $ Head
                { bchHead    = bh
-               , bchMissing = Seq.dropWhileL (\b -> bhBID b `Set.notMember` missing) updates
+               , bchMissing = Seq.dropWhileL exclude updates
                }
     _ :<| bads -> do
       forM_ bads $ \b -> badBlocks %= Set.insert (bhBID b)
@@ -379,7 +430,7 @@ bestCandidate = do
                                        >>> sortOn (Down . bhWork)
                                         )
   case heads of
-    []  -> return ()
+    []  -> cleanCandidates
     h:_ -> do
       (best,st) <- use bestHead
       let rollback _    = lift . revertBlock
@@ -393,6 +444,7 @@ bestCandidate = do
       state' <- lift $ lift
               $ runExceptT
               $ traverseBlockIndexM rollback update best h st
+      -- traceShow ("BEST HEAD:",bhBID h) $ return ()
       case state' of
         Left  bid -> invalidateBlock bid >> bestCandidate
         Right s   -> bestHead .= (h,s)   >> cleanCandidates
