@@ -62,8 +62,13 @@ initializeBlockchainTables = do
     "CREATE TABLE IF NOT EXISTS current_state \
     \ ( snapshot BLOB NOT NULL ) -- SELECT COUNT(*) must be 1 at all times."
 
-storeBlock :: (BlockData b, MonadQueryRW m b) => Block b -> m ()
-storeBlock _blk = do return ()
+storeBlock :: (Serialise (BlockID b), Serialise (Block b), BlockData b, MonadQueryRW m b)
+           => Block b
+           -> m ()
+storeBlock blk = do
+  basicExecute
+    "INSERT INTO blocks (block_id, block_blob) VALUES (?, ?)"
+      (CBORed $ blockID blk,CBORed blk)
 
 retrieveBlock :: (Serialise (BlockID b), Serialise (Block b), MonadQueryRO m b)
               => BlockID b -> m (Maybe (Block b))
