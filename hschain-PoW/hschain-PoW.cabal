@@ -63,3 +63,23 @@ Library
                 --HSChain.PoW.Store.STM - commented out because it contains only mempool
                 HSChain.PoW.Store.Internal.Query
                 HSChain.PoW.Store.Internal.BlockDB
+
+
+-- Test suite
+Test-suite hschain-PoW-tests
+  Type:                exitcode-stdio-1.0
+  Ghc-options:         -Wall -threaded -rtsopts "-with-rtsopts=-N -qn1"
+  Default-Language:    Haskell2010
+  Build-Depends:       base              >=4.9 && <5
+                     , hschain-PoW
+                     , hschain-crypto
+                     , hschain-merkle
+                     , containers
+                     , microlens
+                     , mtl
+                     , tasty             >=0.11
+                     , tasty-quickcheck
+                     , tasty-hunit       >=0.10                      
+  hs-source-dirs:      test
+  Main-is:             Main.hs
+  Other-modules:       TM.Consensus
