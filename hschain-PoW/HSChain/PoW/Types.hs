@@ -98,7 +98,7 @@ instance JSON.ToJSON (BlockID b) where
 
 instance ( IsMerkle f
          , CBOR.Serialise (BlockID b)
-         , forall g. IsMerkle g => CBOR.Serialise (b g)
+         , CBOR.Serialise (b f)
          ) => CBOR.Serialise (GBlock b f)
 
 instance ( IsMerkle f
