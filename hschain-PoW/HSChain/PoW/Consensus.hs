@@ -43,9 +43,10 @@ import Data.List          (sortOn)
 import Data.Functor.Identity
 import Data.Map           (Map)
 import Data.Maybe
-import Data.Sequence      (Seq(Empty,(:<|),(:|>)),(|>),(<|))
+import Data.Sequence      (Seq(Empty,(:<|),(:|>)),(|>))
 import Data.Set           (Set)
 import Data.Ord           (Down(..))
+import qualified Data.Map        as Map
 import qualified Data.Set        as Set
 import qualified Data.Sequence   as Seq
 import Lens.Micro

@@ -15,7 +15,6 @@ import Lens.Micro
 import Test.Tasty
 import Test.Tasty.HUnit
 
-import HSChain.Crypto
 import HSChain.PoW.Types
 import HSChain.PoW.Consensus
 import HSChain.Types.Merkle.Types
@@ -150,13 +149,13 @@ bestHeadOK c h
     expected = blockID h
     got      = c^.bestHead._1.to bhBID
 
-candidatesOK :: Consensus m KV -> [Header KV] -> [String]
-candidatesOK c hs
-  | expected == headSet = []
-  | otherwise           = ["candidatesOK: mismatch"]
-  where
-    expected = Set.fromList $ blockID <$> hs
-    headSet  = Set.fromList $ map (bhBID . bchHead) $ c^.candidateHeads
+-- candidatesOK :: Consensus m KV -> [Header KV] -> [String]
+-- candidatesOK c hs
+--   | expected == headSet = []
+--   | otherwise           = ["candidatesOK: mismatch"]
+--   where
+--     expected = Set.fromList $ blockID <$> hs
+--     headSet  = Set.fromList $ map (bhBID . bchHead) $ c^.candidateHeads
 
 candidatesSeqOK :: Consensus m KV -> [(Header KV,[Header KV])] -> [String]
 candidatesSeqOK c hs
@@ -276,18 +275,17 @@ mineBlock val b = GBlock
 genesis :: Block KV
 genesis = head mockchain
 
-block1,block2,block3,block2',block3' :: Block KV
+block1,block2,block3,block2' :: Block KV
 [_,block1,block2,block3] = take 4 mockchain
 block2' = mineBlock "Z" block1
-block3' = mineBlock "Z" block2'
 
 
-header1,header2,header3,header2',header3' :: Header KV
-header1 = toHeader block1
-header2 = toHeader block2
-header3 = toHeader block3
+header1,header2,header3,header2' :: Header KV
+header1  = toHeader block1
+header2  = toHeader block2
+header3  = toHeader block3
 header2' = toHeader block2'
-header3' = toHeader block3'
+
 
 ----------------------------------------------------------------
 --
