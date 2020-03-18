@@ -33,6 +33,7 @@ import Test.Tasty.QuickCheck
 
 import HSChain.Blockchain.Internal.Engine.Types
 import HSChain.Control
+import HSChain.Control.Class
 import HSChain.Crypto
 import HSChain.Crypto.Classes.Hash
 import HSChain.Crypto.Ed25519 (Ed25519)

@@ -20,6 +20,7 @@ in
     buildInputs = [
       pkgs.libsodium
       pkgs.bls
+      pkgs.openssl
     ];
     packages = release."${ghc}";
     # NOTE: this is workaround for problem with building

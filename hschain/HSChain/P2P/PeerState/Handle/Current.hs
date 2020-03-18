@@ -20,7 +20,7 @@ import Lens.Micro
 import Lens.Micro.Mtl
 
 import HSChain.Blockchain.Internal.Types
-import HSChain.Control                   (atomicallyIO)
+import HSChain.Control.Util              (atomicallyIO)
 import HSChain.Crypto.Containers         (toPlainMap)
 import HSChain.Store
 import HSChain.Store.Internal.Proposals

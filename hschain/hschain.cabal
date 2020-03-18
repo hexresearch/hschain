@@ -23,6 +23,7 @@ Library
   Default-Language:    Haskell2010
   Build-Depends:       base              >=4.9 && <5
                      , hschain-crypto
+                     , hschain-control
                      , hschain-types
                      , hschain-net
                      , hschain-merkle
