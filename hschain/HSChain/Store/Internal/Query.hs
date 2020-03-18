@@ -82,6 +82,7 @@ import Pipes (Proxy)
 
 import HSChain.Types.Blockchain
 import HSChain.Control
+import HSChain.Control.Mutex
 import HSChain.Exceptions
 import HSChain.Logger.Class
 

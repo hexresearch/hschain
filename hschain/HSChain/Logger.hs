@@ -70,6 +70,7 @@ import Database.V5.Bloodhound
 import Katip.Scribes.ElasticSearch
 
 import HSChain.Control
+import HSChain.Control.Mutex
 import HSChain.Types.Blockchain
 import HSChain.Logger.Class
 import HSChain.Store.Internal.Query (MonadReadDB(..), MonadDB(..))

@@ -1,0 +1,24 @@
+Name:           hschain-control
+Version:        0.1
+Synopsis:       Concurrency utils for HSChain
+Description:
+  Primitives for working with concurrency in hschain projects
+
+Cabal-Version:  >= 1.10
+License:        AllRightsReserved
+License-File:   LICENSE
+Author:         Aleksey Khudyakov <alexey.skladnoy@gmail.com>
+Maintainer:     Aleksey Khudyakov <alexey.skladnoy@gmail.com>
+Homepage:       https://github.com/hexresearch/hschain
+Category:       Data
+Build-Type:     Simple
+
+
+
+Library
+  Ghc-options:         -Wall
+  Default-Language:    Haskell2010
+  Build-Depends:       base              >=4.9 && <5
+                     , exceptions
+  Exposed-modules:
+                  HSChain.Control.Mutex

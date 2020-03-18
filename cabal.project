@@ -3,6 +3,7 @@ packages:
          hschain
          hschain-crypto
          hschain-crypto-bls
+         hschain-control
          hschain-merkle
          hschain-types
          hschain-net

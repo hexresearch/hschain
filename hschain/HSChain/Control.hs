@@ -29,10 +29,6 @@ module HSChain.Control (
   , withMVarM
   , modifyMVarM
   , modifyMVarM_
-    -- * Mutex
-  , Mutex
-  , newMutex
-  , withMutex
     -- * throwing on Maybe and Either
   , throwNothing
   , throwNothingM
@@ -294,23 +290,6 @@ modifyMVarM m action =
     liftIO $ putMVar m a'
     return b
 
-
-----------------------------------------------------------------
--- Mutex
-----------------------------------------------------------------
-
-newtype Mutex = Mutex (MVar ())
-
-newMutex :: MonadIO m => m Mutex
-newMutex = Mutex <$> liftIO (newMVar ())
-
-withMutex :: (MonadMask m, MonadIO m) => Mutex -> m a -> m a
-withMutex (Mutex m) action = do
-  mask $ \restore -> do
-    () <- liftIO (takeMVar m)
-    a  <- restore action `onException` liftIO (putMVar m ())
-    liftIO (putMVar m ())
-    return a
 
 ----------------------------------------------------------------
 --
