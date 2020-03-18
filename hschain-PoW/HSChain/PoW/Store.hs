@@ -63,7 +63,7 @@ import Control.Monad.Trans.Reader
 --import qualified Data.List.NonEmpty as NE
 --import GHC.Generics              (Generic)
 
-import HSChain.PoW.Control                (MonadFork)
+import HSChain.Control.Class              (MonadFork)
 --import HSChain.Crypto
 --import HSChain.Crypto.Containers
 import HSChain.PoW.Logger                 (MonadLogger)
