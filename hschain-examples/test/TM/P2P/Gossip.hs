@@ -22,7 +22,7 @@ import qualified Data.Map.Strict as Map
 
 import HSChain.Blockchain.Internal.Engine.Types
 import HSChain.Blockchain.Internal.Types
-import HSChain.Control
+import HSChain.Control.Util
 import HSChain.Crypto
 import HSChain.Crypto.Containers
 import HSChain.Logger
