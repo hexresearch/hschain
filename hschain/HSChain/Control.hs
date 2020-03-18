@@ -14,16 +14,11 @@ module HSChain.Control (
     runConcurrently
     -- * Contol
   , iterateM
-  , atomicallyIO
     -- * Generalized MVar-code
   , withMVarM
   , modifyMVarM
   , modifyMVarM_
     -- * throwing on Maybe and Either
-  , throwNothing
-  , throwNothingM
-  , throwLeft
-  , throwLeftM
     -- * Products with lookup by type
   , (:*:)(..)
   , Has(..)
@@ -31,13 +26,12 @@ module HSChain.Control (
   ) where
 
 import Control.Concurrent.MVar
-import Control.Concurrent.STM
 import Control.Monad
 import Control.Monad.IO.Class
 import qualified Data.Aeson                       as JSON
 import Control.Concurrent  (killThread)
 import Control.Exception   (AsyncException, Exception(..))
-import Control.Monad.Catch (MonadMask, MonadThrow, bracket, mask, onException, throwM, try)
+import Control.Monad.Catch (MonadMask, bracket, mask, onException, throwM, try)
 import Data.Type.Equality
 import GHC.Exts              (Proxy#,proxy#)
 
@@ -124,22 +118,6 @@ modifyMVarM m action =
     return b
 
 
-----------------------------------------------------------------
---
-----------------------------------------------------------------
-
-throwNothing :: (Exception e, MonadThrow m) => e -> Maybe a -> m a
-throwNothing e = maybe (throwM e) pure
-
-throwNothingM :: (Exception e, MonadThrow m) => e -> m (Maybe a) -> m a
-throwNothingM e m = m >>= throwNothing e
-
-throwLeft :: (Exception e, MonadThrow m) => Either e a -> m a
-throwLeft = either throwM pure
-
-throwLeftM :: (Exception e, MonadThrow m) => m (Either e a) -> m a
-throwLeftM m = m >>= throwLeft
-
 
 ----------------------------------------------------------------
 -- Anonymous products
@@ -183,5 +161,3 @@ instance (Has b x) => HasCase (a :*: b) x 'False where
 iterateM :: (Monad m) => a -> (a -> m a) -> m b
 iterateM x0 f = let loop = f >=> loop in loop x0
 
-atomicallyIO :: MonadIO m => STM a -> m a
-atomicallyIO = liftIO . atomically

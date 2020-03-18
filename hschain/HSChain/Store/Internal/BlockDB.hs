@@ -54,7 +54,7 @@ import qualified Database.SQLite.Simple           as SQL
 import qualified Database.SQLite.Simple.FromField as SQL
 import           Database.SQLite.Simple             (Only(..))
 
-import HSChain.Control (throwNothing)
+import HSChain.Control.Util (throwNothing)
 import HSChain.Exceptions
 import HSChain.Types.Blockchain
 import HSChain.Types.Merkle.Types

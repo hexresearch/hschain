@@ -27,3 +27,4 @@ Library
                   HSChain.Control.Class
                   HSChain.Control.Mutex
                   HSChain.Control.Shepherd
+                  HSChain.Control.Util
