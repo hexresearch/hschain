@@ -8,4 +8,4 @@ module HSChain.PoW.Mining
   ( miningProcess
   ) where
 
-
+miningProcess :: BlockData b =>

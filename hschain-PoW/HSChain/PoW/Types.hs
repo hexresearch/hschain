@@ -16,8 +16,10 @@ import Control.Monad.IO.Class
 import Data.Time.Clock          (UTCTime)
 import Data.Time.Clock.POSIX    (getPOSIXTime,posixSecondsToUTCTime)
 import Data.Int
-import qualified Data.Aeson      as JSON
-import qualified Codec.Serialise as CBOR
+import Data.Word
+import qualified Data.ByteString.Lazy as LBS
+import qualified Data.Aeson           as JSON
+import qualified Codec.Serialise      as CBOR
 import GHC.Generics (Generic)
 
 import HSChain.Crypto
@@ -60,6 +62,7 @@ class ( Show   (Work b)
       , Monoid (Work b)
       , Show (BlockID b)
       , Ord  (BlockID b)
+      , Transaction (Tx b)
       , MerkleMap b
       ) => BlockData b where
   -- | ID of block. Usually it should be just a hash but we want to
@@ -68,6 +71,10 @@ class ( Show   (Work b)
   -- | Measure of work performed for creation of block or chain of
   --   blocks. Monoid instance should represent addition
   data Work b
+
+  -- | Transactions inside the block.
+  data TX b
+
   -- | Compute block ID out of block using only header.
   blockID :: IsMerkle f => GBlock b f -> BlockID b
   -- | Context free validation of header. It's mostly sanity check on
@@ -75,6 +82,20 @@ class ( Show   (Work b)
   validateHeader :: Header b -> Bool
   validateBlock  :: Block  b -> Bool
   blockWork :: GBlock b f -> Work b
+
+-- |Specification of a transaction in a block.
+--
+-- We may have to change their ordering within the block and
+-- we have to check it is safe to do so. We'll do that by
+-- computing what transactions are consuming and producing
+-- and then topologically sort them into fronts we can reorder
+-- individually.
+class Transaction tx where
+
+  -- |A set of resources transaction gets to consume and produce.
+  -- We represent them as bytestrings for now.
+  txConsumeProduceSets :: tx -> ([LBS.ByteString], [LBS.ByteString])
+
 
 -- | Generic block. This is just spine of blockchain, that is height
 --   of block, hash of previous block and
