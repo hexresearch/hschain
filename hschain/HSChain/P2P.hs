@@ -25,6 +25,8 @@ import Katip                  (sl)
 
 import HSChain.Blockchain.Internal.Engine.Types
 import HSChain.Control
+import HSChain.Control.Class
+import HSChain.Control.Shepherd
 import HSChain.Logger
 import HSChain.Monitoring
 import HSChain.Network.Types

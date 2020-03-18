@@ -20,5 +20,10 @@ Library
   Default-Language:    Haskell2010
   Build-Depends:       base              >=4.9 && <5
                      , exceptions
+                     , stm
+                     , transformers
+                     , containers
   Exposed-modules:
+                  HSChain.Control.Class
                   HSChain.Control.Mutex
+                  HSChain.Control.Shepherd

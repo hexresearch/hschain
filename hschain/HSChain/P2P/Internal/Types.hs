@@ -20,7 +20,8 @@ import qualified Data.Set        as Set
 import System.Random          (randomIO)
 import GHC.Generics           (Generic)
 
-import HSChain.Control                          (Shepherd,atomicallyIO)
+import HSChain.Control                          (atomicallyIO)
+import HSChain.Control.Shepherd                 (Shepherd)
 import HSChain.Blockchain.Internal.Engine.Types (NetworkCfg)
 import HSChain.Blockchain.Internal.Types        (Announcement, MessageTx, MessageRx, TMState)
 import HSChain.Crypto                           (Crypto, SignedState(..), CryptoHashable(..))
