@@ -37,6 +37,7 @@ import HSChain.Mock.Types
 import HSChain.Run
 
 import HSChain.Control
+import HSChain.Control.Class
 import HSChain.Store
 import HSChain.Monitoring
 import HSChain.Mock

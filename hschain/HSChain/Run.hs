@@ -35,7 +35,7 @@ import Data.Either                    (isRight)
 
 import HSChain.Blockchain.Internal.Engine
 import HSChain.Blockchain.Internal.Engine.Types
-import HSChain.Control
+import HSChain.Control.Class
 import HSChain.Logger
 import HSChain.Monitoring
 import HSChain.Network.Types

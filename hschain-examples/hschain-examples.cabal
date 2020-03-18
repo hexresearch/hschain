@@ -18,6 +18,7 @@ Library
   Default-Language:    Haskell2010
   Build-Depends:       base              >=4.9 && <5
                      , hschain-crypto
+                     , hschain-control
                      , hschain-types
                      , hschain-merkle
                      , hschain
@@ -57,6 +58,7 @@ Executable hschain-coin-node
                      , hschain-merkle
                      , hschain-types
                      , hschain-crypto
+                     , hschain-control
                      , hschain-examples
                      , aeson
                      , bytestring           >=0.10
@@ -87,6 +89,7 @@ Executable hschain-dioxane-node
                      , hschain-net
                      , hschain-merkle
                      , hschain-types
+                     , hschain-control
                      , hschain-crypto
                      , hschain-examples
                      , aeson
@@ -143,6 +146,7 @@ Test-suite hschain-tests
                      , hschain
                      , hschain-merkle
                      , hschain-crypto
+                     , hschain-control
                      , hschain-types
                      , hschain-net
                      , hschain-quickcheck

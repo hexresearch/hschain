@@ -35,6 +35,7 @@ import GHC.Generics (Generic)
 
 import HSChain.Blockchain.Internal.Engine.Types
 import HSChain.Control
+import HSChain.Control.Class
 import HSChain.Crypto         (publicKey)
 import HSChain.Logger
 import HSChain.Mock

@@ -15,7 +15,7 @@ import Control.Monad (foldM)
 import Control.Monad.IO.Class
 import Lens.Micro.Mtl
 
-import HSChain.Control (atomicallyIO)
+import HSChain.Control.Util (atomicallyIO)
 import HSChain.Blockchain.Internal.Types
 import HSChain.Types.Blockchain
 import HSChain.P2P.Internal.Types
