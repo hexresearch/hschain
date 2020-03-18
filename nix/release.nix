@@ -45,6 +45,7 @@ let
     hschain-net        = callInternal hsPkgs "hschain" ../hschain-net           {} "";
     hschain            = callInternal hsPkgs "hschain" ../hschain               {} "";
     hschain-examples   = callInternal hsPkgs "hschain" ../hschain-examples      {} "";
+    hschain-control    = callInternal hsPkgs "hschain" ../hschain-control       {} "";
     serialise-cddl     = callInternal hsPkgs "hschain" ../serialise-cddl        {} "";
   };
   # Build internal package
@@ -69,12 +70,14 @@ let
       hschain-types
       hschain-merkle
       hschain-quickcheck
+      hschain-control
       hschain-net
       hschain
       hschain-examples
     ];
     hschainPkgJs = p: with p; [
       hschain-crypto
+      hschain-control
       hschain-types
       hschain-merkle
     ];
