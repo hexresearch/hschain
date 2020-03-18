@@ -70,7 +70,8 @@ import Network.HTTP.Client.TLS
 import Database.V5.Bloodhound
 import Katip.Scribes.ElasticSearch
 
-import HSChain.PoW.Control
+import HSChain.Control.Class
+import HSChain.Control.Mutex
 import HSChain.PoW.Types
 import HSChain.PoW.Logger.Class
 import HSChain.PoW.Store.Internal.Query (MonadReadDB(..), MonadDB(..))

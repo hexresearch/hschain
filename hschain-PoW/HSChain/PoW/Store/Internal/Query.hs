@@ -81,7 +81,8 @@ import qualified Database.SQLite.Simple.FromField as SQL
 import Pipes (Proxy)
 
 import HSChain.PoW.Types
-import HSChain.PoW.Control
+import HSChain.Control.Mutex
+import HSChain.Control.Util
 import HSChain.PoW.Exceptions
 import HSChain.PoW.Logger.Class
 

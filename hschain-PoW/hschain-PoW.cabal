@@ -20,6 +20,7 @@ Library
   Default-Language:    Haskell2010
   Build-Depends:       base              >=4.9 && <5
                      , hschain-crypto
+                     , hschain-control
                      , hschain-net
                      , hschain-merkle
                      , aeson
@@ -55,7 +56,6 @@ Library
                 HSChain.PoW.Types
                 HSChain.PoW.Consensus
                 HSChain.Examples.Simple
-                HSChain.PoW.Control
                 HSChain.PoW.Exceptions
                 HSChain.PoW.Logger
                 HSChain.PoW.Logger.Class
