@@ -22,6 +22,7 @@ Library
                      , hschain-crypto
                      , hschain-net
                      , hschain-merkle
+                     , hschain-pow-func
                      , aeson
                      , base58-bytestring >=0.1
                      , bloodhound
