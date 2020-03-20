@@ -44,6 +44,7 @@ let
     hschain-merkle     = callInternal hsPkgs "hschain" ../hschain-merkle        {} "";
     hschain-net        = callInternal hsPkgs "hschain" ../hschain-net           {} "";
     hschain-PoW        = callInternal hsPkgs "hschain" ../hschain-PoW           {} "";
+    hschain-pow-func   = callInternal hsPkgs "hschain" ../proof-of-work         {} "";
     hschain            = callInternal hsPkgs "hschain" ../hschain               {} "";
     hschain-examples   = callInternal hsPkgs "hschain" ../hschain-examples      {} "";
     hschain-control    = callInternal hsPkgs "hschain" ../hschain-control       {} "";
