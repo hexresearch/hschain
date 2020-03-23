@@ -10,9 +10,10 @@
 --
 module HSChain.Examples.Simple where
 
-import Data.Monoid (Sum(..))
+import Codec.Serialise      (Serialise)
+import Data.Monoid          (Sum(..))
 import Data.Functor.Classes (Show1)
-import GHC.Generics (Generic)
+import GHC.Generics         (Generic)
 
 import HSChain.Crypto
 import HSChain.Crypto.Classes.Hash
@@ -41,7 +42,7 @@ instance BlockData KV where
     deriving newtype (Eq,Ord,Show)
     deriving         (Semigroup,Monoid) via Sum Int
   newtype BlockID KV = KV'BID (Hash SHA256)
-    deriving newtype (Show,Eq,Ord,CryptoHashable)
+    deriving newtype (Show,Eq,Ord,CryptoHashable,Serialise)
   --
   blockID b = let Hashed h = hashed b in KV'BID h
   validateHeader _ = True

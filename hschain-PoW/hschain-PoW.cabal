@@ -41,6 +41,7 @@ Library
                      , mtl
                      , pipes             >=4
                      , prometheus-client
+                     , random
                      , serialise         >=0.2
                      , sqlite-simple
                      , stm               >=2.5
@@ -57,6 +58,16 @@ Library
                 HSChain.PoW.Logger
                 HSChain.PoW.Logger.Class
                 HSChain.PoW.Store
+                HSChain.PoW.P2P
+                HSChain.PoW.P2P.Types
+                HSChain.PoW.P2P.PeerRegistry
+                HSChain.PoW.P2P.Handler.BlockRequests
+                HSChain.PoW.P2P.Handler.CatchupLock
+                HSChain.PoW.P2P.Handler.Consensus
+                HSChain.PoW.P2P.Handler.Peer
+                HSChain.PoW.P2P.Handler.PEX
+                HSChain.PoW.P2P.STM.PeerRegistry
+                HSChain.PoW.P2P.STM.NonceSet                
                 --HSChain.PoW.Store.STM - commented out because it contains only mempool
                 HSChain.PoW.Store.Internal.Query
                 HSChain.PoW.Store.Internal.BlockDB

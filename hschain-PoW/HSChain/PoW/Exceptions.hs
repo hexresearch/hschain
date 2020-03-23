@@ -7,10 +7,28 @@
 -- |
 module HSChain.PoW.Exceptions where
 
+import Codec.Serialise  (DeserialiseFailure)
 import Control.Exception
 import Data.Text       (Text,unpack)
 import HSChain.PoW.Types
 import HSChain.Crypto  (Hash,CryptoHash)
+
+----------------------------------------------------------------
+--
+----------------------------------------------------------------
+
+-- | Exception is thrown when peer deviates from protocol
+data PeerError
+  = InvalidMessage  !DeserialiseFailure
+  -- ^ Peer's message could not be decoded
+  | UnrequestedResponce
+  -- ^ Peer sends response without our request
+  | InvalidResponce
+  -- ^ Peer's response is invalid
+  | HandshakeError
+  deriving stock    (Show)
+  deriving anyclass (Exception)
+
 
 ----------------------------------------------------------------
 --

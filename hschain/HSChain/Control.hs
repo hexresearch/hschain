@@ -11,9 +11,8 @@
 {-# LANGUAGE UndecidableInstances  #-}
 -- |
 module HSChain.Control (
-    runConcurrently
     -- * Contol
-  , iterateM
+    iterateM
     -- * Generalized MVar-code
   , withMVarM
   , modifyMVarM
@@ -42,51 +41,6 @@ import HSChain.Control.Class
 --
 ----------------------------------------------------------------
 
-
--- | Run computations concurrently. As soon as one thread finishes
---   execution normally or abnormally all other threads are killed.
---   Function blocks until all child threads finish execution. If
---   thread is killed by exceptions it's rethrown. Being killed by
---   'AsyncException' is considered normal termination.
-runConcurrently
-  :: (MonadIO m, MonadMask m, MonadFork m)
-  => [m ()]              -- ^ Functions to run
-  -> m ()
-runConcurrently []      = return ()
-runConcurrently [act]   = act
-runConcurrently actions = do
-  -- We communicate return status of thread via channel since we don't
-  -- know a priory which will terminated first
-  ch <- liftIO Conc.newChan
-  -- Run child threads. We wait until one of threads terminate and
-  -- then kill all others.
-  (r, tids) <- bracket
-    -- Acquisution is done under mask and fork doesn't block so we're
-    -- couldn't be interrupted here
-    (forM actions $ \f -> forkWithUnmask $ \restore -> do
-        try (restore f) >>= liftIO . \case
-          Right _ -> Conc.writeChan ch (Right ())
-          Left  e -> case fromException e of
-            Just (_ :: AsyncException) -> Conc.writeChan ch (Right ())
-            _                          -> Conc.writeChan ch (Left  e)
-    )
-    -- throwTo and therefore killThread block and as such could be
-    -- interrupted and leave threads behind. In order to avoid this
-    -- and to parallelise killing we create threads per killThread
-    (liftIO . mapM (Conc.forkIO . killThread))
-    -- Wait until one of threads completes execution.
-    (\tids -> do r <- liftIO $ Conc.readChan ch
-                 return (r,tids)
-    )
-  -- Wait until all other threads terminate. We can be killed by async
-  -- exceptions here. But it doesn't matter at this point since we
-  -- sent black mark to every child thread
-  case tids of
-    []   -> return ()
-    _:ts -> liftIO $ forM_ ts $ const $ Conc.readChan ch
-  case r of
-    Right () -> return ()
-    Left  e  -> throwM e
 
 
 
