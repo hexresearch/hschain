@@ -503,9 +503,7 @@ instance CryptoHash alg => CryptoHashable (Hash alg) where
 
 -- | Null terminated string
 nullTerminatedString :: [Char] -> Bld.Builder
-nullTerminatedString xs
-  = foldMap (Bld.word32LE . fromIntegral . fromEnum) xs
- <> Bld.word32LE 0
+nullTerminatedString xs = Bld.stringUtf8 xs <> Bld.word32LE 0
 
 
 ----------------------------------------------------------------
