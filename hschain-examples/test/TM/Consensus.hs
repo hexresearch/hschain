@@ -250,8 +250,8 @@ testLocking k = testConsensus k $ do
   -- Consensus enters new height and block is proposed
   ()  <- expectStep 1 0 (StepNewHeight 0)
   ()  <- expectStep 1 0 StepProposal
-  bid <- if | k == proposer1 -> propBlockID <$> expectProp
-            | otherwise      -> proposeBlock (Round 0) proposer1 block1
+  bid <- if | k == proposerH1R0 -> propBlockID <$> expectProp
+            | otherwise         -> proposeBlock (Round 0) proposerH1R0 block1
   -- PREVOTE
   --
   -- All validators except "A" get PoLCa
@@ -264,7 +264,7 @@ testLocking k = testConsensus k $ do
   () <- voteFor (if k == kA then Nothing else Just bid) =<< expectPC
   when (k == kD) $ do
     precommit (Height 1) (Round 0) votersPC (Just bid)
-    precommit (Height 1) (Round 0) [k1]     Nothing
+  --
      -- "D" enters new height
   if | k == kD   -> expectStep 2 0 (StepNewHeight 0)
      -- "A,B,C" enter round 1
@@ -272,7 +272,7 @@ testLocking k = testConsensus k $ do
          expectStep 1 1 StepProposal
          -- Proposer must be locked on previously proposed block for
          -- which it precommitted
-         when (k == proposer2) $ do
+         when (k == proposerH1R1) $ do
            p <- expectProp
            unless (propBlockID p == bid && propPOL p == Just (Round 0))
              $ error "Invalid POL"
@@ -283,14 +283,9 @@ testLocking k = testConsensus k $ do
             | otherwise -> voteFor (Just bid) =<< expectPV
   where
     -- We name keys accordint to names in paper
-    kA = k1
-    kD = k4
-    --
-    proposer1 = proposerKey (Height 1) (Round 0)
-    proposer2 = proposerKey (Height 2) (Round 0)
-    --
+    kA:kD:_  = filter (/= proposerH1R0) $ filter (/= proposerH1R1) privK
     votersPV = filter (/=k) privK
-    votersPC = filter (/=k1) $ filter (/=k) privK
+    votersPC = filter (/=kA) $ filter (/=k) privK
 
 
 evidenceIsStoredImmediatelyProp :: IO ()
@@ -561,8 +556,9 @@ proposerKey h r = head [ k | k <- privK
   where    
     Just v = validatorByIndex valSet $ proposerChoice valSet h r
 
-proposerH1R0,proposerH2R0 :: PrivKey (Alg BData)
+proposerH1R0,proposerH1R1,proposerH2R0 :: PrivKey (Alg BData)
 proposerH1R0 = proposerKey (Height 1) (Round 0)
+proposerH1R1 = proposerKey (Height 1) (Round 1)
 proposerH2R0 = proposerKey (Height 2) (Round 0)
 
 othersH1R0 :: [PrivKey (Alg BData)]
