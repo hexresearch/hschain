@@ -297,7 +297,7 @@ evidenceIsStoredImmediatelyProp = withEnvironment $ do
     --
     -- Then generate correct proposal. Order is
     -- important since otherwise we'll just ignore proposal
-    _   <- proposeBlock (Round 0) k4           block1
+    _   <- proposeBlock (Round 0) kBad         block1
     bid <- proposeBlock (Round 0) proposerH1R0 block1
     ()  <- expectStep 1 0 StepProposal
     -- PREVOTE
@@ -310,6 +310,8 @@ evidenceIsStoredImmediatelyProp = withEnvironment $ do
       [(CBORed (OutOfTurnProposal _), False)]
         -> return ()
       _ -> error $ unlines $ "Incorrect evidence: " : map show ev
+  where
+    kBad = head $ othersH1R0
 
 
 evidenceIsStoredImmediatelyPV :: IO ()
@@ -346,8 +348,8 @@ evidenceIsStoredImmediatelyPC = withEnvironment $ do
     prevote (Height 1) (Round 0) othersH1R0 (Just bid)
     -- PRECOMMIT: vote normally
     () <- voteFor (Just bid) =<< expectPC
-    precommit (Height 1) (Round 0) [k4] (Just bid')
-    precommit (Height 1) (Round 0) [k4] (Just bid)
+    precommit (Height 1) (Round 0) [kBad] (Just bid')
+    precommit (Height 1) (Round 0) [kBad] (Just bid)
     expectStep 1 1 StepProposal
   ----------------
   queryRO selectAllEvidence >>= \case
@@ -355,6 +357,7 @@ evidenceIsStoredImmediatelyPC = withEnvironment $ do
       | conflictingVotesOK v1 v2 -> return ()
     ev -> error $ unlines $ "Incorrect evidence: " : map show ev
   where
+    kBad = head $ othersH1R0
     bid' = blockHash block1'
 
 evidenceIsRecordedProp :: IO ()
@@ -364,8 +367,10 @@ evidenceIsRecordedProp = withEnvironment $ do
     do ()   <- expectStep 1 0 (StepNewHeight 0)
        -- OUT OT TURN PROPOSAL
        ()  <- expectStep 1 0 StepProposal
-       _   <- proposeBlock (Round 1) k4 block1
-       bid <- propBlockID <$> expectProp
+       _   <- proposeBlock (Round 1) kBad block1
+       bid <- if
+         | proposerH1R0 == proposerH2R0 -> propBlockID <$> expectProp
+         | otherwise                    -> proposeBlock (Round 0) proposerH1R0 block1
        ()  <- voteFor (Just bid) =<< expectPV
        prevote   (Height 1) (Round 0) otherK (Just bid)
        ()  <- voteFor (Just bid) =<< expectPC
@@ -387,6 +392,7 @@ evidenceIsRecordedProp = withEnvironment $ do
     [(CBORed (OutOfTurnProposal _), True)] -> return ()
     ev -> error $ unlines $ "Incorrect evidence: " : map show ev
   where
+    kBad   = head $ othersH1R0
     otherK = take 2 $ filter (/=proposerH2R0) privK
 
 selectAllEvidence
@@ -400,15 +406,15 @@ evidenceValidated
   :: Bool
   -> ByzantineEvidence BData
   -> IO ()
-evidenceValidated ok ev = testConsensus k4 $ do
+evidenceValidated ok ev = testConsensus kBad $ do
   -- HEIGHT 1
   do ()  <- expectStep 1 0 (StepNewHeight 0)
      ()  <- expectStep 1 0 StepProposal
      bid <- proposeBlock (Round 0) proposerH1R0 (mockchain !! 1)     
      ()  <- voteFor (Just bid) =<< expectPV
-     prevote (Height 1) (Round 0) [k2,k3] (Just bid)
+     prevote (Height 1) (Round 0) keys (Just bid)
      ()  <- voteFor (Just bid) =<< expectPC
-     precommit (Height 1) (Round 0) [k2,k3] (Just bid)
+     precommit (Height 1) (Round 0) keys (Just bid)
   -- HEIGHT 2
   do expectStep 2 0 (StepNewHeight 0)
      expectStep 2 0 StepProposal
@@ -417,6 +423,8 @@ evidenceValidated ok ev = testConsensus k4 $ do
      ()  <- voteFor (expectedBID bid) =<< expectPV
      return ()
   where
+    kBad = head $ othersH1R0
+    keys = take 2 $ filter (/=kBad) privK
     expectedBID | ok        = Just
                 | otherwise = const Nothing
     b0 = mockchain !! 2
@@ -485,16 +493,12 @@ conflictingVotesOK
   -> Signed 'Unverified (Alg BData) (Vote v BData)
   -> Bool
 conflictingVotesOK v1 v2
-  | byzIdx /= signedKeyInfo v1 || byzIdx /= signedKeyInfo v2
-    = error "Wrong validator recorded"
   | isNothing (verifySignature valSet v1) || isNothing (verifySignature valSet v2)
     = error "Bad signature"
   | (voteBlockID . signedValue) v1 == (voteBlockID . signedValue) v2
     = error "Votes are same!"
   | otherwise
     = True
-  where
-    Just byzIdx = indexByValidator valSet $ publicKey k4
 
 
 ----------------------------------------------------------------
