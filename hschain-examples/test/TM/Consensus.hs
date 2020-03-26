@@ -264,7 +264,7 @@ testLocking k = testConsensus k $ do
   () <- voteFor (if k == kA then Nothing else Just bid) =<< expectPC
   when (k == kD) $ do
     precommit (Height 1) (Round 0) votersPC (Just bid)
-    precommit (Height 1) (Round 0) [k1]     Nothing
+    precommit (Height 1) (Round 0) [kA]     Nothing
      -- "D" enters new height
   if | k == kD   -> expectStep 2 0 (StepNewHeight 0)
      -- "A,B,C" enter round 1
@@ -272,15 +272,14 @@ testLocking k = testConsensus k $ do
          expectStep 1 1 StepProposal
          -- Proposer must be locked on previously proposed block for
          -- which it precommitted
-         when (k == proposer2) $ do
-           p <- expectProp
-           unless (propBlockID p == bid && propPOL p == Just (Round 0))
-             $ error "Invalid POL"
-            -- "A" could vote whatever
          if | k == kA   -> return ()
             -- Other validators should vote for locked block even if
             -- they didn't see proposal
-            | otherwise -> voteFor (Just bid) =<< expectPV
+            | otherwise -> do
+                p <- expectPV
+                unless (voteBlockID p == Just bid && voteRound p == Round 1)
+                  $ error "Invalid POL"
+                voteFor (Just bid) p
   where
     -- We name keys accordint to names in paper
     kA = k1
@@ -290,7 +289,7 @@ testLocking k = testConsensus k $ do
     proposer2 = proposerKey (Height 2) (Round 0)
     --
     votersPV = filter (/=k) privK
-    votersPC = filter (/=k1) $ filter (/=k) privK
+    votersPC = filter (/=kA) $ filter (/=k) privK
 
 
 evidenceIsStoredImmediatelyProp :: IO ()
