@@ -96,7 +96,6 @@ Library
                   HSChain.Store.Internal.BlockDB
                   HSChain.Store.Internal.Query
                   HSChain.Store.Internal.Proposals
-                  HSChain.Utils
   Other-modules:
                   HSChain.P2P.Internal.PeerRegistry
                   HSChain.P2P.Internal.Types
