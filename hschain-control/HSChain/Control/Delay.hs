@@ -1,5 +1,5 @@
 -- | Some small but useful functions
-module HSChain.Utils
+module HSChain.Control.Delay
   ( waitSec
   , waitMSec
   ) where

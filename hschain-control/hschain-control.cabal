@@ -28,3 +28,4 @@ Library
                   HSChain.Control.Mutex
                   HSChain.Control.Shepherd
                   HSChain.Control.Util
+                  HSChain.Control.Delay

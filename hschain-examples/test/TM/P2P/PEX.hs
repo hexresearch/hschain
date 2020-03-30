@@ -43,7 +43,7 @@ import Test.Tasty.HUnit
 
 import HSChain.Blockchain.Internal.Engine.Types
 import HSChain.Mock.Types
-import HSChain.Utils
+import HSChain.Control.Delay
 import qualified HSChain.Mock.KeyVal as Mock
 import           HSChain.Mock.KeyVal   (BData)
 import HSChain.Control

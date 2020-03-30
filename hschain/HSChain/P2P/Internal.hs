@@ -52,7 +52,7 @@ import HSChain.Types.Blockchain
 import HSChain.P2P.Internal.PeerRegistry
 import HSChain.P2P.Internal.Types
 import HSChain.P2P.PeerState.Handle
-import HSChain.Utils
+import HSChain.Control.Delay
 import qualified HSChain.Network.IpAddresses as Ip
 
 --
