@@ -21,7 +21,6 @@ module HSChain.Crypto.Classes.Hash (
   , hash
   , hashed
     -- * Hash API
-    -- $hash_encoding
   , CryptoName(..)
   , DataType(..)
   , Constructor(..)
@@ -73,13 +72,13 @@ import HSChain.Crypto.Classes
 -- Cryptographic hashes
 ----------------------------------------------------------------
 
--- | Cryptographic hash of some value
+-- | Cryptographic hash of sequence of bytes.
 newtype Hash alg = Hash BS.ByteString
   deriving stock   (Generic, Generic1)
   deriving newtype (Eq,Ord,Serialise,NFData)
 
--- | Newtype wrapper with phantom type tag which show hash of which
---   value is being calculated
+-- | Newtype wrapper of 'Hash' that carries type tag for keeping type
+--   of value that was hashed.
 newtype Hashed alg a = Hashed (Hash alg)
   deriving stock   ( Show, Read, Generic, Generic1)
   deriving newtype ( Eq,Ord,NFData, Serialise
@@ -93,16 +92,20 @@ instance Eq1 (Hashed alg) where
   liftEq _ (Hashed h1) (Hashed h2) = h1 == h2
 
 
--- | Name of cryptographic algorithm
+-- | Name of cryptographic algorithm. It's used in implementation of
+--   'CryptoHashable' instances of 'Hash'
 newtype CryptoName alg = CryptoName { getCryptoName :: ByteString }
   deriving stock   (Show)
   deriving newtype (IsString)
 
--- | Algorithm for computing cryptographic hash. We expose fold
---   structure of hash function. Folding is performed inside ST monad
---   which allows to use mutable accumulators for performance.
+-- | Algorithm for computing cryptographic hash. In the name of
+--   simlicity we do not expose fold structure of hash function. In
+--   practice lazy bytestrings turned out to be good enough
+--   substitute.
 class (ByteReprSized (Hash alg)) => CryptoHash alg where
+  -- | Compute hash of strict bytestring
   hashBlob     :: BS.ByteString -> Hash alg
+  -- | Compute hash of lazy bytestring
   hashLazyBlob :: BL.ByteString -> Hash alg
   -- | Name of algorithm
   hashAlgorithmName :: CryptoName alg
@@ -137,7 +140,8 @@ class CryptoTypeHashable a where
   hashTypeStep :: proxy a -> Bld.Builder
 
 
--- | Compute hash of value using 'CryptoHashable'
+-- | Compute hash of haskell value. Mapping of value to bytes which
+--   are consequently hashed is described by 'CryptoHashable' type class.
 hash :: (CryptoHash alg, CryptoHashable a) => a -> Hash alg
 {-# INLINABLE hash #-}
 hash = hashLazyBlob
@@ -185,16 +189,6 @@ instance JSON.ToJSONKey   (Hash alg)
 -- CryptoHashable instances
 ----------------------------------------------------------------
 
--- $hash_encoding
---
--- Encoding uses following structure.
---
---  1. Each data type is prefixed with type tag. In haskell code it's
---     represented by 'DataType'
---
-
-
-
 -- | Data type tag for instances of 'CryptoHashable'. Its instances
 --   just writes bare type tag. It
 data DataType
@@ -211,9 +205,9 @@ data DataType
   | PrimW32                     -- ^ Unsigned 32-bit integer
   | PrimW64                     -- ^ Unsigned 64-bit integer
   | PrimChar                    -- ^ Char
-  | PrimTruth
-  | PrimFalse
-  -- Structural data types composite types
+  | PrimTruth                   -- ^ Truth value
+  | PrimFalse                   -- ^ False value
+
   | TyTuple    !Word16
   -- ^ Tuple of size N
   | TySequence !Word32

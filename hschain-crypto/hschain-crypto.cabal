@@ -2,25 +2,25 @@ Name:           hschain-crypto
 Version:        0.1
 Synopsis:       Simple cryptography API for HSChain
 Description:
-  Simple cryptography API for HSChain
+  Wrappers for cryptohgraphy that could be used with both GHC and
+  GHCJS.
+  .
+  By default GHC build uses cryptonite but could use libsodium as well
+  (controlled by libsodium flag). GHCJS build wraps tweetnacl.js. APIs
+  are identical in both cases
 
 Cabal-Version:  >= 1.10
 License:        MIT
 License-File:   LICENSE
 Author:         Aleksey Khudyakov <alexey.skladnoy@gmail.com>
 Maintainer:     Aleksey Khudyakov <alexey.skladnoy@gmail.com>
-Homepage:       https://github.com/hexresearch/thundermint
+Homepage:       https://github.com/hexresearch/hschain
 Category:       Data
 Build-Type:     Simple
 
 
 flag libsodium
   Description: Use libsodium for cryptography
-  Default:     False
-  Manual:      True
-
-flag android-impl
-  Description: Build for android
   Default:     False
   Manual:      True
 

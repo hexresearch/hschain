@@ -18,9 +18,9 @@
 {-# LANGUAGE TypeOperators              #-}
 {-# LANGUAGE UndecidableInstances       #-}
 -- |
--- Simple API for cryptographic operations. Crypto algorithms are
--- selected by type and all necessary types are implemented as data
--- families
+-- Type class based API for cryptographic operations where types
+-- describe cryprographic algorithms and data types such as
+-- public\/private keys, etc are implemented as data families
 module HSChain.Crypto (
     -- * Cryptographic hashes
     Hash(..)
@@ -131,6 +131,7 @@ instance (CryptoHash hashA, CryptoHash hashB) => CryptoHash (hashA :<<< hashB) w
 -- Cryptographic hashes
 ----------------------------------------------------------------
 
+-- | Hash-based Message Authetication Code (HMAC) according to RFC2104.
 newtype HMAC alg = HMAC (Hash alg)
   deriving stock   ( Show, Read, Generic, Generic1)
   deriving newtype ( Eq, Ord, NFData, Serialise, ByteRepr
