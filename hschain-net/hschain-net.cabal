@@ -2,7 +2,7 @@ Name:           hschain-net
 Version:        0.1
 Synopsis:       Abstract network API for hschain
 Description:
-  Abstract network API for hschain
+  This package provide abstraction over network for messge passing
 
 Cabal-Version:  >= 1.10
 License:        MIT
