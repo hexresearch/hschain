@@ -119,7 +119,6 @@ executable hschain-sql-node
                      , unordered-containers >=0.2.5.0
                      --
                      , katip              == 0.7.0.0
-                     , katip-elasticsearch
                      , http-client-tls
                      , bloodhound
                      , network            >=2.6.0.0 && <2.9

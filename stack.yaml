@@ -42,7 +42,6 @@ extra-deps:
     - bytestring-arbitrary-0.1.2
     - hedgehog-quickcheck-0.1
     - katip-0.6.3.0
-    - katip-elasticsearch-0.5.1.0
     - prometheus-client-1.0.0
     - prometheus-metrics-ghc-1.0.0
     - serialise-0.2.1.0

@@ -8,7 +8,6 @@
   # Common overrides for librarise
   haskell = {
     Diff                = { check = false; };
-    katip-elasticsearch = { check = false; };
     #
     hschain-crypto = { haddock = false; };
     hschain-types  = { haddock = false; };
