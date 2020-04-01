@@ -182,6 +182,8 @@ class ( ByteReprSized (Signature   alg)
   verifyBlobSignature :: PublicKey alg -> ByteString -> Signature alg -> Bool
 
 
+-- | Sign haskell value. It's hashed first then resulting hash is
+--   signed.
 signHashed :: forall alg a. (Crypto alg, CryptoHashable a)
            => PrivKey alg -> a -> Signature alg
 {-# INLINABLE signHashed #-}
@@ -189,6 +191,8 @@ signHashed pk a = signBlob pk bs
   where
     Hash bs = hash a :: Hash alg
 
+-- | Verify signature of haskell value. Signature should be generated
+--   by 'signHashed'
 verifySignatureHashed :: forall alg a. (Crypto alg, CryptoHashable a)
            => PublicKey alg -> a -> Signature alg -> Bool
 {-# INLINABLE verifySignatureHashed #-}
