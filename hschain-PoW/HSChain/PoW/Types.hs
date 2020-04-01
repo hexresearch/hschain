@@ -73,7 +73,7 @@ class ( Show   (Work b)
   data Work b
 
   -- | Transactions inside the block.
-  data TX b
+  data Tx b
 
   -- | Compute block ID out of block using only header.
   blockID :: IsMerkle f => GBlock b f -> BlockID b
@@ -94,7 +94,7 @@ class Transaction tx where
 
   -- |A set of resources transaction gets to consume and produce.
   -- We represent them as bytestrings for now.
-  txConsumeProduceSets :: tx -> ([LBS.ByteString], [LBS.ByteString])
+  txConsumeProduceSets :: Ord a => tx -> ([a], [a])
 
 
 -- | Generic block. This is just spine of blockchain, that is height
@@ -127,7 +127,32 @@ type Header b = GBlock b Hashed
 type Block  b = GBlock b IdNode
 
 
+-- |The specification of proof-of-work algorithms for blockchains (the @bc@ type).
+--
+-- PoW algorithm for some blockchain has a type @Solution@ of a header-specific puzzle
+-- associated with it.
+-- The solution is a part of a block.
+--
+--
+class Optimizable (PowParameters bc) => ProofOfWork bc where
 
+  -- |The type of a puzzle solution.
+  data Puzzle bc
+
+  -- |The parameters of a PoW algorithm - it may be how work is split between
+  -- parts of an algorithm, subalgorithms choice, etc.
+  --
+  -- See @Optimizable@ class.
+  data PoWParameters bc
+
+-- |How to estimate good parameters.
+--
+-- We use bayesian inference for that.
+class Optimizable p where
+  -- |Optimizable parameters should be representable as a vector of doubles
+  -- Thus we need a projection that tells us 
+
+  -- |Optimizable things can be split
 
 ----------------------------------------
 -- instances
