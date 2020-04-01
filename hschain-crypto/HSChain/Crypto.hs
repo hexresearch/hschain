@@ -45,8 +45,6 @@ module HSChain.Crypto (
   , signHashed
   , verifySignatureHashed
   , CryptoSignHashed(..)
-    -- * Aggregations API
-  , CryptoAggregabble(..)
     -- ** Diffie–Hellman key exchange
   , DHSecret
   , CryptoDH(..)
@@ -205,16 +203,6 @@ class ( ByteReprSized (Signature   alg)
   signHash            :: PrivKey   alg -> Hash alg -> Signature alg
   -- | Check that signature is correct
   verifyHashSignature :: PublicKey alg -> Hash alg -> Signature alg -> Bool
-
-
--- Aggregate some objects in one
-class CryptoAggregabble alg where
-    type AggregatedPublicKey alg
-    type AggregatedPrivKey alg
-    type AggregatedSignature alg
-    aggregatePublicKeys :: [PublicKey alg] -> AggregatedPublicKey alg
-    aggregatePrivKeys   :: [PrivKey alg]   -> AggregatedPrivKey alg
-    aggregateSignatures :: [Signature alg] -> AggregatedSignature alg
 
 
 -- | Shared secret produced by Diffie-Hellman key exchange algorithm.
