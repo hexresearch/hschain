@@ -41,8 +41,6 @@ module HSChain.Crypto (
   , CryptoAsymmetric(..)
     -- * Signatures API
   , Signature(..)
-  , Fingerprint(..)
-  , fingerprint
   , CryptoSign(..)
   , signHashed
   , verifySignatureHashed
@@ -219,20 +217,6 @@ class CryptoAggregabble alg where
     aggregateSignatures :: [Signature alg] -> AggregatedSignature alg
 
 
--- | Public key fingerprint (hash of public key)
-newtype Fingerprint hash alg = Fingerprint (Hashed hash (PublicKey alg))
-  deriving stock   ( Generic)
-  deriving newtype ( Eq, Ord, Serialise, NFData, ByteRepr
-                   , JSON.FromJSON, JSON.ToJSON, JSON.ToJSONKey, JSON.FromJSONKey)
-
-instance (CryptoHash hash, ByteReprSized (Hash hash)) => ByteReprSized (Fingerprint hash alg) where
-  type ByteSize (Fingerprint hash alg) = ByteSize (Hash hash)
-
--- | Compute fingerprint or public key fingerprint
-fingerprint :: (CryptoAsymmetric alg, CryptoHash hash) => PublicKey alg -> Fingerprint hash alg
-fingerprint = Fingerprint . Hashed . hashBlob . encodeToBS
-
-
 -- | Shared secret produced by Diffie-Hellman key exchange algorithm.
 data family DHSecret alg
 
@@ -328,17 +312,6 @@ instance CryptoDH alg => JSON.FromJSON (DHSecret alg) where
 instance CryptoDH alg => JSON.FromJSONKey (DHSecret alg)
 instance CryptoDH alg => JSON.ToJSONKey   (DHSecret alg)
 
-
-----------------------------------------
-
-instance Show (Fingerprint hash alg) where
-  showsPrec n (Fingerprint (Hashed (Hash bs)))
-    = showParen (n > 10)
-    $ showString "Fingerprint " . shows (encodeBSBase58 bs)
-
-instance Read (Fingerprint hash alg) where
-  readPrec = do void $ lift $ string "Fingerprint" >> some (char ' ')
-                coerce <$> readPrecBSBase58
 
 ----------------------------------------
 
@@ -598,12 +571,6 @@ data SignedState = Verified
 
 
 
-
-instance (CryptoAsymmetric alg, CryptoHash hash) => CryptoHashable (Fingerprint hash alg) where
-  hashStep f
-    = hashStep (CryFingerprint (getCryptoName (hashAlgorithmName     @hash))
-                               (getCryptoName (asymmKeyAlgorithmName @alg)))
-   <> hashStep (encodeToBS f)
 
 instance CryptoAsymmetric alg => CryptoHashable (PublicKey alg) where
   hashStep k

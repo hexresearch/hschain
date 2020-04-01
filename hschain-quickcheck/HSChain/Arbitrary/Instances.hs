@@ -39,9 +39,6 @@ instance Arbitrary (Hash alg) => Arbitrary (Hashed alg a) where
   arbitrary = Hashed <$> arbitrary
   shrink  _ = []
 
-instance CryptoHash hash => Arbitrary (Fingerprint hash alg) where
-  arbitrary = Fingerprint . Hashed . Hash <$> Arb.fastRandBs (hashSize (Proxy @hash))
-
 instance CryptoSign alg => Arbitrary (Signature alg) where
   arbitrary = Signature <$> Arb.fastRandBs (signatureSize (Proxy @alg))
   shrink _ = []
