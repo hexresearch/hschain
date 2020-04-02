@@ -44,7 +44,7 @@ data MerkleTree container alg a =
 data None a = None
 data One a = One a
 
--- |A tree that knows nothing but hash of the root.
+-- |A tree that knows nothing but the hash of the root.
 type MerkleRoot alg a = MerkleTree None alg a
 
 -- |A partially complete tree.
@@ -60,6 +60,7 @@ toCompleteTree (Node nhash (Just (Left (l, r)))) =
 toCompleteTree (Node nhash (Just (Right a))) =
   Just $ Node nhash $ One $ Right $ a
 toCompleteTree (Node _hash Nothing) = Nothing
+
 
 main :: IO ()
 main = return ()

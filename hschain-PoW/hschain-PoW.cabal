@@ -67,7 +67,7 @@ Library
 
 
 executable hschain-PoW-concrete
-  ghc-options:         -Wall -threaded -rtsopts "-with-rtsopts=-N -qn1"
+  ghc-options:         -Wall -threaded -rtsopts "-with-rtsopts=-N -qn1" -main-is HSChain.Examples.Concrete.main
   main-is:             HSChain/Examples/Concrete.hs
   build-depends:       base              >= 4.9 && <5
                      , hschain-crypto
