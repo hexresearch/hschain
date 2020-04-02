@@ -38,7 +38,6 @@ packages:
 # (e.g., acme-missiles-0.3)
 extra-deps:
     - base58-bytestring-0.1.0
-    - bloodhound-0.16.0.0
     - bytestring-arbitrary-0.1.2
     - hedgehog-quickcheck-0.1
     - katip-0.6.3.0
