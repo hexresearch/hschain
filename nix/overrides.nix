@@ -8,7 +8,6 @@
   # Common overrides for librarise
   haskell = {
     Diff                = { check = false; };
-    katip-elasticsearch = { check = false; };
     #
     hschain-crypto = { haddock = false; };
     hschain-types  = { haddock = false; };
@@ -16,7 +15,6 @@
   };
   # Compiler specific overrides
   ghc865 = {
-    bloodhound           = { check = false; jailbreak = true;};
     # https://github.com/tsuraan/bytestring-arbitrary/issues/10
     bytestring-arbitrary = { jailbreak = true; };
   };
