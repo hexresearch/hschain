@@ -1,1 +1,0 @@
-deploy/group_vars/all/vault.yml filter=git-crypt diff=git-crypt
