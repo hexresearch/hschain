@@ -3,6 +3,7 @@
 {-# LANGUAGE DerivingVia                #-}
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE PatternGuards              #-}
 {-# LANGUAGE RecordWildCards            #-}
 {-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE TypeFamilies               #-}
@@ -75,8 +76,18 @@ toCompleteTree (Node _hash Nothing) = Nothing
 -- to the hashes of their children.
 data TreeDB alg a = TreeDB
   { treeDBCompleted     :: Map.Map (MerkleRoot alg a) (CompleteTree alg a)
+    -- ^ A list of completed trees. Only grows.
   , treeDBPartials      :: Map.Map (MerkleRoot alg a) (PartialTree alg a)
-  , treeDBWaitsFor      :: Map.Map (MerkleRoot alg a) (PartialTree alg a)
+    -- ^ A list of partial trees.
+  , treeDBOpenPartials  :: Map.Map (MerkleRoot alg a) ()
+    -- ^ A list of partials that are still open (have Nothing in the container part).
+  }
+
+emptyTreeDB :: TreeDB alg a
+emptyTreeDB = TreeDB
+  { treeDBCompleted    = Map.empty
+  , treeDBPartials     = Map.empty
+  , treeDBOpenPartials = Map.empty
   }
 
 
@@ -86,13 +97,51 @@ toTreeRoot (Node rhash _) = Node rhash None
 
 -- |Add a set of complete trees into database and propagate completeness
 -- upward.
-addCompleted :: TreeDB alg a -> [CompleteTree alg a] -> TreeDB alg a
-addCompleted treeDB@TreeDB{..} newComplete'
-  | Map.null unseenCompleteMap = treeDB
-  | otherwise = error "TDB"
+addCompleted :: TreeDB alg a -> Map.Map (MerkleRoot alg a) (CompleteTree alg a) -> TreeDB alg a
+addCompleted treeDB newCompleteMap
+  | Map.null unseenCompleteMap = treeDB -- nothing had changed.
+  | otherwise = addCompleted updatedDB nextCompleted
   where
-    newCompleteMap = Map.fromList $ map (\c -> (toTreeRoot c, c)) newComplete'
-    unseenCompleteMap = Map.difference newCompleteMap treeDBCompleted
+    unseenCompleteMap = Map.difference newCompleteMap nextCompleted
+    updatedDB = treeDB
+                  { treeDBCompleted = Map.unions
+                                      [ treeDBCompleted treeDB
+                                      , newCompleteMap
+                                      ]
+                  , treeDBPartials  = Map.difference (treeDBPartials treeDB) newCompleteMap
+                  , treeDBOpenPartials = Map.difference (treeDBOpenPartials treeDB) newCompleteMap
+                  }
+    movePartials partial completed = case partial of
+        Node phash (Just (Left (l, r))) -- we lift only inner nodes here.
+          | Just ln <- Map.lookup (toTreeRoot l) newCompleteMap
+          , Just rn <- Map.lookup (toTreeRoot r) newCompleteMap
+          -> Map.insert
+                   (toTreeRoot partial)
+                   (Node phash (One (Left (ln, rn))))
+                   completed
+        _ -> completed
+    nextCompleted = Map.foldr movePartials Map.empty $ treeDBPartials treeDB
+
+addPartials :: TreeDB alg a -> [PartialTree alg a] -> TreeDB alg a
+addPartials treeDB partials = addCompleted updatedTreeDB completed
+  where
+    expand this@(Node _ (Just inner)) = Map.insert (toTreeRoot this) this $ case inner of
+      Left (l, r) -> Map.union (expand l) (expand r)
+      Right _     -> Map.empty
+    expand openNode = Map.singleton (toTreeRoot openNode) openNode
+    allTrees = Map.unions $ map expand partials
+    isOpen (Node _ Nothing) = True
+    isOpen _                = False
+    (open', notOpen) = Map.partition isOpen allTrees
+    open = Map.map (const ()) open'
+    isCompleteLeaf (Node _ (Just (Right _))) = True
+    isCompleteLeaf _                         = False
+    (completed', realPartials) = Map.partition isCompleteLeaf notOpen
+    completed = Map.map (\(Node h (Just (Right a))) -> Node h $ One $ Right a) completed'
+    updatedTreeDB = treeDB
+                      { treeDBPartials = Map.union (treeDBPartials treeDB) realPartials
+                      , treeDBOpenPartials = Map.union (treeDBOpenPartials treeDB) open
+                      }
 
 main :: IO ()
 main = return ()
