@@ -35,7 +35,7 @@ instance ByteReprSized (Signature BLS) where
 instance ByteReprSized (Hash BLS) where
     type ByteSize (Hash BLS)    = 32
 
-
+{-
 instance CryptoAggregabble BLS where
     type AggregatedPublicKey BLS = PublicKey BLS
     type AggregatedPrivKey BLS   = PrivKey BLS
@@ -53,7 +53,7 @@ instance CryptoAggregabble BLS where
             $ Bls.insecureSignatureSerialize
             $ Bls.insecureSignatureAggregate
             $ map (\(Signature sig) -> fromJust $ Bls.insecureSignatureDeserialize sig) sigs
-
+-}
 
 instance CryptoAsymmetric BLS where
     publicKey (PrivKey privKey) = PublicKey $ Bls.privateKeyGetPublicKey privKey

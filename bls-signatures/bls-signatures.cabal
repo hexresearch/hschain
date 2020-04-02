@@ -5,7 +5,7 @@ name:                bls-signatures
 version:             0.0.0.1
 -- synopsis:
 -- description:
-license:             BSD3
+license:             MIT
 license-file:        LICENSE
 author:              Dmitry Krylov
 maintainer:          dima@krylov.ws

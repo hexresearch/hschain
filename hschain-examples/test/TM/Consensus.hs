@@ -144,30 +144,31 @@ testConsensusNormal nPV nPC k = testConsensus k $ do
 -- Tets generations of two blocks. Mostly in order to check whether
 -- mockchain is generated properly
 test2Blocks :: IO ()
-test2Blocks = testConsensus k4 $ do
+test2Blocks = testConsensus kOther $ do
   -- H=1
   do ()  <- expectStep 1 0 (StepNewHeight 0)
      ()  <- expectStep 1 0 StepProposal
      bid <- proposeBlock (Round 0) k_H1 $ mockchain !! 1
      -- PREVOTE
      ()  <- voteFor (Just bid) =<< expectPV
-     prevote (Height 1) (Round 0) [k1,k2] (Just bid)
+     prevote (Height 1) (Round 0) [k_H1,k_H2] (Just bid)
       -- PRECOMMIT
      () <- voteFor (Just bid) =<< expectPC
-     precommit (Height 1) (Round 0) [k1,k2] (Just bid)
+     precommit (Height 1) (Round 0) [k_H1,k_H2] (Just bid)
   -- H=2
   do ()  <- expectStep 2 0 (StepNewHeight 0)
      ()  <- expectStep 2 0 StepProposal
      bid <- proposeBlock (Round 0) k_H2 $ mockchain !! 2
      -- PREVOTE
      ()  <- voteFor (Just bid) =<< expectPV
-     prevote (Height 2) (Round 0) [k1,k2] (Just bid)
+     prevote (Height 2) (Round 0) [k_H1,k_H2] (Just bid)
      --  -- PRECOMMIT
      -- () <- voteFor (Just bid) =<< expectPC
      -- precommit (Height 2) (Round 0) [k1,k2] (Just bid)
   where
     k_H1 = proposerKey (Height 1) (Round 0)
     k_H2 = proposerKey (Height 2) (Round 0)
+    kOther:_ = filter (/=k_H1) $ filter (/=k_H2) privK
 
 -- Vote is split between two block.
 --
@@ -249,8 +250,8 @@ testLocking k = testConsensus k $ do
   -- Consensus enters new height and block is proposed
   ()  <- expectStep 1 0 (StepNewHeight 0)
   ()  <- expectStep 1 0 StepProposal
-  bid <- if | k == proposer1 -> propBlockID <$> expectProp
-            | otherwise      -> proposeBlock (Round 0) proposer1 block1
+  bid <- if | k == proposerH1R0 -> propBlockID <$> expectProp
+            | otherwise         -> proposeBlock (Round 0) proposerH1R0 block1
   -- PREVOTE
   --
   -- All validators except "A" get PoLCa
@@ -263,7 +264,7 @@ testLocking k = testConsensus k $ do
   () <- voteFor (if k == kA then Nothing else Just bid) =<< expectPC
   when (k == kD) $ do
     precommit (Height 1) (Round 0) votersPC (Just bid)
-    precommit (Height 1) (Round 0) [k1]     Nothing
+  --
      -- "D" enters new height
   if | k == kD   -> expectStep 2 0 (StepNewHeight 0)
      -- "A,B,C" enter round 1
@@ -271,7 +272,7 @@ testLocking k = testConsensus k $ do
          expectStep 1 1 StepProposal
          -- Proposer must be locked on previously proposed block for
          -- which it precommitted
-         when (k == proposer2) $ do
+         when (k == proposerH1R1) $ do
            p <- expectProp
            unless (propBlockID p == bid && propPOL p == Just (Round 0))
              $ error "Invalid POL"
@@ -282,14 +283,9 @@ testLocking k = testConsensus k $ do
             | otherwise -> voteFor (Just bid) =<< expectPV
   where
     -- We name keys accordint to names in paper
-    kA = k1
-    kD = k4
-    --
-    proposer1 = proposerKey (Height 1) (Round 0)
-    proposer2 = proposerKey (Height 2) (Round 0)
-    --
+    kA:kD:_  = filter (/= proposerH1R0) $ filter (/= proposerH1R1) privK
     votersPV = filter (/=k) privK
-    votersPC = filter (/=k1) $ filter (/=k) privK
+    votersPC = filter (/=kA) $ filter (/=k) privK
 
 
 evidenceIsStoredImmediatelyProp :: IO ()
@@ -301,7 +297,7 @@ evidenceIsStoredImmediatelyProp = withEnvironment $ do
     --
     -- Then generate correct proposal. Order is
     -- important since otherwise we'll just ignore proposal
-    _   <- proposeBlock (Round 0) k4           block1
+    _   <- proposeBlock (Round 0) kBad         block1
     bid <- proposeBlock (Round 0) proposerH1R0 block1
     ()  <- expectStep 1 0 StepProposal
     -- PREVOTE
@@ -314,6 +310,8 @@ evidenceIsStoredImmediatelyProp = withEnvironment $ do
       [(CBORed (OutOfTurnProposal _), False)]
         -> return ()
       _ -> error $ unlines $ "Incorrect evidence: " : map show ev
+  where
+    kBad = head $ othersH1R0
 
 
 evidenceIsStoredImmediatelyPV :: IO ()
@@ -350,8 +348,8 @@ evidenceIsStoredImmediatelyPC = withEnvironment $ do
     prevote (Height 1) (Round 0) othersH1R0 (Just bid)
     -- PRECOMMIT: vote normally
     () <- voteFor (Just bid) =<< expectPC
-    precommit (Height 1) (Round 0) [k4] (Just bid')
-    precommit (Height 1) (Round 0) [k4] (Just bid)
+    precommit (Height 1) (Round 0) [kBad] (Just bid')
+    precommit (Height 1) (Round 0) [kBad] (Just bid)
     expectStep 1 1 StepProposal
   ----------------
   queryRO selectAllEvidence >>= \case
@@ -359,6 +357,7 @@ evidenceIsStoredImmediatelyPC = withEnvironment $ do
       | conflictingVotesOK v1 v2 -> return ()
     ev -> error $ unlines $ "Incorrect evidence: " : map show ev
   where
+    kBad = head $ othersH1R0
     bid' = blockHash block1'
 
 evidenceIsRecordedProp :: IO ()
@@ -368,8 +367,10 @@ evidenceIsRecordedProp = withEnvironment $ do
     do ()   <- expectStep 1 0 (StepNewHeight 0)
        -- OUT OT TURN PROPOSAL
        ()  <- expectStep 1 0 StepProposal
-       _   <- proposeBlock (Round 1) k4 block1
-       bid <- propBlockID <$> expectProp
+       _   <- proposeBlock (Round 1) kBad block1
+       bid <- if
+         | proposerH1R0 == proposerH2R0 -> propBlockID <$> expectProp
+         | otherwise                    -> proposeBlock (Round 0) proposerH1R0 block1
        ()  <- voteFor (Just bid) =<< expectPV
        prevote   (Height 1) (Round 0) otherK (Just bid)
        ()  <- voteFor (Just bid) =<< expectPC
@@ -391,6 +392,7 @@ evidenceIsRecordedProp = withEnvironment $ do
     [(CBORed (OutOfTurnProposal _), True)] -> return ()
     ev -> error $ unlines $ "Incorrect evidence: " : map show ev
   where
+    kBad   = head $ othersH1R0
     otherK = take 2 $ filter (/=proposerH2R0) privK
 
 selectAllEvidence
@@ -404,15 +406,15 @@ evidenceValidated
   :: Bool
   -> ByzantineEvidence BData
   -> IO ()
-evidenceValidated ok ev = testConsensus k4 $ do
+evidenceValidated ok ev = testConsensus kBad $ do
   -- HEIGHT 1
   do ()  <- expectStep 1 0 (StepNewHeight 0)
      ()  <- expectStep 1 0 StepProposal
      bid <- proposeBlock (Round 0) proposerH1R0 (mockchain !! 1)     
      ()  <- voteFor (Just bid) =<< expectPV
-     prevote (Height 1) (Round 0) [k2,k3] (Just bid)
+     prevote (Height 1) (Round 0) keys (Just bid)
      ()  <- voteFor (Just bid) =<< expectPC
-     precommit (Height 1) (Round 0) [k2,k3] (Just bid)
+     precommit (Height 1) (Round 0) keys (Just bid)
   -- HEIGHT 2
   do expectStep 2 0 (StepNewHeight 0)
      expectStep 2 0 StepProposal
@@ -421,6 +423,8 @@ evidenceValidated ok ev = testConsensus k4 $ do
      ()  <- voteFor (expectedBID bid) =<< expectPV
      return ()
   where
+    kBad = head $ othersH1R0
+    keys = take 2 $ filter (/=kBad) privK
     expectedBID | ok        = Just
                 | otherwise = const Nothing
     b0 = mockchain !! 2
@@ -489,16 +493,12 @@ conflictingVotesOK
   -> Signed 'Unverified (Alg BData) (Vote v BData)
   -> Bool
 conflictingVotesOK v1 v2
-  | byzIdx /= signedKeyInfo v1 || byzIdx /= signedKeyInfo v2
-    = error "Wrong validator recorded"
   | isNothing (verifySignature valSet v1) || isNothing (verifySignature valSet v2)
     = error "Bad signature"
   | (voteBlockID . signedValue) v1 == (voteBlockID . signedValue) v2
     = error "Votes are same!"
   | otherwise
     = True
-  where
-    Just byzIdx = indexByValidator valSet $ publicKey k4
 
 
 ----------------------------------------------------------------
@@ -560,8 +560,9 @@ proposerKey h r = head [ k | k <- privK
   where    
     Just v = validatorByIndex valSet $ proposerChoice valSet h r
 
-proposerH1R0,proposerH2R0 :: PrivKey (Alg BData)
+proposerH1R0,proposerH1R1,proposerH2R0 :: PrivKey (Alg BData)
 proposerH1R0 = proposerKey (Height 1) (Round 0)
+proposerH1R1 = proposerKey (Height 1) (Round 1)
 proposerH2R0 = proposerKey (Height 2) (Round 0)
 
 othersH1R0 :: [PrivKey (Alg BData)]

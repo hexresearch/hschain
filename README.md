@@ -1,43 +1,64 @@
 # HSchain
 
-[![Build Status](https://drone.hxr.dev/api/badges/hexresearch/thundermint/status.svg)](https://drone.hxr.dev/hexresearch/thundermint)
+[![Build Status](https://drone.hxr.dev/api/badges/hexresearch/hschain/status.svg)]()
 
-HSchain is a haskell implementation of tendermint bysantine consesus algorithm
+HSchain is a collection of packages for blockchain development. Currently only
+PBFT-based consensus algorithms is implemented. PoW development is under way.
+Following packages could be conidered relatively stable:
 
-## TLS
+ - **hschain-crypto** — wrappers for cryptography which work both on GHC and
+   GHCJS.
 
-[certificate generation](./docs/TLS.md)
+ - **hschain-merkle** — data structures for Merkle trees.
 
-# Build
+ - **hschain-control** — various utilities for control flow and concurrency.
 
-Thundermint could be build either with `stack` or with `cabal`. Following
-command will build it using stack:
+ - **hschain-types** — data types for hschain. It's split into separate package
+   to make possible to reuse data type in GHCJS.
+
+ - **hschain** — implementation of PBFT-based consensus engine.
+
+ - **hschain-examples** — examples and tests for hschain.
+
+Rest of packages in repository are highly experimental.
+
+
+
+# Development
+
+## Nix
+
+Standard way of working on hschain is to use [Nix](https://nixos.org/) to set up
+development environment. To use this method one need to [install
+Nix](https://nixos.wiki/wiki/Nix_Installation_Guide) unless it's not already
+done. After that one only need to type
+
+```
+$ nix-shell
+```
+in project root. After new-style cabal should be used. For example:
+```
+$ cabal new-build all
+```
+
+Note that if project directory contains `.ghc.environment.*` files created by
+new-style cabal commands build will fail.
+
+## Cabal
+
+It's possible to use cabal without nix but one'll have to install required C
+libraries manually (some configurations require libsodium)
+
+## Stack
+
+It's also possible to use
+[stack](https://docs.haskellstack.org/en/stable/README/) for development
 
 ```
 stack build
 ```
 
-Or with cabal:
-
-```
-cabal new-build all
-```
-
-## Build with `nix`
-
-Install Nix
-```
-https://nixos.wiki/wiki/Nix_Installation_Guide
-```
-
-Just use following command
-```
-cd nix
-build.sh
-```
-Note that if project directory contains `.ghc.environment.*` files created by new-style cabal commands build will fail.
-
-## Build with `docker` 
+# Build with `docker`
 
 Docker image https://github.com/phadej/docker-ghc can be used to build project.
 
@@ -52,85 +73,17 @@ Steps to build:
     * Build exe: `cabal new-build hschain-dioxane-node --flags="-libsodium"`. Note turned off flag `libsodium`, so it is not need to install `libsodium` library in image.
     * Last output of `cabal` will contain path to built executable.
 
-## Run dev environment with `nix`
 
-```
-nix-shell
-```
-
-After that you can use normal cabal workflow. Namely: `cabal new-build all` to build all packages, `cabal new-test all` to build and run tests
-
-To install needed programs just use:
-
-```
-nix-env -i cabal-install
-```
-
-or
-
-```
-nix-env -i hlint
-```
-
-
-Then you can use `cabal` to build thundermit inside this shell or run `thundermint-simple` binary.
-
-# Run testing network using terraform
-
-First of all you have to install terraform and docker. Dowload `terraform` from [here](https://www.terraform.io/downloads.html), unzip and put in $PATH.
-
-`terraform` runs nodes in separate docker containers. So, you need to build docker image.
-
-## Build docker image
+# Build docker image
 
 ```
 cd nix
 build-docker.sh
 ```
 
-All info about building docker images by `nix` I found [here](https://github.com/Gabriel439/haskell-nix/blob/master/project3/README.md#minimizing-the-closure).
+All info about building docker images by `nix` I found
+[here](https://github.com/Gabriel439/haskell-nix/blob/master/project3/README.md#minimizing-the-closure).
 
 When that command is finished you will have `result` simlink that refers to the docker image in tar archive format.
 
 `build-docker.sh` loads this archive into local docker image.
-
-## Run testing network
-
-When you run `terraform` at the fisrt time you should run `terraform init` once.
-
-```
-terraform apply
-```
-
-This command creates all containers and volumes, runs them, and bootstraps cluster with actual ip
-addresses.
-
-To list runnig containers use `docker container ls` .
-
-All logs can be found in `logs` volume. Use `docker volume inspect logs` to found directory with
-logs.
-
-
-# Migrations
-
-Here we describe database migrations between different versions of thundermint
-
-## 0.0.5 -> 0.0.6
-
-Simple variant. drop table `wal` when node is stopped. Correct `wal` will be
-created on node startup.
-
-If write-ahead log is to be preserved following SQL script should be used
-
-```
-CREATE TABLE wal_bak AS SELECT DISTINCT FROM wal;
-DROP TABLE wal;
-CREATE TABLE wal
-  ( id      INTEGER PRIMARY KEY
-  , height  INTEGER NOT NULL
-  , message BLOB NOT NULL
-  , UNIQUE(height,message));
-INSERT INTO wal SELECT * FROM wal_bak;
-DROP TABLE wal_bak
-```
-

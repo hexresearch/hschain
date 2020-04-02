@@ -1,6 +1,0 @@
-ansible_python_interpreter: python3
-docker_image: registry.hxr.team/hschain:16ktps
-restart_policy: Never
-registry_host: registry.hxr.team
-registry_user: "{{ vault_registry_user }}"
-registry_pass: "{{ vault_registry_pass }}"

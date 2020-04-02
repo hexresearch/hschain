@@ -25,7 +25,7 @@ synopsis:            Proof-of-work for hschain blockchain package set
 -- bug-reports:
 
 -- The license under which the package is released.
-license:             BSD-3-Clause
+license:             MIT
 
 -- The file containing the license text.
 license-file:        LICENSE
