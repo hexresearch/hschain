@@ -18,9 +18,9 @@ benchmarks = bgroup "Crypto"
   , bench "Checking (BLS)"                 $ nf (verifyBlobSignature pubKeyBLS blob) signBLS
   , bench "Signing hashed  (BLS)"          $ nf (signHash privKeyBLS) blobHash
   , bench "Checking hashed (BLS)"          $ nf (verifyHashSignature pubKeyBLS blobHash) signBLS
-  , bench "Private keys aggregation (BLS)" $ nf aggregatePrivKeys   privKeysBLS
-  , bench "Public keys aggregation  (BLS)" $ nf aggregatePublicKeys publicKeysBLS
-  , bench "Signatures aggregation   (BLS)" $ nf aggregateSignatures signaturesBLS
+  -- , bench "Private keys aggregation (BLS)" $ nf aggregatePrivKeys   privKeysBLS
+  -- , bench "Public keys aggregation  (BLS)" $ nf aggregatePublicKeys publicKeysBLS
+  -- , bench "Signatures aggregation   (BLS)" $ nf aggregateSignatures signaturesBLS
   ]
 
 
@@ -39,7 +39,7 @@ privKeyBLS = read "\"3fDbEdCy2bauoADeCGZwB8ANT4r58274dpE2TKoGq3JV\""
 pubKeyBLS :: PublicKey BLS
 pubKeyBLS = publicKey privKeyBLS
 
-
+{-
 privKeysBLS :: [PrivKey BLS]
 privKeysBLS = map read
     [ "\"7jKiMD9UNvbTSXVY7mm4WPnjx6wHNy7fxvmb2YWKX1rJ\""
@@ -63,8 +63,8 @@ privKeysBLS = map read
     , "\"77XThfENHSKxojahmGPXjiwqS9gU8AJzVzZnvbfwbiCu\""
     , "\"2nipbjUQjyqJNVnMFuN1RuEXwbNoL8DXFYjrQQ7mk3Yd\""
     ]
-
-
+-}
+{-
 publicKeysBLS :: [PublicKey BLS]
 publicKeysBLS = map read
     [ "\"6Xv8yaSMoyiYNJwRUu2PxchT5oogzPYGVPjo7cssqNjEY3sYEKpKs8jcuWrZ1Nu3De\""
@@ -113,4 +113,4 @@ signaturesBLS = map read
     , "Signature \"7hoxBkcQgZAjEfNxJic5CYmjFtwS1bCivEAUUztVnjB9GTJDvBwCFHGH1encU2mkeHv9y5FKt2EuPrev68wT3H2MtJMigcCzMV2CTQGp1EzdEhmKjGLamVqMAZMA6vVpqqX\""
     , "Signature \"47JD4howGtDmyf7fPHZmDF88zFmmp6LcGK3aAjTEHSDXr8avdVvyRc9D1YgmVqz5JhJVH2vgyHRYjBpom349JFEruMZwUi8F5jgXG2CozBFFCobRvvhc7abDqsvak8K3NCA\""
     ]
-
+-}
