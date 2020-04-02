@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns        #-}
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE LambdaCase          #-}
@@ -46,6 +47,8 @@ import HSChain.Types
 import HSChain.Types.Merkle.Types
 import HSChain.Utils
 
+import Data.IORef
+
 
 ----------------------------------------------------------------
 --
@@ -58,12 +61,21 @@ makeMempool
   => BChStore m a
   -> (forall x. BChMonad a x -> ExceptT (BChError a) m x)
   -> m (Mempool m (Alg a) (TX a))
-makeMempool store runner =
+makeMempool store runner = do
+  rmvalSet <- liftIO $ newIORef Nothing
   newMempool $ \tx -> do
     (mH, st) <- bchCurrentState store
-    mvalSet  <- queryRO $ retrieveValidatorSet $ case mH of
-      Nothing -> Height 0
-      Just h  -> succ h
+    let !mH'@(Height !_) = case mH of
+            Nothing -> Height 0
+            Just h  -> succ h             
+    -- mvalSet <- queryRO $ retrieveValidatorSet mH'
+    mvalSet <-
+        if mH' < Height 2 then do
+          r <- queryRO $ retrieveValidatorSet mH'
+          liftIO $ writeIORef rmvalSet r
+          return r
+        else
+          liftIO $ readIORef rmvalSet
     case mvalSet of
       Nothing -> return False
       Just vs -> fmap isRight
