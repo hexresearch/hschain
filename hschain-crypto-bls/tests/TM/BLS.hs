@@ -18,7 +18,6 @@ import Test.Tasty.HUnit
 
 import HSChain.Crypto
 import HSChain.Crypto.BLS
-import HSChain.Crypto.SHA
 import qualified Crypto.Bls as RawBls
 
 
@@ -93,70 +92,70 @@ tests = testGroup "BLS"
             (not $ verifyBlobSignature pubKey wrongMsg sig) @? "Verify must not be passed"
         , testCase "read/show 4" $ do
             (read "Hash \"cmzQwNFTPXVA9A9tG8TYuFo5vuVN9tFUoNC6DZBW3BW\"") @?= (hashBlobBLS "Am I too long to use in raw presentation?" :: Hash BLS)
-        , testCase "aggregate" $ do
-            let msg = "Abcdef"
-            privKey1 :: PrivKey BLS <- generatePrivKey
-            privKey2 :: PrivKey BLS <- generatePrivKey
-            privKey3 :: PrivKey BLS <- generatePrivKey
-            let pubKey1 = publicKey privKey1
-                pubKey2 = publicKey privKey2
-                pubKey3 = publicKey privKey3
-                sig1 = signBlob privKey1 msg
-                sig2 = signBlob privKey2 msg
-                sig3 = signBlob privKey3 msg
-                --
-                aggPk = aggregatePublicKeys [pubKey1, pubKey2, pubKey3]
-                aggSn = aggregateSignatures [sig1, sig2, sig3]
-            (verifyBlobSignature aggPk msg aggSn) @? "Verify must be passed"
-        , testCase "aggregate - order unimportant" $ do
-            let msg = "Abcdef"
-            (privKey1 :: PrivKey BLS) <- generatePrivKey
-            (privKey2 :: PrivKey BLS) <- generatePrivKey
-            (privKey3 :: PrivKey BLS) <- generatePrivKey
-            let pubKey1 = publicKey privKey1
-                pubKey2 = publicKey privKey2
-                pubKey3 = publicKey privKey3
-                sig1 = signBlob privKey1 msg
-                sig2 = signBlob privKey2 msg
-                sig3 = signBlob privKey3 msg
-                --
-                aggPk = aggregatePublicKeys [pubKey3, pubKey2, pubKey1]
-                aggSn = aggregateSignatures [sig3, sig1, sig2]
-            (verifyBlobSignature aggPk msg aggSn) @? "Verify must be passed"
-        , testCase "aggregate - incorrect pk" $ do
-            let msg = "Abcdef"
-            privKey1 :: PrivKey BLS <- generatePrivKey
-            privKey2 :: PrivKey BLS <- generatePrivKey
-            privKey3 :: PrivKey BLS <- generatePrivKey
-            privKey4 :: PrivKey BLS <- generatePrivKey
-            let pubKey1  = publicKey privKey1
-                pubKey2  = publicKey privKey2
-                _pubKey3 = publicKey privKey3
-                incorrectPubKey4 = publicKey privKey4
-                sig1 = signBlob privKey1 msg
-                sig2 = signBlob privKey2 msg
-                sig3 = signBlob privKey3 msg
-                --
-                aggPk = aggregatePublicKeys [pubKey1, pubKey2, incorrectPubKey4]
-                aggSn = aggregateSignatures [sig1, sig2, sig3]
-            (not $ verifyBlobSignature aggPk msg aggSn) @? "Verify must not be passed"
-        , testCase "aggregate - incorrect sk" $ do
-            let msg = "Abcdef"
-                incorrectMsg = "ZYX"
-            privKey1 :: PrivKey BLS <- generatePrivKey
-            privKey2 :: PrivKey BLS <- generatePrivKey
-            privKey3 :: PrivKey BLS <- generatePrivKey
-            let pubKey1 = publicKey privKey1
-                pubKey2 = publicKey privKey2
-                pubKey3 = publicKey privKey3
-                sig1  = signBlob privKey1 msg
-                sig2  = signBlob privKey2 msg
-                _sig3 = signBlob privKey3 msg
-                incorrectSig4 = signBlob privKey3 incorrectMsg
-                --
-                aggPk = aggregatePublicKeys [pubKey1, pubKey2, pubKey3]
-                aggSn = aggregateSignatures [sig1, sig2, incorrectSig4]
-            (not $ verifyBlobSignature aggPk msg aggSn) @? "Verify must not be passed"
+        -- , testCase "aggregate" $ do
+        --     let msg = "Abcdef"
+        --     privKey1 :: PrivKey BLS <- generatePrivKey
+        --     privKey2 :: PrivKey BLS <- generatePrivKey
+        --     privKey3 :: PrivKey BLS <- generatePrivKey
+        --     let pubKey1 = publicKey privKey1
+        --         pubKey2 = publicKey privKey2
+        --         pubKey3 = publicKey privKey3
+        --         sig1 = signBlob privKey1 msg
+        --         sig2 = signBlob privKey2 msg
+        --         sig3 = signBlob privKey3 msg
+        --         --
+        --         aggPk = aggregatePublicKeys [pubKey1, pubKey2, pubKey3]
+        --         aggSn = aggregateSignatures [sig1, sig2, sig3]
+        --     (verifyBlobSignature aggPk msg aggSn) @? "Verify must be passed"
+        -- , testCase "aggregate - order unimportant" $ do
+        --     let msg = "Abcdef"
+        --     (privKey1 :: PrivKey BLS) <- generatePrivKey
+        --     (privKey2 :: PrivKey BLS) <- generatePrivKey
+        --     (privKey3 :: PrivKey BLS) <- generatePrivKey
+        --     let pubKey1 = publicKey privKey1
+        --         pubKey2 = publicKey privKey2
+        --         pubKey3 = publicKey privKey3
+        --         sig1 = signBlob privKey1 msg
+        --         sig2 = signBlob privKey2 msg
+        --         sig3 = signBlob privKey3 msg
+        --         --
+        --         aggPk = aggregatePublicKeys [pubKey3, pubKey2, pubKey1]
+        --         aggSn = aggregateSignatures [sig3, sig1, sig2]
+        --     (verifyBlobSignature aggPk msg aggSn) @? "Verify must be passed"
+        -- , testCase "aggregate - incorrect pk" $ do
+        --     let msg = "Abcdef"
+        --     privKey1 :: PrivKey BLS <- generatePrivKey
+        --     privKey2 :: PrivKey BLS <- generatePrivKey
+        --     privKey3 :: PrivKey BLS <- generatePrivKey
+        --     privKey4 :: PrivKey BLS <- generatePrivKey
+        --     let pubKey1  = publicKey privKey1
+        --         pubKey2  = publicKey privKey2
+        --         _pubKey3 = publicKey privKey3
+        --         incorrectPubKey4 = publicKey privKey4
+        --         sig1 = signBlob privKey1 msg
+        --         sig2 = signBlob privKey2 msg
+        --         sig3 = signBlob privKey3 msg
+        --         --
+        --         aggPk = aggregatePublicKeys [pubKey1, pubKey2, incorrectPubKey4]
+        --         aggSn = aggregateSignatures [sig1, sig2, sig3]
+        --     (not $ verifyBlobSignature aggPk msg aggSn) @? "Verify must not be passed"
+        -- , testCase "aggregate - incorrect sk" $ do
+        --     let msg = "Abcdef"
+        --         incorrectMsg = "ZYX"
+        --     privKey1 :: PrivKey BLS <- generatePrivKey
+        --     privKey2 :: PrivKey BLS <- generatePrivKey
+        --     privKey3 :: PrivKey BLS <- generatePrivKey
+        --     let pubKey1 = publicKey privKey1
+        --         pubKey2 = publicKey privKey2
+        --         pubKey3 = publicKey privKey3
+        --         sig1  = signBlob privKey1 msg
+        --         sig2  = signBlob privKey2 msg
+        --         _sig3 = signBlob privKey3 msg
+        --         incorrectSig4 = signBlob privKey3 incorrectMsg
+        --         --
+        --         aggPk = aggregatePublicKeys [pubKey1, pubKey2, pubKey3]
+        --         aggSn = aggregateSignatures [sig1, sig2, incorrectSig4]
+        --     (not $ verifyBlobSignature aggPk msg aggSn) @? "Verify must not be passed"
         --
         -- TODO перенести сюда остальные тесты с точными значениями
         ]
@@ -196,8 +195,7 @@ testsSignatureCrypto
   :: forall alg. CryptoSign alg
   => Proxy alg -> [TestTree]
 testsSignatureCrypto tag =
-  [ testGroup "Fingerprint" $ testsStdIntances (Proxy @(Fingerprint SHA512 alg))
-  , testGroup "Signature"   $ testsStdIntances (Proxy @(Signature   alg))
+  [ testGroup "Signature"   $ testsStdIntances (Proxy @(Signature   alg))
     --
   , testCase "Signature OK (roundtrip)"
   $ do privK <- generatePrivKey @alg
@@ -250,8 +248,6 @@ instance CryptoAsymmetric alg => Generate (PrivKey alg) where
   generateIO = generatePrivKey
 instance CryptoAsymmetric alg => Generate (PublicKey alg) where
   generateIO = publicKey <$> generatePrivKey
-instance (CryptoHash hash, CryptoAsymmetric alg) => Generate (Fingerprint hash alg) where
-  generateIO = fingerprint . publicKey <$> generatePrivKey
 instance CryptoSign alg => Generate (Signature alg) where
   generateIO = do pk <- generatePrivKey
                   return $! signBlob pk "ABCD"
