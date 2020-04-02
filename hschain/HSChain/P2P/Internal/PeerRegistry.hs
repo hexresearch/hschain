@@ -25,7 +25,7 @@ import Katip                  (sl)
 import qualified Data.Map.Strict as Map
 import qualified Data.Set        as Set
 
-import HSChain.Control (atomicallyIO)
+import HSChain.Control.Util (atomicallyIO)
 import HSChain.Logger
 import HSChain.Network.Types
 

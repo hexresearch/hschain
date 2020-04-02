@@ -28,12 +28,14 @@ import Data.Int
 import qualified Data.Aeson          as JSON
 import qualified Data.Map.Strict     as Map
 import qualified Data.Vector         as V
+import qualified Data.HashMap.Strict as HM
 import Control.Lens
 
 import GHC.Generics (Generic)
 
 import HSChain.Blockchain.Internal.Engine.Types
 import HSChain.Control
+import HSChain.Control.Class
 import HSChain.Crypto
 import HSChain.Crypto.Classes.Hash
 import HSChain.Crypto.Ed25519
@@ -113,8 +115,9 @@ instance Dio tag => BlockData (BData tag) where
   type BChError        (BData tag) = DioError
   type BChMonad        (BData tag) = Maybe
   type Alg             (BData tag) = DioAlg
-  bchLogic                      = dioLogic
-  proposerSelection             = ProposerSelection randomProposerSHA512
+  bchLogic                 = dioLogic
+  proposerSelection        = ProposerSelection randomProposerSHA512
+  logBlockData (BData txs) = HM.singleton "Ntx" $ JSON.toJSON $ length txs
 
 
 ----------------------------------------------------------------

@@ -14,11 +14,7 @@ import qualified Data.ByteString.Lazy as BSL
 import qualified Data.Vector as V
 
 
-import Crypto.Bls.PrivateKey as PrivateKey
-import Crypto.Bls.PublicKey as PublicKey
-import Crypto.Bls.Signature as Signature
-import Crypto.Bls.Threshold as Threshold
-import Crypto.Bls.Util
+import Crypto.Bls as Bls
 
 
 -- | Number of players in the set
@@ -31,9 +27,9 @@ numberOfSignatures :: Int
 numberOfSignatures = 100
 
 
-data ChannelMessage = PublicFragment    PublicKey.PublicKey
-                    | PrivateFragment   PrivateKey.PrivateKey
-                    | SignatureFragment Signature.InsecureSignature Int
+data ChannelMessage = PublicFragment    PublicKey
+                    | PrivateFragment   PrivateKey
+                    | SignatureFragment InsecureSignature Int
 
 
 -- | Player processor
@@ -45,7 +41,7 @@ player :: Barrier                           -- ^ Barrier for synchronous round s
 player newRoundBarrier recv sends playerId = do
     pp "I'm started"
     pp "Preparing secret fragments..."
-    (_secretKey, publicFrags, secretFrags) <- Threshold.create numberOfSignatures numberOfPlayers
+    (_secretKey, publicFrags, secretFrags) <- thresholdCreate numberOfSignatures numberOfPlayers
     --
     --
     pp "Exchange public fragments for creating master key"
@@ -53,8 +49,9 @@ player newRoundBarrier recv sends playerId = do
     mapM_ (($ PublicFragment myMasterPublicKeyFrag) . fst) sends
     otherMasterPublicKeyFrags <- fmap (map (\(PublicFragment pubk) -> pubk)) $ replicateM (numberOfPlayers - 1) recv
     let masterPublicKeyFrags = myMasterPublicKeyFrag : otherMasterPublicKeyFrags
-    masterPublicKey <- aggregateInsecurePublicKey (V.fromList masterPublicKeyFrags)
-    serializePublicKey masterPublicKey >>= \ss -> pp $ "Master key: <" ++ hexifyBs' ss ++ ">"
+        masterPublicKey = publicKeyInsecureAggregate masterPublicKeyFrags
+        masterPublicKeyStr = publicKeySerialize masterPublicKey
+    pp $ "Master key: <" ++ hexifyBs' masterPublicKeyStr ++ ">"
     --
     --
     pp "Exchange secret fragments for creating secret shares"
@@ -62,8 +59,9 @@ player newRoundBarrier recv sends playerId = do
     mapM_ (\(sndr, i) -> sndr (PrivateFragment $ secretFrags V.! i)) sends
     otherSecretSharesFrags <- fmap (map (\(PrivateFragment sk) -> sk)) $ replicateM (numberOfPlayers - 1) recv
     let secretSharedFrags = mySecretShareFrag : otherSecretSharesFrags
-    secretShare <- aggregateInsecurePrivateKey $ V.fromList secretSharedFrags
-    serializePrivateKey secretShare >>= \ss -> pp $ "Secret share: <" ++ hexifyBs' ss ++ ">"
+        secretShare = privateKeyInsecureAggregate secretSharedFrags
+        secretShareStr = privateKeySerialize secretShare
+    pp $ "Secret share: <" ++ hexifyBs' secretShareStr ++ ">"
     --
     --
     pp $ "OK, ready for signing --------"
@@ -76,10 +74,10 @@ player newRoundBarrier recv sends playerId = do
         -- Data to sign
         --
         let dataToSign = "Data To Sign for round " <> (BSC.pack $ show round) <> (BSC.pack $ concat $ replicate 10 "some_data")
-        dataToSignHash <- hash256 dataToSign
+            dataToSignHash = hash256 dataToSign
         -- All players sign data
         --
-        mySig <- signInsecure secretShare dataToSign
+        let mySig = signInsecure secretShare dataToSign
         -- Then exchange with leader
         --
         if playerId == leaderId then do
@@ -94,8 +92,8 @@ player newRoundBarrier recv sends playerId = do
             let allSigs = mySig : map fst otherSigs'
                 allNums    = map succ $ playerId : map snd otherSigs'
             p $ "Unite all signature fragments and verify signature"
-            unitSignature <- aggregateUnitSigs (V.fromList allSigs) dataToSign allNums
-            result <- verifyInsecure unitSignature (V.fromList [dataToSignHash]) (V.fromList [masterPublicKey])
+            unitSignature <-  thresholdAggregateUnitSigs (V.fromList allSigs) dataToSign allNums
+            let result = insecureSignatureVerify unitSignature [dataToSignHash] [masterPublicKey]
             p $ "Result of verifying: " ++ show result
             unless result $ error "FAIL TO VERIFY"
         else do

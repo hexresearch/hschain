@@ -26,8 +26,9 @@ let
   # Overlay for haskell packages
   overlay = self: super: {
     # cabal2nix generates package name as bls so we're going with it
-    bls     = self.callPackage (import ./derivations/nix/bls.nix) {};
-    haskell = haskTools.interpret pkgs super {
+    bls      = self.callPackage (import ./derivations/nix/bls.nix) {};
+    bls-wasm = self.callPackage (import ./derivations/nix/bls-wasm.nix) {};
+    haskell  = haskTools.interpret pkgs super {
       overrides = import ./overrides.nix;
       release   = hschainPackages;
     };
@@ -44,6 +45,7 @@ let
     hschain-net        = callInternal hsPkgs "hschain" ../hschain-net           {} "";
     hschain            = callInternal hsPkgs "hschain" ../hschain               {} "";
     hschain-examples   = callInternal hsPkgs "hschain" ../hschain-examples      {} "";
+    hschain-control    = callInternal hsPkgs "hschain" ../hschain-control       {} "";
     serialise-cddl     = callInternal hsPkgs "hschain" ../serialise-cddl        {} "";
   };
   # Build internal package
@@ -68,12 +70,14 @@ let
       hschain-types
       hschain-merkle
       hschain-quickcheck
+      hschain-control
       hschain-net
       hschain
       hschain-examples
     ];
     hschainPkgJs = p: with p; [
       hschain-crypto
+      hschain-control
       hschain-types
       hschain-merkle
     ];

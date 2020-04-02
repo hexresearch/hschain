@@ -47,6 +47,7 @@ import HSChain.Utils
 import qualified HSChain.Mock.KeyVal as Mock
 import           HSChain.Mock.KeyVal   (BData)
 import HSChain.Control
+import HSChain.Control.Class
 import HSChain.Logger
 import HSChain.Mock.KeyList
 import HSChain.Monitoring

@@ -69,7 +69,8 @@ import Network.HTTP.Client.TLS
 import Database.V5.Bloodhound
 import Katip.Scribes.ElasticSearch
 
-import HSChain.Control
+import HSChain.Control.Mutex
+import HSChain.Control.Class
 import HSChain.Types.Blockchain
 import HSChain.Logger.Class
 import HSChain.Store.Internal.Query (MonadReadDB(..), MonadDB(..))
@@ -317,10 +318,10 @@ makeEsUrlScribe serverPath index sev verb = do
 data LogBlockInfo a = LogBlockInfo !Height !a !Int
 
 instance BlockData a => ToObject (LogBlockInfo a) where
-  toObject (LogBlockInfo (Height h) _a ns)
+  toObject (LogBlockInfo (Height h) a ns)
     = HM.insert "H"     (toJSON h)
     $ HM.insert "nsign" (toJSON ns)
-    $ mempty
+    $ logBlockData a
 
 instance BlockData a => LogItem (LogBlockInfo a) where
   payloadKeys Katip.V0 _ = Katip.SomeKeys ["H"]

@@ -41,7 +41,8 @@ import HSChain.Blockchain.Internal.Types
 import HSChain.Blockchain.Internal.Algorithm
 import HSChain.Types.Blockchain
 import HSChain.Types.Merkle.Types
-import HSChain.Control (throwNothing,throwNothingM,throwLeftM,throwLeft,iterateM,atomicallyIO)
+import HSChain.Control      (iterateM)
+import HSChain.Control.Util (throwNothing,throwNothingM,throwLeftM,throwLeft,atomicallyIO)
 import HSChain.Crypto
 import HSChain.Exceptions
 import HSChain.Logger

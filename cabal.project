@@ -3,12 +3,14 @@ packages:
          hschain
          hschain-crypto
          hschain-crypto-bls
+         hschain-control
          hschain-merkle
          hschain-types
          hschain-net
          hschain-quickcheck
          hschain-examples
          serialise-cddl
+         proof-of-work
 
 -- Jailbreak bytestring-arbitrary
 --   https://github.com/tsuraan/bytestring-arbitrary/issues/10

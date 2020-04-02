@@ -30,6 +30,7 @@ import HSChain.Blockchain.Internal.Engine.Types
 import HSChain.Blockchain.Internal.Engine
 import HSChain.Blockchain.Internal.Types
 import HSChain.Control
+import HSChain.Control.Util
 import HSChain.Crypto
 import HSChain.Logger
 import HSChain.Store
@@ -143,30 +144,31 @@ testConsensusNormal nPV nPC k = testConsensus k $ do
 -- Tets generations of two blocks. Mostly in order to check whether
 -- mockchain is generated properly
 test2Blocks :: IO ()
-test2Blocks = testConsensus k4 $ do
+test2Blocks = testConsensus kOther $ do
   -- H=1
   do ()  <- expectStep 1 0 (StepNewHeight 0)
      ()  <- expectStep 1 0 StepProposal
      bid <- proposeBlock (Round 0) k_H1 $ mockchain !! 1
      -- PREVOTE
      ()  <- voteFor (Just bid) =<< expectPV
-     prevote (Height 1) (Round 0) [k1,k2] (Just bid)
+     prevote (Height 1) (Round 0) [k_H1,k_H2] (Just bid)
       -- PRECOMMIT
      () <- voteFor (Just bid) =<< expectPC
-     precommit (Height 1) (Round 0) [k1,k2] (Just bid)
+     precommit (Height 1) (Round 0) [k_H1,k_H2] (Just bid)
   -- H=2
   do ()  <- expectStep 2 0 (StepNewHeight 0)
      ()  <- expectStep 2 0 StepProposal
      bid <- proposeBlock (Round 0) k_H2 $ mockchain !! 2
      -- PREVOTE
      ()  <- voteFor (Just bid) =<< expectPV
-     prevote (Height 2) (Round 0) [k1,k2] (Just bid)
+     prevote (Height 2) (Round 0) [k_H1,k_H2] (Just bid)
      --  -- PRECOMMIT
      -- () <- voteFor (Just bid) =<< expectPC
      -- precommit (Height 2) (Round 0) [k1,k2] (Just bid)
   where
     k_H1 = proposerKey (Height 1) (Round 0)
     k_H2 = proposerKey (Height 2) (Round 0)
+    kOther:_ = filter (/=k_H1) $ filter (/=k_H2) privK
 
 -- Vote is split between two block.
 --
@@ -262,7 +264,7 @@ testLocking k = testConsensus k $ do
   () <- voteFor (if k == kA then Nothing else Just bid) =<< expectPC
   when (k == kD) $ do
     precommit (Height 1) (Round 0) votersPC (Just bid)
-    precommit (Height 1) (Round 0) [k1]     Nothing
+    precommit (Height 1) (Round 0) [kA]     Nothing
      -- "D" enters new height
   if | k == kD   -> expectStep 2 0 (StepNewHeight 0)
      -- "A,B,C" enter round 1
@@ -270,15 +272,14 @@ testLocking k = testConsensus k $ do
          expectStep 1 1 StepProposal
          -- Proposer must be locked on previously proposed block for
          -- which it precommitted
-         when (k == proposer2) $ do
-           p <- expectProp
-           unless (propBlockID p == bid && propPOL p == Just (Round 0))
-             $ error "Invalid POL"
-            -- "A" could vote whatever
          if | k == kA   -> return ()
             -- Other validators should vote for locked block even if
             -- they didn't see proposal
-            | otherwise -> voteFor (Just bid) =<< expectPV
+            | otherwise -> do
+                p <- expectPV
+                unless (voteBlockID p == Just bid && voteRound p == Round 1)
+                  $ error "Invalid POL"
+                voteFor (Just bid) p
   where
     -- We name keys accordint to names in paper
     kA = k1
@@ -288,7 +289,7 @@ testLocking k = testConsensus k $ do
     proposer2 = proposerKey (Height 2) (Round 0)
     --
     votersPV = filter (/=k) privK
-    votersPC = filter (/=k1) $ filter (/=k) privK
+    votersPC = filter (/=kA) $ filter (/=k) privK
 
 
 evidenceIsStoredImmediatelyProp :: IO ()

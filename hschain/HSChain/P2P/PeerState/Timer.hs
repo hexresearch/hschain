@@ -9,7 +9,7 @@ import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Concurrent
 import Control.Concurrent.STM
 
-import HSChain.Control
+import HSChain.Control.Class
 
 -- NOTE This implementation isn't very safe
 

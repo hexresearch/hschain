@@ -277,7 +277,9 @@ class ( Serialise a
   bchLogic          :: BChLogic (BChMonad a) a
   -- | Describe how to select proposer for given height and round.
   proposerSelection :: ProposerSelection a
-
+  -- | Information about block that is written to block
+  logBlockData :: a -> JSON.Object
+  logBlockData = mempty
 
 ----------------------------------------------------------------
 -- Data types for establishing consensus
