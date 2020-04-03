@@ -1,10 +1,14 @@
+{-# LANGUAGE ConstrainedClassMethods    #-}
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE DerivingStrategies         #-}
 {-# LANGUAGE DerivingVia                #-}
+{-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE PatternGuards              #-}
+{-# LANGUAGE RankNTypes                 #-}
 {-# LANGUAGE RecordWildCards            #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE TypeFamilies               #-}
 {-# LANGUAGE UndecidableInstances       #-}
@@ -15,7 +19,13 @@
 
 module HSChain.Examples.Concrete where
 
-import qualified Data.Map as Map
+import Codec.Serialise
+
+import Data.Map.Strict (Map)
+import qualified Data.Map.Strict as Map
+
+import Data.Set (Set)
+import qualified Data.Set as Set
 
 --import Data.Monoid (Sum(..))
 --import Data.Functor.Classes (Show1)
@@ -28,7 +38,7 @@ import HSChain.Crypto
 
 
 ----------------------------------------------------------------
--- We abstract over transactions.
+-- The tree.
 
 data MerkleTree container alg a =
   Node (Hashed alg a)
@@ -142,6 +152,80 @@ addPartials treeDB partials = addCompleted updatedTreeDB completed
                       { treeDBPartials = Map.union (treeDBPartials treeDB) realPartials
                       , treeDBOpenPartials = Map.union (treeDBOpenPartials treeDB) open
                       }
+
+-------------------------------------------------------------------------------
+-- An interface for transactions.
+
+-- |Transaction must be:
+-- - representable in bytestrings,
+-- - allow us to create a special mining transaction,
+-- - they must provide us with the fee we can spend,
+-- - they must answer whether they will play with a set of available UTXOs.
+class Serialise tx => Transaction tx where
+  -- |A type of UTXO. It may differ between implementations.
+  -- One good choice is Hashed alg Something.
+  type UTXO tx
+
+  -- |The fee transaction provides.
+  transactionFee :: tx -> Integer
+
+  -- |Will transaction play out?
+  canTransactionPlay :: Ord (UTXO tx) => Set.Set (UTXO tx) -> tx -> Maybe (Set.Set (UTXO tx))
+
+  -- |Create mining transaction.
+  createMiningTransaction :: UTXO tx -> String -> Integer -> Maybe tx
+
+
+-------------------------------------------------------------------------------
+-- Mining pool.
+
+data MiningConfig = MiningConfig
+                  { miningConfigFeeMultipler         :: Integer
+                  , miningConfigSizeMultiplier       :: Integer
+                  }
+
+data Assessment alg = Assessment
+                { assessmentComplete                 :: Integer
+                -- ^we sort primarily on this field which is linear composition of fee and size.
+                , assessmentFee                      :: Integer
+                -- ^we descend on fee, because greater fees are better.
+                , assessmentSize                     :: Int
+                -- ^and ascend on size because lesser sizes are better.
+                , assessmentTieBreaker               :: Hash alg
+                }
+                deriving (Eq, Show)
+
+instance Ord (Assessment alg) where
+  compare a1 a2 = on assessmentComplete `thenOn` (negate . assessmentFee) `thenOn` assessmentSize
+    where
+      on :: forall x . Ord x => (Assessment alg -> x) -> Ordering
+      on f = compare (f a1) (f a2)
+      thenOn :: forall x . Ord x => Ordering -> (Assessment alg -> x) -> Ordering
+      thenOn r f = if r == EQ then on f else r
+
+data MiningPool alg tx = MiningPool
+                       { miningPoolConfig            :: MiningConfig
+                       -- ^Mining configuration: assessment multiplers, etc.
+                       , miningPoolBestAssessedTxs   :: Map (Assessment alg) tx
+                       -- ^To select transactions for mining, perform minViewWithKeys.
+                       -- We use Map here as a priority queue, it is good enough for that.
+                       , miningPoolBestAssessedSize  :: Int
+                       -- ^Size in bytes of all assessed transactions.
+                       , miningPoolAllAssessedTxs    :: Set tx
+                       -- ^these transactions are unassessed - they might be not
+                       --  worth mining right now, etc.
+                       --  They are kept in Set for better strictness. For now.
+                       }
+
+-- |Create a pool.
+newMiningPool :: MiningConfig -> MiningPool alg tx
+newMiningPool cfg = MiningPool cfg Map.empty 0 Set.empty
+
+-- |Add a transaction into a pool.
+receiveTransaction :: Transaction tx => MiningPool alg tx -> tx -> MiningPool alg tx
+receiveTransaction miningPool tx = undefined
+  where
+    serialisedTx = encode tx
 
 main :: IO ()
 main = return ()

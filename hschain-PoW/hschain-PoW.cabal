@@ -71,6 +71,7 @@ executable hschain-PoW-concrete
   main-is:             HSChain/Examples/Concrete.hs
   build-depends:       base              >= 4.9 && <5
                      , containers
+                     , serialise
                      , hschain-crypto
                      , hschain-merkle
   
