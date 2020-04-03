@@ -53,7 +53,6 @@ import Control.Exception          (SomeException(..),AsyncException(..))
 import Data.Aeson
 import Data.Aeson.TH
 import Data.IORef
-import Data.Text       (Text)
 import qualified Data.Text.Lazy as TL
 import           Data.Text.Lazy.Builder (toLazyText)
 import Data.Typeable
@@ -66,9 +65,6 @@ import System.Directory (createDirectoryIfMissing)
 import System.FilePath  (splitFileName)
 import System.IO
 import GHC.Generics (Generic)
-import Network.HTTP.Client.TLS
-import Database.V5.Bloodhound
-import Katip.Scribes.ElasticSearch
 
 import HSChain.Control.Class
 import HSChain.Control.Mutex
@@ -214,25 +210,17 @@ newLogEnv namespace env scribes = liftIO $ do
 -- | Type of scribe to use
 data ScribeType
   = ScribeJSON
-  | ScribeES { elasticIndex :: Text }
   | ScribeTXT
   deriving (Show,Eq,Ord,Generic)
 instance ToJSON   ScribeType where
   toJSON = \case
     ScribeJSON   -> String "ScribeJSON"
     ScribeTXT    -> String "ScribeTXT"
-    ScribeES{..} -> object [ "tag"   .= ("ScribeES" :: Text)
-                           , "index" .= elasticIndex
-                           ]
+
 instance FromJSON ScribeType where
   parseJSON (String "ScribeJSON") = return ScribeJSON
   parseJSON (String "ScribeTXT" ) = return ScribeTXT
   parseJSON (String _           ) = fail "Unknown string while decoding ScribeType"
-  parseJSON (Object o) = do
-    tag <- o .: "tag"
-    unless (tag == ("ScribeES" :: Text)) $ fail "Unexpected tag for ScribeType"
-    elasticIndex <- o .: "index"
-    return ScribeES{..}
   parseJSON _                     = fail "Expecting string or object while decoding ScribeType"
 
 -- | Description of scribe
@@ -250,23 +238,17 @@ deriveJSON defaultOptions
 
 makeScribe :: ScribeSpec -> IO Scribe
 makeScribe ScribeSpec{..} = do
-  when needToPrepare $
-    forM_ scribe'path $ \path -> do
-      let (dir,_) = splitFileName path
-      createDirectoryIfMissing True dir
+  forM_ scribe'path $ \path -> do
+    let (dir,_) = splitFileName path
+    createDirectoryIfMissing True dir
   case (scribe'type, scribe'path) of
     (ScribeTXT,    Nothing) -> mkHandleScribe ColorIfTerminal stdout  sev verb
     (ScribeTXT,    Just nm) -> mkFileScribe nm sev verb
-    (ScribeES{},   Nothing) -> error "Empty ES address"
-    (ScribeES{..}, Just nm) -> makeEsUrlScribe nm elasticIndex sev verb
     (ScribeJSON,   Nothing) -> makeJsonHandleScribe stdout sev verb
     (ScribeJSON,   Just nm) -> makeJsonFileScribe nm sev verb
   where
     sev  = scribe'severity
     verb = scribe'verbosity
-    needToPrepare = case scribe'type of
-        ScribeES{} -> False
-        _          -> True
 
 
 ----------------------------------------------------------------
@@ -290,26 +272,6 @@ makeJsonFileScribe nm sev verb = do
   Scribe loggerFun finalizer <- makeJsonHandleScribe h sev verb
   return $ Scribe loggerFun (finalizer `finally` hClose h)
 
-
-----------------------------------------------------------------
--- ES (ElasticSearch) scribe
-----------------------------------------------------------------
-
-makeEsUrlScribe :: FilePath -> Text -> Severity -> Verbosity -> IO Scribe
-makeEsUrlScribe serverPath index sev verb = do
-  mgr <- newTlsManager
-  let bhe = mkBHEnv (Server (T.pack serverPath)) mgr
-      Just queSize = mkEsQueueSize 20
-  mkEsScribe
-    -- Reasonable for production
-    defaultEsScribeCfgV5 { essQueueSize = queSize }
-    -- Reasonable for single-node in development
-    -- defaultEsScribeCfgV5 { essIndexSettings = IndexSettings (ShardCound 1) (ReplicaCount 0)}
-    bhe
-    (IndexName index)
-    (MappingName "application-logs")
-    sev
-    verb
 
 ----------------------------------------------------------------
 -- LogBlock
