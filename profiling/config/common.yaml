@@ -1,0 +1,12 @@
+# Set of validators
+validatorKeys:
+  - "5DYfjqEuBAUVrjm16oGentJHAtjLjLsuF5pa5UDfNTxv"
+  - "2yQRc2WGPCJyXCVsUk6gmp9LiwJ1UaZYwCxhoKewWN8D"
+  - "EtVg7C3jK6UJrrcLSeoUe2jgENH7ZeEGHaZyqyhYoprr"
+  - "4bcPSxioBPbHVpfTTfsWBHwFX4mZhdcqNiXimrFp8QBu"
+# Coin specification
+coinAridrop        : 1000
+coinWallets        : 8000
+coinWalletsSeed    : 1337
+coinGeneratorDelay : 10
+coinMaxMempoolSize : 1000
