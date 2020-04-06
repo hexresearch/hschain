@@ -16,8 +16,8 @@ import Control.Monad.IO.Class
 import Data.Time.Clock          (UTCTime)
 import Data.Time.Clock.POSIX    (getPOSIXTime,posixSecondsToUTCTime)
 import Data.Int
-import Data.Word
-import qualified Data.ByteString.Lazy as LBS
+--import Data.Word
+--import qualified Data.ByteString.Lazy as LBS
 import qualified Data.Aeson           as JSON
 import qualified Codec.Serialise      as CBOR
 import GHC.Generics (Generic)
@@ -126,33 +126,6 @@ instance MerkleMap b => MerkleMap (GBlock b) where
 type Header b = GBlock b Hashed
 type Block  b = GBlock b IdNode
 
-
--- |The specification of proof-of-work algorithms for blockchains (the @bc@ type).
---
--- PoW algorithm for some blockchain has a type @Solution@ of a header-specific puzzle
--- associated with it.
--- The solution is a part of a block.
---
---
-class Optimizable (PowParameters bc) => ProofOfWork bc where
-
-  -- |The type of a puzzle solution.
-  data Puzzle bc
-
-  -- |The parameters of a PoW algorithm - it may be how work is split between
-  -- parts of an algorithm, subalgorithms choice, etc.
-  --
-  -- See @Optimizable@ class.
-  data PoWParameters bc
-
--- |How to estimate good parameters.
---
--- We use bayesian inference for that.
-class Optimizable p where
-  -- |Optimizable parameters should be representable as a vector of doubles
-  -- Thus we need a projection that tells us 
-
-  -- |Optimizable things can be split
 
 ----------------------------------------
 -- instances

@@ -21,6 +21,12 @@ module HSChain.Examples.Concrete where
 
 import Codec.Serialise
 
+--import Control.Applicative
+--import Control.Monad
+
+import Data.ByteString.Lazy (ByteString)
+import qualified Data.ByteString.Lazy as B
+
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
 
@@ -85,11 +91,11 @@ toCompleteTree (Node _hash Nothing) = Nothing
 -- There are a map from hashes to complete trees and map of incomplete trees
 -- to the hashes of their children.
 data TreeDB alg a = TreeDB
-  { treeDBCompleted     :: Map.Map (MerkleRoot alg a) (CompleteTree alg a)
+  { treeDBCompleted     :: Map (MerkleRoot alg a) (CompleteTree alg a)
     -- ^ A list of completed trees. Only grows.
-  , treeDBPartials      :: Map.Map (MerkleRoot alg a) (PartialTree alg a)
+  , treeDBPartials      :: Map (MerkleRoot alg a) (PartialTree alg a)
     -- ^ A list of partial trees.
-  , treeDBOpenPartials  :: Map.Map (MerkleRoot alg a) ()
+  , treeDBOpenPartials  :: Map (MerkleRoot alg a) ()
     -- ^ A list of partials that are still open (have Nothing in the container part).
   }
 
@@ -107,7 +113,7 @@ toTreeRoot (Node rhash _) = Node rhash None
 
 -- |Add a set of complete trees into database and propagate completeness
 -- upward.
-addCompleted :: TreeDB alg a -> Map.Map (MerkleRoot alg a) (CompleteTree alg a) -> TreeDB alg a
+addCompleted :: TreeDB alg a -> Map (MerkleRoot alg a) (CompleteTree alg a) -> TreeDB alg a
 addCompleted treeDB newCompleteMap
   | Map.null unseenCompleteMap = treeDB -- nothing had changed.
   | otherwise = addCompleted updatedDB nextCompleted
@@ -179,53 +185,44 @@ class Serialise tx => Transaction tx where
 -------------------------------------------------------------------------------
 -- Mining pool.
 
-data MiningConfig = MiningConfig
-                  { miningConfigFeeMultipler         :: Integer
-                  , miningConfigSizeMultiplier       :: Integer
-                  }
-
-data Assessment alg = Assessment
-                { assessmentComplete                 :: Integer
-                -- ^we sort primarily on this field which is linear composition of fee and size.
-                , assessmentFee                      :: Integer
-                -- ^we descend on fee, because greater fees are better.
-                , assessmentSize                     :: Int
-                -- ^and ascend on size because lesser sizes are better.
-                , assessmentTieBreaker               :: Hash alg
-                }
-                deriving (Eq, Show)
-
-instance Ord (Assessment alg) where
-  compare a1 a2 = on assessmentComplete `thenOn` (negate . assessmentFee) `thenOn` assessmentSize
-    where
-      on :: forall x . Ord x => (Assessment alg -> x) -> Ordering
-      on f = compare (f a1) (f a2)
-      thenOn :: forall x . Ord x => Ordering -> (Assessment alg -> x) -> Ordering
-      thenOn r f = if r == EQ then on f else r
-
 data MiningPool alg tx = MiningPool
-                       { miningPoolConfig            :: MiningConfig
-                       -- ^Mining configuration: assessment multiplers, etc.
-                       , miningPoolBestAssessedTxs   :: Map (Assessment alg) tx
-                       -- ^To select transactions for mining, perform minViewWithKeys.
-                       -- We use Map here as a priority queue, it is good enough for that.
-                       , miningPoolBestAssessedSize  :: Int
-                       -- ^Size in bytes of all assessed transactions.
-                       , miningPoolAllAssessedTxs    :: Set tx
-                       -- ^these transactions are unassessed - they might be not
-                       --  worth mining right now, etc.
-                       --  They are kept in Set for better strictness. For now.
+                       { miningPoolTransactions :: Set tx
                        }
 
 -- |Create a pool.
-newMiningPool :: MiningConfig -> MiningPool alg tx
-newMiningPool cfg = MiningPool cfg Map.empty 0 Set.empty
+newMiningPool :: MiningPool alg tx
+newMiningPool = MiningPool Set.empty
 
 -- |Add a transaction into a pool.
-receiveTransaction :: Transaction tx => MiningPool alg tx -> tx -> MiningPool alg tx
-receiveTransaction miningPool tx = undefined
+receiveTransaction :: Ord tx => MiningPool alg tx -> tx -> MiningPool alg tx
+receiveTransaction miningPool@MiningPool{..} tx
+  = miningPool { miningPoolTransactions = Set.insert tx miningPoolTransactions }
+
+-- |Get transactions for a block.
+getTransactionsToMine :: (Transaction tx, Ord tx, Ord (UTXO tx))
+                      => Int -> Set (UTXO tx)
+                      -> MiningPool alg tx
+                      -> ([(ByteString, tx)], MiningPool alg tx)
+getTransactionsToMine blockSize startUTXOSet miningPool@MiningPool{..} =
+  (goodList, peeledMiningPool)
   where
-    serialisedTx = encode tx
+    peeledMiningPool = miningPool { miningPoolTransactions = remainingTransactions }
+    (goodList, remainingTransactions) =
+            peelPool blockSize [] startUTXOSet Set.empty miningPoolTransactions
+    peelPool availableSize acc utxoSet notPlayed currentTransactions
+      | availableSize < 64 = (acc, Set.union notPlayed currentTransactions)
+      -- ^ Some threshold to not to go over all transactions.
+      | otherwise = case Set.minView currentTransactions of
+          Nothing -> (reverse acc, notPlayed)
+          Just (tx, remaining)
+            | nextAvailableSize < 0 -> skip
+            | Just playedUTXOSet <- canTransactionPlay utxoSet tx
+              -> peelPool nextAvailableSize ((encoded, tx) : acc) playedUTXOSet notPlayed remaining
+            | otherwise -> skip
+            where
+              encoded = serialise tx
+              nextAvailableSize = availableSize - fromIntegral (B.length encoded)
+              skip = peelPool availableSize acc utxoSet (Set.insert tx notPlayed) remaining
 
 main :: IO ()
 main = return ()
