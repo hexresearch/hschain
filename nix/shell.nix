@@ -28,6 +28,6 @@ in
     #       mysteriously. Note that build with nix-build is not
     #       affected.
     shellHook = ''
-      export LD_LIBRARY_PATH=${pkgs.libsodium}/lib''${LD_LIBRARY_PATH:+:}$LD_LIBRARY_PATH
+      export LD_LIBRARY_PATH=${pkgs.openssl}/lib''${LD_LIBRARY_PATH:+:}${pkgs.libsodium}/lib''${LD_LIBRARY_PATH:+:}$LD_LIBRARY_PATH
       '';
   }

@@ -37,6 +37,10 @@ import qualified Data.Set as Set
 --import Data.Functor.Classes (Show1)
 --import GHC.Generics (Generic)
 
+import Network.Socket
+
+import Options.Applicative
+
 import HSChain.Crypto
 --import HSChain.Crypto.Classes.Hash
 --import HSChain.Crypto.SHA
@@ -224,6 +228,10 @@ getTransactionsToMine blockSize startUTXOSet miningPool@MiningPool{..} =
               nextAvailableSize = availableSize - fromIntegral (B.length encoded)
               skip = peelPool availableSize acc utxoSet (Set.insert tx notPlayed) remaining
 
+-------------------------------------------------------------------------------
+-- The driver.
+
 main :: IO ()
-main = return ()
+main = withSocketsDo $ do
+  return ()
 
