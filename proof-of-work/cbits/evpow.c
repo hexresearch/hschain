@@ -5,7 +5,11 @@
 #include <string.h>
 #include <time.h>
 
+#ifdef USE_OPENSSL
 #include <openssl/sha.h>
+#else
+#include "sha256.h"
+#endif
 
 #include "evpow.h"
 

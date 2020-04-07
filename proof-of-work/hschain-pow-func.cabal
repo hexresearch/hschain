@@ -61,7 +61,6 @@ library
   build-depends:       base >=4.9
                      , bytestring
 
-  extra-libraries:     ssl crypto
 
   -- Directories containing source files.
   hs-source-dirs:      src
@@ -70,7 +69,7 @@ library
   default-language:    Haskell2010
 
   -- C bits:
-  c-sources:           cbits/evpow.h cbits/evpow.c cbits/yalsat/yals.c
+  c-sources:           cbits/evpow.h cbits/evpow.c cbits/yalsat/yals.c cbits/sha256.c
 
   include-dirs:        cbits cbits/yalsat
 

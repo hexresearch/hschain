@@ -64,7 +64,6 @@ Library
                 --HSChain.PoW.Store.STM - commented out because it contains only mempool
                 HSChain.PoW.Store.Internal.Query
                 HSChain.PoW.Store.Internal.BlockDB
-  extra-libraries:     ssl crypto
 
 
 executable hschain-PoW-concrete
@@ -80,7 +79,6 @@ executable hschain-PoW-concrete
                      , hschain-merkle
                      , hschain-pow-func
 
-  extra-libraries:     ssl crypto
   
 -- Test suite
 Test-suite hschain-PoW-tests
@@ -100,5 +98,4 @@ Test-suite hschain-PoW-tests
   hs-source-dirs:      test
   Main-is:             Main.hs
   Other-modules:       TM.Consensus
-  extra-libraries:     ssl crypto
 
