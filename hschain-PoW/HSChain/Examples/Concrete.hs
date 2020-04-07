@@ -1,4 +1,5 @@
 {-# LANGUAGE ConstrainedClassMethods    #-}
+{-# LANGUAGE DeriveAnyClass             #-}
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE DerivingStrategies         #-}
 {-# LANGUAGE DerivingVia                #-}
@@ -27,17 +28,27 @@ import Codec.Serialise
 import Data.ByteString.Lazy (ByteString)
 import qualified Data.ByteString.Lazy as B
 
+import Data.Char
+
+import qualified Data.List as List
+
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
 
 import Data.Set (Set)
 import qualified Data.Set as Set
 
+import Data.Word
+
 --import Data.Monoid (Sum(..))
 --import Data.Functor.Classes (Show1)
---import GHC.Generics (Generic)
+import GHC.Generics (Generic)
+import GHC.Read     (Read(..))
 
-import Network.Socket
+import qualified Text.ParserCombinators.ReadP    as ReadP
+import qualified Text.ParserCombinators.ReadPrec as Read
+
+import qualified Network.Socket as Net
 
 import Options.Applicative
 
@@ -229,9 +240,94 @@ getTransactionsToMine blockSize startUTXOSet miningPool@MiningPool{..} =
               skip = peelPool availableSize acc utxoSet (Set.insert tx notPlayed) remaining
 
 -------------------------------------------------------------------------------
+-- Network part.
+
+newUDPSocket :: Word16 -> IO Net.Socket
+newUDPSocket ourPort = do
+  ai:_ <- Net.getAddrInfo (Just udpHints) Nothing
+    (Just $ show ourPort)
+  sock <- Net.socket (Net.addrFamily     ai)
+                     (Net.addrSocketType ai)
+                     (Net.addrProtocol   ai)
+  Net.setSocketOption sock Net.ReuseAddr 0
+  return sock
+  where
+    udpHints       = Net.defaultHints
+                         { Net.addrFlags      = []
+                         , Net.addrSocketType = Net.Datagram
+                         }
+
+
+-- | Network address. It's distinct from 'NetAddr' from @network@
+--   package in that it only support IP and could be serialised.
+data NetAddr
+  = NetAddrV4 !Net.HostAddress  !Word16
+  | NetAddrV6 !Net.HostAddress6 !Word16
+  deriving stock    (Eq, Ord, Generic)
+  deriving anyclass (Serialise)
+
+-- | Convert address from @network@ to serialisable address. Will
+--   throw if address other than IP4\/6 is passed to it. But that
+--   shouldn't be problem in practice.
+sockAddrToNetAddr :: Net.SockAddr -> NetAddr
+sockAddrToNetAddr sa = case sa of
+  Net.SockAddrInet  port ha     -> NetAddrV4 ha $ fromIntegral port
+  Net.SockAddrInet6 port _ ha _ -> NetAddrV6 ha $ fromIntegral port
+  _                             -> error $ "unsupported socket address kind: "++show sa
+
+-- | Convert IP address to representation from @network@ library.
+netAddrToSockAddr :: NetAddr -> Net.SockAddr
+netAddrToSockAddr (NetAddrV4 ha port) = Net.SockAddrInet  (fromIntegral port)   ha
+netAddrToSockAddr (NetAddrV6 ha port) = Net.SockAddrInet6 (fromIntegral port) 0 ha 0
+
+instance Show NetAddr where
+  show (NetAddrV4 ha p) = let (a,b,c,d) = Net.hostAddressToTuple ha
+                       in ((++show p) . (++":")) $ List.intercalate "." $ map show [a,b,c,d]
+  show (NetAddrV6 ha p) = let (a,b,c,d,e,f,g,h) = Net.hostAddress6ToTuple ha
+                       in ((++show p) . (++".")) $ List.intercalate ":" $ map show [a,b,c,d,e,f,g,h]
+instance Read NetAddr where
+  readPrec
+    = Read.lift $ optional (ReadP.string "tcp://") *> (readV4 <|> readV6)
+    where
+      readV4
+        = NetAddrV4
+       <$> (Net.tupleToHostAddress <$>
+             ((,,,) <$> digit <* ReadP.char '.'
+                    <*> digit <* ReadP.char '.'
+                    <*> digit <* ReadP.char '.'
+                    <*> digit)
+           )
+       <*  ReadP.char ':'
+       <*> digit
+      --
+      readV6
+        = NetAddrV6
+         <$> (Net.tupleToHostAddress6 <$>
+             ((,,,,,,,) <$> digit <* ReadP.char ':' <*> digit <* ReadP.char ':'
+                        <*> digit <* ReadP.char ':' <*> digit <* ReadP.char ':'
+                        <*> digit <* ReadP.char ':' <*> digit <* ReadP.char ':'
+                        <*> digit <* ReadP.char ':' <*> digit)
+             )
+         <*  ReadP.char '.'
+         <*> digit
+      --
+      digit :: Integral i => ReadP.ReadP i
+      digit = fromInteger . read <$> ReadP.munch1 isDigit
+
+
+-------------------------------------------------------------------------------
+-- Configuration.
+
+data Config = Config
+              { configOurPort          :: Word16
+              , configOtherAddresses   :: [NetAddr]
+              }
+
+-------------------------------------------------------------------------------
 -- The driver.
 
 main :: IO ()
-main = withSocketsDo $ do
+main = Net.withSocketsDo $ do
+  --opts <- 
   return ()
 
