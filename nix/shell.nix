@@ -23,11 +23,13 @@ in
       pkgs.openssl
     ];
     packages = release."${ghc}";
-    # NOTE: this is workaround for problem with building
-    #       hschain-types. Without this build fails
-    #       mysteriously. Note that build with nix-build is not
-    #       affected.
+    # NOTE: this is workaround for bug in GHCi
+    #       https://gitlab.haskell.org/ghc/ghc/issues/11042
+    #
+    #       Without setting LD_LIBRARY_PATH manually GHCi (8.6 and
+    #       earlier) cannot load .so and consequently any invocation
+    #       of TH fails
     shellHook = ''
-      export LD_LIBRARY_PATH=${pkgs.openssl}/lib''${LD_LIBRARY_PATH:+:}${pkgs.libsodium}/lib''${LD_LIBRARY_PATH:+:}$LD_LIBRARY_PATH
+      export LD_LIBRARY_PATH=${pkgs.openssl.out}/lib''${LD_LIBRARY_PATH:+:}${pkgs.libsodium}/lib''${LD_LIBRARY_PATH:+:}$LD_LIBRARY_PATH
       '';
   }
