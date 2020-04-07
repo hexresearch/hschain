@@ -34,6 +34,8 @@ let
     };
   };
   # Generate packages for hschain
+  #
+  # NOTE: all these packages should be listed in release below
   hschainPackages = hsPkgs: {
     bls-signatures = callInternal hsPkgs "bls-signatures" ../bls-signatures {} "";
     hschain-crypto = callInternal hsPkgs "hschain" ../hschain-crypto {}
@@ -62,7 +64,7 @@ let
     /.stack-work
     '';
   doFast = hask.addBuildFlags ["--ghc-option=-O2"];
-  #
+  # NOTE: hschainPkgAll should list all locally defined packages
   release = let
     hschainPkgAll = p: with p; [
       serialise-cddl
@@ -77,6 +79,7 @@ let
       hschain-PoW
       hschain
       hschain-examples
+      hschain-pow-func
     ];
     hschainPkgJs = p: with p; [
       hschain-crypto
