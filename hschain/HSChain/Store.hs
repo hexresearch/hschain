@@ -64,6 +64,7 @@ module HSChain.Store (
   , nullMempool
     -- * Blockchain state
   , BChStore(..)
+  , BChValidators(..)
     -- * Blockchain invariants checkers
   , BlockchainInconsistency
   , checkStorage
@@ -258,6 +259,13 @@ data BChStore m a = BChStore
   -- ^ Retrieve state for given height. It's generally not expected that
   , bchStoreStore    :: Height -> MerkleNode IdNode (Alg a) (BlockchainState a) -> m ()
   -- ^ Put blockchain state at given height into store
+  }
+
+-- | Store for validators state.
+data BChValidators m a = BChValidators
+  { bchvRetrieveValidatorSet :: Height -> m (Maybe (ValidatorSet (Alg a)))
+  , bchvHasValidatorSet      :: Height -> m Bool
+  , bchvStoreValSet          :: Height -> ValidatorSet (Alg a) -> m ()
   }
 
 instance HoistDict BChStore where

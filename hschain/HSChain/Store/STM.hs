@@ -10,6 +10,8 @@ module HSChain.Store.STM (
     -- * Blockchain state storge
   , newSTMBchStorage
   , snapshotState
+    -- * Validators state storage
+  , newSTMBchValidators
   ) where
 
 import Control.Applicative
@@ -31,11 +33,15 @@ import           Data.Map.Strict      (Map)
 import qualified Data.Set           as Set
 import           Data.Set             (Set)
 
+import Control.Concurrent.MVar
+
 import HSChain.Crypto
 import HSChain.Store
 import HSChain.Types.Blockchain
 import HSChain.Types.Merkle.Types
 
+import HSChain.Store.Internal.BlockDB
+import HSChain.Types.Validators
 
 newMempool
   :: forall m alg tx. (Show tx, Ord tx, Crypto alg, CryptoHashable tx, MonadIO m)
@@ -197,6 +203,38 @@ newSTMBchStorage st0 = do
     , bchStoreStore   = \h st ->
         liftIO $ atomically $ writeTVar varSt (Just h, st)
     }
+
+newSTMBchValidators
+  :: (Crypto (Alg a), MonadIO m)
+  => ValidatorSet (Alg a) -> m (BChValidators m a)
+newSTMBchValidators _vs = do
+  varSt <- liftIO $ newMVar (Nothing, Nothing)
+  -- | Due to we need synchronize both STM and IO it is need to
+  --   block STM operations while IO operations occured.
+  --   So we use take/put semantics and masking to do that.
+  --
+  --   Also we can't use STM here.
+  return BChValidators
+    -- TODO Here is potential race condition between DB reading/writing and STM var reading,
+    --      when application will use this STM cacher and low level API.
+    --      Best way is to wrap all DB interation in high-level cacher and disallow low-level API
+    { bchvRetrieveValidatorSet = \h ->
+        liftIO $ modifyMVar varSt $ \case
+          v@(Just h', vs) | h == h' -> return (v, vs)
+          _ -> do
+            vs <- retrieveValidatorSet h
+            return ((Just h, vs), vs)
+    , bchvHasValidatorSet = \h ->
+        liftIO $ withMVar varSt $ \case
+          (Just h', Just _) | h == h' -> return True
+          _                           -> hasValidatorSet h
+    , bchvStoreValSet = \h vals ->
+        liftIO $ modifyMVar_ varSt $ \_ -> do
+          storeValSet h (merkled vals)
+          return (Just h, Just vals)
+    }
+  where
+    tryReadTMVarIO = atomically . tryReadTMVar
 
 -- | Store complete snapshot of state every N
 snapshotState
