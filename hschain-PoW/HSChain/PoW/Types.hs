@@ -62,7 +62,6 @@ class ( Show   (Work b)
       , Monoid (Work b)
       , Show (BlockID b)
       , Ord  (BlockID b)
-      , Transaction (Tx b)
       , MerkleMap b
       ) => BlockData b where
   -- | ID of block. Usually it should be just a hash but we want to
@@ -72,9 +71,6 @@ class ( Show   (Work b)
   --   blocks. Monoid instance should represent addition
   data Work b
 
-  -- | Transactions inside the block.
-  data Tx b
-
   -- | Compute block ID out of block using only header.
   blockID :: IsMerkle f => GBlock b f -> BlockID b
   -- | Context free validation of header. It's mostly sanity check on
@@ -82,20 +78,6 @@ class ( Show   (Work b)
   validateHeader :: Header b -> Bool
   validateBlock  :: Block  b -> Bool
   blockWork :: GBlock b f -> Work b
-
--- |Specification of a transaction in a block.
---
--- We may have to change their ordering within the block and
--- we have to check it is safe to do so. We'll do that by
--- computing what transactions are consuming and producing
--- and then topologically sort them into fronts we can reorder
--- individually.
-class Transaction tx where
-
-  -- |A set of resources transaction gets to consume and produce.
-  -- We represent them as bytestrings for now.
-  txConsumeProduceSets :: Ord a => tx -> ([a], [a])
-
 
 -- | Generic block. This is just spine of blockchain, that is height
 --   of block, hash of previous block and
