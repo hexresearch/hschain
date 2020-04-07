@@ -30,6 +30,8 @@ import qualified Data.ByteString.Lazy as B
 
 import Data.Char
 
+import Data.Coerce
+
 import qualified Data.List as List
 
 import Data.Map.Strict (Map)
@@ -53,8 +55,8 @@ import qualified Network.Socket as Net
 import Options.Applicative
 
 import HSChain.Crypto
---import HSChain.Crypto.Classes.Hash
---import HSChain.Crypto.SHA
+import HSChain.Crypto.Classes.Hash ()
+import HSChain.Crypto.SHA
 --import HSChain.Types.Merkle.Types
 
 
@@ -97,6 +99,21 @@ toCompleteTree (Node nhash (Just (Left (l, r)))) =
 toCompleteTree (Node nhash (Just (Right a))) =
   Just $ Node nhash $ One $ Right $ a
 toCompleteTree (Node _hash Nothing) = Nothing
+
+-- |Build a complete tree from list of leaves.
+completeTreeFromList :: (CryptoHash alg, CryptoHashable a) => [a] -> CompleteTree alg a
+completeTreeFromList as = joinLevels $ map toLeaf as
+  where
+    joinLevels [a] = a
+    joinLevels xs = joinLevels $ joinLevel xs
+    joinLevel (a:b:xs) =   Node
+                              (hash2 a b) (One $ Left (a,b))
+                          : joinLevel xs
+    joinLevel xs = xs
+    toLeaf a = Node (hashed a) (One $ Right a)
+    hash2 a b = Hashed $ hash $ gethash a <> gethash b
+      where
+        gethash x = case (getHash x) of { Hashed h -> serialise h }
 
 -------------------------------------------------------------------------------
 -- Tree (block) database.
@@ -238,6 +255,23 @@ getTransactionsToMine blockSize startUTXOSet miningPool@MiningPool{..} =
               encoded = serialise tx
               nextAvailableSize = availableSize - fromIntegral (B.length encoded)
               skip = peelPool availableSize acc utxoSet (Set.insert tx notPlayed) remaining
+
+-------------------------------------------------------------------------------
+-- Transactions.
+
+type Noin = Integer
+data TX = TX { txInputs, txOutputs :: [(String, Noin)] }
+  deriving stock (Eq, Ord, Show, Generic)
+  deriving anyclass (Serialise)
+
+instance CryptoHashable TX where
+  hashStep = hashStep . serialise
+
+nanoNoin, milliNoin, microNoin, noin, kiloNoin :: Noin
+[nanoNoin, microNoin, milliNoin, noin, kiloNoin] = take 5 $ iterate (*1000) 1
+
+genesis :: CompleteTree SHA256 TX
+genesis = completeTreeFromList [TX [] [("genesis", 1000000000 * noin)]]
 
 -------------------------------------------------------------------------------
 -- Network part.
