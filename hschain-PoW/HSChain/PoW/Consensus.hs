@@ -25,7 +25,6 @@ module HSChain.PoW.Consensus
   , candidateHeads
   , badBlocks
   , requiredBlocks
-  , blockDB
     --
   , consensusGenesis
   , Head(..)
@@ -198,22 +197,19 @@ data Consensus m b = Consensus
     --   here. However we only add its descendants when
   , _requiredBlocks :: Set (BlockID b)
     -- ^ Set of blocks that we need to fetch from other ndoes.
-  , _blockDB        :: BlockDB m b
   }
 
 consensusGenesis
   :: (Monad m, BlockData b)
   => Block b
   -> StateView m b
-  -> BlockDB   m b
   -> Consensus m b
-consensusGenesis genesis sview db = Consensus
+consensusGenesis genesis sview = Consensus
   { _blockIndex     = idx
   , _bestHead       = (bh, sview)
   , _candidateHeads = []
   , _badBlocks      = Set.empty
   , _requiredBlocks = Set.empty
-  , _blockDB        = db
   }
   where
     bid = blockID genesis
@@ -365,9 +361,10 @@ growNewHead bh = do
 -- | Add new block. We only accept block if we already have valid header. Note
 processBlock
   :: (BlockData b, Monad m)
-  => Block b
+  => BlockDB m b
+  -> Block b
   -> ExceptT BlockError (StateT (Consensus m b) m) ()
-processBlock block = do
+processBlock db block = do
   index <- use blockIndex
   _bh   <- maybe (throwError ErrB'UnknownBlock) return
          $ bid `lookupIdx` index
@@ -379,8 +376,7 @@ processBlock block = do
   case validateBlock block of
     False -> do invalidateBlock bid
                 throwError ErrB'InvalidBlock
-    True  -> do db <- use blockDB
-                lift $ lift $ storeBlock db block
+    True  -> do lift $ lift $ storeBlock db block
   -- Now we want to find candidate heads that are better than current
   -- head and reachable at the same time.
   --
@@ -392,7 +388,7 @@ processBlock block = do
   --             |    |    |- next best head
   --             |    |- block we're processing
   --             |- current best head
-  bestCandidate
+  bestCandidate db
   where
     bid          = blockID block
 
@@ -421,9 +417,9 @@ invalidateBlock bid = do
 -- | Find best reachable candidate block.
 bestCandidate
   :: (BlockData b, Monad m)
-  => ExceptT BlockError (StateT (Consensus m b) m) ()
-bestCandidate = do
-  db       <- use blockDB
+  => BlockDB m b
+  -> ExceptT BlockError (StateT (Consensus m b) m) ()
+bestCandidate db = do
   bestWork <- use $ bestHead . _1 . to bhWork
   missing  <- use requiredBlocks
   heads    <- use $ candidateHeads . to (  mapMaybe (findBest missing)
@@ -445,9 +441,8 @@ bestCandidate = do
       state' <- lift $ lift
               $ runExceptT
               $ traverseBlockIndexM rollback update best h st
-      -- traceShow ("BEST HEAD:",bhBID h) $ return ()
       case state' of
-        Left  bid -> invalidateBlock bid >> bestCandidate
+        Left  bid -> invalidateBlock bid >> bestCandidate db
         Right s   -> bestHead .= (h,s)   >> cleanCandidates
   where
     findBest missing Head{..} =
