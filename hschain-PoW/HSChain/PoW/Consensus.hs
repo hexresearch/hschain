@@ -11,6 +11,7 @@ module HSChain.PoW.Consensus
   ( -- * Block index
     BlockIndex(..)
   , BH(..)
+  , asHeader
   , insertIdx
   , lookupIdx
   , blockIndexFromGenesis
@@ -135,6 +136,13 @@ data BH b = BH
   , bhWork     :: !(Work b)       --
   , bhPrevious :: !(Maybe (BH b)) --
   , bhData     :: !(b Hashed)     --
+  }
+
+asHeader :: BH b -> Header b
+asHeader bh = GBlock
+  { blockHeight = bhHeight bh
+  , prevBlock   = bhBID <$> bhPrevious bh
+  , blockData   = bhData bh
   }
 
 deriving instance (Show (Work b), Show (BlockID b), Show (b Hashed)) => Show (BH b)
