@@ -47,3 +47,11 @@ queuePair = do
   return ( Sink $ writeTQueue q
          , Src  $ readTQueue  q
          )
+
+broadcastPair :: MonadIO m => m (Sink a, STM (Src a))
+broadcastPair = do
+  ch <- liftIO newBroadcastTChanIO
+  return ( Sink $ writeTChan ch
+         , do ch' <- dupTChan ch
+              return $ Src $ readTChan ch'
+         )
