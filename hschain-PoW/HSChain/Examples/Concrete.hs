@@ -30,7 +30,7 @@ import qualified Data.ByteString.Lazy as B
 
 import Data.Char
 
-import Data.Coerce
+--import Data.Coerce
 
 import qualified Data.List as List
 
@@ -194,12 +194,14 @@ addPartials treeDB partials = addCompleted updatedTreeDB completed
 -------------------------------------------------------------------------------
 -- An interface for transactions.
 
+type Height = Int
+
 -- |Transaction must be:
 -- - representable in bytestrings,
 -- - allow us to create a special mining transaction,
 -- - they must provide us with the fee we can spend,
 -- - they must answer whether they will play with a set of available UTXOs.
-class Serialise tx => Transaction tx where
+class (Ord (UTXO tx), Serialise tx) => Transaction tx where
   -- |A type of UTXO. It may differ between implementations.
   -- One good choice is Hashed alg Something.
   type UTXO tx
@@ -208,10 +210,10 @@ class Serialise tx => Transaction tx where
   transactionFee :: tx -> Integer
 
   -- |Will transaction play out?
-  canTransactionPlay :: Ord (UTXO tx) => Set.Set (UTXO tx) -> tx -> Maybe (Set.Set (UTXO tx))
+  canTransactionPlay :: Set.Set (UTXO tx) -> tx -> Maybe (Set.Set (UTXO tx))
 
   -- |Create mining transaction.
-  createMiningTransaction :: UTXO tx -> String -> Integer -> Maybe tx
+  createMiningTransaction :: Height -> UTXO tx -> String -> Integer -> Maybe tx
 
 
 -------------------------------------------------------------------------------
@@ -270,8 +272,49 @@ instance CryptoHashable TX where
 nanoNoin, milliNoin, microNoin, noin, kiloNoin :: Noin
 [nanoNoin, microNoin, milliNoin, noin, kiloNoin] = take 5 $ iterate (*1000) 1
 
-genesis :: CompleteTree SHA256 TX
-genesis = completeTreeFromList [TX [] [("genesis", 1000000000 * noin)]]
+type Block = CompleteTree SHA256 TX
+genesisBlock :: Block
+genesisBlock = completeTreeFromList [TX [] [("genesis", 1000000000 * noin)]]
+
+data BlockHeaderBase = BlockHeaderBase
+  { blockHeaderBaseHeight             :: Height
+  , blockHeaderBasePrevious           :: Maybe (Hashed SHA256 BlockHeader)
+  , blockHeaderBaseComplexityShift    :: Word16
+  , blockHeaderBaseComplexityMantissa :: Word16
+  , blockHeaderBaseBlockHash          :: Hashed SHA256 TX -- ???
+  }
+  deriving stock (Eq, Ord, Show, Generic)
+  deriving anyclass (Serialise)
+
+data BlockHeader = BlockHeader
+  { blockHeaderBase     :: BlockHeaderBase
+  , blockHeaderSolution :: ByteString
+  }
+  deriving stock (Eq, Ord, Show, Generic)
+  deriving anyclass (Serialise)
+
+genesisBlockHeaderBase :: BlockHeaderBase
+genesisBlockHeaderBase = BlockHeaderBase
+  { blockHeaderBaseHeight             = 0
+  , blockHeaderBasePrevious           = Nothing
+  , blockHeaderBaseComplexityShift    = 0
+  , blockHeaderBaseComplexityMantissa = 0xffff
+  , blockHeaderBaseBlockHash          = getHash genesisBlock
+  }
+
+instance Transaction TX where
+  type UTXO TX = (String, Noin)
+
+  transactionFee (TX ins outs) = sum (map snd ins) - sum (map snd outs)
+
+  canTransactionPlay utxos (TX ins outs)
+    | Set.null unknown = Just $ Set.unions [Set.fromList outs, Set.difference utxos insSet]
+    | otherwise = Nothing
+    where
+      unknown = Set.difference insSet utxos
+      insSet = Set.fromList ins
+
+  createMiningTransaction height prevMiningUTXO infoAsNonce fee = Nothing
 
 -------------------------------------------------------------------------------
 -- Network part.
@@ -350,6 +393,13 @@ instance Read NetAddr where
 
 
 -------------------------------------------------------------------------------
+-- Algorithm.
+
+node :: Config -> IO ()
+node cfg = do
+  error "node is nyd"
+
+-------------------------------------------------------------------------------
 -- Configuration.
 
 data Config = Config
@@ -357,11 +407,24 @@ data Config = Config
               , configOtherAddresses   :: [NetAddr]
               }
 
+parseConfig :: Parser Config
+parseConfig = Config <$> parsePort <*> some parseOtherAddress
+  where
+    parsePort = option (maybeReader readPort) (long "port" <> short 'p')
+    readPort s = case reads s of
+      (p, "") : _ -> Just (p :: Word16)
+      _ -> Nothing
+    parseOtherAddress = option (maybeReader readAddress) (long "peer" <> short 'P')
+    readAddress s = case reads s of
+      (a,"") : _ -> Just (a :: NetAddr)
+      _ -> Nothing
+
 -------------------------------------------------------------------------------
 -- The driver.
 
 main :: IO ()
 main = Net.withSocketsDo $ do
-  --opts <- 
+  config <- execParser (info parseConfig mempty)
+  node config
   return ()
 
