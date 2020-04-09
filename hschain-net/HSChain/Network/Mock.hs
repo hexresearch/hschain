@@ -1,10 +1,13 @@
-{-# LANGUAGE LambdaCase      #-}
-{-# LANGUAGE RankNTypes      #-}
-{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE DeriveAnyClass     #-}
+{-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE LambdaCase         #-}
+{-# LANGUAGE RankNTypes         #-}
+{-# LANGUAGE RecordWildCards    #-}
 module HSChain.Network.Mock
   ( MockNet
   , newMockNet
   , createMockNode
+  , MockNetError(..)
   ) where
 
 import Control.Concurrent.STM
@@ -18,6 +21,9 @@ import qualified Data.Map.Strict      as Map
 
 import HSChain.Network.Types
 
+newtype MockNetError = MockNetError String
+  deriving stock    Show
+  deriving anyclass Exception
 
 -- | Sockets for mock network
 data MockSocket = MockSocket
@@ -52,7 +58,7 @@ createMockNode MockNet{..} addr = NetworkAPI
       -- Start listening on port
       do mListen <- readTVar mnetIncoming
          case key `Map.lookup` mListen of
-           Just  _ -> error "MockNet: already listening on port"
+           Just  _ -> throwM $ MockNetError "MockNet: already listening on port"
            Nothing -> writeTVar mnetIncoming $ Map.insert key [] mListen
       -- Stop listening
       --  1. Mark all incoming connections as inactive so that other
@@ -67,7 +73,7 @@ createMockNode MockNet{..} addr = NetworkAPI
       let accept = liftIO $ atomically $ do
             mList <- readTVar mnetIncoming
             case key `Map.lookup` mList of
-              Nothing     -> error "MockNet: cannot accept on closed socket"
+              Nothing     -> throwM $ MockNetError "MockNet: cannot accept on closed socket"
               Just []     -> retry
               Just ((conn,addr'):xs) -> do
                 writeTVar mnetIncoming $ Map.insert key xs mList
@@ -89,7 +95,7 @@ createMockNode MockNet{..} addr = NetworkAPI
       -- Queue connection on server
       cmap <- readTVar mnetIncoming
       case loc `Map.lookup` cmap of
-        Nothing -> error "MockNet: Cannot connect to closed socket"
+        Nothing -> throwM $ MockNetError "MockNet: Cannot connect to closed socket"
         Just xs -> writeTVar mnetIncoming $ Map.insert loc (xs ++ [(sockFrom,addr)]) cmap
       return $ applyConn sockTo
   , listenPort = 0
@@ -102,7 +108,7 @@ createMockNode MockNet{..} addr = NetworkAPI
     }
   sendBS MockSocket{..} bs = atomically $
       readTVar msckActive >>= \case
-        False -> error "MockNet: Cannot write to closed socket"
+        False -> throwM $ MockNetError "MockNet: Cannot write to closed socket"
         True  -> writeTChan msckSend bs
     --
   recvBS MockSocket{..} = atomically $
