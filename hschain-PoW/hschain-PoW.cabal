@@ -75,6 +75,7 @@ executable hschain-PoW-concrete
                      , network
                      , optparse-applicative
                      , serialise
+                     , stm
                      , hschain-crypto
                      , hschain-merkle
                      , hschain-pow-func

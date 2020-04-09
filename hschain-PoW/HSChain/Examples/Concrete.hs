@@ -25,12 +25,14 @@ import Codec.Serialise
 --import Control.Applicative
 --import Control.Monad
 
+import Control.Concurrent.STM
+
 import Data.ByteString.Lazy (ByteString)
 import qualified Data.ByteString.Lazy as B
 
 import Data.Char
 
---import Data.Coerce
+import Data.Coerce
 
 import qualified Data.List as List
 
@@ -52,6 +54,8 @@ import qualified Text.ParserCombinators.ReadPrec as Read
 
 import qualified Network.Socket as Net
 
+import System.IO.Unsafe (unsafePerformIO)
+
 import Options.Applicative
 
 import HSChain.Crypto
@@ -64,14 +68,21 @@ import HSChain.Crypto.SHA
 -- The tree.
 
 data MerkleTree container alg a =
-  Node (Hashed alg a)
+  Node (Hashed alg (MerkleTree container alg a))
        (container (Either
                             (MerkleTree container alg a, MerkleTree container alg a)
                             a
                     ))
+deriving instance Show (container (Either (MerkleTree container alg a, MerkleTree container alg a) a)) => Show (MerkleTree container alg a)
+
+instance Eq (MerkleTree container alg a) where
+  Node ha _ == Node hb _ = ha == hb
+
+instance Ord (MerkleTree container alg a) where
+  compare (Node ha _) (Node hb _) = compare ha hb
 
 -- |Obtain a hash of a node.
-getHash :: MerkleTree container alg a -> Hashed alg a
+getHash :: MerkleTree container alg a -> Hashed alg (MerkleTree container alg a)
 getHash (Node thash _) = thash
 
 instance Eq (Hashed alg a) => Eq (MerkleTree container alg a) where
@@ -80,8 +91,8 @@ instance Eq (Hashed alg a) => Eq (MerkleTree container alg a) where
 instance Ord (Hashed alg a) => Ord (MerkleTree container alg a) where
   compare a b = compare (getHash a) (getHash b)
 
-data None a = None
-data One a = One a
+data None a = None deriving Show
+data One a = One a deriving Show
 
 -- |A tree that knows nothing but the hash of the root.
 type MerkleRoot alg a = MerkleTree None alg a
@@ -95,9 +106,9 @@ type CompleteTree alg a = MerkleTree One alg a
 -- |A conversion function from partially built tree into one that is complete.
 toCompleteTree :: PartialTree alg a -> Maybe (CompleteTree alg a)
 toCompleteTree (Node nhash (Just (Left (l, r)))) =
-  (\l' r' -> Node nhash $ One $ Left (l', r')) <$> toCompleteTree l <*> toCompleteTree r
+  (\l' r' -> Node (coerceHashed nhash) $ One $ Left (l', r')) <$> toCompleteTree l <*> toCompleteTree r
 toCompleteTree (Node nhash (Just (Right a))) =
-  Just $ Node nhash $ One $ Right $ a
+  Just $ Node (coerceHashed nhash) $ One $ Right $ a
 toCompleteTree (Node _hash Nothing) = Nothing
 
 -- |Build a complete tree from list of leaves.
@@ -110,7 +121,7 @@ completeTreeFromList as = joinLevels $ map toLeaf as
                               (hash2 a b) (One $ Left (a,b))
                           : joinLevel xs
     joinLevel xs = xs
-    toLeaf a = Node (hashed a) (One $ Right a)
+    toLeaf a = Node (coerceHashed $ hashed a) (One $ Right a)
     hash2 a b = Hashed $ hash $ gethash a <> gethash b
       where
         gethash x = case (getHash x) of { Hashed h -> serialise h }
@@ -138,10 +149,13 @@ emptyTreeDB = TreeDB
   , treeDBOpenPartials = Map.empty
   }
 
-
 -- |Convert to tree root.
 toTreeRoot :: MerkleTree container alg a -> MerkleRoot alg a
-toTreeRoot (Node rhash _) = Node rhash None
+toTreeRoot (Node rhash _) = Node (coerceHashed rhash) None
+
+-- |Coerce hashes.
+coerceHashed :: Hashed alg a -> Hashed alg b
+coerceHashed = coerce
 
 -- |Add a set of complete trees into database and propagate completeness
 -- upward.
@@ -165,7 +179,7 @@ addCompleted treeDB newCompleteMap
           , Just rn <- Map.lookup (toTreeRoot r) newCompleteMap
           -> Map.insert
                    (toTreeRoot partial)
-                   (Node phash (One (Left (ln, rn))))
+                   (Node (coerceHashed phash) (One (Left (ln, rn))))
                    completed
         _ -> completed
     nextCompleted = Map.foldr movePartials Map.empty $ treeDBPartials treeDB
@@ -185,7 +199,7 @@ addPartials treeDB partials = addCompleted updatedTreeDB completed
     isCompleteLeaf (Node _ (Just (Right _))) = True
     isCompleteLeaf _                         = False
     (completed', realPartials) = Map.partition isCompleteLeaf notOpen
-    completed = Map.map (\(Node h (Just (Right a))) -> Node h $ One $ Right a) completed'
+    completed = Map.map (\(Node h (Just (Right a))) -> Node (coerceHashed h) $ One $ Right a) completed'
     updatedTreeDB = treeDB
                       { treeDBPartials = Map.union (treeDBPartials treeDB) realPartials
                       , treeDBOpenPartials = Map.union (treeDBOpenPartials treeDB) open
@@ -273,6 +287,7 @@ nanoNoin, milliNoin, microNoin, noin, kiloNoin :: Noin
 [nanoNoin, microNoin, milliNoin, noin, kiloNoin] = take 5 $ iterate (*1000) 1
 
 type Block = CompleteTree SHA256 TX
+
 genesisBlock :: Block
 genesisBlock = completeTreeFromList [TX [] [("genesis", 1000000000 * noin)]]
 
@@ -281,7 +296,7 @@ data BlockHeaderBase = BlockHeaderBase
   , blockHeaderBasePrevious           :: Maybe (Hashed SHA256 BlockHeader)
   , blockHeaderBaseComplexityShift    :: Word16
   , blockHeaderBaseComplexityMantissa :: Word16
-  , blockHeaderBaseBlockHash          :: Hashed SHA256 TX -- ???
+  , blockHeaderBaseBlockHash          :: Hashed SHA256 (CompleteTree SHA256 TX)
   }
   deriving stock (Eq, Ord, Show, Generic)
   deriving anyclass (Serialise)
@@ -301,6 +316,20 @@ genesisBlockHeaderBase = BlockHeaderBase
   , blockHeaderBaseComplexityMantissa = 0xffff
   , blockHeaderBaseBlockHash          = getHash genesisBlock
   }
+
+{-# NOINLINE genesisBlockHeader #-}
+genesisBlockHeader :: BlockHeader
+genesisBlockHeader = unsafePerformIO $ do
+  undefined
+
+tryMineBlock :: BlockHeaderBase -> IO (Maybe BlockHeader)
+tryMineBlock hbase = solve [serialisedHeaderBase] powConfig
+  where
+    serialisedHeaderBase = serialise hbase
+    powConfig = defaultPOWConfig
+                  { powCfgComplexityMantissa = headerBaseComplexityMantissa hbase
+                  , powCfgComplexityShift    = headerBaseComplexityShift hbase
+                  }
 
 instance Transaction TX where
   type UTXO TX = (String, Noin)
@@ -395,8 +424,33 @@ instance Read NetAddr where
 -------------------------------------------------------------------------------
 -- Algorithm.
 
+data DB = DB
+  { dbCurrentHead           :: BlockHeader
+    -- ^Cannot be non-empty, we have at least genesis.
+    -- Must refer to some block in the blocks DB.
+  , dbBlocks                :: Map (Hashed SHA256 Block) Block
+  }
+  deriving stock (Show)
+
+startDB :: DB
+startDB = DB
+  { dbCurrentHead           = genesisBlockHeader
+  , dbBlocks                = Map.singleton (getHash genesisBlock) genesisBlock
+  }
+
+miningProcess :: TVar DB -> IO ()
+miningProcess dbvar = do
+  miningLoop 0
+  where
+    miningLoop n = do
+      current <- atomically $ fmap dbCurrentHeader $ readTVar dbvar
+      hdr <- tryMineBlock current
+
 node :: Config -> IO ()
 node cfg = do
+  sock <- newUDPSocket (configOurPort cfg)
+  db <- atomically $ newTVar startDB
+  forkIO $ miningProcess db
   error "node is nyd"
 
 -------------------------------------------------------------------------------
