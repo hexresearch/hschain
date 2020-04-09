@@ -200,8 +200,8 @@ data Message
 runTest :: [Message] -> IO ()
 runTest msgList = do
   db <- inMemoryDB
-  let s0 = consensusGenesis (head mockchain) (viewKV (blockID genesis)) db
-  runExceptT (loop s0 msgList) >>= \case
+  let s0 = consensusGenesis (head mockchain) (viewKV (blockID genesis))
+  runExceptT (loop db s0 msgList) >>= \case
     Left  e  -> error $ unlines e
     Right () -> return ()
   where
@@ -211,8 +211,8 @@ runTest msgList = do
     toE   = either Just (\() -> Nothing)
     run s = flip runStateT s . runExceptT
     --
-    loop _ [] = return ()
-    loop s (m:ms) = do
+    loop _  _ []     = return ()
+    loop db s (m:ms) = do
       (s',val) <- case m of
         MsgH h e0 val -> do (e,s') <- lift $ run s $ processHeader h
                             when (toE e /= e0) $ throwError
@@ -221,7 +221,7 @@ runTest msgList = do
                               , "  got:      " ++ show (toE e)
                               ]
                             return (s',val)
-        MsgB b e0 val -> do (e,s') <- lift $ run s $ processBlock b
+        MsgB b e0 val -> do (e,s') <- lift $ run s $ processBlock db b
                             when (toE e /= e0) $ throwError
                               [ "Mismatch of header error"
                               , "  expected: " ++ show e0
@@ -232,7 +232,7 @@ runTest msgList = do
       check val            s'
       check checkConsensus s'
       --
-      loop s' ms
+      loop db s' ms
 
 
 -- Check for invariants in tracking of PoW consensus 
