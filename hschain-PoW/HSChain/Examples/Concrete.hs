@@ -25,6 +25,7 @@ import Codec.Serialise
 --import Control.Applicative
 --import Control.Monad
 
+import Control.Concurrent
 import Control.Concurrent.STM
 
 import Data.ByteString.Lazy (ByteString)
@@ -62,6 +63,7 @@ import HSChain.Crypto
 import HSChain.Crypto.Classes.Hash ()
 import HSChain.Crypto.SHA
 --import HSChain.Types.Merkle.Types
+import HSChain.POW
 
 
 ----------------------------------------------------------------
@@ -74,12 +76,6 @@ data MerkleTree container alg a =
                             a
                     ))
 deriving instance Show (container (Either (MerkleTree container alg a, MerkleTree container alg a) a)) => Show (MerkleTree container alg a)
-
-instance Eq (MerkleTree container alg a) where
-  Node ha _ == Node hb _ = ha == hb
-
-instance Ord (MerkleTree container alg a) where
-  compare (Node ha _) (Node hb _) = compare ha hb
 
 -- |Obtain a hash of a node.
 getHash :: MerkleTree container alg a -> Hashed alg (MerkleTree container alg a)
@@ -323,12 +319,15 @@ genesisBlockHeader = unsafePerformIO $ do
   undefined
 
 tryMineBlock :: BlockHeaderBase -> IO (Maybe BlockHeader)
-tryMineBlock hbase = solve [serialisedHeaderBase] powConfig
+tryMineBlock hbase = do
+  mbSolutionHash <- solve [B.toStrict serialisedHeaderBase] powConfig
+  return $ fmap addSolution mbSolutionHash
   where
+    addSolution (solution, _) = BlockHeader hbase $ B.fromStrict solution
     serialisedHeaderBase = serialise hbase
     powConfig = defaultPOWConfig
-                  { powCfgComplexityMantissa = headerBaseComplexityMantissa hbase
-                  , powCfgComplexityShift    = headerBaseComplexityShift hbase
+                  { powCfgComplexityMantissa = blockHeaderBaseComplexityMantissa hbase
+                  , powCfgComplexityShift    = fromIntegral $ blockHeaderBaseComplexityShift hbase
                   }
 
 instance Transaction TX where
@@ -429,6 +428,7 @@ data DB = DB
     -- ^Cannot be non-empty, we have at least genesis.
     -- Must refer to some block in the blocks DB.
   , dbBlocks                :: Map (Hashed SHA256 Block) Block
+  , dbChainHeaders          :: Set (BlockHeader)
   }
   deriving stock (Show)
 
@@ -436,6 +436,7 @@ startDB :: DB
 startDB = DB
   { dbCurrentHead           = genesisBlockHeader
   , dbBlocks                = Map.singleton (getHash genesisBlock) genesisBlock
+  , dbChainHeaders          = Set.singleton genesisBlockHeader
   }
 
 miningProcess :: TVar DB -> IO ()
@@ -443,8 +444,26 @@ miningProcess dbvar = do
   miningLoop 0
   where
     miningLoop n = do
-      current <- atomically $ fmap dbCurrentHeader $ readTVar dbvar
-      hdr <- tryMineBlock current
+      current <- atomically $ fmap dbCurrentHead $ readTVar dbvar
+      mbHdrBlock <- formAndMine n current
+      case mbHdrBlock of
+        Just (newHeader, newBlock) -> do
+          atomically $ do
+            db@DB{..} <- readTVar dbvar
+            -- here we replace current head, in the real thing we must check work done.
+            -- but we can add block unconditionally.
+            let db' = db
+                      { dbCurrentHead        = newHeader
+                      , dbBlocks             = Map.insert (getHash newBlock) newBlock dbBlocks
+                      , dbChainHeaders       = Set.insert newHeader dbChainHeaders
+                      }
+            writeTVar dbvar db'
+          miningLoop (n+1)
+        Nothing -> miningLoop (n+1)
+    formAndMine n blockHeader@BlockHeader{..} = do
+      undefined
+      where
+        BlockHeaderBase{..} = blockHeaderBase
 
 node :: Config -> IO ()
 node cfg = do
