@@ -36,6 +36,8 @@ module HSChain.Store.Internal.Query (
   , basicCacheGenesis
   , basicCacheBlock
   , basicPutCacheBlock
+  , basicPutValidatorSet
+  , basicCacheValidatorSet
   , rollback
   , MonadQueryRW(..)
     -- * Database queries
@@ -81,6 +83,7 @@ import qualified Database.SQLite.Simple.FromField as SQL
 import Pipes (Proxy)
 
 import HSChain.Types.Blockchain
+import HSChain.Types.Validators
 import HSChain.Control.Mutex
 import HSChain.Control.Util
 import HSChain.Exceptions
@@ -105,10 +108,11 @@ data Access = RO                -- ^ Read-only access
 --   @a@ appear only in return type and frequently couldn't be
 --   inferred without explicit type annotations.
 data Connection (rw :: Access) a = Connection
-  { connMutex    :: !Mutex
-  , connConn     :: !SQL.Connection
-  , connCacheGen :: !(IORef (Maybe (Block a)))
-  , connCacheBlk :: !(IORef (LRU.LRU Height (Block a)))
+  { connMutex     :: !Mutex
+  , connConn      :: !SQL.Connection
+  , connCacheGen  :: !(IORef (Maybe (Block a)))
+  , connCacheBlk  :: !(IORef (LRU.LRU Height (Block a)))
+  , connCacheVSet :: !(IORef (LRU.LRU Height (ValidatorSet (Alg a))))
   }
 
 -- | Convert read-only or read-write connection to read-only one.
@@ -118,10 +122,11 @@ connectionRO = coerce
 -- | Open connection to database and set necessary pragmas
 openConnection :: MonadIO m => FilePath -> m (Connection rw a)
 openConnection db = liftIO $ do
-  connMutex    <- newMutex
-  connConn     <- SQL.open db
-  connCacheGen <- newIORef Nothing
-  connCacheBlk <- newIORef $ LRU.newLRU (Just 8)
+  connMutex     <- newMutex
+  connConn      <- SQL.open db
+  connCacheGen  <- newIORef Nothing
+  connCacheBlk  <- newIORef $ LRU.newLRU (Just 8)
+  connCacheVSet <- newIORef $ LRU.newLRU (Just 8)
   -- SQLite have support for retrying transactions in case database is
   -- busy. Here we switch it on
   SQL.execute_ connConn "PRAGMA busy_timeout = 10"
@@ -243,11 +248,12 @@ basicCacheGenesis (Query query) = Query $ do
     Nothing -> do !b <- query
                   liftIO $ b <$ atomicWriteIORef ref b
 
-basicCacheBlock
-  :: (Height -> Query 'RO a (Maybe (Block a)))
-  ->  Height -> Query 'RO a (Maybe (Block a))
-basicCacheBlock query h = Query $ do
-  ref <- asks connCacheBlk
+basicCacheHeightObj
+  :: (Connection 'RO a -> IORef (LRU.LRU Height obj))
+  -> (Height -> Query 'RO a (Maybe obj))
+  ->  Height -> Query 'RO a (Maybe obj)
+basicCacheHeightObj cache query h = Query $ do
+  ref <- asks cache
   r   <- liftIO (atomicModifyIORef' ref (LRU.lookup h))
   case r of
     Just _  -> return r
@@ -255,12 +261,28 @@ basicCacheBlock query h = Query $ do
                   liftIO $ forM_ mb $ \b -> atomicModifyIORef' ref $ (,()) . LRU.insert h b
                   return mb
 
-basicPutCacheBlock :: Block a -> Query 'RW a ()
-basicPutCacheBlock b = Query $ do
-  let h = blockHeight b
-  ref <- asks connCacheBlk
-  liftIO $ atomicModifyIORef' ref $ (,()) . LRU.insert h b
+basicCacheBlock
+  :: (Height -> Query 'RO a (Maybe (Block a)))
+  ->  Height -> Query 'RO a (Maybe (Block a))
+basicCacheBlock = basicCacheHeightObj connCacheBlk
 
+basicCacheValidatorSet
+  :: (Height -> Query 'RO a (Maybe (ValidatorSet (Alg a))))
+  ->  Height -> Query 'RO a (Maybe (ValidatorSet (Alg a)))
+basicCacheValidatorSet = basicCacheHeightObj connCacheVSet
+
+basicPutCacheHeightObj
+  :: (Connection 'RW a -> IORef (LRU.LRU Height obj))
+  -> Height -> obj -> Query 'RW a ()
+basicPutCacheHeightObj cache h obj = Query $ do
+  ref <- asks cache
+  liftIO $ atomicModifyIORef' ref $ (,()) . LRU.insert h obj
+
+basicPutCacheBlock :: Block a -> Query 'RW a ()
+basicPutCacheBlock b = basicPutCacheHeightObj connCacheBlk (blockHeight b) b
+
+basicPutValidatorSet :: Height -> ValidatorSet (Alg a) -> Query 'RW a ()
+basicPutValidatorSet = basicPutCacheHeightObj connCacheVSet
 
 instance MonadReadDB  m a => MonadReadDB  (IdentityT m) a
 instance MonadDB      m a => MonadDB      (IdentityT m) a

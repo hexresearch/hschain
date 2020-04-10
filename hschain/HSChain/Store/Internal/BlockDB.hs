@@ -320,11 +320,12 @@ retrieveLocalCommit h =
 --
 --   Must return validator set for every @0 < h <= blockchainHeight + 1@
 retrieveValidatorSet :: (Crypto (Alg a), MonadQueryRO m a) => Height -> m (Maybe (ValidatorSet (Alg a)))
-retrieveValidatorSet h =
-  singleQ "SELECT blob \
+retrieveValidatorSet h = liftQueryRO (basicCacheValidatorSet query h)
+  where
+    query h' = singleQ "SELECT blob \
           \  FROM thm_validators \
           \  JOIN thm_cas ON valref = id \
-          \ WHERE height = ?" (Only h)
+          \ WHERE height = ?" (Only h')
 
 hasValidatorSet :: (MonadQueryRO m a) => Height -> m Bool
 hasValidatorSet h = do
@@ -405,6 +406,7 @@ storeValSet
 storeValSet h vals = liftQueryRW $ do
   i <- storeBlob vals
   basicExecute "INSERT INTO thm_validators VALUES (?,?)" (h, i)
+  basicPutValidatorSet h (merkleValue vals)
 
 
 ----------------------------------------------------------------
