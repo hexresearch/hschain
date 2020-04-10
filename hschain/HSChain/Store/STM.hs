@@ -3,6 +3,23 @@
 {-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+
+
+
+{-# LANGUAGE DataKinds           #-}
+{-# LANGUAGE DeriveFunctor       #-}
+{-# LANGUAGE FlexibleContexts    #-}
+{-# LANGUAGE LambdaCase          #-}
+{-# LANGUAGE MultiWayIf          #-}
+{-# LANGUAGE NamedFieldPuns      #-}
+{-# LANGUAGE NumDecimals         #-}
+{-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE RecordWildCards     #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TupleSections       #-}
+{-# LANGUAGE TypeApplications    #-}
+
+
 -- |
 module HSChain.Store.STM (
     -- * Mempool
@@ -41,7 +58,9 @@ import HSChain.Types.Blockchain
 import HSChain.Types.Merkle.Types
 
 import HSChain.Store.Internal.BlockDB
-import HSChain.Types.Validators
+
+import qualified Control.Concurrent.MVar.Lifted as L
+import Control.Monad.Trans.Control
 
 newMempool
   :: forall m alg tx. (Show tx, Ord tx, Crypto alg, CryptoHashable tx, MonadIO m)
@@ -205,36 +224,29 @@ newSTMBchStorage st0 = do
     }
 
 newSTMBchValidators
-  :: (Crypto (Alg a), MonadIO m)
-  => ValidatorSet (Alg a) -> m (BChValidators m a)
-newSTMBchValidators _vs = do
+  :: forall a m . (Crypto (Alg a), MonadIO m, MonadBaseControl IO m, MonadDB m a)
+  => m (BChValidators m a)
+newSTMBchValidators = do
   varSt <- liftIO $ newMVar (Nothing, Nothing)
-  -- | Due to we need synchronize both STM and IO it is need to
-  --   block STM operations while IO operations occured.
-  --   So we use take/put semantics and masking to do that.
-  --
-  --   Also we can't use STM here.
   return BChValidators
     -- TODO Here is potential race condition between DB reading/writing and STM var reading,
     --      when application will use this STM cacher and low level API.
     --      Best way is to wrap all DB interation in high-level cacher and disallow low-level API
     { bchvRetrieveValidatorSet = \h ->
-        liftIO $ modifyMVar varSt $ \case
+        L.modifyMVar varSt $ \case
           v@(Just h', vs) | h == h' -> return (v, vs)
           _ -> do
-            vs <- retrieveValidatorSet h
+            vs <- queryRO $ retrieveValidatorSet h
             return ((Just h, vs), vs)
     , bchvHasValidatorSet = \h ->
-        liftIO $ withMVar varSt $ \case
+        L.withMVar varSt $ \case
           (Just h', Just _) | h == h' -> return True
-          _                           -> hasValidatorSet h
+          _                           -> queryRO $ hasValidatorSet h
     , bchvStoreValSet = \h vals ->
-        liftIO $ modifyMVar_ varSt $ \_ -> do
-          storeValSet h (merkled vals)
+        L.modifyMVar_ varSt $ \_ -> do
+          _ <- queryRW $ storeValSet h (merkled vals) -- TODO check result
           return (Just h, Just vals)
     }
-  where
-    tryReadTMVarIO = atomically . tryReadTMVar
 
 -- | Store complete snapshot of state every N
 snapshotState
