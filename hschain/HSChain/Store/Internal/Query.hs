@@ -123,7 +123,7 @@ openConnection db = liftIO $ do
   connCacheGen <- newIORef Nothing
   connCacheBlk <- newIORef $ LRU.newLRU (Just 8)
   -- SQLite have support for retrying transactions in case database is
-  -- busy. Here we switch ot on
+  -- busy. Here we switch it on
   SQL.execute_ connConn "PRAGMA busy_timeout = 10"
   return $! Connection{..}
 
