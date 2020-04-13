@@ -110,12 +110,10 @@ type Header b = GBlock b Hashed
 type Block  b = GBlock b IdNode
 
 
-data Locator b = Locator [Header b]
+data Locator b = Locator [BlockID b]
   deriving stock    (Generic)
 
-instance ( Serialise (BlockID b)
-         , Serialise (b Hashed)
-         ) => Serialise (Locator b)
+instance (Serialise (BlockID b)) => Serialise (Locator b)
 
 ----------------------------------------
 -- instances

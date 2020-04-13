@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns         #-}
 {-# LANGUAGE FlexibleContexts     #-}
 {-# LANGUAGE LambdaCase           #-}
 {-# LANGUAGE MultiWayIf           #-}
@@ -17,6 +18,7 @@ module HSChain.PoW.Consensus
   , blockIndexFromGenesis
   , traverseBlockIndex
   , traverseBlockIndexM
+  , makeLocator
     -- *
   , StateView(..)
   , BlockDB(..)
@@ -150,6 +152,24 @@ deriving instance (Show (Work b), Show (BlockID b), Show (b Hashed)) => Show (BH
 instance BlockData b => Eq (BH b) where
   a == b = bhBID a == bhBID b
 
+makeLocator :: BH b -> Locator b
+makeLocator  = Locator . takeH 10 . Just
+  where
+    --
+    takeH :: Int -> Maybe (BH b) -> [BlockID b]
+    takeH !_ Nothing   = []
+    takeH  0 (Just bh) = bhBID bh : case bhPrevious bh of
+      Nothing  -> []
+      Just bh' -> backoff 2 2 bh'
+    takeH  n (Just bh) = bhBID bh : takeH (n-1) (bhPrevious bh)
+    --
+    backoff :: Int -> Int -> BH b -> [BlockID b]
+    backoff !n !1 bh = bhBID bh : case bhPrevious bh of
+      Nothing  -> []
+      Just bh' -> backoff (n*2) (2*n) bh'
+    backoff  n  k bh = case bhPrevious bh of
+      Nothing  -> [bhBID bh]
+      Just bh' -> backoff n (k-1) bh'
 
 
 ----------------------------------------------------------------
