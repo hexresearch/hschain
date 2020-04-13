@@ -26,6 +26,7 @@ import HSChain.PoW.P2P.STM.PeerRegistry
 import HSChain.PoW.P2P.Types
 import HSChain.PoW.P2P.Handler.Peer
 import HSChain.PoW.P2P.Handler.CatchupLock
+import HSChain.PoW.P2P.Handler.BlockRequests
 import HSChain.PoW.Exceptions
 import HSChain.PoW.Consensus
 import HSChain.PoW.Types
@@ -43,12 +44,13 @@ runPEX
      , BlockData b
      )
   => NetworkAPI
-  -> Sink (BoxRX m b)
+  -> BlockRegistry b
+  -> Sink (BoxRX m b)  
   -> STM (Src (MsgAnn b))
   -> STM (Consensus m b)
   -> BlockDB m b
   -> ContT r m ()
-runPEX netAPI sinkBOX mkSrcAnn consSt db = do
+runPEX netAPI blockReg sinkBOX mkSrcAnn consSt db = do
   reg                <- newPeerRegistry
   nonces             <- newNonceSet
   (sinkAddr,srcAddr) <- queuePair
@@ -62,6 +64,7 @@ runPEX netAPI sinkBOX mkSrcAnn consSt db = do
           , pexGoodPeers   = connectedPeersList reg
           , sinkConsensus  = sinkBOX
           , peerCatchup    = catchup
+          , peerReqBlocks  = blockReg
           , peerConsensuSt = consSt
           , peerBlockDB    = db
           , ..
