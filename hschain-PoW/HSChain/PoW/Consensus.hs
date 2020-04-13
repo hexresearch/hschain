@@ -212,7 +212,7 @@ data Consensus m b = Consensus
     -- ^ Index of all known headers that have enough work in them and
     --   otherwise valid. Note that it may include headers of blocks
     --   which turned out to be invalid.
-  , _bestHead       :: (BH b, StateView m b)
+  , _bestHead       :: (BH b, StateView m b, Locator b)
     -- ^ Best head of blockchain. It's validated block with most work
     --   in it
   , _candidateHeads :: [Head b]
@@ -234,7 +234,7 @@ consensusGenesis
   -> Consensus m b
 consensusGenesis genesis sview = Consensus
   { _blockIndex     = idx
-  , _bestHead       = (bh, sview)
+  , _bestHead       = (bh, sview, makeLocator bh)
   , _candidateHeads = []
   , _badBlocks      = Set.empty
   , _requiredBlocks = Set.empty
@@ -457,7 +457,7 @@ bestCandidate db = do
   case heads of
     []  -> cleanCandidates
     h:_ -> do
-      (best,st) <- use bestHead
+      (best,st,_) <- use bestHead
       let rollback _    = lift . revertBlock
           update   bh s = do
             block <- lift (retrieveBlock db $ bhBID bh) >>= \case
@@ -471,7 +471,7 @@ bestCandidate db = do
               $ traverseBlockIndexM rollback update best h st
       case state' of
         Left  bid -> invalidateBlock bid >> bestCandidate db
-        Right s   -> bestHead .= (h,s)   >> cleanCandidates
+        Right s   -> bestHead .= (h,s,makeLocator h) >> cleanCandidates
   where
     findBest missing Head{..} =
       case Seq.takeWhileL (\b -> bhBID b `Set.notMember` missing) bchMissing of
