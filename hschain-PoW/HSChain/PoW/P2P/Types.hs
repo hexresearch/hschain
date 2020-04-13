@@ -34,7 +34,6 @@ module HSChain.PoW.P2P.Types
   , ReleaseCatchupThrottle(..)
   ) where
 
-import Codec.Serialise            (Serialise)
 import Control.Concurrent.STM
 import Control.Monad.State.Strict (StateT)
 import Codec.Serialise            (Serialise)
@@ -202,8 +201,3 @@ newtype CatchupThrottle = CatchupThrottle
 newtype ReleaseCatchupThrottle = ReleaseCatchupThrottle
   { releaseCatchupLock :: STM ()
   }
-
-
--- data AppChans m b = AppChans
---   { appChanConsensus :: (Sink (BoxRX m b), Src (BoxRX m b))
---   , appChan

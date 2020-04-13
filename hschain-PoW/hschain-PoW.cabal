@@ -60,7 +60,6 @@ Library
                 HSChain.PoW.Store
                 HSChain.PoW.P2P
                 HSChain.PoW.P2P.Types
-                HSChain.PoW.P2P.PeerRegistry
                 HSChain.PoW.P2P.Handler.BlockRequests
                 HSChain.PoW.P2P.Handler.CatchupLock
                 HSChain.PoW.P2P.Handler.Consensus

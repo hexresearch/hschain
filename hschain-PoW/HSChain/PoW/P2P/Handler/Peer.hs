@@ -12,35 +12,24 @@
 module HSChain.PoW.P2P.Handler.Peer where
 
 import Codec.Serialise
-import Control.Applicative
 import Control.Concurrent (ThreadId,myThreadId,throwTo)
 import Control.Concurrent.STM
 import Control.Monad
 import Control.Monad.IO.Class
-import Control.Monad.State.Strict
-import Control.Monad.Except
 import Control.Monad.Catch
-import Data.Time       (UTCTime)
-import Data.Map.Strict (Map)
-import Data.Functor.Contravariant
-import qualified Data.Map.Strict as Map
+import Data.Foldable
 import Lens.Micro
-import Lens.Micro.Mtl
-import Lens.Micro.TH
 
 import HSChain.Control.Class
 import HSChain.Control.Util
 import HSChain.Control.Channels
-import HSChain.Control.Shepherd
 import HSChain.Network.Types
 import HSChain.PoW.P2P.Types
 import HSChain.PoW.Types
 import HSChain.PoW.Consensus
 import HSChain.PoW.Exceptions
-import HSChain.PoW.P2P.Handler.CatchupLock
 import HSChain.PoW.P2P.Handler.BlockRequests
 import HSChain.Types.Merkle.Types
-import HSChain.Crypto
 
 
 ----------------------------------------------------------------
@@ -194,7 +183,11 @@ peerRecv conn st@PeerState{..} PeerChans{..} sinkGossip = forever $ do
     GossipReq  m -> case m of
       ReqPeers       ->
         sinkIO sinkGossip . GossipResp . RespPeers =<< atomicallyIO pexGoodPeers
-      ReqHeaders loc -> undefined "ReqHeaders"
+      ReqHeaders loc -> do
+        c <- atomicallyIO peerConsensuSt
+        sinkIO sinkGossip $ GossipResp $ case locateHeaders c loc of
+          Nothing -> RespNack
+          Just hs -> RespHeaders hs
       ReqBlock   bid -> do
         mblk <- retrieveBlock peerBlockDB bid
         sinkIO sinkGossip $ GossipResp $ case mblk of
@@ -203,6 +196,23 @@ peerRecv conn st@PeerState{..} PeerChans{..} sinkGossip = forever $ do
   where
     toConsensus m = do tid <- liftIO myThreadId
                        sinkIO sinkConsensus $ BoxRX $ \cont -> reactCommand tid st =<< cont m
+
+locateHeaders
+  :: (BlockData b)
+  => Consensus m b
+  -> Locator b
+  -> Maybe ([Header b])
+locateHeaders consensus (Locator bidList) = do
+  -- Find first index that we know about
+  bh <- asum $ (`lookupIdx` bIdx) <$> bidList
+  return $ traverseBlockIndex
+    (\b -> ((asHeader b) :))
+    (\_ -> id)
+    best bh
+    []
+  where
+    bIdx = consensus ^. blockIndex
+    best = consensus ^. bestHead . _1
 
 reactCommand
   :: (MonadIO m)
