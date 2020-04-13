@@ -81,6 +81,7 @@ Test-suite hschain-PoW-tests
                      , hschain-PoW
                      , hschain-crypto
                      , hschain-merkle
+                     , hschain-net
                      , containers
                      , microlens
                      , mtl
@@ -90,3 +91,5 @@ Test-suite hschain-PoW-tests
   hs-source-dirs:      test
   Main-is:             Main.hs
   Other-modules:       TM.Consensus
+                       TM.Util.InMemory
+                       TM.Util.Mockchain
