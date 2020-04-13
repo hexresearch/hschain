@@ -80,9 +80,11 @@ Test-suite hschain-PoW-tests
   Build-Depends:       base              >=4.9 && <5
                      , hschain-PoW
                      , hschain-crypto
+                     , hschain-control
                      , hschain-merkle
                      , hschain-net
                      , containers
+                     , serialise
                      , microlens
                      , mtl
                      , tasty             >=0.11
@@ -91,5 +93,6 @@ Test-suite hschain-PoW-tests
   hs-source-dirs:      test
   Main-is:             Main.hs
   Other-modules:       TM.Consensus
+                       TM.P2P
                        TM.Util.InMemory
                        TM.Util.Mockchain

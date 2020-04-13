@@ -54,7 +54,7 @@ inMemoryDB
 inMemoryDB = do
   var <- liftIO $ newIORef Map.empty
   return BlockDB
-    { storeBlock     = \b -> liftIO $ modifyIORef' var $ Map.insert (blockID b) b
+    { storeBlock     = \b   -> liftIO $ modifyIORef' var $ Map.insert (blockID b) b
     , retrieveBlock  = \bid -> liftIO $ Map.lookup bid <$> readIORef var
     , retrieveHeader = \bid -> liftIO $ fmap toHeader . Map.lookup bid <$> readIORef var
     }
