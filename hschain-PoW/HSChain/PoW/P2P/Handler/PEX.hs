@@ -45,7 +45,7 @@ runPEX
      )
   => NetworkAPI
   -> BlockRegistry b
-  -> Sink (BoxRX m b)  
+  -> Sink (BoxRX m b)
   -> STM (Src (MsgAnn b))
   -> STM (Consensus m b)
   -> BlockDB m b
@@ -102,7 +102,9 @@ acceptLoop NetworkAPI{..} shepherd reg nonceSet mkChans  = do
       -- Check nonce for self-connection and send reply
       isSelfConnection nonceSet nonce >>= \case
         True  -> atomicallyIO $ addSelfAddress reg normAddr
-        False -> withPeer reg normAddr $ runPeer conn =<< atomicallyIO mkChans
+        False -> do
+          send conn $ serialise HandshakeAck
+          withPeer reg normAddr $ runPeer conn =<< atomicallyIO mkChans
 
 connectTo
   :: ( MonadMask m, MonadFork m
