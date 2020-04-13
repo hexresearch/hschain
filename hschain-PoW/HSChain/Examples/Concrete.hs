@@ -62,7 +62,7 @@ import System.IO.Unsafe (unsafePerformIO)
 import Options.Applicative
 
 import HSChain.Crypto
-import HSChain.Crypto.Classes.Hash ()
+import HSChain.Crypto.Classes.Hash
 import HSChain.Crypto.SHA
 --import HSChain.Types.Merkle.Types
 import HSChain.POW
@@ -218,6 +218,9 @@ class (Ord (UTXO tx), Serialise tx) => Transaction tx where
   -- One good choice is Hashed alg Something.
   type UTXO tx
 
+  -- |Initial transaction with all money in the world.
+  allMoneyInWorldTx :: String -> tx
+
   -- |The fee transaction provides.
   transactionFee :: tx -> Integer
 
@@ -227,6 +230,8 @@ class (Ord (UTXO tx), Serialise tx) => Transaction tx where
   -- |Create mining transaction.
   createMiningTransaction :: Height -> UTXO tx -> String -> Integer -> Maybe tx
 
+  -- |Fetch mining reward UTXO.
+  tryGetMiningRewardUTXO :: tx -> Maybe (UTXO tx)
 
 -------------------------------------------------------------------------------
 -- Mining pool.
@@ -281,13 +286,10 @@ data TX = TX { txInputs, txOutputs :: [(String, Noin)] }
 instance CryptoHashable TX where
   hashStep = hashStep . serialise
 
-nanoNoin, milliNoin, microNoin, noin, kiloNoin :: Noin
-[nanoNoin, microNoin, milliNoin, noin, kiloNoin] = take 5 $ iterate (*1000) 1
+nanoNoin, milliNoin, microNoin, noin, kiloNoin, megaNoin, gigaNoin :: Noin
+nanoNoin : microNoin : milliNoin : noin : kiloNoin : megaNoin : gigaNoin :_ = iterate (*1000) 1
 
 type Block = CompleteTree SHA256 TX
-
-genesisBlock :: Block
-genesisBlock = completeTreeFromList [TX [] [("genesis", 1000000000 * noin)]]
 
 data BlockHeaderBase = BlockHeaderBase
   { blockHeaderBaseHeight             :: Height
@@ -300,6 +302,9 @@ data BlockHeaderBase = BlockHeaderBase
   deriving stock (Eq, Ord, Show, Generic)
   deriving anyclass (Serialise)
 
+instance CryptoHashable BlockHeaderBase where
+  hashStep bhb = hashStep $ serialise bhb
+
 data BlockHeader = BlockHeader
   { blockHeaderBase     :: BlockHeaderBase
   , blockHeaderSolution :: ByteString
@@ -307,27 +312,39 @@ data BlockHeader = BlockHeader
   deriving stock (Eq, Ord, Show, Generic)
   deriving anyclass (Serialise)
 
+instance CryptoHashable BlockHeader where
+  hashStep (BlockHeader bhb solution) = hashStep $ serialise bhb <> solution
+
 currentSeconds :: IO Word64
 currentSeconds = do
   fmap round getPOSIXTime
 
 {-# NOINLINE genesisBlockHeaderBase #-}
-genesisBlockHeaderBase :: BlockHeaderBase
-genesisBlockHeaderBase = unsafePerformIO $ do
-  seconds <- currentSeconds
-  return $ BlockHeaderBase
-    { blockHeaderBaseHeight             = 0
-    , blockHeaderBasePrevious           = Nothing
-    , blockHeaderBaseSeconds            = seconds
-    , blockHeaderBaseComplexityShift    = 0
-    , blockHeaderBaseComplexityMantissa = 0xffff
-    , blockHeaderBaseBlockHash          = getHash genesisBlock
-    }
-
+{-# NOINLINE genesisBlock #-}
 {-# NOINLINE genesisBlockHeader #-}
+genesisBlock :: Block
+genesisBlockHeaderBase :: BlockHeaderBase
 genesisBlockHeader :: BlockHeader
-genesisBlockHeader = unsafePerformIO $ do
-  undefined
+(genesisBlock, genesisBlockHeader, genesisBlockHeaderBase) = unsafePerformIO $ do
+  mineGenesis 0
+  where
+    mineGenesis n = do
+      putStrLn $ "genesis attempt "++show n
+      seconds <- currentSeconds
+      let allMoneyN = allMoneyInWorldTx $ "attempt-"++show n
+      let blk = completeTreeFromList [allMoneyN]
+      let hbase = BlockHeaderBase
+                  { blockHeaderBaseHeight             = 0
+                  , blockHeaderBasePrevious           = Nothing
+                  , blockHeaderBaseSeconds            = seconds
+                  , blockHeaderBaseComplexityShift    = fromIntegral $ powCfgComplexityShift defaultPOWConfig
+                  , blockHeaderBaseComplexityMantissa = powCfgComplexityMantissa defaultPOWConfig
+                  , blockHeaderBaseBlockHash          = getHash blk
+                  }
+      r <- tryMineBlock defaultPOWConfig hbase
+      case r of
+        Just bhdr -> return (blk, bhdr, hbase)
+        Nothing -> mineGenesis (n+1)
 
 tryMineBlock :: POWConfig -> BlockHeaderBase -> IO (Maybe BlockHeader)
 tryMineBlock powConfig hbase = do
@@ -337,8 +354,14 @@ tryMineBlock powConfig hbase = do
     addSolution (solution, _) = BlockHeader hbase $ B.fromStrict solution
     serialisedHeaderBase = serialise hbase
 
+miningUTXOPrefix :: String
+miningUTXOPrefix = "miningUTXO"
+
 instance Transaction TX where
   type UTXO TX = (String, Noin)
+
+  allMoneyInWorldTx infoAsNonce =
+    TX [] [(miningUTXOPrefix++show 0++"-"++infoAsNonce, 100500 * gigaNoin)]
 
   transactionFee (TX ins outs) = sum (map snd ins) - sum (map snd outs)
 
@@ -349,7 +372,18 @@ instance Transaction TX where
       unknown = Set.difference insSet utxos
       insSet = Set.fromList ins
 
-  createMiningTransaction height prevMiningUTXO infoAsNonce fee = Nothing
+  createMiningTransaction height prevMiningUTXO@(utxoID, noins) infoAsNonce fee
+    | noins + fee < 1 = Nothing
+    | otherwise = Just $
+      TX [prevMiningUTXO] [(miningUTXOPrefix++show height++"-"++infoAsNonce, noins'), ("mining_fee_"++show height, noins + fee - noins)]
+    where
+      noins' = if noins > noin then noins - noin else noins
+
+  tryGetMiningRewardUTXO (TX _ outs) = case filter hasPrefix outs of
+    (utxo:_) -> Just utxo
+    _ -> Nothing
+    where
+      hasPrefix (s, _) = miningUTXOPrefix == take (length miningUTXOPrefix) s
 
 -------------------------------------------------------------------------------
 -- Network part.
@@ -468,6 +502,7 @@ miningProcess dbvar = do
                       , dbChainHeaders       = Map.insert newHeight newHeader dbChainHeaders
                       }
             writeTVar dbvar db'
+          putStrLn "mined"
           miningLoop (n+1)
         Nothing -> miningLoop (n+1)
     formAndMine n DB{..} = do
@@ -476,9 +511,29 @@ miningProcess dbvar = do
             |    blockHeaderBaseHeight > 0
               && blockHeaderBaseHeight `mod` 1024 == 0 = error "bububu"
             | otherwise = powConfig
-      undefined
+      -- TODO: here we have to access mempool.
+      let Just tx = createMiningTransaction nextHeight prevUTXO ("attempt"++show n) 0
+          newTxs = [tx]
+          newBlock = completeTreeFromList newTxs
+          newBlockHeaderBase = BlockHeaderBase
+                                 { blockHeaderBaseHeight             = nextHeight
+                                 , blockHeaderBasePrevious           = Just $ hashed dbCurrentHead
+                                 , blockHeaderBaseSeconds            = currTime
+                                 , blockHeaderBaseComplexityShift    = fromIntegral $
+                                           powCfgComplexityShift adjustedPOWConfig
+                                 , blockHeaderBaseComplexityMantissa =
+                                           powCfgComplexityMantissa adjustedPOWConfig
+                                 , blockHeaderBaseBlockHash          =
+                                           getHash newBlock
+                                 }
+      fmap (fmap $ flip (,) newBlock) $ tryMineBlock adjustedPOWConfig newBlockHeaderBase
       where
         nextHeight = blockHeaderBaseHeight + 1
+        prevMinedBlock = Map.findWithDefault (error "can't find previousblock")
+                               blockHeaderBaseBlockHash
+                               dbBlocks
+        Node _ (One (Right prevMineTx)) = prevMinedBlock
+        Just prevUTXO = tryGetMiningRewardUTXO prevMineTx
         BlockHeader{..} = dbCurrentHead
         BlockHeaderBase{..} = blockHeaderBase
         powConfig = defaultPOWConfig
