@@ -52,9 +52,16 @@ foreign import ccall "evpow_check"
                     -> Word16
                     -> IO Int
 
+-- |Main configuration.
+data MainPOWConfig = MainPOWConfig
+  { powMainClausesCount            :: !Int
+  , powMainBlocksBetweenAdjustment :: !Int
+  , powMainSecondsForBlock         :: !Int
+  }
+  deriving (Show)
 -- |Configuration of POW
 data POWConfig = POWConfig
-  { powCfgClausesCount             :: !Int
+  { powCfgMain                     :: !MainPOWConfig
   , powCfgAttemptsBetweenRestarts  :: !Int
   , powCfgAttemptsToSearch         :: !Int
   , powCfgMillisecondsToSearch     :: !Int
@@ -63,9 +70,18 @@ data POWConfig = POWConfig
   }
   deriving (Show)
 
+-- |Main configuration: complexity of search, time between blocks to attain and
+-- number of blocks to wait between adjustments.
+defaultMainPOWConfig :: MainPOWConfig
+defaultMainPOWConfig = MainPOWConfig
+  { powMainClausesCount            = 5250
+  , powMainBlocksBetweenAdjustment = 1024
+  , powMainSecondsForBlock         = 120
+  }
+
 -- |Configuration of POW - default values.
 defaultPOWConfig = POWConfig
-  { powCfgClausesCount             = 5250
+  { powCfgMain                     = defaultMainPOWConfig
   , powCfgAttemptsBetweenRestarts  = 10000
   , powCfgAttemptsToSearch         = 2500000
   , powCfgMillisecondsToSearch     = 2000
@@ -85,7 +101,7 @@ solve headerParts POWConfig{..} = B.useAsCStringLen completeHeader $ \(ptr', len
     r <- evpow_solve
            ptr (fromIntegral len)
            answer completeHash
-           powCfgClausesCount
+           powMainClausesCount
            powCfgComplexityShift
            powCfgComplexityMantissa
            powCfgMillisecondsToSearch
@@ -101,6 +117,7 @@ solve headerParts POWConfig{..} = B.useAsCStringLen completeHeader $ \(ptr', len
       else return Nothing
   where
     completeHeader = B.concat headerParts
+    MainPOWConfig{..} = powCfgMain
 
 check :: ByteString -> ByteString -> POWConfig -> IO Bool
 check headerWithAnswer hashOfHeader POWConfig{..} =
@@ -115,5 +132,7 @@ check headerWithAnswer hashOfHeader POWConfig{..} =
                 answer = plusPtr hdr prefixSize
             fmap (/= 0) $ evpow_check
               (castPtr hdr) (fromIntegral prefixSize) (castPtr answer) (castPtr hash)
-              powCfgClausesCount powCfgComplexityShift powCfgComplexityMantissa
+              powMainClausesCount powCfgComplexityShift powCfgComplexityMantissa
+  where
+    MainPOWConfig{..} = powCfgMain
 

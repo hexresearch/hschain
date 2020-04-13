@@ -43,6 +43,8 @@ import qualified Data.Map.Strict as Map
 import Data.Set (Set)
 import qualified Data.Set as Set
 
+import Data.Time.Clock.POSIX
+
 import Data.Word
 
 --import Data.Monoid (Sum(..))
@@ -290,6 +292,7 @@ genesisBlock = completeTreeFromList [TX [] [("genesis", 1000000000 * noin)]]
 data BlockHeaderBase = BlockHeaderBase
   { blockHeaderBaseHeight             :: Height
   , blockHeaderBasePrevious           :: Maybe (Hashed SHA256 BlockHeader)
+  , blockHeaderBaseSeconds            :: Word64 -- ^Unix time seconds.
   , blockHeaderBaseComplexityShift    :: Word16
   , blockHeaderBaseComplexityMantissa :: Word16
   , blockHeaderBaseBlockHash          :: Hashed SHA256 (CompleteTree SHA256 TX)
@@ -304,31 +307,35 @@ data BlockHeader = BlockHeader
   deriving stock (Eq, Ord, Show, Generic)
   deriving anyclass (Serialise)
 
+currentSeconds :: IO Word64
+currentSeconds = do
+  fmap round getPOSIXTime
+
+{-# NOINLINE genesisBlockHeaderBase #-}
 genesisBlockHeaderBase :: BlockHeaderBase
-genesisBlockHeaderBase = BlockHeaderBase
-  { blockHeaderBaseHeight             = 0
-  , blockHeaderBasePrevious           = Nothing
-  , blockHeaderBaseComplexityShift    = 0
-  , blockHeaderBaseComplexityMantissa = 0xffff
-  , blockHeaderBaseBlockHash          = getHash genesisBlock
-  }
+genesisBlockHeaderBase = unsafePerformIO $ do
+  seconds <- currentSeconds
+  return $ BlockHeaderBase
+    { blockHeaderBaseHeight             = 0
+    , blockHeaderBasePrevious           = Nothing
+    , blockHeaderBaseSeconds            = seconds
+    , blockHeaderBaseComplexityShift    = 0
+    , blockHeaderBaseComplexityMantissa = 0xffff
+    , blockHeaderBaseBlockHash          = getHash genesisBlock
+    }
 
 {-# NOINLINE genesisBlockHeader #-}
 genesisBlockHeader :: BlockHeader
 genesisBlockHeader = unsafePerformIO $ do
   undefined
 
-tryMineBlock :: BlockHeaderBase -> IO (Maybe BlockHeader)
-tryMineBlock hbase = do
+tryMineBlock :: POWConfig -> BlockHeaderBase -> IO (Maybe BlockHeader)
+tryMineBlock powConfig hbase = do
   mbSolutionHash <- solve [B.toStrict serialisedHeaderBase] powConfig
   return $ fmap addSolution mbSolutionHash
   where
     addSolution (solution, _) = BlockHeader hbase $ B.fromStrict solution
     serialisedHeaderBase = serialise hbase
-    powConfig = defaultPOWConfig
-                  { powCfgComplexityMantissa = blockHeaderBaseComplexityMantissa hbase
-                  , powCfgComplexityShift    = fromIntegral $ blockHeaderBaseComplexityShift hbase
-                  }
 
 instance Transaction TX where
   type UTXO TX = (String, Noin)
@@ -428,7 +435,9 @@ data DB = DB
     -- ^Cannot be non-empty, we have at least genesis.
     -- Must refer to some block in the blocks DB.
   , dbBlocks                :: Map (Hashed SHA256 Block) Block
-  , dbChainHeaders          :: Set (BlockHeader)
+  , dbChainHeaders          :: Map Height (BlockHeader)
+  -- ^More or less good structure - relatively efficient at
+  -- cutting maximum elements and addressing with height.
   }
   deriving stock (Show)
 
@@ -436,7 +445,7 @@ startDB :: DB
 startDB = DB
   { dbCurrentHead           = genesisBlockHeader
   , dbBlocks                = Map.singleton (getHash genesisBlock) genesisBlock
-  , dbChainHeaders          = Set.singleton genesisBlockHeader
+  , dbChainHeaders          = Map.singleton 0 genesisBlockHeader
   }
 
 miningProcess :: TVar DB -> IO ()
@@ -444,33 +453,49 @@ miningProcess dbvar = do
   miningLoop 0
   where
     miningLoop n = do
-      current <- atomically $ fmap dbCurrentHead $ readTVar dbvar
-      mbHdrBlock <- formAndMine n current
+      db <- atomically $ readTVar dbvar
+      mbHdrBlock <- formAndMine n db
       case mbHdrBlock of
         Just (newHeader, newBlock) -> do
           atomically $ do
             db@DB{..} <- readTVar dbvar
             -- here we replace current head, in the real thing we must check work done.
             -- but we can add block unconditionally.
-            let db' = db
+            let newHeight = blockHeaderBaseHeight $ blockHeaderBase newHeader
+                db' = db
                       { dbCurrentHead        = newHeader
                       , dbBlocks             = Map.insert (getHash newBlock) newBlock dbBlocks
-                      , dbChainHeaders       = Set.insert newHeader dbChainHeaders
+                      , dbChainHeaders       = Map.insert newHeight newHeader dbChainHeaders
                       }
             writeTVar dbvar db'
           miningLoop (n+1)
         Nothing -> miningLoop (n+1)
-    formAndMine n blockHeader@BlockHeader{..} = do
+    formAndMine n DB{..} = do
+      currTime <- currentSeconds
+      let adjustedPOWConfig
+            |    blockHeaderBaseHeight > 0
+              && blockHeaderBaseHeight `mod` 1024 == 0 = error "bububu"
+            | otherwise = powConfig
       undefined
       where
+        nextHeight = blockHeaderBaseHeight + 1
+        BlockHeader{..} = dbCurrentHead
         BlockHeaderBase{..} = blockHeaderBase
+        powConfig = defaultPOWConfig
+                      { powCfgComplexityMantissa = blockHeaderBaseComplexityMantissa
+                      , powCfgComplexityShift    = fromIntegral $ blockHeaderBaseComplexityShift
+                      }
 
 node :: Config -> IO ()
 node cfg = do
   sock <- newUDPSocket (configOurPort cfg)
   db <- atomically $ newTVar startDB
   forkIO $ miningProcess db
-  error "node is nyd"
+  loop
+  where
+    loop = do
+      threadDelay 1000000
+      loop
 
 -------------------------------------------------------------------------------
 -- Configuration.
