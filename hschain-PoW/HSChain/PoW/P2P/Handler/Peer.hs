@@ -89,8 +89,8 @@ peerRequestHeaders
 peerRequestHeaders PeerState{..} PeerChans{..} sinkGossip = forever $ do
   atomicallyIO $ do
     -- Block unless we're in catchup and there's no requests in flight
-    check . not =<< readTVar inCatchup
-    check       =<< isEmptyTMVar requestInFlight
+    check =<< readTVar inCatchup
+    check =<< isEmptyTMVar requestInFlight
     -- If we don't know peer's best head exit catchup. Otherwise try
     -- to send request
     readTVar peersBestHead >>= \case
