@@ -174,7 +174,7 @@ data PeerChans m b = PeerChans
   , peerBCastAskPeer :: Src   AskPeers
   , peerCatchup      :: CatchupThrottle
   , peerReqBlocks    :: BlockRegistry b
-  , peerBlockIdx     :: STM (BlockIndex b)
+  , peerConsensuSt   :: STM (Consensus m b)
   , peerBlockDB      :: BlockDB m b
   }
 

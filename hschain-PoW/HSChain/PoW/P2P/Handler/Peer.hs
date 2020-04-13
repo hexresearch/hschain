@@ -36,8 +36,8 @@ import HSChain.PoW.P2P.Types
 import HSChain.PoW.Types
 import HSChain.PoW.Consensus
 import HSChain.PoW.Exceptions
--- import HSChain.PoW.P2P.BlockRegistry
 import HSChain.PoW.P2P.Handler.CatchupLock
+import HSChain.PoW.P2P.Handler.BlockRequests
 import HSChain.Types.Merkle.Types
 import HSChain.Crypto
 
@@ -66,11 +66,10 @@ runPeer conn chans@PeerChans{..} = do
                     return PeerState{..}
   runConcurrently
     [ peerSend    conn (srcGossip <> fmap GossipAnn peerBCastAnn)
-    , peerRecv    conn st chans sinkGossip
+    , peerRecv    conn     st chans sinkGossip
     , peerRequestHeaders   st chans sinkGossip
-    -- , peerRequestBlock
+    , peerRequestBlock     st chans sinkGossip
     , peerRequestAddresses st chans sinkGossip
-    
     ]
 
 
@@ -107,20 +106,29 @@ peerRequestHeaders PeerState{..} PeerChans{..} sinkGossip = forever $ do
     readTVar peersBestHead >>= \case
       Nothing -> exitCatchup
       Just h  -> do
-        bidx <- peerBlockIdx
-        case blockID h `lookupIdx` bidx of
+        bidx <- peerConsensuSt
+        case blockID h `lookupIdx` (bidx^.blockIndex) of
           Just _  -> exitCatchup          
           Nothing -> do
             putTMVar requestInFlight . SentHeaders =<< acquireCatchup peerCatchup
-            sink sinkGossip $ GossipReq (ReqHeaders  undefined)            
+            st <- peerConsensuSt
+            sink sinkGossip $ GossipReq $ ReqHeaders $ st^.bestHead._3
   where
     exitCatchup = writeTVar inCatchup False
 
 
-peerRequestBlock = do
-  -- 1. Acquire BID from block registry
-  -- 2. Ensure that We can send request
-  undefined
+peerRequestBlock
+  :: (MonadIO m)
+  => PeerState b
+  -> PeerChans m b
+  -> Sink (GossipMsg b)
+  -> m x
+peerRequestBlock PeerState{..} PeerChans{..} sinkGossip = forever $ do
+  atomicallyIO $ do
+    check =<< isEmptyTMVar requestInFlight
+    bid <- reserveBID peerReqBlocks
+    putTMVar requestInFlight $ SentBlock bid
+    sink sinkGossip $ GossipReq $ ReqBlock bid
 
 peerRequestAddresses
   :: MonadIO m

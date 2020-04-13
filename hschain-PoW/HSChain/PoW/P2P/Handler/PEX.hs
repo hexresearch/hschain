@@ -45,10 +45,10 @@ runPEX
   => NetworkAPI
   -> Sink (BoxRX m b)
   -> STM (Src (MsgAnn b))
-  -> STM (BlockIndex b)
+  -> STM (Consensus m b)
   -> BlockDB m b
   -> ContT r m ()
-runPEX netAPI sinkBOX mkSrcAnn bIdx db = do
+runPEX netAPI sinkBOX mkSrcAnn consSt db = do
   reg                <- newPeerRegistry
   nonces             <- newNonceSet
   (sinkAddr,srcAddr) <- queuePair
@@ -58,11 +58,11 @@ runPEX netAPI sinkBOX mkSrcAnn bIdx db = do
         peerBCastAnn     <- mkSrcAnn
         peerBCastAskPeer <- mkSrcAsk
         return PeerChans
-          { sinkNewAddr   = sinkAddr
-          , sinkConsensus = sinkBOX
-          , peerCatchup   = catchup
-          , peerBlockIdx  = bIdx
-          , peerBlockDB   = db
+          { sinkNewAddr    = sinkAddr
+          , sinkConsensus  = sinkBOX
+          , peerCatchup    = catchup
+          , peerConsensuSt = consSt
+          , peerBlockDB    = db
           , ..
           }
   shepherd <- ContT withShepherd

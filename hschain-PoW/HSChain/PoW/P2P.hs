@@ -60,12 +60,12 @@ startNode netAPI db consensus = evalContT $ do
   (sinkBOX,srcBOX)   <- queuePair
   (sinkReqBID, srcReqBID) <- queuePair
   (sinkAnn,mkSrcAnn) <- broadcastPair
-  bIdx               <- liftIO $ newTVarIO $ consensus ^. blockIndex
+  bIdx               <- liftIO $ newTVarIO consensus
   runPEX netAPI sinkBOX mkSrcAnn (readTVar bIdx) db
   -- Consensus thread
   lift $ threadConsensus db consensus ConsensusCh
-    { bcastAnnounce = sinkAnn
-    , sinkBlockIdx  = Sink $ writeTVar bIdx
-    , sinkReqBlocks = sinkReqBID
-    , srcRX         = srcBOX
+    { bcastAnnounce   = sinkAnn
+    , sinkConsensusSt = Sink $ writeTVar bIdx
+    , sinkReqBlocks   = sinkReqBID
+    , srcRX           = srcBOX
     }

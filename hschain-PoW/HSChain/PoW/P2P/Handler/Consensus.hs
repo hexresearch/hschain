@@ -29,10 +29,10 @@ import HSChain.PoW.Types
 
 -- | Channels for sending data to and from consensus thread
 data ConsensusCh m b = ConsensusCh
-  { bcastAnnounce :: Sink (MsgAnn b)
-  , sinkBlockIdx  :: Sink (BlockIndex b)
-  , sinkReqBlocks :: Sink (Set (BlockID b))
-  , srcRX         :: Src  (BoxRX m b)
+  { bcastAnnounce   :: Sink (MsgAnn b)
+  , sinkConsensusSt :: Sink (Consensus m b)
+  , sinkReqBlocks   :: Sink (Set (BlockID b))
+  , srcRX           :: Src  (BoxRX m b)
   }
 
 -- | Thread that reacts to messages from peers and updates consensus
@@ -48,8 +48,8 @@ threadConsensus db consensus0 ConsensusCh{..}
   $ forever
   $ do bh <- use $ bestHead . _1
        consensusMonitor db =<< awaitIO srcRX
-       sinkIO sinkBlockIdx  =<< use blockIndex
-       sinkIO sinkReqBlocks =<< use requiredBlocks
+       sinkIO sinkConsensusSt =<< get
+       sinkIO sinkReqBlocks   =<< use requiredBlocks
        bh' <- use $ bestHead . _1
        when (bhBID bh /= bhBID bh') $ sinkIO bcastAnnounce $ AnnBestHead $ asHeader bh'
 
