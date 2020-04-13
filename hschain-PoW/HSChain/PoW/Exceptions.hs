@@ -26,6 +26,8 @@ data PeerError
   | InvalidResponce
   -- ^ Peer's response is invalid
   | HandshakeError
+
+  | ProtocolError
   deriving stock    (Show)
   deriving anyclass (Exception)
 

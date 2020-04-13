@@ -13,6 +13,7 @@ module HSChain.PoW.P2P.Handler.Peer where
 
 import Codec.Serialise
 import Control.Applicative
+import Control.Concurrent (ThreadId,myThreadId,throwTo)
 import Control.Concurrent.STM
 import Control.Monad
 import Control.Monad.IO.Class
@@ -199,15 +200,16 @@ peerRecv conn st@PeerState{..} PeerChans{..} sinkGossip = forever $ do
           Nothing -> RespNack
           Just b  -> RespBlock b
   where
-    toConsensus m = sinkIO sinkConsensus $ BoxRX $ \cont -> reactCommand st =<< cont m
+    toConsensus m = do tid <- liftIO myThreadId
+                       sinkIO sinkConsensus $ BoxRX $ \cont -> reactCommand tid st =<< cont m
   
 reactCommand
-  :: (Monad m)
-  => PeerState b
+  :: (MonadIO m)
+  => ThreadId
+  -> PeerState b
   -> CmdPeer b
   -> m ()
-reactCommand PeerState{..} = \case
-  Peer'Punish       -> undefined
-  Peer'EnterCatchup -> undefined
-  Peer'StopCatchup  -> undefined
+reactCommand tid PeerState{..} = \case
+  Peer'Punish       -> liftIO $ throwTo tid ProtocolError
+  Peer'EnterCatchup -> atomicallyIO $ writeTVar inCatchup True
   Peer'Noop         -> return ()

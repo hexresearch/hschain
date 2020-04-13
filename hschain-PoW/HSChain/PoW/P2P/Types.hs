@@ -161,7 +161,6 @@ newtype BoxRX m b = BoxRX
 data CmdPeer b
   = Peer'Punish
   | Peer'EnterCatchup
-  | Peer'StopCatchup
   | Peer'Noop
 
 data AskPeers = AskPeers
