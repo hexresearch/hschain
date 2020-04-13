@@ -5,6 +5,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE PolyKinds                  #-}
 {-# LANGUAGE RankNTypes                 #-}
+{-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE UndecidableInstances       #-}
 -- |
 -- Data types for network
@@ -75,11 +76,12 @@ data HandshakeAck = HandshakeAck
 
 -- | Messages that are exchanged on the wire
 data GossipMsg b
-  = GossipTX   !(MsgTX b)
-  | GossipReq  !(MsgRequest b)
+  = -- GossipTX   !(MsgTX b)
+    GossipReq  !(MsgRequest b)
   | GossipResp !(MsgResponce b)
   | GossipAnn  !(MsgAnn b)
   deriving stock (Generic)
+deriving stock instance (Show (BlockID b), Show (b Hashed), Show (b IdNode)) => Show (GossipMsg b)
 
 instance ( Serialise (b IdNode)
          , Serialise (b Hashed)
@@ -104,6 +106,7 @@ data MsgRequest b
   | ReqPeers
   -- ^ Request addresses of known good peers
   deriving stock (Generic)
+deriving stock instance Show (BlockID b) => Show (MsgRequest b)
 
 instance ( Serialise (b Hashed)
          , Serialise (BlockID b)
@@ -120,6 +123,7 @@ data MsgResponce b
   | RespNack
   -- ^ Responce was denied.
   deriving stock (Generic)
+deriving stock instance (Show (BlockID b), Show (b Hashed), Show (b IdNode)) => Show (MsgResponce b)
 
 instance ( Serialise (b IdNode)
          , Serialise (b Hashed)
@@ -130,6 +134,8 @@ data MsgAnn b
   = AnnBestHead !(Header b)
   -- ^ Send new best head to peer. Generally sent unannounced.
   deriving stock (Generic)
+deriving stock instance (Show (BlockID b), Show (b Hashed)) => Show (MsgAnn b)
+
 
 instance ( Serialise (b Hashed)
          , Serialise (BlockID b)
