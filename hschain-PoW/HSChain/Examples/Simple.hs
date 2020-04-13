@@ -30,6 +30,9 @@ data KV f = KV
   }
   deriving stock (Generic)
 deriving stock instance Show1 (f SHA256) => Show (KV f)
+instance Serialise (KV IdNode)
+instance Serialise (KV Hashed)
+
 
 instance IsMerkle f => CryptoHashable (KV f) where
   hashStep = genericHashStep "hschain"
