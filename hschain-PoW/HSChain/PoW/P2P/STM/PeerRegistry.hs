@@ -9,6 +9,7 @@ module HSChain.PoW.P2P.STM.PeerRegistry
     -- *
   , knownPeers
   , connectedPeers
+  , connectedPeersList
   , availableToConnect
   , addSelfAddress
   , addKnownAddresses
@@ -110,6 +111,11 @@ connectedPeers :: PeerRegistry -> STM Int
 connectedPeers (PeerRegistry v) = do
   m <- readTVar v
   return $ length [ () | Connected <- toList m ]
+
+connectedPeersList :: PeerRegistry -> STM [NetAddr]
+connectedPeersList (PeerRegistry v) = do
+  m <- readTVar v
+  return [ a | (a,Connected) <- Map.toList m ]
 
 availableToConnect :: PeerRegistry -> STM [NetAddr]
 availableToConnect (PeerRegistry v) = do

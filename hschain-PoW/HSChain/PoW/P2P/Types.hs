@@ -168,6 +168,7 @@ data AskPeers = AskPeers
 -- | Channels for peer for communication with rest of the world
 data PeerChans m b = PeerChans
   { sinkNewAddr      :: Sink [NetAddr]      --
+  , pexGoodPeers     :: STM  [NetAddr]      --
   , sinkConsensus    :: Sink (BoxRX m b)    --
   , peerBCastAnn     :: Src  (MsgAnn b)
   , peerBCastAskPeer :: Src   AskPeers

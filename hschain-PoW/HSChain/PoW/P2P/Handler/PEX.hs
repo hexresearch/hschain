@@ -59,6 +59,7 @@ runPEX netAPI sinkBOX mkSrcAnn consSt db = do
         peerBCastAskPeer <- mkSrcAsk
         return PeerChans
           { sinkNewAddr    = sinkAddr
+          , pexGoodPeers   = connectedPeersList reg
           , sinkConsensus  = sinkBOX
           , peerCatchup    = catchup
           , peerConsensuSt = consSt

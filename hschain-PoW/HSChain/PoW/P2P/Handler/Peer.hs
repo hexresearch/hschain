@@ -83,14 +83,14 @@ data PeerState b = PeerState
   { requestInFlight :: TMVar (SentRequest b)
     -- ^ Request that we sent to peer. We should only send one request
     --   at a time so this TMVar works as lock.
-  , peersBestHead   :: TVar (Maybe (Header b))    
+  , peersBestHead   :: TVar (Maybe (Header b))
     -- ^ Best head of peer (delivered by 'MsgAnn')
   , inCatchup       :: TVar Bool
     -- ^ Are we trying to catch up to peer?
   }
 
 
--- Thread that issues 
+-- Thread that issues
 peerRequestHeaders
   :: (MonadIO m, BlockData b)
   => PeerState b
@@ -109,7 +109,7 @@ peerRequestHeaders PeerState{..} PeerChans{..} sinkGossip = forever $ do
       Just h  -> do
         bidx <- peerConsensuSt
         case blockID h `lookupIdx` (bidx^.blockIndex) of
-          Just _  -> exitCatchup          
+          Just _  -> exitCatchup
           Nothing -> do
             putTMVar requestInFlight . SentHeaders =<< acquireCatchup peerCatchup
             st <- peerConsensuSt
@@ -192,7 +192,8 @@ peerRecv conn st@PeerState{..} PeerChans{..} sinkGossip = forever $ do
         RespNack      -> return ()
     -- We handle requests in place
     GossipReq  m -> case m of
-      ReqPeers       -> undefined "ReqPeers"
+      ReqPeers       ->
+        sinkIO sinkGossip . GossipResp . RespPeers =<< atomicallyIO pexGoodPeers
       ReqHeaders loc -> undefined "ReqHeaders"
       ReqBlock   bid -> do
         mblk <- retrieveBlock peerBlockDB bid
@@ -202,7 +203,7 @@ peerRecv conn st@PeerState{..} PeerChans{..} sinkGossip = forever $ do
   where
     toConsensus m = do tid <- liftIO myThreadId
                        sinkIO sinkConsensus $ BoxRX $ \cont -> reactCommand tid st =<< cont m
-  
+
 reactCommand
   :: (MonadIO m)
   => ThreadId
