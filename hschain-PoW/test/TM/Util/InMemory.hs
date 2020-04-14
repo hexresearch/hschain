@@ -49,8 +49,8 @@ viewKV bid = inMemoryView step Map.empty bid
         txs = merkleValue $ kvData $ blockData b
 
 inMemoryDB
-  :: (MonadIO m, BlockData b)
-  => m (BlockDB m b)
+  :: (MonadIO m, MonadIO n, BlockData b)
+  => m (BlockDB n b)
 inMemoryDB = do
   var <- liftIO $ newIORef Map.empty
   return BlockDB

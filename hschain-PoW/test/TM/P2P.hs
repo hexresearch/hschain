@@ -39,7 +39,7 @@ tests = testGroup "P2P"
 
 test1 :: IO ()
 test1 = do
-  db  <- inMemoryDB @_ @KV
+  db  <- inMemoryDB @_ @_ @KV
   net <- newMockNet
   let s0 = consensusGenesis (head mockchain) (viewKV (blockID genesis))
   let apiNode        = createMockNode net ipNode
