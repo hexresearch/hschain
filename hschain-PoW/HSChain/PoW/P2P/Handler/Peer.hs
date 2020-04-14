@@ -160,7 +160,10 @@ peerRecv conn st@PeerState{..} PeerChans{..} sinkGossip = forever $ do
   bs <- recv conn
   case deserialise bs of
     -- Announces are just forwarded
-    GossipAnn  m -> toConsensus $! RxAnn m
+    GossipAnn  m -> do
+      toConsensus $! RxAnn m
+      case m of
+        AnnBestHead h -> atomicallyIO $ writeTVar peersBestHead (Just h)
     -- With responces we ensure that we got what we asked. Otherwise
     -- we throw exception and let PEX to deal with banning
     GossipResp m -> do
