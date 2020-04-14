@@ -185,13 +185,13 @@ peerRecv conn st@PeerState{..} PeerChans{..} sinkGossip = forever $ do
       case m of
         RespBlock   b -> toConsensus $! RxBlock b
         RespHeaders h -> toConsensus $! RxHeaders h
-        RespPeers   a -> sinkIO sinkNewAddr a
+        RespPeers   a -> sinkIO peerSinkNewAddr a
         RespNack      -> return ()
       atomicallyIO $ writeTVar requestInFlight Nothing
     -- We handle requests in place
     GossipReq  m -> case m of
       ReqPeers       ->
-        sinkIO sinkGossip . GossipResp . RespPeers =<< atomicallyIO pexGoodPeers
+        sinkIO sinkGossip . GossipResp . RespPeers =<< atomicallyIO peerConnections
       ReqHeaders loc -> do
         c <- atomicallyIO peerConsensuSt
         sinkIO sinkGossip $ GossipResp $ case locateHeaders c loc of
@@ -203,8 +203,9 @@ peerRecv conn st@PeerState{..} PeerChans{..} sinkGossip = forever $ do
           Nothing -> RespNack
           Just b  -> RespBlock b
   where
-    toConsensus m = do tid <- liftIO myThreadId
-                       sinkIO sinkConsensus $ BoxRX $ \cont -> reactCommand tid st =<< cont m
+    toConsensus m = do
+      tid <- liftIO myThreadId
+      sinkIO peerSinkConsensus $ BoxRX $ \cont -> reactCommand tid st =<< cont m
 
 locateHeaders
   :: (BlockData b)

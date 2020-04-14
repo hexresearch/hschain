@@ -59,20 +59,20 @@ runPEX cfg netAPI blockReg sinkBOX mkSrcAnn consSt db = do
         peerBCastAnn     <- mkSrcAnn
         peerBCastAskPeer <- mkSrcAsk
         return PeerChans
-          { sinkNewAddr    = sinkAddr
-          , pexGoodPeers   = connectedPeersList reg
-          , sinkConsensus  = sinkBOX
-          , peerCatchup    = catchup
-          , peerReqBlocks  = blockReg
-          , peerConsensuSt = consSt
-          , peerBlockDB    = db
+          { peerSinkNewAddr   = sinkAddr
+          , peerSinkConsensus = sinkBOX
+          , peerCatchup       = catchup
+          , peerReqBlocks     = blockReg
+          , peerConnections   = connectedPeersList reg
+          , peerConsensuSt    = consSt
+          , peerBlockDB       = db
           , ..
           }
   shepherd <- ContT withShepherd
   cfork $ logOnException $ acceptLoop         netAPI shepherd reg nonces mkChans
   cfork $ logOnException $ monitorConnections cfg netAPI shepherd reg nonces mkChans
-  cfork $ logOnException $ monitorKnownPeers cfg reg sinkAsk
-  cfork $ logOnException $ processNewAddr    reg srcAddr
+  cfork $ logOnException $ monitorKnownPeers  cfg reg sinkAsk
+  cfork $ logOnException $ processNewAddr     reg srcAddr
 
 acceptLoop
   :: ( MonadMask m, MonadFork m, MonadLogger m
