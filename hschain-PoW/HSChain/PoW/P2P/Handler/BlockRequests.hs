@@ -14,11 +14,8 @@ import Control.Monad
 import Control.Monad.Catch
 import Control.Monad.Trans.Cont
 import Control.Monad.IO.Class
-import Data.Maybe
-import Data.Set (Set)
-import Data.IntMap.Strict (IntMap)
+import Data.Set (Set, (\\))
 import qualified Data.Set           as Set
-import qualified Data.IntMap.Strict as IMap
 
 import HSChain.Control.Util
 import HSChain.Control.Class
@@ -44,8 +41,9 @@ newBlockRegistry srcBids = do
   cfork $ forever $ do
     bids <- awaitIO srcBids
     atomicallyIO $ do
+      oldBids <- readTVar required
       writeTVar   required  bids
-      modifyTVar' available $ Set.intersection bids
+      modifyTVar' available $ Set.union $ bids \\ oldBids
   return BlockRegistry{..}
 
 reserveBID :: BlockRegistry b -> STM (BlockID b)
