@@ -22,6 +22,7 @@ import HSChain.Control.Channels
 import HSChain.Network.Types
 import HSChain.PoW.Types
 import HSChain.PoW.Consensus
+import HSChain.PoW.P2P.Types
 import HSChain.PoW.P2P.Handler.PEX
 import HSChain.PoW.P2P.Handler.Consensus
 import HSChain.PoW.P2P.Handler.BlockRequests
@@ -35,17 +36,18 @@ startNode
      , Serialise (BlockID b)
      , BlockData b
      )
-  => NetworkAPI
+  => NetCfg
+  -> NetworkAPI
   -> BlockDB   m b
   -> Consensus m b
   -> m ()
-startNode netAPI db consensus = evalContT $ do
+startNode cfg netAPI db consensus = evalContT $ do
   (sinkBOX,    srcBOX)    <- queuePair
   (sinkAnn,    mkSrcAnn)  <- broadcastPair
   (sinkBIDs,   srcBIDs)   <- queuePair
   blockReg                <- newBlockRegistry srcBIDs
   bIdx                    <- liftIO $ newTVarIO consensus
-  runPEX netAPI blockReg sinkBOX mkSrcAnn (readTVar bIdx) db
+  runPEX cfg netAPI blockReg sinkBOX mkSrcAnn (readTVar bIdx) db
   -- Consensus thread
   lift $ threadConsensus db consensus ConsensusCh
     { bcastAnnounce   = sinkAnn

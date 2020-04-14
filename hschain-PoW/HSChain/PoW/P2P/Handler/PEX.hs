@@ -11,8 +11,6 @@ import Control.Concurrent.STM
 import Control.Monad
 import Control.Monad.Catch
 import Control.Monad.Cont
-import Control.Monad.IO.Class
-import Data.Functor.Contravariant
 import Data.Word
 
 import HSChain.Control.Class
@@ -27,7 +25,6 @@ import HSChain.PoW.P2P.Types
 import HSChain.PoW.P2P.Handler.Peer
 import HSChain.PoW.P2P.Handler.CatchupLock
 import HSChain.PoW.P2P.Handler.BlockRequests
-import HSChain.PoW.Exceptions
 import HSChain.PoW.Consensus
 import HSChain.PoW.Types
 import qualified HSChain.Network.IpAddresses as Ip
@@ -43,14 +40,15 @@ runPEX
      , Serialise (b Hashed)
      , BlockData b
      )
-  => NetworkAPI
+  => NetCfg
+  -> NetworkAPI
   -> BlockRegistry b
   -> Sink (BoxRX m b)
   -> STM (Src (MsgAnn b))
   -> STM (Consensus m b)
   -> BlockDB m b
   -> ContT r m ()
-runPEX netAPI blockReg sinkBOX mkSrcAnn consSt db = do
+runPEX cfg netAPI blockReg sinkBOX mkSrcAnn consSt db = do
   reg                <- newPeerRegistry
   nonces             <- newNonceSet
   (sinkAddr,srcAddr) <- queuePair
@@ -71,8 +69,8 @@ runPEX netAPI blockReg sinkBOX mkSrcAnn consSt db = do
           }
   shepherd <- ContT withShepherd
   cfork $ acceptLoop         netAPI shepherd reg nonces mkChans
-  cfork $ monitorConnections netAPI shepherd reg nonces mkChans
-  cfork $ monitorKnownPeers reg sinkAsk
+  cfork $ monitorConnections cfg netAPI shepherd reg nonces mkChans
+  cfork $ monitorKnownPeers cfg reg sinkAsk
   cfork $ processNewAddr    reg srcAddr
 
 acceptLoop
@@ -135,13 +133,14 @@ connectTo NetworkAPI{..} addr shepherd reg nonceSet chans =
 -- | Thread that monitor that we have enough connections and tries to acquire more .
 monitorKnownPeers
   :: (MonadIO m)
-  => PeerRegistry               -- ^ Peer registry
+  => NetCfg
+  -> PeerRegistry               -- ^ Peer registry
   -> Sink AskPeers              -- ^ Sink for sending AskMorePeer messages
   -> m ()
-monitorKnownPeers reg sinkPeers = forever $ do
+monitorKnownPeers NetCfg{..} reg sinkPeers = forever $ do
   -- We block unless we don't have enough connections then we ask
   -- peers for more and wait.
-  atomicallyIO $ check . (<10) =<< knownPeers reg
+  atomicallyIO $ check . (<nKnownPeers) =<< knownPeers reg
   sinkIO sinkPeers AskPeers
   waitMSec (3000::Int)
 
@@ -151,25 +150,24 @@ monitorConnections
      , Serialise (b Hashed)
      , BlockData b
      )
-  => NetworkAPI
+  => NetCfg
+  -> NetworkAPI
   -> Shepherd
   -> PeerRegistry
   -> NonceSet
   -> STM (PeerChans m b)
   -> m ()
-monitorConnections netAPI shepherd reg nonceSet mkChans = forever $ do
+monitorConnections NetCfg{..} netAPI shepherd reg nonceSet mkChans = forever $ do
   -- Check that we need and can connect to peers
   addrs <- atomicallyIO $ do
     nPeers <- connectedPeers reg
-    check $ nPeers < expected
+    check $ nPeers < nConnectedPeers
     addrs <- availableToConnect reg
     check $ not $ null addrs
-    return $ take (expected - nPeers) addrs
+    return $ take (nConnectedPeers - nPeers) addrs
   --
   forM_ addrs $ \a -> connectTo netAPI a shepherd reg nonceSet =<< atomicallyIO mkChans
   waitMSec (3000 :: Int)
-  where
-    expected = 4
 
 
 processNewAddr

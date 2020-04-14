@@ -44,7 +44,7 @@ test1 = do
   let s0 = consensusGenesis (head mockchain) (viewKV (blockID genesis))
   let apiNode        = createMockNode net ipNode
       NetworkAPI{..} = createMockNode net ipOur
-  forkLinked (startNode apiNode db s0) $ do
+  forkLinked (startNode (NetCfg 0 0) apiNode db s0) $ do
     -- Establish connection
     threadDelay 100000
     P2PConnection{..} <- connect ipNode

@@ -33,6 +33,7 @@ module HSChain.PoW.P2P.Types
 
   , CatchupThrottle(..)
   , ReleaseCatchupThrottle(..)
+  , NetCfg(..)
   ) where
 
 import Control.Concurrent.STM
@@ -50,6 +51,11 @@ import HSChain.Control.Channels
 import HSChain.PoW.P2P.Handler.BlockRequests
 
 
+
+data NetCfg = NetCfg
+  { nKnownPeers     :: !Int
+  , nConnectedPeers :: !Int
+  }
 
 ----------------------------------------------------------------
 -- Handshake
