@@ -41,10 +41,11 @@ newBlockRegistry
 newBlockRegistry srcBids = do
   required  <- liftIO $ newTVarIO Set.empty
   available <- liftIO $ newTVarIO Set.empty
-  cfork $ forever $ atomically $ do
-    bids <- await srcBids
-    writeTVar   required  bids
-    modifyTVar' available $ Set.intersection bids
+  cfork $ forever $ do
+    bids <- awaitIO srcBids
+    atomicallyIO $ do
+      writeTVar   required  bids
+      modifyTVar' available $ Set.intersection bids
   return BlockRegistry{..}
 
 reserveBID :: BlockRegistry b -> STM (BlockID b)
