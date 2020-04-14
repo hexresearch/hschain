@@ -3,19 +3,10 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications    #-}
 -- |
-module TM.P2P (tests, test1) where
+module TM.P2P (tests) where
 
 import Codec.Serialise (serialise,deserialise)
 import Control.Concurrent
-import Control.Monad.IO.Class
-import Control.Monad.State.Strict
-import Control.Monad.Except
-import Data.IORef
-import Data.List (unfoldr)
-import Data.Foldable
-import qualified Data.Map.Strict as Map
-import qualified Data.Set        as Set
-import Lens.Micro
 import Test.Tasty
 import Test.Tasty.HUnit
 
@@ -27,7 +18,6 @@ import HSChain.PoW.Logger
 import HSChain.PoW.Consensus
 import HSChain.PoW.P2P
 import HSChain.PoW.P2P.Types
-import HSChain.Types.Merkle.Types
 import HSChain.Examples.Simple
 
 import TM.Util.InMemory
@@ -35,33 +25,77 @@ import TM.Util.Mockchain
 
 tests :: TestTree
 tests = testGroup "P2P"
-  [ testCase "1" test1
+  [ testCase "self-test"   selfTest
+  , testCase "normal sync" testNormalSync
+  , testCase "catchup"     testCatchup
   ]
 
-test1 :: IO ()
-test1 = do
+-- Test that test harness works
+selfTest :: IO ()
+selfTest = runNetTest $ \_ _ -> return ()
+
+-- Test sync when we don't have to do catchup
+testNormalSync :: IO ()
+testNormalSync = runNetTest $ \sendMsg recvMsg -> do
+  -- Announce header at H=1
+  sendMsg $ GossipAnn $ AnnBestHead header1
+  -- Peer connected header and asks for block
+  GossipReq (ReqBlock bid1) <- recvMsg
+  assertEqual "Block request H=1" bid1 (blockID header1)
+  sendMsg $ GossipResp $ RespBlock block1
+  GossipAnn (AnnBestHead h1) <- recvMsg
+  assertEqual "Announce " h1 header1
+  -- Announce header at H=2
+  sendMsg $ GossipAnn $ AnnBestHead header2
+  -- Peer connected header and asks for block
+  GossipReq (ReqBlock bid2) <- recvMsg
+  assertEqual "Block request H=2" bid2 (blockID header2)
+  sendMsg $ GossipResp $ RespBlock block2
+  GossipAnn (AnnBestHead h2) <- recvMsg
+  assertEqual "Announce 2" h2 header2
+
+-- Test sync when we have to do catchup
+testCatchup :: IO ()
+testCatchup = runNetTest $ \sendMsg recvMsg -> do
+  -- Announce header at H=2
+  sendMsg $ GossipAnn $ AnnBestHead header2
+  GossipReq (ReqHeaders loc) <- recvMsg
+  assertEqual "Locator" loc (Locator [blockID genesis])
+  sendMsg $ GossipResp $ RespHeaders [header1,header2]
+  --
+  print =<< recvMsg
+
+
+
+----------------------------------------------------------------
+-- Runnner for tests
+----------------------------------------------------------------
+
+-- Run network test
+--
+-- We use PEX setting which preclude it from sending any messages
+runNetTest
+  :: (  (GossipMsg KV -> IO ())
+     -> (IO (GossipMsg KV))
+     -> IO ())
+  -> IO ()
+runNetTest test = do
   db  <- inMemoryDB @_ @_ @KV
   net <- newMockNet
   let s0 = consensusGenesis (head mockchain) (viewKV (blockID genesis))
   let apiNode        = createMockNode net ipNode
       NetworkAPI{..} = createMockNode net ipOur
-  print $ blockID genesis
   forkLinked (runNoLogsT $ startNode (NetCfg 0 0) apiNode db s0) $ do
     -- Establish connection
+    --
+    -- FIXME: we need to do something better than fixed delay 
     threadDelay 100000
     P2PConnection{..} <- connect ipNode
     send $ serialise $ HandshakeHello (HandshakeNonce 0) port
     HandshakeAck <- deserialise <$> recv
-    -- Send announce
-    send $ serialise $ GossipAnn $ AnnBestHead header2
-    msg <- deserialise <$> recv
-    print (msg :: GossipMsg KV)
-    -- WAIT
-    -- HandshakeHello 1 port
-    -- Handshake
-    return ()
+    -- Run test
+    test (send . serialise) (deserialise <$> recv)
   where
     ipNode = NetAddrV4 1 port
     ipOur  = NetAddrV4 2 port
     port   = 1000
-
