@@ -19,6 +19,7 @@ import Control.Monad
 import Control.Monad.IO.Class
 import Control.Monad.Catch
 import Data.Foldable
+import Data.Maybe
 import Lens.Micro
 
 import HSChain.Control.Class
@@ -52,7 +53,7 @@ runPeer
   -> m ()
 runPeer conn chans@PeerChans{..} = do
   (sinkGossip, srcGossip) <- queuePair
-  st <- liftIO $ do requestInFlight <- newEmptyTMVarIO
+  st <- liftIO $ do requestInFlight <- newTVarIO Nothing
                     peersBestHead   <- newTVarIO Nothing
                     inCatchup       <- newTVarIO False
                     return PeerState{..}
@@ -71,7 +72,7 @@ runPeer conn chans@PeerChans{..} = do
 
 -- | Internal state of a peer
 data PeerState b = PeerState
-  { requestInFlight :: TMVar (SentRequest b)
+  { requestInFlight :: TVar (Maybe (SentRequest b))
     -- ^ Request that we sent to peer. We should only send one request
     --   at a time so this TMVar works as lock.
   , peersBestHead   :: TVar (Maybe (Header b))
@@ -91,8 +92,8 @@ peerRequestHeaders
 peerRequestHeaders PeerState{..} PeerChans{..} sinkGossip = forever $ do
   atomicallyIO $ do
     -- Block unless we're in catchup and there's no requests in flight
-    check =<< readTVar inCatchup
-    check =<< isEmptyTMVar requestInFlight
+    check             =<< readTVar inCatchup
+    check . isNothing =<< readTVar requestInFlight
     -- If we don't know peer's best head exit catchup. Otherwise try
     -- to send request
     readTVar peersBestHead >>= \case
@@ -102,7 +103,7 @@ peerRequestHeaders PeerState{..} PeerChans{..} sinkGossip = forever $ do
         case blockID h `lookupIdx` (bidx^.blockIndex) of
           Just _  -> exitCatchup
           Nothing -> do
-            putTMVar requestInFlight . SentHeaders =<< acquireCatchup peerCatchup
+            writeTVar requestInFlight . Just . SentHeaders =<< acquireCatchup peerCatchup
             st <- peerConsensuSt
             sink sinkGossip $ GossipReq $ ReqHeaders $ st^.bestHead._3
   where
@@ -117,9 +118,9 @@ peerRequestBlock
   -> m x
 peerRequestBlock PeerState{..} PeerChans{..} sinkGossip = forever $ do
   atomicallyIO $ do
-    check =<< isEmptyTMVar requestInFlight
+    check . isNothing =<< readTVar requestInFlight
     bid <- reserveBID peerReqBlocks
-    putTMVar requestInFlight $ SentBlock bid
+    writeTVar requestInFlight $ Just $ SentBlock bid
     sink sinkGossip $ GossipReq $ ReqBlock bid
 
 peerRequestAddresses
@@ -128,7 +129,8 @@ peerRequestAddresses
 peerRequestAddresses PeerState{..} PeerChans{..} sinkGossip =
   forever $ atomicallyIO $ do
     AskPeers <- await peerBCastAskPeer
-    putTMVar requestInFlight SentPeers
+    check . isNothing =<< readTVar requestInFlight
+    writeTVar requestInFlight $ Just SentPeers
     sink sinkGossip $ GossipReq ReqPeers
 
 -- Thread for sending messages over network
@@ -169,7 +171,7 @@ peerRecv conn st@PeerState{..} PeerChans{..} sinkGossip = forever $ do
     -- With responces we ensure that we got what we asked. Otherwise
     -- we throw exception and let PEX to deal with banning
     GossipResp m -> do
-      atomicallyIO (tryTakeTMVar requestInFlight) >>= \case
+      liftIO (readTVarIO requestInFlight) >>= \case
         Nothing  -> throwM UnrequestedResponce
         Just req -> case (req, m) of
           (_              , RespNack     ) -> return ()
@@ -184,6 +186,7 @@ peerRecv conn st@PeerState{..} PeerChans{..} sinkGossip = forever $ do
         RespHeaders h -> toConsensus $! RxHeaders h
         RespPeers   a -> sinkIO sinkNewAddr a
         RespNack      -> return ()
+      atomicallyIO $ writeTVar requestInFlight Nothing
     -- We handle requests in place
     GossipReq  m -> case m of
       ReqPeers       ->
