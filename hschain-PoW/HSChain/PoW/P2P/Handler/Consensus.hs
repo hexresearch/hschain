@@ -3,6 +3,7 @@
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase                 #-}
+{-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE PolyKinds                  #-}
 {-# LANGUAGE RecordWildCards            #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
@@ -21,11 +22,14 @@ import Control.Monad.Except
 import Data.Set (Set)
 import Lens.Micro
 import Lens.Micro.Mtl
+import Katip (sl)
 
 import HSChain.Control.Channels
 import HSChain.PoW.Consensus
 import HSChain.PoW.P2P.Types
 import HSChain.PoW.Types
+import HSChain.PoW.Logger
+
 
 -- | Channels for sending data to and from consensus thread
 data ConsensusCh m b = ConsensusCh
@@ -37,8 +41,8 @@ data ConsensusCh m b = ConsensusCh
 
 -- | Thread that reacts to messages from peers and updates consensus
 --   accordingly
-threadConsensus 
-  :: (MonadIO m, BlockData b)
+threadConsensus
+  :: (MonadIO m, MonadLogger m, BlockData b)
   => BlockDB m b
   -> Consensus m b
   -> ConsensusCh m b
@@ -56,18 +60,21 @@ threadConsensus db consensus0 ConsensusCh{..}
 
 -- Handler for messages coming from peer.
 consensusMonitor
-  :: (Monad m, BlockData b)
+  :: (MonadLogger m, BlockData b)
   => BlockDB m b
   -> BoxRX m b
   -> StateT (Consensus m b) m ()
 consensusMonitor db (BoxRX message)
-  = message $ \case
+  = message $ logR <=< \case
       RxAnn     m  -> handleAnnounce m
       RxBlock   b  -> handleBlock    b
       RxHeaders hs -> handleHeaders hs
   where
+    logR m = do lift $ logger DebugS "Resp" (sl "v" (show m))
+                return m
     -- Handler for announces coming from peers (they come unrequested)
-    handleAnnounce (AnnBestHead h) =
+    handleAnnounce (AnnBestHead h) = do
+      lift $ logger DebugS "Got AnnBestHead" (sl "bid" (show (blockID h)))
       runExceptT (processHeader h) >>= \case
         Right () -> return Peer'Noop
         Left  e  -> case e of
@@ -81,7 +88,8 @@ consensusMonitor db (BoxRX message)
     -- Handle block that we got from peer
     --
     -- FIXME: Handle announcements
-    handleBlock b =
+    handleBlock b = do
+      lift $ logger DebugS "Got Block" ()
       runExceptT (processBlock db b) >>= \case
         Right () -> return Peer'Noop
         Left  e  -> case e of
@@ -89,7 +97,8 @@ consensusMonitor db (BoxRX message)
           ErrB'InvalidBlock -> return Peer'Noop
     -- Handle headers that we got from peer.
     handleHeaders [] = return Peer'Noop
-    handleHeaders (h:hs) =
+    handleHeaders (h:hs) = do
+      lift $ logger DebugS "Got Header" ()
       runExceptT (processHeader h) >>= \case
         Right () -> handleHeaders hs
         Left  e  -> case e of

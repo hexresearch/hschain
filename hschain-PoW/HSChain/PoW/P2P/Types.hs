@@ -173,6 +173,7 @@ data CmdPeer b
   = Peer'Punish
   | Peer'EnterCatchup
   | Peer'Noop
+  deriving (Show,Eq)
 
 data AskPeers = AskPeers
 

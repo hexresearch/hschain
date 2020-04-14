@@ -23,6 +23,7 @@ import HSChain.Control.Class
 import HSChain.Network.Types
 import HSChain.Network.Mock
 import HSChain.PoW.Types
+import HSChain.PoW.Logger
 import HSChain.PoW.Consensus
 import HSChain.PoW.P2P
 import HSChain.PoW.P2P.Types
@@ -34,7 +35,7 @@ import TM.Util.Mockchain
 
 tests :: TestTree
 tests = testGroup "P2P"
-  [
+  [ testCase "1" test1
   ]
 
 test1 :: IO ()
@@ -44,14 +45,15 @@ test1 = do
   let s0 = consensusGenesis (head mockchain) (viewKV (blockID genesis))
   let apiNode        = createMockNode net ipNode
       NetworkAPI{..} = createMockNode net ipOur
-  forkLinked (startNode (NetCfg 0 0) apiNode db s0) $ do
+  print $ blockID genesis
+  forkLinked (runNoLogsT $ startNode (NetCfg 0 0) apiNode db s0) $ do
     -- Establish connection
     threadDelay 100000
     P2PConnection{..} <- connect ipNode
     send $ serialise $ HandshakeHello (HandshakeNonce 0) port
     HandshakeAck <- deserialise <$> recv
     -- Send announce
-    send $ serialise $ GossipAnn $ AnnBestHead header1
+    send $ serialise $ GossipAnn $ AnnBestHead header2
     msg <- deserialise <$> recv
     print (msg :: GossipMsg KV)
     -- WAIT

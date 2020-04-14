@@ -3,6 +3,7 @@
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase                 #-}
+{-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE PolyKinds                  #-}
 {-# LANGUAGE RecordWildCards            #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
@@ -26,6 +27,7 @@ import HSChain.Control.Channels
 import HSChain.Network.Types
 import HSChain.PoW.P2P.Types
 import HSChain.PoW.Types
+import HSChain.PoW.Logger
 import HSChain.PoW.Consensus
 import HSChain.PoW.Exceptions
 import HSChain.PoW.P2P.Handler.BlockRequests
@@ -39,7 +41,7 @@ import HSChain.Types.Merkle.Types
 -- | Start peer execution when we already performed handshake and
 --   registered peer
 runPeer
-  :: ( MonadMask m, MonadIO m, MonadFork m
+  :: ( MonadMask m, MonadLogger m, MonadFork m
      , Serialise (b IdNode)
      , Serialise (b Hashed)
      , Serialise (BlockID b)

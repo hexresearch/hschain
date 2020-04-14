@@ -27,6 +27,7 @@ import HSChain.PoW.P2P.Handler.CatchupLock
 import HSChain.PoW.P2P.Handler.BlockRequests
 import HSChain.PoW.Consensus
 import HSChain.PoW.Types
+import HSChain.PoW.Logger
 import qualified HSChain.Network.IpAddresses as Ip
 import HSChain.Types.Merkle.Types
 
@@ -35,7 +36,7 @@ import HSChain.Types.Merkle.Types
 ----------------------------------------------------------------
 
 runPEX
-  :: ( MonadMask m, MonadFork m
+  :: ( MonadMask m, MonadFork m, MonadLogger m
      , Serialise (b IdNode)
      , Serialise (b Hashed)
      , BlockData b
@@ -68,13 +69,13 @@ runPEX cfg netAPI blockReg sinkBOX mkSrcAnn consSt db = do
           , ..
           }
   shepherd <- ContT withShepherd
-  cfork $ acceptLoop         netAPI shepherd reg nonces mkChans
-  cfork $ monitorConnections cfg netAPI shepherd reg nonces mkChans
-  cfork $ monitorKnownPeers cfg reg sinkAsk
-  cfork $ processNewAddr    reg srcAddr
+  cfork $ logOnException $ acceptLoop         netAPI shepherd reg nonces mkChans
+  cfork $ logOnException $ monitorConnections cfg netAPI shepherd reg nonces mkChans
+  cfork $ logOnException $ monitorKnownPeers cfg reg sinkAsk
+  cfork $ logOnException $ processNewAddr    reg srcAddr
 
 acceptLoop
-  :: ( MonadMask m, MonadFork m
+  :: ( MonadMask m, MonadFork m, MonadLogger m
      , Serialise (b IdNode)
      , Serialise (b Hashed)
      , BlockData b
@@ -105,7 +106,7 @@ acceptLoop NetworkAPI{..} shepherd reg nonceSet mkChans  = do
           withPeer reg normAddr $ runPeer conn =<< atomicallyIO mkChans
 
 connectTo
-  :: ( MonadMask m, MonadFork m
+  :: ( MonadMask m, MonadFork m, MonadLogger m
      , Serialise (b IdNode)
      , Serialise (b Hashed)
      , BlockData b
@@ -145,7 +146,7 @@ monitorKnownPeers NetCfg{..} reg sinkPeers = forever $ do
   waitMSec (3000::Int)
 
 monitorConnections
-  :: ( MonadMask m, MonadFork m
+  :: ( MonadMask m, MonadFork m, MonadLogger m
      , Serialise (b IdNode)
      , Serialise (b Hashed)
      , BlockData b
