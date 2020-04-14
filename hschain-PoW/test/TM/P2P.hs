@@ -41,19 +41,14 @@ testNormalSync = runNetTest $ \sendMsg recvMsg -> do
   -- Announce header at H=1
   sendMsg $ GossipAnn $ AnnBestHead header1
   -- Peer connected header and asks for block
-  GossipReq (ReqBlock bid1) <- recvMsg
-  assertEqual "Block request H=1" bid1 (blockID header1)
-  sendMsg $ GossipResp $ RespBlock block1
-  GossipAnn (AnnBestHead h1) <- recvMsg
-  assertEqual "Announce " h1 header1
+  expectBlockReq recvMsg sendMsg "B1" block1
+  expectAnnounce recvMsg         "A1" header1
   -- Announce header at H=2
   sendMsg $ GossipAnn $ AnnBestHead header2
   -- Peer connected header and asks for block
-  GossipReq (ReqBlock bid2) <- recvMsg
-  assertEqual "Block request H=2" bid2 (blockID header2)
-  sendMsg $ GossipResp $ RespBlock block2
-  GossipAnn (AnnBestHead h2) <- recvMsg
-  assertEqual "Announce 2" h2 header2
+  expectBlockReq recvMsg sendMsg "B2" block2
+  expectAnnounce recvMsg         "A2" header2
+
 
 -- Test sync when we have to do catchup
 testCatchup :: IO ()
@@ -70,13 +65,26 @@ testCatchup = runNetTest $ \sendMsg recvMsg -> do
          error "Won't happen at the moment (block choice is determinitic"
      | bidA == blockID block2 -> do
          sendMsg $ GossipResp $ RespBlock block2
-         GossipReq (ReqBlock bidB) <- recvMsg
-         assertEqual "Second BID" bidB (blockID block1)
-         sendMsg $ GossipResp $ RespBlock block1
-         GossipAnn (AnnBestHead h2) <- recvMsg
-         assertEqual "Announce 2" h2 header2
+         expectBlockReq recvMsg sendMsg "B2.2" block1
+         expectAnnounce recvMsg         "A2.1" header2
      | otherwise -> assertFailure "Bad block requested"
 
+
+----------------------------------------------------------------
+-- Helpers
+----------------------------------------------------------------
+
+expectAnnounce :: IO (GossipMsg KV) -> String -> Header KV -> IO ()
+expectAnnounce recvMsg key h0 = do
+  GossipAnn (AnnBestHead h) <- recvMsg
+  assertEqual ("expectAnnounce: "++key) h h0
+
+expectBlockReq :: IO (GossipMsg KV) -> (GossipMsg KV -> IO ()) -> String -> Block KV -> IO ()
+expectBlockReq recvMsg sendMsg key block = do
+  GossipReq (ReqBlock bid) <- recvMsg
+  assertEqual ("expectBlockReq: "++key) bid (blockID block)
+  sendMsg $ GossipResp $ RespBlock block
+  
 
 
 ----------------------------------------------------------------
