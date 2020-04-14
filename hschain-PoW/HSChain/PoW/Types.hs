@@ -113,6 +113,7 @@ type Block  b = GBlock b IdNode
 
 data Locator b = Locator [BlockID b]
   deriving stock (Generic)
+deriving stock instance Eq   (BlockID b) => Eq   (Locator b)
 deriving stock instance Show (BlockID b) => Show (Locator b)
 
 instance (Serialise (BlockID b)) => Serialise (Locator b)
