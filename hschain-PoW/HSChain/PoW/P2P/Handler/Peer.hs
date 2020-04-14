@@ -127,11 +127,12 @@ peerRequestAddresses
   :: MonadIO m
   => PeerState b -> PeerChans m b -> Sink (GossipMsg b) -> m x
 peerRequestAddresses PeerState{..} PeerChans{..} sinkGossip =
-  forever $ atomicallyIO $ do
-    AskPeers <- await peerBCastAskPeer
-    check . isNothing =<< readTVar requestInFlight
-    writeTVar requestInFlight $ Just SentPeers
-    sink sinkGossip $ GossipReq ReqPeers
+  forever $ do
+    AskPeers <- atomicallyIO $ await peerBCastAskPeer
+    atomicallyIO $ do
+      check . isNothing =<< readTVar requestInFlight
+      writeTVar requestInFlight $ Just SentPeers
+      sink sinkGossip $ GossipReq ReqPeers
 
 -- Thread for sending messages over network
 peerSend
