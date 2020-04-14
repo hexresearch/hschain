@@ -30,6 +30,7 @@ data KV f = KV
   }
   deriving stock (Generic)
 deriving stock instance Show1 (f SHA256) => Show (KV f)
+deriving stock instance IsMerkle f => Eq (KV f)
 instance Serialise (KV IdNode)
 instance Serialise (KV Hashed)
 

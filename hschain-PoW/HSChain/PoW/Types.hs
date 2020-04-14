@@ -89,6 +89,7 @@ data GBlock b f = GBlock
   }
   deriving (Generic)
 
+deriving stock instance (Eq (BlockID b), Eq (b f)) => Eq (GBlock b f)
 deriving stock instance (Show (BlockID b), Show (b f)) => Show (GBlock b f)
 
 toHeader :: MerkleMap b => Block b -> Header b
