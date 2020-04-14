@@ -28,20 +28,9 @@ import Control.Concurrent.MVar
 import Control.Monad
 import Control.Monad.IO.Class
 import qualified Data.Aeson                       as JSON
-import Control.Concurrent  (killThread)
-import Control.Exception   (AsyncException, Exception(..))
-import Control.Monad.Catch (MonadMask, bracket, mask, onException, throwM, try)
+import Control.Monad.Catch (MonadMask, mask, onException)
 import Data.Type.Equality
 import GHC.Exts              (Proxy#,proxy#)
-
-import qualified Control.Concurrent as Conc
-import HSChain.Control.Class
-
-----------------------------------------------------------------
---
-----------------------------------------------------------------
-
-
 
 
 ----------------------------------------------------------------

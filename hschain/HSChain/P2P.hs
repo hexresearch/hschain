@@ -24,7 +24,6 @@ import Control.Monad.Catch    (MonadMask)
 import Katip                  (sl)
 
 import HSChain.Blockchain.Internal.Engine.Types
-import HSChain.Control
 import HSChain.Control.Class
 import HSChain.Control.Shepherd
 import HSChain.Control.Util
