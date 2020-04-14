@@ -1,4 +1,5 @@
 {-# LANGUAGE FlexibleInstances   #-}
+{-# LANGUAGE MultiWayIf          #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications    #-}
@@ -62,8 +63,19 @@ testCatchup = runNetTest $ \sendMsg recvMsg -> do
   GossipReq (ReqHeaders loc) <- recvMsg
   assertEqual "Locator" loc (Locator [blockID genesis])
   sendMsg $ GossipResp $ RespHeaders [header1,header2]
-  --
-  print =<< recvMsg
+  -- Now peer may request either block1 or block2. In test we have to
+  -- handle both
+  GossipReq (ReqBlock bidA) <- recvMsg
+  if | bidA == blockID block1 -> do
+         error "Won't happen at the moment (block choice is determinitic"
+     | bidA == blockID block2 -> do
+         sendMsg $ GossipResp $ RespBlock block2
+         GossipReq (ReqBlock bidB) <- recvMsg
+         assertEqual "Second BID" bidB (blockID block1)
+         sendMsg $ GossipResp $ RespBlock block1
+         GossipAnn (AnnBestHead h2) <- recvMsg
+         assertEqual "Announce 2" h2 header2
+     | otherwise -> assertFailure "Bad block requested"
 
 
 
