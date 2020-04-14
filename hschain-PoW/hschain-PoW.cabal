@@ -72,6 +72,7 @@ executable hschain-PoW-concrete
   build-depends:       base              >= 4.9 && <5
                      , bytestring
                      , containers
+                     , monad-bayes
                      , network
                      , optparse-applicative
                      , serialise
