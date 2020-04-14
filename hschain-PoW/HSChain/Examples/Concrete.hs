@@ -23,7 +23,7 @@ module HSChain.Examples.Concrete where
 import Codec.Serialise
 
 --import Control.Applicative
---import Control.Monad
+import Control.Monad
 
 import Control.Concurrent
 import Control.Concurrent.STM
@@ -502,14 +502,29 @@ miningProcess dbvar = do
                       , dbChainHeaders       = Map.insert newHeight newHeader dbChainHeaders
                       }
             writeTVar dbvar db'
-          putStrLn "mined"
+          putStrLn $ "mined: "++show newHeader
           miningLoop (n+1)
         Nothing -> miningLoop (n+1)
+    extractSeconds = blockHeaderBaseSeconds . blockHeaderBase
     formAndMine n DB{..} = do
       currTime <- currentSeconds
-      let adjustedPOWConfig
+      let adjustModulo = powMainBlocksBetweenAdjustment $ powCfgMain defaultPOWConfig
+          headerBefore = Map.findWithDefault
+                          (error "no block header at some previous height???")
+                          (blockHeaderBaseHeight - adjustModulo)
+                          dbChainHeaders
+          secondsBetweenHeaders = blockHeaderBaseSeconds - extractSeconds headerBefore
+          complexityFP =   fromIntegral (powCfgComplexityMantissa powConfig)
+                         * 2 ** (fromIntegral $ negate $ powCfgComplexityShift powConfig)
+          adjustedComplexityFP = complexityFP * (fromIntegral secondsBetweenHeaders / fromIntegral adjustModulo) / (fromIntegral $ powMainSecondsForBlock (powCfgMain powConfig))
+          (newShift, newMantissa) = computeMantissaShift 0 adjustedComplexityFP
+          adjustedPOWConfig
             |    blockHeaderBaseHeight > 0
-              && blockHeaderBaseHeight `mod` 1024 == 0 = error "bububu"
+              && blockHeaderBaseHeight `mod` adjustModulo == 0 =
+                   powConfig
+                     { powCfgComplexityShift    = newShift
+                     , powCfgComplexityMantissa = newMantissa
+                     }
             | otherwise = powConfig
       -- TODO: here we have to access mempool.
       let Just tx = createMiningTransaction nextHeight prevUTXO ("attempt"++show n) 0
@@ -540,6 +555,10 @@ miningProcess dbvar = do
                       { powCfgComplexityMantissa = blockHeaderBaseComplexityMantissa
                       , powCfgComplexityShift    = fromIntegral $ blockHeaderBaseComplexityShift
                       }
+computeMantissaShift :: Int -> Double -> (Int, Word16)
+computeMantissaShift shift x
+  | x >= 32768.0 = (shift, round x)
+  | otherwise = computeMantissaShift (shift + 1) (x * 2)
 
 node :: Config -> IO ()
 node cfg = do

@@ -10,6 +10,7 @@
 module HSChain.POW
   ( solve
   , check
+  , MainPOWConfig(..)
   , POWConfig(..)
   , defaultPOWConfig
   ) where
@@ -75,8 +76,8 @@ data POWConfig = POWConfig
 defaultMainPOWConfig :: MainPOWConfig
 defaultMainPOWConfig = MainPOWConfig
   { powMainClausesCount            = 5250
-  , powMainBlocksBetweenAdjustment = 1024
-  , powMainSecondsForBlock         = 120
+  , powMainBlocksBetweenAdjustment = 16
+  , powMainSecondsForBlock         = 60
   }
 
 -- |Configuration of POW - default values.
