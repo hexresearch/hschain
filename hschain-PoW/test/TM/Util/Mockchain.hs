@@ -30,11 +30,9 @@ mineBlock val b = GBlock
                      }
   }
 
-genesis :: Block KV
-genesis = head mockchain
 
-block1,block2,block3,block2' :: Block KV
-[_,block1,block2,block3] = take 4 mockchain
+genesis,block1,block2,block3,block2' :: Block KV
+genesis:block1:block2:block3:_ = take 4 mockchain
 block2' = mineBlock "Z" block1
 
 
