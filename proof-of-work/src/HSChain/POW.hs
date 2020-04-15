@@ -76,8 +76,8 @@ data POWConfig = POWConfig
 defaultMainPOWConfig :: MainPOWConfig
 defaultMainPOWConfig = MainPOWConfig
   { powMainClausesCount            = 5250
-  , powMainBlocksBetweenAdjustment = 16
-  , powMainSecondsForBlock         = 60
+  , powMainBlocksBetweenAdjustment = 1024
+  , powMainSecondsForBlock         = 120
   }
 
 -- |Configuration of POW - default values.
@@ -86,8 +86,8 @@ defaultPOWConfig = POWConfig
   , powCfgAttemptsBetweenRestarts  = 10000
   , powCfgAttemptsToSearch         = 2500000
   , powCfgMillisecondsToSearch     = 2000
-  , powCfgComplexityMantissa       = 0xffff
-  , powCfgComplexityShift          = 0
+  , powCfgComplexityMantissa       = 0xbed8 -- 0xbed8 * 2^(-12) should give block rate slightly above 2 minutes per block
+  , powCfgComplexityShift          = 12
   }
 
 -- |Solve the puzzle.
