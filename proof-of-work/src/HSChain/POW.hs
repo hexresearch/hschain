@@ -30,7 +30,7 @@ foreign import capi "evpow.h value EVPOW_HASH_BYTES" hashSize :: Int
 foreign import ccall "evpow_solve"
         evpow_solve :: Ptr Word8    -- ^Header prefix, base for puzzle construction.
                     -> CSize        -- ^Header prefix size.
-                    -> Ptr Word8    -- ^(writeable) Answer's buffer.
+                    -> Ptr Word8    -- ^(writeable) Answer's buffer. Always have some result.
                     -> Ptr Word8    -- ^(writeable) Full puzzle solution.
                     -> Int          -- ^Clauses count.
                     -> Int          -- ^Complexity shift.
@@ -41,7 +41,8 @@ foreign import ccall "evpow_solve"
                     -> Int          -- ^Fixed bits count.
                     -> Word64       -- ^Fixed bits.
                     -> Ptr Double   -- ^(writeable) Milliseconds to find first solution.
-                    -> IO Int       -- ^Returns C boolean (0 - failure).
+                    -> IO Int       -- ^Returns C boolean (not zero means solution has been found).
+                                    --  The solution puzzle field will have minimum of solutions found either way, to facilitate the computation of statistics.
 
 foreign import ccall "evpow_check"
         evpow_check :: Ptr Word8
@@ -93,7 +94,7 @@ defaultPOWConfig = POWConfig
 -- |Solve the puzzle.
 solve :: [ByteString] -- ^Parts of header to concatenate
       -> POWConfig -- ^Configuration of POW algorithm
-      -> IO (Maybe (ByteString, ByteString)) -- ^Returns a "puzzle answer" part of the header and final hash, if found.
+      -> IO (Either ByteString (ByteString, ByteString)) -- ^Left result is for statistics - it returns the hash Returns a "puzzle answer" part of the header and final hash, if found.
 solve headerParts POWConfig{..} = B.useAsCStringLen completeHeader $ \(ptr', len) -> do
   allocaBytes (answerSize + hashSize) $ \answerAndHash -> do
     let answer = answerAndHash
@@ -110,12 +111,12 @@ solve headerParts POWConfig{..} = B.useAsCStringLen completeHeader $ \(ptr', len
            powCfgAttemptsBetweenRestarts
            0 0 -- fixed bits
            nullPtr
+    hashBS <- B.packCStringLen (castPtr completeHash, hashSize)
     if r /= 0
       then do
              answerBS <- B.packCStringLen (castPtr answer, answerSize)
-             hashBS <- B.packCStringLen (castPtr completeHash, hashSize)
-             return (Just (answerBS, hashBS))
-      else return Nothing
+             return (Right (answerBS, hashBS))
+      else return (Left hashBS)
   where
     completeHeader = B.concat headerParts
     MainPOWConfig{..} = powCfgMain

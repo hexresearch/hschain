@@ -342,6 +342,7 @@ static int
 find_answer(SHA256_CTX* context_after_prefix, uint8_t* answer, uint8_t* full_hash, int milliseconds_allowance, int complexity_shift, uint16_t complexity_mantissa, Solver* solver, double* first_result_ms) {
 	clock_t end_time;
 	clock_t last_time;
+	uint8_t current_full_hash[SHA256_DIGEST_LENGTH];
 
 	// configure timeout - it will include time to generate problem.
 	last_time = clock();
@@ -374,10 +375,15 @@ find_answer(SHA256_CTX* context_after_prefix, uint8_t* answer, uint8_t* full_has
 		// compute full hash.
 		full_hash_context = *context_after_prefix;
 		SHA256_Update(&full_hash_context, answer, EVPOW_ANSWER_BYTES);
-		SHA256_Final(full_hash, &full_hash_context);
-		if (under_complexity_threshold(full_hash, complexity_shift, complexity_mantissa)) {
+		SHA256_Final(current_full_hash, &full_hash_context);
+		if (under_complexity_threshold(current_full_hash, complexity_shift, complexity_mantissa)) {
+			memcpy(full_hash, current_full_hash, sizeof(current_full_hash));
 			//printf("FOUND!\n");
 			return 1; // and everything is in place - answer filled, hash computed.
+		}
+		// record minimal hash found.
+		if (memcmp(current_full_hash, full_hash, SHA256_DIGEST_LENGTH) < 0) {
+			memcpy(full_hash, current_full_hash, sizeof(current_full_hash));
 		}
 
 		// here we form a clause that blocks current assignment.
@@ -416,8 +422,12 @@ evpow_solve( uint8_t* prefix
 	SHA256_CTX intermediate_prefix_hash_context;
 	uint8_t prefix_hash[SHA256_DIGEST_LENGTH];
 	Solver* solver;
-	int r;
+	int r, i;
 
+	// Fill the answer with predetermined value.
+	for (i = 0; i < SHA256_DIGEST_LENGTH; i ++) {
+		solution_hash[i] = 0xff; // that is maximal solution.
+	}
 	// Compute hash of prefix.
 	SHA256_Init(&prefix_hash_context);
 
