@@ -1,4 +1,5 @@
 {-# LANGUAGE FlexibleInstances   #-}
+{-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE MultiWayIf          #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -60,7 +61,7 @@ testCatchup = runNetTest $ \sendMsg recvMsg -> do
   sendMsg $ GossipResp $ RespHeaders [header1,header2]
   -- Now peer may request either block1 or block2. In test we have to
   -- handle both
-  GossipReq (ReqBlock bidA) <- recvMsg
+  bidA <- blockReq "K" recvMsg
   if | bidA == blockID block1 -> do
          error "Won't happen at the moment (block choice is determinitic"
      | bidA == blockID block2 -> do
@@ -78,6 +79,11 @@ expectAnnounce :: IO (GossipMsg KV) -> String -> Header KV -> IO ()
 expectAnnounce recvMsg key h0 = do
   GossipAnn (AnnBestHead h) <- recvMsg
   assertEqual ("expectAnnounce: "++key) h h0
+
+blockReq :: String -> IO (GossipMsg KV) -> IO (BlockID KV)
+blockReq key recvMsg = recvMsg >>= \case
+  GossipReq (ReqBlock bid) -> return bid
+  m                        -> assertFailure (key ++ " : blockReq, got " ++ show m)
 
 expectBlockReq :: IO (GossipMsg KV) -> (GossipMsg KV -> IO ()) -> String -> Block KV -> IO ()
 expectBlockReq recvMsg sendMsg key block = do
