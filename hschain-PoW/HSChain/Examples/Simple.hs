@@ -10,9 +10,10 @@
 --
 module HSChain.Examples.Simple where
 
-import Data.Monoid (Sum(..))
+import Codec.Serialise      (Serialise)
+import Data.Monoid          (Sum(..))
 import Data.Functor.Classes (Show1)
-import GHC.Generics (Generic)
+import GHC.Generics         (Generic)
 
 import HSChain.Crypto
 import HSChain.Crypto.Classes.Hash
@@ -29,6 +30,10 @@ data KV f = KV
   }
   deriving stock (Generic)
 deriving stock instance Show1 (f SHA256) => Show (KV f)
+deriving stock instance IsMerkle f => Eq (KV f)
+instance Serialise (KV IdNode)
+instance Serialise (KV Hashed)
+
 
 instance IsMerkle f => CryptoHashable (KV f) where
   hashStep = genericHashStep "hschain"
@@ -41,7 +46,7 @@ instance BlockData KV where
     deriving newtype (Eq,Ord,Show)
     deriving         (Semigroup,Monoid) via Sum Int
   newtype BlockID KV = KV'BID (Hash SHA256)
-    deriving newtype (Show,Eq,Ord,CryptoHashable)
+    deriving newtype (Show,Eq,Ord,CryptoHashable,Serialise)
   --
   blockID b = let Hashed h = hashed b in KV'BID h
   validateHeader _ = True

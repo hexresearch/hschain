@@ -3,11 +3,8 @@
 -- |
 module TM.Consensus (tests) where
 
-import Control.Monad.IO.Class
 import Control.Monad.State.Strict
 import Control.Monad.Except
-import Data.IORef
-import Data.List (unfoldr)
 import Data.Foldable
 import qualified Data.Map.Strict as Map
 import qualified Data.Set        as Set
@@ -19,6 +16,9 @@ import HSChain.PoW.Types
 import HSChain.PoW.Consensus
 import HSChain.Types.Merkle.Types
 import HSChain.Examples.Simple
+
+import TM.Util.InMemory
+import TM.Util.Mockchain
 
 tests :: TestTree
 tests = testGroup "PoW consensus"
@@ -246,87 +246,3 @@ checkConsensus c = concat
   ]
   where
     bestWork = bhWork $ c ^. bestHead . _1
-
-
-
-
-----------------------------------------------------------------
---
-----------------------------------------------------------------
-
-mockchain :: [Block KV]
-mockchain = gen : unfoldr (Just . (\b -> (b,b)) . mineBlock "VAL") gen
-  where
-    gen = GBlock { blockHeight = Height 0
-                 , prevBlock   = Nothing
-                 , blockData   = KV { kvData = merkled [] }
-                 }
-
-mineBlock :: String -> Block KV -> Block KV
-mineBlock val b = GBlock
-  { blockHeight = succ $ blockHeight b
-  , prevBlock   = Just $! blockID b
-  , blockData   = KV { kvData = merkled [ let Height h = blockHeight b
-                                          in (fromIntegral h, val)
-                                        ]
-                     }
-  }
-
-genesis :: Block KV
-genesis = head mockchain
-
-block1,block2,block3,block2' :: Block KV
-[_,block1,block2,block3] = take 4 mockchain
-block2' = mineBlock "Z" block1
-
-
-header1,header2,header3,header2' :: Header KV
-header1  = toHeader block1
-header2  = toHeader block2
-header3  = toHeader block3
-header2' = toHeader block2'
-
-
-----------------------------------------------------------------
---
-----------------------------------------------------------------
-
--- | Simepl in-memory implementation of DB
-inMemoryView
-  :: (Monad m, BlockData b, Show (BlockID b))
-  => (Block b -> s -> Maybe s)  -- ^ Step function 
-  -> s                          -- ^ Initial state
-  -> BlockID b
-  -> StateView m b
-inMemoryView step = make (error "No revinding past genesis")
-  where
-    make previous s bid = view
-      where
-        view = StateView
-          { stateBID    = bid
-          , applyBlock  = \b -> case step b s of
-              Nothing -> return Nothing
-              Just s' -> return $ Just $  make view s' (blockID b)
-          , revertBlock = return previous
-          , flushState  = return ()
-          }
-
-viewKV :: Monad m => BlockID KV -> StateView m KV
-viewKV bid = inMemoryView step Map.empty bid
-  where
-    step b m
-      | or [ k `Map.member` m | (k,_) <- txs ] = Nothing
-      | otherwise                              = Just $ Map.fromList txs <> m
-      where
-        txs = merkleValue $ kvData $ blockData b
-
-inMemoryDB
-  :: (MonadIO m, BlockData b)
-  => m (BlockDB m b)
-inMemoryDB = do
-  var <- liftIO $ newIORef Map.empty
-  return BlockDB
-    { storeBlock     = \b -> liftIO $ modifyIORef' var $ Map.insert (blockID b) b
-    , retrieveBlock  = \bid -> liftIO $ Map.lookup bid <$> readIORef var
-    , retrieveHeader = \bid -> liftIO $ fmap toHeader . Map.lookup bid <$> readIORef var
-    }

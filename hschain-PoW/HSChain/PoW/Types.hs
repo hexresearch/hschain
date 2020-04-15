@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveAnyClass             #-}
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE DerivingStrategies         #-}
 {-# LANGUAGE FlexibleContexts           #-}
@@ -7,10 +8,12 @@
 {-# LANGUAGE RecordWildCards            #-}
 {-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE TypeFamilies               #-}
+{-# LANGUAGE UndecidableInstances       #-}
 -- |
 -- Basic data types for PoW blockchain
 module HSChain.PoW.Types where
 
+import Codec.Serialise          (Serialise)
 import Control.DeepSeq
 import Control.Monad.IO.Class
 import Data.Time.Clock          (UTCTime)
@@ -58,8 +61,9 @@ timeToUTC (Time t) = posixSecondsToUTCTime (realToFrac t / 1000)
 class ( Show   (Work b)
       , Ord    (Work b)
       , Monoid (Work b)
-      , Show (BlockID b)
-      , Ord  (BlockID b)
+      , Show      (BlockID b)
+      , Ord       (BlockID b)
+      , Serialise (BlockID b)
       , MerkleMap b
       ) => BlockData b where
   -- | ID of block. Usually it should be just a hash but we want to
@@ -85,6 +89,7 @@ data GBlock b f = GBlock
   }
   deriving (Generic)
 
+deriving stock instance (Eq (BlockID b), Eq (b f)) => Eq (GBlock b f)
 deriving stock instance (Show (BlockID b), Show (b f)) => Show (GBlock b f)
 
 toHeader :: MerkleMap b => Block b -> Header b
@@ -106,7 +111,12 @@ type Header b = GBlock b Hashed
 type Block  b = GBlock b IdNode
 
 
+data Locator b = Locator [BlockID b]
+  deriving stock (Generic)
+deriving stock instance Eq   (BlockID b) => Eq   (Locator b)
+deriving stock instance Show (BlockID b) => Show (Locator b)
 
+instance (Serialise (BlockID b)) => Serialise (Locator b)
 
 ----------------------------------------
 -- instances
