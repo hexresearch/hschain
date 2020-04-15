@@ -16,6 +16,7 @@ import Codec.Serialise
 import Control.Concurrent (ThreadId,myThreadId,throwTo)
 import Control.Concurrent.STM
 import Control.Monad
+import Control.Monad.Trans.Class
 import Control.Monad.IO.Class
 import Control.Monad.Catch
 import Data.Foldable
@@ -166,7 +167,7 @@ peerRecv conn st@PeerState{..} PeerChans{..} sinkGossip = forever $ do
   case deserialise bs of
     -- Announces are just forwarded
     GossipAnn  m -> do
-      toConsensus $! RxAnn m
+      toConsensus (return ()) $! RxAnn m
       case m of
         AnnBestHead h -> atomicallyIO $ writeTVar peersBestHead (Just h)
     -- With responces we ensure that we got what we asked. Otherwise
@@ -182,12 +183,12 @@ peerRecv conn st@PeerState{..} PeerChans{..} sinkGossip = forever $ do
             | blockID b == bid          -> return ()
           _                             -> throwM InvalidResponce
       -- Forward message
+      let release = atomicallyIO $ writeTVar requestInFlight Nothing
       case m of
-        RespBlock   b -> toConsensus $! RxBlock b
-        RespHeaders h -> toConsensus $! RxHeaders h
+        RespBlock   b -> toConsensus release $! RxBlock b
+        RespHeaders h -> toConsensus release $! RxHeaders h
         RespPeers   a -> sinkIO peerSinkNewAddr a
         RespNack      -> return ()
-      atomicallyIO $ writeTVar requestInFlight Nothing
     -- We handle requests in place
     GossipReq  m -> case m of
       ReqPeers       ->
@@ -203,9 +204,13 @@ peerRecv conn st@PeerState{..} PeerChans{..} sinkGossip = forever $ do
           Nothing -> RespNack
           Just b  -> RespBlock b
   where
-    toConsensus m = do
+    -- Send message to consensus engine and release request lock when
+    -- request is processed.
+    toConsensus release m = do
       tid <- liftIO myThreadId
-      sinkIO peerSinkConsensus $ BoxRX $ \cont -> reactCommand tid st =<< cont m
+      sinkIO peerSinkConsensus $ BoxRX $ \cont -> do
+        reactCommand tid st =<< cont m
+        lift release
 
 locateHeaders
   :: (BlockData b)
