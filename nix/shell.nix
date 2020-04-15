@@ -21,13 +21,20 @@ in
       pkgs.libsodium
       pkgs.bls
       pkgs.openssl
+      pkgs.utillinux
     ];
     packages = release."${ghc}";
     # NOTE: this is workaround for problem with building
     #       hschain-types. Without this build fails
     #       mysteriously. Note that build with nix-build is not
     #       affected.
+    #
+    # NOTE: We have to set correct CPU affinity manually because
+    #       otherwise nix will just pin everything to one core
+    #
+    #       https://github.com/NixOS/nix/issues/3345
     shellHook = ''
       export LD_LIBRARY_PATH=${pkgs.libsodium}/lib''${LD_LIBRARY_PATH:+:}$LD_LIBRARY_PATH
+      taskset -pc 0-1000 $$
       '';
   }
