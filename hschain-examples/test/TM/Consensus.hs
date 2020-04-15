@@ -29,7 +29,7 @@ import Text.Printf
 import HSChain.Blockchain.Internal.Engine.Types
 import HSChain.Blockchain.Internal.Engine
 import HSChain.Blockchain.Internal.Types
-import HSChain.Control
+import HSChain.Control.Class
 import HSChain.Control.Util
 import HSChain.Crypto
 import HSChain.Logger
