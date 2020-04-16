@@ -12,6 +12,7 @@ import Test.Tasty
 import Test.Tasty.Hedgehog
 import Hedgehog
 import Hedgehog.Gen.QuickCheck (arbitrary)
+import Hedgehog.Gen            (resize)
 
 import HSChain.Crypto         ((:&))
 import HSChain.Crypto.Ed25519 (Ed25519)
@@ -50,7 +51,7 @@ propSelfCheck :: Property
 propSelfCheck = property $ do
   -- Parametsrs
   txsSets <-  zipWith (\n -> map (+n)) (iterate (+10) 0)
-          <$> forAll arbitrary
+          <$> forAll (resize 10 arbitrary)
   -- Create mempool
   (commit,mempool) <- createTestMempool
   cursor           <- getMempoolCursor mempool
