@@ -318,7 +318,7 @@ instance MFunctor (QueryT rw a) where
 instance MonadThrow m => Monad (QueryT rw a m) where
   return         = QueryT . return
   QueryT m >>= f = QueryT $ unQueryT . f =<< m
-  fail _         = throwM Rollback
+  -- fail _         = throwM Rollback
 
 instance MonadThrow m => Fail.MonadFail (QueryT rw a m) where
   fail _ = throwM Rollback
@@ -398,7 +398,7 @@ newtype Query rw a x = Query { unQuery :: ReaderT (Connection rw a) IO x }
 instance Monad (Query rm a) where
   return = Query . return
   Query m >>= f = Query $ (\(Query q) -> q) . f =<< m
-  fail _ = Query $ throwM Rollback
+  -- fail _ = Query $ throwM Rollback
 
 instance Fail.MonadFail (Query rw a) where
   fail _ = Query $ throwM Rollback
