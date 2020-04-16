@@ -9,6 +9,7 @@ packages:
          hschain-net
          hschain-quickcheck
          hschain-examples
+         hschain-ML
          serialise-cddl
          proof-of-work
 

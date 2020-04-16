@@ -18,6 +18,8 @@ Library
   Default-Language:    Haskell2010
   Build-Depends:       base               >=4.9 && <5
                      --
+                     , mtl
+                     , random
                      , vector
   Exposed-modules:
                   ML.NES
