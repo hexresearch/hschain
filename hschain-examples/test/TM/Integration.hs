@@ -6,6 +6,7 @@ module TM.Integration ( tests) where
 
 import Test.Tasty
 import Test.Tasty.HUnit
+import Test.Tasty.Runners
 
 import Control.Monad
 import Control.Monad.Trans.Class
@@ -29,8 +30,8 @@ import           TM.Util.Network (withTimeOut)
 tests :: TestTree
 tests = testGroup "generate blockchain and check on consistency"
   [ testGroup "blockhains"
-    [ testCase "key-val db" $ withTimeOut 60e6 runKeyVal
-    , testCase "Mock coin"  $ withTimeOut 60e6 runCoin
+    [ localOption (1 :: NumThreads) $ testCase "key-val db" $ withTimeOut 60e6 runKeyVal
+    , localOption (1 :: NumThreads) $ testCase "Mock coin"  $ withTimeOut 60e6 runCoin
     ]
   ]
 

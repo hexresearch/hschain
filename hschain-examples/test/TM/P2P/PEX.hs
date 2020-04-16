@@ -40,6 +40,7 @@ import qualified Data.Text           as T
 
 import Test.Tasty
 import Test.Tasty.HUnit
+import Test.Tasty.Runners
 
 import HSChain.Blockchain.Internal.Engine.Types
 import HSChain.Mock.Types
@@ -67,9 +68,12 @@ tests :: TestTree
 tests = testGroup "P2P"
   [ testGroup "simple tests"
     [ testCase "require threaded runtime" testMultithread
-    , testCase "Peers must connect" testPeersMustConnect
-    , testCase "Peers must ack and get addresses" testPeersMustAckAndGetAddresses
-    , testCase "Peers in big net must interconnects" $ testBigNetMustInterconnect 20
+    , localOption (1 :: NumThreads)
+    $ testCase "Peers must connect" testPeersMustConnect
+    , localOption (1 :: NumThreads)
+    $ testCase "Peers must ack and get addresses" testPeersMustAckAndGetAddresses
+    , localOption (1 :: NumThreads)
+    $ testCase "Peers in big net must interconnects" $ testBigNetMustInterconnect 20
     ]
   ]
 
