@@ -40,6 +40,7 @@ import qualified Data.Text           as T
 
 import Test.Tasty
 import Test.Tasty.HUnit
+import Test.Tasty.Runners
 
 import HSChain.Blockchain.Internal.Engine.Types
 import HSChain.Mock.Types
@@ -67,9 +68,12 @@ tests :: TestTree
 tests = testGroup "P2P"
   [ testGroup "simple tests"
     [ testCase "require threaded runtime" testMultithread
-    , testCase "Peers must connect" testPeersMustConnect
-    , testCase "Peers must ack and get addresses" testPeersMustAckAndGetAddresses
-    , testCase "Peers in big net must interconnects" $ testBigNetMustInterconnect 20
+    , localOption (1 :: NumThreads)
+    $ testCase "Peers must connect" testPeersMustConnect
+    , localOption (1 :: NumThreads)
+    $ testCase "Peers must ack and get addresses" testPeersMustAckAndGetAddresses
+    , localOption (1 :: NumThreads)
+    $ testCase "Peers in big net must interconnects" $ testBigNetMustInterconnect 20
     ]
   ]
 
@@ -315,7 +319,10 @@ instance MonadTrans IORefLogT where
 instance MonadIO m => MonadLogger (IORefLogT m) where
   logger _ msg a = do
     (namespace, ref) <- IORefLogT ask
-    liftIO $ modifyIORef' ref (( namespace
-                               , toLazyText $ unLogStr msg
-                               , toObject a) :)
+    liftIO $ atomicModifyIORef' ref $ \xs ->
+      ( ( namespace
+        , toLazyText $ unLogStr msg
+        , toObject a) : xs
+      , ()
+      )
   localNamespace f = IORefLogT . local (first f) . unIORefLogT

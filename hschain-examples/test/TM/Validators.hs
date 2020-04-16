@@ -30,6 +30,7 @@ import GHC.Generics (Generic)
 import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Tasty.QuickCheck
+import Test.Tasty.Runners
 
 import HSChain.Blockchain.Internal.Engine.Types
 import HSChain.Control
@@ -97,7 +98,7 @@ tests = testGroup "validators"
         Nothing == indexByIntervalPoint vset (totalVotingPower vset)
     ]
   , testGroup "Validator set change"
-    [ testCase "In consensus" testValidatorChange
+    [ localOption (1 :: NumThreads) $ testCase "In consensus" testValidatorChange
     ]
   ]
 
