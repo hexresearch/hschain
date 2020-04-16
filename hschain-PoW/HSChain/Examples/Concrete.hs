@@ -519,7 +519,9 @@ miningProcess dbvar = do
           adjustedComplexityFP = complexityFP * (fromIntegral secondsBetweenHeaders / fromIntegral adjustModulo) / (fromIntegral $ powMainSecondsForBlock (powCfgMain powConfig))
           (newShift, newMantissa) = computeMantissaShift 0 adjustedComplexityFP
           adjustedPOWConfig
-            |    blockHeaderBaseHeight > 0
+            | False && -- FIXME: WE TURNED OFF COMPLEXITY ADJUSTMENT HERE!!!
+                       -- it is needed so we can debug parameter space adjustments.
+                 blockHeaderBaseHeight > 0
               && blockHeaderBaseHeight `mod` adjustModulo == 0 =
                    powConfig
                      { powCfgComplexityShift    = newShift
