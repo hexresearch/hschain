@@ -315,7 +315,10 @@ instance MonadTrans IORefLogT where
 instance MonadIO m => MonadLogger (IORefLogT m) where
   logger _ msg a = do
     (namespace, ref) <- IORefLogT ask
-    liftIO $ modifyIORef' ref (( namespace
-                               , toLazyText $ unLogStr msg
-                               , toObject a) :)
+    liftIO $ atomicModifyIORef' ref $ \xs ->
+      ( ( namespace
+        , toLazyText $ unLogStr msg
+        , toObject a) : xs
+      , ()
+      )
   localNamespace f = IORefLogT . local (first f) . unIORefLogT
