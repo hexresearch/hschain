@@ -153,7 +153,17 @@ testValidatorChange = do
       { netNodeList = [ NodeSpec (Just $ PrivValidator k) Nothing []
                       | k <- privK]
       , netTopology = All2All
-      , netNetCfg   = defCfg
+      , netNetCfg   =
+        let c = defCfg
+        in  c { cfgConsensus = ConsensusCfg
+                { timeoutNewHeight  = 10
+                , timeoutProposal   = (100,100)
+                , timeoutPrevote    = (100,100)
+                , timeoutPrecommit  = (100,100)
+                , timeoutEmptyBlock = 100
+                , incomingQueueSize = 10
+                }
+              } `asTypeOf` c
       , netMaxH     = Just $ Height 10
       }
 
