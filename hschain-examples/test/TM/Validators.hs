@@ -157,9 +157,9 @@ testValidatorChange = do
         let c = defCfg
         in  c { cfgConsensus = ConsensusCfg
                 { timeoutNewHeight  = 10
-                , timeoutProposal   = (50,50)
-                , timeoutPrevote    = (50,50)
-                , timeoutPrecommit  = (50,50)
+                , timeoutProposal   = (100,100)
+                , timeoutPrevote    = (100,100)
+                , timeoutPrecommit  = (100,100)
                 , timeoutEmptyBlock = 100
                 , incomingQueueSize = 10
                 }
