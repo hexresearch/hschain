@@ -2,7 +2,7 @@
 {-# LANGUAGE DeriveAnyClass             #-}
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE DerivingStrategies         #-}
-{-# LANGUAGE DerivingVia                #-}
+--{-# LANGUAGE DerivingVia                #-}
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
@@ -337,19 +337,19 @@ genesisBlockHeader :: BlockHeader
                   { blockHeaderBaseHeight             = 0
                   , blockHeaderBasePrevious           = Nothing
                   , blockHeaderBaseSeconds            = seconds
-                  , blockHeaderBaseComplexityShift    = fromIntegral $ powCfgComplexityShift defaultPOWConfig
-                  , blockHeaderBaseComplexityMantissa = powCfgComplexityMantissa defaultPOWConfig
+                  , blockHeaderBaseComplexityShift    = fromIntegral $ powComplexityShift $ powCfgComplexity defaultPOWConfig
+                  , blockHeaderBaseComplexityMantissa = powComplexityMantissa $ powCfgComplexity defaultPOWConfig
                   , blockHeaderBaseBlockHash          = getHash blk
                   }
-      r <- tryMineBlock defaultPOWConfig hbase
+      r <- fmap snd $ tryMineBlock defaultPOWConfig hbase
       case r of
         Just bhdr -> return (blk, bhdr, hbase)
         Nothing -> mineGenesis (n+1)
 
-tryMineBlock :: POWConfig -> BlockHeaderBase -> IO (Maybe BlockHeader)
+tryMineBlock :: POWConfig -> BlockHeaderBase -> IO (ByteString, Maybe BlockHeader)
 tryMineBlock powConfig hbase = do
-  mbSolutionHash <- solve [B.toStrict serialisedHeaderBase] powConfig
-  return $ fmap addSolution mbSolutionHash
+  (mh, mbSolutionHash) <- solve [B.toStrict serialisedHeaderBase] powConfig
+  return (B.fromStrict mh, fmap addSolution mbSolutionHash)
   where
     addSolution (solution, _) = BlockHeader hbase $ B.fromStrict solution
     serialisedHeaderBase = serialise hbase
@@ -488,7 +488,7 @@ miningProcess dbvar = do
   where
     miningLoop n = do
       db <- atomically $ readTVar dbvar
-      mbHdrBlock <- formAndMine n db
+      (minHash, mbHdrBlock) <- formAndMine n db
       case mbHdrBlock of
         Just (newHeader, newBlock) -> do
           atomically $ do
@@ -514,20 +514,21 @@ miningProcess dbvar = do
                           (blockHeaderBaseHeight - adjustModulo)
                           dbChainHeaders
           secondsBetweenHeaders = blockHeaderBaseSeconds - extractSeconds headerBefore
-          complexityFP =   fromIntegral (powCfgComplexityMantissa powConfig)
-                         * 2 ** (fromIntegral $ negate $ powCfgComplexityShift powConfig)
+          complexityFP =   fromIntegral (powComplexityMantissa powComplexity)
+                         * 2 ** (fromIntegral $ negate $ powComplexityShift powComplexity)
           adjustedComplexityFP = complexityFP * (fromIntegral secondsBetweenHeaders / fromIntegral adjustModulo) / (fromIntegral $ powMainSecondsForBlock (powCfgMain powConfig))
           (newShift, newMantissa) = computeMantissaShift 0 adjustedComplexityFP
-          adjustedPOWConfig
+          adjustedComplexity
             | False && -- FIXME: WE TURNED OFF COMPLEXITY ADJUSTMENT HERE!!!
                        -- it is needed so we can debug parameter space adjustments.
                  blockHeaderBaseHeight > 0
               && blockHeaderBaseHeight `mod` adjustModulo == 0 =
-                   powConfig
-                     { powCfgComplexityShift    = newShift
-                     , powCfgComplexityMantissa = newMantissa
+                   powComplexity
+                     { powComplexityShift    = newShift
+                     , powComplexityMantissa = newMantissa
                      }
-            | otherwise = powConfig
+            | otherwise = powComplexity
+          powConfig = defaultPOWConfig { powCfgComplexity = adjustedComplexity }
       -- TODO: here we have to access mempool.
       let Just tx = createMiningTransaction nextHeight prevUTXO ("attempt"++show n) 0
           newTxs = [tx]
@@ -537,13 +538,13 @@ miningProcess dbvar = do
                                  , blockHeaderBasePrevious           = Just $ hashed dbCurrentHead
                                  , blockHeaderBaseSeconds            = currTime
                                  , blockHeaderBaseComplexityShift    = fromIntegral $
-                                           powCfgComplexityShift adjustedPOWConfig
+                                           powComplexityShift adjustedComplexity
                                  , blockHeaderBaseComplexityMantissa =
-                                           powCfgComplexityMantissa adjustedPOWConfig
+                                           powComplexityMantissa adjustedComplexity
                                  , blockHeaderBaseBlockHash          =
                                            getHash newBlock
                                  }
-      fmap (fmap $ flip (,) newBlock) $ tryMineBlock adjustedPOWConfig newBlockHeaderBase
+      fmap (\(a,b) -> (a, fmap (flip (,) newBlock) b)) $ tryMineBlock powConfig newBlockHeaderBase
       where
         nextHeight = blockHeaderBaseHeight + 1
         prevMinedBlock = Map.findWithDefault (error "can't find previousblock")
@@ -553,9 +554,9 @@ miningProcess dbvar = do
         Just prevUTXO = tryGetMiningRewardUTXO prevMineTx
         BlockHeader{..} = dbCurrentHead
         BlockHeaderBase{..} = blockHeaderBase
-        powConfig = defaultPOWConfig
-                      { powCfgComplexityMantissa = blockHeaderBaseComplexityMantissa
-                      , powCfgComplexityShift    = fromIntegral $ blockHeaderBaseComplexityShift
+        powComplexity = (powCfgComplexity defaultPOWConfig)
+                      { powComplexityMantissa = blockHeaderBaseComplexityMantissa
+                      , powComplexityShift    = fromIntegral $ blockHeaderBaseComplexityShift
                       }
 computeMantissaShift :: Int -> Double -> (Int, Word16)
 computeMantissaShift shift x

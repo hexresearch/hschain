@@ -11,8 +11,11 @@ module HSChain.POW
   ( solve
   , check
   , MainPOWConfig(..)
+  , POWSearchConfig(..)
+  , POWComplexity(..)
   , POWConfig(..)
   , defaultPOWConfig
+  , defaultSearchConfig
   ) where
 
 import Data.ByteString (ByteString)
@@ -61,14 +64,25 @@ data MainPOWConfig = MainPOWConfig
   , powMainSecondsForBlock         :: !Int
   }
   deriving (Show)
+
+data POWSearchConfig = POWSearchConfig
+  { searchCfgAttemptsBetweenRestarts  :: !Int
+  , searchCfgAttemptsToSearch         :: !Int
+  , searchCfgMillisecondsToSearch     :: !Int
+  }
+  deriving (Eq, Ord, Show)
+
+data POWComplexity = POWComplexity
+  { powComplexityShift          :: !Int
+  , powComplexityMantissa       :: !Word16
+  }
+  deriving (Show)
+
 -- |Configuration of POW
 data POWConfig = POWConfig
   { powCfgMain                     :: !MainPOWConfig
-  , powCfgAttemptsBetweenRestarts  :: !Int
-  , powCfgAttemptsToSearch         :: !Int
-  , powCfgMillisecondsToSearch     :: !Int
-  , powCfgComplexityMantissa       :: !Word16
-  , powCfgComplexityShift          :: !Int
+  , powCfgSearch                   :: !POWSearchConfig
+  , powCfgComplexity               :: !POWComplexity
   }
   deriving (Show)
 
@@ -81,20 +95,31 @@ defaultMainPOWConfig = MainPOWConfig
   , powMainSecondsForBlock         = 120
   }
 
+defaultSearchConfig :: POWSearchConfig
+defaultSearchConfig = POWSearchConfig
+  { searchCfgAttemptsBetweenRestarts  = 10000
+  , searchCfgAttemptsToSearch         = 2500000
+  , searchCfgMillisecondsToSearch     = 2000
+  }
+
+-- |Default complexity - should give block rate slightly below 1 block/2 minutes on average i7.
+defaultComplexity :: POWComplexity
+defaultComplexity = POWComplexity
+  { powComplexityShift      = 12
+  , powComplexityMantissa   = 0xbed8
+  }
+
 -- |Configuration of POW - default values.
 defaultPOWConfig = POWConfig
   { powCfgMain                     = defaultMainPOWConfig
-  , powCfgAttemptsBetweenRestarts  = 10000
-  , powCfgAttemptsToSearch         = 2500000
-  , powCfgMillisecondsToSearch     = 2000
-  , powCfgComplexityMantissa       = 0xbed8 -- 0xbed8 * 2^(-12) should give block rate slightly above 2 minutes per block
-  , powCfgComplexityShift          = 12
+  , powCfgSearch                   = defaultSearchConfig
+  , powCfgComplexity               = defaultComplexity
   }
 
 -- |Solve the puzzle.
 solve :: [ByteString] -- ^Parts of header to concatenate
       -> POWConfig -- ^Configuration of POW algorithm
-      -> IO (Either ByteString (ByteString, ByteString)) -- ^Left result is for statistics - it returns the hash Returns a "puzzle answer" part of the header and final hash, if found.
+      -> IO (ByteString, Maybe (ByteString, ByteString)) -- ^First tuple argument is for statistics - it returns the hash found. The second part is the search result: search may find a "puzzle answer" part of the header and final hash.
 solve headerParts POWConfig{..} = B.useAsCStringLen completeHeader $ \(ptr', len) -> do
   allocaBytes (answerSize + hashSize) $ \answerAndHash -> do
     let answer = answerAndHash
@@ -104,22 +129,24 @@ solve headerParts POWConfig{..} = B.useAsCStringLen completeHeader $ \(ptr', len
            ptr (fromIntegral len)
            answer completeHash
            powMainClausesCount
-           powCfgComplexityShift
-           powCfgComplexityMantissa
-           powCfgMillisecondsToSearch
-           powCfgAttemptsToSearch
-           powCfgAttemptsBetweenRestarts
+           powComplexityShift
+           powComplexityMantissa
+           searchCfgMillisecondsToSearch
+           searchCfgAttemptsToSearch
+           searchCfgAttemptsBetweenRestarts
            0 0 -- fixed bits
            nullPtr
     hashBS <- B.packCStringLen (castPtr completeHash, hashSize)
     if r /= 0
       then do
              answerBS <- B.packCStringLen (castPtr answer, answerSize)
-             return (Right (answerBS, hashBS))
-      else return (Left hashBS)
+             return (hashBS, Just (answerBS, hashBS))
+      else return (hashBS, Nothing)
   where
     completeHeader = B.concat headerParts
     MainPOWConfig{..} = powCfgMain
+    POWSearchConfig{..} = powCfgSearch
+    POWComplexity{..} = powCfgComplexity
 
 check :: ByteString -> ByteString -> POWConfig -> IO Bool
 check headerWithAnswer hashOfHeader POWConfig{..} =
@@ -134,7 +161,9 @@ check headerWithAnswer hashOfHeader POWConfig{..} =
                 answer = plusPtr hdr prefixSize
             fmap (/= 0) $ evpow_check
               (castPtr hdr) (fromIntegral prefixSize) (castPtr answer) (castPtr hash)
-              powMainClausesCount powCfgComplexityShift powCfgComplexityMantissa
+              powMainClausesCount powComplexityShift powComplexityMantissa
   where
     MainPOWConfig{..} = powCfgMain
+    POWSearchConfig{..} = powCfgSearch
+    POWComplexity{..} = powCfgComplexity
 
