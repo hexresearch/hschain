@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP                        #-}
 {-# LANGUAGE DeriveFunctor              #-}
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE DerivingStrategies         #-}
@@ -44,9 +45,11 @@ import Control.Monad
 import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Control.Monad.Morph        (MFunctor(..))
-import Control.Monad.Fail         (MonadFail)
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Reader
+#if !MIN_VERSION_base(4,13,0)
+import Control.Monad.Fail         (MonadFail)
+#endif
 
 import Control.Exception          (AsyncException(..))
 import Data.Aeson
