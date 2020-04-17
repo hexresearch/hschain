@@ -23,9 +23,8 @@ Library
                      , containers         >=0.5.9
                      , data-default-class
                      , exceptions         >=0.8.3
-                     , network            >=2.6.0.0 && <2.9
+                     , network            >=2.6.0.0
                      , network-info
-                     , network            >=2.6.0.0 && <2.9
                      , serialise          >=0.2
                      , stm                >=2.5
                      , text               >=1
