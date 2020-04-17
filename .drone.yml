@@ -3,7 +3,7 @@ kind: pipeline
 name: default
 
 steps:
-- name: build-thundermint-ghc883
+- name: build-hschain-ghc883
   image: nixos/nix
   privileged: true
   network_mode: host
@@ -22,7 +22,7 @@ steps:
   - cd nix
   - ./build-ci.sh --argstr ghc ghc883  --arg useSodium true  --arg isBench true
 
-- name: build-thundermint-cryptonite
+- name: build-hschain-cryptonite
   image: nixos/nix
   privileged: true
   network_mode: host
@@ -41,7 +41,7 @@ steps:
   - cd nix
   - ./build-ci.sh --argstr ghc ghc883  --arg useSodium false  --arg isBench true
 
-- name: build-thundermint-ghcjs
+- name: build-hschain-ghcjs
   image: nixos/nix
   privileged: true
   network_mode: host
@@ -60,7 +60,7 @@ steps:
     NIX_CACHE_SIGNING_KEY:
       from_secret: nix_cache_signing_key
 
-- name: dockerize-thundermint
+- name: dockerize-hschain
   image: nixos/nix
   volumes:
   - name: dockersock
@@ -68,9 +68,9 @@ steps:
   privileged: true
   network_mode: host
   depends_on:
-#  - build-thundermint-ghc84
-  - build-thundermint-ghc883
-#  - build-thundermint-ghcjs
+#  - build-hschain-ghc84
+  - build-hschain-ghc883
+#  - build-hschain-ghcjs
   environment:
     DOCKER_PASSWORD:
       from_secret: docker_password
@@ -93,7 +93,7 @@ steps:
 - name: telegram
   image: appleboy/drone-telegram
   depends_on:
-  - dockerize-thundermint
+  - dockerize-hschain
   settings:
     to:
       from_secret: telegram_id
@@ -134,7 +134,7 @@ kind: pipeline
 name: tag
 
 steps:
-- name: build-thundermint
+- name: build-hschain
   image: nixos/nix
   privileged: true
   network_mode: host
@@ -153,7 +153,7 @@ steps:
   - cd nix
   - ./build-ci.sh
 
-- name: dockerize-thundermint
+- name: dockerize-hschain
   image: nixos/nix
   volumes:
   - name: dockersock
@@ -161,7 +161,7 @@ steps:
   privileged: true
   network_mode: host
   depends_on:
-  - build-thundermint
+  - build-hschain
   environment:
     DOCKER_PASSWORD:
       from_secret: docker_password
@@ -184,7 +184,7 @@ steps:
 - name: telegram
   image: appleboy/drone-telegram
   depends_on:
-  - dockerize-thundermint
+  - dockerize-hschain
   settings:
     to:
       from_secret: telegram_id
@@ -220,7 +220,7 @@ kind: pipeline
 name: cron
 
 steps:
-- name: build-thundermint-nightly
+- name: build-hschain-nightly
   image: nixos/nix
   privileged: true
   network_mode: host
@@ -242,7 +242,7 @@ steps:
 - name: telegram
   image: appleboy/drone-telegram
   depends_on:
-  - build-thundermint-nightly
+  - build-hschain-nightly
   settings:
     to:
       from_secret: telegram_id
