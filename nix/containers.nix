@@ -2,12 +2,13 @@
 , isProfile ? false
 , containerTag ? "latest"
 , prefixName ? ""
-, ghc        ? "ghc865"
+, ghc        ? "ghc883"
 , ...}:
 let
-  release = import ./release.nix { inherit
-    isProd
-    isProfile; };
+  release = import ./release.nix {
+    inherit isProd isProfile;
+    ghcToUse = ghc;
+  };
   pkgs = release.pkgs;
   lib = pkgs.haskell.lib;
 
