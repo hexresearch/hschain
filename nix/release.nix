@@ -3,10 +3,11 @@
 , isCoreLint ? false
 , isBench    ? false
 , useSodium  ? true
+, ghcToUse
 , ...
 }:
 let
-  pkgs     = import ./pkgs.nix { inherit config overlays; };
+  pkgs     = import ./pkgs.nix ghcToUse { inherit config overlays; };
   config   = {
     allowUnfree = true;
     allowBroken = true;

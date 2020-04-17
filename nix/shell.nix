@@ -8,6 +8,7 @@
 let
   release = import ./release.nix {
     inherit isProd isProfile isCoreLint isBench useSodium;
+    ghcToUse = ghc;
   };
   pkgs    = release.pkgs;
 in
