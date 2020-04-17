@@ -84,7 +84,7 @@ import Control.Monad.Trans.Reader
 import Control.Monad.Trans.Writer
 
 import Data.Foldable             (forM_)
-import Data.Maybe                (isNothing, maybe)
+import Data.Maybe                (isNothing)
 import Data.Text                 (Text)
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Aeson         as JSON

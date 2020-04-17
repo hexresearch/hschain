@@ -7,7 +7,7 @@ module HSChain.Network.UDP
 
 import Control.Concurrent.STM
 
-import Data.Word              (Word32, Word8)
+-- import Data.Word              (Word32, Word8)
 import Control.Monad          (forM_, forever, when)
 import Control.Monad.IO.Class (liftIO, MonadIO)
 import Data.Word

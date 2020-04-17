@@ -12,9 +12,7 @@ import Control.Monad
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Cont
 import Control.Monad.IO.Class
-import Data.Monoid      ((<>))
 import Data.Foldable    (toList)
-import Data.Traversable (forM)
 
 import HSChain.Blockchain.Internal.Engine.Types
 import           HSChain.Control

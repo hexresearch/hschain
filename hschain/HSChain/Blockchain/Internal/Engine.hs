@@ -30,7 +30,6 @@ import Control.Monad.Trans.Class
 import Control.Monad.Trans.Except
 import           Data.Maybe    (fromMaybe)
 import           Data.List     (nub)
-import           Data.Monoid   ((<>))
 import Data.Text             (Text)
 import Data.Function         (on)
 import Pipes                 (Pipe,Producer,Consumer,runEffect,yield,await,(>->))
@@ -52,7 +51,7 @@ import HSChain.Store.Internal.Proposals
 import HSChain.Monitoring
 import HSChain.Types.Validators
 
-import Katip (Severity(..), sl)
+import Katip (sl)
 
 ----------------------------------------------------------------
 --

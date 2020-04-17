@@ -80,7 +80,6 @@ import           Data.Coerce
 import           Data.Int
 import           Data.Functor.Classes
 import qualified Data.List.NonEmpty       as NE
-import           Data.Monoid              ((<>))
 import           Data.Time.Clock          (UTCTime)
 import           Data.Time.Clock.POSIX    (getPOSIXTime,posixSecondsToUTCTime)
 import           Data.Vector.Unboxed.Deriving

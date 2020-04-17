@@ -48,14 +48,13 @@ import Control.Monad.Fail         (MonadFail)
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Reader
 
-import Control.Exception          (SomeException(..),AsyncException(..))
+import Control.Exception          (AsyncException(..))
 import Data.Aeson
 import Data.Aeson.TH
 import Data.IORef
 import qualified Data.Text.Lazy as TL
 import           Data.Text.Lazy.Builder (toLazyText)
 import Data.Typeable
-import Data.Monoid     ((<>))
 import qualified Data.HashMap.Strict        as HM
 import qualified Data.ByteString.Lazy.Char8 as BL
 import qualified Data.Text as T

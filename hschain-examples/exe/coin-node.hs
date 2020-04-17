@@ -19,7 +19,6 @@ import Control.Monad.Trans.Class
 import Control.Monad.Trans.Reader
 import Control.Monad.Trans.Cont
 import Data.Aeson             (FromJSON)
-import Data.Monoid            ((<>))
 import Data.Word
 import Data.Yaml.Config       (loadYamlSettings, requireEnv)
 import Options.Applicative
