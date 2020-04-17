@@ -73,7 +73,7 @@ tests = testGroup "P2P"
     , localOption (1 :: NumThreads)
     $ testCase "Peers must ack and get addresses" testPeersMustAckAndGetAddresses
     , localOption (1 :: NumThreads)
-    $ testCase "Peers in big net must interconnects" $ testBigNetMustInterconnect 20
+    $ testCase "Peers in ring net must interconnects" $ testBigNetMustInterconnect 4
     ]
   ]
 
