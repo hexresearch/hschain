@@ -3,7 +3,7 @@
 , isCoreLint ? false
 , isBench    ? false
 , useSodium  ? true
-, ghc        ? "ghc865"
+, ghc        ? "ghc883"
 }:
 let
   release = import ./release.nix {
