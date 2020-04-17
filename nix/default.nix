@@ -1,9 +1,11 @@
+let cfg = import ./config.nix;
+in
 { isProfile  ? false
 , isProd     ? false
 , isCoreLint ? false
 , isBench    ? false
 , useSodium  ? true
-, ghc        ? "ghc883"
+, ghc        ? cfg.ghc
 }:
 let
   release = import ./release.nix {

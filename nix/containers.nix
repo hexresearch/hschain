@@ -1,8 +1,10 @@
-{ isProd ? false
-, isProfile ? false
+let cfg = import ./config.nix;
+in
+{ isProd       ? false
+, isProfile    ? false
 , containerTag ? "latest"
-, prefixName ? ""
-, ghc        ? "ghc883"
+, prefixName   ? ""
+, ghc          ? cfg.ghc
 , ...}:
 let
   release = import ./release.nix {
