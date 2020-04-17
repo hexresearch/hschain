@@ -3,6 +3,7 @@
 {-# LANGUAGE DeriveGeneric       #-}
 {-# LANGUAGE DerivingStrategies  #-}
 {-# LANGUAGE FlexibleContexts    #-}
+{-# LANGUAGE NumDecimals         #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -51,7 +52,7 @@ import HSChain.Types
 import HSChain.Types.Merkle.Types
 import HSChain.Arbitrary.Instances ()
 import qualified HSChain.Network.Mock as P2P
-
+import TM.Util.Network
 
 type VSet = ValidatorSet (Ed25519 :& SHA512)
 
@@ -126,7 +127,7 @@ samplingEquidistribution vset
 ----------------------------------------------------------------
 
 testValidatorChange :: IO ()
-testValidatorChange = do
+testValidatorChange = withTimeOut 20e6 $ do
   evalContT $ do
     resources <- prepareResources spec
     nodes     <- executeNodeSpec  spec resources
