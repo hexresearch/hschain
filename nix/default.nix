@@ -1,13 +1,16 @@
+let cfg = import ./config.nix;
+in
 { isProfile  ? false
 , isProd     ? false
 , isCoreLint ? false
 , isBench    ? false
 , useSodium  ? true
-, ghc        ? "ghc865"
+, ghc        ? cfg.ghc
 }:
 let
   release = import ./release.nix {
     inherit isProd isProfile isCoreLint isBench useSodium;
+    ghcToUse = ghc;
   };
   pkgs    = release.pkgs;
 in

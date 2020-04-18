@@ -1,4 +1,5 @@
 {-# LANGUAGE BangPatterns               #-}
+{-# LANGUAGE CPP                        #-}
 {-# LANGUAGE DataKinds                  #-}
 {-# LANGUAGE DefaultSignatures          #-}
 {-# LANGUAGE DerivingStrategies         #-}
@@ -318,7 +319,9 @@ instance MFunctor (QueryT rw a) where
 instance MonadThrow m => Monad (QueryT rw a m) where
   return         = QueryT . return
   QueryT m >>= f = QueryT $ unQueryT . f =<< m
+#if !MIN_VERSION_base(4,11,0)
   fail _         = throwM Rollback
+#endif
 
 instance MonadThrow m => Fail.MonadFail (QueryT rw a m) where
   fail _ = throwM Rollback
@@ -398,7 +401,9 @@ newtype Query rw a x = Query { unQuery :: ReaderT (Connection rw a) IO x }
 instance Monad (Query rm a) where
   return = Query . return
   Query m >>= f = Query $ (\(Query q) -> q) . f =<< m
+#if !MIN_VERSION_base(4,11,0)
   fail _ = Query $ throwM Rollback
+#endif
 
 instance Fail.MonadFail (Query rw a) where
   fail _ = Query $ throwM Rollback

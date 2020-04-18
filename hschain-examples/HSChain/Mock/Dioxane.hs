@@ -18,8 +18,6 @@ module HSChain.Mock.Dioxane where
 
 import Codec.Serialise      (Serialise)
 import Control.Applicative
-import Control.DeepSeq      (NFData)
-import Control.Exception    (Exception)
 import Control.Monad
 import Control.Monad.Catch
 import Control.Monad.Trans.Except

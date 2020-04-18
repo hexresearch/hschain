@@ -28,7 +28,6 @@ import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Control.Retry  (constantDelay, limitRetries, recovering)
 
-import Data.Monoid    ((<>))
 import System.Timeout (timeout)
 
 import HSChain.Mock.KeyVal   (BData)

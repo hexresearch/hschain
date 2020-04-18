@@ -10,7 +10,6 @@ module Crypto.Bls.CPP.Internal where
 
 import Control.Exception (mask_)
 import Data.List ( intercalate )
-import Data.Monoid ( (<>) )
 import Foreign.ForeignPtr (ForeignPtr, newForeignPtr)
 import Foreign.Ptr (Ptr, FunPtr)
 import Language.Haskell.TH

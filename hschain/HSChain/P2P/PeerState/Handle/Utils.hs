@@ -18,8 +18,6 @@ import HSChain.Store.Internal.BlockDB
 import HSChain.Types.Blockchain
 import HSChain.Types.Validators
 
-import HSChain.Store.Internal.Query (MonadReadDB)
-
 import HSChain.P2P.Internal.Types
 import HSChain.P2P.PeerState.Monad
 import HSChain.P2P.PeerState.Types

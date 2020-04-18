@@ -10,7 +10,6 @@ module TM.Network (tests) where
 import Control.Concurrent.Async
 import Control.Concurrent (threadDelay)
 import Control.Monad      (forM_)
-import Data.Monoid        ((<>))
 import Data.String        (fromString)
 
 import Control.Exception as E
@@ -62,15 +61,6 @@ tests = testGroup "network test"
            ]
          | (group, newNetPair, v6) <- [ ("IPv4", (`realNetPair` "127.0.0.1"), 0)
                                       , ("IPv6", (`realNetPair`  "::1"), 1)]
-         ]
-    , testGroup "TLS"
-    $ let withRetryTLS addr fun = withRetry $ realTlsNetPair addr >>= fun
-      in [ testGroup group
-           [ testCase "ping-pong"        $ withRetryTLS address pingPong
-           , testCase "delayed write"    $ withRetryTLS address delayedWrite
-           , testCase "sized ping pongs" $ withRetryTLS address (sizedPingPong 8 11)
-           ]
-         | (group, address) <- [("IPv4", "127.0.0.1"), ("IPv6", "::1")]
          ]
     ]
   ]

@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP                        #-}
 {-# LANGUAGE DataKinds                  #-}
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE FlexibleContexts           #-}
@@ -75,16 +76,18 @@ import qualified Katip
 import Codec.Serialise           (Serialise)
 import Control.Monad             ((<=<), foldM, forM, unless)
 import Control.Monad.Catch       (MonadMask,MonadThrow,MonadCatch)
-import Control.Monad.Fail        (MonadFail)
 import Control.Monad.Morph       (MFunctor(..))
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Except
 import Control.Monad.Trans.Reader
 import Control.Monad.Trans.Writer
+#if !MIN_VERSION_base(4,13,0)
+import Control.Monad.Fail         (MonadFail)
+#endif
 
 import Data.Foldable             (forM_)
-import Data.Maybe                (isNothing, maybe)
+import Data.Maybe                (isNothing)
 import Data.Text                 (Text)
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Aeson         as JSON

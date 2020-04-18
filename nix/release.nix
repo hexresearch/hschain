@@ -3,10 +3,11 @@
 , isCoreLint ? false
 , isBench    ? false
 , useSodium  ? true
+, ghcToUse
 , ...
 }:
 let
-  pkgs     = import ./pkgs.nix { inherit config overlays; };
+  pkgs     = import ./pkgs.nix ghcToUse { inherit config overlays; };
   config   = {
     allowUnfree = true;
     allowBroken = true;
@@ -86,6 +87,7 @@ let
       inherit pkgs;
       ghc844 = hschainPkgAll;
       ghc865 = hschainPkgAll;
+      ghc883 = hschainPkgAll;
       ghcjs  = hschainPkgJs;
     };
 in release
