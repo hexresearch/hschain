@@ -1,8 +1,10 @@
+{-# LANGUAGE CPP                        #-}
 {-# LANGUAGE DeriveFunctor              #-}
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE DerivingStrategies         #-}
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE KindSignatures             #-}
 {-# LANGUAGE LambdaCase                 #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE OverloadedStrings          #-}
@@ -10,7 +12,6 @@
 {-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE TemplateHaskell            #-}
 {-# LANGUAGE UndecidableInstances       #-}
-{-# LANGUAGE KindSignatures             #-}
 -- |
 -- Logger
 module HSChain.PoW.Logger (
@@ -45,18 +46,19 @@ import Control.Monad
 import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Control.Monad.Morph        (MFunctor(..))
-import Control.Monad.Fail         (MonadFail)
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Reader
+#if !MIN_VERSION_base(4,11,0)
+import Control.Monad.Fail         (MonadFail)
+#endif
 
-import Control.Exception          (SomeException(..),AsyncException(..))
+import Control.Exception          (AsyncException(..))
 import Data.Aeson
 import Data.Aeson.TH
 import Data.IORef
 import qualified Data.Text.Lazy as TL
 import           Data.Text.Lazy.Builder (toLazyText)
 import Data.Typeable
-import Data.Monoid     ((<>))
 import qualified Data.HashMap.Strict        as HM
 import qualified Data.ByteString.Lazy.Char8 as BL
 import qualified Data.Text as T

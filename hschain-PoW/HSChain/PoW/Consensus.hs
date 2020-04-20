@@ -56,7 +56,6 @@ import Lens.Micro.Mtl
 import Lens.Micro.TH
 
 import HSChain.Types.Merkle.Types
-import HSChain.Crypto (Hashed)
 import HSChain.PoW.Types
 
 

@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP                        #-}
 {-# LANGUAGE DataKinds                  #-}
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE FlexibleContexts           #-}
@@ -49,7 +50,9 @@ module HSChain.PoW.Store (
 
 --import Control.Monad             ((<=<), foldM, forM, unless)
 import Control.Monad.Catch       (MonadMask,MonadThrow,MonadCatch)
+#if !MIN_VERSION_base(4,11,0)
 import Control.Monad.Fail        (MonadFail)
+#endif
 import Control.Monad.Morph       (MFunctor(..))
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
