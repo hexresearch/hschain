@@ -4,10 +4,12 @@
   derivations = {
     haskell = ./derivations/haskell;
     ghc844  = ./derivations/ghc84;
+    ghc865  = ./derivations/ghc86;
+    ghc883  = ./derivations/ghc88;
   };
   # Common overrides for librarise
   haskell = {
-    Diff                = { check = false; };
+    Diff           = { check = false; };
     #
     hschain-crypto = { haddock = false; };
     hschain-types  = { haddock = false; };
