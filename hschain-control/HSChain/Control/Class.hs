@@ -12,7 +12,7 @@ module HSChain.Control.Class
   ) where
 
 import Control.Monad
-import Control.Monad.Catch
+import Control.Monad.Catch (MonadThrow(..))
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Reader
 import qualified Control.Monad.Trans.State.Strict as SS
