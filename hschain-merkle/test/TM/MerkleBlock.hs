@@ -3,7 +3,6 @@ module TM.MerkleBlock where
 
 import Test.Tasty
 import Test.Tasty.QuickCheck
-import HSChain.Crypto     (Hashed)
 import HSChain.Crypto.SHA (SHA512)
 import HSChain.Types.Merkle.Tree
 import HSChain.Types.Merkle.Types

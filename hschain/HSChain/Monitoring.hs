@@ -24,7 +24,6 @@ import Control.Monad.Trans.Class
 import Control.Monad.Trans.Reader
 import qualified Control.Monad.Trans.State.Strict as SS
 import qualified Control.Monad.Trans.State.Lazy   as SL
-import Data.Monoid ((<>))
 import Data.Text                  (Text)
 import Numeric.Natural
 import Pipes       (Proxy)

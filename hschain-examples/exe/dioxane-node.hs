@@ -20,7 +20,6 @@ import Control.Monad.Trans.Class
 import Control.Monad.Trans.Cont
 import Control.Monad.Trans.Reader
 import Data.Aeson             (FromJSON)
-import Data.Monoid            ((<>))
 import Data.Word
 import qualified Data.Vector as V
 import Data.Yaml.Config       (loadYamlSettings, requireEnv)

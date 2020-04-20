@@ -1,13 +1,16 @@
-{ isProd ? false
-, isProfile ? false
+let cfg = import ./config.nix;
+in
+{ isProd       ? false
+, isProfile    ? false
 , containerTag ? "latest"
-, prefixName ? ""
-, ghc        ? "ghc865"
+, prefixName   ? ""
+, ghc          ? cfg.ghc
 , ...}:
 let
-  release = import ./release.nix { inherit
-    isProd
-    isProfile; };
+  release = import ./release.nix {
+    inherit isProd isProfile;
+    ghcToUse = ghc;
+  };
   pkgs = release.pkgs;
   lib = pkgs.haskell.lib;
 

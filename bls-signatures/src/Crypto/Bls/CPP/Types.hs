@@ -9,7 +9,6 @@ module Crypto.Bls.CPP.Types where
 import Control.DeepSeq
 import Data.ByteString (ByteString)
 import Foreign.ForeignPtr
-import Foreign.ForeignPtr (ForeignPtr)
 import Foreign.Ptr (Ptr)
 import qualified Language.C.Inline as C
 import qualified Language.C.Inline.Cpp as C

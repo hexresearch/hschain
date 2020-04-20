@@ -1,5 +1,5 @@
 {
-  versions = ["ghc844" "ghc865" "ghcjs"];
+  versions = ["ghc844" "ghc865" "ghc883" "ghcjs"];
   # List of packages with custom overrides
   derivations = {
     haskell = ./derivations/haskell;
@@ -17,6 +17,11 @@
   ghc865 = {
     # https://github.com/tsuraan/bytestring-arbitrary/issues/10
     bytestring-arbitrary = { jailbreak = true; };
+  };
+  ghc883 = {
+    # https://github.com/tsuraan/bytestring-arbitrary/issues/10
+    bytestring-arbitrary = { jailbreak = true; };
+    katip                = { jailbreak = true; };
   };
   ghcjs = {
     SHA                   = { check = false; };

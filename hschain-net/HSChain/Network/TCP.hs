@@ -8,7 +8,6 @@ import Control.Monad          (when)
 import Control.Monad.Catch    (bracketOnError, throwM)
 import Control.Monad.IO.Class (liftIO, MonadIO)
 import Data.List              (find)
-import Data.Monoid            ((<>))
 import Data.Word
 import System.Timeout         (timeout)
 

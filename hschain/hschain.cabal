@@ -42,7 +42,6 @@ Library
                      , microlens-mtl     >=0.1
                      , microlens-th
                      , mtl
-                     , network-info
                      , pipes             >=4
                      , prometheus-client
                      , random
@@ -57,7 +56,6 @@ Library
                      , unordered-containers >=0.2.5.0
                      --
                      , katip              == 0.7.0.0
-                     , network            >=2.6.0.0 && <2.9
                      , tls                >=1.4.1
                      , x509
                      , x509-store

@@ -3,6 +3,7 @@
 {-# LANGUAGE DeriveGeneric       #-}
 {-# LANGUAGE DerivingStrategies  #-}
 {-# LANGUAGE FlexibleContexts    #-}
+{-# LANGUAGE NumDecimals         #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -30,6 +31,7 @@ import GHC.Generics (Generic)
 import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Tasty.QuickCheck
+import Test.Tasty.Runners
 
 import HSChain.Blockchain.Internal.Engine.Types
 import HSChain.Control
@@ -50,7 +52,7 @@ import HSChain.Types
 import HSChain.Types.Merkle.Types
 import HSChain.Arbitrary.Instances ()
 import qualified HSChain.Network.Mock as P2P
-
+import TM.Util.Network
 
 type VSet = ValidatorSet (Ed25519 :& SHA512)
 
@@ -97,7 +99,7 @@ tests = testGroup "validators"
         Nothing == indexByIntervalPoint vset (totalVotingPower vset)
     ]
   , testGroup "Validator set change"
-    [ testCase "In consensus" testValidatorChange
+    [ localOption (1 :: NumThreads) $ testCase "In consensus" testValidatorChange
     ]
   ]
 
@@ -125,7 +127,7 @@ samplingEquidistribution vset
 ----------------------------------------------------------------
 
 testValidatorChange :: IO ()
-testValidatorChange = do
+testValidatorChange = withTimeOut 20e6 $ do
   evalContT $ do
     resources <- prepareResources spec
     nodes     <- executeNodeSpec  spec resources
@@ -153,7 +155,17 @@ testValidatorChange = do
       { netNodeList = [ NodeSpec (Just $ PrivValidator k) Nothing []
                       | k <- privK]
       , netTopology = All2All
-      , netNetCfg   = defCfg
+      , netNetCfg   =
+        let c = defCfg
+        in  c { cfgConsensus = ConsensusCfg
+                { timeoutNewHeight  = 10
+                , timeoutProposal   = (100,100)
+                , timeoutPrevote    = (100,100)
+                , timeoutPrecommit  = (100,100)
+                , timeoutEmptyBlock = 100
+                , incomingQueueSize = 10
+                }
+              } `asTypeOf` c
       , netMaxH     = Just $ Height 10
       }
 
