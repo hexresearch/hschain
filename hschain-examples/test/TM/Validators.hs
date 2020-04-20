@@ -159,9 +159,9 @@ testValidatorChange = withTimeOut 20e6 $ do
         let c = defCfg
         in  c { cfgConsensus = ConsensusCfg
                 { timeoutNewHeight  = 10
-                , timeoutProposal   = (100,100)
-                , timeoutPrevote    = (100,100)
-                , timeoutPrecommit  = (100,100)
+                , timeoutProposal   = (100,500)
+                , timeoutPrevote    = (100,500)
+                , timeoutPrecommit  = (100,500)
                 , timeoutEmptyBlock = 100
                 , incomingQueueSize = 10
                 }

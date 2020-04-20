@@ -70,7 +70,7 @@ Library
                   HSChain.Crypto.KDFNaCl
                   HSChain.Crypto.PBKDF2Simple
 
-Test-suite thundermint-crypto-tests
+Test-suite hschain-crypto-tests
   if impl(ghcjs)
     js-sources: js/nacl-fast.js
   --

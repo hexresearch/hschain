@@ -2,7 +2,7 @@
 , isProd     ? false
 , isCoreLint ? false
 , isBench    ? false
-, useSodium  ? true
+, useSodium
 , ghcToUse
 , ...
 }:
@@ -52,8 +52,23 @@ let
   };
   # Build internal package
   callInternal = hask: name: path: args: opts:
-    doFast (benchOverride (lintOverride (prodOverride (profileOverride (hask.callCabal2nixWithOptions name (ignoreStack path) opts args)))))
-    ;
+    doFast
+      (benchOverride
+        (lintOverride
+          (prodOverride
+            (profileOverride
+              ((drv: lib.overrideCabal drv (drv: { postInstall = hook; }))
+                (hask.callCabal2nixWithOptions name (ignoreStack path) opts args))))))
+  ;
+  # Extremely ugly hook which includes test executable into artifact
+  hook = ''
+    mkdir $out/tests
+    for tst in $(grep -i test-suite *.cabal | sed -e 's/ $//; s/.* //'); do
+        if [ $(find -name $tst -type f | wc -l) == 1 ]; then
+            cp -v $(find -name $tst -type f ) $out/tests
+        fi
+    done
+  '';
   lintOverride    = doIf isCoreLint hask.doCoreLint;
   prodOverride    = doIf isProd    (drv: hask.doPedantic (lib.doCheck drv));
   profileOverride = doIf isProfile hask.doProfile;

@@ -4,7 +4,7 @@ in
 , isProd     ? false
 , isCoreLint ? false
 , isBench    ? false
-, useSodium  ? true
+, useSodium  ? cfg.useSodium
 , ghc        ? cfg.ghc
 }:
 let
