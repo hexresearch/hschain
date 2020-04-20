@@ -38,11 +38,9 @@ packages:
 # (e.g., acme-missiles-0.3)
 extra-deps:
     - base58-bytestring-0.1.0
-    - bloodhound-0.16.0.0
     - bytestring-arbitrary-0.1.2
     - hedgehog-quickcheck-0.1
     - katip-0.6.3.0
-    - katip-elasticsearch-0.5.1.0
     - prometheus-client-1.0.0
     - prometheus-metrics-ghc-1.0.0
     - serialise-0.2.1.0

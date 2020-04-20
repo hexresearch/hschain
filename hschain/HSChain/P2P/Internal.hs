@@ -18,6 +18,7 @@ module HSChain.P2P.Internal
 import Codec.Serialise
 import Control.Applicative
 import Control.Concurrent.STM
+import Control.Exception      (AsyncException(..))
 import Control.Monad
 import Control.Monad.Catch
 import Control.Monad.Trans.Class
@@ -53,6 +54,7 @@ import HSChain.P2P.Internal.PeerRegistry
 import HSChain.P2P.Internal.Types
 import HSChain.P2P.PeerState.Handle
 import HSChain.Utils
+import HSChain.Network.Mock (MockNetError)
 import qualified HSChain.Network.IpAddresses as Ip
 
 --
@@ -83,7 +85,7 @@ acceptLoop cfg NetworkAPI{..} peerCh mempool = do
           (restore $ peerThread conn addr)
           (close conn)
   where
-    peerThread conn addr = logOnException $ do
+    peerThread conn addr = convertNetException $ logOnException $ do
       logger DebugS "Preacceped peer" (sl "addr" addr)
       -- Expect GossipHello from peer
       GossipHello nonce port <- deserialise <$> recv conn
@@ -111,7 +113,7 @@ connectPeerTo
   -> m ()
 connectPeerTo NetworkAPI{..} addr peerCh mempool =
   -- Ignore all exceptions to prevent apparing of error messages in stderr/stdout.
-  newSheep (peerShepherd peerCh) $ logOnException $ do
+  newSheep (peerShepherd peerCh) $ convertNetException $ logOnException $ do
     logger DebugS "Connecting to" $ sl "addr" addr
     bracket (connect addr) close $ \conn -> do
       -- Perform handshake
@@ -338,3 +340,19 @@ normalizeNodeAddress = flip setPort . Ip.normalizeNetAddr
   where
     setPort port (NetAddrV4 ha _) = NetAddrV4 ha $ fromIntegral port
     setPort port (NetAddrV6 ha _) = NetAddrV6 ha $ fromIntegral port
+
+-- Convert network exceptions to ThreadKilled
+--
+-- This is hack to make running testing more pleasant. Tasty insists
+-- on printing exceptions in threads failing due to them. But threads
+-- failing due to network exception is pretty normal and expected
+-- thing in our program. So we convert NetworkError/MockNetError to
+-- ThreadKilled so it will dutyfully kill thread.
+--
+-- Loss of exception type is not important since we don't use it
+-- anyway
+convertNetException :: MonadCatch m => m () -> m ()
+convertNetException = flip catches
+  [ Handler (\(_ :: NetworkError) -> throwM ThreadKilled)
+  , Handler (\(_ :: MockNetError) -> throwM ThreadKilled)
+  ]

@@ -5,7 +5,9 @@
 --{-# LANGUAGE DerivingVia                #-}
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE FlexibleInstances          #-}
+{-# LANGUAGE GADTs                      #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE PatternGuards              #-}
 {-# LANGUAGE RankNTypes                 #-}
 {-# LANGUAGE RecordWildCards            #-}
@@ -24,6 +26,8 @@ import Codec.Serialise
 
 --import Control.Applicative
 import Control.Monad
+import Control.Monad.IO.Class
+import Control.Monad.State
 
 import Control.Concurrent
 import Control.Concurrent.STM
@@ -66,6 +70,8 @@ import HSChain.Crypto.Classes.Hash
 import HSChain.Crypto.SHA
 --import HSChain.Types.Merkle.Types
 import HSChain.POW
+
+import ML.NES
 
 
 ----------------------------------------------------------------
@@ -460,6 +466,20 @@ instance Read NetAddr where
       digit :: Integral i => ReadP.ReadP i
       digit = fromInteger . read <$> ReadP.munch1 isDigit
 
+
+-------------------------------------------------------------------------------
+-- A monad to optimize search parameters.
+
+data OptState = OptState
+  { optStateRandoms :: [Double]
+  }
+
+newtype OptM a = OptM { runOptM :: StateT OptState IO a }
+  deriving newtype (Functor, Applicative, Monad, MonadIO)
+
+deriving instance MonadState OptState OptM
+
+instance Draw OptM where
 
 -------------------------------------------------------------------------------
 -- Algorithm.

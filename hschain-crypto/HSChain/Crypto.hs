@@ -18,9 +18,9 @@
 {-# LANGUAGE TypeOperators              #-}
 {-# LANGUAGE UndecidableInstances       #-}
 -- |
--- Simple API for cryptographic operations. Crypto algorithms are
--- selected by type and all necessary types are implemented as data
--- families
+-- Type class based API for cryptographic operations where types
+-- describe cryprographic algorithms and data types such as
+-- public\/private keys, etc are implemented as data families
 module HSChain.Crypto (
     -- * Cryptographic hashes
     Hash(..)
@@ -41,14 +41,10 @@ module HSChain.Crypto (
   , CryptoAsymmetric(..)
     -- * Signatures API
   , Signature(..)
-  , Fingerprint(..)
-  , fingerprint
   , CryptoSign(..)
   , signHashed
   , verifySignatureHashed
   , CryptoSignHashed(..)
-    -- * Aggregations API
-  , CryptoAggregabble(..)
     -- ** Diffie–Hellman key exchange
   , DHSecret
   , CryptoDH(..)
@@ -131,6 +127,7 @@ instance (CryptoHash hashA, CryptoHash hashB) => CryptoHash (hashA :<<< hashB) w
 -- Cryptographic hashes
 ----------------------------------------------------------------
 
+-- | Hash-based Message Authetication Code (HMAC) according to RFC2104.
 newtype HMAC alg = HMAC (Hash alg)
   deriving stock   ( Show, Read, Generic, Generic1)
   deriving newtype ( Eq, Ord, NFData, Serialise, ByteRepr
@@ -185,6 +182,8 @@ class ( ByteReprSized (Signature   alg)
   verifyBlobSignature :: PublicKey alg -> ByteString -> Signature alg -> Bool
 
 
+-- | Sign haskell value. It's hashed first then resulting hash is
+--   signed.
 signHashed :: forall alg a. (Crypto alg, CryptoHashable a)
            => PrivKey alg -> a -> Signature alg
 {-# INLINABLE signHashed #-}
@@ -192,6 +191,8 @@ signHashed pk a = signBlob pk bs
   where
     Hash bs = hash a :: Hash alg
 
+-- | Verify signature of haskell value. Signature should be generated
+--   by 'signHashed'
 verifySignatureHashed :: forall alg a. (Crypto alg, CryptoHashable a)
            => PublicKey alg -> a -> Signature alg -> Bool
 {-# INLINABLE verifySignatureHashed #-}
@@ -206,30 +207,6 @@ class ( ByteReprSized (Signature   alg)
   signHash            :: PrivKey   alg -> Hash alg -> Signature alg
   -- | Check that signature is correct
   verifyHashSignature :: PublicKey alg -> Hash alg -> Signature alg -> Bool
-
-
--- Aggregate some objects in one
-class CryptoAggregabble alg where
-    type AggregatedPublicKey alg
-    type AggregatedPrivKey alg
-    type AggregatedSignature alg
-    aggregatePublicKeys :: [PublicKey alg] -> AggregatedPublicKey alg
-    aggregatePrivKeys   :: [PrivKey alg]   -> AggregatedPrivKey alg
-    aggregateSignatures :: [Signature alg] -> AggregatedSignature alg
-
-
--- | Public key fingerprint (hash of public key)
-newtype Fingerprint hash alg = Fingerprint (Hashed hash (PublicKey alg))
-  deriving stock   ( Generic)
-  deriving newtype ( Eq, Ord, Serialise, NFData, ByteRepr
-                   , JSON.FromJSON, JSON.ToJSON, JSON.ToJSONKey, JSON.FromJSONKey)
-
-instance (CryptoHash hash, ByteReprSized (Hash hash)) => ByteReprSized (Fingerprint hash alg) where
-  type ByteSize (Fingerprint hash alg) = ByteSize (Hash hash)
-
--- | Compute fingerprint or public key fingerprint
-fingerprint :: (CryptoAsymmetric alg, CryptoHash hash) => PublicKey alg -> Fingerprint hash alg
-fingerprint = Fingerprint . Hashed . hashBlob . encodeToBS
 
 
 -- | Shared secret produced by Diffie-Hellman key exchange algorithm.
@@ -327,17 +304,6 @@ instance CryptoDH alg => JSON.FromJSON (DHSecret alg) where
 instance CryptoDH alg => JSON.FromJSONKey (DHSecret alg)
 instance CryptoDH alg => JSON.ToJSONKey   (DHSecret alg)
 
-
-----------------------------------------
-
-instance Show (Fingerprint hash alg) where
-  showsPrec n (Fingerprint (Hashed (Hash bs)))
-    = showParen (n > 10)
-    $ showString "Fingerprint " . shows (encodeBSBase58 bs)
-
-instance Read (Fingerprint hash alg) where
-  readPrec = do void $ lift $ string "Fingerprint" >> some (char ' ')
-                coerce <$> readPrecBSBase58
 
 ----------------------------------------
 
@@ -597,12 +563,6 @@ data SignedState = Verified
 
 
 
-
-instance (CryptoAsymmetric alg, CryptoHash hash) => CryptoHashable (Fingerprint hash alg) where
-  hashStep f
-    = hashStep (CryFingerprint (getCryptoName (hashAlgorithmName     @hash))
-                               (getCryptoName (asymmKeyAlgorithmName @alg)))
-   <> hashStep (encodeToBS f)
 
 instance CryptoAsymmetric alg => CryptoHashable (PublicKey alg) where
   hashStep k

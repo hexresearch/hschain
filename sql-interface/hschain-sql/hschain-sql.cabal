@@ -25,7 +25,7 @@ synopsis:            Prototype for SQL interface to the blockchain
 -- bug-reports:
 
 -- The license under which the package is released.
-license:             BSD-3-Clause
+license:             MIT
 
 -- The file containing the license text.
 license-file:        LICENSE
@@ -119,9 +119,6 @@ executable hschain-sql-node
                      , unordered-containers >=0.2.5.0
                      --
                      , katip              == 0.7.0.0
-                     , katip-elasticsearch
-                     , http-client-tls
-                     , bloodhound
                      , network            >=2.6.0.0 && <2.9
                      , tls                >=1.4.1
                      , warp

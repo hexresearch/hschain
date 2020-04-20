@@ -1,4 +1,4 @@
-Name:           hschain-net
+Name:           hschain-ML
 Version:        0.1
 Synopsis:       Abstract network API for hschain
 Description:
@@ -7,10 +7,10 @@ Description:
 Cabal-Version:  >= 1.10
 License:        MIT
 License-File:   LICENSE
-Author:         Aleksey Khudyakov <alexey.skladnoy@gmail.com>
-Maintainer:     Aleksey Khudyakov <alexey.skladnoy@gmail.com>
-Homepage:       https://github.com/hexresearch/thundermint
-Category:       Data
+Author:         Serguey Zefirov <sergueyz@gmail.com>
+Maintainer:     Serguey Zefirov <sergueyz@gmail.com>
+Homepage:
+Category:       Machine-learning
 Build-Type:     Simple
 
 Library
@@ -18,34 +18,12 @@ Library
   Default-Language:    Haskell2010
   Build-Depends:       base               >=4.9 && <5
                      --
-                     , aeson
-                     , bytestring         >=0.10
-                     , containers         >=0.5.9
-                     , data-default-class
-                     , exceptions         >=0.8.3
-                     , network            >=2.6.0.0 && <2.9
-                     , network-info
-                     , http-client-tls
-                     , network            >=2.6.0.0 && <2.9
-                     , serialise          >=0.2
-                     , stm                >=2.5
-                     , tls                >=1.4.1
-                     , text               >=1
-                     , x509
-                     , x509-store
-                     , x509-system
-                     , x509-validation
+                     , mtl
+                     , random
+                     , vector
   Exposed-modules:
-                  HSChain.Network.IpAddresses
-                  HSChain.Network.Types
-                  HSChain.Network.TLS
-                  HSChain.Network.TCP
-                  HSChain.Network.UDP
-                  HSChain.Network.Mock
+                  ML.NES
   Other-modules:
-                  HSChain.Network.Internal
-                  HSChain.Network.Parameters
-                  HSChain.Network.Utils
 
 
 -- Test suite

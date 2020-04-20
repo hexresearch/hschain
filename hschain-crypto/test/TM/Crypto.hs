@@ -53,13 +53,6 @@ testsEd25519 = testGroup "ed25519"
   $ do let k :: PrivKey Ed25519
            k = read "\"Cn6mra73QDNPkyf56Cfoxh9y9HDS8MREPw4GNcCxQb5Q\""
        read "\"5oxScYXwuzcCQRZ8QtUDzhxNdMx2g1nMabd4uPFPDdzi\"" @=? publicKey k
-
-  , testCase "Fingerprint derivation is correct"
-  $ do let k :: PrivKey Ed25519
-           k = read "\"Cn6mra73QDNPkyf56Cfoxh9y9HDS8MREPw4GNcCxQb5Q\""
-           fp :: Fingerprint (SHA256 :<<< SHA512) Ed25519
-           fp = fingerprint (publicKey k)
-       read "Fingerprint \"AhAM9SS8UQUbjrB3cwq9DMtb6mnyz61m9LuBr5kayq9q\"" @=? fp
   ]
 
 testsCurve25519 :: TestTree
@@ -129,8 +122,7 @@ testsSignatureCrypto
   :: forall alg. CryptoSign alg
   => Proxy alg -> [TestTree]
 testsSignatureCrypto tag =
-  [ testGroup "Fingerprint" $ testsStdIntances (Proxy @(Fingerprint SHA512 alg))
-  , testGroup "Signature"   $ testsStdIntances (Proxy @(Signature   alg))
+  [ testGroup "Signature"   $ testsStdIntances (Proxy @(Signature   alg))
     --
   , testCase "Signature OK (roundtrip)"
   $ do privK <- generatePrivKey @alg
@@ -195,8 +187,6 @@ instance CryptoAsymmetric alg => Generate (PrivKey alg) where
   generateIO = generatePrivKey
 instance CryptoAsymmetric alg => Generate (PublicKey alg) where
   generateIO = publicKey <$> generatePrivKey
-instance (CryptoHash hash, CryptoAsymmetric alg) => Generate (Fingerprint hash alg) where
-  generateIO = fingerprint . publicKey <$> generatePrivKey
 instance CryptoSign alg => Generate (Signature alg) where
   generateIO = do pk <- generatePrivKey
                   return $! signBlob pk "ABCD"

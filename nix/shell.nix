@@ -21,8 +21,10 @@ in
       pkgs.libsodium
       pkgs.bls
       pkgs.openssl
+      pkgs.utillinux
     ];
     packages = release."${ghc}";
+<<<<<<< HEAD
     # NOTE: this is workaround for bug in GHCi
     #       https://gitlab.haskell.org/ghc/ghc/issues/11042
     #
@@ -31,5 +33,19 @@ in
     #       of TH fails
     shellHook = ''
       export LD_LIBRARY_PATH=${pkgs.openssl.out}/lib''${LD_LIBRARY_PATH:+:}${pkgs.libsodium}/lib''${LD_LIBRARY_PATH:+:}$LD_LIBRARY_PATH
+=======
+    # NOTE: this is workaround for problem with building
+    #       hschain-types. Without this build fails
+    #       mysteriously. Note that build with nix-build is not
+    #       affected.
+    #
+    # NOTE: We have to set correct CPU affinity manually because
+    #       otherwise nix will just pin everything to one core
+    #
+    #       https://github.com/NixOS/nix/issues/3345
+    shellHook = ''
+      export LD_LIBRARY_PATH=${pkgs.libsodium}/lib''${LD_LIBRARY_PATH:+:}$LD_LIBRARY_PATH
+      taskset -pc 0-1000 $$
+>>>>>>> ade330922d1b9c2c2955c373e6059f566da82b70
       '';
   }

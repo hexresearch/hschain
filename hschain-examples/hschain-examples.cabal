@@ -5,7 +5,7 @@ Description:
   Haskell reimplementation of tendermint protocol
 
 Cabal-Version:  >= 1.10
-License:        AllRightsReserved
+License:        MIT
 License-File:   LICENSE
 Author:         Aleksey Khudyakov <alexey.skladnoy@gmail.com>
 Maintainer:     Aleksey Khudyakov <alexey.skladnoy@gmail.com>
@@ -140,7 +140,7 @@ Executable hschain-db
 -- Test suite
 Test-suite hschain-tests
   Type:                exitcode-stdio-1.0
-  Ghc-options:         -Wall -threaded -rtsopts "-with-rtsopts=-N -qn1"
+  Ghc-options:         -Wall -threaded -rtsopts "-with-rtsopts=-A64M -N -qn1"
   Default-Language:    Haskell2010
   Build-Depends:       base              >=4.9 && <5
                      , hschain

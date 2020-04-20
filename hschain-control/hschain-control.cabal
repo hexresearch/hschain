@@ -5,7 +5,7 @@ Description:
   Primitives for working with concurrency in hschain projects
 
 Cabal-Version:  >= 1.10
-License:        AllRightsReserved
+License:        MIT
 License-File:   LICENSE
 Author:         Aleksey Khudyakov <alexey.skladnoy@gmail.com>
 Maintainer:     Aleksey Khudyakov <alexey.skladnoy@gmail.com>
