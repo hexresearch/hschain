@@ -149,9 +149,9 @@ runCoin = evalContT $ do
         let c = defCfg
         in  c { cfgConsensus = ConsensusCfg
                 { timeoutNewHeight  = 10
-                , timeoutProposal   = (50,50)
-                , timeoutPrevote    = (50,50)
-                , timeoutPrecommit  = (50,50)
+                , timeoutProposal   = (50,250)
+                , timeoutPrevote    = (50,250)
+                , timeoutPrecommit  = (50,250)
                 , timeoutEmptyBlock = 100
                 , incomingQueueSize = 10
                 }
