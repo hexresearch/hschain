@@ -22,7 +22,7 @@ if [[ -n "${gittag// }" ]]; then
     echo "Publish with $gittag"
 else
   if [[ "$gitevent" != "pull_request" ]]; then
-  tag="$gitbranch"
+  tag="${gitbranch,,}"
   publish="true"
   echo "Publish with $gitbranch"
   else

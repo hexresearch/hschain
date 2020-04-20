@@ -1,0 +1,98 @@
+Name:           hschain-PoW
+Version:        0.1
+Synopsis:       Haskell implementation of PoW consensus
+Description:
+  Framework for working with PoW consensus protocol
+
+
+Cabal-Version:  >= 1.10
+License:        AllRightsReserved
+License-File:   LICENSE
+Author:         Aleksey Khudyakov <alexey.skladnoy@gmail.com>
+Maintainer:     Aleksey Khudyakov <alexey.skladnoy@gmail.com>
+Homepage:       https://github.com/hexresearch/thundermint
+Category:       Data
+Build-Type:     Simple
+
+
+Library
+  Ghc-options:         -Wall
+  Default-Language:    Haskell2010
+  Build-Depends:       base              >=4.9 && <5
+                     , hschain-crypto
+                     , hschain-control
+                     , hschain-net
+                     , hschain-merkle
+                     , aeson
+                     , base58-bytestring >=0.1
+                     , bytestring        >=0.10
+                     , containers        >=0.5.9
+                     , data-default-class
+                     , deepseq           >=1.4
+                     , directory
+                     , exceptions        >=0.8.3
+                     , filepath
+                     , katip
+                     , lrucache
+                     , mmorph
+                     , microlens         >=0.4
+                     , microlens-mtl     >=0.1
+                     , microlens-th
+                     , mtl
+                     , pipes             >=4
+                     , prometheus-client
+                     , random
+                     , serialise         >=0.2
+                     , sqlite-simple
+                     , stm               >=2.5
+                     , text
+                     , time
+                     , transformers      >=0.5
+                     , vector
+                     , unordered-containers >=0.2.5.0
+  Exposed-modules:
+                HSChain.PoW.Types
+                HSChain.PoW.Consensus
+                HSChain.Examples.Simple
+                HSChain.PoW.Exceptions
+                HSChain.PoW.Logger
+                HSChain.PoW.Logger.Class
+                HSChain.PoW.Store
+                HSChain.PoW.P2P
+                HSChain.PoW.P2P.Types
+                HSChain.PoW.P2P.Handler.BlockRequests
+                HSChain.PoW.P2P.Handler.CatchupLock
+                HSChain.PoW.P2P.Handler.Consensus
+                HSChain.PoW.P2P.Handler.Peer
+                HSChain.PoW.P2P.Handler.PEX
+                HSChain.PoW.P2P.STM.PeerRegistry
+                HSChain.PoW.P2P.STM.NonceSet                
+                --HSChain.PoW.Store.STM - commented out because it contains only mempool
+                HSChain.PoW.Store.Internal.Query
+                HSChain.PoW.Store.Internal.BlockDB
+
+
+-- Test suite
+Test-suite hschain-PoW-tests
+  Type:                exitcode-stdio-1.0
+  Ghc-options:         -Wall -threaded -rtsopts "-with-rtsopts=-N -qn1"
+  Default-Language:    Haskell2010
+  Build-Depends:       base              >=4.9 && <5
+                     , hschain-PoW
+                     , hschain-crypto
+                     , hschain-control
+                     , hschain-merkle
+                     , hschain-net
+                     , containers
+                     , serialise
+                     , microlens
+                     , mtl
+                     , tasty             >=0.11
+                     , tasty-quickcheck
+                     , tasty-hunit       >=0.10                      
+  hs-source-dirs:      test
+  Main-is:             Main.hs
+  Other-modules:       TM.Consensus
+                       TM.P2P
+                       TM.Util.InMemory
+                       TM.Util.Mockchain

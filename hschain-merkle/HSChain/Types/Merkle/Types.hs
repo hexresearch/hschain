@@ -6,6 +6,7 @@
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
+{-# LANGUAGE RankNTypes                 #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
 -- |
 -- Type classes for working with heterogenoeus merkle trees where we
@@ -14,6 +15,7 @@
 module HSChain.Types.Merkle.Types (
     -- * Type classes
     IsMerkle(..)
+  , MerkleMap(..)
     -- * Node of Merkle tree
   , MerkleNode(..)
   , merkleValue
@@ -66,6 +68,8 @@ class IsMerkle f where
   -- | Convert node with optional value to hash
   fromOptNode :: OptNode alg a -> Maybe (f alg a)
 
+class MerkleMap b where
+  merkleMap :: IsMerkle f => (forall alg a. f alg a -> g alg a) -> b f -> b g
 
 -- | Newtype wrapper for nodes of Merkle trees. It's used to provide
 --   serialization instance and ensure that data encoded as one node

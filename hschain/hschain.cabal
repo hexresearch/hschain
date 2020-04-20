@@ -56,12 +56,6 @@ Library
                      , unordered-containers >=0.2.5.0
                      --
                      , katip              == 0.7.0.0
-                     , tls                >=1.4.1
-                     , x509
-                     , x509-store
-                     , x509-system
-                     , x509-validation
-
   Exposed-modules:
                   HSChain.Blockchain.Internal.Algorithm
                   HSChain.Blockchain.Internal.Engine
@@ -91,7 +85,6 @@ Library
                   HSChain.Store.Internal.BlockDB
                   HSChain.Store.Internal.Query
                   HSChain.Store.Internal.Proposals
-                  HSChain.Utils
   Other-modules:
                   HSChain.P2P.Internal.PeerRegistry
                   HSChain.P2P.Internal.Types

@@ -24,7 +24,9 @@ Library
                      , transformers
                      , containers
   Exposed-modules:
+                  HSChain.Control.Channels
                   HSChain.Control.Class
                   HSChain.Control.Mutex
                   HSChain.Control.Shepherd
                   HSChain.Control.Util
+                  HSChain.Control.Delay

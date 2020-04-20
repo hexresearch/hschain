@@ -44,7 +44,7 @@ import HSChain.Store
 import HSChain.Store.STM
 import HSChain.Types
 import HSChain.Types.Merkle.Types
-import HSChain.Utils
+import HSChain.Control.Delay
 
 
 ----------------------------------------------------------------

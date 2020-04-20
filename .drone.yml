@@ -123,8 +123,7 @@ volumes:
 trigger:
   branch:
   - master
-  - network-rework
-  - 16ktps
+  - PoW
   cron:
     exclude:
     - nightly
