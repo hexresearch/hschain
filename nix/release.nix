@@ -64,7 +64,9 @@ let
   hook = ''
     mkdir $out/tests
     for tst in $(grep -i test-suite *.cabal | sed -e 's/ $//; s/.* //'); do
-      cp -v $(find -name $tst -type f) $out/tests
+        if [ $(find -name $tst -type f | wc -l) == 1 ]; then
+            cp -v $(find -name $tst -type f ) $out/tests
+        fi
     done
   '';
   lintOverride    = doIf isCoreLint hask.doCoreLint;
