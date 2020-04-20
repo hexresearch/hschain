@@ -120,12 +120,7 @@ executable hschain-sql-node
                      --
                      , katip              == 0.7.0.0
                      , network            >=2.6.0.0 && <2.9
-                     , tls                >=1.4.1
                      , warp
-                     , x509
-                     , x509-store
-                     , x509-system
-                     , x509-validation
                      , yaml
  
   -- Directories containing source files.
