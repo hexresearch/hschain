@@ -28,8 +28,8 @@ import           TM.Util.Network (withTimeOut)
 tests :: TestTree
 tests = testGroup "generate blockchain and check on consistency"
   [ testGroup "blockhains"
-    [ localOption (1 :: NumThreads) $ testCase "key-val db" $ withTimeOut 60e6 runKeyVal
-    , localOption (1 :: NumThreads) $ testCase "Mock coin"  $ withTimeOut 60e6 runCoin
+    [ localOption (1 :: NumThreads) $ testCase "key-val db" $ withTimeOut 20e6 runKeyVal
+    , localOption (1 :: NumThreads) $ testCase "Mock coin"  $ withTimeOut 20e6 runCoin
     ]
   ]
 
