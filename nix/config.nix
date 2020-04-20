@@ -1,4 +1,5 @@
 # Default configuration
 {
-  ghc = "ghc883";
+  ghc       = "ghc883";
+  useSodium = false;
 }

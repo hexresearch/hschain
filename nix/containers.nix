@@ -9,7 +9,8 @@ in
 let
   release = import ./release.nix {
     inherit isProd isProfile;
-    ghcToUse = ghc;
+    useSodium = cfg.useSodium;
+    ghcToUse  = ghc;
   };
   pkgs = release.pkgs;
   lib = pkgs.haskell.lib;

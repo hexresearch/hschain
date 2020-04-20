@@ -2,7 +2,7 @@
 , isProd     ? false
 , isCoreLint ? false
 , isBench    ? false
-, useSodium  ? true
+, useSodium
 , ghcToUse
 , ...
 }:
