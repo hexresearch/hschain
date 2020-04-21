@@ -32,6 +32,8 @@ import Control.Monad.State
 import Control.Concurrent
 import Control.Concurrent.STM
 
+import Data.Bits
+
 import Data.ByteString.Lazy (ByteString)
 import qualified Data.ByteString.Lazy as B
 
@@ -470,6 +472,24 @@ instance Read NetAddr where
 -------------------------------------------------------------------------------
 -- A monad to optimize search parameters.
 
+data SearchConfigProbe = SearchConfigProbe
+  { searchConfigProbeConfig      :: POWSearchConfig
+  , searchConfigProbeTime        :: Double  -- ^In seconds.
+  , searchConfigProbeLogMax      :: Double  -- ^Hash logarithm.
+  }
+  deriving (Show)
+
+updateSearchConfigProbe :: POWSearchConfig -> Double -> Double
+                        -> SearchConfigProbe -> SearchConfigProbe
+updateSearchConfigProbe cfg time hashlog scp
+  | cfg == searchConfigProbeConfig scp
+      = scp
+          { searchConfigProbeTime = searchConfigProbeTime scp + time
+          , searchConfigProbeLogMax = max hashlog $ searchConfigProbeLogMax scp
+          }
+  | otherwise = scp -- ^We can be late with updating probe. We must not update wrong probe.
+
+
 data OptState = OptState
   { optStateRandoms :: [Double]
   }
@@ -484,23 +504,39 @@ instance Draw OptM where
 -------------------------------------------------------------------------------
 -- Algorithm.
 
+
 data DB = DB
-  { dbCurrentHead           :: BlockHeader
+  { dbCurrentHead            :: BlockHeader
     -- ^Cannot be non-empty, we have at least genesis.
     -- Must refer to some block in the blocks DB.
-  , dbBlocks                :: Map (Hashed SHA256 Block) Block
-  , dbChainHeaders          :: Map Height (BlockHeader)
+  , dbBlocks                 :: Map (Hashed SHA256 Block) Block
+  , dbChainHeaders           :: Map Height (BlockHeader)
   -- ^More or less good structure - relatively efficient at
   -- cutting maximum elements and addressing with height.
+  , dbCurrentSearchConfig    :: POWSearchConfig
+  -- ^Currently best search configuration.
+  , dbExploratorySearchProbe :: Maybe SearchConfigProbe
   }
   deriving stock (Show)
 
 startDB :: DB
 startDB = DB
-  { dbCurrentHead           = genesisBlockHeader
-  , dbBlocks                = Map.singleton (getHash genesisBlock) genesisBlock
-  , dbChainHeaders          = Map.singleton 0 genesisBlockHeader
+  { dbCurrentHead            = genesisBlockHeader
+  , dbBlocks                 = Map.singleton (getHash genesisBlock) genesisBlock
+  , dbChainHeaders           = Map.singleton 0 genesisBlockHeader
+  , dbCurrentSearchConfig    = powCfgSearch defaultPOWConfig
+  , dbExploratorySearchProbe = Nothing
   }
+
+hashLog :: ByteString -> Double
+hashLog bytestring = computeLog $ findnz 0 $ B.unpack bytestring
+  where
+    computeLog (bitsCount, nz) = negate $ fromIntegral bitsCount +
+      log (fromIntegral nz) / log 2
+    findnz bitsCount (0:bs) =
+      findnz (bitsCount + 8) bs
+    findnz bitsCount [byte] = (bitsCount, shiftL byte 8 + 1) -- last byte can be zero
+    findnz bitsCount (byte : _) = (bitsCount, byte * 256)
 
 miningProcess :: TVar DB -> IO ()
 miningProcess dbvar = do
@@ -508,7 +544,11 @@ miningProcess dbvar = do
   where
     miningLoop n = do
       db <- atomically $ readTVar dbvar
-      (minHash, mbHdrBlock) <- formAndMine n db
+      start <- getPOSIXTime
+      ((config, minHash), mbHdrBlock) <- formAndMine n db
+      end <- getPOSIXTime
+      let deltaAsDouble = fromRational $ toRational $ end - start :: Double
+          minHashLog = hashLog minHash
       case mbHdrBlock of
         Just (newHeader, newBlock) -> do
           atomically $ do
@@ -520,6 +560,7 @@ miningProcess dbvar = do
                       { dbCurrentHead        = newHeader
                       , dbBlocks             = Map.insert (getHash newBlock) newBlock dbBlocks
                       , dbChainHeaders       = Map.insert newHeight newHeader dbChainHeaders
+                      , dbExploratorySearchProbe = fmap (updateSearchConfigProbe config deltaAsDouble minHashLog) dbExploratorySearchProbe
                       }
             writeTVar dbvar db'
           putStrLn $ "mined: "++show newHeader
@@ -548,7 +589,17 @@ miningProcess dbvar = do
                      , powComplexityMantissa = newMantissa
                      }
             | otherwise = powComplexity
-          powConfig = defaultPOWConfig { powCfgComplexity = adjustedComplexity }
+          -- figure out whether we want to explore some changes in search parameters.
+          -- should be configured in near future.
+          explore = mod n 10 == 0
+          currentSearchConfig
+                    | explore
+                    , Just scp <- dbExploratorySearchProbe = searchConfigProbeConfig scp
+                    | otherwise = dbCurrentSearchConfig
+          powConfig = defaultPOWConfig
+                          { powCfgComplexity = adjustedComplexity
+                          , powCfgSearch = currentSearchConfig
+                          }
       -- TODO: here we have to access mempool.
       let Just tx = createMiningTransaction nextHeight prevUTXO ("attempt"++show n) 0
           newTxs = [tx]
@@ -564,7 +615,8 @@ miningProcess dbvar = do
                                  , blockHeaderBaseBlockHash          =
                                            getHash newBlock
                                  }
-      fmap (\(a,b) -> (a, fmap (flip (,) newBlock) b)) $ tryMineBlock powConfig newBlockHeaderBase
+      when explore $ putStrLn $ "exploring search space"
+      fmap (\(a,b) -> ((currentSearchConfig, a), fmap (flip (,) newBlock) b)) $ tryMineBlock powConfig newBlockHeaderBase
       where
         nextHeight = blockHeaderBaseHeight + 1
         prevMinedBlock = Map.findWithDefault (error "can't find previousblock")
