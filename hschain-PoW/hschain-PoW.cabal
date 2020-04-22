@@ -75,6 +75,7 @@ executable hschain-PoW-concrete
                      , mtl
                      , network
                      , optparse-applicative
+                     , random
                      , serialise
                      , stm
                      , time

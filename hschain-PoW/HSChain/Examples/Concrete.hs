@@ -63,6 +63,8 @@ import qualified Text.ParserCombinators.ReadPrec as Read
 
 import qualified Network.Socket as Net
 
+import System.Random
+
 import System.IO.Unsafe (unsafePerformIO)
 
 import Options.Applicative
@@ -489,9 +491,43 @@ updateSearchConfigProbe cfg time hashlog scp
           }
   | otherwise = scp -- ^We can be late with updating probe. We must not update wrong probe.
 
+searchConfigProbeScore :: SearchConfigProbe -> Double
+searchConfigProbeScore (SearchConfigProbe _ time hashLog) = hashLog / time
+
+-- |Anything we may optimize over must be representable as vector
+-- of floats. The @decodeFromFloats@ must understand arbitrary
+-- array of floats - it will be used for rounding.
+-- The following equality must hold:
+--   - @decodeFromFloats (encodeToFloats x) == x@, which is trivial condition on encoding.
+class Learnable a where
+  -- |Length of the representation.
+  representationLength :: a -> Int
+  -- |Encode thing into floats.
+  encodeToFloats :: a -> [Double]
+  -- |Decode thing from floats.
+  decodeFromFloats :: [Double] -> a
+
+  -- |A rounding process - given the vector, return "rounded" representation.
+  roundEncoded :: a -> [Double] -> [Double]
+  roundEncoded witness vec = encodeToFloats $ decodeFromFloats vec `asTypeOf` witness
+
+instance Learnable POWSearchConfig where
+  representationLength _ = 3
+  encodeToFloats (POWSearchConfig attemptsBetweenRestarts attemptsToSearch msToSearch) =
+    -- all three values above are strictly greater than 0.
+    -- thus we have to treat them as results of exponentation.
+    -- that is why we take logarithms here.
+    map logint [attemptsBetweenRestarts, attemptsToSearch, msToSearch]
+    where
+      logint = (10 *) . log . fromIntegral
+
+  decodeFromFloats list = POWSearchConfig a b c
+    where
+      [a,b,c] = map intdec list
+      intdec = truncate . exp . (/10)
 
 data OptState = OptState
-  { optStateRandoms :: [Double]
+  { optStateRandoms    :: [Double]
   }
 
 newtype OptM a = OptM { runOptM :: StateT OptState IO a }
@@ -500,6 +536,49 @@ newtype OptM a = OptM { runOptM :: StateT OptState IO a }
 deriving instance MonadState OptState OptM
 
 instance Draw OptM where
+  drawStdNormalVec asThisV = do
+    (v,rest) <- splitAt (vLength asThisV) . optStateRandoms <$> get
+    modify $ \os -> os { optStateRandoms = rest }
+    return $ vFromList v
+  roundDrawnSample v = do
+    return $ vFromList $ roundEncoded (undefined :: POWSearchConfig) $ vToList v
+
+searchOptimization :: TVar DB -> IO ()
+searchOptimization dbVar = do
+  rg <- getStdRandom split
+  let ds = genNormals rg
+      startMu = vFromList $ encodeToFloats $ powCfgSearch defaultPOWConfig
+      optState = OptState
+        { optStateRandoms = ds
+        }
+  let waitLoop :: OptM SearchConfigProbe
+      waitLoop = do
+        probeReady <- liftIO $ atomically $ do
+          mbProbe <- dbExploratorySearchProbe <$> readTVar dbVar
+          case mbProbe of
+            Nothing -> error "probe disappeared!"
+            Just sp
+              | searchConfigProbeTime sp > 60 -> return (Just sp)
+              | otherwise -> return Nothing
+        case probeReady of
+          Just ready -> return ready
+          Nothing -> do
+            liftIO $ threadDelay 1000000 -- one second delay.
+            waitLoop
+      evaluate vec = do
+        let specimen = decodeFromFloats $ vToList vec
+        liftIO $ atomically $ do
+          db <- readTVar dbVar
+          writeTVar dbVar $
+            db { dbExploratorySearchProbe = Just (SearchConfigProbe specimen 0 0) }
+        result <- waitLoop
+        return $ searchConfigProbeScore result
+      stop = return False -- we will not stop searching for better parameters.
+  flip evalStateT optState $ runOptM $ do
+    -- |We will search through N=4*3 parameters (mu and three vectors approximating A).
+    -- Thus we need population count as big as 4*3 (Fisher information matrix).
+    aNES 15 0.1 startMu evaluate stop
+    return ()
 
 -------------------------------------------------------------------------------
 -- Algorithm.
@@ -640,6 +719,7 @@ node cfg = do
   sock <- newUDPSocket (configOurPort cfg)
   db <- atomically $ newTVar startDB
   forkIO $ miningProcess db
+  forkIO $ searchOptimization db
   loop
   where
     loop = do
