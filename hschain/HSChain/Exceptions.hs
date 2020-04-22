@@ -28,6 +28,11 @@ data CorruptedDBError
   deriving stock    (Show)
   deriving anyclass (Exception)
 
+-- | Trying to access closed database
+data DatabaseIsClosed = DatabaseIsClosed
+  deriving stock    (Show)
+  deriving anyclass (Exception)
+
 -- | Internal error in algorithm. Could only occure either because of
 --   bug or due to data corruption.
 data InternalError
