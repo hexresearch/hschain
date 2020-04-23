@@ -572,11 +572,18 @@ searchOptimization dbVar = do
           writeTVar dbVar $
             db { dbExploratorySearchProbe = Just (SearchConfigProbe specimen 0 0) }
         result <- waitLoop
+        let newScore = searchConfigProbeScore result
+        liftIO $ atomically $ do
+          db <- readTVar dbVar
+          let currentBest = dbCurrentSearchConfig db
+              currentBestScore = searchConfigProbeScore currentBest
+          when (currentBestScore < newScore) $
+            writeTVar dbVar $ db { dbCurrentSearchConfig = result }
         return $ searchConfigProbeScore result
-      stop = return False -- we will not stop searching for better parameters.
+      stop = return False -- not cease searching for better parameters.
   flip evalStateT optState $ runOptM $ do
     -- |We will search through N=4*3 parameters (mu and three vectors approximating A).
-    -- Thus we need population count as big as 4*3 (Fisher information matrix).
+    -- Thus we need population count as big as 4*3 (Fisher information matrix to be full rank).
     aNES 15 0.1 startMu evaluate stop
     return ()
 
@@ -592,7 +599,7 @@ data DB = DB
   , dbChainHeaders           :: Map Height (BlockHeader)
   -- ^More or less good structure - relatively efficient at
   -- cutting maximum elements and addressing with height.
-  , dbCurrentSearchConfig    :: POWSearchConfig
+  , dbCurrentSearchConfig    :: SearchConfigProbe
   -- ^Currently best search configuration.
   , dbExploratorySearchProbe :: Maybe SearchConfigProbe
   }
@@ -603,7 +610,7 @@ startDB = DB
   { dbCurrentHead            = genesisBlockHeader
   , dbBlocks                 = Map.singleton (getHash genesisBlock) genesisBlock
   , dbChainHeaders           = Map.singleton 0 genesisBlockHeader
-  , dbCurrentSearchConfig    = powCfgSearch defaultPOWConfig
+  , dbCurrentSearchConfig    = SearchConfigProbe (powCfgSearch defaultPOWConfig) 0 0
   , dbExploratorySearchProbe = Nothing
   }
 
@@ -630,7 +637,7 @@ miningProcess dbvar = do
           minHashLog = hashLog minHash
       case mbHdrBlock of
         Just (newHeader, newBlock) -> do
-          atomically $ do
+          db <- atomically $ do
             db@DB{..} <- readTVar dbvar
             -- here we replace current head, in the real thing we must check work done.
             -- but we can add block unconditionally.
@@ -639,10 +646,22 @@ miningProcess dbvar = do
                       { dbCurrentHead        = newHeader
                       , dbBlocks             = Map.insert (getHash newBlock) newBlock dbBlocks
                       , dbChainHeaders       = Map.insert newHeight newHeader dbChainHeaders
+                      , dbCurrentSearchConfig = updateSearchConfigProbe config deltaAsDouble minHashLog dbCurrentSearchConfig
                       , dbExploratorySearchProbe = fmap (updateSearchConfigProbe config deltaAsDouble minHashLog) dbExploratorySearchProbe
                       }
             writeTVar dbvar db'
+            return db'
           putStrLn $ "mined: "++show newHeader
+          let headers = dbChainHeaders db
+              h0 = Map.findWithDefault undefined 0 headers
+              lastN
+                | Map.size headers < 20 = headers
+                | otherwise = Map.drop (Map.size headers - 10) headers
+              Just (firstLastN, _) = Map.minView lastN
+              Just (lastLastN, _) = Map.maxView lastN
+              secondsInLastN = blockHeaderBaseSeconds (blockHeaderBase lastLastN) - blockHeaderBaseSeconds (blockHeaderBase firstLastN)
+              mineRate = fromIntegral (Map.size lastN - 1) / (fromIntegral secondsInLastN)
+          putStrLn $ "mine rate for "++show (Map.size lastN - 1) ++ " blocks is "++show mineRate++" blocks / sec"
           miningLoop (n+1)
         Nothing -> miningLoop (n+1)
     extractSeconds = blockHeaderBaseSeconds . blockHeaderBase
@@ -674,7 +693,7 @@ miningProcess dbvar = do
           currentSearchConfig
                     | explore
                     , Just scp <- dbExploratorySearchProbe = searchConfigProbeConfig scp
-                    | otherwise = dbCurrentSearchConfig
+                    | otherwise = searchConfigProbeConfig dbCurrentSearchConfig
           powConfig = defaultPOWConfig
                           { powCfgComplexity = adjustedComplexity
                           , powCfgSearch = currentSearchConfig
@@ -711,15 +730,15 @@ miningProcess dbvar = do
                       }
 computeMantissaShift :: Int -> Double -> (Int, Word16)
 computeMantissaShift shift x
-  | x >= 32768.0 = (shift, round x)
+  | x >= 32768.0 = (shift, floor x)
   | otherwise = computeMantissaShift (shift + 1) (x * 2)
 
 node :: Config -> IO ()
-node cfg = do
-  sock <- newUDPSocket (configOurPort cfg)
+node _cfg = do
+  --sock <- newUDPSocket (configOurPort cfg)
   db <- atomically $ newTVar startDB
-  forkIO $ miningProcess db
-  forkIO $ searchOptimization db
+  _ <- forkIO $ miningProcess db
+  _ <- forkIO $ searchOptimization db
   loop
   where
     loop = do
