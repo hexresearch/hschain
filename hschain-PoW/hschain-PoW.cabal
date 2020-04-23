@@ -72,6 +72,25 @@ Library
                 HSChain.PoW.Store.Internal.BlockDB
 
 
+Executable hschain-PoW-node
+  Ghc-options:         -Wall -threaded -Wno-orphans -rtsopts "-with-rtsopts=-N -T -qn1 -A64M"
+  Default-Language:    Haskell2010
+  Build-Depends:       base                 >=4.9 && <5
+                     , hschain-PoW
+                     , hschain-net
+                     , hschain-merkle
+                     , hschain-types
+                     , hschain-crypto
+                     , hschain-control
+                     --
+                     , containers
+                     , aeson
+                     , optparse-applicative
+                     , yaml
+  hs-source-dirs:      exe
+  Main-is:             pow-node.hs
+
+                
 -- Test suite
 Test-suite hschain-PoW-tests
   Type:                exitcode-stdio-1.0
