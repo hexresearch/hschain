@@ -392,9 +392,9 @@ processBlock
   -> Block b
   -> ExceptT BlockError (StateT (Consensus m b) m) ()
 processBlock db block = do
-  index <- use blockIndex
-  _bh   <- maybe (throwError ErrB'UnknownBlock) return
-         $ bid `lookupIdx` index
+  use (blockIndex . to (lookupIdx bid)) >>= \case
+    Just _  -> return ()
+    Nothing -> throwError ErrB'UnknownBlock
   -- Since we got block we should remove it from set of block we want
   -- to download regardless of validation results
   requiredBlocks %= Set.delete bid
