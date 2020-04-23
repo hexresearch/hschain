@@ -64,6 +64,8 @@ class ( Show   (Work b)
       , Show      (BlockID b)
       , Ord       (BlockID b)
       , Serialise (BlockID b)
+      , JSON.ToJSON (BlockID b)
+      , JSON.FromJSON (BlockID b)
       , MerkleMap b
       ) => BlockData b where
   -- | ID of block. Usually it should be just a hash but we want to

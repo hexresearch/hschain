@@ -53,6 +53,7 @@ runPeer
   -> PeerChans m b
   -> m ()
 runPeer conn chans@PeerChans{..} = do
+  logger InfoS "Starting peer" ()
   (sinkGossip, srcGossip) <- queuePair
   st <- liftIO $ do requestInFlight <- newTVarIO Nothing
                     peersBestHead   <- newTVarIO Nothing

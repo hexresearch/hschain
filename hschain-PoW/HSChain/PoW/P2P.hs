@@ -3,6 +3,7 @@
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase                 #-}
+{-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE PolyKinds                  #-}
 {-# LANGUAGE RecordWildCards            #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
@@ -44,6 +45,7 @@ startNode
   -> Consensus m b
   -> m ()
 startNode cfg netAPI seeds db consensus = evalContT $ do
+  lift $ logger InfoS "Starting PoW node" ()
   (sinkBOX,    srcBOX)    <- queuePair
   (sinkAnn,    mkSrcAnn)  <- broadcastPair
   (sinkBIDs,   srcBIDs)   <- queuePair

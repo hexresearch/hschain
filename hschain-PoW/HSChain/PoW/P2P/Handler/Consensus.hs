@@ -47,7 +47,7 @@ threadConsensus
   -> Consensus m b
   -> ConsensusCh m b
   -> m x
-threadConsensus db consensus0 ConsensusCh{..} = descendNamespace "C" $ do
+threadConsensus db consensus0 ConsensusCh{..} = descendNamespace "cns" $ do
   logger InfoS "Staring consensus" ()
   flip evalStateT consensus0
     $ forever
@@ -70,14 +70,14 @@ consensusMonitor db (BoxRX message)
       RxAnn     m  -> handleAnnounce m
       RxBlock   b  -> handleBlock    b
       RxHeaders hs -> do
-        lift $ logger DebugS "Got Header" (sl "bid" (show (blockID <$> hs)))
+        lift $ logger DebugS "Got RxHeaders" (sl "bid" (blockID <$> hs))
         handleHeaders hs
   where
     logR m = do lift $ logger DebugS "Resp" (sl "v" (show m))
                 return m
     -- Handler for announces coming from peers (they come unrequested)
     handleAnnounce (AnnBestHead h) = do
-      lift $ logger DebugS "Got AnnBestHead" (  sl "bid" (show (blockID h))
+      lift $ logger DebugS "Got AnnBestHead" (  sl "bid" (blockID h)
                                              <> sl "H"   (blockHeight h)
                                              )
       runExceptT (processHeader h) >>= \case
@@ -94,7 +94,7 @@ consensusMonitor db (BoxRX message)
     --
     -- FIXME: Handle announcements
     handleBlock b = do
-      lift $ logger DebugS "Got Block" ()
+      lift $ logger DebugS "Got RxBlock" (sl "bid" (blockID b))
       runExceptT (processBlock db b) >>= \case
         Right () -> return Peer'Noop
         Left  e  -> case e of
