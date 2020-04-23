@@ -39,16 +39,17 @@ startNode
      )
   => NetCfg
   -> NetworkAPI
+  -> [NetAddr]
   -> BlockDB   m b
   -> Consensus m b
   -> m ()
-startNode cfg netAPI db consensus = evalContT $ do
+startNode cfg netAPI seeds db consensus = evalContT $ do
   (sinkBOX,    srcBOX)    <- queuePair
   (sinkAnn,    mkSrcAnn)  <- broadcastPair
   (sinkBIDs,   srcBIDs)   <- queuePair
   blockReg                <- newBlockRegistry srcBIDs
   bIdx                    <- liftIO $ newTVarIO consensus
-  runPEX cfg netAPI blockReg sinkBOX mkSrcAnn (readTVar bIdx) db
+  runPEX cfg netAPI seeds blockReg sinkBOX mkSrcAnn (readTVar bIdx) db
   -- Consensus thread
   lift $ threadConsensus db consensus ConsensusCh
     { bcastAnnounce   = sinkAnn

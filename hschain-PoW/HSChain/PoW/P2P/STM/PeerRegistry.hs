@@ -51,9 +51,10 @@ data PeerRegistry = PeerRegistry
   { peerRegistry :: TVar (Map NetAddr PeerState)
   }
 
-newPeerRegistry :: MonadIO m => m PeerRegistry
-newPeerRegistry = liftIO $ do
-  peerRegistry <- newTVarIO Map.empty
+newPeerRegistry :: MonadIO m => [NetAddr] -> m PeerRegistry
+newPeerRegistry seeds = liftIO $ do
+  peerRegistry <- newTVarIO $ Map.fromList
+    [ (a, KnownPeer) | a <- seeds ]
   return PeerRegistry{..}
 
 -- | Register peer.
