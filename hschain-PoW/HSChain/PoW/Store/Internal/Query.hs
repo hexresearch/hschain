@@ -108,6 +108,7 @@ data Access = RO                -- ^ Read-only access
 data Connection (rw :: Access) a = Connection
   { connMutex    :: !Mutex
   , connConn     :: !SQL.Connection
+  , connClosed   :: !(IORef Bool)
   , connCacheGen :: !(IORef (Maybe (Block a)))
   , connCacheBlk :: !(IORef (LRU.LRU Height (Block a)))
   }
@@ -121,6 +122,7 @@ openConnection :: MonadIO m => FilePath -> m (Connection rw a)
 openConnection db = liftIO $ do
   connMutex    <- newMutex
   connConn     <- SQL.open db
+  connClosed   <- newIORef False
   connCacheGen <- newIORef Nothing
   connCacheBlk <- newIORef $ LRU.newLRU (Just 8)
   -- SQLite have support for retrying transactions in case database is
@@ -134,7 +136,11 @@ closeConnection :: MonadIO m => Connection 'RW a -> m ()
 closeConnection = closeConnection'
 
 closeConnection' :: MonadIO m => Connection rw a -> m ()
-closeConnection' = liftIO . SQL.close . connConn
+closeConnection' Connection{..} = liftIO $ do
+  uninterruptibleMask_ $ do
+    withMutex connMutex $ do
+      writeIORef connClosed True
+      SQL.close connConn
 
 withConnection
   :: (MonadMask m, MonadIO m)
@@ -476,34 +482,37 @@ runQueryWorker
   => Bool
   -> Connection rw a
   -> m x -> m (Maybe x)
-runQueryWorker isWrite connection sql = withMutex mutex $ uninterruptibleMask $ \restore -> do
-  -- This function is rather tricky to get right. We need to maintain
-  -- following invariant: No matter what happens we MUST call either
-  -- ROLLBACK or COMMIT after BEGIN TRANSACTION. Otherwise database
-  -- will be left inside a transaction and any attempt to start
-  -- another will be met with error about nested transactions.
-  --
-  -- It seems that functions from sqlite-simple are interruptible so
-  -- we need to use uninterruptibleMask
-  --
-  --  * BEGIN TRANSACTION does not acquire lock. It's deferred and
-  --    lock is acquired only when database is actually accessed. So
-  --    it's fast
-  --
-  --  * Neither ROLLBACK nor COMMIT should block but may take time for
-  --    IO operations but that's inevitable
-  --
-  -- Therefore usage of uninterruptibleMask is justified
-  --
-  -- See following links for details
-  --  + https://www.sqlite.org/lang_transaction.html
-  --  + https://www.sqlite.org/lockingv3.html
-  liftIO $ SQL.execute_ conn $
-    if isWrite then "BEGIN TRANSACTION IMMEDIATE" else "BEGIN TRANSACTION"
-  r <- try $ restore sql `onError` rollbackTx
-  case r of Left  Rollback -> return Nothing
-            Right x        -> do commitTx
-                                 return $ Just x
+runQueryWorker isWrite connection sql = withMutex mutex $ do
+  closed <- liftIO $ readIORef $ connClosed connection
+  when closed $ throwM DatabaseIsClosed
+  uninterruptibleMask $ \restore -> do
+    -- This function is rather tricky to get right. We need to maintain
+    -- following invariant: No matter what happens we MUST call either
+    -- ROLLBACK or COMMIT after BEGIN TRANSACTION. Otherwise database
+    -- will be left inside a transaction and any attempt to start
+    -- another will be met with error about nested transactions.
+    --
+    -- It seems that functions from sqlite-simple are interruptible so
+    -- we need to use uninterruptibleMask
+    --
+    --  * BEGIN TRANSACTION does not acquire lock. It's deferred and
+    --    lock is acquired only when database is actually accessed. So
+    --    it's fast
+    --
+    --  * Neither ROLLBACK nor COMMIT should block but may take time for
+    --    IO operations but that's inevitable
+    --
+    -- Therefore usage of uninterruptibleMask is justified
+    --
+    -- See following links for details
+    --  + https://www.sqlite.org/lang_transaction.html
+    --  + https://www.sqlite.org/lockingv3.html
+    liftIO $ SQL.execute_ conn $
+      if isWrite then "BEGIN TRANSACTION IMMEDIATE" else "BEGIN TRANSACTION"
+    r <- try $ restore sql `onError` rollbackTx
+    case r of Left  Rollback -> return Nothing
+              Right x        -> do commitTx
+                                   return $ Just x
   where
     rollbackTx = liftIO $ SQL.execute_ conn "ROLLBACK"
     commitTx   = liftIO $ SQL.execute_ conn "COMMIT"
