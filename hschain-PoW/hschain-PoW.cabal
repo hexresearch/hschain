@@ -85,8 +85,12 @@ Executable hschain-PoW-node
                      --
                      , containers
                      , aeson
+                     , random
+                     , exceptions
+                     , transformers
                      , optparse-applicative
                      , yaml
+                     , microlens
   hs-source-dirs:      exe
   Main-is:             pow-node.hs
 
@@ -104,6 +108,7 @@ Test-suite hschain-PoW-tests
                      , hschain-net
                      , containers
                      , serialise
+                     , transformers
                      , microlens
                      , mtl
                      , tasty             >=0.11

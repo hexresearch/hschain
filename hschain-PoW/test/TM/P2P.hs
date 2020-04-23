@@ -9,6 +9,7 @@ module TM.P2P (tests) where
 
 import Codec.Serialise (serialise,deserialise)
 import Control.Concurrent
+import Control.Monad.Trans.Cont
 import Test.Tasty
 import Test.Tasty.HUnit
 
@@ -111,7 +112,7 @@ runNetTest test = do
   let s0 = consensusGenesis (head mockchain) (viewKV (blockID genesis))
   let apiNode        = createMockNode net ipNode
       NetworkAPI{..} = createMockNode net ipOur
-  forkLinked (runNoLogsT $ startNode (NetCfg 0 0) apiNode [] db s0) $ do
+  forkLinked (runNoLogsT $ evalContT $ startNode (NetCfg 0 0) apiNode [] db s0) $ do
     -- Establish connection
     --
     -- FIXME: we need to do something better than fixed delay 
