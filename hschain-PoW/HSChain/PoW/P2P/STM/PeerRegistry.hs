@@ -98,8 +98,15 @@ withPeer PeerRegistry{..} addr action
       atomicallyIO $ setPeerState $ Banned (addUTCTime 3600 now)
     -- We ended communications for whatever reason but did it
     -- normally. Simply mark peer as known.
-    unregister = do
-      atomicallyIO $ setPeerState KnownPeer
+    unregister
+      = atomicallyIO
+      $ modifyTVar' peerRegistry
+      $ Map.adjust (\case
+                       Connected -> KnownPeer
+                       KnownPeer -> KnownPeer
+                       Banned t  -> Banned t
+                       SelfAddress -> SelfAddress
+                   ) addr
     --
     setPeerState = modifyTVar' peerRegistry . Map.insert addr
 
