@@ -40,6 +40,7 @@ import Control.Concurrent.STM
 import Control.Monad.State.Strict (StateT)
 import Codec.Serialise            (Serialise)
 import Data.Word
+import qualified Data.Aeson as JSON
 import GHC.Generics               (Generic)
 
 import HSChain.Crypto
@@ -63,7 +64,7 @@ data NetCfg = NetCfg
 
 -- | Random nonce which is used to detect self-connections
 newtype HandshakeNonce = HandshakeNonce Word64
-  deriving newtype (Show,Eq,Ord,Serialise)
+  deriving newtype (Show,Eq,Ord,Serialise,JSON.ToJSON)
 
 -- | Message sent by node initiating connection
 data HandshakeHello = HandshakeHello !HandshakeNonce !Word16
