@@ -38,7 +38,7 @@ newBlockRegistry
 newBlockRegistry srcBids = do
   required  <- liftIO $ newTVarIO Set.empty
   available <- liftIO $ newTVarIO Set.empty
-  cfork $ forever $ do
+  cforkLinkedIO $ forever $ do
     bids <- awaitIO srcBids
     atomicallyIO $ do
       oldBids <- readTVar required
@@ -59,7 +59,3 @@ releaseBID BlockRegistry{..} bid = do
   reqs <- readTVar required
   when (bid `Set.member` reqs) $
     modifyTVar' available $ Set.insert bid
-
-
-cfork :: (MonadMask m, MonadFork m) => IO a -> ContT b m ()
-cfork action = ContT $ \cnt -> forkLinkedIO action (cnt ())

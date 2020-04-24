@@ -7,13 +7,16 @@ module HSChain.Control.Class
   , forkFinally
   , forkLinked
   , forkLinkedIO
+  , cforkLinked
+  , cforkLinkedIO
     -- * Helper
   , runConcurrently
   ) where
 
 import Control.Monad
-import Control.Monad.Catch (MonadThrow(..))
+import Control.Monad.Catch        (MonadThrow(..))
 import Control.Monad.IO.Class
+import Control.Monad.Trans.Cont   (ContT(..))
 import Control.Monad.Trans.Reader
 import qualified Control.Monad.Trans.State.Strict as SS
 import qualified Control.Monad.Trans.State.Lazy   as SL
@@ -116,6 +119,16 @@ forkLinkedIO action io = do
     (liftIO . killThread)
     (const io)
 
+
+cforkLinked
+  :: (MonadIO m, MonadMask m, MonadFork m)
+  => m a -> ContT r m ()
+cforkLinked action = ContT $ forkLinked action . ($ ())
+
+cforkLinkedIO
+  :: (MonadIO m, MonadMask m, MonadFork m)
+  => IO a -> ContT r m ()
+cforkLinkedIO action = ContT $ forkLinkedIO action . ($ ())
 
 
 -- | Run computations concurrently. As soon as one thread finishes

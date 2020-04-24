@@ -72,10 +72,10 @@ runPEX cfg netAPI seeds blockReg sinkBOX mkSrcAnn consSt db = do
           , ..
           }
   shepherd <- ContT withShepherd
-  cfork $ logOnException $ acceptLoop         netAPI shepherd reg nonces mkChans
-  cfork $ logOnException $ monitorConnections cfg netAPI shepherd reg nonces mkChans
-  cfork $ logOnException $ monitorKnownPeers  cfg reg sinkAsk
-  cfork $ logOnException $ processNewAddr     reg srcAddr
+  cforkLinked $ logOnException $ acceptLoop         netAPI shepherd reg nonces mkChans
+  cforkLinked $ logOnException $ monitorConnections cfg netAPI shepherd reg nonces mkChans
+  cforkLinked $ logOnException $ monitorKnownPeers  cfg reg sinkAsk
+  cforkLinked $ logOnException $ processNewAddr     reg srcAddr
 
 acceptLoop
   :: ( MonadMask m, MonadFork m, MonadLogger m
@@ -192,7 +192,3 @@ normalizeNodeAddress = flip setPort . Ip.normalizeNetAddr
   where
     setPort port (NetAddrV4 ha _) = NetAddrV4 ha $ fromIntegral port
     setPort port (NetAddrV6 ha _) = NetAddrV6 ha $ fromIntegral port
-
-
-cfork :: (MonadMask m, MonadFork m) => m a -> ContT b m ()
-cfork action = ContT $ \cnt -> forkLinked action (cnt ())
