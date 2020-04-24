@@ -13,11 +13,11 @@ import Codec.Serialise (serialise,deserialise)
 import Control.Concurrent
 import Control.Monad.Trans.Cont
 import Control.Monad.Trans.Reader
+import Control.Monad.Trans.Class
 import Control.Monad.IO.Class
 import Test.Tasty
 import Test.Tasty.HUnit
 
-import HSChain.Control.Class
 import HSChain.Network.Types
 import HSChain.Network.Mock
 import HSChain.PoW.Types
@@ -95,7 +95,7 @@ expectBlockReq key block = do
   GossipReq (ReqBlock bid) <- recvM
   liftIO $ assertEqual ("expectBlockReq: "++key) bid (blockID block)
   sendM $ GossipResp $ RespBlock block
-  
+
 
 
 ----------------------------------------------------------------
@@ -130,16 +130,17 @@ runNetTest test = do
   let s0 = consensusGenesis (head mockchain) (viewKV (blockID genesis))
   let apiNode        = createMockNode net ipNode
       NetworkAPI{..} = createMockNode net ipOur
-  forkLinked (runNoLogsT $ evalContT $ startNode (NetCfg 0 0) apiNode [] db s0) $ do
-    -- Establish connection
-    --
-    -- FIXME: we need to do something better than fixed delay 
-    threadDelay 100000
-    conn@P2PConnection{..} <- connect ipNode
-    send $ serialise $ HandshakeHello (HandshakeNonce 0) port
-    HandshakeAck <- deserialise <$> recv
-    -- Run test
-    runTestM conn test
+  runNoLogsT $ evalContT $ do
+    _ <- startNode (NetCfg 0 0) apiNode [] db s0
+    lift $ lift $ do -- Establish connection
+      --
+      -- FIXME: we need to do something better than fixed delay
+      threadDelay 100000
+      conn@P2PConnection{..} <- connect ipNode
+      send $ serialise $ HandshakeHello (HandshakeNonce 0) port
+      HandshakeAck <- deserialise <$> recv
+      -- Run test
+      runTestM conn test
   where
     ipNode = NetAddrV4 1 port
     ipOur  = NetAddrV4 2 port
