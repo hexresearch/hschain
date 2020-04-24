@@ -1,3 +1,6 @@
+{-# LANGUAGE DeriveAnyClass      #-}
+{-# LANGUAGE DeriveGeneric       #-}
+{-# LANGUAGE DerivingStrategies  #-}
 {-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -24,6 +27,9 @@ import Data.Foldable   (toList,foldl')
 -- import Data.Set        (Set)
 import Data.Time       (UTCTime,getCurrentTime,addUTCTime)
 import qualified Data.Map.Strict as Map
+import qualified Data.Aeson      as JSON
+import GHC.Generics (Generic)
+
 -- import qualified Data.Set        as Set
 import HSChain.Control.Util
 import HSChain.Network.Types
@@ -37,16 +43,18 @@ data PeerState
   | Banned UTCTime  -- ^ Address is banned for some infraction
   | Connected       -- ^ We're connected to this peer
   | SelfAddress     -- ^ Our own address
-
+  deriving stock    (Show,Eq,Generic)
+  deriving anyclass (JSON.ToJSON, JSON.FromJSON)
 
 -- | Peer registry
 data PeerRegistry = PeerRegistry
   { peerRegistry :: TVar (Map NetAddr PeerState)
   }
 
-newPeerRegistry :: MonadIO m => m PeerRegistry
-newPeerRegistry = liftIO $ do
-  peerRegistry <- newTVarIO Map.empty
+newPeerRegistry :: MonadIO m => [NetAddr] -> m PeerRegistry
+newPeerRegistry seeds = liftIO $ do
+  peerRegistry <- newTVarIO $ Map.fromList
+    [ (a, KnownPeer) | a <- seeds ]
   return PeerRegistry{..}
 
 -- | Register peer.
@@ -91,8 +99,15 @@ withPeer PeerRegistry{..} addr action
       atomicallyIO $ setPeerState $ Banned (addUTCTime 3600 now)
     -- We ended communications for whatever reason but did it
     -- normally. Simply mark peer as known.
-    unregister = do
-      atomicallyIO $ setPeerState KnownPeer
+    unregister
+      = atomicallyIO
+      $ modifyTVar' peerRegistry
+      $ Map.adjust (\case
+                       Connected -> KnownPeer
+                       KnownPeer -> KnownPeer
+                       Banned t  -> Banned t
+                       SelfAddress -> SelfAddress
+                   ) addr
     --
     setPeerState = modifyTVar' peerRegistry . Map.insert addr
 

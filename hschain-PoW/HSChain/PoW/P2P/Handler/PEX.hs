@@ -1,6 +1,7 @@
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE LambdaCase       #-}
-{-# LANGUAGE RecordWildCards  #-}
+{-# LANGUAGE FlexibleContexts  #-}
+{-# LANGUAGE LambdaCase        #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards   #-}
 -- |
 module HSChain.PoW.P2P.Handler.PEX
   ( runPEX
@@ -11,6 +12,7 @@ import Control.Concurrent.STM
 import Control.Monad
 import Control.Monad.Catch
 import Control.Monad.Cont
+import Katip (sl)
 import Data.Word
 
 import HSChain.Control.Class
@@ -43,14 +45,15 @@ runPEX
      )
   => NetCfg
   -> NetworkAPI
+  -> [NetAddr]
   -> BlockRegistry b
   -> Sink (BoxRX m b)
   -> STM (Src (MsgAnn b))
   -> STM (Consensus m b)
   -> BlockDB m b
   -> ContT r m ()
-runPEX cfg netAPI blockReg sinkBOX mkSrcAnn consSt db = do
-  reg                <- newPeerRegistry
+runPEX cfg netAPI seeds blockReg sinkBOX mkSrcAnn consSt db = do
+  reg                <- newPeerRegistry seeds
   nonces             <- newNonceSet
   (sinkAddr,srcAddr) <- queuePair
   (sinkAsk,mkSrcAsk) <- broadcastPair
@@ -69,10 +72,10 @@ runPEX cfg netAPI blockReg sinkBOX mkSrcAnn consSt db = do
           , ..
           }
   shepherd <- ContT withShepherd
-  cfork $ logOnException $ acceptLoop         netAPI shepherd reg nonces mkChans
-  cfork $ logOnException $ monitorConnections cfg netAPI shepherd reg nonces mkChans
-  cfork $ logOnException $ monitorKnownPeers  cfg reg sinkAsk
-  cfork $ logOnException $ processNewAddr     reg srcAddr
+  cforkLinked $ logOnException $ acceptLoop         netAPI shepherd reg nonces mkChans
+  cforkLinked $ logOnException $ monitorConnections cfg netAPI shepherd reg nonces mkChans
+  cforkLinked $ logOnException $ monitorKnownPeers  cfg reg sinkAsk
+  cforkLinked $ logOnException $ processNewAddr     reg srcAddr
 
 acceptLoop
   :: ( MonadMask m, MonadFork m, MonadLogger m
@@ -98,9 +101,12 @@ acceptLoop NetworkAPI{..} shepherd reg nonceSet mkChans  = do
       -- Expect GossipHello from peer
       HandshakeHello nonce port <- deserialise <$> recv conn
       let normAddr = normalizeNodeAddress addr port
+      logger InfoS "Accepted connection" (sl "addr" normAddr)
       -- Check nonce for self-connection and send reply
       isSelfConnection nonceSet nonce >>= \case
-        True  -> atomicallyIO $ addSelfAddress reg normAddr
+        True  -> do
+          logger InfoS "Self connection detected" (sl "addr" normAddr)
+          atomicallyIO $ addSelfAddress reg normAddr
         False -> do
           send conn $ serialise HandshakeAck
           withPeer reg normAddr $ runPeer conn =<< atomicallyIO mkChans
@@ -120,9 +126,11 @@ connectTo
   -> m ()
 connectTo NetworkAPI{..} addr shepherd reg nonceSet chans =
   newSheep shepherd $ do
-    withPeer reg addr $ do
+    logger InfoS "Connecting to" (sl "addr" addr)
+    withPeer reg addr $ logOnException $ do
       bracket (connect addr) close $ \conn -> do
         -- Perform handshake
+        logger DebugS "Initial connection established" ()
         withHandshakeNonce nonceSet $ \nonce -> do
           send conn $ serialise $ HandshakeHello nonce $ fromIntegral listenPort
           HandshakeAck <- deserialise <$> recv conn
@@ -184,7 +192,3 @@ normalizeNodeAddress = flip setPort . Ip.normalizeNetAddr
   where
     setPort port (NetAddrV4 ha _) = NetAddrV4 ha $ fromIntegral port
     setPort port (NetAddrV6 ha _) = NetAddrV6 ha $ fromIntegral port
-
-
-cfork :: (MonadMask m, MonadFork m) => m a -> ContT b m ()
-cfork action = ContT $ \cnt -> forkLinked action (cnt ())

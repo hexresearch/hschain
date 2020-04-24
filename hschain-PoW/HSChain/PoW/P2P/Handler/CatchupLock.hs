@@ -27,7 +27,7 @@ newCatchupThrottle = do
   free    <- liftIO $ newTVarIO True
   ch      <- liftIO   newTQueueIO
   --
-  cfork $ timerThread ch
+  cforkLinkedIO $ timerThread ch
   --
   return $ CatchupThrottle $ do
     -- Take lock that is not taken and increase count.
@@ -50,9 +50,6 @@ timerThread
 timerThread ch = forever $ do
   release <- atomically $ readTQueue ch
   forkIO $ waitSec 1 >> atomically release
-
-cfork :: (MonadMask m, MonadFork m) => IO a -> ContT b m ()
-cfork action = ContT $ \cnt -> forkLinkedIO action (cnt ())
 
 modifyTVarRet :: TVar a -> (a -> a) -> STM a
 modifyTVarRet v f = modifyTVar' v f >> readTVar v
