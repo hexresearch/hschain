@@ -13,6 +13,7 @@ module HSChain.Examples.Simple where
 import Codec.Serialise      (Serialise)
 import Data.Monoid          (Sum(..))
 import Data.Functor.Classes (Show1)
+import qualified Data.Aeson as JSON
 import GHC.Generics         (Generic)
 
 import HSChain.Crypto
@@ -46,7 +47,7 @@ instance BlockData KV where
     deriving newtype (Eq,Ord,Show)
     deriving         (Semigroup,Monoid) via Sum Int
   newtype BlockID KV = KV'BID (Hash SHA256)
-    deriving newtype (Show,Eq,Ord,CryptoHashable,Serialise)
+    deriving newtype (Show,Eq,Ord,CryptoHashable,Serialise, JSON.ToJSON, JSON.FromJSON)
   --
   blockID b = let Hashed h = hashed b in KV'BID h
   validateHeader _ = True

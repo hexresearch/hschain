@@ -64,6 +64,8 @@ class ( Show   (Work b)
       , Show      (BlockID b)
       , Ord       (BlockID b)
       , Serialise (BlockID b)
+      , JSON.ToJSON (BlockID b)
+      , JSON.FromJSON (BlockID b)
       , MerkleMap b
       ) => BlockData b where
   -- | ID of block. Usually it should be just a hash but we want to
@@ -122,21 +124,17 @@ instance (Serialise (BlockID b)) => Serialise (Locator b)
 -- instances
 ----------------------------------------
 
-instance JSON.FromJSON (BlockID b) where
-  parseJSON = undefined
-
-instance JSON.ToJSON (BlockID b) where
-  toJSON = undefined
-
 instance ( IsMerkle f
          , CBOR.Serialise (BlockID b)
          , CBOR.Serialise (b f)
          ) => CBOR.Serialise (GBlock b f)
 
 instance ( IsMerkle f
+         , JSON.ToJSON (BlockID b)
          , forall g. IsMerkle g => JSON.ToJSON (b g)
          ) => JSON.ToJSON (GBlock b f)
 
 instance ( IsMerkle f
+         , JSON.FromJSON (BlockID b)
          , forall g. IsMerkle g => JSON.FromJSON (b g)
          ) => JSON.FromJSON (GBlock b f)

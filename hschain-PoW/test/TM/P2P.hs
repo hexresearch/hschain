@@ -1,18 +1,23 @@
-{-# LANGUAGE FlexibleInstances   #-}
-{-# LANGUAGE LambdaCase          #-}
-{-# LANGUAGE MultiWayIf          #-}
-{-# LANGUAGE RecordWildCards     #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeApplications    #-}
+{-# LANGUAGE DerivingStrategies         #-}
+{-# LANGUAGE FlexibleInstances          #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE LambdaCase                 #-}
+{-# LANGUAGE MultiWayIf                 #-}
+{-# LANGUAGE RecordWildCards            #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
+{-# LANGUAGE TypeApplications           #-}
 -- |
 module TM.P2P (tests) where
 
 import Codec.Serialise (serialise,deserialise)
 import Control.Concurrent
+import Control.Monad.Trans.Cont
+import Control.Monad.Trans.Reader
+import Control.Monad.Trans.Class
+import Control.Monad.IO.Class
 import Test.Tasty
 import Test.Tasty.HUnit
 
-import HSChain.Control.Class
 import HSChain.Network.Types
 import HSChain.Network.Mock
 import HSChain.PoW.Types
@@ -34,93 +39,108 @@ tests = testGroup "P2P"
 
 -- Test that test harness works
 selfTest :: IO ()
-selfTest = runNetTest $ \_ _ -> return ()
+selfTest = runNetTest $ return ()
 
 -- Test sync when we don't have to do catchup
 testNormalSync :: IO ()
-testNormalSync = runNetTest $ \sendMsg recvMsg -> do
+testNormalSync = runNetTest $ do
   -- Announce header at H=1
-  sendMsg $ GossipAnn $ AnnBestHead header1
+  sendM $ GossipAnn $ AnnBestHead header1
   -- Peer connected header and asks for block
-  expectBlockReq recvMsg sendMsg "B1" block1
-  expectAnnounce recvMsg         "A1" header1
+  expectBlockReq "B1" block1
+  expectAnnounce "A1" header1
   -- Announce header at H=2
-  sendMsg $ GossipAnn $ AnnBestHead header2
+  sendM $ GossipAnn $ AnnBestHead header2
   -- Peer connected header and asks for block
-  expectBlockReq recvMsg sendMsg "B2" block2
-  expectAnnounce recvMsg         "A2" header2
+  expectBlockReq "B2" block2
+  expectAnnounce "A2" header2
 
 
 -- Test sync when we have to do catchup
 testCatchup :: IO ()
-testCatchup = runNetTest $ \sendMsg recvMsg -> do
+testCatchup = runNetTest $ do
   -- Announce header at H=2
-  sendMsg $ GossipAnn $ AnnBestHead header2
-  GossipReq (ReqHeaders loc) <- recvMsg
-  assertEqual "Locator" loc (Locator [blockID genesis])
-  sendMsg $ GossipResp $ RespHeaders [header1,header2]
+  sendM $ GossipAnn $ AnnBestHead header2
+  GossipReq (ReqHeaders loc) <- recvM
+  liftIO $ assertEqual "Locator" loc (Locator [blockID genesis])
+  sendM $ GossipResp $ RespHeaders [header1,header2]
   -- Now peer may request either block1 or block2. In test we have to
   -- handle both
-  bidA <- blockReq "K" recvMsg
+  bidA <- blockReq "K"
   if | bidA == blockID block1 -> do
          error "Won't happen at the moment (block choice is determinitic"
      | bidA == blockID block2 -> do
-         sendMsg $ GossipResp $ RespBlock block2
-         expectBlockReq recvMsg sendMsg "B2.2" block1
-         expectAnnounce recvMsg         "A2.1" header2
-     | otherwise -> assertFailure "Bad block requested"
+         sendM $ GossipResp $ RespBlock block2
+         expectBlockReq "B2.2" block1
+         expectAnnounce "A2.1" header2
+     | otherwise -> liftIO $ assertFailure "Bad block requested"
 
 
 ----------------------------------------------------------------
 -- Helpers
 ----------------------------------------------------------------
 
-expectAnnounce :: IO (GossipMsg KV) -> String -> Header KV -> IO ()
-expectAnnounce recvMsg key h0 = do
-  GossipAnn (AnnBestHead h) <- recvMsg
-  assertEqual ("expectAnnounce: "++key) h h0
+expectAnnounce :: String -> Header KV -> TestM ()
+expectAnnounce key h0 = do
+  GossipAnn (AnnBestHead h) <- recvM
+  liftIO $ assertEqual ("expectAnnounce: "++key) h h0
 
-blockReq :: String -> IO (GossipMsg KV) -> IO (BlockID KV)
-blockReq key recvMsg = recvMsg >>= \case
+blockReq :: String -> TestM (BlockID KV)
+blockReq key = recvM >>= \case
   GossipReq (ReqBlock bid) -> return bid
-  m                        -> assertFailure (key ++ " : blockReq, got " ++ show m)
+  m                        -> liftIO $ assertFailure (key ++ " : blockReq, got " ++ show m)
 
-expectBlockReq :: IO (GossipMsg KV) -> (GossipMsg KV -> IO ()) -> String -> Block KV -> IO ()
-expectBlockReq recvMsg sendMsg key block = do
-  GossipReq (ReqBlock bid) <- recvMsg
-  assertEqual ("expectBlockReq: "++key) bid (blockID block)
-  sendMsg $ GossipResp $ RespBlock block
-  
+expectBlockReq :: String -> Block KV -> TestM ()
+expectBlockReq key block = do
+  GossipReq (ReqBlock bid) <- recvM
+  liftIO $ assertEqual ("expectBlockReq: "++key) bid (blockID block)
+  sendM $ GossipResp $ RespBlock block
+
 
 
 ----------------------------------------------------------------
 -- Runnner for tests
 ----------------------------------------------------------------
 
+newtype TestM a = TestM
+  { unTestM :: ReaderT P2PConnection IO a
+  }
+  deriving newtype (Functor, Applicative, Monad, MonadIO, MonadFail)
+
+runTestM :: P2PConnection -> TestM a -> IO a
+runTestM c m = runReaderT (unTestM m) c
+
+sendM :: GossipMsg KV -> TestM ()
+sendM m = TestM $ do
+  P2PConnection{..} <- ask
+  send $ serialise m
+
+recvM :: TestM (GossipMsg KV)
+recvM = TestM $ do
+  P2PConnection{..} <- ask
+  deserialise <$> recv
+
 -- Run network test
 --
 -- We use PEX setting which preclude it from sending any messages
-runNetTest
-  :: (  (GossipMsg KV -> IO ())
-     -> (IO (GossipMsg KV))
-     -> IO ())
-  -> IO ()
+runNetTest :: TestM () -> IO ()
 runNetTest test = do
   db  <- inMemoryDB @_ @_ @KV
   net <- newMockNet
   let s0 = consensusGenesis (head mockchain) (viewKV (blockID genesis))
   let apiNode        = createMockNode net ipNode
       NetworkAPI{..} = createMockNode net ipOur
-  forkLinked (runNoLogsT $ startNode (NetCfg 0 0) apiNode [] db s0) $ do
-    -- Establish connection
-    --
-    -- FIXME: we need to do something better than fixed delay 
-    threadDelay 100000
-    P2PConnection{..} <- connect ipNode
-    send $ serialise $ HandshakeHello (HandshakeNonce 0) port
-    HandshakeAck <- deserialise <$> recv
-    -- Run test
-    test (send . serialise) (deserialise <$> recv)
+  runNoLogsT $ evalContT $ do
+    _ <- startNode (NetCfg 0 0) apiNode [] db s0
+    lift $ lift $ do -- Establish connection
+      --
+      -- FIXME: we need to do something better than fixed delay
+      threadDelay 100000
+      conn@P2PConnection{..} <- connect ipNode
+      send $ serialise $ HandshakeHello (HandshakeNonce 0) port
+      HandshakeAck <- deserialise <$> recv
+      -- Run test
+      runTestM conn test
   where
     ipNode = NetAddrV4 1 port
     ipOur  = NetAddrV4 2 port

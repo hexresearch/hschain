@@ -12,6 +12,7 @@ import Control.Concurrent.STM
 import Control.Monad
 import Control.Monad.Catch
 import Control.Monad.Cont
+import qualified Data.Text as T
 import Katip (sl)
 import Data.Word
 
@@ -72,10 +73,12 @@ runPEX cfg netAPI seeds blockReg sinkBOX mkSrcAnn consSt db = do
           , ..
           }
   shepherd <- ContT withShepherd
-  cforkLinked $ logOnException $ acceptLoop         netAPI shepherd reg nonces mkChans
-  cforkLinked $ logOnException $ monitorConnections cfg netAPI shepherd reg nonces mkChans
-  cforkLinked $ logOnException $ monitorKnownPeers  cfg reg sinkAsk
-  cforkLinked $ logOnException $ processNewAddr     reg srcAddr
+  start $ acceptLoop         netAPI shepherd reg nonces mkChans
+  start $ monitorConnections cfg netAPI shepherd reg nonces mkChans
+  start $ monitorKnownPeers  cfg reg sinkAsk
+  start $ processNewAddr     reg srcAddr
+  where
+    start = cforkLinked . descendNamespace "net" . logOnException
 
 acceptLoop
   :: ( MonadMask m, MonadFork m, MonadLogger m
@@ -98,6 +101,7 @@ acceptLoop NetworkAPI{..} shepherd reg nonceSet mkChans  = do
         (close conn)
   where
     peerThread conn addr = do
+      logger InfoS "Pre-accepted connection" (sl "addr" addr)
       -- Expect GossipHello from peer
       HandshakeHello nonce port <- deserialise <$> recv conn
       let normAddr = normalizeNodeAddress addr port
@@ -109,7 +113,9 @@ acceptLoop NetworkAPI{..} shepherd reg nonceSet mkChans  = do
           atomicallyIO $ addSelfAddress reg normAddr
         False -> do
           send conn $ serialise HandshakeAck
-          withPeer reg normAddr $ runPeer conn =<< atomicallyIO mkChans
+          descendNamespace (T.pack (show normAddr))
+            $ withPeer reg normAddr
+            $ runPeer conn =<< atomicallyIO mkChans
 
 connectTo
   :: ( MonadMask m, MonadFork m, MonadLogger m
@@ -127,16 +133,18 @@ connectTo
 connectTo NetworkAPI{..} addr shepherd reg nonceSet chans =
   newSheep shepherd $ do
     logger InfoS "Connecting to" (sl "addr" addr)
-    withPeer reg addr $ logOnException $ do
-      bracket (connect addr) close $ \conn -> do
-        -- Perform handshake
-        logger DebugS "Initial connection established" ()
-        withHandshakeNonce nonceSet $ \nonce -> do
-          send conn $ serialise $ HandshakeHello nonce $ fromIntegral listenPort
-          HandshakeAck <- deserialise <$> recv conn
-          return ()
-        -- Start peer
-        runPeer conn chans
+    descendNamespace (T.pack (show addr))
+      $ withPeer reg addr
+      $ logOnException
+      $ bracket (connect addr) close $ \conn -> do
+          -- Perform handshake
+          logger DebugS "Initial connection established" ()
+          withHandshakeNonce nonceSet $ \nonce -> do
+            send conn $ serialise $ HandshakeHello nonce $ fromIntegral listenPort
+            HandshakeAck <- deserialise <$> recv conn
+            return ()
+          -- Start peer
+          runPeer conn chans
 
 
 -- | Thread that monitor that we have enough connections and tries to acquire more .
