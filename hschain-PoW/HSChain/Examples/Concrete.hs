@@ -352,12 +352,14 @@ genesisBlockHeader :: BlockHeader
                   , blockHeaderBaseBlockHash          = getHash blk
                   }
       r <- fmap snd $ tryMineBlock defaultPOWConfig hbase
+      putStrLn $ "result: "++show r
       case r of
         Just bhdr -> return (blk, bhdr, hbase)
         Nothing -> mineGenesis (n+1)
 
 tryMineBlock :: POWConfig -> BlockHeaderBase -> IO (ByteString, Maybe BlockHeader)
 tryMineBlock powConfig hbase = do
+  putStrLn $ "pow config: "++show powConfig
   (mh, mbSolutionHash) <- solve [B.toStrict serialisedHeaderBase] powConfig
   return (B.fromStrict mh, fmap addSolution mbSolutionHash)
   where
@@ -614,8 +616,10 @@ startDB = DB
   , dbExploratorySearchProbe = Nothing
   }
 
+-- |Logarithm of a hash. Please note that we reverse the bytestring:
+-- we treat it as a little-endian integer.
 hashLog :: ByteString -> Double
-hashLog bytestring = computeLog $ findnz 0 $ B.unpack bytestring
+hashLog bytestring = computeLog $ findnz 0 $ reverse $ B.unpack bytestring
   where
     computeLog (bitsCount, nz) = negate $ fromIntegral bitsCount +
       log (fromIntegral nz) / log 2

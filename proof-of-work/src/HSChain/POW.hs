@@ -120,7 +120,25 @@ defaultPOWConfig = POWConfig
 -- |Solve the puzzle.
 solve :: [ByteString] -- ^Parts of header to concatenate
       -> POWConfig -- ^Configuration of POW algorithm
-      -> IO (ByteString, Maybe (ByteString, ByteString)) -- ^First tuple argument is for statistics - it returns the hash found. The second part is the search result: search may find a "puzzle answer" part of the header and final hash.
+      -> IO (ByteString, Maybe (ByteString, ByteString))
+      -- ^First tuple argument is for statistics - it returns the hash found.
+      --
+      -- The second part is the search result: a "puzzle answer" part of the header
+      -- and final hash.
+      --
+      -- Please note that both minimal hash found (first argument of tuple) and final
+      -- hash are treated as little-endian (least significant byte first) integers.
+      --
+      -- You may be confused how hash starting with, say, byte 0x9b pass under complexity
+      -- threshold that requires 4 bytes of leading zeroes (complexity shift 32). If so,
+      -- look at bytes at the end and they will be zeroes as required.
+      --
+      -- As an example (we require 8 zero bits):
+      --
+      -- $ cabal new-build hschain-pow-func-cli && cabal new-exec -- hschain-pow-func-cli find -s 8 -m 0x8000 -T --print-min-hash --prefix-text '"n"'
+      --   minimum hash found: 23 84 1b 5d 86 72 2e fe 15 3f 6a f3 00 0c 72 d0 26 39 b1 95 7e d6 c6 c4 35 f6 a0 32 33 7f 4c 00
+      --   complete header: "n\STX\241\236\203u}\217\163\247\EOT\133o\185\192\DC3\208>\STX\EM\238\206\143\DC1\DC4*\STXb\212i\r\135j"
+
 solve headerParts POWConfig{..} = B.useAsCStringLen completeHeader $ \(ptr', len) -> do
   allocaBytes (answerSize + hashSize) $ \answerAndHash -> do
     let answer = answerAndHash

@@ -225,6 +225,8 @@ create_instance(uint8_t* prefix_hash, Solver* solver, int clauses_count, int fix
 	SHA256_CTX ctx_after_hash;
 	SHA256_Init(&ctx_after_hash);
 	SHA256_Update(&ctx_after_hash, prefix_hash, SHA256_DIGEST_LENGTH);
+	//printf("fixed bits %lx, count %d\n", fixed_bits, fixed_bits_count);
+	//printf("clauses count %d\n", clauses_count);
 	for (literal_index = 0; literal_index < fixed_bits_count; literal_index ++) {
 		int variable = literal_index + 1;
 		int literal = variable;
@@ -297,6 +299,18 @@ extract_solution_answer(Solver* solver, uint8_t* answer) {
 #endif
 } /* extract_solution_answer */
 
+static int
+compare_hashes_as_LE_ints(uint8_t* ha, uint8_t* hb) {
+	int i;
+	for(i = SHA256_DIGEST_LENGTH - 1; i >= 0; i--) {
+		int d = ha[i] - hb[i];
+		if (d) {
+			return d;
+		}
+	}
+	return 0;
+} /* compare_hashes_as_LE_ints */
+
 // hash is treated as little-endian integer of SHA256_DIGEST_LENGTH*8 bits.
 static int
 under_complexity_threshold(uint8_t* hash, int complexity_shift, uint16_t complexity_mantissa) {
@@ -357,8 +371,7 @@ find_answer(SHA256_CTX* context_after_prefix, uint8_t* answer, uint8_t* full_has
 		int status;
 		int i;
 	       	status = solver_sat(solver, -1);
-		//printf("decisions made %llu, propagations made %llu\n", picosat_decisions(solver), picosat_propagations(solver));
-		//printf("status %d\n", status);
+		printf("status %d\n", status);
 		clock_t curr_time = clock();
 		if (first_result_ms) {
 			*first_result_ms = (1000.0 * (curr_time - last_time))/CLOCKS_PER_SEC;
@@ -376,13 +389,14 @@ find_answer(SHA256_CTX* context_after_prefix, uint8_t* answer, uint8_t* full_has
 		full_hash_context = *context_after_prefix;
 		SHA256_Update(&full_hash_context, answer, EVPOW_ANSWER_BYTES);
 		SHA256_Final(current_full_hash, &full_hash_context);
+		//printf("current solution hash first bytes: %02x %02x %02x\n", current_full_hash[0], current_full_hash[1], current_full_hash[2]);
 		if (under_complexity_threshold(current_full_hash, complexity_shift, complexity_mantissa)) {
 			memcpy(full_hash, current_full_hash, sizeof(current_full_hash));
 			//printf("FOUND!\n");
 			return 1; // and everything is in place - answer filled, hash computed.
 		}
 		// record minimal hash found.
-		if (memcmp(current_full_hash, full_hash, SHA256_DIGEST_LENGTH) < 0) {
+		if (compare_hashes_as_LE_ints(current_full_hash, full_hash) < 0) {
 			memcpy(full_hash, current_full_hash, sizeof(current_full_hash));
 		}
 
