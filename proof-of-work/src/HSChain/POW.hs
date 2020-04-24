@@ -16,6 +16,7 @@ module HSChain.POW
   , POWConfig(..)
   , defaultPOWConfig
   , defaultSearchConfig
+  , defaultComplexityConfig
   ) where
 
 import Data.ByteString (ByteString)
@@ -103,8 +104,8 @@ defaultSearchConfig = POWSearchConfig
   }
 
 -- |Default complexity - should give block rate slightly below 1 block/2 minutes on average i7.
-defaultComplexity :: POWComplexity
-defaultComplexity = POWComplexity
+defaultComplexityConfig :: POWComplexity
+defaultComplexityConfig = POWComplexity
   { powComplexityShift      = 12
   , powComplexityMantissa   = 0xbed8
   }
@@ -113,7 +114,7 @@ defaultComplexity = POWComplexity
 defaultPOWConfig = POWConfig
   { powCfgMain                     = defaultMainPOWConfig
   , powCfgSearch                   = defaultSearchConfig
-  , powCfgComplexity               = defaultComplexity
+  , powCfgComplexity               = defaultComplexityConfig
   }
 
 -- |Solve the puzzle.

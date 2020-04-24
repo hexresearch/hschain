@@ -22,7 +22,7 @@ data PrintOpt = PrintText | PrintHex
   deriving (Show)
 
 data Command =
-    FindAnswer ByteString Int Word16 PrintOpt
+    FindAnswer ByteString Int Word16 PrintOpt Bool
   | CheckBlock ByteString ByteString Int Word16
   deriving (Show)
 
@@ -33,10 +33,11 @@ parser = subparser
   )
   where
     findAnswerParser = FindAnswer
-                     <$> parseByteString <*> parseShift <*> parseMantissa <*> parsePrint
+                     <$> parseByteString <*> parseShift <*> parseMantissa <*> parsePrint <*> parsePrintMinHash
     checkAnswerParser = CheckBlock <$> parseByteString <*> parseHash <*> parseShift <*> parseMantissa
     parsePrint = flag' PrintText (short 'T' <> long "print-as-text")
                <|> flag' PrintHex (short 'H' <> long "print-as-hex")
+    parsePrintMinHash = switch (long "print-min-hash")
     parseByteString = parseAsText <|> parseAsHex
     parseAsText = option (maybeReader bytestringFromString) (long "prefix-text")
     parseAsHex = option (maybeReader bytestringFromHex) (long "prefix-hex")
@@ -61,12 +62,19 @@ main :: IO ()
 main = do
   cmd <- execParser $ info parser mempty
   case cmd of
-    FindAnswer prefix shift mantissa print -> do
+    FindAnswer prefix shift mantissa print printMinHash -> do
       let config = defaultPOWConfig
-                 { powCfgComplexityShift     = shift
-                 , powCfgComplexityMantissa  = mantissa
+                 { powCfgComplexity = defaultComplexityConfig
+                                      { powComplexityShift     = shift
+                                      , powComplexityMantissa  = mantissa
+                                      }
                  }
-      r <- solve [prefix] config
+      (minHash, r) <- solve [prefix] config
+      if printMinHash
+        then putStrLn $ "minimum hash found: "++
+                     List.intercalate " "
+                          (map (printf "%02x") $ B.unpack minHash)
+        else return ()
       case r of
         Nothing -> putStrLn "failed to find answer" >> exitFailure
         Just (answer, hash) -> case print of
@@ -83,8 +91,10 @@ main = do
             completeBlock = B.concat [prefix, answer]
     CheckBlock withAnswer hash shift mantissa -> do
       r <- check withAnswer hash $ defaultPOWConfig
-                                     { powCfgComplexityShift = shift
-                                     , powCfgComplexityMantissa = mantissa
+                                     { powCfgComplexity = defaultComplexityConfig
+                                                          { powComplexityShift = shift
+                                                          , powComplexityMantissa = mantissa
+                                                          }
                                      }
       putStrLn $ "check result: "++show r
 
