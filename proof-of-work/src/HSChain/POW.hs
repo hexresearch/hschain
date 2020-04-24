@@ -31,7 +31,7 @@ import Foreign.Marshal.Alloc (allocaBytes)
 foreign import capi "evpow.h value EVPOW_ANSWER_BYTES" answerSize :: Int
 foreign import capi "evpow.h value EVPOW_HASH_BYTES" hashSize :: Int
 
-foreign import ccall "evpow_solve"
+foreign import ccall unsafe "evpow_solve"
         evpow_solve :: Ptr Word8    -- ^Header prefix, base for puzzle construction.
                     -> CSize        -- ^Header prefix size.
                     -> Ptr Word8    -- ^(writeable) Answer's buffer. Always have some result.
@@ -48,7 +48,7 @@ foreign import ccall "evpow_solve"
                     -> IO Int       -- ^Returns C boolean (not zero means solution has been found).
                                     --  The solution puzzle field will have minimum of solutions found either way, to facilitate the computation of statistics.
 
-foreign import ccall "evpow_check"
+foreign import ccall unsafe "evpow_check"
         evpow_check :: Ptr Word8
                     -> CSize
                     -> Ptr Word8
@@ -155,6 +155,7 @@ solve headerParts POWConfig{..} = B.useAsCStringLen completeHeader $ \(ptr', len
            searchCfgAttemptsBetweenRestarts
            0 0 -- fixed bits
            nullPtr
+    putStrLn $ "returned"
     hashBS <- B.packCStringLen (castPtr completeHash, hashSize)
     if r /= 0
       then do

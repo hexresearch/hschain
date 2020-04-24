@@ -756,6 +756,7 @@ data Config = Config
               { configOurPort          :: Word16
               , configOtherAddresses   :: [NetAddr]
               }
+              deriving (Show)
 
 parseConfig :: Parser Config
 parseConfig = Config <$> parsePort <*> some parseOtherAddress
@@ -775,6 +776,8 @@ parseConfig = Config <$> parsePort <*> some parseOtherAddress
 main :: IO ()
 main = Net.withSocketsDo $ do
   config <- execParser (info parseConfig mempty)
+  putStrLn $ "configuration: "++show config
+  putStrLn $ "genesis block header: "++show genesisBlockHeader
   node config
   return ()
 

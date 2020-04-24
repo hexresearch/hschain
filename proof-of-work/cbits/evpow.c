@@ -414,6 +414,7 @@ find_answer(SHA256_CTX* context_after_prefix, uint8_t* answer, uint8_t* full_has
 		}
 		solver_add(solver, 0); // finalize clause addition. we are ready for another solver_sat() call.
 	}
+	printf("returning 0 - no luck\n");
 	return 0;
 } /* find_answer */
 
@@ -489,7 +490,9 @@ evpow_solve( uint8_t* prefix
 	// find solution if we can.
 	r = find_answer(&prefix_hash_context, answer, solution_hash, milliseconds_allowance, complexity_shift, complexity_mantissa, solver, first_result_ms);
 
+	printf("about to delete solver\n");
 	solver_delete(solver);
+	printf("solver deleted, returning\n");
 	return r;
 } /* evpow_solve */
 
