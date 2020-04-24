@@ -47,15 +47,16 @@ threadConsensus
   -> Consensus m b
   -> ConsensusCh m b
   -> m x
-threadConsensus db consensus0 ConsensusCh{..}
-  = flip evalStateT consensus0
-  $ forever
-  $ do bh <- use $ bestHead . _1
-       consensusMonitor db =<< awaitIO srcRX
-       sinkIO sinkConsensusSt =<< get
-       sinkIO sinkReqBlocks   =<< use requiredBlocks
-       bh' <- use $ bestHead . _1
-       when (bhBID bh /= bhBID bh') $ sinkIO bcastAnnounce $ AnnBestHead $ asHeader bh'
+threadConsensus db consensus0 ConsensusCh{..} = descendNamespace "C" $ do
+  logger InfoS "Staring consensus" ()
+  flip evalStateT consensus0
+    $ forever
+    $ do bh <- use $ bestHead . _1
+         consensusMonitor db =<< awaitIO srcRX
+         sinkIO sinkConsensusSt =<< get
+         sinkIO sinkReqBlocks   =<< use requiredBlocks
+         bh' <- use $ bestHead . _1
+         when (bhBID bh /= bhBID bh') $ sinkIO bcastAnnounce $ AnnBestHead $ asHeader bh'
 
 
 -- Handler for messages coming from peer.
@@ -68,13 +69,17 @@ consensusMonitor db (BoxRX message)
   = message $ logR <=< \case
       RxAnn     m  -> handleAnnounce m
       RxBlock   b  -> handleBlock    b
-      RxHeaders hs -> handleHeaders hs
+      RxHeaders hs -> do
+        lift $ logger DebugS "Got Header" (sl "bid" (show (blockID <$> hs)))
+        handleHeaders hs
   where
     logR m = do lift $ logger DebugS "Resp" (sl "v" (show m))
                 return m
     -- Handler for announces coming from peers (they come unrequested)
     handleAnnounce (AnnBestHead h) = do
-      lift $ logger DebugS "Got AnnBestHead" (sl "bid" (show (blockID h)))
+      lift $ logger DebugS "Got AnnBestHead" (  sl "bid" (show (blockID h))
+                                             <> sl "H"   (blockHeight h)
+                                             )
       runExceptT (processHeader h) >>= \case
         Right () -> return Peer'Noop
         Left  e  -> case e of
@@ -98,7 +103,6 @@ consensusMonitor db (BoxRX message)
     -- Handle headers that we got from peer.
     handleHeaders [] = return Peer'Noop
     handleHeaders (h:hs) = do
-      lift $ logger DebugS "Got Header" ()
       runExceptT (processHeader h) >>= \case
         Right () -> handleHeaders hs
         Left  e  -> case e of
