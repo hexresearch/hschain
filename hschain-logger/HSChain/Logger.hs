@@ -43,8 +43,6 @@ module HSChain.Logger (
     -- * Reexports
   , Severity(..)
   , Verbosity(..)
-    -- * Structured logging
-  , LogBlockInfo(..)
   ) where
 
 import Control.Arrow (first,second)
@@ -77,11 +75,9 @@ import System.FilePath  (splitFileName)
 import System.IO
 import GHC.Generics (Generic)
 
-import HSChain.Control.Mutex
 import HSChain.Control.Class
-import HSChain.Types.Blockchain
+import HSChain.Control.Mutex
 import HSChain.Logger.Class
-import HSChain.Store.Internal.Query (MonadReadDB(..), MonadDB(..))
 
 
 ----------------------------------------------------------------
@@ -96,8 +92,6 @@ newtype LoggerT m a = LoggerT (ReaderT (Namespace, LogEnv) m a)
 
 instance MFunctor LoggerT where
   hoist f (LoggerT m) = LoggerT (hoist f m)
-instance (MonadReadDB a m) => MonadReadDB a (LoggerT m) where
-instance (MonadDB a m) => MonadDB a (LoggerT m) where
 
 runLoggerT :: LogEnv -> LoggerT m a -> m a
 runLoggerT le (LoggerT m) = runReaderT m (mempty, le)
@@ -121,8 +115,6 @@ newtype NoLogsT m a = NoLogsT { runNoLogsT :: m a }
 
 instance MFunctor NoLogsT where
   hoist f (NoLogsT m) = NoLogsT (f m)
-instance (MonadReadDB a m) => MonadReadDB a (NoLogsT m) where
-instance (MonadDB a m) => MonadDB a (NoLogsT m) where
 
 instance MonadTrans NoLogsT where
   lift = NoLogsT
@@ -170,29 +162,32 @@ instance ( MonadReader r m
 -- | Simple monad transformer for writing logs to stdout. Motly useful
 --   for debugging when one need to add remove some logging capability
 --   quickly.
-newtype StdoutLogT m a = StdoutLogT { unStdoutLogT :: ReaderT Namespace m a }
+newtype StdoutLogT m a = StdoutLogT { unStdoutLogT :: ReaderT (Mutex,Namespace) m a }
   deriving newtype ( Functor, Applicative, Monad, MonadFail
                    , MonadIO, MonadThrow, MonadCatch, MonadMask
                    , MonadFork
                    )
 
-runStdoutLogT :: StdoutLogT m a -> m a
-runStdoutLogT = flip runReaderT mempty . unStdoutLogT
-
+runStdoutLogT :: MonadIO m => StdoutLogT m a -> m a
+runStdoutLogT m = do
+  mutex <- newMutex
+  runReaderT (unStdoutLogT m) (mutex,mempty)
+ 
 instance MonadTrans StdoutLogT where
   lift = StdoutLogT . lift
 
-instance MonadIO m => MonadLogger (StdoutLogT m) where
+instance (MonadMask m, MonadIO m) => MonadLogger (StdoutLogT m) where
   logger _ msg a = do
-    Namespace chunks <- StdoutLogT ask
-    liftIO $ putStr $ T.unpack $ case chunks of
-      [] -> ""
-      _  -> T.intercalate "." chunks
-    liftIO $ putStrLn $ TL.unpack $ toLazyText $ unLogStr msg
-    liftIO $ forM_ (HM.toList $ toObject a) $ \(k,v) -> do
-      putStr $ "  " ++ T.unpack k ++ " = "
-      print v
-  localNamespace f = StdoutLogT . local f . unStdoutLogT
+    (mutex,Namespace chunks) <- StdoutLogT ask
+    StdoutLogT $ liftIO $ withMutex mutex $ do
+      putStr $ T.unpack $ case chunks of
+        [] -> ""
+        _  -> T.intercalate "." chunks <> ": "
+      putStrLn $ TL.unpack $ toLazyText $ unLogStr msg
+      forM_ (HM.toList $ toObject a) $ \(k,v) -> do
+        putStr $ "  " ++ T.unpack k ++ " = "
+        print v
+  localNamespace f = StdoutLogT . local (second f) . unStdoutLogT
 
 
 -- | Log exceptions at Error severity
@@ -316,21 +311,3 @@ makeJsonFileScribe nm sev verb = do
   h <- openFile nm AppendMode
   Scribe loggerFun finalizer <- makeJsonHandleScribe h sev verb
   return $ Scribe loggerFun (finalizer `finally` hClose h)
-
-
-----------------------------------------------------------------
--- LogBlock
-----------------------------------------------------------------
-
--- | Wrapper for log data for logging purposes
-data LogBlockInfo a = LogBlockInfo !Height !a !Int
-
-instance BlockData a => ToObject (LogBlockInfo a) where
-  toObject (LogBlockInfo (Height h) a ns)
-    = HM.insert "H"     (toJSON h)
-    $ HM.insert "nsign" (toJSON ns)
-    $ logBlockData a
-
-instance BlockData a => LogItem (LogBlockInfo a) where
-  payloadKeys Katip.V0 _ = Katip.SomeKeys ["H"]
-  payloadKeys _        _ = Katip.AllKeys

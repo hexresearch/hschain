@@ -1,0 +1,37 @@
+Name:           hschain-logger
+Version:        0.1
+Synopsis:       Logging utilities for hschain
+Description:
+  Package provides type class, transformers and bewpyes for use with
+  DerivingVia
+
+Cabal-Version:  >= 1.10
+License:        MIT
+License-File:   LICENSE
+Author:         Aleksey Khudyakov <alexey.skladnoy@gmail.com>
+Maintainer:     Aleksey Khudyakov <alexey.skladnoy@gmail.com>
+Homepage:       https://github.com/hexresearch/hschain
+Category:       Data
+Build-Type:     Simple
+
+Library
+  Ghc-options:         -Wall
+  Default-Language:    Haskell2010
+  Build-Depends:       base              >=4.9 && <5
+                     , hschain-control
+                     , aeson
+                     , bytestring
+                     , directory
+                     , exceptions        >=0.8.3
+                     , filepath
+                     , generic-lens      >=0.2
+                     , katip             == 0.7.0.0
+                     , microlens
+                     , mmorph
+                     , unordered-containers
+                     , mtl
+                     , text              >=1
+                     , transformers
+  Exposed-modules:
+                  HSChain.Logger
+                  HSChain.Logger.Class

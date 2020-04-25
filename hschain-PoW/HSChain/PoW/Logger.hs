@@ -127,29 +127,32 @@ instance MonadIO m => MonadLogger (NoLogsT m) where
 -- | Simple monad transformer for writing logs to stdout. Motly useful
 --   for debugging when one need to add remove some logging capability
 --   quickly.
-newtype StdoutLogT m a = StdoutLogT { unStdoutLogT :: ReaderT Namespace m a }
+newtype StdoutLogT m a = StdoutLogT { unStdoutLogT :: ReaderT (Mutex,Namespace) m a }
   deriving newtype ( Functor, Applicative, Monad, MonadFail
                    , MonadIO, MonadThrow, MonadCatch, MonadMask
                    , MonadFork
                    )
 
-runStdoutLogT :: StdoutLogT m a -> m a
-runStdoutLogT = flip runReaderT mempty . unStdoutLogT
+runStdoutLogT :: MonadIO m => StdoutLogT m a -> m a
+runStdoutLogT m = do
+  mutex <- newMutex
+  runReaderT (unStdoutLogT m) (mutex,mempty)
 
 instance MonadTrans StdoutLogT where
   lift = StdoutLogT . lift
 
-instance MonadIO m => MonadLogger (StdoutLogT m) where
+instance (MonadMask m, MonadIO m) => MonadLogger (StdoutLogT m) where
   logger _ msg a = do
-    Namespace chunks <- StdoutLogT ask
-    liftIO $ putStr $ T.unpack $ case chunks of
-      [] -> ""
-      _  -> T.intercalate "." chunks
-    liftIO $ putStrLn $ TL.unpack $ toLazyText $ unLogStr msg
-    liftIO $ forM_ (HM.toList $ toObject a) $ \(k,v) -> do
-      putStr $ "  " ++ T.unpack k ++ " = "
-      print v
-  localNamespace f = StdoutLogT . local f . unStdoutLogT
+    (mutex,Namespace chunks) <- StdoutLogT ask
+    StdoutLogT $ liftIO $ withMutex mutex $ do
+      putStr $ T.unpack $ case chunks of
+        [] -> ""
+        _  -> T.intercalate "." chunks <> ": "
+      putStrLn $ TL.unpack $ toLazyText $ unLogStr msg
+      forM_ (HM.toList $ toObject a) $ \(k,v) -> do
+        putStr $ "  " ++ T.unpack k ++ " = "
+        print v
+  localNamespace f = StdoutLogT . local (second f) . unStdoutLogT
 
 
 -- | Log exceptions at Error severity

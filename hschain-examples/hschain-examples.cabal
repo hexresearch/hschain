@@ -19,6 +19,7 @@ Library
   Build-Depends:       base              >=4.12 && <5
                      , hschain-crypto
                      , hschain-control
+                     , hschain-logger
                      , hschain-config
                      , hschain-types
                      , hschain-merkle
@@ -58,6 +59,7 @@ Executable hschain-coin-node
   Build-Depends:       base                 >=4.12 && <5
                      , hschain
                      , hschain-net
+                     , hschain-logger
                      , hschain-merkle
                      , hschain-types
                      , hschain-crypto
@@ -92,6 +94,7 @@ Executable hschain-dioxane-node
   Build-Depends:       base                 >=4.12 && <5
                      , hschain
                      , hschain-net
+                     , hschain-logger
                      , hschain-merkle
                      , hschain-types
                      , hschain-control
@@ -151,6 +154,7 @@ Test-suite hschain-tests
   Default-Language:    Haskell2010
   Build-Depends:       base              >=4.12 && <5
                      , hschain
+                     , hschain-logger
                      , hschain-merkle
                      , hschain-crypto
                      , hschain-control
