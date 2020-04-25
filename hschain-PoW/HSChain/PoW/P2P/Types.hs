@@ -4,6 +4,7 @@
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE PolyKinds                  #-}
+{-# LANGUAGE QuantifiedConstraints      #-}
 {-# LANGUAGE RankNTypes                 #-}
 {-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE UndecidableInstances       #-}
@@ -137,6 +138,7 @@ instance ( Serialise (b IdNode)
          , Serialise (BlockID b)
          ) => Serialise (MsgResponce b)
 
+
 data MsgAnn b
   = AnnBestHead !(Header b)
   -- ^ Send new best head to peer. Generally sent unannounced.
@@ -147,6 +149,10 @@ deriving stock instance (Show (BlockID b), Show (b Hashed)) => Show (MsgAnn b)
 instance ( Serialise (b Hashed)
          , Serialise (BlockID b)
          ) => Serialise (MsgAnn b)
+
+instance ( JSON.ToJSON (BlockID b)
+         , forall g. IsMerkle g => JSON.ToJSON (b g)
+         ) => JSON.ToJSON (MsgAnn b)
 
 
 
