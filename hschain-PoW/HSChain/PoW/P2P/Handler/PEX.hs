@@ -73,12 +73,12 @@ runPEX cfg netAPI seeds blockReg sinkBOX mkSrcAnn consSt db = do
           , ..
           }
   shepherd <- ContT withShepherd
-  start $ acceptLoop         netAPI shepherd reg nonces mkChans
-  start $ monitorConnections cfg netAPI shepherd reg nonces mkChans
-  start $ monitorKnownPeers  cfg reg sinkAsk
-  start $ processNewAddr     reg srcAddr
+  start "accept"  $ acceptLoop         netAPI shepherd reg nonces mkChans
+  start "conn"    $ monitorConnections cfg netAPI shepherd reg nonces mkChans
+  start "known"   $ monitorKnownPeers  cfg reg sinkAsk
+  start "newaddr" $ processNewAddr     reg srcAddr
   where
-    start = cforkLinked . descendNamespace "net" . logOnException
+    start ns = cforkLinked . descendNamespace "net" . descendNamespace ns . logOnException
 
 acceptLoop
   :: ( MonadMask m, MonadFork m, MonadLogger m
@@ -105,7 +105,6 @@ acceptLoop NetworkAPI{..} shepherd reg nonceSet mkChans  = do
       -- Expect GossipHello from peer
       HandshakeHello nonce port <- deserialise <$> recv conn
       let normAddr = normalizeNodeAddress addr port
-      logger InfoS "Accepted connection" (sl "addr" normAddr)
       -- Check nonce for self-connection and send reply
       isSelfConnection nonceSet nonce >>= \case
         True  -> do

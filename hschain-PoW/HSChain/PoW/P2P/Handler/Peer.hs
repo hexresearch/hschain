@@ -52,7 +52,7 @@ runPeer
   => P2PConnection
   -> PeerChans m b
   -> m ()
-runPeer conn chans@PeerChans{..} = do
+runPeer conn chans@PeerChans{..} = logOnException $ do
   logger InfoS "Starting peer" ()
   (sinkGossip, srcGossip) <- queuePair
   st <- liftIO $ do requestInFlight <- newTVarIO Nothing
@@ -152,7 +152,7 @@ peerSend conn src = forever $ send conn . serialise =<< awaitIO src
 -- Thread for receiving messages. It processes 'MsgRequest' in place
 -- and routes other messages to respective handlers
 peerRecv
-  :: ( MonadMask m, MonadIO m
+  :: ( MonadMask m, MonadIO m, MonadLogger m
      , Serialise (b IdNode)
      , Serialise (b Hashed)
      , Serialise (BlockID b)
