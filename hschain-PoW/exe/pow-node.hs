@@ -105,6 +105,7 @@ mineBlock val b = GBlock
 data Opts = Opts
   { cmdConfigPath :: [FilePath]
   , optPrintBCH   :: Bool
+  , optMine       :: Bool
   }
 
 parser :: Parser Opts
@@ -117,6 +118,10 @@ parser = do
   optPrintBCH <- switch
     (  long "print"
     <> help "Print blockchain"
+    )
+  optMine <- switch
+    (  long "mine"
+    <> help "Mine blocks"
     )
   return Opts{..}
 
@@ -160,8 +165,9 @@ main = do
         t <- liftIO $ negate . log <$> randomRIO (0.5, 2)
         liftIO $ threadDelay $ round (1e6 * t :: Double)
         --
-        c <- atomicallyIO $ currentConsensus pow
-        let h = c ^. bestHead . _1 . to asHeader
-            b = mineBlock cfgStr h
-        sendNewBlock pow b
+        when optMine $ do
+          c <- atomicallyIO $ currentConsensus pow
+          let h = c ^. bestHead . _1 . to asHeader
+              b = mineBlock cfgStr h
+          sendNewBlock pow b
 

@@ -22,6 +22,7 @@ import Control.Monad.Catch
 import Data.Foldable
 import Data.Maybe
 import Lens.Micro
+import Katip (sl)
 
 import HSChain.Control.Class
 import HSChain.Control.Util
@@ -52,7 +53,7 @@ runPeer
   => P2PConnection
   -> PeerChans m b
   -> m ()
-runPeer conn chans@PeerChans{..} = do
+runPeer conn chans@PeerChans{..} = logOnException $ do
   logger InfoS "Starting peer" ()
   (sinkGossip, srcGossip) <- queuePair
   st <- liftIO $ do requestInFlight <- newTVarIO Nothing
@@ -86,13 +87,13 @@ data PeerState b = PeerState
 
 -- Thread that issues
 peerRequestHeaders
-  :: (MonadIO m, BlockData b)
+  :: (MonadIO m, MonadLogger m, MonadCatch m, BlockData b)
   => PeerState b
   -> PeerChans m b
   -> Sink (GossipMsg b)
   -> m x
-peerRequestHeaders PeerState{..} PeerChans{..} sinkGossip = forever $ do
-  atomicallyIO $ do
+peerRequestHeaders PeerState{..} PeerChans{..} sinkGossip =
+  descendNamespace "req_H" $ logOnException $ forever $ atomicallyIO $ do
     -- Block unless we're in catchup and there's no requests in flight
     check             =<< readTVar inCatchup
     check . isNothing =<< readTVar requestInFlight
@@ -113,23 +114,26 @@ peerRequestHeaders PeerState{..} PeerChans{..} sinkGossip = forever $ do
 
 
 peerRequestBlock
-  :: (MonadIO m)
+  :: (MonadIO m, MonadLogger m, MonadCatch m, BlockData b)
   => PeerState b
   -> PeerChans m b
   -> Sink (GossipMsg b)
   -> m x
-peerRequestBlock PeerState{..} PeerChans{..} sinkGossip = forever $ do
-  atomicallyIO $ do
-    check . isNothing =<< readTVar requestInFlight
-    bid <- reserveBID peerReqBlocks
-    writeTVar requestInFlight $ Just $ SentBlock bid
-    sink sinkGossip $ GossipReq $ ReqBlock bid
+peerRequestBlock PeerState{..} PeerChans{..} sinkGossip =
+  descendNamespace "req_B" $ logOnException $ forever $ do
+    bid <- atomicallyIO $ do
+      check . isNothing =<< readTVar requestInFlight
+      bid <- reserveBID peerReqBlocks
+      writeTVar requestInFlight $ Just $ SentBlock bid
+      sink sinkGossip $ GossipReq $ ReqBlock bid
+      return bid
+    logger DebugS "Requesting BID" (sl "bid" bid)
 
 peerRequestAddresses
-  :: MonadIO m
+  :: (MonadIO m, MonadLogger m, MonadMask m)
   => PeerState b -> PeerChans m b -> Sink (GossipMsg b) -> m x
 peerRequestAddresses PeerState{..} PeerChans{..} sinkGossip =
-  forever $ do
+  descendNamespace "req_Addr" $ logOnException $ forever $ do
     AskPeers <- atomicallyIO $ await peerBCastAskPeer
     atomicallyIO $ do
       check . isNothing =<< readTVar requestInFlight
@@ -138,7 +142,7 @@ peerRequestAddresses PeerState{..} PeerChans{..} sinkGossip =
 
 -- Thread for sending messages over network
 peerSend
-  :: ( MonadMask m, MonadIO m
+  :: ( MonadIO m, MonadLogger m, MonadCatch m
      , Serialise (b IdNode)
      , Serialise (b Hashed)
      , Serialise (BlockID b)
@@ -146,13 +150,15 @@ peerSend
   => P2PConnection
   -> Src (GossipMsg b)
   -> m x
-peerSend conn src = forever $ send conn . serialise =<< awaitIO src
+peerSend conn src
+  = descendNamespace "send" $ logOnException $ forever
+  $ send conn . serialise =<< awaitIO src
 
 
 -- Thread for receiving messages. It processes 'MsgRequest' in place
 -- and routes other messages to respective handlers
 peerRecv
-  :: ( MonadMask m, MonadIO m
+  :: ( MonadMask m, MonadIO m, MonadLogger m
      , Serialise (b IdNode)
      , Serialise (b Hashed)
      , Serialise (BlockID b)
@@ -163,47 +169,56 @@ peerRecv
   -> PeerChans m b
   -> Sink (GossipMsg b)         -- Send message to peer over network
   -> m x
-peerRecv conn st@PeerState{..} PeerChans{..} sinkGossip = forever $ do
-  bs <- recv conn
-  case deserialise bs of
-    -- Announces are just forwarded
-    GossipAnn  m -> do
-      toConsensus (return ()) $! RxAnn m
-      case m of
-        AnnBestHead h -> atomicallyIO $ writeTVar peersBestHead (Just h)
-    -- With responces we ensure that we got what we asked. Otherwise
-    -- we throw exception and let PEX to deal with banning
-    GossipResp m -> do
-      liftIO (readTVarIO requestInFlight) >>= \case
-        Nothing  -> throwM UnrequestedResponce
-        Just req -> case (req, m) of
-          (_              , RespNack     ) -> return ()
-          (SentPeers      , RespPeers{}  ) -> return ()
-          (SentHeaders rel, RespHeaders{}) -> atomicallyIO $ releaseCatchupLock rel
-          (SentBlock   bid, RespBlock b  )
-            | blockID b == bid          -> return ()
-          _                             -> throwM InvalidResponce
-      -- Forward message
-      let release = atomicallyIO $ writeTVar requestInFlight Nothing
-      case m of
-        RespBlock   b -> toConsensus release $! RxBlock b
-        RespHeaders h -> toConsensus release $! RxHeaders h
-        RespPeers   a -> sinkIO peerSinkNewAddr a
-        RespNack      -> return ()
-    -- We handle requests in place
-    GossipReq  m -> case m of
-      ReqPeers       ->
-        sinkIO sinkGossip . GossipResp . RespPeers =<< atomicallyIO peerConnections
-      ReqHeaders loc -> do
-        c <- atomicallyIO peerConsensuSt
-        sinkIO sinkGossip $ GossipResp $ case locateHeaders c loc of
-          Nothing -> RespNack
-          Just hs -> RespHeaders hs
-      ReqBlock   bid -> do
-        mblk <- retrieveBlock peerBlockDB bid
-        sinkIO sinkGossip $ GossipResp $ case mblk of
-          Nothing -> RespNack
-          Just b  -> RespBlock b
+peerRecv conn st@PeerState{..} PeerChans{..} sinkGossip =
+  descendNamespace "recv" $ logOnException $ forever $ do
+    bs <- recv conn
+    case deserialise bs of
+      -- Announces are just forwarded
+      GossipAnn  m -> do
+        logger DebugS "Got announce" ()
+        toConsensus (return ()) $! RxAnn m
+        case m of
+          AnnBestHead h -> atomicallyIO $ writeTVar peersBestHead (Just h)
+      -- With responces we ensure that we got what we asked. Otherwise
+      -- we throw exception and let PEX to deal with banning
+      GossipResp m -> do
+        liftIO (readTVarIO requestInFlight) >>= \case
+          Nothing  -> throwM UnrequestedResponce
+          Just req -> case (req, m) of
+            (_              , RespNack     ) -> return ()
+            (SentPeers      , RespPeers{}  ) -> return ()
+            (SentHeaders rel, RespHeaders{}) -> atomicallyIO $ releaseCatchupLock rel
+            (SentBlock   bid, RespBlock b  )
+              | blockID b == bid          -> return ()
+            _                             -> throwM InvalidResponce
+        -- Process message and release request lock. Note that
+        -- blocks/headers are processed in other thread and released
+        -- in that thread.
+        --
+        -- NOTE: It could be simpler to block until consensus finish
+        --       processing message but current approach allows thread
+        --       to proceed immediately. At this point it's unclear
+        --       whether performance benefit worth it.
+        let release = atomicallyIO $ writeTVar requestInFlight Nothing
+        case m of
+          RespBlock   b -> toConsensus release $! RxBlock b
+          RespHeaders h -> toConsensus release $! RxHeaders h
+          RespPeers   a -> sinkIO peerSinkNewAddr a >> release
+          RespNack      -> release
+      -- We handle requests in place
+      GossipReq  m -> case m of
+        ReqPeers       ->
+          sinkIO sinkGossip . GossipResp . RespPeers =<< atomicallyIO peerConnections
+        ReqHeaders loc -> do
+          c <- atomicallyIO peerConsensuSt
+          sinkIO sinkGossip $ GossipResp $ case locateHeaders c loc of
+            Nothing -> RespNack
+            Just hs -> RespHeaders hs
+        ReqBlock   bid -> do
+          mblk <- retrieveBlock peerBlockDB bid
+          sinkIO sinkGossip $ GossipResp $ case mblk of
+            Nothing -> RespNack
+            Just b  -> RespBlock b
   where
     -- Send message to consensus engine and release request lock when
     -- request is processed.
