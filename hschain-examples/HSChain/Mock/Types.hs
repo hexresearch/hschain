@@ -79,8 +79,8 @@ makeGenesis
 makeGenesis dat stateHash valSet0 valSet1 = Block
   { blockHeight        = Height 0
   , blockPrevBlockID   = Nothing
-  , blockValidators    = merkled valSet0
-  , blockNewValidators = merkled valSet1
+  , blockValidators    = hashed valSet0
+  , blockNewValidators = hashed valSet1
   , blockData          = merkled dat
   , blockPrevCommit    = Nothing
   , blockEvidence      = merkled []

@@ -28,17 +28,17 @@ data KV f = KV
   { kvData :: MerkleNode f SHA256 [(Int,String)]
   }
   deriving stock (Generic)
-deriving stock instance Show1 (f SHA256) => Show (KV f)
-deriving stock instance IsMerkle f => Eq (KV f)
-instance Serialise (KV IdNode)
-instance Serialise (KV Hashed)
+deriving stock instance Show1    f => Show (KV f)
+deriving stock instance IsMerkle f => Eq   (KV f)
+instance Serialise (KV Identity)
+instance Serialise (KV Proxy)
 
 
 instance IsMerkle f => CryptoHashable (KV f) where
   hashStep = genericHashStep "hschain"
 
 instance MerkleMap KV where
-  merkleMap f (KV (MerkleNode a)) = KV (MerkleNode (f a))
+  merkleMap f (KV d) = KV $ mapMerkleNode f d
 
 instance BlockData KV where
   newtype BlockID KV = KV'BID (Hash SHA256)

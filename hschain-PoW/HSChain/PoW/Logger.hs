@@ -8,6 +8,7 @@
 {-# LANGUAGE LambdaCase                 #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE PolyKinds                  #-}
 {-# LANGUAGE RecordWildCards            #-}
 {-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE TemplateHaskell            #-}
@@ -280,7 +281,7 @@ makeJsonFileScribe nm sev verb = do
 ----------------------------------------------------------------
 
 -- | Wrapper for log data for logging purposes
-data LogBlockInfo (a :: (* -> * -> *) -> *) = LogBlockInfo !Height {-!(Block a)-} !Int
+data LogBlockInfo a = LogBlockInfo !Height {-!(Block a)-} !Int
 
 instance BlockData a => ToObject (LogBlockInfo a) where
   toObject (LogBlockInfo (Height h) ns)

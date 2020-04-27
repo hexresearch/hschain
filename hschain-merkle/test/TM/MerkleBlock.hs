@@ -25,7 +25,7 @@ prop_MerkleBlockTree :: [Integer] -> Bool
 prop_MerkleBlockTree leaves
   = isBalanced tree
   where
-    tree :: MerkleBlockTree IdNode SHA512 Integer
+    tree :: MerkleBlockTree Identity SHA512 Integer
     tree = createMerkleTree leaves
 
 -- Computation with different wrappers give same result
@@ -33,16 +33,16 @@ prop_computeMerkleOpt :: [Integer] -> Bool
 prop_computeMerkleOpt leaves
   = merkleBlockTreeHash t1 == merkleBlockTreeHash t2
   where
-    t1 = createMerkleTree leaves :: MerkleBlockTree IdNode  SHA512 Integer
-    t2 = createMerkleTree leaves :: MerkleBlockTree OptNode SHA512 Integer
+    t1 = createMerkleTree leaves :: MerkleBlockTree Identity SHA512 Integer
+    t2 = createMerkleTree leaves :: MerkleBlockTree Maybe    SHA512 Integer
 
 -- Computation with different wrappers give same result
 prop_computeMerkleHashed :: [Integer] -> Bool
 prop_computeMerkleHashed leaves
   = merkleBlockTreeHash t1 == merkleBlockTreeHash t2
   where
-    t1 = createMerkleTree leaves :: MerkleBlockTree IdNode SHA512 Integer
-    t2 = createMerkleTree leaves :: MerkleBlockTree Hashed SHA512 Integer
+    t1 = createMerkleTree leaves :: MerkleBlockTree Identity SHA512 Integer
+    t2 = createMerkleTree leaves :: MerkleBlockTree Maybe    SHA512 Integer
 
   
 -- Check that merkle proofs are correct
@@ -53,6 +53,6 @@ prop_MerkleProofCorrect leaves
         | p <- proofs
         ]
   where
-    tree :: MerkleBlockTree IdNode SHA512 Integer
+    tree :: MerkleBlockTree Identity SHA512 Integer
     tree   = createMerkleTree leaves
     proofs = createMerkleProof tree <$> leaves

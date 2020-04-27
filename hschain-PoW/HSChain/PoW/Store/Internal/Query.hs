@@ -8,6 +8,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase                 #-}
 {-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE PolyKinds                  #-}
 {-# LANGUAGE RecordWildCards            #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE TupleSections              #-}
@@ -316,7 +317,7 @@ instance MonadDB     m a => MonadDB     (Proxy x x' y y' m) a
 --   if DB transaction does not succeed. For example changes to
 --   @StateT@ will while @IO@-effects obviously won't. Proceed with
 --   caution.
-newtype QueryT (rw :: Access) (a :: (* -> * -> *) -> *) m x = QueryT { unQueryT :: m x }
+newtype QueryT (rw :: Access) a m x = QueryT { unQueryT :: m x }
   deriving newtype ( Functor, Applicative, MonadIO, MonadThrow, MonadCatch, MonadMask, MonadLogger)
 
 instance MFunctor (QueryT rw a) where

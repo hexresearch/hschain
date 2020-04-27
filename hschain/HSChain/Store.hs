@@ -255,11 +255,11 @@ nullMempool = Mempool
 
 -- | Storage for blockchain state.
 data BChStore m a = BChStore
-  { bchCurrentState  :: m (Maybe Height, MerkleNode IdNode (Alg a) (BlockchainState a))
+  { bchCurrentState  :: m (Maybe Height, MerkleNode Identity (Alg a) (BlockchainState a))
   -- ^ Height of value stored in state
-  , bchStoreRetrieve :: Height -> m (Maybe (MerkleNode IdNode (Alg a) (BlockchainState a)))
+  , bchStoreRetrieve :: Height -> m (Maybe (MerkleNode Identity (Alg a) (BlockchainState a)))
   -- ^ Retrieve state for given height. It's generally not expected that
-  , bchStoreStore    :: Height -> MerkleNode IdNode (Alg a) (BlockchainState a) -> m ()
+  , bchStoreStore    :: Height -> MerkleNode Identity (Alg a) (BlockchainState a) -> m ()
   -- ^ Put blockchain state at given height into store
   }
 

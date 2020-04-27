@@ -40,8 +40,8 @@ import HSChain.Types.Merkle.Types
 
 runPEX
   :: ( MonadMask m, MonadFork m, MonadLogger m
-     , Serialise (b IdNode)
-     , Serialise (b Hashed)
+     , Serialise (b Identity)
+     , Serialise (b Proxy)
      , BlockData b
      )
   => NetCfg
@@ -82,8 +82,8 @@ runPEX cfg netAPI seeds blockReg sinkBOX mkSrcAnn consSt db = do
 
 acceptLoop
   :: ( MonadMask m, MonadFork m, MonadLogger m
-     , Serialise (b IdNode)
-     , Serialise (b Hashed)
+     , Serialise (b Identity)
+     , Serialise (b Proxy)
      , BlockData b
      )
   => NetworkAPI
@@ -118,8 +118,8 @@ acceptLoop NetworkAPI{..} shepherd reg nonceSet mkChans  = do
 
 connectTo
   :: ( MonadMask m, MonadFork m, MonadLogger m
-     , Serialise (b IdNode)
-     , Serialise (b Hashed)
+     , Serialise (b Identity)
+     , Serialise (b Proxy)
      , BlockData b
      )
   => NetworkAPI
@@ -162,8 +162,8 @@ monitorKnownPeers NetCfg{..} reg sinkPeers = forever $ do
 
 monitorConnections
   :: ( MonadMask m, MonadFork m, MonadLogger m
-     , Serialise (b IdNode)
-     , Serialise (b Hashed)
+     , Serialise (b Identity)
+     , Serialise (b Proxy)
      , BlockData b
      )
   => NetCfg

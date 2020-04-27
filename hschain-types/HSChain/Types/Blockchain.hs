@@ -163,8 +163,8 @@ blockHash
 blockHash = BlockID . hashed
 
 
-type Block  = GBlock IdNode
-type Header = GBlock Hashed
+type Block  = GBlock Identity
+type Header = GBlock Proxy
 
 -- | Block of blockchain.
 data GBlock f a = Block
@@ -202,9 +202,9 @@ toHeader Block{..} = Block
 instance (IsMerkle f, Crypto (Alg a), CryptoHashable a, Serialise     a) => Serialise     (GBlock f a)
 instance (IsMerkle f, Crypto (Alg a), CryptoHashable a, JSON.FromJSON a) => JSON.FromJSON (GBlock f a)
 instance (IsMerkle f, Crypto (Alg a),                   JSON.ToJSON   a) => JSON.ToJSON   (GBlock f a)
-instance (NFData a, NFData1 (f (Alg a)), NFData (PublicKey (Alg a)))     => NFData (GBlock f a)
-deriving instance (CryptoHash (Alg a), Show1 (f (Alg a)), Show a) => Show (GBlock f a)
-deriving instance (Eq (PublicKey (Alg a)), IsMerkle f, Eq1 (f (Alg a)), Eq a) => Eq (GBlock f a)
+instance (NFData a, NFData1 f, NFData (PublicKey (Alg a)))     => NFData (GBlock f a)
+deriving instance (CryptoHash (Alg a), Show1 f, Show a) => Show (GBlock f a)
+deriving instance (Eq (PublicKey (Alg a)), IsMerkle f, Eq1 f, Eq a) => Eq (GBlock f a)
 
 
 
@@ -403,8 +403,8 @@ instance (CryptoHash (Alg a)) => CryptoHashable (Vote 'PreCommit a) where
 --   blockchain state, set of validators and something else.
 data BChEval a x = BChEval
   { bchValue        :: !x
-  , validatorSet    :: !(MerkleNode IdNode (Alg a) (ValidatorSet (Alg a)))
-  , blockchainState :: !(MerkleNode IdNode (Alg a) (BlockchainState a))
+  , validatorSet    :: !(MerkleNode Identity (Alg a) (ValidatorSet (Alg a)))
+  , blockchainState :: !(MerkleNode Identity (Alg a) (BlockchainState a))
   }
   deriving stock (Generic, Functor)
 
@@ -461,7 +461,7 @@ data NewBlock a = NewBlock
   , newBlockLastBID  :: !(BlockID a)
   , newBlockCommit   :: !(Maybe (Commit a))
   , newBlockEvidence :: ![ByzantineEvidence a]
-  , newBlockState    :: !(MerkleNode IdNode (Alg a) (BlockchainState a))
+  , newBlockState    :: !(MerkleNode Identity (Alg a) (BlockchainState a))
   , newBlockValSet   :: !(ValidatorSet (Alg a))
   }
 

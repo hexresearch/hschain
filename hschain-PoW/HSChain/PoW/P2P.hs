@@ -38,8 +38,8 @@ data PoW m b = PoW
 
 startNode
   :: ( MonadMask m, MonadFork m, MonadLogger m
-     , Serialise (b IdNode)
-     , Serialise (b Hashed)
+     , Serialise (b Identity)
+     , Serialise (b Proxy)
      , Serialise (BlockID b)
      , BlockData b
      )

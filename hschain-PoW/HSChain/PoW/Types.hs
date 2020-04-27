@@ -99,7 +99,7 @@ deriving stock instance (Eq (BlockID b), Eq (b f)) => Eq (GBlock b f)
 deriving stock instance (Show (BlockID b), Show (b f)) => Show (GBlock b f)
 
 toHeader :: MerkleMap b => Block b -> Header b
-toHeader = merkleMap merkleHashed
+toHeader = merkleMap (const Proxy)
 
 instance ( forall g. IsMerkle g => CryptoHashable (b g)
          , IsMerkle f
@@ -113,8 +113,8 @@ instance MerkleMap b => MerkleMap (GBlock b) where
                                   }
 
 
-type Header b = GBlock b Hashed
-type Block  b = GBlock b IdNode
+type Header b = GBlock b Proxy
+type Block  b = GBlock b Identity
 
 
 data Locator b = Locator [BlockID b]
