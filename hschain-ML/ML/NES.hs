@@ -254,6 +254,7 @@ class Draw m where
 aNES :: (MonadIO m, Draw m) => Int -> FLOAT -> Vec -> (Vec -> m FLOAT) -> m Bool -> m Vec
 aNES lambda nu startMu eval stop = do
 	n <- startN startMu
+	liftIO $ putStrLn $ "starting with "++show n
 	loop n
 	where
 		ilambda = 1.0 / fromIntegral lambda

@@ -106,7 +106,7 @@ defaultSearchConfig = POWSearchConfig
 -- |Default complexity - should give block rate slightly below 1 block/2 minutes on average i7.
 defaultComplexityConfig :: POWComplexity
 defaultComplexityConfig = POWComplexity
-  { powComplexityShift      = 12
+  { powComplexityShift      = 8 -- 12
   , powComplexityMantissa   = 0xbed8
   }
 

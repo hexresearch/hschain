@@ -30,7 +30,8 @@ import Control.Monad.IO.Class
 import Control.Monad.State
 
 import Control.Concurrent
-import Control.Concurrent.STM
+import Control.Concurrent.MVar
+--import Control.Concurrent.STM
 
 import Data.Bits
 
@@ -532,31 +533,39 @@ data OptState = OptState
   { optStateRandoms    :: [Double]
   }
 
-newtype OptM a = OptM { runOptM :: StateT OptState IO a }
+newtype OptM a = OptM { runOptM :: StateT [Double] IO a }
   deriving newtype (Functor, Applicative, Monad, MonadIO)
 
-deriving instance MonadState OptState OptM
+deriving newtype instance MonadState [Double] OptM
 
 instance Draw OptM where
   drawStdNormalVec asThisV = do
-    (v,rest) <- splitAt (vLength asThisV) . optStateRandoms <$> get
-    modify $ \os -> os { optStateRandoms = rest }
+    liftIO $ putStrLn $ "drawing a vector from template"++show asThisV
+    ss <- get
+    liftIO $ putStrLn $ "some dbls: "++show (take 10 ss)
+    (v,rest) <- splitAt (vLength asThisV) <$> get
+    liftIO $ putStrLn $ "v: "++show v
+    put rest
+    liftIO $ putStrLn "vector has been drawn"
     return $ vFromList v
   roundDrawnSample v = do
     return $ vFromList $ roundEncoded (undefined :: POWSearchConfig) $ vToList v
 
-searchOptimization :: TVar DB -> IO ()
+searchOptimization :: MVar DB -> IO ()
 searchOptimization dbVar = do
+  putStrLn $ "search process begins"
   rg <- getStdRandom split
   let ds = genNormals rg
       startMu = vFromList $ encodeToFloats $ powCfgSearch defaultPOWConfig
       optState = OptState
         { optStateRandoms = ds
         }
+  putStrLn $ "about to draw some normals"
+  putStrLn $ show (take 10 ds)
   let waitLoop :: OptM SearchConfigProbe
       waitLoop = do
-        probeReady <- liftIO $ atomically $ do
-          mbProbe <- dbExploratorySearchProbe <$> readTVar dbVar
+        probeReady <- liftIO $ do
+          mbProbe <- dbExploratorySearchProbe <$> readMVar dbVar
           case mbProbe of
             Nothing -> error "probe disappeared!"
             Just sp
@@ -569,21 +578,23 @@ searchOptimization dbVar = do
             waitLoop
       evaluate vec = do
         let specimen = decodeFromFloats $ vToList vec
-        liftIO $ atomically $ do
-          db <- readTVar dbVar
-          writeTVar dbVar $
-            db { dbExploratorySearchProbe = Just (SearchConfigProbe specimen 0 0) }
+        liftIO $ putStrLn $ "specimen: "++show specimen
+        liftIO $ modifyMVar_ dbVar $ \db ->
+          return $ db { dbExploratorySearchProbe = Just (SearchConfigProbe specimen 0 0) }
+        liftIO $ putStrLn $ "probe placed"
         result <- waitLoop
+        liftIO $ putStrLn $ "waiting is done"
         let newScore = searchConfigProbeScore result
-        liftIO $ atomically $ do
-          db <- readTVar dbVar
+        liftIO $ modifyMVar_ dbVar $ \db -> do
           let currentBest = dbCurrentSearchConfig db
               currentBestScore = searchConfigProbeScore currentBest
-          when (currentBestScore < newScore) $
-            writeTVar dbVar $ db { dbCurrentSearchConfig = result }
+          return $ if currentBestScore < newScore
+                     then db { dbCurrentSearchConfig = result }
+                     else db
         return $ searchConfigProbeScore result
       stop = return False -- not cease searching for better parameters.
-  flip evalStateT optState $ runOptM $ do
+  flip evalStateT ds $ runOptM $ do
+    liftIO $ putStrLn $ "calling aNES"
     -- |We will search through N=4*3 parameters (mu and three vectors approximating A).
     -- Thus we need population count as big as 4*3 (Fisher information matrix to be full rank).
     aNES 15 0.1 startMu evaluate stop
@@ -628,12 +639,12 @@ hashLog bytestring = computeLog $ findnz 0 $ reverse $ B.unpack bytestring
     findnz bitsCount [byte] = (bitsCount, shiftL byte 8 + 1) -- last byte can be zero
     findnz bitsCount (byte : _) = (bitsCount, byte * 256)
 
-miningProcess :: TVar DB -> IO ()
+miningProcess :: MVar DB -> IO ()
 miningProcess dbvar = do
   miningLoop 0
   where
     miningLoop n = do
-      db <- atomically $ readTVar dbvar
+      db <- readMVar dbvar
       start <- getPOSIXTime
       ((config, minHash), mbHdrBlock) <- formAndMine n db
       end <- getPOSIXTime
@@ -641,8 +652,7 @@ miningProcess dbvar = do
           minHashLog = hashLog minHash
       case mbHdrBlock of
         Just (newHeader, newBlock) -> do
-          db <- atomically $ do
-            db@DB{..} <- readTVar dbvar
+          db <- modifyMVar dbvar $ \db@DB{..} -> do
             -- here we replace current head, in the real thing we must check work done.
             -- but we can add block unconditionally.
             let newHeight = blockHeaderBaseHeight $ blockHeaderBase newHeader
@@ -653,8 +663,7 @@ miningProcess dbvar = do
                       , dbCurrentSearchConfig = updateSearchConfigProbe config deltaAsDouble minHashLog dbCurrentSearchConfig
                       , dbExploratorySearchProbe = fmap (updateSearchConfigProbe config deltaAsDouble minHashLog) dbExploratorySearchProbe
                       }
-            writeTVar dbvar db'
-            return db'
+            return (db', db')
           putStrLn $ "mined: "++show newHeader
           let headers = dbChainHeaders db
               h0 = Map.findWithDefault undefined 0 headers
@@ -740,7 +749,7 @@ computeMantissaShift shift x
 node :: Config -> IO ()
 node _cfg = do
   --sock <- newUDPSocket (configOurPort cfg)
-  db <- atomically $ newTVar startDB
+  db <- newMVar startDB
   _ <- forkIO $ miningProcess db
   _ <- forkIO $ searchOptimization db
   loop

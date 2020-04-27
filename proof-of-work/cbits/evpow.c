@@ -371,7 +371,7 @@ find_answer(SHA256_CTX* context_after_prefix, uint8_t* answer, uint8_t* full_has
 		int status;
 		int i;
 	       	status = solver_sat(solver, -1);
-		printf("status %d\n", status);
+		//printf("status %d\n", status);
 		clock_t curr_time = clock();
 		if (first_result_ms) {
 			*first_result_ms = (1000.0 * (curr_time - last_time))/CLOCKS_PER_SEC;
@@ -414,7 +414,7 @@ find_answer(SHA256_CTX* context_after_prefix, uint8_t* answer, uint8_t* full_has
 		}
 		solver_add(solver, 0); // finalize clause addition. we are ready for another solver_sat() call.
 	}
-	printf("returning 0 - no luck\n");
+	//printf("returning 0 - no luck\n");
 	return 0;
 } /* find_answer */
 
@@ -490,9 +490,7 @@ evpow_solve( uint8_t* prefix
 	// find solution if we can.
 	r = find_answer(&prefix_hash_context, answer, solution_hash, milliseconds_allowance, complexity_shift, complexity_mantissa, solver, first_result_ms);
 
-	printf("about to delete solver\n");
 	solver_delete(solver);
-	printf("solver deleted, returning\n");
 	return r;
 } /* evpow_solve */
 
@@ -510,7 +508,7 @@ evpow_check( uint8_t* prefix
 	int clause;
 	// fastest first - rarity compliance check.
 	if (!under_complexity_threshold(hash_to_compare, complexity_shift, complexity_mantissa)) {
-		printf("NOT RARE ENOUGH!\n");
+		//printf("NOT RARE ENOUGH!\n");
 		return 0;
 	}
 	SHA256_Init(&partial_ctx);
@@ -520,7 +518,7 @@ evpow_check( uint8_t* prefix
 	SHA256_Final(hash, &full_ctx);
 	// second fastest second - hashes are equal.
 	if (0 != memcmp(hash, hash_to_compare, SHA256_DIGEST_LENGTH)) {
-		printf("HASH MISMATCH!\n");
+		//printf("HASH MISMATCH!\n");
 		return 0;
 	}
 	// slowest one last - does answer really answer the puzzle?
@@ -560,7 +558,7 @@ evpow_check( uint8_t* prefix
 			}
 		}
 		if (literal_index >= EVPOW_K) {
-			printf("ANSWER DOES NOT ANSWER!\n");
+			//printf("ANSWER DOES NOT ANSWER!\n");
 			return 0;
 		}
 	}
