@@ -10,6 +10,7 @@ packages:
          hschain-types
          hschain-PoW
          hschain-net
+         hschain-db
          hschain-quickcheck
          hschain-examples
          hschain-examples-types
