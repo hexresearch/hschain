@@ -134,7 +134,7 @@ insertIdx bh (BlockIndex idx) = BlockIndex $ Map.insert (bhBID bh) bh idx
 data BH b = BH
   { bhHeight   :: !Height         --
   , bhBID      :: !(BlockID b)    --
-  , bhWork     :: !(Work b)       --
+  , bhWork     :: !Work           --
   , bhPrevious :: !(Maybe (BH b)) --
   , bhData     :: !(b Hashed)     --
   }
@@ -146,7 +146,7 @@ asHeader bh = GBlock
   , blockData   = bhData bh
   }
 
-deriving instance (Show (Work b), Show (BlockID b), Show (b Hashed)) => Show (BH b)
+deriving instance (Show (BlockID b), Show (b Hashed)) => Show (BH b)
 
 instance BlockData b => Eq (BH b) where
   a == b = bhBID a == bhBID b
