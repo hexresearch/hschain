@@ -1,6 +1,7 @@
 {-# LANGUAGE DeriveAnyClass             #-}
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE DerivingStrategies         #-}
+{-# LANGUAGE DerivingVia                #-}
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE PolyKinds                  #-}
@@ -16,9 +17,11 @@ module HSChain.PoW.Types where
 import Codec.Serialise          (Serialise)
 import Control.DeepSeq
 import Control.Monad.IO.Class
+import Data.Monoid              (Sum(..))
 import Data.Time.Clock          (UTCTime)
 import Data.Time.Clock.POSIX    (getPOSIXTime,posixSecondsToUTCTime)
 import Data.Int
+import Numeric.Natural
 import qualified Data.Aeson      as JSON
 import qualified Codec.Serialise as CBOR
 import GHC.Generics (Generic)
@@ -57,11 +60,15 @@ timeToUTC (Time t) = posixSecondsToUTCTime (realToFrac t / 1000)
 -- Block
 ----------------------------------------------------------------
 
+-- | Measure of work performed for creation of block or chain of
+--   blocks. Monoid instance should represent addition
+newtype Work = Work Natural
+  deriving stock (Show,Eq,Ord)
+  deriving       (Semigroup,Monoid) via (Sum Natural)
+
+
 -- | Core of blockchain implementation.
-class ( Show   (Work b)
-      , Ord    (Work b)
-      , Monoid (Work b)
-      , Show      (BlockID b)
+class ( Show      (BlockID b)
       , Ord       (BlockID b)
       , Serialise (BlockID b)
       , JSON.ToJSON (BlockID b)
@@ -71,16 +78,13 @@ class ( Show   (Work b)
   -- | ID of block. Usually it should be just a hash but we want to
   --   leave some representation leeway for implementations. 
   data BlockID b
-  -- | Measure of work performed for creation of block or chain of
-  --   blocks. Monoid instance should represent addition
-  data Work b
   -- | Compute block ID out of block using only header.
   blockID :: IsMerkle f => GBlock b f -> BlockID b
   -- | Context free validation of header. It's mostly sanity check on
   --   header. 
   validateHeader :: Header b -> Bool
   validateBlock  :: Block  b -> Bool
-  blockWork :: GBlock b f -> Work b
+  blockWork      :: GBlock b f -> Work
 
 -- | Generic block. This is just spine of blockchain, that is height
 --   of block, hash of previous block and

@@ -1,6 +1,5 @@
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE DerivingStrategies         #-}
-{-# LANGUAGE DerivingVia                #-}
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE StandaloneDeriving         #-}
@@ -11,7 +10,6 @@
 module HSChain.Examples.Simple where
 
 import Codec.Serialise      (Serialise)
-import Data.Monoid          (Sum(..))
 import Data.Functor.Classes (Show1)
 import qualified Data.Aeson as JSON
 import GHC.Generics         (Generic)
@@ -43,13 +41,10 @@ instance MerkleMap KV where
   merkleMap f (KV (MerkleNode a)) = KV (MerkleNode (f a))
 
 instance BlockData KV where
-  newtype Work    KV = KV'Work Int
-    deriving newtype (Eq,Ord,Show)
-    deriving         (Semigroup,Monoid) via Sum Int
   newtype BlockID KV = KV'BID (Hash SHA256)
     deriving newtype (Show,Eq,Ord,CryptoHashable,Serialise, JSON.ToJSON, JSON.FromJSON)
   --
   blockID b = let Hashed h = hashed b in KV'BID h
   validateHeader _ = True
   validateBlock  _ = True
-  blockWork      _ = KV'Work 1
+  blockWork      _ = Work 1
