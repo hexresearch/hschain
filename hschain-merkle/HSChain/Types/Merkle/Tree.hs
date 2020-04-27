@@ -144,15 +144,15 @@ checkMerkleProof rootH (MerkleProof a path)
     calcH = hash
           $ Just
           $ foldr step (Leaf a) path
-    step :: Either (Hash alg) (Hash alg) -> Node Hashed alg a -> Node Hashed alg a
-    step (Left  g) h = Branch (MerkleNode $ hashed h) (MerkleNode $ Hashed g)
-    step (Right g) h = Branch (MerkleNode $ Hashed g) (MerkleNode $ hashed h)
+    step :: Either (Hash alg) (Hash alg) -> Node Proxy alg a -> Node Proxy alg a
+    step (Left  g) h = Branch (fromHashed (hashed h)) (fromHashed $ Hashed g)
+    step (Right g) h = Branch (fromHashed (Hashed g)) (fromHashed $ hashed h)
 
 
 -- | Create proof of inclusion. Implementation is rather inefficient
 createMerkleProof
   :: (Eq a)
-  => MerkleBlockTree IdNode alg a
+  => MerkleBlockTree Identity alg a
   -> a
   -> Maybe (MerkleProof alg a)
 createMerkleProof (MerkleBlockTree mtree) a = do
@@ -172,7 +172,7 @@ createMerkleProof (MerkleBlockTree mtree) a = do
 
 -- | Check whether Merkle tree is balanced and in canonical form:
 --   depth of leaves does not decrease.
-isBalanced :: MerkleBlockTree IdNode alg a -> Bool
+isBalanced :: MerkleBlockTree Identity alg a -> Bool
 isBalanced =
   merkleBlockTree >>> merkleValue >>> \case
     Nothing   -> True

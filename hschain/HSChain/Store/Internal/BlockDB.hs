@@ -187,7 +187,7 @@ storeGenesis BChEval{..} = do
 
 storeBlob
   :: (Serialise b)
-  => MerkleNode IdNode (Alg a) b
+  => MerkleNode Identity (Alg a) b
   -> Query 'RW a Int64
 storeBlob x = do
   basicQuery "SELECT id FROM thm_cas WHERE hash = ?" (Only (CBORed h)) >>= \case
@@ -202,22 +202,22 @@ storeBlob x = do
 
 retrieveBlobByHash
   :: (Serialise b, CryptoHashable b, CryptoHash (Alg a))
-  => MerkleNode Hashed (Alg a) b
-  -> Query 'RO a (Maybe (MerkleNode IdNode (Alg a) b))
+  => MerkleNode Proxy (Alg a) b
+  -> Query 'RO a (Maybe (MerkleNode Identity (Alg a) b))
 retrieveBlobByHash x = do
   r <- singleQ "SELECT blob FROM thm_cas WHERE hash = ?" (Only $ CBORed $ merkleHashed x)
   return $ merkled <$> r
 
 mustRetrieveBlobByHash
   :: (Serialise b, CryptoHashable b, CryptoHash (Alg a))
-  => MerkleNode Hashed (Alg a) b
-  -> Query 'RO a (MerkleNode IdNode (Alg a) b)
+  => MerkleNode Proxy (Alg a) b
+  -> Query 'RO a (MerkleNode Identity (Alg a) b)
 mustRetrieveBlobByHash = throwNothing DBMissingBlob <=< retrieveBlobByHash
 
 retrieveBlobByID
   :: (Serialise b, CryptoHashable b, CryptoHash (Alg a))
   => Int64
-  -> Query 'RO a (Maybe (MerkleNode IdNode (Alg a) b))
+  -> Query 'RO a (Maybe (MerkleNode Identity (Alg a) b))
 retrieveBlobByID i = do
   r <- singleQ "SELECT blob FROM thm_cas WHERE id = ?" (Only i)
   return $ merkled <$> r
@@ -225,7 +225,7 @@ retrieveBlobByID i = do
 mustRetrieveBlobByID
   :: (Serialise b, CryptoHashable b, CryptoHash (Alg a))
   => Int64
-  -> Query 'RO a (MerkleNode IdNode (Alg a) b)
+  -> Query 'RO a (MerkleNode Identity (Alg a) b)
 mustRetrieveBlobByID = throwNothing DBMissingBlob <=< retrieveBlobByID
 
 
@@ -402,7 +402,7 @@ storeCommitWrk mcmt blk = liftQueryRW $ do
 
 storeValSet
   :: (Crypto (Alg a), MonadQueryRW m a)
-  => Height -> MerkleNode IdNode (Alg a) (ValidatorSet (Alg a)) -> m ()
+  => Height -> MerkleNode Identity (Alg a) (ValidatorSet (Alg a)) -> m ()
 storeValSet h vals = liftQueryRW $ do
   i <- storeBlob vals
   basicExecute "INSERT INTO thm_validators VALUES (?,?)" (h, i)

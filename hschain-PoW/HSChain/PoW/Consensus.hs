@@ -119,7 +119,7 @@ blockIndexFromGenesis genesis
              , bhBID      = bid
              , bhWork     = blockWork genesis
              , bhPrevious = Nothing
-             , bhData     = merkleMap merkleHashed $ blockData genesis
+             , bhData     = merkleMap (const Proxy) $ blockData genesis
              }
 
 lookupIdx :: (Ord (BlockID b)) => BlockID b -> BlockIndex b -> Maybe (BH b)
@@ -136,7 +136,7 @@ data BH b = BH
   , bhBID      :: !(BlockID b)    --
   , bhWork     :: !Work           --
   , bhPrevious :: !(Maybe (BH b)) --
-  , bhData     :: !(b Hashed)     --
+  , bhData     :: !(b Proxy)      --
   }
 
 asHeader :: BH b -> Header b
@@ -146,7 +146,7 @@ asHeader bh = GBlock
   , blockData   = bhData bh
   }
 
-deriving instance (Show (BlockID b), Show (b Hashed)) => Show (BH b)
+deriving instance (Show (BlockID b), Show (b Proxy)) => Show (BH b)
 
 instance BlockData b => Eq (BH b) where
   a == b = bhBID a == bhBID b

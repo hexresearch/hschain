@@ -44,7 +44,6 @@ import Data.Word
 import qualified Data.Aeson as JSON
 import GHC.Generics               (Generic)
 
-import HSChain.Crypto
 import HSChain.Network.Types
 import HSChain.PoW.Types
 import HSChain.PoW.Consensus
@@ -89,10 +88,10 @@ data GossipMsg b
   | GossipResp !(MsgResponce b)
   | GossipAnn  !(MsgAnn b)
   deriving stock (Generic)
-deriving stock instance (Show (BlockID b), Show (b Hashed), Show (b IdNode)) => Show (GossipMsg b)
+deriving stock instance (Show (BlockID b), Show (b Proxy), Show (b Identity)) => Show (GossipMsg b)
 
-instance ( Serialise (b IdNode)
-         , Serialise (b Hashed)
+instance ( Serialise (b Identity)
+         , Serialise (b Proxy)
          , Serialise (BlockID b)
          ) => Serialise (GossipMsg b)
 
@@ -116,7 +115,7 @@ data MsgRequest b
   deriving stock (Generic)
 deriving stock instance Show (BlockID b) => Show (MsgRequest b)
 
-instance ( Serialise (b Hashed)
+instance ( Serialise (b Proxy)
          , Serialise (BlockID b)
          ) => Serialise (MsgRequest b)
 
@@ -131,10 +130,10 @@ data MsgResponce b
   | RespNack
   -- ^ Responce was denied.
   deriving stock (Generic)
-deriving stock instance (Show (BlockID b), Show (b Hashed), Show (b IdNode)) => Show (MsgResponce b)
+deriving stock instance (Show (BlockID b), Show (b Proxy), Show (b Identity)) => Show (MsgResponce b)
 
-instance ( Serialise (b IdNode)
-         , Serialise (b Hashed)
+instance ( Serialise (b Identity)
+         , Serialise (b Proxy)
          , Serialise (BlockID b)
          ) => Serialise (MsgResponce b)
 
@@ -143,10 +142,10 @@ data MsgAnn b
   = AnnBestHead !(Header b)
   -- ^ Send new best head to peer. Generally sent unannounced.
   deriving stock (Generic)
-deriving stock instance (Show (BlockID b), Show (b Hashed)) => Show (MsgAnn b)
+deriving stock instance (Show (BlockID b), Show (b Proxy)) => Show (MsgAnn b)
 
 
-instance ( Serialise (b Hashed)
+instance ( Serialise (b Proxy)
          , Serialise (BlockID b)
          ) => Serialise (MsgAnn b)
 

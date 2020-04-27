@@ -45,8 +45,8 @@ import HSChain.Types.Merkle.Types
 --   registered peer
 runPeer
   :: ( MonadMask m, MonadLogger m, MonadFork m
-     , Serialise (b IdNode)
-     , Serialise (b Hashed)
+     , Serialise (b Identity)
+     , Serialise (b Proxy)
      , Serialise (BlockID b)
      , BlockData b
      )
@@ -143,8 +143,8 @@ peerRequestAddresses PeerState{..} PeerChans{..} sinkGossip =
 -- Thread for sending messages over network
 peerSend
   :: ( MonadIO m, MonadLogger m, MonadCatch m
-     , Serialise (b IdNode)
-     , Serialise (b Hashed)
+     , Serialise (b Identity)
+     , Serialise (b Proxy)
      , Serialise (BlockID b)
      )
   => P2PConnection
@@ -159,8 +159,8 @@ peerSend conn src
 -- and routes other messages to respective handlers
 peerRecv
   :: ( MonadMask m, MonadIO m, MonadLogger m
-     , Serialise (b IdNode)
-     , Serialise (b Hashed)
+     , Serialise (b Identity)
+     , Serialise (b Proxy)
      , Serialise (BlockID b)
      , BlockData b
      )
