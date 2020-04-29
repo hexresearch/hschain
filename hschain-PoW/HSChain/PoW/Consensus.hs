@@ -120,6 +120,7 @@ blockIndexFromGenesis genesis
              , bhWork     = blockWork genesis
              , bhPrevious = Nothing
              , bhData     = merkleMap (const Proxy) $ blockData genesis
+             , bhSolution = blockSolution genesis
              }
 
 lookupIdx :: (Ord (BlockID b)) => BlockID b -> BlockIndex b -> Maybe (BH b)
@@ -135,18 +136,20 @@ data BH b = BH
   { bhHeight   :: !Height         --
   , bhBID      :: !(BlockID b)    --
   , bhWork     :: !Work           --
+  , bhSolution :: !(Solution b)
   , bhPrevious :: !(Maybe (BH b)) --
   , bhData     :: !(b Proxy)      --
   }
 
 asHeader :: BH b -> Header b
 asHeader bh = GBlock
-  { blockHeight = bhHeight bh
-  , prevBlock   = bhBID <$> bhPrevious bh
-  , blockData   = bhData bh
+  { blockHeight   = bhHeight bh
+  , prevBlock     = bhBID <$> bhPrevious bh
+  , blockData     = bhData bh
+  , blockSolution = bhSolution bh
   }
 
-deriving instance (Show (BlockID b), Show (b Proxy)) => Show (BH b)
+deriving instance (Show (BlockID b), Show (Solution b), Show (b Proxy)) => Show (BH b)
 
 instance BlockData b => Eq (BH b) where
   a == b = bhBID a == bhBID b
@@ -316,6 +319,7 @@ processHeader header = do
                 , bhWork     = work
                 , bhPrevious = Just parent
                 , bhData     = blockData header
+                , bhSolution = blockSolution header
                 }
   ----------------------------------------
   -- Update candidate heads

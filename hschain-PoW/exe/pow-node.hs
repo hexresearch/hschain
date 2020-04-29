@@ -82,9 +82,10 @@ inMemoryDB = do
     }
 
 genesis :: Block KV
-genesis = GBlock { blockHeight = Height 0
-                 , prevBlock   = Nothing
-                 , blockData   = KV { kvData = merkled [] }
+genesis = GBlock { blockHeight   = Height 0
+                 , prevBlock     = Nothing
+                 , blockData     = KV { kvData = merkled [] }
+                 , blockSolution = S'KV $ Height 0
                  }
 
 
@@ -96,6 +97,7 @@ mineBlock val b = GBlock
                                           in (fromIntegral h, val)
                                         ]
                      }
+  , blockSolution = S'KV $ succ $ blockHeight b
   }
 
 ----------------------------------------------------------------

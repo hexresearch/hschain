@@ -43,6 +43,9 @@ instance MerkleMap KV where
 instance BlockData KV where
   newtype BlockID KV = KV'BID (Hash SHA256)
     deriving newtype (Show,Eq,Ord,CryptoHashable,Serialise, JSON.ToJSON, JSON.FromJSON)
+
+  newtype Solution KV = S'KV Height
+    deriving newtype (Show, Eq, Ord, CryptoHashable, Serialise, JSON.ToJSON, JSON.FromJSON)
   --
   blockID b = let Hashed h = hashed b in KV'BID h
   validateHeader _ = True
