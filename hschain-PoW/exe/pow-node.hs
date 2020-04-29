@@ -85,7 +85,6 @@ genesis :: Block KV
 genesis = GBlock { blockHeight   = Height 0
                  , prevBlock     = Nothing
                  , blockData     = KV { kvData = merkled [] }
-                 , blockSolution = S'KV $ Height 0
                  }
 
 

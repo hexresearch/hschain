@@ -25,7 +25,8 @@ import HSChain.PoW.Types
 --
 
 data KV f = KV
-  { kvData :: MerkleNode f SHA256 [(Int,String)]
+  { kvData     :: MerkleNode f SHA256 [(Int,String)]
+  , kvSolution :: Integer
   }
   deriving stock (Generic)
 deriving stock instance Show1    f => Show (KV f)
@@ -38,16 +39,14 @@ instance IsMerkle f => CryptoHashable (KV f) where
   hashStep = genericHashStep "hschain"
 
 instance MerkleMap KV where
-  merkleMap f (KV d) = KV $ mapMerkleNode f d
+  merkleMap f (KV d w) = KV (mapMerkleNode f d) w
 
 instance BlockData KV where
   newtype BlockID KV = KV'BID (Hash SHA256)
     deriving newtype (Show,Eq,Ord,CryptoHashable,Serialise, JSON.ToJSON, JSON.FromJSON)
 
-  newtype Solution KV = S'KV Height
-    deriving newtype (Show, Eq, Ord, CryptoHashable, Serialise, JSON.ToJSON, JSON.FromJSON)
   --
   blockID b = let Hashed h = hashed b in KV'BID h
-  validateHeader _ = True
-  validateBlock  _ = True
-  blockWork      _ = Work 1
+  validateHeader _  = True
+  validateBlock  _  = True
+  blockWork         = Work . fromIntegral . kvSolution . blockData

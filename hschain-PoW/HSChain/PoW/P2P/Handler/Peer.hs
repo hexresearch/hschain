@@ -146,7 +146,6 @@ peerSend
      , Serialise (b Identity)
      , Serialise (b Proxy)
      , Serialise (BlockID b)
-     , Serialise (Solution b)
      )
   => P2PConnection
   -> Src (GossipMsg b)

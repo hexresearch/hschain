@@ -71,7 +71,6 @@ newtype Work = Work Natural
 class ( Show      (BlockID b)
       , Ord       (BlockID b)
       , Serialise (BlockID b)
-      , Serialise (Solution b)
       , JSON.ToJSON (BlockID b)
       , JSON.FromJSON (BlockID b)
       , MerkleMap b
@@ -79,9 +78,6 @@ class ( Show      (BlockID b)
   -- | ID of block. Usually it should be just a hash but we want to
   --   leave some representation leeway for implementations. 
   data BlockID b
-
-  -- |Proof-of-work puzzle solution.
-  data Solution b
 
   -- | Compute block ID out of block using only header.
   blockID :: IsMerkle f => GBlock b f -> BlockID b
@@ -100,13 +96,12 @@ class ( Show      (BlockID b)
 data GBlock b f = GBlock
   { blockHeight   :: !Height
   , prevBlock     :: !(Maybe (BlockID b))
-  , blockSolution :: !(Solution b)
   , blockData     :: !(b f)
   }
   deriving (Generic)
 
-deriving stock instance (Eq (BlockID b), Eq (Solution b), Eq (b f)) => Eq (GBlock b f)
-deriving stock instance (Show (BlockID b), Show (Solution b), Show (b f)) => Show (GBlock b f)
+deriving stock instance (Eq (BlockID b), Eq (b f)) => Eq (GBlock b f)
+deriving stock instance (Show (BlockID b), Show (b f)) => Show (GBlock b f)
 
 toHeader :: MerkleMap b => Block b -> Header b
 toHeader = merkleMap (const Proxy)
@@ -114,7 +109,6 @@ toHeader = merkleMap (const Proxy)
 instance ( forall g. IsMerkle g => CryptoHashable (b g)
          , IsMerkle f
          , CryptoHashable (BlockID b)
-         , CryptoHashable (Solution b)
          ) => CryptoHashable (GBlock b f) where
   hashStep = genericHashStep "hschain"
 
@@ -142,17 +136,14 @@ instance (Serialise (BlockID b)) => Serialise (Locator b)
 instance ( IsMerkle f
          , CBOR.Serialise (BlockID b)
          , CBOR.Serialise (b f)
-         , CBOR.Serialise (Solution b)
          ) => CBOR.Serialise (GBlock b f)
 
 instance ( IsMerkle f
          , JSON.ToJSON (BlockID b)
-         , JSON.ToJSON (Solution b)
          , forall g. IsMerkle g => JSON.ToJSON (b g)
          ) => JSON.ToJSON (GBlock b f)
 
 instance ( IsMerkle f
          , JSON.FromJSON (BlockID b)
-         , JSON.FromJSON (Solution b)
          , forall g. IsMerkle g => JSON.FromJSON (b g)
          ) => JSON.FromJSON (GBlock b f)

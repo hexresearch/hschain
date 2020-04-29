@@ -88,12 +88,11 @@ data GossipMsg b
   | GossipResp !(MsgResponce b)
   | GossipAnn  !(MsgAnn b)
   deriving stock (Generic)
-deriving stock instance (Show (BlockID b), Show (Solution b), Show (b Proxy), Show (b Identity)) => Show (GossipMsg b)
+deriving stock instance (Show (BlockID b), Show (b Proxy), Show (b Identity)) => Show (GossipMsg b)
 
 instance ( Serialise (b Identity)
          , Serialise (b Proxy)
          , Serialise (BlockID b)
-         , Serialise (Solution b)
          ) => Serialise (GossipMsg b)
 
   
@@ -131,12 +130,11 @@ data MsgResponce b
   | RespNack
   -- ^ Responce was denied.
   deriving stock (Generic)
-deriving stock instance (Show (BlockID b), Show (b Proxy), Show (Solution b), Show (b Identity)) => Show (MsgResponce b)
+deriving stock instance (Show (BlockID b), Show (b Proxy), Show (b Identity)) => Show (MsgResponce b)
 
 instance ( Serialise (b Identity)
          , Serialise (b Proxy)
          , Serialise (BlockID b)
-         , Serialise (Solution b)
          ) => Serialise (MsgResponce b)
 
 
@@ -144,16 +142,14 @@ data MsgAnn b
   = AnnBestHead !(Header b)
   -- ^ Send new best head to peer. Generally sent unannounced.
   deriving stock (Generic)
-deriving stock instance (Show (BlockID b), Show (Solution b), Show (b Proxy)) => Show (MsgAnn b)
+deriving stock instance (Show (BlockID b), Show (b Proxy)) => Show (MsgAnn b)
 
 
 instance ( Serialise (b Proxy)
          , Serialise (BlockID b)
-         , Serialise (Solution b)
          ) => Serialise (MsgAnn b)
 
 instance ( JSON.ToJSON (BlockID b)
-         , JSON.ToJSON (Solution b)
          , forall g. IsMerkle g => JSON.ToJSON (b g)
          ) => JSON.ToJSON (MsgAnn b)
 
