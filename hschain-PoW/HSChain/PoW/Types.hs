@@ -82,10 +82,13 @@ class ( Show      (BlockID b)
 
   -- | Compute block ID out of block using only header.
   blockID :: IsMerkle f => GBlock b f -> BlockID b
-  -- | Context free validation of header. It's mostly sanity check on
-  --   header. 
-  validateHeader :: MonadIO m => Header b -> m Bool
+  -- | Validate header. Chain ending with parent block and current
+  --   time are provided as parameters.
+  validateHeader :: MonadIO m => BH b -> Time -> Header b -> m Bool
+  -- | Context free validation of block which doesn't have access to
+  --   state of blockchain. It should perform sanity checks.
   validateBlock  :: MonadIO m => Block  b -> m Bool
+  -- | Amount of work in the block
   blockWork      :: GBlock b f -> Work
 
 -- | Generic block. This is just spine of blockchain, that is height
