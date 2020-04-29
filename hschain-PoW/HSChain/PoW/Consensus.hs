@@ -290,7 +290,8 @@ processHeader header = do
   -- Perform header validations
   unless (succ (bhHeight parent) == blockHeight header)
     $ throwError ErrH'HeightMismatch
-  goodHeader <- validateHeader header
+  now <- getCurrentTime
+  goodHeader <- validateHeader parent now header
   unless goodHeader
     $ throwError ErrH'ValidationFailure
   -- Create new index entry
