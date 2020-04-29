@@ -96,6 +96,7 @@ class ( Show      (BlockID b)
 --   (usually block is Merkle tree of some transactions)
 data GBlock b f = GBlock
   { blockHeight   :: !Height
+  , blockTime   :: !Time
   , prevBlock     :: !(Maybe (BlockID b))
   , blockData     :: !(b f)
   }
