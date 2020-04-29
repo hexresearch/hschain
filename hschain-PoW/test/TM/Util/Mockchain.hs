@@ -16,6 +16,7 @@ mockchain :: [Block KV]
 mockchain = gen : unfoldr (Just . (\b -> (b,b)) . mineBlock "VAL") gen
   where
     gen = GBlock { blockHeight = Height 0
+                 , blockTime   = Time 0
                  , prevBlock   = Nothing
                  , blockData   = KV { kvData = merkled [], kvSolution = 1 }
                  }
@@ -23,6 +24,7 @@ mockchain = gen : unfoldr (Just . (\b -> (b,b)) . mineBlock "VAL") gen
 mineBlock :: String -> Block KV -> Block KV
 mineBlock val b = GBlock
   { blockHeight = succ $ blockHeight b
+  , blockTime   = Time 0
   , prevBlock   = Just $! blockID b
   , blockData   = KV { kvData = merkled [ let Height h = blockHeight b
                                           in (fromIntegral h, val)

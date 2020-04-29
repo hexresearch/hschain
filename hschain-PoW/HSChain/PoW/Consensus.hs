@@ -119,6 +119,7 @@ blockIndexFromGenesis genesis
   where
     bid = blockID genesis
     bh  = BH { bhHeight   = Height 0
+             , bhTime     = blockTime genesis
              , bhBID      = bid
              , bhWork     = blockWork genesis
              , bhPrevious = Nothing
@@ -136,6 +137,7 @@ insertIdx bh (BlockIndex idx) = BlockIndex $ Map.insert (bhBID bh) bh idx
 --   since we'll keep many thousands on these values in memory.
 data BH b = BH
   { bhHeight   :: !Height         --
+  , bhTime     :: !Time
   , bhBID      :: !(BlockID b)    --
   , bhWork     :: !Work           --
   , bhPrevious :: !(Maybe (BH b)) --
@@ -145,6 +147,7 @@ data BH b = BH
 asHeader :: BH b -> Header b
 asHeader bh = GBlock
   { blockHeight   = bhHeight bh
+  , blockTime   = bhTime bh
   , prevBlock     = bhBID <$> bhPrevious bh
   , blockData     = bhData bh
   }
@@ -318,6 +321,7 @@ processHeader header = do
   -- Create new index entry
   let work = bhWork parent <> blockWork header
       bh   = BH { bhHeight   = blockHeight header
+                , bhTime     = blockTime   header
                 , bhBID      = bid
                 , bhWork     = work
                 , bhPrevious = Just parent
