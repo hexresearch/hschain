@@ -21,7 +21,6 @@ import Data.Word
 
 import Foreign
 import Foreign.C.Types
-import Foreign.Marshal.Alloc (allocaBytes)
 
 foreign import capi "evpow.h value EVPOW_ANSWER_BYTES" answerSize :: Int
 foreign import capi "evpow.h value EVPOW_HASH_BYTES" hashSize :: Int
@@ -64,6 +63,7 @@ data POWConfig = POWConfig
   deriving (Show)
 
 -- |Configuration of POW - default values.
+defaultPOWConfig :: POWConfig
 defaultPOWConfig = POWConfig
   { powCfgClausesCount             = 5250
   , powCfgAttemptsBetweenRestarts  = 10000
