@@ -16,9 +16,10 @@ import HSChain.PoW.Types
 import HSChain.PoW.Consensus
 import HSChain.Types.Merkle.Types
 import HSChain.Examples.Simple
+import HSChain.Examples.Util
 
-import TM.Util.InMemory
 import TM.Util.Mockchain
+
 
 tests :: TestTree
 tests = testGroup "PoW consensus"
