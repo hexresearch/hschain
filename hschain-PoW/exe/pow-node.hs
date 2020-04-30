@@ -3,6 +3,7 @@
 {-# LANGUAGE DeriveGeneric      #-}
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE FlexibleContexts   #-}
+{-# LANGUAGE LambdaCase         #-}
 {-# LANGUAGE OverloadedStrings  #-}
 {-# LANGUAGE RecordWildCards    #-}
 {-# LANGUAGE TypeApplications   #-}
@@ -129,5 +130,7 @@ main = do
           c <- atomicallyIO $ currentConsensus pow
           let h = c ^. bestHead . _1 . to asHeader
               b = mineBlock cfgStr h
-          sendNewBlock pow b
+          sendNewBlock pow b >>= \case
+            True  -> return ()
+            False -> error "Mined invalid block"
 
