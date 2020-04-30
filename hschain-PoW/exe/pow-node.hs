@@ -17,6 +17,7 @@ import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Cont
+import Data.Maybe
 import Data.Word
 import Data.Yaml.Config       (loadYamlSettings, requireEnv)
 import Lens.Micro
@@ -42,22 +43,30 @@ import HSChain.Control.Util
 ----------------------------------------------------------------
 
 genesis :: Block KV
-genesis = GBlock { blockHeight   = Height 0
-                 , prevBlock     = Nothing
-                 , blockData     = KV { kvData = merkled [], kvSolution = 0 }
-                 }
+genesis = GBlock
+  { blockHeight = Height 0
+  , blockTime   = Time 0
+  , prevBlock   = Nothing
+  , blockData   = KV { kvData       = merkled []
+                     , kvNonce      = 0
+                     , kvDifficulty = 256
+                     }
+  }
 
 
 mineBlock :: IsMerkle f => String -> GBlock KV f -> Block KV
-mineBlock val b = GBlock
+mineBlock val b = fromJust $ mine $ GBlock
   { blockHeight = succ $ blockHeight b
+  , blockTime   = Time 0
   , prevBlock   = Just $! blockID b
   , blockData   = KV { kvData = merkled [ let Height h = blockHeight b
                                           in (fromIntegral h, val)
                                         ]
-                     , kvSolution = fromIntegral $ fromEnum $ succ $ blockHeight b
+                     , kvNonce      = 0
+                     , kvDifficulty = kvDifficulty (blockData b)
                      }
   }
+
 
 ----------------------------------------------------------------
 -- Configuration
@@ -114,7 +123,7 @@ main = do
   let s0 = consensusGenesis genesis (viewKV (blockID genesis))
   withLogEnv "" "" (map makeScribe cfgLog) $ \logEnv ->
     runLoggerT logEnv $ evalContT $ do
-      pow <- startNode netcfg net cfgPeers db s0
+      pow <- startNode netcfg net cfgPeers KVCfg db s0
       let printBCH = when optPrintBCH $ do
             c <- atomicallyIO $ currentConsensus pow
             let loop bh@BH{bhBID = bid} = do

@@ -1,12 +1,15 @@
 -- |
 module TM.Util.Mockchain where
 
-import Data.List (unfoldr)
+import Data.Maybe (fromJust)
+import Data.List  (unfoldr)
 
 import HSChain.PoW.Types
 import HSChain.Types.Merkle.Types
 import HSChain.Examples.Simple
 
+import HSChain.Crypto
+import HSChain.Crypto.SHA
 
 ----------------------------------------------------------------
 --
@@ -20,12 +23,12 @@ mockchain = gen : unfoldr (Just . (\b -> (b,b)) . mineBlock "VAL") gen
                  , prevBlock   = Nothing
                  , blockData   = KV { kvData       = merkled []
                                     , kvNonce      = 0
-                                    , kvDifficulty = 1
+                                    , kvDifficulty = 256
                                     }
                  }
 
 mineBlock :: String -> Block KV -> Block KV
-mineBlock val b = GBlock
+mineBlock val b = fromJust $ mine $ GBlock
   { blockHeight = succ $ blockHeight b
   , blockTime   = Time 0
   , prevBlock   = Just $! blockID b
@@ -33,13 +36,13 @@ mineBlock val b = GBlock
                                           in (fromIntegral h, val)
                                         ]
                      , kvNonce      = 0
-                     , kvDifficulty = 1
+                     , kvDifficulty = kvDifficulty (blockData b)
                      }
   }
 
 
 genesis,block1,block2,block3,block2' :: Block KV
-genesis:block1:block2:block3:_ = take 4 mockchain
+genesis:block1:block2:block3:_ = mockchain
 block2' = mineBlock "Z" block1
 
 

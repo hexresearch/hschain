@@ -13,6 +13,7 @@ module HSChain.Examples.Simple where
 import Codec.Serialise      (Serialise)
 import Data.Bits
 import Data.Functor.Classes (Show1)
+import Data.List            (find)
 import Data.Word
 import qualified Data.Aeson      as JSON
 import qualified Data.ByteString as BS
@@ -56,18 +57,41 @@ instance BlockData KV where
     deriving stock (Show)
   --
   blockID b = let Hashed h = hashed b in KV'BID h
-  validateHeader _ _ _ header
-    = return $! n <= tgt
+  validateHeader _ bh (Time now) header
+    = return $ and
+    [ hash256 header <= tgt
+    -- FIXME: correctly compute rertargeting
+    , tgt <= retarget bh
+    -- Time checks
+    , t <= now + (2*60*60*1000)
+    -- FIXME: Check that we're ahead of median time of N prev block
+    ]
     where
-      tgt = 2^(256::Int) `div` kvDifficulty (blockData header)
-      n   = hash256 header
+      Time t = blockTime header
+      tgt    = blockTarget header
   validateBlock  _ _ = return True
   blockWork      b = Work $ kvDifficulty $ blockData b
 
 
+blockTarget :: GBlock KV f -> Natural
+blockTarget b = 2^(256::Int) `div` kvDifficulty (blockData b)
+
+retarget :: BH KV -> Natural
+retarget bh = kvDifficulty $ bhData bh
 
 hash256 :: CryptoHashable a => a -> Natural
 hash256 a
-  = BS.foldr' (\w i -> (i `shiftL` 8) + fromIntegral  w) 0 bs
+  = BS.foldl' (\i w -> (i `shiftL` 8) + fromIntegral  w) 0 bs
   where
     Hash bs = hash a :: Hash SHA256
+
+mine :: Block KV -> Maybe (Block KV)
+mine b0 = find (\b -> hash256 b <= tgt)
+  [ let GBlock{..} = b0
+    in  GBlock{ blockData = blockData { kvNonce = nonce }
+              , ..
+              }
+  | nonce <- [minBound .. maxBound]
+  ]
+  where
+    tgt = blockTarget b0
