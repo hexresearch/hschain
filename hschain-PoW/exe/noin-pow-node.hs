@@ -1,3 +1,8 @@
+-- |noin-pow-node.hs
+--
+-- An Effervescent POW node tracking UTXO with noins.
+--
+-- Copyright (C) 2020 ...
 {-# LANGUAGE ApplicativeDo      #-}
 {-# LANGUAGE DeriveAnyClass     #-}
 {-# LANGUAGE DeriveGeneric      #-}
@@ -6,7 +11,6 @@
 {-# LANGUAGE OverloadedStrings  #-}
 {-# LANGUAGE RecordWildCards    #-}
 {-# LANGUAGE TypeApplications   #-}
--- |
 module Main where
 
 import qualified Data.Aeson as JSON
@@ -33,7 +37,7 @@ import HSChain.PoW.Types
 import HSChain.Network.TCP
 import HSChain.Network.Types
 import HSChain.Types.Merkle.Types
-import HSChain.Examples.Simple
+--import HSChain.Examples.Simple
 import HSChain.Control.Util
 
 
@@ -82,9 +86,9 @@ inMemoryDB = do
     }
 
 genesis :: Block KV
-genesis = GBlock { blockHeight   = Height 0
-                 , prevBlock     = Nothing
-                 , blockData     = KV { kvData = merkled [], kvSolution = 0 }
+genesis = GBlock { blockHeight = Height 0
+                 , prevBlock   = Nothing
+                 , blockData   = KV { kvData = merkled [] }
                  }
 
 
@@ -95,7 +99,6 @@ mineBlock val b = GBlock
   , blockData   = KV { kvData = merkled [ let Height h = blockHeight b
                                           in (fromIntegral h, val)
                                         ]
-                     , kvSolution = fromIntegral $ fromEnum $ succ $ blockHeight b
                      }
   }
 

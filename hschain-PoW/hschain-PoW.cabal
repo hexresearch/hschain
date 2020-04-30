@@ -79,6 +79,7 @@ Executable hschain-PoW-node
                      , hschain-PoW
                      , hschain-net
                      , hschain-merkle
+                     , hschain-pow-func
                      , hschain-types
                      , hschain-crypto
                      , hschain-control
@@ -94,7 +95,7 @@ Executable hschain-PoW-node
   hs-source-dirs:      exe
   Main-is:             pow-node.hs
 
-                
+
 -- Test suite
 Test-suite hschain-PoW-tests
   Type:                exitcode-stdio-1.0

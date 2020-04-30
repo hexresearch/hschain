@@ -5,7 +5,7 @@ cabal-version:       2.4
 -- http://haskell.org/cabal/users-guide/
 
 -- The name of the package.
-name:                hschain-pow
+name:                hschain-pow-func
 
 -- The package version.  See the Haskell package versioning policy (PVP)
 -- for standards guiding when and how versions should be incremented.
@@ -89,7 +89,7 @@ executable hschain-pow-cli
   build-depends:       base >=4.9
                      , optparse-applicative
                      , bytestring
-                     , hschain-pow
+                     , hschain-pow-func
 
   -- Directories containing source files.
   hs-source-dirs:      exe

@@ -78,20 +78,25 @@ class ( Show      (BlockID b)
   -- | ID of block. Usually it should be just a hash but we want to
   --   leave some representation leeway for implementations. 
   data BlockID b
+
   -- | Compute block ID out of block using only header.
   blockID :: IsMerkle f => GBlock b f -> BlockID b
   -- | Context free validation of header. It's mostly sanity check on
   --   header. 
-  validateHeader :: Header b -> Bool
-  validateBlock  :: Block  b -> Bool
+  validateHeader :: MonadIO m => Header b -> m Bool
+  validateBlock  :: MonadIO m => Block  b -> m Bool
   blockWork      :: GBlock b f -> Work
 
 -- | Generic block. This is just spine of blockchain, that is height
---   of block, hash of previous block and
+--   of block, hash of previous block and a "block data" - application
+--   of type functor to get some information about actual data, from
+--   just Merkle tree root to... Merkle tree itself?
+--
+--   (usually block is Merkle tree of some transactions)
 data GBlock b f = GBlock
-  { blockHeight :: !Height
-  , prevBlock   :: !(Maybe (BlockID b))
-  , blockData   :: !(b f)
+  { blockHeight   :: !Height
+  , prevBlock     :: !(Maybe (BlockID b))
+  , blockData     :: !(b f)
   }
   deriving (Generic)
 

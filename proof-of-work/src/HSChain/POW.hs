@@ -21,7 +21,6 @@ import Data.Word
 
 import Foreign
 import Foreign.C.Types
-import Foreign.Marshal.Alloc (allocaBytes)
 
 foreign import capi "evpow.h value EVPOW_ANSWER_BYTES" answerSize :: Int
 foreign import capi "evpow.h value EVPOW_HASH_BYTES" hashSize :: Int
@@ -64,6 +63,7 @@ data POWConfig = POWConfig
   deriving (Show)
 
 -- |Configuration of POW - default values.
+defaultPOWConfig :: POWConfig
 defaultPOWConfig = POWConfig
   { powCfgClausesCount             = 5250
   , powCfgAttemptsBetweenRestarts  = 10000
@@ -107,13 +107,12 @@ check headerWithAnswer hashOfHeader POWConfig{..} =
   B.useAsCStringLen headerWithAnswer $ \(hdr, hdrLen) ->
     if hdrLen < answerSize
       then return False
-      else B.useAsCStringLen hashOfHeader $ \(hash,hashLen) -> do
+      else B.useAsCStringLen hashOfHeader $ \(hash,hashLen) ->
         if hashLen /= hashSize
           then return False
-          else do
-            let prefixSize = hdrLen - answerSize
-                answer = plusPtr hdr prefixSize
-            fmap (/= 0) $ evpow_check
+          else let prefixSize = hdrLen - answerSize
+                   answer = plusPtr hdr prefixSize
+            in fmap (/= 0) $ evpow_check
               (castPtr hdr) (fromIntegral prefixSize) (castPtr answer) (castPtr hash)
               powCfgClausesCount powCfgComplexityShift powCfgComplexityMantissa
 

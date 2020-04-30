@@ -141,9 +141,9 @@ data BH b = BH
 
 asHeader :: BH b -> Header b
 asHeader bh = GBlock
-  { blockHeight = bhHeight bh
-  , prevBlock   = bhBID <$> bhPrevious bh
-  , blockData   = bhData bh
+  { blockHeight   = bhHeight bh
+  , prevBlock     = bhBID <$> bhPrevious bh
+  , blockData     = bhData bh
   }
 
 deriving instance (Show (BlockID b), Show (b Proxy)) => Show (BH b)
@@ -287,7 +287,7 @@ data BlockError
 -- | Add new header. Header is only accepted only if we already have
 --   header for previous block and header is otherwise valid.
 processHeader
-  :: (BlockData b, Monad m)
+  :: (BlockData b, MonadIO m)
   => Header b
   -> ExceptT HeaderError (StateT (Consensus m b) m) ()
 -- FIXME: Decide what to do with time?
@@ -307,7 +307,8 @@ processHeader header = do
   -- Perform header validations
   unless (succ (bhHeight parent) == blockHeight header)
     $ throwError ErrH'HeightMismatch
-  unless (validateHeader header)
+  goodHeader <- validateHeader header
+  unless goodHeader
     $ throwError ErrH'ValidationFailure
   -- Create new index entry
   let work = bhWork parent <> blockWork header
@@ -387,7 +388,7 @@ growNewHead bh = do
 
 -- | Add new block. We only accept block if we already have valid header. Note
 processBlock
-  :: (BlockData b, Monad m)
+  :: (BlockData b, MonadIO m)
   => BlockDB m b
   -> Block b
   -> ExceptT BlockError (StateT (Consensus m b) m) ()
@@ -400,7 +401,8 @@ processBlock db block = do
   requiredBlocks %= Set.delete bid
   -- Perform context free validation of block. If we validation fails
   -- we will add it to set of bad block and won't write on disk
-  case validateBlock block of
+  good <- validateBlock block
+  case good of
     False -> do invalidateBlock bid
                 throwError ErrB'InvalidBlock
     True  -> do lift $ lift $ storeBlock db block
