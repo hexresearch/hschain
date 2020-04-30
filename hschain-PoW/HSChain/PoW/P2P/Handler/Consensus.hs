@@ -16,6 +16,7 @@ module HSChain.PoW.P2P.Handler.Consensus
   ) where
 
 import Control.Monad
+import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Control.Monad.State.Strict
 import Control.Monad.Except
@@ -42,12 +43,12 @@ data ConsensusCh m b = ConsensusCh
 -- | Thread that reacts to messages from peers and updates consensus
 --   accordingly
 threadConsensus
-  :: (MonadIO m, MonadLogger m, BlockData b)
+  :: (MonadIO m, MonadLogger m, BlockData b, MonadCatch m)
   => BlockDB m b
   -> Consensus m b
   -> ConsensusCh m b
   -> m x
-threadConsensus db consensus0 ConsensusCh{..} = descendNamespace "cns" $ do
+threadConsensus db consensus0 ConsensusCh{..} = descendNamespace "cns" $ logOnException $ do
   logger InfoS "Staring consensus" ()
   flip evalStateT consensus0
     $ forever
