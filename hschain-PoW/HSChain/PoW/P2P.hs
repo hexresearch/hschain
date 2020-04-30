@@ -13,13 +13,11 @@
 module HSChain.PoW.P2P where
 
 import Codec.Serialise
-import Control.Applicative
 import Control.Concurrent.MVar
 import Control.Concurrent.STM
 import Control.Monad.Cont
 import Control.Monad.Catch
-import Control.Monad.Trans.Maybe
-import Data.Maybe
+import Control.Monad.Except
 
 import HSChain.Control.Class
 import HSChain.Control.Channels
@@ -36,7 +34,7 @@ import HSChain.Types.Merkle.Types
 
 data PoW m b = PoW
   { currentConsensus :: STM (Consensus m b)
-  , sendNewBlock     :: Block b -> m Bool
+  , sendNewBlock     :: Block b -> m (Either SomeException ())
   }
 
 
@@ -70,11 +68,11 @@ startNode cfg netAPI seeds db consensus = do
     }
   return PoW
     { currentConsensus = readTVar bIdx
-    , sendNewBlock     = \b -> fmap isJust $ runMaybeT $ do
+    , sendNewBlock     = \b -> runExceptT $ do
         res <- liftIO newEmptyMVar
         sinkIO sinkBOX $ BoxRX $ \cnt -> liftIO . putMVar res =<< cnt (RxHeaders [toHeader b])
         liftIO (takeMVar res) >>= \case
-          Peer'Punish       -> empty
+          Peer'Punish e     -> throwError (toException e)
           Peer'EnterCatchup -> return ()
           Peer'Noop         -> return ()
         sinkIO sinkBOX $ BoxRX $ \cnt -> void $ cnt $ RxBlock b

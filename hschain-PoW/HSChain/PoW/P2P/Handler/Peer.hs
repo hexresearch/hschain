@@ -252,6 +252,6 @@ reactCommand
   -> CmdPeer b
   -> m ()
 reactCommand tid PeerState{..} = \case
-  Peer'Punish       -> liftIO $ throwTo tid ProtocolError
+  Peer'Punish{}     -> liftIO $ throwTo tid ProtocolError
   Peer'EnterCatchup -> atomicallyIO $ writeTVar inCatchup True
   Peer'Noop         -> return ()

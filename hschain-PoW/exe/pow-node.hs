@@ -131,6 +131,6 @@ main = do
           let h = c ^. bestHead . _1 . to asHeader
               b = mineBlock cfgStr h
           sendNewBlock pow b >>= \case
-            True  -> return ()
-            False -> error "Mined invalid block"
+            Right () -> return ()
+            Left  e  -> error $ show e
 

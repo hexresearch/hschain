@@ -85,9 +85,9 @@ consensusMonitor db (BoxRX message)
         Right () -> return Peer'Noop
         Left  e  -> case e of
           ErrH'KnownHeader       -> return Peer'Noop
-          ErrH'HeightMismatch    -> return Peer'Punish
-          ErrH'ValidationFailure -> return Peer'Punish
-          ErrH'BadParent         -> return Peer'Punish
+          ErrH'HeightMismatch    -> return $ Peer'Punish $ toException e
+          ErrH'ValidationFailure -> return $ Peer'Punish $ toException e
+          ErrH'BadParent         -> return $ Peer'Punish $ toException e
           -- We got announce that we couldn't attach to block tree. So
           -- we need that peer to catch up
           ErrH'UnknownParent     -> return Peer'EnterCatchup
@@ -108,7 +108,7 @@ consensusMonitor db (BoxRX message)
         Right () -> handleHeaders hs
         Left  e  -> case e of
           ErrH'KnownHeader       -> handleHeaders hs
-          ErrH'HeightMismatch    -> return Peer'Punish
-          ErrH'UnknownParent     -> return Peer'Punish
-          ErrH'ValidationFailure -> return Peer'Punish
-          ErrH'BadParent         -> return Peer'Punish
+          ErrH'HeightMismatch    -> return $ Peer'Punish $ toException e
+          ErrH'UnknownParent     -> return $ Peer'Punish $ toException e
+          ErrH'ValidationFailure -> return $ Peer'Punish $ toException e
+          ErrH'BadParent         -> return $ Peer'Punish $ toException e
