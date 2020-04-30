@@ -37,13 +37,16 @@ import HSChain.Types.Merkle.Types
 -- | Height of block in blockchain. That is 
 newtype Height = Height Int32
   deriving stock   (Show, Read, Generic, Eq, Ord)
-  deriving newtype (NFData, CBOR.Serialise, JSON.ToJSON, JSON.FromJSON, Enum, CryptoHashable)
+  deriving newtype ( NFData, Num, Real, Integral
+                   , CBOR.Serialise, JSON.ToJSON, JSON.FromJSON, Enum, CryptoHashable)
 
 -- | Time in milliseconds since UNIX epoch.
 newtype Time = Time Int64
-  deriving stock   (Show, Read, Generic, Eq, Ord)
+  deriving stock   (Read, Generic, Eq, Ord)
   deriving newtype (NFData, CBOR.Serialise, JSON.ToJSON, JSON.FromJSON, Enum, CryptoHashable)
 
+instance Show Time where
+  show = show . timeToUTC
 
 -- | Get current time
 getCurrentTime :: MonadIO m => m Time

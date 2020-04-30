@@ -71,12 +71,15 @@ startNode cfg netAPI seeds chainCfg db consensus = do
     { currentConsensus = readTVar bIdx
     , sendNewBlock     = \b -> runExceptT $ do
         res <- liftIO newEmptyMVar
+        --
         sinkIO sinkBOX $ BoxRX $ \cnt -> liftIO . putMVar res =<< cnt (RxHeaders [toHeader b])
         liftIO (takeMVar res) >>= \case
           Peer'Punish e     -> throwError (toException e)
           Peer'EnterCatchup -> return ()
           Peer'Noop         -> return ()
-        sinkIO sinkBOX $ BoxRX $ \cnt -> void $ cnt $ RxBlock b
+        --
+        sinkIO sinkBOX $ BoxRX $ \cnt -> liftIO . putMVar res =<< cnt (RxBlock b)
+        void $ liftIO (takeMVar res)
     }
 
 

@@ -49,21 +49,21 @@ genesis = GBlock
   , prevBlock   = Nothing
   , blockData   = KV { kvData       = merkled []
                      , kvNonce      = 0
-                     , kvDifficulty = 256
+                     , kvDifficulty = 4096
                      }
   }
 
 
-mineBlock :: IsMerkle f => String -> GBlock KV f -> Block KV
-mineBlock val b = fromJust $ mine $ GBlock
-  { blockHeight = succ $ blockHeight b
-  , blockTime   = Time 0
-  , prevBlock   = Just $! blockID b
-  , blockData   = KV { kvData = merkled [ let Height h = blockHeight b
+mineBlock :: Time -> String -> BH KV -> Block KV
+mineBlock now val bh = fromJust $ mine $ GBlock
+  { blockHeight = succ $ bhHeight bh
+  , blockTime   = now
+  , prevBlock   = Just $! bhBID bh
+  , blockData   = KV { kvData = merkled [ let Height h = bhHeight bh
                                           in (fromIntegral h, val)
                                         ]
                      , kvNonce      = 0
-                     , kvDifficulty = kvDifficulty (blockData b)
+                     , kvDifficulty = retarget bh
                      }
   }
 
@@ -132,13 +132,15 @@ main = do
                   maybe (return ()) loop $ bhPrevious bh
             loop (c ^. bestHead . _1) 
       lift $ flip onException printBCH $ forever $ do
-        t <- liftIO $ negate . log <$> randomRIO (0.5, 2)
-        liftIO $ threadDelay $ round (1e6 * t :: Double)
+        -- t <- liftIO $ negate . log <$> randomRIO (0.5, 2)
+        -- liftIO $ threadDelay $ round (1e6 * t :: Double)
         --
         when optMine $ do
-          c <- atomicallyIO $ currentConsensus pow
-          let h = c ^. bestHead . _1 . to asHeader
-              b = mineBlock cfgStr h
+          c   <- atomicallyIO $ currentConsensus pow
+          now <- getCurrentTime
+          let bh = c ^. bestHead . _1
+              b  = mineBlock now cfgStr bh
+          liftIO $ print (blockHeight b, blockTime b)
           sendNewBlock pow b >>= \case
             Right () -> return ()
             Left  e  -> error $ show e

@@ -26,6 +26,7 @@ import HSChain.Crypto.SHA
 import HSChain.Types.Merkle.Types
 import HSChain.PoW.Types
 
+import Debug.Trace
 
 ----------------------------------------------------------------
 --
@@ -58,17 +59,18 @@ instance BlockData KV where
   --
   blockID b = let Hashed h = hashed b in KV'BID h
   validateHeader _ bh (Time now) header
-    = return $ and
-    [ hash256 header <= tgt
-    -- FIXME: correctly compute rertargeting
-    , tgt <= retarget bh
+    = return
+    -- $ traceShow (blockHeight header, bhHeight bh, retarget bh)
+    $ and
+    [ hash256 header <= blockTarget header
+    , kvDifficulty (blockData header) == retarget bh
     -- Time checks
     , t <= now + (2*60*60*1000)
     -- FIXME: Check that we're ahead of median time of N prev block
     ]
     where
       Time t = blockTime header
-      tgt    = blockTarget header
+  --
   validateBlock  _ _ = return True
   blockWork      b = Work $ kvDifficulty $ blockData b
 
@@ -76,8 +78,22 @@ instance BlockData KV where
 blockTarget :: GBlock KV f -> Natural
 blockTarget b = 2^(256::Int) `div` kvDifficulty (blockData b)
 
+-- FIXME: correctly compute rertargeting
 retarget :: BH KV -> Natural
-retarget bh = kvDifficulty $ bhData bh
+retarget bh
+  -- Retarget
+  | bhHeight bh `mod` 10 == 0
+  , traceShow (bhHeight bh) True
+  , Just old <- goBack 10 bh
+  , traceShow (bhHeight old) True
+  , bhHeight old /= 0
+  =   let Time t1 = bhTime old 
+          Time t2 = bhTime bh
+          tgt     = 2^(256::Int) `div` kvDifficulty (bhData bh)
+          tgt'    = (tgt * fromIntegral (t2 - t1)) `div` (10*1000)
+      in traceShowId $ 2^(256::Int) `div` tgt'
+  | otherwise
+    = kvDifficulty $ bhData bh
 
 hash256 :: CryptoHashable a => a -> Natural
 hash256 a
@@ -95,3 +111,8 @@ mine b0 = find (\b -> hash256 b <= tgt)
   ]
   where
     tgt = blockTarget b0
+
+
+goBack :: Int -> BH b -> Maybe (BH b)
+goBack 0 bh = Just bh
+goBack n bh = goBack (n-1) =<< bhPrevious bh
