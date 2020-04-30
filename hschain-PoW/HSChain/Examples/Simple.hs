@@ -52,15 +52,16 @@ instance MerkleMap KV where
 instance BlockData KV where
   newtype BlockID KV = KV'BID (Hash SHA256)
     deriving newtype (Show,Eq,Ord,CryptoHashable,Serialise, JSON.ToJSON, JSON.FromJSON)
-
+  data ChainConfig KV = KVCfg
+    deriving stock (Show)
   --
   blockID b = let Hashed h = hashed b in KV'BID h
-  validateHeader _ _ header
+  validateHeader _ _ _ header
     = return $! n <= tgt
     where
       tgt = 2^(256::Int) `div` kvDifficulty (blockData header)
       n   = hash256 header
-  validateBlock  _ = return True
+  validateBlock  _ _ = return True
   blockWork      b = Work $ kvDifficulty $ blockData b
 
 

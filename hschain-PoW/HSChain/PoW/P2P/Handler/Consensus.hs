@@ -44,16 +44,17 @@ data ConsensusCh m b = ConsensusCh
 --   accordingly
 threadConsensus
   :: (MonadIO m, MonadLogger m, BlockData b, MonadCatch m)
-  => BlockDB m b
+  => ChainConfig b
+  -> BlockDB m b
   -> Consensus m b
   -> ConsensusCh m b
   -> m x
-threadConsensus db consensus0 ConsensusCh{..} = descendNamespace "cns" $ logOnException $ do
+threadConsensus cfg db consensus0 ConsensusCh{..} = descendNamespace "cns" $ logOnException $ do
   logger InfoS "Staring consensus" ()
   flip evalStateT consensus0
     $ forever
     $ do bh <- use $ bestHead . _1
-         consensusMonitor db =<< awaitIO srcRX
+         consensusMonitor cfg db =<< awaitIO srcRX
          sinkIO sinkConsensusSt =<< get
          sinkIO sinkReqBlocks   =<< use requiredBlocks
          bh' <- use $ bestHead . _1
@@ -63,10 +64,11 @@ threadConsensus db consensus0 ConsensusCh{..} = descendNamespace "cns" $ logOnEx
 -- Handler for messages coming from peer.
 consensusMonitor
   :: (MonadLogger m, BlockData b, MonadIO m)
-  => BlockDB m b
+  => ChainConfig b
+  -> BlockDB m b
   -> BoxRX m b
   -> StateT (Consensus m b) m ()
-consensusMonitor db (BoxRX message)
+consensusMonitor cfg db (BoxRX message)
   = message $ logR <=< \case
       RxAnn     m  -> handleAnnounce m
       RxBlock   b  -> handleBlock    b
@@ -81,7 +83,7 @@ consensusMonitor db (BoxRX message)
       lift $ logger DebugS "Got AnnBestHead" (  sl "bid" (blockID h)
                                              <> sl "H"   (blockHeight h)
                                              )
-      runExceptT (processHeader h) >>= \case
+      runExceptT (processHeader cfg h) >>= \case
         Right () -> return Peer'Noop
         Left  e  -> case e of
           ErrH'KnownHeader       -> return Peer'Noop
@@ -96,7 +98,7 @@ consensusMonitor db (BoxRX message)
     -- FIXME: Handle announcements
     handleBlock b = do
       lift $ logger DebugS "Got RxBlock" (sl "bid" (blockID b))
-      runExceptT (processBlock db b) >>= \case
+      runExceptT (processBlock cfg db b) >>= \case
         Right () -> return Peer'Noop
         Left  e  -> case e of
           ErrB'UnknownBlock -> error "Impossible: we should'n get unknown block"
@@ -104,7 +106,7 @@ consensusMonitor db (BoxRX message)
     -- Handle headers that we got from peer.
     handleHeaders [] = return Peer'Noop
     handleHeaders (h:hs) = do
-      runExceptT (processHeader h) >>= \case
+      runExceptT (processHeader cfg h) >>= \case
         Right () -> handleHeaders hs
         Left  e  -> case e of
           ErrH'KnownHeader       -> handleHeaders hs

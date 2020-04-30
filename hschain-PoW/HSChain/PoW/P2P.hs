@@ -48,10 +48,11 @@ startNode
   => NetCfg
   -> NetworkAPI
   -> [NetAddr]
+  -> ChainConfig b
   -> BlockDB   m b
   -> Consensus m b
   -> ContT r m (PoW m b)
-startNode cfg netAPI seeds db consensus = do
+startNode cfg netAPI seeds chainCfg db consensus = do
   lift $ logger InfoS "Starting PoW node" ()
   (sinkBOX,    srcBOX)    <- queuePair
   (sinkAnn,    mkSrcAnn)  <- broadcastPair
@@ -60,7 +61,7 @@ startNode cfg netAPI seeds db consensus = do
   bIdx                    <- liftIO $ newTVarIO consensus
   runPEX cfg netAPI seeds blockReg sinkBOX mkSrcAnn (readTVar bIdx) db
   -- Consensus thread
-  cfork $ threadConsensus db consensus ConsensusCh
+  cfork $ threadConsensus chainCfg db consensus ConsensusCh
     { bcastAnnounce   = sinkAnn
     , sinkConsensusSt = Sink $ writeTVar bIdx
     , sinkReqBlocks   = sinkBIDs

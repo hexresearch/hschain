@@ -79,15 +79,16 @@ class ( Show      (BlockID b)
   -- | ID of block. Usually it should be just a hash but we want to
   --   leave some representation leeway for implementations. 
   data BlockID b
-
+  -- | Configuration of chain
+  data ChainConfig b
   -- | Compute block ID out of block using only header.
   blockID :: IsMerkle f => GBlock b f -> BlockID b
   -- | Validate header. Chain ending with parent block and current
   --   time are provided as parameters.
-  validateHeader :: MonadIO m => BH b -> Time -> Header b -> m Bool
+  validateHeader :: MonadIO m => ChainConfig b -> BH b -> Time -> Header b -> m Bool
   -- | Context free validation of block which doesn't have access to
   --   state of blockchain. It should perform sanity checks.
-  validateBlock  :: MonadIO m => Block  b -> m Bool
+  validateBlock  :: MonadIO m => ChainConfig b -> Block  b -> m Bool
   -- | Amount of work in the block
   blockWork      :: GBlock b f -> Work
 

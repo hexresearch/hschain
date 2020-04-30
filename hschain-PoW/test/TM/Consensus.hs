@@ -215,14 +215,14 @@ runTest msgList = do
     loop _  _ []     = return ()
     loop db s (m:ms) = do
       (s',val) <- case m of
-        MsgH h e0 val -> do (e,s') <- lift $ run s $ processHeader h
+        MsgH h e0 val -> do (e,s') <- lift $ run s $ processHeader KVCfg h
                             when (toE e /= e0) $ throwError
                               [ "Mismatch of header error"
                               , "  expected: " ++ show e0
                               , "  got:      " ++ show (toE e)
                               ]
                             return (s',val)
-        MsgB b e0 val -> do (e,s') <- lift $ run s $ processBlock db b
+        MsgB b e0 val -> do (e,s') <- lift $ run s $ processBlock KVCfg db b
                             when (toE e /= e0) $ throwError
                               [ "Mismatch of header error"
                               , "  expected: " ++ show e0
