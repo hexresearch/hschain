@@ -16,8 +16,6 @@ import Options.Applicative
 
 import HSChain.POW
 
-import Debug.Trace
-
 data PrintOpt = PrintText | PrintHex
   deriving (Show)
 
@@ -61,7 +59,7 @@ main :: IO ()
 main = do
   cmd <- execParser $ info parser mempty
   case cmd of
-    FindAnswer prefix shift mantissa print -> do
+    FindAnswer prefix shift mantissa printOpt -> do
       let config = defaultPOWConfig
                  { powCfgComplexityShift     = shift
                  , powCfgComplexityMantissa  = mantissa
@@ -69,7 +67,7 @@ main = do
       r <- solve [prefix] config
       case r of
         Nothing -> putStrLn "failed to find answer" >> exitFailure
-        Just (answer, hash) -> case print of
+        Just (answer, hash) -> case printOpt of
           PrintText -> do
             putStrLn $ "complete header: "++show completeBlock
           PrintHex -> do
