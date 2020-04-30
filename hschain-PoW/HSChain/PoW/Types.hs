@@ -83,8 +83,8 @@ class ( Show      (BlockID b)
   blockID :: IsMerkle f => GBlock b f -> BlockID b
   -- | Context free validation of header. It's mostly sanity check on
   --   header. 
-  validateHeader :: Header b -> Bool
-  validateBlock  :: Block  b -> Bool
+  validateHeader :: MonadIO m => Header b -> m Bool
+  validateBlock  :: MonadIO m => Block  b -> m Bool
   blockWork      :: GBlock b f -> Work
 
 -- | Generic block. This is just spine of blockchain, that is height

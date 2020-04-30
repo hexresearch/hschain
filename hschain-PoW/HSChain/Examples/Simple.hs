@@ -47,6 +47,6 @@ instance BlockData KV where
 
   --
   blockID b = let Hashed h = hashed b in KV'BID h
-  validateHeader _  = True
-  validateBlock  _  = True
+  validateHeader _  = return True
+  validateBlock  _  = return True
   blockWork         = Work . fromIntegral . kvSolution . blockData

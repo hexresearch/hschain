@@ -79,6 +79,7 @@ Executable hschain-PoW-node
                      , hschain-PoW
                      , hschain-net
                      , hschain-merkle
+                     , hschain-pow-func
                      , hschain-types
                      , hschain-crypto
                      , hschain-control

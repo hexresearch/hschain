@@ -61,7 +61,7 @@ threadConsensus db consensus0 ConsensusCh{..} = descendNamespace "cns" $ do
 
 -- Handler for messages coming from peer.
 consensusMonitor
-  :: (MonadLogger m, BlockData b)
+  :: (MonadLogger m, BlockData b, MonadIO m)
   => BlockDB m b
   -> BoxRX m b
   -> StateT (Consensus m b) m ()
