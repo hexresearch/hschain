@@ -35,6 +35,7 @@ import HSChain.Types.Merkle.Types
 data PoW m b = PoW
   { currentConsensus :: STM (Consensus m b)
   , sendNewBlock     :: Block b -> m (Either SomeException ())
+  , chainUpdate      :: STM (Src (BH b, StateView m b))
   }
 
 
@@ -54,18 +55,20 @@ startNode
   -> ContT r m (PoW m b)
 startNode cfg netAPI seeds chainCfg db consensus = do
   lift $ logger InfoS "Starting PoW node" ()
-  (sinkBOX,    srcBOX)    <- queuePair
-  (sinkAnn,    mkSrcAnn)  <- broadcastPair
-  (sinkBIDs,   srcBIDs)   <- queuePair
-  blockReg                <- newBlockRegistry srcBIDs
-  bIdx                    <- liftIO $ newTVarIO consensus
+  (sinkBOX,    srcBOX)     <- queuePair
+  (sinkAnn,    mkSrcAnn)   <- broadcastPair
+  (sinkChain,  mkSrcChain) <- broadcastPair
+  (sinkBIDs,   srcBIDs)    <- queuePair
+  blockReg                 <- newBlockRegistry srcBIDs
+  bIdx                     <- liftIO $ newTVarIO consensus
   runPEX cfg netAPI seeds blockReg sinkBOX mkSrcAnn (readTVar bIdx) db
   -- Consensus thread
   cfork $ threadConsensus chainCfg db consensus ConsensusCh
-    { bcastAnnounce   = sinkAnn
-    , sinkConsensusSt = Sink $ writeTVar bIdx
-    , sinkReqBlocks   = sinkBIDs
-    , srcRX           = srcBOX
+    { bcastAnnounce    = sinkAnn
+    , bcastChainUpdate = sinkChain
+    , sinkConsensusSt  = Sink $ writeTVar bIdx
+    , sinkReqBlocks    = sinkBIDs
+    , srcRX            = srcBOX
     }
   return PoW
     { currentConsensus = readTVar bIdx
@@ -80,6 +83,7 @@ startNode cfg netAPI seeds chainCfg db consensus = do
         --
         sinkIO sinkBOX $ BoxRX $ \cnt -> liftIO . putMVar res =<< cnt (RxBlock b)
         void $ liftIO (takeMVar res)
+    , chainUpdate = mkSrcChain
     }
 
 

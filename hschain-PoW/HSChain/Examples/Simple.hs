@@ -55,15 +55,17 @@ instance BlockData KV where
   newtype BlockID KV = KV'BID (Hash SHA256)
     deriving newtype (Show,Eq,Ord,CryptoHashable,Serialise, JSON.ToJSON, JSON.FromJSON)
   data ChainConfig KV = KVCfg
+    { kvAdjustInterval :: Height
+    , kvBlockDelay     :: Natural
+    }
     deriving stock (Show)
   --
   blockID b = let Hashed h = hashed b in KV'BID h
-  validateHeader _ bh (Time now) header
+  validateHeader cfg bh (Time now) header
     = return
-    -- $ traceShow (blockHeight header, bhHeight bh, retarget bh)
     $ and
     [ hash256 header <= blockTarget header
-    , kvDifficulty (blockData header) == retarget bh
+    , kvDifficulty (blockData header) == retarget cfg bh
     -- Time checks
     , t <= now + (2*60*60*1000)
     -- FIXME: Check that we're ahead of median time of N prev block
@@ -79,18 +81,16 @@ blockTarget :: GBlock KV f -> Natural
 blockTarget b = 2^(256::Int) `div` kvDifficulty (blockData b)
 
 -- FIXME: correctly compute rertargeting
-retarget :: BH KV -> Natural
-retarget bh
+retarget :: ChainConfig KV -> BH KV -> Natural
+retarget KVCfg{..} bh
   -- Retarget
-  | bhHeight bh `mod` 10 == 0
-  , traceShow (bhHeight bh) True
-  , Just old <- goBack 10 bh
-  , traceShow (bhHeight old) True
+  | bhHeight bh `mod` kvAdjustInterval == 0
+  , Just old <- goBack kvAdjustInterval bh
   , bhHeight old /= 0
-  =   let Time t1 = bhTime old 
+  =   let Time t1 = bhTime old
           Time t2 = bhTime bh
           tgt     = 2^(256::Int) `div` kvDifficulty (bhData bh)
-          tgt'    = (tgt * fromIntegral (t2 - t1)) `div` (10*1000)
+          tgt'    = (tgt * fromIntegral (t2 - t1)) `div` (fromIntegral kvAdjustInterval * kvBlockDelay)
       in traceShowId $ 2^(256::Int) `div` tgt'
   | otherwise
     = kvDifficulty $ bhData bh
@@ -113,6 +113,6 @@ mine b0 = find (\b -> hash256 b <= tgt)
     tgt = blockTarget b0
 
 
-goBack :: Int -> BH b -> Maybe (BH b)
-goBack 0 bh = Just bh
-goBack n bh = goBack (n-1) =<< bhPrevious bh
+goBack :: Height -> BH b -> Maybe (BH b)
+goBack (Height 0) bh = Just bh
+goBack h          bh = goBack (pred h) =<< bhPrevious bh

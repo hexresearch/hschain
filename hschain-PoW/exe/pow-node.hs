@@ -22,7 +22,6 @@ import Data.Word
 import Data.Yaml.Config       (loadYamlSettings, requireEnv)
 import Lens.Micro
 import Options.Applicative
-import System.Random (randomRIO)
 import GHC.Generics (Generic)
 
 import HSChain.PoW.Consensus
@@ -35,6 +34,8 @@ import HSChain.Network.Types
 import HSChain.Types.Merkle.Types
 import HSChain.Examples.Simple
 import HSChain.Examples.Util
+import HSChain.Control.Class
+import HSChain.Control.Channels
 import HSChain.Control.Util
 
 
@@ -49,7 +50,7 @@ genesis = GBlock
   , prevBlock   = Nothing
   , blockData   = KV { kvData       = merkled []
                      , kvNonce      = 0
-                     , kvDifficulty = 4096
+                     , kvDifficulty = 20000
                      }
   }
 
@@ -63,10 +64,15 @@ mineBlock now val bh = fromJust $ mine $ GBlock
                                           in (fromIntegral h, val)
                                         ]
                      , kvNonce      = 0
-                     , kvDifficulty = retarget bh
+                     , kvDifficulty = retarget cfg bh
                      }
   }
 
+cfg :: ChainConfig KV
+cfg = KVCfg
+  { kvAdjustInterval = 50
+  , kvBlockDelay     = 500
+  }
 
 ----------------------------------------------------------------
 -- Configuration
@@ -114,7 +120,7 @@ main = do
               <> progDesc ""
               )
   Cfg{..} <- loadYamlSettings (reverse cmdConfigPath) [] requireEnv
-  -- 
+  --
   let netcfg = NetCfg { nKnownPeers     = 3
                       , nConnectedPeers = 3
                       }
@@ -123,25 +129,51 @@ main = do
   let s0 = consensusGenesis genesis (viewKV (blockID genesis))
   withLogEnv "" "" (map makeScribe cfgLog) $ \logEnv ->
     runLoggerT logEnv $ evalContT $ do
-      pow <- startNode netcfg net cfgPeers KVCfg db s0
+      pow <- startNode netcfg net cfgPeers cfg db s0
       let printBCH = when optPrintBCH $ do
             c <- atomicallyIO $ currentConsensus pow
             let loop bh@BH{bhBID = bid} = do
                   liftIO $ print (cfgStr, bid, bhHeight bh)
                   liftIO . print =<< retrieveBlock db bid
                   maybe (return ()) loop $ bhPrevious bh
-            loop (c ^. bestHead . _1) 
-      lift $ flip onException printBCH $ forever $ do
-        -- t <- liftIO $ negate . log <$> randomRIO (0.5, 2)
-        -- liftIO $ threadDelay $ round (1e6 * t :: Double)
+            loop (c ^. bestHead . _1)
+      lift $ flip onException printBCH $ do
+        upd <- atomicallyIO $ chainUpdate pow
+        let doMine = do
+              c   <- atomicallyIO $ currentConsensus pow
+              now <- getCurrentTime
+              let bh = c ^. bestHead . _1
+                  b  = mineBlock now cfgStr bh
+              sendNewBlock pow b >>= \case
+                Right () -> return ()
+                Left  e  -> error $ show e
+        let loop tid = do
+              (bh,_) <- awaitIO upd
+              Just b <- retrieveBlock db (bhBID bh)
+              liftIO $ print ( blockHeight b
+                             , blockTime b
+                             , bhBID bh
+                             , kvDifficulty $ blockData b
+                             , merkleValue $ kvData $ blockData b
+                             )
+              liftIO $ killThread tid
+              loop =<< fork doMine
         --
-        when optMine $ do
-          c   <- atomicallyIO $ currentConsensus pow
-          now <- getCurrentTime
-          let bh = c ^. bestHead . _1
-              b  = mineBlock now cfgStr bh
-          liftIO $ print (blockHeight b, blockTime b)
-          sendNewBlock pow b >>= \case
-            Right () -> return ()
-            Left  e  -> error $ show e
+        case optMine of
+          True  -> loop =<< fork doMine
+          False -> liftIO $ forever $ threadDelay maxBound
 
+
+
+        -- -- t <- liftIO $ negate . log <$> randomRIO (0.5, 2)
+        -- -- liftIO $ threadDelay $ round (1e6 * t :: Double)
+        -- --
+        -- when optMine $ do
+        --   c   <- atomicallyIO $ currentConsensus pow
+        --   now <- getCurrentTime
+        --   let bh = c ^. bestHead . _1
+        --       b  = mineBlock now cfgStr bh
+        --   liftIO $ print (blockHeight b, blockTime b)
+        --   sendNewBlock pow b >>= \case
+        --     Right () -> return ()
+        --     Left  e  -> error $ show e

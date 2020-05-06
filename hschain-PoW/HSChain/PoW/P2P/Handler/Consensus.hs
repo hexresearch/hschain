@@ -34,10 +34,11 @@ import HSChain.PoW.Logger
 
 -- | Channels for sending data to and from consensus thread
 data ConsensusCh m b = ConsensusCh
-  { bcastAnnounce   :: Sink (MsgAnn b)
-  , sinkConsensusSt :: Sink (Consensus m b)
-  , sinkReqBlocks   :: Sink (Set (BlockID b))
-  , srcRX           :: Src  (BoxRX m b)
+  { bcastAnnounce    :: Sink (MsgAnn b)
+  , bcastChainUpdate :: Sink (BH b, StateView m b)
+  , sinkConsensusSt  :: Sink (Consensus m b)
+  , sinkReqBlocks    :: Sink (Set (BlockID b))
+  , srcRX            :: Src  (BoxRX m b)
   }
 
 -- | Thread that reacts to messages from peers and updates consensus
@@ -57,8 +58,10 @@ threadConsensus cfg db consensus0 ConsensusCh{..} = descendNamespace "cns" $ log
          consensusMonitor cfg db =<< awaitIO srcRX
          sinkIO sinkConsensusSt =<< get
          sinkIO sinkReqBlocks   =<< use requiredBlocks
-         bh' <- use $ bestHead . _1
-         when (bhBID bh /= bhBID bh') $ sinkIO bcastAnnounce $ AnnBestHead $ asHeader bh'
+         (bh',st,_) <- use bestHead
+         when (bhBID bh /= bhBID bh') $ do
+           sinkIO bcastAnnounce $ AnnBestHead $ asHeader bh'
+           sinkIO bcastChainUpdate (bh',st)
 
 
 -- Handler for messages coming from peer.
