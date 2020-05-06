@@ -87,6 +87,28 @@ class ( Show      (BlockID b)
   validateBlock  :: MonadIO m => Block  b -> m Bool
   blockWork      :: GBlock b f -> Work
 
+-- |Target - value computed during proof-of-work test must be lower
+-- than this threshold. Target can be and must be rounded.
+-- It is guaranteed to not to exceed some constant value.
+newtype Target = Target { targetInteger :: Integer }
+
+-- |Difficulty - how many (in average) computations are needed to
+-- achieve the target.
+newtype Difficulty = Difficulty { difficultyInteger :: Integer }
+
+-- |Mining implementation requirement.
+--
+-- To mine a block we have to tweak it. Usually it is done through
+-- coinbase-like transaction prepended at the beginning. The tweaking
+-- requires context (random number generator or counter or something
+-- like that), thus monadic code.
+--
+-- Current POW solution computation is in IO and we have to
+-- require MonadIO requirement. It will probably stay in IO
+-- for a while for optimization purposes.
+class BlockData b => Mineable b where
+  tweakBlock :: MonadIO m => Block b -> m (Block b)
+
 -- | Generic block. This is just spine of blockchain, that is height
 --   of block, hash of previous block and a "block data" - application
 --   of type functor to get some information about actual data, from
