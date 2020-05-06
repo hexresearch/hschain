@@ -1,4 +1,6 @@
 {-# LANGUAGE BangPatterns         #-}
+{-# LANGUAGE DeriveAnyClass       #-}
+{-# LANGUAGE DerivingStrategies   #-}
 {-# LANGUAGE FlexibleContexts     #-}
 {-# LANGUAGE LambdaCase           #-}
 {-# LANGUAGE MultiWayIf           #-}
@@ -38,6 +40,7 @@ module HSChain.PoW.Consensus
   ) where
 
 import Control.Category ((>>>))
+import Control.Exception
 import Control.Monad
 import Control.Monad.Except
 import Control.Monad.State.Strict
@@ -272,12 +275,14 @@ data HeaderError
     -- ^ We don't have parent block
   | ErrH'ValidationFailure
   | ErrH'BadParent
-  deriving (Show,Eq)
+  deriving stock    (Show,Eq)
+  deriving anyclass (Exception)
 
 data BlockError
   = ErrB'UnknownBlock
   | ErrB'InvalidBlock
-  deriving (Show,Eq)
+  deriving stock    (Show,Eq)
+  deriving anyclass (Exception)
 
 
 ----------------------------------------------------------------

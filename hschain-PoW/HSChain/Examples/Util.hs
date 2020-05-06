@@ -1,9 +1,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 -- |
-module TM.Util.InMemory
-  ( inMemoryDB
-  , viewKV
-  ) where
+module HSChain.Examples.Util where
 
 import Control.Monad.IO.Class
 import Data.IORef
@@ -13,11 +10,6 @@ import HSChain.PoW.Types
 import HSChain.PoW.Consensus
 import HSChain.Types.Merkle.Types
 import HSChain.Examples.Simple
-
-
-----------------------------------------------------------------
---
-----------------------------------------------------------------
 
 -- | Simple in-memory implementation of DB
 inMemoryView

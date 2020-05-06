@@ -26,8 +26,8 @@ import HSChain.PoW.Consensus
 import HSChain.PoW.P2P
 import HSChain.PoW.P2P.Types
 import HSChain.Examples.Simple
+import HSChain.Examples.Util
 
-import TM.Util.InMemory
 import TM.Util.Mockchain
 
 tests :: TestTree

@@ -16,6 +16,7 @@ module HSChain.PoW.P2P.Handler.Consensus
   ) where
 
 import Control.Monad
+import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Control.Monad.State.Strict
 import Control.Monad.Except
@@ -42,12 +43,12 @@ data ConsensusCh m b = ConsensusCh
 -- | Thread that reacts to messages from peers and updates consensus
 --   accordingly
 threadConsensus
-  :: (MonadIO m, MonadLogger m, BlockData b)
+  :: (MonadIO m, MonadLogger m, BlockData b, MonadCatch m)
   => BlockDB m b
   -> Consensus m b
   -> ConsensusCh m b
   -> m x
-threadConsensus db consensus0 ConsensusCh{..} = descendNamespace "cns" $ do
+threadConsensus db consensus0 ConsensusCh{..} = descendNamespace "cns" $ logOnException $ do
   logger InfoS "Staring consensus" ()
   flip evalStateT consensus0
     $ forever
@@ -84,9 +85,9 @@ consensusMonitor db (BoxRX message)
         Right () -> return Peer'Noop
         Left  e  -> case e of
           ErrH'KnownHeader       -> return Peer'Noop
-          ErrH'HeightMismatch    -> return Peer'Punish
-          ErrH'ValidationFailure -> return Peer'Punish
-          ErrH'BadParent         -> return Peer'Punish
+          ErrH'HeightMismatch    -> return $ Peer'Punish $ toException e
+          ErrH'ValidationFailure -> return $ Peer'Punish $ toException e
+          ErrH'BadParent         -> return $ Peer'Punish $ toException e
           -- We got announce that we couldn't attach to block tree. So
           -- we need that peer to catch up
           ErrH'UnknownParent     -> return Peer'EnterCatchup
@@ -107,7 +108,7 @@ consensusMonitor db (BoxRX message)
         Right () -> handleHeaders hs
         Left  e  -> case e of
           ErrH'KnownHeader       -> handleHeaders hs
-          ErrH'HeightMismatch    -> return Peer'Punish
-          ErrH'UnknownParent     -> return Peer'Punish
-          ErrH'ValidationFailure -> return Peer'Punish
-          ErrH'BadParent         -> return Peer'Punish
+          ErrH'HeightMismatch    -> return $ Peer'Punish $ toException e
+          ErrH'UnknownParent     -> return $ Peer'Punish $ toException e
+          ErrH'ValidationFailure -> return $ Peer'Punish $ toException e
+          ErrH'BadParent         -> return $ Peer'Punish $ toException e

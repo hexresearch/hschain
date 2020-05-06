@@ -25,6 +25,7 @@ in
       pkgs.bls
       pkgs.openssl
       pkgs.utillinux
+      pkgs.pkg-config
     ];
     packages = release."${ghc}";
     # NOTE: this is workaround for problem with building

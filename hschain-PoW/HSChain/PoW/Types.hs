@@ -63,8 +63,9 @@ timeToUTC (Time t) = posixSecondsToUTCTime (realToFrac t / 1000)
 -- | Measure of work performed for creation of block or chain of
 --   blocks. Monoid instance should represent addition
 newtype Work = Work Natural
-  deriving stock (Show,Eq,Ord)
-  deriving       (Semigroup,Monoid) via (Sum Natural)
+  deriving stock   (Show,Eq,Ord)
+  deriving newtype (CryptoHashable,Serialise)
+  deriving         (Semigroup,Monoid) via (Sum Natural)
 
 
 -- | Core of blockchain implementation.
