@@ -271,12 +271,11 @@ data BlockError
 --   header for previous block and header is otherwise valid.
 processHeader
   :: (BlockData b, MonadIO m)
-  => ChainConfig b
-  -> Header b
+  => Header b
   -> ExceptT HeaderError (StateT (Consensus m b) m) ()
 -- FIXME: Decide what to do with time?
 -- FIXME: Decide how to track difficulty adjustment
-processHeader cfg header = do
+processHeader header = do
   index    <- use blockIndex
   -- If we already have header do nothing
   case bid `lookupIdx` index of
@@ -292,7 +291,7 @@ processHeader cfg header = do
   unless (succ (bhHeight parent) == blockHeight header)
     $ throwError ErrH'HeightMismatch
   now <- getCurrentTime
-  goodHeader <- validateHeader cfg parent now header
+  goodHeader <- validateHeader parent now header
   unless goodHeader
     $ throwError ErrH'ValidationFailure
   -- Create new index entry
@@ -375,11 +374,10 @@ growNewHead bh = do
 -- | Add new block. We only accept block if we already have valid header. Note
 processBlock
   :: (BlockData b, MonadIO m)
-  => ChainConfig b
-  -> BlockDB m b
+  => BlockDB m b
   -> Block b
   -> ExceptT BlockError (StateT (Consensus m b) m) ()
-processBlock cfg db block = do
+processBlock db block = do
   use (blockIndex . to (lookupIdx bid)) >>= \case
     Just _  -> return ()
     Nothing -> throwError ErrB'UnknownBlock
@@ -388,7 +386,7 @@ processBlock cfg db block = do
   requiredBlocks %= Set.delete bid
   -- Perform context free validation of block. If we validation fails
   -- we will add it to set of bad block and won't write on disk
-  good <- validateBlock cfg block
+  good <- validateBlock block
   case good of
     False -> do invalidateBlock bid
                 throwError ErrB'InvalidBlock

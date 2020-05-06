@@ -54,14 +54,8 @@ instance MerkleMap KV where
 instance BlockData KV where
   newtype BlockID KV = KV'BID (Hash SHA256)
     deriving newtype (Show,Eq,Ord,CryptoHashable,Serialise, JSON.ToJSON, JSON.FromJSON)
-  data ChainConfig KV = KVCfg
-    { kvAdjustInterval :: Height
-    , kvBlockDelay     :: Natural
-    }
-    deriving stock (Show)
-  --
   blockID b = let Hashed h = hashed b in KV'BID h
-  validateHeader cfg bh (Time now) header
+  validateHeader bh (Time now) header
     = return
     $ and
     [ hash256 header <= blockTarget header
@@ -73,7 +67,7 @@ instance BlockData KV where
     where
       Time t = blockTime header
   --
-  validateBlock  _ _ = return True
+  validateBlock  _ = return True
   blockWork      b = Work $ kvDifficulty $ blockData b
 
 
@@ -81,8 +75,8 @@ blockTarget :: GBlock KV f -> Natural
 blockTarget b = 2^(256::Int) `div` kvDifficulty (blockData b)
 
 -- FIXME: correctly compute rertargeting
-retarget :: ChainConfig KV -> BH KV -> Natural
-retarget KVCfg{..} bh
+retarget :: BH KV -> Natural
+retarget bh
   -- Retarget
   | bhHeight bh `mod` kvAdjustInterval == 0
   , Just old <- goBack kvAdjustInterval bh

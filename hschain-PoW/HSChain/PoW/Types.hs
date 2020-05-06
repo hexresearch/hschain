@@ -1,12 +1,15 @@
+{-# LANGUAGE AllowAmbiguousTypes        #-}
 {-# LANGUAGE DeriveAnyClass             #-}
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE DerivingStrategies         #-}
 {-# LANGUAGE DerivingVia                #-}
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE PolyKinds                  #-}
 {-# LANGUAGE QuantifiedConstraints      #-}
 {-# LANGUAGE RecordWildCards            #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE TypeFamilies               #-}
 {-# LANGUAGE UndecidableInstances       #-}
@@ -16,6 +19,7 @@ module HSChain.PoW.Types where
 
 import Codec.Serialise          (Serialise)
 import Control.DeepSeq
+import Control.Monad            (forever)
 import Control.Monad.IO.Class
 import Data.Monoid              (Sum(..))
 import Data.Time.Clock          (UTCTime)
@@ -79,43 +83,99 @@ class ( Show      (BlockID b)
       , JSON.FromJSON (BlockID b)
       , MerkleMap b
       ) => BlockData b where
+
   -- | ID of block. Usually it should be just a hash but we want to
   --   leave some representation leeway for implementations. 
   data BlockID b
-  -- | Configuration of chain
-  data ChainConfig b
+
   -- | Compute block ID out of block using only header.
   blockID :: IsMerkle f => GBlock b f -> BlockID b
+
   -- | Validate header. Chain ending with parent block and current
   --   time are provided as parameters.
-  validateHeader :: MonadIO m => ChainConfig b -> BH b -> Time -> Header b -> m Bool
+  validateHeader :: MonadIO m => BH b -> Time -> Header b -> m Bool
+
   -- | Context free validation of block which doesn't have access to
   --   state of blockchain. It should perform sanity checks.
-  validateBlock  :: MonadIO m => ChainConfig b -> Block  b -> m Bool
+  validateBlock  :: MonadIO m => Block  b -> m Bool
+
   -- | Amount of work in the block
   blockWork      :: GBlock b f -> Work
+
+  -- | Target value of a block.
+  blockTargetThreshold :: GBlock b f -> Target
+
+  -- | How work difficulty should be adjusted.
+  -- First part of tuple is the block interval, second is seconds
+  -- this interval should have.
+  targetAdjustmentInfo :: GBlock b f -> (Int, Natural)
+  targetAdjustmentInfo _ = let n = 1024 in (n, 120 * fromIntegral n)
+
+-- |Parts of mining process.
+--
+-- We may see mining process as a way to make block header
+-- valid. That means that block given for mining may not have
+-- a valid header, but the block we have successfully mined should
+-- have a valid header. We are talking about validity of a puzzle's
+-- answer, as other header fields like timestamp, target, etc are
+-- somewhat out of our control.
+--
+-- Mining is relatively time-consuming process, the search for
+-- an answer of a puzzle may take time from tenth of second to
+-- several seconds. This part is also heavily compute-intensive
+-- and should not be interrupted all too often. These two
+-- requirements gave us the following plan: we fetch a block to
+-- mine (header may be invalid) and work on it for some time, reporting
+-- back in case of success.
+--
+-- The monad @m@ implements a way to report blocks mined and
+-- a way to get block to mine. Thus it must have access to mempool.
+--
+-- Please note that you can implement caching in @fetchBlock@ if current
+-- chain leader has not changed. You can tweak only the "coinbase"-like
+-- transaction in the block.
+class (MonadIO m, BlockData b) => Mineable m b where
+
+  -- | Tell the world we have a block!
+  reportMiningSuccess :: Block b -> m ()
+
+  -- | Fetch the block to mine. Remember, you do not need a header
+  -- with valid puzzle answer here. Other parts of header like
+  -- target value must be correct.
+  fetchBlock :: m (Block b)
+
+  -- | Adjust puzzle's answer. The adjustment process tries to
+  -- find right puzzle answer that is smallest possible or below
+  -- given threshold. The return value is a block with any answer
+  -- if found, the result may not pass under threshold.
+  --
+  -- Actual hash, converted to @Target@ is second part of tuple.
+  --
+  -- One can use second part in a parameter search process. It is a
+  -- proxy to how many hash attempts are done during search.
+  adjustPuzzle :: Target -> Block b -> m (Maybe (Block b, Target))
+
+
+-- | The mining loop.
+miningLoop :: forall b m . Mineable m b => m ()
+miningLoop = forever $ do
+  (toMine :: Block b) <- fetchBlock
+  let threshold = blockTargetThreshold toMine
+  maybeAdjusted <- adjustPuzzle threshold toMine
+  case maybeAdjusted of
+    Just (minedBlock, hashAsTarget)
+      | hashAsTarget <= threshold -> reportMiningSuccess minedBlock
+    _ -> return ()
 
 -- |Target - value computed during proof-of-work test must be lower
 -- than this threshold. Target can be and must be rounded.
 -- It is guaranteed to not to exceed some constant value.
 newtype Target = Target { targetInteger :: Integer }
+  deriving newtype (Eq, Ord, Show)
 
 -- |Difficulty - how many (in average) computations are needed to
 -- achieve the target.
 newtype Difficulty = Difficulty { difficultyInteger :: Integer }
-
--- |Mining implementation requirement.
---
--- To mine a block we have to tweak it. Usually it is done through
--- coinbase-like transaction prepended at the beginning. The tweaking
--- requires context (random number generator or counter or something
--- like that), thus monadic code.
---
--- Current POW solution computation is in IO and we have to
--- require MonadIO requirement. It will probably stay in IO
--- for a while for optimization purposes.
-class BlockData b => Mineable b where
-  tweakBlock :: MonadIO m => Block b -> m (Block b)
 
 -- | Generic block. This is just spine of blockchain, that is height
 --   of block, hash of previous block and a "block data" - application
