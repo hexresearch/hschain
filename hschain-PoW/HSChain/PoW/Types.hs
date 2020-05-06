@@ -37,13 +37,16 @@ import HSChain.Types.Merkle.Types
 -- | Height of block in blockchain. That is 
 newtype Height = Height Int32
   deriving stock   (Show, Read, Generic, Eq, Ord)
-  deriving newtype (NFData, CBOR.Serialise, JSON.ToJSON, JSON.FromJSON, Enum, CryptoHashable)
+  deriving newtype ( NFData, Num, Real, Integral
+                   , CBOR.Serialise, JSON.ToJSON, JSON.FromJSON, Enum, CryptoHashable)
 
 -- | Time in milliseconds since UNIX epoch.
 newtype Time = Time Int64
-  deriving stock   (Show, Read, Generic, Eq, Ord)
+  deriving stock   (Read, Generic, Eq, Ord)
   deriving newtype (NFData, CBOR.Serialise, JSON.ToJSON, JSON.FromJSON, Enum, CryptoHashable)
 
+instance Show Time where
+  show = show . timeToUTC
 
 -- | Get current time
 getCurrentTime :: MonadIO m => m Time
@@ -63,8 +66,9 @@ timeToUTC (Time t) = posixSecondsToUTCTime (realToFrac t / 1000)
 -- | Measure of work performed for creation of block or chain of
 --   blocks. Monoid instance should represent addition
 newtype Work = Work Natural
-  deriving stock (Show,Eq,Ord)
-  deriving       (Semigroup,Monoid) via (Sum Natural)
+  deriving stock   (Show,Eq,Ord)
+  deriving newtype (CryptoHashable,Serialise)
+  deriving         (Semigroup,Monoid) via (Sum Natural)
 
 
 -- | Core of blockchain implementation.
@@ -78,13 +82,17 @@ class ( Show      (BlockID b)
   -- | ID of block. Usually it should be just a hash but we want to
   --   leave some representation leeway for implementations. 
   data BlockID b
-
+  -- | Configuration of chain
+  data ChainConfig b
   -- | Compute block ID out of block using only header.
   blockID :: IsMerkle f => GBlock b f -> BlockID b
-  -- | Context free validation of header. It's mostly sanity check on
-  --   header. 
-  validateHeader :: MonadIO m => Header b -> m Bool
-  validateBlock  :: MonadIO m => Block  b -> m Bool
+  -- | Validate header. Chain ending with parent block and current
+  --   time are provided as parameters.
+  validateHeader :: MonadIO m => ChainConfig b -> BH b -> Time -> Header b -> m Bool
+  -- | Context free validation of block which doesn't have access to
+  --   state of blockchain. It should perform sanity checks.
+  validateBlock  :: MonadIO m => ChainConfig b -> Block  b -> m Bool
+  -- | Amount of work in the block
   blockWork      :: GBlock b f -> Work
 
 -- |Target - value computed during proof-of-work test must be lower
@@ -117,6 +125,7 @@ class BlockData b => Mineable b where
 --   (usually block is Merkle tree of some transactions)
 data GBlock b f = GBlock
   { blockHeight   :: !Height
+  , blockTime   :: !Time
   , prevBlock     :: !(Maybe (BlockID b))
   , blockData     :: !(b f)
   }
@@ -124,6 +133,34 @@ data GBlock b f = GBlock
 
 deriving stock instance (Eq (BlockID b), Eq (b f)) => Eq (GBlock b f)
 deriving stock instance (Show (BlockID b), Show (b f)) => Show (GBlock b f)
+
+
+-- | Unpacked header for storage in block index. We use this data type
+--   instead of @[(BlockID, Header b)]@ in order to reduce memory use
+--   since we'll keep many thousands on these values in memory.
+data BH b = BH
+  { bhHeight   :: !Height         --
+  , bhTime     :: !Time
+  , bhBID      :: !(BlockID b)    --
+  , bhWork     :: !Work           --
+  , bhPrevious :: !(Maybe (BH b)) --
+  , bhData     :: !(b Proxy)      --
+  }
+
+asHeader :: BH b -> Header b
+asHeader bh = GBlock
+  { blockHeight = bhHeight bh
+  , blockTime   = bhTime bh
+  , prevBlock   = bhBID <$> bhPrevious bh
+  , blockData   = bhData bh
+  }
+
+deriving instance (Show (BlockID b), Show (b Proxy)) => Show (BH b)
+
+instance BlockData b => Eq (BH b) where
+  a == b = bhBID a == bhBID b
+
+
 
 toHeader :: MerkleMap b => Block b -> Header b
 toHeader = merkleMap (const Proxy)

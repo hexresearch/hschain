@@ -1,4 +1,6 @@
 {-# LANGUAGE BangPatterns         #-}
+{-# LANGUAGE DeriveAnyClass       #-}
+{-# LANGUAGE DerivingStrategies   #-}
 {-# LANGUAGE FlexibleContexts     #-}
 {-# LANGUAGE LambdaCase           #-}
 {-# LANGUAGE MultiWayIf           #-}
@@ -38,6 +40,7 @@ module HSChain.PoW.Consensus
   ) where
 
 import Control.Category ((>>>))
+import Control.Exception
 import Control.Monad
 import Control.Monad.Except
 import Control.Monad.State.Strict
@@ -116,6 +119,7 @@ blockIndexFromGenesis genesis
   where
     bid = blockID genesis
     bh  = BH { bhHeight   = Height 0
+             , bhTime     = blockTime genesis
              , bhBID      = bid
              , bhWork     = blockWork genesis
              , bhPrevious = Nothing
@@ -127,29 +131,6 @@ lookupIdx bid (BlockIndex idx) = Map.lookup bid idx
 
 insertIdx :: (Ord (BlockID b)) => BH b -> BlockIndex b -> BlockIndex b
 insertIdx bh (BlockIndex idx) = BlockIndex $ Map.insert (bhBID bh) bh idx
-
--- | Unpacked header for storage in block index. We use this data type
---   instead of @[(BlockID, Header b)]@ in order to reduce memory use
---   since we'll keep many thousands on these values in memory.
-data BH b = BH
-  { bhHeight   :: !Height         --
-  , bhBID      :: !(BlockID b)    --
-  , bhWork     :: !Work           --
-  , bhPrevious :: !(Maybe (BH b)) --
-  , bhData     :: !(b Proxy)      --
-  }
-
-asHeader :: BH b -> Header b
-asHeader bh = GBlock
-  { blockHeight   = bhHeight bh
-  , prevBlock     = bhBID <$> bhPrevious bh
-  , blockData     = bhData bh
-  }
-
-deriving instance (Show (BlockID b), Show (b Proxy)) => Show (BH b)
-
-instance BlockData b => Eq (BH b) where
-  a == b = bhBID a == bhBID b
 
 makeLocator :: BH b -> Locator b
 makeLocator  = Locator . takeH 10 . Just
@@ -272,12 +253,14 @@ data HeaderError
     -- ^ We don't have parent block
   | ErrH'ValidationFailure
   | ErrH'BadParent
-  deriving (Show,Eq)
+  deriving stock    (Show,Eq)
+  deriving anyclass (Exception)
 
 data BlockError
   = ErrB'UnknownBlock
   | ErrB'InvalidBlock
-  deriving (Show,Eq)
+  deriving stock    (Show,Eq)
+  deriving anyclass (Exception)
 
 
 ----------------------------------------------------------------
@@ -288,11 +271,12 @@ data BlockError
 --   header for previous block and header is otherwise valid.
 processHeader
   :: (BlockData b, MonadIO m)
-  => Header b
+  => ChainConfig b
+  -> Header b
   -> ExceptT HeaderError (StateT (Consensus m b) m) ()
 -- FIXME: Decide what to do with time?
 -- FIXME: Decide how to track difficulty adjustment
-processHeader header = do
+processHeader cfg header = do
   index    <- use blockIndex
   -- If we already have header do nothing
   case bid `lookupIdx` index of
@@ -307,12 +291,14 @@ processHeader header = do
   -- Perform header validations
   unless (succ (bhHeight parent) == blockHeight header)
     $ throwError ErrH'HeightMismatch
-  goodHeader <- validateHeader header
+  now <- getCurrentTime
+  goodHeader <- validateHeader cfg parent now header
   unless goodHeader
     $ throwError ErrH'ValidationFailure
   -- Create new index entry
   let work = bhWork parent <> blockWork header
       bh   = BH { bhHeight   = blockHeight header
+                , bhTime     = blockTime   header
                 , bhBID      = bid
                 , bhWork     = work
                 , bhPrevious = Just parent
@@ -389,10 +375,11 @@ growNewHead bh = do
 -- | Add new block. We only accept block if we already have valid header. Note
 processBlock
   :: (BlockData b, MonadIO m)
-  => BlockDB m b
+  => ChainConfig b
+  -> BlockDB m b
   -> Block b
   -> ExceptT BlockError (StateT (Consensus m b) m) ()
-processBlock db block = do
+processBlock cfg db block = do
   use (blockIndex . to (lookupIdx bid)) >>= \case
     Just _  -> return ()
     Nothing -> throwError ErrB'UnknownBlock
@@ -401,7 +388,7 @@ processBlock db block = do
   requiredBlocks %= Set.delete bid
   -- Perform context free validation of block. If we validation fails
   -- we will add it to set of bad block and won't write on disk
-  good <- validateBlock block
+  good <- validateBlock cfg block
   case good of
     False -> do invalidateBlock bid
                 throwError ErrB'InvalidBlock

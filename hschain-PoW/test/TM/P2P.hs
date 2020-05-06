@@ -26,8 +26,8 @@ import HSChain.PoW.Consensus
 import HSChain.PoW.P2P
 import HSChain.PoW.P2P.Types
 import HSChain.Examples.Simple
+import HSChain.Examples.Util
 
-import TM.Util.InMemory
 import TM.Util.Mockchain
 
 tests :: TestTree
@@ -131,7 +131,7 @@ runNetTest test = do
   let apiNode        = createMockNode net ipNode
       NetworkAPI{..} = createMockNode net ipOur
   runNoLogsT $ evalContT $ do
-    _ <- startNode (NetCfg 0 0) apiNode [] db s0
+    _ <- startNode (NetCfg 0 0) apiNode [] KVCfg db s0
     lift $ lift $ do -- Establish connection
       --
       -- FIXME: we need to do something better than fixed delay

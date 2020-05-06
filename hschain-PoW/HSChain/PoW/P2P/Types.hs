@@ -38,6 +38,7 @@ module HSChain.PoW.P2P.Types
   ) where
 
 import Control.Concurrent.STM
+import Control.Exception
 import Control.Monad.State.Strict (StateT)
 import Codec.Serialise            (Serialise)
 import Data.Word
@@ -176,10 +177,10 @@ newtype BoxRX m b = BoxRX
 
 -- | Command sent to a peer
 data CmdPeer b
-  = Peer'Punish
+  = Peer'Punish SomeException
   | Peer'EnterCatchup
   | Peer'Noop
-  deriving (Show,Eq)
+  deriving (Show)
 
 data AskPeers = AskPeers
 

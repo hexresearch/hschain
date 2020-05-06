@@ -54,6 +54,7 @@ Library
                 HSChain.PoW.Types
                 HSChain.PoW.Consensus
                 HSChain.Examples.Simple
+                HSChain.Examples.Util
                 HSChain.PoW.Exceptions
                 HSChain.PoW.Logger
                 HSChain.PoW.Logger.Class
@@ -119,5 +120,4 @@ Test-suite hschain-PoW-tests
   Main-is:             Main.hs
   Other-modules:       TM.Consensus
                        TM.P2P
-                       TM.Util.InMemory
                        TM.Util.Mockchain

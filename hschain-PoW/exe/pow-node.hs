@@ -3,6 +3,7 @@
 {-# LANGUAGE DeriveGeneric      #-}
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE FlexibleContexts   #-}
+{-# LANGUAGE LambdaCase         #-}
 {-# LANGUAGE OverloadedStrings  #-}
 {-# LANGUAGE RecordWildCards    #-}
 {-# LANGUAGE TypeApplications   #-}
@@ -16,13 +17,11 @@ import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Cont
-import Data.IORef
+import Data.Maybe
 import Data.Word
 import Data.Yaml.Config       (loadYamlSettings, requireEnv)
-import qualified Data.Map.Strict as Map
 import Lens.Micro
 import Options.Applicative
-import System.Random (randomRIO)
 import GHC.Generics (Generic)
 
 import HSChain.PoW.Consensus
@@ -34,6 +33,9 @@ import HSChain.Network.TCP
 import HSChain.Network.Types
 import HSChain.Types.Merkle.Types
 import HSChain.Examples.Simple
+import HSChain.Examples.Util
+import HSChain.Control.Class
+import HSChain.Control.Channels
 import HSChain.Control.Util
 
 
@@ -41,62 +43,35 @@ import HSChain.Control.Util
 --
 ----------------------------------------------------------------
 
--- | Simple in-memory implementation of DB
-inMemoryView
-  :: (Monad m, BlockData b, Show (BlockID b))
-  => (Block b -> s -> Maybe s)  -- ^ Step function 
-  -> s                          -- ^ Initial state
-  -> BlockID b
-  -> StateView m b
-inMemoryView step = make (error "No revinding past genesis")
-  where
-    make previous s bid = view
-      where
-        view = StateView
-          { stateBID    = bid
-          , applyBlock  = \b -> case step b s of
-              Nothing -> return Nothing
-              Just s' -> return $ Just $  make view s' (blockID b)
-          , revertBlock = return previous
-          , flushState  = return ()
-          }
-
-viewKV :: Monad m => BlockID KV -> StateView m KV
-viewKV bid = inMemoryView step Map.empty bid
-  where
-    step b m
-      | or [ k `Map.member` m | (k,_) <- txs ] = Nothing
-      | otherwise                              = Just $ Map.fromList txs <> m
-      where
-        txs = merkleValue $ kvData $ blockData b
-
-inMemoryDB
-  :: (MonadIO m, MonadIO n, BlockData b)
-  => m (BlockDB n b)
-inMemoryDB = do
-  var <- liftIO $ newIORef Map.empty
-  return BlockDB
-    { storeBlock     = \b   -> liftIO $ modifyIORef' var $ Map.insert (blockID b) b
-    , retrieveBlock  = \bid -> liftIO $ Map.lookup bid <$> readIORef var
-    , retrieveHeader = \bid -> liftIO $ fmap toHeader . Map.lookup bid <$> readIORef var
-    }
-
 genesis :: Block KV
-genesis = GBlock { blockHeight   = Height 0
-                 , prevBlock     = Nothing
-                 , blockData     = KV { kvData = merkled [], kvSolution = 0 }
-                 }
+genesis = GBlock
+  { blockHeight = Height 0
+  , blockTime   = Time 0
+  , prevBlock   = Nothing
+  , blockData   = KV { kvData       = merkled []
+                     , kvNonce      = 0
+                     , kvDifficulty = 20000
+                     }
+  }
 
 
-mineBlock :: IsMerkle f => String -> GBlock KV f -> Block KV
-mineBlock val b = GBlock
-  { blockHeight = succ $ blockHeight b
-  , prevBlock   = Just $! blockID b
-  , blockData   = KV { kvData = merkled [ let Height h = blockHeight b
+mineBlock :: Time -> String -> BH KV -> Block KV
+mineBlock now val bh = fromJust $ mine $ GBlock
+  { blockHeight = succ $ bhHeight bh
+  , blockTime   = now
+  , prevBlock   = Just $! bhBID bh
+  , blockData   = KV { kvData = merkled [ let Height h = bhHeight bh
                                           in (fromIntegral h, val)
                                         ]
-                     , kvSolution = fromIntegral $ fromEnum $ succ $ blockHeight b
+                     , kvNonce      = 0
+                     , kvDifficulty = retarget cfg bh
                      }
+  }
+
+cfg :: ChainConfig KV
+cfg = KVCfg
+  { kvAdjustInterval = 50
+  , kvBlockDelay     = 500
   }
 
 ----------------------------------------------------------------
@@ -145,7 +120,7 @@ main = do
               <> progDesc ""
               )
   Cfg{..} <- loadYamlSettings (reverse cmdConfigPath) [] requireEnv
-  -- 
+  --
   let netcfg = NetCfg { nKnownPeers     = 3
                       , nConnectedPeers = 3
                       }
@@ -154,21 +129,51 @@ main = do
   let s0 = consensusGenesis genesis (viewKV (blockID genesis))
   withLogEnv "" "" (map makeScribe cfgLog) $ \logEnv ->
     runLoggerT logEnv $ evalContT $ do
-      pow <- startNode netcfg net cfgPeers db s0
+      pow <- startNode netcfg net cfgPeers cfg db s0
       let printBCH = when optPrintBCH $ do
             c <- atomicallyIO $ currentConsensus pow
             let loop bh@BH{bhBID = bid} = do
                   liftIO $ print (cfgStr, bid, bhHeight bh)
                   liftIO . print =<< retrieveBlock db bid
                   maybe (return ()) loop $ bhPrevious bh
-            loop (c ^. bestHead . _1) 
-      lift $ flip onException printBCH $ forever $ do
-        t <- liftIO $ negate . log <$> randomRIO (0.5, 2)
-        liftIO $ threadDelay $ round (1e6 * t :: Double)
+            loop (c ^. bestHead . _1)
+      lift $ flip onException printBCH $ do
+        upd <- atomicallyIO $ chainUpdate pow
+        let doMine = do
+              c   <- atomicallyIO $ currentConsensus pow
+              now <- getCurrentTime
+              let bh = c ^. bestHead . _1
+                  b  = mineBlock now cfgStr bh
+              sendNewBlock pow b >>= \case
+                Right () -> return ()
+                Left  e  -> error $ show e
+        let loop tid = do
+              (bh,_) <- awaitIO upd
+              Just b <- retrieveBlock db (bhBID bh)
+              liftIO $ print ( blockHeight b
+                             , blockTime b
+                             , bhBID bh
+                             , kvDifficulty $ blockData b
+                             , merkleValue $ kvData $ blockData b
+                             )
+              liftIO $ killThread tid
+              loop =<< fork doMine
         --
-        when optMine $ do
-          c <- atomicallyIO $ currentConsensus pow
-          let h = c ^. bestHead . _1 . to asHeader
-              b = mineBlock cfgStr h
-          sendNewBlock pow b
+        case optMine of
+          True  -> loop =<< fork doMine
+          False -> liftIO $ forever $ threadDelay maxBound
 
+
+
+        -- -- t <- liftIO $ negate . log <$> randomRIO (0.5, 2)
+        -- -- liftIO $ threadDelay $ round (1e6 * t :: Double)
+        -- --
+        -- when optMine $ do
+        --   c   <- atomicallyIO $ currentConsensus pow
+        --   now <- getCurrentTime
+        --   let bh = c ^. bestHead . _1
+        --       b  = mineBlock now cfgStr bh
+        --   liftIO $ print (blockHeight b, blockTime b)
+        --   sendNewBlock pow b >>= \case
+        --     Right () -> return ()
+        --     Left  e  -> error $ show e
