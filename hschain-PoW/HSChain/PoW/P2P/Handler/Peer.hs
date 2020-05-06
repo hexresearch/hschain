@@ -175,13 +175,18 @@ peerRecv conn st@PeerState{..} PeerChans{..} sinkGossip =
     case deserialise bs of
       -- Announces are just forwarded
       GossipAnn  m -> do
-        logger DebugS "Got announce" ()
         toConsensus (return ()) $! RxAnn m
         case m of
-          AnnBestHead h -> atomicallyIO $ writeTVar peersBestHead (Just h)
+          AnnBestHead h -> do logger DebugS "Got announce" (sl "bid" (blockID h))
+                              atomicallyIO $ writeTVar peersBestHead (Just h)
       -- With responces we ensure that we got what we asked. Otherwise
       -- we throw exception and let PEX to deal with banning
       GossipResp m -> do
+        logger DebugS "Responce" $ case m of
+          RespHeaders hs -> (sl "headers" (map blockID hs))
+          RespBlock   b  -> (sl "block"   (blockID b))
+          RespPeers   as -> (sl "addrs"   as)
+          RespNack       -> (sl "nack" ())
         liftIO (readTVarIO requestInFlight) >>= \case
           Nothing  -> throwM UnrequestedResponce
           Just req -> case (req, m) of
