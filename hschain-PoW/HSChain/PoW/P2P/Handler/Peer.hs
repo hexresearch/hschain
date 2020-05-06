@@ -60,6 +60,9 @@ runPeer conn chans@PeerChans{..} = logOnException $ do
                     peersBestHead   <- newTVarIO Nothing
                     inCatchup       <- newTVarIO False
                     return PeerState{..}
+  -- Send announce with current state at start
+  do s <- atomicallyIO peerConsensuSt
+     sinkIO sinkGossip $ GossipAnn $ AnnBestHead $ s ^. bestHead . _1 . to asHeader
   runConcurrently
     [ peerSend    conn (srcGossip <> fmap GossipAnn peerBCastAnn)
     , peerRecv    conn     st chans sinkGossip
