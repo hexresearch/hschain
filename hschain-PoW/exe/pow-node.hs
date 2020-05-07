@@ -42,15 +42,20 @@ import HSChain.Control.Util
 ----------------------------------------------------------------
 
 genesis :: Block KV
-genesis = GBlock { blockHeight   = Height 0
-                 , prevBlock     = Nothing
-                 , blockData     = KV { kvData = merkled [], kvSolution = 0 }
-                 }
+genesis = GBlock
+  { blockHeight = Height 0
+  , blockTime   = Time 0
+  , prevBlock   = Nothing
+  , blockData   = KV { kvData     = merkled []
+                     , kvSolution = 0
+                     }
+  }
 
 
-mineBlock :: IsMerkle f => String -> GBlock KV f -> Block KV
-mineBlock val b = GBlock
+mineBlock :: IsMerkle f => Time -> String -> GBlock KV f -> Block KV
+mineBlock now val b = GBlock
   { blockHeight = succ $ blockHeight b
+  , blockTime   = now
   , prevBlock   = Just $! blockID b
   , blockData   = KV { kvData = merkled [ let Height h = blockHeight b
                                           in (fromIntegral h, val)
@@ -127,9 +132,10 @@ main = do
         liftIO $ threadDelay $ round (1e6 * t :: Double)
         --
         when optMine $ do
-          c <- atomicallyIO $ currentConsensus pow
+          c   <- atomicallyIO $ currentConsensus pow
+          now <- getCurrentTime
           let h = c ^. bestHead . _1 . to asHeader
-              b = mineBlock cfgStr h
+              b = mineBlock now cfgStr h
           sendNewBlock pow b >>= \case
             Right () -> return ()
             Left  e  -> error $ show e

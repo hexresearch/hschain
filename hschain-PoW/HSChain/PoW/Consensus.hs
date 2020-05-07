@@ -119,6 +119,7 @@ blockIndexFromGenesis genesis
   where
     bid = blockID genesis
     bh  = BH { bhHeight   = Height 0
+             , bhTime     = blockTime genesis
              , bhBID      = bid
              , bhWork     = blockWork genesis
              , bhPrevious = Nothing
@@ -130,29 +131,6 @@ lookupIdx bid (BlockIndex idx) = Map.lookup bid idx
 
 insertIdx :: (Ord (BlockID b)) => BH b -> BlockIndex b -> BlockIndex b
 insertIdx bh (BlockIndex idx) = BlockIndex $ Map.insert (bhBID bh) bh idx
-
--- | Unpacked header for storage in block index. We use this data type
---   instead of @[(BlockID, Header b)]@ in order to reduce memory use
---   since we'll keep many thousands on these values in memory.
-data BH b = BH
-  { bhHeight   :: !Height         --
-  , bhBID      :: !(BlockID b)    --
-  , bhWork     :: !Work           --
-  , bhPrevious :: !(Maybe (BH b)) --
-  , bhData     :: !(b Proxy)      --
-  }
-
-asHeader :: BH b -> Header b
-asHeader bh = GBlock
-  { blockHeight   = bhHeight bh
-  , prevBlock     = bhBID <$> bhPrevious bh
-  , blockData     = bhData bh
-  }
-
-deriving instance (Show (BlockID b), Show (b Proxy)) => Show (BH b)
-
-instance BlockData b => Eq (BH b) where
-  a == b = bhBID a == bhBID b
 
 makeLocator :: BH b -> Locator b
 makeLocator  = Locator . takeH 10 . Just
@@ -312,12 +290,14 @@ processHeader header = do
   -- Perform header validations
   unless (succ (bhHeight parent) == blockHeight header)
     $ throwError ErrH'HeightMismatch
-  goodHeader <- validateHeader header
+  now <- getCurrentTime
+  goodHeader <- validateHeader parent now header
   unless goodHeader
     $ throwError ErrH'ValidationFailure
   -- Create new index entry
   let work = bhWork parent <> blockWork header
       bh   = BH { bhHeight   = blockHeight header
+                , bhTime     = blockTime   header
                 , bhBID      = bid
                 , bhWork     = work
                 , bhPrevious = Just parent

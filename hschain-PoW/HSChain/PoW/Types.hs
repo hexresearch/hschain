@@ -82,10 +82,13 @@ class ( Show      (BlockID b)
 
   -- | Compute block ID out of block using only header.
   blockID :: IsMerkle f => GBlock b f -> BlockID b
-  -- | Context free validation of header. It's mostly sanity check on
-  --   header. 
-  validateHeader :: MonadIO m => Header b -> m Bool
+  -- | Validate header. Chain ending with parent block and current
+  --   time are provided as parameters.
+  validateHeader :: MonadIO m => BH b -> Time -> Header b -> m Bool
+  -- | Context free validation of block which doesn't have access to
+  --   state of blockchain. It should perform sanity checks.
   validateBlock  :: MonadIO m => Block  b -> m Bool
+  -- | Amount of work in the block
   blockWork      :: GBlock b f -> Work
 
 -- | Generic block. This is just spine of blockchain, that is height
@@ -96,6 +99,7 @@ class ( Show      (BlockID b)
 --   (usually block is Merkle tree of some transactions)
 data GBlock b f = GBlock
   { blockHeight   :: !Height
+  , blockTime   :: !Time
   , prevBlock     :: !(Maybe (BlockID b))
   , blockData     :: !(b f)
   }
@@ -103,6 +107,34 @@ data GBlock b f = GBlock
 
 deriving stock instance (Eq (BlockID b), Eq (b f)) => Eq (GBlock b f)
 deriving stock instance (Show (BlockID b), Show (b f)) => Show (GBlock b f)
+
+
+-- | Unpacked header for storage in block index. We use this data type
+--   instead of @[(BlockID, Header b)]@ in order to reduce memory use
+--   since we'll keep many thousands on these values in memory.
+data BH b = BH
+  { bhHeight   :: !Height         --
+  , bhTime     :: !Time
+  , bhBID      :: !(BlockID b)    --
+  , bhWork     :: !Work           --
+  , bhPrevious :: !(Maybe (BH b)) --
+  , bhData     :: !(b Proxy)      --
+  }
+
+asHeader :: BH b -> Header b
+asHeader bh = GBlock
+  { blockHeight = bhHeight bh
+  , blockTime   = bhTime bh
+  , prevBlock   = bhBID <$> bhPrevious bh
+  , blockData   = bhData bh
+  }
+
+deriving instance (Show (BlockID b), Show (b Proxy)) => Show (BH b)
+
+instance BlockData b => Eq (BH b) where
+  a == b = bhBID a == bhBID b
+
+
 
 toHeader :: MerkleMap b => Block b -> Header b
 toHeader = merkleMap (const Proxy)

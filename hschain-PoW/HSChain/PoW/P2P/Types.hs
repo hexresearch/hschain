@@ -164,6 +164,9 @@ instance ( JSON.ToJSON (BlockID b)
 data MsgRX b
   = RxAnn     !(MsgAnn b)  -- ^ Announcement from peer
   | RxBlock   !(Block b)   -- ^ Peer sent block to us
+  | RxMined   !(Block b)   -- ^ Freshly mined block. It's different
+                           --   from RxBlock in that we'll accept
+                           --   block even if we don't have its header.
   | RxHeaders [Header b]   -- ^ Peer sent headers to us
 
 -- | Box wrapping message to consensus. 
