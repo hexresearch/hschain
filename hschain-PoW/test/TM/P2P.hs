@@ -140,7 +140,9 @@ runNetTest test = do
       send $ serialise $ HandshakeHello (HandshakeNonce 0) port
       HandshakeAck <- deserialise <$> recv
       -- Run test
-      runTestM conn test
+      runTestM conn $ do
+        GossipAnn (AnnBestHead _) <- recvM
+        test
   where
     ipNode = NetAddrV4 1 port
     ipOur  = NetAddrV4 2 port

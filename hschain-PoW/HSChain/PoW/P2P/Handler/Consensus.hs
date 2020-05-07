@@ -72,11 +72,18 @@ consensusMonitor
 consensusMonitor db (BoxRX message)
   = message $ logR <=< \case
       RxAnn     m  -> handleAnnounce m
-      RxBlock   b  -> handleBlock    b
+      RxBlock   b  -> do
+        lift $ logger DebugS "Got RxBlock" (sl "bid" (blockID b))
+        evalError $ handleBlockError $ processBlock db b
+      RxMined   b  -> do
+        lift $ logger DebugS "Got RxMined" (sl "bid" (blockID b))
+        evalError $ do handleHeaderError $ processHeader (toHeader b)
+                       handleBlockError  $ processBlock  db b
       RxHeaders hs -> do
         lift $ logger DebugS "Got RxHeaders" (sl "bid" (blockID <$> hs))
-        handleHeaders hs
+        evalError $ mapM_ (handleHeaderError . processHeader) hs
   where
+    -- Log out responce to peer
     logR m = do lift $ logger DebugS "Resp" (sl "v" (show m))
                 return m
     -- Handler for announces coming from peers (they come unrequested)
@@ -94,24 +101,24 @@ consensusMonitor db (BoxRX message)
           -- We got announce that we couldn't attach to block tree. So
           -- we need that peer to catch up
           ErrH'UnknownParent     -> return Peer'EnterCatchup
-    -- Handle block that we got from peer
-    --
-    -- FIXME: Handle announcements
-    handleBlock b = do
-      lift $ logger DebugS "Got RxBlock" (sl "bid" (blockID b))
-      runExceptT (processBlock db b) >>= \case
-        Right () -> return Peer'Noop
-        Left  e  -> case e of
-          ErrB'UnknownBlock -> error "Impossible: we should'n get unknown block"
-          ErrB'InvalidBlock -> return Peer'Noop
-    -- Handle headers that we got from peer.
-    handleHeaders [] = return Peer'Noop
-    handleHeaders (h:hs) = do
-      runExceptT (processHeader h) >>= \case
-        Right () -> handleHeaders hs
-        Left  e  -> case e of
-          ErrH'KnownHeader       -> handleHeaders hs
-          ErrH'HeightMismatch    -> return $ Peer'Punish $ toException e
-          ErrH'UnknownParent     -> return $ Peer'Punish $ toException e
-          ErrH'ValidationFailure -> return $ Peer'Punish $ toException e
-          ErrH'BadParent         -> return $ Peer'Punish $ toException e
+    -- Handle error conditions which happen when we process new block
+    -- Note that we explicitly requrest blocks by their BIDs so we
+    -- shouln't punish peers
+    handleBlockError = mapExceptT $ fmap $ \case
+      Right               () -> Right ()
+      Left ErrB'UnknownBlock -> error "Impossible: we should'n get unknown block"
+      Left ErrB'InvalidBlock -> Right ()
+    -- Handle errors during header processing. Not that KnownHeader is
+    -- not really an error
+    handleHeaderError = mapExceptT $ fmap $ \case
+      Right () -> Right ()
+      Left  e  -> case e of
+        ErrH'KnownHeader       -> Right ()
+        ErrH'HeightMismatch    -> Left $ Peer'Punish $ toException e
+        ErrH'UnknownParent     -> Left $ Peer'Punish $ toException e
+        ErrH'ValidationFailure -> Left $ Peer'Punish $ toException e
+        ErrH'BadParent         -> Left $ Peer'Punish $ toException e
+    -- Convert error from ExceptT
+    evalError action = runExceptT action >>= \case
+      Right () -> return Peer'Noop
+      Left  e  -> return e

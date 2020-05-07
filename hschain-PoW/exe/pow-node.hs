@@ -48,19 +48,18 @@ genesis = GBlock
   { blockHeight = Height 0
   , blockTime   = Time 0
   , prevBlock   = Nothing
-  , blockData   = KV { kvData       = merkled []
-                     , kvNonce      = 0
-                     , kvDifficulty = 20000
+  , blockData   = KV { kvData     = merkled []
+                     , kvSolution = 0
                      }
   }
 
 
-mineBlock :: Time -> String -> BH KV -> Block KV
-mineBlock now val bh = fromJust $ mine $ GBlock
-  { blockHeight = succ $ bhHeight bh
+mineBlock :: IsMerkle f => Time -> String -> GBlock KV f -> Block KV
+mineBlock now val b = GBlock
+  { blockHeight = succ $ blockHeight b
   , blockTime   = now
-  , prevBlock   = Just $! bhBID bh
-  , blockData   = KV { kvData = merkled [ let Height h = bhHeight bh
+  , prevBlock   = Just $! blockID b
+  , blockData   = KV { kvData = merkled [ let Height h = blockHeight b
                                           in (fromIntegral h, val)
                                         ]
                      , kvNonce      = 0
@@ -159,11 +158,14 @@ main = do
               liftIO $ killThread tid
               loop =<< fork doMine
         --
-        case optMine of
-          True  -> loop =<< fork doMine
-          False -> liftIO $ forever $ threadDelay maxBound
-
-
+        when optMine $ do
+          c   <- atomicallyIO $ currentConsensus pow
+          now <- getCurrentTime
+          let h = c ^. bestHead . _1 . to asHeader
+              b = mineBlock now cfgStr h
+          sendNewBlock pow b >>= \case
+            Right () -> return ()
+            Left  e  -> error $ show e
 
         -- -- t <- liftIO $ negate . log <$> randomRIO (0.5, 2)
         -- -- liftIO $ threadDelay $ round (1e6 * t :: Double)

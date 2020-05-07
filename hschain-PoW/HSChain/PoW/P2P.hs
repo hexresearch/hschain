@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns               #-}
 {-# LANGUAGE DeriveFunctor              #-}
 {-# LANGUAGE DerivingStrategies         #-}
 {-# LANGUAGE FlexibleContexts           #-}
@@ -62,29 +63,16 @@ startNode cfg netAPI seeds db consensus = do
   bIdx                     <- liftIO $ newTVarIO consensus
   runPEX cfg netAPI seeds blockReg sinkBOX mkSrcAnn (readTVar bIdx) db
   -- Consensus thread
-  cfork $ threadConsensus db consensus ConsensusCh
-    { bcastAnnounce    = sinkAnn
-    , bcastChainUpdate = sinkChain
-    , sinkConsensusSt  = Sink $ writeTVar bIdx
-    , sinkReqBlocks    = sinkBIDs
-    , srcRX            = srcBOX
+  cforkLinked $ threadConsensus db consensus ConsensusCh
+    { bcastAnnounce   = sinkAnn
+    , sinkConsensusSt = Sink $ writeTVar bIdx
+    , sinkReqBlocks   = sinkBIDs
+    , srcRX           = srcBOX
     }
   return PoW
     { currentConsensus = readTVar bIdx
-    , sendNewBlock     = \b -> runExceptT $ do
+    , sendNewBlock     = \(!b) -> runExceptT $ do
         res <- liftIO newEmptyMVar
-        --
-        sinkIO sinkBOX $ BoxRX $ \cnt -> liftIO . putMVar res =<< cnt (RxHeaders [toHeader b])
-        liftIO (takeMVar res) >>= \case
-          Peer'Punish e     -> throwError (toException e)
-          Peer'EnterCatchup -> return ()
-          Peer'Noop         -> return ()
-        --
-        sinkIO sinkBOX $ BoxRX $ \cnt -> liftIO . putMVar res =<< cnt (RxBlock b)
-        void $ liftIO (takeMVar res)
-    , chainUpdate = mkSrcChain
+        sinkIO sinkBOX $ BoxRX $ \cnt -> liftIO . putMVar res =<< cnt (RxMined b)
+        void $ liftIO $ takeMVar res
     }
-
-
-cfork :: (MonadMask m, MonadFork m) => m a -> ContT b m ()
-cfork action = ContT $ \cnt -> forkLinked action (cnt ())
