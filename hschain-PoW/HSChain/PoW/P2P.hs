@@ -61,7 +61,7 @@ startNode cfg netAPI seeds db consensus = do
   bIdx                    <- liftIO $ newTVarIO consensus
   runPEX cfg netAPI seeds blockReg sinkBOX mkSrcAnn (readTVar bIdx) db
   -- Consensus thread
-  cfork $ threadConsensus db consensus ConsensusCh
+  cforkLinked $ threadConsensus db consensus ConsensusCh
     { bcastAnnounce   = sinkAnn
     , sinkConsensusSt = Sink $ writeTVar bIdx
     , sinkReqBlocks   = sinkBIDs
@@ -74,7 +74,3 @@ startNode cfg netAPI seeds db consensus = do
         sinkIO sinkBOX $ BoxRX $ \cnt -> liftIO . putMVar res =<< cnt (RxMined b)
         void $ liftIO $ takeMVar res
     }
-
-
-cfork :: (MonadMask m, MonadFork m) => m a -> ContT b m ()
-cfork action = ContT $ \cnt -> forkLinked action (cnt ())
