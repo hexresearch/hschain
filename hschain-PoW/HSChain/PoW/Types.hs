@@ -21,6 +21,7 @@ import Codec.Serialise          (Serialise)
 import Control.DeepSeq
 import Control.Monad            (forever)
 import Control.Monad.IO.Class
+import Data.Bits
 import Data.Monoid              (Sum(..))
 import Data.Time.Clock          (UTCTime)
 import Data.Time.Clock.POSIX    (getPOSIXTime,posixSecondsToUTCTime)
@@ -49,6 +50,10 @@ newtype Time = Time Int64
   deriving stock   (Read, Generic, Eq, Ord)
   deriving newtype (NFData, CBOR.Serialise, JSON.ToJSON, JSON.FromJSON, Enum, CryptoHashable)
 
+-- | Useful constant to calculate durations.
+timeSecond :: Time
+timeSecond = Time 1000
+
 instance Show Time where
   show = show . timeToUTC
 
@@ -61,6 +66,10 @@ getCurrentTime = do
 -- | Convert timestamp to UTCTime
 timeToUTC :: Time -> UTCTime
 timeToUTC (Time t) = posixSecondsToUTCTime (realToFrac t / 1000)
+
+-- | Multiply time (usually duration) by some integer constant.
+scaleTime :: Int64 -> Time -> Time
+scaleTime i (Time y) = Time (i * y)
 
 
 ----------------------------------------------------------------
@@ -108,8 +117,31 @@ class ( Show      (BlockID b)
   -- | How work difficulty should be adjusted.
   -- First part of tuple is the block interval, second is seconds
   -- this interval should have.
-  targetAdjustmentInfo :: GBlock b f -> (Int, Natural)
-  targetAdjustmentInfo _ = let n = 1024 in (n, 120 * fromIntegral n)
+  targetAdjustmentInfo :: GBlock b f -> (Height, Time)
+  targetAdjustmentInfo _ = let n = 1024 in (Height n, scaleTime (120 * fromIntegral n) timeSecond)
+
+  -- |Perform retargeting with rounding.
+  --
+  -- We provide default implementation similar to one in Bitcoin,
+  -- except we treat mantissa as unsigned.
+  thresholdRetarget :: GBlock b f -> Target -> Time -> Target
+  thresholdRetarget blk (Target currentThreshold) (Time delta') =
+    Target roundedNewThreshold
+    where
+      (_, Time targetTimeDelta') = targetAdjustmentInfo blk
+      delta = fromIntegral delta'
+      targetTimeDelta = fromIntegral targetTimeDelta'
+      -- new threshold = ceil $ current threshold * current time delta / target time delta
+      -- we use Integers, thus div and addition.
+      newThreshold = div (currentThreshold * delta + targetTimeDelta - 1) targetTimeDelta
+      roundedNewThreshold = roundToThreeBytes (31 - 3)
+      roundToThreeBytes 0 = newThreshold -- too low, can go with "denormalized" variant
+      roundToThreeBytes n
+        | shifted < 2 ^ (24 :: Int) = newThreshold .|. ones
+        | otherwise = roundToThreeBytes (n - 1)
+        where
+          shifted = shiftR newThreshold (n * 8)
+          ones = shiftL (1 :: Integer) (n * 8) - 1
 
 -- |Parts of mining process.
 --
@@ -185,7 +217,7 @@ newtype Difficulty = Difficulty { difficultyInteger :: Integer }
 --   (usually block is Merkle tree of some transactions)
 data GBlock b f = GBlock
   { blockHeight   :: !Height
-  , blockTime   :: !Time
+  , blockTime     :: !Time
   , prevBlock     :: !(Maybe (BlockID b))
   , blockData     :: !(b f)
   }
