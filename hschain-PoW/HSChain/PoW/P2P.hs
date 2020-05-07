@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns               #-}
 {-# LANGUAGE DeriveFunctor              #-}
 {-# LANGUAGE DerivingStrategies         #-}
 {-# LANGUAGE FlexibleContexts           #-}
@@ -68,7 +69,7 @@ startNode cfg netAPI seeds db consensus = do
     }
   return PoW
     { currentConsensus = readTVar bIdx
-    , sendNewBlock     = \b -> runExceptT $ do
+    , sendNewBlock     = \(!b) -> runExceptT $ do
         res <- liftIO newEmptyMVar
         sinkIO sinkBOX $ BoxRX $ \cnt -> liftIO . putMVar res =<< cnt (RxMined b)
         void $ liftIO $ takeMVar res
