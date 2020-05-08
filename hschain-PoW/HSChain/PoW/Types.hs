@@ -117,18 +117,18 @@ class ( Show      (BlockID b)
   -- | How work difficulty should be adjusted.
   -- First part of tuple is the block interval, second is seconds
   -- this interval should have.
-  targetAdjustmentInfo :: GBlock b f -> (Height, Time)
+  targetAdjustmentInfo :: BH b -> (Height, Time)
   targetAdjustmentInfo _ = let n = 1024 in (Height n, scaleTime (120 * fromIntegral n) timeSecond)
 
   -- |Perform retargeting with rounding.
   --
   -- We provide default implementation similar to one in Bitcoin,
   -- except we treat mantissa as unsigned.
-  thresholdRetarget :: GBlock b f -> Target -> Time -> Target
-  thresholdRetarget blk (Target currentThreshold) (Time delta') =
+  thresholdRetarget :: BH b -> Target -> Time -> Target
+  thresholdRetarget bh (Target currentThreshold) (Time delta') =
     Target roundedNewThreshold
     where
-      (_, Time targetTimeDelta') = targetAdjustmentInfo blk
+      (_, Time targetTimeDelta') = targetAdjustmentInfo bh
       delta = fromIntegral delta'
       targetTimeDelta = fromIntegral targetTimeDelta'
       -- new threshold = ceil $ current threshold * current time delta / target time delta

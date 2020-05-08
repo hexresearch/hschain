@@ -58,8 +58,8 @@ instance BlockData KV where
   validateHeader bh (Time now) header
     = return
     $ and
-    [ hash256 header <= blockTarget header
-    , kvDifficulty (blockData header) == retarget cfg bh
+    [ hash256AsTarget header <= blockTargetThreshold header
+    , kvDifficulty (blockData header) == retarget bh
     -- Time checks
     , t <= now + (2*60*60*1000)
     -- FIXME: Check that we're ahead of median time of N prev block
@@ -69,34 +69,35 @@ instance BlockData KV where
   --
   validateBlock  _ = return True
   blockWork      b = Work $ kvDifficulty $ blockData b
+  blockTargetThreshold b = Target $ fromIntegral $ 2^(256::Int) `div` kvDifficulty (blockData b)
 
 
-blockTarget :: GBlock KV f -> Natural
-blockTarget b = 2^(256::Int) `div` kvDifficulty (blockData b)
 
 -- FIXME: correctly compute rertargeting
 retarget :: BH KV -> Natural
 retarget bh
   -- Retarget
-  | bhHeight bh `mod` kvAdjustInterval == 0
-  , Just old <- goBack kvAdjustInterval bh
+  | bhHeight bh `mod` adjustInterval == 0
+  , Just old <- goBack adjustInterval bh
   , bhHeight old /= 0
   =   let Time t1 = bhTime old
           Time t2 = bhTime bh
           tgt     = 2^(256::Int) `div` kvDifficulty (bhData bh)
-          tgt'    = (tgt * fromIntegral (t2 - t1)) `div` (fromIntegral kvAdjustInterval * kvBlockDelay)
+          tgt'    = (tgt * fromIntegral (t2 - t1)) `div` (fromIntegral adjustInterval * fromIntegral seconds)
       in traceShowId $ 2^(256::Int) `div` tgt'
   | otherwise
     = kvDifficulty $ bhData bh
+  where
+    (adjustInterval, Time seconds) = targetAdjustmentInfo bh
 
-hash256 :: CryptoHashable a => a -> Natural
-hash256 a
-  = BS.foldl' (\i w -> (i `shiftL` 8) + fromIntegral  w) 0 bs
+hash256AsTarget :: CryptoHashable a => a -> Target
+hash256AsTarget a
+  = Target $ BS.foldl' (\i w -> (i `shiftL` 8) + fromIntegral  w) 0 bs
   where
     Hash bs = hash a :: Hash SHA256
 
 mine :: Block KV -> Maybe (Block KV)
-mine b0 = find (\b -> hash256 b <= tgt)
+mine b0 = find (\b -> hash256AsTarget b <= tgt)
   [ let GBlock{..} = b0
     in  GBlock{ blockData = blockData { kvNonce = nonce }
               , ..
@@ -104,7 +105,7 @@ mine b0 = find (\b -> hash256 b <= tgt)
   | nonce <- [minBound .. maxBound]
   ]
   where
-    tgt = blockTarget b0
+    tgt = blockTargetThreshold b0
 
 
 goBack :: Height -> BH b -> Maybe (BH b)

@@ -49,7 +49,8 @@ genesis = GBlock
   , blockTime   = Time 0
   , prevBlock   = Nothing
   , blockData   = KV { kvData     = merkled []
-                     , kvSolution = 0
+                     , kvNonce = 0
+                     , kvDifficulty = 2^(256 :: Int)
                      }
   }
 
@@ -62,15 +63,9 @@ mineBlock now val b = GBlock
   , blockData   = KV { kvData = merkled [ let Height h = blockHeight b
                                           in (fromIntegral h, val)
                                         ]
-                     , kvNonce      = 0
+                     , kvNonce = 0
                      , kvDifficulty = retarget cfg bh
                      }
-  }
-
-cfg :: ChainConfig KV
-cfg = KVCfg
-  { kvAdjustInterval = 50
-  , kvBlockDelay     = 500
   }
 
 ----------------------------------------------------------------
