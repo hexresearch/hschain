@@ -55,16 +55,16 @@ genesis = GBlock
   }
 
 
-mineBlock :: IsMerkle f => Time -> String -> GBlock KV f -> Block KV
-mineBlock now val b = GBlock
-  { blockHeight = succ $ blockHeight b
+mineBlock :: Time -> String -> BH KV -> Block KV
+mineBlock now val bh = fromJust $ mine $ GBlock
+  { blockHeight = succ $ bhHeight bh
   , blockTime   = now
-  , prevBlock   = Just $! blockID b
-  , blockData   = KV { kvData = merkled [ let Height h = blockHeight b
+  , prevBlock   = Just $! bhBID bh
+  , blockData   = KV { kvData = merkled [ let Height h = bhHeight bh
                                           in (fromIntegral h, val)
                                         ]
                      , kvNonce = 0
-                     , kvDifficulty = retarget cfg bh
+                     , kvDifficulty = retarget bh
                      }
   }
 
@@ -123,7 +123,7 @@ main = do
   let s0 = consensusGenesis genesis (viewKV (blockID genesis))
   withLogEnv "" "" (map makeScribe cfgLog) $ \logEnv ->
     runLoggerT logEnv $ evalContT $ do
-      pow <- startNode netcfg net cfgPeers cfg db s0
+      pow <- startNode netcfg net cfgPeers db s0
       let printBCH = when optPrintBCH $ do
             c <- atomicallyIO $ currentConsensus pow
             let loop bh@BH{bhBID = bid} = do
@@ -156,8 +156,7 @@ main = do
         when optMine $ do
           c   <- atomicallyIO $ currentConsensus pow
           now <- getCurrentTime
-          let h = c ^. bestHead . _1 . to asHeader
-              b = mineBlock now cfgStr h
+          let b = mineBlock now cfgStr $ c ^. bestHead . _1
           sendNewBlock pow b >>= \case
             Right () -> return ()
             Left  e  -> error $ show e
