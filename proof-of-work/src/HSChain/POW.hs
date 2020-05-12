@@ -31,8 +31,7 @@ foreign import ccall "evpow_solve"
                     -> Ptr Word8    -- ^(writeable) Answer's buffer.
                     -> Ptr Word8    -- ^(writeable) Full puzzle solution.
                     -> Int          -- ^Clauses count.
-                    -> Int          -- ^Complexity shift.
-                    -> Word16       -- ^Complexity mantissa.
+                    -> Ptr Word8    -- ^Little-endian target.
                     -> Int          -- ^Milliseconds to search for answer.
                     -> Int          -- ^Attempts allowed to search for an answer.
                     -> Int          -- ^Attempts between restarts in local search.
@@ -47,8 +46,7 @@ foreign import ccall "evpow_check"
                     -> Ptr Word8
                     -> Ptr Word8
                     -> Int
-                    -> Int
-                    -> Word16
+                    -> Ptr Word8
                     -> IO Int
 
 -- |Configuration of POW
@@ -57,8 +55,7 @@ data POWConfig = POWConfig
   , powCfgAttemptsBetweenRestarts  :: !Int
   , powCfgAttemptsToSearch         :: !Int
   , powCfgMillisecondsToSearch     :: !Int
-  , powCfgComplexityMantissa       :: !Word16
-  , powCfgComplexityShift          :: !Int
+  , powCfgTarget                   :: !Integer
   }
   deriving (Show)
 
@@ -69,9 +66,19 @@ defaultPOWConfig = POWConfig
   , powCfgAttemptsBetweenRestarts  = 10000
   , powCfgAttemptsToSearch         = 2500000
   , powCfgMillisecondsToSearch     = 2000
-  , powCfgComplexityMantissa       = 0xffff
-  , powCfgComplexityShift          = 0
+  , powCfgTarget                   = shiftL 1 256 - 1 -- |Easiest target to meet.
   }
+
+-- |Encode an integer as least-significant-byte first (little endian).
+-- As we use this for specifying targets, we cut transformation at
+-- @answerSize@ bytes. This means that Integer must be less that
+-- @2^(answerSize * 8)@.
+encodeIntegerLSB :: Integer -> ByteString
+encodeIntegerLSB i
+  | i >= shiftL 1 (8 * answerSize) = error "integer is too big to be encoded as target bytestring"
+  | i < 0 = error "negative integer cannot be a target"
+  | otherwise = B.pack $ take answerSize $
+                         map (fromIntegral . (`mod` 256)) $ iterate (`div` 256) i
 
 -- |Solve the puzzle.
 solve :: [ByteString] -- ^Parts of header to concatenate
@@ -82,12 +89,12 @@ solve headerParts POWConfig{..} = B.useAsCStringLen completeHeader $ \(ptr', len
     let answer = answerAndHash
         completeHash = plusPtr answerAndHash answerSize
     let ptr = castPtr ptr'
-    r <- evpow_solve
+        encodedTarget = encodeIntegerLSB powCfgTarget
+    r <- B.useAsCString encodedTarget $ \target -> evpow_solve
            ptr (fromIntegral len)
            answer completeHash
            powCfgClausesCount
-           powCfgComplexityShift
-           powCfgComplexityMantissa
+           (castPtr target)
            powCfgMillisecondsToSearch
            powCfgAttemptsToSearch
            powCfgAttemptsBetweenRestarts
@@ -104,7 +111,8 @@ solve headerParts POWConfig{..} = B.useAsCStringLen completeHeader $ \(ptr', len
 
 check :: ByteString -> ByteString -> POWConfig -> IO Bool
 check headerWithAnswer hashOfHeader POWConfig{..} =
-  B.useAsCStringLen headerWithAnswer $ \(hdr, hdrLen) ->
+  B.useAsCStringLen headerWithAnswer $ \(hdr, hdrLen) -> do
+    let encodedTarget = encodeIntegerLSB powCfgTarget
     if hdrLen < answerSize
       then return False
       else B.useAsCStringLen hashOfHeader $ \(hash,hashLen) ->
@@ -112,7 +120,7 @@ check headerWithAnswer hashOfHeader POWConfig{..} =
           then return False
           else let prefixSize = hdrLen - answerSize
                    answer = plusPtr hdr prefixSize
-            in fmap (/= 0) $ evpow_check
+            in fmap (/= 0) $ B.useAsCString encodedTarget $ \target -> evpow_check
               (castPtr hdr) (fromIntegral prefixSize) (castPtr answer) (castPtr hash)
-              powCfgClausesCount powCfgComplexityShift powCfgComplexityMantissa
+              powCfgClausesCount (castPtr target)
 

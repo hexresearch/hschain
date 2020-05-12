@@ -295,12 +295,8 @@ extract_solution_answer(Solver* solver, uint8_t* answer) {
 
 // hash is treated as little-endian integer of SHA256_DIGEST_LENGTH*8 bits.
 static int
-under_complexity_threshold(uint8_t* hash, int complexity_shift, uint16_t complexity_mantissa) {
+under_complexity_threshold(uint8_t* hash, uint8_t* target) {
 	int i;
-	int bytes_zero = complexity_shift / 8;
-	int shift_within_byte = complexity_shift % 8;
-	int byte_index = SHA256_DIGEST_LENGTH - (complexity_shift + 16 + 7) / 8;
-	uint32_t accum;
 #if 0
 	printf("full hash as integer:");
 	for (i = SHA256_DIGEST_LENGTH - 1; i >= 0; i --) {
@@ -308,34 +304,17 @@ under_complexity_threshold(uint8_t* hash, int complexity_shift, uint16_t complex
 	}
 	printf("\n");
 #endif
-	// check whether required number of leading bytes are zero.
-	for (i=0;i<bytes_zero;i++) {
-		if (hash[SHA256_DIGEST_LENGTH - 1 - i]) {
+	// compare from most significant bytes downto to least signigicant.
+	for (i = SHA256_DIGEST_LENGTH - 1; i >= 0; i--) {
+		if (hash[i] > target[i]) {
 			return 0;
 		}
 	}
-	//printf("checking mantissa\n");
-	accum = 0;
-	if (byte_index + 2 >=0 && byte_index + 2 < SHA256_DIGEST_LENGTH) {
-		accum |= hash[byte_index + 2];
-	}
-	accum <<= 8;
-	if (byte_index + 1 >= 0 && byte_index + 1 < SHA256_DIGEST_LENGTH) {
-		accum |= hash[byte_index + 1];
-	}
-	accum <<= 8;
-	if (byte_index     >= 0) {
-		accum |= hash[byte_index];
-	}
-	// now accum has three hash bytes around what we will compare to mantissa.
-	accum >>= (8 - shift_within_byte) % 8;
-
-	// compare mantissas.
-	return accum <= complexity_mantissa;
+	return 1;
 } /* under_complexity_threshold */
 
 static int
-find_answer(SHA256_CTX* context_after_prefix, uint8_t* answer, uint8_t* full_hash, int milliseconds_allowance, int complexity_shift, uint16_t complexity_mantissa, Solver* solver, double* first_result_ms) {
+find_answer(SHA256_CTX* context_after_prefix, uint8_t* answer, uint8_t* full_hash, int milliseconds_allowance, uint8_t* target, Solver* solver, double* first_result_ms) {
 	clock_t end_time;
 	clock_t last_time;
 
@@ -371,7 +350,7 @@ find_answer(SHA256_CTX* context_after_prefix, uint8_t* answer, uint8_t* full_has
 		full_hash_context = *context_after_prefix;
 		SHA256_Update(&full_hash_context, answer, EVPOW_ANSWER_BYTES);
 		SHA256_Final(full_hash, &full_hash_context);
-		if (under_complexity_threshold(full_hash, complexity_shift, complexity_mantissa)) {
+		if (under_complexity_threshold(full_hash, target)) {
 			//printf("FOUND!\n");
 			return 1; // and everything is in place - answer filled, hash computed.
 		}
@@ -399,8 +378,7 @@ evpow_solve( uint8_t* prefix
 	   , uint8_t* answer
 	   , uint8_t* solution_hash
 	   , int clauses_count
-	   , int complexity_shift
-	   , uint16_t complexity_mantissa
+	   , uint8_t* target
 	   , int32_t milliseconds_allowance
 	   , int32_t attempts_allowed
 	   , int32_t attempts_between_restarts
@@ -459,7 +437,7 @@ evpow_solve( uint8_t* prefix
 	create_instance(prefix_hash, solver, clauses_count, fixed_bits_count, fixed_bits);
 
 	// find solution if we can.
-	r = find_answer(&prefix_hash_context, answer, solution_hash, milliseconds_allowance, complexity_shift, complexity_mantissa, solver, first_result_ms);
+	r = find_answer(&prefix_hash_context, answer, solution_hash, milliseconds_allowance, target, solver, first_result_ms);
 
 	solver_delete(solver);
 	return r;
@@ -471,14 +449,13 @@ evpow_check( uint8_t* prefix
            , uint8_t* answer
            , uint8_t* hash_to_compare
 	   , int clauses_count
-           , int complexity_shift
-           , uint16_t complexity_mantissa
+	   , uint8_t* target
            ) {
 	SHA256_CTX partial_ctx, full_ctx, ctx_after_hash;
 	uint8_t hash[SHA256_DIGEST_LENGTH];
 	int clause;
 	// fastest first - rarity compliance check.
-	if (!under_complexity_threshold(hash_to_compare, complexity_shift, complexity_mantissa)) {
+	if (!under_complexity_threshold(hash_to_compare, target)) {
 		printf("NOT RARE ENOUGH!\n");
 		return 0;
 	}
