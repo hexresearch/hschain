@@ -50,7 +50,7 @@ genesis = GBlock
   , prevBlock   = Nothing
   , blockData   = KV { kvData     = merkled []
                      , kvNonce = 0
-                     , kvDifficulty = 2^(256 :: Int)
+                     , kvTarget = Target $ 2^(256 :: Int) - 1
                      }
   }
 
@@ -64,7 +64,7 @@ mineBlock now val bh = fromJust $ mine $ GBlock
                                           in (fromIntegral h, val)
                                         ]
                      , kvNonce = 0
-                     , kvDifficulty = retarget bh
+                     , kvTarget = retarget bh
                      }
   }
 
@@ -147,7 +147,7 @@ main = do
               liftIO $ print ( blockHeight b
                              , blockTime b
                              , bhBID bh
-                             , kvDifficulty $ blockData b
+                             , kvTarget $ blockData b
                              , merkleValue $ kvData $ blockData b
                              )
               liftIO $ killThread tid

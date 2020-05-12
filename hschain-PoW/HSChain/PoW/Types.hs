@@ -204,10 +204,13 @@ miningLoop = forever $ do
 -- It is guaranteed to not to exceed some constant value.
 newtype Target = Target { targetInteger :: Integer }
   deriving newtype (Eq, Ord, Show)
+  deriving newtype (CryptoHashable, Serialise)
 
 -- |Difficulty - how many (in average) computations are needed to
 -- achieve the target.
 newtype Difficulty = Difficulty { difficultyInteger :: Integer }
+  deriving newtype (Eq, Ord, Show)
+  deriving newtype CryptoHashable
 
 -- | Generic block. This is just spine of blockchain, that is height
 --   of block, hash of previous block and a "block data" - application

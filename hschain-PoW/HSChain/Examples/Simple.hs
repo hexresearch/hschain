@@ -34,7 +34,7 @@ import Debug.Trace
 data KV f = KV
   { kvData       :: !(MerkleNode f SHA256 [(Int,String)])
   , kvNonce      :: !Word32
-  , kvDifficulty :: !Natural
+  , kvTarget     :: !Target
   }
   deriving stock (Generic)
 deriving stock instance Show1    f => Show (KV f)
@@ -59,7 +59,7 @@ instance BlockData KV where
     = return
     $ and
     [ hash256AsTarget header <= blockTargetThreshold header
-    , kvDifficulty (blockData header) == retarget bh
+    , kvTarget (blockData header) == retarget bh
     -- Time checks
     , t <= now + (2*60*60*1000)
     -- FIXME: Check that we're ahead of median time of N prev block
@@ -68,13 +68,14 @@ instance BlockData KV where
       Time t = blockTime header
   --
   validateBlock  _ = return True
-  blockWork      b = Work $ kvDifficulty $ blockData b
-  blockTargetThreshold b = Target $ fromIntegral $ 2^(256::Int) `div` kvDifficulty (blockData b)
+  blockWork      b = Work $ fromIntegral $ ((2^(256 :: Int)) `div`)
+                          $ targetInteger $ kvTarget $ blockData b
+  blockTargetThreshold b = Target $ fromIntegral $ 2^(256::Int) `div` targetInteger (kvTarget (blockData b))
 
 
 
 -- FIXME: correctly compute rertargeting
-retarget :: BH KV -> Natural
+retarget :: BH KV -> Target
 retarget bh
   -- Retarget
   | bhHeight bh `mod` adjustInterval == 0
@@ -82,12 +83,13 @@ retarget bh
   , bhHeight old /= 0
   =   let Time t1 = bhTime old
           Time t2 = bhTime bh
-          tgt     = 2^(256::Int) `div` kvDifficulty (bhData bh)
+          tgt     = targetInteger oldTarget
           tgt'    = (tgt * fromIntegral (t2 - t1)) `div` (fromIntegral adjustInterval * fromIntegral seconds)
-      in traceShowId $ 2^(256::Int) `div` tgt'
+      in traceShowId $ Target tgt'
   | otherwise
-    = kvDifficulty $ bhData bh
+    = oldTarget
   where
+    oldTarget = kvTarget $ bhData bh
     (adjustInterval, Time seconds) = targetAdjustmentInfo bh
 
 hash256AsTarget :: CryptoHashable a => a -> Target
