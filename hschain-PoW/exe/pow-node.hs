@@ -17,6 +17,7 @@ import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Cont
+import qualified Data.ByteString as BS
 import Data.Maybe
 import Data.Word
 import Data.Yaml.Config       (loadYamlSettings, requireEnv)
@@ -49,21 +50,21 @@ genesis = GBlock
   , blockTime   = Time 0
   , prevBlock   = Nothing
   , blockData   = KV { kvData     = merkled []
-                     , kvNonce = 0
+                     , kvNonce = BS.empty
                      , kvTarget = Target $ 2^(256 :: Int) - 1
                      }
   }
 
 
-mineBlock :: Time -> String -> BH KV -> Block KV
-mineBlock now val bh = fromJust $ mine $ GBlock
+mineBlock :: Time -> String -> BH KV -> IO (Block KV)
+mineBlock now val bh = fmap fromJust $ mine $ GBlock
   { blockHeight = succ $ bhHeight bh
   , blockTime   = now
   , prevBlock   = Just $! bhBID bh
   , blockData   = KV { kvData = merkled [ let Height h = bhHeight bh
                                           in (fromIntegral h, val)
                                         ]
-                     , kvNonce = 0
+                     , kvNonce = BS.empty
                      , kvTarget = retarget bh
                      }
   }
@@ -137,7 +138,7 @@ main = do
               c   <- atomicallyIO $ currentConsensus pow
               now <- getCurrentTime
               let bh = c ^. bestHead . _1
-                  b  = mineBlock now cfgStr bh
+              b <- liftIO $ mineBlock now cfgStr bh
               sendNewBlock pow b >>= \case
                 Right () -> return ()
                 Left  e  -> error $ show e
@@ -153,13 +154,9 @@ main = do
               liftIO $ killThread tid
               loop =<< fork doMine
         --
-        when optMine $ do
-          c   <- atomicallyIO $ currentConsensus pow
-          now <- getCurrentTime
-          let b = mineBlock now cfgStr $ c ^. bestHead . _1
-          sendNewBlock pow b >>= \case
-            Right () -> return ()
-            Left  e  -> error $ show e
+        case optMine of
+          True  -> loop =<< fork doMine
+          False -> liftIO $ forever $ threadDelay maxBound
 
         -- -- t <- liftIO $ negate . log <$> randomRIO (0.5, 2)
         -- -- liftIO $ threadDelay $ round (1e6 * t :: Double)

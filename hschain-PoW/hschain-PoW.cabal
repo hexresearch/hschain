@@ -23,6 +23,7 @@ Library
                      , hschain-control
                      , hschain-net
                      , hschain-merkle
+                     , hschain-pow-func
                      , aeson
                      , base58-bytestring >=0.1
                      , bytestring        >=0.10
@@ -85,8 +86,9 @@ Executable hschain-PoW-node
                      , hschain-crypto
                      , hschain-control
                      --
-                     , containers
                      , aeson
+                     , bytestring
+                     , containers
                      , random
                      , exceptions
                      , transformers

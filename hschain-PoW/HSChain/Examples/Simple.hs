@@ -10,13 +10,14 @@
 --
 module HSChain.Examples.Simple where
 
-import Codec.Serialise      (Serialise)
+import Codec.Serialise      (Serialise, serialise)
 import Data.Bits
 import Data.Functor.Classes (Show1)
 import Data.List            (find)
 import Data.Word
-import qualified Data.Aeson      as JSON
-import qualified Data.ByteString as BS
+import qualified Data.Aeson           as JSON
+import qualified Data.ByteString.Lazy as LBS
+import qualified Data.ByteString      as BS
 import Numeric.Natural
 import GHC.Generics         (Generic)
 
@@ -25,6 +26,7 @@ import HSChain.Crypto.Classes.Hash
 import HSChain.Crypto.SHA
 import HSChain.Types.Merkle.Types
 import HSChain.PoW.Types
+import qualified HSChain.POW as POWFunc
 
 import Debug.Trace
 
@@ -33,8 +35,8 @@ import Debug.Trace
 
 data KV f = KV
   { kvData       :: !(MerkleNode f SHA256 [(Int,String)])
-  , kvNonce      :: !Word32
   , kvTarget     :: !Target
+  , kvNonce      :: !BS.ByteString
   }
   deriving stock (Generic)
 deriving stock instance Show1    f => Show (KV f)
@@ -42,6 +44,9 @@ deriving stock instance IsMerkle f => Eq   (KV f)
 instance Serialise (KV Identity)
 instance Serialise (KV Proxy)
 
+blockWithoutNonce :: GBlock KV f -> GBlock KV f
+blockWithoutNonce block@GBlock{..} =
+  block { blockData = blockData { kvNonce = BS.empty } }
 
 instance IsMerkle f => CryptoHashable (KV f) where
   hashStep = genericHashStep "hschain"
@@ -98,18 +103,29 @@ hash256AsTarget a
   where
     Hash bs = hash a :: Hash SHA256
 
-mine :: Block KV -> Maybe (Block KV)
-mine b0 = find (\b -> hash256AsTarget b <= tgt)
+mine :: Block KV -> IO (Maybe (Block KV))
+mine b0@GBlock {..} = do
+  maybeAnswerHash <- POWFunc.solve [LBS.toStrict $ serialise $ blockWithoutNonce b0] powCfg
+  case maybeAnswerHash of
+    Nothing -> return Nothing
+    Just (answer, _hash) -> return $ Just $ b0 { blockData = blockData { kvNonce = answer } }
+  
+{-
+  find (\b -> hash256AsTarget b <= tgt)
   [ let GBlock{..} = b0
     in  GBlock{ blockData = blockData { kvNonce = nonce }
               , ..
               }
   | nonce <- [minBound .. maxBound]
   ]
+-}
   where
+    powCfg = POWFunc.defaultPOWConfig
+                     { POWFunc.powCfgTarget = targetInteger tgt }
     tgt = blockTargetThreshold b0
 
 
 goBack :: Height -> BH b -> Maybe (BH b)
 goBack (Height 0) bh = Just bh
 goBack h          bh = goBack (pred h) =<< bhPrevious bh
+
