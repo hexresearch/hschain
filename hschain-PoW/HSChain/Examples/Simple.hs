@@ -3,15 +3,25 @@
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE RecordWildCards            #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE StandaloneDeriving         #-}
+{-# LANGUAGE TypeApplications           #-}
 {-# LANGUAGE TypeFamilies               #-}
 {-# LANGUAGE UndecidableInstances       #-}
 -- |
---
-module HSChain.Examples.Simple where
+-- Simple block which implements write only key-value storage. It's
+-- only use is to test and debug PoW algorithms.
+module HSChain.Examples.Simple
+  ( KV(..)
+  , KVConfig(..)
+  , retarget
+  , mine
+  ) where
 
 import Codec.Serialise      (Serialise, serialise)
 import Control.Monad.IO.Class
+import Control.Applicative
+import Control.Monad
 import Data.Bits
 import Data.Functor.Classes (Show1)
 import Data.List            (find)
@@ -33,32 +43,48 @@ import Debug.Trace
 
 ----------------------------------------------------------------
 --
+----------------------------------------------------------------
 
-data KV f = KV
+-- | Simple block which contains key-value pairs. Work function is
+--   simple SHA256 a la bitcoin
+data KV cfg f = KV
   { kvData       :: !(MerkleNode f SHA256 [(Int,String)])
+  -- ^ List of key-value pairs
   , kvTarget     :: !Target
+  -- ^ Nonce which is used to get
   , kvNonce      :: !BS.ByteString
+  -- ^ Current difficulty of mining. It means a complicated thing
+  -- right now.
   }
   deriving stock (Generic)
-deriving stock instance Show1    f => Show (KV f)
-deriving stock instance IsMerkle f => Eq   (KV f)
-instance Serialise (KV Identity)
-instance Serialise (KV Proxy)
+deriving stock instance Show1    f => Show (KV cfg f)
+deriving stock instance IsMerkle f => Eq   (KV cfg f)
+instance Serialise (KV cfg Identity)
+instance Serialise (KV cfg Proxy)
 
-blockWithoutNonce :: GBlock KV f -> GBlock KV f
+blockWithoutNonce :: GBlock (KV cfg) f -> GBlock (KV cfg) f
 blockWithoutNonce block@GBlock{..} =
   block { blockData = blockData { kvNonce = BS.empty } }
 
-instance IsMerkle f => CryptoHashable (KV f) where
+instance IsMerkle f => CryptoHashable (KV cfg f) where
   hashStep = genericHashStep "hschain"
 
-instance MerkleMap KV where
+instance MerkleMap (KV cfg) where
   merkleMap f KV{..} = KV { kvData = mapMerkleNode f kvData
                           , ..
                           }
 
-instance BlockData KV where
-  newtype BlockID KV = KV'BID (Hash SHA256)
+-- | We may need multiple chains (main chain, test chain(s)) which may
+--   use different difficulty adjustment algorithms etc.
+class KVConfig cfg where
+  -- | Difficulty adjustment is performed every N of blocks
+  kvAdjustInterval :: Const Height  cfg
+  -- | Expected interval between blocks in milliseconds
+  kvBlockInterval  :: Const Natural cfg
+
+
+instance KVConfig cfg => BlockData (KV cfg) where
+  newtype BlockID (KV cfg) = KV'BID (Hash SHA256)
     deriving newtype (Show,Eq,Ord,CryptoHashable,Serialise, JSON.ToJSON, JSON.FromJSON)
   blockID b = let Hashed h = hashed b in KV'BID h
   validateHeader bh (Time now) header
@@ -91,7 +117,7 @@ instance BlockData KV where
 
 
 -- FIXME: correctly compute rertargeting
-retarget :: BH KV -> Target
+retarget :: KVConfig cfg => BH (KV cfg) -> Target
 retarget bh
   -- Retarget
   | bhHeight bh `mod` adjustInterval == 0
@@ -114,22 +140,12 @@ hash256AsTarget a
   where
     Hash bs = hash a :: Hash SHA256
 
-mine :: Block KV -> IO (Maybe (Block KV))
+mine :: KVConfig cfg => Block (KV cfg) -> IO (Maybe (Block (KV cfg)))
 mine b0@GBlock {..} = do
   maybeAnswerHash <- POWFunc.solve [LBS.toStrict $ serialise $ blockWithoutNonce b0] powCfg
   case maybeAnswerHash of
     Nothing -> return Nothing
     Just (answer, _hash) -> return $ Just $ b0 { blockData = blockData { kvNonce = answer } }
-  
-{-
-  find (\b -> hash256AsTarget b <= tgt)
-  [ let GBlock{..} = b0
-    in  GBlock{ blockData = blockData { kvNonce = nonce }
-              , ..
-              }
-  | nonce <- [minBound .. maxBound]
-  ]
--}
   where
     powCfg = POWFunc.defaultPOWConfig
                      { POWFunc.powCfgTarget = targetInteger tgt }
@@ -137,6 +153,5 @@ mine b0@GBlock {..} = do
 
 
 goBack :: Height -> BH b -> Maybe (BH b)
-goBack (Height 0) bh = Just bh
-goBack h          bh = goBack (pred h) =<< bhPrevious bh
-
+goBack (Height 0) = Just
+goBack h          = goBack (pred h) <=< bhPrevious

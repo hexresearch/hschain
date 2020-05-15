@@ -1,6 +1,7 @@
 -- |
 module TM.Util.Mockchain where
 
+import Control.Applicative
 import Data.Maybe (fromJust)
 import Data.List  (unfoldr)
 
@@ -8,14 +9,11 @@ import HSChain.PoW.Types
 import HSChain.Types.Merkle.Types
 import HSChain.Examples.Simple
 
-import HSChain.Crypto
-import HSChain.Crypto.SHA
-
 ----------------------------------------------------------------
 --
 ----------------------------------------------------------------
 
-mockchain :: [Block KV]
+mockchain :: KVConfig cfg => [Block (KV cfg)]
 mockchain = gen : unfoldr (Just . (\b -> (b,b)) . mineBlock "VAL") gen
   where
     gen = GBlock { blockHeight = Height 0
@@ -27,7 +25,7 @@ mockchain = gen : unfoldr (Just . (\b -> (b,b)) . mineBlock "VAL") gen
                                     }
                  }
 
-mineBlock :: String -> Block KV -> Block KV
+mineBlock :: KVConfig cfg => String -> Block (KV cfg) -> Block (KV cfg)
 mineBlock val b = fromJust $ mine $ GBlock
   { blockHeight = succ $ blockHeight b
   , blockTime   = Time 0
@@ -41,12 +39,18 @@ mineBlock val b = fromJust $ mine $ GBlock
   }
 
 
-genesis,block1,block2,block3,block2' :: Block KV
+data MockChain
+
+instance KVConfig MockChain where
+  kvAdjustInterval = Const 100
+  kvBlockInterval  = Const 1000
+
+genesis,block1,block2,block3,block2' :: Block (KV MockChain)
 genesis:block1:block2:block3:_ = mockchain
 block2' = mineBlock "Z" block1
 
 
-header1,header2,header3,header2' :: Header KV
+header1,header2,header3,header2' :: Header (KV MockChain)
 header1  = toHeader block1
 header2  = toHeader block2
 header3  = toHeader block3

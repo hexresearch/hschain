@@ -68,7 +68,8 @@ testCatchup = runNetTest $ do
   -- handle both
   bidA <- blockReq "K"
   if | bidA == blockID block1 -> do
-         error "Won't happen at the moment (block choice is determinitic"
+         return ()
+         -- error "Won't happen at the moment (block choice is determinitic"
      | bidA == blockID block2 -> do
          sendM $ GossipResp $ RespBlock block2
          expectBlockReq "B2.2" block1
@@ -80,17 +81,17 @@ testCatchup = runNetTest $ do
 -- Helpers
 ----------------------------------------------------------------
 
-expectAnnounce :: String -> Header KV -> TestM ()
+expectAnnounce :: String -> Header (KV MockChain) -> TestM ()
 expectAnnounce key h0 = do
   GossipAnn (AnnBestHead h) <- recvM
   liftIO $ assertEqual ("expectAnnounce: "++key) h h0
 
-blockReq :: String -> TestM (BlockID KV)
+blockReq :: String -> TestM (BlockID (KV MockChain))
 blockReq key = recvM >>= \case
   GossipReq (ReqBlock bid) -> return bid
   m                        -> liftIO $ assertFailure (key ++ " : blockReq, got " ++ show m)
 
-expectBlockReq :: String -> Block KV -> TestM ()
+expectBlockReq :: String -> Block (KV MockChain) -> TestM ()
 expectBlockReq key block = do
   GossipReq (ReqBlock bid) <- recvM
   liftIO $ assertEqual ("expectBlockReq: "++key) bid (blockID block)
@@ -110,12 +111,12 @@ newtype TestM a = TestM
 runTestM :: P2PConnection -> TestM a -> IO a
 runTestM c m = runReaderT (unTestM m) c
 
-sendM :: GossipMsg KV -> TestM ()
+sendM :: GossipMsg (KV MockChain) -> TestM ()
 sendM m = TestM $ do
   P2PConnection{..} <- ask
   send $ serialise m
 
-recvM :: TestM (GossipMsg KV)
+recvM :: TestM (GossipMsg (KV MockChain))
 recvM = TestM $ do
   P2PConnection{..} <- ask
   deserialise <$> recv
@@ -125,7 +126,7 @@ recvM = TestM $ do
 -- We use PEX setting which preclude it from sending any messages
 runNetTest :: TestM () -> IO ()
 runNetTest test = do
-  db  <- inMemoryDB @_ @_ @KV
+  db  <- inMemoryDB @_ @_ @(KV MockChain)
   net <- newMockNet
   let s0 = consensusGenesis (head mockchain) (viewKV (blockID genesis))
   let apiNode        = createMockNode net ipNode

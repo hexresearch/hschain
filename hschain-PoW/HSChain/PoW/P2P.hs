@@ -64,10 +64,11 @@ startNode cfg netAPI seeds db consensus = do
   runPEX cfg netAPI seeds blockReg sinkBOX mkSrcAnn (readTVar bIdx) db
   -- Consensus thread
   cforkLinked $ threadConsensus db consensus ConsensusCh
-    { bcastAnnounce   = sinkAnn
-    , sinkConsensusSt = Sink $ writeTVar bIdx
-    , sinkReqBlocks   = sinkBIDs
-    , srcRX           = srcBOX
+    { bcastAnnounce    = sinkAnn
+    , bcastChainUpdate = sinkChain
+    , sinkConsensusSt  = Sink $ writeTVar bIdx
+    , sinkReqBlocks    = sinkBIDs
+    , srcRX            = srcBOX
     }
   return PoW
     { currentConsensus = readTVar bIdx

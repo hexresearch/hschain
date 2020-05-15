@@ -31,7 +31,7 @@ inMemoryView step = make (error "No revinding past genesis")
           , flushState  = return ()
           }
 
-viewKV :: Monad m => BlockID KV -> StateView m KV
+viewKV :: (KVConfig cfg, Monad m) => BlockID (KV cfg) -> StateView m (KV cfg)
 viewKV bid = inMemoryView step Map.empty bid
   where
     step b m

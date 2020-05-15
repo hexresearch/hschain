@@ -1,4 +1,5 @@
 {-# LANGUAGE ApplicativeDo      #-}
+{-# LANGUAGE BangPatterns       #-}
 {-# LANGUAGE DeriveAnyClass     #-}
 {-# LANGUAGE DeriveGeneric      #-}
 {-# LANGUAGE DerivingStrategies #-}
@@ -44,7 +45,13 @@ import HSChain.Control.Util
 --
 ----------------------------------------------------------------
 
-genesis :: Block KV
+data TestChain
+
+instance KVConfig TestChain where
+  kvAdjustInterval = Const 100
+  kvBlockInterval  = Const 1000
+
+genesis :: Block (KV TestChain)
 genesis = GBlock
   { blockHeight = Height 0
   , blockTime   = Time 0
@@ -56,7 +63,7 @@ genesis = GBlock
   }
 
 
-mineBlock :: Time -> String -> BH KV -> IO (Maybe (Block KV))
+mineBlock :: Time -> String -> BH (KV TestChain) -> IO (Maybe (Block (KV TestChain)))
 mineBlock now val bh = mine $ GBlock
   { blockHeight = succ $ bhHeight bh
   , blockTime   = now
@@ -101,6 +108,7 @@ data Cfg = Cfg
   , cfgPeers :: [NetAddr]
   , cfgLog   :: [ScribeSpec]
   , cfgStr   :: String
+  , cfgMaxH  :: Maybe Height
   }
   deriving stock    (Show,Generic)
   deriving anyclass (JSON.FromJSON)
@@ -120,7 +128,7 @@ main = do
                       , nConnectedPeers = 3
                       }
   let net = newNetworkTcp cfgPort
-  db <- inMemoryDB @_ @_ @KV
+  db <- inMemoryDB @_ @_ @(KV TestChain)
   let s0 = consensusGenesis genesis (viewKV (blockID genesis))
   withLogEnv "" "" (map makeScribe cfgLog) $ \logEnv ->
     runLoggerT logEnv $ evalContT $ do
@@ -138,6 +146,9 @@ main = do
               c   <- atomicallyIO $ currentConsensus pow
               now <- getCurrentTime
               let bh = c ^. bestHead . _1
+              case cfgMaxH of
+                Just h -> liftIO $ when (bhHeight bh > h) $ forever $ threadDelay maxBound
+                Nothing -> return ()
               maybeB <- liftIO $ mineBlock now cfgStr bh
               case maybeB of
                 Just b -> sendNewBlock pow b >>= \case
@@ -153,12 +164,10 @@ main = do
                              , kvTarget $ blockData b
                              , merkleValue $ kvData $ blockData b
                              )
-              liftIO $ killThread tid
-              loop =<< fork doMine
+              liftIO $ mapM_ killThread tid
+              loop =<< if optMine then Just <$> fork doMine else return Nothing
         --
-        case optMine of
-          True  -> loop =<< fork doMine
-          False -> liftIO $ forever $ threadDelay maxBound
+        loop =<< if optMine then Just <$> fork doMine else return Nothing
 
         -- -- t <- liftIO $ negate . log <$> randomRIO (0.5, 2)
         -- -- liftIO $ threadDelay $ round (1e6 * t :: Double)
