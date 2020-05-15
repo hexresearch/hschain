@@ -49,23 +49,35 @@ foreign import ccall "evpow_check"
                     -> Ptr Word8
                     -> IO Int
 
+-- |Parameters of search algorithm.
+data POWSearchConfig = POWSearchConfig
+  { powSearchAttemptsBetweenRestarts
+  , powSearchAttemptsToSearch
+  , powSearchMillisecondsToSearch     :: !Int
+  }
+  deriving (Show)
+
 -- |Configuration of POW
 data POWConfig = POWConfig
   { powCfgClausesCount             :: !Int
-  , powCfgAttemptsBetweenRestarts  :: !Int
-  , powCfgAttemptsToSearch         :: !Int
-  , powCfgMillisecondsToSearch     :: !Int
+  , powCfgSearchConfig             :: !POWSearchConfig
   , powCfgTarget                   :: !Integer
   }
   deriving (Show)
+
+-- |Default configuration for search algorithm.
+defaultSearchConfig :: POWSearchConfig
+defaultSearchConfig = POWSearchConfig
+  { powSearchAttemptsBetweenRestarts  = 10000
+  , powSearchAttemptsToSearch         = 2500000
+  , powSearchMillisecondsToSearch     = 2000
+  }
 
 -- |Configuration of POW - default values.
 defaultPOWConfig :: POWConfig
 defaultPOWConfig = POWConfig
   { powCfgClausesCount             = 5250
-  , powCfgAttemptsBetweenRestarts  = 10000
-  , powCfgAttemptsToSearch         = 2500000
-  , powCfgMillisecondsToSearch     = 2000
+  , powCfgSearchConfig             = defaultSearchConfig
   , powCfgTarget                   = shiftL 1 256 - 1 -- |Easiest target to meet.
   }
 
@@ -95,9 +107,9 @@ solve headerParts POWConfig{..} = B.useAsCStringLen completeHeader $ \(ptr', len
            answer completeHash
            powCfgClausesCount
            (castPtr target)
-           powCfgMillisecondsToSearch
-           powCfgAttemptsToSearch
-           powCfgAttemptsBetweenRestarts
+           powSearchMillisecondsToSearch
+           powSearchAttemptsToSearch
+           powSearchAttemptsBetweenRestarts
            0 0 -- fixed bits
            nullPtr
     if r /= 0
@@ -107,20 +119,21 @@ solve headerParts POWConfig{..} = B.useAsCStringLen completeHeader $ \(ptr', len
              return (Just (answerBS, hashBS))
       else return Nothing
   where
+    POWSearchConfig{..} = powCfgSearchConfig
     completeHeader = B.concat headerParts
 
-check :: ByteString -> ByteString -> POWConfig -> IO Bool
-check headerWithAnswer hashOfHeader POWConfig{..} =
-  B.useAsCStringLen headerWithAnswer $ \(hdr, hdrLen) -> do
-    let encodedTarget = encodeIntegerLSB powCfgTarget
-    if hdrLen < answerSize
-      then return False
-      else B.useAsCStringLen hashOfHeader $ \(hash,hashLen) ->
-        if hashLen /= hashSize
-          then return False
-          else let prefixSize = hdrLen - answerSize
-                   answer = plusPtr hdr prefixSize
-            in fmap (/= 0) $ B.useAsCString encodedTarget $ \target -> evpow_check
-              (castPtr hdr) (fromIntegral prefixSize) (castPtr answer) (castPtr hash)
-              powCfgClausesCount (castPtr target)
+check :: ByteString -> ByteString -> ByteString -> POWConfig -> IO Bool
+check headerWithoutAnswer answer hashOfHeader POWConfig{..} =
+  B.useAsCStringLen headerWithoutAnswer $ \(hdr, hdrLen) -> 
+    B.useAsCString answer $ \answerPtr -> do
+      let encodedTarget = encodeIntegerLSB powCfgTarget
+      if hdrLen < answerSize
+        then return False
+        else B.useAsCStringLen hashOfHeader $ \(hash,hashLen) ->
+          if hashLen /= hashSize
+            then return False
+            else let prefixSize = hdrLen - answerSize
+              in fmap (/= 0) $ B.useAsCString encodedTarget $ \target -> evpow_check
+                (castPtr hdr) (fromIntegral prefixSize) (castPtr answerPtr) (castPtr hash)
+                powCfgClausesCount (castPtr target)
 

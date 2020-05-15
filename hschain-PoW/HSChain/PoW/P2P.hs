@@ -75,4 +75,5 @@ startNode cfg netAPI seeds db consensus = do
         res <- liftIO newEmptyMVar
         sinkIO sinkBOX $ BoxRX $ \cnt -> liftIO . putMVar res =<< cnt (RxMined b)
         void $ liftIO $ takeMVar res
+    , chainUpdate      = mkSrcChain
     }

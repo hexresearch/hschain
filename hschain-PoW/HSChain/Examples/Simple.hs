@@ -11,6 +11,7 @@
 module HSChain.Examples.Simple where
 
 import Codec.Serialise      (Serialise, serialise)
+import Control.Monad.IO.Class
 import Data.Bits
 import Data.Functor.Classes (Show1)
 import Data.List            (find)
@@ -61,15 +62,25 @@ instance BlockData KV where
     deriving newtype (Show,Eq,Ord,CryptoHashable,Serialise, JSON.ToJSON, JSON.FromJSON)
   blockID b = let Hashed h = hashed b in KV'BID h
   validateHeader bh (Time now) header
-    = return
-    $ and
-    [ hash256AsTarget header <= blockTargetThreshold header
-    , kvTarget (blockData header) == retarget bh
-    -- Time checks
-    , t <= now + (2*60*60*1000)
-    -- FIXME: Check that we're ahead of median time of N prev block
-    ]
+    | blockHeight header == 0 = return True -- skip genesis check.
+    | otherwise = do
+      answerIsGood <- liftIO $ POWFunc.check onlyHeader answer hashOfSum powCfg
+      return
+        $ and
+              [ answerIsGood
+              , kvTarget (blockData header) == retarget bh
+              -- Time checks
+              , t <= now + (2*60*60*1000)
+              -- FIXME: Check that we're ahead of median time of N prev block
+              ]
     where
+      powCfg = POWFunc.defaultPOWConfig
+                       { POWFunc.powCfgTarget = targetInteger tgt }
+      tgt = blockTargetThreshold header
+      onlyHeader = LBS.toStrict $ serialise $ blockWithoutNonce header
+      answer = kvNonce $ blockData header
+      Hash hashOfSum = hash headerAndAnswer :: Hash SHA256
+      headerAndAnswer = BS.concat [onlyHeader, answer]
       Time t = blockTime header
   --
   validateBlock  _ = return True
