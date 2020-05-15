@@ -14,6 +14,7 @@ import Test.Tasty.HUnit
 
 import HSChain.PoW.Types
 import HSChain.PoW.Consensus
+import HSChain.PoW.Logger
 import HSChain.Types.Merkle.Types
 import HSChain.Examples.Simple
 import HSChain.Examples.Util
@@ -138,7 +139,7 @@ testReorg = runTest
   ]
 
 
-bestHeadOK :: IsMerkle f => Consensus m KV -> GBlock KV f -> [String]
+bestHeadOK :: IsMerkle f => Consensus m (KV MockChain) -> GBlock (KV MockChain) f -> [String]
 bestHeadOK c h
   | expected == got = []
   | otherwise       =
@@ -150,7 +151,7 @@ bestHeadOK c h
     expected = blockID h
     got      = c^.bestHead._1.to bhBID
 
--- candidatesOK :: Consensus m KV -> [Header KV] -> [String]
+-- candidatesOK :: Consensus m (KV MockChain) -> [Header (KV MockChain)] -> [String]
 -- candidatesOK c hs
 --   | expected == headSet = []
 --   | otherwise           = ["candidatesOK: mismatch"]
@@ -158,7 +159,7 @@ bestHeadOK c h
 --     expected = Set.fromList $ blockID <$> hs
 --     headSet  = Set.fromList $ map (bhBID . bchHead) $ c^.candidateHeads
 
-candidatesSeqOK :: Consensus m KV -> [(Header KV,[Header KV])] -> [String]
+candidatesSeqOK :: Consensus m (KV MockChain) -> [(Header (KV MockChain),[Header (KV MockChain)])] -> [String]
 candidatesSeqOK c hs
   | expected == headSet = []
   | otherwise           =
@@ -175,7 +176,7 @@ candidatesSeqOK c hs
                             ]
 
 
-requiredOK :: Consensus m KV -> [Header KV] -> [String]
+requiredOK :: Consensus m (KV MockChain) -> [Header (KV MockChain)] -> [String]
 requiredOK c hs
   | c^.requiredBlocks == expected = []
   | otherwise                     =
@@ -193,13 +194,13 @@ requiredOK c hs
 
 
 data Message
-  = MsgH !(Header KV) (Maybe HeaderError) (Consensus IO KV -> [String])
-  | MsgB !(Block  KV) (Maybe BlockError ) (Consensus IO KV -> [String])
+  = MsgH !(Header (KV MockChain)) (Maybe HeaderError) (Consensus (NoLogsT IO) (KV MockChain) -> [String])
+  | MsgB !(Block  (KV MockChain)) (Maybe BlockError ) (Consensus (NoLogsT IO) (KV MockChain) -> [String])
 
 
 
 runTest :: [Message] -> IO ()
-runTest msgList = do
+runTest msgList = runNoLogsT $ do
   db <- inMemoryDB
   let s0 = consensusGenesis (head mockchain) (viewKV (blockID genesis))
   runExceptT (loop db s0 msgList) >>= \case
