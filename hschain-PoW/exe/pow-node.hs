@@ -56,8 +56,8 @@ genesis = GBlock
   }
 
 
-mineBlock :: Time -> String -> BH KV -> IO (Block KV)
-mineBlock now val bh = fmap fromJust $ mine $ GBlock
+mineBlock :: Time -> String -> BH KV -> IO (Maybe (Block KV))
+mineBlock now val bh = mine $ GBlock
   { blockHeight = succ $ bhHeight bh
   , blockTime   = now
   , prevBlock   = Just $! bhBID bh
@@ -138,10 +138,12 @@ main = do
               c   <- atomicallyIO $ currentConsensus pow
               now <- getCurrentTime
               let bh = c ^. bestHead . _1
-              b <- liftIO $ mineBlock now cfgStr bh
-              sendNewBlock pow b >>= \case
-                Right () -> return ()
-                Left  e  -> error $ show e
+              maybeB <- liftIO $ mineBlock now cfgStr bh
+              case maybeB of
+                Just b -> sendNewBlock pow b >>= \case
+                                                Right () -> return ()
+                                                Left  e  -> error $ show e
+                Nothing -> doMine
         let loop tid = do
               (bh,_) <- awaitIO upd
               Just b <- retrieveBlock db (bhBID bh)
