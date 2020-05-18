@@ -134,15 +134,16 @@ retarget bh
     oldTarget = kvTarget $ bhData bh
     (adjustInterval, Time seconds) = targetAdjustmentInfo bh
 
-hash256AsTarget :: CryptoHashable a => a -> Target
-hash256AsTarget a
-  = Target $ BS.foldl' (\i w -> (i `shiftL` 8) + fromIntegral  w) 0 bs
-  where
-    Hash bs = hash a :: Hash SHA256
+--hash256AsTarget :: CryptoHashable a => a -> Target
+--hash256AsTarget a
+--  = Target $ BS.foldl' (\i w -> (i `shiftL` 8) + fromIntegral  w) 0 bs
+--  where
+--    Hash bs = hash a :: Hash SHA256
 
 mine :: KVConfig cfg => Block (KV cfg) -> IO (Maybe (Block (KV cfg)))
 mine b0@GBlock {..} = do
   maybeAnswerHash <- POWFunc.solve [LBS.toStrict $ serialise $ blockWithoutNonce b0] powCfg
+  putStrLn $ "mine result "++show maybeAnswerHash
   case maybeAnswerHash of
     Nothing -> return Nothing
     Just (answer, _hash) -> return $ Just $ b0 { blockData = blockData { kvNonce = answer } }

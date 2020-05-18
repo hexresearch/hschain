@@ -132,7 +132,12 @@ main = do
   let s0 = consensusGenesis genesis (viewKV (blockID genesis))
   withLogEnv "" "" (map makeScribe cfgLog) $ \logEnv ->
     runLoggerT logEnv $ evalContT $ do
-      pow <- startNode netcfg net cfgPeers db s0
+      pow' <- startNode netcfg net cfgPeers db s0
+      let pow = pow'
+                { sendNewBlock = \b -> do
+                                 liftIO $ print b
+                                 (sendNewBlock pow') b
+                }
       let printBCH = when optPrintBCH $ do
             c <- atomicallyIO $ currentConsensus pow
             let loop bh@BH{bhBID = bid} = do
