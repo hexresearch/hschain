@@ -80,7 +80,7 @@ class KVConfig cfg where
   -- | Difficulty adjustment is performed every N of blocks
   kvAdjustInterval :: Const Height  cfg
   -- | Expected interval between blocks in milliseconds
-  kvBlockInterval  :: Const Natural cfg
+  kvBlockInterval  :: Const Time cfg
 
 
 instance KVConfig cfg => BlockData (KV cfg) where
@@ -113,9 +113,10 @@ instance KVConfig cfg => BlockData (KV cfg) where
   blockWork      b = Work $ fromIntegral $ ((2^(256 :: Int)) `div`)
                           $ targetInteger $ kvTarget $ blockData b
   blockTargetThreshold b = Target $ targetInteger (kvTarget (blockData b))
-  targetAdjustmentInfo bh = let n = 1024 in (Height n, scaleTime (120 * fromIntegral n) timeSecond)
-
-
+  targetAdjustmentInfo (bh :: BH (KV cfg)) = (adjustInterval, blockMineTime)
+    where
+      Const adjustInterval = kvAdjustInterval :: Const Height cfg
+      Const blockMineTime = kvBlockInterval :: Const Time cfg
 
 -- FIXME: correctly compute rertargeting
 retarget :: KVConfig cfg => BH (KV cfg) -> Target

@@ -49,7 +49,7 @@ data TestChain
 
 instance KVConfig TestChain where
   kvAdjustInterval = Const 100
-  kvBlockInterval  = Const 1000
+  kvBlockInterval  = Const (Time 1000)
 
 genesis :: Block (KV TestChain)
 genesis = GBlock
