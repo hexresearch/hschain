@@ -112,7 +112,7 @@ instance KVConfig cfg => BlockData (KV cfg) where
   validateBlock  _ = return True
   blockWork      b = Work $ fromIntegral $ ((2^(256 :: Int)) `div`)
                           $ targetInteger $ kvTarget $ blockData b
-  blockTargetThreshold b = Target $ fromIntegral $ 2^(256::Int) `div` targetInteger (kvTarget (blockData b))
+  blockTargetThreshold b = Target $ targetInteger (kvTarget (blockData b))
 
 
 
@@ -143,7 +143,7 @@ retarget bh
 mine :: KVConfig cfg => Block (KV cfg) -> IO (Maybe (Block (KV cfg)))
 mine b0@GBlock {..} = do
   maybeAnswerHash <- POWFunc.solve [LBS.toStrict $ serialise $ blockWithoutNonce b0] powCfg
-  putStrLn $ "mine result "++show maybeAnswerHash
+  putStrLn $ "mine result "++show maybeAnswerHash++", pow config "++show powCfg
   case maybeAnswerHash of
     Nothing -> return Nothing
     Just (answer, _hash) -> return $ Just $ b0 { blockData = blockData { kvNonce = answer } }
