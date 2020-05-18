@@ -31,7 +31,6 @@ import qualified Data.ByteString.Lazy as LBS
 import qualified Data.ByteString      as BS
 import Numeric.Natural
 import GHC.Generics         (Generic)
-import Text.Printf (printf)
 
 import HSChain.Crypto
 import HSChain.Crypto.Classes.Hash
@@ -91,11 +90,6 @@ instance KVConfig cfg => BlockData (KV cfg) where
   validateHeader bh (Time now) header
     | blockHeight header == 0 = return True -- skip genesis check.
     | otherwise = do
-      liftIO $ putStrLn $ "hash of 'a': "++hashAHex
-      liftIO $ putStrLn $ "checking "++show header
-      liftIO $ putStrLn $ "header bytestring to check:\n    "++show onlyHeader
-      liftIO $ putStrLn $ "header and answer bytestring: "++show headerAndAnswer
-      liftIO $ putStrLn $ "header and answer hash "++show hashOfSum
       answerIsGood <- liftIO $ POWFunc.check onlyHeader answer hashOfSum powCfg
       return
         $ and
@@ -106,15 +100,12 @@ instance KVConfig cfg => BlockData (KV cfg) where
               -- FIXME: Check that we're ahead of median time of N prev block
               ]
     where
-      astring = BS.pack $ map (fromIntegral . fromEnum) "a"
-      Hash hashA = hash astring :: Hash SHA256
-      hashAHex = concatMap (printf "%02x") $ BS.unpack hashA
       powCfg = POWFunc.defaultPOWConfig
                        { POWFunc.powCfgTarget = targetInteger tgt }
       tgt = blockTargetThreshold header
       onlyHeader = LBS.toStrict $ serialise $ blockWithoutNonce header
       answer = kvNonce $ blockData header
-      Hash hashOfSum = hash headerAndAnswer :: Hash SHA256
+      Hash hashOfSum = hashBlob headerAndAnswer :: Hash SHA256
       headerAndAnswer = BS.concat [onlyHeader, answer]
       Time t = blockTime header
   --
@@ -122,6 +113,7 @@ instance KVConfig cfg => BlockData (KV cfg) where
   blockWork      b = Work $ fromIntegral $ ((2^(256 :: Int)) `div`)
                           $ targetInteger $ kvTarget $ blockData b
   blockTargetThreshold b = Target $ targetInteger (kvTarget (blockData b))
+  targetAdjustmentInfo bh = let n = 1024 in (Height n, scaleTime (120 * fromIntegral n) timeSecond)
 
 
 

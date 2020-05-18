@@ -132,8 +132,7 @@ check headerWithoutAnswer answer hashOfHeader POWConfig{..} =
         else B.useAsCStringLen hashOfHeader $ \(hash,hashLen) ->
           if hashLen /= hashSize
             then return False
-            else let prefixSize = hdrLen - answerSize
-              in fmap (/= 0) $ B.useAsCString encodedTarget $ \target -> evpow_check
-                (castPtr hdr) (fromIntegral prefixSize) (castPtr answerPtr) (castPtr hash)
+            else fmap (/= 0) $ B.useAsCString encodedTarget $ \target -> evpow_check
+                (castPtr hdr) (fromIntegral hdrLen) (castPtr answerPtr) (castPtr hash)
                 powCfgClausesCount (castPtr target)
 

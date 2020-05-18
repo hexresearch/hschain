@@ -461,9 +461,33 @@ evpow_check( uint8_t* prefix
 	}
 	SHA256_Init(&partial_ctx);
 	SHA256_Update(&partial_ctx, prefix, prefix_size);
+#if 0
+{ int i;
+	printf("prefix (%zu):", prefix_size);
+	for (i=0;i<prefix_size;i++) {
+		printf(" %02x", prefix[i]);
+	}
+	printf("\n");
+}
+#endif
 	full_ctx = partial_ctx;
 	SHA256_Update(&full_ctx, answer, EVPOW_ANSWER_BYTES);
 	SHA256_Final(hash, &full_ctx);
+#if 0
+	{
+		int i;
+		printf("hash we computed:");
+		for (i=0;i<SHA256_DIGEST_LENGTH;i++) {
+			printf(" %02x",hash[i]);
+		}
+		printf("\n");
+		printf("hash we provided:");
+		for (i=0;i<SHA256_DIGEST_LENGTH;i++) {
+			printf(" %02x",hash_to_compare[i]);
+		}
+		printf("\n");
+	}
+#endif
 	// second fastest second - hashes are equal.
 	if (0 != memcmp(hash, hash_to_compare, SHA256_DIGEST_LENGTH)) {
 		printf("HASH MISMATCH!\n");
