@@ -31,6 +31,7 @@ import qualified Data.ByteString.Lazy as LBS
 import qualified Data.ByteString      as BS
 import Numeric.Natural
 import GHC.Generics         (Generic)
+import Text.Printf (printf)
 
 import HSChain.Crypto
 import HSChain.Crypto.Classes.Hash
@@ -90,6 +91,11 @@ instance KVConfig cfg => BlockData (KV cfg) where
   validateHeader bh (Time now) header
     | blockHeight header == 0 = return True -- skip genesis check.
     | otherwise = do
+      liftIO $ putStrLn $ "hash of 'a': "++hashAHex
+      liftIO $ putStrLn $ "checking "++show header
+      liftIO $ putStrLn $ "header bytestring to check:\n    "++show onlyHeader
+      liftIO $ putStrLn $ "header and answer bytestring: "++show headerAndAnswer
+      liftIO $ putStrLn $ "header and answer hash "++show hashOfSum
       answerIsGood <- liftIO $ POWFunc.check onlyHeader answer hashOfSum powCfg
       return
         $ and
@@ -100,6 +106,9 @@ instance KVConfig cfg => BlockData (KV cfg) where
               -- FIXME: Check that we're ahead of median time of N prev block
               ]
     where
+      astring = BS.pack $ map (fromIntegral . fromEnum) "a"
+      Hash hashA = hash astring :: Hash SHA256
+      hashAHex = concatMap (printf "%02x") $ BS.unpack hashA
       powCfg = POWFunc.defaultPOWConfig
                        { POWFunc.powCfgTarget = targetInteger tgt }
       tgt = blockTargetThreshold header
@@ -142,12 +151,17 @@ retarget bh
 
 mine :: KVConfig cfg => Block (KV cfg) -> IO (Maybe (Block (KV cfg)))
 mine b0@GBlock {..} = do
-  maybeAnswerHash <- POWFunc.solve [LBS.toStrict $ serialise $ blockWithoutNonce b0] powCfg
+  maybeAnswerHash <- POWFunc.solve [LBS.toStrict $ serialise $ blockWithoutNonce h0] powCfg
+  putStrLn $ "mining block header "++show h0
+  putStrLn $ "block without nonce "++show (blockWithoutNonce h0)
+  putStrLn $ "block without nonce, serialized:\n    "++show (serialise $ blockWithoutNonce h0)
   putStrLn $ "mine result "++show maybeAnswerHash++", pow config "++show powCfg
   case maybeAnswerHash of
     Nothing -> return Nothing
-    Just (answer, _hash) -> return $ Just $ b0 { blockData = blockData { kvNonce = answer } }
+    Just (answer, _hash) -> do
+      return $ Just $ b0 { blockData = blockData { kvNonce = answer } }
   where
+    h0 = toHeader b0
     powCfg = POWFunc.defaultPOWConfig
                      { POWFunc.powCfgTarget = targetInteger tgt }
     tgt = blockTargetThreshold b0

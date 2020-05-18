@@ -30,6 +30,7 @@ import Numeric.Natural
 import qualified Data.Aeson      as JSON
 import qualified Codec.Serialise as CBOR
 import GHC.Generics (Generic)
+import Text.Printf (printf)
 
 import HSChain.Crypto
 import HSChain.Crypto.Classes.Hash
@@ -202,8 +203,11 @@ miningLoop = forever $ do
 -- than this threshold. Target can be and must be rounded.
 -- It is guaranteed to not to exceed some constant value.
 newtype Target = Target { targetInteger :: Integer }
-  deriving newtype (Eq, Ord, Show)
+  deriving newtype (Eq, Ord)
   deriving newtype (CryptoHashable, Serialise)
+
+instance Show Target where
+  show (Target i) = printf "%032x" i
 
 -- |Difficulty - how many (in average) computations are needed to
 -- achieve the target.
