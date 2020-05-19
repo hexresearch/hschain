@@ -76,7 +76,7 @@ defaultSearchConfig = POWSearchConfig
 -- |Configuration of POW - default values.
 defaultPOWConfig :: POWConfig
 defaultPOWConfig = POWConfig
-  { powCfgClausesCount             = 5250
+  { powCfgClausesCount             = 5200
   , powCfgSearchConfig             = defaultSearchConfig
   , powCfgTarget                   = shiftL 1 256 - 1 -- |Easiest target to meet.
   }

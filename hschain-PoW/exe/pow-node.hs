@@ -25,6 +25,7 @@ import Data.Yaml.Config       (loadYamlSettings, requireEnv)
 import Lens.Micro
 import Options.Applicative
 import GHC.Generics (Generic)
+import System.IO
 
 import HSChain.PoW.Consensus
 import HSChain.PoW.Logger
@@ -49,7 +50,7 @@ data TestChain
 
 instance KVConfig TestChain where
   kvAdjustInterval = Const 100
-  kvBlockInterval  = Const (Time 1000)
+  kvBlockTimeInterval  = Const (Time 5000)
 
 genesis :: Block (KV TestChain)
 genesis = GBlock
@@ -64,17 +65,18 @@ genesis = GBlock
 
 
 mineBlock :: Time -> String -> BH (KV TestChain) -> IO (Maybe (Block (KV TestChain)))
-mineBlock now val bh = mine $ GBlock
-  { blockHeight = succ $ bhHeight bh
-  , blockTime   = now
-  , prevBlock   = Just $! bhBID bh
-  , blockData   = KV { kvData = merkled [ let Height h = bhHeight bh
-                                          in (fromIntegral h, val)
-                                        ]
-                     , kvNonce = BS.empty
-                     , kvTarget = retarget bh
-                     }
-  }
+mineBlock now val bh = do
+  mine $ GBlock
+    { blockHeight = succ $ bhHeight bh
+    , blockTime   = now
+    , prevBlock   = Just $! bhBID bh
+    , blockData   = KV { kvData = merkled [ let Height h = bhHeight bh
+                                            in (fromIntegral h, val)
+                                          ]
+                       , kvNonce = BS.empty
+                       , kvTarget = retarget bh
+                       }
+    }
 
 ----------------------------------------------------------------
 -- Configuration
@@ -115,6 +117,8 @@ data Cfg = Cfg
 
 main :: IO ()
 main = do
+  hSetBuffering stdout NoBuffering
+  hSetBuffering stderr NoBuffering
   -- Parse CLI & read config
   Opts{..} <- customExecParser (prefs showHelpOnError)
             $ info (helper <*> parser)
@@ -135,7 +139,7 @@ main = do
       pow' <- startNode netcfg net cfgPeers db s0
       let pow = pow'
                 { sendNewBlock = \b -> do
-                                 liftIO $ print b
+                                 liftIO $ putStrLn $ "mined: "++show b
                                  (sendNewBlock pow') b
                 }
       let printBCH = when optPrintBCH $ do

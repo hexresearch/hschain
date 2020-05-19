@@ -303,11 +303,19 @@ under_complexity_threshold(uint8_t* hash, uint8_t* target) {
 		printf(" %02x", hash[i]);
 	}
 	printf("\n");
+	printf("target as integer   :");
+	for (i = SHA256_DIGEST_LENGTH - 1; i >= 0; i --) {
+		printf(" %02x", target[i]);
+	}
+	printf("\n");
 #endif
 	// compare from most significant bytes downto to least signigicant.
 	for (i = SHA256_DIGEST_LENGTH - 1; i >= 0; i--) {
 		if (hash[i] > target[i]) {
 			return 0;
+		}
+		if (hash[i] < target[i]) {
+			return 1;
 		}
 	}
 	return 1;
@@ -438,6 +446,7 @@ evpow_solve( uint8_t* prefix
 
 	// find solution if we can.
 	r = find_answer(&prefix_hash_context, answer, solution_hash, milliseconds_allowance, target, solver, first_result_ms);
+	//printf("found %d\n", r);
 
 	solver_delete(solver);
 	return r;
@@ -455,6 +464,7 @@ evpow_check( uint8_t* prefix
 	uint8_t hash[SHA256_DIGEST_LENGTH];
 	int clause;
 	// fastest first - rarity compliance check.
+	//printf("checking rareness\n");
 	if (!under_complexity_threshold(hash_to_compare, target)) {
 		printf("NOT RARE ENOUGH!\n");
 		return 0;

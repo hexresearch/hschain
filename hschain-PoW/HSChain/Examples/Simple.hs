@@ -80,8 +80,11 @@ class KVConfig cfg where
   -- | Difficulty adjustment is performed every N of blocks
   kvAdjustInterval :: Const Height  cfg
   -- | Expected interval between blocks in milliseconds
-  kvBlockInterval  :: Const Time cfg
+  kvBlockTimeInterval  :: Const Time cfg
 
+defaultPOWConfig :: POWFunc.POWConfig
+defaultPOWConfig = POWFunc.defaultPOWConfig
+  { POWFunc.powCfgClausesCount = 1 } -- all for speed!
 
 instance KVConfig cfg => BlockData (KV cfg) where
   newtype BlockID (KV cfg) = KV'BID (Hash SHA256)
@@ -100,7 +103,7 @@ instance KVConfig cfg => BlockData (KV cfg) where
               -- FIXME: Check that we're ahead of median time of N prev block
               ]
     where
-      powCfg = POWFunc.defaultPOWConfig
+      powCfg = defaultPOWConfig
                        { POWFunc.powCfgTarget = targetInteger tgt }
       tgt = blockTargetThreshold header
       onlyHeader = LBS.toStrict $ serialise $ blockWithoutNonce header
@@ -116,7 +119,7 @@ instance KVConfig cfg => BlockData (KV cfg) where
   targetAdjustmentInfo (bh :: BH (KV cfg)) = (adjustInterval, blockMineTime)
     where
       Const adjustInterval = kvAdjustInterval :: Const Height cfg
-      Const blockMineTime = kvBlockInterval :: Const Time cfg
+      Const blockMineTime = kvBlockTimeInterval :: Const Time cfg
 
 -- FIXME: correctly compute rertargeting
 retarget :: KVConfig cfg => BH (KV cfg) -> Target
@@ -129,7 +132,7 @@ retarget bh
           Time t2 = bhTime bh
           tgt     = targetInteger oldTarget
           tgt'    = (tgt * fromIntegral (t2 - t1)) `div` (fromIntegral adjustInterval * fromIntegral seconds)
-      in traceShowId $ Target tgt'
+      in Target tgt'
   | otherwise
     = oldTarget
   where
@@ -145,17 +148,14 @@ retarget bh
 mine :: KVConfig cfg => Block (KV cfg) -> IO (Maybe (Block (KV cfg)))
 mine b0@GBlock {..} = do
   maybeAnswerHash <- POWFunc.solve [LBS.toStrict $ serialise $ blockWithoutNonce h0] powCfg
-  putStrLn $ "mining block header "++show h0
-  putStrLn $ "block without nonce "++show (blockWithoutNonce h0)
-  putStrLn $ "block without nonce, serialized:\n    "++show (serialise $ blockWithoutNonce h0)
-  putStrLn $ "mine result "++show maybeAnswerHash++", pow config "++show powCfg
   case maybeAnswerHash of
     Nothing -> return Nothing
     Just (answer, _hash) -> do
-      return $ Just $ b0 { blockData = blockData { kvNonce = answer } }
+      let mined = b0 { blockData = blockData { kvNonce = answer } }
+      return $ Just mined
   where
     h0 = toHeader b0
-    powCfg = POWFunc.defaultPOWConfig
+    powCfg = defaultPOWConfig
                      { POWFunc.powCfgTarget = targetInteger tgt }
     tgt = blockTargetThreshold b0
 

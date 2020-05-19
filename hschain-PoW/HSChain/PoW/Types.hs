@@ -207,7 +207,7 @@ newtype Target = Target { targetInteger :: Integer }
   deriving newtype (CryptoHashable, Serialise)
 
 instance Show Target where
-  show (Target i) = printf "%032x" i
+  show (Target i) = printf "%064x" i
 
 -- |Difficulty - how many (in average) computations are needed to
 -- achieve the target.
