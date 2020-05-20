@@ -1,4 +1,5 @@
 {
+  # List of GHC versions for which we apply overrides
   versions = ["ghc844" "ghc865" "ghc883" "ghcjs"];
   # List of packages with custom overrides
   derivations = {
