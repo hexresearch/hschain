@@ -8,6 +8,7 @@
 {-# LANGUAGE OverloadedStrings  #-}
 {-# LANGUAGE RecordWildCards    #-}
 {-# LANGUAGE TypeApplications   #-}
+{-# LANGUAGE TypeFamilies       #-}
 -- |
 module Main where
 
@@ -49,8 +50,13 @@ import HSChain.Control.Util
 data TestChain
 
 instance KVConfig TestChain where
-  kvAdjustInterval = Const 100
-  kvBlockTimeInterval  = Const (Time 5000)
+  type Nonce TestChain = Word64
+  kvAdjustInterval = Const 200
+  kvBlockTimeInterval  = Const (Time 1000)
+  kvSolvePuzzle blk = do
+    error "find with SHA256"
+  kvCheckPuzzle blk = do
+    error "check with SHA256"
 
 genesis :: Block (KV TestChain)
 genesis = GBlock
@@ -58,7 +64,7 @@ genesis = GBlock
   , blockTime   = Time 0
   , prevBlock   = Nothing
   , blockData   = KV { kvData     = merkled []
-                     , kvNonce = BS.empty
+                     , kvNonce = 0
                      , kvTarget = Target $ 2^(256 :: Int) - 1
                      }
   }
@@ -73,7 +79,7 @@ mineBlock now val bh = do
     , blockData   = KV { kvData = merkled [ let Height h = bhHeight bh
                                             in (fromIntegral h, val)
                                           ]
-                       , kvNonce = BS.empty
+                       , kvNonce = 0
                        , kvTarget = retarget bh
                        }
     }

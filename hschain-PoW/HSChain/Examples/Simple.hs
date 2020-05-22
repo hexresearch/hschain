@@ -1,6 +1,7 @@
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE DerivingStrategies         #-}
 {-# LANGUAGE FlexibleInstances          #-}
+{-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE RecordWildCards            #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
@@ -52,21 +53,21 @@ data KV cfg f = KV
   -- ^ List of key-value pairs
   , kvTarget     :: !Target
   -- ^ Nonce which is used to get
-  , kvNonce      :: !BS.ByteString
+  , kvNonce      :: !(Nonce cfg)
   -- ^ Current difficulty of mining. It means a complicated thing
   -- right now.
   }
   deriving stock (Generic)
-deriving stock instance Show1    f => Show (KV cfg f)
-deriving stock instance IsMerkle f => Eq   (KV cfg f)
-instance Serialise (KV cfg Identity)
-instance Serialise (KV cfg Proxy)
+deriving stock instance (Show (Nonce cfg), Show1 f)  => Show (KV cfg f)
+deriving stock instance (Eq (Nonce cfg), IsMerkle f) => Eq   (KV cfg f)
+instance Serialise (Nonce cfg) => Serialise (KV cfg Identity)
+instance Serialise (Nonce cfg) => Serialise (KV cfg Proxy)
 
-blockWithoutNonce :: GBlock (KV cfg) f -> GBlock (KV cfg) f
-blockWithoutNonce block@GBlock{..} =
-  block { blockData = blockData { kvNonce = BS.empty } }
+--blockWithoutNonce :: GBlock (KV cfg) f -> GBlock (KV cfg) f
+--blockWithoutNonce block@GBlock{..} =
+--  block { blockData = blockData { kvNonce = BS.empty } }
 
-instance IsMerkle f => CryptoHashable (KV cfg f) where
+instance (CryptoHashable (Nonce cfg), IsMerkle f) => CryptoHashable (KV cfg f) where
   hashStep = genericHashStep "hschain"
 
 instance MerkleMap (KV cfg) where
@@ -76,11 +77,21 @@ instance MerkleMap (KV cfg) where
 
 -- | We may need multiple chains (main chain, test chain(s)) which may
 --   use different difficulty adjustment algorithms etc.
-class KVConfig cfg where
+class ( CryptoHashable (Nonce cfg)
+      , Serialise (Nonce cfg)) => KVConfig cfg where
+  -- | Type of nonce. It depends on configuration.
+  type Nonce cfg
+
   -- | Difficulty adjustment is performed every N of blocks
   kvAdjustInterval :: Const Height  cfg
   -- | Expected interval between blocks in milliseconds
   kvBlockTimeInterval  :: Const Time cfg
+
+  -- |How to compute a solved puzzle. May fail.
+  kvSolvePuzzle :: MonadIO m => Block (KV cfg) -> m (Maybe (Block (KV cfg)))
+
+  -- |How to check solution of a puzzle.
+  kvCheckPuzzle :: MonadIO m => Header (KV cfg) -> m Bool
 
 defaultPOWConfig :: POWFunc.POWConfig
 defaultPOWConfig = POWFunc.defaultPOWConfig
@@ -93,7 +104,8 @@ instance KVConfig cfg => BlockData (KV cfg) where
   validateHeader bh (Time now) header
     | blockHeight header == 0 = return True -- skip genesis check.
     | otherwise = do
-      answerIsGood <- liftIO $ POWFunc.check onlyHeader answer hashOfSum powCfg
+      --answerIsGood <- liftIO $ POWFunc.check onlyHeader answer hashOfSum powCfg
+      answerIsGood <- kvCheckPuzzle header
       return
         $ and
               [ answerIsGood
@@ -106,10 +118,10 @@ instance KVConfig cfg => BlockData (KV cfg) where
       powCfg = defaultPOWConfig
                        { POWFunc.powCfgTarget = targetInteger tgt }
       tgt = blockTargetThreshold header
-      onlyHeader = LBS.toStrict $ serialise $ blockWithoutNonce header
-      answer = kvNonce $ blockData header
-      Hash hashOfSum = hashBlob headerAndAnswer :: Hash SHA256
-      headerAndAnswer = BS.concat [onlyHeader, answer]
+      --onlyHeader = LBS.toStrict $ serialise $ blockWithoutNonce header
+      --answer = kvNonce $ blockData header
+      --Hash hashOfSum = hashBlob headerAndAnswer :: Hash SHA256
+      --headerAndAnswer = BS.concat [onlyHeader, answer]
       Time t = blockTime header
   --
   validateBlock  _ = return True
@@ -147,12 +159,13 @@ retarget bh
 
 mine :: KVConfig cfg => Block (KV cfg) -> IO (Maybe (Block (KV cfg)))
 mine b0@GBlock {..} = do
-  maybeAnswerHash <- POWFunc.solve [LBS.toStrict $ serialise $ blockWithoutNonce h0] powCfg
-  case maybeAnswerHash of
-    Nothing -> return Nothing
-    Just (answer, _hash) -> do
-      let mined = b0 { blockData = blockData { kvNonce = answer } }
-      return $ Just mined
+  --maybeAnswerHash <- POWFunc.solve [LBS.toStrict $ serialise $ blockWithoutNonce h0] powCfg
+  kvSolvePuzzle b0
+  --case maybeAnswerHash of
+  --  Nothing -> return Nothing
+  --  Just (answer, _hash) -> do
+  --    let mined = b0 { blockData = blockData { kvNonce = answer } }
+  --    return $ Just mined
   where
     h0 = toHeader b0
     powCfg = defaultPOWConfig
