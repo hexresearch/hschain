@@ -18,11 +18,11 @@ let
   haskTools = import (pkgs.fetchFromGitHub {
     owner  = "hexresearch";
     repo   = "haskell-nix-tools";
-    rev    = "c8749460118960579f992bb74ff01a9c8520e1d7";
-    sha256 = "sha256:0fgwckxj0qfia4hik4i4l1gn4vx4cr7329vfxgf65p9bkiz0fyi8";
+    rev    = "b67adafb1f89832a2446fae93ff614c0ccce9ec3";
+    sha256 = "sha256:0bxz5gxc5j42hmr7fvxplsnsg2mh8jznl82ca2dw1sspy0vr4pls";
   }) pkgs;
-  hask = haskTools.hask;
-  doIf = haskTools.doIf;
+#  haskTools = import ../../haskell-nix-tools pkgs;
+  doIf      = haskTools.doIf;
   # ================================================================
   # Overlay for haskell packages
   overlay = self: super: {
@@ -53,31 +53,21 @@ let
   };
   # Build internal package
   callInternal = hask: name: path: args: opts:
-    doFast
-      (benchOverride
-        (lintOverride
-          (prodOverride
-            (profileOverride
-              ((drv: lib.overrideCabal drv (drv: { postInstall = hook; }))
-                (hask.callCabal2nixWithOptions name (ignoreStack path) opts args))))))
-  ;
-  # Extremely ugly hook which includes test executable into artifact
-  hook = ''
-    mkdir $out/tests
-    for tst in $(grep -i test-suite *.cabal | sed -e 's/ $//; s/.* //'); do
-        if [ $(find -name $tst -type f | wc -l) == 1 ]; then
-            cp -v $(find -name $tst -type f ) $out/tests
-        fi
-    done
-  '';
-  lintOverride    = doIf isCoreLint hask.doCoreLint;
-  prodOverride    = doIf isProd    (drv: hask.doPedantic (lib.doCheck drv));
-  profileOverride = doIf isProfile hask.doProfile;
-  benchOverride   = doIf isBench   lib.doBenchmark;
+    haskTools.compose
+      [ haskTools.hask.doFastO2
+        (doIf isBench    lib.doBenchmark)
+        (doIf isCoreLint haskTools.hask.doCoreLint)
+        (doIf isProd    (haskTools.compose
+          [ haskTools.hask.doPedantic
+            lib.doCheck
+          ]))
+        (doIf isProfile haskTools.hask.doProfile)
+        haskTools.hask.doInstallTests
+      ]
+      (hask.callCabal2nixWithOptions name (ignoreStack path) opts args);
   ignoreStack     = haskTools.ignoreSources ''
     /.stack-work
     '';
-  doFast = hask.addBuildFlags ["--ghc-option=-O2"];
   #
   release = let
     hschainPkgAll = p: with p; [
