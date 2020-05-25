@@ -14,32 +14,24 @@
 -- |
 -- Simple account based "cryptocurrency". It was created mostly for
 -- benchmarking so one of concerns is easy of generation of block.
-module HSChain.Mock.Dioxane where
+module HSChain.Mock.Dioxane (
+    module HSChain.Mock.Dioxane.Types
+  , dioGenesis
+  , interpretSpec
+  ) where
 
-import Codec.Serialise      (Serialise)
-import Control.Applicative
-import Control.Monad
 import Control.Monad.Catch
 import Control.Monad.Trans.Except
-import Control.Parallel.Strategies
-import Data.Int
-import qualified Data.Aeson          as JSON
 import qualified Data.Map.Strict     as Map
 import qualified Data.Vector         as V
-import qualified Data.HashMap.Strict as HM
-import Control.Lens
-
-import GHC.Generics (Generic)
 
 import HSChain.Blockchain.Internal.Engine.Types
 import HSChain.Control
 import HSChain.Control.Class
 import HSChain.Crypto
-import HSChain.Crypto.Classes.Hash
-import HSChain.Crypto.Ed25519
-import HSChain.Crypto.SHA
 import HSChain.Logger
 import HSChain.Mock.Types
+import HSChain.Mock.Dioxane.Types
 import HSChain.Monitoring
 import HSChain.Run
 import HSChain.Store
@@ -49,89 +41,8 @@ import HSChain.Types.Merkle.Types
 
 
 ----------------------------------------------------------------
--- Basic coin logic
+-- Running it
 ----------------------------------------------------------------
-
-type DioAlg = Ed25519 :& SHA512
-
-newtype BData tag = BData [Tx]
-  deriving stock    (Show,Eq,Generic)
-  deriving newtype  (NFData,JSON.ToJSON,JSON.FromJSON)
-  deriving anyclass (Serialise)
-instance CryptoHashable (BData tag) where
-  hashStep = genericHashStep "hschain-examples"
-
-data Tx = Tx
-  { txSig  :: !(Signature DioAlg)
-  , txBody :: !TxBody
-  }
-  deriving stock    (Show, Eq, Ord, Generic)
-  deriving anyclass (Serialise, NFData, JSON.ToJSON, JSON.FromJSON)
-
-data TxBody = TxBody
-  { txFrom   :: !(PublicKey DioAlg)
-  , txTo     :: !(PublicKey DioAlg)
-  , txNonce  :: !Int64
-  , txAmount :: !Int64
-  }
-  deriving stock    (Show, Eq, Ord, Generic)
-  deriving anyclass (Serialise, NFData, JSON.ToJSON, JSON.FromJSON)
-
-data DioError = DioError
-  deriving stock    (Show,Generic)
-  deriving anyclass (Exception,NFData)
-
-data DioState = DioState
-  { _userMap :: Map.Map (PublicKey DioAlg) UserState
-  }
-  deriving stock    (Show,   Generic)
-  deriving anyclass (NFData, Serialise)
-
-data UserState = UserState
-  { _userNonce   :: !Int64
-  , _userBalance :: !Int64
-  }
-  deriving stock    (Show,   Generic)
-  deriving anyclass (NFData, Serialise)
-
-instance CryptoHashable Tx where
-  hashStep = genericHashStep "hschain.dioxane"
-instance CryptoHashable TxBody where
-  hashStep = genericHashStep "hschain.dioxane"
-instance CryptoHashable DioState where
-  hashStep = genericHashStep "hschain.dioxane"
-instance CryptoHashable UserState where
-  hashStep = genericHashStep "hschain.dioxane"
-
-
-makeLenses ''UserState
-makeLenses ''DioState
-
-instance Dio tag => BlockData (BData tag) where
-  type TX              (BData tag) = Tx
-  type BlockchainState (BData tag) = DioState
-  type BChError        (BData tag) = DioError
-  type BChMonad        (BData tag) = Maybe
-  type Alg             (BData tag) = DioAlg
-  bchLogic                 = dioLogic
-  proposerSelection        = ProposerSelection randomProposerSHA512
-  logBlockData (BData txs) = HM.singleton "Ntx" $ JSON.toJSON $ length txs
-
-
-----------------------------------------------------------------
--- Logic
-----------------------------------------------------------------
-
-class Dio a where
-  dioDict :: DioDict a
-
-data DioDict a = DioDict
-  { dioUserKeys       :: V.Vector ( PrivKey   DioAlg
-                                  , PublicKey DioAlg
-                                  )
-  , dioInitialBalance :: Int64
-  , dioValidators     :: Int64
-  }
 
 dioGenesis :: forall tag. Dio tag => Genesis (BData tag)
 dioGenesis = BChEval
@@ -153,79 +64,6 @@ dioGenesis = BChEval
     keys        = dioUserKeys
     Right valSet = makeValidatorSet $  (\(_,k) -> Validator k 1)
                                    <$> V.take (fromIntegral nVals) keys
-
-
-dioLogic :: forall tag. Dio tag => BChLogic Maybe (BData tag)
-dioLogic = BChLogic
-  { processTx     = const empty
-  --
-  , processBlock  = \BChEval{..} -> do
-      let sigCheck = guard
-                   $ and
-                   $ parMap rseq
-                     (\(Tx sig tx) -> verifySignatureHashed (txFrom tx) tx sig)
-                     (let BData txs = merkleValue $ blockData bchValue
-                      in txs
-                     )
-      let update   = foldM (flip process) (merkleValue blockchainState)
-                   $ (let BData txs = merkleValue $ blockData bchValue
-                      in txs
-                     )
-      st <- uncurry (>>)
-          $ withStrategy (evalTuple2 rpar rpar)
-          $ (sigCheck, update)
-      return BChEval { bchValue        = ()
-                     , blockchainState = merkled st
-                     , ..
-                     }
-  -- We generate one transaction for every key. And since we move
-  -- money from one account to another it's quite simple to update state
-  , generateBlock = \NewBlock{..} _ -> do
-      let nonce = let Height h = newBlockHeight in fromIntegral h - 1
-          keys  = dioUserKeys
-      return $! BChEval
-        { bchValue = BData
-                   $ parMap rseq
-                     (\(sk,pk) -> let body = TxBody
-                                        { txTo     = pk
-                                        , txFrom   = pk
-                                        , txNonce  = nonce
-                                        , txAmount = 1
-                                        }
-                                  in Tx { txSig  = signHashed sk body
-                                        , txBody = body
-                                        }
-                     )
-                     (V.toList keys)
-        , validatorSet    = merkled newBlockValSet
-        , blockchainState = merkled
-                          $ userMap . each . userNonce %~ succ
-                          $ merkleValue newBlockState
-        }
-  }
-  where
-    DioDict{..} = dioDict @tag
-
-
-process :: Tx -> DioState -> Maybe DioState
-process Tx{txBody=TxBody{..}} st = do
-  ufrom  <- st ^. userMap . at txFrom
-  _      <- st ^. userMap . at txTo
-  -- Nonce is correct & and we have funds
-  guard $ txNonce == ufrom^.userNonce
-  guard $ ufrom^.userBalance >= txAmount
-  return
-    $! st
-    & userMap . at txFrom . _Just %~ ( (userNonce   %~ succ)
-                                     . (userBalance %~ subtract txAmount)
-                                     )
-    & userMap . at txTo   . _Just . userBalance %~ (+ txAmount)
-
-
-
-----------------------------------------------------------------
--- Running it
-----------------------------------------------------------------
 
 interpretSpec
   :: forall m x tag.

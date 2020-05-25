@@ -1,0 +1,41 @@
+Name:           hschain-examples-types
+Version:        0.1
+Synopsis:       Types for examples and tests for hschain
+Description:
+  They're placed into separate pacakge to allow compilation with 
+            Implementation of very simple and not quite realistic coin on blockchain
+
+Cabal-Version:  >= 1.10
+License:        MIT
+License-File:   LICENSE
+Author:         Aleksey Khudyakov <alexey.skladnoy@gmail.com>
+Maintainer:     Aleksey Khudyakov <alexey.skladnoy@gmail.com>
+Homepage:       https://github.com/hexresearch/thundermint
+Category:       Data
+Build-Type:     Simple
+
+Library
+  Ghc-options:         -Wall
+  Default-Language:    Haskell2010
+  Build-Depends:       base              >=4.9 && <5
+                     , hschain-crypto
+                     , hschain-types
+                     , hschain-merkle
+                       --
+                     , aeson
+                     , bytestring           >=0.10
+                     , containers           >=0.5.9
+                     , deepseq              >=1.4
+                     , lens
+                     , mmorph
+                     , exceptions           >=0.8.3
+                     , parallel
+                     , random
+                     , serialise            >=0.2
+                     , stm                  >=2.5
+                     , transformers         >=0.5
+                     , unordered-containers >=0.2.5.0
+                     , vector
+  Exposed-modules:
+                  HSChain.Mock.Coin.Types
+                  HSChain.Mock.Dioxane.Types

@@ -23,6 +23,7 @@ Library
                      , hschain-merkle
                      , hschain
                      , hschain-net
+                     , hschain-examples-types
                        --
                      , aeson
                      , bytestring           >=0.10
