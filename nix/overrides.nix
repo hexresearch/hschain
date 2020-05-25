@@ -33,6 +33,9 @@
     scientific            = { check = false; };
     tasty-quickcheck      = { check = false; };
     QuickCheck            = { check = false; };
+    lens                  = { check = false; };
+    comonad               = { check = false; };
+    semigroupoids         = { check = false; };
     # Test have dependency on cryptonite
     Lazy-Pbkdf2           = { check = false; };
   };
