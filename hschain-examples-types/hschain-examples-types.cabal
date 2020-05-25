@@ -27,12 +27,9 @@ Library
                      , containers           >=0.5.9
                      , deepseq              >=1.4
                      , lens
-                     , mmorph
                      , exceptions           >=0.8.3
                      , parallel
-                     , random
                      , serialise            >=0.2
-                     , stm                  >=2.5
                      , transformers         >=0.5
                      , unordered-containers >=0.2.5.0
                      , vector
