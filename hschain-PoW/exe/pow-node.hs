@@ -1,14 +1,15 @@
-{-# LANGUAGE ApplicativeDo      #-}
-{-# LANGUAGE BangPatterns       #-}
-{-# LANGUAGE DeriveAnyClass     #-}
-{-# LANGUAGE DeriveGeneric      #-}
-{-# LANGUAGE DerivingStrategies #-}
-{-# LANGUAGE FlexibleContexts   #-}
-{-# LANGUAGE LambdaCase         #-}
-{-# LANGUAGE OverloadedStrings  #-}
-{-# LANGUAGE RecordWildCards    #-}
-{-# LANGUAGE TypeApplications   #-}
-{-# LANGUAGE TypeFamilies       #-}
+{-# LANGUAGE ApplicativeDo       #-}
+{-# LANGUAGE BangPatterns        #-}
+{-# LANGUAGE DeriveAnyClass      #-}
+{-# LANGUAGE DeriveGeneric       #-}
+{-# LANGUAGE DerivingStrategies  #-}
+{-# LANGUAGE FlexibleContexts    #-}
+{-# LANGUAGE LambdaCase          #-}
+{-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE RecordWildCards     #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications    #-}
+{-# LANGUAGE TypeFamilies        #-}
 -- |
 module Main where
 
@@ -53,6 +54,12 @@ import HSChain.Crypto.SHA
 
 data TestChain
 
+class Default a where
+  -- |A safe value to instantiate somewhere.
+  defaultValue :: a
+
+instance Default Word64 where defaultValue = 0
+
 instance KVConfig TestChain where
   type Nonce TestChain = Word64
   kvAdjustInterval = Const 200
@@ -76,6 +83,8 @@ instance KVConfig TestChain where
 
 data TestChainNewPow
 
+instance Default BS.ByteString where defaultValue = BS.empty
+
 instance KVConfig TestChainNewPow where
   type Nonce TestChainNewPow = BS.ByteString
   kvAdjustInterval = Const 200
@@ -92,7 +101,9 @@ instance KVConfig TestChainNewPow where
       powCfg = defaultPOWConfig
                        { POWFunc.powCfgTarget = targetInteger tgt }
       tgt = blockTargetThreshold b0
-  kvCheckPuzzle hdr = do
+  kvCheckPuzzle hdr
+    | blockHeight hdr == 0 && hdr == toHeader genesisNewPoW = return True
+    | otherwise = do
       liftIO $ POWFunc.check onlyHeader answer hashOfSum powCfg
     where
       powCfg = defaultPOWConfig
@@ -124,7 +135,20 @@ genesis = GBlock
   }
 
 
-mineBlock :: Time -> String -> BH (KV TestChain) -> IO (Maybe (Block (KV TestChain)))
+genesisNewPoW :: Block (KV TestChainNewPow)
+genesisNewPoW = GBlock
+  { blockHeight = Height 0
+  , blockTime   = Time 0
+  , prevBlock   = Nothing
+  , blockData   = KV { kvData     = merkled []
+                     , kvNonce = ""
+                     , kvTarget = Target $ 2^(256 :: Int) - 1
+                     }
+  }
+
+
+mineBlock :: (Default (Nonce cfg), KVConfig cfg)
+          => Time -> String -> BH (KV cfg) -> IO (Maybe (Block (KV cfg)))
 mineBlock now val bh = do
   mine $ GBlock
     { blockHeight = succ $ bhHeight bh
@@ -133,7 +157,7 @@ mineBlock now val bh = do
     , blockData   = KV { kvData = merkled [ let Height h = bhHeight bh
                                             in (fromIntegral h, val)
                                           ]
-                       , kvNonce = 0
+                       , kvNonce = defaultValue
                        , kvTarget = retarget bh
                        }
     }
@@ -146,6 +170,7 @@ data Opts = Opts
   { cmdConfigPath :: [FilePath]
   , optPrintBCH   :: Bool
   , optMine       :: Bool
+  , optNewPoW     :: Bool
   }
 
 parser :: Parser Opts
@@ -163,6 +188,10 @@ parser = do
     (  long "mine"
     <> help "Mine blocks"
     )
+  optNewPoW <- switch
+    (  long "new-pow"
+    <> help "use new PoW function instead of SHA256"
+    )
   return Opts{..}
 
 data Cfg = Cfg
@@ -175,25 +204,17 @@ data Cfg = Cfg
   deriving stock    (Show,Generic)
   deriving anyclass (JSON.FromJSON)
 
-main :: IO ()
-main = do
-  hSetBuffering stdout NoBuffering
-  hSetBuffering stderr NoBuffering
-  -- Parse CLI & read config
-  Opts{..} <- customExecParser (prefs showHelpOnError)
-            $ info (helper <*> parser)
-              (  fullDesc
-              <> header   "PoW node settings"
-              <> progDesc ""
-              )
+runNodeAnyPoW :: forall cfg . (Show (Nonce cfg), Default (Nonce cfg), KVConfig cfg)
+              => Opts -> Block (KV cfg) ->IO ()
+runNodeAnyPoW Opts{..} genesisBlock = do
   Cfg{..} <- loadYamlSettings (reverse cmdConfigPath) [] requireEnv
   --
   let netcfg = NetCfg { nKnownPeers     = 3
                       , nConnectedPeers = 3
                       }
   let net = newNetworkTcp cfgPort
-  db <- inMemoryDB @_ @_ @(KV TestChain)
-  let s0 = consensusGenesis genesis (viewKV (blockID genesis))
+  db <- inMemoryDB @_ @_ @(KV cfg)
+  let s0 = consensusGenesis genesisBlock (viewKV (blockID genesisBlock))
   withLogEnv "" "" (map makeScribe cfgLog) $ \logEnv ->
     runLoggerT logEnv $ evalContT $ do
       pow' <- startNode netcfg net cfgPeers db s0
@@ -238,6 +259,22 @@ main = do
         --
         loop =<< if optMine then Just <$> fork doMine else return Nothing
 
+
+
+main :: IO ()
+main = do
+  hSetBuffering stdout NoBuffering
+  hSetBuffering stderr NoBuffering
+  -- Parse CLI & read config
+  opts@Opts{..} <- customExecParser (prefs showHelpOnError)
+            $ info (helper <*> parser)
+              (  fullDesc
+              <> header   "PoW node settings"
+              <> progDesc ""
+              )
+  if optNewPoW
+    then runNodeAnyPoW opts genesisNewPoW
+    else runNodeAnyPoW opts genesis
         -- -- t <- liftIO $ negate . log <$> randomRIO (0.5, 2)
         -- -- liftIO $ threadDelay $ round (1e6 * t :: Double)
         -- --
