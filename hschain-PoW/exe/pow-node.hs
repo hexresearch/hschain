@@ -13,6 +13,7 @@
 module Main where
 
 import qualified Data.Aeson as JSON
+import Codec.Serialise
 import Control.Concurrent
 import Control.Monad
 import Control.Monad.Catch
@@ -20,6 +21,7 @@ import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Cont
 import qualified Data.ByteString as BS
+import qualified Data.ByteString.Lazy as LBS
 import Data.Maybe
 import Data.Word
 import Data.Yaml.Config       (loadYamlSettings, requireEnv)
@@ -33,6 +35,7 @@ import HSChain.PoW.Logger
 import HSChain.PoW.P2P
 import HSChain.PoW.P2P.Types
 import HSChain.PoW.Types
+import qualified HSChain.POW as POWFunc
 import HSChain.Network.TCP
 import HSChain.Network.Types
 import HSChain.Types.Merkle.Types
@@ -54,9 +57,39 @@ instance KVConfig TestChain where
   kvAdjustInterval = Const 200
   kvBlockTimeInterval  = Const (Time 1000)
   kvSolvePuzzle blk = do
-    error "find with SHA256"
+    error "solve with SHA256"
   kvCheckPuzzle blk = do
     error "check with SHA256"
+
+data TestChainNewPow
+
+instance KVConfig TestChainNewPow where
+  type Nonce TestChainNewPow = BS.ByteString
+  kvAdjustInterval = Const 200
+  kvBlockTimeInterval  = Const (Time 1000)
+  kvSolvePuzzle b0@GBlock{..} = do
+    maybeAnswerHash <- liftIO $ POWFunc.solve [LBS.toStrict $ serialise $ blockWithoutNonce h0] powCfg
+    case maybeAnswerHash of
+      Nothing -> return Nothing
+      Just (answer, _hash) -> do
+        let mined = b0 { blockData = blockData { kvNonce = answer } }
+        return $ Just mined
+    where
+      h0 = toHeader b0
+      powCfg = defaultPOWConfig
+                       { POWFunc.powCfgTarget = targetInteger tgt }
+      tgt = blockTargetThreshold b0
+  kvCheckPuzzle blk = do
+    error "check with new PoW"
+
+
+blockWithoutNonce :: GBlock (KV TestChainNewPow) f -> GBlock (KV TestChainNewPow) f
+blockWithoutNonce block@GBlock{..} =
+  block { blockData = blockData { kvNonce = BS.empty } }
+
+defaultPOWConfig :: POWFunc.POWConfig
+defaultPOWConfig = POWFunc.defaultPOWConfig
+  { POWFunc.powCfgClausesCount = 1 } -- all for speed!
 
 genesis :: Block (KV TestChain)
 genesis = GBlock

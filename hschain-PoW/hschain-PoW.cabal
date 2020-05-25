@@ -90,6 +90,7 @@ Executable hschain-PoW-node
                      , bytestring
                      , containers
                      , random
+                     , serialise
                      , exceptions
                      , transformers
                      , optparse-applicative

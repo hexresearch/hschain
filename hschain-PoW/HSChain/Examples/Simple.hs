@@ -63,10 +63,6 @@ deriving stock instance (Eq (Nonce cfg), IsMerkle f) => Eq   (KV cfg f)
 instance Serialise (Nonce cfg) => Serialise (KV cfg Identity)
 instance Serialise (Nonce cfg) => Serialise (KV cfg Proxy)
 
---blockWithoutNonce :: GBlock (KV cfg) f -> GBlock (KV cfg) f
---blockWithoutNonce block@GBlock{..} =
---  block { blockData = blockData { kvNonce = BS.empty } }
-
 instance (CryptoHashable (Nonce cfg), IsMerkle f) => CryptoHashable (KV cfg f) where
   hashStep = genericHashStep "hschain"
 
