@@ -1,8 +1,8 @@
 Name:           hschain-examples
 Version:        0.1
-Synopsis:       Haskell reimplementation of tendermint protocol
+Synopsis:       Examples and tests for hschain
 Description:
-  Haskell reimplementation of tendermint protocol
+  Implementation of very simple and not quite realistic coin on blockchain
 
 Cabal-Version:  >= 1.10
 License:        MIT
@@ -23,6 +23,7 @@ Library
                      , hschain-merkle
                      , hschain
                      , hschain-net
+                     , hschain-examples-types
                        --
                      , aeson
                      , bytestring           >=0.10

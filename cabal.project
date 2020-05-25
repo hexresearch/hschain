@@ -10,6 +10,7 @@ packages:
          hschain-net
          hschain-quickcheck
          hschain-examples
+         hschain-examples-types
          serialise-cddl
          proof-of-work
 
