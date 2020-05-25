@@ -22,7 +22,6 @@ import Control.Monad.Trans.Class
 import Control.Monad.Trans.Cont
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as LBS
-import Data.Maybe
 import Data.Word
 import Data.Yaml.Config       (loadYamlSettings, requireEnv)
 import Lens.Micro
@@ -44,6 +43,8 @@ import HSChain.Examples.Util
 import HSChain.Control.Class
 import HSChain.Control.Channels
 import HSChain.Control.Util
+import HSChain.Crypto
+import HSChain.Crypto.SHA
 
 
 ----------------------------------------------------------------
@@ -56,10 +57,22 @@ instance KVConfig TestChain where
   type Nonce TestChain = Word64
   kvAdjustInterval = Const 200
   kvBlockTimeInterval  = Const (Time 1000)
-  kvSolvePuzzle blk = do
-    error "solve with SHA256"
-  kvCheckPuzzle blk = do
-    error "check with SHA256"
+  kvSolvePuzzle blk = case solved of
+    blk' : _ -> return (Just blk')
+    _ -> return Nothing
+    where
+      nonces = map (+ kvNonce (blockData blk)) [0..2^(16 :: Int) - 1]
+      solved = [ blk'
+               | nonce <- nonces
+               , let blk' = blk { blockData = (blockData blk) { kvNonce = nonce } }
+               , let hdr' = toHeader blk'
+               , let tgt' = hash256AsTarget hdr'
+               , tgt' <= tgt
+               ]
+      tgt = blockTargetThreshold blk
+  kvCheckPuzzle hdr = return $ blockTargetThreshold hdr >= resultTgt
+    where
+      resultTgt = hash256AsTarget hdr
 
 data TestChainNewPow
 
@@ -79,8 +92,16 @@ instance KVConfig TestChainNewPow where
       powCfg = defaultPOWConfig
                        { POWFunc.powCfgTarget = targetInteger tgt }
       tgt = blockTargetThreshold b0
-  kvCheckPuzzle blk = do
-    error "check with new PoW"
+  kvCheckPuzzle hdr = do
+      liftIO $ POWFunc.check onlyHeader answer hashOfSum powCfg
+    where
+      powCfg = defaultPOWConfig
+                       { POWFunc.powCfgTarget = targetInteger tgt }
+      tgt = blockTargetThreshold hdr
+      onlyHeader = LBS.toStrict $ serialise $ blockWithoutNonce hdr
+      answer = kvNonce $ blockData hdr
+      Hash hashOfSum = hashBlob headerAndAnswer :: Hash SHA256
+      headerAndAnswer = BS.concat [onlyHeader, answer]
 
 
 blockWithoutNonce :: GBlock (KV TestChainNewPow) f -> GBlock (KV TestChainNewPow) f

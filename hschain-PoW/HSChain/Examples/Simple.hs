@@ -17,6 +17,7 @@ module HSChain.Examples.Simple
   , KVConfig(..)
   , retarget
   , mine
+  , hash256AsTarget
   ) where
 
 import Codec.Serialise      (Serialise, serialise)
@@ -147,11 +148,11 @@ retarget bh
     oldTarget = kvTarget $ bhData bh
     (adjustInterval, Time seconds) = targetAdjustmentInfo bh
 
---hash256AsTarget :: CryptoHashable a => a -> Target
---hash256AsTarget a
---  = Target $ BS.foldl' (\i w -> (i `shiftL` 8) + fromIntegral  w) 0 bs
---  where
---    Hash bs = hash a :: Hash SHA256
+hash256AsTarget :: CryptoHashable a => a -> Target
+hash256AsTarget a
+  = Target $ BS.foldl' (\i w -> (i `shiftL` 8) + fromIntegral  w) 0 bs
+  where
+    Hash bs = hash a :: Hash SHA256
 
 mine :: KVConfig cfg => Block (KV cfg) -> IO (Maybe (Block (KV cfg)))
 mine b0@GBlock {..} = do
