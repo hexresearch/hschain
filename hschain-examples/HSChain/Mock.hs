@@ -1,7 +1,8 @@
-{-# LANGUAGE DataKinds         #-}
-{-# LANGUAGE FlexibleContexts  #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TypeOperators     #-}
+{-# LANGUAGE DataKinds           #-}
+{-# LANGUAGE FlexibleContexts    #-}
+{-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeOperators       #-}
 -- |
 module HSChain.Mock where
 
@@ -47,16 +48,17 @@ allocateMockNetAddrs net topo nodes =
 
 -- | Allocate resources for node
 allocNode
-  :: ( MonadIO m, MonadMask m, Has x NodeSpec)
+  :: forall a m x r. ( MonadIO m, MonadMask m, Has x (NodeSpec a))
   => x                          -- ^ Node parameters
   -> ContT r m (Connection 'RW a, LogEnv)
 allocNode x = do
   liftIO $ createDirectoryIfMissing True $ takeDirectory dbname
   conn   <- ContT $ withDatabase dbname
-  logenv <- ContT $ withLogEnv "TM" "DEV" [ makeScribe s | s <- x ^.. nspecLogFile ]
+  logenv <- ContT $ withLogEnv "TM" "DEV" [ makeScribe s | s <- nspecLogFile spec ]
   return (conn,logenv)
   where
-    dbname = fromMaybe "" $ x ^.. nspecDbName
+    spec = getT x :: NodeSpec a
+    dbname = fromMaybe "" $ nspecDbName spec
 
 -- | Callback which aborts execution when blockchain exceed given
 --   height. It's done by throwing 'Abort'.

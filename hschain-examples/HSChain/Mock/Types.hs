@@ -1,10 +1,11 @@
-{-# LANGUAGE DataKinds           #-}
-{-# LANGUAGE DeriveGeneric       #-}
-{-# LANGUAGE FlexibleContexts    #-}
-{-# LANGUAGE RankNTypes          #-}
-{-# LANGUAGE RecordWildCards     #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeOperators       #-}
+{-# LANGUAGE DataKinds            #-}
+{-# LANGUAGE DeriveGeneric        #-}
+{-# LANGUAGE FlexibleContexts     #-}
+{-# LANGUAGE RankNTypes           #-}
+{-# LANGUAGE RecordWildCards      #-}
+{-# LANGUAGE ScopedTypeVariables  #-}
+{-# LANGUAGE TypeOperators        #-}
+{-# LANGUAGE UndecidableInstances #-}
 module HSChain.Mock.Types (
     -- * Data types
     makeGenesis
@@ -29,8 +30,6 @@ import qualified Data.Aeson as JSON
 
 import HSChain.Blockchain.Internal.Engine.Types
 import HSChain.Crypto
-import HSChain.Crypto.Ed25519 (Ed25519)
-import HSChain.Crypto.SHA     (SHA512)
 import HSChain.Logger         (ScribeSpec)
 import HSChain.Types
 import HSChain.Types.Merkle.Types
@@ -132,12 +131,14 @@ data NetSpec a = NetSpec
   }
   deriving (Generic,Show)
 
-data NodeSpec = NodeSpec
-  { nspecPrivKey    :: Maybe (PrivValidator (Ed25519 :& SHA512))
-  , nspecDbName     :: Maybe FilePath
-  , nspecLogFile    :: [ScribeSpec]
+data NodeSpec b = NodeSpec
+  { nspecPrivKey     :: !(Maybe (PrivValidator (Alg b)))
+  , nspecDbName      :: !(Maybe FilePath)
+  , nspecLogFile     :: ![ScribeSpec]
+  , nspecPersistIval :: !(Maybe Int)
+    -- ^ Interval between persisting state to database
   }
-  deriving (Generic,Show)
+  deriving (Generic)
 
 -- | Specifications for mock coin status.
 data CoinSpecification = CoinSpecification
@@ -149,8 +150,7 @@ data CoinSpecification = CoinSpecification
  }
  deriving (Generic,Show)
 
-instance JSON.ToJSON   NodeSpec
-
+instance Crypto (Alg b) => JSON.ToJSON   (NodeSpec b)
+instance Crypto (Alg b) => JSON.FromJSON (NodeSpec b)
 instance JSON.FromJSON CoinSpecification
-instance JSON.FromJSON NodeSpec
 instance JSON.FromJSON a => JSON.FromJSON (NetSpec a)

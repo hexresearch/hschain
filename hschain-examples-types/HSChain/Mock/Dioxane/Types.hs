@@ -41,7 +41,7 @@ import HSChain.Types.Merkle.Types
 -- Basic coin logic
 ----------------------------------------------------------------
 
-type DioAlg = Ed25519 :& SHA512
+type DioAlg = Ed25519 :& SHA256
 
 newtype BData tag = BData [Tx]
   deriving stock    (Show,Eq,Generic)
@@ -103,7 +103,7 @@ instance Dio tag => BlockData (BData tag) where
   type BChMonad        (BData tag) = Maybe
   type Alg             (BData tag) = DioAlg
   bchLogic                 = dioLogic
-  proposerSelection        = ProposerSelection randomProposerSHA512
+  proposerSelection        = ProposerSelection randomProposerSHA256
   logBlockData (BData txs) = HM.singleton "Ntx" $ JSON.toJSON $ length txs
 
 
@@ -188,18 +188,18 @@ process Tx{txBody=TxBody{..}} st = do
                                      )
     & userMap . at txTo   . _Just . userBalance %~ (+ txAmount)
 
--- | Select proposers using PRNG based on SHA512.
-randomProposerSHA512 :: Crypto alg => ValidatorSet alg -> Height -> Round -> ValidatorIdx alg
-randomProposerSHA512 valSet h r
-  = fromMaybe (error "randomProposerSHA512: invalid index")
+-- | Select proposers using PRNG based on SHA256.
+randomProposerSHA256 :: Crypto alg => ValidatorSet alg -> Height -> Round -> ValidatorIdx alg
+randomProposerSHA256 valSet h r
+  = fromMaybe (error "randomProposerSHA256: invalid index")
   $ indexByIntervalPoint valSet
   $ fromInteger
   -- NOTE: We just compute modulo total voting power. This gives
-  --       _biased_ results. But since range of SHA512 is enormous:
-  --       2^512 even for voting power on order 2^64 bias will be on
-  --       order 10^{-134} that is negligible
+  --       _biased_ results. But since range of SHA256 is enormous:
+  --       2^256 even for voting power on order 2^64 bias will be on
+  --       order 10^{-67} that is negligible
   $ (`mod` fromIntegral (totalVotingPower valSet))
   -- Convert hash to integer. We interpret hash as LE integer
   $ BS.foldr' (\w i -> (i `shiftL` 8) + fromIntegral  w) 0 bs
   where
-    Hash bs = hash (valSet, h, r) :: Hash SHA512
+    Hash bs = hash (valSet, h, r) :: Hash SHA256
