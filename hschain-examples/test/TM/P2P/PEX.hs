@@ -292,12 +292,12 @@ createTestNetworkWithValidatorsSetAndConfig validators cfg netDescr = do
                 { bchNetwork      = createMockNode net (intToNetAddr ncFrom)
                 , bchInitialPeers = intToNetAddr <$> ncTo
                 }
-          :*: NodeSpec
+          :*: (NodeSpec
                 { nspecPrivKey     = validatorPK
                 , nspecDbName      = Nothing
                 , nspecLogFile     = []
                 , nspecPersistIval = Nothing
-                }
+                } :: NodeSpec BData)
               -- 
           :*: (let Configuration{..} = cfg in Configuration{..})
           )

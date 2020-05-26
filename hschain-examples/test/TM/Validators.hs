@@ -244,7 +244,7 @@ interpretSpec
   :: ( MonadDB m Tx, MonadFork m, MonadMask m, MonadLogger m
      , MonadTMMonitoring m
      , Has x BlockchainNet
-     , Has x NodeSpec
+     , Has x (NodeSpec Tx)
      , Has x (Configuration Example))
   => Genesis Tx
   -> x
@@ -257,7 +257,7 @@ interpretSpec genesis p cb = do
                         , appMempool  = nullMempool
                         }
   acts  <- runNode (getT p :: Configuration Example) NodeDescription
-    { nodeValidationKey = p ^.. nspecPrivKey
+    { nodeValidationKey = nspecPrivKey (getT p :: NodeSpec Tx)
     , nodeGenesis       = genesis
     , nodeCallbacks     = cb
     , nodeRunner        = maybe (throwE ValErr) return
@@ -276,7 +276,8 @@ interpretSpec genesis p cb = do
 
 prepareResources
   :: (MonadIO m, MonadMask m)
-  => NetSpec NodeSpec -> ContT r m [(BlockchainNet :*: NodeSpec, (Connection 'RW a, LogEnv))]
+  => NetSpec (NodeSpec Tx)
+  -> ContT r m [(BlockchainNet :*: NodeSpec Tx, (Connection 'RW Tx, LogEnv))]
 prepareResources NetSpec{..} = do
   -- Create mock network and allocate DB handles for nodes
   net <- liftIO P2P.newMockNet
@@ -287,8 +288,8 @@ prepareResources NetSpec{..} = do
 
 executeNodeSpec
   :: (MonadIO m, MonadMask m, MonadFork m,  MonadTMMonitoring m)
-  => NetSpec NodeSpec
-  -> [(BlockchainNet :*: NodeSpec, (Connection 'RW Tx, LogEnv))]
+  => NetSpec (NodeSpec Tx)
+  -> [(BlockchainNet :*: NodeSpec Tx, (Connection 'RW Tx, LogEnv))]
   -> ContT r m [RunningNode m Tx]
 executeNodeSpec NetSpec{..} resources = do
   -- Start nodes

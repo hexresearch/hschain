@@ -103,7 +103,7 @@ interpretSpec
   :: ( MonadDB m BData, MonadFork m, MonadMask m, MonadLogger m
      , MonadTMMonitoring m
      , Has x BlockchainNet
-     , Has x NodeSpec
+     , Has x (NodeSpec BData)
      , Has x (Configuration Example))
   => Genesis BData
   -> x
@@ -111,7 +111,7 @@ interpretSpec
   -> m (RunningNode m BData, [m ()])
 interpretSpec genesis p cb = do
   conn  <- askConnectionRO
-  store <- maybe return snapshotState (p ^.. nspecPersistIval)
+  store <- maybe return snapshotState (nspecPersistIval (getT p :: NodeSpec BData))
        =<< newSTMBchStorage (merkled mempty)
   --
   let astore = AppStore
@@ -119,7 +119,7 @@ interpretSpec genesis p cb = do
         , appBchState = store
         }
   acts <- runNode (getT p :: Configuration Example) NodeDescription
-    { nodeValidationKey = p ^.. nspecPrivKey
+    { nodeValidationKey = nspecPrivKey (getT p :: NodeSpec BData)
     , nodeGenesis       = genesis
     , nodeCallbacks     = cb
     , nodeRunner        = hoist liftIO
@@ -168,7 +168,7 @@ keyValLogic = BChLogic
 
 executeSpec
   :: (MonadIO m, MonadMask m, MonadFork m, MonadTMMonitoring m)
-  => NetSpec NodeSpec
+  => NetSpec (NodeSpec BData)
   -> ContT r m [RunningNode m BData]
 executeSpec NetSpec{..} = do
   -- Create mock network and allocate DB handles for nodes

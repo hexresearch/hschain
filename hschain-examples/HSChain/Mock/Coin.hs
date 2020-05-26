@@ -184,7 +184,7 @@ interpretSpec
   :: ( MonadDB m BData, MonadFork m, MonadMask m, MonadLogger m
      , MonadTMMonitoring m
      , Has x BlockchainNet
-     , Has x NodeSpec
+     , Has x (NodeSpec BData)
      , Has x (Configuration Example))
   => Genesis BData
   -> x
@@ -192,11 +192,11 @@ interpretSpec
   -> m (RunningNode m BData, [m ()])
 interpretSpec genesis p cb = do
   conn    <- askConnectionRO
-  store   <- maybe return snapshotState (p ^.. nspecPersistIval)
+  store   <- maybe return snapshotState (nspecPersistIval (getT p :: NodeSpec BData))
          =<< newSTMBchStorage (blockchainState genesis)
   mempool <- makeMempool store (ExceptT . return)
   acts <- runNode (getT p :: Configuration Example) NodeDescription
-    { nodeValidationKey = p ^.. nspecPrivKey
+    { nodeValidationKey = nspecPrivKey (getT p :: NodeSpec BData)
     , nodeGenesis       = genesis
     , nodeCallbacks     = cb <> nonemptyMempoolCallback mempool
     , nodeRunner        = ExceptT . return
@@ -215,7 +215,7 @@ interpretSpec genesis p cb = do
 
 executeNodeSpec
   :: (MonadIO m, MonadMask m, MonadFork m, MonadTMMonitoring m)
-  => NetSpec NodeSpec :*: CoinSpecification
+  => NetSpec (NodeSpec BData) :*: CoinSpecification
   -> ContT r m [RunningNode m BData]
 executeNodeSpec (NetSpec{..} :*: coin@CoinSpecification{..}) = do
   -- Create mock network and allocate DB handles for nodes
