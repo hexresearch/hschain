@@ -44,27 +44,16 @@ runKeyVal  = evalContT $ do
   where
     spec = NetSpec
       { netNodeList =
-          [ NodeSpec
-            { nspecPrivKey = Just $ PrivValidator $ read "\"2K7bFuJXxKf5LqogvVRQjms2W26ZrjpvUjo5LdvPFa5Y\""
-            , nspecDbName = Nothing
-            , nspecLogFile = []
-            }
-          , NodeSpec
-            { nspecPrivKey = Just $ PrivValidator $ read "\"4NSWtMsEPgfTK25tCPWqNzVVze1dgMwcUFwS5WkSpjJL\""
-            , nspecDbName = Nothing
-            , nspecLogFile = []
-            }
-          , NodeSpec
-            { nspecPrivKey = Just $ PrivValidator $ read "\"3Fj8bZjKc53F2a87sQaFkrDas2d9gjzK57FmQwnNnSHS\""
-            , nspecDbName = Nothing
-            , nspecLogFile = []
-            }
-          , NodeSpec
-            { nspecPrivKey = Just $ PrivValidator $ read "\"D2fpHM1JA8trshiUW8XPvspsapUvPqVzSofaK1MGRySd\""
-            , nspecDbName = Nothing
-            , nspecLogFile = []
-            }
-          ]
+          let mk k = NodeSpec { nspecPrivKey     = Just (PrivValidator k)
+                              , nspecDbName      = Nothing
+                              , nspecLogFile     = []
+                              , nspecPersistIval = Nothing
+                              }
+          in mk <$> [ read "\"2K7bFuJXxKf5LqogvVRQjms2W26ZrjpvUjo5LdvPFa5Y\""
+                    , read "\"4NSWtMsEPgfTK25tCPWqNzVVze1dgMwcUFwS5WkSpjJL\""
+                    , read "\"3Fj8bZjKc53F2a87sQaFkrDas2d9gjzK57FmQwnNnSHS\""
+                    , read "\"D2fpHM1JA8trshiUW8XPvspsapUvPqVzSofaK1MGRySd\""
+                    ]
       , netTopology = All2All
       , netNetCfg   =
         let c = defCfg
@@ -125,25 +114,16 @@ runCoin = evalContT $ do
       }
     spec = NetSpec
       { netNodeList =
-        [ NodeSpec
-          { nspecPrivKey = Just $ PrivValidator $ read "\"2K7bFuJXxKf5LqogvVRQjms2W26ZrjpvUjo5LdvPFa5Y\""
-          , nspecDbName = Nothing
-          , nspecLogFile = []
-          }
-        , NodeSpec
-          { nspecPrivKey = Just $ PrivValidator $ read "\"4NSWtMsEPgfTK25tCPWqNzVVze1dgMwcUFwS5WkSpjJL\""
-          , nspecDbName = Nothing
-          , nspecLogFile = []}
-        , NodeSpec
-          { nspecPrivKey = Just $ PrivValidator $ read "\"3Fj8bZjKc53F2a87sQaFkrDas2d9gjzK57FmQwnNnSHS\""
-          , nspecDbName = Nothing
-          , nspecLogFile = []
-          }
-        , NodeSpec
-          { nspecPrivKey = Just $ PrivValidator $ read "\"D2fpHM1JA8trshiUW8XPvspsapUvPqVzSofaK1MGRySd\""
-          , nspecDbName = Nothing
-          , nspecLogFile = []}
-        ]
+          let mk k = NodeSpec { nspecPrivKey     = Just (PrivValidator k)
+                              , nspecDbName      = Nothing
+                              , nspecLogFile     = []
+                              , nspecPersistIval = Nothing
+                              }
+          in mk <$> [ read "\"2K7bFuJXxKf5LqogvVRQjms2W26ZrjpvUjo5LdvPFa5Y\""
+                    , read "\"4NSWtMsEPgfTK25tCPWqNzVVze1dgMwcUFwS5WkSpjJL\""
+                    , read "\"3Fj8bZjKc53F2a87sQaFkrDas2d9gjzK57FmQwnNnSHS\""
+                    , read "\"D2fpHM1JA8trshiUW8XPvspsapUvPqVzSofaK1MGRySd\""
+                    ]
       , netTopology = All2All
       , netNetCfg =
         let c = defCfg

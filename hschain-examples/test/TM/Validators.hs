@@ -152,7 +152,7 @@ testValidatorChange = withTimeOut 20e6 $ do
       liftIO $ assertEqual (show h) v0 v
     --
     spec = NetSpec
-      { netNodeList = [ NodeSpec (Just $ PrivValidator k) Nothing []
+      { netNodeList = [ NodeSpec (Just $ PrivValidator k) Nothing [] Nothing
                       | k <- privK]
       , netTopology = All2All
       , netNetCfg   =

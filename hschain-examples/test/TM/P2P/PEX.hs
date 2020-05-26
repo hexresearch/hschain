@@ -293,9 +293,10 @@ createTestNetworkWithValidatorsSetAndConfig validators cfg netDescr = do
                 , bchInitialPeers = intToNetAddr <$> ncTo
                 }
           :*: NodeSpec
-                { nspecPrivKey = validatorPK
-                , nspecDbName  = Nothing
-                , nspecLogFile = []
+                { nspecPrivKey     = validatorPK
+                , nspecDbName      = Nothing
+                , nspecLogFile     = []
+                , nspecPersistIval = Nothing
                 }
               -- 
           :*: (let Configuration{..} = cfg in Configuration{..})

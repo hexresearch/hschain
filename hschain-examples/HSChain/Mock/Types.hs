@@ -133,9 +133,11 @@ data NetSpec a = NetSpec
   deriving (Generic,Show)
 
 data NodeSpec = NodeSpec
-  { nspecPrivKey    :: Maybe (PrivValidator (Ed25519 :& SHA512))
-  , nspecDbName     :: Maybe FilePath
-  , nspecLogFile    :: [ScribeSpec]
+  { nspecPrivKey     :: !(Maybe (PrivValidator (Ed25519 :& SHA512)))
+  , nspecDbName      :: !(Maybe FilePath)
+  , nspecLogFile     :: ![ScribeSpec]
+  , nspecPersistIval :: !(Maybe Int)
+    -- ^ Interval between persisting state to database
   }
   deriving (Generic,Show)
 
