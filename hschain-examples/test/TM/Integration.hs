@@ -15,7 +15,6 @@ import Control.Monad.IO.Class
 import Data.Foldable    (toList)
 
 import HSChain.Blockchain.Internal.Engine.Types
-import           HSChain.Control
 import           HSChain.Types.Blockchain
 import           HSChain.Store
 import qualified HSChain.Mock.KeyVal as KeyVal
@@ -74,8 +73,8 @@ runKeyVal  = evalContT $ do
 runCoin :: IO ()
 runCoin = evalContT $ do
     rnodes <- Coin.executeNodeSpec
-            $  spec
-           :*: coin { coinGeneratorDelay = Just 200 }
+               spec
+               coin { coinGeneratorDelay = Just 200 }
     -- Check that each blockchain is internally consistent
     checks <- forM rnodes $ \n -> runDBT (Coin.rnodeConn n) checkStorage
     liftIO $ assertEqual "Failed consistency check" [] (concat checks)

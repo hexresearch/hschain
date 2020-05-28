@@ -108,8 +108,11 @@ main = do
     let run = runMonitorT gauges . runLoggerT logenv . runDBT conn
     -- Actually run node
     lift $ run $ do
-      (RunningNode{..},acts) <- interpretSpec genesis
-        (nspec :*: cfg :*: bnet)
+      (RunningNode{..},acts) <- interpretSpec
+        genesis
+        cfg
+        bnet
+        nspec
         (maybe mempty callbackAbortAtH (optMaxH <|> nodeMaxH))
       txGen <- case mtxGen of
         Nothing  -> return []
