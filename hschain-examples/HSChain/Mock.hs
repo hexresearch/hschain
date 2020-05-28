@@ -48,16 +48,15 @@ allocateMockNetAddrs net topo nodes =
 
 -- | Allocate resources for node
 allocNode
-  :: forall a m x r. ( MonadIO m, MonadMask m, Has x (NodeSpec a))
-  => x                          -- ^ Node parameters
+  :: ( MonadIO m, MonadMask m)
+  => NodeSpec a
   -> ContT r m (Connection 'RW a, LogEnv)
-allocNode x = do
+allocNode spec = do
   liftIO $ createDirectoryIfMissing True $ takeDirectory dbname
   conn   <- ContT $ withDatabase dbname
   logenv <- ContT $ withLogEnv "TM" "DEV" [ makeScribe s | s <- nspecLogFile spec ]
   return (conn,logenv)
   where
-    spec = getT x :: NodeSpec a
     dbname = fromMaybe "" $ nspecDbName spec
 
 -- | Callback which aborts execution when blockchain exceed given

@@ -215,12 +215,13 @@ interpretSpec genesis p cb = do
 
 executeNodeSpec
   :: (MonadIO m, MonadMask m, MonadFork m, MonadTMMonitoring m)
-  => NetSpec (NodeSpec BData) :*: CoinSpecification
+  => NetSpec (NodeSpec BData)
+  -> CoinSpecification
   -> ContT r m [RunningNode m BData]
-executeNodeSpec (NetSpec{..} :*: coin@CoinSpecification{..}) = do
+executeNodeSpec NetSpec{..} coin@CoinSpecification{..} = do
   -- Create mock network and allocate DB handles for nodes
   net       <- liftIO P2P.newMockNet
-  resources <- traverse (\x -> do { r <- allocNode x; return (x,r)})
+  resources <- traverse (\x -> do { r <- allocNode (getT x); return (x,r)})
              $ allocateMockNetAddrs net netTopology
              $ netNodeList
   -- Start nodes
