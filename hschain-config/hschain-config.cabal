@@ -27,3 +27,18 @@ Library
   Exposed-modules:
                   HSChain.Config
                   HSChain.Config.Internal
+
+Test-suite hschain-config-tests
+  Type:                exitcode-stdio-1.0
+  Ghc-options:         -Wall
+  Default-Language:    Haskell2010
+  Build-Depends:       base              >=4.9 && <5
+                     , hschain-config    -any
+                     , aeson
+                     , bytestring        >=0.10
+                     --
+                     , tasty             >=0.12
+                     , tasty-hunit       >=0.10.0.1
+  hs-source-dirs:      test
+  Main-is:             Main.hs
+  Other-modules:       TM.Parser
