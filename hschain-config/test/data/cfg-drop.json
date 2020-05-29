@@ -1,4 +1,4 @@
 {
   "port": 123,
-  "path": "/tmp"
+  "pathDB": "/tmp"
 }

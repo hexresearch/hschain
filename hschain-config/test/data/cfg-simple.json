@@ -1,4 +1,4 @@
 {
-  "cfgPort": 123,
-  "cfgPath": "/tmp"
+  "cfgPort"  : 123,
+  "cfgPathDB": "/tmp"
 }

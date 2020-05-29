@@ -29,14 +29,14 @@ tests = testGroup "Parser"
 
 
 data Cfg = Cfg
-  { cfgPort :: Int
-  , cfgPath :: String
+  { cfgPort   :: Int
+  , cfgPathDB :: String
   }
   deriving (Show,Eq,Generic)
 
 data Cfg' = Cfg'
-  { cfg'port :: Int
-  , cfg'path :: String
+  { cfg'port   :: Int
+  , cfg'pathDB :: String
   }
   deriving (Show,Eq,Generic)
   deriving FromJSON via DropPrefix (Config Cfg')
