@@ -20,8 +20,8 @@ data PrintOpt = PrintText | PrintHex
   deriving (Show)
 
 data Command =
-    FindAnswer ByteString Int Word16 PrintOpt
-  | CheckBlock ByteString ByteString Int Word16
+    FindAnswer ByteString Integer PrintOpt
+  | CheckBlock ByteString ByteString ByteString Integer
   deriving (Show)
 
 parser :: Parser Command
@@ -31,13 +31,14 @@ parser = subparser
   )
   where
     findAnswerParser = FindAnswer
-                     <$> parseByteString <*> parseShift <*> parseMantissa <*> parsePrint
-    checkAnswerParser = CheckBlock <$> parseByteString <*> parseHash <*> parseShift <*> parseMantissa
+                     <$> parseByteString "source" <*> parseTarget <*> parsePrint
+    checkAnswerParser = CheckBlock <$> parseByteString "answer"
+                                   <*> parseByteString "source" <*> parseHash <*> parseTarget
     parsePrint = flag' PrintText (short 'T' <> long "print-as-text")
                <|> flag' PrintHex (short 'H' <> long "print-as-hex")
-    parseByteString = parseAsText <|> parseAsHex
-    parseAsText = option (maybeReader bytestringFromString) (long "prefix-text")
-    parseAsHex = option (maybeReader bytestringFromHex) (long "prefix-hex")
+    parseByteString opt = parseAsText opt <|> parseAsHex opt
+    parseAsText opt = option (maybeReader bytestringFromString) (long $ opt ++ "-text")
+    parseAsHex opt = option (maybeReader bytestringFromHex) (long $ opt ++ "-hex")
     parseHash = option (maybeReader bytestringFromHex) (long "hash-hex")
     bytestringFromString s = case reads s of
                                ((bs,""):_) -> Just $ fromString bs
@@ -48,21 +49,19 @@ parser = subparser
         rd (w:ws) = case reads $ "0x"++w of
           ((byte, ""):_) -> fmap (byte:) $ rd ws
           _ -> Nothing
-    parseShift = option (maybeReader parseInt) (long "shift" <> short 's')
+    parseTarget = option (maybeReader parseInt) (long "target" <> short 't')
     parseInt :: (Num a, Read a) => String -> Maybe a
     parseInt s = case reads s of
                    ((i,""):_) -> Just i
                    _ -> Nothing
-    parseMantissa = option (maybeReader parseInt) (long "mantissa" <> short 'm')
 
 main :: IO ()
 main = do
   cmd <- execParser $ info parser mempty
   case cmd of
-    FindAnswer prefix shift mantissa printOpt -> do
+    FindAnswer prefix target printOpt -> do
       let config = defaultPOWConfig
-                 { powCfgComplexityShift     = shift
-                 , powCfgComplexityMantissa  = mantissa
+                 { powCfgTarget = target
                  }
       r <- solve [prefix] config
       case r of
@@ -79,10 +78,9 @@ main = do
                           (map (printf "%02x") $ B.unpack hash)
           where
             completeBlock = B.concat [prefix, answer]
-    CheckBlock withAnswer hash shift mantissa -> do
-      r <- check withAnswer hash $ defaultPOWConfig
-                                     { powCfgComplexityShift = shift
-                                     , powCfgComplexityMantissa = mantissa
+    CheckBlock block answer hash target -> do
+      r <- check block answer hash $ defaultPOWConfig
+                                     { powCfgTarget = target
                                      }
       putStrLn $ "check result: "++show r
 
