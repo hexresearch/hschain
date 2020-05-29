@@ -20,6 +20,7 @@ module HSChain.Config
   , DropPrefix(..)
   , DropN(..)
   , SnakeCase(..)
+  , CaseInsensitive(..)
   ) where
 
 import Control.Monad
@@ -29,6 +30,8 @@ import Data.Aeson.Types
 import Data.Char
 import Data.Coerce
 import Data.Proxy
+import qualified Data.Text           as T
+import qualified Data.HashMap.Strict as HM
 import GHC.TypeLits
 import GHC.Generics
 
@@ -79,15 +82,14 @@ instance (FromConfigJSON a) => FromJSON (DropPrefix a) where
   parseJSON = parseConfigJSON mempty
 
 instance (FromConfigJSON a) => FromConfigJSON (DropPrefix a) where
-  parseConfigJSON m = coerceParser . parseConfigJSON m'
+  parseConfigJSON m = coerceParser . parseConfigJSON (m <> m')
     where
-      m'      = m <> mempty { mangleSelector = mangler }
+      m'      = mempty { mangleSelector = mangler }
       mangler = do fields <- get
                    let f | all hasQuote fields = stripQuote
                          | otherwise           = let n = length $ commonPrefix fields
                                                  in lowerHead . drop n
-                   modify' $ map f
-                   return f
+                   selectorMangler f
 
 -- String hash single quote and it's not in tail position.
 hasQuote :: String -> Bool
@@ -125,12 +127,10 @@ instance (KnownNat n, FromConfigJSON a) => FromJSON (DropN n a) where
   parseJSON = parseConfigJSON mempty
 
 instance (KnownNat n, FromConfigJSON a) => FromConfigJSON (DropN n a) where
-  parseConfigJSON m = coerceParser . parseConfigJSON m'
+  parseConfigJSON m = coerceParser . parseConfigJSON (m' <> m)
     where
-      m'      = m <> mempty { mangleSelector = mangler }
-      mangler = do modify' $ map f
-                   return f
-      f = drop (fromIntegral (natVal (Proxy @n)))
+      m' = mempty { mangleSelector = selectorMangler f}
+      f  = drop (fromIntegral (natVal (Proxy @n)))
 
 
 ----------------------------------------------------------------
@@ -144,9 +144,8 @@ instance (FromConfigJSON a) => FromJSON (SnakeCase a) where
   parseJSON = parseConfigJSON mempty
 
 instance (FromConfigJSON a) => FromConfigJSON (SnakeCase a) where
-  parseConfigJSON m = coerceParser . parseConfigJSON m'
-    where
-      m' = m <> mempty { mangleSelector = selectorMangler toSnakeCase }
+  parseConfigJSON m
+    = coerceParser . parseConfigJSON (simpleMangler toSnakeCase <> m)
 
 
 toSnakeCase :: String -> String
@@ -158,11 +157,40 @@ toSnakeCase []     = []
 
 
 ----------------------------------------------------------------
+-- Case insensitive
+----------------------------------------------------------------
+
+newtype CaseInsensitive a = CaseInsensitive a
+  deriving Generic via TransparentGeneric a
+
+instance (FromConfigJSON a) => FromJSON (CaseInsensitive a) where
+  parseJSON = parseConfigJSON mempty
+
+instance (FromConfigJSON a) => FromConfigJSON (CaseInsensitive a) where
+  parseConfigJSON m = coerceParser . parseConfigJSON (m' <> m)
+    where
+      m' = Mangler
+        { mangleSelector = selectorMangler (map toLower)
+        , mangleJsonObj  = foldM add HM.empty . HM.toList
+        }
+      add o (k,v)
+        | k' `HM.member` o = fail $ "Duplicate case-insensitive key: " ++ T.unpack k
+        | otherwise        = return $ HM.insert k' v o
+        where
+          
+          k' = T.toLower k
+
+
+----------------------------------------------------------------
 -- Helpers
 ----------------------------------------------------------------
 
 coerceParser :: Coercible a (f a) => Parser a -> Parser (f a)
 coerceParser = coerce
+
+
+simpleMangler :: (String -> String) -> Mangler
+simpleMangler f = mempty { mangleSelector = selectorMangler f }
 
 selectorMangler :: (String -> String) -> State [String] (String -> String)
 selectorMangler f = f <$ modify' (map f)

@@ -23,6 +23,7 @@ tests = testGroup "Parser"
   , runTest "test/data/cfg-drop.json"   $ Cfg' 123 "/tmp"
   , runTest "test/data/cfg-dropN.json"  $ CfgDropN (Cfg 123 "/tmp")
   , runTest "test/data/cfg-snake.json"  $ CfgSnakeCase (Cfg 123 "/tmp")
+  , runTest "test/data/cfg-ci.json"     $ CfgCI (Cfg 123 "/tmp")
   ]
 
 
@@ -68,8 +69,14 @@ newtype CfgDropN = CfgDropN Cfg
   deriving Generic  via TransparentGeneric Cfg
   deriving FromJSON via DropN 2 (Config (Cfg))
 
--- Uses SnakeCase
+-- Uses SnakeCase+DropPrefix
 newtype CfgSnakeCase = CfgSnakeCase Cfg
   deriving (Show,Eq)
   deriving Generic  via TransparentGeneric Cfg
   deriving FromJSON via SnakeCase (DropPrefix (Config (Cfg)))
+
+-- Uses CaseInsensitive+SnakeCase+DropPrefix
+newtype CfgCI = CfgCI Cfg
+  deriving (Show,Eq)
+  deriving Generic  via TransparentGeneric Cfg
+  deriving FromJSON via CaseInsensitive (SnakeCase (DropPrefix (Config (Cfg))))

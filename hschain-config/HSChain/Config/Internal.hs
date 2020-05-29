@@ -31,7 +31,6 @@ import GHC.TypeLits
 import GHC.Generics
 
 
-
 ----------------------------------------------------------------
 -- Mangling of field selector names
 ----------------------------------------------------------------
@@ -51,7 +50,10 @@ data Mangler = Mangler
   }
 
 instance Semigroup Mangler where
-  Mangler f1 g1 <> Mangler f2 g2 = Mangler (liftA2 (.) f1 f2) (g1 <=< g2)
+  Mangler f1 g1 <> Mangler f2 g2 = Mangler
+    { mangleSelector = liftA2 (flip (.)) f2 f1
+    , mangleJsonObj  = g1 <=< g2
+    }
 
 instance Monoid Mangler where
   mempty = Mangler (return id) return
