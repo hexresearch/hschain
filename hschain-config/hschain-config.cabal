@@ -26,7 +26,8 @@ Library
                      , unordered-containers
   Exposed-modules:
                   HSChain.Config
-                  HSChain.Config.Internal
+                  HSChain.Config.Internal.Impl
+                  HSChain.Config.Internal.Classes
 
 Test-suite hschain-config-tests
   Type:                exitcode-stdio-1.0
@@ -36,6 +37,7 @@ Test-suite hschain-config-tests
                      , hschain-config    -any
                      , aeson
                      , bytestring        >=0.10
+                     , transformers
                      --
                      , tasty             >=0.12
                      , tasty-hunit       >=0.10.0.1

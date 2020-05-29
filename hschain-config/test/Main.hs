@@ -3,7 +3,8 @@ import TM.Parser
 
 main :: IO ()
 main = defaultMain $ testGroup "hschain"
-  [ TM.Parser.tests
+  [ TM.Parser.testsMangler
+  , TM.Parser.testsParser
   ]
 
 

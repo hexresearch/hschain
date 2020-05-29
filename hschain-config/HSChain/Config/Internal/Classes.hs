@@ -7,7 +7,7 @@
 {-# LANGUAGE TypeOperators        #-}
 {-# LANGUAGE UndecidableInstances #-}
 -- |
-module HSChain.Config.Internal
+module HSChain.Config.Internal.Classes
   ( -- * Data types
     Mangler(..)
   , FromConfigJSON(..)
@@ -50,8 +50,11 @@ data Mangler = Mangler
   }
 
 instance Semigroup Mangler where
-  Mangler f1 g1 <> Mangler f2 g2 = Mangler
-    { mangleSelector = liftA2 (flip (.)) f2 f1
+  Mangler mf1 g1 <> Mangler mf2 g2 = Mangler
+    { mangleSelector = do
+        f2 <- mf2
+        f1 <- mf1
+        return (f1 . f2)
     , mangleJsonObj  = g1 <=< g2
     }
 
