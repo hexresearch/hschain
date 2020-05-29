@@ -1,0 +1,29 @@
+Name:           hschain-config
+Version:        0.1
+Synopsis:       Deriving of aeson's instance with good error messages
+Description:
+  This package provides newtype wrappers which allow to derive
+  FromJSON instances for records that provide good error messages and
+  easy to use (DerivingVia)
+
+Cabal-Version:  >= 1.10
+License:        MIT
+License-File:   LICENSE
+Author:         Aleksey Khudyakov <alexey.skladnoy@gmail.com>
+Maintainer:     Aleksey Khudyakov <alexey.skladnoy@gmail.com>
+Homepage:       https://github.com/hexresearch/hschain
+Category:       Data
+Build-Type:     Simple
+
+
+Library
+  Ghc-options:         -Wall
+  Default-Language:    Haskell2010
+  Build-Depends:       base              >=4.9 && <5
+                     , aeson             >=1.4
+                     , transformers
+                     , text              >=1
+                     , unordered-containers
+  Exposed-modules:
+                  HSChain.Config
+                  HSChain.Config.Internal

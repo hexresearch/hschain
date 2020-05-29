@@ -1,6 +1,7 @@
 packages:
          bls-signatures
          hschain
+         hschain-config
          hschain-crypto
          hschain-crypto-bls
          hschain-control
