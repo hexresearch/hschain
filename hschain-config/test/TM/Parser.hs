@@ -7,6 +7,7 @@
 module TM.Parser where
 
 import Data.Aeson
+import Data.Typeable
 import Test.Tasty
 import Test.Tasty.HUnit
 import GHC.Generics
@@ -17,16 +18,24 @@ import HSChain.Config.Internal
 
 tests :: TestTree
 tests = testGroup "Parser"
-  [ testCase "CfgSimple" $ do Just a <- decodeFileStrict "test/data/cfg-simple.json"
-                              CfgSimple (Cfg 123 "/tmp") @=? a
-  , testCase "CfgDrop"   $ do Just a <- decodeFileStrict "test/data/cfg-drop.json"
-                              CfgDrop (Cfg 123 "/tmp") @=? a
-  , testCase "Cfg'"      $ do Just a <- decodeFileStrict "test/data/cfg-drop.json"
-                              Cfg' 123 "/tmp" @=? a
-  , testCase "CfgDropN"  $ do Just a <- decodeFileStrict "test/data/cfg-dropN.json"
-                              CfgDropN (Cfg 123 "/tmp") @=? a
+  [ runTest "test/data/cfg-simple.json" $ CfgSimple (Cfg 123 "/tmp")
+  , runTest "test/data/cfg-drop.json"   $ CfgDrop (Cfg 123 "/tmp")
+  , runTest "test/data/cfg-drop.json"   $ Cfg' 123 "/tmp"
+  , runTest "test/data/cfg-dropN.json"  $ CfgDropN (Cfg 123 "/tmp")
+  , runTest "test/data/cfg-snake.json"  $ CfgSnakeCase (Cfg 123 "/tmp")
   ]
 
+
+runTest :: (Eq a, Show a, FromJSON a, Typeable a) => FilePath -> a -> TestTree
+runTest path a0 = testCase (show (typeOf a0)) $ do
+  r <- eitherDecodeFileStrict path
+  case r of
+    Left  e -> putStrLn e >> assertFailure "Parse failed"
+    Right a -> a0 @=? a
+
+----------------------------------------------------------------
+-- Data types
+----------------------------------------------------------------
 
 data Cfg = Cfg
   { cfgPort   :: Int
@@ -58,3 +67,9 @@ newtype CfgDropN = CfgDropN Cfg
   deriving (Show,Eq)
   deriving Generic  via TransparentGeneric Cfg
   deriving FromJSON via DropN 2 (Config (Cfg))
+
+-- Uses SnakeCase
+newtype CfgSnakeCase = CfgSnakeCase Cfg
+  deriving (Show,Eq)
+  deriving Generic  via TransparentGeneric Cfg
+  deriving FromJSON via SnakeCase (DropPrefix (Config (Cfg)))

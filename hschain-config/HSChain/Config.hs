@@ -19,13 +19,15 @@ module HSChain.Config
   ( Config(..)
   , DropPrefix(..)
   , DropN(..)
+  , SnakeCase(..)
   ) where
 
 import Control.Monad
 import Control.Monad.Trans.State.Strict
 import Data.Aeson
 import Data.Aeson.Types
-import Data.Char        (isLower,toLower)
+import Data.Char
+import Data.Coerce
 import Data.Proxy
 import GHC.TypeLits
 import GHC.Generics
@@ -77,7 +79,7 @@ instance (FromConfigJSON a) => FromJSON (DropPrefix a) where
   parseJSON = parseConfigJSON mempty
 
 instance (FromConfigJSON a) => FromConfigJSON (DropPrefix a) where
-  parseConfigJSON m = fmap DropPrefix . parseConfigJSON m'
+  parseConfigJSON m = coerceParser . parseConfigJSON m'
     where
       m'      = m <> mempty { mangleSelector = mangler }
       mangler = do fields <- get
@@ -98,8 +100,8 @@ stripQuote = tail . dropWhile (/='\'')
 
 
 commonPrefix :: [String] -> String
-commonPrefix [] = []
-commonPrefix xs = foldl1 prefix xs
+commonPrefix []  = []
+commonPrefix str = foldl1 prefix str
   where
     prefix (x:xs) (y:ys)
       | x == y
@@ -123,9 +125,44 @@ instance (KnownNat n, FromConfigJSON a) => FromJSON (DropN n a) where
   parseJSON = parseConfigJSON mempty
 
 instance (KnownNat n, FromConfigJSON a) => FromConfigJSON (DropN n a) where
-  parseConfigJSON m = fmap DropN . parseConfigJSON m'
+  parseConfigJSON m = coerceParser . parseConfigJSON m'
     where
       m'      = m <> mempty { mangleSelector = mangler }
       mangler = do modify' $ map f
                    return f
       f = drop (fromIntegral (natVal (Proxy @n)))
+
+
+----------------------------------------------------------------
+-- Convert to snake_case
+----------------------------------------------------------------
+
+newtype SnakeCase a = SnakeCase a
+  deriving Generic via TransparentGeneric a
+
+instance (FromConfigJSON a) => FromJSON (SnakeCase a) where
+  parseJSON = parseConfigJSON mempty
+
+instance (FromConfigJSON a) => FromConfigJSON (SnakeCase a) where
+  parseConfigJSON m = coerceParser . parseConfigJSON m'
+    where
+      m' = m <> mempty { mangleSelector = selectorMangler toSnakeCase }
+
+
+toSnakeCase :: String -> String
+toSnakeCase (c1:c2:cs)
+  | isLower c1
+  , isUpper c2     = c1 : '_' : toLower c2 : toSnakeCase cs
+toSnakeCase (c:cs) = toLower c : toSnakeCase cs
+toSnakeCase []     = []
+
+
+----------------------------------------------------------------
+-- Helpers
+----------------------------------------------------------------
+
+coerceParser :: Coercible a (f a) => Parser a -> Parser (f a)
+coerceParser = coerce
+
+selectorMangler :: (String -> String) -> State [String] (String -> String)
+selectorMangler f = f <$ modify' (map f)
