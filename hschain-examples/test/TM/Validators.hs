@@ -242,28 +242,27 @@ transitions = BChLogic
 
 interpretSpec
   :: ( MonadDB m Tx, MonadFork m, MonadMask m, MonadLogger m
-     , MonadTMMonitoring m
-     , Has x BlockchainNet
-     , Has x (NodeSpec Tx)
-     , Has x (Configuration Example))
+     , MonadTMMonitoring m)
   => Genesis Tx
-  -> x
+  -> NodeSpec Tx
+  -> BlockchainNet
+  -> Configuration Example
   -> AppCallbacks m Tx
   -> m (RunningNode m Tx, [m ()])
-interpretSpec genesis p cb = do
+interpretSpec genesis nspec bnet cfg cb = do
   conn  <- askConnectionRO
   store <- newSTMBchStorage $ blockchainState genesis
   let astore = AppStore { appBchState = store
                         , appMempool  = nullMempool
                         }
-  acts  <- runNode (getT p :: Configuration Example) NodeDescription
-    { nodeValidationKey = nspecPrivKey (getT p :: NodeSpec Tx)
+  acts  <- runNode cfg NodeDescription
+    { nodeValidationKey = nspecPrivKey nspec
     , nodeGenesis       = genesis
     , nodeCallbacks     = cb
     , nodeRunner        = maybe (throwE ValErr) return
 
     , nodeStore         = astore
-    , nodeNetwork       = getT p
+    , nodeNetwork       = bnet
     }
   return
     ( RunningNode { rnodeState   = store
@@ -293,7 +292,7 @@ executeNodeSpec
   -> ContT r m [RunningNode m Tx]
 executeNodeSpec NetSpec{..} resources = do
   -- Start nodes
-  rnodes    <- lift $ forM resources $ \(x, (conn, logenv)) -> do
+  rnodes    <- lift $ forM resources $ \((bnet :*: nspec), (conn, logenv)) -> do
     let run :: DBT 'RW Tx (LoggerT m) x -> m x
         run = runLoggerT logenv . runDBT conn
     (rn, acts) <- run $ interpretSpec
@@ -301,7 +300,9 @@ executeNodeSpec NetSpec{..} resources = do
               , validatorSet    = merkled valSet0
               , blockchainState = merkled valSet0
               }
-      (netNetCfg :*: x)
+      nspec
+      bnet
+      netNetCfg
       (maybe mempty callbackAbortAtH netMaxH)
     return ( hoistRunningNode run rn
            , run <$> acts
