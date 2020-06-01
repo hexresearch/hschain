@@ -17,7 +17,7 @@
 -- parsed only once.
 module HSChain.Config
   ( Config(..)
-  , DropPrefix(..)
+  , DropSmart(..)
   , DropN(..)
   , SnakeCase(..)
   , CaseInsensitive(..)

@@ -17,8 +17,8 @@
 -- parsed only once.
 module HSChain.Config.Internal.Impl
   ( Config(..)
-  , DropPrefix(..)
-  , manglerDropPrefix
+  , DropSmart(..)
+  , manglerDropSmart
   , DropN(..)
   , manglerDropN
   , SnakeCase(..)
@@ -83,18 +83,18 @@ instance (Generic a, GConfig (Rep a)) => FromConfigJSON (Config a) where
 --   Cfg { cfgPath :: String }@ where common prefix is @cfgPath@ or
 --   @data Cfg = Cfg { cfgPath :: String, cfgPort :: Port }@ where
 --   common prefix is @cfgP@.
-newtype DropPrefix a = DropPrefix a
+newtype DropSmart a = DropSmart a
   deriving Generic via TransparentGeneric a
 
-instance (FromConfigJSON a) => FromJSON (DropPrefix a) where
+instance (FromConfigJSON a) => FromJSON (DropSmart a) where
   parseJSON = parseConfigJSON mempty
 
-instance (FromConfigJSON a) => FromConfigJSON (DropPrefix a) where
+instance (FromConfigJSON a) => FromConfigJSON (DropSmart a) where
   parseConfigJSON m
-    = coerceParser . parseConfigJSON (m <> manglerDropPrefix)
+    = coerceParser . parseConfigJSON (m <> manglerDropSmart)
 
-manglerDropPrefix :: Mangler
-manglerDropPrefix = mempty { mangleSelector = mangler }
+manglerDropSmart :: Mangler
+manglerDropSmart = mempty { mangleSelector = mangler }
   where
     mangler = do fields <- get
                  let n    = length  $ commonPrefix fields

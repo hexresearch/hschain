@@ -38,7 +38,7 @@ testsParser = testGroup "Parser"
 testsMangler :: TestTree
 testsMangler = testGroup "Mangler"
   [ testCase "group 1" $ testMangler
-      (manglerCaseInsensitive <> manglerSnakeCase <> manglerDropPrefix)
+      (manglerCaseInsensitive <> manglerSnakeCase <> manglerDropSmart)
       ["cfgPathDB", "cfgPort"]
       ["path_db", "port"]
   , testCase "simple"  $ testMangler
@@ -69,21 +69,21 @@ data Cfg' = Cfg'
   , cfg'pathDB :: String
   }
   deriving (Show,Eq,Generic)
-  deriving FromJSON via DropPrefix (Config Cfg')
+  deriving FromJSON via DropSmart (Config Cfg')
 
 data Cfg_ = Cfg_
   { _cfgPort   :: Int
   , _cfgPathDB :: String
   }
   deriving (Show,Eq,Generic)
-  deriving FromJSON via DropPrefix (Config Cfg_)
+  deriving FromJSON via DropSmart (Config Cfg_)
 
 data Cfg_2 = Cfg_2
   { cfg_Port   :: Int
   , cfg_PathDB :: String
   }
   deriving (Show,Eq,Generic)
-  deriving FromJSON via DropPrefix (Config Cfg_2)
+  deriving FromJSON via DropSmart (Config Cfg_2)
 
 
 -- Uses plain Config
@@ -92,29 +92,29 @@ newtype CfgSimple = CfgSimple Cfg
   deriving Generic  via TransparentGeneric Cfg
   deriving FromJSON via Config (Cfg)
 
--- Uses DropPrefix
+-- Uses DropSmart
 newtype CfgDrop = CfgDrop Cfg
   deriving (Show,Eq)
   deriving Generic  via TransparentGeneric Cfg
-  deriving FromJSON via DropPrefix (Config (Cfg))
+  deriving FromJSON via DropSmart (Config (Cfg))
 
--- Uses DropPrefix
+-- Uses DropSmart
 newtype CfgDropN = CfgDropN Cfg
   deriving (Show,Eq)
   deriving Generic  via TransparentGeneric Cfg
   deriving FromJSON via DropN 2 (Config (Cfg))
 
--- Uses SnakeCase+DropPrefix
+-- Uses SnakeCase+DropSmart
 newtype CfgSnakeCase = CfgSnakeCase Cfg
   deriving (Show,Eq)
   deriving Generic  via TransparentGeneric Cfg
-  deriving FromJSON via SnakeCase (DropPrefix (Config (Cfg)))
+  deriving FromJSON via SnakeCase (DropSmart (Config (Cfg)))
 
--- Uses CaseInsensitive+SnakeCase+DropPrefix
+-- Uses CaseInsensitive+SnakeCase+DropSmart
 newtype CfgCI = CfgCI Cfg
   deriving (Show,Eq)
   deriving Generic  via TransparentGeneric Cfg
-  deriving FromJSON via CaseInsensitive (SnakeCase (DropPrefix (Config (Cfg))))
+  deriving FromJSON via CaseInsensitive (SnakeCase (DropSmart (Config (Cfg))))
 
 newtype CfgAdd = CfgAdd Cfg
   deriving (Show,Eq)
