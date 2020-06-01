@@ -20,18 +20,14 @@ module HSChain.Examples.Simple
   , hash256AsTarget
   ) where
 
-import Codec.Serialise      (Serialise, serialise)
+import Codec.Serialise      (Serialise)
 import Control.Monad.IO.Class
 import Control.Applicative
 import Control.Monad
 import Data.Bits
 import Data.Functor.Classes (Show1)
-import Data.List            (find)
-import Data.Word
 import qualified Data.Aeson           as JSON
-import qualified Data.ByteString.Lazy as LBS
 import qualified Data.ByteString      as BS
-import Numeric.Natural
 import GHC.Generics         (Generic)
 
 import HSChain.Crypto
@@ -39,9 +35,6 @@ import HSChain.Crypto.Classes.Hash
 import HSChain.Crypto.SHA
 import HSChain.Types.Merkle.Types
 import HSChain.PoW.Types
-import qualified HSChain.POW as POWFunc
-
-import Debug.Trace
 
 ----------------------------------------------------------------
 --
@@ -90,10 +83,6 @@ class ( CryptoHashable (Nonce cfg)
   -- |How to check solution of a puzzle.
   kvCheckPuzzle :: MonadIO m => Header (KV cfg) -> m Bool
 
-defaultPOWConfig :: POWFunc.POWConfig
-defaultPOWConfig = POWFunc.defaultPOWConfig
-  { POWFunc.powCfgClausesCount = 1 } -- all for speed!
-
 instance KVConfig cfg => BlockData (KV cfg) where
   newtype BlockID (KV cfg) = KV'BID (Hash SHA256)
     deriving newtype (Show,Eq,Ord,CryptoHashable,Serialise, JSON.ToJSON, JSON.FromJSON)
@@ -101,7 +90,6 @@ instance KVConfig cfg => BlockData (KV cfg) where
   validateHeader bh (Time now) header
     | blockHeight header == 0 = return True -- skip genesis check.
     | otherwise = do
-      --answerIsGood <- liftIO $ POWFunc.check onlyHeader answer hashOfSum powCfg
       answerIsGood <- kvCheckPuzzle header
       return
         $ and
@@ -112,20 +100,13 @@ instance KVConfig cfg => BlockData (KV cfg) where
               -- FIXME: Check that we're ahead of median time of N prev block
               ]
     where
-      powCfg = defaultPOWConfig
-                       { POWFunc.powCfgTarget = targetInteger tgt }
-      tgt = blockTargetThreshold header
-      --onlyHeader = LBS.toStrict $ serialise $ blockWithoutNonce header
-      --answer = kvNonce $ blockData header
-      --Hash hashOfSum = hashBlob headerAndAnswer :: Hash SHA256
-      --headerAndAnswer = BS.concat [onlyHeader, answer]
       Time t = blockTime header
   --
   validateBlock  _ = return True
   blockWork      b = Work $ fromIntegral $ ((2^(256 :: Int)) `div`)
                           $ targetInteger $ kvTarget $ blockData b
   blockTargetThreshold b = Target $ targetInteger (kvTarget (blockData b))
-  targetAdjustmentInfo (bh :: BH (KV cfg)) = (adjustInterval, blockMineTime)
+  targetAdjustmentInfo (_ :: BH (KV cfg)) = (adjustInterval, blockMineTime)
     where
       Const adjustInterval = kvAdjustInterval :: Const Height cfg
       Const blockMineTime = kvBlockTimeInterval :: Const Time cfg
@@ -155,19 +136,7 @@ hash256AsTarget a
     Hash bs = hash a :: Hash SHA256
 
 mine :: KVConfig cfg => Block (KV cfg) -> IO (Maybe (Block (KV cfg)))
-mine b0@GBlock {..} = do
-  --maybeAnswerHash <- POWFunc.solve [LBS.toStrict $ serialise $ blockWithoutNonce h0] powCfg
-  kvSolvePuzzle b0
-  --case maybeAnswerHash of
-  --  Nothing -> return Nothing
-  --  Just (answer, _hash) -> do
-  --    let mined = b0 { blockData = blockData { kvNonce = answer } }
-  --    return $ Just mined
-  where
-    h0 = toHeader b0
-    powCfg = defaultPOWConfig
-                     { POWFunc.powCfgTarget = targetInteger tgt }
-    tgt = blockTargetThreshold b0
+mine b0@GBlock {..} = kvSolvePuzzle b0
 
 
 goBack :: Height -> BH b -> Maybe (BH b)
