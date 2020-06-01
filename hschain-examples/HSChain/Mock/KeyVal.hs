@@ -101,30 +101,29 @@ mkGenesisBlock valSet = BChEval
 
 interpretSpec
   :: ( MonadDB m BData, MonadFork m, MonadMask m, MonadLogger m
-     , MonadTMMonitoring m
-     , Has x BlockchainNet
-     , Has x (NodeSpec BData)
-     , Has x (Configuration Example))
+     , MonadTMMonitoring m )
   => Genesis BData
-  -> x
+  -> NodeSpec BData
+  -> BlockchainNet
+  -> Configuration Example
   -> AppCallbacks m BData
   -> m (RunningNode m BData, [m ()])
-interpretSpec genesis p cb = do
+interpretSpec genesis nspec bnet cfg cb = do
   conn  <- askConnectionRO
-  store <- maybe return snapshotState (nspecPersistIval (getT p :: NodeSpec BData))
+  store <- maybe return snapshotState (nspecPersistIval nspec)
        =<< newSTMBchStorage (merkled mempty)
   --
   let astore = AppStore
         { appMempool  = nullMempool
         , appBchState = store
         }
-  acts <- runNode (getT p :: Configuration Example) NodeDescription
-    { nodeValidationKey = nspecPrivKey (getT p :: NodeSpec BData)
+  acts <- runNode cfg NodeDescription
+    { nodeValidationKey = nspecPrivKey nspec
     , nodeGenesis       = genesis
     , nodeCallbacks     = cb
     , nodeRunner        = hoist liftIO
     , nodeStore         = astore
-    , nodeNetwork       = getT p
+    , nodeNetwork       = bnet
     }
   return
     ( RunningNode { rnodeState   = store
@@ -177,10 +176,14 @@ executeSpec NetSpec{..} = do
              $ allocateMockNetAddrs net netTopology
              $ netNodeList
   -- Start nodes
-  rnodes    <- lift $ forM resources $ \(x, (conn, logenv)) -> do
+  rnodes    <- lift $ forM resources $ \((bnet :*: nspec), (conn, logenv)) -> do
     let run :: DBT 'RW BData (LoggerT m) x -> m x
         run = runLoggerT logenv . runDBT conn
-    (rn, acts) <- run $ interpretSpec genesis (netNetCfg :*: x)
+    (rn, acts) <- run $ interpretSpec
+      genesis
+      nspec
+      bnet
+      netNetCfg
       (maybe mempty callbackAbortAtH netMaxH)
     return ( hoistRunningNode run rn
            , run <$> acts
