@@ -219,7 +219,7 @@ executeNodeSpec
 executeNodeSpec NetSpec{..} coin@CoinSpecification{..} = do
   -- Create mock network and allocate DB handles for nodes
   net       <- liftIO P2P.newMockNet
-  resources <- traverse (\x -> do { r <- allocNode (getT x); return (x,r)})
+  resources <- traverse (\x@(_ :*: nspec) -> do { r <- allocNode nspec; return (x,r)})
              $ allocateMockNetAddrs net netTopology
              $ netNodeList
   -- Start nodes

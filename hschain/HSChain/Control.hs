@@ -17,11 +17,8 @@ module HSChain.Control (
   , withMVarM
   , modifyMVarM
   , modifyMVarM_
-    -- * throwing on Maybe and Either
     -- * Products with lookup by type
   , (:*:)(..)
-  , Has(..)
-  , (^..)
   ) where
 
 import Control.Concurrent.MVar
@@ -76,29 +73,6 @@ instance (JSON.FromJSON a, JSON.FromJSON b) => JSON.FromJSON (a :*: b) where
     a <- JSON.parseJSON (JSON.Object o)
     b <- JSON.parseJSON (JSON.Object o)
     return (a :*: b)
-
-
--- | Obtain value from product using its type
-class Has a x where
-  getT :: a -> x
-
--- | Lens-like getter
-(^..) :: (Has a x) => a -> (x -> y) -> y
-a ^.. f = f (getT a)
-
-
-class HasCase a x (eq :: Bool) where
-  getCase :: Proxy# eq -> a -> x
-
-instance {-# OVERLAPPABLE #-} (a ~ b) => Has a b where
-  getT = id
-instance HasCase (a :*: b) x (a == x) => Has (a :*: b) x where
-  getT = getCase (proxy# :: Proxy# (a == x))
-
-instance (a ~ x)   => HasCase (a :*: b) x 'True where
-  getCase _ (a :*: _) = a
-instance (Has b x) => HasCase (a :*: b) x 'False where
-  getCase _ (_ :*: b) = getT b
 
 
 iterateM :: (Monad m) => a -> (a -> m a) -> m b

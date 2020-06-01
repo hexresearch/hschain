@@ -280,7 +280,7 @@ prepareResources
 prepareResources NetSpec{..} = do
   -- Create mock network and allocate DB handles for nodes
   net <- liftIO P2P.newMockNet
-  traverse (\x -> do { r <- allocNode (getT x); return (x,r)})
+  traverse (\x@(_ :*: nspec) -> do { r <- allocNode nspec; return (x,r)})
     $ allocateMockNetAddrs net netTopology
     $ netNodeList
 

@@ -172,7 +172,7 @@ executeSpec
 executeSpec NetSpec{..} = do
   -- Create mock network and allocate DB handles for nodes
   net       <- liftIO P2P.newMockNet
-  resources <- traverse (\x -> do { r <- allocNode (getT x); return (x,r) })
+  resources <- traverse (\x@(_ :*: nspec) -> do { r <- allocNode nspec; return (x,r) })
              $ allocateMockNetAddrs net netTopology
              $ netNodeList
   -- Start nodes
@@ -192,5 +192,5 @@ executeSpec NetSpec{..} = do
   lift   $ catchAbort $ runConcurrently $ snd =<< rnodes
   return $ fst <$> rnodes
   where
-    valSet  = makeValidatorSetFromPriv $ catMaybes [ x ^.. nspecPrivKey | x <- netNodeList ]
+    valSet  = makeValidatorSetFromPriv $ catMaybes [ nspecPrivKey x | x <- netNodeList ]
     genesis = mkGenesisBlock valSet
