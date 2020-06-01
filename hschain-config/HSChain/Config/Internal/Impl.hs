@@ -146,6 +146,8 @@ lowerHead (c:cs) = toLower c : cs
 -- Drop given prefix
 ----------------------------------------------------------------
 
+-- | Drop given prefix from accessor labels. Prefix is supplied as
+--   type level literal.
 newtype DropPrefix (s :: Symbol) a = DropPrefix a
   deriving newtype (Default)
 
@@ -190,6 +192,7 @@ manglerDropN n = simpleMangler (drop n)
 -- Convert to snake_case
 ----------------------------------------------------------------
 
+-- | Convert @camelCase@ field accessors to @snake_case@.
 newtype SnakeCase a = SnakeCase a
   deriving newtype (Default,Generic)
 
@@ -215,6 +218,8 @@ toSnakeCase []     = []
 -- Case insensitive
 ----------------------------------------------------------------
 
+-- | Make keys in JSON object field accessors case insensitive. Having
+--   confiling keys will result in parse error.
 newtype CaseInsensitive a = CaseInsensitive a
   deriving newtype (Default,Generic)
 
