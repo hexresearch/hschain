@@ -27,6 +27,8 @@ testsParser = testGroup "Parser"
   [ runTest "test/data/cfg-simple.json" $ CfgSimple (Cfg 123 "/tmp")
   , runTest "test/data/cfg-drop.json"   $ CfgDrop (Cfg 123 "/tmp")
   , runTest "test/data/cfg-drop.json"   $ Cfg' 123 "/tmp"
+  , runTest "test/data/cfg-drop.json"   $ Cfg_ 123 "/tmp"
+  , runTest "test/data/cfg-drop.json"   $ Cfg_2 123 "/tmp"
   , runTest "test/data/cfg-dropN.json"  $ CfgDropN (Cfg 123 "/tmp")
   , runTest "test/data/cfg-snake.json"  $ CfgSnakeCase (Cfg 123 "/tmp")
   , runTest "test/data/cfg-ci.json"     $ CfgCI (Cfg 123 "/tmp")
@@ -68,6 +70,21 @@ data Cfg' = Cfg'
   }
   deriving (Show,Eq,Generic)
   deriving FromJSON via DropPrefix (Config Cfg')
+
+data Cfg_ = Cfg_
+  { _cfgPort   :: Int
+  , _cfgPathDB :: String
+  }
+  deriving (Show,Eq,Generic)
+  deriving FromJSON via DropPrefix (Config Cfg_)
+
+data Cfg_2 = Cfg_2
+  { cfg_Port   :: Int
+  , cfg_PathDB :: String
+  }
+  deriving (Show,Eq,Generic)
+  deriving FromJSON via DropPrefix (Config Cfg_2)
+
 
 -- Uses plain Config
 newtype CfgSimple = CfgSimple Cfg

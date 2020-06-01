@@ -97,9 +97,13 @@ manglerDropPrefix :: Mangler
 manglerDropPrefix = mempty { mangleSelector = mangler }
   where
     mangler = do fields <- get
-                 let f | all hasQuote fields = stripQuote
-                       | otherwise           = let n = length $ commonPrefix fields
-                                               in lowerHead . drop n
+                 let n    = length  $ commonPrefix fields
+                     maxN = maximum $ map length fields
+                       -- All identitfiers has single quote in them
+                     f | all hasQuote fields = stripQuote
+                       -- For some reason we're tryting to strip everything
+                       | n >= maxN           = id
+                       | otherwise           = lowerHead . drop n
                  selectorMangler f
 
 -- String hash single quote and it's not in tail position.
@@ -113,13 +117,19 @@ stripQuote = tail . dropWhile (/='\'')
 
 
 commonPrefix :: [String] -> String
-commonPrefix []  = []
-commonPrefix str = foldl1 prefix str
+commonPrefix []        = []
+commonPrefix str       = foldl1 prefix str
   where
-    prefix (x:xs) (y:ys)
+    -- We treat leading prefix specially since we want to strip it too
+    prefix ('_':xs) ('_':ys) = '_' : go xs ys
+    prefix xs       ys       = go xs ys
+    -- When computing prefix we want to break on first uppercase
+    -- letter or underscore
+    go ('_':_) ('_':_) = "_"
+    go (x:xs)  (y:ys)
       | x == y
-      , isLower x = x : prefix xs ys
-    prefix _ _    = []
+      , isLower x = x : go xs ys
+    go _ _    = []
 
 lowerHead :: String -> String
 lowerHead []     = []
