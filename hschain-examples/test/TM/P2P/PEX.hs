@@ -25,6 +25,7 @@ import Control.Exception
 import Data.Aeson (Value(..),Object)
 import Data.Bool
 import Data.Coerce
+import Data.Default.Class
 import Data.IORef
 import Data.List
 import Data.Maybe
@@ -146,7 +147,7 @@ testPeersMustAckAndGetAddresses = do
 --          0 -- (n-1) -- (n-2) -- ...
 testBigNetMustInterconnect :: Int -> IO ()
 testBigNetMustInterconnect netSize = do
-  let cfg0   = defCfg :: Configuration FastTest
+  let cfg0   = def :: Configuration FastTest
       ownCfg = cfg0
         { cfgNetwork = (cfgNetwork cfg0)
           { pexMinConnections      = netSize - 1
@@ -249,7 +250,7 @@ createTestNetwork
   :: (MonadMask m, MonadFork m, MonadTMMonitoring m)
   => [TestNode]
   -> m ()
-createTestNetwork = createTestNetworkWithConfig defCfg
+createTestNetwork = createTestNetworkWithConfig def
 
 createTestNetworkWithConfig
     :: (MonadMask m, MonadFork m, MonadTMMonitoring m)

@@ -1,5 +1,6 @@
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE DeriveGeneric       #-}
+{-# LANGUAGE FlexibleInstances   #-}
 {-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE NumDecimals         #-}
 {-# LANGUAGE OverloadedStrings   #-}
@@ -27,7 +28,7 @@ import qualified Control.Exception        as E
 import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Control.Retry  (constantDelay, limitRetries, recovering)
-
+import Data.Default.Class
 import System.Timeout (timeout)
 
 import HSChain.Mock.KeyVal   (BData)
@@ -83,27 +84,27 @@ intToNetAddr i = NetAddrV4 (fromIntegral i) 0
 
 data FastTest
 
-instance DefaultConfig FastTest where
-  defCfg = Configuration
-    { cfgConsensus         = ConsensusCfg
-      { timeoutNewHeight   = 1
-      , timeoutProposal    = (100, 100)
-      , timeoutPrevote     = (200, 100)
-      , timeoutPrecommit   = (200, 100)
-      , timeoutEmptyBlock  = 100
-      , incomingQueueSize  = 7
-      }
-    , cfgNetwork               = NetworkCfg
-      { gossipDelayVotes       = 25
-      , gossipDelayBlocks      = 25
-      , gossipDelayMempool     = 25
-      , pexMinConnections      = 3
-      , pexMaxConnections      = 20
-      , pexMinKnownConnections = 3
-      , pexMaxKnownConnections = 20
-      , pexConnectionDelay     = 50
-      , pexAskPeersDelay       = 50
-      , reconnectionRetries    = 12
-      , reconnectionDelay      = 100
-      }
+instance Default (ConsensusCfg FastTest) where
+  def = ConsensusCfg
+    { timeoutNewHeight   = 1
+    , timeoutProposal    = (100, 100)
+    , timeoutPrevote     = (200, 100)
+    , timeoutPrecommit   = (200, 100)
+    , timeoutEmptyBlock  = 100
+    , incomingQueueSize  = 7
+    }
+
+instance Default (NetworkCfg FastTest) where
+  def = NetworkCfg
+    { gossipDelayVotes       = 25
+    , gossipDelayBlocks      = 25
+    , gossipDelayMempool     = 25
+    , pexMinConnections      = 3
+    , pexMaxConnections      = 20
+    , pexMinKnownConnections = 3
+    , pexMaxKnownConnections = 20
+    , pexConnectionDelay     = 50
+    , pexAskPeersDelay       = 50
+    , reconnectionRetries    = 12
+    , reconnectionDelay      = 100
     }

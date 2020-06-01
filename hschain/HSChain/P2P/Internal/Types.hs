@@ -5,6 +5,7 @@
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE RankNTypes                 #-}
 {-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE UndecidableInstances       #-}
 
@@ -81,7 +82,7 @@ data PeerChans a = PeerChans
     -- ^ STM action for sending message to main application
   , consensusState          :: !(STM (Maybe (Height, TMState a)))   -- TODO try strict Maybe and Tuple
     -- ^ Read only access to current state of consensus state machine
-  , p2pConfig               :: !NetworkCfg
+  , p2pConfig               :: !(NetworkCfg ())
   , peerShepherd            :: !Shepherd
   , peerNonceSet            :: !NonceSet
   , peerRegistry            :: !PeerRegistry

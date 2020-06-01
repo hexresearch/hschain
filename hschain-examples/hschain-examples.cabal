@@ -28,6 +28,7 @@ Library
                      , aeson
                      , bytestring           >=0.10
                      , containers           >=0.5.9
+                     , data-default-class
                      , deepseq              >=1.4
                      , lens
                      , mmorph
@@ -63,7 +64,6 @@ Executable hschain-coin-node
                      , hschain-examples
                      , aeson
                      , bytestring           >=0.10
-                     , data-default-class
                      , exceptions
                      , filepath
                      , katip                ==0.7.0.0
@@ -156,6 +156,7 @@ Test-suite hschain-tests
                      , async             >=2.2.1
                      , bytestring        >=0.10
                      , containers
+                     , data-default-class
                      , deepseq           >=1.4
                      , exceptions
                      , free

@@ -12,6 +12,7 @@ import Control.Monad
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Cont
 import Control.Monad.IO.Class
+import Data.Default.Class
 import Data.Foldable    (toList)
 
 import HSChain.Blockchain.Internal.Engine.Types
@@ -55,7 +56,7 @@ runKeyVal  = evalContT $ do
                     ]
       , netTopology = All2All
       , netNetCfg   =
-        let c = defCfg
+        let c = def
         in  c { cfgConsensus = ConsensusCfg
                 { timeoutNewHeight  = 10
                 , timeoutProposal   = (50,50)
@@ -125,7 +126,7 @@ runCoin = evalContT $ do
                     ]
       , netTopology = All2All
       , netNetCfg =
-        let c = defCfg
+        let c = def
         in  c { cfgConsensus = ConsensusCfg
                 { timeoutNewHeight  = 10
                 , timeoutProposal   = (50,250)

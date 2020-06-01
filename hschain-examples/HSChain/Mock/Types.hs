@@ -1,6 +1,7 @@
 {-# LANGUAGE DataKinds            #-}
 {-# LANGUAGE DeriveGeneric        #-}
 {-# LANGUAGE FlexibleContexts     #-}
+{-# LANGUAGE FlexibleInstances    #-}
 {-# LANGUAGE RankNTypes           #-}
 {-# LANGUAGE RecordWildCards      #-}
 {-# LANGUAGE ScopedTypeVariables  #-}
@@ -24,6 +25,7 @@ module HSChain.Mock.Types (
 
 import Control.Exception   (Exception)
 import Control.Monad.Catch (MonadCatch(..))
+import Data.Default.Class
 import GHC.Generics (Generic)
 
 import qualified Data.Aeson as JSON
@@ -41,30 +43,31 @@ import HSChain.Store
 
 data Example
 
-instance DefaultConfig Example where
-  defCfg = Configuration
-    { cfgConsensus         = ConsensusCfg
-      { timeoutNewHeight   = 500
-      , timeoutProposal    = (500, 500)
-      , timeoutPrevote     = (500, 500)
-      , timeoutPrecommit   = (500, 500)
-      , timeoutEmptyBlock  = 100
-      , incomingQueueSize  = 7
-      }
-    , cfgNetwork               = NetworkCfg
-      { gossipDelayVotes       = 25
-      , gossipDelayBlocks      = 25
-      , gossipDelayMempool     = 25
-      , pexMinConnections      = 3
-      , pexMaxConnections      = 20
-      , pexMinKnownConnections = 3
-      , pexMaxKnownConnections = 20
-      , pexConnectionDelay     = 3000
-      , pexAskPeersDelay       = 10000
-      , reconnectionRetries    = 12
-      , reconnectionDelay      = 100
-      }
+instance Default (ConsensusCfg Example) where
+  def = ConsensusCfg
+    { timeoutNewHeight   = 500
+    , timeoutProposal    = (500, 500)
+    , timeoutPrevote     = (500, 500)
+    , timeoutPrecommit   = (500, 500)
+    , timeoutEmptyBlock  = 100
+    , incomingQueueSize  = 7
     }
+
+instance Default (NetworkCfg Example) where
+  def = NetworkCfg
+    { gossipDelayVotes       = 25
+    , gossipDelayBlocks      = 25
+    , gossipDelayMempool     = 25
+    , pexMinConnections      = 3
+    , pexMaxConnections      = 20
+    , pexMinKnownConnections = 3
+    , pexMaxKnownConnections = 20
+    , pexConnectionDelay     = 3000
+    , pexAskPeersDelay       = 10000
+    , reconnectionRetries    = 12
+    , reconnectionDelay      = 100
+    }
+
 
 -- | Genesis block has many field with predetermined content so this
 --   is convenience function to create genesis block.
