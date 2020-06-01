@@ -19,6 +19,7 @@ module HSChain.Config
   ( Config(..)
   , DropSmart(..)
   , DropN(..)
+  , DropPrefix(..)
   , SnakeCase(..)
   , CaseInsensitive(..)
   ) where

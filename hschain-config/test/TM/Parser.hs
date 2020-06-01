@@ -33,6 +33,7 @@ testsParser = testGroup "Parser"
   , runTest "test/data/cfg-snake.json"  $ CfgSnakeCase (Cfg 123 "/tmp")
   , runTest "test/data/cfg-ci.json"     $ CfgCI (Cfg 123 "/tmp")
   , runTest "test/data/cfg-abc.json"    $ CfgAdd (Cfg 123 "/tmp")
+  , runTest "test/data/cfg-prefix.json" $ CfgPref (Cfg 123 "/tmp")
   ]
 
 testsMangler :: TestTree
@@ -97,6 +98,12 @@ newtype CfgDrop = CfgDrop Cfg
   deriving (Show,Eq)
   deriving Generic  via TransparentGeneric Cfg
   deriving FromJSON via DropSmart (Config (Cfg))
+
+-- Uses DropSmart
+newtype CfgPref = CfgPref Cfg
+  deriving (Show,Eq)
+  deriving Generic  via TransparentGeneric Cfg
+  deriving FromJSON via DropPrefix "cf" (Config (Cfg))
 
 -- Uses DropSmart
 newtype CfgDropN = CfgDropN Cfg

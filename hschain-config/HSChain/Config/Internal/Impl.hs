@@ -21,6 +21,8 @@ module HSChain.Config.Internal.Impl
   , manglerDropSmart
   , DropN(..)
   , manglerDropN
+  , DropPrefix(..)
+  , manglerDropPrefix
   , SnakeCase(..)
   , manglerSnakeCase
   , CaseInsensitive(..)
@@ -134,6 +136,28 @@ commonPrefix str       = foldl1 prefix str
 lowerHead :: String -> String
 lowerHead []     = []
 lowerHead (c:cs) = toLower c : cs
+
+
+----------------------------------------------------------------
+-- Drop given prefix
+----------------------------------------------------------------
+
+newtype DropPrefix (s :: Symbol) a = DropPrefix a
+
+instance (KnownSymbol s, FromConfigJSON a) => FromJSON (DropPrefix s a) where
+  parseJSON = parseConfigJSON mempty
+
+instance (KnownSymbol s, FromConfigJSON a) => FromConfigJSON (DropPrefix s a) where
+  parseConfigJSON m
+    = coerceParser . parseConfigJSON (m <> manglerDropPrefix s)
+    where
+      s = symbolVal (Proxy @s)
+
+manglerDropPrefix :: String -> Mangler
+manglerDropPrefix s = simpleMangler (dropStr s)
+  where
+    dropStr (a:as) (b:bs) | a == b = dropStr as bs
+    dropStr _      bs              = bs
 
 
 ----------------------------------------------------------------
