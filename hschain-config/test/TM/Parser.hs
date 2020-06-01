@@ -1,11 +1,12 @@
-{-# LANGUAGE DataKinds            #-}
-{-# LANGUAGE DeriveGeneric        #-}
-{-# LANGUAGE DerivingStrategies   #-}
-{-# LANGUAGE DerivingVia          #-}
-{-# LANGUAGE KindSignatures       #-}
-{-# LANGUAGE ScopedTypeVariables  #-}
-{-# LANGUAGE TypeApplications     #-}
-{-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE DataKinds                  #-}
+{-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE DerivingStrategies         #-}
+{-# LANGUAGE DerivingVia                #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE KindSignatures             #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
+{-# LANGUAGE TypeApplications           #-}
+{-# LANGUAGE UndecidableInstances       #-}
 -- |
 module TM.Parser where
 
@@ -92,48 +93,48 @@ data Cfg_2 = Cfg_2
 
 -- Uses plain Config
 newtype CfgSimple = CfgSimple Cfg
-  deriving (Show,Eq)
-  deriving Generic  via TransparentGeneric Cfg
+  deriving stock (Show,Eq)
+  deriving newtype Generic
   deriving FromJSON via Config (Cfg)
 
 -- Uses DropSmart
 newtype CfgDrop = CfgDrop Cfg
-  deriving (Show,Eq)
-  deriving Generic  via TransparentGeneric Cfg
+  deriving stock   (Show,Eq)
+  deriving newtype Generic
   deriving FromJSON via DropSmart (Config (Cfg))
 
 -- Uses DropSmart
 newtype CfgPref = CfgPref Cfg
-  deriving (Show,Eq)
-  deriving Generic  via TransparentGeneric Cfg
+  deriving stock   (Show,Eq)
+  deriving newtype Generic
   deriving FromJSON via DropPrefix "cf" (Config (Cfg))
 
 -- Uses DropSmart
 newtype CfgDropN = CfgDropN Cfg
-  deriving (Show,Eq)
-  deriving Generic  via TransparentGeneric Cfg
+  deriving stock   (Show,Eq)
+  deriving newtype Generic
   deriving FromJSON via DropN 2 (Config (Cfg))
 
 -- Uses SnakeCase+DropSmart
 newtype CfgSnakeCase = CfgSnakeCase Cfg
-  deriving (Show,Eq)
-  deriving Generic  via TransparentGeneric Cfg
+  deriving stock   (Show,Eq)
+  deriving newtype Generic
   deriving FromJSON via SnakeCase (DropSmart (Config (Cfg)))
 
 -- Uses CaseInsensitive+SnakeCase+DropSmart
 newtype CfgCI = CfgCI Cfg
-  deriving (Show,Eq)
-  deriving Generic  via TransparentGeneric Cfg
+  deriving stock   (Show,Eq)
+  deriving newtype Generic
   deriving FromJSON via CaseInsensitive (SnakeCase (DropSmart (Config (Cfg))))
 
 newtype CfgAdd = CfgAdd Cfg
-  deriving (Show,Eq)
-  deriving Generic  via TransparentGeneric Cfg
+  deriving stock   (Show,Eq)
+  deriving newtype Generic
   deriving FromJSON via AddChar "a" (AddChar "b" (AddChar "c" (Config (Cfg))))
 
 newtype CfgDef = CfgDef Cfg
-  deriving (Show,Eq)
-  deriving Generic  via TransparentGeneric Cfg
+  deriving stock   (Show,Eq)
+  deriving newtype Generic
   deriving FromJSON via WithDefault (DropSmart (Config (Cfg)))
 
 instance Default Cfg where
@@ -159,7 +160,6 @@ manglerAdd c = simpleMangler (c:)
 
 
 newtype AddChar (s :: Symbol) a = AddChar a
-  deriving Generic via TransparentGeneric a
 
 instance (KnownSymbol s, FromConfigJSON a) => FromJSON (AddChar s a) where
   parseJSON = parseConfigJSON mempty Nothing

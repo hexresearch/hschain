@@ -14,8 +14,6 @@ module HSChain.Config.Internal.Classes
     -- * Generic-based type classes
   , GFields(..)
   , GConfig(..)
-    -- * Helpers
-  , TransparentGeneric(..)  
   ) where
 
 import Control.Applicative
@@ -185,21 +183,3 @@ class GFieldType (f :: * -> *) where
 
 instance (Typeable a) => GFieldType (K1 r a) where
   getFieldType _ = typeRep (Proxy @a)
-
-
-
-----------------------------------------------------------------
--- Helpers
-----------------------------------------------------------------
-
--- | Newtype that allows to derive 'Generic' instance which is same as
---   instance of underlying using @DerivingVia@. For example:
---
--- > newtype X a = X a
--- >   deriving Generic via TransparentGeneric (X a)
-newtype TransparentGeneric a = TransparentGeneric a
-
-instance Generic a => Generic (TransparentGeneric a) where
-  type Rep (TransparentGeneric a) = Rep a
-  to   = TransparentGeneric . to
-  from = from . (\(TransparentGeneric a) -> a)

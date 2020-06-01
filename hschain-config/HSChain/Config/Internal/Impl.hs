@@ -90,8 +90,7 @@ instance (Generic a, GConfig (Rep a)) => FromConfigJSON (Config a) where
 --   @data Cfg = Cfg { cfgPath :: String, cfgPort :: Port }@ where
 --   common prefix is @cfgP@.
 newtype DropSmart a = DropSmart a
-  deriving newtype (Default)
-  deriving Generic via TransparentGeneric a
+  deriving newtype (Default,Generic)
 
 instance (FromConfigJSON a) => FromJSON (DropSmart a) where
   parseJSON = parseConfigJSON mempty Nothing
@@ -172,8 +171,7 @@ manglerDropPrefix s = simpleMangler (dropStr s)
 
 -- | Drop N characters from each label
 newtype DropN (n :: Nat) a = DropN a
-  deriving newtype (Default)
-  deriving Generic via TransparentGeneric a
+  deriving newtype (Default,Generic)
 
 instance (KnownNat n, FromConfigJSON a) => FromJSON (DropN n a) where
   parseJSON = parseConfigJSON mempty Nothing
@@ -193,8 +191,7 @@ manglerDropN n = simpleMangler (drop n)
 ----------------------------------------------------------------
 
 newtype SnakeCase a = SnakeCase a
-  deriving newtype (Default)
-  deriving Generic via TransparentGeneric a
+  deriving newtype (Default,Generic)
 
 instance (FromConfigJSON a) => FromJSON (SnakeCase a) where
   parseJSON = parseConfigJSON mempty Nothing
@@ -219,8 +216,7 @@ toSnakeCase []     = []
 ----------------------------------------------------------------
 
 newtype CaseInsensitive a = CaseInsensitive a
-  deriving newtype (Default)
-  deriving Generic via TransparentGeneric a
+  deriving newtype (Default,Generic)
 
 instance (FromConfigJSON a) => FromJSON (CaseInsensitive a) where
   parseJSON = parseConfigJSON mempty Nothing
