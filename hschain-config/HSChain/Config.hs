@@ -22,6 +22,7 @@ module HSChain.Config
   , DropPrefix(..)
   , SnakeCase(..)
   , CaseInsensitive(..)
+  , WithDefault(..)
   ) where
 
 import HSChain.Config.Internal.Impl

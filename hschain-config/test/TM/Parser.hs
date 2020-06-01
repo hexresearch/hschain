@@ -11,7 +11,9 @@ module TM.Parser where
 
 import Control.Monad.Trans.State.Strict
 import Data.Aeson
+import Data.Coerce
 import Data.Typeable
+import Data.Default.Class
 import Test.Tasty
 import Test.Tasty.HUnit
 import GHC.Generics
@@ -34,6 +36,7 @@ testsParser = testGroup "Parser"
   , runTest "test/data/cfg-ci.json"     $ CfgCI (Cfg 123 "/tmp")
   , runTest "test/data/cfg-abc.json"    $ CfgAdd (Cfg 123 "/tmp")
   , runTest "test/data/cfg-prefix.json" $ CfgPref (Cfg 123 "/tmp")
+  , runTest "test/data/cfg-empty.json"  $ CfgDef def
   ]
 
 testsMangler :: TestTree
@@ -128,6 +131,17 @@ newtype CfgAdd = CfgAdd Cfg
   deriving Generic  via TransparentGeneric Cfg
   deriving FromJSON via AddChar "a" (AddChar "b" (AddChar "c" (Config (Cfg))))
 
+newtype CfgDef = CfgDef Cfg
+  deriving (Show,Eq)
+  deriving Generic  via TransparentGeneric Cfg
+  deriving FromJSON via WithDefault (DropSmart (Config (Cfg)))
+
+instance Default Cfg where
+  def = Cfg
+    { cfgPort   = 5000
+    , cfgPathDB = "/db/db"
+    }
+  
 
 ----------------------------------------------------------------
 -- Mangler
@@ -148,10 +162,10 @@ newtype AddChar (s :: Symbol) a = AddChar a
   deriving Generic via TransparentGeneric a
 
 instance (KnownSymbol s, FromConfigJSON a) => FromJSON (AddChar s a) where
-  parseJSON = parseConfigJSON mempty
+  parseJSON = parseConfigJSON mempty Nothing
 
 instance (KnownSymbol s, FromConfigJSON a) => FromConfigJSON (AddChar s a) where
-  parseConfigJSON m
-    = coerceParser . parseConfigJSON (m <> manglerAdd c)
+  parseConfigJSON m a
+    = coerceParser . parseConfigJSON (m <> manglerAdd c) (coerce a)
     where
       c:_ = symbolVal (Proxy @s)

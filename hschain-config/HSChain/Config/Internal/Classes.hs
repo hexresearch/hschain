@@ -23,6 +23,7 @@ import Control.Monad
 import Control.Monad.Trans.State.Strict
 import Data.Aeson
 import Data.Aeson.Types
+import Data.Coerce
 import Data.Typeable
 import qualified Data.Text           as T
 import qualified Data.HashMap.Strict as HM
@@ -36,7 +37,7 @@ import GHC.Generics
 ----------------------------------------------------------------
 
 class FromConfigJSON a where
-  parseConfigJSON :: Mangler -> Value -> Parser a
+  parseConfigJSON :: Mangler -> Maybe a -> Value -> Parser a
 
 -- | Description on how to transform labels of haskell record to keys
 --   in JSON object
@@ -70,11 +71,12 @@ instance Monoid Mangler where
 --   class. Only record data types are supported
 class GConfig f where
   parseConfig :: Mangler        -- ^ How to transform fields labels
+              -> Maybe (f p)
               -> Value
               -> Parser (f p)
 
 instance (Datatype i, GConfig f) => GConfig (M1 D i f) where
-  parseConfig mangler v = M1 <$> prependFailure err (parseConfig mangler v)
+  parseConfig mangler a v = M1 <$> prependFailure err (parseConfig mangler (coerce a) v)
     where
       err = printf "while parsing %s defined in %s:%s\n"
               (datatypeName p) (packageName p) (moduleName p)
@@ -83,27 +85,29 @@ instance (Datatype i, GConfig f) => GConfig (M1 D i f) where
 instance ( GConfigRec f
          , GFields f         
          ) => GConfig (M1 C i f) where
-  parseConfig m (Object o) = do
+  parseConfig m a (Object o) = do
     o' <- mangleJsonObj m o
     let fieldsAndTypes = getFields (Proxy @f)
         fieldNames     = fst <$> fieldsAndTypes
         mangler        = evalState (mangleSelector m) fieldNames
         fieldErrs      = [ printf "    + %s : %s\n" (mangler s) (show t) | (s,t) <- fieldsAndTypes ]
-    M1 <$> parseRecord mangler fieldErrs o'
-  parseConfig _ _          = fail "Expecting JSON object"
+    M1 <$> parseRecord mangler fieldErrs (coerce a) o'
+  parseConfig _ _ _ = fail "Expecting JSON object"
 
 
 -- Parse record. 
 class GConfigRec f where
   parseRecord :: (String -> String) -- How to transform labels
               -> [String]           -- List of keys in dictionary (used for error messages)
+              -> Maybe (f p)
               -> Object
               -> Parser (f p)
 
 instance ( KnownSymbol s
          , GConfigField f
          ) => GConfigRec (M1 S ('MetaSel ('Just s) su ss ds) f) where
-  parseRecord mangle fields o = M1 <$> parseRecField fields field (field `HM.lookup` o)
+  parseRecord mangle fields a o
+    = M1 <$> parseRecField fields field (coerce a) (field `HM.lookup` o)
     where
       field = T.pack $ mangle $ symbolVal (Proxy @s)
 
@@ -116,28 +120,33 @@ instance ( TypeError ('Text "Sum types are not supported")
   parseRecord = error "Unreachable"
 
 instance (GConfigRec f, GConfigRec g) => GConfigRec (f :*: g) where
-  parseRecord
-    = (liftA2 . liftA2 . liftA2 . liftA2) (:*:) parseRecord parseRecord
-
+  parseRecord fun keys Nothing o
+    = liftA2 (:*:) (parseRecord fun keys Nothing o)
+                   (parseRecord fun keys Nothing o)
+  parseRecord fun keys (Just (f :*: g)) o
+    = liftA2 (:*:) (parseRecord fun keys (Just f) o)
+                   (parseRecord fun keys (Just g) o)
 
 
 
 class GConfigField f where
-  parseRecField :: [String] -> T.Text -> Maybe Value -> Parser (f p)
+  parseRecField :: [String] -> T.Text -> Maybe (f p) -> Maybe Value -> Parser (f p)
 
 instance {-# OVERLAPPABLE #-} FromJSON a => GConfigField (K1 R a) where
-  parseRecField fields fld Nothing
+  parseRecField fields fld Nothing Nothing
     = (if null fields then id else prependFailure "Records's fields:\n")
-    $ foldr prependFailure
-      (fail $ "Missing mandatory field \"" ++ T.unpack fld ++ "\"\n")
-      fields
-  parseRecField _ fld (Just v)
+    $ flip (foldr prependFailure) fields
+    $ fail $ "Missing mandatory field \"" ++ T.unpack fld ++ "\"\n"
+  parseRecField _ _ (Just a) Nothing
+    = pure a
+  parseRecField _ fld _ (Just v)
     = prependFailure (" - while parsing field \"" ++ T.unpack fld ++ "\"\n")
     $ K1 <$> parseJSON v
                                
 instance FromJSON a => GConfigField (K1 R (Maybe a)) where
-  parseRecField _ _   Nothing = return (K1 Nothing)
-  parseRecField _ fld (Just v)
+  parseRecField _ _   Nothing  Nothing = return (K1 Nothing)
+  parseRecField _ _   (Just a) Nothing = return a
+  parseRecField _ fld _        (Just v)
     = prependFailure (" - while parsing field \"" ++ T.unpack fld ++ "\"\n")
     $ K1 . Just <$> parseJSON v
 

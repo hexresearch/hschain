@@ -1,13 +1,14 @@
-{-# LANGUAGE DataKinds            #-}
-{-# LANGUAGE DeriveGeneric        #-}
-{-# LANGUAGE DerivingVia          #-}
-{-# LANGUAGE FlexibleInstances    #-}
-{-# LANGUAGE KindSignatures       #-}
-{-# LANGUAGE MultiWayIf           #-}
-{-# LANGUAGE ScopedTypeVariables  #-}
-{-# LANGUAGE TypeApplications     #-}
-{-# LANGUAGE TypeOperators        #-}
-{-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE DataKinds                  #-}
+{-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE DerivingVia                #-}
+{-# LANGUAGE FlexibleInstances          #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE KindSignatures             #-}
+{-# LANGUAGE MultiWayIf                 #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
+{-# LANGUAGE TypeApplications           #-}
+{-# LANGUAGE TypeOperators              #-}
+{-# LANGUAGE UndecidableInstances       #-}
 -- |
 -- This module contains newtypes which allow easily define 'FromJSON'
 -- instances for haskell record which could be used parsing configs
@@ -27,6 +28,7 @@ module HSChain.Config.Internal.Impl
   , manglerSnakeCase
   , CaseInsensitive(..)
   , manglerCaseInsensitive
+  , WithDefault(..)
     -- * Helpers
   , coerceParser
   , simpleMangler
@@ -39,6 +41,7 @@ import Data.Aeson
 import Data.Aeson.Types
 import Data.Char
 import Data.Coerce
+import Data.Default.Class
 import Data.Proxy
 import qualified Data.Text           as T
 import qualified Data.HashMap.Strict as HM
@@ -63,13 +66,14 @@ import HSChain.Config.Internal.Classes
 -- >   deriving Generic
 -- >   deriving FromJSON via Config Cfg
 newtype Config a = Config a
-  deriving Generic via TransparentGeneric a
+  deriving newtype (Generic, Default)
 
 instance (Generic a, GConfig (Rep a)) => FromJSON (Config a) where
-  parseJSON = parseConfigJSON mempty
+  parseJSON = parseConfigJSON mempty Nothing
 
 instance (Generic a, GConfig (Rep a)) => FromConfigJSON (Config a) where
-  parseConfigJSON m = fmap (Config . to) . parseConfig m
+  parseConfigJSON m a
+    = fmap (Config . to) . parseConfig m (from <$> a)
 
 
 ----------------------------------------------------------------
@@ -86,14 +90,15 @@ instance (Generic a, GConfig (Rep a)) => FromConfigJSON (Config a) where
 --   @data Cfg = Cfg { cfgPath :: String, cfgPort :: Port }@ where
 --   common prefix is @cfgP@.
 newtype DropSmart a = DropSmart a
+  deriving newtype (Default)
   deriving Generic via TransparentGeneric a
 
 instance (FromConfigJSON a) => FromJSON (DropSmart a) where
-  parseJSON = parseConfigJSON mempty
+  parseJSON = parseConfigJSON mempty Nothing
 
 instance (FromConfigJSON a) => FromConfigJSON (DropSmart a) where
-  parseConfigJSON m
-    = coerceParser . parseConfigJSON (m <> manglerDropSmart)
+  parseConfigJSON m a
+    = coerceParser . parseConfigJSON (m <> manglerDropSmart) (coerce a)
 
 manglerDropSmart :: Mangler
 manglerDropSmart = mempty { mangleSelector = mangler }
@@ -143,13 +148,14 @@ lowerHead (c:cs) = toLower c : cs
 ----------------------------------------------------------------
 
 newtype DropPrefix (s :: Symbol) a = DropPrefix a
+  deriving newtype (Default)
 
 instance (KnownSymbol s, FromConfigJSON a) => FromJSON (DropPrefix s a) where
-  parseJSON = parseConfigJSON mempty
+  parseJSON = parseConfigJSON mempty Nothing
 
 instance (KnownSymbol s, FromConfigJSON a) => FromConfigJSON (DropPrefix s a) where
-  parseConfigJSON m
-    = coerceParser . parseConfigJSON (m <> manglerDropPrefix s)
+  parseConfigJSON m a
+    = coerceParser . parseConfigJSON (m <> manglerDropPrefix s) (coerce a)
     where
       s = symbolVal (Proxy @s)
 
@@ -166,14 +172,15 @@ manglerDropPrefix s = simpleMangler (dropStr s)
 
 -- | Drop N characters from each label
 newtype DropN (n :: Nat) a = DropN a
+  deriving newtype (Default)
   deriving Generic via TransparentGeneric a
 
 instance (KnownNat n, FromConfigJSON a) => FromJSON (DropN n a) where
-  parseJSON = parseConfigJSON mempty
+  parseJSON = parseConfigJSON mempty Nothing
 
 instance (KnownNat n, FromConfigJSON a) => FromConfigJSON (DropN n a) where
-  parseConfigJSON m
-    = coerceParser . parseConfigJSON (m <> manglerDropN n)
+  parseConfigJSON m a
+    = coerceParser . parseConfigJSON (m <> manglerDropN n) (coerce a)
     where
       n  = fromIntegral $ natVal (Proxy @n)
 
@@ -186,14 +193,15 @@ manglerDropN n = simpleMangler (drop n)
 ----------------------------------------------------------------
 
 newtype SnakeCase a = SnakeCase a
+  deriving newtype (Default)
   deriving Generic via TransparentGeneric a
 
 instance (FromConfigJSON a) => FromJSON (SnakeCase a) where
-  parseJSON = parseConfigJSON mempty
+  parseJSON = parseConfigJSON mempty Nothing
 
 instance (FromConfigJSON a) => FromConfigJSON (SnakeCase a) where
-  parseConfigJSON m
-    = coerceParser . parseConfigJSON (m <> manglerSnakeCase)
+  parseConfigJSON m a
+    = coerceParser . parseConfigJSON (m <> manglerSnakeCase) (coerce a)
 
 manglerSnakeCase :: Mangler
 manglerSnakeCase = simpleMangler toSnakeCase
@@ -211,14 +219,15 @@ toSnakeCase []     = []
 ----------------------------------------------------------------
 
 newtype CaseInsensitive a = CaseInsensitive a
+  deriving newtype (Default)
   deriving Generic via TransparentGeneric a
 
 instance (FromConfigJSON a) => FromJSON (CaseInsensitive a) where
-  parseJSON = parseConfigJSON mempty
+  parseJSON = parseConfigJSON mempty Nothing
 
 instance (FromConfigJSON a) => FromConfigJSON (CaseInsensitive a) where
-  parseConfigJSON m
-    = coerceParser . parseConfigJSON (m <> manglerCaseInsensitive)
+  parseConfigJSON m a
+    = coerceParser . parseConfigJSON (m <> manglerCaseInsensitive) (coerce a)
 
 manglerCaseInsensitive :: Mangler
 manglerCaseInsensitive = Mangler
@@ -233,6 +242,21 @@ manglerCaseInsensitive = Mangler
         k' = T.toLower k
 
 
+----------------------------------------------------------------
+-- With default
+----------------------------------------------------------------
+
+newtype WithDefault a = WithDefault a
+  deriving newtype (Default)
+
+instance (Default a, FromConfigJSON a) => FromJSON (WithDefault a) where
+  parseJSON = parseConfigJSON mempty Nothing
+
+instance (Default a, FromConfigJSON a) => FromConfigJSON (WithDefault a) where
+  parseConfigJSON m _
+    = coerceParser . parseConfigJSON m (Just def)
+
+  
 ----------------------------------------------------------------
 -- Helpers
 ----------------------------------------------------------------

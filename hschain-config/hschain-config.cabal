@@ -21,6 +21,7 @@ Library
   Default-Language:    Haskell2010
   Build-Depends:       base              >=4.9 && <5
                      , aeson             >=1.4
+                     , data-default-class
                      , transformers
                      , text              >=1
                      , unordered-containers
@@ -36,6 +37,7 @@ Test-suite hschain-config-tests
   Build-Depends:       base              >=4.9 && <5
                      , hschain-config    -any
                      , aeson
+                     , data-default-class
                      , bytestring        >=0.10
                      , transformers
                      --
