@@ -121,9 +121,10 @@ main = do
     (conn, logenv) <- allocNode nspec
     gauges         <- standardMonitoring
     lift $ runMonitorT gauges . runLoggerT logenv . runDBT conn $ do
-      (RunningNode{..},acts) <- interpretSpec @_ @_ @DioTag
-        (nspec :*: cfg :*: bnet)
+      (RunningNode{..},acts) <- interpretSpec @_ @DioTag
         nodeIdx
+        bnet
+        cfg
         (maybe mempty callbackAbortAtH (optMaxH <|> nodeMaxH))
       logOnException $ runConcurrently acts
 
