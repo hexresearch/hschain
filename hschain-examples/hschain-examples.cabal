@@ -93,6 +93,7 @@ Executable hschain-dioxane-node
                      , hschain-merkle
                      , hschain-types
                      , hschain-control
+                     , hschain-config
                      , hschain-crypto
                      , hschain-examples
                      , aeson
