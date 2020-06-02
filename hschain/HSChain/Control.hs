@@ -26,8 +26,6 @@ import Control.Monad
 import Control.Monad.IO.Class
 import qualified Data.Aeson                       as JSON
 import Control.Monad.Catch (MonadMask, mask, onException)
-import Data.Type.Equality
-import GHC.Exts              (Proxy#,proxy#)
 
 
 ----------------------------------------------------------------

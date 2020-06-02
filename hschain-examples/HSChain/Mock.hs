@@ -17,7 +17,6 @@ import System.Directory (createDirectoryIfMissing)
 import System.FilePath  (takeDirectory)
 
 import HSChain.Blockchain.Internal.Engine.Types
-import HSChain.Control
 import HSChain.Logger
 import HSChain.Mock.KeyList
 import HSChain.Mock.Types
@@ -48,9 +47,9 @@ allocNetwork
   -> [NodeSpec a]
   -> ContT r m [(NodeSpec a, BlockchainNet, Connection 'RW a, LogEnv)]
 allocNetwork net topo specs
-  = forM networked $ \(net,spec) -> do
+  = forM networked $ \(bnet,spec) -> do
       (conn,logEnv) <- allocNode spec
-      return (spec,net,conn,logEnv)
+      return (spec,bnet,conn,logEnv)
   where
     networked = allocateMockNetAddrs net topo specs
 
