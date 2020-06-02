@@ -7,6 +7,7 @@ module TM.Util.Mockchain where
 
 import Codec.Serialise
 import Control.Applicative
+import Data.Bits
 import Data.Word
 import Data.List  (unfoldr)
 
@@ -20,7 +21,8 @@ import HSChain.Examples.Simple
 --
 ----------------------------------------------------------------
 
-mockchain :: (Num (Nonce cfg), KVConfig cfg) => [Block (KV cfg)]
+mockchain :: (Num (Nonce cfg), Show (Nonce cfg), KVConfig cfg)
+          => [Block (KV cfg)]
 mockchain = gen : unfoldr (Just . (\b -> (b,b)) . mineBlock "VAL") gen
   where
     gen = GBlock { blockHeight = Height 0
@@ -28,13 +30,14 @@ mockchain = gen : unfoldr (Just . (\b -> (b,b)) . mineBlock "VAL") gen
                  , prevBlock   = Nothing
                  , blockData   = KV { kvData       = merkled []
                                     , kvNonce      = 0
-                                    , kvTarget     = Target $ 1 ^ (256 :: Int) - 1
+                                    , kvTarget     = Target $ shiftL 1 256 - 1
                                     }
                  }
 
-mineBlock :: (Num (Nonce cfg), KVConfig cfg) => String -> Block (KV cfg) -> Block (KV cfg)
+mineBlock :: (Num (Nonce cfg), Show (Nonce cfg), KVConfig cfg)
+          => String -> Block (KV cfg) -> Block (KV cfg)
 mineBlock val b = unsafePerformIO $ do
-  r <- mine $ GBlock
+  find $ GBlock
     { blockHeight = succ $ blockHeight b
     , blockTime   = Time 0
     , prevBlock   = Just $! blockID b
@@ -45,10 +48,13 @@ mineBlock val b = unsafePerformIO $ do
                        , kvTarget     = kvTarget (blockData b)
                        }
     }
-  case r of
-    Just b' -> return b'
-    Nothing -> error "haven't figured out what to do."
-
+  where
+    find blk = do
+      r <- mine blk
+      case r of
+        Just b' -> return b'
+        Nothing -> let Time t = blockTime blk
+                   in find (blk { blockTime = Time (t+1)})
 
 data MockChain
 
@@ -60,7 +66,7 @@ instance Serialise (Nonce MockChain) => KVConfig MockChain where
     blk' : _ -> return (Just blk')
     _ -> return Nothing
     where
-      nonces = map (+ kvNonce (blockData blk)) [0..2^(16 :: Int) - 1]
+      nonces = map (+ kvNonce (blockData blk)) [0..2^(24 :: Int) - 1]
       solved = [ blk'
                | nonce <- nonces
                , let blk' = blk { blockData = (blockData blk) { kvNonce = nonce } }
