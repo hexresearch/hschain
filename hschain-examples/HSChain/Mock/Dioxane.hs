@@ -26,7 +26,6 @@ import qualified Data.Map.Strict     as Map
 import qualified Data.Vector         as V
 
 import HSChain.Blockchain.Internal.Engine.Types
-import HSChain.Control
 import HSChain.Control.Class
 import HSChain.Crypto
 import HSChain.Logger
@@ -66,19 +65,19 @@ dioGenesis = BChEval
                                    <$> V.take (fromIntegral nVals) keys
 
 interpretSpec
-  :: forall m x tag.
+  :: forall m tag.
      ( MonadDB m (BData tag), MonadFork m, MonadMask m, MonadLogger m
      , MonadTMMonitoring m, Dio tag
-     , Has x BlockchainNet
-     , Has x (Configuration Example))
-  => x
-  -> Int
+     )
+  => Int
+  -> BlockchainNet
+  -> Configuration Example
   -> AppCallbacks m (BData tag)
   -> m (RunningNode m (BData tag), [m ()])
-interpretSpec p idx cb = do
+interpretSpec idx bnet cfg cb = do
   conn    <- askConnectionRO
   store   <- newSTMBchStorage (blockchainState genesis)
-  acts <- runNode (getT p :: Configuration Example) NodeDescription
+  acts <- runNode cfg NodeDescription
     { nodeValidationKey = Just $ PrivValidator $ fst $ dioUserKeys dioD V.! idx
     , nodeGenesis       = genesis
     , nodeCallbacks     = cb
@@ -86,7 +85,7 @@ interpretSpec p idx cb = do
     , nodeStore         = AppStore { appBchState = store
                                    , appMempool  = nullMempool
                                    }
-    , nodeNetwork       = getT p
+    , nodeNetwork       = bnet
     }
   return
     ( RunningNode { rnodeState   = store

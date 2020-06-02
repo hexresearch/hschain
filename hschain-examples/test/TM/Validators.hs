@@ -34,7 +34,6 @@ import Test.Tasty.QuickCheck
 import Test.Tasty.Runners
 
 import HSChain.Blockchain.Internal.Engine.Types
-import HSChain.Control
 import HSChain.Control.Class
 import HSChain.Crypto
 import HSChain.Crypto.Classes.Hash
@@ -129,7 +128,8 @@ samplingEquidistribution vset
 testValidatorChange :: IO ()
 testValidatorChange = withTimeOut 20e6 $ do
   evalContT $ do
-    resources <- prepareResources spec
+    net       <- liftIO P2P.newMockNet
+    resources <- allocNetwork net (netTopology spec) (netNodeList spec)
     nodes     <- executeNodeSpec  spec resources
     -- Execute nodes for second time!
     _         <- executeNodeSpec  spec resources
@@ -242,28 +242,27 @@ transitions = BChLogic
 
 interpretSpec
   :: ( MonadDB m Tx, MonadFork m, MonadMask m, MonadLogger m
-     , MonadTMMonitoring m
-     , Has x BlockchainNet
-     , Has x (NodeSpec Tx)
-     , Has x (Configuration Example))
+     , MonadTMMonitoring m)
   => Genesis Tx
-  -> x
+  -> NodeSpec Tx
+  -> BlockchainNet
+  -> Configuration Example
   -> AppCallbacks m Tx
   -> m (RunningNode m Tx, [m ()])
-interpretSpec genesis p cb = do
+interpretSpec genesis nspec bnet cfg cb = do
   conn  <- askConnectionRO
   store <- newSTMBchStorage $ blockchainState genesis
   let astore = AppStore { appBchState = store
                         , appMempool  = nullMempool
                         }
-  acts  <- runNode (getT p :: Configuration Example) NodeDescription
-    { nodeValidationKey = nspecPrivKey (getT p :: NodeSpec Tx)
+  acts  <- runNode cfg NodeDescription
+    { nodeValidationKey = nspecPrivKey nspec
     , nodeGenesis       = genesis
     , nodeCallbacks     = cb
     , nodeRunner        = maybe (throwE ValErr) return
 
     , nodeStore         = astore
-    , nodeNetwork       = getT p
+    , nodeNetwork       = bnet
     }
   return
     ( RunningNode { rnodeState   = store
@@ -274,26 +273,14 @@ interpretSpec genesis p cb = do
     )
 
 
-prepareResources
-  :: (MonadIO m, MonadMask m)
-  => NetSpec (NodeSpec Tx)
-  -> ContT r m [(BlockchainNet :*: NodeSpec Tx, (Connection 'RW Tx, LogEnv))]
-prepareResources NetSpec{..} = do
-  -- Create mock network and allocate DB handles for nodes
-  net <- liftIO P2P.newMockNet
-  traverse (\x -> do { r <- allocNode x; return (x,r)})
-    $ allocateMockNetAddrs net netTopology
-    $ netNodeList
-
-
 executeNodeSpec
   :: (MonadIO m, MonadMask m, MonadFork m,  MonadTMMonitoring m)
   => NetSpec (NodeSpec Tx)
-  -> [(BlockchainNet :*: NodeSpec Tx, (Connection 'RW Tx, LogEnv))]
+  -> [(NodeSpec Tx, BlockchainNet, Connection 'RW Tx, LogEnv)]
   -> ContT r m [RunningNode m Tx]
 executeNodeSpec NetSpec{..} resources = do
   -- Start nodes
-  rnodes    <- lift $ forM resources $ \(x, (conn, logenv)) -> do
+  rnodes    <- lift $ forM resources $ \(nspec, bnet, conn, logenv) -> do
     let run :: DBT 'RW Tx (LoggerT m) x -> m x
         run = runLoggerT logenv . runDBT conn
     (rn, acts) <- run $ interpretSpec
@@ -301,7 +288,9 @@ executeNodeSpec NetSpec{..} resources = do
               , validatorSet    = merkled valSet0
               , blockchainState = merkled valSet0
               }
-      (netNetCfg :*: x)
+      nspec
+      bnet
+      netNetCfg
       (maybe mempty callbackAbortAtH netMaxH)
     return ( hoistRunningNode run rn
            , run <$> acts

@@ -24,6 +24,7 @@ import Control.Monad.Trans.Reader
 import Control.Exception
 import Data.Aeson (Value(..),Object)
 import Data.Bool
+import Data.Coerce
 import Data.IORef
 import Data.List
 import Data.Maybe
@@ -47,7 +48,6 @@ import HSChain.Mock.Types
 import HSChain.Control.Delay
 import qualified HSChain.Mock.KeyVal as Mock
 import           HSChain.Mock.KeyVal   (BData)
-import HSChain.Control
 import HSChain.Control.Class
 import HSChain.Logger
 import HSChain.Mock.KeyList
@@ -288,19 +288,17 @@ createTestNetworkWithValidatorsSetAndConfig validators cfg netDescr = do
         initDatabase conn
         let run = runIORefLogT ncScribe . runDBT conn
         (_,actions) <- run $ Mock.interpretSpec genesis
-          (   BlockchainNet
-                { bchNetwork      = createMockNode net (intToNetAddr ncFrom)
-                , bchInitialPeers = intToNetAddr <$> ncTo
-                }
-          :*: (NodeSpec
-                { nspecPrivKey     = validatorPK
-                , nspecDbName      = Nothing
-                , nspecLogFile     = []
-                , nspecPersistIval = Nothing
-                } :: NodeSpec BData)
-              -- 
-          :*: (let Configuration{..} = cfg in Configuration{..})
-          )
+          NodeSpec
+            { nspecPrivKey     = validatorPK
+            , nspecDbName      = Nothing
+            , nspecLogFile     = []
+            , nspecPersistIval = Nothing
+            }
+          BlockchainNet
+            { bchNetwork      = createMockNode net (intToNetAddr ncFrom)
+            , bchInitialPeers = intToNetAddr <$> ncTo
+            }
+          (coerce cfg)
           mempty
         return $ run <$> actions
 

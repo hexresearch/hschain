@@ -57,7 +57,6 @@ import HSChain.Types.Blockchain
 import HSChain.Types.Merkle.Types
 import HSChain.Types.Validators
 import HSChain.Blockchain.Internal.Engine.Types
-import HSChain.Control
 import HSChain.Control.Class
 import HSChain.Crypto
 import HSChain.Logger
@@ -181,29 +180,27 @@ findInputs tgt = go 0
 ----------------------------------------------------------------
 
 interpretSpec
-  :: ( MonadDB m BData, MonadFork m, MonadMask m, MonadLogger m
-     , MonadTMMonitoring m
-     , Has x BlockchainNet
-     , Has x (NodeSpec BData)
-     , Has x (Configuration Example))
+  :: (MonadDB m BData, MonadFork m, MonadMask m, MonadLogger m, MonadTMMonitoring m)
   => Genesis BData
-  -> x
+  -> Configuration Example
+  -> BlockchainNet
+  -> NodeSpec BData
   -> AppCallbacks m BData
   -> m (RunningNode m BData, [m ()])
-interpretSpec genesis p cb = do
+interpretSpec genesis cfg net spec cb = do
   conn    <- askConnectionRO
-  store   <- maybe return snapshotState (nspecPersistIval (getT p :: NodeSpec BData))
+  store   <- maybe return snapshotState (nspecPersistIval spec)
          =<< newSTMBchStorage (blockchainState genesis)
   mempool <- makeMempool store (ExceptT . return)
-  acts <- runNode (getT p :: Configuration Example) NodeDescription
-    { nodeValidationKey = nspecPrivKey (getT p :: NodeSpec BData)
+  acts <- runNode cfg NodeDescription
+    { nodeValidationKey = nspecPrivKey spec
     , nodeGenesis       = genesis
     , nodeCallbacks     = cb <> nonemptyMempoolCallback mempool
     , nodeRunner        = ExceptT . return
     , nodeStore         = AppStore { appBchState = store
                                    , appMempool  = mempool
                                    }
-    , nodeNetwork       = getT p
+    , nodeNetwork       = net
     }
   return
     ( RunningNode { rnodeState   = store
@@ -215,19 +212,22 @@ interpretSpec genesis p cb = do
 
 executeNodeSpec
   :: (MonadIO m, MonadMask m, MonadFork m, MonadTMMonitoring m)
-  => NetSpec (NodeSpec BData) :*: CoinSpecification
+  => NetSpec (NodeSpec BData)
+  -> CoinSpecification
   -> ContT r m [RunningNode m BData]
-executeNodeSpec (NetSpec{..} :*: coin@CoinSpecification{..}) = do
+executeNodeSpec NetSpec{..} coin@CoinSpecification{..} = do
   -- Create mock network and allocate DB handles for nodes
   net       <- liftIO P2P.newMockNet
-  resources <- traverse (\x -> do { r <- allocNode x; return (x,r)})
-             $ allocateMockNetAddrs net netTopology
-             $ netNodeList
+  resources <- allocNetwork net netTopology netNodeList  
   -- Start nodes
-  rnodes    <- lift $ forM resources $ \(x, (conn, logenv)) -> do
+  rnodes    <- lift $ forM resources $ \(spec, bnet, conn, logenv) -> do
     let run :: DBT 'RW BData (LoggerT m) x -> m x
         run = runLoggerT logenv . runDBT conn
-    (rn, acts) <- run $ interpretSpec genesis (netNetCfg :*: x)
+    (rn, acts) <- run $ interpretSpec
+      genesis
+      netNetCfg
+      bnet
+      spec
       (maybe mempty callbackAbortAtH netMaxH)
     return ( hoistRunningNode run rn
            , run <$> acts

@@ -17,7 +17,6 @@ import System.Directory (createDirectoryIfMissing)
 import System.FilePath  (takeDirectory)
 
 import HSChain.Blockchain.Internal.Engine.Types
-import HSChain.Control
 import HSChain.Logger
 import HSChain.Mock.KeyList
 import HSChain.Mock.Types
@@ -27,16 +26,45 @@ import HSChain.Store
 import HSChain.Types
 import qualified HSChain.Network.Mock as P2P
 
+
+-- | Allocate resources for node
+allocNode
+  :: ( MonadIO m, MonadMask m)
+  => NodeSpec a
+  -> ContT r m (Connection 'RW a, LogEnv)
+allocNode spec = do
+  liftIO $ createDirectoryIfMissing True $ takeDirectory dbname
+  conn   <- ContT $ withDatabase dbname
+  logenv <- ContT $ withLogEnv "TM" "DEV" [ makeScribe s | s <- nspecLogFile spec ]
+  return (conn,logenv)
+  where
+    dbname = fromMaybe "" $ nspecDbName spec
+
+allocNetwork
+  :: ( MonadIO m, MonadMask m)
+  => P2P.MockNet
+  -> Topology
+  -> [NodeSpec a]
+  -> ContT r m [(NodeSpec a, BlockchainNet, Connection 'RW a, LogEnv)]
+allocNetwork net topo specs
+  = forM networked $ \(bnet,spec) -> do
+      (conn,logEnv) <- allocNode spec
+      return (spec,bnet,conn,logEnv)
+  where
+    networked = allocateMockNetAddrs net topo specs
+
 -- | Allocate mock P2P connections for node
 allocateMockNetAddrs
   :: P2P.MockNet                -- ^ Mock network
   -> Topology                   -- ^ Nodes connection Interconnection
   -> [a]                        -- ^ List of nodes
-  -> [BlockchainNet :*: a]
+  -> [(BlockchainNet, a)]
 allocateMockNetAddrs net topo nodes =
-  [ BlockchainNet { bchNetwork      = P2P.createMockNode net addr
-                  , bchInitialPeers = connections addresses addr
-                  } :*: n
+  [ ( BlockchainNet { bchNetwork      = P2P.createMockNode net addr
+                    , bchInitialPeers = connections addresses addr
+                    }
+    , n
+    )
   | (addr, n) <- Map.toList addresses
   ]
   where
@@ -45,20 +73,6 @@ allocateMockNetAddrs net topo nodes =
         Ring    -> connectRing
         All2All -> connectAll2All
 
-
--- | Allocate resources for node
-allocNode
-  :: forall a m x r. ( MonadIO m, MonadMask m, Has x (NodeSpec a))
-  => x                          -- ^ Node parameters
-  -> ContT r m (Connection 'RW a, LogEnv)
-allocNode x = do
-  liftIO $ createDirectoryIfMissing True $ takeDirectory dbname
-  conn   <- ContT $ withDatabase dbname
-  logenv <- ContT $ withLogEnv "TM" "DEV" [ makeScribe s | s <- nspecLogFile spec ]
-  return (conn,logenv)
-  where
-    spec = getT x :: NodeSpec a
-    dbname = fromMaybe "" $ nspecDbName spec
 
 -- | Callback which aborts execution when blockchain exceed given
 --   height. It's done by throwing 'Abort'.
