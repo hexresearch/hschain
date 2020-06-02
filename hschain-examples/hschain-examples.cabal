@@ -61,6 +61,7 @@ Executable hschain-coin-node
                      , hschain-types
                      , hschain-crypto
                      , hschain-control
+                     , hschain-config
                      , hschain-examples
                      , aeson
                      , bytestring           >=0.10
