@@ -57,7 +57,6 @@ import HSChain.Types.Blockchain
 import HSChain.Types.Merkle.Types
 import HSChain.Types.Validators
 import HSChain.Blockchain.Internal.Engine.Types
-import HSChain.Control
 import HSChain.Control.Class
 import HSChain.Crypto
 import HSChain.Logger
@@ -219,11 +218,9 @@ executeNodeSpec
 executeNodeSpec NetSpec{..} coin@CoinSpecification{..} = do
   -- Create mock network and allocate DB handles for nodes
   net       <- liftIO P2P.newMockNet
-  resources <- traverse (\x@(_ :*: nspec) -> do { r <- allocNode nspec; return (x,r)})
-             $ allocateMockNetAddrs net netTopology
-             $ netNodeList
+  resources <- allocNetwork net netTopology netNodeList  
   -- Start nodes
-  rnodes    <- lift $ forM resources $ \((bnet :*: spec), (conn, logenv)) -> do
+  rnodes    <- lift $ forM resources $ \(spec, bnet, conn, logenv) -> do
     let run :: DBT 'RW BData (LoggerT m) x -> m x
         run = runLoggerT logenv . runDBT conn
     (rn, acts) <- run $ interpretSpec

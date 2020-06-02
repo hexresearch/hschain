@@ -27,24 +27,6 @@ import HSChain.Store
 import HSChain.Types
 import qualified HSChain.Network.Mock as P2P
 
--- | Allocate mock P2P connections for node
-allocateMockNetAddrs
-  :: P2P.MockNet                -- ^ Mock network
-  -> Topology                   -- ^ Nodes connection Interconnection
-  -> [a]                        -- ^ List of nodes
-  -> [BlockchainNet :*: a]
-allocateMockNetAddrs net topo nodes =
-  [ BlockchainNet { bchNetwork      = P2P.createMockNode net addr
-                  , bchInitialPeers = connections addresses addr
-                  } :*: n
-  | (addr, n) <- Map.toList addresses
-  ]
-  where
-    addresses   = Map.fromList $ [ NetAddrV4 i 1337 | i <- [0..]] `zip` nodes
-    connections = case topo of
-        Ring    -> connectRing
-        All2All -> connectAll2All
-
 
 -- | Allocate resources for node
 allocNode
@@ -58,6 +40,40 @@ allocNode spec = do
   return (conn,logenv)
   where
     dbname = fromMaybe "" $ nspecDbName spec
+
+allocNetwork
+  :: ( MonadIO m, MonadMask m)
+  => P2P.MockNet
+  -> Topology
+  -> [NodeSpec a]
+  -> ContT r m [(NodeSpec a, BlockchainNet, Connection 'RW a, LogEnv)]
+allocNetwork net topo specs
+  = forM networked $ \(net,spec) -> do
+      (conn,logEnv) <- allocNode spec
+      return (spec,net,conn,logEnv)
+  where
+    networked = allocateMockNetAddrs net topo specs
+
+-- | Allocate mock P2P connections for node
+allocateMockNetAddrs
+  :: P2P.MockNet                -- ^ Mock network
+  -> Topology                   -- ^ Nodes connection Interconnection
+  -> [a]                        -- ^ List of nodes
+  -> [(BlockchainNet, a)]
+allocateMockNetAddrs net topo nodes =
+  [ ( BlockchainNet { bchNetwork      = P2P.createMockNode net addr
+                    , bchInitialPeers = connections addresses addr
+                    }
+    , n
+    )
+  | (addr, n) <- Map.toList addresses
+  ]
+  where
+    addresses   = Map.fromList $ [ NetAddrV4 i 1337 | i <- [0..]] `zip` nodes
+    connections = case topo of
+        Ring    -> connectRing
+        All2All -> connectAll2All
+
 
 -- | Callback which aborts execution when blockchain exceed given
 --   height. It's done by throwing 'Abort'.
