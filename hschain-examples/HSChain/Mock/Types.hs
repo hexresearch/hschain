@@ -1,10 +1,12 @@
 {-# LANGUAGE DataKinds            #-}
 {-# LANGUAGE DeriveGeneric        #-}
+{-# LANGUAGE DerivingVia          #-}
 {-# LANGUAGE FlexibleContexts     #-}
 {-# LANGUAGE FlexibleInstances    #-}
 {-# LANGUAGE RankNTypes           #-}
 {-# LANGUAGE RecordWildCards      #-}
 {-# LANGUAGE ScopedTypeVariables  #-}
+{-# LANGUAGE StandaloneDeriving   #-}
 {-# LANGUAGE TypeOperators        #-}
 {-# LANGUAGE UndecidableInstances #-}
 module HSChain.Mock.Types (
@@ -26,11 +28,13 @@ module HSChain.Mock.Types (
 import Control.Exception   (Exception)
 import Control.Monad.Catch (MonadCatch(..))
 import Data.Default.Class
+import Data.Typeable
 import GHC.Generics (Generic)
 
 import qualified Data.Aeson as JSON
 
 import HSChain.Blockchain.Internal.Engine.Types
+import HSChain.Config
 import HSChain.Crypto
 import HSChain.Logger         (ScribeSpec)
 import HSChain.Types
@@ -133,6 +137,7 @@ data NetSpec a = NetSpec
   , netMaxH      :: Maybe Height          -- ^ Maximum height
   }
   deriving (Generic,Show)
+  deriving JSON.FromJSON via SnakeCase (DropSmart (Config (NetSpec a)))
 
 data NodeSpec b = NodeSpec
   { nspecPrivKey     :: !(Maybe (PrivValidator (Alg b)))
@@ -143,17 +148,16 @@ data NodeSpec b = NodeSpec
   }
   deriving (Generic)
 
+deriving via SnakeCase (DropSmart (Config (NodeSpec b)))
+  instance (Typeable (Alg b), Crypto (Alg b)) => JSON.FromJSON (NodeSpec b)
+
 -- | Specifications for mock coin status.
 data CoinSpecification = CoinSpecification
- { coinAridrop        :: !Integer     -- ^ Amount of coins allocated to each wallet
+ { coinAirdrop        :: !Integer     -- ^ Amount of coins allocated to each wallet
  , coinWallets        :: !Int         -- ^ Number of wallets in use
  , coinWalletsSeed    :: !Int         -- ^ Seed used to generate private keys for wallets
  , coinGeneratorDelay :: !(Maybe Int) -- ^ Delay between TX generation. Nothing means don't generate
  , coinMaxMempoolSize :: !Int         -- ^ If mempool exceeds size new txs won't be generated
  }
  deriving (Generic,Show)
-
-instance Crypto (Alg b) => JSON.ToJSON   (NodeSpec b)
-instance Crypto (Alg b) => JSON.FromJSON (NodeSpec b)
-instance JSON.FromJSON CoinSpecification
-instance JSON.FromJSON a => JSON.FromJSON (NetSpec a)
+ deriving JSON.FromJSON via SnakeCase (DropSmart (Config CoinSpecification))

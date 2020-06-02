@@ -101,12 +101,12 @@ runCoin = evalContT $ do
       liftIO $ assertBool ("Validators mismatch!" <> show h) (allEqual vals)
     -- Check that amount of coins didn't change
     forM_ rnodes $ \n -> liftIO $ do
-      let totalCoins = coinAridrop coin * fromIntegral (coinWallets coin)
+      let totalCoins = coinAirdrop coin * fromIntegral (coinWallets coin)
       (_, merkleValue -> Coin.CoinState utxos _) <- bchCurrentState $ Coin.rnodeState n
       assertEqual "Coins must be preserved" totalCoins (sum [ c | Coin.Unspent _ c <- toList utxos])
   where
     coin = CoinSpecification
-      { coinAridrop        = 1000
+      { coinAirdrop        = 1000
       , coinWallets        = 1000
       , coinWalletsSeed    = 1337
       , coinGeneratorDelay = Just 100

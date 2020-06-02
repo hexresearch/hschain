@@ -19,6 +19,7 @@ Library
   Build-Depends:       base              >=4.9 && <5
                      , hschain-crypto
                      , hschain-control
+                     , hschain-config
                      , hschain-types
                      , hschain-merkle
                      , hschain
