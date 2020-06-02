@@ -7,7 +7,6 @@ module TM.Util.Mockchain where
 
 import Codec.Serialise
 import Control.Applicative
-import Data.Maybe (fromJust)
 import Data.Word
 import Data.List  (unfoldr)
 
@@ -47,7 +46,7 @@ mineBlock val b = unsafePerformIO $ do
                        }
     }
   case r of
-    Just b' -> return b
+    Just b' -> return b'
     Nothing -> error "haven't figured out what to do."
 
 
@@ -57,6 +56,22 @@ instance Serialise (Nonce MockChain) => KVConfig MockChain where
   type Nonce MockChain = Word64
   kvAdjustInterval = Const 100
   kvBlockTimeInterval  = Const (Time 1000)
+  kvSolvePuzzle blk = case solved of
+    blk' : _ -> return (Just blk')
+    _ -> return Nothing
+    where
+      nonces = map (+ kvNonce (blockData blk)) [0..2^(16 :: Int) - 1]
+      solved = [ blk'
+               | nonce <- nonces
+               , let blk' = blk { blockData = (blockData blk) { kvNonce = nonce } }
+               , let hdr' = toHeader blk'
+               , let tgt' = hash256AsTarget hdr'
+               , tgt' <= tgt
+               ]
+      tgt = blockTargetThreshold blk
+  kvCheckPuzzle hdr = return $ blockTargetThreshold hdr >= resultTgt
+    where
+      resultTgt = hash256AsTarget hdr
 
 genesis,block1,block2,block3,block2' :: Block (KV MockChain)
 genesis:block1:block2:block3:_ = mockchain
