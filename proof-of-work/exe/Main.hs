@@ -6,7 +6,6 @@ import qualified Data.ByteString as B
 import qualified Data.List as List
 
 import Data.String
-import Data.Word
 
 import System.Exit
 
