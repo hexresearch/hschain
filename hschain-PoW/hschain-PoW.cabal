@@ -59,6 +59,7 @@ Library
                 HSChain.PoW.Exceptions
                 HSChain.PoW.Logger
                 HSChain.PoW.Logger.Class
+                HSChain.PoW.Node
                 HSChain.PoW.Store
                 HSChain.PoW.P2P
                 HSChain.PoW.P2P.Types
