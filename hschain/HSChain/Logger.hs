@@ -102,8 +102,8 @@ instance MonadIO m => MonadLogger (LoggerT m) where
     logF a nm sev s
   localNamespace f (LoggerT m) = LoggerT $ local (first f) m
 
--- | Mock logging. Useful for cases where constraints require logging
---   but we don't need any
+-- | Newtype wrapper that provides no logging. Could be used with
+--   DerivingVia to define instances that don't in fact log.
 newtype NoLogsT m a = NoLogsT { runNoLogsT :: m a }
   deriving newtype ( Functor, Applicative, Monad, MonadFail
                    , MonadIO, MonadThrow, MonadCatch, MonadMask
