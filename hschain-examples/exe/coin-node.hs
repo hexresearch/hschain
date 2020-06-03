@@ -15,19 +15,18 @@
 {-# LANGUAGE TypeFamilies               #-}
 {-# LANGUAGE TypeOperators              #-}
 import Control.Concurrent
-import Control.Lens (Lens',lens,(%~))
 import Control.Monad
 import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
-import Control.Monad.Trans.Reader
+import Control.Monad.Reader
 import Control.Monad.Trans.Cont
 import Data.Aeson             (FromJSON)
 import Data.Word
 import Data.Yaml.Config       (loadYamlSettings, requireEnv)
 import Options.Applicative
 
-import Katip (Namespace,LogEnv,logF,Katip(..))
+import Katip (Namespace,LogEnv)
 import Network.Wai.Middleware.Prometheus
 import Prometheus   (register)
 import Prometheus.Metric.GHC
@@ -62,17 +61,15 @@ data AppDict = AppDict
   , dictLogEnv    :: !LogEnv
   , dictConn      :: !(Connection 'RW BData)
   }
-
-ldictNamespace :: Lens' AppDict Namespace
-ldictNamespace = lens dictNamespace (\d n -> d { dictNamespace = n })
-
-ldictLogEnv :: Lens' AppDict LogEnv
-ldictLogEnv = lens dictLogEnv (\d n -> d { dictLogEnv = n })
-
+  deriving stock (Generic)
 
 newtype AppT m a = AppT { unAppT :: ReaderT AppDict m a }
   deriving newtype (Functor,Applicative,Monad,MonadIO)
-  deriving newtype (MonadMask,MonadThrow,MonadCatch,MonadFork)
+  deriving newtype (MonadThrow,MonadCatch,MonadMask,MonadFork)
+  deriving newtype (MonadReader AppDict)
+  deriving MonadLogger       via LoggerByTypes    (AppT m)
+  deriving MonadTMMonitoring via MonitoringByType (AppT m)
+
 
 runAppT :: LogEnv -> PrometheusGauges -> Connection 'RW BData -> AppT m a -> m a
 runAppT lenv g conn
@@ -83,27 +80,6 @@ runAppT lenv g conn
                             }
   . unAppT
 
-
--- Tricky one.
---  - Do we need Reader (Namespace,LogEnv)???
---  - Do we need two readers???
-instance MonadIO m => Katip (AppT m) where
-  getLogEnv     = AppT $ asks dictLogEnv
-  localLogEnv f = AppT . local (ldictLogEnv %~ f) . unAppT
-
-instance MonadIO m => MonadLogger (AppT m) where
-  logger sev s a = do
-    nm <- AppT $ asks dictNamespace
-    logF a nm sev s
-  localNamespace f (AppT m) = AppT $ local (ldictNamespace %~ f) m
-
--- Derived from single Reader
-instance MonadIO m => MonadTMMonitoring (AppT m) where
-  usingCounter getter n = AppT $ flip addCounterNow  n =<< asks (getter . dictGauges)
-  usingGauge   getter n = AppT $ flip setTGaugeNow   n =<< asks (getter . dictGauges)
-  usingVector  getter l = AppT $ flip incTCVectorNow l =<< asks (getter . dictGauges)
-
-
 -- Derived using Reader (Connection 'RW)
 instance Monad m => MonadReadDB (AppT m) BData where
   askConnectionRO = AppT $ connectionRO <$> asks dictConn
@@ -111,9 +87,10 @@ instance Monad m => MonadReadDB (AppT m) BData where
 instance Monad m => MonadDB (AppT m) BData where
   askConnectionRW = AppT $ asks dictConn
 
-
-
-
+-- deriving via BData, DatabaseByType BData (AppT m)
+--   instance MonadDB (AppT m) BData
+-- deriving via DatabaseByType BData (AppT m)
+--   instance MonadReadDB (AppT m) BData
 
 
 ----------------------------------------------------------------
