@@ -24,6 +24,28 @@ module HSChain.PoW.Node
   ( runNode
   ) where
 
+import qualified Data.Aeson as JSON
+import Codec.Serialise
+
+import Control.Concurrent
+import Control.Concurrent.STM
+
+import Control.Monad
+import Control.Monad.Catch
+import Control.Monad.Cont
+import Control.Monad.Cont.Class
+import Control.Monad.IO.Class
+import Control.Monad.Trans.Class
+import Control.Monad.Trans.Cont
+
+import Data.Word
+
+import Data.Yaml.Config
+
+import GHC.Generics (Generic)
+
+import Lens.Micro
+
 import HSChain.PoW.Consensus
 import HSChain.PoW.Logger
 import HSChain.PoW.P2P
@@ -35,7 +57,11 @@ import HSChain.Network.Types
 import HSChain.Types.Merkle.Types
 import HSChain.Examples.Simple
 import HSChain.Examples.Util
+import HSChain.Control.Channels
+import HSChain.Control.Util
 import HSChain.Control.Class
+import HSChain.Crypto
+import HSChain.Crypto.SHA
 
 -- |Node's configuration.
 data Cfg = Cfg
@@ -54,7 +80,7 @@ data Cfg = Cfg
 -- we are mining and genesis block.
 runNode :: forall b . (BlockData b)
         => [String] -> Bool -> Block b ->IO ()
-runNode pathsToConfig mine genesisBlock = do
+runNode pathsToConfig miningNode genesisBlock = do
   Cfg{..} <- loadYamlSettings pathsToConfig [] requireEnv
   --
   let netcfg = NetCfg { nKnownPeers     = 3
@@ -71,13 +97,13 @@ runNode pathsToConfig mine genesisBlock = do
                                  liftIO $ putStrLn $ "mined: "++show b
                                  (sendNewBlock pow') b
                 }
-      let printBCH = when optPrintBCH $ do
+      let printBCH = do
             c <- atomicallyIO $ currentConsensus pow
-            let loop bh@BH{bhBID = bid} = do
+            let loop n bh@BH{bhBID = bid} = when (n > 0) $ do
                   liftIO $ print (cfgStr, bid, bhHeight bh)
                   liftIO . print =<< retrieveBlock db bid
-                  maybe (return ()) loop $ bhPrevious bh
-            loop (c ^. bestHead . _1)
+                  maybe (return ()) (loop (n-1)) $ bhPrevious bh
+            loop 100 (c ^. bestHead . _1)
       lift $ flip onException printBCH $ do
         upd <- atomicallyIO $ chainUpdate pow
         let doMine = do
@@ -103,8 +129,8 @@ runNode pathsToConfig mine genesisBlock = do
                              , merkleValue $ kvData $ blockData b
                              )
               liftIO $ mapM_ killThread tid
-              loop =<< if optMine then Just <$> fork doMine else return Nothing
+              loop =<< if miningNode then Just <$> fork doMine else return Nothing
         --
-        loop =<< if optMine then Just <$> fork doMine else return Nothing
+        loop =<< if miningNode then Just <$> fork doMine else return Nothing
 
 

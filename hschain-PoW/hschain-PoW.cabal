@@ -51,6 +51,7 @@ Library
                      , transformers      >=0.5
                      , vector
                      , unordered-containers >=0.2.5.0
+                     , yaml
   Exposed-modules:
                 HSChain.PoW.Types
                 HSChain.PoW.Consensus
