@@ -76,8 +76,8 @@ class GConfig f where
 instance (Datatype i, GConfig f) => GConfig (M1 D i f) where
   parseConfig mangler a v = M1 <$> prependFailure err (parseConfig mangler (coerce a) v)
     where
-      err = printf "while parsing %s defined in %s:%s\n"
-              (datatypeName p) (packageName p) (moduleName p)
+      err = printf "Parsing %s defined in %s\n"
+              (datatypeName p) (moduleName p)
       p = undefined :: M1 D i f ()
 
 instance ( GConfigRec f
