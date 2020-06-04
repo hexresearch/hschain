@@ -19,7 +19,6 @@ module HSChain.PoW.Types where
 
 import Codec.Serialise          (Serialise)
 import Control.DeepSeq
-import Control.Monad            (forever)
 import Control.Monad.IO.Class
 import Data.Bits
 import Data.Monoid              (Sum(..))
@@ -161,21 +160,10 @@ class ( Show      (BlockID b)
 -- mine (header may be invalid) and work on it for some time, reporting
 -- back in case of success.
 --
--- The monad @m@ implements a way to report blocks mined and
--- a way to get block to mine. Thus it must have access to mempool.
---
 -- Please note that you can implement caching in @fetchBlock@ if current
 -- chain leader has not changed. You can tweak only the "coinbase"-like
 -- transaction in the block.
-class (MonadIO m, BlockData b) => Mineable m b where
-
-  -- | Tell the world we have a block!
-  reportMiningSuccess :: Block b -> m ()
-
-  -- | Fetch the block to mine. Remember, you do not need a header
-  -- with valid puzzle answer here. Other parts of header like
-  -- target value must be correct.
-  fetchBlock :: m (Block b)
+class BlockData b => Mineable b where
 
   -- | Adjust puzzle's answer. The adjustment process tries to
   -- find right puzzle answer that is smallest possible or below
@@ -186,19 +174,8 @@ class (MonadIO m, BlockData b) => Mineable m b where
   --
   -- One can use second part in a parameter search process. It is a
   -- proxy to how many hash attempts are done during search.
-  adjustPuzzle :: Target -> Block b -> m (Maybe (Block b, Target))
+  adjustPuzzle :: MonadIO m => Block b -> m (Maybe (Block b), Target)
 
-
--- | The mining loop.
-miningLoop :: forall b m . Mineable m b => m ()
-miningLoop = forever $ do
-  (toMine :: Block b) <- fetchBlock
-  let threshold = blockTargetThreshold toMine
-  maybeAdjusted <- adjustPuzzle threshold toMine
-  case maybeAdjusted of
-    Just (minedBlock, hashAsTarget)
-      | hashAsTarget <= threshold -> reportMiningSuccess minedBlock
-    _ -> return ()
 
 -- |Target - value computed during proof-of-work test must be lower
 -- than this threshold. Target can be and must be rounded.

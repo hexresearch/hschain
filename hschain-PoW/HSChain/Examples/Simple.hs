@@ -16,7 +16,6 @@ module HSChain.Examples.Simple
   ( KV(..)
   , KVConfig(..)
   , retarget
-  , mine
   , hash256AsTarget
   ) where
 
@@ -111,6 +110,9 @@ instance KVConfig cfg => BlockData (KV cfg) where
       Const adjustInterval = kvAdjustInterval :: Const Height cfg
       Const blockMineTime = kvBlockTimeInterval :: Const Time cfg
 
+instance KVConfig cfg => Mineable (KV cfg) where
+  adjustPuzzle = fmap (flip (,) (Target 0)) . kvSolvePuzzle
+
 -- FIXME: correctly compute rertargeting
 retarget :: KVConfig cfg => BH (KV cfg) -> Target
 retarget bh
@@ -134,10 +136,6 @@ hash256AsTarget a
   = Target $ BS.foldl' (\i w -> (i `shiftL` 8) + fromIntegral  w) 0 bs
   where
     Hash bs = hash a :: Hash SHA256
-
-mine :: KVConfig cfg => Block (KV cfg) -> IO (Maybe (Block (KV cfg)))
-mine b0@GBlock {..} = kvSolvePuzzle b0
-
 
 goBack :: Height -> BH b -> Maybe (BH b)
 goBack (Height 0) = Just
