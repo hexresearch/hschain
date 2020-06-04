@@ -67,9 +67,10 @@ newtype AppT m a = AppT { unAppT :: ReaderT AppDict m a }
   deriving newtype (Functor,Applicative,Monad,MonadIO)
   deriving newtype (MonadThrow,MonadCatch,MonadMask,MonadFork)
   deriving newtype (MonadReader AppDict)
-  deriving MonadLogger       via LoggerByTypes    (AppT m)
-  deriving MonadTMMonitoring via MonitoringByType (AppT m)
-
+  deriving MonadLogger         via LoggerByTypes    (AppT m)
+  deriving MonadTMMonitoring   via MonitoringByType (AppT m)
+  deriving (MonadReadDB BData, MonadDB BData)
+       via DatabaseByType BData (AppT m)
 
 runAppT :: LogEnv -> PrometheusGauges -> Connection 'RW BData -> AppT m a -> m a
 runAppT lenv g conn
@@ -79,18 +80,6 @@ runAppT lenv g conn
                             , dictConn      = conn
                             }
   . unAppT
-
--- Derived using Reader (Connection 'RW)
-instance Monad m => MonadReadDB (AppT m) BData where
-  askConnectionRO = AppT $ connectionRO <$> asks dictConn
-  
-instance Monad m => MonadDB (AppT m) BData where
-  askConnectionRW = AppT $ asks dictConn
-
--- deriving via BData, DatabaseByType BData (AppT m)
---   instance MonadDB (AppT m) BData
--- deriving via DatabaseByType BData (AppT m)
---   instance MonadReadDB (AppT m) BData
 
 
 ----------------------------------------------------------------

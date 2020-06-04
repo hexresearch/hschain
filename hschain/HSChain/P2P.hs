@@ -43,7 +43,7 @@ import HSChain.P2P.Internal
 --   from remote nodes, initiating connections to them, tracking state
 --   of nodes and gossip.
 startPeerDispatcher
-  :: ( MonadMask m, MonadFork m, MonadLogger m, MonadReadDB m a, MonadTMMonitoring m
+  :: ( MonadMask m, MonadFork m, MonadLogger m, MonadReadDB a m, MonadTMMonitoring m
      , BlockData a)
   => NetworkCfg app
   -> NetworkAPI               -- ^ API for networking

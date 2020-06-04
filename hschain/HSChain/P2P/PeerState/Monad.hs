@@ -40,7 +40,7 @@ newtype TransitionT s a m r = TransitionT
            , MonadIO
            , MonadThrow
            )
-instance MonadReadDB m a => MonadReadDB (TransitionT s a m) a where
+instance MonadReadDB a m => MonadReadDB a (TransitionT s a m) where
   askConnectionRO = TransitionT $ lift askConnectionRO
 
 instance Monad m => MonadState (s a) (TransitionT s a m) where
@@ -69,6 +69,6 @@ runTransitionT action st = do
 type HandlerCtx a m = ( Serialise a
                       , Crypto (Alg a)
                       , MonadIO m
-                      , MonadReadDB m a
+                      , MonadReadDB a m
                       , MonadLogger m
                       )

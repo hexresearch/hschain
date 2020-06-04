@@ -66,7 +66,7 @@ retryPolicy NetworkCfg{..} = exponentialBackoff (reconnectionDelay * 1000)
                           <> limitRetries reconnectionRetries
 -- Thread which accepts connections from remote nodes
 acceptLoop
-  :: ( MonadFork m, MonadMask m, MonadLogger m, MonadReadDB m a, MonadTMMonitoring m
+  :: ( MonadFork m, MonadMask m, MonadLogger m, MonadReadDB a m, MonadTMMonitoring m
      , BlockData a)
   => NetworkCfg app
   -> NetworkAPI
@@ -103,7 +103,7 @@ acceptLoop cfg NetworkAPI{..} peerCh mempool = do
 
 -- Initiate connection to remote host and register peer
 connectPeerTo
-  :: ( MonadFork m, MonadMask m, MonadLogger m, MonadReadDB m a, MonadTMMonitoring m
+  :: ( MonadFork m, MonadMask m, MonadLogger m, MonadReadDB a m, MonadTMMonitoring m
      , BlockData a
      )
   => NetworkAPI
@@ -133,7 +133,7 @@ connectPeerTo NetworkAPI{..} addr peerCh mempool =
 -- | Start interactions with peer. At this point connection is already
 --   established and peer is registered.
 startPeer
-  :: ( MonadFork m, MonadMask m, MonadLogger m, MonadReadDB m a, MonadTMMonitoring m
+  :: ( MonadFork m, MonadMask m, MonadLogger m, MonadReadDB a m, MonadTMMonitoring m
      , BlockData a)
   => NetAddr
   -> PeerChans a           -- ^ Communication with main application
@@ -158,7 +158,7 @@ startPeer peerAddrTo peerCh@PeerChans{..} conn mempool = logOnException $
 
 -- | Routine for receiving messages from peer
 peerFSM
-  :: ( MonadReadDB m a, MonadIO m, MonadMask m, MonadLogger m
+  :: ( MonadReadDB a m, MonadIO m, MonadMask m, MonadLogger m
      , BlockData a)
   => PeerChans a
   -> TBQueue (GossipMsg a)
@@ -249,7 +249,7 @@ pexCapacityThread peerRegistry NetworkCfg{..} gossipCh = do
 
 -- | Routine for receiving messages from peer
 peerReceive
-  :: ( MonadReadDB m a, MonadIO m, MonadMask m, MonadLogger m, MonadTMMonitoring m
+  :: ( MonadReadDB a m, MonadIO m, MonadMask m, MonadLogger m, MonadTMMonitoring m
      , BlockData a)
   => TChan (GossipMsg a)
   -> P2PConnection
@@ -264,7 +264,7 @@ peerReceive recvCh P2PConnection{..} = logOnException $ do
 
 -- | Routine for actually sending data to peers
 peerSend
-  :: ( MonadReadDB m a, MonadMask m, MonadIO m, MonadLogger m, MonadTMMonitoring m
+  :: ( MonadReadDB a m, MonadMask m, MonadIO m, MonadLogger m, MonadTMMonitoring m
      , BlockData a)
   => PeerChans a
   -> TBQueue (GossipMsg a)
@@ -296,7 +296,7 @@ countGossip dir = \case
 
 pexFSM
   :: (MonadLogger m, MonadMask m, MonadTMMonitoring m
-     , MonadFork m, MonadReadDB m a, BlockData a)
+     , MonadFork m, MonadReadDB a m, BlockData a)
   => NetworkCfg app
   -> NetworkAPI
   -> PeerChans a

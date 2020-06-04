@@ -96,8 +96,8 @@ newtype LoggerT m a = LoggerT (ReaderT (Namespace, LogEnv) m a)
 
 instance MFunctor LoggerT where
   hoist f (LoggerT m) = LoggerT (hoist f m)
-instance (MonadReadDB m a) => MonadReadDB (LoggerT m) a where
-instance (MonadDB m a) => MonadDB (LoggerT m) a where
+instance (MonadReadDB a m) => MonadReadDB a (LoggerT m) where
+instance (MonadDB a m) => MonadDB a (LoggerT m) where
 
 runLoggerT :: LogEnv -> LoggerT m a -> m a
 runLoggerT le (LoggerT m) = runReaderT m (mempty, le)
@@ -121,8 +121,8 @@ newtype NoLogsT m a = NoLogsT { runNoLogsT :: m a }
 
 instance MFunctor NoLogsT where
   hoist f (NoLogsT m) = NoLogsT (f m)
-instance (MonadReadDB m a) => MonadReadDB (NoLogsT m) a where
-instance (MonadDB m a) => MonadDB (NoLogsT m) a where
+instance (MonadReadDB a m) => MonadReadDB a (NoLogsT m) where
+instance (MonadDB a m) => MonadDB a (NoLogsT m) where
 
 instance MonadTrans NoLogsT where
   lift = NoLogsT

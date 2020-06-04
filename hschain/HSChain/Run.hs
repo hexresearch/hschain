@@ -53,7 +53,7 @@ import HSChain.Control.Delay
 -- | Create default mempool which checks transactions against current
 --   state
 makeMempool
-  :: forall m a. (MonadIO m, MonadReadDB m a, Ord (TX a), Show (TX a), BlockData a)
+  :: forall m a. (MonadIO m, MonadReadDB a m, Ord (TX a), Show (TX a), BlockData a)
   => BChStore m a
   -> (forall x. BChMonad a x -> ExceptT (BChError a) m x)
   -> m (Mempool m (Alg a) (TX a))
@@ -103,7 +103,7 @@ data BlockchainNet = BlockchainNet
 --   'runConcurrently'. List of actions is returned in case when we
 --   need to run something else along them.
 runNode
-  :: ( MonadDB m a, MonadMask m, MonadFork m, MonadLogger m, MonadTMMonitoring m
+  :: ( MonadDB a m, MonadMask m, MonadFork m, MonadLogger m, MonadTMMonitoring m
      , BlockData a, Eq a, Show a
      )
   => Configuration app         -- ^ Timeouts for network and consensus

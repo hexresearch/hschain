@@ -200,7 +200,7 @@ newSTMBchStorage st0 = do
 
 -- | Store complete snapshot of state every N
 snapshotState
-  :: (MonadIO m, MonadDB m a, MonadThrow m, BlockData a)
+  :: (MonadIO m, MonadDB a m, MonadThrow m, BlockData a)
   => Int           -- ^ Store snapshot every n height
   -> BChStore m a  -- ^ Store to modify
   -> m (BChStore m a)

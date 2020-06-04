@@ -138,9 +138,9 @@ dbtRO (DBT m) = DBT (withReaderT connectionRO m)
 runDBT :: Connection rw a -> DBT rw a m x -> m x
 runDBT c (DBT m) = runReaderT m c
 
-instance MonadIO m => MonadReadDB (DBT rw a m) a where
+instance MonadIO m => MonadReadDB a (DBT rw a m) where
   askConnectionRO = connectionRO <$> DBT ask
-instance MonadIO m => MonadDB (DBT 'RW a m) a where
+instance MonadIO m => MonadDB a (DBT 'RW a m) where
   askConnectionRW = DBT ask
 
 
@@ -329,7 +329,7 @@ data BlockchainInconsistency
 
 -- | check storage against all consistency invariants
 checkStorage
-  :: (MonadReadDB m a, MonadIO m, Crypto (Alg a), Serialise a, CryptoHashable a)
+  :: (MonadReadDB a m, MonadIO m, Crypto (Alg a), Serialise a, CryptoHashable a)
   => m [BlockchainInconsistency]
 checkStorage = queryRO $ execWriterT $ do
   maxH         <- lift $ blockchainHeight
@@ -357,7 +357,7 @@ checkStorage = queryRO $ execWriterT $ do
 -- | Check that block proposed at given height is correct in sense all
 --   blockchain invariants hold
 checkProposedBlock
-  :: (MonadReadDB m a, MonadIO m, Crypto (Alg a))
+  :: (MonadReadDB a m, MonadIO m, Crypto (Alg a))
   => Height
   -> Block a
   -> m [BlockchainInconsistency]
@@ -502,14 +502,14 @@ newtype DatabaseByField conn a m x = DatabaseByField (m x)
 instance ( MonadReader r m
          , HasField' conn r (Connection 'RW a)
          , a ~ a'
-         ) => MonadReadDB (DatabaseByField conn a m) a' where
+         ) => MonadReadDB a' (DatabaseByField conn a m) where
   askConnectionRO = DatabaseByField $ connectionRO <$> asks (^. field' @conn)
   {-# INLINE askConnectionRO #-}
 
 instance ( MonadReader r m
          , HasField' conn r (Connection 'RW a)
          , a ~ a'
-         ) => MonadDB (DatabaseByField conn a m) a' where
+         ) => MonadDB a' (DatabaseByField conn a m) where
   askConnectionRW = DatabaseByField $ asks (^. field' @conn)
   {-# INLINE askConnectionRW #-}
 
@@ -521,13 +521,13 @@ newtype DatabaseByType a m x = DatabaseByType (m x)
 instance ( MonadReader r m
          , HasType (Connection 'RW a) r
          , a ~ a'
-         ) => MonadReadDB (DatabaseByType a m) a' where
+         ) => MonadReadDB a' (DatabaseByType a m) where
   askConnectionRO = DatabaseByType $ connectionRO <$> asks (^. typed @(Connection 'RW a))
   {-# INLINE askConnectionRO #-}
 
 instance ( MonadReader r m
          , HasType (Connection 'RW a) r
          , a ~ a'
-         ) => MonadDB (DatabaseByType a m) a' where
+         ) => MonadDB a' (DatabaseByType a m) where
   askConnectionRW = DatabaseByType $ asks (^. typed)
   {-# INLINE askConnectionRW #-}

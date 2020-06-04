@@ -106,6 +106,7 @@ Executable hschain-dioxane-node
                      , katip                ==0.7.0.0
                      , network              >=2.6.0.0
                      , network-simple       >=0.4.2
+                     , mtl
                      , optparse-applicative >=0.14
                      , prometheus-client
                      , prometheus-metrics-ghc

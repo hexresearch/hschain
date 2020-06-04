@@ -66,7 +66,7 @@ dioGenesis = BChEval
 
 interpretSpec
   :: forall m tag.
-     ( MonadDB m (BData tag), MonadFork m, MonadMask m, MonadLogger m
+     ( MonadDB (BData tag) m, MonadFork m, MonadMask m, MonadLogger m
      , MonadTMMonitoring m, Dio tag
      )
   => Int

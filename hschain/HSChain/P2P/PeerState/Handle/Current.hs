@@ -51,7 +51,7 @@ handler = HandlerDict
 
 
 handlerGossip
-  :: (MonadIO m, MonadReadDB m a, BlockData a)
+  :: (MonadIO m, MonadReadDB a m, BlockData a)
   => Config a -> GossipMsg a -> TransitionT CurrentState a m ()
 handlerGossip cfg = \case
   GossipPreVote v@(signedValue -> Vote{..}) -> do
@@ -147,7 +147,7 @@ advanceOurHeightWrk (FullStep ourH _ _) = setFinalState advance
 ----------------------------------------------------------------
 
 handlerProposalTimeoutMsg
-  :: (MonadIO m, MonadReadDB m a)
+  :: (MonadIO m, MonadReadDB a m)
   => Config a -> CurrentState a -> m [GossipMsg a]
 handlerProposalTimeoutMsg cfg st = do
   bchH <- queryRO blockchainHeight
@@ -165,7 +165,7 @@ handlerProposalTimeoutMsg cfg st = do
     noRoundInProposals = Set.notMember r $ st ^. peerProposals
 
 handlerPrevoteTimeoutMsg
-  :: (MonadIO m, MonadReadDB m a)
+  :: (MonadIO m, MonadReadDB a m)
   => Config a -> CurrentState a -> m [GossipMsg a]
 handlerPrevoteTimeoutMsg cfg st
   | Just polR <- st^.peerLock = gossipPrevotes cfg st polR
@@ -174,7 +174,7 @@ handlerPrevoteTimeoutMsg cfg st
     FullStep _ r _ = st ^. peerStep
 
 gossipPrevotes
-  :: (MonadIO m, MonadReadDB m a)
+  :: (MonadIO m, MonadReadDB a m)
   => Config a -> CurrentState a -> Round -> m [GossipMsg a]
 gossipPrevotes cfg st r = do
   bchH <- queryRO blockchainHeight
@@ -199,7 +199,7 @@ gossipPrevotes cfg st r = do
   
 
 handlerPrecommitsTimeoutMsg
-  :: (MonadIO m, MonadReadDB m a)
+  :: (MonadIO m, MonadReadDB a m)
   => Config a -> CurrentState a -> m [GossipMsg a]
 handlerPrecommitsTimeoutMsg cfg st = do
   bchH <- queryRO blockchainHeight
@@ -224,7 +224,7 @@ handlerPrecommitsTimeoutMsg cfg st = do
 
 
 handlerBlocksTimeoutMsg
-  :: (MonadIO m, MonadReadDB m a)
+  :: (MonadIO m, MonadReadDB a m)
   => Config a -> CurrentState a -> m [GossipMsg a]
 handlerBlocksTimeoutMsg cfg st = do
   bchH <- queryRO blockchainHeight
