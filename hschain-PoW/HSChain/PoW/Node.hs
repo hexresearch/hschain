@@ -38,6 +38,10 @@ import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Cont
 
+import Data.IORef
+
+import qualified Data.Map.Strict as Map
+
 import Data.Word
 
 import Data.Yaml.Config
@@ -55,8 +59,6 @@ import qualified HSChain.POW as POWFunc
 import HSChain.Network.TCP
 import HSChain.Network.Types
 import HSChain.Types.Merkle.Types
-import HSChain.Examples.Simple
-import HSChain.Examples.Util
 import HSChain.Control.Channels
 import HSChain.Control.Util
 import HSChain.Control.Class
@@ -79,8 +81,8 @@ data Cfg = Cfg
 -- Requires places to load config from, a flag indicating that
 -- we are mining and genesis block.
 runNode :: forall b . (BlockData b)
-        => [String] -> Bool -> Block b ->IO ()
-runNode pathsToConfig miningNode genesisBlock = do
+        => [String] -> Bool -> Block b -> (BH b -> IO (Block b)) -> IO ()
+runNode pathsToConfig miningNode genesisBlock fetchBlock = do
   Cfg{..} <- loadYamlSettings pathsToConfig [] requireEnv
   --
   let netcfg = NetCfg { nKnownPeers     = 3
@@ -88,7 +90,7 @@ runNode pathsToConfig miningNode genesisBlock = do
                       }
   let net = newNetworkTcp cfgPort
   db <- inMemoryDB @_ @_ @b
-  let s0 = consensusGenesis genesisBlock (viewKV (blockID genesisBlock))
+  let s0 = consensusGenesis genesisBlock (inMemoryView (blockID genesisBlock))
   withLogEnv "" "" (map makeScribe cfgLog) $ \logEnv ->
     runLoggerT logEnv $ evalContT $ do
       pow' <- startNode netcfg net cfgPeers db s0
@@ -113,7 +115,8 @@ runNode pathsToConfig miningNode genesisBlock = do
               case cfgMaxH of
                 Just h -> liftIO $ when (bhHeight bh > h) $ forever $ threadDelay maxBound
                 Nothing -> return ()
-              maybeB <- liftIO $ mineBlock now cfgStr bh
+              toMine <- liftIO $ fetchBlock bh
+              maybeB <- fmap fst $ liftIO $ adjustPuzzle toMine
               case maybeB of
                 Just b -> sendNewBlock pow b >>= \case
                                                 Right () -> return ()
@@ -125,8 +128,8 @@ runNode pathsToConfig miningNode genesisBlock = do
               liftIO $ print ( blockHeight b
                              , blockTime b
                              , bhBID bh
-                             , kvTarget $ blockData b
-                             , merkleValue $ kvData $ blockData b
+                             , blockTargetThreshold b
+                             , blockData b
                              )
               liftIO $ mapM_ killThread tid
               loop =<< if miningNode then Just <$> fork doMine else return Nothing
@@ -134,3 +137,33 @@ runNode pathsToConfig miningNode genesisBlock = do
         loop =<< if miningNode then Just <$> fork doMine else return Nothing
 
 
+-- | Simple in-memory implementation of DB
+inMemoryView
+  :: (Monad m, BlockData b, Show (BlockID b))
+  => (Block b -> s -> Maybe s)  -- ^ Step function 
+  -> s                          -- ^ Initial state
+  -> BlockID b
+  -> StateView m b
+inMemoryView step = make (error "No revinding past genesis")
+  where
+    make previous s bid = view
+      where
+        view = StateView
+          { stateBID    = bid
+          , applyBlock  = \b -> case step b s of
+              Nothing -> return Nothing
+              Just s' -> return $ Just $  make view s' (blockID b)
+          , revertBlock = return previous
+          , flushState  = return ()
+          }
+
+inMemoryDB
+  :: (MonadIO m, MonadIO n, BlockData b)
+  => m (BlockDB n b)
+inMemoryDB = do
+  var <- liftIO $ newIORef Map.empty
+  return BlockDB
+    { storeBlock     = \b   -> liftIO $ modifyIORef' var $ Map.insert (blockID b) b
+    , retrieveBlock  = \bid -> liftIO $ Map.lookup bid <$> readIORef var
+    , retrieveHeader = \bid -> liftIO $ fmap toHeader . Map.lookup bid <$> readIORef var
+    }
