@@ -12,8 +12,8 @@ import HSChain.Types.Merkle.Types
 import HSChain.Examples.Simple
 import HSChain.PoW.Node (inMemoryView, inMemoryDB)
 
-kvStep :: KVConfig cfg => Block (KV cfg) -> Map.Map Int String -> Maybe (Map.Map Int String)
-kvStep b m
+kvViewStep :: KVConfig cfg => Block (KV cfg) -> Map.Map Int String -> Maybe (Map.Map Int String)
+kvViewStep b m
   | or [ k `Map.member` m | (k, _) <- txs ] = Nothing
   | otherwise                               = Just $ Map.fromList txs <> m
   where

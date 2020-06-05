@@ -23,6 +23,7 @@ import Control.Monad.Trans.Class
 import Control.Monad.Trans.Cont
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as LBS
+import qualified Data.Map.Strict as Map
 import Data.Word
 import Data.Yaml.Config       (loadYamlSettings, requireEnv)
 import Lens.Micro
@@ -41,6 +42,7 @@ import HSChain.Network.Types
 import HSChain.Types.Merkle.Types
 import HSChain.Examples.Simple
 import HSChain.Examples.Util
+import HSChain.PoW.Node (inMemoryDB, inMemoryView, runNode)
 import HSChain.Control.Class
 import HSChain.Control.Channels
 import HSChain.Control.Util
@@ -148,9 +150,10 @@ genesisNewPoW = GBlock
 
 
 mineBlock :: (Default (Nonce cfg), KVConfig cfg)
-          => Time -> String -> BH (KV cfg) -> IO (Maybe (Block (KV cfg)))
-mineBlock now val bh = do
-  mine $ GBlock
+          => String -> BH (KV cfg) -> IO (Block (KV cfg))
+mineBlock val bh = do
+  now <- getCurrentTime
+  return $ GBlock
     { blockHeight = succ $ bhHeight bh
     , blockTime   = now
     , prevBlock   = Just $! bhBID bh
@@ -171,6 +174,7 @@ data Opts = Opts
   , optPrintBCH   :: Bool
   , optMine       :: Bool
   , optNewPoW     :: Bool
+  , optNodeName   :: String
   }
 
 parser :: Parser Opts
@@ -192,22 +196,18 @@ parser = do
     (  long "new-pow"
     <> help "use new PoW function instead of SHA256"
     )
+  optNodeName <- strOption
+    (  metavar "NODE"
+    <> long "node-name"
+    <> help "node name used in marking mined blocks"
+    )
   return Opts{..}
-
-data Cfg = Cfg
-  { cfgPort  :: Word16
-  , cfgPeers :: [NetAddr]
-  , cfgLog   :: [ScribeSpec]
-  , cfgStr   :: String
-  , cfgMaxH  :: Maybe Height
-  }
-  deriving stock    (Show,Generic)
-  deriving anyclass (JSON.FromJSON)
 
 runNodeAnyPoW :: forall cfg . (Show (Nonce cfg), Default (Nonce cfg), KVConfig cfg)
               => Opts -> Block (KV cfg) ->IO ()
 runNodeAnyPoW Opts{..} genesisBlock = do
-  Cfg{..} <- loadYamlSettings (reverse cmdConfigPath) [] requireEnv
+  runNode cmdConfigPath optMine genesisBlock kvViewStep Map.empty (mineBlock optNodeName)
+{-
   --
   let netcfg = NetCfg { nKnownPeers     = 3
                       , nConnectedPeers = 3
@@ -258,7 +258,7 @@ runNodeAnyPoW Opts{..} genesisBlock = do
               loop =<< if optMine then Just <$> fork doMine else return Nothing
         --
         loop =<< if optMine then Just <$> fork doMine else return Nothing
-
+-}
 
 
 main :: IO ()
