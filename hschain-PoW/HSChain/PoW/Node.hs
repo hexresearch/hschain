@@ -65,7 +65,6 @@ data Cfg = Cfg
   { cfgPort  :: Word16
   , cfgPeers :: [NetAddr]
   , cfgLog   :: [ScribeSpec]
-  , cfgStr   :: String
   , cfgMaxH  :: Maybe Height
   }
   deriving stock    (Show, Generic)
@@ -99,7 +98,7 @@ runNode pathsToConfig miningNode genesisBlock step startState fetchBlock = do
       let printBCH = do
             c <- atomicallyIO $ currentConsensus pow
             let loop n bh@BH{bhBID = bid} = when (n > (0 :: Int)) $ do
-                  liftIO $ print (cfgStr, bid, bhHeight bh)
+                  liftIO $ print (bid, bhHeight bh)
                   liftIO . print =<< retrieveBlock db bid
                   maybe (return ()) (loop (n-1)) $ bhPrevious bh
             loop 100 (c ^. bestHead . _1)

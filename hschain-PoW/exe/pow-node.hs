@@ -207,59 +207,6 @@ runNodeAnyPoW :: forall cfg . (Show (Nonce cfg), Default (Nonce cfg), KVConfig c
               => Opts -> Block (KV cfg) ->IO ()
 runNodeAnyPoW Opts{..} genesisBlock = do
   runNode cmdConfigPath optMine genesisBlock kvViewStep Map.empty (mineBlock optNodeName)
-{-
-  --
-  let netcfg = NetCfg { nKnownPeers     = 3
-                      , nConnectedPeers = 3
-                      }
-  let net = newNetworkTcp cfgPort
-  db <- inMemoryDB @_ @_ @(KV cfg)
-  let s0 = consensusGenesis genesisBlock (viewKV (blockID genesisBlock))
-  withLogEnv "" "" (map makeScribe cfgLog) $ \logEnv ->
-    runLoggerT logEnv $ evalContT $ do
-      pow' <- startNode netcfg net cfgPeers db s0
-      let pow = pow'
-                { sendNewBlock = \b -> do
-                                 liftIO $ putStrLn $ "mined: "++show b
-                                 (sendNewBlock pow') b
-                }
-      let printBCH = when optPrintBCH $ do
-            c <- atomicallyIO $ currentConsensus pow
-            let loop bh@BH{bhBID = bid} = do
-                  liftIO $ print (cfgStr, bid, bhHeight bh)
-                  liftIO . print =<< retrieveBlock db bid
-                  maybe (return ()) loop $ bhPrevious bh
-            loop (c ^. bestHead . _1)
-      lift $ flip onException printBCH $ do
-        upd <- atomicallyIO $ chainUpdate pow
-        let doMine = do
-              c   <- atomicallyIO $ currentConsensus pow
-              now <- getCurrentTime
-              let bh = c ^. bestHead . _1
-              case cfgMaxH of
-                Just h -> liftIO $ when (bhHeight bh > h) $ forever $ threadDelay maxBound
-                Nothing -> return ()
-              maybeB <- liftIO $ mineBlock now cfgStr bh
-              case maybeB of
-                Just b -> sendNewBlock pow b >>= \case
-                                                Right () -> return ()
-                                                Left  e  -> error $ show e
-                Nothing -> doMine
-        let loop tid = do
-              (bh,_) <- awaitIO upd
-              Just b <- retrieveBlock db (bhBID bh)
-              liftIO $ print ( blockHeight b
-                             , blockTime b
-                             , bhBID bh
-                             , kvTarget $ blockData b
-                             , merkleValue $ kvData $ blockData b
-                             )
-              liftIO $ mapM_ killThread tid
-              loop =<< if optMine then Just <$> fork doMine else return Nothing
-        --
-        loop =<< if optMine then Just <$> fork doMine else return Nothing
--}
-
 
 main :: IO ()
 main = do
