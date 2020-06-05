@@ -97,7 +97,7 @@ data NodeConfig = NodeConfig
   , nodeIdx       :: Int
   }
   deriving (Generic)
-  deriving FromJSON via SnakeCase (DropSmart (Config NodeConfig))
+  deriving FromJSON via TopConfig (SnakeCase (DropSmart (Config NodeConfig)))
 
 main :: IO ()
 main = do
