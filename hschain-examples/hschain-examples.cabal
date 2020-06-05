@@ -19,6 +19,7 @@ Library
   Build-Depends:       base              >=4.9 && <5
                      , hschain-crypto
                      , hschain-control
+                     , hschain-config
                      , hschain-types
                      , hschain-merkle
                      , hschain
@@ -28,6 +29,7 @@ Library
                      , aeson
                      , bytestring           >=0.10
                      , containers           >=0.5.9
+                     , data-default-class
                      , deepseq              >=1.4
                      , lens
                      , mmorph
@@ -60,10 +62,10 @@ Executable hschain-coin-node
                      , hschain-types
                      , hschain-crypto
                      , hschain-control
+                     , hschain-config
                      , hschain-examples
                      , aeson
                      , bytestring           >=0.10
-                     , data-default-class
                      , exceptions
                      , filepath
                      , katip                ==0.7.0.0
@@ -91,6 +93,7 @@ Executable hschain-dioxane-node
                      , hschain-merkle
                      , hschain-types
                      , hschain-control
+                     , hschain-config
                      , hschain-crypto
                      , hschain-examples
                      , aeson
@@ -156,6 +159,7 @@ Test-suite hschain-tests
                      , async             >=2.2.1
                      , bytestring        >=0.10
                      , containers
+                     , data-default-class
                      , deepseq           >=1.4
                      , exceptions
                      , free

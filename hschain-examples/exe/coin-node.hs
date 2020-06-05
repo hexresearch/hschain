@@ -2,6 +2,7 @@
 {-# LANGUAGE BangPatterns               #-}
 {-# LANGUAGE DataKinds                  #-}
 {-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE DerivingVia                #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase                 #-}
 {-# LANGUAGE OverloadedStrings          #-}
@@ -35,7 +36,7 @@ import HSChain.Mock.Coin
 import HSChain.Mock.Types
 import HSChain.Run
 
-import HSChain.Control
+import HSChain.Config (SnakeCase(..),Config(..),DropSmart(..),TopConfig(..))
 import HSChain.Control.Class
 import HSChain.Store
 import HSChain.Monitoring
@@ -71,14 +72,18 @@ data Opts = Opts
   , optMaxH       :: Maybe Height
   }
 
-data NodeCfg = NodeCfg
-  { validatorKeys :: [PublicKey (Alg BData)]
-  , nodePort      :: Word16
-  , nodeSeeds     :: [NetAddr]
-  , nodeMaxH      :: Maybe Height
+data NodeConfig = NodeConfig
+  { nodeSpec          :: NodeSpec BData
+  , nodeCoin          :: CoinSpecification
+  , nodeDelays        :: Configuration Example
+  , nodeValidatorKeys :: [PublicKey (Alg BData)]
+  , nodeMaxH          :: Maybe Height
+  , nodePort          :: Word16
+  , nodeSeeds         :: [NetAddr]
   }
-  deriving (Show,Generic)
-instance FromJSON NodeCfg
+  deriving (Generic)
+  deriving FromJSON via TopConfig (SnakeCase (DropSmart (Config NodeConfig)))
+    
 
 main :: IO ()
 main = do
@@ -92,27 +97,26 @@ main = do
   -- Read config.
   --
   -- NOTE: later files take precedence
-  coin :*: nspec@NodeSpec{} :*: NodeCfg{..} :*: (cfg :: Configuration Example)
-    <- loadYamlSettings (reverse cmdConfigPath) [] requireEnv
+  NodeConfig{..} <- loadYamlSettings (reverse cmdConfigPath) [] requireEnv
   startWebMonitoring $ fromIntegral nodePort + 1000
   -- Start node
   evalContT $ do
-    let (mtxGen, genesis) = mintMockCoin [ Validator v 1 | v <- validatorKeys] coin
+    let (mtxGen, genesis) = mintMockCoin [ Validator v 1 | v <- nodeValidatorKeys] nodeCoin
     -- Create network
     let bnet     = BlockchainNet { bchNetwork      = newNetworkTcp nodePort
                                  , bchInitialPeers = nodeSeeds
                                  }
     --- Allocate resources
-    (conn, logenv) <- allocNode nspec
+    (conn, logenv) <- allocNode nodeSpec
     gauges         <- standardMonitoring
     let run = runMonitorT gauges . runLoggerT logenv . runDBT conn
     -- Actually run node
     lift $ run $ do
       (RunningNode{..},acts) <- interpretSpec
         genesis
-        cfg
+        nodeDelays
         bnet
-        nspec
+        nodeSpec
         (maybe mempty callbackAbortAtH (optMaxH <|> nodeMaxH))
       txGen <- case mtxGen of
         Nothing  -> return []

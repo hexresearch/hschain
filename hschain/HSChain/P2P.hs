@@ -19,8 +19,8 @@ module HSChain.P2P (
   ) where
 
 import Control.Concurrent.STM
-
 import Control.Monad.Catch    (MonadMask)
+import Data.Coerce
 import Katip                  (sl)
 
 import HSChain.Blockchain.Internal.Engine.Types
@@ -45,13 +45,13 @@ import HSChain.P2P.Internal
 startPeerDispatcher
   :: ( MonadMask m, MonadFork m, MonadLogger m, MonadReadDB m a, MonadTMMonitoring m
      , BlockData a)
-  => NetworkCfg
+  => NetworkCfg app
   -> NetworkAPI               -- ^ API for networking
   -> [NetAddr]                -- ^ Set of initial addresses to connect
   -> AppChans a               -- ^ Channels for communication with main application
   -> Mempool m (Alg a) (TX a)
   -> m ()
-startPeerDispatcher p2pConfig net addrs AppChans{..} mempool = logOnException $ do
+startPeerDispatcher p2pCfg net addrs AppChans{..} mempool = logOnException $ do
   logger InfoS "Starting peer dispatcher" $ sl "seed" addrs
   peerRegistry <- newPeerRegistry
   peerNonceSet <- newNonceSet
@@ -60,12 +60,13 @@ startPeerDispatcher p2pConfig net addrs AppChans{..} mempool = logOnException $ 
     let peerCh = PeerChans { peerChanTx      = appChanTx
                            , peerChanRx      = writeTBQueue appChanRx
                            , consensusState  = readTVar appTMState
+                           , p2pConfig       = coerce p2pCfg
                            , ..
                            }
     -- Accepting connection is managed by separate linked thread and
     -- this thread manages initiating connections
     runConcurrently
-      [ acceptLoop p2pConfig net peerCh mempool
-      , pexFSM     p2pConfig net peerCh mempool
+      [ acceptLoop (coerce p2pCfg) net peerCh mempool
+      , pexFSM     (coerce p2pCfg) net peerCh mempool
       , pexMonitoring peerRegistry
       ]

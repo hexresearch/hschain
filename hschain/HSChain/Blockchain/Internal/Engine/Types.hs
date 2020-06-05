@@ -1,6 +1,7 @@
 {-# LANGUAGE DataKinds                  #-}
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE DerivingStrategies         #-}
+{-# LANGUAGE DerivingVia                #-}
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase                 #-}
@@ -8,6 +9,7 @@
 {-# LANGUAGE RankNTypes                 #-}
 {-# LANGUAGE RecordWildCards            #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
+{-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE TypeApplications           #-}
 {-# LANGUAGE UndecidableInstances       #-}
 -- |
@@ -17,7 +19,6 @@ module HSChain.Blockchain.Internal.Engine.Types (
     Configuration(..)
   , ConsensusCfg(..)
   , NetworkCfg(..)
-  , DefaultConfig(..)
     -- * Application state
   , AppLogic
   , AppStore(..)
@@ -38,9 +39,11 @@ import Control.Concurrent.STM
 import Control.Monad.Trans.Except
 import Data.Aeson
 import Data.Coerce
+import Data.Default.Class
 import Data.Bits              (shiftL)
 import Data.Monoid            (Any(..))
 import Data.Maybe             (fromMaybe)
+import Data.Typeable
 import qualified Data.ByteString as BS
 import Numeric.Natural
 import GHC.Generics           (Generic)
@@ -51,7 +54,7 @@ import HSChain.Crypto.SHA (SHA512)
 import HSChain.Store
 import HSChain.Types.Blockchain
 import HSChain.Types.Validators
-
+import HSChain.Config (Config(..), DropSmart(..), SnakeCase(..), WithDefault(..))
 
 ----------------------------------------------------------------
 -- Configuration
@@ -72,16 +75,23 @@ import HSChain.Types.Validators
 --   Will set field @gossipDelayVotes@ to 10 ms while keeping all
 --   other fields as they're defined in
 data Configuration app = Configuration
-  { cfgConsensus :: !ConsensusCfg -- ^ Configuration for consensus. JSON key is "consensus\"
-  , cfgNetwork   :: !NetworkCfg   -- ^ Configuration for network. JSON key is \"network\"
+  { cfgConsensus :: !(ConsensusCfg app)
+    -- ^ Configuration for consensus. JSON key is "consensus\"
+  , cfgNetwork   :: !(NetworkCfg app)
+    -- ^ Configuration for network. JSON key is \"network\"
   }
-  deriving (Show,Generic)
+  deriving (Show, Generic)
+
+instance ( Default (ConsensusCfg app)
+         , Default (NetworkCfg   app)
+         ) => Default (Configuration app) where
+  def = Configuration def def
 
 -- | Timeout and timeouts increments for consensus engine. On each
 --    successive round timeout increased by increment. Note that they
 --    should be same for all validating nodes in the network. Otherwise
 --    network risks divergence. All timeouts are measured in ms.
-data ConsensusCfg = ConsensusCfg
+data ConsensusCfg app = ConsensusCfg
   { timeoutNewHeight  :: !Int
     -- ^ Timeout for NEW HEIGHT phase
   , timeoutProposal   :: !(Int,Int)
@@ -101,7 +111,7 @@ data ConsensusCfg = ConsensusCfg
   deriving (Show,Generic)
 
 -- | Configuration for network parameters. All delays are given in ms
-data NetworkCfg = NetworkCfg
+data NetworkCfg app = NetworkCfg
   { gossipDelayVotes       :: !Int -- ^ Delay between attempts to gossip votes and proposals
   , gossipDelayBlocks      :: !Int -- ^ Delay between attempts to gossip blocks
   , gossipDelayMempool     :: !Int -- ^ Delay between attempts to gossip transaction in mempool
@@ -116,68 +126,22 @@ data NetworkCfg = NetworkCfg
   }
   deriving (Show,Generic)
 
--- | Default configuration for blockchain.
-class DefaultConfig app where
-  defCfg :: Configuration app
 
-instance DefaultConfig app => FromJSON (Configuration app) where
-  parseJSON = withObject "Configuration" $ \obj -> do
-    cons <- optional (obj .: "consensus") >>= \case
-      Nothing -> pure   (cfgConsensus cfg)
-      Just o  -> parseC (cfgConsensus cfg) o
-    net  <- optional (obj .: "network") >>= \case
-      Nothing -> pure   (cfgNetwork cfg)
-      Just o  -> parseN (cfgNetwork cfg) o
-    return Configuration { cfgConsensus = cons
-                         , cfgNetwork   = net
-                         }
-    where
-      cfg = defCfg :: Configuration app
-      --
-      parseC ConsensusCfg{..} = withObject "Configuration.ConsesusCfg" $ \o -> do
-        tH  <- field "timeoutNewHeight"  timeoutNewHeight  o
-        tP  <- field "timeoutProposal"   timeoutProposal   o
-        tPV <- field "timeoutPrevote"    timeoutPrevote    o
-        tPC <- field "timeoutPrecommit"  timeoutPrecommit  o
-        tE  <- field "timeoutEmptyBlock" timeoutEmptyBlock o
-        qs  <- field "incomingQueueSize" incomingQueueSize o
-        return ConsensusCfg{ timeoutNewHeight  = tH
-                           , timeoutProposal   = tP
-                           , timeoutPrevote    = tPV
-                           , timeoutPrecommit  = tPC
-                           , timeoutEmptyBlock = tE
-                           , incomingQueueSize = qs
-                           }
-      --
-      parseN NetworkCfg{..} = withObject "Configuration.NetworkCfg" $ \o -> do
-        gV      <- field "gossipDelayVotes"       gossipDelayVotes        o
-        gB      <- field "gossipDelayBlocks"      gossipDelayBlocks       o
-        gM      <- field "gossipDelayMempool"     gossipDelayMempool      o
-        pexMinC <- field "pexMinConnections"      pexMinConnections       o
-        pexMaxC <- field "pexMaxConnections"      pexMaxConnections       o
-        pexMinK <- field "pexMinKnownConnections" pexMinKnownConnections  o
-        pexMaxK <- field "pexMaxKnownConnections" pexMaxKnownConnections  o
-        pexD    <- field "pexConnectionDelay"     pexConnectionDelay      o
-        pexAskD <- field "pexAskPeersDelay"       pexAskPeersDelay        o
-        rR      <- field "reconnectionRetries"    reconnectionRetries     o
-        rB      <- field "reconnectionDelay"      reconnectionDelay       o
-        return NetworkCfg { gossipDelayVotes       = gV
-                          , gossipDelayBlocks      = gB
-                          , gossipDelayMempool     = gM
-                          , pexMinConnections      = pexMinC
-                          , pexMaxConnections      = pexMaxC
-                          , pexMinKnownConnections = pexMinK
-                          , pexMaxKnownConnections = pexMaxK
-                          , pexConnectionDelay     = pexD
-                          , pexAskPeersDelay       = pexAskD
-                          , reconnectionRetries    = rR
-                          , reconnectionDelay      = rB
-                          }
-      --
-      field name def o = optional (o .: name) >>= \case
-        Nothing -> pure def
-        Just v  -> parseJSON v
+deriving via WithDefault (SnakeCase (DropSmart (Config (Configuration app))))
+  instance ( Default (ConsensusCfg app)
+           , Default (NetworkCfg app)
+           , Typeable app
+           ) => FromJSON (Configuration app)
 
+deriving via WithDefault (SnakeCase (Config (NetworkCfg app)))
+  instance ( Default (NetworkCfg app)
+           , Typeable app
+           ) => FromJSON (NetworkCfg app)
+
+deriving via WithDefault (SnakeCase (Config (ConsensusCfg app)))
+  instance ( Default (ConsensusCfg app)
+           , Typeable app
+           ) => FromJSON (ConsensusCfg app)
 
 
 

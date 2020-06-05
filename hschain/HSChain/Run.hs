@@ -16,7 +16,6 @@ module HSChain.Run (
   , NodeDescription(..)
   , BlockchainNet(..)
     -- ** Configuration and timeouts
-  , DefaultConfig(..)
   , Configuration(..)
   , ConsensusCfg(..)
   , NetworkCfg(..)

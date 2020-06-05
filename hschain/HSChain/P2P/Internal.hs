@@ -61,14 +61,14 @@ import qualified HSChain.Network.IpAddresses as Ip
 -- Connect/accept
 --
 
-retryPolicy :: NetworkCfg -> RetryPolicy
+retryPolicy :: NetworkCfg app -> RetryPolicy
 retryPolicy NetworkCfg{..} = exponentialBackoff (reconnectionDelay * 1000)
                           <> limitRetries reconnectionRetries
 -- Thread which accepts connections from remote nodes
 acceptLoop
   :: ( MonadFork m, MonadMask m, MonadLogger m, MonadReadDB m a, MonadTMMonitoring m
      , BlockData a)
-  => NetworkCfg
+  => NetworkCfg app
   -> NetworkAPI
   -> PeerChans a
   -> Mempool m (Alg a) (TX a)
@@ -210,7 +210,7 @@ handlePexMessage PeerChans{..} gossipCh = \case
 -- | Very simple generator of mempool gossip
 mempoolThread
   :: (MonadLogger m, MonadCatch m, MonadIO m)
-  => NetworkCfg
+  => NetworkCfg app
   -> TBQueue (GossipMsg a)
   -> MempoolCursor m alg (TX a)
   -> m b
@@ -227,7 +227,9 @@ mempoolThread NetworkCfg{..} gossipCh MempoolCursor{..} =
 --         likely require turning this function into state machine and
 pexCapacityThread
   :: (MonadIO m, MonadLogger m)
-  => PeerRegistry -> NetworkCfg -> TBQueue (GossipMsg a) -> m b
+  => PeerRegistry
+  -> NetworkCfg app
+  -> TBQueue (GossipMsg a) -> m b
 pexCapacityThread peerRegistry NetworkCfg{..} gossipCh = do
   -- Ask peer immediately for peers if we don't have enough
   atomicallyIO nonEnough
@@ -295,7 +297,7 @@ countGossip dir = \case
 pexFSM
   :: (MonadLogger m, MonadMask m, MonadTMMonitoring m
      , MonadFork m, MonadReadDB m a, BlockData a)
-  => NetworkCfg
+  => NetworkCfg app
   -> NetworkAPI
   -> PeerChans a
   -> Mempool m (Alg a) (TX a)

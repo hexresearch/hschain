@@ -320,12 +320,12 @@ retrieveLocalCommit h =
 --
 --   Must return validator set for every @0 < h <= blockchainHeight + 1@
 retrieveValidatorSet :: (Crypto (Alg a), MonadQueryRO m a) => Height -> m (Maybe (ValidatorSet (Alg a)))
-retrieveValidatorSet h = liftQueryRO (basicCacheValidatorSet query h)
+retrieveValidatorSet = liftQueryRO . basicCacheValidatorSet query
   where
-    query h' = singleQ "SELECT blob \
+    query h = singleQ "SELECT blob \
           \  FROM thm_validators \
           \  JOIN thm_cas ON valref = id \
-          \ WHERE height = ?" (Only h')
+          \ WHERE height = ?" (Only h)
 
 hasValidatorSet :: (MonadQueryRO m a) => Height -> m Bool
 hasValidatorSet h = do

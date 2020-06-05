@@ -63,7 +63,7 @@ genesis :: Genesis BData
 (Just txGen,genesis) = mintMockCoin
   [ Validator k 1 | k <- take 4 pubKeys ]
   CoinSpecification
-    { coinAridrop        = 1000
+    { coinAirdrop        = 1000
     , coinWallets        = 1000
     , coinWalletsSeed    = 1337
     , coinGeneratorDelay = Just 0

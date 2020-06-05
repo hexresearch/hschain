@@ -12,6 +12,7 @@ import Control.Monad
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Cont
 import Control.Monad.IO.Class
+import Data.Default.Class
 import Data.Foldable    (toList)
 
 import HSChain.Blockchain.Internal.Engine.Types
@@ -55,7 +56,7 @@ runKeyVal  = evalContT $ do
                     ]
       , netTopology = All2All
       , netNetCfg   =
-        let c = defCfg
+        let c = def
         in  c { cfgConsensus = ConsensusCfg
                 { timeoutNewHeight  = 10
                 , timeoutProposal   = (50,50)
@@ -100,12 +101,12 @@ runCoin = evalContT $ do
       liftIO $ assertBool ("Validators mismatch!" <> show h) (allEqual vals)
     -- Check that amount of coins didn't change
     forM_ rnodes $ \n -> liftIO $ do
-      let totalCoins = coinAridrop coin * fromIntegral (coinWallets coin)
+      let totalCoins = coinAirdrop coin * fromIntegral (coinWallets coin)
       (_, merkleValue -> Coin.CoinState utxos _) <- bchCurrentState $ Coin.rnodeState n
       assertEqual "Coins must be preserved" totalCoins (sum [ c | Coin.Unspent _ c <- toList utxos])
   where
     coin = CoinSpecification
-      { coinAridrop        = 1000
+      { coinAirdrop        = 1000
       , coinWallets        = 1000
       , coinWalletsSeed    = 1337
       , coinGeneratorDelay = Just 100
@@ -125,7 +126,7 @@ runCoin = evalContT $ do
                     ]
       , netTopology = All2All
       , netNetCfg =
-        let c = defCfg
+        let c = def
         in  c { cfgConsensus = ConsensusCfg
                 { timeoutNewHeight  = 10
                 , timeoutProposal   = (50,250)

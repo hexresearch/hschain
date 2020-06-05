@@ -1,0 +1,4 @@
+{
+  "cfgPort"  : 123,
+  "cfgPathDB": "/tmp"
+}

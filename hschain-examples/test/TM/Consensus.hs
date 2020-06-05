@@ -20,6 +20,7 @@ import Control.Monad
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Free
+import Data.Default.Class
 import Data.IORef
 import Data.Int
 import Data.Maybe
@@ -548,7 +549,7 @@ startConsensus k = do
              keyValLogic appStore mempty chans
          )
   where
-    cfg = cfgConsensus (defCfg :: Configuration FastTest)
+    cfg = cfgConsensus (def :: Configuration FastTest)
 
 proposerChoice :: Crypto alg => ValidatorSet alg -> Height -> Round -> ValidatorIdx alg
 proposerChoice = randomProposerSHA512

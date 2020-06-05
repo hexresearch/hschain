@@ -57,7 +57,7 @@ import Katip (sl)
 --
 ----------------------------------------------------------------
 
-newAppChans :: (MonadIO m) => ConsensusCfg -> m (AppChans a)
+newAppChans :: (MonadIO m) => ConsensusCfg app -> m (AppChans a)
 newAppChans ConsensusCfg{incomingQueueSize = sz} = do
   appChanRx         <- liftIO $ newTBQueueIO sz
   appChanTx         <- liftIO   newBroadcastTChanIO
@@ -147,7 +147,7 @@ runApplication
      , MonadLogger m
      , MonadTMMonitoring m
      , BlockData a, Eq a, Show a)
-  => ConsensusCfg
+  => ConsensusCfg app
      -- ^ Configuration
   -> Maybe (PrivValidator (Alg a))
      -- ^ Private key of validator
@@ -177,7 +177,7 @@ decideNewBlock
      , MonadLogger m
      , MonadTMMonitoring m
      , Crypto (Alg a), BlockData a)
-  => ConsensusCfg
+  => ConsensusCfg app
   -> Maybe (PrivValidator (Alg a))
   -> AppLogic     m a
   -> AppStore     m a
@@ -349,7 +349,7 @@ handleEngineMessage
   :: ( MonadIO m, MonadThrow m, MonadTMMonitoring m, MonadDB m a, MonadLogger m
      , Crypto (Alg a))
   => HeightParameters n a
-  -> ConsensusCfg
+  -> ConsensusCfg app
   -> AppChans a
   -> TQueue (MessageRx 'Unverified a)
   -> Consumer (EngineMessage a) m r

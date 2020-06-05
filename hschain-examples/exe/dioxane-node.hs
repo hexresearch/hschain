@@ -2,6 +2,7 @@
 {-# LANGUAGE BangPatterns               #-}
 {-# LANGUAGE DataKinds                  #-}
 {-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE DerivingVia                #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase                 #-}
 {-# LANGUAGE OverloadedStrings          #-}
@@ -33,7 +34,7 @@ import qualified Network.Wai.Handler.Warp as Warp
 import GHC.Generics (Generic)
 
 import HSChain.Blockchain.Internal.Engine.Types
-import HSChain.Control
+import HSChain.Config
 import HSChain.Control.Class
 import HSChain.Crypto         (publicKey)
 import HSChain.Logger
@@ -87,14 +88,16 @@ data Opts = Opts
   , optMaxH       :: Maybe Height
   }
 
-data NodeCfg = NodeCfg
-  { nodePort      :: Word16
+data NodeConfig = NodeConfig
+  { nodeSpec      :: NodeSpec (BData DioTag)
+  , nodeDelays    :: Configuration Example
+  , nodePort      :: Word16
   , nodeSeeds     :: [NetAddr]
   , nodeMaxH      :: Maybe Height
   , nodeIdx       :: Int
   }
-  deriving (Show,Generic)
-instance FromJSON NodeCfg
+  deriving (Generic)
+  deriving FromJSON via TopConfig (SnakeCase (DropSmart (Config NodeConfig)))
 
 main :: IO ()
 main = do
@@ -108,8 +111,7 @@ main = do
   -- Read config.
   --
   -- NOTE: later files take precedence
-  nspec@NodeSpec{} :*: NodeCfg{..} :*: (cfg :: Configuration Example)
-    <- loadYamlSettings (reverse cmdConfigPath) [] requireEnv
+  NodeConfig{..} <- loadYamlSettings (reverse cmdConfigPath) [] requireEnv
   startWebMonitoring $ fromIntegral nodePort + 1000
   -- Start node
   evalContT $ do
@@ -118,13 +120,13 @@ main = do
                                  , bchInitialPeers = nodeSeeds
                                  }
     --
-    (conn, logenv) <- allocNode nspec
+    (conn, logenv) <- allocNode nodeSpec
     gauges         <- standardMonitoring
     lift $ runMonitorT gauges . runLoggerT logenv . runDBT conn $ do
       (RunningNode{..},acts) <- interpretSpec @_ @DioTag
         nodeIdx
         bnet
-        cfg
+        nodeDelays
         (maybe mempty callbackAbortAtH (optMaxH <|> nodeMaxH))
       logOnException $ runConcurrently acts
 

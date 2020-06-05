@@ -1,8 +1,9 @@
-nodePort: 40002
-nspecPrivKey: "6aNgwvijioMN98GFPbQUrJYNPRvh43mcGTCRi4U5eKCX"
-nspecLogFile:
-  - type      : "ScribeJSON"
-    path      : "logs/node-2.log"
-    severity  : "Debug"
-    verbosity : "V2"
-nspecDbName: "db/db2"
+port: 40002
+spec:
+  priv_key: "6aNgwvijioMN98GFPbQUrJYNPRvh43mcGTCRi4U5eKCX"
+  log_file:
+    - type      : "ScribeJSON"
+      path      : "logs/node-2.log"
+      severity  : "Debug"
+      verbosity : "V2"
+  db_name: "db/db2"

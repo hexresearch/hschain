@@ -24,6 +24,7 @@ import Control.Monad.Trans.Except
 import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Data.Maybe
+import Data.Default.Class
 import qualified Data.Map.Strict as Map
 import Katip (LogEnv)
 import GHC.Generics (Generic)
@@ -156,7 +157,7 @@ testValidatorChange = withTimeOut 20e6 $ do
                       | k <- privK]
       , netTopology = All2All
       , netNetCfg   =
-        let c = defCfg
+        let c = def
         in  c { cfgConsensus = ConsensusCfg
                 { timeoutNewHeight  = 10
                 , timeoutProposal   = (100,500)

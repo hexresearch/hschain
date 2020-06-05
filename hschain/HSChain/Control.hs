@@ -17,14 +17,11 @@ module HSChain.Control (
   , withMVarM
   , modifyMVarM
   , modifyMVarM_
-    -- * Products with lookup by type
-  , (:*:)(..)
   ) where
 
 import Control.Concurrent.MVar
 import Control.Monad
 import Control.Monad.IO.Class
-import qualified Data.Aeson                       as JSON
 import Control.Monad.Catch (MonadMask, mask, onException)
 
 
@@ -54,24 +51,6 @@ modifyMVarM m action =
     (a',b) <- restore (action a) `onException` liftIO (putMVar m a)
     liftIO $ putMVar m a'
     return b
-
-
-
-----------------------------------------------------------------
--- Anonymous products
-----------------------------------------------------------------
-
--- | Anonymous products. Main feature is lookup of value by its type
-data a :*: b = a :*: b
-  deriving (Show,Eq)
-infixr 5 :*:
-
-instance (JSON.FromJSON a, JSON.FromJSON b) => JSON.FromJSON (a :*: b) where
-  parseJSON = JSON.withObject "Expecting object" $ \o -> do
-    a <- JSON.parseJSON (JSON.Object o)
-    b <- JSON.parseJSON (JSON.Object o)
-    return (a :*: b)
-
 
 iterateM :: (Monad m) => a -> (a -> m a) -> m b
 iterateM x0 f = let loop = f >=> loop in loop x0

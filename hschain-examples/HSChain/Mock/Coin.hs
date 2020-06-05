@@ -154,7 +154,7 @@ mintMockCoin nodes CoinSpecification{..} =
     privK        = take coinWallets $ makePrivKeyStream coinWalletsSeed
     pubK         = publicKey <$> privK
     Right valSet = makeValidatorSet nodes
-    txs          = [ Deposit pk coinAridrop | pk <- pubK ]
+    txs          = [ Deposit pk coinAirdrop | pk <- pubK ]
     -- Generate genesis with correct hash
     state0       = CoinState mempty mempty
     genesis0     = makeGenesis (BData txs) (Hashed $ hash ()) valSet valSet
