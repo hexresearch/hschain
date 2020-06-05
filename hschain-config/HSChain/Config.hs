@@ -23,6 +23,7 @@ module HSChain.Config
   , SnakeCase(..)
   , CaseInsensitive(..)
   , WithDefault(..)
+  , TopConfig(..)
   ) where
 
 import HSChain.Config.Internal.Impl

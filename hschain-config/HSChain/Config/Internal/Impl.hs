@@ -18,6 +18,7 @@
 -- parsed only once.
 module HSChain.Config.Internal.Impl
   ( Config(..)
+  , TopConfig(..)
   , DropSmart(..)
   , manglerDropSmart
   , DropN(..)
@@ -74,6 +75,19 @@ instance (Generic a, GConfig (Rep a)) => FromJSON (Config a) where
 instance (Generic a, GConfig (Rep a)) => FromConfigJSON (Config a) where
   parseConfigJSON m a
     = fmap (Config . to) . parseConfig m (from <$> a)
+
+
+-- | Newtype wrapper for top level config. It does nothing but
+--   prepends newline to error messages.
+newtype TopConfig a = TopConfig a
+  deriving newtype (Generic, Default)
+
+instance (FromConfigJSON a) => FromJSON (TopConfig a) where
+  parseJSON = parseConfigJSON mempty Nothing
+
+instance FromConfigJSON a => FromConfigJSON (TopConfig a) where
+  parseConfigJSON m a = coerceParser . prependFailure "\n" . parseConfigJSON m (coerce a)
+
 
 
 ----------------------------------------------------------------
@@ -257,7 +271,7 @@ instance (Default a, FromConfigJSON a) => FromConfigJSON (WithDefault a) where
   parseConfigJSON m _
     = coerceParser . parseConfigJSON m (Just def)
 
-  
+
 ----------------------------------------------------------------
 -- Helpers
 ----------------------------------------------------------------
