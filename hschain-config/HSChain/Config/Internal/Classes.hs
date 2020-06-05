@@ -74,11 +74,7 @@ class GConfig f where
               -> Parser (f p)
 
 instance (Datatype i, GConfig f) => GConfig (M1 D i f) where
-  parseConfig mangler a v = M1 <$> prependFailure err (parseConfig mangler (coerce a) v)
-    where
-      err = printf "Parsing %s defined in %s\n"
-              (datatypeName p) (moduleName p)
-      p = undefined :: M1 D i f ()
+  parseConfig mangler a v = M1 <$> parseConfig mangler (coerce a) v
 
 instance ( GConfigRec f
          , GFields f         
@@ -130,7 +126,7 @@ instance (GConfigRec f, GConfigRec g) => GConfigRec (f :*: g) where
 class GConfigField f where
   parseRecField :: [String] -> T.Text -> Maybe (f p) -> Maybe Value -> Parser (f p)
 
-instance {-# OVERLAPPABLE #-} FromJSON a => GConfigField (K1 R a) where
+instance {-# OVERLAPPABLE #-} (FromJSON a, Typeable a) => GConfigField (K1 R a) where
   parseRecField fields fld Nothing Nothing
     = (if null fields then id else prependFailure "Records's fields:\n")
     $ flip (foldr prependFailure) fields
@@ -138,17 +134,18 @@ instance {-# OVERLAPPABLE #-} FromJSON a => GConfigField (K1 R a) where
   parseRecField _ _ (Just a) Nothing
     = pure a
   parseRecField _ fld _ (Just v)
-    = prependFailure (" - while parsing field \"" ++ T.unpack fld ++ "\"\n")
+    = prependFailure (errorMsg fld (typeRep (Proxy @a)))
     $ K1 <$> parseJSON v
                                
-instance FromJSON a => GConfigField (K1 R (Maybe a)) where
+instance (FromJSON a, Typeable a) => GConfigField (K1 R (Maybe a)) where
   parseRecField _ _   Nothing  Nothing = return (K1 Nothing)
   parseRecField _ _   (Just a) Nothing = return a
   parseRecField _ fld _        (Just v)
-    = prependFailure (" - while parsing field \"" ++ T.unpack fld ++ "\"\n")
+    = prependFailure (errorMsg fld (typeRep (Proxy @a)))
     $ K1 . Just <$> parseJSON v
 
-
+errorMsg :: T.Text -> TypeRep -> String
+errorMsg fld ty = printf " - field \"%s\" : %s\n" (T.unpack fld) (show ty)
 
 ----------------------------------------------------------------
 -- Generics utils

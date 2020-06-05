@@ -36,7 +36,7 @@ import HSChain.Mock.Coin
 import HSChain.Mock.Types
 import HSChain.Run
 
-import HSChain.Config (SnakeCase(..),Config(..),DropSmart(..))
+import HSChain.Config (SnakeCase(..),Config(..),DropSmart(..),TopConfig(..))
 import HSChain.Control.Class
 import HSChain.Store
 import HSChain.Monitoring
@@ -82,7 +82,7 @@ data NodeConfig = NodeConfig
   , nodeSeeds         :: [NetAddr]
   }
   deriving (Generic)
-  deriving FromJSON via SnakeCase (DropSmart (Config NodeConfig))
+  deriving FromJSON via TopConfig (SnakeCase (DropSmart (Config NodeConfig)))
     
 
 main :: IO ()
