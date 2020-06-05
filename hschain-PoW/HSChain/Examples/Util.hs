@@ -12,12 +12,10 @@ import HSChain.Types.Merkle.Types
 import HSChain.Examples.Simple
 import HSChain.PoW.Node (inMemoryView, inMemoryDB)
 
-viewKV :: (KVConfig cfg, Monad m) => BlockID (KV cfg) -> StateView m (KV cfg)
-viewKV bid = inMemoryView step Map.empty bid
+kvStep :: KVConfig cfg => Block (KV cfg) -> Map.Map Int String -> Maybe (Map.Map Int String)
+kvStep b m
+  | or [ k `Map.member` m | (k, _) <- txs ] = Nothing
+  | otherwise                               = Just $ Map.fromList txs <> m
   where
-    step b m
-      | or [ k `Map.member` m | (k,_) <- txs ] = Nothing
-      | otherwise                              = Just $ Map.fromList txs <> m
-      where
-        txs = merkleValue $ kvData $ blockData b
+    txs = merkleValue $ kvData $ blockData b
 

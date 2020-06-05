@@ -22,20 +22,18 @@
 
 module HSChain.PoW.Node
   ( runNode
+  , inMemoryView
+  , inMemoryDB
   ) where
 
 import qualified Data.Aeson as JSON
 import Codec.Serialise
 
 import Control.Concurrent
-import Control.Concurrent.STM
 
 import Control.Monad
 import Control.Monad.Catch
 import Control.Monad.Cont
-import Control.Monad.Cont.Class
-import Control.Monad.IO.Class
-import Control.Monad.Trans.Class
 import Control.Monad.Trans.Cont
 
 import Data.IORef
@@ -55,15 +53,12 @@ import HSChain.PoW.Logger
 import HSChain.PoW.P2P
 import HSChain.PoW.P2P.Types
 import HSChain.PoW.Types
-import qualified HSChain.POW as POWFunc
 import HSChain.Network.TCP
 import HSChain.Network.Types
 import HSChain.Types.Merkle.Types
 import HSChain.Control.Channels
 import HSChain.Control.Util
 import HSChain.Control.Class
-import HSChain.Crypto
-import HSChain.Crypto.SHA
 
 -- |Node's configuration.
 data Cfg = Cfg
@@ -80,9 +75,11 @@ data Cfg = Cfg
 --
 -- Requires places to load config from, a flag indicating that
 -- we are mining and genesis block.
-runNode :: forall b . (BlockData b)
-        => [String] -> Bool -> Block b -> (BH b -> IO (Block b)) -> IO ()
-runNode pathsToConfig miningNode genesisBlock fetchBlock = do
+runNode :: forall b s . (BlockData b, Mineable b, Show (b Identity), Serialise (b Proxy), Serialise (b Identity))
+        => [String] -> Bool -> Block b
+        -> (Block b -> s -> Maybe s) -> s
+        -> (BH b -> IO (Block b)) -> IO ()
+runNode pathsToConfig miningNode genesisBlock step startState fetchBlock = do
   Cfg{..} <- loadYamlSettings pathsToConfig [] requireEnv
   --
   let netcfg = NetCfg { nKnownPeers     = 3
@@ -90,7 +87,7 @@ runNode pathsToConfig miningNode genesisBlock fetchBlock = do
                       }
   let net = newNetworkTcp cfgPort
   db <- inMemoryDB @_ @_ @b
-  let s0 = consensusGenesis genesisBlock (inMemoryView (blockID genesisBlock))
+  let s0 = consensusGenesis genesisBlock (inMemoryView step startState (blockID genesisBlock))
   withLogEnv "" "" (map makeScribe cfgLog) $ \logEnv ->
     runLoggerT logEnv $ evalContT $ do
       pow' <- startNode netcfg net cfgPeers db s0
@@ -101,7 +98,7 @@ runNode pathsToConfig miningNode genesisBlock fetchBlock = do
                 }
       let printBCH = do
             c <- atomicallyIO $ currentConsensus pow
-            let loop n bh@BH{bhBID = bid} = when (n > 0) $ do
+            let loop n bh@BH{bhBID = bid} = when (n > (0 :: Int)) $ do
                   liftIO $ print (cfgStr, bid, bhHeight bh)
                   liftIO . print =<< retrieveBlock db bid
                   maybe (return ()) (loop (n-1)) $ bhPrevious bh
@@ -110,7 +107,6 @@ runNode pathsToConfig miningNode genesisBlock fetchBlock = do
         upd <- atomicallyIO $ chainUpdate pow
         let doMine = do
               c   <- atomicallyIO $ currentConsensus pow
-              now <- getCurrentTime
               let bh = c ^. bestHead . _1
               case cfgMaxH of
                 Just h -> liftIO $ when (bhHeight bh > h) $ forever $ threadDelay maxBound
