@@ -50,7 +50,7 @@ mineBlock val b = unsafePerformIO $ do
     }
   where
     find blk = do
-      r <- mine blk
+      r <- fst <$> adjustPuzzle blk
       case r of
         Just b' -> return b'
         Nothing -> let Time t = blockTime blk

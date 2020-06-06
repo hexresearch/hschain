@@ -15,6 +15,7 @@ import Test.Tasty.HUnit
 import HSChain.PoW.Types
 import HSChain.PoW.Consensus
 import HSChain.PoW.Logger
+import HSChain.PoW.Node
 import HSChain.Types.Merkle.Types
 import HSChain.Examples.Simple
 import HSChain.Examples.Util
@@ -202,7 +203,7 @@ data Message
 runTest :: [Message] -> IO ()
 runTest msgList = runNoLogsT $ do
   db <- inMemoryDB
-  let s0 = consensusGenesis (head mockchain) (viewKV (blockID genesis))
+  let s0 = consensusGenesis (head mockchain) (inMemoryView kvViewStep Map.empty (blockID genesis))
   runExceptT (loop db s0 msgList) >>= \case
     Left  e  -> error $ unlines e
     Right () -> return ()
