@@ -13,39 +13,22 @@
 -- |
 module Main where
 
-import qualified Data.Aeson as JSON
 import Codec.Serialise
-import Control.Concurrent
-import Control.Monad
-import Control.Monad.Catch
 import Control.Monad.IO.Class
-import Control.Monad.Trans.Class
-import Control.Monad.Trans.Cont
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as LBS
 import qualified Data.Map.Strict as Map
 import Data.Word
-import Data.Yaml.Config       (loadYamlSettings, requireEnv)
-import Lens.Micro
 import Options.Applicative
-import GHC.Generics (Generic)
 import System.IO
 
 import HSChain.PoW.Consensus
-import HSChain.PoW.Logger
-import HSChain.PoW.P2P
-import HSChain.PoW.P2P.Types
 import HSChain.PoW.Types
 import qualified HSChain.POW as POWFunc
-import HSChain.Network.TCP
-import HSChain.Network.Types
 import HSChain.Types.Merkle.Types
 import HSChain.Examples.Simple
 import HSChain.Examples.Util
-import HSChain.PoW.Node (inMemoryDB, inMemoryView, runNode)
-import HSChain.Control.Class
-import HSChain.Control.Channels
-import HSChain.Control.Util
+import HSChain.PoW.Node (runNode)
 import HSChain.Crypto
 import HSChain.Crypto.SHA
 
