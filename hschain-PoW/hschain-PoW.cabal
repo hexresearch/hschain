@@ -23,6 +23,7 @@ Library
                      , hschain-control
                      , hschain-net
                      , hschain-merkle
+                     , hschain-pow-func
                      , aeson
                      , base58-bytestring >=0.1
                      , bytestring        >=0.10
@@ -50,6 +51,7 @@ Library
                      , transformers      >=0.5
                      , vector
                      , unordered-containers >=0.2.5.0
+                     , yaml
   Exposed-modules:
                 HSChain.PoW.Types
                 HSChain.PoW.Consensus
@@ -58,6 +60,7 @@ Library
                 HSChain.PoW.Exceptions
                 HSChain.PoW.Logger
                 HSChain.PoW.Logger.Class
+                HSChain.PoW.Node
                 HSChain.PoW.Store
                 HSChain.PoW.P2P
                 HSChain.PoW.P2P.Types
@@ -85,9 +88,11 @@ Executable hschain-PoW-node
                      , hschain-crypto
                      , hschain-control
                      --
-                     , containers
                      , aeson
+                     , bytestring
+                     , containers
                      , random
+                     , serialise
                      , exceptions
                      , transformers
                      , optparse-applicative

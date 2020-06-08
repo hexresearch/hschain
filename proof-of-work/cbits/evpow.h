@@ -88,8 +88,7 @@ evpow_solve( uint8_t* prefix
 	   , uint8_t* answer
 	   , uint8_t* solution_hash
 	   , int clauses_count
-	   , int complexity_shift
-	   , uint16_t complexity_mantissa
+	   , uint8_t* target // target, encoded as least-significant-byte first.
 	   , int32_t milliseconds_allowance // zero or negative value means exhaustive search within attempts limit
 	   , int32_t attempts_allowed // zero or negative value means exhaustive search within time limit
 	   , int attempts_between_restarts // if not succeed at this number of flips, restart with new assignment.
@@ -107,8 +106,7 @@ evpow_check( uint8_t* prefix
 	   , uint8_t* answer
 	   , uint8_t* hash_to_compare
 	   , int clauses_count
-	   , int complexity_shift
-	   , uint16_t complexity_mantissa
+	   , uint8_t* target
 	   );
 
 #endif /* __ERGVEIN_POW_H */

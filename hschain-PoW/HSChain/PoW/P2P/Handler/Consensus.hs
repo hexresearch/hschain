@@ -62,7 +62,6 @@ threadConsensus db consensus0 ConsensusCh{..} = descendNamespace "cns" $ logOnEx
            sinkIO bcastAnnounce $ AnnBestHead $ asHeader bh'
            sinkIO bcastChainUpdate (bh',st)
 
-
 -- Handler for messages coming from peer.
 consensusMonitor
   :: (MonadLogger m, BlockData b, MonadIO m)

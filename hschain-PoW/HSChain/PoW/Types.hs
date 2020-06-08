@@ -1,12 +1,15 @@
+{-# LANGUAGE AllowAmbiguousTypes        #-}
 {-# LANGUAGE DeriveAnyClass             #-}
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE DerivingStrategies         #-}
 {-# LANGUAGE DerivingVia                #-}
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE PolyKinds                  #-}
 {-# LANGUAGE QuantifiedConstraints      #-}
 {-# LANGUAGE RecordWildCards            #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE TypeFamilies               #-}
 {-# LANGUAGE UndecidableInstances       #-}
@@ -17,6 +20,7 @@ module HSChain.PoW.Types where
 import Codec.Serialise          (Serialise)
 import Control.DeepSeq
 import Control.Monad.IO.Class
+import Data.Bits
 import Data.Monoid              (Sum(..))
 import Data.Time.Clock          (UTCTime)
 import Data.Time.Clock.POSIX    (getPOSIXTime,posixSecondsToUTCTime)
@@ -25,6 +29,7 @@ import Numeric.Natural
 import qualified Data.Aeson      as JSON
 import qualified Codec.Serialise as CBOR
 import GHC.Generics (Generic)
+import Text.Printf (printf)
 
 import HSChain.Crypto
 import HSChain.Crypto.Classes.Hash
@@ -45,6 +50,10 @@ newtype Time = Time Int64
   deriving stock   (Read, Generic, Eq, Ord)
   deriving newtype (NFData, CBOR.Serialise, JSON.ToJSON, JSON.FromJSON, Enum, CryptoHashable)
 
+-- | Useful constant to calculate durations.
+timeSecond :: Time
+timeSecond = Time 1000
+
 instance Show Time where
   show = show . timeToUTC
 
@@ -57,6 +66,10 @@ getCurrentTime = do
 -- | Convert timestamp to UTCTime
 timeToUTC :: Time -> UTCTime
 timeToUTC (Time t) = posixSecondsToUTCTime (realToFrac t / 1000)
+
+-- | Multiply time (usually duration) by some integer constant.
+scaleTime :: Int64 -> Time -> Time
+scaleTime i (Time y) = Time (i * y)
 
 
 ----------------------------------------------------------------
@@ -79,19 +92,106 @@ class ( Show      (BlockID b)
       , JSON.FromJSON (BlockID b)
       , MerkleMap b
       ) => BlockData b where
+
   -- | ID of block. Usually it should be just a hash but we want to
   --   leave some representation leeway for implementations. 
   data BlockID b
+
   -- | Compute block ID out of block using only header.
   blockID :: IsMerkle f => GBlock b f -> BlockID b
+
   -- | Validate header. Chain ending with parent block and current
   --   time are provided as parameters.
   validateHeader :: MonadIO m => BH b -> Time -> Header b -> m Bool
+
   -- | Context free validation of block which doesn't have access to
   --   state of blockchain. It should perform sanity checks.
   validateBlock  :: MonadIO m => Block  b -> m Bool
+
   -- | Amount of work in the block
   blockWork      :: GBlock b f -> Work
+
+  -- | Target value of a block.
+  blockTargetThreshold :: GBlock b f -> Target
+
+  -- | How work difficulty should be adjusted.
+  -- First part of tuple is the block interval, second is seconds
+  -- this interval should have.
+  targetAdjustmentInfo :: BH b -> (Height, Time)
+  targetAdjustmentInfo _ = let n = 1024 in (Height n, scaleTime (120 * fromIntegral n) timeSecond)
+
+  -- |Perform retargeting with rounding.
+  --
+  -- We provide default implementation similar to one in Bitcoin,
+  -- except we treat mantissa as unsigned.
+  thresholdRetarget :: BH b -> Target -> Time -> Target
+  thresholdRetarget bh (Target currentThreshold) (Time delta') =
+    Target roundedNewThreshold
+    where
+      (_, Time targetTimeDelta') = targetAdjustmentInfo bh
+      delta = fromIntegral delta'
+      targetTimeDelta = fromIntegral targetTimeDelta'
+      -- new threshold = ceil $ current threshold * current time delta / target time delta
+      -- we use Integers, thus div and addition.
+      newThreshold = div (currentThreshold * delta + targetTimeDelta - 1) targetTimeDelta
+      roundedNewThreshold = roundToThreeBytes (31 - 3)
+      roundToThreeBytes 0 = newThreshold -- too low, can go with "denormalized" variant
+      roundToThreeBytes n
+        | shifted < 2 ^ (24 :: Int) = newThreshold .|. ones
+        | otherwise = roundToThreeBytes (n - 1)
+        where
+          shifted = shiftR newThreshold (n * 8)
+          ones = shiftL (1 :: Integer) (n * 8) - 1
+
+-- |Parts of mining process.
+--
+-- We may see mining process as a way to make block header
+-- valid. That means that block given for mining may not have
+-- a valid header, but the block we have successfully mined should
+-- have a valid header. We are talking about validity of a puzzle's
+-- answer, as other header fields like timestamp, target, etc are
+-- somewhat out of our control.
+--
+-- Mining is relatively time-consuming process, the search for
+-- an answer of a puzzle may take time from tenth of second to
+-- several seconds. This part is also heavily compute-intensive
+-- and should not be interrupted all too often. These two
+-- requirements gave us the following plan: we fetch a block to
+-- mine (header may be invalid) and work on it for some time, reporting
+-- back in case of success.
+--
+-- Please note that you can implement caching in @fetchBlock@ if current
+-- chain leader has not changed. You can tweak only the "coinbase"-like
+-- transaction in the block.
+class BlockData b => Mineable b where
+
+  -- | Adjust puzzle's answer. The adjustment process tries to
+  -- find right puzzle answer that is smallest possible or below
+  -- given threshold. The return value is a block with any answer
+  -- if found, the result may not pass under threshold.
+  --
+  -- Actual hash, converted to @Target@ is second part of tuple.
+  --
+  -- One can use second part in a parameter search process. It is a
+  -- proxy to how many hash attempts are done during search.
+  adjustPuzzle :: MonadIO m => Block b -> m (Maybe (Block b), Target)
+
+
+-- |Target - value computed during proof-of-work test must be lower
+-- than this threshold. Target can be and must be rounded.
+-- It is guaranteed to not to exceed some constant value.
+newtype Target = Target { targetInteger :: Integer }
+  deriving newtype (Eq, Ord)
+  deriving newtype (CryptoHashable, Serialise)
+
+instance Show Target where
+  show (Target i) = printf "%064x" i
+
+-- |Difficulty - how many (in average) computations are needed to
+-- achieve the target.
+newtype Difficulty = Difficulty { difficultyInteger :: Integer }
+  deriving newtype (Eq, Ord, Show)
+  deriving newtype CryptoHashable
 
 -- | Generic block. This is just spine of blockchain, that is height
 --   of block, hash of previous block and a "block data" - application
@@ -101,7 +201,7 @@ class ( Show      (BlockID b)
 --   (usually block is Merkle tree of some transactions)
 data GBlock b f = GBlock
   { blockHeight   :: !Height
-  , blockTime   :: !Time
+  , blockTime     :: !Time
   , prevBlock     :: !(Maybe (BlockID b))
   , blockData     :: !(b f)
   }

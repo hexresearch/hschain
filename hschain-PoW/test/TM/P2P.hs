@@ -15,6 +15,7 @@ import Control.Monad.Trans.Cont
 import Control.Monad.Trans.Reader
 import Control.Monad.Trans.Class
 import Control.Monad.IO.Class
+import qualified Data.Map.Strict as Map
 import Test.Tasty
 import Test.Tasty.HUnit
 
@@ -23,6 +24,7 @@ import HSChain.Network.Mock
 import HSChain.PoW.Types
 import HSChain.PoW.Logger
 import HSChain.PoW.Consensus
+import HSChain.PoW.Node
 import HSChain.PoW.P2P
 import HSChain.PoW.P2P.Types
 import HSChain.Examples.Simple
@@ -128,7 +130,7 @@ runNetTest :: TestM () -> IO ()
 runNetTest test = do
   db  <- inMemoryDB @_ @_ @(KV MockChain)
   net <- newMockNet
-  let s0 = consensusGenesis (head mockchain) (viewKV (blockID genesis))
+  let s0 = consensusGenesis (head mockchain) (inMemoryView kvViewStep Map.empty (blockID genesis))
   let apiNode        = createMockNode net ipNode
       NetworkAPI{..} = createMockNode net ipOur
   runNoLogsT $ evalContT $ do

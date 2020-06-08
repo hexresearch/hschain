@@ -31,8 +31,7 @@ foreign import ccall "evpow_solve"
                     -> Ptr Word8    -- ^(writeable) Answer's buffer.
                     -> Ptr Word8    -- ^(writeable) Full puzzle solution.
                     -> Int          -- ^Clauses count.
-                    -> Int          -- ^Complexity shift.
-                    -> Word16       -- ^Complexity mantissa.
+                    -> Ptr Word8    -- ^Little-endian target.
                     -> Int          -- ^Milliseconds to search for answer.
                     -> Int          -- ^Attempts allowed to search for an answer.
                     -> Int          -- ^Attempts between restarts in local search.
@@ -47,31 +46,51 @@ foreign import ccall "evpow_check"
                     -> Ptr Word8
                     -> Ptr Word8
                     -> Int
-                    -> Int
-                    -> Word16
+                    -> Ptr Word8
                     -> IO Int
+
+-- |Parameters of search algorithm.
+data POWSearchConfig = POWSearchConfig
+  { powSearchAttemptsBetweenRestarts
+  , powSearchAttemptsToSearch
+  , powSearchMillisecondsToSearch     :: !Int
+  }
+  deriving (Show)
 
 -- |Configuration of POW
 data POWConfig = POWConfig
   { powCfgClausesCount             :: !Int
-  , powCfgAttemptsBetweenRestarts  :: !Int
-  , powCfgAttemptsToSearch         :: !Int
-  , powCfgMillisecondsToSearch     :: !Int
-  , powCfgComplexityMantissa       :: !Word16
-  , powCfgComplexityShift          :: !Int
+  , powCfgSearchConfig             :: !POWSearchConfig
+  , powCfgTarget                   :: !Integer
   }
   deriving (Show)
+
+-- |Default configuration for search algorithm.
+defaultSearchConfig :: POWSearchConfig
+defaultSearchConfig = POWSearchConfig
+  { powSearchAttemptsBetweenRestarts  = 10000
+  , powSearchAttemptsToSearch         = 2500000
+  , powSearchMillisecondsToSearch     = 2000
+  }
 
 -- |Configuration of POW - default values.
 defaultPOWConfig :: POWConfig
 defaultPOWConfig = POWConfig
   { powCfgClausesCount             = 5250
-  , powCfgAttemptsBetweenRestarts  = 10000
-  , powCfgAttemptsToSearch         = 2500000
-  , powCfgMillisecondsToSearch     = 2000
-  , powCfgComplexityMantissa       = 0xffff
-  , powCfgComplexityShift          = 0
+  , powCfgSearchConfig             = defaultSearchConfig
+  , powCfgTarget                   = shiftL 1 256 - 1 -- Easiest target to meet.
   }
+
+-- |Encode an integer as least-significant-byte first (little endian).
+-- As we use this for specifying targets, we cut transformation at
+-- @answerSize@ bytes. This means that Integer must be less that
+-- @2^(answerSize * 8)@.
+encodeIntegerLSB :: Integer -> ByteString
+encodeIntegerLSB i
+  | i >= shiftL 1 (8 * answerSize) = error "integer is too big to be encoded as target bytestring"
+  | i < 0 = error "negative integer cannot be a target"
+  | otherwise = B.pack $ take answerSize $
+                         map (fromIntegral . (`mod` 256)) $ iterate (`div` 256) i
 
 -- |Solve the puzzle.
 solve :: [ByteString] -- ^Parts of header to concatenate
@@ -82,15 +101,15 @@ solve headerParts POWConfig{..} = B.useAsCStringLen completeHeader $ \(ptr', len
     let answer = answerAndHash
         completeHash = plusPtr answerAndHash answerSize
     let ptr = castPtr ptr'
-    r <- evpow_solve
+        encodedTarget = encodeIntegerLSB powCfgTarget
+    r <- B.useAsCString encodedTarget $ \target -> evpow_solve
            ptr (fromIntegral len)
            answer completeHash
            powCfgClausesCount
-           powCfgComplexityShift
-           powCfgComplexityMantissa
-           powCfgMillisecondsToSearch
-           powCfgAttemptsToSearch
-           powCfgAttemptsBetweenRestarts
+           (castPtr target)
+           powSearchMillisecondsToSearch
+           powSearchAttemptsToSearch
+           powSearchAttemptsBetweenRestarts
            0 0 -- fixed bits
            nullPtr
     if r /= 0
@@ -100,19 +119,20 @@ solve headerParts POWConfig{..} = B.useAsCStringLen completeHeader $ \(ptr', len
              return (Just (answerBS, hashBS))
       else return Nothing
   where
+    POWSearchConfig{..} = powCfgSearchConfig
     completeHeader = B.concat headerParts
 
-check :: ByteString -> ByteString -> POWConfig -> IO Bool
-check headerWithAnswer hashOfHeader POWConfig{..} =
-  B.useAsCStringLen headerWithAnswer $ \(hdr, hdrLen) ->
-    if hdrLen < answerSize
-      then return False
-      else B.useAsCStringLen hashOfHeader $ \(hash,hashLen) ->
-        if hashLen /= hashSize
-          then return False
-          else let prefixSize = hdrLen - answerSize
-                   answer = plusPtr hdr prefixSize
-            in fmap (/= 0) $ evpow_check
-              (castPtr hdr) (fromIntegral prefixSize) (castPtr answer) (castPtr hash)
-              powCfgClausesCount powCfgComplexityShift powCfgComplexityMantissa
+check :: ByteString -> ByteString -> ByteString -> POWConfig -> IO Bool
+check headerWithoutAnswer answer hashOfHeader POWConfig{..} =
+  B.useAsCStringLen headerWithoutAnswer $ \(hdr, hdrLen) -> 
+    B.useAsCString answer $ \answerPtr -> do
+      let encodedTarget = encodeIntegerLSB powCfgTarget
+      if hdrLen < answerSize
+        then return False
+        else B.useAsCStringLen hashOfHeader $ \(hash,hashLen) ->
+          if hashLen /= hashSize
+            then return False
+            else fmap (/= 0) $ B.useAsCString encodedTarget $ \target -> evpow_check
+                (castPtr hdr) (fromIntegral hdrLen) (castPtr answerPtr) (castPtr hash)
+                powCfgClausesCount (castPtr target)
 
