@@ -56,7 +56,6 @@ import HSChain.PoW.Types
 import HSChain.Network.TCP
 import HSChain.Network.Types
 import HSChain.Types.Merkle.Types
-import HSChain.Control.Channels
 import HSChain.Control.Util
 import HSChain.Control.Class
 
@@ -103,7 +102,6 @@ runNode pathsToConfig miningNode genesisBlock step startState fetchBlock = do
                   maybe (return ()) (loop (n-1)) $ bhPrevious bh
             loop 100 (c ^. bestHead . _1)
       lift $ flip onException printBCH $ do
-        upd <- atomicallyIO $ chainUpdate pow
         let doMine = do
               c   <- atomicallyIO $ currentConsensus pow
               let bh = c ^. bestHead . _1
@@ -118,14 +116,6 @@ runNode pathsToConfig miningNode genesisBlock step startState fetchBlock = do
                                                 Left  e  -> error $ show e
                 Nothing -> doMine
         let loop tid = do
-              (bh,_) <- awaitIO upd
-              Just b <- retrieveBlock db (bhBID bh)
-              liftIO $ print ( blockHeight b
-                             , blockTime b
-                             , bhBID bh
-                             , blockTargetThreshold b
-                             , blockData b
-                             )
               liftIO $ mapM_ killThread tid
               loop =<< if miningNode then Just <$> fork doMine else return Nothing
         --

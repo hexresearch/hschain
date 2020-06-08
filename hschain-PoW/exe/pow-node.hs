@@ -154,7 +154,6 @@ getBlockToMine val bh = do
 
 data Opts = Opts
   { cmdConfigPath :: [FilePath]
-  , optPrintBCH   :: Bool
   , optMine       :: Bool
   , optNewPoW     :: Bool
   , optNodeName   :: String
@@ -166,10 +165,6 @@ parser = do
     (  metavar "PATH"
     <> help  "Path to configuration"
     <> showDefault
-    )
-  optPrintBCH <- switch
-    (  long "print"
-    <> help "Print blockchain"
     )
   optMine <- switch
     (  long "mine"
@@ -205,15 +200,4 @@ main = do
   if optNewPoW
     then runNodeAnyPoW opts genesisNewPoW
     else runNodeAnyPoW opts genesis
-        -- -- t <- liftIO $ negate . log <$> randomRIO (0.5, 2)
-        -- -- liftIO $ threadDelay $ round (1e6 * t :: Double)
-        -- --
-        -- when optMine $ do
-        --   c   <- atomicallyIO $ currentConsensus pow
-        --   now <- getCurrentTime
-        --   let bh = c ^. bestHead . _1
-        --       b  = mineBlock now cfgStr bh
-        --   liftIO $ print (blockHeight b, blockTime b)
-        --   sendNewBlock pow b >>= \case
-        --     Right () -> return ()
-        --     Left  e  -> error $ show e
+
