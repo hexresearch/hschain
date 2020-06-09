@@ -241,29 +241,6 @@ create_instance(uint8_t* prefix_hash, Solver* solver, int clauses_count, int fix
 		printf("\n");
 #endif
 		int num_literals_remain = EVPOW_K;
-#if 0
-		if (fixed_bits_count > 0) {
-			num_literals_remain = 0;
-			for (literal_index = 0; literal_index < EVPOW_K; literal_index++) {
-				int literal = literals[literal_index];
-				int variable = abs(literal) - 1;
-				if (variable < fixed_bits_count) {
-					int must_positive = ((fixed_bits >> variable) & 1) != 0;
-					int this_positive = literal > 0;
-					if (must_positive == this_positive) {
-						// completely satisfied, skip.
-						num_literals_remain = -1;
-						break;
-					} else {
-						// nothing to do - we do not copy unsatisfied literal.
-					}
-				} else {
-					literals[num_literals_remain] = literal;
-					num_literals_remain ++;
-				}
-			}
-		}
-#endif
 		if (num_literals_remain >= 0) { // not trivial.
 			for (literal_index = 0; literal_index < num_literals_remain; literal_index ++) {
 				solver_add(solver, literals[literal_index]);
@@ -322,7 +299,7 @@ under_complexity_threshold(uint8_t* hash, uint8_t* target) {
 } /* under_complexity_threshold */
 
 static int
-find_answer(SHA256_CTX* context_after_prefix, uint8_t* answer, uint8_t* full_hash, int milliseconds_allowance, uint8_t* target, Solver* solver, double* first_result_ms) {
+find_answer(uint8_t* suffix, size_t suffix_size, uint8_t* answer, uint8_t* full_hash, int milliseconds_allowance, uint8_t* target, Solver* solver, double* first_result_ms) {
 	clock_t end_time;
 	clock_t last_time;
 
@@ -332,14 +309,12 @@ find_answer(SHA256_CTX* context_after_prefix, uint8_t* answer, uint8_t* full_has
 		end_time = last_time + (milliseconds_allowance * CLOCKS_PER_SEC + 999)/1000;
 		solver_set_interrupt(solver, (void*)&end_time, check_clock);
 	}
-	//printf("complexity shift %d, mantissa %04x\n", complexity_shift, complexity_mantissa);
 	while (1) {
 		SHA256_CTX full_hash_context;
 		// obtain a solution.
 		int status;
 		int i;
 	       	status = solver_sat(solver, -1);
-		//printf("decisions made %llu, propagations made %llu\n", picosat_decisions(solver), picosat_propagations(solver));
 		//printf("status %d\n", status);
 		clock_t curr_time = clock();
 		if (first_result_ms) {
@@ -381,8 +356,8 @@ find_answer(SHA256_CTX* context_after_prefix, uint8_t* answer, uint8_t* full_has
 } /* find_answer */
 
 int
-evpow_solve( uint8_t* prefix
-	   , size_t prefix_size
+evpow_solve( uint8_t* suffix
+	   , size_t suffix_size
 	   , uint8_t* answer
 	   , uint8_t* solution_hash
 	   , int clauses_count
@@ -394,38 +369,17 @@ evpow_solve( uint8_t* prefix
 	   , uint64_t fixed_bits
 	   , double* first_result_ms
 ) {
-	SHA256_CTX prefix_hash_context;
+	SHA256_CTX suffix_hash_context;
 	SHA256_CTX intermediate_prefix_hash_context;
-	uint8_t prefix_hash[SHA256_DIGEST_LENGTH];
+	uint8_t suffix_hash[SHA256_DIGEST_LENGTH];
 	Solver* solver;
 	int r;
 
 	// Compute hash of prefix.
-	SHA256_Init(&prefix_hash_context);
+	SHA256_Init(&suffix_hash_context);
 
-#if 0
-{ int i;
-	printf("prefix (%zu):", prefix_size);
-	for (i=0;i<prefix_size;i++) {
-		printf(" %02x", prefix[i]);
-	}
-	printf("\n");
-}
-#endif
-
-	SHA256_Update(&prefix_hash_context, prefix, prefix_size);
-	intermediate_prefix_hash_context = prefix_hash_context;
-	SHA256_Final(prefix_hash, &intermediate_prefix_hash_context);
-
-#if 0
-{ int i;
-	printf("prefix hash:");
-	for (i=0;i<sizeof(prefix_hash);i++) {
-		printf(" %02x", prefix_hash[i]);
-	}
-	printf("\n");
-}
-#endif
+	SHA256_Update(&suffix_hash_context, suffix, suffix_size);
+	SHA256_Final(suffix_hash, &suffix_hash_context);
 
 	// Create and configure solver instance.
 	solver = solver_new();
@@ -445,8 +399,7 @@ evpow_solve( uint8_t* prefix
 	create_instance(prefix_hash, solver, clauses_count, fixed_bits_count, fixed_bits);
 
 	// find solution if we can.
-	r = find_answer(&prefix_hash_context, answer, solution_hash, milliseconds_allowance, target, solver, first_result_ms);
-	//printf("found %d\n", r);
+	r = find_answer(suffix, suffix_size, answer, solution_hash, milliseconds_allowance, target, solver, first_result_ms);
 
 	solver_delete(solver);
 	return r;

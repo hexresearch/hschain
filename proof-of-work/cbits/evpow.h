@@ -47,17 +47,19 @@ typedef uint8_t evpow_hash [EVPOW_HASH_BYTES];
 /**
  * The puzzle solving process.
  *
- * The prefix argument is a header data before answer. The hash of that data will be used
+ * The suffix argument is a header data after answer. The hash of that data will be used
  * to deterministically calculate kSAT problem of predetermined size.
  *
  * That kSAT problem should be solved and solution provides an answer to a puzzle, laid out
  * as least-significant-bit-least-significant-byte first. It will be put into an answer.
  *
- * Then, the hash of byte-concatenated prefix and answer is computed and is compared to
+ * Then, the hash of byte-concatenated answer and suffix is computed and is compared to
  * complexity threshold (again, hash is treated as little endian integer value).
  *
  * The result of evpow_solve() is non-zero if answer is found (then that answer is in
- * buffer of namesake argument).
+ * buffer of namesake argument). The @solution_hash@ buffer will always contain smallest
+ * hash found during (even unsuccessful) search and can be used as a proxy to work done
+ * for optimization purposes.
  *
  * Typical code may look like the following:
  *
@@ -68,8 +70,8 @@ typedef uint8_t evpow_hash [EVPOW_HASH_BYTES];
  *   uint16_t complexity_mantissa;
  * } header_t;
  * typedef struct solved_header_s {
- *   header_t header;
  *   uint8_t  answer[EVPOW_ANSWER_BYTES];
+ *   header_t header;
  *   sha256d  solution_hash;
  * } solved_header_t;
  *
@@ -83,8 +85,8 @@ typedef uint8_t evpow_hash [EVPOW_HASH_BYTES];
  *    }
  */
 int
-evpow_solve( uint8_t* prefix
-	   , size_t prefix_size
+evpow_solve( uint8_t* suffix
+	   , size_t suffix_size
 	   , uint8_t* answer
 	   , uint8_t* solution_hash
 	   , int clauses_count
