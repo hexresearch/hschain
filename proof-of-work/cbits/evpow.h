@@ -103,8 +103,8 @@ evpow_solve( uint8_t* suffix
  * Check the valitity of puzzle.
  */
 int
-evpow_check( uint8_t* prefix
-	   , size_t prefix_size
+evpow_check( uint8_t* suffix
+	   , size_t suffix_size
 	   , uint8_t* answer
 	   , uint8_t* hash_to_compare
 	   , int clauses_count

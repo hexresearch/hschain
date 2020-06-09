@@ -215,12 +215,12 @@ create_clause(SHA256_CTX* hash_ctx_for_clause, int clause, int* clause_literals,
 } /* create_clause */
 
 static void
-create_instance(uint8_t* prefix_hash, Solver* solver, int clauses_count, int fixed_bits_count, uint64_t fixed_bits) {
+create_instance(uint8_t* suffix_hash, Solver* solver, int clauses_count, int fixed_bits_count, uint64_t fixed_bits) {
 	int clause;
 	int literal_index;
 	SHA256_CTX ctx_after_hash;
 	SHA256_Init(&ctx_after_hash);
-	SHA256_Update(&ctx_after_hash, prefix_hash, SHA256_DIGEST_LENGTH);
+	SHA256_Update(&ctx_after_hash, suffix_hash, SHA256_DIGEST_LENGTH);
 	for (literal_index = 0; literal_index < fixed_bits_count; literal_index ++) {
 		int variable = literal_index + 1;
 		int literal = variable;
@@ -330,8 +330,9 @@ find_answer(uint8_t* suffix, size_t suffix_size, uint8_t* answer, uint8_t* full_
 		// extract a solution into the answer.
 		extract_solution_answer(solver, answer);
 		// compute full hash.
-		full_hash_context = *context_after_prefix;
+		SHA256_Init(&full_hash_context);
 		SHA256_Update(&full_hash_context, answer, EVPOW_ANSWER_BYTES);
+		SHA256_Update(&full_hash_context, suffix, suffix_size);
 		SHA256_Final(full_hash, &full_hash_context);
 		if (under_complexity_threshold(full_hash, target)) {
 			//printf("FOUND!\n");
@@ -370,7 +371,6 @@ evpow_solve( uint8_t* suffix
 	   , double* first_result_ms
 ) {
 	SHA256_CTX suffix_hash_context;
-	SHA256_CTX intermediate_prefix_hash_context;
 	uint8_t suffix_hash[SHA256_DIGEST_LENGTH];
 	Solver* solver;
 	int r;
@@ -396,7 +396,7 @@ evpow_solve( uint8_t* suffix
 	}
 
 	// Create instance and feed it to solver.
-	create_instance(prefix_hash, solver, clauses_count, fixed_bits_count, fixed_bits);
+	create_instance(suffix_hash, solver, clauses_count, fixed_bits_count, fixed_bits);
 
 	// find solution if we can.
 	r = find_answer(suffix, suffix_size, answer, solution_hash, milliseconds_allowance, target, solver, first_result_ms);
@@ -406,8 +406,8 @@ evpow_solve( uint8_t* suffix
 } /* evpow_solve */
 
 int
-evpow_check( uint8_t* prefix
-           , size_t prefix_size
+evpow_check( uint8_t* suffix
+           , size_t suffix_size
            , uint8_t* answer
            , uint8_t* hash_to_compare
 	   , int clauses_count
@@ -422,66 +422,24 @@ evpow_check( uint8_t* prefix
 		printf("NOT RARE ENOUGH!\n");
 		return 0;
 	}
-	SHA256_Init(&partial_ctx);
-	SHA256_Update(&partial_ctx, prefix, prefix_size);
-#if 0
-{ int i;
-	printf("prefix (%zu):", prefix_size);
-	for (i=0;i<prefix_size;i++) {
-		printf(" %02x", prefix[i]);
-	}
-	printf("\n");
-}
-#endif
-	full_ctx = partial_ctx;
+	SHA256_Init(&full_ctx);
 	SHA256_Update(&full_ctx, answer, EVPOW_ANSWER_BYTES);
+	SHA256_Update(&full_ctx, suffix, suffix_size);
 	SHA256_Final(hash, &full_ctx);
-#if 0
-	{
-		int i;
-		printf("hash we computed:");
-		for (i=0;i<SHA256_DIGEST_LENGTH;i++) {
-			printf(" %02x",hash[i]);
-		}
-		printf("\n");
-		printf("hash we provided:");
-		for (i=0;i<SHA256_DIGEST_LENGTH;i++) {
-			printf(" %02x",hash_to_compare[i]);
-		}
-		printf("\n");
-	}
-#endif
 	// second fastest second - hashes are equal.
 	if (0 != memcmp(hash, hash_to_compare, SHA256_DIGEST_LENGTH)) {
-		printf("HASH MISMATCH!\n");
 		return 0;
 	}
 	// slowest one last - does answer really answer the puzzle?
+	SHA256_Init(&partial_ctx);
+	SHA256_Update(&partial_ctx, suffix, suffix_size);
 	SHA256_Final(hash, &partial_ctx);
 	SHA256_Init(&ctx_after_hash);
 	SHA256_Update(&ctx_after_hash, hash, SHA256_DIGEST_LENGTH);
-#if 0
-	{
-		int i;
-		printf("answer to check against:");
-		for (i=0;i<EVPOW_ANSWER_BITS;i++) {
-			int bit = (answer[i/8] >> (i%8))&1;
-			printf("%s%d",(i % 8) == 0? " ": "", bit);
-		}
-		printf("\n");
-	}
-#endif
 	for (clause = 0; clause < clauses_count; clause ++) {
 		int literals[EVPOW_K];
 		int literal_index;
 		create_clause(&ctx_after_hash, clause, literals, clause == clauses_count - 1);
-#if 0
-		printf("clause:");
-		for (literal_index = 0; literal_index < EVPOW_K; literal_index ++) {
-			printf(" %d", literals[literal_index]);
-		}
-		printf("\n");
-#endif
 		for (literal_index = 0; literal_index < EVPOW_K; literal_index ++) {
 			int literal = literals[literal_index];
 			int positive = literal > 0;
@@ -493,7 +451,6 @@ evpow_check( uint8_t* prefix
 			}
 		}
 		if (literal_index >= EVPOW_K) {
-			printf("ANSWER DOES NOT ANSWER!\n");
 			return 0;
 		}
 	}

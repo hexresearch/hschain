@@ -58,11 +58,11 @@ main :: IO ()
 main = do
   cmd <- execParser $ info parser mempty
   case cmd of
-    FindAnswer prefix target printOpt -> do
+    FindAnswer suffix target printOpt -> do
       let config = defaultPOWConfig
                  { powCfgTarget = target
                  }
-      r <- solve [prefix] config
+      r <- solve [suffix] config
       case r of
         Nothing -> putStrLn "failed to find answer" >> exitFailure
         Just (answer, hash) -> case printOpt of
@@ -76,7 +76,7 @@ main = do
                      List.intercalate " "
                           (map (printf "%02x") $ B.unpack hash)
           where
-            completeBlock = B.concat [prefix, answer]
+            completeBlock = B.concat [answer, suffix]
     CheckBlock block answer hash target -> do
       r <- check block answer hash $ defaultPOWConfig
                                      { powCfgTarget = target
