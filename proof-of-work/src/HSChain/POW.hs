@@ -123,13 +123,13 @@ solve headerParts POWConfig{..} = B.useAsCStringLen completeHeader $ \(ptr', len
     completeHeader = B.concat headerParts
 
 check :: ByteString -> ByteString -> ByteString -> POWConfig -> IO Bool
-check headerWithoutAnswer answer hashOfHeader POWConfig{..} =
+check headerWithoutAnswer answer hashOfAnswerHeader POWConfig{..} =
   B.useAsCStringLen headerWithoutAnswer $ \(hdr, hdrLen) -> 
-    B.useAsCString answer $ \answerPtr -> do
+    B.useAsCStringLen answer $ \(answerPtr, answerLen) -> do
       let encodedTarget = encodeIntegerLSB powCfgTarget
-      if hdrLen < answerSize
+      if answerLen /= answerSize
         then return False
-        else B.useAsCStringLen hashOfHeader $ \(hash,hashLen) ->
+        else B.useAsCStringLen hashOfAnswerHeader $ \(hash,hashLen) ->
           if hashLen /= hashSize
             then return False
             else fmap (/= 0) $ B.useAsCString encodedTarget $ \target -> evpow_check

@@ -31,8 +31,8 @@ parser = subparser
   where
     findAnswerParser = FindAnswer
                      <$> parseByteString "source" <*> parseTarget <*> parsePrint
-    checkAnswerParser = CheckBlock <$> parseByteString "answer"
-                                   <*> parseByteString "source" <*> parseHash <*> parseTarget
+    checkAnswerParser = CheckBlock <$> parseByteString "source"
+                                   <*> parseByteString "answer" <*> parseHash <*> parseTarget
     parsePrint = flag' PrintText (short 'T' <> long "print-as-text")
                <|> flag' PrintHex (short 'H' <> long "print-as-hex")
     parseByteString opt = parseAsText opt <|> parseAsHex opt

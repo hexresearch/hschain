@@ -428,10 +428,6 @@ evpow_check( uint8_t* suffix
 	SHA256_Final(hash, &full_ctx);
 	// second fastest second - hashes are equal.
 	if (0 != memcmp(hash, hash_to_compare, SHA256_DIGEST_LENGTH)) {
-int i; printf("answer:"); for (i=0;i<SHA256_DIGEST_LENGTH;i++) { printf(" %02x", answer[i]); } printf("\n");
-printf("suffix %d:", suffix_size); for (i=0;i<suffix_size;i++) { printf(" %02x", suffix[i]); } printf("\n");
-printf("hashes (computed/passed):"); for (i=0;i<SHA256_DIGEST_LENGTH;i++) { printf(" %02x/%02x", hash[i], hash_to_compare[i]); } printf("\n");
-		printf("WRONG HASH\n");
 		return 0;
 	}
 	// slowest one last - does answer really answer the puzzle?
@@ -455,7 +451,6 @@ printf("hashes (computed/passed):"); for (i=0;i<SHA256_DIGEST_LENGTH;i++) { prin
 			}
 		}
 		if (literal_index >= EVPOW_K) {
-			printf("WRONG ANSWER\n");
 			return 0;
 		}
 	}
