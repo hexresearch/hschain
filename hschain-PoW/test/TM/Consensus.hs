@@ -14,7 +14,7 @@ import Test.Tasty.HUnit
 
 import HSChain.PoW.Types
 import HSChain.PoW.Consensus
-import HSChain.PoW.Logger
+import HSChain.Logger
 import HSChain.PoW.Node
 import HSChain.Types.Merkle.Types
 import HSChain.Examples.Simple

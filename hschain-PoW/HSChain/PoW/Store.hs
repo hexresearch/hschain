@@ -69,7 +69,7 @@ import Control.Monad.Trans.Reader
 import HSChain.Control.Class              (MonadFork)
 --import HSChain.Crypto
 --import HSChain.Crypto.Containers
-import HSChain.PoW.Logger                 (MonadLogger)
+import HSChain.Logger                 (MonadLogger)
 import HSChain.PoW.Store.Internal.Query
 import HSChain.PoW.Store.Internal.BlockDB
 

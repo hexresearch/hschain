@@ -49,7 +49,7 @@ import GHC.Generics (Generic)
 import Lens.Micro
 
 import HSChain.PoW.Consensus
-import HSChain.PoW.Logger
+import HSChain.Logger
 import HSChain.PoW.P2P
 import HSChain.PoW.P2P.Types
 import HSChain.PoW.Types

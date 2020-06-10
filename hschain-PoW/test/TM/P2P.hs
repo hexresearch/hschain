@@ -22,7 +22,7 @@ import Test.Tasty.HUnit
 import HSChain.Network.Types
 import HSChain.Network.Mock
 import HSChain.PoW.Types
-import HSChain.PoW.Logger
+import HSChain.Logger
 import HSChain.PoW.Consensus
 import HSChain.PoW.Node
 import HSChain.PoW.P2P
