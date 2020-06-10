@@ -21,6 +21,7 @@ Library
   Build-Depends:       base              >=4.9 && <5
                      , hschain-crypto
                      , hschain-control
+                     , hschain-logger
                      , hschain-net
                      , hschain-merkle
                      , hschain-pow-func
@@ -58,8 +59,6 @@ Library
                 HSChain.Examples.Simple
                 HSChain.Examples.Util
                 HSChain.PoW.Exceptions
-                HSChain.PoW.Logger
-                HSChain.PoW.Logger.Class
                 HSChain.PoW.Node
                 HSChain.PoW.Store
                 HSChain.PoW.P2P
@@ -112,6 +111,7 @@ Test-suite hschain-PoW-tests
                      , hschain-crypto
                      , hschain-control
                      , hschain-merkle
+                     , hschain-logger
                      , hschain-net
                      , containers
                      , serialise

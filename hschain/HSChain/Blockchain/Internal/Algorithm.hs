@@ -239,7 +239,7 @@ newHeight
   -> Maybe (Commit a)
   -> Producer (EngineMessage a) m (TMState a)
 newHeight HeightParameters{..} lastCommit = do
-  logger InfoS "Entering new height ----------------" (sl "H" currentH)
+  lift $ logger InfoS "Entering new height ----------------" (sl "H" currentH)
   yield $ EngTimeout $ Timeout  currentH (Round 0) (StepNewHeight 0)
   yield $ EngAnnStep $ FullStep currentH (Round 0) (StepNewHeight 0)
   return TMState
@@ -284,7 +284,7 @@ tendermintTransition par@HeightParameters{..} msg sm@TMState{..} =
         -> misdeed [OutOfTurnProposal $ unverifySignature p]
       -- Add it to map of proposals
       | otherwise
-        -> do logger InfoS "Got proposal" $ LogProposal propHeight propRound propBlockID
+        -> do lift $ lift $ logger InfoS "Got proposal" $ LogProposal propHeight propRound propBlockID
               lift $ yield $ EngAnnProposal propRound
               return sm { smProposals      = Map.insert propRound p smProposals
                         , smProposedBlocks = acceptBlockID propRound propBlockID smProposedBlocks
@@ -398,7 +398,7 @@ checkTransitionPrecommit par@HeightParameters{..} r sm@TMState{..}
   --        since there are only 2 validators at height H. But at some
   --        later moment they'll get
   | Just (Just bid) <- majority23at r smPrecommitsSet
-    = do logger InfoS "Decision to commit" $ LogCommit currentH bid
+    = do lift $ lift $ logger InfoS "Decision to commit" $ LogCommit currentH bid
          lift $ yield $ EngAnnProposal r
          commitBlock Commit{ commitBlockID    = bid
                            , commitPrecommits =  unverifySignature
@@ -431,7 +431,7 @@ enterPropose
   -> LogTransitionReason
   -> CNS x a m (TMState a)
 enterPropose HeightParameters{..} r sm@TMState{..} reason = do
-  logger InfoS "Entering propose" $ LogTransition currentH smRound smStep r reason
+  lift $ lift $ logger InfoS "Entering propose" $ LogTransition currentH smRound smStep r reason
   lift $ yield $ EngTimeout $ Timeout  currentH r StepProposal
   lift $ yield $ EngAnnStep $ FullStep currentH r StepProposal
   -- If we're proposers we need to broadcast proposal. Otherwise we do
@@ -439,13 +439,13 @@ enterPropose HeightParameters{..} r sm@TMState{..} reason = do
   propUpdate <- case (areWeProposers, smLockedBlock) of    
     -- If we're locked on block we MUST propose it
     (True, Just (br,bid)) -> do
-      logger InfoS "Making POL proposal" $ LogProposal currentH smRound bid
+      lift $ lift $ logger InfoS "Making POL proposal" $ LogProposal currentH smRound bid
       lift $ yield $ EngCastPropose r bid (Just br)
       return id
     -- Otherwise we need to create new block from mempool
     (True, Nothing) -> do
       (upd,bid) <- lift $ lift $ createProposal r smLastCommit
-      logger InfoS "Making new proposal" $ LogProposal currentH r bid
+      lift $ lift $ logger InfoS "Making new proposal" $ LogProposal currentH r bid
       lift $ yield $ EngCastPropose r bid Nothing
       return upd
     -- We aren't proposers. Do nothing
@@ -471,7 +471,7 @@ enterPrevote
   -> CNS x a m (TMState a)
 enterPrevote par@HeightParameters{..} r (unlockOnPrevote -> sm@TMState{..}) reason = do
   --
-  logger InfoS "Entering prevote" $ LogTransition currentH smRound smStep r reason
+  lift $ lift $ logger InfoS "Entering prevote" $ LogTransition currentH smRound smStep r reason
   (updateProp, bid) <- lift $ lift prevoteBlock
   lift $ yield $ EngCastPreVote smRound bid
   --
@@ -542,7 +542,7 @@ enterPrecommit
   -> LogTransitionReason
   -> CNS x a m (TMState a)
 enterPrecommit par@HeightParameters{..} r sm@TMState{..} reason = do
-  logger InfoS "Entering precommit" $ LogTransition currentH smRound smStep r reason
+  lift $ lift $ logger InfoS "Entering precommit" $ LogTransition currentH smRound smStep r reason
   lift $ yield $ EngCastPreCommit r precommitBlock
   lift $ yield $ EngTimeout $ Timeout currentH r StepPrecommit
   lift $ yield $ EngAnnLock $ fst <$> lock

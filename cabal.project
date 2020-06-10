@@ -6,6 +6,7 @@ packages:
          hschain-crypto-bls
          hschain-control
          hschain-merkle
+         hschain-logger
          hschain-types
          hschain-PoW
          hschain-net

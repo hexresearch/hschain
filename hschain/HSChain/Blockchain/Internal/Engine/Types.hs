@@ -32,6 +32,8 @@ module HSChain.Blockchain.Internal.Engine.Types (
   , AppChans(..)
     -- * Proposers
   , randomProposerSHA512
+    -- * Logging
+  , LogBlockInfo(..)
   ) where
 
 import Control.Applicative
@@ -44,8 +46,10 @@ import Data.Bits              (shiftL)
 import Data.Monoid            (Any(..))
 import Data.Maybe             (fromMaybe)
 import Data.Typeable
-import qualified Data.ByteString as BS
+import qualified Data.ByteString     as BS
+import qualified Data.HashMap.Strict as HM
 import Numeric.Natural
+import qualified Katip
 import GHC.Generics           (Generic)
 
 import HSChain.Blockchain.Internal.Types
@@ -216,3 +220,21 @@ randomProposerSHA512 valSet h r
   $ BS.foldr' (\w i -> (i `shiftL` 8) + fromIntegral  w) 0 bs
   where
     Hash bs = hash (valSet, h, r) :: Hash SHA512
+
+
+-----------------------------------------------------------------
+--- LogBlock
+-----------------------------------------------------------------
+
+-- | Wrapper for log data for logging purposes
+data LogBlockInfo a = LogBlockInfo !Height !a !Int
+
+instance BlockData a => Katip.ToObject (LogBlockInfo a) where
+  toObject (LogBlockInfo (Height h) a ns)
+    = HM.insert "H"     (toJSON h)
+    $ HM.insert "nsign" (toJSON ns)
+    $ logBlockData a
+
+instance BlockData a => Katip.LogItem (LogBlockInfo a) where
+  payloadKeys Katip.V0 _ = Katip.SomeKeys ["H"]
+  payloadKeys _        _ = Katip.AllKeys

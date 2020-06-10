@@ -339,7 +339,7 @@ verifyMessageSignature oldValSet valSet height = forever $ do
     verifyOld con = verifyAny oldValSet con
     verifyAny vset name con sx = case verifySignature vset sx of
       Just sx' -> yield $ con sx'
-      Nothing  -> logger WarningS "Invalid signature"
+      Nothing  -> lift $ logger WarningS "Invalid signature"
         (  sl "name" (name::Text)
         <> sl "addr" (show (signedKeyInfo sx))
         )
@@ -392,7 +392,7 @@ handleEngineMessage HeightParameters{..} ConsensusCfg{..} AppChans{..} appChanRx
                           , propPOL       = lockInfo
                           , propBlockID   = bid
                           }
-      logger InfoS "Sending proposal"
+      lift $ logger InfoS "Sending proposal"
         (   sl "R"    r
         <>  sl "BID" (show bid)
         )
@@ -409,7 +409,7 @@ handleEngineMessage HeightParameters{..} ConsensusCfg{..} AppChans{..} appChanRx
                       , voteTime    = t
                       , voteBlockID = b
                       }
-      logger InfoS "Sending prevote"
+      lift $ logger InfoS "Sending prevote"
         (  sl "R"    r
         <> sl "bid" (show b)
         )
@@ -426,7 +426,7 @@ handleEngineMessage HeightParameters{..} ConsensusCfg{..} AppChans{..} appChanRx
                       , voteTime    = t
                       , voteBlockID = b
                       }
-      logger InfoS "Sending precommit"
+      lift $ logger InfoS "Sending precommit"
         (  sl "R" r
         <> sl "bid" (show b)
         )

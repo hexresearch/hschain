@@ -86,7 +86,7 @@ import HSChain.PoW.Types
 import HSChain.Control.Mutex
 import HSChain.Control.Util
 import HSChain.PoW.Exceptions
-import HSChain.PoW.Logger.Class
+import HSChain.Logger.Class
 
 
 ----------------------------------------------------------------

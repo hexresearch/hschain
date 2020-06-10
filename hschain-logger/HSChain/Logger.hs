@@ -2,20 +2,22 @@
 {-# LANGUAGE DeriveFunctor              #-}
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE DerivingStrategies         #-}
+{-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE KindSignatures             #-}
 {-# LANGUAGE LambdaCase                 #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE PolyKinds                  #-}
 {-# LANGUAGE RecordWildCards            #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE TemplateHaskell            #-}
+{-# LANGUAGE TypeApplications           #-}
 {-# LANGUAGE UndecidableInstances       #-}
 -- |
 -- Logger
-module HSChain.PoW.Logger (
+module HSChain.Logger (
     MonadLogger(..)
   , setNamespace
   , descendNamespace
@@ -24,10 +26,13 @@ module HSChain.PoW.Logger (
   , runLoggerT
   , withLogEnv
   , newLogEnv
-  , NoLogsT(..)
   , StdoutLogT(..)
   , runStdoutLogT
   , logOnException
+    -- ** Newtype for DerivingVia
+  , NoLogsT(..)
+  , LoggerByFields(..)
+  , LoggerByTypes(..)
     -- ** Scribe construction helpers
   , ScribeType(..)
   , ScribeSpec(..)
@@ -38,8 +43,6 @@ module HSChain.PoW.Logger (
     -- * Reexports
   , Severity(..)
   , Verbosity(..)
-    -- * Structured logging
-  , LogBlockInfo(..)
   ) where
 
 import Control.Arrow (first,second)
@@ -48,8 +51,8 @@ import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Control.Monad.Morph        (MFunctor(..))
 import Control.Monad.Trans.Class
-import Control.Monad.Trans.Reader
-#if !MIN_VERSION_base(4,11,0)
+import Control.Monad.Reader
+#if !MIN_VERSION_base(4,13,0)
 import Control.Monad.Fail         (MonadFail)
 #endif
 
@@ -60,10 +63,13 @@ import Data.IORef
 import qualified Data.Text.Lazy as TL
 import           Data.Text.Lazy.Builder (toLazyText)
 import Data.Typeable
+import Data.Generics.Product.Fields (HasField'(..))
+import Data.Generics.Product.Typed  (HasType(..))
 import qualified Data.HashMap.Strict        as HM
 import qualified Data.ByteString.Lazy.Char8 as BL
 import qualified Data.Text as T
 import Katip
+import Lens.Micro
 import System.Directory (createDirectoryIfMissing)
 import System.FilePath  (splitFileName)
 import System.IO
@@ -71,9 +77,7 @@ import GHC.Generics (Generic)
 
 import HSChain.Control.Class
 import HSChain.Control.Mutex
-import HSChain.PoW.Types
-import HSChain.PoW.Logger.Class
-import HSChain.PoW.Store.Internal.Query (MonadReadDB(..), MonadDB(..))
+import HSChain.Logger.Class
 
 
 ----------------------------------------------------------------
@@ -88,8 +92,6 @@ newtype LoggerT m a = LoggerT (ReaderT (Namespace, LogEnv) m a)
 
 instance MFunctor LoggerT where
   hoist f (LoggerT m) = LoggerT (hoist f m)
-instance (MonadReadDB m a) => MonadReadDB (LoggerT m) a where
-instance (MonadDB m a) => MonadDB (LoggerT m) a where
 
 runLoggerT :: LogEnv -> LoggerT m a -> m a
 runLoggerT le (LoggerT m) = runReaderT m (mempty, le)
@@ -104,8 +106,8 @@ instance MonadIO m => MonadLogger (LoggerT m) where
     logF a nm sev s
   localNamespace f (LoggerT m) = LoggerT $ local (first f) m
 
--- | Mock logging. Useful for cases where constraints require logging
---   but we don't need any
+-- | Newtype wrapper that provides no logging. Could be used with
+--   DerivingVia to define instances that don't in fact log.
 newtype NoLogsT m a = NoLogsT { runNoLogsT :: m a }
   deriving newtype ( Functor, Applicative, Monad, MonadFail
                    , MonadIO, MonadThrow, MonadCatch, MonadMask
@@ -113,8 +115,6 @@ newtype NoLogsT m a = NoLogsT { runNoLogsT :: m a }
 
 instance MFunctor NoLogsT where
   hoist f (NoLogsT m) = NoLogsT (f m)
-instance (MonadReadDB m a) => MonadReadDB (NoLogsT m) a where
-instance (MonadDB m a) => MonadDB (NoLogsT m) a where
 
 instance MonadTrans NoLogsT where
   lift = NoLogsT
@@ -124,32 +124,70 @@ instance MonadIO m => MonadLogger (NoLogsT m) where
   localNamespace _ a = a
 
 
+newtype LoggerByFields logenv namespace m a = LoggerByFields (m a)
+  deriving newtype (Functor, Applicative, Monad)
+
+instance ( MonadReader r m
+         , MonadIO m
+         , HasField' logenv    r LogEnv
+         , HasField' namespace r Namespace
+         ) => MonadLogger (LoggerByFields logenv namespace m) where
+  logger sev s a = LoggerByFields $ do
+    nm <- asks (^. field' @namespace)
+    le <- asks (^. field' @logenv)
+    runKatipT le $ logF a nm sev s
+  localNamespace f (LoggerByFields m) = LoggerByFields $ local (field' @namespace %~ f) m 
+  {-# INLINE logger         #-}
+  {-# INLINE localNamespace #-}
+
+
+newtype LoggerByTypes m a = LoggerByTypes (m a)
+  deriving newtype (Functor, Applicative, Monad)
+
+instance ( MonadReader r m
+         , MonadIO m
+         , HasType LogEnv    r
+         , HasType Namespace r
+         ) => MonadLogger (LoggerByTypes m) where
+  logger sev s a = LoggerByTypes $ do
+    nm <- asks (^. typed @Namespace)
+    le <- asks (^. typed @LogEnv)
+    runKatipT le $ logF a nm sev s
+  localNamespace f (LoggerByTypes m) = LoggerByTypes $ local (typed @Namespace %~ f) m
+  {-# INLINE logger         #-}
+  {-# INLINE localNamespace #-}
+
+
+
 -- | Simple monad transformer for writing logs to stdout. Motly useful
 --   for debugging when one need to add remove some logging capability
 --   quickly.
-newtype StdoutLogT m a = StdoutLogT { unStdoutLogT :: ReaderT Namespace m a }
+newtype StdoutLogT m a = StdoutLogT { unStdoutLogT :: ReaderT (Mutex,Namespace) m a }
   deriving newtype ( Functor, Applicative, Monad, MonadFail
                    , MonadIO, MonadThrow, MonadCatch, MonadMask
                    , MonadFork
                    )
 
-runStdoutLogT :: StdoutLogT m a -> m a
-runStdoutLogT = flip runReaderT mempty . unStdoutLogT
-
+runStdoutLogT :: MonadIO m => StdoutLogT m a -> m a
+runStdoutLogT m = do
+  mutex <- newMutex
+  runReaderT (unStdoutLogT m) (mutex,mempty)
+ 
 instance MonadTrans StdoutLogT where
   lift = StdoutLogT . lift
 
-instance MonadIO m => MonadLogger (StdoutLogT m) where
+instance (MonadMask m, MonadIO m) => MonadLogger (StdoutLogT m) where
   logger _ msg a = do
-    Namespace chunks <- StdoutLogT ask
-    liftIO $ putStr $ T.unpack $ case chunks of
-      [] -> ""
-      _  -> T.intercalate "." chunks
-    liftIO $ putStrLn $ TL.unpack $ toLazyText $ unLogStr msg
-    liftIO $ forM_ (HM.toList $ toObject a) $ \(k,v) -> do
-      putStr $ "  " ++ T.unpack k ++ " = "
-      print v
-  localNamespace f = StdoutLogT . local f . unStdoutLogT
+    (mutex,Namespace chunks) <- StdoutLogT ask
+    StdoutLogT $ liftIO $ withMutex mutex $ do
+      putStr $ T.unpack $ case chunks of
+        [] -> ""
+        _  -> T.intercalate "." chunks <> ": "
+      putStrLn $ TL.unpack $ toLazyText $ unLogStr msg
+      forM_ (HM.toList $ toObject a) $ \(k,v) -> do
+        putStr $ "  " ++ T.unpack k ++ " = "
+        print v
+  localNamespace f = StdoutLogT . local (second f) . unStdoutLogT
 
 
 -- | Log exceptions at Error severity
@@ -219,7 +257,6 @@ instance ToJSON   ScribeType where
   toJSON = \case
     ScribeJSON   -> String "ScribeJSON"
     ScribeTXT    -> String "ScribeTXT"
-
 instance FromJSON ScribeType where
   parseJSON (String "ScribeJSON") = return ScribeJSON
   parseJSON (String "ScribeTXT" ) = return ScribeTXT
@@ -274,22 +311,3 @@ makeJsonFileScribe nm sev verb = do
   h <- openFile nm AppendMode
   Scribe loggerFun finalizer <- makeJsonHandleScribe h sev verb
   return $ Scribe loggerFun (finalizer `finally` hClose h)
-
-
-----------------------------------------------------------------
--- LogBlock
-----------------------------------------------------------------
-
--- | Wrapper for log data for logging purposes
-data LogBlockInfo a = LogBlockInfo !Height {-!(Block a)-} !Int
-
-instance BlockData a => ToObject (LogBlockInfo a) where
-  toObject (LogBlockInfo (Height h) ns)
-    = HM.insert "H"     (toJSON h)
-    $ HM.insert "nsign" (toJSON ns)
-    $ HM.singleton "blockData" (toJSON ("not imlemented" :: String))
-
-instance BlockData a => LogItem (LogBlockInfo a) where
-  payloadKeys Katip.V0 _ = Katip.SomeKeys ["H"]
-  payloadKeys _        _ = Katip.AllKeys
-

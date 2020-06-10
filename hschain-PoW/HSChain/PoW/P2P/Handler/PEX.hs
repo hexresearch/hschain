@@ -30,7 +30,7 @@ import HSChain.PoW.P2P.Handler.CatchupLock
 import HSChain.PoW.P2P.Handler.BlockRequests
 import HSChain.PoW.Consensus
 import HSChain.PoW.Types
-import HSChain.PoW.Logger
+import HSChain.Logger
 import qualified HSChain.Network.IpAddresses as Ip
 import HSChain.Types.Merkle.Types
 

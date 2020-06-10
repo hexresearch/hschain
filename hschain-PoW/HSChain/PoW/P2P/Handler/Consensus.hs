@@ -29,7 +29,7 @@ import HSChain.Control.Channels
 import HSChain.PoW.Consensus
 import HSChain.PoW.P2P.Types
 import HSChain.PoW.Types
-import HSChain.PoW.Logger
+import HSChain.Logger
 
 
 -- | Channels for sending data to and from consensus thread

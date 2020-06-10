@@ -26,6 +26,7 @@ Library
                      , hschain-control
                      , hschain-config
                      , hschain-types
+                     , hschain-logger
                      , hschain-net
                      , hschain-merkle
                      , aeson
@@ -67,8 +68,6 @@ Library
                   HSChain.Crypto.Containers
                   HSChain.Data.CIntMap
                   HSChain.Exceptions
-                  HSChain.Logger
-                  HSChain.Logger.Class
                   HSChain.Monitoring
                   HSChain.Run
                   HSChain.P2P

@@ -30,7 +30,7 @@ import HSChain.Control.Channels
 import HSChain.Network.Types
 import HSChain.PoW.P2P.Types
 import HSChain.PoW.Types
-import HSChain.PoW.Logger
+import HSChain.Logger
 import HSChain.PoW.Consensus
 import HSChain.PoW.Exceptions
 import HSChain.PoW.P2P.Handler.BlockRequests
