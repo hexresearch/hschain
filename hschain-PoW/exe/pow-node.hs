@@ -97,7 +97,7 @@ instance KVConfig TestChainNewPow where
       onlyHeader = LBS.toStrict $ serialise $ blockWithoutNonce hdr
       answer = kvNonce $ blockData hdr
       Hash hashOfSum = hashBlob headerAndAnswer :: Hash SHA256
-      headerAndAnswer = BS.concat [onlyHeader, answer]
+      headerAndAnswer = BS.concat [answer, onlyHeader]
 
 
 blockWithoutNonce :: GBlock (KV TestChainNewPow) f -> GBlock (KV TestChainNewPow) f
