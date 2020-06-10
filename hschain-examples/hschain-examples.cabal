@@ -16,7 +16,7 @@ Build-Type:     Simple
 Library
   Ghc-options:         -Wall
   Default-Language:    Haskell2010
-  Build-Depends:       base              >=4.9 && <5
+  Build-Depends:       base              >=4.12 && <5
                      , hschain-crypto
                      , hschain-control
                      , hschain-config
@@ -55,7 +55,7 @@ Library
 Executable hschain-coin-node
   Ghc-options:         -Wall -threaded -Wno-orphans -rtsopts "-with-rtsopts=-N -T -qn1"
   Default-Language:    Haskell2010
-  Build-Depends:       base                 >=4.9 && <5
+  Build-Depends:       base                 >=4.12 && <5
                      , hschain
                      , hschain-net
                      , hschain-merkle
@@ -89,7 +89,7 @@ Executable hschain-coin-node
 Executable hschain-dioxane-node
   Ghc-options:         -Wall -threaded -Wno-orphans -rtsopts "-with-rtsopts=-N -T -qn1"
   Default-Language:    Haskell2010
-  Build-Depends:       base                 >=4.9 && <5
+  Build-Depends:       base                 >=4.12 && <5
                      , hschain
                      , hschain-net
                      , hschain-merkle
@@ -125,7 +125,7 @@ Executable hschain-db
   Buildable: False
   Ghc-options:         -Wall -threaded -Wno-orphans
   Default-Language:    Haskell2010
-  Build-Depends:       base                 >=4.9 && <5
+  Build-Depends:       base                 >=4.12 && <5
                      , hschain
                      , hschain-types
                      , hschain-crypto
@@ -149,7 +149,7 @@ Test-suite hschain-tests
   Type:                exitcode-stdio-1.0
   Ghc-options:         -Wall -threaded -rtsopts "-with-rtsopts=-A64M -N -qn1"
   Default-Language:    Haskell2010
-  Build-Depends:       base              >=4.9 && <5
+  Build-Depends:       base              >=4.12 && <5
                      , hschain
                      , hschain-merkle
                      , hschain-crypto
@@ -209,7 +209,7 @@ Benchmark hschain-bench
   hs-source-dirs:      bench
   Default-Language:    Haskell2010
   Main-is:             main.hs
-  Build-Depends:       base  >=4.9 && <5
+  Build-Depends:       base  >=4.12 && <5
                      , bytestring >=0.10
                      , criterion
                      , deepseq
