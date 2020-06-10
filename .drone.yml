@@ -4,7 +4,7 @@ name: default
 
 steps:
 - name: build-hschain-ghc883
-  image: nixos/nix
+  image: nixos/nix:2.3.4
   privileged: true
   network_mode: host
   environment:
@@ -23,7 +23,7 @@ steps:
   - ./build-ci.sh --argstr ghc ghc883  --arg useSodium true  --arg isBench true
 
 - name: build-hschain-cryptonite
-  image: nixos/nix
+  image: nixos/nix:2.3.4
   privileged: true
   network_mode: host
   environment:
@@ -42,7 +42,7 @@ steps:
   - ./build-ci.sh --argstr ghc ghc883  --arg useSodium false  --arg isBench true
 
 - name: build-hschain-ghcjs
-  image: nixos/nix
+  image: nixos/nix:2.3.4
   privileged: true
   network_mode: host
   commands:
@@ -61,7 +61,7 @@ steps:
       from_secret: nix_cache_signing_key
 
 - name: dockerize-hschain
-  image: nixos/nix
+  image: nixos/nix:2.3.4
   volumes:
   - name: dockersock
     path: /var/run/docker.sock
@@ -107,8 +107,6 @@ steps:
       ${DRONE_BUILD_EVENT} ${DRONE_PULL_REQUEST= }${DRONE_TAG= } to branch *{{commit.branch}}* by {{commit.author}}
 
       {{commit.message}}
-
-      build time is {{buildtime build.started}}
   when:
     event: push
     status:
