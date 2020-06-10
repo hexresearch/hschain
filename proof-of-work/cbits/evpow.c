@@ -215,12 +215,12 @@ create_clause(SHA256_CTX* hash_ctx_for_clause, int clause, int* clause_literals,
 } /* create_clause */
 
 static void
-create_instance(uint8_t* prefix_hash, Solver* solver, int clauses_count, int fixed_bits_count, uint64_t fixed_bits) {
+create_instance(uint8_t* suffix_hash, Solver* solver, int clauses_count, int fixed_bits_count, uint64_t fixed_bits) {
 	int clause;
 	int literal_index;
 	SHA256_CTX ctx_after_hash;
 	SHA256_Init(&ctx_after_hash);
-	SHA256_Update(&ctx_after_hash, prefix_hash, SHA256_DIGEST_LENGTH);
+	SHA256_Update(&ctx_after_hash, suffix_hash, SHA256_DIGEST_LENGTH);
 	for (literal_index = 0; literal_index < fixed_bits_count; literal_index ++) {
 		int variable = literal_index + 1;
 		int literal = variable;
@@ -241,29 +241,6 @@ create_instance(uint8_t* prefix_hash, Solver* solver, int clauses_count, int fix
 		printf("\n");
 #endif
 		int num_literals_remain = EVPOW_K;
-#if 0
-		if (fixed_bits_count > 0) {
-			num_literals_remain = 0;
-			for (literal_index = 0; literal_index < EVPOW_K; literal_index++) {
-				int literal = literals[literal_index];
-				int variable = abs(literal) - 1;
-				if (variable < fixed_bits_count) {
-					int must_positive = ((fixed_bits >> variable) & 1) != 0;
-					int this_positive = literal > 0;
-					if (must_positive == this_positive) {
-						// completely satisfied, skip.
-						num_literals_remain = -1;
-						break;
-					} else {
-						// nothing to do - we do not copy unsatisfied literal.
-					}
-				} else {
-					literals[num_literals_remain] = literal;
-					num_literals_remain ++;
-				}
-			}
-		}
-#endif
 		if (num_literals_remain >= 0) { // not trivial.
 			for (literal_index = 0; literal_index < num_literals_remain; literal_index ++) {
 				solver_add(solver, literals[literal_index]);
@@ -322,7 +299,7 @@ under_complexity_threshold(uint8_t* hash, uint8_t* target) {
 } /* under_complexity_threshold */
 
 static int
-find_answer(SHA256_CTX* context_after_prefix, uint8_t* answer, uint8_t* full_hash, int milliseconds_allowance, uint8_t* target, Solver* solver, double* first_result_ms) {
+find_answer(uint8_t* suffix, size_t suffix_size, uint8_t* answer, uint8_t* full_hash, int milliseconds_allowance, uint8_t* target, Solver* solver, double* first_result_ms) {
 	clock_t end_time;
 	clock_t last_time;
 
@@ -332,14 +309,12 @@ find_answer(SHA256_CTX* context_after_prefix, uint8_t* answer, uint8_t* full_has
 		end_time = last_time + (milliseconds_allowance * CLOCKS_PER_SEC + 999)/1000;
 		solver_set_interrupt(solver, (void*)&end_time, check_clock);
 	}
-	//printf("complexity shift %d, mantissa %04x\n", complexity_shift, complexity_mantissa);
 	while (1) {
 		SHA256_CTX full_hash_context;
 		// obtain a solution.
 		int status;
 		int i;
 	       	status = solver_sat(solver, -1);
-		//printf("decisions made %llu, propagations made %llu\n", picosat_decisions(solver), picosat_propagations(solver));
 		//printf("status %d\n", status);
 		clock_t curr_time = clock();
 		if (first_result_ms) {
@@ -355,8 +330,9 @@ find_answer(SHA256_CTX* context_after_prefix, uint8_t* answer, uint8_t* full_has
 		// extract a solution into the answer.
 		extract_solution_answer(solver, answer);
 		// compute full hash.
-		full_hash_context = *context_after_prefix;
+		SHA256_Init(&full_hash_context);
 		SHA256_Update(&full_hash_context, answer, EVPOW_ANSWER_BYTES);
+		SHA256_Update(&full_hash_context, suffix, suffix_size);
 		SHA256_Final(full_hash, &full_hash_context);
 		if (under_complexity_threshold(full_hash, target)) {
 			//printf("FOUND!\n");
@@ -381,8 +357,8 @@ find_answer(SHA256_CTX* context_after_prefix, uint8_t* answer, uint8_t* full_has
 } /* find_answer */
 
 int
-evpow_solve( uint8_t* prefix
-	   , size_t prefix_size
+evpow_solve( uint8_t* suffix
+	   , size_t suffix_size
 	   , uint8_t* answer
 	   , uint8_t* solution_hash
 	   , int clauses_count
@@ -394,38 +370,16 @@ evpow_solve( uint8_t* prefix
 	   , uint64_t fixed_bits
 	   , double* first_result_ms
 ) {
-	SHA256_CTX prefix_hash_context;
-	SHA256_CTX intermediate_prefix_hash_context;
-	uint8_t prefix_hash[SHA256_DIGEST_LENGTH];
+	SHA256_CTX suffix_hash_context;
+	uint8_t suffix_hash[SHA256_DIGEST_LENGTH];
 	Solver* solver;
 	int r;
 
 	// Compute hash of prefix.
-	SHA256_Init(&prefix_hash_context);
+	SHA256_Init(&suffix_hash_context);
 
-#if 0
-{ int i;
-	printf("prefix (%zu):", prefix_size);
-	for (i=0;i<prefix_size;i++) {
-		printf(" %02x", prefix[i]);
-	}
-	printf("\n");
-}
-#endif
-
-	SHA256_Update(&prefix_hash_context, prefix, prefix_size);
-	intermediate_prefix_hash_context = prefix_hash_context;
-	SHA256_Final(prefix_hash, &intermediate_prefix_hash_context);
-
-#if 0
-{ int i;
-	printf("prefix hash:");
-	for (i=0;i<sizeof(prefix_hash);i++) {
-		printf(" %02x", prefix_hash[i]);
-	}
-	printf("\n");
-}
-#endif
+	SHA256_Update(&suffix_hash_context, suffix, suffix_size);
+	SHA256_Final(suffix_hash, &suffix_hash_context);
 
 	// Create and configure solver instance.
 	solver = solver_new();
@@ -442,19 +396,18 @@ evpow_solve( uint8_t* prefix
 	}
 
 	// Create instance and feed it to solver.
-	create_instance(prefix_hash, solver, clauses_count, fixed_bits_count, fixed_bits);
+	create_instance(suffix_hash, solver, clauses_count, fixed_bits_count, fixed_bits);
 
 	// find solution if we can.
-	r = find_answer(&prefix_hash_context, answer, solution_hash, milliseconds_allowance, target, solver, first_result_ms);
-	//printf("found %d\n", r);
+	r = find_answer(suffix, suffix_size, answer, solution_hash, milliseconds_allowance, target, solver, first_result_ms);
 
 	solver_delete(solver);
 	return r;
 } /* evpow_solve */
 
 int
-evpow_check( uint8_t* prefix
-           , size_t prefix_size
+evpow_check( uint8_t* suffix
+           , size_t suffix_size
            , uint8_t* answer
            , uint8_t* hash_to_compare
 	   , int clauses_count
@@ -469,66 +422,24 @@ evpow_check( uint8_t* prefix
 		printf("NOT RARE ENOUGH!\n");
 		return 0;
 	}
-	SHA256_Init(&partial_ctx);
-	SHA256_Update(&partial_ctx, prefix, prefix_size);
-#if 0
-{ int i;
-	printf("prefix (%zu):", prefix_size);
-	for (i=0;i<prefix_size;i++) {
-		printf(" %02x", prefix[i]);
-	}
-	printf("\n");
-}
-#endif
-	full_ctx = partial_ctx;
+	SHA256_Init(&full_ctx);
 	SHA256_Update(&full_ctx, answer, EVPOW_ANSWER_BYTES);
+	SHA256_Update(&full_ctx, suffix, suffix_size);
 	SHA256_Final(hash, &full_ctx);
-#if 0
-	{
-		int i;
-		printf("hash we computed:");
-		for (i=0;i<SHA256_DIGEST_LENGTH;i++) {
-			printf(" %02x",hash[i]);
-		}
-		printf("\n");
-		printf("hash we provided:");
-		for (i=0;i<SHA256_DIGEST_LENGTH;i++) {
-			printf(" %02x",hash_to_compare[i]);
-		}
-		printf("\n");
-	}
-#endif
 	// second fastest second - hashes are equal.
 	if (0 != memcmp(hash, hash_to_compare, SHA256_DIGEST_LENGTH)) {
-		printf("HASH MISMATCH!\n");
 		return 0;
 	}
 	// slowest one last - does answer really answer the puzzle?
+	SHA256_Init(&partial_ctx);
+	SHA256_Update(&partial_ctx, suffix, suffix_size);
 	SHA256_Final(hash, &partial_ctx);
 	SHA256_Init(&ctx_after_hash);
 	SHA256_Update(&ctx_after_hash, hash, SHA256_DIGEST_LENGTH);
-#if 0
-	{
-		int i;
-		printf("answer to check against:");
-		for (i=0;i<EVPOW_ANSWER_BITS;i++) {
-			int bit = (answer[i/8] >> (i%8))&1;
-			printf("%s%d",(i % 8) == 0? " ": "", bit);
-		}
-		printf("\n");
-	}
-#endif
 	for (clause = 0; clause < clauses_count; clause ++) {
 		int literals[EVPOW_K];
 		int literal_index;
 		create_clause(&ctx_after_hash, clause, literals, clause == clauses_count - 1);
-#if 0
-		printf("clause:");
-		for (literal_index = 0; literal_index < EVPOW_K; literal_index ++) {
-			printf(" %d", literals[literal_index]);
-		}
-		printf("\n");
-#endif
 		for (literal_index = 0; literal_index < EVPOW_K; literal_index ++) {
 			int literal = literals[literal_index];
 			int positive = literal > 0;
@@ -540,7 +451,6 @@ evpow_check( uint8_t* prefix
 			}
 		}
 		if (literal_index >= EVPOW_K) {
-			printf("ANSWER DOES NOT ANSWER!\n");
 			return 0;
 		}
 	}

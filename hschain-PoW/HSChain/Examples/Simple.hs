@@ -140,3 +140,4 @@ hash256AsTarget a
 goBack :: Height -> BH b -> Maybe (BH b)
 goBack (Height 0) = Just
 goBack h          = goBack (pred h) <=< bhPrevious
+
