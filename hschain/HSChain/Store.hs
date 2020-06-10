@@ -1,6 +1,7 @@
 {-# LANGUAGE CPP                        #-}
 {-# LANGUAGE DataKinds                  #-}
 {-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE DerivingStrategies         #-}
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
@@ -8,10 +9,14 @@
 {-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE MultiWayIf                 #-}
 {-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE PolyKinds                  #-}
 {-# LANGUAGE RankNTypes                 #-}
 {-# LANGUAGE RecordWildCards            #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE TemplateHaskell            #-}
+{-# LANGUAGE TypeApplications           #-}
 {-# LANGUAGE TypeFamilies               #-}
+{-# LANGUAGE UndecidableInstances       #-}
 {-# LANGUAGE ViewPatterns               #-}
 -- |
 -- This module provides API for working with persistent (blockchain)
@@ -46,6 +51,8 @@ module HSChain.Store (
   , DBT(..)
   , dbtRO
   , runDBT
+  , DatabaseByField(..)
+  , DatabaseByType(..)
     -- ** Standard API
   , blockchainHeight
   , retrieveBlock
@@ -74,24 +81,25 @@ module HSChain.Store (
 import qualified Katip
 
 import Codec.Serialise           (Serialise)
-import Control.Monad             ((<=<), foldM, forM, unless)
 import Control.Monad.Catch       (MonadMask,MonadThrow,MonadCatch)
 import Control.Monad.Morph       (MFunctor(..))
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Except
-import Control.Monad.Trans.Reader
+import Control.Monad.Reader
 import Control.Monad.Trans.Writer
 #if !MIN_VERSION_base(4,13,0)
 import Control.Monad.Fail         (MonadFail)
 #endif
 
-import Data.Foldable             (forM_)
 import Data.Maybe                (isNothing)
 import Data.Text                 (Text)
+import Data.Generics.Product.Fields (HasField'(..))
+import Data.Generics.Product.Typed  (HasType(..))
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Aeson         as JSON
 import qualified Data.Aeson.TH      as JSON
+import Lens.Micro
 import GHC.Generics              (Generic)
 
 import HSChain.Types.Blockchain
@@ -130,9 +138,9 @@ dbtRO (DBT m) = DBT (withReaderT connectionRO m)
 runDBT :: Connection rw a -> DBT rw a m x -> m x
 runDBT c (DBT m) = runReaderT m c
 
-instance MonadIO m => MonadReadDB (DBT rw a m) a where
+instance MonadIO m => MonadReadDB a (DBT rw a m) where
   askConnectionRO = connectionRO <$> DBT ask
-instance MonadIO m => MonadDB (DBT 'RW a m) a where
+instance MonadIO m => MonadDB a (DBT 'RW a m) where
   askConnectionRW = DBT ask
 
 
@@ -321,7 +329,7 @@ data BlockchainInconsistency
 
 -- | check storage against all consistency invariants
 checkStorage
-  :: (MonadReadDB m a, MonadIO m, Crypto (Alg a), Serialise a, CryptoHashable a)
+  :: (MonadReadDB a m, MonadIO m, Crypto (Alg a), Serialise a, CryptoHashable a)
   => m [BlockchainInconsistency]
 checkStorage = queryRO $ execWriterT $ do
   maxH         <- lift $ blockchainHeight
@@ -349,7 +357,7 @@ checkStorage = queryRO $ execWriterT $ do
 -- | Check that block proposed at given height is correct in sense all
 --   blockchain invariants hold
 checkProposedBlock
-  :: (MonadReadDB m a, MonadIO m, Crypto (Alg a))
+  :: (MonadReadDB a m, MonadIO m, Crypto (Alg a))
   => Height
   -> Block a
   -> m [BlockchainInconsistency]
@@ -481,3 +489,45 @@ require e = maybe (throwE e) return <=< lift . lift
 orElse :: Monad m => Bool -> e -> WriterT [e] m ()
 orElse True  _ = return ()
 orElse False e = tell [e]
+
+
+
+----------------------------------------------------------------
+-- DerivingVia
+----------------------------------------------------------------
+
+newtype DatabaseByField conn a m x = DatabaseByField (m x)
+  deriving newtype (Functor,Applicative,Monad)
+
+instance ( MonadReader r m
+         , HasField' conn r (Connection 'RW a)
+         , a ~ a'
+         ) => MonadReadDB a' (DatabaseByField conn a m) where
+  askConnectionRO = DatabaseByField $ connectionRO <$> asks (^. field' @conn)
+  {-# INLINE askConnectionRO #-}
+
+instance ( MonadReader r m
+         , HasField' conn r (Connection 'RW a)
+         , a ~ a'
+         ) => MonadDB a' (DatabaseByField conn a m) where
+  askConnectionRW = DatabaseByField $ asks (^. field' @conn)
+  {-# INLINE askConnectionRW #-}
+
+
+
+newtype DatabaseByType a m x = DatabaseByType (m x)
+  deriving newtype (Functor,Applicative,Monad)
+
+instance ( MonadReader r m
+         , HasType (Connection 'RW a) r
+         , a ~ a'
+         ) => MonadReadDB a' (DatabaseByType a m) where
+  askConnectionRO = DatabaseByType $ connectionRO <$> asks (^. typed @(Connection 'RW a))
+  {-# INLINE askConnectionRO #-}
+
+instance ( MonadReader r m
+         , HasType (Connection 'RW a) r
+         , a ~ a'
+         ) => MonadDB a' (DatabaseByType a m) where
+  askConnectionRW = DatabaseByType $ asks (^. typed)
+  {-# INLINE askConnectionRW #-}

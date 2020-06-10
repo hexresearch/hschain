@@ -99,7 +99,7 @@ mkGenesisBlock valSet = BChEval
 -------------------------------------------------------------------------------
 
 interpretSpec
-  :: ( MonadDB m BData, MonadFork m, MonadMask m, MonadLogger m
+  :: ( MonadDB BData m, MonadFork m, MonadMask m, MonadLogger m
      , MonadTMMonitoring m )
   => Genesis BData
   -> NodeSpec BData

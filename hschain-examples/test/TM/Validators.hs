@@ -242,7 +242,7 @@ transitions = BChLogic
 ----------------------------------------------------------------
 
 interpretSpec
-  :: ( MonadDB m Tx, MonadFork m, MonadMask m, MonadLogger m
+  :: ( MonadDB Tx m, MonadFork m, MonadMask m, MonadLogger m
      , MonadTMMonitoring m)
   => Genesis Tx
   -> NodeSpec Tx

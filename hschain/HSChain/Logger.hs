@@ -2,14 +2,18 @@
 {-# LANGUAGE DeriveFunctor              #-}
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE DerivingStrategies         #-}
+{-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase                 #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE PolyKinds                  #-}
 {-# LANGUAGE RecordWildCards            #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE TemplateHaskell            #-}
+{-# LANGUAGE TypeApplications           #-}
 {-# LANGUAGE UndecidableInstances       #-}
 -- |
 -- Logger
@@ -22,10 +26,13 @@ module HSChain.Logger (
   , runLoggerT
   , withLogEnv
   , newLogEnv
-  , NoLogsT(..)
   , StdoutLogT(..)
   , runStdoutLogT
   , logOnException
+    -- ** Newtype for DerivingVia
+  , NoLogsT(..)
+  , LoggerByFields(..)
+  , LoggerByTypes(..)
     -- ** Scribe construction helpers
   , ScribeType(..)
   , ScribeSpec(..)
@@ -46,7 +53,7 @@ import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Control.Monad.Morph        (MFunctor(..))
 import Control.Monad.Trans.Class
-import Control.Monad.Trans.Reader
+import Control.Monad.Reader
 #if !MIN_VERSION_base(4,13,0)
 import Control.Monad.Fail         (MonadFail)
 #endif
@@ -58,10 +65,13 @@ import Data.IORef
 import qualified Data.Text.Lazy as TL
 import           Data.Text.Lazy.Builder (toLazyText)
 import Data.Typeable
+import Data.Generics.Product.Fields (HasField'(..))
+import Data.Generics.Product.Typed  (HasType(..))
 import qualified Data.HashMap.Strict        as HM
 import qualified Data.ByteString.Lazy.Char8 as BL
 import qualified Data.Text as T
 import Katip
+import Lens.Micro
 import System.Directory (createDirectoryIfMissing)
 import System.FilePath  (splitFileName)
 import System.IO
@@ -86,8 +96,8 @@ newtype LoggerT m a = LoggerT (ReaderT (Namespace, LogEnv) m a)
 
 instance MFunctor LoggerT where
   hoist f (LoggerT m) = LoggerT (hoist f m)
-instance (MonadReadDB m a) => MonadReadDB (LoggerT m) a where
-instance (MonadDB m a) => MonadDB (LoggerT m) a where
+instance (MonadReadDB a m) => MonadReadDB a (LoggerT m) where
+instance (MonadDB a m) => MonadDB a (LoggerT m) where
 
 runLoggerT :: LogEnv -> LoggerT m a -> m a
 runLoggerT le (LoggerT m) = runReaderT m (mempty, le)
@@ -102,8 +112,8 @@ instance MonadIO m => MonadLogger (LoggerT m) where
     logF a nm sev s
   localNamespace f (LoggerT m) = LoggerT $ local (first f) m
 
--- | Mock logging. Useful for cases where constraints require logging
---   but we don't need any
+-- | Newtype wrapper that provides no logging. Could be used with
+--   DerivingVia to define instances that don't in fact log.
 newtype NoLogsT m a = NoLogsT { runNoLogsT :: m a }
   deriving newtype ( Functor, Applicative, Monad, MonadFail
                    , MonadIO, MonadThrow, MonadCatch, MonadMask
@@ -111,8 +121,8 @@ newtype NoLogsT m a = NoLogsT { runNoLogsT :: m a }
 
 instance MFunctor NoLogsT where
   hoist f (NoLogsT m) = NoLogsT (f m)
-instance (MonadReadDB m a) => MonadReadDB (NoLogsT m) a where
-instance (MonadDB m a) => MonadDB (NoLogsT m) a where
+instance (MonadReadDB a m) => MonadReadDB a (NoLogsT m) where
+instance (MonadDB a m) => MonadDB a (NoLogsT m) where
 
 instance MonadTrans NoLogsT where
   lift = NoLogsT
@@ -120,6 +130,41 @@ instance MonadTrans NoLogsT where
 instance MonadIO m => MonadLogger (NoLogsT m) where
   logger _ _ _ = return ()
   localNamespace _ a = a
+
+
+newtype LoggerByFields logenv namespace m a = LoggerByFields (m a)
+  deriving newtype (Functor, Applicative, Monad)
+
+instance ( MonadReader r m
+         , MonadIO m
+         , HasField' logenv    r LogEnv
+         , HasField' namespace r Namespace
+         ) => MonadLogger (LoggerByFields logenv namespace m) where
+  logger sev s a = LoggerByFields $ do
+    nm <- asks (^. field' @namespace)
+    le <- asks (^. field' @logenv)
+    runKatipT le $ logF a nm sev s
+  localNamespace f (LoggerByFields m) = LoggerByFields $ local (field' @namespace %~ f) m 
+  {-# INLINE logger         #-}
+  {-# INLINE localNamespace #-}
+
+
+newtype LoggerByTypes m a = LoggerByTypes (m a)
+  deriving newtype (Functor, Applicative, Monad)
+
+instance ( MonadReader r m
+         , MonadIO m
+         , HasType LogEnv    r
+         , HasType Namespace r
+         ) => MonadLogger (LoggerByTypes m) where
+  logger sev s a = LoggerByTypes $ do
+    nm <- asks (^. typed @Namespace)
+    le <- asks (^. typed @LogEnv)
+    runKatipT le $ logF a nm sev s
+  localNamespace f (LoggerByTypes m) = LoggerByTypes $ local (typed @Namespace %~ f) m
+  {-# INLINE logger         #-}
+  {-# INLINE localNamespace #-}
+
 
 
 -- | Simple monad transformer for writing logs to stdout. Motly useful

@@ -1,18 +1,31 @@
 {-# LANGUAGE DefaultSignatures          #-}
 {-# LANGUAGE DeriveFunctor              #-}
+{-# LANGUAGE DerivingStrategies         #-}
+{-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE PolyKinds                  #-}
 {-# LANGUAGE RankNTypes                 #-}
 {-# LANGUAGE RecordWildCards            #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
+{-# LANGUAGE TypeApplications           #-}
 {-# LANGUAGE TypeFamilies               #-}
+{-# LANGUAGE UndecidableInstances       #-}
 -- |
 -- Abstract layer for distinguish HSChain and some monitoring
 -- libraries, such as Prometheus
 module HSChain.Monitoring (
+    -- * Data types
     PrometheusGauges(..)
   , TGauge(..)
   , standardMonitoring
+    -- * Monadic API
   , MonadTMMonitoring(..)
+    -- ** Newtypes for DerivingVia
+  , NoMonitoring(..)
+  , MonitoringByField(..)
+  , MonitoringByType(..)
+    -- * Helpers
   , addCounterNow
   , setTGaugeNow
   , incTCVectorNow
@@ -21,10 +34,13 @@ module HSChain.Monitoring (
 import Control.Monad
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
-import Control.Monad.Trans.Reader
+import Control.Monad.Reader
 import qualified Control.Monad.Trans.State.Strict as SS
 import qualified Control.Monad.Trans.State.Lazy   as SL
 import Data.Text                  (Text)
+import Data.Generics.Product.Fields (HasField'(..))
+import Data.Generics.Product.Typed  (HasType(..))
+import Lens.Micro
 import Numeric.Natural
 import Pipes       (Proxy)
 import Prometheus
@@ -131,6 +147,50 @@ class Monad m => MonadTMMonitoring m where
   default usingVector :: (m ~ t n, MonadTrans t, MonadTMMonitoring n, Label l)
                       => (PrometheusGauges -> Vector l Counter) -> l -> m ()
   usingVector f l = lift $ usingVector f l
+
+
+newtype NoMonitoring m a = NoMonitoring (m a)
+  deriving newtype (Functor,Applicative,Monad,MonadIO)
+
+instance Monad m => MonadTMMonitoring (NoMonitoring m) where
+  usingCounter _ _ = return ()
+  usingGauge   _ _ = return ()
+  usingVector  _ _ = return ()
+
+
+newtype MonitoringByField gauges m a = MonitoringByField (m a)
+  deriving newtype (Functor,Applicative,Monad,MonadIO)
+
+instance ( MonadIO m
+         , MonadReader r m
+         , HasField' gauge r PrometheusGauges
+         ) => MonadTMMonitoring (MonitoringByField gauge m) where
+  usingCounter getter n = MonitoringByField $ flip addCounterNow  n =<< asks (getter . (^. field' @gauge))
+  usingGauge   getter n = MonitoringByField $ flip setTGaugeNow   n =<< asks (getter . (^. field' @gauge))
+  usingVector  getter l = MonitoringByField $ flip incTCVectorNow l =<< asks (getter . (^. field' @gauge))
+  {-# INLINE usingCounter #-}
+  {-# INLINE usingGauge   #-}
+  {-# INLINE usingVector  #-}
+
+
+newtype MonitoringByType m a = MonitoringByType (m a)
+  deriving newtype (Functor,Applicative,Monad,MonadIO)
+
+instance ( MonadIO m
+         , MonadReader r m
+         , HasType PrometheusGauges r
+         ) => MonadTMMonitoring (MonitoringByType m) where
+  usingCounter getter n = MonitoringByType $ flip addCounterNow  n =<< asks (getter . (^. typed))
+  usingGauge   getter n = MonitoringByType $ flip setTGaugeNow   n =<< asks (getter . (^. typed))
+  usingVector  getter l = MonitoringByType $ flip incTCVectorNow l =<< asks (getter . (^. typed))
+  {-# INLINE usingCounter #-}
+  {-# INLINE usingGauge   #-}
+  {-# INLINE usingVector  #-}
+
+
+----------------------------------------------------------------
+-- Helper to lift monitoring to IO
+----------------------------------------------------------------
 
 addCounterNow :: (MonadIO m) => Counter -> Int -> m ()
 addCounterNow cnt = void . runMonitorNowT . addCounter cnt . fromIntegral

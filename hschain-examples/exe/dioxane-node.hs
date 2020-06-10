@@ -2,6 +2,7 @@
 {-# LANGUAGE BangPatterns               #-}
 {-# LANGUAGE DataKinds                  #-}
 {-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE DerivingStrategies         #-}
 {-# LANGUAGE DerivingVia                #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase                 #-}
@@ -19,13 +20,14 @@ import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Cont
-import Control.Monad.Trans.Reader
+import Control.Monad.Reader
 import Data.Aeson             (FromJSON)
 import Data.Word
 import qualified Data.Vector as V
 import Data.Yaml.Config       (loadYamlSettings, requireEnv)
 import Options.Applicative
 
+import Katip (Namespace,LogEnv)
 import Network.Wai.Middleware.Prometheus
 import Prometheus   (register)
 import Prometheus.Metric.GHC
@@ -54,22 +56,6 @@ import HSChain.Network.Types (NetAddr)
 --
 ----------------------------------------------------------------
 
-newtype MonitorT m a = MonitorT (ReaderT PrometheusGauges m a)
-  deriving ( Functor,Applicative,Monad
-           , MonadIO,MonadMask,MonadThrow,MonadCatch
-           , MonadLogger,MonadFork)
-
-instance MonadIO m =>  MonadTMMonitoring (MonitorT m) where
-  usingCounter getter n = MonitorT $ flip addCounterNow n =<< asks getter
-  usingGauge   getter x = MonitorT $ flip setTGaugeNow x =<< asks getter
-  usingVector  getter l = MonitorT $ do
-    g <- asks getter
-    incTCVectorNow g l
-
-runMonitorT :: PrometheusGauges -> MonitorT m a -> m a
-runMonitorT g (MonitorT m) = runReaderT m g
-
-
 data DioTag
 
 instance Dio DioTag where
@@ -81,6 +67,33 @@ instance Dio DioTag where
     , dioInitialBalance = 1000000
     , dioValidators     = 4
     }
+
+
+data AppDict = AppDict
+  { dictGauges    :: !PrometheusGauges
+  , dictNamespace :: !Namespace
+  , dictLogEnv    :: !LogEnv
+  , dictConn      :: !(Connection 'RW (BData DioTag))
+  }
+  deriving stock (Generic)
+
+newtype AppT m a = AppT { unAppT :: ReaderT AppDict m a }
+  deriving newtype (Functor,Applicative,Monad,MonadIO)
+  deriving newtype (MonadThrow,MonadCatch,MonadMask,MonadFork)
+  deriving newtype (MonadReader AppDict)
+  deriving MonadLogger         via LoggerByTypes    (AppT m)
+  deriving MonadTMMonitoring   via MonitoringByType (AppT m)
+  deriving (MonadReadDB (BData DioTag), MonadDB (BData DioTag))
+       via DatabaseByType (BData DioTag)(AppT m)
+
+runAppT :: LogEnv -> PrometheusGauges -> Connection 'RW (BData DioTag) -> AppT m a -> m a
+runAppT lenv g conn
+  = flip runReaderT AppDict { dictGauges    = g
+                            , dictNamespace = mempty
+                            , dictLogEnv    = lenv
+                            , dictConn      = conn
+                            }
+  . unAppT
 
 
 data Opts = Opts
@@ -122,7 +135,7 @@ main = do
     --
     (conn, logenv) <- allocNode nodeSpec
     gauges         <- standardMonitoring
-    lift $ runMonitorT gauges . runLoggerT logenv . runDBT conn $ do
+    lift $ runAppT logenv gauges conn $ do
       (RunningNode{..},acts) <- interpretSpec @_ @DioTag
         nodeIdx
         bnet

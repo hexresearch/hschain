@@ -180,7 +180,7 @@ findInputs tgt = go 0
 ----------------------------------------------------------------
 
 interpretSpec
-  :: (MonadDB m BData, MonadFork m, MonadMask m, MonadLogger m, MonadTMMonitoring m)
+  :: (MonadDB BData m, MonadFork m, MonadMask m, MonadLogger m, MonadTMMonitoring m)
   => Genesis BData
   -> Configuration Example
   -> BlockchainNet

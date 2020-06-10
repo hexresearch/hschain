@@ -397,7 +397,7 @@ evidenceIsRecordedProp = withEnvironment $ do
     otherK = take 2 $ filter (/=proposerH2R0) privK
 
 selectAllEvidence
-  :: MonadQueryRO m a
+  :: MonadQueryRO a m
   => m [(CBORed (ByzantineEvidence BData), Bool)]
 selectAllEvidence
   = basicQuery_ "SELECT evidence,recorded FROM thm_evidence"

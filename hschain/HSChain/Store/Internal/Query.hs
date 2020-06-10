@@ -164,10 +164,10 @@ withConnection db = bracket (openConnection db) closeConnection'
 --   by library.
 --
 --   Default implementation uses lift.
-class Monad m => MonadReadDB m a | m -> a where
+class Monad m => MonadReadDB a m | m -> a where
   askConnectionRO :: m (Connection 'RO a)
   --
-  default askConnectionRO :: (m ~ t f, MonadReadDB f a, MonadTrans t)
+  default askConnectionRO :: (m ~ t f, MonadReadDB a f, MonadTrans t)
                           => m (Connection 'RO a)
   askConnectionRO = lift askConnectionRO
 
@@ -176,33 +176,33 @@ class Monad m => MonadReadDB m a | m -> a where
 --   to the database and writing should be handled by library.
 --
 --   Default implementation uses lift.
-class MonadReadDB m a => MonadDB m a | m -> a where
+class MonadReadDB a m => MonadDB a m | m -> a where
   askConnectionRW :: m (Connection 'RW a)
   --
-  default askConnectionRW :: (m ~ t f, MonadDB f a, MonadTrans t)
+  default askConnectionRW :: (m ~ t f, MonadDB a f, MonadTrans t)
                           => m (Connection 'RW a)
   askConnectionRW = lift askConnectionRW
 
 -- | Monad which allows to perform read-only queries. API is just thin
 --   wrappers about @sqlite-simple@ functions thus they shouldn't be
 --   used directly. Also note that it doesn't have 'MonadIO' superclass.
-class Monad m => MonadQueryRO m a | m -> a where
+class Monad m => MonadQueryRO a m | m -> a where
   liftQueryRO :: Query 'RO a x -> m x
   --
-  default liftQueryRO :: (m ~ t f, MonadQueryRO f a, MonadTrans t)
+  default liftQueryRO :: (m ~ t f, MonadQueryRO a f, MonadTrans t)
                       => Query 'RO a x -> m x
   liftQueryRO = lift . liftQueryRO
 
 -- | Monad which can perform read-write queries. @basic*RW@ functions
 --   are same as @RO@ variants and intended to be used as
-class (MonadQueryRO m a) => MonadQueryRW m a | m -> a where
+class (MonadQueryRO a m) => MonadQueryRW a m | m -> a where
   liftQueryRW :: Query rw a x -> m x
   --
-  default liftQueryRW :: (m ~ t f, MonadQueryRW f a, MonadTrans t)
+  default liftQueryRW :: (m ~ t f, MonadQueryRW a f, MonadTrans t)
                       => Query rw a x -> m x
   liftQueryRW = lift . liftQueryRW
 
-basicQuery1 :: (SQL.ToRow row, SQL.FromRow x, MonadQueryRO m a)
+basicQuery1 :: (SQL.ToRow row, SQL.FromRow x, MonadQueryRO a m)
   => SQL.Query             -- ^ SQL query
   -> row                   -- ^ Query parameters
   -> m (Maybe x)
@@ -217,23 +217,23 @@ basicLastInsertRowId = Query $ do
   conn <- asks connConn
   liftIO $ SQL.lastInsertRowId conn
 
-basicQuery :: (MonadQueryRO m a, SQL.ToRow p, SQL.FromRow q) => SQL.Query -> p -> m [q]
+basicQuery :: (MonadQueryRO a m, SQL.ToRow p, SQL.FromRow q) => SQL.Query -> p -> m [q]
 basicQuery sql p = liftQueryRO $ Query $ do
   conn <- asks connConn
   liftIO $ SQL.query conn sql p
 
-basicQuery_ :: forall m a q. (MonadQueryRO m a, SQL.FromRow q) => SQL.Query -> m [q]
+basicQuery_ :: (MonadQueryRO a m, SQL.FromRow q) => SQL.Query -> m [q]
 basicQuery_ sql = liftQueryRO $ Query $ do
   conn <- asks connConn
   liftIO $ SQL.query_ conn sql
 
 
-basicExecute :: (MonadQueryRW m a, SQL.ToRow p) => SQL.Query -> p -> m ()
+basicExecute :: (MonadQueryRW a m, SQL.ToRow p) => SQL.Query -> p -> m ()
 basicExecute sql param = liftQueryRW $ Query $ do
   conn <- asks connConn
   liftIO $ SQL.execute conn sql param
 
-basicExecute_ :: (MonadQueryRW m a) => SQL.Query -> m ()
+basicExecute_ :: (MonadQueryRW a m) => SQL.Query -> m ()
 basicExecute_ sql = liftQueryRW $ Query $ do
   conn <- asks connConn
   liftIO $ SQL.execute_ conn sql
@@ -241,7 +241,7 @@ basicExecute_ sql = liftQueryRW $ Query $ do
 -- | Roll back execution of transaction. It's executed as throwing
 --   of exception which is caught in the 'runQueryT'. Thus other
 --   effects in monadic stack may or may not be rolled back as well.
-rollback :: (MonadQueryRW m a) => m x
+rollback :: (MonadQueryRW a m) => m x
 rollback = liftQueryRW $ Query $ throwM Rollback
 
 
@@ -291,38 +291,38 @@ basicPutCacheBlock b = basicPutCacheHeightObj connCacheBlk (blockHeight b) b
 basicPutValidatorSet :: Height -> ValidatorSet (Alg a) -> Query 'RW a ()
 basicPutValidatorSet = basicPutCacheHeightObj connCacheVSet
 
-instance MonadReadDB  m a => MonadReadDB  (IdentityT m) a
-instance MonadDB      m a => MonadDB      (IdentityT m) a
-instance MonadQueryRO m a => MonadQueryRO (IdentityT m) a
-instance MonadQueryRW m a => MonadQueryRW (IdentityT m) a
+instance MonadReadDB  a m => MonadReadDB  a (IdentityT m)
+instance MonadDB      a m => MonadDB      a (IdentityT m)
+instance MonadQueryRO a m => MonadQueryRO a (IdentityT m)
+instance MonadQueryRW a m => MonadQueryRW a (IdentityT m)
 
-instance MonadReadDB  m a => MonadReadDB  (MaybeT m) a
-instance MonadDB      m a => MonadDB      (MaybeT m) a
-instance MonadQueryRO m a => MonadQueryRO (MaybeT m) a
-instance MonadQueryRW m a => MonadQueryRW (MaybeT m) a
+instance MonadReadDB  a m => MonadReadDB  a (MaybeT m)
+instance MonadDB      a m => MonadDB      a (MaybeT m)
+instance MonadQueryRO a m => MonadQueryRO a (MaybeT m)
+instance MonadQueryRW a m => MonadQueryRW a (MaybeT m)
 
-instance MonadReadDB  m a => MonadReadDB  (ExceptT e m) a
-instance MonadDB      m a => MonadDB      (ExceptT e m) a
-instance MonadQueryRO m a => MonadQueryRO (ExceptT e m) a
-instance MonadQueryRW m a => MonadQueryRW (ExceptT e m) a
+instance MonadReadDB  a m => MonadReadDB  a (ExceptT e m)
+instance MonadDB      a m => MonadDB      a (ExceptT e m)
+instance MonadQueryRO a m => MonadQueryRO a (ExceptT e m)
+instance MonadQueryRW a m => MonadQueryRW a (ExceptT e m)
 
-instance MonadReadDB  m a => MonadReadDB  (ReaderT r m) a
-instance MonadDB      m a => MonadDB      (ReaderT r m) a
-instance MonadQueryRO m a => MonadQueryRO (ReaderT r m) a
-instance MonadQueryRW m a => MonadQueryRW (ReaderT r m) a
+instance MonadReadDB  a m => MonadReadDB  a (ReaderT r m)
+instance MonadDB      a m => MonadDB      a (ReaderT r m)
+instance MonadQueryRO a m => MonadQueryRO a (ReaderT r m)
+instance MonadQueryRW a m => MonadQueryRW a (ReaderT r m)
 
-instance MonadReadDB  m a => MonadReadDB  (SS.StateT s m) a
-instance MonadDB      m a => MonadDB      (SS.StateT s m) a
-instance MonadQueryRO m a => MonadQueryRO (SS.StateT s m) a
-instance MonadQueryRW m a => MonadQueryRW (SS.StateT s m) a
+instance MonadReadDB  a m => MonadReadDB  a (SS.StateT s m)
+instance MonadDB      a m => MonadDB      a (SS.StateT s m)
+instance MonadQueryRO a m => MonadQueryRO a (SS.StateT s m)
+instance MonadQueryRW a m => MonadQueryRW a (SS.StateT s m)
 
-instance MonadReadDB  m a => MonadReadDB  (SL.StateT s m) a
-instance MonadDB      m a => MonadDB      (SL.StateT s m) a
-instance MonadQueryRO m a => MonadQueryRO (SL.StateT s m) a
-instance MonadQueryRW m a => MonadQueryRW (SL.StateT s m) a
+instance MonadReadDB  a m => MonadReadDB  a (SL.StateT s m)
+instance MonadDB      a m => MonadDB      a (SL.StateT s m)
+instance MonadQueryRO a m => MonadQueryRO a (SL.StateT s m)
+instance MonadQueryRW a m => MonadQueryRW a (SL.StateT s m)
 
-instance MonadReadDB m a => MonadReadDB (Proxy x x' y y' m) a
-instance MonadDB     m a => MonadDB     (Proxy x x' y y' m) a
+instance MonadReadDB a m => MonadReadDB a (Proxy x x' y y' m)
+instance MonadDB     a m => MonadDB     a (Proxy x x' y y' m)
 
 ----------------------------------------------------------------
 -- Monad transformer
@@ -363,13 +363,13 @@ instance Exception Rollback
 instance MonadTrans (QueryT rr a) where
   lift = QueryT
 
-instance (MonadIO m, MonadThrow m, MonadReadDB m a) => MonadQueryRO (QueryT rw a m) a where
+instance (MonadIO m, MonadThrow m, MonadReadDB a m) => MonadQueryRO a (QueryT rw a m) where
   liftQueryRO (Query action) = QueryT $ do
     -- NOTE: coercion is needed since we need to implement for both
     --       QueryT 'RO/'RW
     liftIO . runReaderT action . coerce =<< askConnectionRO
 
-instance (MonadIO m, MonadThrow m, MonadDB m a) => MonadQueryRW (QueryT 'RW a m) a where
+instance (MonadIO m, MonadThrow m, MonadDB a m) => MonadQueryRW a (QueryT 'RW a m) where
   liftQueryRW (Query action) = QueryT $ do
     -- NOTE: coercion is needed since we need to implement for both
     --       Query 'RO/'RW
@@ -397,21 +397,21 @@ runQueryRWT c = runQueryWorker True c . unQueryT
 
 -- | Same as 'queryRO' but for 'QueryT'
 queryROT
-  :: (MonadReadDB m a, MonadIO m, MonadMask m)
+  :: (MonadReadDB a m, MonadIO m, MonadMask m)
   => QueryT 'RO a m x
   -> m x
 queryROT q = flip runQueryROT q =<< askConnectionRO
 
 -- | Same as 'queryRW' but for 'QueryT'
 queryRWT
-  :: (MonadDB m a, MonadIO m, MonadMask m)
+  :: (MonadDB a m, MonadIO m, MonadMask m)
   => QueryT 'RW a m x
   -> m (Maybe x)
 queryRWT q = flip runQueryRWT q =<< askConnectionRW
 
 -- | Same as 'mustQueryRW' but for 'QueryT'
 mustQueryRWT
-  :: (MonadDB m a, MonadIO m, MonadMask m)
+  :: (MonadDB a m, MonadIO m, MonadMask m)
   => QueryT 'RW a m x
   -> m x
 mustQueryRWT q = throwNothing UnexpectedRollback =<< flip runQueryRWT q =<< askConnectionRW
@@ -426,7 +426,7 @@ mustQueryRWT q = throwNothing UnexpectedRollback =<< flip runQueryRWT q =<< askC
 newtype Query rw a x = Query { unQuery :: ReaderT (Connection rw a) IO x }
   deriving newtype (Functor, Applicative, MonadThrow)
 
-instance Monad (Query rm a) where
+instance Monad (Query rw a) where
   return = Query . return
   Query m >>= f = Query $ (\(Query q) -> q) . f =<< m
 #if !MIN_VERSION_base(4,11,0)
@@ -436,13 +436,13 @@ instance Monad (Query rm a) where
 instance Fail.MonadFail (Query rw a) where
   fail _ = Query $ throwM Rollback
 
-instance MonadQueryRO (Query rw a) a where
+instance MonadQueryRO a (Query rw a) where
   -- NOTE: We need coerce to implement both:
   --        - Query 'RO -> Query 'RO
   --        - Query 'RO -> Query 'RW
   liftQueryRO = coerce
 
-instance MonadQueryRW (Query 'RW a) a where
+instance MonadQueryRW a (Query 'RW a) where
   -- NOTE: We need coerce to implement both:
   --        - Query 'RO -> Query 'RW
   --        - Query 'RW -> Query 'RW
@@ -471,7 +471,7 @@ runQueryRW c (Query q) = liftIO $ runQueryWorker True c $ runReaderT q c
 -- | Run read-only query using Query monad. Note that read-only
 --   couldn't be rolled back so they always succeed.
 queryRO
-  :: (MonadReadDB m a, MonadIO m)
+  :: (MonadReadDB a m, MonadIO m)
   => Query 'RO a x
   -> m x
 queryRO q = flip runQueryRO q =<< askConnectionRO
@@ -479,7 +479,7 @@ queryRO q = flip runQueryRO q =<< askConnectionRO
 -- | Run read-write query using Query monad. Return @Nothing@ is query
 --   was rolled back
 queryRW
-  :: (MonadDB m a, MonadIO m)
+  :: (MonadDB a m, MonadIO m)
   => Query 'RW a x
   -> m (Maybe x)
 queryRW q = flip runQueryRW q =<< askConnectionRW
@@ -488,7 +488,7 @@ queryRW q = flip runQueryRW q =<< askConnectionRW
 --   'UnexpectedRollback' exception if query is rolled back was rolled
 --   back.
 mustQueryRW
-  :: (MonadDB m a, MonadThrow m, MonadIO m)
+  :: (MonadDB a m, MonadThrow m, MonadIO m)
   => Query 'RW a x
   -> m x
 mustQueryRW q
