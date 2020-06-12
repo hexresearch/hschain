@@ -19,6 +19,7 @@ import Data.Set               (Set)
 import Lens.Micro.TH
 
 import HSChain.Blockchain.Internal.Types
+import HSChain.Blockchain.Internal.Engine.Types
 import HSChain.Crypto
 import HSChain.Types.Blockchain
 import HSChain.Types.Validators

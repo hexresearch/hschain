@@ -24,7 +24,8 @@ import GHC.Generics           (Generic)
 import HSChain.Control.Util                     (atomicallyIO)
 import HSChain.Control.Shepherd                 (Shepherd)
 import HSChain.Blockchain.Internal.Engine.Types (NetworkCfg)
-import HSChain.Blockchain.Internal.Types        (Announcement, MessageTx, MessageRx, TMState)
+import HSChain.Blockchain.Internal.Types        (TMState)
+import HSChain.Internal.Types.Messages
 import HSChain.Crypto                           (Crypto, SignedState(..), CryptoHashable(..))
 import HSChain.Network.Types                    (NetAddr)
 import HSChain.Types

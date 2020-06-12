@@ -59,6 +59,7 @@ import HSChain.Mempool
 import HSChain.Store
 import HSChain.Types.Blockchain
 import HSChain.Types.Validators
+import HSChain.Internal.Types.Messages
 import HSChain.Config (Config(..), DropSmart(..), SnakeCase(..), WithDefault(..))
 
 ----------------------------------------------------------------

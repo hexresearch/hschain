@@ -10,10 +10,9 @@ module HSChain.P2P.PeerState.Handle.Ahead
 import Control.Monad
 import Lens.Micro.Mtl
 
-import HSChain.Blockchain.Internal.Types
+import HSChain.Internal.Types.Messages
 import HSChain.Store
 import HSChain.Types.Blockchain
-
 import HSChain.P2P.Internal.Types
 import HSChain.P2P.PeerState.Handle.Utils
 import HSChain.P2P.PeerState.Monad

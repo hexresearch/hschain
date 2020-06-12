@@ -25,6 +25,7 @@ import HSChain.Blockchain.Internal.Types
 import HSChain.Control.Util
 import HSChain.Crypto
 import HSChain.Crypto.Containers
+import HSChain.Internal.Types.Messages
 import HSChain.Logger
 import HSChain.P2P
 import HSChain.P2P.PeerState.Types
