@@ -53,7 +53,6 @@ module HSChain.Types.Blockchain (
   , ValidatedBlock
   , EvaluationResult
   , ProposedBlock
-  , TxValidation
     -- ** Logic of blockchain
   , NewBlock(..)
   , BChLogic(..)
@@ -428,10 +427,6 @@ type EvaluationResult a = BChEval a ()
 --   assmebled by consensus engine so we return only block payload.
 type ProposedBlock   a = BChEval a a
 
--- | Transaction which is to be validated against current state of
---   blockchain.
-type TxValidation    a = BChEval a (TX a)
-
 
 
 
@@ -469,7 +464,7 @@ data NewBlock a = NewBlock
 --   blocks and transactions are done in the monad @q@ which is
 --   assumed to provide access to current state of blockchain
 data BChLogic m a = BChLogic
-  { processTx     :: TxValidation a -> m ()
+  { processTx     :: BChEval a (TX a) -> m ()
     -- ^ Process single transactions. Used only for validator of
     --   transactions in mempool.
   , processBlock  :: BlockValidation a -> m (EvaluationResult a)

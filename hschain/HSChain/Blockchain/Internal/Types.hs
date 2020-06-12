@@ -1,4 +1,5 @@
 {-# LANGUAGE DataKinds            #-}
+{-# LANGUAGE DeriveAnyClass       #-}
 {-# LANGUAGE DeriveGeneric        #-}
 {-# LANGUAGE DerivingStrategies   #-}
 {-# LANGUAGE FlexibleContexts     #-}
@@ -66,10 +67,14 @@ data ProposalState
     -- ^ Proposal is invalid for some reason
   | UnseenProposal
     -- ^ We don't have complete block data for particular block ID yet
-  deriving (Show, Eq, Generic)
-instance Serialise     ProposalState
-instance JSON.ToJSON   ProposalState
-instance JSON.FromJSON ProposalState
+  deriving stock    (Show, Eq, Generic)
+  deriving anyclass (Serialise, JSON.FromJSON, JSON.ToJSON)
+
+instance Katip.ToObject ProposalState where
+  toObject p = HM.singleton "val" (JSON.toJSON p)
+instance Katip.LogItem ProposalState where
+  payloadKeys _ _ = Katip.AllKeys
+
 
 -- | State for tendermint consensus at some particular height.
 data TMState a = TMState
@@ -152,8 +157,3 @@ data Announcement alg
   | AnnLock         !(Maybe Round)
   deriving (Show,Generic)
 instance Serialise (Announcement alg)
-
-instance Katip.ToObject ProposalState where
-  toObject p = HM.singleton "val" (JSON.toJSON p)
-instance Katip.LogItem ProposalState where
-  payloadKeys _ _ = Katip.AllKeys
