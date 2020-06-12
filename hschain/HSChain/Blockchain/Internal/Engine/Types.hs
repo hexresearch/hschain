@@ -22,8 +22,6 @@ module HSChain.Blockchain.Internal.Engine.Types (
   , Validator(..)
   , PrivValidator(..)
     -- * Messages and channels
-  , MessageRx(..)
-  , unverifyMessageRx
   , Announcement(..)
   , AppChans(..)
     -- * Proposers
