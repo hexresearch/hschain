@@ -19,6 +19,7 @@ import Data.Set               (Set)
 import Lens.Micro.TH
 
 import HSChain.Blockchain.Internal.Types
+import HSChain.Blockchain.Internal.Engine.Types
 import HSChain.Crypto
 import HSChain.Internal.Types.Messages
 import HSChain.Types.Blockchain
@@ -103,8 +104,8 @@ data GossipTimeout
   | TimeoutAnnounce
   deriving Show
 
-data Config a = Config
-  { _consensusSt    :: !(STM (Maybe (Height, TMState a)))
+data Config m a = Config
+  { _consensusSt    :: !(STM (Maybe (Height, TMState m a)))
   }
 makeLenses ''Config
 

@@ -14,7 +14,6 @@
 module HSChain.Mock.Dioxane.Types where
 
 import Codec.Serialise      (Serialise)
-import Control.Applicative
 import Control.Monad
 import Control.Monad.Catch
 import Control.Parallel.Strategies
@@ -34,7 +33,6 @@ import HSChain.Crypto.Classes.Hash
 import HSChain.Crypto.Ed25519
 import HSChain.Crypto.SHA
 import HSChain.Types
-import HSChain.Types.Merkle.Types
 
 
 ----------------------------------------------------------------
@@ -97,14 +95,11 @@ makeLenses ''UserState
 makeLenses ''DioState
 
 instance Dio tag => BlockData (BData tag) where
-  type TX              (BData tag) = Tx
-  type BlockchainState (BData tag) = DioState
-  type BChError        (BData tag) = DioError
-  type BChMonad        (BData tag) = Maybe
-  type Alg             (BData tag) = DioAlg
-  bchLogic                 = dioLogic
-  proposerSelection        = ProposerSelection randomProposerSHA256
-  logBlockData (BData txs) = HM.singleton "Ntx" $ JSON.toJSON $ length txs
+  type TX       (BData tag) = Tx
+  type BChError (BData tag) = DioError
+  type Alg      (BData tag) = DioAlg
+  proposerSelection         = ProposerSelection randomProposerSHA256
+  logBlockData (BData txs)  = HM.singleton "Ntx" $ JSON.toJSON $ length txs
 
 
 ----------------------------------------------------------------
@@ -122,56 +117,56 @@ data DioDict a = DioDict
   , dioValidators     :: Int64
   }
 
-dioLogic :: forall tag. Dio tag => BChLogic Maybe (BData tag)
-dioLogic = BChLogic
-  { processTx     = const empty
-  --
-  , processBlock  = \BChEval{..} -> do
-      let sigCheck = guard
-                   $ and
-                   $ parMap rseq
-                     (\(Tx sig tx) -> verifySignatureHashed (txFrom tx) tx sig)
-                     (let BData txs = merkleValue $ blockData bchValue
-                      in txs
-                     )
-      let update   = foldM (flip process) (merkleValue blockchainState)
-                   $ (let BData txs = merkleValue $ blockData bchValue
-                      in txs
-                     )
-      st <- uncurry (>>)
-          $ withStrategy (evalTuple2 rpar rpar)
-          $ (sigCheck, update)
-      return BChEval { bchValue        = ()
-                     , blockchainState = merkled st
-                     , ..
-                     }
-  -- We generate one transaction for every key. And since we move
-  -- money from one account to another it's quite simple to update state
-  , generateBlock = \NewBlock{..} _ -> do
-      let nonce = let Height h = newBlockHeight in fromIntegral h - 1
-          keys  = dioUserKeys
-      return $! BChEval
-        { bchValue = BData
-                   $ parMap rseq
-                     (\(sk,pk) -> let body = TxBody
-                                        { txTo     = pk
-                                        , txFrom   = pk
-                                        , txNonce  = nonce
-                                        , txAmount = 1
-                                        }
-                                  in Tx { txSig  = signHashed sk body
-                                        , txBody = body
-                                        }
-                     )
-                     (V.toList keys)
-        , validatorSet    = merkled newBlockValSet
-        , blockchainState = merkled
-                          $ userMap . each . userNonce %~ succ
-                          $ merkleValue newBlockState
-        }
-  }
-  where
-    DioDict{..} = dioDict @tag
+-- dioLogic :: forall tag. Dio tag => BChLogic Maybe (BData tag)
+-- dioLogic = BChLogic
+--   { processTx     = const empty
+--   --
+--   , processBlock  = \BChEval{..} -> do
+--       let sigCheck = guard
+--                    $ and
+--                    $ parMap rseq
+--                      (\(Tx sig tx) -> verifySignatureHashed (txFrom tx) tx sig)
+--                      (let BData txs = merkleValue $ blockData bchValue
+--                       in txs
+--                      )
+--       let update   = foldM (flip process) (merkleValue blockchainState)
+--                    $ (let BData txs = merkleValue $ blockData bchValue
+--                       in txs
+--                      )
+--       st <- uncurry (>>)
+--           $ withStrategy (evalTuple2 rpar rpar)
+--           $ (sigCheck, update)
+--       return BChEval { bchValue        = ()
+--                      , blockchainState = merkled st
+--                      , ..
+--                      }
+--   -- We generate one transaction for every key. And since we move
+--   -- money from one account to another it's quite simple to update state
+--   , generateBlock = \NewBlock{..} _ -> do
+--       let nonce = let Height h = newBlockHeight in fromIntegral h - 1
+--           keys  = dioUserKeys
+--       return $! BChEval
+--         { bchValue = BData
+--                    $ parMap rseq
+--                      (\(sk,pk) -> let body = TxBody
+--                                         { txTo     = pk
+--                                         , txFrom   = pk
+--                                         , txNonce  = nonce
+--                                         , txAmount = 1
+--                                         }
+--                                   in Tx { txSig  = signHashed sk body
+--                                         , txBody = body
+--                                         }
+--                      )
+--                      (V.toList keys)
+--         , validatorSet    = merkled newBlockValSet
+--         , blockchainState = merkled
+--                           $ userMap . each . userNonce %~ succ
+--                           $ merkleValue newBlockState
+--         }
+--   }
+--   where
+--     DioDict{..} = dioDict @tag
 
 
 process :: Tx -> DioState -> Maybe DioState

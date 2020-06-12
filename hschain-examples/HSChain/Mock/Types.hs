@@ -17,7 +17,7 @@ module HSChain.Mock.Types (
   , NetSpec(..)
   , CoinSpecification(..)
   , RunningNode(..)
-  , hoistRunningNode
+  -- , hoistRunningNode
     -- ** Other
   , Topology(..)
   , Abort(..)
@@ -35,6 +35,8 @@ import qualified Data.Aeson as JSON
 
 import HSChain.Blockchain.Internal.Engine.Types
 import HSChain.Config
+import HSChain.Internal.Types.Config
+import HSChain.Internal.Types.Consensus
 import HSChain.Crypto
 import HSChain.Logger         (ScribeSpec)
 import HSChain.Internal.Types.Config
@@ -80,11 +82,10 @@ instance Default (NetworkCfg Example) where
 makeGenesis
   :: (Crypto (Alg a), CryptoHashable a)
   => a                          -- ^ Block data
-  -> Hashed (Alg a) (BlockchainState a)
   -> ValidatorSet (Alg a)           -- ^ Set of validators for H=0
   -> ValidatorSet (Alg a)           -- ^ Set of validators for H=1
   -> Block a
-makeGenesis dat stateHash valSet0 valSet1 = Block
+makeGenesis dat valSet0 valSet1 = Block
   { blockHeight        = Height 0
   , blockPrevBlockID   = Nothing
   , blockValidators    = hashed valSet0
@@ -92,7 +93,6 @@ makeGenesis dat stateHash valSet0 valSet1 = Block
   , blockData          = merkled dat
   , blockPrevCommit    = Nothing
   , blockEvidence      = merkled []
-  , blockStateHash     = stateHash
   }
 
 
@@ -101,19 +101,17 @@ makeGenesis dat stateHash valSet0 valSet1 = Block
 ----------------------------------------------------------------
 
 data RunningNode m a = RunningNode
-  { rnodeState   :: BChStore m a
+  { rnodeState   :: StateView m a
   , rnodeConn    :: Connection 'RO a
-  , rnodeMempool :: Mempool m (Alg a) (TX a)
   }
 
-hoistRunningNode
-  :: (Functor n)
-  => (forall x. m x -> n x) -> RunningNode m a -> RunningNode n a
-hoistRunningNode fun RunningNode{..} = RunningNode
-  { rnodeState   = hoistDict    fun rnodeState
-  , rnodeMempool = hoistMempool fun rnodeMempool
-  , ..
-  }
+-- hoistRunningNode
+--   :: (Functor n)
+--   => (forall x. m x -> n x) -> RunningNode m a -> RunningNode n a
+-- hoistRunningNode fun RunningNode{..} = RunningNode
+--   { rnodeState   = hoistDict fun rnodeState
+--   , ..
+--   }
 
 
 -- | Exception for aborting execution of blockchain

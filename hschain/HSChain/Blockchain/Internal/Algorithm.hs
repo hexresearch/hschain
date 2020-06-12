@@ -93,10 +93,10 @@ data HeightParameters (m :: * -> *) a = HeightParameters
     --   becomes true.
   , proposerForRound :: !(Round -> ValidatorIdx (Alg a))
     -- ^ Proposer for given round
-  , validateBlock    :: !(Props a -> BlockID a -> m ( Props a -> Props a
-                                                    , ProposalState))
+  , validateBlock    :: !(Props m a -> BlockID a -> m ( Props m a -> Props m a
+                                                      , ProposalState))
     -- ^ Request validation of particular block
-  , createProposal   :: !(Round -> Maybe (Commit a) -> m ( Props a -> Props a
+  , createProposal   :: !(Round -> Maybe (Commit a) -> m ( Props m a -> Props m a
                                                          , BlockID a))
     -- ^ Create new proposal block. Block itself should be stored
     --   elsewhere.
@@ -173,22 +173,22 @@ instance Katip.LogItem (LogCommit a) where
 
 
 -- | Analog of @ExceptT Err IO@
-newtype ConsensusM a m b = ConsensusM
-  { runConsesusM :: m (ConsensusResult a b) }
+newtype ConsensusM n a m x = ConsensusM
+  { runConsesusM :: m (ConsensusResult n a x) }
   deriving (Functor)
 
-data ConsensusResult a b
+data ConsensusResult m a b
   = Success !b
   | Tranquility
   | Misdeed
-  | DoCommit  !(Commit a) !(TMState a)
+  | DoCommit  !(Commit a) !(TMState m a)
   deriving (Functor)
 
-instance Monad m => Applicative (ConsensusM a m) where
+instance Monad m => Applicative (ConsensusM n a m) where
   pure  = return
   (<*>) = ap
 
-instance Monad m => Monad (ConsensusM a m) where
+instance Monad m => Monad (ConsensusM n a m) where
   return = ConsensusM . return . Success
   ConsensusM m >>= f = ConsensusM $ m >>= \case
     Success a     -> runConsesusM (f a)
@@ -196,22 +196,21 @@ instance Monad m => Monad (ConsensusM a m) where
     Misdeed       -> return Misdeed
     DoCommit cm r -> return $ DoCommit cm r
 
-instance MonadIO m => MonadIO (ConsensusM a m) where
+instance MonadIO m => MonadIO (ConsensusM n a m) where
   liftIO = ConsensusM . fmap Success . liftIO
 
-
-instance MonadLogger m => MonadLogger (ConsensusM a m) where
+instance MonadLogger m => MonadLogger (ConsensusM n a m) where
   logger s l a = lift $ logger s l a
   localNamespace f (ConsensusM action) = ConsensusM $ localNamespace f action
 
-instance MonadTrans (ConsensusM a) where
+instance MonadTrans (ConsensusM n a) where
   lift = ConsensusM . fmap Success
 
-instance MonadThrow m => MonadThrow (ConsensusM a m) where
+instance MonadThrow m => MonadThrow (ConsensusM n a m) where
   throwM = lift . throwM
 
 -- | We're done for this height. Commit block to blockchain
-commitBlock :: Monad m => Commit a -> TMState a -> ConsensusM a m x
+commitBlock :: Monad m => Commit a -> TMState n a -> ConsensusM n a m x
 commitBlock cm r = ConsensusM $ return $ DoCommit cm r
 
 
@@ -219,11 +218,11 @@ commitBlock cm r = ConsensusM $ return $ DoCommit cm r
 -- Consensus
 ----------------------------------------------------------------
 
-type CNS x a m = ConsensusM a (Pipe x (EngineMessage a) m)
+type CNS x a m = ConsensusM m a (Pipe x (EngineMessage a) m)
 
 -- | Message had no effect and was ignored. No change to state
 --   happened and execution is aborted.
-tranquility :: Monad m => ConsensusM a m x
+tranquility :: Monad m => ConsensusM n a m x
 tranquility = ConsensusM $ return Tranquility
 
 -- | We detected clearly malicious behavior.
@@ -238,7 +237,7 @@ newHeight
   :: (MonadLogger m)
   => HeightParameters m a
   -> Maybe (Commit a)
-  -> Producer (EngineMessage a) m (TMState a)
+  -> Producer (EngineMessage a) m (TMState m a)
 newHeight HeightParameters{..} lastCommit = do
   lift $ logger InfoS "Entering new height ----------------" (sl "H" currentH)
   yield $ EngTimeout $ Timeout  currentH (Round 0) (StepNewHeight 0)
@@ -264,8 +263,8 @@ tendermintTransition
   :: (Crypto (Alg a), MonadLogger m)
   => HeightParameters m a  -- ^ Parameters for current height
   -> Message a             -- ^ Message which causes state transition
-  -> TMState a             -- ^ Initial state of state machine
-  -> CNS x a m (TMState a)
+  -> TMState m a             -- ^ Initial state of state machine
+  -> CNS x a m (TMState m a)
 tendermintTransition par@HeightParameters{..} msg sm@TMState{..} =
   case msg of
     -- Receiving proposal by itself does not entail state transition.
@@ -345,7 +344,7 @@ tendermintTransition par@HeightParameters{..} msg sm@TMState{..} =
 canCreate
   :: (Monad m)
   => HeightParameters m a
-  -> TMState a
+  -> TMState m a
   -> Int
   -> CNS x a m Bool
 canCreate HeightParameters{..} TMState{..} n
@@ -360,8 +359,8 @@ checkTransitionPrevote
   :: (MonadLogger m, Crypto (Alg a))
   => HeightParameters m a
   -> Round
-  -> TMState a
-  -> CNS x a m (TMState a)
+  -> TMState m a
+  -> CNS x a m (TMState m a)
 checkTransitionPrevote par@HeightParameters{..} r sm@TMState{..}
   --  * We have +2/3 prevotes for some later round (R+x)
   --  => goto Prevote(H,R+x)
@@ -384,8 +383,8 @@ checkTransitionPrecommit
   :: (MonadLogger m, Crypto (Alg a))
   => HeightParameters m a
   -> Round
-  -> TMState a
-  -> CNS x a m (TMState a)
+  -> TMState m a
+  -> CNS x a m (TMState m a)
 checkTransitionPrecommit par@HeightParameters{..} r sm@TMState{..}
   --  * We have +2/3 precommits for particular block at some round
   --  => goto Commit(H,R)
@@ -428,9 +427,9 @@ enterPropose
   :: (MonadLogger m)
   => HeightParameters m a
   -> Round
-  -> TMState a
+  -> TMState m a
   -> LogTransitionReason
-  -> CNS x a m (TMState a)
+  -> CNS x a m (TMState m a)
 enterPropose HeightParameters{..} r sm@TMState{..} reason = do
   lift $ lift $ logger InfoS "Entering propose" $ LogTransition currentH smRound smStep r reason
   lift $ yield $ EngTimeout $ Timeout  currentH r StepProposal
@@ -467,9 +466,9 @@ enterPrevote
   :: (Crypto (Alg a), MonadLogger m)
   => HeightParameters m a
   -> Round
-  -> TMState a
+  -> TMState m a
   -> LogTransitionReason
-  -> CNS x a m (TMState a)
+  -> CNS x a m (TMState m a)
 enterPrevote par@HeightParameters{..} r (unlockOnPrevote -> sm@TMState{..}) reason = do
   --
   lift $ lift $ logger InfoS "Entering prevote" $ LogTransition currentH smRound smStep r reason
@@ -516,8 +515,8 @@ enterPrevote par@HeightParameters{..} r (unlockOnPrevote -> sm@TMState{..}) reas
 --   * We're already locked
 --   * We have polka for round R: lock.R < R < current.R
 unlockOnPrevote
-  :: TMState a
-  -> TMState a
+  :: TMState m a
+  -> TMState m a
 unlockOnPrevote sm@TMState{..}
   | Just (lockR, _) <- smLockedBlock
   , hasAnyPolka lockR
@@ -539,9 +538,9 @@ enterPrecommit
   :: (Crypto (Alg a), MonadLogger m)
   => HeightParameters m a
   -> Round
-  -> TMState a
+  -> TMState m a
   -> LogTransitionReason
-  -> CNS x a m (TMState a)
+  -> CNS x a m (TMState m a)
 enterPrecommit par@HeightParameters{..} r sm@TMState{..} reason = do
   lift $ lift $ logger InfoS "Entering precommit" $ LogTransition currentH smRound smStep r reason
   lift $ yield $ EngCastPreCommit r precommitBlock
@@ -572,8 +571,8 @@ addPrevote
   :: (Monad m)
   => HeightParameters m a
   -> Signed 'Verified (Alg a) (Vote 'PreVote a)
-  -> TMState a
-  -> CNS x a m (TMState a)
+  -> TMState m a
+  -> CNS x a m (TMState m a)
 addPrevote HeightParameters{..} v@(signedValue -> Vote{..}) sm@TMState{..} = do
   lift $ yield $ EngAnnPreVote v
   case addSignedValue voteRound v smPrevotesSet of
@@ -588,8 +587,8 @@ addPrecommit
   :: (Monad m)
   => HeightParameters m a
   -> Signed 'Verified (Alg a) (Vote 'PreCommit a)
-  -> TMState a
-  -> CNS x a m (TMState a)
+  -> TMState m a
+  -> CNS x a m (TMState m a)
 addPrecommit HeightParameters{..} v@(signedValue -> Vote{..}) sm@TMState{..} = do
   lift $ yield $ EngAnnPreCommit v
   case addSignedValue voteRound v smPrecommitsSet of

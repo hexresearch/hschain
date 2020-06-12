@@ -58,6 +58,7 @@ import HSChain.Control.Util (throwNothing)
 import HSChain.Crypto
 import HSChain.Exceptions
 import HSChain.Internal.Types.Messages
+import HSChain.Internal.Types.Consensus
 import HSChain.Store.Internal.Query
 import HSChain.Types.Blockchain
 import HSChain.Types.Merkle.Types
@@ -148,7 +149,7 @@ storeGenesis
   :: (Crypto (Alg a), CryptoHashable a, MonadQueryRW a m, Serialise a, Eq a, Show a)
   => Genesis a                -- ^ Genesis block
   -> m ()
-storeGenesis BChEval{..} = do
+storeGenesis Genesis{..} = do
   -- Insert genesis block if needed
   storedGen  <- retrieveBlock        (Height 0)
   storedVals <- retrieveValidatorSet (Height 0)
@@ -156,26 +157,26 @@ storeGenesis BChEval{..} = do
   case (storedGen, storedVals) of
     -- Fresh DB
     (Nothing, Nothing) -> do
-      storeCommitWrk Nothing    bchValue
-      storeValSet   (Height 0)  validatorSet
+      storeCommitWrk Nothing    genesisBlock
+      storeValSet   (Height 0)  (merkled genesisValSet)
     -- Otherwise check that stored and provided geneses match
-    (Just genesis', Just initialVals') ->
+    (Just genesis, Just initialVals) ->
       case checks of
         [] -> return ()
         _  -> error $ unlines $ "initializeBlockhainTables:" : concat checks
       where
         checks = [ [ "Genesis blocks do not match:"
-                   , "  stored: " ++ show genesis'
-                   , "  expected: " ++ show bchValue
+                   , "  stored:   " ++ show genesis
+                   , "  expected: " ++ show genesisBlock
                    ]
-                 | bchValue /= genesis'
+                 | genesisBlock /= genesis
                  ]
                  ++
                  [ [ "Validators set are not equal:"
-                   , "  stored:   " ++ show initialVals'
-                   , "  expected: " ++ show (merkleValue validatorSet)
+                   , "  stored:   " ++ show initialVals
+                   , "  expected: " ++ show genesisValSet
                    ]
-                 | merkleValue validatorSet /= initialVals'
+                 | genesisValSet /= initialVals
                  ]
     --
     (_,_) -> error "initializeBlockhainTables: database corruption"

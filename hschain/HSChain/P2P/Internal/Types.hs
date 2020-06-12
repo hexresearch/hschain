@@ -76,12 +76,12 @@ data PexMessage
 
 --
 -- | Connection handed to process controlling communication with peer
-data PeerChans a = PeerChans
+data PeerChans m a = PeerChans
   { peerChanTx              :: !(TChan (MessageTx a))
     -- ^ Broadcast channel for outgoing messages
   , peerChanRx              :: !(MessageRx 'Unverified a -> STM ())
     -- ^ STM action for sending message to main application
-  , consensusState          :: !(STM (Maybe (Height, TMState a)))   -- TODO try strict Maybe and Tuple
+  , consensusState          :: !(STM (Maybe (Height, TMState m a)))   -- TODO try strict Maybe and Tuple
     -- ^ Read only access to current state of consensus state machine
   , p2pConfig               :: !(NetworkCfg ())
   , peerShepherd            :: !Shepherd

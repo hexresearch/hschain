@@ -19,13 +19,9 @@
 -- |
 module HSChain.Mempool (
    -- * Mempool
-    MempoolCursor(..)
-  , Mempool(..)
+    MempoolHandle(..)
+  , MempoolCursor(..)
   , MempoolInfo(..)
-  , hoistMempool
-    -- * Concrete mempool implementations
-  , nullMempool
-  , newMempool
     -- * Mempool data structures
   , MempoolState(..)
   , emptyMempoolState
@@ -86,6 +82,10 @@ instance Katip.LogItem  MempoolInfo where
   payloadKeys Katip.V0 _ = Katip.SomeKeys []
   payloadKeys _        _ = Katip.AllKeys
 
+data MempoolHandle alg tx = MempoolHandle
+  { getMempoolCursor :: forall m. MonadIO m => m (MempoolCursor alg tx)
+  }
+
 -- | Cursor into mempool which is used for gossiping data
 data MempoolCursor alg tx = MempoolCursor
   { pushTxSync      :: !(forall m. MonadIO m => tx -> m (Maybe (Hashed alg tx)))
@@ -99,98 +99,6 @@ data MempoolCursor alg tx = MempoolCursor
     -- ^ Take transaction from front and advance cursor. If cursor
     -- points at the end of queue nothing happens.
   }
-
--- | Mempool which is used for storing transactions before they're
---   added into blockchain. Transactions are stored in FIFO manner
-data Mempool m alg tx = Mempool
-  { peekNTransactions :: !(m [tx])
-    -- ^ Return transactions in mempool as lazy list. This operation
-    --   does not alter mempool state
-  , filterMempool     :: !(m ())
-    -- ^ Remove transactions that are no longer valid from mempool
-  , getMempoolCursor  :: !(m (MempoolCursor alg tx))
-    -- ^ Get cursor pointing to be
-  , txInMempool       :: !(Hashed alg tx -> m Bool)
-    -- ^ Checks whether transaction is mempool
-  , mempoolSize       :: !(m Int)
-    -- ^ Number of transactions in mempool
-  }
-
-hoistMempool :: (forall a. m a -> n a) -> Mempool m alg tx -> Mempool n alg tx
-hoistMempool fun Mempool{..} = Mempool
-  { peekNTransactions = fun peekNTransactions
-  , filterMempool     = fun filterMempool
-  , getMempoolCursor  = fun getMempoolCursor
-  , txInMempool       = fun . txInMempool
-  , mempoolSize       = fun mempoolSize
-  }
-
-
--- | Mempool which does nothing. It doesn't contain any transactions
---   and discard every transaction is pushed into it. Useful if one
---   doesn't need any mempool.
-nullMempool :: (Monad m) => Mempool m alg tx
-nullMempool = Mempool
-  { peekNTransactions = return []
-  , filterMempool     = return ()
-  , mempoolSize       = return 0
-  , txInMempool       = const (return False)
-  , getMempoolCursor  = return MempoolCursor
-      { pushTxSync    = const $ return Nothing
-      , pushTxAsync   = const $ return ()
-      , advanceCursor = return Nothing
-      }
-  }
-
-
-----------------------------------------------------------------
--- Real mempool implemenatation
-----------------------------------------------------------------
-
-newMempool
-  :: forall tx alg m. ( Show tx, Ord tx, Crypto alg, CryptoHashable tx, MonadIO m )
-  => (tx -> m Bool)
-  -> m (Mempool m alg tx, m ())
-newMempool validation = do
-  dict@MempoolDict{..} <- newMempoolDict :: m (MempoolDict m alg tx)
-  return (
-    Mempool
-    -- TX manipulations
-    { peekNTransactions =  map merkleValue . toList . mempFIFO
-                       <$> liftIO (readTVarIO varMempool)
-    , filterMempool     = atomicallyIO $ writeTChan chPushTx (CmdStartFiltering validation)
-    , txInMempool       = \txHash -> liftIO $ do
-        mem <- readTVarIO varMempool
-        return $! txHash `Map.member` mempRevMap mem
-    -- Stats
-    , mempoolSize = liftIO $ do m <- readTVarIO varMempool
-                                return $! IMap.size $ mempFIFO m
-    -- Cursor
-    , getMempoolCursor = liftIO $ atomically $ do
-        varN <- newTVar 0
-        return MempoolCursor
-          { pushTxSync = \tx -> liftIO $ do
-              reply <- newEmptyMVar
-              atomicallyIO $ writeTChan chPushTx $ CmdAddTx (Just reply) tx
-              takeMVar reply
-          , pushTxAsync = atomicallyIO . writeTChan chPushTx . CmdAddTx Nothing
-            --
-          , advanceCursor = atomicallyIO $ do
-              mem <- readTVar varMempool
-              n   <- readTVar varN
-              case n `IMap.lookupGT` mempFIFO mem of
-                Nothing       -> return Nothing
-                Just (n', tx) -> do writeTVar varN $! n'
-                                    return $ Just $ merkleValue tx
-          }
-    }
-    , mempoolThread dict
-    )
-
-
-----------------------------------------------------------------
--- Mempool in separate thread
-----------------------------------------------------------------
 
 data MempoolDict m alg tx = MempoolDict
   { varMempool  :: TVar  (MempoolState alg tx)

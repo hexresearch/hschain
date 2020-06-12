@@ -63,8 +63,6 @@ module HSChain.Store (
   , mustRetrieveValidatorSet
   , retrieveSavedState
   , storeStateSnapshot
-    -- * Blockchain state
-  , BChStore(..)
     -- * Blockchain invariants checkers
   , BlockchainInconsistency
   , checkStorage
@@ -153,30 +151,6 @@ initDatabase c = do
     Just () -> return ()
 
 
-
-
-
-
-----------------------------------------------------------------
--- Blockchain state storage
-----------------------------------------------------------------
-
--- | Storage for blockchain state.
-data BChStore m a = BChStore
-  { bchCurrentState  :: m (Maybe Height, MerkleNode Identity (Alg a) (BlockchainState a))
-  -- ^ Height of value stored in state
-  , bchStoreRetrieve :: Height -> m (Maybe (MerkleNode Identity (Alg a) (BlockchainState a)))
-  -- ^ Retrieve state for given height. It's generally not expected that
-  , bchStoreStore    :: Height -> MerkleNode Identity (Alg a) (BlockchainState a) -> m ()
-  -- ^ Put blockchain state at given height into store
-  }
-
-instance HoistDict BChStore where
-  hoistDict fun BChStore{..} = BChStore
-    { bchCurrentState  = fun   bchCurrentState
-    , bchStoreRetrieve = fun . bchStoreRetrieve
-    , bchStoreStore    = (fmap . fmap) fun bchStoreStore
-    }
 
 
 ----------------------------------------------------------------

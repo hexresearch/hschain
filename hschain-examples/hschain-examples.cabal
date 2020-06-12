@@ -48,9 +48,9 @@ Library
   Exposed-modules:
                   HSChain.Mock
                   HSChain.Mock.Coin
-                  HSChain.Mock.Dioxane
+--                  HSChain.Mock.Dioxane
                   HSChain.Mock.KeyList
-                  HSChain.Mock.KeyVal
+--                  HSChain.Mock.KeyVal
                   HSChain.Mock.Types
 
 Executable hschain-coin-node

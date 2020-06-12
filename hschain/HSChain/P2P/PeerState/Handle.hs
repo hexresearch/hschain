@@ -38,7 +38,7 @@ import qualified HSChain.P2P.PeerState.Handle.Unknown as Unknown
 --   gossip messages to send to peers.
 handlerTimeout
   :: (BlockData a, HandlerCtx a m)
-  => Config a
+  => Config n a
   -> State a
   -> GossipTimeout
   -> m (State a, [Command a])
@@ -53,7 +53,7 @@ handlerTimeout cfg st msg = do
 
 -- Generate gossip messages to be sent to peer.
 generateGossip :: (HandlerCtx a m)
-               => Config a
+               => Config n a
                -> HandlerDict s a m
                -> s a
                -> GossipTimeout
@@ -70,7 +70,7 @@ generateGossip cfg dict st = \case
 -- In order to avoid deadlocks we periodically send current state to
 -- our peers. We also send out that we have proposal whenever we have
 -- commit already and waiting for block.
-handlerAnnounceTimeout :: (MonadIO m) => Config a -> m [GossipMsg a]
+handlerAnnounceTimeout :: (MonadIO m) => Config n a -> m [GossipMsg a]
 handlerAnnounceTimeout cfg = do
   st <- atomicallyIO $ view consensusSt cfg
   return $ case st of
@@ -89,7 +89,7 @@ handlerAnnounceTimeout cfg = do
 -- | Handler for messages coming from consensus engine
 handlerTx
   :: (BlockData a, HandlerCtx a m)
-  => Config a
+  => Config n a
   -> State a
   -> MessageTx a
   -> m (State a, [Command a])
@@ -108,7 +108,7 @@ handlerTx cfg st msgTx = do
 -- instead of peer's state
 handleIssuedGossip
   :: (BlockData a, HandlerCtx a m)
-  => Config a
+  => Config n a
   -> State a
   -> GossipMsg a
   -> m (State a)
@@ -132,7 +132,7 @@ handleIssuedGossip cfg st msg
 -- | Handler for gossip coming from peer.
 handlerGossip
   :: (BlockData a, HandlerCtx a m)
-  => Config a
+  => Config n a
   -> State a
   -> GossipMsg a
   -> m (State a, [Command a])
