@@ -43,6 +43,7 @@ import HSChain.Control.Util (throwNothing,throwNothingM,throwLeftM,throwLeft,ato
 import HSChain.Crypto
 import HSChain.Exceptions
 import HSChain.Internal.Types.Messages
+import HSChain.Internal.Types.Config
 import HSChain.Logger
 import HSChain.Mempool
 import HSChain.Monitoring

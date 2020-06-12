@@ -33,6 +33,7 @@ import HSChain.Control.Class
 import HSChain.Control.Util
 import HSChain.Crypto
 import HSChain.Internal.Types.Messages
+import HSChain.Internal.Types.Config
 import HSChain.Logger
 import HSChain.Mempool
 import HSChain.Store

@@ -16,6 +16,7 @@ import Data.Default.Class
 import Data.Foldable    (toList)
 
 import HSChain.Blockchain.Internal.Engine.Types
+import HSChain.Internal.Types.Config
 import           HSChain.Types.Blockchain
 import           HSChain.Store
 import qualified HSChain.Mock.KeyVal as KeyVal

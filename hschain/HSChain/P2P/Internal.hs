@@ -38,24 +38,23 @@ import System.Random.Shuffle  (shuffle')
 import qualified Data.Set           as Set
 import qualified Data.Text          as T
 
-import HSChain.Blockchain.Internal.Engine.Types
 import HSChain.Control
 import HSChain.Control.Class
+import HSChain.Control.Delay
 import HSChain.Control.Shepherd
 import HSChain.Control.Util
+import HSChain.Internal.Types.Config
 import HSChain.Logger
 import HSChain.Mempool
 import HSChain.Monitoring
+import HSChain.Network.Mock (MockNetError)
 import HSChain.Network.Types
-import HSChain.P2P.PeerState.Timer
-import HSChain.P2P.PeerState.Types
-import HSChain.Store
-import HSChain.Types.Blockchain
 import HSChain.P2P.Internal.PeerRegistry
 import HSChain.P2P.Internal.Types
 import HSChain.P2P.PeerState.Handle
-import HSChain.Control.Delay
-import HSChain.Network.Mock (MockNetError)
+import HSChain.P2P.PeerState.Timer
+import HSChain.Store
+import HSChain.Types.Blockchain
 import qualified HSChain.Network.IpAddresses as Ip
 
 --
