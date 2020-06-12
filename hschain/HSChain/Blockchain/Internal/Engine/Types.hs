@@ -185,12 +185,6 @@ instance HoistDict AppCallbacks where
     , appCanCreateBlock = fun . appCanCreateBlock
     }
 
--- | Our own validator
-newtype PrivValidator alg = PrivValidator
-  { validatorPrivKey  :: PrivKey alg
-  }
-  deriving newtype (Show, ToJSON, FromJSON)
-
 -- | Application connection to outer world
 data AppChans a = AppChans
   { appChanRx  :: TBQueue (MessageRx 'Unverified a)

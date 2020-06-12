@@ -16,6 +16,7 @@
 module HSChain.Types.Validators (
     -- * Validators
     Validator(..)
+  , PrivValidator(..)
     -- ** Validator sets
   , ValidatorSet
   , emptyValidatorSet
@@ -76,6 +77,14 @@ deriving instance Ord  (PublicKey alg) => Ord (Validator alg)
 instance NFData (PublicKey alg) => NFData (Validator alg)
 instance CryptoAsymmetric alg => CryptoHashable (Validator alg) where
   hashStep = genericHashStep "hschain"
+
+-- | Private key of validator. It's just newtype wrapper over regular
+--   private key.
+newtype PrivValidator alg = PrivValidator
+  { validatorPrivKey  :: PrivKey alg
+  }
+  deriving newtype (Show, JSON.ToJSON, JSON.FromJSON)
+
 
 -- | Set of all known validators for given height
 data ValidatorSet alg = ValidatorSet
