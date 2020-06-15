@@ -53,10 +53,10 @@ import HSChain.Control.Delay
 -- | Create default mempool which checks transactions against current
 --   state
 makeMempool
-  :: forall m a. (MonadIO m, MonadReadDB a m, Ord (TX a), Show (TX a), BlockData a)
+  :: forall m a. ( MonadIO m, MonadReadDB a m, Ord (TX a), Show (TX a), BlockData a)
   => BChStore m a
   -> (forall x. BChMonad a x -> ExceptT (BChError a) m x)
-  -> m (Mempool m (Alg a) (TX a))
+  -> m (Mempool m (Alg a) (TX a), m ())
 makeMempool store runner =
   newMempool $ \tx -> do
     (mH, st) <- bchCurrentState store

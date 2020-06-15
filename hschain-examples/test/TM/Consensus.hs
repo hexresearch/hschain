@@ -34,6 +34,7 @@ import HSChain.Control.Class
 import HSChain.Control.Util
 import HSChain.Crypto
 import HSChain.Logger
+import HSChain.Mempool
 import HSChain.Store
 import HSChain.Store.STM
 import HSChain.Store.Internal.Query

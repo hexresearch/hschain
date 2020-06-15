@@ -1,8 +1,11 @@
-{-# LANGUAGE LambdaCase    #-}
-{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE LambdaCase                 #-}
+{-# LANGUAGE StandaloneDeriving         #-}
+{-# LANGUAGE TypeOperators              #-}
 -- |
 module TM.Mempool (tests) where
 
+import Control.Concurrent
 import Control.Concurrent.STM
 import Control.Monad
 import Control.Monad.IO.Class
@@ -17,8 +20,7 @@ import Hedgehog.Gen            (resize)
 import HSChain.Crypto         ((:&))
 import HSChain.Crypto.Ed25519 (Ed25519)
 import HSChain.Crypto.SHA     (SHA512)
-import HSChain.Store
-import HSChain.Store.STM
+import HSChain.Mempool
 
 
 tests :: TestTree
@@ -28,6 +30,8 @@ tests = testGroup "Mempool"
   ]
 
 
+-- deriving instance MonadMask (TestT m)
+
 ----------------------------------------------------------------
 -- Interpretation of mempool
 --
@@ -36,13 +40,16 @@ tests = testGroup "Mempool"
 -- just a simple variable.
 
 -- Create mempool and callback for incrementing blockchain value
-createTestMempool :: MonadIO m => m (m (), Mempool m (Ed25519 :& SHA512) Int)
-createTestMempool = do
-  varBch  <- liftIO $ newTVarIO 0
-  let checkTx i = liftIO $ do n <- readTVarIO varBch
-                              return (i > n)
+createTestMempool :: MonadIO m => m ( IO ()
+                                    , (Mempool IO (Ed25519 :& SHA512) Int
+                                      , IO ()
+                                      ))
+createTestMempool = liftIO $ do
+  varBch  <- newTVarIO 0
+  let checkTx i = do n <- readTVarIO varBch
+                     return (i > n)
   mempool <- newMempool checkTx
-  return ( liftIO $ atomically $ modifyTVar' varBch (+10)
+  return ( atomically $ modifyTVar' varBch (+10)
          , mempool
          )
 
@@ -52,31 +59,40 @@ propSelfCheck = property $ do
   -- Parametsrs
   txsSets <-  zipWith (\n -> map (+n)) (iterate (+10) 0)
           <$> forAll (resize 10 arbitrary)
-  -- Create mempool
-  (commit,mempool) <- createTestMempool
-  cursor           <- getMempoolCursor mempool
+  -- Create mempool.
+  --
+  -- NOTE: We may leak threads but during normal execution we will
+  --       kill thread. Otherwise it will hopefully be kille by
+  --       "blocked indefinitely on MVar" exception
+  (commit,(mempool,thread)) <- createTestMempool
+  cursor                    <- liftIO $ getMempoolCursor mempool
+  tid                       <- liftIO $ forkIO thread
   --
   forM_ txsSets $ \txs -> do
     annotate $ show txs
     -- Add transactions to mempool
-    mapM_ (pushTransaction cursor) txs
-    commit
-    mempoolSelfTest mempool >>= \case
+    liftIO $ mapM_ (pushTransaction cursor) txs
+    liftIO $ commit
+    liftIO (mempoolSelfTest mempool) >>= \case
         []   -> success
         errs -> mapM_ annotate errs >> failure
-    filterMempool mempool
-    mempoolSelfTest mempool >>= \case
+    liftIO $ filterMempool mempool
+    liftIO (mempoolSelfTest mempool) >>= \case
         []   -> success
         errs -> mapM_ annotate errs >> failure
+  --
+  liftIO $ killThread tid
 
 propDuplicate :: Property
 propDuplicate = property $ do
   -- Parameters
   txs <- forAll arbitrary
   -- Create mempool and push TX
-  (_,mempool) <- createTestMempool
-  cursor      <- getMempoolCursor mempool
-  mapM_ (pushTransaction cursor) txs
+  (_,(mempool, thread)) <- createTestMempool
+  cursor                <- liftIO $ getMempoolCursor mempool
+  tid                   <- liftIO $ forkIO thread  
+  liftIO $ mapM_ (pushTransaction cursor) txs
   -- TX should be in same order, positive, and duplicates should be removed
-  txs' <- peekNTransactions mempool
+  txs' <- liftIO $ peekNTransactions mempool
   unless (txs' == nub (filter (>0) txs)) failure
+  liftIO $ killThread tid

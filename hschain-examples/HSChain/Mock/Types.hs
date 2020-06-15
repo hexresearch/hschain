@@ -37,6 +37,7 @@ import HSChain.Blockchain.Internal.Engine.Types
 import HSChain.Config
 import HSChain.Crypto
 import HSChain.Logger         (ScribeSpec)
+import HSChain.Mempool
 import HSChain.Types
 import HSChain.Types.Merkle.Types
 import HSChain.Store

@@ -42,6 +42,7 @@ import HSChain.Run
 import HSChain.Config (SnakeCase(..),Config(..),DropSmart(..),TopConfig(..))
 import HSChain.Control.Class
 import HSChain.Store
+import HSChain.Mempool
 import HSChain.Monitoring
 import HSChain.Mock
 import HSChain.Crypto         (PublicKey)

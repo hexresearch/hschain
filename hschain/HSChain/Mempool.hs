@@ -21,13 +21,13 @@ module HSChain.Mempool (
     MempoolCursor(..)
   , Mempool(..)
   , MempoolInfo(..)
-  , hoistMempoolCursor
   , hoistMempool
   , nullMempool
   , newMempool
   ) where
 
 import Control.Applicative
+import Control.Concurrent
 import Control.Concurrent.STM
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
@@ -50,7 +50,6 @@ import qualified Katip
 import Text.Printf
 import GHC.Generics              (Generic)
 
-import HSChain.Control.Class          (MonadFork)
 import HSChain.Crypto
 
 
@@ -79,12 +78,12 @@ instance Katip.LogItem  MempoolInfo where
   payloadKeys _        _ = Katip.AllKeys
 
 -- | Cursor into mempool which is used for gossiping data
-data MempoolCursor m alg tx = MempoolCursor
-  { pushTransaction :: !(tx -> m (Maybe (Hashed alg tx)))
+data MempoolCursor alg tx = MempoolCursor
+  { pushTransaction :: !(forall m. MonadIO m => tx -> m (Maybe (Hashed alg tx)))
     -- ^ Add transaction to the mempool. It's preliminary checked and
     --   if check fails it immediately discarded. If transaction is
     --   accepted its hash is computed and returned
-  , advanceCursor   :: !(m (Maybe tx))
+  , advanceCursor   :: !(forall m. MonadIO m => m (Maybe tx))
     -- ^ Take transaction from front and advance cursor. If cursor
     -- points at the end of queue nothing happens.
   }
@@ -97,7 +96,7 @@ data Mempool m alg tx = Mempool
     --   does not alter mempool state
   , filterMempool     :: !(m ())
     -- ^ Remove transactions that are no longer valid from mempool
-  , getMempoolCursor  :: !(m (MempoolCursor m alg tx))
+  , getMempoolCursor  :: !(m (MempoolCursor alg tx))
     -- ^ Get cursor pointing to be
   , txInMempool       :: !(Hashed alg tx -> m Bool)
     -- ^ Checks whether transaction is mempool
@@ -110,17 +109,11 @@ data Mempool m alg tx = Mempool
     --   is internal inconsistency
   }
 
-hoistMempoolCursor :: (forall a. m a -> n a) -> MempoolCursor m alg tx -> MempoolCursor n alg tx
-hoistMempoolCursor fun MempoolCursor{..} = MempoolCursor
-  { pushTransaction = fun . pushTransaction
-  , advanceCursor   = fun advanceCursor
-  }
-
-hoistMempool :: Functor n => (forall a. m a -> n a) -> Mempool m alg tx -> Mempool n alg tx
+hoistMempool :: (forall a. m a -> n a) -> Mempool m alg tx -> Mempool n alg tx
 hoistMempool fun Mempool{..} = Mempool
   { peekNTransactions = fun peekNTransactions
   , filterMempool     = fun filterMempool
-  , getMempoolCursor  = hoistMempoolCursor fun <$> fun getMempoolCursor
+  , getMempoolCursor  = fun getMempoolCursor
   , txInMempool       = fun . txInMempool
   , mempoolStats      = fun mempoolStats
   , mempoolSize       = fun mempoolSize
@@ -146,24 +139,48 @@ nullMempool = Mempool
   }
 
 
+----------------------------------------------------------------
+-- Real mempool implemenatation
+----------------------------------------------------------------
 
+data MempoolDict m alg tx = MempoolDict
+  { varFIFO      :: TVar (IntMap tx)
+  , varRevMap    :: TVar (Map tx Int)
+  , varTxSet     :: TVar (Set (Hashed alg tx))
+  , varMaxN      :: TVar Int
+  -- Counters for tracking number of transactions
+  , varAdded     :: TVar Int
+  , varDiscarded :: TVar Int
+  , varFiltered  :: TVar Int
+  -- Communication channel
+  , chPushTx     :: Chan (Push alg tx)
+  }
 
+-- Command to push new TX to mempool
+data Push alg tx = Push
+  !(Maybe (MVar (Maybe (Hashed alg tx))))
+  !tx
 
+newMempoolDict :: MonadIO m => m (MempoolDict n alg tx)
+newMempoolDict = liftIO $ do
+  varFIFO      <- newTVarIO IMap.empty
+  varRevMap    <- newTVarIO Map.empty
+  varTxSet     <- newTVarIO Set.empty
+  varMaxN      <- newTVarIO 0
+  varAdded     <- newTVarIO 0
+  varDiscarded <- newTVarIO 0
+  varFiltered  <- newTVarIO 0
+  chPushTx     <- newChan
+  return MempoolDict{..}
 
 newMempool
-  :: forall m alg tx. (Show tx, Ord tx, Crypto alg, CryptoHashable tx, MonadIO m)
+  :: ( Show tx, Ord tx, Crypto alg, CryptoHashable tx, MonadIO m )
   => (tx -> m Bool)
-  -> m (Mempool m alg tx)
+  -> m (Mempool m alg tx, m ())
 newMempool validation = do
-  varFIFO   :: TVar (IntMap tx)           <- liftIO $ newTVarIO IMap.empty
-  varRevMap :: TVar (Map tx Int)          <- liftIO $ newTVarIO Map.empty
-  varTxSet  :: TVar (Set (Hashed alg tx)) <- liftIO $ newTVarIO Set.empty
-  varMaxN   :: TVar Int                   <- liftIO $ newTVarIO 0
-  -- Counters for tracking number of transactions
-  varAdded     :: TVar Int <- liftIO $ newTVarIO 0
-  varDiscarded :: TVar Int <- liftIO $ newTVarIO 0
-  varFiltered  :: TVar Int <- liftIO $ newTVarIO 0
-  return Mempool
+  dict@MempoolDict{..} <- newMempoolDict
+  return (
+    Mempool
     { peekNTransactions = toList <$> liftIO (readTVarIO varFIFO)
     -- Filtering of transactions is tricky! Validation function is
     -- monadic so we cannot call it inside atomically block. And when
@@ -214,32 +231,10 @@ newMempool validation = do
     , getMempoolCursor = liftIO $ atomically $ do
         varN <- newTVar 0
         return MempoolCursor
-          { pushTransaction = \tx -> runMaybeT $ do
-              let discardSTM = do modifyTVar' varAdded     succ
-                                  modifyTVar' varDiscarded succ
-                  discard    = do liftIO $ atomically discardSTM
-                                  empty
-              -- Abort if tx is already in mempool
-              do revMap <- liftIO $ readTVarIO varRevMap
-                 when (tx `Map.member` revMap) discard
-              -- Validate TX
-              lift (validation tx) >>= \case
-                False -> discard
-                True  -> MaybeT $ liftIO $ atomically $ do
-                  -- Still it's possible that tx was added while we
-                  -- were checking its validity
-                  rmap <- readTVar varRevMap
-                  case tx `Map.notMember` rmap of
-                    False -> Nothing <$ discardSTM
-                    True  -> do
-                      let txHash = hashed tx
-                      modifyTVar' varAdded     succ
-                      n <- succ <$> readTVar varMaxN
-                      modifyTVar' varFIFO   $ IMap.insert n tx
-                      modifyTVar' varRevMap $ Map.insert tx n
-                      modifyTVar' varTxSet  $ Set.insert txHash
-                      writeTVar   varMaxN   $! n
-                      return $ Just txHash
+          { pushTransaction = \tx -> liftIO $ do
+              reply <- newEmptyMVar
+              writeChan chPushTx $ Push (Just reply) tx
+              takeMVar reply
             --
           , advanceCursor = liftIO $ atomically $ do
               fifo <- readTVar varFIFO
@@ -288,3 +283,40 @@ newMempool validation = do
             ]
           ]
     }
+    , pushTxThread validation dict
+    )
+
+pushTxThread
+  :: (Ord tx, CryptoHash alg, CryptoHashable tx, MonadIO m)
+  => (tx -> m Bool)
+  -> MempoolDict m alg tx
+  -> m ()
+pushTxThread validation MempoolDict{..} = forever $ do
+  Push retVar tx <- liftIO $ readChan chPushTx
+  res <- runMaybeT $ do
+    let discardSTM = do modifyTVar' varAdded     succ
+                        modifyTVar' varDiscarded succ
+        discard    = do liftIO $ atomically discardSTM
+                        empty
+    -- Abort if tx is already in mempool
+    do revMap <- liftIO $ readTVarIO varRevMap
+       when (tx `Map.member` revMap) discard
+    -- Validate TX
+    lift (validation tx) >>= \case
+      False -> discard
+      True  -> MaybeT $ liftIO $ atomically $ do
+        -- Still it's possible that tx was added while we
+        -- were checking its validity
+        rmap <- readTVar varRevMap
+        case tx `Map.notMember` rmap of
+          False -> Nothing <$ discardSTM
+          True  -> do
+            let txHash = hashed tx
+            modifyTVar' varAdded     succ
+            n <- succ <$> readTVar varMaxN
+            modifyTVar' varFIFO   $ IMap.insert n tx
+            modifyTVar' varRevMap $ Map.insert tx n
+            modifyTVar' varTxSet  $ Set.insert txHash
+            writeTVar   varMaxN   $! n
+            return $ Just txHash
+  liftIO $ forM_ retVar $ \v -> tryPutMVar v res

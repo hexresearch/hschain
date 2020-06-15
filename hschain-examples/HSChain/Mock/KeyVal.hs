@@ -47,6 +47,7 @@ import HSChain.Crypto.Classes.Hash
 import HSChain.Crypto.Ed25519
 import HSChain.Crypto.SHA
 import HSChain.Logger
+import HSChain.Mempool
 import HSChain.Mock.KeyList
 import HSChain.Mock.Types
 import HSChain.Monitoring

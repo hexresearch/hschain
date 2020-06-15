@@ -29,6 +29,7 @@ import HSChain.Blockchain.Internal.Engine.Types
 import HSChain.Control.Class
 import HSChain.Crypto
 import HSChain.Logger
+import HSChain.Mempool
 import HSChain.Mock.Types
 import HSChain.Mock.Dioxane.Types
 import HSChain.Monitoring
