@@ -45,6 +45,7 @@ import HSChain.Control.Util (throwNothing,throwNothingM,throwLeftM,throwLeft,ato
 import HSChain.Crypto
 import HSChain.Exceptions
 import HSChain.Logger
+import HSChain.Mempool
 import HSChain.Store
 import HSChain.Store.Internal.BlockDB
 import HSChain.Store.Internal.Proposals

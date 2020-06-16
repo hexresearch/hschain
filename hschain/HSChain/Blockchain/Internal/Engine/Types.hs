@@ -55,6 +55,7 @@ import GHC.Generics           (Generic)
 import HSChain.Blockchain.Internal.Types
 import HSChain.Crypto
 import HSChain.Crypto.SHA (SHA512)
+import HSChain.Mempool
 import HSChain.Store
 import HSChain.Types.Blockchain
 import HSChain.Types.Validators

@@ -28,6 +28,7 @@ import HSChain.Control.Class
 import HSChain.Control.Shepherd
 import HSChain.Control.Util
 import HSChain.Logger
+import HSChain.Mempool
 import HSChain.Monitoring
 import HSChain.Network.Types
 import HSChain.Store

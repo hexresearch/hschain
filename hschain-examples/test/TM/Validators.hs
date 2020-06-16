@@ -41,6 +41,7 @@ import HSChain.Crypto.Classes.Hash
 import HSChain.Crypto.Ed25519 (Ed25519)
 import HSChain.Crypto.SHA     (SHA512)
 import HSChain.Logger
+import HSChain.Mempool
 import HSChain.Mock.KeyList (makePrivKeyStream)
 import HSChain.Mock.Types
 import HSChain.Mock

@@ -68,6 +68,7 @@ Library
                   HSChain.Crypto.Containers
                   HSChain.Data.CIntMap
                   HSChain.Exceptions
+                  HSChain.Mempool
                   HSChain.Monitoring
                   HSChain.Run
                   HSChain.P2P

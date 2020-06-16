@@ -44,6 +44,7 @@ import HSChain.Control.Class
 import HSChain.Control.Shepherd
 import HSChain.Control.Util
 import HSChain.Logger
+import HSChain.Mempool
 import HSChain.Monitoring
 import HSChain.Network.Types
 import HSChain.P2P.PeerState.Timer
@@ -163,7 +164,7 @@ peerFSM
   => PeerChans a
   -> TBQueue (GossipMsg a)
   -> TChan (GossipMsg a)
-  -> MempoolCursor m (Alg a) (TX a)
+  -> MempoolCursor (Alg a) (TX a)
   -> m ()
 peerFSM peerCh@PeerChans{..} gossipCh recvCh MempoolCursor{..} = logOnException $ do
   ownPeerChanTx <- atomicallyIO $ dupTChan peerChanTx
@@ -212,7 +213,7 @@ mempoolThread
   :: (MonadLogger m, MonadCatch m, MonadIO m)
   => NetworkCfg app
   -> TBQueue (GossipMsg a)
-  -> MempoolCursor m alg (TX a)
+  -> MempoolCursor alg (TX a)
   -> m b
 mempoolThread NetworkCfg{..} gossipCh MempoolCursor{..} =
   logOnException $ forever $ do

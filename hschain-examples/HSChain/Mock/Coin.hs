@@ -60,6 +60,7 @@ import HSChain.Blockchain.Internal.Engine.Types
 import HSChain.Control.Class
 import HSChain.Crypto
 import HSChain.Logger
+import HSChain.Mempool
 import HSChain.Run
 import HSChain.Mock
 import HSChain.Mock.Coin.Types
@@ -191,8 +192,8 @@ interpretSpec genesis cfg net spec cb = do
   conn    <- askConnectionRO
   store   <- maybe return snapshotState (nspecPersistIval spec)
          =<< newSTMBchStorage (blockchainState genesis)
-  mempool <- makeMempool store (ExceptT . return)
-  acts <- runNode cfg NodeDescription
+  (mempool,mempoolThread) <- makeMempool store (ExceptT . return)
+  acts    <- runNode cfg NodeDescription
     { nodeValidationKey = nspecPrivKey spec
     , nodeGenesis       = genesis
     , nodeCallbacks     = cb <> nonemptyMempoolCallback mempool
@@ -207,7 +208,7 @@ interpretSpec genesis cfg net spec cb = do
                   , rnodeConn    = conn
                   , rnodeMempool = mempool
                   }
-    , acts
+    , mempoolThread : acts
     )
 
 executeNodeSpec
