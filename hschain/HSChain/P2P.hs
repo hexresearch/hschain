@@ -27,13 +27,14 @@ import HSChain.Blockchain.Internal.Engine.Types
 import HSChain.Control.Class
 import HSChain.Control.Shepherd
 import HSChain.Control.Util
+import HSChain.Internal.Types.Config
 import HSChain.Logger
 import HSChain.Mempool
 import HSChain.Monitoring
 import HSChain.Network.Types
+import HSChain.P2P.Internal
 import HSChain.Store
 import HSChain.Types.Blockchain
-import HSChain.P2P.Internal
 
 
 ----------------------------------------------------------------

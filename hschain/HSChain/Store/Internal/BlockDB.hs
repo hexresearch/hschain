@@ -55,13 +55,13 @@ import qualified Database.SQLite.Simple.FromField as SQL
 import           Database.SQLite.Simple             (Only(..))
 
 import HSChain.Control.Util (throwNothing)
+import HSChain.Crypto
 import HSChain.Exceptions
+import HSChain.Internal.Types.Messages
+import HSChain.Store.Internal.Query
 import HSChain.Types.Blockchain
 import HSChain.Types.Merkle.Types
-import HSChain.Blockchain.Internal.Types
-import HSChain.Crypto
 import HSChain.Types.Validators
-import HSChain.Store.Internal.Query
 
 ----------------------------------------------------------------
 --

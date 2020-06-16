@@ -70,6 +70,8 @@ Library
                   HSChain.Exceptions
                   HSChain.Mempool
                   HSChain.Monitoring
+                  HSChain.Internal.Types.Messages
+                  HSChain.Internal.Types.Config
                   HSChain.Run
                   HSChain.P2P
                   HSChain.P2P.PeerState.Timer

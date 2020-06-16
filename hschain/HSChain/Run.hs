@@ -35,6 +35,8 @@ import Data.Either                    (isRight)
 import HSChain.Blockchain.Internal.Engine
 import HSChain.Blockchain.Internal.Engine.Types
 import HSChain.Control.Class
+import HSChain.Control.Delay
+import HSChain.Internal.Types.Config
 import HSChain.Logger
 import HSChain.Mempool
 import HSChain.Monitoring
@@ -43,7 +45,6 @@ import HSChain.P2P
 import HSChain.Store
 import HSChain.Types
 import HSChain.Types.Merkle.Types
-import HSChain.Control.Delay
 
 
 ----------------------------------------------------------------

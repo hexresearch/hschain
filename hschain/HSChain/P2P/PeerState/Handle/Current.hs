@@ -22,6 +22,7 @@ import Lens.Micro.Mtl
 import HSChain.Blockchain.Internal.Types
 import HSChain.Control.Util              (atomicallyIO)
 import HSChain.Crypto.Containers         (toPlainMap)
+import HSChain.Internal.Types.Messages
 import HSChain.Store
 import HSChain.Store.Internal.Proposals
 import HSChain.Store.Internal.BlockDB

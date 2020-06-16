@@ -33,6 +33,7 @@ import System.Timeout (timeout)
 
 import HSChain.Mock.KeyVal   (BData)
 import HSChain.Blockchain.Internal.Engine.Types
+import HSChain.Internal.Types.Config
 import HSChain.Mock.KeyList
 import HSChain.P2P
 import HSChain.Types.Blockchain

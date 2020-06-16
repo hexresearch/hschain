@@ -34,25 +34,27 @@ import Data.Text             (Text)
 import Data.Function         (on)
 import Pipes                 (Pipe,Producer,Consumer,runEffect,yield,await,(>->))
 import qualified Pipes.Prelude as Pipes
+import Katip (sl)
 
-import HSChain.Blockchain.Internal.Engine.Types
-import HSChain.Blockchain.Internal.Types
 import HSChain.Blockchain.Internal.Algorithm
-import HSChain.Types.Blockchain
-import HSChain.Types.Merkle.Types
+import HSChain.Blockchain.Internal.Engine.Types
 import HSChain.Control      (iterateM)
 import HSChain.Control.Util (throwNothing,throwNothingM,throwLeftM,throwLeft,atomicallyIO)
 import HSChain.Crypto
 import HSChain.Exceptions
+import HSChain.Internal.Types.Messages
+import HSChain.Internal.Types.Config
 import HSChain.Logger
 import HSChain.Mempool
+import HSChain.Monitoring
 import HSChain.Store
 import HSChain.Store.Internal.BlockDB
 import HSChain.Store.Internal.Proposals
-import HSChain.Monitoring
+import HSChain.Types.Blockchain
+import HSChain.Types.Merkle.Types
 import HSChain.Types.Validators
 
-import Katip (sl)
+
 
 ----------------------------------------------------------------
 --

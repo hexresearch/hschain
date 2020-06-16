@@ -5,7 +5,7 @@ module HSChain.P2P.PeerState.Handle.Unknown
   ( handler
   ) where
 
-import HSChain.Blockchain.Internal.Types
+import HSChain.Internal.Types.Messages
 import HSChain.P2P.Internal.Types
 import HSChain.P2P.PeerState.Monad
 import HSChain.P2P.PeerState.Types

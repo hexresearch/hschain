@@ -35,7 +35,6 @@ import qualified Network.Wai.Handler.Warp as Warp
 
 import GHC.Generics (Generic)
 
-import HSChain.Blockchain.Internal.Engine.Types
 import HSChain.Config
 import HSChain.Control.Class
 import HSChain.Crypto         (publicKey)

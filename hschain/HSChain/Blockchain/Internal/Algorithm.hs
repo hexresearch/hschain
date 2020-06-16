@@ -53,6 +53,7 @@ import HSChain.Crypto            ( Crypto, SignedState(..) )
 import HSChain.Blockchain.Internal.Types
 import HSChain.Blockchain.Internal.Engine.Types
 import HSChain.Crypto.Containers
+import HSChain.Internal.Types.Messages
 import HSChain.Logger
 import HSChain.Store.Internal.Proposals
 import HSChain.Types

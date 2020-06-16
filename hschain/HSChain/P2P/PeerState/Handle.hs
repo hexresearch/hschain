@@ -17,6 +17,7 @@ import Lens.Micro.Mtl
 
 import HSChain.Control.Util (atomicallyIO)
 import HSChain.Blockchain.Internal.Types
+import HSChain.Internal.Types.Messages
 import HSChain.Types.Blockchain
 import HSChain.P2P.Internal.Types
 import HSChain.P2P.PeerState.Monad
