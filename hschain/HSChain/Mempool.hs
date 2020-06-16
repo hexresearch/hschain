@@ -22,6 +22,7 @@ module HSChain.Mempool (
   , Mempool(..)
   , MempoolInfo(..)
   , hoistMempool
+    -- * Concrete mempool implementations
   , nullMempool
   , newMempool
   ) where
