@@ -145,7 +145,7 @@ main = do
           return [transactionGenerator txG
                     rnodeMempool
                     (merkleValue . snd <$> bchCurrentState rnodeState)
-                    (void . pushTransaction cursor)]
+                    (pushTxAsync cursor)]
       logOnException $ runConcurrently $ txGen ++ acts
 
 parser :: Parser Opts

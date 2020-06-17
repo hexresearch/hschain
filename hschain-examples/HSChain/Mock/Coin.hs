@@ -241,7 +241,7 @@ executeNodeSpec NetSpec{..} coin@CoinSpecification{..} = do
       return $ transactionGenerator txG
         rnodeMempool
         (merkleValue . snd <$> bchCurrentState rnodeState)
-        (void . pushTransaction cursor)
+        (pushTxAsync cursor)
   -- Actually run nodes
   lift   $ catchAbort $ runConcurrently $ (snd =<< rnodes) ++ txGens
   return $ fst <$> rnodes

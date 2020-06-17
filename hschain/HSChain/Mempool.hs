@@ -80,10 +80,13 @@ instance Katip.LogItem  MempoolInfo where
 
 -- | Cursor into mempool which is used for gossiping data
 data MempoolCursor alg tx = MempoolCursor
-  { pushTransaction :: !(forall m. MonadIO m => tx -> m (Maybe (Hashed alg tx)))
-    -- ^ Add transaction to the mempool. It's preliminary checked and
-    --   if check fails it immediately discarded. If transaction is
-    --   accepted its hash is computed and returned
+  { pushTxSync      :: !(forall m. MonadIO m => tx -> m (Maybe (Hashed alg tx)))
+    -- ^ Add transaction to the mempool. It's checked against current
+    --   state of blockchain and if check fails it's immediately
+    --   discarded. If transaction is accepted and not in mempool
+    --   already its hash is computed and returned.
+  , pushTxAsync     :: !(forall m. MonadIO m => tx -> m ())
+    -- ^ Add transaction to the mempool wihtout waiting for validation result.
   , advanceCursor   :: !(forall m. MonadIO m => m (Maybe tx))
     -- ^ Take transaction from front and advance cursor. If cursor
     -- points at the end of queue nothing happens.
@@ -133,8 +136,9 @@ nullMempool = Mempool
   , mempoolSize       = return 0
   , txInMempool       = const (return False)
   , getMempoolCursor  = return MempoolCursor
-      { pushTransaction = const $ return Nothing
-      , advanceCursor   = return Nothing
+      { pushTxSync    = const $ return Nothing
+      , pushTxAsync   = const $ return ()
+      , advanceCursor = return Nothing
       }
   , mempoolSelfTest   = return []
   }
@@ -232,10 +236,11 @@ newMempool validation = do
     , getMempoolCursor = liftIO $ atomically $ do
         varN <- newTVar 0
         return MempoolCursor
-          { pushTransaction = \tx -> liftIO $ do
+          { pushTxSync = \tx -> liftIO $ do
               reply <- newEmptyMVar
               writeChan chPushTx $ Push (Just reply) tx
               takeMVar reply
+          , pushTxAsync = liftIO . writeChan chPushTx . Push Nothing
             --
           , advanceCursor = liftIO $ atomically $ do
               fifo <- readTVar varFIFO
