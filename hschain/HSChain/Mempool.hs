@@ -162,9 +162,10 @@ data MempoolDict m alg tx = MempoolDict
   }
 
 -- Command to push new TX to mempool
-data Push alg tx = Push
-  !(Maybe (MVar (Maybe (Hashed alg tx))))
-  !tx
+data Push alg tx
+  = Push !(Maybe (MVar (Maybe (Hashed alg tx))))
+         !tx
+  | Filter
 
 newMempoolDict :: MonadIO m => m (MempoolDict n alg tx)
 newMempoolDict = liftIO $ do
@@ -187,7 +188,7 @@ newMempool validation = do
   return (
     Mempool
     { peekNTransactions = toList <$> liftIO (readTVarIO varFIFO)
-    , filterMempool = doFilterMempool validation dict
+    , filterMempool     = liftIO $ writeChan chPushTx Filter
     --
     , mempoolStats = liftIO $ atomically $ do
         mempool'size      <- IMap.size <$> readTVar varFIFO
@@ -259,16 +260,29 @@ newMempool validation = do
             ]
           ]
     }
-    , pushTxThread validation dict
+    , mempoolThread validation dict
     )
 
-pushTxThread
+
+
+mempoolThread
   :: (Ord tx, CryptoHash alg, CryptoHashable tx, MonadIO m)
   => (tx -> m Bool)
   -> MempoolDict m alg tx
   -> m ()
-pushTxThread validation MempoolDict{..} = forever $ do
-  Push retVar tx <- liftIO $ readChan chPushTx
+mempoolThread validation dict = forever $
+  liftIO (readChan (chPushTx dict)) >>= \case
+    Push retVar tx -> handlePush   validation dict retVar tx
+    Filter         -> handleFilter validation dict
+
+handlePush
+  :: (MonadIO m, Ord tx, CryptoHash alg, CryptoHashable tx)
+  => (tx -> m Bool)
+  -> MempoolDict m alg tx
+  -> Maybe (MVar (Maybe (Hashed alg tx)))
+  -> tx
+  -> m ()
+handlePush validation MempoolDict{..} retVar tx = do
   res <- runMaybeT $ do
     let discardSTM = do modifyTVar' varAdded     succ
                         modifyTVar' varDiscarded succ
@@ -315,10 +329,10 @@ pushTxThread validation MempoolDict{..} = forever $ do
 --
 --  This way any new transactions which were added during checking
 --  are not affected.
-doFilterMempool
+handleFilter
   :: (MonadIO m, Ord a, CryptoHash alg, CryptoHashable a)
   => (a -> m Bool) -> MempoolDict m alg a -> m ()
-doFilterMempool validation MempoolDict{..} = do
+handleFilter validation MempoolDict{..} = do
   -- Invalid transactions
   invalidTx <- filterM (\(_,tx) -> not <$> validation tx)
              . IMap.toList
