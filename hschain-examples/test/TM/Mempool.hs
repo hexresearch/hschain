@@ -71,7 +71,7 @@ propSelfCheck = property $ do
   forM_ txsSets $ \txs -> do
     annotate $ show txs
     -- Add transactions to mempool
-    liftIO $ mapM_ (pushTxAsync cursor) txs
+    liftIO $ mapM_ (pushTxSync cursor) txs
     liftIO $ commit
     liftIO (mempoolSelfTest mempool) >>= \case
         []   -> success
@@ -91,7 +91,7 @@ propDuplicate = property $ do
   (_,(mempool, thread)) <- createTestMempool
   cursor                <- liftIO $ getMempoolCursor mempool
   tid                   <- liftIO $ forkIO thread  
-  liftIO $ mapM_ (pushTxAsync cursor) txs
+  liftIO $ mapM_ (pushTxSync cursor) txs
   -- TX should be in same order, positive, and duplicates should be removed
   txs' <- liftIO $ peekNTransactions mempool
   unless (txs' == nub (filter (>0) txs)) failure
