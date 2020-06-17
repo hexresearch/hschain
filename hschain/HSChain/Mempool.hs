@@ -187,23 +187,22 @@ newMempool validation = do
   dict@MempoolDict{..} <- newMempoolDict
   return (
     Mempool
+    -- TX manipulations
     { peekNTransactions = toList <$> liftIO (readTVarIO varFIFO)
     , filterMempool     = liftIO $ writeChan chPushTx Filter
-    --
+    , txInMempool       = \txHash -> liftIO $ do
+        txSet <- readTVarIO varTxSet
+        return $! txHash `Set.member` txSet
+    -- Stats
     , mempoolStats = liftIO $ atomically $ do
         mempool'size      <- IMap.size <$> readTVar varFIFO
         mempool'added     <- readTVar varAdded
         mempool'discarded <- readTVar varDiscarded
         mempool'filtered  <- readTVar varFiltered
         return MempoolInfo{..}
-    --
-    , mempoolSize = do m <- liftIO $ readTVarIO varFIFO
-                       return $! IMap.size m
-    --
-    , txInMempool = \txHash -> liftIO $ do
-        txSet <- readTVarIO varTxSet
-        return $ txHash `Set.member` txSet
-    --
+    , mempoolSize = liftIO $ do m <- readTVarIO varFIFO
+                                return $! IMap.size m
+    -- Cursor
     , getMempoolCursor = liftIO $ atomically $ do
         varN <- newTVar 0
         return MempoolCursor
