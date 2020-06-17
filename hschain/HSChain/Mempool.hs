@@ -187,37 +187,7 @@ newMempool validation = do
   return (
     Mempool
     { peekNTransactions = toList <$> liftIO (readTVarIO varFIFO)
-    -- Filtering of transactions is tricky! Validation function is
-    -- monadic so we cannot call it inside atomically block. And when
-    -- we call it outside atomically block content of maps could change!
-    --
-    -- In order to overcome this problem we make following assumtions:
-    --
-    --  * All transactions added to mempool were at some point valid
-    --  * If transaction become invalid for whatever reason it stays
-    --    invalid forever
-    --
-    --  So basic algorithm is:
-    --   1) We take all transactions in mempool
-    --   2) Select invalid ones
-    --   3) Remove them in separate atomically block
-    --
-    --  This way any new transactions which were added during checking
-    --  are not affected.
-    , filterMempool = do
-        -- Invalid transactions
-        invalidTx <- filterM (\(_,tx) -> not <$> validation tx)
-                   . IMap.toList
-                 =<< liftIO (readTVarIO varFIFO)
-        -- Remove invalid transactions
-        liftIO $ atomically $ do
-          modifyTVar' varFIFO   $ \m0 ->
-            foldl' (\m (i,_) -> IMap.delete i m) m0 invalidTx
-          modifyTVar' varRevMap $ \m0 ->
-            foldl' (\m (_,tx) -> Map.delete tx m) m0 invalidTx
-          modifyTVar' varTxSet  $ \s0 ->
-            foldl' (\s(_,tx) -> Set.delete (hashed tx) s) s0 invalidTx
-          modifyTVar' varFiltered (+ length invalidTx)
+    , filterMempool = doFilterMempool validation dict
     --
     , mempoolStats = liftIO $ atomically $ do
         mempool'size      <- IMap.size <$> readTVar varFIFO
@@ -326,3 +296,39 @@ pushTxThread validation MempoolDict{..} = forever $ do
             writeTVar   varMaxN   $! n
             return $ Just txHash
   liftIO $ forM_ retVar $ \v -> tryPutMVar v res
+
+
+-- Filtering of transactions is tricky! Validation function is
+-- monadic so we cannot call it inside atomically block. And when
+-- we call it outside atomically block content of maps could change!
+--
+-- In order to overcome this problem we make following assumtions:
+--
+--  * All transactions added to mempool were at some point valid
+--  * If transaction become invalid for whatever reason it stays
+--    invalid forever
+--
+--  So basic algorithm is:
+--   1) We take all transactions in mempool
+--   2) Select invalid ones
+--   3) Remove them in separate atomically block
+--
+--  This way any new transactions which were added during checking
+--  are not affected.
+doFilterMempool
+  :: (MonadIO m, Ord a, CryptoHash alg, CryptoHashable a)
+  => (a -> m Bool) -> MempoolDict m alg a -> m ()
+doFilterMempool validation MempoolDict{..} = do
+  -- Invalid transactions
+  invalidTx <- filterM (\(_,tx) -> not <$> validation tx)
+             . IMap.toList
+           =<< liftIO (readTVarIO varFIFO)
+  -- Remove invalid transactions
+  liftIO $ atomically $ do
+    modifyTVar' varFIFO   $ \m0 ->
+      foldl' (\m (i,_) -> IMap.delete i m) m0 invalidTx
+    modifyTVar' varRevMap $ \m0 ->
+      foldl' (\m (_,tx) -> Map.delete tx m) m0 invalidTx
+    modifyTVar' varTxSet  $ \s0 ->
+      foldl' (\s(_,tx) -> Set.delete (hashed tx) s) s0 invalidTx
+    modifyTVar' varFiltered (+ length invalidTx)
