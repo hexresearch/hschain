@@ -222,48 +222,51 @@ newMempool validation = do
                                     return (Just tx)
           }
     --
-    , mempoolSelfTest = liftIO $ atomically $ do
-        fifo <- readTVar varFIFO
-        rev  <- readTVar varRevMap
-        tx   <- readTVar varTxSet
-        maxN <- readTVar varMaxN
-        let nFIFO  = IMap.size fifo
-            nRev   = Map.size rev
-            nTX    = Set.size tx
-            lFifo  = IMap.toAscList fifo
-            lRev   = sort $ swap <$> Map.toList rev
-            maxKey = fst <$> IMap.lookupMax fifo
-        --
-        return $ concat
-          [ [ printf "Mismatch in rev.map. nFIFO=%i nRev=%i" nFIFO nRev
-            | nFIFO /= nRev
-            ]
-          , [ printf "Mismatch in tx.set. nFIFO=%i nTX=%i" nFIFO nTX
-            | nFIFO /= nTX
-            ]
-          , [ unlines [ "True TX / cached set"
-                      , show trueTX
-                      , show tx
-                      ]
-            | let trueTX = Set.fromList (hashed <$> toList fifo)
-            , trueTX /= tx
-            ]
-          , [ "Duplicate transactions present"
-            | let txs = toList fifo
-            , nub txs /= txs
-            ]
-          , [ printf "RevMap is not reverse of FIFO.\nFIFO: %s\nRevMap: %s" (show lFifo) (show lRev)
-            | lFifo /= lRev
-            ]
-          , [ printf "Max N less than max FIFO key. maxN=%i maxKey=%s" maxN (show maxKey)
-            | maxN < fromMaybe 0 maxKey
-            ]
-          ]
+    , mempoolSelfTest = selfTest dict
     }
     , mempoolThread validation dict
     )
 
-
+selfTest
+  :: (MonadIO m, Show a, Ord a, CryptoHash alg, CryptoHashable a)
+  => MempoolDict m alg a -> m [String]
+selfTest MempoolDict{..} = liftIO $ atomically $ do
+  fifo <- readTVar varFIFO
+  rev  <- readTVar varRevMap
+  tx   <- readTVar varTxSet
+  maxN <- readTVar varMaxN
+  let nFIFO  = IMap.size fifo
+      nRev   = Map.size rev
+      nTX    = Set.size tx
+      lFifo  = IMap.toAscList fifo
+      lRev   = sort $ swap <$> Map.toList rev
+      maxKey = fst <$> IMap.lookupMax fifo
+  --
+  return $ concat
+    [ [ printf "Mismatch in rev.map. nFIFO=%i nRev=%i" nFIFO nRev
+      | nFIFO /= nRev
+      ]
+    , [ printf "Mismatch in tx.set. nFIFO=%i nTX=%i" nFIFO nTX
+      | nFIFO /= nTX
+      ]
+    , [ unlines [ "True TX / cached set"
+                , show trueTX
+                , show tx
+                ]
+      | let trueTX = Set.fromList (hashed <$> toList fifo)
+      , trueTX /= tx
+      ]
+    , [ "Duplicate transactions present"
+      | let txs = toList fifo
+      , nub txs /= txs
+      ]
+    , [ printf "RevMap is not reverse of FIFO.\nFIFO: %s\nRevMap: %s" (show lFifo) (show lRev)
+      | lFifo /= lRev
+      ]
+    , [ printf "Max N less than max FIFO key. maxN=%i maxKey=%s" maxN (show maxKey)
+      | maxN < fromMaybe 0 maxKey
+      ]
+    ]
 
 mempoolThread
   :: (Ord tx, CryptoHash alg, CryptoHashable tx, MonadIO m)
