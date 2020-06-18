@@ -28,6 +28,7 @@ module HSChain.Mempool (
   , newMempool
     -- * Mempool data structures
   , MempoolState(..)
+  , emptyMempoolState
   , mempoolAddTX
   , mempoolFilterTX
   ) where
@@ -172,11 +173,7 @@ data Push alg tx
 
 newMempoolDict :: MonadIO m => m (MempoolDict n alg tx)
 newMempoolDict = liftIO $ do
-  varMempool   <- newTVarIO MempoolState
-    { mempFIFO   = IMap.empty
-    , mempRevMap = Map.empty
-    , mempMaxN   = 0
-    }
+  varMempool   <- newTVarIO emptyMempoolState
   varAdded     <- newTVarIO 0
   varDiscarded <- newTVarIO 0
   varFiltered  <- newTVarIO 0
@@ -299,6 +296,13 @@ data MempoolState alg tx = MempoolState
     -- ^ Reverse map of transactions
   , mempMaxN   :: !Int
     -- ^ Maximum key for FIFO
+  }
+
+emptyMempoolState :: MempoolState alg tx
+emptyMempoolState = MempoolState
+  { mempFIFO   = IMap.empty
+  , mempRevMap = Map.empty
+  , mempMaxN   = 0
   }
 
 -- | Add transaction to mempool
