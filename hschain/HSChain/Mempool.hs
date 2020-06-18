@@ -45,7 +45,6 @@ import Data.Foldable
 import Data.Function
 import Data.Maybe                (fromMaybe)
 import Data.List                 (nub,sort)
-import Data.Tuple
 import Data.Map.Strict           (Map)
 import Data.IntMap.Strict        (IntMap)
 import qualified Data.Aeson         as JSON
@@ -249,8 +248,8 @@ selfTest MempoolState{..} = concat
   where
     nFIFO  = IMap.size mempFIFO
     nRev   = Map.size mempRevMap
-    lFifo  = [ (k,merkleHashed tx) | (k,tx) <- IMap.toAscList mempFIFO ]
-    lRev   = sort $ swap <$> Map.toList mempRevMap
+    lFifo  = IMap.toAscList mempFIFO
+    lRev   = sort $ toList mempRevMap
     maxKey = fst <$> IMap.lookupMax mempFIFO
 
 
@@ -293,7 +292,7 @@ mempoolThread validation MempoolDict{..} = forever $
 data MempoolState alg tx = MempoolState
   { mempFIFO   :: !(IntMap (MerkleNode Identity alg tx))
     -- ^ Transactions arranged in FIFO order
-  , mempRevMap :: !(Map (Hashed alg tx) Int)
+  , mempRevMap :: !(Map (Hashed alg tx) (Int, MerkleNode Identity alg tx))
     -- ^ Reverse map of transactions
   , mempMaxN   :: !Int
     -- ^ Maximum key for FIFO
@@ -317,18 +316,17 @@ mempoolAddTX validation txNode MempoolState{..} = runMaybeT $ do
   -- Ignore TX that we already have
   guard $ txHash `Map.notMember` mempRevMap
   -- Validate TX
-  lift (validation tx) >>= \case
+  lift (validation $ merkleValue txNode) >>= \case
     False -> empty
     True  -> do
       let n = mempMaxN + 1
       return $! MempoolState
-        { mempFIFO   = IMap.insert n      txNode mempFIFO
-        , mempRevMap = Map.insert  txHash n      mempRevMap
+        { mempFIFO   = IMap.insert n      txNode     mempFIFO
+        , mempRevMap = Map.insert  txHash (n,txNode) mempRevMap
         , mempMaxN   = n
         }
   where
-    tx         = merkleValue  txNode
-    txHash     = merkleHashed txNode
+    txHash = merkleHashed txNode
 
 -- | Remove all transaction from mepool that doesn't satisfy predicate
 mempoolFilterTX
