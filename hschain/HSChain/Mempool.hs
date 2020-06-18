@@ -31,6 +31,7 @@ module HSChain.Mempool (
   , emptyMempoolState
   , mempoolAddTX
   , mempoolFilterTX
+  , mempoolRemoveTX
   ) where
 
 import Control.Applicative
@@ -51,6 +52,7 @@ import qualified Data.Aeson         as JSON
 import qualified Data.Aeson.TH      as JSON
 import qualified Data.Map.Strict    as Map
 import qualified Data.IntMap.Strict as IMap
+import qualified Data.Set           as Set
 import qualified Katip
 import Text.Printf
 import GHC.Generics              (Generic)
@@ -228,7 +230,7 @@ newMempool validation = do
     )
 
 selfTest
-  :: (Show a, Ord a, CryptoHash alg, CryptoHashable a)
+  :: (Show a, Ord a)
   => MempoolState alg a -> [String]
 selfTest MempoolState{..} = concat
   [ [ printf "Mismatch in rev.map. nFIFO=%i nRev=%i" nFIFO nRev
@@ -258,7 +260,7 @@ selfTest MempoolState{..} = concat
 ----------------------------------------------------------------
 
 mempoolThread
-  :: (Ord tx, CryptoHash alg, CryptoHashable tx, MonadIO m)
+  :: (CryptoHash alg, CryptoHashable tx, MonadIO m)
   => (tx -> m Bool)
   -> MempoolDict m alg tx
   -> m ()
@@ -307,7 +309,7 @@ emptyMempoolState = MempoolState
 
 -- | Add transaction to mempool
 mempoolAddTX
-  :: (MonadIO m, Ord tx, CryptoHash alg, CryptoHashable tx)
+  :: (MonadIO m)
   => (tx -> m Bool)
   -> MerkleNode Identity alg tx
   -> MempoolState alg tx
@@ -330,15 +332,28 @@ mempoolAddTX validation txNode MempoolState{..} = runMaybeT $ do
 
 -- | Remove all transaction from mepool that doesn't satisfy predicate
 mempoolFilterTX
-  :: (MonadIO m, Ord a, CryptoHash alg, CryptoHashable a)
-  => (a -> m Bool)
-  -> MempoolState alg a
-  -> m (MempoolState alg a)
+  :: (MonadIO m)
+  => (tx -> m Bool)
+  -> MempoolState alg tx
+  -> m (MempoolState alg tx)
 mempoolFilterTX validation MempoolState{..} = do
   invalidTx <- filterM (\(_,tx) -> not <$> validation (merkleValue tx))
              $ IMap.toList mempFIFO
   return MempoolState
-    { mempFIFO   = foldl' (\m (i,_)  -> IMap.delete i m) mempFIFO   invalidTx
+    { mempFIFO   = foldl' (\m (i,_)  -> IMap.delete i m) mempFIFO invalidTx
     , mempRevMap = foldl' (\m (_,tx) -> Map.delete (merkleHashed tx) m) mempRevMap invalidTx
     , ..
     }
+
+mempoolRemoveTX
+  :: (Foldable f)
+  => f (Hashed alg tx)
+  -> MempoolState alg tx
+  -> MempoolState alg tx
+mempoolRemoveTX hashes MempoolState{..} = MempoolState
+  { mempFIFO   = IMap.filter (\tx -> merkleHashed tx `Set.notMember` hashSet) mempFIFO
+  , mempRevMap = Map.withoutKeys mempRevMap hashSet
+  , ..
+  }
+  where
+    hashSet = Set.fromList $ toList hashes
