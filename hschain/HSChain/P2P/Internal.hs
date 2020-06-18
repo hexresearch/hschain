@@ -184,7 +184,7 @@ peerFSM peerCh@PeerChans{..} gossipCh recvCh MempoolCursor{..} = logOnException 
                 ]
       forM_ cmds $ \case
         SendRX rx       -> atomicallyIO $ peerChanRx rx
-        Push2Mempool tx -> void $ pushTransaction tx
+        Push2Mempool tx -> void $ pushTxAsync tx
         Push2Gossip  tx -> atomicallyIO $ writeTBQueue gossipCh tx
         SendPEX pex     -> handlePexMessage peerCh gossipCh pex
       return s'
