@@ -181,15 +181,16 @@ newMempoolDict = liftIO $ do
   return MempoolDict{..}
 
 newMempool
-  :: ( Show tx, Ord tx, Crypto alg, CryptoHashable tx, MonadIO m )
+  :: forall tx alg m. ( Show tx, Ord tx, Crypto alg, CryptoHashable tx, MonadIO m )
   => (tx -> m Bool)
   -> m (Mempool m alg tx, m ())
 newMempool validation = do
-  dict@MempoolDict{..} <- newMempoolDict
+  dict@MempoolDict{..} <- newMempoolDict :: m (MempoolDict m alg tx)
   return (
     Mempool
     -- TX manipulations
-    { peekNTransactions = toList . mempFIFO <$> liftIO (readTVarIO varMempool)
+    { peekNTransactions =  map merkleValue . toList . mempFIFO
+                       <$> liftIO (readTVarIO varMempool)
     , filterMempool     = liftIO $ writeChan chPushTx Filter
     , txInMempool       = \txHash -> liftIO $ do
         mem <- readTVarIO varMempool
@@ -219,7 +220,7 @@ newMempool validation = do
               case n `IMap.lookupGT` mempFIFO mem of
                 Nothing       -> return Nothing
                 Just (n', tx) -> do writeTVar varN $! n'
-                                    return (Just tx)
+                                    return $ Just $ merkleValue tx
           }
     --
     , mempoolSelfTest = selfTest <$> liftIO (readTVarIO varMempool)
@@ -248,7 +249,7 @@ selfTest MempoolState{..} = concat
   where
     nFIFO  = IMap.size mempFIFO
     nRev   = Map.size mempRevMap
-    lFifo  = [ (k,hashed tx) | (k,tx) <- IMap.toAscList mempFIFO ]
+    lFifo  = [ (k,merkleHashed tx) | (k,tx) <- IMap.toAscList mempFIFO ]
     lRev   = sort $ swap <$> Map.toList mempRevMap
     maxKey = fst <$> IMap.lookupMax mempFIFO
 
@@ -290,7 +291,7 @@ mempoolThread validation MempoolDict{..} = forever $
 
 -- | State of mempool
 data MempoolState alg tx = MempoolState
-  { mempFIFO   :: !(IntMap tx)
+  { mempFIFO   :: !(IntMap (MerkleNode Identity alg tx))
     -- ^ Transactions arranged in FIFO order
   , mempRevMap :: !(Map (Hashed alg tx) Int)
     -- ^ Reverse map of transactions
@@ -321,8 +322,8 @@ mempoolAddTX validation txNode MempoolState{..} = runMaybeT $ do
     True  -> do
       let n = mempMaxN + 1
       return $! MempoolState
-        { mempFIFO   = IMap.insert n      tx mempFIFO
-        , mempRevMap = Map.insert  txHash n  mempRevMap
+        { mempFIFO   = IMap.insert n      txNode mempFIFO
+        , mempRevMap = Map.insert  txHash n      mempRevMap
         , mempMaxN   = n
         }
   where
@@ -336,10 +337,10 @@ mempoolFilterTX
   -> MempoolState alg a
   -> m (MempoolState alg a)
 mempoolFilterTX validation MempoolState{..} = do
-  invalidTx <- filterM (\(_,tx) -> not <$> validation tx)
+  invalidTx <- filterM (\(_,tx) -> not <$> validation (merkleValue tx))
              $ IMap.toList mempFIFO
   return MempoolState
     { mempFIFO   = foldl' (\m (i,_)  -> IMap.delete i m) mempFIFO   invalidTx
-    , mempRevMap = foldl' (\m (_,tx) -> Map.delete (hashed tx) m) mempRevMap invalidTx
+    , mempRevMap = foldl' (\m (_,tx) -> Map.delete (merkleHashed tx) m) mempRevMap invalidTx
     , ..
     }
