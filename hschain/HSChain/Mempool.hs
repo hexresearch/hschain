@@ -47,10 +47,8 @@ import Data.List                 (nub,sort)
 import Data.Tuple
 import Data.Map.Strict           (Map)
 import Data.IntMap.Strict        (IntMap)
-import Data.Set                  (Set)
 import qualified Data.Aeson         as JSON
 import qualified Data.Aeson.TH      as JSON
-import qualified Data.Set           as Set
 import qualified Data.Map.Strict    as Map
 import qualified Data.IntMap.Strict as IMap
 import qualified Katip
@@ -177,7 +175,6 @@ newMempoolDict = liftIO $ do
   varMempool   <- newTVarIO MempoolState
     { mempFIFO   = IMap.empty
     , mempRevMap = Map.empty
-    , mempTxSet  = Set.empty
     , mempMaxN   = 0
     }
   varAdded     <- newTVarIO 0
@@ -199,7 +196,7 @@ newMempool validation = do
     , filterMempool     = liftIO $ writeChan chPushTx Filter
     , txInMempool       = \txHash -> liftIO $ do
         mem <- readTVarIO varMempool
-        return $! txHash `Set.member` mempTxSet mem
+        return $! txHash `Map.member` mempRevMap mem
     -- Stats
     , mempoolStats = liftIO $ atomically $ do
         mempool'size      <- IMap.size . mempFIFO <$> readTVar varMempool
@@ -240,16 +237,6 @@ selfTest MempoolState{..} = concat
   [ [ printf "Mismatch in rev.map. nFIFO=%i nRev=%i" nFIFO nRev
     | nFIFO /= nRev
     ]
-  , [ printf "Mismatch in tx.set. nFIFO=%i nTX=%i" nFIFO nTX
-    | nFIFO /= nTX
-    ]
-  , [ unlines [ "True TX / cached set"
-              , show trueTX
-              , show mempTxSet
-              ]
-    | let trueTX = Set.fromList (hashed <$> toList mempFIFO)
-    , trueTX /= mempTxSet
-    ]
   , [ "Duplicate transactions present"
     | let txs = toList mempFIFO
     , nub txs /= txs
@@ -264,8 +251,7 @@ selfTest MempoolState{..} = concat
   where
     nFIFO  = IMap.size mempFIFO
     nRev   = Map.size mempRevMap
-    nTX    = Set.size mempTxSet
-    lFifo  = IMap.toAscList mempFIFO
+    lFifo  = [ (k,hashed tx) | (k,tx) <- IMap.toAscList mempFIFO ]
     lRev   = sort $ swap <$> Map.toList mempRevMap
     maxKey = fst <$> IMap.lookupMax mempFIFO
 
@@ -308,9 +294,11 @@ mempoolThread validation MempoolDict{..} = forever $
 -- | State of mempool
 data MempoolState alg tx = MempoolState
   { mempFIFO   :: !(IntMap tx)
-  , mempRevMap :: !(Map tx Int)
-  , mempTxSet  :: !(Set (Hashed alg tx))
+    -- ^ Transactions arranged in FIFO order
+  , mempRevMap :: !(Map (Hashed alg tx) Int)
+    -- ^ Reverse map of transactions
   , mempMaxN   :: !Int
+    -- ^ Maximum key for FIFO
   }
 
 -- | Add transaction to mempool
@@ -322,16 +310,15 @@ mempoolAddTX
   -> m (Maybe (MempoolState alg tx))
 mempoolAddTX validation txNode MempoolState{..} = runMaybeT $ do
   -- Ignore TX that we already have
-  guard $ tx `Map.notMember` mempRevMap
+  guard $ txHash `Map.notMember` mempRevMap
   -- Validate TX
   lift (validation tx) >>= \case
     False -> empty
     True  -> do
       let n = mempMaxN + 1
       return $! MempoolState
-        { mempFIFO   = IMap.insert n  tx mempFIFO
-        , mempRevMap = Map.insert  tx n  mempRevMap
-        , mempTxSet  = Set.insert txHash mempTxSet
+        { mempFIFO   = IMap.insert n      tx mempFIFO
+        , mempRevMap = Map.insert  txHash n  mempRevMap
         , mempMaxN   = n
         }
   where
@@ -349,7 +336,6 @@ mempoolFilterTX validation MempoolState{..} = do
              $ IMap.toList mempFIFO
   return MempoolState
     { mempFIFO   = foldl' (\m (i,_)  -> IMap.delete i m) mempFIFO   invalidTx
-    , mempRevMap = foldl' (\m (_,tx) -> Map.delete tx m) mempRevMap invalidTx
-    , mempTxSet  = foldl' (\s (_,tx) -> Set.delete (hashed tx) s) mempTxSet invalidTx
+    , mempRevMap = foldl' (\m (_,tx) -> Map.delete (hashed tx) m) mempRevMap invalidTx
     , ..
     }
