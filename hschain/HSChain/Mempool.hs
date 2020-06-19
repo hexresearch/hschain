@@ -308,7 +308,7 @@ emptyMempoolState = MempoolState
 
 -- | Add transaction to mempool
 mempoolAddTX
-  :: (MonadIO m)
+  :: (Monad m)
   => (tx -> m Bool)
   -> MerkleNode Identity alg tx
   -> MempoolState alg tx
@@ -331,7 +331,7 @@ mempoolAddTX validation txNode MempoolState{..} = runMaybeT $ do
 
 -- | Remove all transaction from mepool that doesn't satisfy predicate
 mempoolFilterTX
-  :: (MonadIO m)
+  :: (Monad m)
   => (tx -> m Bool)
   -> MempoolState alg tx
   -> m (MempoolState alg tx)
