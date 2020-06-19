@@ -223,33 +223,6 @@ newMempool validation = do
     , mempoolThread validation dict
     )
 
--- | Check mempool for internal consistency. Each returned string
---   is internal inconsistency
-mempoolSelfTest
-  :: (Show a, Ord a)
-  => MempoolState alg a -> [String]
-mempoolSelfTest MempoolState{..} = concat
-  [ [ printf "Mismatch in rev.map. nFIFO=%i nRev=%i" nFIFO nRev
-    | nFIFO /= nRev
-    ]
-  , [ "Duplicate transactions present"
-    | let txs = toList mempFIFO
-    , nub txs /= txs
-    ]
-  , [ printf "RevMap is not reverse of FIFO.\nFIFO: %s\nRevMap: %s" (show lFifo) (show lRev)
-    | lFifo /= lRev
-    ]
-  , [ printf "Max N less than max FIFO key. maxN=%i maxKey=%s" mempMaxN (show maxKey)
-    | mempMaxN < fromMaybe 0 maxKey
-    ]
-  ]
-  where
-    nFIFO  = IMap.size mempFIFO
-    nRev   = Map.size mempRevMap
-    lFifo  = IMap.toAscList mempFIFO
-    lRev   = sort $ toList mempRevMap
-    maxKey = fst <$> IMap.lookupMax mempFIFO
-
 
 ----------------------------------------------------------------
 -- Mempool state transitions
@@ -356,3 +329,30 @@ mempoolRemoveTX hashes MempoolState{..} = MempoolState
   }
   where
     hashSet = Set.fromList $ toList hashes
+
+-- | Check mempool for internal consistency. Each returned string
+--   is internal inconsistency
+mempoolSelfTest
+  :: (Show a, Ord a)
+  => MempoolState alg a -> [String]
+mempoolSelfTest MempoolState{..} = concat
+  [ [ printf "Mismatch in rev.map. nFIFO=%i nRev=%i" nFIFO nRev
+    | nFIFO /= nRev
+    ]
+  , [ "Duplicate transactions present"
+    | let txs = toList mempFIFO
+    , nub txs /= txs
+    ]
+  , [ printf "RevMap is not reverse of FIFO.\nFIFO: %s\nRevMap: %s" (show lFifo) (show lRev)
+    | lFifo /= lRev
+    ]
+  , [ printf "Max N less than max FIFO key. maxN=%i maxKey=%s" mempMaxN (show maxKey)
+    | mempMaxN < fromMaybe 0 maxKey
+    ]
+  ]
+  where
+    nFIFO  = IMap.size mempFIFO
+    nRev   = Map.size mempRevMap
+    lFifo  = IMap.toAscList mempFIFO
+    lRev   = sort $ toList mempRevMap
+    maxKey = fst <$> IMap.lookupMax mempFIFO
