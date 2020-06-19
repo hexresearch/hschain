@@ -300,6 +300,9 @@ data MempoolState alg tx = MempoolState
     -- ^ Maximum key for FIFO
   }
 
+instance Foldable (MempoolState alg) where
+  foldMap f m = foldMap (f . merkleValue) (mempFIFO m)
+
 emptyMempoolState :: MempoolState alg tx
 emptyMempoolState = MempoolState
   { mempFIFO   = IMap.empty
