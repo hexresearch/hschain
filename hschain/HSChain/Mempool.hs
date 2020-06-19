@@ -44,7 +44,6 @@ import Control.Monad.Reader
 import Control.Monad.Trans.Maybe
 
 import Data.Foldable
-import Data.Function
 import Data.Maybe                (fromMaybe)
 import Data.List                 (nub,sort)
 import Data.Map.Strict           (Map)
@@ -113,8 +112,6 @@ data Mempool m alg tx = Mempool
     -- ^ Get cursor pointing to be
   , txInMempool       :: !(Hashed alg tx -> m Bool)
     -- ^ Checks whether transaction is mempool
-  , mempoolStats      :: !(m MempoolInfo)
-    -- ^ Number of elements in mempool
   , mempoolSize       :: !(m Int)
     -- ^ Number of transactions in mempool
   }
@@ -125,7 +122,6 @@ hoistMempool fun Mempool{..} = Mempool
   , filterMempool     = fun filterMempool
   , getMempoolCursor  = fun getMempoolCursor
   , txInMempool       = fun . txInMempool
-  , mempoolStats      = fun mempoolStats
   , mempoolSize       = fun mempoolSize
   }
 
@@ -137,7 +133,6 @@ nullMempool :: (Monad m) => Mempool m alg tx
 nullMempool = Mempool
   { peekNTransactions = return []
   , filterMempool     = return ()
-  , mempoolStats      = return $ MempoolInfo 0 0 0 0
   , mempoolSize       = return 0
   , txInMempool       = const (return False)
   , getMempoolCursor  = return MempoolCursor
@@ -153,13 +148,8 @@ nullMempool = Mempool
 ----------------------------------------------------------------
 
 data MempoolDict m alg tx = MempoolDict
-  { varMempool   :: TVar (MempoolState alg tx)
-  -- Counters for tracking number of transactions
-  , varAdded     :: TVar Int
-  , varDiscarded :: TVar Int
-  , varFiltered  :: TVar Int
-  -- Communication channel
-  , chPushTx     :: Chan (Push alg tx)
+  { varMempool :: TVar (MempoolState alg tx)
+  , chPushTx   :: Chan (Push alg tx)
   }
 
 -- Command to push new TX to mempool
@@ -171,9 +161,6 @@ data Push alg tx
 newMempoolDict :: MonadIO m => m (MempoolDict n alg tx)
 newMempoolDict = liftIO $ do
   varMempool   <- newTVarIO emptyMempoolState
-  varAdded     <- newTVarIO 0
-  varDiscarded <- newTVarIO 0
-  varFiltered  <- newTVarIO 0
   chPushTx     <- newChan
   return MempoolDict{..}
 
@@ -193,12 +180,6 @@ newMempool validation = do
         mem <- readTVarIO varMempool
         return $! txHash `Map.member` mempRevMap mem
     -- Stats
-    , mempoolStats = liftIO $ atomically $ do
-        mempool'size      <- IMap.size . mempFIFO <$> readTVar varMempool
-        mempool'added     <- readTVar varAdded
-        mempool'discarded <- readTVar varDiscarded
-        mempool'filtered  <- readTVar varFiltered
-        return MempoolInfo{..}
     , mempoolSize = liftIO $ do m <- readTVarIO varMempool
                                 return $! IMap.size $ mempFIFO m
     -- Cursor
@@ -240,19 +221,15 @@ mempoolThread validation MempoolDict{..} = forever $
       mem  <- liftIO $ readTVarIO varMempool
       mmem <- mempoolAddTX validation txNode mem
       case mmem of
-        Nothing   -> atomicallyIO $ do modifyTVar' varAdded     succ
-                                       modifyTVar' varDiscarded succ
-        Just mem' -> atomicallyIO $ do modifyTVar' varAdded     succ
-                                       writeTVar   varMempool   mem'
+        Nothing   -> return ()
+        Just mem' -> atomicallyIO $ writeTVar   varMempool   mem'
       liftIO $ forM_ retVar $ \v -> tryPutMVar v (merkleHashed txNode <$ mmem)
     --
     Filter         -> do
       mem  <- liftIO $ readTVarIO varMempool
       mem' <- mempoolFilterTX validation mem
       atomicallyIO $ do
-        let removed = ((-) `on` (IMap.size . mempFIFO)) mem mem'
-        writeTVar varMempool mem
-        modifyTVar' varFiltered (+ removed)
+        writeTVar varMempool mem'
 
 
 ----------------------------------------------------------------
