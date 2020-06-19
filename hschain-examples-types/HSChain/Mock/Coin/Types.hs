@@ -41,7 +41,7 @@ import HSChain.Crypto.SHA
 -- | Block data. It's simply newtype wrapper over list of
 --   transactions. Newtype is needed in order to define 'BlockData'
 --   instance.
-newtype BData = BData [Tx]
+newtype BData = BData { unBData :: [Tx] }
   deriving stock    (Show,Eq,Generic)
   deriving newtype  (NFData,JSON.ToJSON,JSON.FromJSON)
   deriving anyclass (Serialise)
