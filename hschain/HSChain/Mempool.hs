@@ -147,17 +147,6 @@ nullMempool = Mempool
 -- Real mempool implemenatation
 ----------------------------------------------------------------
 
-data MempoolDict m alg tx = MempoolDict
-  { varMempool :: TVar (MempoolState alg tx)
-  , chPushTx   :: Chan (Push alg tx)
-  }
-
--- Command to push new TX to mempool
-data Push alg tx
-  = Push !(Maybe (MVar (Maybe (Hashed alg tx))))
-         !tx
-  | Filter
-
 newMempoolDict :: MonadIO m => m (MempoolDict n alg tx)
 newMempoolDict = liftIO $ do
   varMempool   <- newTVarIO emptyMempoolState
@@ -175,7 +164,7 @@ newMempool validation = do
     -- TX manipulations
     { peekNTransactions =  map merkleValue . toList . mempFIFO
                        <$> liftIO (readTVarIO varMempool)
-    , filterMempool     = liftIO $ writeChan chPushTx Filter
+    , filterMempool     = liftIO $ writeChan chPushTx CmdFilter
     , txInMempool       = \txHash -> liftIO $ do
         mem <- readTVarIO varMempool
         return $! txHash `Map.member` mempRevMap mem
@@ -188,9 +177,9 @@ newMempool validation = do
         return MempoolCursor
           { pushTxSync = \tx -> liftIO $ do
               reply <- newEmptyMVar
-              writeChan chPushTx $ Push (Just reply) tx
+              writeChan chPushTx $ CmdAddTx (Just reply) tx
               takeMVar reply
-          , pushTxAsync = liftIO . writeChan chPushTx . Push Nothing
+          , pushTxAsync = liftIO . writeChan chPushTx . CmdAddTx Nothing
             --
           , advanceCursor = liftIO $ atomically $ do
               mem <- readTVar varMempool
@@ -206,8 +195,21 @@ newMempool validation = do
 
 
 ----------------------------------------------------------------
--- Mempool state transitions
+-- Mempool in separate thread
 ----------------------------------------------------------------
+
+data MempoolDict m alg tx = MempoolDict
+  { varMempool :: TVar (MempoolState alg tx)
+  , chPushTx   :: Chan (Push alg tx)
+  }
+
+-- Command to push new TX to mempool
+data Push alg tx
+  = CmdAddTx !(Maybe (MVar (Maybe (Hashed alg tx))))
+             !tx
+    -- ^ Add transaction to mempool
+  | CmdFilter
+    -- ^ Remove now invalid TXs from mempool
 
 mempoolThread
   :: (CryptoHash alg, CryptoHashable tx, MonadIO m)
@@ -216,7 +218,7 @@ mempoolThread
   -> m ()
 mempoolThread validation MempoolDict{..} = forever $
   liftIO (readChan chPushTx) >>= \case
-    Push retVar tx -> do
+    CmdAddTx retVar tx -> do
       let txNode = merkled tx
       mem  <- liftIO $ readTVarIO varMempool
       mmem <- mempoolAddTX validation txNode mem
@@ -225,7 +227,7 @@ mempoolThread validation MempoolDict{..} = forever $
         Just mem' -> atomicallyIO $ writeTVar   varMempool   mem'
       liftIO $ forM_ retVar $ \v -> tryPutMVar v (merkleHashed txNode <$ mmem)
     --
-    Filter         -> do
+    CmdFilter -> do
       mem  <- liftIO $ readTVarIO varMempool
       mem' <- mempoolFilterTX validation mem
       atomicallyIO $ do
