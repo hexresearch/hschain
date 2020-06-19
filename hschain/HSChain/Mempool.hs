@@ -32,6 +32,7 @@ module HSChain.Mempool (
   , mempoolAddTX
   , mempoolFilterTX
   , mempoolRemoveTX
+  , mempoolSelfTest
   ) where
 
 import Control.Applicative
@@ -116,9 +117,6 @@ data Mempool m alg tx = Mempool
     -- ^ Number of elements in mempool
   , mempoolSize       :: !(m Int)
     -- ^ Number of transactions in mempool
-  , mempoolSelfTest   :: !(m [String])
-    -- ^ Check mempool for internal consistency. Each returned string
-    --   is internal inconsistency
   }
 
 hoistMempool :: (forall a. m a -> n a) -> Mempool m alg tx -> Mempool n alg tx
@@ -129,7 +127,6 @@ hoistMempool fun Mempool{..} = Mempool
   , txInMempool       = fun . txInMempool
   , mempoolStats      = fun mempoolStats
   , mempoolSize       = fun mempoolSize
-  , mempoolSelfTest   = fun mempoolSelfTest
   }
 
 
@@ -148,7 +145,6 @@ nullMempool = Mempool
       , pushTxAsync   = const $ return ()
       , advanceCursor = return Nothing
       }
-  , mempoolSelfTest   = return []
   }
 
 
@@ -223,16 +219,16 @@ newMempool validation = do
                 Just (n', tx) -> do writeTVar varN $! n'
                                     return $ Just $ merkleValue tx
           }
-    --
-    , mempoolSelfTest = selfTest <$> liftIO (readTVarIO varMempool)
     }
     , mempoolThread validation dict
     )
 
-selfTest
+-- | Check mempool for internal consistency. Each returned string
+--   is internal inconsistency
+mempoolSelfTest
   :: (Show a, Ord a)
   => MempoolState alg a -> [String]
-selfTest MempoolState{..} = concat
+mempoolSelfTest MempoolState{..} = concat
   [ [ printf "Mismatch in rev.map. nFIFO=%i nRev=%i" nFIFO nRev
     | nFIFO /= nRev
     ]

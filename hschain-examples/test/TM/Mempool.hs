@@ -1,15 +1,17 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase                 #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE TypeOperators              #-}
 -- |
 module TM.Mempool (tests) where
 
-import Control.Concurrent
 import Control.Concurrent.STM
 import Control.Monad
 import Control.Monad.IO.Class
+import Data.Foldable
 import Data.List
+import Data.Maybe
 
 import Test.Tasty
 import Test.Tasty.Hedgehog
@@ -17,9 +19,9 @@ import Hedgehog
 import Hedgehog.Gen.QuickCheck (arbitrary)
 import Hedgehog.Gen            (resize)
 
-import HSChain.Crypto         ((:&))
-import HSChain.Crypto.Ed25519 (Ed25519)
+import HSChain.Crypto         (CryptoHashable)
 import HSChain.Crypto.SHA     (SHA512)
+import HSChain.Types.Merkle.Types
 import HSChain.Mempool
 
 
@@ -30,8 +32,6 @@ tests = testGroup "Mempool"
   ]
 
 
--- deriving instance MonadMask (TestT m)
-
 ----------------------------------------------------------------
 -- Interpretation of mempool
 --
@@ -40,59 +40,55 @@ tests = testGroup "Mempool"
 -- just a simple variable.
 
 -- Create mempool and callback for incrementing blockchain value
-createTestMempool :: MonadIO m => m ( IO ()
-                                    , (Mempool IO (Ed25519 :& SHA512) Int
-                                      , IO ()
-                                      ))
+createTestMempool :: MonadIO m => m ( IO (), Int -> IO Bool
+                                    )
 createTestMempool = liftIO $ do
   varBch  <- newTVarIO 0
   let checkTx i = do n <- readTVarIO varBch
                      return (i > n)
-  mempool <- newMempool checkTx
   return ( atomically $ modifyTVar' varBch (+10)
-         , mempool
+         , checkTx
          )
 
 
 propSelfCheck :: Property
 propSelfCheck = property $ do
   -- Parametsrs
-  txsSets <-  zipWith (\n -> map (+n)) (iterate (+10) 0)
-          <$> forAll (resize 10 arbitrary)
+  txsSets :: [[Int]] <-  zipWith (\n -> map (+n)) (iterate (+10) 0)
+                     <$> forAll (resize 10 arbitrary)
   -- Create mempool.
-  --
-  -- NOTE: We may leak threads but during normal execution we will
-  --       kill thread. Otherwise it will hopefully be kille by
-  --       "blocked indefinitely on MVar" exception
-  (commit,(mempool,thread)) <- createTestMempool
-  cursor                    <- liftIO $ getMempoolCursor mempool
-  tid                       <- liftIO $ forkIO thread
-  --
-  forM_ txsSets $ \txs -> do
-    annotate $ show txs
-    -- Add transactions to mempool
-    liftIO $ mapM_ (pushTxSync cursor) txs
-    liftIO $ commit
-    liftIO (mempoolSelfTest mempool) >>= \case
-        []   -> success
-        errs -> mapM_ annotate errs >> failure
-    liftIO $ filterMempool mempool
-    liftIO (mempoolSelfTest mempool) >>= \case
-        []   -> success
-        errs -> mapM_ annotate errs >> failure
-  --
-  liftIO $ killThread tid
+  (commit,checkTx) <- createTestMempool
+  let selfTest m = case mempoolSelfTest m of
+                     []   -> success
+                     errs -> mapM_ annotate errs >> failure
+  let commitTxSet m txs = do
+        annotate $ show txs
+        -- Add transactions to mempool 
+        m' <- liftIO $ foldM (doPush checkTx) m txs
+        liftIO $ commit
+        selfTest m'
+        -- Filter mempool
+        m'' <- liftIO $ mempoolFilterTX checkTx m'
+        selfTest m''
+        return m''
+  void $ foldM commitTxSet emptyMempoolState txsSets
 
 propDuplicate :: Property
 propDuplicate = property $ do
   -- Parameters
-  txs <- forAll arbitrary
+  txs :: [Int] <- forAll arbitrary
   -- Create mempool and push TX
-  (_,(mempool, thread)) <- createTestMempool
-  cursor                <- liftIO $ getMempoolCursor mempool
-  tid                   <- liftIO $ forkIO thread  
-  liftIO $ mapM_ (pushTxSync cursor) txs
+  (_,checkTx) <- createTestMempool
+  mempool     <- liftIO $ foldM (doPush checkTx) emptyMempoolState txs
   -- TX should be in same order, positive, and duplicates should be removed
-  txs' <- liftIO $ peekNTransactions mempool
-  unless (txs' == nub (filter (>0) txs)) failure
-  liftIO $ killThread tid
+  unless (toList mempool == nub (filter (>0) txs)) failure
+
+doPush
+  :: (MonadIO m, CryptoHashable tx)
+  => (tx -> m Bool)
+  -> MempoolState SHA512 tx
+  -> tx
+  -> m (MempoolState SHA512 tx)
+doPush f m tx
+  = fromMaybe m <$> mempoolAddTX f (merkled tx) m
+
