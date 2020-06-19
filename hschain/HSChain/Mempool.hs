@@ -26,6 +26,13 @@ module HSChain.Mempool (
     -- * Concrete mempool implementations
   , nullMempool
   , newMempool
+    -- * Mempool data structures
+  , MempoolState(..)
+  , emptyMempoolState
+  , mempoolAddTX
+  , mempoolFilterTX
+  , mempoolRemoveTX
+  , mempoolSelfTest
   ) where
 
 import Control.Applicative
@@ -40,15 +47,13 @@ import Data.Foldable
 import Data.Function
 import Data.Maybe                (fromMaybe)
 import Data.List                 (nub,sort)
-import Data.Tuple
 import Data.Map.Strict           (Map)
 import Data.IntMap.Strict        (IntMap)
-import Data.Set                  (Set)
 import qualified Data.Aeson         as JSON
 import qualified Data.Aeson.TH      as JSON
-import qualified Data.Set           as Set
 import qualified Data.Map.Strict    as Map
 import qualified Data.IntMap.Strict as IMap
+import qualified Data.Set           as Set
 import qualified Katip
 import Text.Printf
 import GHC.Generics              (Generic)
@@ -112,9 +117,6 @@ data Mempool m alg tx = Mempool
     -- ^ Number of elements in mempool
   , mempoolSize       :: !(m Int)
     -- ^ Number of transactions in mempool
-  , mempoolSelfTest   :: !(m [String])
-    -- ^ Check mempool for internal consistency. Each returned string
-    --   is internal inconsistency
   }
 
 hoistMempool :: (forall a. m a -> n a) -> Mempool m alg tx -> Mempool n alg tx
@@ -125,7 +127,6 @@ hoistMempool fun Mempool{..} = Mempool
   , txInMempool       = fun . txInMempool
   , mempoolStats      = fun mempoolStats
   , mempoolSize       = fun mempoolSize
-  , mempoolSelfTest   = fun mempoolSelfTest
   }
 
 
@@ -144,21 +145,12 @@ nullMempool = Mempool
       , pushTxAsync   = const $ return ()
       , advanceCursor = return Nothing
       }
-  , mempoolSelfTest   = return []
   }
 
 
 ----------------------------------------------------------------
 -- Real mempool implemenatation
 ----------------------------------------------------------------
-
-
-data MempoolState alg tx = MempoolState
-  { mempFIFO   :: !(IntMap tx)
-  , mempRevMap :: !(Map tx Int)
-  , mempTxSet  :: !(Set (Hashed alg tx))
-  , mempMaxN   :: !Int
-  }
 
 data MempoolDict m alg tx = MempoolDict
   { varMempool   :: TVar (MempoolState alg tx)
@@ -178,12 +170,7 @@ data Push alg tx
 
 newMempoolDict :: MonadIO m => m (MempoolDict n alg tx)
 newMempoolDict = liftIO $ do
-  varMempool   <- newTVarIO MempoolState
-    { mempFIFO   = IMap.empty
-    , mempRevMap = Map.empty
-    , mempTxSet  = Set.empty
-    , mempMaxN   = 0
-    }
+  varMempool   <- newTVarIO emptyMempoolState
   varAdded     <- newTVarIO 0
   varDiscarded <- newTVarIO 0
   varFiltered  <- newTVarIO 0
@@ -191,19 +178,20 @@ newMempoolDict = liftIO $ do
   return MempoolDict{..}
 
 newMempool
-  :: ( Show tx, Ord tx, Crypto alg, CryptoHashable tx, MonadIO m )
+  :: forall tx alg m. ( Show tx, Ord tx, Crypto alg, CryptoHashable tx, MonadIO m )
   => (tx -> m Bool)
   -> m (Mempool m alg tx, m ())
 newMempool validation = do
-  dict@MempoolDict{..} <- newMempoolDict
+  dict@MempoolDict{..} <- newMempoolDict :: m (MempoolDict m alg tx)
   return (
     Mempool
     -- TX manipulations
-    { peekNTransactions = toList . mempFIFO <$> liftIO (readTVarIO varMempool)
+    { peekNTransactions =  map merkleValue . toList . mempFIFO
+                       <$> liftIO (readTVarIO varMempool)
     , filterMempool     = liftIO $ writeChan chPushTx Filter
     , txInMempool       = \txHash -> liftIO $ do
         mem <- readTVarIO varMempool
-        return $! txHash `Set.member` mempTxSet mem
+        return $! txHash `Map.member` mempRevMap mem
     -- Stats
     , mempoolStats = liftIO $ atomically $ do
         mempool'size      <- IMap.size . mempFIFO <$> readTVar varMempool
@@ -229,30 +217,20 @@ newMempool validation = do
               case n `IMap.lookupGT` mempFIFO mem of
                 Nothing       -> return Nothing
                 Just (n', tx) -> do writeTVar varN $! n'
-                                    return (Just tx)
+                                    return $ Just $ merkleValue tx
           }
-    --
-    , mempoolSelfTest = selfTest <$> liftIO (readTVarIO varMempool)
     }
     , mempoolThread validation dict
     )
 
-selfTest
-  :: (Show a, Ord a, CryptoHash alg, CryptoHashable a)
+-- | Check mempool for internal consistency. Each returned string
+--   is internal inconsistency
+mempoolSelfTest
+  :: (Show a, Ord a)
   => MempoolState alg a -> [String]
-selfTest MempoolState{..} = concat
+mempoolSelfTest MempoolState{..} = concat
   [ [ printf "Mismatch in rev.map. nFIFO=%i nRev=%i" nFIFO nRev
     | nFIFO /= nRev
-    ]
-  , [ printf "Mismatch in tx.set. nFIFO=%i nTX=%i" nFIFO nTX
-    | nFIFO /= nTX
-    ]
-  , [ unlines [ "True TX / cached set"
-              , show trueTX
-              , show mempTxSet
-              ]
-    | let trueTX = Set.fromList (hashed <$> toList mempFIFO)
-    , trueTX /= mempTxSet
     ]
   , [ "Duplicate transactions present"
     | let txs = toList mempFIFO
@@ -268,9 +246,8 @@ selfTest MempoolState{..} = concat
   where
     nFIFO  = IMap.size mempFIFO
     nRev   = Map.size mempRevMap
-    nTX    = Set.size mempTxSet
     lFifo  = IMap.toAscList mempFIFO
-    lRev   = sort $ swap <$> Map.toList mempRevMap
+    lRev   = sort $ toList mempRevMap
     maxKey = fst <$> IMap.lookupMax mempFIFO
 
 
@@ -279,7 +256,7 @@ selfTest MempoolState{..} = concat
 ----------------------------------------------------------------
 
 mempoolThread
-  :: (Ord tx, CryptoHash alg, CryptoHashable tx, MonadIO m)
+  :: (CryptoHash alg, CryptoHashable tx, MonadIO m)
   => (tx -> m Bool)
   -> MempoolDict m alg tx
   -> m ()
@@ -288,7 +265,7 @@ mempoolThread validation MempoolDict{..} = forever $
     Push retVar tx -> do
       let txNode = merkled tx
       mem  <- liftIO $ readTVarIO varMempool
-      mmem <- handlePush validation txNode mem
+      mmem <- mempoolAddTX validation txNode mem
       case mmem of
         Nothing   -> atomicallyIO $ do modifyTVar' varAdded     succ
                                        modifyTVar' varDiscarded succ
@@ -298,46 +275,84 @@ mempoolThread validation MempoolDict{..} = forever $
     --
     Filter         -> do
       mem  <- liftIO $ readTVarIO varMempool
-      mem' <- handleFilter validation mem
+      mem' <- mempoolFilterTX validation mem
       atomicallyIO $ do
         let removed = ((-) `on` (IMap.size . mempFIFO)) mem mem'
         writeTVar varMempool mem
         modifyTVar' varFiltered (+ removed)
 
-handlePush
-  :: (MonadIO m, Ord tx, CryptoHash alg, CryptoHashable tx)
+
+----------------------------------------------------------------
+-- Mempool data structures
+----------------------------------------------------------------
+
+-- | State of mempool
+data MempoolState alg tx = MempoolState
+  { mempFIFO   :: !(IntMap (MerkleNode Identity alg tx))
+    -- ^ Transactions arranged in FIFO order
+  , mempRevMap :: !(Map (Hashed alg tx) (Int, MerkleNode Identity alg tx))
+    -- ^ Reverse map of transactions
+  , mempMaxN   :: !Int
+    -- ^ Maximum key for FIFO
+  }
+
+instance Foldable (MempoolState alg) where
+  foldMap f m = foldMap (f . merkleValue) (mempFIFO m)
+
+emptyMempoolState :: MempoolState alg tx
+emptyMempoolState = MempoolState
+  { mempFIFO   = IMap.empty
+  , mempRevMap = Map.empty
+  , mempMaxN   = 0
+  }
+
+-- | Add transaction to mempool
+mempoolAddTX
+  :: (MonadIO m)
   => (tx -> m Bool)
   -> MerkleNode Identity alg tx
   -> MempoolState alg tx
   -> m (Maybe (MempoolState alg tx))
-handlePush validation txNode MempoolState{..} = runMaybeT $ do
+mempoolAddTX validation txNode MempoolState{..} = runMaybeT $ do
   -- Ignore TX that we already have
-  guard $ tx `Map.notMember` mempRevMap
+  guard $ txHash `Map.notMember` mempRevMap
   -- Validate TX
-  lift (validation tx) >>= \case
+  lift (validation $ merkleValue txNode) >>= \case
     False -> empty
     True  -> do
       let n = mempMaxN + 1
       return $! MempoolState
-        { mempFIFO   = IMap.insert n  tx mempFIFO
-        , mempRevMap = Map.insert  tx n  mempRevMap
-        , mempTxSet  = Set.insert txHash mempTxSet
+        { mempFIFO   = IMap.insert n      txNode     mempFIFO
+        , mempRevMap = Map.insert  txHash (n,txNode) mempRevMap
         , mempMaxN   = n
         }
   where
-    tx         = merkleValue  txNode
-    txHash     = merkleHashed txNode
+    txHash = merkleHashed txNode
 
-
-handleFilter
-  :: (MonadIO m, Ord a, CryptoHash alg, CryptoHashable a)
-  => (a -> m Bool) -> MempoolState alg a -> m (MempoolState alg a)
-handleFilter validation MempoolState{..} = do
-  invalidTx <- filterM (\(_,tx) -> not <$> validation tx)
+-- | Remove all transaction from mepool that doesn't satisfy predicate
+mempoolFilterTX
+  :: (MonadIO m)
+  => (tx -> m Bool)
+  -> MempoolState alg tx
+  -> m (MempoolState alg tx)
+mempoolFilterTX validation MempoolState{..} = do
+  invalidTx <- filterM (\(_,tx) -> not <$> validation (merkleValue tx))
              $ IMap.toList mempFIFO
   return MempoolState
-    { mempFIFO   = foldl' (\m (i,_)  -> IMap.delete i m) mempFIFO   invalidTx
-    , mempRevMap = foldl' (\m (_,tx) -> Map.delete tx m) mempRevMap invalidTx
-    , mempTxSet  = foldl' (\s (_,tx) -> Set.delete (hashed tx) s) mempTxSet invalidTx
+    { mempFIFO   = foldl' (\m (i,_)  -> IMap.delete i m) mempFIFO invalidTx
+    , mempRevMap = foldl' (\m (_,tx) -> Map.delete (merkleHashed tx) m) mempRevMap invalidTx
     , ..
     }
+
+mempoolRemoveTX
+  :: (Foldable f)
+  => f (Hashed alg tx)
+  -> MempoolState alg tx
+  -> MempoolState alg tx
+mempoolRemoveTX hashes MempoolState{..} = MempoolState
+  { mempFIFO   = IMap.filter (\tx -> merkleHashed tx `Set.notMember` hashSet) mempFIFO
+  , mempRevMap = Map.withoutKeys mempRevMap hashSet
+  , ..
+  }
+  where
+    hashSet = Set.fromList $ toList hashes
