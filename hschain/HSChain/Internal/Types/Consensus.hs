@@ -21,7 +21,6 @@ module HSChain.Internal.Types.Consensus (
   , Genesis(..)
     -- * Evaluation context
   , BChEval(..)
-  , BlockValidation
   , ValidatedBlock
   ) where
 
@@ -102,10 +101,6 @@ data BChEval m a x = BChEval
   , blockchainState :: !(UncommitedState m a)
   }
   deriving stock (Generic, Functor)
-
--- | Same as genesis but is used for validation of blocks at
---   H>0. Created as documentation. Validator set and state correspond to state
-type BlockValidation m a = BChEval m a (Block a)
 
 -- | Block which is already validated. It uses same type as
 --   'BlockValidation' but validator set and state correspons to the
