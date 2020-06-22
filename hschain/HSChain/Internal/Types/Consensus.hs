@@ -24,7 +24,6 @@ module HSChain.Internal.Types.Consensus (
   , BlockValidation
   , ValidatedBlock
   , EvaluationResult
-  , ProposedBlock
   ) where
 
 import Codec.Serialise (Serialise)
@@ -116,7 +115,3 @@ type ValidatedBlock  m a = BChEval m a (Block a)
 
 -- | Result of block evaluation. We don't have any information beyond.
 type EvaluationResult m a = BChEval m a ()
-
--- | Block proposal returned by callback. Note that block itself is
---   assmebled by consensus engine so we return only block payload.
-type ProposedBlock   m a = BChEval m a a
