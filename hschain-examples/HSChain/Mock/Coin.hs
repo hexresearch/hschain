@@ -141,6 +141,9 @@ inMemoryStateView = do
                 runIdentity
               $ mempoolFilterTX (\tx -> return $ isRight $ processSend tx st')
               $ mempoolRemoveTX (map hashed txList) m
+            atomicallyIO $ writeTChan chPushTx $ CmdStartFiltering $
+              \tx -> return $ isRight $ do validateTxContextFree tx
+                                           processSend tx st'
             liftIO $ writeIORef stRef (Just h, st')
         , newValidators = valSet
         }
