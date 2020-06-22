@@ -125,21 +125,25 @@ runNode pathsToConfig miningNode genesisBlock step startState fetchBlock = do
 -- | Simple in-memory implementation of DB
 inMemoryView
   :: (Monad m, BlockData b, Show (BlockID b))
-  => (Block b -> s -> Maybe s)  -- ^ Step function 
+  => m (Block b)                -- ^ Invent a block from state.
+  -> (Tx b -> m ())             -- ^ Add transaction into state.
+  -> (Block b -> s -> Maybe s)  -- ^ Step function 
   -> s                          -- ^ Initial state
   -> BlockID b
   -> StateView m b
-inMemoryView step = make (error "No revinding past genesis")
+inMemoryView inventBlock addTransaction step = make (error "No revinding past genesis")
   where
     make previous s bid = view
       where
         view = StateView
-          { stateBID    = bid
-          , applyBlock  = \b -> case step b s of
+          { stateBID        = bid
+          , applyBlock      = \b -> case step b s of
               Nothing -> return Nothing
               Just s' -> return $ Just $  make view s' (blockID b)
-          , revertBlock = return previous
-          , flushState  = return ()
+          , revertBlock     = return previous
+          , flushState      = return ()
+          , inventBlock     = inventBlock
+          , addTransactions = addTransaction
           }
 
 inMemoryDB
