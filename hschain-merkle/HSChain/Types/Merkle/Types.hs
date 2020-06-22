@@ -76,14 +76,17 @@ data MerkleNode f alg a = MNode
 -- | Pattern match on merkle node and extract its hash
 pattern MerkleHash :: Hash alg -> MerkleNode f alg a
 pattern MerkleHash h <- MNode (Hashed h) _
+{-# COMPLETE MerkleHash #-}
 
 -- | Pattern match on merkle node and extract its hash with type tag
 pattern MerkleHashed :: Hashed alg a -> MerkleNode f alg a
 pattern MerkleHashed h <- MNode h _
+{-# COMPLETE MerkleHashed #-}
 
 -- | Pattern match on merkle node and extract both hash and value
 pattern MerkleNode :: Hashed alg a -> a -> MerkleNode Identity alg a
 pattern MerkleNode h a <- MNode h (Identity a)
+{-# COMPLETE MerkleNode #-}
 
 instance Foldable f => Foldable (MerkleNode f alg) where
   foldMap f (MNode _ a) = foldMap f a
