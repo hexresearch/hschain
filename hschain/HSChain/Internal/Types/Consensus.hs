@@ -97,7 +97,6 @@ data NewBlock a = NewBlock
 --   blockchain state, set of validators and something else.
 data BChEval m a x = BChEval
   { bchValue        :: !x
-  , validatorSet    :: !(MerkleNode Identity (Alg a) (ValidatorSet (Alg a)))
   , blockchainState :: !(UncommitedState m a)
   }
   deriving stock (Generic, Functor)

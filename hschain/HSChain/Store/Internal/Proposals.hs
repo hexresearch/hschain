@@ -70,7 +70,7 @@ proposalByR ps@Props{..} r = do
   bid <- r   `Map.lookup` propsRoundMap
   return (bid, proposalByBID ps bid)
 
-setProposalValidation :: (Crypto (Alg a)) => BlockID a -> Maybe (UncommitedState m a) -> Props m a -> Props m a
+setProposalValidation :: BlockID a -> Maybe (UncommitedState m a) -> Props m a -> Props m a
 setProposalValidation bid mst Props{..} = Props
   { propsBIDmap = Map.adjust update bid propsBIDmap
   , ..
@@ -83,7 +83,7 @@ setProposalValidation bid mst Props{..} = Props
         GoodBlock{}     -> error "CANT HAPPEN: Marking good as bad"
         UnknownBlock{}  -> error "CANT HAPPEN: Marking unseen as bad"
       Just uc -> \case
-        UntestedBlock b -> GoodBlock $ BChEval b (merkled $ newValidators uc) uc
+        UntestedBlock b -> GoodBlock $ BChEval b uc
         b@GoodBlock{}   -> b
         UnknownBlock    -> error "CANT HAPPEN: Marking unseen as good"
         InvalidBlock    -> error "CANT HAPPEN: Marking bad as good"

@@ -191,7 +191,7 @@ decideNewBlock config appValidatorKey
   do let h = blockHeight bchValue
      mustQueryRW $ do
        storeCommit cmt      bchValue
-       storeValSet (succ h) validatorSet
+       storeValSet (succ h) (merkled $ newValidators blockchainState)
        mapM_ storeBlockchainEvidence $ merkleValue $ blockEvidence bchValue
      -- bchStoreStore appBchState h blockchainState
      appCommitCallback bchValue
@@ -264,7 +264,6 @@ msgHandlerLoop hParam StateView{..} AppChans{..} = mainLoop Nothing
           valSet <- queryRO $ mustRetrieveValidatorSet height
           st     <- throwLeft =<< validatePropBlock b valSet
           return (cmt, BChEval { bchValue        = b
-                               , validatorSet    = merkled (newValidators st)
                                , blockchainState = st
                                })
 
@@ -496,7 +495,6 @@ makeHeightParameters appValidatorKey StateView{..} AppCallbacks{appCanCreateBloc
               Right s -> return s
             return BChEval
               { bchValue        = b
-              , validatorSet    = merkled valSet
               , blockchainState = st
               }
           Nothing -> do
@@ -525,7 +523,6 @@ makeHeightParameters appValidatorKey StateView{..} AppCallbacks{appCanCreateBloc
             mustQueryRW $ writeBlockToWAL r block
             return BChEval
               { bchValue        = block
-              , validatorSet    = merkled valSet
               , blockchainState = st
               }
         -- --
