@@ -5,12 +5,14 @@
 {-# LANGUAGE FlexibleContexts     #-}
 {-# LANGUAGE FlexibleInstances    #-}
 {-# LANGUAGE RankNTypes           #-}
+{-# LANGUAGE RecordWildCards      #-}
 {-# LANGUAGE StandaloneDeriving   #-}
 {-# LANGUAGE UndecidableInstances #-}
 -- |
 module HSChain.Internal.Types.Consensus (
     -- * Blockchain logic
     StateView(..)
+  , hoistStateView
   , UncommitedState(..)
   , MempoolHandle(..)
   , MempoolCursor(..)
@@ -54,12 +56,25 @@ data StateView m a = StateView
   , mempoolHandle      :: MempoolHandle (Alg a) (TX a)
   }
 
+hoistStateView :: (Functor m) => (forall x. m x -> n x) -> StateView m a -> StateView n a
+hoistStateView fun StateView{..} = StateView
+  { validatePropBlock = (fmap . fmap) (fun . (fmap . fmap) (hoistDict fun)) validatePropBlock
+  , generateCandidate = \nb -> fun $ (fmap . fmap) (hoistDict fun) (generateCandidate nb)
+  , stateHeight       = fun stateHeight
+  , ..
+  }
+
 -- | Changes to state that are valid but not persisted to database yet. Could
 data UncommitedState m a = UncommitedState
   { commitState   :: m ()
   , newValidators :: ValidatorSet (Alg a)
   }
 
+instance HoistDict UncommitedState where
+  hoistDict fun UncommitedState{..} = UncommitedState
+    { commitState = fun commitState
+    , ..
+    }
 
 ----------------------------------------------------------------
 -- Blockchain logic

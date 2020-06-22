@@ -17,7 +17,7 @@ module HSChain.Mock.Types (
   , NetSpec(..)
   , CoinSpecification(..)
   , RunningNode(..)
-  -- , hoistRunningNode
+  , hoistRunningNode
     -- ** Other
   , Topology(..)
   , Abort(..)
@@ -103,15 +103,16 @@ makeGenesis dat valSet0 valSet1 = Block
 data RunningNode m a = RunningNode
   { rnodeState   :: StateView m a
   , rnodeConn    :: Connection 'RO a
+  , rnodeMempool :: MempoolHandle (Alg a) (TX a)
   }
 
--- hoistRunningNode
---   :: (Functor n)
---   => (forall x. m x -> n x) -> RunningNode m a -> RunningNode n a
--- hoistRunningNode fun RunningNode{..} = RunningNode
---   { rnodeState   = hoistDict fun rnodeState
---   , ..
---   }
+hoistRunningNode
+  :: (Functor m)
+  => (forall x. m x -> n x) -> RunningNode m a -> RunningNode n a
+hoistRunningNode fun RunningNode{..} = RunningNode
+  { rnodeState = hoistStateView fun rnodeState
+  , ..
+  }
 
 
 -- | Exception for aborting execution of blockchain

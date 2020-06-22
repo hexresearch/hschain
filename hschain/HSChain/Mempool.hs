@@ -22,6 +22,11 @@ module HSChain.Mempool (
     MempoolHandle(..)
   , MempoolCursor(..)
   , MempoolInfo(..)
+    -- * Implementation
+  , Push(..)
+  , MempoolDict(..)
+  , makeMempoolThread
+  , newMempoolDict
     -- * Mempool data structures
   , MempoolState(..)
   , emptyMempoolState
@@ -84,6 +89,7 @@ instance Katip.LogItem  MempoolInfo where
 
 data MempoolHandle alg tx = MempoolHandle
   { getMempoolCursor :: forall m. MonadIO m => m (MempoolCursor alg tx)
+  , mempoolSize      :: forall m. MonadIO m => m Int
   }
 
 -- | Cursor into mempool which is used for gossiping data
@@ -130,11 +136,11 @@ newMempoolDict = liftIO $ do
   chPushTx     <- newTChanIO
   return MempoolDict{..}
 
-mempoolThread
+makeMempoolThread
   :: (CryptoHash alg, CryptoHashable tx, MonadIO m)
   => MempoolDict m alg tx
   -> m ()
-mempoolThread dict@MempoolDict{..} = do
+makeMempoolThread dict@MempoolDict{..} = do
   let awaitPending = do
         txs <- readTVar varPending
         case splitAt 4 txs of

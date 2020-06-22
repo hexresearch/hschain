@@ -132,7 +132,7 @@ main = do
     let run = runAppT logenv gauges conn
     -- Actually run node
     lift $ run $ do
-      (RunningNode{..},acts) <- interpretSpec
+      (RunningNode{..},acts,readST) <- interpretSpec
         genesis
         nodeDelays
         bnet
@@ -144,7 +144,7 @@ main = do
           cursor <- getMempoolCursor rnodeMempool
           return [transactionGenerator txG
                     rnodeMempool
-                    (merkleValue . snd <$> bchCurrentState rnodeState)
+                    (liftIO readST)
                     (pushTxAsync cursor)]
       logOnException $ runConcurrently $ txGen ++ acts
 
