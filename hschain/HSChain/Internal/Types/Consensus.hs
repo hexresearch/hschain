@@ -23,7 +23,6 @@ module HSChain.Internal.Types.Consensus (
   , BChEval(..)
   , BlockValidation
   , ValidatedBlock
-  , EvaluationResult
   ) where
 
 import Codec.Serialise (Serialise)
@@ -112,6 +111,3 @@ type BlockValidation m a = BChEval m a (Block a)
 --   'BlockValidation' but validator set and state correspons to the
 --   state _after_ evaluation.
 type ValidatedBlock  m a = BChEval m a (Block a)
-
--- | Result of block evaluation. We don't have any information beyond.
-type EvaluationResult m a = BChEval m a ()

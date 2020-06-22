@@ -45,7 +45,6 @@ import HSChain.Internal.Types.Messages
 import HSChain.Internal.Types.Config
 import HSChain.Internal.Types.Consensus
 import HSChain.Logger
-import HSChain.Mempool
 import HSChain.Monitoring
 import HSChain.Store
 import HSChain.Store.Internal.BlockDB
@@ -478,11 +477,7 @@ makeHeightParameters appValidatorKey StateView{..} AppCallbacks{appCanCreateBloc
                | Right st  <- validation
                , validatorSetSize (newValidators st) > 0
                , blockNewValidators b == hashed (newValidators st)
-                 -> return ( setProposalValidation bid (Just BChEval
-                               { bchValue        = ()
-                               , validatorSet    = merkled $ newValidators st
-                               , blockchainState = st
-                               })
+                 -> return ( setProposalValidation bid (Just st)
                            , GoodProposal
                            )
                | otherwise
@@ -494,7 +489,7 @@ makeHeightParameters appValidatorKey StateView{..} AppCallbacks{appCanCreateBloc
     --
     , createProposal = \r commit -> do
         -- Obtain block either from WAL or actually generate it
-        res@BChEval{..} <- queryRO (retrieveBlockFromWAL currentH r) >>= \case
+        BChEval{..} <- queryRO (retrieveBlockFromWAL currentH r) >>= \case
           Just b  -> do
             st  <- validatePropBlock b valSet >>= \case
               Left  e -> throwM $ InvalidBlockInWAL e
@@ -535,7 +530,7 @@ makeHeightParameters appValidatorKey StateView{..} AppCallbacks{appCanCreateBloc
               }
         -- --
         let bid = blockHash bchValue
-        return ( setProposalValidation bid (Just $ () <$ res)
+        return ( setProposalValidation bid (Just blockchainState)
                . addBlockToProps bchValue
                . acceptBlockID r bid
                , bid
