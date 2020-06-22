@@ -43,7 +43,7 @@ import HSChain.Types.Merkle.Types
 
 type DioAlg = Ed25519 :& SHA256
 
-newtype BData tag = BData [Tx]
+newtype BData tag = BData { unBData :: [Tx] }
   deriving stock    (Show,Eq,Generic)
   deriving newtype  (NFData,JSON.ToJSON,JSON.FromJSON)
   deriving anyclass (Serialise)

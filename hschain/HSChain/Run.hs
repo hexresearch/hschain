@@ -124,13 +124,6 @@ runNode cfg NodeDescription{..} = do
     , id $ descendNamespace "consensus"
          $ runApplication (cfgConsensus cfg) nodeValidationKey logic nodeStore appCall appCh
     , forever $ do
-        MempoolInfo{..} <- mempoolStats appMempool
-        usingGauge prometheusMempoolSize      mempool'size
-        usingGauge prometheusMempoolDiscarded mempool'discarded
-        usingGauge prometheusMempoolFiltered  mempool'filtered
-        usingGauge prometheusMempoolAdded     mempool'added
-        waitSec 1.0
-    , forever $ do
         n <- liftIO $ atomically $ lengthTBQueue $ appChanRx appCh
         usingGauge prometheusMsgQueue n
         waitSec 1.0
@@ -145,11 +138,7 @@ runNode cfg NodeDescription{..} = do
 mempoolFilterCallback :: (MonadLogger m) => Mempool m alg tx -> AppCallbacks m a
 mempoolFilterCallback mempool = mempty
   { appCommitCallback = \_ -> descendNamespace "mempool" $ do
-      do before <- mempoolStats mempool
-         logger InfoS "Mempool before filtering" before
       filterMempool mempool
-      do after <- mempoolStats mempool
-         logger InfoS "Mempool after filtering" after
   }
 
 -- | Callback which allow block creation only if mempool is not empty
