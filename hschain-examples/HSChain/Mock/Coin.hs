@@ -179,28 +179,7 @@ inMemoryStateView = do
             , makeCommit newBlockValSet dat st' newBlockHeight
             )
         -- Here we construct handle to memepool
-      , mempoolHandle     = MempoolHandle
-        { getMempoolCursor = do
-            varN <- liftIO $ newTVarIO 0
-            return MempoolCursor
-              { pushTxSync    = \tx -> liftIO $ do
-                  reply <- newEmptyMVar
-                  atomicallyIO $ writeTChan chPushTx $ CmdAddTx (Just reply) tx
-                  takeMVar reply
-              --
-              , pushTxAsync =
-                  atomicallyIO . writeTChan chPushTx . CmdAddTx Nothing
-              --
-              , advanceCursor = atomicallyIO $ do
-                  mem <- readTVar varMempool
-                  n   <- readTVar varN
-                  case n `IMap.lookupGT` mempFIFO mem of
-                    Nothing       -> return Nothing
-                    Just (n', tx) -> do writeTVar varN $! n'
-                                        return $ Just $ merkleValue tx
-              }
-        , mempoolSize = liftIO $ IMap.size . mempFIFO <$> readTVarIO varMempool
-        }
+      , mempoolHandle = makeMempoolHandle dict
       }
     , [makeMempoolThread dict]
     , snd <$> readIORef stRef

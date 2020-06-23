@@ -25,6 +25,7 @@ module HSChain.Mempool (
     -- * Implementation
   , MempoolCmd(..)
   , MempoolDict(..)
+  , makeMempoolHandle
   , makeMempoolThread
   , newMempoolDict
     -- * Mempool data structures
@@ -116,6 +117,30 @@ newMempoolDict = liftIO $ do
   varPending   <- newTVarIO []
   chPushTx     <- newTChanIO
   return MempoolDict{..}
+
+makeMempoolHandle :: MempoolDict m alg tx -> MempoolHandle alg tx
+makeMempoolHandle MempoolDict{..} = MempoolHandle
+  { getMempoolCursor = do
+      varN <- liftIO $ newTVarIO 0
+      return MempoolCursor
+        { pushTxSync    = \tx -> liftIO $ do
+            reply <- newEmptyMVar
+            atomicallyIO $ writeTChan chPushTx $ CmdAddTx (Just reply) tx
+            takeMVar reply
+        --
+        , pushTxAsync =
+            atomicallyIO . writeTChan chPushTx . CmdAddTx Nothing
+        --
+        , advanceCursor = atomicallyIO $ do
+            mem <- readTVar varMempool
+            n   <- readTVar varN
+            case n `IMap.lookupGT` mempFIFO mem of
+              Nothing       -> return Nothing
+              Just (n', tx) -> do writeTVar varN $! n'
+                                  return $ Just $ merkleValue tx
+        }
+  , mempoolSize = liftIO $ IMap.size . mempFIFO <$> readTVarIO varMempool
+  }
 
 makeMempoolThread
   :: (CryptoHash alg, CryptoHashable tx, MonadIO m)
