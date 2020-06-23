@@ -133,17 +133,16 @@ instance CryptoHashable CoinState where
 --   memory
 inMemoryStateView :: MonadIO m => m (StateView m BData, [m ()], IO CoinState)
 inMemoryStateView = do
-  stRef <- liftIO $ newIORef (Nothing, CoinState mempty mempty)
-  dict@MempoolDict{..} <- newMempoolDict
+  stRef                <- liftIO $ newIORef (Nothing, CoinState mempty mempty)
+  dict@MempoolDict{..} <- newMempoolDict (isRight . validateTxContextFree)
   let makeCommit valSet txList st' h = UncommitedState
         { commitState = do
-            atomicallyIO $ modifyTVar varMempool $ \m -> 
-                runIdentity
-              $ mempoolFilterTX (\tx -> return $ isRight $ processSend tx st')
-              $ mempoolRemoveTX (map hashed txList) m
+            -- First we remote TX that were commited
+            atomicallyIO $ modifyTVar' varMempool $
+              mempoolRemoveTX (map hashed txList)
+            -- Then we ask mempool to start filtering rest of TXs
             atomicallyIO $ writeTChan chPushTx $ CmdStartFiltering $
-              \tx -> return $ isRight $ do validateTxContextFree tx
-                                           processSend tx st'
+              \tx -> return $ isRight $ processSend tx st'
             liftIO $ writeIORef stRef (Just h, st')
         , newValidators = valSet
         }
@@ -153,15 +152,15 @@ inMemoryStateView = do
           (_,st) <- liftIO $ readIORef stRef
           return $ do
             -- When we validate proposed block we want to do complete validation
-            let txList    = unBData $ merkleValue $ blockData b
             let step s tx = do
                   validateTxContextFree tx
                   processTxFull (blockHeight b) tx s
+            let txList = unBData $ merkleValue $ blockData b
             st' <- foldM step st txList
             return $ makeCommit valSet txList st' (blockHeight b)
-        -- Do something
-      , stateHeight       = liftIO $ fst <$> readIORef stRef
-        -- Here we want to pick and select transactions from mempool
+        --
+      , stateHeight = liftIO $ fst <$> readIORef stRef
+        --
       , generateCandidate = \NewBlock{..} -> do
           (_,st) <- liftIO $ readIORef  stRef
           mem    <- liftIO $ readTVarIO varMempool

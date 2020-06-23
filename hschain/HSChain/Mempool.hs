@@ -89,10 +89,11 @@ data MempoolCursor alg tx = MempoolCursor
   }
 
 data MempoolDict m alg tx = MempoolDict
-  { varMempool  :: TVar (MempoolState alg tx)
-  , varValidate :: TVar (tx -> m Bool)
-  , varPending  :: TVar [Hashed alg tx]
-  , chPushTx    :: TChan (MempoolCmd m alg tx)
+  { basicValidation :: tx -> Bool
+  , varMempool      :: TVar (MempoolState alg tx)
+  , varValidate     :: TVar (tx -> m Bool)
+  , varPending      :: TVar [Hashed alg tx]
+  , chPushTx        :: TChan (MempoolCmd m alg tx)
   }
 
 -- | Command to push new TX to mempool
@@ -110,8 +111,8 @@ data MempoolCmd m alg tx
     --   'varMempool' variable using this method ensures that previous
     --   command completed.
 
-newMempoolDict :: MonadIO m => m (MempoolDict m alg tx)
-newMempoolDict = liftIO $ do
+newMempoolDict :: MonadIO m => (tx -> Bool) -> m (MempoolDict m alg tx)
+newMempoolDict basicValidation = liftIO $ do
   varMempool   <- newTVarIO emptyMempoolState
   varValidate  <- newTVarIO $ const $ return False
   varPending   <- newTVarIO []
@@ -165,7 +166,7 @@ handleCommand MempoolDict{..} = \case
   CmdAddTx retVar tx -> do
     let txNode = merkled tx
     validation <- liftIO $ readTVarIO varValidate
-    mmem <- mempoolAddTX validation txNode
+    mmem <- mempoolAddTX basicValidation validation txNode
         =<< liftIO (readTVarIO varMempool)
     case mmem of
       Nothing   -> return ()
@@ -221,23 +222,26 @@ emptyMempoolState = MempoolState
 -- | Add transaction to mempool
 mempoolAddTX
   :: (Monad m)
-  => (tx -> m Bool)
+  => (tx -> Bool)
+  -> (tx -> m Bool)
   -> MerkleNode Identity alg tx
   -> MempoolState alg tx
   -> m (Maybe (MempoolState alg tx))
-mempoolAddTX validation txNode@(MerkleNode txHash tx) MempoolState{..} = runMaybeT $ do
-  -- Ignore TX that we already have
-  guard $ txHash `Map.notMember` mempRevMap
-  -- Validate TX
-  lift (validation tx) >>= \case
-    False -> empty
-    True  -> do
-      let n = mempMaxN + 1
-      return $! MempoolState
-        { mempFIFO   = IMap.insert n      txNode     mempFIFO
-        , mempRevMap = Map.insert  txHash (n,txNode) mempRevMap
-        , mempMaxN   = n
-        }
+mempoolAddTX basicValidation validation txNode@(MerkleNode txHash tx) MempoolState{..} =
+  runMaybeT $ do
+    -- Ignore TX that we already have
+    guard $ txHash `Map.notMember` mempRevMap
+    guard $ basicValidation tx
+    -- Validate TX
+    lift (validation tx) >>= \case
+      False -> empty
+      True  -> do
+        let n = mempMaxN + 1
+        return $! MempoolState
+          { mempFIFO   = IMap.insert n      txNode     mempFIFO
+          , mempRevMap = Map.insert  txHash (n,txNode) mempRevMap
+          , mempMaxN   = n
+          }
 
 
 -- | Remove all transaction from mepool that doesn't satisfy predicate
