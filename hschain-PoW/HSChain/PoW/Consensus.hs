@@ -179,7 +179,7 @@ data StateView m b = StateView
     -- ^ Revert block. Underlying implementation should maintain
     --   enough information to allow rollbacks of reasonable depth.
     --   It's acceptable to fail for too deep reorganizations.
-  , inventUnminedBlock :: Header b -> m (StateView m b, Block b)
+  , inventUnminedBlock :: Header b -> (StateView m b, Block b)
     -- ^ Generate a block from current state.
     --
     --   The block may or may not pass @validateHeader@ checks and
@@ -507,11 +507,10 @@ addTransactionsToMine transactions = do
 -- The block may contain different parts to be adjusted
 -- during actual mining process (usually these parts are
 -- called nonces)
-inventUnminedHead :: (BlockData b, MonadState (Consensus m b) m)
-                  => m (Block b)
-inventUnminedHead = do
-  (bh, sv, locator) <- use bestHead
-  (sv', unminedHead) <- inventUnminedBlock sv (asHeader bh)
-  bestHead .= (bh, sv', locator)
-  return unminedHead
+inventUnminedHead :: (BlockData b)
+                  => Consensus n b -> (Block b, Consensus n b)
+inventUnminedHead c =
+  let (bh, sv, locator) = _bestHead c
+      (sv', unminedHead) = inventUnminedBlock sv (asHeader bh)
+  in  (unminedHead, c { _bestHead = (bh, sv', locator) })
 

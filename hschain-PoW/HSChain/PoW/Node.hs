@@ -30,6 +30,7 @@ import qualified Data.Aeson as JSON
 import Codec.Serialise
 
 import Control.Concurrent
+import Control.Concurrent.STM
 
 import Control.Monad
 import Control.Monad.Catch
@@ -79,8 +80,8 @@ runNode :: forall b s . (BlockData b, Mineable b, Show (b Identity), Serialise (
         -> (s -> Header b -> (Block b, s))
         -> ([Tx b] -> s -> s)
         -> s
-        -> (BH b -> IO (Block b)) -> IO ()
-runNode pathsToConfig miningNode genesisBlock step inventBlk addTxs startState fetchBlock = do
+        -> IO ()
+runNode pathsToConfig miningNode genesisBlock step inventBlk addTxs startState = do
   Cfg{..} <- loadYamlSettings pathsToConfig [] requireEnv
   --
   let netcfg = NetCfg { nKnownPeers     = 3
@@ -113,7 +114,12 @@ runNode pathsToConfig miningNode genesisBlock step inventBlk addTxs startState f
               case cfgMaxH of
                 Just h -> liftIO $ when (bhHeight bh > h) $ forever $ threadDelay maxBound
                 Nothing -> return ()
-              toMine <- liftIO $ fetchBlock bh
+              toMine <- atomicallyIO $ do
+                                       let cv = currentConsensusTVar pow
+                                       cc <- readTVar cv
+                                       let (toMine, cc') = inventUnminedHead cc
+                                       writeTVar cv cc'
+                                       return toMine
               maybeB <- fmap fst $ liftIO $ adjustPuzzle toMine
               case maybeB of
                 Just b -> sendNewBlock pow b >>= \case
@@ -148,7 +154,7 @@ inMemoryView inventBlock addUnminedTxs step = make (error "No revinding past gen
           , revertBlock        = return previous
           , flushState         = return ()
           , inventUnminedBlock = \hdr -> let (b, s') = inventBlock s hdr
-                                         in return (make previous s' bid, b)
+                                         in (make previous s' bid, b)
           , addTransactions    = \txs -> return (make previous (addUnminedTxs txs s) bid)
           }
 

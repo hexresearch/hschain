@@ -34,9 +34,10 @@ import HSChain.Types.Merkle.Types
 
 
 data PoW m b = PoW
-  { currentConsensus :: STM (Consensus m b)
-  , sendNewBlock     :: Block b -> m (Either SomeException ())
-  , chainUpdate      :: STM (Src (BH b, StateView m b))
+  { currentConsensus     :: STM (Consensus m b)
+  , currentConsensusTVar :: TVar (Consensus m b)
+  , sendNewBlock         :: Block b -> m (Either SomeException ())
+  , chainUpdate          :: STM (Src (BH b, StateView m b))
   }
 
 
@@ -71,10 +72,11 @@ startNode cfg netAPI seeds db consensus = do
     , srcRX            = srcBOX
     }
   return PoW
-    { currentConsensus = readTVar bIdx
-    , sendNewBlock     = \(!b) -> runExceptT $ do
+    { currentConsensus     = readTVar bIdx
+    , currentConsensusTVar = bIdx
+    , sendNewBlock         = \(!b) -> runExceptT $ do
         res <- liftIO newEmptyMVar
         sinkIO sinkBOX $ BoxRX $ \cnt -> liftIO . putMVar res =<< cnt (RxMined b)
         void $ liftIO $ takeMVar res
-    , chainUpdate      = mkSrcChain
+    , chainUpdate          = mkSrcChain
     }
