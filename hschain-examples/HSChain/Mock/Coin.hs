@@ -50,7 +50,6 @@ import Control.Monad.Trans.Cont
 import Data.Foldable
 import Data.Functor.Identity
 import Data.Either
-import Data.IORef
 import Data.Maybe
 import Data.Map             (Map,(!))
 import qualified Data.Vector         as V
@@ -133,7 +132,7 @@ instance CryptoHashable CoinState where
 --   memory
 inMemoryStateView :: MonadIO m => m (StateView m BData, [m ()], IO CoinState)
 inMemoryStateView = do
-  stRef                <- liftIO $ newIORef (Nothing, CoinState mempty mempty)
+  stRef                <- liftIO $ newTVarIO (Nothing, CoinState mempty mempty)
   dict@MempoolDict{..} <- newMempoolDict (isRight . validateTxContextFree)
   let makeCommit valSet txList st' h = UncommitedState
         { commitState = do
@@ -143,13 +142,13 @@ inMemoryStateView = do
             -- Then we ask mempool to start filtering rest of TXs
             atomicallyIO $ writeTChan chPushTx $ CmdStartFiltering $
               \tx -> return $ isRight $ processSend tx st'
-            liftIO $ writeIORef stRef (Just h, st')
+            atomicallyIO $ writeTVar stRef (Just h, st')
         , newValidators = valSet
         }
   return
     ( StateView
       { validatePropBlock = \b valSet -> do
-          (_,st) <- liftIO $ readIORef stRef
+          (_,st) <- liftIO $ readTVarIO stRef
           return $ do
             -- When we validate proposed block we want to do complete validation
             let step s tx = do
@@ -159,11 +158,13 @@ inMemoryStateView = do
             st' <- foldM step st txList
             return $ makeCommit valSet txList st' (blockHeight b)
         --
-      , stateHeight = liftIO $ fst <$> readIORef stRef
+      , stateHeight = liftIO $ fst <$> readTVarIO stRef
         --
       , generateCandidate = \NewBlock{..} -> do
-          (_,st) <- liftIO $ readIORef  stRef
-          mem    <- liftIO $ readTVarIO varMempool
+          (st,mem) <- atomicallyIO $ do
+            (_,st) <- readTVar stRef
+            mem    <- readTVar varMempool
+            return (st,mem)
           let selectTx c []     = (c,[])
               selectTx c (t:tx) = case processSend t c of
                                     Left  _  -> selectTx c  tx
@@ -181,7 +182,7 @@ inMemoryStateView = do
       , mempoolHandle = makeMempoolHandle dict
       }
     , [makeMempoolThread dict]
-    , snd <$> readIORef stRef
+    , snd <$> readTVarIO stRef
     )
 
 
