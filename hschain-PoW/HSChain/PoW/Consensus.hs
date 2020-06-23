@@ -30,6 +30,8 @@ module HSChain.PoW.Consensus
   , candidateHeads
   , badBlocks
   , requiredBlocks
+  , inventUnminedHead
+  , addTransactionsToMine
     --
   , consensusGenesis
   , Head(..)
@@ -177,10 +179,18 @@ data StateView m b = StateView
     -- ^ Revert block. Underlying implementation should maintain
     --   enough information to allow rollbacks of reasonable depth.
     --   It's acceptable to fail for too deep reorganizations.
-  , inventBlock :: m (StateView m b, Block b)
+  , inventUnminedBlock :: Header b -> m (StateView m b, Block b)
     -- ^ Generate a block from current state.
+    --
     --   The block may or may not pass @validateHeader@ checks and
     --   generally is intended to be mined (to pass these checks).
+    --
+    --   This function can be called repeatedly in some implementations.
+    --   This may occur if we are not changing anything in the "coinbase"
+    --   part of the block, only fixing nonce. In this case system will
+    --   repeatedly ask for different blocks for some fixed bestHead header
+    --   and state (but set of transactions may change during mining
+    --   process).
   , addTransactions :: [Tx b] -> m (StateView m b)
     -- ^ Record transactions into a state. These can be used to invent blocks.
   , flushState  :: m ()
@@ -481,3 +491,27 @@ cleanCandidates = do
             , bchMissing = Seq.dropWhileL (\b -> bhBID b `Set.notMember` missing) bchMissing
             }
   candidateHeads %= mapMaybe truncateBch
+
+-------------------------------------------------------------------------------
+-- Mining part.
+
+-- |Add transactions into "mempool" part of consensus state.
+addTransactionsToMine :: (BlockData b, MonadState (Consensus m b) m)
+                      => [Tx b] -> m ()
+addTransactionsToMine transactions = do
+  (bh, sv, locator) <- use bestHead
+  sv' <- addTransactions sv transactions
+  bestHead .= (bh, sv', locator)
+
+-- |Invent a block to mine based on the current head.
+-- The block may contain different parts to be adjusted
+-- during actual mining process (usually these parts are
+-- called nonces)
+inventUnminedHead :: (BlockData b, MonadState (Consensus m b) m)
+                  => m (Block b)
+inventUnminedHead = do
+  (bh, sv, locator) <- use bestHead
+  (sv', unminedHead) <- inventUnminedBlock sv (asHeader bh)
+  bestHead .= (bh, sv', locator)
+  return unminedHead
+

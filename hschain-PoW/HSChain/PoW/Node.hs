@@ -75,9 +75,12 @@ data Cfg = Cfg
 -- we are mining and genesis block.
 runNode :: forall b s . (BlockData b, Mineable b, Show (b Identity), Serialise (b Proxy), Serialise (b Identity))
         => [String] -> Bool -> Block b
-        -> (Block b -> s -> Maybe s) -> s
+        -> (Block b -> s -> Maybe s)
+        -> (s -> Header b -> (Block b, s))
+        -> ([Tx b] -> s -> s)
+        -> s
         -> (BH b -> IO (Block b)) -> IO ()
-runNode pathsToConfig miningNode genesisBlock step startState fetchBlock = do
+runNode pathsToConfig miningNode genesisBlock step inventBlk addTxs startState fetchBlock = do
   Cfg{..} <- loadYamlSettings pathsToConfig [] requireEnv
   --
   let netcfg = NetCfg { nKnownPeers     = 3
@@ -85,7 +88,9 @@ runNode pathsToConfig miningNode genesisBlock step startState fetchBlock = do
                       }
   let net = newNetworkTcp cfgPort
   db <- inMemoryDB @_ @_ @b
-  let s0 = consensusGenesis genesisBlock (inMemoryView step startState (blockID genesisBlock))
+  let s0 = consensusGenesis genesisBlock $
+                            inMemoryView inventBlk addTxs step startState $
+                            blockID genesisBlock
   withLogEnv "" "" (map makeScribe cfgLog) $ \logEnv ->
     runLoggerT logEnv $ evalContT $ do
       pow' <- startNode netcfg net cfgPeers db s0
@@ -125,25 +130,26 @@ runNode pathsToConfig miningNode genesisBlock step startState fetchBlock = do
 -- | Simple in-memory implementation of DB
 inMemoryView
   :: (Monad m, BlockData b, Show (BlockID b))
-  => m (Block b)                -- ^ Invent a block from state.
-  -> (Tx b -> m ())             -- ^ Add transaction into state.
-  -> (Block b -> s -> Maybe s)  -- ^ Step function 
-  -> s                          -- ^ Initial state
+  => (s -> Header b -> (Block b, s)) -- ^ Invent a block from state.
+  -> ([Tx b] -> s -> s)              -- ^ Add transaction into state.
+  -> (Block b -> s -> Maybe s)       -- ^ Step function 
+  -> s                               -- ^ Initial state
   -> BlockID b
   -> StateView m b
-inMemoryView inventBlock addTransaction step = make (error "No revinding past genesis")
+inMemoryView inventBlock addUnminedTxs step = make (error "No revinding past genesis")
   where
     make previous s bid = view
       where
         view = StateView
-          { stateBID        = bid
-          , applyBlock      = \b -> case step b s of
+          { stateBID           = bid
+          , applyBlock         = \b -> case step b s of
               Nothing -> return Nothing
               Just s' -> return $ Just $  make view s' (blockID b)
-          , revertBlock     = return previous
-          , flushState      = return ()
-          , inventBlock     = inventBlock
-          , addTransactions = addTransaction
+          , revertBlock        = return previous
+          , flushState         = return ()
+          , inventUnminedBlock = \hdr -> let (b, s') = inventBlock s hdr
+                                         in return (make previous s' bid, b)
+          , addTransactions    = \txs -> return (make previous (addUnminedTxs txs s) bid)
           }
 
 inMemoryDB
