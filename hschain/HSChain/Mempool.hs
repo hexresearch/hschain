@@ -23,7 +23,7 @@ module HSChain.Mempool (
   , MempoolCursor(..)
   , MempoolInfo(..)
     -- * Implementation
-  , Push(..)
+  , MempoolCmd(..)
   , MempoolDict(..)
   , makeMempoolThread
   , newMempoolDict
@@ -67,26 +67,7 @@ import HSChain.Control.Util
 -- Mempool
 ----------------------------------------------------------------
 
--- | Statistics about mempool
-data MempoolInfo = MempoolInfo
-  { mempool'size      :: !Int
-  -- ^ Number of transactions currently in mempool
-  , mempool'added     :: !Int
-  -- ^ Number of transactions added to mempool since program start
-  , mempool'discarded :: !Int
-  -- ^ Number of transaction discarded immediately since program start
-  , mempool'filtered  :: !Int
-  -- ^ Number of transaction removed during filtering
-  }
-  deriving (Show,Generic)
-JSON.deriveJSON JSON.defaultOptions
-  { JSON.fieldLabelModifier = drop 8 } ''MempoolInfo
-
-instance Katip.ToObject MempoolInfo
-instance Katip.LogItem  MempoolInfo where
-  payloadKeys Katip.V0 _ = Katip.SomeKeys []
-  payloadKeys _        _ = Katip.AllKeys
-
+-- | Handle for working with mempool
 data MempoolHandle alg tx = MempoolHandle
   { getMempoolCursor :: forall m. MonadIO m => m (MempoolCursor alg tx)
   , mempoolSize      :: forall m. MonadIO m => m Int
@@ -107,14 +88,14 @@ data MempoolCursor alg tx = MempoolCursor
   }
 
 data MempoolDict m alg tx = MempoolDict
-  { varMempool  :: TVar  (MempoolState alg tx)
+  { varMempool  :: TVar (MempoolState alg tx)
   , varValidate :: TVar (tx -> m Bool)
   , varPending  :: TVar [Hashed alg tx]
-  , chPushTx    :: TChan (Push m alg tx)
+  , chPushTx    :: TChan (MempoolCmd m alg tx)
   }
 
 -- | Command to push new TX to mempool
-data Push m alg tx
+data MempoolCmd m alg tx
   = CmdAddTx !(Maybe (MVar (Maybe (Hashed alg tx))))
              !tx
     -- ^ Add transaction to mempool.
@@ -154,7 +135,7 @@ makeMempoolThread dict@MempoolDict{..} = do
 
 handleCommand
   :: (CryptoHash alg, CryptoHashable tx, MonadIO m)
-  => MempoolDict m alg tx -> Push m alg tx -> m ()
+  => MempoolDict m alg tx -> MempoolCmd m alg tx -> m ()
 handleCommand MempoolDict{..} = \case
   CmdAddTx retVar tx -> do
     let txNode = merkled tx
@@ -186,7 +167,8 @@ handlePendingCheck MempoolDict{..} txHashes = do
   badTxs <- filterM (fmap not . val . merkleValue)
           $ mapMaybe (\h -> snd <$> Map.lookup h (mempRevMap m)) txHashes
   atomicallyIO $ writeTVar varMempool $ mempoolRemoveTX (map merkleHashed badTxs) m
-  
+
+
 ----------------------------------------------------------------
 -- Mempool data structures
 ----------------------------------------------------------------
@@ -287,3 +269,29 @@ mempoolSelfTest MempoolState{..} = concat
     lFifo  = IMap.toAscList mempFIFO
     lRev   = sort $ toList mempRevMap
     maxKey = fst <$> IMap.lookupMax mempFIFO
+
+
+----------------------------------------------------------------
+-- Logging helpers
+----------------------------------------------------------------
+
+
+-- | Statistics about mempool
+data MempoolInfo = MempoolInfo
+  { mempool'size      :: !Int
+  -- ^ Number of transactions currently in mempool
+  , mempool'added     :: !Int
+  -- ^ Number of transactions added to mempool since program start
+  , mempool'discarded :: !Int
+  -- ^ Number of transaction discarded immediately since program start
+  , mempool'filtered  :: !Int
+  -- ^ Number of transaction removed during filtering
+  }
+  deriving (Show,Generic)
+JSON.deriveJSON JSON.defaultOptions
+  { JSON.fieldLabelModifier = drop 8 } ''MempoolInfo
+
+instance Katip.ToObject MempoolInfo
+instance Katip.LogItem  MempoolInfo where
+  payloadKeys Katip.V0 _ = Katip.SomeKeys []
+  payloadKeys _        _ = Katip.AllKeys
