@@ -97,6 +97,9 @@ class ( Show      (BlockID b)
   --   leave some representation leeway for implementations. 
   data BlockID b
 
+  -- | Transactions that constitute block.
+  type Tx b
+
   -- | Compute block ID out of block using only header.
   blockID :: IsMerkle f => GBlock b f -> BlockID b
 
@@ -159,10 +162,6 @@ class ( Show      (BlockID b)
 -- requirements gave us the following plan: we fetch a block to
 -- mine (header may be invalid) and work on it for some time, reporting
 -- back in case of success.
---
--- Please note that you can implement caching in @fetchBlock@ if current
--- chain leader has not changed. You can tweak only the "coinbase"-like
--- transaction in the block.
 class BlockData b => Mineable b where
 
   -- | Adjust puzzle's answer. The adjustment process tries to

@@ -30,6 +30,7 @@ import qualified Data.Aeson as JSON
 import Codec.Serialise
 
 import Control.Concurrent
+import Control.Concurrent.STM
 
 import Control.Monad
 import Control.Monad.Catch
@@ -75,9 +76,11 @@ data Cfg = Cfg
 -- we are mining and genesis block.
 runNode :: forall b s . (BlockData b, Mineable b, Show (b Identity), Serialise (b Proxy), Serialise (b Identity))
         => [String] -> Bool -> Block b
-        -> (Block b -> s -> Maybe s) -> s
-        -> (BH b -> IO (Block b)) -> IO ()
-runNode pathsToConfig miningNode genesisBlock step startState fetchBlock = do
+        -> (Block b -> s -> Maybe s)
+        -> (BH b -> s -> (Block b, s))
+        -> s
+        -> IO ()
+runNode pathsToConfig miningNode genesisBlock step inventBlock startState = do
   Cfg{..} <- loadYamlSettings pathsToConfig [] requireEnv
   --
   let netcfg = NetCfg { nKnownPeers     = 3
@@ -85,7 +88,9 @@ runNode pathsToConfig miningNode genesisBlock step startState fetchBlock = do
                       }
   let net = newNetworkTcp cfgPort
   db <- inMemoryDB @_ @_ @b
-  let s0 = consensusGenesis genesisBlock (inMemoryView step startState (blockID genesisBlock))
+  let s0 = consensusGenesis genesisBlock $
+                            inMemoryView step startState $
+                            blockID genesisBlock
   withLogEnv "" "" (map makeScribe cfgLog) $ \logEnv ->
     runLoggerT logEnv $ evalContT $ do
       pow' <- startNode netcfg net cfgPeers db s0
@@ -108,7 +113,15 @@ runNode pathsToConfig miningNode genesisBlock step startState fetchBlock = do
               case cfgMaxH of
                 Just h -> liftIO $ when (bhHeight bh > h) $ forever $ threadDelay maxBound
                 Nothing -> return ()
-              toMine <- liftIO $ fetchBlock bh
+              now <- getCurrentTime
+              toMine <- atomicallyIO $ do
+                                       let cv = currentConsensusTVar pow
+                                       cc <- readTVar cv
+                                       let (bchBH, _, _) = _bestHead cc
+                                           (toMine, cc') = consensusComputeOnState cc
+                                                              (inventBlock bchBH)
+                                       writeTVar cv cc'
+                                       return toMine { blockTime = now }
               maybeB <- fmap fst $ liftIO $ adjustPuzzle toMine
               case maybeB of
                 Just b -> sendNewBlock pow b >>= \case
@@ -125,21 +138,22 @@ runNode pathsToConfig miningNode genesisBlock step startState fetchBlock = do
 -- | Simple in-memory implementation of DB
 inMemoryView
   :: (Monad m, BlockData b, Show (BlockID b))
-  => (Block b -> s -> Maybe s)  -- ^ Step function 
-  -> s                          -- ^ Initial state
+  => (Block b -> s -> Maybe s)       -- ^ Step function 
+  -> s                               -- ^ Initial state
   -> BlockID b
-  -> StateView m b
+  -> StateView s m b
 inMemoryView step = make (error "No revinding past genesis")
   where
     make previous s bid = view
       where
         view = StateView
-          { stateBID    = bid
-          , applyBlock  = \b -> case step b s of
+          { stateBID           = bid
+          , applyBlock         = \b -> case step b s of
               Nothing -> return Nothing
               Just s' -> return $ Just $  make view s' (blockID b)
-          , revertBlock = return previous
-          , flushState  = return ()
+          , revertBlock        = return previous
+          , flushState         = return ()
+          , stateComputeAlter  = \f -> let (a, s') = f s in (a, make previous s' bid)
           }
 
 inMemoryDB

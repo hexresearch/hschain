@@ -51,7 +51,7 @@ runPeer
      , BlockData b
      )
   => P2PConnection
-  -> PeerChans m b
+  -> PeerChans s m b
   -> m ()
 runPeer conn chans@PeerChans{..} = logOnException $ do
   logger InfoS "Starting peer" ()
@@ -92,7 +92,7 @@ data PeerState b = PeerState
 peerRequestHeaders
   :: (MonadIO m, MonadLogger m, MonadCatch m, BlockData b)
   => PeerState b
-  -> PeerChans m b
+  -> PeerChans s m b
   -> Sink (GossipMsg b)
   -> m x
 peerRequestHeaders PeerState{..} PeerChans{..} sinkGossip =
@@ -119,7 +119,7 @@ peerRequestHeaders PeerState{..} PeerChans{..} sinkGossip =
 peerRequestBlock
   :: (MonadIO m, MonadLogger m, MonadCatch m, BlockData b)
   => PeerState b
-  -> PeerChans m b
+  -> PeerChans s m b
   -> Sink (GossipMsg b)
   -> m x
 peerRequestBlock PeerState{..} PeerChans{..} sinkGossip =
@@ -134,7 +134,7 @@ peerRequestBlock PeerState{..} PeerChans{..} sinkGossip =
 
 peerRequestAddresses
   :: (MonadIO m, MonadLogger m, MonadMask m)
-  => PeerState b -> PeerChans m b -> Sink (GossipMsg b) -> m x
+  => PeerState b -> PeerChans s m b -> Sink (GossipMsg b) -> m x
 peerRequestAddresses PeerState{..} PeerChans{..} sinkGossip =
   descendNamespace "req_Addr" $ logOnException $ forever $ do
     AskPeers <- atomicallyIO $ await peerBCastAskPeer
@@ -169,7 +169,7 @@ peerRecv
      )
   => P2PConnection
   -> PeerState b
-  -> PeerChans m b
+  -> PeerChans s m b
   -> Sink (GossipMsg b)         -- Send message to peer over network
   -> m x
 peerRecv conn st@PeerState{..} PeerChans{..} sinkGossip =
@@ -238,7 +238,7 @@ peerRecv conn st@PeerState{..} PeerChans{..} sinkGossip =
 
 locateHeaders
   :: (BlockData b)
-  => Consensus m b
+  => Consensus s m b
   -> Locator b
   -> Maybe ([Header b])
 locateHeaders consensus (Locator bidList) = do
