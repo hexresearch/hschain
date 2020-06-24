@@ -77,7 +77,7 @@ data Cfg = Cfg
 runNode :: forall b s . (BlockData b, Mineable b, Show (b Identity), Serialise (b Proxy), Serialise (b Identity))
         => [String] -> Bool -> Block b
         -> (Block b -> s -> Maybe s)
-        -> (s -> Header b -> (Block b, s))
+        -> (s -> BH b -> (Block b, s))
         -> ([Tx b] -> s -> s)
         -> s
         -> IO ()
@@ -114,12 +114,13 @@ runNode pathsToConfig miningNode genesisBlock step inventBlk addTxs startState =
               case cfgMaxH of
                 Just h -> liftIO $ when (bhHeight bh > h) $ forever $ threadDelay maxBound
                 Nothing -> return ()
+              now <- getCurrentTime
               toMine <- atomicallyIO $ do
                                        let cv = currentConsensusTVar pow
                                        cc <- readTVar cv
                                        let (toMine, cc') = inventUnminedHead cc
                                        writeTVar cv cc'
-                                       return toMine
+                                       return toMine { blockTime = now }
               maybeB <- fmap fst $ liftIO $ adjustPuzzle toMine
               case maybeB of
                 Just b -> sendNewBlock pow b >>= \case
@@ -136,7 +137,7 @@ runNode pathsToConfig miningNode genesisBlock step inventBlk addTxs startState =
 -- | Simple in-memory implementation of DB
 inMemoryView
   :: (Monad m, BlockData b, Show (BlockID b))
-  => (s -> Header b -> (Block b, s)) -- ^ Invent a block from state.
+  => (s -> BH b -> (Block b, s))     -- ^ Invent a block from state.
   -> ([Tx b] -> s -> s)              -- ^ Add transaction into state.
   -> (Block b -> s -> Maybe s)       -- ^ Step function 
   -> s                               -- ^ Initial state

@@ -297,7 +297,10 @@ data Message
 runTest :: [Message] -> IO ()
 runTest msgList = runNoLogsT $ do
   db <- inMemoryDB
-  let s0 = consensusGenesis (head mockchain) (inMemoryView kvViewStep Map.empty (blockID genesis))
+  let s0 = consensusGenesis (head mockchain) $
+                            inMemoryView (error "no block invention")
+                                         (error "no transaction addition")
+                                         kvViewStep Map.empty (blockID genesis)
   runExceptT (loop db s0 msgList) >>= \case
     Left  e  -> error $ unlines e
     Right () -> return ()
