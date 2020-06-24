@@ -168,18 +168,18 @@ data BlockDB m b = BlockDB
 --   by database and in-memory overlay is used to work with multiple
 --   heads of blockchain. One important constraint is that view should
 --   remain valid even if underlying database gets updated.
-data StateView m b = StateView
+data StateView s m b = StateView
   { stateBID    :: BlockID b
     -- ^ Hash of block for which state is calculated
-  , applyBlock  :: Block b -> m (Maybe (StateView m b))
+  , applyBlock  :: Block b -> m (Maybe (StateView s m b))
     -- ^ Apply block on top of current state. Function should throw
     --   exception if supplied block is not child block of current
     --   head. Function should return @Nothing@ if block is not valid
-  , revertBlock :: m (StateView m b)
+  , revertBlock :: m (StateView s m b)
     -- ^ Revert block. Underlying implementation should maintain
     --   enough information to allow rollbacks of reasonable depth.
     --   It's acceptable to fail for too deep reorganizations.
-  , inventUnminedBlock :: BH b -> (StateView m b, Block b)
+  , inventUnminedBlock :: BH b -> (StateView s m b, Block b)
     -- ^ Generate a block from current state.
     --
     --   The block may or may not pass @validateHeader@ checks and
@@ -191,7 +191,7 @@ data StateView m b = StateView
     --   repeatedly ask for different blocks for some fixed bestHead header
     --   and state (but set of transactions may change during mining
     --   process).
-  , addTransactions :: [Tx b] -> m (StateView m b)
+  , addTransactions :: [Tx b] -> m (StateView s m b)
     -- ^ Record transactions into a state. These can be used to invent blocks.
   , flushState  :: m ()
     -- ^ Persist snapshot in the database.
@@ -203,12 +203,12 @@ data StateView m b = StateView
 ----------------------------------------------------------------
 
 -- | Complete description of PoW consensus
-data Consensus m b = Consensus
+data Consensus s m b = Consensus
   { _blockIndex     :: BlockIndex b
     -- ^ Index of all known headers that have enough work in them and
     --   otherwise valid. Note that it may include headers of blocks
     --   which turned out to be invalid.
-  , _bestHead       :: (BH b, StateView m b, Locator b)
+  , _bestHead       :: (BH b, StateView s m b, Locator b)
     -- ^ Best head of blockchain. It's validated block with most work
     --   in it
   , _candidateHeads :: [Head b]
@@ -226,8 +226,8 @@ data Consensus m b = Consensus
 consensusGenesis
   :: (Monad m, BlockData b)
   => Block b
-  -> StateView m b
-  -> Consensus m b
+  -> StateView s m b
+  -> Consensus s m b
 consensusGenesis genesis sview = Consensus
   { _blockIndex     = idx
   , _bestHead       = (bh, sview, makeLocator bh)
