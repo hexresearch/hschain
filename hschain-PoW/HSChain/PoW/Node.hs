@@ -77,11 +77,10 @@ data Cfg = Cfg
 runNode :: forall b s . (BlockData b, Mineable b, Show (b Identity), Serialise (b Proxy), Serialise (b Identity))
         => [String] -> Bool -> Block b
         -> (Block b -> s -> Maybe s)
-        -> (s -> BH b -> (Block b, s))
-        -> ([Tx b] -> s -> s)
+        -> (BH b -> s -> (Block b, s))
         -> s
         -> IO ()
-runNode pathsToConfig miningNode genesisBlock step inventBlk addTxs startState = do
+runNode pathsToConfig miningNode genesisBlock step inventBlock startState = do
   Cfg{..} <- loadYamlSettings pathsToConfig [] requireEnv
   --
   let netcfg = NetCfg { nKnownPeers     = 3
@@ -90,7 +89,7 @@ runNode pathsToConfig miningNode genesisBlock step inventBlk addTxs startState =
   let net = newNetworkTcp cfgPort
   db <- inMemoryDB @_ @_ @b
   let s0 = consensusGenesis genesisBlock $
-                            inMemoryView inventBlk addTxs step startState $
+                            inMemoryView step startState $
                             blockID genesisBlock
   withLogEnv "" "" (map makeScribe cfgLog) $ \logEnv ->
     runLoggerT logEnv $ evalContT $ do
@@ -118,7 +117,9 @@ runNode pathsToConfig miningNode genesisBlock step inventBlk addTxs startState =
               toMine <- atomicallyIO $ do
                                        let cv = currentConsensusTVar pow
                                        cc <- readTVar cv
-                                       let (toMine, cc') = inventUnminedHead cc
+                                       let (bchBH, _, _) = _bestHead cc
+                                           (toMine, cc') = consensusComputeOnState cc
+                                                              (inventBlock bchBH)
                                        writeTVar cv cc'
                                        return toMine { blockTime = now }
               maybeB <- fmap fst $ liftIO $ adjustPuzzle toMine
@@ -137,13 +138,11 @@ runNode pathsToConfig miningNode genesisBlock step inventBlk addTxs startState =
 -- | Simple in-memory implementation of DB
 inMemoryView
   :: (Monad m, BlockData b, Show (BlockID b))
-  => (s -> BH b -> (Block b, s))     -- ^ Invent a block from state.
-  -> ([Tx b] -> s -> s)              -- ^ Add transaction into state.
-  -> (Block b -> s -> Maybe s)       -- ^ Step function 
+  => (Block b -> s -> Maybe s)       -- ^ Step function 
   -> s                               -- ^ Initial state
   -> BlockID b
-  -> StateView m b
-inMemoryView inventBlock addUnminedTxs step = make (error "No revinding past genesis")
+  -> StateView s m b
+inMemoryView step = make (error "No revinding past genesis")
   where
     make previous s bid = view
       where
@@ -154,9 +153,7 @@ inMemoryView inventBlock addUnminedTxs step = make (error "No revinding past gen
               Just s' -> return $ Just $  make view s' (blockID b)
           , revertBlock        = return previous
           , flushState         = return ()
-          , inventUnminedBlock = \hdr -> let (b, s') = inventBlock s hdr
-                                         in (make previous s' bid, b)
-          , addTransactions    = \txs -> return (make previous (addUnminedTxs txs s) bid)
+          , stateComputeAlter  = \f -> let (a, s') = f s in (a, make previous s' bid)
           }
 
 inMemoryDB

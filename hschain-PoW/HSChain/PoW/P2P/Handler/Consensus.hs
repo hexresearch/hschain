@@ -33,10 +33,10 @@ import HSChain.PoW.Logger
 
 
 -- | Channels for sending data to and from consensus thread
-data ConsensusCh m b = ConsensusCh
+data ConsensusCh s m b = ConsensusCh
   { bcastAnnounce    :: Sink (MsgAnn b)
-  , bcastChainUpdate :: Sink (BH b, StateView m b)
-  , sinkConsensusSt  :: Sink (Consensus m b)
+  , bcastChainUpdate :: Sink (BH b, StateView s m b)
+  , sinkConsensusSt  :: Sink (Consensus s m b)
   , sinkReqBlocks    :: Sink (Set (BlockID b))
   , srcRX            :: Src  (BoxRX m b)
   }
@@ -46,8 +46,8 @@ data ConsensusCh m b = ConsensusCh
 threadConsensus
   :: (MonadIO m, MonadLogger m, BlockData b, MonadCatch m)
   => BlockDB m b
-  -> Consensus m b
-  -> ConsensusCh m b
+  -> Consensus s m b
+  -> ConsensusCh s m b
   -> m x
 threadConsensus db consensus0 ConsensusCh{..} = descendNamespace "cns" $ logOnException $ do
   logger InfoS "Staring consensus" ()
@@ -67,7 +67,7 @@ consensusMonitor
   :: (MonadLogger m, BlockData b, MonadIO m)
   => BlockDB m b
   -> BoxRX m b
-  -> StateT (Consensus m b) m ()
+  -> StateT (Consensus s m b) m ()
 consensusMonitor db (BoxRX message)
   = message $ logR <=< \case
       RxAnn     m  -> handleAnnounce m

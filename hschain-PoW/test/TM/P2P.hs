@@ -131,9 +131,7 @@ runNetTest test = do
   db  <- inMemoryDB @_ @_ @(KV MockChain)
   net <- newMockNet
   let s0 = consensusGenesis (head mockchain) $
-            inMemoryView (error "no block invention in tests")
-                         (error "no addition of transactions in tests")
-                         kvViewStep Map.empty (blockID genesis)
+            inMemoryView kvViewStep Map.empty (blockID genesis)
   let apiNode        = createMockNode net ipNode
       NetworkAPI{..} = createMockNode net ipOur
   runNoLogsT $ evalContT $ do

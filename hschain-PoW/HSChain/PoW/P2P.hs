@@ -33,11 +33,11 @@ import HSChain.PoW.P2P.Handler.BlockRequests
 import HSChain.Types.Merkle.Types
 
 
-data PoW m b = PoW
-  { currentConsensus     :: STM (Consensus m b)
-  , currentConsensusTVar :: TVar (Consensus m b)
+data PoW s m b = PoW
+  { currentConsensus     :: STM (Consensus s m b)
+  , currentConsensusTVar :: TVar (Consensus s m b)
   , sendNewBlock         :: Block b -> m (Either SomeException ())
-  , chainUpdate          :: STM (Src (BH b, StateView m b))
+  , chainUpdate          :: STM (Src (BH b, StateView s m b))
   }
 
 
@@ -52,8 +52,8 @@ startNode
   -> NetworkAPI
   -> [NetAddr]
   -> BlockDB   m b
-  -> Consensus m b
-  -> ContT r m (PoW m b)
+  -> Consensus s m b
+  -> ContT r m (PoW s m b)
 startNode cfg netAPI seeds db consensus = do
   lift $ logger InfoS "Starting PoW node" ()
   (sinkBOX,    srcBOX)     <- queuePair

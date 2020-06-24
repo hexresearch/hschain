@@ -133,8 +133,8 @@ genesisNewPoW = GBlock
 
 
 getBlockToMine :: (Default (Nonce cfg), KVConfig cfg)
-          => String -> a -> BH (KV cfg) -> (Block (KV cfg), a)
-getBlockToMine val a bh = (GBlock
+          => String -> BH (KV cfg) -> a -> (Block (KV cfg), a)
+getBlockToMine val bh a = (GBlock
     { blockHeight = succ $ bhHeight bh
     , blockTime   = Time 0
     , prevBlock   = Just $! bhBID bh
@@ -182,7 +182,7 @@ parser = do
 runNodeAnyPoW :: forall cfg . (Show (Nonce cfg), Default (Nonce cfg), KVConfig cfg)
               => Opts -> Block (KV cfg) ->IO ()
 runNodeAnyPoW Opts{..} genesisBlock = do
-  runNode cmdConfigPath optMine genesisBlock kvViewStep (getBlockToMine optNodeName) (const id) Map.empty
+  runNode cmdConfigPath optMine genesisBlock kvViewStep (getBlockToMine optNodeName) Map.empty
 
 main :: IO ()
 main = do

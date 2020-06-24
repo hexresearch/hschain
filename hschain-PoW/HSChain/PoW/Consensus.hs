@@ -5,6 +5,7 @@
 {-# LANGUAGE LambdaCase           #-}
 {-# LANGUAGE MultiWayIf           #-}
 {-# LANGUAGE PolyKinds            #-}
+{-# LANGUAGE RankNTypes           #-}
 {-# LANGUAGE RecordWildCards      #-}
 {-# LANGUAGE StandaloneDeriving   #-}
 {-# LANGUAGE TemplateHaskell      #-}
@@ -30,8 +31,7 @@ module HSChain.PoW.Consensus
   , candidateHeads
   , badBlocks
   , requiredBlocks
-  , inventUnminedHead
-  , addTransactionsToMine
+  , consensusComputeOnState
     --
   , consensusGenesis
   , Head(..)
@@ -179,19 +179,7 @@ data StateView s m b = StateView
     -- ^ Revert block. Underlying implementation should maintain
     --   enough information to allow rollbacks of reasonable depth.
     --   It's acceptable to fail for too deep reorganizations.
-  , inventUnminedBlock :: BH b -> (StateView s m b, Block b)
-    -- ^ Generate a block from current state.
-    --
-    --   The block may or may not pass @validateHeader@ checks and
-    --   generally is intended to be mined (to pass these checks).
-    --
-    --   This function can be called repeatedly in some implementations.
-    --   This may occur if we are not changing anything in the "coinbase"
-    --   part of the block, only fixing nonce. In this case system will
-    --   repeatedly ask for different blocks for some fixed bestHead header
-    --   and state (but set of transactions may change during mining
-    --   process).
-  , addTransactions :: [Tx b] -> m (StateView s m b)
+  , stateComputeAlter :: forall a . (s -> (a, s)) -> (a, StateView s m b)
     -- ^ Record transactions into a state. These can be used to invent blocks.
   , flushState  :: m ()
     -- ^ Persist snapshot in the database.
@@ -288,7 +276,7 @@ data BlockError
 processHeader
   :: (BlockData b, MonadIO m)
   => Header b
-  -> ExceptT HeaderError (StateT (Consensus m b) m) ()
+  -> ExceptT HeaderError (StateT (Consensus s m b) m) ()
 -- FIXME: Decide what to do with time?
 -- FIXME: Decide how to track difficulty adjustment
 processHeader header = do
@@ -364,7 +352,7 @@ growHead _ [] = Nothing
 growNewHead
   :: (BlockData b, Monad m)
   => BH b
-  -> ExceptT HeaderError (StateT (Consensus m b) m) (Head b)
+  -> ExceptT HeaderError (StateT (Consensus s m b) m) (Head b)
 growNewHead bh = do
   best       <- use $ bestHead . _1
   bad        <- use badBlocks
@@ -392,7 +380,7 @@ processBlock
   :: (BlockData b, MonadIO m)
   => BlockDB m b
   -> Block b
-  -> ExceptT BlockError (StateT (Consensus m b) m) ()
+  -> ExceptT BlockError (StateT (Consensus s m b) m) ()
 processBlock db block = do
   use (blockIndex . to (lookupIdx bid)) >>= \case
     Just _  -> return ()
@@ -426,7 +414,7 @@ processBlock db block = do
 -- | Invalidate block. We need to truncate all candidate heads that
 --   contains it.
 invalidateBlock
-  :: (BlockData b, MonadState (Consensus n b) m)
+  :: (BlockData b, MonadState (Consensus s n b) m)
   => BlockID b
   -> m ()
 invalidateBlock bid = do
@@ -448,7 +436,7 @@ invalidateBlock bid = do
 bestCandidate
   :: (BlockData b, Monad m)
   => BlockDB m b
-  -> ExceptT BlockError (StateT (Consensus m b) m) ()
+  -> ExceptT BlockError (StateT (Consensus s m b) m) ()
 bestCandidate db = do
   bestWork <- use $ bestHead . _1 . to bhWork
   missing  <- use requiredBlocks
@@ -480,7 +468,7 @@ bestCandidate db = do
         Empty   -> Nothing
         _ :|> b -> Just b
 
-cleanCandidates :: (BlockData b, MonadState (Consensus n b) m) => m ()
+cleanCandidates :: (BlockData b, MonadState (Consensus s n b) m) => m ()
 cleanCandidates = do
   bestWork <- use $ bestHead . _1 . to bhWork
   missing  <- use requiredBlocks
@@ -493,24 +481,12 @@ cleanCandidates = do
   candidateHeads %= mapMaybe truncateBch
 
 -------------------------------------------------------------------------------
--- Mining part.
+-- Accessing the state view.
 
--- |Add transactions into "mempool" part of consensus state.
-addTransactionsToMine :: (BlockData b, MonadState (Consensus m b) m)
-                      => [Tx b] -> m ()
-addTransactionsToMine transactions = do
-  (bh, sv, locator) <- use bestHead
-  sv' <- addTransactions sv transactions
-  bestHead .= (bh, sv', locator)
-
--- |Invent a block to mine based on the current head.
--- The block may contain different parts to be adjusted
--- during actual mining process (usually these parts are
--- called nonces)
-inventUnminedHead :: (BlockData b)
-                  => Consensus n b -> (Block b, Consensus n b)
-inventUnminedHead c =
-  let (bh, sv, locator) = _bestHead c
-      (sv', unminedHead) = inventUnminedBlock sv bh
-  in  (unminedHead, c { _bestHead = (bh, sv', locator) })
+consensusComputeOnState :: Consensus s m b -> (s -> (a, s)) -> (a, Consensus s m b)
+consensusComputeOnState c app = (a, c')
+  where
+    (bh, sv, loc) = _bestHead c
+    (a, sv') = stateComputeAlter sv app
+    c' = c { _bestHead = (bh, sv', loc) }
 
