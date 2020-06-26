@@ -1,0 +1,11 @@
+{ roots = [ "^Main.main$"
+          , "^Paths_.*"
+          , "HSChain.Crypto.*Size$"
+          , "HSChain.Crypto.make.*Box"
+          , "HSChain.Crypto.open.*Box"
+          , "HSChain.Crypto.signHashed"
+          , "HSChain.Crypto.verifySignatureHashed"
+          , "HSChain.Crypto.Classes.Hash.genericHashStep.{0,2}"
+          , "HSChain.Crypto.Classes.Hash.hashed"
+          , "HSChain.Crypto.PBKDF2Simple.sha512PBKDF2"
+          ], type-class-roots = True }
