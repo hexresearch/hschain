@@ -152,8 +152,9 @@ commonPrefix str       = foldl1 prefix str
     go _ _    = []
 
 lowerHead :: String -> String
-lowerHead []     = []
-lowerHead (c:cs) = toLower c : cs
+lowerHead (c1:c2:cs)
+  | isUpper c1 && isLower c2 = toLower c1 : c2 : cs
+lowerHead cs                 = cs
 
 
 ----------------------------------------------------------------
