@@ -2,12 +2,15 @@
 {-# LANGUAGE DeriveAnyClass             #-}
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE DerivingStrategies         #-}
+{-# LANGUAGE DerivingVia                #-}
 {-# LANGUAGE FlexibleContexts           #-}
+{-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase                 #-}
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE RankNTypes                 #-}
 {-# LANGUAGE RecordWildCards            #-}
+{-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE TupleSections              #-}
 {-# LANGUAGE TypeApplications           #-}
 {-# LANGUAGE TypeFamilies               #-}
@@ -27,14 +30,19 @@ module HSChain.Mock.Coin (
   , CoinState(..)
   , Unspent(..)
   , UTXO(..)
-  -- , coinLogic
     -- * Transaction generator
-  , mintMockCoin
-  , transactionGenerator
   , TxGenerator(..)
+  , makeCoinGenerator
+  , transactionGenerator
     -- * Interpretation
+    -- ** Monad
+  , CoinT(..)
+  , runCoinT
+  , CoinDictM(..)
+  , CoinSpecification(..)
+    -- ** Executing specification
+  , coinGenesis
   , interpretSpec
-  , RunningNode(..)
   , executeNodeSpec
   ) where
 
@@ -43,19 +51,18 @@ import Control.Concurrent
 import Control.Concurrent.STM
 import Control.DeepSeq
 import Control.Monad
+import Control.Monad.Reader
 import Control.Monad.Catch
-import Control.Monad.IO.Class
-import Control.Monad.Trans.Class
 import Control.Monad.Trans.Cont
+import qualified Data.Aeson as JSON
 import Data.Foldable
-import Data.Functor.Identity
 import Data.Either
 import Data.Maybe
 import Data.Map             (Map,(!))
 import qualified Data.Vector         as V
 import qualified Data.Map.Strict     as Map
-import qualified Data.IntMap.Strict  as IMap
 import qualified Data.Set            as Set
+import Katip           (Namespace,LogEnv)
 import System.Random   (randomRIO)
 import GHC.Generics    (Generic)
 
@@ -78,7 +85,7 @@ import HSChain.Mock.KeyList         (makePrivKeyStream)
 import HSChain.Mock.Types
 import HSChain.Monitoring
 import qualified HSChain.Network.Mock as P2P
-
+import qualified HSChain.Config
 
 
 ----------------------------------------------------------------
@@ -126,22 +133,16 @@ instance CryptoHashable CoinState where
 
 
 
-
-
 -- | Create view on blockchain state which is kept completely in
 --   memory
 inMemoryStateView :: MonadIO m => m (StateView m BData, [m ()], IO CoinState)
 inMemoryStateView = do
-  stRef                <- liftIO $ newTVarIO (Nothing, CoinState mempty mempty)
-  dict@MempoolDict{..} <- newMempoolDict (isRight . validateTxContextFree)
+  stRef <- liftIO $ newTVarIO (Nothing, CoinState mempty mempty)
+  (mem@Mempool{..}, memThr) <- newMempool (isRight . validateTxContextFree)
   let makeCommit valSet txList st' h = UncommitedState
         { commitState = do
-            -- First we remote TX that were commited
-            atomicallyIO $ modifyTVar' varMempool $
-              mempoolRemoveTX (map hashed txList)
-            -- Then we ask mempool to start filtering rest of TXs
-            atomicallyIO $ writeTChan chPushTx $ CmdStartFiltering $
-              \tx -> return $ isRight $ processSend tx st'
+            removeTxByHashes $ hashed <$> txList
+            startMempoolFiltering $ \tx -> return $ isRight $ processSend tx st'
             atomicallyIO $ writeTVar stRef (Just h, st')
         , newValidators = valSet
         }
@@ -161,10 +162,8 @@ inMemoryStateView = do
       , stateHeight = liftIO $ fst <$> readTVarIO stRef
         --
       , generateCandidate = \NewBlock{..} -> do
-          (st,mem) <- atomicallyIO $ do
-            (_,st) <- readTVar stRef
-            mem    <- readTVar varMempool
-            return (st,mem)
+          memSt  <- getMempoolState
+          (_,st) <- liftIO $ readTVarIO stRef
           let selectTx c []     = (c,[])
               selectTx c (t:tx) = case processSend t c of
                                     Left  _  -> selectTx c  tx
@@ -173,15 +172,15 @@ inMemoryStateView = do
           let (st', dat) = selectTx st
                          $ map merkleValue
                          $ toList
-                         $ mempFIFO mem
+                         $ mempFIFO memSt
           return
             ( BData dat
             , makeCommit newBlockValSet dat st' newBlockHeight
             )
         -- Here we construct handle to memepool
-      , mempoolHandle = makeMempoolHandle dict
+      , stateMempool = mem
       }
-    , [makeMempoolThread dict]
+    , [memThr]
     , snd <$> readTVarIO stRef
     )
 
@@ -243,44 +242,6 @@ processSend transaction@(Send pubK _ TxSend{..}) CoinState{..} = do
 
 
 
--- -- | Complete description of blockchain logic. Since we keep all state
--- --   in memory we simply use @Maybe@ to track failures
--- coinLogic :: BChLogic (Either CoinError) BData
--- coinLogic = BChLogic
---   { processTx     = \BChEval{..} -> void $ processTransaction bchValue (merkleValue blockchainState)
---   --
---   , processBlock  = \BChEval{..} -> do
---       let h    = blockHeight bchValue
---           step = flip $ process h
---       st <- foldM step (merkleValue blockchainState)
---           $ let BData txs = merkleValue $ blockData bchValue
---             in txs
---       return BChEval { bchValue        = ()
---                      , blockchainState = merkled st
---                      , ..
---                      }
---   --
---   , generateBlock = \NewBlock{..} txs -> do
---       let selectTx c []     = (c,[])
---           selectTx c (t:tx) = case processTransaction t c of
---                                 Left  _  -> selectTx c  tx
---                                 Right c' -> let (c'', b  ) = selectTx c' tx
---                                             in  (c'', t:b)
---       let (st', dat) = selectTx (merkleValue newBlockState) txs
---       return BChEval { bchValue        = BData dat
---                      , validatorSet    = merkled newBlockValSet
---                      , blockchainState = merkled st'
---                      }
---   }
---   where
---     process (Height 0) t s = case processDeposit t s of
---       Right x -> Right x
---       Left  _ -> processTransaction t s
---     process _          t s = processTransaction t s
-
-
-
-
 ----------------------------------------------------------------
 -- Transaction generator
 ----------------------------------------------------------------
@@ -296,10 +257,27 @@ data TxGenerator = TxGenerator
   , genMaxMempoolSize :: Int
   }
 
+-- | Create generator for coin transactions
+makeCoinGenerator
+  :: CoinSpecification
+  -> Maybe TxGenerator
+makeCoinGenerator CoinSpecification{..} = do
+  genDelay <- coinGeneratorDelay
+  return TxGenerator
+    { genPrivateKeys    = V.fromList privK
+    , genDestinaions    = V.fromList pubK
+    , genMaxMempoolSize = coinMaxMempoolSize
+    , ..
+    }
+  where
+    privK = take coinWallets $ makePrivKeyStream coinWalletsSeed
+    pubK  = publicKey <$> privK
+
+-- | Run generator for transactions
 transactionGenerator
   :: MonadIO m
   => TxGenerator
-  -> MempoolHandle (Alg BData) Tx
+  -> Mempool m (Alg BData) Tx
   -> m CoinState
   -> (Tx -> m ())
   -> m a
@@ -340,36 +318,6 @@ selectFromVec v = do
   i <- randomRIO (0, V.length v - 1)
   return $ v V.! i
 
-
-mintMockCoin
-  :: (Foldable f)
-  => f (Validator (Alg BData))
-  -> CoinSpecification
-  -> (Maybe TxGenerator, Genesis BData)
-mintMockCoin nodes CoinSpecification{..} =
-  ( do delay <- coinGeneratorDelay
-       return TxGenerator
-         { genPrivateKeys    = V.fromList privK
-         , genDestinaions    = V.fromList pubK
-         , genDelay          = delay
-         , genMaxMempoolSize = coinMaxMempoolSize
-         }
-  , Genesis
-    { genesisBlock  = genesis0
-    , genesisValSet = valSet
-    -- , blockchainState = merkled state0
-    }
-  )
-  where
-    privK        = take coinWallets $ makePrivKeyStream coinWalletsSeed
-    pubK         = publicKey <$> privK
-    Right valSet = makeValidatorSet nodes
-    txs          = [ Deposit pk coinAirdrop | pk <- pubK ]
-    -- Generate genesis with correct hash
-    -- state0       = CoinState mempty mempty
-    genesis0     = makeGenesis (BData txs) valSet valSet
-
-
 findInputs :: (Num i, Ord i) => i -> [(a,i)] -> [(a,i)]
 findInputs tgt = go 0
   where go _ [] = []
@@ -384,71 +332,135 @@ findInputs tgt = go 0
 -- Interpretation of coin
 ----------------------------------------------------------------
 
+-- | Specifications for mock coin status. It specify both genesis
+--   block and optionally transaction generator.
+data CoinSpecification = CoinSpecification
+ { coinAirdrop        :: !Integer
+   -- ^ Amount of coins allocated to each wallet
+ , coinWallets        :: !Int
+   -- ^ Number of wallets in use
+ , coinWalletsSeed    :: !Int
+   -- ^ Seed used to generate private keys for wallets
+ , coinGeneratorDelay :: !(Maybe Int)
+   -- ^ Delay between TX generation. Nothing means don't generate
+ , coinMaxMempoolSize :: !Int
+   -- ^ If mempool exceeds size new txs won't be generated
+ }
+ deriving (Generic,Show)
+ deriving JSON.FromJSON via HSChainCfg CoinSpecification
+
+
+-- | Parameters for 'CoinT' monad transformer
+data CoinDictM g = CoinDictM
+  { dictGauges    :: !g
+  , dictNamespace :: !Namespace
+  , dictLogEnv    :: !LogEnv
+  , dictConn      :: !(Connection 'RW BData)
+  }
+  deriving stock (Generic)
+
+-- | Application monad for coin
+newtype CoinT g m a = CoinT { unCoinT :: ReaderT (CoinDictM g) m a }
+  deriving newtype (Functor,Applicative,Monad,MonadIO)
+  deriving newtype (MonadThrow,MonadCatch,MonadMask,MonadFork)
+  deriving newtype (MonadReader (CoinDictM g))
+  -- HSChain instances
+  deriving MonadLogger
+       via LoggerByFields "dictLogEnv" "dictNamespace" (CoinT g m)
+  deriving (MonadReadDB BData, MonadDB BData)
+       via DatabaseByField "dictConn" BData (CoinT g m)
+
+-- We have two variants of Monitoring depending on type parameter 
+deriving via NoMonitoring (CoinT () m)
+    instance Monad m => MonadTMMonitoring (CoinT () m)
+deriving via MonitoringByField "dictGauges" (CoinT PrometheusGauges m)
+    instance MonadIO m => MonadTMMonitoring (CoinT PrometheusGauges m)
+
+runCoinT :: CoinDictM g -> CoinT g m a -> m a
+runCoinT d
+  = flip runReaderT d . unCoinT
+
+-- | Generate genesis from specification.
+coinGenesis
+  :: (Foldable f)
+  => f (Validator (Alg BData))
+  -> CoinSpecification
+  -> Genesis BData
+coinGenesis nodes CoinSpecification{..} = Genesis
+  { genesisBlock  = genesis0
+  , genesisValSet = valSet
+  }
+  where
+    privK        = take coinWallets $ makePrivKeyStream coinWalletsSeed
+    pubK         = publicKey <$> privK
+    Right valSet = makeValidatorSet nodes
+    txs          = [ Deposit pk coinAirdrop | pk <- pubK ]
+    genesis0     = makeGenesis (BData txs) valSet valSet
+
+-- | Interpret coin 
 interpretSpec
   :: (MonadDB BData m, MonadFork m, MonadMask m, MonadLogger m, MonadTMMonitoring m)
-  => Genesis BData
-  -> Configuration Example
-  -> BlockchainNet
-  -> NodeSpec BData
-  -> AppCallbacks m BData
-  -> m (RunningNode m BData, [m ()], IO CoinState)
-interpretSpec genesis cfg net spec cb = do
-  conn                  <- askConnectionRO
+  => Configuration Example      -- ^ Delays configuration
+  -> BlockchainNet              -- ^ Network API
+  -> NodeSpec BData             -- ^ Node specification
+  -> [Validator (Alg BData)]    -- ^ List of validators
+  -> CoinSpecification          -- ^ Specification
+  -> AppCallbacks m BData       -- ^ Commit callbacks
+  -> m (StateView m BData, [m ()])
+interpretSpec cfg net NodeSpec{..} valSet coin@CoinSpecification{..} cb = do
+  -- Start node
   (state,memThr,readST) <- inMemoryStateView
-  acts <- runNode cfg NodeDescription
-    { nodeValidationKey = nspecPrivKey spec
+  actions               <- runNode cfg NodeDescription
+    { nodeValidationKey = nspecPrivKey
     , nodeGenesis       = genesis
     , nodeCallbacks     = cb
     , nodeNetwork       = net
     , nodeStateView     = state
     }
+  -- Allocate transactions generators
+  txGenerator <- case makeCoinGenerator coin of
+    Nothing  -> return []
+    Just txG -> do
+      cursor <- getMempoolCursor $ mempoolHandle $ stateMempool state
+      return [ transactionGenerator txG
+                 (stateMempool state)
+                 (liftIO readST) 
+                 (pushTxAsync cursor)
+             ]
+  -- Done
   return
-    ( RunningNode { rnodeState   = state
-                  , rnodeConn    = conn
-                  , rnodeMempool = mempoolHandle state
-                  }
-    , memThr <> acts
-    , readST
+    ( state
+    , txGenerator <> memThr <> actions
     )
+  where
+    genesis = coinGenesis valSet coin
 
+
+-- | Execute node specification for mock network
 executeNodeSpec
-  :: (MonadIO m, MonadMask m, MonadFork m, MonadTMMonitoring m)
-  => NetSpec (NodeSpec BData)
-  -> CoinSpecification
-  -> ContT r m [RunningNode m BData]
-executeNodeSpec NetSpec{..} coin@CoinSpecification{..} = do
+  :: ()
+  => MockClusterConfig BData CoinSpecification
+  -> AppCallbacks (CoinT () IO) BData
+  -> ContT r IO [(StateView (CoinT () IO) BData, CoinDictM ())]
+executeNodeSpec MockClusterConfig{..} callbacks = do
   -- Create mock network and allocate DB handles for nodes
   net       <- liftIO P2P.newMockNet
-  resources <- allocNetwork net netTopology netNodeList  
+  resources <- allocNetwork net clusterTopology clusterNodes  
   -- Start nodes
-  rnodes    <- lift $ forM resources $ \(spec, bnet, conn, logenv) -> do
-    let run :: DBT 'RW BData (LoggerT m) x -> m x
-        run = runLoggerT logenv . runDBT conn
-    (rn, acts, readST) <- run $ interpretSpec
-      genesis
-      netNetCfg
+  rnodes    <- lift $ forM resources $ \(spec, bnet, dictConn, dictLogEnv) -> do
+    let dict = CoinDictM { dictGauges    = ()
+                         , dictNamespace = mempty
+                         , ..
+                         }
+    (state,threads) <- runCoinT dict $ interpretSpec
+      clusterCfg
       bnet
       spec
-      (maybe mempty callbackAbortAtH netMaxH)
-    return ( hoistRunningNode run rn
-           , run <$> acts
-           , readST
-           )
-  -- Allocate transactions generators
-  txGens <- lift $ case mtxGen of
-    Nothing  -> return []
-    Just txG -> forM rnodes $ \(RunningNode{..}, _, readST) -> do
-      cursor <- getMempoolCursor rnodeMempool
-      return $ transactionGenerator txG
-        rnodeMempool
-        (liftIO readST)
-        (pushTxAsync cursor)
-  -- Actually run nodes
-  lift   $ catchAbort $ runConcurrently $ ((\(_,x,_) -> x) =<< rnodes) ++ txGens
-  return $ (\(x,_,_) -> x) <$> rnodes
-  where
-    (mtxGen, genesis) = mintMockCoin
-      [ Validator (publicKey k) 1
-      | Just (PrivValidator k) <- nspecPrivKey <$> netNodeList
-      ] coin
-
+      [ Validator (publicKey k) 1 | Just (PrivValidator k) <- nspecPrivKey <$> clusterNodes ]
+      clusterBChData
+      callbacks
+    return (state, dict, threads)
+  --
+  lift $ catchAbort $ runConcurrently $ do (_,dict,threads) <- rnodes
+                                           runCoinT dict <$> threads
+  return [ (s,d) | (s,d,_) <- rnodes ]

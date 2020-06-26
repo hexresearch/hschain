@@ -116,7 +116,8 @@ runNode Configuration{..} NodeDescription{..} = do
   initializeBlockchain nodeGenesis nodeStateView
   return
     [ id $ descendNamespace "net"
-         $ startPeerDispatcher cfgNetwork bchNetwork bchInitialPeers appCh (mempoolHandle nodeStateView)
+         $ startPeerDispatcher cfgNetwork bchNetwork bchInitialPeers appCh
+           (mempoolHandle $ stateMempool nodeStateView)
     , id $ descendNamespace "consensus"
          $ runApplication cfgConsensus nodeValidationKey nodeStateView nodeCallbacks appCh
     -- , forever $ do

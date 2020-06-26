@@ -12,7 +12,6 @@
 module HSChain.Internal.Types.Consensus (
     -- * Blockchain logic
     StateView(..)
-  , hoistStateView
   , UncommitedState(..)
   , MempoolHandle(..)
   , MempoolCursor(..)
@@ -50,15 +49,7 @@ data StateView m a = StateView
   , generateCandidate  :: NewBlock a
                        -> m (a, UncommitedState m a)
   , stateHeight        :: m (Maybe Height)
-  , mempoolHandle      :: MempoolHandle (Alg a) (TX a)
-  }
-
-hoistStateView :: (Functor m) => (forall x. m x -> n x) -> StateView m a -> StateView n a
-hoistStateView fun StateView{..} = StateView
-  { validatePropBlock = (fmap . fmap) (fun . (fmap . fmap) (hoistDict fun)) validatePropBlock
-  , generateCandidate = \nb -> fun $ (fmap . fmap) (hoistDict fun) (generateCandidate nb)
-  , stateHeight       = fun stateHeight
-  , ..
+  , stateMempool       :: Mempool m (Alg a) (TX a)
   }
 
 -- | Changes to state that are valid but not persisted to database yet. Could

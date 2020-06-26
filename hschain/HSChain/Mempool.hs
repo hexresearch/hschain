@@ -18,16 +18,12 @@
 {-# LANGUAGE ViewPatterns               #-}
 -- |
 module HSChain.Mempool (
-   -- * Mempool
-    MempoolHandle(..)
+    -- * Mempool
+    Mempool(..)
+  , newMempool
+  , mempoolSize
   , MempoolCursor(..)
-  , MempoolInfo(..)
-    -- * Implementation
-  , MempoolCmd(..)
-  , MempoolDict(..)
-  , makeMempoolHandle
-  , makeMempoolThread
-  , newMempoolDict
+  , MempoolHandle(..)
     -- * Mempool data structures
   , MempoolState(..)
   , emptyMempoolState
@@ -35,6 +31,8 @@ module HSChain.Mempool (
   , mempoolFilterTX
   , mempoolRemoveTX
   , mempoolSelfTest
+    -- * Logging information
+  , MempoolInfo(..)
   ) where
 
 import Control.Applicative
@@ -68,10 +66,28 @@ import HSChain.Control.Util
 -- Mempool
 ----------------------------------------------------------------
 
+-- | Dictionary of functions for working with mempool object. All
+--   operations are performed asynchronously
+data Mempool m alg tx = Mempool
+  { getMempoolState       :: forall f. MonadIO f => f (MempoolState alg tx)
+    -- ^ Get current state of mempool. It's updated after every
+    --   command to mempool is processed.
+  , removeTxByHashes      :: [Hashed alg tx] -> m ()
+    -- ^ Remove transactions from mempool with given hashes.
+  , startMempoolFiltering :: (tx -> m Bool) -> m ()
+    -- ^ Command mempool to start filtering transactions asynchronously
+  , mempoolHandle         :: MempoolHandle alg tx
+    -- ^ Mempool handle for use in gossip. It's will to be removed
+    --   if\/when gossip logic changes.
+  }
+
+-- | Compute current size of a mempool
+mempoolSize :: MonadIO f => Mempool m alg tx -> f Int
+mempoolSize m = IMap.size . mempFIFO <$> getMempoolState m
+
 -- | Handle for working with mempool
 data MempoolHandle alg tx = MempoolHandle
   { getMempoolCursor :: forall m. MonadIO m => m (MempoolCursor alg tx)
-  , mempoolSize      :: forall m. MonadIO m => m Int
   }
 
 -- | Cursor into mempool which is used for gossiping data
@@ -87,6 +103,26 @@ data MempoolCursor alg tx = MempoolCursor
     -- ^ Take transaction from front and advance cursor. If cursor
     -- points at the end of queue nothing happens.
   }
+
+
+-- | Create new mempool.
+newMempool
+  :: (CryptoHash alg, CryptoHashable tx, MonadIO m)
+  => (tx -> Bool) -> m (Mempool m alg tx, m ())
+newMempool basicValidation = do
+  dict <- newMempoolDict basicValidation
+  let mempool = Mempool
+        { getMempoolState       = liftIO $ readTVarIO $ varMempool dict
+        , removeTxByHashes      = atomicallyIO . writeTChan (chPushTx dict) . CmdRemoveTx
+        , startMempoolFiltering = atomicallyIO . writeTChan (chPushTx dict) . CmdStartFiltering
+        , mempoolHandle         = makeMempoolHandle dict
+        }
+  return ( mempool , runMempool dict )
+
+----------------------------------------------------------------
+-- Mempool validation
+----------------------------------------------------------------
+
 
 data MempoolDict m alg tx = MempoolDict
   { basicValidation :: tx -> Bool
@@ -140,14 +176,13 @@ makeMempoolHandle MempoolDict{..} = MempoolHandle
               Just (n', tx) -> do writeTVar varN $! n'
                                   return $ Just $ merkleValue tx
         }
-  , mempoolSize = liftIO $ IMap.size . mempFIFO <$> readTVarIO varMempool
   }
 
-makeMempoolThread
+runMempool
   :: (CryptoHash alg, CryptoHashable tx, MonadIO m)
   => MempoolDict m alg tx
   -> m ()
-makeMempoolThread dict@MempoolDict{..} = do
+runMempool dict@MempoolDict{..} = do
   let awaitPending = do
         txs <- readTVar varPending
         case splitAt 4 txs of
