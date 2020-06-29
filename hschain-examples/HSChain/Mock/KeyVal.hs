@@ -99,36 +99,28 @@ mkGenesisBlock valSet = Genesis
 
 -- | Create view on blockchain state which is kept completely in
 --   memory
-inMemoryStateView :: MonadIO m => m (StateView m BData, IO BState)
-inMemoryStateView = do
-  stRef <- liftIO $ newTVarIO (Nothing, mempty)
-  let makeCommit valSet st' h = UncommitedState
-        { commitState   = atomicallyIO $ writeTVar stRef (Just h, st')
-        , newValidators = valSet
-        }
-  return
-    ( StateView
-      { validatePropBlock = \b valSet -> do
-          (_,st) <- liftIO $ readTVarIO stRef
-          return $ do
-            st' <- foldM (flip process) st
-                 $ unBData $ merkleValue $ blockData b
-            return $ makeCommit valSet st' (blockHeight b)
-      , stateHeight       = liftIO $ fst <$> readTVarIO stRef
+inMemoryStateView :: MonadIO m => ValidatorSet (Alg BData) -> StateView m BData
+inMemoryStateView = make Nothing mempty
+  where
+    make mh st vals = StateView
+      { stateHeight   = mh
+      , newValidators = vals
+      , commitState   = return ()
+      , validatePropBlock = \b valSet -> return $ do
+          st' <- foldM (flip process) st
+               $ unBData $ merkleValue $ blockData b
+          return $ make (Just $ blockHeight b) st' valSet
       , generateCandidate = \NewBlock{..} -> do
-          (_,st) <- liftIO $ readTVarIO stRef          
           i <- liftIO $ randomRIO (1,100)
           let Just k = find (`Map.notMember` st)
                        ["K_" ++ show (n :: Int) | n <- [1 ..]]
           let tx        = (k,i)
               Right st' = process tx st
           return ( BData [tx]
-                 , makeCommit newBlockValSet st' newBlockHeight
+                 , make (Just newBlockHeight) st' newBlockValSet 
                  )
-      , stateMempool      = nullMempool
+      , stateMempool = nullMempool
       }
-    , snd <$> readTVarIO stRef
-    )
 
 process :: Tx -> BState -> Either KeyValError BState
 process (k,v) m
@@ -147,8 +139,8 @@ interpretSpec
   -> AppCallbacks m BData
   -> m (StateView m BData, [m ()])
 interpretSpec genesis nspec bnet cfg cb = do
-  (state,_) <- inMemoryStateView
-  acts <- runNode cfg NodeDescription
+  let state = inMemoryStateView $ genesisValSet genesis
+  acts  <- runNode cfg NodeDescription
     { nodeValidationKey = nspecPrivKey nspec
     , nodeGenesis       = genesis
     , nodeCallbacks     = cb

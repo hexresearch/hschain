@@ -12,15 +12,11 @@
 module HSChain.Internal.Types.Consensus (
     -- * Blockchain logic
     StateView(..)
-  , UncommitedState(..)
   , MempoolHandle(..)
   , MempoolCursor(..)
     -- ** Logic of blockchain
   , NewBlock(..)
   , Genesis(..)
-    -- * Evaluation context
-  , BChEval(..)
-  , ValidatedBlock
   ) where
 
 import Codec.Serialise (Serialise)
@@ -43,26 +39,22 @@ import HSChain.Types.Validators
 
 -- | View on current state of blockchain.
 data StateView m a = StateView
-  { validatePropBlock  :: Block a
+  { stateHeight        :: Maybe Height
+    -- ^ Header of block corresponging to state.
+  , newValidators      :: ValidatorSet (Alg a)
+    -- ^ Validator set after block evaluation
+  , commitState        :: m ()
+    -- ^ Commit state to a persistent storage (if applicable).
+  , validatePropBlock  :: Block a
                        -> ValidatorSet (Alg a)
-                       -> m (Either (BChError a) (UncommitedState m a))
+                       -> m (Either (BChError a) (StateView m a))
+    -- ^ Validate block against current state.
   , generateCandidate  :: NewBlock a
-                       -> m (a, UncommitedState m a)
-  , stateHeight        :: m (Maybe Height)
+                       -> m (a, StateView m a)
+    -- ^ Generate new proposal for blockchain
   , stateMempool       :: Mempool m (Alg a) (TX a)
+    -- ^ Mempool
   }
-
--- | Changes to state that are valid but not persisted to database yet. Could
-data UncommitedState m a = UncommitedState
-  { commitState   :: m ()
-  , newValidators :: ValidatorSet (Alg a)
-  }
-
-instance HoistDict UncommitedState where
-  hoistDict fun UncommitedState{..} = UncommitedState
-    { commitState = fun commitState
-    , ..
-    }
 
 ----------------------------------------------------------------
 -- Blockchain logic
@@ -82,17 +74,3 @@ data NewBlock a = NewBlock
   , newBlockEvidence :: ![ByzantineEvidence a]
   , newBlockValSet   :: !(ValidatorSet (Alg a))
   }
-
-
--- | Context for evaluation for blockchain. It's simply triple of
---   blockchain state, set of validators and something else.
-data BChEval m a x = BChEval
-  { bchValue        :: !x
-  , blockchainState :: !(UncommitedState m a)
-  }
-  deriving stock (Generic, Functor)
-
--- | Block which is already validated. It uses same type as
---   'BlockValidation' but validator set and state correspons to the
---   state _after_ evaluation.
-type ValidatedBlock  m a = BChEval m a (Block a)

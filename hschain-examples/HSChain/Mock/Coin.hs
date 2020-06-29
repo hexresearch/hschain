@@ -57,6 +57,7 @@ import Control.Monad.Trans.Cont
 import qualified Data.Aeson as JSON
 import Data.Foldable
 import Data.Either
+import Data.IORef
 import Data.Maybe
 import Data.Map             (Map,(!))
 import qualified Data.Vector         as V
@@ -93,7 +94,7 @@ import qualified HSChain.Config
 ----------------------------------------------------------------
 
 -- | Context free TX validation. This function performs all checks
---   that could be done having onlyt 
+--   that could be done having onlyt
 validateTxContextFree :: Tx -> Either CoinError ()
 validateTxContextFree (Deposit _ n)
   | n > 0 = return ()
@@ -135,55 +136,53 @@ instance CryptoHashable CoinState where
 
 -- | Create view on blockchain state which is kept completely in
 --   memory
-inMemoryStateView :: MonadIO m => m (StateView m BData, [m ()], IO CoinState)
-inMemoryStateView = do
-  stRef <- liftIO $ newTVarIO (Nothing, CoinState mempty mempty)
+inMemoryStateView
+  :: MonadIO m
+  => ValidatorSet (Alg BData)
+  -> m (StateView m BData, [m ()], IO CoinState)
+inMemoryStateView valSet0 = do
+  varSt <- liftIO $ newIORef $ CoinState mempty mempty
   (mem@Mempool{..}, memThr) <- newMempool (isRight . validateTxContextFree)
-  let makeCommit valSet txList st' h = UncommitedState
-        { commitState = do
+  let make mh vals txList st = StateView
+        { stateHeight       = mh
+        , newValidators     = vals
+        -- For commit we simply remove transaction in block from
+        -- mempool and asking it to start filtering
+        , commitState       = do
             removeTxByHashes $ hashed <$> txList
-            startMempoolFiltering $ \tx -> return $ isRight $ processSend tx st'
-            atomicallyIO $ writeTVar stRef (Just h, st')
-        , newValidators = valSet
-        }
-  return
-    ( StateView
-      { validatePropBlock = \b valSet -> do
-          (_,st) <- liftIO $ readTVarIO stRef
-          return $ do
-            -- When we validate proposed block we want to do complete validation
+            startMempoolFiltering $ \tx -> return $ isRight $ processSend tx st
+            liftIO $ writeIORef varSt st
+        -- When we validate proposed block we want to do complete
+        -- validation since block is sent from outside
+        , validatePropBlock = \b valSet -> do
             let step s tx = do
                   validateTxContextFree tx
                   processTxFull (blockHeight b) tx s
-            let txList = unBData $ merkleValue $ blockData b
-            st' <- foldM step st txList
-            return $ makeCommit valSet txList st' (blockHeight b)
+            let txs = unBData $ merkleValue $ blockData b
+                st' = foldM step st txs
+            return $ make (Just $ blockHeight b) valSet txs <$> st'
         --
-      , stateHeight = liftIO $ fst <$> readTVarIO stRef
-        --
-      , generateCandidate = \NewBlock{..} -> do
-          memSt  <- getMempoolState
-          (_,st) <- liftIO $ readTVarIO stRef
-          let selectTx c []     = (c,[])
-              selectTx c (t:tx) = case processSend t c of
-                                    Left  _  -> selectTx c  tx
-                                    Right c' -> let (c'', b  ) = selectTx c' tx
-                                                in  (c'', t:b)                                     
-          let (st', dat) = selectTx st
-                         $ map merkleValue
-                         $ toList
-                         $ mempFIFO memSt
-          return
-            ( BData dat
-            , makeCommit newBlockValSet dat st' newBlockHeight
-            )
-        -- Here we construct handle to memepool
-      , stateMempool = mem
-      }
-    , [memThr]
-    , snd <$> readTVarIO stRef
-    )
-
+        , generateCandidate = \NewBlock{..} -> do
+            memSt  <- getMempoolState
+            let selectTx c []     = (c,[])
+                selectTx c (t:tx) = case processSend t c of
+                                      Left  _  -> selectTx c  tx
+                                      Right c' -> let (c'', b  ) = selectTx c' tx
+                                                  in  (c'', t:b)
+            let (st', dat) = selectTx st
+                           $ map merkleValue
+                           $ toList
+                           $ mempFIFO memSt
+            return
+              ( BData dat
+              , make (Just newBlockHeight) newBlockValSet dat st'
+              )
+        , stateMempool      = mem
+        }
+  return ( make Nothing valSet0 [] (CoinState mempty mempty)
+         , [memThr]
+         , readIORef varSt
+         )
 
 -- |Process transaction performing complete validation.
 processTxFull :: Height -> Tx -> CoinState -> Either CoinError CoinState
@@ -370,7 +369,7 @@ newtype CoinT g m a = CoinT { unCoinT :: ReaderT (CoinDictM g) m a }
   deriving (MonadReadDB BData, MonadDB BData)
        via DatabaseByField "dictConn" BData (CoinT g m)
 
--- We have two variants of Monitoring depending on type parameter 
+-- We have two variants of Monitoring depending on type parameter
 deriving via NoMonitoring (CoinT () m)
     instance Monad m => MonadTMMonitoring (CoinT () m)
 deriving via MonitoringByField "dictGauges" (CoinT PrometheusGauges m)
@@ -397,7 +396,7 @@ coinGenesis nodes CoinSpecification{..} = Genesis
     txs          = [ Deposit pk coinAirdrop | pk <- pubK ]
     genesis0     = makeGenesis (BData txs) valSet valSet
 
--- | Interpret coin 
+-- | Interpret coin
 interpretSpec
   :: (MonadDB BData m, MonadFork m, MonadMask m, MonadLogger m, MonadTMMonitoring m)
   => Configuration Example      -- ^ Delays configuration
@@ -409,7 +408,7 @@ interpretSpec
   -> m (StateView m BData, [m ()])
 interpretSpec cfg net NodeSpec{..} valSet coin@CoinSpecification{..} cb = do
   -- Start node
-  (state,memThr,readST) <- inMemoryStateView
+  (state,memThr,readST) <- inMemoryStateView $ genesisValSet genesis
   actions               <- runNode cfg NodeDescription
     { nodeValidationKey = nspecPrivKey
     , nodeGenesis       = genesis
@@ -424,7 +423,7 @@ interpretSpec cfg net NodeSpec{..} valSet coin@CoinSpecification{..} cb = do
       cursor <- getMempoolCursor $ mempoolHandle $ stateMempool state
       return [ transactionGenerator txG
                  (stateMempool state)
-                 (liftIO readST) 
+                 (liftIO readST)
                  (pushTxAsync cursor)
              ]
   -- Done
@@ -445,7 +444,7 @@ executeNodeSpec
 executeNodeSpec MockClusterConfig{..} callbacks = do
   -- Create mock network and allocate DB handles for nodes
   net       <- liftIO P2P.newMockNet
-  resources <- allocNetwork net clusterTopology clusterNodes  
+  resources <- allocNetwork net clusterTopology clusterNodes
   -- Start nodes
   rnodes    <- lift $ forM resources $ \(spec, bnet, dictConn, dictLogEnv) -> do
     let dict = CoinDictM { dictGauges    = ()

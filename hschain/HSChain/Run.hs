@@ -113,13 +113,13 @@ runNode
 runNode Configuration{..} NodeDescription{..} = do
   let BlockchainNet{..}  = nodeNetwork
   appCh <- newAppChans cfgConsensus
-  initializeBlockchain nodeGenesis nodeStateView
+  st    <- initializeBlockchain nodeGenesis nodeStateView
   return
     [ id $ descendNamespace "net"
          $ startPeerDispatcher cfgNetwork bchNetwork bchInitialPeers appCh
-           (mempoolHandle $ stateMempool nodeStateView)
+           (mempoolHandle $ stateMempool st)
     , id $ descendNamespace "consensus"
-         $ runApplication cfgConsensus nodeValidationKey nodeStateView nodeCallbacks appCh
+         $ runApplication cfgConsensus nodeValidationKey st nodeCallbacks appCh
     -- , forever $ do
     --     MempoolInfo{..} <- mempoolStats appMempool
     --     usingGauge prometheusMempoolSize      mempool'size
