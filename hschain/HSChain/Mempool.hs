@@ -21,6 +21,7 @@ module HSChain.Mempool (
     -- * Mempool
     Mempool(..)
   , newMempool
+  , nullMempool
   , mempoolSize
   , MempoolCursor(..)
   , MempoolHandle(..)
@@ -79,6 +80,18 @@ data Mempool m alg tx = Mempool
   , mempoolHandle         :: MempoolHandle alg tx
     -- ^ Mempool handle for use in gossip. It's will to be removed
     --   if\/when gossip logic changes.
+  }
+
+nullMempool :: Monad m => Mempool m alg tx
+nullMempool = Mempool
+  { getMempoolState       = return emptyMempoolState
+  , removeTxByHashes      = \_ -> return ()
+  , startMempoolFiltering = \_ -> return ()
+  , mempoolHandle         = MempoolHandle $ return $ MempoolCursor
+    { pushTxSync    = \_ -> return Nothing
+    , pushTxAsync   = \_ -> return ()
+    , advanceCursor = return Nothing
+    }
   }
 
 -- | Compute current size of a mempool
