@@ -61,8 +61,6 @@ module HSChain.Store (
   , retrieveValidatorSet
   , mustRetrieveBlock
   , mustRetrieveValidatorSet
-  , retrieveSavedState
-  , storeStateSnapshot
     -- * Blockchain invariants checkers
   , BlockchainInconsistency
   , checkStorage

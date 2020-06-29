@@ -39,9 +39,6 @@ module HSChain.Store.Internal.BlockDB
   , retrieveBlockReadyFromWAL
   , writeBlockToWAL
   , retrieveBlockFromWAL
-    -- * State snapshots
-  , storeStateSnapshot
-  , retrieveSavedState
   ) where
 
 import Codec.Serialise     (Serialise, serialise, deserialiseOrFail)
@@ -95,14 +92,6 @@ initializeBlockhainTables = do
     \  ( height INTEGER NOT NULL UNIQUE \
     \  , valref INTEGER NOT NULL\
     \  , FOREIGN KEY (valref) REFERENCES thm_cas(id))"
-  -- Snapshots of blockchain state
-  basicExecute_
-    "CREATE TABLE IF NOT EXISTS state_snapshot \
-    \  ( height           INT  NOT NULL \
-    \  , snapshot_blob    BLOB NOT NULL)"
-  r <- basicQuery_ "SELECT height FROM state_snapshot"
-  when (null (r :: [[SQL.SQLData]])) $
-    basicExecute_ "INSERT INTO state_snapshot (height, snapshot_blob) VALUES (-1, X'')"
   -- WAL
   --
   -- For PBFT we need to record all received messages which will be
@@ -350,28 +339,6 @@ mustRetrieveValidatorSet h
   = throwNothing (DBMissingValSet h) =<< retrieveValidatorSet h
 
 
-
-
-----------------------------------------------------------------
--- State snapshots
-----------------------------------------------------------------
-
--- | Retrieve height and state saved as snapshot.
-retrieveSavedState :: Serialise s => Query 'RO a (Maybe (Height, s))
-retrieveSavedState =
-  singleQWithParser parse "SELECT height, snapshot_blob FROM state_snapshot" ()
-  where
-    parse [SQL.SQLInteger h, SQL.SQLBlob s]
-      | h > 0
-      , Right r <- deserialiseOrFail (LBS.fromStrict s) = Just (Height $ fromIntegral h, r)
-      | otherwise = Nothing
-    parse _ = Nothing
-
--- | Write state snapshot into DB. @maybeSnapshot@ contains a
---  serialized value of a state associated with the processed block.
-storeStateSnapshot :: (Serialise s, MonadQueryRW a m) => Height -> s -> m ()
-storeStateSnapshot (Height h) state = do
-  basicExecute "UPDATE state_snapshot SET height = ?, snapshot_blob = ?" (h, serialise state)
 
 
 ----------------------------------------------------------------
