@@ -19,8 +19,10 @@ module HSChain.PoW.Types where
 
 import Codec.Serialise          (Serialise)
 import Control.DeepSeq
+import Control.Monad
 import Control.Monad.IO.Class
 import Data.Bits
+import qualified Data.ByteString as BS
 import Data.Monoid              (Sum(..))
 import Data.Time.Clock          (UTCTime)
 import Data.Time.Clock.POSIX    (getPOSIXTime,posixSecondsToUTCTime)
@@ -32,6 +34,7 @@ import GHC.Generics (Generic)
 import Text.Printf (printf)
 
 import HSChain.Crypto
+import HSChain.Crypto.SHA
 import HSChain.Crypto.Classes.Hash
 import HSChain.Types.Merkle.Types
 
@@ -281,3 +284,37 @@ instance ( IsMerkle f
          , JSON.FromJSON (BlockID b)
          , forall g. IsMerkle g => JSON.FromJSON (b g)
          ) => JSON.FromJSON (GBlock b f)
+
+---------------------------------------
+-- Handy utilities.
+---------------------------------------
+
+-- FIXME: correctly compute rertargeting
+retarget :: BlockData b => BH b -> Target
+retarget bh
+  -- Retarget
+  | bhHeight bh `mod` adjustInterval == 0
+  , Just old <- goBack adjustInterval bh
+  , bhHeight old /= 0
+  =   let Time t1 = bhTime old
+          Time t2 = bhTime bh
+          tgt     = targetInteger oldTarget
+          tgt'    = (tgt * fromIntegral (t2 - t1)) `div` (fromIntegral adjustInterval * fromIntegral seconds)
+      in Target tgt'
+  | otherwise
+    = oldTarget
+  where
+    oldTarget = blockTargetThreshold $ asHeader bh
+    (adjustInterval, Time seconds) = targetAdjustmentInfo bh
+
+hash256AsTarget :: CryptoHashable a => a -> Target
+hash256AsTarget a
+  = Target $ BS.foldl' (\i w -> (i `shiftL` 8) + fromIntegral  w) 0 bs
+  where
+    Hash bs = hash a :: Hash SHA256
+
+goBack :: Height -> BH b -> Maybe (BH b)
+goBack (Height 0) = Just
+goBack h          = goBack (pred h) <=< bhPrevious
+
+
