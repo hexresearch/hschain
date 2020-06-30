@@ -22,11 +22,8 @@ module HSChain.Examples.Simple
 import Codec.Serialise      (Serialise)
 import Control.Monad.IO.Class
 import Control.Applicative
-import Control.Monad
-import Data.Bits
 import Data.Functor.Classes (Show1)
 import qualified Data.Aeson           as JSON
-import qualified Data.ByteString      as BS
 import GHC.Generics         (Generic)
 
 import HSChain.Crypto
@@ -114,32 +111,4 @@ instance KVConfig cfg => BlockData (KV cfg) where
 
 instance KVConfig cfg => Mineable (KV cfg) where
   adjustPuzzle = fmap (flip (,) (Target 0)) . kvSolvePuzzle
-
--- FIXME: correctly compute rertargeting
-retarget :: KVConfig cfg => BH (KV cfg) -> Target
-retarget bh
-  -- Retarget
-  | bhHeight bh `mod` adjustInterval == 0
-  , Just old <- goBack adjustInterval bh
-  , bhHeight old /= 0
-  =   let Time t1 = bhTime old
-          Time t2 = bhTime bh
-          tgt     = targetInteger oldTarget
-          tgt'    = (tgt * fromIntegral (t2 - t1)) `div` (fromIntegral adjustInterval * fromIntegral seconds)
-      in Target tgt'
-  | otherwise
-    = oldTarget
-  where
-    oldTarget = kvTarget $ bhData bh
-    (adjustInterval, Time seconds) = targetAdjustmentInfo bh
-
-hash256AsTarget :: CryptoHashable a => a -> Target
-hash256AsTarget a
-  = Target $ BS.foldl' (\i w -> (i `shiftL` 8) + fromIntegral  w) 0 bs
-  where
-    Hash bs = hash a :: Hash SHA256
-
-goBack :: Height -> BH b -> Maybe (BH b)
-goBack (Height 0) = Just
-goBack h          = goBack (pred h) <=< bhPrevious
 

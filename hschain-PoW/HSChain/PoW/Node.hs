@@ -96,7 +96,6 @@ runNode pathsToConfig miningNode genesisBlock step inventBlock startState = do
       pow' <- startNode netcfg net cfgPeers db s0
       let pow = pow'
                 { sendNewBlock = \b -> do
-                                 liftIO $ putStrLn $ "mined: "++show b
                                  (sendNewBlock pow') b
                 }
       let printBCH = do
@@ -107,32 +106,46 @@ runNode pathsToConfig miningNode genesisBlock step inventBlock startState = do
                   maybe (return ()) (loop (n-1)) $ bhPrevious bh
             loop 100 (c ^. bestHead . _1)
       lift $ flip onException printBCH $ do
-        let doMine = do
-              c   <- atomicallyIO $ currentConsensus pow
-              let bh = c ^. bestHead . _1
-              case cfgMaxH of
-                Just h -> liftIO $ when (bhHeight bh > h) $ forever $ threadDelay maxBound
-                Nothing -> return ()
+        let doMine currentBlock = do
               now <- getCurrentTime
-              toMine <- atomicallyIO $ do
-                                       let cv = currentConsensusTVar pow
-                                       cc <- readTVar cv
-                                       let (bchBH, _, _) = _bestHead cc
-                                           (toMine, cc') = consensusComputeOnState cc
-                                                              (inventBlock bchBH)
-                                       writeTVar cv cc'
-                                       return toMine { blockTime = now }
+              let toMine = currentBlock { blockTime = now }
               maybeB <- fmap fst $ liftIO $ adjustPuzzle toMine
               case maybeB of
                 Just b -> sendNewBlock pow b >>= \case
                                                 Right () -> return ()
                                                 Left  e  -> error $ show e
-                Nothing -> doMine
-        let loop tid = do
-              liftIO $ mapM_ killThread tid
-              loop =<< if miningNode then Just <$> fork doMine else return Nothing
+                Nothing -> doMine currentBlock
+        let mineLoop baseBestHead tid = do
+              maybeNewSituation <- atomicallyIO $ do
+                 let cv = currentConsensusTVar pow
+                 cc <- readTVar cv
+                 let (bchBH, _, _) = _bestHead cc
+                     (toMine, cc') = consensusComputeOnState cc $ inventBlock bchBH
+                 if bchBH /= baseBestHead
+                   then do
+                     writeTVar cv cc'
+                     return $ Just (bchBH, toMine)
+                   else return Nothing
+              case maybeNewSituation of
+                Just (newBestHead, newBlock) -> do
+                  liftIO $ killThread tid
+                  case cfgMaxH of
+                    Just h
+                      | bhHeight newBestHead > h -> return ()
+                    _ -> mineLoop newBestHead =<< fork (doMine newBlock)
+                Nothing -> mineLoop baseBestHead tid
         --
-        loop =<< if miningNode then Just <$> fork doMine else return Nothing
+        if miningNode
+          then do
+            (startBestHead, startBlock) <- atomicallyIO $ do
+               let cv = currentConsensusTVar pow
+               cc <- readTVar cv
+               let (bchBH, _, _) = _bestHead cc
+                   (toMine, cc') = consensusComputeOnState cc $ inventBlock bchBH
+               writeTVar cv cc'
+               return (bchBH, toMine)
+            mineLoop startBestHead =<< fork (doMine startBlock)
+          else liftIO $ forever $ threadDelay maxBound
 
 
 -- | Simple in-memory implementation of DB
