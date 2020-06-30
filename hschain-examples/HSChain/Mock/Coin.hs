@@ -30,10 +30,12 @@ module HSChain.Mock.Coin (
   , CoinState(..)
   , Unspent(..)
   , UTXO(..)
-    -- * Transaction generator
+    -- ** Transaction generator
   , TxGenerator(..)
   , makeCoinGenerator
   , transactionGenerator
+    -- * In-DB state
+  , initCoinDB
     -- * Interpretation
     -- ** Monad
   , CoinT(..)
@@ -48,9 +50,9 @@ module HSChain.Mock.Coin (
 
 import Codec.Serialise
 import Control.Concurrent
-import Control.Concurrent.STM
 import Control.DeepSeq
 import Control.Monad
+import Control.Monad.Except
 import Control.Monad.Reader
 import Control.Monad.Catch
 import Control.Monad.Trans.Cont
@@ -60,6 +62,7 @@ import Data.Either
 import Data.IORef
 import Data.Maybe
 import Data.Map             (Map,(!))
+import Database.SQLite.Simple             (Only(..))
 import qualified Data.Vector         as V
 import qualified Data.Map.Strict     as Map
 import qualified Data.Set            as Set
@@ -72,7 +75,6 @@ import HSChain.Types.Merkle.Types
 import HSChain.Types.Validators
 import HSChain.Blockchain.Internal.Engine.Types
 import HSChain.Control.Class
-import HSChain.Control.Util
 import HSChain.Crypto
 import HSChain.Crypto.Classes.Hash
 import HSChain.Logger
@@ -82,6 +84,7 @@ import HSChain.Internal.Types.Consensus
 import HSChain.Mock
 import HSChain.Mock.Coin.Types
 import HSChain.Store
+import HSChain.Store.Internal.Query
 import HSChain.Mock.KeyList         (makePrivKeyStream)
 import HSChain.Mock.Types
 import HSChain.Monitoring
@@ -131,7 +134,6 @@ data CoinState = CoinState
 
 instance CryptoHashable CoinState where
   hashStep = genericHashStep "hschain"
-
 
 
 -- | Create view on blockchain state which is kept completely in
@@ -239,8 +241,6 @@ processSend transaction@(Send pubK _ TxSend{..}) CoinState{..} = do
     }
 
 
-
-
 ----------------------------------------------------------------
 -- Transaction generator
 ----------------------------------------------------------------
@@ -325,6 +325,143 @@ findInputs tgt = go 0
           | otherwise   = (tx,i) : go acc' rest
           where
             acc' = acc + i
+
+
+----------------------------------------------------------------
+-- State stored in database
+----------------------------------------------------------------
+
+-- | Initialize tables for storage of coin state. Storage is heavily
+--   tailored towards particular use case of demonstartion and
+--   benchmarks for mock UTXO blockchain and likely won't work well
+--   for more realistic case.
+initCoinDB :: MonadQueryRW BData m => m ()
+initCoinDB = do
+  -- Table for unspent transactions. In order to be able to work with
+  -- several instances of StateView we keep heights when UTXO was
+  -- creted and spent
+  basicExecute_
+    "CREATE TABLE IF NOT EXISTS coin_utxo \
+    \  ( tx_hash BLOB    NOT NULL \
+    \  , n_out   INTEGER NOT NULL \
+    \  , n_coins INTEGER NOT NULL \
+    \  , pk      BLOB    NOT NULL \
+    \  , h_added INTEGER NOT NULL \
+    \  , h_spent INTEGER NULL     \
+    \  , UNIQUE (tx_hash,n_out)   \
+    \  , FOREIGN KEY (tx_hash) REFERENCES coin_pk(id))"
+
+
+data UtxoChange
+  = Spent !Height
+    -- ^ Already existing UTXO is spent at given H
+  | Added !Unspent !Height
+    -- ^ UTXO was created at given H
+  | Both  !Unspent !Height !Height
+    -- ^ UTXO was created and then spent
+
+-- | State difference
+newtype UtxoDiff = UtxoDiff
+  { utxoDiff :: Map UTXO UtxoChange
+  }
+
+-- | Lookup unspent output in database
+dbLookupUTXO
+  :: (MonadQueryRO BData m)
+  => Height                     -- ^ Height at which state is calculated
+  -> Hashed (Alg BData) Tx      -- ^ Transaction hash
+  -> Int                        -- ^ Output number
+  -> m (Maybe Unspent)
+dbLookupUTXO h txHash nOut = do
+  r <- basicQuery1
+    "SELECT pk FROM coin_utxo \
+    \ WHERE tx_hash = ? AND n_out = ? \
+    \   AND (h_spent is NULL OR h_spent < ?"
+    (encodeToBS txHash, nOut, h)
+  return $ case r of
+    Nothing     -> Nothing
+    Just (bs,n) -> Just $ Unspent (fromMaybe (error "Invalid value in DB") $ decodeFromBS bs) n
+
+dbProcessDeposit
+  :: (Monad m)
+  => Tx -> UtxoDiff -> ExceptT CoinError m UtxoDiff
+dbProcessDeposit Send{} _ = throwError $ UnexpectedSend
+dbProcessDeposit tx@(Deposit pk nCoin) (UtxoDiff m) =
+  return $ UtxoDiff $ Map.insert utxo (Added (Unspent pk nCoin) (Height 0)) m
+  where
+    utxo = UTXO 0 (hashed tx)
+
+dbProcessSend
+  :: (MonadQueryRO BData m)
+  => Height -> Tx -> UtxoDiff -> ExceptT CoinError m UtxoDiff
+dbProcessSend _ Deposit{} _ = throwError DepositAtWrongH
+dbProcessSend h tx@(Send pk _ TxSend{..}) diff = do
+  -- Try to find all inputs for transaction
+  inputs <- forM txInputs $ \utxo@(UTXO nOut txH) -> do
+    Unspent pk' n <- case utxo `Map.lookup` utxoDiff diff of
+      Just (Added u _) -> return u
+      Just _               -> throwError $ CoinError "Already spent output"
+      Nothing -> dbLookupUTXO h txH nOut >>= \case
+        Nothing -> throwError $ CoinError "Already spent output"
+        Just x  -> return x
+    unless (pk == pk') $ throwError $ CoinError "PublicKey mismatch"
+    return n
+  -- Check that sum of inputs and outputs match
+  unless (sum inputs == sum [n | Unspent _ n <- txOutputs])
+    $ throwError $ CoinError "Missmatch between inputs and outputs"
+  -- Update diff
+  return
+    $ UtxoDiff
+    $ (\m -> foldl' addOutput  m ([0..] `zip` txOutputs))
+    $ (\m -> foldl' spendInput m txInputs)    
+    $ utxoDiff diff
+  where
+    txHash = hashed tx
+    spendInput m utxo = Map.alter
+      (\case
+          Nothing           -> Just $ Spent h
+          Just (Added u h0) -> Just $ Both u h0 h
+          Just _            -> error "Coin: internal error"
+      ) utxo m
+    addOutput m (i,u) = Map.insert (UTXO i txHash) (Added u h) m
+
+
+
+databaseStateView
+  :: (MonadIO m, MonadDB BData m)
+  => m (StateView m BData, [m ()])
+databaseStateView = do
+  (mem@Mempool{..}, memThr) <- newMempool (isRight . validateTxContextFree)
+  -- First we find what is latest height at which we updated state and
+  -- use it as startign point for our state management.
+  (h0,valSet0) <- queryRO $ do
+    h <- fmap fromOnly <$> basicQuery1 "SELECT MAX(h_added) FROM coin_utxo" ()
+    v <- mustRetrieveValidatorSet $ succH h
+    return (h,v)
+  -- Create state view
+  let make mh vals diff = StateView
+        { stateHeight       = mh
+        , newValidators     = vals
+        , commitState       = undefined
+        , validatePropBlock = \b valSet -> do
+            let step d tx
+                  | h == Height 0 = dbProcessDeposit tx d
+                  | otherwise     = dbProcessSend h tx d
+                  where
+                    h = blockHeight b
+            diff' <- queryRO $ runExceptT $ foldM step diff $ unBData $ merkleValue $ blockData b
+            undefined
+        , generateCandidate = \NewBlock{..} -> do
+            undefined
+        , stateMempool      = mem
+        }
+  -- Read 
+  return ( make undefined valSet0 (UtxoDiff Map.empty)
+         , [memThr]
+         )
+  where
+    succH = maybe (Height 0) succ
+
 
 
 ----------------------------------------------------------------

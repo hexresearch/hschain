@@ -38,6 +38,7 @@ Library
                      , exceptions           >=0.8.3
                      , parallel
                      , random
+                     , sqlite-simple
                      , serialise            >=0.2
                      , stm                  >=2.5
                      , transformers         >=0.5
