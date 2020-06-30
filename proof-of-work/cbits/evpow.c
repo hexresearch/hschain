@@ -445,6 +445,7 @@ evpow_check( uint8_t* suffix
 	SHA256_Final(hash, &full_ctx);
 	// second fastest second - hashes are equal.
 	if (0 != memcmp(hash, hash_to_compare, SHA256_DIGEST_LENGTH)) {
+		printf("HASHES DIFFER\n");
 		return 0;
 	}
 	// slowest one last - does answer really answer the puzzle?
@@ -468,6 +469,7 @@ evpow_check( uint8_t* suffix
 			}
 		}
 		if (literal_index >= EVPOW_K) {
+			printf("ANSWER IS WRONG\n");
 			return 0;
 		}
 	}

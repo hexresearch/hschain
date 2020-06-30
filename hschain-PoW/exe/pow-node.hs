@@ -73,12 +73,12 @@ instance Default BS.ByteString where defaultValue = BS.empty
 instance KVConfig TestChainNewPow where
   type Nonce TestChainNewPow = BS.ByteString
   kvAdjustInterval = Const 200
-  kvBlockTimeInterval  = Const (Time 1000)
+  kvBlockTimeInterval = Const (Time 10000)
   kvSolvePuzzle b0@GBlock{..} = do
-    maybeAnswerHash <- liftIO $ POWFunc.solve [LBS.toStrict $ serialise $ blockWithoutNonce h0] powCfg
-    case maybeAnswerHash of
+    (maybeAnswer, _hash) <- liftIO $ POWFunc.solve [LBS.toStrict $ serialise $ blockWithoutNonce h0] powCfg
+    case maybeAnswer of
       Nothing -> return Nothing
-      Just (answer, _hash) -> do
+      Just answer -> do
         let mined = b0 { blockData = blockData { kvNonce = answer } }
         return $ Just mined
     where
@@ -106,7 +106,6 @@ blockWithoutNonce block@GBlock{..} =
 
 defaultPOWConfig :: POWFunc.POWConfig
 defaultPOWConfig = POWFunc.defaultPOWConfig
-  { POWFunc.powCfgClausesCount = 1 } -- all for speed!
 
 genesis :: Block (KV TestChain)
 genesis = GBlock
