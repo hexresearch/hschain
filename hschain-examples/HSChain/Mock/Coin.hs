@@ -145,42 +145,44 @@ inMemoryStateView
 inMemoryStateView valSet0 = do
   varSt <- liftIO $ newIORef $ CoinState mempty mempty
   (mem@Mempool{..}, memThr) <- newMempool (isRight . validateTxContextFree)
-  let make mh vals txList st = StateView
-        { stateHeight       = mh
-        , newValidators     = vals
-        -- For commit we simply remove transaction in block from
-        -- mempool and asking it to start filtering
-        , commitState       = do
-            removeTxByHashes $ hashed <$> txList
-            startMempoolFiltering $ \tx -> return $ isRight $ processSend tx st
-            liftIO $ writeIORef varSt st
-        -- When we validate proposed block we want to do complete
-        -- validation since block is sent from outside
-        , validatePropBlock = \b valSet -> do
-            let step s tx = do
-                  validateTxContextFree tx
-                  processTxFull (blockHeight b) tx s
-            let txs = unBData $ merkleValue $ blockData b
-                st' = foldM step st txs
-            return $ make (Just $ blockHeight b) valSet txs <$> st'
-        --
-        , generateCandidate = \NewBlock{..} -> do
-            memSt  <- getMempoolState
-            let selectTx c []     = (c,[])
-                selectTx c (t:tx) = case processSend t c of
-                                      Left  _  -> selectTx c  tx
-                                      Right c' -> let (c'', b  ) = selectTx c' tx
-                                                  in  (c'', t:b)
-            let (st', dat) = selectTx st
-                           $ map merkleValue
-                           $ toList
-                           $ mempFIFO memSt
-            return
-              ( BData dat
-              , make (Just newBlockHeight) newBlockValSet dat st'
-              )
-        , stateMempool      = mem
-        }
+  let make mh vals txList st = r where
+        r = StateView
+          { stateHeight       = mh
+          , newValidators     = vals
+          -- For commit we simply remove transaction in block from
+          -- mempool and asking it to start filtering
+          , commitState       = do
+              removeTxByHashes $ hashed <$> txList
+              startMempoolFiltering $ \tx -> return $ isRight $ processSend tx st
+              liftIO $ writeIORef varSt st
+              return r
+          -- When we validate proposed block we want to do complete
+          -- validation since block is sent from outside
+          , validatePropBlock = \b valSet -> do
+              let step s tx = do
+                    validateTxContextFree tx
+                    processTxFull (blockHeight b) tx s
+              let txs = unBData $ merkleValue $ blockData b
+                  st' = foldM step st txs
+              return $ make (Just $ blockHeight b) valSet txs <$> st'
+          --
+          , generateCandidate = \NewBlock{..} -> do
+              memSt  <- getMempoolState
+              let selectTx c []     = (c,[])
+                  selectTx c (t:tx) = case processSend t c of
+                                        Left  _  -> selectTx c  tx
+                                        Right c' -> let (c'', b  ) = selectTx c' tx
+                                                    in  (c'', t:b)
+              let (st', dat) = selectTx st
+                             $ map merkleValue
+                             $ toList
+                             $ mempFIFO memSt
+              return
+                ( BData dat
+                , make (Just newBlockHeight) newBlockValSet dat st'
+                )
+          , stateMempool      = mem
+          }
   return ( make Nothing valSet0 [] (CoinState mempty mempty)
          , [memThr]
          , readIORef varSt

@@ -102,25 +102,26 @@ mkGenesisBlock valSet = Genesis
 inMemoryStateView :: MonadIO m => ValidatorSet (Alg BData) -> StateView m BData
 inMemoryStateView = make Nothing mempty
   where
-    make mh st vals = StateView
-      { stateHeight   = mh
-      , newValidators = vals
-      , commitState   = return ()
-      , validatePropBlock = \b valSet -> return $ do
-          st' <- foldM (flip process) st
-               $ unBData $ merkleValue $ blockData b
-          return $ make (Just $ blockHeight b) st' valSet
-      , generateCandidate = \NewBlock{..} -> do
-          i <- liftIO $ randomRIO (1,100)
-          let Just k = find (`Map.notMember` st)
-                       ["K_" ++ show (n :: Int) | n <- [1 ..]]
-          let tx        = (k,i)
-              Right st' = process tx st
-          return ( BData [tx]
-                 , make (Just newBlockHeight) st' newBlockValSet 
-                 )
-      , stateMempool = nullMempool
-      }
+    make mh st vals = r where
+      r = StateView
+        { stateHeight   = mh
+        , newValidators = vals
+        , commitState   = return r
+        , validatePropBlock = \b valSet -> return $ do
+            st' <- foldM (flip process) st
+                 $ unBData $ merkleValue $ blockData b
+            return $ make (Just $ blockHeight b) st' valSet
+        , generateCandidate = \NewBlock{..} -> do
+            i <- liftIO $ randomRIO (1,100)
+            let Just k = find (`Map.notMember` st)
+                         ["K_" ++ show (n :: Int) | n <- [1 ..]]
+            let tx        = (k,i)
+                Right st' = process tx st
+            return ( BData [tx]
+                   , make (Just newBlockHeight) st' newBlockValSet 
+                   )
+        , stateMempool = nullMempool
+        }
 
 process :: Tx -> BState -> Either KeyValError BState
 process (k,v) m

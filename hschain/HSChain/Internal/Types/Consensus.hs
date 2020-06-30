@@ -43,7 +43,7 @@ data StateView m a = StateView
     -- ^ Header of block corresponging to state.
   , newValidators      :: ValidatorSet (Alg a)
     -- ^ Validator set after block evaluation
-  , commitState        :: m ()
+  , commitState        :: m (StateView m a)
     -- ^ Commit state to a persistent storage (if applicable).
   , validatePropBlock  :: Block a
                        -> ValidatorSet (Alg a)

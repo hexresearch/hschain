@@ -191,14 +191,15 @@ decideNewBlock config appValidatorKey
          h     = blockHeight blk
      logger InfoS "Actual commit" $ LogBlockInfo h (merkleValue $ blockData blk) nSign
   -- We have decided which block we want to commit so let commit it
-  do let h = blockHeight blk
-     mustQueryRW $ do
-       storeCommit cmt      blk
-       storeValSet (succ h) (merkled $ newValidators st')
-       mapM_ storeBlockchainEvidence $ merkleValue $ blockEvidence blk
-     appCommitCallback blk
-     commitState st'
-  return (cmt, st')
+  st'' <- do
+    let h = blockHeight blk
+    mustQueryRW $ do
+      storeCommit cmt      blk
+      storeValSet (succ h) (merkled $ newValidators st')
+      mapM_ storeBlockchainEvidence $ merkleValue $ blockEvidence blk
+    appCommitCallback blk
+    commitState st'
+  return (cmt, st'')
 
 -- Producer for MessageRx. First we replay WAL and then we read
 -- messages from channels.
