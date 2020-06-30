@@ -299,9 +299,12 @@ under_complexity_threshold(uint8_t* hash, uint8_t* target) {
 } /* under_complexity_threshold */
 
 static int
-find_answer(uint8_t* suffix, size_t suffix_size, uint8_t* answer, uint8_t* full_hash, int milliseconds_allowance, uint8_t* target, Solver* solver, double* first_result_ms) {
+find_answer(uint8_t* suffix, size_t suffix_size, uint8_t* answer, uint8_t* best_full_hash, int milliseconds_allowance, uint8_t* target, Solver* solver, double* first_result_ms) {
 	clock_t end_time;
 	clock_t last_time;
+
+	uint8_t best_hash[SHA256_DIGEST_LENGTH];
+	memset(best_hash, 0xff, sizeof(best_hash));
 
 	// configure timeout - it will include time to generate problem.
 	last_time = clock();
@@ -333,10 +336,23 @@ find_answer(uint8_t* suffix, size_t suffix_size, uint8_t* answer, uint8_t* full_
 		SHA256_Init(&full_hash_context);
 		SHA256_Update(&full_hash_context, answer, EVPOW_ANSWER_BYTES);
 		SHA256_Update(&full_hash_context, suffix, suffix_size);
-		SHA256_Final(full_hash, &full_hash_context);
-		if (under_complexity_threshold(full_hash, target)) {
+		SHA256_Final(best_full_hash, &full_hash_context);
+		if (under_complexity_threshold(best_full_hash, target)) {
 			//printf("FOUND!\n");
 			return 1; // and everything is in place - answer filled, hash computed.
+		}
+
+		// compare best hash found and current full_hash.
+		// here we try to find first difference.
+		for (i = SHA256_DIGEST_LENGTH - 1; i >= 0; i--) {
+			if (best_hash[i] != best_full_hash[i]) {
+				break;
+			}
+		}
+		// copy best hash if difference indicates current best_full_hash
+		// is less than one previously recorded.
+		if (i >= 0 && best_hash[i] > best_full_hash[i]) {
+			memcpy(best_hash, best_full_hash, sizeof(best_hash));
 		}
 
 		// here we form a clause that blocks current assignment.
@@ -353,6 +369,7 @@ find_answer(uint8_t* suffix, size_t suffix_size, uint8_t* answer, uint8_t* full_
 		}
 		solver_add(solver, 0); // finalize clause addition. we are ready for another solver_sat() call.
 	}
+	memcpy(best_full_hash, best_hash, sizeof(best_hash));
 	return 0;
 } /* find_answer */
 
