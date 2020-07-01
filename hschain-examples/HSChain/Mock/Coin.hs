@@ -49,6 +49,7 @@ module HSChain.Mock.Coin (
   ) where
 
 import Codec.Serialise
+import Control.Arrow (second)
 import Control.Concurrent
 import Control.DeepSeq
 import Control.Monad
@@ -376,9 +377,9 @@ dbLookupUTXO
   -> m (Maybe Unspent)
 dbLookupUTXO h txHash nOut = do
   r <- basicQuery1
-    "SELECT pk FROM coin_utxo \
+    "SELECT pk,n_coins FROM coin_utxo \
     \ WHERE tx_hash = ? AND n_out = ? \
-    \   AND (h_spent is NULL OR h_spent < ?"
+    \   AND (h_spent is NULL OR h_spent < ?)"
     (encodeToBS txHash, nOut, h)
   return $ case r of
     Nothing     -> Nothing
@@ -427,43 +428,118 @@ dbProcessSend h tx@(Send pk _ TxSend{..}) diff = do
       ) utxo m
     addOutput m (i,u) = Map.insert (UTXO i txHash) (Added u h) m
 
-
+dbRecordDiff
+  :: (MonadQueryRW BData m)
+  => (UTXO, UtxoChange) -> m ()
+dbRecordDiff (UTXO nOut txHash, change) = case change of
+  Spent h -> basicExecute
+    "UPDATE coin_utxo SET h_spent=? WHERE tx_hash=? AND n_out=?"
+    (h, encodeToBS txHash, nOut)
+  Added (Unspent pk i) h     -> basicExecute
+    "INSERT INTO coin_utxo VALUES (?,?,?,?,?,NULL)"
+    (encodeToBS txHash, nOut, i, encodeToBS pk, h)
+  Both  (Unspent pk i) h1 h2 -> basicExecute
+    "INSERT INTO coin_utxo VALUES (?,?,?,?,?,?)"
+    (encodeToBS txHash, nOut, i, encodeToBS pk, h1,h2)
 
 databaseStateView
-  :: (MonadIO m, MonadDB BData m)
-  => m (StateView m BData, [m ()])
-databaseStateView = do
+  :: (MonadIO m, MonadThrow m, MonadDB BData m)
+  => ValidatorSet (Alg BData)
+  -> m (StateView m BData, [m ()])
+databaseStateView valSetH0 = do
   (mem@Mempool{..}, memThr) <- newMempool (isRight . validateTxContextFree)
   -- First we find what is latest height at which we updated state and
   -- use it as startign point for our state management.
   (h0,valSet0) <- queryRO $ do
-    h <- fmap fromOnly <$> basicQuery1 "SELECT MAX(h_added) FROM coin_utxo" ()
-    v <- mustRetrieveValidatorSet $ succH h
-    return (h,v)
+    [h] <- fmap fromOnly <$> basicQuery "SELECT MAX(h_added) FROM coin_utxo" ()
+    v   <- retrieveValidatorSet $ succH h
+    return (h, fromMaybe valSetH0 v)
   -- Create state view
-  let make mh vals diff = StateView
-        { stateHeight       = mh
-        , newValidators     = vals
-        , commitState       = undefined
-        , validatePropBlock = \b valSet -> do
-            let step d tx
-                  | h == Height 0 = dbProcessDeposit tx d
-                  | otherwise     = dbProcessSend h tx d
-                  where
-                    h = blockHeight b
-            diff' <- queryRO $ runExceptT $ foldM step diff $ unBData $ merkleValue $ blockData b
-            undefined
-        , generateCandidate = \NewBlock{..} -> do
-            undefined
-        , stateMempool      = mem
-        }
+  let make mh txList vals diff = sview where
+        sview = StateView
+          { stateHeight   = mh
+          , newValidators = vals
+          , commitState   = case mh of
+              Nothing -> return sview
+              Just h  -> do
+                -- Filter mempool
+                removeTxByHashes $ hashed <$> txList
+                startMempoolFiltering $ \tx -> case mh of
+                  Nothing -> return False
+                  Just h  -> fmap isRight $ queryRO $ runExceptT $ dbProcessSend h tx diff
+                mustQueryRW $ do
+                  mapM_ dbRecordDiff $ Map.toList $ utxoDiff diff
+                return $ make mh txList vals (UtxoDiff Map.empty)
+          , validatePropBlock = \b valSet -> do
+              let step d tx
+                    | h == Height 0 = dbProcessDeposit tx d
+                    | otherwise     = dbProcessSend h tx d
+                    where
+                      h = blockHeight b
+              let txs = unBData $ merkleValue $ blockData b
+              mdiff <- queryRO $ runExceptT $ foldM step diff txs
+              return $ make (Just $ blockHeight b) txs valSet <$> mdiff
+          , generateCandidate = \NewBlock{..} -> do
+              let selectTx d []     = return (d,[])
+                  selectTx d (t:tx) =
+                    runExceptT (dbProcessSend newBlockHeight t d) >>= \case
+                      Left  _  -> selectTx d tx
+                      Right d' -> second (t:) <$> selectTx d' tx
+              --
+              memSt <- getMempoolState
+              (diff',txs) <- queryRO $ selectTx diff $ map merkleValue $ toList $ mempFIFO memSt
+              return ( BData txs
+                     , make (Just newBlockHeight) txs newBlockValSet diff'
+                     )
+          -- Mempool
+          , stateMempool = mem
+          }
   -- Read 
-  return ( make undefined valSet0 (UtxoDiff Map.empty)
+  return ( make h0 [] valSet0 (UtxoDiff Map.empty)
          , [memThr]
          )
   where
     succH = maybe (Height 0) succ
 
+
+
+-- | Run generator for transactions
+dbTransactionGenerator
+  :: (MonadReadDB BData m, MonadIO m)
+  => TxGenerator
+  -> Mempool m (Alg BData) Tx
+  -> (Tx -> m ())
+  -> m a
+dbTransactionGenerator gen mempool push = forever $ do
+  size <- mempoolSize mempool
+  when (maxN > 0 && size < maxN) $
+    push =<< dbGenerateTransaction gen
+  liftIO $ threadDelay $ genDelay gen * 1000
+  where
+    maxN = genMaxMempoolSize gen
+
+
+dbGenerateTransaction :: (MonadIO m, MonadReadDB BData m) => TxGenerator -> m Tx
+dbGenerateTransaction TxGenerator{..} = do
+  privK  <- liftIO $ selectFromVec genPrivateKeys
+  target <- liftIO $ selectFromVec genDestinaions
+  amount <- liftIO $ randomRIO (1,20)
+  let pubK = publicKey privK
+  allInputs <- fmap (fmap ((\(nO,h,nC) -> (UTXO nO (fromJust $ decodeFromBS h), nC))))
+             $ queryRO $ basicQuery
+               "SELECT n_out, tx_hash, n_coins FROM coin_utxo WHERE pk=? AND h_spent IS NULL"
+               (Only (encodeToBS pubK))
+  let inputs    = findInputs amount allInputs
+      avail     = sum (snd <$> inputs)
+      change    = avail - amount
+      outs | change < 0 = [ Unspent target avail]
+           | otherwise  = [ Unspent target amount
+                          , Unspent pubK   change
+                          ]
+      tx = TxSend { txInputs  = map fst inputs
+                  , txOutputs = outs
+                  }
+  return $ Send pubK (signHashed privK tx) tx
 
 
 ----------------------------------------------------------------
@@ -547,7 +623,9 @@ interpretSpec
   -> m (StateView m BData, [m ()])
 interpretSpec cfg net NodeSpec{..} valSet coin@CoinSpecification{..} cb = do
   -- Start node
-  (state,memThr,readST) <- inMemoryStateView $ genesisValSet genesis
+  -- (state,memThr,readST) <- inMemoryStateView $ genesisValSet genesis
+  queryRW initCoinDB
+  (state,memThr) <- databaseStateView $ genesisValSet genesis
   actions               <- runNode cfg NodeDescription
     { nodeValidationKey = nspecPrivKey
     , nodeGenesis       = genesis
@@ -560,9 +638,8 @@ interpretSpec cfg net NodeSpec{..} valSet coin@CoinSpecification{..} cb = do
     Nothing  -> return []
     Just txG -> do
       cursor <- getMempoolCursor $ mempoolHandle $ stateMempool state
-      return [ transactionGenerator txG
+      return [ dbTransactionGenerator txG
                  (stateMempool state)
-                 (liftIO readST)
                  (pushTxAsync cursor)
              ]
   -- Done
