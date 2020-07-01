@@ -109,7 +109,7 @@ rewindBlockchainState st0 = do
               hasValidatorSet (Height 1) >>= \case
                 True  -> return ()
                 False -> storeValSet (Height 1) (merkled $ newValidators st')
-            return st'
+            commitState st'
   --
   foldM step st0 [h0 .. hChain]
 
