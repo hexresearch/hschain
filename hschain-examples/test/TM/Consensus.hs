@@ -34,13 +34,12 @@ import HSChain.Control.Util
 import HSChain.Crypto
 import HSChain.Internal.Types.Messages
 import HSChain.Internal.Types.Config
+import HSChain.Internal.Types.Consensus
 import HSChain.Logger
-import HSChain.Mempool
 import HSChain.Store
-import HSChain.Store.STM
 import HSChain.Store.Internal.Query
 import HSChain.Types
-import HSChain.Mock.KeyVal  (BData(..),keyValLogic)
+import HSChain.Mock.KeyVal  (BData(..),inMemoryStateView)
 import HSChain.Types.Merkle.Types
 
 import Test.Tasty
@@ -541,14 +540,14 @@ startConsensus
 startConsensus k = do
   chans <- newAppChans cfg
   ch    <- atomicallyIO $ dupTChan $ appChanTx chans
-  store <- newSTMBchStorage $ merkled mempty
-  let appStore = AppStore nullMempool store
-  initializeBlockchain genesis keyValLogic appStore
+  st    <- initializeBlockchain genesis
+         $ inMemoryStateView
+         $ genesisValSet genesis
   return ( ( ch
            , appChanRx chans
            )
          , runApplication cfg (Just (PrivValidator k))
-             keyValLogic appStore mempty chans
+             st mempty chans
          )
   where
     cfg = cfgConsensus (def :: Configuration FastTest)

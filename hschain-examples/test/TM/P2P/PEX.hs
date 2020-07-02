@@ -293,7 +293,6 @@ createTestNetworkWithValidatorsSetAndConfig validators cfg netDescr = do
             { nspecPrivKey     = validatorPK
             , nspecDbName      = Nothing
             , nspecLogFile     = []
-            , nspecPersistIval = Nothing
             }
           BlockchainNet
             { bchNetwork      = createMockNode net (intToNetAddr ncFrom)

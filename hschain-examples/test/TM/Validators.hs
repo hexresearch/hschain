@@ -16,11 +16,9 @@ module TM.Validators (tests) where
 
 import Codec.Serialise
 import Control.DeepSeq
-import Control.Applicative
 import Control.Monad
 import Control.Monad.Trans.Cont
 import Control.Monad.Trans.Class
-import Control.Monad.Trans.Except
 import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Data.Maybe
@@ -40,6 +38,7 @@ import HSChain.Crypto
 import HSChain.Crypto.Classes.Hash
 import HSChain.Crypto.Ed25519 (Ed25519)
 import HSChain.Crypto.SHA     (SHA512)
+import HSChain.Internal.Types.Consensus
 import HSChain.Logger
 import HSChain.Mempool
 import HSChain.Mock.KeyList (makePrivKeyStream)
@@ -48,7 +47,6 @@ import HSChain.Mock
 import HSChain.Monitoring
 import HSChain.Run
 import HSChain.Store
-import HSChain.Store.STM
 import HSChain.Types
 import HSChain.Types.Merkle.Types
 import HSChain.Arbitrary.Instances ()
@@ -131,12 +129,11 @@ testValidatorChange :: IO ()
 testValidatorChange = withTimeOut 20e6 $ do
   evalContT $ do
     net       <- liftIO P2P.newMockNet
-    resources <- allocNetwork net (netTopology spec) (netNodeList spec)
-    nodes     <- executeNodeSpec  spec resources
+    resources <- allocNetwork net (clusterTopology spec) (clusterNodes spec)
+    conn:_    <- executeNodeSpec  spec resources
     -- Execute nodes for second time!
     _         <- executeNodeSpec  spec resources
     -- Now test that we have correct validator sets for every height
-    let conn = rnodeConn $ head nodes
     liftIO $ runDBT conn $ do
       checkVals valSet0 (Height  1)
       checkVals valSet0 (Height  2)
@@ -153,11 +150,12 @@ testValidatorChange = withTimeOut 20e6 $ do
       v <- queryRO $ mustRetrieveValidatorSet h
       liftIO $ assertEqual (show h) v0 v
     --
-    spec = NetSpec
-      { netNodeList = [ NodeSpec (Just $ PrivValidator k) Nothing [] Nothing
-                      | k <- privK]
-      , netTopology = All2All
-      , netNetCfg   =
+    spec = MockClusterConfig
+      { clusterTopology = All2All
+      , clusterNodes    = [ NodeSpec (Just $ PrivValidator k) Nothing []
+                          | k <- privK
+                          ]
+      , clusterCfg      =
         let c = def
         in  c { cfgConsensus = ConsensusCfg
                 { timeoutNewHeight  = 10
@@ -168,7 +166,7 @@ testValidatorChange = withTimeOut 20e6 $ do
                 , incomingQueueSize = 10
                 }
               } `asTypeOf` c
-      , netMaxH     = Just $ Height 10
+      , clusterBChData = ()
       }
 
 
@@ -186,12 +184,9 @@ data ValErr = ValErr
   deriving anyclass (Exception)
 
 instance BlockData Tx where
-  type TX              Tx = Tx
-  type BlockchainState Tx = ValidatorSet (Ed25519 :& SHA512)
-  type BChError        Tx = ValErr
-  type BChMonad        Tx = Maybe
-  type Alg             Tx = Ed25519 :& SHA512
-  bchLogic                = transitions
+  type TX       Tx = Tx
+  type BChError Tx = ValErr
+  type Alg      Tx = Ed25519 :& SHA512
   proposerSelection       = ProposerSelection randomProposerSHA512
 
 privK :: [PrivKey (Alg Tx)]
@@ -206,35 +201,39 @@ Right valSet3 = makeValidatorSet [Validator k 1 | k <- [pk1,pk2,pk3    ]]
 Right valSet6 = makeValidatorSet [Validator k 1 | k <- [pk1,pk2,pk3,pk4]]
 Right valSet8 = makeValidatorSet [Validator k 1 | k <- [    pk2,pk3,pk4]]
 
-transitions :: BChLogic Maybe Tx
-transitions = BChLogic
-  { processTx     = \_ -> empty
-  --
-  , processBlock  = \BChEval{..} -> fmap (() <$)
-                                  $ gen (merkleValue validatorSet)
-                                  $ merkleValue $ blockData bchValue
-  --
-  , generateBlock = \NewBlock{..} _ -> case newBlockHeight of
-      Height 3 -> gen newBlockValSet $ AddVal pk3 1
-      Height 6 -> gen newBlockValSet $ AddVal pk4 1
-      Height 8 -> gen newBlockValSet $ RmVal  pk1
-      _        -> gen newBlockValSet $ Noop
-  }
+inMemoryStateView :: MonadIO m => ValidatorSet (Alg Tx) -> StateView m Tx
+inMemoryStateView = make Nothing
   where
-    gen vals tx = do
-      let adjustment = process tx
-      valSet' <- case makeValidatorSet $ adjustment $ asValidatorList vals of
-                   Right v -> return v
-                   Left  _ -> empty
-      return BChEval { bchValue        = tx
-                     , blockchainState = merkled valSet'
-                     , validatorSet    = merkled valSet'
-                     }
-    -- We're permissive and allow remove nonexiting validator
-    process Noop         = id
-    process (AddVal k i) = (Validator k i :)
-                         . filter ((/=k) . validatorPubKey)
-    process (RmVal  k)   = filter ((/=k) . validatorPubKey)
+    make mh vals = viewSt where
+      viewSt = StateView
+        { stateHeight   = mh
+        , newValidators = vals
+        , commitState   = return viewSt
+        , stateMempool  = nullMempool
+        --
+        , validatePropBlock = \b _ -> return $ do
+            let tx = merkleValue $ blockData b
+            case makeValidatorSet $ process tx $ asValidatorList vals of
+              Left  _     -> Left ValErr
+              Right vals' -> Right $ make (Just $ blockHeight b) vals'
+        , generateCandidate = \NewBlock{..} -> do
+            let prop = case newBlockHeight of
+                  Height 3 -> AddVal pk3 1
+                  Height 6 -> AddVal pk4 1
+                  Height 8 -> RmVal  pk1
+                  _        -> Noop
+                Right vals' = makeValidatorSet $ process prop $ asValidatorList vals
+            return ( prop
+                   , make (Just newBlockHeight) vals'
+                   )
+        }
+
+-- We're permissive and allow remove nonexiting validator
+process :: Tx -> [Validator (Alg Tx)] -> [Validator (Alg Tx)]
+process Noop         = id
+process (AddVal k i) = (Validator k i :)
+                     . filter ((/=k) . validatorPubKey)
+process (RmVal  k)   = filter ((/=k) . validatorPubKey)
 
 
 
@@ -250,55 +249,40 @@ interpretSpec
   -> BlockchainNet
   -> Configuration Example
   -> AppCallbacks m Tx
-  -> m (RunningNode m Tx, [m ()])
+  -> m (Connection 'RO Tx, [m ()])
 interpretSpec genesis nspec bnet cfg cb = do
-  conn  <- askConnectionRO
-  store <- newSTMBchStorage $ blockchainState genesis
-  let astore = AppStore { appBchState = store
-                        , appMempool  = nullMempool
-                        }
   acts  <- runNode cfg NodeDescription
     { nodeValidationKey = nspecPrivKey nspec
     , nodeGenesis       = genesis
+    , nodeStateView     = inMemoryStateView $ genesisValSet genesis
     , nodeCallbacks     = cb
-    , nodeRunner        = maybe (throwE ValErr) return
-
-    , nodeStore         = astore
     , nodeNetwork       = bnet
     }
-  return
-    ( RunningNode { rnodeState   = store
-                  , rnodeConn    = conn
-                  , rnodeMempool = appMempool astore
-                  }
-    , acts
-    )
-
+  conn <- askConnectionRO
+  return (conn, acts)
 
 executeNodeSpec
   :: (MonadIO m, MonadMask m, MonadFork m,  MonadTMMonitoring m)
-  => NetSpec (NodeSpec Tx)
+  => MockClusterConfig Tx ()
   -> [(NodeSpec Tx, BlockchainNet, Connection 'RW Tx, LogEnv)]
-  -> ContT r m [RunningNode m Tx]
-executeNodeSpec NetSpec{..} resources = do
+  -> ContT r m [Connection 'RO Tx]
+executeNodeSpec MockClusterConfig{..} resources = do
   -- Start nodes
-  rnodes    <- lift $ forM resources $ \(nspec, bnet, conn, logenv) -> do
+  rnodes <- lift $ forM resources $ \(nspec, bnet, conn, logenv) -> do
     let run :: DBT 'RW Tx (LoggerT m) x -> m x
         run = runLoggerT logenv . runDBT conn
-    (rn, acts) <- run $ interpretSpec
-      BChEval { bchValue        = genesis
-              , validatorSet    = merkled valSet0
-              , blockchainState = merkled valSet0
-              }
+    (c, acts) <- run $ interpretSpec
+      genesis
       nspec
       bnet
-      netNetCfg
-      (maybe mempty callbackAbortAtH netMaxH)
-    return ( hoistRunningNode run rn
-           , run <$> acts
-           )
+      clusterCfg
+      (callbackAbortAtH (Height 10)) 
+    return ( c, run <$> acts )
   -- Actually run nodes
   lift   $ catchAbort $ runConcurrently $ snd =<< rnodes
   return $ fst <$> rnodes
   where
-    genesis = makeGenesis Noop (hashed valSet0) valSet0 valSet0
+    genesis = Genesis
+      { genesisBlock  = makeGenesis Noop valSet0 valSet0
+      , genesisValSet = valSet0
+      }
