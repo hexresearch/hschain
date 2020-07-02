@@ -2,6 +2,7 @@
 {-# LANGUAGE DeriveAnyClass             #-}
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE DerivingStrategies         #-}
+{-# LANGUAGE DerivingVia                #-}
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase                 #-}
@@ -11,31 +12,32 @@
 {-# LANGUAGE TypeFamilies               #-}
 {-# LANGUAGE TypeOperators              #-}
 -- |
-module HSChain.Mock.KeyVal {-(
+module HSChain.Mock.KeyVal (
     mkGenesisBlock
-  , interpretSpec
-  , executeSpec
-  , keyValLogic
   , BData(..)
   , Tx
   , BState
-  )-} where
+  , inMemoryStateView
+    -- * Running KeyVal
+  , KeyValDictM(..)
+  , KeyValT(..)
+  , runKeyValT
+  , interpretSpec
+  , executeSpec
+  ) where
 
-import Control.Concurrent.STM
 import Codec.Serialise (Serialise)
 import Control.Monad
 import Control.Monad.Catch
+import Control.Monad.Reader
 import Control.Monad.Trans.Cont
-import Control.Monad.Trans.Class
-import Control.Monad.Trans.Except
-import Control.Monad.IO.Class
-import Control.Monad.Morph
 import Data.Maybe
 import Data.List
 import Data.Map.Strict                 (Map)
 import qualified Data.Aeson          as JSON
 import qualified Data.Map.Strict     as Map
 import qualified Data.HashMap.Strict as HM
+import Katip           (Namespace,LogEnv)
 import System.Random   (randomRIO)
 import GHC.Generics    (Generic)
 
@@ -43,7 +45,6 @@ import HSChain.Blockchain.Internal.Engine.Types
 import HSChain.Types.Blockchain
 import HSChain.Types.Merkle.Types
 import HSChain.Control.Class
-import HSChain.Control.Util
 import HSChain.Crypto
 import HSChain.Crypto.Classes.Hash
 import HSChain.Crypto.Ed25519
@@ -154,31 +155,54 @@ interpretSpec genesis nspec bnet cfg cb = do
     )
 
 
+-- | Parameters for 'CoinT' monad transformer
+data KeyValDictM = KeyValDictM
+  { dictNamespace :: !Namespace
+  , dictLogEnv    :: !LogEnv
+  , dictConn      :: !(Connection 'RW BData)
+  }
+  deriving stock (Generic)
 
--- executeSpec
---   :: (MonadIO m, MonadMask m, MonadFork m, MonadTMMonitoring m)
---   => NetSpec (NodeSpec BData)
---   -> ContT r m [RunningNode m BData]
--- executeSpec NetSpec{..} = do
---   -- Create mock network and allocate DB handles for nodes
---   net       <- liftIO P2P.newMockNet
---   resources <- allocNetwork net netTopology netNodeList
---   -- Start nodes
---   rnodes    <- lift $ forM resources $ \(nspec, bnet, conn, logenv) -> do
---     let run :: DBT 'RW BData (LoggerT m) x -> m x
---         run = runLoggerT logenv . runDBT conn
---     (rn, acts) <- run $ interpretSpec
---       genesis
---       nspec
---       bnet
---       netNetCfg
---       (maybe mempty callbackAbortAtH netMaxH)
---     return ( hoistRunningNode run rn
---            , run <$> acts
---            )
---   -- Actually run nodes
---   lift   $ catchAbort $ runConcurrently $ snd =<< rnodes
---   return $ fst <$> rnodes
---   where
---     valSet  = makeValidatorSetFromPriv $ catMaybes [ nspecPrivKey x | x <- netNodeList ]
---     genesis = mkGenesisBlock valSet
+-- | Application monad for key-value blockchain
+newtype KeyValT m a = KeyValT { unKeyValT :: ReaderT KeyValDictM m a }
+  deriving newtype (Functor,Applicative,Monad,MonadIO)
+  deriving newtype (MonadThrow,MonadCatch,MonadMask,MonadFork)
+  deriving newtype (MonadReader KeyValDictM)
+  -- HSChain instances
+  deriving MonadTMMonitoring via NoMonitoring (KeyValT m)
+  deriving MonadLogger
+       via LoggerByTypes (KeyValT m)
+  deriving (MonadReadDB BData, MonadDB BData)
+       via DatabaseByType BData (KeyValT m)
+
+runKeyValT :: KeyValDictM -> KeyValT m a -> m a
+runKeyValT d = flip runReaderT d . unKeyValT
+
+
+executeSpec
+  :: ()
+  => MockClusterConfig BData ()
+  -> AppCallbacks (KeyValT IO) BData
+  -> ContT r IO [(StateView (KeyValT IO) BData, KeyValDictM)]
+executeSpec MockClusterConfig{..} callbacks = do
+  -- Create mock network and allocate DB handles for nodes
+  net       <- liftIO P2P.newMockNet
+  resources <- allocNetwork net clusterTopology clusterNodes
+  rnodes    <- lift $ forM resources $ \(spec, bnet, dictConn, dictLogEnv) -> do
+    let dict = KeyValDictM { dictNamespace = mempty
+                           , ..
+                           }
+    (state, threads) <- runKeyValT dict $ interpretSpec
+      genesis
+      spec
+      bnet
+      clusterCfg
+      callbacks
+    return (state,dict,threads)
+  --
+  lift $ catchAbort $ runConcurrently $ do (_,dict,thread) <- rnodes
+                                           runKeyValT dict <$> thread
+  return [ (s,d) | (s,d,_) <- rnodes ]
+  where
+    valSet  = makeValidatorSetFromPriv $ catMaybes [ nspecPrivKey x | x <- clusterNodes ]
+    genesis = mkGenesisBlock valSet
