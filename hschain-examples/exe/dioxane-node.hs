@@ -135,7 +135,7 @@ main = do
     (conn, logenv) <- allocNode nodeSpec
     gauges         <- standardMonitoring
     lift $ runAppT logenv gauges conn $ do
-      (RunningNode{..},acts) <- interpretSpec @_ @DioTag
+      (_,acts) <- interpretSpec @_ @DioTag
         nodeIdx
         bnet
         nodeDelays
