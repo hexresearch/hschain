@@ -364,16 +364,17 @@ data UtxoChange
     -- ^ UTXO was created and then spent
 
 -- | State difference
-newtype UtxoDiff = UtxoDiff
-  { utxoDiff :: Map UTXO UtxoChange
+data UtxoDiff = UtxoDiff
+  { baseH    :: Height              -- ^ Height which is already commited in the database
+  , utxoDiff :: Map UTXO UtxoChange -- ^ Differences relative to baseH
   }
 
 -- | Lookup unspent output in database
 dbLookupUTXO
   :: (MonadQueryRO BData m)
-  => Height                     -- ^ Height at which state is calculated
-  -> Hashed (Alg BData) Tx      -- ^ Transaction hash
-  -> Int                        -- ^ Output number
+  => Height                 -- ^ Height of block for which we calculate state updates
+  -> Hashed (Alg BData) Tx  -- ^ Transaction hash
+  -> Int                    -- ^ Output number
   -> m (Maybe Unspent)
 dbLookupUTXO h txHash nOut = do
   r <- basicQuery1
@@ -389,8 +390,8 @@ dbProcessDeposit
   :: (Monad m)
   => Tx -> UtxoDiff -> ExceptT CoinError m UtxoDiff
 dbProcessDeposit Send{} _ = throwError $ UnexpectedSend
-dbProcessDeposit tx@(Deposit pk nCoin) (UtxoDiff m) =
-  return $ UtxoDiff $ Map.insert utxo (Added (Unspent pk nCoin) (Height 0)) m
+dbProcessDeposit tx@(Deposit pk nCoin) UtxoDiff{..} =
+  return $ UtxoDiff baseH $ Map.insert utxo (Added (Unspent pk nCoin) (Height 0)) utxoDiff
   where
     utxo = UTXO 0 (hashed tx)
 
@@ -398,13 +399,13 @@ dbProcessSend
   :: (MonadQueryRO BData m)
   => Height -> Tx -> UtxoDiff -> ExceptT CoinError m UtxoDiff
 dbProcessSend _ Deposit{} _ = throwError DepositAtWrongH
-dbProcessSend h tx@(Send pk _ TxSend{..}) diff = do
+dbProcessSend h tx@(Send pk _ TxSend{..}) UtxoDiff{..} = do
   -- Try to find all inputs for transaction
   inputs <- forM txInputs $ \utxo@(UTXO nOut txH) -> do
-    Unspent pk' n <- case utxo `Map.lookup` utxoDiff diff of
+    Unspent pk' n <- case utxo `Map.lookup` utxoDiff of
       Just (Added u _) -> return u
       Just _               -> throwError $ CoinError "Already spent output"
-      Nothing -> dbLookupUTXO h txH nOut >>= \case
+      Nothing -> dbLookupUTXO baseH txH nOut >>= \case
         Nothing -> throwError $ CoinError "Already spent output"
         Just x  -> return x
     unless (pk == pk') $ throwError $ CoinError "PublicKey mismatch"
@@ -414,10 +415,10 @@ dbProcessSend h tx@(Send pk _ TxSend{..}) diff = do
     $ throwError $ CoinError "Missmatch between inputs and outputs"
   -- Update diff
   return
-    $ UtxoDiff
+    $ UtxoDiff baseH
     $ (\m -> foldl' addOutput  m ([0..] `zip` txOutputs))
     $ (\m -> foldl' spendInput m txInputs)    
-    $ utxoDiff diff
+    $ utxoDiff
   where
     txHash = hashed tx
     spendInput m utxo = Map.alter
@@ -454,31 +455,39 @@ databaseStateView valSetH0 = do
     [h] <- fmap fromOnly <$> basicQuery "SELECT MAX(h_added) FROM coin_utxo" ()
     v   <- retrieveValidatorSet $ succH h
     return (h, fromMaybe valSetH0 v)
-  -- Create state view
-  let make mh txList vals diff = sview where
+  -- Create state view. Parameters meaning:
+  --
+  --   - viewH  - which height is already written to database
+  --   - txList - list of transcation to remove duting commit
+  --   - vals   - validator set after 
+  let make stateH txList vals diff = sview where
+        viewH = succH stateH
         sview = StateView
-          { stateHeight   = mh
+          { stateHeight   = stateH
           , newValidators = vals
-          , commitState   = case mh of
+          --
+          , commitState   = case stateH of
               Nothing -> return sview
               Just h  -> do
                 -- Filter mempool
                 removeTxByHashes $ hashed <$> txList
-                startMempoolFiltering $ \tx -> case mh of
-                  Nothing -> return False
-                  Just h  -> fmap isRight $ queryRO $ runExceptT $ dbProcessSend h tx diff
                 mustQueryRW $ do
                   mapM_ dbRecordDiff $ Map.toList $ utxoDiff diff
-                return $ make mh txList vals (UtxoDiff Map.empty)
+                -- We ask mempool to start filtering TX after we done writing
+                startMempoolFiltering $ \tx -> 
+                  fmap isRight $ queryRO $ runExceptT $ dbProcessSend (succ h) tx diff
+                return $ make stateH [] vals (UtxoDiff (succH stateH) Map.empty)
+          --
           , validatePropBlock = \b valSet -> do
               let step d tx
                     | h == Height 0 = dbProcessDeposit tx d
-                    | otherwise     = dbProcessSend h tx d
+                    | otherwise     = dbProcessSend h  tx d
                     where
                       h = blockHeight b
               let txs = unBData $ merkleValue $ blockData b
               mdiff <- queryRO $ runExceptT $ foldM step diff txs
               return $ make (Just $ blockHeight b) txs valSet <$> mdiff
+          --
           , generateCandidate = \NewBlock{..} -> do
               let selectTx d []     = return (d,[])
                   selectTx d (t:tx) =
@@ -495,7 +504,7 @@ databaseStateView valSetH0 = do
           , stateMempool = mem
           }
   -- Read 
-  return ( make h0 [] valSet0 (UtxoDiff Map.empty)
+  return ( make h0 [] valSet0 (UtxoDiff (succH h0) Map.empty)
          , [memThr]
          )
   where
