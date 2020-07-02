@@ -600,8 +600,7 @@ deriving via MonitoringByField "dictGauges" (CoinT PrometheusGauges m)
     instance MonadIO m => MonadTMMonitoring (CoinT PrometheusGauges m)
 
 runCoinT :: CoinDictM g -> CoinT g m a -> m a
-runCoinT d
-  = flip runReaderT d . unCoinT
+runCoinT d = flip runReaderT d . unCoinT
 
 -- | Generate genesis from specification.
 coinGenesis
