@@ -36,6 +36,7 @@ module HSChain.Mock.Coin (
   , TxGenerator(..)
   , makeCoinGenerator
   , transactionGenerator
+  , generateTransaction
     -- * In-DB state
   , initCoinDB
     -- * Interpretation
