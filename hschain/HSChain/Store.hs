@@ -1,5 +1,6 @@
 {-# LANGUAGE CPP                        #-}
 {-# LANGUAGE DataKinds                  #-}
+{-# LANGUAGE DeriveAnyClass             #-}
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE DerivingStrategies         #-}
 {-# LANGUAGE FlexibleContexts           #-}
@@ -79,12 +80,14 @@ import Control.Monad.Trans.Writer
 import Control.Monad.Fail         (MonadFail)
 #endif
 
+import Data.Aeson                (FromJSON,ToJSON)
 import Data.Maybe                (isNothing)
 import Data.Text                 (Text)
 import Data.Generics.Product.Fields (HasField'(..))
 import Data.Generics.Product.Typed  (HasType(..))
 import qualified Data.List.NonEmpty as NE
 import Lens.Micro
+import GHC.Generics (Generic)
 
 import HSChain.Types.Blockchain
 import HSChain.Types.Merkle.Types
@@ -192,8 +195,8 @@ data BlockchainInconsistency
   --   for some reason.
   | BlockInvalidTime !Height
   -- ^ Block contains invalid time in header
-  deriving (Eq, Show)
-
+  deriving stock    (Eq, Show, Generic)
+  deriving anyclass (ToJSON, FromJSON)
 
 -------------------------------------------------------------------------------
 -- Invariant checking for storage and proposed blocks
