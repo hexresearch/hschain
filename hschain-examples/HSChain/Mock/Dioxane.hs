@@ -19,6 +19,7 @@ module HSChain.Mock.Dioxane (
     module HSChain.Mock.Dioxane.Types
   , dioGenesis
   , interpretSpec
+  , inMemoryStateView
   ) where
 
 import Control.Lens
@@ -62,56 +63,55 @@ dioGenesis = Genesis
 inMemoryStateView
   :: forall tag m. (Monad m, Dio tag)
   => ValidatorSet (Alg (BData tag))
-  -> m (StateView m (BData tag))
-inMemoryStateView valSet0 = do
-  let make mh vals st = viewS where
-        viewS = StateView
-          { stateHeight   = mh
-          , newValidators = vals
-          , stateMempool  = nullMempool
-          , commitState   = return viewS
-          -- 
-          , validatePropBlock = \b valSet -> return $ maybe (Left DioError) Right $ do
-              let sigCheck = guard
-                           $ and
-                           $ parMap rseq
-                             (\(Tx sig tx) -> verifySignatureHashed (txFrom tx) tx sig)
-                             (let BData txs = merkleValue $ blockData b
-                              in txs
-                             )
-              let update   = foldM (flip process) st
-                           $ (let BData txs = merkleValue $ blockData b
-                              in txs
-                             )
-              st' <- uncurry (>>)
-                   $ withStrategy (evalTuple2 rpar rpar)
-                   $ (sigCheck, update)
-              return $ make (Just $ blockHeight b) valSet st'
-          --
-          , generateCandidate = \NewBlock{..} -> do
-              let nonce = let Height h = newBlockHeight in fromIntegral h - 1
-                  keys  = dioUserKeys
-              let !txs  = BData
-                        $ parMap rseq
-                             (\(sk,pk) -> let body = TxBody
-                                                { txTo     = pk
-                                                , txFrom   = pk
-                                                , txNonce  = nonce
-                                                , txAmount = 1
-                                                }
-                                          in Tx { txSig  = signHashed sk body
-                                                , txBody = body
-                                                }
-                             )
-                             (V.toList keys)
-                  !st'  = userMap . each . userNonce %~ succ
-                        $ st
-              return ( txs
-                     , make (Just newBlockHeight) newBlockValSet st'
-                     )
-          }
-  return $ make Nothing valSet0 (DioState mempty)
+  -> StateView m (BData tag)
+inMemoryStateView valSet0 = make Nothing valSet0 (DioState mempty)
   where
+    make mh vals st = viewS where
+      viewS = StateView
+        { stateHeight   = mh
+        , newValidators = vals
+        , stateMempool  = nullMempool
+        , commitState   = return viewS
+        -- 
+        , validatePropBlock = \b valSet -> return $ maybe (Left DioError) Right $ do
+            let sigCheck = guard
+                         $ and
+                         $ parMap rseq
+                           (\(Tx sig tx) -> verifySignatureHashed (txFrom tx) tx sig)
+                           (let BData txs = merkleValue $ blockData b
+                            in txs
+                           )
+            let update   = foldM (flip process) st
+                         $ (let BData txs = merkleValue $ blockData b
+                            in txs
+                           )
+            st' <- uncurry (>>)
+                 $ withStrategy (evalTuple2 rpar rpar)
+                 $ (sigCheck, update)
+            return $ make (Just $ blockHeight b) valSet st'
+        --
+        , generateCandidate = \NewBlock{..} -> do
+            let nonce = let Height h = newBlockHeight in fromIntegral h - 1
+                keys  = dioUserKeys
+            let !txs  = BData
+                      $ parMap rseq
+                           (\(sk,pk) -> let body = TxBody
+                                              { txTo     = pk
+                                              , txFrom   = pk
+                                              , txNonce  = nonce
+                                              , txAmount = 1
+                                              }
+                                        in Tx { txSig  = signHashed sk body
+                                              , txBody = body
+                                              }
+                           )
+                           (V.toList keys)
+                !st'  = userMap . each . userNonce %~ succ
+                      $ st
+            return ( txs
+                   , make (Just newBlockHeight) newBlockValSet st'
+                   )
+        }
     DioDict{..} = dioDict @tag
 
 
@@ -142,7 +142,6 @@ interpretSpec
   -> AppCallbacks m (BData tag)
   -> m (StateView m (BData tag), [m ()])
 interpretSpec idx bnet cfg cb = do
-  state <- inMemoryStateView $ genesisValSet genesis
   acts  <- runNode cfg NodeDescription
     { nodeValidationKey = Just $ PrivValidator $ fst $ dioUserKeys dioD V.! idx
     , nodeGenesis       = genesis
@@ -155,5 +154,6 @@ interpretSpec idx bnet cfg cb = do
     , acts
     )
   where
+    state   = inMemoryStateView $ genesisValSet genesis
     genesis = dioGenesis
     dioD    = dioDict @tag
