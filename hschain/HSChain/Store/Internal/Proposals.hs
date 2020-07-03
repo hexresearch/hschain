@@ -23,7 +23,9 @@ module HSChain.Store.Internal.Proposals
   , blockFromBlockValidation
   ) where
 
+import Data.Aeson             (Value(..))
 import Data.Maybe             (fromMaybe)
+import qualified Data.Vector     as V
 import qualified Data.Map.Strict as Map
 import           Data.Map.Strict   (Map)
 
@@ -40,7 +42,7 @@ data BlockValState m a
   -- ^ We haven't even seen block yet
   | GoodBlock     !(Block a) !(StateView m a)
   -- ^ Block is good. We also cache state and new validator set
-  | InvalidBlock
+  | InvalidBlock  !(Value)
   -- ^ Block is invalid so there's no point in storing (and gossiping)
   --   it.
 
@@ -49,7 +51,7 @@ blockFromBlockValidation = \case
   UntestedBlock b   -> Just b
   GoodBlock     b _ -> Just b
   UnknownBlock      -> Nothing
-  InvalidBlock      -> Nothing
+  InvalidBlock  _   -> Nothing
 
 
 data Props m a = Props
@@ -70,23 +72,23 @@ proposalByR ps@Props{..} r = do
   bid <- r   `Map.lookup` propsRoundMap
   return (bid, proposalByBID ps bid)
 
-setProposalValidation :: BlockID a -> Maybe (StateView m a) -> Props m a -> Props m a
+setProposalValidation :: BlockID a -> Either Value (StateView m a) -> Props m a -> Props m a
 setProposalValidation bid mst Props{..} = Props
   { propsBIDmap = Map.adjust update bid propsBIDmap
   , ..
   }
   where
     update = case mst of
-      Nothing -> \case
-        UntestedBlock _ -> InvalidBlock
-        InvalidBlock    -> InvalidBlock
-        GoodBlock{}     -> error "CANT HAPPEN: Marking good as bad"
+      Left err -> \case
+        UntestedBlock _ -> InvalidBlock err
+        InvalidBlock  e -> InvalidBlock $ Array $ V.fromList [e,err]
+        GoodBlock{}     -> error $ "CANT HAPPEN: Marking good as bad" ++ show err
         UnknownBlock{}  -> error "CANT HAPPEN: Marking unseen as bad"
-      Just uc -> \case
+      Right uc -> \case
         UntestedBlock b -> GoodBlock b uc
         b@GoodBlock{}   -> b
         UnknownBlock    -> error "CANT HAPPEN: Marking unseen as good"
-        InvalidBlock    -> error "CANT HAPPEN: Marking bad as good"
+        InvalidBlock e  -> error $ "CANT HAPPEN: Marking bad as good" ++ show e
 
 
 acceptBlockID :: Round -> BlockID a -> Props m a -> Props m a

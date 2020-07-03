@@ -507,9 +507,9 @@ enterPrevote par@HeightParameters{..} r (unlockOnPrevote -> sm@TMState{..}) reas
       (upd,valR) <- validateBlock smProposedBlocks bid
       logger InfoS "Block validation for prevote" valR
       case valR of
-        GoodProposal    -> return (upd, Just bid)
-        InvalidProposal -> return (upd, Nothing)
-        UnseenProposal  -> return (upd, Nothing)
+        GoodProposal      -> return (upd, Just bid)
+        InvalidProposal _ -> return (upd, Nothing)
+        UnseenProposal    -> return (upd, Nothing)
 
 -- Unlock upon entering prevote which happens if:
 --   * We're already locked

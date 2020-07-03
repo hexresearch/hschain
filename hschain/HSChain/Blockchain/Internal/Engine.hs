@@ -29,6 +29,7 @@ import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
 import           Data.Maybe    (fromMaybe)
 import           Data.List     (nub)
+import Data.Aeson            (toJSON)
 import Data.Text             (Text)
 import Data.Function         (on)
 import Pipes                 (Pipe,Producer,Consumer,runEffect,yield,await,(>->))
@@ -262,7 +263,7 @@ msgHandlerLoop hParam StateView{..} AppChans{..} = mainLoop Nothing
     checkForCommit (Just cmt) tm =
       case proposalByBID (smProposedBlocks tm) (commitBlockID cmt) of
         UnknownBlock       -> mainLoop (Just cmt) tm
-        InvalidBlock       -> error "Trying to commit invalid block!"
+        InvalidBlock  _    -> error "Trying to commit invalid block!"
         GoodBlock     b st -> return (cmt, b, st)
         UntestedBlock b    -> lift $ do
           valSet <- queryRO $ mustRetrieveValidatorSet height
@@ -452,42 +453,51 @@ makeHeightParameters appValidatorKey st AppCallbacks{appCanCreateBlock} = do
     , validateBlock = \props bid ->
         case proposalByBID props bid of
           UnknownBlock    -> return (id, UnseenProposal)
-          InvalidBlock    -> return (id, InvalidProposal)
+          InvalidBlock e  -> return (id, InvalidProposal e)
           GoodBlock{}     -> return (id, GoodProposal)
           UntestedBlock b -> do
             inconsistencies <- checkProposedBlock currentH b
             validation      <- validatePropBlock st b valSet
             evidenceState   <- queryRO $ mapM evidenceRecordedState $ merkleValue $ blockEvidence b
             evidenceOK      <- mapM evidenceCorrect $ merkleValue $ blockEvidence b
-            if | not (null inconsistencies) -> do
                -- Block is not internally consistent
-                   logger ErrorS "Proposed block has inconsistencies"
-                     (  sl "H" currentH
-                     <> sl "errors" (map show inconsistencies)
-                     )
-                   invalid
+            if | not (null inconsistencies) -> invalid $ toJSON inconsistencies
                -- We don't allow evidence which was already
                -- submitted. Neither we allow duplicate evidence
                | any (==Just True) evidenceState
-                 -> invalid
+                 -> invalid $ toJSON ( "Already submitted evidence" :: Text
+                                     , merkleValue $ blockEvidence b
+                                     )
                | nub (merkleValue (blockEvidence b)) /= merkleValue (blockEvidence b)
-                 -> invalid
+                 -> invalid $ toJSON ( "Duplicate evidence" :: Text
+                                     , merkleValue $ blockEvidence b
+                                     )
                | any not evidenceOK
-                 -> invalid
+                 -> invalid $ toJSON ( "Invalid evidence" :: Text
+                                     , merkleValue $ blockEvidence b
+                                     )
                -- Block is correct and validators change is correct as
                -- well
-               | Right st' <- validation
-               , validatorSetSize (newValidators st') > 0
-               , blockNewValidators b == hashed (newValidators st')
-                 -> return ( setProposalValidation bid (Just st')
-                           , GoodProposal
-                           )
-               | otherwise
-                 -> invalid
+               | otherwise -> case validation of
+                   Left err  -> invalid $ toJSON ( "State processing error" :: Text
+                                                 , err )
+                   Right st'
+                     | validatorSetSize (newValidators st') <= 0
+                       -> invalid $ toJSON ( "Empty new validator set" :: Text
+                                           , newValidators st'
+                                           )
+                     | blockNewValidators b /= hashed (newValidators st')
+                       -> invalid $ toJSON ( "New validators set hash mismatch" :: Text
+                                           , blockNewValidators b
+                                           , newValidators st'
+                                           )
+                     | otherwise -> return ( setProposalValidation bid (Right st')
+                                           , GoodProposal
+                                           )
                where
-                 invalid = return ( setProposalValidation bid Nothing
-                                  , InvalidProposal
-                                  )
+                 invalid e = return ( setProposalValidation bid (Left e)
+                                    , InvalidProposal e
+                                    )
     --
     , createProposal = \r commit -> do
         -- Obtain block either from WAL or actually generate it
@@ -524,7 +534,7 @@ makeHeightParameters appValidatorKey st AppCallbacks{appCanCreateBlock} = do
             return (block, st')
         -- --
         let bid = blockHash b
-        return ( setProposalValidation bid (Just st')
+        return ( setProposalValidation bid (Right st')
                . addBlockToProps b
                . acceptBlockID r bid
                , bid
