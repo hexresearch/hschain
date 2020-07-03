@@ -21,6 +21,7 @@ import Control.Monad.Trans.Cont
 import Control.Monad.Trans.Class
 import Control.Monad.Catch
 import Control.Monad.IO.Class
+import Data.Aeson (ToJSON)
 import Data.Maybe
 import Data.Default.Class
 import qualified Data.Map.Strict as Map
@@ -37,7 +38,7 @@ import HSChain.Control.Class
 import HSChain.Crypto
 import HSChain.Crypto.Classes.Hash
 import HSChain.Crypto.Ed25519 (Ed25519)
-import HSChain.Crypto.SHA     (SHA512)
+import HSChain.Crypto.SHA     (SHA1)
 import HSChain.Internal.Types.Consensus
 import HSChain.Logger
 import HSChain.Mempool
@@ -53,7 +54,8 @@ import HSChain.Arbitrary.Instances ()
 import qualified HSChain.Network.Mock as P2P
 import TM.Util.Network
 
-type VSet = ValidatorSet (Ed25519 :& SHA512)
+type VSet = ValidatorSet (Alg Tx)
+
 
 tests :: TestTree
 tests = testGroup "validators"
@@ -103,7 +105,7 @@ tests = testGroup "validators"
   ]
 
 
-v1,v2 :: PublicKey (Ed25519 :& SHA512)
+v1,v2 :: PublicKey (Ed25519 :& SHA1)
 v1:v2:_ = publicKey <$> makePrivKeyStream 1337
 
 samplingEquidistribution :: ValidatorSet Ed25519 -> Property
@@ -174,19 +176,19 @@ data Tx = AddVal !(PublicKey (Alg Tx)) !Integer
         | RmVal  !(PublicKey (Alg Tx))
         | Noop
   deriving stock    (Show,Eq,Ord,Generic)
-  deriving anyclass (NFData,Serialise)
+  deriving anyclass (NFData,Serialise,ToJSON)
 
 instance CryptoHashable Tx where
   hashStep = genericHashStep "hschain"
 
 data ValErr = ValErr
-  deriving stock    (Show)
-  deriving anyclass (Exception)
+  deriving stock    (Show,Generic)
+  deriving anyclass (Exception,ToJSON)
 
 instance BlockData Tx where
   type TX       Tx = Tx
   type BChError Tx = ValErr
-  type Alg      Tx = Ed25519 :& SHA512
+  type Alg      Tx = Ed25519 :& SHA1
   proposerSelection       = ProposerSelection randomProposerSHA512
 
 privK :: [PrivKey (Alg Tx)]
@@ -201,7 +203,7 @@ Right valSet3 = makeValidatorSet [Validator k 1 | k <- [pk1,pk2,pk3    ]]
 Right valSet6 = makeValidatorSet [Validator k 1 | k <- [pk1,pk2,pk3,pk4]]
 Right valSet8 = makeValidatorSet [Validator k 1 | k <- [    pk2,pk3,pk4]]
 
-inMemoryStateView :: MonadIO m => ValidatorSet (Alg Tx) -> StateView m Tx
+inMemoryStateView :: (Monad m) => ValidatorSet (Alg Tx) -> StateView m Tx
 inMemoryStateView = make Nothing
   where
     make mh vals = viewSt where
