@@ -48,7 +48,7 @@ data CoinError
   | UnexpectedSend
   | CoinError String
   deriving stock    (Show,Generic)
-  deriving anyclass (Exception,NFData)
+  deriving anyclass (Exception,NFData,JSON.FromJSON,JSON.ToJSON)
 
 instance BlockData BData where
   type TX              BData = Tx

@@ -66,7 +66,7 @@ data TxBody = TxBody
 
 data DioError = DioError
   deriving stock    (Show,Generic)
-  deriving anyclass (Exception,NFData)
+  deriving anyclass (Exception,NFData,JSON.FromJSON,JSON.ToJSON)
 
 data DioState = DioState
   { _userMap :: Map.Map (PublicKey DioAlg) UserState

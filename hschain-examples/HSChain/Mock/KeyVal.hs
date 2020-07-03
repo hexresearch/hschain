@@ -76,8 +76,8 @@ instance CryptoHashable BData where
   hashStep = genericHashStep "hschain-examples"
 
 data KeyValError = KeyValError String
-  deriving stock    (Show) 
-  deriving anyclass (Exception)
+  deriving stock    (Show,Generic)
+  deriving anyclass (Exception,JSON.FromJSON,JSON.ToJSON)
 
 instance BlockData BData where
   type TX       BData = Tx

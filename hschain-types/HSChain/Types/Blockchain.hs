@@ -238,6 +238,7 @@ class ( Serialise a
       , CryptoHashable a
       , CryptoHashable (TX a)
       , Exception      (BChError a)
+      , JSON.ToJSON    (BChError a)
       , Crypto (Alg a)
       ) => BlockData a where
   -- | Type of transaction used in blockchain. More precisely it's
