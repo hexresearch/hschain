@@ -30,7 +30,6 @@ module HSChain.Blockchain.Internal.Engine.Types (
 
 import Control.Applicative
 import Control.Concurrent.STM
-import Control.Monad.Trans.Except
 import Data.Aeson
 import Data.Coerce
 import Data.Bits              (shiftL)
@@ -43,8 +42,6 @@ import qualified Katip
 import HSChain.Blockchain.Internal.Types
 import HSChain.Crypto
 import HSChain.Crypto.SHA (SHA512)
-import HSChain.Mempool
-import HSChain.Store
 import HSChain.Types.Blockchain
 import HSChain.Types.Validators
 import HSChain.Internal.Types.Messages

@@ -19,16 +19,7 @@ module HSChain.Internal.Types.Consensus (
   , Genesis(..)
   ) where
 
-import Codec.Serialise (Serialise)
-import Control.DeepSeq
-import Control.Monad.IO.Class
-import Data.Functor.Identity
-import Data.Aeson as JSON
-import GHC.Generics (Generic)
-
-import HSChain.Crypto
 import HSChain.Mempool
-import HSChain.Types.Merkle.Types
 import HSChain.Types.Blockchain
 import HSChain.Types.Validators
 

@@ -32,7 +32,7 @@ import           Data.Map.Strict   (Map)
 import HSChain.Crypto
 import HSChain.Types.Blockchain
 import HSChain.Internal.Types.Consensus
-import HSChain.Types.Merkle.Types
+
 
 -- | Status of block validation.
 data BlockValState m a

@@ -42,11 +42,10 @@ module HSChain.Store.Internal.BlockDB
   ) where
 
 import Codec.Serialise     (Serialise, serialise, deserialiseOrFail)
-import Control.Monad       (when,(<=<))
+import Control.Monad       ((<=<))
 import Control.Monad.Catch (MonadThrow(..))
 import Data.Int
 import qualified Data.List.NonEmpty   as NE
-import qualified Data.ByteString.Lazy as LBS
 import qualified Database.SQLite.Simple           as SQL
 import qualified Database.SQLite.Simple.FromField as SQL
 import           Database.SQLite.Simple             (Only(..))
@@ -494,12 +493,3 @@ singleQ :: (SQL.ToRow p, Serialise x, MonadQueryRO a m)
         => SQL.Query -> p -> m (Maybe x)
 singleQ sql p = (fmap . fmap) unCBORed
               $ query1 sql p
-
--- Query that returns results parsed from single row ().
-singleQWithParser
-  :: (SQL.ToRow p, MonadQueryRO a m)
-  => ([SQL.SQLData] -> Maybe x) -> SQL.Query -> p -> m (Maybe x)
-singleQWithParser resultsParser sql p =
-  basicQuery sql p >>= \case
-    [x] -> return (resultsParser x)
-    _ -> error $ "SQL statement resulted in too many (>1) or zero result rows: " ++ show sql
