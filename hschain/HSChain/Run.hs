@@ -20,17 +20,14 @@ module HSChain.Run (
   , ConsensusCfg(..)
   , NetworkCfg(..)
     -- * Standard callbacks
-  -- , nonemptyMempoolCallback
-  -- , mempoolFilterCallback
+  , nonemptyMempoolCallback
   ) where
 
 import Control.Monad
 import Control.Monad.IO.Class
 import Control.Monad.Catch
-import Control.Monad.Trans.Except
 import Control.Concurrent.STM         (atomically)
 import Control.Concurrent.STM.TBQueue (lengthTBQueue)
-import Data.Either                    (isRight)
 
 import HSChain.Blockchain.Internal.Engine
 import HSChain.Blockchain.Internal.Engine.Types
@@ -45,37 +42,11 @@ import HSChain.Network.Types
 import HSChain.P2P
 import HSChain.Store
 import HSChain.Types
-import HSChain.Types.Merkle.Types
 
 
 ----------------------------------------------------------------
 --
 ----------------------------------------------------------------
-
-
--- -- | Create default mempool which checks transactions against current
--- --   state
--- makeMempool
---   :: forall m a. (MonadIO m, MonadReadDB m a, Ord (TX a), Show (TX a), BlockData a)
---   => BChStore m a
---   -> (forall x. BChMonad a x -> ExceptT (BChError a) m x)
---   -> m (Mempool m (Alg a) (TX a))
--- makeMempool store runner =
---   newMempool $ \tx -> do
---     (mH, st) <- bchCurrentState store
---     mvalSet  <- queryRO $ retrieveValidatorSet $ case mH of
---       Nothing -> Height 0
---       Just h  -> succ h
---     case mvalSet of
---       Nothing -> return False
---       Just vs -> fmap isRight
---                $ runExceptT
---                $ processTx BChEval { bchValue        = tx
---                                    , blockchainState = st
---                                    , validatorSet    = merkled vs
---                                    }
---   where
---     BChLogic{..} = hoistDict runner (bchLogic @a)
 
 -- | Specification of node
 data NodeDescription m a = NodeDescription
@@ -127,27 +98,20 @@ runNode Configuration{..} NodeDescription{..} = do
     --     usingGauge prometheusMempoolFiltered  mempool'filtered
     --     usingGauge prometheusMempoolAdded     mempool'added
     --     waitSec 1.0
-        -- n <- liftIO $ atomically $ lengthTBQueue $ appChanRx appCh
-        -- usingGauge prometheusMsgQueue n
-        -- waitSec 1.0
+    , forever $ do
+        n <- liftIO $ atomically $ lengthTBQueue $ appChanRx appCh
+        usingGauge prometheusMsgQueue n
+        waitSec 1.0
     ]
 
 ----------------------------------------------------------------
 -- Callbacks
 ----------------------------------------------------------------
 
--- -- | Callback which removes from mempool all transactions which are
--- --   not longer valid.
--- mempoolFilterCallback :: (MonadLogger m) => Mempool m alg tx -> AppCallbacks m a
--- mempoolFilterCallback mempool = mempty
---   { appCommitCallback = \_ -> descendNamespace "mempool" $ do
---       filterMempool mempool
---   }
-
--- -- | Callback which allow block creation only if mempool is not empty
--- nonemptyMempoolCallback :: (Monad m) => Mempool m alg tx -> AppCallbacks m a
--- nonemptyMempoolCallback mempool = mempty
---   { appCanCreateBlock = \_ -> do
---       n <- mempoolSize mempool
---       return $! Just $! n > 0
---   }
+-- | Callback which allow block creation only if mempool is not empty
+nonemptyMempoolCallback :: (MonadIO m) => Mempool m alg tx -> AppCallbacks m a
+nonemptyMempoolCallback mempool = mempty
+  { appCanCreateBlock = \_ -> do
+      n <- mempoolSize mempool
+      return $! Just $! n > 0
+  }
