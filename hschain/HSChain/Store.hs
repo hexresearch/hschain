@@ -107,10 +107,10 @@ import HSChain.Types.Validators
 -- | Monad transformer which provides 'MonadReadDB' and 'MonadDB'
 --   instances.
 newtype DBT rw a m x = DBT (ReaderT (Connection rw a) m x)
-  deriving ( Functor, Applicative, Monad
-           , MonadIO, MonadThrow, MonadCatch, MonadMask
-           , MonadFork, MonadLogger, MonadFail
-           )
+  deriving newtype ( Functor, Applicative, Monad
+                   , MonadIO, MonadThrow, MonadCatch, MonadMask
+                   , MonadFork, MonadLogger, MonadFail
+                   )
 
 instance MFunctor (DBT rw a) where
   hoist f (DBT m) = DBT $ hoist f m
