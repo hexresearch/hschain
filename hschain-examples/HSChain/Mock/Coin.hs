@@ -26,10 +26,12 @@ module HSChain.Mock.Coin (
   , TxSend(..)
   , Tx(..)
   , BData(..)
+  , coinGenesis
     -- * Pure state
   , CoinState(..)
   , Unspent(..)
   , UTXO(..)
+  , inMemoryStateView
     -- ** Transaction generator
   , TxGenerator(..)
   , makeCoinGenerator
