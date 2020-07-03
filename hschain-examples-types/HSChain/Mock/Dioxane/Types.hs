@@ -14,7 +14,6 @@
 module HSChain.Mock.Dioxane.Types where
 
 import Codec.Serialise      (Serialise)
-import Control.Monad
 import Control.Monad.Catch
 import Control.Parallel.Strategies
 import Data.Int

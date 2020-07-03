@@ -11,7 +11,7 @@ import HSChain.Types
 import HSChain.Types.Merkle.Types
 import HSChain.Internal.Types.Consensus
 import HSChain.Mock.KeyList
-import HSChain.Mock.KeyVal  (BData(..),BState,mkGenesisBlock)
+import HSChain.Mock.KeyVal  (BData(..),mkGenesisBlock)
 
 
 ----------------------------------------------------------------
@@ -45,7 +45,7 @@ mockchain
     [BData [("K"++show i,i)] | i <- [100..]]
   where
     step (b,st) dat@(BData txs) = let st' = st <> Map.fromList txs
-                                  in ( mintBlock b st' dat, st' )
+                                  in ( mintBlock b dat, st' )
 
 
 ----------------------------------------------------------------
@@ -53,11 +53,10 @@ mockchain
 ----------------------------------------------------------------
 
 mintFirstBlock :: BData -> Block BData
-mintFirstBlock dat@(BData txs)
-  = mintBlock (genesisBlock genesis) (Map.fromList txs) dat
+mintFirstBlock dat = mintBlock (genesisBlock genesis) dat
 
-mintBlock :: Block BData -> BState -> BData -> Block BData
-mintBlock b st dat = Block
+mintBlock :: Block BData -> BData -> Block BData
+mintBlock b dat = Block
   { blockHeight        = succ hPrev
   , blockPrevBlockID   = Just bid
   , blockValidators    = hashed valSet

@@ -13,7 +13,6 @@ import Control.Monad.Trans.Class
 import Control.Monad.Trans.Cont
 import Control.Monad.IO.Class
 import Data.Default.Class
-import Data.Foldable    (toList)
 
 import HSChain.Blockchain.Internal.Engine.Types
 import HSChain.Internal.Types.Config
@@ -23,7 +22,6 @@ import qualified HSChain.Mock.KeyVal as KeyVal
 import qualified HSChain.Mock.Coin   as Coin
 import           HSChain.Mock.Coin     (CoinSpecification(..))
 import           HSChain.Mock.Types
-import           HSChain.Types.Merkle.Types
 import           TM.Util.Network (withTimeOut)
 
 

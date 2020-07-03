@@ -30,7 +30,6 @@ import HSChain.Control.Util
 import HSChain.Internal.Types.Config
 import HSChain.Internal.Types.Consensus
 import HSChain.Logger
-import HSChain.Mempool
 import HSChain.Monitoring
 import HSChain.Network.Types
 import HSChain.P2P.Internal

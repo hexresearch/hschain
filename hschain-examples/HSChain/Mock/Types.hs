@@ -40,13 +40,10 @@ import qualified Data.Aeson as JSON
 import HSChain.Blockchain.Internal.Engine.Types
 import HSChain.Config
 import HSChain.Internal.Types.Config
-import HSChain.Internal.Types.Consensus
 import HSChain.Crypto
 import HSChain.Logger         (ScribeSpec)
-import HSChain.Mempool
 import HSChain.Types
 import HSChain.Types.Merkle.Types
-import HSChain.Store
 import HSChain.Network.Types
 
 
