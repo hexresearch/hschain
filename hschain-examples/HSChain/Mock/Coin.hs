@@ -632,7 +632,7 @@ interpretSpec
 interpretSpec cfg net NodeSpec{..} valSet coin@CoinSpecification{..} cb = do
   -- Start node
   -- (state,memThr,readST) <- inMemoryStateView $ genesisValSet genesis
-  queryRW initCoinDB
+  mustQueryRW initCoinDB
   (state,memThr) <- databaseStateView $ genesisValSet genesis
   actions               <- runNode cfg NodeDescription
     { nodeValidationKey = nspecPrivKey
