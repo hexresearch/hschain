@@ -1,3 +1,4 @@
+{-# LANGUAGE DataKinds                  #-}
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE DerivingStrategies         #-}
 {-# LANGUAGE FlexibleContexts           #-}
@@ -9,6 +10,7 @@
 {-# LANGUAGE TypeApplications           #-}
 {-# LANGUAGE TypeFamilies               #-}
 {-# LANGUAGE TypeOperators              #-}
+{-# LANGUAGE UndecidableInstances       #-}
 -- |
 module HSChain.Crypto.Classes.Hash (
     -- * Data types and API
@@ -24,6 +26,8 @@ module HSChain.Crypto.Classes.Hash (
   , CryptoName(..)
   , DataType(..)
   , Constructor(..)
+    -- ** Deriving via
+  , CryptoHashablePackage(..)
     -- ** Generics derivation
   , GCryptoHashable(..)
   , genericHashStep
@@ -62,7 +66,7 @@ import Numeric.Natural
 import Text.Read
 import Text.ParserCombinators.ReadP
 
-import GHC.TypeNats
+import GHC.TypeLits
 import GHC.Generics hiding (Constructor)
 import qualified GHC.Generics as GHC
 
@@ -158,6 +162,16 @@ hashSize _ = fromIntegral $ natVal (Proxy @(ByteSize (Hash alg)))
 hashed :: (CryptoHash alg, CryptoHashable a) => a -> Hashed alg a
 hashed = Hashed . hash
 
+
+-- | Newtype wrapper for deriving CryptoHashable using DerivingVia.
+newtype CryptoHashablePackage (str :: Symbol) a = CryptoHashablePackage a
+
+instance ( Generic a
+         , GCryptoHashable (Rep a)
+         , KnownSymbol str
+         ) => CryptoHashable (CryptoHashablePackage str a) where
+  hashStep (CryptoHashablePackage a) =
+    ghashStepPkg (symbolVal (Proxy @str)) (from a)
 
 ----------------------------------------
 
