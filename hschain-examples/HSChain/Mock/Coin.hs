@@ -26,7 +26,6 @@ module HSChain.Mock.Coin (
   , TxSend(..)
   , Tx(..)
   , BData(..)
-  , coinGenesis
     -- * Pure state
   , CoinState(..)
   , Unspent(..)
@@ -464,7 +463,6 @@ databaseStateView valSetH0 = do
   --   - txList - list of transcation to remove duting commit
   --   - vals   - validator set after 
   let make stateH txList vals diff = sview where
-        viewH = succH stateH
         sview = StateView
           { stateHeight   = stateH
           , newValidators = vals
