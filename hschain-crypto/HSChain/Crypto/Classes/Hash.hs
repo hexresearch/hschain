@@ -254,8 +254,11 @@ data DataType
   -- ^ Fingerprint of public key. It first writes hash algorithm name,
   --   then nake of algorithms for asymmetric cryptography
   | CryPublicKey   !ByteString
+  -- ^ Public key for a given algorithm
   | CryPrivateKey  !ByteString
+  -- ^ Private key for a given algorithm
   | CrySignature   !ByteString
+  -- ^ Signature which uses given scheme
   deriving (Show)
 
 -- | Constructor identifier for defining 'CryptoHashable' instances.
