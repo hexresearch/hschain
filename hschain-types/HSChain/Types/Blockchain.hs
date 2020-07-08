@@ -45,17 +45,6 @@ module HSChain.Types.Blockchain (
   , VoteType(..)
   , Vote(..)
   , CheckSignature(..)
-    -- * Blockchain logic
-    -- ** Evaluation context
-  , BChEval(..)
-  , Genesis
-  , BlockValidation
-  , ValidatedBlock
-  , EvaluationResult
-  , ProposedBlock
-    -- ** Logic of blockchain
-  , NewBlock(..)
-  , BChLogic(..)
     -- ** Type class for hoisting function
   , HoistDict(..)
     -- * Signed data
@@ -183,8 +172,6 @@ data GBlock f a = Block
   , blockData             :: !(MerkleNode f (Alg a) a)
     -- ^ Payload of block. HSChain treats it completely opaque and
     --   rely on callback to do anything to it.
-  , blockStateHash        :: !(Hashed (Alg a) (BlockchainState a))
-    -- ^ Hash of state after evaluation of this block.
   }
   deriving stock    (Generic)
 instance (IsMerkle f, CryptoHash (Alg a)) => CryptoHashable (GBlock f a) where
@@ -248,31 +235,22 @@ newtype ProposerSelection a = ProposerSelection
 --   block. Related types are defined as associated types
 class ( Serialise a
       , Serialise (TX a)
-      , Serialise (BlockchainState a)
       , CryptoHashable a
       , CryptoHashable (TX a)
-      , CryptoHashable (BlockchainState a)
       , Exception      (BChError a)
+      , JSON.ToJSON    (BChError a)
       , Crypto (Alg a)
       ) => BlockData a where
   -- | Type of transaction used in blockchain. More precisely it's
   --   type of transaction which is submitted by user and stored in
   --   mempool.
   type TX a
-  -- | Part of state of blockchain defined by user. Set of validators
-  --   is passed separately as part of 'BChEval'.
-  type BlockchainState a
   -- | Reason or rejection of transaction\/block.
   type BChError a
-  -- | Monad used for evaluation of blockchain
-  type BChMonad a :: * -> *
   -- | Crypto algorithms used by blockchain validators. Note that
   --   transactions doesn't necessarily need not to use same
   --   cryptography.
   type Alg a  
-  -- | Logic of blockchain. It describes how to process block and
-  --   validate transactions in mempool and how to generate new blocks.
-  bchLogic          :: BChLogic (BChMonad a) a
   -- | Describe how to select proposer for given height and round.
   proposerSelection :: ProposerSelection a
   -- | Information about block that is written to block
@@ -393,92 +371,6 @@ instance (CryptoHash (Alg a)) => CryptoHashable (Vote 'PreCommit a) where
    <> hashStep voteBlockID
 
 
-
-----------------------------------------------------------------
--- Blockchain logic
-----------------------------------------------------------------
-
--- | Context for evaluation for blockchain. It's simply triple of
---   blockchain state, set of validators and something else.
-data BChEval a x = BChEval
-  { bchValue        :: !x
-  , validatorSet    :: !(MerkleNode Identity (Alg a) (ValidatorSet (Alg a)))
-  , blockchainState :: !(MerkleNode Identity (Alg a) (BlockchainState a))
-  }
-  deriving stock (Generic, Functor)
-
--- | Blockchain genesis. That is block at H=0, validator set for that
---   block and initial state.
-type Genesis         a = BChEval a (Block a)
-
--- | Same as genesis but is used for validation of blocks at
---   H>0. Created as documentation. Validator set and state correspond to state 
-type BlockValidation a = BChEval a (Block a)
-
--- | Block which is already validated. It uses same type as
---   'BlockValidation' but validator set and state correspons to the
---   state _after_ evaluation.
-type ValidatedBlock  a = BChEval a (Block a)
-
--- | Result of block evaluation. We don't have any information beyond.
-type EvaluationResult a = BChEval a ()
-
--- | Block proposal returned by callback. Note that block itself is
---   assmebled by consensus engine so we return only block payload.
-type ProposedBlock   a = BChEval a a
-
-
-
-
-deriving stock    instance (Show x, Crypto (Alg a), Show (PublicKey (Alg a)), Show (BlockchainState a)
-                           ) => Show (BChEval a x)
-deriving stock    instance (Eq x, Eq (PublicKey (Alg a)), Eq (BlockchainState a)
-                           ) => Eq (BChEval a x)
-deriving anyclass instance (NFData x, NFData (PublicKey (Alg a)), NFData (BlockchainState a)
-                           ) => NFData (BChEval a x)
-deriving anyclass instance (Crypto (Alg a), JSON.ToJSON x, JSON.ToJSON (BlockchainState a)
-                           ) => JSON.ToJSON (BChEval a x)
-deriving anyclass instance (Crypto (Alg a)
-                           , JSON.FromJSON x
-                           , JSON.FromJSON  (BlockchainState a)
-                           , CryptoHashable (BlockchainState a)
-                           ) => JSON.FromJSON (BChEval a x)
-deriving anyclass instance ( Crypto (Alg a)
-                           , Serialise x
-                           , Serialise      (BlockchainState a)
-                           , CryptoHashable (BlockchainState a)
-                           ) => Serialise (BChEval a x)
-
-
--- | Parameters supplied by consensus engine for block generation
-data NewBlock a = NewBlock
-  { newBlockHeight   :: !Height
-  , newBlockLastBID  :: !(BlockID a)
-  , newBlockCommit   :: !(Maybe (Commit a))
-  , newBlockEvidence :: ![ByzantineEvidence a]
-  , newBlockState    :: !(MerkleNode Identity (Alg a) (BlockchainState a))
-  , newBlockValSet   :: !(ValidatorSet (Alg a))
-  }
-
--- | Description of interpretation of blockchain state. Evaluation of
---   blocks and transactions are done in the monad @q@ which is
---   assumed to provide access to current state of blockchain
-data BChLogic m a = BChLogic
-  { processTx     :: BChEval a (TX a) -> m ()
-    -- ^ Process single transactions. Used only for validator of
-    --   transactions in mempool.
-  , processBlock  :: BlockValidation a -> m (EvaluationResult a)
-    -- ^ Process and validate complete block.
-  , generateBlock :: NewBlock a -> [TX a] -> m (ProposedBlock a)
-    -- ^ Generate block from list of transactions.
-  }
-
-instance HoistDict BChLogic where
-  hoistDict fun BChLogic{..} = BChLogic
-    { processTx     = fmap fun processTx
-    , processBlock  = fmap fun processBlock
-    , generateBlock = (fmap . fmap) fun generateBlock
-    }
 
 ----------------------------------------------------------------
 -- Signed values

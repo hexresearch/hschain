@@ -55,13 +55,13 @@ advancePeer step@(FullStep h _ _) = setFinalState $ \_ -> do
 
 -- | Dictionary of handlers for messages for each state of peer.
 data HandlerDict s a m = HandlerDict
-  { handlerGossipMsg        :: Config a -> GossipMsg a -> TransitionT s a m ()
+  { handlerGossipMsg        :: forall n. Config n a -> GossipMsg a -> TransitionT s a m ()
     -- ^ Handler for incoming gossip. It's used for outgoing gossip as
     -- well with minor modifications.
   , advanceOurHeight        :: FullStep -> TransitionT s a m ()
     -- ^ Handler for outgoing 'AnnStep'
-  , handlerProposalTimeout  :: Config a -> s a -> m [GossipMsg a]
-  , handlerPrevoteTimeout   :: Config a -> s a -> m [GossipMsg a]
-  , handlerPrecommitTimeout :: Config a -> s a -> m [GossipMsg a]
-  , handlerBlocksTimeout    :: Config a -> s a -> m [GossipMsg a]
+  , handlerProposalTimeout  :: forall n. Config n a -> s a -> m [GossipMsg a]
+  , handlerPrevoteTimeout   :: forall n. Config n a -> s a -> m [GossipMsg a]
+  , handlerPrecommitTimeout :: forall n. Config n a -> s a -> m [GossipMsg a]
+  , handlerBlocksTimeout    :: forall n. Config n a -> s a -> m [GossipMsg a]
   }

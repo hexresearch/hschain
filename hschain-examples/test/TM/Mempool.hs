@@ -90,5 +90,5 @@ doPush
   -> tx
   -> m (MempoolState SHA512 tx)
 doPush f m tx
-  = fromMaybe m <$> mempoolAddTX f (merkled tx) m
+  = fromMaybe m <$> mempoolAddTX (const True) f (merkled tx) m
 

@@ -53,7 +53,7 @@ handler = HandlerDict
 
 handlerGossip
   :: (MonadIO m, MonadReadDB a m, BlockData a)
-  => Config a -> GossipMsg a -> TransitionT CurrentState a m ()
+  => Config n a -> GossipMsg a -> TransitionT CurrentState a m ()
 handlerGossip cfg = \case
   GossipPreVote v@(signedValue -> Vote{..}) -> do
     addPrevote voteHeight voteRound $ signedKeyInfo v
@@ -149,7 +149,7 @@ advanceOurHeightWrk (FullStep ourH _ _) = setFinalState advance
 
 handlerProposalTimeoutMsg
   :: (MonadIO m, MonadReadDB a m)
-  => Config a -> CurrentState a -> m [GossipMsg a]
+  => Config n a -> CurrentState a -> m [GossipMsg a]
 handlerProposalTimeoutMsg cfg st = do
   bchH <- queryRO blockchainHeight
   atomicallyIO (view consensusSt cfg) >>= \case
@@ -167,7 +167,7 @@ handlerProposalTimeoutMsg cfg st = do
 
 handlerPrevoteTimeoutMsg
   :: (MonadIO m, MonadReadDB a m)
-  => Config a -> CurrentState a -> m [GossipMsg a]
+  => Config n a -> CurrentState a -> m [GossipMsg a]
 handlerPrevoteTimeoutMsg cfg st
   | Just polR <- st^.peerLock = gossipPrevotes cfg st polR
   | otherwise                 = gossipPrevotes cfg st r
@@ -176,7 +176,7 @@ handlerPrevoteTimeoutMsg cfg st
 
 gossipPrevotes
   :: (MonadIO m, MonadReadDB a m)
-  => Config a -> CurrentState a -> Round -> m [GossipMsg a]
+  => Config n a -> CurrentState a -> Round -> m [GossipMsg a]
 gossipPrevotes cfg st r = do
   bchH <- queryRO blockchainHeight
   atomicallyIO (view consensusSt cfg) >>= \case
@@ -201,7 +201,7 @@ gossipPrevotes cfg st r = do
 
 handlerPrecommitsTimeoutMsg
   :: (MonadIO m, MonadReadDB a m)
-  => Config a -> CurrentState a -> m [GossipMsg a]
+  => Config n a -> CurrentState a -> m [GossipMsg a]
 handlerPrecommitsTimeoutMsg cfg st = do
   bchH <- queryRO blockchainHeight
   atomicallyIO (view consensusSt cfg) >>= \case
@@ -226,7 +226,7 @@ handlerPrecommitsTimeoutMsg cfg st = do
 
 handlerBlocksTimeoutMsg
   :: (MonadIO m, MonadReadDB a m)
-  => Config a -> CurrentState a -> m [GossipMsg a]
+  => Config n a -> CurrentState a -> m [GossipMsg a]
 handlerBlocksTimeoutMsg cfg st = do
   bchH <- queryRO blockchainHeight
   atomicallyIO (view consensusSt cfg) >>= \case

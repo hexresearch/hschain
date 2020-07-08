@@ -219,8 +219,8 @@ data Event a = ETX     (MessageTx a)
 
 type GossipM a = DBT 'RW a (NoLogsT IO)
 type TestM   a = StateT  (P2P.State a)
-                 ( ReaderT ( P2P.Config a
-                           , TVar (Maybe (Height, TMState a)))
+                 ( ReaderT ( P2P.Config Maybe a
+                           , TVar (Maybe (Height, TMState Maybe a)))
                  ( GossipM a
                  ))
 

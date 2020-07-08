@@ -2,6 +2,7 @@
 {-# LANGUAGE DeriveAnyClass             #-}
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE DerivingStrategies         #-}
+{-# LANGUAGE DerivingVia                #-}
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase                 #-}
@@ -13,28 +14,30 @@
 -- |
 module HSChain.Mock.KeyVal (
     mkGenesisBlock
-  , interpretSpec
-  , executeSpec
-  , keyValLogic
   , BData(..)
   , Tx
   , BState
+  , inMemoryStateView
+    -- * Running KeyVal
+  , KeyValDictM(..)
+  , KeyValT(..)
+  , runKeyValT
+  , interpretSpec
+  , executeSpec
   ) where
 
 import Codec.Serialise (Serialise)
 import Control.Monad
 import Control.Monad.Catch
+import Control.Monad.Reader
 import Control.Monad.Trans.Cont
-import Control.Monad.Trans.Class
-import Control.Monad.Trans.Except
-import Control.Monad.IO.Class
-import Control.Monad.Morph
 import Data.Maybe
 import Data.List
 import Data.Map.Strict                 (Map)
 import qualified Data.Aeson          as JSON
 import qualified Data.Map.Strict     as Map
 import qualified Data.HashMap.Strict as HM
+import Katip           (Namespace,LogEnv)
 import System.Random   (randomRIO)
 import GHC.Generics    (Generic)
 
@@ -46,6 +49,7 @@ import HSChain.Crypto
 import HSChain.Crypto.Classes.Hash
 import HSChain.Crypto.Ed25519
 import HSChain.Crypto.SHA
+import HSChain.Internal.Types.Consensus
 import HSChain.Logger
 import HSChain.Mempool
 import HSChain.Mock.KeyList
@@ -54,7 +58,6 @@ import HSChain.Monitoring
 import HSChain.Run
 import HSChain.Mock
 import HSChain.Store
-import HSChain.Store.STM
 import HSChain.Types.Validators
 import qualified HSChain.Network.Mock as P2P
 
@@ -65,7 +68,7 @@ import qualified HSChain.Network.Mock as P2P
 
 type    Tx     = (String,Int)
 type    BState = Map String Int
-newtype BData  = BData [(String,Int)]
+newtype BData  = BData { unBData :: [(String,Int)] }
   deriving stock    (Show,Eq,Generic)
   deriving anyclass (Serialise)
   deriving newtype  (JSON.ToJSON, JSON.FromJSON)
@@ -73,31 +76,60 @@ instance CryptoHashable BData where
   hashStep = genericHashStep "hschain-examples"
 
 data KeyValError = KeyValError String
-  deriving stock    (Show) 
-  deriving anyclass (Exception)
+  deriving stock    (Show,Generic)
+  deriving anyclass (Exception,JSON.FromJSON,JSON.ToJSON)
 
 instance BlockData BData where
-  type TX              BData = Tx
-  type BlockchainState BData = BState
-  type BChError        BData = KeyValError
-  type Alg             BData = Ed25519 :& SHA512
-  type BChMonad        BData = ExceptT KeyValError IO
+  type TX       BData = Tx
+  type BChError BData = KeyValError
+  type Alg      BData = Ed25519 :& SHA512
   proposerSelection        = ProposerSelection randomProposerSHA512
-  bchLogic                 = keyValLogic
   logBlockData (BData txs) = HM.singleton "Ntx" $ JSON.toJSON $ length txs
 
 
 mkGenesisBlock :: ValidatorSet (Alg BData) -> Genesis BData
-mkGenesisBlock valSet = BChEval
-  { bchValue        = makeGenesis (BData []) (hashed mempty) valSet valSet
-  , validatorSet    = merkled valSet
-  , blockchainState = merkled mempty
+mkGenesisBlock valSet = Genesis
+  { genesisBlock  = makeGenesis (BData []) valSet valSet
+  , genesisValSet = valSet
   }
 
 
 -------------------------------------------------------------------------------
 --
 -------------------------------------------------------------------------------
+
+-- | Create view on blockchain state which is kept completely in
+--   memory
+inMemoryStateView :: MonadIO m => ValidatorSet (Alg BData) -> StateView m BData
+inMemoryStateView = make Nothing mempty
+  where
+    make mh st vals = r where
+      r = StateView
+        { stateHeight   = mh
+        , newValidators = vals
+        , commitState   = return r
+        , validatePropBlock = \b valSet -> return $ do
+            st' <- foldM (flip process) st
+                 $ unBData $ merkleValue $ blockData b
+            return $ make (Just $ blockHeight b) st' valSet
+        , generateCandidate = \NewBlock{..} -> do
+            i <- liftIO $ randomRIO (1,100)
+            let Just k = find (`Map.notMember` st)
+                         ["K_" ++ show (n :: Int) | n <- [1 ..]]
+            let tx        = (k,i)
+                Right st' = process tx st
+            return ( BData [tx]
+                   , make (Just newBlockHeight) st' newBlockValSet 
+                   )
+        , stateMempool = nullMempool
+        }
+
+process :: Tx -> BState -> Either KeyValError BState
+process (k,v) m
+  | k `Map.member` m = Left  $ KeyValError k
+  | otherwise        = Right $! Map.insert k v m
+
+
 
 interpretSpec
   :: ( MonadDB BData m, MonadFork m, MonadMask m, MonadLogger m
@@ -107,88 +139,70 @@ interpretSpec
   -> BlockchainNet
   -> Configuration Example
   -> AppCallbacks m BData
-  -> m (RunningNode m BData, [m ()])
+  -> m (StateView m BData, [m ()])
 interpretSpec genesis nspec bnet cfg cb = do
-  conn  <- askConnectionRO
-  store <- maybe return snapshotState (nspecPersistIval nspec)
-       =<< newSTMBchStorage (merkled mempty)
-  --
-  let astore = AppStore
-        { appMempool  = nullMempool
-        , appBchState = store
-        }
-  acts <- runNode cfg NodeDescription
+  let state = inMemoryStateView $ genesisValSet genesis
+  acts  <- runNode cfg NodeDescription
     { nodeValidationKey = nspecPrivKey nspec
     , nodeGenesis       = genesis
     , nodeCallbacks     = cb
-    , nodeRunner        = hoist liftIO
-    , nodeStore         = astore
     , nodeNetwork       = bnet
+    , nodeStateView     = state
     }
   return
-    ( RunningNode { rnodeState   = store
-                  , rnodeConn    = conn
-                  , rnodeMempool = appMempool astore
-                  }
+    ( state
     , acts
     )
 
-keyValLogic :: MonadIO m => BChLogic (ExceptT KeyValError m) BData
-keyValLogic = BChLogic
-  -- We don't use mempool here so we can just use trivial handler for
-  -- transactions
-  { processTx     = \_ -> throwE $ KeyValError ""
-  --
-  , processBlock  = \BChEval{..} -> ExceptT $ return $ do
-      st <- foldM (flip process) (merkleValue blockchainState)
-          $ let BData txs = merkleValue $ blockData bchValue
-            in txs
-      return BChEval { bchValue        = ()
-                     , blockchainState = merkled st
-                     , ..
-                     }
-  --
-  , generateBlock = \NewBlock{..} _ -> do
-      let Just k = find (`Map.notMember` merkleValue newBlockState)
-                   ["K_" ++ show (n :: Int) | n <- [1 ..]]
-      i <- liftIO $ randomRIO (1,100)
-      return BChEval { bchValue        = BData [(k, i)]
-                     , validatorSet    = merkled newBlockValSet
-                     , blockchainState = merkled $ Map.insert k i $ merkleValue newBlockState
-                     }
-  }
-  where
-    process :: Tx -> BState -> Either KeyValError BState
-    process (k,v) m
-      | k `Map.member` m = Left  $ KeyValError k
-      | otherwise        = Right $! Map.insert k v m
 
+-- | Parameters for 'CoinT' monad transformer
+data KeyValDictM = KeyValDictM
+  { dictNamespace :: !Namespace
+  , dictLogEnv    :: !LogEnv
+  , dictConn      :: !(Connection 'RW BData)
+  }
+  deriving stock (Generic)
+
+-- | Application monad for key-value blockchain
+newtype KeyValT m a = KeyValT { unKeyValT :: ReaderT KeyValDictM m a }
+  deriving newtype (Functor,Applicative,Monad,MonadIO)
+  deriving newtype (MonadThrow,MonadCatch,MonadMask,MonadFork)
+  deriving newtype (MonadReader KeyValDictM)
+  -- HSChain instances
+  deriving MonadTMMonitoring via NoMonitoring (KeyValT m)
+  deriving MonadLogger
+       via LoggerByTypes (KeyValT m)
+  deriving (MonadReadDB BData, MonadDB BData)
+       via DatabaseByType BData (KeyValT m)
+
+runKeyValT :: KeyValDictM -> KeyValT m a -> m a
+runKeyValT d = flip runReaderT d . unKeyValT
 
 
 executeSpec
-  :: (MonadIO m, MonadMask m, MonadFork m, MonadTMMonitoring m)
-  => NetSpec (NodeSpec BData)
-  -> ContT r m [RunningNode m BData]
-executeSpec NetSpec{..} = do
+  :: ()
+  => MockClusterConfig BData ()
+  -> AppCallbacks (KeyValT IO) BData
+  -> ContT r IO [(StateView (KeyValT IO) BData, KeyValDictM)]
+executeSpec MockClusterConfig{..} callbacks = do
   -- Create mock network and allocate DB handles for nodes
   net       <- liftIO P2P.newMockNet
-  resources <- allocNetwork net netTopology netNodeList
-  -- Start nodes
-  rnodes    <- lift $ forM resources $ \(nspec, bnet, conn, logenv) -> do
-    let run :: DBT 'RW BData (LoggerT m) x -> m x
-        run = runLoggerT logenv . runDBT conn
-    (rn, acts) <- run $ interpretSpec
+  resources <- allocNetwork net clusterTopology clusterNodes
+  rnodes    <- lift $ forM resources $ \(spec, bnet, dictConn, dictLogEnv) -> do
+    let dict = KeyValDictM { dictNamespace = mempty
+                           , ..
+                           }
+    (state, threads) <- runKeyValT dict $ interpretSpec
       genesis
-      nspec
+      spec
       bnet
-      netNetCfg
-      (maybe mempty callbackAbortAtH netMaxH)
-    return ( hoistRunningNode run rn
-           , run <$> acts
-           )
-  -- Actually run nodes
-  lift   $ catchAbort $ runConcurrently $ snd =<< rnodes
-  return $ fst <$> rnodes
+      clusterCfg
+      callbacks
+    return (state,dict,threads)
+  --
+  lift $ catchAbort $ runConcurrently $ do (_,dict,thread) <- rnodes
+                                           runKeyValT dict <$> thread
+  return [ (s,d) | (s,d,_) <- rnodes ]
   where
-    valSet  = makeValidatorSetFromPriv $ catMaybes [ nspecPrivKey x | x <- netNodeList ]
+    valSet  = makeValidatorSetFromPriv $ catMaybes [ nspecPrivKey x | x <- clusterNodes ]
     genesis = mkGenesisBlock valSet

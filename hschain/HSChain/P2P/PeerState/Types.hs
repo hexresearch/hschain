@@ -103,8 +103,8 @@ data GossipTimeout
   | TimeoutAnnounce
   deriving Show
 
-data Config a = Config
-  { _consensusSt    :: !(STM (Maybe (Height, TMState a)))
+data Config m a = Config
+  { _consensusSt    :: !(STM (Maybe (Height, TMState m a)))
   }
 makeLenses ''Config
 

@@ -28,8 +28,8 @@ import HSChain.Control.Class
 import HSChain.Control.Shepherd
 import HSChain.Control.Util
 import HSChain.Internal.Types.Config
+import HSChain.Internal.Types.Consensus
 import HSChain.Logger
-import HSChain.Mempool
 import HSChain.Monitoring
 import HSChain.Network.Types
 import HSChain.P2P.Internal
@@ -50,8 +50,8 @@ startPeerDispatcher
   => NetworkCfg app
   -> NetworkAPI               -- ^ API for networking
   -> [NetAddr]                -- ^ Set of initial addresses to connect
-  -> AppChans a               -- ^ Channels for communication with main application
-  -> Mempool m (Alg a) (TX a)
+  -> AppChans n a             -- ^ Channels for communication with main application
+  -> MempoolHandle (Alg a) (TX a)
   -> m ()
 startPeerDispatcher p2pCfg net addrs AppChans{..} mempool = logOnException $ do
   logger InfoS "Starting peer dispatcher" $ sl "seed" addrs

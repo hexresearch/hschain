@@ -1,5 +1,6 @@
 {-# LANGUAGE CPP                        #-}
 {-# LANGUAGE DataKinds                  #-}
+{-# LANGUAGE DeriveAnyClass             #-}
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE DerivingStrategies         #-}
 {-# LANGUAGE FlexibleContexts           #-}
@@ -61,10 +62,6 @@ module HSChain.Store (
   , retrieveValidatorSet
   , mustRetrieveBlock
   , mustRetrieveValidatorSet
-  , retrieveSavedState
-  , storeStateSnapshot
-    -- * Blockchain state
-  , BChStore(..)
     -- * Blockchain invariants checkers
   , BlockchainInconsistency
   , checkStorage
@@ -83,12 +80,14 @@ import Control.Monad.Trans.Writer
 import Control.Monad.Fail         (MonadFail)
 #endif
 
+import Data.Aeson                (FromJSON,ToJSON)
 import Data.Maybe                (isNothing)
 import Data.Text                 (Text)
 import Data.Generics.Product.Fields (HasField'(..))
 import Data.Generics.Product.Typed  (HasType(..))
 import qualified Data.List.NonEmpty as NE
 import Lens.Micro
+import GHC.Generics (Generic)
 
 import HSChain.Types.Blockchain
 import HSChain.Types.Merkle.Types
@@ -108,10 +107,10 @@ import HSChain.Types.Validators
 -- | Monad transformer which provides 'MonadReadDB' and 'MonadDB'
 --   instances.
 newtype DBT rw a m x = DBT (ReaderT (Connection rw a) m x)
-  deriving ( Functor, Applicative, Monad
-           , MonadIO, MonadThrow, MonadCatch, MonadMask
-           , MonadFork, MonadLogger, MonadFail
-           )
+  deriving newtype ( Functor, Applicative, Monad
+                   , MonadIO, MonadThrow, MonadCatch, MonadMask
+                   , MonadFork, MonadLogger, MonadFail
+                   )
 
 instance MFunctor (DBT rw a) where
   hoist f (DBT m) = DBT $ hoist f m
@@ -155,30 +154,6 @@ initDatabase c = do
 
 
 
-
-
-----------------------------------------------------------------
--- Blockchain state storage
-----------------------------------------------------------------
-
--- | Storage for blockchain state.
-data BChStore m a = BChStore
-  { bchCurrentState  :: m (Maybe Height, MerkleNode Identity (Alg a) (BlockchainState a))
-  -- ^ Height of value stored in state
-  , bchStoreRetrieve :: Height -> m (Maybe (MerkleNode Identity (Alg a) (BlockchainState a)))
-  -- ^ Retrieve state for given height. It's generally not expected that
-  , bchStoreStore    :: Height -> MerkleNode Identity (Alg a) (BlockchainState a) -> m ()
-  -- ^ Put blockchain state at given height into store
-  }
-
-instance HoistDict BChStore where
-  hoistDict fun BChStore{..} = BChStore
-    { bchCurrentState  = fun   bchCurrentState
-    , bchStoreRetrieve = fun . bchStoreRetrieve
-    , bchStoreStore    = (fmap . fmap) fun bchStoreStore
-    }
-
-
 ----------------------------------------------------------------
 -- validate blockchain invariants
 ----------------------------------------------------------------
@@ -220,8 +195,8 @@ data BlockchainInconsistency
   --   for some reason.
   | BlockInvalidTime !Height
   -- ^ Block contains invalid time in header
-  deriving (Eq, Show)
-
+  deriving stock    (Eq, Show, Generic)
+  deriving anyclass (ToJSON, FromJSON)
 
 -------------------------------------------------------------------------------
 -- Invariant checking for storage and proposed blocks

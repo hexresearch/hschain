@@ -20,7 +20,6 @@ module HSChain.Blockchain.Internal.Types (
   , TMState(..)
   ) where
 
-import Codec.Serialise        (Serialise)
 import GHC.Generics           (Generic)
 import qualified Data.Aeson          as JSON
 import           Data.Map              (Map)
@@ -58,12 +57,12 @@ newHeightVoteSet valSet = emptySignedSetMap valSet voteBlockID
 data ProposalState
   = GoodProposal
     -- ^ Proposal is valid and we could vote for it
-  | InvalidProposal
+  | InvalidProposal !JSON.Value
     -- ^ Proposal is invalid for some reason
   | UnseenProposal
     -- ^ We don't have complete block data for particular block ID yet
   deriving stock    (Show, Eq, Generic)
-  deriving anyclass (Serialise, JSON.FromJSON, JSON.ToJSON)
+  deriving anyclass (JSON.FromJSON, JSON.ToJSON)
 
 instance Katip.ToObject ProposalState where
   toObject p = HM.singleton "val" (JSON.toJSON p)
@@ -72,14 +71,14 @@ instance Katip.LogItem ProposalState where
 
 
 -- | State for tendermint consensus at some particular height.
-data TMState a = TMState
+data TMState m a = TMState
   { smRound          :: !Round
     -- ^ Current round
   , smStep           :: !Step
     -- ^ Current step in the round
   , smProposals      :: !(Map Round (Signed 'Verified (Alg a) (Proposal a)))
     -- ^ Proposal for current round
-  , smProposedBlocks :: !(Props a)
+  , smProposedBlocks :: !(Props m a)
     -- ^ Proposed blocks and their validation state
   , smPrevotesSet    :: !(HeightVoteSet 'PreVote a)
     -- ^ Set of all received valid prevotes

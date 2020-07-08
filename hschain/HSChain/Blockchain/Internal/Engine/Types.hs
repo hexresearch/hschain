@@ -16,9 +16,7 @@
 -- Data types for storage of blockchain
 module HSChain.Blockchain.Internal.Engine.Types (
     -- * Application state
-    AppLogic
-  , AppStore(..)
-  , AppCallbacks(..)
+    AppCallbacks(..)
   , Validator(..)
   , PrivValidator(..)
     -- * Messages and channels
@@ -32,7 +30,6 @@ module HSChain.Blockchain.Internal.Engine.Types (
 
 import Control.Applicative
 import Control.Concurrent.STM
-import Control.Monad.Trans.Except
 import Data.Aeson
 import Data.Coerce
 import Data.Bits              (shiftL)
@@ -45,8 +42,6 @@ import qualified Katip
 import HSChain.Blockchain.Internal.Types
 import HSChain.Crypto
 import HSChain.Crypto.SHA (SHA512)
-import HSChain.Mempool
-import HSChain.Store
 import HSChain.Types.Blockchain
 import HSChain.Types.Validators
 import HSChain.Internal.Types.Messages
@@ -56,14 +51,6 @@ import HSChain.Internal.Types.Messages
 --
 ----------------------------------------------------------------
 
-type AppLogic m a = BChLogic (ExceptT (BChError a) m) a
-
-data AppStore m a = AppStore
-  { appMempool          :: Mempool m (Alg a) (TX a)
-    -- ^ Application mempool
-  , appBchState         :: BChStore m a
-    -- ^ Store for the blockchain state
-  }
 
 -- | User callbacks which have monoidal strcture
 data AppCallbacks m a = AppCallbacks
@@ -89,13 +76,13 @@ instance HoistDict AppCallbacks where
     }
 
 -- | Application connection to outer world
-data AppChans a = AppChans
+data AppChans m a = AppChans
   { appChanRx  :: TBQueue (MessageRx 'Unverified a)
     -- ^ Queue for receiving messages related to consensus protocol
     --   from peers.
   , appChanTx  :: TChan (MessageTx a)
     -- ^ TChan for broadcasting messages to the peers
-  , appTMState :: TVar  (Maybe (Height, TMState a))
+  , appTMState :: TVar  (Maybe (Height, TMState m a))
     -- ^ Current state of consensus. It includes current height, state
     --   machine status and known blocks which should be exposed in
     --   read-only manner for gossip with peers.

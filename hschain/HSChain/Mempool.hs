@@ -18,14 +18,13 @@
 {-# LANGUAGE ViewPatterns               #-}
 -- |
 module HSChain.Mempool (
-   -- * Mempool
-    MempoolCursor(..)
-  , Mempool(..)
-  , MempoolInfo(..)
-  , hoistMempool
-    -- * Concrete mempool implementations
-  , nullMempool
+    -- * Mempool
+    Mempool(..)
   , newMempool
+  , nullMempool
+  , mempoolSize
+  , MempoolCursor(..)
+  , MempoolHandle(..)
     -- * Mempool data structures
   , MempoolState(..)
   , emptyMempoolState
@@ -33,6 +32,8 @@ module HSChain.Mempool (
   , mempoolFilterTX
   , mempoolRemoveTX
   , mempoolSelfTest
+    -- * Logging information
+  , MempoolInfo(..)
   ) where
 
 import Control.Applicative
@@ -66,25 +67,41 @@ import HSChain.Control.Util
 -- Mempool
 ----------------------------------------------------------------
 
--- | Statistics about mempool
-data MempoolInfo = MempoolInfo
-  { mempool'size      :: !Int
-  -- ^ Number of transactions currently in mempool
-  , mempool'added     :: !Int
-  -- ^ Number of transactions added to mempool since program start
-  , mempool'discarded :: !Int
-  -- ^ Number of transaction discarded immediately since program start
-  , mempool'filtered  :: !Int
-  -- ^ Number of transaction removed during filtering
+-- | Dictionary of functions for working with mempool object. All
+--   operations are performed asynchronously
+data Mempool m alg tx = Mempool
+  { getMempoolState       :: forall f. MonadIO f => f (MempoolState alg tx)
+    -- ^ Get current state of mempool. It's updated after every
+    --   command to mempool is processed.
+  , removeTxByHashes      :: [Hashed alg tx] -> m ()
+    -- ^ Remove transactions from mempool with given hashes.
+  , startMempoolFiltering :: (tx -> m Bool) -> m ()
+    -- ^ Command mempool to start filtering transactions asynchronously
+  , mempoolHandle         :: MempoolHandle alg tx
+    -- ^ Mempool handle for use in gossip. It's will to be removed
+    --   if\/when gossip logic changes.
   }
-  deriving (Show,Generic)
-JSON.deriveJSON JSON.defaultOptions
-  { JSON.fieldLabelModifier = drop 8 } ''MempoolInfo
 
-instance Katip.ToObject MempoolInfo
-instance Katip.LogItem  MempoolInfo where
-  payloadKeys Katip.V0 _ = Katip.SomeKeys []
-  payloadKeys _        _ = Katip.AllKeys
+nullMempool :: Monad m => Mempool m alg tx
+nullMempool = Mempool
+  { getMempoolState       = return emptyMempoolState
+  , removeTxByHashes      = \_ -> return ()
+  , startMempoolFiltering = \_ -> return ()
+  , mempoolHandle         = MempoolHandle $ return $ MempoolCursor
+    { pushTxSync    = \_ -> return Nothing
+    , pushTxAsync   = \_ -> return ()
+    , advanceCursor = return Nothing
+    }
+  }
+
+-- | Compute current size of a mempool
+mempoolSize :: MonadIO f => Mempool m alg tx -> f Int
+mempoolSize m = IMap.size . mempFIFO <$> getMempoolState m
+
+-- | Handle for working with mempool
+data MempoolHandle alg tx = MempoolHandle
+  { getMempoolCursor :: forall m. MonadIO m => m (MempoolCursor alg tx)
+  }
 
 -- | Cursor into mempool which is used for gossiping data
 data MempoolCursor alg tx = MempoolCursor
@@ -100,107 +117,36 @@ data MempoolCursor alg tx = MempoolCursor
     -- points at the end of queue nothing happens.
   }
 
--- | Mempool which is used for storing transactions before they're
---   added into blockchain. Transactions are stored in FIFO manner
-data Mempool m alg tx = Mempool
-  { peekNTransactions :: !(m [tx])
-    -- ^ Return transactions in mempool as lazy list. This operation
-    --   does not alter mempool state
-  , filterMempool     :: !(m ())
-    -- ^ Remove transactions that are no longer valid from mempool
-  , getMempoolCursor  :: !(m (MempoolCursor alg tx))
-    -- ^ Get cursor pointing to be
-  , txInMempool       :: !(Hashed alg tx -> m Bool)
-    -- ^ Checks whether transaction is mempool
-  , mempoolSize       :: !(m Int)
-    -- ^ Number of transactions in mempool
-  }
 
-hoistMempool :: (forall a. m a -> n a) -> Mempool m alg tx -> Mempool n alg tx
-hoistMempool fun Mempool{..} = Mempool
-  { peekNTransactions = fun peekNTransactions
-  , filterMempool     = fun filterMempool
-  , getMempoolCursor  = fun getMempoolCursor
-  , txInMempool       = fun . txInMempool
-  , mempoolSize       = fun mempoolSize
-  }
-
-
--- | Mempool which does nothing. It doesn't contain any transactions
---   and discard every transaction is pushed into it. Useful if one
---   doesn't need any mempool.
-nullMempool :: (Monad m) => Mempool m alg tx
-nullMempool = Mempool
-  { peekNTransactions = return []
-  , filterMempool     = return ()
-  , mempoolSize       = return 0
-  , txInMempool       = const (return False)
-  , getMempoolCursor  = return MempoolCursor
-      { pushTxSync    = const $ return Nothing
-      , pushTxAsync   = const $ return ()
-      , advanceCursor = return Nothing
-      }
-  }
-
-
-----------------------------------------------------------------
--- Real mempool implemenatation
-----------------------------------------------------------------
-
+-- | Create new mempool.
 newMempool
-  :: forall tx alg m. ( Show tx, Ord tx, Crypto alg, CryptoHashable tx, MonadIO m )
-  => (tx -> m Bool)
-  -> m (Mempool m alg tx, m ())
-newMempool validation = do
-  dict@MempoolDict{..} <- newMempoolDict :: m (MempoolDict m alg tx)
-  return (
-    Mempool
-    -- TX manipulations
-    { peekNTransactions =  map merkleValue . toList . mempFIFO
-                       <$> liftIO (readTVarIO varMempool)
-    , filterMempool     = atomicallyIO $ writeTChan chPushTx (CmdStartFiltering validation)
-    , txInMempool       = \txHash -> liftIO $ do
-        mem <- readTVarIO varMempool
-        return $! txHash `Map.member` mempRevMap mem
-    -- Stats
-    , mempoolSize = liftIO $ do m <- readTVarIO varMempool
-                                return $! IMap.size $ mempFIFO m
-    -- Cursor
-    , getMempoolCursor = liftIO $ atomically $ do
-        varN <- newTVar 0
-        return MempoolCursor
-          { pushTxSync = \tx -> liftIO $ do
-              reply <- newEmptyMVar
-              atomicallyIO $ writeTChan chPushTx $ CmdAddTx (Just reply) tx
-              takeMVar reply
-          , pushTxAsync = atomicallyIO . writeTChan chPushTx . CmdAddTx Nothing
-            --
-          , advanceCursor = atomicallyIO $ do
-              mem <- readTVar varMempool
-              n   <- readTVar varN
-              case n `IMap.lookupGT` mempFIFO mem of
-                Nothing       -> return Nothing
-                Just (n', tx) -> do writeTVar varN $! n'
-                                    return $ Just $ merkleValue tx
-          }
-    }
-    , mempoolThread dict
-    )
-
+  :: (CryptoHash alg, CryptoHashable tx, MonadIO m)
+  => (tx -> Bool) -> m (Mempool m alg tx, m ())
+newMempool basicValidation = do
+  dict <- newMempoolDict basicValidation
+  let mempool = Mempool
+        { getMempoolState       = liftIO $ readTVarIO $ varMempool dict
+        , removeTxByHashes      = atomicallyIO . writeTChan (chPushTx dict) . CmdRemoveTx
+        , startMempoolFiltering = atomicallyIO . writeTChan (chPushTx dict) . CmdStartFiltering
+        , mempoolHandle         = makeMempoolHandle dict
+        }
+  return ( mempool , runMempool dict )
 
 ----------------------------------------------------------------
--- Mempool in separate thread
+-- Mempool validation
 ----------------------------------------------------------------
+
 
 data MempoolDict m alg tx = MempoolDict
-  { varMempool  :: TVar  (MempoolState alg tx)
-  , varValidate :: TVar (tx -> m Bool)
-  , varPending  :: TVar [Hashed alg tx]
-  , chPushTx    :: TChan (Push m alg tx)
+  { basicValidation :: tx -> Bool
+  , varMempool      :: TVar (MempoolState alg tx)
+  , varValidate     :: TVar (tx -> m Bool)
+  , varPending      :: TVar [Hashed alg tx]
+  , chPushTx        :: TChan (MempoolCmd m alg tx)
   }
 
 -- | Command to push new TX to mempool
-data Push m alg tx
+data MempoolCmd m alg tx
   = CmdAddTx !(Maybe (MVar (Maybe (Hashed alg tx))))
              !tx
     -- ^ Add transaction to mempool.
@@ -214,19 +160,42 @@ data Push m alg tx
     --   'varMempool' variable using this method ensures that previous
     --   command completed.
 
-newMempoolDict :: MonadIO m => m (MempoolDict m alg tx)
-newMempoolDict = liftIO $ do
+newMempoolDict :: MonadIO m => (tx -> Bool) -> m (MempoolDict m alg tx)
+newMempoolDict basicValidation = liftIO $ do
   varMempool   <- newTVarIO emptyMempoolState
   varValidate  <- newTVarIO $ const $ return False
   varPending   <- newTVarIO []
   chPushTx     <- newTChanIO
   return MempoolDict{..}
 
-mempoolThread
+makeMempoolHandle :: MempoolDict m alg tx -> MempoolHandle alg tx
+makeMempoolHandle MempoolDict{..} = MempoolHandle
+  { getMempoolCursor = do
+      varN <- liftIO $ newTVarIO 0
+      return MempoolCursor
+        { pushTxSync    = \tx -> liftIO $ do
+            reply <- newEmptyMVar
+            atomicallyIO $ writeTChan chPushTx $ CmdAddTx (Just reply) tx
+            takeMVar reply
+        --
+        , pushTxAsync =
+            atomicallyIO . writeTChan chPushTx . CmdAddTx Nothing
+        --
+        , advanceCursor = atomicallyIO $ do
+            mem <- readTVar varMempool
+            n   <- readTVar varN
+            case n `IMap.lookupGT` mempFIFO mem of
+              Nothing       -> return Nothing
+              Just (n', tx) -> do writeTVar varN $! n'
+                                  return $ Just $ merkleValue tx
+        }
+  }
+
+runMempool
   :: (CryptoHash alg, CryptoHashable tx, MonadIO m)
   => MempoolDict m alg tx
   -> m ()
-mempoolThread dict@MempoolDict{..} = do
+runMempool dict@MempoolDict{..} = do
   let awaitPending = do
         txs <- readTVar varPending
         case splitAt 4 txs of
@@ -240,12 +209,12 @@ mempoolThread dict@MempoolDict{..} = do
 
 handleCommand
   :: (CryptoHash alg, CryptoHashable tx, MonadIO m)
-  => MempoolDict m alg tx -> Push m alg tx -> m ()
+  => MempoolDict m alg tx -> MempoolCmd m alg tx -> m ()
 handleCommand MempoolDict{..} = \case
   CmdAddTx retVar tx -> do
     let txNode = merkled tx
     validation <- liftIO $ readTVarIO varValidate
-    mmem <- mempoolAddTX validation txNode
+    mmem <- mempoolAddTX basicValidation validation txNode
         =<< liftIO (readTVarIO varMempool)
     case mmem of
       Nothing   -> return ()
@@ -272,7 +241,8 @@ handlePendingCheck MempoolDict{..} txHashes = do
   badTxs <- filterM (fmap not . val . merkleValue)
           $ mapMaybe (\h -> snd <$> Map.lookup h (mempRevMap m)) txHashes
   atomicallyIO $ writeTVar varMempool $ mempoolRemoveTX (map merkleHashed badTxs) m
-  
+
+
 ----------------------------------------------------------------
 -- Mempool data structures
 ----------------------------------------------------------------
@@ -300,23 +270,26 @@ emptyMempoolState = MempoolState
 -- | Add transaction to mempool
 mempoolAddTX
   :: (Monad m)
-  => (tx -> m Bool)
+  => (tx -> Bool)
+  -> (tx -> m Bool)
   -> MerkleNode Identity alg tx
   -> MempoolState alg tx
   -> m (Maybe (MempoolState alg tx))
-mempoolAddTX validation txNode@(MerkleNode txHash tx) MempoolState{..} = runMaybeT $ do
-  -- Ignore TX that we already have
-  guard $ txHash `Map.notMember` mempRevMap
-  -- Validate TX
-  lift (validation tx) >>= \case
-    False -> empty
-    True  -> do
-      let n = mempMaxN + 1
-      return $! MempoolState
-        { mempFIFO   = IMap.insert n      txNode     mempFIFO
-        , mempRevMap = Map.insert  txHash (n,txNode) mempRevMap
-        , mempMaxN   = n
-        }
+mempoolAddTX basicValidation validation txNode@(MerkleNode txHash tx) MempoolState{..} =
+  runMaybeT $ do
+    -- Ignore TX that we already have
+    guard $ txHash `Map.notMember` mempRevMap
+    guard $ basicValidation tx
+    -- Validate TX
+    lift (validation tx) >>= \case
+      False -> empty
+      True  -> do
+        let n = mempMaxN + 1
+        return $! MempoolState
+          { mempFIFO   = IMap.insert n      txNode     mempFIFO
+          , mempRevMap = Map.insert  txHash (n,txNode) mempRevMap
+          , mempMaxN   = n
+          }
 
 
 -- | Remove all transaction from mepool that doesn't satisfy predicate
@@ -373,3 +346,29 @@ mempoolSelfTest MempoolState{..} = concat
     lFifo  = IMap.toAscList mempFIFO
     lRev   = sort $ toList mempRevMap
     maxKey = fst <$> IMap.lookupMax mempFIFO
+
+
+----------------------------------------------------------------
+-- Logging helpers
+----------------------------------------------------------------
+
+
+-- | Statistics about mempool
+data MempoolInfo = MempoolInfo
+  { mempool'size      :: !Int
+  -- ^ Number of transactions currently in mempool
+  , mempool'added     :: !Int
+  -- ^ Number of transactions added to mempool since program start
+  , mempool'discarded :: !Int
+  -- ^ Number of transaction discarded immediately since program start
+  , mempool'filtered  :: !Int
+  -- ^ Number of transaction removed during filtering
+  }
+  deriving (Show,Generic)
+JSON.deriveJSON JSON.defaultOptions
+  { JSON.fieldLabelModifier = drop 8 } ''MempoolInfo
+
+instance Katip.ToObject MempoolInfo
+instance Katip.LogItem  MempoolInfo where
+  payloadKeys Katip.V0 _ = Katip.SomeKeys []
+  payloadKeys _        _ = Katip.AllKeys

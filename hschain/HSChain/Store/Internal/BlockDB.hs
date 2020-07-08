@@ -39,17 +39,13 @@ module HSChain.Store.Internal.BlockDB
   , retrieveBlockReadyFromWAL
   , writeBlockToWAL
   , retrieveBlockFromWAL
-    -- * State snapshots
-  , storeStateSnapshot
-  , retrieveSavedState
   ) where
 
 import Codec.Serialise     (Serialise, serialise, deserialiseOrFail)
-import Control.Monad       (when,(<=<))
+import Control.Monad       ((<=<))
 import Control.Monad.Catch (MonadThrow(..))
 import Data.Int
 import qualified Data.List.NonEmpty   as NE
-import qualified Data.ByteString.Lazy as LBS
 import qualified Database.SQLite.Simple           as SQL
 import qualified Database.SQLite.Simple.FromField as SQL
 import           Database.SQLite.Simple             (Only(..))
@@ -58,6 +54,7 @@ import HSChain.Control.Util (throwNothing)
 import HSChain.Crypto
 import HSChain.Exceptions
 import HSChain.Internal.Types.Messages
+import HSChain.Internal.Types.Consensus
 import HSChain.Store.Internal.Query
 import HSChain.Types.Blockchain
 import HSChain.Types.Merkle.Types
@@ -94,14 +91,6 @@ initializeBlockhainTables = do
     \  ( height INTEGER NOT NULL UNIQUE \
     \  , valref INTEGER NOT NULL\
     \  , FOREIGN KEY (valref) REFERENCES thm_cas(id))"
-  -- Snapshots of blockchain state
-  basicExecute_
-    "CREATE TABLE IF NOT EXISTS state_snapshot \
-    \  ( height           INT  NOT NULL \
-    \  , snapshot_blob    BLOB NOT NULL)"
-  r <- basicQuery_ "SELECT height FROM state_snapshot"
-  when (null (r :: [[SQL.SQLData]])) $
-    basicExecute_ "INSERT INTO state_snapshot (height, snapshot_blob) VALUES (-1, X'')"
   -- WAL
   --
   -- For PBFT we need to record all received messages which will be
@@ -148,7 +137,7 @@ storeGenesis
   :: (Crypto (Alg a), CryptoHashable a, MonadQueryRW a m, Serialise a, Eq a, Show a)
   => Genesis a                -- ^ Genesis block
   -> m ()
-storeGenesis BChEval{..} = do
+storeGenesis Genesis{..} = do
   -- Insert genesis block if needed
   storedGen  <- retrieveBlock        (Height 0)
   storedVals <- retrieveValidatorSet (Height 0)
@@ -156,26 +145,26 @@ storeGenesis BChEval{..} = do
   case (storedGen, storedVals) of
     -- Fresh DB
     (Nothing, Nothing) -> do
-      storeCommitWrk Nothing    bchValue
-      storeValSet   (Height 0)  validatorSet
+      storeCommitWrk Nothing    genesisBlock
+      storeValSet   (Height 0)  (merkled genesisValSet)
     -- Otherwise check that stored and provided geneses match
-    (Just genesis', Just initialVals') ->
+    (Just genesis, Just initialVals) ->
       case checks of
         [] -> return ()
         _  -> error $ unlines $ "initializeBlockhainTables:" : concat checks
       where
         checks = [ [ "Genesis blocks do not match:"
-                   , "  stored: " ++ show genesis'
-                   , "  expected: " ++ show bchValue
+                   , "  stored:   " ++ show genesis
+                   , "  expected: " ++ show genesisBlock
                    ]
-                 | bchValue /= genesis'
+                 | genesisBlock /= genesis
                  ]
                  ++
                  [ [ "Validators set are not equal:"
-                   , "  stored:   " ++ show initialVals'
-                   , "  expected: " ++ show (merkleValue validatorSet)
+                   , "  stored:   " ++ show initialVals
+                   , "  expected: " ++ show genesisValSet
                    ]
-                 | merkleValue validatorSet /= initialVals'
+                 | genesisValSet /= initialVals
                  ]
     --
     (_,_) -> error "initializeBlockhainTables: database corruption"
@@ -352,28 +341,6 @@ mustRetrieveValidatorSet h
 
 
 ----------------------------------------------------------------
--- State snapshots
-----------------------------------------------------------------
-
--- | Retrieve height and state saved as snapshot.
-retrieveSavedState :: Serialise s => Query 'RO a (Maybe (Height, s))
-retrieveSavedState =
-  singleQWithParser parse "SELECT height, snapshot_blob FROM state_snapshot" ()
-  where
-    parse [SQL.SQLInteger h, SQL.SQLBlob s]
-      | h > 0
-      , Right r <- deserialiseOrFail (LBS.fromStrict s) = Just (Height $ fromIntegral h, r)
-      | otherwise = Nothing
-    parse _ = Nothing
-
--- | Write state snapshot into DB. @maybeSnapshot@ contains a
---  serialized value of a state associated with the processed block.
-storeStateSnapshot :: (Serialise s, MonadQueryRW a m) => Height -> s -> m ()
-storeStateSnapshot (Height h) state = do
-  basicExecute "UPDATE state_snapshot SET height = ?, snapshot_blob = ?" (h, serialise state)
-
-
-----------------------------------------------------------------
 -- Writing to DB
 ----------------------------------------------------------------
 
@@ -526,12 +493,3 @@ singleQ :: (SQL.ToRow p, Serialise x, MonadQueryRO a m)
         => SQL.Query -> p -> m (Maybe x)
 singleQ sql p = (fmap . fmap) unCBORed
               $ query1 sql p
-
--- Query that returns results parsed from single row ().
-singleQWithParser
-  :: (SQL.ToRow p, MonadQueryRO a m)
-  => ([SQL.SQLData] -> Maybe x) -> SQL.Query -> p -> m (Maybe x)
-singleQWithParser resultsParser sql p =
-  basicQuery sql p >>= \case
-    [x] -> return (resultsParser x)
-    _ -> error $ "SQL statement resulted in too many (>1) or zero result rows: " ++ show sql

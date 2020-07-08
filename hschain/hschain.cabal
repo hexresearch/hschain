@@ -72,6 +72,7 @@ Library
                   HSChain.Monitoring
                   HSChain.Internal.Types.Messages
                   HSChain.Internal.Types.Config
+                  HSChain.Internal.Types.Consensus
                   HSChain.Run
                   HSChain.P2P
                   HSChain.P2P.PeerState.Timer
@@ -85,7 +86,6 @@ Library
                   HSChain.P2P.PeerState.Monad
                   HSChain.P2P.Internal
                   HSChain.Store
-                  HSChain.Store.STM
                   HSChain.Store.Internal.BlockDB
                   HSChain.Store.Internal.Query
                   HSChain.Store.Internal.Proposals
