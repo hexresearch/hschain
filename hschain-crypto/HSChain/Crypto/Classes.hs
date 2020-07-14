@@ -1,6 +1,11 @@
-{-# LANGUAGE DataKinds        #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE TypeFamilies     #-}
+{-# LANGUAGE DataKinds                  #-}
+{-# LANGUAGE DerivingStrategies         #-}
+{-# LANGUAGE FlexibleContexts           #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE KindSignatures             #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
+{-# LANGUAGE TypeApplications           #-}
+{-# LANGUAGE TypeFamilies               #-}
 -- |
 module HSChain.Crypto.Classes (
     -- * Conversion to or from bytestrings
@@ -10,6 +15,7 @@ module HSChain.Crypto.Classes (
   , encodeBase58
   , decodeBase58
     -- * Default implementation of type classes' methods
+  , ViaBase58(..)
   , defaultShow
   , defaultReadPrec
   , defaultToJSON
@@ -27,13 +33,14 @@ import Codec.Serialise.Encoding (Encoding)
 import Control.Applicative
 import Control.Monad
 import Data.Char     (isAscii)
+import Data.Proxy
 import qualified Codec.Serialise as CBOR
 import qualified Data.Aeson           as JSON
 import Data.Aeson.Types (Parser)
 import           Data.Text             (Text)
 import qualified Data.Text.Encoding   as T
 import Text.Read
-import GHC.TypeNats
+import GHC.TypeLits
 
 import qualified Data.ByteString        as BS
 import qualified Data.ByteString.Char8  as BC8
@@ -69,6 +76,26 @@ decodeBase58 = decodeFromBS <=< decodeBSBase58 . T.encodeUtf8
 ----------------------------------------------------------------
 -- Default implementations
 ----------------------------------------------------------------
+
+-- | Newtype wrapper for deriving instances based on base-58
+--   encoding. It implements 'Read', 'Show', and aeson's type classes in
+--   term of base-58 encoding.
+newtype ViaBase58 (s :: Symbol) a = ViaBase58 a
+  deriving newtype ByteRepr
+
+instance ByteRepr a => JSON.ToJSON (ViaBase58 s a) where
+  toJSON = defaultToJSON
+
+instance (KnownSymbol s, ByteRepr a) => JSON.FromJSON (ViaBase58 s a) where
+  parseJSON = defaultParseJSON (symbolVal (Proxy @s))
+
+instance (ByteRepr a)                => JSON.ToJSONKey   (ViaBase58 s a)
+instance (ByteRepr a, KnownSymbol s) => JSON.FromJSONKey (ViaBase58 s a)
+
+instance (ByteRepr a) => Show (ViaBase58 s a) where
+  show = defaultShow
+instance (ByteRepr a) => Read (ViaBase58 s a) where
+  readPrec = defaultReadPrec
 
 -- | Default implementation of 'show' from 'Show'. Value will
 --   displayed as string. It's compatible with 'defaultReadPrec'
