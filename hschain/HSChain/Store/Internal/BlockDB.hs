@@ -65,7 +65,7 @@ import HSChain.Types.Validators
 ----------------------------------------------------------------
 
 -- | Create tables for storing blockchain data
-initializeBlockhainTables :: (MonadQueryRW a m) => m ()
+initializeBlockhainTables :: Query 'RW a ()
 initializeBlockhainTables = do
   -- Content addressable storage.
   --
@@ -134,9 +134,9 @@ initializeBlockhainTables = do
 
 
 storeGenesis
-  :: (Crypto (Alg a), CryptoHashable a, MonadQueryRW a m, Serialise a, Eq a, Show a)
+  :: (Crypto (Alg a), CryptoHashable a, Serialise a, Eq a, Show a)
   => Genesis a                -- ^ Genesis block
-  -> m ()
+  -> Query 'RW a ()
 storeGenesis Genesis{..} = do
   -- Insert genesis block if needed
   storedGen  <- retrieveBlock        (Height 0)
@@ -192,7 +192,7 @@ storeBlob x = do
 retrieveBlobByHash
   :: (Serialise b, CryptoHashable b, CryptoHash (Alg a))
   => MerkleNode Proxy (Alg a) b
-  -> Query 'RO a (Maybe (MerkleNode Identity (Alg a) b))
+  -> Query rw a (Maybe (MerkleNode Identity (Alg a) b))
 retrieveBlobByHash x = do
   r <- singleQ "SELECT blob FROM thm_cas WHERE hash = ?" (Only $ CBORed $ merkleHashed x)
   return $ merkled <$> r
@@ -200,13 +200,13 @@ retrieveBlobByHash x = do
 mustRetrieveBlobByHash
   :: (Serialise b, CryptoHashable b, CryptoHash (Alg a))
   => MerkleNode Proxy (Alg a) b
-  -> Query 'RO a (MerkleNode Identity (Alg a) b)
+  -> Query rw a (MerkleNode Identity (Alg a) b)
 mustRetrieveBlobByHash = throwNothing DBMissingBlob <=< retrieveBlobByHash
 
 retrieveBlobByID
   :: (Serialise b, CryptoHashable b, CryptoHash (Alg a))
   => Int64
-  -> Query 'RO a (Maybe (MerkleNode Identity (Alg a) b))
+  -> Query rw a (Maybe (MerkleNode Identity (Alg a) b))
 retrieveBlobByID i = do
   r <- singleQ "SELECT blob FROM thm_cas WHERE id = ?" (Only i)
   return $ merkled <$> r
@@ -214,7 +214,7 @@ retrieveBlobByID i = do
 mustRetrieveBlobByID
   :: (Serialise b, CryptoHashable b, CryptoHash (Alg a))
   => Int64
-  -> Query 'RO a (MerkleNode Identity (Alg a) b)
+  -> Query rw a (MerkleNode Identity (Alg a) b)
 mustRetrieveBlobByID = throwNothing DBMissingBlob <=< retrieveBlobByID
 
 
@@ -223,7 +223,7 @@ mustRetrieveBlobByID = throwNothing DBMissingBlob <=< retrieveBlobByID
 ----------------------------------------------------------------
 
 -- | Current height of blockchain (height of last commited block).
-blockchainHeight :: MonadQueryRO a m => m Height
+blockchainHeight :: Query rw a Height
 blockchainHeight =
   basicQuery_ "SELECT MAX(height) FROM thm_blockchain" >>= \case
     []       -> error "Blockchain cannot be empty"
@@ -233,7 +233,7 @@ blockchainHeight =
 -- | Retrieve ID of block at given height. Must return same result
 --   as @fmap blockHash . retrieveBlock@ but implementation could
 --   do that more efficiently.
-retrieveBlockID :: (MonadQueryRO a m) => Height -> m (Maybe (BlockID a))
+retrieveBlockID :: Height -> Query rw a (Maybe (BlockID a))
 retrieveBlockID h
   = fmap (fmap BlockID)
   $ singleQ "SELECT hash \
@@ -241,13 +241,13 @@ retrieveBlockID h
             \  JOIN thm_cas ON blockref = id \
             \ WHERE height = ?" (Only h)
 
-mustRetrieveBlockID :: (MonadThrow m, MonadQueryRO a m) => Height -> m (BlockID a)
+mustRetrieveBlockID :: Height -> Query rw a (BlockID a)
 mustRetrieveBlockID h = throwNothing (DBMissingBlockID h) =<< retrieveBlockID h
 
 -- | Retrieve only block header for block at given height
 retrieveHeader
-  :: (Serialise a, CryptoHashable a, Crypto (Alg a), MonadQueryRO a m)
-  => Height -> m (Maybe (Header a))
+  :: (Serialise a, CryptoHashable a, Crypto (Alg a))
+  => Height -> Query rw a (Maybe (Header a))
 retrieveHeader h =
   singleQ "SELECT blob \
           \  FROM thm_blockchain \
@@ -256,14 +256,14 @@ retrieveHeader h =
 
 -- | Retrieve block at given height.
 retrieveBlock
-  :: forall m a. (Serialise a, CryptoHashable a, Crypto (Alg a), MonadQueryRO a m)
-  => Height -> m (Maybe (Block a))
-retrieveBlock height = liftQueryRO $ case height of
+  :: forall rw a. (Serialise a, CryptoHashable a, Crypto (Alg a))
+  => Height -> Query rw a (Maybe (Block a))
+retrieveBlock height = case height of
   Height 0 -> basicCacheGenesis $ query height
   _        -> basicCacheBlock     query height
   where
     -- We now need to fetch every field that is abbreviated here
-    query :: Height -> Query 'RO a (Maybe (Block a))
+    query :: Height -> Query rw a (Maybe (Block a))
     query h =
       basicQuery "SELECT blockref FROM thm_blockchain WHERE height = ?" (Only h) >>= \case
         [] -> return Nothing
@@ -280,7 +280,7 @@ retrieveBlock height = liftQueryRO $ case height of
         _ -> error "Impossible"
 
 -- | Retrieve round when commit was made.
-mustRetrieveCommitRound :: (MonadThrow m, MonadQueryRO a m) => Height -> m Round
+mustRetrieveCommitRound :: Height -> Query rw a Round
 mustRetrieveCommitRound h =
   basicQuery "SELECT round FROM thm_blockchain WHERE height = ?" (Only h) >>= \case
     []       -> throwM $ DBMissingRound h
@@ -298,7 +298,7 @@ mustRetrieveCommitRound h =
 --   1) @retrieveCommit@ retrieve commit as seen by proposer not
 --   local node 2) each node collect straggler precommits for some
 --   time interval after commit.
-retrieveLocalCommit :: (MonadQueryRO a m) => Height -> m (Maybe (Commit a))
+retrieveLocalCommit :: Height -> Query rw a (Maybe (Commit a))
 retrieveLocalCommit h =
   singleQ "SELECT blob \
           \  FROM thm_blockchain \
@@ -308,15 +308,15 @@ retrieveLocalCommit h =
 -- | Retrieve set of validators for given round.
 --
 --   Must return validator set for every @0 < h <= blockchainHeight + 1@
-retrieveValidatorSet :: (Crypto (Alg a), MonadQueryRO a m) => Height -> m (Maybe (ValidatorSet (Alg a)))
-retrieveValidatorSet = liftQueryRO . basicCacheValidatorSet query
+retrieveValidatorSet :: (Crypto (Alg a)) => Height -> Query rw a (Maybe (ValidatorSet (Alg a)))
+retrieveValidatorSet = basicCacheValidatorSet query
   where
     query h = singleQ "SELECT blob \
           \  FROM thm_validators \
           \  JOIN thm_cas ON valref = id \
           \ WHERE height = ?" (Only h)
 
-hasValidatorSet :: (MonadQueryRO a m) => Height -> m Bool
+hasValidatorSet :: Height -> Query rw a Bool
 hasValidatorSet h = do
   r <- basicQuery "SELECT 1 FROM thm_validators WHERE height = ?" (Only h)
   return $! not $ null (r :: [Only Int])
@@ -324,16 +324,16 @@ hasValidatorSet h = do
 -- | Same as 'retrieveBlock' but throws 'DBMissingBlock' if there's no
 --   such block in database.
 mustRetrieveBlock
-  :: (Serialise a, CryptoHashable a, Crypto (Alg a), MonadThrow m, MonadQueryRO a m)
-  => Height -> m (Block a)
+  :: (Serialise a, CryptoHashable a, Crypto (Alg a))
+  => Height -> Query rw a (Block a)
 mustRetrieveBlock h
   = throwNothing (DBMissingBlock h) =<< retrieveBlock h
 
 -- | Same as 'retrieveValidatorSet' but throws 'DBMissingValSet' if
 --   there's no validator set in database.
 mustRetrieveValidatorSet
-  :: (Crypto (Alg a), MonadQueryRO a m, MonadThrow m)
-  => Height -> m (ValidatorSet (Alg a))
+  :: (Crypto (Alg a))
+  => Height -> Query rw a (ValidatorSet (Alg a))
 mustRetrieveValidatorSet h
   = throwNothing (DBMissingValSet h) =<< retrieveValidatorSet h
 
@@ -346,14 +346,14 @@ mustRetrieveValidatorSet h
 
 -- | Write block and commit justifying it into persistent storage.
 storeCommit
-  :: (Crypto (Alg a), Serialise a, CryptoHashable a, MonadQueryRW a m)
-  => Commit a -> Block a -> m ()
+  :: (Crypto (Alg a), Serialise a, CryptoHashable a)
+  => Commit a -> Block a -> Query 'RW a ()
 storeCommit = storeCommitWrk . Just
 
 storeCommitWrk
-  :: (Crypto (Alg a), Serialise a, CryptoHashable a, MonadQueryRW a m)
-  => Maybe (Commit a) -> Block a -> m ()
-storeCommitWrk mcmt blk = liftQueryRW $ do
+  :: (Crypto (Alg a), Serialise a, CryptoHashable a)
+  => Maybe (Commit a) -> Block a -> Query 'RW a ()
+storeCommitWrk mcmt blk = do
   let h = blockHeight blk
       r = case mcmt of
         Just cmt -> voteRound $ signedValue $ NE.head $ commitPrecommits cmt
@@ -368,9 +368,11 @@ storeCommitWrk mcmt blk = liftQueryRW $ do
   basicPutCacheBlock blk
 
 storeValSet
-  :: (Crypto (Alg a), MonadQueryRW a m)
-  => Height -> MerkleNode Identity (Alg a) (ValidatorSet (Alg a)) -> m ()
-storeValSet h vals = liftQueryRW $ do
+  :: (Crypto (Alg a))
+  => Height
+  -> MerkleNode Identity (Alg a) (ValidatorSet (Alg a))
+  -> Query 'RW a ()
+storeValSet h vals = do
   i <- storeBlob vals
   basicExecute "INSERT INTO thm_validators VALUES (?,?)" (h, i)
   basicPutValidatorSet h (merkleValue vals)
@@ -383,14 +385,14 @@ storeValSet h vals = liftQueryRW $ do
 -- | Add message to Write Ahead Log. Height parameter is height
 --   for which we're deciding block.
 writeToWAL
-  :: (Serialise a, CryptoHashable a, Crypto (Alg a), MonadQueryRW a m)
-  => Height -> MessageRx 'Unverified a -> m ()
+  :: (Serialise a, CryptoHashable a, Crypto (Alg a))
+  => Height -> MessageRx 'Unverified a -> Query 'RW a ()
 writeToWAL h msg =
   basicExecute "INSERT OR IGNORE INTO thm_wal VALUES (NULL,?,?)" (h, serialise msg)
 
 writeBlockToWAL
-  :: (MonadQueryRW a m, Serialise a, CryptoHashable a, Crypto (Alg a))
-  => Round -> Block a -> m ()
+  :: (Serialise a, CryptoHashable a, Crypto (Alg a))
+  => Round -> Block a -> Query 'RW a ()
 writeBlockToWAL r b = do
   basicExecute "INSERT INTO thm_proposals VALUES (?,?,?)"
     (h,r,serialise b)
@@ -398,26 +400,24 @@ writeBlockToWAL r b = do
     h = blockHeight b
 
 retrieveBlockFromWAL
-  :: (MonadQueryRO a m, Serialise a, CryptoHashable a, Crypto (Alg a))
-  => Height -> Round -> m (Maybe (Block a))
+  :: (Serialise a, CryptoHashable a, Crypto (Alg a))
+  => Height -> Round -> Query rw a (Maybe (Block a))
 retrieveBlockFromWAL h r =
   singleQ "SELECT block FROM thm_proposals WHERE height = ? AND round = ?" (h,r)
 
 writeBlockReadyToWAL
-  :: (MonadQueryRW a m)
-  => Height -> Int -> Bool -> m ()
+  :: Height -> Int -> Bool -> Query 'RW a ()
 writeBlockReadyToWAL h n can =
   basicExecute "INSERT INTO thm_ready_block VALUES (?,?,?)" (h,n,can)
 
 retrieveBlockReadyFromWAL
-  :: (MonadQueryRO a m)
-  => Height -> Int -> m (Maybe Bool)
+  :: Height -> Int -> Query rw a (Maybe Bool)
 retrieveBlockReadyFromWAL h n =
   query1 "SELECT result FROM thm_ready_block WHERE height = ? AND attempt = ?" (h,n)
 
 -- | Remove all entries from WAL which comes from height less than
 --   parameter.
-resetWAL :: (MonadQueryRW a m) => Height -> m ()
+resetWAL :: Height -> Query 'RW a ()
 resetWAL h = do
   basicExecute "DELETE FROM thm_wal         WHERE height < ?" (Only h)
   basicExecute "DELETE FROM thm_proposals   WHERE height < ?" (Only h)
@@ -426,8 +426,8 @@ resetWAL h = do
 -- | Get all parameters from WAL in order in which they were
 --   written
 readWAL
-  :: (Serialise a, CryptoHashable a, Crypto (Alg a), MonadQueryRO a m)
-  => Height -> m [MessageRx 'Unverified a]
+  :: (Serialise a, CryptoHashable a, Crypto (Alg a))
+  => Height -> Query rw a [MessageRx 'Unverified a]
 readWAL h = do
   rows <- basicQuery "SELECT message FROM thm_wal WHERE height = ? ORDER BY id" (Only h)
   return [ case deserialiseOrFail bs of
@@ -442,25 +442,19 @@ readWAL h = do
 ----------------------------------------------------------------
 
 -- | Store fresh evidence in database. Fresh means we just observed it.
-storeFreshEvidence
-  :: (MonadQueryRW a m)
-  => ByzantineEvidence a -> m ()
+storeFreshEvidence :: ByzantineEvidence a -> Query 'RW a ()
 storeFreshEvidence ev = do
   basicExecute "INSERT OR IGNORE INTO thm_evidence VALUES (?,?)" (serialise ev, False)
 
 -- | Store evidence from blockchain. That is valid evidence from
 --   commited block
-storeBlockchainEvidence
-  :: (MonadQueryRW a m)
-  => ByzantineEvidence a -> m ()
+storeBlockchainEvidence :: ByzantineEvidence a -> Query 'RW a ()
 storeBlockchainEvidence ev = do
   basicExecute "INSERT OR REPLACE INTO thm_evidence VALUES (?,?)" (serialise ev, True)
 
 -- | Check whether evidence is recorded. @Just True@ mens that it's
 --   already in blockchain
-evidenceRecordedState
-  :: (MonadQueryRO a m)
-  => ByzantineEvidence a -> m (Maybe Bool)
+evidenceRecordedState :: ByzantineEvidence a -> Query rw a (Maybe Bool)
 evidenceRecordedState e = do
   basicQuery "SELECT recorded FROM thm_evidence WHERE evidence = ?" (Only (serialise e)) >>= \case
     []       -> return Nothing
@@ -469,8 +463,7 @@ evidenceRecordedState e = do
 
 -- | Retrieve all unrecorded evidence
 retrieveUnrecordedEvidence
-  :: (MonadQueryRO a m)
-  => m [ByzantineEvidence a]
+  :: Query rw a [ByzantineEvidence a]
 retrieveUnrecordedEvidence = do
   rs <- basicQuery_ "SELECT evidence FROM thm_evidence WHERE recorded = 0"
   return $ unCBORed . fromOnly <$> rs
@@ -481,7 +474,7 @@ retrieveUnrecordedEvidence = do
 ----------------------------------------------------------------
 
 query1 :: (SQL.ToRow p, SQL.FromField x, MonadQueryRO a m)
-             => SQL.Query -> p -> m (Maybe x)
+       => SQL.Query -> p -> m (Maybe x)
 query1 sql p =
   basicQuery sql p >>= \case
     []       -> return Nothing
