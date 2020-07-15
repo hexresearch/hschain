@@ -37,8 +37,8 @@ echo "git tag: $gittag"
 echo "git event: $gitevent"
 
 containers=$(nix-build containers.nix --arg isProd true \
-  --arg containerTag \"$tag\" \
-  --arg prefixName \"registry.hxr.team/\" )
+  --argstr containerTag "$tag" \
+  --argstr prefixName registry.hxr.team )
 
 for container in $containers
 do
