@@ -21,6 +21,8 @@ module HSChain.Crypto.Classes (
   , defaultReadPrec
   , defaultToJSON
   , defaultParseJSON
+  , defaultToJsonKey
+  , defaultFromJsonKey
   , defaultCborEncode
   , defaultCborDecode
     -- * Helpers 
@@ -91,12 +93,10 @@ instance (KnownSymbol s, ByteRepr a) => JSON.FromJSON (ViaBase58 s a) where
   parseJSON = defaultParseJSON (symbolVal (Proxy @s))
 
 instance (ByteRepr a) => JSON.ToJSONKey (ViaBase58 s a) where
-  toJSONKey = toJSONKeyText encodeBase58
+  toJSONKey = defaultToJsonKey
 
 instance (ByteRepr a, KnownSymbol s) => JSON.FromJSONKey (ViaBase58 s a) where
-  fromJSONKey = JSON.FromJSONKeyTextParser $ \s -> case decodeBase58 s of
-    Just k  -> return k
-    Nothing -> fail ("Incorrect Base58 encoding for " <> symbolVal (Proxy @s))
+  fromJSONKey = defaultFromJsonKey (symbolVal (Proxy @s))
 
 instance (ByteRepr a) => Show (ViaBase58 s a) where
   show = defaultShow
@@ -144,6 +144,16 @@ defaultParseJSON name (JSON.String s) =
     Just a  -> return a
 defaultParseJSON name _ = fail ("Expecting string for " <> name)
 
+-- | Default implementation for 'JSON.fromJSONKey' method of 'JSON.FromJSONKey'.
+defaultFromJsonKey :: ByteRepr a => String -> JSON.FromJSONKeyFunction a
+defaultFromJsonKey nm =
+  JSON.FromJSONKeyTextParser $ \s -> case decodeBase58 s of
+    Just k  -> return k
+    Nothing -> fail ("Incorrect Base58 encoding for " <> nm)
+
+-- | Default implementation for 'JSON.toJSONKey' method of 'JSON.ToJSONKey'.
+defaultToJsonKey :: ByteRepr a => JSON.ToJSONKeyFunction a
+defaultToJsonKey = toJSONKeyText encodeBase58
 
 -- | Default implementation of 'CBOR.encode' from 'CBOR.Serialise'
 defaultCborEncode :: ByteRepr a => a -> Encoding
