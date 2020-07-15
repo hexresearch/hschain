@@ -237,8 +237,8 @@ rollback = liftQueryRW $ Query $ throwM Rollback
 
 
 basicCacheGenesis
-  :: Query 'RO a (Maybe (Block a))
-  -> Query 'RO a (Maybe (Block a))
+  :: Query rw a (Maybe (Block a))
+  -> Query rw a (Maybe (Block a))
 basicCacheGenesis (Query query) = Query $ do
   ref <- asks connCacheGen
   liftIO (readIORef ref) >>= \case
@@ -247,9 +247,9 @@ basicCacheGenesis (Query query) = Query $ do
                   liftIO $ b <$ atomicWriteIORef ref b
 
 basicCacheHeightObj
-  :: (Connection 'RO a -> IORef (LRU.LRU Height obj))
-  -> (Height -> Query 'RO a (Maybe obj))
-  ->  Height -> Query 'RO a (Maybe obj)
+  :: (Connection rw a -> IORef (LRU.LRU Height obj))
+  -> (Height -> Query rw a (Maybe obj))
+  ->  Height -> Query rw a (Maybe obj)
 basicCacheHeightObj cache query h = Query $ do
   ref <- asks cache
   r   <- liftIO (atomicModifyIORef' ref (LRU.lookup h))
@@ -260,13 +260,13 @@ basicCacheHeightObj cache query h = Query $ do
                   return mb
 
 basicCacheBlock
-  :: (Height -> Query 'RO a (Maybe (Block a)))
-  ->  Height -> Query 'RO a (Maybe (Block a))
+  :: (Height -> Query rw a (Maybe (Block a)))
+  ->  Height -> Query rw a (Maybe (Block a))
 basicCacheBlock = basicCacheHeightObj connCacheBlk
 
 basicCacheValidatorSet
-  :: (Height -> Query 'RO a (Maybe (ValidatorSet (Alg a))))
-  ->  Height -> Query 'RO a (Maybe (ValidatorSet (Alg a)))
+  :: (Height -> Query rw a (Maybe (ValidatorSet (Alg a))))
+  ->  Height -> Query rw a (Maybe (ValidatorSet (Alg a)))
 basicCacheValidatorSet = basicCacheHeightObj connCacheVSet
 
 basicPutCacheHeightObj
