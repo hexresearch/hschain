@@ -3,7 +3,6 @@ set -e
 
 # Configure cache
 ./setup-cache.sh
-export NIX_PATH=$GIT_NIX_PATH$NIX_PATH
 
 # Minimal nsswitch.conf
 [[ ! -e /etc/nsswitch.conf ]] && echo 'hosts: files dns' > /etc/nsswitch.conf
