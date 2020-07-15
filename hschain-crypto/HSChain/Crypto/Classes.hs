@@ -16,6 +16,7 @@ module HSChain.Crypto.Classes (
   , decodeBase58
     -- * Default implementation of type classes' methods
   , ViaBase58(..)
+  , ByteReprCBOR(..)
   , defaultShow
   , defaultReadPrec
   , defaultToJSON
@@ -34,9 +35,9 @@ import Control.Applicative
 import Control.Monad
 import Data.Char     (isAscii)
 import Data.Proxy
-import qualified Codec.Serialise as CBOR
+import qualified Codec.Serialise      as CBOR
 import qualified Data.Aeson           as JSON
-import Data.Aeson.Types (Parser)
+import Data.Aeson.Types (Parser,toJSONKeyText)
 import           Data.Text             (Text)
 import qualified Data.Text.Encoding   as T
 import Text.Read
@@ -89,13 +90,28 @@ instance ByteRepr a => JSON.ToJSON (ViaBase58 s a) where
 instance (KnownSymbol s, ByteRepr a) => JSON.FromJSON (ViaBase58 s a) where
   parseJSON = defaultParseJSON (symbolVal (Proxy @s))
 
-instance (ByteRepr a)                => JSON.ToJSONKey   (ViaBase58 s a)
-instance (ByteRepr a, KnownSymbol s) => JSON.FromJSONKey (ViaBase58 s a)
+instance (ByteRepr a) => JSON.ToJSONKey (ViaBase58 s a) where
+  toJSONKey = toJSONKeyText encodeBase58
+
+instance (ByteRepr a, KnownSymbol s) => JSON.FromJSONKey (ViaBase58 s a) where
+  fromJSONKey = JSON.FromJSONKeyTextParser $ \s -> case decodeBase58 s of
+    Just k  -> return k
+    Nothing -> fail ("Incorrect Base58 encoding for " <> symbolVal (Proxy @s))
 
 instance (ByteRepr a) => Show (ViaBase58 s a) where
   show = defaultShow
 instance (ByteRepr a) => Read (ViaBase58 s a) where
   readPrec = defaultReadPrec
+
+
+newtype ByteReprCBOR (s :: Symbol) a = ByteReprCBOR a
+  deriving newtype ByteRepr
+
+instance (ByteRepr a, KnownSymbol s) => CBOR.Serialise (ByteReprCBOR s a) where
+  encode = defaultCborEncode
+  decode = defaultCborDecode (symbolVal (Proxy @s))
+
+
 
 -- | Default implementation of 'show' from 'Show'. Value will
 --   displayed as string. It's compatible with 'defaultReadPrec'
