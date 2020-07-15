@@ -16,6 +16,7 @@ module HSChain.Crypto.Classes (
   , decodeBase58
     -- * Default implementation of type classes' methods
   , ViaBase58(..)
+  , ByteReprCBOR(..)
   , defaultShow
   , defaultReadPrec
   , defaultToJSON
@@ -101,6 +102,16 @@ instance (ByteRepr a) => Show (ViaBase58 s a) where
   show = defaultShow
 instance (ByteRepr a) => Read (ViaBase58 s a) where
   readPrec = defaultReadPrec
+
+
+newtype ByteReprCBOR (s :: Symbol) a = ByteReprCBOR a
+  deriving newtype ByteRepr
+
+instance (ByteRepr a, KnownSymbol s) => CBOR.Serialise (ByteReprCBOR s a) where
+  encode = defaultCborEncode
+  decode = defaultCborDecode (symbolVal (Proxy @s))
+
+
 
 -- | Default implementation of 'show' from 'Show'. Value will
 --   displayed as string. It's compatible with 'defaultReadPrec'
