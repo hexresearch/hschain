@@ -79,11 +79,10 @@ data AppDict = AppDict
 newtype AppT m a = AppT { unAppT :: ReaderT AppDict m a }
   deriving newtype (Functor,Applicative,Monad,MonadIO)
   deriving newtype (MonadThrow,MonadCatch,MonadMask,MonadFork)
-  deriving newtype (MonadReader AppDict)
-  deriving MonadLogger         via LoggerByTypes    (AppT m)
-  deriving MonadTMMonitoring   via MonitoringByType (AppT m)
+  deriving MonadLogger         via LoggerByTypes    (ReaderT AppDict m)
+  deriving MonadTMMonitoring   via MonitoringByType (ReaderT AppDict m)
   deriving (MonadReadDB (BData DioTag), MonadDB (BData DioTag))
-       via DatabaseByType (BData DioTag)(AppT m)
+       via DatabaseByType (BData DioTag) (ReaderT AppDict m)
 
 runAppT :: LogEnv -> PrometheusGauges -> Connection 'RW (BData DioTag) -> AppT m a -> m a
 runAppT lenv g conn
