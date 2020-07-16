@@ -53,6 +53,7 @@ import HSChain.Types.Merkle.Types
 import HSChain.Arbitrary.Instances ()
 import qualified HSChain.Network.Mock as P2P
 import TM.Util.Network
+import TM.Util.MockChain (runHSChainT)
 
 type VSet = ValidatorSet (Alg Tx)
 
@@ -270,16 +271,14 @@ executeNodeSpec
   -> ContT r m [Connection 'RO Tx]
 executeNodeSpec MockClusterConfig{..} resources = do
   -- Start nodes
-  rnodes <- lift $ forM resources $ \(nspec, bnet, conn, logenv) -> do
-    let run :: DBT 'RW Tx (LoggerT m) x -> m x
-        run = runLoggerT logenv . runDBT conn
-    (c, acts) <- run $ interpretSpec
+  rnodes <- lift $ forM resources $ \(nspec, bnet, conn, _logenv) -> do
+    (c, acts) <- runHSChainT conn $ interpretSpec
       genesis
       nspec
       bnet
       clusterCfg
       (callbackAbortAtH (Height 10)) 
-    return ( c, run <$> acts )
+    return ( c, runHSChainT conn<$> acts )
   -- Actually run nodes
   lift   $ catchAbort $ runConcurrently $ snd =<< rnodes
   return $ fst <$> rnodes

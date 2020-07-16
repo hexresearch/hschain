@@ -1,17 +1,44 @@
+{-# LANGUAGE DataKinds                  #-}
+{-# LANGUAGE DerivingStrategies         #-}
+{-# LANGUAGE DerivingVia                #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 -- |
 -- Data for mock blockchain used in tests for consensus and gossip
 module TM.Util.MockChain where
 
+import Control.Monad.Catch
+import Control.Monad.Reader
 import           Data.List (sortOn)
 import qualified Data.Map.Strict    as Map
 import qualified Data.List.NonEmpty as NE
 
+import HSChain.Control.Class
 import HSChain.Crypto
+import HSChain.Logger
+import HSChain.Store
+import HSChain.Monitoring
 import HSChain.Types
 import HSChain.Types.Merkle.Types
 import HSChain.Internal.Types.Consensus
 import HSChain.Mock.KeyList
 import HSChain.Mock.KeyVal  (BData(..),mkGenesisBlock)
+
+
+----------------------------------------------------------------
+-- Monad for running tests
+----------------------------------------------------------------
+
+newtype HSChainT a m x = HSChainT (ReaderT (Connection 'RW a) m x)
+  deriving newtype (Functor,Applicative,Monad,MonadIO,MonadFail)
+  deriving newtype (MonadThrow,MonadCatch,MonadMask,MonadFork)
+  deriving newtype (MonadReader (Connection 'RW a))
+  -- HSChain instances
+  deriving MonadTMMonitoring          via NoMonitoring       (HSChainT a m)
+  deriving MonadLogger                via NoLogsT            (HSChainT a m)
+  deriving (MonadReadDB a, MonadDB a) via DatabaseByReader a (HSChainT a m)
+
+runHSChainT :: Connection 'RW a -> HSChainT a m x -> m x
+runHSChainT c (HSChainT m) = runReaderT m c
 
 
 ----------------------------------------------------------------

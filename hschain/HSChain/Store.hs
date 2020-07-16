@@ -54,6 +54,7 @@ module HSChain.Store (
   , runDBT
   , DatabaseByField(..)
   , DatabaseByType(..)
+  , DatabaseByReader(..)
     -- ** Standard API
   , blockchainHeight
   , retrieveBlock
@@ -371,6 +372,9 @@ orElse False e = tell [e]
 -- DerivingVia
 ----------------------------------------------------------------
 
+-- | Newtype wrapper which allows to derive 'MonadReadDB' and
+--   'MonadDB' instances using deriving via mechanism by specifying name
+--   of field in record carried by reader.
 newtype DatabaseByField conn a m x = DatabaseByField (m x)
   deriving newtype (Functor,Applicative,Monad)
 
@@ -390,6 +394,9 @@ instance ( MonadReader r m
 
 
 
+-- | Newtype wrapper which allows to derive 'MonadReadDB' and
+--   'MonadDB' instances using deriving via mechanism by using type of
+--   field in record carried by reader.
 newtype DatabaseByType a m x = DatabaseByType (m x)
   deriving newtype (Functor,Applicative,Monad)
 
@@ -405,4 +412,23 @@ instance ( MonadReader r m
          , a ~ a'
          ) => MonadDB a' (DatabaseByType a m) where
   askConnectionRW = DatabaseByType $ asks (^. typed)
+  {-# INLINE askConnectionRW #-}
+
+
+-- | Newtype wrapper which allows to derive 'MonadReadDB' and
+--   'MonadDB' instances using deriving via mechanism when connection
+--   is carried by reader.
+newtype DatabaseByReader a m x = DatabaseByReader (m x)
+  deriving newtype (Functor,Applicative,Monad)
+
+instance ( MonadReader (Connection 'RW a) m
+         , a ~ a'
+         ) => MonadReadDB a' (DatabaseByReader a m) where
+  askConnectionRO = DatabaseByReader $ connectionRO <$> ask
+  {-# INLINE askConnectionRO #-}
+
+instance ( MonadReader (Connection 'RW a) m
+         , a ~ a'
+         ) => MonadDB a' (DatabaseByReader a m) where
+  askConnectionRW = DatabaseByReader ask
   {-# INLINE askConnectionRW #-}

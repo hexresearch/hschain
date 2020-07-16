@@ -587,17 +587,16 @@ data CoinDictM g = CoinDictM
 newtype CoinT g m a = CoinT { unCoinT :: ReaderT (CoinDictM g) m a }
   deriving newtype (Functor,Applicative,Monad,MonadIO)
   deriving newtype (MonadThrow,MonadCatch,MonadMask,MonadFork)
-  deriving newtype (MonadReader (CoinDictM g))
   -- HSChain instances
   deriving MonadLogger
-       via LoggerByFields "dictLogEnv" "dictNamespace" (CoinT g m)
+       via LoggerByFields "dictLogEnv" "dictNamespace" (ReaderT (CoinDictM g) m)
   deriving (MonadReadDB BData, MonadDB BData)
-       via DatabaseByField "dictConn" BData (CoinT g m)
+       via DatabaseByField "dictConn" BData (ReaderT (CoinDictM g) m)
 
 -- We have two variants of Monitoring depending on type parameter
 deriving via NoMonitoring (CoinT () m)
     instance Monad m => MonadTMMonitoring (CoinT () m)
-deriving via MonitoringByField "dictGauges" (CoinT PrometheusGauges m)
+deriving via MonitoringByField "dictGauges" (ReaderT (CoinDictM PrometheusGauges) m)
     instance MonadIO m => MonadTMMonitoring (CoinT PrometheusGauges m)
 
 runCoinT :: CoinDictM g -> CoinT g m a -> m a
