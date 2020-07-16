@@ -372,6 +372,9 @@ orElse False e = tell [e]
 -- DerivingVia
 ----------------------------------------------------------------
 
+-- | Newtype wrapper which allows to derive 'MonadReadDB' and
+--   'MonadDB' instances using deriving via mechanism by specifying name
+--   of field in record carried by reader.
 newtype DatabaseByField conn a m x = DatabaseByField (m x)
   deriving newtype (Functor,Applicative,Monad)
 
@@ -391,6 +394,9 @@ instance ( MonadReader r m
 
 
 
+-- | Newtype wrapper which allows to derive 'MonadReadDB' and
+--   'MonadDB' instances using deriving via mechanism by using type of
+--   field in record carried by reader.
 newtype DatabaseByType a m x = DatabaseByType (m x)
   deriving newtype (Functor,Applicative,Monad)
 
@@ -409,7 +415,9 @@ instance ( MonadReader r m
   {-# INLINE askConnectionRW #-}
 
 
-
+-- | Newtype wrapper which allows to derive 'MonadReadDB' and
+--   'MonadDB' instances using deriving via mechanism when connection
+--   is carried by reader.
 newtype DatabaseByReader a m x = DatabaseByReader (m x)
   deriving newtype (Functor,Applicative,Monad)
 
