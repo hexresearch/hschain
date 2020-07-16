@@ -70,7 +70,6 @@ Library
                 HSChain.PoW.P2P.Handler.PEX
                 HSChain.PoW.P2P.STM.PeerRegistry
                 HSChain.PoW.P2P.STM.NonceSet                
-                --HSChain.PoW.Store.STM - commented out because it contains only mempool
                 HSChain.PoW.Store.Internal.Query
                 HSChain.PoW.Store.Internal.BlockDB
 
