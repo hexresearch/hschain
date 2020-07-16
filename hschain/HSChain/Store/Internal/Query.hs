@@ -43,13 +43,6 @@ module HSChain.Store.Internal.Query (
   , MonadQueryRW(..)
     -- * Database queries
   , Access(..)
-    -- ** Monad transformer
-  , QueryT(..)
-  , runQueryROT
-  , runQueryRWT
-  , queryROT
-  , queryRWT
-  , mustQueryRWT
     -- ** Plain queries
   , Query(..)
   , runQueryRO
@@ -66,7 +59,6 @@ import Control.Monad
 import Control.Monad.Catch
 import qualified Control.Monad.Fail as Fail
 import Control.Monad.IO.Class
-import Control.Monad.Morph            (MFunctor(..))
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Reader
 import Control.Monad.Trans.Maybe
@@ -88,7 +80,6 @@ import HSChain.Types.Validators
 import HSChain.Control.Mutex
 import HSChain.Control.Util
 import HSChain.Exceptions
-import HSChain.Logger.Class
 
 
 ----------------------------------------------------------------
@@ -328,93 +319,11 @@ instance MonadDB     a m => MonadDB     a (Proxy x x' y y' m)
 -- Monad transformer
 ----------------------------------------------------------------
 
--- | Monad transormer for executing queries to the database. By itself
---   it's just thin wrapper which signifies that every action in the
---   monad is performed inside transaction.
---
---   Note about transaction semantics. Rollback of transaction is
---   implemented by throwing and catching exception. So depending on
---   semantics of monadic stack effects may or may not be rolled back
---   if DB transaction does not succeed. For example changes to
---   @StateT@ will while @IO@-effects obviously won't. Proceed with
---   caution.
-newtype QueryT (rw :: Access) a m x = QueryT { unQueryT :: m x }
-  deriving newtype ( Functor, Applicative, MonadIO, MonadThrow, MonadCatch, MonadMask, MonadLogger)
-
-instance MFunctor (QueryT rw a) where
-  hoist f (QueryT m) = QueryT (f m)
-
-instance MonadThrow m => Monad (QueryT rw a m) where
-  return         = QueryT . return
-  QueryT m >>= f = QueryT $ unQueryT . f =<< m
-#if !MIN_VERSION_base(4,11,0)
-  fail _         = throwM Rollback
-#endif
-
-instance MonadThrow m => Fail.MonadFail (QueryT rw a m) where
-  fail _ = throwM Rollback
-
 -- | Exception thrown in order to roll back transaction
 data Rollback = Rollback
   deriving (Show,Eq)
 instance Exception Rollback
 
-
-instance MonadTrans (QueryT rr a) where
-  lift = QueryT
-
-instance (MonadIO m, MonadThrow m, MonadReadDB a m) => MonadQueryRO a (QueryT rw a m) where
-  liftQueryRO (Query action) = QueryT $ do
-    -- NOTE: coercion is needed since we need to implement for both
-    --       QueryT 'RO/'RW
-    liftIO . runReaderT action . coerce =<< askConnectionRO
-
-instance (MonadIO m, MonadThrow m, MonadDB a m) => MonadQueryRW a (QueryT 'RW a m) where
-  liftQueryRW (Query action) = QueryT $ do
-    -- NOTE: coercion is needed since we need to implement for both
-    --       Query 'RO/'RW
-    liftIO . runReaderT action . coerce =<< askConnectionRW
-
--- | Run read-only query. Note that read-only couldn't be rolled back
---  so they always succeed
-runQueryROT
-  :: (MonadIO m, MonadMask m)
-  => Connection rw a
-  -> QueryT 'RO a m x -> m x
-runQueryROT c q = do
-  r <- runQueryWorker False c . unQueryT $ q
-  case r of
-    Nothing -> error "Query 'RO couldn't be rolled back"
-    Just a  -> return a
-
--- | Run read-write query
-runQueryRWT
-  :: (MonadIO m, MonadMask m)
-  => Connection 'RW a
-  -> QueryT 'RW a m x
-  -> m (Maybe x)
-runQueryRWT c = runQueryWorker True c . unQueryT
-
--- | Same as 'queryRO' but for 'QueryT'
-queryROT
-  :: (MonadReadDB a m, MonadIO m, MonadMask m)
-  => QueryT 'RO a m x
-  -> m x
-queryROT q = flip runQueryROT q =<< askConnectionRO
-
--- | Same as 'queryRW' but for 'QueryT'
-queryRWT
-  :: (MonadDB a m, MonadIO m, MonadMask m)
-  => QueryT 'RW a m x
-  -> m (Maybe x)
-queryRWT q = flip runQueryRWT q =<< askConnectionRW
-
--- | Same as 'mustQueryRW' but for 'QueryT'
-mustQueryRWT
-  :: (MonadDB a m, MonadIO m, MonadMask m)
-  => QueryT 'RW a m x
-  -> m x
-mustQueryRWT q = throwNothing UnexpectedRollback =<< flip runQueryRWT q =<< askConnectionRW
 
 
 ----------------------------------------------------------------

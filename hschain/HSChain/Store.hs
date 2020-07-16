@@ -33,9 +33,6 @@ module HSChain.Store (
   , queryRO
   , queryRW
   , mustQueryRW
-  , queryROT
-  , queryRWT
-  , mustQueryRWT
     -- ** Opening\/closing database
   , openConnection
   , closeConnection
@@ -47,7 +44,6 @@ module HSChain.Store (
   , MonadQueryRO(..)
   , MonadQueryRW(..)
   , Query
-  , QueryT
     -- ** Standard DB wrapper
   , DatabaseByField(..)
   , DatabaseByType(..)
