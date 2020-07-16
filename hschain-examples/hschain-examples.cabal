@@ -158,6 +158,7 @@ Test-suite hschain-tests
                      , serialise         >=0.2
                      , stm               >=2.4
                      , transformers
+                     , mtl
                      , retry             >=0.7.6.2
                      , text
                      , unordered-containers

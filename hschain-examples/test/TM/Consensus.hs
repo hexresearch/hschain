@@ -35,7 +35,6 @@ import HSChain.Crypto
 import HSChain.Internal.Types.Messages
 import HSChain.Internal.Types.Config
 import HSChain.Internal.Types.Consensus
-import HSChain.Logger
 import HSChain.Store
 import HSChain.Store.Internal.Query
 import HSChain.Types
@@ -507,13 +506,10 @@ conflictingVotesOK v1 v2
 -- Helpers for running tests
 ----------------------------------------------------------------
 
-type ConsensusM = DBT 'RW BData (NoLogsT IO)
-
-run :: Connection 'RW BData -> ConsensusM a -> IO a
-run c = runNoLogsT . runDBT c
+type ConsensusM = HSChainT BData IO
 
 withEnvironment :: ConsensusM x -> IO x
-withEnvironment act = withDatabase "" $ \conn -> run conn act
+withEnvironment act = withDatabase "" $ \conn -> runHSChainT conn act
 
 execConsensus
   :: PrivKey (Alg BData)
