@@ -126,28 +126,6 @@ Executable hschain-dioxane-node
   hs-source-dirs:      exe
   Main-is:             dioxane-node.hs
 
-Executable hschain-db
-  Buildable: False
-  Ghc-options:         -Wall -threaded -Wno-orphans
-  Default-Language:    Haskell2010
-  Build-Depends:       base                 >=4.12 && <5
-                     , hschain
-                     , hschain-types
-                     , hschain-crypto
-                     , hschain-examples
-                     , aeson
-                     , cborg                >=0.2
-                     , bytestring           >=0.10
-                     , containers           >=0.5.7
-                     , directory
-                     , filepath
-                     , optparse-applicative >=0.14
-                     , serialise
-                     , stm
-                     , text
-  hs-source-dirs:      exe
-  Main-is:             db-dump.hs
-
 
 -- Test suite
 Test-suite hschain-tests
