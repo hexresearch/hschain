@@ -54,6 +54,7 @@ module HSChain.Store (
   , runDBT
   , DatabaseByField(..)
   , DatabaseByType(..)
+  , DatabaseByReader(..)
     -- ** Standard API
   , blockchainHeight
   , retrieveBlock
@@ -405,4 +406,21 @@ instance ( MonadReader r m
          , a ~ a'
          ) => MonadDB a' (DatabaseByType a m) where
   askConnectionRW = DatabaseByType $ asks (^. typed)
+  {-# INLINE askConnectionRW #-}
+
+
+
+newtype DatabaseByReader a m x = DatabaseByReader (m x)
+  deriving newtype (Functor,Applicative,Monad)
+
+instance ( MonadReader (Connection 'RW a) m
+         , a ~ a'
+         ) => MonadReadDB a' (DatabaseByReader a m) where
+  askConnectionRO = DatabaseByReader $ connectionRO <$> ask
+  {-# INLINE askConnectionRO #-}
+
+instance ( MonadReader (Connection 'RW a) m
+         , a ~ a'
+         ) => MonadDB a' (DatabaseByReader a m) where
+  askConnectionRW = DatabaseByReader ask
   {-# INLINE askConnectionRW #-}
