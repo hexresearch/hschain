@@ -61,7 +61,7 @@ module HSChain.Store.Query (
   ) where
 
 import Codec.Serialise                (Serialise, deserialise, serialise)
-import Control.Monad
+import Control.Concurrent.MVar
 import Control.Monad.Catch
 import qualified Control.Monad.Fail as Fail
 import Control.Monad.IO.Class
@@ -74,7 +74,6 @@ import Control.Monad.Trans.State.Lazy   as SL(StateT(..))
 import Control.Monad.Trans.Except            (ExceptT(..))
 import Control.Monad.Trans.Identity          (IdentityT(..))
 import Data.Coerce
-import Data.IORef
 import Data.Int
 import qualified Database.SQLite.Simple           as SQL
 import qualified Database.SQLite.Simple.ToField   as SQL
@@ -98,9 +97,8 @@ data Access = RO                -- ^ Read-only access
 -- | Connection to sqlite database. It's tagged by level of access to
 --   database (read only or read\/write) and parametrized by cache
 data Connection (rw :: Access) = Connection
-  { connMutex    :: !Mutex
-  , connConn     :: !SQL.Connection
-  , connClosed   :: !(IORef Bool)
+  { connMutex :: !(MVar Bool)
+  , connConn  :: !SQL.Connection
   }
 
 -- | Convert read-only or read-write connection to read-only one.
@@ -111,8 +109,7 @@ connectionRO = coerce
 openConnection :: (MonadIO m) => FilePath -> m (Connection rw)
 openConnection db = liftIO $
   bracketOnError (SQL.open db) (SQL.close) $ \connConn -> do
-    connMutex  <- newMutex
-    connClosed <- newIORef False
+    connMutex  <- newMVar True
     -- SQLite have support for retrying transactions in case database is
     -- busy. Here we switch it on
     SQL.execute_ connConn "PRAGMA busy_timeout = 10"
@@ -131,11 +128,10 @@ withConnection
 withConnection db = bracket (openConnection db) closeConnection'
 
 closeConnection' :: MonadIO m => Connection rw -> m ()
-closeConnection' Connection{..} = liftIO $ do
-  uninterruptibleMask_ $ do
-    withMutex connMutex $ do
-      writeIORef connClosed True
-      SQL.close  connConn
+closeConnection' Connection{..} = liftIO $ uninterruptibleMask_ $
+  modifyMVarM_ connMutex $ \case
+    False -> return False
+    True  -> False <$ SQL.close connConn
 
 
 
@@ -462,10 +458,9 @@ runQueryWorker
   => Bool
   -> Connection rw
   -> m x -> m (Maybe x)
-runQueryWorker isWrite connection sql = withMutex mutex $ do
-  closed <- liftIO $ readIORef $ connClosed connection
-  when closed $ throwM DatabaseIsClosed
-  uninterruptibleMask $ \restore -> do
+runQueryWorker isWrite connection sql = withMVarM mutex $ \case
+  False -> throwM DatabaseIsClosed
+  True  -> uninterruptibleMask $ \restore -> do
     -- This function is rather tricky to get right. We need to maintain
     -- following invariant: No matter what happens we MUST call either
     -- ROLLBACK or COMMIT after BEGIN TRANSACTION. Otherwise database
