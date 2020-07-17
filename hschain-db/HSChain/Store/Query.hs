@@ -109,14 +109,14 @@ connectionRO = coerce
 
 -- | Open connection to database and set necessary pragmas
 openConnection :: (MonadIO m) => FilePath -> m (Connection rw)
-openConnection db = liftIO $ do
-  connMutex  <- newMutex
-  connConn   <- SQL.open db
-  connClosed <- newIORef False
-  -- SQLite have support for retrying transactions in case database is
-  -- busy. Here we switch it on
-  SQL.execute_ connConn "PRAGMA busy_timeout = 10"
-  return $! Connection{..}
+openConnection db = liftIO $
+  bracketOnError (SQL.open db) (SQL.close) $ \connConn -> do
+    connMutex  <- newMutex
+    connClosed <- newIORef False
+    -- SQLite have support for retrying transactions in case database is
+    -- busy. Here we switch it on
+    SQL.execute_ connConn "PRAGMA busy_timeout = 10"
+    return $! Connection{..}
 
 -- | Close connection to database. Note that we can only close
 --   connection if we have read-write acces to it.
