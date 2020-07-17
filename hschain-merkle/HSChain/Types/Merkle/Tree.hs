@@ -44,7 +44,7 @@ newtype MerkleBlockTree f alg a = MerkleBlockTree
   }
   deriving (Show, Foldable, Generic)
 
-merkleBlockTreeHash :: (IsMerkle f) => MerkleBlockTree f alg a -> Hash alg
+merkleBlockTreeHash :: MerkleBlockTree f alg a -> Hash alg
 merkleBlockTreeHash = merkleHash . merkleBlockTree
 
 -- | Single node of tree
@@ -55,10 +55,10 @@ data Node f alg a
   deriving (Show, Foldable, Generic)
 
 
-instance (IsMerkle f, CryptoHash alg) => CryptoHashable (MerkleBlockTree f alg a) where
+instance (CryptoHash alg) => CryptoHashable (MerkleBlockTree f alg a) where
   hashStep = hashStep . merkleBlockTree
 
-instance (IsMerkle f, CryptoHash alg, CryptoHashable a) => CryptoHashable (Node f alg a) where
+instance (CryptoHash alg, CryptoHashable a) => CryptoHashable (Node f alg a) where
   hashStep node
     = hashStep (UserType "hschain" "Merkle.Tree.Node")
    <> case node of
