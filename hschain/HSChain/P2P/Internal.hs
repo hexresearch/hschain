@@ -38,7 +38,6 @@ import System.Random.Shuffle  (shuffle')
 import qualified Data.Set           as Set
 import qualified Data.Text          as T
 
-import HSChain.Control
 import HSChain.Control.Class
 import HSChain.Control.Delay
 import HSChain.Control.Shepherd

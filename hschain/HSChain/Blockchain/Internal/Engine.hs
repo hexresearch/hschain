@@ -38,8 +38,7 @@ import Katip (sl)
 
 import HSChain.Blockchain.Internal.Algorithm
 import HSChain.Blockchain.Internal.Engine.Types
-import HSChain.Control      (iterateM)
-import HSChain.Control.Util (throwNothing,throwLeft,atomicallyIO)
+import HSChain.Control.Util (throwNothing,throwLeft,atomicallyIO,iterateM)
 import HSChain.Crypto
 import HSChain.Exceptions
 import HSChain.Internal.Types.Messages
