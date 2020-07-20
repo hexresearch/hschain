@@ -95,7 +95,7 @@ encodeIntegerLSB i
 -- |Solve the puzzle.
 solve :: [ByteString] -- ^Parts of header to concatenate
       -> POWConfig -- ^Configuration of POW algorithm
-      -> IO (Maybe (ByteString, ByteString)) -- ^Returns a "puzzle answer" part of the header and final hash, if found.
+      -> IO (Maybe ByteString, ByteString) -- ^Returns a "puzzle answer" part of the header and best hash found.
 solve headerParts POWConfig{..} = B.useAsCStringLen completeHeader $ \(ptr', len) -> do
   allocaBytes (answerSize + hashSize) $ \answerAndHash -> do
     let answer = answerAndHash
@@ -112,12 +112,12 @@ solve headerParts POWConfig{..} = B.useAsCStringLen completeHeader $ \(ptr', len
            powSearchAttemptsBetweenRestarts
            0 0 -- fixed bits
            nullPtr
+    hashBS <- B.packCStringLen (castPtr completeHash, hashSize)
     if r /= 0
       then do
              answerBS <- B.packCStringLen (castPtr answer, answerSize)
-             hashBS <- B.packCStringLen (castPtr completeHash, hashSize)
-             return (Just (answerBS, hashBS))
-      else return Nothing
+             return (Just answerBS, hashBS)
+      else return (Nothing, hashBS)
   where
     POWSearchConfig{..} = powCfgSearchConfig
     completeHeader = B.concat headerParts

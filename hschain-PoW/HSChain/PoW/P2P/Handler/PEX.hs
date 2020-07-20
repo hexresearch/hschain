@@ -50,7 +50,7 @@ runPEX
   -> BlockRegistry b
   -> Sink (BoxRX m b)
   -> STM (Src (MsgAnn b))
-  -> STM (Consensus m b)
+  -> STM (Consensus s m b)
   -> BlockDB m b
   -> ContT r m ()
 runPEX cfg netAPI seeds blockReg sinkBOX mkSrcAnn consSt db = do
@@ -90,7 +90,7 @@ acceptLoop
   -> Shepherd
   -> PeerRegistry
   -> NonceSet
-  -> STM (PeerChans m b)
+  -> STM (PeerChans s m b)
   -> m ()
 acceptLoop NetworkAPI{..} shepherd reg nonceSet mkChans  = do
   bracket listenOn fst $ \(_,accept) -> forever $ do
@@ -127,7 +127,7 @@ connectTo
   -> Shepherd
   -> PeerRegistry
   -> NonceSet
-  -> PeerChans m b
+  -> PeerChans s m b
   -> m ()
 connectTo NetworkAPI{..} addr shepherd reg nonceSet chans =
   newSheep shepherd $ do
@@ -171,7 +171,7 @@ monitorConnections
   -> Shepherd
   -> PeerRegistry
   -> NonceSet
-  -> STM (PeerChans m b)
+  -> STM (PeerChans s m b)
   -> m ()
 monitorConnections NetCfg{..} netAPI shepherd reg nonceSet mkChans = forever $ do
   -- Check that we need and can connect to peers

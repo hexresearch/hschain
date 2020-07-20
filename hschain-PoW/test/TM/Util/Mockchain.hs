@@ -79,14 +79,18 @@ instance Serialise (Nonce MockChain) => KVConfig MockChain where
     where
       resultTgt = hash256AsTarget hdr
 
-genesis,block1,block2,block3,block2' :: Block (KV MockChain)
-genesis:block1:block2:block3:_ = mockchain
+genesis, block1, block2, block3, block2', block3', block4' :: Block (KV MockChain)
+genesis: block1: block2: block3:_ = mockchain
 block2' = mineBlock "Z" block1
+block3' = mineBlock "Z" block2'
+block4' = mineBlock "Z" block3'
 
 
-header1,header2,header3,header2' :: Header (KV MockChain)
+header1, header2, header3, header2', header3', header4' :: Header (KV MockChain)
 header1  = toHeader block1
 header2  = toHeader block2
 header3  = toHeader block3
 header2' = toHeader block2'
+header3' = toHeader block3'
+header4' = toHeader block4'
 

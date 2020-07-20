@@ -188,7 +188,7 @@ data CmdPeer b
 data AskPeers = AskPeers
 
 -- | Channels for peer for communication with rest of the world
-data PeerChans m b = PeerChans
+data PeerChans s m b = PeerChans
   { peerSinkNewAddr   :: Sink [NetAddr]      --
   , peerSinkConsensus :: Sink (BoxRX m b)    --
   , peerBCastAnn      :: Src  (MsgAnn b)
@@ -196,7 +196,7 @@ data PeerChans m b = PeerChans
   , peerCatchup       :: CatchupThrottle
   , peerReqBlocks     :: BlockRegistry b
   , peerConnections   :: STM [NetAddr]      --
-  , peerConsensuSt    :: STM (Consensus m b)    
+  , peerConsensuSt    :: STM (Consensus s m b)
   , peerBlockDB       :: BlockDB m b  
   }
 

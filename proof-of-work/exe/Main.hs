@@ -1,5 +1,6 @@
 module Main where
 
+import Control.Monad (when)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
 
@@ -16,7 +17,7 @@ import Options.Applicative
 import HSChain.POW
 
 data PrintOpt = PrintText | PrintHex
-  deriving (Show)
+  deriving (Eq, Show)
 
 data Command =
     FindAnswer ByteString Integer PrintOpt
@@ -62,10 +63,16 @@ main = do
       let config = defaultPOWConfig
                  { powCfgTarget = target
                  }
-      r <- solve [suffix] config
+      (r, hash) <- solve [suffix] config
       case r of
-        Nothing -> putStrLn "failed to find answer" >> exitFailure
-        Just (answer, hash) -> case printOpt of
+        Nothing -> do
+          putStrLn "failed to find answer"
+          when (printOpt == PrintHex) $
+            putStrLn $ "best header hash: "++
+                     List.intercalate " "
+                          (map (printf "%02x") $ B.unpack hash)
+          exitFailure
+        Just answer -> case printOpt of
           PrintText -> do
             putStrLn $ "complete header: "++show completeBlock
           PrintHex -> do

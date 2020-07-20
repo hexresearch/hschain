@@ -19,8 +19,10 @@ module HSChain.PoW.Types where
 
 import Codec.Serialise          (Serialise)
 import Control.DeepSeq
+import Control.Monad
 import Control.Monad.IO.Class
 import Data.Bits
+import qualified Data.ByteString as BS
 import Data.Monoid              (Sum(..))
 import Data.Time.Clock          (UTCTime)
 import Data.Time.Clock.POSIX    (getPOSIXTime,posixSecondsToUTCTime)
@@ -32,6 +34,7 @@ import GHC.Generics (Generic)
 import Text.Printf (printf)
 
 import HSChain.Crypto
+import HSChain.Crypto.SHA
 import HSChain.Crypto.Classes.Hash
 import HSChain.Types.Merkle.Types
 
@@ -97,6 +100,9 @@ class ( Show      (BlockID b)
   --   leave some representation leeway for implementations. 
   data BlockID b
 
+  -- | Transactions that constitute block.
+  type Tx b
+
   -- | Compute block ID out of block using only header.
   blockID :: IsMerkle f => GBlock b f -> BlockID b
 
@@ -159,10 +165,6 @@ class ( Show      (BlockID b)
 -- requirements gave us the following plan: we fetch a block to
 -- mine (header may be invalid) and work on it for some time, reporting
 -- back in case of success.
---
--- Please note that you can implement caching in @fetchBlock@ if current
--- chain leader has not changed. You can tweak only the "coinbase"-like
--- transaction in the block.
 class BlockData b => Mineable b where
 
   -- | Adjust puzzle's answer. The adjustment process tries to
@@ -282,3 +284,37 @@ instance ( IsMerkle f
          , JSON.FromJSON (BlockID b)
          , forall g. IsMerkle g => JSON.FromJSON (b g)
          ) => JSON.FromJSON (GBlock b f)
+
+---------------------------------------
+-- Handy utilities.
+---------------------------------------
+
+-- FIXME: correctly compute rertargeting
+retarget :: BlockData b => BH b -> Target
+retarget bh
+  -- Retarget
+  | bhHeight bh `mod` adjustInterval == 0
+  , Just old <- goBack adjustInterval bh
+  , bhHeight old /= 0
+  =   let Time t1 = bhTime old
+          Time t2 = bhTime bh
+          tgt     = targetInteger oldTarget
+          tgt'    = (tgt * fromIntegral (t2 - t1)) `div` (fromIntegral adjustInterval * fromIntegral seconds)
+      in Target tgt'
+  | otherwise
+    = oldTarget
+  where
+    oldTarget = blockTargetThreshold $ asHeader bh
+    (adjustInterval, Time seconds) = targetAdjustmentInfo bh
+
+hash256AsTarget :: CryptoHashable a => a -> Target
+hash256AsTarget a
+  = Target $ BS.foldl' (\i w -> (i `shiftL` 8) + fromIntegral  w) 0 bs
+  where
+    Hash bs = hash a :: Hash SHA256
+
+goBack :: Height -> BH b -> Maybe (BH b)
+goBack (Height 0) = Just
+goBack h          = goBack (pred h) <=< bhPrevious
+
+

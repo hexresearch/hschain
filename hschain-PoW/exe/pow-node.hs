@@ -73,12 +73,12 @@ instance Default BS.ByteString where defaultValue = BS.empty
 instance KVConfig TestChainNewPow where
   type Nonce TestChainNewPow = BS.ByteString
   kvAdjustInterval = Const 200
-  kvBlockTimeInterval  = Const (Time 1000)
+  kvBlockTimeInterval = Const (Time 10000)
   kvSolvePuzzle b0@GBlock{..} = do
-    maybeAnswerHash <- liftIO $ POWFunc.solve [LBS.toStrict $ serialise $ blockWithoutNonce h0] powCfg
-    case maybeAnswerHash of
+    (maybeAnswer, _hash) <- liftIO $ POWFunc.solve [LBS.toStrict $ serialise $ blockWithoutNonce h0] powCfg
+    case maybeAnswer of
       Nothing -> return Nothing
-      Just (answer, _hash) -> do
+      Just answer -> do
         let mined = b0 { blockData = blockData { kvNonce = answer } }
         return $ Just mined
     where
@@ -106,7 +106,6 @@ blockWithoutNonce block@GBlock{..} =
 
 defaultPOWConfig :: POWFunc.POWConfig
 defaultPOWConfig = POWFunc.defaultPOWConfig
-  { POWFunc.powCfgClausesCount = 1 } -- all for speed!
 
 genesis :: Block (KV TestChain)
 genesis = GBlock
@@ -133,12 +132,10 @@ genesisNewPoW = GBlock
 
 
 getBlockToMine :: (Default (Nonce cfg), KVConfig cfg)
-          => String -> BH (KV cfg) -> IO (Block (KV cfg))
-getBlockToMine val bh = do
-  now <- getCurrentTime
-  return $ GBlock
+          => String -> BH (KV cfg) -> a -> (Block (KV cfg), a)
+getBlockToMine val bh a = (GBlock
     { blockHeight = succ $ bhHeight bh
-    , blockTime   = now
+    , blockTime   = Time 0
     , prevBlock   = Just $! bhBID bh
     , blockData   = KV { kvData = merkled [ let Height h = bhHeight bh
                                             in (fromIntegral h, val)
@@ -146,7 +143,7 @@ getBlockToMine val bh = do
                        , kvNonce = defaultValue
                        , kvTarget = retarget bh
                        }
-    }
+    }, a)
 
 ----------------------------------------------------------------
 -- Configuration
@@ -184,7 +181,7 @@ parser = do
 runNodeAnyPoW :: forall cfg . (Show (Nonce cfg), Default (Nonce cfg), KVConfig cfg)
               => Opts -> Block (KV cfg) ->IO ()
 runNodeAnyPoW Opts{..} genesisBlock = do
-  runNode cmdConfigPath optMine genesisBlock kvViewStep Map.empty (getBlockToMine optNodeName)
+  runNode cmdConfigPath optMine genesisBlock kvViewStep (getBlockToMine optNodeName) Map.empty
 
 main :: IO ()
 main = do

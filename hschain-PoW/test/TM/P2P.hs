@@ -130,7 +130,8 @@ runNetTest :: TestM () -> IO ()
 runNetTest test = do
   db  <- inMemoryDB @_ @_ @(KV MockChain)
   net <- newMockNet
-  let s0 = consensusGenesis (head mockchain) (inMemoryView kvViewStep Map.empty (blockID genesis))
+  let s0 = consensusGenesis (head mockchain) $
+            inMemoryView kvViewStep Map.empty (blockID genesis)
   let apiNode        = createMockNode net ipNode
       NetworkAPI{..} = createMockNode net ipOur
   runNoLogsT $ evalContT $ do

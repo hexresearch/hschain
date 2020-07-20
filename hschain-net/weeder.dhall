@@ -1,0 +1,13 @@
+{ roots = [ "^Main.main$"
+          , "^Paths_.*"
+          , "HSChain.Network.Internal.*"
+          , "HSChain.Network.IpAddresses.filterOutOwnAddresses"
+          , "HSChain.Network.IpAddresses.getLocalAddresses"
+          , "HSChain.Network.IpAddresses.isLocalAddress"
+          , "HSChain.Network.IpAddresses.normalizeNetAddr"
+          , "HSChain.Network.IpAddresses.getNetAddrPort"
+          , "HSChain.Network.Mock.newMockNet"
+          , "HSChain.Network.Mock.createMockNode"
+          , "HSChain.Network.TCP.newNetworkTcp"
+          , "HSChain.Network.UDP.newNetworkUdp"
+          ], type-class-roots = True }
