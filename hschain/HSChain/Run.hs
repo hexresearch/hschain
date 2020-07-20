@@ -75,7 +75,7 @@ data BlockchainNet = BlockchainNet
 --   'runConcurrently'. List of actions is returned in case when we
 --   need to run something else along them.
 runNode
-  :: ( MonadDB a m, MonadMask m, MonadFork m, MonadLogger m, MonadTMMonitoring m
+  :: ( MonadDB m, MonadCached a m, MonadMask m, MonadFork m, MonadLogger m, MonadTMMonitoring m
      , BlockData a, Eq a, Show a
      )
   => Configuration app         -- ^ Timeouts for network and consensus
@@ -84,6 +84,7 @@ runNode
 runNode Configuration{..} NodeDescription{..} = do
   let BlockchainNet{..}  = nodeNetwork
   appCh <- newAppChans cfgConsensus
+  initDatabase
   st    <- initializeBlockchain nodeGenesis nodeStateView
   return
     [ id $ descendNamespace "net"

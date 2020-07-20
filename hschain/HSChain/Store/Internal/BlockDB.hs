@@ -473,7 +473,7 @@ retrieveUnrecordedEvidence = do
 -- Helpers
 ----------------------------------------------------------------
 
-query1 :: (SQL.ToRow p, SQL.FromField x, MonadQueryRO a m)
+query1 :: (SQL.ToRow p, SQL.FromField x, MonadQueryRO m)
        => SQL.Query -> p -> m (Maybe x)
 query1 sql p =
   basicQuery sql p >>= \case
@@ -482,7 +482,7 @@ query1 sql p =
     _        -> error "Impossible"
 
 -- Query that returns 0 or 1 result which is CBOR-encoded value
-singleQ :: (SQL.ToRow p, Serialise x, MonadQueryRO a m)
+singleQ :: (SQL.ToRow p, Serialise x, MonadQueryRO m)
         => SQL.Query -> p -> m (Maybe x)
 singleQ sql p = (fmap . fmap) unCBORed
               $ query1 sql p

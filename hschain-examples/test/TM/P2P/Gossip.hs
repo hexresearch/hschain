@@ -227,6 +227,7 @@ type TestM   a = StateT  (P2P.State a)
 withGossip :: Int -> TestM Mock.BData x -> IO x
 withGossip n action = do
   withDatabase "" $ \conn -> runHSChainT conn $ do
+    initDatabase
     mustQueryRW $ storeGenesis genesis
     consensusState <- liftIO $ newTVarIO Nothing
     let config = P2P.Config (readTVar consensusState)

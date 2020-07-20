@@ -67,7 +67,7 @@ newAppChans ConsensusCfg{incomingQueueSize = sz} = do
   return AppChans{..}
 
 rewindBlockchainState
-  :: ( MonadDB a m, MonadIO m, MonadThrow m
+  :: ( MonadDB m, MonadIO m, MonadThrow m, MonadCached a m
      , Crypto (Alg a), BlockData a)
   => StateView m a
   -> m (StateView m a)
@@ -117,7 +117,7 @@ rewindBlockchainState st0 = do
 -- | Initialize blockchain: if we initialize fresh blockchain, compute
 --   validator set for H=1 and
 initializeBlockchain
-  :: (MonadDB a m, MonadThrow m, MonadIO m, BlockData a, Show a, Eq a)
+  :: (MonadDB m, MonadCached a m, MonadThrow m, MonadIO m, BlockData a, Show a, Eq a)
   => Genesis a
   -> StateView m a
   -> m (StateView m a)
@@ -131,7 +131,8 @@ initializeBlockchain genesis stateView  = do
 --
 --   * INVARIANT: Only this function can write to blockchain
 runApplication
-  :: ( MonadDB a m
+  :: ( MonadDB m
+     , MonadCached a m
      , MonadIO m
      , MonadMask m
      , MonadLogger m
@@ -158,7 +159,8 @@ runApplication config appValidatorKey stateView appCall appCh = logOnException $
 -- going to commit at current height, then stores it in database and
 -- returns commit.
 decideNewBlock
-  :: ( MonadDB a m
+  :: ( MonadDB m
+     , MonadCached a m
      , MonadIO m
      , MonadMask m
      , MonadLogger m
@@ -204,7 +206,7 @@ decideNewBlock config appValidatorKey
 -- Producer for MessageRx. First we replay WAL and then we read
 -- messages from channels.
 rxMessageSource
-  :: ( MonadIO m, MonadDB a m, MonadLogger m, MonadThrow m
+  :: ( MonadIO m, MonadDB m, MonadLogger m, MonadCached a m
      , Crypto (Alg a), BlockData a)
   => HeightParameters m a
   -> AppChans m a
@@ -238,7 +240,7 @@ rxMessageSource HeightParameters{..} AppChans{..} appChanRxInternal = do
 --     we want to commit yet.
 --  2. Collect stragglers precommits.
 msgHandlerLoop
-  :: ( MonadReadDB a m, MonadThrow m, MonadIO m, MonadLogger m
+  :: ( MonadReadDB m, MonadThrow m, MonadIO m, MonadLogger m, MonadCached a m
      , Crypto (Alg a), Exception (BChError a))
   => HeightParameters m a
   -> StateView m a
@@ -324,7 +326,7 @@ verifyMessageSignature oldValSet valSet height = forever $ do
 
 
 handleEngineMessage
-  :: ( MonadIO m, MonadThrow m, MonadTMMonitoring m, MonadDB a m, MonadLogger m
+  :: ( MonadIO m, MonadTMMonitoring m, MonadDB m, MonadLogger m, MonadCached a m
      , Crypto (Alg a))
   => HeightParameters n a
   -> ConsensusCfg app
@@ -420,7 +422,8 @@ handleEngineMessage HeightParameters{..} ConsensusCfg{..} AppChans{..} appChanRx
 
 makeHeightParameters
   :: forall m a.
-     ( MonadDB a m
+     ( MonadDB m
+     , MonadCached a m
      , MonadIO m
      , MonadThrow m
      , MonadLogger m
@@ -542,7 +545,7 @@ makeHeightParameters appValidatorKey st AppCallbacks{appCanCreateBlock} = do
     }
 
 evidenceCorrect
-  :: forall m a. (Crypto (Alg a), BlockData a, MonadIO m, MonadReadDB a m)
+  :: forall m a. (Crypto (Alg a), BlockData a, MonadIO m, MonadReadDB m, MonadCached a m)
   => ByzantineEvidence a -> m Bool
 evidenceCorrect evidence = do
   queryRO (retrieveValidatorSet h) >>= \case

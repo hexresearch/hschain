@@ -56,6 +56,9 @@ module HSChain.Store.Query (
   , queryROT
   , queryRWT
   , mustQueryRWT
+    -- * Exceptions
+  , Rollback(..)
+  , UnexpectedRollback(..)
     -- * sqlite-simple helpers
   , CBORed(..)
   ) where

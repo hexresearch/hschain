@@ -397,7 +397,7 @@ evidenceIsRecordedProp = withEnvironment $ do
     otherK = take 2 $ filter (/=proposerH2R0) privK
 
 selectAllEvidence
-  :: MonadQueryRO a m
+  :: MonadQueryRO m
   => m [(CBORed (ByzantineEvidence BData), Bool)]
 selectAllEvidence
   = basicQuery_ "SELECT evidence,recorded FROM thm_evidence"
@@ -534,6 +534,7 @@ startConsensus
                 , ConsensusM ()
                 )
 startConsensus k = do
+  initDatabase
   chans <- newAppChans cfg
   ch    <- atomicallyIO $ dupTChan $ appChanTx chans
   st    <- initializeBlockchain genesis

@@ -340,7 +340,7 @@ findInputs tgt = go 0
 --   tailored towards particular use case of demonstartion and
 --   benchmarks for mock UTXO blockchain and likely won't work well
 --   for more realistic case.
-initCoinDB :: MonadQueryRW BData m => m ()
+initCoinDB :: MonadQueryRW m => m ()
 initCoinDB = do
   -- Table for unspent transactions. In order to be able to work with
   -- several instances of StateView we keep heights when UTXO was
@@ -373,7 +373,7 @@ data UtxoDiff = UtxoDiff
 
 -- | Lookup unspent output in database
 dbLookupUTXO
-  :: (MonadQueryRO BData m)
+  :: (MonadQueryRO m)
   => Height                 -- ^ Height of block for which we calculate state updates
   -> Hashed (Alg BData) Tx  -- ^ Transaction hash
   -> Int                    -- ^ Output number
@@ -398,7 +398,7 @@ dbProcessDeposit tx@(Deposit pk nCoin) UtxoDiff{..} =
     utxo = UTXO 0 (hashed tx)
 
 dbProcessSend
-  :: (MonadQueryRO BData m)
+  :: (MonadQueryRO m)
   => Height -> Tx -> UtxoDiff -> ExceptT CoinError m UtxoDiff
 dbProcessSend _ Deposit{} _ = throwError DepositAtWrongH
 dbProcessSend h tx@(Send pk _ TxSend{..}) UtxoDiff{..} = do
@@ -432,7 +432,7 @@ dbProcessSend h tx@(Send pk _ TxSend{..}) UtxoDiff{..} = do
     addOutput m (i,u) = Map.insert (UTXO i txHash) (Added u h) m
 
 dbRecordDiff
-  :: (MonadQueryRW BData m)
+  :: (MonadQueryRW m)
   => (UTXO, UtxoChange) -> m ()
 dbRecordDiff (UTXO nOut txHash, change) = case change of
   Spent h -> basicExecute
@@ -446,7 +446,7 @@ dbRecordDiff (UTXO nOut txHash, change) = case change of
     (encodeToBS txHash, nOut, i, encodeToBS pk, h1,h2)
 
 databaseStateView
-  :: (MonadIO m, MonadThrow m, MonadDB BData m)
+  :: (MonadIO m, MonadThrow m, MonadDB m, MonadCached BData m)
   => ValidatorSet (Alg BData)
   -> m (StateView m BData, [m ()])
 databaseStateView valSetH0 = do
@@ -515,7 +515,7 @@ databaseStateView valSetH0 = do
 
 -- | Run generator for transactions
 dbTransactionGenerator
-  :: (MonadReadDB BData m, MonadIO m)
+  :: (MonadReadDB m, MonadCached BData m, MonadIO m)
   => TxGenerator
   -> Mempool m (Alg BData) Tx
   -> (Tx -> m ())
@@ -529,7 +529,9 @@ dbTransactionGenerator gen mempool push = forever $ do
     maxN = genMaxMempoolSize gen
 
 
-dbGenerateTransaction :: (MonadIO m, MonadReadDB BData m) => TxGenerator -> m Tx
+dbGenerateTransaction
+  :: (MonadIO m, MonadReadDB m, MonadCached BData m)
+  => TxGenerator -> m Tx
 dbGenerateTransaction TxGenerator{..} = do
   privK  <- liftIO $ selectFromVec genPrivateKeys
   target <- liftIO $ selectFromVec genDestinaions
@@ -579,7 +581,8 @@ data CoinDictM g = CoinDictM
   { dictGauges    :: !g
   , dictNamespace :: !Namespace
   , dictLogEnv    :: !LogEnv
-  , dictConn      :: !(Connection 'RW BData)
+  , dictConn      :: !(Connection 'RW)
+  , dictCached    :: !(Cached BData)
   }
   deriving stock (Generic)
 
@@ -590,8 +593,10 @@ newtype CoinT g m a = CoinT { unCoinT :: ReaderT (CoinDictM g) m a }
   -- HSChain instances
   deriving MonadLogger
        via LoggerByFields "dictLogEnv" "dictNamespace" (ReaderT (CoinDictM g) m)
-  deriving (MonadReadDB BData, MonadDB BData)
-       via DatabaseByField "dictConn" BData (ReaderT (CoinDictM g) m)
+  deriving (MonadReadDB, MonadDB)
+       via DatabaseByField "dictConn" (ReaderT (CoinDictM g) m)
+  deriving (MonadCached BData)
+       via CachedByField "dictCached" BData (ReaderT (CoinDictM g) m)
 
 -- We have two variants of Monitoring depending on type parameter
 deriving via NoMonitoring (CoinT () m)
@@ -621,7 +626,7 @@ coinGenesis nodes CoinSpecification{..} = Genesis
 
 -- | Interpret coin
 interpretSpec
-  :: (MonadDB BData m, MonadFork m, MonadMask m, MonadLogger m, MonadTMMonitoring m)
+  :: (MonadDB m, MonadCached BData m, MonadFork m, MonadMask m, MonadLogger m, MonadTMMonitoring m)
   => Configuration Example      -- ^ Delays configuration
   -> BlockchainNet              -- ^ Network API
   -> NodeSpec BData             -- ^ Node specification
@@ -632,7 +637,10 @@ interpretSpec
 interpretSpec cfg net NodeSpec{..} valSet coin@CoinSpecification{..} cb = do
   -- Start node
   -- (state,memThr,readST) <- inMemoryStateView $ genesisValSet genesis
-  mustQueryRW initCoinDB
+  --
+  -- We must ensure that database is initialized
+  initDatabase
+  mustQueryRW initCoinDB 
   (state,memThr) <- databaseStateView $ genesisValSet genesis
   actions               <- runNode cfg NodeDescription
     { nodeValidationKey = nspecPrivKey
@@ -671,6 +679,7 @@ executeNodeSpec MockClusterConfig{..} callbacks = do
   resources <- allocNetwork net clusterTopology clusterNodes
   -- Start nodes
   rnodes    <- lift $ forM resources $ \(spec, bnet, dictConn, dictLogEnv) -> do
+    dictCached <- newCached
     let dict = CoinDictM { dictGauges    = ()
                          , dictNamespace = mempty
                          , ..

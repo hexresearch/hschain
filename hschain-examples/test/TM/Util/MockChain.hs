@@ -2,6 +2,7 @@
 {-# LANGUAGE DerivingStrategies         #-}
 {-# LANGUAGE DerivingVia                #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
 -- |
 -- Data for mock blockchain used in tests for consensus and gossip
 module TM.Util.MockChain where
@@ -28,17 +29,20 @@ import HSChain.Mock.KeyVal  (BData(..),mkGenesisBlock)
 -- Monad for running tests
 ----------------------------------------------------------------
 
-newtype HSChainT a m x = HSChainT (ReaderT (Connection 'RW a) m x)
+newtype HSChainT a m x = HSChainT (ReaderT (Connection 'RW, Cached a) m x)
   deriving newtype (Functor,Applicative,Monad,MonadIO,MonadFail)
   deriving newtype (MonadThrow,MonadCatch,MonadMask,MonadFork)
-  deriving newtype (MonadReader (Connection 'RW a))
+  deriving newtype (MonadReader (Connection 'RW, Cached a))
   -- HSChain instances
-  deriving MonadTMMonitoring          via NoMonitoring       (HSChainT a m)
-  deriving MonadLogger                via NoLogsT            (HSChainT a m)
-  deriving (MonadReadDB a, MonadDB a) via DatabaseByReader a (HSChainT a m)
+  deriving MonadTMMonitoring      via NoMonitoring   (HSChainT a m)
+  deriving MonadLogger            via NoLogsT        (HSChainT a m)
+  deriving (MonadReadDB, MonadDB) via DatabaseByType (HSChainT a m)
+  deriving (MonadCached a)        via CachedByType a (HSChainT a m)
 
-runHSChainT :: Connection 'RW a -> HSChainT a m x -> m x
-runHSChainT c (HSChainT m) = runReaderT m c
+runHSChainT :: forall a m x. MonadIO m => Connection 'RW -> HSChainT a m x -> m x
+runHSChainT c (HSChainT m) = do
+  cache <- newCached
+  runReaderT m (c,cache)
 
 
 ----------------------------------------------------------------

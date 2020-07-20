@@ -97,10 +97,8 @@ deriving via WithDefault (SnakeCase (DropSmart (Config (Configuration app))))
 
 deriving via WithDefault (SnakeCase (Config (NetworkCfg app)))
   instance ( Default (NetworkCfg app)
-           , Typeable app
            ) => FromJSON (NetworkCfg app)
 
 deriving via WithDefault (SnakeCase (Config (ConsensusCfg app)))
   instance ( Default (ConsensusCfg app)
-           , Typeable app
            ) => FromJSON (ConsensusCfg app)
