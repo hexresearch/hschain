@@ -137,7 +137,7 @@ testValidatorChange = withTimeOut 20e6 $ do
     -- Execute nodes for second time!
     _         <- executeNodeSpec  spec resources
     -- Now test that we have correct validator sets for every height
-    liftIO $ runDBT conn $ do
+    liftIO $ runHSChainT conn $ do
       checkVals valSet0 (Height  1)
       checkVals valSet0 (Height  2)
       checkVals valSet0 (Height  3)
@@ -252,7 +252,7 @@ interpretSpec
   -> BlockchainNet
   -> Configuration Example
   -> AppCallbacks m Tx
-  -> m (Connection 'RO Tx, [m ()])
+  -> m (Connection 'RW Tx, [m ()])
 interpretSpec genesis nspec bnet cfg cb = do
   acts  <- runNode cfg NodeDescription
     { nodeValidationKey = nspecPrivKey nspec
@@ -261,14 +261,14 @@ interpretSpec genesis nspec bnet cfg cb = do
     , nodeCallbacks     = cb
     , nodeNetwork       = bnet
     }
-  conn <- askConnectionRO
+  conn <- askConnectionRW
   return (conn, acts)
 
 executeNodeSpec
   :: (MonadIO m, MonadMask m, MonadFork m,  MonadTMMonitoring m)
   => MockClusterConfig Tx ()
   -> [(NodeSpec Tx, BlockchainNet, Connection 'RW Tx, LogEnv)]
-  -> ContT r m [Connection 'RO Tx]
+  -> ContT r m [Connection 'RW Tx]
 executeNodeSpec MockClusterConfig{..} resources = do
   -- Start nodes
   rnodes <- lift $ forM resources $ \(nspec, bnet, conn, _logenv) -> do

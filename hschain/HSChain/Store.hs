@@ -49,9 +49,6 @@ module HSChain.Store (
   , Query
   , QueryT
     -- ** Standard DB wrapper
-  , DBT(..)
-  , dbtRO
-  , runDBT
   , DatabaseByField(..)
   , DatabaseByType(..)
   , DatabaseByReader(..)
@@ -70,8 +67,7 @@ module HSChain.Store (
   ) where
 
 import Codec.Serialise           (Serialise)
-import Control.Monad.Catch       (MonadMask,MonadThrow,MonadCatch)
-import Control.Monad.Morph       (MFunctor(..))
+import Control.Monad.Catch       (MonadMask)
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Except
@@ -93,10 +89,8 @@ import GHC.Generics (Generic)
 import HSChain.Types.Blockchain
 import HSChain.Types.Merkle.Types
 import HSChain.Blockchain.Internal.Types
-import HSChain.Control.Class          (MonadFork)
 import HSChain.Crypto
 import HSChain.Crypto.Containers
-import HSChain.Logger                 (MonadLogger)
 import HSChain.Store.Internal.Query
 import HSChain.Store.Internal.BlockDB
 import HSChain.Types.Validators
@@ -104,33 +98,6 @@ import HSChain.Types.Validators
 ----------------------------------------------------------------
 -- Monadic API for DB access
 ----------------------------------------------------------------
-
--- | Monad transformer which provides 'MonadReadDB' and 'MonadDB'
---   instances.
-newtype DBT rw a m x = DBT (ReaderT (Connection rw a) m x)
-  deriving newtype ( Functor, Applicative, Monad
-                   , MonadIO, MonadThrow, MonadCatch, MonadMask
-                   , MonadFork, MonadLogger, MonadFail
-                   )
-
-instance MFunctor (DBT rw a) where
-  hoist f (DBT m) = DBT $ hoist f m
-
-instance MonadTrans (DBT rw a) where
-  lift = DBT . lift
-
--- | Lift monad which provides read-only access to read-write access.
-dbtRO :: DBT 'RO a m x -> DBT rw a m x
-dbtRO (DBT m) = DBT (withReaderT connectionRO m)
-
-runDBT :: Connection rw a -> DBT rw a m x -> m x
-runDBT c (DBT m) = runReaderT m c
-
-instance MonadIO m => MonadReadDB a (DBT rw a m) where
-  askConnectionRO = connectionRO <$> DBT ask
-instance MonadIO m => MonadDB a (DBT 'RW a m) where
-  askConnectionRW = DBT ask
-
 
 -- | Helper function which opens database, initializes it and ensures
 --   that it's closed on function exit
