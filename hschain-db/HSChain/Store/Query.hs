@@ -301,48 +301,48 @@ mustQueryRW q
 
 
 
-basicQuery :: (SQL.ToRow p, SQL.FromRow q) => SQL.Query -> p -> Query rw [q]
-basicQuery sql p = Query $ do
+basicQuery :: (SQL.ToRow p, SQL.FromRow q, MonadQueryRO m) => SQL.Query -> p -> m [q]
+basicQuery sql p = liftQueryRO $ Query $ do
   conn <- asks connConn
   liftIO $ SQL.query conn sql p
 
-basicQuery_ :: (SQL.FromRow q) => SQL.Query -> Query rw [q]
-basicQuery_ sql = Query $ do
+basicQuery_ :: (SQL.FromRow q, MonadQueryRO m) => SQL.Query -> m [q]
+basicQuery_ sql = liftQueryRO $ Query $ do
   conn <- asks connConn
   liftIO $ SQL.query_ conn sql
 
 
-basicQuery1 :: (SQL.ToRow row, SQL.FromRow a)
+basicQuery1 :: (SQL.ToRow row, SQL.FromRow a, MonadQueryRO m)
   => SQL.Query             -- ^ SQL query
   -> row                   -- ^ Query parameters
-  -> Query rw (Maybe a)
+  -> m (Maybe a)
 basicQuery1 sql param =
   basicQuery sql param >>= \case
     []  -> return Nothing
     [x] -> return $ Just x
     _   -> error "Impossible"
 
-basicLastInsertRowId :: Query 'RW Int64
-basicLastInsertRowId = Query $ do
+basicLastInsertRowId :: MonadQueryRW m => m Int64
+basicLastInsertRowId = liftQueryRW $ Query $ do
   conn <- asks connConn
   liftIO $ SQL.lastInsertRowId conn
 
 
-basicExecute :: (SQL.ToRow p) => SQL.Query -> p -> Query 'RW ()
-basicExecute sql param = Query $ do
+basicExecute :: (SQL.ToRow p, MonadQueryRW m) => SQL.Query -> p -> m ()
+basicExecute sql param = liftQueryRW $ Query $ do
   conn <- asks connConn
   liftIO $ SQL.execute conn sql param
 
-basicExecute_ :: SQL.Query -> Query 'RW ()
-basicExecute_ sql = Query $ do
+basicExecute_ :: (MonadQueryRW m) => SQL.Query -> m ()
+basicExecute_ sql = liftQueryRW $ Query $ do
   conn <- asks connConn
   liftIO $ SQL.execute_ conn sql
 
 -- | Roll back execution of transaction. It's executed as throwing
 --   of exception which is caught in the 'runQueryT'. Thus other
 --   effects in monadic stack may or may not be rolled back as well.
-rollback :: Query 'RW a
-rollback = Query $ throwM Rollback
+rollback :: (MonadQueryRW m) => m a
+rollback = liftQueryRW $ Query $ throwM Rollback
 
 
 ----------------------------------------------------------------
