@@ -246,7 +246,7 @@ instance MonadQueryRO (Query rw) where
   --        - Query 'RO -> Query 'RW
   liftQueryRO = coerce
 
-instance MonadQueryRW (Query 'RW) where
+instance rw ~ 'RW => MonadQueryRW (Query rw) where
   -- NOTE: We need coerce to implement both:
   --        - Query 'RO -> Query 'RW
   --        - Query 'RW -> Query 'RW
