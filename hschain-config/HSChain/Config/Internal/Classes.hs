@@ -73,7 +73,7 @@ class GConfig f where
               -> Value
               -> Parser (f p)
 
-instance (Datatype i, GConfig f) => GConfig (M1 D i f) where
+instance (GConfig f) => GConfig (M1 D i f) where
   parseConfig mangler a v = M1 <$> parseConfig mangler (coerce a) v
 
 instance ( GConfigRec f

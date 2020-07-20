@@ -136,7 +136,7 @@ runApplication
      , MonadMask m
      , MonadLogger m
      , MonadTMMonitoring m
-     , BlockData a, Eq a, Show a)
+     , BlockData a)
   => ConsensusCfg app
      -- ^ Configuration
   -> Maybe (PrivValidator (Alg a)) -- ^ Private key of validator

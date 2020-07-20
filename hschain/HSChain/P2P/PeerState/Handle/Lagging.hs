@@ -97,7 +97,7 @@ addBlock b = do
 ----------------------------------------------------------------
 
 handlerVotesTimeoutMsg
-  :: (MonadIO m, MonadReadDB a m, BlockData a)
+  :: (MonadIO m, MonadReadDB a m)
   => LaggingState a -> m [GossipMsg a]
 handlerVotesTimeoutMsg st = do
   queryRO (retrieveLocalCommit peerH) >>= \case
