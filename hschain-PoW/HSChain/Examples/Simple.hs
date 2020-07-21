@@ -42,10 +42,10 @@ data KV cfg f = KV
   { kvData       :: !(MerkleNode f SHA256 [(Int,String)])
   -- ^ List of key-value pairs
   , kvTarget     :: !Target
-  -- ^ Nonce which is used to get
-  , kvNonce      :: !(Nonce cfg)
   -- ^ Current difficulty of mining. It means a complicated thing
   -- right now.
+  , kvNonce      :: !(Nonce cfg)
+  -- ^ Nonce which is used to get
   }
   deriving stock (Generic)
 deriving stock instance (Show (Nonce cfg), Show1 f)  => Show (KV cfg f)
