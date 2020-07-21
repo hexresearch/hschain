@@ -1,7 +1,6 @@
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE FlexibleInstances   #-}
-{-# LANGUAGE KindSignatures      #-}
 {-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE RankNTypes          #-}
 {-# LANGUAGE RecordWildCards     #-}
@@ -42,7 +41,7 @@ data BlockValState m a
   -- ^ We haven't even seen block yet
   | GoodBlock     !(Block a) !(StateView m a)
   -- ^ Block is good. We also cache state and new validator set
-  | InvalidBlock  !(Value)
+  | InvalidBlock  !Value
   -- ^ Block is invalid so there's no point in storing (and gossiping)
   --   it.
 

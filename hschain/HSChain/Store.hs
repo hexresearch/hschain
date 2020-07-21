@@ -14,11 +14,9 @@
 {-# LANGUAGE RankNTypes                 #-}
 {-# LANGUAGE RecordWildCards            #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
-{-# LANGUAGE TemplateHaskell            #-}
 {-# LANGUAGE TypeApplications           #-}
 {-# LANGUAGE TypeFamilies               #-}
 {-# LANGUAGE UndecidableInstances       #-}
-{-# LANGUAGE ViewPatterns               #-}
 -- |
 -- This module provides API for working with persistent (blockchain)
 -- and no so persistent (mempool) storage.
@@ -166,7 +164,7 @@ checkStorage
   :: forall m a. (MonadReadDB m, MonadCached a m, MonadIO m, Crypto (Alg a), Serialise a, CryptoHashable a)
   => m [BlockchainInconsistency]
 checkStorage = queryRO $ execWriterT $ do
-  maxH         <- lift $ blockchainHeight
+  maxH         <- lift   blockchainHeight
   Just genesis <- lift $ retrieveBlock (Height 0)
   --
   forM_ [Height 0 .. maxH] $ \case
@@ -377,7 +375,7 @@ newtype DatabaseByReader m x = DatabaseByReader (m x)
 
 instance ( MonadReader (Connection 'RW) m
          ) => MonadReadDB (DatabaseByReader m) where
-  askConnectionRO = DatabaseByReader $ connectionRO <$> ask
+  askConnectionRO = DatabaseByReader $ asks connectionRO
   {-# INLINE askConnectionRO #-}
 
 instance ( MonadReader (Connection 'RW) m
