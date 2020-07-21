@@ -93,11 +93,7 @@ runNode pathsToConfig miningNode genesisBlock step inventBlock startState = do
                             blockID genesisBlock
   withLogEnv "" "" (map makeScribe cfgLog) $ \logEnv ->
     runLoggerT logEnv $ evalContT $ do
-      pow' <- startNode netcfg net cfgPeers db s0
-      let pow = pow'
-                { sendNewBlock = \b -> do
-                                 (sendNewBlock pow') b
-                }
+      pow <- startNode netcfg net cfgPeers db s0
       let printBCH = do
             c <- atomicallyIO $ currentConsensus pow
             let loop n bh@BH{bhBID = bid} = when (n > (0 :: Int)) $ do

@@ -24,13 +24,11 @@ import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Data.Map.Strict (Map)
 import Data.Foldable   (toList,foldl')
--- import Data.Set        (Set)
 import Data.Time       (UTCTime,getCurrentTime,addUTCTime)
 import qualified Data.Map.Strict as Map
 import qualified Data.Aeson      as JSON
 import GHC.Generics (Generic)
 
--- import qualified Data.Set        as Set
 import HSChain.Control.Util
 import HSChain.Network.Types
 import HSChain.PoW.Exceptions
@@ -47,7 +45,7 @@ data PeerState
   deriving anyclass (JSON.ToJSON, JSON.FromJSON)
 
 -- | Peer registry
-data PeerRegistry = PeerRegistry
+newtype PeerRegistry = PeerRegistry
   { peerRegistry :: TVar (Map NetAddr PeerState)
   }
 

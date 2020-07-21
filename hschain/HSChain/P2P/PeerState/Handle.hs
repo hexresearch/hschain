@@ -76,7 +76,7 @@ handlerAnnounceTimeout cfg = do
   return $ case st of
     Nothing -> []
     Just (h,TMState{smRound,smStep}) -> do
-        (GossipAnn $ AnnStep $ FullStep h smRound smStep)
+        GossipAnn (AnnStep $ FullStep h smRound smStep)
       : case smStep of
           StepAwaitCommit r -> [GossipAnn $ AnnHasProposal h r]
           _                 -> []

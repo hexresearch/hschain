@@ -2,7 +2,6 @@
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE LambdaCase          #-}
-{-# LANGUAGE NamedFieldPuns      #-}
 {-# LANGUAGE NumDecimals         #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE RankNTypes          #-}
@@ -94,7 +93,7 @@ acceptLoop cfg NetworkAPI{..} peerCh mempool = do
         True  -> do addSelfAddress (peerRegistry peerCh) normAddr
                     throwM SelfConnection
         False -> return ()
-      send conn $ serialise $ GossipAck
+      send conn $ serialise GossipAck
       logger DebugS "Accepted peer" (sl "addr" addr <> sl "norm" normAddr)
       -- Handshake is complete. Accept connection
       withPeer (peerRegistry peerCh) normAddr $

@@ -146,7 +146,7 @@ makeLocator  = Locator . takeH 10 . Just
     takeH  n (Just bh) = bhBID bh : takeH (n-1) (bhPrevious bh)
     --
     backoff :: Int -> Int -> BH b -> [BlockID b]
-    backoff !n !1 bh = bhBID bh : case bhPrevious bh of
+    backoff !n 1 bh = bhBID bh : case bhPrevious bh of
       Nothing  -> []
       Just bh' -> backoff (n*2) (2*n) bh'
     backoff  n  k bh = case bhPrevious bh of
