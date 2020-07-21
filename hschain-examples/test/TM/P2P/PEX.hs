@@ -280,13 +280,12 @@ createTestNetworkWithValidatorsSetAndConfig validators cfg netDescr = do
     mkTestNode
       :: (MonadFork m, MonadMask m, MonadTMMonitoring m)
       => MockNet
-      -> ( Connection 'RW BData
+      -> ( Connection 'RW
          , TestNode
          , Maybe (PrivValidator (Alg BData))
          )
       -> m [m ()]
     mkTestNode net (conn, TestNode{..}, validatorPK) = do
-        initDatabase conn
         let run = runPEXT conn ncScribe
         (_,actions) <- run $ Mock.interpretSpec genesis
           NodeSpec
@@ -304,28 +303,31 @@ createTestNetworkWithValidatorsSetAndConfig validators cfg netDescr = do
 
 
 newtype PEXT a m x = PEXT
-  (ReaderT (Namespace, IORef [(Namespace,Text,Object)], Connection 'RW a) m x)
+  (ReaderT (Namespace, IORef [(Namespace,Text,Object)], Connection 'RW, Cached a) m x)
   deriving newtype ( Functor, Applicative, Monad
                    , MonadIO, MonadThrow, MonadCatch, MonadMask
                    , MonadFork, MonadTMMonitoring
-                   , MonadReader (Namespace, IORef [(Namespace,Text,Object)], Connection 'RW a)
+                   , MonadReader (Namespace, IORef [(Namespace,Text,Object)], Connection 'RW, Cached a)
                    )
-  deriving (MonadReadDB a, MonadDB a) via DatabaseByType a (PEXT a m)
+  deriving (MonadReadDB, MonadDB) via DatabaseByType (PEXT a m)
+  deriving (MonadCached a)        via CachedByType a (PEXT a m)
 
-runPEXT :: Connection 'RW a -> IORef [(Namespace,Text,Object)] -> PEXT a m x -> m x
-runPEXT conn ref (PEXT m) = runReaderT m (mempty,ref,conn)
+runPEXT :: MonadIO m => Connection 'RW -> IORef [(Namespace,Text,Object)] -> PEXT a m x -> m x
+runPEXT conn ref (PEXT m) = do
+  c <- newCached
+  runReaderT m (mempty,ref,conn,c)
 
 instance MonadTrans (PEXT a) where
   lift = PEXT . lift
 
 instance MonadIO m => MonadLogger (PEXT a m) where
   logger _ msg a = do
-    (namespace, ref, _) <- PEXT ask
+    (namespace, ref, _, _) <- PEXT ask
     liftIO $ atomicModifyIORef' ref $ \xs ->
       ( ( namespace
         , toLazyText $ unLogStr msg
         , toObject a) : xs
       , ()
       )
-  localNamespace f (PEXT m) = PEXT $ local (\(n,a,b) -> (f n,a,b)) m
+  localNamespace f (PEXT m) = PEXT $ local (\(n,a,b,c) -> (f n,a,b,c)) m
 

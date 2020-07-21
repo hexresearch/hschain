@@ -30,12 +30,10 @@ module HSChain.Store (
   , connectionRO
   , MonadReadDB(..)
   , MonadDB(..)
+  , MonadCached(..)
   , queryRO
   , queryRW
   , mustQueryRW
-  , queryROT
-  , queryRWT
-  , mustQueryRWT
     -- ** Opening\/closing database
   , openConnection
   , closeConnection
@@ -47,11 +45,14 @@ module HSChain.Store (
   , MonadQueryRO(..)
   , MonadQueryRW(..)
   , Query
-  , QueryT
+  , Cached
+  , newCached
     -- ** Standard DB wrapper
   , DatabaseByField(..)
   , DatabaseByType(..)
   , DatabaseByReader(..)
+  , CachedByField(..)
+  , CachedByType(..)
     -- ** Standard API
   , blockchainHeight
   , retrieveBlock
@@ -104,22 +105,12 @@ import HSChain.Types.Validators
 withDatabase
   :: (MonadIO m, MonadMask m)
   => FilePath         -- ^ Path to the database
-  -> (Connection 'RW a -> m x) -> m x
-withDatabase path cont
-  = withConnection path $ \c -> initDatabase c >> cont c
+  -> (Connection 'RW -> m x) -> m x
+withDatabase = withConnection
 
 -- | Initialize all required tables in database.
-initDatabase
-  :: (MonadIO m)
-  => Connection 'RW a  -- ^ Opened connection to database
-  -> m ()
-initDatabase c = do
-  r <- runQueryRW c initializeBlockhainTables
-  case r of
-    Nothing -> error "Cannot initialize tables!"
-    Just () -> return ()
-
-
+initDatabase :: (MonadIO m, MonadDB m, MonadCached a m) => m ()
+initDatabase = mustQueryRW initializeBlockhainTables
 
 
 ----------------------------------------------------------------
@@ -172,7 +163,7 @@ data BlockchainInconsistency
 
 -- | check storage against all consistency invariants
 checkStorage
-  :: (MonadReadDB a m, MonadIO m, Crypto (Alg a), Serialise a, CryptoHashable a)
+  :: forall m a. (MonadReadDB m, MonadCached a m, MonadIO m, Crypto (Alg a), Serialise a, CryptoHashable a)
   => m [BlockchainInconsistency]
 checkStorage = queryRO $ execWriterT $ do
   maxH         <- lift $ blockchainHeight
@@ -200,7 +191,7 @@ checkStorage = queryRO $ execWriterT $ do
 -- | Check that block proposed at given height is correct in sense all
 --   blockchain invariants hold
 checkProposedBlock
-  :: (MonadReadDB a m, MonadIO m, Crypto (Alg a))
+  :: (MonadReadDB m, MonadCached a m, MonadIO m, Crypto (Alg a))
   => Height
   -> Block a
   -> m [BlockchainInconsistency]
@@ -342,20 +333,18 @@ orElse False e = tell [e]
 -- | Newtype wrapper which allows to derive 'MonadReadDB' and
 --   'MonadDB' instances using deriving via mechanism by specifying name
 --   of field in record carried by reader.
-newtype DatabaseByField conn a m x = DatabaseByField (m x)
+newtype DatabaseByField conn m x = DatabaseByField (m x)
   deriving newtype (Functor,Applicative,Monad)
 
 instance ( MonadReader r m
-         , HasField' conn r (Connection 'RW a)
-         , a ~ a'
-         ) => MonadReadDB a' (DatabaseByField conn a m) where
+         , HasField' conn r (Connection 'RW)
+         ) => MonadReadDB (DatabaseByField conn m) where
   askConnectionRO = DatabaseByField $ connectionRO <$> asks (^. field' @conn)
   {-# INLINE askConnectionRO #-}
 
 instance ( MonadReader r m
-         , HasField' conn r (Connection 'RW a)
-         , a ~ a'
-         ) => MonadDB a' (DatabaseByField conn a m) where
+         , HasField' conn r (Connection 'RW)
+         ) => MonadDB (DatabaseByField conn m) where
   askConnectionRW = DatabaseByField $ asks (^. field' @conn)
   {-# INLINE askConnectionRW #-}
 
@@ -364,20 +353,18 @@ instance ( MonadReader r m
 -- | Newtype wrapper which allows to derive 'MonadReadDB' and
 --   'MonadDB' instances using deriving via mechanism by using type of
 --   field in record carried by reader.
-newtype DatabaseByType a m x = DatabaseByType (m x)
+newtype DatabaseByType m x = DatabaseByType (m x)
   deriving newtype (Functor,Applicative,Monad)
 
 instance ( MonadReader r m
-         , HasType (Connection 'RW a) r
-         , a ~ a'
-         ) => MonadReadDB a' (DatabaseByType a m) where
-  askConnectionRO = DatabaseByType $ connectionRO <$> asks (^. typed @(Connection 'RW a))
+         , HasType (Connection 'RW) r
+         ) => MonadReadDB (DatabaseByType m) where
+  askConnectionRO = DatabaseByType $ connectionRO <$> asks (^. typed @(Connection 'RW))
   {-# INLINE askConnectionRO #-}
 
 instance ( MonadReader r m
-         , HasType (Connection 'RW a) r
-         , a ~ a'
-         ) => MonadDB a' (DatabaseByType a m) where
+         , HasType (Connection 'RW) r
+         ) => MonadDB (DatabaseByType m) where
   askConnectionRW = DatabaseByType $ asks (^. typed)
   {-# INLINE askConnectionRW #-}
 
@@ -385,17 +372,43 @@ instance ( MonadReader r m
 -- | Newtype wrapper which allows to derive 'MonadReadDB' and
 --   'MonadDB' instances using deriving via mechanism when connection
 --   is carried by reader.
-newtype DatabaseByReader a m x = DatabaseByReader (m x)
+newtype DatabaseByReader m x = DatabaseByReader (m x)
   deriving newtype (Functor,Applicative,Monad)
 
-instance ( MonadReader (Connection 'RW a) m
-         , a ~ a'
-         ) => MonadReadDB a' (DatabaseByReader a m) where
+instance ( MonadReader (Connection 'RW) m
+         ) => MonadReadDB (DatabaseByReader m) where
   askConnectionRO = DatabaseByReader $ connectionRO <$> ask
   {-# INLINE askConnectionRO #-}
 
-instance ( MonadReader (Connection 'RW a) m
-         , a ~ a'
-         ) => MonadDB a' (DatabaseByReader a m) where
+instance ( MonadReader (Connection 'RW) m
+         ) => MonadDB (DatabaseByReader m) where
   askConnectionRW = DatabaseByReader ask
   {-# INLINE askConnectionRW #-}
+
+
+-- | Newtype wrapper which allows to derive 'MonadReadDB' and
+--   'MonadDB' instances using deriving via mechanism by specifying name
+--   of field in record carried by reader.
+newtype CachedByField conn a m x = CachedByField (m x)
+  deriving newtype (Functor,Applicative,Monad)
+
+instance ( MonadReader r m
+         , a ~ a'
+         , HasField' conn r (Cached a)
+         ) => MonadCached a (CachedByField conn a' m) where
+  askCached = CachedByField $ asks (^. field' @conn)
+
+
+
+
+-- | Newtype wrapper which allows to derive 'MonadReadDB' and
+--   'MonadDB' instances using deriving via mechanism by using type of
+--   field in record carried by reader.
+newtype CachedByType a m x = CachedByType (m x)
+  deriving newtype (Functor,Applicative,Monad)
+
+instance ( MonadReader r m
+         , a ~ a'
+         , HasType (Cached a) r
+         ) => MonadCached a (CachedByType a' m) where
+  askCached = CachedByType $ asks (^. typed @(Cached a))

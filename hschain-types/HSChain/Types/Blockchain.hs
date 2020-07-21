@@ -174,10 +174,10 @@ data GBlock f a = Block
     --   rely on callback to do anything to it.
   }
   deriving stock    (Generic)
-instance (IsMerkle f, CryptoHash (Alg a)) => CryptoHashable (GBlock f a) where
+instance (CryptoHash (Alg a)) => CryptoHashable (GBlock f a) where
   hashStep = genericHashStep "hschain"
 
-toHeader :: IsMerkle f => GBlock f a-> Header a
+toHeader :: GBlock f a-> Header a
 toHeader Block{..} = Block
   { blockData       = toHashedNode     blockData
   , blockPrevCommit = toHashedNode <$> blockPrevCommit

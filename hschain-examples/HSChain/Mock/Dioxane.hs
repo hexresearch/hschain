@@ -133,7 +133,7 @@ process Tx{txBody=TxBody{..}} st = do
 
 interpretSpec
   :: forall m tag.
-     ( MonadDB (BData tag) m, MonadFork m, MonadMask m, MonadLogger m
+     ( MonadDB m, MonadCached (BData tag) m, MonadFork m, MonadMask m, MonadLogger m
      , MonadTMMonitoring m, Dio tag
      )
   => Int

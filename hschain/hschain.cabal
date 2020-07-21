@@ -27,8 +27,10 @@ Library
                      , hschain-config
                      , hschain-types
                      , hschain-logger
+                     , hschain-db
                      , hschain-net
                      , hschain-merkle
+                     --
                      , aeson
                      , base58-bytestring >=0.1
                      , bytestring        >=0.10

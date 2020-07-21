@@ -23,7 +23,7 @@ import HSChain.P2P.PeerState.Monad
 import HSChain.P2P.PeerState.Types
 
 -- | Unconditionally generate fresh state for peer. Shoudl only be called when we 
-advancePeer :: (Crypto (Alg a), Monad m, MonadIO m, MonadReadDB a m)
+advancePeer :: (Crypto (Alg a), Monad m, MonadIO m, MonadReadDB m, MonadCached a m)
             => FullStep -> TransitionT s a m ()
 advancePeer step@(FullStep h _ _) = setFinalState $ \_ -> do
   ourH <- succ <$> queryRO blockchainHeight

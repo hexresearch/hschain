@@ -1,0 +1,30 @@
+Name:           hschain-db
+Version:        0.1
+Synopsis:       Wrappers for SQLite for hschain
+Description:
+  Wrappers for SQLite for hschain
+
+
+Cabal-Version:  >= 1.10
+License:        MIT
+License-File:   LICENSE
+Author:         Aleksey Khudyakov <alexey.skladnoy@gmail.com>
+Maintainer:     Aleksey Khudyakov <alexey.skladnoy@gmail.com>
+Homepage:       https://github.com/hexresearch/thundermint
+Category:       Data
+Build-Type:     Simple
+
+
+Library
+  Ghc-options:         -Wall
+  Default-Language:    Haskell2010
+  Build-Depends:       base              >=4.9 && <5
+                     , hschain-control
+                     , exceptions        >=0.8.3
+                     , mmorph
+                     , pipes             >=4
+                     , serialise         >=0.2
+                     , sqlite-simple
+                     , transformers      >=0.5
+  Exposed-modules:
+                HSChain.Store.Query

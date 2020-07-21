@@ -55,7 +55,7 @@ withShepherd
 -- | Create new thread which will be terminated when we exit
 --   corresponding 'withShepherd' block
 newSheep
-  :: (MonadFork m, MonadIO m, MonadMask m)
+  :: (MonadFork m, MonadMask m)
   => Shepherd -> m () -> m ()
 newSheep shepherd action = do
   lock <- liftIO newEmptyMVar
@@ -67,7 +67,7 @@ newSheep shepherd action = do
 --   corresponding 'withShepherd' block. Finalizer action will be
 --   called in any case on thread termination
 newSheepFinally
-  :: (MonadFork m, MonadIO m, MonadMask m)
+  :: (MonadFork m, MonadMask m)
   => Shepherd -> m () -> m () -> m ()
 newSheepFinally shepherd action fini = do
   lock <- liftIO newEmptyMVar

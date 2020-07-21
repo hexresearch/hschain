@@ -31,7 +31,7 @@ import HSChain.Logger
 import HSChain.Mock.Coin
 import HSChain.Mock.Types
 import HSChain.Run
-
+import HSChain.Store
 import HSChain.Control.Class
 import HSChain.Monitoring
 import HSChain.Mock
@@ -74,6 +74,7 @@ main = do
                                  , bchInitialPeers = realnetSeeds snodeNet
                                  }
     -- Dictionatry with paremeters
+    dictCached <- newCached
     let dict = CoinDictM { dictNamespace = mempty
                          , ..
                          }

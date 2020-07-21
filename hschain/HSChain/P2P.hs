@@ -45,7 +45,7 @@ import HSChain.Types.Blockchain
 --   from remote nodes, initiating connections to them, tracking state
 --   of nodes and gossip.
 startPeerDispatcher
-  :: ( MonadMask m, MonadFork m, MonadLogger m, MonadReadDB a m, MonadTMMonitoring m
+  :: ( MonadMask m, MonadFork m, MonadLogger m, MonadReadDB m, MonadCached a m, MonadTMMonitoring m
      , BlockData a)
   => NetworkCfg app
   -> NetworkAPI               -- ^ API for networking

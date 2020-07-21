@@ -8,6 +8,7 @@
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StandaloneDeriving  #-}
+{-# LANGUAGE TypeApplications    #-}
 {-# LANGUAGE TypeFamilies        #-}
 {-# LANGUAGE TypeOperators       #-}
 
@@ -137,7 +138,7 @@ testValidatorChange = withTimeOut 20e6 $ do
     -- Execute nodes for second time!
     _         <- executeNodeSpec  spec resources
     -- Now test that we have correct validator sets for every height
-    liftIO $ runHSChainT conn $ do
+    liftIO $ runHSChainT @Tx conn $ do
       checkVals valSet0 (Height  1)
       checkVals valSet0 (Height  2)
       checkVals valSet0 (Height  3)
@@ -245,14 +246,14 @@ process (RmVal  k)   = filter ((/=k) . validatorPubKey)
 ----------------------------------------------------------------
 
 interpretSpec
-  :: ( MonadDB Tx m, MonadFork m, MonadMask m, MonadLogger m
+  :: ( MonadDB m, MonadCached Tx m, MonadFork m, MonadMask m, MonadLogger m
      , MonadTMMonitoring m)
   => Genesis Tx
   -> NodeSpec Tx
   -> BlockchainNet
   -> Configuration Example
   -> AppCallbacks m Tx
-  -> m (Connection 'RW Tx, [m ()])
+  -> m (Connection 'RW, [m ()])
 interpretSpec genesis nspec bnet cfg cb = do
   acts  <- runNode cfg NodeDescription
     { nodeValidationKey = nspecPrivKey nspec
@@ -267,8 +268,8 @@ interpretSpec genesis nspec bnet cfg cb = do
 executeNodeSpec
   :: (MonadIO m, MonadMask m, MonadFork m,  MonadTMMonitoring m)
   => MockClusterConfig Tx ()
-  -> [(NodeSpec Tx, BlockchainNet, Connection 'RW Tx, LogEnv)]
-  -> ContT r m [Connection 'RW Tx]
+  -> [(NodeSpec Tx, BlockchainNet, Connection 'RW, LogEnv)]
+  -> ContT r m [Connection 'RW]
 executeNodeSpec MockClusterConfig{..} resources = do
   -- Start nodes
   rnodes <- lift $ forM resources $ \(nspec, bnet, conn, _logenv) -> do

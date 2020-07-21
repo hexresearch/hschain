@@ -132,7 +132,7 @@ process (k,v) m
 
 
 interpretSpec
-  :: ( MonadDB BData m, MonadFork m, MonadMask m, MonadLogger m
+  :: ( MonadDB m, MonadCached BData m, MonadFork m, MonadMask m, MonadLogger m
      , MonadTMMonitoring m )
   => Genesis BData
   -> NodeSpec BData
@@ -159,7 +159,8 @@ interpretSpec genesis nspec bnet cfg cb = do
 data KeyValDictM = KeyValDictM
   { dictNamespace :: !Namespace
   , dictLogEnv    :: !LogEnv
-  , dictConn      :: !(Connection 'RW BData)
+  , dictConn      :: !(Connection 'RW)
+  , dictCached    :: !(Cached BData)
   }
   deriving stock (Generic)
 
@@ -169,11 +170,10 @@ newtype KeyValT m a = KeyValT { unKeyValT :: ReaderT KeyValDictM m a }
   deriving newtype (MonadThrow,MonadCatch,MonadMask,MonadFork)
   deriving newtype (MonadReader KeyValDictM)
   -- HSChain instances
-  deriving MonadTMMonitoring via NoMonitoring (KeyValT m)
-  deriving MonadLogger
-       via LoggerByTypes (KeyValT m)
-  deriving (MonadReadDB BData, MonadDB BData)
-       via DatabaseByType BData (KeyValT m)
+  deriving MonadTMMonitoring      via NoMonitoring   (KeyValT m)
+  deriving MonadLogger            via LoggerByTypes  (KeyValT m)
+  deriving (MonadReadDB, MonadDB) via DatabaseByType (KeyValT m)
+  deriving (MonadCached BData)    via CachedByType BData (KeyValT m)
 
 runKeyValT :: KeyValDictM -> KeyValT m a -> m a
 runKeyValT d = flip runReaderT d . unKeyValT
@@ -189,6 +189,7 @@ executeSpec MockClusterConfig{..} callbacks = do
   net       <- liftIO P2P.newMockNet
   resources <- allocNetwork net clusterTopology clusterNodes
   rnodes    <- lift $ forM resources $ \(spec, bnet, dictConn, dictLogEnv) -> do
+    dictCached <- newCached
     let dict = KeyValDictM { dictNamespace = mempty
                            , ..
                            }

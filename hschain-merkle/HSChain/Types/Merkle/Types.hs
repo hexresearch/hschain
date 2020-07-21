@@ -110,7 +110,7 @@ instance (Show1 f, Show a) => Show (MerkleNode f alg a) where
 instance (NFData a, NFData1 f) => NFData (MerkleNode f alg a) where
   rnf (MNode h f) = rnf h `seq` liftRnf rnf f
 
-instance (CryptoHash alg, IsMerkle f) => CryptoHashable (MerkleNode f alg a) where  
+instance (CryptoHash alg) => CryptoHashable (MerkleNode f alg a) where  
   hashStep = hashStep . merkleHash
 
 

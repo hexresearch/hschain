@@ -42,7 +42,7 @@ handler = HandlerDict
   }
 
 handlerGossip
-  :: (MonadIO m, MonadReadDB a m, BlockData a)
+  :: (MonadIO m, MonadReadDB m, MonadCached a m, BlockData a)
   => GossipMsg a -> TransitionT LaggingState a m ()
 handlerGossip = \case
   GossipPreVote   _ ->
@@ -97,7 +97,7 @@ addBlock b = do
 ----------------------------------------------------------------
 
 handlerVotesTimeoutMsg
-  :: (MonadIO m, MonadReadDB a m, BlockData a)
+  :: (MonadIO m, MonadReadDB m, MonadCached a m)
   => LaggingState a -> m [GossipMsg a]
 handlerVotesTimeoutMsg st = do
   queryRO (retrieveLocalCommit peerH) >>= \case
@@ -123,7 +123,7 @@ handlerVotesTimeoutMsg st = do
 ----------------------------------------------------------------
 
 handlerBlocksTimeoutMsg
-  :: (MonadIO m, MonadReadDB a m, BlockData a)
+  :: (MonadIO m, MonadReadDB m, MonadCached a m, BlockData a)
   => LaggingState a -> m [GossipMsg a]
 handlerBlocksTimeoutMsg st
   | st ^. lagPeerHasProposal
