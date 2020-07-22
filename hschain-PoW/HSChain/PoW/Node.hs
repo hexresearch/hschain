@@ -77,10 +77,11 @@ data Cfg = Cfg
 runNode :: forall b s . (BlockData b, Mineable b, Show (b Identity), Serialise (b Proxy), Serialise (b Identity))
         => [String] -> Bool -> Block b
         -> (Block b -> s -> Maybe s)
-        -> (BH b -> s -> ((Header b, [TX]) s))
+        -> (BH b -> s -> ((Header b, [Tx b]), s))
+        -> (Header b -> [Tx b] -> IO (Maybe (Block b)))
         -> s
         -> IO ()
-runNode pathsToConfig miningNode genesisBlock step inventBlock startState = do
+runNode pathsToConfig miningNode genesisBlock step inventHeaderTxs inventBlock startState = do
   Cfg{..} <- loadYamlSettings pathsToConfig [] requireEnv
   --
   let netcfg = NetCfg { nKnownPeers     = 3
@@ -112,38 +113,41 @@ runNode pathsToConfig miningNode genesisBlock step inventBlock startState = do
               maybeB <- fmap fst $ liftIO $ adjustPuzzle toMine
               case maybeB of
                 Just b -> sendNewBlock pow b >>= \case
-                                                Right () -> return ()
-                                                Left  e  -> error $ show e
+                                                  Right () -> return ()
+                                                  Left  e  -> error $ show e
                 Nothing -> doMine currentBlock
         let mineLoop baseBestHead tid = do
               maybeNewSituation <- atomicallyIO $ do
                  let cv = currentConsensusTVar pow
                  cc <- readTVar cv
                  let (bchBH, _, _) = _bestHead cc
-                     (toMine, cc') = consensusComputeOnState cc $ inventBlock bchBH
+                     (toMine, cc') = consensusComputeOnState cc $ inventHeaderTxs bchBH
                  if bchBH /= baseBestHead
                    then do
                      writeTVar cv cc'
                      return $ Just (bchBH, toMine)
                    else return Nothing
               case maybeNewSituation of
-                Just (newBestHead, newBlock) -> do
+                Just (newBestHead, newHeaderTxs) -> do
                   liftIO $ killThread tid
                   case cfgMaxH of
                     Just h
                       | bhHeight newBestHead > h -> return ()
-                    _ -> mineLoop newBestHead =<< fork (doMine newBlock)
+                    _ -> do
+                         Just newBlock <- uncurry inventBlock newHeaderTxs
+                         mineLoop newBestHead =<< fork (doMine newBlock)
                 Nothing -> mineLoop baseBestHead tid
         --
         if miningNode
           then do
-            (startBestHead, startBlock) <- atomicallyIO $ do
+            (startBestHead, headerTxs) <- atomicallyIO $ do
                let cv = currentConsensusTVar pow
                cc <- readTVar cv
                let (bchBH, _, _) = _bestHead cc
-                   (toMine, cc') = consensusComputeOnState cc $ inventBlock bchBH
+                   (toMine, cc') = consensusComputeOnState cc $ inventHeaderTxs bchBH
                writeTVar cv cc'
                return (bchBH, toMine)
+            Just startBlock <- uncurry inventBlock headerTxs
             mineLoop startBestHead =<< fork (doMine startBlock)
           else liftIO $ forever $ threadDelay maxBound
 
