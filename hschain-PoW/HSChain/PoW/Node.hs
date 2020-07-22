@@ -77,7 +77,7 @@ data Cfg = Cfg
 runNode :: forall b s . (BlockData b, Mineable b, Show (b Identity), Serialise (b Proxy), Serialise (b Identity))
         => [String] -> Bool -> Block b
         -> (Block b -> s -> Maybe s)
-        -> (BH b -> s -> (Block b, s))
+        -> (BH b -> s -> ((Header b, [TX]) s))
         -> s
         -> IO ()
 runNode pathsToConfig miningNode genesisBlock step inventBlock startState = do
