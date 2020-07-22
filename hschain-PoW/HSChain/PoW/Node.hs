@@ -134,7 +134,7 @@ runNode pathsToConfig miningNode genesisBlock step inventHeaderTxs inventBlock s
                     Just h
                       | bhHeight newBestHead > h -> return ()
                     _ -> do
-                         Just newBlock <- uncurry inventBlock newHeaderTxs
+                         Just newBlock <- liftIO $ uncurry inventBlock newHeaderTxs
                          mineLoop newBestHead =<< fork (doMine newBlock)
                 Nothing -> mineLoop baseBestHead tid
         --
@@ -147,7 +147,7 @@ runNode pathsToConfig miningNode genesisBlock step inventHeaderTxs inventBlock s
                    (toMine, cc') = consensusComputeOnState cc $ inventHeaderTxs bchBH
                writeTVar cv cc'
                return (bchBH, toMine)
-            Just startBlock <- uncurry inventBlock headerTxs
+            Just startBlock <- liftIO $ uncurry inventBlock headerTxs
             mineLoop startBestHead =<< fork (doMine startBlock)
           else liftIO $ forever $ threadDelay maxBound
 
