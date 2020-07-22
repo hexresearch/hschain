@@ -130,7 +130,9 @@ genesisNewPoW = GBlock
                      }
   }
 
-
+-- |Pure function: creates a block header with all fields at computable or default values
+-- and also fetches transactions from the state. The state may be modified
+-- along the way so we return it.
 getHeaderTxsToMine :: (Default (Nonce cfg), KVConfig cfg)
           => BH (KV cfg) -> a -> ((Header (KV cfg), [()]), a)
 getHeaderTxsToMine bh a = ((toHeader $ GBlock
@@ -143,12 +145,17 @@ getHeaderTxsToMine bh a = ((toHeader $ GBlock
                        }
     }, []), a)
 
+-- |Actual creation of block to mine.
+-- It is possible for reward transaction to require IO context for computation
+-- (for example, sigma protocol proofs require IO for their construction).
+-- So here we mostly copy fields from header except of transaction list.
+-- The transaction list includes reward transaction and all other transactions produced
+-- by @getHeaderTxsToMine@.
 getBlockToMine :: String -> Header (KV cfg) -> [()] -> IO (Maybe (Block (KV cfg)))
-getBlockToMine val hdr _ = do
+getBlockToMine val hdr txs = do
+  let mockRewardTx = (fromIntegral (blockHeight hdr), val)
   return $ Just $ hdr
-                  { blockData   = KV { kvData = merkled [ let Height h = blockHeight hdr
-                                                          in (fromIntegral h, val)
-                                                        ]
+                  { blockData   = KV { kvData = merkled (mockRewardTx : txs)
                                      , kvNonce = kvNonce $ blockData hdr
                                      , kvTarget = kvTarget $ blockData hdr
                                      }
