@@ -263,9 +263,10 @@ instance CryptoAsymmetric alg => JSON.ToJSON   (PrivKey alg) where
   toJSON    = defaultToJSON
 instance CryptoAsymmetric alg => JSON.FromJSON (PrivKey alg) where
   parseJSON = defaultParseJSON "PrivKey"
-instance CryptoAsymmetric alg => JSON.FromJSONKey (PrivKey alg)
-instance CryptoAsymmetric alg => JSON.ToJSONKey   (PrivKey alg)
-
+instance CryptoAsymmetric alg => JSON.FromJSONKey (PrivKey alg) where
+  fromJSONKey = defaultFromJsonKey "PrivKey"
+instance CryptoAsymmetric alg => JSON.ToJSONKey   (PrivKey alg) where
+  toJSONKey = defaultToJsonKey
 
 ----------------------------------------
 
@@ -282,8 +283,10 @@ instance CryptoAsymmetric alg => JSON.ToJSON   (PublicKey alg) where
   toJSON    = defaultToJSON
 instance CryptoAsymmetric alg => JSON.FromJSON (PublicKey alg) where
   parseJSON = defaultParseJSON "PublicKey"
-instance CryptoAsymmetric alg => JSON.FromJSONKey (PublicKey alg)
-instance CryptoAsymmetric alg => JSON.ToJSONKey   (PublicKey alg)
+instance CryptoAsymmetric alg => JSON.FromJSONKey (PublicKey alg) where
+  fromJSONKey = defaultFromJsonKey "PublicKey"
+instance CryptoAsymmetric alg => JSON.ToJSONKey   (PublicKey alg) where
+  toJSONKey = defaultToJsonKey
 
 
 ----------------------------------------
@@ -301,8 +304,10 @@ instance CryptoDH alg => JSON.ToJSON   (DHSecret alg) where
   toJSON    = defaultToJSON
 instance CryptoDH alg => JSON.FromJSON (DHSecret alg) where
   parseJSON = defaultParseJSON "DHSecret"
-instance CryptoDH alg => JSON.FromJSONKey (DHSecret alg)
-instance CryptoDH alg => JSON.ToJSONKey   (DHSecret alg)
+instance CryptoDH alg => JSON.FromJSONKey (DHSecret alg)  where
+  fromJSONKey = defaultFromJsonKey "DHSecret"
+instance CryptoDH alg => JSON.ToJSONKey   (DHSecret alg) where
+  toJSONKey = defaultToJsonKey
 
 
 ----------------------------------------
@@ -320,8 +325,10 @@ instance JSON.ToJSON   (Signature alg) where
   toJSON    = defaultToJSON
 instance JSON.FromJSON (Signature alg) where
   parseJSON = defaultParseJSON "Signature"
-instance JSON.FromJSONKey (Signature alg)
-instance JSON.ToJSONKey   (Signature alg)
+instance JSON.FromJSONKey (Signature alg) where
+  fromJSONKey = defaultFromJsonKey "Signature"
+instance JSON.ToJSONKey   (Signature alg) where
+  toJSONKey = defaultToJsonKey
 
 
 ----------------------------------------------------------------
@@ -526,8 +533,10 @@ instance StreamCypher alg => JSON.ToJSON   (CypherKey alg) where
   toJSON    = defaultToJSON
 instance StreamCypher alg => JSON.FromJSON (CypherKey alg) where
   parseJSON = defaultParseJSON "CypherKey"
-instance StreamCypher alg => JSON.FromJSONKey (CypherKey alg)
-instance StreamCypher alg => JSON.ToJSONKey   (CypherKey alg)
+instance StreamCypher alg => JSON.FromJSONKey (CypherKey alg) where
+  fromJSONKey = defaultFromJsonKey "CypherKey"
+instance StreamCypher alg => JSON.ToJSONKey   (CypherKey alg) where
+  toJSONKey = defaultToJsonKey
 
 
 ----------------------------------------
@@ -545,8 +554,10 @@ instance StreamCypher alg => JSON.ToJSON   (CypherNonce alg) where
   toJSON    = defaultToJSON
 instance StreamCypher alg => JSON.FromJSON (CypherNonce alg) where
   parseJSON = defaultParseJSON "CypherNonce"
-instance StreamCypher alg => JSON.FromJSONKey (CypherNonce alg)
-instance StreamCypher alg => JSON.ToJSONKey   (CypherNonce alg)
+instance StreamCypher alg => JSON.FromJSONKey (CypherNonce alg) where
+  fromJSONKey = defaultFromJsonKey "CypherNonce"
+instance StreamCypher alg => JSON.ToJSONKey   (CypherNonce alg) where
+  toJSONKey = defaultToJsonKey
 
 
 

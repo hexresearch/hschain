@@ -76,7 +76,7 @@ instance MonadFork m => MonadFork (SL.StateT s m) where
 -- | Fork thread. Any exception except `AsyncException` in forked
 --   thread is forwarded to original thread. When parent thread dies
 --   child thread is killed too
-forkLinked :: (MonadIO m, MonadMask m, MonadFork m)
+forkLinked :: (MonadMask m, MonadFork m)
            => m a              -- ^ Action to execute in forked thread
            -> m b              -- ^ What to do while thread executes
            -> m b
@@ -121,12 +121,12 @@ forkLinkedIO action io = do
 
 
 cforkLinked
-  :: (MonadIO m, MonadMask m, MonadFork m)
+  :: (MonadMask m, MonadFork m)
   => m a -> ContT r m ()
 cforkLinked action = ContT $ forkLinked action . ($ ())
 
 cforkLinkedIO
-  :: (MonadIO m, MonadMask m, MonadFork m)
+  :: (MonadMask m, MonadFork m)
   => IO a -> ContT r m ()
 cforkLinkedIO action = ContT $ forkLinkedIO action . ($ ())
 
@@ -137,7 +137,7 @@ cforkLinkedIO action = ContT $ forkLinkedIO action . ($ ())
 --   thread is killed by exceptions it's rethrown. Being killed by
 --   'AsyncException' is considered normal termination.
 runConcurrently
-  :: (MonadIO m, MonadMask m, MonadFork m)
+  :: (MonadMask m, MonadFork m)
   => [m ()]              -- ^ Functions to run
   -> m ()
 runConcurrently []      = return ()
