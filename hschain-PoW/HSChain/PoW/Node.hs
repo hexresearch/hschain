@@ -1,3 +1,17 @@
+{-# LANGUAGE ApplicativeDo       #-}
+{-# LANGUAGE BangPatterns        #-}
+{-# LANGUAGE DeriveAnyClass      #-}
+{-# LANGUAGE DeriveGeneric       #-}
+{-# LANGUAGE DerivingStrategies  #-}
+{-# LANGUAGE DerivingVia         #-}
+{-# LANGUAGE FlexibleContexts    #-}
+{-# LANGUAGE LambdaCase          #-}
+{-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE RankNTypes          #-}
+{-# LANGUAGE RecordWildCards     #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications    #-}
+{-# LANGUAGE TypeFamilies        #-}
 -- |HSChain.PoW.Node.hs
 --
 -- Main node loop.
@@ -5,21 +19,6 @@
 -- You may use it directly or copy and tailor.
 --
 -- Copyright (C) ... 2020
-
-{-# LANGUAGE ApplicativeDo       #-}
-{-# LANGUAGE BangPatterns        #-}
-{-# LANGUAGE DeriveAnyClass      #-}
-{-# LANGUAGE DeriveGeneric       #-}
-{-# LANGUAGE DerivingStrategies  #-}
-{-# LANGUAGE FlexibleContexts    #-}
-{-# LANGUAGE LambdaCase          #-}
-{-# LANGUAGE OverloadedStrings   #-}
-{-# LANGUAGE RecordWildCards     #-}
-{-# LANGUAGE RankNTypes          #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeApplications    #-}
-{-# LANGUAGE TypeFamilies        #-}
-
 module HSChain.PoW.Node
   ( Cfg(..)
   , runNode
@@ -32,22 +31,16 @@ import Codec.Serialise
 
 import Control.Concurrent
 import Control.Concurrent.STM
-
 import Control.Monad
 import Control.Monad.Catch
 import Control.Monad.Cont
 import Control.Monad.Trans.Cont
 
 import Data.IORef
-
 import qualified Data.Map.Strict as Map
-
 import Data.Word
-
 import Data.Yaml.Config
-
 import GHC.Generics (Generic)
-
 import Lens.Micro
 
 import HSChain.PoW.Consensus
@@ -60,6 +53,7 @@ import HSChain.Network.Types
 import HSChain.Types.Merkle.Types
 import HSChain.Control.Util
 import HSChain.Control.Class
+import HSChain.Config
 
 -- |Node's configuration.
 data Cfg = Cfg
@@ -68,8 +62,9 @@ data Cfg = Cfg
   , cfgLog   :: [ScribeSpec]
   , cfgMaxH  :: Maybe Height
   }
-  deriving stock    (Show, Generic)
-  deriving anyclass (JSON.FromJSON)
+  deriving stock (Show, Generic)
+  deriving (JSON.FromJSON) via SnakeCase (DropSmart (Config Cfg))
+
 
 -- |The process to run nodes.
 --
