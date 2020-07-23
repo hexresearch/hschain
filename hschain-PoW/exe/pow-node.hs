@@ -130,20 +130,36 @@ genesisNewPoW = GBlock
                      }
   }
 
-
-getBlockToMine :: (Default (Nonce cfg), KVConfig cfg)
-          => String -> BH (KV cfg) -> a -> (Block (KV cfg), a)
-getBlockToMine val bh a = (GBlock
+-- |Pure function: creates a block header with all fields at computable or default values
+-- and also fetches transactions from the state. The state may be modified
+-- along the way so we return it.
+getHeaderTxsToMine :: (Default (Nonce cfg), KVConfig cfg)
+          => BH (KV cfg) -> a -> ((Header (KV cfg), [Tx (KV cfg)]), a)
+getHeaderTxsToMine bh a = ((toHeader $ GBlock
     { blockHeight = succ $ bhHeight bh
     , blockTime   = Time 0
     , prevBlock   = Just $! bhBID bh
-    , blockData   = KV { kvData = merkled [ let Height h = bhHeight bh
-                                            in (fromIntegral h, val)
-                                          ]
+    , blockData   = KV { kvData = merkled []
                        , kvNonce = defaultValue
                        , kvTarget = retarget bh
                        }
-    }, a)
+    }, []), a)
+
+-- |Actual creation of block to mine.
+-- It is possible for reward transaction to require IO context for computation
+-- (for example, sigma protocol proofs require IO for their construction).
+-- So here we mostly copy fields from header except of transaction list.
+-- The transaction list includes reward transaction and all other transactions produced
+-- by @getHeaderTxsToMine@.
+getBlockToMine :: String -> Header (KV cfg) -> [Tx (KV cfg)] -> IO (Maybe (Block (KV cfg)))
+getBlockToMine val hdr txs = do
+  let mockRewardTx = (fromIntegral (blockHeight hdr), val)
+  return $ Just $ hdr
+                  { blockData   = KV { kvData = merkled (mockRewardTx : txs)
+                                     , kvNonce = kvNonce $ blockData hdr
+                                     , kvTarget = kvTarget $ blockData hdr
+                                     }
+                  }
 
 ----------------------------------------------------------------
 -- Configuration
@@ -181,7 +197,7 @@ parser = do
 runNodeAnyPoW :: forall cfg . (Show (Nonce cfg), Default (Nonce cfg), KVConfig cfg)
               => Opts -> Block (KV cfg) ->IO ()
 runNodeAnyPoW Opts{..} genesisBlock = do
-  runNode cmdConfigPath optMine genesisBlock kvViewStep (getBlockToMine optNodeName) Map.empty
+  runNode cmdConfigPath optMine genesisBlock kvViewStep getHeaderTxsToMine (getBlockToMine optNodeName) Map.empty
 
 main :: IO ()
 main = do
