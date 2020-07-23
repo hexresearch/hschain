@@ -83,7 +83,7 @@ instance KVConfig cfg => BlockData (KV cfg) where
   newtype BlockID (KV cfg) = KV'BID (Hash SHA256)
     deriving newtype (Show,Eq,Ord,CryptoHashable,Serialise, JSON.ToJSON, JSON.FromJSON)
 
-  type Tx (KV cfg) = ()
+  type Tx (KV cfg) = (Int, String)
   blockID b = let Hashed h = hashed b in KV'BID h
   validateHeader bh (Time now) header
     | blockHeight header == 0 = return True -- skip genesis check.
