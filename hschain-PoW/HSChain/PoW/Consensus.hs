@@ -25,6 +25,7 @@ module HSChain.PoW.Consensus
     -- *
   , StateView(..)
   , BlockDB(..)
+  , buildBlockIndex
   , Consensus(..)
   , blockIndex
   , bestHead
@@ -48,6 +49,7 @@ import Control.Monad.Except
 import Control.Monad.State.Strict
 import Data.List          (sortOn)
 import Data.Functor.Identity
+import Data.Foldable
 import Data.Map           (Map)
 import Data.Maybe
 import Data.Sequence      (Seq(Empty,(:<|),(:|>)),(|>))
@@ -173,6 +175,28 @@ data BlockDB m b = BlockDB
     --   order. (Ordering block by height would achieve that for
     --   example).
   }
+
+-- | Build block index from blocks
+buildBlockIndex :: (Monad m, BlockData b) => BlockDB m b -> m (BlockIndex b)
+buildBlockIndex BlockDB{..} = do
+  -- FIXME: decide what to do with orphan blocks
+  (genesis,headers) <- retrieveAllHeaders >>= \case
+    genesis:headers -> return (genesis,headers)
+    []              -> error "buildBlockIndex: no blocks in storage"
+  --
+  let idx0      = blockIndexFromGenesis genesis
+      add idx b@GBlock{..} = case (`lookupIdx` idx) =<< prevBlock of
+        Nothing     -> error "blockIndexFromGenesis: orphan block"
+        Just parent -> insertIdx BH
+          { bhHeight   = blockHeight
+          , bhTime     = blockTime
+          , bhBID      = blockID b
+          , bhWork     = bhWork parent <> blockWork b
+          , bhPrevious = Just parent
+          , bhData     = blockData
+          } idx
+  return $! foldl' add idx0 headers
+
 
 -- | View on state of blockchain. It's expected that store is backed
 --   by database and in-memory overlay is used to work with multiple
@@ -499,4 +523,3 @@ consensusComputeOnState c app = (a, c')
     (bh, sv, loc) = _bestHead c
     (a, sv') = stateComputeAlter sv app
     c' = c { _bestHead = (bh, sv', loc) }
-
