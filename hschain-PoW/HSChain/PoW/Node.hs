@@ -40,7 +40,9 @@ import Control.Monad.Cont
 import Control.Monad.Trans.Cont
 
 import Data.IORef
+import Data.Foldable
 import qualified Data.Map.Strict as Map
+import Data.List (sortOn)
 import Data.Word
 import Data.Yaml.Config
 import GHC.Generics (Generic)
@@ -151,7 +153,7 @@ runNode pathsToConfig miningNode genesisBlock step inventHeaderTxs inventBlock s
 -- | Simple in-memory implementation of DB
 inMemoryView
   :: (Monad m, BlockData b, Show (BlockID b))
-  => (Block b -> s -> Maybe s)       -- ^ Step function 
+  => (Block b -> s -> Maybe s)       -- ^ Step function
   -> s                               -- ^ Initial state
   -> BlockID b
   -> StateView s m b
@@ -180,9 +182,10 @@ inMemoryDB
 inMemoryDB genesis = do
   var <- liftIO $ newIORef $ Map.singleton (blockID genesis) genesis
   return BlockDB
-    { storeBlock     = \b   -> liftIO $ modifyIORef' var $ Map.insert (blockID b) b
-    , retrieveBlock  = \bid -> liftIO $ Map.lookup bid <$> readIORef var
-    , retrieveHeader = \bid -> liftIO $ fmap toHeader . Map.lookup bid <$> readIORef var
+    { storeBlock         = \b   -> liftIO $ modifyIORef' var $ Map.insert (blockID b) b
+    , retrieveBlock      = \bid -> liftIO $ Map.lookup bid <$> readIORef var
+    , retrieveHeader     = \bid -> liftIO $ fmap toHeader . Map.lookup bid <$> readIORef var
+    , retrieveAllHeaders = liftIO $ sortOn blockHeight . map toHeader . toList <$> readIORef var
     }
 
 
@@ -225,7 +228,11 @@ blockDatabase genesis = do
           Just (blockHeight, blockTime, (fmap unCBORed -> prevBlock), CBORed blockData)
             -> return $ Just GBlock{..}
           Nothing -> return Nothing
-        
+    , retrieveAllHeaders = queryRO $ do
+        r <- basicQuery_
+          "SELECT height, time, prev, blockHeader FROM pow_blocks ORDER BY height"
+        return [ GBlock{..}
+               | (blockHeight, blockTime, (fmap unCBORed -> prevBlock), CBORed blockData) <- r ]
     }
     where
       store b@GBlock{..} = mustQueryRW $ basicExecute

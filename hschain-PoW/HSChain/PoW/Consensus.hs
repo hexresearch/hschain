@@ -158,10 +158,20 @@ makeLocator  = Locator . takeH 10 . Just
 -- Blockchain state handling
 ----------------------------------------------------------------
 
+-- | API for append only block storage. It should always contain
+--   genesis block.
 data BlockDB m b = BlockDB
-  { storeBlock     :: Block b -> m ()
-  , retrieveBlock  :: BlockID b -> m (Maybe (Block  b))
+  { storeBlock :: Block b -> m ()
+    -- ^ Put block into storage. It should be idempotent. That is
+    --   storing block already in storage should be a noop.
+  , retrieveBlock :: BlockID b -> m (Maybe (Block  b))
+    -- ^ Retrive complete block by its identifier
   , retrieveHeader :: BlockID b -> m (Maybe (Header b))
+    -- ^ Retrieve header by its identifier
+  , retrieveAllHeaders :: m [Header b]
+    -- ^ Retrieve all headers from storage in topologically sorted
+    --   order. (Ordering block by height would achieve that for
+    --   example).
   }
 
 -- | View on state of blockchain. It's expected that store is backed
