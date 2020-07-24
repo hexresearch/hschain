@@ -12,6 +12,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications    #-}
 {-# LANGUAGE TypeFamilies        #-}
+{-# LANGUAGE ViewPatterns        #-}
 -- |HSChain.PoW.Node.hs
 --
 -- Main node loop.
@@ -23,7 +24,9 @@ module HSChain.PoW.Node
   ( Cfg(..)
   , runNode
   , inMemoryView
+    -- * Block storage
   , inMemoryDB
+  , blockDatabase
   ) where
 
 import qualified Data.Aeson as JSON
@@ -54,6 +57,7 @@ import HSChain.Types.Merkle.Types
 import HSChain.Control.Util
 import HSChain.Control.Class
 import HSChain.Config
+import HSChain.Store.Query
 
 -- |Node's configuration.
 data Cfg = Cfg
@@ -174,4 +178,51 @@ inMemoryDB = do
     { storeBlock     = \b   -> liftIO $ modifyIORef' var $ Map.insert (blockID b) b
     , retrieveBlock  = \bid -> liftIO $ Map.lookup bid <$> readIORef var
     , retrieveHeader = \bid -> liftIO $ fmap toHeader . Map.lookup bid <$> readIORef var
+    }
+
+
+-- | Block storage backed by SQLite database. It's most generic
+--   storage which just stores
+blockDatabase
+  :: (MonadThrow m, MonadIO m, MonadDB m
+     , BlockData b, Serialise (b Proxy), Serialise (b Identity))
+  => m (BlockDB m b)
+blockDatabase = do
+  -- First we initialize database schema
+  mustQueryRW $ basicExecute_
+    "CREATE TABLE IF NOT EXISTS pow_blocks \
+    \  ( id         INTEGER PRIMARY KEY AUTOINCREMENT \
+    \  , bid        BLOB NOT NULL UNIQUE \
+    \  , height     INTEGER NOT NULL \
+    \  , time       INTEGER NUT NULL \
+    \  , prev       BLOB NULL \
+    \  , headerData BLOB NOT NULL \
+    \  , blockData  BLOB NOT NULL )"
+  return BlockDB
+    { storeBlock = \b@GBlock{..} -> mustQueryRW $ basicExecute
+        "INSERT INTO pow_blocks VALUES (NULL, ?, ?, ?, ?, ?, ?)"
+        ( CBORed (blockID b)
+        , blockHeight, blockTime, CBORed <$> prevBlock
+        , CBORed (merkleMap (const Proxy) blockData)
+        , CBORed blockData
+        )
+      --
+    , retrieveBlock  = \bid -> queryRO $ do
+        r <- basicQuery1
+          "SELECT height, time, prev, blockData FROM pow_blocks WHERE bid = ?"
+          (Only (CBORed bid))
+        case r of
+          Just (blockHeight, blockTime, (fmap unCBORed -> prevBlock), CBORed blockData)
+            -> return $ Just GBlock{..}
+          Nothing -> return Nothing
+      --
+    , retrieveHeader = \bid -> queryRO $ do
+        r <- basicQuery1
+          "SELECT height, time, prev, blockHeader FROM pow_blocks WHERE bid = ?"
+          (Only (CBORed bid))
+        case r of
+          Just (blockHeight, blockTime, (fmap unCBORed -> prevBlock), CBORed blockData)
+            -> return $ Just GBlock{..}
+          Nothing -> return Nothing
+        
     }

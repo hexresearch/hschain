@@ -26,6 +26,8 @@ Library
                      , hschain-net
                      , hschain-merkle
                      , hschain-pow-func
+                     , hschain-db
+                       --
                      , aeson
                      , base58-bytestring >=0.1
                      , bytestring        >=0.10
