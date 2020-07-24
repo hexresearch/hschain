@@ -22,6 +22,9 @@ Library
                      , hschain-control
                      , exceptions        >=0.8.3
                      , mmorph
+                     , mtl
+                     , microlens         >=0.4
+                     , generic-lens      >=0.2
                      , pipes             >=4
                      , serialise         >=0.2
                      , sqlite-simple

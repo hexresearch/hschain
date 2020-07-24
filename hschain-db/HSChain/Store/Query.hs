@@ -9,9 +9,11 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase                 #-}
 {-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE PolyKinds                  #-}
 {-# LANGUAGE RecordWildCards            #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE TupleSections              #-}
+{-# LANGUAGE TypeApplications           #-}
 {-# LANGUAGE TypeFamilies               #-}
 {-# LANGUAGE UndecidableInstances       #-}
 -- |
@@ -59,8 +61,11 @@ module HSChain.Store.Query (
     -- * Exceptions
   , Rollback(..)
   , UnexpectedRollback(..)
-    -- * sqlite-simple helpers
+    -- * Newtype wrappers for DerivingVia
   , CBORed(..)
+  , DatabaseByField(..)
+  , DatabaseByType(..)
+  , DatabaseByReader(..)
   ) where
 
 import Codec.Serialise                (Serialise, deserialise, serialise)
@@ -70,7 +75,7 @@ import qualified Control.Monad.Fail as Fail
 import Control.Monad.IO.Class
 import Control.Monad.Morph            (MFunctor(..))
 import Control.Monad.Trans.Class
-import Control.Monad.Trans.Reader
+import Control.Monad.Reader
 import Control.Monad.Trans.Maybe
 import Control.Monad.Trans.State.Strict as SS(StateT(..))
 import Control.Monad.Trans.State.Lazy   as SL(StateT(..))
@@ -78,9 +83,12 @@ import Control.Monad.Trans.Except            (ExceptT(..))
 import Control.Monad.Trans.Identity          (IdentityT(..))
 import Data.Coerce
 import Data.Int
+import Data.Generics.Product.Fields (HasField'(..))
+import Data.Generics.Product.Typed  (HasType(..))
 import qualified Database.SQLite.Simple           as SQL
 import qualified Database.SQLite.Simple.ToField   as SQL
 import qualified Database.SQLite.Simple.FromField as SQL
+import Lens.Micro
 import Pipes (Proxy)
 
 import HSChain.Control.Mutex
@@ -512,3 +520,59 @@ instance (Serialise a) => SQL.FromField (CBORed a) where
 
 instance (Serialise a) => SQL.ToField (CBORed a) where
   toField (CBORed a) = SQL.toField (serialise a)
+
+
+-- | Newtype wrapper which allows to derive 'MonadReadDB' and
+--   'MonadDB' instances using deriving via mechanism by specifying name
+--   of field in record carried by reader.
+newtype DatabaseByField conn m x = DatabaseByField (m x)
+  deriving newtype (Functor,Applicative,Monad)
+
+instance ( MonadReader r m
+         , HasField' conn r (Connection 'RW)
+         ) => MonadReadDB (DatabaseByField conn m) where
+  askConnectionRO = DatabaseByField $ connectionRO <$> asks (^. field' @conn)
+  {-# INLINE askConnectionRO #-}
+
+instance ( MonadReader r m
+         , HasField' conn r (Connection 'RW)
+         ) => MonadDB (DatabaseByField conn m) where
+  askConnectionRW = DatabaseByField $ asks (^. field' @conn)
+  {-# INLINE askConnectionRW #-}
+
+
+
+-- | Newtype wrapper which allows to derive 'MonadReadDB' and
+--   'MonadDB' instances using deriving via mechanism by using type of
+--   field in record carried by reader.
+newtype DatabaseByType m x = DatabaseByType (m x)
+  deriving newtype (Functor,Applicative,Monad)
+
+instance ( MonadReader r m
+         , HasType (Connection 'RW) r
+         ) => MonadReadDB (DatabaseByType m) where
+  askConnectionRO = DatabaseByType $ connectionRO <$> asks (^. typed @(Connection 'RW))
+  {-# INLINE askConnectionRO #-}
+
+instance ( MonadReader r m
+         , HasType (Connection 'RW) r
+         ) => MonadDB (DatabaseByType m) where
+  askConnectionRW = DatabaseByType $ asks (^. typed)
+  {-# INLINE askConnectionRW #-}
+
+
+-- | Newtype wrapper which allows to derive 'MonadReadDB' and
+--   'MonadDB' instances using deriving via mechanism when connection
+--   is carried by reader.
+newtype DatabaseByReader m x = DatabaseByReader (m x)
+  deriving newtype (Functor,Applicative,Monad)
+
+instance ( MonadReader (Connection 'RW) m
+         ) => MonadReadDB (DatabaseByReader m) where
+  askConnectionRO = DatabaseByReader $ asks connectionRO
+  {-# INLINE askConnectionRO #-}
+
+instance ( MonadReader (Connection 'RW) m
+         ) => MonadDB (DatabaseByReader m) where
+  askConnectionRW = DatabaseByReader ask
+  {-# INLINE askConnectionRW #-}
