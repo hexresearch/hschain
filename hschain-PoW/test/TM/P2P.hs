@@ -128,7 +128,7 @@ recvM = TestM $ do
 -- We use PEX setting which preclude it from sending any messages
 runNetTest :: TestM () -> IO ()
 runNetTest test = do
-  db  <- inMemoryDB @_ @_ @(KV MockChain)
+  db  <- inMemoryDB genesis
   net <- newMockNet
   let s0 = consensusGenesis (head mockchain) $
             inMemoryView kvViewStep Map.empty (blockID genesis)

@@ -74,7 +74,7 @@ data Cfg = Cfg
 --
 -- Requires places to load config from, a flag indicating that
 -- we are mining and genesis block.
-runNode :: forall b s . (BlockData b, Mineable b, Show (b Identity), Serialise (b Proxy), Serialise (b Identity))
+runNode :: (BlockData b, Mineable b, Show (b Identity), Serialise (b Proxy), Serialise (b Identity))
         => [String] -> Bool -> Block b
         -> (Block b -> s -> Maybe s)
         -> (BH b -> s -> ((Header b, [Tx b]), s))
@@ -88,7 +88,7 @@ runNode pathsToConfig miningNode genesisBlock step inventHeaderTxs inventBlock s
                       , nConnectedPeers = 3
                       }
   let net = newNetworkTcp cfgPort
-  db <- inMemoryDB @_ @_ @b
+  db <- inMemoryDB genesisBlock
   let s0 = consensusGenesis genesisBlock $
                             inMemoryView step startState $
                             blockID genesisBlock
@@ -169,11 +169,16 @@ inMemoryView step = make (error "No revinding past genesis")
           , stateComputeAlter  = \f -> let (a, s') = f s in (a, make previous s' bid)
           }
 
+----------------------------------------------------------------
+-- Databases
+----------------------------------------------------------------
+
 inMemoryDB
   :: (MonadIO m, MonadIO n, BlockData b)
-  => m (BlockDB n b)
-inMemoryDB = do
-  var <- liftIO $ newIORef Map.empty
+  => Block b
+  -> m (BlockDB n b)
+inMemoryDB genesis = do
+  var <- liftIO $ newIORef $ Map.singleton (blockID genesis) genesis
   return BlockDB
     { storeBlock     = \b   -> liftIO $ modifyIORef' var $ Map.insert (blockID b) b
     , retrieveBlock  = \bid -> liftIO $ Map.lookup bid <$> readIORef var
@@ -186,8 +191,9 @@ inMemoryDB = do
 blockDatabase
   :: (MonadThrow m, MonadIO m, MonadDB m
      , BlockData b, Serialise (b Proxy), Serialise (b Identity))
-  => m (BlockDB m b)
-blockDatabase = do
+  => Block b
+  -> m (BlockDB m b)
+blockDatabase genesis = do
   -- First we initialize database schema
   mustQueryRW $ basicExecute_
     "CREATE TABLE IF NOT EXISTS pow_blocks \
@@ -198,14 +204,9 @@ blockDatabase = do
     \  , prev       BLOB NULL \
     \  , headerData BLOB NOT NULL \
     \  , blockData  BLOB NOT NULL )"
+  store genesis
   return BlockDB
-    { storeBlock = \b@GBlock{..} -> mustQueryRW $ basicExecute
-        "INSERT INTO pow_blocks VALUES (NULL, ?, ?, ?, ?, ?, ?)"
-        ( CBORed (blockID b)
-        , blockHeight, blockTime, CBORed <$> prevBlock
-        , CBORed (merkleMap (const Proxy) blockData)
-        , CBORed blockData
-        )
+    { storeBlock = store
       --
     , retrieveBlock  = \bid -> queryRO $ do
         r <- basicQuery1
@@ -226,3 +227,11 @@ blockDatabase = do
           Nothing -> return Nothing
         
     }
+    where
+      store b@GBlock{..} = mustQueryRW $ basicExecute
+        "INSERT OR IGNORE INTO pow_blocks VALUES (NULL, ?, ?, ?, ?, ?, ?)"
+        ( CBORed (blockID b)
+        , blockHeight, blockTime, CBORed <$> prevBlock
+        , CBORed (merkleMap (const Proxy) blockData)
+        , CBORed blockData
+        )

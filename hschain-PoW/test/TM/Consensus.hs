@@ -296,7 +296,7 @@ data Message
 
 runTest :: [Message] -> IO ()
 runTest msgList = runNoLogsT $ do
-  db <- inMemoryDB
+  db <- inMemoryDB genesis
   let s0 = consensusGenesis (head mockchain) $
                             inMemoryView kvViewStep Map.empty (blockID genesis)
   runExceptT (loop db s0 msgList) >>= \case
