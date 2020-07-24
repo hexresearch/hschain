@@ -44,7 +44,7 @@ import HSChain.Types.Merkle.Types
 -- Primitives
 ----------------------------------------------------------------
 
--- | Height of block in blockchain. That is
+-- | Height of block in blockchain.
 newtype Height = Height Int32
   deriving stock   (Show, Read, Generic, Eq, Ord)
   deriving newtype ( NFData, Num, Real, Integral, Enum
@@ -102,7 +102,7 @@ class ( Show      (BlockID b)
       ) => BlockData b where
 
   -- | ID of block. Usually it should be just a hash but we want to
-  --   leave some representation leeway for implementations. 
+  --   leave some representation leeway for implementations.
   data BlockID b
 
   -- | Transactions that constitute block.
@@ -321,5 +321,3 @@ hash256AsTarget a
 goBack :: Height -> BH b -> Maybe (BH b)
 goBack (Height 0) = Just
 goBack h          = goBack (pred h) <=< bhPrevious
-
-
