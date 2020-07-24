@@ -19,6 +19,7 @@ module HSChain.PoW.Consensus
   , insertIdx
   , lookupIdx
   , blockIndexFromGenesis
+  , blockIndexHeads
   , traverseBlockIndex
   , traverseBlockIndexM
   , makeLocator
@@ -50,7 +51,7 @@ import Control.Monad.State.Strict
 import Data.List          (sortOn)
 import Data.Functor.Identity
 import Data.Foldable
-import Data.Map           (Map)
+import Data.Map           (Map,(!))
 import Data.Maybe
 import Data.Sequence      (Seq(Empty,(:<|),(:|>)),(|>))
 import Data.Set           (Set)
@@ -116,6 +117,18 @@ traverseBlockIndexM rollback update = go
       Just b' -> b'
       Nothing -> error "Internal error"
 
+-- | Find all heads from index: blocks which aren't parents of some
+--   other blocks.
+blockIndexHeads :: (Ord (BlockID b)) => BlockIndex b -> [BH b]
+blockIndexHeads (BlockIndex bMap)
+  = fmap (\bid -> bMap ! bid)
+  $ toList
+  $ foldl' remove (Map.keysSet bMap) (Map.toList bMap)
+  where
+    remove bids (bid, BH{bhPrevious = Nothing}) = Set.delete bid bids
+    remove bids (_  , BH{bhPrevious = Just bh}) = Set.delete (bhBID bh) bids
+
+-- | Create block index which contains only genesis
 blockIndexFromGenesis :: (IsMerkle f, BlockData b) => GBlock b f -> BlockIndex b
 blockIndexFromGenesis genesis
   | blockHeight genesis /= Height 0 = error "Genesis must be H=0"
