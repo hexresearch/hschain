@@ -21,7 +21,8 @@
 {-# LANGUAGE TypeFamilies        #-}
 
 module HSChain.PoW.Node
-  ( runNode
+  ( Cfg(..)
+  , runNode
   , inMemoryView
   , inMemoryDB
   ) where
