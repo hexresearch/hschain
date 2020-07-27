@@ -24,7 +24,6 @@ import HSChain.PoW.P2P.Types
 import HSChain.Types.Merkle.Types
 import HSChain.Examples.Simple (KV)
 import HSChain.Examples.Coin   (miningLoop,Coin(..))
-import HSChain.Store.Query (withConnection)
 import HSChain.Network.Mock
 import HSChain.Network.Types
 import TM.Util.Mockchain
@@ -32,10 +31,8 @@ import TM.Util.Mockchain
 tests :: TestTree
 tests = testGroup "Block store"
   [ testCase "Store:In-memory" $ testIdempotence =<< inMemoryDB genesis
-  , testCase "Store:DB"
-    $ withConnection "" $ \conn -> runHSChainT conn $ testIdempotence =<< blockDatabase genesis
-  , testCase "Restart"
-    $ withConnection "" $ \conn -> runHSChainT conn $ testRestart
+  , testCase "Store:DB" $ withHSChainT $ testIdempotence =<< blockDatabase genesis
+  , testCase "Restart" $ withHSChainT testRestart
   ]
 
 
