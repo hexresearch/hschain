@@ -59,6 +59,7 @@ Library
   Exposed-modules:
                 HSChain.PoW.Types
                 HSChain.PoW.Consensus
+                HSChain.Examples.Coin
                 HSChain.Examples.Simple
                 HSChain.Examples.Util
                 HSChain.PoW.Exceptions
@@ -98,6 +99,34 @@ Executable hschain-PoW-node
                      , microlens
   hs-source-dirs:      exe
   Main-is:             pow-node.hs
+
+Executable hschain-PoW-coin
+  Ghc-options:         -Wall -threaded -rtsopts "-with-rtsopts=-N -T -qn1 -A64M"
+  Default-Language:    Haskell2010
+  Build-Depends:       base                 >=4.9 && <5
+                     , hschain-PoW
+                     , hschain-net
+                     , hschain-merkle
+                     , hschain-types
+                     , hschain-db
+                     , hschain-logger
+                     , hschain-crypto
+                     , hschain-control
+                     --
+                     , aeson
+                     , katip
+                     , mtl
+                     , bytestring
+                     , containers
+                     , random
+                     , serialise
+                     , exceptions
+                     , transformers
+                     , optparse-applicative
+                     , yaml
+                     , microlens
+  hs-source-dirs:      exe
+  Main-is:             coin-node.hs
 
 
 -- Test suite

@@ -67,6 +67,7 @@ data Cfg = Cfg
   , cfgPeers :: [NetAddr]
   , cfgLog   :: [ScribeSpec]
   , cfgMaxH  :: Maybe Height
+  , cfgDB    :: Maybe FilePath
   }
   deriving stock (Show, Generic)
   deriving (JSON.FromJSON) via SnakeCase (DropSmart (Config Cfg))

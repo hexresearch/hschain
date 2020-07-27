@@ -117,3 +117,6 @@ newtype HSChainT m x = HSChainT (ReaderT (Connection 'RW) m x)
 runHSChainT :: Connection 'RW -> HSChainT m x -> m x
 runHSChainT c (HSChainT m) = do
   runReaderT m c
+
+withHSChainT :: (MonadIO m, MonadMask m) => HSChainT m a -> m a
+withHSChainT m = withConnection "" $ \c -> runHSChainT c m
