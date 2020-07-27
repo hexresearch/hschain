@@ -23,9 +23,6 @@ import Codec.Serialise      (Serialise)
 import qualified Data.Aeson as JSON
 import Data.Maybe
 import Data.Word
-import Data.Bits
-import qualified Data.ByteString     as BS
-import qualified Data.HashMap.Strict as HM
 import GHC.Generics    (Generic)
 
 import HSChain.Types.Merkle.Types
@@ -164,15 +161,15 @@ miningLoop pow True  = do
     --
     start ch = do
       c <- atomicallyIO $ currentConsensus pow
-      let (bh, st, _) = _bestHead c
-      loop ch =<< mine bh st
+      let (bh, _, _) = _bestHead c
+      loop ch =<< mine bh
     --
     loop ch tid = do
-      (bh, st) <- awaitIO ch
+      (bh, _) <- awaitIO ch
       liftIO $ killThread tid
-      loop ch =<< mine bh st
+      loop ch =<< mine bh
     --
-    mine bh st = fork $ do
+    mine bh = fork $ do
       t <- getCurrentTime
       let blk :: Block Coin
           blk = GBlock { blockHeight = succ $ bhHeight bh
@@ -196,7 +193,7 @@ miningLoop pow True  = do
 -- Blockchain state management
 ----------------------------------------------------------------
 
-
+stateView :: StateView s m Coin
 stateView = StateView
   { stateBID          = undefined
   , applyBlock        = undefined

@@ -16,20 +16,14 @@
 -- |
 module Main where
 
-import Codec.Serialise
-import Control.Concurrent (threadDelay, killThread, forkIO)
+import Control.Concurrent (forkIO)
 import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Control.Monad.Reader
 import Control.Monad.Trans.Cont
-import qualified Data.ByteString as BS
-import qualified Data.ByteString.Lazy as LBS
-import qualified Data.Map.Strict as Map
 import Data.Maybe
-import Data.Word
 import Data.Yaml.Config (loadYamlSettings, requireEnv)
 import Options.Applicative
-import System.IO
 import Katip (LogEnv, Namespace)
 import GHC.Generics (Generic)
 
@@ -44,10 +38,7 @@ import HSChain.Control.Util
 import HSChain.Control.Channels
 import HSChain.Types.Merkle.Types
 import HSChain.Examples.Coin
-import HSChain.Examples.Util
 import HSChain.PoW.Node (blockDatabase,inMemoryView,Cfg(..))
-import HSChain.Crypto
-import HSChain.Crypto.SHA
 import HSChain.Store.Query
 
 
@@ -89,12 +80,12 @@ genesis = GBlock
 main :: IO ()
 main = do
   -- Parse configuration
-  opts@Opts{..} <- customExecParser (prefs showHelpOnError)
-                 $ info (helper <*> parser)
-                   (  fullDesc
-                   <> header   "PoW node settings"
-                   <> progDesc ""
-                   )
+  Opts{..} <- customExecParser (prefs showHelpOnError)
+            $ info (helper <*> parser)
+              (  fullDesc
+              <> header   "PoW node settings"
+              <> progDesc ""
+              )
   Cfg{..} <- loadYamlSettings cmdConfigPath [] requireEnv
   -- Acquire resources
   let net    = newNetworkTcp cfgPort
@@ -108,7 +99,7 @@ main = do
       bIdx <- lift $ buildBlockIndex db
       c0   <- lift $ createConsensus db bIdx sView
       pow  <- startNode netcfg net cfgPeers db c0
-      liftIO $ forkIO $ do
+      void $ liftIO $ forkIO $ do
         ch <- atomicallyIO (chainUpdate pow)
         forever $ do (bh,_) <- awaitIO ch
                      print $ asHeader bh
