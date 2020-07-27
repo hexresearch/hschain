@@ -222,7 +222,7 @@ blockDatabase genesis = do
       --
     , retrieveHeader = \bid -> queryRO $ do
         r <- basicQuery1
-          "SELECT height, time, prev, blockHeader FROM pow_blocks WHERE bid = ?"
+          "SELECT height, time, prev, headerData FROM pow_blocks WHERE bid = ?"
           (Only (CBORed bid))
         case r of
           Just (blockHeight, blockTime, (fmap unCBORed -> prevBlock), CBORed blockData)
@@ -230,7 +230,7 @@ blockDatabase genesis = do
           Nothing -> return Nothing
     , retrieveAllHeaders = queryRO $ do
         r <- basicQuery_
-          "SELECT height, time, prev, blockHeader FROM pow_blocks ORDER BY height"
+          "SELECT height, time, prev, headerData FROM pow_blocks ORDER BY height"
         return [ GBlock{..}
                | (blockHeight, blockTime, (fmap unCBORed -> prevBlock), CBORed blockData) <- r ]
     }
