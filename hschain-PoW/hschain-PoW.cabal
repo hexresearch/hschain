@@ -111,7 +111,10 @@ Test-suite hschain-PoW-tests
                      , hschain-control
                      , hschain-merkle
                      , hschain-logger
+                     , hschain-db
                      , hschain-net
+                     --
+                     , exceptions
                      , containers
                      , serialise
                      , transformers
