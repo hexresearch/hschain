@@ -127,4 +127,5 @@ Test-suite hschain-PoW-tests
   Main-is:             Main.hs
   Other-modules:       TM.Consensus
                        TM.P2P
+                       TM.Store
                        TM.Util.Mockchain
