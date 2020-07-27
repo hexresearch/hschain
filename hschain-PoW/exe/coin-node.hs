@@ -102,11 +102,12 @@ main = do
                       , nConnectedPeers = 3
                       }
   let sView = inMemoryView (\_ -> Just) () (blockID genesis)
-      c0    = consensusGenesis genesis sView
   withConnection (fromMaybe "" cfgDB) $ \conn -> 
     withLogEnv "" "" (map makeScribe cfgLog) $ \logEnv -> runCoinT logEnv conn $ evalContT $ do
-      db  <- lift $ blockDatabase genesis
-      pow <- startNode netcfg net cfgPeers db c0
+      db   <- lift $ blockDatabase genesis
+      bIdx <- lift $ buildBlockIndex db
+      c0   <- lift $ createConsensus db bIdx sView
+      pow  <- startNode netcfg net cfgPeers db c0
       liftIO $ forkIO $ do
         ch <- atomicallyIO (chainUpdate pow)
         forever $ do (bh,_) <- awaitIO ch
