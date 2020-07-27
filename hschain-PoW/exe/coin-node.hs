@@ -115,41 +115,6 @@ main = do
                      print $ retarget bh
       lift $ miningLoop pow optMine
 
-miningLoop :: MonadFork m => PoW s m Coin -> Bool -> m x
-miningLoop _   False = liftIO $ forever $ threadDelay maxBound
-miningLoop pow True  = do
-  start =<< atomicallyIO (chainUpdate pow)
-  where
-    --
-    start ch = do
-      c <- atomicallyIO $ currentConsensus pow
-      let (bh, st, _) = _bestHead c
-      loop ch =<< mine bh st
-    --
-    loop ch tid = do
-      (bh, st) <- awaitIO ch
-      liftIO $ killThread tid
-      loop ch =<< mine bh st
-    --
-    mine bh st = fork $ do
-      t <- getCurrentTime
-      let blk :: Block Coin
-          blk = GBlock { blockHeight = succ $ bhHeight bh
-                       , blockTime   = t
-                       , prevBlock   = Just $ bhBID bh
-                       , blockData   = Coin { coinData   = merkled []
-                                            , coinNonce  = 0
-                                            , coinTarget = retarget bh
-                                            }
-                       }
-      let find b = (fst <$> adjustPuzzle b) >>= \case
-            Just b' -> return b'
-            Nothing -> do t' <- getCurrentTime
-                          find b { blockTime = t' }
-      find blk >>= sendNewBlock pow >>= \case
-        Right () -> return ()
-        Left  e  -> liftIO $ throwM e
-
 
 ----------------------------------------------------------------
 --
