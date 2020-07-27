@@ -66,6 +66,8 @@ module HSChain.Store.Query (
   , DatabaseByField(..)
   , DatabaseByType(..)
   , DatabaseByReader(..)
+    -- * Reexports
+  , SQL.Only(..)
   ) where
 
 import Codec.Serialise                (Serialise, deserialise, serialise)
