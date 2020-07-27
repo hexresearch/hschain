@@ -92,6 +92,7 @@ import HSChain.Crypto
 import HSChain.Crypto.Containers
 import HSChain.Store.Internal.Query
 import HSChain.Store.Internal.BlockDB
+import HSChain.Store.Query (DatabaseByField(..), DatabaseByType(..), DatabaseByReader(..))
 import HSChain.Types.Validators
 
 ----------------------------------------------------------------
@@ -327,62 +328,6 @@ orElse False e = tell [e]
 ----------------------------------------------------------------
 -- DerivingVia
 ----------------------------------------------------------------
-
--- | Newtype wrapper which allows to derive 'MonadReadDB' and
---   'MonadDB' instances using deriving via mechanism by specifying name
---   of field in record carried by reader.
-newtype DatabaseByField conn m x = DatabaseByField (m x)
-  deriving newtype (Functor,Applicative,Monad)
-
-instance ( MonadReader r m
-         , HasField' conn r (Connection 'RW)
-         ) => MonadReadDB (DatabaseByField conn m) where
-  askConnectionRO = DatabaseByField $ connectionRO <$> asks (^. field' @conn)
-  {-# INLINE askConnectionRO #-}
-
-instance ( MonadReader r m
-         , HasField' conn r (Connection 'RW)
-         ) => MonadDB (DatabaseByField conn m) where
-  askConnectionRW = DatabaseByField $ asks (^. field' @conn)
-  {-# INLINE askConnectionRW #-}
-
-
-
--- | Newtype wrapper which allows to derive 'MonadReadDB' and
---   'MonadDB' instances using deriving via mechanism by using type of
---   field in record carried by reader.
-newtype DatabaseByType m x = DatabaseByType (m x)
-  deriving newtype (Functor,Applicative,Monad)
-
-instance ( MonadReader r m
-         , HasType (Connection 'RW) r
-         ) => MonadReadDB (DatabaseByType m) where
-  askConnectionRO = DatabaseByType $ connectionRO <$> asks (^. typed @(Connection 'RW))
-  {-# INLINE askConnectionRO #-}
-
-instance ( MonadReader r m
-         , HasType (Connection 'RW) r
-         ) => MonadDB (DatabaseByType m) where
-  askConnectionRW = DatabaseByType $ asks (^. typed)
-  {-# INLINE askConnectionRW #-}
-
-
--- | Newtype wrapper which allows to derive 'MonadReadDB' and
---   'MonadDB' instances using deriving via mechanism when connection
---   is carried by reader.
-newtype DatabaseByReader m x = DatabaseByReader (m x)
-  deriving newtype (Functor,Applicative,Monad)
-
-instance ( MonadReader (Connection 'RW) m
-         ) => MonadReadDB (DatabaseByReader m) where
-  askConnectionRO = DatabaseByReader $ asks connectionRO
-  {-# INLINE askConnectionRO #-}
-
-instance ( MonadReader (Connection 'RW) m
-         ) => MonadDB (DatabaseByReader m) where
-  askConnectionRW = DatabaseByReader ask
-  {-# INLINE askConnectionRW #-}
-
 
 -- | Newtype wrapper which allows to derive 'MonadReadDB' and
 --   'MonadDB' instances using deriving via mechanism by specifying name
