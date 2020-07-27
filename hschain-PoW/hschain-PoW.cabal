@@ -21,10 +21,13 @@ Library
   Build-Depends:       base              >=4.9 && <5
                      , hschain-crypto
                      , hschain-control
+                     , hschain-config
                      , hschain-logger
                      , hschain-net
                      , hschain-merkle
                      , hschain-pow-func
+                     , hschain-db
+                       --
                      , aeson
                      , base58-bytestring >=0.1
                      , bytestring        >=0.10
@@ -108,7 +111,10 @@ Test-suite hschain-PoW-tests
                      , hschain-control
                      , hschain-merkle
                      , hschain-logger
+                     , hschain-db
                      , hschain-net
+                     --
+                     , exceptions
                      , containers
                      , serialise
                      , transformers
@@ -121,4 +127,5 @@ Test-suite hschain-PoW-tests
   Main-is:             Main.hs
   Other-modules:       TM.Consensus
                        TM.P2P
+                       TM.Store
                        TM.Util.Mockchain
