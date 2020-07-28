@@ -59,6 +59,9 @@ threadConsensus db consensus0 ConsensusCh{..} = descendNamespace "cns" $ logOnEx
          sinkIO sinkReqBlocks   =<< use requiredBlocks
          (bh',st,_) <- use bestHead
          when (bhBID bh /= bhBID bh') $ do
+           logger InfoS "New head" ( sl "h"   (bhHeight bh')
+                                  <> sl "bid" (bhBID bh')
+                                   )
            sinkIO bcastAnnounce $ AnnBestHead $ asHeader bh'
            sinkIO bcastChainUpdate (bh',st)
 
