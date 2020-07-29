@@ -46,8 +46,10 @@ module HSChain.Store.Query (
     -- ** Primitive operations
   , basicLastInsertRowId
   , basicQuery
+  , basicQueryWith
   , basicQuery1
   , basicQuery_
+  , basicQueryWith_
   , basicExecute
   , basicExecute_
   , rollback
@@ -91,6 +93,7 @@ import Data.Generics.Product.Typed  (HasType(..))
 import qualified Database.SQLite.Simple           as SQL
 import qualified Database.SQLite.Simple.ToField   as SQL
 import qualified Database.SQLite.Simple.FromField as SQL
+import qualified Database.SQLite.Simple.FromRow   as SQL
 import Lens.Micro
 import Pipes (Proxy)
 
@@ -326,6 +329,15 @@ basicQuery_ sql = liftQueryRO $ Query $ do
   conn <- asks connConn
   liftIO $ SQL.query_ conn sql
 
+basicQueryWith :: (SQL.ToRow p, MonadQueryRO m) => SQL.RowParser q -> SQL.Query -> p -> m [q]
+basicQueryWith parser sql p = liftQueryRO $ Query $ do
+  conn <- asks connConn
+  liftIO $ SQL.queryWith parser conn sql p
+
+basicQueryWith_ :: (MonadQueryRO m) => SQL.RowParser q -> SQL.Query -> m [q]
+basicQueryWith_ parser sql = liftQueryRO $ Query $ do
+  conn <- asks connConn
+  liftIO $ SQL.queryWith_ parser conn sql
 
 basicQuery1 :: (SQL.ToRow row, SQL.FromRow a, MonadQueryRO m)
   => SQL.Query             -- ^ SQL query
