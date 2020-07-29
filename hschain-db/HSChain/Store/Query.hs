@@ -63,6 +63,7 @@ module HSChain.Store.Query (
   , UnexpectedRollback(..)
     -- * Newtype wrappers for DerivingVia
   , CBORed(..)
+  , ByteRepred(..)
   , DatabaseByField(..)
   , DatabaseByType(..)
   , DatabaseByReader(..)
@@ -93,6 +94,7 @@ import qualified Database.SQLite.Simple.FromField as SQL
 import Lens.Micro
 import Pipes (Proxy)
 
+import HSChain.Crypto.Classes (ByteRepr(..))
 import HSChain.Control.Mutex
 import HSChain.Control.Util
 
@@ -522,6 +524,21 @@ instance (Serialise a) => SQL.FromField (CBORed a) where
 
 instance (Serialise a) => SQL.ToField (CBORed a) where
   toField (CBORed a) = SQL.toField (serialise a)
+
+
+-- | Newtype wrapper which provides To\/FromField
+--   instance for values using 'ByteRepr' type class.
+newtype ByteRepred a = ByteRepred { unByteRepr :: a }
+  deriving Show
+
+instance (ByteRepr a) => SQL.FromField (ByteRepred a) where
+  fromField f = do bs <- SQL.fromField f
+                   case decodeFromBS bs of
+                     Just a  -> return (ByteRepred a)
+                     Nothing -> error "ByteRepred: invalid encoding"
+
+instance (ByteRepr a) => SQL.ToField (ByteRepred a) where
+  toField (ByteRepred a) = SQL.toField (encodeToBS a)
 
 
 -- | Newtype wrapper which allows to derive 'MonadReadDB' and
