@@ -68,8 +68,11 @@ module HSChain.Store.Query (
     -- ** Field & row parsers
   , CBORed(..)
   , ByteRepred(..)
+  , SQL.field
   , fieldCBOR
+  , nullableFieldCBOR
   , fieldByteRepr
+  , nullableFieldByteRepr
     -- ** Deriving via for MonadDB
   , DatabaseByField(..)
   , DatabaseByType(..)
@@ -570,6 +573,12 @@ fieldCBOR = fmap unCBORed SQL.field
 
 fieldByteRepr :: (ByteRepr a) => SQL.RowParser a
 fieldByteRepr = fmap unByteRepr SQL.field
+
+nullableFieldCBOR :: (Serialise a) => SQL.RowParser (Maybe a)
+nullableFieldCBOR = (fmap . fmap) unCBORed SQL.field
+
+nullableFieldByteRepr :: (ByteRepr a) => SQL.RowParser (Maybe a)
+nullableFieldByteRepr = (fmap . fmap) unByteRepr SQL.field
 
 
 -- | Newtype wrapper which allows to derive 'MonadReadDB' and
