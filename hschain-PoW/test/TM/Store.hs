@@ -57,10 +57,12 @@ testIdempotence db = do
   -- Fetchall
   liftIO . assertEqual "All headers" (take 4 $ map toHeader $ mockchain) =<< retrieveAllHeaders db
   where
-    fetch   nm b = liftIO . assertEqual ("Yes: " ++ nm) (Just b)
-               =<< retrieveBlock db (blockID b)
-    nofetch nm b = liftIO . assertEqual ("No: " ++ nm) (Nothing)
-               =<< retrieveBlock db (blockID b)
+    fetch nm b = do
+      liftIO . assertEqual ("Yes: " ++ nm) (Just b)            =<< retrieveBlock  db (blockID b)
+      liftIO . assertEqual ("Yes: " ++ nm) (Just (toHeader b)) =<< retrieveHeader db (blockID b)
+    nofetch nm b = do
+      liftIO . assertEqual ("No: " ++ nm) (Nothing) =<< retrieveBlock  db (blockID b)
+      liftIO . assertEqual ("No: " ++ nm) (Nothing) =<< retrieveHeader db (blockID b)
 
 
 -- | Test that we're able to restart
