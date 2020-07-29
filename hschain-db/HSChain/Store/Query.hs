@@ -46,8 +46,9 @@ module HSChain.Store.Query (
     -- ** Primitive operations
   , basicLastInsertRowId
   , basicQuery
-  , basicQueryWith
   , basicQuery1
+  , basicQueryWith
+  , basicQueryWith1
   , basicQuery_
   , basicQueryWith_
   , basicExecute
@@ -337,6 +338,13 @@ basicQueryWith :: (SQL.ToRow p, MonadQueryRO m) => SQL.RowParser q -> SQL.Query 
 basicQueryWith parser sql p = liftQueryRO $ Query $ do
   conn <- asks connConn
   liftIO $ SQL.queryWith parser conn sql p
+
+basicQueryWith1 :: (SQL.ToRow p, MonadQueryRO m) => SQL.RowParser q -> SQL.Query -> p -> m (Maybe q)
+basicQueryWith1 parser sql p =
+  basicQueryWith parser sql p >>= \case
+    []  -> return Nothing
+    [x] -> return $ Just x
+    _   -> error "Impossible"
 
 basicQueryWith_ :: (MonadQueryRO m) => SQL.RowParser q -> SQL.Query -> m [q]
 basicQueryWith_ parser sql = liftQueryRO $ Query $ do
