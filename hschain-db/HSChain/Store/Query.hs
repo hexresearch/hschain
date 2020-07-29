@@ -64,8 +64,12 @@ module HSChain.Store.Query (
   , Rollback(..)
   , UnexpectedRollback(..)
     -- * Newtype wrappers for DerivingVia
+    -- ** Field & row parsers
   , CBORed(..)
   , ByteRepred(..)
+  , fieldCBOR
+  , fieldByteRepr
+    -- ** Deriving via for MonadDB
   , DatabaseByField(..)
   , DatabaseByType(..)
   , DatabaseByReader(..)
@@ -551,6 +555,13 @@ instance (ByteRepr a) => SQL.FromField (ByteRepred a) where
 
 instance (ByteRepr a) => SQL.ToField (ByteRepred a) where
   toField (ByteRepred a) = SQL.toField (encodeToBS a)
+
+
+fieldCBOR :: (Serialise a) => SQL.RowParser a
+fieldCBOR = fmap unCBORed SQL.field
+
+fieldByteRepr :: (ByteRepr a) => SQL.RowParser a
+fieldByteRepr = fmap unByteRepr SQL.field
 
 
 -- | Newtype wrapper which allows to derive 'MonadReadDB' and
