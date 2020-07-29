@@ -20,6 +20,7 @@ Library
   Default-Language:    Haskell2010
   Build-Depends:       base              >=4.9 && <5
                      , hschain-control
+                     , hschain-crypto
                      , exceptions        >=0.8.3
                      , mmorph
                      , mtl

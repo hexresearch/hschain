@@ -47,7 +47,10 @@ module HSChain.Store.Query (
   , basicLastInsertRowId
   , basicQuery
   , basicQuery1
+  , basicQueryWith
+  , basicQueryWith1
   , basicQuery_
+  , basicQueryWith_
   , basicExecute
   , basicExecute_
   , rollback
@@ -62,7 +65,15 @@ module HSChain.Store.Query (
   , Rollback(..)
   , UnexpectedRollback(..)
     -- * Newtype wrappers for DerivingVia
+    -- ** Field & row parsers
   , CBORed(..)
+  , ByteRepred(..)
+  , SQL.field
+  , fieldCBOR
+  , nullableFieldCBOR
+  , fieldByteRepr
+  , nullableFieldByteRepr
+    -- ** Deriving via for MonadDB
   , DatabaseByField(..)
   , DatabaseByType(..)
   , DatabaseByReader(..)
@@ -90,9 +101,11 @@ import Data.Generics.Product.Typed  (HasType(..))
 import qualified Database.SQLite.Simple           as SQL
 import qualified Database.SQLite.Simple.ToField   as SQL
 import qualified Database.SQLite.Simple.FromField as SQL
+import qualified Database.SQLite.Simple.FromRow   as SQL
 import Lens.Micro
 import Pipes (Proxy)
 
+import HSChain.Crypto.Classes (ByteRepr(..))
 import HSChain.Control.Mutex
 import HSChain.Control.Util
 
@@ -324,6 +337,22 @@ basicQuery_ sql = liftQueryRO $ Query $ do
   conn <- asks connConn
   liftIO $ SQL.query_ conn sql
 
+basicQueryWith :: (SQL.ToRow p, MonadQueryRO m) => SQL.RowParser q -> SQL.Query -> p -> m [q]
+basicQueryWith parser sql p = liftQueryRO $ Query $ do
+  conn <- asks connConn
+  liftIO $ SQL.queryWith parser conn sql p
+
+basicQueryWith1 :: (SQL.ToRow p, MonadQueryRO m) => SQL.RowParser q -> SQL.Query -> p -> m (Maybe q)
+basicQueryWith1 parser sql p =
+  basicQueryWith parser sql p >>= \case
+    []  -> return Nothing
+    [x] -> return $ Just x
+    _   -> error "Impossible"
+
+basicQueryWith_ :: (MonadQueryRO m) => SQL.RowParser q -> SQL.Query -> m [q]
+basicQueryWith_ parser sql = liftQueryRO $ Query $ do
+  conn <- asks connConn
+  liftIO $ SQL.queryWith_ parser conn sql
 
 basicQuery1 :: (SQL.ToRow row, SQL.FromRow a, MonadQueryRO m)
   => SQL.Query             -- ^ SQL query
@@ -522,6 +551,34 @@ instance (Serialise a) => SQL.FromField (CBORed a) where
 
 instance (Serialise a) => SQL.ToField (CBORed a) where
   toField (CBORed a) = SQL.toField (serialise a)
+
+
+-- | Newtype wrapper which provides To\/FromField
+--   instance for values using 'ByteRepr' type class.
+newtype ByteRepred a = ByteRepred { unByteRepr :: a }
+  deriving Show
+
+instance (ByteRepr a) => SQL.FromField (ByteRepred a) where
+  fromField f = do bs <- SQL.fromField f
+                   case decodeFromBS bs of
+                     Just a  -> return (ByteRepred a)
+                     Nothing -> error "ByteRepred: invalid encoding"
+
+instance (ByteRepr a) => SQL.ToField (ByteRepred a) where
+  toField (ByteRepred a) = SQL.toField (encodeToBS a)
+
+
+fieldCBOR :: (Serialise a) => SQL.RowParser a
+fieldCBOR = fmap unCBORed SQL.field
+
+fieldByteRepr :: (ByteRepr a) => SQL.RowParser a
+fieldByteRepr = fmap unByteRepr SQL.field
+
+nullableFieldCBOR :: (Serialise a) => SQL.RowParser (Maybe a)
+nullableFieldCBOR = (fmap . fmap) unCBORed SQL.field
+
+nullableFieldByteRepr :: (ByteRepr a) => SQL.RowParser (Maybe a)
+nullableFieldByteRepr = (fmap . fmap) unByteRepr SQL.field
 
 
 -- | Newtype wrapper which allows to derive 'MonadReadDB' and

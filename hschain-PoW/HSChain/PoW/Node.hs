@@ -193,7 +193,7 @@ inMemoryDB genesis = do
 -- | Block storage backed by SQLite database. It's most generic
 --   storage which just stores
 blockDatabase
-  :: (MonadThrow m, MonadIO m, MonadDB m
+  :: ( MonadThrow m, MonadIO m, MonadDB m
      , BlockData b, Serialise (b Proxy), Serialise (b Identity))
   => Block b
   -> m (BlockDB m b)
@@ -212,34 +212,38 @@ blockDatabase genesis = do
   return BlockDB
     { storeBlock = store
       --
-    , retrieveBlock  = \bid -> queryRO $ do
-        r <- basicQuery1
-          "SELECT height, time, prev, blockData FROM pow_blocks WHERE bid = ?"
-          (Only (CBORed bid))
-        case r of
-          Just (blockHeight, blockTime, (fmap unCBORed -> prevBlock), CBORed blockData)
-            -> return $ Just GBlock{..}
-          Nothing -> return Nothing
+    , retrieveBlock  = \bid -> queryRO $ basicQueryWith1
+        decoderBlock
+        "SELECT height, time, prev, blockData FROM pow_blocks WHERE bid = ?"
+        (Only (CBORed bid))
       --
-    , retrieveHeader = \bid -> queryRO $ do
-        r <- basicQuery1
-          "SELECT height, time, prev, headerData FROM pow_blocks WHERE bid = ?"
-          (Only (CBORed bid))
-        case r of
-          Just (blockHeight, blockTime, (fmap unCBORed -> prevBlock), CBORed blockData)
-            -> return $ Just GBlock{..}
-          Nothing -> return Nothing
-    , retrieveAllHeaders = queryRO $ do
-        r <- basicQuery_
-          "SELECT height, time, prev, headerData FROM pow_blocks ORDER BY height"
-        return [ GBlock{..}
-               | (blockHeight, blockTime, (fmap unCBORed -> prevBlock), CBORed blockData) <- r ]
+    , retrieveHeader = \bid -> queryRO $ basicQueryWith1
+        decoderHeader
+        "SELECT height, time, prev, headerData FROM pow_blocks WHERE bid = ?"
+        (Only (CBORed bid))
+      --
+    , retrieveAllHeaders = queryRO $ basicQueryWith_
+        decoderHeader
+        "SELECT height, time, prev, headerData FROM pow_blocks ORDER BY height"
     }
     where
+      decoderBlock  = do blockHeight <- field
+                         blockTime   <- field
+                         prevBlock   <- nullableFieldCBOR
+                         blockData   <- fieldCBOR
+                         return GBlock{..}
+      decoderHeader = do blockHeight <- field
+                         blockTime   <- field
+                         prevBlock   <- nullableFieldCBOR
+                         blockData   <- fieldCBOR
+                         return GBlock{..}
+      --
       store b@GBlock{..} = mustQueryRW $ basicExecute
         "INSERT OR IGNORE INTO pow_blocks VALUES (NULL, ?, ?, ?, ?, ?, ?)"
         ( CBORed (blockID b)
-        , blockHeight, blockTime, CBORed <$> prevBlock
+        , blockHeight
+        , blockTime
+        , CBORed <$> prevBlock
         , CBORed (merkleMap (const Proxy) blockData)
         , CBORed blockData
         )
