@@ -52,10 +52,12 @@ data Coin f = Coin
   }
   deriving (Generic)
 
-instance Serialise (Coin Identity)
-instance Serialise (Coin Proxy)
-deriving instance Show (Coin Identity)
-deriving instance Show (Coin Proxy)
+deriving anyclass instance Serialise (Coin Identity)
+deriving anyclass instance Serialise (Coin Proxy)
+deriving stock    instance Show      (Coin Identity)
+deriving stock    instance Show      (Coin Proxy)
+deriving stock    instance Eq        (Coin Identity)
+deriving stock    instance Eq        (Coin Proxy)
 
 
 instance BlockData Coin where
