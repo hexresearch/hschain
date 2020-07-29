@@ -222,7 +222,7 @@ buildBlockIndex BlockDB{..} = do
 data StateView s m b = StateView
   { stateBID    :: BlockID b
     -- ^ Hash of block for which state is calculated
-  , applyBlock  :: Block b -> m (Maybe (StateView s m b))
+  , applyBlock  :: BH b -> Block b -> m (Maybe (StateView s m b))
     -- ^ Apply block on top of current state. Function should throw
     --   exception if supplied block is not child block of current
     --   head. Function should return @Nothing@ if block is not valid
@@ -504,7 +504,7 @@ bestCandidate db = do
             block <- lift (retrieveBlock db $ bhBID bh) >>= \case
               Nothing -> error "CANT retrieveBlock"
               Just b  -> return b
-            lift (applyBlock s block) >>= \case
+            lift (applyBlock s bh block) >>= \case
               Nothing -> throwError (bhBID bh)
               Just b  -> return b
       state' <- lift $ lift
