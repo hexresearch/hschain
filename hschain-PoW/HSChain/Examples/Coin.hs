@@ -11,6 +11,7 @@
 {-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE TypeFamilies               #-}
 {-# LANGUAGE TypeOperators              #-}
+{-# LANGUAGE ViewPatterns               #-}
 -- |
 module HSChain.Examples.Coin where
 
@@ -26,6 +27,7 @@ import Data.Maybe
 import Data.Word
 import qualified Database.SQLite.Simple.ToField   as SQL
 import qualified Database.SQLite.Simple.FromField as SQL
+import qualified Database.SQLite.Simple.FromRow   as SQL
 import Katip (LogEnv, Namespace)
 import GHC.Generics    (Generic)
 
@@ -245,12 +247,130 @@ miningLoop pow True  = do
 -- Blockchain state management
 ----------------------------------------------------------------
 
-stateView :: StateView m Coin
-stateView = StateView
-  { stateBID          = undefined
-  , applyBlock        = undefined
-  , revertBlock       = undefined
-  , flushState        = undefined
-  , checkTx           = undefined
-  , createCandidateBlockData = undefined
-  }
+-- | Database backed state view for the mock coin. This is
+--   implementation for archive node.
+coinStateView
+  :: (MonadThrow m, MonadDB m, MonadIO m)
+  => Block Coin
+  -> m (BlockDB m Coin, StateView m Coin)
+coinStateView genesis = do
+  initCoinDB
+  storeCoinBlock genesis
+  return
+    ( BlockDB { storeBlock         = storeCoinBlock
+              , retrieveBlock      = retrieveCoinBlock
+              , retrieveHeader     = retrieveCoinHeader
+              , retrieveAllHeaders = retrieveAllCoinHeaders
+              }
+    , StateView { stateBID          = undefined
+                , applyBlock        = undefined
+                , revertBlock       = undefined
+                , flushState        = undefined
+                }
+    )
+
+-- Initialize database for mock coin blockchain
+initCoinDB :: (MonadThrow m, MonadDB m, MonadIO m) => m ()
+initCoinDB = mustQueryRW $ do
+  -- Table for blocks. We store both block data is serialized form and
+  -- separately UTXOs for working with blockchain state so data is
+  -- duplicated
+  basicExecute_
+    "CREATE TABLE IF NOT EXISTS coin_blocks \
+    \  ( blk_id     INTEGER PRIMARY KEY AUTOINCREMENT \
+    \  , bid        BLOB NOT NULL UNIQUE \
+    \  , height     INTEGER NOT NULL \
+    \  , time       INTEGER NUT NULL \
+    \  , prev       BLOB NULL \
+    \  , dataHash   BLOB NOT NULL \
+    \  , blockData  BLOB NOT NULL \
+    \  , target     BLOB NOT NULL \
+    \  , nonce      INTEGER NOT NULL \
+    \)"
+  -- All UTXOs known to blockchain. We never delete them so node works
+  -- as archival node.
+  basicExecute_
+    "CREATE TABLE IF NOT EXISTS coin_utxo \
+    \  ( utxo_id INTEGER PRIMARY KEY \
+    \  , tx_hash BLOB NOT NULL \
+    \  , n_out   BLOB NOT NULL \
+    \  , pk_dest BLOB NOT NULL \
+    \  , n_coins INTEGER NOT NULL \
+    \)"
+  -- Changes to UTXO set by given block
+  basicExecute_
+    "CREATE TABLE IF NOT EXISTS coin_delta \
+    \  ( delta_blk INTEGER NOT NULL \
+    \  , added     INTEGER NOT NULL \
+    \  , removed   INTEGER NOT NULL \
+    \  , FOREIGN KEY (delta_blk) REFERENCES coin_blocks(blk_id) \
+    \  , FOREIGN KEY (added)     REFERENCES coin_utxo(utxo_id) \
+    \  , FOREIGN KEY (removed)   REFERENCES coin_utxo(utxo_id) \
+    \)"
+  -- Current state of blockchain
+  basicExecute_
+    "CREATE TABLE IF NOT EXISTS coin_state \
+    \  ( live_utxo INTEGER NOT NULL \
+    \  , FOREIGN KEY (live_utxo) REFERENCES coin_utxo(utxo_id)\
+    \)"
+  basicExecute_
+    "CREATE TABLE IF NOT EXISTS coin_state_bid \
+    \  ( state_block INTEGER NOT NULL \
+    \  , uniq        INTEGER NOT NULL UNIQUE \
+    \  , FOREIGN KEY (state_block) REFERENCES coin_blocks(blk_id) \
+    \  , CHECK (uniq = 0) \
+    \)"
+
+
+retrieveCoinBlock :: (MonadIO m, MonadReadDB m) => BlockID Coin -> m (Maybe (Block Coin))
+retrieveCoinBlock bid = queryRO $ basicQueryWith1
+  coinBlockDecoder
+  "SELECT height, time, prev, blockData, target, nonce FROM coin_blocks WHERE bid = ?"
+  (Only bid)
+
+retrieveCoinHeader :: (MonadIO m, MonadReadDB m) => BlockID Coin -> m (Maybe (Header Coin))
+retrieveCoinHeader bid = queryRO $ basicQueryWith1
+  coinHeaderDecoder
+  "SELECT height, time, prev, dataHash, target, nonce FROM coin_blocks WHERE bid = ?"
+  (Only bid)
+
+retrieveAllCoinHeaders :: (MonadIO m, MonadReadDB m) => m [Header Coin]
+retrieveAllCoinHeaders = queryRO $ basicQueryWith_
+  coinHeaderDecoder
+  "SELECT height, time, prev, dataHash, target, nonce FROM coin_blocks ORDER BY height"
+
+storeCoinBlock :: (MonadThrow m, MonadIO m, MonadDB m) => Block Coin -> m ()
+storeCoinBlock b@GBlock{blockData=Coin{..}, ..} = mustQueryRW $ do
+  -- Store block itself
+  basicExecute
+    "INSERT OR IGNORE INTO coin_blocks VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, ?)"
+    ( blockID b
+    , blockHeight
+    , blockTime
+    , prevBlock
+    , ByteRepred $ merkleHash coinData
+    , CBORed coinData
+    , CBORed coinTarget
+    , coinNonce
+    )
+  -- FIXME: expand transactions
+
+coinBlockDecoder :: SQL.RowParser (Block Coin)
+coinBlockDecoder = do
+  blockHeight <- field
+  blockTime   <- field
+  prevBlock   <- field
+  coinData    <- fieldCBOR
+  coinTarget  <- fieldCBOR
+  coinNonce   <- field
+  return GBlock{ blockData = Coin{..}, ..}
+
+coinHeaderDecoder :: SQL.RowParser (Header Coin)
+coinHeaderDecoder = do
+  blockHeight <- field
+  blockTime   <- field
+  prevBlock   <- field
+  coinData    <- fromHashed <$> fieldByteRepr
+  coinTarget  <- fieldCBOR
+  coinNonce   <- field
+  return GBlock{ blockData = Coin{..}, ..}
