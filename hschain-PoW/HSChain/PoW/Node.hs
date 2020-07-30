@@ -168,7 +168,7 @@ inMemoryView step = make (error "No revinding past genesis")
               Nothing -> return Nothing
               Just s' -> return $ Just $ make view s' (blockID b)
           , revertBlock        = return previous
-          , flushState         = return ()
+          , flushState         = return view
           , stateComputeAlter  = \f -> let (a, s') = f s in (a, make previous s' bid)
           }
 

@@ -232,7 +232,7 @@ data StateView s m b = StateView
     --   It's acceptable to fail for too deep reorganizations.
   , stateComputeAlter :: forall a . (s -> (a, s)) -> (a, StateView s m b)
     -- ^ Record transactions into a state. These can be used to invent blocks.
-  , flushState  :: m ()
+  , flushState  :: m (StateView s m b)
     -- ^ Persist snapshot in the database.
   }
 

@@ -57,11 +57,13 @@ threadConsensus db consensus0 ConsensusCh{..} = descendNamespace "cns" $ logOnEx
          consensusMonitor db =<< awaitIO srcRX
          sinkIO sinkConsensusSt =<< get
          sinkIO sinkReqBlocks   =<< use requiredBlocks
-         (bh',st,_) <- use bestHead
+         bh' <- use $ bestHead . _1
          when (bhBID bh /= bhBID bh') $ do
            logger InfoS "New head" ( sl "h"   (bhHeight bh')
                                   <> sl "bid" (bhBID bh')
                                    )
+           st <- lift . flushState =<< use (bestHead . _2)
+           bestHead . _2 .= st
            sinkIO bcastAnnounce $ AnnBestHead $ asHeader bh'
            sinkIO bcastChainUpdate (bh',st)
 
