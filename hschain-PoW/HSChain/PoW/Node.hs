@@ -77,12 +77,13 @@ data Cfg = Cfg
 -- we are mining and genesis block.
 runNode :: forall b s . (BlockData b, Mineable b, Show (b Identity), Serialise (b Proxy), Serialise (b Identity))
         => [String] -> Bool -> Block b
-        -> (Block b -> s -> Maybe s)
-        -> (BH b -> s -> ((Header b, [Tx b]), s))
-        -> (Header b -> [Tx b] -> IO (Maybe (Block b)))
-        -> s
+        -> (Block b -> s -> Maybe s) -- ^ User state step function - update user state with block. May fail.
+        -> (BH b -> s -> ((Header b, [Tx b]), s)) -- ^ Generating header and transactions for mining from current blockchain state and user state.
+        -> (Header b -> [Tx b] -> IO (Maybe (Block b))) -- ^ Block mining from header and transactions.
+        -> Maybe (STM s -> (s -> STM ()) -> IO ()) -- ^ A thread to consult and/or update user state within consensus.
+        -> s -- ^ Starting user state.
         -> IO ()
-runNode pathsToConfig miningNode genesisBlock step inventHeaderTxs inventBlock startState = do
+runNode pathsToConfig miningNode genesisBlock step inventHeaderTxs inventBlock maybeStateAction startState = do
   Cfg{..} <- loadYamlSettings pathsToConfig [] requireEnv
   --
   let netcfg = NetCfg { nKnownPeers     = 3
@@ -117,6 +118,21 @@ runNode pathsToConfig miningNode genesisBlock step inventHeaderTxs inventBlock s
                                                   Right () -> return ()
                                                   Left  e  -> error $ show e
                 Nothing -> doMine currentBlock
+        let runExternalAccessThread = case maybeStateAction of
+              Nothing -> return ()
+              Just action -> do
+                let cv = currentConsensusTVar pow
+                    readUserState = do
+                      cc <- readTVar cv
+                      let (currState, _) = consensusComputeOnState cc $ \s -> (s,s)
+                      return currState
+                    writeUserState newState = do
+                      cc <- readTVar cv
+                      let (_, updatedConsensus) = consensusComputeOnState cc $
+                                                     \_ -> ((), newState)
+                      writeTVar cv updatedConsensus
+                forkIO $ action readUserState writeUserState
+                return ()
         let mineLoop baseBestHead tid = do
               maybeNewSituation <- atomicallyIO $ do
                  let cv = currentConsensusTVar pow
@@ -139,6 +155,7 @@ runNode pathsToConfig miningNode genesisBlock step inventHeaderTxs inventBlock s
                          mineLoop newBestHead =<< fork (doMine newBlock)
                 Nothing -> mineLoop baseBestHead tid
         --
+        liftIO $ runExternalAccessThread -- ^ Run the external access thread before going to mine or something.
         if miningNode
           then do
             (startBestHead, headerTxs) <- atomicallyIO $ do

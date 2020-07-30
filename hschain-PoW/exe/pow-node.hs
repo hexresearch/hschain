@@ -197,7 +197,7 @@ parser = do
 runNodeAnyPoW :: forall cfg . (Show (Nonce cfg), Default (Nonce cfg), KVConfig cfg)
               => Opts -> Block (KV cfg) ->IO ()
 runNodeAnyPoW Opts{..} genesisBlock = do
-  runNode cmdConfigPath optMine genesisBlock kvViewStep getHeaderTxsToMine (getBlockToMine optNodeName) Map.empty
+  runNode cmdConfigPath optMine genesisBlock kvViewStep getHeaderTxsToMine (getBlockToMine optNodeName) Nothing Map.empty
 
 main :: IO ()
 main = do
