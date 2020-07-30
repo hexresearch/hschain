@@ -59,6 +59,9 @@ threadConsensus db consensus0 ConsensusCh{..} = descendNamespace "cns" $ logOnEx
          sinkIO sinkReqBlocks   =<< use requiredBlocks
          (bh',st,_) <- use bestHead
          when (bhBID bh /= bhBID bh') $ do
+           logger InfoS "New head" ( sl "h"   (bhHeight bh')
+                                  <> sl "bid" (bhBID bh')
+                                   )
            sinkIO bcastAnnounce $ AnnBestHead $ asHeader bh'
            sinkIO bcastChainUpdate (bh',st)
 
@@ -94,12 +97,15 @@ consensusMonitor db (BoxRX message)
         Right () -> return Peer'Noop
         Left  e  -> case e of
           ErrH'KnownHeader       -> return Peer'Noop
-          ErrH'HeightMismatch    -> return $ Peer'Punish $ toException e
-          ErrH'ValidationFailure -> return $ Peer'Punish $ toException e
-          ErrH'BadParent         -> return $ Peer'Punish $ toException e
+          ErrH'HeightMismatch    -> punish
+          ErrH'ValidationFailure -> punish
+          ErrH'BadParent         -> punish
           -- We got announce that we couldn't attach to block tree. So
           -- we need that peer to catch up
           ErrH'UnknownParent     -> return Peer'EnterCatchup
+          where
+            punish = do logger WarningS "Bad AnnBestHead" (sl "err" e)
+                        return $ Peer'Punish $ toException e
     -- Handle error conditions which happen when we process new block
     -- Note that we explicitly requrest blocks by their BIDs so we
     -- shouln't punish peers
@@ -109,14 +115,17 @@ consensusMonitor db (BoxRX message)
       Left ErrB'InvalidBlock -> Right ()
     -- Handle errors during header processing. Not that KnownHeader is
     -- not really an error
-    handleHeaderError = mapExceptT $ fmap $ \case
-      Right () -> Right ()
+    handleHeaderError = mapExceptT $ \action -> action >>= \case
+      Right () -> return $ Right ()
       Left  e  -> case e of
-        ErrH'KnownHeader       -> Right ()
-        ErrH'HeightMismatch    -> Left $ Peer'Punish $ toException e
-        ErrH'UnknownParent     -> Left $ Peer'Punish $ toException e
-        ErrH'ValidationFailure -> Left $ Peer'Punish $ toException e
-        ErrH'BadParent         -> Left $ Peer'Punish $ toException e
+        ErrH'KnownHeader       -> return $ Right ()
+        ErrH'HeightMismatch    -> punish
+        ErrH'UnknownParent     -> punish
+        ErrH'ValidationFailure -> punish
+        ErrH'BadParent         -> punish
+        where
+          punish = do logger WarningS "Bad header" (sl "err" e)
+                      return $ Left $ Peer'Punish $ toException e
     -- Convert error from ExceptT
     evalError action = runExceptT action >>= \case
       Right () -> return Peer'Noop

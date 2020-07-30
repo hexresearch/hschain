@@ -1,5 +1,6 @@
 {-# LANGUAGE BangPatterns         #-}
 {-# LANGUAGE DeriveAnyClass       #-}
+{-# LANGUAGE DeriveGeneric        #-}
 {-# LANGUAGE DerivingStrategies   #-}
 {-# LANGUAGE FlexibleContexts     #-}
 {-# LANGUAGE LambdaCase           #-}
@@ -57,12 +58,14 @@ import Data.Maybe
 import Data.Sequence      (Seq(Empty,(:<|),(:|>)),(|>))
 import Data.Set           (Set)
 import Data.Ord           (Down(..))
+import qualified Data.Aeson      as JSON
 import qualified Data.Map        as Map
 import qualified Data.Set        as Set
 import qualified Data.Sequence   as Seq
 import Lens.Micro
 import Lens.Micro.Mtl
 import Lens.Micro.TH
+import GHC.Generics (Generic)
 
 import HSChain.Types.Merkle.Types
 import HSChain.PoW.Types
@@ -305,14 +308,14 @@ data HeaderError
     -- ^ We don't have parent block
   | ErrH'ValidationFailure
   | ErrH'BadParent
-  deriving stock    (Show,Eq)
-  deriving anyclass (Exception)
+  deriving stock    (Show,Eq,Generic)
+  deriving anyclass (Exception,JSON.ToJSON,JSON.FromJSON)
 
 data BlockError
   = ErrB'UnknownBlock
   | ErrB'InvalidBlock
-  deriving stock    (Show,Eq)
-  deriving anyclass (Exception)
+  deriving stock    (Show,Eq,Generic)
+  deriving anyclass (Exception,JSON.ToJSON,JSON.FromJSON)
 
 
 ----------------------------------------------------------------
