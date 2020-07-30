@@ -155,7 +155,7 @@ runNode pathsToConfig miningNode genesisBlock step inventHeaderTxs inventBlock m
                          mineLoop newBestHead =<< fork (doMine newBlock)
                 Nothing -> mineLoop baseBestHead tid
         --
-        liftIO $ runExternalAccessThread -- ^ Run the external access thread before going to mine or something.
+        liftIO $ runExternalAccessThread
         if miningNode
           then do
             (startBestHead, headerTxs) <- atomicallyIO $ do
