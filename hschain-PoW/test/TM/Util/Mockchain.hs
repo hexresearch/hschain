@@ -31,6 +31,7 @@ import HSChain.PoW.Types
 import HSChain.PoW.Consensus
 import HSChain.Store.Query
 import HSChain.Types.Merkle.Types
+import HSChain.Examples.Coin
 
 ----------------------------------------------------------------
 --
@@ -51,6 +52,22 @@ mockchain = gen : unfoldr ( Just
                                     , kvTarget     = Target $ shiftL 1 256 - 1
                                     }
                  }
+
+
+emptyCoinChain :: [Block Coin]
+emptyCoinChain = gen : unfoldr (Just . (\b -> (b,b)) . mine . Just) gen
+  where
+    gen     = mine Nothing
+    mine :: Maybe (Block Coin) -> Block Coin
+    mine mb = GBlock
+      { blockHeight = maybe (Height 0) (succ . blockHeight) mb
+      , blockTime   = Time 0
+      , prevBlock   = blockID <$> mb
+      , blockData   = Coin { coinData       = merkled []
+                           , coinNonce      = 1337
+                           , coinTarget     = Target $ shiftL 1 256 - 1
+                           }
+      }
 
 mineBlock :: (Num (Nonce cfg), Show (Nonce cfg), KVConfig cfg)
           => [(Int,String)] -> Block (KV cfg) -> Block (KV cfg)

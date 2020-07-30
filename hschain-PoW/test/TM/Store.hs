@@ -22,40 +22,43 @@ import HSChain.PoW.Node
 import HSChain.PoW.P2P
 import HSChain.PoW.P2P.Types
 import HSChain.Types.Merkle.Types
-import HSChain.Examples.Simple (KV)
-import HSChain.Examples.Coin   (miningLoop,Coin(..))
+import HSChain.Examples.Coin   (miningLoop,Coin(..),coinStateView)
 import HSChain.Network.Mock
 import HSChain.Network.Types
 import TM.Util.Mockchain
 
 tests :: TestTree
 tests = testGroup "Block store"
-  [ testCase "Store:In-memory" $ testIdempotence =<< inMemoryDB genesis
-  , testCase "Store:DB" $ withHSChainT $ testIdempotence =<< blockDatabase genesis
+  [ testCase "Store:In-memory" $ testIdempotence mockchain =<< inMemoryDB genesis
+  , testCase "Store:DB"   $ withHSChainT $ testIdempotence mockchain =<< blockDatabase genesis
+  , testCase "Store:Coin" $ withHSChainT $ do (db,_) <- coinStateView $ head emptyCoinChain
+                                              testIdempotence emptyCoinChain db
   , testCase "Restart" $ withHSChainT testRestart
   ]
 
 
 -- | Test that storage works correctly
-testIdempotence :: MonadIO m => BlockDB m (KV MockChain) -> m ()
-testIdempotence db = do
+testIdempotence
+  :: (MonadIO m, BlockData b, Eq (b Proxy), Eq (b Identity), Show (b Proxy), Show (b Identity))
+  => [Block b] -> BlockDB m b -> m ()
+testIdempotence chain db = do
   -- Genesis
-  fetch "Genesis" genesis
-  storeBlock db genesis
-  fetch "Genesis" genesis
+  fetch "Genesis" (head chain)
+  storeBlock db   (head chain)
+  fetch "Genesis" (head chain)
   -- Rest of blocks
-  forM_ (take 3 $ drop 1 mockchain) $ \b -> do
+  forM_ (take 3 $ drop 1 chain) $ \b -> do
     nofetch (show (blockHeight b)) b
   -- Store and retrieve
-  forM_ (take 3 $ drop 1 mockchain) $ \b -> do
+  forM_ (take 3 $ drop 1 chain) $ \b -> do
     storeBlock db b
     fetch ("Stored: "++show (blockHeight b)) b
   -- Idempotency of store
-  forM_ (take 3 $ drop 1 mockchain) $ \b -> do
+  forM_ (take 3 $ drop 1 chain) $ \b -> do
     storeBlock db b
     fetch ("Idempotence: "++show (blockHeight b)) b
   -- Fetchall
-  liftIO . assertEqual "All headers" (take 4 $ map toHeader $ mockchain) =<< retrieveAllHeaders db
+  liftIO . assertEqual "All headers" (take 4 $ map toHeader $ chain) =<< retrieveAllHeaders db
   where
     fetch nm b = do
       liftIO . assertEqual ("Yes: " ++ nm) (Just b)            =<< retrieveBlock  db (blockID b)
