@@ -23,6 +23,8 @@ import Codec.Serialise      (Serialise)
 import qualified Data.Aeson as JSON
 import Data.Maybe
 import Data.Word
+import qualified Database.SQLite.Simple.ToField   as SQL
+import qualified Database.SQLite.Simple.FromField as SQL
 import GHC.Generics    (Generic)
 
 import HSChain.Types.Merkle.Types
@@ -36,6 +38,8 @@ import HSChain.Crypto.SHA
 import HSChain.PoW.Types
 import HSChain.PoW.Consensus
 import HSChain.PoW.P2P
+import HSChain.Store.Query
+
 
 ----------------------------------------------------------------
 -- Blovckchain block
@@ -52,15 +56,19 @@ data Coin f = Coin
   }
   deriving (Generic)
 
-instance Serialise (Coin Identity)
-instance Serialise (Coin Proxy)
-deriving instance Show (Coin Identity)
-deriving instance Show (Coin Proxy)
+deriving anyclass instance Serialise (Coin Identity)
+deriving anyclass instance Serialise (Coin Proxy)
+deriving stock    instance Show      (Coin Identity)
+deriving stock    instance Show      (Coin Proxy)
+deriving stock    instance Eq        (Coin Identity)
+deriving stock    instance Eq        (Coin Proxy)
 
 
 instance BlockData Coin where
   newtype BlockID Coin = CoinID (Hash SHA256)
-    deriving newtype (Show,Eq,Ord,CryptoHashable,Serialise,JSON.ToJSON,JSON.FromJSON)
+    deriving newtype ( Show,Eq,Ord,CryptoHashable,Serialise,ByteRepr
+                     , JSON.ToJSON, JSON.FromJSON)
+    deriving (SQL.FromField, SQL.ToField) via ByteRepred (BlockID Coin)
   type Tx Coin = TxCoin
   blockID               = CoinID . hash
   validateHeader bh (Time now) header
