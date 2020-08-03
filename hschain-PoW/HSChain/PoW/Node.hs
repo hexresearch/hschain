@@ -1,3 +1,10 @@
+-- |HSChain.PoW.Node.hs
+--
+-- Main node loop.
+--
+-- You may use it directly or copy and tailor.
+--
+-- Copyright (C) ... 2020
 {-# LANGUAGE ApplicativeDo       #-}
 {-# LANGUAGE BangPatterns        #-}
 {-# LANGUAGE DeriveAnyClass      #-}
@@ -13,13 +20,6 @@
 {-# LANGUAGE TypeApplications    #-}
 {-# LANGUAGE TypeFamilies        #-}
 {-# LANGUAGE ViewPatterns        #-}
--- |HSChain.PoW.Node.hs
---
--- Main node loop.
---
--- You may use it directly or copy and tailor.
---
--- Copyright (C) ... 2020
 module HSChain.PoW.Node
   ( Cfg(..)
   , runNode
