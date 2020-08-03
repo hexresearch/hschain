@@ -1,4 +1,5 @@
-port: 40001
+net:
+  port: 40001
 spec:
   priv_key: "3d6iUCAa2WQw1ePDtdp2qgji22PRmSrZ8zxhCeMRMBqX"
   log_file:

@@ -65,6 +65,7 @@ Test-suite hschain-types-tests
   Ghc-options:         -Wall -threaded -rtsopts "-with-rtsopts=-N -qn1"
   Default-Language:    Haskell2010
   Build-Depends:       base              >=4.9 && <5
+                     , aeson
                      , bytestring
                      , random
                      , serialise

@@ -21,10 +21,13 @@ Library
   Build-Depends:       base              >=4.9 && <5
                      , hschain-crypto
                      , hschain-control
+                     , hschain-config
                      , hschain-logger
                      , hschain-net
                      , hschain-merkle
                      , hschain-pow-func
+                     , hschain-db
+                       --
                      , aeson
                      , base58-bytestring >=0.1
                      , bytestring        >=0.10
@@ -56,11 +59,11 @@ Library
   Exposed-modules:
                 HSChain.PoW.Types
                 HSChain.PoW.Consensus
+                HSChain.Examples.Coin
                 HSChain.Examples.Simple
                 HSChain.Examples.Util
                 HSChain.PoW.Exceptions
                 HSChain.PoW.Node
-                HSChain.PoW.Store
                 HSChain.PoW.P2P
                 HSChain.PoW.P2P.Types
                 HSChain.PoW.P2P.Handler.BlockRequests
@@ -70,9 +73,6 @@ Library
                 HSChain.PoW.P2P.Handler.PEX
                 HSChain.PoW.P2P.STM.PeerRegistry
                 HSChain.PoW.P2P.STM.NonceSet                
-                --HSChain.PoW.Store.STM - commented out because it contains only mempool
-                HSChain.PoW.Store.Internal.Query
-                HSChain.PoW.Store.Internal.BlockDB
 
 
 Executable hschain-PoW-node
@@ -100,6 +100,34 @@ Executable hschain-PoW-node
   hs-source-dirs:      exe
   Main-is:             pow-node.hs
 
+Executable hschain-PoW-coin
+  Ghc-options:         -Wall -threaded -rtsopts "-with-rtsopts=-N -T -qn1 -A64M"
+  Default-Language:    Haskell2010
+  Build-Depends:       base                 >=4.9 && <5
+                     , hschain-PoW
+                     , hschain-net
+                     , hschain-merkle
+                     , hschain-types
+                     , hschain-db
+                     , hschain-logger
+                     , hschain-crypto
+                     , hschain-control
+                     --
+                     , aeson
+                     , katip
+                     , mtl
+                     , bytestring
+                     , containers
+                     , random
+                     , serialise
+                     , exceptions
+                     , transformers
+                     , optparse-applicative
+                     , yaml
+                     , microlens
+  hs-source-dirs:      exe
+  Main-is:             coin-node.hs
+
 
 -- Test suite
 Test-suite hschain-PoW-tests
@@ -112,7 +140,10 @@ Test-suite hschain-PoW-tests
                      , hschain-control
                      , hschain-merkle
                      , hschain-logger
+                     , hschain-db
                      , hschain-net
+                     --
+                     , exceptions
                      , containers
                      , serialise
                      , transformers
@@ -125,4 +156,5 @@ Test-suite hschain-PoW-tests
   Main-is:             Main.hs
   Other-modules:       TM.Consensus
                        TM.P2P
+                       TM.Store
                        TM.Util.Mockchain

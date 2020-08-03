@@ -35,7 +35,6 @@ import qualified Network.Wai.Handler.Warp as Warp
 
 import GHC.Generics (Generic)
 
-import HSChain.Blockchain.Internal.Engine.Types
 import HSChain.Config
 import HSChain.Control.Class
 import HSChain.Crypto         (publicKey)
@@ -73,27 +72,28 @@ data AppDict = AppDict
   { dictGauges    :: !PrometheusGauges
   , dictNamespace :: !Namespace
   , dictLogEnv    :: !LogEnv
-  , dictConn      :: !(Connection 'RW (BData DioTag))
+  , dictConn      :: !(Connection 'RW)
+  , dictCached    :: !(Cached (BData DioTag))
   }
   deriving stock (Generic)
 
-newtype AppT m a = AppT { unAppT :: ReaderT AppDict m a }
+newtype AppT m a = AppT { _unAppT :: ReaderT AppDict m a }
   deriving newtype (Functor,Applicative,Monad,MonadIO)
   deriving newtype (MonadThrow,MonadCatch,MonadMask,MonadFork)
-  deriving newtype (MonadReader AppDict)
-  deriving MonadLogger         via LoggerByTypes    (AppT m)
-  deriving MonadTMMonitoring   via MonitoringByType (AppT m)
-  deriving (MonadReadDB (BData DioTag), MonadDB (BData DioTag))
-       via DatabaseByType (BData DioTag)(AppT m)
+  deriving MonadLogger                  via LoggerByTypes    (ReaderT AppDict m)
+  deriving MonadTMMonitoring            via MonitoringByType (ReaderT AppDict m)
+  deriving (MonadReadDB, MonadDB)       via DatabaseByType   (ReaderT AppDict m)
+  deriving (MonadCached (BData DioTag)) via CachedByType (BData DioTag) (ReaderT AppDict m)
 
-runAppT :: LogEnv -> PrometheusGauges -> Connection 'RW (BData DioTag) -> AppT m a -> m a
-runAppT lenv g conn
-  = flip runReaderT AppDict { dictGauges    = g
-                            , dictNamespace = mempty
-                            , dictLogEnv    = lenv
-                            , dictConn      = conn
-                            }
-  . unAppT
+runAppT :: MonadIO m => LogEnv -> PrometheusGauges -> Connection 'RW -> AppT m a -> m a
+runAppT lenv g conn (AppT act) = do
+  cached <- newCached
+  runReaderT act AppDict { dictGauges    = g
+                         , dictNamespace = mempty
+                         , dictLogEnv    = lenv
+                         , dictConn      = conn
+                         , dictCached    = cached
+                         }
 
 
 data Opts = Opts
@@ -136,7 +136,7 @@ main = do
     (conn, logenv) <- allocNode nodeSpec
     gauges         <- standardMonitoring
     lift $ runAppT logenv gauges conn $ do
-      (RunningNode{..},acts) <- interpretSpec @_ @DioTag
+      (_,acts) <- interpretSpec @_ @DioTag
         nodeIdx
         bnet
         nodeDelays

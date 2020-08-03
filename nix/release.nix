@@ -44,6 +44,7 @@ let
     hschain-types          = callInternal hsPkgs "hschain" ../hschain-types          {} "";
     hschain-merkle         = callInternal hsPkgs "hschain" ../hschain-merkle         {} "";
     hschain-logger         = callInternal hsPkgs "hschain" ../hschain-logger         {} "";
+    hschain-db             = callInternal hsPkgs "hschain" ../hschain-db             {} "";
     hschain-net            = callInternal hsPkgs "hschain" ../hschain-net            {} "";
     hschain-config         = callInternal hsPkgs "hschain" ../hschain-config         {} "";
     hschain-pow-func       = callInternal hsPkgs "hschain" ../proof-of-work          {} "";
@@ -85,6 +86,7 @@ let
       hschain-quickcheck
       hschain-control
       hschain-net
+      hschain-db
       hschain-pow-func
       hschain-PoW
       hschain

@@ -16,14 +16,12 @@ import Katip           (LogEnv)
 import System.Directory (createDirectoryIfMissing)
 import System.FilePath  (takeDirectory)
 
-import HSChain.Blockchain.Internal.Engine.Types
 import HSChain.Logger
 import HSChain.Mock.KeyList
 import HSChain.Mock.Types
 import HSChain.P2P
 import HSChain.Run
 import HSChain.Store
-import HSChain.Types
 import qualified HSChain.Network.Mock as P2P
 
 
@@ -31,7 +29,7 @@ import qualified HSChain.Network.Mock as P2P
 allocNode
   :: ( MonadIO m, MonadMask m)
   => NodeSpec a
-  -> ContT r m (Connection 'RW a, LogEnv)
+  -> ContT r m (Connection 'RW, LogEnv)
 allocNode spec = do
   liftIO $ createDirectoryIfMissing True $ takeDirectory dbname
   conn   <- ContT $ withDatabase dbname
@@ -41,11 +39,11 @@ allocNode spec = do
     dbname = fromMaybe "" $ nspecDbName spec
 
 allocNetwork
-  :: ( MonadIO m, MonadMask m)
+  :: (MonadIO m, MonadMask m)
   => P2P.MockNet
   -> Topology
   -> [NodeSpec a]
-  -> ContT r m [(NodeSpec a, BlockchainNet, Connection 'RW a, LogEnv)]
+  -> ContT r m [(NodeSpec a, BlockchainNet, Connection 'RW, LogEnv)]
 allocNetwork net topo specs
   = forM networked $ \(bnet,spec) -> do
       (conn,logEnv) <- allocNode spec
@@ -74,10 +72,3 @@ allocateMockNetAddrs net topo nodes =
         All2All -> connectAll2All
 
 
--- | Callback which aborts execution when blockchain exceed given
---   height. It's done by throwing 'Abort'.
-callbackAbortAtH :: MonadThrow m => Height -> AppCallbacks m a
-callbackAbortAtH hMax = mempty
-  { appCommitCallback = \b ->
-      when (blockHeight b > hMax) $ throwM Abort
-  }

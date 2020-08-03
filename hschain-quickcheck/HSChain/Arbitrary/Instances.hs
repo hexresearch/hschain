@@ -139,7 +139,6 @@ instance ( Crypto (Alg a)
                     <*> arbitrary
                     <*> resize 4 arbitrary
                     <*> arbitrary
-                    <*> arbitrary
   shrink = genericShrink
 
 instance (Crypto (Alg a)) => Arbitrary (ByzantineEvidence a) where

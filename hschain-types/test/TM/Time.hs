@@ -12,6 +12,7 @@ module TM.Time (tests) where
 import Codec.Serialise (Serialise)
 import Control.Monad
 import Control.Exception
+import Data.Aeson (ToJSON)
 import Data.Int
 import Data.List
 import Data.Proxy
@@ -100,17 +101,14 @@ instance CryptoHashable BData where
   hashStep = genericHashStep "hschain-tests"
 
 data Err = Err
-  deriving stock (Show)
-  deriving anyclass (Exception)
+  deriving stock    (Show,Generic)
+  deriving anyclass (Exception,ToJSON)
 
 instance BlockData BData where
   type TX              BData = ()
-  type BlockchainState BData = ()
   type BChError        BData = Err
   type Alg             BData = Ed25519 :& SHA512
-  type BChMonad        BData = Maybe
   proposerSelection   = error "proposerSelection is unused"
-  bchLogic            = error "bchLogic is unused"
 
 
 bid :: BlockID BData

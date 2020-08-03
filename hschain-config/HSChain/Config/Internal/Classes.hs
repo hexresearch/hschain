@@ -137,7 +137,7 @@ instance {-# OVERLAPPABLE #-} (FromJSON a, Typeable a) => GConfigField (K1 R a) 
     = prependFailure (errorMsg fld (typeRep (Proxy @a)))
     $ K1 <$> parseJSON v
                                
-instance (FromJSON a, Typeable a) => GConfigField (K1 R (Maybe a)) where
+instance {-# INCOHERENT #-} (FromJSON a, Typeable a) => GConfigField (K1 R (Maybe a)) where
   parseRecField _ _   Nothing  Nothing = return (K1 Nothing)
   parseRecField _ _   (Just a) Nothing = return a
   parseRecField _ fld _        (Just v)

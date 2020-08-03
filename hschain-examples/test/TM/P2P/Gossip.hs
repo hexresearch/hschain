@@ -25,7 +25,7 @@ import HSChain.Blockchain.Internal.Types
 import HSChain.Control.Util
 import HSChain.Crypto
 import HSChain.Crypto.Containers
-import HSChain.Logger
+import HSChain.Internal.Types.Messages
 import HSChain.P2P
 import HSChain.P2P.PeerState.Types
 import HSChain.Store
@@ -216,17 +216,18 @@ data Event a = ETX     (MessageTx a)
              | EGossip (GossipMsg a)
              | ETimeout GossipTimeout
 
-type GossipM a = DBT 'RW a (NoLogsT IO)
+type GossipM a = HSChainT a IO
 type TestM   a = StateT  (P2P.State a)
-                 ( ReaderT ( P2P.Config a
-                           , TVar (Maybe (Height, TMState a)))
+                 ( ReaderT ( P2P.Config Maybe a
+                           , TVar (Maybe (Height, TMState Maybe a)))
                  ( GossipM a
                  ))
 
 -- Start gossip FSM all alone
 withGossip :: Int -> TestM Mock.BData x -> IO x
 withGossip n action = do
-  withDatabase "" $ \conn -> runNoLogsT $ runDBT conn $ do
+  withDatabase "" $ \conn -> runHSChainT conn $ do
+    initDatabase
     mustQueryRW $ storeGenesis genesis
     consensusState <- liftIO $ newTVarIO Nothing
     let config = P2P.Config (readTVar consensusState)

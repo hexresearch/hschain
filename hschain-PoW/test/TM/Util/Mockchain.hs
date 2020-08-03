@@ -1,19 +1,28 @@
-{-# LANGUAGE FlexibleContexts             #-}
-{-# LANGUAGE TypeFamilies                 #-}
-{-# LANGUAGE UndecidableInstances         #-}
+{-# LANGUAGE DataKinds                  #-}
+{-# LANGUAGE DerivingStrategies         #-}
+{-# LANGUAGE DerivingVia                #-}
+{-# LANGUAGE FlexibleContexts           #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE TypeFamilies               #-}
+{-# LANGUAGE UndecidableInstances       #-}
 
 -- |
 module TM.Util.Mockchain where
 
 import Codec.Serialise
 import Control.Applicative
+import Control.Monad.Catch
+import Control.Monad.Reader
 import Data.Bits
-import Data.Word
 import Data.List  (unfoldr)
+import Data.Word
 
 import System.IO.Unsafe (unsafePerformIO)
 
 import HSChain.PoW.Types
+import HSChain.Logger
+import HSChain.Control.Class
+import HSChain.Store.Query
 import HSChain.Types.Merkle.Types
 import HSChain.Examples.Simple
 
@@ -94,3 +103,20 @@ header2' = toHeader block2'
 header3' = toHeader block3'
 header4' = toHeader block4'
 
+
+
+-- | Monad transformer for use in tests
+newtype HSChainT m x = HSChainT (ReaderT (Connection 'RW) m x)
+  deriving newtype (Functor,Applicative,Monad,MonadIO,MonadFail)
+  deriving newtype (MonadThrow,MonadCatch,MonadMask,MonadFork)
+  deriving newtype (MonadReader (Connection 'RW))
+  -- HSChain instances
+  deriving MonadLogger            via NoLogsT          (HSChainT m)
+  deriving (MonadReadDB, MonadDB) via DatabaseByReader (HSChainT m)
+
+runHSChainT :: Connection 'RW -> HSChainT m x -> m x
+runHSChainT c (HSChainT m) = do
+  runReaderT m c
+
+withHSChainT :: (MonadIO m, MonadMask m) => HSChainT m a -> m a
+withHSChainT m = withConnection "" $ \c -> runHSChainT c m

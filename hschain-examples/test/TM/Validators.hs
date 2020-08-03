@@ -8,6 +8,7 @@
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StandaloneDeriving  #-}
+{-# LANGUAGE TypeApplications    #-}
 {-# LANGUAGE TypeFamilies        #-}
 {-# LANGUAGE TypeOperators       #-}
 
@@ -16,13 +17,12 @@ module TM.Validators (tests) where
 
 import Codec.Serialise
 import Control.DeepSeq
-import Control.Applicative
 import Control.Monad
 import Control.Monad.Trans.Cont
 import Control.Monad.Trans.Class
-import Control.Monad.Trans.Except
 import Control.Monad.Catch
 import Control.Monad.IO.Class
+import Data.Aeson (ToJSON)
 import Data.Maybe
 import Data.Default.Class
 import qualified Data.Map.Strict as Map
@@ -39,22 +39,25 @@ import HSChain.Control.Class
 import HSChain.Crypto
 import HSChain.Crypto.Classes.Hash
 import HSChain.Crypto.Ed25519 (Ed25519)
-import HSChain.Crypto.SHA     (SHA512)
+import HSChain.Crypto.SHA     (SHA1)
+import HSChain.Internal.Types.Consensus
 import HSChain.Logger
+import HSChain.Mempool
 import HSChain.Mock.KeyList (makePrivKeyStream)
 import HSChain.Mock.Types
 import HSChain.Mock
 import HSChain.Monitoring
 import HSChain.Run
 import HSChain.Store
-import HSChain.Store.STM
 import HSChain.Types
 import HSChain.Types.Merkle.Types
 import HSChain.Arbitrary.Instances ()
 import qualified HSChain.Network.Mock as P2P
 import TM.Util.Network
+import TM.Util.MockChain (runHSChainT)
 
-type VSet = ValidatorSet (Ed25519 :& SHA512)
+type VSet = ValidatorSet (Alg Tx)
+
 
 tests :: TestTree
 tests = testGroup "validators"
@@ -104,7 +107,7 @@ tests = testGroup "validators"
   ]
 
 
-v1,v2 :: PublicKey (Ed25519 :& SHA512)
+v1,v2 :: PublicKey (Ed25519 :& SHA1)
 v1:v2:_ = publicKey <$> makePrivKeyStream 1337
 
 samplingEquidistribution :: ValidatorSet Ed25519 -> Property
@@ -130,13 +133,12 @@ testValidatorChange :: IO ()
 testValidatorChange = withTimeOut 20e6 $ do
   evalContT $ do
     net       <- liftIO P2P.newMockNet
-    resources <- allocNetwork net (netTopology spec) (netNodeList spec)
-    nodes     <- executeNodeSpec  spec resources
+    resources <- allocNetwork net (clusterTopology spec) (clusterNodes spec)
+    conn:_    <- executeNodeSpec  spec resources
     -- Execute nodes for second time!
     _         <- executeNodeSpec  spec resources
     -- Now test that we have correct validator sets for every height
-    let conn = rnodeConn $ head nodes
-    liftIO $ runDBT conn $ do
+    liftIO $ runHSChainT @Tx conn $ do
       checkVals valSet0 (Height  1)
       checkVals valSet0 (Height  2)
       checkVals valSet0 (Height  3)
@@ -152,11 +154,12 @@ testValidatorChange = withTimeOut 20e6 $ do
       v <- queryRO $ mustRetrieveValidatorSet h
       liftIO $ assertEqual (show h) v0 v
     --
-    spec = NetSpec
-      { netNodeList = [ NodeSpec (Just $ PrivValidator k) Nothing [] Nothing
-                      | k <- privK]
-      , netTopology = All2All
-      , netNetCfg   =
+    spec = MockClusterConfig
+      { clusterTopology = All2All
+      , clusterNodes    = [ NodeSpec (Just $ PrivValidator k) Nothing []
+                          | k <- privK
+                          ]
+      , clusterCfg      =
         let c = def
         in  c { cfgConsensus = ConsensusCfg
                 { timeoutNewHeight  = 10
@@ -167,7 +170,7 @@ testValidatorChange = withTimeOut 20e6 $ do
                 , incomingQueueSize = 10
                 }
               } `asTypeOf` c
-      , netMaxH     = Just $ Height 10
+      , clusterBChData = ()
       }
 
 
@@ -175,22 +178,19 @@ data Tx = AddVal !(PublicKey (Alg Tx)) !Integer
         | RmVal  !(PublicKey (Alg Tx))
         | Noop
   deriving stock    (Show,Eq,Ord,Generic)
-  deriving anyclass (NFData,Serialise)
+  deriving anyclass (NFData,Serialise,ToJSON)
 
 instance CryptoHashable Tx where
   hashStep = genericHashStep "hschain"
 
 data ValErr = ValErr
-  deriving stock    (Show)
-  deriving anyclass (Exception)
+  deriving stock    (Show,Generic)
+  deriving anyclass (Exception,ToJSON)
 
 instance BlockData Tx where
-  type TX              Tx = Tx
-  type BlockchainState Tx = ValidatorSet (Ed25519 :& SHA512)
-  type BChError        Tx = ValErr
-  type BChMonad        Tx = Maybe
-  type Alg             Tx = Ed25519 :& SHA512
-  bchLogic                = transitions
+  type TX       Tx = Tx
+  type BChError Tx = ValErr
+  type Alg      Tx = Ed25519 :& SHA1
   proposerSelection       = ProposerSelection randomProposerSHA512
 
 privK :: [PrivKey (Alg Tx)]
@@ -205,35 +205,39 @@ Right valSet3 = makeValidatorSet [Validator k 1 | k <- [pk1,pk2,pk3    ]]
 Right valSet6 = makeValidatorSet [Validator k 1 | k <- [pk1,pk2,pk3,pk4]]
 Right valSet8 = makeValidatorSet [Validator k 1 | k <- [    pk2,pk3,pk4]]
 
-transitions :: BChLogic Maybe Tx
-transitions = BChLogic
-  { processTx     = \_ -> empty
-  --
-  , processBlock  = \BChEval{..} -> fmap (() <$)
-                                  $ gen (merkleValue validatorSet)
-                                  $ merkleValue $ blockData bchValue
-  --
-  , generateBlock = \NewBlock{..} _ -> case newBlockHeight of
-      Height 3 -> gen newBlockValSet $ AddVal pk3 1
-      Height 6 -> gen newBlockValSet $ AddVal pk4 1
-      Height 8 -> gen newBlockValSet $ RmVal  pk1
-      _        -> gen newBlockValSet $ Noop
-  }
+inMemoryStateView :: (Monad m) => ValidatorSet (Alg Tx) -> StateView m Tx
+inMemoryStateView = make Nothing
   where
-    gen vals tx = do
-      let adjustment = process tx
-      valSet' <- case makeValidatorSet $ adjustment $ asValidatorList vals of
-                   Right v -> return v
-                   Left  _ -> empty
-      return BChEval { bchValue        = tx
-                     , blockchainState = merkled valSet'
-                     , validatorSet    = merkled valSet'
-                     }
-    -- We're permissive and allow remove nonexiting validator
-    process Noop         = id
-    process (AddVal k i) = (Validator k i :)
-                         . filter ((/=k) . validatorPubKey)
-    process (RmVal  k)   = filter ((/=k) . validatorPubKey)
+    make mh vals = viewSt where
+      viewSt = StateView
+        { stateHeight   = mh
+        , newValidators = vals
+        , commitState   = return viewSt
+        , stateMempool  = nullMempool
+        --
+        , validatePropBlock = \b _ -> return $ do
+            let tx = merkleValue $ blockData b
+            case makeValidatorSet $ process tx $ asValidatorList vals of
+              Left  _     -> Left ValErr
+              Right vals' -> Right $ make (Just $ blockHeight b) vals'
+        , generateCandidate = \NewBlock{..} -> do
+            let prop = case newBlockHeight of
+                  Height 3 -> AddVal pk3 1
+                  Height 6 -> AddVal pk4 1
+                  Height 8 -> RmVal  pk1
+                  _        -> Noop
+                Right vals' = makeValidatorSet $ process prop $ asValidatorList vals
+            return ( prop
+                   , make (Just newBlockHeight) vals'
+                   )
+        }
+
+-- We're permissive and allow remove nonexiting validator
+process :: Tx -> [Validator (Alg Tx)] -> [Validator (Alg Tx)]
+process Noop         = id
+process (AddVal k i) = (Validator k i :)
+                     . filter ((/=k) . validatorPubKey)
+process (RmVal  k)   = filter ((/=k) . validatorPubKey)
 
 
 
@@ -242,62 +246,45 @@ transitions = BChLogic
 ----------------------------------------------------------------
 
 interpretSpec
-  :: ( MonadDB Tx m, MonadFork m, MonadMask m, MonadLogger m
+  :: ( MonadDB m, MonadCached Tx m, MonadFork m, MonadMask m, MonadLogger m
      , MonadTMMonitoring m)
   => Genesis Tx
   -> NodeSpec Tx
   -> BlockchainNet
   -> Configuration Example
   -> AppCallbacks m Tx
-  -> m (RunningNode m Tx, [m ()])
+  -> m (Connection 'RW, [m ()])
 interpretSpec genesis nspec bnet cfg cb = do
-  conn  <- askConnectionRO
-  store <- newSTMBchStorage $ blockchainState genesis
-  let astore = AppStore { appBchState = store
-                        , appMempool  = nullMempool
-                        }
   acts  <- runNode cfg NodeDescription
     { nodeValidationKey = nspecPrivKey nspec
     , nodeGenesis       = genesis
+    , nodeStateView     = inMemoryStateView $ genesisValSet genesis
     , nodeCallbacks     = cb
-    , nodeRunner        = maybe (throwE ValErr) return
-
-    , nodeStore         = astore
     , nodeNetwork       = bnet
     }
-  return
-    ( RunningNode { rnodeState   = store
-                  , rnodeConn    = conn
-                  , rnodeMempool = appMempool astore
-                  }
-    , acts
-    )
-
+  conn <- askConnectionRW
+  return (conn, acts)
 
 executeNodeSpec
   :: (MonadIO m, MonadMask m, MonadFork m,  MonadTMMonitoring m)
-  => NetSpec (NodeSpec Tx)
-  -> [(NodeSpec Tx, BlockchainNet, Connection 'RW Tx, LogEnv)]
-  -> ContT r m [RunningNode m Tx]
-executeNodeSpec NetSpec{..} resources = do
+  => MockClusterConfig Tx ()
+  -> [(NodeSpec Tx, BlockchainNet, Connection 'RW, LogEnv)]
+  -> ContT r m [Connection 'RW]
+executeNodeSpec MockClusterConfig{..} resources = do
   -- Start nodes
-  rnodes    <- lift $ forM resources $ \(nspec, bnet, conn, logenv) -> do
-    let run :: DBT 'RW Tx (LoggerT m) x -> m x
-        run = runLoggerT logenv . runDBT conn
-    (rn, acts) <- run $ interpretSpec
-      BChEval { bchValue        = genesis
-              , validatorSet    = merkled valSet0
-              , blockchainState = merkled valSet0
-              }
+  rnodes <- lift $ forM resources $ \(nspec, bnet, conn, _logenv) -> do
+    (c, acts) <- runHSChainT conn $ interpretSpec
+      genesis
       nspec
       bnet
-      netNetCfg
-      (maybe mempty callbackAbortAtH netMaxH)
-    return ( hoistRunningNode run rn
-           , run <$> acts
-           )
+      clusterCfg
+      (callbackAbortAtH (Height 10)) 
+    return ( c, runHSChainT conn<$> acts )
   -- Actually run nodes
   lift   $ catchAbort $ runConcurrently $ snd =<< rnodes
   return $ fst <$> rnodes
   where
-    genesis = makeGenesis Noop (hashed valSet0) valSet0 valSet0
+    genesis = Genesis
+      { genesisBlock  = makeGenesis Noop valSet0 valSet0
+      , genesisValSet = valSet0
+      }

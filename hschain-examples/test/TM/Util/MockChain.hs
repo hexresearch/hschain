@@ -1,16 +1,48 @@
+{-# LANGUAGE DataKinds                  #-}
+{-# LANGUAGE DerivingStrategies         #-}
+{-# LANGUAGE DerivingVia                #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
 -- |
 -- Data for mock blockchain used in tests for consensus and gossip
 module TM.Util.MockChain where
 
+import Control.Monad.Catch
+import Control.Monad.Reader
 import           Data.List (sortOn)
 import qualified Data.Map.Strict    as Map
 import qualified Data.List.NonEmpty as NE
 
+import HSChain.Control.Class
 import HSChain.Crypto
+import HSChain.Logger
+import HSChain.Store
+import HSChain.Monitoring
 import HSChain.Types
 import HSChain.Types.Merkle.Types
+import HSChain.Internal.Types.Consensus
 import HSChain.Mock.KeyList
-import HSChain.Mock.KeyVal  (BData(..),BState,mkGenesisBlock)
+import HSChain.Mock.KeyVal  (BData(..),mkGenesisBlock)
+
+
+----------------------------------------------------------------
+-- Monad for running tests
+----------------------------------------------------------------
+
+newtype HSChainT a m x = HSChainT (ReaderT (Connection 'RW, Cached a) m x)
+  deriving newtype (Functor,Applicative,Monad,MonadIO,MonadFail)
+  deriving newtype (MonadThrow,MonadCatch,MonadMask,MonadFork)
+  deriving newtype (MonadReader (Connection 'RW, Cached a))
+  -- HSChain instances
+  deriving MonadTMMonitoring      via NoMonitoring   (HSChainT a m)
+  deriving MonadLogger            via NoLogsT        (HSChainT a m)
+  deriving (MonadReadDB, MonadDB) via DatabaseByType (HSChainT a m)
+  deriving (MonadCached a)        via CachedByType a (HSChainT a m)
+
+runHSChainT :: forall a m x. MonadIO m => Connection 'RW -> HSChainT a m x -> m x
+runHSChainT c (HSChainT m) = do
+  cache <- newCached
+  runReaderT m (c,cache)
 
 
 ----------------------------------------------------------------
@@ -40,11 +72,11 @@ block1' = mintFirstBlock $ BData [("K1",101)]
 mockchain :: [Block BData]
 mockchain
   = fmap fst
-  $ scanl step (bchValue genesis,mempty)
+  $ scanl step (genesisBlock genesis,mempty)
     [BData [("K"++show i,i)] | i <- [100..]]
   where
     step (b,st) dat@(BData txs) = let st' = st <> Map.fromList txs
-                                  in ( mintBlock b st' dat, st' )
+                                  in ( mintBlock b dat, st' )
 
 
 ----------------------------------------------------------------
@@ -52,11 +84,10 @@ mockchain
 ----------------------------------------------------------------
 
 mintFirstBlock :: BData -> Block BData
-mintFirstBlock dat@(BData txs)
-  = mintBlock (bchValue genesis) (Map.fromList txs) dat
+mintFirstBlock dat = mintBlock (genesisBlock genesis) dat
 
-mintBlock :: Block BData -> BState -> BData -> Block BData
-mintBlock b st dat = Block
+mintBlock :: Block BData -> BData -> Block BData
+mintBlock b dat = Block
   { blockHeight        = succ hPrev
   , blockPrevBlockID   = Just bid
   , blockValidators    = hashed valSet
@@ -64,7 +95,6 @@ mintBlock b st dat = Block
   , blockData          = merkled dat
   , blockPrevCommit    = merkled <$> commit
   , blockEvidence      = merkled []
-  , blockStateHash     = hashed st
   }
   where
     hPrev  = blockHeight b

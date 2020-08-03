@@ -5,26 +5,28 @@
 -- You may use it directly or copy and tailor.
 --
 -- Copyright (C) ... 2020
-
 {-# LANGUAGE ApplicativeDo       #-}
 {-# LANGUAGE BangPatterns        #-}
 {-# LANGUAGE DeriveAnyClass      #-}
 {-# LANGUAGE DeriveGeneric       #-}
 {-# LANGUAGE DerivingStrategies  #-}
+{-# LANGUAGE DerivingVia         #-}
 {-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE OverloadedStrings   #-}
-{-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE RankNTypes          #-}
+{-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications    #-}
 {-# LANGUAGE TypeFamilies        #-}
-
+{-# LANGUAGE ViewPatterns        #-}
 module HSChain.PoW.Node
   ( Cfg(..)
   , runNode
   , inMemoryView
+    -- * Block storage
   , inMemoryDB
+  , blockDatabase
   ) where
 
 import qualified Data.Aeson as JSON
@@ -32,22 +34,18 @@ import Codec.Serialise
 
 import Control.Concurrent
 import Control.Concurrent.STM
-
 import Control.Monad
 import Control.Monad.Catch
 import Control.Monad.Cont
 import Control.Monad.Trans.Cont
 
 import Data.IORef
-
+import Data.Foldable
 import qualified Data.Map.Strict as Map
-
+import Data.List (sortOn)
 import Data.Word
-
 import Data.Yaml.Config
-
 import GHC.Generics (Generic)
-
 import Lens.Micro
 
 import HSChain.PoW.Consensus
@@ -60,6 +58,8 @@ import HSChain.Network.Types
 import HSChain.Types.Merkle.Types
 import HSChain.Control.Util
 import HSChain.Control.Class
+import HSChain.Config
+import HSChain.Store.Query
 
 -- |Node's configuration.
 data Cfg = Cfg
@@ -67,15 +67,17 @@ data Cfg = Cfg
   , cfgPeers :: [NetAddr]
   , cfgLog   :: [ScribeSpec]
   , cfgMaxH  :: Maybe Height
+  , cfgDB    :: Maybe FilePath
   }
-  deriving stock    (Show, Generic)
-  deriving anyclass (JSON.FromJSON)
+  deriving stock (Show, Generic)
+  deriving (JSON.FromJSON) via SnakeCase (DropSmart (Config Cfg))
+
 
 -- |The process to run nodes.
 --
 -- Requires places to load config from, a flag indicating that
 -- we are mining and genesis block.
-runNode :: forall b s . (BlockData b, Mineable b, Show (b Identity), Serialise (b Proxy), Serialise (b Identity))
+runNode :: (BlockData b, Mineable b, Show (b Identity), Serialise (b Proxy), Serialise (b Identity))
         => [String] -> Bool -> Block b
         -> (Block b -> s -> Maybe s)
         -> (BH b -> s -> ((Header b, [Tx b]), s))
@@ -89,17 +91,13 @@ runNode pathsToConfig miningNode genesisBlock step inventHeaderTxs inventBlock s
                       , nConnectedPeers = 3
                       }
   let net = newNetworkTcp cfgPort
-  db <- inMemoryDB @_ @_ @b
+  db <- inMemoryDB genesisBlock
   let s0 = consensusGenesis genesisBlock $
                             inMemoryView step startState $
                             blockID genesisBlock
   withLogEnv "" "" (map makeScribe cfgLog) $ \logEnv ->
     runLoggerT logEnv $ evalContT $ do
-      pow' <- startNode netcfg net cfgPeers db s0
-      let pow = pow'
-                { sendNewBlock = \b -> do
-                                 (sendNewBlock pow') b
-                }
+      pow <- startNode netcfg net cfgPeers db s0
       let printBCH = do
             c <- atomicallyIO $ currentConsensus pow
             let loop n bh@BH{bhBID = bid} = when (n > (0 :: Int)) $ do
@@ -156,7 +154,7 @@ runNode pathsToConfig miningNode genesisBlock step inventHeaderTxs inventBlock s
 -- | Simple in-memory implementation of DB
 inMemoryView
   :: (Monad m, BlockData b, Show (BlockID b))
-  => (Block b -> s -> Maybe s)       -- ^ Step function 
+  => (Block b -> s -> Maybe s)       -- ^ Step function
   -> s                               -- ^ Initial state
   -> BlockID b
   -> StateView s m b
@@ -166,21 +164,86 @@ inMemoryView step = make (error "No revinding past genesis")
       where
         view = StateView
           { stateBID           = bid
-          , applyBlock         = \b -> case step b s of
+          , applyBlock         = \_ b -> case step b s of
               Nothing -> return Nothing
-              Just s' -> return $ Just $  make view s' (blockID b)
+              Just s' -> return $ Just $ make view s' (blockID b)
           , revertBlock        = return previous
-          , flushState         = return ()
+          , flushState         = return view
           , stateComputeAlter  = \f -> let (a, s') = f s in (a, make previous s' bid)
           }
 
+----------------------------------------------------------------
+-- Databases
+----------------------------------------------------------------
+
 inMemoryDB
   :: (MonadIO m, MonadIO n, BlockData b)
-  => m (BlockDB n b)
-inMemoryDB = do
-  var <- liftIO $ newIORef Map.empty
+  => Block b
+  -> m (BlockDB n b)
+inMemoryDB genesis = do
+  var <- liftIO $ newIORef $ Map.singleton (blockID genesis) genesis
   return BlockDB
-    { storeBlock     = \b   -> liftIO $ modifyIORef' var $ Map.insert (blockID b) b
-    , retrieveBlock  = \bid -> liftIO $ Map.lookup bid <$> readIORef var
-    , retrieveHeader = \bid -> liftIO $ fmap toHeader . Map.lookup bid <$> readIORef var
+    { storeBlock         = \b   -> liftIO $ modifyIORef' var $ Map.insert (blockID b) b
+    , retrieveBlock      = \bid -> liftIO $ Map.lookup bid <$> readIORef var
+    , retrieveHeader     = \bid -> liftIO $ fmap toHeader . Map.lookup bid <$> readIORef var
+    , retrieveAllHeaders = liftIO $ sortOn blockHeight . map toHeader . toList <$> readIORef var
     }
+
+
+-- | Block storage backed by SQLite database. It's most generic
+--   storage which just stores
+blockDatabase
+  :: ( MonadThrow m, MonadIO m, MonadDB m
+     , BlockData b, Serialise (b Proxy), Serialise (b Identity))
+  => Block b
+  -> m (BlockDB m b)
+blockDatabase genesis = do
+  -- First we initialize database schema
+  mustQueryRW $ basicExecute_
+    "CREATE TABLE IF NOT EXISTS pow_blocks \
+    \  ( id         INTEGER PRIMARY KEY AUTOINCREMENT \
+    \  , bid        BLOB NOT NULL UNIQUE \
+    \  , height     INTEGER NOT NULL \
+    \  , time       INTEGER NUT NULL \
+    \  , prev       BLOB NULL \
+    \  , headerData BLOB NOT NULL \
+    \  , blockData  BLOB NOT NULL )"
+  store genesis
+  return BlockDB
+    { storeBlock = store
+      --
+    , retrieveBlock  = \bid -> queryRO $ basicQueryWith1
+        decoderBlock
+        "SELECT height, time, prev, blockData FROM pow_blocks WHERE bid = ?"
+        (Only (CBORed bid))
+      --
+    , retrieveHeader = \bid -> queryRO $ basicQueryWith1
+        decoderHeader
+        "SELECT height, time, prev, headerData FROM pow_blocks WHERE bid = ?"
+        (Only (CBORed bid))
+      --
+    , retrieveAllHeaders = queryRO $ basicQueryWith_
+        decoderHeader
+        "SELECT height, time, prev, headerData FROM pow_blocks ORDER BY height"
+    }
+    where
+      decoderBlock  = do blockHeight <- field
+                         blockTime   <- field
+                         prevBlock   <- nullableFieldCBOR
+                         blockData   <- fieldCBOR
+                         return GBlock{..}
+      decoderHeader = do blockHeight <- field
+                         blockTime   <- field
+                         prevBlock   <- nullableFieldCBOR
+                         blockData   <- fieldCBOR
+                         return GBlock{..}
+      --
+      store b@GBlock{..} = mustQueryRW $ basicExecute
+        "INSERT OR IGNORE INTO pow_blocks VALUES (NULL, ?, ?, ?, ?, ?, ?)"
+        ( CBORed (blockID b)
+        , blockHeight
+        , blockTime
+        , CBORed <$> prevBlock
+        , CBORed (merkleMap (const Proxy) blockData)
+        , CBORed blockData
+        )

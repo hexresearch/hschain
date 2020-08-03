@@ -29,16 +29,16 @@ import Text.Printf
 
 import HSChain.Blockchain.Internal.Engine.Types
 import HSChain.Blockchain.Internal.Engine
-import HSChain.Blockchain.Internal.Types
 import HSChain.Control.Class
 import HSChain.Control.Util
 import HSChain.Crypto
-import HSChain.Logger
+import HSChain.Internal.Types.Messages
+import HSChain.Internal.Types.Config
+import HSChain.Internal.Types.Consensus
 import HSChain.Store
-import HSChain.Store.STM
 import HSChain.Store.Internal.Query
 import HSChain.Types
-import HSChain.Mock.KeyVal  (BData(..),keyValLogic)
+import HSChain.Mock.KeyVal  (BData(..),inMemoryStateView)
 import HSChain.Types.Merkle.Types
 
 import Test.Tasty
@@ -397,7 +397,7 @@ evidenceIsRecordedProp = withEnvironment $ do
     otherK = take 2 $ filter (/=proposerH2R0) privK
 
 selectAllEvidence
-  :: MonadQueryRO a m
+  :: MonadQueryRO m
   => m [(CBORed (ByzantineEvidence BData), Bool)]
 selectAllEvidence
   = basicQuery_ "SELECT evidence,recorded FROM thm_evidence"
@@ -506,13 +506,10 @@ conflictingVotesOK v1 v2
 -- Helpers for running tests
 ----------------------------------------------------------------
 
-type ConsensusM = DBT 'RW BData (NoLogsT IO)
-
-run :: Connection 'RW BData -> ConsensusM a -> IO a
-run c = runNoLogsT . runDBT c
+type ConsensusM = HSChainT BData IO
 
 withEnvironment :: ConsensusM x -> IO x
-withEnvironment act = withDatabase "" $ \conn -> run conn act
+withEnvironment act = withDatabase "" $ \conn -> runHSChainT conn act
 
 execConsensus
   :: PrivKey (Alg BData)
@@ -537,16 +534,17 @@ startConsensus
                 , ConsensusM ()
                 )
 startConsensus k = do
+  initDatabase
   chans <- newAppChans cfg
   ch    <- atomicallyIO $ dupTChan $ appChanTx chans
-  store <- newSTMBchStorage $ merkled mempty
-  let appStore = AppStore nullMempool store
-  initializeBlockchain genesis keyValLogic appStore
+  st    <- initializeBlockchain genesis
+         $ inMemoryStateView
+         $ genesisValSet genesis
   return ( ( ch
            , appChanRx chans
            )
          , runApplication cfg (Just (PrivValidator k))
-             keyValLogic appStore mempty chans
+             st mempty chans
          )
   where
     cfg = cfgConsensus (def :: Configuration FastTest)

@@ -27,6 +27,8 @@ import Data.Monoid              (Sum(..))
 import Data.Time.Clock          (UTCTime)
 import Data.Time.Clock.POSIX    (getPOSIXTime,posixSecondsToUTCTime)
 import Data.Int
+import qualified Database.SQLite.Simple.ToField   as SQL
+import qualified Database.SQLite.Simple.FromField as SQL
 import Numeric.Natural
 import qualified Data.Aeson      as JSON
 import qualified Codec.Serialise as CBOR
@@ -42,16 +44,19 @@ import HSChain.Types.Merkle.Types
 -- Primitives
 ----------------------------------------------------------------
 
--- | Height of block in blockchain. That is 
+-- | Height of block in blockchain.
 newtype Height = Height Int32
   deriving stock   (Show, Read, Generic, Eq, Ord)
-  deriving newtype ( NFData, Num, Real, Integral
-                   , CBOR.Serialise, JSON.ToJSON, JSON.FromJSON, Enum, CryptoHashable)
+  deriving newtype ( NFData, Num, Real, Integral, Enum
+                   , CBOR.Serialise, JSON.ToJSON, JSON.FromJSON, CryptoHashable
+                   , SQL.FromField, SQL.ToField)
 
 -- | Time in milliseconds since UNIX epoch.
 newtype Time = Time Int64
   deriving stock   (Read, Generic, Eq, Ord)
-  deriving newtype (NFData, CBOR.Serialise, JSON.ToJSON, JSON.FromJSON, Enum, CryptoHashable)
+  deriving newtype (NFData, Enum
+                   , CBOR.Serialise, JSON.ToJSON, JSON.FromJSON, CryptoHashable
+                   , SQL.FromField, SQL.ToField)
 
 -- | Useful constant to calculate durations.
 timeSecond :: Time
@@ -97,7 +102,7 @@ class ( Show      (BlockID b)
       ) => BlockData b where
 
   -- | ID of block. Usually it should be just a hash but we want to
-  --   leave some representation leeway for implementations. 
+  --   leave some representation leeway for implementations.
   data BlockID b
 
   -- | Transactions that constitute block.
@@ -316,5 +321,3 @@ hash256AsTarget a
 goBack :: Height -> BH b -> Maybe (BH b)
 goBack (Height 0) = Just
 goBack h          = goBack (pred h) <=< bhPrevious
-
-
