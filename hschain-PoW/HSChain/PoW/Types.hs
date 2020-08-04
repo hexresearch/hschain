@@ -19,6 +19,7 @@ module HSChain.PoW.Types where
 
 import Codec.Serialise          (Serialise)
 import Control.DeepSeq
+import Control.Exception
 import Control.Monad
 import Control.Monad.IO.Class
 import Data.Bits
@@ -93,23 +94,36 @@ newtype Work = Work Natural
 
 
 -- | Core of blockchain implementation.
-class ( Show      (BlockID b)
-      , Ord       (BlockID b)
-      , Serialise (BlockID b)
-      , JSON.ToJSON (BlockID b)
-      , JSON.FromJSON (BlockID b)
+class ( Show (BlockID b), Ord (BlockID b), Serialise (BlockID b)
+      , Show (TxID    b), Ord (TxID    b), Serialise (TxID    b)
+      , JSON.ToJSON (BlockID b), JSON.FromJSON (BlockID b)
+      , JSON.ToJSON (TxID    b), JSON.FromJSON (TxID    b)
       , MerkleMap b
+      , Exception (BlockException b)
       ) => BlockData b where
 
   -- | ID of block. Usually it should be just a hash but we want to
   --   leave some representation leeway for implementations.
   data BlockID b
 
+  -- | Transaction ID. Again it's usually some hash of transaction.
+  data TxID b
+
+  -- | Error during evaluation of block. It's mostly to produce
+  --   reasonable informative error messages.
+  data BlockException b
+
   -- | Transactions that constitute block.
   type Tx b
 
   -- | Compute block ID out of block using only header.
   blockID :: IsMerkle f => GBlock b f -> BlockID b
+  -- | Compute ID of a transaction.
+  txID :: Tx b -> TxID b
+
+  -- | Context free validation of a transaction. It should perform all
+  --   validations that are possible given only transacion.
+  validateTxContextFree :: Tx b -> Either (BlockException b) ()
 
   -- | Validate header. Chain ending with parent block and current
   --   time are provided as parameters.

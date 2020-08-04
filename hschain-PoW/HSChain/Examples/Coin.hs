@@ -69,8 +69,23 @@ instance BlockData Coin where
     deriving newtype ( Show,Eq,Ord,CryptoHashable,Serialise,ByteRepr
                      , JSON.ToJSON, JSON.FromJSON)
     deriving (SQL.FromField, SQL.ToField) via ByteRepred (BlockID Coin)
+
+  newtype TxID Coin = CoinTxID (Hash SHA256)
+    deriving newtype ( Show,Eq,Ord,CryptoHashable,Serialise,ByteRepr
+                     , JSON.ToJSON, JSON.FromJSON)
+    deriving (SQL.FromField, SQL.ToField) via ByteRepred (BlockID Coin)
+
+  data BlockException Coin = CoinError String
+    deriving stock    (Show)
+    deriving anyclass (Exception)
+
   type Tx Coin = TxCoin
-  blockID               = CoinID . hash
+
+  blockID = CoinID   . hash
+  txID    = CoinTxID . hash
+
+  validateTxContextFree = undefined
+
   validateHeader bh (Time now) header
     | blockHeight header == 0 = return True
     | otherwise               = return $ and

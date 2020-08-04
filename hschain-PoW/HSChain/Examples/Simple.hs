@@ -1,7 +1,8 @@
+{-# LANGUAGE DeriveAnyClass             #-}
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE DerivingStrategies         #-}
-{-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE FlexibleContexts           #-}
+{-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE RecordWildCards            #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
@@ -20,8 +21,10 @@ module HSChain.Examples.Simple
   ) where
 
 import Codec.Serialise      (Serialise)
+import Control.Exception
 import Control.Monad.IO.Class
 import Control.Applicative
+import Data.Typeable        (Typeable)
 import Data.Functor.Classes (Show1)
 import qualified Data.Aeson           as JSON
 import GHC.Generics         (Generic)
@@ -64,7 +67,9 @@ instance MerkleMap (KV cfg) where
 -- | We may need multiple chains (main chain, test chain(s)) which may
 --   use different difficulty adjustment algorithms etc.
 class ( CryptoHashable (Nonce cfg)
-      , Serialise (Nonce cfg)) => KVConfig cfg where
+      , Serialise (Nonce cfg)
+      , Typeable cfg
+      ) => KVConfig cfg where
   -- | Type of nonce. It depends on configuration.
   type Nonce cfg
 
@@ -79,12 +84,24 @@ class ( CryptoHashable (Nonce cfg)
   -- |How to check solution of a puzzle.
   kvCheckPuzzle :: MonadIO m => Header (KV cfg) -> m Bool
 
-instance KVConfig cfg => BlockData (KV cfg) where
+instance (KVConfig cfg) => BlockData (KV cfg) where
   newtype BlockID (KV cfg) = KV'BID (Hash SHA256)
     deriving newtype (Show,Eq,Ord,CryptoHashable,Serialise, JSON.ToJSON, JSON.FromJSON)
 
+  newtype TxID (KV cfg) = KV'TID (Hash SHA256)
+    deriving newtype (Show,Eq,Ord,CryptoHashable,Serialise, JSON.ToJSON, JSON.FromJSON)
+
+  data BlockException (KV cfg) = KVError
+    deriving stock    (Show)
+    deriving anyclass (Exception)
+
   type Tx (KV cfg) = (Int, String)
+
   blockID = KV'BID . hash
+  txID    = KV'TID . hash
+
+  validateTxContextFree _ = Right ()
+
   validateHeader bh (Time now) header
     | blockHeight header == 0 = return True -- skip genesis check.
     | otherwise = do
@@ -109,6 +126,6 @@ instance KVConfig cfg => BlockData (KV cfg) where
       Const adjustInterval = kvAdjustInterval :: Const Height cfg
       Const blockMineTime = kvBlockTimeInterval :: Const Time cfg
 
-instance KVConfig cfg => Mineable (KV cfg) where
+instance (KVConfig cfg) => Mineable (KV cfg) where
   adjustPuzzle = fmap (flip (,) (Target 0)) . kvSolvePuzzle
 
