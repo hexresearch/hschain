@@ -69,18 +69,38 @@ instance BlockData Coin where
     deriving newtype ( Show,Eq,Ord,CryptoHashable,Serialise,ByteRepr
                      , JSON.ToJSON, JSON.FromJSON)
     deriving (SQL.FromField, SQL.ToField) via ByteRepred (BlockID Coin)
+
+  newtype TxID Coin = CoinTxID (Hash SHA256)
+    deriving newtype ( Show,Eq,Ord,CryptoHashable,Serialise,ByteRepr
+                     , JSON.ToJSON, JSON.FromJSON)
+    deriving (SQL.FromField, SQL.ToField) via ByteRepred (BlockID Coin)
+
+  data BlockException Coin = CoinError String
+    deriving stock    (Show,Generic)
+    deriving anyclass (Exception,JSON.ToJSON)
+
   type Tx Coin = TxCoin
-  blockID               = CoinID . hash
+
+  blockID = CoinID   . hash
+  txID    = CoinTxID . hash
+
+  validateTxContextFree = undefined
+
   validateHeader bh (Time now) header
-    | blockHeight header == 0 = return True
-    | otherwise               = return $ and
-      [ let Time t = blockTime header
-        in t <= now + (2*60*60*1000)
-      , coinTarget (blockData header) == retarget bh
-      , blockTargetThreshold header >= hash256AsTarget header
-      ]
+    | blockHeight header == 0 = return $ Right ()
+    | otherwise               = return $ do
+        let Time t = blockTime header
+        unless (t <= now + (2*60*60*1000))
+          $ Left $ CoinError "Block in far future"
+        unless (coinTarget (blockData header) == retarget bh)
+          $ Left $ CoinError "Invalid target"
+        unless ( blockTargetThreshold header >= hash256AsTarget header)
+          $ Left $ CoinError "Not enough work"
   -- At he moment we accept only empty blocks (for simplicity)
-  validateBlock b = return $ null $ merkleValue $ coinData $ blockData b
+  validateBlock b = return $
+    case merkleValue $ coinData $ blockData b of
+      [] -> Right ()
+      _  -> Left $ CoinError "Nonempty block"
   blockWork b = Work
               $ fromIntegral  $ ((2^(256 :: Int)) `div`)
               $ targetInteger $ coinTarget $ blockData b

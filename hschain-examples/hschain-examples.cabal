@@ -23,6 +23,7 @@ Library
                      , hschain-config
                      , hschain-types
                      , hschain-merkle
+                     , hschain-mempool
                      , hschain
                      , hschain-net
                      , hschain-examples-types
@@ -136,6 +137,7 @@ Test-suite hschain-tests
                      , hschain
                      , hschain-logger
                      , hschain-merkle
+                     , hschain-mempool
                      , hschain-crypto
                      , hschain-control
                      , hschain-types

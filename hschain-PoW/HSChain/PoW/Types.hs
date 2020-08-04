@@ -19,11 +19,13 @@ module HSChain.PoW.Types where
 
 import Codec.Serialise          (Serialise)
 import Control.DeepSeq
+import Control.Exception
 import Control.Monad
 import Control.Monad.IO.Class
 import Data.Bits
 import qualified Data.ByteString as BS
 import Data.Monoid              (Sum(..))
+import Data.Typeable            (Typeable)
 import Data.Time.Clock          (UTCTime)
 import Data.Time.Clock.POSIX    (getPOSIXTime,posixSecondsToUTCTime)
 import Data.Int
@@ -93,31 +95,44 @@ newtype Work = Work Natural
 
 
 -- | Core of blockchain implementation.
-class ( Show      (BlockID b)
-      , Ord       (BlockID b)
-      , Serialise (BlockID b)
-      , JSON.ToJSON (BlockID b)
-      , JSON.FromJSON (BlockID b)
-      , MerkleMap b
+class ( Show (BlockID b), Ord (BlockID b), Serialise (BlockID b)
+      , Show (TxID    b), Ord (TxID    b), Serialise (TxID    b)
+      , JSON.ToJSON (BlockID b), JSON.FromJSON (BlockID b)
+      , JSON.ToJSON (TxID    b), JSON.FromJSON (TxID    b)
+      , MerkleMap b, Typeable b
+      , Exception (BlockException b), JSON.ToJSON (BlockException b)
       ) => BlockData b where
 
   -- | ID of block. Usually it should be just a hash but we want to
   --   leave some representation leeway for implementations.
   data BlockID b
 
+  -- | Transaction ID. Again it's usually some hash of transaction.
+  data TxID b
+
+  -- | Error during evaluation of block. It's mostly to produce
+  --   reasonable informative error messages.
+  data BlockException b
+
   -- | Transactions that constitute block.
   type Tx b
 
   -- | Compute block ID out of block using only header.
   blockID :: IsMerkle f => GBlock b f -> BlockID b
+  -- | Compute ID of a transaction.
+  txID :: Tx b -> TxID b
+
+  -- | Context free validation of a transaction. It should perform all
+  --   validations that are possible given only transacion.
+  validateTxContextFree :: Tx b -> Either (BlockException b) ()
 
   -- | Validate header. Chain ending with parent block and current
   --   time are provided as parameters.
-  validateHeader :: MonadIO m => BH b -> Time -> Header b -> m Bool
+  validateHeader :: MonadIO m => BH b -> Time -> Header b -> m (Either (BlockException b) ())
 
   -- | Context free validation of block which doesn't have access to
   --   state of blockchain. It should perform sanity checks.
-  validateBlock  :: MonadIO m => Block  b -> m Bool
+  validateBlock  :: MonadIO m => Block  b -> m (Either (BlockException b) ())
 
   -- | Amount of work in the block
   blockWork      :: GBlock b f -> Work

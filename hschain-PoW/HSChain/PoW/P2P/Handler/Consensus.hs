@@ -35,10 +35,15 @@ import HSChain.Logger
 -- | Channels for sending data to and from consensus thread
 data ConsensusCh s m b = ConsensusCh
   { bcastAnnounce    :: Sink (MsgAnn b)
+    -- ^ Broadcast channel for gossip announcements (we got new best head)
   , bcastChainUpdate :: Sink (BH b, StateView s m b)
+    -- ^ Broadcast channel for announcing new head for mining etc.
   , sinkConsensusSt  :: Sink (Consensus s m b)
+    -- ^ Updating state of consensus
   , sinkReqBlocks    :: Sink (Set (BlockID b))
+    -- ^ Channel for signalling to gossip what block should be fetched
   , srcRX            :: Src  (BoxRX m b)
+    -- ^ Messages from gossip
   }
 
 -- | Thread that reacts to messages from peers and updates consensus
@@ -98,10 +103,10 @@ consensusMonitor db (BoxRX message)
       runExceptT (processHeader h) >>= \case
         Right () -> return Peer'Noop
         Left  e  -> case e of
-          ErrH'KnownHeader       -> return Peer'Noop
-          ErrH'HeightMismatch    -> punish
-          ErrH'ValidationFailure -> punish
-          ErrH'BadParent         -> punish
+          ErrH'KnownHeader         -> return Peer'Noop
+          ErrH'HeightMismatch      -> punish
+          ErrH'ValidationFailure{} -> punish
+          ErrH'BadParent           -> punish
           -- We got announce that we couldn't attach to block tree. So
           -- we need that peer to catch up
           ErrH'UnknownParent     -> return Peer'EnterCatchup
@@ -112,19 +117,19 @@ consensusMonitor db (BoxRX message)
     -- Note that we explicitly requrest blocks by their BIDs so we
     -- shouln't punish peers
     handleBlockError = mapExceptT $ fmap $ \case
-      Right               () -> Right ()
-      Left ErrB'UnknownBlock -> error "Impossible: we should'n get unknown block"
-      Left ErrB'InvalidBlock -> Right ()
+      Right               ()   -> Right ()
+      Left ErrB'UnknownBlock   -> error "Impossible: we should'n get unknown block"
+      Left ErrB'InvalidBlock{} -> Right ()
     -- Handle errors during header processing. Not that KnownHeader is
     -- not really an error
     handleHeaderError = mapExceptT $ \action -> action >>= \case
       Right () -> return $ Right ()
       Left  e  -> case e of
-        ErrH'KnownHeader       -> return $ Right ()
-        ErrH'HeightMismatch    -> punish
-        ErrH'UnknownParent     -> punish
-        ErrH'ValidationFailure -> punish
-        ErrH'BadParent         -> punish
+        ErrH'KnownHeader         -> return $ Right ()
+        ErrH'HeightMismatch      -> punish
+        ErrH'UnknownParent       -> punish
+        ErrH'ValidationFailure{} -> punish
+        ErrH'BadParent           -> punish
         where
           punish = do logger WarningS "Bad header" (sl "err" e)
                       return $ Left $ Peer'Punish $ toException e

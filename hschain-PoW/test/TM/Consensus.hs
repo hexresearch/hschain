@@ -289,8 +289,12 @@ requiredOK c hs
 
 type KVState = Map.Map Int String
 data Message
-  = MsgH !(Header (KV MockChain)) (Maybe HeaderError) (Consensus KVState (NoLogsT IO) (KV MockChain) -> [String])
-  | MsgB !(Block  (KV MockChain)) (Maybe BlockError ) (Consensus KVState (NoLogsT IO) (KV MockChain) -> [String])
+  = MsgH !(Header (KV MockChain))
+         !(Maybe  (HeaderError (KV MockChain)))
+         !(Consensus KVState (NoLogsT IO) (KV MockChain) -> [String])
+  | MsgB !(Block  (KV MockChain))
+         !(Maybe  (BlockError (KV MockChain)))
+         !(Consensus KVState (NoLogsT IO) (KV MockChain) -> [String])
 
 
 
