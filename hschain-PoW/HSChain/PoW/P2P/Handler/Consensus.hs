@@ -35,10 +35,15 @@ import HSChain.Logger
 -- | Channels for sending data to and from consensus thread
 data ConsensusCh s m b = ConsensusCh
   { bcastAnnounce    :: Sink (MsgAnn b)
+    -- ^ Broadcast channel for gossip announcements (we got new best head)
   , bcastChainUpdate :: Sink (BH b, StateView s m b)
+    -- ^ Broadcast channel for announcing new head for mining etc.
   , sinkConsensusSt  :: Sink (Consensus s m b)
+    -- ^ Updating state of consensus
   , sinkReqBlocks    :: Sink (Set (BlockID b))
+    -- ^ Channel for signalling to gossip what block should be fetched
   , srcRX            :: Src  (BoxRX m b)
+    -- ^ Messages from gossip
   }
 
 -- | Thread that reacts to messages from peers and updates consensus

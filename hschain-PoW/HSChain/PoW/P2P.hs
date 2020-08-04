@@ -33,11 +33,16 @@ import HSChain.PoW.P2P.Handler.BlockRequests
 import HSChain.Types.Merkle.Types
 
 
+-- | Dictionary with functions for interacting with consensus engine
 data PoW s m b = PoW
   { currentConsensus     :: STM (Consensus s m b)
+    -- ^ View on current state of consensus (just a read from TVar).
   , currentConsensusTVar :: TVar (Consensus s m b)
   , sendNewBlock         :: Block b -> m (Either SomeException ())
+    -- ^ Send freshly mined block to consensus
   , chainUpdate          :: STM (Src (BH b, StateView s m b))
+    -- ^ Create new broadcast source which will recieve message every
+    --   time head is changed
   }
 
 
@@ -62,6 +67,7 @@ startNode cfg netAPI seeds db consensus = do
   (sinkBIDs,   srcBIDs)    <- queuePair
   blockReg                 <- newBlockRegistry srcBIDs
   bIdx                     <- liftIO $ newTVarIO consensus
+  -- Start PEX
   runPEX cfg netAPI seeds blockReg sinkBOX mkSrcAnn (readTVar bIdx) db
   -- Consensus thread
   cforkLinked $ threadConsensus db consensus ConsensusCh
