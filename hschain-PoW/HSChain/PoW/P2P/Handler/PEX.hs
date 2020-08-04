@@ -50,7 +50,7 @@ runPEX
   -> BlockRegistry b
   -> Sink (BoxRX m b)
   -> STM (Src (MsgAnn b))
-  -> STM (Consensus s m b)
+  -> STM (Consensus m b)
   -> BlockDB m b
   -> ContT r m ()
 runPEX cfg netAPI seeds blockReg sinkBOX mkSrcAnn consSt db = do

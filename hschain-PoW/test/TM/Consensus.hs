@@ -233,7 +233,7 @@ testReorg2 = runTest
 
 
 
-bestHeadOK :: IsMerkle f => Consensus s m (KV MockChain) -> GBlock (KV MockChain) f -> [String]
+bestHeadOK :: IsMerkle f => Consensus m (KV MockChain) -> GBlock (KV MockChain) f -> [String]
 bestHeadOK c h
   | expected == got = []
   | otherwise       =
@@ -254,7 +254,7 @@ bestHeadOK c h
 --     headSet  = Set.fromList $ map (bhBID . bchHead) $ c^.candidateHeads
 
 -- | Runs 
-candidatesSeqOK :: Consensus s m (KV MockChain) -> [(Header (KV MockChain),[Header (KV MockChain)])] -> [String]
+candidatesSeqOK :: Consensus m (KV MockChain) -> [(Header (KV MockChain),[Header (KV MockChain)])] -> [String]
 candidatesSeqOK c hs
   | expected == headSet = []
   | otherwise           =
@@ -271,7 +271,7 @@ candidatesSeqOK c hs
                             ]
 
 
-requiredOK :: Consensus s m (KV MockChain) -> [Header (KV MockChain)] -> [String]
+requiredOK :: Consensus m (KV MockChain) -> [Header (KV MockChain)] -> [String]
 requiredOK c hs
   | c^.requiredBlocks == expected = []
   | otherwise                     =
@@ -287,14 +287,13 @@ requiredOK c hs
 --
 ----------------------------------------------------------------
 
-type KVState = Map.Map Int String
 data Message
   = MsgH !(Header (KV MockChain))
          !(Maybe  (HeaderError (KV MockChain)))
-         !(Consensus KVState (NoLogsT IO) (KV MockChain) -> [String])
+         !(Consensus (NoLogsT IO) (KV MockChain) -> [String])
   | MsgB !(Block  (KV MockChain))
          !(Maybe  (BlockError (KV MockChain)))
-         !(Consensus KVState (NoLogsT IO) (KV MockChain) -> [String])
+         !(Consensus (NoLogsT IO) (KV MockChain) -> [String])
 
 
 
@@ -347,7 +346,7 @@ runTest msgList = runNoLogsT $ do
 
 
 -- Check for invariants in tracking of PoW consensus 
-checkConsensus :: (Show (BlockID b), BlockData b) => Consensus s m b -> [String]
+checkConsensus :: (Show (BlockID b), BlockData b) => Consensus m b -> [String]
 checkConsensus c = concat
   [ [ "Head with less work: " ++ show (bhBID bh)
     | Head bh _ <- c^.candidateHeads

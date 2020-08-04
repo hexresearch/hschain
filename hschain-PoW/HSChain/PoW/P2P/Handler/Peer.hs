@@ -238,7 +238,7 @@ peerRecv conn st@PeerState{..} PeerChans{..} sinkGossip =
 
 locateHeaders
   :: (BlockData b)
-  => Consensus s m b
+  => Consensus m b
   -> Locator b
   -> Maybe [Header b]
 locateHeaders consensus (Locator bidList) = do

@@ -222,11 +222,10 @@ miningLoop pow True  = do
 -- Blockchain state management
 ----------------------------------------------------------------
 
-stateView :: StateView s m Coin
+stateView :: StateView m Coin
 stateView = StateView
   { stateBID          = undefined
   , applyBlock        = undefined
   , revertBlock       = undefined
-  , stateComputeAlter = undefined
   , flushState        = undefined
   }

@@ -112,36 +112,42 @@ runNode pathsToConfig miningNode genesisBlock step inventHeaderTxs inventBlock s
                                                   Left  e  -> error $ show e
                 Nothing -> doMine currentBlock
         let mineLoop baseBestHead tid = do
-              maybeNewSituation <- atomicallyIO $ do
-                 let cv = currentConsensusTVar pow
-                 cc <- readTVar cv
-                 let (bchBH, _, _) = _bestHead cc
-                     (toMine, cc') = consensusComputeOnState cc $ inventHeaderTxs bchBH
-                 if bchBH /= baseBestHead
-                   then do
-                     writeTVar cv cc'
-                     return $ Just (bchBH, toMine)
-                   else return Nothing
-              case maybeNewSituation of
-                Just (newBestHead, newHeaderTxs) -> do
-                  liftIO $ killThread tid
-                  case cfgMaxH of
-                    Just h
-                      | bhHeight newBestHead > h -> return ()
-                    _ -> do
-                         Just newBlock <- liftIO $ uncurry inventBlock newHeaderTxs
-                         mineLoop newBestHead =<< fork (doMine newBlock)
-                Nothing -> mineLoop baseBestHead tid
+              -- FIXME: Do something about this later
+              --              
+              -- maybeNewSituation <- atomicallyIO $ do
+              --    let cv = currentConsensusTVar pow
+              --    cc <- readTVar cv
+              --    let (bchBH, _, _) = _bestHead cc
+              --        (toMine, cc') = consensusComputeOnState cc $ inventHeaderTxs bchBH
+              --    if bchBH /= baseBestHead
+              --      then do
+              --        writeTVar cv cc'
+              --        return $ Just (bchBH, toMine)
+              --      else return Nothing
+              -- case maybeNewSituation of
+              --   Just (newBestHead, newHeaderTxs) -> do
+              --     liftIO $ killThread tid
+              --     case cfgMaxH of
+              --       Just h
+              --         | bhHeight newBestHead > h -> return ()
+              --       _ -> do
+              --            Just newBlock <- liftIO $ uncurry inventBlock newHeaderTxs
+              --            mineLoop newBestHead =<< fork (doMine newBlock)
+              --   Nothing -> mineLoop baseBestHead tid
+              undefined
         --
         if miningNode
           then do
             (startBestHead, headerTxs) <- atomicallyIO $ do
-               let cv = currentConsensusTVar pow
-               cc <- readTVar cv
-               let (bchBH, _, _) = _bestHead cc
-                   (toMine, cc') = consensusComputeOnState cc $ inventHeaderTxs bchBH
-               writeTVar cv cc'
-               return (bchBH, toMine)
+               -- FIXME: Do something about this later
+               --
+               -- let cv = currentConsensusTVar pow
+               -- cc <- readTVar cv
+               -- let (bchBH, _, _) = _bestHead cc
+               --     (toMine, cc') = consensusComputeOnState cc $ inventHeaderTxs bchBH
+               -- writeTVar cv cc'
+               -- return (bchBH, toMine)
+               undefined
             Just startBlock <- liftIO $ uncurry inventBlock headerTxs
             mineLoop startBestHead =<< fork (doMine startBlock)
           else liftIO $ forever $ threadDelay maxBound
@@ -153,7 +159,7 @@ inMemoryView
   => (Block b -> s -> Maybe s)       -- ^ Step function
   -> s                               -- ^ Initial state
   -> BlockID b
-  -> StateView s m b
+  -> StateView m b
 inMemoryView step = make (error "No revinding past genesis")
   where
     make previous s bid = view
@@ -165,7 +171,6 @@ inMemoryView step = make (error "No revinding past genesis")
               Just s' -> return $ Just $ make view s' (blockID b)
           , revertBlock        = return previous
           , flushState         = return view
-          , stateComputeAlter  = \f -> let (a, s') = f s in (a, make previous s' bid)
           }
 
 ----------------------------------------------------------------

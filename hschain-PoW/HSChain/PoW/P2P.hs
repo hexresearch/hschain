@@ -35,12 +35,11 @@ import HSChain.Types.Merkle.Types
 
 -- | Dictionary with functions for interacting with consensus engine
 data PoW s m b = PoW
-  { currentConsensus     :: STM (Consensus s m b)
+  { currentConsensus :: STM  (Consensus m b)
     -- ^ View on current state of consensus (just a read from TVar).
-  , currentConsensusTVar :: TVar (Consensus s m b)
-  , sendNewBlock         :: Block b -> m (Either SomeException ())
+  , sendNewBlock     :: Block b -> m (Either SomeException ())
     -- ^ Send freshly mined block to consensus
-  , chainUpdate          :: STM (Src (BH b, StateView s m b))
+  , chainUpdate      :: STM (Src (BH b, StateView m b))
     -- ^ Create new broadcast source which will recieve message every
     --   time head is changed
   }
@@ -57,7 +56,7 @@ startNode
   -> NetworkAPI
   -> [NetAddr]
   -> BlockDB   m b
-  -> Consensus s m b
+  -> Consensus m b
   -> ContT r m (PoW s m b)
 startNode cfg netAPI seeds db consensus = do
   lift $ logger InfoS "Starting PoW node" ()
@@ -79,7 +78,6 @@ startNode cfg netAPI seeds db consensus = do
     }
   return PoW
     { currentConsensus     = readTVar bIdx
-    , currentConsensusTVar = bIdx
     , sendNewBlock         = \(!b) -> runExceptT $ do
         res <- liftIO newEmptyMVar
         sinkIO sinkBOX $ BoxRX $ \cnt -> liftIO . putMVar res =<< cnt (RxMined b)
