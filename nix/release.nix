@@ -43,6 +43,7 @@ let
     hschain-quickcheck     = callInternal hsPkgs "hschain" ../hschain-quickcheck     {} "";
     hschain-types          = callInternal hsPkgs "hschain" ../hschain-types          {} "";
     hschain-merkle         = callInternal hsPkgs "hschain" ../hschain-merkle         {} "";
+    hschain-mempool        = callInternal hsPkgs "hschain" ../hschain-mempool        {} "";
     hschain-logger         = callInternal hsPkgs "hschain" ../hschain-logger         {} "";
     hschain-db             = callInternal hsPkgs "hschain" ../hschain-db             {} "";
     hschain-net            = callInternal hsPkgs "hschain" ../hschain-net            {} "";
@@ -81,6 +82,7 @@ let
       hschain-crypto-bls
       hschain-types
       hschain-merkle
+      hschain-mempool
       hschain-logger
       hschain-config
       hschain-quickcheck
