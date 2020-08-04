@@ -92,8 +92,8 @@ instance (KVConfig cfg) => BlockData (KV cfg) where
     deriving newtype (Show,Eq,Ord,CryptoHashable,Serialise, JSON.ToJSON, JSON.FromJSON)
 
   data BlockException (KV cfg) = KVError
-    deriving stock    (Show)
-    deriving anyclass (Exception)
+    deriving stock    (Generic, Eq, Show)
+    deriving anyclass (Exception, JSON.ToJSON)
 
   type Tx (KV cfg) = (Int, String)
 
@@ -103,21 +103,22 @@ instance (KVConfig cfg) => BlockData (KV cfg) where
   validateTxContextFree _ = Right ()
 
   validateHeader bh (Time now) header
-    | blockHeight header == 0 = return True -- skip genesis check.
+     -- skip genesis check.
+    | blockHeight header == 0 = return $ Right ()
     | otherwise = do
-      answerIsGood <- kvCheckPuzzle header
-      return
-        $ and
-              [ answerIsGood
-              , kvTarget (blockData header) == retarget bh
-              -- Time checks
-              , t <= now + (2*60*60*1000)
-              -- FIXME: Check that we're ahead of median time of N prev block
-              ]
+        answerIsGood <- kvCheckPuzzle header
+        let ok = and
+                   [ answerIsGood
+                   , kvTarget (blockData header) == retarget bh
+                   -- Time checks
+                   , t <= now + (2*60*60*1000)
+                   -- FIXME: Check that we're ahead of median time of N prev block
+                   ]
+        return $ if ok then Right () else Left KVError
     where
       Time t = blockTime header
   --
-  validateBlock  _ = return True
+  validateBlock  _ = return $ Right ()
   blockWork      b = Work $ fromIntegral $ ((2^(256 :: Int)) `div`)
                           $ targetInteger $ kvTarget $ blockData b
   blockTargetThreshold b = Target $ targetInteger (kvTarget (blockData b))

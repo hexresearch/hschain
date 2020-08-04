@@ -53,6 +53,7 @@ import Control.Monad.State.Strict
 import Data.List          (sortOn)
 import Data.Functor.Identity
 import Data.Foldable
+import Data.Typeable      (Typeable)
 import Data.Map           (Map,(!))
 import Data.Maybe
 import Data.Sequence      (Seq(Empty,(:<|),(:|>)),(|>))
@@ -299,23 +300,36 @@ makeLenses ''Consensus
 ----------------------------------------------------------------
 
 -- | List of reasons to reject header
-data HeaderError
+data HeaderError b
   = ErrH'KnownHeader
     -- ^ Not strictly an error. We have this header already
   | ErrH'HeightMismatch
     -- ^ Block has invalid height
   | ErrH'UnknownParent
     -- ^ We don't have parent block
-  | ErrH'ValidationFailure
+  | ErrH'ValidationFailure (BlockException b)
+    -- ^ We failed to validate header
   | ErrH'BadParent
-  deriving stock    (Show,Eq,Generic)
-  deriving anyclass (Exception,JSON.ToJSON,JSON.FromJSON)
+    -- ^ Header has acestor which is known bad block.
+  deriving stock (Generic)
 
-data BlockError
+deriving stock instance (Show (BlockException b)) => Show (HeaderError b)
+deriving stock instance (Eq   (BlockException b)) => Eq   (HeaderError b)
+
+instance (Typeable b, Show (BlockException b)) => Exception (HeaderError b)
+instance (JSON.ToJSON (BlockException b)) => JSON.ToJSON (HeaderError b)
+
+
+data BlockError b
   = ErrB'UnknownBlock
-  | ErrB'InvalidBlock
-  deriving stock    (Show,Eq,Generic)
-  deriving anyclass (Exception,JSON.ToJSON,JSON.FromJSON)
+  | ErrB'InvalidBlock (BlockException b)
+  deriving stock (Generic)
+
+deriving stock instance (Show (BlockException b)) => Show (BlockError b)
+deriving stock instance (Eq   (BlockException b)) => Eq   (BlockError b)
+
+instance (Typeable b, Show (BlockException b)) => Exception (BlockError b)
+instance (JSON.ToJSON (BlockException b)) => JSON.ToJSON (BlockError b)
 
 
 ----------------------------------------------------------------
@@ -327,7 +341,7 @@ data BlockError
 processHeader
   :: (BlockData b, MonadIO m)
   => Header b
-  -> ExceptT HeaderError (StateT (Consensus s m b) m) ()
+  -> ExceptT (HeaderError b) (StateT (Consensus s m b) m) ()
 -- FIXME: Decide what to do with time?
 -- FIXME: Decide how to track difficulty adjustment
 processHeader header = do
@@ -346,9 +360,9 @@ processHeader header = do
   unless (succ (bhHeight parent) == blockHeight header)
     $ throwError ErrH'HeightMismatch
   now <- getCurrentTime
-  goodHeader <- validateHeader parent now header
-  unless goodHeader
-    $ throwError ErrH'ValidationFailure
+  validateHeader parent now header >>= \case
+    Left err -> throwError $ ErrH'ValidationFailure err
+    Right () -> return ()
   -- Create new index entry
   let work = bhWork parent <> blockWork header
       bh   = BH { bhHeight   = blockHeight header
@@ -403,7 +417,7 @@ growHead _ [] = Nothing
 growNewHead
   :: (BlockData b, Monad m)
   => BH b
-  -> ExceptT HeaderError (StateT (Consensus s m b) m) (Head b)
+  -> ExceptT (HeaderError b) (StateT (Consensus s m b) m) (Head b)
 growNewHead bh = do
   best       <- use $ bestHead . _1
   bad        <- use badBlocks
@@ -431,7 +445,7 @@ processBlock
   :: (BlockData b, MonadIO m)
   => BlockDB m b
   -> Block b
-  -> ExceptT BlockError (StateT (Consensus s m b) m) ()
+  -> ExceptT (BlockError b) (StateT (Consensus s m b) m) ()
 processBlock db block = do
   use (blockIndex . to (lookupIdx bid)) >>= \case
     Just _  -> return ()
@@ -441,11 +455,10 @@ processBlock db block = do
   requiredBlocks %= Set.delete bid
   -- Perform context free validation of block. If we validation fails
   -- we will add it to set of bad block and won't write on disk
-  good <- validateBlock block
-  case good of
-    False -> do invalidateBlock bid
-                throwError ErrB'InvalidBlock
-    True  -> do lift $ lift $ storeBlock db block
+  validateBlock block >>= \case
+    Left err -> do invalidateBlock bid
+                   throwError $ ErrB'InvalidBlock err
+    Right () -> do lift $ lift $ storeBlock db block
   -- Now we want to find candidate heads that are better than current
   -- head and reachable at the same time.
   --
@@ -487,7 +500,7 @@ invalidateBlock bid = do
 bestCandidate
   :: (BlockData b, Monad m)
   => BlockDB m b
-  -> ExceptT BlockError (StateT (Consensus s m b) m) ()
+  -> ExceptT (BlockError b) (StateT (Consensus s m b) m) ()
 bestCandidate db = do
   bestWork <- use $ bestHead . _1 . to bhWork
   missing  <- use requiredBlocks

@@ -25,6 +25,7 @@ import Control.Monad.IO.Class
 import Data.Bits
 import qualified Data.ByteString as BS
 import Data.Monoid              (Sum(..))
+import Data.Typeable            (Typeable)
 import Data.Time.Clock          (UTCTime)
 import Data.Time.Clock.POSIX    (getPOSIXTime,posixSecondsToUTCTime)
 import Data.Int
@@ -98,8 +99,8 @@ class ( Show (BlockID b), Ord (BlockID b), Serialise (BlockID b)
       , Show (TxID    b), Ord (TxID    b), Serialise (TxID    b)
       , JSON.ToJSON (BlockID b), JSON.FromJSON (BlockID b)
       , JSON.ToJSON (TxID    b), JSON.FromJSON (TxID    b)
-      , MerkleMap b
-      , Exception (BlockException b)
+      , MerkleMap b, Typeable b
+      , Exception (BlockException b), JSON.ToJSON (BlockException b)
       ) => BlockData b where
 
   -- | ID of block. Usually it should be just a hash but we want to
@@ -127,11 +128,11 @@ class ( Show (BlockID b), Ord (BlockID b), Serialise (BlockID b)
 
   -- | Validate header. Chain ending with parent block and current
   --   time are provided as parameters.
-  validateHeader :: MonadIO m => BH b -> Time -> Header b -> m Bool
+  validateHeader :: MonadIO m => BH b -> Time -> Header b -> m (Either (BlockException b) ())
 
   -- | Context free validation of block which doesn't have access to
   --   state of blockchain. It should perform sanity checks.
-  validateBlock  :: MonadIO m => Block  b -> m Bool
+  validateBlock  :: MonadIO m => Block  b -> m (Either (BlockException b) ())
 
   -- | Amount of work in the block
   blockWork      :: GBlock b f -> Work
