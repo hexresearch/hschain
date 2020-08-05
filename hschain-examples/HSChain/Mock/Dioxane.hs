@@ -70,7 +70,7 @@ inMemoryStateView valSet0 = make Nothing valSet0 (DioState mempty)
       viewS = StateView
         { stateHeight   = mh
         , newValidators = vals
-        , stateMempool  = nullMempool
+        , stateMempool  = nullMempool hashed
         , commitState   = return viewS
         -- 
         , validatePropBlock = \b valSet -> return $ maybe (Left DioError) Right $ do

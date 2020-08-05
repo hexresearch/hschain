@@ -121,7 +121,7 @@ inMemoryStateView = make Nothing mempty
             return ( BData [tx]
                    , make (Just newBlockHeight) st' newBlockValSet 
                    )
-        , stateMempool = nullMempool
+        , stateMempool = nullMempool hashed
         }
 
 process :: Tx -> BState -> Either KeyValError BState

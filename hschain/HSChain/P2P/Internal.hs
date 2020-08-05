@@ -41,6 +41,7 @@ import HSChain.Control.Class
 import HSChain.Control.Delay
 import HSChain.Control.Shepherd
 import HSChain.Control.Util
+import HSChain.Crypto (Hashed)
 import HSChain.Internal.Types.Config
 import HSChain.Internal.Types.Consensus
 import HSChain.Logger
@@ -69,7 +70,7 @@ acceptLoop
   => NetworkCfg app
   -> NetworkAPI
   -> PeerChans n a
-  -> MempoolHandle (Alg a) (TX a)
+  -> MempoolHandle (Hashed (Alg a) (TX a)) (TX a)
   -> m ()
 acceptLoop cfg NetworkAPI{..} peerCh mempool = do
   logger DebugS "Starting accept loop" ()
@@ -107,7 +108,7 @@ connectPeerTo
   => NetworkAPI
   -> NetAddr
   -> PeerChans n a
-  -> MempoolHandle (Alg a) (TX a)
+  -> MempoolHandle (Hashed (Alg a) (TX a)) (TX a)
   -> m ()
 connectPeerTo NetworkAPI{..} addr peerCh mempool =
   -- Ignore all exceptions to prevent apparing of error messages in stderr/stdout.
@@ -137,7 +138,7 @@ startPeer
   -> PeerChans n a         -- ^ Communication with main application
                            --   and peer dispatcher
   -> P2PConnection         -- ^ Functions for interaction with network
-  -> MempoolHandle (Alg a) (TX a)
+  -> MempoolHandle (Hashed (Alg a) (TX a)) (TX a)
   -> m ()
 startPeer peerAddrTo peerCh@PeerChans{..} conn mempool = logOnException $
   descendNamespace (T.pack (show peerAddrTo)) $ logOnException $ do
@@ -161,7 +162,7 @@ peerFSM
   => PeerChans n a
   -> TBQueue (GossipMsg a)
   -> TChan (GossipMsg a)
-  -> MempoolCursor (Alg a) (TX a)
+  -> MempoolCursor (Hashed (Alg a) (TX a)) (TX a)
   -> m ()
 peerFSM peerCh@PeerChans{..} gossipCh recvCh MempoolCursor{..} = logOnException $ do
   ownPeerChanTx <- atomicallyIO $ dupTChan peerChanTx
@@ -298,7 +299,7 @@ pexFSM
   => NetworkCfg app
   -> NetworkAPI
   -> PeerChans n a
-  -> MempoolHandle (Alg a) (TX a)
+  -> MempoolHandle (Hashed (Alg a) (TX a)) (TX a)
   -> m b
 pexFSM cfg net@NetworkAPI{..} peerCh@PeerChans{..} mempool = descendNamespace "PEX" $ do
   -- Start by connecting to peers

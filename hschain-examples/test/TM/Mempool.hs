@@ -19,9 +19,8 @@ import Hedgehog
 import Hedgehog.Gen.QuickCheck (arbitrary)
 import Hedgehog.Gen            (resize)
 
-import HSChain.Crypto         (CryptoHashable)
-import HSChain.Crypto.SHA     (SHA512)
-import HSChain.Types.Merkle.Types
+import HSChain.Crypto         (CryptoHashable,hashed,Hashed)
+import HSChain.Crypto.SHA     (SHA1)
 import HSChain.Mempool
 
 
@@ -71,7 +70,7 @@ propSelfCheck = property $ do
         m'' <- liftIO $ mempoolFilterTX checkTx m'
         selfTest m''
         return m''
-  void $ foldM commitTxSet emptyMempoolState txsSets
+  void $ foldM commitTxSet (emptyMempoolState toTID) txsSets
 
 propDuplicate :: Property
 propDuplicate = property $ do
@@ -79,16 +78,18 @@ propDuplicate = property $ do
   txs :: [Int] <- forAll arbitrary
   -- Create mempool and push TX
   (_,checkTx) <- createTestMempool
-  mempool     <- liftIO $ foldM (doPush checkTx) emptyMempoolState txs
+  mempool     <- liftIO $ foldM (doPush checkTx) (emptyMempoolState toTID) txs
   -- TX should be in same order, positive, and duplicates should be removed
   unless (toList mempool == nub (filter (>0) txs)) failure
 
 doPush
   :: (MonadIO m, CryptoHashable tx)
   => (tx -> m Bool)
-  -> MempoolState SHA512 tx
+  -> MempoolState (Hashed SHA1 tx) tx
   -> tx
-  -> m (MempoolState SHA512 tx)
+  -> m (MempoolState (Hashed SHA1 tx) tx)
 doPush f m tx
-  = fromMaybe m <$> mempoolAddTX (const True) f (merkled tx) m
+  = fromMaybe m <$> mempoolAddTX (const True) f tx m
 
+toTID :: Int -> Hashed SHA1 Int
+toTID = hashed
