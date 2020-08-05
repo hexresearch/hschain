@@ -22,6 +22,7 @@ Library
                      , hschain-crypto
                      , hschain-control
                      , hschain-config
+                     , hschain-mempool
                      , hschain-logger
                      , hschain-net
                      , hschain-merkle
@@ -66,6 +67,7 @@ Library
                 HSChain.PoW.Exceptions
                 HSChain.PoW.Node
                 HSChain.PoW.Store
+                HSChain.PoW.Mempool
                 HSChain.PoW.P2P
                 HSChain.PoW.P2P.Types
                 HSChain.PoW.P2P.Handler.BlockRequests
