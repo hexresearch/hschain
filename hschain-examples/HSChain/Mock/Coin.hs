@@ -177,9 +177,7 @@ inMemoryStateView valSet0 = do
                                         Right c' -> let (c'', b  ) = selectTx c' tx
                                                     in  (c'', t:b)
               let (st', dat) = selectTx st
-                             $ map merkleValue
-                             $ toList
-                             $ mempFIFO memSt
+                             $ toList memSt
               return
                 ( BData dat
                 , make (Just newBlockHeight) newBlockValSet dat st'
@@ -497,7 +495,7 @@ databaseStateView valSetH0 = do
                       Right d' -> second (t:) <$> selectTx d' tx
               --
               memSt <- getMempoolState
-              (diff',txs) <- queryRO $ selectTx diff $ map merkleValue $ toList $ mempFIFO memSt
+              (diff',txs) <- queryRO $ selectTx diff $ toList memSt
               return ( BData txs
                      , make (Just newBlockHeight) txs newBlockValSet diff'
                      )

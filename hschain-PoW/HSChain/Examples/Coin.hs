@@ -83,6 +83,7 @@ instance BlockData Coin where
 
   blockID = CoinID   . hash
   txID    = CoinTxID . hash
+  blockTransactions = merkleValue . coinData . blockData
 
   validateTxContextFree = undefined
 

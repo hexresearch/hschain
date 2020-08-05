@@ -84,6 +84,7 @@ class ( CryptoHashable (Nonce cfg)
   -- |How to check solution of a puzzle.
   kvCheckPuzzle :: MonadIO m => Header (KV cfg) -> m Bool
 
+
 instance (KVConfig cfg) => BlockData (KV cfg) where
   newtype BlockID (KV cfg) = KV'BID (Hash SHA256)
     deriving newtype (Show,Eq,Ord,CryptoHashable,Serialise, JSON.ToJSON, JSON.FromJSON)
@@ -99,6 +100,7 @@ instance (KVConfig cfg) => BlockData (KV cfg) where
 
   blockID = KV'BID . hash
   txID    = KV'TID . hash
+  blockTransactions = merkleValue . kvData . blockData
 
   validateTxContextFree _ = Right ()
 

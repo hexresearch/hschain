@@ -39,10 +39,6 @@ import Control.Monad.Catch
 import Control.Monad.Cont
 import Control.Monad.Trans.Cont
 
-import Data.IORef
-import Data.Foldable
-import qualified Data.Map.Strict as Map
-import Data.List (sortOn)
 import Data.Word
 import Data.Yaml.Config
 import GHC.Generics (Generic)
@@ -53,13 +49,13 @@ import HSChain.Logger
 import HSChain.PoW.P2P
 import HSChain.PoW.P2P.Types
 import HSChain.PoW.Types
+import HSChain.PoW.Store
 import HSChain.Network.TCP
 import HSChain.Network.Types
 import HSChain.Types.Merkle.Types
 import HSChain.Control.Util
 import HSChain.Control.Class
 import HSChain.Config
-import HSChain.Store.Query
 
 -- |Node's configuration.
 data Cfg = Cfg
@@ -176,74 +172,3 @@ inMemoryView step = make (error "No revinding past genesis")
 -- Databases
 ----------------------------------------------------------------
 
-inMemoryDB
-  :: (MonadIO m, MonadIO n, BlockData b)
-  => Block b
-  -> m (BlockDB n b)
-inMemoryDB genesis = do
-  var <- liftIO $ newIORef $ Map.singleton (blockID genesis) genesis
-  return BlockDB
-    { storeBlock         = \b   -> liftIO $ modifyIORef' var $ Map.insert (blockID b) b
-    , retrieveBlock      = \bid -> liftIO $ Map.lookup bid <$> readIORef var
-    , retrieveHeader     = \bid -> liftIO $ fmap toHeader . Map.lookup bid <$> readIORef var
-    , retrieveAllHeaders = liftIO $ sortOn blockHeight . map toHeader . toList <$> readIORef var
-    }
-
-
--- | Block storage backed by SQLite database. It's most generic
---   storage which just stores
-blockDatabase
-  :: ( MonadThrow m, MonadIO m, MonadDB m
-     , BlockData b, Serialise (b Proxy), Serialise (b Identity))
-  => Block b
-  -> m (BlockDB m b)
-blockDatabase genesis = do
-  -- First we initialize database schema
-  mustQueryRW $ basicExecute_
-    "CREATE TABLE IF NOT EXISTS pow_blocks \
-    \  ( id         INTEGER PRIMARY KEY AUTOINCREMENT \
-    \  , bid        BLOB NOT NULL UNIQUE \
-    \  , height     INTEGER NOT NULL \
-    \  , time       INTEGER NUT NULL \
-    \  , prev       BLOB NULL \
-    \  , headerData BLOB NOT NULL \
-    \  , blockData  BLOB NOT NULL )"
-  store genesis
-  return BlockDB
-    { storeBlock = store
-      --
-    , retrieveBlock  = \bid -> queryRO $ basicQueryWith1
-        decoderBlock
-        "SELECT height, time, prev, blockData FROM pow_blocks WHERE bid = ?"
-        (Only (CBORed bid))
-      --
-    , retrieveHeader = \bid -> queryRO $ basicQueryWith1
-        decoderHeader
-        "SELECT height, time, prev, headerData FROM pow_blocks WHERE bid = ?"
-        (Only (CBORed bid))
-      --
-    , retrieveAllHeaders = queryRO $ basicQueryWith_
-        decoderHeader
-        "SELECT height, time, prev, headerData FROM pow_blocks ORDER BY height"
-    }
-    where
-      decoderBlock  = do blockHeight <- field
-                         blockTime   <- field
-                         prevBlock   <- nullableFieldCBOR
-                         blockData   <- fieldCBOR
-                         return GBlock{..}
-      decoderHeader = do blockHeight <- field
-                         blockTime   <- field
-                         prevBlock   <- nullableFieldCBOR
-                         blockData   <- fieldCBOR
-                         return GBlock{..}
-      --
-      store b@GBlock{..} = mustQueryRW $ basicExecute
-        "INSERT OR IGNORE INTO pow_blocks VALUES (NULL, ?, ?, ?, ?, ?, ?)"
-        ( CBORed (blockID b)
-        , blockHeight
-        , blockTime
-        , CBORed <$> prevBlock
-        , CBORed (merkleMap (const Proxy) blockData)
-        , CBORed blockData
-        )

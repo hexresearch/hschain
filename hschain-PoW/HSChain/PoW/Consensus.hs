@@ -51,16 +51,12 @@ import Control.Monad
 import Control.Monad.Except
 import Control.Monad.State.Strict
 import Data.List          (sortOn)
-import Data.Functor.Identity
-import Data.Foldable
 import Data.Typeable      (Typeable)
-import Data.Map           (Map,(!))
 import Data.Maybe
 import Data.Sequence      (Seq(Empty,(:<|),(:|>)),(|>))
 import Data.Set           (Set)
 import Data.Ord           (Down(..))
 import qualified Data.Aeson      as JSON
-import qualified Data.Map        as Map
 import qualified Data.Set        as Set
 import qualified Data.Sequence   as Seq
 import Lens.Micro
@@ -68,91 +64,14 @@ import Lens.Micro.Mtl
 import Lens.Micro.TH
 import GHC.Generics (Generic)
 
-import HSChain.Types.Merkle.Types
 import HSChain.PoW.Types
+import HSChain.PoW.BlockIndex
+import HSChain.PoW.Store
 
 
 ----------------------------------------------------------------
 -- Block index
 ----------------------------------------------------------------
-
--- | Index of all blocks in chain or rather tree. It's append only
---   structure and we never remove headers from it.
---
---   Implementation note. In order to keep memory use to a minimum we
---   try to share everything and ensure that no 'bhBID' points to
---   value that isn't one that part of underlying map.
-data BlockIndex b = BlockIndex
-  -- FIXME: We'll want to add blocks incrementally into compact to
-  --        make things easier for GC
-  { _blockIDMap :: Map (BlockID b) (BH b)
-  }
-
--- | Find path between nodes in block index
-traverseBlockIndex
-  :: (BlockData b)
-  => (BH b -> a -> a)         -- ^ Rollback block
-  -> (BH b -> a -> a)         -- ^ Update update block
-  -> BH b                     -- ^ Traverse from block
-  -> BH b                     -- ^ Traverse to block
-  -> (a -> a)
-traverseBlockIndex rollback update fromB toB
-  = runIdentity
-  . traverseBlockIndexM
-    (\b -> Identity . rollback b)
-    (\b -> Identity . update   b)
-    fromB toB
-
--- | Find path between nodes in block index
-traverseBlockIndexM
-  :: (Monad m, BlockData b)
-  => (BH b -> a -> m a)         -- ^ Rollback block
-  -> (BH b -> a -> m a)         -- ^ Update update block
-  -> BH b                       -- ^ Traverse from block
-  -> BH b                       -- ^ Traverse to block
-  -> (a -> m a)
-traverseBlockIndexM rollback update = go
-  where
-    go fromB toB = case bhHeight fromB `compare` bhHeight toB of
-      GT                -> rollback fromB >=> go (prev fromB) toB
-      LT                ->                    go fromB        (prev toB) >=> update toB
-      EQ | toB /= fromB -> rollback fromB >=> go (prev fromB) (prev toB) >=> update toB
-         | otherwise    -> return
-    prev b = case bhPrevious b of
-      Just b' -> b'
-      Nothing -> error "Internal error"
-
--- | Find all heads from index: blocks which aren't parents of some
---   other blocks.
-blockIndexHeads :: (Ord (BlockID b)) => BlockIndex b -> [BH b]
-blockIndexHeads (BlockIndex bMap)
-  = fmap (\bid -> bMap ! bid)
-  $ toList
-  $ foldl' remove (Map.keysSet bMap) (Map.toList bMap)
-  where
-    remove bids (bid, BH{bhPrevious = Nothing}) = Set.delete bid bids
-    remove bids (_  , BH{bhPrevious = Just bh}) = Set.delete (bhBID bh) bids
-
--- | Create block index which contains only genesis
-blockIndexFromGenesis :: (IsMerkle f, BlockData b) => GBlock b f -> BlockIndex b
-blockIndexFromGenesis genesis
-  | blockHeight genesis /= Height 0 = error "Genesis must be H=0"
-  | otherwise                       = BlockIndex $ Map.singleton bid bh
-  where
-    bid = blockID genesis
-    bh  = BH { bhHeight   = Height 0
-             , bhTime     = blockTime genesis
-             , bhBID      = bid
-             , bhWork     = blockWork genesis
-             , bhPrevious = Nothing
-             , bhData     = merkleMap (const Proxy) $ blockData genesis
-             }
-
-lookupIdx :: (Ord (BlockID b)) => BlockID b -> BlockIndex b -> Maybe (BH b)
-lookupIdx bid (BlockIndex idx) = Map.lookup bid idx
-
-insertIdx :: (Ord (BlockID b)) => BH b -> BlockIndex b -> BlockIndex b
-insertIdx bh (BlockIndex idx) = BlockIndex $ Map.insert (bhBID bh) bh idx
 
 makeLocator :: BH b -> Locator b
 makeLocator  = Locator . takeH 10 . Just
@@ -177,43 +96,6 @@ makeLocator  = Locator . takeH 10 . Just
 ----------------------------------------------------------------
 -- Blockchain state handling
 ----------------------------------------------------------------
-
--- | API for append only block storage. It should always contain
---   genesis block.
-data BlockDB m b = BlockDB
-  { storeBlock :: Block b -> m ()
-    -- ^ Put block into storage. It should be idempotent. That is
-    --   storing block already in storage should be a noop.
-  , retrieveBlock :: BlockID b -> m (Maybe (Block  b))
-    -- ^ Retrive complete block by its identifier
-  , retrieveHeader :: BlockID b -> m (Maybe (Header b))
-    -- ^ Retrieve header by its identifier
-  , retrieveAllHeaders :: m [Header b]
-    -- ^ Retrieve all headers from storage in topologically sorted
-    --   order. (Ordering block by height would achieve that for
-    --   example).
-  }
-
--- | Build block index from blocks
-buildBlockIndex :: (Monad m, BlockData b) => BlockDB m b -> m (BlockIndex b)
-buildBlockIndex BlockDB{..} = do
-  -- FIXME: decide what to do with orphan blocks
-  (genesis,headers) <- retrieveAllHeaders >>= \case
-    genesis:headers -> return (genesis,headers)
-    []              -> error "buildBlockIndex: no blocks in storage"
-  --
-  let idx0      = blockIndexFromGenesis genesis
-      add idx b@GBlock{..} = case (`lookupIdx` idx) =<< prevBlock of
-        Nothing     -> error "blockIndexFromGenesis: orphan block"
-        Just parent -> insertIdx BH
-          { bhHeight   = blockHeight
-          , bhTime     = blockTime
-          , bhBID      = blockID b
-          , bhWork     = bhWork parent <> blockWork b
-          , bhPrevious = Just parent
-          , bhData     = blockData
-          } idx
-  return $! foldl' add idx0 headers
 
 
 -- | View on state of blockchain. It's expected that store is backed
