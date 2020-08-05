@@ -23,7 +23,7 @@
 module HSChain.PoW.Node
   ( Cfg(..)
   , runNode
-  , inMemoryView
+  -- , inMemoryView
     -- * Block storage
   , inMemoryDB
   , blockDatabase
@@ -154,25 +154,25 @@ runNode = undefined
 --           else liftIO $ forever $ threadDelay maxBound
 
 
--- | Simple in-memory implementation of DB
-inMemoryView
-  :: (Monad m, BlockData b, Show (BlockID b))
-  => (Block b -> s -> Maybe s)       -- ^ Step function
-  -> s                               -- ^ Initial state
-  -> BlockID b
-  -> StateView m b
-inMemoryView step = make (error "No revinding past genesis")
-  where
-    make previous s bid = view
-      where
-        view = StateView
-          { stateBID           = bid
-          , applyBlock         = \_ b -> case step b s of
-              Nothing -> return Nothing
-              Just s' -> return $ Just $ make view s' (blockID b)
-          , revertBlock        = return previous
-          , flushState         = return view
-          }
+-- -- | Simple in-memory implementation of DB
+-- inMemoryView
+--   :: (Monad m, BlockData b, Show (BlockID b))
+--   => (Block b -> s -> Maybe s)       -- ^ Step function
+--   -> s                               -- ^ Initial state
+--   -> BlockID b
+--   -> StateView m b
+-- inMemoryView step = make (error "No revinding past genesis")
+--   where
+--     make previous s bid = view
+--       where
+--         view = StateView
+--           { stateBID           = bid
+--           , applyBlock         = \_ b -> case step b s of
+--               Nothing -> return Nothing
+--               Just s' -> return $ Just $ make view s' (blockID b)
+--           , revertBlock        = return previous
+--           , flushState         = return view
+--           }
 
 ----------------------------------------------------------------
 -- Databases
