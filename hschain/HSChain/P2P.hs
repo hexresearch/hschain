@@ -26,6 +26,7 @@ import Katip                  (sl)
 import HSChain.Blockchain.Internal.Engine.Types
 import HSChain.Control.Class
 import HSChain.Control.Shepherd
+import HSChain.Crypto (Hashed)
 import HSChain.Control.Util
 import HSChain.Internal.Types.Config
 import HSChain.Internal.Types.Consensus
@@ -51,7 +52,7 @@ startPeerDispatcher
   -> NetworkAPI               -- ^ API for networking
   -> [NetAddr]                -- ^ Set of initial addresses to connect
   -> AppChans n a             -- ^ Channels for communication with main application
-  -> MempoolHandle (Alg a) (TX a)
+  -> MempoolHandle (Hashed (Alg a) (TX a)) (TX a)
   -> m ()
 startPeerDispatcher p2pCfg net addrs AppChans{..} mempool = logOnException $ do
   logger InfoS "Starting peer dispatcher" $ sl "seed" addrs

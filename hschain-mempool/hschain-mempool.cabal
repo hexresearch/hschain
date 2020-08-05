@@ -21,7 +21,6 @@ Library
   Build-Depends:       base              >=4.9 && <5
                      , hschain-crypto
                      , hschain-control
-                     , hschain-merkle
                      --
                      , aeson
                      , containers

@@ -213,7 +213,7 @@ inMemoryStateView = make Nothing
         { stateHeight   = mh
         , newValidators = vals
         , commitState   = return viewSt
-        , stateMempool  = nullMempool
+        , stateMempool  = nullMempool hashed
         --
         , validatePropBlock = \b _ -> return $ do
             let tx = merkleValue $ blockData b

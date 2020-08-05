@@ -147,7 +147,7 @@ inMemoryStateView
   -> m (StateView m BData, [m ()], IO CoinState)
 inMemoryStateView valSet0 = do
   varSt <- liftIO $ newIORef $ CoinState mempty mempty
-  (mem@Mempool{..}, memThr) <- newMempool (isRight . validateTxContextFree)
+  (mem@Mempool{..}, memThr) <- newMempool hashed (isRight . validateTxContextFree)
   let make mh vals txList st = r where
         r = StateView
           { stateHeight       = mh
@@ -448,7 +448,7 @@ databaseStateView
   => ValidatorSet (Alg BData)
   -> m (StateView m BData, [m ()])
 databaseStateView valSetH0 = do
-  (mem@Mempool{..}, memThr) <- newMempool (isRight . validateTxContextFree)
+  (mem@Mempool{..}, memThr) <- newMempool hashed (isRight . validateTxContextFree)
   -- First we find what is latest height at which we updated state and
   -- use it as startign point for our state management.
   (h0,valSet0) <- queryRO $ do
@@ -515,7 +515,7 @@ databaseStateView valSetH0 = do
 dbTransactionGenerator
   :: (MonadReadDB m, MonadCached BData m, MonadIO m)
   => TxGenerator
-  -> Mempool m (Alg BData) Tx
+  -> Mempool m (Hashed (Alg BData) Tx) Tx
   -> (Tx -> m ())
   -> m a
 dbTransactionGenerator gen mempool push = forever $ do

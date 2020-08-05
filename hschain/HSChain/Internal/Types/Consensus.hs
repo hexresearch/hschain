@@ -13,6 +13,7 @@ module HSChain.Internal.Types.Consensus (
   , Genesis(..)
   ) where
 
+import HSChain.Crypto
 import HSChain.Mempool
 import HSChain.Types.Blockchain
 import HSChain.Types.Validators
@@ -37,7 +38,7 @@ data StateView m a = StateView
   , generateCandidate  :: NewBlock a
                        -> m (a, StateView m a)
     -- ^ Generate new proposal for blockchain
-  , stateMempool       :: Mempool m (Alg a) (TX a)
+  , stateMempool       :: Mempool m (Hashed (Alg a) (TX a)) (TX a)
     -- ^ Mempool
   }
 
