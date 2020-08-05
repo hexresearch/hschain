@@ -121,6 +121,9 @@ class ( Show (BlockID b), Ord (BlockID b), Serialise (BlockID b)
   blockID :: IsMerkle f => GBlock b f -> BlockID b
   -- | Compute ID of a transaction.
   txID :: Tx b -> TxID b
+  -- | List of transactions in block
+  blockTransactions :: Block b -> [Tx b]
+
 
   -- | Context free validation of a transaction. It should perform all
   --   validations that are possible given only transacion.
