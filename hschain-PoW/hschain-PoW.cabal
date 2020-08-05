@@ -57,6 +57,7 @@ Library
                      , unordered-containers >=0.2.5.0
                      , yaml
   Exposed-modules:
+                HSChain.PoW.BlockIndex
                 HSChain.PoW.Types
                 HSChain.PoW.Consensus
                 HSChain.Examples.Coin
