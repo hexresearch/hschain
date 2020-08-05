@@ -26,6 +26,7 @@ module HSChain.PoW.Consensus
   , makeLocator
     -- *
   , StateView(..)
+  , createCandidateBlock
   , BlockDB(..)
   , buildBlockIndex
   , Consensus(..)
@@ -49,6 +50,7 @@ import Control.Exception
 import Control.Monad
 import Control.Monad.Except
 import Control.Monad.State.Strict
+import Data.Functor.Identity
 import Data.List          (sortOn)
 import Data.Typeable      (Typeable)
 import Data.Maybe
@@ -112,9 +114,36 @@ data StateView m b = StateView
     -- ^ Revert block. Underlying implementation should maintain
     --   enough information to allow rollbacks of reasonable depth.
     --   It's acceptable to fail for too deep reorganizations.
+  , checkTx :: Tx b -> m (Either (BlockException b) ())
+    -- ^ Check that transaction is valid. Needed for checking
+    --   transaction in the mempool
+  , createCandidateBlockData
+      :: Height
+      -> Time
+      -> Maybe (BlockID b)
+      -> [Tx b]
+      -> m (b Identity)
+    -- ^ Create candidate block out of list of transactions. It won't
+    --   have enough work in it but should be valid otherwise.
   , flushState  :: m (StateView m b)
     -- ^ Persist snapshot in the database.
   }
+
+createCandidateBlock
+  :: (Monad m)
+  => StateView m b
+  -> Height
+  -> Time
+  -> Maybe (BlockID b)
+  -> [Tx b]
+  -> m (Block b)
+createCandidateBlock sv h t p txs = do
+  b <- createCandidateBlockData sv h t p txs
+  return GBlock { blockHeight = h
+                , blockTime   = t
+                , prevBlock   = p
+                , blockData   = b
+                }
 
 
 ----------------------------------------------------------------
