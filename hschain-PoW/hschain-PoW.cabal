@@ -65,6 +65,7 @@ Library
                 HSChain.Examples.Util
                 HSChain.PoW.Exceptions
                 HSChain.PoW.Node
+                HSChain.PoW.Store
                 HSChain.PoW.P2P
                 HSChain.PoW.P2P.Types
                 HSChain.PoW.P2P.Handler.BlockRequests
