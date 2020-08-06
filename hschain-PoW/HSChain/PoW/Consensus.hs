@@ -118,7 +118,8 @@ data StateView m b = StateView
     -- ^ Check that transaction is valid. Needed for checking
     --   transaction in the mempool
   , createCandidateBlockData
-      :: Height
+      :: BH b
+      -> Height
       -> Time
       -> Maybe (BlockID b)
       -> [Tx b]
@@ -132,13 +133,14 @@ data StateView m b = StateView
 createCandidateBlock
   :: (Monad m)
   => StateView m b
+  -> BH b
   -> Height
   -> Time
   -> Maybe (BlockID b)
   -> [Tx b]
   -> m (Block b)
-createCandidateBlock sv h t p txs = do
-  b <- createCandidateBlockData sv h t p txs
+createCandidateBlock sv bh h t p txs = do
+  b <- createCandidateBlockData sv bh h t p txs
   return GBlock { blockHeight = h
                 , blockTime   = t
                 , prevBlock   = p

@@ -27,6 +27,7 @@ import Control.Monad.IO.Class
 import Control.Applicative
 import Data.Typeable        (Typeable)
 import Data.Functor.Classes (Show1)
+import Data.List            (find)
 import qualified Data.Aeson           as JSON
 import qualified Data.Map.Strict      as Map
 import GHC.Generics         (Generic)
@@ -76,6 +77,7 @@ class ( CryptoHashable (Nonce cfg)
   -- | Type of nonce. It depends on configuration.
   type Nonce cfg
 
+  kvDefaultNonce :: Proxy cfg -> Nonce cfg
   -- | Difficulty adjustment is performed every N of blocks
   kvAdjustInterval :: Const Height  cfg
   -- | Expected interval between blocks in milliseconds
@@ -139,7 +141,7 @@ instance (KVConfig cfg) => Mineable (KV cfg) where
 
 -- | Simple in-memory implementation of DB
 kvMemoryView
-  :: (Monad m, KVConfig cfg)
+  :: forall m cfg. (Monad m, KVConfig cfg)
   => BlockID (KV cfg)
   -> StateView m (KV cfg)
 kvMemoryView = make (error "No revinding past genesis") mempty
@@ -147,12 +149,22 @@ kvMemoryView = make (error "No revinding past genesis") mempty
     make previous s bid = view
       where
         view = StateView
-          { stateBID           = bid
-          , applyBlock         = \_ b -> case kvViewStep b s of
+          { stateBID    = bid
+          , applyBlock  = \_ b -> case kvViewStep b s of
               Nothing -> return Nothing
               Just s' -> return $ Just $ make view s' (blockID b)
-          , revertBlock        = return previous
-          , flushState         = return view
+          , revertBlock = return previous
+          , flushState  = return view
+          , checkTx     = \(k,_) -> return $ if k `Map.notMember` s
+                                             then Right ()
+                                             else Left KVError
+          , createCandidateBlockData = \bh _ _ _ txs -> return KV
+              { kvData   = merkled $ case find ((`Map.notMember` s) . fst) txs of
+                  Just tx -> [tx]
+                  Nothing -> []
+              , kvNonce  = kvDefaultNonce (Proxy @cfg)
+              , kvTarget = retarget bh
+              }
           }
 
 kvViewStep :: KVConfig cfg => Block (KV cfg) -> Map.Map Int String -> Maybe (Map.Map Int String)
