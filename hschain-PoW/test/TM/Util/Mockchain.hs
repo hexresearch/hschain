@@ -19,12 +19,13 @@ import Data.Word
 
 import System.IO.Unsafe (unsafePerformIO)
 
-import HSChain.PoW.Types
-import HSChain.Logger
 import HSChain.Control.Class
+import HSChain.Examples.Simple
+import HSChain.Logger
+import HSChain.PoW.Types
+import HSChain.PoW.Consensus
 import HSChain.Store.Query
 import HSChain.Types.Merkle.Types
-import HSChain.Examples.Simple
 
 ----------------------------------------------------------------
 --
@@ -104,6 +105,21 @@ header3' = toHeader block3'
 header4' = toHeader block4'
 
 
+-- | State view which doesn't do any block validation whatsoever
+inMemoryView
+  :: (Monad m, BlockData b)
+  => BlockID b
+  -> StateView m b
+inMemoryView = make (error "No revinding past genesis")
+  where
+    make previous bid = view
+      where
+        view = StateView
+          { stateBID    = bid
+          , applyBlock  = \bh _ -> return $ Just $ make view (bhBID bh)
+          , revertBlock = return previous
+          , flushState  = return view
+          }
 
 -- | Monad transformer for use in tests
 newtype HSChainT m x = HSChainT (ReaderT (Connection 'RW) m x)
