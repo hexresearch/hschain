@@ -37,7 +37,7 @@ import HSChain.Types.Merkle.Types
 
 
 -- | Dictionary with functions for interacting with consensus engine
-data PoW s m b = PoW
+data PoW m b = PoW
   { currentConsensus :: STM  (Consensus m b)
     -- ^ View on current state of consensus (just a read from TVar).
   , sendNewBlock     :: Block b -> m (Either SomeException ())
@@ -62,7 +62,7 @@ startNode
   -> [NetAddr]
   -> BlockDB   m b
   -> Consensus m b
-  -> ContT r m (PoW s m b)
+  -> ContT r m (PoW m b)
 startNode cfg netAPI seeds db consensus = do
   lift $ logger InfoS "Starting PoW node" ()
   (sinkBOX,    srcBOX)     <- queuePair

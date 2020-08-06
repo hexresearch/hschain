@@ -182,7 +182,7 @@ data Unspent = Unspent !(PublicKey Alg) !Integer
 -- Mining loop
 ----------------------------------------------------------------
 
-miningLoop :: MonadFork m => PoW s m Coin -> Bool -> m x
+miningLoop :: MonadFork m => PoW m Coin -> Bool -> m x
 miningLoop _   False = liftIO $ forever $ threadDelay maxBound
 miningLoop pow True  = do
   start =<< atomicallyIO (chainUpdate pow)
