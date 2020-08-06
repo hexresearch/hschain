@@ -125,6 +125,9 @@ instance MonadIO m => MonadLogger (NoLogsT m) where
   localNamespace _ a = a
 
 
+-- | Newtype for converting 'MonadReader' instance to 'MonadLogger'
+--   instance. Fields for namespace and log environment are accessed
+--   using field names.
 newtype LoggerByFields logenv namespace m a = LoggerByFields (m a)
   deriving newtype (Functor, Applicative, Monad)
 
@@ -142,6 +145,9 @@ instance ( MonadReader r m
   {-# INLINE localNamespace #-}
 
 
+-- | Newtype for converting 'MonadReader' instance to 'MonadLogger'
+--   instance. Fields for namespace and log environment are accessed
+--   by their resepctive types.
 newtype LoggerByTypes m a = LoggerByTypes (m a)
   deriving newtype (Functor, Applicative, Monad)
 
