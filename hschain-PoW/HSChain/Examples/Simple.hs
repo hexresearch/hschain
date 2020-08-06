@@ -17,6 +17,7 @@ module HSChain.Examples.Simple
   ( KV(..)
   , KVConfig(..)
   , retarget
+  , kvMemoryView
   , hash256AsTarget
   ) where
 
@@ -27,6 +28,7 @@ import Control.Applicative
 import Data.Typeable        (Typeable)
 import Data.Functor.Classes (Show1)
 import qualified Data.Aeson           as JSON
+import qualified Data.Map.Strict      as Map
 import GHC.Generics         (Generic)
 
 import HSChain.Crypto
@@ -34,6 +36,7 @@ import HSChain.Crypto.Classes.Hash
 import HSChain.Crypto.SHA
 import HSChain.Types.Merkle.Types
 import HSChain.PoW.Types
+import HSChain.PoW.Consensus
 
 ----------------------------------------------------------------
 --
@@ -132,3 +135,29 @@ instance (KVConfig cfg) => BlockData (KV cfg) where
 instance (KVConfig cfg) => Mineable (KV cfg) where
   adjustPuzzle = fmap (flip (,) (Target 0)) . kvSolvePuzzle
 
+
+
+-- | Simple in-memory implementation of DB
+kvMemoryView
+  :: (Monad m, KVConfig cfg)
+  => BlockID (KV cfg)
+  -> StateView m (KV cfg)
+kvMemoryView = make (error "No revinding past genesis") mempty
+  where
+    make previous s bid = view
+      where
+        view = StateView
+          { stateBID           = bid
+          , applyBlock         = \_ b -> case kvViewStep b s of
+              Nothing -> return Nothing
+              Just s' -> return $ Just $ make view s' (blockID b)
+          , revertBlock        = return previous
+          , flushState         = return view
+          }
+
+kvViewStep :: KVConfig cfg => Block (KV cfg) -> Map.Map Int String -> Maybe (Map.Map Int String)
+kvViewStep b m
+  | or [ k `Map.member` m | (k, _) <- txs ] = Nothing
+  | otherwise                               = Just $ Map.fromList txs <> m
+  where
+    txs = merkleValue $ kvData $ blockData b

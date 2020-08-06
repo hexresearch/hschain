@@ -119,6 +119,8 @@ inMemoryView = make (error "No revinding past genesis")
           , applyBlock  = \bh _ -> return $ Just $ make view (bhBID bh)
           , revertBlock = return previous
           , flushState  = return view
+          , checkTx                  = error "Transaction checking is not supported"
+          , createCandidateBlockData = error "Block creation is not supported"
           }
 
 -- | Monad transformer for use in tests

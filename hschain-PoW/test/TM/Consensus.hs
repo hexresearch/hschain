@@ -18,7 +18,6 @@ import HSChain.Logger
 import HSChain.PoW.Node
 import HSChain.Types.Merkle.Types
 import HSChain.Examples.Simple
-import HSChain.Examples.Util
 import HSChain.Crypto.SHA
 import HSChain.Crypto
 
@@ -300,8 +299,7 @@ data Message
 runTest :: [Message] -> IO ()
 runTest msgList = runNoLogsT $ do
   db <- inMemoryDB genesis
-  let s0 = consensusGenesis (head mockchain) $
-                            inMemoryView kvViewStep Map.empty (blockID genesis)
+  let s0 = consensusGenesis (head mockchain) $ kvMemoryView (blockID genesis)
   runExceptT (loop db s0 msgList) >>= \case
     Left  e  -> error $ unlines e
     Right () -> return ()

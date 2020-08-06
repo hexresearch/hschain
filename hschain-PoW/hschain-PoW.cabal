@@ -63,7 +63,6 @@ Library
                 HSChain.PoW.Consensus
                 HSChain.Examples.Coin
                 HSChain.Examples.Simple
-                HSChain.Examples.Util
                 HSChain.PoW.Exceptions
                 HSChain.PoW.Node
                 HSChain.PoW.Store
