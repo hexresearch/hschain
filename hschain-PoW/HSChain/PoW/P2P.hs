@@ -19,17 +19,20 @@ import Control.Concurrent.STM
 import Control.Monad.Cont
 import Control.Monad.Catch
 import Control.Monad.Except
+import Data.Functor.Contravariant
+import Lens.Micro
 
-import HSChain.Control.Class
 import HSChain.Control.Channels
-import HSChain.Network.Types
-import HSChain.PoW.Types
-import HSChain.PoW.Consensus
+import HSChain.Control.Class
 import HSChain.Logger
-import HSChain.PoW.P2P.Types
-import HSChain.PoW.P2P.Handler.PEX
-import HSChain.PoW.P2P.Handler.Consensus
+import HSChain.Network.Types
+import HSChain.PoW.Consensus
+import HSChain.PoW.Mempool
 import HSChain.PoW.P2P.Handler.BlockRequests
+import HSChain.PoW.P2P.Handler.Consensus
+import HSChain.PoW.P2P.Handler.PEX
+import HSChain.PoW.P2P.Types
+import HSChain.PoW.Types
 import HSChain.Types.Merkle.Types
 
 
@@ -42,6 +45,8 @@ data PoW s m b = PoW
   , chainUpdate      :: STM (Src (BH b, StateView m b))
     -- ^ Create new broadcast source which will recieve message every
     --   time head is changed
+  , mempoolAPI       :: MempoolAPI m b
+    -- ^ API for communication with mempool
   }
 
 
@@ -66,12 +71,15 @@ startNode cfg netAPI seeds db consensus = do
   (sinkBIDs,   srcBIDs)    <- queuePair
   blockReg                 <- newBlockRegistry srcBIDs
   bIdx                     <- liftIO $ newTVarIO consensus
+  -- Start mempool
+  (mempoolAPI,MempoolConsensusCh{..}) <- startMempool db (consensus ^. bestHead . _2)
   -- Start PEX
   runPEX cfg netAPI seeds blockReg sinkBOX mkSrcAnn (readTVar bIdx) db
   -- Consensus thread
   cforkLinked $ threadConsensus db consensus ConsensusCh
     { bcastAnnounce    = sinkAnn
     , bcastChainUpdate = sinkChain
+                      <> (contramap (\(bh,bh',s) -> MempHeadChange bh bh' s) mempoolConsensusCh)
     , sinkConsensusSt  = Sink $ writeTVar bIdx
     , sinkReqBlocks    = sinkBIDs
     , srcRX            = srcBOX
@@ -82,5 +90,6 @@ startNode cfg netAPI seeds db consensus = do
         res <- liftIO newEmptyMVar
         sinkIO sinkBOX $ BoxRX $ \cnt -> liftIO . putMVar res =<< cnt (RxMined b)
         void $ liftIO $ takeMVar res
-    , chainUpdate          = mkSrcChain
+    , chainUpdate          = fmap (\(bh,_,s) -> (bh,s)) <$> mkSrcChain
+    , ..
     }

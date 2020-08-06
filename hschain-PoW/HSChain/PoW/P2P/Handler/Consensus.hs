@@ -36,7 +36,7 @@ import HSChain.Logger
 data ConsensusCh m b = ConsensusCh
   { bcastAnnounce    :: Sink (MsgAnn b)
     -- ^ Broadcast channel for gossip announcements (we got new best head)
-  , bcastChainUpdate :: Sink (BH b, StateView m b)
+  , bcastChainUpdate :: Sink (BH b, BH b, StateView m b)
     -- ^ Broadcast channel for announcing new head for mining etc.
   , sinkConsensusSt  :: Sink (Consensus m b)
     -- ^ Updating state of consensus
@@ -70,7 +70,8 @@ threadConsensus db consensus0 ConsensusCh{..} = descendNamespace "cns" $ logOnEx
            st <- lift . flushState =<< use (bestHead . _2)
            bestHead . _2 .= st
            sinkIO bcastAnnounce $ AnnBestHead $ asHeader bh'
-           sinkIO bcastChainUpdate (bh',st)
+           sinkIO bcastChainUpdate (bh, bh', st)
+
 
 -- Handler for messages coming from peer.
 consensusMonitor
