@@ -23,6 +23,9 @@ Library
                      , stm
                      , transformers
                      , containers
+                     , microlens         >=0.4.11
+                     , mtl               >=2
+                     , generic-lens
   Exposed-modules:
                   HSChain.Control.Channels
                   HSChain.Control.Class
@@ -30,3 +33,4 @@ Library
                   HSChain.Control.Shepherd
                   HSChain.Control.Util
                   HSChain.Control.Delay
+                  HSChain.Control.Via
