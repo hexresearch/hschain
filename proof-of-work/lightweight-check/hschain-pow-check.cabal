@@ -16,7 +16,7 @@ name:                hschain-pow-check
 version:             0.1.0.0
 
 -- A short (one-line) description of the package.
-synopsis:            Proof-of-work for hschain blockchain package set
+synopsis:            Check proof-of-work for hschain blockchain package without calling C
 
 -- A longer description of the package.
 -- description:
@@ -60,20 +60,13 @@ library
   -- Other library packages from which modules are imported.
   build-depends:       base >=4.9
                      , bytestring
-
-  pkgconfig-depends:   openssl
+                     , hschain-crypto
 
   -- Directories containing source files.
   hs-source-dirs:      src
 
   -- Base language which the package is written in.
   default-language:    Haskell2010
-
-  -- C bits:
-  c-sources:           cbits/evpow.h cbits/evpow.c cbits/yalsat/yals.c
-
-  include-dirs:        cbits cbits/yalsat
-
 
 executable hschain-pow-cli
   -- .hs or .lhs file containing the Main module.
