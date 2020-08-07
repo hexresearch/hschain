@@ -38,7 +38,7 @@ import HSChain.Control.Util
 import HSChain.Control.Channels
 import HSChain.Types.Merkle.Types
 import HSChain.Examples.Coin
-import HSChain.PoW.Node (blockDatabase,inMemoryView,Cfg(..))
+import HSChain.PoW.Node (blockDatabase,Cfg(..))
 import HSChain.Store.Query
 
 
@@ -92,7 +92,7 @@ main = do
       netcfg = NetCfg { nKnownPeers     = 3
                       , nConnectedPeers = 3
                       }
-  let sView = inMemoryView (\_ -> Just) () (blockID genesis)
+  let sView = inMemoryView (blockID genesis)
   withConnection (fromMaybe "" cfgDB) $ \conn -> 
     withLogEnv "" "" (map makeScribe cfgLog) $ \logEnv -> runCoinT logEnv conn $ evalContT $ do
       db   <- lift $ blockDatabase genesis
@@ -128,3 +128,21 @@ parser = do
     <> help "Mine blocks"
     )
   return Opts{..}
+
+-- | State view which doesn't do any block validation whatsoever
+inMemoryView
+  :: (Monad m, BlockData b)
+  => BlockID b
+  -> StateView m b
+inMemoryView = make (error "No revinding past genesis")
+  where
+    make previous bid = view
+      where
+        view = StateView
+          { stateBID    = bid
+          , applyBlock  = \bh _ -> return $ Just $ make view (bhBID bh)
+          , revertBlock = return previous
+          , flushState  = return view
+          , checkTx                  = error "Transaction checking is not supported"
+          , createCandidateBlockData = error "Block creation is not supported"
+          }
