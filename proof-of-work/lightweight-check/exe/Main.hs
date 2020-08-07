@@ -20,18 +20,13 @@ data PrintOpt = PrintText | PrintHex
   deriving (Eq, Show)
 
 data Command =
-    FindAnswer ByteString Integer PrintOpt
-  | CheckBlock ByteString ByteString ByteString Integer
+  CheckBlock ByteString ByteString ByteString Integer
   deriving (Show)
 
 parser :: Parser Command
-parser = subparser
-  (  command "find" (info findAnswerParser $ header "find an answer")
-  <> command "check" (info checkAnswerParser $ header "checking an answer")
-  )
+parser = subparser $
+  command "check" (info checkAnswerParser $ header "checking an answer")
   where
-    findAnswerParser = FindAnswer
-                     <$> parseByteString "source" <*> parseTarget <*> parsePrint
     checkAnswerParser = CheckBlock <$> parseByteString "source"
                                    <*> parseByteString "answer" <*> parseHash <*> parseTarget
     parsePrint = flag' PrintText (short 'T' <> long "print-as-text")
@@ -59,31 +54,6 @@ main :: IO ()
 main = do
   cmd <- execParser $ info parser mempty
   case cmd of
-    FindAnswer suffix target printOpt -> do
-      let config = defaultPOWConfig
-                 { powCfgTarget = target
-                 }
-      (r, hash) <- solve [suffix] config
-      case r of
-        Nothing -> do
-          putStrLn "failed to find answer"
-          when (printOpt == PrintHex) $
-            putStrLn $ "best header hash: "++
-                     List.intercalate " "
-                          (map (printf "%02x") $ B.unpack hash)
-          exitFailure
-        Just answer -> case printOpt of
-          PrintText -> do
-            putStrLn $ "complete header: "++show completeBlock
-          PrintHex -> do
-            putStrLn $ "complete header: "++
-                     List.intercalate " "
-                          (map (printf "%02x") $ B.unpack completeBlock)
-            putStrLn $ "complete header hash: "++
-                     List.intercalate " "
-                          (map (printf "%02x") $ B.unpack hash)
-          where
-            completeBlock = B.concat [answer, suffix]
     CheckBlock block answer hash target -> do
       r <- check block answer hash $ defaultPOWConfig
                                      { powCfgTarget = target

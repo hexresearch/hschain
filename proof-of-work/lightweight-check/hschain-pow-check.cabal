@@ -68,7 +68,7 @@ library
   -- Base language which the package is written in.
   default-language:    Haskell2010
 
-executable hschain-pow-cli
+executable hschain-pow-check-cli
   -- .hs or .lhs file containing the Main module.
   main-is:             Main.hs
 
@@ -82,7 +82,7 @@ executable hschain-pow-cli
   build-depends:       base >=4.9
                      , optparse-applicative
                      , bytestring
-                     , hschain-pow-func
+                     , hschain-pow-check
 
   -- Directories containing source files.
   hs-source-dirs:      exe
