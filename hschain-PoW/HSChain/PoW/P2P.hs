@@ -63,7 +63,26 @@ startNode
   -> BlockDB   m b
   -> Consensus m b
   -> ContT r m (PoW m b)
-startNode cfg netAPI seeds db consensus = do
+startNode cfg netAPI seeds db consensus
+  = fst <$> startNodeTest cfg netAPI seeds db consensus
+
+-- | Same as startNode but expose internal interfacees for testing
+startNodeTest
+  :: ( MonadMask m, MonadFork m, MonadLogger m
+     , Serialise (b Identity)
+     , Serialise (b Proxy)
+     , Serialise (BlockID b)
+     , BlockData b
+     )
+  => NetCfg
+  -> NetworkAPI
+  -> [NetAddr]
+  -> BlockDB   m b
+  -> Consensus m b
+  -> ContT r m ( PoW m b
+               , ConsensusCh m b
+               )
+startNodeTest cfg netAPI seeds db consensus = do
   lift $ logger InfoS "Starting PoW node" ()
   (sinkBOX,    srcBOX)     <- queuePair
   (sinkAnn,    mkSrcAnn)   <- broadcastPair
@@ -76,20 +95,23 @@ startNode cfg netAPI seeds db consensus = do
   -- Start PEX
   runPEX cfg netAPI seeds blockReg sinkBOX mkSrcAnn (readTVar bIdx) db
   -- Consensus thread
-  cforkLinked $ threadConsensus db consensus ConsensusCh
-    { bcastAnnounce    = sinkAnn
-    , bcastChainUpdate = sinkChain
-                      <> (contramap (\(bh,bh',s) -> MempHeadChange bh bh' s) mempoolConsensusCh)
-    , sinkConsensusSt  = Sink $ writeTVar bIdx
-    , sinkReqBlocks    = sinkBIDs
-    , srcRX            = srcBOX
-    }
-  return PoW
-    { currentConsensus     = readTVar bIdx
-    , sendNewBlock         = \(!b) -> runExceptT $ do
-        res <- liftIO newEmptyMVar
-        sinkIO sinkBOX $ BoxRX $ \cnt -> liftIO . putMVar res =<< cnt (RxMined b)
-        void $ liftIO $ takeMVar res
-    , chainUpdate          = fmap (\(_,bh,s) -> (bh,s)) <$> mkSrcChain
-    , ..
-    }
+  let consensusCh = ConsensusCh
+        { bcastAnnounce    = sinkAnn
+        , bcastChainUpdate = sinkChain
+                          <> (contramap (\(bh,bh',s) -> MempHeadChange bh bh' s) mempoolConsensusCh)
+        , sinkConsensusSt  = Sink $ writeTVar bIdx
+        , sinkReqBlocks    = sinkBIDs
+        , srcRX            = srcBOX
+        }
+  cforkLinked $ threadConsensus db consensus consensusCh
+  return
+    ( PoW { currentConsensus     = readTVar bIdx
+          , sendNewBlock         = \(!b) -> runExceptT $ do
+              res <- liftIO newEmptyMVar
+              sinkIO sinkBOX $ BoxRX $ \cnt -> liftIO . putMVar res =<< cnt (RxMined b)
+              void $ liftIO $ takeMVar res
+          , chainUpdate          = fmap (\(_,bh,s) -> (bh,s)) <$> mkSrcChain
+          , ..
+          }
+    , consensusCh
+    )
