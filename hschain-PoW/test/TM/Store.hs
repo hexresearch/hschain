@@ -95,14 +95,6 @@ testRestart = do
                     }
 
 
-data Abort = Abort Height
-  deriving stock    (Show)
-  deriving anyclass (Exception)
-
-catchAbort :: MonadCatch m => (forall a. m a) -> m Height
-catchAbort action = handle (\(Abort h) -> return h) action
-
-
 genesisCoin :: Block Coin
 genesisCoin = GBlock
   { blockHeight = Height 0

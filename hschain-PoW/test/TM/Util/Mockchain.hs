@@ -1,12 +1,13 @@
+-- |
 {-# LANGUAGE DataKinds                  #-}
+{-# LANGUAGE DeriveAnyClass             #-}
 {-# LANGUAGE DerivingStrategies         #-}
 {-# LANGUAGE DerivingVia                #-}
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE RankNTypes                 #-}
 {-# LANGUAGE TypeFamilies               #-}
 {-# LANGUAGE UndecidableInstances       #-}
-
--- |
 module TM.Util.Mockchain where
 
 import Codec.Serialise
@@ -139,3 +140,10 @@ runHSChainT c (HSChainT m) = do
 
 withHSChainT :: (MonadIO m, MonadMask m) => HSChainT m a -> m a
 withHSChainT m = withConnection "" $ \c -> runHSChainT c m
+
+data Abort = Abort Height
+  deriving stock    (Show)
+  deriving anyclass (Exception)
+
+catchAbort :: MonadCatch m => (forall a. m a) -> m Height
+catchAbort action = handle (\(Abort h) -> return h) action
