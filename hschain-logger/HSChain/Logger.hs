@@ -26,13 +26,13 @@ module HSChain.Logger (
   , runLoggerT
   , withLogEnv
   , newLogEnv
-  , StdoutLogT(..)
-  , runStdoutLogT
   , logOnException
     -- ** Newtype for DerivingVia
   , NoLogsT(..)
   , LoggerByFields(..)
   , LoggerByTypes(..)
+  , StdoutLogT(..)
+  , StdoutLogNoNamespaceT(..)
     -- ** Scribe construction helpers
   , ScribeType(..)
   , ScribeSpec(..)
@@ -73,6 +73,7 @@ import Lens.Micro
 import System.Directory (createDirectoryIfMissing)
 import System.FilePath  (splitFileName)
 import System.IO
+import System.IO.Unsafe
 import GHC.Generics (Generic)
 
 import HSChain.Control.Class
@@ -124,6 +125,9 @@ instance MonadIO m => MonadLogger (NoLogsT m) where
   localNamespace _ a = a
 
 
+-- | Newtype for converting 'MonadReader' instance to 'MonadLogger'
+--   instance. Fields for namespace and log environment are accessed
+--   using field names.
 newtype LoggerByFields logenv namespace m a = LoggerByFields (m a)
   deriving newtype (Functor, Applicative, Monad)
 
@@ -141,6 +145,9 @@ instance ( MonadReader r m
   {-# INLINE localNamespace #-}
 
 
+-- | Newtype for converting 'MonadReader' instance to 'MonadLogger'
+--   instance. Fields for namespace and log environment are accessed
+--   by their resepctive types.
 newtype LoggerByTypes m a = LoggerByTypes (m a)
   deriving newtype (Functor, Applicative, Monad)
 
@@ -158,28 +165,27 @@ instance ( MonadReader r m
   {-# INLINE localNamespace #-}
 
 
-
 -- | Simple monad transformer for writing logs to stdout. Motly useful
 --   for debugging when one need to add remove some logging capability
 --   quickly.
-newtype StdoutLogT m a = StdoutLogT { unStdoutLogT :: ReaderT (Mutex,Namespace) m a }
+newtype StdoutLogT m a = StdoutLogT { runStdoutLogT :: m a }
   deriving newtype ( Functor, Applicative, Monad, MonadFail
                    , MonadIO, MonadThrow, MonadCatch, MonadMask
                    , MonadFork
                    )
 
-runStdoutLogT :: MonadIO m => StdoutLogT m a -> m a
-runStdoutLogT m = do
-  mutex <- newMutex
-  runReaderT (unStdoutLogT m) (mutex,mempty)
- 
-instance MonadTrans StdoutLogT where
-  lift = StdoutLogT . lift
 
-instance (MonadMask m, MonadIO m) => MonadLogger (StdoutLogT m) where
-  logger _ msg a = do
-    (mutex,Namespace chunks) <- StdoutLogT ask
-    StdoutLogT $ liftIO $ withMutex mutex $ do
+stdoutMutex :: Mutex
+{-# NOINLINE stdoutMutex #-}
+stdoutMutex = unsafePerformIO newMutex
+
+instance MonadTrans StdoutLogT where
+  lift = StdoutLogT
+
+instance (MonadReader Namespace m, MonadIO m) => MonadLogger (StdoutLogT m) where
+  logger _ msg a = StdoutLogT $ do
+    Namespace chunks <- ask
+    liftIO $ withMutex stdoutMutex $ do
       putStr $ T.unpack $ case chunks of
         [] -> ""
         _  -> T.intercalate "." chunks <> ": "
@@ -187,7 +193,30 @@ instance (MonadMask m, MonadIO m) => MonadLogger (StdoutLogT m) where
       forM_ (HM.toList $ toObject a) $ \(k,v) -> do
         putStr $ "  " ++ T.unpack k ++ " = "
         print v
-  localNamespace f = StdoutLogT . local (second f) . unStdoutLogT
+  localNamespace f = StdoutLogT . local f . runStdoutLogT
+
+
+-- | Simple monad transformer for writing logs to stdout. Motly useful
+--   for debugging when one need to add remove some logging capability
+--   quickly.
+newtype StdoutLogNoNamespaceT m a = StdoutLogNoNamespaceT
+  { runStdoutLogNoNamespaceT :: m a }
+  deriving newtype ( Functor, Applicative, Monad, MonadFail
+                   , MonadIO, MonadThrow, MonadCatch, MonadMask
+                   , MonadFork
+                   )
+
+instance MonadTrans StdoutLogNoNamespaceT where
+  lift = StdoutLogNoNamespaceT
+
+instance (MonadIO m) => MonadLogger (StdoutLogNoNamespaceT m) where
+  logger _ msg a = StdoutLogNoNamespaceT $ liftIO $ withMutex stdoutMutex $ do
+    putStrLn $ TL.unpack $ toLazyText $ unLogStr msg
+    forM_ (HM.toList $ toObject a) $ \(k,v) -> do
+      putStr $ "  " ++ T.unpack k ++ " = "
+      print v
+  localNamespace _ = id
+
 
 
 -- | Log exceptions at Error severity
