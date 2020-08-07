@@ -152,12 +152,14 @@ Test-suite hschain-PoW-tests
                      , transformers
                      , microlens
                      , mtl
+                     , stm
                      , tasty             >=0.11
                      , tasty-quickcheck
                      , tasty-hunit       >=0.10                      
   hs-source-dirs:      test
   Main-is:             Main.hs
   Other-modules:       TM.Consensus
+                       TM.Mempool
                        TM.P2P
                        TM.Store
                        TM.Util.Mockchain
