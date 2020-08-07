@@ -86,10 +86,9 @@ createClause currentHash = take clauseLiteralsCount_K $ decodeClause [] $ B.unpa
         modulo = answerSize * 8
         randomIndex = ((fromIntegral $ shiftR w16 1) `mod` modulo) + 1 -- 1..256
         variable = skipUsed acc randomIndex
-        skipUsed [] index = index
-        skipUsed (p:ps) index
-          | p == index = skipUsed ps (mod (index + 1) modulo + 1)
-          | otherwise = skipUsed ps index
+        skipUsed ps index
+          | elem index ps = skipUsed ps (mod (index + 1) modulo + 1)
+          | otherwise = index
         literal = if assignTrue then variable else negate variable
 
 -- |Check whether answer solves puzzle for header.
