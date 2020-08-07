@@ -80,7 +80,7 @@ startNodeTest
   -> BlockDB   m b
   -> Consensus m b
   -> ContT r m ( PoW m b
-               , ConsensusCh m b
+               , Sink (BoxRX m b)
                )
 startNodeTest cfg netAPI seeds db consensus = do
   lift $ logger InfoS "Starting PoW node" ()
@@ -113,5 +113,5 @@ startNodeTest cfg netAPI seeds db consensus = do
           , chainUpdate          = fmap (\(_,bh,s) -> (bh,s)) <$> mkSrcChain
           , ..
           }
-    , consensusCh
+    , sinkBOX
     )

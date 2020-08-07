@@ -1,4 +1,5 @@
 -- |
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase       #-}
 {-# LANGUAGE NumDecimals      #-}
 {-# LANGUAGE RecordWildCards  #-}
@@ -48,19 +49,47 @@ testMempoolRollback = runNoLogsT $ evalContT $ do
   db       <- lift $ inMemoryDB genesis
   bIdx     <- lift $ buildBlockIndex db
   c0       <- lift $ createConsensus db bIdx sView
-  (pow,ch) <- startNodeTest netcfg net [] db c0
-  let MempoolAPI{..} = mempoolAPI pow
-  -- First post transaction into mempool  
+  (pow,sinkBOX) <- startNodeTest netcfg net [] db c0
+  let api@MempoolAPI{..} = mempoolAPI pow
+  -- First post transaction into mempool
   sinkIO postTransaction tx1
-  liftIO $ timeout 1e6 $ atomically $ do
-    mempoolContent >>= \case
-      [] -> retry
-      txs | txs == [tx1] -> return txs
-          | otherwise    -> error "Invalid mempool content"    
-  --
-  return ()
+  checkMempoolContent api [tx1]
+  -- Mine first block & check that we removed transaction
+  sendBlock sinkBOX b1
+  checkMempoolContent api []
+  -- Generate reorganization
+  sendBlock sinkBOX b1'
+  sendBlock sinkBOX b2'
+  checkMempoolContent api [tx2]
   where
     tx1 = (1,"TX1")
+    tx2 = (2,"TX2")
+    tx3 = (3,"TX3")
+    --
+    b1  = mineBlock [tx1] genesis
+    b1' = mineBlock [tx2] genesis
+    b2' = mineBlock [tx3] b1'
+    --
     netcfg = NetCfg { nKnownPeers     = 3
                     , nConnectedPeers = 3
                     }
+
+checkMempoolContent MempoolAPI{..} expected = liftIO $ do
+  r <- timeout 1e6 $ atomically $ do
+    txs <- mempoolContent
+    unless (expected == txs) retry
+  case r of
+    Just () -> return ()
+    Nothing -> do txs <- atomically mempoolContent
+                  expected @=? txs
+
+sendBlock :: (MerkleMap b, Monad m, MonadIO n) => Sink (BoxRX m b) -> GBlock b Identity -> n ()
+sendBlock sinkBOX b = liftIO $ do
+  sinkIO sinkBOX $ BoxRX $ \cnt -> cnt (RxHeaders [toHeader b]) >>= \case
+    Peer'Noop         -> return ()
+    Peer'EnterCatchup -> error "Shouldn't enter catchup"
+    Peer'Punish e     -> error $ show e
+  sinkIO sinkBOX $ BoxRX $ \cnt -> cnt (RxBlock b) >>= \case
+    Peer'Noop         -> return ()
+    Peer'EnterCatchup -> error "Shouldn't enter catchup"
+    Peer'Punish e     -> error $ show e
