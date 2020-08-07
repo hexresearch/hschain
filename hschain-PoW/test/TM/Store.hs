@@ -65,7 +65,7 @@ testIdempotence db = do
       liftIO . assertEqual ("No: " ++ nm) (Nothing) =<< retrieveHeader db (blockID b)
 
 
--- | Test that we're able to restart
+-- | Test that we're able to restart and to build correct block index
 testRestart :: HSChainT IO ()
 testRestart = do
   mocknet <- liftIO newMockNet
