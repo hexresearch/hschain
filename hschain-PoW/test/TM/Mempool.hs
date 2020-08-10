@@ -8,19 +8,12 @@ module TM.Mempool (tests) where
 
 import Control.Concurrent.STM
 import Control.Monad.State.Strict
-import Control.Monad.Except
 import Control.Monad.Trans.Cont
-import Data.Foldable
-import qualified Data.Map.Strict as Map
-import qualified Data.Set        as Set
-import Lens.Micro
 import System.Timeout
 import Test.Tasty
 import Test.Tasty.HUnit
 
 import HSChain.Control.Channels
-import HSChain.Crypto
-import HSChain.Crypto.SHA
 import HSChain.Examples.Simple
 import HSChain.Logger
 import HSChain.Network.Mock
@@ -73,6 +66,10 @@ testMempoolRollback = runNoLogsT $ evalContT $ do
                     , nConnectedPeers = 3
                     }
 
+
+checkMempoolContent
+  :: (MonadIO n, Eq (Tx b), Show (Tx b))
+  => MempoolAPI m b -> [Tx b] -> n ()
 checkMempoolContent MempoolAPI{..} expected = liftIO $ do
   r <- timeout 1e6 $ atomically $ do
     txs <- mempoolContent
