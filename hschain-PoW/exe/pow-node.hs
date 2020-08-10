@@ -27,7 +27,6 @@ import HSChain.PoW.Types
 import qualified HSChain.POW as POWFunc
 import HSChain.Types.Merkle.Types
 import HSChain.Examples.Simple
-import HSChain.Examples.Util
 import HSChain.PoW.Node (runNode)
 import HSChain.Crypto
 import HSChain.Crypto.SHA
@@ -197,7 +196,9 @@ parser = do
 runNodeAnyPoW :: forall cfg . (Show (Nonce cfg), Default (Nonce cfg), KVConfig cfg)
               => Opts -> Block (KV cfg) ->IO ()
 runNodeAnyPoW Opts{..} genesisBlock = do
-  runNode cmdConfigPath optMine genesisBlock kvViewStep getHeaderTxsToMine (getBlockToMine optNodeName) Map.empty
+  runNode cmdConfigPath optMine _ _
+
+  -- genesisBlock kvViewStep getHeaderTxsToMine (getBlockToMine optNodeName) Map.empty
 
 main :: IO ()
 main = do
