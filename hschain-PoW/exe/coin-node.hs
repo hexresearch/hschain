@@ -43,26 +43,6 @@ import HSChain.Store.Query
 
 
 ----------------------------------------------------------------
--- Monad for working with PoW
-----------------------------------------------------------------
-
-data CoinDict = CoinDict
-  { dictLogEnv    :: !LogEnv
-  , dictNamespace :: !Namespace
-  , dictConn      :: !(Connection 'RW)
-  }
-  deriving (Generic)
-
-newtype CoinT m a = CoinT (ReaderT CoinDict m a)
-  deriving newtype ( Functor,Applicative,Monad,MonadIO
-                   , MonadCatch,MonadThrow,MonadMask,MonadFork)
-  deriving (MonadLogger)          via LoggerByTypes  (ReaderT CoinDict m)
-  deriving (MonadDB, MonadReadDB) via DatabaseByType (ReaderT CoinDict m)
-
-runCoinT :: LogEnv -> Connection 'RW -> CoinT m a -> m a
-runCoinT logenv conn (CoinT act) = runReaderT act (CoinDict logenv mempty conn)
-
-----------------------------------------------------------------
 --
 ----------------------------------------------------------------
 
