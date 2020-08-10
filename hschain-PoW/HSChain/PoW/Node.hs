@@ -39,6 +39,7 @@ import Control.Monad.Catch
 import Control.Monad.Cont
 import Control.Monad.Trans.Cont
 
+import Data.Function
 import Data.Word
 import Data.Yaml.Config
 import GHC.Generics (Generic)
@@ -115,11 +116,13 @@ genericMiningLoop pow = do
       (bh, st) <- awaitIO ch
       liftIO $ killThread tid
       loop ch =<< mine bh st
-    --
-    mine bh st = fork $ do
+    -- Here we simply try again to create new block in case we wasnt'
+    -- able to create one by fiddling nonce. At very least time should
+    -- change
+    mine bh st = fork $ fix $ \tryAgain -> do
       t      <- getCurrentTime
       bCand  <- createCandidateBlock st bh (succ $ bhHeight bh) t (bhBID <$> bhPrevious bh) []
       (bMined,_) <- adjustPuzzle bCand
       case bMined of
         Just b  -> void $ sendNewBlock pow b
-        Nothing -> error "FIXME: Generating new candidate is not implemented"
+        Nothing -> tryAgain
