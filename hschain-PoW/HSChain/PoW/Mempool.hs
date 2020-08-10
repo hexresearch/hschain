@@ -162,8 +162,8 @@ handleConsensus db@BlockDB{..} MempoolCh{..} MempoolDict{..} = \case
     mem' <- foldM add (mempoolRemoveTX toRemove mempool) toAdd
     atomicallyIO $ writeTVar pendingFiltering $ Map.keys $ mempRevMap mem'
     sinkIO bcastMempoolState (bhTo, state, toList mem')
-    return MempoolDict{ mempool = mem'
-                      , ..
+    return MempoolDict{ mempool   = mem'
+                      , stateView = state
                       }
 
 -- Changes to a transaction set in a mempool. It contains transactions
