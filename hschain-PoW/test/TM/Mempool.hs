@@ -14,6 +14,7 @@ import Test.Tasty
 import Test.Tasty.HUnit
 
 import HSChain.Control.Channels
+import HSChain.Control.Util
 import HSChain.Examples.Simple
 import HSChain.Logger
 import HSChain.Network.Mock
@@ -43,24 +44,38 @@ testMempoolRollback = runNoLogsT $ evalContT $ do
   c0 <- lift $ createConsensus db sView
   (pow,sinkBOX) <- startNodeTest netcfg net [] db c0
   let api@MempoolAPI{..} = mempoolAPI pow
+  ch <- atomicallyIO mempoolUpdates
   -- First post transaction into mempool
   sinkIO postTransaction tx1
   checkMempoolContent api [tx1]
   -- Mine first block & check that we removed transaction
-  sendBlock sinkBOX b1
-  checkMempoolContent api []
-  -- Generate reorganization
   sendBlock sinkBOX b1'
-  sendBlock sinkBOX b2'
-  checkMempoolContent api [tx2]
+  checkRecv           ch  []
+  checkMempoolContent api []
+  -- Generate reorganization. We should get tx1 back into mempool
+  sendBlock sinkBOX b1
+  sendBlock sinkBOX b2
+  checkRecv           ch  [tx1]
+  checkMempoolContent api [tx1]
+  -- Add transaction to mempool then add block with conflicintg
+  -- transaction. Message immediately after will contain coflicting
+  -- transaction but eventually it should be filtered
+  sinkIO postTransaction tx4'
+  checkMempoolContent api [tx1,tx4']
+  sendBlock sinkBOX b3
+  checkRecv           ch  [tx1,tx4']
+  checkMempoolContent api [tx1]
   where
-    tx1 = (1,"TX1")
-    tx2 = (2,"TX2")
-    tx3 = (3,"TX3")
+    tx1  = (1,"TX1")
+    tx2  = (2,"TX2")
+    tx3  = (3,"TX3")
+    tx4  = (4,"TX4")
+    tx4' = (4,"XYZ")
     --
-    b1  = mineBlock [tx1] genesis
-    b1' = mineBlock [tx2] genesis
-    b2' = mineBlock [tx3] b1'
+    b1' = mineBlock [tx1] genesis
+    b1  = mineBlock [tx2] genesis
+    b2  = mineBlock [tx3] b1
+    b3  = mineBlock [tx4] b2
     --
     netcfg = NetCfg { nKnownPeers     = 3
                     , nConnectedPeers = 3
@@ -71,13 +86,20 @@ checkMempoolContent
   :: (MonadIO n, Eq (Tx b), Show (Tx b))
   => MempoolAPI m b -> [Tx b] -> n ()
 checkMempoolContent MempoolAPI{..} expected = liftIO $ do
-  r <- timeout 1e6 $ atomically $ do
+  r <- timeout 2e6 $ atomically $ do
     txs <- mempoolContent
     unless (expected == txs) retry
   case r of
     Just () -> return ()
     Nothing -> do txs <- atomically mempoolContent
                   expected @=? txs
+
+checkRecv
+  :: (MonadIO n, Eq (Tx b), Show (Tx b))
+  => Src (BH b, StateView m b, [Tx b]) -> [Tx b] -> n ()
+checkRecv ch expected = liftIO $ do
+  (_,_,txs) <- awaitIO ch
+  expected @=? txs
 
 sendBlock :: (MerkleMap b, Monad m, MonadIO n) => Sink (BoxRX m b) -> GBlock b Identity -> n ()
 sendBlock sinkBOX b = liftIO $ do
