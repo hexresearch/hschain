@@ -126,7 +126,7 @@ genericMiningLoop pow = start
           txs    <- case mtxs of
             Just txs -> return txs
             Nothing  -> atomicallyIO $ mempoolContent $ mempoolAPI pow
-          bCand  <- createCandidateBlock st bh (succ $ bhHeight bh) t (bhBID <$> bhPrevious bh) txs
+          bCand  <- createCandidateBlock st bh t txs
           (bMined,_) <- adjustPuzzle bCand
           case bMined of
             Just b  -> void $ sendNewBlock pow b

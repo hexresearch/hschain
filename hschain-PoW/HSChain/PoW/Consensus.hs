@@ -119,9 +119,7 @@ data StateView m b = StateView
     --   transaction in the mempool
   , createCandidateBlockData
       :: BH b
-      -> Height
       -> Time
-      -> Maybe (BlockID b)
       -> [Tx b]
       -> m (b Identity)
     -- ^ Create candidate block out of list of transactions. It won't
@@ -134,16 +132,14 @@ createCandidateBlock
   :: (Monad m)
   => StateView m b
   -> BH b
-  -> Height
   -> Time
-  -> Maybe (BlockID b)
   -> [Tx b]
   -> m (Block b)
-createCandidateBlock sv bh h t p txs = do
-  b <- createCandidateBlockData sv bh h t p txs
-  return GBlock { blockHeight = h
+createCandidateBlock sv bh t txs = do
+  b <- createCandidateBlockData sv bh t txs
+  return GBlock { blockHeight = succ (bhHeight bh)
                 , blockTime   = t
-                , prevBlock   = p
+                , prevBlock   = Just $ bhBID bh
                 , blockData   = b
                 }
 

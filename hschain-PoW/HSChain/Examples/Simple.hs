@@ -190,7 +190,7 @@ kvMemoryView = make (error "No revinding past genesis") mempty
           , checkTx     = \(k,_) -> return $ if k `Map.notMember` s
                                              then Right ()
                                              else Left KVError
-          , createCandidateBlockData = \bh _ _ _ txs -> return KV
+          , createCandidateBlockData = \bh _ txs -> return KV
               { kvData   = merkled $ case find ((`Map.notMember` s) . fst) txs of
                   Just tx -> [tx]
                   Nothing -> []
