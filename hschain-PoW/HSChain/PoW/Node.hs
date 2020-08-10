@@ -103,26 +103,31 @@ runNode pathsToConfig miningNode sView db = do
 
 
 genericMiningLoop :: (Mineable b, MonadFork m) => PoW m b -> m x
-genericMiningLoop pow = do
-  start =<< atomicallyIO (chainUpdate pow)
+genericMiningLoop pow = start
   where
     --
-    start ch = do
-      c <- atomicallyIO $ currentConsensus pow
+    start = do
+      c  <- atomicallyIO $ currentConsensus pow
+      ch <- atomicallyIO $ mempoolUpdates $ mempoolAPI pow
       let (bh, st, _) = _bestHead c
-      loop ch =<< mine bh st
+      loop ch =<< mine bh st Nothing
     --
     loop ch tid = do
-      (bh, st) <- awaitIO ch
+      (bh, st, txs) <- awaitIO ch
       liftIO $ killThread tid
-      loop ch =<< mine bh st
+      loop ch =<< mine bh st (Just txs)
     -- Here we simply try again to create new block in case we wasnt'
     -- able to create one by fiddling nonce. At very least time should
     -- change
-    mine bh st = fork $ fix $ \tryAgain -> do
-      t      <- getCurrentTime
-      bCand  <- createCandidateBlock st bh (succ $ bhHeight bh) t (bhBID <$> bhPrevious bh) []
-      (bMined,_) <- adjustPuzzle bCand
-      case bMined of
-        Just b  -> void $ sendNewBlock pow b
-        Nothing -> tryAgain
+    mine bh st = fork . tryMine
+      where
+        tryMine mtxs = do
+          t      <- getCurrentTime
+          txs    <- case mtxs of
+            Just txs -> return txs
+            Nothing  -> atomicallyIO $ mempoolContent $ mempoolAPI pow
+          bCand  <- createCandidateBlock st bh (succ $ bhHeight bh) t (bhBID <$> bhPrevious bh) txs
+          (bMined,_) <- adjustPuzzle bCand
+          case bMined of
+            Just b  -> void $ sendNewBlock pow b
+            Nothing -> tryMine Nothing
