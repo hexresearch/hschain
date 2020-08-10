@@ -11,7 +11,12 @@
 {-# LANGUAGE TemplateHaskell            #-}
 {-# LANGUAGE TypeApplications           #-}
 -- |
-module HSChain.PoW.P2P where
+module HSChain.PoW.P2P
+  ( PoW(..)
+  , MempoolAPI(..)
+  , startNode
+  , startNodeTest
+  ) where
 
 import Codec.Serialise
 import Control.Concurrent.MVar
