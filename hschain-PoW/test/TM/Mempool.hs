@@ -46,9 +46,8 @@ testMempoolRollback = runNoLogsT $ evalContT $ do
   mocknet <- liftIO newMockNet
   let net   = createMockNode mocknet $ NetAddrV4 1 1000
       sView = kvMemoryView (blockID genesis)
-  db       <- lift $ inMemoryDB genesis
-  bIdx     <- lift $ buildBlockIndex db
-  c0       <- lift $ createConsensus db bIdx sView
+  db <- lift $ inMemoryDB genesis
+  c0 <- lift $ createConsensus db sView
   (pow,sinkBOX) <- startNodeTest netcfg net [] db c0
   let api@MempoolAPI{..} = mempoolAPI pow
   -- First post transaction into mempool

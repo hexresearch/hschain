@@ -458,23 +458,23 @@ cleanCandidates = do
 createConsensus
   :: (BlockData b, Monad m)
   => BlockDB m b
-  -> BlockIndex b
   -> StateView m b
   -> m (Consensus m b)
 -- NOTE: So far we only record full blocks and not headers. Thus we
 --       don't have any blocks we want to fetch and all candidate
 --       heads have all required blocks.
 -- NOTE; We don't track known bad blocks either.
-createConsensus db bIdx sView = do
+createConsensus db sView = do
+  bIdx <- buildBlockIndex db
+  let c0 = Consensus
+        { _blockIndex     = bIdx
+        , _bestHead       = (bh, sView, makeLocator bh)
+        , _candidateHeads = [ Head b (Seq.singleton b) | b <- blockIndexHeads bIdx ]
+        , _badBlocks      = Set.empty
+        , _requiredBlocks = Set.empty
+        }
+      bh = case stateBID sView `lookupIdx` bIdx of
+             Just b  -> b
+             Nothing -> error "Internal error: state's BID is not in index"
   execStateT (runExceptT (bestCandidate db)) c0
   where
-    bh = case stateBID sView `lookupIdx` bIdx of
-           Just b  -> b
-           Nothing -> error "Internal error: state's BID is not in index"
-    c0 = Consensus
-      { _blockIndex     = bIdx
-      , _bestHead       = (bh, sView, makeLocator bh)
-      , _candidateHeads = [ Head b (Seq.singleton b) | b <- blockIndexHeads bIdx ]
-      , _badBlocks      = Set.empty
-      , _requiredBlocks = Set.empty
-      }

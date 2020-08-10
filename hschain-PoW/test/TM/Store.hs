@@ -74,8 +74,7 @@ testRestart = do
     let net   = createMockNode mocknet $ NetAddrV4 1 1000
     let sView = inMemoryView (blockID genesisCoin)
     db   <- lift $ blockDatabase genesisCoin
-    bIdx <- lift $ buildBlockIndex db
-    c0   <- lift $ createConsensus db bIdx sView
+    c0   <- lift $ createConsensus db sView
     pow  <- startNode netcfg net [] db c0
     cforkLinked $ miningLoop pow True
     -- Await for new blocks
@@ -85,9 +84,8 @@ testRestart = do
       when (h >= Height 10) $ throwM (Abort h)
   -- Reinitialize
   do let sView = inMemoryView (blockID genesisCoin)
-     db   <- blockDatabase genesisCoin
-     bIdx <- buildBlockIndex db
-     c0   <- createConsensus db bIdx sView
+     db <- blockDatabase genesisCoin
+     c0 <- createConsensus db sView
      liftIO $ h @=? (c0 ^. bestHead . _1 . to bhHeight)
   where
     netcfg = NetCfg { nKnownPeers     = 3
