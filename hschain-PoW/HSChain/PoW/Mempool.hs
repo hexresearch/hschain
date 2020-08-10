@@ -239,7 +239,7 @@ handlePending MempoolCh{..} MempoolDict{..}
   = doFilter <$> awaitPending
   where
     doFilter tidList = do
-      badTxs <- filterM (fmap isRight . checkTx stateView . snd)
+      badTxs <- filterM (fmap isLeft . checkTx stateView . snd)
               $ mapMaybe (\tid -> do (_,tx) <- Map.lookup tid (mempRevMap mempool)
                                      pure (tid,tx)
                          ) tidList
