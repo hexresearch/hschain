@@ -33,12 +33,12 @@ import HSChain.Logger
 
 
 -- | Channels for sending data to and from consensus thread
-data ConsensusCh s m b = ConsensusCh
+data ConsensusCh m b = ConsensusCh
   { bcastAnnounce    :: Sink (MsgAnn b)
     -- ^ Broadcast channel for gossip announcements (we got new best head)
-  , bcastChainUpdate :: Sink (BH b, StateView s m b)
+  , bcastChainUpdate :: Sink (BH b, BH b, StateView m b)
     -- ^ Broadcast channel for announcing new head for mining etc.
-  , sinkConsensusSt  :: Sink (Consensus s m b)
+  , sinkConsensusSt  :: Sink (Consensus m b)
     -- ^ Updating state of consensus
   , sinkReqBlocks    :: Sink (Set (BlockID b))
     -- ^ Channel for signalling to gossip what block should be fetched
@@ -51,8 +51,8 @@ data ConsensusCh s m b = ConsensusCh
 threadConsensus
   :: (MonadIO m, MonadLogger m, BlockData b, MonadCatch m)
   => BlockDB m b
-  -> Consensus s m b
-  -> ConsensusCh s m b
+  -> Consensus m b
+  -> ConsensusCh m b
   -> m x
 threadConsensus db consensus0 ConsensusCh{..} = descendNamespace "cns" $ logOnException $ do
   logger InfoS "Staring consensus" ()
@@ -70,14 +70,15 @@ threadConsensus db consensus0 ConsensusCh{..} = descendNamespace "cns" $ logOnEx
            st <- lift . flushState =<< use (bestHead . _2)
            bestHead . _2 .= st
            sinkIO bcastAnnounce $ AnnBestHead $ asHeader bh'
-           sinkIO bcastChainUpdate (bh',st)
+           sinkIO bcastChainUpdate (bh, bh', st)
+
 
 -- Handler for messages coming from peer.
 consensusMonitor
   :: (MonadLogger m, BlockData b, MonadIO m)
   => BlockDB m b
   -> BoxRX m b
-  -> StateT (Consensus s m b) m ()
+  -> StateT (Consensus m b) m ()
 consensusMonitor db (BoxRX message)
   = message $ logR <=< \case
       RxAnn     m  -> handleAnnounce m

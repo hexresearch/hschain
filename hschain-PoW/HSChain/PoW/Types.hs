@@ -97,6 +97,7 @@ newtype Work = Work Natural
 -- | Core of blockchain implementation.
 class ( Show (BlockID b), Ord (BlockID b), Serialise (BlockID b)
       , Show (TxID    b), Ord (TxID    b), Serialise (TxID    b)
+      , Show (Tx b)
       , JSON.ToJSON (BlockID b), JSON.FromJSON (BlockID b)
       , JSON.ToJSON (TxID    b), JSON.FromJSON (TxID    b)
       , MerkleMap b, Typeable b

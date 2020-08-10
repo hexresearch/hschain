@@ -1,12 +1,13 @@
+-- |
 {-# LANGUAGE DataKinds                  #-}
+{-# LANGUAGE DeriveAnyClass             #-}
 {-# LANGUAGE DerivingStrategies         #-}
 {-# LANGUAGE DerivingVia                #-}
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE RankNTypes                 #-}
 {-# LANGUAGE TypeFamilies               #-}
 {-# LANGUAGE UndecidableInstances       #-}
-
--- |
 module TM.Util.Mockchain where
 
 import Codec.Serialise
@@ -19,12 +20,13 @@ import Data.Word
 
 import System.IO.Unsafe (unsafePerformIO)
 
-import HSChain.PoW.Types
-import HSChain.Logger
 import HSChain.Control.Class
+import HSChain.Examples.Simple
+import HSChain.Logger
+import HSChain.PoW.Types
+import HSChain.PoW.Consensus
 import HSChain.Store.Query
 import HSChain.Types.Merkle.Types
-import HSChain.Examples.Simple
 
 ----------------------------------------------------------------
 --
@@ -32,7 +34,10 @@ import HSChain.Examples.Simple
 
 mockchain :: (Num (Nonce cfg), Show (Nonce cfg), KVConfig cfg)
           => [Block (KV cfg)]
-mockchain = gen : unfoldr (Just . (\b -> (b,b)) . mineBlock "VAL") gen
+mockchain = gen : unfoldr ( Just
+                          . (\b -> (b,b))
+                          . (\b -> mineBlock [let Height h = blockHeight b in (fromIntegral h, "VAL")] b)
+                          ) gen
   where
     gen = GBlock { blockHeight = Height 0
                  , blockTime   = Time 0
@@ -44,17 +49,15 @@ mockchain = gen : unfoldr (Just . (\b -> (b,b)) . mineBlock "VAL") gen
                  }
 
 mineBlock :: (Num (Nonce cfg), Show (Nonce cfg), KVConfig cfg)
-          => String -> Block (KV cfg) -> Block (KV cfg)
-mineBlock val b = unsafePerformIO $ do
+          => [(Int,String)] -> Block (KV cfg) -> Block (KV cfg)
+mineBlock txs b = unsafePerformIO $ do
   find $ GBlock
     { blockHeight = succ $ blockHeight b
     , blockTime   = Time 0
     , prevBlock   = Just $! blockID b
-    , blockData   = KV { kvData = merkled [ let Height h = blockHeight b
-                                            in (fromIntegral h, val)
-                                          ]
-                       , kvNonce      = 0
-                       , kvTarget     = kvTarget (blockData b)
+    , blockData   = KV { kvData   = merkled txs
+                       , kvNonce  = 0
+                       , kvTarget = kvTarget (blockData b)
                        }
     }
   where
@@ -69,6 +72,7 @@ data MockChain
 
 instance Serialise (Nonce MockChain) => KVConfig MockChain where
   type Nonce MockChain = Word64
+  kvDefaultNonce   = const 0
   kvAdjustInterval = Const 100
   kvBlockTimeInterval  = Const (Time 1000)
   kvSolvePuzzle blk = case solved of
@@ -90,9 +94,9 @@ instance Serialise (Nonce MockChain) => KVConfig MockChain where
 
 genesis, block1, block2, block3, block2', block3', block4' :: Block (KV MockChain)
 genesis: block1: block2: block3:_ = mockchain
-block2' = mineBlock "Z" block1
-block3' = mineBlock "Z" block2'
-block4' = mineBlock "Z" block3'
+block2' = mineBlock [(2,"Z")] block1
+block3' = mineBlock [(3,"Z")] block2'
+block4' = mineBlock [(4,"Z")] block3'
 
 
 header1, header2, header3, header2', header3', header4' :: Header (KV MockChain)
@@ -104,6 +108,23 @@ header3' = toHeader block3'
 header4' = toHeader block4'
 
 
+-- | State view which doesn't do any block validation whatsoever
+inMemoryView
+  :: (Monad m, BlockData b)
+  => BlockID b
+  -> StateView m b
+inMemoryView = make (error "No revinding past genesis")
+  where
+    make previous bid = view
+      where
+        view = StateView
+          { stateBID    = bid
+          , applyBlock  = \bh _ -> return $ Just $ make view (bhBID bh)
+          , revertBlock = return previous
+          , flushState  = return view
+          , checkTx                  = error "Transaction checking is not supported"
+          , createCandidateBlockData = error "Block creation is not supported"
+          }
 
 -- | Monad transformer for use in tests
 newtype HSChainT m x = HSChainT (ReaderT (Connection 'RW) m x)
@@ -120,3 +141,10 @@ runHSChainT c (HSChainT m) = do
 
 withHSChainT :: (MonadIO m, MonadMask m) => HSChainT m a -> m a
 withHSChainT m = withConnection "" $ \c -> runHSChainT c m
+
+data Abort = Abort Height
+  deriving stock    (Show)
+  deriving anyclass (Exception)
+
+catchAbort :: MonadCatch m => (forall a. m a) -> m Height
+catchAbort action = handle (\(Abort h) -> return h) action

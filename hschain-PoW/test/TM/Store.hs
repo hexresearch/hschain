@@ -65,17 +65,16 @@ testIdempotence db = do
       liftIO . assertEqual ("No: " ++ nm) (Nothing) =<< retrieveHeader db (blockID b)
 
 
--- | Test that we're able to restart
+-- | Test that we're able to restart and to build correct block index
 testRestart :: HSChainT IO ()
 testRestart = do
   mocknet <- liftIO newMockNet
   -- First start of exception
   h <- catchAbort $ evalContT $ do
     let net   = createMockNode mocknet $ NetAddrV4 1 1000
-    let sView = inMemoryView (\_ -> Just) () (blockID genesisCoin)
+    let sView = inMemoryView (blockID genesisCoin)
     db   <- lift $ blockDatabase genesisCoin
-    bIdx <- lift $ buildBlockIndex db
-    c0   <- lift $ createConsensus db bIdx sView
+    c0   <- lift $ createConsensus db sView
     pow  <- startNode netcfg net [] db c0
     cforkLinked $ miningLoop pow True
     -- Await for new blocks
@@ -84,23 +83,14 @@ testRestart = do
       (BH{bhHeight=h},_) <- awaitIO ch
       when (h >= Height 10) $ throwM (Abort h)
   -- Reinitialize
-  do let sView = inMemoryView (\_ -> Just) () (blockID genesisCoin)
-     db   <- blockDatabase genesisCoin
-     bIdx <- buildBlockIndex db
-     c0   <- createConsensus db bIdx sView
+  do let sView = inMemoryView (blockID genesisCoin)
+     db <- blockDatabase genesisCoin
+     c0 <- createConsensus db sView
      liftIO $ h @=? (c0 ^. bestHead . _1 . to bhHeight)
   where
     netcfg = NetCfg { nKnownPeers     = 3
                     , nConnectedPeers = 3
                     }
-
-
-data Abort = Abort Height
-  deriving stock    (Show)
-  deriving anyclass (Exception)
-
-catchAbort :: MonadCatch m => (forall a. m a) -> m Height
-catchAbort action = handle (\(Abort h) -> return h) action
 
 
 genesisCoin :: Block Coin

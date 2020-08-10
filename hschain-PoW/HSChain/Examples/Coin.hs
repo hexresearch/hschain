@@ -18,6 +18,7 @@ import Control.Concurrent (killThread, threadDelay)
 import Control.Monad
 import Control.Monad.Catch
 import Control.Monad.IO.Class
+import Control.Monad.Reader
 import Control.DeepSeq
 import Codec.Serialise      (Serialise)
 import qualified Data.Aeson as JSON
@@ -25,6 +26,7 @@ import Data.Maybe
 import Data.Word
 import qualified Database.SQLite.Simple.ToField   as SQL
 import qualified Database.SQLite.Simple.FromField as SQL
+import Katip (LogEnv, Namespace)
 import GHC.Generics    (Generic)
 
 import HSChain.Types.Merkle.Types
@@ -35,11 +37,32 @@ import HSChain.Crypto
 import HSChain.Crypto.Classes.Hash
 import HSChain.Crypto.Ed25519
 import HSChain.Crypto.SHA
+import HSChain.Logger
 import HSChain.PoW.Types
 import HSChain.PoW.Consensus
 import HSChain.PoW.P2P
 import HSChain.Store.Query
 
+
+----------------------------------------------------------------
+-- Monad for running Coin
+----------------------------------------------------------------
+
+data CoinDict = CoinDict
+  { dictLogEnv    :: !LogEnv
+  , dictNamespace :: !Namespace
+  , dictConn      :: !(Connection 'RW)
+  }
+  deriving (Generic)
+
+newtype CoinT m a = CoinT (ReaderT CoinDict m a)
+  deriving newtype ( Functor,Applicative,Monad,MonadIO
+                   , MonadCatch,MonadThrow,MonadMask,MonadFork)
+  deriving (MonadLogger)          via LoggerByTypes  (ReaderT CoinDict m)
+  deriving (MonadDB, MonadReadDB) via DatabaseByType (ReaderT CoinDict m)
+
+runCoinT :: LogEnv -> Connection 'RW -> CoinT m a -> m a
+runCoinT logenv conn (CoinT act) = runReaderT act (CoinDict logenv mempty conn)
 
 ----------------------------------------------------------------
 -- Blovckchain block
@@ -182,7 +205,7 @@ data Unspent = Unspent !(PublicKey Alg) !Integer
 -- Mining loop
 ----------------------------------------------------------------
 
-miningLoop :: MonadFork m => PoW s m Coin -> Bool -> m x
+miningLoop :: MonadFork m => PoW m Coin -> Bool -> m x
 miningLoop _   False = liftIO $ forever $ threadDelay maxBound
 miningLoop pow True  = do
   start =<< atomicallyIO (chainUpdate pow)
@@ -222,11 +245,12 @@ miningLoop pow True  = do
 -- Blockchain state management
 ----------------------------------------------------------------
 
-stateView :: StateView s m Coin
+stateView :: StateView m Coin
 stateView = StateView
   { stateBID          = undefined
   , applyBlock        = undefined
   , revertBlock       = undefined
-  , stateComputeAlter = undefined
   , flushState        = undefined
+  , checkTx           = undefined
+  , createCandidateBlockData = undefined
   }

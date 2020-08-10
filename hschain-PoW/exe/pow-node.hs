@@ -17,7 +17,6 @@ import Codec.Serialise
 import Control.Monad.IO.Class
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as LBS
-import qualified Data.Map.Strict as Map
 import Data.Word
 import Options.Applicative
 import System.IO
@@ -27,8 +26,7 @@ import HSChain.PoW.Types
 import qualified HSChain.POW as POWFunc
 import HSChain.Types.Merkle.Types
 import HSChain.Examples.Simple
-import HSChain.Examples.Util
-import HSChain.PoW.Node (runNode)
+import HSChain.PoW.Node (runNode, inMemoryDB)
 import HSChain.Crypto
 import HSChain.Crypto.SHA
 
@@ -38,12 +36,6 @@ import HSChain.Crypto.SHA
 ----------------------------------------------------------------
 
 data TestChain
-
-class Default a where
-  -- |A safe value to instantiate somewhere.
-  defaultValue :: a
-
-instance Default Word64 where defaultValue = 0
 
 instance KVConfig TestChain where
   type Nonce TestChain = Word64
@@ -65,10 +57,9 @@ instance KVConfig TestChain where
   kvCheckPuzzle hdr = return $ blockTargetThreshold hdr >= resultTgt
     where
       resultTgt = hash256AsTarget hdr
+  kvDefaultNonce _ = 0
 
 data TestChainNewPow
-
-instance Default BS.ByteString where defaultValue = BS.empty
 
 instance KVConfig TestChainNewPow where
   type Nonce TestChainNewPow = BS.ByteString
@@ -98,7 +89,7 @@ instance KVConfig TestChainNewPow where
       answer = kvNonce $ blockData hdr
       Hash hashOfSum = hashBlob headerAndAnswer :: Hash SHA256
       headerAndAnswer = BS.concat [answer, onlyHeader]
-
+  kvDefaultNonce _ = BS.empty
 
 blockWithoutNonce :: GBlock (KV TestChainNewPow) f -> GBlock (KV TestChainNewPow) f
 blockWithoutNonce block@GBlock{..} =
@@ -133,14 +124,15 @@ genesisNewPoW = GBlock
 -- |Pure function: creates a block header with all fields at computable or default values
 -- and also fetches transactions from the state. The state may be modified
 -- along the way so we return it.
-getHeaderTxsToMine :: (Default (Nonce cfg), KVConfig cfg)
-          => BH (KV cfg) -> a -> ((Header (KV cfg), [Tx (KV cfg)]), a)
+getHeaderTxsToMine
+  :: forall cfg a. (KVConfig cfg)
+  => BH (KV cfg) -> a -> ((Header (KV cfg), [Tx (KV cfg)]), a)
 getHeaderTxsToMine bh a = ((toHeader $ GBlock
     { blockHeight = succ $ bhHeight bh
     , blockTime   = Time 0
     , prevBlock   = Just $! bhBID bh
-    , blockData   = KV { kvData = merkled []
-                       , kvNonce = defaultValue
+    , blockData   = KV { kvData   = merkled []
+                       , kvNonce  = kvDefaultNonce (Proxy @cfg)
                        , kvTarget = retarget bh
                        }
     }, []), a)
@@ -194,10 +186,12 @@ parser = do
     )
   return Opts{..}
 
-runNodeAnyPoW :: forall cfg . (Show (Nonce cfg), Default (Nonce cfg), KVConfig cfg)
+runNodeAnyPoW :: forall cfg . (Show (Nonce cfg), KVConfig cfg)
               => Opts -> Block (KV cfg) ->IO ()
 runNodeAnyPoW Opts{..} genesisBlock = do
-  runNode cmdConfigPath optMine genesisBlock kvViewStep getHeaderTxsToMine (getBlockToMine optNodeName) Map.empty
+  db <- inMemoryDB genesisBlock
+  let st = kvMemoryView (blockID genesisBlock)
+  runNode cmdConfigPath optMine st db
 
 main :: IO ()
 main = do

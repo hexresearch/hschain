@@ -196,7 +196,7 @@ data PeerChans s m b = PeerChans
   , peerCatchup       :: CatchupThrottle
   , peerReqBlocks     :: BlockRegistry b
   , peerConnections   :: STM [NetAddr]      --
-  , peerConsensuSt    :: STM (Consensus s m b)
+  , peerConsensuSt    :: STM (Consensus m b)
   , peerBlockDB       :: BlockDB m b  
   }
 

@@ -17,50 +17,26 @@
 module Main where
 
 import Control.Concurrent (forkIO)
-import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Control.Monad.Reader
 import Control.Monad.Trans.Cont
 import Data.Maybe
 import Data.Yaml.Config (loadYamlSettings, requireEnv)
 import Options.Applicative
-import Katip (LogEnv, Namespace)
-import GHC.Generics (Generic)
 
+import HSChain.Control.Channels
+import HSChain.Control.Util
+import HSChain.Examples.Coin
+import HSChain.Logger
+import HSChain.Network.TCP
 import HSChain.PoW.Consensus
-import HSChain.PoW.Types
+import HSChain.PoW.Node (blockDatabase,Cfg(..))
 import HSChain.PoW.P2P
 import HSChain.PoW.P2P.Types
-import HSChain.Network.TCP
-import HSChain.Logger
-import HSChain.Control.Class
-import HSChain.Control.Util
-import HSChain.Control.Channels
-import HSChain.Types.Merkle.Types
-import HSChain.Examples.Coin
-import HSChain.PoW.Node (blockDatabase,inMemoryView,Cfg(..))
+import HSChain.PoW.Types
 import HSChain.Store.Query
+import HSChain.Types.Merkle.Types
 
-
-----------------------------------------------------------------
--- Monad for working with PoW
-----------------------------------------------------------------
-
-data CoinDict = CoinDict
-  { dictLogEnv    :: !LogEnv
-  , dictNamespace :: !Namespace
-  , dictConn      :: !(Connection 'RW)
-  }
-  deriving (Generic)
-
-newtype CoinT m a = CoinT (ReaderT CoinDict m a)
-  deriving newtype ( Functor,Applicative,Monad,MonadIO
-                   , MonadCatch,MonadThrow,MonadMask,MonadFork)
-  deriving (MonadLogger)          via LoggerByTypes  (ReaderT CoinDict m)
-  deriving (MonadDB, MonadReadDB) via DatabaseByType (ReaderT CoinDict m)
-
-runCoinT :: LogEnv -> Connection 'RW -> CoinT m a -> m a
-runCoinT logenv conn (CoinT act) = runReaderT act (CoinDict logenv mempty conn)
 
 ----------------------------------------------------------------
 --
@@ -92,13 +68,12 @@ main = do
       netcfg = NetCfg { nKnownPeers     = 3
                       , nConnectedPeers = 3
                       }
-  let sView = inMemoryView (\_ -> Just) () (blockID genesis)
+  let sView = inMemoryView (blockID genesis)
   withConnection (fromMaybe "" cfgDB) $ \conn -> 
     withLogEnv "" "" (map makeScribe cfgLog) $ \logEnv -> runCoinT logEnv conn $ evalContT $ do
-      db   <- lift $ blockDatabase genesis
-      bIdx <- lift $ buildBlockIndex db
-      c0   <- lift $ createConsensus db bIdx sView
-      pow  <- startNode netcfg net cfgPeers db c0
+      db  <- lift $ blockDatabase genesis
+      c0  <- lift $ createConsensus db sView
+      pow <- startNode netcfg net cfgPeers db c0
       void $ liftIO $ forkIO $ do
         ch <- atomicallyIO (chainUpdate pow)
         forever $ do (bh,_) <- awaitIO ch
@@ -128,3 +103,21 @@ parser = do
     <> help "Mine blocks"
     )
   return Opts{..}
+
+-- | State view which doesn't do any block validation whatsoever
+inMemoryView
+  :: (Monad m, BlockData b)
+  => BlockID b
+  -> StateView m b
+inMemoryView = make (error "No revinding past genesis")
+  where
+    make previous bid = view
+      where
+        view = StateView
+          { stateBID    = bid
+          , applyBlock  = \bh _ -> return $ Just $ make view (bhBID bh)
+          , revertBlock = return previous
+          , flushState  = return view
+          , checkTx                  = error "Transaction checking is not supported"
+          , createCandidateBlockData = error "Block creation is not supported"
+          }

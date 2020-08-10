@@ -1,6 +1,8 @@
+{-# LANGUAGE DataKinds                  #-}
 {-# LANGUAGE DeriveAnyClass             #-}
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE DerivingStrategies         #-}
+{-# LANGUAGE DerivingVia                #-}
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
@@ -17,23 +19,57 @@ module HSChain.Examples.Simple
   ( KV(..)
   , KVConfig(..)
   , retarget
+  , kvMemoryView
   , hash256AsTarget
+    -- * Monad
+  , KVT(..)
+  , runKVT
   ) where
 
 import Codec.Serialise      (Serialise)
-import Control.Exception
-import Control.Monad.IO.Class
 import Control.Applicative
+import Control.Exception
+import Control.Monad.Catch
+import Control.Monad.IO.Class
+import Control.Monad.Reader
 import Data.Typeable        (Typeable)
 import Data.Functor.Classes (Show1)
+import Data.List            (find)
 import qualified Data.Aeson           as JSON
+import qualified Data.Map.Strict      as Map
+import Katip (LogEnv, Namespace)
 import GHC.Generics         (Generic)
 
+import HSChain.Control.Class
 import HSChain.Crypto
 import HSChain.Crypto.Classes.Hash
 import HSChain.Crypto.SHA
+import HSChain.Logger
 import HSChain.Types.Merkle.Types
 import HSChain.PoW.Types
+import HSChain.PoW.Consensus
+import HSChain.Store.Query
+
+
+----------------------------------------------------------------
+-- Monad for running Coin
+----------------------------------------------------------------
+
+data KVDict = KVDict
+  { dictLogEnv    :: !LogEnv
+  , dictNamespace :: !Namespace
+  , dictConn      :: !(Connection 'RW)
+  }
+  deriving (Generic)
+
+newtype KVT m a = KVT (ReaderT KVDict m a)
+  deriving newtype ( Functor,Applicative,Monad,MonadIO
+                   , MonadCatch,MonadThrow,MonadMask,MonadFork)
+  deriving (MonadLogger)          via LoggerByTypes  (ReaderT KVDict m)
+  deriving (MonadDB, MonadReadDB) via DatabaseByType (ReaderT KVDict m)
+
+runKVT :: LogEnv -> Connection 'RW -> KVT m a -> m a
+runKVT logenv conn (KVT act) = runReaderT act (KVDict logenv mempty conn)
 
 ----------------------------------------------------------------
 --
@@ -73,6 +109,7 @@ class ( CryptoHashable (Nonce cfg)
   -- | Type of nonce. It depends on configuration.
   type Nonce cfg
 
+  kvDefaultNonce :: Proxy cfg -> Nonce cfg
   -- | Difficulty adjustment is performed every N of blocks
   kvAdjustInterval :: Const Height  cfg
   -- | Expected interval between blocks in milliseconds
@@ -132,3 +169,39 @@ instance (KVConfig cfg) => BlockData (KV cfg) where
 instance (KVConfig cfg) => Mineable (KV cfg) where
   adjustPuzzle = fmap (flip (,) (Target 0)) . kvSolvePuzzle
 
+
+
+-- | Simple in-memory implementation of DB
+kvMemoryView
+  :: forall m cfg. (Monad m, KVConfig cfg)
+  => BlockID (KV cfg)
+  -> StateView m (KV cfg)
+kvMemoryView = make (error "No revinding past genesis") mempty
+  where
+    make previous s bid = view
+      where
+        view = StateView
+          { stateBID    = bid
+          , applyBlock  = \_ b -> case kvViewStep b s of
+              Nothing -> return Nothing
+              Just s' -> return $ Just $ make view s' (blockID b)
+          , revertBlock = return previous
+          , flushState  = return view
+          , checkTx     = \(k,_) -> return $ if k `Map.notMember` s
+                                             then Right ()
+                                             else Left KVError
+          , createCandidateBlockData = \bh _ txs -> return KV
+              { kvData   = merkled $ case find ((`Map.notMember` s) . fst) txs of
+                  Just tx -> [tx]
+                  Nothing -> []
+              , kvNonce  = kvDefaultNonce (Proxy @cfg)
+              , kvTarget = retarget bh
+              }
+          }
+
+kvViewStep :: KVConfig cfg => Block (KV cfg) -> Map.Map Int String -> Maybe (Map.Map Int String)
+kvViewStep b m
+  | or [ k `Map.member` m | (k, _) <- txs ] = Nothing
+  | otherwise                               = Just $ Map.fromList txs <> m
+  where
+    txs = merkleValue $ kvData $ blockData b
