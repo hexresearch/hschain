@@ -23,7 +23,7 @@
 module HSChain.PoW.Node
   ( Cfg(..)
   , runNode
-  -- , inMemoryView
+  , hoistCont
     -- * Block storage
   , inMemoryDB
   , blockDatabase
@@ -33,17 +33,13 @@ import qualified Data.Aeson as JSON
 import Codec.Serialise
 
 import Control.Concurrent
-import Control.Concurrent.STM
 import Control.Monad
-import Control.Monad.Catch
 import Control.Monad.Cont
 import Control.Monad.Trans.Cont
 
-import Data.Function
 import Data.Word
 import Data.Yaml.Config
 import GHC.Generics (Generic)
-import Lens.Micro
 
 import HSChain.Control.Channels
 import HSChain.PoW.Consensus
@@ -101,6 +97,8 @@ runNode pathsToConfig miningNode sView db = do
                      print $ retarget bh
 
 
+
+
 genericMiningLoop :: (Mineable b, MonadFork m) => PoW m b -> m x
 genericMiningLoop pow = start
   where
@@ -130,3 +128,7 @@ genericMiningLoop pow = start
           case bMined of
             Just b  -> void $ sendNewBlock pow b
             Nothing -> tryMine Nothing
+
+hoistCont :: (Monad n, Monad m) => (m a -> n b) -> ContT a m a -> ContT r n b
+hoistCont f m = lift $ f $ evalContT m
+
