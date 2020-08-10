@@ -1,6 +1,8 @@
+{-# LANGUAGE DataKinds                  #-}
 {-# LANGUAGE DeriveAnyClass             #-}
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE DerivingStrategies         #-}
+{-# LANGUAGE DerivingVia                #-}
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
@@ -19,25 +21,55 @@ module HSChain.Examples.Simple
   , retarget
   , kvMemoryView
   , hash256AsTarget
+    -- * Monad
+  , KVT(..)
+  , runKVT
   ) where
 
 import Codec.Serialise      (Serialise)
-import Control.Exception
-import Control.Monad.IO.Class
 import Control.Applicative
+import Control.Exception
+import Control.Monad.Catch
+import Control.Monad.IO.Class
+import Control.Monad.Reader
 import Data.Typeable        (Typeable)
 import Data.Functor.Classes (Show1)
 import Data.List            (find)
 import qualified Data.Aeson           as JSON
 import qualified Data.Map.Strict      as Map
+import Katip (LogEnv, Namespace)
 import GHC.Generics         (Generic)
 
+import HSChain.Control.Class
 import HSChain.Crypto
 import HSChain.Crypto.Classes.Hash
 import HSChain.Crypto.SHA
+import HSChain.Logger
 import HSChain.Types.Merkle.Types
 import HSChain.PoW.Types
 import HSChain.PoW.Consensus
+import HSChain.Store.Query
+
+
+----------------------------------------------------------------
+-- Monad for running Coin
+----------------------------------------------------------------
+
+data KVDict = KVDict
+  { dictLogEnv    :: !LogEnv
+  , dictNamespace :: !Namespace
+  , dictConn      :: !(Connection 'RW)
+  }
+  deriving (Generic)
+
+newtype KVT m a = KVT (ReaderT KVDict m a)
+  deriving newtype ( Functor,Applicative,Monad,MonadIO
+                   , MonadCatch,MonadThrow,MonadMask,MonadFork)
+  deriving (MonadLogger)          via LoggerByTypes  (ReaderT KVDict m)
+  deriving (MonadDB, MonadReadDB) via DatabaseByType (ReaderT KVDict m)
+
+runKVT :: LogEnv -> Connection 'RW -> KVT m a -> m a
+runKVT logenv conn (KVT act) = runReaderT act (KVDict logenv mempty conn)
 
 ----------------------------------------------------------------
 --
