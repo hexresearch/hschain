@@ -115,10 +115,10 @@ solvesPuzzle numClauses answer header = all clauseSatisfied clauses
 
 check :: ByteString -> ByteString -> ByteString -> POWConfig -> IO Bool
 check headerWithoutAnswer answer hashOfAnswerHeader POWConfig{..}
-  | B.length hashOfAnswerHeader /= answerSize = putStrLn "wrong data size" >> return False -- wrong data size.
-  | targetCompareResult == LT = putStrLn "not under target" >> return False -- final hash not under target complexity.
-  | computedHash /= hashOfAnswerHeader = putStrLn "hashes do not match" >> return False -- hashes do not match.
-  | otherwise = putStrLn "solving puzzle" >> return (solvesPuzzle powCfgClausesCount answer headerWithoutAnswer)
+  | B.length hashOfAnswerHeader /= answerSize = return False -- wrong data size.
+  | targetCompareResult == LT = return False -- final hash not under target complexity.
+  | computedHash /= hashOfAnswerHeader = return False -- hashes do not match.
+  | otherwise = return (solvesPuzzle powCfgClausesCount answer headerWithoutAnswer)
   where
     encodedTarget = encodeIntegerLSB powCfgTarget
     targetCompareResult = compareLSB encodedTarget hashOfAnswerHeader
