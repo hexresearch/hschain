@@ -67,6 +67,9 @@ module HSChain.Store.Internal.Query (
 import Control.Concurrent.MVar
 import Control.Monad
 import Control.Monad.Catch
+#if !MIN_VERSION_base(4,13,0)
+import Control.Monad.Fail         (MonadFail)
+#endif
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Reader

@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP                        #-}
 {-# LANGUAGE DerivingStrategies         #-}
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
@@ -15,6 +16,9 @@ import Control.Monad.Trans.Cont
 import Control.Monad.Trans.Reader
 import Control.Monad.Trans.Class
 import Control.Monad.IO.Class
+#if !MIN_VERSION_base(4,13,0)
+import Control.Monad.Fail         (MonadFail)
+#endif
 import Test.Tasty
 import Test.Tasty.HUnit
 
