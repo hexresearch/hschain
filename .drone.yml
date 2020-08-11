@@ -22,6 +22,25 @@ steps:
   - cd nix
   - ./build-ci.sh --argstr ghc ghc883  --arg useSodium true  --arg isBench true
 
+- name: build-hschain-ghc865
+  image: nixos/nix:2.3.4
+  privileged: true
+  network_mode: host
+  environment:
+    DRONE_GITHUB_PULL_KEY:
+      from_secret: drone_github_pull_key
+    NIX_CACHE_KEY:
+      from_secret: nix_cache_key
+    NIX_CACHE_SIGNING_KEY:
+      from_secret: nix_cache_signing_key
+  commands:
+  - apk add --no-cache git bash openssh-client
+  - source ./nix/setup_ssh_ci.sh
+  - "echo -n \"$${NIX_CACHE_SIGNING_KEY}\" > \"$${HOME}/nix-cache-key.sec\""
+  - "chmod 400 \"$${HOME}/nix-cache-key.sec\""
+  - cd nix
+  - ./build-ci.sh --argstr ghc ghc865  --arg useSodium true  --arg isBench true
+
 - name: build-hschain-cryptonite
   image: nixos/nix:2.3.4
   privileged: true
