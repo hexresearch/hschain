@@ -175,6 +175,9 @@ newtype KeyValT m a = KeyValT { unKeyValT :: ReaderT KeyValDictM m a }
   deriving (MonadReadDB, MonadDB) via DatabaseByType (KeyValT m)
   deriving (MonadCached BData)    via CachedByType BData (KeyValT m)
 
+instance MonadTrans KeyValT where
+  lift = KeyValT . lift
+
 runKeyValT :: KeyValDictM -> KeyValT m a -> m a
 runKeyValT d = flip runReaderT d . unKeyValT
 

@@ -602,6 +602,9 @@ deriving via NoMonitoring (CoinT () m)
 deriving via MonitoringByField "dictGauges" (ReaderT (CoinDictM PrometheusGauges) m)
     instance MonadIO m => MonadTMMonitoring (CoinT PrometheusGauges m)
 
+instance MonadTrans (CoinT g) where
+  lift = CoinT . lift
+
 runCoinT :: CoinDictM g -> CoinT g m a -> m a
 runCoinT d = flip runReaderT d . unCoinT
 
