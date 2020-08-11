@@ -1,5 +1,6 @@
 {-# LANGUAGE DataKinds                  #-}
 {-# LANGUAGE DerivingStrategies         #-}
+{-# LANGUAGE DerivingVia                #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase                 #-}
 {-# LANGUAGE OverloadedLists            #-}
@@ -13,14 +14,13 @@
 --
 module TM.P2P.PEX (tests) where
 
-import Control.Arrow (first)
 import Control.Monad
 import Control.Monad.Fix
 import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Cont
-import Control.Monad.Trans.Reader
+import Control.Monad.Reader
 import Control.Exception
 import Data.Aeson (Value(..),Object)
 import Data.Bool
@@ -280,20 +280,18 @@ createTestNetworkWithValidatorsSetAndConfig validators cfg netDescr = do
     mkTestNode
       :: (MonadFork m, MonadMask m, MonadTMMonitoring m)
       => MockNet
-      -> ( Connection 'RW BData
+      -> ( Connection 'RW
          , TestNode
          , Maybe (PrivValidator (Alg BData))
          )
       -> m [m ()]
     mkTestNode net (conn, TestNode{..}, validatorPK) = do
-        initDatabase conn
-        let run = runIORefLogT ncScribe . runDBT conn
+        let run = runPEXT conn ncScribe
         (_,actions) <- run $ Mock.interpretSpec genesis
           NodeSpec
             { nspecPrivKey     = validatorPK
             , nspecDbName      = Nothing
             , nspecLogFile     = []
-            , nspecPersistIval = Nothing
             }
           BlockchainNet
             { bchNetwork      = createMockNode net (intToNetAddr ncFrom)
@@ -304,25 +302,32 @@ createTestNetworkWithValidatorsSetAndConfig validators cfg netDescr = do
         return $ run <$> actions
 
 
-newtype IORefLogT m a = IORefLogT { unIORefLogT :: ReaderT (Namespace, IORef [(Namespace,Text,Object)]) m a }
+newtype PEXT a m x = PEXT
+  (ReaderT (Namespace, IORef [(Namespace,Text,Object)], Connection 'RW, Cached a) m x)
   deriving newtype ( Functor, Applicative, Monad
                    , MonadIO, MonadThrow, MonadCatch, MonadMask
                    , MonadFork, MonadTMMonitoring
+                   , MonadReader (Namespace, IORef [(Namespace,Text,Object)], Connection 'RW, Cached a)
                    )
+  deriving (MonadReadDB, MonadDB) via DatabaseByType (PEXT a m)
+  deriving (MonadCached a)        via CachedByType a (PEXT a m)
 
-runIORefLogT :: IORef [(Namespace,Text,Object)] -> IORefLogT m a -> m a
-runIORefLogT ref = flip runReaderT (mempty,ref) . unIORefLogT
+runPEXT :: MonadIO m => Connection 'RW -> IORef [(Namespace,Text,Object)] -> PEXT a m x -> m x
+runPEXT conn ref (PEXT m) = do
+  c <- newCached
+  runReaderT m (mempty,ref,conn,c)
 
-instance MonadTrans IORefLogT where
-  lift = IORefLogT . lift
+instance MonadTrans (PEXT a) where
+  lift = PEXT . lift
 
-instance MonadIO m => MonadLogger (IORefLogT m) where
+instance MonadIO m => MonadLogger (PEXT a m) where
   logger _ msg a = do
-    (namespace, ref) <- IORefLogT ask
+    (namespace, ref, _, _) <- PEXT ask
     liftIO $ atomicModifyIORef' ref $ \xs ->
       ( ( namespace
         , toLazyText $ unLogStr msg
         , toObject a) : xs
       , ()
       )
-  localNamespace f = IORefLogT . local (first f) . unIORefLogT
+  localNamespace f (PEXT m) = PEXT $ local (\(n,a,b,c) -> (f n,a,b,c)) m
+

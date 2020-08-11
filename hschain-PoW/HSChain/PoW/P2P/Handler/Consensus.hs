@@ -33,12 +33,17 @@ import HSChain.Logger
 
 
 -- | Channels for sending data to and from consensus thread
-data ConsensusCh s m b = ConsensusCh
+data ConsensusCh m b = ConsensusCh
   { bcastAnnounce    :: Sink (MsgAnn b)
-  , bcastChainUpdate :: Sink (BH b, StateView s m b)
-  , sinkConsensusSt  :: Sink (Consensus s m b)
+    -- ^ Broadcast channel for gossip announcements (we got new best head)
+  , bcastChainUpdate :: Sink (BH b, BH b, StateView m b)
+    -- ^ Broadcast channel for announcing new head for mining etc.
+  , sinkConsensusSt  :: Sink (Consensus m b)
+    -- ^ Updating state of consensus
   , sinkReqBlocks    :: Sink (Set (BlockID b))
+    -- ^ Channel for signalling to gossip what block should be fetched
   , srcRX            :: Src  (BoxRX m b)
+    -- ^ Messages from gossip
   }
 
 -- | Thread that reacts to messages from peers and updates consensus
@@ -46,8 +51,8 @@ data ConsensusCh s m b = ConsensusCh
 threadConsensus
   :: (MonadIO m, MonadLogger m, BlockData b, MonadCatch m)
   => BlockDB m b
-  -> Consensus s m b
-  -> ConsensusCh s m b
+  -> Consensus m b
+  -> ConsensusCh m b
   -> m x
 threadConsensus db consensus0 ConsensusCh{..} = descendNamespace "cns" $ logOnException $ do
   logger InfoS "Staring consensus" ()
@@ -57,20 +62,23 @@ threadConsensus db consensus0 ConsensusCh{..} = descendNamespace "cns" $ logOnEx
          consensusMonitor db =<< awaitIO srcRX
          sinkIO sinkConsensusSt =<< get
          sinkIO sinkReqBlocks   =<< use requiredBlocks
-         (bh',st,_) <- use bestHead
+         bh' <- use $ bestHead . _1
          when (bhBID bh /= bhBID bh') $ do
            logger InfoS "New head" ( sl "h"   (bhHeight bh')
                                   <> sl "bid" (bhBID bh')
                                    )
+           st <- lift . flushState =<< use (bestHead . _2)
+           bestHead . _2 .= st
            sinkIO bcastAnnounce $ AnnBestHead $ asHeader bh'
-           sinkIO bcastChainUpdate (bh',st)
+           sinkIO bcastChainUpdate (bh, bh', st)
+
 
 -- Handler for messages coming from peer.
 consensusMonitor
   :: (MonadLogger m, BlockData b, MonadIO m)
   => BlockDB m b
   -> BoxRX m b
-  -> StateT (Consensus s m b) m ()
+  -> StateT (Consensus m b) m ()
 consensusMonitor db (BoxRX message)
   = message $ logR <=< \case
       RxAnn     m  -> handleAnnounce m
@@ -96,10 +104,10 @@ consensusMonitor db (BoxRX message)
       runExceptT (processHeader h) >>= \case
         Right () -> return Peer'Noop
         Left  e  -> case e of
-          ErrH'KnownHeader       -> return Peer'Noop
-          ErrH'HeightMismatch    -> punish
-          ErrH'ValidationFailure -> punish
-          ErrH'BadParent         -> punish
+          ErrH'KnownHeader         -> return Peer'Noop
+          ErrH'HeightMismatch      -> punish
+          ErrH'ValidationFailure{} -> punish
+          ErrH'BadParent           -> punish
           -- We got announce that we couldn't attach to block tree. So
           -- we need that peer to catch up
           ErrH'UnknownParent     -> return Peer'EnterCatchup
@@ -110,19 +118,19 @@ consensusMonitor db (BoxRX message)
     -- Note that we explicitly requrest blocks by their BIDs so we
     -- shouln't punish peers
     handleBlockError = mapExceptT $ fmap $ \case
-      Right               () -> Right ()
-      Left ErrB'UnknownBlock -> error "Impossible: we should'n get unknown block"
-      Left ErrB'InvalidBlock -> Right ()
+      Right               ()   -> Right ()
+      Left ErrB'UnknownBlock   -> error "Impossible: we should'n get unknown block"
+      Left ErrB'InvalidBlock{} -> Right ()
     -- Handle errors during header processing. Not that KnownHeader is
     -- not really an error
     handleHeaderError = mapExceptT $ \action -> action >>= \case
       Right () -> return $ Right ()
       Left  e  -> case e of
-        ErrH'KnownHeader       -> return $ Right ()
-        ErrH'HeightMismatch    -> punish
-        ErrH'UnknownParent     -> punish
-        ErrH'ValidationFailure -> punish
-        ErrH'BadParent         -> punish
+        ErrH'KnownHeader         -> return $ Right ()
+        ErrH'HeightMismatch      -> punish
+        ErrH'UnknownParent       -> punish
+        ErrH'ValidationFailure{} -> punish
+        ErrH'BadParent           -> punish
         where
           punish = do logger WarningS "Bad header" (sl "err" e)
                       return $ Left $ Peer'Punish $ toException e

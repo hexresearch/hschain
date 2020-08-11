@@ -21,7 +21,7 @@ import Control.Monad.State.Strict (StateT(..),execStateT,MonadState(..),modify')
 import HSChain.Crypto
 import HSChain.Types
 import HSChain.Logger
-import HSChain.Store.Internal.Query      (MonadReadDB(..))
+import HSChain.Store.Internal.Query      (MonadCached(..), MonadReadDB(..))
 
 import HSChain.P2P.PeerState.Types
 
@@ -40,7 +40,7 @@ newtype TransitionT s a m r = TransitionT
            , MonadIO
            , MonadThrow
            )
-instance MonadReadDB a m => MonadReadDB a (TransitionT s a m) where
+instance MonadReadDB m => MonadReadDB (TransitionT s a m) where
   askConnectionRO = TransitionT $ lift askConnectionRO
 
 instance Monad m => MonadState (s a) (TransitionT s a m) where
@@ -69,6 +69,7 @@ runTransitionT action st = do
 type HandlerCtx a m = ( Serialise a
                       , Crypto (Alg a)
                       , MonadIO m
-                      , MonadReadDB a m
+                      , MonadReadDB m
+                      , MonadCached a m
                       , MonadLogger m
                       )

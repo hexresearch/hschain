@@ -186,10 +186,10 @@ peerRecv conn st@PeerState{..} PeerChans{..} sinkGossip =
       -- we throw exception and let PEX to deal with banning
       GossipResp m -> do
         logger DebugS "Responce" $ case m of
-          RespHeaders hs -> (sl "headers" (map blockID hs))
-          RespBlock   b  -> (sl "block"   (blockID b))
-          RespPeers   as -> (sl "addrs"   as)
-          RespNack       -> (sl "nack" ())
+          RespHeaders hs -> sl "headers" (map blockID hs)
+          RespBlock   b  -> sl "block"   (blockID b)
+          RespPeers   as -> sl "addrs"   as
+          RespNack       -> sl "nack" ()
         liftIO (readTVarIO requestInFlight) >>= \case
           Nothing  -> throwM UnrequestedResponce
           Just req -> case (req, m) of
@@ -238,14 +238,14 @@ peerRecv conn st@PeerState{..} PeerChans{..} sinkGossip =
 
 locateHeaders
   :: (BlockData b)
-  => Consensus s m b
+  => Consensus m b
   -> Locator b
-  -> Maybe ([Header b])
+  -> Maybe [Header b]
 locateHeaders consensus (Locator bidList) = do
   -- Find first index that we know about
   bh <- asum $ (`lookupIdx` bIdx) <$> bidList
   return $ traverseBlockIndex
-    (\b -> ((asHeader b) :))
+    (\b -> (asHeader b :))
     (\_ -> id)
     best bh
     []

@@ -1,12 +1,17 @@
-{-# LANGUAGE LambdaCase    #-}
-{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE LambdaCase                 #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
+{-# LANGUAGE StandaloneDeriving         #-}
+{-# LANGUAGE TypeOperators              #-}
 -- |
 module TM.Mempool (tests) where
 
 import Control.Concurrent.STM
 import Control.Monad
 import Control.Monad.IO.Class
+import Data.Foldable
 import Data.List
+import Data.Maybe
 
 import Test.Tasty
 import Test.Tasty.Hedgehog
@@ -14,11 +19,9 @@ import Hedgehog
 import Hedgehog.Gen.QuickCheck (arbitrary)
 import Hedgehog.Gen            (resize)
 
-import HSChain.Crypto         ((:&))
-import HSChain.Crypto.Ed25519 (Ed25519)
-import HSChain.Crypto.SHA     (SHA512)
-import HSChain.Store
-import HSChain.Store.STM
+import HSChain.Crypto         (CryptoHashable,hashed,Hashed)
+import HSChain.Crypto.SHA     (SHA1)
+import HSChain.Mempool
 
 
 tests :: TestTree
@@ -36,47 +39,57 @@ tests = testGroup "Mempool"
 -- just a simple variable.
 
 -- Create mempool and callback for incrementing blockchain value
-createTestMempool :: MonadIO m => m (m (), Mempool m (Ed25519 :& SHA512) Int)
-createTestMempool = do
-  varBch  <- liftIO $ newTVarIO 0
-  let checkTx i = liftIO $ do n <- readTVarIO varBch
-                              return (i > n)
-  mempool <- newMempool checkTx
-  return ( liftIO $ atomically $ modifyTVar' varBch (+10)
-         , mempool
+createTestMempool :: MonadIO m => m ( IO (), Int -> IO Bool
+                                    )
+createTestMempool = liftIO $ do
+  varBch  <- newTVarIO 0
+  let checkTx i = do n <- readTVarIO varBch
+                     return (i > n)
+  return ( atomically $ modifyTVar' varBch (+10)
+         , checkTx
          )
 
 
 propSelfCheck :: Property
 propSelfCheck = property $ do
   -- Parametsrs
-  txsSets <-  zipWith (\n -> map (+n)) (iterate (+10) 0)
-          <$> forAll (resize 10 arbitrary)
-  -- Create mempool
-  (commit,mempool) <- createTestMempool
-  cursor           <- getMempoolCursor mempool
-  --
-  forM_ txsSets $ \txs -> do
-    annotate $ show txs
-    -- Add transactions to mempool
-    mapM_ (pushTransaction cursor) txs
-    commit
-    mempoolSelfTest mempool >>= \case
-        []   -> success
-        errs -> mapM_ annotate errs >> failure
-    filterMempool mempool
-    mempoolSelfTest mempool >>= \case
-        []   -> success
-        errs -> mapM_ annotate errs >> failure
+  txsSets :: [[Int]] <-  zipWith (\n -> map (+n)) (iterate (+10) 0)
+                     <$> forAll (resize 10 arbitrary)
+  -- Create mempool.
+  (commit,checkTx) <- createTestMempool
+  let selfTest m = case mempoolSelfTest m of
+                     []   -> success
+                     errs -> mapM_ annotate errs >> failure
+  let commitTxSet m txs = do
+        annotate $ show txs
+        -- Add transactions to mempool 
+        m' <- liftIO $ foldM (doPush checkTx) m txs
+        liftIO $ commit
+        selfTest m'
+        -- Filter mempool
+        m'' <- liftIO $ mempoolFilterTX checkTx m'
+        selfTest m''
+        return m''
+  void $ foldM commitTxSet (emptyMempoolState toTID) txsSets
 
 propDuplicate :: Property
 propDuplicate = property $ do
   -- Parameters
-  txs <- forAll arbitrary
+  txs :: [Int] <- forAll arbitrary
   -- Create mempool and push TX
-  (_,mempool) <- createTestMempool
-  cursor      <- getMempoolCursor mempool
-  mapM_ (pushTransaction cursor) txs
+  (_,checkTx) <- createTestMempool
+  mempool     <- liftIO $ foldM (doPush checkTx) (emptyMempoolState toTID) txs
   -- TX should be in same order, positive, and duplicates should be removed
-  txs' <- peekNTransactions mempool
-  unless (txs' == nub (filter (>0) txs)) failure
+  unless (toList mempool == nub (filter (>0) txs)) failure
+
+doPush
+  :: (MonadIO m, CryptoHashable tx)
+  => (tx -> m Bool)
+  -> MempoolState (Hashed SHA1 tx) tx
+  -> tx
+  -> m (MempoolState (Hashed SHA1 tx) tx)
+doPush f m tx
+  = fromMaybe m <$> mempoolAddTX (const True) f tx m
+
+toTID :: Int -> Hashed SHA1 Int
+toTID = hashed

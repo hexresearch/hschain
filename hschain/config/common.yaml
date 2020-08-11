@@ -1,14 +1,14 @@
 # Set of validators
-validator_keys:
+validators:
   - "5DYfjqEuBAUVrjm16oGentJHAtjLjLsuF5pa5UDfNTxv"
   - "2yQRc2WGPCJyXCVsUk6gmp9LiwJ1UaZYwCxhoKewWN8D"
   - "EtVg7C3jK6UJrrcLSeoUe2jgENH7ZeEGHaZyqyhYoprr"
   - "4bcPSxioBPbHVpfTTfsWBHwFX4mZhdcqNiXimrFp8QBu"
 # Coin specification
-coin:
+bch_data:
   airdrop          : 1000
   wallets          : 300
   wallets_seed     : 1337
   generator_delay  : 100
   max_mempool_size : 50
-delays: {}
+cfg: {}

@@ -6,10 +6,12 @@ packages:
          hschain-crypto-bls
          hschain-control
          hschain-merkle
+         hschain-mempool
          hschain-logger
          hschain-types
          hschain-PoW
          hschain-net
+         hschain-db
          hschain-quickcheck
          hschain-examples
          hschain-examples-types

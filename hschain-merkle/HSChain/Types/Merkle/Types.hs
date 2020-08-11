@@ -7,6 +7,7 @@
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
+{-# LANGUAGE PatternSynonyms            #-}
 {-# LANGUAGE RankNTypes                 #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE StandaloneDeriving         #-}
@@ -20,6 +21,9 @@ module HSChain.Types.Merkle.Types (
   , MerkleMap(..)
     -- * Node of Merkle tree
   , MerkleNode
+  , pattern MerkleHash
+  , pattern MerkleHashed
+  , pattern MerkleNode
     -- ** Construction
   , merkled
   , fromHashed
@@ -62,26 +66,41 @@ import HSChain.Crypto
 -- > MerkleNode Identity - node that always have value
 -- > MerkleNode Maybe    - node that optionally has hash in it
 -- > MerkleNode Proxy    - node that has only hash
-data MerkleNode f alg a = MerkleNode
+data MerkleNode f alg a = MNode
   -- NOTE: Hash is lazy on purpose. We want to avoid computing it when
   --       it's not needed. Since we store hash alongside with value
   --       it should not leak.
   (Hashed alg a)
   !(f a)
 
+-- | Pattern match on merkle node and extract its hash
+pattern MerkleHash :: Hash alg -> MerkleNode f alg a
+pattern MerkleHash h <- MNode (Hashed h) _
+{-# COMPLETE MerkleHash #-}
+
+-- | Pattern match on merkle node and extract its hash with type tag
+pattern MerkleHashed :: Hashed alg a -> MerkleNode f alg a
+pattern MerkleHashed h <- MNode h _
+{-# COMPLETE MerkleHashed #-}
+
+-- | Pattern match on merkle node and extract both hash and value
+pattern MerkleNode :: Hashed alg a -> a -> MerkleNode Identity alg a
+pattern MerkleNode h a <- MNode h (Identity a)
+{-# COMPLETE MerkleNode #-}
+
 instance Foldable f => Foldable (MerkleNode f alg) where
-  foldMap f (MerkleNode _ a) = foldMap f a
+  foldMap f (MNode _ a) = foldMap f a
 
 -- | Eq uses hash comparison as optimization
 instance (IsMerkle f) => Eq (MerkleNode f alg a) where
-  MerkleNode h1 _ == MerkleNode h2 _ = h1 == h2
+  MNode h1 _ == MNode h2 _ = h1 == h2
 
 -- | Ord however compares underlying types
 instance (Ord a) => Ord (MerkleNode Identity alg a) where
-  compare (MerkleNode _ f1) (MerkleNode _ f2) = liftCompare compare f1 f2
+  compare (MNode _ f1) (MNode _ f2) = liftCompare compare f1 f2
 
 instance (Show1 f, Show a) => Show (MerkleNode f alg a) where
-  showsPrec i (MerkleNode h f)
+  showsPrec i (MNode h f)
     = showParen (i >= 11)
     $ showString "MerkleNode "
     . showsPrec 11 h
@@ -89,7 +108,7 @@ instance (Show1 f, Show a) => Show (MerkleNode f alg a) where
     . liftShowsPrec showsPrec showList 11 f
 
 instance (NFData a, NFData1 f) => NFData (MerkleNode f alg a) where
-  rnf (MerkleNode h f) = rnf h `seq` liftRnf rnf f
+  rnf (MNode h f) = rnf h `seq` liftRnf rnf f
 
 instance (CryptoHash alg) => CryptoHashable (MerkleNode f alg a) where  
   hashStep = hashStep . merkleHash
@@ -97,11 +116,11 @@ instance (CryptoHash alg) => CryptoHashable (MerkleNode f alg a) where
 
 -- | Extract hash corresponding to node
 merkleHash :: MerkleNode f alg a -> Hash alg
-merkleHash (MerkleNode (Hashed h) _) = h
+merkleHash (MNode (Hashed h) _) = h
 
 -- | Extract hash corresponding to node which is tagged by type.
 merkleHashed :: MerkleNode f alg a -> Hashed alg a
-merkleHashed (MerkleNode h _) = h
+merkleHashed (MNode h _) = h
 
 -- | Extract value from node of Merkle tree
 merkleValue :: MerkleNode Identity alg a -> a
@@ -109,29 +128,29 @@ merkleValue = runIdentity . merkleNodeValue
 
 -- | Extract value from node of Merkle tree
 merkleNodeValue :: MerkleNode f alg a -> f a
-merkleNodeValue (MerkleNode _ a) = a
+merkleNodeValue (MNode _ a) = a
 
 
 -- | Create node from bare value. We (ab)ue 
 merkled :: (CryptoHash alg, CryptoHashable a, Applicative f) => a -> MerkleNode f alg a
-merkled a = MerkleNode (hashed a) (pure a)
+merkled a = MNode (hashed a) (pure a)
 
 -- | Create node from only value 
 fromHashed :: Hashed alg a -> MerkleNode Proxy alg a
-fromHashed h = MerkleNode h Proxy
+fromHashed h = MNode h Proxy
 
 
 -- | Apply natural transformation to the node value. Value couldn't be
 --   changed by transformation because of prametricity
 mapMerkleNode :: (forall x. f x -> g x) -> MerkleNode f alg a -> MerkleNode g alg a
 -- NOTE: See note in toHashedNode
-mapMerkleNode f (MerkleNode !h a) = MerkleNode h (f a)
+mapMerkleNode f (MNode !h a) = MNode h (f a)
 
 -- | Strip value from node
 toHashedNode :: MerkleNode f alg a -> MerkleNode Proxy alg a
 -- NOTE: We force hash in order to avoid space leak. Hash field is
 --       lazy and could keep refernce to possibly much larger object
-toHashedNode (MerkleNode !h _) = MerkleNode h Proxy
+toHashedNode (MNode !h _) = MNode h Proxy
 
 
 -- | Type class for wrappers for nodes of Merkle tree. Basically
@@ -165,20 +184,20 @@ class MerkleMap b where
 
 -- | Data type which is used to derive serializaion
 data MerkleSerialize alg a
-  = MerkleValue a
-  | MerkleHash  (Hashed alg a)
+  = SMerkleValue a
+  | SMerkleHash  (Hashed alg a)
   deriving stock    (Show,Eq,Ord,Generic)
   deriving anyclass (CBOR.Serialise, JSON.FromJSON, JSON.ToJSON)
 
 toSerialisedRepr :: IsMerkle f => MerkleNode f alg a -> MerkleSerialize alg a
-toSerialisedRepr (MerkleNode h f) =
-  case nodeToMaybe f of Nothing -> MerkleHash  h
-                        Just a  -> MerkleValue a
+toSerialisedRepr (MNode h f) =
+  case nodeToMaybe f of Nothing -> SMerkleHash  h
+                        Just a  -> SMerkleValue a
 
 
 fromSerializedRepr :: (CryptoHash alg, CryptoHashable a) => MerkleSerialize alg a -> MerkleNode Maybe alg a
-fromSerializedRepr (MerkleHash  h) = MerkleNode h Nothing
-fromSerializedRepr (MerkleValue a) = MerkleNode (hashed a) (Just a)
+fromSerializedRepr (SMerkleHash  h) = MNode h Nothing
+fromSerializedRepr (SMerkleValue a) = MNode (hashed a) (Just a)
 
 instance ( CryptoHash alg
          , CryptoHashable a
@@ -187,10 +206,10 @@ instance ( CryptoHash alg
          ) => CBOR.Serialise (MerkleNode f alg a) where
   encode = CBOR.encode . toSerialisedRepr . toMaybeNode
   decode = do
-    MerkleNode h mn <- fromSerializedRepr <$> CBOR.decode
+    MNode h mn <- fromSerializedRepr <$> CBOR.decode
     case nodeFromMaybe mn of
       Nothing -> fail "Can't covert from optional node"
-      Just a  -> return $ MerkleNode h a
+      Just a  -> return $ MNode h a
 
 instance (JSON.ToJSON a, IsMerkle f) => JSON.ToJSON (MerkleNode f alg a) where
   toJSON = JSON.toJSON . toSerialisedRepr . toMaybeNode
@@ -201,10 +220,10 @@ instance ( CryptoHash alg
          , JSON.FromJSON a
          ) => JSON.FromJSON (MerkleNode f alg a) where
   parseJSON o = do
-    MerkleNode h mn <- fromSerializedRepr <$> JSON.parseJSON o
+    MNode h mn <- fromSerializedRepr <$> JSON.parseJSON o
     case nodeFromMaybe mn of
       Nothing -> fail "Can't covert from optional node"
-      Just a  -> return $ MerkleNode h a
+      Just a  -> return $ MNode h a
 
 toMaybeNode :: IsMerkle f => MerkleNode f alg a -> MerkleNode Maybe alg a
-toMaybeNode (MerkleNode h f) = MerkleNode h (nodeToMaybe f)
+toMaybeNode (MNode h f) = MNode h (nodeToMaybe f)

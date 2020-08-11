@@ -38,6 +38,7 @@ testsParser = testGroup "Parser"
   , runTest "test/data/cfg-abc.json"    $ CfgAdd (Cfg 123 "/tmp")
   , runTest "test/data/cfg-prefix.json" $ CfgPref (Cfg 123 "/tmp")
   , runTest "test/data/cfg-empty.json"  $ CfgDef def
+  , runTest "test/data/cfg-test2.json"  $ Test 123 "/tmp"
   ]
 
 testsMangler :: TestTree
@@ -89,6 +90,13 @@ data Cfg_2 = Cfg_2
   }
   deriving (Show,Eq,Generic)
   deriving FromJSON via DropSmart (Config Cfg_2)
+
+data Test = Test
+  { tstTest    :: Int
+  , tstBChData :: String
+  }
+  deriving (Show,Eq,Generic)
+  deriving FromJSON via SnakeCase (DropSmart (Config Test))
 
 
 -- Uses plain Config

@@ -27,8 +27,11 @@ Library
                      , hschain-config
                      , hschain-types
                      , hschain-logger
+                     , hschain-mempool
+                     , hschain-db
                      , hschain-net
                      , hschain-merkle
+                     --
                      , aeson
                      , base58-bytestring >=0.1
                      , bytestring        >=0.10
@@ -64,11 +67,13 @@ Library
                   HSChain.Blockchain.Internal.Engine
                   HSChain.Blockchain.Internal.Engine.Types
                   HSChain.Blockchain.Internal.Types
-                  HSChain.Control
                   HSChain.Crypto.Containers
                   HSChain.Data.CIntMap
                   HSChain.Exceptions
                   HSChain.Monitoring
+                  HSChain.Internal.Types.Messages
+                  HSChain.Internal.Types.Config
+                  HSChain.Internal.Types.Consensus
                   HSChain.Run
                   HSChain.P2P
                   HSChain.P2P.PeerState.Timer
@@ -82,7 +87,6 @@ Library
                   HSChain.P2P.PeerState.Monad
                   HSChain.P2P.Internal
                   HSChain.Store
-                  HSChain.Store.STM
                   HSChain.Store.Internal.BlockDB
                   HSChain.Store.Internal.Query
                   HSChain.Store.Internal.Proposals

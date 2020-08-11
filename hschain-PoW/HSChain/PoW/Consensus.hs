@@ -20,21 +20,24 @@ module HSChain.PoW.Consensus
   , insertIdx
   , lookupIdx
   , blockIndexFromGenesis
+  , blockIndexHeads
   , traverseBlockIndex
   , traverseBlockIndexM
   , makeLocator
     -- *
   , StateView(..)
+  , createCandidateBlock
   , BlockDB(..)
+  , buildBlockIndex
   , Consensus(..)
   , blockIndex
   , bestHead
   , candidateHeads
   , badBlocks
   , requiredBlocks
-  , consensusComputeOnState
     --
   , consensusGenesis
+  , createConsensus
   , Head(..)
   , processHeader
   , processBlock
@@ -47,15 +50,14 @@ import Control.Exception
 import Control.Monad
 import Control.Monad.Except
 import Control.Monad.State.Strict
-import Data.List          (sortOn)
 import Data.Functor.Identity
-import Data.Map           (Map)
+import Data.List          (sortOn)
+import Data.Typeable      (Typeable)
 import Data.Maybe
 import Data.Sequence      (Seq(Empty,(:<|),(:|>)),(|>))
 import Data.Set           (Set)
 import Data.Ord           (Down(..))
 import qualified Data.Aeson      as JSON
-import qualified Data.Map        as Map
 import qualified Data.Set        as Set
 import qualified Data.Sequence   as Seq
 import Lens.Micro
@@ -63,79 +65,14 @@ import Lens.Micro.Mtl
 import Lens.Micro.TH
 import GHC.Generics (Generic)
 
-import HSChain.Types.Merkle.Types
 import HSChain.PoW.Types
+import HSChain.PoW.BlockIndex
+import HSChain.PoW.Store
 
 
 ----------------------------------------------------------------
 -- Block index
 ----------------------------------------------------------------
-
--- | Index of all blocks in chain or rather tree. It's append only
---   structure and we never remove headers from it.
---
---   Implementation note. In order to keep memory use to a minimum we
---   try to share everything and ensure that no 'bhBID' points to
---   value that isn't one that part of underlying map.
-data BlockIndex b = BlockIndex
-  -- FIXME: We'll want to add blocks incrementally into compact to
-  --        make things easier for GC
-  { _blockIDMap :: Map (BlockID b) (BH b)
-  }
-
--- | Find path between nodes in block index
-traverseBlockIndex
-  :: (BlockData b)
-  => (BH b -> a -> a)         -- ^ Rollback block
-  -> (BH b -> a -> a)         -- ^ Update update block
-  -> BH b                     -- ^ Traverse from block
-  -> BH b                     -- ^ Traverse to block
-  -> (a -> a)
-traverseBlockIndex rollback update fromB toB
-  = runIdentity
-  . traverseBlockIndexM
-    (\b -> Identity . rollback b)
-    (\b -> Identity . update   b)
-    fromB toB
-
--- | Find path between nodes in block index
-traverseBlockIndexM
-  :: (Monad m, BlockData b)
-  => (BH b -> a -> m a)         -- ^ Rollback block
-  -> (BH b -> a -> m a)         -- ^ Update update block
-  -> BH b                       -- ^ Traverse from block
-  -> BH b                       -- ^ Traverse to block
-  -> (a -> m a)
-traverseBlockIndexM rollback update = go
-  where
-    go fromB toB = case bhHeight fromB `compare` bhHeight toB of
-      GT                -> rollback fromB >=> go (prev fromB) toB
-      LT                ->                    go fromB        (prev toB) >=> update toB
-      EQ | toB /= fromB -> rollback fromB >=> go (prev fromB) (prev toB) >=> update toB
-         | otherwise    -> return
-    prev b = case bhPrevious b of
-      Just b' -> b'
-      Nothing -> error "Internal error"
-
-blockIndexFromGenesis :: (IsMerkle f, BlockData b) => GBlock b f -> BlockIndex b
-blockIndexFromGenesis genesis
-  | blockHeight genesis /= Height 0 = error "Genesis must be H=0"
-  | otherwise                       = BlockIndex $ Map.singleton bid bh
-  where
-    bid = blockID genesis
-    bh  = BH { bhHeight   = Height 0
-             , bhTime     = blockTime genesis
-             , bhBID      = bid
-             , bhWork     = blockWork genesis
-             , bhPrevious = Nothing
-             , bhData     = merkleMap (const Proxy) $ blockData genesis
-             }
-
-lookupIdx :: (Ord (BlockID b)) => BlockID b -> BlockIndex b -> Maybe (BH b)
-lookupIdx bid (BlockIndex idx) = Map.lookup bid idx
-
-insertIdx :: (Ord (BlockID b)) => BH b -> BlockIndex b -> BlockIndex b
-insertIdx bh (BlockIndex idx) = BlockIndex $ Map.insert (bhBID bh) bh idx
 
 makeLocator :: BH b -> Locator b
 makeLocator  = Locator . takeH 10 . Just
@@ -149,7 +86,7 @@ makeLocator  = Locator . takeH 10 . Just
     takeH  n (Just bh) = bhBID bh : takeH (n-1) (bhPrevious bh)
     --
     backoff :: Int -> Int -> BH b -> [BlockID b]
-    backoff !n !1 bh = bhBID bh : case bhPrevious bh of
+    backoff !n 1 bh = bhBID bh : case bhPrevious bh of
       Nothing  -> []
       Just bh' -> backoff (n*2) (2*n) bh'
     backoff  n  k bh = case bhPrevious bh of
@@ -161,32 +98,50 @@ makeLocator  = Locator . takeH 10 . Just
 -- Blockchain state handling
 ----------------------------------------------------------------
 
-data BlockDB m b = BlockDB
-  { storeBlock     :: Block b -> m ()
-  , retrieveBlock  :: BlockID b -> m (Maybe (Block  b))
-  , retrieveHeader :: BlockID b -> m (Maybe (Header b))
-  }
 
 -- | View on state of blockchain. It's expected that store is backed
 --   by database and in-memory overlay is used to work with multiple
 --   heads of blockchain. One important constraint is that view should
 --   remain valid even if underlying database gets updated.
-data StateView s m b = StateView
+data StateView m b = StateView
   { stateBID    :: BlockID b
     -- ^ Hash of block for which state is calculated
-  , applyBlock  :: Block b -> m (Maybe (StateView s m b))
+  , applyBlock  :: BH b -> Block b -> m (Maybe (StateView m b))
     -- ^ Apply block on top of current state. Function should throw
     --   exception if supplied block is not child block of current
     --   head. Function should return @Nothing@ if block is not valid
-  , revertBlock :: m (StateView s m b)
+  , revertBlock :: m (StateView m b)
     -- ^ Revert block. Underlying implementation should maintain
     --   enough information to allow rollbacks of reasonable depth.
     --   It's acceptable to fail for too deep reorganizations.
-  , stateComputeAlter :: forall a . (s -> (a, s)) -> (a, StateView s m b)
-    -- ^ Record transactions into a state. These can be used to invent blocks.
-  , flushState  :: m ()
+  , checkTx :: Tx b -> m (Either (BlockException b) ())
+    -- ^ Check that transaction is valid. Needed for checking
+    --   transaction in the mempool
+  , createCandidateBlockData
+      :: BH b
+      -> Time
+      -> [Tx b]
+      -> m (b Identity)
+    -- ^ Create candidate block out of list of transactions. It won't
+    --   have enough work in it but should be valid otherwise.
+  , flushState  :: m (StateView m b)
     -- ^ Persist snapshot in the database.
   }
+
+createCandidateBlock
+  :: (Monad m)
+  => StateView m b
+  -> BH b
+  -> Time
+  -> [Tx b]
+  -> m (Block b)
+createCandidateBlock sv bh t txs = do
+  b <- createCandidateBlockData sv bh t txs
+  return GBlock { blockHeight = succ (bhHeight bh)
+                , blockTime   = t
+                , prevBlock   = Just $ bhBID bh
+                , blockData   = b
+                }
 
 
 ----------------------------------------------------------------
@@ -194,12 +149,12 @@ data StateView s m b = StateView
 ----------------------------------------------------------------
 
 -- | Complete description of PoW consensus
-data Consensus s m b = Consensus
+data Consensus m b = Consensus
   { _blockIndex     :: BlockIndex b
     -- ^ Index of all known headers that have enough work in them and
     --   otherwise valid. Note that it may include headers of blocks
     --   which turned out to be invalid.
-  , _bestHead       :: (BH b, StateView s m b, Locator b)
+  , _bestHead       :: (BH b, StateView m b, Locator b)
     -- ^ Best head of blockchain. It's validated block with most work
     --   in it
   , _candidateHeads :: [Head b]
@@ -217,8 +172,8 @@ data Consensus s m b = Consensus
 consensusGenesis
   :: (Monad m, BlockData b)
   => Block b
-  -> StateView s m b
-  -> Consensus s m b
+  -> StateView m b
+  -> Consensus m b
 consensusGenesis genesis sview = Consensus
   { _blockIndex     = idx
   , _bestHead       = (bh, sview, makeLocator bh)
@@ -251,23 +206,36 @@ makeLenses ''Consensus
 ----------------------------------------------------------------
 
 -- | List of reasons to reject header
-data HeaderError
+data HeaderError b
   = ErrH'KnownHeader
     -- ^ Not strictly an error. We have this header already
   | ErrH'HeightMismatch
     -- ^ Block has invalid height
   | ErrH'UnknownParent
     -- ^ We don't have parent block
-  | ErrH'ValidationFailure
+  | ErrH'ValidationFailure (BlockException b)
+    -- ^ We failed to validate header
   | ErrH'BadParent
-  deriving stock    (Show,Eq,Generic)
-  deriving anyclass (Exception,JSON.ToJSON,JSON.FromJSON)
+    -- ^ Header has acestor which is known bad block.
+  deriving stock (Generic)
 
-data BlockError
+deriving stock instance (Show (BlockException b)) => Show (HeaderError b)
+deriving stock instance (Eq   (BlockException b)) => Eq   (HeaderError b)
+
+instance (Typeable b, Show (BlockException b)) => Exception (HeaderError b)
+instance (JSON.ToJSON (BlockException b)) => JSON.ToJSON (HeaderError b)
+
+
+data BlockError b
   = ErrB'UnknownBlock
-  | ErrB'InvalidBlock
-  deriving stock    (Show,Eq,Generic)
-  deriving anyclass (Exception,JSON.ToJSON,JSON.FromJSON)
+  | ErrB'InvalidBlock (BlockException b)
+  deriving stock (Generic)
+
+deriving stock instance (Show (BlockException b)) => Show (BlockError b)
+deriving stock instance (Eq   (BlockException b)) => Eq   (BlockError b)
+
+instance (Typeable b, Show (BlockException b)) => Exception (BlockError b)
+instance (JSON.ToJSON (BlockException b)) => JSON.ToJSON (BlockError b)
 
 
 ----------------------------------------------------------------
@@ -279,7 +247,7 @@ data BlockError
 processHeader
   :: (BlockData b, MonadIO m)
   => Header b
-  -> ExceptT HeaderError (StateT (Consensus s m b) m) ()
+  -> ExceptT (HeaderError b) (StateT (Consensus m b) m) ()
 -- FIXME: Decide what to do with time?
 -- FIXME: Decide how to track difficulty adjustment
 processHeader header = do
@@ -298,9 +266,9 @@ processHeader header = do
   unless (succ (bhHeight parent) == blockHeight header)
     $ throwError ErrH'HeightMismatch
   now <- getCurrentTime
-  goodHeader <- validateHeader parent now header
-  unless goodHeader
-    $ throwError ErrH'ValidationFailure
+  validateHeader parent now header >>= \case
+    Left err -> throwError $ ErrH'ValidationFailure err
+    Right () -> return ()
   -- Create new index entry
   let work = bhWork parent <> blockWork header
       bh   = BH { bhHeight   = blockHeight header
@@ -355,7 +323,7 @@ growHead _ [] = Nothing
 growNewHead
   :: (BlockData b, Monad m)
   => BH b
-  -> ExceptT HeaderError (StateT (Consensus s m b) m) (Head b)
+  -> ExceptT (HeaderError b) (StateT (Consensus m b) m) (Head b)
 growNewHead bh = do
   best       <- use $ bestHead . _1
   bad        <- use badBlocks
@@ -383,7 +351,7 @@ processBlock
   :: (BlockData b, MonadIO m)
   => BlockDB m b
   -> Block b
-  -> ExceptT BlockError (StateT (Consensus s m b) m) ()
+  -> ExceptT (BlockError b) (StateT (Consensus m b) m) ()
 processBlock db block = do
   use (blockIndex . to (lookupIdx bid)) >>= \case
     Just _  -> return ()
@@ -393,11 +361,10 @@ processBlock db block = do
   requiredBlocks %= Set.delete bid
   -- Perform context free validation of block. If we validation fails
   -- we will add it to set of bad block and won't write on disk
-  good <- validateBlock block
-  case good of
-    False -> do invalidateBlock bid
-                throwError ErrB'InvalidBlock
-    True  -> do lift $ lift $ storeBlock db block
+  validateBlock block >>= \case
+    Left err -> do invalidateBlock bid
+                   throwError $ ErrB'InvalidBlock err
+    Right () -> do lift $ lift $ storeBlock db block
   -- Now we want to find candidate heads that are better than current
   -- head and reachable at the same time.
   --
@@ -417,7 +384,7 @@ processBlock db block = do
 -- | Invalidate block. We need to truncate all candidate heads that
 --   contains it.
 invalidateBlock
-  :: (BlockData b, MonadState (Consensus s n b) m)
+  :: (BlockData b, MonadState (Consensus n b) m)
   => BlockID b
   -> m ()
 invalidateBlock bid = do
@@ -439,7 +406,7 @@ invalidateBlock bid = do
 bestCandidate
   :: (BlockData b, Monad m)
   => BlockDB m b
-  -> ExceptT BlockError (StateT (Consensus s m b) m) ()
+  -> ExceptT (BlockError b) (StateT (Consensus m b) m) ()
 bestCandidate db = do
   bestWork <- use $ bestHead . _1 . to bhWork
   missing  <- use requiredBlocks
@@ -456,7 +423,7 @@ bestCandidate db = do
             block <- lift (retrieveBlock db $ bhBID bh) >>= \case
               Nothing -> error "CANT retrieveBlock"
               Just b  -> return b
-            lift (applyBlock s block) >>= \case
+            lift (applyBlock s bh block) >>= \case
               Nothing -> throwError (bhBID bh)
               Just b  -> return b
       state' <- lift $ lift
@@ -471,7 +438,7 @@ bestCandidate db = do
         Empty   -> Nothing
         _ :|> b -> Just b
 
-cleanCandidates :: (BlockData b, MonadState (Consensus s n b) m) => m ()
+cleanCandidates :: (BlockData b, MonadState (Consensus n b) m) => m ()
 cleanCandidates = do
   bestWork <- use $ bestHead . _1 . to bhWork
   missing  <- use requiredBlocks
@@ -486,10 +453,28 @@ cleanCandidates = do
 -------------------------------------------------------------------------------
 -- Accessing the state view.
 
-consensusComputeOnState :: Consensus s m b -> (s -> (a, s)) -> (a, Consensus s m b)
-consensusComputeOnState c app = (a, c')
-  where
-    (bh, sv, loc) = _bestHead c
-    (a, sv') = stateComputeAlter sv app
-    c' = c { _bestHead = (bh, sv', loc) }
 
+-- | Create consensus state out of block index and state view.
+createConsensus
+  :: (BlockData b, Monad m)
+  => BlockDB m b
+  -> StateView m b
+  -> m (Consensus m b)
+-- NOTE: So far we only record full blocks and not headers. Thus we
+--       don't have any blocks we want to fetch and all candidate
+--       heads have all required blocks.
+-- NOTE; We don't track known bad blocks either.
+createConsensus db sView = do
+  bIdx <- buildBlockIndex db
+  let c0 = Consensus
+        { _blockIndex     = bIdx
+        , _bestHead       = (bh, sView, makeLocator bh)
+        , _candidateHeads = [ Head b (Seq.singleton b) | b <- blockIndexHeads bIdx ]
+        , _badBlocks      = Set.empty
+        , _requiredBlocks = Set.empty
+        }
+      bh = case stateBID sView `lookupIdx` bIdx of
+             Just b  -> b
+             Nothing -> error "Internal error: state's BID is not in index"
+  execStateT (runExceptT (bestCandidate db)) c0
+  where

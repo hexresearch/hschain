@@ -1,127 +1,152 @@
-{-# LANGUAGE CPP                        #-}
-{-# LANGUAGE DataKinds                  #-}
-{-# LANGUAGE DeriveGeneric              #-}
-{-# LANGUAGE FlexibleContexts           #-}
-{-# LANGUAGE FlexibleInstances          #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE LambdaCase                 #-}
-{-# LANGUAGE MultiParamTypeClasses      #-}
-{-# LANGUAGE MultiWayIf                 #-}
-{-# LANGUAGE OverloadedStrings          #-}
-{-# LANGUAGE RankNTypes                 #-}
-{-# LANGUAGE RecordWildCards            #-}
-{-# LANGUAGE TemplateHaskell            #-}
-{-# LANGUAGE TypeFamilies               #-}
-{-# LANGUAGE ViewPatterns               #-}
 -- |
--- This module provides API for working with persistent (blockchain)
--- and no so persistent (mempool) storage.
-module HSChain.PoW.Store (
-    -- * Working with database
-    -- ** Connection
-    Connection
-  , Access(..)
-  , connectionRO
-  , MonadReadDB(..)
-  , MonadDB(..)
-  , queryRO
-  , queryRW
-  , mustQueryRW
-  , queryROT
-  , queryRWT
-  , mustQueryRWT
-    -- ** Opening\/closing database
-  , openConnection
-  , closeConnection
-  , withConnection
-  , initDatabase
-  , withDatabase
-    -- * Querying database
-    -- ** Query monads
-  , MonadQueryRO(..)
-  , MonadQueryRW(..)
-  , Query
-  , QueryT
-    -- ** Standard DB wrapper
-  , DBT(..)
-  , dbtRO
-  , runDBT
+-- API and default implementation for storage of blocks. Normally
+-- blocks are meant to be stored in the database but for testing and
+-- debugging it could be useful to have in-memory storage as well.
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE LambdaCase #-}
+module HSChain.PoW.Store
+  ( -- * API and generic functions
+    BlockDB(..)
+  , buildBlockIndex
+    -- * Implementations
+  , inMemoryDB
+  , blockDatabase
   ) where
 
---import Control.Monad             ((<=<), foldM, forM, unless)
-import Control.Monad.Catch       (MonadMask,MonadThrow,MonadCatch)
-#if !MIN_VERSION_base(4,11,0)
-import Control.Monad.Fail        (MonadFail)
-#endif
-import Control.Monad.Morph       (MFunctor(..))
+import Codec.Serialise (Serialise)
 import Control.Monad.IO.Class
-import Control.Monad.Trans.Class
---import Control.Monad.Trans.Except
-import Control.Monad.Trans.Reader
---import Control.Monad.Trans.Writer
+import Control.Monad.Catch
+import Data.Foldable
+import Data.Functor.Identity
+import Data.IORef
+import Data.List (sortOn)
+import Data.Proxy
+import qualified Data.Map.Strict as Map
 
---import Data.Foldable             (forM_)
---import Data.Maybe                (isNothing, maybe)
---import Data.Text                 (Text)
---import qualified Data.List.NonEmpty as NE
---import GHC.Generics              (Generic)
+import HSChain.Types.Merkle.Types
+import HSChain.Store.Query
+import HSChain.PoW.Types
+import HSChain.PoW.BlockIndex
 
-import HSChain.Control.Class              (MonadFork)
---import HSChain.Crypto
---import HSChain.Crypto.Containers
-import HSChain.Logger                 (MonadLogger)
-import HSChain.PoW.Store.Internal.Query
-import HSChain.PoW.Store.Internal.BlockDB
 
 ----------------------------------------------------------------
--- Monadic API for DB access
+-- Block database
 ----------------------------------------------------------------
 
--- | Monad transformer which provides 'MonadReadDB' and 'MonadDB'
---   instances.
-newtype DBT rw a m x = DBT (ReaderT (Connection rw a) m x)
-  deriving ( Functor, Applicative, Monad
-           , MonadIO, MonadThrow, MonadCatch, MonadMask
-           , MonadFork, MonadLogger, MonadFail
-           )
+-- | API for append only block storage. It should always contain
+--   genesis block.
+data BlockDB m b = BlockDB
+  { storeBlock :: Block b -> m ()
+    -- ^ Put block into storage. It should be idempotent. That is
+    --   storing block already in storage should be a noop.
+  , retrieveBlock :: BlockID b -> m (Maybe (Block  b))
+    -- ^ Retrive complete block by its identifier
+  , retrieveHeader :: BlockID b -> m (Maybe (Header b))
+    -- ^ Retrieve header by its identifier
+  , retrieveAllHeaders :: m [Header b]
+    -- ^ Retrieve all headers from storage in topologically sorted
+    --   order. (Ordering block by height would achieve that for
+    --   example).
+  }
 
-instance MFunctor (DBT rw a) where
-  hoist f (DBT m) = DBT $ hoist f m
-
-instance MonadTrans (DBT rw a) where
-  lift = DBT . lift
-
--- | Lift monad which provides read-only access to read-write access.
-dbtRO :: DBT 'RO a m x -> DBT rw a m x
-dbtRO (DBT m) = DBT (withReaderT connectionRO m)
-
-runDBT :: Connection rw a -> DBT rw a m x -> m x
-runDBT c (DBT m) = runReaderT m c
-
-instance MonadIO m => MonadReadDB (DBT rw a m) a where
-  askConnectionRO = connectionRO <$> DBT ask
-instance MonadIO m => MonadDB (DBT 'RW a m) a where
-  askConnectionRW = DBT ask
-
-
--- | Helper function which opens database, initializes it and ensures
---   that it's closed on function exit
-withDatabase
-  :: (MonadIO m, MonadMask m)
-  => FilePath         -- ^ Path to the database
-  -> (Connection 'RW a -> m x) -> m x
-withDatabase path cont
-  = withConnection path $ \c -> initDatabase c >> cont c
-
--- | Initialize all required tables in database.
-initDatabase
-  :: (MonadIO m)
-  => Connection 'RW a  -- ^ Opened connection to database
-  -> m ()
-initDatabase c = do
-  r <- runQueryRW c initializeBlockchainTables
-  case r of
-    Nothing -> error "Cannot initialize tables!"
-    Just () -> return ()
+-- | Build block index from blocks
+buildBlockIndex :: (Monad m, BlockData b) => BlockDB m b -> m (BlockIndex b)
+buildBlockIndex BlockDB{..} = do
+  -- FIXME: decide what to do with orphan blocks
+  (genesis,headers) <- retrieveAllHeaders >>= \case
+    genesis:headers -> return (genesis,headers)
+    []              -> error "buildBlockIndex: no blocks in storage"
+  --
+  let idx0      = blockIndexFromGenesis genesis
+      add idx b@GBlock{..} = case (`lookupIdx` idx) =<< prevBlock of
+        Nothing     -> error "blockIndexFromGenesis: orphan block"
+        Just parent -> insertIdx BH
+          { bhHeight   = blockHeight
+          , bhTime     = blockTime
+          , bhBID      = blockID b
+          , bhWork     = bhWork parent <> blockWork b
+          , bhPrevious = Just parent
+          , bhData     = blockData
+          } idx
+  return $! foldl' add idx0 headers
 
 
+----------------------------------------------------------------
+-- Implementations
+----------------------------------------------------------------
+
+-- | Very simple block storage which holds all blocks in memory. Only
+--   useful for testing, debugging, and prototyping.
+inMemoryDB
+  :: (MonadIO m, MonadIO n, BlockData b)
+  => Block b
+  -> m (BlockDB n b)
+inMemoryDB genesis = do
+  var <- liftIO $ newIORef $ Map.singleton (blockID genesis) genesis
+  return BlockDB
+    { storeBlock         = \b   -> liftIO $ modifyIORef' var $ Map.insert (blockID b) b
+    , retrieveBlock      = \bid -> liftIO $ Map.lookup bid <$> readIORef var
+    , retrieveHeader     = \bid -> liftIO $ fmap toHeader . Map.lookup bid <$> readIORef var
+    , retrieveAllHeaders = liftIO $ sortOn blockHeight . map toHeader . toList <$> readIORef var
+    }
+
+
+
+-- | Block storage backed by SQLite database. It's most generic
+--   storage which just stores
+blockDatabase
+  :: ( MonadThrow m, MonadIO m, MonadDB m
+     , BlockData b, Serialise (b Proxy), Serialise (b Identity))
+  => Block b
+  -> m (BlockDB m b)
+blockDatabase genesis = do
+  -- First we initialize database schema
+  mustQueryRW $ basicExecute_
+    "CREATE TABLE IF NOT EXISTS pow_blocks \
+    \  ( id         INTEGER PRIMARY KEY AUTOINCREMENT \
+    \  , bid        BLOB NOT NULL UNIQUE \
+    \  , height     INTEGER NOT NULL \
+    \  , time       INTEGER NUT NULL \
+    \  , prev       BLOB NULL \
+    \  , headerData BLOB NOT NULL \
+    \  , blockData  BLOB NOT NULL )"
+  store genesis
+  return BlockDB
+    { storeBlock = store
+      --
+    , retrieveBlock  = \bid -> queryRO $ basicQueryWith1
+        decoderBlock
+        "SELECT height, time, prev, blockData FROM pow_blocks WHERE bid = ?"
+        (Only (CBORed bid))
+      --
+    , retrieveHeader = \bid -> queryRO $ basicQueryWith1
+        decoderHeader
+        "SELECT height, time, prev, headerData FROM pow_blocks WHERE bid = ?"
+        (Only (CBORed bid))
+      --
+    , retrieveAllHeaders = queryRO $ basicQueryWith_
+        decoderHeader
+        "SELECT height, time, prev, headerData FROM pow_blocks ORDER BY height"
+    }
+    where
+      decoderBlock  = do blockHeight <- field
+                         blockTime   <- field
+                         prevBlock   <- nullableFieldCBOR
+                         blockData   <- fieldCBOR
+                         return GBlock{..}
+      decoderHeader = do blockHeight <- field
+                         blockTime   <- field
+                         prevBlock   <- nullableFieldCBOR
+                         blockData   <- fieldCBOR
+                         return GBlock{..}
+      --
+      store b@GBlock{..} = mustQueryRW $ basicExecute
+        "INSERT OR IGNORE INTO pow_blocks VALUES (NULL, ?, ?, ?, ?, ?, ?)"
+        ( CBORed (blockID b)
+        , blockHeight
+        , blockTime
+        , CBORed <$> prevBlock
+        , CBORed (merkleMap (const Proxy) blockData)
+        , CBORed blockData
+        )

@@ -17,16 +17,15 @@ import System.Random            (randomRIO)
 import Lens.Micro
 import Lens.Micro.Mtl
 
-import HSChain.Blockchain.Internal.Types
 import HSChain.Crypto
-import HSChain.Store
-import HSChain.Types.Blockchain
-import HSChain.Types.Validators
-
+import HSChain.Internal.Types.Messages
 import HSChain.P2P.Internal.Types
 import HSChain.P2P.PeerState.Handle.Utils
 import HSChain.P2P.PeerState.Monad
 import HSChain.P2P.PeerState.Types
+import HSChain.Store
+import HSChain.Types.Blockchain
+import HSChain.Types.Validators
 
 import qualified Data.IntSet        as ISet
 import qualified Data.List.NonEmpty as NE
@@ -43,7 +42,7 @@ handler = HandlerDict
   }
 
 handlerGossip
-  :: (MonadIO m, MonadReadDB a m, BlockData a)
+  :: (MonadIO m, MonadReadDB m, MonadCached a m, BlockData a)
   => GossipMsg a -> TransitionT LaggingState a m ()
 handlerGossip = \case
   GossipPreVote   _ ->
@@ -98,7 +97,7 @@ addBlock b = do
 ----------------------------------------------------------------
 
 handlerVotesTimeoutMsg
-  :: (MonadIO m, MonadReadDB a m)
+  :: (MonadIO m, MonadReadDB m, MonadCached a m)
   => LaggingState a -> m [GossipMsg a]
 handlerVotesTimeoutMsg st = do
   queryRO (retrieveLocalCommit peerH) >>= \case
@@ -124,7 +123,7 @@ handlerVotesTimeoutMsg st = do
 ----------------------------------------------------------------
 
 handlerBlocksTimeoutMsg
-  :: (MonadIO m, MonadReadDB a m, BlockData a)
+  :: (MonadIO m, MonadReadDB m, MonadCached a m, BlockData a)
   => LaggingState a -> m [GossipMsg a]
 handlerBlocksTimeoutMsg st
   | st ^. lagPeerHasProposal

@@ -35,6 +35,7 @@
     tasty-quickcheck      = { check = false; };
     QuickCheck            = { check = false; };
     lens                  = { check = false; };
+    generic-lens          = { check = false; };
     comonad               = { check = false; };
     semigroupoids         = { check = false; };
     # Test have dependency on cryptonite

@@ -43,7 +43,9 @@ let
     hschain-quickcheck     = callInternal hsPkgs "hschain" ../hschain-quickcheck     {} "";
     hschain-types          = callInternal hsPkgs "hschain" ../hschain-types          {} "";
     hschain-merkle         = callInternal hsPkgs "hschain" ../hschain-merkle         {} "";
+    hschain-mempool        = callInternal hsPkgs "hschain" ../hschain-mempool        {} "";
     hschain-logger         = callInternal hsPkgs "hschain" ../hschain-logger         {} "";
+    hschain-db             = callInternal hsPkgs "hschain" ../hschain-db             {} "";
     hschain-net            = callInternal hsPkgs "hschain" ../hschain-net            {} "";
     hschain-config         = callInternal hsPkgs "hschain" ../hschain-config         {} "";
     hschain-pow-func       = callInternal hsPkgs "hschain" ../proof-of-work/full-mining {} "";
@@ -80,11 +82,13 @@ let
       hschain-crypto-bls
       hschain-types
       hschain-merkle
+      hschain-mempool
       hschain-logger
       hschain-config
       hschain-quickcheck
       hschain-control
       hschain-net
+      hschain-db
       hschain-pow-func
       hschain-PoW
       hschain

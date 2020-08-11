@@ -20,6 +20,15 @@ class Monad m => MonadLogger m where
   -- | Change current namespace
   localNamespace :: (Namespace -> Namespace) -> m a -> m a
 
+-- | Change logger's namespace
+setNamespace :: MonadLogger m => Namespace -> m a -> m a
+setNamespace nm = localNamespace (const nm)
+
+-- | Append string to namespace
+descendNamespace :: MonadLogger m => Text -> m a -> m a
+descendNamespace nm = localNamespace $ \(Namespace x) -> Namespace (x ++ [nm])
+
+
 instance MonadLogger m => MonadLogger (MaybeT m) where
   logger sev str a = lift $ logger sev str a
   localNamespace fun (MaybeT m) = MaybeT (localNamespace fun m)
@@ -43,11 +52,3 @@ instance MonadLogger m => MonadLogger (ExceptT e m) where
 instance MonadLogger m => MonadLogger (IdentityT m) where
   logger sev str a = lift $ logger sev str a
   localNamespace fun (IdentityT m) = IdentityT $ localNamespace fun m
-
--- | Change logger's namespace
-setNamespace :: MonadLogger m => Namespace -> m a -> m a
-setNamespace nm = localNamespace (const nm)
-
--- | Append string to namespace
-descendNamespace :: MonadLogger m => Text -> m a -> m a
-descendNamespace nm = localNamespace $ \(Namespace x) -> Namespace (x ++ [nm])

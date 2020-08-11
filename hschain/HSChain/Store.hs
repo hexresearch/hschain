@@ -1,5 +1,6 @@
 {-# LANGUAGE CPP                        #-}
 {-# LANGUAGE DataKinds                  #-}
+{-# LANGUAGE DeriveAnyClass             #-}
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE DerivingStrategies         #-}
 {-# LANGUAGE FlexibleContexts           #-}
@@ -13,11 +14,9 @@
 {-# LANGUAGE RankNTypes                 #-}
 {-# LANGUAGE RecordWildCards            #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
-{-# LANGUAGE TemplateHaskell            #-}
 {-# LANGUAGE TypeApplications           #-}
 {-# LANGUAGE TypeFamilies               #-}
 {-# LANGUAGE UndecidableInstances       #-}
-{-# LANGUAGE ViewPatterns               #-}
 -- |
 -- This module provides API for working with persistent (blockchain)
 -- and no so persistent (mempool) storage.
@@ -29,12 +28,10 @@ module HSChain.Store (
   , connectionRO
   , MonadReadDB(..)
   , MonadDB(..)
+  , MonadCached(..)
   , queryRO
   , queryRW
   , mustQueryRW
-  , queryROT
-  , queryRWT
-  , mustQueryRWT
     -- ** Opening\/closing database
   , openConnection
   , closeConnection
@@ -46,13 +43,14 @@ module HSChain.Store (
   , MonadQueryRO(..)
   , MonadQueryRW(..)
   , Query
-  , QueryT
+  , Cached
+  , newCached
     -- ** Standard DB wrapper
-  , DBT(..)
-  , dbtRO
-  , runDBT
   , DatabaseByField(..)
   , DatabaseByType(..)
+  , DatabaseByReader(..)
+  , CachedByField(..)
+  , CachedByType(..)
     -- ** Standard API
   , blockchainHeight
   , retrieveBlock
@@ -61,28 +59,14 @@ module HSChain.Store (
   , retrieveValidatorSet
   , mustRetrieveBlock
   , mustRetrieveValidatorSet
-  , retrieveSavedState
-  , storeStateSnapshot
-    -- * Mempool
-  , MempoolCursor(..)
-  , Mempool(..)
-  , MempoolInfo(..)
-  , hoistMempoolCursor
-  , hoistMempool
-  , nullMempool
-    -- * Blockchain state
-  , BChStore(..)
     -- * Blockchain invariants checkers
   , BlockchainInconsistency
   , checkStorage
   , checkProposedBlock
   ) where
 
-import qualified Katip
-
 import Codec.Serialise           (Serialise)
-import Control.Monad.Catch       (MonadMask,MonadThrow,MonadCatch)
-import Control.Monad.Morph       (MFunctor(..))
+import Control.Monad.Catch       (MonadMask)
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Except
@@ -92,191 +76,40 @@ import Control.Monad.Trans.Writer
 import Control.Monad.Fail         (MonadFail)
 #endif
 
+import Data.Aeson                (FromJSON,ToJSON)
 import Data.Maybe                (isNothing)
 import Data.Text                 (Text)
 import Data.Generics.Product.Fields (HasField'(..))
 import Data.Generics.Product.Typed  (HasType(..))
 import qualified Data.List.NonEmpty as NE
-import qualified Data.Aeson         as JSON
-import qualified Data.Aeson.TH      as JSON
 import Lens.Micro
-import GHC.Generics              (Generic)
+import GHC.Generics (Generic)
 
 import HSChain.Types.Blockchain
 import HSChain.Types.Merkle.Types
 import HSChain.Blockchain.Internal.Types
-import HSChain.Control.Class          (MonadFork)
 import HSChain.Crypto
 import HSChain.Crypto.Containers
-import HSChain.Logger                 (MonadLogger)
 import HSChain.Store.Internal.Query
 import HSChain.Store.Internal.BlockDB
+import HSChain.Store.Query (DatabaseByField(..), DatabaseByType(..), DatabaseByReader(..))
 import HSChain.Types.Validators
 
 ----------------------------------------------------------------
 -- Monadic API for DB access
 ----------------------------------------------------------------
 
--- | Monad transformer which provides 'MonadReadDB' and 'MonadDB'
---   instances.
-newtype DBT rw a m x = DBT (ReaderT (Connection rw a) m x)
-  deriving ( Functor, Applicative, Monad
-           , MonadIO, MonadThrow, MonadCatch, MonadMask
-           , MonadFork, MonadLogger, MonadFail
-           )
-
-instance MFunctor (DBT rw a) where
-  hoist f (DBT m) = DBT $ hoist f m
-
-instance MonadTrans (DBT rw a) where
-  lift = DBT . lift
-
--- | Lift monad which provides read-only access to read-write access.
-dbtRO :: DBT 'RO a m x -> DBT rw a m x
-dbtRO (DBT m) = DBT (withReaderT connectionRO m)
-
-runDBT :: Connection rw a -> DBT rw a m x -> m x
-runDBT c (DBT m) = runReaderT m c
-
-instance MonadIO m => MonadReadDB a (DBT rw a m) where
-  askConnectionRO = connectionRO <$> DBT ask
-instance MonadIO m => MonadDB a (DBT 'RW a m) where
-  askConnectionRW = DBT ask
-
-
 -- | Helper function which opens database, initializes it and ensures
 --   that it's closed on function exit
 withDatabase
   :: (MonadIO m, MonadMask m)
   => FilePath         -- ^ Path to the database
-  -> (Connection 'RW a -> m x) -> m x
-withDatabase path cont
-  = withConnection path $ \c -> initDatabase c >> cont c
+  -> (Connection 'RW -> m x) -> m x
+withDatabase = withConnection
 
 -- | Initialize all required tables in database.
-initDatabase
-  :: (MonadIO m)
-  => Connection 'RW a  -- ^ Opened connection to database
-  -> m ()
-initDatabase c = do
-  r <- runQueryRW c initializeBlockhainTables
-  case r of
-    Nothing -> error "Cannot initialize tables!"
-    Just () -> return ()
-
-
-----------------------------------------------------------------
--- Mempool
-----------------------------------------------------------------
-
--- | Statistics about mempool
-data MempoolInfo = MempoolInfo
-  { mempool'size      :: !Int
-  -- ^ Number of transactions currently in mempool
-  , mempool'added     :: !Int
-  -- ^ Number of transactions added to mempool since program start
-  , mempool'discarded :: !Int
-  -- ^ Number of transaction discarded immediately since program start
-  , mempool'filtered  :: !Int
-  -- ^ Number of transaction removed during filtering
-  }
-  deriving (Show,Generic)
-JSON.deriveJSON JSON.defaultOptions
-  { JSON.fieldLabelModifier = drop 8 } ''MempoolInfo
-
-instance Katip.ToObject MempoolInfo
-instance Katip.LogItem  MempoolInfo where
-  payloadKeys Katip.V0 _ = Katip.SomeKeys []
-  payloadKeys _        _ = Katip.AllKeys
-
--- | Cursor into mempool which is used for gossiping data
-data MempoolCursor m alg tx = MempoolCursor
-  { pushTransaction :: !(tx -> m (Maybe (Hashed alg tx)))
-    -- ^ Add transaction to the mempool. It's preliminary checked and
-    --   if check fails it immediately discarded. If transaction is
-    --   accepted its hash is computed and returned
-  , advanceCursor   :: !(m (Maybe tx))
-    -- ^ Take transaction from front and advance cursor. If cursor
-    -- points at the end of queue nothing happens.
-  }
-
--- | Mempool which is used for storing transactions before they're
---   added into blockchain. Transactions are stored in FIFO manner
-data Mempool m alg tx = Mempool
-  { peekNTransactions :: !(m [tx])
-    -- ^ Return transactions in mempool as lazy list. This operation
-    --   does not alter mempool state
-  , filterMempool     :: !(m ())
-    -- ^ Remove transactions that are no longer valid from mempool
-  , getMempoolCursor  :: !(m (MempoolCursor m alg tx))
-    -- ^ Get cursor pointing to be
-  , txInMempool       :: !(Hashed alg tx -> m Bool)
-    -- ^ Checks whether transaction is mempool
-  , mempoolStats      :: !(m MempoolInfo)
-    -- ^ Number of elements in mempool
-  , mempoolSize       :: !(m Int)
-    -- ^ Number of transactions in mempool
-  , mempoolSelfTest   :: !(m [String])
-    -- ^ Check mempool for internal consistency. Each returned string
-    --   is internal inconsistency
-  }
-
-hoistMempoolCursor :: (forall a. m a -> n a) -> MempoolCursor m alg tx -> MempoolCursor n alg tx
-hoistMempoolCursor fun MempoolCursor{..} = MempoolCursor
-  { pushTransaction = fun . pushTransaction
-  , advanceCursor   = fun advanceCursor
-  }
-
-hoistMempool :: Functor n => (forall a. m a -> n a) -> Mempool m alg tx -> Mempool n alg tx
-hoistMempool fun Mempool{..} = Mempool
-  { peekNTransactions = fun peekNTransactions
-  , filterMempool     = fun filterMempool
-  , getMempoolCursor  = hoistMempoolCursor fun <$> fun getMempoolCursor
-  , txInMempool       = fun . txInMempool
-  , mempoolStats      = fun mempoolStats
-  , mempoolSize       = fun mempoolSize
-  , mempoolSelfTest   = fun mempoolSelfTest
-  }
-
-
--- | Mempool which does nothing. It doesn't contain any transactions
---   and discard every transaction is pushed into it. Useful if one
---   doesn't need any mempool.
-nullMempool :: (Monad m) => Mempool m alg tx
-nullMempool = Mempool
-  { peekNTransactions = return []
-  , filterMempool     = return ()
-  , mempoolStats      = return $ MempoolInfo 0 0 0 0
-  , mempoolSize       = return 0
-  , txInMempool       = const (return False)
-  , getMempoolCursor  = return MempoolCursor
-      { pushTransaction = const $ return Nothing
-      , advanceCursor   = return Nothing
-      }
-  , mempoolSelfTest   = return []
-  }
-
-
-----------------------------------------------------------------
--- Blockchain state storage
-----------------------------------------------------------------
-
--- | Storage for blockchain state.
-data BChStore m a = BChStore
-  { bchCurrentState  :: m (Maybe Height, MerkleNode Identity (Alg a) (BlockchainState a))
-  -- ^ Height of value stored in state
-  , bchStoreRetrieve :: Height -> m (Maybe (MerkleNode Identity (Alg a) (BlockchainState a)))
-  -- ^ Retrieve state for given height. It's generally not expected that
-  , bchStoreStore    :: Height -> MerkleNode Identity (Alg a) (BlockchainState a) -> m ()
-  -- ^ Put blockchain state at given height into store
-  }
-
-instance HoistDict BChStore where
-  hoistDict fun BChStore{..} = BChStore
-    { bchCurrentState  = fun   bchCurrentState
-    , bchStoreRetrieve = fun . bchStoreRetrieve
-    , bchStoreStore    = (fmap . fmap) fun bchStoreStore
-    }
+initDatabase :: (MonadIO m, MonadDB m, MonadCached a m) => m ()
+initDatabase = mustQueryRW initializeBlockhainTables
 
 
 ----------------------------------------------------------------
@@ -320,8 +153,8 @@ data BlockchainInconsistency
   --   for some reason.
   | BlockInvalidTime !Height
   -- ^ Block contains invalid time in header
-  deriving (Eq, Show)
-
+  deriving stock    (Eq, Show, Generic)
+  deriving anyclass (ToJSON, FromJSON)
 
 -------------------------------------------------------------------------------
 -- Invariant checking for storage and proposed blocks
@@ -329,10 +162,10 @@ data BlockchainInconsistency
 
 -- | check storage against all consistency invariants
 checkStorage
-  :: (MonadReadDB a m, MonadIO m, Crypto (Alg a), Serialise a, CryptoHashable a)
+  :: forall m a. (MonadReadDB m, MonadCached a m, MonadIO m, Crypto (Alg a), Serialise a, CryptoHashable a)
   => m [BlockchainInconsistency]
 checkStorage = queryRO $ execWriterT $ do
-  maxH         <- lift $ blockchainHeight
+  maxH         <- lift   blockchainHeight
   Just genesis <- lift $ retrieveBlock (Height 0)
   --
   forM_ [Height 0 .. maxH] $ \case
@@ -357,7 +190,7 @@ checkStorage = queryRO $ execWriterT $ do
 -- | Check that block proposed at given height is correct in sense all
 --   blockchain invariants hold
 checkProposedBlock
-  :: (MonadReadDB a m, MonadIO m, Crypto (Alg a))
+  :: (MonadReadDB m, MonadCached a m, MonadIO m, Crypto (Alg a))
   => Height
   -> Block a
   -> m [BlockchainInconsistency]
@@ -496,38 +329,29 @@ orElse False e = tell [e]
 -- DerivingVia
 ----------------------------------------------------------------
 
-newtype DatabaseByField conn a m x = DatabaseByField (m x)
+-- | Newtype wrapper which allows to derive 'MonadReadDB' and
+--   'MonadDB' instances using deriving via mechanism by specifying name
+--   of field in record carried by reader.
+newtype CachedByField conn a m x = CachedByField (m x)
   deriving newtype (Functor,Applicative,Monad)
 
 instance ( MonadReader r m
-         , HasField' conn r (Connection 'RW a)
          , a ~ a'
-         ) => MonadReadDB a' (DatabaseByField conn a m) where
-  askConnectionRO = DatabaseByField $ connectionRO <$> asks (^. field' @conn)
-  {-# INLINE askConnectionRO #-}
-
-instance ( MonadReader r m
-         , HasField' conn r (Connection 'RW a)
-         , a ~ a'
-         ) => MonadDB a' (DatabaseByField conn a m) where
-  askConnectionRW = DatabaseByField $ asks (^. field' @conn)
-  {-# INLINE askConnectionRW #-}
+         , HasField' conn r (Cached a)
+         ) => MonadCached a (CachedByField conn a' m) where
+  askCached = CachedByField $ asks (^. field' @conn)
 
 
 
-newtype DatabaseByType a m x = DatabaseByType (m x)
+
+-- | Newtype wrapper which allows to derive 'MonadReadDB' and
+--   'MonadDB' instances using deriving via mechanism by using type of
+--   field in record carried by reader.
+newtype CachedByType a m x = CachedByType (m x)
   deriving newtype (Functor,Applicative,Monad)
 
 instance ( MonadReader r m
-         , HasType (Connection 'RW a) r
          , a ~ a'
-         ) => MonadReadDB a' (DatabaseByType a m) where
-  askConnectionRO = DatabaseByType $ connectionRO <$> asks (^. typed @(Connection 'RW a))
-  {-# INLINE askConnectionRO #-}
-
-instance ( MonadReader r m
-         , HasType (Connection 'RW a) r
-         , a ~ a'
-         ) => MonadDB a' (DatabaseByType a m) where
-  askConnectionRW = DatabaseByType $ asks (^. typed)
-  {-# INLINE askConnectionRW #-}
+         , HasType (Cached a) r
+         ) => MonadCached a (CachedByType a' m) where
+  askCached = CachedByType $ asks (^. typed @(Cached a))

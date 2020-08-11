@@ -121,7 +121,6 @@ volumes:
 trigger:
   branch:
   - master
-  - PoW
   cron:
     exclude:
     - nightly

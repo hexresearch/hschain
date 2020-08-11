@@ -1,0 +1,32 @@
+Name:           hschain-mempool
+Version:        0.1
+Synopsis:       Mempool utilities
+Description:
+  Data structures useful for mempool 
+
+
+Cabal-Version:  >= 1.10
+License:        MIT
+License-File:   LICENSE
+Author:         Aleksey Khudyakov <alexey.skladnoy@gmail.com>
+Maintainer:     Aleksey Khudyakov <alexey.skladnoy@gmail.com>
+Homepage:       https://github.com/hexresearch/thundermint
+Category:       Data
+Build-Type:     Simple
+
+
+Library
+  Ghc-options:         -Wall
+  Default-Language:    Haskell2010
+  Build-Depends:       base              >=4.9 && <5
+                     , hschain-crypto
+                     , hschain-control
+                     --
+                     , aeson
+                     , containers
+                     , stm
+                     , transformers      >=0.5
+                     , mtl
+                     , katip              == 0.7.0.0
+  Exposed-modules:
+                HSChain.Mempool
