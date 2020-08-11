@@ -10,7 +10,9 @@
   };
   # Common overrides for librarise
   haskell = {
-    Diff           = { check = false; };
+    # https://github.com/tsuraan/bytestring-arbitrary/issues/10
+    bytestring-arbitrary = { jailbreak = true; };
+    Diff                 = { check = false; };
     #
     hschain-crypto = { haddock = false; };
     hschain-types  = { haddock = false; };
@@ -18,13 +20,9 @@
   };
   # Compiler specific overrides
   ghc865 = {
-    # https://github.com/tsuraan/bytestring-arbitrary/issues/10
-    bytestring-arbitrary = { jailbreak = true; };
   };
   ghc883 = {
-    # https://github.com/tsuraan/bytestring-arbitrary/issues/10
-    bytestring-arbitrary = { jailbreak = true; };
-    katip                = { jailbreak = true; };
+    katip = { jailbreak = true; };
   };
   ghcjs = {
     SHA                   = { check = false; };
