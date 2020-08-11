@@ -1,4 +1,3 @@
-{-# LANGUAGE CPP                        #-}
 {-# LANGUAGE DataKinds                  #-}
 {-# LANGUAGE DeriveAnyClass             #-}
 {-# LANGUAGE DeriveGeneric              #-}
@@ -72,9 +71,6 @@ import Control.Monad.Trans.Class
 import Control.Monad.Trans.Except
 import Control.Monad.Reader
 import Control.Monad.Trans.Writer
-#if !MIN_VERSION_base(4,13,0)
-import Control.Monad.Fail         (MonadFail)
-#endif
 
 import Data.Aeson                (FromJSON,ToJSON)
 import Data.Maybe                (isNothing)

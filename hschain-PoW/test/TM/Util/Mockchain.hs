@@ -1,4 +1,5 @@
 -- |
+{-# LANGUAGE CPP                        #-}
 {-# LANGUAGE DataKinds                  #-}
 {-# LANGUAGE DeriveAnyClass             #-}
 {-# LANGUAGE DerivingStrategies         #-}
@@ -14,6 +15,9 @@ import Codec.Serialise
 import Control.Applicative
 import Control.Monad.Catch
 import Control.Monad.Reader
+#if !MIN_VERSION_base(4,13,0)
+import Control.Monad.Fail         (MonadFail)
+#endif
 import Data.Bits
 import Data.List  (unfoldr)
 import Data.Word
