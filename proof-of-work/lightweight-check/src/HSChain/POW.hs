@@ -78,7 +78,7 @@ createClause :: ByteString -> [Int]
 createClause currentHash = clause
   where
     clause = take clauseLiteralsCount_K $ decodeClause [] $ B.unpack currentHash
-    decodeClause acc [] = []
+    decodeClause _            []  = []
     decodeClause acc (bLo:bHi:bs) = literal : decodeClause (variable : acc) bs
       where
         w16 = fromIntegral bLo + fromIntegral bHi * 256 :: Word16
@@ -108,8 +108,8 @@ solvesPuzzle numClauses answer header = all clauseSatisfied clauses
         literalSatisfied l = (l > 0) == answerBitTrue
           where
             v = abs l
-            bit = v - 1
-            (byte, bitInByte) = divMod bit 8
+            answerBit = v - 1
+            (byte, bitInByte) = divMod answerBit 8
             answerByte = B.index answer byte
             answerBitTrue = (answerByte .&. shiftL 1 bitInByte) /= 0
 
