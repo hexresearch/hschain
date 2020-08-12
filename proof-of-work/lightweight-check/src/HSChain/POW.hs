@@ -78,7 +78,6 @@ createClause :: ByteString -> [Int]
 createClause currentHash = clause
   where
     clause = take clauseLiteralsCount_K $ decodeClause [] $ B.unpack currentHash
-    decodeClause _            []  = []
     decodeClause acc (bLo:bHi:bs) = literal : decodeClause (variable : acc) bs
       where
         w16 = fromIntegral bLo + fromIntegral bHi * 256 :: Word16
@@ -93,6 +92,7 @@ createClause currentHash = clause
           where
             nextIndex = mod index modulo + 1 -- index is in range 1..256; taking modulo wraps its value to 0..256 (but next one); adding 1 move it back into 1..256 range.
         literal = if assignTrue then variable else negate variable
+    decodeClause _             _  = []
 
 -- |Check whether answer solves puzzle for header.
 solvesPuzzle :: Int -> ByteString -> ByteString -> Bool
