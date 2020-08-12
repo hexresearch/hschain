@@ -1,16 +1,9 @@
 module Main where
 
-import Control.Monad (when)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
 
-import qualified Data.List as List
-
 import Data.String
-
-import System.Exit
-
-import Text.Printf
 
 import Options.Applicative
 
