@@ -96,9 +96,6 @@ runNode pathsToConfig miningNode sView db = do
                      print $ asHeader bh
                      print $ retarget bh
 
-
-
-
 genericMiningLoop :: (Mineable b, MonadFork m) => PoW m b -> m x
 genericMiningLoop pow = start
   where

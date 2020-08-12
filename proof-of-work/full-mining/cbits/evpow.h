@@ -2,8 +2,8 @@
  *
  */
 
-#ifndef __ERGVEIN_POW_H
-#define __ERGVEIN_POW_H
+#ifndef __EVPOW_H
+#define __EVPOW_H
 
 #include <stdlib.h>
 #include <stdint.h>
@@ -111,5 +111,5 @@ evpow_check( uint8_t* suffix
 	   , uint8_t* target
 	   );
 
-#endif /* __ERGVEIN_POW_H */
+#endif /* __EVPOW_H */
 
