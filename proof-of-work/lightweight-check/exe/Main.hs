@@ -22,8 +22,6 @@ parser = subparser $
   where
     checkAnswerParser = CheckBlock <$> parseByteString "source"
                                    <*> parseByteString "answer" <*> parseHash <*> parseTarget
-    parsePrint = flag' PrintText (short 'T' <> long "print-as-text")
-               <|> flag' PrintHex (short 'H' <> long "print-as-hex")
     parseByteString opt = parseAsText opt <|> parseAsHex opt
     parseAsText opt = option (maybeReader bytestringFromString) (long $ opt ++ "-text")
     parseAsHex opt = option (maybeReader bytestringFromHex) (long $ opt ++ "-hex")
