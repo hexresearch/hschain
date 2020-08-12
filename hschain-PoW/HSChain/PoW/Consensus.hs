@@ -106,7 +106,7 @@ makeLocator  = Locator . takeH 10 . Just
 data StateView m b = StateView
   { stateBID    :: BlockID b
     -- ^ Hash of block for which state is calculated
-  , applyBlock  :: BH b -> Block b -> m (Maybe (StateView m b))
+  , applyBlock  :: BH b -> Block b -> m (Either (BlockException b) (StateView m b))
     -- ^ Apply block on top of current state. Function should throw
     --   exception if supplied block is not child block of current
     --   head. Function should return @Nothing@ if block is not valid
@@ -424,8 +424,8 @@ bestCandidate db = do
               Nothing -> error "CANT retrieveBlock"
               Just b  -> return b
             lift (applyBlock s bh block) >>= \case
-              Nothing -> throwError (bhBID bh)
-              Just b  -> return b
+              Left  _ -> throwError (bhBID bh)
+              Right b -> return b
       state' <- lift $ lift
               $ runExceptT
               $ traverseBlockIndexM rollback update best h st

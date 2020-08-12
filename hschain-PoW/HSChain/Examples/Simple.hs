@@ -183,8 +183,8 @@ kvMemoryView = make (error "No revinding past genesis") mempty
         view = StateView
           { stateBID    = bid
           , applyBlock  = \_ b -> case kvViewStep b s of
-              Nothing -> return Nothing
-              Just s' -> return $ Just $ make view s' (blockID b)
+              Nothing -> return $ Left KVError
+              Just s' -> return $ Right $ make view s' (blockID b)
           , revertBlock = return previous
           , flushState  = return view
           , checkTx     = \(k,_) -> return $ if k `Map.notMember` s

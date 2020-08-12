@@ -123,7 +123,7 @@ inMemoryView = make (error "No revinding past genesis")
       where
         view = StateView
           { stateBID    = bid
-          , applyBlock  = \bh _ -> return $ Just $ make view (bhBID bh)
+          , applyBlock  = \bh _ -> return $ Right $ make view (bhBID bh)
           , revertBlock = return previous
           , flushState  = return view
           , checkTx                  = error "Transaction checking is not supported"
