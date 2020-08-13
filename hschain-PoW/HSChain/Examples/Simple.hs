@@ -182,7 +182,7 @@ kvMemoryView = make (error "No revinding past genesis") mempty
       where
         view = StateView
           { stateBID    = bid
-          , applyBlock  = \_ b -> case kvViewStep b s of
+          , applyBlock  = \_ _ b -> case kvViewStep b s of
               Nothing -> return $ Left KVError
               Just s' -> return $ Right $ make view s' (blockID b)
           , revertBlock = return previous
