@@ -106,10 +106,11 @@ makeLocator  = Locator . takeH 10 . Just
 data StateView m b = StateView
   { stateBID    :: BlockID b
     -- ^ Hash of block for which state is calculated
-  , applyBlock  :: BH b -> Block b -> m (Either (BlockException b) (StateView m b))
-    -- ^ Apply block on top of current state. Function should throw
-    --   exception if supplied block is not child block of current
-    --   head. Function should return @Nothing@ if block is not valid
+  , applyBlock  :: BlockIndex b -> BH b -> Block b -> m (Either (BlockException b) (StateView m b))
+    -- ^ Apply block on top of current state. Function should return
+    --   @Nothing@ if block is not valid. It's always called with @BH@
+    --   corresponding to given block. If it's not the case it's
+    --   caused by bug inc consensus state machine.
   , revertBlock :: m (StateView m b)
     -- ^ Revert block. Underlying implementation should maintain
     --   enough information to allow rollbacks of reasonable depth.
@@ -417,13 +418,14 @@ bestCandidate db = do
   case heads of
     []  -> cleanCandidates
     h:_ -> do
+      bIdx        <- use blockIndex
       (best,st,_) <- use bestHead
       let rollback _    = lift . revertBlock
           update   bh s = do
             block <- lift (retrieveBlock db $ bhBID bh) >>= \case
               Nothing -> error "CANT retrieveBlock"
               Just b  -> return b
-            lift (applyBlock s bh block) >>= \case
+            lift (applyBlock s bIdx bh block) >>= \case
               Left  _ -> throwError (bhBID bh)
               Right b -> return b
       state' <- lift $ lift
