@@ -83,6 +83,7 @@ module HSChain.Store.Query (
 
 import Codec.Serialise                (Serialise, deserialise, serialise)
 import Control.Concurrent.MVar
+import Control.Lens
 import Control.Monad.Catch
 import qualified Control.Monad.Fail as Fail
 import Control.Monad.IO.Class
@@ -102,7 +103,6 @@ import qualified Database.SQLite.Simple           as SQL
 import qualified Database.SQLite.Simple.ToField   as SQL
 import qualified Database.SQLite.Simple.FromField as SQL
 import qualified Database.SQLite.Simple.FromRow   as SQL
-import Lens.Micro
 import Pipes (Proxy)
 
 import HSChain.Crypto.Classes (ByteRepr(..))
@@ -590,13 +590,13 @@ newtype DatabaseByField conn m x = DatabaseByField (m x)
 instance ( MonadReader r m
          , HasField' conn r (Connection 'RW)
          ) => MonadReadDB (DatabaseByField conn m) where
-  askConnectionRO = DatabaseByField $ connectionRO <$> asks (^. field' @conn)
+  askConnectionRO = DatabaseByField $ connectionRO <$> view (field' @conn)
   {-# INLINE askConnectionRO #-}
 
 instance ( MonadReader r m
          , HasField' conn r (Connection 'RW)
          ) => MonadDB (DatabaseByField conn m) where
-  askConnectionRW = DatabaseByField $ asks (^. field' @conn)
+  askConnectionRW = DatabaseByField $ view (field' @conn)
   {-# INLINE askConnectionRW #-}
 
 
@@ -610,13 +610,13 @@ newtype DatabaseByType m x = DatabaseByType (m x)
 instance ( MonadReader r m
          , HasType (Connection 'RW) r
          ) => MonadReadDB (DatabaseByType m) where
-  askConnectionRO = DatabaseByType $ connectionRO <$> asks (^. typed @(Connection 'RW))
+  askConnectionRO = DatabaseByType $ connectionRO <$> view (typed @(Connection 'RW))
   {-# INLINE askConnectionRO #-}
 
 instance ( MonadReader r m
          , HasType (Connection 'RW) r
          ) => MonadDB (DatabaseByType m) where
-  askConnectionRW = DatabaseByType $ asks (^. typed)
+  askConnectionRW = DatabaseByType $ view typed
   {-# INLINE askConnectionRW #-}
 
 

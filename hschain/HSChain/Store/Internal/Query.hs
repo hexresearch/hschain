@@ -65,6 +65,7 @@ module HSChain.Store.Internal.Query (
   ) where
 
 import Control.Concurrent.MVar
+import Control.Lens
 import Control.Monad
 import Control.Monad.Catch
 #if !MIN_VERSION_base(4,13,0)
@@ -79,8 +80,6 @@ import Control.Monad.Trans.State.Lazy   as SL(StateT(..))
 import Control.Monad.Trans.Except            (ExceptT(..))
 import Control.Monad.Trans.Identity          (IdentityT(..))
 import Data.Tuple (swap)
-import Lens.Micro
-import Lens.Micro.TH
 import qualified Data.Cache.LRU                   as LRU
 import Pipes (Proxy)
 

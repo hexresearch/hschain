@@ -152,7 +152,6 @@ Test-suite hschain-tests
                      , deepseq           >=1.4
                      , exceptions
                      , free
-                     , microlens
                      , network
                      , random
                      , sqlite-simple

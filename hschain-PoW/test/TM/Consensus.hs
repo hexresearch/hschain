@@ -3,12 +3,12 @@
 -- |
 module TM.Consensus (tests) where
 
+import Control.Lens
 import Control.Monad.State.Strict
 import Control.Monad.Except
 import Data.Foldable
 import qualified Data.Map.Strict as Map
 import qualified Data.Set        as Set
-import Lens.Micro
 import Test.Tasty
 import Test.Tasty.HUnit
 

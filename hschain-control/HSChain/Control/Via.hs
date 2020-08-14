@@ -15,10 +15,10 @@ module HSChain.Control.Via
   (
   ) where
 
+import Control.Lens
 import Control.Monad.Reader
 import Data.Generics.Product.Fields (HasField'(..))
 import Data.Generics.Product.Typed  (HasType(..))
-import Lens.Micro
 
 -- | Convert instance @MonadReader r@ into instance @MonadReader x@.
 --   Field @x@ of @r@ is looked up by its type
@@ -28,7 +28,7 @@ newtype ReaderViaType x m a = ReaderViaType (m a)
 instance ( MonadReader r m
          , HasType x r
          ) => MonadReader x (ReaderViaType x m) where
-  ask = ReaderViaType $ (^. (typed @x)) <$> ask
+  ask = ReaderViaType $ view (typed @x)
   local f (ReaderViaType m) = ReaderViaType $ local (typed @x %~ f) m
 
 
@@ -40,5 +40,5 @@ newtype ReaderViaField field x m a = ReaderViaField (m a)
 instance ( MonadReader r m
          , HasField' field r x
          ) => MonadReader x (ReaderViaField field x m) where
-  ask = ReaderViaField $ (^. (field' @field)) <$> ask
+  ask = ReaderViaField $ view (field' @field)
   local f (ReaderViaField m) = ReaderViaField $ local (field' @field %~ f) m

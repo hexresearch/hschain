@@ -19,13 +19,12 @@ module HSChain.PoW.P2P
   ) where
 
 import Codec.Serialise
+import Control.Lens
 import Control.Concurrent.MVar
 import Control.Concurrent.STM
 import Control.Monad.Cont
 import Control.Monad.Catch
 import Control.Monad.Except
-import Data.Functor.Contravariant
-import Lens.Micro
 
 import HSChain.Control.Channels
 import HSChain.Control.Class

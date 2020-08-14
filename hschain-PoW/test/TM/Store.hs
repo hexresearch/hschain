@@ -4,6 +4,7 @@
 -- |
 module TM.Store (tests) where
 
+import Control.Lens
 import Control.Monad
 import Control.Monad.IO.Class
 import Control.Monad.Catch
@@ -11,7 +12,6 @@ import Control.Monad.Trans.Class
 import Control.Monad.Trans.Cont
 import Test.Tasty
 import Test.Tasty.HUnit
-import Lens.Micro
 
 import HSChain.Control.Class
 import HSChain.Control.Util

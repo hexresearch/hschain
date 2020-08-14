@@ -10,14 +10,12 @@ module HSChain.P2P.PeerState.Handle.Current
   ( handler
   ) where
 
+import Control.Lens
 import Control.Monad
 import Control.Monad.RWS.Strict
 import Data.Foldable            (toList)
 import Data.Maybe
 import System.Random            (randomRIO)
-
-import Lens.Micro
-import Lens.Micro.Mtl
 
 import HSChain.Blockchain.Internal.Types
 import HSChain.Control.Util              (atomicallyIO)

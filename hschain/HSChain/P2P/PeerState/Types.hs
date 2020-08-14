@@ -12,11 +12,10 @@
 {-# LANGUAGE UndecidableInstances #-}
 module HSChain.P2P.PeerState.Types where
 
+import Control.Lens
 import Control.Concurrent.STM (STM)
 import Data.Map               (Map)
 import Data.Set               (Set)
-
-import Lens.Micro.TH
 
 import HSChain.Blockchain.Internal.Types
 import HSChain.Crypto

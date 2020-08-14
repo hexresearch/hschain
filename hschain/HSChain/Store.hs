@@ -65,6 +65,7 @@ module HSChain.Store (
   ) where
 
 import Codec.Serialise           (Serialise)
+import Control.Lens
 import Control.Monad.Catch       (MonadMask)
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
@@ -78,7 +79,6 @@ import Data.Text                 (Text)
 import Data.Generics.Product.Fields (HasField'(..))
 import Data.Generics.Product.Typed  (HasType(..))
 import qualified Data.List.NonEmpty as NE
-import Lens.Micro
 import GHC.Generics (Generic)
 
 import HSChain.Types.Blockchain
