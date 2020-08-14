@@ -31,7 +31,7 @@ tests :: TestTree
 tests = testGroup "Block store"
   [ testCase "Store:In-memory" $ testIdempotence mockchain =<< inMemoryDB genesis
   , testCase "Store:DB"   $ withHSChainT $ testIdempotence mockchain =<< blockDatabase genesis
-  , testCase "Store:Coin" $ withHSChainT $ do (db,_) <- coinStateView $ head emptyCoinChain
+  , testCase "Store:Coin" $ withHSChainT $ do (db,_,_) <- coinStateView $ head emptyCoinChain
                                               testIdempotence emptyCoinChain db
   , testCase "Restart" $ withHSChainT testRestart
   ]

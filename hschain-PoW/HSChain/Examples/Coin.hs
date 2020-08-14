@@ -7,6 +7,7 @@
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase                 #-}
+{-# LANGUAGE MultiWayIf                 #-}
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE RecordWildCards            #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
@@ -25,18 +26,20 @@ import Control.Monad
 import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Control.Monad.Reader
-import Control.Monad.Trans.Except
+import Control.Monad.Except
+import Control.Monad.Trans.Except (except)
 import Control.Monad.Morph (hoist)
 import Control.DeepSeq
 import Codec.Serialise      (Serialise)
 import Data.Maybe
 import Data.Word
+import Data.Foldable        (foldl')
 import Data.Int
 import Data.Map.Strict      (Map)
+import Data.List            (nub)
 import Data.Generics.Product.Typed (typed)
 import qualified Data.Aeson                       as JSON
 import qualified Data.Map.Strict                  as Map
-import qualified Data.IntMap.Strict               as IMap
 import           Database.SQLite.Simple            ((:.)(..))
 import qualified Database.SQLite.Simple.ToField   as SQL
 import qualified Database.SQLite.Simple.FromField as SQL
@@ -56,6 +59,7 @@ import HSChain.Crypto.SHA
 import HSChain.Logger
 import HSChain.PoW.Types
 import HSChain.PoW.Consensus
+import HSChain.PoW.BlockIndex
 import HSChain.PoW.P2P
 import HSChain.Store.Query
 
@@ -239,6 +243,8 @@ validateCoinTxContextFree (TxCoin pubK sig txSend@TxSend{..}) = do
   -- Inputs and outputs are not null
   when (null txInputs)  $ Left $ CoinError "Empty input list"
   when (null txOutputs) $ Left $ CoinError "Empty output list"
+  -- No duplicate inputs
+  when (nub txInputs /= txInputs) $ Left $ CoinError "Duplicate inputs"
   -- Outputs are all positive
   forM_ txOutputs $ \(Unspent _ n) ->
     unless (n > 0) $ Left $ CoinError "Negative output"
@@ -247,9 +253,84 @@ validateCoinTxContextFree (TxCoin pubK sig txSend@TxSend{..}) = do
     $ Left $ CoinError "Invalid signature"
 
 
--- | Finally process transaction. Check that sum of inputs is same as sum of outputs and 
-processTX :: ActiveOverlay -> TxCoin -> ExceptT (BlockException Coin) (Query rw) ActiveOverlay
-processTX overlay tx = undefined
+-- | Finally process transaction. Check that sum of inputs is same as sum of outputs and
+processTX
+  :: BlockIndexPath (ID (Block Coin))
+  -> ActiveOverlay
+  -> TxCoin
+  -> ExceptT (BlockException Coin) (Query rw) ActiveOverlay
+processTX pathInDB overlay tx@(TxCoin pk _ (TxSend ins outs)) = do
+  -- Fetch all inputs
+  inputs <- forM ins $ \utxo -> do
+    case getOverlayUTXO overlay utxo of
+      Just (Spent _) -> throwError $ CoinError "Input already spent"
+      Just (Added u) -> return (utxo,u)
+      Nothing        -> (,) utxo <$> getDatabaseUTXO pathInDB utxo
+  -- Check that we can spend them
+  let canSpend  = and [ pk == k | (_, Unspent k _) <- inputs ]
+      sumInputs = sum [ n       | (_, Unspent _ n) <- inputs ]
+      sumOuts   = sum [ n       | Unspent _ n      <- outs   ]
+  unless canSpend               $ throwError $ CoinError "Can't spend output"
+  unless (sumInputs == sumOuts) $ throwError $ CoinError "In/out sum mismatch"
+  -- Update overlay
+  let txHash   = hashed tx
+      overlay1 = foldl' (\o (utxo,u) -> spendUTXO  utxo u o) overlay inputs
+      overlay2 = foldl' (\o (utxo,u) -> createUTXO utxo u o) overlay1
+        [ (UTXO i txHash, o)
+        | (i,o) <- [0..] `zip` outs
+        ]
+  return overlay2
+
+getDatabaseUTXO
+  :: ()
+  => BlockIndexPath (ID (Block Coin))
+  -> UTXO
+  -> ExceptT (BlockException Coin) (Query rw) Unspent
+-- Check whether output was created in the block
+getDatabaseUTXO (ApplyBlock i path) utxo = do
+  isSpentAtBlock i utxo >>= \case
+    Just _  -> throwError $ CoinError "Output is already spent"
+    Nothing -> return ()
+  isCreatedAtBlock i utxo >>= \case
+    Just u  -> return u
+    Nothing -> getDatabaseUTXO path utxo
+-- Perform check in block being reverted. If UTXO was create in that
+-- block it didn't exist before and we should abort.
+getDatabaseUTXO (RevertBlock i path) utxo = do
+  isCreatedAtBlock i utxo >>= \case
+    Just _  -> throwError $ CoinError "Output does not exists"
+    Nothing -> return ()
+  isSpentAtBlock i utxo >>= \case
+    Just u  -> return u
+    Nothing -> getDatabaseUTXO path utxo
+-- Read from database
+getDatabaseUTXO NoChange utxo = do
+  r <- basicQuery1
+    "SELECT pk_dest, n_coins \
+    \  FROM coin_utxo \
+    \  JOIN coin_state ON live_utxo = utxo_id \
+    \ WHERE tx_hash = ? AND n_out = ?"
+    utxo
+  case r of
+    Just u  -> return u
+    Nothing -> throwError $ CoinError "No such UTXO"
+
+isSpentAtBlock :: MonadQueryRO m => ID (Block Coin) -> UTXO -> m (Maybe Unspent)
+isSpentAtBlock i utxo = basicQuery1
+  "SELECT pk_dest, n_coins \
+  \  FROM coin_utxo \
+  \  JOIN coin_utxo_spent ON utxo_id = utxo_ref \
+  \ WHERE tx_hash = ? AND n_out = ? AND block_ref = ?"
+  (utxo :. Only i)
+
+isCreatedAtBlock :: MonadQueryRO m => ID (Block Coin) -> UTXO -> m (Maybe Unspent)
+isCreatedAtBlock i utxo = basicQuery1
+  "SELECT pk_dest, n_coins \
+  \  FROM coin_utxo \
+  \  JOIN coin_utxo_created ON utxo_id = utxo_ref \
+  \ WHERE tx_hash = ? AND n_out = ? AND block_ref = ?"
+  (utxo :. Only i)
+
 
 ----------------------------------------------------------------
 -- Blockchain state management
@@ -300,7 +381,7 @@ overlayTip (OverlayLayer bh _ _) = bh
 -- | Roll back overlay by one block. Will throw if rolling past
 --   genesis is attempted.
 rollbackOverlay :: StateOverlay -> StateOverlay
-rollbackOverlay (OverlayBase bh) = case bhPrevious bh of
+rollbackOverlay (OverlayBase bh0) = case bhPrevious bh0 of
   Just bh -> OverlayBase bh
   Nothing -> error "Cant rewind overlay pas genesis"
 rollbackOverlay (OverlayLayer _ _ o) = o
@@ -320,13 +401,19 @@ finalizeOverlay (ActiveOverlay bh l o) = OverlayLayer bh l o
 --   already. We need latter since UTXO could be available in
 --   underlying state but spent in overlay and we need to account for
 --   that explicitly.
-getOverlayUTXO :: StateOverlay -> UTXO -> Maybe (Change Unspent)
-getOverlayUTXO (OverlayBase _)              _    = Nothing
-getOverlayUTXO (OverlayLayer _ Layer{..} o) utxo
-  =  Spent <$> Map.lookup utxo utxoSpent
- <|> Added <$> Map.lookup utxo utxoCreated
- <|> getOverlayUTXO o utxo
-  
+getOverlayUTXO :: ActiveOverlay -> UTXO -> Maybe (Change Unspent)
+getOverlayUTXO (ActiveOverlay _ l0 o0) utxo
+  =  getFromLayer l0
+ <|> recur o0
+ where
+   recur (OverlayBase  _)     = Nothing
+   recur (OverlayLayer _ l o) =  getFromLayer l
+                             <|> recur o
+   getFromLayer Layer{..}
+     =  Spent <$> Map.lookup utxo utxoSpent
+    <|> Added <$> Map.lookup utxo utxoCreated
+
+
 spendUTXO :: UTXO -> Unspent -> ActiveOverlay -> ActiveOverlay
 spendUTXO utxo val
   = typed . lensSpent . at utxo .~ Just val
@@ -357,29 +444,70 @@ dumpOverlay (OverlayLayer bh Layer{..} o) = do
   dumpOverlay o
 dumpOverlay OverlayBase{} = return ()
 
+revertBlockDB :: MonadQueryRW m => BH Coin -> m ()
+revertBlockDB bh = do
+  i <- retrieveCoinBlockTableID $ bhBID bh
+  basicExecute
+    "DELETE FROM coin_state WHERE live_utxo IN \
+    \  SELECT utxo_ref FROM coin_utxo_created WHERE block_ref = ?"
+    (Only i)
+  basicExecute
+    "INSERT INTO coin_state \
+    \  SELECT utxo_ref FROM coin_utxo_spent WHERE block_ref = ?"
+    (Only i)
+
+applyBlockDB :: MonadQueryRW m => BH Coin -> m ()
+applyBlockDB bh = do
+  i <- retrieveCoinBlockTableID $ bhBID bh
+  basicExecute
+    "DELETE FROM coin_state WHERE live_utxo IN \
+    \  SELECT utxo_ref FROM coin_utxo_spent WHERE block_ref = ?"
+    (Only i)
+  basicExecute
+    "INSERT INTO coin_state \
+    \  SELECT utxo_ref FROM coin_utxo_created WHERE block_ref = ?"
+    (Only i)
 
 -- | Database backed state view for the mock coin. This is
 --   implementation for archive node.
 coinStateView
-  :: (MonadThrow m, MonadDB m, MonadIO m)
+  :: (MonadThrow m, MonadDB m, MonadIO m, MonadDB m)
   => Block Coin
-  -> m (BlockDB m Coin, StateView m Coin)
+  -> m (BlockDB m Coin, BlockIndex Coin, StateView m Coin)
 coinStateView genesis = do
   initCoinDB
   storeCoinBlock genesis
-  return
-    ( BlockDB { storeBlock         = storeCoinBlock
-              , retrieveBlock      = retrieveCoinBlock
-              , retrieveHeader     = retrieveCoinHeader
-              , retrieveAllHeaders = retrieveAllCoinHeaders
-              }
-    , makeStateView undefined undefined undefined
-    )
+  bIdx <- buildBlockIndex db
+  st   <- mustQueryRW $ initializeStateView genesis bIdx
+  return (db, bIdx, st)
+  where
+    db = BlockDB { storeBlock         = storeCoinBlock
+                 , retrieveBlock      = retrieveCoinBlock
+                 , retrieveHeader     = retrieveCoinHeader
+                 , retrieveAllHeaders = retrieveAllCoinHeaders
+                 }
+
+initializeStateView
+  :: (MonadDB m, MonadThrow m, MonadQueryRW q,  MonadIO m)
+  => Block Coin -> BlockIndex Coin -> q (StateView m Coin)
+initializeStateView genesis bIdx = do
+  retrieveCurrentStateBlock >>= \case
+    Just bid -> do let Just bh = lookupIdx bid bIdx
+                   return $ makeStateView bIdx (emptyOverlay bh)
+    -- We need to initialize state table
+    Nothing  -> do
+      let bid     = blockID genesis
+          Just bh = lookupIdx bid bIdx
+      basicExecute
+        "INSERT INTO coin_state_bid SELECT blk_id,0 FROM coin_blocks WHERE bid = ?"
+        (Only bid)
+      return $ makeStateView bIdx (emptyOverlay bh)      
 
 makeStateView
   :: (MonadDB m, MonadThrow m, MonadIO m)
-  => BlockIndex Coin -> BH Coin -> StateOverlay -> StateView m Coin
-makeStateView bIdx0 bh0 overlay = sview where
+  => BlockIndex Coin -> StateOverlay -> StateView m Coin
+makeStateView bIdx0 overlay = sview where
+  bh0   = overlayTip overlay
   sview = StateView
     { stateBID          = bhBID bh0
     -- FIXME: We need block index in order to be able to compute path
@@ -393,51 +521,36 @@ makeStateView bIdx0 bh0 overlay = sview where
         -- Now we need to fully verify each transaction and build new
         -- overlay for database
         overlay' <- hoist mustQueryRW $ do
-          -- First prepare temporary table with path from current
-          -- state as recorded and base of current overlay. This
-          -- regrettable use of global state is required since we
-          -- can't supply table as parameter to a request
-          stateBid <- retrieveCurrentStateBlock
-          let Just bhState = lookupIdx stateBid bIdx
-          prepareTempTable bhState (overlayBase overlay)
-          -- Now we can just validate every TX and update overlay          
+          -- First we need to prepare path between block corresponding
+          -- to current state of block
+          pathInDB <- do
+            Just stateBid <- retrieveCurrentStateBlock
+            let Just bhState = lookupIdx stateBid bIdx
+            makeBlockIndexPathM (retrieveCoinBlockTableID . bhBID)
+              bhState (overlayBase overlay)
+          -- Now we can just validate every TX and update overlay
           foldM
-            processTX
+            (processTX pathInDB)
             (fromMaybe (error "Coin: invalid BH in apply block") $ addOverlayLayer bh overlay)
             txList
-        return $ makeStateView bIdx bh (finalizeOverlay overlay')
+        return $ makeStateView bIdx (finalizeOverlay overlay')
     --
-    , revertBlock = return $ makeStateView
-         bIdx0
-        (fromMaybe (error "Coin: can't rollback past genesis") $ bhPrevious bh0)
-        (rollbackOverlay overlay)
+    , revertBlock = return $ makeStateView bIdx0 (rollbackOverlay overlay)
     --
     , flushState = mustQueryRW $ do
         -- Dump overlay content.
         dumpOverlay overlay
         -- Rewind state stored in the database from its current state
         -- to current head.
-        () <- undefined
-        --
-        return $ makeStateView bIdx0 bh0 (emptyOverlay bh0)
+        Just bid <- retrieveCurrentStateBlock
+        case bid `lookupIdx` bIdx0 of
+          Nothing -> error "makeStateView: bad index"
+          Just bh -> traverseBlockIndexM_ revertBlockDB applyBlockDB bh bh0
+        return $ makeStateView bIdx0 (emptyOverlay bh0)
+      -- FIXME: not implemented
+    , checkTx                  = undefined
+    , createCandidateBlockData = undefined
     }
-
-prepareTempTable :: MonadQueryRW m => BH Coin -> BH Coin -> m ()
-prepareTempTable bhFrom bhTo = do
-  basicExecute_ "DELETE FROM coin_temp_blockset"
-  traverseBlockIndexM (addRecord False) (addRecord True) bhFrom bhTo ()
-  where
-    addRecord flag bh () = basicExecute
-      "INSERT INTO coin_temp_blockset \
-      \  SELECT blk_id, ? FROM coin_blocks WHERE bid = ?"
-      (flag, bhBID bh)
-
-
-
-
-
-
-  
 
 -- Initialize database for mock coin blockchain
 initCoinDB :: (MonadThrow m, MonadDB m, MonadIO m) => m ()
@@ -470,21 +583,20 @@ initCoinDB = mustQueryRW $ do
   -- UTXO's created in given block. Due to blockchain reorganizations
   -- same UTXO may appear in several blocks
   basicExecute_
-    "CREATE TABLE IF NOT EXISTS coin_utxo_added \
-    \  ( delta_blk INTEGER NOT NULL \
-    \  , added     INTEGER NOT NULL \
-    \  , FOREIGN KEY (delta_blk) REFERENCES coin_blocks(blk_id) \
-    \  , FOREIGN KEY (added)     REFERENCES coin_utxo(utxo_id)  \
-    \  , UNIQUE (delta_blk,added) \
+    "CREATE TABLE IF NOT EXISTS coin_utxo_created \
+    \  ( block_ref INTEGER NOT NULL \
+    \  , utxo_ref  INTEGER NOT NULL \
+    \  , FOREIGN KEY (block_ref) REFERENCES coin_blocks(blk_id) \
+    \  , FOREIGN KEY (utxo_ref)  REFERENCES coin_utxo(utxo_id)  \
+    \  , UNIQUE (block_ref, utxo_ref) \
     \)"
-  -- UTXO's spent in given block
   basicExecute_
     "CREATE TABLE IF NOT EXISTS coin_utxo_spent \
-    \  ( delta_blk INTEGER NOT NULL \
-    \  , spent     INTEGER NOT NULL \
-    \  , FOREIGN KEY (delta_blk) REFERENCES coin_blocks(blk_id) \
-    \  , FOREIGN KEY (spent)     REFERENCES coin_utxo(utxo_id) \
-    \  , UNIQUE (delta_blk,spent) \
+    \  ( block_ref INTEGER NOT NULL \
+    \  , utxo_ref  INTEGER NOT NULL \
+    \  , FOREIGN KEY (block_ref) REFERENCES coin_blocks(blk_id) \
+    \  , FOREIGN KEY (utxo_ref)  REFERENCES coin_utxo(utxo_id)  \
+    \  , UNIQUE (block_ref, utxo_ref) \
     \)"
   -- Current state of blockchain. It's just set of currently live UTXO
   -- with pointer to the block for which it corresponds
@@ -499,13 +611,6 @@ initCoinDB = mustQueryRW $ do
     \  , uniq        INTEGER NOT NULL UNIQUE \
     \  , FOREIGN KEY (state_block) REFERENCES coin_blocks(blk_id) \
     \  , CHECK (uniq = 0) \
-    \)"
-  -- Temporary table for checking blocks
-  basicExecute_
-    "CREATE TEMPORARY TABLE IF NOT EXISTS coin_temp_blockset \
-    \  ( block_id  INTEGER NOT NULL \
-    \  , apply     BOOLEAN NOT NULL \
-    \  , FOREIGN KEY (block_id) REFERENCES coin_blocks(blk_id)\
     \)"
 
 
@@ -540,19 +645,21 @@ storeCoinBlock b@GBlock{blockData=Coin{..}, ..} = mustQueryRW $ do
     , coinNonce
     )
 
-retrieveCurrentStateBlock :: MonadQueryRO m => m (BlockID Coin)
-retrieveCurrentStateBlock
-  =  maybe (error "Coin:DB: State is not inisialized") fromOnly
- <$> basicQuery1
-       "SELECT bid \
-       \  FROM coin_blocks \
-       \  JOIN coin_state_bid ON state_block = blk_id \
-       \)" ()
+retrieveCurrentStateBlock :: MonadQueryRO m => m (Maybe (BlockID Coin))
+retrieveCurrentStateBlock = fmap fromOnly <$> basicQuery1
+  "SELECT bid \
+  \  FROM coin_blocks \
+  \  JOIN coin_state_bid ON state_block = blk_id"
+  ()
 
-retrieveCoinBlockTableID :: MonadQueryRO m => BlockID Coin -> m (Maybe Int64)
-retrieveCoinBlockTableID bid = fmap fromOnly <$> basicQuery1
-  "SELECT blk_id FROM coin_blocks WHERE bid =?"
-  (Only bid)
+retrieveCoinBlockTableID :: MonadQueryRO m => BlockID Coin -> m (ID (Block Coin))
+retrieveCoinBlockTableID bid = do
+  r <- basicQuery1
+    "SELECT blk_id FROM coin_blocks WHERE bid =?"
+    (Only bid)
+  case r of
+    Nothing       -> error "Unknown BID"
+    Just (Only i) -> return i
 
 retrieveUtxoIO :: MonadQueryRO m => UTXO -> m Int64
 retrieveUtxoIO utxo = do
