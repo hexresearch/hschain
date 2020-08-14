@@ -9,13 +9,11 @@ module HSChain.P2P.PeerState.Handle.Lagging
   ( handler
   ) where
 
+import Control.Lens
 import Control.Monad
 import Control.Monad.RWS.Strict
 import Data.Foldable            (toList)
 import System.Random            (randomRIO)
-
-import Lens.Micro
-import Lens.Micro.Mtl
 
 import HSChain.Crypto
 import HSChain.Internal.Types.Messages

@@ -42,11 +42,9 @@ Library
                      , exceptions        >=0.8.3
                      , filepath
                      , generic-lens      >=2
+                     , lens              >=4.17
                      , lrucache          >=1.2
                      , mmorph
-                     , microlens         >=0.4
-                     , microlens-mtl     >=0.1
-                     , microlens-th
                      , mtl
                      , pipes             >=4
                      , prometheus-client

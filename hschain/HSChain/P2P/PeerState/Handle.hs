@@ -11,9 +11,9 @@ module HSChain.P2P.PeerState.Handle
  , handlerGossip
  ) where
 
+import Control.Lens
 import Control.Monad (foldM)
 import Control.Monad.IO.Class
-import Lens.Micro.Mtl
 
 import HSChain.Control.Util (atomicallyIO)
 import HSChain.Blockchain.Internal.Types

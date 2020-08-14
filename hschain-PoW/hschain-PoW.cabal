@@ -40,10 +40,8 @@ Library
                      , filepath
                      , katip
                      , lrucache
+                     , lens              >=4.17
                      , mmorph
-                     , microlens         >=0.4
-                     , microlens-mtl     >=0.1
-                     , microlens-th
                      , mtl
                      , pipes             >=4
                      , prometheus-client
@@ -99,7 +97,6 @@ Executable hschain-PoW-node
                      , transformers
                      , optparse-applicative
                      , yaml
-                     , microlens
   hs-source-dirs:      exe
   Main-is:             pow-node.hs
 
@@ -127,7 +124,6 @@ Executable hschain-PoW-coin
                      , transformers
                      , optparse-applicative
                      , yaml
-                     , microlens
   hs-source-dirs:      exe
   Main-is:             coin-node.hs
 
@@ -150,7 +146,7 @@ Test-suite hschain-PoW-tests
                      , containers
                      , serialise
                      , transformers
-                     , microlens
+                     , lens
                      , mtl
                      , stm
                      , tasty             >=0.11

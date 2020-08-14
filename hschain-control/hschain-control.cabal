@@ -23,7 +23,7 @@ Library
                      , stm
                      , transformers
                      , containers
-                     , microlens         >=0.4.11
+                     , lens              >=4.17
                      , mtl               >=2
                      , generic-lens
   Exposed-modules:

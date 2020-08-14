@@ -5,6 +5,7 @@
 {-# LANGUAGE FlexibleContexts     #-}
 {-# LANGUAGE LambdaCase           #-}
 {-# LANGUAGE MultiWayIf           #-}
+{-# LANGUAGE PatternSynonyms      #-}
 {-# LANGUAGE PolyKinds            #-}
 {-# LANGUAGE RankNTypes           #-}
 {-# LANGUAGE RecordWildCards      #-}
@@ -47,10 +48,10 @@ module HSChain.PoW.Consensus
 
 import Control.Category ((>>>))
 import Control.Exception
+import Control.Lens     hiding (pattern Empty, (|>), index)
 import Control.Monad
 import Control.Monad.Except
 import Control.Monad.State.Strict
-import Data.Functor.Identity
 import Data.List          (sortOn)
 import Data.Typeable      (Typeable)
 import Data.Maybe
@@ -60,9 +61,6 @@ import Data.Ord           (Down(..))
 import qualified Data.Aeson      as JSON
 import qualified Data.Set        as Set
 import qualified Data.Sequence   as Seq
-import Lens.Micro
-import Lens.Micro.Mtl
-import Lens.Micro.TH
 import GHC.Generics (Generic)
 
 import HSChain.PoW.Types

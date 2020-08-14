@@ -60,7 +60,7 @@ let
   # Build internal package
   callInternal = hask: name: path: args: opts:
     haskTools.compose
-      [ haskTools.hask.doFastO2
+      [ lib.dontHaddock
         (doIf isBench    lib.doBenchmark)
         (doIf isCoreLint haskTools.hask.doCoreLint)
         (doIf isProd    (haskTools.compose

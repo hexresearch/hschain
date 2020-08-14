@@ -46,6 +46,7 @@ module HSChain.Logger (
   ) where
 
 import Control.Arrow (first,second)
+import Control.Lens  (view,(%~))
 import Control.Monad
 import Control.Monad.Catch
 import Control.Monad.IO.Class
@@ -69,7 +70,6 @@ import qualified Data.HashMap.Strict        as HM
 import qualified Data.ByteString.Lazy.Char8 as BL
 import qualified Data.Text as T
 import Katip
-import Lens.Micro
 import System.Directory (createDirectoryIfMissing)
 import System.FilePath  (splitFileName)
 import System.IO
@@ -137,8 +137,8 @@ instance ( MonadReader r m
          , HasField' namespace r Namespace
          ) => MonadLogger (LoggerByFields logenv namespace m) where
   logger sev s a = LoggerByFields $ do
-    nm <- asks (^. field' @namespace)
-    le <- asks (^. field' @logenv)
+    nm <- view (field' @namespace)
+    le <- view (field' @logenv)
     runKatipT le $ logF a nm sev s
   localNamespace f (LoggerByFields m) = LoggerByFields $ local (field' @namespace %~ f) m 
   {-# INLINE logger         #-}
@@ -157,8 +157,8 @@ instance ( MonadReader r m
          , HasType Namespace r
          ) => MonadLogger (LoggerByTypes m) where
   logger sev s a = LoggerByTypes $ do
-    nm <- asks (^. typed @Namespace)
-    le <- asks (^. typed @LogEnv)
+    nm <- view (typed @Namespace)
+    le <- view (typed @LogEnv)
     runKatipT le $ logF a nm sev s
   localNamespace f (LoggerByTypes m) = LoggerByTypes $ local (typed @Namespace %~ f) m
   {-# INLINE logger         #-}

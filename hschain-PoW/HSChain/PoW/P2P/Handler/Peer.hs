@@ -15,13 +15,13 @@ module HSChain.PoW.P2P.Handler.Peer where
 import Codec.Serialise
 import Control.Concurrent (ThreadId,myThreadId,throwTo)
 import Control.Concurrent.STM
+import Control.Lens
 import Control.Monad
 import Control.Monad.Trans.Class
 import Control.Monad.IO.Class
 import Control.Monad.Catch
 import Data.Foldable
 import Data.Maybe
-import Lens.Micro
 import Katip (sl)
 
 import HSChain.Control.Class

@@ -7,8 +7,8 @@ module HSChain.P2P.PeerState.Handle.Ahead
   ( handler
   ) where
 
+import Control.Lens
 import Control.Monad
-import Lens.Micro.Mtl
 
 import HSChain.Internal.Types.Messages
 import HSChain.Store

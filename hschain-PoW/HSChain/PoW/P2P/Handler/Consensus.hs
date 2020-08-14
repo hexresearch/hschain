@@ -15,14 +15,13 @@ module HSChain.PoW.P2P.Handler.Consensus
   , threadConsensus
   ) where
 
+import Control.Lens
 import Control.Monad
 import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Control.Monad.State.Strict
 import Control.Monad.Except
 import Data.Set (Set)
-import Lens.Micro
-import Lens.Micro.Mtl
 import Katip (sl)
 
 import HSChain.Control.Channels

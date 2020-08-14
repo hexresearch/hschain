@@ -31,6 +31,7 @@ module HSChain.Monitoring (
   , incTCVectorNow
   ) where
 
+import Control.Lens
 import Control.Monad
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
@@ -40,7 +41,6 @@ import qualified Control.Monad.Trans.State.Lazy   as SL
 import Data.Text                  (Text)
 import Data.Generics.Product.Fields (HasField'(..))
 import Data.Generics.Product.Typed  (HasType(..))
-import Lens.Micro
 import Numeric.Natural
 import Pipes       (Proxy)
 import Prometheus
