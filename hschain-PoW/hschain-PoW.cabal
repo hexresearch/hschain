@@ -36,6 +36,7 @@ Library
                      , data-default-class
                      , deepseq           >=1.4
                      , directory
+                     , generic-lens      >=0.2
                      , exceptions        >=0.8.3
                      , filepath
                      , katip
