@@ -158,4 +158,5 @@ Test-suite hschain-PoW-tests
                        TM.Mempool
                        TM.P2P
                        TM.Store
+                       TM.Types
                        TM.Util.Mockchain

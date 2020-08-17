@@ -2,8 +2,11 @@
 -- Block index is data structure which holds headers for all blocks in
 -- blockchain in memory. This module provides data structure and set
 -- of common operations for working with it.
-{-# LANGUAGE FlexibleContexts #-}
-module HSChain.PoW.BlockIndex  
+{-# LANGUAGE DeriveFoldable    #-}
+{-# LANGUAGE DeriveFunctor     #-}
+{-# LANGUAGE DeriveTraversable #-}
+{-# LANGUAGE FlexibleContexts  #-}
+module HSChain.PoW.BlockIndex
   ( -- * Block index
     BlockIndex(..)
   , lookupIdx
@@ -11,6 +14,11 @@ module HSChain.PoW.BlockIndex
   -- * Traversals
   , traverseBlockIndex
   , traverseBlockIndexM
+  , traverseBlockIndexM_
+  -- ** Path in index
+  , BlockIndexPath(..)
+  , makeBlockIndexPath
+  , makeBlockIndexPathM
   -- * Construction of index
   , blockIndexHeads
   , blockIndexFromGenesis
@@ -66,7 +74,9 @@ traverseBlockIndex rollback update fromB toB
     (\b -> Identity . update   b)
     fromB toB
 
--- | Find path between nodes in block index
+-- | Find path between nodes in block index and build monadic
+--   function. Actions are performed in following order: first block
+--   are rolled back, then applied.
 traverseBlockIndexM
   :: (Monad m, BlockData b)
   => (BH b -> a -> m a)         -- ^ Rollback block
@@ -85,7 +95,17 @@ traverseBlockIndexM rollback update = go
       Just b' -> b'
       Nothing -> error "Internal error"
 
-
+-- | Find path between nodes and execute monadic action for each node.
+traverseBlockIndexM_
+  :: (Monad m, BlockData b)
+  => (BH b -> m ())         -- ^ Rollback block
+  -> (BH b -> m ())         -- ^ Update update block
+  -> BH b                   -- ^ Traverse from block
+  -> BH b                   -- ^ Traverse to block
+  -> m ()
+traverseBlockIndexM_ rollback update from to
+  = traverseBlockIndexM
+    (\bh () -> rollback bh) (\bh () -> update bh) from to ()
 
 -- | Find all heads from index: blocks which aren't parents of some
 --   other blocks. Requires complete traversal of index.
@@ -112,3 +132,32 @@ blockIndexFromGenesis genesis
              , bhPrevious = Nothing
              , bhData     = merkleMap (const Proxy) $ blockData genesis
              }
+
+
+----------------------------------------------------------------
+-- Materialized path
+----------------------------------------------------------------
+
+-- | Path between blocks in block index
+data BlockIndexPath a
+  = RevertBlock !a (BlockIndexPath a)
+  | ApplyBlock  !a (BlockIndexPath a)
+  | NoChange
+  deriving (Show, Eq, Functor, Foldable, Traversable)
+
+makeBlockIndexPath
+  :: BlockData b => (BH b -> a) -> BH b -> BH b -> BlockIndexPath a
+makeBlockIndexPath f from to = traverseBlockIndex
+  (\bh -> RevertBlock (f bh))
+  (\bh -> ApplyBlock  (f bh))
+  from to
+  NoChange
+
+makeBlockIndexPathM
+  :: (Monad m, BlockData b)
+  => (BH b -> m a) -> BH b -> BH b -> m (BlockIndexPath a)
+makeBlockIndexPathM f from to = traverseBlockIndexM
+  (\bh p -> do { a <- f bh; return $ RevertBlock a p })
+  (\bh p -> do { a <- f bh; return $ ApplyBlock  a p })
+  from to
+  NoChange
