@@ -41,7 +41,7 @@ testMempoolRollback = runNoLogsT $ evalContT $ do
   let net   = createMockNode mocknet $ NetAddrV4 1 1000
       sView = kvMemoryView (blockID genesis)
   db <- lift $ inMemoryDB genesis
-  c0 <- lift $ createConsensus db sView
+  c0 <- lift $ createConsensus db sView =<< buildBlockIndex db
   (pow,sinkBOX) <- startNodeTest netcfg net [] db c0
   let api@MempoolAPI{..} = mempoolAPI pow
   ch <- atomicallyIO mempoolUpdates

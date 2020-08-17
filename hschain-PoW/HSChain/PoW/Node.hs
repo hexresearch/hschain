@@ -87,7 +87,7 @@ runNode pathsToConfig miningNode sView db = do
   let net = newNetworkTcp cfgPort
   withLogEnv "" "" (map makeScribe cfgLog) $ \logEnv ->
     runLoggerT logEnv $ evalContT $ do
-      c0  <- lift $ createConsensus db sView
+      c0  <- lift $ createConsensus db sView =<< buildBlockIndex db
       pow <- startNode netcfg net cfgPeers db c0
       when miningNode $ cforkLinked $ genericMiningLoop pow
       liftIO $ do

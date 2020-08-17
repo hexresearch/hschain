@@ -72,7 +72,7 @@ main = do
   withConnection (fromMaybe "" cfgDB) $ \conn -> 
     withLogEnv "" "" (map makeScribe cfgLog) $ \logEnv -> runCoinT logEnv conn $ evalContT $ do
       db  <- lift $ blockDatabase genesis
-      c0  <- lift $ createConsensus db sView
+      c0  <- lift $ createConsensus db sView =<< buildBlockIndex db
       pow <- startNode netcfg net cfgPeers db c0
       void $ liftIO $ forkIO $ do
         ch <- atomicallyIO (chainUpdate pow)
