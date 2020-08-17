@@ -65,9 +65,10 @@ module HSChain.Store.Query (
   , Rollback(..)
   , UnexpectedRollback(..)
     -- * Newtype wrappers for DerivingVia
-    -- ** Field & row parsers
   , CBORed(..)
   , ByteRepred(..)
+  , ID(..)
+    -- ** Field & row parsers
   , SQL.field
   , fieldCBOR
   , nullableFieldCBOR
@@ -566,6 +567,13 @@ instance (ByteRepr a) => SQL.FromField (ByteRepred a) where
 
 instance (ByteRepr a) => SQL.ToField (ByteRepred a) where
   toField (ByteRepred a) = SQL.toField (encodeToBS a)
+
+-- | Newtype wrapper for primary key of database. Its only use to
+--   distinguish 'Int64' used in such role from any other 'Int64' and
+--   to allow distinguishing ID for different tables.
+newtype ID a = ID Int64
+  deriving newtype (Show,Eq,Ord)
+  deriving newtype (SQL.FromField, SQL.ToField)
 
 
 fieldCBOR :: (Serialise a) => SQL.RowParser a
