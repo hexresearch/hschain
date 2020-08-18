@@ -451,7 +451,7 @@ revertBlockDB bh = do
   i <- retrieveCoinBlockTableID $ bhBID bh
   basicExecute
     "DELETE FROM coin_state WHERE live_utxo IN \
-    \  SELECT utxo_ref FROM coin_utxo_created WHERE block_ref = ?"
+    \  (SELECT utxo_ref FROM coin_utxo_created WHERE block_ref = ?)"
     (Only i)
   basicExecute
     "INSERT INTO coin_state \
@@ -463,7 +463,7 @@ applyBlockDB bh = do
   i <- retrieveCoinBlockTableID $ bhBID bh
   basicExecute
     "DELETE FROM coin_state WHERE live_utxo IN \
-    \  SELECT utxo_ref FROM coin_utxo_spent WHERE block_ref = ?"
+    \  (SELECT utxo_ref FROM coin_utxo_spent WHERE block_ref = ?)"
     (Only i)
   basicExecute
     "INSERT INTO coin_state \
