@@ -55,19 +55,20 @@ mockchain = gen : unfoldr ( Just
 
 
 emptyCoinChain :: [Block Coin]
-emptyCoinChain = gen : unfoldr (Just . (\b -> (b,b)) . mine . Just) gen
+emptyCoinChain = gen : unfoldr (Just . (\b -> (b,b)) . mineCoin [] . Just) gen
   where
-    gen     = mine Nothing
-    mine :: Maybe (Block Coin) -> Block Coin
-    mine mb = GBlock
-      { blockHeight = maybe (Height 0) (succ . blockHeight) mb
-      , blockTime   = Time 0
-      , prevBlock   = blockID <$> mb
-      , blockData   = Coin { coinData       = merkled []
-                           , coinNonce      = 1337
-                           , coinTarget     = Target $ shiftL 1 256 - 1
-                           }
-      }
+    gen = mineCoin [] Nothing
+
+mineCoin :: [TxCoin] -> Maybe (Block Coin) -> Block Coin
+mineCoin txs mb = GBlock
+  { blockHeight = maybe (Height 0) (succ . blockHeight) mb
+  , blockTime   = Time 0
+  , prevBlock   = blockID <$> mb
+  , blockData   = Coin { coinData       = merkled txs
+                       , coinNonce      = 1337
+                       , coinTarget     = Target $ shiftL 1 256 - 1
+                       }
+  }
 
 mineBlock :: (Num (Nonce cfg), Show (Nonce cfg), KVConfig cfg)
           => [(Int,String)] -> Block (KV cfg) -> Block (KV cfg)
