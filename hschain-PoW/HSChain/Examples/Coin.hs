@@ -311,7 +311,7 @@ getDatabaseUTXO NoChange utxo = do
     "SELECT pk_dest, n_coins \
     \  FROM coin_utxo \
     \  JOIN coin_state ON live_utxo = utxo_id \
-    \ WHERE tx_hash = ? AND n_out = ?"
+    \ WHERE n_out = ? AND tx_hash = ?"
     utxo
   case r of
     Just u  -> return u
@@ -322,7 +322,7 @@ isSpentAtBlock i utxo = basicQuery1
   "SELECT pk_dest, n_coins \
   \  FROM coin_utxo \
   \  JOIN coin_utxo_spent ON utxo_id = utxo_ref \
-  \ WHERE tx_hash = ? AND n_out = ? AND block_ref = ?"
+  \ WHERE n_out = ? AND tx_hash = ? AND block_ref = ?"
   (utxo :. Only i)
 
 isCreatedAtBlock :: MonadQueryRO m => ID (Block Coin) -> UTXO -> m (Maybe Unspent)
@@ -330,7 +330,7 @@ isCreatedAtBlock i utxo = basicQuery1
   "SELECT pk_dest, n_coins \
   \  FROM coin_utxo \
   \  JOIN coin_utxo_created ON utxo_id = utxo_ref \
-  \ WHERE tx_hash = ? AND n_out = ? AND block_ref = ?"
+  \ WHERE n_out = ? AND tx_hash = ? AND block_ref = ?"
   (utxo :. Only i)
 
 
@@ -670,7 +670,7 @@ retrieveCoinBlockTableID bid = do
 retrieveUtxoIO :: MonadQueryRO m => UTXO -> m Int64
 retrieveUtxoIO utxo = do
   r <- basicQuery1
-    "SELECT utxo_id FROM coin_utxo WHERE tx_hash = ? AND n_out = ?"
+    "SELECT utxo_id FROM coin_utxo WHERE n_out = ? AND tx_hash = ?"
     utxo
   case r of
     Just (Only i) -> return i
