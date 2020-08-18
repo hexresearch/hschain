@@ -158,6 +158,7 @@ Test-suite hschain-PoW-tests
   Other-modules:       TM.Consensus
                        TM.Mempool
                        TM.P2P
+                       TM.Coin
                        TM.Store
                        TM.Types
                        TM.Util.Mockchain
