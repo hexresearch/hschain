@@ -118,7 +118,9 @@ instance BlockData Coin where
                      , JSON.ToJSON, JSON.FromJSON)
     deriving (SQL.FromField, SQL.ToField) via ByteRepred (BlockID Coin)
 
-  data BlockException Coin = CoinError String
+  data BlockException Coin
+    = CoinError    String
+    | CoinInternal String
     deriving stock    (Show,Generic)
     deriving anyclass (Exception,JSON.ToJSON)
 
@@ -513,6 +515,10 @@ makeStateView bIdx0 overlay = sview where
     -- FIXME: We need block index in order to be able to compute path
     --        from state to last known state
     , applyBlock        = \bIdx bh b -> runExceptT $ do
+        -- Consistency checks
+        unless (bhPrevious bh == Just bh0)  $ throwError $ CoinInternal "BH mismatich"
+        unless (bhBID bh      == blockID b) $ throwError $ CoinInternal "BH don't match block"
+        --
         let txList = merkleValue $ coinData $ blockData b
         -- Perform context free validation of all transactions in
         -- block
