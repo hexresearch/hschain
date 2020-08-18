@@ -148,6 +148,7 @@ Test-suite hschain-PoW-tests
                      , containers
                      , serialise
                      , transformers
+                     , directory
                      , random
                      , lens
                      , mtl

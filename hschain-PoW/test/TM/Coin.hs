@@ -7,19 +7,22 @@ module TM.Coin (tests) where
 import Control.Monad.IO.Class
 import qualified Data.ByteString as BS
 import System.Random (randoms, mkStdGen)
+import Data.Coerce
 import Data.List (unfoldr)
 import Data.Proxy
 import Test.Tasty
 import Test.Tasty.HUnit
+import System.Directory (removePathForcibly)
 
 import HSChain.Crypto
 import HSChain.Crypto.Ed25519
+import HSChain.Crypto.SHA
 import HSChain.PoW.Types
 import HSChain.PoW.Consensus
 import HSChain.PoW.BlockIndex
 import HSChain.Examples.Coin
 import HSChain.Types.Merkle.Types
-import TM.Util.Mockchain (withHSChainT, emptyCoinChain)
+import TM.Util.Mockchain (withHSChainT, withHSChainTDB, emptyCoinChain, mineCoin)
 
 ----------------------------------------------------------------
 --
@@ -32,6 +35,7 @@ tests = testGroup "coin"
   , testCase "empty-apply-flush"    $ coinTrivialFwd True
   , testCase "empty-rollback"       $ coinTrivialRollback False
   , testCase "empty-rollback-flush" $ coinTrivialRollback True
+  , testCase "coinbase"             $ coinAddBlock
   ]
 
 coinInit :: IO ()
@@ -124,11 +128,31 @@ addBlock b bIdx = insertIdx bh bIdx
             , bhData     = blockData $ toHeader b
             }
 
+
+coinAddBlock :: IO ()
+coinAddBlock = do
+  removePathForcibly "db"
+  putStrLn ""
+  print ("G  =", blockID gen)
+  print ("B1 =", blockID blk1)
+  print ("B2 =", blockID blk2)
+  withHSChainTDB "db" $ do
+    (db,_,st0) <- coinStateView gen
+    mapM_ (storeBlock db) [blk1, blk2]
+    --
+    st1 <- flush =<< applyBlock st0 bIndex bh1' blk1
+    st2 <- flush =<< applyBlock st1 bIndex bh2' blk2
+    return ()
+  where
+    flush (Right s) = flushState s
+    flush (Left  e) = error $ show e
+
+
 ----------------------------------------------------------------
 -- Mock blockchain
 ----------------------------------------------------------------
 
-k1,k2 :: PrivKey Ed25519
+k1,k2 :: PrivKey Alg
 k1:k2:_ = makePrivKeyStream 1334
 
 makePrivKeyStream :: forall alg. CryptoSign alg => Int -> [PrivKey alg]
@@ -145,3 +169,36 @@ makePrivKeyStream seed
         (bs, stream') = splitAt keySize stream
 
 
+----------------------------------------------------------------
+--
+----------------------------------------------------------------
+
+gen :: Block Coin
+gen = mineCoin [] Nothing
+
+blk1,blk2 :: Block Coin
+blk1 = mineCoin
+  [ signTX k1 $ TxSend
+      { txInputs  = [ UTXO 0 (coerce (blockID gen)) ]
+      , txOutputs = [ Unspent (publicKey k1) 100    ]
+      }
+  ]
+  (Just gen)
+blk2 = mineCoin
+  [ signTX k2 $ TxSend
+      { txInputs  = [ UTXO 0 (coerce (blockID blk1)) ]
+      , txOutputs = [ Unspent (publicKey k2) 100    ]
+      }
+  ]
+  (Just blk1)
+
+bIndex
+  = addBlock blk2
+  $ addBlock blk1
+  $ blockIndexFromGenesis gen
+Just bh1' = lookupIdx (blockID blk1) bIndex
+Just bh2' = lookupIdx (blockID blk2) bIndex
+
+
+signTX :: PrivKey Alg -> TxSend -> TxCoin
+signTX pk tx = TxCoin (publicKey pk) (signHashed pk tx) tx

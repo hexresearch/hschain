@@ -164,6 +164,9 @@ runHSChainT c (HSChainT m) = do
 withHSChainT :: (MonadIO m, MonadMask m) => HSChainT m a -> m a
 withHSChainT m = withConnection "" $ \c -> runHSChainT c m
 
+withHSChainTDB :: (MonadIO m, MonadMask m) => FilePath -> HSChainT m a -> m a
+withHSChainTDB db m = withConnection db $ \c -> runHSChainT c m
+
 data Abort = Abort Height
   deriving stock    (Show)
   deriving anyclass (Exception)
