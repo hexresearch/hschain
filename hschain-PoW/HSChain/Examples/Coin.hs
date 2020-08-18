@@ -459,7 +459,7 @@ dumpOverlay (OverlayLayer bh Layer{..} o) = do
   forM_ (Map.keys utxoCreated) $ \utxo -> do
     uid <- retrieveUtxoIO utxo
     basicExecute
-      "INSERT OR IGNORE INTO coin_utxo_added VALUES (?,?)"
+      "INSERT OR IGNORE INTO coin_utxo_created VALUES (?,?)"
       (bid, uid)
   forM_ (Map.keys utxoSpent) $ \utxo -> do
     uid <- retrieveUtxoIO utxo
@@ -477,7 +477,7 @@ revertBlockDB bh = do
     \  (SELECT utxo_ref FROM coin_utxo_created WHERE block_ref = ?)"
     (Only i)
   basicExecute
-    "INSERT INTO coin_state \
+    "INSERT OR IGNORE INTO coin_state \
     \  SELECT utxo_ref FROM coin_utxo_spent WHERE block_ref = ?"
     (Only i)
 
@@ -489,7 +489,7 @@ applyBlockDB bh = do
     \  (SELECT utxo_ref FROM coin_utxo_spent WHERE block_ref = ?)"
     (Only i)
   basicExecute
-    "INSERT INTO coin_state \
+    "INSERT OR IGNORE INTO coin_state \
     \  SELECT utxo_ref FROM coin_utxo_created WHERE block_ref = ?"
     (Only i)
 
@@ -578,6 +578,8 @@ makeStateView bIdx0 overlay = sview where
         case bid `lookupIdx` bIdx0 of
           Nothing -> error "makeStateView: bad index"
           Just bh -> traverseBlockIndexM_ revertBlockDB applyBlockDB bh bh0
+        do i <- retrieveCoinBlockTableID (bhBID bh0)
+           basicExecute "UPDATE coin_state_bid SET state_block = ?" (Only i)
         return $ makeStateView bIdx0 (emptyOverlay bh0)
       -- FIXME: not implemented
     , checkTx                  = undefined
@@ -607,8 +609,8 @@ initCoinDB = mustQueryRW $ do
   basicExecute_
     "CREATE TABLE IF NOT EXISTS coin_utxo \
     \  ( utxo_id INTEGER PRIMARY KEY \
-    \  , tx_hash BLOB NOT NULL \
     \  , n_out   BLOB NOT NULL \
+    \  , tx_hash BLOB NOT NULL \
     \  , pk_dest BLOB NOT NULL \
     \  , n_coins INTEGER NOT NULL \
     \)"
@@ -636,6 +638,7 @@ initCoinDB = mustQueryRW $ do
     "CREATE TABLE IF NOT EXISTS coin_state \
     \  ( live_utxo INTEGER NOT NULL \
     \  , FOREIGN KEY (live_utxo) REFERENCES coin_utxo(utxo_id)\
+    \  , UNIQUE (live_utxo) \
     \)"
   basicExecute_
     "CREATE TABLE IF NOT EXISTS coin_state_bid \
