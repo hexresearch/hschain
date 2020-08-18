@@ -31,6 +31,7 @@ import Control.Monad.Trans.Except (except)
 import Control.Monad.Morph (hoist)
 import Control.DeepSeq
 import Codec.Serialise      (Serialise)
+import Data.Coerce
 import Data.Maybe
 import Data.Word
 import Data.Foldable        (foldl')
@@ -237,9 +238,9 @@ instance SQL.ToRow UTXO where
 -- Tx validation
 
 
--- | Context free TX validation for normal (not coinbase)
---   transactions. This function performs all checks that could be
---   done having only transaction at hand.
+-- | Context free TX validation for transactions. This function
+--   performs all checks that could be done having only transaction at
+--   hand.
 validateCoinTxContextFree :: TxCoin -> Either (BlockException Coin) ()
 validateCoinTxContextFree (TxCoin pubK sig txSend@TxSend{..}) = do
   -- Inputs and outputs are not null
@@ -282,6 +283,28 @@ processTX pathInDB overlay tx@(TxCoin pk _ (TxSend ins outs)) = do
         | (i,o) <- [0..] `zip` outs
         ]
   return overlay2
+
+-- | Rules for the coinbase transactions are special. It should
+--   contain only one mock input which refers to hash of previous block
+--   and single output with 100 coins.
+processCoinbaseTX
+  :: BlockID Coin
+  -> ActiveOverlay
+  -> TxCoin
+  -> ExceptT (BlockException Coin) (Query rw) ActiveOverlay
+processCoinbaseTX prevBID overlay tx@(TxCoin _ _ (TxSend ins outs)) = do
+  -- Check inputs
+  case ins of
+    [UTXO 0 h] | h == coerce prevBID -> return ()
+    _ -> throwError $ CoinError "Invalid backreference in coinbase"
+  -- Check outputs
+  u <- case outs of
+    [u@(Unspent _ 100)] -> return u
+    _ -> throwError $ CoinError "Invalid output in coinbase"
+  return $ createUTXO utxo u overlay
+  where
+    txHash = hashed tx
+    utxo   = UTXO 0 txHash
 
 getDatabaseUTXO
   :: ()
@@ -535,10 +558,13 @@ makeStateView bIdx0 overlay = sview where
             makeBlockIndexPathM (retrieveCoinBlockTableID . bhBID)
               bhState (overlayBase overlay)
           -- Now we can just validate every TX and update overlay
-          foldM
-            (processTX pathInDB)
-            (fromMaybe (error "Coin: invalid BH in apply block") $ addOverlayLayer bh overlay)
-            txList
+          let activeOverlay = fromMaybe (error "Coin: invalid BH in apply block")
+                            $ addOverlayLayer bh overlay
+          case txList of
+            []            -> return activeOverlay
+            coinbase:rest -> do
+              o' <- processCoinbaseTX (bhBID bh0) activeOverlay coinbase
+              foldM (processTX pathInDB) o' rest
         return $ makeStateView bIdx (finalizeOverlay overlay')
     --
     , revertBlock = return $ makeStateView bIdx0 (rollbackOverlay overlay)
