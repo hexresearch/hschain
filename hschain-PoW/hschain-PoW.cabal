@@ -144,9 +144,11 @@ Test-suite hschain-PoW-tests
                      , hschain-net
                      --
                      , exceptions
+                     , bytestring
                      , containers
                      , serialise
                      , transformers
+                     , random
                      , lens
                      , mtl
                      , stm
