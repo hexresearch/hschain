@@ -1,18 +1,27 @@
-{-# LANGUAGE LambdaCase          #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeApplications    #-}
+{-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE DerivingStrategies         #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE LambdaCase                 #-}
+{-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE RecordWildCards            #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
+{-# LANGUAGE TemplateHaskell            #-}
+{-# LANGUAGE TypeApplications           #-}
 -- |
 module TM.Coin (tests) where
 
+import Control.Lens
 import Control.Monad.IO.Class
+import Control.Monad.State.Strict
 import qualified Data.ByteString as BS
 import System.Random (randoms, mkStdGen)
 import Data.Coerce
-import Data.List (unfoldr)
+import Data.List (unfoldr,sort)
 import Data.Proxy
 import Test.Tasty
 import Test.Tasty.HUnit
 import System.Directory (removePathForcibly)
+import GHC.Generics (Generic)
 
 import HSChain.Crypto
 import HSChain.Crypto.Ed25519
@@ -22,21 +31,12 @@ import HSChain.PoW.Consensus
 import HSChain.PoW.BlockIndex
 import HSChain.Examples.Coin
 import HSChain.Types.Merkle.Types
-import TM.Util.Mockchain (withHSChainT, withHSChainTDB, emptyCoinChain, mineCoin)
+import HSChain.Store.Query
+import TM.Util.Mockchain (HSChainT, withHSChainT, withHSChainTDB, emptyCoinChain, mineCoin)
 
 ----------------------------------------------------------------
 --
 ----------------------------------------------------------------
-
-tests :: TestTree
-tests = testGroup "coin"
-  [ testCase "init"                 $ coinInit
-  , testCase "empty-apply"          $ coinTrivialFwd False
-  , testCase "empty-apply-flush"    $ coinTrivialFwd True
-  , testCase "empty-rollback"       $ coinTrivialRollback False
-  , testCase "empty-rollback-flush" $ coinTrivialRollback True
-  , testCase "coinbase"             $ coinAddBlock
-  ]
 
 coinInit :: IO ()
 coinInit = withHSChainT $ do
@@ -132,10 +132,6 @@ addBlock b bIdx = insertIdx bh bIdx
 coinAddBlock :: IO ()
 coinAddBlock = do
   removePathForcibly "db"
-  putStrLn ""
-  print ("G  =", blockID gen)
-  print ("B1 =", blockID blk1)
-  print ("B2 =", blockID blk2)
   withHSChainTDB "db" $ do
     (db,_,st0) <- coinStateView gen
     mapM_ (storeBlock db) [blk1, blk2]
@@ -177,20 +173,26 @@ gen :: Block Coin
 gen = mineCoin [] Nothing
 
 blk1,blk2 :: Block Coin
-blk1 = mineCoin
+blk1 = mineWithCoinbase k1 gen  []
+blk2 = mineWithCoinbase k2 blk1
   [ signTX k1 $ TxSend
-      { txInputs  = [ UTXO 0 (coerce (blockID gen)) ]
-      , txOutputs = [ Unspent (publicKey k1) 100    ]
+      { txInputs  = [UTXO 0 (hashed $ head $ merkleValue $ coinData $ blockData blk1)]
+      , txOutputs = [ Unspent (publicKey k1) 20
+                    , Unspent (publicKey k2) 80
+                    ]
       }
   ]
-  (Just gen)
-blk2 = mineCoin
-  [ signTX k2 $ TxSend
-      { txInputs  = [ UTXO 0 (coerce (blockID blk1)) ]
-      , txOutputs = [ Unspent (publicKey k2) 100    ]
-      }
-  ]
-  (Just blk1)
+
+
+
+mineWithCoinbase :: PrivKey Alg -> Block Coin -> [TxCoin] -> Block Coin
+mineWithCoinbase k b txs = mineCoin
+  ( signTX k (TxSend
+      { txInputs  = [ UTXO 0 (coerce (blockID b)) ]
+      , txOutputs = [ Unspent (publicKey k) 100    ]
+      })
+  : txs
+  ) (Just b)
 
 bIndex
   = addBlock blk2
@@ -202,3 +204,153 @@ Just bh2' = lookupIdx (blockID blk2) bIndex
 
 signTX :: PrivKey Alg -> TxSend -> TxCoin
 signTX pk tx = TxCoin (publicKey pk) (signHashed pk tx) tx
+
+
+
+----------------------------------------------------------------
+-- Framework for chaining updates of block
+----------------------------------------------------------------
+
+class (MonadFail m, MonadIO m) => TestMonad m where
+  mine     :: PrivKey Alg -> BlockID Coin -> [TxCoin] -> m (Either (BlockException Coin) (BlockID Coin, TxCoin))
+  flush    :: m ()
+  revert   :: m ()
+  liveUTXO :: m [UTXO]
+
+
+data TestEnv = TestEnv
+  { _envState :: StateView (HSChainT IO) Coin
+  , _envDB    :: BlockDB   (HSChainT IO) Coin
+  , _envBIdx  :: BlockIndex Coin
+  }
+  deriving Generic
+
+$(makeLenses ''TestEnv)
+
+newtype Test a = Test (StateT TestEnv (HSChainT IO) a)
+  deriving newtype ( Functor, Applicative, Monad, MonadIO, MonadFail
+                   , MonadState TestEnv
+                   )
+
+
+instance TestMonad Test where
+  mine pk bid txs = Test $ do
+    -- Create block and put it into store
+    db     <- use envDB
+    Just b <- lift $ retrieveBlock db bid
+    let b'   = mineWithCoinbase pk b txs
+        bid' = blockID b'
+    lift $ storeBlock db b'
+    envBIdx %= addBlock b'
+    -- Try to apply block state
+    st      <- use envState
+    bIdx    <- use envBIdx
+    let Just bh = lookupIdx bid' bIdx
+    r  <- lift $ applyBlock st bIdx bh b'
+    case r of
+      Left e    -> return (Left e)
+      Right st' -> do envState .= st'
+                      return $ Right ( bid'
+                                     , head $ merkleValue $ coinData $ blockData b')
+  revert = Test $ do
+    assign envState =<< lift . revertBlock =<< use envState
+  flush = Test $
+    assign envState =<< lift . flushState =<< use envState
+  liveUTXO = Test $ queryRO $ basicQuery_
+    "SELECT n_out, tx_hash FROM coin_utxo JOIN coin_state ON live_utxo = utxo_id"
+    
+
+expectUTXO :: TestMonad m => String -> [UTXO] -> m ()
+expectUTXO msg utxos = do
+  live <- liveUTXO
+  liftIO $ assertEqual msg (sort utxos) (sort live)
+-- utxoCB :: 
+
+runTest :: Test a -> IO a
+runTest (Test m) = withHSChainT $ do
+  (_envDB,_,_envState) <- coinStateView gen
+  let _envBIdx = blockIndexFromGenesis gen
+  evalStateT m TestEnv{..}
+
+
+testFresh :: TestMonad m => m ()
+testFresh = do
+  outs <- liveUTXO 
+  liftIO $ [] @=? outs
+
+test1B :: TestMonad m => m ()
+test1B = do
+  Right (_,cb1) <- mine k1 (blockID gen) []
+  flush
+  expectUTXO "B1" [UTXO 0 (hashed cb1)]
+
+test2B :: TestMonad m => m ()
+test2B = do
+  Right (bid1,cb1) <- mine k1 (blockID gen) []
+  flush
+  expectUTXO "B1" [UTXO 0 (hashed cb1)]
+  --
+  Right (_,cb2) <- mine k2 bid1 []
+  flush
+  expectUTXO "B2" [ UTXO 0 (hashed cb1)
+                  , UTXO 0 (hashed cb2)
+                  ]
+  --
+  revert
+  flush
+  expectUTXO "R1" [UTXO 0 (hashed cb1)]
+
+test2BNoF :: TestMonad m => m ()
+test2BNoF = do
+  Right (bid1,cb1) <- mine k1 (blockID gen) []
+  Right _          <- mine k2 bid1 []
+  revert
+  flush
+  expectUTXO "B1" [UTXO 0 (hashed cb1)]
+
+testSpend :: TestMonad m => m ()
+testSpend = do
+  Right (bid1,cb1) <- mine k1 (blockID gen) []
+  flush
+  -- Spend 1 output
+  let tx1 = signTX k1 $ TxSend
+        { txInputs  = [UTXO 0 (hashed cb1)]
+        , txOutputs = [ Unspent (publicKey k1) 20
+                      , Unspent (publicKey k2) 80
+                      ]
+        }
+      txHash1 = hashed tx1
+      u1_0 = UTXO 0 txHash1
+      u1_1 = UTXO 1 txHash1
+  Right (_,cb2) <- mine k2 bid1 [tx1]
+  flush
+  expectUTXO "" [ UTXO 0 (hashed cb2)
+                , u1_0
+                , u1_1
+                ]
+  -- Revert block
+  revert
+  flush
+  expectUTXO "" [ UTXO 0 (hashed cb1) ]
+  
+
+----------------------------------------------------------------
+--
+----------------------------------------------------------------
+
+tests :: TestTree
+tests = testGroup "coin"
+  [ testCase "init"                 $ coinInit
+  , testCase "empty-apply"          $ coinTrivialFwd False
+  , testCase "empty-apply-flush"    $ coinTrivialFwd True
+  , testCase "empty-rollback"       $ coinTrivialRollback False
+  , testCase "empty-rollback-flush" $ coinTrivialRollback True
+  , testCase "coinbase"             $ coinAddBlock
+  , testGroup "state"
+    [ testCase "empty" $ runTest testFresh
+    , testCase "1B"    $ runTest test1B
+    , testCase "2B"    $ runTest test2B
+    , testCase "2BNoF" $ runTest test2BNoF
+    , testCase "spend" $ runTest testSpend
+    ]
+  ]

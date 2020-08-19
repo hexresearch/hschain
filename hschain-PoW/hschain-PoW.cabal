@@ -150,6 +150,7 @@ Test-suite hschain-PoW-tests
                      , transformers
                      , directory
                      , random
+                     , generic-lens
                      , lens
                      , mtl
                      , stm
