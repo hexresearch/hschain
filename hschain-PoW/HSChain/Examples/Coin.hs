@@ -449,6 +449,7 @@ createUTXO utxo val
 
 dumpOverlay :: MonadQueryRW m => StateOverlay -> m ()
 dumpOverlay (OverlayLayer bh Layer{..} o) = do
+  dumpOverlay o
   -- Store create UTXO
   forM_ (Map.toList utxoCreated) $ \(utxo, unspent) -> do
     basicExecute
@@ -466,7 +467,6 @@ dumpOverlay (OverlayLayer bh Layer{..} o) = do
     basicExecute
       "INSERT OR IGNORE INTO coin_utxo_spent VALUES (?,?)"
       (bid, uid)
-  dumpOverlay o
 dumpOverlay OverlayBase{} = return ()
 
 revertBlockDB :: MonadQueryRW m => BH Coin -> m ()
