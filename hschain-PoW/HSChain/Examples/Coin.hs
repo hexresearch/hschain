@@ -144,10 +144,7 @@ instance BlockData Coin where
         unless ( blockTargetThreshold header >= hash256AsTarget header)
           $ Left $ CoinError "Not enough work"
   -- At he moment we accept only empty blocks (for simplicity)
-  validateBlock b = return $
-    case merkleValue $ coinData $ blockData b of
-      [] -> Right ()
-      _  -> Left $ CoinError "Nonempty block"
+  validateBlock _ = return (Right ())
   blockWork b = Work
               $ fromIntegral  $ ((2^(256 :: Int)) `div`)
               $ targetInteger $ coinTarget $ blockData b
@@ -781,32 +778,26 @@ miningLoop pow True  = do
     --
     start ch = do
       c <- atomicallyIO $ currentConsensus pow
-      let (bh, _, _) = _bestHead c
-      loop ch =<< mine bh
+      let (bh, st, _) = _bestHead c
+      loop ch =<< mine bh st
     --
     loop ch tid = do
-      (bh, _) <- awaitIO ch
+      (bh, st) <- awaitIO ch
       liftIO $ killThread tid
-      loop ch =<< mine bh
+      loop ch =<< mine bh st
     --
-    mine bh = fork $ do
-      t <- getCurrentTime
-      let blk :: Block Coin
-          blk = GBlock { blockHeight = succ $ bhHeight bh
-                       , blockTime   = t
-                       , prevBlock   = Just $ bhBID bh
-                       , blockData   = Coin { coinData   = merkled []
-                                            , coinNonce  = 0
-                                            , coinTarget = retarget bh
-                                            }
-                       }
-      let find b = (fst <$> adjustPuzzle b) >>= \case
-            Just b' -> return b'
-            Nothing -> do t' <- getCurrentTime
-                          find b { blockTime = t' }
-      find blk >>= sendNewBlock pow >>= \case
+    mine bh st = fork $ do
+      t   <- getCurrentTime
+      blk <- createCandidateBlock st bh t []
+      findBlock blk >>= sendNewBlock pow >>= \case
         Right () -> return ()
-        Left  e  -> liftIO $ throwM e
+        Left  e  -> do liftIO $ print e
+                       liftIO $ throwM e
+    --
+    findBlock b = (fst <$> adjustPuzzle b) >>= \case
+      Just b' -> return b'
+      Nothing -> do t' <- getCurrentTime
+                    findBlock b { blockTime = t' }
 
 
 signTX :: PrivKey Alg -> TxSend -> TxCoin
