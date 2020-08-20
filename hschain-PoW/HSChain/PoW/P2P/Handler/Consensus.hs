@@ -87,7 +87,7 @@ consensusMonitor db (BoxRX message)
       RxMined   b  -> do
         lift $ logger DebugS "Got RxMined" (sl "bid" (blockID b))
         evalError $ do handleHeaderError $ processHeader (toHeader b)
-                       handleBlockError  $ processBlock  db b
+                       handleMineError   $ processBlock  db b
       RxHeaders hs -> do
         lift $ logger DebugS "Got RxHeaders" (sl "bid" (blockID <$> hs))
         evalError $ mapM_ (handleHeaderError . processHeader) hs
@@ -120,6 +120,13 @@ consensusMonitor db (BoxRX message)
       Right               ()   -> Right ()
       Left ErrB'UnknownBlock   -> error "Impossible: we should'n get unknown block"
       Left ErrB'InvalidBlock{} -> Right ()
+    -- For mined block we _do_ want to communicate back that mined
+    -- block is invalid. That's very useful when debugging
+    handleMineError = mapExceptT $ \action -> action >>= \case
+      Right ()                   -> return $ Right ()
+      Left ErrB'UnknownBlock     -> error "Impossible: we should'n get unknown block"
+      Left (ErrB'InvalidBlock e) -> do logger ErrorS "Bad mined block" (sl "err" e)
+                                       return $ Left $ Peer'Punish $ toException e
     -- Handle errors during header processing. Not that KnownHeader is
     -- not really an error
     handleHeaderError = mapExceptT $ \action -> action >>= \case
