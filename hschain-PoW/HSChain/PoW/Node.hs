@@ -41,6 +41,7 @@ import Data.Word
 import Data.Yaml.Config
 import GHC.Generics (Generic)
 
+import HSChain.Crypto
 import HSChain.Control.Channels
 import HSChain.PoW.Consensus
 import HSChain.Logger
@@ -54,6 +55,7 @@ import HSChain.Types.Merkle.Types
 import HSChain.Control.Util
 import HSChain.Control.Class
 import HSChain.Config
+import HSChain.Examples.Coin (Alg)
 
 -- |Node's configuration.
 data Cfg = Cfg
@@ -62,6 +64,7 @@ data Cfg = Cfg
   , cfgLog   :: [ScribeSpec]
   , cfgMaxH  :: Maybe Height
   , cfgDB    :: Maybe FilePath
+  , cfgPriv  :: PrivKey Alg
   }
   deriving stock (Show, Generic)
   deriving (JSON.FromJSON) via SnakeCase (DropSmart (Config Cfg))

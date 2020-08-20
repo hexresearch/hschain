@@ -30,7 +30,7 @@ import HSChain.Examples.Coin
 import HSChain.Logger
 import HSChain.Network.TCP
 import HSChain.PoW.Consensus
-import HSChain.PoW.Node (blockDatabase,Cfg(..))
+import HSChain.PoW.Node (Cfg(..))
 import HSChain.PoW.P2P
 import HSChain.PoW.P2P.Types
 import HSChain.PoW.Types
@@ -68,11 +68,10 @@ main = do
       netcfg = NetCfg { nKnownPeers     = 3
                       , nConnectedPeers = 3
                       }
-  let sView = inMemoryView (blockID genesis)
   withConnection (fromMaybe "" cfgDB) $ \conn -> 
     withLogEnv "" "" (map makeScribe cfgLog) $ \logEnv -> runCoinT logEnv conn $ evalContT $ do
-      db  <- lift $ blockDatabase genesis
-      c0  <- lift $ createConsensus db sView =<< buildBlockIndex db
+      (db, bIdx, sView) <- lift $ coinStateView cfgPriv genesis
+      c0  <- lift $ createConsensus db sView bIdx
       pow <- startNode netcfg net cfgPeers db c0
       void $ liftIO $ forkIO $ do
         ch <- atomicallyIO (chainUpdate pow)
@@ -103,21 +102,3 @@ parser = do
     <> help "Mine blocks"
     )
   return Opts{..}
-
--- | State view which doesn't do any block validation whatsoever
-inMemoryView
-  :: (Monad m, BlockData b)
-  => BlockID b
-  -> StateView m b
-inMemoryView = make (error "No revinding past genesis")
-  where
-    make previous bid = view
-      where
-        view = StateView
-          { stateBID    = bid
-          , applyBlock  = \_ bh _ -> return $ Right $ make view (bhBID bh)
-          , revertBlock = return previous
-          , flushState  = return view
-          , checkTx                  = error "Transaction checking is not supported"
-          , createCandidateBlockData = error "Block creation is not supported"
-          }
