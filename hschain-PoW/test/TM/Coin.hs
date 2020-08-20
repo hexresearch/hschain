@@ -20,22 +20,18 @@ import Data.List (unfoldr,sort)
 import Data.Proxy
 import Test.Tasty
 import Test.Tasty.HUnit
-import System.Directory (removePathForcibly)
 import GHC.Generics (Generic)
 
 import HSChain.Crypto
-import HSChain.Crypto.Ed25519
-import HSChain.Crypto.SHA
 import HSChain.PoW.Types
 import HSChain.PoW.Consensus
-import HSChain.PoW.BlockIndex
 import HSChain.Examples.Coin
 import HSChain.Types.Merkle.Types
 import HSChain.Store.Query
-import TM.Util.Mockchain (HSChainT, withHSChainT, withHSChainTDB, emptyCoinChain, mineCoin)
+import TM.Util.Mockchain
 
 ----------------------------------------------------------------
---
+-- Simple test and sanity check for StateView 
 ----------------------------------------------------------------
 
 coinInit :: IO ()
@@ -45,14 +41,14 @@ coinInit = withHSChainT $ do
 
 -- Simple application of empty blocks
 coinTrivialFwd :: Bool -> IO ()
-coinTrivialFwd doFlush = withHSChainT $ do
+coinTrivialFwd flushFlag = withHSChainT $ do
   (db,_,st0) <- coinStateView g
   mapM_ (storeBlock db) [b1, b2]
   -- Block 1
   expectFail "1-1" st0 bh2 b1   -- BH mismatch 1
   expectFail "1-2" st0 bh1 b2   -- BH mismatch 2
   expectFail "1-3" st0 bh2 b2   -- Unrelated block
-  st1 <- flush =<< expectOK "B1" st0 bh1 b1
+  st1 <- doFlush =<< expectOK "B1" st0 bh1 b1
   liftIO $ bhBID bh1 @=? stateBID st1
   -- Block 2
   expectFail "2-1" st1 bh2 b1   -- BH mismatch 1
@@ -61,42 +57,8 @@ coinTrivialFwd doFlush = withHSChainT $ do
   st2 <- expectOK "B2" st1 bh2 b2
   liftIO $ bhBID bh2 @=? stateBID st2
   where
-    flush | doFlush   = flushState
-          | otherwise = return
-    g:b1:b2:_ = emptyCoinChain
-    -- Build block index
-    bIdx = addBlock b2
-         $ addBlock b1
-         $ blockIndexFromGenesis g
-    Just bh1 = lookupIdx (blockID b1) bIdx
-    Just bh2 = lookupIdx (blockID b2) bIdx
-    --
-    expectOK msg s bh b = applyBlock s bIdx bh b >>= \case
-      Right s' -> return s'
-      Left  e  -> liftIO $ assertFailure $ msg ++ ": " ++ show e
-    --
-    expectFail msg s bh b = applyBlock s bIdx bh b >>= \case
-      Right _  -> liftIO $ assertFailure $ msg ++ ": unxpected success"
-      Left  _  -> return ()
-
-
--- Simple application of empty blocks
-coinTrivialRollback :: Bool -> IO ()
-coinTrivialRollback doFlush = withHSChainT $ do
-  (db,_,st0) <- coinStateView g
-  mapM_ (storeBlock db) [b1, b2]
-  -- Block 1
-  st1 <- flush =<< expectOK "B1" st0 bh1 b1
-  liftIO $ bhBID bh1 @=? stateBID st1
-  -- Rollback
-  st0' <- revertBlock st1
-  liftIO $ stateBID st0 @=? stateBID st0'
-  -- Apply block again
-  st1' <- flush =<< expectOK "B1" st0' bh1 b1
-  liftIO $ bhBID bh1 @=? stateBID st1'
-  where
-    flush | doFlush   = flushState
-          | otherwise = return
+    doFlush | flushFlag = flushState
+            | otherwise = return
     g:b1:b2:_ = emptyCoinChain
     -- Build block index
     bIdx = addBlock b2
@@ -129,21 +91,6 @@ addBlock b bIdx = insertIdx bh bIdx
             }
 
 
-coinAddBlock :: IO ()
-coinAddBlock = do
-  removePathForcibly "db"
-  withHSChainTDB "db" $ do
-    (db,_,st0) <- coinStateView gen
-    mapM_ (storeBlock db) [blk1, blk2]
-    --
-    st1 <- flush =<< applyBlock st0 bIndex bh1' blk1
-    st2 <- flush =<< applyBlock st1 bIndex bh2' blk2
-    return ()
-  where
-    flush (Right s) = flushState s
-    flush (Left  e) = error $ show e
-
-
 ----------------------------------------------------------------
 -- Mock blockchain
 ----------------------------------------------------------------
@@ -164,26 +111,8 @@ makePrivKeyStream seed
         Just k    = decodeFromBS $ BS.pack bs
         (bs, stream') = splitAt keySize stream
 
-
-----------------------------------------------------------------
---
-----------------------------------------------------------------
-
 gen :: Block Coin
 gen = mineCoin [] Nothing
-
-blk1,blk2 :: Block Coin
-blk1 = mineWithCoinbase k1 gen  []
-blk2 = mineWithCoinbase k2 blk1
-  [ signTX k1 $ TxSend
-      { txInputs  = [UTXO 0 (hashed $ head $ merkleValue $ coinData $ blockData blk1)]
-      , txOutputs = [ Unspent (publicKey k1) 20
-                    , Unspent (publicKey k2) 80
-                    ]
-      }
-  ]
-
-
 
 mineWithCoinbase :: PrivKey Alg -> Block Coin -> [TxCoin] -> Block Coin
 mineWithCoinbase k b txs = mineCoin
@@ -194,23 +123,16 @@ mineWithCoinbase k b txs = mineCoin
   : txs
   ) (Just b)
 
-bIndex
-  = addBlock blk2
-  $ addBlock blk1
-  $ blockIndexFromGenesis gen
-Just bh1' = lookupIdx (blockID blk1) bIndex
-Just bh2' = lookupIdx (blockID blk2) bIndex
-
-
 signTX :: PrivKey Alg -> TxSend -> TxCoin
 signTX pk tx = TxCoin (publicKey pk) (signHashed pk tx) tx
 
 
 
 ----------------------------------------------------------------
--- Framework for chaining updates of block
+-- Framework for testing updates of blocks
 ----------------------------------------------------------------
 
+-- | API for 
 class (MonadFail m, MonadIO m) => TestMonad m where
   mine     :: PrivKey Alg -> BlockID Coin -> [TxCoin] -> m (Either (BlockException Coin) (BlockID Coin, TxCoin))
   flush    :: m ()
@@ -227,10 +149,9 @@ data TestEnv = TestEnv
 
 $(makeLenses ''TestEnv)
 
+-- | Test monad for running tests
 newtype Test a = Test (StateT TestEnv (HSChainT IO) a)
-  deriving newtype ( Functor, Applicative, Monad, MonadIO, MonadFail
-                   , MonadState TestEnv
-                   )
+  deriving newtype (Functor, Applicative, Monad, MonadIO, MonadFail)
 
 
 instance TestMonad Test where
@@ -273,17 +194,20 @@ runTest (Test m) = withHSChainT $ do
   evalStateT m TestEnv{..}
 
 
+-- Just test that initialization completes without issues
 testFresh :: TestMonad m => m ()
 testFresh = do
   outs <- liveUTXO 
   liftIO $ [] @=? outs
 
+-- Apply 1 block
 test1B :: TestMonad m => m ()
 test1B = do
   Right (_,cb1) <- mine k1 (blockID gen) []
   flush
   expectUTXO "B1" [UTXO 0 (hashed cb1)]
 
+-- Apply 2 blocks & revert last
 test2B :: TestMonad m => m ()
 test2B = do
   Right (bid1,cb1) <- mine k1 (blockID gen) []
@@ -300,6 +224,7 @@ test2B = do
   flush
   expectUTXO "R1" [UTXO 0 (hashed cb1)]
 
+-- Apply 2 block revert 1 without flushing to DB
 test2BNoF :: TestMonad m => m ()
 test2BNoF = do
   Right (bid1,cb1) <- mine k1 (blockID gen) []
@@ -308,6 +233,7 @@ test2BNoF = do
   flush
   expectUTXO "B1" [UTXO 0 (hashed cb1)]
 
+-- Apply block with correct 
 testSpend :: TestMonad m => m ()
 testSpend = do
   Right (bid1,cb1) <- mine k1 (blockID gen) []
@@ -340,12 +266,11 @@ testSpend = do
 
 tests :: TestTree
 tests = testGroup "coin"
-  [ testCase "init"                 $ coinInit
-  , testCase "empty-apply"          $ coinTrivialFwd False
-  , testCase "empty-apply-flush"    $ coinTrivialFwd True
-  , testCase "empty-rollback"       $ coinTrivialRollback False
-  , testCase "empty-rollback-flush" $ coinTrivialRollback True
-  , testCase "coinbase"             $ coinAddBlock
+  [ testGroup "sanity"
+    [ testCase "init"                 $ coinInit
+    , testCase "empty-apply"          $ coinTrivialFwd False
+    , testCase "empty-apply-flush"    $ coinTrivialFwd True
+    ]
   , testGroup "state"
     [ testCase "empty" $ runTest testFresh
     , testCase "1B"    $ runTest test1B
