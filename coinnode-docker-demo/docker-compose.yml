@@ -1,0 +1,109 @@
+ version: "2.4"
+ networks:
+  vpcbr:
+    driver: bridge
+    ipam:
+     config:
+       - subnet: 10.0.0.0/24
+         gateway: 10.0.0.1
+ volumes:
+   pgdata:
+   bex:
+   val1:
+   val2:
+   val3:
+   val4:
+ services:
+   bex:
+     image: registry.hxr.team/bex
+     command: ["/hschain-bex-node", "/config.yml"]
+     volumes:
+     - ./config-bex.yml:/config.yml
+     - bex:/data
+     environment:
+     - "PUBKEY1=${PUBKEY1}"
+     - "PUBKEY2=${PUBKEY2}"
+     - "PUBKEY3=${PUBKEY3}"
+     - "PUBKEY4=${PUBKEY4}"
+     networks:
+       vpcbr:
+         ipv4_address: 10.0.0.10
+     restart: always
+     ports:
+     - 8080:8080
+   val1:
+     image: registry.hxr.team/bex
+     command: ["/hschain-bex-node", "/config.yml"]
+     volumes:
+     - ./config-val.yml:/config.yml
+     - val1:/data
+     environment:
+     - "PRIVKEY=${PRIVKEY1}"
+     - "PUBKEY1=${PUBKEY1}"
+     - "PUBKEY2=${PUBKEY2}"
+     - "PUBKEY3=${PUBKEY3}"
+     - "PUBKEY4=${PUBKEY4}"
+     networks:
+       vpcbr:
+         ipv4_address: 10.0.0.11
+     restart: always
+   val2:
+     image: registry.hxr.team/bex
+     command: ["/hschain-bex-node", "/config.yml"]
+     volumes:
+     - ./config-val.yml:/config.yml
+     - val2:/data
+     environment:
+     - "PRIVKEY=${PRIVKEY2}"
+     - "PUBKEY1=${PUBKEY1}"
+     - "PUBKEY2=${PUBKEY2}"
+     - "PUBKEY3=${PUBKEY3}"
+     - "PUBKEY4=${PUBKEY4}"
+     networks:
+       vpcbr:
+         ipv4_address: 10.0.0.12
+     restart: always
+   val3:
+     image: registry.hxr.team/bex
+     command: ["/hschain-bex-node", "/config.yml"]
+     volumes:
+     - ./config-val.yml:/config.yml
+     - val3:/data
+     environment:
+     - "PRIVKEY=${PRIVKEY3}"
+     - "PUBKEY1=${PUBKEY1}"
+     - "PUBKEY2=${PUBKEY2}"
+     - "PUBKEY3=${PUBKEY3}"
+     - "PUBKEY4=${PUBKEY4}"
+     networks:
+       vpcbr:
+         ipv4_address: 10.0.0.13
+     restart: always
+   val4:
+     image: registry.hxr.team/bex
+     command: ["/hschain-bex-node", "/config.yml"]
+     volumes:
+     - ./config-val.yml:/config.yml
+     - val4:/data
+     environment:
+     - "PRIVKEY=${PRIVKEY4}"
+     - "PUBKEY1=${PUBKEY1}"
+     - "PUBKEY2=${PUBKEY2}"
+     - "PUBKEY3=${PUBKEY3}"
+     - "PUBKEY4=${PUBKEY4}"
+     networks:
+       vpcbr:
+         ipv4_address: 10.0.0.14
+     restart: always
+   postgres:
+     image: postgres:12-alpine
+     environment:
+     - "POSTGRES_DB=bex"
+     - "POSTGRES_USER=bex"
+     - "POSTGRES_PASSWORD=bex"
+     volumes:
+     - pgdata:/var/lib/postgresql/data
+     networks:
+       vpcbr:
+         ipv4_address: 10.0.0.15
+     restart: always
