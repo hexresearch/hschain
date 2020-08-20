@@ -1,0 +1,27 @@
+coin:
+  airdrop          : 1000
+  wallets          : 100
+  wallets_seed     : 1337
+  generator_delay  : 100
+  max_mempool_size : 50
+nodeCfg:
+  validatorKeys:
+    - "_env:PUBKEY1"
+    - "_env:PUBKEY2"
+    - "_env:PUBKEY3"
+    - "_env:PUBKEY4"
+  nodeSeeds:
+    - "10.0.0.11:40000"
+    - "10.0.0.12:40000"
+    - "10.0.0.13:40000"
+    - "10.0.0.14:40000"
+  nodePort: 40000
+nodeSpec:
+  priv_key: "_env:PRIVKEY"
+  log_file:
+    - type      : "ScribeJSON"
+      severity  : "Info"
+      verbosity : "V2"
+  db_name: "/data/db.sqlite"
+# Timeouts and stuff
+cfg: {}
