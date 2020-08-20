@@ -7,6 +7,8 @@
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE RankNTypes                 #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
+{-# LANGUAGE TypeApplications           #-}
 {-# LANGUAGE TypeFamilies               #-}
 {-# LANGUAGE UndecidableInstances       #-}
 module TM.Util.Mockchain where
@@ -21,9 +23,11 @@ import Control.Monad.Fail         (MonadFail)
 import Data.Bits
 import Data.List  (unfoldr)
 import Data.Word
-
+import qualified Data.ByteString as BS
+import System.Random    (randoms, mkStdGen)
 import System.IO.Unsafe (unsafePerformIO)
 
+import HSChain.Crypto
 import HSChain.Control.Class
 import HSChain.Examples.Simple
 import HSChain.Logger
@@ -173,3 +177,19 @@ data Abort = Abort Height
 
 catchAbort :: MonadCatch m => (forall a. m a) -> m Height
 catchAbort action = handle (\(Abort h) -> return h) action
+
+k1,k2 :: PrivKey Alg
+k1:k2:_ = makePrivKeyStream 1334
+
+makePrivKeyStream :: forall alg. CryptoSign alg => Int -> [PrivKey alg]
+makePrivKeyStream seed
+  = unfoldr step
+  $ randoms (mkStdGen seed)
+  where
+    -- Size of key
+    keySize = privKeySize (Proxy @alg)
+    -- Generate single key
+    step stream = Just (k, stream')
+      where
+        Just k    = decodeFromBS $ BS.pack bs
+        (bs, stream') = splitAt keySize stream

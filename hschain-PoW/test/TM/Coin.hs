@@ -14,7 +14,6 @@ import Control.Lens
 import Control.Monad.IO.Class
 import Control.Monad.State.Strict
 import qualified Data.ByteString as BS
-import System.Random (randoms, mkStdGen)
 import Data.Coerce
 import Data.List (unfoldr,sort)
 import Data.Proxy
@@ -36,13 +35,13 @@ import TM.Util.Mockchain
 
 coinInit :: IO ()
 coinInit = withHSChainT $ do
-  _ <- coinStateView $ head emptyCoinChain
+  _ <- coinStateView k1 $ head emptyCoinChain
   return ()
 
 -- Simple application of empty blocks
 coinTrivialFwd :: Bool -> IO ()
 coinTrivialFwd flushFlag = withHSChainT $ do
-  (db,_,st0) <- coinStateView g
+  (db,_,st0) <- coinStateView k1 g
   mapM_ (storeBlock db) [b1, b2]
   -- Block 1
   expectFail "1-1" st0 bh2 b1   -- BH mismatch 1
@@ -95,22 +94,6 @@ addBlock b bIdx = insertIdx bh bIdx
 -- Mock blockchain
 ----------------------------------------------------------------
 
-k1,k2 :: PrivKey Alg
-k1:k2:_ = makePrivKeyStream 1334
-
-makePrivKeyStream :: forall alg. CryptoSign alg => Int -> [PrivKey alg]
-makePrivKeyStream seed
-  = unfoldr step
-  $ randoms (mkStdGen seed)
-  where
-    -- Size of key
-    keySize = privKeySize (Proxy @alg)
-    -- Generate single key
-    step stream = Just (k, stream')
-      where
-        Just k    = decodeFromBS $ BS.pack bs
-        (bs, stream') = splitAt keySize stream
-
 gen :: Block Coin
 gen = mineCoin [] Nothing
 
@@ -122,10 +105,6 @@ mineWithCoinbase k b txs = mineCoin
       })
   : txs
   ) (Just b)
-
-signTX :: PrivKey Alg -> TxSend -> TxCoin
-signTX pk tx = TxCoin (publicKey pk) (signHashed pk tx) tx
-
 
 
 ----------------------------------------------------------------
@@ -189,7 +168,7 @@ expectUTXO msg utxos = do
 
 runTest :: Test a -> IO a
 runTest (Test m) = withHSChainT $ do
-  (_envDB,_,_envState) <- coinStateView gen
+  (_envDB,_,_envState) <- coinStateView k1 gen
   let _envBIdx = blockIndexFromGenesis gen
   evalStateT m TestEnv{..}
 
