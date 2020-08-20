@@ -237,7 +237,6 @@ instance SQL.ToRow UTXO where
 ----------------------------------------
 -- Tx validation
 
-
 -- | Context free TX validation for transactions. This function
 --   performs all checks that could be done having only transaction at
 --   hand.
@@ -255,6 +254,17 @@ validateCoinTxContextFree (TxCoin pubK sig txSend@TxSend{..}) = do
   unless (verifySignatureHashed pubK txSend sig)
     $ Left $ CoinError "Invalid signature"
 
+checkSpendability
+  :: [(UTXO, Unspent)]
+  -> TxCoin
+  -> ExceptT (BlockException Coin) (Query rw) ()
+checkSpendability inputs (TxCoin pk _ (TxSend _ outs)) = do
+  unless canSpend               $ throwError $ CoinError "Can't spend output"
+  unless (sumInputs == sumOuts) $ throwError $ CoinError "In/out sum mismatch"
+  where
+    canSpend  = and [ pk == k | (_, Unspent k _) <- inputs ]
+    sumInputs = sum [ n       | (_, Unspent _ n) <- inputs ]
+    sumOuts   = sum [ n       | Unspent _ n      <- outs   ]
 
 -- | Finally process transaction. Check that sum of inputs is same as sum of outputs and
 processTX
@@ -262,19 +272,14 @@ processTX
   -> ActiveOverlay
   -> TxCoin
   -> ExceptT (BlockException Coin) (Query rw) ActiveOverlay
-processTX pathInDB overlay tx@(TxCoin pk _ (TxSend ins outs)) = do
-  -- Fetch all inputs
+processTX pathInDB overlay tx@(TxCoin _ _ (TxSend ins outs)) = do
+  -- Fetch all inputs & check that we can spend them
   inputs <- forM ins $ \utxo -> do
     case getOverlayUTXO overlay utxo of
       Just (Spent _) -> throwError $ CoinError "Input already spent"
       Just (Added u) -> return (utxo,u)
       Nothing        -> (,) utxo <$> getDatabaseUTXO pathInDB utxo
-  -- Check that we can spend them
-  let canSpend  = and [ pk == k | (_, Unspent k _) <- inputs ]
-      sumInputs = sum [ n       | (_, Unspent _ n) <- inputs ]
-      sumOuts   = sum [ n       | Unspent _ n      <- outs   ]
-  unless canSpend               $ throwError $ CoinError "Can't spend output"
-  unless (sumInputs == sumOuts) $ throwError $ CoinError "In/out sum mismatch"
+  checkSpendability inputs tx
   -- Update overlay
   let txHash   = hashed tx
       overlay1 = foldl' (\o (utxo,u) -> spendUTXO  utxo u o) overlay inputs
@@ -526,14 +531,14 @@ initializeStateView genesis bIdx = do
       basicExecute
         "INSERT INTO coin_state_bid SELECT blk_id,0 FROM coin_blocks WHERE bid = ?"
         (Only bid)
-      return $ makeStateView bIdx (emptyOverlay bh)      
+      return $ makeStateView bIdx (emptyOverlay bh)
 
 makeStateView
   :: (MonadDB m, MonadThrow m, MonadIO m)
   => BlockIndex Coin -> StateOverlay -> StateView m Coin
 makeStateView bIdx0 overlay = sview where
-  bh0   = overlayTip overlay
-  sview = StateView
+  bh0    = overlayTip overlay
+  sview  = StateView
     { stateBID          = bhBID bh0
     -- FIXME: We need block index in order to be able to compute path
     --        from state to last known state
@@ -582,7 +587,12 @@ makeStateView bIdx0 overlay = sview where
            basicExecute "UPDATE coin_state_bid SET state_block = ?" (Only i)
         return $ makeStateView bIdx0 (emptyOverlay bh0)
       -- FIXME: not implemented
-    , checkTx                  = undefined
+    , checkTx = \tx@(TxCoin _ _ TxSend{..}) -> queryRO $ runExceptT $ do
+        inputs <- forM txInputs $ \utxo -> do
+          u <- getDatabaseUTXO NoChange utxo
+          return (utxo,u)
+        checkSpendability inputs tx
+      --
     , createCandidateBlockData = undefined
     }
 
