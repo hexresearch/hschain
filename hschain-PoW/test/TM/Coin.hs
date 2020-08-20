@@ -31,7 +31,7 @@ import HSChain.Store.Query
 import TM.Util.Mockchain
 
 ----------------------------------------------------------------
--- Simple test and sanity check for StateView 
+-- Simple test and sanity check for StateView
 ----------------------------------------------------------------
 
 coinInit :: IO ()
@@ -53,7 +53,7 @@ coinTrivialFwd flushFlag = withHSChainT $ do
   -- Block 2
   expectFail "2-1" st1 bh2 b1   -- BH mismatch 1
   expectFail "2-2" st1 bh1 b2   -- BH mismatch 2
-  expectFail "2-3" st1 bh1 b1   -- Unrelated block 
+  expectFail "2-3" st1 bh1 b1   -- Unrelated block
   st2 <- expectOK "B2" st1 bh2 b2
   liftIO $ bhBID bh2 @=? stateBID st2
   where
@@ -132,7 +132,7 @@ signTX pk tx = TxCoin (publicKey pk) (signHashed pk tx) tx
 -- Framework for testing updates of blocks
 ----------------------------------------------------------------
 
--- | API for 
+-- | API for
 class (MonadFail m, MonadIO m) => TestMonad m where
   mine     :: PrivKey Alg -> BlockID Coin -> [TxCoin] -> m (Either (BlockException Coin) (BlockID Coin, TxCoin))
   flush    :: m ()
@@ -179,13 +179,13 @@ instance TestMonad Test where
     assign envState =<< lift . flushState =<< use envState
   liveUTXO = Test $ queryRO $ basicQuery_
     "SELECT n_out, tx_hash FROM coin_utxo JOIN coin_state ON live_utxo = utxo_id"
-    
+
 
 expectUTXO :: TestMonad m => String -> [UTXO] -> m ()
 expectUTXO msg utxos = do
   live <- liveUTXO
   liftIO $ assertEqual msg (sort utxos) (sort live)
--- utxoCB :: 
+-- utxoCB ::
 
 runTest :: Test a -> IO a
 runTest (Test m) = withHSChainT $ do
@@ -197,7 +197,7 @@ runTest (Test m) = withHSChainT $ do
 -- Just test that initialization completes without issues
 testFresh :: TestMonad m => m ()
 testFresh = do
-  outs <- liveUTXO 
+  outs <- liveUTXO
   liftIO $ [] @=? outs
 
 -- Apply 1 block
@@ -233,11 +233,11 @@ test2BNoF = do
   flush
   expectUTXO "B1" [UTXO 0 (hashed cb1)]
 
--- Apply block with correct 
-testSpend :: TestMonad m => m ()
-testSpend = do
+-- Apply block with tansaction spending coinbase TX
+testSpend :: TestMonad m => Bool -> m ()
+testSpend useFlush = do
   Right (bid1,cb1) <- mine k1 (blockID gen) []
-  flush
+  when useFlush flush
   -- Spend 1 output
   let tx1 = signTX k1 $ TxSend
         { txInputs  = [UTXO 0 (hashed cb1)]
@@ -246,19 +246,52 @@ testSpend = do
                       ]
         }
       txHash1 = hashed tx1
-      u1_0 = UTXO 0 txHash1
-      u1_1 = UTXO 1 txHash1
   Right (_,cb2) <- mine k2 bid1 [tx1]
   flush
-  expectUTXO "" [ UTXO 0 (hashed cb2)
-                , u1_0
-                , u1_1
-                ]
+  expectUTXO "1" [ UTXO 0 (hashed cb2)
+                 , UTXO 0 txHash1
+                 , UTXO 1 txHash1
+                 ]
   -- Revert block
   revert
   flush
-  expectUTXO "" [ UTXO 0 (hashed cb1) ]
-  
+  expectUTXO "2" [ UTXO 0 (hashed cb1) ]
+
+-- Apply block with
+testReorg :: TestMonad m => m ()
+testReorg = do
+  -- Block 1
+  Right (bid1,cb1) <- mine k1 (blockID gen) []
+  -- Block 2
+  let tx1 = signTX k1 $ TxSend
+        { txInputs  = [UTXO 0 (hashed cb1)]
+        , txOutputs = [ Unspent (publicKey k1) 20
+                      , Unspent (publicKey k2) 80
+                      ]
+        }
+      txHash1 = hashed tx1
+  Right (_,cb2) <- mine k2 bid1 [tx1]
+  flush
+  expectUTXO "1" [ UTXO 0 (hashed cb2)
+                 , UTXO 0 txHash1
+                 , UTXO 1 txHash1
+                 ]
+  -- Reorganization
+  revert
+  let tx1' = signTX k1 $ TxSend
+        { txInputs  = [UTXO 0 (hashed cb1)]
+        , txOutputs = [ Unspent (publicKey k1) 30
+                      , Unspent (publicKey k2) 70
+                      ]
+        }
+      txHash1' = hashed tx1'
+  Right (_,cb2') <- mine k1 bid1 [tx1']
+  flush
+  expectUTXO "2" [ UTXO 0 (hashed cb2')
+                 , UTXO 0 txHash1'
+                 , UTXO 1 txHash1'
+                 ]
+
 
 ----------------------------------------------------------------
 --
@@ -272,10 +305,12 @@ tests = testGroup "coin"
     , testCase "empty-apply-flush"    $ coinTrivialFwd True
     ]
   , testGroup "state"
-    [ testCase "empty" $ runTest testFresh
-    , testCase "1B"    $ runTest test1B
-    , testCase "2B"    $ runTest test2B
-    , testCase "2BNoF" $ runTest test2BNoF
-    , testCase "spend" $ runTest testSpend
+    [ testCase "empty"  $ runTest testFresh
+    , testCase "1B"     $ runTest test1B
+    , testCase "2B"     $ runTest test2B
+    , testCase "2BNoF"  $ runTest test2BNoF
+    , testCase "spend"  $ runTest $ testSpend True
+    , testCase "spend2" $ runTest $ testSpend False
+    , testCase "reorg"  $ runTest testReorg
     ]
   ]
