@@ -16,7 +16,7 @@
 -- |
 module Main where
 
-import Control.Concurrent (forkIO)
+import Control.Concurrent (forkIO, threadDelay)
 import Control.Monad.IO.Class
 import Control.Monad.Reader
 import Control.Monad.Trans.Cont
@@ -34,6 +34,7 @@ import HSChain.PoW.Node (Cfg(..))
 import HSChain.PoW.P2P
 import HSChain.PoW.P2P.Types
 import HSChain.PoW.Types
+import HSChain.PoW.Node (genericMiningLoop)
 import HSChain.Store.Query
 import HSChain.Types.Merkle.Types
 
@@ -78,7 +79,9 @@ main = do
         forever $ do (bh,_) <- awaitIO ch
                      print $ asHeader bh
                      print $ retarget bh
-      lift $ miningLoop pow optMine
+      case optMine of
+        True  -> lift $ genericMiningLoop pow
+        False -> liftIO $ forever $ threadDelay maxBound
 
 
 ----------------------------------------------------------------

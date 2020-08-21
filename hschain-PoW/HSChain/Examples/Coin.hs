@@ -20,7 +20,6 @@
 module HSChain.Examples.Coin where
 
 import Control.Applicative
-import Control.Concurrent (killThread, threadDelay)
 import Control.Lens
 import Control.Monad
 import Control.Monad.Catch
@@ -51,8 +50,6 @@ import GHC.Generics    (Generic)
 
 import HSChain.Types.Merkle.Types
 import HSChain.Control.Class
-import HSChain.Control.Channels
-import HSChain.Control.Util
 import HSChain.Crypto
 import HSChain.Crypto.Classes.Hash
 import HSChain.Crypto.Ed25519
@@ -61,7 +58,6 @@ import HSChain.Logger
 import HSChain.PoW.Types
 import HSChain.PoW.Consensus
 import HSChain.PoW.BlockIndex
-import HSChain.PoW.P2P
 import HSChain.Store.Query
 
 
@@ -762,43 +758,6 @@ coinHeaderDecoder = do
   coinTarget  <- fieldCBOR
   coinNonce   <- field
   return GBlock{ blockData = Coin{..}, ..}
-
-
-
-
-----------------------------------------------------------------
--- Mining loop
-----------------------------------------------------------------
-
-miningLoop :: MonadFork m => PoW m Coin -> Bool -> m x
-miningLoop _   False = liftIO $ forever $ threadDelay maxBound
-miningLoop pow True  = do
-  start =<< atomicallyIO (chainUpdate pow)
-  where
-    --
-    start ch = do
-      c <- atomicallyIO $ currentConsensus pow
-      let (bh, st, _) = _bestHead c
-      loop ch =<< mine bh st
-    --
-    loop ch tid = do
-      (bh, st) <- awaitIO ch
-      liftIO $ killThread tid
-      loop ch =<< mine bh st
-    --
-    mine bh st = fork $ do
-      t   <- getCurrentTime
-      blk <- createCandidateBlock st bh t []
-      findBlock blk >>= sendNewBlock pow >>= \case
-        Right () -> return ()
-        Left  e  -> do liftIO $ print e
-                       liftIO $ throwM e
-    --
-    findBlock b = (fst <$> adjustPuzzle b) >>= \case
-      Just b' -> return b'
-      Nothing -> do t' <- getCurrentTime
-                    findBlock b { blockTime = t' }
-
 
 signTX :: PrivKey Alg -> TxSend -> TxCoin
 signTX pk tx = TxCoin (publicKey pk) (signHashed pk tx) tx

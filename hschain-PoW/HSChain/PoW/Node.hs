@@ -24,6 +24,7 @@ module HSChain.PoW.Node
   ( Cfg(..)
   , runNode
   , hoistCont
+  , genericMiningLoop
     -- * Block storage
   , inMemoryDB
   , blockDatabase
