@@ -8,6 +8,7 @@
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase                 #-}
+{-# LANGUAGE NumDecimals                #-}
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE RecordWildCards            #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
@@ -21,11 +22,18 @@ import Control.Monad.IO.Class
 import Control.Monad.Reader
 import Control.Monad.Trans.Cont
 import Data.Maybe
+import Data.List (unfoldr)
+import qualified Data.ByteString as BS
+import qualified Data.Map.Strict as Map
+import qualified Data.Vector     as V
+import System.Random (randoms,mkStdGen)
 import Data.Yaml.Config (loadYamlSettings, requireEnv)
 import Options.Applicative
 
 import HSChain.Control.Channels
 import HSChain.Control.Util
+import HSChain.Control.Class
+import HSChain.Crypto
 import HSChain.Examples.Coin
 import HSChain.Logger
 import HSChain.Network.TCP
@@ -50,7 +58,7 @@ genesis = GBlock
   , prevBlock   = Nothing
   , blockData   = Coin { coinData   = merkled []
                        , coinNonce  = 0
-                       , coinTarget = Target $ 2^(256-10 :: Int)
+                       , coinTarget = Target $ 2^(256-13 :: Int)
                        }
   }
 
@@ -74,14 +82,30 @@ main = do
       (db, bIdx, sView) <- lift $ coinStateView cfgPriv genesis
       c0  <- lift $ createConsensus db sView bIdx
       pow <- startNode netcfg net cfgPeers db c0
+      -- report progress
       void $ liftIO $ forkIO $ do
         ch <- atomicallyIO (chainUpdate pow)
         forever $ do (bh,_) <- awaitIO ch
-                     print $ asHeader bh
+                     print (bhHeight bh, bhBID bh)
                      print $ retarget bh
+      -- Mining and TX generation
       case optMine of
-        True  -> lift $ genericMiningLoop pow
+        True  -> do
+          cforkLinked $ txGeneratorLoop pow (cfgPriv : take 100 (makePrivKeyStream 1433))
+          lift $ genericMiningLoop pow
         False -> liftIO $ forever $ threadDelay maxBound
+
+txGeneratorLoop
+  :: (MonadReadDB m, MonadIO m)
+  => PoW m Coin -> [PrivKey Alg] -> m ()
+txGeneratorLoop pow keyList = do
+  forever $ do
+    mtx <- generateTX keyVec keyMap
+    forM_ mtx $ sinkIO (postTransaction (mempoolAPI pow))
+    liftIO $ threadDelay 50e3
+  where
+    keyVec = V.fromList $ Map.keys keyMap
+    keyMap = Map.fromList [ (publicKey k, k) | k <- keyList ]
 
 
 ----------------------------------------------------------------
@@ -105,3 +129,16 @@ parser = do
     <> help "Mine blocks"
     )
   return Opts{..}
+
+makePrivKeyStream :: forall alg. CryptoSign alg => Int -> [PrivKey alg]
+makePrivKeyStream seed
+  = unfoldr step
+  $ randoms (mkStdGen seed)
+  where
+    -- Size of key
+    keySize = privKeySize (Proxy @alg)
+    -- Generate single key
+    step stream = Just (k, stream')
+      where
+        Just k    = decodeFromBS $ BS.pack bs
+        (bs, stream') = splitAt keySize stream

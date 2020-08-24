@@ -40,12 +40,14 @@ import Data.List            (nub)
 import Data.Generics.Product.Typed (typed)
 import qualified Data.Aeson                       as JSON
 import qualified Data.Map.Strict                  as Map
+import qualified Data.Vector                      as V
 import           Database.SQLite.Simple            ((:.)(..))
 import qualified Database.SQLite.Simple.ToField   as SQL
 import qualified Database.SQLite.Simple.FromField as SQL
 import qualified Database.SQLite.Simple.FromRow   as SQL
 import qualified Database.SQLite.Simple.ToRow     as SQL
 import Katip (LogEnv, Namespace)
+import System.Random (randomRIO)
 import GHC.Generics    (Generic)
 
 import HSChain.Types.Merkle.Types
@@ -761,3 +763,60 @@ coinHeaderDecoder = do
 
 signTX :: PrivKey Alg -> TxSend -> TxCoin
 signTX pk tx = TxCoin (publicKey pk) (signHashed pk tx) tx
+
+
+-- Transaction generation. Not terribly efficient.
+generateTX
+  :: (MonadIO m, MonadReadDB m)
+  => V.Vector (PublicKey Alg)
+  -> Map (PublicKey Alg) (PrivKey Alg)
+  -> m (Maybe TxCoin)
+generateTX dests keyPairs = do
+  -- 1. Select random key from keys with top-20 funds. One one hand we
+  --    want to improve coin mixing and spend coin from keys with most
+  --    funds. on other we still want to pick keys at random in odrer
+  --    to be able generate non-conflcting transactions independently
+  mKey <- queryRO $ fmap (unByteRepr . fromOnly) <$> basicQuery1
+    "SELECT pk_dest FROM \
+    \ ( SELECT pk_dest, SUM(n_coins) as tot_coin \
+    \     FROM coin_utxo \
+    \     JOIN coin_state ON utxo_id = live_utxo \
+    \    GROUP BY pk_dest  \
+    \    ORDER BY tot_coin \
+    \    LIMIT 20 \
+    \ ) \
+    \ ORDER BY RANDOM() LIMIT 1" ()
+  if | Just pk <- mKey
+     , Just sk <- pk `Map.lookup` keyPairs
+       -> do
+         -- Select all UTXOs in random order
+         utxos <- queryRO $ basicQuery
+           "SELECT n_out, tx_hash, pk_dest, n_coins \
+           \  FROM coin_utxo  \
+           \  JOIN coin_state ON utxo_id = live_utxo \
+           \ WHERE pk_dest = ?"
+           (Only (ByteRepred pk))
+         pkDest <- selectFromVec dests
+         toSend <- liftIO $ randomRIO (10,50)
+         let selectUTXO acc _
+               | acc >= toSend = Just (acc,[])
+             selectUTXO _  []  = Nothing
+             selectUTXO acc ((u :. Unspent _ n):rest) = do
+               (tot,us) <- selectUTXO (acc + n) rest
+               return (tot, u:us)
+         --
+         return $ do
+           (tot,ins) <- selectUTXO 0 utxos
+
+           Just $ signTX sk $ TxSend
+             { txInputs  = ins
+             , txOutputs = Unspent pkDest toSend
+                         : if | tot > toSend -> [Unspent pk (tot - toSend)]
+                              | otherwise    -> []
+             }
+     | otherwise -> return Nothing
+
+selectFromVec :: MonadIO m => V.Vector a -> m a
+selectFromVec v = liftIO $ do
+  i <- randomRIO (0, V.length v - 1)
+  return $ v V.! i

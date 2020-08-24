@@ -119,6 +119,7 @@ Executable hschain-PoW-coin
                      , mtl
                      , bytestring
                      , containers
+                     , vector
                      , random
                      , serialise
                      , exceptions
