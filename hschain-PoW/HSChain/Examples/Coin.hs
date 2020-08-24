@@ -772,21 +772,21 @@ generateTX
   -> Map (PublicKey Alg) (PrivKey Alg)
   -> m (Maybe TxCoin)
 generateTX dests keyPairs = do
-  -- 1. Select random key from keys with top-20 funds. One one hand we
+  -- 1. Select random key from keys with top-10 funds. One one hand we
   --    want to improve coin mixing and spend coin from keys with most
   --    funds. on other we still want to pick keys at random in odrer
   --    to be able generate non-conflcting transactions independently
-  mKey <- queryRO $ fmap (unByteRepr . fromOnly) <$> basicQuery1
-    "SELECT pk_dest FROM \
+  mKey <- queryRO $ basicQuery1
+    "SELECT * FROM \
     \ ( SELECT pk_dest, SUM(n_coins) as tot_coin \
     \     FROM coin_utxo \
     \     JOIN coin_state ON utxo_id = live_utxo \
     \    GROUP BY pk_dest  \
     \    ORDER BY tot_coin \
-    \    LIMIT 20 \
+    \    LIMIT 10 \
     \ ) \
     \ ORDER BY RANDOM() LIMIT 1" ()
-  if | Just pk <- mKey
+  if | Just (ByteRepred pk,balance) <- mKey
      , Just sk <- pk `Map.lookup` keyPairs
        -> do
          -- Select all UTXOs in random order
@@ -797,7 +797,7 @@ generateTX dests keyPairs = do
            \ WHERE pk_dest = ?"
            (Only (ByteRepred pk))
          pkDest <- selectFromVec dests
-         toSend <- liftIO $ randomRIO (10,50)
+         toSend <- liftIO $ randomRIO (balance `div` 6, balance `div` 2)
          let selectUTXO acc _
                | acc >= toSend = Just (acc,[])
              selectUTXO _  []  = Nothing

@@ -102,7 +102,7 @@ txGeneratorLoop pow keyList = do
   forever $ do
     mtx <- generateTX keyVec keyMap
     forM_ mtx $ sinkIO (postTransaction (mempoolAPI pow))
-    liftIO $ threadDelay 50e3
+    liftIO $ threadDelay 25e3
   where
     keyVec = V.fromList $ Map.keys keyMap
     keyMap = Map.fromList [ (publicKey k, k) | k <- keyList ]
