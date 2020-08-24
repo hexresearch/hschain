@@ -22,7 +22,7 @@ import HSChain.PoW.Node
 import HSChain.PoW.P2P
 import HSChain.PoW.P2P.Types
 import HSChain.Types.Merkle.Types
-import HSChain.Examples.Coin   (miningLoop,Coin(..),coinStateView)
+import HSChain.Examples.Coin   (Coin(..),coinStateView)
 import HSChain.Network.Mock
 import HSChain.Network.Types
 import TM.Util.Mockchain
@@ -79,7 +79,7 @@ testRestart = do
     db   <- lift $ blockDatabase genesisCoin
     c0   <- lift $ createConsensus db sView =<< buildBlockIndex db
     pow  <- startNode netcfg net [] db c0
-    cforkLinked $ miningLoop pow True
+    cforkLinked $ genericMiningLoop pow
     -- Await for new blocks
     ch   <- atomicallyIO $ chainUpdate pow
     lift $ forever $ do

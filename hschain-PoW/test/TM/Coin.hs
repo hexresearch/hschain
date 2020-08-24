@@ -13,10 +13,8 @@ module TM.Coin (tests) where
 import Control.Lens
 import Control.Monad.IO.Class
 import Control.Monad.State.Strict
-import qualified Data.ByteString as BS
 import Data.Coerce
-import Data.List (unfoldr,sort)
-import Data.Proxy
+import Data.List (sort)
 import Test.Tasty
 import Test.Tasty.HUnit
 import GHC.Generics (Generic)
