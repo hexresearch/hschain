@@ -160,6 +160,28 @@ inMemoryView = make (error "No revinding past genesis")
           , createCandidateBlockData = error "Block creation is not supported"
           }
 
+-- | State view which doesn't do any block validation whatsoever
+inMemoryViewCoin
+  :: (Monad m)
+  => BlockID Coin
+  -> StateView m Coin
+inMemoryViewCoin = make (error "No revinding past genesis")
+  where
+    make previous bid = view
+      where
+        view = StateView
+          { stateBID    = bid
+          , applyBlock  = \_ bh _ -> return $ Right $ make view (bhBID bh)
+          , revertBlock = return previous
+          , flushState  = return view
+          , checkTx                  = error "Transaction checking is not supported"
+          , createCandidateBlockData = \bh _ _ -> return $ Coin
+            { coinData   = merkled []
+            , coinTarget = retarget bh
+            , coinNonce  = 0
+            }
+          }
+
 -- | Monad transformer for use in tests
 newtype HSChainT m x = HSChainT (ReaderT (Connection 'RW) m x)
   deriving newtype (Functor,Applicative,Monad,MonadIO,MonadFail)

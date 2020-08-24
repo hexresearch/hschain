@@ -75,7 +75,7 @@ testRestart = do
   -- First start of exception
   h <- catchAbort $ evalContT $ do
     let net   = createMockNode mocknet $ NetAddrV4 1 1000
-    let sView = inMemoryView (blockID genesisCoin)
+    let sView = inMemoryViewCoin (blockID genesisCoin)
     db   <- lift $ blockDatabase genesisCoin
     c0   <- lift $ createConsensus db sView =<< buildBlockIndex db
     pow  <- startNode netcfg net [] db c0
@@ -86,7 +86,7 @@ testRestart = do
       (BH{bhHeight=h},_) <- awaitIO ch
       when (h >= Height 10) $ throwM (Abort h)
   -- Reinitialize
-  do let sView = inMemoryView (blockID genesisCoin)
+  do let sView = inMemoryViewCoin (blockID genesisCoin)
      db <- blockDatabase genesisCoin
      c0 <- createConsensus db sView =<< buildBlockIndex db
      liftIO $ h @=? (c0 ^. bestHead . _1 . to bhHeight)
