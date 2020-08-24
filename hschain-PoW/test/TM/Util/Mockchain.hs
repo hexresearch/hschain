@@ -6,6 +6,7 @@
 {-# LANGUAGE DerivingVia                #-}
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE LambdaCase                 #-}
 {-# LANGUAGE RankNTypes                 #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE TypeApplications           #-}
@@ -26,6 +27,7 @@ import Data.Word
 import qualified Data.ByteString as BS
 import System.Random    (randoms, mkStdGen)
 import System.IO.Unsafe (unsafePerformIO)
+import System.Timeout
 
 import HSChain.Crypto
 import HSChain.Control.Class
@@ -40,6 +42,12 @@ import HSChain.Examples.Coin
 ----------------------------------------------------------------
 --
 ----------------------------------------------------------------
+
+testTimeout :: Double -> IO a -> IO a
+testTimeout t io =
+  timeout (round $ t * 1e6) io >>= \case
+    Just a  -> return a
+    Nothing -> error "Test timeout"
 
 mockchain :: (Num (Nonce cfg), Show (Nonce cfg), KVConfig cfg)
           => [Block (KV cfg)]
