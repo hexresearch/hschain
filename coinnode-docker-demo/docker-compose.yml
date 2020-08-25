@@ -15,7 +15,7 @@
    val4:
  services:
    bex:
-     image: registry.hxr.team/bex
+     image: hschain/bex
      command: ["/hschain-bex-node", "/config.yml"]
      volumes:
      - ./config-bex.yml:/config.yml
@@ -32,7 +32,7 @@
      ports:
      - 8080:8080
    val1:
-     image: registry.hxr.team/bex
+     image: hschain/bex
      command: ["/hschain-bex-node", "/config.yml"]
      volumes:
      - ./config-val.yml:/config.yml
@@ -48,7 +48,7 @@
          ipv4_address: 10.0.0.11
      restart: always
    val2:
-     image: registry.hxr.team/bex
+     image: hschain/bex
      command: ["/hschain-bex-node", "/config.yml"]
      volumes:
      - ./config-val.yml:/config.yml
@@ -64,7 +64,7 @@
          ipv4_address: 10.0.0.12
      restart: always
    val3:
-     image: registry.hxr.team/bex
+     image: hschain/bex
      command: ["/hschain-bex-node", "/config.yml"]
      volumes:
      - ./config-val.yml:/config.yml
@@ -80,7 +80,7 @@
          ipv4_address: 10.0.0.13
      restart: always
    val4:
-     image: registry.hxr.team/bex
+     image: hschain/bex
      command: ["/hschain-bex-node", "/config.yml"]
      volumes:
      - ./config-val.yml:/config.yml
