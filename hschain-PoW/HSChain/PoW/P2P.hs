@@ -94,7 +94,7 @@ startNodeTest cfg netAPI seeds db consensus = do
   blockReg                 <- newBlockRegistry srcBIDs
   bIdx                     <- liftIO $ newTVarIO consensus
   -- Start mempool
-  (mempoolAPI,MempoolConsensusCh{..}) <- startMempool db (consensus ^. bestHead . _2)
+  (mempoolAPI,MempoolCh{..}) <- startMempool db (consensus ^. bestHead . _2)
   -- Start PEX
   runPEX cfg netAPI seeds blockReg sinkBOX mkSrcAnn (readTVar bIdx) db
   -- Consensus thread

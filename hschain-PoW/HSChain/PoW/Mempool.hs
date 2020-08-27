@@ -10,7 +10,7 @@ module HSChain.PoW.Mempool
   ( -- * Data types
     -- ** Dictionaries of channels
     MempoolAPI(..)
-  , MempoolConsensusCh(..)
+  , MempoolCh(..)
     -- ** Messages
   , MempCmdConsensus(..)
   , MempCmdGossip(..)
@@ -68,12 +68,12 @@ data MempoolAPI m b = MempoolAPI
 
 -- | Internal API for sending messages from consensus engine to the
 --   mempool
-newtype MempoolConsensusCh m b = MempoolConsensusCh
+newtype MempoolCh m b = MempoolCh
   { mempoolConsensusCh :: Sink (MempCmdConsensus m b)
   }
 
--- | Internal API for communicating with outside world.
-data MempoolCh m b = MempoolCh
+-- | Collection of channels and TVars for mempool thread.
+data InternalCh m b = InternalCh
   { srcMempoolCns     :: Src (MempCmdConsensus m b)
     -- ^ Messages from consensus engine
   , srcMempoolGossip  :: Src (MempCmdGossip b)
@@ -94,7 +94,7 @@ startMempool
   -> StateView m b
   -- ^ Current view on blockchain state. Will be used for transaction
   --   validation until state will be changed
-  -> ContT r m (MempoolAPI m b, MempoolConsensusCh m b)
+  -> ContT r m (MempoolAPI m b, MempoolCh m b)
 startMempool db state = do
   (mempoolConsensusCh, srcMempoolCns)    <- queuePair
   (bcastMempoolState,  mempoolUpdates)   <- broadcastPair
@@ -103,7 +103,7 @@ startMempool db state = do
   let mempool = emptyMempoolState txID
   currentMempool <- liftIO $ newTVarIO mempool
   --
-  cforkLinked $ runMempool db MempoolCh{..} MempoolDict
+  cforkLinked $ runMempool db InternalCh{..} MempoolDict
     { stateView = state
     , ..
     }
@@ -111,7 +111,7 @@ startMempool db state = do
                      , mempoolContent  = toList <$> readTVar currentMempool
                      , ..
                      }
-         , MempoolConsensusCh{..}
+         , MempoolCh{..}
          )
 
 
@@ -127,10 +127,10 @@ data MempoolDict m b = MempoolDict
 runMempool
   :: (MonadIO m, BlockData b)
   => BlockDB m b
-  -> MempoolCh m b
+  -> InternalCh m b
   -> MempoolDict m b
   -> m ()
-runMempool db ch@MempoolCh{..} st0 = iterateSTM st0 $ \s -> store <$> asum
+runMempool db ch@InternalCh{..} st0 = iterateSTM st0 $ \s -> store <$> asum
   [ handleConsensus db ch s <$> await srcMempoolCns
   , handleGossip          s <$> await srcMempoolGossip
   , handlePending      ch s
@@ -147,11 +147,11 @@ runMempool db ch@MempoolCh{..} st0 = iterateSTM st0 $ \s -> store <$> asum
 handleConsensus
   :: forall m b. (MonadIO m, BlockData b)
   => BlockDB m b
-  -> MempoolCh m b
+  -> InternalCh m b
   -> MempoolDict m b
   -> MempCmdConsensus m b
   -> m (MempoolDict m b)
-handleConsensus db@BlockDB{..} MempoolCh{..} MempoolDict{..} = \case
+handleConsensus db@BlockDB{..} InternalCh{..} MempoolDict{..} = \case
   MempHeadChange bhFrom bhTo state -> do
     TxChange{..} <- computeMempoolChange db bhFrom bhTo
     let add m tx = fromMaybe m
@@ -232,10 +232,10 @@ handleGossip st@MempoolDict{..} = \case
 
 handlePending
   :: (MonadIO m, BlockData b)
-  => MempoolCh m b
+  => InternalCh m b
   -> MempoolDict m b
   -> STM (m (MempoolDict m b))
-handlePending MempoolCh{..} MempoolDict{..}
+handlePending InternalCh{..} MempoolDict{..}
   = doFilter <$> awaitPending
   where
     doFilter tidList = do
