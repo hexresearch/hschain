@@ -57,7 +57,7 @@ data MempCmdGossip b
 -- | External API or interacting with mempool
 data MempoolAPI m b = MempoolAPI
   { postTransaction :: Sink (Tx b)
-    -- ^ Post transaction into mempool. This particualr is black
+    -- ^ Post transaction into mempool. This function is black
     --   hole. There's no way to learn whether transaction was
     --   accepted or rejected
   , mempoolUpdates  :: STM (Src (BH b, StateView m b, [Tx b]))
