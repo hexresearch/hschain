@@ -115,7 +115,7 @@ instance BlockData Coin where
   newtype TxID Coin = CoinTxID (Hash SHA256)
     deriving newtype ( Show,Eq,Ord,CryptoHashable,Serialise,ByteRepr
                      , JSON.ToJSON, JSON.FromJSON)
-    deriving (SQL.FromField, SQL.ToField) via ByteRepred (BlockID Coin)
+    deriving (SQL.FromField, SQL.ToField) via ByteRepred (TxID Coin)
 
   data BlockException Coin
     = CoinError    String
