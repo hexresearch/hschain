@@ -76,7 +76,12 @@ data Cfg = Cfg
 -- Requires places to load config from, a flag indicating that
 -- we are mining and genesis block.
 runNode
-  :: (BlockData b, Mineable b, Show (b Proxy), Show (b Identity), Serialise (b Proxy), Serialise (b Identity))
+  :: ( Mineable b
+     , Show (b Proxy)
+     , Serialise (b Proxy)
+     , Serialise (b Identity)
+     , Serialise (Tx b)
+     )
   => [String]
   -> Bool
   -> StateView (LoggerT IO) b

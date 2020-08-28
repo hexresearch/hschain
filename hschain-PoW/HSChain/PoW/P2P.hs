@@ -57,7 +57,7 @@ startNode
   :: ( MonadMask m, MonadFork m, MonadLogger m
      , Serialise (b Identity)
      , Serialise (b Proxy)
-     , Serialise (BlockID b)
+     , Serialise (Tx b)
      , BlockData b
      )
   => NetCfg
@@ -74,7 +74,7 @@ startNodeTest
   :: ( MonadMask m, MonadFork m, MonadLogger m
      , Serialise (b Identity)
      , Serialise (b Proxy)
-     , Serialise (BlockID b)
+     , Serialise (Tx b)
      , BlockData b
      )
   => NetCfg
@@ -96,7 +96,7 @@ startNodeTest cfg netAPI seeds db consensus = do
   -- Start mempool
   (mempoolAPI,MempoolCh{..}) <- startMempool db (consensus ^. bestHead . _2)
   -- Start PEX
-  runPEX cfg netAPI seeds blockReg sinkBOX mkSrcAnn (readTVar bIdx) db
+  runPEX cfg netAPI mempoolAPI mempoolAnnounces seeds blockReg sinkBOX mkSrcAnn (readTVar bIdx) db
   -- Consensus thread
   let consensusCh = ConsensusCh
         { bcastAnnounce    = sinkAnn

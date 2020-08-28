@@ -30,6 +30,7 @@ import HSChain.Control.Channels
 import HSChain.Network.Types
 import HSChain.PoW.P2P.Types
 import HSChain.PoW.Types
+import HSChain.PoW.Mempool
 import HSChain.Logger
 import HSChain.PoW.Consensus
 import HSChain.PoW.Exceptions
@@ -47,13 +48,14 @@ runPeer
   :: ( MonadMask m, MonadLogger m, MonadFork m
      , Serialise (b Identity)
      , Serialise (b Proxy)
-     , Serialise (BlockID b)
+     , Serialise (Tx b)
      , BlockData b
      )
   => P2PConnection
+  -> MempoolAPI m b
   -> PeerChans s m b
   -> m ()
-runPeer conn chans@PeerChans{..} = logOnException $ do
+runPeer conn mempoolAPI chans@PeerChans{..} = logOnException $ do
   logger InfoS "Starting peer" ()
   (sinkGossip, srcGossip) <- queuePair
   st <- liftIO $ do requestInFlight <- newTVarIO Nothing
@@ -64,8 +66,8 @@ runPeer conn chans@PeerChans{..} = logOnException $ do
   do s <- atomicallyIO peerConsensuSt
      sinkIO sinkGossip $ GossipAnn $ AnnBestHead $ s ^. bestHead . _1 . to asHeader
   runConcurrently
-    [ peerSend    conn (srcGossip <> fmap GossipAnn peerBCastAnn)
-    , peerRecv    conn     st chans sinkGossip
+    [ peerSend    conn (srcGossip <> fmap GossipAnn peerBCastAnn <> fmap GossipTX peerBCastAnnTx)
+    , peerRecv    conn     st chans sinkGossip mempoolAPI
     , peerRequestHeaders   st chans sinkGossip
     , peerRequestBlock     st chans sinkGossip
     , peerRequestAddresses st chans sinkGossip
@@ -148,6 +150,7 @@ peerSend
   :: ( MonadIO m, MonadLogger m, MonadCatch m
      , Serialise (b Identity)
      , Serialise (b Proxy)
+     , Serialise (Tx b)
      , Serialise (BlockID b)
      )
   => P2PConnection
@@ -164,23 +167,23 @@ peerRecv
   :: ( MonadMask m, MonadIO m, MonadLogger m
      , Serialise (b Identity)
      , Serialise (b Proxy)
-     , Serialise (BlockID b)
+     , Serialise (Tx b)
      , BlockData b
      )
   => P2PConnection
   -> PeerState b
   -> PeerChans s m b
   -> Sink (GossipMsg b)         -- Send message to peer over network
+  -> MempoolAPI m b
   -> m x
-peerRecv conn st@PeerState{..} PeerChans{..} sinkGossip =
+peerRecv conn st@PeerState{..} PeerChans{..} sinkGossip  mempoolAPI =
   descendNamespace "recv" $ logOnException $ forever $ do
     bs <- recv conn
     case deserialise bs of
       -- Announces are just forwarded
-      GossipAnn  m -> do
-        toConsensus (return ()) $! RxAnn m
-        case m of
+      GossipAnn  m -> case m of
           AnnBestHead h -> do logger DebugS "Got announce" (sl "bid" (blockID h))
+                              toConsensus (return ()) $! RxAnn m
                               atomicallyIO $ writeTVar peersBestHead (Just h)
       -- With responces we ensure that we got what we asked. Otherwise
       -- we throw exception and let PEX to deal with banning
@@ -227,6 +230,11 @@ peerRecv conn st@PeerState{..} PeerChans{..} sinkGossip =
           sinkIO sinkGossip $ GossipResp $ case mblk of
             Nothing -> RespNack
             Just b  -> RespBlock b
+      -- Transactions gossip
+      GossipTX m -> case m of
+        AnnNewTX tx   -> do logger DebugS "Got TX announce" ()
+                            sinkIO (postTransaction mempoolAPI) tx
+
   where
     -- Send message to consensus engine and release request lock when
     -- request is processed.

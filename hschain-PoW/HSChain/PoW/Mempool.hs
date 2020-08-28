@@ -38,7 +38,7 @@ import HSChain.Control.Channels
 import HSChain.Control.Util
 import HSChain.PoW.Types
 import HSChain.PoW.Consensus
-
+import HSChain.PoW.P2P.Types
 
 ----------------------------------------------------------------
 -- Data types
@@ -68,8 +68,10 @@ data MempoolAPI m b = MempoolAPI
 
 -- | Internal API for sending messages from consensus engine to the
 --   mempool
-newtype MempoolCh m b = MempoolCh
+data MempoolCh m b = MempoolCh
   { mempoolConsensusCh :: Sink (MempCmdConsensus m b)
+    -- ^ Channel for sending updates from consensus engine
+  , mempoolAnnounces   :: STM (Src (MsgTX b))
   }
 
 -- | Collection of channels and TVars for mempool thread.
@@ -78,6 +80,8 @@ data InternalCh m b = InternalCh
     -- ^ Messages from consensus engine
   , srcMempoolGossip  :: Src (MempCmdGossip b)
     -- ^ Messages from gossip
+  , bcastNewTx        :: Sink (Tx b)
+    -- ^ Sink for valid transaction which just learned about,
   , bcastMempoolState :: Sink (BH b, StateView m b, [Tx b])
     -- ^ Broadcast change of blockchain head and corresponding update of
   , pendingFiltering  :: TVar [TxID b]
@@ -98,6 +102,7 @@ startMempool
 startMempool db state = do
   (mempoolConsensusCh, srcMempoolCns)    <- queuePair
   (bcastMempoolState,  mempoolUpdates)   <- broadcastPair
+  (bcastNewTx,         mkSrcNewTx)       <- broadcastPair
   (sinkGossip,         srcMempoolGossip) <- queuePair
   pendingFiltering <- liftIO $ newTVarIO []
   let mempool = emptyMempoolState txID
@@ -111,7 +116,9 @@ startMempool db state = do
                      , mempoolContent  = toList <$> readTVar currentMempool
                      , ..
                      }
-         , MempoolCh{..}
+         , MempoolCh{ mempoolAnnounces = fmap AnnNewTX <$> mkSrcNewTx
+                    , ..
+                    }
          )
 
 
@@ -132,7 +139,7 @@ runMempool
   -> m ()
 runMempool db ch@InternalCh{..} st0 = iterateSTM st0 $ \s -> store <$> asum
   [ handleConsensus db ch s <$> await srcMempoolCns
-  , handleGossip          s <$> await srcMempoolGossip
+  , handleGossip       ch s <$> await srcMempoolGossip
   , handlePending      ch s
   ]
   where
@@ -215,20 +222,23 @@ retrieveTidList db bid =
 -- Other changes to mempool
 
 handleGossip
-  :: forall b m. (Monad m, BlockData b)
-  => MempoolDict m b
+  :: forall b m. (MonadIO m, BlockData b)
+  => InternalCh  m b
+  -> MempoolDict m b
   -> MempCmdGossip b
   -> m (MempoolDict m b)
-handleGossip st@MempoolDict{..} = \case
+handleGossip InternalCh{..} st@MempoolDict{..} = \case
   MempPushTx tx -> do
     ms <- mempoolAddTX
             (isRight . validateTxContextFree @b)
             (fmap isRight . checkTx stateView)
             tx
             mempool
-    return $ case ms of
-      Nothing -> st
-      Just s  -> MempoolDict { mempool = s, .. }
+    case ms of
+      Nothing -> return st
+      Just s  -> do
+        sinkIO bcastNewTx tx
+        return MempoolDict { mempool = s, .. }
 
 handlePending
   :: (MonadIO m, BlockData b)
