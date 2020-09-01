@@ -381,7 +381,7 @@ dbLookupUTXO h txHash nOut = do
   r <- basicQuery1
     "SELECT pk,n_coins FROM coin_utxo \
     \ WHERE tx_hash = ? AND n_out = ? \
-    \   AND (h_spent is NULL OR h_spent < ?)"
+    \   AND (h_spent is NULL OR h_spent >= ?)"
     (encodeToBS txHash, nOut, h)
   return $ case r of
     Nothing     -> Nothing
