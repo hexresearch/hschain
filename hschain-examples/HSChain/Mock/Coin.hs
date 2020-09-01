@@ -38,6 +38,7 @@ module HSChain.Mock.Coin (
   , generateTransaction
     -- * In-DB state
   , initCoinDB
+  , databaseStateView
     -- * Interpretation
     -- ** Monad
   , CoinT(..)
@@ -404,7 +405,7 @@ dbProcessSend h tx@(Send pk _ TxSend{..}) UtxoDiff{..} = do
   inputs <- forM txInputs $ \utxo@(UTXO nOut txH) -> do
     Unspent pk' n <- case utxo `Map.lookup` utxoDiff of
       Just (Added u _) -> return u
-      Just _               -> throwError $ CoinError "Already spent output"
+      Just _           -> throwError $ CoinError "Already spent output"
       Nothing -> dbLookupUTXO baseH txH nOut >>= \case
         Nothing -> throwError $ CoinError "Already spent output"
         Just x  -> return x
