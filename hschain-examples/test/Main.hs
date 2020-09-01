@@ -7,6 +7,7 @@ import qualified TM.P2P.PEX
 import qualified TM.Serialisation
 import qualified TM.Integration
 import qualified TM.Validators
+import qualified TM.Coin
 
 main :: IO ()
 main = defaultMain $ testGroup "hschain"
@@ -17,6 +18,7 @@ main = defaultMain $ testGroup "hschain"
   , TM.P2P.PEX.tests
   , TM.P2P.Gossip.tests
   , TM.Consensus.tests
+  , TM.Coin.tests
   -- Integration tests
   , TM.Integration.tests
   -- Unsorted stuff
