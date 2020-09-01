@@ -17,16 +17,17 @@ Library
   Ghc-options:         -Wall
   Default-Language:    Haskell2010
   Build-Depends:       base              >=4.12 && <5
-                     , hschain-crypto
-                     , hschain-control
-                     , hschain-logger
-                     , hschain-config
-                     , hschain-types
-                     , hschain-merkle
-                     , hschain-mempool
                      , hschain
-                     , hschain-net
+                     , hschain-config
+                     , hschain-control
+                     , hschain-crypto
+                     , hschain-db
                      , hschain-examples-types
+                     , hschain-logger
+                     , hschain-mempool
+                     , hschain-merkle
+                     , hschain-net
+                     , hschain-types
                        --
                      , aeson
                      , bytestring           >=0.10
@@ -178,6 +179,7 @@ Test-suite hschain-tests
   hs-source-dirs:      test
   Main-is:             Main.hs
   Other-modules:       TM.Consensus
+                       TM.Coin
                        TM.Integration
                        TM.Mempool
                        TM.P2P.Gossip

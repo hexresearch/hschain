@@ -15,6 +15,7 @@
 {-# LANGUAGE TypeApplications           #-}
 {-# LANGUAGE TypeFamilies               #-}
 {-# LANGUAGE TypeOperators              #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
 -- |
 -- Very simple UTXO coin intended for demonstration of hschain. As a
 -- demonstration it doesn't have any sort of economics nor in form of
@@ -38,6 +39,7 @@ module HSChain.Mock.Coin (
   , generateTransaction
     -- * In-DB state
   , initCoinDB
+  , databaseStateView
     -- * Interpretation
     -- ** Monad
   , CoinT(..)
@@ -65,7 +67,10 @@ import Data.Either
 import Data.IORef
 import Data.Maybe
 import Data.Map             (Map,(!))
-import Database.SQLite.Simple             (Only(..))
+import Database.SQLite.Simple             (Only(..),(:.)(..))
+import qualified Database.SQLite.Simple.ToField   as SQL
+import qualified Database.SQLite.Simple.FromRow   as SQL
+import qualified Database.SQLite.Simple.ToRow     as SQL
 import qualified Data.Vector         as V
 import qualified Data.Map.Strict     as Map
 import qualified Data.Set            as Set
@@ -88,6 +93,7 @@ import HSChain.Mock
 import HSChain.Mock.Coin.Types
 import HSChain.Store
 import HSChain.Store.Internal.Query
+import HSChain.Store.Query          (fieldByteRepr,ByteRepred(..),field)
 import HSChain.Mock.KeyList         (makePrivKeyStream)
 import HSChain.Mock.Types
 import HSChain.Monitoring
@@ -334,6 +340,16 @@ findInputs tgt = go 0
 -- State stored in database
 ----------------------------------------------------------------
 
+instance SQL.FromRow Unspent where
+  fromRow = Unspent <$> fieldByteRepr <*> SQL.field
+instance SQL.ToRow Unspent where
+  toRow (Unspent k n) = [ SQL.toField (ByteRepred k), SQL.toField n ]
+
+instance SQL.FromRow UTXO where
+  fromRow = UTXO <$> field <*> fieldByteRepr
+instance SQL.ToRow UTXO where
+  toRow (UTXO n h) = [SQL.toField n, SQL.toField (ByteRepred h)]
+
 -- | Initialize tables for storage of coin state. Storage is heavily
 --   tailored towards particular use case of demonstartion and
 --   benchmarks for mock UTXO blockchain and likely won't work well
@@ -345,10 +361,10 @@ initCoinDB = do
   -- creted and spent
   basicExecute_
     "CREATE TABLE IF NOT EXISTS coin_utxo \
-    \  ( tx_hash BLOB    NOT NULL \
-    \  , n_out   INTEGER NOT NULL \
-    \  , n_coins INTEGER NOT NULL \
+    \  ( n_out   INTEGER NOT NULL \
+    \  , tx_hash BLOB    NOT NULL \
     \  , pk      BLOB    NOT NULL \
+    \  , n_coins INTEGER NOT NULL \
     \  , h_added INTEGER NOT NULL \
     \  , h_spent INTEGER NULL     \
     \  , UNIQUE (tx_hash,n_out)   \
@@ -373,18 +389,13 @@ data UtxoDiff = UtxoDiff
 dbLookupUTXO
   :: (MonadQueryRO m)
   => Height                 -- ^ Height of block for which we calculate state updates
-  -> Hashed (Alg BData) Tx  -- ^ Transaction hash
-  -> Int                    -- ^ Output number
+  -> UTXO
   -> m (Maybe Unspent)
-dbLookupUTXO h txHash nOut = do
-  r <- basicQuery1
-    "SELECT pk,n_coins FROM coin_utxo \
-    \ WHERE tx_hash = ? AND n_out = ? \
-    \   AND (h_spent is NULL OR h_spent < ?)"
-    (encodeToBS txHash, nOut, h)
-  return $ case r of
-    Nothing     -> Nothing
-    Just (bs,n) -> Just $ Unspent (fromMaybe (error "Invalid value in DB") $ decodeFromBS bs) n
+dbLookupUTXO h utxo = basicQuery1
+  "SELECT pk,n_coins FROM coin_utxo \
+  \ WHERE n_out = ? AND tx_hash = ?\
+  \   AND (h_spent is NULL OR h_spent >= ?)"
+  (utxo :. Only h)
 
 dbProcessDeposit
   :: (Monad m)
@@ -401,11 +412,11 @@ dbProcessSend
 dbProcessSend _ Deposit{} _ = throwError DepositAtWrongH
 dbProcessSend h tx@(Send pk _ TxSend{..}) UtxoDiff{..} = do
   -- Try to find all inputs for transaction
-  inputs <- forM txInputs $ \utxo@(UTXO nOut txH) -> do
+  inputs <- forM txInputs $ \utxo -> do
     Unspent pk' n <- case utxo `Map.lookup` utxoDiff of
       Just (Added u _) -> return u
-      Just _               -> throwError $ CoinError "Already spent output"
-      Nothing -> dbLookupUTXO baseH txH nOut >>= \case
+      Just _           -> throwError $ CoinError "Already spent output"
+      Nothing -> dbLookupUTXO baseH utxo >>= \case
         Nothing -> throwError $ CoinError "Already spent output"
         Just x  -> return x
     unless (pk == pk') $ throwError $ CoinError "PublicKey mismatch"
@@ -432,16 +443,16 @@ dbProcessSend h tx@(Send pk _ TxSend{..}) UtxoDiff{..} = do
 dbRecordDiff
   :: (MonadQueryRW m)
   => (UTXO, UtxoChange) -> m ()
-dbRecordDiff (UTXO nOut txHash, change) = case change of
+dbRecordDiff (utxo, change) = case change of
   Spent h -> basicExecute
-    "UPDATE coin_utxo SET h_spent=? WHERE tx_hash=? AND n_out=?"
-    (h, encodeToBS txHash, nOut)
-  Added (Unspent pk i) h     -> basicExecute
+    "UPDATE coin_utxo SET h_spent=? WHERE n_out=? AND tx_hash=?"
+    (Only h :. utxo)
+  Added out h     -> basicExecute
     "INSERT INTO coin_utxo VALUES (?,?,?,?,?,NULL)"
-    (encodeToBS txHash, nOut, i, encodeToBS pk, h)
-  Both  (Unspent pk i) h1 h2 -> basicExecute
+    (utxo :. out :. Only h)
+  Both  out h1 h2 -> basicExecute
     "INSERT INTO coin_utxo VALUES (?,?,?,?,?,?)"
-    (encodeToBS txHash, nOut, i, encodeToBS pk, h1,h2)
+    (utxo :. out :. (h1,h2))
 
 databaseStateView
   :: (MonadIO m, MonadThrow m, MonadDB m, MonadCached BData m)
@@ -586,7 +597,7 @@ data CoinDictM g = CoinDictM
 
 -- | Application monad for coin
 newtype CoinT g m a = CoinT { unCoinT :: ReaderT (CoinDictM g) m a }
-  deriving newtype (Functor,Applicative,Monad,MonadIO)
+  deriving newtype (Functor,Applicative,Monad,MonadIO,MonadFail)
   deriving newtype (MonadThrow,MonadCatch,MonadMask,MonadFork)
   -- HSChain instances
   deriving MonadLogger
