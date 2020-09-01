@@ -48,6 +48,8 @@ runHSChainT c (HSChainT m) = do
   cache <- newCached
   runReaderT m (c,cache)
 
+withHSChainT :: (MonadIO m, MonadMask m) => HSChainT a m x -> m x
+withHSChainT m = withDatabase "" $ \c -> runHSChainT c m
 
 ----------------------------------------------------------------
 -- Validators for mockchain
