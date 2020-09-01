@@ -5,6 +5,7 @@
 {-# LANGUAGE FlexibleContexts     #-}
 {-# LANGUAGE LambdaCase           #-}
 {-# LANGUAGE MultiWayIf           #-}
+{-# LANGUAGE OverloadedStrings    #-}
 {-# LANGUAGE PatternSynonyms      #-}
 {-# LANGUAGE PolyKinds            #-}
 {-# LANGUAGE RankNTypes           #-}
@@ -459,13 +460,13 @@ createConsensus
   :: (BlockData b, Monad m)
   => BlockDB m b
   -> StateView m b
+  -> BlockIndex b
   -> m (Consensus m b)
 -- NOTE: So far we only record full blocks and not headers. Thus we
 --       don't have any blocks we want to fetch and all candidate
 --       heads have all required blocks.
 -- NOTE; We don't track known bad blocks either.
-createConsensus db sView = do
-  bIdx <- buildBlockIndex db
+createConsensus db sView bIdx = do
   let c0 = Consensus
         { _blockIndex     = bIdx
         , _bestHead       = (bh, sView, makeLocator bh)

@@ -8,6 +8,7 @@
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase                 #-}
+{-# LANGUAGE NumDecimals                #-}
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE RecordWildCards            #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
@@ -16,24 +17,32 @@
 -- |
 module Main where
 
-import Control.Concurrent (forkIO)
+import Control.Concurrent (forkIO, threadDelay)
 import Control.Monad.IO.Class
 import Control.Monad.Reader
 import Control.Monad.Trans.Cont
 import Data.Maybe
+import Data.List (unfoldr)
+import qualified Data.ByteString as BS
+import qualified Data.Map.Strict as Map
+import qualified Data.Vector     as V
+import System.Random (randoms,mkStdGen)
 import Data.Yaml.Config (loadYamlSettings, requireEnv)
 import Options.Applicative
 
 import HSChain.Control.Channels
 import HSChain.Control.Util
+import HSChain.Control.Class
+import HSChain.Crypto
 import HSChain.Examples.Coin
 import HSChain.Logger
 import HSChain.Network.TCP
 import HSChain.PoW.Consensus
-import HSChain.PoW.Node (blockDatabase,Cfg(..))
+import HSChain.PoW.Node (Cfg(..))
 import HSChain.PoW.P2P
 import HSChain.PoW.P2P.Types
 import HSChain.PoW.Types
+import HSChain.PoW.Node (genericMiningLoop)
 import HSChain.Store.Query
 import HSChain.Types.Merkle.Types
 
@@ -49,7 +58,7 @@ genesis = GBlock
   , prevBlock   = Nothing
   , blockData   = Coin { coinData   = merkled []
                        , coinNonce  = 0
-                       , coinTarget = Target $ 2^(256-10 :: Int)
+                       , coinTarget = Target $ 2^(256-13 :: Int)
                        }
   }
 
@@ -68,18 +77,35 @@ main = do
       netcfg = NetCfg { nKnownPeers     = 3
                       , nConnectedPeers = 3
                       }
-  let sView = inMemoryView (blockID genesis)
   withConnection (fromMaybe "" cfgDB) $ \conn -> 
     withLogEnv "" "" (map makeScribe cfgLog) $ \logEnv -> runCoinT logEnv conn $ evalContT $ do
-      db  <- lift $ blockDatabase genesis
-      c0  <- lift $ createConsensus db sView
+      (db, bIdx, sView) <- lift $ coinStateView cfgPriv genesis
+      c0  <- lift $ createConsensus db sView bIdx
       pow <- startNode netcfg net cfgPeers db c0
+      -- report progress
       void $ liftIO $ forkIO $ do
         ch <- atomicallyIO (chainUpdate pow)
         forever $ do (bh,_) <- awaitIO ch
-                     print $ asHeader bh
+                     print (bhHeight bh, bhBID bh)
                      print $ retarget bh
-      lift $ miningLoop pow optMine
+      -- Mining and TX generation
+      case optMine of
+        True  -> do
+          cforkLinked $ txGeneratorLoop pow (cfgPriv : take 100 (makePrivKeyStream 1433))
+          lift $ genericMiningLoop pow
+        False -> liftIO $ forever $ threadDelay maxBound
+
+txGeneratorLoop
+  :: (MonadReadDB m, MonadIO m)
+  => PoW m Coin -> [PrivKey Alg] -> m ()
+txGeneratorLoop pow keyList = do
+  forever $ do
+    mtx <- generateTX keyVec keyMap
+    forM_ mtx $ sinkIO (postTransaction (mempoolAPI pow))
+    liftIO $ threadDelay 25e3
+  where
+    keyVec = V.fromList $ Map.keys keyMap
+    keyMap = Map.fromList [ (publicKey k, k) | k <- keyList ]
 
 
 ----------------------------------------------------------------
@@ -104,20 +130,15 @@ parser = do
     )
   return Opts{..}
 
--- | State view which doesn't do any block validation whatsoever
-inMemoryView
-  :: (Monad m, BlockData b)
-  => BlockID b
-  -> StateView m b
-inMemoryView = make (error "No revinding past genesis")
+makePrivKeyStream :: forall alg. CryptoSign alg => Int -> [PrivKey alg]
+makePrivKeyStream seed
+  = unfoldr step
+  $ randoms (mkStdGen seed)
   where
-    make previous bid = view
+    -- Size of key
+    keySize = privKeySize (Proxy @alg)
+    -- Generate single key
+    step stream = Just (k, stream')
       where
-        view = StateView
-          { stateBID    = bid
-          , applyBlock  = \_ bh _ -> return $ Right $ make view (bhBID bh)
-          , revertBlock = return previous
-          , flushState  = return view
-          , checkTx                  = error "Transaction checking is not supported"
-          , createCandidateBlockData = error "Block creation is not supported"
-          }
+        Just k    = decodeFromBS $ BS.pack bs
+        (bs, stream') = splitAt keySize stream

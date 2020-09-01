@@ -24,6 +24,7 @@ module HSChain.PoW.Node
   ( Cfg(..)
   , runNode
   , hoistCont
+  , genericMiningLoop
     -- * Block storage
   , inMemoryDB
   , blockDatabase
@@ -41,6 +42,7 @@ import Data.Word
 import Data.Yaml.Config
 import GHC.Generics (Generic)
 
+import HSChain.Crypto
 import HSChain.Control.Channels
 import HSChain.PoW.Consensus
 import HSChain.Logger
@@ -54,6 +56,7 @@ import HSChain.Types.Merkle.Types
 import HSChain.Control.Util
 import HSChain.Control.Class
 import HSChain.Config
+import HSChain.Examples.Coin (Alg)
 
 -- |Node's configuration.
 data Cfg = Cfg
@@ -62,6 +65,7 @@ data Cfg = Cfg
   , cfgLog   :: [ScribeSpec]
   , cfgMaxH  :: Maybe Height
   , cfgDB    :: Maybe FilePath
+  , cfgPriv  :: PrivKey Alg
   }
   deriving stock (Show, Generic)
   deriving (JSON.FromJSON) via SnakeCase (DropSmart (Config Cfg))
@@ -87,7 +91,7 @@ runNode pathsToConfig miningNode sView db = do
   let net = newNetworkTcp cfgPort
   withLogEnv "" "" (map makeScribe cfgLog) $ \logEnv ->
     runLoggerT logEnv $ evalContT $ do
-      c0  <- lift $ createConsensus db sView
+      c0  <- lift $ createConsensus db sView =<< buildBlockIndex db
       pow <- startNode netcfg net cfgPeers db c0
       when miningNode $ cforkLinked $ genericMiningLoop pow
       liftIO $ do

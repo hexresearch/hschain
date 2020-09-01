@@ -100,7 +100,7 @@ import qualified HSChain.Config
 ----------------------------------------------------------------
 
 -- | Context free TX validation. This function performs all checks
---   that could be done having onlyt
+--   that could be done having only transaction at hand.
 validateTxContextFree :: Tx -> Either CoinError ()
 validateTxContextFree (Deposit _ n)
   | n > 0 = return ()

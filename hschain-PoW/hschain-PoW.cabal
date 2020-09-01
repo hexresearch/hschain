@@ -36,6 +36,7 @@ Library
                      , data-default-class
                      , deepseq           >=1.4
                      , directory
+                     , generic-lens      >=0.2
                      , exceptions        >=0.8.3
                      , filepath
                      , katip
@@ -118,6 +119,7 @@ Executable hschain-PoW-coin
                      , mtl
                      , bytestring
                      , containers
+                     , vector
                      , random
                      , serialise
                      , exceptions
@@ -143,9 +145,13 @@ Test-suite hschain-PoW-tests
                      , hschain-net
                      --
                      , exceptions
+                     , bytestring
                      , containers
                      , serialise
                      , transformers
+                     , directory
+                     , random
+                     , generic-lens
                      , lens
                      , mtl
                      , stm
@@ -157,6 +163,7 @@ Test-suite hschain-PoW-tests
   Other-modules:       TM.Consensus
                        TM.Mempool
                        TM.P2P
+                       TM.Coin
                        TM.Store
                        TM.Types
                        TM.Util.Mockchain

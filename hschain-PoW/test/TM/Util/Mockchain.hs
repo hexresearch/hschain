@@ -6,7 +6,10 @@
 {-# LANGUAGE DerivingVia                #-}
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE LambdaCase                 #-}
 {-# LANGUAGE RankNTypes                 #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
+{-# LANGUAGE TypeApplications           #-}
 {-# LANGUAGE TypeFamilies               #-}
 {-# LANGUAGE UndecidableInstances       #-}
 module TM.Util.Mockchain where
@@ -21,9 +24,12 @@ import Control.Monad.Fail         (MonadFail)
 import Data.Bits
 import Data.List  (unfoldr)
 import Data.Word
-
+import qualified Data.ByteString as BS
+import System.Random    (randoms, mkStdGen)
 import System.IO.Unsafe (unsafePerformIO)
+import System.Timeout
 
+import HSChain.Crypto
 import HSChain.Control.Class
 import HSChain.Examples.Simple
 import HSChain.Logger
@@ -31,10 +37,17 @@ import HSChain.PoW.Types
 import HSChain.PoW.Consensus
 import HSChain.Store.Query
 import HSChain.Types.Merkle.Types
+import HSChain.Examples.Coin
 
 ----------------------------------------------------------------
 --
 ----------------------------------------------------------------
+
+testTimeout :: Double -> IO a -> IO a
+testTimeout t io =
+  timeout (round $ t * 1e6) io >>= \case
+    Just a  -> return a
+    Nothing -> error "Test timeout"
 
 mockchain :: (Num (Nonce cfg), Show (Nonce cfg), KVConfig cfg)
           => [Block (KV cfg)]
@@ -51,6 +64,23 @@ mockchain = gen : unfoldr ( Just
                                     , kvTarget     = Target $ shiftL 1 256 - 1
                                     }
                  }
+
+
+emptyCoinChain :: [Block Coin]
+emptyCoinChain = gen : unfoldr (Just . (\b -> (b,b)) . mineCoin [] . Just) gen
+  where
+    gen = mineCoin [] Nothing
+
+mineCoin :: [TxCoin] -> Maybe (Block Coin) -> Block Coin
+mineCoin txs mb = GBlock
+  { blockHeight = maybe (Height 0) (succ . blockHeight) mb
+  , blockTime   = Time 0
+  , prevBlock   = blockID <$> mb
+  , blockData   = Coin { coinData       = merkled txs
+                       , coinNonce      = 1337
+                       , coinTarget     = Target $ shiftL 1 256 - 1
+                       }
+  }
 
 mineBlock :: (Num (Nonce cfg), Show (Nonce cfg), KVConfig cfg)
           => [(Int,String)] -> Block (KV cfg) -> Block (KV cfg)
@@ -130,6 +160,28 @@ inMemoryView = make (error "No revinding past genesis")
           , createCandidateBlockData = error "Block creation is not supported"
           }
 
+-- | State view which doesn't do any block validation whatsoever
+inMemoryViewCoin
+  :: (Monad m)
+  => BlockID Coin
+  -> StateView m Coin
+inMemoryViewCoin = make (error "No revinding past genesis")
+  where
+    make previous bid = view
+      where
+        view = StateView
+          { stateBID    = bid
+          , applyBlock  = \_ bh _ -> return $ Right $ make view (bhBID bh)
+          , revertBlock = return previous
+          , flushState  = return view
+          , checkTx                  = error "Transaction checking is not supported"
+          , createCandidateBlockData = \bh _ _ -> return $ Coin
+            { coinData   = merkled []
+            , coinTarget = retarget bh
+            , coinNonce  = 0
+            }
+          }
+
 -- | Monad transformer for use in tests
 newtype HSChainT m x = HSChainT (ReaderT (Connection 'RW) m x)
   deriving newtype (Functor,Applicative,Monad,MonadIO,MonadFail)
@@ -146,9 +198,28 @@ runHSChainT c (HSChainT m) = do
 withHSChainT :: (MonadIO m, MonadMask m) => HSChainT m a -> m a
 withHSChainT m = withConnection "" $ \c -> runHSChainT c m
 
+withHSChainTDB :: (MonadIO m, MonadMask m) => FilePath -> HSChainT m a -> m a
+withHSChainTDB db m = withConnection db $ \c -> runHSChainT c m
+
 data Abort = Abort Height
   deriving stock    (Show)
   deriving anyclass (Exception)
 
 catchAbort :: MonadCatch m => (forall a. m a) -> m Height
 catchAbort action = handle (\(Abort h) -> return h) action
+
+k1,k2 :: PrivKey Alg
+k1:k2:_ = makePrivKeyStream 1334
+
+makePrivKeyStream :: forall alg. CryptoSign alg => Int -> [PrivKey alg]
+makePrivKeyStream seed
+  = unfoldr step
+  $ randoms (mkStdGen seed)
+  where
+    -- Size of key
+    keySize = privKeySize (Proxy @alg)
+    -- Generate single key
+    step stream = Just (k, stream')
+      where
+        Just k    = decodeFromBS $ BS.pack bs
+        (bs, stream') = splitAt keySize stream
