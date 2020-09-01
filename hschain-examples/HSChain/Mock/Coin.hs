@@ -587,7 +587,7 @@ data CoinDictM g = CoinDictM
 
 -- | Application monad for coin
 newtype CoinT g m a = CoinT { unCoinT :: ReaderT (CoinDictM g) m a }
-  deriving newtype (Functor,Applicative,Monad,MonadIO)
+  deriving newtype (Functor,Applicative,Monad,MonadIO,MonadFail)
   deriving newtype (MonadThrow,MonadCatch,MonadMask,MonadFork)
   -- HSChain instances
   deriving MonadLogger
