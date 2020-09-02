@@ -256,10 +256,8 @@ processSend transaction@(Send pubK _ TxSend{..}) CoinState{..} = do
 
 -- | Specification of generator of transactions
 data TxGenerator = TxGenerator
-  { genPrivateKeys    :: V.Vector (PrivKey (Alg BData))
+  { genPrivateKeys    :: V.Vector (PrivKey (Alg BData), PublicKey (Alg BData))
     -- ^ Private keys for which we can generate transactions
-  , genDestinaions    :: V.Vector (PublicKey (Alg BData))
-    -- ^ List of all addresses to which we can send money
   , genDelay          :: Int
     -- ^ Delay between invokations of generator
   , genMaxMempoolSize :: Int
@@ -275,14 +273,13 @@ makeCoinGenerator CoinSpecification{..} = liftIO $ do
   genPRNG  <- MWC.createSystemRandom
   return $ do genDelay <- coinGeneratorDelay
               return TxGenerator
-                { genPrivateKeys    = V.fromList privK
-                , genDestinaions    = V.fromList pubK
+                { genPrivateKeys    = V.fromList [ (k, publicKey k) | k <- privK ]
                 , genMaxMempoolSize = coinMaxMempoolSize
                 , ..
                 }
   where
     privK = take coinWallets $ makePrivKeyStream coinWalletsSeed
-    pubK  = publicKey <$> privK
+
 
 -- | Run generator for transactions
 transactionGenerator
@@ -302,11 +299,10 @@ transactionGenerator gen mempool coinState push = forever $ do
 
 generateTransaction :: MonadIO m => TxGenerator -> CoinState -> m Tx
 generateTransaction TxGenerator{..} CoinState{..} = liftIO $ do
-  privK  <- selectFromVec genPRNG genPrivateKeys
-  target <- selectFromVec genPRNG genDestinaions
+  (privK,pubK) <- selectFromVec genPRNG genPrivateKeys
+  (_,target)   <- selectFromVec genPRNG genPrivateKeys
   amount <- fromIntegral <$> MWC.uniformR (1,20::Int) genPRNG
-  let pubK      = publicKey privK
-      allInputs = toList
+  let allInputs = toList
                 $ fromMaybe Set.empty
                 $ pubK `Map.lookup` utxoLookup
       inputs    = findInputs amount [ (utxo, n)
@@ -546,10 +542,9 @@ dbGenerateTransaction
   :: (MonadIO m, MonadReadDB m, MonadCached BData m)
   => TxGenerator -> m Tx
 dbGenerateTransaction TxGenerator{..} = do
-  privK  <- liftIO $ selectFromVec genPRNG genPrivateKeys
-  target <- liftIO $ selectFromVec genPRNG genDestinaions
-  amount <- liftIO $ fromIntegral <$> MWC.uniformR (1,20::Int) genPRNG
-  let pubK = publicKey privK
+  (privK,pubK) <- liftIO $ selectFromVec genPRNG genPrivateKeys
+  (_,target)   <- liftIO $ selectFromVec genPRNG genPrivateKeys
+  amount       <- liftIO $ fromIntegral <$> MWC.uniformR (1,20::Int) genPRNG
   allInputs <- fmap (fmap ((\(nO,h,nC) -> (UTXO nO (fromJust $ decodeFromBS h), nC))))
              $ queryRO $ basicQuery
                "SELECT n_out, tx_hash, n_coins \
