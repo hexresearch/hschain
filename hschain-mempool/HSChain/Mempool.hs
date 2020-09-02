@@ -264,6 +264,7 @@ data MempoolState tid tx = MempoolState
   }
 
 instance Foldable (MempoolState tid) where
+  length      = IMap.size . mempFIFO
   foldMap f m = foldMap (f . snd) (mempFIFO m)
 
 emptyMempoolState :: (tx -> tid) -> MempoolState tid tx
