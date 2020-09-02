@@ -556,10 +556,10 @@ dbGenerateTransaction TxGenerator{..} = do
   let inputs    = findInputs amount allInputs
       avail     = sum (snd <$> inputs)
       change    = avail - amount
-      outs | change < 0 = [ Unspent target avail]
-           | otherwise  = [ Unspent target amount
-                          , Unspent pubK   change
-                          ]
+      outs | change == 0 = [ Unspent target avail]
+           | otherwise   = [ Unspent target amount
+                           , Unspent pubK   change
+                           ]
       tx = TxSend { txInputs  = map fst inputs
                   , txOutputs = outs
                   }
