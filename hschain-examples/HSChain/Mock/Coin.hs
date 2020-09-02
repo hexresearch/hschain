@@ -75,7 +75,7 @@ import qualified Data.Vector         as V
 import qualified Data.Map.Strict     as Map
 import qualified Data.Set            as Set
 import Katip           (Namespace,LogEnv)
-import System.Random   (randomRIO)
+import qualified System.Random.MWC as MWC
 import GHC.Generics    (Generic)
 
 import HSChain.Types.Blockchain
@@ -263,20 +263,23 @@ data TxGenerator = TxGenerator
   , genDelay          :: Int
     -- ^ Delay between invokations of generator
   , genMaxMempoolSize :: Int
+  , genPRNG           :: MWC.GenIO
   }
 
 -- | Create generator for coin transactions
 makeCoinGenerator
-  :: CoinSpecification
-  -> Maybe TxGenerator
-makeCoinGenerator CoinSpecification{..} = do
-  genDelay <- coinGeneratorDelay
-  return TxGenerator
-    { genPrivateKeys    = V.fromList privK
-    , genDestinaions    = V.fromList pubK
-    , genMaxMempoolSize = coinMaxMempoolSize
-    , ..
-    }
+  :: MonadIO m
+  => CoinSpecification
+  -> m (Maybe TxGenerator)
+makeCoinGenerator CoinSpecification{..} = liftIO $ do
+  genPRNG  <- MWC.createSystemRandom
+  return $ do genDelay <- coinGeneratorDelay
+              return TxGenerator
+                { genPrivateKeys    = V.fromList privK
+                , genDestinaions    = V.fromList pubK
+                , genMaxMempoolSize = coinMaxMempoolSize
+                , ..
+                }
   where
     privK = take coinWallets $ makePrivKeyStream coinWalletsSeed
     pubK  = publicKey <$> privK
@@ -299,9 +302,9 @@ transactionGenerator gen mempool coinState push = forever $ do
 
 generateTransaction :: MonadIO m => TxGenerator -> CoinState -> m Tx
 generateTransaction TxGenerator{..} CoinState{..} = liftIO $ do
-  privK  <- selectFromVec genPrivateKeys
-  target <- selectFromVec genDestinaions
-  amount <- randomRIO (1,20)
+  privK  <- selectFromVec genPRNG genPrivateKeys
+  target <- selectFromVec genPRNG genDestinaions
+  amount <- fromIntegral <$> MWC.uniformR (1,20::Int) genPRNG
   let pubK      = publicKey privK
       allInputs = toList
                 $ fromMaybe Set.empty
@@ -321,9 +324,9 @@ generateTransaction TxGenerator{..} CoinState{..} = liftIO $ do
                   }
   return $ Send pubK (signHashed privK tx) tx
 
-selectFromVec :: V.Vector a -> IO a
-selectFromVec v = do
-  i <- randomRIO (0, V.length v - 1)
+selectFromVec :: MWC.GenIO -> V.Vector a -> IO a
+selectFromVec gen v = do
+  i <- MWC.uniformR (0, V.length v - 1) gen
   return $ v V.! i
 
 findInputs :: (Num i, Ord i) => i -> [(a,i)] -> [(a,i)]
@@ -542,9 +545,9 @@ dbGenerateTransaction
   :: (MonadIO m, MonadReadDB m, MonadCached BData m)
   => TxGenerator -> m Tx
 dbGenerateTransaction TxGenerator{..} = do
-  privK  <- liftIO $ selectFromVec genPrivateKeys
-  target <- liftIO $ selectFromVec genDestinaions
-  amount <- liftIO $ randomRIO (1,20)
+  privK  <- liftIO $ selectFromVec genPRNG genPrivateKeys
+  target <- liftIO $ selectFromVec genPRNG genDestinaions
+  amount <- liftIO $ fromIntegral <$> MWC.uniformR (1,20::Int) genPRNG
   let pubK = publicKey privK
   allInputs <- fmap (fmap ((\(nO,h,nC) -> (UTXO nO (fromJust $ decodeFromBS h), nC))))
              $ queryRO $ basicQuery
@@ -662,7 +665,7 @@ interpretSpec cfg net NodeSpec{..} valSet coin@CoinSpecification{..} cb = do
     , nodeStateView     = state
     }
   -- Allocate transactions generators
-  txGenerator <- case makeCoinGenerator coin of
+  txGenerator <- makeCoinGenerator coin >>= \case
     Nothing  -> return []
     Just txG -> do
       cursor <- getMempoolCursor $ mempoolHandle $ stateMempool state
