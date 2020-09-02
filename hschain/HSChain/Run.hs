@@ -86,7 +86,7 @@ runNode Configuration{..} NodeDescription{..} = do
   return
     [ id $ descendNamespace "net"
          $ startPeerDispatcher cfgNetwork bchNetwork bchInitialPeers appCh
-           (mempoolHandle $ stateMempool st)
+           (stateMempool st)
     , id $ descendNamespace "consensus"
          $ runApplication cfgConsensus nodeValidationKey st nodeCallbacks appCh
     -- , forever $ do

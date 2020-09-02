@@ -41,10 +41,11 @@ import HSChain.Control.Class
 import HSChain.Control.Delay
 import HSChain.Control.Shepherd
 import HSChain.Control.Util
+import HSChain.Control.Channels
 import HSChain.Crypto (Hashed)
 import HSChain.Internal.Types.Config
-import HSChain.Internal.Types.Consensus
 import HSChain.Logger
+import HSChain.Mempool
 import HSChain.Monitoring
 import HSChain.Network.Mock (MockNetError)
 import HSChain.Network.Types
@@ -70,7 +71,7 @@ acceptLoop
   => NetworkCfg app
   -> NetworkAPI
   -> PeerChans n a
-  -> MempoolHandle (Hashed (Alg a) (TX a)) (TX a)
+  -> Mempool m (Hashed (Alg a) (TX a)) (TX a)
   -> m ()
 acceptLoop cfg NetworkAPI{..} peerCh mempool = do
   logger DebugS "Starting accept loop" ()
@@ -108,7 +109,7 @@ connectPeerTo
   => NetworkAPI
   -> NetAddr
   -> PeerChans n a
-  -> MempoolHandle (Hashed (Alg a) (TX a)) (TX a)
+  -> Mempool m (Hashed (Alg a) (TX a)) (TX a)
   -> m ()
 connectPeerTo NetworkAPI{..} addr peerCh mempool =
   -- Ignore all exceptions to prevent apparing of error messages in stderr/stdout.
@@ -138,19 +139,19 @@ startPeer
   -> PeerChans n a         -- ^ Communication with main application
                            --   and peer dispatcher
   -> P2PConnection         -- ^ Functions for interaction with network
-  -> MempoolHandle (Hashed (Alg a) (TX a)) (TX a)
+  -> Mempool m (Hashed (Alg a) (TX a)) (TX a)
   -> m ()
 startPeer peerAddrTo peerCh@PeerChans{..} conn mempool = logOnException $
   descendNamespace (T.pack (show peerAddrTo)) $ logOnException $ do
     logger InfoS "Starting peer" ()
     gossipCh <- liftIO (newTBQueueIO 10)
     recvCh   <- liftIO newTChanIO
-    cursor   <- getMempoolCursor mempool
+    cursor   <- getMempoolCursor $ mempoolHandle mempool
     runConcurrently
       [ descendNamespace "recv"    $ peerReceive   recvCh conn
       , descendNamespace "send"    $ peerSend      peerCh gossipCh conn
       , descendNamespace "FSM"     $ peerFSM       peerCh gossipCh recvCh cursor
-      , descendNamespace "mempool" $ mempoolThread p2pConfig gossipCh cursor
+      , descendNamespace "mempool" $ mempoolThread p2pConfig gossipCh mempool
       , descendNamespace "PEX"     $ pexCapacityThread peerRegistry p2pConfig gossipCh
       ]
 
@@ -211,13 +212,12 @@ mempoolThread
   :: (MonadLogger m, MonadCatch m, MonadIO m)
   => NetworkCfg app
   -> TBQueue (GossipMsg a)
-  -> MempoolCursor alg (TX a)
+  -> Mempool m (Hashed alg (TX a)) (TX a)
   -> m b
-mempoolThread NetworkCfg{..} gossipCh MempoolCursor{..} =
+mempoolThread NetworkCfg{..} gossipCh Mempool{..} = do
+  ch <- atomicallyIO makeNewTxBroadcast
   logOnException $ forever $ do
-    waitMSec gossipDelayMempool
-    mapM_ (atomicallyIO . writeTBQueue gossipCh . GossipTx)
-      =<< advanceCursor
+    atomicallyIO . writeTBQueue gossipCh . GossipTx =<< awaitIO ch 
 
 -- | Thread for PEX interaction with peer.
 --
@@ -299,7 +299,7 @@ pexFSM
   => NetworkCfg app
   -> NetworkAPI
   -> PeerChans n a
-  -> MempoolHandle (Hashed (Alg a) (TX a)) (TX a)
+  -> Mempool m (Hashed (Alg a) (TX a)) (TX a)
   -> m b
 pexFSM cfg net@NetworkAPI{..} peerCh@PeerChans{..} mempool = descendNamespace "PEX" $ do
   -- Start by connecting to peers
