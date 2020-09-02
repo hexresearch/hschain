@@ -551,7 +551,10 @@ dbGenerateTransaction TxGenerator{..} = do
   let pubK = publicKey privK
   allInputs <- fmap (fmap ((\(nO,h,nC) -> (UTXO nO (fromJust $ decodeFromBS h), nC))))
              $ queryRO $ basicQuery
-               "SELECT n_out, tx_hash, n_coins FROM coin_utxo WHERE pk=? AND h_spent IS NULL"
+               "SELECT n_out, tx_hash, n_coins \
+               \  FROM coin_utxo \
+               \ WHERE pk=? AND h_spent IS NULL \
+               \ ORDER BY random() LIMIT 20"
                (Only (encodeToBS pubK))
   let inputs    = findInputs amount allInputs
       avail     = sum (snd <$> inputs)
