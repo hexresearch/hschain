@@ -431,7 +431,7 @@ dbProcessSend h tx@(Send pk _ TxSend{..}) UtxoDiff{..} = do
   return
     $ UtxoDiff baseH
     $ (\m -> foldl' addOutput  m ([0..] `zip` txOutputs))
-    $ (\m -> foldl' spendInput m txInputs)    
+    $ (\m -> foldl' spendInput m txInputs)
     $ utxoDiff
   where
     txHash = hashed tx
@@ -473,7 +473,7 @@ databaseStateView valSetH0 = do
   --
   --   - viewH  - which height is already written to database
   --   - txList - list of transcation to remove duting commit
-  --   - vals   - validator set after 
+  --   - vals   - validator set after
   let make stateH txList vals diff = sview where
         sview = StateView
           { stateHeight   = stateH
@@ -487,7 +487,7 @@ databaseStateView valSetH0 = do
                 mustQueryRW $ do
                   mapM_ dbRecordDiff $ Map.toList $ utxoDiff diff
                 -- We ask mempool to start filtering TX after we done writing
-                startMempoolFiltering $ \tx -> 
+                startMempoolFiltering $ \tx ->
                   fmap isRight $ queryRO $ runExceptT $ dbProcessSend (succ h) tx diff
                 return $ make stateH [] vals (UtxoDiff (succH stateH) Map.empty)
           --
@@ -516,7 +516,7 @@ databaseStateView valSetH0 = do
           -- Mempool
           , stateMempool = mem
           }
-  -- Read 
+  -- Read
   return ( make h0 [] valSet0 (UtxoDiff (succH h0) Map.empty)
          , [memThr]
          )
@@ -658,7 +658,7 @@ interpretSpec cfg net NodeSpec{..} valSet coin@CoinSpecification{..} cb = do
   --
   -- We must ensure that database is initialized
   initDatabase
-  mustQueryRW initCoinDB 
+  mustQueryRW initCoinDB
   (state,memThr) <- databaseStateView $ genesisValSet genesis
   actions               <- runNode cfg NodeDescription
     { nodeValidationKey = nspecPrivKey
