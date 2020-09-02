@@ -54,6 +54,14 @@ module HSChain.Store.Query (
   , basicExecute
   , basicExecute_
   , rollback
+    -- ** Prepared statements
+  , PreparedStmt
+  , PreparedQuery
+  , prepareStatement
+  , prepareQuery
+  , preparedQuery
+  , preparedQuery1
+  , preparedExecute
     -- * Query transformer
   , QueryT(..)
   , runQueryROT
@@ -98,6 +106,7 @@ import Control.Monad.Trans.Except            (ExceptT(..))
 import Control.Monad.Trans.Identity          (IdentityT(..))
 import Data.Coerce
 import Data.Int
+import Data.IORef
 import Data.Generics.Product.Fields (HasField'(..))
 import Data.Generics.Product.Typed  (HasType(..))
 import qualified Database.SQLite.Simple           as SQL
@@ -124,8 +133,9 @@ data Access = RO                -- ^ Read-only access
 -- | Connection to sqlite database. It's tagged by level of access to
 --   database (read only or read\/write) and parametrized by cache
 data Connection (rw :: Access) = Connection
-  { connMutex :: !(MVar Bool)
-  , connConn  :: !SQL.Connection
+  { connMutex    :: !(MVar Bool)
+  , connConn     :: !SQL.Connection
+  , connPrepared :: !(IORef [SQL.Statement])
   }
 
 -- | Convert read-only or read-write connection to read-only one.
@@ -136,7 +146,8 @@ connectionRO = coerce
 openConnection :: (MonadIO m) => FilePath -> m (Connection rw)
 openConnection db = liftIO $
   bracketOnError (SQL.open db) (SQL.close) $ \connConn -> do
-    connMutex  <- newMVar True
+    connMutex    <- newMVar True
+    connPrepared <- newIORef []
     -- SQLite have support for retrying transactions in case database is
     -- busy. Here we switch it on
     SQL.execute_ connConn "PRAGMA busy_timeout = 10"
@@ -155,11 +166,13 @@ withConnection
 withConnection db = bracket (openConnection db) closeConnection'
 
 closeConnection' :: MonadIO m => Connection rw -> m ()
-closeConnection' Connection{..} = liftIO $ uninterruptibleMask_ $
+closeConnection' Connection{..} = liftIO $ uninterruptibleMask_ $ do
   modifyMVarM_ connMutex $ \case
     False -> return False
-    True  -> False <$ SQL.close connConn
-
+    True  -> do
+      mapM_ SQL.closeStatement =<< readIORef connPrepared
+      SQL.close connConn
+      return False
 
 
 ----------------------------------------------------------------
@@ -327,7 +340,6 @@ mustQueryRW q
   = throwNothing UnexpectedRollback =<< flip runQueryRW q =<< askConnectionRW
 
 
-
 basicQuery :: (SQL.ToRow p, SQL.FromRow q, MonadQueryRO m) => SQL.Query -> p -> m [q]
 basicQuery sql p = liftQueryRO $ Query $ do
   conn <- asks connConn
@@ -489,6 +501,57 @@ mustQueryRWT
   -> m a
 mustQueryRWT q = throwNothing UnexpectedRollback =<< flip runQueryRWT q =<< askConnectionRW
 
+
+----------------------------------------------------------------
+-- Prepared statements
+----------------------------------------------------------------
+
+newtype PreparedStmt p = PreparedStmt SQL.Statement
+
+newtype PreparedQuery p res = PreparedQuery SQL.Statement
+
+prepareStatement
+  :: (MonadMask m, MonadIO m, MonadDB m)
+  => SQL.Query -> m (PreparedStmt p)
+prepareStatement sql = do
+  c <- askConnectionRW
+  PreparedStmt <$> basicPrepare c sql
+
+prepareQuery
+  :: (MonadMask m, MonadIO m, MonadReadDB m)
+  => SQL.Query -> m (PreparedQuery p r)
+prepareQuery sql = do
+  c <- askConnectionRO
+  PreparedQuery <$> basicPrepare c sql
+
+basicPrepare
+  :: (MonadMask m, MonadIO m)
+  => Connection rw -> SQL.Query -> m SQL.Statement
+basicPrepare Connection{..} sql = liftIO $ mask_ $ do
+  stmt <- SQL.openStatement connConn sql
+  atomicModifyIORef' connPrepared (\ss -> (stmt:ss, ()))
+  return stmt
+
+preparedExecute :: (SQL.ToRow p, MonadQueryRW m) => PreparedStmt p -> p -> m ()
+preparedExecute (PreparedStmt stmt) p = liftQueryRW $ Query $ liftIO $ do
+  -- There's no special veriosn for prepared statements that doesn't
+  -- return data. So we execute with dummy dictionary.
+  SQL.bind stmt p
+  _ <- SQL.nextRow @[Int] stmt `finally` SQL.reset stmt
+  return ()
+
+preparedQuery :: (SQL.ToRow p, SQL.FromRow q, MonadQueryRO m) => PreparedQuery p q -> p -> m [q]
+preparedQuery (PreparedQuery stmt) p = liftQueryRO $ Query $ liftIO $ do
+  SQL.bind stmt p
+  let fetchAll xs = SQL.nextRow stmt >>= \case
+        Nothing -> return xs
+        Just x  -> fetchAll (xs . (x:))
+  (($ []) <$> fetchAll id) `finally` SQL.reset stmt
+
+preparedQuery1 :: (SQL.ToRow p, SQL.FromRow q, MonadQueryRO m) => PreparedQuery p q -> p -> m (Maybe q)
+preparedQuery1 (PreparedQuery stmt) p = liftQueryRO $ Query $ liftIO $ do
+  SQL.bind stmt p
+  SQL.nextRow stmt `finally` SQL.reset stmt
 
 
 
