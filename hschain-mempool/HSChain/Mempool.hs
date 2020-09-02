@@ -60,7 +60,7 @@ import GHC.Generics              (Generic)
 
 import HSChain.Crypto
 import HSChain.Control.Util
-
+import HSChain.Control.Channels
 
 ----------------------------------------------------------------
 -- Mempool
@@ -79,6 +79,8 @@ data Mempool m tid tx = Mempool
   , mempoolHandle         :: MempoolHandle tid tx
     -- ^ Mempool handle for use in gossip. It's will to be removed
     --   if\/when gossip logic changes.
+  , makeNewTxBroadcast    :: STM (Src tx)
+    -- ^ Create broadcast channel for new transactions
   }
 
 nullMempool :: Monad m => (tx -> tid) -> Mempool m tid tx
@@ -91,6 +93,7 @@ nullMempool toTID = Mempool
     , pushTxAsync   = \_ -> return ()
     , advanceCursor = return Nothing
     }
+  , makeNewTxBroadcast    = return (Src retry)
   }
 
 -- | Compute current size of a mempool
@@ -124,12 +127,14 @@ newMempool
   -> (tx -> Bool)
   -> m (Mempool m tid tx, m ())
 newMempool toTID basicValidation = do
-  dict <- newMempoolDict toTID basicValidation
+  (sinkTx, mkTx) <- broadcastPair
+  dict <- newMempoolDict toTID basicValidation sinkTx
   let mempool = Mempool
         { getMempoolState       = liftIO $ readTVarIO $ varMempool dict
         , removeTxByHashes      = atomicallyIO . writeTChan (chPushTx dict) . CmdRemoveTx
         , startMempoolFiltering = atomicallyIO . writeTChan (chPushTx dict) . CmdStartFiltering
         , mempoolHandle         = makeMempoolHandle dict
+        , makeNewTxBroadcast    = mkTx
         }
   return ( mempool , runMempool dict )
 
@@ -145,6 +150,7 @@ data MempoolDict m tid tx = MempoolDict
   , varValidate     :: TVar (tx -> m Bool)
   , varPending      :: TVar [tid]
   , chPushTx        :: TChan (MempoolCmd m tid tx)
+  , broadcastTx     :: Sink tx
   }
 
 -- | Command to push new TX to mempool
@@ -162,8 +168,8 @@ data MempoolCmd m tid tx
     --   'varMempool' variable using this method ensures that previous
     --   command completed.
 
-newMempoolDict :: MonadIO m => (tx -> tid) -> (tx -> Bool) -> m (MempoolDict m tid tx)
-newMempoolDict dictToTID basicValidation = liftIO $ do
+newMempoolDict :: MonadIO m => (tx -> tid) -> (tx -> Bool) -> Sink tx -> m (MempoolDict m tid tx)
+newMempoolDict dictToTID basicValidation broadcastTx = liftIO $ do
   varMempool   <- newTVarIO $ emptyMempoolState dictToTID
   varValidate  <- newTVarIO $ const $ return False
   varPending   <- newTVarIO []
@@ -220,8 +226,10 @@ handleCommand MempoolDict{..} = \case
         =<< liftIO (readTVarIO varMempool)
     case mmem of
       Nothing   -> return ()
-      Just mem' -> atomicallyIO $ writeTVar varMempool mem'
+      Just mem' -> do atomicallyIO $ writeTVar varMempool mem'
+                      sinkIO broadcastTx tx
     liftIO $ forM_ retVar $ \v -> tryPutMVar v (tid <$ mmem)
+
   --
   CmdRemoveTx txs -> do
     atomicallyIO $ modifyTVar' varMempool $ mempoolRemoveTX txs
