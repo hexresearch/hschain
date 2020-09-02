@@ -124,7 +124,7 @@ class Log(object):
     def mempool(self):
         "Raw mempool stats"
         df = self.df
-        mempool = df[df['ns'].apply(lambda ns: ns == ['consensus','mempool'])].drop(['ns'], axis=1).copy()
+        mempool = df[df['ns'].apply(lambda ns: ns == ['mempool'])].drop(['ns'], axis=1).copy()
         mempool['size']      = mempool['data'].apply(lambda x: x['size'])
         mempool['filtered']  = mempool['data'].apply(lambda x: x['filtered'])
         mempool['added']     = mempool['data'].apply(lambda x: x['added'])
