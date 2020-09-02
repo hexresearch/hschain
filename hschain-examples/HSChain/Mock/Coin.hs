@@ -75,7 +75,7 @@ import qualified Data.Vector         as V
 import qualified Data.Map.Strict     as Map
 import qualified Data.Set            as Set
 import Katip           (Namespace,LogEnv)
-import System.Random   (randomRIO)
+import qualified System.Random.MWC as MWC
 import GHC.Generics    (Generic)
 
 import HSChain.Types.Blockchain
@@ -263,20 +263,23 @@ data TxGenerator = TxGenerator
   , genDelay          :: Int
     -- ^ Delay between invokations of generator
   , genMaxMempoolSize :: Int
+  , genPRNG           :: MWC.GenIO
   }
 
 -- | Create generator for coin transactions
 makeCoinGenerator
-  :: CoinSpecification
-  -> Maybe TxGenerator
-makeCoinGenerator CoinSpecification{..} = do
-  genDelay <- coinGeneratorDelay
-  return TxGenerator
-    { genPrivateKeys    = V.fromList privK
-    , genDestinaions    = V.fromList pubK
-    , genMaxMempoolSize = coinMaxMempoolSize
-    , ..
-    }
+  :: MonadIO m
+  => CoinSpecification
+  -> m (Maybe TxGenerator)
+makeCoinGenerator CoinSpecification{..} = liftIO $ do
+  genPRNG  <- MWC.createSystemRandom
+  return $ do genDelay <- coinGeneratorDelay
+              return TxGenerator
+                { genPrivateKeys    = V.fromList privK
+                , genDestinaions    = V.fromList pubK
+                , genMaxMempoolSize = coinMaxMempoolSize
+                , ..
+                }
   where
     privK = take coinWallets $ makePrivKeyStream coinWalletsSeed
     pubK  = publicKey <$> privK
@@ -299,9 +302,9 @@ transactionGenerator gen mempool coinState push = forever $ do
 
 generateTransaction :: MonadIO m => TxGenerator -> CoinState -> m Tx
 generateTransaction TxGenerator{..} CoinState{..} = liftIO $ do
-  privK  <- selectFromVec genPrivateKeys
-  target <- selectFromVec genDestinaions
-  amount <- randomRIO (1,20)
+  privK  <- selectFromVec genPRNG genPrivateKeys
+  target <- selectFromVec genPRNG genDestinaions
+  amount <- fromIntegral <$> MWC.uniformR (1,20::Int) genPRNG
   let pubK      = publicKey privK
       allInputs = toList
                 $ fromMaybe Set.empty
@@ -321,9 +324,9 @@ generateTransaction TxGenerator{..} CoinState{..} = liftIO $ do
                   }
   return $ Send pubK (signHashed privK tx) tx
 
-selectFromVec :: V.Vector a -> IO a
-selectFromVec v = do
-  i <- randomRIO (0, V.length v - 1)
+selectFromVec :: MWC.GenIO -> V.Vector a -> IO a
+selectFromVec gen v = do
+  i <- MWC.uniformR (0, V.length v - 1) gen
   return $ v V.! i
 
 findInputs :: (Num i, Ord i) => i -> [(a,i)] -> [(a,i)]
@@ -428,7 +431,7 @@ dbProcessSend h tx@(Send pk _ TxSend{..}) UtxoDiff{..} = do
   return
     $ UtxoDiff baseH
     $ (\m -> foldl' addOutput  m ([0..] `zip` txOutputs))
-    $ (\m -> foldl' spendInput m txInputs)    
+    $ (\m -> foldl' spendInput m txInputs)
     $ utxoDiff
   where
     txHash = hashed tx
@@ -470,7 +473,7 @@ databaseStateView valSetH0 = do
   --
   --   - viewH  - which height is already written to database
   --   - txList - list of transcation to remove duting commit
-  --   - vals   - validator set after 
+  --   - vals   - validator set after
   let make stateH txList vals diff = sview where
         sview = StateView
           { stateHeight   = stateH
@@ -484,7 +487,7 @@ databaseStateView valSetH0 = do
                 mustQueryRW $ do
                   mapM_ dbRecordDiff $ Map.toList $ utxoDiff diff
                 -- We ask mempool to start filtering TX after we done writing
-                startMempoolFiltering $ \tx -> 
+                startMempoolFiltering $ \tx ->
                   fmap isRight $ queryRO $ runExceptT $ dbProcessSend (succ h) tx diff
                 return $ make stateH [] vals (UtxoDiff (succH stateH) Map.empty)
           --
@@ -513,7 +516,7 @@ databaseStateView valSetH0 = do
           -- Mempool
           , stateMempool = mem
           }
-  -- Read 
+  -- Read
   return ( make h0 [] valSet0 (UtxoDiff (succH h0) Map.empty)
          , [memThr]
          )
@@ -542,21 +545,24 @@ dbGenerateTransaction
   :: (MonadIO m, MonadReadDB m, MonadCached BData m)
   => TxGenerator -> m Tx
 dbGenerateTransaction TxGenerator{..} = do
-  privK  <- liftIO $ selectFromVec genPrivateKeys
-  target <- liftIO $ selectFromVec genDestinaions
-  amount <- liftIO $ randomRIO (1,20)
+  privK  <- liftIO $ selectFromVec genPRNG genPrivateKeys
+  target <- liftIO $ selectFromVec genPRNG genDestinaions
+  amount <- liftIO $ fromIntegral <$> MWC.uniformR (1,20::Int) genPRNG
   let pubK = publicKey privK
   allInputs <- fmap (fmap ((\(nO,h,nC) -> (UTXO nO (fromJust $ decodeFromBS h), nC))))
              $ queryRO $ basicQuery
-               "SELECT n_out, tx_hash, n_coins FROM coin_utxo WHERE pk=? AND h_spent IS NULL"
+               "SELECT n_out, tx_hash, n_coins \
+               \  FROM coin_utxo \
+               \ WHERE pk=? AND h_spent IS NULL \
+               \ ORDER BY random() LIMIT 20"
                (Only (encodeToBS pubK))
   let inputs    = findInputs amount allInputs
       avail     = sum (snd <$> inputs)
       change    = avail - amount
-      outs | change < 0 = [ Unspent target avail]
-           | otherwise  = [ Unspent target amount
-                          , Unspent pubK   change
-                          ]
+      outs | change == 0 = [ Unspent target avail]
+           | otherwise   = [ Unspent target amount
+                           , Unspent pubK   change
+                           ]
       tx = TxSend { txInputs  = map fst inputs
                   , txOutputs = outs
                   }
@@ -652,7 +658,7 @@ interpretSpec cfg net NodeSpec{..} valSet coin@CoinSpecification{..} cb = do
   --
   -- We must ensure that database is initialized
   initDatabase
-  mustQueryRW initCoinDB 
+  mustQueryRW initCoinDB
   (state,memThr) <- databaseStateView $ genesisValSet genesis
   actions               <- runNode cfg NodeDescription
     { nodeValidationKey = nspecPrivKey
@@ -662,7 +668,7 @@ interpretSpec cfg net NodeSpec{..} valSet coin@CoinSpecification{..} cb = do
     , nodeStateView     = state
     }
   -- Allocate transactions generators
-  txGenerator <- case makeCoinGenerator coin of
+  txGenerator <- makeCoinGenerator coin >>= \case
     Nothing  -> return []
     Just txG -> do
       cursor <- getMempoolCursor $ mempoolHandle $ stateMempool state

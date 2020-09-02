@@ -34,6 +34,7 @@ Library
                      , containers           >=0.5.9
                      , data-default-class
                      , deepseq              >=1.4
+                     , mwc-random
                      , lens
                      , mmorph
                      , mtl
@@ -58,7 +59,7 @@ Library
                   HSChain.Mock.Types
 
 Executable hschain-coin-node
-  Ghc-options:         -Wall -threaded -Wno-orphans -rtsopts "-with-rtsopts=-N -T -qn1"
+  Ghc-options:         -Wall -threaded -Wno-orphans -rtsopts "-with-rtsopts=-N -T -qn1 -A64M"
   Default-Language:    Haskell2010
   Build-Depends:       base                 >=4.12 && <5
                      , hschain
