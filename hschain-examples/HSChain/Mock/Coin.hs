@@ -372,7 +372,8 @@ initCoinDB = do
     \  , h_spent INTEGER NULL     \
     \  , UNIQUE (tx_hash,n_out)   \
     \  , FOREIGN KEY (tx_hash) REFERENCES coin_pk(id))"
-
+  basicExecute_
+    "CREATE INDEX coin_utxo_idx_txgen ON coin_utxo(pk, h_spent IS NULL)"
 
 data UtxoChange
   = Spent !Height
