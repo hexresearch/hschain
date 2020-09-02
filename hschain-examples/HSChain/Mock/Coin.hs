@@ -67,7 +67,7 @@ import Data.Either
 import Data.IORef
 import Data.Maybe
 import Data.Map             (Map,(!))
-import Database.SQLite.Simple             (Only(..),(:.)(..))
+import Database.SQLite.Simple             ((:.)(..))
 import qualified Database.SQLite.Simple.ToField   as SQL
 import qualified Database.SQLite.Simple.FromRow   as SQL
 import qualified Database.SQLite.Simple.ToRow     as SQL
@@ -93,7 +93,7 @@ import HSChain.Mock
 import HSChain.Mock.Coin.Types
 import HSChain.Store
 import HSChain.Store.Internal.Query
-import HSChain.Store.Query          (fieldByteRepr,ByteRepred(..),field)
+import HSChain.Store.Query  hiding (queryRO, queryRW, mustQueryRW)
 import HSChain.Mock.KeyList         (makePrivKeyStream)
 import HSChain.Mock.Types
 import HSChain.Monitoring
@@ -385,18 +385,6 @@ data UtxoDiff = UtxoDiff
   , utxoDiff :: Map UTXO UtxoChange -- ^ Differences relative to baseH
   }
 
--- | Lookup unspent output in database
-dbLookupUTXO
-  :: (MonadQueryRO m)
-  => Height                 -- ^ Height of block for which we calculate state updates
-  -> UTXO
-  -> m (Maybe Unspent)
-dbLookupUTXO h utxo = basicQuery1
-  "SELECT pk,n_coins FROM coin_utxo \
-  \ WHERE n_out = ? AND tx_hash = ?\
-  \   AND (h_spent is NULL OR h_spent >= ?)"
-  (utxo :. Only h)
-
 dbProcessDeposit
   :: (Monad m)
   => Tx -> UtxoDiff -> ExceptT CoinError m UtxoDiff
@@ -408,15 +396,15 @@ dbProcessDeposit tx@(Deposit pk nCoin) UtxoDiff{..} =
 
 dbProcessSend
   :: (MonadQueryRO m)
-  => Height -> Tx -> UtxoDiff -> ExceptT CoinError m UtxoDiff
-dbProcessSend _ Deposit{} _ = throwError DepositAtWrongH
-dbProcessSend h tx@(Send pk _ TxSend{..}) UtxoDiff{..} = do
+  => CoinStatements -> Height -> Tx -> UtxoDiff -> ExceptT CoinError m UtxoDiff
+dbProcessSend _ _ Deposit{} _ = throwError DepositAtWrongH
+dbProcessSend CoinStatements{..} h tx@(Send pk _ TxSend{..}) UtxoDiff{..} = do
   -- Try to find all inputs for transaction
   inputs <- forM txInputs $ \utxo -> do
     Unspent pk' n <- case utxo `Map.lookup` utxoDiff of
       Just (Added u _) -> return u
       Just _           -> throwError $ CoinError "Already spent output"
-      Nothing -> dbLookupUTXO baseH utxo >>= \case
+      Nothing -> preparedQuery1 stmtLookupUTXO (utxo :. Only baseH) >>= \case
         Nothing -> throwError $ CoinError "Already spent output"
         Just x  -> return x
     unless (pk == pk') $ throwError $ CoinError "PublicKey mismatch"
@@ -442,23 +430,51 @@ dbProcessSend h tx@(Send pk _ TxSend{..}) UtxoDiff{..} = do
 
 dbRecordDiff
   :: (MonadQueryRW m)
-  => (UTXO, UtxoChange) -> m ()
-dbRecordDiff (utxo, change) = case change of
-  Spent h -> basicExecute
-    "UPDATE coin_utxo SET h_spent=? WHERE n_out=? AND tx_hash=?"
-    (Only h :. utxo)
-  Added out h     -> basicExecute
-    "INSERT INTO coin_utxo VALUES (?,?,?,?,?,NULL)"
-    (utxo :. out :. Only h)
-  Both  out h1 h2 -> basicExecute
-    "INSERT INTO coin_utxo VALUES (?,?,?,?,?,?)"
-    (utxo :. out :. (h1,h2))
+  => CoinStatements -> (UTXO, UtxoChange) -> m ()
+dbRecordDiff CoinStatements{..} (utxo, change) = case change of
+  Spent h         -> preparedExecute stmtSpendExisting (Only h :. utxo)
+  Added out h     -> preparedExecute stmtInsertUnspent  (utxo :. out :. Only h)
+  Both  out h1 h2 -> preparedExecute stmtInsertSpent    (utxo :. out :. (h1,h2))
+
+
+data CoinStatements = CoinStatements
+  { stmtLookupUTXO    :: PreparedQuery (UTXO :. Only Height) Unspent
+    -- ^ Query for lookup of UTXO
+  , stmtInsertSpent   :: PreparedStmt (UTXO :. Unspent :. (Height, Height))
+    -- ^ Insert already spent UTXO
+  , stmtInsertUnspent :: PreparedStmt (UTXO :. Unspent :. Only Height)
+    -- ^ Insert unspent UTXO
+  , stmtSpendExisting :: PreparedStmt (Only Height :. UTXO)
+    -- ^ Spend existing UTXO
+  , stmtGenerateUTXO  :: PreparedQuery (Only (ByteRepred (PublicKey (Alg BData))))
+                                       (UTXO :. Only Integer)
+    -- ^ Query for genrating transactions
+  }
+
+newCoinStatements :: (MonadMask m, MonadIO m, MonadDB m) => m CoinStatements
+newCoinStatements = do
+  stmtLookupUTXO <- prepareQuery
+    "SELECT pk,n_coins FROM coin_utxo \
+    \ WHERE n_out = ? AND tx_hash = ?\
+    \   AND (h_spent is NULL OR h_spent >= ?)"
+  --
+  stmtInsertSpent   <- prepareStatement "INSERT INTO coin_utxo VALUES (?,?,?,?,?,?)" 
+  stmtInsertUnspent <- prepareStatement "INSERT INTO coin_utxo VALUES (?,?,?,?,?,NULL)"
+  stmtSpendExisting <- prepareStatement "UPDATE coin_utxo SET h_spent=? WHERE n_out=? AND tx_hash=?"
+  --
+  stmtGenerateUTXO <- prepareQuery
+    "SELECT n_out, tx_hash, n_coins \
+    \  FROM coin_utxo \
+    \ WHERE pk=? AND h_spent IS NULL \
+    \ ORDER BY random() LIMIT 20"
+  return CoinStatements{..}
 
 databaseStateView
-  :: (MonadIO m, MonadThrow m, MonadDB m, MonadCached BData m)
+  :: (MonadIO m, MonadMask m, MonadDB m, MonadCached BData m)
   => ValidatorSet (Alg BData)
-  -> m (StateView m BData, [m ()])
+  -> m (StateView m BData, [m ()], CoinStatements)
 databaseStateView valSetH0 = do
+  stmt <- newCoinStatements
   (mem@Mempool{..}, memThr) <- newMempool hashed (isRight . validateTxContextFree)
   -- First we find what is latest height at which we updated state and
   -- use it as startign point for our state management.
@@ -482,16 +498,16 @@ databaseStateView valSetH0 = do
                 -- Filter mempool
                 removeTxByHashes $ hashed <$> txList
                 mustQueryRW $ do
-                  mapM_ dbRecordDiff $ Map.toList $ utxoDiff diff
+                  mapM_ (dbRecordDiff stmt) $ Map.toList $ utxoDiff diff
                 -- We ask mempool to start filtering TX after we done writing
                 startMempoolFiltering $ \tx ->
-                  fmap isRight $ queryRO $ runExceptT $ dbProcessSend (succ h) tx diff
+                  fmap isRight $ queryRO $ runExceptT $ dbProcessSend stmt (succ h) tx diff
                 return $ make stateH [] vals (UtxoDiff (succH stateH) Map.empty)
           --
           , validatePropBlock = \b valSet -> do
               let step d tx
                     | h == Height 0 = dbProcessDeposit tx d
-                    | otherwise     = dbProcessSend h  tx d
+                    | otherwise     = dbProcessSend stmt h tx d
                     where
                       h = blockHeight b
               let txs = unBData $ merkleValue $ blockData b
@@ -501,7 +517,7 @@ databaseStateView valSetH0 = do
           , generateCandidate = \NewBlock{..} -> do
               let selectTx d []     = return (d,[])
                   selectTx d (t:tx) =
-                    runExceptT (dbProcessSend newBlockHeight t d) >>= \case
+                    runExceptT (dbProcessSend stmt newBlockHeight t d) >>= \case
                       Left  _  -> selectTx d tx
                       Right d' -> second (t:) <$> selectTx d' tx
               --
@@ -516,6 +532,7 @@ databaseStateView valSetH0 = do
   -- Read
   return ( make h0 [] valSet0 (UtxoDiff (succH h0) Map.empty)
          , [memThr]
+         , stmt
          )
   where
     succH = maybe (Height 0) succ
@@ -525,14 +542,15 @@ databaseStateView valSetH0 = do
 -- | Run generator for transactions
 dbTransactionGenerator
   :: (MonadReadDB m, MonadCached BData m, MonadIO m)
-  => TxGenerator
+  => CoinStatements
+  -> TxGenerator
   -> Mempool m (Hashed (Alg BData) Tx) Tx
   -> (Tx -> m ())
   -> m a
-dbTransactionGenerator gen mempool push = forever $ do
+dbTransactionGenerator dict gen mempool push = forever $ do
   size <- mempoolSize mempool
   when (maxN > 0 && size < maxN) $
-    push =<< dbGenerateTransaction gen
+    push =<< dbGenerateTransaction dict gen
   liftIO $ threadDelay $ genDelay gen * 1000
   where
     maxN = genMaxMempoolSize gen
@@ -540,18 +558,13 @@ dbTransactionGenerator gen mempool push = forever $ do
 
 dbGenerateTransaction
   :: (MonadIO m, MonadReadDB m, MonadCached BData m)
-  => TxGenerator -> m Tx
-dbGenerateTransaction TxGenerator{..} = do
+  => CoinStatements -> TxGenerator -> m Tx
+dbGenerateTransaction CoinStatements{..} TxGenerator{..} = do
   (privK,pubK) <- liftIO $ selectFromVec genPRNG genPrivateKeys
   (_,target)   <- liftIO $ selectFromVec genPRNG genPrivateKeys
   amount       <- liftIO $ fromIntegral <$> MWC.uniformR (1,20::Int) genPRNG
-  allInputs <- fmap (fmap ((\(nO,h,nC) -> (UTXO nO (fromJust $ decodeFromBS h), nC))))
-             $ queryRO $ basicQuery
-               "SELECT n_out, tx_hash, n_coins \
-               \  FROM coin_utxo \
-               \ WHERE pk=? AND h_spent IS NULL \
-               \ ORDER BY random() LIMIT 20"
-               (Only (encodeToBS pubK))
+  allInputs <- fmap (fmap (\(u :. Only n) -> (u, n)))
+             $ queryRO $ preparedQuery stmtGenerateUTXO (Only (ByteRepred pubK))
   let inputs    = findInputs amount allInputs
       avail     = sum (snd <$> inputs)
       change    = avail - amount
@@ -655,7 +668,7 @@ interpretSpec cfg net NodeSpec{..} valSet coin@CoinSpecification{..} cb = do
   -- We must ensure that database is initialized
   initDatabase
   mustQueryRW initCoinDB
-  (state,memThr) <- databaseStateView $ genesisValSet genesis
+  (state,memThr,stmt) <- databaseStateView $ genesisValSet genesis
   actions               <- runNode cfg NodeDescription
     { nodeValidationKey = nspecPrivKey
     , nodeGenesis       = genesis
@@ -668,7 +681,7 @@ interpretSpec cfg net NodeSpec{..} valSet coin@CoinSpecification{..} cb = do
     Nothing  -> return []
     Just txG -> do
       cursor <- getMempoolCursor $ mempoolHandle $ stateMempool state
-      return [ dbTransactionGenerator txG
+      return [ dbTransactionGenerator stmt txG
                  (stateMempool state)
                  (pushTxAsync cursor)
              ]
