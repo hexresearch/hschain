@@ -61,6 +61,7 @@ module HSChain.Store.Query (
   , prepareQuery
   , preparedQuery
   , preparedQuery1
+  , preparedQueryScanl
   , preparedExecute
     -- * Query transformer
   , QueryT(..)
@@ -547,6 +548,22 @@ preparedQuery (PreparedQuery stmt) p = liftQueryRO $ Query $ liftIO $ do
         Nothing -> return xs
         Just x  -> fetchAll (xs . (x:))
   (($ []) <$> fetchAll id) `finally` SQL.reset stmt
+
+preparedQueryScanl
+  :: (SQL.ToRow p, SQL.FromRow q, MonadQueryRO m)
+  => PreparedQuery p q          -- ^ Query
+  -> p                          -- ^ Parameters
+  -> (q -> b -> Maybe (a, b))   -- ^ Process result. This function may terminate early
+  -> b                          -- ^ Initial value
+  -> m [a]
+preparedQueryScanl (PreparedQuery stmt) p step b0 = liftQueryRO $ Query $ liftIO $ do
+  SQL.bind stmt p
+  let fetch b = SQL.nextRow stmt >>= \case
+        Just q  -> case step q b of
+          Just (a,b') -> (a:) <$> fetch b'
+          Nothing     -> return []
+        Nothing -> return []
+  fetch b0 `finally` SQL.reset stmt
 
 preparedQuery1 :: (SQL.ToRow p, SQL.FromRow q, MonadQueryRO m) => PreparedQuery p q -> p -> m (Maybe q)
 preparedQuery1 (PreparedQuery stmt) p = liftQueryRO $ Query $ liftIO $ do
