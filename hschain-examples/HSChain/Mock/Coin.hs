@@ -566,11 +566,13 @@ dbGenerateTransaction CoinStatements{..} TxGenerator{..} = do
   (privK,pubK) <- liftIO $ selectFromVec genPRNG genPrivateKeys
   (_,target)   <- liftIO $ selectFromVec genPRNG genPrivateKeys
   amount       <- liftIO $ fromIntegral <$> MWC.uniformR (1,20::Int) genPRNG
-  allInputs <- fmap (fmap (\(u :. Only n) -> (u, n)))
-             $ queryRO $ preparedQuery stmtGenerateUTXO (Only (ByteRepred pubK))
-  let inputs    = findInputs amount allInputs
-      avail     = sum (snd <$> inputs)
-      change    = avail - amount
+  inputs <- queryRO $ preparedQueryScanl1 stmtGenerateUTXO (Only (ByteRepred pubK))
+    (\(u :. Only n) acc -> case acc + n of
+        acc' | acc' >= 20 -> Left  (u,n)
+             | otherwise  -> Right ((u,n), acc')
+    ) 0
+  let avail  = sum (snd <$> inputs)
+      change = avail - amount
       outs | change == 0 = [ Unspent target avail]
            | otherwise   = [ Unspent target amount
                            , Unspent pubK   change
