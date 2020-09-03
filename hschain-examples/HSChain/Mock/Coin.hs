@@ -293,7 +293,7 @@ makeCoinGenerator CoinSpecification{..} = liftIO $ do
 transactionGenerator
   :: MonadIO m
   => TxGenerator
-  -> Mempool m (Alg BData) Tx
+  -> Mempool m (Hashed (Alg BData) Tx) Tx
   -> m CoinState
   -> (Tx -> m ())
   -> m a
