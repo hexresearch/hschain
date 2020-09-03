@@ -27,6 +27,7 @@ import HSChain.Types.Merkle.Types
 import HSChain.Internal.Types.Consensus
 import HSChain.Mock.KeyList
 import HSChain.Mock.KeyVal  (BData(..),mkGenesisBlock)
+import HSChain.Mock.Coin    (CoinSpecification(..))
 
 
 ----------------------------------------------------------------
@@ -115,3 +116,13 @@ mintBlock b dat = Block
                  , let Just i = indexByValidator valSet (publicKey k)
                  ]
              }
+
+coinSpec :: CoinSpecification
+coinSpec = CoinSpecification
+  { coinAirdrop        = 1000
+  , coinWallets        = 1000
+  , coinWalletsSeed    = 1337
+  , coinGeneratorDelay = Just 200
+  , coinMaxMempoolSize = 1000
+  , coinMaxBlockSize   = 1000
+  }

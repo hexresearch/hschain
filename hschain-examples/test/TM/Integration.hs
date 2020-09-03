@@ -20,9 +20,9 @@ import           HSChain.Types.Blockchain
 import           HSChain.Store
 import qualified HSChain.Mock.KeyVal as KeyVal
 import qualified HSChain.Mock.Coin   as Coin
-import           HSChain.Mock.Coin     (CoinSpecification(..))
 import           HSChain.Mock.Types
-import           TM.Util.Network (withTimeOut)
+import           TM.Util.Network   (withTimeOut)
+import           TM.Util.MockChain (coinSpec)
 
 
 tests :: TestTree
@@ -105,13 +105,6 @@ runCoin = evalContT $ do
     --   (_, merkleValue -> Coin.CoinState utxos _) <- bchCurrentState $ Coin.rnodeState n
     --   assertEqual "Coins must be preserved" totalCoins (sum [ c | Coin.Unspent _ c <- toList utxos])
   where
-    coin = CoinSpecification
-      { coinAirdrop        = 1000
-      , coinWallets        = 1000
-      , coinWalletsSeed    = 1337
-      , coinGeneratorDelay = Just 200
-      , coinMaxMempoolSize = 1000
-      }
     spec = MockClusterConfig
       { clusterTopology  = All2All
       , clusterCfg =
@@ -135,7 +128,7 @@ runCoin = evalContT $ do
                     , read "\"3Fj8bZjKc53F2a87sQaFkrDas2d9gjzK57FmQwnNnSHS\""
                     , read "\"D2fpHM1JA8trshiUW8XPvspsapUvPqVzSofaK1MGRySd\""
                     ]
-      , clusterBChData = coin
+      , clusterBChData = coinSpec
       }
 
 

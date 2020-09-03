@@ -7,6 +7,7 @@
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase                 #-}
+{-# LANGUAGE NamedFieldPuns             #-}
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE RankNTypes                 #-}
 {-# LANGUAGE RecordWildCards            #-}
@@ -62,6 +63,7 @@ import Control.Monad.Trans.Except (except)
 import Control.Monad.Reader
 import Control.Monad.Catch
 import Control.Monad.Trans.Cont
+import Control.Monad.Morph (hoist)
 import qualified Data.Aeson as JSON
 import Data.Foldable
 import Data.Either
@@ -150,9 +152,10 @@ instance CryptoHashable CoinState where
 --   memory
 inMemoryStateView
   :: MonadIO m
-  => ValidatorSet (Alg BData)
+  => CoinSpecification
+  -> ValidatorSet (Alg BData)
   -> m (StateView m BData, [m ()], IO CoinState)
-inMemoryStateView valSet0 = do
+inMemoryStateView CoinSpecification{coinMaxBlockSize} valSet0 = do
   varSt <- liftIO $ newIORef $ CoinState mempty mempty
   (mem@Mempool{..}, memThr) <- newMempool hashed (isRight . validateTxContextFree)
   let make mh vals txList st = r where
@@ -169,21 +172,25 @@ inMemoryStateView valSet0 = do
           -- When we validate proposed block we want to do complete
           -- validation since block is sent from outside
           , validatePropBlock = \b valSet -> do
-              let step s tx = do
+              let txs = unBData $ merkleValue $ blockData b
+                  step s tx = do
                     validateTxContextFree tx
                     processTxFull (blockHeight b) tx s
-              let txs = unBData $ merkleValue $ blockData b
-                  st' = foldM step st txs
-              return $ make (Just $ blockHeight b) valSet txs <$> st'
+              return $ do
+                when (blockHeight b > Height 0 && length txs > coinMaxBlockSize) $
+                  Left $ CoinError "Block is too big"
+                st' <- foldM step st txs
+                return $ make (Just $ blockHeight b) valSet txs st'
           --
           , generateCandidate = \NewBlock{..} -> do
               memSt  <- getMempoolState
-              let selectTx c []     = (c,[])
-                  selectTx c (t:tx) = case processSend t c of
-                                        Left  _  -> selectTx c  tx
-                                        Right c' -> let (c'', b  ) = selectTx c' tx
-                                                    in  (c'', t:b)
-              let (st', dat) = selectTx st
+              let selectTx 0 c _      = (c,[])
+                  selectTx _ c []     = (c,[])
+                  selectTx n c (t:tx) = case processSend t c of
+                    Left  _  -> selectTx n c tx
+                    Right c' -> let (c'', b  ) = selectTx (n-1) c' tx
+                                in  (c'', t:b)
+              let (st', dat) = selectTx coinMaxBlockSize st
                              $ toList memSt
               return
                 ( BData dat
@@ -472,9 +479,10 @@ newCoinStatements = do
 
 databaseStateView
   :: (MonadIO m, MonadMask m, MonadDB m, MonadCached BData m)
-  => ValidatorSet (Alg BData)
+  => CoinSpecification
+  -> ValidatorSet (Alg BData)
   -> m (StateView m BData, [m ()], CoinStatements)
-databaseStateView valSetH0 = do
+databaseStateView CoinSpecification{coinMaxBlockSize} valSetH0 = do
   stmt <- newCoinStatements
   (mem@Mempool{..}, memThr) <- newMempool hashed (isRight . validateTxContextFree)
   -- First we find what is latest height at which we updated state and
@@ -514,18 +522,22 @@ databaseStateView valSetH0 = do
                     where
                       h = blockHeight b
               let txs = unBData $ merkleValue $ blockData b
-              mdiff <- queryRO $ runExceptT $ foldM step diff txs
-              return $ make (Just $ blockHeight b) txs valSet <$> mdiff
+              runExceptT $ do
+                when (blockHeight b > Height 0 && length txs > coinMaxBlockSize) $ throwError $
+                  CoinError $ "Block too big: " ++ show (length txs) ++ "/" ++ show coinMaxBlockSize
+                diff' <- hoist queryRO $ foldM step diff txs
+                return $ make (Just $ blockHeight b) txs valSet diff'
           --
           , generateCandidate = \NewBlock{..} -> do
-              let selectTx d []     = return (d,[])
-                  selectTx d (t:tx) =
+              let selectTx 0 d _  = return (d, [])
+                  selectTx _ d [] = return (d,[])
+                  selectTx n d (t:tx) =
                     runExceptT (dbProcessSend stmt newBlockHeight t d) >>= \case
-                      Left  _  -> selectTx d tx
-                      Right d' -> second (t:) <$> selectTx d' tx
+                      Left  _  -> selectTx n d tx
+                      Right d' -> second (t:) <$> selectTx (n-1) d' tx
               --
               memSt <- getMempoolState
-              (diff',txs) <- queryRO $ selectTx diff $ toList memSt
+              (diff',txs) <- queryRO $ selectTx coinMaxBlockSize diff $ toList memSt
               return ( BData txs
                      , make (Just newBlockHeight) txs newBlockValSet diff'
                      )
@@ -600,6 +612,10 @@ data CoinSpecification = CoinSpecification
    -- ^ Delay between TX generation. Nothing means don't generate
  , coinMaxMempoolSize :: !Int
    -- ^ If mempool exceeds size new txs won't be generated
+ , coinMaxBlockSize   :: !Int
+   -- ^ Maximum number of transactions in block. Normally such things
+   --   are hardcoded but we pass it as parameter for the sake of
+   --   configurability.
  }
  deriving (Generic,Show)
  deriving JSON.FromJSON via HSChainCfg CoinSpecification
@@ -673,7 +689,7 @@ interpretSpec cfg net NodeSpec{..} valSet coin@CoinSpecification{..} cb = do
   -- We must ensure that database is initialized
   initDatabase
   mustQueryRW initCoinDB
-  (state,memThr,stmt) <- databaseStateView $ genesisValSet genesis
+  (state,memThr,stmt) <- databaseStateView coin $ genesisValSet genesis
   actions               <- runNode cfg NodeDescription
     { nodeValidationKey = nspecPrivKey
     , nodeGenesis       = genesis
