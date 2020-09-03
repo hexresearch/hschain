@@ -58,6 +58,7 @@ import Control.Concurrent
 import Control.DeepSeq
 import Control.Monad
 import Control.Monad.Except
+import Control.Monad.Trans.Except (except)
 import Control.Monad.Reader
 import Control.Monad.Catch
 import Control.Monad.Trans.Cont
@@ -507,7 +508,9 @@ databaseStateView valSetH0 = do
           , validatePropBlock = \b valSet -> do
               let step d tx
                     | h == Height 0 = dbProcessDeposit tx d
-                    | otherwise     = dbProcessSend stmt h tx d
+                    | otherwise     = do
+                        except $ validateTxContextFree tx
+                        dbProcessSend stmt h tx d
                     where
                       h = blockHeight b
               let txs = unBData $ merkleValue $ blockData b
