@@ -7,6 +7,7 @@
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase                 #-}
+{-# LANGUAGE MultiWayIf                 #-}
 {-# LANGUAGE NamedFieldPuns             #-}
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE RankNTypes                 #-}
@@ -564,9 +565,11 @@ dbTransactionGenerator
   -> m a
 dbTransactionGenerator dict gen mempool push = forever $ do
   size <- mempoolSize mempool
-  when (maxN > 0 && size < maxN) $
-    push =<< dbGenerateTransaction dict gen
-  liftIO $ threadDelay $ genDelay gen * 1000
+  if | maxN > 0 && size < maxN -> do
+         push =<< dbGenerateTransaction dict gen
+         liftIO $ threadDelay $ genDelay gen * 1000
+     | otherwise -> do
+         liftIO $ threadDelay $ (10 `max` genDelay gen) * 1000
   where
     maxN = genMaxMempoolSize gen
 
