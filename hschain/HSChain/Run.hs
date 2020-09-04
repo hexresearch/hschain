@@ -23,8 +23,10 @@ module HSChain.Run (
 import Control.Monad
 import Control.Monad.IO.Class
 import Control.Monad.Catch
+import Control.Concurrent             (threadDelay)
 import Control.Concurrent.STM         (atomically)
 import Control.Concurrent.STM.TBQueue (lengthTBQueue)
+import Katip (sl)
 
 import HSChain.Blockchain.Internal.Engine
 import HSChain.Blockchain.Internal.Engine.Types
@@ -86,16 +88,21 @@ runNode Configuration{..} NodeDescription{..} = do
   return
     [ id $ descendNamespace "net"
          $ startPeerDispatcher cfgNetwork bchNetwork bchInitialPeers appCh
-           (mempoolHandle $ stateMempool st)
+           (stateMempool st)
     , id $ descendNamespace "consensus"
          $ runApplication cfgConsensus nodeValidationKey st nodeCallbacks appCh
-    -- , forever $ do
-    --     MempoolInfo{..} <- mempoolStats appMempool
-    --     usingGauge prometheusMempoolSize      mempool'size
-    --     usingGauge prometheusMempoolDiscarded mempool'discarded
-    --     usingGauge prometheusMempoolFiltered  mempool'filtered
-    --     usingGauge prometheusMempoolAdded     mempool'added
-    --     waitSec 1.0
+    , descendNamespace "mempool" $ forever $ do
+        MempoolInfo{..} <- mempoolInfo $ stateMempool st
+        usingGauge prometheusMempoolSize      mempool'size
+        usingGauge prometheusMempoolDiscarded mempool'discarded
+        usingGauge prometheusMempoolFiltered  mempool'filtered
+        usingGauge prometheusMempoolAdded     mempool'added
+        logger InfoS "Mempool stats" ( sl "size"      mempool'size
+                                    <> sl "added"     mempool'added
+                                    <> sl "discarded" mempool'discarded
+                                    <> sl "filtered"  mempool'filtered
+                                     )
+        liftIO $ threadDelay $ 1000 * mempoolLogInterval cfgNetwork
     , forever $ do
         n <- liftIO $ atomically $ lengthTBQueue $ appChanRx appCh
         usingGauge prometheusMsgQueue n

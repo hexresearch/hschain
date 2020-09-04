@@ -79,6 +79,7 @@ instance Default (NetworkCfg Example) where
     , pexAskPeersDelay       = 10000
     , reconnectionRetries    = 12
     , reconnectionDelay      = 100
+    , mempoolLogInterval     = 1000
     }
 
 

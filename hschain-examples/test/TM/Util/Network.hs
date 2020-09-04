@@ -108,4 +108,5 @@ instance Default (NetworkCfg FastTest) where
     , pexAskPeersDelay       = 50
     , reconnectionRetries    = 12
     , reconnectionDelay      = 100
+    , mempoolLogInterval     = 10000
     }
