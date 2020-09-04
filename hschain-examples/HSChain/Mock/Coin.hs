@@ -7,6 +7,8 @@
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase                 #-}
+{-# LANGUAGE MultiWayIf                 #-}
+{-# LANGUAGE NamedFieldPuns             #-}
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE RankNTypes                 #-}
 {-# LANGUAGE RecordWildCards            #-}
@@ -58,16 +60,18 @@ import Control.Concurrent
 import Control.DeepSeq
 import Control.Monad
 import Control.Monad.Except
+import Control.Monad.Trans.Except (except)
 import Control.Monad.Reader
 import Control.Monad.Catch
 import Control.Monad.Trans.Cont
+import Control.Monad.Morph (hoist)
 import qualified Data.Aeson as JSON
 import Data.Foldable
 import Data.Either
 import Data.IORef
 import Data.Maybe
 import Data.Map             (Map,(!))
-import Database.SQLite.Simple             (Only(..),(:.)(..))
+import Database.SQLite.Simple             ((:.)(..))
 import qualified Database.SQLite.Simple.ToField   as SQL
 import qualified Database.SQLite.Simple.FromRow   as SQL
 import qualified Database.SQLite.Simple.ToRow     as SQL
@@ -93,7 +97,7 @@ import HSChain.Mock
 import HSChain.Mock.Coin.Types
 import HSChain.Store
 import HSChain.Store.Internal.Query
-import HSChain.Store.Query          (fieldByteRepr,ByteRepred(..),field)
+import HSChain.Store.Query  hiding (queryRO, queryRW, mustQueryRW)
 import HSChain.Mock.KeyList         (makePrivKeyStream)
 import HSChain.Mock.Types
 import HSChain.Monitoring
@@ -149,9 +153,10 @@ instance CryptoHashable CoinState where
 --   memory
 inMemoryStateView
   :: MonadIO m
-  => ValidatorSet (Alg BData)
+  => CoinSpecification
+  -> ValidatorSet (Alg BData)
   -> m (StateView m BData, [m ()], IO CoinState)
-inMemoryStateView valSet0 = do
+inMemoryStateView CoinSpecification{coinMaxBlockSize} valSet0 = do
   varSt <- liftIO $ newIORef $ CoinState mempty mempty
   (mem@Mempool{..}, memThr) <- newMempool hashed (isRight . validateTxContextFree)
   let make mh vals txList st = r where
@@ -168,21 +173,25 @@ inMemoryStateView valSet0 = do
           -- When we validate proposed block we want to do complete
           -- validation since block is sent from outside
           , validatePropBlock = \b valSet -> do
-              let step s tx = do
+              let txs = unBData $ merkleValue $ blockData b
+                  step s tx = do
                     validateTxContextFree tx
                     processTxFull (blockHeight b) tx s
-              let txs = unBData $ merkleValue $ blockData b
-                  st' = foldM step st txs
-              return $ make (Just $ blockHeight b) valSet txs <$> st'
+              return $ do
+                when (blockHeight b > Height 0 && length txs > coinMaxBlockSize) $
+                  Left $ CoinError "Block is too big"
+                st' <- foldM step st txs
+                return $ make (Just $ blockHeight b) valSet txs st'
           --
           , generateCandidate = \NewBlock{..} -> do
               memSt  <- getMempoolState
-              let selectTx c []     = (c,[])
-                  selectTx c (t:tx) = case processSend t c of
-                                        Left  _  -> selectTx c  tx
-                                        Right c' -> let (c'', b  ) = selectTx c' tx
-                                                    in  (c'', t:b)
-              let (st', dat) = selectTx st
+              let selectTx 0 c _      = (c,[])
+                  selectTx _ c []     = (c,[])
+                  selectTx n c (t:tx) = case processSend t c of
+                    Left  _  -> selectTx n c tx
+                    Right c' -> let (c'', b  ) = selectTx (n-1) c' tx
+                                in  (c'', t:b)
+              let (st', dat) = selectTx coinMaxBlockSize st
                              $ toList memSt
               return
                 ( BData dat
@@ -256,10 +265,8 @@ processSend transaction@(Send pubK _ TxSend{..}) CoinState{..} = do
 
 -- | Specification of generator of transactions
 data TxGenerator = TxGenerator
-  { genPrivateKeys    :: V.Vector (PrivKey (Alg BData))
+  { genPrivateKeys    :: V.Vector (PrivKey (Alg BData), PublicKey (Alg BData))
     -- ^ Private keys for which we can generate transactions
-  , genDestinaions    :: V.Vector (PublicKey (Alg BData))
-    -- ^ List of all addresses to which we can send money
   , genDelay          :: Int
     -- ^ Delay between invokations of generator
   , genMaxMempoolSize :: Int
@@ -275,20 +282,19 @@ makeCoinGenerator CoinSpecification{..} = liftIO $ do
   genPRNG  <- MWC.createSystemRandom
   return $ do genDelay <- coinGeneratorDelay
               return TxGenerator
-                { genPrivateKeys    = V.fromList privK
-                , genDestinaions    = V.fromList pubK
+                { genPrivateKeys    = V.fromList [ (k, publicKey k) | k <- privK ]
                 , genMaxMempoolSize = coinMaxMempoolSize
                 , ..
                 }
   where
     privK = take coinWallets $ makePrivKeyStream coinWalletsSeed
-    pubK  = publicKey <$> privK
+
 
 -- | Run generator for transactions
 transactionGenerator
   :: MonadIO m
   => TxGenerator
-  -> Mempool m (Alg BData) Tx
+  -> Mempool m (Hashed (Alg BData) Tx) Tx
   -> m CoinState
   -> (Tx -> m ())
   -> m a
@@ -302,11 +308,10 @@ transactionGenerator gen mempool coinState push = forever $ do
 
 generateTransaction :: MonadIO m => TxGenerator -> CoinState -> m Tx
 generateTransaction TxGenerator{..} CoinState{..} = liftIO $ do
-  privK  <- selectFromVec genPRNG genPrivateKeys
-  target <- selectFromVec genPRNG genDestinaions
+  (privK,pubK) <- selectFromVec genPRNG genPrivateKeys
+  (_,target)   <- selectFromVec genPRNG genPrivateKeys
   amount <- fromIntegral <$> MWC.uniformR (1,20::Int) genPRNG
-  let pubK      = publicKey privK
-      allInputs = toList
+  let allInputs = toList
                 $ fromMaybe Set.empty
                 $ pubK `Map.lookup` utxoLookup
       inputs    = findInputs amount [ (utxo, n)
@@ -372,7 +377,8 @@ initCoinDB = do
     \  , h_spent INTEGER NULL     \
     \  , UNIQUE (tx_hash,n_out)   \
     \  , FOREIGN KEY (tx_hash) REFERENCES coin_pk(id))"
-
+  basicExecute_
+    "CREATE INDEX coin_utxo_idx_txgen ON coin_utxo(pk, h_spent IS NULL)"
 
 data UtxoChange
   = Spent !Height
@@ -388,18 +394,6 @@ data UtxoDiff = UtxoDiff
   , utxoDiff :: Map UTXO UtxoChange -- ^ Differences relative to baseH
   }
 
--- | Lookup unspent output in database
-dbLookupUTXO
-  :: (MonadQueryRO m)
-  => Height                 -- ^ Height of block for which we calculate state updates
-  -> UTXO
-  -> m (Maybe Unspent)
-dbLookupUTXO h utxo = basicQuery1
-  "SELECT pk,n_coins FROM coin_utxo \
-  \ WHERE n_out = ? AND tx_hash = ?\
-  \   AND (h_spent is NULL OR h_spent >= ?)"
-  (utxo :. Only h)
-
 dbProcessDeposit
   :: (Monad m)
   => Tx -> UtxoDiff -> ExceptT CoinError m UtxoDiff
@@ -411,15 +405,15 @@ dbProcessDeposit tx@(Deposit pk nCoin) UtxoDiff{..} =
 
 dbProcessSend
   :: (MonadQueryRO m)
-  => Height -> Tx -> UtxoDiff -> ExceptT CoinError m UtxoDiff
-dbProcessSend _ Deposit{} _ = throwError DepositAtWrongH
-dbProcessSend h tx@(Send pk _ TxSend{..}) UtxoDiff{..} = do
+  => CoinStatements -> Height -> Tx -> UtxoDiff -> ExceptT CoinError m UtxoDiff
+dbProcessSend _ _ Deposit{} _ = throwError DepositAtWrongH
+dbProcessSend CoinStatements{..} h tx@(Send pk _ TxSend{..}) UtxoDiff{..} = do
   -- Try to find all inputs for transaction
   inputs <- forM txInputs $ \utxo -> do
     Unspent pk' n <- case utxo `Map.lookup` utxoDiff of
       Just (Added u _) -> return u
       Just _           -> throwError $ CoinError "Already spent output"
-      Nothing -> dbLookupUTXO baseH utxo >>= \case
+      Nothing -> preparedQuery1 stmtLookupUTXO (utxo :. Only baseH) >>= \case
         Nothing -> throwError $ CoinError "Already spent output"
         Just x  -> return x
     unless (pk == pk') $ throwError $ CoinError "PublicKey mismatch"
@@ -445,23 +439,52 @@ dbProcessSend h tx@(Send pk _ TxSend{..}) UtxoDiff{..} = do
 
 dbRecordDiff
   :: (MonadQueryRW m)
-  => (UTXO, UtxoChange) -> m ()
-dbRecordDiff (utxo, change) = case change of
-  Spent h -> basicExecute
-    "UPDATE coin_utxo SET h_spent=? WHERE n_out=? AND tx_hash=?"
-    (Only h :. utxo)
-  Added out h     -> basicExecute
-    "INSERT INTO coin_utxo VALUES (?,?,?,?,?,NULL)"
-    (utxo :. out :. Only h)
-  Both  out h1 h2 -> basicExecute
-    "INSERT INTO coin_utxo VALUES (?,?,?,?,?,?)"
-    (utxo :. out :. (h1,h2))
+  => CoinStatements -> (UTXO, UtxoChange) -> m ()
+dbRecordDiff CoinStatements{..} (utxo, change) = case change of
+  Spent h         -> preparedExecute stmtSpendExisting (Only h :. utxo)
+  Added out h     -> preparedExecute stmtInsertUnspent  (utxo :. out :. Only h)
+  Both  out h1 h2 -> preparedExecute stmtInsertSpent    (utxo :. out :. (h1,h2))
+
+
+data CoinStatements = CoinStatements
+  { stmtLookupUTXO    :: PreparedQuery (UTXO :. Only Height) Unspent
+    -- ^ Query for lookup of UTXO
+  , stmtInsertSpent   :: PreparedStmt (UTXO :. Unspent :. (Height, Height))
+    -- ^ Insert already spent UTXO
+  , stmtInsertUnspent :: PreparedStmt (UTXO :. Unspent :. Only Height)
+    -- ^ Insert unspent UTXO
+  , stmtSpendExisting :: PreparedStmt (Only Height :. UTXO)
+    -- ^ Spend existing UTXO
+  , stmtGenerateUTXO  :: PreparedQuery (Only (ByteRepred (PublicKey (Alg BData))))
+                                       (UTXO :. Only Integer)
+    -- ^ Query for genrating transactions
+  }
+
+newCoinStatements :: (MonadMask m, MonadIO m, MonadDB m) => m CoinStatements
+newCoinStatements = do
+  stmtLookupUTXO <- prepareQuery
+    "SELECT pk,n_coins FROM coin_utxo \
+    \ WHERE n_out = ? AND tx_hash = ?\
+    \   AND (h_spent is NULL OR h_spent >= ?)"
+  --
+  stmtInsertSpent   <- prepareStatement "INSERT INTO coin_utxo VALUES (?,?,?,?,?,?)" 
+  stmtInsertUnspent <- prepareStatement "INSERT INTO coin_utxo VALUES (?,?,?,?,?,NULL)"
+  stmtSpendExisting <- prepareStatement "UPDATE coin_utxo SET h_spent=? WHERE n_out=? AND tx_hash=?"
+  --
+  stmtGenerateUTXO <- prepareQuery
+    "SELECT n_out, tx_hash, n_coins \
+    \  FROM coin_utxo \
+    \ WHERE pk=? AND h_spent IS NULL \
+    \ ORDER BY random() LIMIT 20"
+  return CoinStatements{..}
 
 databaseStateView
-  :: (MonadIO m, MonadThrow m, MonadDB m, MonadCached BData m)
-  => ValidatorSet (Alg BData)
-  -> m (StateView m BData, [m ()])
-databaseStateView valSetH0 = do
+  :: (MonadIO m, MonadMask m, MonadDB m, MonadCached BData m)
+  => CoinSpecification
+  -> ValidatorSet (Alg BData)
+  -> m (StateView m BData, [m ()], CoinStatements)
+databaseStateView CoinSpecification{coinMaxBlockSize} valSetH0 = do
+  stmt <- newCoinStatements
   (mem@Mempool{..}, memThr) <- newMempool hashed (isRight . validateTxContextFree)
   -- First we find what is latest height at which we updated state and
   -- use it as startign point for our state management.
@@ -485,31 +508,37 @@ databaseStateView valSetH0 = do
                 -- Filter mempool
                 removeTxByHashes $ hashed <$> txList
                 mustQueryRW $ do
-                  mapM_ dbRecordDiff $ Map.toList $ utxoDiff diff
+                  mapM_ (dbRecordDiff stmt) $ Map.toList $ utxoDiff diff
                 -- We ask mempool to start filtering TX after we done writing
                 startMempoolFiltering $ \tx ->
-                  fmap isRight $ queryRO $ runExceptT $ dbProcessSend (succ h) tx diff
+                  fmap isRight $ queryRO $ runExceptT $ dbProcessSend stmt (succ h) tx diff
                 return $ make stateH [] vals (UtxoDiff (succH stateH) Map.empty)
           --
           , validatePropBlock = \b valSet -> do
               let step d tx
                     | h == Height 0 = dbProcessDeposit tx d
-                    | otherwise     = dbProcessSend h  tx d
+                    | otherwise     = do
+                        except $ validateTxContextFree tx
+                        dbProcessSend stmt h tx d
                     where
                       h = blockHeight b
               let txs = unBData $ merkleValue $ blockData b
-              mdiff <- queryRO $ runExceptT $ foldM step diff txs
-              return $ make (Just $ blockHeight b) txs valSet <$> mdiff
+              runExceptT $ do
+                when (blockHeight b > Height 0 && length txs > coinMaxBlockSize) $ throwError $
+                  CoinError $ "Block too big: " ++ show (length txs) ++ "/" ++ show coinMaxBlockSize
+                diff' <- hoist queryRO $ foldM step diff txs
+                return $ make (Just $ blockHeight b) txs valSet diff'
           --
           , generateCandidate = \NewBlock{..} -> do
-              let selectTx d []     = return (d,[])
-                  selectTx d (t:tx) =
-                    runExceptT (dbProcessSend newBlockHeight t d) >>= \case
-                      Left  _  -> selectTx d tx
-                      Right d' -> second (t:) <$> selectTx d' tx
+              let selectTx 0 d _  = return (d, [])
+                  selectTx _ d [] = return (d,[])
+                  selectTx n d (t:tx) =
+                    runExceptT (dbProcessSend stmt newBlockHeight t d) >>= \case
+                      Left  _  -> selectTx n d tx
+                      Right d' -> second (t:) <$> selectTx (n-1) d' tx
               --
               memSt <- getMempoolState
-              (diff',txs) <- queryRO $ selectTx diff $ toList memSt
+              (diff',txs) <- queryRO $ selectTx coinMaxBlockSize diff $ toList memSt
               return ( BData txs
                      , make (Just newBlockHeight) txs newBlockValSet diff'
                      )
@@ -519,6 +548,7 @@ databaseStateView valSetH0 = do
   -- Read
   return ( make h0 [] valSet0 (UtxoDiff (succH h0) Map.empty)
          , [memThr]
+         , stmt
          )
   where
     succH = maybe (Height 0) succ
@@ -528,37 +558,36 @@ databaseStateView valSetH0 = do
 -- | Run generator for transactions
 dbTransactionGenerator
   :: (MonadReadDB m, MonadCached BData m, MonadIO m)
-  => TxGenerator
+  => CoinStatements
+  -> TxGenerator
   -> Mempool m (Hashed (Alg BData) Tx) Tx
   -> (Tx -> m ())
   -> m a
-dbTransactionGenerator gen mempool push = forever $ do
+dbTransactionGenerator dict gen mempool push = forever $ do
   size <- mempoolSize mempool
-  when (maxN > 0 && size < maxN) $
-    push =<< dbGenerateTransaction gen
-  liftIO $ threadDelay $ genDelay gen * 1000
+  if | maxN > 0 && size < maxN -> do
+         push =<< dbGenerateTransaction dict gen
+         liftIO $ threadDelay $ genDelay gen * 1000
+     | otherwise -> do
+         liftIO $ threadDelay $ (10 `max` genDelay gen) * 1000
   where
     maxN = genMaxMempoolSize gen
 
 
 dbGenerateTransaction
   :: (MonadIO m, MonadReadDB m, MonadCached BData m)
-  => TxGenerator -> m Tx
-dbGenerateTransaction TxGenerator{..} = do
-  privK  <- liftIO $ selectFromVec genPRNG genPrivateKeys
-  target <- liftIO $ selectFromVec genPRNG genDestinaions
-  amount <- liftIO $ fromIntegral <$> MWC.uniformR (1,20::Int) genPRNG
-  let pubK = publicKey privK
-  allInputs <- fmap (fmap ((\(nO,h,nC) -> (UTXO nO (fromJust $ decodeFromBS h), nC))))
-             $ queryRO $ basicQuery
-               "SELECT n_out, tx_hash, n_coins \
-               \  FROM coin_utxo \
-               \ WHERE pk=? AND h_spent IS NULL \
-               \ ORDER BY random() LIMIT 20"
-               (Only (encodeToBS pubK))
-  let inputs    = findInputs amount allInputs
-      avail     = sum (snd <$> inputs)
-      change    = avail - amount
+  => CoinStatements -> TxGenerator -> m Tx
+dbGenerateTransaction CoinStatements{..} TxGenerator{..} = do
+  (privK,pubK) <- liftIO $ selectFromVec genPRNG genPrivateKeys
+  (_,target)   <- liftIO $ selectFromVec genPRNG genPrivateKeys
+  amount       <- liftIO $ fromIntegral <$> MWC.uniformR (1,20::Int) genPRNG
+  inputs <- queryRO $ preparedQueryScanl1 stmtGenerateUTXO (Only (ByteRepred pubK))
+    (\(u :. Only n) acc -> case acc + n of
+        acc' | acc' >= 20 -> Left  (u,n)
+             | otherwise  -> Right ((u,n), acc')
+    ) 0
+  let avail  = sum (snd <$> inputs)
+      change = avail - amount
       outs | change == 0 = [ Unspent target avail]
            | otherwise   = [ Unspent target amount
                            , Unspent pubK   change
@@ -586,6 +615,10 @@ data CoinSpecification = CoinSpecification
    -- ^ Delay between TX generation. Nothing means don't generate
  , coinMaxMempoolSize :: !Int
    -- ^ If mempool exceeds size new txs won't be generated
+ , coinMaxBlockSize   :: !Int
+   -- ^ Maximum number of transactions in block. Normally such things
+   --   are hardcoded but we pass it as parameter for the sake of
+   --   configurability.
  }
  deriving (Generic,Show)
  deriving JSON.FromJSON via HSChainCfg CoinSpecification
@@ -659,7 +692,7 @@ interpretSpec cfg net NodeSpec{..} valSet coin@CoinSpecification{..} cb = do
   -- We must ensure that database is initialized
   initDatabase
   mustQueryRW initCoinDB
-  (state,memThr) <- databaseStateView $ genesisValSet genesis
+  (state,memThr,stmt) <- databaseStateView coin $ genesisValSet genesis
   actions               <- runNode cfg NodeDescription
     { nodeValidationKey = nspecPrivKey
     , nodeGenesis       = genesis
@@ -672,7 +705,7 @@ interpretSpec cfg net NodeSpec{..} valSet coin@CoinSpecification{..} cb = do
     Nothing  -> return []
     Just txG -> do
       cursor <- getMempoolCursor $ mempoolHandle $ stateMempool state
-      return [ dbTransactionGenerator txG
+      return [ dbTransactionGenerator stmt txG
                  (stateMempool state)
                  (pushTxAsync cursor)
              ]

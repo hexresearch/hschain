@@ -20,7 +20,7 @@ import HSChain.Mock.KeyList
 import HSChain.Mock.Types   (makeGenesis)
 import HSChain.Types.Merkle.Types
 
-import TM.Util.MockChain (HSChainT, withHSChainT)
+import TM.Util.MockChain (HSChainT, withHSChainT, coinSpec)
 
 
 tests :: TestTree
@@ -108,7 +108,7 @@ newtype TestT m a = TestT (ReaderT Bool (StateT (StateView m BData) m) a)
 
 runInMemoty :: TestT IO a -> IO a
 runInMemoty (TestT test) = do
-  (sv0,_,_) <- inMemoryStateView valSet
+  (sv0,_,_) <- inMemoryStateView coinSpec valSet
   Right sv1 <- validatePropBlock sv0 genesis valSet
   evalStateT (runReaderT test False) sv1
 
@@ -117,7 +117,7 @@ runDatabase doCommit (TestT test) = withHSChainT $ do
   initDatabase
   mustQueryRW $ do initCoinDB
                    storeGenesis $ Genesis genesis valSet
-  (sv0, _)  <- databaseStateView valSet
+  (sv0, _, _)  <- databaseStateView coinSpec valSet
   Right sv1 <- validatePropBlock sv0 genesis valSet
   evalStateT (runReaderT test doCommit) sv1
 
