@@ -30,7 +30,6 @@ import HSChain.Crypto (Hashed)
 import HSChain.Control.Util
 import HSChain.Mempool
 import HSChain.Internal.Types.Config
-import HSChain.Internal.Types.Consensus
 import HSChain.Logger
 import HSChain.Monitoring
 import HSChain.Network.Types

@@ -85,6 +85,7 @@ data NetworkCfg app = NetworkCfg
   , pexAskPeersDelay       :: !Int
   , reconnectionRetries    :: !Int -- ^ Number of retries before abandoning reconnection attempts
   , reconnectionDelay      :: !Int -- ^ Initial delay between attempting to reconnect
+  , mempoolLogInterval     :: !Int -- ^ Delay between logging mempool information
   }
   deriving (Show,Generic)
 

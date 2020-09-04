@@ -23,6 +23,7 @@ module HSChain.Run (
 import Control.Monad
 import Control.Monad.IO.Class
 import Control.Monad.Catch
+import Control.Concurrent             (threadDelay)
 import Control.Concurrent.STM         (atomically)
 import Control.Concurrent.STM.TBQueue (lengthTBQueue)
 import Katip (sl)
@@ -101,7 +102,7 @@ runNode Configuration{..} NodeDescription{..} = do
                                     <> sl "discarded" mempool'discarded
                                     <> sl "filtered"  mempool'filtered
                                      )
-        waitSec 0.25
+        liftIO $ threadDelay $ 1000 * mempoolLogInterval cfgNetwork
     , forever $ do
         n <- liftIO $ atomically $ lengthTBQueue $ appChanRx appCh
         usingGauge prometheusMsgQueue n
