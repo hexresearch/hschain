@@ -61,6 +61,7 @@ import HSChain.PoW.Types
 import HSChain.PoW.Consensus
 import HSChain.PoW.BlockIndex
 import HSChain.Store.Query
+import HSChain.PoW.UTXO.Store
 
 
 ----------------------------------------------------------------

@@ -74,7 +74,8 @@ Library
                 HSChain.PoW.P2P.Handler.Peer
                 HSChain.PoW.P2P.Handler.PEX
                 HSChain.PoW.P2P.STM.PeerRegistry
-                HSChain.PoW.P2P.STM.NonceSet                
+                HSChain.PoW.P2P.STM.NonceSet
+                HSChain.PoW.UTXO.Store
 
 
 Executable hschain-PoW-node
