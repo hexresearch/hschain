@@ -58,7 +58,7 @@ genesis = GBlock
   , prevBlock   = Nothing
   , blockData   = Coin { coinData   = merkled []
                        , coinNonce  = 0
-                       , coinTarget = Target $ 2^(256-13 :: Int)
+                       , coinTarget = Target $ 2^(256-16 :: Int)
                        }
   }
 
