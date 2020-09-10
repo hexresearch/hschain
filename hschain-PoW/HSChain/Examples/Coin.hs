@@ -723,6 +723,7 @@ retrieveCurrentStateBlock = fmap fromOnly <$> basicQuery1
   \  JOIN coin_state_bid ON state_block = blk_id"
   ()
 
+-- TODO: please note it is used everywhere like this: retrieveCoinBlockTableID . bhID
 retrieveCoinBlockTableID :: MonadQueryRO m => BlockID Coin -> m (ID (Block Coin))
 retrieveCoinBlockTableID bid = do
   r <- basicQuery1
