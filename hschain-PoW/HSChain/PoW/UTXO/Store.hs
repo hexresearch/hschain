@@ -100,7 +100,7 @@ rollbackOverlay (OverlayBase bh0) = case bhPrevious bh0 of
   Nothing -> error "Cant rewind overlay pas genesis"
 rollbackOverlay (OverlayLayer _ _ o) = o
 
-finalizeOverlay :: BH bdata -> ActiveOverlay bdata -> Maybe (StateOverlay bdata)
+finalizeOverlay :: (Eq (BlockID bdata)) => BH bdata -> ActiveOverlay bdata -> Maybe (StateOverlay bdata)
 finalizeOverlay bh (ActiveOverlay l o) = do
   bid <- bhBID <$> bhPrevious bh
   guard $ bhBID (overlayTip o) == bid
@@ -110,7 +110,7 @@ finalizeOverlay bh (ActiveOverlay l o) = do
 --   already. We need latter since UTXO could be available in
 --   underlying state but spent in overlay and we need to account for
 --   that explicitly.
-getOverlayUTXO :: ActiveOverlay bdata -> UTXO bdata -> Maybe (Change (Unspent bdata))
+getOverlayUTXO :: Ord (UTXO bdata) => ActiveOverlay bdata -> UTXO bdata -> Maybe (Change (Unspent bdata))
 getOverlayUTXO (ActiveOverlay l0 o0) utxo
   =  getFromLayer l0
  <|> recur o0
@@ -126,7 +126,7 @@ spendUTXO :: UTXO bdata -> Unspent bdata -> ActiveOverlay bdata -> ActiveOverlay
 spendUTXO utxo val
   = typed . lensSpent . at utxo .~ Just val
 
-createUTXO :: UTXO bdata -> Unspent bdata -> ActiveOverlay bdata -> ActiveOverlay bdata
+createUTXO :: forall bdata . UTXO bdata -> Unspent bdata -> ActiveOverlay bdata -> ActiveOverlay bdata
 createUTXO utxo val
   = typed . lensCreated . at utxo .~ Just val
 
