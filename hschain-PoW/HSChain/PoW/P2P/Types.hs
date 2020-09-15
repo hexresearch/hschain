@@ -17,7 +17,7 @@ module HSChain.PoW.P2P.Types
   , HandshakeAck(..)
     -- * Wire messages
   , GossipMsg(..)
-  , MsgTX
+  , MsgTX(..)
   , MsgRequest(..)
   , MsgResponce(..)
   , MsgAnn(..)
@@ -84,23 +84,26 @@ data HandshakeAck = HandshakeAck
 
 -- | Messages that are exchanged on the wire
 data GossipMsg b
-  = -- GossipTX   !(MsgTX b)
-    GossipReq  !(MsgRequest b)
+  = GossipReq  !(MsgRequest b)
   | GossipResp !(MsgResponce b)
   | GossipAnn  !(MsgAnn b)
+  | GossipTX   !(MsgTX b)
   deriving stock (Generic)
-deriving stock instance (Show (BlockID b), Show (b Proxy), Show (b Identity)) => Show (GossipMsg b)
+deriving stock instance (Show (BlockID b), Show (b Proxy), Show (b Identity), Show (Tx b)) => Show (GossipMsg b)
 
 instance ( Serialise (b Identity)
          , Serialise (b Proxy)
          , Serialise (BlockID b)
+         , Serialise (Tx b)
          ) => Serialise (GossipMsg b)
 
   
 -- | Messages used for transmitting unconfirmed transactions
 data MsgTX b
+  = AnnNewTX (Tx b)
   deriving stock    (Generic)
-  deriving anyclass (Serialise)
+instance (Serialise (Tx b)) => Serialise (MsgTX b)
+deriving stock instance (Show (Tx b)) => Show (MsgTX b)
 
 -- | Messages used for exchanging information about blockchain: blocks, headers
 data MsgRequest b
@@ -189,15 +192,16 @@ data AskPeers = AskPeers
 
 -- | Channels for peer for communication with rest of the world
 data PeerChans s m b = PeerChans
-  { peerSinkNewAddr   :: Sink [NetAddr]      --
-  , peerSinkConsensus :: Sink (BoxRX m b)    --
-  , peerBCastAnn      :: Src  (MsgAnn b)
-  , peerBCastAskPeer  :: Src   AskPeers
+  { peerSinkNewAddr   :: Sink [NetAddr]      -- ^ Send newly received addresses
+  , peerSinkConsensus :: Sink (BoxRX m b)    -- ^ Send new command to consensus
+  , peerBCastAnn      :: Src  (MsgAnn b)     -- ^ Broadcast channel for announces
+  , peerBCastAskPeer  :: Src   AskPeers      -- ^ Broadcast channel for asking for more peers
+  , peerBCastAnnTx    :: Src  (MsgTX b)      -- ^ Broadcast channel for new tx announces
   , peerCatchup       :: CatchupThrottle
   , peerReqBlocks     :: BlockRegistry b
-  , peerConnections   :: STM [NetAddr]      --
-  , peerConsensuSt    :: STM (Consensus m b)
-  , peerBlockDB       :: BlockDB m b  
+  , peerConnections   :: STM [NetAddr]       -- ^
+  , peerConsensuSt    :: STM (Consensus m b) -- ^ Current consensus state
+  , peerBlockDB       :: BlockDB m b
   }
 
 data SentRequest b

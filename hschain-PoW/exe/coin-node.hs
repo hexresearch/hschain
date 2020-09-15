@@ -58,7 +58,7 @@ genesis = GBlock
   , prevBlock   = Nothing
   , blockData   = Coin { coinData   = merkled []
                        , coinNonce  = 0
-                       , coinTarget = Target $ 2^(256-13 :: Int)
+                       , coinTarget = Target $ 2^(256-16 :: Int)
                        }
   }
 
@@ -89,11 +89,12 @@ main = do
                      print (bhHeight bh, bhBID bh)
                      print $ retarget bh
       -- Mining and TX generation
-      case optMine of
-        True  -> do
-          cforkLinked $ txGeneratorLoop pow (cfgPriv : take 100 (makePrivKeyStream 1433))
-          lift $ genericMiningLoop pow
-        False -> liftIO $ forever $ threadDelay maxBound
+      when optGenerate $ do
+        cforkLinked $ txGeneratorLoop pow (cfgPriv : take 100 (makePrivKeyStream 1433))
+      when optMine $ do
+        cforkLinked $ genericMiningLoop pow
+      -- Wait forever
+      liftIO $ forever $ threadDelay maxBound
 
 txGeneratorLoop
   :: (MonadReadDB m, MonadIO m)
@@ -115,6 +116,7 @@ txGeneratorLoop pow keyList = do
 data Opts = Opts
   { cmdConfigPath :: [FilePath] -- ^ Path to configuration
   , optMine       :: Bool       -- ^ Whether to mine blocks
+  , optGenerate   :: Bool       -- ^ Genberate transactions
   }
 
 parser :: Parser Opts
@@ -126,6 +128,10 @@ parser = do
     )
   optMine <- switch
     (  long "mine"
+    <> help "Mine blocks"
+    )
+  optGenerate <- switch
+    (  long "gen-tx"
     <> help "Mine blocks"
     )
   return Opts{..}

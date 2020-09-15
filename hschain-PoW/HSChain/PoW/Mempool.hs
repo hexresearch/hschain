@@ -10,7 +10,7 @@ module HSChain.PoW.Mempool
   ( -- * Data types
     -- ** Dictionaries of channels
     MempoolAPI(..)
-  , MempoolConsensusCh(..)
+  , MempoolCh(..)
     -- ** Messages
   , MempCmdConsensus(..)
   , MempCmdGossip(..)
@@ -38,7 +38,7 @@ import HSChain.Control.Channels
 import HSChain.Control.Util
 import HSChain.PoW.Types
 import HSChain.PoW.Consensus
-
+import HSChain.PoW.P2P.Types
 
 ----------------------------------------------------------------
 -- Data types
@@ -57,7 +57,7 @@ data MempCmdGossip b
 -- | External API or interacting with mempool
 data MempoolAPI m b = MempoolAPI
   { postTransaction :: Sink (Tx b)
-    -- ^ Post transaction into mempool. This particualr is black
+    -- ^ Post transaction into mempool. This function is black
     --   hole. There's no way to learn whether transaction was
     --   accepted or rejected
   , mempoolUpdates  :: STM (Src (BH b, StateView m b, [Tx b]))
@@ -68,16 +68,20 @@ data MempoolAPI m b = MempoolAPI
 
 -- | Internal API for sending messages from consensus engine to the
 --   mempool
-newtype MempoolConsensusCh m b = MempoolConsensusCh
+data MempoolCh m b = MempoolCh
   { mempoolConsensusCh :: Sink (MempCmdConsensus m b)
+    -- ^ Channel for sending updates from consensus engine
+  , mempoolAnnounces   :: STM (Src (MsgTX b))
   }
 
--- | Internal API for communicating with outside world.
-data MempoolCh m b = MempoolCh
+-- | Collection of channels and TVars for mempool thread.
+data InternalCh m b = InternalCh
   { srcMempoolCns     :: Src (MempCmdConsensus m b)
     -- ^ Messages from consensus engine
   , srcMempoolGossip  :: Src (MempCmdGossip b)
     -- ^ Messages from gossip
+  , bcastNewTx        :: Sink (Tx b)
+    -- ^ Sink for valid transaction which just learned about,
   , bcastMempoolState :: Sink (BH b, StateView m b, [Tx b])
     -- ^ Broadcast change of blockchain head and corresponding update of
   , pendingFiltering  :: TVar [TxID b]
@@ -94,16 +98,17 @@ startMempool
   -> StateView m b
   -- ^ Current view on blockchain state. Will be used for transaction
   --   validation until state will be changed
-  -> ContT r m (MempoolAPI m b, MempoolConsensusCh m b)
+  -> ContT r m (MempoolAPI m b, MempoolCh m b)
 startMempool db state = do
   (mempoolConsensusCh, srcMempoolCns)    <- queuePair
   (bcastMempoolState,  mempoolUpdates)   <- broadcastPair
+  (bcastNewTx,         mkSrcNewTx)       <- broadcastPair
   (sinkGossip,         srcMempoolGossip) <- queuePair
   pendingFiltering <- liftIO $ newTVarIO []
   let mempool = emptyMempoolState txID
   currentMempool <- liftIO $ newTVarIO mempool
   --
-  cforkLinked $ runMempool db MempoolCh{..} MempoolDict
+  cforkLinked $ runMempool db InternalCh{..} MempoolDict
     { stateView = state
     , ..
     }
@@ -111,7 +116,9 @@ startMempool db state = do
                      , mempoolContent  = toList <$> readTVar currentMempool
                      , ..
                      }
-         , MempoolConsensusCh{..}
+         , MempoolCh{ mempoolAnnounces = fmap AnnNewTX <$> mkSrcNewTx
+                    , ..
+                    }
          )
 
 
@@ -127,12 +134,12 @@ data MempoolDict m b = MempoolDict
 runMempool
   :: (MonadIO m, BlockData b)
   => BlockDB m b
-  -> MempoolCh m b
+  -> InternalCh m b
   -> MempoolDict m b
   -> m ()
-runMempool db ch@MempoolCh{..} st0 = iterateSTM st0 $ \s -> store <$> asum
+runMempool db ch@InternalCh{..} st0 = iterateSTM st0 $ \s -> store <$> asum
   [ handleConsensus db ch s <$> await srcMempoolCns
-  , handleGossip          s <$> await srcMempoolGossip
+  , handleGossip       ch s <$> await srcMempoolGossip
   , handlePending      ch s
   ]
   where
@@ -147,11 +154,11 @@ runMempool db ch@MempoolCh{..} st0 = iterateSTM st0 $ \s -> store <$> asum
 handleConsensus
   :: forall m b. (MonadIO m, BlockData b)
   => BlockDB m b
-  -> MempoolCh m b
+  -> InternalCh m b
   -> MempoolDict m b
   -> MempCmdConsensus m b
   -> m (MempoolDict m b)
-handleConsensus db@BlockDB{..} MempoolCh{..} MempoolDict{..} = \case
+handleConsensus db@BlockDB{..} InternalCh{..} MempoolDict{..} = \case
   MempHeadChange bhFrom bhTo state -> do
     TxChange{..} <- computeMempoolChange db bhFrom bhTo
     let add m tx = fromMaybe m
@@ -215,27 +222,30 @@ retrieveTidList db bid =
 -- Other changes to mempool
 
 handleGossip
-  :: forall b m. (Monad m, BlockData b)
-  => MempoolDict m b
+  :: forall b m. (MonadIO m, BlockData b)
+  => InternalCh  m b
+  -> MempoolDict m b
   -> MempCmdGossip b
   -> m (MempoolDict m b)
-handleGossip st@MempoolDict{..} = \case
+handleGossip InternalCh{..} st@MempoolDict{..} = \case
   MempPushTx tx -> do
     ms <- mempoolAddTX
             (isRight . validateTxContextFree @b)
             (fmap isRight . checkTx stateView)
             tx
             mempool
-    return $ case ms of
-      Nothing -> st
-      Just s  -> MempoolDict { mempool = s, .. }
+    case ms of
+      Nothing -> return st
+      Just s  -> do
+        sinkIO bcastNewTx tx
+        return MempoolDict { mempool = s, .. }
 
 handlePending
   :: (MonadIO m, BlockData b)
-  => MempoolCh m b
+  => InternalCh m b
   -> MempoolDict m b
   -> STM (m (MempoolDict m b))
-handlePending MempoolCh{..} MempoolDict{..}
+handlePending InternalCh{..} MempoolDict{..}
   = doFilter <$> awaitPending
   where
     doFilter tidList = do

@@ -781,8 +781,8 @@ generateTX dests keyPairs = do
     \ ( SELECT pk_dest, SUM(n_coins) as tot_coin \
     \     FROM coin_utxo \
     \     JOIN coin_state ON utxo_id = live_utxo \
-    \    GROUP BY pk_dest  \
-    \    ORDER BY tot_coin \
+    \    GROUP BY pk_dest       \
+    \    ORDER BY tot_coin DESC \
     \    LIMIT 10 \
     \ ) \
     \ ORDER BY RANDOM() LIMIT 1" ()
