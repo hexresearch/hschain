@@ -112,6 +112,10 @@ class (ByteReprSized (Hash alg)) => CryptoHash alg where
   hashBlob     :: BS.ByteString -> Hash alg
   -- | Compute hash of lazy bytestring
   hashLazyBlob :: BL.ByteString -> Hash alg
+  -- | Hash output of a builder
+  hashBuilder :: Bld.Builder -> Hash alg
+  hashBuilder = hashLazyBlob
+              . Bld.toLazyByteStringWith (Bld.untrimmedStrategy 4096 4096) mempty
   -- | Name of algorithm
   hashAlgorithmName :: CryptoName alg
 
