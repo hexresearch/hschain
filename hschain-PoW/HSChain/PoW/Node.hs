@@ -42,7 +42,6 @@ import Data.Word
 import Data.Yaml.Config
 import GHC.Generics (Generic)
 
-import HSChain.Crypto
 import HSChain.Control.Channels
 import HSChain.PoW.Consensus
 import HSChain.Logger
