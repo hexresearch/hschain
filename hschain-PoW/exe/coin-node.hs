@@ -26,6 +26,7 @@ import Data.List (unfoldr)
 import qualified Data.ByteString as BS
 import qualified Data.Map.Strict as Map
 import qualified Data.Vector     as V
+import System.Environment
 import System.Random (randoms,mkStdGen)
 import Data.Yaml.Config (loadYamlSettings, requireEnv)
 import Options.Applicative
@@ -72,6 +73,7 @@ main = do
               <> progDesc ""
               )
   Cfg{..} <- loadYamlSettings cmdConfigPath [] requireEnv
+  nodePrivK <- read <$> getEnv optPrivVar
   -- Acquire resources
   let net    = newNetworkTcp cfgPort
       netcfg = NetCfg { nKnownPeers     = 3
@@ -79,7 +81,7 @@ main = do
                       }
   withConnection (fromMaybe "" cfgDB) $ \conn -> 
     withLogEnv "" "" (map makeScribe cfgLog) $ \logEnv -> runCoinT logEnv conn $ evalContT $ do
-      (db, bIdx, sView) <- lift $ coinStateView cfgPriv genesis
+      (db, bIdx, sView) <- lift $ coinStateView nodePrivK genesis
       c0  <- lift $ createConsensus db sView bIdx
       pow <- startNode netcfg net cfgPeers db c0
       -- report progress
@@ -90,7 +92,7 @@ main = do
                      print $ retarget bh
       -- Mining and TX generation
       when optGenerate $ do
-        cforkLinked $ txGeneratorLoop pow (cfgPriv : take 100 (makePrivKeyStream 1433))
+        cforkLinked $ txGeneratorLoop pow (nodePrivK : take 100 (makePrivKeyStream 1433))
       when optMine $ do
         cforkLinked $ genericMiningLoop pow
       -- Wait forever
@@ -114,9 +116,10 @@ txGeneratorLoop pow keyList = do
 ----------------------------------------------------------------
 
 data Opts = Opts
-  { cmdConfigPath :: [FilePath] -- ^ Path to configuration
-  , optMine       :: Bool       -- ^ Whether to mine blocks
-  , optGenerate   :: Bool       -- ^ Genberate transactions
+  { cmdConfigPath :: [FilePath]   -- ^ Path to configuration
+  , optMine       :: Bool         -- ^ Whether to mine blocks
+  , optGenerate   :: Bool         -- ^ Generate transactions
+  , optPrivVar    :: String       -- ^ Node's private key's environment variable name.
   }
 
 parser :: Parser Opts
@@ -133,6 +136,10 @@ parser = do
   optGenerate <- switch
     (  long "gen-tx"
     <> help "Mine blocks"
+    )
+  optPrivVar <- strOption
+    (  long "priv-key-env-var"
+    <> help "Environment variable with node's private key"
     )
   return Opts{..}
 
