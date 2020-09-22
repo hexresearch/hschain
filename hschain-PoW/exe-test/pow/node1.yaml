@@ -1,0 +1,9 @@
+port:  30001
+peers: ["127.0.0.1:30002"]
+log:
+  - type      : "ScribeJSON"
+    path      : "logs/node-1.log"
+    severity  : "Debug"
+    verbosity : "V2"
+db:   "db/db1"
+priv: "FPY3TBv4c4gKkTsWH68wUAUrXvaLnJnWsDEwhHqotE4T"
