@@ -23,6 +23,7 @@ import Control.Monad.Reader
 import Control.Monad.Trans.Cont
 import Data.Maybe
 import Data.List (unfoldr)
+import qualified Data.Text       as T
 import qualified Data.ByteString as BS
 import qualified Data.Map.Strict as Map
 import qualified Data.Vector     as V
@@ -73,7 +74,7 @@ main = do
               <> progDesc ""
               )
   Cfg{..} <- loadYamlSettings cmdConfigPath [] requireEnv
-  nodePrivK <- read <$> getEnv optPrivVar
+  Just nodePrivK <- decodeBase58 . T.pack <$> getEnv optPrivVar
   -- Acquire resources
   let net    = newNetworkTcp cfgPort
       netcfg = NetCfg { nKnownPeers     = 3

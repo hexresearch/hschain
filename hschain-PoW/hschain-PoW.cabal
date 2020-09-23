@@ -117,6 +117,7 @@ Executable hschain-PoW-coin
                      , aeson
                      , katip
                      , mtl
+                     , text
                      , bytestring
                      , containers
                      , vector
