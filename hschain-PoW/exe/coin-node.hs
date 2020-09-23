@@ -97,9 +97,9 @@ main = do
       -- Start web node
       forM_ cfgWebAPI $ \port -> do
         dict <- lift $ CoinT ask
-        let run :: CoinT Handler a -> Handler a
-            run (CoinT m) = runReaderT m dict
-        cforkLinkedIO $ Warp.run port $ genericServeT run coinServer
+        let run :: CoinT IO a -> Handler a
+            run (CoinT m) = liftIO $ runReaderT m dict
+        cforkLinkedIO $ Warp.run port $ genericServeT run $ coinServer (mempoolAPI pow)
       -- Mining and TX generation
       when optGenerate $ do
         cforkLinked $ txGeneratorLoop pow (nodePrivK : take 100 (makePrivKeyStream 1433))
