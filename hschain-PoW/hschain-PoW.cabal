@@ -56,6 +56,9 @@ Library
                      , vector
                      , unordered-containers >=0.2.5.0
                      , yaml
+                     -- Web stuff
+                     , servant         >=0.16 && <0.17
+                     , servant-server  >=0.16 && <0.17
   Exposed-modules:
                 HSChain.PoW.BlockIndex
                 HSChain.PoW.Types
@@ -74,7 +77,8 @@ Library
                 HSChain.PoW.P2P.Handler.Peer
                 HSChain.PoW.P2P.Handler.PEX
                 HSChain.PoW.P2P.STM.PeerRegistry
-                HSChain.PoW.P2P.STM.NonceSet                
+                HSChain.PoW.P2P.STM.NonceSet
+                HSChain.PoW.API
 
 
 Executable hschain-PoW-node
@@ -127,6 +131,10 @@ Executable hschain-PoW-coin
                      , transformers
                      , optparse-applicative
                      , yaml
+                     --
+                     , servant
+                     , servant-server
+                     , warp
   hs-source-dirs:      exe
   Main-is:             coin-node.hs
 
@@ -158,7 +166,7 @@ Test-suite hschain-PoW-tests
                      , stm
                      , tasty             >=0.11
                      , tasty-quickcheck
-                     , tasty-hunit       >=0.10                      
+                     , tasty-hunit       >=0.10
   hs-source-dirs:      test
   Main-is:             Main.hs
   Other-modules:       TM.Consensus

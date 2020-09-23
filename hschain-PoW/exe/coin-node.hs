@@ -31,6 +31,9 @@ import System.Environment
 import System.Random (randoms,mkStdGen)
 import Data.Yaml.Config (loadYamlSettings, requireEnv)
 import Options.Applicative
+import Servant.Server
+import Servant.Server.Generic
+import qualified Network.Wai.Handler.Warp as Warp
 
 import HSChain.Control.Channels
 import HSChain.Control.Util
@@ -47,7 +50,7 @@ import HSChain.PoW.Types
 import HSChain.PoW.Node (genericMiningLoop)
 import HSChain.Store.Query
 import HSChain.Types.Merkle.Types
-
+import HSChain.PoW.API
 
 ----------------------------------------------------------------
 --
@@ -91,6 +94,12 @@ main = do
         forever $ do (bh,_) <- awaitIO ch
                      print (bhHeight bh, bhBID bh)
                      print $ retarget bh
+      -- Start web node
+      forM_ cfgWebAPI $ \port -> do
+        dict <- lift $ CoinT ask
+        let run :: CoinT Handler a -> Handler a
+            run (CoinT m) = runReaderT m dict
+        cforkLinkedIO $ Warp.run port $ genericServeT run coinServer
       -- Mining and TX generation
       when optGenerate $ do
         cforkLinked $ txGeneratorLoop pow (nodePrivK : take 100 (makePrivKeyStream 1433))
