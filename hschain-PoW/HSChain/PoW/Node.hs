@@ -58,11 +58,12 @@ import HSChain.Config
 
 -- |Node's configuration.
 data Cfg = Cfg
-  { cfgPort  :: Word16
-  , cfgPeers :: [NetAddr]
-  , cfgLog   :: [ScribeSpec]
-  , cfgMaxH  :: Maybe Height
-  , cfgDB    :: Maybe FilePath
+  { cfgPort   :: Word16
+  , cfgPeers  :: [NetAddr]
+  , cfgLog    :: [ScribeSpec]
+  , cfgMaxH   :: Maybe Height
+  , cfgDB     :: Maybe FilePath
+  , cfgWebAPI :: Maybe Int
   }
   deriving stock (Show, Generic)
   deriving (JSON.FromJSON) via SnakeCase (DropSmart (Config Cfg))
