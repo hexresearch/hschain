@@ -2,14 +2,14 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications    #-}
 import Control.Monad
-import qualified Data.Aeson as JSON
 import Data.Maybe
 import Data.Yaml (decodeFileThrow)
 import Data.Map  (Map,(!))
--- import qualified Data.ByteString.Lazy as BL
+import Data.Text (Text)
+import qualified Data.Aeson                 as JSON
 import qualified Data.ByteString.Lazy.Char8 as BL8
-import qualified Data.Text as T
-import qualified Data.Map.Strict as Map
+import qualified Data.Text                  as T
+import qualified Data.Map.Strict            as Map
 import Options.Applicative
 
 import HSChain.Crypto
@@ -48,7 +48,7 @@ parserSign = helper <*> do
                      <> metavar "PATH"
                       )
   pure $ do
-    keymap :: Map String T.Text <- decodeFileThrow keyring
+    keymap :: Map Text Text <- decodeFileThrow keyring
     let Just (sk :: PrivKey Alg) = decodeBase58 $ keymap ! key
     mtx <- case path of
             "-" -> JSON.decode <$> BL8.getContents
@@ -71,7 +71,7 @@ parserPK = helper <*> do
                         <> metavar "KEY"
                          )
   pure $ do
-    keymap :: Map String T.Text <- decodeFileThrow keyring
+    keymap :: Map Text Text <- decodeFileThrow keyring
     forM_ keyList $ \k -> do
       case decodeBase58 =<< Map.lookup k keymap of
         Nothing -> return ()
