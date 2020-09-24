@@ -30,6 +30,8 @@ module HSChain.Crypto.Classes.Hash (
   , CryptoHashablePackage(..)
     -- ** Generics derivation
   , GCryptoHashable(..)
+  , hashStepFoldable
+  , hashStepFoldableWith
   , genericHashStep
   , genericHashStepTy
   ) where
@@ -142,6 +144,16 @@ class CryptoHashable a where
   --   type. For hierarchical records it's computed by default using
   --   depth first traversal.
   hashStep :: a -> Bld.Builder
+
+hashStepFoldable :: (Foldable f, CryptoHashable a) => f a -> Bld.Builder
+hashStepFoldable = hashStepFoldableWith hashStep
+{-# INLINABLE hashStepFoldable #-}
+
+hashStepFoldableWith :: (Foldable f) => (a -> Bld.Builder) -> f a -> Bld.Builder
+hashStepFoldableWith f xs
+  = hashStep (TySequence $ fromIntegral $ length xs)
+ <> foldMap f xs
+{-# INLINABLE hashStepFoldableWith #-}
 
 -- | Analog of 'CryptoHashable' where we may compute hash of type as
 --   opposed to hash of value.
@@ -439,19 +451,13 @@ instance CryptoHashable TL.Text where
 -- Normal data types
 
 instance CryptoHashable a => CryptoHashable [a] where
-  hashStep xs = hashStep (TySequence $ fromIntegral $ length xs)
-             <> foldMap hashStep xs
-  {-# INLINABLE hashStep #-}
+  hashStep = hashStepFoldable
 
 instance CryptoHashable a => CryptoHashable (Seq.Seq a) where
-  hashStep xs = hashStep (TySequence $ fromIntegral $ Seq.length xs)
-             <> foldMap hashStep xs
-  {-# INLINABLE hashStep #-}
+  hashStep = hashStepFoldable
 
 instance CryptoHashable a => CryptoHashable (NE.NonEmpty a) where
-  hashStep xs = hashStep (TySequence $ fromIntegral $ length xs)
-             <> foldMap hashStep xs
-  {-# INLINABLE hashStep #-}
+  hashStep = hashStepFoldable
 
 instance (CryptoHashable k, CryptoHashable v) => CryptoHashable (Map.Map k v) where
   hashStep xs = hashStep (TyMap $ fromIntegral $ length xs)
@@ -464,9 +470,7 @@ instance (CryptoHashable a) => CryptoHashable (Set.Set a) where
   {-# INLINABLE hashStep #-}
 
 instance (CryptoHashable a) => CryptoHashable (VecV.Vector a) where
-  hashStep xs = hashStep (TySequence $ fromIntegral $ VecV.length xs)
-             <> VecV.foldl (\b x -> b <> hashStep x) mempty xs
-  {-# INLINE hashStep #-}
+  hashStep = hashStepFoldable
 instance (CryptoHashable a, VecP.Prim a) => CryptoHashable (VecP.Vector a) where
   hashStep xs = hashStep (TySequence $ fromIntegral $ VecP.length xs)
              <> VecP.foldl (\b x -> b <> hashStep x) mempty xs
