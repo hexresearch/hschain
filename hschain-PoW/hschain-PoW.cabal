@@ -60,6 +60,7 @@ Library
                      , servant         >=0.16 && <0.17
                      , servant-server  >=0.16 && <0.17
   Exposed-modules:
+                HSChain.PoW.Asserts
                 HSChain.PoW.BlockIndex
                 HSChain.PoW.Types
                 HSChain.PoW.Consensus
