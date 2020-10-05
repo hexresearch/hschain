@@ -8,21 +8,43 @@
 --
 {-# OPTIONS_GHC -Wno-orphans #-}
 -- |
-module HSChain.PoW.API where
+module HSChain.PoW.API
+  ( MempoolRestAPI(..)
+  , mempoolApiServer
+  ) where
 
 import Control.Monad.IO.Class
 import Servant.API
 import Servant.API.Generic
 import Servant.Server.Generic
--- import Web.HttpApiData
-import Database.SQLite.Simple            ((:.)(..))
 
 import HSChain.Control.Channels
 import HSChain.Crypto
-import HSChain.Examples.Coin
-import HSChain.Store.Query
 import HSChain.PoW.Mempool
+import HSChain.PoW.Types
 
+
+-- | REST API for interacting with mempool.
+data MempoolRestAPI b route = MempoolRestAPI
+  { mempoolPostTx :: route :- "post_tx"
+                           :> ReqBody '[JSON] (Tx b)
+                           :> Post '[PlainText] String
+
+  }
+  deriving Generic
+
+-- | Server implementation
+mempoolApiServer :: (MonadIO m) => MempoolAPI m b -> MempoolRestAPI b (AsServerT m)
+mempoolApiServer mempool = MempoolRestAPI
+  { mempoolPostTx = postTxEndpoint mempool
+  }
+
+postTxEndpoint
+  :: (MonadIO m)
+  => MempoolAPI m b -> Tx b -> m String
+postTxEndpoint MempoolAPI{..} tx = do
+  sinkIO postTransaction tx
+  return "TRIED"
 
 
 ----------------------------------------------------------------

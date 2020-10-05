@@ -14,7 +14,6 @@ import Servant.API.Generic
 import Servant.Server.Generic
 import Database.SQLite.Simple            ((:.)(..))
 
-import HSChain.Control.Channels
 import HSChain.Crypto
 import HSChain.Examples.Coin
 import HSChain.PoW.API
@@ -30,9 +29,8 @@ data CoinAPI route = CoinAPI
                           :> Capture "N"    Integer
                           :> Capture "to"   (PublicKey Alg)
                           :> Get '[JSON] (Maybe TxSend)
-  , coinPostTx   :: route :- "post_tx"
-                          :> ReqBody '[JSON] TxCoin
-                          :> Post '[PlainText] String
+  , coinMempool  :: route :- "mempool"
+                          :> ToServantApi (MempoolRestAPI Coin)
   }
   deriving Generic
 
@@ -41,16 +39,8 @@ coinServer mempool = CoinAPI
   { coinBalance  = balanceEndpoint
   , coinListUTXO = listUtxoEndpoint
   , coinMakeTx   = makeTxEndpoint
-  , coinPostTx   = postTxEndpoint mempool
+  , coinMempool  = toServant (mempoolApiServer mempool)
   }
-
-postTxEndpoint
-  :: (MonadIO m, MonadReadDB m)
-  => MempoolAPI m Coin -> TxCoin -> m String
-postTxEndpoint MempoolAPI{..} tx = do
-  sinkIO postTransaction tx
-  return "TRIED"
-  
 
 makeTxEndpoint
   :: (MonadIO m, MonadReadDB m)
