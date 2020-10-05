@@ -50,7 +50,7 @@ import HSChain.PoW.Types
 import HSChain.PoW.Node (genericMiningLoop)
 import HSChain.Store.Query
 import HSChain.Types.Merkle.Types
-import HSChain.PoW.API
+import HSChain.Examples.Coin.API
 
 ----------------------------------------------------------------
 --
