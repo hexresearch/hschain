@@ -1,7 +1,16 @@
 {-# LANGUAGE DerivingStrategies         #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 -- |
-module HSChain.Control.Channels where
+module HSChain.Control.Channels
+  ( -- * Sink and sources
+    Sink(..)
+  , sinkIO
+  , Src(..)
+  , awaitIO
+    -- ** Creation
+  , queuePair
+  , broadcastPair
+  ) where
 
 import Control.Applicative
 import Control.Concurrent.STM
