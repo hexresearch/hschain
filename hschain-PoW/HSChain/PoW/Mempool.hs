@@ -23,6 +23,7 @@ import Control.Monad
 import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Control.Monad.Cont
+import Control.Monad.Trans.Maybe
 import Data.Either
 import Data.Maybe
 import Data.Foldable
@@ -51,8 +52,8 @@ data MempCmdConsensus m b
 
 -- | Command sent to the mempool from gossip
 data MempCmdGossip b
-  = MempPushTx (Tx b)
-  -- ^ Add transaction to mempool
+  = MempPushTx     (Tx b)                     -- ^ Add transaction to mempool
+  | MempPushTxSync (BlockingCall (Tx b) Bool) -- ^ Add Tx synchronously
 
 -- | External API or interacting with mempool
 data MempoolAPI m b = MempoolAPI
@@ -60,10 +61,20 @@ data MempoolAPI m b = MempoolAPI
     -- ^ Post transaction into mempool. This function is black
     --   hole. There's no way to learn whether transaction was
     --   accepted or rejected
+  , postTransactionSync :: Sink (BlockingCall (Tx b) Bool)
+    -- ^ Post transaction into mempool. This function blocks until
+    --   transaction is accepted or rejected from mempool. Returns
+    --   True if transaction is accepted.
+    --
+    --   Note that acceptance to mempool doesn't even guarantee that
+    --   transaction will be eventually mined. And certainly not that
+    --   it will be mined promptly.
   , mempoolUpdates  :: STM (Src (BH b, StateView m b, [Tx b]))
     -- ^ Channel for receiving updates to mempool when
   , mempoolContent  :: STM [Tx b]
     -- ^ Obtain current content of mempool
+  , mempoolState    :: STM (MempoolState (TxID b) (Tx b))
+    -- ^ State of the mempool
   }
 
 -- | Internal API for sending messages from consensus engine to the
@@ -112,8 +123,10 @@ startMempool db state = do
     { stateView = state
     , ..
     }
-  return ( MempoolAPI{ postTransaction = contramap MempPushTx sinkGossip
-                     , mempoolContent  = toList <$> readTVar currentMempool
+  return ( MempoolAPI{ postTransaction     = contramap MempPushTx     sinkGossip
+                     , postTransactionSync = contramap MempPushTxSync sinkGossip
+                     , mempoolContent      = toList <$> readTVar currentMempool
+                     , mempoolState        = readTVar currentMempool
                      , ..
                      }
          , MempoolCh{ mempoolAnnounces = fmap AnnNewTX <$> mkSrcNewTx
@@ -228,17 +241,20 @@ handleGossip
   -> MempCmdGossip b
   -> m (MempoolDict m b)
 handleGossip InternalCh{..} st@MempoolDict{..} = \case
-  MempPushTx tx -> do
-    ms <- mempoolAddTX
-            (isRight . validateTxContextFree @b)
-            (fmap isRight . checkTx stateView)
-            tx
-            mempool
-    case ms of
-      Nothing -> return st
-      Just s  -> do
-        sinkIO bcastNewTx tx
-        return MempoolDict { mempool = s, .. }
+  MempPushTx     tx   -> fromMaybe st <$> addTx tx
+  MempPushTxSync call -> handleBlockingCall call $ \tx ->
+    addTx tx >>= \case
+      Nothing  -> return (False, st )
+      Just st' -> return (True,  st')
+  where
+    addTx tx = runMaybeT $ do
+      st' <- MaybeT
+           $ mempoolAddTX (isRight . validateTxContextFree @b)
+                          (fmap isRight . checkTx stateView)
+                          tx
+                          mempool
+      sinkIO bcastNewTx tx
+      return MempoolDict { mempool = st', .. }
 
 handlePending
   :: (MonadIO m, BlockData b)
