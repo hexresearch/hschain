@@ -19,6 +19,7 @@ import Servant.API.Generic
 import Servant.Server.Generic
 
 import HSChain.Control.Channels
+import HSChain.Control.Util
 import HSChain.Crypto
 import HSChain.PoW.Mempool
 import HSChain.PoW.Types
@@ -33,6 +34,7 @@ data MempoolRestAPI b route = MempoolRestAPI
   , mempoolPostTxSync  :: route :- "post_tx"
                                 :> ReqBody '[JSON] (Tx b)
                                 :> Post '[JSON] Bool
+  , mempoolSize        :: route :- "size" :> Get '[JSON] Int
   }
   deriving Generic
 
@@ -41,6 +43,7 @@ mempoolApiServer :: (MonadIO m) => MempoolAPI m b -> MempoolRestAPI b (AsServerT
 mempoolApiServer mempool = MempoolRestAPI
   { mempoolPostTxAsync = postTxEndpoint     mempool
   , mempoolPostTxSync  = postTxSyncEndpoint mempool
+  , mempoolSize        = getMempoolSizeEndpoint mempool
   }
 
 postTxEndpoint
@@ -55,6 +58,9 @@ postTxSyncEndpoint
   => MempoolAPI m b -> Tx b -> m Bool
 postTxSyncEndpoint MempoolAPI{..} tx = do
   blockingCall postTransactionSync tx
+
+getMempoolSizeEndpoint :: (MonadIO m) => MempoolAPI m b -> m Int
+getMempoolSizeEndpoint MempoolAPI{..} = length <$> atomicallyIO mempoolState
 
 
 ----------------------------------------------------------------

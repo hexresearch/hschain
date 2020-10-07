@@ -73,6 +73,8 @@ data MempoolAPI m b = MempoolAPI
     -- ^ Channel for receiving updates to mempool when
   , mempoolContent  :: STM [Tx b]
     -- ^ Obtain current content of mempool
+  , mempoolState    :: STM (MempoolState (TxID b) (Tx b))
+    -- ^ State of the mempool
   }
 
 -- | Internal API for sending messages from consensus engine to the
@@ -124,6 +126,7 @@ startMempool db state = do
   return ( MempoolAPI{ postTransaction     = contramap MempPushTx     sinkGossip
                      , postTransactionSync = contramap MempPushTxSync sinkGossip
                      , mempoolContent      = toList <$> readTVar currentMempool
+                     , mempoolState        = readTVar currentMempool
                      , ..
                      }
          , MempoolCh{ mempoolAnnounces = fmap AnnNewTX <$> mkSrcNewTx
