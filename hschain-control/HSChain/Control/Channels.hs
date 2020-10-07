@@ -11,7 +11,8 @@ import Data.Functor.Contravariant
 import HSChain.Control.Util
 
 
--- | Sink for channels
+-- | Sink end of 'TChan'\/'TQueue'. Monoid instance allows to write to
+--   several channels simultaneously.
 newtype Sink a = Sink { sink :: a -> STM () }
 
 sinkIO :: MonadIO m => Sink a -> a -> m ()
@@ -27,7 +28,8 @@ instance Monoid (Sink a) where
   mempty = Sink $ \_ -> return ()
 
 
--- | Source of data in concurrent programs
+-- | Source end of 'TChan'\/'TQueue'. Monoid instance allows to read
+--   from several channels simultaneously.
 newtype Src a = Src { await :: STM a }
   deriving newtype Functor
 
