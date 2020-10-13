@@ -362,7 +362,10 @@ basicQueryWith1 parser sql p =
   basicQueryWith parser sql p >>= \case
     []  -> return Nothing
     [x] -> return $ Just x
-    _   -> error "Impossible"
+    _   -> error $ unlines
+      [ "Impossible: basicQueryWith1 returned multiple results"
+      , show sql
+      ]
 
 basicQueryWith_ :: (MonadQueryRO m) => SQL.RowParser q -> SQL.Query -> m [q]
 basicQueryWith_ parser sql = liftQueryRO $ Query $ do
@@ -377,7 +380,10 @@ basicQuery1 sql param =
   basicQuery sql param >>= \case
     []  -> return Nothing
     [x] -> return $ Just x
-    _   -> error "Impossible"
+    _   -> error $ unlines
+      [ "Impossible: basicQuery1 returned multiple results"
+      , show sql
+      ]
 
 basicLastInsertRowId :: MonadQueryRW m => m Int64
 basicLastInsertRowId = liftQueryRW $ Query $ do
