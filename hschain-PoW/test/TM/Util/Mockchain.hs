@@ -17,7 +17,6 @@ module TM.Util.Mockchain where
 import Codec.Serialise
 import Control.Applicative
 import Control.Monad.Catch
-import Control.Monad.Reader
 #if !MIN_VERSION_base(4,13,0)
 import Control.Monad.Fail         (MonadFail)
 #endif
@@ -30,12 +29,9 @@ import System.IO.Unsafe (unsafePerformIO)
 import System.Timeout
 
 import HSChain.Crypto
-import HSChain.Control.Class
 import HSChain.Examples.Simple
-import HSChain.Logger
 import HSChain.PoW.Types
 import HSChain.PoW.Consensus
-import HSChain.Store.Query
 import HSChain.Types.Merkle.Types
 import HSChain.Examples.Coin
 
@@ -181,25 +177,6 @@ inMemoryViewCoin = make (error "No revinding past genesis")
             , coinNonce  = 0
             }
           }
-
--- | Monad transformer for use in tests
-newtype HSChainT m x = HSChainT (ReaderT (Connection 'RW) m x)
-  deriving newtype (Functor,Applicative,Monad,MonadIO,MonadFail)
-  deriving newtype (MonadThrow,MonadCatch,MonadMask,MonadFork)
-  deriving newtype (MonadReader (Connection 'RW))
-  -- HSChain instances
-  deriving MonadLogger            via NoLogsT          (HSChainT m)
-  deriving (MonadReadDB, MonadDB) via DatabaseByReader (HSChainT m)
-
-runHSChainT :: Connection 'RW -> HSChainT m x -> m x
-runHSChainT c (HSChainT m) = do
-  runReaderT m c
-
-withHSChainT :: (MonadIO m, MonadMask m) => HSChainT m a -> m a
-withHSChainT m = withConnection "" $ \c -> runHSChainT c m
-
-withHSChainTDB :: (MonadIO m, MonadMask m) => FilePath -> HSChainT m a -> m a
-withHSChainTDB db m = withConnection db $ \c -> runHSChainT c m
 
 data Abort = Abort Height
   deriving stock    (Show)
