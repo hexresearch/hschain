@@ -21,6 +21,7 @@ import HSChain.PoW.Types
 import HSChain.PoW.Node
 import HSChain.PoW.P2P
 import HSChain.PoW.P2P.Types
+import HSChain.PoW.Tests
 import HSChain.Types.Merkle.Types
 import HSChain.Examples.Coin   (Coin(..),coinStateView)
 import HSChain.Network.Mock
@@ -35,37 +36,6 @@ tests = testGroup "Block store"
                                               testIdempotence emptyCoinChain db
   , testCase "Restart" $ testTimeout 5 $ withHSChainT testRestart
   ]
-
-
--- | Test that storage works correctly
-testIdempotence
-  :: (MonadIO m, BlockData b, Eq (b Proxy), Eq (b Identity), Show (b Proxy), Show (b Identity))
-  => [Block b] -> BlockDB m b -> m ()
-testIdempotence chain db = do
-  -- Genesis
-  fetch "Genesis" (head chain)
-  storeBlock db   (head chain)
-  fetch "Genesis" (head chain)
-  -- Rest of blocks
-  forM_ (take 3 $ drop 1 chain) $ \b -> do
-    nofetch (show (blockHeight b)) b
-  -- Store and retrieve
-  forM_ (take 3 $ drop 1 chain) $ \b -> do
-    storeBlock db b
-    fetch ("Stored: "++show (blockHeight b)) b
-  -- Idempotency of store
-  forM_ (take 3 $ drop 1 chain) $ \b -> do
-    storeBlock db b
-    fetch ("Idempotence: "++show (blockHeight b)) b
-  -- Fetchall
-  liftIO . assertEqual "All headers" (take 4 $ map toHeader $ chain) =<< retrieveAllHeaders db
-  where
-    fetch nm b = do
-      liftIO . assertEqual ("Yes: " ++ nm) (Just b)            =<< retrieveBlock  db (blockID b)
-      liftIO . assertEqual ("Yes: " ++ nm) (Just (toHeader b)) =<< retrieveHeader db (blockID b)
-    nofetch nm b = do
-      liftIO . assertEqual ("No: " ++ nm) (Nothing) =<< retrieveBlock  db (blockID b)
-      liftIO . assertEqual ("No: " ++ nm) (Nothing) =<< retrieveHeader db (blockID b)
 
 
 -- | Test that we're able to restart and to build correct block index

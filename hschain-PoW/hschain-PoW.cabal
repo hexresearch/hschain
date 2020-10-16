@@ -63,6 +63,7 @@ Library
                 HSChain.PoW.Asserts
                 HSChain.PoW.BlockIndex
                 HSChain.PoW.Types
+                HSChain.PoW.Tests
                 HSChain.PoW.Consensus
                 HSChain.Examples.Coin
                 HSChain.Examples.Coin.API
