@@ -22,6 +22,7 @@ import GHC.Generics (Generic)
 import HSChain.Crypto
 import HSChain.PoW.Types
 import HSChain.PoW.Consensus
+import HSChain.PoW.Tests
 import HSChain.Examples.Coin
 import HSChain.Types.Merkle.Types
 import HSChain.Store.Query
