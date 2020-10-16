@@ -44,15 +44,18 @@ module HSChain.Store.Query (
   , queryRW
   , mustQueryRW
     -- ** Primitive operations
-  , basicLastInsertRowId
+    -- *** Standard queries
   , basicQuery
   , basicQuery1
-  , basicQueryWith
-  , basicQueryWith1
   , basicQuery_
-  , basicQueryWith_
   , basicExecute
   , basicExecute_
+    -- *** Queries with custom decoders
+  , basicQueryWith
+  , basicQueryWith1
+  , basicQueryWith_
+    -- *** Others
+  , basicLastInsertRowId
   , rollback
     -- ** Prepared statements
   , PreparedStmt
@@ -341,37 +344,19 @@ mustQueryRW
 mustQueryRW q
   = throwNothing UnexpectedRollback =<< flip runQueryRW q =<< askConnectionRW
 
-
+-- | Execute SQL query and decode results using @FromRow@ mechanism
 basicQuery :: (SQL.ToRow p, SQL.FromRow q, MonadQueryRO m) => SQL.Query -> p -> m [q]
 basicQuery sql p = liftQueryRO $ Query $ do
   conn <- asks connConn
   liftIO $ SQL.query conn sql p
 
+-- | Execute SQL query without parameters and decode results using @FromRow@ mechanism
 basicQuery_ :: (SQL.FromRow q, MonadQueryRO m) => SQL.Query -> m [q]
 basicQuery_ sql = liftQueryRO $ Query $ do
   conn <- asks connConn
   liftIO $ SQL.query_ conn sql
 
-basicQueryWith :: (SQL.ToRow p, MonadQueryRO m) => SQL.RowParser q -> SQL.Query -> p -> m [q]
-basicQueryWith parser sql p = liftQueryRO $ Query $ do
-  conn <- asks connConn
-  liftIO $ SQL.queryWith parser conn sql p
-
-basicQueryWith1 :: (SQL.ToRow p, MonadQueryRO m) => SQL.RowParser q -> SQL.Query -> p -> m (Maybe q)
-basicQueryWith1 parser sql p =
-  basicQueryWith parser sql p >>= \case
-    []  -> return Nothing
-    [x] -> return $ Just x
-    _   -> error $ unlines
-      [ "Impossible: basicQueryWith1 returned multiple results"
-      , show sql
-      ]
-
-basicQueryWith_ :: (MonadQueryRO m) => SQL.RowParser q -> SQL.Query -> m [q]
-basicQueryWith_ parser sql = liftQueryRO $ Query $ do
-  conn <- asks connConn
-  liftIO $ SQL.queryWith_ parser conn sql
-
+-- | Execute SQL query that returns zero or one result
 basicQuery1 :: (SQL.ToRow row, SQL.FromRow a, MonadQueryRO m)
   => SQL.Query             -- ^ SQL query
   -> row                   -- ^ Query parameters
@@ -385,11 +370,30 @@ basicQuery1 sql param =
       , show sql
       ]
 
+basicQueryWith :: (SQL.ToRow p, MonadQueryRO m) => SQL.RowParser q -> SQL.Query -> p -> m [q]
+basicQueryWith parser sql p = liftQueryRO $ Query $ do
+  conn <- asks connConn
+  liftIO $ SQL.queryWith parser conn sql p
+
+basicQueryWith_ :: (MonadQueryRO m) => SQL.RowParser q -> SQL.Query -> m [q]
+basicQueryWith_ parser sql = liftQueryRO $ Query $ do
+  conn <- asks connConn
+  liftIO $ SQL.queryWith_ parser conn sql
+
+basicQueryWith1 :: (SQL.ToRow p, MonadQueryRO m) => SQL.RowParser q -> SQL.Query -> p -> m (Maybe q)
+basicQueryWith1 parser sql p =
+  basicQueryWith parser sql p >>= \case
+    []  -> return Nothing
+    [x] -> return $ Just x
+    _   -> error $ unlines
+      [ "Impossible: basicQueryWith1 returned multiple results"
+      , show sql
+      ]
+
 basicLastInsertRowId :: MonadQueryRW m => m Int64
 basicLastInsertRowId = liftQueryRW $ Query $ do
   conn <- asks connConn
   liftIO $ SQL.lastInsertRowId conn
-
 
 basicExecute :: (SQL.ToRow p, MonadQueryRW m) => SQL.Query -> p -> m ()
 basicExecute sql param = liftQueryRW $ Query $ do
