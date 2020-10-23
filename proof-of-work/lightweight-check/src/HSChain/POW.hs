@@ -116,13 +116,13 @@ solvesPuzzle numClauses answer header = all clauseSatisfied clauses
 check :: ByteString -> ByteString -> ByteString -> POWConfig -> IO Bool
 check headerWithoutAnswer answer hashOfAnswerHeader POWConfig{..}
   | B.length hashOfAnswerHeader /= answerSize = return False -- wrong data size.
-  | targetCompareResult == LT = return False -- final hash not under target complexity.
-  | computedHash /= hashOfAnswerHeader = return False -- hashes do not match.
+  | targetCompareResult == LT                 = return False -- final hash not under target complexity.
+  | computedHash /= hashOfAnswerHeader        = return False -- hashes do not match.
   | otherwise = return (solvesPuzzle powCfgClausesCount answer headerWithoutAnswer)
   where
-    encodedTarget = encodeIntegerLSB powCfgTarget
+    encodedTarget       = encodeIntegerLSB powCfgTarget
     targetCompareResult = compareLSB encodedTarget hashOfAnswerHeader
-    Hash computedHash = hashBlob $ B.concat [answer, headerWithoutAnswer] :: Hash SHA256
+    Hash computedHash   = hashBlob $ B.concat [answer, headerWithoutAnswer] :: Hash SHA256
     
 --  B.useAsCStringLen headerWithoutAnswer $ \(hdr, hdrLen) -> 
 --    B.useAsCStringLen answer $ \(answerPtr, answerLen) -> do
