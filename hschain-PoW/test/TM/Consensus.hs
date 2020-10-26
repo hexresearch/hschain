@@ -310,7 +310,7 @@ runTest msgList = runNoLogsT $ do
                        [ "  >> "++show (hash b :: Hash SHA256) ++ " => "++show b
                        | b <- [genesis, block1, block2, block3, block2', block3', block4']
                        ]
-    toE   = either Just (\() -> Nothing)
+    toE   = either Just (\_ -> Nothing)
     run s = flip runStateT s . runExceptT
     --
     loop _  _ []     = return ()

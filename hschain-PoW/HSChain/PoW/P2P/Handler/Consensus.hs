@@ -85,9 +85,10 @@ consensusMonitor db (BoxRX message)
         lift $ logger DebugS "Got RxBlock" (sl "bid" (blockID b))
         evalError $ handleBlockError $ processBlock db b
       RxMined   b  -> do
-        lift $ logger DebugS "Got RxMined" (sl "bid" (blockID b))
-        evalError $ do handleHeaderError $ processHeader (toHeader b)
-                       handleMineError   $ processBlock  db b
+        let bid = blockID b
+        lift $ logger DebugS "Got RxMined" (sl "bid" bid)
+        evalError $ do handleHeaderError   $ processHeader (toHeader b)
+                       handleMineError bid $ processBlock  db b
       RxHeaders hs -> do
         lift $ logger DebugS "Got RxHeaders" (sl "bid" (blockID <$> hs))
         evalError $ mapM_ (handleHeaderError . processHeader) hs
@@ -117,15 +118,20 @@ consensusMonitor db (BoxRX message)
     -- Note that we explicitly requrest blocks by their BIDs so we
     -- shouln't punish peers
     handleBlockError = mapExceptT $ fmap $ \case
-      Right               ()   -> Right ()
+      Right _                  -> Right ()
       Left ErrB'UnknownBlock   -> error "Impossible: we should'n get unknown block"
       Left ErrB'InvalidBlock{} -> Right ()
     -- For mined block we _do_ want to communicate back that mined
     -- block is invalid. That's very useful when debugging
-    handleMineError = mapExceptT $ \action -> action >>= \case
-      Right ()                   -> return $ Right ()
+    handleMineError bid = mapExceptT $ \action -> action >>= \case
+      Right errs
+        | [e] <- [ e | (i,e) <- errs
+                     , bid == i
+                     ]           -> do logger ErrorS "Bad mined block (state)" (sl "err" e)
+                                       return $ Left $ Peer'Punish $ toException e
+        | otherwise              -> return $ Right ()
       Left ErrB'UnknownBlock     -> error "Impossible: we should'n get unknown block"
-      Left (ErrB'InvalidBlock e) -> do logger ErrorS "Bad mined block" (sl "err" e)
+      Left (ErrB'InvalidBlock e) -> do logger ErrorS "Bad mined block (context-free)" (sl "err" e)
                                        return $ Left $ Peer'Punish $ toException e
     -- Handle errors during header processing. Not that KnownHeader is
     -- not really an error
