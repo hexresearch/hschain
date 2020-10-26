@@ -63,7 +63,9 @@ import qualified Data.Aeson      as JSON
 import qualified Data.Set        as Set
 import qualified Data.Sequence   as Seq
 import GHC.Generics (Generic)
+import Katip (sl)
 
+import HSChain.Logger
 import HSChain.PoW.Types
 import HSChain.PoW.BlockIndex
 import HSChain.PoW.Store
@@ -348,10 +350,10 @@ growNewHead bh = do
 
 -- | Add new block. We only accept block if we already have valid header. Note
 processBlock
-  :: (BlockData b, MonadIO m)
+  :: (BlockData b, MonadIO m, MonadLogger m)
   => BlockDB m b
   -> Block b
-  -> ExceptT (BlockError b) (StateT (Consensus m b) m) ()
+  -> ExceptT (BlockError b) (StateT (Consensus m b) m) [(BlockID b, BlockException b)]
 processBlock db block = do
   use (blockIndex . to (lookupIdx bid)) >>= \case
     Just _  -> return ()
@@ -362,7 +364,8 @@ processBlock db block = do
   -- Perform context free validation of block. If we validation fails
   -- we will add it to set of bad block and won't write on disk
   validateBlock block >>= \case
-    Left err -> do invalidateBlock bid
+    Left err -> do logger DebugS "Context-free block validation failed" (sl "err" err)
+                   invalidateBlock bid
                    throwError $ ErrB'InvalidBlock err
     Right () -> do lift $ lift $ storeBlock db block
   -- Now we want to find candidate heads that are better than current
@@ -404,9 +407,9 @@ invalidateBlock bid = do
 
 -- | Find best reachable candidate block.
 bestCandidate
-  :: (BlockData b, Monad m)
+  :: (BlockData b, MonadLogger m)
   => BlockDB m b
-  -> ExceptT (BlockError b) (StateT (Consensus m b) m) ()
+  -> ExceptT (BlockError b) (StateT (Consensus m b) m) [(BlockID b, BlockException b)]
 bestCandidate db = do
   bestWork <- use $ bestHead . _1 . to bhWork
   missing  <- use requiredBlocks
@@ -415,7 +418,7 @@ bestCandidate db = do
                                        >>> sortOn (Down . bhWork)
                                         )
   case heads of
-    []  -> cleanCandidates
+    []  -> [] <$ cleanCandidates
     h:_ -> do
       bIdx        <- use blockIndex
       (best,st,_) <- use bestHead
@@ -425,14 +428,18 @@ bestCandidate db = do
               Nothing -> error "CANT retrieveBlock"
               Just b  -> return b
             lift (applyBlock s bIdx bh block) >>= \case
-              Left  _ -> throwError (bhBID bh)
+              Left  e -> do logger DebugS "Block apply failed" ( sl "bid" (bhBID bh)
+                                                              <> sl "err" e)
+                            throwError (bhBID bh, e)
               Right b -> return b
       state' <- lift $ lift
               $ runExceptT
               $ traverseBlockIndexM rollback update best h st
       case state' of
-        Left  bid -> invalidateBlock bid >> bestCandidate db
-        Right s   -> bestHead .= (h,s,makeLocator h) >> cleanCandidates
+        Left  (bid,e) -> do invalidateBlock bid
+                            ((bid,e) :) <$> bestCandidate db
+        Right s       -> do bestHead .= (h,s,makeLocator h) >> cleanCandidates
+                            pure []
   where
     findBest missing Head{..} =
       case Seq.takeWhileL (\b -> bhBID b `Set.notMember` missing) bchMissing of
@@ -457,7 +464,7 @@ cleanCandidates = do
 
 -- | Create consensus state out of block index and state view.
 createConsensus
-  :: (BlockData b, Monad m)
+  :: (BlockData b, MonadLogger m)
   => BlockDB m b
   -> StateView m b
   -> BlockIndex b
@@ -478,4 +485,3 @@ createConsensus db sView bIdx = do
              Just b  -> b
              Nothing -> error "Internal error: state's BID is not in index"
   execStateT (runExceptT (bestCandidate db)) c0
-  where
