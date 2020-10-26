@@ -63,7 +63,9 @@ import qualified Data.Aeson      as JSON
 import qualified Data.Set        as Set
 import qualified Data.Sequence   as Seq
 import GHC.Generics (Generic)
+import Katip (sl)
 
+import HSChain.Logger
 import HSChain.PoW.Types
 import HSChain.PoW.BlockIndex
 import HSChain.PoW.Store
@@ -348,7 +350,7 @@ growNewHead bh = do
 
 -- | Add new block. We only accept block if we already have valid header. Note
 processBlock
-  :: (BlockData b, MonadIO m)
+  :: (BlockData b, MonadIO m, MonadLogger m)
   => BlockDB m b
   -> Block b
   -> ExceptT (BlockError b) (StateT (Consensus m b) m) ()
@@ -362,7 +364,8 @@ processBlock db block = do
   -- Perform context free validation of block. If we validation fails
   -- we will add it to set of bad block and won't write on disk
   validateBlock block >>= \case
-    Left err -> do invalidateBlock bid
+    Left err -> do logger DebugS "Context-free block validation failed" (sl "err" err)
+                   invalidateBlock bid
                    throwError $ ErrB'InvalidBlock err
     Right () -> do lift $ lift $ storeBlock db block
   -- Now we want to find candidate heads that are better than current
@@ -457,7 +460,7 @@ cleanCandidates = do
 
 -- | Create consensus state out of block index and state view.
 createConsensus
-  :: (BlockData b, Monad m)
+  :: (BlockData b, MonadLogger m)
   => BlockDB m b
   -> StateView m b
   -> BlockIndex b
