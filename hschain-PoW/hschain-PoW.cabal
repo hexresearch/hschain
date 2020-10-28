@@ -26,7 +26,6 @@ Library
                      , hschain-logger
                      , hschain-net
                      , hschain-merkle
-                     , hschain-pow-func
                      , hschain-db
                        --
                      , aeson
@@ -82,31 +81,6 @@ Library
                 HSChain.PoW.P2P.STM.PeerRegistry
                 HSChain.PoW.P2P.STM.NonceSet
                 HSChain.PoW.API
-
-
-Executable hschain-PoW-node
-  Ghc-options:         -Wall -threaded -Wno-orphans -rtsopts "-with-rtsopts=-N -T -qn1 -A64M"
-  Default-Language:    Haskell2010
-  Build-Depends:       base                 >=4.9 && <5
-                     , hschain-PoW
-                     , hschain-net
-                     , hschain-merkle
-                     , hschain-pow-func
-                     , hschain-types
-                     , hschain-crypto
-                     , hschain-control
-                     --
-                     , aeson
-                     , bytestring
-                     , containers
-                     , random
-                     , serialise
-                     , exceptions
-                     , transformers
-                     , optparse-applicative
-                     , yaml
-  hs-source-dirs:      exe
-  Main-is:             pow-node.hs
 
 Executable hschain-PoW-coin
   Ghc-options:         -Wall -threaded -rtsopts "-with-rtsopts=-N -T -qn1 -A64M"
