@@ -134,7 +134,12 @@ check headerWithoutAnswer answer hashOfAnswerHeader POWConfig{..} = evalContT $ 
   (hash,hashLen) <- ContT $ B.useAsCStringLen hashOfAnswerHeader
   abortIf $ hashLen /= hashSize
   target <- ContT $ B.useAsCString encodedTarget
-  r <- liftIO $ evpow_check (castPtr hdr) (fromIntegral hdrLen) (castPtr answerPtr) (castPtr hash) powCfgClausesCount (castPtr target)
+  r <- liftIO $ evpow_check
+         (castPtr hdr) (fromIntegral hdrLen)
+         (castPtr answerPtr)
+         (castPtr hash)
+         powCfgClausesCount
+         (castPtr target)
   pure $! r /= 0
   where
     encodedTarget = encodeIntegerLSB powCfgTarget
