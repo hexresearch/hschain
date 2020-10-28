@@ -5,8 +5,10 @@
 --
 -- Copyright (C) ...
 
-{-# LANGUAGE ForeignFunctionInterface, CApiFFI, RecordWildCards #-}
-
+{-# LANGUAGE CApiFFI                  #-}
+{-# LANGUAGE ForeignFunctionInterface #-}
+{-# LANGUAGE MultiWayIf               #-}
+{-# LANGUAGE RecordWildCards          #-}
 module HSChain.POW
   ( solve
   , check
@@ -14,6 +16,8 @@ module HSChain.POW
   , defaultPOWConfig
   ) where
 
+import Control.Monad.IO.Class
+import Control.Monad.Trans.Cont
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
 
@@ -122,17 +126,30 @@ solve headerParts POWConfig{..} = B.useAsCStringLen completeHeader $ \(ptr', len
     POWSearchConfig{..} = powCfgSearchConfig
     completeHeader = B.concat headerParts
 
-check :: ByteString -> ByteString -> ByteString -> POWConfig -> IO Bool
-check headerWithoutAnswer answer hashOfAnswerHeader POWConfig{..} =
-  B.useAsCStringLen headerWithoutAnswer $ \(hdr, hdrLen) -> 
-    B.useAsCStringLen answer $ \(answerPtr, answerLen) -> do
-      let encodedTarget = encodeIntegerLSB powCfgTarget
-      if answerLen /= answerSize
-        then return False
-        else B.useAsCStringLen hashOfAnswerHeader $ \(hash,hashLen) ->
-          if hashLen /= hashSize
-            then return False
-            else fmap (/= 0) $ B.useAsCString encodedTarget $ \target -> evpow_check
-                (castPtr hdr) (fromIntegral hdrLen) (castPtr answerPtr) (castPtr hash)
-                powCfgClausesCount (castPtr target)
-
+-- | Check whether cryptographic puzzle is correct
+check
+  :: ByteString -- ^ Serialized header without nonce
+  -> ByteString -- ^ Answer to puzzle
+  -> ByteString -- ^ ???
+  -> POWConfig
+  -> IO Bool
+check headerWithoutAnswer answer hashOfAnswerHeader POWConfig{..} = evalContT $ do
+  (hdr,       hdrLen)    <- ContT $ B.useAsCStringLen headerWithoutAnswer
+  (answerPtr, answerLen) <- ContT $ B.useAsCStringLen answer
+  abortIf $ answerLen /= answerSize
+  (hash,hashLen) <- ContT $ B.useAsCStringLen hashOfAnswerHeader
+  abortIf $ hashLen /= hashSize
+  target <- ContT $ B.useAsCString encodedTarget
+  r <- liftIO $ evpow_check
+         (castPtr hdr) (fromIntegral hdrLen)
+         (castPtr answerPtr)
+         (castPtr hash)
+         powCfgClausesCount
+         (castPtr target)
+  pure $! r /= 0
+  where
+    encodedTarget = encodeIntegerLSB powCfgTarget
+    --
+    abortIf :: Bool -> ContT Bool IO ()
+    abortIf True  = return ()
+    abortIf False = ContT $ \_ -> return False
