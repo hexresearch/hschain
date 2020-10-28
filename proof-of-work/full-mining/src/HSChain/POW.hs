@@ -126,7 +126,13 @@ solve headerParts POWConfig{..} = B.useAsCStringLen completeHeader $ \(ptr', len
     POWSearchConfig{..} = powCfgSearchConfig
     completeHeader = B.concat headerParts
 
-check :: ByteString -> ByteString -> ByteString -> POWConfig -> IO Bool
+-- | Check whether cryptographic puzzle is correct
+check
+  :: ByteString -- ^ Serialized header without nonce
+  -> ByteString -- ^ Answer to puzzle
+  -> ByteString -- ^ ???
+  -> POWConfig
+  -> IO Bool
 check headerWithoutAnswer answer hashOfAnswerHeader POWConfig{..} = evalContT $ do
   (hdr,       hdrLen)    <- ContT $ B.useAsCStringLen headerWithoutAnswer
   (answerPtr, answerLen) <- ContT $ B.useAsCStringLen answer
