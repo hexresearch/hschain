@@ -38,9 +38,12 @@ module HSChain.PoW.Types
   , Locator(..)
     -- * General utils
   , hash256AsTarget
+    -- * Lenses
+  , blockHeightL, blockTimeL, prevBlockL, blockDataL
   ) where
 
 import Codec.Serialise          (Serialise)
+import Control.Lens             (lens,Lens,Lens',(%~))
 import Control.DeepSeq
 import Control.Exception
 import Control.Monad
@@ -148,6 +151,7 @@ data GBlock b (f :: (* -> *)) = Block
   }
   deriving (Generic)
 
+-- | Convert block to header
 toHeader :: MerkleMap b => Block b -> Header b
 toHeader = merkleMap (const Proxy)
 
@@ -161,9 +165,7 @@ instance ( forall g. IsMerkle g => CryptoHashable (b g)
   hashStep = genericHashStep "hschain"
 
 instance MerkleMap b => MerkleMap (GBlock b) where
-  merkleMap f Block{..} = Block { blockData = merkleMap f blockData
-                                , ..
-                                }
+  merkleMap f = blockDataL %~ merkleMap f
 
 instance ( IsMerkle f
          , CBOR.Serialise (BlockID b)
@@ -338,3 +340,20 @@ hash256AsTarget a
 goBack :: Height -> BH b -> Maybe (BH b)
 goBack (Height 0) = Just
 goBack h          = goBack (pred h) <=< bhPrevious
+
+
+----------------------------------------------------------------
+-- Lens
+----------------------------------------------------------------
+
+blockHeightL :: Lens' (GBlock b f) Height
+blockHeightL = lens blockHeight (\b x -> b { blockHeight = x })
+
+blockTimeL :: Lens' (GBlock b f) Time
+blockTimeL = lens blockTime (\b x -> b { blockTime = x })
+
+prevBlockL :: Lens' (GBlock b f) (Maybe (BlockID b))
+prevBlockL = lens prevBlock (\b x -> b { prevBlock = x })
+
+blockDataL :: Lens (GBlock b f) (GBlock b g) (b f) (b g)
+blockDataL = lens blockData (\b x -> b { blockData = x })
