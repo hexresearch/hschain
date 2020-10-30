@@ -6,7 +6,6 @@
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
-{-# LANGUAGE PolyKinds                  #-}
 {-# LANGUAGE QuantifiedConstraints      #-}
 {-# LANGUAGE RecordWildCards            #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
@@ -82,10 +81,6 @@ scaleTime :: Int64 -> Time -> Time
 scaleTime i (Time y) = Time (i * y)
 
 
-----------------------------------------------------------------
--- Block
-----------------------------------------------------------------
-
 -- | Measure of work performed for creation of block or chain of
 --   blocks. Monoid instance should represent addition
 newtype Work = Work Natural
@@ -93,6 +88,78 @@ newtype Work = Work Natural
   deriving newtype (CryptoHashable,Serialise)
   deriving         (Semigroup,Monoid) via (Sum Natural)
 
+
+-- |Target - value computed during proof-of-work test must be lower
+-- than this threshold. Target can be and must be rounded.
+-- It is guaranteed to not to exceed some constant value.
+newtype Target = Target { targetInteger :: Integer }
+  deriving newtype (Eq, Ord)
+  deriving newtype (CryptoHashable, Serialise)
+
+instance Show Target where
+  show (Target i) = printf "%064x" i
+
+
+----------------------------------------------------------------
+-- Block
+----------------------------------------------------------------
+
+-- | Full block
+type Block  b = GBlock b Identity
+
+-- | Header. Block without transactions etc
+type Header b = GBlock b Proxy
+
+-- | Generic block. This is just spine of blockchain, that is height
+--   of block, hash of previous block and a "block data" - application
+--   of type functor to get some information about actual data, from
+--   just Merkle tree root to... Merkle tree itself?
+--
+--   (usually block is Merkle tree of some transactions)
+data GBlock b (f :: (* -> *)) = GBlock
+  { blockHeight   :: !Height
+  , blockTime     :: !Time
+  , prevBlock     :: !(Maybe (BlockID b))
+  , blockData     :: !(b f)
+  }
+  deriving (Generic)
+
+toHeader :: MerkleMap b => Block b -> Header b
+toHeader = merkleMap (const Proxy)
+
+deriving stock instance (Eq   (BlockID b), Eq   (b f)) => Eq   (GBlock b f)
+deriving stock instance (Show (BlockID b), Show (b f)) => Show (GBlock b f)
+
+instance ( forall g. IsMerkle g => CryptoHashable (b g)
+         , IsMerkle f
+         , CryptoHashable (BlockID b)
+         ) => CryptoHashable (GBlock b f) where
+  hashStep = genericHashStep "hschain"
+
+instance MerkleMap b => MerkleMap (GBlock b) where
+  merkleMap f GBlock{..} = GBlock { blockData = merkleMap f blockData
+                                  , ..
+                                  }
+
+instance ( IsMerkle f
+         , CBOR.Serialise (BlockID b)
+         , CBOR.Serialise (b f)
+         ) => CBOR.Serialise (GBlock b f)
+
+instance ( IsMerkle f
+         , JSON.ToJSON (BlockID b)
+         , forall g. IsMerkle g => JSON.ToJSON (b g)
+         ) => JSON.ToJSON (GBlock b f)
+
+instance ( IsMerkle f
+         , JSON.FromJSON (BlockID b)
+         , forall g. IsMerkle g => JSON.FromJSON (b g)
+         ) => JSON.FromJSON (GBlock b f)
+
+
+----------------------------------------------------------------
+-- BlockData type class
+----------------------------------------------------------------
 
 -- | Core of blockchain implementation.
 class ( Show (BlockID b), Ord (BlockID b), Serialise (BlockID b)
@@ -181,34 +248,6 @@ class BlockData b => Mineable b where
   adjustPuzzle :: MonadIO m => Block b -> m (Maybe (Block b), Target)
 
 
--- |Target - value computed during proof-of-work test must be lower
--- than this threshold. Target can be and must be rounded.
--- It is guaranteed to not to exceed some constant value.
-newtype Target = Target { targetInteger :: Integer }
-  deriving newtype (Eq, Ord)
-  deriving newtype (CryptoHashable, Serialise)
-
-instance Show Target where
-  show (Target i) = printf "%064x" i
-
--- | Generic block. This is just spine of blockchain, that is height
---   of block, hash of previous block and a "block data" - application
---   of type functor to get some information about actual data, from
---   just Merkle tree root to... Merkle tree itself?
---
---   (usually block is Merkle tree of some transactions)
-data GBlock b f = GBlock
-  { blockHeight   :: !Height
-  , blockTime     :: !Time
-  , prevBlock     :: !(Maybe (BlockID b))
-  , blockData     :: !(b f)
-  }
-  deriving (Generic)
-
-deriving stock instance (Eq   (BlockID b), Eq   (b f)) => Eq   (GBlock b f)
-deriving stock instance (Show (BlockID b), Show (b f)) => Show (GBlock b f)
-
-
 -- | Unpacked header for storage in block index. We use this data type
 --   instead of @[(BlockID, Header b)]@ in order to reduce memory use
 --   since we'll keep many thousands on these values in memory.
@@ -236,26 +275,6 @@ instance BlockData b => Eq (BH b) where
   a == b = bhBID a == bhBID b
 
 
-
-toHeader :: MerkleMap b => Block b -> Header b
-toHeader = merkleMap (const Proxy)
-
-instance ( forall g. IsMerkle g => CryptoHashable (b g)
-         , IsMerkle f
-         , CryptoHashable (BlockID b)
-         ) => CryptoHashable (GBlock b f) where
-  hashStep = genericHashStep "hschain"
-
-instance MerkleMap b => MerkleMap (GBlock b) where
-  merkleMap f GBlock{..} = GBlock { blockData = merkleMap f blockData
-                                  , ..
-                                  }
-
-
-type Header b = GBlock b Proxy
-type Block  b = GBlock b Identity
-
-
 data Locator b = Locator [BlockID b]
   deriving stock (Generic)
 deriving stock instance Eq   (BlockID b) => Eq   (Locator b)
@@ -263,24 +282,6 @@ deriving stock instance Show (BlockID b) => Show (Locator b)
 
 instance (Serialise (BlockID b)) => Serialise (Locator b)
 
-----------------------------------------
--- instances
-----------------------------------------
-
-instance ( IsMerkle f
-         , CBOR.Serialise (BlockID b)
-         , CBOR.Serialise (b f)
-         ) => CBOR.Serialise (GBlock b f)
-
-instance ( IsMerkle f
-         , JSON.ToJSON (BlockID b)
-         , forall g. IsMerkle g => JSON.ToJSON (b g)
-         ) => JSON.ToJSON (GBlock b f)
-
-instance ( IsMerkle f
-         , JSON.FromJSON (BlockID b)
-         , forall g. IsMerkle g => JSON.FromJSON (b g)
-         ) => JSON.FromJSON (GBlock b f)
 
 ---------------------------------------
 -- Handy utilities.
