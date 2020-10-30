@@ -14,7 +14,31 @@
 {-# LANGUAGE UndecidableInstances       #-}
 -- |
 -- Basic data types for PoW blockchain
-module HSChain.PoW.Types where
+module HSChain.PoW.Types
+  ( -- * Primitives
+    Height(..)
+  , Time(..)
+  , timeSecond
+  , getCurrentTime
+  , timeToUTC
+  , scaleTime
+  , Work(..)
+  , Target(..)
+    -- * Block & BlockData
+  , Header
+  , Block
+  , GBlock(..)
+  , toHeader
+  , BlockData(..)
+  , Mineable(..)
+  , retarget
+    -- * Block index
+  , BH(..)
+  , asHeader
+  , Locator(..)
+    -- * General utils
+  , hash256AsTarget
+  ) where
 
 import Codec.Serialise          (Serialise)
 import Control.DeepSeq
