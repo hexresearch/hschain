@@ -150,28 +150,6 @@ class ( Show (BlockID b), Ord (BlockID b), Serialise (BlockID b)
   targetAdjustmentInfo :: BH b -> (Height, Time)
   targetAdjustmentInfo _ = let n = 1024 in (Height n, scaleTime (120 * fromIntegral n) timeSecond)
 
-  -- |Perform retargeting with rounding.
-  --
-  -- We provide default implementation similar to one in Bitcoin,
-  -- except we treat mantissa as unsigned.
-  thresholdRetarget :: BH b -> Target -> Time -> Target
-  thresholdRetarget bh (Target currentThreshold) (Time delta') =
-    Target roundedNewThreshold
-    where
-      (_, Time targetTimeDelta') = targetAdjustmentInfo bh
-      delta = fromIntegral delta'
-      targetTimeDelta = fromIntegral targetTimeDelta'
-      -- new threshold = ceil $ current threshold * current time delta / target time delta
-      -- we use Integers, thus div and addition.
-      newThreshold = div (currentThreshold * delta + targetTimeDelta - 1) targetTimeDelta
-      roundedNewThreshold = roundToThreeBytes (31 - 3)
-      roundToThreeBytes 0 = newThreshold -- too low, can go with "denormalized" variant
-      roundToThreeBytes n
-        | shifted < 2 ^ (24 :: Int) = newThreshold .|. ones
-        | otherwise = roundToThreeBytes (n - 1)
-        where
-          shifted = shiftR newThreshold (n * 8)
-          ones = shiftL (1 :: Integer) (n * 8) - 1
 
 -- |Parts of mining process.
 --
