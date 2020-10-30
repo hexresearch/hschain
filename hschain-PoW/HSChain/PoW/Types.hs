@@ -6,6 +6,7 @@
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
+{-# LANGUAGE NumDecimals                #-}
 {-# LANGUAGE QuantifiedConstraints      #-}
 {-# LANGUAGE RecordWildCards            #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
@@ -17,11 +18,19 @@
 module HSChain.PoW.Types
   ( -- * Primitives
     Height(..)
+    -- * Time units
   , Time(..)
-  , timeSecond
+  , DTime(..)
   , getCurrentTime
   , timeToUTC
-  , scaleTime
+  , (.-.)
+  , (.+)
+  , (.-)
+  , timeSeconds
+  , timeMinutes
+  , timeHours
+  , timeDays
+    -- * Work measure
   , Work(..)
   , Target(..)
     -- * Block & BlockData
@@ -51,6 +60,7 @@ import Control.Monad.IO.Class
 import Data.Bits
 import qualified Data.ByteString as BS
 import Data.Monoid              (Sum(..))
+import Data.Semigroup           (Semigroup(..))
 import Data.Typeable            (Typeable)
 import Data.Time.Clock          (UTCTime)
 import Data.Time.Clock.POSIX    (getPOSIXTime,posixSecondsToUTCTime)
@@ -86,10 +96,6 @@ newtype Time = Time Int64
                    , CBOR.Serialise, JSON.ToJSON, JSON.FromJSON
                    , SQL.FromField, SQL.ToField)
 
--- | Useful constant to calculate durations.
-timeSecond :: Time
-timeSecond = Time 1000
-
 instance Show Time where
   show = show . timeToUTC
 
@@ -103,9 +109,28 @@ getCurrentTime = do
 timeToUTC :: Time -> UTCTime
 timeToUTC (Time t) = posixSecondsToUTCTime (realToFrac t / 1000)
 
--- | Multiply time (usually duration) by some integer constant.
-scaleTime :: Int64 -> Time -> Time
-scaleTime i (Time y) = Time (i * y)
+-- | Time difference in milliseconds.
+newtype DTime = DTime Int64
+  deriving stock   ( Generic, Show, Read, Eq, Ord)
+  deriving (Semigroup, Monoid) via Sum Int64
+
+-- | Compute difference between two timestamps
+(.-.) :: Time -> Time -> DTime
+Time t1 .-. Time t2 = DTime (t2 - t1)
+
+-- | Add difference to a time stamp
+(.+) :: Time -> DTime -> Time
+Time t .+ DTime dt = Time (t + dt)
+
+-- | Subtract difference to a time stamp
+(.-) :: Time -> DTime -> Time
+Time t .- DTime dt = Time (t - dt)
+
+timeSeconds,timeMinutes,timeHours,timeDays :: Int -> DTime
+timeSeconds = DTime . (*    1e3) . fromIntegral
+timeMinutes = DTime . (*   60e3) . fromIntegral
+timeHours   = DTime . (* 3600e3) . fromIntegral
+timeDays    = DTime . (*86400e3) . fromIntegral
 
 
 -- | Measure of work performed for creation of block or chain of
@@ -240,9 +265,13 @@ class ( Show (BlockID b), Ord (BlockID b), Serialise (BlockID b)
   -- | How work difficulty should be adjusted.
   -- First part of tuple is the block interval, second is seconds
   -- this interval should have.
-  targetAdjustmentInfo :: BH b -> (Height, Time)
-  targetAdjustmentInfo _ = let n = 1024 in (Height n, scaleTime (120 * fromIntegral n) timeSecond)
-
+  targetAdjustmentInfo :: BH b -> (Height, DTime)
+  targetAdjustmentInfo _
+    = ( Height n
+      , stimes n (timeMinutes 1)
+      )
+    where
+      n = 1024
 
 -- |Parts of mining process.
 --
@@ -320,16 +349,16 @@ retarget bh
   | bhHeight bh `mod` adjustInterval == 0
   , Just old <- goBack adjustInterval bh
   , bhHeight old /= 0
-  =   let Time t1 = bhTime old
-          Time t2 = bhTime bh
-          tgt     = targetInteger oldTarget
-          tgt'    = (tgt * fromIntegral (t2 - t1)) `div` (fromIntegral adjustInterval * fromIntegral seconds)
-      in Target tgt'
+    = let DTime actualInterval  = bhTime bh .-. bhTime old
+          DTime desiredInterval = stimes adjustInterval blockInterval
+          Target tgt            = oldTarget
+      in Target $ (tgt * fromIntegral actualInterval)
+            `div` (fromIntegral desiredInterval)
   | otherwise
     = oldTarget
   where
     oldTarget = blockTargetThreshold $ asHeader bh
-    (adjustInterval, Time seconds) = targetAdjustmentInfo bh
+    (adjustInterval, blockInterval) = targetAdjustmentInfo bh
 
 hash256AsTarget :: CryptoHashable a => a -> Target
 hash256AsTarget a

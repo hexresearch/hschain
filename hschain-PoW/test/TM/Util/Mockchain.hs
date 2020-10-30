@@ -104,7 +104,7 @@ instance Serialise (Nonce MockChain) => KVConfig MockChain where
   type Nonce MockChain = Word64
   kvDefaultNonce   = const 0
   kvAdjustInterval = Const 100
-  kvBlockTimeInterval  = Const (Time 1000)
+  kvBlockTimeInterval  = Const (DTime 1000)
   kvSolvePuzzle blk = case solved of
     blk' : _ -> return (Just blk')
     _ -> return Nothing

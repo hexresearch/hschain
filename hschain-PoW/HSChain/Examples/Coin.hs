@@ -148,7 +148,7 @@ instance BlockData Coin where
               $ fromIntegral  $ ((2^(256 :: Int)) `div`)
               $ targetInteger $ coinTarget $ blockData b
   blockTargetThreshold b = Target $ targetInteger (coinTarget (blockData b))
-  targetAdjustmentInfo _ = let n = 100 in (Height n, timeSecond)
+  targetAdjustmentInfo _ = (Height 100, timeSeconds 1)
 
 
 
