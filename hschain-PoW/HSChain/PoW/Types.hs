@@ -213,14 +213,15 @@ deriving stock instance (Show (BlockID b), Show (b f)) => Show (GBlock b f)
 --   instead of @[(BlockID, Header b)]@ in order to reduce memory use
 --   since we'll keep many thousands on these values in memory.
 data BH b = BH
-  { bhHeight   :: !Height         --
-  , bhTime     :: !Time
-  , bhBID      :: !(BlockID b)    --
-  , bhWork     :: !Work           --
-  , bhPrevious :: !(Maybe (BH b)) --
-  , bhData     :: !(b Proxy)      --
+  { bhHeight   :: !Height         -- ^ Height of block
+  , bhTime     :: !Time           -- ^ Time of block
+  , bhBID      :: !(BlockID b)    -- ^ Cached block ID
+  , bhWork     :: !Work           -- ^ Amount of work in block
+  , bhPrevious :: !(Maybe (BH b)) -- ^ Previous block
+  , bhData     :: !(b Proxy)      -- ^ Header part of user-defined data
   }
 
+-- | Convert 'BH' to proper header.
 asHeader :: BH b -> Header b
 asHeader bh = GBlock
   { blockHeight = bhHeight bh
