@@ -139,11 +139,11 @@ createCandidateBlock
   -> m (Block b)
 createCandidateBlock sv bh t txs = do
   b <- createCandidateBlockData sv bh t txs
-  return GBlock { blockHeight = succ (bhHeight bh)
-                , blockTime   = t
-                , prevBlock   = Just $ bhBID bh
-                , blockData   = b
-                }
+  return Block { blockHeight = succ (bhHeight bh)
+               , blockTime   = t
+               , prevBlock   = Just $ bhBID bh
+               , blockData   = b
+               }
 
 
 ----------------------------------------------------------------

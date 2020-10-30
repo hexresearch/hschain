@@ -57,7 +57,7 @@ import HSChain.Examples.Coin.API
 ----------------------------------------------------------------
 
 genesis :: Block Coin
-genesis = GBlock
+genesis = Block
   { blockHeight = Height 0
   , blockTime   = Time 0
   , prevBlock   = Nothing

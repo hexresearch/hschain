@@ -52,14 +52,14 @@ mockchain = gen : unfoldr ( Just
                           . (\b -> mineBlock [let Height h = blockHeight b in (fromIntegral h, "VAL")] b)
                           ) gen
   where
-    gen = GBlock { blockHeight = Height 0
-                 , blockTime   = Time 0
-                 , prevBlock   = Nothing
-                 , blockData   = KV { kvData       = merkled []
-                                    , kvNonce      = 0
-                                    , kvTarget     = Target $ shiftL 1 256 - 1
-                                    }
-                 }
+    gen = Block { blockHeight = Height 0
+                , blockTime   = Time 0
+                , prevBlock   = Nothing
+                , blockData   = KV { kvData       = merkled []
+                                   , kvNonce      = 0
+                                   , kvTarget     = Target $ shiftL 1 256 - 1
+                                   }
+                }
 
 
 emptyCoinChain :: [Block Coin]
@@ -68,7 +68,7 @@ emptyCoinChain = gen : unfoldr (Just . (\b -> (b,b)) . mineCoin [] . Just) gen
     gen = mineCoin [] Nothing
 
 mineCoin :: [TxCoin] -> Maybe (Block Coin) -> Block Coin
-mineCoin txs mb = GBlock
+mineCoin txs mb = Block
   { blockHeight = maybe (Height 0) (succ . blockHeight) mb
   , blockTime   = Time 0
   , prevBlock   = blockID <$> mb
@@ -81,7 +81,7 @@ mineCoin txs mb = GBlock
 mineBlock :: (Num (Nonce cfg), Show (Nonce cfg), KVConfig cfg)
           => [(Int,String)] -> Block (KV cfg) -> Block (KV cfg)
 mineBlock txs b = unsafePerformIO $ do
-  find $ GBlock
+  find Block
     { blockHeight = succ $ blockHeight b
     , blockTime   = Time 0
     , prevBlock   = Just $! blockID b

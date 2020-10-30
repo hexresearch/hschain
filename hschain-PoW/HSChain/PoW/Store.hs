@@ -59,7 +59,7 @@ buildBlockIndex BlockDB{..} = do
     []              -> error "buildBlockIndex: no blocks in storage"
   --
   let idx0      = blockIndexFromGenesis genesis
-      add idx b@GBlock{..} = case (`lookupIdx` idx) =<< prevBlock of
+      add idx b@Block{..} = case (`lookupIdx` idx) =<< prevBlock of
         Nothing     -> error "blockIndexFromGenesis: orphan block"
         Just parent -> insertIdx BH
           { bhHeight   = blockHeight
@@ -134,14 +134,14 @@ blockDatabase genesis = do
                          blockTime   <- field
                          prevBlock   <- nullableFieldCBOR
                          blockData   <- fieldCBOR
-                         return GBlock{..}
+                         return Block{..}
       decoderHeader = do blockHeight <- field
                          blockTime   <- field
                          prevBlock   <- nullableFieldCBOR
                          blockData   <- fieldCBOR
-                         return GBlock{..}
+                         return Block{..}
       --
-      store b@GBlock{..} = mustQueryRW $ basicExecute
+      store b@Block{..} = mustQueryRW $ basicExecute
         "INSERT OR IGNORE INTO pow_blocks VALUES (NULL, ?, ?, ?, ?, ?, ?)"
         ( CBORed (blockID b)
         , blockHeight

@@ -703,7 +703,7 @@ retrieveAllCoinHeaders = queryRO $ basicQueryWith_
   "SELECT height, time, prev, dataHash, target, nonce FROM coin_blocks ORDER BY height"
 
 storeCoinBlock :: (MonadThrow m, MonadIO m, MonadDB m) => Block Coin -> m ()
-storeCoinBlock b@GBlock{blockData=Coin{..}, ..} = mustQueryRW $ do
+storeCoinBlock b@Block{blockData=Coin{..}, ..} = mustQueryRW $ do
   basicExecute
     "INSERT OR IGNORE INTO coin_blocks VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, ?)"
     ( blockID b
@@ -750,7 +750,7 @@ coinBlockDecoder = do
   coinData    <- fieldCBOR
   coinTarget  <- fieldCBOR
   coinNonce   <- field
-  return GBlock{ blockData = Coin{..}, ..}
+  return Block{ blockData = Coin{..}, ..}
 
 coinHeaderDecoder :: SQL.RowParser (Header Coin)
 coinHeaderDecoder = do
@@ -760,7 +760,7 @@ coinHeaderDecoder = do
   coinData    <- fromHashed <$> fieldByteRepr
   coinTarget  <- fieldCBOR
   coinNonce   <- field
-  return GBlock{ blockData = Coin{..}, ..}
+  return Block{ blockData = Coin{..}, ..}
 
 signTX :: PrivKey Alg -> TxSend -> TxCoin
 signTX pk tx = TxCoin (publicKey pk) (signHashed pk tx) tx

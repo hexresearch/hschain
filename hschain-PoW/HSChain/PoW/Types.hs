@@ -116,7 +116,7 @@ type Header b = GBlock b Proxy
 --   just Merkle tree root to... Merkle tree itself?
 --
 --   (usually block is Merkle tree of some transactions)
-data GBlock b (f :: (* -> *)) = GBlock
+data GBlock b (f :: (* -> *)) = Block
   { blockHeight   :: !Height
   , blockTime     :: !Time
   , prevBlock     :: !(Maybe (BlockID b))
@@ -137,9 +137,9 @@ instance ( forall g. IsMerkle g => CryptoHashable (b g)
   hashStep = genericHashStep "hschain"
 
 instance MerkleMap b => MerkleMap (GBlock b) where
-  merkleMap f GBlock{..} = GBlock { blockData = merkleMap f blockData
-                                  , ..
-                                  }
+  merkleMap f Block{..} = Block { blockData = merkleMap f blockData
+                                , ..
+                                }
 
 instance ( IsMerkle f
          , CBOR.Serialise (BlockID b)
@@ -262,7 +262,7 @@ data BH b = BH
 
 -- | Convert 'BH' to proper header.
 asHeader :: BH b -> Header b
-asHeader bh = GBlock
+asHeader bh = Block
   { blockHeight = bhHeight bh
   , blockTime   = bhTime bh
   , prevBlock   = bhBID <$> bhPrevious bh

@@ -67,7 +67,7 @@ testRestart = do
 
 
 genesisCoin :: Block Coin
-genesisCoin = GBlock
+genesisCoin = Block
   { blockHeight = Height 0
   , blockTime   = Time 0
   , prevBlock   = Nothing
