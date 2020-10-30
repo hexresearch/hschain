@@ -191,12 +191,6 @@ newtype Target = Target { targetInteger :: Integer }
 instance Show Target where
   show (Target i) = printf "%064x" i
 
--- |Difficulty - how many (in average) computations are needed to
--- achieve the target.
-newtype Difficulty = Difficulty { difficultyInteger :: Integer }
-  deriving newtype (Eq, Ord, Show)
-  deriving newtype CryptoHashable
-
 -- | Generic block. This is just spine of blockchain, that is height
 --   of block, hash of previous block and a "block data" - application
 --   of type functor to get some information about actual data, from
