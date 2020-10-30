@@ -81,9 +81,9 @@ newtype Height = Height Int32
 
 -- | Time in milliseconds since UNIX epoch.
 newtype Time = Time Int64
-  deriving stock   (Read, Generic, Eq, Ord)
-  deriving newtype (NFData, Enum
-                   , CBOR.Serialise, JSON.ToJSON, JSON.FromJSON, CryptoHashable
+  deriving stock   ( Generic, Eq, Ord)
+  deriving newtype ( NFData, CryptoHashable
+                   , CBOR.Serialise, JSON.ToJSON, JSON.FromJSON
                    , SQL.FromField, SQL.ToField)
 
 -- | Useful constant to calculate durations.
