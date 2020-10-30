@@ -113,7 +113,7 @@ class ( Show (BlockID b), Ord (BlockID b), Serialise (BlockID b)
 
   -- | Error during evaluation of block. It's mostly to produce
   --   reasonable informative error messages.
-  data BlockException b
+  type BlockException b
 
   -- | Transactions that constitute block.
   type Tx b

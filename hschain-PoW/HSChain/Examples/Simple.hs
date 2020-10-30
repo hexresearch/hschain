@@ -122,6 +122,11 @@ class ( CryptoHashable (Nonce cfg)
   kvCheckPuzzle :: MonadIO m => Header (KV cfg) -> m Bool
 
 
+data KVError = KVError
+  deriving stock    (Generic, Eq, Show)
+  deriving anyclass (Exception, JSON.ToJSON)
+
+
 instance (KVConfig cfg) => BlockData (KV cfg) where
   newtype BlockID (KV cfg) = KV'BID (Hash SHA256)
     deriving newtype (Show,Eq,Ord,CryptoHashable,Serialise, JSON.ToJSON, JSON.FromJSON)
@@ -129,11 +134,8 @@ instance (KVConfig cfg) => BlockData (KV cfg) where
   newtype TxID (KV cfg) = KV'TID (Hash SHA256)
     deriving newtype (Show,Eq,Ord,CryptoHashable,Serialise, JSON.ToJSON, JSON.FromJSON)
 
-  data BlockException (KV cfg) = KVError
-    deriving stock    (Generic, Eq, Show)
-    deriving anyclass (Exception, JSON.ToJSON)
-
-  type Tx (KV cfg) = (Int, String)
+  type BlockException (KV cfg) = KVError
+  type Tx             (KV cfg) = (Int, String)
 
   blockID = KV'BID . hash
   txID    = KV'TID . hash

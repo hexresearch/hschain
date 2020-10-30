@@ -105,6 +105,12 @@ deriving stock    instance Show      (Coin Proxy)
 deriving stock    instance Eq        (Coin Identity)
 deriving stock    instance Eq        (Coin Proxy)
 
+data CoinError
+  = CoinError    String
+  | CoinInternal String
+  deriving stock    (Show,Generic)
+  deriving anyclass (Exception,JSON.ToJSON)
+
 
 instance BlockData Coin where
   newtype BlockID Coin = CoinID (Hash SHA256)
@@ -117,13 +123,8 @@ instance BlockData Coin where
                      , JSON.ToJSON, JSON.FromJSON)
     deriving (SQL.FromField, SQL.ToField) via ByteRepred (TxID Coin)
 
-  data BlockException Coin
-    = CoinError    String
-    | CoinInternal String
-    deriving stock    (Show,Generic)
-    deriving anyclass (Exception,JSON.ToJSON)
-
-  type Tx Coin = TxCoin
+  type BlockException Coin = CoinError
+  type Tx             Coin = TxCoin
 
   blockID = CoinID   . hash
   txID    = CoinTxID . hash
