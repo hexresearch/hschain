@@ -118,7 +118,7 @@ data StateView m b = StateView
     --   It's acceptable to fail for too deep reorganizations.
   , checkTx :: Tx b -> m (Either (BlockException b) ())
     -- ^ Check that transaction is valid. Needed for checking
-    --   transaction in the mempool
+    --   transaction in the mempool.
   , flushState  :: m (StateView m b)
     -- ^ Persist snapshot in the database.
 
