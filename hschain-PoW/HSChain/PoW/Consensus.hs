@@ -119,6 +119,9 @@ data StateView m b = StateView
   , checkTx :: Tx b -> m (Either (BlockException b) ())
     -- ^ Check that transaction is valid. Needed for checking
     --   transaction in the mempool
+  , flushState  :: m (StateView m b)
+    -- ^ Persist snapshot in the database.
+
   , createCandidateBlockData
       :: BH b
       -> Time
@@ -126,8 +129,6 @@ data StateView m b = StateView
       -> m (b Identity)
     -- ^ Create candidate block out of list of transactions. It won't
     --   have enough work in it but should be valid otherwise.
-  , flushState  :: m (StateView m b)
-    -- ^ Persist snapshot in the database.
   }
 
 createCandidateBlock
