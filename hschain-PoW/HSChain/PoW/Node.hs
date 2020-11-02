@@ -22,36 +22,27 @@
 {-# LANGUAGE ViewPatterns        #-}
 module HSChain.PoW.Node
   ( Cfg(..)
-  , runNode
-  , hoistCont
   , genericMiningLoop
     -- * Block storage
   , inMemoryDB
   , blockDatabase
   ) where
 
-import qualified Data.Aeson as JSON
-import Codec.Serialise
-
 import Control.Concurrent
 import Control.Monad
 import Control.Monad.Cont
-import Control.Monad.Trans.Cont
 
 import Data.Word
-import Data.Yaml.Config
+import qualified Data.Aeson as JSON
 import GHC.Generics (Generic)
 
 import HSChain.Control.Channels
 import HSChain.PoW.Consensus
 import HSChain.Logger
 import HSChain.PoW.P2P
-import HSChain.PoW.P2P.Types
 import HSChain.PoW.Types
 import HSChain.PoW.Store
-import HSChain.Network.TCP
 import HSChain.Network.Types
-import HSChain.Types.Merkle.Types
 import HSChain.Control.Util
 import HSChain.Control.Class
 import HSChain.Config
@@ -67,41 +58,6 @@ data Cfg = Cfg
   }
   deriving stock (Show, Generic)
   deriving (JSON.FromJSON) via SnakeCase (DropSmart (Config Cfg))
-
-
--- |The process to run nodes.
---
--- Requires places to load config from, a flag indicating that
--- we are mining and genesis block.
-runNode
-  :: ( Mineable b
-     , Show (b Proxy)
-     , Serialise (b Proxy)
-     , Serialise (b Identity)
-     , Serialise (Tx b)
-     )
-  => [String]
-  -> Bool
-  -> StateView (LoggerT IO) b
-  -> BlockDB   (LoggerT IO) b
-  -> IO ()
-runNode pathsToConfig miningNode sView db = do
-  Cfg{..} <- loadYamlSettings pathsToConfig [] requireEnv
-  --
-  let netcfg = NetCfg { nKnownPeers     = 3
-                      , nConnectedPeers = 3
-                      }
-  let net = newNetworkTcp cfgPort
-  withLogEnv "" "" (map makeScribe cfgLog) $ \logEnv ->
-    runLoggerT logEnv $ evalContT $ do
-      c0  <- lift $ createConsensus db sView =<< buildBlockIndex db
-      pow <- startNode netcfg net cfgPeers db c0
-      when miningNode $ cforkLinked $ genericMiningLoop pow
-      liftIO $ do
-        ch <- atomicallyIO (chainUpdate pow)
-        forever $ do (bh,_) <- awaitIO ch
-                     print $ asHeader bh
-                     print $ retarget bh
 
 genericMiningLoop :: (Mineable b, MonadFork m) => PoW m b -> m x
 genericMiningLoop pow = start
@@ -132,7 +88,3 @@ genericMiningLoop pow = start
           case bMined of
             Just b  -> void $ sendNewBlock pow b
             Nothing -> tryMine Nothing
-
-hoistCont :: (Monad n, Monad m) => (m a -> n b) -> ContT a m a -> ContT r n b
-hoistCont f m = lift $ f $ evalContT m
-
