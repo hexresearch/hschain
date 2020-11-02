@@ -113,13 +113,18 @@ class ( CryptoHashable (Nonce cfg)
   -- | Difficulty adjustment is performed every N of blocks
   kvAdjustInterval :: Const Height  cfg
   -- | Expected interval between blocks in milliseconds
-  kvBlockTimeInterval  :: Const Time cfg
+  kvBlockTimeInterval  :: Const DTime cfg
 
   -- |How to compute a solved puzzle. May fail.
   kvSolvePuzzle :: MonadIO m => Block (KV cfg) -> m (Maybe (Block (KV cfg)))
 
   -- |How to check solution of a puzzle.
   kvCheckPuzzle :: MonadIO m => Header (KV cfg) -> m Bool
+
+
+data KVError = KVError
+  deriving stock    (Generic, Eq, Show)
+  deriving anyclass (Exception, JSON.ToJSON)
 
 
 instance (KVConfig cfg) => BlockData (KV cfg) where
@@ -129,11 +134,8 @@ instance (KVConfig cfg) => BlockData (KV cfg) where
   newtype TxID (KV cfg) = KV'TID (Hash SHA256)
     deriving newtype (Show,Eq,Ord,CryptoHashable,Serialise, JSON.ToJSON, JSON.FromJSON)
 
-  data BlockException (KV cfg) = KVError
-    deriving stock    (Generic, Eq, Show)
-    deriving anyclass (Exception, JSON.ToJSON)
-
-  type Tx (KV cfg) = (Int, String)
+  type BlockException (KV cfg) = KVError
+  type Tx             (KV cfg) = (Int, String)
 
   blockID = KV'BID . hash
   txID    = KV'TID . hash
@@ -164,7 +166,7 @@ instance (KVConfig cfg) => BlockData (KV cfg) where
   targetAdjustmentInfo (_ :: BH (KV cfg)) = (adjustInterval, blockMineTime)
     where
       Const adjustInterval = kvAdjustInterval :: Const Height cfg
-      Const blockMineTime = kvBlockTimeInterval :: Const Time cfg
+      Const blockMineTime = kvBlockTimeInterval :: Const DTime cfg
 
 instance (KVConfig cfg) => Mineable (KV cfg) where
   adjustPuzzle = fmap (flip (,) (Target 0)) . kvSolvePuzzle

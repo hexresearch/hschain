@@ -118,7 +118,10 @@ data StateView m b = StateView
     --   It's acceptable to fail for too deep reorganizations.
   , checkTx :: Tx b -> m (Either (BlockException b) ())
     -- ^ Check that transaction is valid. Needed for checking
-    --   transaction in the mempool
+    --   transaction in the mempool.
+  , flushState  :: m (StateView m b)
+    -- ^ Persist snapshot in the database.
+
   , createCandidateBlockData
       :: BH b
       -> Time
@@ -126,8 +129,6 @@ data StateView m b = StateView
       -> m (b Identity)
     -- ^ Create candidate block out of list of transactions. It won't
     --   have enough work in it but should be valid otherwise.
-  , flushState  :: m (StateView m b)
-    -- ^ Persist snapshot in the database.
   }
 
 createCandidateBlock
@@ -139,11 +140,11 @@ createCandidateBlock
   -> m (Block b)
 createCandidateBlock sv bh t txs = do
   b <- createCandidateBlockData sv bh t txs
-  return GBlock { blockHeight = succ (bhHeight bh)
-                , blockTime   = t
-                , prevBlock   = Just $ bhBID bh
-                , blockData   = b
-                }
+  return Block { blockHeight = succ (bhHeight bh)
+               , blockTime   = t
+               , prevBlock   = Just $ bhBID bh
+               , blockData   = b
+               }
 
 
 ----------------------------------------------------------------

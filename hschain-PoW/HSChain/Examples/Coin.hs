@@ -105,6 +105,12 @@ deriving stock    instance Show      (Coin Proxy)
 deriving stock    instance Eq        (Coin Identity)
 deriving stock    instance Eq        (Coin Proxy)
 
+data CoinError
+  = CoinError    String
+  | CoinInternal String
+  deriving stock    (Show,Generic)
+  deriving anyclass (Exception,JSON.ToJSON)
+
 
 instance BlockData Coin where
   newtype BlockID Coin = CoinID (Hash SHA256)
@@ -117,13 +123,8 @@ instance BlockData Coin where
                      , JSON.ToJSON, JSON.FromJSON)
     deriving (SQL.FromField, SQL.ToField) via ByteRepred (TxID Coin)
 
-  data BlockException Coin
-    = CoinError    String
-    | CoinInternal String
-    deriving stock    (Show,Generic)
-    deriving anyclass (Exception,JSON.ToJSON)
-
-  type Tx Coin = TxCoin
+  type BlockException Coin = CoinError
+  type Tx             Coin = TxCoin
 
   blockID = CoinID   . hash
   txID    = CoinTxID . hash
@@ -147,7 +148,7 @@ instance BlockData Coin where
               $ fromIntegral  $ ((2^(256 :: Int)) `div`)
               $ targetInteger $ coinTarget $ blockData b
   blockTargetThreshold b = Target $ targetInteger (coinTarget (blockData b))
-  targetAdjustmentInfo _ = let n = 100 in (Height n, timeSecond)
+  targetAdjustmentInfo _ = (Height 100, timeSeconds 1)
 
 
 
@@ -702,7 +703,7 @@ retrieveAllCoinHeaders = queryRO $ basicQueryWith_
   "SELECT height, time, prev, dataHash, target, nonce FROM coin_blocks ORDER BY height"
 
 storeCoinBlock :: (MonadThrow m, MonadIO m, MonadDB m) => Block Coin -> m ()
-storeCoinBlock b@GBlock{blockData=Coin{..}, ..} = mustQueryRW $ do
+storeCoinBlock b@Block{blockData=Coin{..}, ..} = mustQueryRW $ do
   basicExecute
     "INSERT OR IGNORE INTO coin_blocks VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, ?)"
     ( blockID b
@@ -749,7 +750,7 @@ coinBlockDecoder = do
   coinData    <- fieldCBOR
   coinTarget  <- fieldCBOR
   coinNonce   <- field
-  return GBlock{ blockData = Coin{..}, ..}
+  return Block{ blockData = Coin{..}, ..}
 
 coinHeaderDecoder :: SQL.RowParser (Header Coin)
 coinHeaderDecoder = do
@@ -759,7 +760,7 @@ coinHeaderDecoder = do
   coinData    <- fromHashed <$> fieldByteRepr
   coinTarget  <- fieldCBOR
   coinNonce   <- field
-  return GBlock{ blockData = Coin{..}, ..}
+  return Block{ blockData = Coin{..}, ..}
 
 signTX :: PrivKey Alg -> TxSend -> TxCoin
 signTX pk tx = TxCoin (publicKey pk) (signHashed pk tx) tx
