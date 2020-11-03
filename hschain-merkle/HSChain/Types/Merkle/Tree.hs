@@ -1,13 +1,5 @@
-{-# LANGUAGE BangPatterns          #-}
-{-# LANGUAGE DeriveAnyClass        #-}
-{-# LANGUAGE DeriveFoldable        #-}
-{-# LANGUAGE DeriveGeneric         #-}
-{-# LANGUAGE DerivingStrategies    #-}
-{-# LANGUAGE FlexibleInstances     #-}
-{-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE OverloadedStrings     #-}
-{-# LANGUAGE ScopedTypeVariables   #-}
+{-# LANGUAGE RankNTypes            #-}
 {-# LANGUAGE TypeFamilies          #-}
 module HSChain.Types.Merkle.Tree
   ( -- * Type class for Merkle trees
@@ -17,6 +9,7 @@ module HSChain.Types.Merkle.Tree
   , createMerkleTree
   , MerkleBinTree1(..)
   , createMerkleTree1
+  , createMerkleTreeNE1
   , Node(..)
   , MerkleProof(..)
   ) where
@@ -27,6 +20,8 @@ import Control.Monad
 import Data.Bits
 import Data.Function
 import Data.Foldable
+import Data.List.NonEmpty (NonEmpty(..))
+import qualified Data.Aeson as JSON
 import GHC.Generics  (Generic)
 
 import HSChain.Crypto
@@ -40,10 +35,8 @@ import HSChain.Types.Merkle.Types
 
 -- | Type class for various Merkle trees. It provides generic API for
 --   the proofs of inclusion.
-class CryptoHashable a => MerkleTree t a where
+class (IsMerkleNode t, CryptoHashable a) => MerkleTree t a where
   type Proof t :: * -> * -> *
-  -- | Obtain root hash of the tree.
-  rootHash :: t alg f a -> Hash alg
   -- | Create proof-of-inclusion for element of Merkle tree.
   createMerkleProof :: t alg Identity a -> a -> Maybe (Proof t alg a)
   -- | Verify that proof is indeed correct.
@@ -58,20 +51,20 @@ class CryptoHashable a => MerkleTree t a where
 
 -- | Balanced binary Merkle tree.
 newtype MerkleBinTree alg f a = MerkleBinTree
-  { merkleBinTree :: MerkleNode f alg (Maybe (Node alg f a))
+  { merkleBinTree :: MerkleNode alg f (Maybe (Node alg f a))
   }
   deriving (Show, Foldable, Generic)
 
 -- | Nonempty balanced binary Merkle tree.
 newtype MerkleBinTree1 alg f a = MerkleBinTree1
-  { merkleBinTree1 :: MerkleNode f alg (Node alg f a)
+  { merkleBinTree1 :: MerkleNode alg f (Node alg f a)
   }
   deriving (Show, Foldable, Generic)
 
 -- | Single node of tree
 data Node alg f a
-  = Branch (MerkleNode f alg (Node alg f a))
-           (MerkleNode f alg (Node alg f a))
+  = Branch (MerkleNode alg f (Node alg f a))
+           (MerkleNode alg f (Node alg f a))
   | Leaf   !a
   deriving (Show, Foldable, Generic)
 
@@ -83,28 +76,40 @@ data MerkleProof alg a = MerkleProof
   deriving stock    (Show, Eq, Generic)
   deriving anyclass (Serialise)
 
+
+instance IsMerkleNode MerkleBinTree where
+  merkleHash = merkleHash . merkleBinTree
+  mapMerkleNode f (MerkleBinTree (MNode (Hashed h) val))
+    = MerkleBinTree $ MNode (Hashed h) (fmap (mapNode f) <$> f val)
+  toHashedNode (MerkleBinTree n) = MerkleBinTree $ nodeFromHash (merkleHash n)
+  nodeFromHash = MerkleBinTree . nodeFromHash
+
 instance (CryptoHashable a, Eq a) => MerkleTree MerkleBinTree a where
   type Proof MerkleBinTree = MerkleProof
-  rootHash = merkleHash . merkleBinTree
   --
   createMerkleProof (MerkleBinTree mtree) a = do
     path <- searchBinTree a =<< merkleValue mtree
     return $ MerkleProof a path
   --
-  verifyMerkleProof t p = rootHash t == hash (Just (calcRootNode p))
+  verifyMerkleProof t p = merkleHash t == hash (Just (calcRootNode p))
   --
   checkMerkleInvariants = maybe True isBalanced . merkleValue . merkleBinTree
 
 
+instance IsMerkleNode MerkleBinTree1 where
+  merkleHash = merkleHash . merkleBinTree1
+  mapMerkleNode f (MerkleBinTree1 n) = MerkleBinTree1 $ mapMNode f n
+  toHashedNode (MerkleBinTree1 n) = MerkleBinTree1 $ nodeFromHash (merkleHash n)
+  nodeFromHash = MerkleBinTree1 . nodeFromHash
+
 instance (CryptoHashable a, Eq a) => MerkleTree MerkleBinTree1 a where
   type Proof MerkleBinTree1 = MerkleProof
-  rootHash = merkleHash . merkleBinTree1
   --
   createMerkleProof (MerkleBinTree1 mtree) a = do
     path <- searchBinTree a $ merkleValue mtree
     return $ MerkleProof a path
   --
-  verifyMerkleProof t p = rootHash t == hash (calcRootNode p)
+  verifyMerkleProof t p = merkleHash t == hash (calcRootNode p)
   --
   checkMerkleInvariants = isBalanced . merkleValue . merkleBinTree1
 
@@ -126,6 +131,21 @@ instance (CryptoHash alg, CryptoHashable a) => CryptoHashable (Node alg f a) whe
         Leaf   a   -> hashStep (ConstructorIdx 1)
                    <> hashStep a
 
+
+instance Eq (MerkleBinTree alg f a) where
+  (==) = (==) `on` merkleHash
+
+instance Eq (MerkleBinTree1 alg f a) where
+  (==) = (==) `on` merkleHash
+
+instance ( CryptoHash alg ) => Serialise (MerkleBinTree alg Proxy a) where
+  encode = encode . merkleHash
+  decode = nodeFromHash <$> decode
+
+instance ( CryptoHash alg ) => Serialise (MerkleBinTree1 alg Proxy a) where
+  encode = encode . merkleHash
+  decode = nodeFromHash <$> decode
+
 instance (CryptoHash alg, Serialise a, CryptoHashable a
          ) => Serialise (MerkleBinTree alg Identity a) where
   encode = encode . toList
@@ -134,15 +154,53 @@ instance (CryptoHash alg, Serialise a, CryptoHashable a
 instance (CryptoHash alg, Serialise a, CryptoHashable a
          ) => Serialise (MerkleBinTree1 alg Identity a) where
   encode = encode . toList
-  decode = do as <- decode
-              case createMerkleTree1 as of
-                Nothing -> fail "MerkleBinTree1: Empty list"
-                Just t  -> pure t
+  decode = createMerkleTreeNE1 <$> decode
+
+
+instance JSON.ToJSON (MerkleBinTree alg Proxy a) where
+  toJSON = JSON.toJSON . merkleHash
+
+instance JSON.ToJSON (MerkleBinTree1 alg Proxy a) where
+  toJSON = JSON.toJSON . merkleHash
+
+instance JSON.FromJSON (MerkleBinTree alg Proxy a) where
+  parseJSON = fmap nodeFromHash . JSON.parseJSON
+
+instance JSON.FromJSON (MerkleBinTree1 alg Proxy a) where
+  parseJSON = fmap nodeFromHash . JSON.parseJSON
+
+
+instance JSON.ToJSON a => JSON.ToJSON (MerkleBinTree alg Identity a) where
+  toJSON = JSON.toJSON . toList
+
+instance JSON.ToJSON a => JSON.ToJSON (MerkleBinTree1 alg Identity a) where
+  toJSON = JSON.toJSON . toList
+
+instance (CryptoHash alg, CryptoHashable a, JSON.FromJSON a
+         ) => JSON.FromJSON (MerkleBinTree alg Identity a) where
+  parseJSON = fmap createMerkleTree . JSON.parseJSON
+
+instance (CryptoHash alg, CryptoHashable a, JSON.FromJSON a
+         ) => JSON.FromJSON (MerkleBinTree1 alg Identity a) where
+  parseJSON = fmap createMerkleTreeNE1 . JSON.parseJSON
 
 
 ----------------------------------------------------------------
 -- Build tree, compute rooth hash
 ----------------------------------------------------------------
+
+mapMNode
+  :: IsMerkle g
+  => (forall x. f x -> g x)
+  -> MerkleNode alg f (Node alg f a) -> MerkleNode alg g (Node alg g a)
+mapMNode f (MNode !(Hashed h) val) = MNode (Hashed h) (mapNode f <$> f val)
+
+mapNode
+  :: IsMerkle g
+  => (forall x. f x -> g x)
+  -> Node alg f a -> Node alg g a
+mapNode _ (Leaf a)     = Leaf a
+mapNode f (Branch a b) = Branch (mapMNode f a) (mapMNode f b)
 
 -- Utility function to process list of items as balanced tree
 buildMerkleTree :: (a -> a -> a) -> [a] -> a
@@ -199,10 +257,16 @@ createMerkleTree1
   => [a]                        -- ^ Leaves of tree
   -> Maybe (MerkleBinTree1 alg f a)
 createMerkleTree1 []     = Nothing
-createMerkleTree1 leaves = Just
-  $ MerkleBinTree1
+createMerkleTree1 (l:ls) = Just $ createMerkleTreeNE1 $ l :| ls
+
+createMerkleTreeNE1
+  :: (CryptoHash alg, CryptoHashable a, IsMerkle f)
+  => NonEmpty a                        -- ^ Leaves of tree
+  -> MerkleBinTree1 alg f a
+createMerkleTreeNE1 leaves
+  = MerkleBinTree1
   $ merkled
-  $ buildMerkleTree (Branch `on` merkled) $ Leaf <$> leaves
+  $ buildMerkleTree (Branch `on` merkled) $ Leaf <$> toList leaves
 
 
 ----------------------------------------------------------------

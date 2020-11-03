@@ -78,7 +78,7 @@ runKVT logenv conn (KVT act) = runReaderT act (KVDict logenv mempty conn)
 -- | Simple block which contains key-value pairs. Work function is
 --   simple SHA256 a la bitcoin
 data KV cfg f = KV
-  { kvData       :: !(MerkleNode f SHA256 [(Int,String)])
+  { kvData       :: !(MerkleNode SHA256 f [(Int,String)])
   -- ^ List of key-value pairs
   , kvTarget     :: !Target
   -- ^ Current difficulty of mining. It means a complicated thing

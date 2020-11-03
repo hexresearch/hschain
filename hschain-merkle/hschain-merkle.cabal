@@ -29,6 +29,30 @@ Library
                   HSChain.Types.Merkle.Block
                   HSChain.Types.Merkle.Tree
                   HSChain.Types.Merkle.Types
+  default-extensions:
+    -- Deriving
+    DeriveAnyClass
+    DeriveFoldable
+    DeriveFunctor
+    DeriveGeneric
+    DeriveTraversable
+    DerivingStrategies
+    DerivingVia
+    GeneralizedNewtypeDeriving
+    StandaloneDeriving
+    -- Sugar
+    BangPatterns
+    LambdaCase
+    MultiWayIf
+    RecordWildCards
+    OverloadedStrings
+    TypeOperators
+    -- Types
+    ScopedTypeVariables
+    TypeApplications
+    -- Instances
+    FlexibleContexts
+    FlexibleInstances
 
 -- Test suite
 Test-suite hschain-merkle-tests
@@ -50,3 +74,27 @@ Test-suite hschain-merkle-tests
   Main-is:             Main.hs
   Other-modules:       TM.Merkle
                        TM.MerkleBlock
+  default-extensions:
+    -- Deriving
+    DeriveAnyClass
+    DeriveFoldable
+    DeriveFunctor
+    DeriveGeneric
+    DeriveTraversable
+    DerivingStrategies
+    DerivingVia
+    GeneralizedNewtypeDeriving
+    StandaloneDeriving
+    -- Sugar
+    BangPatterns
+    LambdaCase
+    MultiWayIf
+    RecordWildCards
+    OverloadedStrings
+    TypeOperators
+    -- Types
+    ScopedTypeVariables
+    TypeApplications
+    -- Instances
+    FlexibleContexts
+    FlexibleInstances

@@ -164,12 +164,12 @@ data GBlock f a = Block
     -- ^ Set of validators used to create this block.
   , blockNewValidators    :: !(Hashed (Alg a) (ValidatorSet (Alg a)))
     -- ^ Set of validators for the next block.
-  , blockPrevCommit       :: !(Maybe (MerkleNode f (Alg a) (Commit a)))
+  , blockPrevCommit       :: !(Maybe (MerkleNode (Alg a) f (Commit a)))
     -- ^ Commit for previous block. Nothing iff block is a genesis
     --   block or block at height 1.
-  , blockEvidence         :: !(MerkleNode f (Alg a) [ByzantineEvidence a])
+  , blockEvidence         :: !(MerkleNode (Alg a) f [ByzantineEvidence a])
     -- ^ Evidence of byzantine behavior by nodes.
-  , blockData             :: !(MerkleNode f (Alg a) a)
+  , blockData             :: !(MerkleNode (Alg a) f a)
     -- ^ Payload of block. HSChain treats it completely opaque and
     --   rely on callback to do anything to it.
   }
