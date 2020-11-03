@@ -41,7 +41,7 @@ import HSChain.Types.Merkle.Types
 
 -- | Type class for various Merkle trees. It provides generic API for
 --   the proofs of inclusion.
-class CryptoHashable a => MerkleTree t a where
+class (IsMerkleNode t, CryptoHashable a) => MerkleTree t a where
   type Proof t :: * -> * -> *
   -- | Obtain root hash of the tree.
   rootHash :: t alg f a -> Hash alg
@@ -51,8 +51,6 @@ class CryptoHashable a => MerkleTree t a where
   verifyMerkleProof :: CryptoHash alg => t alg f a -> Proof t alg a -> Bool
   -- | Check that Merkle tree satisfy internal invariants
   checkMerkleInvariants :: t alg Identity a -> Bool
-  -- | Create tree from knowing only root hash
-  fromRootHash :: Hash alg -> t alg Proxy a
 
 
 ----------------------------------------------------------------
@@ -86,6 +84,13 @@ data MerkleProof alg a = MerkleProof
   deriving stock    (Show, Eq, Generic)
   deriving anyclass (Serialise)
 
+
+instance IsMerkleNode MerkleBinTree where
+  mapMerkleNode f (MerkleBinTree (MNode (Hashed h) val))
+    = MerkleBinTree $ MNode (Hashed h) (fmap (mapNode f) <$> f val)
+  toHashedNode (MerkleBinTree n) = MerkleBinTree $ nodeFromHash (merkleHash n)
+  nodeFromHash = MerkleBinTree . nodeFromHash
+
 instance (CryptoHashable a, Eq a) => MerkleTree MerkleBinTree a where
   type Proof MerkleBinTree = MerkleProof
   rootHash = merkleHash . merkleBinTree
@@ -97,8 +102,12 @@ instance (CryptoHashable a, Eq a) => MerkleTree MerkleBinTree a where
   verifyMerkleProof t p = rootHash t == hash (Just (calcRootNode p))
   --
   checkMerkleInvariants = maybe True isBalanced . merkleValue . merkleBinTree
-  --
-  fromRootHash = MerkleBinTree . fromHashed . Hashed
+
+
+instance IsMerkleNode MerkleBinTree1 where
+  mapMerkleNode f (MerkleBinTree1 n) = MerkleBinTree1 $ mapMNode f n
+  toHashedNode (MerkleBinTree1 n) = MerkleBinTree1 $ nodeFromHash (merkleHash n)
+  nodeFromHash = MerkleBinTree1 . nodeFromHash
 
 instance (CryptoHashable a, Eq a) => MerkleTree MerkleBinTree1 a where
   type Proof MerkleBinTree1 = MerkleProof
@@ -111,8 +120,6 @@ instance (CryptoHashable a, Eq a) => MerkleTree MerkleBinTree1 a where
   verifyMerkleProof t p = rootHash t == hash (calcRootNode p)
   --
   checkMerkleInvariants = isBalanced . merkleValue . merkleBinTree1
-  --
-  fromRootHash = MerkleBinTree1 . fromHashed . Hashed
 
 
 
@@ -149,6 +156,19 @@ instance (CryptoHash alg, Serialise a, CryptoHashable a
 ----------------------------------------------------------------
 -- Build tree, compute rooth hash
 ----------------------------------------------------------------
+
+mapMNode
+  :: IsMerkle g
+  => (forall x. f x -> g x)
+  -> MerkleNode alg f (Node alg f a) -> MerkleNode alg g (Node alg g a)
+mapMNode f (MNode !(Hashed h) val) = MNode (Hashed h) (mapNode f <$> f val)
+
+mapNode
+  :: IsMerkle g
+  => (forall x. f x -> g x)
+  -> Node alg f a -> Node alg g a
+mapNode _ (Leaf a)     = Leaf a
+mapNode f (Branch a b) = Branch (mapMNode f a) (mapMNode f b)
 
 -- Utility function to process list of items as balanced tree
 buildMerkleTree :: (a -> a -> a) -> [a] -> a
