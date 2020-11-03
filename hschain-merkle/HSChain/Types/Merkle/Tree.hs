@@ -43,8 +43,6 @@ import HSChain.Types.Merkle.Types
 --   the proofs of inclusion.
 class (IsMerkleNode t, CryptoHashable a) => MerkleTree t a where
   type Proof t :: * -> * -> *
-  -- | Obtain root hash of the tree.
-  rootHash :: t alg f a -> Hash alg
   -- | Create proof-of-inclusion for element of Merkle tree.
   createMerkleProof :: t alg Identity a -> a -> Maybe (Proof t alg a)
   -- | Verify that proof is indeed correct.
@@ -86,6 +84,7 @@ data MerkleProof alg a = MerkleProof
 
 
 instance IsMerkleNode MerkleBinTree where
+  merkleHash = merkleHash . merkleBinTree
   mapMerkleNode f (MerkleBinTree (MNode (Hashed h) val))
     = MerkleBinTree $ MNode (Hashed h) (fmap (mapNode f) <$> f val)
   toHashedNode (MerkleBinTree n) = MerkleBinTree $ nodeFromHash (merkleHash n)
@@ -93,31 +92,30 @@ instance IsMerkleNode MerkleBinTree where
 
 instance (CryptoHashable a, Eq a) => MerkleTree MerkleBinTree a where
   type Proof MerkleBinTree = MerkleProof
-  rootHash = merkleHash . merkleBinTree
   --
   createMerkleProof (MerkleBinTree mtree) a = do
     path <- searchBinTree a =<< merkleValue mtree
     return $ MerkleProof a path
   --
-  verifyMerkleProof t p = rootHash t == hash (Just (calcRootNode p))
+  verifyMerkleProof t p = merkleHash t == hash (Just (calcRootNode p))
   --
   checkMerkleInvariants = maybe True isBalanced . merkleValue . merkleBinTree
 
 
 instance IsMerkleNode MerkleBinTree1 where
+  merkleHash = merkleHash . merkleBinTree1
   mapMerkleNode f (MerkleBinTree1 n) = MerkleBinTree1 $ mapMNode f n
   toHashedNode (MerkleBinTree1 n) = MerkleBinTree1 $ nodeFromHash (merkleHash n)
   nodeFromHash = MerkleBinTree1 . nodeFromHash
 
 instance (CryptoHashable a, Eq a) => MerkleTree MerkleBinTree1 a where
   type Proof MerkleBinTree1 = MerkleProof
-  rootHash = merkleHash . merkleBinTree1
   --
   createMerkleProof (MerkleBinTree1 mtree) a = do
     path <- searchBinTree a $ merkleValue mtree
     return $ MerkleProof a path
   --
-  verifyMerkleProof t p = rootHash t == hash (calcRootNode p)
+  verifyMerkleProof t p = merkleHash t == hash (calcRootNode p)
   --
   checkMerkleInvariants = isBalanced . merkleValue . merkleBinTree1
 

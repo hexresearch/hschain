@@ -29,7 +29,6 @@ module HSChain.Types.Merkle.Types (
   , merkled
   , fromHashed
     -- ** Access
-  , merkleHash
   , merkleHashed
   , merkleValue
   , merkleNodeValue
@@ -80,6 +79,8 @@ instance IsMerkle Identity where
 
 -- | Type class for Merkle trees\/nodes.
 class IsMerkleNode t where
+  -- | Obtain hash corresponding to merkle node
+  merkleHash :: t alg f a -> Hash alg
   -- | Change type of intermediate node
   mapMerkleNode :: IsMerkle g => (forall x. f x -> g x) -> t alg f a -> t alg g a
   -- | Erase all data in the node.
@@ -151,15 +152,12 @@ instance (CryptoHash alg) => CryptoHashable (MerkleNode alg f a) where
   hashStep = hashStep . merkleHash
 
 instance IsMerkleNode MerkleNode where
+  merkleHash (MNode (Hashed h) _) = h
   mapMerkleNode f (MNode !h a) = MNode h (f a)
   -- NOTE: We force hash in order to avoid space leak. Hash field is
   --       lazy and could keep refernce to possibly much larger object
   toHashedNode (MNode !h _) = MNode h Proxy
   nodeFromHash h = MNode (Hashed h) Proxy
-
--- | Extract hash corresponding to node
-merkleHash :: MerkleNode alg f a -> Hash alg
-merkleHash (MNode (Hashed h) _) = h
 
 -- | Extract hash corresponding to node which is tagged by type.
 merkleHashed :: MerkleNode alg f a -> Hashed alg a
