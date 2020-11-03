@@ -1,15 +1,17 @@
-{-# LANGUAGE BangPatterns          #-}
-{-# LANGUAGE DeriveAnyClass        #-}
-{-# LANGUAGE DeriveFoldable        #-}
-{-# LANGUAGE DeriveGeneric         #-}
-{-# LANGUAGE DerivingStrategies    #-}
-{-# LANGUAGE FlexibleInstances     #-}
-{-# LANGUAGE LambdaCase            #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE OverloadedStrings     #-}
-{-# LANGUAGE RankNTypes            #-}
-{-# LANGUAGE ScopedTypeVariables   #-}
-{-# LANGUAGE TypeFamilies          #-}
+{-# LANGUAGE BangPatterns               #-}
+{-# LANGUAGE DeriveAnyClass             #-}
+{-# LANGUAGE DeriveFoldable             #-}
+{-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE DerivingStrategies         #-}
+{-# LANGUAGE FlexibleInstances          #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE LambdaCase                 #-}
+{-# LANGUAGE MultiParamTypeClasses      #-}
+{-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE RankNTypes                 #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
+{-# LANGUAGE StandaloneDeriving         #-}
+{-# LANGUAGE TypeFamilies               #-}
 module HSChain.Types.Merkle.Tree
   ( -- * Type class for Merkle trees
     MerkleTree(..)
@@ -25,6 +27,7 @@ module HSChain.Types.Merkle.Tree
 import Codec.Serialise
 import Control.Applicative
 import Control.Monad
+import qualified Data.Aeson as JSON
 import Data.Bits
 import Data.Function
 import Data.Foldable
@@ -137,6 +140,15 @@ instance (CryptoHash alg, CryptoHashable a) => CryptoHashable (Node alg f a) whe
         Leaf   a   -> hashStep (ConstructorIdx 1)
                    <> hashStep a
 
+
+instance ( CryptoHash alg ) => Serialise (MerkleBinTree alg Proxy a) where
+  encode = encode . merkleHash
+  decode = nodeFromHash <$> decode
+
+instance ( CryptoHash alg ) => Serialise (MerkleBinTree1 alg Proxy a) where
+  encode = encode . merkleHash
+  decode = nodeFromHash <$> decode
+
 instance (CryptoHash alg, Serialise a, CryptoHashable a
          ) => Serialise (MerkleBinTree alg Identity a) where
   encode = encode . toList
@@ -150,6 +162,37 @@ instance (CryptoHash alg, Serialise a, CryptoHashable a
                 Nothing -> fail "MerkleBinTree1: Empty list"
                 Just t  -> pure t
 
+
+instance JSON.ToJSON (MerkleBinTree alg Proxy a) where
+  toJSON = JSON.toJSON . merkleHash
+
+instance JSON.ToJSON (MerkleBinTree1 alg Proxy a) where
+  toJSON = JSON.toJSON . merkleHash
+
+instance JSON.FromJSON (MerkleBinTree alg Proxy a) where
+  parseJSON = fmap nodeFromHash . JSON.parseJSON
+
+instance JSON.FromJSON (MerkleBinTree1 alg Proxy a) where
+  parseJSON = fmap nodeFromHash . JSON.parseJSON
+
+
+instance JSON.ToJSON a => JSON.ToJSON (MerkleBinTree alg Identity a) where
+  toJSON = JSON.toJSON . toList
+
+instance JSON.ToJSON a => JSON.ToJSON (MerkleBinTree1 alg Identity a) where
+  toJSON = JSON.toJSON . toList
+
+instance (CryptoHash alg, CryptoHashable a, JSON.FromJSON a
+         ) => JSON.FromJSON (MerkleBinTree alg Identity a) where
+  parseJSON = fmap createMerkleTree . JSON.parseJSON
+
+instance (CryptoHash alg, CryptoHashable a, JSON.FromJSON a
+         ) => JSON.FromJSON (MerkleBinTree1 alg Identity a) where
+  parseJSON o = do
+    as <- JSON.parseJSON o
+    case createMerkleTree1 as of
+      Nothing -> fail "MerkleBinTree1: empty list"
+      Just t  -> pure t
 
 ----------------------------------------------------------------
 -- Build tree, compute rooth hash
