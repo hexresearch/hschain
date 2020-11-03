@@ -15,29 +15,29 @@ import HSChain.Types.Merkle.Types
 -- | Merkle tree tests
 tests :: TestTree
 tests = testGroup "Binary Merkle tree"
-  [ testProperty "createMerkleTree"  prop_MerkleBlockTree
-  , testProperty "createMerkleTree1" prop_MerkleBlockTree1
+  [ testProperty "createMerkleTree"  prop_MerkleBinTree
+  , testProperty "createMerkleTree1" prop_MerkleBinTree1
   , testProperty "IdNode & Hashed"   prop_computeMerkleHashed
   , testProperty "IdNode & OptNode"  prop_computeMerkleOpt
   , testProperty "Merkle proof of inclusion is correct" prop_MerkleProofCorrect
   ]
 
 -- Tree is balanced and all hashes are internally consistent
-prop_MerkleBlockTree :: [Integer] -> Bool
-prop_MerkleBlockTree leaves
+prop_MerkleBinTree :: [Integer] -> Bool
+prop_MerkleBinTree leaves
   = checkMerkleInvariants tree
   where
-    tree :: MerkleBlockTree SHA512 Identity Integer
+    tree :: MerkleBinTree SHA512 Identity Integer
     tree = createMerkleTree leaves
 
 -- Tree is balanced and all hashes are internally consistent
-prop_MerkleBlockTree1 :: [Integer] -> Bool
-prop_MerkleBlockTree1 leaves =
+prop_MerkleBinTree1 :: [Integer] -> Bool
+prop_MerkleBinTree1 leaves =
   case leaves of
     [] -> isNothing tree
     _  -> maybe False checkMerkleInvariants tree
   where
-    tree :: Maybe (MerkleBlockTree1 SHA512 Identity Integer)
+    tree :: Maybe (MerkleBinTree1 SHA512 Identity Integer)
     tree = createMerkleTree1 leaves
 
 -- Computation with different wrappers give same result
@@ -45,16 +45,16 @@ prop_computeMerkleOpt :: [Integer] -> Bool
 prop_computeMerkleOpt leaves
   = rootHash t1 == rootHash t2
   where
-    t1 = createMerkleTree leaves :: MerkleBlockTree SHA512 Identity Integer
-    t2 = createMerkleTree leaves :: MerkleBlockTree SHA512 Maybe    Integer
+    t1 = createMerkleTree leaves :: MerkleBinTree SHA512 Identity Integer
+    t2 = createMerkleTree leaves :: MerkleBinTree SHA512 Maybe    Integer
 
 -- Computation with different wrappers give same result
 prop_computeMerkleHashed :: [Integer] -> Bool
 prop_computeMerkleHashed leaves
   = rootHash t1 == rootHash t2
   where
-    t1 = createMerkleTree leaves :: MerkleBlockTree SHA512 Identity Integer
-    t2 = createMerkleTree leaves :: MerkleBlockTree SHA512 Proxy    Integer
+    t1 = createMerkleTree leaves :: MerkleBinTree SHA512 Identity Integer
+    t2 = createMerkleTree leaves :: MerkleBinTree SHA512 Proxy    Integer
 
   
 -- Check that merkle proofs are correct
@@ -65,7 +65,7 @@ prop_MerkleProofCorrect leaves
         | p <- proofs
         ]
   where
-    tree :: MerkleBlockTree SHA512 Identity Integer
+    tree :: MerkleBinTree SHA512 Identity Integer
     tree   = createMerkleTree leaves
     proofs = createMerkleProof tree <$> leaves
 
@@ -77,6 +77,6 @@ prop_MerkleProofCorrect1 leaves
           | p <- proofs
           ]
   where
-    tree :: MerkleBlockTree1 SHA512 Identity Integer
+    tree :: MerkleBinTree1 SHA512 Identity Integer
     Just tree = createMerkleTree1 leaves
     proofs = createMerkleProof tree <$> leaves

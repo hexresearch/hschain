@@ -13,9 +13,9 @@ module HSChain.Types.Merkle.Tree
   ( -- * Type class for Merkle trees
     MerkleTree(..)
     -- * Tree data types
-  , MerkleBlockTree(..)
+  , MerkleBinTree(..)
   , createMerkleTree
-  , MerkleBlockTree1(..)
+  , MerkleBinTree1(..)
   , createMerkleTree1
   , Node(..)
   , MerkleProof(..)
@@ -57,14 +57,14 @@ class CryptoHashable a => MerkleTree t a where
 ----------------------------------------------------------------
 
 -- | Balanced binary Merkle tree.
-newtype MerkleBlockTree alg f a = MerkleBlockTree
-  { merkleBlockTree :: MerkleNode f alg (Maybe (Node alg f a))
+newtype MerkleBinTree alg f a = MerkleBinTree
+  { merkleBinTree :: MerkleNode f alg (Maybe (Node alg f a))
   }
   deriving (Show, Foldable, Generic)
 
 -- | Nonempty balanced binary Merkle tree.
-newtype MerkleBlockTree1 alg f a = MerkleBlockTree1
-  { merkleBlockTree1 :: MerkleNode f alg (Node alg f a)
+newtype MerkleBinTree1 alg f a = MerkleBinTree1
+  { merkleBinTree1 :: MerkleNode f alg (Node alg f a)
   }
   deriving (Show, Foldable, Generic)
 
@@ -83,38 +83,38 @@ data MerkleProof alg a = MerkleProof
   deriving stock    (Show, Eq, Generic)
   deriving anyclass (Serialise)
 
-instance (CryptoHashable a, Eq a) => MerkleTree MerkleBlockTree a where
-  type Proof MerkleBlockTree = MerkleProof
-  rootHash = merkleHash . merkleBlockTree
+instance (CryptoHashable a, Eq a) => MerkleTree MerkleBinTree a where
+  type Proof MerkleBinTree = MerkleProof
+  rootHash = merkleHash . merkleBinTree
   --
-  createMerkleProof (MerkleBlockTree mtree) a = do
+  createMerkleProof (MerkleBinTree mtree) a = do
     path <- searchBinTree a =<< merkleValue mtree
     return $ MerkleProof a path
   --
   verifyMerkleProof t p = rootHash t == hash (Just (calcRootNode p))
   --
-  checkMerkleInvariants = maybe True isBalanced . merkleValue . merkleBlockTree
+  checkMerkleInvariants = maybe True isBalanced . merkleValue . merkleBinTree
 
 
-instance (CryptoHashable a, Eq a) => MerkleTree MerkleBlockTree1 a where
-  type Proof MerkleBlockTree1 = MerkleProof
-  rootHash = merkleHash . merkleBlockTree1
+instance (CryptoHashable a, Eq a) => MerkleTree MerkleBinTree1 a where
+  type Proof MerkleBinTree1 = MerkleProof
+  rootHash = merkleHash . merkleBinTree1
   --
-  createMerkleProof (MerkleBlockTree1 mtree) a = do
+  createMerkleProof (MerkleBinTree1 mtree) a = do
     path <- searchBinTree a $ merkleValue mtree
     return $ MerkleProof a path
   --
   verifyMerkleProof t p = rootHash t == hash (calcRootNode p)
   --
-  checkMerkleInvariants = isBalanced . merkleValue . merkleBlockTree1
+  checkMerkleInvariants = isBalanced . merkleValue . merkleBinTree1
 
 
 
-instance (CryptoHash alg) => CryptoHashable (MerkleBlockTree alg f a) where
-  hashStep = hashStep . merkleBlockTree
+instance (CryptoHash alg) => CryptoHashable (MerkleBinTree alg f a) where
+  hashStep = hashStep . merkleBinTree
 
-instance (CryptoHash alg) => CryptoHashable (MerkleBlockTree1 alg f a) where
-  hashStep = hashStep . merkleBlockTree1
+instance (CryptoHash alg) => CryptoHashable (MerkleBinTree1 alg f a) where
+  hashStep = hashStep . merkleBinTree1
 
 instance (CryptoHash alg, CryptoHashable a) => CryptoHashable (Node alg f a) where
   hashStep node
@@ -127,16 +127,16 @@ instance (CryptoHash alg, CryptoHashable a) => CryptoHashable (Node alg f a) whe
                    <> hashStep a
 
 instance (CryptoHash alg, Serialise a, CryptoHashable a
-         ) => Serialise (MerkleBlockTree alg Identity a) where
+         ) => Serialise (MerkleBinTree alg Identity a) where
   encode = encode . toList
   decode = createMerkleTree <$> decode
 
 instance (CryptoHash alg, Serialise a, CryptoHashable a
-         ) => Serialise (MerkleBlockTree1 alg Identity a) where
+         ) => Serialise (MerkleBinTree1 alg Identity a) where
   encode = encode . toList
   decode = do as <- decode
               case createMerkleTree1 as of
-                Nothing -> fail "MerkleBlockTree1: Empty list"
+                Nothing -> fail "MerkleBinTree1: Empty list"
                 Just t  -> pure t
 
 
@@ -182,9 +182,9 @@ nextPow2 n = 1 `shiftL` (finiteBitSize n - countLeadingZeros n)
 createMerkleTree
   :: (CryptoHash alg, CryptoHashable a, IsMerkle f)
   => [a]                        -- ^ Leaves of tree
-  -> MerkleBlockTree alg f a
+  -> MerkleBinTree alg f a
 createMerkleTree leaves
-  = MerkleBlockTree
+  = MerkleBinTree
   $ merkled
   $ case leaves of
       [] -> Nothing
@@ -197,10 +197,10 @@ createMerkleTree leaves
 createMerkleTree1
   :: (CryptoHash alg, CryptoHashable a, IsMerkle f)
   => [a]                        -- ^ Leaves of tree
-  -> Maybe (MerkleBlockTree1 alg f a)
+  -> Maybe (MerkleBinTree1 alg f a)
 createMerkleTree1 []     = Nothing
 createMerkleTree1 leaves = Just
-  $ MerkleBlockTree1
+  $ MerkleBinTree1
   $ merkled
   $ buildMerkleTree (Branch `on` merkled) $ Leaf <$> leaves
 
