@@ -1,9 +1,19 @@
-{-# LANGUAGE OverloadedStrings    #-}
-module TM.MerkleBlock where
+{-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE FlexibleContexts    #-}
+{-# LANGUAGE FlexibleInstances   #-}
+{-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE PolyKinds           #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications    #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
+module TM.MerkleBlock (tests) where
 
 import Data.Maybe
+import Data.Typeable
+import Data.Foldable
 import Test.Tasty
 import Test.Tasty.QuickCheck
+import HSChain.Crypto
 import HSChain.Crypto.SHA (SHA512)
 import HSChain.Types.Merkle.Tree
 import HSChain.Types.Merkle.Types
@@ -15,30 +25,47 @@ import HSChain.Types.Merkle.Types
 -- | Merkle tree tests
 tests :: TestTree
 tests = testGroup "Binary Merkle tree"
-  [ testProperty "createMerkleTree"  prop_MerkleBinTree
-  , testProperty "createMerkleTree1" prop_MerkleBinTree1
-  , testProperty "IdNode & Hashed"   prop_computeMerkleHashed
-  , testProperty "IdNode & OptNode"  prop_computeMerkleOpt
-  , testProperty "Merkle proof of inclusion is correct" prop_MerkleProofCorrect
+  [ prop_tree @MerkleBinTree
+  , prop_tree @MerkleBinTree1
+  , testProperty "IdNode & Hashed"    prop_computeMerkleHashed
+  , testProperty "IdNode & OptNode"   prop_computeMerkleOpt
+  , testProperty "IdNode & Hashed 1"  prop_computeMerkleHashed1
+  , testProperty "IdNode & OptNode 1" prop_computeMerkleOpt1
   ]
 
--- Tree is balanced and all hashes are internally consistent
-prop_MerkleBinTree :: [Integer] -> Bool
-prop_MerkleBinTree leaves
-  = checkMerkleInvariants tree
-  where
-    tree :: MerkleBinTree SHA512 Identity Integer
-    tree = createMerkleTree leaves
+----------------------------------------------------------------
+-- Generic properties
+----------------------------------------------------------------
 
--- Tree is balanced and all hashes are internally consistent
-prop_MerkleBinTree1 :: [Integer] -> Bool
-prop_MerkleBinTree1 leaves =
-  case leaves of
-    [] -> isNothing tree
-    _  -> maybe False checkMerkleInvariants tree
+prop_tree
+  :: forall t. ( Typeable t
+               , MerkleTree t Integer
+               , Arbitrary (t SHA512 Identity Integer)
+               , Foldable (t SHA512 Identity)
+               , Show (t SHA512 Identity Integer)
+               )
+  => TestTree
+prop_tree = testGroup (show (typeRep (Proxy @t)))
+  [ testProperty "Invariants"     $ prop_invariants @t
+  , testProperty "Proof creation" $ prop_proof      @t
+  ]
+
+prop_invariants :: (MerkleTree t Integer) => t SHA512 Identity Integer -> Bool
+prop_invariants = checkMerkleInvariants
+
+prop_proof :: (MerkleTree t Integer, Foldable (t SHA512 Identity)) => t SHA512 Identity Integer -> Bool
+prop_proof tree
+  = and [ maybe False (verifyMerkleProof tree) p
+        | p <- proofs
+        ]
   where
-    tree :: Maybe (MerkleBinTree1 SHA512 Identity Integer)
-    tree = createMerkleTree1 leaves
+    proofs = createMerkleProof tree <$> leaves
+    leaves = toList tree
+
+
+----------------------------------------------------------------
+-- Specialized properties
+----------------------------------------------------------------
 
 -- Computation with different wrappers give same result
 prop_computeMerkleOpt :: [Integer] -> Bool
@@ -56,27 +83,36 @@ prop_computeMerkleHashed leaves
     t1 = createMerkleTree leaves :: MerkleBinTree SHA512 Identity Integer
     t2 = createMerkleTree leaves :: MerkleBinTree SHA512 Proxy    Integer
 
-  
--- Check that merkle proofs are correct
-prop_MerkleProofCorrect :: [Integer] -> Property
-prop_MerkleProofCorrect leaves
-  = property
-  $ and [ maybe False (verifyMerkleProof tree) p
-        | p <- proofs
-        ]
+-- Computation with different wrappers give same result
+prop_computeMerkleOpt1 :: [Integer] -> Bool
+prop_computeMerkleOpt1 leaves
+  = fmap rootHash t1 == fmap rootHash t2
   where
-    tree :: MerkleBinTree SHA512 Identity Integer
-    tree   = createMerkleTree leaves
-    proofs = createMerkleProof tree <$> leaves
+    t1 = createMerkleTree1 leaves :: Maybe (MerkleBinTree1 SHA512 Identity Integer)
+    t2 = createMerkleTree1 leaves :: Maybe (MerkleBinTree1 SHA512 Maybe    Integer)
 
--- Check that merkle proofs are correct
-prop_MerkleProofCorrect1 :: [Integer] -> Property
-prop_MerkleProofCorrect1 leaves
-  = not (null leaves)
-  ==> and [ maybe False (verifyMerkleProof tree) p
-          | p <- proofs
-          ]
+-- Computation with different wrappers give same result
+prop_computeMerkleHashed1 :: [Integer] -> Bool
+prop_computeMerkleHashed1 leaves
+  = fmap rootHash t1 == fmap rootHash t2
   where
-    tree :: MerkleBinTree1 SHA512 Identity Integer
-    Just tree = createMerkleTree1 leaves
-    proofs = createMerkleProof tree <$> leaves
+    t1 = createMerkleTree1 leaves :: Maybe (MerkleBinTree1 SHA512 Identity Integer)
+    t2 = createMerkleTree1 leaves :: Maybe (MerkleBinTree1 SHA512 Proxy    Integer)
+  
+
+----------------------------------------------------------------
+-- Orphans
+----------------------------------------------------------------
+
+instance ( CryptoHash alg, CryptoHashable a, Arbitrary a
+         ) => Arbitrary (MerkleBinTree alg Identity a) where
+  arbitrary = createMerkleTree <$> arbitrary
+  shrink    = fmap createMerkleTree . shrink . toList
+
+instance ( CryptoHash alg, CryptoHashable a, Arbitrary a
+         ) => Arbitrary (MerkleBinTree1 alg Identity a) where
+  arbitrary = do as <- listOf1 arbitrary
+                 case createMerkleTree1 as of
+                   Nothing -> error "Arbitrary: MerkleBinTree1: Should mot happen"
+                   Just t  -> pure t
+  shrink = catMaybes . fmap createMerkleTree1 . shrink . toList
