@@ -9,6 +9,7 @@ module HSChain.Types.Merkle.Tree
   , createMerkleTree
   , MerkleBinTree1(..)
   , createMerkleTree1
+  , createMerkleTreeNE1
   , Node(..)
   , MerkleProof(..)
   ) where
@@ -16,10 +17,11 @@ module HSChain.Types.Merkle.Tree
 import Codec.Serialise
 import Control.Applicative
 import Control.Monad
-import qualified Data.Aeson as JSON
 import Data.Bits
 import Data.Function
 import Data.Foldable
+import Data.List.NonEmpty (NonEmpty(..))
+import qualified Data.Aeson as JSON
 import GHC.Generics  (Generic)
 
 import HSChain.Crypto
@@ -152,10 +154,7 @@ instance (CryptoHash alg, Serialise a, CryptoHashable a
 instance (CryptoHash alg, Serialise a, CryptoHashable a
          ) => Serialise (MerkleBinTree1 alg Identity a) where
   encode = encode . toList
-  decode = do as <- decode
-              case createMerkleTree1 as of
-                Nothing -> fail "MerkleBinTree1: Empty list"
-                Just t  -> pure t
+  decode = createMerkleTreeNE1 <$> decode
 
 
 instance JSON.ToJSON (MerkleBinTree alg Proxy a) where
@@ -183,11 +182,8 @@ instance (CryptoHash alg, CryptoHashable a, JSON.FromJSON a
 
 instance (CryptoHash alg, CryptoHashable a, JSON.FromJSON a
          ) => JSON.FromJSON (MerkleBinTree1 alg Identity a) where
-  parseJSON o = do
-    as <- JSON.parseJSON o
-    case createMerkleTree1 as of
-      Nothing -> fail "MerkleBinTree1: empty list"
-      Just t  -> pure t
+  parseJSON = fmap createMerkleTreeNE1 . JSON.parseJSON
+
 
 ----------------------------------------------------------------
 -- Build tree, compute rooth hash
@@ -261,10 +257,16 @@ createMerkleTree1
   => [a]                        -- ^ Leaves of tree
   -> Maybe (MerkleBinTree1 alg f a)
 createMerkleTree1 []     = Nothing
-createMerkleTree1 leaves = Just
-  $ MerkleBinTree1
+createMerkleTree1 (l:ls) = Just $ createMerkleTreeNE1 $ l :| ls
+
+createMerkleTreeNE1
+  :: (CryptoHash alg, CryptoHashable a, IsMerkle f)
+  => NonEmpty a                        -- ^ Leaves of tree
+  -> MerkleBinTree1 alg f a
+createMerkleTreeNE1 leaves
+  = MerkleBinTree1
   $ merkled
-  $ buildMerkleTree (Branch `on` merkled) $ Leaf <$> leaves
+  $ buildMerkleTree (Branch `on` merkled) $ Leaf <$> toList leaves
 
 
 ----------------------------------------------------------------
