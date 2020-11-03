@@ -50,6 +50,8 @@ class CryptoHashable a => MerkleTree t a where
   verifyMerkleProof :: CryptoHash alg => t alg f a -> Proof t alg a -> Bool
   -- | Check that Merkle tree satisfy internal invariants
   checkMerkleInvariants :: t alg Identity a -> Bool
+  -- | Create tree from knowing only root hash
+  fromRootHash :: Hash alg -> t alg Proxy a
 
 
 ----------------------------------------------------------------
@@ -94,7 +96,8 @@ instance (CryptoHashable a, Eq a) => MerkleTree MerkleBinTree a where
   verifyMerkleProof t p = rootHash t == hash (Just (calcRootNode p))
   --
   checkMerkleInvariants = maybe True isBalanced . merkleValue . merkleBinTree
-
+  --
+  fromRootHash = MerkleBinTree . fromHashed . Hashed
 
 instance (CryptoHashable a, Eq a) => MerkleTree MerkleBinTree1 a where
   type Proof MerkleBinTree1 = MerkleProof
@@ -107,6 +110,8 @@ instance (CryptoHashable a, Eq a) => MerkleTree MerkleBinTree1 a where
   verifyMerkleProof t p = rootHash t == hash (calcRootNode p)
   --
   checkMerkleInvariants = isBalanced . merkleValue . merkleBinTree1
+  --
+  fromRootHash = MerkleBinTree1 . fromHashed . Hashed
 
 
 
