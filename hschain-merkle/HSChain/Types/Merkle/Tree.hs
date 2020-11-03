@@ -7,6 +7,7 @@
 {-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings     #-}
+{-# LANGUAGE RankNTypes            #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
 {-# LANGUAGE TypeFamilies          #-}
 module HSChain.Types.Merkle.Tree
@@ -60,20 +61,20 @@ class CryptoHashable a => MerkleTree t a where
 
 -- | Balanced binary Merkle tree.
 newtype MerkleBinTree alg f a = MerkleBinTree
-  { merkleBinTree :: MerkleNode f alg (Maybe (Node alg f a))
+  { merkleBinTree :: MerkleNode alg f (Maybe (Node alg f a))
   }
   deriving (Show, Foldable, Generic)
 
 -- | Nonempty balanced binary Merkle tree.
 newtype MerkleBinTree1 alg f a = MerkleBinTree1
-  { merkleBinTree1 :: MerkleNode f alg (Node alg f a)
+  { merkleBinTree1 :: MerkleNode alg f (Node alg f a)
   }
   deriving (Show, Foldable, Generic)
 
 -- | Single node of tree
 data Node alg f a
-  = Branch (MerkleNode f alg (Node alg f a))
-           (MerkleNode f alg (Node alg f a))
+  = Branch (MerkleNode alg f (Node alg f a))
+           (MerkleNode alg f (Node alg f a))
   | Leaf   !a
   deriving (Show, Foldable, Generic)
 

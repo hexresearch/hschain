@@ -88,7 +88,7 @@ runCoinT logenv conn (CoinT act) = runReaderT act (CoinDict logenv mempty conn)
 ----------------------------------------------------------------
 
 data Coin f = Coin
-  { coinData   :: !(MerkleNode f Alg [Tx Coin])
+  { coinData   :: !(MerkleNode Alg f [Tx Coin])
     -- ^ List of transactions. First one is coinbase transactions.
   , coinTarget :: !Target
     -- ^ Current difficulty of mining. It means a complicated thing

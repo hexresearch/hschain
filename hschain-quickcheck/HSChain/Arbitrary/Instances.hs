@@ -93,7 +93,7 @@ instance StreamCypher cypher => Arbitrary (PubKeyBox key kdf cypher) where
 -- Blockchain inctances
 ----------------------------------------------------------------
 
-instance (CryptoHash alg, CryptoHashable a, IsMerkle f, Arbitrary a) => Arbitrary (MerkleNode f alg a) where
+instance (CryptoHash alg, CryptoHashable a, IsMerkle f, Arbitrary a) => Arbitrary (MerkleNode alg f a) where
   arbitrary = merkled <$> arbitrary
   shrink a  = case nodeToMaybe $ merkleNodeValue a of
     Nothing -> []

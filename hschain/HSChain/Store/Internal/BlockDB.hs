@@ -176,7 +176,7 @@ storeGenesis Genesis{..} = do
 
 storeBlob
   :: (Serialise b)
-  => MerkleNode Identity (Alg a) b
+  => MerkleNode (Alg a) Identity b
   -> Query 'RW a Int64
 storeBlob x = do
   basicQuery "SELECT id FROM thm_cas WHERE hash = ?" (Only (CBORed h)) >>= \case
@@ -191,22 +191,22 @@ storeBlob x = do
 
 retrieveBlobByHash
   :: (Serialise b, CryptoHashable b, CryptoHash (Alg a))
-  => MerkleNode Proxy (Alg a) b
-  -> Query rw a (Maybe (MerkleNode Identity (Alg a) b))
+  => MerkleNode (Alg a) Proxy b
+  -> Query rw a (Maybe (MerkleNode (Alg a) Identity b))
 retrieveBlobByHash x = do
   r <- singleQ "SELECT blob FROM thm_cas WHERE hash = ?" (Only $ CBORed $ merkleHashed x)
   return $ merkled <$> r
 
 mustRetrieveBlobByHash
   :: (Serialise b, CryptoHashable b, CryptoHash (Alg a))
-  => MerkleNode Proxy (Alg a) b
-  -> Query rw a (MerkleNode Identity (Alg a) b)
+  => MerkleNode (Alg a) Proxy b
+  -> Query rw a (MerkleNode (Alg a) Identity b)
 mustRetrieveBlobByHash = throwNothing DBMissingBlob <=< retrieveBlobByHash
 
 retrieveBlobByID
   :: (Serialise b, CryptoHashable b, CryptoHash (Alg a))
   => Int64
-  -> Query rw a (Maybe (MerkleNode Identity (Alg a) b))
+  -> Query rw a (Maybe (MerkleNode (Alg a) Identity b))
 retrieveBlobByID i = do
   r <- singleQ "SELECT blob FROM thm_cas WHERE id = ?" (Only i)
   return $ merkled <$> r
@@ -214,7 +214,7 @@ retrieveBlobByID i = do
 mustRetrieveBlobByID
   :: (Serialise b, CryptoHashable b, CryptoHash (Alg a))
   => Int64
-  -> Query rw a (MerkleNode Identity (Alg a) b)
+  -> Query rw a (MerkleNode (Alg a) Identity b)
 mustRetrieveBlobByID = throwNothing DBMissingBlob <=< retrieveBlobByID
 
 
@@ -370,7 +370,7 @@ storeCommitWrk mcmt blk = do
 storeValSet
   :: (Crypto (Alg a))
   => Height
-  -> MerkleNode Identity (Alg a) (ValidatorSet (Alg a))
+  -> MerkleNode (Alg a) Identity (ValidatorSet (Alg a))
   -> Query 'RW a ()
 storeValSet h vals = do
   i <- storeBlob vals
