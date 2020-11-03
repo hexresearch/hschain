@@ -1,6 +1,8 @@
 {-# LANGUAGE BangPatterns          #-}
+{-# LANGUAGE DeriveAnyClass        #-}
 {-# LANGUAGE DeriveFoldable        #-}
 {-# LANGUAGE DeriveGeneric         #-}
+{-# LANGUAGE DerivingStrategies    #-}
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
@@ -19,10 +21,12 @@ module HSChain.Types.Merkle.Tree
   , MerkleProof(..)
   ) where
 
+import Codec.Serialise
 import Control.Applicative
 import Control.Monad
 import Data.Bits
 import Data.Function
+import Data.Foldable
 import GHC.Generics  (Generic)
 
 import HSChain.Crypto
@@ -76,7 +80,8 @@ data MerkleProof alg a = MerkleProof
   { merkleProofLeaf :: !a
   , merkleProofPath :: [Either (Hash alg) (Hash alg)]
   }
-  deriving (Show, Eq, Generic)
+  deriving stock    (Show, Eq, Generic)
+  deriving anyclass (Serialise)
 
 instance (CryptoHashable a, Eq a) => MerkleTree MerkleBlockTree a where
   type Proof MerkleBlockTree = MerkleProof
@@ -121,6 +126,18 @@ instance (CryptoHash alg, CryptoHashable a) => CryptoHashable (Node alg f a) whe
         Leaf   a   -> hashStep (ConstructorIdx 1)
                    <> hashStep a
 
+instance (CryptoHash alg, Serialise a, CryptoHashable a
+         ) => Serialise (MerkleBlockTree alg Identity a) where
+  encode = encode . toList
+  decode = createMerkleTree <$> decode
+
+instance (CryptoHash alg, Serialise a, CryptoHashable a
+         ) => Serialise (MerkleBlockTree1 alg Identity a) where
+  encode = encode . toList
+  decode = do as <- decode
+              case createMerkleTree1 as of
+                Nothing -> fail "MerkleBlockTree1: Empty list"
+                Just t  -> pure t
 
 
 ----------------------------------------------------------------
