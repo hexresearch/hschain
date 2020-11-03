@@ -1,6 +1,8 @@
 {-# LANGUAGE BangPatterns          #-}
+{-# LANGUAGE DeriveAnyClass        #-}
 {-# LANGUAGE DeriveFoldable        #-}
 {-# LANGUAGE DeriveGeneric         #-}
+{-# LANGUAGE DerivingStrategies    #-}
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
@@ -8,24 +10,23 @@
 {-# LANGUAGE ScopedTypeVariables   #-}
 {-# LANGUAGE TypeFamilies          #-}
 module HSChain.Types.Merkle.Tree
-  ( -- * Tree data types
-    MerkleBlockTree(..)
-  , merkleBlockTreeHash
-    -- * Building tree
+  ( -- * Type class for Merkle trees
+    MerkleTree(..)
+    -- * Tree data types
+  , MerkleBinTree(..)
   , createMerkleTree
-    -- * Check tree
-  , isBalanced
-    -- * Merkle proof
+  , MerkleBinTree1(..)
+  , createMerkleTree1
+  , Node(..)
   , MerkleProof(..)
-  , checkMerkleProof
-  , createMerkleProof
   ) where
 
+import Codec.Serialise
 import Control.Applicative
-import Control.Category ((>>>))
 import Control.Monad
 import Data.Bits
 import Data.Function
+import Data.Foldable
 import GHC.Generics  (Generic)
 
 import HSChain.Crypto
@@ -34,31 +35,88 @@ import HSChain.Types.Merkle.Types
 
 
 ----------------------------------------------------------------
--- Data types
+-- Type class
 ----------------------------------------------------------------
 
--- | Balanced binary Merkle tree. Constructors in this module generate
---   balanced binary tree.
-newtype MerkleBlockTree f alg a = MerkleBlockTree
-  { merkleBlockTree :: MerkleNode f alg (Maybe (Node f alg a))
+-- | Type class for various Merkle trees. It provides generic API for
+--   the proofs of inclusion.
+class CryptoHashable a => MerkleTree t a where
+  type Proof t :: * -> * -> *
+  -- | Obtain root hash of the tree.
+  rootHash :: t alg f a -> Hash alg
+  -- | Create proof-of-inclusion for element of Merkle tree.
+  createMerkleProof :: t alg Identity a -> a -> Maybe (Proof t alg a)
+  -- | Verify that proof is indeed correct.
+  verifyMerkleProof :: CryptoHash alg => t alg f a -> Proof t alg a -> Bool
+  -- | Check that Merkle tree satisfy internal invariants
+  checkMerkleInvariants :: t alg Identity a -> Bool
+
+
+----------------------------------------------------------------
+-- Concrete trees
+----------------------------------------------------------------
+
+-- | Balanced binary Merkle tree.
+newtype MerkleBinTree alg f a = MerkleBinTree
+  { merkleBinTree :: MerkleNode f alg (Maybe (Node alg f a))
   }
   deriving (Show, Foldable, Generic)
 
-merkleBlockTreeHash :: MerkleBlockTree f alg a -> Hash alg
-merkleBlockTreeHash = merkleHash . merkleBlockTree
+-- | Nonempty balanced binary Merkle tree.
+newtype MerkleBinTree1 alg f a = MerkleBinTree1
+  { merkleBinTree1 :: MerkleNode f alg (Node alg f a)
+  }
+  deriving (Show, Foldable, Generic)
 
 -- | Single node of tree
-data Node f alg a
-  = Branch (MerkleNode f alg (Node f alg a))
-           (MerkleNode f alg (Node f alg a))
+data Node alg f a
+  = Branch (MerkleNode f alg (Node alg f a))
+           (MerkleNode f alg (Node alg f a))
   | Leaf   !a
   deriving (Show, Foldable, Generic)
 
+-- | Compact proof of inclusion of value in Merkle tree.
+data MerkleProof alg a = MerkleProof
+  { merkleProofLeaf :: !a
+  , merkleProofPath :: [Either (Hash alg) (Hash alg)]
+  }
+  deriving stock    (Show, Eq, Generic)
+  deriving anyclass (Serialise)
 
-instance (CryptoHash alg) => CryptoHashable (MerkleBlockTree f alg a) where
-  hashStep = hashStep . merkleBlockTree
+instance (CryptoHashable a, Eq a) => MerkleTree MerkleBinTree a where
+  type Proof MerkleBinTree = MerkleProof
+  rootHash = merkleHash . merkleBinTree
+  --
+  createMerkleProof (MerkleBinTree mtree) a = do
+    path <- searchBinTree a =<< merkleValue mtree
+    return $ MerkleProof a path
+  --
+  verifyMerkleProof t p = rootHash t == hash (Just (calcRootNode p))
+  --
+  checkMerkleInvariants = maybe True isBalanced . merkleValue . merkleBinTree
 
-instance (CryptoHash alg, CryptoHashable a) => CryptoHashable (Node f alg a) where
+
+instance (CryptoHashable a, Eq a) => MerkleTree MerkleBinTree1 a where
+  type Proof MerkleBinTree1 = MerkleProof
+  rootHash = merkleHash . merkleBinTree1
+  --
+  createMerkleProof (MerkleBinTree1 mtree) a = do
+    path <- searchBinTree a $ merkleValue mtree
+    return $ MerkleProof a path
+  --
+  verifyMerkleProof t p = rootHash t == hash (calcRootNode p)
+  --
+  checkMerkleInvariants = isBalanced . merkleValue . merkleBinTree1
+
+
+
+instance (CryptoHash alg) => CryptoHashable (MerkleBinTree alg f a) where
+  hashStep = hashStep . merkleBinTree
+
+instance (CryptoHash alg) => CryptoHashable (MerkleBinTree1 alg f a) where
+  hashStep = hashStep . merkleBinTree1
+
+instance (CryptoHash alg, CryptoHashable a) => CryptoHashable (Node alg f a) where
   hashStep node
     = hashStep (UserType "hschain" "Merkle.Tree.Node")
    <> case node of
@@ -67,7 +125,19 @@ instance (CryptoHash alg, CryptoHashable a) => CryptoHashable (Node f alg a) whe
                    <> hashStep b
         Leaf   a   -> hashStep (ConstructorIdx 1)
                    <> hashStep a
-                           
+
+instance (CryptoHash alg, Serialise a, CryptoHashable a
+         ) => Serialise (MerkleBinTree alg Identity a) where
+  encode = encode . toList
+  decode = createMerkleTree <$> decode
+
+instance (CryptoHash alg, Serialise a, CryptoHashable a
+         ) => Serialise (MerkleBinTree1 alg Identity a) where
+  encode = encode . toList
+  decode = do as <- decode
+              case createMerkleTree1 as of
+                Nothing -> fail "MerkleBinTree1: Empty list"
+                Just t  -> pure t
 
 
 ----------------------------------------------------------------
@@ -112,56 +182,53 @@ nextPow2 n = 1 `shiftL` (finiteBitSize n - countLeadingZeros n)
 createMerkleTree
   :: (CryptoHash alg, CryptoHashable a, IsMerkle f)
   => [a]                        -- ^ Leaves of tree
-  -> MerkleBlockTree f alg a
+  -> MerkleBinTree alg f a
 createMerkleTree leaves
-  = MerkleBlockTree
+  = MerkleBinTree
   $ merkled
   $ case leaves of
       [] -> Nothing
       _  -> Just $ buildMerkleTree (Branch `on` merkled) $ Leaf <$> leaves
+
+-- | Create perfectly balanced Merkle tree. In order to make
+--   construction deterministic (there are many perfectly balanced
+--   binary trees is number of leaves is not power of two) depth of
+--   leaves is nonincreasing.
+createMerkleTree1
+  :: (CryptoHash alg, CryptoHashable a, IsMerkle f)
+  => [a]                        -- ^ Leaves of tree
+  -> Maybe (MerkleBinTree1 alg f a)
+createMerkleTree1 []     = Nothing
+createMerkleTree1 leaves = Just
+  $ MerkleBinTree1
+  $ merkled
+  $ buildMerkleTree (Branch `on` merkled) $ Leaf <$> leaves
 
 
 ----------------------------------------------------------------
 -- Merkle Proof
 ----------------------------------------------------------------
 
--- | Compact proof of inclusion of value in Merkle tree.
-data MerkleProof alg a = MerkleProof
-  { merkleProofLeaf :: !a
-  , merkleProofPath :: [Either (Hash alg) (Hash alg)]
-  }
-  deriving (Show, Eq, Generic)
-
 -- | Check proof of inclusion
-checkMerkleProof
+calcRootNode
   :: forall alg a. (CryptoHashable a, CryptoHash alg)
-  => Hash alg          -- ^ Root hash of Merkle Tree
-  -> MerkleProof alg a -- ^ Proof
-  -> Bool
-checkMerkleProof rootH (MerkleProof a path)
-  = rootH == calcH
+  => MerkleProof alg a -- ^ Proof
+  -> Node alg Proxy a
+calcRootNode (MerkleProof a path)
+  = foldr step (Leaf a) path
   where
-    calcH = hash
-          $ Just
-          $ foldr step (Leaf a) path
-    step :: Either (Hash alg) (Hash alg) -> Node Proxy alg a -> Node Proxy alg a
+    step :: Either (Hash alg) (Hash alg) -> Node alg Proxy a -> Node alg Proxy a
     step (Left  g) h = Branch (fromHashed (hashed h)) (fromHashed $ Hashed g)
     step (Right g) h = Branch (fromHashed (Hashed g)) (fromHashed $ hashed h)
 
-
--- | Create proof of inclusion. Implementation is rather inefficient
-createMerkleProof
+searchBinTree
   :: (Eq a)
-  => MerkleBlockTree Identity alg a
-  -> a
-  -> Maybe (MerkleProof alg a)
-createMerkleProof (MerkleBlockTree mtree) a = do
-  path <- search =<< merkleValue mtree
-  return $ MerkleProof a path
+  => a -> Node alg Identity a -> Maybe [Either (Hash alg) (Hash alg)]
+searchBinTree a = go
   where
-    search (Leaf   b)   = [] <$ guard (a == b)
-    search (Branch b c) =  (Left  (merkleHash c):) <$> search (merkleValue b)
-                       <|> (Right (merkleHash b):) <$> search (merkleValue c)
+    go (Leaf   b)   = [] <$ guard (a == b)
+    go (Branch b c) =  (Left  (merkleHash c):) <$> go (merkleValue b)
+                   <|> (Right (merkleHash b):) <$> go (merkleValue c)
 
 
 
@@ -172,11 +239,9 @@ createMerkleProof (MerkleBlockTree mtree) a = do
 
 -- | Check whether Merkle tree is balanced and in canonical form:
 --   depth of leaves does not decrease.
-isBalanced :: MerkleBlockTree Identity alg a -> Bool
-isBalanced =
-  merkleBlockTree >>> merkleValue >>> \case
-    Nothing   -> True
-    Just tree -> isCanonical $ calcDepth (0::Int) tree []
+isBalanced :: Node alg Identity a -> Bool
+isBalanced tree
+  = isCanonical $ calcDepth (0::Int) tree []
   where
     -- Check that node depths are nonincreasing and don't differ more
     -- that 1 from first one (tree is balanced)
