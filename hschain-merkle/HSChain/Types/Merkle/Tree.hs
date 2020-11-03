@@ -130,6 +130,12 @@ instance (CryptoHash alg, CryptoHashable a) => CryptoHashable (Node alg f a) whe
                    <> hashStep a
 
 
+instance Eq (MerkleBinTree alg f a) where
+  (==) = (==) `on` merkleHash
+
+instance Eq (MerkleBinTree1 alg f a) where
+  (==) = (==) `on` merkleHash
+
 instance ( CryptoHash alg ) => Serialise (MerkleBinTree alg Proxy a) where
   encode = encode . merkleHash
   decode = nodeFromHash <$> decode
