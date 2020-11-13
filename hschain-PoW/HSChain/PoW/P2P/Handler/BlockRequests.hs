@@ -1,6 +1,3 @@
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE LambdaCase       #-}
-{-# LANGUAGE RecordWildCards  #-}
 -- |
 module HSChain.PoW.P2P.Handler.BlockRequests
   ( BlockRegistry

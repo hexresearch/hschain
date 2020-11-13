@@ -1,9 +1,4 @@
-{-# LANGUAGE DeriveAnyClass            #-}
-{-# LANGUAGE DerivingStrategies        #-}
 {-# LANGUAGE ExistentialQuantification #-}
-{-# LANGUAGE LambdaCase                #-}
-{-# LANGUAGE RecordWildCards           #-}
-{-# LANGUAGE StandaloneDeriving        #-}
 -- |
 module HSChain.PoW.Exceptions where
 

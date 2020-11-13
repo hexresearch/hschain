@@ -1,11 +1,5 @@
 -- |
 -- Mempool API for the PoW blockchain.
-{-# LANGUAGE FlexibleContexts    #-}
-{-# LANGUAGE LambdaCase          #-}
-{-# LANGUAGE PolyKinds           #-}
-{-# LANGUAGE RecordWildCards     #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeApplications    #-}
 module HSChain.PoW.Mempool
   ( -- * Data types
     -- ** Dictionaries of channels

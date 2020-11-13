@@ -1,4 +1,3 @@
-{-# LANGUAGE RecordWildCards #-}
 -- |
 -- This module provides data structures which add assertions to method
 -- dictionaries in order to catch bugs early

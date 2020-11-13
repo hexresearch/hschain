@@ -1,6 +1,3 @@
-{-# LANGUAGE DeriveAnyClass     #-}
-{-# LANGUAGE DerivingStrategies #-}
-{-# LANGUAGE RankNTypes         #-}
 -- |
 module TM.Store (tests) where
 

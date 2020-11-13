@@ -1,14 +1,3 @@
-{-# LANGUAGE DeriveFunctor              #-}
-{-# LANGUAGE DerivingStrategies         #-}
-{-# LANGUAGE FlexibleContexts           #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE LambdaCase                 #-}
-{-# LANGUAGE OverloadedStrings          #-}
-{-# LANGUAGE PolyKinds                  #-}
-{-# LANGUAGE RecordWildCards            #-}
-{-# LANGUAGE ScopedTypeVariables        #-}
-{-# LANGUAGE TemplateHaskell            #-}
-{-# LANGUAGE TypeApplications           #-}
 -- |
 module HSChain.PoW.P2P.Handler.Peer where
 
@@ -53,7 +42,7 @@ runPeer
      )
   => P2PConnection
   -> MempoolAPI m b
-  -> PeerChans s m b
+  -> PeerChans m b
   -> m ()
 runPeer conn mempoolAPI chans@PeerChans{..} = logOnException $ do
   logger InfoS "Starting peer" ()
@@ -94,7 +83,7 @@ data PeerState b = PeerState
 peerRequestHeaders
   :: (MonadIO m, MonadLogger m, MonadCatch m, BlockData b)
   => PeerState b
-  -> PeerChans s m b
+  -> PeerChans m b
   -> Sink (GossipMsg b)
   -> m x
 peerRequestHeaders PeerState{..} PeerChans{..} sinkGossip =
@@ -121,7 +110,7 @@ peerRequestHeaders PeerState{..} PeerChans{..} sinkGossip =
 peerRequestBlock
   :: (MonadIO m, MonadLogger m, MonadCatch m, BlockData b)
   => PeerState b
-  -> PeerChans s m b
+  -> PeerChans m b
   -> Sink (GossipMsg b)
   -> m x
 peerRequestBlock PeerState{..} PeerChans{..} sinkGossip =
@@ -136,7 +125,7 @@ peerRequestBlock PeerState{..} PeerChans{..} sinkGossip =
 
 peerRequestAddresses
   :: (MonadIO m, MonadLogger m, MonadMask m)
-  => PeerState b -> PeerChans s m b -> Sink (GossipMsg b) -> m x
+  => PeerState b -> PeerChans m b -> Sink (GossipMsg b) -> m x
 peerRequestAddresses PeerState{..} PeerChans{..} sinkGossip =
   descendNamespace "req_Addr" $ logOnException $ forever $ do
     AskPeers <- atomicallyIO $ await peerBCastAskPeer
@@ -172,7 +161,7 @@ peerRecv
      )
   => P2PConnection
   -> PeerState b
-  -> PeerChans s m b
+  -> PeerChans m b
   -> Sink (GossipMsg b)         -- Send message to peer over network
   -> MempoolAPI m b
   -> m x

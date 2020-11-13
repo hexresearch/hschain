@@ -1,7 +1,3 @@
-{-# LANGUAGE FlexibleContexts  #-}
-{-# LANGUAGE LambdaCase        #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards   #-}
 -- |
 module HSChain.PoW.P2P.Handler.PEX
   ( runPEX
@@ -97,7 +93,7 @@ acceptLoop
   -> Shepherd
   -> PeerRegistry
   -> NonceSet
-  -> STM (PeerChans s m b)
+  -> STM (PeerChans m b)
   -> m ()
 acceptLoop NetworkAPI{..} mempoolAPI shepherd reg nonceSet mkChans  = do
   bracket listenOn fst $ \(_,accept) -> forever $ do
@@ -136,7 +132,7 @@ connectTo
   -> Shepherd
   -> PeerRegistry
   -> NonceSet
-  -> PeerChans s m b
+  -> PeerChans m b
   -> m ()
 connectTo NetworkAPI{..} mempoolAPI addr shepherd reg nonceSet chans =
   newSheep shepherd $ do
@@ -182,7 +178,7 @@ monitorConnections
   -> Shepherd
   -> PeerRegistry
   -> NonceSet
-  -> STM (PeerChans s m b)
+  -> STM (PeerChans m b)
   -> m ()
 monitorConnections NetCfg{..} netAPI mempoolAPI shepherd reg nonceSet mkChans = forever $ do
   -- Check that we need and can connect to peers

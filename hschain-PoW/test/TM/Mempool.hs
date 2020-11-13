@@ -1,9 +1,4 @@
--- |
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE LambdaCase       #-}
-{-# LANGUAGE NumDecimals      #-}
-{-# LANGUAGE RecordWildCards  #-}
-{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE NumDecimals #-}
 module TM.Mempool (tests) where
 
 import Control.Concurrent.STM
