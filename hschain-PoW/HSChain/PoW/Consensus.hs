@@ -1,6 +1,9 @@
-{-# LANGUAGE PatternSynonyms      #-}
-{-# LANGUAGE TemplateHaskell      #-}
-{-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE FunctionalDependencies #-}
+{-# LANGUAGE MultiParamTypeClasses  #-}
+{-# LANGUAGE PatternSynonyms        #-}
+{-# LANGUAGE PolyKinds              #-}
+{-# LANGUAGE TemplateHaskell        #-}
+{-# LANGUAGE UndecidableInstances   #-}
 -- |
 module HSChain.PoW.Consensus
   ( -- * Block index
@@ -16,7 +19,7 @@ module HSChain.PoW.Consensus
   , makeLocator
     -- *
   , StateView(..)
-  , createCandidateBlock
+  -- , createCandidateBlock
   , BlockDB(..)
   , buildBlockIndex
   , Consensus(..)
@@ -87,52 +90,52 @@ makeLocator  = Locator . takeH 10 . Just
 -- Blockchain state handling
 ----------------------------------------------------------------
 
+-- | View on state of blockchain. Normally it's backed by database
+--   with in-memory overlay. Latter is needed in order to work with
+--   multiple heads of blockchain. One important constraint is that
+--   view should remain valid even if underlying database gets
+--   updated.
+class BlockData b => StateView view b | view -> b where
+  -- | Hash of block for which state is calculated
+  stateBID :: view m -> BlockID b
+  -- | Apply block on top of current state. Function should return
+  --   @Nothing@ if block is not valid. It's always called with @BH@
+  --   corresponding to given block. If it's not the case it's
+  --   caused by bug inc consensus state machine.
+  applyBlock :: view m -> BlockIndex b -> BH b -> Block b -> m (Either (BlockException b) (view m))
+  -- | Revert block. Underlying implementation should maintain
+  --   enough information to allow rollbacks of reasonable depth.
+  --   It's acceptable to fail for too deep reorganizations.
+  revertBlock :: view m -> m (view m)
+  -- | Persist snapshot in the database.
+  flushState  :: view m -> m (view m)
+  -- | Check that transaction is valid. Needed for checking
+  --   transaction in the mempool.
+  checkTx :: view m -> Tx b -> m (Either (BlockException b) ())  
 
--- | View on state of blockchain. It's expected that store is backed
---   by database and in-memory overlay is used to work with multiple
---   heads of blockchain. One important constraint is that view should
---   remain valid even if underlying database gets updated.
-data StateView m b = StateView
-  { stateBID    :: BlockID b
-    -- ^ Hash of block for which state is calculated
-  , applyBlock  :: BlockIndex b -> BH b -> Block b -> m (Either (BlockException b) (StateView m b))
-    -- ^ Apply block on top of current state. Function should return
-    --   @Nothing@ if block is not valid. It's always called with @BH@
-    --   corresponding to given block. If it's not the case it's
-    --   caused by bug inc consensus state machine.
-  , revertBlock :: m (StateView m b)
-    -- ^ Revert block. Underlying implementation should maintain
-    --   enough information to allow rollbacks of reasonable depth.
-    --   It's acceptable to fail for too deep reorganizations.
-  , checkTx :: Tx b -> m (Either (BlockException b) ())
-    -- ^ Check that transaction is valid. Needed for checking
-    --   transaction in the mempool.
-  , flushState  :: m (StateView m b)
-    -- ^ Persist snapshot in the database.
+--   , createCandidateBlockData
+--       :: BH b
+--       -> Time
+--       -> [Tx b]
+--       -> m (b Identity)
+--     -- ^ Create candidate block out of list of transactions. It won't
+--     --   have enough work in it but should be valid otherwise.
+--   }
 
-  , createCandidateBlockData
-      :: BH b
-      -> Time
-      -> [Tx b]
-      -> m (b Identity)
-    -- ^ Create candidate block out of list of transactions. It won't
-    --   have enough work in it but should be valid otherwise.
-  }
-
-createCandidateBlock
-  :: (Monad m)
-  => StateView m b
-  -> BH b
-  -> Time
-  -> [Tx b]
-  -> m (Block b)
-createCandidateBlock sv bh t txs = do
-  b <- createCandidateBlockData sv bh t txs
-  return Block { blockHeight = succ (bhHeight bh)
-               , blockTime   = t
-               , prevBlock   = Just $ bhBID bh
-               , blockData   = b
-               }
+-- createCandidateBlock
+--   :: (Monad m)
+--   => StateView m b
+--   -> BH b
+--   -> Time
+--   -> [Tx b]
+--   -> m (Block b)
+-- createCandidateBlock sv bh t txs = do
+--   b <- createCandidateBlockData sv bh t txs
+--   return Block { blockHeight = succ (bhHeight bh)
+--                , blockTime   = t
+--                , prevBlock   = Just $ bhBID bh
+--                , blockData   = b
+--                }
 
 
 ----------------------------------------------------------------
@@ -140,12 +143,12 @@ createCandidateBlock sv bh t txs = do
 ----------------------------------------------------------------
 
 -- | Complete description of PoW consensus
-data Consensus m b = Consensus
+data Consensus view m b = Consensus
   { _blockIndex     :: BlockIndex b
     -- ^ Index of all known headers that have enough work in them and
     --   otherwise valid. Note that it may include headers of blocks
     --   which turned out to be invalid.
-  , _bestHead       :: (BH b, StateView m b, Locator b)
+  , _bestHead       :: (BH b, view m, Locator b)
     -- ^ Best head of blockchain. It's validated block with most work
     --   in it
   , _candidateHeads :: [Head b]
@@ -161,10 +164,10 @@ data Consensus m b = Consensus
   }
 
 consensusGenesis
-  :: (Monad m, BlockData b)
+  :: (Monad m, StateView view b)
   => Block b
-  -> StateView m b
-  -> Consensus m b
+  -> view m
+  -> Consensus view m b
 consensusGenesis genesis sview = Consensus
   { _blockIndex     = idx
   , _bestHead       = (bh, sview, makeLocator bh)
@@ -236,9 +239,9 @@ instance (JSON.ToJSON (BlockException b)) => JSON.ToJSON (BlockError b)
 -- | Add new header. Header is only accepted only if we already have
 --   header for previous block and header is otherwise valid.
 processHeader
-  :: (BlockData b, MonadIO m)
+  :: (StateView view b, MonadIO m)
   => Header b
-  -> ExceptT (HeaderError b) (StateT (Consensus m b) m) ()
+  -> ExceptT (HeaderError b) (StateT (Consensus view m b) m) ()
 -- FIXME: Decide what to do with time?
 -- FIXME: Decide how to track difficulty adjustment
 processHeader header = do
@@ -312,9 +315,9 @@ growHead _ [] = Nothing
 
 -- | Grow new head.
 growNewHead
-  :: (BlockData b, Monad m)
+  :: (StateView view b, Monad m)
   => BH b
-  -> ExceptT (HeaderError b) (StateT (Consensus m b) m) (Head b)
+  -> ExceptT (HeaderError b) (StateT (Consensus view m b) m) (Head b)
 growNewHead bh = do
   best       <- use $ bestHead . _1
   bad        <- use badBlocks
@@ -339,10 +342,10 @@ growNewHead bh = do
 
 -- | Add new block. We only accept block if we already have valid header. Note
 processBlock
-  :: (BlockData b, MonadIO m, MonadLogger m)
+  :: (StateView view b, MonadIO m, MonadLogger m)
   => BlockDB m b
   -> Block b
-  -> ExceptT (BlockError b) (StateT (Consensus m b) m) [(BlockID b, BlockException b)]
+  -> ExceptT (BlockError b) (StateT (Consensus view m b) m) [(BlockID b, BlockException b)]
 processBlock db block = do
   use (blockIndex . to (lookupIdx bid)) >>= \case
     Just _  -> return ()
@@ -376,7 +379,7 @@ processBlock db block = do
 -- | Invalidate block. We need to truncate all candidate heads that
 --   contains it.
 invalidateBlock
-  :: (BlockData b, MonadState (Consensus n b) m)
+  :: (StateView view b, MonadState (Consensus view n b) m)
   => BlockID b
   -> m ()
 invalidateBlock bid = do
@@ -396,9 +399,9 @@ invalidateBlock bid = do
 
 -- | Find best reachable candidate block.
 bestCandidate
-  :: (BlockData b, MonadLogger m)
+  :: (StateView view b, MonadLogger m)
   => BlockDB m b
-  -> ExceptT (BlockError b) (StateT (Consensus m b) m) [(BlockID b, BlockException b)]
+  -> ExceptT (BlockError b) (StateT (Consensus view m b) m) [(BlockID b, BlockException b)]
 bestCandidate db = do
   bestWork <- use $ bestHead . _1 . to bhWork
   missing  <- use requiredBlocks
@@ -435,7 +438,7 @@ bestCandidate db = do
         Empty   -> Nothing
         _ :|> b -> Just b
 
-cleanCandidates :: (BlockData b, MonadState (Consensus n b) m) => m ()
+cleanCandidates :: (StateView view b, MonadState (Consensus view n b) m) => m ()
 cleanCandidates = do
   bestWork <- use $ bestHead . _1 . to bhWork
   missing  <- use requiredBlocks
@@ -453,11 +456,11 @@ cleanCandidates = do
 
 -- | Create consensus state out of block index and state view.
 createConsensus
-  :: (BlockData b, MonadLogger m)
+  :: (StateView view b, MonadLogger m)
   => BlockDB m b
-  -> StateView m b
+  -> view m
   -> BlockIndex b
-  -> m (Consensus m b)
+  -> m (Consensus view m b)
 -- NOTE: So far we only record full blocks and not headers. Thus we
 --       don't have any blocks we want to fetch and all candidate
 --       heads have all required blocks.

@@ -38,11 +38,11 @@ runPeer
      , Serialise (b Identity)
      , Serialise (b Proxy)
      , Serialise (Tx b)
-     , BlockData b
+     , StateView view b
      )
   => P2PConnection
-  -> MempoolAPI m b
-  -> PeerChans m b
+  -> MempoolAPI view m b
+  -> PeerChans view m b
   -> m ()
 runPeer conn mempoolAPI chans@PeerChans{..} = logOnException $ do
   logger InfoS "Starting peer" ()
@@ -83,7 +83,7 @@ data PeerState b = PeerState
 peerRequestHeaders
   :: (MonadIO m, MonadLogger m, MonadCatch m, BlockData b)
   => PeerState b
-  -> PeerChans m b
+  -> PeerChans view m b
   -> Sink (GossipMsg b)
   -> m x
 peerRequestHeaders PeerState{..} PeerChans{..} sinkGossip =
@@ -110,7 +110,7 @@ peerRequestHeaders PeerState{..} PeerChans{..} sinkGossip =
 peerRequestBlock
   :: (MonadIO m, MonadLogger m, MonadCatch m, BlockData b)
   => PeerState b
-  -> PeerChans m b
+  -> PeerChans view m b
   -> Sink (GossipMsg b)
   -> m x
 peerRequestBlock PeerState{..} PeerChans{..} sinkGossip =
@@ -125,7 +125,7 @@ peerRequestBlock PeerState{..} PeerChans{..} sinkGossip =
 
 peerRequestAddresses
   :: (MonadIO m, MonadLogger m, MonadMask m)
-  => PeerState b -> PeerChans m b -> Sink (GossipMsg b) -> m x
+  => PeerState b -> PeerChans view m b -> Sink (GossipMsg b) -> m x
 peerRequestAddresses PeerState{..} PeerChans{..} sinkGossip =
   descendNamespace "req_Addr" $ logOnException $ forever $ do
     AskPeers <- atomicallyIO $ await peerBCastAskPeer
@@ -157,13 +157,13 @@ peerRecv
      , Serialise (b Identity)
      , Serialise (b Proxy)
      , Serialise (Tx b)
-     , BlockData b
+     , StateView view b
      )
   => P2PConnection
   -> PeerState b
-  -> PeerChans m b
+  -> PeerChans view m b
   -> Sink (GossipMsg b)         -- Send message to peer over network
-  -> MempoolAPI m b
+  -> MempoolAPI view m b
   -> m x
 peerRecv conn st@PeerState{..} PeerChans{..} sinkGossip  mempoolAPI =
   descendNamespace "recv" $ logOnException $ forever $ do
@@ -234,8 +234,8 @@ peerRecv conn st@PeerState{..} PeerChans{..} sinkGossip  mempoolAPI =
         lift release
 
 locateHeaders
-  :: (BlockData b)
-  => Consensus m b
+  :: (StateView view b)
+  => Consensus view m b
   -> Locator b
   -> Maybe [Header b]
 locateHeaders consensus (Locator bidList) = do

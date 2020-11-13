@@ -1,3 +1,4 @@
+{-# LANGUAGE KindSignatures #-}
 -- |
 module HSChain.PoW.P2P
   ( PoW(..)
@@ -28,15 +29,15 @@ import HSChain.Types.Merkle.Types
 
 
 -- | Dictionary with functions for interacting with consensus engine
-data PoW m b = PoW
-  { currentConsensus :: STM  (Consensus m b)
+data PoW view m b = PoW
+  { currentConsensus :: STM (Consensus view m b)
     -- ^ View on current state of consensus (just a read from TVar).
   , sendNewBlock     :: Block b -> m (Either SomeException ())
     -- ^ Send freshly mined block to consensus
-  , chainUpdate      :: STM (Src (BH b, StateView m b))
+  , chainUpdate      :: STM (Src (BH b, view m))
     -- ^ Create new broadcast source which will recieve message every
     --   time head is changed
-  , mempoolAPI       :: MempoolAPI m b
+  , mempoolAPI       :: MempoolAPI view m b
     -- ^ API for communication with mempool
   }
 
@@ -46,14 +47,14 @@ startNode
      , Serialise (b Identity)
      , Serialise (b Proxy)
      , Serialise (Tx b)
-     , BlockData b
+     , StateView view b
      )
   => NetCfg
   -> NetworkAPI
   -> [NetAddr]
   -> BlockDB   m b
-  -> Consensus m b
-  -> ContT r m (PoW m b)
+  -> Consensus view m b
+  -> ContT r m (PoW view m b)
 startNode cfg netAPI seeds db consensus
   = fst <$> startNodeTest cfg netAPI seeds db consensus
 
@@ -63,14 +64,14 @@ startNodeTest
      , Serialise (b Identity)
      , Serialise (b Proxy)
      , Serialise (Tx b)
-     , BlockData b
+     , StateView view b
      )
   => NetCfg
   -> NetworkAPI
   -> [NetAddr]
   -> BlockDB   m b
-  -> Consensus m b
-  -> ContT r m ( PoW m b
+  -> Consensus view m b
+  -> ContT r m ( PoW view m b
                , Sink (BoxRX m b)
                )
 startNodeTest cfg netAPI seeds db consensus = do

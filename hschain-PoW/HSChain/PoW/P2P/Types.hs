@@ -185,7 +185,7 @@ data CmdPeer b
 data AskPeers = AskPeers
 
 -- | Channels for peer for communication with rest of the world
-data PeerChans m b = PeerChans
+data PeerChans view m b = PeerChans
   { peerSinkNewAddr   :: Sink [NetAddr]      -- ^ Send newly received addresses
   , peerSinkConsensus :: Sink (BoxRX m b)    -- ^ Send new command to consensus
   , peerBCastAnn      :: Src  (MsgAnn b)     -- ^ Broadcast channel for announces
@@ -194,7 +194,7 @@ data PeerChans m b = PeerChans
   , peerCatchup       :: CatchupThrottle
   , peerReqBlocks     :: BlockRegistry b
   , peerConnections   :: STM [NetAddr]       -- ^
-  , peerConsensuSt    :: STM (Consensus m b) -- ^ Current consensus state
+  , peerConsensuSt    :: STM (Consensus view m b) -- ^ Current consensus state
   , peerBlockDB       :: BlockDB m b
   }
 

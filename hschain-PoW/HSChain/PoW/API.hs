@@ -33,7 +33,7 @@ data MempoolRestAPI b route = MempoolRestAPI
   deriving Generic
 
 -- | Server implementation
-mempoolApiServer :: (MonadIO m) => MempoolAPI m b -> MempoolRestAPI b (AsServerT m)
+mempoolApiServer :: (MonadIO m) => MempoolAPI view m b -> MempoolRestAPI b (AsServerT m)
 mempoolApiServer mempool = MempoolRestAPI
   { mempoolPostTxAsync = postTxEndpoint     mempool
   , mempoolPostTxSync  = postTxSyncEndpoint mempool
@@ -42,18 +42,18 @@ mempoolApiServer mempool = MempoolRestAPI
 
 postTxEndpoint
   :: (MonadIO m)
-  => MempoolAPI m b -> Tx b -> m String
+  => MempoolAPI view m b -> Tx b -> m String
 postTxEndpoint MempoolAPI{..} tx = do
   sinkIO postTransaction tx
   return "TRIED"
 
 postTxSyncEndpoint
   :: (MonadIO m)
-  => MempoolAPI m b -> Tx b -> m Bool
+  => MempoolAPI view m b -> Tx b -> m Bool
 postTxSyncEndpoint MempoolAPI{..} tx = do
   blockingCall postTransactionSync tx
 
-getMempoolSizeEndpoint :: (MonadIO m) => MempoolAPI m b -> m Int
+getMempoolSizeEndpoint :: (MonadIO m) => MempoolAPI view m b -> m Int
 getMempoolSizeEndpoint MempoolAPI{..} = length <$> atomicallyIO mempoolState
 
 
