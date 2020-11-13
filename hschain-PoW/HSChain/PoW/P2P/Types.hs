@@ -191,7 +191,7 @@ data CmdPeer b
 data AskPeers = AskPeers
 
 -- | Channels for peer for communication with rest of the world
-data PeerChans s m b = PeerChans
+data PeerChans m b = PeerChans
   { peerSinkNewAddr   :: Sink [NetAddr]      -- ^ Send newly received addresses
   , peerSinkConsensus :: Sink (BoxRX m b)    -- ^ Send new command to consensus
   , peerBCastAnn      :: Src  (MsgAnn b)     -- ^ Broadcast channel for announces
