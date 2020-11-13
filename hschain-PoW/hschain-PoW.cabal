@@ -59,28 +59,28 @@ Library
                      , servant         >=0.16 && <0.17
                      , servant-server  >=0.16 && <0.17
   Exposed-modules:
-                HSChain.PoW.Asserts
-                HSChain.PoW.BlockIndex
-                HSChain.PoW.Types
-                HSChain.PoW.Tests
-                HSChain.PoW.Consensus
                 HSChain.Examples.Coin
                 HSChain.Examples.Coin.API
                 HSChain.Examples.Simple
+                HSChain.PoW.API
+                HSChain.PoW.Asserts
+                HSChain.PoW.BlockIndex
+                HSChain.PoW.Consensus
                 HSChain.PoW.Exceptions
-                HSChain.PoW.Node
-                HSChain.PoW.Store
                 HSChain.PoW.Mempool
+                HSChain.PoW.Node
                 HSChain.PoW.P2P
-                HSChain.PoW.P2P.Types
                 HSChain.PoW.P2P.Handler.BlockRequests
                 HSChain.PoW.P2P.Handler.CatchupLock
                 HSChain.PoW.P2P.Handler.Consensus
-                HSChain.PoW.P2P.Handler.Peer
                 HSChain.PoW.P2P.Handler.PEX
-                HSChain.PoW.P2P.STM.PeerRegistry
+                HSChain.PoW.P2P.Handler.Peer
                 HSChain.PoW.P2P.STM.NonceSet
-                HSChain.PoW.API
+                HSChain.PoW.P2P.STM.PeerRegistry
+                HSChain.PoW.P2P.Types
+                HSChain.PoW.Store
+                HSChain.PoW.Tests
+                HSChain.PoW.Types
   default-extensions:
     -- Deriving
     DeriveAnyClass
