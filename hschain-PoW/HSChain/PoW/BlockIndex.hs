@@ -2,10 +2,6 @@
 -- Block index is data structure which holds headers for all blocks in
 -- blockchain in memory. This module provides data structure and set
 -- of common operations for working with it.
-{-# LANGUAGE DeriveFoldable    #-}
-{-# LANGUAGE DeriveFunctor     #-}
-{-# LANGUAGE DeriveTraversable #-}
-{-# LANGUAGE FlexibleContexts  #-}
 module HSChain.PoW.BlockIndex
   ( -- * Block index
     BlockIndex(..)

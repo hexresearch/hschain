@@ -2,9 +2,6 @@
 -- API and default implementation for storage of blocks. Normally
 -- blocks are meant to be stored in the database but for testing and
 -- debugging it could be useful to have in-memory storage as well.
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE LambdaCase #-}
 module HSChain.PoW.Store
   ( -- * API and generic functions
     BlockDB(..)
