@@ -10,6 +10,7 @@ module HSChain.Examples.Simple
   , KVConfig(..)
   , retarget
   , kvMemoryView
+  , createCandidateBlockData
   , hash256AsTarget
     -- * Monad
   , KVT(..)
@@ -163,54 +164,51 @@ instance (KVConfig cfg) => Mineable (KV cfg) where
 
 
 data KVState cfg (m :: * -> *) = KVState
-  { kvstBID  :: BlockID (KV cfg)
-  , kvstPrev :: KVState cfg m
+  { kvstBID   :: BlockID (KV cfg)
+  , kvstPrev  :: KVState cfg m
+  , kvstState :: Map.Map Int String
   }
 
-instance KVConfig cfg => StateView (KVState cfg) (KV cfg) where
-  stateBID = kvstBID
+instance (Monad m, KVConfig cfg) => StateView (KVState cfg m) m (KV cfg) where
+  stateBID    = kvstBID
   revertBlock = pure . kvstPrev
+  flushState  = pure
+  --
+  applyBlock view0@KVState{..} _ _ b = pure $ do
+    st' <- kvViewStep b kvstState
+    return KVState { kvstBID   = blockID b
+                   , kvstPrev  = view0
+                   , kvstState = st'
+                   }
+  --
+  checkTx KVState{..} (k,_)
+    | k `Map.notMember` kvstState = pure $ Right ()
+    | otherwise                   = pure $ Left KVError
   
 kvMemoryView
   :: forall m cfg. (Monad m, KVConfig cfg)
   => BlockID (KV cfg)
   -> KVState cfg m
-kvMemoryView = undefined
+kvMemoryView bid = KVState
+  { kvstBID   = bid
+  , kvstPrev  = error "No revinding past genesis"
+  , kvstState = mempty
+  }
 
+createCandidateBlockData
+  :: forall cfg m b. (Monad m, BlockData b, KVConfig cfg)
+  => KVState cfg m -> BH b -> [(Int, String)] -> KV cfg Identity
+createCandidateBlockData KVState{..} bh txs = KV
+  { kvData   = merkled $ case find ((`Map.notMember` kvstState) . fst) txs of
+      Just tx -> [tx]
+      Nothing -> []
+  , kvNonce  = kvDefaultNonce (Proxy @cfg)
+  , kvTarget = retarget bh
+  }
 
-{-
--- | Simple in-memory implementation of DB
-kvMemoryView
-  :: forall m cfg. (Monad m, KVConfig cfg)
-  => BlockID (KV cfg)
-  -> StateView m (KV cfg)
-kvMemoryView = make (error "No revinding past genesis") mempty
-  where
-    make previous s bid = view
-      where
-        view = StateView
-          { stateBID    = bid
-          , applyBlock  = \_ _ b -> case kvViewStep b s of
-              Nothing -> return $ Left KVError
-              Just s' -> return $ Right $ make view s' (blockID b)
-          , revertBlock = return previous
-          , flushState  = return view
-          , checkTx     = \(k,_) -> return $ if k `Map.notMember` s
-                                             then Right ()
-                                             else Left KVError
-          , createCandidateBlockData = \bh _ txs -> return KV
-              { kvData   = merkled $ case find ((`Map.notMember` s) . fst) txs of
-                  Just tx -> [tx]
-                  Nothing -> []
-              , kvNonce  = kvDefaultNonce (Proxy @cfg)
-              , kvTarget = retarget bh
-              }
-          }
-
-kvViewStep :: KVConfig cfg => Block (KV cfg) -> Map.Map Int String -> Maybe (Map.Map Int String)
+kvViewStep :: KVConfig cfg => Block (KV cfg) -> Map.Map Int String -> Either KVError (Map.Map Int String)
 kvViewStep b m
-  | or [ k `Map.member` m | (k, _) <- txs ] = Nothing
-  | otherwise                               = Just $ Map.fromList txs <> m
+  | or [ k `Map.member` m | (k, _) <- txs ] = Left KVError
+  | otherwise                               = pure $ Map.fromList txs <> m
   where
     txs = merkleValue $ kvData $ blockData b
--}
