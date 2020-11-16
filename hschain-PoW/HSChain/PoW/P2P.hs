@@ -34,7 +34,7 @@ data PoW view m b = PoW
     -- ^ View on current state of consensus (just a read from TVar).
   , sendNewBlock     :: Block b -> m (Either SomeException ())
     -- ^ Send freshly mined block to consensus
-  , chainUpdate      :: STM (Src (BH b, view m))
+  , chainUpdate      :: STM (Src (BH b, view))
     -- ^ Create new broadcast source which will recieve message every
     --   time head is changed
   , mempoolAPI       :: MempoolAPI view m b
@@ -47,7 +47,7 @@ startNode
      , Serialise (b Identity)
      , Serialise (b Proxy)
      , Serialise (Tx b)
-     , StateView view b
+     , StateView view m b
      )
   => NetCfg
   -> NetworkAPI
@@ -64,7 +64,7 @@ startNodeTest
      , Serialise (b Identity)
      , Serialise (b Proxy)
      , Serialise (Tx b)
-     , StateView view b
+     , StateView view m b
      )
   => NetCfg
   -> NetworkAPI

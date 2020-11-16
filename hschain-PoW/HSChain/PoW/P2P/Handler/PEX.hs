@@ -40,7 +40,7 @@ runPEX
      , Serialise (b Identity)
      , Serialise (b Proxy)
      , Serialise (Tx b)
-     , StateView view b
+     , StateView view m b
      )
   => NetCfg
   -> NetworkAPI
@@ -86,7 +86,7 @@ acceptLoop
      , Serialise (b Identity)
      , Serialise (b Proxy)
      , Serialise (Tx b)
-     , StateView view b
+     , StateView view m b
      )
   => NetworkAPI
   -> MempoolAPI view m b
@@ -124,7 +124,7 @@ connectTo
      , Serialise (b Identity)
      , Serialise (b Proxy)
      , Serialise (Tx b)
-     , StateView view b
+     , StateView view m b
      )
   => NetworkAPI
   -> MempoolAPI view m b
@@ -170,7 +170,7 @@ monitorConnections
      , Serialise (b Identity)
      , Serialise (b Proxy)
      , Serialise (Tx b)
-     , StateView view b
+     , StateView view m b
      )
   => NetCfg
   -> NetworkAPI

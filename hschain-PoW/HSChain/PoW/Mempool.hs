@@ -42,7 +42,7 @@ import HSChain.PoW.P2P.Types
 
 -- | Command sent to the mempool from the consensus engine
 data MempCmdConsensus view (m :: * -> *) b
-  = MempHeadChange (BH b) (BH b) (view m)
+  = MempHeadChange (BH b) (BH b) view
   -- ^ Blockchain head has been changed. We need to
 
 -- | Command sent to the mempool from gossip
@@ -64,7 +64,7 @@ data MempoolAPI view (m :: * -> *) b = MempoolAPI
     --   Note that acceptance to mempool doesn't even guarantee that
     --   transaction will be eventually mined. And certainly not that
     --   it will be mined promptly.
-  , mempoolUpdates  :: STM (Src (BH b, view m, [Tx b]))
+  , mempoolUpdates  :: STM (Src (BH b, view, [Tx b]))
     -- ^ Channel for receiving updates to mempool when
   , mempoolContent  :: STM [Tx b]
     -- ^ Obtain current content of mempool
@@ -88,7 +88,7 @@ data InternalCh view (m :: * -> *) b = InternalCh
     -- ^ Messages from gossip
   , bcastNewTx        :: Sink (Tx b)
     -- ^ Sink for valid transaction which just learned about,
-  , bcastMempoolState :: Sink (BH b, view m, [Tx b])
+  , bcastMempoolState :: Sink (BH b, view, [Tx b])
     -- ^ Broadcast change of blockchain head and corresponding update of
   , pendingFiltering  :: TVar [TxID b]
     -- ^ Messages which we need to be rechecked
@@ -98,10 +98,10 @@ data InternalCh view (m :: * -> *) b = InternalCh
 
 -- | Start new thread running mempool
 startMempool
-  :: (MonadIO m, MonadFork m, MonadMask m, StateView view b)
+  :: (MonadIO m, MonadFork m, MonadMask m, StateView view m b)
   => BlockDB m b
   -- ^ Block database
-  -> view m
+  -> view
   -- ^ Current view on blockchain state. Will be used for transaction
   --   validation until state will be changed
   -> ContT r m (MempoolAPI view m b, MempoolCh view m b)
@@ -136,11 +136,11 @@ startMempool db state = do
 -- state of blockchain which is used for transaction validation
 data MempoolDict view (m :: * -> *) b = MempoolDict
   { mempool   :: !(MempoolState (TxID b) (Tx b))
-  , stateView :: !(view m)
+  , stateView :: !view
   }
 
 runMempool
-  :: (MonadIO m, StateView view b)
+  :: (MonadIO m, StateView view m b)
   => BlockDB m b
   -> InternalCh view m b
   -> MempoolDict view m b
@@ -160,7 +160,7 @@ runMempool db ch@InternalCh{..} st0 = iterateSTM st0 $ \s -> store <$> asum
 -- Change of blockchain head
 
 handleConsensus
-  :: forall view m b. (MonadIO m, StateView view b)
+  :: forall view m b. (MonadIO m, StateView view m b)
   => BlockDB m b
   -> InternalCh view m b
   -> MempoolDict view m b
@@ -230,7 +230,7 @@ retrieveTidList db bid =
 -- Other changes to mempool
 
 handleGossip
-  :: forall view b m. (MonadIO m, StateView view b)
+  :: forall view b m. (MonadIO m, StateView view m b)
   => InternalCh  view m b
   -> MempoolDict view m b
   -> MempCmdGossip b
@@ -252,7 +252,7 @@ handleGossip InternalCh{..} st@MempoolDict{..} = \case
       return MempoolDict { mempool = st', .. }
 
 handlePending
-  :: forall m b view. (MonadIO m, StateView view b)
+  :: forall m b view. (MonadIO m, StateView view m b)
   => InternalCh view m b
   -> MempoolDict view m b
   -> STM (m (MempoolDict view m b))
@@ -260,7 +260,7 @@ handlePending InternalCh{..} MempoolDict{..}
   = doFilter <$> awaitPending
   where
     doFilter tidList = do
-      badTxs <- filterM (fmap isLeft . checkTx @view @b stateView . snd)
+      badTxs <- filterM (fmap isLeft . checkTx @view stateView . snd)
               $ mapMaybe (\tid -> do (_,tx) <- Map.lookup tid (mempRevMap mempool)
                                      pure (tid,tx)
                          ) tidList

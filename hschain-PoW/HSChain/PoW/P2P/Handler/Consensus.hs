@@ -25,7 +25,7 @@ import HSChain.Logger
 data ConsensusCh view m b = ConsensusCh
   { bcastAnnounce    :: Sink (MsgAnn b)
     -- ^ Broadcast channel for gossip announcements (we got new best head)
-  , bcastChainUpdate :: Sink (BH b, BH b, view m)
+  , bcastChainUpdate :: Sink (BH b, BH b, view)
     -- ^ Broadcast channel for announcing new head for mining etc.
   , sinkConsensusSt  :: Sink (Consensus view m b)
     -- ^ Updating state of consensus
@@ -38,7 +38,7 @@ data ConsensusCh view m b = ConsensusCh
 -- | Thread that reacts to messages from peers and updates consensus
 --   accordingly
 threadConsensus
-  :: (MonadIO m, MonadLogger m, MonadCatch m, StateView view b)
+  :: (MonadIO m, MonadLogger m, MonadCatch m, StateView view m b)
   => BlockDB m b
   -> Consensus   view m b
   -> ConsensusCh view m b
@@ -64,7 +64,7 @@ threadConsensus db consensus0 ConsensusCh{..} = descendNamespace "cns" $ logOnEx
 
 -- Handler for messages coming from peer.
 consensusMonitor
-  :: (MonadLogger m, MonadIO m, StateView view b)
+  :: (MonadLogger m, MonadIO m, StateView view m b)
   => BlockDB m b
   -> BoxRX m b
   -> StateT (Consensus view m b) m ()
