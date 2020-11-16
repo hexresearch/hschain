@@ -1,6 +1,7 @@
-{-# LANGUAGE DataKinds            #-}
-{-# LANGUAGE TypeFamilies         #-}
-{-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE DataKinds             #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE TypeFamilies          #-}
+{-# LANGUAGE UndecidableInstances  #-}
 -- |
 -- Simple block which implements write only key-value storage. It's
 -- only use is to test and debug PoW algorithms.
@@ -161,7 +162,23 @@ instance (KVConfig cfg) => Mineable (KV cfg) where
   adjustPuzzle = fmap (flip (,) (Target 0)) . kvSolvePuzzle
 
 
+data KVState cfg (m :: * -> *) = KVState
+  { kvstBID  :: BlockID (KV cfg)
+  , kvstPrev :: KVState cfg m
+  }
 
+instance KVConfig cfg => StateView (KVState cfg) (KV cfg) where
+  stateBID = kvstBID
+  revertBlock = pure . kvstPrev
+  
+kvMemoryView
+  :: forall m cfg. (Monad m, KVConfig cfg)
+  => BlockID (KV cfg)
+  -> KVState cfg m
+kvMemoryView = undefined
+
+
+{-
 -- | Simple in-memory implementation of DB
 kvMemoryView
   :: forall m cfg. (Monad m, KVConfig cfg)
@@ -196,3 +213,4 @@ kvViewStep b m
   | otherwise                               = Just $ Map.fromList txs <> m
   where
     txs = merkleValue $ kvData $ blockData b
+-}
