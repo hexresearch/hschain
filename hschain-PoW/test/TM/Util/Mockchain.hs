@@ -1,9 +1,11 @@
 -- |
-{-# LANGUAGE CPP                  #-}
-{-# LANGUAGE DataKinds            #-}
-{-# LANGUAGE RankNTypes           #-}
-{-# LANGUAGE TypeFamilies         #-}
-{-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE CPP                   #-}
+{-# LANGUAGE DataKinds             #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE PolyKinds             #-}
+{-# LANGUAGE RankNTypes            #-}
+{-# LANGUAGE TypeFamilies          #-}
+{-# LANGUAGE UndecidableInstances  #-}
 module TM.Util.Mockchain where
 
 import Codec.Serialise
@@ -130,45 +132,14 @@ header3' = toHeader block3'
 header4' = toHeader block4'
 
 
--- | State view which doesn't do any block validation whatsoever
-inMemoryView
-  :: (Monad m, BlockData b)
-  => BlockID b
-  -> StateView m b
-inMemoryView = make (error "No revinding past genesis")
-  where
-    make previous bid = view
-      where
-        view = StateView
-          { stateBID    = bid
-          , applyBlock  = \_ bh _ -> return $ Right $ make view (bhBID bh)
-          , revertBlock = return previous
-          , flushState  = return view
-          , checkTx                  = error "Transaction checking is not supported"
-          , createCandidateBlockData = error "Block creation is not supported"
-          }
+data DummyState m b = DummyState (BlockID b) (DummyState m b)
 
--- | State view which doesn't do any block validation whatsoever
-inMemoryViewCoin
-  :: (Monad m)
-  => BlockID Coin
-  -> StateView m Coin
-inMemoryViewCoin = make (error "No revinding past genesis")
-  where
-    make previous bid = view
-      where
-        view = StateView
-          { stateBID    = bid
-          , applyBlock  = \_ bh _ -> return $ Right $ make view (bhBID bh)
-          , revertBlock = return previous
-          , flushState  = return view
-          , checkTx                  = error "Transaction checking is not supported"
-          , createCandidateBlockData = \bh _ _ -> return $ Coin
-            { coinData   = merkled []
-            , coinTarget = retarget bh
-            , coinNonce  = 0
-            }
-          }
+instance (m ~ m', Monad m, BlockData b) => StateView (DummyState m b) m' b where
+  stateBID (DummyState bid _) = bid
+  applyBlock prev _ bh _ = return $ Right $ DummyState (bhBID bh) prev
+  revertBlock (DummyState _ prev) = return prev
+  flushState = return
+  checkTx = error "Transaction checking is not supported"
 
 data Abort = Abort Height
   deriving stock    (Show)

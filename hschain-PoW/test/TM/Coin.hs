@@ -26,13 +26,13 @@ import TM.Util.Mockchain
 
 coinInit :: IO ()
 coinInit = withHSChainT $ do
-  _ <- coinStateView k1 $ head emptyCoinChain
+  _ <- coinStateView $ head emptyCoinChain
   return ()
 
 -- Simple application of empty blocks
 coinTrivialFwd :: Bool -> IO ()
 coinTrivialFwd flushFlag = withHSChainT $ do
-  (db,_,st0) <- coinStateView k1 g
+  (db,_,st0) <- coinStateView g
   mapM_ (storeBlock db) [b1, b2]
   -- Block 1
   expectFail "1-1" st0 bh2 b1   -- BH mismatch 1
@@ -111,7 +111,7 @@ class (MonadFail m, MonadIO m) => TestMonad m where
 
 
 data TestEnv = TestEnv
-  { _envState :: StateView (HSChainT IO) Coin
+  { _envState :: CoinState (HSChainT IO)
   , _envDB    :: BlockDB   (HSChainT IO) Coin
   , _envBIdx  :: BlockIndex Coin
   }
@@ -159,7 +159,7 @@ expectUTXO msg utxos = do
 
 runTest :: Test a -> IO a
 runTest (Test m) = withHSChainT $ do
-  (_envDB,_,_envState) <- coinStateView k1 gen
+  (_envDB,_,_envState) <- coinStateView gen
   let _envBIdx = blockIndexFromGenesis gen
   evalStateT m TestEnv{..}
 

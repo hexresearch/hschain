@@ -8,6 +8,7 @@
 module HSChain.Examples.Simple
   ( KV(..)
   , KVConfig(..)
+  , KVState
   , retarget
   , kvMemoryView
   , createCandidateBlockData
