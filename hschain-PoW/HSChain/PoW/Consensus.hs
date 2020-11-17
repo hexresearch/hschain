@@ -19,7 +19,7 @@ module HSChain.PoW.Consensus
   , makeLocator
     -- *
   , StateView(..)
-  -- , createCandidateBlock
+  , createCandidateBlock
   , BlockDB(..)
   , buildBlockIndex
   , Consensus(..)
@@ -113,29 +113,18 @@ class BlockData b => StateView view m b | view -> b, view -> m where
   --   transaction in the mempool.
   checkTx :: view -> Tx b -> m (Either (BlockException b) ())
 
---   , createCandidateBlockData
---       :: BH b
---       -> Time
---       -> [Tx b]
---       -> m (b Identity)
---     -- ^ Create candidate block out of list of transactions. It won't
---     --   have enough work in it but should be valid otherwise.
---   }
-
--- createCandidateBlock
---   :: (Monad m)
---   => StateView m b
---   -> BH b
---   -> Time
---   -> [Tx b]
---   -> m (Block b)
--- createCandidateBlock sv bh t txs = do
---   b <- createCandidateBlockData sv bh t txs
---   return Block { blockHeight = succ (bhHeight bh)
---                , blockTime   = t
---                , prevBlock   = Just $ bhBID bh
---                , blockData   = b
---                }
+-- | Make candidate block on top of given block
+createCandidateBlock
+  :: BH b       -- ^ Block on top of which we build 
+  -> Time       -- ^ Block time 
+  -> b Identity -- ^ Block data
+  -> Block b
+createCandidateBlock bh t bData = Block
+  { blockHeight = succ (bhHeight bh)
+  , blockTime   = t
+  , prevBlock   = Just $ bhBID bh
+  , blockData   = bData
+  }
 
 
 ----------------------------------------------------------------
