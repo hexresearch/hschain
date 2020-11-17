@@ -85,7 +85,7 @@ main = do
                       }
   withConnection (fromMaybe "" cfgDB) $ \conn -> 
     withLogEnv "" "" (map makeScribe cfgLog) $ \logEnv -> runCoinT logEnv conn $ evalContT $ do
-      (db, bIdx, sView) <- lift $ coinStateView nodePrivK genesis
+      (db, bIdx, sView) <- lift $ coinStateView genesis
       c0  <- lift $ createConsensus db sView bIdx
       pow <- startNode netcfg net cfgPeers db c0
       -- report progress
@@ -104,13 +104,15 @@ main = do
       when optGenerate $ do
         cforkLinked $ txGeneratorLoop pow (nodePrivK : take 100 (makePrivKeyStream 1433))
       when optMine $ do
-        cforkLinked $ genericMiningLoop pow
+        cforkLinked $ genericMiningLoop
+          (\st bh t txs -> createCandidateBlock bh t <$> createCandidateBlockData nodePrivK st bh txs)
+          pow
       -- Wait forever
       liftIO $ forever $ threadDelay maxBound
 
 txGeneratorLoop
   :: (MonadReadDB m, MonadIO m)
-  => PoW m Coin -> [PrivKey Alg] -> m ()
+  => PoW (CoinState m) m Coin -> [PrivKey Alg] -> m ()
 txGeneratorLoop pow keyList = do
   forever $ do
     mtx <- generateTX keyVec keyMap
