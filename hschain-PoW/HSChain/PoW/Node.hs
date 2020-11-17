@@ -7,7 +7,7 @@
 -- Copyright (C) ... 2020
 module HSChain.PoW.Node
   ( Cfg(..)
-  -- , genericMiningLoop
+  , genericMiningLoop
     -- * Block storage
   , inMemoryDB
   , blockDatabase
@@ -44,9 +44,13 @@ data Cfg = Cfg
   deriving stock (Show, Generic)
   deriving (JSON.FromJSON) via SnakeCase (DropSmart (Config Cfg))
 
-{-
-genericMiningLoop :: (Mineable b, MonadFork m) => PoW m b -> m x
-genericMiningLoop pow = start
+
+genericMiningLoop
+  :: (Mineable b, MonadFork m)
+  => (view -> BH b -> Time -> [Tx b] -> m (Block b))
+  -> PoW view m b
+  -> m x
+genericMiningLoop makeCandidate pow = start
   where
     --
     start = do
@@ -69,9 +73,9 @@ genericMiningLoop pow = start
           txs    <- case mtxs of
             Just txs -> return txs
             Nothing  -> atomicallyIO $ mempoolContent $ mempoolAPI pow
-          bCand  <- createCandidateBlock st bh t txs
+          bCand  <- makeCandidate st bh t txs
           (bMined,_) <- adjustPuzzle bCand
           case bMined of
             Just b  -> void $ sendNewBlock pow b
             Nothing -> tryMine Nothing
--}
+
