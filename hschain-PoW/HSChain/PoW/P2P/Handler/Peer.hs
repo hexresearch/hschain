@@ -38,7 +38,7 @@ runPeer
      , Serialise (b Identity)
      , Serialise (b Proxy)
      , Serialise (Tx b)
-     , StateView view m b
+     , StateView' view m b
      )
   => P2PConnection
   -> MempoolAPI view m b
@@ -157,7 +157,7 @@ peerRecv
      , Serialise (b Identity)
      , Serialise (b Proxy)
      , Serialise (Tx b)
-     , StateView view m b
+     , StateView' view m b
      )
   => P2PConnection
   -> PeerState b
@@ -234,7 +234,7 @@ peerRecv conn st@PeerState{..} PeerChans{..} sinkGossip  mempoolAPI =
         lift release
 
 locateHeaders
-  :: (StateView view m b)
+  :: (StateView' view m b)
   => Consensus view m b
   -> Locator b
   -> Maybe [Header b]

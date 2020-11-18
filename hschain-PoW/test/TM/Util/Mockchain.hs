@@ -134,7 +134,9 @@ header4' = toHeader block4'
 
 data DummyState m b = DummyState (BlockID b) (DummyState m b)
 
-instance (m ~ m', Monad m, BlockData b) => StateView (DummyState m b) m' b where
+instance (Monad m, BlockData b) => StateView (DummyState m b) where
+  type BlockOf (DummyState m b) = b
+  type MonadOf (DummyState m b) = m
   stateBID (DummyState bid _) = bid
   applyBlock prev _ bh _ = return $ Right $ DummyState (bhBID bh) prev
   revertBlock (DummyState _ prev) = return prev

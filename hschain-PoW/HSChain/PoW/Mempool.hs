@@ -98,7 +98,7 @@ data InternalCh view (m :: * -> *) b = InternalCh
 
 -- | Start new thread running mempool
 startMempool
-  :: (MonadIO m, MonadFork m, MonadMask m, StateView view m b)
+  :: (MonadIO m, MonadFork m, MonadMask m, StateView' view m b)
   => BlockDB m b
   -- ^ Block database
   -> view
@@ -140,7 +140,7 @@ data MempoolDict view (m :: * -> *) b = MempoolDict
   }
 
 runMempool
-  :: (MonadIO m, StateView view m b)
+  :: (MonadIO m, StateView' view m b)
   => BlockDB m b
   -> InternalCh view m b
   -> MempoolDict view m b
@@ -160,7 +160,7 @@ runMempool db ch@InternalCh{..} st0 = iterateSTM st0 $ \s -> store <$> asum
 -- Change of blockchain head
 
 handleConsensus
-  :: forall view m b. (MonadIO m, StateView view m b)
+  :: forall view m b. (MonadIO m, StateView' view m b)
   => BlockDB m b
   -> InternalCh view m b
   -> MempoolDict view m b
@@ -230,7 +230,7 @@ retrieveTidList db bid =
 -- Other changes to mempool
 
 handleGossip
-  :: forall view b m. (MonadIO m, StateView view m b)
+  :: forall view b m. (MonadIO m, StateView' view m b)
   => InternalCh  view m b
   -> MempoolDict view m b
   -> MempCmdGossip b
@@ -252,7 +252,7 @@ handleGossip InternalCh{..} st@MempoolDict{..} = \case
       return MempoolDict { mempool = st', .. }
 
 handlePending
-  :: forall m b view. (MonadIO m, StateView view m b)
+  :: forall m b view. (MonadIO m, StateView' view m b)
   => InternalCh view m b
   -> MempoolDict view m b
   -> STM (m (MempoolDict view m b))

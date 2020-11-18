@@ -82,6 +82,7 @@ Library
                 HSChain.PoW.Tests
                 HSChain.PoW.Types
   default-extensions:
+    MonoLocalBinds
     -- Deriving
     DeriveAnyClass
     DeriveFoldable

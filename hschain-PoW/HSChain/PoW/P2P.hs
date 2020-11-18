@@ -47,7 +47,7 @@ startNode
      , Serialise (b Identity)
      , Serialise (b Proxy)
      , Serialise (Tx b)
-     , StateView view m b
+     , StateView' view m b
      )
   => NetCfg
   -> NetworkAPI
@@ -64,7 +64,7 @@ startNodeTest
      , Serialise (b Identity)
      , Serialise (b Proxy)
      , Serialise (Tx b)
-     , StateView view m b
+     , StateView' view m b
      )
   => NetCfg
   -> NetworkAPI

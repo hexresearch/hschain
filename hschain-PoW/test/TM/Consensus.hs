@@ -1,3 +1,4 @@
+{-# LANGUAGE TypeFamilies #-}
 -- |
 module TM.Consensus (tests) where
 
@@ -342,7 +343,7 @@ runTest msgList = runNoLogsT $ do
 
 
 -- Check for invariants in tracking of PoW consensus 
-checkConsensus :: (Show (BlockID b), StateView view m b) => Consensus view m b -> [String]
+checkConsensus :: (Show (BlockID b), StateView' view m b) => Consensus view m b -> [String]
 checkConsensus c = concat
   [ [ "Head with less work: " ++ show (bhBID bh)
     | Head bh _ <- c^.candidateHeads

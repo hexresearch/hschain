@@ -90,7 +90,7 @@ checkMempoolContent MempoolAPI{..} expected = liftIO $ do
                   expected @=? txs
 
 checkRecv
-  :: (MonadIO n, Eq (Tx b), Show (Tx b), StateView view m b)
+  :: (MonadIO n, Eq (Tx b), Show (Tx b), StateView' view m b)
   => Src (BH b, view, [Tx b]) -> [Tx b] -> n ()
 checkRecv ch expected = liftIO $ do
   (_,_,txs) <- awaitIO ch
