@@ -29,15 +29,15 @@ import HSChain.Types.Merkle.Types
 
 
 -- | Dictionary with functions for interacting with consensus engine
-data PoW view m b = PoW
-  { currentConsensus :: STM (Consensus view m b)
+data PoW view = PoW
+  { currentConsensus :: STM (Consensus view)
     -- ^ View on current state of consensus (just a read from TVar).
-  , sendNewBlock     :: Block b -> m (Either SomeException ())
+  , sendNewBlock     :: BlockOf view -> MonadOf view (Either SomeException ())
     -- ^ Send freshly mined block to consensus
-  , chainUpdate      :: STM (Src (BH b, view))
+  , chainUpdate      :: STM (Src (BHOf view, view))
     -- ^ Create new broadcast source which will recieve message every
     --   time head is changed
-  , mempoolAPI       :: MempoolAPI view m b
+  , mempoolAPI       :: MempoolAPI view
     -- ^ API for communication with mempool
   }
 
@@ -53,8 +53,8 @@ startNode
   -> NetworkAPI
   -> [NetAddr]
   -> BlockDB   m b
-  -> Consensus view m b
-  -> ContT r m (PoW view m b)
+  -> Consensus view
+  -> ContT r m (PoW view)
 startNode cfg netAPI seeds db consensus
   = fst <$> startNodeTest cfg netAPI seeds db consensus
 
@@ -70,8 +70,8 @@ startNodeTest
   -> NetworkAPI
   -> [NetAddr]
   -> BlockDB   m b
-  -> Consensus view m b
-  -> ContT r m ( PoW view m b
+  -> Consensus view
+  -> ContT r m ( PoW view
                , Sink (BoxRX m b)
                )
 startNodeTest cfg netAPI seeds db consensus = do

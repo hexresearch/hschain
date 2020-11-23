@@ -22,16 +22,16 @@ import HSChain.Logger
 
 
 -- | Channels for sending data to and from consensus thread
-data ConsensusCh view m b = ConsensusCh
-  { bcastAnnounce    :: Sink (MsgAnn b)
+data ConsensusCh view = ConsensusCh
+  { bcastAnnounce    :: Sink (MsgAnn (BlockType view))
     -- ^ Broadcast channel for gossip announcements (we got new best head)
-  , bcastChainUpdate :: Sink (BH b, BH b, view)
+  , bcastChainUpdate :: Sink (BHOf view, BHOf view, view)
     -- ^ Broadcast channel for announcing new head for mining etc.
-  , sinkConsensusSt  :: Sink (Consensus view m b)
+  , sinkConsensusSt  :: Sink (Consensus view)
     -- ^ Updating state of consensus
-  , sinkReqBlocks    :: Sink (Set (BlockID b))
+  , sinkReqBlocks    :: Sink (Set (BlockIdOf view))
     -- ^ Channel for signalling to gossip what block should be fetched
-  , srcRX            :: Src  (BoxRX m b)
+  , srcRX            :: Src  (BoxRX (MonadOf view) (BlockType view))
     -- ^ Messages from gossip
   }
 
@@ -40,8 +40,8 @@ data ConsensusCh view m b = ConsensusCh
 threadConsensus
   :: (MonadIO m, MonadLogger m, MonadCatch m, StateView' view m b)
   => BlockDB m b
-  -> Consensus   view m b
-  -> ConsensusCh view m b
+  -> Consensus   view
+  -> ConsensusCh view
   -> m x
 threadConsensus db consensus0 ConsensusCh{..} = descendNamespace "cns" $ logOnException $ do
   logger InfoS "Staring consensus" ()
@@ -67,7 +67,7 @@ consensusMonitor
   :: (MonadLogger m, MonadIO m, StateView' view m b)
   => BlockDB m b
   -> BoxRX m b
-  -> StateT (Consensus view m b) m ()
+  -> StateT (Consensus view) m ()
 consensusMonitor db (BoxRX message)
   = message $ logR <=< \case
       RxAnn     m  -> handleAnnounce m

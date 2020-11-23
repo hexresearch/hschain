@@ -171,8 +171,8 @@ data KVState cfg (m :: * -> *) = KVState
   }
 
 instance (Monad m, KVConfig cfg) => StateView (KVState cfg m) where
-  type BlockOf (KVState cfg m) = (KV cfg)
-  type MonadOf (KVState cfg m) = m
+  type BlockType (KVState cfg m) = (KV cfg)
+  type MonadOf   (KVState cfg m) = m
   stateBID    = kvstBID
   revertBlock = pure . kvstPrev
   flushState  = pure

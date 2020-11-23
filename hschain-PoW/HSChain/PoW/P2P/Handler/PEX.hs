@@ -44,13 +44,13 @@ runPEX
      )
   => NetCfg
   -> NetworkAPI
-  -> MempoolAPI view m b
+  -> MempoolAPI view
   -> STM (Src (MsgTX b))
   -> [NetAddr]
   -> BlockRegistry b
   -> Sink (BoxRX m b)
   -> STM (Src (MsgAnn b))
-  -> STM (Consensus view m b)
+  -> STM (Consensus view)
   -> BlockDB m b
   -> ContT r m ()
 runPEX cfg netAPI mempoolAPI mkSrcAnnTx seeds blockReg sinkBOX mkSrcAnn consSt db = do
@@ -89,11 +89,11 @@ acceptLoop
      , StateView' view m b
      )
   => NetworkAPI
-  -> MempoolAPI view m b
+  -> MempoolAPI view
   -> Shepherd
   -> PeerRegistry
   -> NonceSet
-  -> STM (PeerChans view m b)
+  -> STM (PeerChans view)
   -> m ()
 acceptLoop NetworkAPI{..} mempoolAPI shepherd reg nonceSet mkChans  = do
   bracket listenOn fst $ \(_,accept) -> forever $ do
@@ -127,12 +127,12 @@ connectTo
      , StateView' view m b
      )
   => NetworkAPI
-  -> MempoolAPI view m b
+  -> MempoolAPI view
   -> NetAddr
   -> Shepherd
   -> PeerRegistry
   -> NonceSet
-  -> PeerChans view m b
+  -> PeerChans view
   -> m ()
 connectTo NetworkAPI{..} mempoolAPI addr shepherd reg nonceSet chans =
   newSheep shepherd $ do
@@ -174,11 +174,11 @@ monitorConnections
      )
   => NetCfg
   -> NetworkAPI
-  -> MempoolAPI view m b
+  -> MempoolAPI view
   -> Shepherd
   -> PeerRegistry
   -> NonceSet
-  -> STM (PeerChans view m b)
+  -> STM (PeerChans view)
   -> m ()
 monitorConnections NetCfg{..} netAPI mempoolAPI shepherd reg nonceSet mkChans = forever $ do
   -- Check that we need and can connect to peers

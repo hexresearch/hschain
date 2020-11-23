@@ -1,3 +1,4 @@
+{-# LANGUAGE TypeFamilies #-}
 -- |
 module HSChain.PoW.P2P.Handler.Peer where
 
@@ -41,8 +42,8 @@ runPeer
      , StateView' view m b
      )
   => P2PConnection
-  -> MempoolAPI view m b
-  -> PeerChans view m b
+  -> MempoolAPI view
+  -> PeerChans view
   -> m ()
 runPeer conn mempoolAPI chans@PeerChans{..} = logOnException $ do
   logger InfoS "Starting peer" ()
@@ -81,9 +82,9 @@ data PeerState b = PeerState
 
 -- Thread that issues
 peerRequestHeaders
-  :: (MonadIO m, MonadLogger m, MonadCatch m, BlockData b)
+  :: (MonadIO m, MonadLogger m, MonadCatch m, StateView' view m b)
   => PeerState b
-  -> PeerChans view m b
+  -> PeerChans view
   -> Sink (GossipMsg b)
   -> m x
 peerRequestHeaders PeerState{..} PeerChans{..} sinkGossip =
@@ -108,9 +109,9 @@ peerRequestHeaders PeerState{..} PeerChans{..} sinkGossip =
 
 
 peerRequestBlock
-  :: (MonadIO m, MonadLogger m, MonadCatch m, BlockData b)
+  :: (MonadIO m, MonadLogger m, MonadCatch m, BlockData b, BlockType view ~ b)
   => PeerState b
-  -> PeerChans view m b
+  -> PeerChans view
   -> Sink (GossipMsg b)
   -> m x
 peerRequestBlock PeerState{..} PeerChans{..} sinkGossip =
@@ -125,7 +126,7 @@ peerRequestBlock PeerState{..} PeerChans{..} sinkGossip =
 
 peerRequestAddresses
   :: (MonadIO m, MonadLogger m, MonadMask m)
-  => PeerState b -> PeerChans view m b -> Sink (GossipMsg b) -> m x
+  => PeerState b -> PeerChans view -> Sink (GossipMsg b) -> m x
 peerRequestAddresses PeerState{..} PeerChans{..} sinkGossip =
   descendNamespace "req_Addr" $ logOnException $ forever $ do
     AskPeers <- atomicallyIO $ await peerBCastAskPeer
@@ -161,9 +162,9 @@ peerRecv
      )
   => P2PConnection
   -> PeerState b
-  -> PeerChans view m b
+  -> PeerChans view
   -> Sink (GossipMsg b)         -- Send message to peer over network
-  -> MempoolAPI view m b
+  -> MempoolAPI view
   -> m x
 peerRecv conn st@PeerState{..} PeerChans{..} sinkGossip  mempoolAPI =
   descendNamespace "recv" $ logOnException $ forever $ do
@@ -235,7 +236,7 @@ peerRecv conn st@PeerState{..} PeerChans{..} sinkGossip  mempoolAPI =
 
 locateHeaders
   :: (StateView' view m b)
-  => Consensus view m b
+  => Consensus view
   -> Locator b
   -> Maybe [Header b]
 locateHeaders consensus (Locator bidList) = do

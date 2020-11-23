@@ -1,3 +1,4 @@
+{-# LANGUAGE TypeFamilies #-}
 -- |HSChain.PoW.Node.hs
 --
 -- Main node loop.
@@ -46,9 +47,9 @@ data Cfg = Cfg
 
 
 genericMiningLoop
-  :: (Mineable b, MonadFork m)
+  :: (Mineable b, MonadFork m, BlockType view ~ b, MonadOf view ~ m)
   => (view -> BH b -> Time -> [Tx b] -> m (Block b))
-  -> PoW view m b
+  -> PoW view
   -> m x
 genericMiningLoop makeCandidate pow = start
   where
