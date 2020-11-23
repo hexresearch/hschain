@@ -98,7 +98,7 @@ data InternalCh view = InternalCh
 
 -- | Start new thread running mempool
 startMempool
-  :: (MonadIO m, MonadFork m, MonadMask m, StateView' view m b)
+  :: (MonadFork m, MonadMask m, StateView' view m b)
   => BlockDB m b
   -- ^ Block database
   -> view

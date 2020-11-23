@@ -154,7 +154,7 @@ instance Mineable Coin where
 instance MerkleMap Coin where
   merkleMap f c = c { coinData = mapMerkleNode f (coinData c) }
 
-instance (IsMerkle f) => CryptoHashable (Coin f) where
+instance CryptoHashable (Coin f) where
   hashStep = genericHashStep "hschain"
 
 
@@ -581,7 +581,7 @@ createCandidateBlockData pk CoinState{..} bh txlist = queryRO $ do
 -- | Database backed state view for the mock coin. This is
 --   implementation for archive node.
 coinStateView
-  :: (MonadThrow m, MonadDB m, MonadIO m, MonadDB m)
+  :: (MonadThrow m, MonadDB m, MonadIO m)
   => Block Coin
   -> m (BlockDB m Coin, BlockIndex Coin, CoinState m)
 coinStateView genesis = do
@@ -599,7 +599,7 @@ coinStateView genesis = do
 
 
 initializeStateView
-  :: (MonadDB m, MonadThrow m, MonadQueryRW q,  MonadIO m)
+  :: (MonadQueryRW q)
   => Block Coin                 -- ^ Genesis block
   -> BlockIndex Coin            -- ^ Block index
   -> q (CoinState m)

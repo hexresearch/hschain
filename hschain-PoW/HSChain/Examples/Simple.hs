@@ -84,7 +84,7 @@ deriving stock instance (Eq (Nonce cfg), IsMerkle f) => Eq   (KV cfg f)
 instance Serialise (Nonce cfg) => Serialise (KV cfg Identity)
 instance Serialise (Nonce cfg) => Serialise (KV cfg Proxy)
 
-instance (CryptoHashable (Nonce cfg), IsMerkle f) => CryptoHashable (KV cfg f) where
+instance (CryptoHashable (Nonce cfg)) => CryptoHashable (KV cfg f) where
   hashStep = genericHashStep "hschain"
 
 instance MerkleMap (KV cfg) where
@@ -188,10 +188,7 @@ instance (Monad m, KVConfig cfg) => StateView (KVState cfg m) where
     | k `Map.notMember` kvstState = pure $ Right ()
     | otherwise                   = pure $ Left KVError
   
-kvMemoryView
-  :: forall m cfg. (Monad m, KVConfig cfg)
-  => BlockID (KV cfg)
-  -> KVState cfg m
+kvMemoryView :: forall m cfg. BlockID (KV cfg) -> KVState cfg m
 kvMemoryView bid = KVState
   { kvstBID   = bid
   , kvstPrev  = error "No revinding past genesis"
@@ -199,7 +196,7 @@ kvMemoryView bid = KVState
   }
 
 createCandidateBlockData
-  :: forall cfg m b. (Monad m, BlockData b, KVConfig cfg)
+  :: forall cfg m b. (BlockData b, KVConfig cfg)
   => KVState cfg m -> BH b -> [(Int, String)] -> KV cfg Identity
 createCandidateBlockData KVState{..} bh txs = KV
   { kvData   = merkled $ case find ((`Map.notMember` kvstState) . fst) txs of
@@ -209,7 +206,7 @@ createCandidateBlockData KVState{..} bh txs = KV
   , kvTarget = retarget bh
   }
 
-kvViewStep :: KVConfig cfg => Block (KV cfg) -> Map.Map Int String -> Either KVError (Map.Map Int String)
+kvViewStep :: Block (KV cfg) -> Map.Map Int String -> Either KVError (Map.Map Int String)
 kvViewStep b m
   | or [ k `Map.member` m | (k, _) <- txs ] = Left KVError
   | otherwise                               = pure $ Map.fromList txs <> m
