@@ -101,12 +101,12 @@ makeLocator  = Locator . takeH 10 . Just
 -- Blockchain state handling
 ----------------------------------------------------------------
 
-type BlockOf  view = Block  (BlockType view)
-type HeaderOf view = Header (BlockType view)
-type BlockIdOf view = BlockID (BlockType view)
-type TxOf view = Tx (BlockType view)
-type TxIdOf view = TxID (BlockType view)
-type BHOf view = BH (BlockType view)
+type BlockOf          view = Block          (BlockType view)
+type HeaderOf         view = Header         (BlockType view)
+type BlockIdOf        view = BlockID        (BlockType view)
+type TxOf             view = Tx             (BlockType view)
+type TxIdOf           view = TxID           (BlockType view)
+type BHOf             view = BH             (BlockType view)
 type BlockExceptionOf view = BlockException (BlockType view)
 
 -- | View on state of blockchain. Normally it's backed by database
