@@ -1,5 +1,6 @@
-{-# LANGUAGE DataKinds    #-}
-{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE DataKinds             #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE TypeFamilies          #-}
 -- |
 module HSChain.Examples.Coin where
 
@@ -153,7 +154,7 @@ instance Mineable Coin where
 instance MerkleMap Coin where
   merkleMap f c = c { coinData = mapMerkleNode f (coinData c) }
 
-instance (IsMerkle f) => CryptoHashable (Coin f) where
+instance CryptoHashable (Coin f) where
   hashStep = genericHashStep "hschain"
 
 
@@ -478,18 +479,116 @@ applyBlockDB bh = do
     \  SELECT utxo_ref FROM coin_utxo_created WHERE block_ref = ?"
     (Only i)
 
+data CoinState (m :: * -> *) = CoinState
+  { csOverlay  :: StateOverlay
+  , csBlockIdx :: BlockIndex Coin
+  }
+
+instance (MonadDB m, MonadThrow m, MonadIO m) => StateView (CoinState m) where
+  type BlockType (CoinState m) = Coin
+  type MonadOf   (CoinState m) = m
+  stateBID = bhBID . overlayTip . csOverlay
+  ----------------
+  applyBlock CoinState{..} bIdx bh b = runExceptT $ do
+    -- Consistency checks
+    unless (bhPrevious bh == Just bh0)  $ throwError $ CoinInternal "BH mismatich"
+    unless (bhBID bh      == blockID b) $ throwError $ CoinInternal "BH don't match block"
+    --
+    let txList = merkleValue $ coinData $ blockData b
+    -- Perform context free validation of all transactions in block
+    () <- except
+        $ mapM_ (validateTxContextFree @Coin) txList
+    -- Now we need to fully verify each transaction and build new
+    -- overlay for database
+    overlay' <- hoist mustQueryRW $ do
+      -- First we need to prepare path between block corresponding
+      -- to current state of block
+      pathInDB <- do
+        Just stateBid <- retrieveCurrentStateBlock
+        let Just bhState = lookupIdx stateBid bIdx
+        makeBlockIndexPathM (retrieveCoinBlockTableID . bhBID)
+          bhState (overlayBase csOverlay)
+      -- Now we can just validate every TX and update overlay
+      let activeOverlay = addOverlayLayer csOverlay
+      case txList of
+        []            -> return activeOverlay
+        coinbase:rest -> do
+          o' <- processCoinbaseTX (bhBID bh0) activeOverlay coinbase
+          foldM (processTX pathInDB) o' rest
+    return CoinState
+      { csBlockIdx = bIdx
+      , csOverlay  = fromMaybe (error "Coin: invalid BH in apply block")
+                   $ finalizeOverlay bh overlay'
+      }
+    where
+      bh0 = overlayTip csOverlay
+  ----------------
+  revertBlock CoinState{..} = return $ CoinState
+    { csOverlay  = rollbackOverlay csOverlay
+    , csBlockIdx = csBlockIdx
+    }
+  ----------------
+  flushState CoinState{..} = mustQueryRW $ do
+    let bh0 = overlayTip csOverlay
+    -- Dump overlay content.
+    dumpOverlay csOverlay
+    -- Rewind state stored in the database from its current state to
+    -- current head.
+    Just bid <- retrieveCurrentStateBlock
+    case bid `lookupIdx` csBlockIdx of
+      Nothing -> error "makeStateView: bad index"
+      Just bh -> traverseBlockIndexM_ revertBlockDB applyBlockDB bh bh0
+    do i <- retrieveCoinBlockTableID (bhBID bh0)
+       basicExecute "UPDATE coin_state_bid SET state_block = ?" (Only i)
+    return CoinState { csOverlay  = emptyOverlay bh0
+                     , csBlockIdx = csBlockIdx
+                     }
+  ----------------
+  checkTx _ tx@(TxCoin _ _ TxSend{..}) = queryRO $ runExceptT $ do
+    inputs <- forM txInputs $ \utxo -> do
+      u <- getDatabaseUTXO NoChange utxo
+      return (utxo,u)
+    checkSpendability inputs tx
+
+createCandidateBlockData
+  :: (MonadReadDB m, MonadIO m)
+  => PrivKey Alg -> CoinState m -> BH Coin -> [TxCoin] -> m (Coin Identity)
+createCandidateBlockData pk CoinState{..} bh txlist = queryRO $ do
+  -- Create and process coinbase transaction
+  let coinbase = signTX pk $ TxSend
+        { txInputs  = [ UTXO 0 (coerce (bhBID bh)) ]
+        , txOutputs = [ Unspent (publicKey pk) 100 ]
+        }
+      activeOverlay = addOverlayLayer csOverlay
+      bh0 = overlayTip csOverlay
+  aOverlay <- runExceptT (processCoinbaseTX (bhBID bh0) activeOverlay coinbase) >>= \case
+    Left  e -> error $ "Invalid coinbase: " ++ show e
+    Right o -> return o
+  -- Select transactions
+  let selectTX []     _ = return []
+      selectTX (t:ts) o = runExceptT (processTX NoChange o t) >>= \case
+        Left  _  -> selectTX ts o
+        Right o' -> (t:) <$> selectTX ts o'
+  txs <- selectTX txlist aOverlay
+  -- Create block!
+  return Coin
+    { coinData   = merkled $ coinbase : txs
+    , coinTarget = retarget bh
+    , coinNonce  = 0
+    }
+
+
 -- | Database backed state view for the mock coin. This is
 --   implementation for archive node.
 coinStateView
-  :: (MonadThrow m, MonadDB m, MonadIO m, MonadDB m)
-  => PrivKey Alg
-  -> Block Coin
-  -> m (BlockDB m Coin, BlockIndex Coin, StateView m Coin)
-coinStateView pk genesis = do
+  :: (MonadThrow m, MonadDB m, MonadIO m)
+  => Block Coin
+  -> m (BlockDB m Coin, BlockIndex Coin, CoinState m)
+coinStateView genesis = do
   initCoinDB
   storeCoinBlock genesis
   bIdx <- buildBlockIndex db
-  st   <- mustQueryRW $ initializeStateView pk genesis bIdx
+  st   <- mustQueryRW $ initializeStateView genesis bIdx
   return (db, bIdx, st)
   where
     db = BlockDB { storeBlock         = storeCoinBlock
@@ -498,16 +597,16 @@ coinStateView pk genesis = do
                  , retrieveAllHeaders = retrieveAllCoinHeaders
                  }
 
+
 initializeStateView
-  :: (MonadDB m, MonadThrow m, MonadQueryRW q,  MonadIO m)
-  => PrivKey Alg                -- ^ Private key of miner
-  -> Block Coin                 -- ^ Genesis block
+  :: (MonadQueryRW q)
+  => Block Coin                 -- ^ Genesis block
   -> BlockIndex Coin            -- ^ Block index
-  -> q (StateView m Coin)
-initializeStateView pk genesis bIdx = do
+  -> q (CoinState m)
+initializeStateView genesis bIdx = do
   retrieveCurrentStateBlock >>= \case
     Just bid -> do let Just bh = lookupIdx bid bIdx
-                   return $ makeStateView pk bIdx (emptyOverlay bh)
+                   return $ make bh
     -- We need to initialize state table
     Nothing  -> do
       let bid     = blockID genesis
@@ -515,96 +614,12 @@ initializeStateView pk genesis bIdx = do
       basicExecute
         "INSERT INTO coin_state_bid SELECT blk_id,0 FROM coin_blocks WHERE bid = ?"
         (Only bid)
-      return $ makeStateView pk bIdx (emptyOverlay bh)
+      return $ make bh
+  where
+    make bh = CoinState { csOverlay  = emptyOverlay bh
+                        , csBlockIdx = bIdx
+                        }
 
-makeStateView
-  :: (MonadDB m, MonadThrow m, MonadIO m)
-  => PrivKey Alg
-  -> BlockIndex Coin
-  -> StateOverlay
-  -> StateView m Coin
-makeStateView pk bIdx0 overlay = sview where
-  bh0    = overlayTip overlay
-  sview  = StateView
-    { stateBID          = bhBID bh0
-    -- FIXME: We need block index in order to be able to compute path
-    --        from state to last known state
-    , applyBlock        = \bIdx bh b -> runExceptT $ do
-        -- Consistency checks
-        unless (bhPrevious bh == Just bh0)  $ throwError $ CoinInternal "BH mismatich"
-        unless (bhBID bh      == blockID b) $ throwError $ CoinInternal "BH don't match block"
-        --
-        let txList = merkleValue $ coinData $ blockData b
-        -- Perform context free validation of all transactions in
-        -- block
-        () <- except
-            $ mapM_ (validateTxContextFree @Coin) txList
-        -- Now we need to fully verify each transaction and build new
-        -- overlay for database
-        overlay' <- hoist mustQueryRW $ do
-          -- First we need to prepare path between block corresponding
-          -- to current state of block
-          pathInDB <- do
-            Just stateBid <- retrieveCurrentStateBlock
-            let Just bhState = lookupIdx stateBid bIdx
-            makeBlockIndexPathM (retrieveCoinBlockTableID . bhBID)
-              bhState (overlayBase overlay)
-          -- Now we can just validate every TX and update overlay
-          let activeOverlay = addOverlayLayer overlay
-          case txList of
-            []            -> return activeOverlay
-            coinbase:rest -> do
-              o' <- processCoinbaseTX (bhBID bh0) activeOverlay coinbase
-              foldM (processTX pathInDB) o' rest
-        return
-          $ makeStateView pk bIdx
-          $ fromMaybe (error "Coin: invalid BH in apply block")
-          $ finalizeOverlay bh overlay'
-    --
-    , revertBlock = return $ makeStateView pk bIdx0 (rollbackOverlay overlay)
-    --
-    , flushState = mustQueryRW $ do
-        -- Dump overlay content.
-        dumpOverlay overlay
-        -- Rewind state stored in the database from its current state
-        -- to current head.
-        Just bid <- retrieveCurrentStateBlock
-        case bid `lookupIdx` bIdx0 of
-          Nothing -> error "makeStateView: bad index"
-          Just bh -> traverseBlockIndexM_ revertBlockDB applyBlockDB bh bh0
-        do i <- retrieveCoinBlockTableID (bhBID bh0)
-           basicExecute "UPDATE coin_state_bid SET state_block = ?" (Only i)
-        return $ makeStateView pk bIdx0 (emptyOverlay bh0)
-      -- FIXME: not implemented
-    , checkTx = \tx@(TxCoin _ _ TxSend{..}) -> queryRO $ runExceptT $ do
-        inputs <- forM txInputs $ \utxo -> do
-          u <- getDatabaseUTXO NoChange utxo
-          return (utxo,u)
-        checkSpendability inputs tx
-      --
-    , createCandidateBlockData = \bh _ txlist -> queryRO $ do
-        -- Create and process coinbase transaction
-        let coinbase = signTX pk $ TxSend
-              { txInputs  = [ UTXO 0 (coerce (bhBID bh)) ]
-              , txOutputs = [ Unspent (publicKey pk) 100 ]
-              }
-            activeOverlay = addOverlayLayer overlay
-        aOverlay <- runExceptT (processCoinbaseTX (bhBID bh0) activeOverlay coinbase) >>= \case
-          Left  e -> error $ "Invalid coinbase: " ++ show e
-          Right o -> return o
-        -- Select transactions
-        let selectTX []     _ = return []
-            selectTX (t:ts) o = runExceptT (processTX NoChange o t) >>= \case
-              Left  _  -> selectTX ts o
-              Right o' -> (t:) <$> selectTX ts o'
-        txs <- selectTX txlist aOverlay
-        -- Create block!
-        return Coin
-          { coinData   = merkled $ coinbase : txs
-          , coinTarget = retarget bh
-          , coinNonce  = 0
-          }
-    }
 
 -- Initialize database for mock coin blockchain
 initCoinDB :: (MonadThrow m, MonadDB m, MonadIO m) => m ()

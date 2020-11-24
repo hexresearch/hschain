@@ -185,17 +185,24 @@ data CmdPeer b
 data AskPeers = AskPeers
 
 -- | Channels for peer for communication with rest of the world
-data PeerChans m b = PeerChans
-  { peerSinkNewAddr   :: Sink [NetAddr]      -- ^ Send newly received addresses
-  , peerSinkConsensus :: Sink (BoxRX m b)    -- ^ Send new command to consensus
-  , peerBCastAnn      :: Src  (MsgAnn b)     -- ^ Broadcast channel for announces
-  , peerBCastAskPeer  :: Src   AskPeers      -- ^ Broadcast channel for asking for more peers
-  , peerBCastAnnTx    :: Src  (MsgTX b)      -- ^ Broadcast channel for new tx announces
+data PeerChans view = PeerChans
+  { peerSinkNewAddr   :: Sink [NetAddr]
+    -- ^ Send newly received addresses
+  , peerSinkConsensus :: Sink (BoxRX (MonadOf view) (BlockType view))
+    -- ^ Send new command to consensus
+  , peerBCastAnn      :: Src  (MsgAnn (BlockType view))
+    -- ^ Broadcast channel for announces
+  , peerBCastAskPeer  :: Src   AskPeers
+    -- ^ Broadcast channel for asking for more peers
+  , peerBCastAnnTx    :: Src  (MsgTX (BlockType view))
+    -- ^ Broadcast channel for new tx announces
   , peerCatchup       :: CatchupThrottle
-  , peerReqBlocks     :: BlockRegistry b
-  , peerConnections   :: STM [NetAddr]       -- ^
-  , peerConsensuSt    :: STM (Consensus m b) -- ^ Current consensus state
-  , peerBlockDB       :: BlockDB m b
+  , peerReqBlocks     :: BlockRegistry (BlockType view)
+  , peerConnections   :: STM [NetAddr]
+    -- ^
+  , peerConsensuSt    :: STM (Consensus view)
+    -- ^ Current consensus state
+  , peerBlockDB       :: BlockDB (MonadOf view) (BlockType view)
   }
 
 data SentRequest b

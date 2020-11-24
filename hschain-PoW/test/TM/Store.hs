@@ -29,7 +29,7 @@ tests :: TestTree
 tests = testGroup "Block store"
   [ testCase "Store:In-memory" $ testIdempotence mockchain =<< inMemoryDB genesis
   , testCase "Store:DB"   $ withHSChainT $ testIdempotence mockchain =<< blockDatabase genesis
-  , testCase "Store:Coin" $ withHSChainT $ do (db,_,_) <- coinStateView k1 $ head emptyCoinChain
+  , testCase "Store:Coin" $ withHSChainT $ do (db,_,_) <- coinStateView $ head emptyCoinChain
                                               testIdempotence emptyCoinChain db
   , testCase "Restart" $ testTimeout 5 $ withHSChainT testRestart
   ]
@@ -41,23 +41,28 @@ testRestart = do
   mocknet <- liftIO newMockNet
   -- First start of exception
   h <- catchAbort $ evalContT $ do
-    let net   = createMockNode mocknet $ NetAddrV4 1 1000
-    let sView = inMemoryViewCoin (blockID genesisCoin)
+    let net = createMockNode mocknet $ NetAddrV4 1 1000
+        mine _ bh t _ = return $ createCandidateBlock bh t $ Coin
+          { coinData   = merkled []
+          , coinTarget = retarget bh
+          , coinNonce  = 0
+          }
     db   <- lift $ blockDatabase genesisCoin
-    c0   <- lift $ createConsensus db sView =<< buildBlockIndex db
+    c0   <- lift $ createConsensus db startingState =<< buildBlockIndex db
     pow  <- startNode netcfg net [] db c0
-    cforkLinked $ genericMiningLoop pow
+    cforkLinked $ genericMiningLoop mine pow
     -- Await for new blocks
     ch   <- atomicallyIO $ chainUpdate pow
     lift $ forever $ do
       (BH{bhHeight=h},_) <- awaitIO ch
       when (h >= Height 10) $ throwM (Abort h)
   -- Reinitialize
-  do let sView = inMemoryViewCoin (blockID genesisCoin)
-     db <- blockDatabase genesisCoin
-     c0 <- createConsensus db sView =<< buildBlockIndex db
+  do db <- blockDatabase genesisCoin
+     c0 <- createConsensus db startingState =<< buildBlockIndex db
      liftIO $ h @=? (c0 ^. bestHead . _1 . to bhHeight)
   where
+    startingState :: DummyState (HSChainT IO) Coin
+    startingState = DummyState (blockID genesisCoin) (error "No rewind past genesis")
     netcfg = NetCfg { nKnownPeers     = 3
                     , nConnectedPeers = 3
                     }

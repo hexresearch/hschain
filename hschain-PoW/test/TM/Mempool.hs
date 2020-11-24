@@ -15,11 +15,11 @@ import HSChain.Logger
 import HSChain.Network.Mock
 import HSChain.Network.Types
 import HSChain.PoW.Consensus
+import HSChain.PoW.Types
 import HSChain.PoW.Node
 import HSChain.PoW.Mempool
 import HSChain.PoW.P2P
 import HSChain.PoW.P2P.Types
-import HSChain.PoW.Types
 import HSChain.Types.Merkle.Types
 import TM.Util.Mockchain
 
@@ -78,8 +78,8 @@ testMempoolRollback = runNoLogsT $ evalContT $ do
 
 
 checkMempoolContent
-  :: (MonadIO n, Eq (Tx b), Show (Tx b))
-  => MempoolAPI m b -> [Tx b] -> n ()
+  :: (MonadIO m, Eq (TxOf view), Show (TxOf view))
+  => MempoolAPI view -> [TxOf view] -> m ()
 checkMempoolContent MempoolAPI{..} expected = liftIO $ do
   r <- timeout 2e6 $ atomically $ do
     txs <- mempoolContent
@@ -90,8 +90,8 @@ checkMempoolContent MempoolAPI{..} expected = liftIO $ do
                   expected @=? txs
 
 checkRecv
-  :: (MonadIO n, Eq (Tx b), Show (Tx b))
-  => Src (BH b, StateView m b, [Tx b]) -> [Tx b] -> n ()
+  :: (MonadIO m, Eq (TxOf view), Show (TxOf view), StateView view)
+  => Src (BHOf view, view, [TxOf view]) -> [TxOf view] -> m ()
 checkRecv ch expected = liftIO $ do
   (_,_,txs) <- awaitIO ch
   expected @=? txs

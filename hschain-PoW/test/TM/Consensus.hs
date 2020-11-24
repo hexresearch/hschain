@@ -1,3 +1,4 @@
+{-# LANGUAGE TypeFamilies #-}
 -- |
 module TM.Consensus (tests) where
 
@@ -230,7 +231,7 @@ testReorg2 = runTest
 
 
 
-bestHeadOK :: IsMerkle f => Consensus m (KV MockChain) -> GBlock (KV MockChain) f -> [String]
+bestHeadOK :: IsMerkle f => Consensus (KVState MockChain m) -> GBlock (KV MockChain) f -> [String]
 bestHeadOK c h
   | expected == got = []
   | otherwise       =
@@ -251,7 +252,8 @@ bestHeadOK c h
 --     headSet  = Set.fromList $ map (bhBID . bchHead) $ c^.candidateHeads
 
 -- | Runs 
-candidatesSeqOK :: Consensus m (KV MockChain) -> [(Header (KV MockChain),[Header (KV MockChain)])] -> [String]
+candidatesSeqOK :: Consensus (KVState MockChain m)
+                -> [(Header (KV MockChain),[Header (KV MockChain)])] -> [String]
 candidatesSeqOK c hs
   | expected == headSet = []
   | otherwise           =
@@ -268,7 +270,7 @@ candidatesSeqOK c hs
                             ]
 
 
-requiredOK :: Consensus m (KV MockChain) -> [Header (KV MockChain)] -> [String]
+requiredOK :: Consensus (KVState MockChain m) -> [Header (KV MockChain)] -> [String]
 requiredOK c hs
   | c^.requiredBlocks == expected = []
   | otherwise                     =
@@ -287,11 +289,10 @@ requiredOK c hs
 data Message
   = MsgH !(Header (KV MockChain))
          !(Maybe  (HeaderError (KV MockChain)))
-         !(Consensus (NoLogsT IO) (KV MockChain) -> [String])
+         !(Consensus (KVState MockChain (NoLogsT IO)) -> [String])
   | MsgB !(Block  (KV MockChain))
          !(Maybe  (BlockError (KV MockChain)))
-         !(Consensus (NoLogsT IO) (KV MockChain) -> [String])
-
+         !(Consensus (KVState MockChain (NoLogsT IO)) -> [String])
 
 
 runTest :: [Message] -> IO ()
@@ -342,7 +343,7 @@ runTest msgList = runNoLogsT $ do
 
 
 -- Check for invariants in tracking of PoW consensus 
-checkConsensus :: (Show (BlockID b), BlockData b) => Consensus m b -> [String]
+checkConsensus :: (Show (BlockIdOf view), StateView view) => Consensus view -> [String]
 checkConsensus c = concat
   [ [ "Head with less work: " ++ show (bhBID bh)
     | Head bh _ <- c^.candidateHeads

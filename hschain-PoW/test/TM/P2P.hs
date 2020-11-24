@@ -124,7 +124,10 @@ runNetTest :: TestM () -> IO ()
 runNetTest test = do
   db  <- inMemoryDB genesis
   net <- newMockNet
-  let s0 = consensusGenesis (head mockchain) $ inMemoryView (blockID genesis)
+  let s0 = consensusGenesis (head mockchain)
+         ( DummyState (blockID genesis) (error "No rewind past genesis")
+         :: DummyState (NoLogsT IO) (KV MockChain)
+         )
   let apiNode        = createMockNode net ipNode
       NetworkAPI{..} = createMockNode net ipOur
   runNoLogsT $ evalContT $ do

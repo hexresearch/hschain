@@ -28,7 +28,7 @@ data CoinAPI route = CoinAPI
   }
   deriving Generic
 
-coinServer :: (MonadIO m, MonadReadDB m) => MempoolAPI m Coin -> CoinAPI (AsServerT m)
+coinServer :: (MonadIO m, MonadReadDB m) => MempoolAPI (CoinState m) -> CoinAPI (AsServerT m)
 coinServer mempool = CoinAPI
   { coinBalance  = balanceEndpoint
   , coinListUTXO = listUtxoEndpoint

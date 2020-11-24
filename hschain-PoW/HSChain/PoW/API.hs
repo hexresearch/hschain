@@ -1,4 +1,5 @@
-{-# LANGUAGE DataKinds  #-}
+{-# LANGUAGE DataKinds    #-}
+{-# LANGUAGE TypeFamilies #-}
 --
 {-# OPTIONS_GHC -Wno-orphans #-}
 -- |
@@ -15,6 +16,7 @@ import Servant.Server.Generic
 import HSChain.Control.Channels
 import HSChain.Control.Util
 import HSChain.Crypto
+import HSChain.PoW.Consensus
 import HSChain.PoW.Mempool
 import HSChain.PoW.Types
 
@@ -33,7 +35,9 @@ data MempoolRestAPI b route = MempoolRestAPI
   deriving Generic
 
 -- | Server implementation
-mempoolApiServer :: (MonadIO m) => MempoolAPI m b -> MempoolRestAPI b (AsServerT m)
+mempoolApiServer
+  :: (MonadIO m, b ~ BlockType view)
+  => MempoolAPI view -> MempoolRestAPI b (AsServerT m)
 mempoolApiServer mempool = MempoolRestAPI
   { mempoolPostTxAsync = postTxEndpoint     mempool
   , mempoolPostTxSync  = postTxSyncEndpoint mempool
@@ -42,18 +46,18 @@ mempoolApiServer mempool = MempoolRestAPI
 
 postTxEndpoint
   :: (MonadIO m)
-  => MempoolAPI m b -> Tx b -> m String
+  => MempoolAPI view -> TxOf view -> m String
 postTxEndpoint MempoolAPI{..} tx = do
   sinkIO postTransaction tx
   return "TRIED"
 
 postTxSyncEndpoint
   :: (MonadIO m)
-  => MempoolAPI m b -> Tx b -> m Bool
+  => MempoolAPI view -> TxOf view -> m Bool
 postTxSyncEndpoint MempoolAPI{..} tx = do
   blockingCall postTransactionSync tx
 
-getMempoolSizeEndpoint :: (MonadIO m) => MempoolAPI m b -> m Int
+getMempoolSizeEndpoint :: (MonadIO m) => MempoolAPI view -> m Int
 getMempoolSizeEndpoint MempoolAPI{..} = length <$> atomicallyIO mempoolState
 
 

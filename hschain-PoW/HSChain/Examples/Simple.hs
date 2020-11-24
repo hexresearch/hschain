@@ -1,14 +1,17 @@
-{-# LANGUAGE DataKinds            #-}
-{-# LANGUAGE TypeFamilies         #-}
-{-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE DataKinds             #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE TypeFamilies          #-}
+{-# LANGUAGE UndecidableInstances  #-}
 -- |
 -- Simple block which implements write only key-value storage. It's
 -- only use is to test and debug PoW algorithms.
 module HSChain.Examples.Simple
   ( KV(..)
   , KVConfig(..)
+  , KVState
   , retarget
   , kvMemoryView
+  , createCandidateBlockData
   , hash256AsTarget
     -- * Monad
   , KVT(..)
@@ -81,7 +84,7 @@ deriving stock instance (Eq (Nonce cfg), IsMerkle f) => Eq   (KV cfg f)
 instance Serialise (Nonce cfg) => Serialise (KV cfg Identity)
 instance Serialise (Nonce cfg) => Serialise (KV cfg Proxy)
 
-instance (CryptoHashable (Nonce cfg), IsMerkle f) => CryptoHashable (KV cfg f) where
+instance (CryptoHashable (Nonce cfg)) => CryptoHashable (KV cfg f) where
   hashStep = genericHashStep "hschain"
 
 instance MerkleMap (KV cfg) where
@@ -161,38 +164,51 @@ instance (KVConfig cfg) => Mineable (KV cfg) where
   adjustPuzzle = fmap (flip (,) (Target 0)) . kvSolvePuzzle
 
 
+data KVState cfg (m :: * -> *) = KVState
+  { kvstBID   :: BlockID (KV cfg)
+  , kvstPrev  :: KVState cfg m
+  , kvstState :: Map.Map Int String
+  }
 
--- | Simple in-memory implementation of DB
-kvMemoryView
-  :: forall m cfg. (Monad m, KVConfig cfg)
-  => BlockID (KV cfg)
-  -> StateView m (KV cfg)
-kvMemoryView = make (error "No revinding past genesis") mempty
-  where
-    make previous s bid = view
-      where
-        view = StateView
-          { stateBID    = bid
-          , applyBlock  = \_ _ b -> case kvViewStep b s of
-              Nothing -> return $ Left KVError
-              Just s' -> return $ Right $ make view s' (blockID b)
-          , revertBlock = return previous
-          , flushState  = return view
-          , checkTx     = \(k,_) -> return $ if k `Map.notMember` s
-                                             then Right ()
-                                             else Left KVError
-          , createCandidateBlockData = \bh _ txs -> return KV
-              { kvData   = merkled $ case find ((`Map.notMember` s) . fst) txs of
-                  Just tx -> [tx]
-                  Nothing -> []
-              , kvNonce  = kvDefaultNonce (Proxy @cfg)
-              , kvTarget = retarget bh
-              }
-          }
+instance (Monad m, KVConfig cfg) => StateView (KVState cfg m) where
+  type BlockType (KVState cfg m) = (KV cfg)
+  type MonadOf   (KVState cfg m) = m
+  stateBID    = kvstBID
+  revertBlock = pure . kvstPrev
+  flushState  = pure
+  --
+  applyBlock view0@KVState{..} _ _ b = pure $ do
+    st' <- kvViewStep b kvstState
+    return KVState { kvstBID   = blockID b
+                   , kvstPrev  = view0
+                   , kvstState = st'
+                   }
+  --
+  checkTx KVState{..} (k,_)
+    | k `Map.notMember` kvstState = pure $ Right ()
+    | otherwise                   = pure $ Left KVError
+  
+kvMemoryView :: forall m cfg. BlockID (KV cfg) -> KVState cfg m
+kvMemoryView bid = KVState
+  { kvstBID   = bid
+  , kvstPrev  = error "No revinding past genesis"
+  , kvstState = mempty
+  }
 
-kvViewStep :: KVConfig cfg => Block (KV cfg) -> Map.Map Int String -> Maybe (Map.Map Int String)
+createCandidateBlockData
+  :: forall cfg m b. (BlockData b, KVConfig cfg)
+  => KVState cfg m -> BH b -> [(Int, String)] -> KV cfg Identity
+createCandidateBlockData KVState{..} bh txs = KV
+  { kvData   = merkled $ case find ((`Map.notMember` kvstState) . fst) txs of
+      Just tx -> [tx]
+      Nothing -> []
+  , kvNonce  = kvDefaultNonce (Proxy @cfg)
+  , kvTarget = retarget bh
+  }
+
+kvViewStep :: Block (KV cfg) -> Map.Map Int String -> Either KVError (Map.Map Int String)
 kvViewStep b m
-  | or [ k `Map.member` m | (k, _) <- txs ] = Nothing
-  | otherwise                               = Just $ Map.fromList txs <> m
+  | or [ k `Map.member` m | (k, _) <- txs ] = Left KVError
+  | otherwise                               = pure $ Map.fromList txs <> m
   where
     txs = merkleValue $ kvData $ blockData b
