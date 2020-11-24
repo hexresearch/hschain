@@ -112,7 +112,7 @@ main = do
 
 txGeneratorLoop
   :: (MonadReadDB m, MonadIO m)
-  => PoW (CoinState m) m Coin -> [PrivKey Alg] -> m ()
+  => PoW (CoinState m) -> [PrivKey Alg] -> m ()
 txGeneratorLoop pow keyList = do
   forever $ do
     mtx <- generateTX keyVec keyMap
