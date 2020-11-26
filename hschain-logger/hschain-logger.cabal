@@ -26,7 +26,7 @@ Library
                      , filepath
                      , generic-lens      >=0.2
                      , lens              >=4.17
-                     , katip             == 0.7.0.0
+                     , katip             >=0.8
                      , mmorph
                      , unordered-containers
                      , mtl
