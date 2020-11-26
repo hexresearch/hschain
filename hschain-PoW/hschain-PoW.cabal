@@ -38,7 +38,7 @@ Library
                      , generic-lens      >=0.2
                      , exceptions        >=0.8.3
                      , filepath
-                     , katip
+                     , katip             >=0.8
                      , lrucache
                      , lens              >=4.17
                      , mmorph

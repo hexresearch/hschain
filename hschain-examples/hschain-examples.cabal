@@ -49,7 +49,7 @@ Library
                      , vector
                      , directory
                      , filepath
-                     , katip                == 0.7.0.0
+                     , katip                >=0.8
   Exposed-modules:
                   HSChain.Mock
                   HSChain.Mock.Coin
@@ -75,7 +75,7 @@ Executable hschain-coin-node
                      , bytestring           >=0.10
                      , exceptions
                      , filepath
-                     , katip                ==0.7.0.0
+                     , katip                >=0.8
                      , lens
                      , mtl
                      , network              >=2.6.0.0
@@ -111,7 +111,7 @@ Executable hschain-dioxane-node
                      , data-default-class
                      , exceptions
                      , filepath
-                     , katip                ==0.7.0.0
+                     , katip                >=0.8
                      , network              >=2.6.0.0
                      , network-simple       >=0.4.2
                      , mtl

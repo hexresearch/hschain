@@ -59,7 +59,7 @@ Library
                      , vector
                      , unordered-containers >=0.2.5.0
                      --
-                     , katip              == 0.7.0.0
+                     , katip              >=0.8
   Exposed-modules:
                   HSChain.Blockchain.Internal.Algorithm
                   HSChain.Blockchain.Internal.Engine

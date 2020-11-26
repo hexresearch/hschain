@@ -311,8 +311,8 @@ makeScribe ScribeSpec{..} = do
     let (dir,_) = splitFileName path
     createDirectoryIfMissing True dir
   case (scribe'type, scribe'path) of
-    (ScribeTXT,    Nothing) -> mkHandleScribe ColorIfTerminal stdout  sev verb
-    (ScribeTXT,    Just nm) -> mkFileScribe nm sev verb
+    (ScribeTXT,    Nothing) -> mkHandleScribe ColorIfTerminal stdout (permitItem sev) verb
+    (ScribeTXT,    Just nm) -> mkFileScribe nm (permitItem sev) verb
     (ScribeJSON,   Nothing) -> makeJsonHandleScribe stdout sev verb
     (ScribeJSON,   Just nm) -> makeJsonFileScribe nm sev verb
   where
@@ -325,18 +325,22 @@ makeScribe ScribeSpec{..} = do
 ----------------------------------------------------------------
 
 makeJsonHandleScribe :: Handle -> Severity -> Verbosity -> IO Scribe
-makeJsonHandleScribe  h sev verb = do
+makeJsonHandleScribe h sev verb = do
   hSetBuffering h LineBuffering
   lock <- newMutex
-  let loggerFun i@Item{..} = when (permitItem sev i) $ withMutex lock $
+  let loggerFun Item{..} = withMutex lock $
         BL.hPutStrLn h $ encode Item
           { _itemPayload = Object (payloadObject verb _itemPayload)
           , ..
           }
-  return $ Scribe loggerFun (hFlush h)
+  return Scribe { liPush           = loggerFun
+                , scribeFinalizer  = hFlush h
+                , scribePermitItem = \i -> permitItem sev i
+                }
 
 makeJsonFileScribe :: FilePath -> Severity -> Verbosity -> IO Scribe
 makeJsonFileScribe nm sev verb = do
   h <- openFile nm AppendMode
-  Scribe loggerFun finalizer <- makeJsonHandleScribe h sev verb
-  return $ Scribe loggerFun (finalizer `finally` hClose h)
+  scribe <- makeJsonHandleScribe h sev verb
+  return $ scribe { scribeFinalizer = scribeFinalizer scribe `finally` hClose h }
+
