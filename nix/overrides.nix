@@ -20,6 +20,7 @@
   };
   # Compiler specific overrides
   ghc865 = {
+    servant-server = { check = false; };
   };
   ghc883 = {
     katip = { jailbreak = true; };
