@@ -11,9 +11,6 @@ module TM.Util.Mockchain where
 import Codec.Serialise
 import Control.Applicative
 import Control.Monad.Catch
-#if !MIN_VERSION_base(4,13,0)
-import Control.Monad.Fail         (MonadFail)
-#endif
 import Data.Bits
 import Data.List  (unfoldr)
 import Data.Word

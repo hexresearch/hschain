@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP       #-}
 {-# LANGUAGE DataKinds #-}
 -- |
 -- Generic invariants for writing tests.
@@ -15,6 +16,9 @@ import Control.Monad
 import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Control.Monad.Reader
+#if !MIN_VERSION_base(4,13,0)
+import Control.Monad.Fail
+#endif
 
 import HSChain.Control.Class
 import HSChain.Logger

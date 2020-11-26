@@ -10,12 +10,12 @@ module TM.Util.MockChain where
 
 import Control.Monad.Catch
 import Control.Monad.Reader
+#if !MIN_VERSION_base(4,13,0)
+import Control.Monad.Fail (MonadFail)
+#endif
 import           Data.List (sortOn)
 import qualified Data.Map.Strict    as Map
 import qualified Data.List.NonEmpty as NE
-#if !MIN_VERSION_base(4,13,0)
-import Control.Monad.Fail         (MonadFail)
-#endif
 
 import HSChain.Control.Class
 import HSChain.Crypto

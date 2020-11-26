@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP             #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies    #-}
 -- |
@@ -6,6 +7,9 @@ module TM.Coin (tests) where
 import Control.Lens
 import Control.Monad.IO.Class
 import Control.Monad.State.Strict
+#if !MIN_VERSION_base(4,13,0)
+import Control.Monad.Fail         (MonadFail)
+#endif
 import Data.Coerce
 import Data.List (sort)
 import Test.Tasty

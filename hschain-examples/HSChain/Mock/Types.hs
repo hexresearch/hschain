@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP                  #-}
 {-# LANGUAGE DataKinds            #-}
 {-# LANGUAGE DeriveGeneric        #-}
 {-# LANGUAGE DerivingVia          #-}
@@ -25,11 +26,15 @@ module HSChain.Mock.Types (
   , HSChainCfg
     -- * Helpers
   , makeGenesis
+  , MonadFail
   ) where
 
 import Control.Exception   (Exception)
 import Control.Monad
 import Control.Monad.Catch (MonadCatch(..),MonadThrow(..))
+#if !MIN_VERSION_base(4,13,0)
+import Control.Monad.Fail  (MonadFail)
+#endif
 import Data.Default.Class
 import Data.Typeable
 import Data.Word
