@@ -74,26 +74,9 @@ let
     '';
   #
   release = let
-    hschainPkgAll = p: with p; [
-      serialise-cddl
-      bls-signatures
-      hschain-crypto
-      hschain-crypto-bls
-      hschain-types
-      hschain-merkle
-      hschain-mempool
-      hschain-logger
-      hschain-config
-      hschain-quickcheck
-      hschain-control
-      hschain-net
-      hschain-db
-      hschain-PoW
-      hschain
-      hschain-examples
-      hschain-examples-types
-    ];
-    hschainPkgJs = p: with p; [
+    # All packages mentioned in hschainPackages
+    hschainPkgAll = p: map (nm: p."${nm}") (builtins.attrNames (hschainPackages {}));
+    hschainPkgJs  = p: with p; [
       hschain-crypto
       hschain-control
       hschain-types
