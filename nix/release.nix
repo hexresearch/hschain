@@ -48,8 +48,6 @@ let
     hschain-db             = callInternal hsPkgs "hschain" ../hschain-db             {} "";
     hschain-net            = callInternal hsPkgs "hschain" ../hschain-net            {} "";
     hschain-config         = callInternal hsPkgs "hschain" ../hschain-config         {} "";
-    hschain-pow-func       = callInternal hsPkgs "hschain" ../proof-of-work/full-mining {} "";
-    hschain-pow-check      = callInternal hsPkgs "hschain" ../proof-of-work/lightweight-check {} "";
     hschain-PoW            = callInternal hsPkgs "hschain" ../hschain-PoW            {} "";
     hschain                = callInternal hsPkgs "hschain" ../hschain                {} "";
     hschain-examples       = callInternal hsPkgs "hschain" ../hschain-examples       {} "";
@@ -76,28 +74,9 @@ let
     '';
   #
   release = let
-    hschainPkgAll = p: with p; [
-      serialise-cddl
-      bls-signatures
-      hschain-crypto
-      hschain-crypto-bls
-      hschain-types
-      hschain-merkle
-      hschain-mempool
-      hschain-logger
-      hschain-config
-      hschain-quickcheck
-      hschain-control
-      hschain-net
-      hschain-db
-      hschain-pow-func
-      hschain-pow-check
-      hschain-PoW
-      hschain
-      hschain-examples
-      hschain-examples-types
-    ];
-    hschainPkgJs = p: with p; [
+    # All packages mentioned in hschainPackages
+    hschainPkgAll = p: map (nm: p."${nm}") (builtins.attrNames (hschainPackages {}));
+    hschainPkgJs  = p: with p; [
       hschain-crypto
       hschain-control
       hschain-types
