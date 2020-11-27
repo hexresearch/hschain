@@ -48,7 +48,6 @@ let
     hschain-db             = callInternal hsPkgs "hschain" ../hschain-db             {} "";
     hschain-net            = callInternal hsPkgs "hschain" ../hschain-net            {} "";
     hschain-config         = callInternal hsPkgs "hschain" ../hschain-config         {} "";
-    hschain-pow-check      = callInternal hsPkgs "hschain" ../proof-of-work/lightweight-check {} "";
     hschain-PoW            = callInternal hsPkgs "hschain" ../hschain-PoW            {} "";
     hschain                = callInternal hsPkgs "hschain" ../hschain                {} "";
     hschain-examples       = callInternal hsPkgs "hschain" ../hschain-examples       {} "";
@@ -89,7 +88,6 @@ let
       hschain-control
       hschain-net
       hschain-db
-      hschain-pow-check
       hschain-PoW
       hschain
       hschain-examples
