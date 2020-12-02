@@ -16,7 +16,6 @@ packages:
          hschain-examples
          hschain-examples-types
          serialise-cddl
-         proof-of-work/lightweight-check
 
 -- Jailbreak bytestring-arbitrary
 --   https://github.com/tsuraan/bytestring-arbitrary/issues/10
