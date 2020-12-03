@@ -52,12 +52,11 @@ startNode
      )
   => NetCfg
   -> NetworkAPI
-  -> [NetAddr]
   -> BlockDB   m b
   -> Consensus view
   -> ContT r m (PoW view)
-startNode cfg netAPI seeds db consensus
-  = fst <$> startNodeTest cfg netAPI seeds db consensus
+startNode cfg netAPI db consensus
+  = fst <$> startNodeTest cfg netAPI db consensus
 
 -- | Same as startNode but expose internal interfacees for testing
 startNodeTest
@@ -69,13 +68,12 @@ startNodeTest
      )
   => NetCfg
   -> NetworkAPI
-  -> [NetAddr]
   -> BlockDB   m b
   -> Consensus view
   -> ContT r m ( PoW view
                , Sink (BoxRX m b)
                )
-startNodeTest cfg netAPI seeds db consensus = do
+startNodeTest cfg netAPI db consensus = do
   lift $ logger InfoS "Starting PoW node" ()
   (sinkBOX,    srcBOX)     <- queuePair
   (sinkAnn,    mkSrcAnn)   <- broadcastPair
@@ -89,7 +87,6 @@ startNodeTest cfg netAPI seeds db consensus = do
   let pexCh = PexCh
         { pexNetCfg         = cfg
         , pexNetAPI         = netAPI
-        , pexSeedNodes      = seeds
         , pexMempoolAPI     = mempoolAPI
         , pexMkAnnounce     = liftA2 (<>)
             (fmap GossipAnn <$> mkSrcAnn)

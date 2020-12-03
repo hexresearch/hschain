@@ -39,7 +39,6 @@ import HSChain.Types.Merkle.Types
 data PexCh view = PexCh
   { pexNetCfg         :: NetCfg
   , pexNetAPI         :: NetworkAPI
-  , pexSeedNodes      :: [NetAddr]
   , pexMempoolAPI     :: MempoolAPI view
   , pexSinkBox        :: Sink (BoxRX (MonadOf view) (BlockType view))
   , pexMkAnnounce     :: STM (Src (GossipMsg (BlockType view)))
@@ -58,7 +57,7 @@ runPEX
   -> BlockDB m b
   -> ContT r m ()
 runPEX PexCh{..} blockReg db = do
-  reg                <- newPeerRegistry pexSeedNodes
+  reg                <- newPeerRegistry $ initialPeers pexNetCfg
   nonces             <- newNonceSet
   (sinkAddr,srcAddr) <- queuePair
   (sinkAsk,mkSrcAsk) <- broadcastPair

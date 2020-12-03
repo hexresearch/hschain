@@ -46,12 +46,22 @@ import HSChain.Types.Merkle.Types
 import HSChain.Control.Channels
 import HSChain.PoW.P2P.Handler.BlockRequests
 
-
+----------------------------------------------------------------
+-- Configuration
+----------------------------------------------------------------
 
 data NetCfg = NetCfg
   { nKnownPeers     :: !Int
+    -- ^ Number of peers we want to know about
   , nConnectedPeers :: !Int
+    -- ^ Number of peers we want to connect to
+  , initialPeers    :: [NetAddr]
+    -- ^ Set of initial addresses to connect to
   }
+  deriving (Show,Eq,Generic)
+
+
+
 
 ----------------------------------------------------------------
 -- Handshake
