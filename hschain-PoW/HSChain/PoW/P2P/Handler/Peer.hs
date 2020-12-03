@@ -56,7 +56,7 @@ runPeer conn mempoolAPI chans@PeerChans{..} = logOnException $ do
   do s <- atomicallyIO peerConsensuSt
      sinkIO sinkGossip $ GossipAnn $ AnnBestHead $ s ^. bestHead . _1 . to asHeader
   runConcurrently
-    [ peerSend    conn (srcGossip <> fmap GossipAnn peerBCastAnn <> fmap GossipTX peerBCastAnnTx)
+    [ peerSend    conn (srcGossip <> peerBCastAnn)
     , peerRecv    conn     st chans sinkGossip mempoolAPI
     , peerRequestHeaders   st chans sinkGossip
     , peerRequestBlock     st chans sinkGossip

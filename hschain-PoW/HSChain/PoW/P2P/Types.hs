@@ -190,12 +190,10 @@ data PeerChans view = PeerChans
     -- ^ Send newly received addresses
   , peerSinkConsensus :: Sink (BoxRX (MonadOf view) (BlockType view))
     -- ^ Send new command to consensus
-  , peerBCastAnn      :: Src  (MsgAnn (BlockType view))
+  , peerBCastAnn      :: Src  (GossipMsg (BlockType view))
     -- ^ Broadcast channel for announces
   , peerBCastAskPeer  :: Src   AskPeers
     -- ^ Broadcast channel for asking for more peers
-  , peerBCastAnnTx    :: Src  (MsgTX (BlockType view))
-    -- ^ Broadcast channel for new tx announces
   , peerCatchup       :: CatchupThrottle
   , peerReqBlocks     :: BlockRegistry (BlockType view)
   , peerConnections   :: STM [NetAddr]

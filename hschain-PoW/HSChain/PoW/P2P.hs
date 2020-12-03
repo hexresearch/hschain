@@ -8,6 +8,7 @@ module HSChain.PoW.P2P
   ) where
 
 import Codec.Serialise
+import Control.Applicative
 import Control.Lens
 import Control.Concurrent.MVar
 import Control.Concurrent.STM
@@ -90,8 +91,9 @@ startNodeTest cfg netAPI seeds db consensus = do
         , pexNetAPI         = netAPI
         , pexSeedNodes      = seeds
         , pexMempoolAPI     = mempoolAPI
-        , pexMkMempoolAnn   = mempoolAnnounces
-        , pexMkConsensusAnn = mkSrcAnn
+        , pexMkAnnounce     = liftA2 (<>)
+            (fmap GossipAnn <$> mkSrcAnn)
+            (fmap GossipTX  <$> mempoolAnnounces)
         , pexSinkBox        = sinkBOX
         , pexConsesusState  = readTVar bIdx
         }

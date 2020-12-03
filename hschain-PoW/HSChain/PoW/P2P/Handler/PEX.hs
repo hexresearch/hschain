@@ -41,9 +41,8 @@ data PexCh view = PexCh
   , pexNetAPI         :: NetworkAPI
   , pexSeedNodes      :: [NetAddr]
   , pexMempoolAPI     :: MempoolAPI view
-  , pexMkMempoolAnn   :: STM (Src (MsgTX  (BlockType view)))
-  , pexMkConsensusAnn :: STM (Src (MsgAnn (BlockType view)))
   , pexSinkBox        :: Sink (BoxRX (MonadOf view) (BlockType view))
+  , pexMkAnnounce     :: STM (Src (GossipMsg (BlockType view)))
   , pexConsesusState  :: STM (Consensus view)
   }
 
@@ -65,9 +64,8 @@ runPEX PexCh{..} blockReg db = do
   (sinkAsk,mkSrcAsk) <- broadcastPair
   catchup            <- newCatchupThrottle
   let mkChans = do
-        peerBCastAnn     <- pexMkConsensusAnn
         peerBCastAskPeer <- mkSrcAsk
-        peerBCastAnnTx   <- pexMkMempoolAnn
+        peerBCastAnn     <- pexMkAnnounce
         return PeerChans
           { peerSinkNewAddr   = sinkAddr
           , peerSinkConsensus = pexSinkBox
