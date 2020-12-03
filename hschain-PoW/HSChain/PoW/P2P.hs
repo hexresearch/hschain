@@ -85,7 +85,18 @@ startNodeTest cfg netAPI seeds db consensus = do
   -- Start mempool
   (mempoolAPI,MempoolCh{..}) <- startMempool db (consensus ^. bestHead . _2)
   -- Start PEX
-  runPEX cfg netAPI mempoolAPI mempoolAnnounces seeds blockReg sinkBOX mkSrcAnn (readTVar bIdx) db
+  let pexCh = PexCh
+        { pexNetCfg         = cfg
+        , pexNetAPI         = netAPI
+        , pexSeedNodes      = seeds
+        , pexMempoolAPI     = mempoolAPI
+        , pexMkMempoolAnn   = mempoolAnnounces
+        , pexMkConsensusAnn = mkSrcAnn
+        , pexSinkBox        = sinkBOX
+        , pexConsesusState  = readTVar bIdx
+        }
+
+  runPEX pexCh blockReg db
   -- Consensus thread
   let consensusCh = ConsensusCh
         { bcastAnnounce    = sinkAnn

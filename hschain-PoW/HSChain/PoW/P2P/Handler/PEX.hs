@@ -1,6 +1,7 @@
 -- |
 module HSChain.PoW.P2P.Handler.PEX
-  ( runPEX
+  ( PexCh(..)
+  , runPEX
   ) where
 
 import Codec.Serialise
@@ -35,6 +36,17 @@ import HSChain.Types.Merkle.Types
 --
 ----------------------------------------------------------------
 
+data PexCh view = PexCh
+  { pexNetCfg         :: NetCfg
+  , pexNetAPI         :: NetworkAPI
+  , pexSeedNodes      :: [NetAddr]
+  , pexMempoolAPI     :: MempoolAPI view
+  , pexMkMempoolAnn   :: STM (Src (MsgTX  (BlockType view)))
+  , pexMkConsensusAnn :: STM (Src (MsgAnn (BlockType view)))
+  , pexSinkBox        :: Sink (BoxRX (MonadOf view) (BlockType view))
+  , pexConsesusState  :: STM (Consensus view)
+  }
+
 runPEX
   :: ( MonadMask m, MonadFork m, MonadLogger m
      , Serialise (b Identity)
@@ -42,41 +54,34 @@ runPEX
      , Serialise (Tx b)
      , StateView' view m b
      )
-  => NetCfg
-  -> NetworkAPI
-  -> MempoolAPI view
-  -> STM (Src (MsgTX b))
-  -> [NetAddr]
+  => PexCh view
   -> BlockRegistry b
-  -> Sink (BoxRX m b)
-  -> STM (Src (MsgAnn b))
-  -> STM (Consensus view)
   -> BlockDB m b
   -> ContT r m ()
-runPEX cfg netAPI mempoolAPI mkSrcAnnTx seeds blockReg sinkBOX mkSrcAnn consSt db = do
-  reg                <- newPeerRegistry seeds
+runPEX PexCh{..} blockReg db = do
+  reg                <- newPeerRegistry pexSeedNodes
   nonces             <- newNonceSet
   (sinkAddr,srcAddr) <- queuePair
   (sinkAsk,mkSrcAsk) <- broadcastPair
   catchup            <- newCatchupThrottle
   let mkChans = do
-        peerBCastAnn     <- mkSrcAnn
+        peerBCastAnn     <- pexMkConsensusAnn
         peerBCastAskPeer <- mkSrcAsk
-        peerBCastAnnTx   <- mkSrcAnnTx
+        peerBCastAnnTx   <- pexMkMempoolAnn
         return PeerChans
           { peerSinkNewAddr   = sinkAddr
-          , peerSinkConsensus = sinkBOX
+          , peerSinkConsensus = pexSinkBox
           , peerCatchup       = catchup
           , peerReqBlocks     = blockReg
           , peerConnections   = connectedPeersList reg
-          , peerConsensuSt    = consSt
+          , peerConsensuSt    = pexConsesusState
           , peerBlockDB       = db
           , ..
           }
   shepherd <- ContT withShepherd
-  start "accept"  $ acceptLoop             netAPI mempoolAPI shepherd reg nonces mkChans
-  start "conn"    $ monitorConnections cfg netAPI mempoolAPI shepherd reg nonces mkChans
-  start "known"   $ monitorKnownPeers  cfg reg sinkAsk
+  start "accept"  $ acceptLoop                   pexNetAPI pexMempoolAPI shepherd reg nonces mkChans
+  start "conn"    $ monitorConnections pexNetCfg pexNetAPI pexMempoolAPI shepherd reg nonces mkChans
+  start "known"   $ monitorKnownPeers  pexNetCfg reg sinkAsk
   start "newaddr" $ processNewAddr     reg srcAddr
   where
     start ns = cforkLinked . descendNamespace "net" . descendNamespace ns . logOnException
