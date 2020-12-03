@@ -106,7 +106,7 @@ newtype DTime = DTime Int64
 
 -- | Compute difference between two timestamps
 (.-.) :: Time -> Time -> DTime
-Time t1 .-. Time t2 = DTime (t2 - t1)
+Time t1 .-. Time t2 = DTime (t1 - t2)
 
 -- | Add difference to a time stamp
 (.+) :: Time -> DTime -> Time
