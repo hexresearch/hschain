@@ -7,8 +7,7 @@
 --
 -- Copyright (C) ... 2020
 module HSChain.PoW.Node
-  ( Cfg(..)
-  , genericMiningLoop
+  ( genericMiningLoop
     -- * Block storage
   , inMemoryDB
   , blockDatabase
@@ -18,32 +17,14 @@ import Control.Concurrent
 import Control.Monad
 import Control.Monad.Cont
 
-import Data.Word
-import qualified Data.Aeson as JSON
-import GHC.Generics (Generic)
-
 import HSChain.Control.Channels
 import HSChain.PoW.Consensus
-import HSChain.Logger
 import HSChain.PoW.P2P
 import HSChain.PoW.Types
 import HSChain.PoW.Store
-import HSChain.Network.Types
 import HSChain.Control.Util
 import HSChain.Control.Class
-import HSChain.Config
 
--- |Node's configuration.
-data Cfg = Cfg
-  { cfgPort   :: Word16
-  , cfgPeers  :: [NetAddr]
-  , cfgLog    :: [ScribeSpec]
-  , cfgMaxH   :: Maybe Height
-  , cfgDB     :: Maybe FilePath
-  , cfgWebAPI :: Maybe Int
-  }
-  deriving stock (Show, Generic)
-  deriving (JSON.FromJSON) via SnakeCase (DropSmart (Config Cfg))
 
 
 genericMiningLoop

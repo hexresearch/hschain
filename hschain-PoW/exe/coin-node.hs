@@ -1,19 +1,9 @@
 {-# LANGUAGE ApplicativeDo              #-}
-{-# LANGUAGE BangPatterns               #-}
 {-# LANGUAGE DataKinds                  #-}
-{-# LANGUAGE DeriveAnyClass             #-}
-{-# LANGUAGE DeriveGeneric              #-}
-{-# LANGUAGE DerivingStrategies         #-}
-{-# LANGUAGE DerivingVia                #-}
-{-# LANGUAGE FlexibleContexts           #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE LambdaCase                 #-}
 {-# LANGUAGE NumDecimals                #-}
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE RecordWildCards            #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
-{-# LANGUAGE TypeApplications           #-}
-{-# LANGUAGE TypeFamilies               #-}
 -- |
 module Main where
 
@@ -22,18 +12,22 @@ import Control.Monad.IO.Class
 import Control.Monad.Reader
 import Control.Monad.Trans.Cont
 import Data.Maybe
+import Data.Word
+import Data.Foldable
 import Data.List (unfoldr)
-import qualified Data.Text       as T
+import Data.Map  (Map)
+import Data.Text (Text)
+import qualified Data.Aeson      as JSON
 import qualified Data.ByteString as BS
 import qualified Data.Map.Strict as Map
 import qualified Data.Vector     as V
-import System.Environment
 import System.Random (randoms,mkStdGen)
 import Data.Yaml.Config (loadYamlSettings, requireEnv)
 import Options.Applicative
 import Servant.Server
 import Servant.Server.Generic
 import qualified Network.Wai.Handler.Warp as Warp
+import GHC.Generics (Generic)
 
 import HSChain.Control.Channels
 import HSChain.Control.Util
@@ -42,8 +36,8 @@ import HSChain.Crypto
 import HSChain.Examples.Coin
 import HSChain.Logger
 import HSChain.Network.TCP
+import HSChain.Network.Types
 import HSChain.PoW.Consensus
-import HSChain.PoW.Node (Cfg(..))
 import HSChain.PoW.P2P
 import HSChain.PoW.P2P.Types
 import HSChain.PoW.Types
@@ -51,10 +45,24 @@ import HSChain.PoW.Node (genericMiningLoop)
 import HSChain.Store.Query
 import HSChain.Types.Merkle.Types
 import HSChain.Examples.Coin.API
+import HSChain.Config
 
 ----------------------------------------------------------------
 --
 ----------------------------------------------------------------
+
+-- |Node's configuration.
+data Cfg = Cfg
+  { cfgPort    :: Word16
+  , cfgPeers   :: [NetAddr]
+  , cfgLog     :: [ScribeSpec]
+  , cfgDB      :: Maybe FilePath
+  , cfgWebAPI  :: Maybe Int
+  , cfgMinerPK :: Maybe (PrivKey Alg)
+  }
+  deriving stock (Show, Generic)
+  deriving (JSON.FromJSON) via SnakeCase (DropSmart (Config Cfg))
+
 
 genesis :: Block Coin
 genesis = Block
@@ -76,8 +84,7 @@ main = do
               <> header   "PoW node settings"
               <> progDesc ""
               )
-  Cfg{..} <- loadYamlSettings cmdConfigPath [] requireEnv
-  Just nodePrivK <- decodeBase58 . T.pack <$> getEnv optPrivVar
+  Cfg{..} <- loadYamlSettings optConfigPath [] requireEnv
   -- Acquire resources
   let net    = newNetworkTcp cfgPort
       netcfg = NetCfg { nKnownPeers     = 3
@@ -100,12 +107,15 @@ main = do
         let run :: CoinT IO a -> Handler a
             run (CoinT m) = liftIO $ runReaderT m dict
         cforkLinkedIO $ Warp.run port $ genericServeT run $ coinServer (mempoolAPI pow)
-      -- Mining and TX generation
-      when optGenerate $ do
-        cforkLinked $ txGeneratorLoop pow (nodePrivK : take 100 (makePrivKeyStream 1433))
-      when optMine $ do
+      -- TX generation
+      case optGenerate of
+        [] -> pure ()
+        _  -> do keys :: Map Text (PrivKey Alg) <- liftIO $ loadYamlSettings optGenerate [] requireEnv
+                 cforkLinked $ txGeneratorLoop pow (toList keys)
+      -- Mining loop
+      forM_ cfgMinerPK $ \pk -> do
         cforkLinked $ genericMiningLoop
-          (\st bh t txs -> createCandidateBlock bh t <$> createCandidateBlockData nodePrivK st bh txs)
+          (\st bh t txs -> createCandidateBlock bh t <$> createCandidateBlockData pk st bh txs)
           pow
       -- Wait forever
       liftIO $ forever $ threadDelay maxBound
@@ -128,30 +138,20 @@ txGeneratorLoop pow keyList = do
 ----------------------------------------------------------------
 
 data Opts = Opts
-  { cmdConfigPath :: [FilePath]   -- ^ Path to configuration
-  , optMine       :: Bool         -- ^ Whether to mine blocks
-  , optGenerate   :: Bool         -- ^ Generate transactions
-  , optPrivVar    :: String       -- ^ Node's private key's environment variable name.
+  { optConfigPath :: [FilePath]     -- ^ Paths to configuration
+  , optGenerate   :: [FilePath]     -- ^ Paths to generator key ring 
   }
 
 parser :: Parser Opts
 parser = do
-  cmdConfigPath <- some $ strArgument
+  optConfigPath <- some $ strArgument
     (  metavar "PATH"
     <> help  "Path to configuration"
     <> showDefault
     )
-  optMine <- switch
-    (  long "mine"
-    <> help "Mine blocks"
-    )
-  optGenerate <- switch
-    (  long "gen-tx"
-    <> help "Mine blocks"
-    )
-  optPrivVar <- strOption
-    (  long "priv-key-env-var"
-    <> help "Environment variable with node's private key"
+  optGenerate <- many $ strOption
+    (  long "txgen"
+    <> help "Configuration of TX generator"
     )
   return Opts{..}
 

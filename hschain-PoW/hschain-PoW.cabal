@@ -119,6 +119,7 @@ Executable hschain-PoW-coin
                      , hschain-logger
                      , hschain-crypto
                      , hschain-control
+                     , hschain-config
                      --
                      , aeson
                      , katip
@@ -139,6 +140,31 @@ Executable hschain-PoW-coin
                      , warp
   hs-source-dirs:      exe
   Main-is:             coin-node.hs
+  default-extensions:
+    MonoLocalBinds
+    -- Deriving
+    DeriveAnyClass
+    DeriveFoldable
+    DeriveFunctor
+    DeriveGeneric
+    DeriveTraversable
+    DerivingStrategies
+    DerivingVia
+    GeneralizedNewtypeDeriving
+    StandaloneDeriving
+    -- Sugar
+    BangPatterns
+    LambdaCase
+    MultiWayIf
+    RecordWildCards
+    OverloadedStrings
+    TypeOperators
+    -- Types
+    ScopedTypeVariables
+    TypeApplications
+    -- Instances
+    FlexibleContexts
+    FlexibleInstances
 
 Executable hschain-PoW-key
   Ghc-options:         -Wall -threaded -rtsopts "-with-rtsopts=-N -T -qn1 -A64M"
