@@ -131,7 +131,7 @@ runNetTest test = do
   let apiNode        = createMockNode net ipNode
       NetworkAPI{..} = createMockNode net ipOur
   runNoLogsT $ evalContT $ do
-    _ <- startNode (NetCfg 0 0) apiNode [] db s0
+    _ <- startNode (NodeCfg 0 0 []) apiNode db s0
     lift $ lift $ do -- Establish connection
       --
       -- FIXME: we need to do something better than fixed delay

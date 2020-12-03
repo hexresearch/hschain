@@ -28,7 +28,7 @@ module HSChain.PoW.P2P.Types
 
   , CatchupThrottle(..)
   , ReleaseCatchupThrottle(..)
-  , NetCfg(..)
+  , NodeCfg(..)
   ) where
 
 import Control.Concurrent.STM
@@ -50,7 +50,7 @@ import HSChain.PoW.P2P.Handler.BlockRequests
 -- Configuration
 ----------------------------------------------------------------
 
-data NetCfg = NetCfg
+data NodeCfg = NodeCfg
   { nKnownPeers     :: !Int
     -- ^ Number of peers we want to know about
   , nConnectedPeers :: !Int

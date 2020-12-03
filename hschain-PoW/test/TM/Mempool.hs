@@ -37,7 +37,7 @@ testMempoolRollback = runNoLogsT $ evalContT $ do
       sView = kvMemoryView (blockID genesis)
   db <- lift $ inMemoryDB genesis
   c0 <- lift $ createConsensus db sView =<< buildBlockIndex db
-  (pow,sinkBOX) <- startNodeTest netcfg net [] db c0
+  (pow,sinkBOX) <- startNodeTest netcfg net db c0
   let api@MempoolAPI{..} = mempoolAPI pow
   ch <- atomicallyIO mempoolUpdates
   -- First post transaction into mempool
@@ -72,9 +72,8 @@ testMempoolRollback = runNoLogsT $ evalContT $ do
     b2  = mineBlock [tx3] b1
     b3  = mineBlock [tx4] b2
     --
-    netcfg = NetCfg { nKnownPeers     = 3
-                    , nConnectedPeers = 3
-                    }
+    netcfg = NodeCfg 0 0 []
+
 
 
 checkMempoolContent

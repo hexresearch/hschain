@@ -37,7 +37,7 @@ import HSChain.Types.Merkle.Types
 ----------------------------------------------------------------
 
 data PexCh view = PexCh
-  { pexNetCfg         :: NetCfg
+  { pexNodeCfg        :: NodeCfg
   , pexNetAPI         :: NetworkAPI
   , pexMempoolAPI     :: MempoolAPI view
   , pexSinkBox        :: Sink (BoxRX (MonadOf view) (BlockType view))
@@ -57,7 +57,7 @@ runPEX
   -> BlockDB m b
   -> ContT r m ()
 runPEX PexCh{..} blockReg db = do
-  reg                <- newPeerRegistry $ initialPeers pexNetCfg
+  reg                <- newPeerRegistry $ initialPeers pexNodeCfg
   nonces             <- newNonceSet
   (sinkAddr,srcAddr) <- queuePair
   (sinkAsk,mkSrcAsk) <- broadcastPair
@@ -76,9 +76,9 @@ runPEX PexCh{..} blockReg db = do
           , ..
           }
   shepherd <- ContT withShepherd
-  start "accept"  $ acceptLoop                   pexNetAPI pexMempoolAPI shepherd reg nonces mkChans
-  start "conn"    $ monitorConnections pexNetCfg pexNetAPI pexMempoolAPI shepherd reg nonces mkChans
-  start "known"   $ monitorKnownPeers  pexNetCfg reg sinkAsk
+  start "accept"  $ acceptLoop                    pexNetAPI pexMempoolAPI shepherd reg nonces mkChans
+  start "conn"    $ monitorConnections pexNodeCfg pexNetAPI pexMempoolAPI shepherd reg nonces mkChans
+  start "known"   $ monitorKnownPeers  pexNodeCfg reg sinkAsk
   start "newaddr" $ processNewAddr     reg srcAddr
   where
     start ns = cforkLinked . descendNamespace "net" . descendNamespace ns . logOnException
@@ -156,11 +156,11 @@ connectTo NetworkAPI{..} mempoolAPI addr shepherd reg nonceSet chans =
 -- | Thread that monitor that we have enough connections and tries to acquire more .
 monitorKnownPeers
   :: (MonadIO m)
-  => NetCfg
+  => NodeCfg
   -> PeerRegistry               -- ^ Peer registry
   -> Sink AskPeers              -- ^ Sink for sending AskMorePeer messages
   -> m ()
-monitorKnownPeers NetCfg{..} reg sinkPeers = forever $ do
+monitorKnownPeers NodeCfg{..} reg sinkPeers = forever $ do
   -- We block unless we don't have enough connections then we ask
   -- peers for more and wait.
   atomicallyIO $ check . (<nKnownPeers) =<< knownPeers reg
@@ -174,7 +174,7 @@ monitorConnections
      , Serialise (Tx b)
      , StateView' view m b
      )
-  => NetCfg
+  => NodeCfg
   -> NetworkAPI
   -> MempoolAPI view
   -> Shepherd
@@ -182,7 +182,7 @@ monitorConnections
   -> NonceSet
   -> STM (PeerChans view)
   -> m ()
-monitorConnections NetCfg{..} netAPI mempoolAPI shepherd reg nonceSet mkChans = forever $ do
+monitorConnections NodeCfg{..} netAPI mempoolAPI shepherd reg nonceSet mkChans = forever $ do
   -- Check that we need and can connect to peers
   addrs <- atomicallyIO $ do
     nPeers <- connectedPeers reg

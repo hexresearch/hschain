@@ -87,14 +87,15 @@ main = do
   Cfg{..} <- loadYamlSettings optConfigPath [] requireEnv
   -- Acquire resources
   let net    = newNetworkTcp cfgPort
-      netcfg = NetCfg { nKnownPeers     = 3
-                      , nConnectedPeers = 3
-                      }
+      netcfg = NodeCfg { nKnownPeers     = 3
+                       , nConnectedPeers = 3
+                       , initialPeers    = cfgPeers
+                       }
   withConnection (fromMaybe "" cfgDB) $ \conn -> 
     withLogEnv "" "" (map makeScribe cfgLog) $ \logEnv -> runCoinT logEnv conn $ evalContT $ do
       (db, bIdx, sView) <- lift $ coinStateView genesis
       c0  <- lift $ createConsensus db sView bIdx
-      pow <- startNode netcfg net cfgPeers db c0
+      pow <- startNode netcfg net db c0
       -- report progress
       void $ liftIO $ forkIO $ do
         ch <- atomicallyIO (chainUpdate pow)

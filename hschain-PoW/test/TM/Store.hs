@@ -49,7 +49,7 @@ testRestart = do
           }
     db   <- lift $ blockDatabase genesisCoin
     c0   <- lift $ createConsensus db startingState =<< buildBlockIndex db
-    pow  <- startNode netcfg net [] db c0
+    pow  <- startNode netcfg net db c0
     cforkLinked $ genericMiningLoop mine pow
     -- Await for new blocks
     ch   <- atomicallyIO $ chainUpdate pow
@@ -63,9 +63,10 @@ testRestart = do
   where
     startingState :: DummyState (HSChainT IO) Coin
     startingState = DummyState (blockID genesisCoin) (error "No rewind past genesis")
-    netcfg = NetCfg { nKnownPeers     = 3
-                    , nConnectedPeers = 3
-                    }
+    netcfg = NodeCfg { nKnownPeers     = 3
+                     , nConnectedPeers = 3
+                     , initialPeers    = []
+                     }
 
 
 genesisCoin :: Block Coin

@@ -50,7 +50,7 @@ startNode
      , Serialise (Tx b)
      , StateView' view m b
      )
-  => NetCfg
+  => NodeCfg
   -> NetworkAPI
   -> BlockDB   m b
   -> Consensus view
@@ -66,7 +66,7 @@ startNodeTest
      , Serialise (Tx b)
      , StateView' view m b
      )
-  => NetCfg
+  => NodeCfg
   -> NetworkAPI
   -> BlockDB   m b
   -> Consensus view
@@ -85,7 +85,7 @@ startNodeTest cfg netAPI db consensus = do
   (mempoolAPI,MempoolCh{..}) <- startMempool db (consensus ^. bestHead . _2)
   -- Start PEX
   let pexCh = PexCh
-        { pexNetCfg         = cfg
+        { pexNodeCfg        = cfg
         , pexNetAPI         = netAPI
         , pexMempoolAPI     = mempoolAPI
         , pexMkAnnounce     = liftA2 (<>)
