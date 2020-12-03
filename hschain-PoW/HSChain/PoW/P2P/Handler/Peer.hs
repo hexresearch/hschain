@@ -80,7 +80,7 @@ data PeerState b = PeerState
   }
 
 
--- Thread that issues
+-- Thread that requests header in case we're behind and need to catch up.
 peerRequestHeaders
   :: (MonadIO m, MonadLogger m, MonadCatch m, StateView' view m b)
   => PeerState b
@@ -107,7 +107,7 @@ peerRequestHeaders PeerState{..} PeerChans{..} sinkGossip =
   where
     exitCatchup = writeTVar inCatchup False
 
-
+-- Thread that requests missing blocks
 peerRequestBlock
   :: (MonadIO m, MonadLogger m, MonadCatch m, BlockData b, BlockType view ~ b)
   => PeerState b
