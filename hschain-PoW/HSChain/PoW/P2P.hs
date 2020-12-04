@@ -35,7 +35,7 @@ data PoW view = PoW
     -- ^ View on current state of consensus (just a read from TVar).
   , sendNewBlock     :: BlockOf view -> MonadOf view (Either SomeException ())
     -- ^ Send freshly mined block to consensus
-  , chainUpdate      :: STM (Src (BHOf view, view))
+  , chainUpdate      :: STM (Src view)
     -- ^ Create new broadcast source which will recieve message every
     --   time head is changed
   , mempoolAPI       :: MempoolAPI view
@@ -82,7 +82,7 @@ startNodeTest cfg netAPI db consensus = do
   blockReg                 <- newBlockRegistry srcBIDs
   bIdx                     <- liftIO $ newTVarIO consensus
   -- Start mempool
-  (mempoolAPI,MempoolCh{..}) <- startMempool db (consensus ^. bestHead . _2)
+  (mempoolAPI,MempoolCh{..}) <- startMempool db (consensus ^. bestHead . _1)
   -- Start PEX
   let pexCh = PexCh
         { pexNodeCfg        = cfg
@@ -100,7 +100,7 @@ startNodeTest cfg netAPI db consensus = do
   let consensusCh = ConsensusCh
         { bcastAnnounce    = sinkAnn
         , bcastChainUpdate = sinkChain
-                          <> (contramap (\(bh,bh',s) -> MempHeadChange bh bh' s) mempoolConsensusCh)
+                          <> (contramap (\(bh,s) -> MempHeadChange bh s) mempoolConsensusCh)
         , sinkConsensusSt  = Sink $ writeTVar bIdx
         , sinkReqBlocks    = sinkBIDs
         , srcRX            = srcBOX
@@ -115,7 +115,7 @@ startNodeTest cfg netAPI db consensus = do
                 Peer'Punish e     -> return (Left e)
                 Peer'EnterCatchup -> return (Right ())
                 Peer'Noop         -> return (Right ())
-          , chainUpdate          = fmap (\(_,bh,s) -> (bh,s)) <$> mkSrcChain
+          , chainUpdate          = fmap (\(_,s) -> s) <$> mkSrcChain
           , ..
           }
     , sinkBOX

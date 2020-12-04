@@ -92,9 +92,9 @@ checkMempoolContent MempoolAPI{..} expected = liftIO $ do
 
 checkRecv
   :: (MonadIO m, Eq (TxOf view), Show (TxOf view), StateView view)
-  => Src (BHOf view, view, [TxOf view]) -> [TxOf view] -> m ()
+  => Src (view, [TxOf view]) -> [TxOf view] -> m ()
 checkRecv ch expected = liftIO $ do
-  (_,_,txs) <- awaitIO ch
+  (_,txs) <- awaitIO ch
   expected @=? txs
 
 sendBlock :: (MerkleMap b, Monad m, MonadIO n) => Sink (BoxRX m b) -> GBlock b Identity -> n ()

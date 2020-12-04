@@ -1,3 +1,4 @@
+{-# LANGUAGE TypeFamilies #-}
 -- |
 module TM.Store (tests) where
 
@@ -42,11 +43,12 @@ testRestart = do
   -- First start of exception
   h <- catchAbort $ evalContT $ do
     let net = createMockNode mocknet $ NetAddrV4 1 1000
-        mine _ bh t _ = return $ createCandidateBlock bh t $ Coin
+        mine st t _ = return $ createCandidateBlock bh t $ Coin
           { coinData   = merkled []
           , coinTarget = retarget bh
           , coinNonce  = 0
           }
+          where bh = stateBH st
     db   <- lift $ blockDatabase genesisCoin
     bIdx <- lift $ buildBlockIndex db
     let Just bh = lookupIdx (blockID genesisCoin) bIdx
@@ -56,14 +58,14 @@ testRestart = do
     -- Await for new blocks
     ch   <- atomicallyIO $ chainUpdate pow
     lift $ forever $ do
-      (BH{bhHeight=h},_) <- awaitIO ch
+      h <- bhHeight . stateBH <$> awaitIO ch
       when (h >= Height 10) $ throwM (Abort h)
   -- Reinitialize
   do db   <- blockDatabase genesisCoin
      bIdx <- buildBlockIndex db
      let Just bh = lookupIdx (blockID genesisCoin) bIdx
      c0 <- createConsensus db (startingState bh) bIdx
-     liftIO $ h @=? (c0 ^. bestHead . _1 . to bhHeight)
+     liftIO $ h @=? (c0 ^. bestHead . _1 . to stateBH . to bhHeight)
   where
     startingState :: BH Coin -> DummyState (HSChainT IO) Coin
     startingState bh = DummyState bh (error "No rewind past genesis")

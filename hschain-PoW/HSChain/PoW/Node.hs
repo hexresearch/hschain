@@ -29,7 +29,7 @@ import HSChain.Control.Class
 
 genericMiningLoop
   :: (Mineable b, MonadFork m, BlockType view ~ b, MonadOf view ~ m)
-  => (view -> BH b -> Time -> [Tx b] -> m (Block b))
+  => (view -> Time -> [Tx b] -> m (Block b))
   -> PoW view
   -> m x
 genericMiningLoop makeCandidate pow = start
@@ -38,24 +38,24 @@ genericMiningLoop makeCandidate pow = start
     start = do
       c  <- atomicallyIO $ currentConsensus pow
       ch <- atomicallyIO $ mempoolUpdates $ mempoolAPI pow
-      let (bh, st, _) = _bestHead c
-      loop ch =<< mine bh st Nothing
+      let (st, _) = _bestHead c
+      loop ch =<< mine st Nothing
     --
     loop ch tid = do
-      (bh, st, txs) <- awaitIO ch
+      (st, txs) <- awaitIO ch
       liftIO $ killThread tid
-      loop ch =<< mine bh st (Just txs)
+      loop ch =<< mine st (Just txs)
     -- Here we simply try again to create new block in case we wasnt'
     -- able to create one by fiddling nonce. At very least time should
     -- change
-    mine bh st = fork . tryMine
+    mine st = fork . tryMine
       where
         tryMine mtxs = do
           t      <- getCurrentTime
           txs    <- case mtxs of
             Just txs -> return txs
             Nothing  -> atomicallyIO $ mempoolContent $ mempoolAPI pow
-          bCand  <- makeCandidate st bh t txs
+          bCand  <- makeCandidate st t txs
           (bMined,_) <- adjustPuzzle bCand
           case bMined of
             Just b  -> void $ sendNewBlock pow b

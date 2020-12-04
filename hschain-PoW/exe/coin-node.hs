@@ -99,7 +99,7 @@ main = do
       -- report progress
       void $ liftIO $ forkIO $ do
         ch <- atomicallyIO (chainUpdate pow)
-        forever $ do (bh,_) <- awaitIO ch
+        forever $ do bh <- stateBH <$> awaitIO ch
                      print (bhHeight bh, bhBID bh)
                      print $ retarget bh
       -- Start web node
@@ -116,7 +116,8 @@ main = do
       -- Mining loop
       forM_ cfgMinerPK $ \pk -> do
         cforkLinked $ genericMiningLoop
-          (\st bh t txs -> createCandidateBlock bh t <$> createCandidateBlockData pk st bh txs)
+          (\st t txs -> let bh = stateBH st
+                        in createCandidateBlock bh t <$> createCandidateBlockData pk st bh txs)
           pow
       -- Wait forever
       liftIO $ forever $ threadDelay maxBound

@@ -42,7 +42,7 @@ import HSChain.PoW.P2P.Types
 
 -- | Command sent to the mempool from the consensus engine
 data MempCmdConsensus view
-  = MempHeadChange (BHOf view) (BHOf view) view
+  = MempHeadChange (BHOf view) view
   -- ^ Blockchain head has been changed. We need to
 
 -- | Command sent to the mempool from gossip
@@ -64,7 +64,7 @@ data MempoolAPI view = MempoolAPI
     --   Note that acceptance to mempool doesn't even guarantee that
     --   transaction will be eventually mined. And certainly not that
     --   it will be mined promptly.
-  , mempoolUpdates  :: STM (Src (BHOf view, view, [TxOf view]))
+  , mempoolUpdates  :: STM (Src (view, [TxOf view]))
     -- ^ Channel for receiving updates to mempool when
   , mempoolContent  :: STM [TxOf view]
     -- ^ Obtain current content of mempool
@@ -88,7 +88,7 @@ data InternalCh view = InternalCh
     -- ^ Messages from gossip
   , bcastNewTx        :: Sink (TxOf view)
     -- ^ Sink for valid transaction which just learned about,
-  , bcastMempoolState :: Sink (BHOf view, view, [TxOf view])
+  , bcastMempoolState :: Sink (view, [TxOf view])
     -- ^ Broadcast change of blockchain head and corresponding update of
   , pendingFiltering  :: TVar [TxIdOf view]
     -- ^ Messages which we need to be rechecked
@@ -167,7 +167,8 @@ handleConsensus
   -> MempCmdConsensus view
   -> m (MempoolDict view)
 handleConsensus db@BlockDB{..} InternalCh{..} MempoolDict{..} = \case
-  MempHeadChange bhFrom bhTo state -> do
+  MempHeadChange bhFrom state -> do
+    let bhTo = stateBH state
     TxChange{..} <- computeMempoolChange db bhFrom bhTo
     let add m tx = fromMaybe m
                 <$> mempoolAddTX
@@ -176,7 +177,7 @@ handleConsensus db@BlockDB{..} InternalCh{..} MempoolDict{..} = \case
                       tx m
     mem' <- foldM add (mempoolRemoveTX toRemove mempool) toAdd
     atomicallyIO $ writeTVar pendingFiltering $ Map.keys $ mempRevMap mem'
-    sinkIO bcastMempoolState (bhTo, state, toList mem')
+    sinkIO bcastMempoolState (state, toList mem')
     return MempoolDict{ mempool   = mem'
                       , stateView = state
                       }

@@ -175,7 +175,7 @@ data Consensus view = Consensus
     -- ^ Index of all known headers that have enough work in them and
     --   otherwise valid. Note that it may include headers of blocks
     --   which turned out to be invalid.
-  , _bestHead       :: (BHOf view, view, Locator (BlockType view))
+  , _bestHead       :: (view, Locator (BlockType view))
     -- ^ Best head of blockchain. It's validated block with most work
     --   in it
   , _candidateHeads :: [Head (BlockType view)]
@@ -197,7 +197,7 @@ consensusGenesis
   -> Consensus view
 consensusGenesis genesis sview = Consensus
   { _blockIndex     = idx
-  , _bestHead       = (bh, sview, makeLocator bh)
+  , _bestHead       = (sview, makeLocator bh)
   , _candidateHeads = []
   , _badBlocks      = Set.empty
   , _requiredBlocks = Set.empty
@@ -302,7 +302,7 @@ processHeader header = do
   ----------------------------------------
   -- Update candidate heads
   candidates <- do
-    bestWork   <- use $ bestHead . _1 . to bhWork
+    bestWork   <- use $ bestHead . _1 . to stateBH . to bhWork
     candidates <- use candidateHeads
        -- If new header doesn't have more work than current head no
        -- adjustment is needed
@@ -346,7 +346,7 @@ growNewHead
   => BH b
   -> ExceptT (HeaderError b) (StateT (Consensus view) m) (Head b)
 growNewHead bh = do
-  best       <- use $ bestHead . _1
+  best       <- use $ bestHead . _1 . to stateBH
   bad        <- use badBlocks
   missing    <- use requiredBlocks
   --
@@ -410,7 +410,7 @@ invalidateBlock
   => BlockID b
   -> m ()
 invalidateBlock bid = do
-  bestWork <- use $ bestHead . _1 . to bhWork
+  bestWork <- use $ bestHead . _1 . to stateBH . to bhWork
   candidateHeads %= mapMaybe (truncateBch bestWork)
   badBlocks      %= Set.insert bid
   where
@@ -430,7 +430,7 @@ bestCandidate
   => BlockDB m b
   -> ExceptT (BlockError b) (StateT (Consensus view) m) [(BlockID b, BlockException b)]
 bestCandidate db = do
-  bestWork <- use $ bestHead . _1 . to bhWork
+  bestWork <- use $ bestHead . _1 . to stateBH . to bhWork
   missing  <- use requiredBlocks
   heads    <- use $ candidateHeads . to (  mapMaybe (findBest missing)
                                        >>> filter (\b -> bhWork b > bestWork)
@@ -439,9 +439,10 @@ bestCandidate db = do
   case heads of
     []  -> [] <$ cleanCandidates
     h:_ -> do
-      bIdx        <- use blockIndex
-      (best,st,_) <- use bestHead
-      let rollback _    = lift . revertBlock
+      bIdx   <- use blockIndex
+      (st,_) <- use bestHead      
+      let best = stateBH st
+          rollback _    = lift . revertBlock
           update   bh s = do
             block <- lift (retrieveBlock db $ bhBID bh) >>= \case
               Nothing -> error "CANT retrieveBlock"
@@ -457,7 +458,7 @@ bestCandidate db = do
       case state' of
         Left  (bid,e) -> do invalidateBlock bid
                             ((bid,e) :) <$> bestCandidate db
-        Right s       -> do bestHead .= (h,s,makeLocator h) >> cleanCandidates
+        Right s       -> do bestHead .= (s,makeLocator h) >> cleanCandidates
                             pure []
   where
     findBest missing Head{..} =
@@ -467,7 +468,7 @@ bestCandidate db = do
 
 cleanCandidates :: (StateView' view n b, MonadState (Consensus view) m) => m ()
 cleanCandidates = do
-  bestWork <- use $ bestHead . _1 . to bhWork
+  bestWork <- use $ bestHead . _1 . to stateBH . to bhWork
   missing  <- use requiredBlocks
   let truncateBch Head{..}
         | bhWork bchHead <= bestWork = Nothing
@@ -495,12 +496,10 @@ createConsensus
 createConsensus db sView bIdx = do
   let c0 = Consensus
         { _blockIndex     = bIdx
-        , _bestHead       = (bh, sView, makeLocator bh)
+        , _bestHead       = (sView, makeLocator bh)
         , _candidateHeads = [ Head b (Seq.singleton b) | b <- blockIndexHeads bIdx ]
         , _badBlocks      = Set.empty
         , _requiredBlocks = Set.empty
         }
-      bh = case stateBID sView `lookupIdx` bIdx of
-             Just b  -> b
-             Nothing -> error "Internal error: state's BID is not in index"
+      bh = stateBH sView
   execStateT (runExceptT (bestCandidate db)) c0

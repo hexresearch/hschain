@@ -25,7 +25,7 @@ import HSChain.Logger
 data ConsensusCh view = ConsensusCh
   { bcastAnnounce    :: Sink (MsgAnn (BlockType view))
     -- ^ Broadcast channel for gossip announcements (we got new best head)
-  , bcastChainUpdate :: Sink (BHOf view, BHOf view, view)
+  , bcastChainUpdate :: Sink (BHOf view, view)
     -- ^ Broadcast channel for announcing new head for mining etc.
   , sinkConsensusSt  :: Sink (Consensus view)
     -- ^ Updating state of consensus
@@ -47,19 +47,19 @@ threadConsensus db consensus0 ConsensusCh{..} = descendNamespace "cns" $ logOnEx
   logger InfoS "Staring consensus" ()
   flip evalStateT consensus0
     $ forever
-    $ do bh <- use $ bestHead . _1
+    $ do bh <- use $ bestHead . _1 . to stateBH
          consensusMonitor db =<< awaitIO srcRX
          sinkIO sinkConsensusSt =<< get
          sinkIO sinkReqBlocks   =<< use requiredBlocks
-         bh' <- use $ bestHead . _1
+         bh' <- use $ bestHead . _1 . to stateBH
          when (bhBID bh /= bhBID bh') $ do
            logger InfoS "New head" ( sl "h"   (bhHeight bh')
                                   <> sl "bid" (bhBID bh')
                                    )
-           st <- lift . flushState =<< use (bestHead . _2)
-           bestHead . _2 .= st
+           st <- lift . flushState =<< use (bestHead . _1)
+           bestHead . _1 .= st
            sinkIO bcastAnnounce $ AnnBestHead $ asHeader bh'
-           sinkIO bcastChainUpdate (bh, bh', st)
+           sinkIO bcastChainUpdate (bh, st)
 
 
 -- Handler for messages coming from peer.

@@ -54,7 +54,7 @@ runPeer conn mempoolAPI chans@PeerChans{..} = logOnException $ do
                     return PeerState{..}
   -- Send announce with current state at start
   do s <- atomicallyIO peerConsensuSt
-     sinkIO sinkGossip $ GossipAnn $ AnnBestHead $ s ^. bestHead . _1 . to asHeader
+     sinkIO sinkGossip $ GossipAnn $ AnnBestHead $ s ^. bestHead . _1 . to stateBH . to asHeader
   runConcurrently
     [ peerSend    conn (srcGossip <> peerBCastAnn)
     , peerRecv    conn     st chans sinkGossip mempoolAPI
@@ -103,7 +103,7 @@ peerRequestHeaders PeerState{..} PeerChans{..} sinkGossip =
           Nothing -> do
             writeTVar requestInFlight . Just . SentHeaders =<< acquireCatchup peerCatchup
             st <- peerConsensuSt
-            sink sinkGossip $ GossipReq $ ReqHeaders $ st^.bestHead._3
+            sink sinkGossip $ GossipReq $ ReqHeaders $ st ^. bestHead . _2
   where
     exitCatchup = writeTVar inCatchup False
 
@@ -249,7 +249,7 @@ locateHeaders consensus (Locator bidList) = do
     []
   where
     bIdx = consensus ^. blockIndex
-    best = consensus ^. bestHead . _1
+    best = consensus ^. bestHead . _1 . to stateBH
 
 reactCommand
   :: (MonadIO m)

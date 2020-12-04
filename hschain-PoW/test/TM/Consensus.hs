@@ -231,7 +231,7 @@ testReorg2 = runTest
 
 
 
-bestHeadOK :: IsMerkle f => Consensus (KVState MockChain m) -> GBlock (KV MockChain) f -> [String]
+bestHeadOK :: (Monad m,IsMerkle f) => Consensus (KVState MockChain m) -> GBlock (KV MockChain) f -> [String]
 bestHeadOK c h
   | expected == got = []
   | otherwise       =
@@ -241,7 +241,7 @@ bestHeadOK c h
       ]
   where
     expected = blockID h
-    got      = c^.bestHead._1.to bhBID
+    got      = c ^. bestHead . _1 . to stateBH . to bhBID
 
 -- candidatesOK :: Consensus m (KV MockChain) -> [Header (KV MockChain)] -> [String]
 -- candidatesOK c hs
@@ -354,5 +354,5 @@ checkConsensus c = concat
   -- , [
   ]
   where
-    bestWork = bhWork $ c ^. bestHead . _1
+    bestWork = c ^. bestHead . _1 . to stateBH . to bhWork
 
