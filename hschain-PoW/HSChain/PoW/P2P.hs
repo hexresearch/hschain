@@ -87,7 +87,7 @@ startNodeTest cfg netAPI db consensus = do
   let pexCh = PexCh
         { pexNodeCfg        = cfg
         , pexNetAPI         = netAPI
-        , pexMempoolAPI     = mempoolAPI
+        , pexSinkTX         = postTransaction mempoolAPI
         , pexMkAnnounce     = liftA2 (<>)
             (fmap GossipAnn <$> mkSrcAnn)
             (fmap GossipTX  <$> mempoolAnnounces)

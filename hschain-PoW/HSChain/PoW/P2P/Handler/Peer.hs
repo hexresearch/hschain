@@ -43,10 +43,9 @@ runPeer
      , StateView' view m b
      )
   => P2PConnection
-  -> MempoolAPI view
   -> PeerChans view
   -> m ()
-runPeer conn mempoolAPI chans@PeerChans{..} = logOnException $ do
+runPeer conn chans@PeerChans{..} = logOnException $ do
   logger InfoS "Starting peer" ()
   (sinkGossip, srcGossip) <- queuePair
   st <- liftIO $ do requestInFlight <- newTVarIO Nothing
@@ -58,7 +57,7 @@ runPeer conn mempoolAPI chans@PeerChans{..} = logOnException $ do
      sinkIO sinkGossip $ GossipAnn $ AnnBestHead $ s ^. bestHead . _1 . to stateBH . to asHeader
   runConcurrently
     [ peerSend    conn (srcGossip <> peerBCastAnn)
-    , peerRecv    conn     st chans sinkGossip mempoolAPI
+    , peerRecv    conn     st chans sinkGossip
     , peerRequestHeaders   st chans sinkGossip
     , peerRequestBlock     st chans sinkGossip
     , peerRequestAddresses st chans sinkGossip
@@ -165,9 +164,8 @@ peerRecv
   -> PeerState b
   -> PeerChans view
   -> Sink (GossipMsg b)         -- Send message to peer over network
-  -> MempoolAPI view
   -> m x
-peerRecv conn st@PeerState{..} PeerChans{..} sinkGossip  mempoolAPI =
+peerRecv conn st@PeerState{..} PeerChans{..} sinkGossip =
   descendNamespace "recv" $ logOnException $ forever $ do
     bs <- recv conn
     case deserialise bs of
@@ -224,7 +222,7 @@ peerRecv conn st@PeerState{..} PeerChans{..} sinkGossip  mempoolAPI =
       -- Transactions gossip
       GossipTX m -> case m of
         AnnNewTX tx   -> do logger DebugS "Got TX announce" ()
-                            sinkIO (postTransaction mempoolAPI) tx
+                            sinkIO peerSinkTX tx
 
   where
     -- Send message to consensus engine and release request lock when

@@ -198,6 +198,8 @@ data AskPeers = AskPeers
 data PeerChans view = PeerChans
   { peerSinkNewAddr   :: Sink [NetAddr]
     -- ^ Send newly received addresses
+  , peerSinkTX        :: Sink (TxOf view)
+    -- ^ Sink for posting transactions
   , peerSinkConsensus :: Sink (BoxRX (MonadOf view) (BlockType view))
     -- ^ Send new command to consensus
   , peerBCastAnn      :: Src  (GossipMsg (BlockType view))
@@ -213,6 +215,7 @@ data PeerChans view = PeerChans
   , peerConsensuSt    :: STM (Consensus view)
     -- ^ Current consensus state
   , peerBlockDB       :: BlockDB (MonadOf view) (BlockType view)
+    -- ^ Block database
   }
 
 data SentRequest b
