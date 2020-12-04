@@ -35,13 +35,13 @@ import HSChain.Types.Merkle.Types
 --
 ----------------------------------------------------------------
 
-data PexCh view = PexCh
+data PexCh m b = PexCh
   { pexNodeCfg        :: NodeCfg
   , pexNetAPI         :: NetworkAPI
-  , pexSinkTX         :: Sink (TxOf view)
-  , pexSinkBox        :: Sink (BoxRX (MonadOf view) (BlockType view))
-  , pexMkAnnounce     :: STM (Src (GossipMsg (BlockType view)))
-  , pexConsesusState  :: STM (Consensus view)
+  , pexSinkTX         :: Sink (Tx b)
+  , pexSinkBox        :: Sink (BoxRX m b)
+  , pexMkAnnounce     :: STM (Src (GossipMsg b))
+  , pexConsesusState  :: STM (BlockIndex b, BH b, Locator b)
   }
 
 runPEX
@@ -49,9 +49,9 @@ runPEX
      , Serialise (b Identity)
      , Serialise (b Proxy)
      , Serialise (Tx b)
-     , StateView' view m b
+     , BlockData b
      )
-  => PexCh view
+  => PexCh m b
   -> BlockRegistry b
   -> BlockDB m b
   -> ContT r m ()
@@ -65,14 +65,14 @@ runPEX PexCh{..} blockReg db = do
         peerBCastAskPeer <- mkSrcAsk
         peerBCastAnn     <- pexMkAnnounce
         return PeerChans
-          { peerSinkNewAddr   = sinkAddr
-          , peerSinkConsensus = pexSinkBox
-          , peerSinkTX        = pexSinkTX
-          , peerCatchup       = catchup
-          , peerReqBlocks     = blockReg
-          , peerConnections   = connectedPeersList reg
-          , peerConsensuSt    = pexConsesusState
-          , peerBlockDB       = db
+          { peerSinkNewAddr    = sinkAddr
+          , peerSinkConsensus  = pexSinkBox
+          , peerSinkTX         = pexSinkTX
+          , peerCatchup        = catchup
+          , peerReqBlocks      = blockReg
+          , peerConnections    = connectedPeersList reg
+          , peerConsensusState = pexConsesusState
+          , peerBlockDB        = db
           , ..
           }
   shepherd <- ContT withShepherd
@@ -88,13 +88,13 @@ acceptLoop
      , Serialise (b Identity)
      , Serialise (b Proxy)
      , Serialise (Tx b)
-     , StateView' view m b
+     , BlockData b
      )
   => NetworkAPI
   -> Shepherd
   -> PeerRegistry
   -> NonceSet
-  -> STM (PeerChans view)
+  -> STM (PeerChans m b)
   -> m ()
 acceptLoop NetworkAPI{..} shepherd reg nonceSet mkChans  = do
   bracket listenOn fst $ \(_,accept) -> forever $ do
@@ -125,14 +125,14 @@ connectTo
      , Serialise (b Identity)
      , Serialise (b Proxy)
      , Serialise (Tx b)
-     , StateView' view m b
+     , BlockData b
      )
   => NetworkAPI
   -> NetAddr
   -> Shepherd
   -> PeerRegistry
   -> NonceSet
-  -> PeerChans view
+  -> PeerChans m b
   -> m ()
 connectTo NetworkAPI{..} addr shepherd reg nonceSet chans =
   newSheep shepherd $ do
@@ -170,14 +170,14 @@ monitorConnections
      , Serialise (b Identity)
      , Serialise (b Proxy)
      , Serialise (Tx b)
-     , StateView' view m b
+     , BlockData b
      )
   => NodeCfg
   -> NetworkAPI
   -> Shepherd
   -> PeerRegistry
   -> NonceSet
-  -> STM (PeerChans view)
+  -> STM (PeerChans m b)
   -> m ()
 monitorConnections NodeCfg{..} netAPI shepherd reg nonceSet mkChans = forever $ do
   -- Check that we need and can connect to peers

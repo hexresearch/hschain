@@ -3,7 +3,6 @@
 module HSChain.PoW.P2P.Handler.Peer where
 
 import Codec.Serialise
-import Control.Arrow      ((&&&))
 import Control.Concurrent (ThreadId,myThreadId,throwTo)
 import Control.Concurrent.STM
 import Control.Lens
@@ -21,7 +20,6 @@ import HSChain.Control.Channels
 import HSChain.Network.Types
 import HSChain.PoW.P2P.Types
 import HSChain.PoW.Types
-import HSChain.PoW.Mempool
 import HSChain.Logger
 import HSChain.PoW.Consensus
 import HSChain.PoW.Exceptions
@@ -40,10 +38,10 @@ runPeer
      , Serialise (b Identity)
      , Serialise (b Proxy)
      , Serialise (Tx b)
-     , StateView' view m b
+     , BlockData b
      )
   => P2PConnection
-  -> PeerChans view
+  -> PeerChans m b
   -> m ()
 runPeer conn chans@PeerChans{..} = logOnException $ do
   logger InfoS "Starting peer" ()
@@ -53,8 +51,8 @@ runPeer conn chans@PeerChans{..} = logOnException $ do
                     inCatchup       <- newTVarIO False
                     return PeerState{..}
   -- Send announce with current state at start
-  do s <- atomicallyIO peerConsensuSt
-     sinkIO sinkGossip $ GossipAnn $ AnnBestHead $ s ^. bestHead . _1 . to stateBH . to asHeader
+  do (_,bh,_) <- atomicallyIO peerConsensusState
+     sinkIO sinkGossip $ GossipAnn $ AnnBestHead $ asHeader bh
   runConcurrently
     [ peerSend    conn (srcGossip <> peerBCastAnn)
     , peerRecv    conn     st chans sinkGossip
@@ -82,9 +80,9 @@ data PeerState b = PeerState
 
 -- Thread that requests header in case we're behind and need to catch up.
 peerRequestHeaders
-  :: (MonadIO m, MonadLogger m, MonadCatch m, StateView' view m b)
+  :: (MonadIO m, MonadLogger m, MonadCatch m, BlockData b)
   => PeerState b
-  -> PeerChans view
+  -> PeerChans m b
   -> Sink (GossipMsg b)
   -> m x
 peerRequestHeaders PeerState{..} PeerChans{..} sinkGossip =
@@ -97,21 +95,20 @@ peerRequestHeaders PeerState{..} PeerChans{..} sinkGossip =
     readTVar peersBestHead >>= \case
       Nothing -> exitCatchup
       Just h  -> do
-        bidx <- peerConsensuSt
-        case blockID h `lookupIdx` (bidx^.blockIndex) of
+        (bIdx,_,loc) <- peerConsensusState
+        case blockID h `lookupIdx` bIdx of
           Just _  -> exitCatchup
           Nothing -> do
             writeTVar requestInFlight . Just . SentHeaders =<< acquireCatchup peerCatchup
-            st <- peerConsensuSt
-            sink sinkGossip $ GossipReq $ ReqHeaders $ st ^. bestHead . _2
+            sink sinkGossip $ GossipReq $ ReqHeaders loc
   where
     exitCatchup = writeTVar inCatchup False
 
 -- Thread that requests missing blocks
 peerRequestBlock
-  :: (MonadIO m, MonadLogger m, MonadCatch m, BlockData b, BlockType view ~ b)
+  :: (MonadIO m, MonadLogger m, MonadCatch m, BlockData b)
   => PeerState b
-  -> PeerChans view
+  -> PeerChans m b
   -> Sink (GossipMsg b)
   -> m x
 peerRequestBlock PeerState{..} PeerChans{..} sinkGossip =
@@ -126,7 +123,7 @@ peerRequestBlock PeerState{..} PeerChans{..} sinkGossip =
 
 peerRequestAddresses
   :: (MonadIO m, MonadLogger m, MonadMask m)
-  => PeerState b -> PeerChans view -> Sink (GossipMsg b) -> m x
+  => PeerState b -> PeerChans m b -> Sink (GossipMsg b) -> m x
 peerRequestAddresses PeerState{..} PeerChans{..} sinkGossip =
   descendNamespace "req_Addr" $ logOnException $ forever $ do
     AskPeers <- atomicallyIO $ await peerBCastAskPeer
@@ -158,11 +155,11 @@ peerRecv
      , Serialise (b Identity)
      , Serialise (b Proxy)
      , Serialise (Tx b)
-     , StateView' view m b
+     , BlockData b
      )
   => P2PConnection
   -> PeerState b
-  -> PeerChans view
+  -> PeerChans m b
   -> Sink (GossipMsg b)         -- Send message to peer over network
   -> m x
 peerRecv conn st@PeerState{..} PeerChans{..} sinkGossip =
@@ -210,7 +207,7 @@ peerRecv conn st@PeerState{..} PeerChans{..} sinkGossip =
         ReqPeers       ->
           sinkIO sinkGossip . GossipResp . RespPeers =<< atomicallyIO peerConnections
         ReqHeaders loc -> do
-          (bIdx,bh) <- (view blockIndex &&& view (bestHead . _1 . to stateBH)) <$> atomicallyIO peerConsensuSt
+          (bIdx,bh,_) <- atomicallyIO peerConsensusState
           sinkIO sinkGossip $ GossipResp $ case locateHeaders bIdx bh loc of
             Nothing -> RespNack
             Just hs -> RespHeaders hs

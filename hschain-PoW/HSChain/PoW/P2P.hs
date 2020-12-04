@@ -80,7 +80,7 @@ startNodeTest cfg netAPI db consensus = do
   (sinkChain,  mkSrcChain) <- broadcastPair
   (sinkBIDs,   srcBIDs)    <- queuePair
   blockReg                 <- newBlockRegistry srcBIDs
-  bIdx                     <- liftIO $ newTVarIO consensus
+  bConsesus                <- liftIO $ newTVarIO consensus
   -- Start mempool
   (mempoolAPI,MempoolCh{..}) <- startMempool db (consensus ^. bestHead . _1)
   -- Start PEX
@@ -92,7 +92,10 @@ startNodeTest cfg netAPI db consensus = do
             (fmap GossipAnn <$> mkSrcAnn)
             (fmap GossipTX  <$> mempoolAnnounces)
         , pexSinkBox        = sinkBOX
-        , pexConsesusState  = readTVar bIdx
+        , pexConsesusState  = do c <- readTVar bConsesus
+                                 pure ( c ^. blockIndex
+                                      , c ^. bestHead . _1 . to stateBH
+                                      , c ^. bestHead . _2)
         }
 
   runPEX pexCh blockReg db
@@ -101,13 +104,13 @@ startNodeTest cfg netAPI db consensus = do
         { bcastAnnounce    = sinkAnn
         , bcastChainUpdate = sinkChain
                           <> (contramap (\(bh,s) -> MempHeadChange bh s) mempoolConsensusCh)
-        , sinkConsensusSt  = Sink $ writeTVar bIdx
+        , sinkConsensusSt  = Sink $ writeTVar bConsesus
         , sinkReqBlocks    = sinkBIDs
         , srcRX            = srcBOX
         }
   cforkLinked $ threadConsensus db consensus consensusCh
   return
-    ( PoW { currentConsensus     = readTVar bIdx
+    ( PoW { currentConsensus     = readTVar bConsesus
           , sendNewBlock         = \(!b) -> do
               res <- liftIO newEmptyMVar
               sinkIO sinkBOX $ BoxRX $ \cnt -> liftIO . putMVar res =<< cnt (RxMined b)
