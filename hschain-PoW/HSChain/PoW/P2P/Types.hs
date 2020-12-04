@@ -205,9 +205,11 @@ data PeerChans view = PeerChans
   , peerBCastAskPeer  :: Src   AskPeers
     -- ^ Broadcast channel for asking for more peers
   , peerCatchup       :: CatchupThrottle
+    -- ^ Lock for catching up when downloading headers
   , peerReqBlocks     :: BlockRegistry (BlockType view)
+    -- ^ Set of block in process of being requested
   , peerConnections   :: STM [NetAddr]
-    -- ^
+    -- ^ Set of known peers
   , peerConsensuSt    :: STM (Consensus view)
     -- ^ Current consensus state
   , peerBlockDB       :: BlockDB (MonadOf view) (BlockType view)
