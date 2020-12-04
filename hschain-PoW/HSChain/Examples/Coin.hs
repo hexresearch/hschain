@@ -487,7 +487,7 @@ data CoinState (m :: * -> *) = CoinState
 instance (MonadDB m, MonadThrow m, MonadIO m) => StateView (CoinState m) where
   type BlockType (CoinState m) = Coin
   type MonadOf   (CoinState m) = m
-  stateBID = bhBID . overlayTip . csOverlay
+  stateBH = overlayTip . csOverlay
   ----------------
   applyBlock CoinState{..} bIdx bh b = runExceptT $ do
     -- Consistency checks

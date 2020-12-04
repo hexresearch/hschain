@@ -20,6 +20,7 @@ module HSChain.PoW.Consensus
   , makeLocator
     -- * View on blockchain state
   , StateView(..)
+  , stateBID
   , StateView'
   , BlockOf
   , HeaderOf
@@ -118,8 +119,8 @@ class BlockData (BlockType view) => StateView view where
   type BlockType view :: (* -> *) -> *
   type MonadOf   view :: * -> *
 
-  -- | Hash of block for which state is calculated
-  stateBID :: view -> BlockID (BlockType view)
+  -- | Point in block registry for which state is calculated
+  stateBH :: view -> BHOf view
   -- | Apply block on top of current state. Function should return
   --   @Nothing@ if block is not valid. It's always called with @BH@
   --   corresponding to given block. If it's not the case it's
@@ -139,6 +140,9 @@ class BlockData (BlockType view) => StateView view where
   --   transaction in the mempool.
   checkTx :: view -> TxOf view -> MonadOf view (Either (BlockExceptionOf view) ())
 
+-- | Hash of block for which state is calculated
+stateBID :: StateView view => view -> BlockID (BlockType view)
+stateBID = bhBID . stateBH
 
 class ( StateView view
       , m ~ MonadOf view

@@ -48,7 +48,9 @@ testRestart = do
           , coinNonce  = 0
           }
     db   <- lift $ blockDatabase genesisCoin
-    c0   <- lift $ createConsensus db startingState =<< buildBlockIndex db
+    bIdx <- lift $ buildBlockIndex db
+    let Just bh = lookupIdx (blockID genesisCoin) bIdx
+    c0   <- lift $ createConsensus db (startingState bh) bIdx
     pow  <- startNode netcfg net db c0
     cforkLinked $ genericMiningLoop mine pow
     -- Await for new blocks
@@ -57,12 +59,14 @@ testRestart = do
       (BH{bhHeight=h},_) <- awaitIO ch
       when (h >= Height 10) $ throwM (Abort h)
   -- Reinitialize
-  do db <- blockDatabase genesisCoin
-     c0 <- createConsensus db startingState =<< buildBlockIndex db
+  do db   <- blockDatabase genesisCoin
+     bIdx <- buildBlockIndex db
+     let Just bh = lookupIdx (blockID genesisCoin) bIdx
+     c0 <- createConsensus db (startingState bh) bIdx
      liftIO $ h @=? (c0 ^. bestHead . _1 . to bhHeight)
   where
-    startingState :: DummyState (HSChainT IO) Coin
-    startingState = DummyState (blockID genesisCoin) (error "No rewind past genesis")
+    startingState :: BH Coin -> DummyState (HSChainT IO) Coin
+    startingState bh = DummyState bh (error "No rewind past genesis")
     netcfg = NodeCfg { nKnownPeers     = 3
                      , nConnectedPeers = 3
                      , initialPeers    = []

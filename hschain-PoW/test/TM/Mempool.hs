@@ -33,10 +33,12 @@ tests = testGroup "PoW consensus"
 testMempoolRollback :: IO ()
 testMempoolRollback = runNoLogsT $ evalContT $ do
   mocknet <- liftIO newMockNet
+  db   <- lift $ inMemoryDB genesis
+  bIdx <- lift $ buildBlockIndex db
+  let Just bh = lookupIdx (blockID genesis) bIdx
+      sView = kvMemoryView bh
+  c0   <- lift $ createConsensus db sView bIdx
   let net   = createMockNode mocknet $ NetAddrV4 1 1000
-      sView = kvMemoryView (blockID genesis)
-  db <- lift $ inMemoryDB genesis
-  c0 <- lift $ createConsensus db sView =<< buildBlockIndex db
   (pow,sinkBOX) <- startNodeTest netcfg net db c0
   let api@MempoolAPI{..} = mempoolAPI pow
   ch <- atomicallyIO mempoolUpdates

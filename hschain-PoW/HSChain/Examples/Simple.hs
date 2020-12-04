@@ -165,7 +165,7 @@ instance (KVConfig cfg) => Mineable (KV cfg) where
 
 
 data KVState cfg (m :: * -> *) = KVState
-  { kvstBID   :: BlockID (KV cfg)
+  { kvstBH    :: BH (KV cfg)
   , kvstPrev  :: KVState cfg m
   , kvstState :: Map.Map Int String
   }
@@ -173,13 +173,13 @@ data KVState cfg (m :: * -> *) = KVState
 instance (Monad m, KVConfig cfg) => StateView (KVState cfg m) where
   type BlockType (KVState cfg m) = (KV cfg)
   type MonadOf   (KVState cfg m) = m
-  stateBID    = kvstBID
+  stateBH     = kvstBH
   revertBlock = pure . kvstPrev
   flushState  = pure
   --
-  applyBlock view0@KVState{..} _ _ b = pure $ do
+  applyBlock view0@KVState{..} _ bh b = pure $ do
     st' <- kvViewStep b kvstState
-    return KVState { kvstBID   = blockID b
+    return KVState { kvstBH    = bh
                    , kvstPrev  = view0
                    , kvstState = st'
                    }
@@ -188,9 +188,9 @@ instance (Monad m, KVConfig cfg) => StateView (KVState cfg m) where
     | k `Map.notMember` kvstState = pure $ Right ()
     | otherwise                   = pure $ Left KVError
   
-kvMemoryView :: forall m cfg. BlockID (KV cfg) -> KVState cfg m
-kvMemoryView bid = KVState
-  { kvstBID   = bid
+kvMemoryView :: forall m cfg. BH (KV cfg) -> KVState cfg m
+kvMemoryView bh = KVState
+  { kvstBH    = bh
   , kvstPrev  = error "No revinding past genesis"
   , kvstState = mempty
   }

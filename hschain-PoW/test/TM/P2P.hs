@@ -122,15 +122,18 @@ recvM = TestM $ do
 -- We use PEX setting which preclude it from sending any messages
 runNetTest :: TestM () -> IO ()
 runNetTest test = do
-  db  <- inMemoryDB genesis
+  db   <- inMemoryDB genesis
+  -- Network
   net <- newMockNet
-  let s0 = consensusGenesis (head mockchain)
-         ( DummyState (blockID genesis) (error "No rewind past genesis")
-         :: DummyState (NoLogsT IO) (KV MockChain)
-         )
   let apiNode        = createMockNode net ipNode
       NetworkAPI{..} = createMockNode net ipOur
   runNoLogsT $ evalContT $ do
+    bIdx <- lift $ buildBlockIndex db
+    let Just bh = lookupIdx (blockID genesis) bIdx
+    let s0 = consensusGenesis (head mockchain)
+          ( DummyState bh (error "No rewind past genesis")
+          :: DummyState (NoLogsT IO) (KV MockChain)
+          )
     _ <- startNode (NodeCfg 0 0 []) apiNode db s0
     lift $ lift $ do -- Establish connection
       --

@@ -297,8 +297,10 @@ data Message
 
 runTest :: [Message] -> IO ()
 runTest msgList = runNoLogsT $ do
-  db <- inMemoryDB genesis
-  let s0 = consensusGenesis (head mockchain) $ kvMemoryView (blockID genesis)
+  db   <- inMemoryDB genesis
+  bIdx <- buildBlockIndex db
+  let Just bh = lookupIdx (blockID $ head mockchain) bIdx
+      s0      = consensusGenesis (head mockchain) $ kvMemoryView bh
   runExceptT (loop db s0 msgList) >>= \case
     Left  e  -> error $ unlines e
     Right () -> return ()

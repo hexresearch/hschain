@@ -129,13 +129,13 @@ header3' = toHeader block3'
 header4' = toHeader block4'
 
 
-data DummyState m b = DummyState (BlockID b) (DummyState m b)
+data DummyState m b = DummyState (BH b) (DummyState m b)
 
 instance (Monad m, BlockData b) => StateView (DummyState m b) where
   type BlockType (DummyState m b) = b
   type MonadOf   (DummyState m b) = m
-  stateBID (DummyState bid _) = bid
-  applyBlock prev _ bh _ = return $ Right $ DummyState (bhBID bh) prev
+  stateBH (DummyState bh _) = bh
+  applyBlock prev _ bh _ = return $ Right $ DummyState bh prev
   revertBlock (DummyState _ prev) = return prev
   flushState = return
   checkTx = error "Transaction checking is not supported"
