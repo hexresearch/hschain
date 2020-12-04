@@ -3,6 +3,7 @@
 module HSChain.PoW.P2P.Handler.Peer where
 
 import Codec.Serialise
+import Control.Arrow      ((&&&))
 import Control.Concurrent (ThreadId,myThreadId,throwTo)
 import Control.Concurrent.STM
 import Control.Lens
@@ -211,8 +212,8 @@ peerRecv conn st@PeerState{..} PeerChans{..} sinkGossip  mempoolAPI =
         ReqPeers       ->
           sinkIO sinkGossip . GossipResp . RespPeers =<< atomicallyIO peerConnections
         ReqHeaders loc -> do
-          c <- atomicallyIO peerConsensuSt
-          sinkIO sinkGossip $ GossipResp $ case locateHeaders c loc of
+          (bIdx,bh) <- (view blockIndex &&& view (bestHead . _1 . to stateBH)) <$> atomicallyIO peerConsensuSt
+          sinkIO sinkGossip $ GossipResp $ case locateHeaders bIdx bh loc of
             Nothing -> RespNack
             Just hs -> RespHeaders hs
         ReqBlock   bid -> do
@@ -235,11 +236,12 @@ peerRecv conn st@PeerState{..} PeerChans{..} sinkGossip  mempoolAPI =
         lift release
 
 locateHeaders
-  :: (StateView' view m b)
-  => Consensus view
-  -> Locator b
+  :: (BlockData b)
+  => BlockIndex b -- ^ Block index
+  -> BH b         -- ^ Current best head
+  -> Locator b    -- ^ Request locator 
   -> Maybe [Header b]
-locateHeaders consensus (Locator bidList) = do
+locateHeaders bIdx best (Locator bidList) = do
   -- Find first index that we know about
   bh <- asum $ (`lookupIdx` bIdx) <$> bidList
   return $ traverseBlockIndex
@@ -247,9 +249,7 @@ locateHeaders consensus (Locator bidList) = do
     (\_ -> id)
     best bh
     []
-  where
-    bIdx = consensus ^. blockIndex
-    best = consensus ^. bestHead . _1 . to stateBH
+
 
 reactCommand
   :: (MonadIO m)
