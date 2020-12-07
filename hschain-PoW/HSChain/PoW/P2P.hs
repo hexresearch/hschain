@@ -100,13 +100,13 @@ startNodeTest cfg netAPI db consensus = do
             (fmap GossipAnn <$> mkSrcAnn)
             (fmap GossipTX  <$> mempoolAnnounces)
         , pexSinkBox        = sinkBOX
+        , pexBlockRegistry  = blockReg
         , pexConsesusState  = do c <- readTVar bConsesus
                                  pure ( c ^. blockIndex
                                       , c ^. bestHead . _1 . to stateBH
                                       , c ^. bestHead . _2)
         }
-
-  runPEX pexCh blockReg db
+  runPEX pexCh db
   -- Consensus thread
   let consensusCh = ConsensusCh
         { bcastAnnounce    = sinkAnn

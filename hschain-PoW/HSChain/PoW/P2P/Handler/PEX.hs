@@ -40,6 +40,7 @@ data PexCh m b = PexCh
   , pexNetAPI         :: NetworkAPI
   , pexSinkTX         :: Sink (Tx b)
   , pexSinkBox        :: Sink (BoxRX m b)
+  , pexBlockRegistry  :: BlockRegistry b
   , pexMkAnnounce     :: STM (Src (GossipMsg b))
   , pexConsesusState  :: STM (BlockIndex b, BH b, Locator b)
   }
@@ -52,10 +53,9 @@ runPEX
      , BlockData b
      )
   => PexCh m b
-  -> BlockRegistry b
   -> BlockDB m b
   -> ContT r m ()
-runPEX PexCh{..} blockReg db = do
+runPEX PexCh{..} db = do
   reg                <- newPeerRegistry $ initialPeers pexNodeCfg
   nonces             <- newNonceSet
   (sinkAddr,srcAddr) <- queuePair
@@ -69,7 +69,7 @@ runPEX PexCh{..} blockReg db = do
           , peerSinkConsensus  = pexSinkBox
           , peerSinkTX         = pexSinkTX
           , peerCatchup        = catchup
-          , peerReqBlocks      = blockReg
+          , peerReqBlocks      = pexBlockRegistry
           , peerConnections    = connectedPeersList reg
           , peerConsensusState = pexConsesusState
           , peerBlockDB        = db
