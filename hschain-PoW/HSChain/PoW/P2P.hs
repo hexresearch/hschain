@@ -1,10 +1,14 @@
 {-# LANGUAGE KindSignatures #-}
 -- |
 module HSChain.PoW.P2P
-  ( PoW(..)
+  ( -- * Full node
+    PoW(..)
   , MempoolAPI(..)
   , startNode
   , startNodeTest
+    -- * Light node
+  , LightPoW(..)
+  , lightNode
   ) where
 
 import Codec.Serialise
@@ -28,6 +32,10 @@ import HSChain.PoW.P2P.Types
 import HSChain.PoW.Types
 import HSChain.Types.Merkle.Types
 
+
+----------------------------------------------------------------
+-- Full node
+----------------------------------------------------------------
 
 -- | Dictionary with functions for interacting with consensus engine
 data PoW view = PoW
@@ -123,3 +131,25 @@ startNodeTest cfg netAPI db consensus = do
           }
     , sinkBOX
     )
+
+
+----------------------------------------------------------------
+-- Light node
+----------------------------------------------------------------
+
+data LightPoW b = LightPoW
+  { bestHeadUpdates :: STM (Src (BH b))
+  }
+
+lightNode
+  :: ( MonadMask m, MonadFork m, MonadLogger m
+     , Serialise (b Identity)
+     , Serialise (b Proxy)
+     , Serialise (Tx b)
+     )
+  => NodeCfg
+  -> NetworkAPI
+  -> BlockDB   m b
+  -> ContT r m (LightPoW b)
+lightNode _cfg _netAPI _db = undefined
+
