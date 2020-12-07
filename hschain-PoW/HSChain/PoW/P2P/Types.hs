@@ -198,7 +198,7 @@ data AskPeers = AskPeers
 data PeerChans m b = PeerChans
   { peerSinkNewAddr    :: Sink [NetAddr]
     -- ^ Send newly received addresses
-  , peerSinkTX        :: Sink (Tx b)
+  , peerSinkTX         :: Sink (Tx b)
     -- ^ Sink for posting transactions
   , peerSinkConsensus  :: Sink (BoxRX m b)
     -- ^ Send new command to consensus
