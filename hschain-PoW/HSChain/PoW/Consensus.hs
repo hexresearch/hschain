@@ -50,6 +50,7 @@ module HSChain.PoW.Consensus
   , BlockError(..)
     -- * Light consensus
   , LightConsensus(..)
+  , createLightConsensus
   , lightBlockIndex
   , bestLightHead
   , processLightHeader
@@ -61,12 +62,12 @@ import Control.Lens     hiding (pattern Empty, (|>), index)
 import Control.Monad
 import Control.Monad.Except
 import Control.Monad.State.Strict
-import Data.List          (sortOn)
+import Data.List          (sortOn,maximumBy)
 import Data.Typeable      (Typeable)
 import Data.Maybe
 import Data.Sequence      (Seq(Empty,(:<|),(:|>)),(|>))
 import Data.Set           (Set)
-import Data.Ord           (Down(..))
+import Data.Ord           (Down(..), comparing)
 import qualified Data.Aeson      as JSON
 import qualified Data.Set        as Set
 import qualified Data.Sequence   as Seq
@@ -523,6 +524,14 @@ data LightConsensus b = LightConsensus
   }
 
 makeLenses ''LightConsensus
+
+createLightConsensus :: (BlockData b) => BlockIndex b -> LightConsensus b
+createLightConsensus bIdx = LightConsensus
+  { _lightBlockIndex = bIdx
+  , _bestLightHead   = (bh, makeLocator bh)
+  }
+  where
+    bh = maximumBy (comparing bhWork) $ blockIndexHeads bIdx
 
 processLightHeader
   :: (BlockData b, MonadIO m)
