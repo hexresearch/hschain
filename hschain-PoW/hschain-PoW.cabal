@@ -166,6 +166,66 @@ Executable hschain-PoW-coin
     FlexibleContexts
     FlexibleInstances
 
+Executable hschain-PoW-light
+  Ghc-options:         -Wall -threaded -rtsopts "-with-rtsopts=-N -T -qn1 -A64M"
+  Default-Language:    Haskell2010
+  Build-Depends:       base                 >=4.9 && <5
+                     , hschain-PoW
+                     , hschain-net
+                     , hschain-merkle
+                     , hschain-types
+                     , hschain-db
+                     , hschain-logger
+                     , hschain-crypto
+                     , hschain-control
+                     , hschain-config
+                     --
+                     , aeson
+                     , katip
+                     , mtl
+                     , lens
+                     , text
+                     , bytestring
+                     , containers
+                     , vector
+                     , random
+                     , serialise
+                     , exceptions
+                     , transformers
+                     , optparse-applicative
+                     , yaml
+                     --
+                     , servant
+                     , servant-server
+                     , warp
+  hs-source-dirs:      exe
+  Main-is:             coin-light.hs
+  default-extensions:
+    MonoLocalBinds
+    -- Deriving
+    DeriveAnyClass
+    DeriveFoldable
+    DeriveFunctor
+    DeriveGeneric
+    DeriveTraversable
+    DerivingStrategies
+    DerivingVia
+    GeneralizedNewtypeDeriving
+    StandaloneDeriving
+    -- Sugar
+    BangPatterns
+    LambdaCase
+    MultiWayIf
+    RecordWildCards
+    OverloadedStrings
+    TypeOperators
+    -- Types
+    ScopedTypeVariables
+    TypeApplications
+    -- Instances
+    FlexibleContexts
+    FlexibleInstances
+
 Executable hschain-PoW-key
   Ghc-options:         -Wall -threaded -rtsopts "-with-rtsopts=-N -T -qn1 -A64M"
   Default-Language:    Haskell2010

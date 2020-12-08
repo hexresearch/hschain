@@ -183,6 +183,6 @@ lightNode cfg netAPI db consensus = do
         , lcAnnounce = sinkAnn
         , lcRX       = srcBOX
         }
-  cforkLinked $ threadLightConsensus db undefined lightCh
+  cforkLinked $ threadLightConsensus db consensus lightCh
   -- Done
   pure LightPoW { bestHeadUpdates = mkSrcUpd }
