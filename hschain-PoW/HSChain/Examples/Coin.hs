@@ -587,16 +587,18 @@ coinStateView
 coinStateView genesis = do
   initCoinDB
   storeCoinBlock genesis
-  bIdx <- buildBlockIndex db
+  bIdx <- buildBlockIndex coinDB
   st   <- mustQueryRW $ initializeStateView genesis bIdx
-  return (db, bIdx, st)
-  where
-    db = BlockDB { storeHeader        = storeCoinHeader
-                 , storeBlock         = storeCoinBlock
-                 , retrieveBlock      = retrieveCoinBlock
-                 , retrieveHeader     = retrieveCoinHeader
-                 , retrieveAllHeaders = retrieveAllCoinHeaders
-                 }
+  return (coinDB, bIdx, st)
+
+coinDB :: (MonadThrow m, MonadDB m, MonadIO m) => BlockDB m Coin
+coinDB = BlockDB
+  { storeHeader        = storeCoinHeader
+  , storeBlock         = storeCoinBlock
+  , retrieveBlock      = retrieveCoinBlock
+  , retrieveHeader     = retrieveCoinHeader
+  , retrieveAllHeaders = retrieveAllCoinHeaders
+  }
 
 
 initializeStateView
