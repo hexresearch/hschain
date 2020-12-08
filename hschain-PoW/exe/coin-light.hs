@@ -84,7 +84,7 @@ main = do
       bIdx <- lift $ buildBlockIndex coinDB
       liftIO $ print $ Map.keys $ _blockIDMap bIdx
       liftIO $ print $ map bhBID $ blockIndexHeads bIdx
-      let c0 = createLightConsensus bIdx
+      let c0 = createLightConsensus genesis bIdx
       pow <- lightNode netcfg net coinDB c0
       -- report progress
       void $ liftIO $ forkIO $ do

@@ -525,13 +525,16 @@ data LightConsensus b = LightConsensus
 
 makeLenses ''LightConsensus
 
-createLightConsensus :: (BlockData b) => BlockIndex b -> LightConsensus b
-createLightConsensus bIdx = LightConsensus
+createLightConsensus :: (BlockData b) => Block b -> BlockIndex b -> LightConsensus b
+createLightConsensus genesis bIdx = LightConsensus
   { _lightBlockIndex = bIdx
   , _bestLightHead   = (bh, makeLocator bh)
   }
   where
-    bh = maximumBy (comparing bhWork) $ blockIndexHeads bIdx
+    Just bhGen = blockID genesis `lookupIdx` bIdx
+    bh = case blockIndexHeads bIdx of
+      []  -> bhGen
+      bhs -> maximumBy (comparing bhWork) bhs
 
 processLightHeader
   :: (BlockData b, MonadIO m)
