@@ -7,6 +7,7 @@ module HSChain.PoW.P2P
   , startNode
   , startNodeTest
     -- * Light node
+  , LightConsensus(..)
   , LightPoW(..)
   , lightNode
   ) where
@@ -138,7 +139,7 @@ startNodeTest cfg netAPI db consensus = do
 ----------------------------------------------------------------
 
 data LightPoW b = LightPoW
-  { bestHeadUpdates :: STM (Src (BH b))
+  { bestHeadUpdates :: STM (Src (LightConsensus b))
   }
 
 lightNode
@@ -146,10 +147,42 @@ lightNode
      , Serialise (b Identity)
      , Serialise (b Proxy)
      , Serialise (Tx b)
+     , BlockData b
      )
   => NodeCfg
   -> NetworkAPI
   -> BlockDB   m b
+  -> LightConsensus b
   -> ContT r m (LightPoW b)
-lightNode _cfg _netAPI _db = undefined
-
+lightNode cfg netAPI db consensus = do
+  lift $ logger InfoS "Starting PoW node" ()
+  (sinkBOX, srcBOX)   <- queuePair
+  (sinkUpd, mkSrcUpd) <- broadcastPair
+  (sinkAnn, mkSrcAnn) <- broadcastPair
+  blockReg            <- newBlockRegistry mempty
+  vConsensus          <- liftIO $ newTVarIO consensus
+  -- Start PEX
+  let pexCh = PexCh
+        { pexNodeCfg       = cfg
+        , pexNetAPI        = netAPI
+        , pexSinkTX        = mempty
+        , pexSinkBox       = sinkBOX
+        , pexMkAnnounce    = fmap GossipAnn <$> mkSrcAnn
+        , pexBlockRegistry = blockReg
+        , pexConsesusState = do c <- readTVar vConsensus
+                                pure ( c ^. lightBlockIndex
+                                     , c ^. bestLightHead . _1
+                                     , c ^. bestLightHead . _2
+                                     )
+        }
+  runPEX pexCh db
+  --
+  let lightCh = LightConsensusCh
+        { lcUpdate   = sinkUpd
+                    <> Sink (writeTVar vConsensus)
+        , lcAnnounce = sinkAnn
+        , lcRX       = srcBOX
+        }
+  cforkLinked $ threadLightConsensus db undefined lightCh
+  -- Done
+  pure LightPoW { bestHeadUpdates = mkSrcUpd }

@@ -40,7 +40,7 @@ module HSChain.PoW.Consensus
   , candidateHeads
   , badBlocks
   , requiredBlocks
-    --
+    -- ** Consensus transitions
   , consensusGenesis
   , createConsensus
   , Head(..)
@@ -48,6 +48,11 @@ module HSChain.PoW.Consensus
   , processBlock
   , HeaderError(..)
   , BlockError(..)
+    -- * Light consensus
+  , LightConsensus(..)
+  , lightBlockIndex
+  , bestLightHead
+  , processLightHeader
   ) where
 
 import Control.Category ((>>>))
@@ -269,8 +274,6 @@ processHeader
   :: (StateView' view m b, MonadIO m)
   => Header b
   -> ExceptT (HeaderError b) (StateT (Consensus view) m) ()
--- FIXME: Decide what to do with time?
--- FIXME: Decide how to track difficulty adjustment
 processHeader header = do
   index    <- use blockIndex
   -- If we already have header do nothing
@@ -503,3 +506,59 @@ createConsensus db sView bIdx = do
         }
       bh = stateBH sView
   execStateT (runExceptT (bestCandidate db)) c0
+
+
+----------------------------------------------------------------
+-- Light consensus
+----------------------------------------------------------------
+
+-- | Complete description of PoW consensus
+data LightConsensus b = LightConsensus
+  { _lightBlockIndex :: BlockIndex b
+    -- ^ Index of all known headers that have enough work in them and
+    --   otherwise valid. Note that it may include headers of blocks
+    --   which turned out to be invalid.
+  , _bestLightHead   :: (BH b, Locator b)
+    -- ^ Best head of blockchain. It's attached block with most work in it
+  }
+
+makeLenses ''LightConsensus
+
+processLightHeader
+  :: (BlockData b, MonadIO m)
+  => BlockDB m b
+  -> Header b
+  -> ExceptT (HeaderError b) (StateT (LightConsensus b) m) ()
+processLightHeader db header = do
+  index <- use lightBlockIndex
+  -- If we already have header do nothing
+  case bid `lookupIdx` index of
+    Just _  -> throwError ErrH'KnownHeader
+    Nothing -> return ()  
+  -- Check that we have parent block
+  parent <- maybe (throwError ErrH'UnknownParent) return
+          $ flip lookupIdx index =<< prevBlock header
+  -- Perform header validations
+  unless (succ (bhHeight parent) == blockHeight header)
+    $ throwError ErrH'HeightMismatch
+  now <- getCurrentTime
+  validateHeader parent now header >>= \case
+    Left err -> throwError $ ErrH'ValidationFailure err
+    Right () -> return ()
+  -- Create new index entry
+  let work = bhWork parent <> blockWork header
+      bh   = BH { bhHeight   = blockHeight header
+                , bhTime     = blockTime   header
+                , bhBID      = bid
+                , bhWork     = work
+                , bhPrevious = Just parent
+                , bhData     = blockData header
+                }
+  bestWork <- use $ bestLightHead . _1 . to bhWork
+  lift $ lift $ storeHeader db header
+  -- Update block index
+  when (work > bestWork) $ do
+    bestLightHead .= (bh, makeLocator bh)
+  lightBlockIndex %= insertIdx bh
+  where
+    bid = blockID header
