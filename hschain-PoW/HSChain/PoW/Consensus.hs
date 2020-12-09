@@ -20,6 +20,7 @@ module HSChain.PoW.Consensus
   , makeLocator
     -- * View on blockchain state
   , StateView(..)
+  , stateBID
   , StateView'
   , BlockOf
   , HeaderOf
@@ -39,7 +40,7 @@ module HSChain.PoW.Consensus
   , candidateHeads
   , badBlocks
   , requiredBlocks
-    --
+    -- ** Consensus transitions
   , consensusGenesis
   , createConsensus
   , Head(..)
@@ -47,6 +48,12 @@ module HSChain.PoW.Consensus
   , processBlock
   , HeaderError(..)
   , BlockError(..)
+    -- * Light consensus
+  , LightConsensus(..)
+  , createLightConsensus
+  , lightBlockIndex
+  , bestLightHead
+  , processLightHeader
   ) where
 
 import Control.Category ((>>>))
@@ -55,12 +62,12 @@ import Control.Lens     hiding (pattern Empty, (|>), index)
 import Control.Monad
 import Control.Monad.Except
 import Control.Monad.State.Strict
-import Data.List          (sortOn)
+import Data.List          (sortOn,maximumBy)
 import Data.Typeable      (Typeable)
 import Data.Maybe
 import Data.Sequence      (Seq(Empty,(:<|),(:|>)),(|>))
 import Data.Set           (Set)
-import Data.Ord           (Down(..))
+import Data.Ord           (Down(..), comparing)
 import qualified Data.Aeson      as JSON
 import qualified Data.Set        as Set
 import qualified Data.Sequence   as Seq
@@ -118,8 +125,8 @@ class BlockData (BlockType view) => StateView view where
   type BlockType view :: (* -> *) -> *
   type MonadOf   view :: * -> *
 
-  -- | Hash of block for which state is calculated
-  stateBID :: view -> BlockID (BlockType view)
+  -- | Point in block registry for which state is calculated
+  stateBH :: view -> BHOf view
   -- | Apply block on top of current state. Function should return
   --   @Nothing@ if block is not valid. It's always called with @BH@
   --   corresponding to given block. If it's not the case it's
@@ -139,6 +146,9 @@ class BlockData (BlockType view) => StateView view where
   --   transaction in the mempool.
   checkTx :: view -> TxOf view -> MonadOf view (Either (BlockExceptionOf view) ())
 
+-- | Hash of block for which state is calculated
+stateBID :: StateView view => view -> BlockID (BlockType view)
+stateBID = bhBID . stateBH
 
 class ( StateView view
       , m ~ MonadOf view
@@ -171,7 +181,7 @@ data Consensus view = Consensus
     -- ^ Index of all known headers that have enough work in them and
     --   otherwise valid. Note that it may include headers of blocks
     --   which turned out to be invalid.
-  , _bestHead       :: (BHOf view, view, Locator (BlockType view))
+  , _bestHead       :: (view, Locator (BlockType view))
     -- ^ Best head of blockchain. It's validated block with most work
     --   in it
   , _candidateHeads :: [Head (BlockType view)]
@@ -193,7 +203,7 @@ consensusGenesis
   -> Consensus view
 consensusGenesis genesis sview = Consensus
   { _blockIndex     = idx
-  , _bestHead       = (bh, sview, makeLocator bh)
+  , _bestHead       = (sview, makeLocator bh)
   , _candidateHeads = []
   , _badBlocks      = Set.empty
   , _requiredBlocks = Set.empty
@@ -265,8 +275,6 @@ processHeader
   :: (StateView' view m b, MonadIO m)
   => Header b
   -> ExceptT (HeaderError b) (StateT (Consensus view) m) ()
--- FIXME: Decide what to do with time?
--- FIXME: Decide how to track difficulty adjustment
 processHeader header = do
   index    <- use blockIndex
   -- If we already have header do nothing
@@ -298,7 +306,7 @@ processHeader header = do
   ----------------------------------------
   -- Update candidate heads
   candidates <- do
-    bestWork   <- use $ bestHead . _1 . to bhWork
+    bestWork   <- use $ bestHead . _1 . to stateBH . to bhWork
     candidates <- use candidateHeads
        -- If new header doesn't have more work than current head no
        -- adjustment is needed
@@ -342,7 +350,7 @@ growNewHead
   => BH b
   -> ExceptT (HeaderError b) (StateT (Consensus view) m) (Head b)
 growNewHead bh = do
-  best       <- use $ bestHead . _1
+  best       <- use $ bestHead . _1 . to stateBH
   bad        <- use badBlocks
   missing    <- use requiredBlocks
   --
@@ -406,7 +414,7 @@ invalidateBlock
   => BlockID b
   -> m ()
 invalidateBlock bid = do
-  bestWork <- use $ bestHead . _1 . to bhWork
+  bestWork <- use $ bestHead . _1 . to stateBH . to bhWork
   candidateHeads %= mapMaybe (truncateBch bestWork)
   badBlocks      %= Set.insert bid
   where
@@ -426,7 +434,7 @@ bestCandidate
   => BlockDB m b
   -> ExceptT (BlockError b) (StateT (Consensus view) m) [(BlockID b, BlockException b)]
 bestCandidate db = do
-  bestWork <- use $ bestHead . _1 . to bhWork
+  bestWork <- use $ bestHead . _1 . to stateBH . to bhWork
   missing  <- use requiredBlocks
   heads    <- use $ candidateHeads . to (  mapMaybe (findBest missing)
                                        >>> filter (\b -> bhWork b > bestWork)
@@ -435,9 +443,10 @@ bestCandidate db = do
   case heads of
     []  -> [] <$ cleanCandidates
     h:_ -> do
-      bIdx        <- use blockIndex
-      (best,st,_) <- use bestHead
-      let rollback _    = lift . revertBlock
+      bIdx   <- use blockIndex
+      (st,_) <- use bestHead      
+      let best = stateBH st
+          rollback _    = lift . revertBlock
           update   bh s = do
             block <- lift (retrieveBlock db $ bhBID bh) >>= \case
               Nothing -> error "CANT retrieveBlock"
@@ -453,7 +462,7 @@ bestCandidate db = do
       case state' of
         Left  (bid,e) -> do invalidateBlock bid
                             ((bid,e) :) <$> bestCandidate db
-        Right s       -> do bestHead .= (h,s,makeLocator h) >> cleanCandidates
+        Right s       -> do bestHead .= (s,makeLocator h) >> cleanCandidates
                             pure []
   where
     findBest missing Head{..} =
@@ -463,7 +472,7 @@ bestCandidate db = do
 
 cleanCandidates :: (StateView' view n b, MonadState (Consensus view) m) => m ()
 cleanCandidates = do
-  bestWork <- use $ bestHead . _1 . to bhWork
+  bestWork <- use $ bestHead . _1 . to stateBH . to bhWork
   missing  <- use requiredBlocks
   let truncateBch Head{..}
         | bhWork bchHead <= bestWork = Nothing
@@ -491,12 +500,77 @@ createConsensus
 createConsensus db sView bIdx = do
   let c0 = Consensus
         { _blockIndex     = bIdx
-        , _bestHead       = (bh, sView, makeLocator bh)
+        , _bestHead       = (sView, makeLocator bh)
         , _candidateHeads = [ Head b (Seq.singleton b) | b <- blockIndexHeads bIdx ]
         , _badBlocks      = Set.empty
         , _requiredBlocks = Set.empty
         }
-      bh = case stateBID sView `lookupIdx` bIdx of
-             Just b  -> b
-             Nothing -> error "Internal error: state's BID is not in index"
+      bh = stateBH sView
   execStateT (runExceptT (bestCandidate db)) c0
+
+
+----------------------------------------------------------------
+-- Light consensus
+----------------------------------------------------------------
+
+-- | Complete description of PoW consensus
+data LightConsensus b = LightConsensus
+  { _lightBlockIndex :: BlockIndex b
+    -- ^ Index of all known headers that have enough work in them and
+    --   otherwise valid. Note that it may include headers of blocks
+    --   which turned out to be invalid.
+  , _bestLightHead   :: (BH b, Locator b)
+    -- ^ Best head of blockchain. It's attached block with most work in it
+  }
+
+makeLenses ''LightConsensus
+
+createLightConsensus :: (BlockData b) => Block b -> BlockIndex b -> LightConsensus b
+createLightConsensus genesis bIdx = LightConsensus
+  { _lightBlockIndex = bIdx
+  , _bestLightHead   = (bh, makeLocator bh)
+  }
+  where
+    Just bhGen = blockID genesis `lookupIdx` bIdx
+    bh = case blockIndexHeads bIdx of
+      []  -> bhGen
+      bhs -> maximumBy (comparing bhWork) bhs
+
+processLightHeader
+  :: (BlockData b, MonadIO m)
+  => BlockDB m b
+  -> Header b
+  -> ExceptT (HeaderError b) (StateT (LightConsensus b) m) ()
+processLightHeader db header = do
+  index <- use lightBlockIndex
+  -- If we already have header do nothing
+  case bid `lookupIdx` index of
+    Just _  -> throwError ErrH'KnownHeader
+    Nothing -> return ()  
+  -- Check that we have parent block
+  parent <- maybe (throwError ErrH'UnknownParent) return
+          $ flip lookupIdx index =<< prevBlock header
+  -- Perform header validations
+  unless (succ (bhHeight parent) == blockHeight header)
+    $ throwError ErrH'HeightMismatch
+  now <- getCurrentTime
+  validateHeader parent now header >>= \case
+    Left err -> throwError $ ErrH'ValidationFailure err
+    Right () -> return ()
+  -- Create new index entry
+  let work = bhWork parent <> blockWork header
+      bh   = BH { bhHeight   = blockHeight header
+                , bhTime     = blockTime   header
+                , bhBID      = bid
+                , bhWork     = work
+                , bhPrevious = Just parent
+                , bhData     = blockData header
+                }
+  bestWork <- use $ bestLightHead . _1 . to bhWork
+  lift $ lift $ storeHeader db header
+  -- Update block index
+  when (work > bestWork) $ do
+    bestLightHead .= (bh, makeLocator bh)
+  lightBlockIndex %= insertIdx bh
+  where
+    bid = blockID header

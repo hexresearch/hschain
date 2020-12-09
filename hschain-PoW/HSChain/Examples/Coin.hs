@@ -487,7 +487,7 @@ data CoinState (m :: * -> *) = CoinState
 instance (MonadDB m, MonadThrow m, MonadIO m) => StateView (CoinState m) where
   type BlockType (CoinState m) = Coin
   type MonadOf   (CoinState m) = m
-  stateBID = bhBID . overlayTip . csOverlay
+  stateBH = overlayTip . csOverlay
   ----------------
   applyBlock CoinState{..} bIdx bh b = runExceptT $ do
     -- Consistency checks
@@ -587,15 +587,18 @@ coinStateView
 coinStateView genesis = do
   initCoinDB
   storeCoinBlock genesis
-  bIdx <- buildBlockIndex db
+  bIdx <- buildBlockIndex coinDB
   st   <- mustQueryRW $ initializeStateView genesis bIdx
-  return (db, bIdx, st)
-  where
-    db = BlockDB { storeBlock         = storeCoinBlock
-                 , retrieveBlock      = retrieveCoinBlock
-                 , retrieveHeader     = retrieveCoinHeader
-                 , retrieveAllHeaders = retrieveAllCoinHeaders
-                 }
+  return (coinDB, bIdx, st)
+
+coinDB :: (MonadThrow m, MonadDB m, MonadIO m) => BlockDB m Coin
+coinDB = BlockDB
+  { storeHeader        = storeCoinHeader
+  , storeBlock         = storeCoinBlock
+  , retrieveBlock      = retrieveCoinBlock
+  , retrieveHeader     = retrieveCoinHeader
+  , retrieveAllHeaders = retrieveAllCoinHeaders
+  }
 
 
 initializeStateView
@@ -635,7 +638,7 @@ initCoinDB = mustQueryRW $ do
     \  , time       INTEGER NUT NULL \
     \  , prev       BLOB NULL \
     \  , dataHash   BLOB NOT NULL \
-    \  , blockData  BLOB NOT NULL \
+    \  , blockData  BLOB NULL \
     \  , target     BLOB NOT NULL \
     \  , nonce      INTEGER NOT NULL \
     \)"
@@ -687,7 +690,8 @@ initCoinDB = mustQueryRW $ do
 retrieveCoinBlock :: (MonadIO m, MonadReadDB m) => BlockID Coin -> m (Maybe (Block Coin))
 retrieveCoinBlock bid = queryRO $ basicQueryWith1
   coinBlockDecoder
-  "SELECT height, time, prev, blockData, target, nonce FROM coin_blocks WHERE bid = ?"
+  "SELECT height, time, prev, blockData, target, nonce FROM coin_blocks \
+  \ WHERE bid = ? AND blockData IS NOT NULL"
   (Only bid)
 
 retrieveCoinHeader :: (MonadIO m, MonadReadDB m) => BlockID Coin -> m (Maybe (Header Coin))
@@ -701,19 +705,38 @@ retrieveAllCoinHeaders = queryRO $ basicQueryWith_
   coinHeaderDecoder
   "SELECT height, time, prev, dataHash, target, nonce FROM coin_blocks ORDER BY height"
 
-storeCoinBlock :: (MonadThrow m, MonadIO m, MonadDB m) => Block Coin -> m ()
-storeCoinBlock b@Block{blockData=Coin{..}, ..} = mustQueryRW $ do
+storeCoinHeader :: (MonadThrow m, MonadIO m, MonadDB m) => Header Coin -> m ()
+storeCoinHeader b@Block{blockData=Coin{..}, ..} = mustQueryRW $ do
   basicExecute
-    "INSERT OR IGNORE INTO coin_blocks VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, ?)"
+    "INSERT OR IGNORE INTO coin_blocks VALUES (NULL, ?, ?, ?, ?, ?, NULL, ?, ?)"
     ( blockID b
     , blockHeight
     , blockTime
     , prevBlock
     , ByteRepred $ merkleHash coinData
-    , CBORed coinData
     , CBORed coinTarget
     , coinNonce
     )
+
+storeCoinBlock :: (MonadThrow m, MonadIO m, MonadDB m) => Block Coin -> m ()
+storeCoinBlock b@Block{blockData=Coin{..}, ..} = mustQueryRW $ do
+  exists <- basicQuery "SELECT blockData IS NULL FROM coin_blocks WHERE bid = ?" (Only (blockID b))
+  case exists of
+    [] -> basicExecute
+      "INSERT OR IGNORE INTO coin_blocks VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, ?)"
+      ( blockID b
+      , blockHeight
+      , blockTime
+      , prevBlock
+      , ByteRepred $ merkleHash coinData
+      , CBORed coinData
+      , CBORed coinTarget
+      , coinNonce
+      )
+    [Only True] -> basicExecute
+      "UPDATE coin_blocks SET blockData = ? WHERE bid = ?"
+      (CBORed coinData, blockID b)
+    _ -> return ()
 
 retrieveCurrentStateBlock :: MonadQueryRO m => m (Maybe (BlockID Coin))
 retrieveCurrentStateBlock = fmap fromOnly <$> basicQuery1

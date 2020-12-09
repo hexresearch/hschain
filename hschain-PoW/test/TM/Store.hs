@@ -1,3 +1,4 @@
+{-# LANGUAGE TypeFamilies #-}
 -- |
 module TM.Store (tests) where
 
@@ -42,30 +43,36 @@ testRestart = do
   -- First start of exception
   h <- catchAbort $ evalContT $ do
     let net = createMockNode mocknet $ NetAddrV4 1 1000
-        mine _ bh t _ = return $ createCandidateBlock bh t $ Coin
+        mine st t _ = return $ createCandidateBlock bh t $ Coin
           { coinData   = merkled []
           , coinTarget = retarget bh
           , coinNonce  = 0
           }
+          where bh = stateBH st
     db   <- lift $ blockDatabase genesisCoin
-    c0   <- lift $ createConsensus db startingState =<< buildBlockIndex db
-    pow  <- startNode netcfg net [] db c0
+    bIdx <- lift $ buildBlockIndex db
+    let Just bh = lookupIdx (blockID genesisCoin) bIdx
+    c0   <- lift $ createConsensus db (startingState bh) bIdx
+    pow  <- startNode netcfg net db c0
     cforkLinked $ genericMiningLoop mine pow
     -- Await for new blocks
     ch   <- atomicallyIO $ chainUpdate pow
     lift $ forever $ do
-      (BH{bhHeight=h},_) <- awaitIO ch
+      h <- bhHeight . stateBH <$> awaitIO ch
       when (h >= Height 10) $ throwM (Abort h)
   -- Reinitialize
-  do db <- blockDatabase genesisCoin
-     c0 <- createConsensus db startingState =<< buildBlockIndex db
-     liftIO $ h @=? (c0 ^. bestHead . _1 . to bhHeight)
+  do db   <- blockDatabase genesisCoin
+     bIdx <- buildBlockIndex db
+     let Just bh = lookupIdx (blockID genesisCoin) bIdx
+     c0 <- createConsensus db (startingState bh) bIdx
+     liftIO $ h @=? (c0 ^. bestHead . _1 . to stateBH . to bhHeight)
   where
-    startingState :: DummyState (HSChainT IO) Coin
-    startingState = DummyState (blockID genesisCoin) (error "No rewind past genesis")
-    netcfg = NetCfg { nKnownPeers     = 3
-                    , nConnectedPeers = 3
-                    }
+    startingState :: BH Coin -> DummyState (HSChainT IO) Coin
+    startingState bh = DummyState bh (error "No rewind past genesis")
+    netcfg = NodeCfg { nKnownPeers     = 3
+                     , nConnectedPeers = 3
+                     , initialPeers    = []
+                     }
 
 
 genesisCoin :: Block Coin

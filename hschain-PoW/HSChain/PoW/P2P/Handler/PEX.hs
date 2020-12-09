@@ -1,6 +1,7 @@
 -- |
 module HSChain.PoW.P2P.Handler.PEX
-  ( runPEX
+  ( PexCh(..)
+  , runPEX
   ) where
 
 import Codec.Serialise
@@ -25,7 +26,6 @@ import HSChain.PoW.P2P.Handler.Peer
 import HSChain.PoW.P2P.Handler.CatchupLock
 import HSChain.PoW.P2P.Handler.BlockRequests
 import HSChain.PoW.Consensus
-import HSChain.PoW.Mempool
 import HSChain.PoW.Types
 import HSChain.Logger
 import qualified HSChain.Network.IpAddresses as Ip
@@ -35,48 +35,50 @@ import HSChain.Types.Merkle.Types
 --
 ----------------------------------------------------------------
 
+data PexCh m b = PexCh
+  { pexNodeCfg        :: NodeCfg
+  , pexNetAPI         :: NetworkAPI
+  , pexSinkTX         :: Sink (Tx b)
+  , pexSinkBox        :: Sink (BoxRX m b)
+  , pexBlockRegistry  :: BlockRegistry b
+  , pexMkAnnounce     :: STM (Src (GossipMsg b))
+  , pexConsesusState  :: STM (BlockIndex b, BH b, Locator b)
+  }
+
 runPEX
   :: ( MonadMask m, MonadFork m, MonadLogger m
      , Serialise (b Identity)
      , Serialise (b Proxy)
      , Serialise (Tx b)
-     , StateView' view m b
+     , BlockData b
      )
-  => NetCfg
-  -> NetworkAPI
-  -> MempoolAPI view
-  -> STM (Src (MsgTX b))
-  -> [NetAddr]
-  -> BlockRegistry b
-  -> Sink (BoxRX m b)
-  -> STM (Src (MsgAnn b))
-  -> STM (Consensus view)
+  => PexCh m b
   -> BlockDB m b
   -> ContT r m ()
-runPEX cfg netAPI mempoolAPI mkSrcAnnTx seeds blockReg sinkBOX mkSrcAnn consSt db = do
-  reg                <- newPeerRegistry seeds
+runPEX PexCh{..} db = do
+  reg                <- newPeerRegistry $ initialPeers pexNodeCfg
   nonces             <- newNonceSet
   (sinkAddr,srcAddr) <- queuePair
   (sinkAsk,mkSrcAsk) <- broadcastPair
   catchup            <- newCatchupThrottle
   let mkChans = do
-        peerBCastAnn     <- mkSrcAnn
         peerBCastAskPeer <- mkSrcAsk
-        peerBCastAnnTx   <- mkSrcAnnTx
+        peerBCastAnn     <- pexMkAnnounce
         return PeerChans
-          { peerSinkNewAddr   = sinkAddr
-          , peerSinkConsensus = sinkBOX
-          , peerCatchup       = catchup
-          , peerReqBlocks     = blockReg
-          , peerConnections   = connectedPeersList reg
-          , peerConsensuSt    = consSt
-          , peerBlockDB       = db
+          { peerSinkNewAddr    = sinkAddr
+          , peerSinkConsensus  = pexSinkBox
+          , peerSinkTX         = pexSinkTX
+          , peerCatchup        = catchup
+          , peerReqBlocks      = pexBlockRegistry
+          , peerConnections    = connectedPeersList reg
+          , peerConsensusState = pexConsesusState
+          , peerBlockDB        = db
           , ..
           }
   shepherd <- ContT withShepherd
-  start "accept"  $ acceptLoop             netAPI mempoolAPI shepherd reg nonces mkChans
-  start "conn"    $ monitorConnections cfg netAPI mempoolAPI shepherd reg nonces mkChans
-  start "known"   $ monitorKnownPeers  cfg reg sinkAsk
+  start "accept"  $ acceptLoop                    pexNetAPI shepherd reg nonces mkChans
+  start "conn"    $ monitorConnections pexNodeCfg pexNetAPI shepherd reg nonces mkChans
+  start "known"   $ monitorKnownPeers  pexNodeCfg reg sinkAsk
   start "newaddr" $ processNewAddr     reg srcAddr
   where
     start ns = cforkLinked . descendNamespace "net" . descendNamespace ns . logOnException
@@ -86,16 +88,15 @@ acceptLoop
      , Serialise (b Identity)
      , Serialise (b Proxy)
      , Serialise (Tx b)
-     , StateView' view m b
+     , BlockData b
      )
   => NetworkAPI
-  -> MempoolAPI view
   -> Shepherd
   -> PeerRegistry
   -> NonceSet
-  -> STM (PeerChans view)
+  -> STM (PeerChans m b)
   -> m ()
-acceptLoop NetworkAPI{..} mempoolAPI shepherd reg nonceSet mkChans  = do
+acceptLoop NetworkAPI{..} shepherd reg nonceSet mkChans  = do
   bracket listenOn fst $ \(_,accept) -> forever $ do
     mask $ \restore -> do
       (conn, addr) <- accept
@@ -117,24 +118,23 @@ acceptLoop NetworkAPI{..} mempoolAPI shepherd reg nonceSet mkChans  = do
           send conn $ serialise HandshakeAck
           descendNamespace (T.pack (show normAddr))
             $ withPeer reg normAddr
-            $ runPeer conn mempoolAPI =<< atomicallyIO mkChans
+            $ runPeer conn =<< atomicallyIO mkChans
 
 connectTo
   :: ( MonadMask m, MonadFork m, MonadLogger m
      , Serialise (b Identity)
      , Serialise (b Proxy)
      , Serialise (Tx b)
-     , StateView' view m b
+     , BlockData b
      )
   => NetworkAPI
-  -> MempoolAPI view
   -> NetAddr
   -> Shepherd
   -> PeerRegistry
   -> NonceSet
-  -> PeerChans view
+  -> PeerChans m b
   -> m ()
-connectTo NetworkAPI{..} mempoolAPI addr shepherd reg nonceSet chans =
+connectTo NetworkAPI{..} addr shepherd reg nonceSet chans =
   newSheep shepherd $ do
     logger InfoS "Connecting to" (sl "addr" addr)
     descendNamespace (T.pack (show addr))
@@ -148,17 +148,17 @@ connectTo NetworkAPI{..} mempoolAPI addr shepherd reg nonceSet chans =
             HandshakeAck <- deserialise <$> recv conn
             return ()
           -- Start peer
-          runPeer conn mempoolAPI chans
+          runPeer conn chans
 
 
 -- | Thread that monitor that we have enough connections and tries to acquire more .
 monitorKnownPeers
   :: (MonadIO m)
-  => NetCfg
+  => NodeCfg
   -> PeerRegistry               -- ^ Peer registry
   -> Sink AskPeers              -- ^ Sink for sending AskMorePeer messages
   -> m ()
-monitorKnownPeers NetCfg{..} reg sinkPeers = forever $ do
+monitorKnownPeers NodeCfg{..} reg sinkPeers = forever $ do
   -- We block unless we don't have enough connections then we ask
   -- peers for more and wait.
   atomicallyIO $ check . (<nKnownPeers) =<< knownPeers reg
@@ -170,17 +170,16 @@ monitorConnections
      , Serialise (b Identity)
      , Serialise (b Proxy)
      , Serialise (Tx b)
-     , StateView' view m b
+     , BlockData b
      )
-  => NetCfg
+  => NodeCfg
   -> NetworkAPI
-  -> MempoolAPI view
   -> Shepherd
   -> PeerRegistry
   -> NonceSet
-  -> STM (PeerChans view)
+  -> STM (PeerChans m b)
   -> m ()
-monitorConnections NetCfg{..} netAPI mempoolAPI shepherd reg nonceSet mkChans = forever $ do
+monitorConnections NodeCfg{..} netAPI shepherd reg nonceSet mkChans = forever $ do
   -- Check that we need and can connect to peers
   addrs <- atomicallyIO $ do
     nPeers <- connectedPeers reg
@@ -189,7 +188,7 @@ monitorConnections NetCfg{..} netAPI mempoolAPI shepherd reg nonceSet mkChans = 
     check $ not $ null addrs
     return $ take (nConnectedPeers - nPeers) addrs
   --
-  forM_ addrs $ \a -> connectTo netAPI mempoolAPI a shepherd reg nonceSet =<< atomicallyIO mkChans
+  forM_ addrs $ \a -> connectTo netAPI a shepherd reg nonceSet =<< atomicallyIO mkChans
   waitMSec (3000 :: Int)
 
 

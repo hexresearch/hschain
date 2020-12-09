@@ -231,7 +231,7 @@ testReorg2 = runTest
 
 
 
-bestHeadOK :: IsMerkle f => Consensus (KVState MockChain m) -> GBlock (KV MockChain) f -> [String]
+bestHeadOK :: (Monad m,IsMerkle f) => Consensus (KVState MockChain m) -> GBlock (KV MockChain) f -> [String]
 bestHeadOK c h
   | expected == got = []
   | otherwise       =
@@ -241,7 +241,7 @@ bestHeadOK c h
       ]
   where
     expected = blockID h
-    got      = c^.bestHead._1.to bhBID
+    got      = c ^. bestHead . _1 . to stateBH . to bhBID
 
 -- candidatesOK :: Consensus m (KV MockChain) -> [Header (KV MockChain)] -> [String]
 -- candidatesOK c hs
@@ -297,8 +297,10 @@ data Message
 
 runTest :: [Message] -> IO ()
 runTest msgList = runNoLogsT $ do
-  db <- inMemoryDB genesis
-  let s0 = consensusGenesis (head mockchain) $ kvMemoryView (blockID genesis)
+  db   <- inMemoryDB genesis
+  bIdx <- buildBlockIndex db
+  let Just bh = lookupIdx (blockID $ head mockchain) bIdx
+      s0      = consensusGenesis (head mockchain) $ kvMemoryView bh
   runExceptT (loop db s0 msgList) >>= \case
     Left  e  -> error $ unlines e
     Right () -> return ()
@@ -352,5 +354,5 @@ checkConsensus c = concat
   -- , [
   ]
   where
-    bestWork = bhWork $ c ^. bestHead . _1
+    bestWork = c ^. bestHead . _1 . to stateBH . to bhWork
 

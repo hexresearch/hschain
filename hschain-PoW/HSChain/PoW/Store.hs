@@ -12,6 +12,7 @@ module HSChain.PoW.Store
   ) where
 
 import Codec.Serialise (Serialise)
+import Control.Applicative
 import Control.Monad.IO.Class
 import Control.Monad.Catch
 import Data.Foldable
@@ -34,9 +35,10 @@ import HSChain.PoW.BlockIndex
 -- | API for append only block storage. It should always contain
 --   genesis block.
 data BlockDB m b = BlockDB
-  { storeBlock :: Block b -> m ()
-    -- ^ Put block into storage. It should be idempotent. That is
-    --   storing block already in storage should be a noop.
+  { storeHeader :: Header b -> m ()
+    -- ^ Pure header in storage. Operation should be idempotent.
+  , storeBlock :: Block b -> m ()
+    -- ^ Put block into storage. It should be idempotent.
   , retrieveBlock :: BlockID b -> m (Maybe (Block  b))
     -- ^ Retrive complete block by its identifier
   , retrieveHeader :: BlockID b -> m (Maybe (Header b))
@@ -80,12 +82,23 @@ inMemoryDB
   => Block b
   -> m (BlockDB n b)
 inMemoryDB genesis = do
-  var <- liftIO $ newIORef $ Map.singleton (blockID genesis) genesis
+  var <- liftIO $ newIORef $ Map.singleton (blockID genesis) (Right genesis)
   return BlockDB
-    { storeBlock         = \b   -> liftIO $ modifyIORef' var $ Map.insert (blockID b) b
-    , retrieveBlock      = \bid -> liftIO $ Map.lookup bid <$> readIORef var
-    , retrieveHeader     = \bid -> liftIO $ fmap toHeader . Map.lookup bid <$> readIORef var
-    , retrieveAllHeaders = liftIO $ sortOn blockHeight . map toHeader . toList <$> readIORef var
+    { storeHeader    = \h   -> liftIO $ modifyIORef' var $
+        Map.alter (\mb -> mb <|> Just (Left h)) (blockID h)
+    , storeBlock     = \b   -> liftIO $ modifyIORef' var $
+        Map.insert (blockID b) (Right b)
+    , retrieveBlock  = \bid -> liftIO $ do m <- readIORef var
+                                           pure $ do Right b <- Map.lookup bid m
+                                                     Just  b
+    , retrieveHeader = \bid -> liftIO $ do m <- readIORef var
+                                           pure $ case Map.lookup bid m of
+                                                    Just (Left h)  -> Just h
+                                                    Just (Right b) -> Just (toHeader b)
+                                                    Nothing        -> Nothing
+    , retrieveAllHeaders = liftIO $ sortOn blockHeight
+                                  . map (either id toHeader)
+                                  . toList <$> readIORef var
     }
 
 
@@ -107,14 +120,16 @@ blockDatabase genesis = do
     \  , time       INTEGER NUT NULL \
     \  , prev       BLOB NULL \
     \  , headerData BLOB NOT NULL \
-    \  , blockData  BLOB NOT NULL )"
-  store genesis
+    \  , blockData  BLOB NULL )"
+  storeB genesis
   return BlockDB
-    { storeBlock = store
+    { storeHeader = storeH
+    , storeBlock  = storeB
       --
     , retrieveBlock  = \bid -> queryRO $ basicQueryWith1
         decoderBlock
-        "SELECT height, time, prev, blockData FROM pow_blocks WHERE bid = ?"
+        "SELECT height, time, prev, blockData FROM pow_blocks \
+        \ WHERE bid = ? AND blockData IS NOT NULL"
         (Only (CBORed bid))
       --
     , retrieveHeader = \bid -> queryRO $ basicQueryWith1
@@ -138,12 +153,31 @@ blockDatabase genesis = do
                          blockData   <- fieldCBOR
                          return Block{..}
       --
-      store b@Block{..} = mustQueryRW $ basicExecute
-        "INSERT OR IGNORE INTO pow_blocks VALUES (NULL, ?, ?, ?, ?, ?, ?)"
+      storeH b@Block{..} = mustQueryRW $ basicExecute
+        "INSERT OR IGNORE INTO pow_blocks VALUES (NULL, ?, ?, ?, ?, ?, NULL)"
         ( CBORed (blockID b)
         , blockHeight
         , blockTime
         , CBORed <$> prevBlock
         , CBORed (merkleMap (const Proxy) blockData)
-        , CBORed blockData
         )
+      storeB b@Block{..} = mustQueryRW $ do
+        exists <- basicQuery
+          "SELECT blockData IS NULL FROM pow_blocks WHERE bid = ?"
+          (Only (CBORed bid))
+        case exists of
+          [] -> basicExecute
+                "INSERT OR IGNORE INTO pow_blocks VALUES (NULL, ?, ?, ?, ?, ?, ?)"
+                ( CBORed bid
+                , blockHeight
+                , blockTime
+                , CBORed <$> prevBlock
+                , CBORed (merkleMap (const Proxy) blockData)
+                , CBORed blockData
+                )
+          [Only True] -> basicExecute
+               "UPDATE pow_blocks SET blockData = ? WHERE bid = ?"
+               (CBORed blockData, CBORed bid)
+          _ -> return ()
+        where
+          bid = blockID b

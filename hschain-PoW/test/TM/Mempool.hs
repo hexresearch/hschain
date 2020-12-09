@@ -33,11 +33,13 @@ tests = testGroup "PoW consensus"
 testMempoolRollback :: IO ()
 testMempoolRollback = runNoLogsT $ evalContT $ do
   mocknet <- liftIO newMockNet
+  db   <- lift $ inMemoryDB genesis
+  bIdx <- lift $ buildBlockIndex db
+  let Just bh = lookupIdx (blockID genesis) bIdx
+      sView = kvMemoryView bh
+  c0   <- lift $ createConsensus db sView bIdx
   let net   = createMockNode mocknet $ NetAddrV4 1 1000
-      sView = kvMemoryView (blockID genesis)
-  db <- lift $ inMemoryDB genesis
-  c0 <- lift $ createConsensus db sView =<< buildBlockIndex db
-  (pow,sinkBOX) <- startNodeTest netcfg net [] db c0
+  (pow,sinkBOX) <- startNodeTest netcfg net db c0
   let api@MempoolAPI{..} = mempoolAPI pow
   ch <- atomicallyIO mempoolUpdates
   -- First post transaction into mempool
@@ -72,9 +74,8 @@ testMempoolRollback = runNoLogsT $ evalContT $ do
     b2  = mineBlock [tx3] b1
     b3  = mineBlock [tx4] b2
     --
-    netcfg = NetCfg { nKnownPeers     = 3
-                    , nConnectedPeers = 3
-                    }
+    netcfg = NodeCfg 0 0 []
+
 
 
 checkMempoolContent
@@ -91,9 +92,9 @@ checkMempoolContent MempoolAPI{..} expected = liftIO $ do
 
 checkRecv
   :: (MonadIO m, Eq (TxOf view), Show (TxOf view), StateView view)
-  => Src (BHOf view, view, [TxOf view]) -> [TxOf view] -> m ()
+  => Src (view, [TxOf view]) -> [TxOf view] -> m ()
 checkRecv ch expected = liftIO $ do
-  (_,_,txs) <- awaitIO ch
+  (_,txs) <- awaitIO ch
   expected @=? txs
 
 sendBlock :: (MerkleMap b, Monad m, MonadIO n) => Sink (BoxRX m b) -> GBlock b Identity -> n ()

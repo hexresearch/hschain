@@ -1,9 +1,10 @@
+{-# LANGUAGE NumDecimals  #-}
 {-# LANGUAGE TypeFamilies #-}
 -- |
 module HSChain.PoW.P2P.Handler.Peer where
 
 import Codec.Serialise
-import Control.Concurrent (ThreadId,myThreadId,throwTo)
+import Control.Concurrent (ThreadId,myThreadId,throwTo,threadDelay,forkIO)
 import Control.Concurrent.STM
 import Control.Lens
 import Control.Monad
@@ -20,7 +21,6 @@ import HSChain.Control.Channels
 import HSChain.Network.Types
 import HSChain.PoW.P2P.Types
 import HSChain.PoW.Types
-import HSChain.PoW.Mempool
 import HSChain.Logger
 import HSChain.PoW.Consensus
 import HSChain.PoW.Exceptions
@@ -39,13 +39,12 @@ runPeer
      , Serialise (b Identity)
      , Serialise (b Proxy)
      , Serialise (Tx b)
-     , StateView' view m b
+     , BlockData b
      )
   => P2PConnection
-  -> MempoolAPI view
-  -> PeerChans view
+  -> PeerChans m b
   -> m ()
-runPeer conn mempoolAPI chans@PeerChans{..} = logOnException $ do
+runPeer conn chans@PeerChans{..} = logOnException $ do
   logger InfoS "Starting peer" ()
   (sinkGossip, srcGossip) <- queuePair
   st <- liftIO $ do requestInFlight <- newTVarIO Nothing
@@ -53,11 +52,11 @@ runPeer conn mempoolAPI chans@PeerChans{..} = logOnException $ do
                     inCatchup       <- newTVarIO False
                     return PeerState{..}
   -- Send announce with current state at start
-  do s <- atomicallyIO peerConsensuSt
-     sinkIO sinkGossip $ GossipAnn $ AnnBestHead $ s ^. bestHead . _1 . to asHeader
+  do (_,bh,_) <- atomicallyIO peerConsensusState
+     sinkIO sinkGossip $ GossipAnn $ AnnBestHead $ asHeader bh
   runConcurrently
-    [ peerSend    conn (srcGossip <> fmap GossipAnn peerBCastAnn <> fmap GossipTX peerBCastAnnTx)
-    , peerRecv    conn     st chans sinkGossip mempoolAPI
+    [ peerSend    conn (srcGossip <> peerBCastAnn)
+    , peerRecv    conn     st chans sinkGossip
     , peerRequestHeaders   st chans sinkGossip
     , peerRequestBlock     st chans sinkGossip
     , peerRequestAddresses st chans sinkGossip
@@ -80,11 +79,11 @@ data PeerState b = PeerState
   }
 
 
--- Thread that issues
+-- Thread that requests header in case we're behind and need to catch up.
 peerRequestHeaders
-  :: (MonadIO m, MonadLogger m, MonadCatch m, StateView' view m b)
+  :: (MonadIO m, MonadLogger m, MonadCatch m, BlockData b)
   => PeerState b
-  -> PeerChans view
+  -> PeerChans m b
   -> Sink (GossipMsg b)
   -> m x
 peerRequestHeaders PeerState{..} PeerChans{..} sinkGossip =
@@ -97,36 +96,46 @@ peerRequestHeaders PeerState{..} PeerChans{..} sinkGossip =
     readTVar peersBestHead >>= \case
       Nothing -> exitCatchup
       Just h  -> do
-        bidx <- peerConsensuSt
-        case blockID h `lookupIdx` (bidx^.blockIndex) of
+        (bIdx,_,loc) <- peerConsensusState
+        case blockID h `lookupIdx` bIdx of
           Just _  -> exitCatchup
           Nothing -> do
             writeTVar requestInFlight . Just . SentHeaders =<< acquireCatchup peerCatchup
-            st <- peerConsensuSt
-            sink sinkGossip $ GossipReq $ ReqHeaders $ st^.bestHead._3
+            sink sinkGossip $ GossipReq $ ReqHeaders loc
   where
     exitCatchup = writeTVar inCatchup False
 
-
+-- Thread that requests missing blocks
 peerRequestBlock
-  :: (MonadIO m, MonadLogger m, MonadCatch m, BlockData b, BlockType view ~ b)
+  :: (MonadIO m, MonadLogger m, MonadCatch m, BlockData b)
   => PeerState b
-  -> PeerChans view
+  -> PeerChans m b
   -> Sink (GossipMsg b)
   -> m x
 peerRequestBlock PeerState{..} PeerChans{..} sinkGossip =
   descendNamespace "req_B" $ logOnException $ forever $ do
-    bid <- atomicallyIO $ do
-      check . isNothing =<< readTVar requestInFlight
-      bid <- reserveBID peerReqBlocks
-      writeTVar requestInFlight $ Just $ SentBlock bid
-      sink sinkGossip $ GossipReq $ ReqBlock bid
-      return bid
+    -- We simultaneously ask for block to fetch, reserve it so other
+    -- threads won't request it and create timeout to release it
+    -- automatically.
+    --
+    -- Mask is needed in order to avoid race when we acquired BID and
+    -- killed before we started timeout thread.
+    bid <- liftIO $ mask_ $ do
+      bid <- atomically $ do
+        check . isNothing =<< readTVar requestInFlight
+        bid <- reserveBID peerReqBlocks
+        writeTVar requestInFlight $ Just $ SentBlock bid
+        sink sinkGossip $ GossipReq $ ReqBlock bid
+        return bid
+      -- Timeout is hardcoded to 3s
+      _ <- forkIO $ do threadDelay 3e6
+                       atomically $ releaseBID peerReqBlocks bid
+      pure bid
     logger DebugS "Requesting BID" (sl "bid" bid)
 
 peerRequestAddresses
   :: (MonadIO m, MonadLogger m, MonadMask m)
-  => PeerState b -> PeerChans view -> Sink (GossipMsg b) -> m x
+  => PeerState b -> PeerChans m b -> Sink (GossipMsg b) -> m x
 peerRequestAddresses PeerState{..} PeerChans{..} sinkGossip =
   descendNamespace "req_Addr" $ logOnException $ forever $ do
     AskPeers <- atomicallyIO $ await peerBCastAskPeer
@@ -158,15 +167,14 @@ peerRecv
      , Serialise (b Identity)
      , Serialise (b Proxy)
      , Serialise (Tx b)
-     , StateView' view m b
+     , BlockData b
      )
   => P2PConnection
   -> PeerState b
-  -> PeerChans view
+  -> PeerChans m b
   -> Sink (GossipMsg b)         -- Send message to peer over network
-  -> MempoolAPI view
   -> m x
-peerRecv conn st@PeerState{..} PeerChans{..} sinkGossip  mempoolAPI =
+peerRecv conn st@PeerState{..} PeerChans{..} sinkGossip =
   descendNamespace "recv" $ logOnException $ forever $ do
     bs <- recv conn
     case deserialise bs of
@@ -186,11 +194,15 @@ peerRecv conn st@PeerState{..} PeerChans{..} sinkGossip  mempoolAPI =
         liftIO (readTVarIO requestInFlight) >>= \case
           Nothing  -> throwM UnrequestedResponce
           Just req -> case (req, m) of
-            (_              , RespNack     ) -> return ()
             (SentPeers      , RespPeers{}  ) -> return ()
             (SentHeaders rel, RespHeaders{}) -> atomicallyIO $ releaseCatchupLock rel
+            -- When we didn't get block that we wanted we should release lock
+            (SentBlock   bid, RespNack     ) -> atomicallyIO $ releaseBID peerReqBlocks bid
             (SentBlock   bid, RespBlock b  )
-              | blockID b == bid          -> return ()
+              | blockID b == bid -> return ()
+              | otherwise        -> do atomicallyIO $ releaseBID peerReqBlocks bid
+                                       throwM InvalidResponce
+            -- Catchall clause
             _                             -> throwM InvalidResponce
         -- Process message and release request lock. Note that
         -- blocks/headers are processed in other thread and released
@@ -211,8 +223,8 @@ peerRecv conn st@PeerState{..} PeerChans{..} sinkGossip  mempoolAPI =
         ReqPeers       ->
           sinkIO sinkGossip . GossipResp . RespPeers =<< atomicallyIO peerConnections
         ReqHeaders loc -> do
-          c <- atomicallyIO peerConsensuSt
-          sinkIO sinkGossip $ GossipResp $ case locateHeaders c loc of
+          (bIdx,bh,_) <- atomicallyIO peerConsensusState
+          sinkIO sinkGossip $ GossipResp $ case locateHeaders bIdx bh loc of
             Nothing -> RespNack
             Just hs -> RespHeaders hs
         ReqBlock   bid -> do
@@ -223,7 +235,7 @@ peerRecv conn st@PeerState{..} PeerChans{..} sinkGossip  mempoolAPI =
       -- Transactions gossip
       GossipTX m -> case m of
         AnnNewTX tx   -> do logger DebugS "Got TX announce" ()
-                            sinkIO (postTransaction mempoolAPI) tx
+                            sinkIO peerSinkTX tx
 
   where
     -- Send message to consensus engine and release request lock when
@@ -235,11 +247,12 @@ peerRecv conn st@PeerState{..} PeerChans{..} sinkGossip  mempoolAPI =
         lift release
 
 locateHeaders
-  :: (StateView' view m b)
-  => Consensus view
-  -> Locator b
+  :: (BlockData b)
+  => BlockIndex b -- ^ Block index
+  -> BH b         -- ^ Current best head
+  -> Locator b    -- ^ Request locator 
   -> Maybe [Header b]
-locateHeaders consensus (Locator bidList) = do
+locateHeaders bIdx best (Locator bidList) = do
   -- Find first index that we know about
   bh <- asum $ (`lookupIdx` bIdx) <$> bidList
   return $ traverseBlockIndex
@@ -247,9 +260,7 @@ locateHeaders consensus (Locator bidList) = do
     (\_ -> id)
     best bh
     []
-  where
-    bIdx = consensus ^. blockIndex
-    best = consensus ^. bestHead . _1
+
 
 reactCommand
   :: (MonadIO m)

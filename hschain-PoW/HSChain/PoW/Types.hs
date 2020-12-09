@@ -106,7 +106,7 @@ newtype DTime = DTime Int64
 
 -- | Compute difference between two timestamps
 (.-.) :: Time -> Time -> DTime
-Time t1 .-. Time t2 = DTime (t2 - t1)
+Time t1 .-. Time t2 = DTime (t1 - t2)
 
 -- | Add difference to a time stamp
 (.+) :: Time -> DTime -> Time
@@ -206,6 +206,7 @@ instance ( IsMerkle f
 class ( Show (BlockID b), Ord (BlockID b), Serialise (BlockID b)
       , Show (TxID    b), Ord (TxID    b), Serialise (TxID    b)
       , Show (Tx b)
+      , Show (b Proxy), Show (b Identity)
       , JSON.ToJSON (BlockID b), JSON.FromJSON (BlockID b)
       , JSON.ToJSON (TxID    b), JSON.FromJSON (TxID    b)
       , MerkleMap b, Typeable b

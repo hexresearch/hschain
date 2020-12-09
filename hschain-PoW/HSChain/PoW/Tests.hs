@@ -86,7 +86,17 @@ testIdempotence chain db = do
     fetch ("Idempotence: "++show (blockHeight b)) b
   -- Fetchall
   liftIO . assertEqual "All headers" (take 4 $ map toHeader $ chain) =<< retrieveAllHeaders db
+  -- Block after header
+  do let b = chain !! 8
+     storeHeader db (toHeader b) >> fetchH "Fetch header"       b
+     storeBlock  db b            >> fetch  "Block after header" b
+  -- Header after block
+  do let b = chain !! 8
+     storeBlock  db b            >> fetch "Header after block 1" b
+     storeHeader db (toHeader b) >> fetch "Header after block 2" b
   where
+    fetchH nm b = do
+      assertEqual ("Yes: " ++ nm) (Just (toHeader b)) =<< retrieveHeader db (blockID b)
     fetch nm b = do
       assertEqual ("Yes: " ++ nm) (Just b)            =<< retrieveBlock  db (blockID b)
       assertEqual ("Yes: " ++ nm) (Just (toHeader b)) =<< retrieveHeader db (blockID b)

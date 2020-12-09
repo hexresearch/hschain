@@ -28,7 +28,7 @@ module HSChain.PoW.P2P.Types
 
   , CatchupThrottle(..)
   , ReleaseCatchupThrottle(..)
-  , NetCfg(..)
+  , NodeCfg(..)
   ) where
 
 import Control.Concurrent.STM
@@ -46,12 +46,22 @@ import HSChain.Types.Merkle.Types
 import HSChain.Control.Channels
 import HSChain.PoW.P2P.Handler.BlockRequests
 
+----------------------------------------------------------------
+-- Configuration
+----------------------------------------------------------------
 
-
-data NetCfg = NetCfg
+data NodeCfg = NodeCfg
   { nKnownPeers     :: !Int
+    -- ^ Number of peers we want to know about
   , nConnectedPeers :: !Int
+    -- ^ Number of peers we want to connect to
+  , initialPeers    :: [NetAddr]
+    -- ^ Set of initial addresses to connect to
   }
+  deriving (Show,Eq,Generic)
+
+
+
 
 ----------------------------------------------------------------
 -- Handshake
@@ -185,24 +195,27 @@ data CmdPeer b
 data AskPeers = AskPeers
 
 -- | Channels for peer for communication with rest of the world
-data PeerChans view = PeerChans
-  { peerSinkNewAddr   :: Sink [NetAddr]
+data PeerChans m b = PeerChans
+  { peerSinkNewAddr    :: Sink [NetAddr]
     -- ^ Send newly received addresses
-  , peerSinkConsensus :: Sink (BoxRX (MonadOf view) (BlockType view))
+  , peerSinkTX         :: Sink (Tx b)
+    -- ^ Sink for posting transactions
+  , peerSinkConsensus  :: Sink (BoxRX m b)
     -- ^ Send new command to consensus
-  , peerBCastAnn      :: Src  (MsgAnn (BlockType view))
+  , peerBCastAnn       :: Src  (GossipMsg b)
     -- ^ Broadcast channel for announces
-  , peerBCastAskPeer  :: Src   AskPeers
+  , peerBCastAskPeer   :: Src   AskPeers
     -- ^ Broadcast channel for asking for more peers
-  , peerBCastAnnTx    :: Src  (MsgTX (BlockType view))
-    -- ^ Broadcast channel for new tx announces
-  , peerCatchup       :: CatchupThrottle
-  , peerReqBlocks     :: BlockRegistry (BlockType view)
-  , peerConnections   :: STM [NetAddr]
-    -- ^
-  , peerConsensuSt    :: STM (Consensus view)
+  , peerCatchup        :: CatchupThrottle
+    -- ^ Lock for catching up when downloading headers
+  , peerReqBlocks      :: BlockRegistry b
+    -- ^ Set of block in process of being requested
+  , peerConnections    :: STM [NetAddr]
+    -- ^ Set of known peers
+  , peerConsensusState :: STM (BlockIndex b, BH b, Locator b)
     -- ^ Current consensus state
-  , peerBlockDB       :: BlockDB (MonadOf view) (BlockType view)
+  , peerBlockDB        :: BlockDB m b
+    -- ^ Block database
   }
 
 data SentRequest b
