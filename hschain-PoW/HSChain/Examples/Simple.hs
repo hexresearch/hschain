@@ -96,6 +96,7 @@ instance MerkleMap (KV cfg) where
 --   use different difficulty adjustment algorithms etc.
 class ( CryptoHashable (Nonce cfg)
       , Serialise (Nonce cfg)
+      , Show (Nonce cfg)
       , Typeable cfg
       ) => KVConfig cfg where
   -- | Type of nonce. It depends on configuration.
