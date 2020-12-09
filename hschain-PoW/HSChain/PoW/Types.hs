@@ -206,6 +206,7 @@ instance ( IsMerkle f
 class ( Show (BlockID b), Ord (BlockID b), Serialise (BlockID b)
       , Show (TxID    b), Ord (TxID    b), Serialise (TxID    b)
       , Show (Tx b)
+      , Show (b Proxy), Show (b Identity)
       , JSON.ToJSON (BlockID b), JSON.FromJSON (BlockID b)
       , JSON.ToJSON (TxID    b), JSON.FromJSON (TxID    b)
       , MerkleMap b, Typeable b
