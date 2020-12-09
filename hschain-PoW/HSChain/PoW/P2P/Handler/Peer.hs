@@ -1,9 +1,10 @@
+{-# LANGUAGE NumDecimals  #-}
 {-# LANGUAGE TypeFamilies #-}
 -- |
 module HSChain.PoW.P2P.Handler.Peer where
 
 import Codec.Serialise
-import Control.Concurrent (ThreadId,myThreadId,throwTo)
+import Control.Concurrent (ThreadId,myThreadId,throwTo,threadDelay,forkIO)
 import Control.Concurrent.STM
 import Control.Lens
 import Control.Monad
@@ -113,12 +114,23 @@ peerRequestBlock
   -> m x
 peerRequestBlock PeerState{..} PeerChans{..} sinkGossip =
   descendNamespace "req_B" $ logOnException $ forever $ do
-    bid <- atomicallyIO $ do
-      check . isNothing =<< readTVar requestInFlight
-      bid <- reserveBID peerReqBlocks
-      writeTVar requestInFlight $ Just $ SentBlock bid
-      sink sinkGossip $ GossipReq $ ReqBlock bid
-      return bid
+    -- We simultaneously ask for block to fetch, reserve it so other
+    -- threads won't request it and create timeout to release it
+    -- automatically.
+    --
+    -- Mask is needed in order to avoid race when we acquired BID and
+    -- killed before we started timeout thread.
+    bid <- liftIO $ mask_ $ do
+      bid <- atomically $ do
+        check . isNothing =<< readTVar requestInFlight
+        bid <- reserveBID peerReqBlocks
+        writeTVar requestInFlight $ Just $ SentBlock bid
+        sink sinkGossip $ GossipReq $ ReqBlock bid
+        return bid
+      -- Timeout is hardcoded to 3s
+      _ <- forkIO $ do threadDelay 3e6
+                       atomically $ releaseBID peerReqBlocks bid
+      pure bid
     logger DebugS "Requesting BID" (sl "bid" bid)
 
 peerRequestAddresses
@@ -182,11 +194,15 @@ peerRecv conn st@PeerState{..} PeerChans{..} sinkGossip =
         liftIO (readTVarIO requestInFlight) >>= \case
           Nothing  -> throwM UnrequestedResponce
           Just req -> case (req, m) of
-            (_              , RespNack     ) -> return ()
             (SentPeers      , RespPeers{}  ) -> return ()
             (SentHeaders rel, RespHeaders{}) -> atomicallyIO $ releaseCatchupLock rel
+            -- When we didn't get block that we wanted we should release lock
+            (SentBlock   bid, RespNack     ) -> atomicallyIO $ releaseBID peerReqBlocks bid
             (SentBlock   bid, RespBlock b  )
-              | blockID b == bid          -> return ()
+              | blockID b == bid -> return ()
+              | otherwise        -> do atomicallyIO $ releaseBID peerReqBlocks bid
+                                       throwM InvalidResponce
+            -- Catchall clause
             _                             -> throwM InvalidResponce
         -- Process message and release request lock. Note that
         -- blocks/headers are processed in other thread and released
