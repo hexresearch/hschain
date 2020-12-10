@@ -86,9 +86,10 @@ let
     in
     {
       inherit pkgs;
-      ghc844 = hschainPkgAll;
-      ghc865 = hschainPkgAll;
-      ghc883 = hschainPkgAll;
-      ghcjs  = hschainPkgJs;
+      ghc844  = hschainPkgAll;
+      ghc865  = hschainPkgAll;
+      ghc883  = hschainPkgAll;
+      ghc8101 = hschainPkgAll;
+      ghcjs   = hschainPkgJs;
     };
 in release
