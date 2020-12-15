@@ -214,7 +214,8 @@ peerRecv conn st@PeerState{..} PeerChans{..} sinkGossip =
         --       whether performance benefit worth it.
         let release = atomicallyIO $ writeTVar requestInFlight Nothing
         case m of
-          RespBlock   b -> toConsensus release $! RxBlock b
+          RespBlock   b -> do sinkIO peerSinkBlock b
+                              toConsensus release $! RxBlock b
           RespHeaders h -> toConsensus release $! RxHeaders h
           RespPeers   a -> sinkIO peerSinkNewAddr a >> release
           RespNack      -> release

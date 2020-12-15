@@ -1,6 +1,7 @@
 -- |
 module HSChain.PoW.P2P.Handler.BlockRequests
   ( BlockRegistry
+  , BlockRegCmd(..)
   , newBlockRegistry
   , reserveBID
   , releaseBID
@@ -28,19 +29,34 @@ data BlockRegistry b = BlockRegistry
   -- ^ Blocks that could be requested by peers
   }
 
+
+data BlockRegCmd b
+  = SetRequired !(Set (BlockID b))
+  | AddRequired !(BlockID b)
+  | RmRequired  !(BlockID b)
+
 newBlockRegistry
   :: (MonadMask m, MonadFork m, Ord (BlockID b))
-  => Src (Set (BlockID b))
+  => Src (BlockRegCmd b)
   -> ContT r m (BlockRegistry b)
 newBlockRegistry srcBids = do
   required  <- liftIO $ newTVarIO Set.empty
   available <- liftIO $ newTVarIO Set.empty
   cforkLinkedIO $ forever $ do
-    bids <- awaitIO srcBids
-    atomicallyIO $ do
-      oldBids <- readTVar required
-      writeTVar   required  bids
-      modifyTVar' available $ Set.union $ bids \\ oldBids
+    awaitIO srcBids >>= \case
+      -- We get new set of BIDs that we need to fetch
+      SetRequired bids -> atomicallyIO $ do
+        oldBids <- readTVar required
+        writeTVar   required  bids
+        modifyTVar' available $ Set.union $ bids \\ oldBids
+      AddRequired bid -> atomicallyIO $ do
+        oldBids  <- readTVar required
+        unless (bid `Set.member` oldBids) $ do
+          modifyTVar' required  $ Set.insert bid
+          modifyTVar' available $ Set.insert bid
+      RmRequired bid -> atomicallyIO $ do
+        modifyTVar' required  $ Set.delete bid
+        modifyTVar' available $ Set.delete bid
   return BlockRegistry{..}
 
 reserveBID :: BlockRegistry b -> STM (BlockID b)

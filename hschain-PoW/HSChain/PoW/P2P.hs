@@ -97,6 +97,7 @@ startNodeTest cfg netAPI db consensus = do
         { pexNodeCfg        = cfg
         , pexNetAPI         = netAPI
         , pexSinkTX         = postTransaction mempoolAPI
+        , pexSinkBlock      = mempty
         , pexMkAnnounce     = liftA2 (<>)
             (fmap GossipAnn <$> mkSrcAnn)
             (fmap GossipTX  <$> mempoolAnnounces)
@@ -114,7 +115,7 @@ startNodeTest cfg netAPI db consensus = do
         , bcastChainUpdate = sinkChain
                           <> (contramap (\(bh,s) -> MempHeadChange bh s) mempoolConsensusCh)
         , sinkConsensusSt  = Sink $ writeTVar bConsesus
-        , sinkReqBlocks    = sinkBIDs
+        , sinkReqBlocks    = contramap SetRequired sinkBIDs
         , srcRX            = srcBOX
         }
   cforkLinked $ threadConsensus db consensus consensusCh
@@ -139,7 +140,9 @@ startNodeTest cfg netAPI db consensus = do
 ----------------------------------------------------------------
 
 data LightPoW b = LightPoW
-  { bestHeadUpdates :: STM (Src (LightConsensus b))
+  { bestHeadUpdates  :: STM (Src (LightConsensus b))
+  , powBlocksFetched :: Src (Block b)
+  , powFetchBlock    :: Sink (BlockID b)
   }
 
 lightNode
@@ -156,11 +159,17 @@ lightNode
   -> ContT r m (LightPoW b)
 lightNode cfg netAPI db consensus = do
   lift $ logger InfoS "Starting PoW node" ()
-  (sinkBOX, srcBOX)   <- queuePair
-  (sinkUpd, mkSrcUpd) <- broadcastPair
-  (sinkAnn, mkSrcAnn) <- broadcastPair
-  blockReg            <- newBlockRegistry mempty
-  vConsensus          <- liftIO $ newTVarIO consensus
+  (sinkBOX,      srcBOX)      <- queuePair
+  (pexSinkBlock, pexSrcBlock) <- queuePair
+  (sinkUpd,      mkSrcUpd)    <- broadcastPair
+  (sinkAnn,      mkSrcAnn)    <- broadcastPair
+  -- FIXME: This way (see BlockRegistry) of accommodating both full
+  --        node where consensus engine say which blocks to fetch and
+  --        light node where user says is quite hacky and not very
+  --        convenient.
+  (sinkBlkReg,   srcBlkReg)   <- queuePair
+  blockReg                    <- newBlockRegistry srcBlkReg
+  vConsensus                  <- liftIO $ newTVarIO consensus
   -- Start PEX
   let pexCh = PexCh
         { pexNodeCfg       = cfg
@@ -174,6 +183,7 @@ lightNode cfg netAPI db consensus = do
                                      , c ^. bestLightHead . _1
                                      , c ^. bestLightHead . _2
                                      )
+        , ..
         }
   runPEX pexCh db
   --
@@ -185,4 +195,8 @@ lightNode cfg netAPI db consensus = do
         }
   cforkLinked $ threadLightConsensus db consensus lightCh
   -- Done
-  pure LightPoW { bestHeadUpdates = mkSrcUpd }
+  pure LightPoW { bestHeadUpdates  = mkSrcUpd
+                , powBlocksFetched = Src $ do b <- await pexSrcBlock
+                                              b <$ sink sinkBlkReg (RmRequired $ blockID b)
+                , powFetchBlock    = contramap AddRequired sinkBlkReg
+                }
