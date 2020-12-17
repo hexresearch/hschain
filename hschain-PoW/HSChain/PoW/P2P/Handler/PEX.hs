@@ -40,7 +40,6 @@ data PexCh m b = PexCh
   , pexNetAPI         :: NetworkAPI
   , pexSinkTX         :: Sink (Tx b)
   , pexSinkBox        :: Sink (BoxRX m b)
-  , pexSinkBlock      :: Sink (Block b)
   , pexBlockRegistry  :: BlockRegistry b
   , pexMkAnnounce     :: STM (Src (GossipMsg b))
   , pexConsesusState  :: STM (BlockIndex b, BH b, Locator b)
@@ -69,7 +68,6 @@ runPEX PexCh{..} db = do
           { peerSinkNewAddr    = sinkAddr
           , peerSinkConsensus  = pexSinkBox
           , peerSinkTX         = pexSinkTX
-          , peerSinkBlock      = pexSinkBlock
           , peerCatchup        = catchup
           , peerReqBlocks      = pexBlockRegistry
           , peerConnections    = connectedPeersList reg

@@ -216,12 +216,10 @@ data PeerChans m b = PeerChans
     -- ^ Current consensus state
   , peerBlockDB        :: BlockDB m b
     -- ^ Block database
-  , peerSinkBlock      :: Sink (Block b)
-    -- ^ Sink for blocks
   }
 
 data SentRequest b
-  = SentBlock   !(BlockID b)
+  = SentBlock   !(ReservedBlock b)
   | SentHeaders ReleaseCatchupThrottle
   | SentPeers
   
