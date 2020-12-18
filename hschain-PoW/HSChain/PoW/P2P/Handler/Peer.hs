@@ -120,18 +120,18 @@ peerRequestBlock PeerState{..} PeerChans{..} sinkGossip =
     --
     -- Mask is needed in order to avoid race when we acquired BID and
     -- killed before we started timeout thread.
-    bid <- liftIO $ mask_ $ do
-      bid <- atomically $ do
+    rBlk <- liftIO $ mask_ $ do
+      rBlk <- atomically $ do
         check . isNothing =<< readTVar requestInFlight
-        bid <- reserveBID peerReqBlocks
-        writeTVar requestInFlight $ Just $ SentBlock bid
-        sink sinkGossip $ GossipReq $ ReqBlock bid
-        return bid
+        rBlk <- reserveBID peerReqBlocks
+        writeTVar requestInFlight $ Just $ SentBlock rBlk
+        sink sinkGossip $ GossipReq $ ReqBlock $ reservedBID rBlk
+        return rBlk
       -- Timeout is hardcoded to 3s
       _ <- forkIO $ do threadDelay 3e6
-                       atomically $ releaseBID peerReqBlocks bid
-      pure bid
-    logger DebugS "Requesting BID" (sl "bid" bid)
+                       atomically $ releaseOnFail rBlk
+      pure rBlk
+    logger DebugS "Requesting BID" ("bid" `sl` reservedBID rBlk)
 
 peerRequestAddresses
   :: (MonadIO m, MonadLogger m, MonadMask m)
@@ -191,19 +191,6 @@ peerRecv conn st@PeerState{..} PeerChans{..} sinkGossip =
           RespBlock   b  -> sl "block"   (blockID b)
           RespPeers   as -> sl "addrs"   as
           RespNack       -> sl "nack" ()
-        liftIO (readTVarIO requestInFlight) >>= \case
-          Nothing  -> throwM UnrequestedResponce
-          Just req -> case (req, m) of
-            (SentPeers      , RespPeers{}  ) -> return ()
-            (SentHeaders rel, RespHeaders{}) -> atomicallyIO $ releaseCatchupLock rel
-            -- When we didn't get block that we wanted we should release lock
-            (SentBlock   bid, RespNack     ) -> atomicallyIO $ releaseBID peerReqBlocks bid
-            (SentBlock   bid, RespBlock b  )
-              | blockID b == bid -> return ()
-              | otherwise        -> do atomicallyIO $ releaseBID peerReqBlocks bid
-                                       throwM InvalidResponce
-            -- Catchall clause
-            _                             -> throwM InvalidResponce
         -- Process message and release request lock. Note that
         -- blocks/headers are processed in other thread and released
         -- in that thread.
@@ -211,13 +198,25 @@ peerRecv conn st@PeerState{..} PeerChans{..} sinkGossip =
         -- NOTE: It could be simpler to block until consensus finish
         --       processing message but current approach allows thread
         --       to proceed immediately. At this point it's unclear
-        --       whether performance benefit worth it.
-        let release = atomicallyIO $ writeTVar requestInFlight Nothing
-        case m of
-          RespBlock   b -> toConsensus release $! RxBlock b
-          RespHeaders h -> toConsensus release $! RxHeaders h
-          RespPeers   a -> sinkIO peerSinkNewAddr a >> release
-          RespNack      -> release
+        --       whether performance benefit worth it.p
+        liftIO (readTVarIO requestInFlight) >>= \case
+          Nothing  -> throwM UnrequestedResponce
+          Just req -> case (req, m) of
+            (SentPeers      , RespPeers   a) -> do sinkIO peerSinkNewAddr a
+                                                   releaseReq
+            (SentHeaders rel, RespHeaders h) -> do atomicallyIO $ releaseCatchupLock rel
+                                                   toConsensus releaseReq $! RxHeaders h
+            -- When we didn't get block that we wanted we should release lock
+            (SentBlock   rBlk, RespNack     ) -> do atomicallyIO $ releaseOnFail rBlk
+                                                    releaseReq
+            (SentBlock   rBlk, RespBlock b  )
+              | blockID b /= reservedBID rBlk -> do atomicallyIO $ releaseOnFail rBlk
+                                                    throwM InvalidResponce
+              | Just cb <- returnBlock rBlk   -> do atomicallyIO $ cb b
+                                                    releaseReq
+              | otherwise                     -> do toConsensus releaseReq $! RxBlock b
+            -- Catchall clause
+            _                             -> throwM InvalidResponce
       -- We handle requests in place
       GossipReq  m -> case m of
         ReqPeers       ->
@@ -238,6 +237,8 @@ peerRecv conn st@PeerState{..} PeerChans{..} sinkGossip =
                             sinkIO peerSinkTX tx
 
   where
+    releaseReq :: MonadIO m => m ()
+    releaseReq = atomicallyIO $ writeTVar requestInFlight Nothing
     -- Send message to consensus engine and release request lock when
     -- request is processed.
     toConsensus release m = do
@@ -245,6 +246,7 @@ peerRecv conn st@PeerState{..} PeerChans{..} sinkGossip =
       sinkIO peerSinkConsensus $ BoxRX $ \cont -> do
         reactCommand tid st =<< cont m
         lift release
+
 
 locateHeaders
   :: (BlockData b)

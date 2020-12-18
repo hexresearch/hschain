@@ -114,7 +114,7 @@ startNodeTest cfg netAPI db consensus = do
         , bcastChainUpdate = sinkChain
                           <> (contramap (\(bh,s) -> MempHeadChange bh s) mempoolConsensusCh)
         , sinkConsensusSt  = Sink $ writeTVar bConsesus
-        , sinkReqBlocks    = sinkBIDs
+        , sinkReqBlocks    = contramap SetRequired sinkBIDs
         , srcRX            = srcBOX
         }
   cforkLinked $ threadConsensus db consensus consensusCh
@@ -139,7 +139,8 @@ startNodeTest cfg netAPI db consensus = do
 ----------------------------------------------------------------
 
 data LightPoW b = LightPoW
-  { bestHeadUpdates :: STM (Src (LightConsensus b))
+  { bestHeadUpdates  :: STM (Src (LightConsensus b))
+  , fetchBlock       :: BlockID b -> STM (STM (Block b))
   }
 
 lightNode
@@ -156,11 +157,12 @@ lightNode
   -> ContT r m (LightPoW b)
 lightNode cfg netAPI db consensus = do
   lift $ logger InfoS "Starting PoW node" ()
-  (sinkBOX, srcBOX)   <- queuePair
-  (sinkUpd, mkSrcUpd) <- broadcastPair
-  (sinkAnn, mkSrcAnn) <- broadcastPair
-  blockReg            <- newBlockRegistry mempty
-  vConsensus          <- liftIO $ newTVarIO consensus
+  (sinkBOX,    srcBOX)    <- queuePair
+  (sinkUpd,    mkSrcUpd)  <- broadcastPair
+  (sinkAnn,    mkSrcAnn)  <- broadcastPair
+  (sinkBlkReg, srcBlkReg) <- queuePair
+  blockReg                <- newBlockRegistry srcBlkReg
+  vConsensus              <- liftIO $ newTVarIO consensus
   -- Start PEX
   let pexCh = PexCh
         { pexNodeCfg       = cfg
@@ -174,6 +176,7 @@ lightNode cfg netAPI db consensus = do
                                      , c ^. bestLightHead . _1
                                      , c ^. bestLightHead . _2
                                      )
+        , ..
         }
   runPEX pexCh db
   --
@@ -185,4 +188,9 @@ lightNode cfg netAPI db consensus = do
         }
   cforkLinked $ threadLightConsensus db consensus lightCh
   -- Done
-  pure LightPoW { bestHeadUpdates = mkSrcUpd }
+  pure LightPoW { bestHeadUpdates  = mkSrcUpd
+                , fetchBlock       = \bid -> do
+                    r <- newEmptyTMVar
+                    sink sinkBlkReg $ RequestBlock bid (void . tryPutTMVar r)
+                    pure $ takeTMVar r
+                }

@@ -219,7 +219,7 @@ data PeerChans m b = PeerChans
   }
 
 data SentRequest b
-  = SentBlock   !(BlockID b)
+  = SentBlock   !(ReservedBlock b)
   | SentHeaders ReleaseCatchupThrottle
   | SentPeers
   
