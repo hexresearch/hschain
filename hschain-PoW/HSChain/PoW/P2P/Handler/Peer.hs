@@ -202,16 +202,18 @@ peerRecv conn st@PeerState{..} PeerChans{..} sinkGossip =
         liftIO (readTVarIO requestInFlight) >>= \case
           Nothing  -> throwM UnrequestedResponce
           Just req -> case (req, m) of
-            (SentPeers      , RespPeers   a) -> sinkIO peerSinkNewAddr a >> releaseReq
-            (SentHeaders rel, RespHeaders h) -> do
-              atomicallyIO $ releaseCatchupLock rel
-              toConsensus releaseReq $! RxHeaders h
+            (SentPeers      , RespPeers   a) -> do sinkIO peerSinkNewAddr a
+                                                   releaseReq
+            (SentHeaders rel, RespHeaders h) -> do atomicallyIO $ releaseCatchupLock rel
+                                                   toConsensus releaseReq $! RxHeaders h
             -- When we didn't get block that we wanted we should release lock
-            (SentBlock   rBlk, RespNack     ) -> atomicallyIO $ releaseOnFail rBlk
+            (SentBlock   rBlk, RespNack     ) -> do atomicallyIO $ releaseOnFail rBlk
+                                                    releaseReq
             (SentBlock   rBlk, RespBlock b  )
               | blockID b /= reservedBID rBlk -> do atomicallyIO $ releaseOnFail rBlk
                                                     throwM InvalidResponce
               | Just cb <- returnBlock rBlk   -> do atomicallyIO $ cb b
+                                                    releaseReq
               | otherwise                     -> do toConsensus releaseReq $! RxBlock b
             -- Catchall clause
             _                             -> throwM InvalidResponce
