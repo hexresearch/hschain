@@ -157,7 +157,9 @@ parser = do
     )
   return Opts{..}
 
-makePrivKeyStream :: forall alg. CryptoSign alg => Int -> [PrivKey alg]
+makePrivKeyStream
+  :: forall alg. (CryptoSign alg, ByteReprSized (PrivKey alg))
+  => Int -> [PrivKey alg]
 makePrivKeyStream seed
   = unfoldr step
   $ randoms (mkStdGen seed)

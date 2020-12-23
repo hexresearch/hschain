@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications    #-}
@@ -76,7 +77,9 @@ connectRing vals addr =
 --   function is very useful for testing since it allows to generate a
 --   lot of keys quickly and in deterministic manner. Naturally it
 --   shoulldn't be used in production
-makePrivKeyStream :: forall alg. CryptoSign alg => Int -> [PrivKey alg]
+makePrivKeyStream
+  :: forall alg. (CryptoSign alg, ByteReprSized (PrivKey alg))
+  => Int -> [PrivKey alg]
 makePrivKeyStream seed
   = unfoldr step
   $ randoms (mkStdGen seed)

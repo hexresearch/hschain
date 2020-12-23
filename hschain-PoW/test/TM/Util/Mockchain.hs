@@ -150,7 +150,9 @@ catchAbort action = handle (\(Abort h) -> return h) action
 k1,k2 :: PrivKey Alg
 k1:k2:_ = makePrivKeyStream 1334
 
-makePrivKeyStream :: forall alg. CryptoSign alg => Int -> [PrivKey alg]
+makePrivKeyStream
+  :: forall alg. (CryptoSign alg, ByteReprSized (PrivKey alg))
+  => Int -> [PrivKey alg]
 makePrivKeyStream seed
   = unfoldr step
   $ randoms (mkStdGen seed)
