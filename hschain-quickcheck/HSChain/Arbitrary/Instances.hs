@@ -49,7 +49,7 @@ instance (CryptoSign alg, Arbitrary a) => Arbitrary (Signed sign alg a) where
 
 instance CryptoSign alg => Arbitrary (PublicKey alg) where
   arbitrary = do
-    bs <- vectorOf (privKeySize (Proxy @alg)) arbitrary
+    bs <- vectorOf (publicKeySize (Proxy @alg)) arbitrary
     return $ fromJust $ decodeFromBS $ BS.pack bs
   shrink _ = []
 
