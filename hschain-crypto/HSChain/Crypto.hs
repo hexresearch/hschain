@@ -560,20 +560,7 @@ instance StreamCypher alg => JSON.ToJSONKey   (CypherNonce alg) where
   toJSONKey = defaultToJsonKey
 
 
-
-----------------------------------------------------------------
--- Signing and verification of values
-----------------------------------------------------------------
-
--- | Whether signature has been verified or not. Note that all data
---   coming from external sources should be treated as unverified
---   therefore only @Signed 'Unverified@ has instances for
---   serialization
-data SignedState = Verified
-                 | Unverified
-
-
-
+----------------------------------------
 
 instance CryptoAsymmetric alg => CryptoHashable (PublicKey alg) where
   hashStep k
@@ -590,3 +577,14 @@ instance CryptoAsymmetric alg => CryptoHashable (Signature alg) where
     = hashStep (CrySignature $ getCryptoName (asymmKeyAlgorithmName @alg))
    <> hashStep (encodeToBS k)
 
+
+----------------------------------------------------------------
+-- Signing and verification of values
+----------------------------------------------------------------
+
+-- | Whether signature has been verified or not. Note that all data
+--   coming from external sources should be treated as unverified
+--   therefore only @Signed 'Unverified@ has instances for
+--   serialization
+data SignedState = Verified
+                 | Unverified
