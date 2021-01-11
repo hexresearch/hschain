@@ -17,6 +17,8 @@ Build-Type:     Simple
 
 Library
   Ghc-options:         -Wall
+  if impl(ghc >= 8.10)
+    Ghc-options:       -Wunused-packages
   Default-Language:    Haskell2010
   Build-Depends:       base              >=4.9 && <5
                      , hschain-crypto
@@ -99,6 +101,8 @@ Library
 
 Executable hschain-PoW-coin
   Ghc-options:         -Wall -threaded -rtsopts "-with-rtsopts=-N -T -qn1 -A64M"
+  if impl(ghc >= 8.10)
+    Ghc-options:       -Wunused-packages
   Default-Language:    Haskell2010
   Build-Depends:       base                 >=4.9 && <5
                      , hschain-PoW
@@ -153,6 +157,8 @@ Executable hschain-PoW-coin
 
 Executable hschain-PoW-light
   Ghc-options:         -Wall -threaded -rtsopts "-with-rtsopts=-N -T -qn1 -A64M"
+  if impl(ghc >= 8.10)
+    Ghc-options:       -Wunused-packages
   Default-Language:    Haskell2010
   Build-Depends:       base                 >=4.9 && <5
                      , hschain-PoW
@@ -202,6 +208,8 @@ Executable hschain-PoW-light
 
 Executable hschain-PoW-key
   Ghc-options:         -Wall -threaded -rtsopts "-with-rtsopts=-N -T -qn1 -A64M"
+  if impl(ghc >= 8.10)
+    Ghc-options:       -Wunused-packages
   Default-Language:    Haskell2010
   Build-Depends:       base                 >=4.9 && <5
                      , hschain-PoW
@@ -219,6 +227,8 @@ Executable hschain-PoW-key
 Test-suite hschain-PoW-tests
   Type:                exitcode-stdio-1.0
   Ghc-options:         -Wall -threaded -rtsopts "-with-rtsopts=-N -qn1"
+  if impl(ghc >= 8.10)
+    Ghc-options:       -Wunused-packages
   Default-Language:    Haskell2010
   Build-Depends:       base              >=4.9 && <5
                      , hschain-PoW
