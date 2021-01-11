@@ -43,7 +43,6 @@ Library
                      , random
                      , sqlite-simple
                      , serialise            >=0.2
-                     , stm                  >=2.5
                      , transformers         >=0.5
                      , unordered-containers >=0.2.5.0
                      , vector
@@ -65,21 +64,9 @@ Executable hschain-coin-node
                      , hschain
                      , hschain-net
                      , hschain-logger
-                     , hschain-merkle
                      , hschain-types
-                     , hschain-crypto
                      , hschain-control
-                     , hschain-config
                      , hschain-examples
-                     , aeson
-                     , bytestring           >=0.10
-                     , exceptions
-                     , filepath
-                     , katip                >=0.8
-                     , lens
-                     , mtl
-                     , network              >=2.6.0.0
-                     , network-simple       >=0.4.2
                      , optparse-applicative >=0.14
                      , prometheus-client
                      , prometheus-metrics-ghc
@@ -87,9 +74,6 @@ Executable hschain-coin-node
                      , wai-middleware-prometheus
                      , warp
                      , yaml
-                     , text
-                     , filepath
-                     , directory
   hs-source-dirs:      exe
   Main-is:             coin-node.hs
 
@@ -100,20 +84,15 @@ Executable hschain-dioxane-node
                      , hschain
                      , hschain-net
                      , hschain-logger
-                     , hschain-merkle
                      , hschain-types
                      , hschain-control
                      , hschain-config
                      , hschain-crypto
                      , hschain-examples
                      , aeson
-                     , bytestring           >=0.10
                      , data-default-class
                      , exceptions
-                     , filepath
                      , katip                >=0.8
-                     , network              >=2.6.0.0
-                     , network-simple       >=0.4.2
                      , mtl
                      , optparse-applicative >=0.14
                      , prometheus-client
@@ -123,9 +102,6 @@ Executable hschain-dioxane-node
                      , warp
                      , vector
                      , yaml
-                     , text
-                     , filepath
-                     , directory
   hs-source-dirs:      exe
   Main-is:             dioxane-node.hs
 
@@ -147,16 +123,11 @@ Test-suite hschain-tests
                      , hschain-quickcheck
                      , hschain-examples
                      , aeson
-                     , async             >=2.2.1
-                     , bytestring        >=0.10
                      , containers
                      , data-default-class
                      , deepseq           >=1.4
                      , exceptions
                      , free
-                     , network
-                     , random
-                     , sqlite-simple
                      , katip
                      , serialise         >=0.2
                      , stm               >=2.4
@@ -169,8 +140,6 @@ Test-suite hschain-tests
                      , vector
                      --
                      , QuickCheck
-                     , bytestring-arbitrary
-                     , generic-arbitrary
                      , hedgehog
                      , hedgehog-quickcheck
                      , tasty             >=0.11

@@ -69,9 +69,7 @@ Test-Suite bls-signatures-test
   Build-Depends:
       base >=4.7 && <5
     , bls-signatures
-    , vector
     , bytestring
-    , extra
     , tasty
     , tasty-hunit
   Other-Modules:

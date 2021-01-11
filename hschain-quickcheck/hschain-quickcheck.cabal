@@ -21,7 +21,6 @@ Library
                      , containers
                      , hschain-crypto
                      , hschain-types
-                     , hschain-net
                      , hschain-merkle
                      , QuickCheck
                      , bytestring-arbitrary
