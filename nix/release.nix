@@ -89,7 +89,8 @@ let
       ghc844  = hschainPkgAll;
       ghc865  = hschainPkgAll;
       ghc883  = hschainPkgAll;
-      ghc8101 = hschainPkgAll;
+      ghc884  = hschainPkgAll;
+      ghc8102 = hschainPkgAll;
       ghcjs   = hschainPkgJs;
     };
 in release
